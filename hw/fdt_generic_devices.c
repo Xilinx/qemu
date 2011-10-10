@@ -1,4 +1,3 @@
-
 #include "blockdev.h"
 
 #include "fdt_generic_util.h"
@@ -42,4 +41,40 @@ int pflash_cfi01_fdt_init(char *node_path, FDTMachineInfo *fdti, void *opaque)
     return 0;
 }
 
-#endif /* CONFIG_FDT */
+static int uart16550_fdt_init(char *node_path, FDTMachineInfo *fdti,
+    void *priv)
+{
+    /* FIXME: Pass in dynamically */
+    MemoryRegion *address_space_mem = get_system_memory();
+    hwaddr base;
+    int baudrate;
+    qemu_irq irqline;
+    char irq_info[1024];
+    void *serial = NULL;
+    Error *errp = NULL;
+
+    base = qemu_devtree_getprop_cell(fdti->fdt, node_path, "reg", 0,
+                                        false, &errp);
+    base += qemu_devtree_getprop_cell(fdti->fdt, node_path, "reg-offset", 0,
+                                        false, &errp);
+    assert_no_error(errp);
+    base &= ~3ULL; /* qemu uart16550 model starts with 3* 8bit offset */
+
+    baudrate = qemu_devtree_getprop_cell(fdti->fdt, node_path, "current-speed",
+                                            0, false, &errp);
+    if (errp) {
+        baudrate = 115200;
+    }
+
+    irqline = fdt_get_irq_info(fdti, node_path, 0 , NULL, irq_info);
+    printf("FDT: UART16550a: baseaddr: 0x"
+           TARGET_FMT_plx ", irq: %s, baud %d\n", base, irq_info, baudrate);
+
+    /* it_shift = 2, reg-shift in DTS - for Xilnx IP is hardcoded */
+    serial = serial_mm_init(address_space_mem, base, 2, irqline, baudrate,
+                            qemu_char_get_next_serial(), DEVICE_LITTLE_ENDIAN);
+    return 0;
+}
+
+fdt_register_compatibility_n(uart16550_fdt_init, "ns16550", 0);
+fdt_register_compatibility_n(uart16550_fdt_init, "ns16550a", 1);
