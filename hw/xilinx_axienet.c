@@ -131,8 +131,8 @@ tdk_init(struct PHY *phy)
 {
     phy->regs[0] = 0x3100;
     /* PHY Id.  */
-    phy->regs[2] = 0x0300;
-    phy->regs[3] = 0xe400;
+    phy->regs[2] = 0x0141;
+    phy->regs[3] = 0x0cc2;
     /* Autonegotiation advertisement reg.  */
     phy->regs[4] = 0x01E1;
     phy->link = 1;
