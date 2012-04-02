@@ -26,6 +26,8 @@
 #include "loader.h"
 #include "ssi.h"
 
+#define MAX_CPUS 2
+
 #define NUM_SPI_FLASHES 4
 #define NUM_QSPI_FLASHES 2
 #define NUM_QSPI_BUSSES 2
@@ -34,6 +36,32 @@
 #define FLASH_SECTOR_SIZE (128 * 1024)
 
 #define IRQ_OFFSET 32 /* pic interrupts start from index 32 */
+
+#define SMP_BOOT_ADDR 0x0fff0000
+#define SMP_BOOTREG_ADDR 0xfffffff0
+
+/* Entry point for secondary CPU */
+static uint32_t zynq_smpboot[] = {
+    0xe3e0000f, /* ldr r0, =0xfffffff0 (mvn r0, #15) */
+    0xe320f002, /* wfe */
+    0xe5901000, /* ldr     r1, [r0] */
+    0xe1110001, /* tst     r1, r1 */
+    0x0afffffb, /* beq     <wfe> */
+    0xe12fff11, /* bx      r1 */
+    0,
+};
+
+static void zynq_write_secondary_boot(ARMCPU *cpu,
+                                      const struct arm_boot_info *info)
+{
+    int n;
+
+    for (n = 0; n < ARRAY_SIZE(zynq_smpboot); n++) {
+        zynq_smpboot[n] = tswap32(zynq_smpboot[n]);
+    }
+    rom_add_blob_fixed("smpboot", zynq_smpboot, sizeof(zynq_smpboot),
+                       SMP_BOOT_ADDR);
+}
 
 static struct arm_boot_info zynq_binfo = {};
 
@@ -99,7 +127,7 @@ static void zynq_init(QEMUMachineInitArgs *args)
     const char *kernel_filename = args->kernel_filename;
     const char *kernel_cmdline = args->kernel_cmdline;
     const char *initrd_filename = args->initrd_filename;
-    ARMCPU *cpu;
+    ARMCPU *cpus[MAX_CPUS];
     MemoryRegion *address_space_mem = get_system_memory();
     MemoryRegion *ext_ram = g_new(MemoryRegion, 1);
     MemoryRegion *ocm_ram = g_new(MemoryRegion, 1);
@@ -109,19 +137,21 @@ static void zynq_init(QEMUMachineInitArgs *args)
     qemu_irq pic[64];
     NICInfo *nd;
     int n;
-    qemu_irq cpu_irq;
+    qemu_irq cpu_irq[MAX_CPUS];
 
     if (!cpu_model) {
         cpu_model = "cortex-a9";
     }
 
-    cpu = cpu_arm_init(cpu_model);
-    if (!cpu) {
-        fprintf(stderr, "Unable to find CPU definition\n");
-        exit(1);
+    for (n = 0; n < smp_cpus; n++) {
+        cpus[n] = cpu_arm_init(cpu_model);
+        if (!cpus[n]) {
+            fprintf(stderr, "Unable to find CPU definition\n");
+            exit(1);
+        }
+        irqp = arm_pic_init_cpu(cpus[n]);
+        cpu_irq[n] = irqp[ARM_PIC_CPU_IRQ];
     }
-    irqp = arm_pic_init_cpu(cpu);
-    cpu_irq = irqp[ARM_PIC_CPU_IRQ];
 
     /* max 2GB ram */
     if (ram_size > 0x80000000) {
@@ -152,11 +182,13 @@ static void zynq_init(QEMUMachineInitArgs *args)
     sysbus_mmio_map(sysbus_from_qdev(dev), 0, 0xF8000000);
 
     dev = qdev_create(NULL, "a9mpcore_priv");
-    qdev_prop_set_uint32(dev, "num-cpu", 1);
+    qdev_prop_set_uint32(dev, "num-cpu", smp_cpus);
     qdev_init_nofail(dev);
     busdev = sysbus_from_qdev(dev);
     sysbus_mmio_map(busdev, 0, 0xF8F00000);
-    sysbus_connect_irq(busdev, 0, cpu_irq);
+    for (n = 0; n < smp_cpus; n++) {
+        sysbus_connect_irq(busdev, n, cpu_irq[n]);
+    }
 
     for (n = 0; n < 64; n++) {
         pic[n] = qdev_get_gpio_in(dev, n);
@@ -190,7 +222,10 @@ static void zynq_init(QEMUMachineInitArgs *args)
     zynq_binfo.kernel_filename = kernel_filename;
     zynq_binfo.kernel_cmdline = kernel_cmdline;
     zynq_binfo.initrd_filename = initrd_filename;
-    zynq_binfo.nb_cpus = 1;
+    zynq_binfo.nb_cpus = smp_cpus;
+    zynq_binfo.write_secondary_boot = zynq_write_secondary_boot;
+    zynq_binfo.smp_loader_start = SMP_BOOT_ADDR;
+    zynq_binfo.smp_bootreg_addr = SMP_BOOTREG_ADDR;
     zynq_binfo.board_id = 0xd32;
     zynq_binfo.loader_start = 0;
     arm_load_kernel(arm_env_get_cpu(first_cpu), &zynq_binfo);
@@ -201,7 +236,7 @@ static QEMUMachine zynq_machine = {
     .desc = "Xilinx Zynq Platform Baseboard for Cortex-A9",
     .init = zynq_init,
     .use_scsi = 1,
-    .max_cpus = 1,
+    .max_cpus = MAX_CPUS,
     .no_sdcard = 1
 };
 
