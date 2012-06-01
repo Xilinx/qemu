@@ -354,6 +354,7 @@ void arm_load_kernel(ARMCPU *cpu, struct arm_boot_info *info)
     machine_opts = qemu_opts_find(qemu_find_opts("machine"), 0);
     if (machine_opts) {
         info->dtb_filename = qemu_opt_get(machine_opts, "dtb");
+        is_linux = qemu_opt_get_bool(machine_opts, "linux", 0) ? 1 : 0;
     } else {
         info->dtb_filename = NULL;
     }

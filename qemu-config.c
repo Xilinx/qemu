@@ -627,6 +627,10 @@ static QemuOptsList qemu_machine_opts = {
             .name = "usb",
             .type = QEMU_OPT_BOOL,
             .help = "Set on/off to enable/disable usb",
+        },{
+            .name = "linux",
+            .type = QEMU_OPT_BOOL,
+            .help = "Bootstrap Linux",
         },
         { /* End of list */ }
     },
