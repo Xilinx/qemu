@@ -151,6 +151,10 @@ static void zynq_init(QEMUMachineInitArgs *args)
         }
         irqp = arm_pic_init_cpu(cpus[n]);
         cpu_irq[n] = irqp[ARM_PIC_CPU_IRQ];
+        /* FIXME: handle this somewhere central */
+        object_property_add_child(container_get(qdev_get_machine(),
+                                  "/unattached"), g_strdup_printf("cpu[%d]", n),
+                                  OBJECT(cpus[n]), NULL);
     }
 
     /* max 2GB ram */
@@ -179,6 +183,13 @@ static void zynq_init(QEMUMachineInitArgs *args)
 
     dev = qdev_create(NULL, "xilinx,zynq_slcr");
     qdev_init_nofail(dev);
+    Error *errp = NULL;
+    object_property_set_link(OBJECT(dev), OBJECT(cpus[0]), "cpu0", &errp);
+    assert_no_error(errp);
+    if (smp_cpus > 1) {
+        object_property_set_link(OBJECT(dev), OBJECT(cpus[1]), "cpu1", NULL);
+        assert_no_error(errp);
+    }
     sysbus_mmio_map(sysbus_from_qdev(dev), 0, 0xF8000000);
 
     dev = qdev_create(NULL, "a9mpcore_priv");

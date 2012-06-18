@@ -19,6 +19,8 @@
 #include "sysbus.h"
 #include "sysemu.h"
 
+#define NUM_CPUS 2
+
 #ifdef ZYNQ_ARM_SLCR_ERR_DEBUG
 #define DB_PRINT(...) do { \
     fprintf(stderr,  ": %s: ", __func__); \
@@ -117,6 +119,8 @@ typedef enum {
 typedef struct {
     SysBusDevice busdev;
     MemoryRegion iomem;
+
+    ARMCPU *cpus[NUM_CPUS];
 
     union {
         struct {
@@ -495,6 +499,11 @@ static int zynq_slcr_init(SysBusDevice *dev)
 
     memory_region_init_io(&s->iomem, &slcr_ops, s, "slcr", 0x1000);
     sysbus_init_mmio(dev, &s->iomem);
+
+    object_property_add_link(OBJECT(dev), "cpu0", TYPE_ARM_CPU,
+                             (Object **) &s->cpus[0], NULL);
+    object_property_add_link(OBJECT(dev), "cpu1", TYPE_ARM_CPU,
+                             (Object **) &s->cpus[1], NULL);
 
     return 0;
 }
