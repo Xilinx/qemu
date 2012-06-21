@@ -5,6 +5,7 @@
 
 void microblaze_load_kernel(MicroBlazeCPU *cpu, hwaddr ddr_base,
                             uint32_t ramsize, const char *dtb_filename,
-                            void (*machine_cpu_reset)(MicroBlazeCPU *));
+                            void (*machine_cpu_reset)(MicroBlazeCPU *, void *),
+                            void *machine_cpu_reset_opaque);
 
 #endif /* __MICROBLAZE_BOOT __ */
