@@ -116,6 +116,9 @@ typedef enum {
   RESET_MAX
 } ResetValues;
 
+#define A9_CPU_RST_CTRL_RST_SHIFT 0
+#define A9_CPU_RST_CTRL_CLKSTOP_SHIFT 4
+
 typedef struct {
     SysBusDevice busdev;
     MemoryRegion iomem;
@@ -346,6 +349,7 @@ static void zynq_slcr_write(void *opaque, hwaddr offset,
                           uint64_t val, unsigned size)
 {
     ZynqSLCRState *s = (ZynqSLCRState *)opaque;
+    int i;
 
     DB_PRINT("offset: %08x data: %08x\n", offset, (unsigned)val);
 
@@ -400,6 +404,20 @@ static void zynq_slcr_write(void *opaque, hwaddr offset,
                 goto bad_reg;
             }
             s->reset[(offset - 0x200) / 4] = val;
+            if (offset - 0x200 == A9_CPU * 4) { /* CPU Reset */
+                for (i = 0; i < NUM_CPUS && s->cpus[i]; ++i) {
+                    bool is_rst = val & (1 << (A9_CPU_RST_CTRL_RST_SHIFT + i));
+                    bool is_clkstop = val &
+                                    (1 << (A9_CPU_RST_CTRL_CLKSTOP_SHIFT + i));
+                    if (is_rst) {
+                        CPU_GET_CLASS(CPU(s->cpus[i]))->reset(CPU(s->cpus[i]));
+                        DB_PRINT("resetting cpu %d\n", i);
+                    }
+                    s->cpus[i]->env.halted = is_rst || is_clkstop;
+                    DB_PRINT("%shalting cpu %d\n", s->cpus[i]->env.halted ?
+                             "" : "un", i);
+                }
+            }
             break;
         case 0x300:
             s->apu_ctrl = val;
