@@ -196,16 +196,16 @@ const void *qemu_devtree_getprop(void *fdt, const char *node_path,
 }
 
 uint32_t qemu_devtree_getprop_cell(void *fdt, const char *node_path,
-                                   const char *property)
+                                   const char *property, int offset)
 {
     int len;
     const uint32_t *p = qemu_devtree_getprop(fdt, node_path, property, &len);
-    if (len != 4) {
-        fprintf(stderr, "%s: %s/%s not 4 bytes long (not a cell?)\n",
-                __func__, node_path, property);
+    if (len < (offset+1)*4) {
+        fprintf(stderr, "%s: %s/%s not long enough to hold %d properties\n",
+                __func__, node_path, property, offset+1);
         exit(1);
     }
-    return be32_to_cpu(*p);
+    return be32_to_cpu(p[offset]);
 }
 
 uint32_t qemu_devtree_get_phandle(void *fdt, const char *path)
