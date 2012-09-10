@@ -179,7 +179,8 @@ int qemu_devtree_setprop_string(void *fdt, const char *node_path,
 }
 
 const void *qemu_devtree_getprop(void *fdt, const char *node_path,
-                                 const char *property, int *lenp)
+                                 const char *property, int *lenp,
+                                 Error **errp)
 {
     int len;
     const void *r;
@@ -190,20 +191,30 @@ const void *qemu_devtree_getprop(void *fdt, const char *node_path,
     if (!r) {
         fprintf(stderr, "%s: Couldn't get %s/%s: %s\n", __func__,
                 node_path, property, fdt_strerror(*lenp));
-        exit(1);
+        /* FIXME: Be smarter */
+        error_set(errp, QERR_UNDEFINED_ERROR);
+        return NULL;
     }
     return r;
 }
 
 uint32_t qemu_devtree_getprop_cell(void *fdt, const char *node_path,
-                                   const char *property, int offset)
+                                   const char *property, int offset,
+                                   Error **errp)
 {
     int len;
-    const uint32_t *p = qemu_devtree_getprop(fdt, node_path, property, &len);
+    const uint32_t *p = qemu_devtree_getprop(fdt, node_path, property, &len,
+                                                                        errp);
+    if (errp && *errp) {
+        return 0;
+    }
     if (len < (offset+1)*4) {
-        fprintf(stderr, "%s: %s/%s not long enough to hold %d properties\n",
-                __func__, node_path, property, offset+1);
-        exit(1);
+        fprintf(stderr, "%s: %s/%s not long enough to hold %d properties "
+                "(length = %d)\n", __func__, node_path, property,
+                offset+1, len);
+        /* FIXME: Be smarter */
+        error_set(errp, QERR_UNDEFINED_ERROR);
+        return 0;
     }
     return be32_to_cpu(p[offset]);
 }

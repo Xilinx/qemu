@@ -221,6 +221,8 @@ static int load_dtb(hwaddr addr, const struct arm_boot_info *binfo)
     void *fdt = NULL;
     char *filename;
     int size, rc;
+    Error *errp = NULL;
+
     uint32_t acells, scells, hival;
 
     filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, binfo->dtb_filename);
@@ -237,8 +239,10 @@ static int load_dtb(hwaddr addr, const struct arm_boot_info *binfo)
     }
     g_free(filename);
 
-    acells = qemu_devtree_getprop_cell(fdt, "/", "#address-cells", 0);
-    scells = qemu_devtree_getprop_cell(fdt, "/", "#size-cells", 0);
+    acells = qemu_devtree_getprop_cell(fdt, "/", "#address-cells", 0, &errp);
+    scells = qemu_devtree_getprop_cell(fdt, "/", "#size-cells", 0, &errp);
+    assert_no_error(errp);
+
     if (acells == 0 || scells == 0) {
         fprintf(stderr, "dtb file invalid (#address-cells or #size-cells 0)\n");
         return -1;
