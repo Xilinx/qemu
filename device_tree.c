@@ -180,7 +180,7 @@ int qemu_devtree_setprop_string(void *fdt, const char *node_path,
 
 const void *qemu_devtree_getprop(void *fdt, const char *node_path,
                                  const char *property, int *lenp,
-                                 Error **errp)
+                                 bool inherit, Error **errp)
 {
     int len;
     const void *r;
@@ -189,6 +189,11 @@ const void *qemu_devtree_getprop(void *fdt, const char *node_path,
     }
     r = fdt_getprop(fdt, findnode_nofail(fdt, node_path), property, lenp);
     if (!r) {
+        char parent[DT_PATH_LENGTH];
+        if (inherit && !qemu_devtree_getparent(fdt, parent, node_path)) {
+            return qemu_devtree_getprop(fdt, parent, property, lenp, true,
+                                                                errp);
+        }
         fprintf(stderr, "%s: Couldn't get %s/%s: %s\n", __func__,
                 node_path, property, fdt_strerror(*lenp));
         /* FIXME: Be smarter */
@@ -200,11 +205,11 @@ const void *qemu_devtree_getprop(void *fdt, const char *node_path,
 
 uint32_t qemu_devtree_getprop_cell(void *fdt, const char *node_path,
                                    const char *property, int offset,
-                                   Error **errp)
+                                   bool inherit, Error **errp)
 {
     int len;
     const uint32_t *p = qemu_devtree_getprop(fdt, node_path, property, &len,
-                                                                        errp);
+                                                                inherit, errp);
     if (errp && *errp) {
         return 0;
     }
