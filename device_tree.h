@@ -31,7 +31,7 @@ int qemu_devtree_setprop_string(void *fdt, const char *node_path,
 int qemu_devtree_setprop_phandle(void *fdt, const char *node_path,
                                  const char *property,
                                  const char *target_node_path);
-const void *qemu_devtree_getprop(void *fdt, const char *node_path,
+void *qemu_devtree_getprop(void *fdt, const char *node_path,
                                  const char *property, int *lenp,
                                  bool inherit, Error **errp);
 uint32_t qemu_devtree_getprop_cell(void *fdt, const char *node_path,

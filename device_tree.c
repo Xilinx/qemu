@@ -178,7 +178,7 @@ int qemu_devtree_setprop_string(void *fdt, const char *node_path,
     return r;
 }
 
-const void *qemu_devtree_getprop(void *fdt, const char *node_path,
+void *qemu_devtree_getprop(void *fdt, const char *node_path,
                                  const char *property, int *lenp,
                                  bool inherit, Error **errp)
 {
@@ -200,7 +200,7 @@ const void *qemu_devtree_getprop(void *fdt, const char *node_path,
         error_set(errp, QERR_UNDEFINED_ERROR);
         return NULL;
     }
-    return r;
+    return g_memdup(r, *lenp);
 }
 
 uint32_t qemu_devtree_getprop_cell(void *fdt, const char *node_path,
@@ -208,7 +208,8 @@ uint32_t qemu_devtree_getprop_cell(void *fdt, const char *node_path,
                                    bool inherit, Error **errp)
 {
     int len;
-    const uint32_t *p = qemu_devtree_getprop(fdt, node_path, property, &len,
+    uint32_t ret;
+    uint32_t *p = qemu_devtree_getprop(fdt, node_path, property, &len,
                                                                 inherit, errp);
     if (errp && *errp) {
         return 0;
@@ -221,7 +222,9 @@ uint32_t qemu_devtree_getprop_cell(void *fdt, const char *node_path,
         error_set(errp, QERR_UNDEFINED_ERROR);
         return 0;
     }
-    return be32_to_cpu(p[offset]);
+    ret = be32_to_cpu(p[offset]);
+    g_free(p);
+    return ret;
 }
 
 uint32_t qemu_devtree_get_phandle(void *fdt, const char *path)
