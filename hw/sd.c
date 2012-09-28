@@ -807,6 +807,9 @@ static sd_rsp_type_t sd_normal_command(SDState *sd,
         break;
 
     case 8:	/* CMD8:   SEND_IF_COND */
+        if (sd->spi) {
+            goto bad_cmd;
+        }
         /* Physical Layer Specification Version 2.00 command */
         switch (sd->state) {
         case sd_idle_state:
