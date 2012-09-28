@@ -43,6 +43,8 @@
 
 #include <libfdt.h>
 
+static int simple_bus_fdt_init(char *bus_node_path, FDTMachineInfo *fdti);
+
 FDTMachineInfo *fdt_generic_create_machine(void *fdt, qemu_irq *cpu_irq)
 {
     char node_path[DT_PATH_LENGTH];
@@ -56,7 +58,7 @@ FDTMachineInfo *fdt_generic_create_machine(void *fdt, qemu_irq *cpu_irq)
 
     /* parse the device tree */
     if (!qemu_devtree_get_root_node(fdt, node_path)) {
-        simple_bus_fdt_init(node_path, fdti, NULL);
+        simple_bus_fdt_init(node_path, fdti);
         while (qemu_co_queue_enter_next(fdti->cq));
     } else {
         fprintf(stderr, "FDT: ERROR: cannot get root node from device tree %s\n"
@@ -83,6 +85,8 @@ static void fdt_init_node(void *args)
     char *node_path = a->node_path;
     FDTMachineInfo *fdti = a->fdti;
     g_free(a);
+
+    simple_bus_fdt_init(node_path, fdti);
 
     char *all_compats = NULL, *compat, *node_name, *next_compat;
     int compat_len;
@@ -144,7 +148,7 @@ exit:
     return;
 }
 
-int simple_bus_fdt_init(char *bus_node_path, FDTMachineInfo *fdti, void *unused)
+static int simple_bus_fdt_init(char *bus_node_path, FDTMachineInfo *fdti)
 {
     int i;
     int num_children = qemu_devtree_get_num_children(fdti->fdt, bus_node_path,
@@ -434,5 +438,3 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
 
     return 0;
 }
-
-fdt_register_compatibility(simple_bus_fdt_init, "simple-bus");

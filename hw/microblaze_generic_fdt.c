@@ -373,6 +373,5 @@ static void microblaze_fdt_init(void)
 
 machine_init(microblaze_fdt_init);
 
-fdt_register_compatibility(simple_bus_fdt_init, "xlnx,compound");
 fdt_register_compatibility_opaque(pflash_cfi01_fdt_init, "cfi-flash", 0,
     &endian);
