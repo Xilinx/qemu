@@ -333,7 +333,7 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
 {
     int err;
     qemu_irq irq;
-    target_phys_addr_t base;
+    hwaddr base;
     DeviceState *dev, *parent;
     char *dev_type = NULL;
     int is_intc;
@@ -357,18 +357,24 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
     parent = fdt_init_get_opaque(fdti, parent_node_path);
     /* FIXME: dont assume the parent is a device state */
     if (parent) {
+        DB_PRINT("parenting node: %s\n", node_path);
         object_property_add_child(OBJECT(parent),
                               qemu_devtree_get_node_name(fdti->fdt, node_path),
                               OBJECT(dev), NULL);
     } else {
+        DB_PRINT("orphaning node: %s\n", node_path);
         /* FIXME: Make this go away (centrally) */
         object_property_add_child(
                               container_get(qdev_get_machine(), "/unattached"),
                               qemu_devtree_get_node_name(fdti->fdt, node_path),
                               OBJECT(dev), NULL);
     }
-
     fdt_init_set_opaque(fdti, node_path, dev);
+
+    /* FIXME: come up with a better way. Need to yield to give child nodes a
+     * chance to set parents before qdev initing the parents
+     */
+    fdt_init_yield(fdti);
 
     /* connect nic if appropriate */
     static int nics;
