@@ -323,22 +323,39 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
     int err;
     qemu_irq irq;
     target_phys_addr_t base;
-    DeviceState *dev;
+    DeviceState *dev, *parent;
     char *dev_type = NULL;
     int is_intc;
     Error *errp = NULL;
     int i;
     QEMUDevtreeProp *prop, *props;
+    char parent_node_path[DT_PATH_LENGTH];
 
     dev = fdt_create_qdev_from_compat(compat, &dev_type);
     if (!dev) {
         DB_PRINT("no match found for %s\n", compat);
         return 1;
     }
-    /* FIXME: attach to the sysbus instead */
-    object_property_add_child(container_get(qdev_get_machine(), "/unattached"),
+
+    if (qemu_devtree_getparent(fdti->fdt, parent_node_path, node_path)) {
+        abort();
+    }
+    while (!fdt_init_has_opaque(fdti, parent_node_path)) {
+        fdt_init_yield(fdti);
+    }
+    parent = fdt_init_get_opaque(fdti, parent_node_path);
+    /* FIXME: dont assume the parent is a device state */
+    if (parent) {
+        object_property_add_child(OBJECT(parent),
                               qemu_devtree_get_node_name(fdti->fdt, node_path),
                               OBJECT(dev), NULL);
+    } else {
+        /* FIXME: Make this go away (centrally) */
+        object_property_add_child(
+                              container_get(qdev_get_machine(), "/unattached"),
+                              qemu_devtree_get_node_name(fdti->fdt, node_path),
+                              OBJECT(dev), NULL);
+    }
 
     fdt_init_set_opaque(fdti, node_path, dev);
 
