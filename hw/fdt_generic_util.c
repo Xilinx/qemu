@@ -58,6 +58,7 @@ FDTMachineInfo *fdt_generic_create_machine(void *fdt, qemu_irq *cpu_irq)
 
     /* parse the device tree */
     if (!qemu_devtree_get_root_node(fdt, node_path)) {
+        fdt_init_set_opaque(fdti, node_path, NULL);
         simple_bus_fdt_init(node_path, fdti);
         while (qemu_co_queue_enter_next(fdti->cq));
     } else {
