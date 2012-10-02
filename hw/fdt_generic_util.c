@@ -341,6 +341,8 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
     int i;
     QEMUDevtreeProp *prop, *props;
     char parent_node_path[DT_PATH_LENGTH];
+    int num_children = qemu_devtree_get_num_children(fdti->fdt, node_path, 1);
+    char **children = qemu_devtree_get_children(fdti->fdt, node_path, 1);
 
     dev = fdt_create_qdev_from_compat(compat, &dev_type);
     if (!dev) {
@@ -430,6 +432,24 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
             DB_PRINT("set link %s %p->%p\n", propname, OBJECT(dev),
                      OBJECT(linked_dev));
             assert_no_error(errp);
+        }
+    }
+
+    for (i = 0; i < num_children; i++) {
+        DeviceState *child;
+
+        while (!fdt_init_has_opaque(fdti, children[i])) {
+            DB_PRINT("Node %s waiting on child %s to qdev_create\n",
+                     node_path, children[i]);
+            fdt_init_yield(fdti);
+        }
+        child = fdt_init_get_opaque(fdti, children[i]);
+        if (child) {
+            while (child->state == DEV_STATE_CREATED) {
+                DB_PRINT("Node %s waiting on child %s to qdev_init\n",
+                         node_path, children[i]);
+                fdt_init_yield(fdti);
+            }
         }
     }
 
