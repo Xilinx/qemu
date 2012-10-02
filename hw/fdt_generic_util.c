@@ -265,6 +265,13 @@ static void substitute_char(char *s, char a, char b)
     }
 }
 
+static inline const char *trim_vendor(const char *s)
+{
+    /* FIXME: be more intelligent */
+    const char *ret = memchr(s, ',', sizeof(s));
+    return ret ? ret + 1 : s;
+}
+
 static DeviceState *fdt_create_qdev_from_compat(char *compat, char **dev_type)
 {
     DeviceState *ret = NULL;
@@ -289,14 +296,15 @@ static DeviceState *fdt_create_qdev_from_compat(char *compat, char **dev_type)
     } else {
         g_free(c);
     }
-    return ret;
-}
 
-static inline const char *trim_vendor(const char *s)
-{
-    /* FIXME: be more intelligent */
-    const char *ret = memchr(s, ',', sizeof(s));
-    return ret ? ret + 1 : s;
+    if (!ret) {
+        char *no_vendor = trim_vendor(compat);
+
+        if (no_vendor != compat) {
+            return fdt_create_qdev_from_compat(no_vendor, dev_type);
+        }
+    }
+    return ret;
 }
 
 /*FIXME: roll into device tree functionality */
