@@ -428,8 +428,12 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
     /* map slave attachment */
     base = qemu_devtree_getprop_cell(fdti->fdt, node_path, "reg", 0, false,
                                                                     &errp);
-    assert_no_error(errp);
-    sysbus_mmio_map(sysbus_from_qdev(dev), 0, base);
+    qemu_devtree_getprop_cell(fdti->fdt, node_path, "reg", 1, false, &errp);
+    DB_PRINT("%svalid reg property found, %s mmio map",
+             errp ? "in" : "", errp ? "skipping" : "doing");
+    if (!errp) {
+        sysbus_mmio_map(sysbus_from_qdev(dev), 0, base);
+    }
 
     {
         int len;
