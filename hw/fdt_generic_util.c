@@ -214,6 +214,9 @@ qemu_irq fdt_get_irq_info(FDTMachineInfo *fdti, char *node_path, int irq_idx,
         sprintf(info, "%d (%s)", idx, node_name);
         g_free((void *)node_name);
     }
+    while (intc->state == DEV_STATE_CREATED) {
+        fdt_init_yield(fdti);   
+    }
     return qdev_get_gpio_in(intc, idx);
 fail:
     *err = 1;
