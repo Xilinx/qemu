@@ -138,14 +138,48 @@ static void zynq_init(QEMUMachineInitArgs *args)
     vmstate_register_ram_global(ocm_ram);
     memory_region_add_subregion(address_space_mem, 0xFFFC0000, ocm_ram);
 
-    DriveInfo *dinfo = drive_get(IF_PFLASH, 0, 0);
+    /* pl353 */
+    dev = qdev_create(NULL, "arm.pl35x");
+    /* FIXME: handle this somewhere central */
+    object_property_add_child(container_get(qdev_get_machine(), "/unattached"),
+                              "pl353", OBJECT(dev), NULL);
+    qdev_prop_set_uint8(dev, "x", 3);
+    {
+        DriveInfo *dinfo = drive_get_next(IF_PFLASH);
+        BlockDriverState *bs =  dinfo ? dinfo->bdrv : NULL;
+        DeviceState *att_dev = qdev_create(NULL, "cfi.pflash02");
+        Error *errp = NULL;
 
-    /* AMD */
-    pflash_cfi02_register(0xe2000000, NULL, "zynq.pflash", FLASH_SIZE,
-                          dinfo ? dinfo->bdrv : NULL, FLASH_SECTOR_SIZE,
-                          FLASH_SIZE/FLASH_SECTOR_SIZE, 1,
-                          1, 0x0066, 0x0022, 0x0000, 0x0000, 0x0555, 0x2aa,
-                              0);
+        if (bs && qdev_prop_set_drive(att_dev, "drive", bs)) {
+            abort();
+        }
+        qdev_prop_set_uint32(att_dev, "num-blocks",
+                             FLASH_SIZE/FLASH_SECTOR_SIZE);
+        qdev_prop_set_uint32(att_dev, "sector-length", FLASH_SECTOR_SIZE);
+        qdev_prop_set_uint8(att_dev, "width", 1);
+        qdev_prop_set_uint8(att_dev, "mappings", 1);
+        qdev_prop_set_uint8(att_dev, "big-endian", 0);
+        qdev_prop_set_uint16(att_dev, "id0", 0x0066);
+        qdev_prop_set_uint16(att_dev, "id1", 0x0022);
+        qdev_prop_set_uint16(att_dev, "id2", 0x0000);
+        qdev_prop_set_uint16(att_dev, "id3", 0x0000);
+        qdev_prop_set_uint16(att_dev, "unlock-addr0", 0x0aaa);
+        qdev_prop_set_uint16(att_dev, "unlock-addr1", 0x0555);
+        qdev_prop_set_string(att_dev, "name", "pl353.pflash");
+        qdev_init_nofail(att_dev);
+        object_property_set_link(OBJECT(dev), OBJECT(att_dev), "dev0", &errp);
+        assert_no_error(errp);
+
+        dinfo = drive_get_next(IF_PFLASH);
+        att_dev = nand_init(dinfo ? dinfo->bdrv : NULL, NAND_MFR_STMICRO, 0xaa);
+        object_property_set_link(OBJECT(dev), OBJECT(att_dev), "dev1", &errp);
+        assert_no_error(errp);
+    }
+    qdev_init_nofail(dev);
+    busdev = sysbus_from_qdev(dev);
+    sysbus_mmio_map(busdev, 0, 0xe000e000);
+    sysbus_mmio_map(busdev, 1, 0xe2000000);
+    sysbus_mmio_map(busdev, 2, 0xe1000000);
 
     dev = qdev_create(NULL, "xilinx,zynq_slcr");
     qdev_init_nofail(dev);

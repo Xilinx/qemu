@@ -60,7 +60,7 @@ typedef struct PL35xState {
     uint8_t x; /* the "x" in pl35x */
 } PL35xState;
 
-static uint64_t pl35x_read(void *opaque, target_phys_addr_t addr,
+static uint64_t pl35x_read(void *opaque, hwaddr addr,
                          unsigned int size)
 {
     PL35xState *s = opaque;
@@ -89,7 +89,7 @@ static uint64_t pl35x_read(void *opaque, target_phys_addr_t addr,
     return r;
 }
 
-static void pl35x_write(void *opaque, target_phys_addr_t addr, uint64_t value64,
+static void pl35x_write(void *opaque, hwaddr addr, uint64_t value64,
                       unsigned int size)
 {
     DB_PRINT("addr=%x v=%x\n", (unsigned)addr, (unsigned)value64);
@@ -109,7 +109,7 @@ static const MemoryRegionOps pl35x_ops = {
     }
 };
 
-static uint64_t nand_read(void *opaque, target_phys_addr_t addr,
+static uint64_t nand_read(void *opaque, hwaddr addr,
                            unsigned int size)
 {
     PL35xItf *s = opaque;
@@ -128,7 +128,7 @@ static uint64_t nand_read(void *opaque, target_phys_addr_t addr,
     return r;
 }
 
-static void nand_write(void *opaque, target_phys_addr_t addr, uint64_t value64,
+static void nand_write(void *opaque, hwaddr addr, uint64_t value64,
                        unsigned int size)
 {
     struct PL35xItf *s = opaque;
