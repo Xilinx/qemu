@@ -40,6 +40,11 @@ typedef struct I2CSlaveClass
 
     /* Notify the slave of a bus state change.  */
     void (*event)(I2CSlave *s, enum i2c_event event);
+
+    /* Notify the slave what address was decoded. Only needed for slaves that
+     * decode multiple addresses. Called after event() for I2C_START_RECV/SEND
+     */
+    void (*decode_address)(I2CSlave *s, uint8_t address);
 } I2CSlaveClass;
 
 struct I2CSlave
@@ -48,6 +53,7 @@ struct I2CSlave
 
     /* Remaining fields for internal use by the I2C code.  */
     uint8_t address;
+    uint8_t address_range;
 };
 
 i2c_bus *i2c_init_bus(DeviceState *parent, const char *name);

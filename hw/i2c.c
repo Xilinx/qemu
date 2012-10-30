@@ -19,6 +19,7 @@ struct i2c_bus
 
 static Property i2c_props[] = {
     DEFINE_PROP_UINT8("address", struct I2CSlave, address, 0),
+    DEFINE_PROP_UINT8("address-range", struct I2CSlave, address_range, 1),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -93,7 +94,8 @@ int i2c_start_transfer(i2c_bus *bus, uint8_t address, int recv)
     QTAILQ_FOREACH(kid, &bus->qbus.children, sibling) {
         DeviceState *qdev = kid->child;
         I2CSlave *candidate = I2C_SLAVE_FROM_QDEV(qdev);
-        if (candidate->address == address) {
+        if (address >= candidate->address &&
+                address < candidate->address + candidate->address_range) {
             slave = candidate;
             break;
         }
@@ -109,6 +111,9 @@ int i2c_start_transfer(i2c_bus *bus, uint8_t address, int recv)
     bus->current_dev = slave;
     if (sc->event) {
         sc->event(slave, recv ? I2C_START_RECV : I2C_START_SEND);
+    }
+    if (sc->decode_address) {
+        sc->decode_address(slave, address);
     }
     return 0;
 }
@@ -192,12 +197,13 @@ static int i2c_slave_post_load(void *opaque, int version_id)
 
 const VMStateDescription vmstate_i2c_slave = {
     .name = "I2CSlave",
-    .version_id = 1,
-    .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
+    .version_id = 2,
+    .minimum_version_id = 2,
+    .minimum_version_id_old = 2,
     .post_load = i2c_slave_post_load,
     .fields      = (VMStateField []) {
         VMSTATE_UINT8(address, I2CSlave),
+        VMSTATE_UINT8(address_range, I2CSlave),
         VMSTATE_END_OF_LIST()
     }
 };
