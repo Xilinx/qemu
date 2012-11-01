@@ -69,6 +69,8 @@ int i2c_recv(i2c_bus *bus);
 #define FROM_I2C_SLAVE(type, dev) DO_UPCAST(type, i2c, dev)
 
 DeviceState *i2c_create_slave(i2c_bus *bus, const char *name, uint8_t addr);
+DeviceState *i2c_create_slave_no_init(i2c_bus *bus, const char *name,
+                                      uint8_t addr);
 
 /* wm8750.c */
 void wm8750_data_req_set(DeviceState *dev,
