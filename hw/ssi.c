@@ -141,8 +141,11 @@ static void ssi_slave_register_types(void)
 type_init(ssi_slave_register_types)
 
 typedef struct SSIAutoConnectArg {
-    qemu_irq **cs_linep;
+    qemu_irq *cs_linep;
     SSIBus *bus;
+    int current;
+    int first;
+    int num;
 } SSIAutoConnectArg;
 
 static int ssi_auto_connect_slave(Object *child, void *opaque)
@@ -155,19 +158,25 @@ static int ssi_auto_connect_slave(Object *child, void *opaque)
         return 0;
     }
 
-    cs_line = qdev_get_gpio_in(DEVICE(dev), 0);
-    qdev_set_parent_bus(DEVICE(dev), &arg->bus->qbus);
-    **arg->cs_linep = cs_line;
-    (*arg->cs_linep)++;
+    if (arg->current >= arg->first && arg->current < arg->first + arg->num) {
+        cs_line = qdev_get_gpio_in(DEVICE(dev), 0);
+        qdev_set_parent_bus(DEVICE(dev), &arg->bus->qbus);
+        *arg->cs_linep = cs_line;
+    }
+    arg->current++;
+    arg->cs_linep++;
     return 0;
 }
 
 void ssi_auto_connect_slaves(DeviceState *parent, qemu_irq *cs_line,
-                             SSIBus *bus)
+                             SSIBus *bus, int first, int num)
 {
     SSIAutoConnectArg arg = {
-        .cs_linep = &cs_line,
-        .bus = bus
+        .cs_linep = cs_line,
+        .bus = bus,
+        .current = 0,
+        .first = first,
+        .num = num,
     };
 
     object_child_foreach(OBJECT(parent), ssi_auto_connect_slave, &arg);

@@ -84,8 +84,8 @@ SSIBus *ssi_create_bus(DeviceState *parent, const char *name);
 uint32_t ssi_transfer(SSIBus *bus, uint32_t val);
 
 /* Automatically connect all children nodes a spi controller as slaves */
-void ssi_auto_connect_slaves(DeviceState *parent, qemu_irq *cs_lines,
-                             SSIBus *bus);
+void ssi_auto_connect_slaves(DeviceState *parent, qemu_irq *cs_line,
+                             SSIBus *bus, int first, int num);
 
 /* max111x.c */
 void max111x_set_input(DeviceState *dev, int line, uint8_t value);
