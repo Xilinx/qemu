@@ -289,11 +289,7 @@ int endian;
 #endif
 
 static void
-microblaze_generic_fdt_init(ram_addr_t ram_size,
-                          const char *boot_device,
-                          const char *kernel_filename,
-                          const char *kernel_cmdline,
-                          const char *initrd_filename, const char *cpu_model)
+microblaze_generic_fdt_init(QEMUMachineInitArgs *args)
 {
     MicroBlazeCPU *cpu;
     MemoryRegion *address_space_mem = get_system_memory();
@@ -324,10 +320,7 @@ microblaze_generic_fdt_init(ram_addr_t ram_size,
     }
 
     /* init CPUs */
-    if (cpu_model == NULL) {
-        cpu_model = "microblaze";
-    }
-    cpu = cpu_mb_init(cpu_model);
+    cpu = cpu_mb_init("microblaze");
 
     /* find memory node */
     /* FIXME it could be good to fix case when you don't find memory node */
