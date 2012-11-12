@@ -527,16 +527,28 @@ static int xilinx_spips_init(SysBusDevice *dev)
     memory_region_init_io(&s->iomem, &spips_ops, s, "spi", R_MAX*4);
     sysbus_init_mmio(dev, &s->iomem);
 
-    memory_region_init_io(&s->mmlqspi, &lqspi_ops, s, "lqspi",
-                          (1 << LQSPI_ADDRESS_BITS) * 2);
-    sysbus_init_mmio(dev, &s->mmlqspi);
-
     s->irqline = -1;
-    s->lqspi_cached_addr = ~0ULL;
 
     fifo8_create(&s->rx_fifo, RXFF_A);
     fifo8_create(&s->tx_fifo, TXFF_A);
 
+    return 0;
+}
+
+static int xilinx_qspips_init(SysBusDevice *dev)
+{
+    XilinxSPIPS *s = FROM_SYSBUS(typeof(*s), dev);
+
+    s->num_busses = 2;
+    s->num_cs = 2;
+    s->num_txrx_bytes = 4;
+
+    xilinx_spips_init(dev);
+    memory_region_init_io(&s->mmlqspi, &lqspi_ops, s, "lqspi",
+                          (1 << LQSPI_ADDRESS_BITS) * 2);
+    sysbus_init_mmio(dev, &s->mmlqspi);
+
+    s->lqspi_cached_addr = ~0ULL;
     return 0;
 }
 
@@ -568,27 +580,38 @@ static Property xilinx_spips_properties[] = {
     DEFINE_PROP_UINT8("num-txrx-bytes", XilinxSPIPS, num_txrx_bytes, 1),
     DEFINE_PROP_END_OF_LIST(),
 };
+
 static void xilinx_spips_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     SysBusDeviceClass *sdc = SYS_BUS_DEVICE_CLASS(klass);
 
-    sdc->init = xilinx_spips_init;
+    sdc->init = (int (*)(SysBusDevice *))data;
     dc->reset = xilinx_spips_reset;
     dc->props = xilinx_spips_properties;
     dc->vmsd = &vmstate_xilinx_spips;
 }
 
 static const TypeInfo xilinx_spips_info = {
-    .name  = "xilinx,spips",
+    .name  = "xlnx.ps7-spi",
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size  = sizeof(XilinxSPIPS),
     .class_init = xilinx_spips_class_init,
+    .class_data = xilinx_spips_init,
+};
+
+static const TypeInfo xilinx_qspips_info = {
+    .name  = "xlnx.ps7-qspi",
+    .parent = TYPE_SYS_BUS_DEVICE,
+    .instance_size  = sizeof(XilinxSPIPS),
+    .class_init = xilinx_spips_class_init,
+    .class_data = xilinx_qspips_init,
 };
 
 static void xilinx_spips_register_types(void)
 {
     type_register_static(&xilinx_spips_info);
+    type_register_static(&xilinx_qspips_info);
 }
 
 type_init(xilinx_spips_register_types)
