@@ -3,6 +3,8 @@
 #include "fdt_generic_util.h"
 #include "fdt_generic_devices.h"
 
+#include "flash.h"
+
 #define FLASH_SECTOR_SIZE (64 * 1024)
 
 /* FIXME: This file should go away. When these devices are properly QOMified
