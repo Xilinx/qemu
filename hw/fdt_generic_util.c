@@ -345,6 +345,9 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
     int num_children = qemu_devtree_get_num_children(fdti->fdt, node_path, 1);
     char **children = qemu_devtree_get_children(fdti->fdt, node_path, 1);
 
+    if (!compat) {
+        return 1;
+    }
     dev = fdt_create_object_from_compat(compat, &dev_type);
     if (!dev) {
         DB_PRINT("no match found for %s\n", compat);
