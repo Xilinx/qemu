@@ -9,6 +9,8 @@
 #include "serial.h"
 #include "flash.h"
 
+#include "flash.h"
+
 #define FLASH_SECTOR_SIZE (64 * 1024)
 
 /* FIXME: This file should go away. When these devices are properly QOMified
