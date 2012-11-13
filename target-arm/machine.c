@@ -53,6 +53,7 @@ void cpu_save(QEMUFile *f, void *opaque)
     qemu_put_be32(f, env->cp15.c9_pmxevtyper);
     qemu_put_be32(f, env->cp15.c9_pmuserenr);
     qemu_put_be32(f, env->cp15.c9_pminten);
+    qemu_put_be32(f, env->cp15.c12_vector_base_address);
     qemu_put_be32(f, env->cp15.c13_fcse);
     qemu_put_be32(f, env->cp15.c13_context);
     qemu_put_be32(f, env->cp15.c13_tls1);
@@ -173,6 +174,7 @@ int cpu_load(QEMUFile *f, void *opaque, int version_id)
     env->cp15.c9_pmxevtyper = qemu_get_be32(f);
     env->cp15.c9_pmuserenr = qemu_get_be32(f);
     env->cp15.c9_pminten = qemu_get_be32(f);
+    env->cp15.c12_vector_base_address = qemu_get_be32(f);
     env->cp15.c13_fcse = qemu_get_be32(f);
     env->cp15.c13_context = qemu_get_be32(f);
     env->cp15.c13_tls1 = qemu_get_be32(f);

@@ -408,6 +408,10 @@ static const ARMCPRegInfo v7_cp_reginfo[] = {
       .fieldoffset = offsetof(CPUARMState, cp15.c9_pminten),
       .resetvalue = 0,
       .writefn = pmintenclr_write },
+    { .name = "VBAR", .cp = 15, .crn = 12, .crm = 0, .opc1 = 0, .opc2 = 0,
+      .access = PL1_RW,
+      .fieldoffset = offsetof(CPUARMState, cp15.c12_vector_base_address),
+      .resetvalue = 0 },
     { .name = "SCR", .cp = 15, .crn = 1, .crm = 1, .opc1 = 0, .opc2 = 0,
       .access = PL1_RW, .fieldoffset = offsetof(CPUARMState, cp15.c1_scr),
       .resetvalue = 0, },
@@ -1889,7 +1893,17 @@ void do_interrupt(CPUARMState *env)
     }
     /* High vectors.  */
     if (env->cp15.c1_sys & (1 << 13)) {
+        /* when enabled, base address cannot be remapped.  */
         addr += 0xffff0000;
+    } else if (arm_feature(env, ARM_FEATURE_V7)) {
+        /* ARM v7 architectures provide a vector base address register to remap
+         * the interrupt vector table.
+         * This register is only followed in non-monitor mode, and has a secure
+         * and un-secure copy. Since the cpu is always in a un-secure operation
+         * and is never in monitor mode this feature is always active.
+         * Note: only bits 31:5 are valid.
+         */
+        addr += env->cp15.c12_vector_base_address & 0xffffffe0;
     }
     switch_mode (env, new_mode);
     env->spsr = cpsr_read(env);
