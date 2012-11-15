@@ -25,14 +25,15 @@
  * THE SOFTWARE.
  */
 
-#ifdef FDT_GENERIC_UTIL_ERR_DEBUG
-#define DB_PRINT(...) do { \
-    fprintf(stderr,  ": %s: ", __func__); \
-    fprintf(stderr, ## __VA_ARGS__); \
-    } while (0);
-#else
-    #define DB_PRINT(...)
+#ifndef FDT_GENERIC_UTIL_ERR_DEBUG
+#define FDT_GENERIC_UTIL_ERR_DEBUG 0
 #endif
+#define DB_PRINT(...) do { \
+    if (FDT_GENERIC_UTIL_ERR_DEBUG) { \
+        fprintf(stderr,  ": %s: ", __func__); \
+        fprintf(stderr, ## __VA_ARGS__); \
+    } \
+} while (0);
 
 #include "fdt_generic_util.h"
 #include "net.h"
