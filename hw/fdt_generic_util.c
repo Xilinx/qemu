@@ -108,8 +108,8 @@ static void fdt_init_node(void *args)
     all_compats = qemu_devtree_getprop(fdti->fdt, node_path,
         "compatible", &compat_len, false, NULL);
     if (!all_compats) {
-        printf("FDT: ERROR: no compatibility found for node %s%s\n", node_path,
-               node_name);
+        DB_PRINT("FDT: ERROR: no compatibility found for node %s%s\n",
+                 node_path, node_name);
         goto exit;
     }
     compat = all_compats;
@@ -132,8 +132,8 @@ try_next_compat:
     compat = next_compat+1;
     goto try_next_compat;
 invalidate:
-    printf("FDT: Unsupported peripheral invalidated %s compatibilities %s\n",
-        node_name, all_compats);
+    DB_PRINT("FDT: Unsupported peripheral invalidated %s compatibilities %s\n",
+             node_name, all_compats);
     qemu_devtree_setprop_string(fdti->fdt, node_path, "compatible",
         "invalidated");
 exit:
@@ -484,14 +484,13 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
             if (err && is_intc) {
                 irq = fdti->irq_base[0];
                 sysbus_connect_irq(sysbus_from_qdev(DEVICE(dev)), 0, irq);
-                fprintf(stderr, "FDT: (%s) connected top level irq %s\n",
-                        dev_type, irq_info);
+                DB_PRINT("FDT: (%s) connected top level irq %s\n", dev_type,
+                         irq_info);
                 break;
             }
             if (!err) {
                 sysbus_connect_irq(sysbus_from_qdev(DEVICE(dev)), i, irq);
-                fprintf(stderr, "FDT: (%s) connected irq %s\n", dev_type,
-                        irq_info);
+                DB_PRINT("FDT: (%s) connected irq %s\n", dev_type, irq_info);
             } else {
                 break;
             }
