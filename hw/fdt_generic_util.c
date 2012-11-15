@@ -25,8 +25,6 @@
  * THE SOFTWARE.
  */
 
-#define FDT_GENERIC_UTIL_ERR_DEBUG
-
 #ifdef FDT_GENERIC_UTIL_ERR_DEBUG
 #define DB_PRINT(...) do { \
     fprintf(stderr,  ": %s: ", __func__); \
