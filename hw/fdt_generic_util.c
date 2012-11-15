@@ -65,7 +65,7 @@ FDTMachineInfo *fdt_generic_create_machine(void *fdt, qemu_irq *cpu_irq)
             , node_path);
     }
 
-    printf("FDT: Device tree scan complete\n");
+    DB_PRINT("FDT: Device tree scan complete\n");
     FDTMachineInfo *ret = g_malloc0(sizeof(*ret));
     return fdti;
 }
