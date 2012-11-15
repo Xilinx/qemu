@@ -12,6 +12,20 @@
  * explict shim functions
  */
 
+/* Piggy back fdt_generic_util.c ERR_DEBUG symbol as these two are really the
+ * same feature
+ */
+
+#ifndef FDT_GENERIC_UTIL_ERR_DEBUG
+#define FDT_GENERIC_UTIL_ERR_DEBUG 0
+#endif
+#define DB_PRINT(...) do { \
+    if (FDT_GENERIC_UTIL_ERR_DEBUG) { \
+        fprintf(stderr,  ": %s: ", __func__); \
+        fprintf(stderr, ## __VA_ARGS__); \
+    } \
+} while (0);
+
 int pflash_cfi01_fdt_init(char *node_path, FDTMachineInfo *fdti, void *opaque)
 {
 
@@ -32,8 +46,8 @@ int pflash_cfi01_fdt_init(char *node_path, FDTMachineInfo *fdti, void *opaque)
                                                 0, false, &errp);
     assert_no_error(errp);
 
-    printf("FDT: FLASH: baseaddr: 0x%x, size: 0x%x\n",
-           flash_base, flash_size);
+    DB_PRINT("FDT: FLASH: baseaddr: 0x%x, size: 0x%x\n",
+             flash_base, flash_size);
 
     dinfo = drive_get_next(IF_PFLASH);
     pflash_cfi01_register(flash_base, NULL, node_path, flash_size,
@@ -69,8 +83,8 @@ static int uart16550_fdt_init(char *node_path, FDTMachineInfo *fdti,
     }
 
     irqline = fdt_get_irq_info(fdti, node_path, 0 , NULL, irq_info);
-    printf("FDT: UART16550a: baseaddr: 0x"
-           TARGET_FMT_plx ", irq: %s, baud %d\n", base, irq_info, baudrate);
+    DB_PRINT("FDT: UART16550a: baseaddr: 0x"
+             TARGET_FMT_plx ", irq: %s, baud %d\n", base, irq_info, baudrate);
 
     /* it_shift = 2, reg-shift in DTS - for Xilnx IP is hardcoded */
     serial = serial_mm_init(address_space_mem, base, 2, irqline, baudrate,
