@@ -361,7 +361,8 @@ struct XilinxAXIEnet {
     /* 32K x 1 lookup filter.  */
     uint32_t ext_mtable[1024];
 
-
+    QEMUTimer *transfer_timer;
+    bool rxing;
     uint8_t *rxmem;
 };
 
@@ -617,7 +618,7 @@ static int eth_can_rx(NetClientState *nc)
     struct XilinxAXIEnet *s = DO_UPCAST(NICState, nc, nc)->opaque;
 
     /* RX enabled?  */
-    return !axienet_rx_resetting(s) && axienet_rx_enabled(s);
+    return !axienet_rx_resetting(s) && axienet_rx_enabled(s) && !s->rxing;
 }
 
 static int enet_match_addr(const uint8_t *buf, uint32_t f0, uint32_t f1)
@@ -647,6 +648,9 @@ static ssize_t eth_rx(NetClientState *nc, const uint8_t *buf, size_t size)
     uint32_t csum32;
     uint16_t csum16;
     int i;
+    s->rxing = true;
+    qemu_mod_timer(s->transfer_timer,
+                   qemu_get_clock_ns(vm_clock) + 500 * size);
 
     DENET(qemu_log("%s: %zd bytes\n", __func__, size));
 
@@ -838,6 +842,13 @@ static NetClientInfo net_xilinx_enet_info = {
     .cleanup = eth_cleanup,
 };
 
+static void transfer_timer(void *opaque)
+{
+    struct XilinxAXIEnet *s = (struct XilinxAXIEnet *)opaque;
+
+    s->rxing = false;
+}
+
 static int xilinx_enet_init(SysBusDevice *dev)
 {
     struct XilinxAXIEnet *s = FROM_SYSBUS(typeof(*s), dev);
@@ -856,6 +867,7 @@ static int xilinx_enet_init(SysBusDevice *dev)
     mdio_attach(&s->TEMAC.mdio_bus, &s->TEMAC.phy, s->c_phyaddr);
 
     s->TEMAC.parent = s;
+    s->transfer_timer = qemu_new_timer_ns(vm_clock, transfer_timer, s);
 
     s->rxmem = g_malloc(s->c_rxmem);
     axienet_reset(s);
