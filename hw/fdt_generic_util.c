@@ -270,7 +270,7 @@ static void substitute_char(char *s, char a, char b)
 static inline const char *trim_vendor(const char *s)
 {
     /* FIXME: be more intelligent */
-    const char *ret = memchr(s, ',', sizeof(s));
+    const char *ret = memchr(s, ',', strlen(s));
     return ret ? ret + 1 : s;
 }
 
