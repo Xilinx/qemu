@@ -29,14 +29,14 @@
 int pflash_cfi01_fdt_init(char *node_path, FDTMachineInfo *fdti, void *opaque)
 {
 
-    int flash_base = 0;
-    int flash_size = 0;
+    uint32_t flash_base = 0;
+    uint32_t flash_size = 0;
     Error *errp = NULL;
 
     int be = *((int *)opaque);
 
     DriveInfo *dinfo;
-    int bank_width;
+    uint32_t bank_width;
 
     flash_base = qemu_devtree_getprop_cell(fdti->fdt, node_path, "reg", 0,
                                                 false, &errp);
@@ -63,7 +63,7 @@ static int uart16550_fdt_init(char *node_path, FDTMachineInfo *fdti,
     /* FIXME: Pass in dynamically */
     MemoryRegion *address_space_mem = get_system_memory();
     hwaddr base;
-    int baudrate;
+    uint32_t baudrate;
     qemu_irq irqline;
     char irq_info[1024];
     void *serial = NULL;
