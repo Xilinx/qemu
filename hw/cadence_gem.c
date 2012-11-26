@@ -1220,7 +1220,7 @@ static void gem_class_init(ObjectClass *klass, void *data)
 
 static TypeInfo gem_info = {
     .class_init = gem_class_init,
-    .name  = "cadence_gem",
+    .name  = "xlnx.ps7-ethernet",
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size  = sizeof(GemState),
 };

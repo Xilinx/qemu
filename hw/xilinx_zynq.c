@@ -42,8 +42,8 @@ static void gem_init(NICInfo *nd, uint32_t base, qemu_irq irq)
     DeviceState *dev;
     SysBusDevice *s;
 
-    qemu_check_nic_model(nd, "cadence_gem");
-    dev = qdev_create(NULL, "cadence_gem");
+    qemu_check_nic_model(nd, "xlnx.ps7-ethernet");
+    dev = qdev_create(NULL, "xlnx.ps7-ethernet");
     qdev_set_nic_properties(dev, nd);
     qdev_init_nofail(dev);
     s = sysbus_from_qdev(dev);
