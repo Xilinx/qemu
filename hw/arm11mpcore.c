@@ -127,7 +127,7 @@ static int mpcore_priv_init(SysBusDevice *dev)
 {
     MPCorePrivState *s = FROM_SYSBUS(MPCorePrivState, dev);
 
-    s->gic = qdev_create(NULL, "arm_gic");
+    s->gic = qdev_create(NULL, "arm.gic");
     qdev_prop_set_uint32(s->gic, "num-cpu", s->num_cpu);
     qdev_prop_set_uint32(s->gic, "num-irq", s->num_irq);
     /* Request the legacy 11MPCore GIC behaviour: */

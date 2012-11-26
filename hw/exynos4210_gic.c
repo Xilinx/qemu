@@ -286,7 +286,7 @@ static int exynos4210_gic_init(SysBusDevice *dev)
     char dist_alias_name[sizeof(cpu_prefix) + 3];
     SysBusDevice *busdev;
 
-    s->gic = qdev_create(NULL, "arm_gic");
+    s->gic = qdev_create(NULL, "arm.gic");
     qdev_prop_set_uint32(s->gic, "num-cpu", s->num_cpu);
     qdev_prop_set_uint32(s->gic, "num-irq", EXYNOS4210_GIC_NIRQ);
     qdev_init_nofail(s->gic);

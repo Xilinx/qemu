@@ -31,7 +31,7 @@ static int realview_gic_init(SysBusDevice *dev)
      */
     int numirq = 96;
 
-    s->gic = qdev_create(NULL, "arm_gic");
+    s->gic = qdev_create(NULL, "arm.gic");
     qdev_prop_set_uint32(s->gic, "num-cpu", 1);
     qdev_prop_set_uint32(s->gic, "num-irq", numirq);
     qdev_init_nofail(s->gic);
