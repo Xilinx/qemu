@@ -33,7 +33,7 @@ static int a9mp_priv_init(SysBusDevice *dev)
     SysBusDevice *timerbusdev, *wdtbusdev, *gicbusdev, *scubusdev;
     int i;
 
-    s->gic = qdev_create(NULL, "arm_gic");
+    s->gic = qdev_create(NULL, "arm.gic");
     qdev_prop_set_uint32(s->gic, "num-cpu", s->num_cpu);
     qdev_prop_set_uint32(s->gic, "num-irq", s->num_irq);
     qdev_init_nofail(s->gic);
