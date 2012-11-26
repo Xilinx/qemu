@@ -466,7 +466,7 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
         base = qemu_devtree_getprop_cell(fdti->fdt, node_path, "reg", 0, false,
                                                                         &errp);
         qemu_devtree_getprop_cell(fdti->fdt, node_path, "reg", 1, false, &errp);
-        DB_PRINT_NP(errp ? 1 : 0, "%svalid reg property found, %s mmio map",
+        DB_PRINT_NP(errp ? 1 : 0, "%svalid reg property found, %s mmio map\n",
                     errp ? "in" : "", errp ? "skipping" : "doing");
         if (!errp) {
             sysbus_mmio_map(sysbus_from_qdev(DEVICE(dev)), 0, base);
