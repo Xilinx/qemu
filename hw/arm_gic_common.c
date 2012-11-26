@@ -148,7 +148,7 @@ static void arm_gic_common_reset(DeviceState *dev)
 
 static Property arm_gic_common_properties[] = {
     DEFINE_PROP_UINT32("num-cpu", GICState, num_cpu, 1),
-    DEFINE_PROP_UINT32("num-irq", GICState, num_irq, 32),
+    DEFINE_PROP_UINT32("num-irq", GICState, num_irq, 96),
     /* Revision can be 1 or 2 for GIC architecture specification
      * versions 1 or 2, or 0 to indicate the legacy 11MPCore GIC.
      * (Internally, 0xffffffff also indicates "not a GIC but an NVIC".)
