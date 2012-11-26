@@ -50,12 +50,12 @@ static int a9mp_priv_init(SysBusDevice *dev)
     qdev_init_nofail(qdev);
     scubusdev = sysbus_from_qdev(qdev);
 
-    qdev = qdev_create(NULL, "arm_mptimer");
+    qdev = qdev_create(NULL, "arm,cortex-a9-twd-timer");
     qdev_prop_set_uint32(qdev, "num-cpu", s->num_cpu);
     qdev_init_nofail(qdev);
     timerbusdev = sysbus_from_qdev(qdev);
 
-    qdev = qdev_create(NULL, "arm_mptimer");
+    qdev = qdev_create(NULL, "arm,cortex-a9-twd-timer");
     qdev_prop_set_uint32(qdev, "num-cpu", s->num_cpu);
     qdev_init_nofail(qdev);
     wdtbusdev = sysbus_from_qdev(qdev);

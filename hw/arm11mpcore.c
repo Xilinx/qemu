@@ -140,7 +140,7 @@ static int mpcore_priv_init(SysBusDevice *dev)
     /* Pass through inbound GPIO lines to the GIC */
     qdev_init_gpio_in(&s->busdev.qdev, mpcore_priv_set_irq, s->num_irq - 32);
 
-    s->mptimer = qdev_create(NULL, "arm_mptimer");
+    s->mptimer = qdev_create(NULL, "arm,cortex-a9-twd-timer");
     qdev_prop_set_uint32(s->mptimer, "num-cpu", s->num_cpu);
     qdev_init_nofail(s->mptimer);
 
