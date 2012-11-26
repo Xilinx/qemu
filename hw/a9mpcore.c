@@ -20,7 +20,6 @@ typedef struct a9mp_priv_state {
     uint32_t num_cpu;
     MemoryRegion scu_iomem;
     MemoryRegion container;
-    DeviceState *mptimer;
     DeviceState *gic;
     uint32_t num_irq;
 } a9mp_priv_state;
@@ -130,6 +129,7 @@ static int a9mp_priv_init(SysBusDevice *dev)
 {
     a9mp_priv_state *s = FROM_SYSBUS(a9mp_priv_state, dev);
     SysBusDevice *busdev, *gicbusdev;
+    DeviceState *qdev;
     int i;
 
     s->gic = qdev_create(NULL, "arm_gic");
@@ -144,10 +144,10 @@ static int a9mp_priv_init(SysBusDevice *dev)
     /* Pass through inbound GPIO lines to the GIC */
     qdev_init_gpio_in(&s->busdev.qdev, a9mp_priv_set_irq, s->num_irq - 32);
 
-    s->mptimer = qdev_create(NULL, "arm_mptimer");
-    qdev_prop_set_uint32(s->mptimer, "num-cpu", s->num_cpu);
-    qdev_init_nofail(s->mptimer);
-    busdev = sysbus_from_qdev(s->mptimer);
+    qdev = qdev_create(NULL, "arm_mptimer");
+    qdev_prop_set_uint32(qdev, "num-cpu", s->num_cpu);
+    qdev_init_nofail(qdev);
+    busdev = sysbus_from_qdev(qdev);
 
     /* Memory map (addresses are offsets from PERIPHBASE):
      *  0x0000-0x00ff -- Snoop Control Unit
