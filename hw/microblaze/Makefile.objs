@@ -8,8 +8,4 @@ obj-y += microblaze_pic_cpu.o
 obj-y += xilinx_ethlite.o
 obj-$(CONFIG_FDT) += ../device_tree.o
 
-obj-$(CONFIG_FDT_GENERIC) += fdt_generic.o
-obj-$(CONFIG_FDT_GENERIC) += fdt_generic_util.o
-obj-$(CONFIG_FDT_GENERIC) += fdt_generic_devices.o
-
 obj-y := $(addprefix ../,$(obj-y))

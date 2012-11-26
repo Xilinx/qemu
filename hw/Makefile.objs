@@ -187,6 +187,10 @@ common-obj-y += msmouse.o ps2.o
 common-obj-y += qdev.o qdev-properties.o qdev-monitor.o
 common-obj-$(CONFIG_BRLAPI) += baum.o
 
+common-obj-$(CONFIG_FDT_GENERIC) += fdt_generic.o
+common-obj-$(CONFIG_FDT_GENERIC) += fdt_generic_util.o
+common-obj-$(CONFIG_FDT_GENERIC) += fdt_generic_devices.o
+
 # xen backend driver support
 common-obj-$(CONFIG_XEN_BACKEND) += xen_backend.o xen_devconfig.o
 common-obj-$(CONFIG_XEN_BACKEND) += xen_console.o xenfb.o xen_disk.o xen_nic.o
