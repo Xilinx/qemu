@@ -82,7 +82,7 @@ static int uart16550_fdt_init(char *node_path, FDTMachineInfo *fdti,
         baudrate = 115200;
     }
 
-    irqline = fdt_get_irq_info(fdti, node_path, 0 , NULL, irq_info);
+    irqline = *fdt_get_irq_info(fdti, node_path, 0, irq_info);
     DB_PRINT("FDT: UART16550a: baseaddr: 0x"
              TARGET_FMT_plx ", irq: %s, baud %d\n", base, irq_info, baudrate);
 

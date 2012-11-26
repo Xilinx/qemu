@@ -300,6 +300,7 @@ microblaze_generic_fdt_init(QEMUMachineInitArgs *args)
     const char *dtb_arg;
     QemuOpts *machine_opts;
     Error *errp = NULL;
+    qemu_irq *irqs = g_new0(qemu_irq, 2);
 
     /* for memory node */
     char node_path[DT_PATH_LENGTH];
@@ -342,8 +343,8 @@ microblaze_generic_fdt_init(QEMUMachineInitArgs *args)
     memory_region_add_subregion(address_space_mem, ram_base, ddr_ram);
 
     /* Instantiate peripherals from the FDT.  */
-    fdt_init_destroy_fdti(
-        fdt_generic_create_machine(fdt, microblaze_pic_init_cpu(&cpu->env)));
+    irqs[0] = *microblaze_pic_init_cpu(&cpu->env);
+    fdt_init_destroy_fdti(fdt_generic_create_machine(fdt, irqs));
 
     microblaze_load_kernel(cpu, ram_base, ram_size, NULL,
                                         microblaze_generic_fdt_reset, fdt);

@@ -15,7 +15,7 @@ FDTMachineInfo *fdt_generic_create_machine(void *fdt, qemu_irq *cpu_irq);
  * and the specified irq (by the interrupts device-tree property) is retrieved
  */
 
-qemu_irq fdt_get_irq(FDTMachineInfo *fdti, char *node_path, int irq_idx);
+qemu_irq *fdt_get_irq(FDTMachineInfo *fdti, char *node_path, int irq_idx);
 
 /* same as above, but poulates err with non-zero if something goes wrong, and
  * populates info with a human readable string giving some basic information
@@ -23,7 +23,7 @@ qemu_irq fdt_get_irq(FDTMachineInfo *fdti, char *node_path, int irq_idx);
  * optional (i.e. can be NULL)
  */
 
-qemu_irq fdt_get_irq_info(FDTMachineInfo *fdti, char *node_path, int irq_idx,
-    int *err, char * info);
+qemu_irq *fdt_get_irq_info(FDTMachineInfo *fdti, char *node_path, int irq_idx,
+                           char * info);
 
 #endif /* FDT_GENERIC_UTIL_H */

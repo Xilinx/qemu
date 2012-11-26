@@ -172,19 +172,16 @@ static int simple_bus_fdt_init(char *node_path, FDTMachineInfo *fdti)
     return 0;
 }
 
-qemu_irq fdt_get_irq_info(FDTMachineInfo *fdti, char *node_path, int irq_idx,
-        int *err, char *info) {
+qemu_irq *fdt_get_irq_info(FDTMachineInfo *fdti, char *node_path, int irq_idx,
+                          char *info) {
     void *fdt = fdti->fdt;
-    int intc_phandle, intc_cells, idx, errl = 0;
-    char intc_node_path[DT_PATH_LENGTH];
-    Error *errp = NULL;
+    uint32_t intc_phandle, intc_cells, idx, cells[32];
+    char intc_node_path[DT_PATH_LENGTH], *node_name;
     DeviceState *intc;
+    qemu_irq *ret;
+    int i;
+    Error *errp = NULL;
 
-    if (!err) {
-        err = &errl;
-    } else {
-        *err = 0;
-    }
     intc_phandle = qemu_devtree_getprop_cell(fdt, node_path, "interrupt-parent",
                                                                 0, true, &errp);
     if (errp) {
@@ -196,14 +193,13 @@ qemu_irq fdt_get_irq_info(FDTMachineInfo *fdti, char *node_path, int irq_idx,
     }
     intc_cells = qemu_devtree_getprop_cell(fdt, intc_node_path,
                                            "#interrupt-cells", 0, false, &errp);
-    if (errp) {
-        goto fail;
-    }
-    idx = qemu_devtree_getprop_cell(fdt, node_path, "interrupts", intc_cells *
-                                    irq_idx + (intc_cells  == 3 ? 1 : 0), false,
-                                    &errp);
-    if (errp) {
-        goto fail;
+    for (i = 0; i < intc_cells; ++i) {
+        cells[i] = qemu_devtree_getprop_cell(fdt, node_path, "interrupts",
+                                             intc_cells * irq_idx + i, false,
+                                             &errp);
+        if (errp) {
+            goto fail;
+        }
     }
 
     while (!fdt_init_has_opaque(fdti, intc_node_path)) {
@@ -213,26 +209,61 @@ qemu_irq fdt_get_irq_info(FDTMachineInfo *fdti, char *node_path, int irq_idx,
     if (!intc) {
         goto fail;
     }
+    node_name = qemu_devtree_get_node_name(fdt, intc_node_path);
+
+    while (intc->state == DEV_STATE_CREATED) {
+        fdt_init_yield(fdti);
+    }
+
+    switch (intc_cells) { /* FIXME: be less ARM and Microblaze specific */
+    case (2) : /* microblaze */
+        idx = cells[0];
+        goto simple;
+    case (3) : /* ARM a9 GIC */
+        idx = cells[1];
+        if (cells[0]) { /* PPI nastiness */
+            int cpu = 0;
+            qemu_irq *next;
+
+            if (info) {
+                sprintf(info, "ARM PPI: %d (%s)", idx, node_name);
+            }
+
+            ret = g_new0(qemu_irq, 9);
+            next = ret;
+
+            for (cpu = 0; cpu < 8; cpu ++) {
+                if (cells[2] & 1 << (cpu + 8)) {
+                    *next = qdev_get_gpio_in(intc, (cpu + 1) * 32 + idx);
+                    next++;
+                }
+            }
+            return ret;
+        } else {
+            goto simple;
+        }
+    default:
+        goto fail;
+    }
+simple:
     if (info) {
-        char *node_name = qemu_devtree_get_node_name(fdt, intc_node_path);
         sprintf(info, "%d (%s)", idx, node_name);
         g_free((void *)node_name);
     }
-    while (intc->state == DEV_STATE_CREATED) {
-        fdt_init_yield(fdti);   
-    }
-    return qdev_get_gpio_in(intc, idx);
+    ret = g_new0(qemu_irq, 2);
+    ret[0] = qdev_get_gpio_in(intc, idx);
+    return ret;
+
 fail:
-    *err = 1;
     if (info) {
         sprintf(info, "(none)");
     }
     return NULL;
 }
 
-qemu_irq fdt_get_irq(FDTMachineInfo *fdti, char *node_path, int irq_idx)
+qemu_irq *fdt_get_irq(FDTMachineInfo *fdti, char *node_path, int irq_idx)
 {
-    return fdt_get_irq_info(fdti, node_path, irq_idx, NULL, NULL);
+    return fdt_get_irq_info(fdti, node_path, irq_idx, NULL);
 }
 
 /* FIXME: figure out a real solution to this */
@@ -336,14 +367,13 @@ static inline uint64_t get_int_be(const void *p, int len)
 
 static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
 {
-    int err;
     qemu_irq irq;
     hwaddr base;
     Object *dev, *parent;
     char *dev_type = NULL;
     int is_intc;
     Error *errp = NULL;
-    int i;
+    int i, j;
     QEMUDevtreeProp *prop, *props;
     char parent_node_path[DT_PATH_LENGTH];
     int num_children = qemu_devtree_get_num_children(fdti->fdt, node_path, 1);
@@ -482,24 +512,22 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
                         is_intc ? 'y' : 'n');
         }
         /* connect irq */
-        for (i = 0; ; ++i) {
+        j = 0;
+        for (i = 0;; i++) {
             char irq_info[1024];
-            irq = fdt_get_irq_info(fdti, node_path, i, &err, irq_info);
+            qemu_irq *irqs = fdt_get_irq_info(fdti, node_path, i, irq_info);
             /* INTCs inferr their top level, if no IRQ connection specified */
-            if (err && is_intc) {
-                /* FIXME: loop this for multiple cores */
-                irq = fdti->irq_base[0];
-                sysbus_connect_irq(sysbus_from_qdev(DEVICE(dev)), 0, irq);
-                DB_PRINT_NP(0, "FDT: (%s) connected top level irq %s\n",
-                            dev_type, irq_info);
+            if (!irqs && is_intc && i == 0) {
+                irqs = fdti->irq_base;
+            }
+            if (!irqs) {
                 break;
             }
-            if (!err) {
-                sysbus_connect_irq(sysbus_from_qdev(DEVICE(dev)), i, irq);
+            while (*irqs) {
+                sysbus_connect_irq(sysbus_from_qdev(DEVICE(dev)), j++, irq);
                 DB_PRINT_NP(0, "FDT: (%s) connected irq %s\n", dev_type,
                             irq_info);
-            } else {
-                break;
+                irqs++;
             }
         }
     }
