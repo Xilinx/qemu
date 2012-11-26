@@ -45,7 +45,7 @@ static int a9mp_priv_init(SysBusDevice *dev)
     /* Pass through inbound GPIO lines to the GIC */
     qdev_init_gpio_in(&s->busdev.qdev, a9mp_priv_set_irq, s->num_irq - 32);
 
-    s->scu = qdev_create(NULL, "a9-scu");
+    s->scu = qdev_create(NULL, "arm_a9_scu");
     qdev_prop_set_uint32(s->scu, "num-cpu", s->num_cpu);
     qdev_init_nofail(s->scu);
     scubusdev = SYS_BUS_DEVICE(s->scu);

@@ -20,7 +20,7 @@ typedef struct A9SCUState {
     uint32_t num_cpu;
 } A9SCUState;
 
-#define TYPE_A9_SCU "a9-scu"
+#define TYPE_A9_SCU "arm_a9_scu"
 #define A9_SCU(obj) OBJECT_CHECK(A9SCUState, (obj), TYPE_A9_SCU)
 
 static uint64_t a9_scu_read(void *opaque, hwaddr offset,
