@@ -199,8 +199,9 @@ qemu_irq fdt_get_irq_info(FDTMachineInfo *fdti, char *node_path, int irq_idx,
     if (errp) {
         goto fail;
     }
-    idx = qemu_devtree_getprop_cell(fdt, node_path, "interrupts",
-                                        intc_cells * irq_idx, false, &errp);
+    idx = qemu_devtree_getprop_cell(fdt, node_path, "interrupts", intc_cells *
+                                    irq_idx + (intc_cells  == 3 ? 1 : 0), false,
+                                    &errp);
     if (errp) {
         goto fail;
     }
