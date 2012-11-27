@@ -3,6 +3,7 @@
 #include "fdt_generic_util.h"
 #include "fdt_generic_devices.h"
 #include "exec-memory.h"
+#include "qemu-log.h"
 
 #include "serial.h"
 #include "flash.h"
@@ -93,6 +94,36 @@ static int uart16550_fdt_init(char *node_path, FDTMachineInfo *fdti,
                             qemu_char_get_next_serial(), DEVICE_LITTLE_ENDIAN);
     return 0;
 }
+
+static inline void razwi_unimp_rw(void *opaque, hwaddr addr, uint64_t val64,
+                           unsigned int size, bool rnw) {
+    char str[1024];
+
+    snprintf(str, sizeof(str), "%s: RAWZI device %s: addr: %#llx data: %#llx"
+             "size: %d\n",
+             opaque ? (const char *)opaque : "(none)", rnw ? "read" : "write",
+             (unsigned long long)addr, (unsigned long long)val64, size);
+
+    DB_PRINT("%s", str);
+    qemu_log_mask(LOG_UNIMP, "%s", str);
+}
+
+static void razwi_unimp_write(void *opaque, hwaddr addr, uint64_t val64,
+                              unsigned int size) {
+    razwi_unimp_rw(opaque, addr, val64, size, false);
+}
+
+static uint64_t razwi_unimp_read(void *opaque, hwaddr addr, unsigned int size)
+{
+    razwi_unimp_rw(opaque, addr, 0ull, size, true);
+    return 0ull;
+}
+
+const MemoryRegionOps razwi_unimp_ops = {
+    .read = razwi_unimp_read,
+    .write = razwi_unimp_write,
+    .endianness = DEVICE_NATIVE_ENDIAN,
+};
 
 fdt_register_compatibility_n(uart16550_fdt_init, "ns16550", 0);
 fdt_register_compatibility_n(uart16550_fdt_init, "ns16550a", 1);
