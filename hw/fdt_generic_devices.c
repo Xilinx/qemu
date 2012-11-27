@@ -2,7 +2,9 @@
 
 #include "fdt_generic_util.h"
 #include "fdt_generic_devices.h"
+#include "exec-memory.h"
 
+#include "serial.h"
 #include "flash.h"
 
 #define FLASH_SECTOR_SIZE (64 * 1024)
