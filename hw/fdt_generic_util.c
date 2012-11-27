@@ -310,7 +310,8 @@ static inline const char *trim_vendor(const char *s)
     return ret ? ret + 1 : s;
 }
 
-static Object *fdt_create_object_from_compat(char *compat, char **dev_type)
+static Object *fdt_create_object_from_compat(const char *compat,
+                                             char **dev_type)
 {
     ObjectClass *oc = NULL;
 
@@ -337,7 +338,7 @@ static Object *fdt_create_object_from_compat(char *compat, char **dev_type)
     }
 
     if (!oc) {
-        char *no_vendor = trim_vendor(compat);
+        const char *no_vendor = trim_vendor(compat);
 
         if (no_vendor != compat) {
             return fdt_create_object_from_compat(no_vendor, dev_type);
