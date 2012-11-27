@@ -44,6 +44,7 @@
 
 #include "fdt_generic_util.h"
 #include "net.h"
+#include "exec-memory.h"
 
 /* FIXME: wrap direct calls into libfdt */
 
@@ -87,7 +88,7 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat);
 
 static void fdt_init_node(void *args)
 {
-
+    int i;
     struct FDTInitNodeArgs *a = args;
     char *node_path = a->node_path;
     FDTMachineInfo *fdti = a->fdti;
@@ -140,6 +141,32 @@ invalidate:
                 "compatibilities %s\n", all_compats);
     qemu_devtree_setprop_string(fdti->fdt, node_path, "compatible",
         "invalidated");
+
+    for (i = 0;; i++) {
+        Error *errp = NULL;
+        uint64_t size = 0;
+        /* FIXME: inspect address cells and size cells properties */
+        hwaddr base = qemu_devtree_getprop_cell(fdti->fdt, node_path, "reg",
+                                                2 * i, false, &errp);
+        if (!errp) {
+            size = qemu_devtree_getprop_cell(fdti->fdt, node_path, "reg",
+                                             2 * i + 1, false, &errp);
+        }
+        DB_PRINT_NP(errp ? 1 : 0, "%svalid reg property found, %s mmio RAZWI "
+                    "for region %d\n", errp ? "in" : "",
+                    errp ? "skipping" : "doing", i);
+        if (!errp) {
+            MemoryRegion *address_space_mem = get_system_memory();
+            MemoryRegion *razwi = g_new(MemoryRegion, 1);
+            DB_PRINT_NP(0, "mmio address %#llx RAZWI'd\n",
+                        (unsigned long long)base);
+            memory_region_init_io(razwi, &razwi_unimp_ops, g_strdup(node_path),
+                                  node_path, size);
+            memory_region_add_subregion(address_space_mem, base, razwi);
+        } else {
+            break;
+        }
+    }
 exit:
 
     DB_PRINT_NP(1, "exit\n");
@@ -503,7 +530,7 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
                         "for region %d\n", errp ? "in" : "",
                         errp ? "skipping" : "doing", i);
             if (!errp) {
-                DB_PRINT_NP(0, "mmmio region %d mapped to %#llx\n", i,
+                DB_PRINT_NP(0, "mmio region %d mapped to %#llx\n", i,
                             (unsigned long long)base);
                 sysbus_mmio_map(sysbus_from_qdev(DEVICE(dev)), i, base);
             } else {

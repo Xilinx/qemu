@@ -100,7 +100,7 @@ static inline void razwi_unimp_rw(void *opaque, hwaddr addr, uint64_t val64,
     char str[1024];
 
     snprintf(str, sizeof(str), "%s: RAWZI device %s: addr: %#llx data: %#llx"
-             "size: %d\n",
+             " size: %d\n",
              opaque ? (const char *)opaque : "(none)", rnw ? "read" : "write",
              (unsigned long long)addr, (unsigned long long)val64, size);
 
