@@ -368,7 +368,6 @@ static inline uint64_t get_int_be(const void *p, int len)
 
 static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
 {
-    hwaddr base;
     Object *dev, *parent;
     char *dev_type = NULL;
     int is_intc;
@@ -494,13 +493,22 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
 
     if (object_dynamic_cast(dev, TYPE_SYS_BUS_DEVICE)) {
         /* map slave attachment */
-        base = qemu_devtree_getprop_cell(fdti->fdt, node_path, "reg", 0, false,
-                                                                        &errp);
-        qemu_devtree_getprop_cell(fdti->fdt, node_path, "reg", 1, false, &errp);
-        DB_PRINT_NP(errp ? 1 : 0, "%svalid reg property found, %s mmio map\n",
-                    errp ? "in" : "", errp ? "skipping" : "doing");
-        if (!errp) {
-            sysbus_mmio_map(sysbus_from_qdev(DEVICE(dev)), 0, base);
+        for (i = 0;; i++) {
+            /* FIXME: inspect address cells and size cells properties */
+            hwaddr base = qemu_devtree_getprop_cell(fdti->fdt, node_path, "reg",
+                                                    2 * i, false, &errp);
+            qemu_devtree_getprop_cell(fdti->fdt, node_path, "reg", 2 * i + 1,
+                                      false, &errp);
+            DB_PRINT_NP(errp ? 1 : 0, "%svalid reg property found, %s mmio map "
+                        "for region %d\n", errp ? "in" : "",
+                        errp ? "skipping" : "doing", i);
+            if (!errp) {
+                DB_PRINT_NP(0, "mmmio region %d mapped to %#llx\n", i,
+                            (unsigned long long)base);
+                sysbus_mmio_map(sysbus_from_qdev(DEVICE(dev)), i, base);
+            } else {
+                break;
+            }
         }
 
         {
