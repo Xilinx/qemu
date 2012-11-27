@@ -337,25 +337,24 @@ static inline const char *trim_vendor(const char *s)
     return ret ? ret + 1 : s;
 }
 
-static Object *fdt_create_object_from_compat(const char *compat,
-                                             char **dev_type)
+static DeviceState *fdt_create_qdev_from_compat(const char *compat,
+                                                char **dev_type)
 {
-    ObjectClass *oc = NULL;
+    DeviceState *ret = NULL;
 
     char *c = g_strdup(compat);
-
-    oc = object_class_by_name(c);
-    if (!oc) {
+    ret = qdev_try_create(NULL, c);
+    if (!ret) {
         /* QEMU substitutes "."s for ","s in device names, so try with that
          * substitutution
          */
         substitute_char(c, ',', '.');
-        oc = object_class_by_name(c);
+        ret = qdev_try_create(NULL, c);
     }
-    if (!oc) {
+    if (!ret) {
         /* try again with the xilinx version string trimmed */
         trim_xilinx_version(c);
-        oc = object_class_by_name(c);
+        ret = qdev_try_create(NULL, c);
     }
 
     if (dev_type) {
@@ -364,14 +363,14 @@ static Object *fdt_create_object_from_compat(const char *compat,
         g_free(c);
     }
 
-    if (!oc) {
+    if (!ret) {
         const char *no_vendor = trim_vendor(compat);
 
         if (no_vendor != compat) {
-            return fdt_create_object_from_compat(no_vendor, dev_type);
+            return fdt_create_qdev_from_compat(no_vendor, dev_type);
         }
     }
-    return oc ? object_new(c) : NULL;
+    return ret;
 }
 
 /*FIXME: roll into device tree functionality */
@@ -408,7 +407,7 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
     if (!compat) {
         return 1;
     }
-    dev = fdt_create_object_from_compat(compat, &dev_type);
+    dev = OBJECT(fdt_create_qdev_from_compat(compat, &dev_type));
     if (!dev) {
         DB_PRINT_NP(1, "no match found for %s\n", compat);
         return 1;
