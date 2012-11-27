@@ -368,7 +368,6 @@ static inline uint64_t get_int_be(const void *p, int len)
 
 static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
 {
-    qemu_irq irq;
     hwaddr base;
     Object *dev, *parent;
     char *dev_type = NULL;
@@ -418,7 +417,7 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
 
     props = qemu_devtree_get_props(fdti->fdt, node_path);
     for (prop = props; prop->name; prop++) {
-        char *propname = trim_vendor(prop->name);
+        const char *propname = trim_vendor(prop->name);
         int len = prop->len;
         void *val = prop->value;
 
@@ -515,6 +514,7 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
         /* connect irq */
         j = 0;
         for (i = 0;; i++) {
+            int k = 0;
             char irq_info[1024];
             qemu_irq *irqs = fdt_get_irq_info(fdti, node_path, i, irq_info);
             /* INTCs inferr their top level, if no IRQ connection specified */
@@ -525,7 +525,8 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
                 break;
             }
             while (*irqs) {
-                sysbus_connect_irq(sysbus_from_qdev(DEVICE(dev)), j++, irq);
+                sysbus_connect_irq(sysbus_from_qdev(DEVICE(dev)), j++,
+                                   irqs[k++]);
                 DB_PRINT_NP(0, "FDT: (%s) connected irq %s\n", dev_type,
                             irq_info);
                 irqs++;
