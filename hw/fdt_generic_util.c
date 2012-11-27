@@ -37,7 +37,7 @@
 
 #define DB_PRINT_NP(lvl, ...) do { \
     if (FDT_GENERIC_UTIL_ERR_DEBUG > (lvl)) { \
-        fprintf(stderr,  node_path); \
+        fprintf(stderr,  "%s", node_path); \
         DB_PRINT((lvl), ## __VA_ARGS__); \
     } \
 } while (0);
@@ -437,13 +437,13 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
                                     &errp);
             assert_no_error(errp);
             DB_PRINT_NP(0, "set property %s to %#llx\n", propname,
-                        get_int_be(val, len));
+                        (unsigned long long)get_int_be(val, len));
         } else if (!strcmp(p->type, "bool")) {
             object_property_set_bool(OBJECT(dev), !!get_int_be(val, len),
                                      propname, &errp);
             assert_no_error(errp);
-            DB_PRINT_NP(0, "set property %s to %#llx\n", propname,
-                        get_int_be(val, len));
+            DB_PRINT_NP(0, "set property %s to %s\n", propname,
+                        get_int_be(val, len) ? "true" : "false");
         } else if (!strncmp(p->type, "link", 4)) {
             char target_node_path[DT_PATH_LENGTH];
             DeviceState *linked_dev;
