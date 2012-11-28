@@ -127,3 +127,10 @@ const MemoryRegionOps razwi_unimp_ops = {
 
 fdt_register_compatibility_n(uart16550_fdt_init, "ns16550", 0);
 fdt_register_compatibility_n(uart16550_fdt_init, "ns16550a", 1);
+
+static const void *null;
+
+fdt_register_compatibility_n(null, "simple-bus", 0);
+fdt_register_compatibility_n(null, "marvell,88e1111", 1);
+fdt_register_compatibility_n(null, "arm,pl310-cache", 2);
+fdt_register_compatibility_n(null, "xlnx,ps7-cortexa9-1.00.a", 3);
