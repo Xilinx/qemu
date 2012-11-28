@@ -493,6 +493,15 @@ static int zynq_slcr_init(SysBusDevice *dev)
 {
     ZynqSLCRState *s = FROM_SYSBUS(ZynqSLCRState, dev);
 
+    if (!s->cpus[0]) {
+        CPUArchState *env;
+        int i = 0;
+
+        for (env = first_cpu; env; env = env->next_cpu) {
+            s->cpus[i++] = arm_env_get_cpu(env);
+        }
+    }
+
     memory_region_init_io(&s->iomem, &slcr_ops, s, "slcr", 0x1000);
     sysbus_init_mmio(dev, &s->iomem);
 
