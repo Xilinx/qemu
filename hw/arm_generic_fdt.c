@@ -26,6 +26,32 @@
 
 #define MAX_CPUS 4
 
+#define SMP_BOOT_ADDR 0xfffc0000
+#define SMP_BOOTREG_ADDR 0xfffffff0
+
+/* Entry point for secondary CPU */
+static uint32_t zynq_smpboot[] = {
+    0xe3e0000f, /* ldr r0, =0xfffffff0 (mvn r0, #15) */
+    0xe320f002, /* wfe */
+    0xe5901000, /* ldr     r1, [r0] */
+    0xe1110001, /* tst     r1, r1 */
+    0x0afffffb, /* beq     <wfe> */
+    0xe12fff11, /* bx      r1 */
+    0,
+};
+
+static void zynq_write_secondary_boot(ARMCPU *cpu,
+                                      const struct arm_boot_info *info)
+{
+    int n;
+
+    for (n = 0; n < ARRAY_SIZE(zynq_smpboot); n++) {
+        zynq_smpboot[n] = tswap32(zynq_smpboot[n]);
+    }
+    rom_add_blob_fixed("smpboot", zynq_smpboot, sizeof(zynq_smpboot),
+                       SMP_BOOT_ADDR);
+}
+
 static struct arm_boot_info arm_generic_fdt_binfo = {};
 
 static void arm_generic_fdt_init(QEMUMachineInitArgs *args)
@@ -114,7 +140,10 @@ static void arm_generic_fdt_init(QEMUMachineInitArgs *args)
     arm_generic_fdt_binfo.kernel_filename = args->kernel_filename;
     arm_generic_fdt_binfo.kernel_cmdline = args->kernel_cmdline;
     arm_generic_fdt_binfo.initrd_filename = args->initrd_filename;
-    arm_generic_fdt_binfo.nb_cpus = 1;
+    arm_generic_fdt_binfo.nb_cpus = smp_cpus;
+    arm_generic_fdt_binfo.write_secondary_boot = zynq_write_secondary_boot;
+    arm_generic_fdt_binfo.smp_loader_start = SMP_BOOT_ADDR;
+    arm_generic_fdt_binfo.smp_bootreg_addr = SMP_BOOTREG_ADDR;
     arm_generic_fdt_binfo.board_id = 0xd32;
     arm_generic_fdt_binfo.loader_start = 0;
     arm_load_kernel(arm_env_get_cpu(first_cpu), &arm_generic_fdt_binfo);
