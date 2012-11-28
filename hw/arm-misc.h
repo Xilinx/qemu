@@ -31,6 +31,8 @@ struct arm_boot_info {
     const char *kernel_cmdline;
     const char *initrd_filename;
     const char *dtb_filename;
+    void *fdt;
+    int fdt_size;
     hwaddr loader_start;
     /* multicore boards that use the default secondary core boot functions
      * need to put the address of the secondary boot code, the boot reg,

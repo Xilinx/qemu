@@ -218,7 +218,7 @@ static int load_dtb(hwaddr addr, const struct arm_boot_info *binfo)
 #ifdef CONFIG_FDT
     uint32_t *mem_reg_property;
     uint32_t mem_reg_propsize;
-    void *fdt = NULL;
+    void *fdt = binfo->fdt;
     char *filename;
     int size, rc;
     uint32_t acells, scells, hival;
@@ -229,7 +229,11 @@ static int load_dtb(hwaddr addr, const struct arm_boot_info *binfo)
         return -1;
     }
 
-    fdt = load_device_tree(filename, &size);
+    if (!fdt) {
+        fdt = load_device_tree(filename, &size);
+    } else {
+        size = binfo->fdt_size;
+    }
     if (!fdt) {
         fprintf(stderr, "Couldn't open dtb file %s\n", filename);
         g_free(filename);
