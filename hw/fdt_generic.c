@@ -77,7 +77,7 @@ static int fdt_init_search_table(
     if (c == NULL) {
         return 1;
     } else if (!strcmp(key, c->key)) {
-        return c->fdt_init(node_path, fdti, c->opaque);
+        return c->fdt_init ? c->fdt_init(node_path, fdti, c->opaque) : 0;
     }
     return fdt_init_search_table(node_path, fdti, key,
         (TableListNode **)(&(*head)->next));
