@@ -99,6 +99,13 @@ static int arm_gic_common_init(SysBusDevice *dev)
     GICState *s = FROM_SYSBUS(GICState, dev);
     int num_irq = s->num_irq;
 
+    if (!s->num_cpu) {
+        CPUArchState *env;
+        for (env = first_cpu; env; env = env->next_cpu) {
+            s->num_cpu++;
+        }
+    }
+
     if (s->num_cpu > NCPU) {
         hw_error("requested %u CPUs exceeds GIC maximum %d\n",
                  s->num_cpu, NCPU);
@@ -147,7 +154,7 @@ static void arm_gic_common_reset(DeviceState *dev)
 }
 
 static Property arm_gic_common_properties[] = {
-    DEFINE_PROP_UINT32("num-cpu", GICState, num_cpu, 1),
+    DEFINE_PROP_UINT32("num-cpu", GICState, num_cpu, 0),
     DEFINE_PROP_UINT32("num-irq", GICState, num_irq, 96),
     /* Revision can be 1 or 2 for GIC architecture specification
      * versions 1 or 2, or 0 to indicate the legacy 11MPCore GIC.
