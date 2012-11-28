@@ -287,10 +287,12 @@ static int load_dtb(hwaddr addr, const struct arm_boot_info *binfo)
         exit(1);
     }
 
-    rc = qemu_devtree_setprop(fdt, "/memory", "reg", mem_reg_property,
-                              mem_reg_propsize * sizeof(uint32_t));
-    if (rc < 0) {
-        fprintf(stderr, "couldn't set /memory/reg\n");
+    if (!binfo->fdt) {
+        rc = qemu_devtree_setprop(fdt, "/memory", "reg", mem_reg_property,
+                                  mem_reg_propsize * sizeof(uint32_t));
+        if (rc < 0) {
+            fprintf(stderr, "couldn't set /memory/reg\n");
+        }
     }
 
     if (binfo->kernel_cmdline && *binfo->kernel_cmdline) {
