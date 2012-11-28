@@ -250,6 +250,12 @@ static int arm_mptimer_init(SysBusDevice *dev)
 {
     arm_mptimer_state *s = FROM_SYSBUS(arm_mptimer_state, dev);
     int i;
+    if (!s->num_cpu) {
+        CPUArchState *env;
+        for (env = first_cpu; env; env = env->next_cpu) {
+            s->num_cpu++;
+        }
+    }
     if (s->num_cpu < 1 || s->num_cpu > MAX_CPUS) {
         hw_error("%s: num-cpu must be between 1 and %d\n", __func__, MAX_CPUS);
     }
