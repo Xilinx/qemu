@@ -522,7 +522,7 @@ static void zynq_slcr_class_init(ObjectClass *klass, void *data)
 
 static TypeInfo zynq_slcr_info = {
     .class_init = zynq_slcr_class_init,
-    .name  = "xilinx,zynq_slcr",
+    .name  = "xlnx.ps7-slcr",
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size  = sizeof(ZynqSLCRState),
 };

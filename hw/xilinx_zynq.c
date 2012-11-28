@@ -147,7 +147,7 @@ static void zynq_init(QEMUMachineInitArgs *args)
                           1, 0x0066, 0x0022, 0x0000, 0x0000, 0x0555, 0x2aa,
                               0);
 
-    dev = qdev_create(NULL, "xilinx,zynq_slcr");
+    dev = qdev_create(NULL, "xlnx.ps7-slcr");
     qdev_init_nofail(dev);
     sysbus_mmio_map(sysbus_from_qdev(dev), 0, 0xF8000000);
 
