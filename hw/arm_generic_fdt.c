@@ -131,6 +131,17 @@ static void arm_generic_fdt_init(QEMUMachineInitArgs *args)
         memory_region_add_subregion(address_space_mem, 0xFFFC0000, ocm_ram);
     }
 
+    /* FIXME: Descibe SCU in DTB and delete this */
+    /* ZYNQ SCU: */
+    {
+        DeviceState *dev = qdev_create(NULL, "arm_a9_scu");
+        SysBusDevice *busdev = sysbus_from_qdev(dev);
+
+        qdev_prop_set_uint32(dev, "num-cpu", smp_cpus);
+        qdev_init_nofail(dev);
+        sysbus_mmio_map(busdev, 0, 0xF8F00000);
+    }
+
     /* Instantiate peripherals from the FDT.  */
     fdt_init_destroy_fdti(fdt_generic_create_machine(fdt, cpu_irq));
     arm_generic_fdt_binfo.fdt = fdt;
