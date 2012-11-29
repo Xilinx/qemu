@@ -261,7 +261,7 @@ qemu_irq *fdt_get_irq_info(FDTMachineInfo *fdti, char *node_path, int irq_idx,
 
             for (cpu = 0; cpu < 8; cpu ++) {
                 if (cells[2] & 1 << (cpu + 8)) {
-                    *next = qdev_get_gpio_in(intc, (cpu + 1) * 32 + idx);
+                    *next = qdev_get_gpio_in(intc, (cpu + 2) * 32 + idx + 16);
                     next++;
                 }
             }
