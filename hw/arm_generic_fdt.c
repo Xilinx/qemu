@@ -20,6 +20,7 @@
 #include "exec-memory.h"
 #include "loader.h"
 
+#include <libfdt.h>
 #include "fdt_generic_util.h"
 
 #define MACHINE_NAME "arm-generic-fdt"
@@ -50,6 +51,52 @@ static void zynq_write_secondary_boot(ARMCPU *cpu,
     }
     rom_add_blob_fixed("smpboot", zynq_smpboot, sizeof(zynq_smpboot),
                        SMP_BOOT_ADDR);
+}
+
+static char *zynq_ps7_qspi_flash_node_clone(void *fdt)
+{
+    char qspi_node_path[DT_PATH_LENGTH];
+    char qspi_new_node_path[DT_PATH_LENGTH];
+    char *qspi_clone_name = NULL;
+
+    /* clear node paths */
+    memset(qspi_node_path, 0, sizeof(qspi_node_path));
+    memset(qspi_new_node_path, 0, sizeof(qspi_new_node_path));
+
+    /* search for ps7 qspi node */
+    int ret = qemu_devtree_node_by_compatible(fdt, qspi_node_path,
+                                              "xlnx,ps7-qspi-1.00.a");
+    if (ret == 0) {
+        int qspi_is_dual = qemu_devtree_getprop_cell(fdt, qspi_node_path,
+                                                     "is-dual", 0, false, NULL);
+        /* Generate dummy name */
+        snprintf(qspi_new_node_path, DT_PATH_LENGTH, "%s/ps7-qspi-dummy@0",
+                 qspi_node_path);
+
+        /* get the spi flash node to clone from (assume first child node) */
+        int child_num = qemu_devtree_get_num_children(fdt, qspi_node_path, 1);
+        char **child_flash = qemu_devtree_get_children(fdt, qspi_node_path, 1);
+        if (child_num > 0) {
+            char *compat_str = NULL;
+            compat_str = qemu_devtree_getprop(fdt, child_flash[0],
+                                              "compatible", NULL, false, NULL);
+            /* Create the cloned node if the qspi controller is in dual spi mode
+             * and the compatible string is avaliable */
+            if (compat_str != NULL) {
+                if (qspi_is_dual == 1) {
+                    /* Clone first node, preserving only 'compatible' value */
+                    qemu_devtree_add_subnode(fdt, qspi_new_node_path);
+                    qemu_devtree_setprop_string(fdt, qspi_new_node_path,
+                                                "compatible", compat_str);
+                    qspi_clone_name = g_strdup(qspi_new_node_path);
+                }
+                g_free(compat_str);
+            }
+        }
+        g_free(child_flash);
+    }
+
+    return qspi_clone_name;
 }
 
 static struct arm_boot_info arm_generic_fdt_binfo = {};
@@ -143,6 +190,8 @@ static void arm_generic_fdt_init(QEMUMachineInitArgs *args)
     }
 
     /* Instantiate peripherals from the FDT.  */
+    char *qspi_clone_spi_flash_node_name = zynq_ps7_qspi_flash_node_clone(fdt);
+
     fdt_init_destroy_fdti(fdt_generic_create_machine(fdt, cpu_irq));
     arm_generic_fdt_binfo.fdt = fdt;
     arm_generic_fdt_binfo.fdt_size = fdt_size;
@@ -157,6 +206,14 @@ static void arm_generic_fdt_init(QEMUMachineInitArgs *args)
     arm_generic_fdt_binfo.smp_bootreg_addr = SMP_BOOTREG_ADDR;
     arm_generic_fdt_binfo.board_id = 0xd32;
     arm_generic_fdt_binfo.loader_start = 0;
+
+    if (qspi_clone_spi_flash_node_name != NULL) {
+        /* Remove cloned DTB node */
+        int offset = fdt_path_offset(fdt, qspi_clone_spi_flash_node_name);
+        fdt_del_node(fdt, offset);
+        g_free(qspi_clone_spi_flash_node_name);
+    }
+
     arm_load_kernel(arm_env_get_cpu(first_cpu), &arm_generic_fdt_binfo);
 
     return;
