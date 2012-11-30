@@ -27,7 +27,7 @@
 #include "ssi.h"
 
 #define NUM_SPI_FLASHES 4
-#define NUM_QSPI_FLASHES 2
+#define NUM_QSPI_FLASHES 1
 #define NUM_QSPI_BUSSES 2
 
 #define FLASH_SIZE (64 * 1024 * 1024)

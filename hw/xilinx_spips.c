@@ -540,7 +540,7 @@ static int xilinx_qspips_init(SysBusDevice *dev)
     XilinxSPIPS *s = FROM_SYSBUS(typeof(*s), dev);
 
     s->num_busses = 2;
-    s->num_cs = 2;
+    s->num_cs = 1;
     s->num_txrx_bytes = 4;
 
     xilinx_spips_init(dev);
