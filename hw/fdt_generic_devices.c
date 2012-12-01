@@ -95,6 +95,33 @@ static int uart16550_fdt_init(char *node_path, FDTMachineInfo *fdti,
     return 0;
 }
 
+static int i2c_bus_fdt_init(char *node_path, FDTMachineInfo *fdti, void *priv)
+{
+    Object *parent;
+    DeviceState *dev;
+    char parent_node_path[DT_PATH_LENGTH];
+    char *node_name = qemu_devtree_get_node_name(fdti->fdt, node_path);
+
+    /* FIXME: share this code with fdt_generic_util.c/fdt_init_qdev() */
+    if (qemu_devtree_getparent(fdti->fdt, parent_node_path, node_path)) {
+        abort();
+    }
+    while (!fdt_init_has_opaque(fdti, parent_node_path)) {
+        fdt_init_yield(fdti);
+    }
+    parent = fdt_init_get_opaque(fdti, parent_node_path);
+    dev = (DeviceState *)object_dynamic_cast(parent, TYPE_DEVICE);
+    if (parent && dev) {
+        DB_PRINT("%s: parenting i2c bus to %s bus %s\n", node_path,
+                 parent_node_path, node_name);
+        fdt_init_set_opaque(fdti, node_path,
+                            qdev_get_child_bus(dev, node_name));
+    } else {
+        DB_PRINT("%s: orphaning i2c bus\n", node_path);
+    }
+    return 0;
+}
+
 static inline void razwi_unimp_rw(void *opaque, hwaddr addr, uint64_t val64,
                            unsigned int size, bool rnw) {
     char str[1024];
@@ -134,3 +161,12 @@ fdt_register_compatibility_n(null, "simple-bus", 0);
 fdt_register_compatibility_n(null, "marvell,88e1111", 1);
 fdt_register_compatibility_n(null, "arm,pl310-cache", 2);
 fdt_register_compatibility_n(null, "xlnx,ps7-cortexa9-1.00.a", 3);
+
+fdt_register_instance_n(i2c_bus_fdt_init, "i2c@0", 0);
+fdt_register_instance_n(i2c_bus_fdt_init, "i2c@1", 1);
+fdt_register_instance_n(i2c_bus_fdt_init, "i2c@2", 2);
+fdt_register_instance_n(i2c_bus_fdt_init, "i2c@3", 3);
+fdt_register_instance_n(i2c_bus_fdt_init, "i2c@4", 4);
+fdt_register_instance_n(i2c_bus_fdt_init, "i2c@5", 5);
+fdt_register_instance_n(i2c_bus_fdt_init, "i2c@6", 6);
+fdt_register_instance_n(i2c_bus_fdt_init, "i2c@7", 7);
