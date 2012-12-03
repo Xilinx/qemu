@@ -358,6 +358,7 @@ static int cadence_i2c_init(SysBusDevice *dev)
     sysbus_init_irq(dev, &s->irq);
 
     s->bus = i2c_init_bus(&dev->qdev, "i2c");
+    i2c_auto_connect_slaves(DEVICE(dev), s->bus, 0, 128);
 
     s->transfer_timer = qemu_new_timer_ns(vm_clock, cadence_i2c_do_txrx, s);
 
