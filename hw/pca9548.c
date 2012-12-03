@@ -162,7 +162,7 @@ static int pca9548_init(I2CSlave *i2c)
     for (i = 0; i < NUM_BUSSES; ++i) {
         char bus_name[16];
 
-        snprintf(bus_name, sizeof(bus_name), "i2c%d", i);
+        snprintf(bus_name, sizeof(bus_name), "i2c@%d", i);
         s->busses[i] = i2c_init_bus(DEVICE(i2c), bus_name);
     }
     return 0;

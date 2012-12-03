@@ -105,7 +105,7 @@ static inline void zynq_init_zc70x_i2c(uint32_t base_addr, qemu_irq irq)
     for (bus = 2; bus <= 3; bus++) {
         char bus_name[16];
 
-        snprintf(bus_name, sizeof(bus_name), "i2c%d", bus);
+        snprintf(bus_name, sizeof(bus_name), "i2c@%d", bus);
         i2c = (i2c_bus *)qdev_get_child_bus(dev, bus_name);
         assert(i2c);
 
