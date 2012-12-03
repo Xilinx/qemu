@@ -427,6 +427,11 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
         object_property_add_child(OBJECT(parent),
                               qemu_devtree_get_node_name(fdti->fdt, node_path),
                               OBJECT(dev), NULL);
+        if (object_dynamic_cast(parent, TYPE_BUS) &&
+               object_dynamic_cast(dev, TYPE_DEVICE)) {
+            DB_PRINT_NP(1, "bus parenting node\n");
+            qdev_set_parent_bus(DEVICE(dev), BUS(parent));
+        }
     } else {
         DB_PRINT_NP(1, "orphaning node\n");
         /* FIXME: Make this go away (centrally) */
