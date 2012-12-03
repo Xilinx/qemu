@@ -97,7 +97,7 @@ static inline void zynq_init_spi_flashes(uint32_t base_addr, qemu_irq irq,
 
 static inline void zynq_init_zc70x_i2c(uint32_t base_addr, qemu_irq irq)
 {
-    DeviceState *dev = sysbus_create_simple("cadence.i2c", base_addr, irq);
+    DeviceState *dev = sysbus_create_simple("xlnx.ps7-i2c", base_addr, irq);
     i2c_bus *i2c = (i2c_bus *)qdev_get_child_bus(dev, "i2c");
     int i, bus;
 

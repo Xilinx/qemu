@@ -25,7 +25,7 @@
 #include "qemu-log.h"
 #include "bitops.h"
 
-#define TYPE_CADENCE_I2C                  "cadence.i2c"
+#define TYPE_CADENCE_I2C                  "xlnx.ps7-i2c"
 #define CADENCE_I2C(obj)                  \
     OBJECT_CHECK(CadenceI2CState, (obj), TYPE_CADENCE_I2C)
 
