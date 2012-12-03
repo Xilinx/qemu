@@ -89,4 +89,8 @@ extern const VMStateDescription vmstate_i2c_slave;
     .offset     = vmstate_offset_value(_state, _field, I2CSlave),    \
 }
 
+/* Automatically connect all children nodes a spi controller as slaves */
+void i2c_auto_connect_slaves(DeviceState *parent,
+                             i2c_bus *bus, int first, int num);
+
 #endif
