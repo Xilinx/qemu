@@ -147,11 +147,22 @@ static void pca9548_decode_address(I2CSlave *i2c, uint8_t address)
     }
 }
 
+static void pca9548_early_init(Object *obj)
+{
+    int i;
+    PCA9548State *s = (PCA9548State *)obj;
+
+    for (i = 0; i < NUM_BUSSES; ++i) {
+        char bus_name[16];
+
+        snprintf(bus_name, sizeof(bus_name), "i2c@%d", i);
+        s->busses[i] = i2c_init_bus(DEVICE(s), bus_name);
+    }
+}
+
 static int pca9548_init(I2CSlave *i2c)
 {
-    PCA9548State *s = (PCA9548State *)i2c;
     I2CSlave *i2cs =  I2C_SLAVE(i2c);
-    int i;
 
     /* Switch decodes the enitre address range, trample any previously set
      * values for address and range
@@ -159,12 +170,6 @@ static int pca9548_init(I2CSlave *i2c)
     i2cs->address = 0;
     i2cs->address_range = 0x80;
 
-    for (i = 0; i < NUM_BUSSES; ++i) {
-        char bus_name[16];
-
-        snprintf(bus_name, sizeof(bus_name), "i2c@%d", i);
-        s->busses[i] = i2c_init_bus(DEVICE(i2c), bus_name);
-    }
     return 0;
 }
 
@@ -208,6 +213,7 @@ static TypeInfo pca9548_info = {
     .name          = "pca9548",
     .parent        = TYPE_I2C_SLAVE,
     .instance_size = sizeof(PCA9548State),
+    .instance_init = pca9548_early_init,
     .class_init    = pca9548_class_init,
 };
 
