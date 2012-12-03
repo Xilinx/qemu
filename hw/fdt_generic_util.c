@@ -108,6 +108,7 @@ static void fdt_init_node(void *args)
         printf("FDT: ERROR: nameless node: %s\n", node_path);
     }
     if (!fdt_init_inst_bind(node_path, fdti, node_name)) {
+        DB_PRINT_NP(0, "instance bind successful\n");
         goto exit;
     }
 
