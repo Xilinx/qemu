@@ -22,12 +22,20 @@
 #ifndef FDT_GENERIC_UTIL_ERR_DEBUG
 #define FDT_GENERIC_UTIL_ERR_DEBUG 0
 #endif
-#define DB_PRINT(...) do { \
-    if (FDT_GENERIC_UTIL_ERR_DEBUG) { \
+#define DB_PRINT(lvl, ...) do { \
+    if (FDT_GENERIC_UTIL_ERR_DEBUG > (lvl)) { \
         fprintf(stderr,  ": %s: ", __func__); \
         fprintf(stderr, ## __VA_ARGS__); \
     } \
 } while (0);
+
+#define DB_PRINT_NP(lvl, ...) do { \
+    if (FDT_GENERIC_UTIL_ERR_DEBUG > (lvl)) { \
+        fprintf(stderr,  "%s", node_path); \
+        DB_PRINT((lvl), ## __VA_ARGS__); \
+    } \
+} while (0);
+
 
 int pflash_cfi01_fdt_init(char *node_path, FDTMachineInfo *fdti, void *opaque)
 {
@@ -49,8 +57,8 @@ int pflash_cfi01_fdt_init(char *node_path, FDTMachineInfo *fdti, void *opaque)
                                                 0, false, &errp);
     assert_no_error(errp);
 
-    DB_PRINT("FDT: FLASH: baseaddr: 0x%x, size: 0x%x\n",
-             flash_base, flash_size);
+    DB_PRINT_NP(0, "FLASH: baseaddr: 0x%x, size: 0x%x\n",
+                flash_base, flash_size);
 
     dinfo = drive_get_next(IF_PFLASH);
     pflash_cfi01_register(flash_base, NULL, node_path, flash_size,
@@ -86,8 +94,8 @@ static int uart16550_fdt_init(char *node_path, FDTMachineInfo *fdti,
     }
 
     irqline = *fdt_get_irq_info(fdti, node_path, 0, irq_info);
-    DB_PRINT("FDT: UART16550a: baseaddr: 0x"
-             TARGET_FMT_plx ", irq: %s, baud %d\n", base, irq_info, baudrate);
+    DB_PRINT_NP(0, "UART16550a: baseaddr: 0x" TARGET_FMT_plx
+                ", irq: %s, baud %d\n", base, irq_info, baudrate);
 
     /* it_shift = 2, reg-shift in DTS - for Xilnx IP is hardcoded */
     serial = serial_mm_init(address_space_mem, base, 2, irqline, baudrate,
@@ -102,6 +110,7 @@ static int i2c_bus_fdt_init(char *node_path, FDTMachineInfo *fdti, void *priv)
     char parent_node_path[DT_PATH_LENGTH];
     char *node_name = qemu_devtree_get_node_name(fdti->fdt, node_path);
 
+    DB_PRINT_NP(1, "\n");
     /* FIXME: share this code with fdt_generic_util.c/fdt_init_qdev() */
     if (qemu_devtree_getparent(fdti->fdt, parent_node_path, node_path)) {
         abort();
@@ -112,12 +121,12 @@ static int i2c_bus_fdt_init(char *node_path, FDTMachineInfo *fdti, void *priv)
     parent = fdt_init_get_opaque(fdti, parent_node_path);
     dev = (DeviceState *)object_dynamic_cast(parent, TYPE_DEVICE);
     if (parent && dev) {
-        DB_PRINT("%s: parenting i2c bus to %s bus %s\n", node_path,
-                 parent_node_path, node_name);
+        DB_PRINT_NP(0, "parenting i2c bus to %s bus %s\n", parent_node_path,
+                 node_name);
         fdt_init_set_opaque(fdti, node_path,
                             qdev_get_child_bus(dev, node_name));
     } else {
-        DB_PRINT("%s: orphaning i2c bus\n", node_path);
+        DB_PRINT_NP(0, "orphaning i2c bus\n");
     }
     return 0;
 }
@@ -131,7 +140,7 @@ static inline void razwi_unimp_rw(void *opaque, hwaddr addr, uint64_t val64,
              opaque ? (const char *)opaque : "(none)", rnw ? "read" : "write",
              (unsigned long long)addr, (unsigned long long)val64, size);
 
-    DB_PRINT("%s", str);
+    DB_PRINT(0, "%s", str);
     qemu_log_mask(LOG_UNIMP, "%s", str);
 }
 
