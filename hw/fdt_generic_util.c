@@ -103,6 +103,7 @@ static void fdt_init_node(void *args)
 
     /* try instance binding first */
     node_name = qemu_devtree_get_node_name(fdti->fdt, node_path);
+    DB_PRINT_NP(1, "node with name: %s\n", node_name ? node_name : "(none)");
     if (!node_name) {
         printf("FDT: ERROR: nameless node: %s\n", node_path);
     }
