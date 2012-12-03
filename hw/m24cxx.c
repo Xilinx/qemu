@@ -223,7 +223,7 @@ static void m24cxx_class_init(ObjectClass *klass, void *data)
 }
 
 static TypeInfo m24cxx_info = {
-    .name          = "m24cxx",
+    .name          = "at.24c08",
     .parent        = TYPE_I2C_SLAVE,
     .instance_size = sizeof(M24CXXState),
     .class_init    = m24cxx_class_init,

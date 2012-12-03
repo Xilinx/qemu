@@ -111,7 +111,7 @@ static inline void zynq_init_zc70x_i2c(uint32_t base_addr, qemu_irq irq)
 
         assert(NUM_I2C_EEPROMS <= 2); /* not enough address space for anymore */
         for (i = 0; i < NUM_I2C_EEPROMS; ++i) {
-            DeviceState *eeprom_dev = i2c_create_slave_no_init(i2c, "m24cxx",
+            DeviceState *eeprom_dev = i2c_create_slave_no_init(i2c, "at.24c08",
                                                                0x50 + 0x4 * i);
             qdev_prop_set_uint16(eeprom_dev, "size", 1024); /* M24C08 */
             qdev_init_nofail(eeprom_dev);
