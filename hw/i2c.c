@@ -20,6 +20,7 @@ struct i2c_bus
 static Property i2c_props[] = {
     DEFINE_PROP_UINT8("address", struct I2CSlave, address, 0),
     DEFINE_PROP_UINT8("address-range", struct I2CSlave, address_range, 1),
+    DEFINE_PROP_UINT8("reg", struct I2CSlave, address, 0),
     DEFINE_PROP_END_OF_LIST(),
 };
 
