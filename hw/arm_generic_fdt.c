@@ -19,6 +19,8 @@
 #include "boards.h"
 #include "exec-memory.h"
 #include "loader.h"
+#include "blockdev.h"
+#include "flash.h"
 
 #include <libfdt.h>
 #include "fdt_generic_util.h"
@@ -109,6 +111,8 @@ static void arm_generic_fdt_init(QEMUMachineInitArgs *args)
     MemoryRegion *ram = g_new(MemoryRegion, 1);
     ram_addr_t ram_base, ram_size;
     qemu_irq cpu_irq[MAX_CPUS+1];
+    DeviceState *dev;
+    SysBusDevice *busdev;
     memset(cpu_irq, 0, sizeof(cpu_irq));
 
     void *fdt;
@@ -195,6 +199,27 @@ static void arm_generic_fdt_init(QEMUMachineInitArgs *args)
     fdt_init_destroy_fdti(fdt_generic_create_machine(fdt, cpu_irq));
     arm_generic_fdt_binfo.fdt = fdt;
     arm_generic_fdt_binfo.fdt_size = fdt_size;
+
+    /* FIXME: Descibe NAND in DTB and delete this */
+    /* NAND: */
+    dev = qdev_create(NULL, "arm.pl35x");
+    /* FIXME: handle this somewhere central */
+    object_property_add_child(container_get(qdev_get_machine(), "/unattached"),
+                              "pl353", OBJECT(dev), NULL);
+    qdev_prop_set_uint8(dev, "x", 3);
+    {
+        Error *errp = NULL;
+        DriveInfo *dinfo = drive_get_next(IF_PFLASH);
+        DeviceState *att_dev = nand_init(dinfo ? dinfo->bdrv : NULL,
+                                         NAND_MFR_STMICRO, 0xaa);
+
+        object_property_set_link(OBJECT(dev), OBJECT(att_dev), "dev1", &errp);
+        assert_no_error(errp);
+    }
+    qdev_init_nofail(dev);
+    busdev = sysbus_from_qdev(dev);
+    sysbus_mmio_map(busdev, 0, 0xe000e000);
+    sysbus_mmio_map(busdev, 2, 0xe1000000);
 
     arm_generic_fdt_binfo.ram_size = ram_size;
     arm_generic_fdt_binfo.kernel_filename = args->kernel_filename;
