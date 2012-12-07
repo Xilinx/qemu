@@ -161,6 +161,7 @@ fdt_register_compatibility_n(null, "simple-bus", 0);
 fdt_register_compatibility_n(null, "marvell,88e1111", 1);
 fdt_register_compatibility_n(null, "arm,pl310-cache", 2);
 fdt_register_compatibility_n(null, "xlnx,ps7-cortexa9-1.00.a", 3);
+fdt_register_compatibility_n(null, "xlnx,zynq_remoteproc", 4);
 
 fdt_register_instance_n(i2c_bus_fdt_init, "i2c@0", 0);
 fdt_register_instance_n(i2c_bus_fdt_init, "i2c@1", 1);
