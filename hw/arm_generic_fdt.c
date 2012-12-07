@@ -108,8 +108,11 @@ static void arm_generic_fdt_init(QEMUMachineInitArgs *args)
     const char *cpu_model = args->cpu_model;
     ARMCPU *cpus[MAX_CPUS];
     MemoryRegion *address_space_mem = get_system_memory();
-    MemoryRegion *ram = g_new(MemoryRegion, 1);
+    MemoryRegion *ram;
     ram_addr_t ram_base, ram_size;
+    unsigned int ram_num_regions = 0;
+    char ram_region_name[50];
+    ram_addr_t ram_kernel_base, ram_kernel_size;
     qemu_irq cpu_irq[MAX_CPUS+1];
     DeviceState *dev;
     SysBusDevice *busdev;
@@ -162,16 +165,39 @@ static void arm_generic_fdt_init(QEMUMachineInitArgs *args)
     /* find memory node */
     /* FIXME it could be good to fix case when you don't find memory node */
     qemu_devtree_get_node_by_name(fdt, node_path, "memory@");
-    ram_base = qemu_devtree_getprop_cell(fdt, node_path, "reg", 0,
-                                         false, &errp);
-    ram_size = qemu_devtree_getprop_cell(fdt, node_path, "reg", 1,
-                                         false, &errp);
-    assert_no_error(errp);
 
-    /* Memory node */
-    memory_region_init_ram(ram, "zynq.ext_ram", ram_size);
-    vmstate_register_ram_global(ram);
-    memory_region_add_subregion(address_space_mem, ram_base, ram);
+    while (1) {
+        ram_base = qemu_devtree_getprop_cell(fdt, node_path, "reg",
+                                             (ram_num_regions * 2) + 0, false,
+                                             &errp);
+        ram_size = qemu_devtree_getprop_cell(fdt, node_path, "reg",
+                                             (ram_num_regions * 2) + 1, false,
+                                             &errp);
+        /* If an error is set, then no more cells exist in the property and thus
+         * no more memory regions are defined.
+         */
+        if (error_is_set(errp)) {
+            break;
+        } else {
+            ram_num_regions++;
+            /* Find the base of the region used by the kernel, Assume the last
+             * region is used by the kernel.
+             */
+            ram_kernel_base = ram_base;
+            ram_kernel_size = ram_size;
+
+            /* create a unique name for the region */
+            snprintf(ram_region_name, 50, "zynq.ext_ram_%d", ram_num_regions);
+
+            /* Memory node */
+            ram = g_new(MemoryRegion, 1);
+            memory_region_init_ram(ram, ram_region_name, ram_size);
+            vmstate_register_ram_global(ram);
+            memory_region_add_subregion(address_space_mem, ram_base, ram);
+        }
+    }
+    /* Assert that at least one region of memory exists */
+    assert(ram_num_regions > 0);
 
     /*FIXME: Describe OCM in DTB and delete this */
     /* ZYNQ OCM: */
@@ -221,7 +247,7 @@ static void arm_generic_fdt_init(QEMUMachineInitArgs *args)
     sysbus_mmio_map(busdev, 0, 0xe000e000);
     sysbus_mmio_map(busdev, 2, 0xe1000000);
 
-    arm_generic_fdt_binfo.ram_size = ram_size;
+    arm_generic_fdt_binfo.ram_size = ram_kernel_size;
     arm_generic_fdt_binfo.kernel_filename = args->kernel_filename;
     arm_generic_fdt_binfo.kernel_cmdline = args->kernel_cmdline;
     arm_generic_fdt_binfo.initrd_filename = args->initrd_filename;
@@ -230,7 +256,7 @@ static void arm_generic_fdt_init(QEMUMachineInitArgs *args)
     arm_generic_fdt_binfo.smp_loader_start = SMP_BOOT_ADDR;
     arm_generic_fdt_binfo.smp_bootreg_addr = SMP_BOOTREG_ADDR;
     arm_generic_fdt_binfo.board_id = 0xd32;
-    arm_generic_fdt_binfo.loader_start = 0;
+    arm_generic_fdt_binfo.loader_start = ram_kernel_base;
 
     if (qspi_clone_spi_flash_node_name != NULL) {
         /* Remove cloned DTB node */
