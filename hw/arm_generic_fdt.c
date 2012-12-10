@@ -176,25 +176,24 @@ static void arm_generic_fdt_init(QEMUMachineInitArgs *args)
         /* If an error is set, then no more cells exist in the property and thus
          * no more memory regions are defined.
          */
-        if (error_is_set(errp)) {
+        if (error_is_set(&errp)) {
             break;
-        } else {
-            ram_num_regions++;
-            /* Find the base of the region used by the kernel, Assume the last
-             * region is used by the kernel.
-             */
-            ram_kernel_base = ram_base;
-            ram_kernel_size = ram_size;
-
-            /* create a unique name for the region */
-            snprintf(ram_region_name, 50, "zynq.ext_ram_%d", ram_num_regions);
-
-            /* Memory node */
-            ram = g_new(MemoryRegion, 1);
-            memory_region_init_ram(ram, ram_region_name, ram_size);
-            vmstate_register_ram_global(ram);
-            memory_region_add_subregion(address_space_mem, ram_base, ram);
         }
+        ram_num_regions++;
+        /* Find the base of the region used by the kernel, Assume the last
+         * region is used by the kernel.
+         */
+        ram_kernel_base = ram_base;
+        ram_kernel_size = ram_size;
+
+        /* create a unique name for the region */
+        snprintf(ram_region_name, 50, "zynq.ext_ram_%d", ram_num_regions);
+
+        /* Memory node */
+        ram = g_new(MemoryRegion, 1);
+        memory_region_init_ram(ram, ram_region_name, ram_size);
+        vmstate_register_ram_global(ram);
+        memory_region_add_subregion(address_space_mem, ram_base, ram);
     }
     /* Assert that at least one region of memory exists */
     assert(ram_num_regions > 0);
