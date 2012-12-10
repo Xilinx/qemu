@@ -34,13 +34,8 @@
 
 /* Entry point for secondary CPU */
 static uint32_t zynq_smpboot[] = {
-    0xe3e0000f, /* ldr r0, =0xfffffff0 (mvn r0, #15) */
-    0xe320f002, /* wfe */
-    0xe5901000, /* ldr     r1, [r0] */
-    0xe1110001, /* tst     r1, r1 */
-    0x0afffffb, /* beq     <wfe> */
-    0xe12fff11, /* bx      r1 */
-    0,
+    0xe320f003, /* wfi */
+    0xeafffffd, /* beq     <wfi> */
 };
 
 static void zynq_write_secondary_boot(ARMCPU *cpu,
