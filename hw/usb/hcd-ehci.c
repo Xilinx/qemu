@@ -276,6 +276,9 @@ static inline void ehci_update_irq(EHCIState *s)
     }
 
     trace_usb_ehci_irq(level, s->frindex, s->usbsts, s->usbintr);
+    if (s->irq) {
+        DPRINTF("ECHI: IRQ!!\n");
+    }
     qemu_set_irq(s->irq, level);
 }
 
@@ -1017,6 +1020,7 @@ static inline int get_dwords(EHCIState *ehci, uint32_t addr,
     }
 
     for(i = 0; i < num; i++, buf++, addr += sizeof(*buf)) {
+        DPRINTF("dma_memory_read addr: %08x\n", addr);
         dma_memory_read(ehci->dma, addr, buf, sizeof(*buf));
         *buf = le32_to_cpu(*buf);
     }
@@ -1039,6 +1043,8 @@ static inline int put_dwords(EHCIState *ehci, uint32_t addr,
 
     for(i = 0; i < num; i++, buf++, addr += sizeof(*buf)) {
         uint32_t tmp = cpu_to_le32(*buf);
+        
+        DPRINTF("dma_memory_write addr: %08x\n", addr);
         dma_memory_write(ehci->dma, addr, &tmp, sizeof(tmp));
     }
 
