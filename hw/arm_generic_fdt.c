@@ -107,7 +107,7 @@ static void arm_generic_fdt_init(QEMUMachineInitArgs *args)
     ram_addr_t ram_base, ram_size;
     unsigned int ram_num_regions = 0;
     char ram_region_name[50];
-    ram_addr_t ram_kernel_base, ram_kernel_size;
+    ram_addr_t ram_kernel_base = 0, ram_kernel_size = 0;
     qemu_irq cpu_irq[MAX_CPUS+1];
     DeviceState *dev;
     SysBusDevice *busdev;
