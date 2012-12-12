@@ -615,7 +615,7 @@ static ssize_t gem_receive(NetClientState *nc, const uint8_t *buf, size_t size)
     s = DO_UPCAST(NICState, nc, nc)->opaque;
 
     /* Do nothing if receive is not enabled. */
-    if (!(s->regs[GEM_NWCTRL] & GEM_NWCTRL_RXENA)) {
+    if (!gem_can_receive(nc)) {
         return -1;
     }
 
