@@ -27,6 +27,7 @@
 #include "sysbus.h"
 #include "net.h"
 #include "net/checksum.h"
+#include "exec-memory.h"
 
 #ifdef CADENCE_GEM_ERR_DEBUG
 #define DB_PRINT(...) do { \
@@ -318,6 +319,7 @@ static inline void rx_desc_set_length(unsigned *desc, unsigned len)
 typedef struct {
     SysBusDevice busdev;
     MemoryRegion iomem;
+    MemoryRegion rx_desc_snoop_mem;
     NICState *nic;
     NICConf conf;
     qemu_irq irq;
@@ -342,6 +344,7 @@ typedef struct {
     uint32_t rx_desc_addr;
     uint32_t tx_desc_addr;
 
+    uint8_t can_rx_state; /* Debug only */
 } GemState;
 
 /* The broadcast MAC address: 0xFFFFFFFFFFFF */
@@ -407,17 +410,44 @@ static void phy_update_link(GemState *s)
 
 static int gem_can_receive(NetClientState *nc)
 {
-    GemState *s;
+    GemState *s = DO_UPCAST(NICState, nc, nc)->opaque;
+    unsigned    desc[2];
 
-    s = DO_UPCAST(NICState, nc, nc)->opaque;
-
-    DB_PRINT("\n");
-
+    /* read current descriptor */
+    if (!s->rx_desc_addr) {
+        if (s->can_rx_state != 1) {
+            DB_PRINT("cant receive - no buffer descriptor\n");
+            s->can_rx_state = 1;
+        }
+        return 0;
+    }
+    cpu_physical_memory_read(s->rx_desc_addr,
+                             (uint8_t *)&desc[0], sizeof(desc));
+    if (rx_desc_get_ownership(desc) == 1) {
+        memory_region_del_subregion(get_system_memory(), &s->rx_desc_snoop_mem);
+        memory_region_add_subregion(get_system_memory(),
+                                            s->rx_desc_addr,
+                                            &s->rx_desc_snoop_mem);
+        if (s->can_rx_state != 2) {
+            s->can_rx_state = 2;
+            DB_PRINT("cant receive - busy buffer descriptor 0x%x\n",
+                     s->rx_desc_addr);
+        }
+        return 0;
+    }
     /* Do nothing if receive is not enabled. */
     if (!(s->regs[GEM_NWCTRL] & GEM_NWCTRL_RXENA)) {
+        if (s->can_rx_state != 3) {
+            s->can_rx_state = 3;
+            DB_PRINT("cant receive - noenable\n");
+        }
         return 0;
     }
 
+    if (s->can_rx_state != 0) {
+        s->can_rx_state = 0;
+        DB_PRINT("can receive 0x%x\n", s->rx_desc_addr);
+    }
     return 1;
 }
 
@@ -1078,15 +1108,14 @@ static void gem_write(void *opaque, hwaddr offset, uint64_t val,
 
     /* Squash bits which are read only in write value */
     val &= ~(s->regs_ro[offset]);
-    /* Preserve (only) bits which are read only in register */
-    readonly = s->regs[offset];
-    readonly &= s->regs_ro[offset];
-
-    /* Squash bits which are write 1 to clear */
-    val &= ~(s->regs_w1c[offset] & val);
+    /* Preserve (only) bits which are read only and wtc in register */
+    readonly = s->regs[offset] & (s->regs_ro[offset] | s->regs_w1c[offset]);
 
     /* Copy register write to backing store */
-    s->regs[offset] = val | readonly;
+    s->regs[offset] = (val & ~s->regs_w1c[offset]) | readonly;
+
+    /* do w1c */
+    s->regs[offset] &= ~(s->regs_w1c[offset] & val);
 
     /* Handle register write side effects */
     switch (offset) {
@@ -1102,7 +1131,7 @@ static void gem_write(void *opaque, hwaddr offset, uint64_t val,
             /* Reset to start of Q when receive disabled. */
             s->rx_desc_addr = s->regs[GEM_RXQBASE];
         }
-        if (val & GEM_NWCTRL_RXENA) {
+        if (gem_can_receive(&s->nic->nc)) {
             qemu_flush_queued_packets(&s->nic->nc);
         }
         break;
@@ -1149,6 +1178,21 @@ static const MemoryRegionOps gem_ops = {
     .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
+static void gem_rx_desc_snoop_write(void *opaque, hwaddr offset, uint64_t val,
+        unsigned size)
+{
+        GemState *s = (GemState *)opaque;
+
+        if (gem_can_receive(&s->nic->nc)) {
+            qemu_flush_queued_packets(&s->nic->nc);
+        }
+};
+
+static const MemoryRegionOps gem_rx_desc_snoop_ops = {
+    .write = gem_rx_desc_snoop_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+};
+
 static void gem_cleanup(NetClientState *nc)
 {
     GemState *s = DO_UPCAST(NICState, nc, nc)->opaque;
@@ -1181,6 +1225,8 @@ static int gem_init(SysBusDevice *dev)
     s = FROM_SYSBUS(GemState, dev);
     gem_init_register_masks(s);
     memory_region_init_io(&s->iomem, &gem_ops, s, "enet", sizeof(s->regs));
+    memory_region_init_io(&s->rx_desc_snoop_mem, &gem_rx_desc_snoop_ops, s,
+                          "enet_rx_snoop", sizeof(unsigned) * 2);
     sysbus_init_mmio(dev, &s->iomem);
     sysbus_init_irq(dev, &s->irq);
     qemu_macaddr_default_if_unset(&s->conf.macaddr);
