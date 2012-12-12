@@ -1374,7 +1374,9 @@ void memory_region_del_subregion(MemoryRegion *mr,
                                  MemoryRegion *subregion)
 {
     memory_region_transaction_begin();
-    assert(subregion->parent == mr);
+    if (subregion->parent != mr) {
+        return;
+    }
     subregion->parent = NULL;
     QTAILQ_REMOVE(&mr->subregions, subregion, subregions_link);
     memory_region_update_pending |= mr->enabled && subregion->enabled;
