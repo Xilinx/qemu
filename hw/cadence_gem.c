@@ -1102,6 +1102,9 @@ static void gem_write(void *opaque, hwaddr offset, uint64_t val,
             /* Reset to start of Q when receive disabled. */
             s->rx_desc_addr = s->regs[GEM_RXQBASE];
         }
+        if (val & GEM_NWCTRL_RXENA) {
+            qemu_flush_queued_packets(&s->nic->nc);
+        }
         break;
 
     case GEM_TXSTATUS:
