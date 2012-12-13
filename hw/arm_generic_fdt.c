@@ -50,6 +50,21 @@ static void zynq_write_secondary_boot(ARMCPU *cpu,
                        SMP_BOOT_ADDR);
 }
 
+
+static void zynq_ps7_usb_nuke_phy(void *fdt)
+{
+    char usb_node_path[DT_PATH_LENGTH];
+
+    int ret = qemu_devtree_node_by_compatible(fdt, usb_node_path,
+                                              "xlnx,ps7-usb-1.00.a");
+    if (!ret) {
+        qemu_devtree_setprop_string(fdt, usb_node_path,
+                                    "phy_type", "none");
+        qemu_devtree_setprop_string(fdt, usb_node_path,
+                                    "dr_mode", "host");
+    }
+}
+
 static char *zynq_ps7_qspi_flash_node_clone(void *fdt)
 {
     char qspi_node_path[DT_PATH_LENGTH];
@@ -258,6 +273,8 @@ static void arm_generic_fdt_init(QEMUMachineInitArgs *args)
         fdt_del_node(fdt, offset);
         g_free(qspi_clone_spi_flash_node_name);
     }
+
+    zynq_ps7_usb_nuke_phy(fdt);
 
     arm_load_kernel(arm_env_get_cpu(first_cpu), &arm_generic_fdt_binfo);
 
