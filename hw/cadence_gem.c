@@ -457,32 +457,9 @@ static int gem_can_receive(NetClientState *nc)
  */
 static void gem_update_int_status(GemState *s)
 {
-    uint32_t new_interrupts = 0;
-    /* Packet transmitted ? */
-    if (s->regs[GEM_TXSTATUS] & GEM_TXSTATUS_TXCMPL) {
-        new_interrupts |= GEM_INT_TXCMPL;
-    }
-    /* End of TX ring ? */
-    if (s->regs[GEM_TXSTATUS] & GEM_TXSTATUS_USED) {
-        new_interrupts |= GEM_INT_TXUSED;
-    }
-
-    /* Frame received ? */
-    if (s->regs[GEM_RXSTATUS] & GEM_RXSTATUS_FRMRCVD) {
-        new_interrupts |= GEM_INT_RXCMPL;
-    }
-    /* RX ring full ? */
-    if (s->regs[GEM_RXSTATUS] & GEM_RXSTATUS_NOBUF) {
-        new_interrupts |= GEM_INT_RXUSED;
-    }
-
-    s->regs[GEM_ISR] |= new_interrupts & ~(s->regs[GEM_IMR]);
-
     if (s->regs[GEM_ISR]) {
         DB_PRINT("asserting int. (0x%08x)\n", s->regs[GEM_ISR]);
         qemu_set_irq(s->irq, 1);
-    } else {
-        qemu_set_irq(s->irq, 0);
     }
 }
 
@@ -726,6 +703,7 @@ static ssize_t gem_receive(NetClientState *nc, const uint8_t *buf, size_t size)
         if (rx_desc_get_ownership(desc) == 1) {
             DB_PRINT("descriptor 0x%x owned by sw.\n", packet_desc_addr);
             s->regs[GEM_RXSTATUS] |= GEM_RXSTATUS_NOBUF;
+            s->regs[GEM_ISR] |= GEM_INT_RXUSED & ~(s->regs[GEM_IMR]);
             /* Handle interrupt consequences */
             gem_update_int_status(s);
             return -1;
@@ -794,6 +772,7 @@ static ssize_t gem_receive(NetClientState *nc, const uint8_t *buf, size_t size)
                               (uint8_t *)&desc[0], sizeof(desc));
 
     s->regs[GEM_RXSTATUS] |= GEM_RXSTATUS_FRMRCVD;
+    s->regs[GEM_ISR] |= GEM_INT_RXCMPL & ~(s->regs[GEM_IMR]);
 
     /* Handle interrupt consequences */
     gem_update_int_status(s);
@@ -922,6 +901,7 @@ static void gem_transmit(GemState *s)
             DB_PRINT("TX descriptor next: 0x%08x\n", s->tx_desc_addr);
 
             s->regs[GEM_TXSTATUS] |= GEM_TXSTATUS_TXCMPL;
+            s->regs[GEM_ISR] |= GEM_INT_TXCMPL & ~(s->regs[GEM_IMR]);
 
             /* Handle interrupt consequences */
             gem_update_int_status(s);
@@ -958,6 +938,7 @@ static void gem_transmit(GemState *s)
 
     if (tx_desc_get_used(desc)) {
         s->regs[GEM_TXSTATUS] |= GEM_TXSTATUS_USED;
+        s->regs[GEM_ISR] |= GEM_INT_TXUSED & ~(s->regs[GEM_IMR]);
         gem_update_int_status(s);
     }
 }
