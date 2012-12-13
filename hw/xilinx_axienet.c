@@ -517,6 +517,8 @@ static void enet_write(void *opaque, hwaddr addr,
             s->rcw[addr & 1] = value;
             if ((addr & 1) && value & RCW1_RST) {
                 axienet_rx_reset(s);
+            } else {
+                qemu_flush_queued_packets(&s->nic->nc);
             }
             break;
 
@@ -847,6 +849,7 @@ static void transfer_timer(void *opaque)
     struct XilinxAXIEnet *s = (struct XilinxAXIEnet *)opaque;
 
     s->rxing = false;
+    qemu_flush_queued_packets(&s->nic->nc);
 }
 
 static int xilinx_enet_init(SysBusDevice *dev)
