@@ -35,7 +35,8 @@
 
 static struct
 {
-    void (*machine_cpu_reset)(MicroBlazeCPU *);
+    void (*machine_cpu_reset)(MicroBlazeCPU *, void *);
+    void *machine_cpu_reset_opaque;
     uint32_t bootstrap_pc;
     uint32_t cmdline;
     uint32_t fdt;
@@ -51,7 +52,7 @@ static void main_cpu_reset(void *opaque)
     env->regs[7] = boot_info.fdt;
     env->sregs[SR_PC] = boot_info.bootstrap_pc;
     if (boot_info.machine_cpu_reset) {
-        boot_info.machine_cpu_reset(cpu);
+        boot_info.machine_cpu_reset(cpu, boot_info.machine_cpu_reset_opaque);
     }
 }
 
@@ -102,7 +103,8 @@ static uint64_t translate_kernel_address(void *opaque, uint64_t addr)
 
 void microblaze_load_kernel(MicroBlazeCPU *cpu, hwaddr ddr_base,
                             uint32_t ramsize, const char *dtb_filename,
-                            void (*machine_cpu_reset)(MicroBlazeCPU *))
+                            void (*machine_cpu_reset)(MicroBlazeCPU *, void *),
+                            void *machine_cpu_reset_opaque)
 {
     QemuOpts *machine_opts;
     const char *kernel_filename = NULL;
@@ -122,6 +124,7 @@ void microblaze_load_kernel(MicroBlazeCPU *cpu, hwaddr ddr_base,
     }
 
     boot_info.machine_cpu_reset = machine_cpu_reset;
+    boot_info.machine_cpu_reset_opaque = machine_cpu_reset_opaque;
     qemu_register_reset(main_cpu_reset, cpu);
 
     if (kernel_filename) {
@@ -145,7 +148,7 @@ void microblaze_load_kernel(MicroBlazeCPU *cpu, hwaddr ddr_base,
                                    big_endian, ELF_MACHINE, 0);
         }
         /* Always boot into physical ram.  */
-        boot_info.bootstrap_pc = ddr_base + (entry & 0x0fffffff);
+        boot_info.bootstrap_pc = (uint32_t)entry;
 
         /* If it wasn't an ELF image, try an u-boot image.  */
         if (kernel_size < 0) {
