@@ -35,6 +35,10 @@
 
 #define IRQ_OFFSET 32 /* pic interrupts start from index 32 */
 
+int dma_irqs[8] = {
+    46, 47, 48, 49, 72, 73, 74, 75
+};
+
 static struct arm_boot_info zynq_binfo = {};
 
 static void gem_init(NICInfo *nd, uint32_t base, qemu_irq irq)
@@ -184,6 +188,26 @@ static void zynq_init(QEMUMachineInitArgs *args)
         } else if (n == 1) {
             gem_init(nd, 0xE000C000, pic[77-IRQ_OFFSET]);
         }
+    }
+
+    dev = qdev_create(NULL, "pl330");
+    qdev_prop_set_uint8(dev, "num_chnls",  8);
+    qdev_prop_set_uint8(dev, "num_periph_req",  4);
+    qdev_prop_set_uint8(dev, "num_events",  16);
+
+    qdev_prop_set_uint8(dev, "data_width",  64);
+    qdev_prop_set_uint8(dev, "wr_cap",  8);
+    qdev_prop_set_uint8(dev, "wr_q_dep",  16);
+    qdev_prop_set_uint8(dev, "rd_cap",  8);
+    qdev_prop_set_uint8(dev, "rd_q_dep",  16);
+    qdev_prop_set_uint16(dev, "data_buffer_dep",  256);
+
+    qdev_init_nofail(dev);
+    busdev = sysbus_from_qdev(dev);
+    sysbus_mmio_map(busdev, 0, 0xF8003000);
+    sysbus_connect_irq(busdev, 0, pic[45-IRQ_OFFSET]); /* abort irq line */
+    for (n = 0; n < 8; ++n) { /* event irqs */
+        sysbus_connect_irq(busdev, n + 1, pic[dma_irqs[n] - IRQ_OFFSET]);
     }
 
     zynq_binfo.ram_size = ram_size;
