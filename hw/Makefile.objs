@@ -71,6 +71,7 @@ common-obj-$(CONFIG_XILINX) += xilinx_timer.o
 common-obj-$(CONFIG_XILINX) += xilinx_uartlite.o
 common-obj-$(CONFIG_XILINX_AXI) += xilinx_axidma.o
 common-obj-$(CONFIG_XILINX_AXI) += xilinx_axienet.o
+common-obj-$(CONFIG_XILINX_AXI) += xilinx_axipcie.o
 common-obj-$(CONFIG_XILINX_AXI) += stream.o
 
 # PKUnity SoC devices
