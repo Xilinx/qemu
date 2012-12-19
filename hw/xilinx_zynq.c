@@ -25,6 +25,7 @@
 #include "blockdev.h"
 #include "loader.h"
 #include "ssi.h"
+#include "i2c.h"
 
 #define MAX_CPUS 2
 
@@ -34,6 +35,8 @@
 
 #define FLASH_SIZE (64 * 1024 * 1024)
 #define FLASH_SECTOR_SIZE (128 * 1024)
+
+#define NUM_I2C_EEPROMS 2
 
 #define IRQ_OFFSET 32 /* pic interrupts start from index 32 */
 
@@ -122,6 +125,30 @@ static inline void zynq_init_spi_flashes(uint32_t base_addr, qemu_irq irq,
         }
     }
 
+}
+
+static inline void zynq_init_zc70x_i2c(uint32_t base_addr, qemu_irq irq)
+{
+    DeviceState *dev = sysbus_create_simple("xlnx.ps7-i2c", base_addr, irq);
+    i2c_bus *i2c = (i2c_bus *)qdev_get_child_bus(dev, "i2c");
+    int i, bus;
+
+    dev = i2c_create_slave(i2c, "pca9548", 0);
+    for (bus = 2; bus <= 3; bus++) {
+        char bus_name[16];
+
+        snprintf(bus_name, sizeof(bus_name), "i2c@%d", bus);
+        i2c = (i2c_bus *)qdev_get_child_bus(dev, bus_name);
+        assert(i2c);
+
+        assert(NUM_I2C_EEPROMS <= 2); /* not enough address space for anymore */
+        for (i = 0; i < NUM_I2C_EEPROMS; ++i) {
+            DeviceState *eeprom_dev = i2c_create_slave_no_init(i2c, "at.24c08",
+                                                               0x50 + 0x4 * i);
+            qdev_prop_set_uint16(eeprom_dev, "size", 1024); /* M24C08 */
+            qdev_init_nofail(eeprom_dev);
+        }
+    }
 }
 
 static void zynq_init(QEMUMachineInitArgs *args)
@@ -256,6 +283,8 @@ static void zynq_init(QEMUMachineInitArgs *args)
     qdev_init_nofail(dev);
     sysbus_mmio_map(busdev, 0, 0xE0003000);
     sysbus_connect_irq(busdev, 0, pic[76-IRQ_OFFSET]);
+    zynq_init_zc70x_i2c(0xE0004000, pic[57-IRQ_OFFSET]);
+    zynq_init_zc70x_i2c(0xE0005000, pic[80-IRQ_OFFSET]);
 
     zynq_init_spi_flashes(0xE0006000, pic[58-IRQ_OFFSET], false);
     zynq_init_spi_flashes(0xE0007000, pic[81-IRQ_OFFSET], false);

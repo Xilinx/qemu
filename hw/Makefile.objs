@@ -100,6 +100,7 @@ common-obj-$(CONFIG_VERSATILE_I2C) += versatile_i2c.o
 common-obj-$(CONFIG_CADENCE) += cadence_uart.o
 common-obj-$(CONFIG_CADENCE) += cadence_ttc.o
 common-obj-$(CONFIG_CADENCE) += cadence_gem.o
+common-obj-$(CONFIG_CADENCE) += cadence_i2c.o
 common-obj-$(CONFIG_XGMAC) += xgmac.o
 
 # PCI watchdog devices
@@ -176,6 +177,8 @@ common-obj-$(CONFIG_ADS7846) += ads7846.o
 common-obj-$(CONFIG_MAX111X) += max111x.o
 common-obj-$(CONFIG_DS1338) += ds1338.o
 common-obj-y += i2c.o smbus.o smbus_eeprom.o
+common-obj-$(CONFIG_M24CXX) += m24cxx.o
+common-obj-$(CONFIG_PCA9548) += pca9548.o
 common-obj-y += eeprom93xx.o
 common-obj-y += scsi-disk.o cdrom.o hd-geometry.o block-common.o
 common-obj-y += scsi-generic.o scsi-bus.o
