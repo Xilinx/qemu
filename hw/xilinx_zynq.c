@@ -30,7 +30,7 @@
 #define MAX_CPUS 2
 
 #define NUM_SPI_FLASHES 4
-#define NUM_QSPI_FLASHES 2
+#define NUM_QSPI_FLASHES 1
 #define NUM_QSPI_BUSSES 2
 
 #define FLASH_SIZE (64 * 1024 * 1024)
@@ -92,11 +92,12 @@ static inline void zynq_init_spi_flashes(uint32_t base_addr, qemu_irq irq,
     DeviceState *dev;
     SysBusDevice *busdev;
     SSIBus *spi;
+    DeviceState *flash_dev;
     int i, j;
     int num_busses =  is_qspi ? NUM_QSPI_BUSSES : 1;
     int num_ss = is_qspi ? NUM_QSPI_FLASHES : NUM_SPI_FLASHES;
 
-    dev = qdev_create(NULL, "xilinx,spips");
+    dev = qdev_create(NULL, is_qspi ? "xlnx.ps7-qspi" : "xlnx.ps7-spi");
     qdev_prop_set_uint8(dev, "num-txrx-bytes", is_qspi ? 4 : 1);
     qdev_prop_set_uint8(dev, "num-ss-bits", num_ss);
     qdev_prop_set_uint8(dev, "num-busses", num_busses);
@@ -116,11 +117,11 @@ static inline void zynq_init_spi_flashes(uint32_t base_addr, qemu_irq irq,
         spi = (SSIBus *)qdev_get_child_bus(dev, bus_name);
 
         for (j = 0; j < num_ss; ++j) {
-            dev = ssi_create_slave_no_init(spi, "m25p80");
-            qdev_prop_set_string(dev, "partname", "n25q128");
-            qdev_init_nofail(dev);
+            flash_dev = ssi_create_slave_no_init(spi, "m25p80");
+            qdev_prop_set_string(flash_dev, "partname", "n25q128");
+            qdev_init_nofail(flash_dev);
 
-            cs_line = qdev_get_gpio_in(dev, 0);
+            cs_line = qdev_get_gpio_in(flash_dev, 0);
             sysbus_connect_irq(busdev, i * num_ss + j + 1, cs_line);
         }
     }
