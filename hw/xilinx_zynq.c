@@ -209,6 +209,15 @@ static void zynq_init(QEMUMachineInitArgs *args)
     for (n = 0; n < 8; ++n) { /* event irqs */
         sysbus_connect_irq(busdev, n + 1, pic[dma_irqs[n] - IRQ_OFFSET]);
     }
+    dev = qdev_create(NULL, "generic-sdhci");
+    qdev_init_nofail(dev);
+    sysbus_mmio_map(sysbus_from_qdev(dev), 0, 0xE0100000);
+    sysbus_connect_irq(sysbus_from_qdev(dev), 0, pic[56-IRQ_OFFSET]);
+
+    dev = qdev_create(NULL, "generic-sdhci");
+    qdev_init_nofail(dev);
+    sysbus_mmio_map(sysbus_from_qdev(dev), 0, 0xE0101000);
+    sysbus_connect_irq(sysbus_from_qdev(dev), 0, pic[79-IRQ_OFFSET]);
 
     zynq_binfo.ram_size = ram_size;
     zynq_binfo.kernel_filename = kernel_filename;
