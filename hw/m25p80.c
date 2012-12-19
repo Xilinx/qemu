@@ -557,7 +557,7 @@ static int m25p80_init(SSISlave *ss)
     const FlashPartInfo *i;
 
     if (!s->part_name) { /* default to actual m25p80 if no partname given */
-        s->part_name = (char *)"m25p80";
+        s->part_name = (char *)"n25q128";
     }
 
     i = known_devices;

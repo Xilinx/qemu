@@ -18,6 +18,9 @@
 #include "qemu-timer.h"
 #include "sysbus.h"
 #include "sysemu.h"
+#ifdef CONFIG_FDT
+#include "device_tree.h"
+#endif
 
 #define NUM_CPUS 2
 
@@ -163,6 +166,75 @@ typedef struct {
     };
 } ZynqSLCRState;
 
+/* Set up PS7 QSPI MIO registers based on the dtb */
+static void zynq_slcr_set_qspi(ZynqSLCRState *s, void *fdt)
+{
+    int i;
+    Error *errp = NULL;
+    char node_path[DT_PATH_LENGTH];
+
+    memset(node_path, 0, sizeof(node_path));
+    /* find the Zynq QSPI node path with compatible string, return if node
+     * not found */
+    if (qemu_devtree_node_by_compatible(fdt, node_path,
+                                        "xlnx,ps7-qspi-1.00.a")) {
+        DB_PRINT("DT, PS7 QSPI node not found\n");
+        return ;
+    }
+
+    /* Check if there is a child node and assume the child node is a QSPI
+     * flash node. Then set up the MIO registers for the first QSPI flash.
+     * Use the is-dual property to determine whether MIO registers
+     * configuration is required to setup for the second QSPI flash*/
+    if (qemu_devtree_get_num_children(fdt, node_path, 1)) {
+        DB_PRINT("DT, PS7 QSPI: child node found\n");
+        /* Set MIO 2 - 6  with QSPI + LVCOMS18 (0x202) */
+        for (i = 2; i <= 6; i++) {
+            s->mio[i] = 0x00000202;
+        }
+
+        /* Check for dual mode */
+        if (qemu_devtree_getprop_cell(fdt, node_path, "is-dual", 0,
+                                        false, &errp) ==  1) {
+            DB_PRINT("DT, PS QSPI is in dual\n");
+            /* Set MIO 8 - 13  with QSPI + LVCOMS18 (0x202) */
+            for (i = 8; i <= 13; i++) {
+                s->mio[i] = 0x00000202;
+            }
+        }
+    }
+}
+
+static void zynq_slcr_fdt_config(ZynqSLCRState *s)
+{
+#ifdef CONFIG_FDT
+    QemuOpts *machine_opts;
+    const char *dtb_filename;
+    int fdt_size;
+    void *fdt = NULL;
+
+    /* identify dtb file name from qemu opts */
+    machine_opts = qemu_opts_find(qemu_find_opts("machine"), 0);
+    if (machine_opts) {
+        dtb_filename = qemu_opt_get(machine_opts, "dtb");
+    } else {
+        dtb_filename = NULL;
+    }
+
+    if (dtb_filename) {
+        fdt = load_device_tree(dtb_filename, &fdt_size);
+    }
+
+    if (!fdt) {
+        return;
+    }
+
+    zynq_slcr_set_qspi(s, fdt);
+#endif
+
+    return;
+}
+
 static void zynq_slcr_reset(DeviceState *d)
 {
     int i;
@@ -250,6 +322,8 @@ static void zynq_slcr_reset(DeviceState *d)
     s->ddriob[0] = s->ddriob[1] = s->ddriob[2] = s->ddriob[3] = 0x00000e00;
     s->ddriob[4] = s->ddriob[5] = s->ddriob[6] = 0x00000e00;
     s->ddriob[12] = 0x00000021;
+
+    zynq_slcr_fdt_config(s);
 }
 
 static inline uint32_t zynq_slcr_read_imp(void *opaque,
@@ -516,6 +590,15 @@ static int zynq_slcr_init(SysBusDevice *dev)
 {
     ZynqSLCRState *s = FROM_SYSBUS(ZynqSLCRState, dev);
 
+    if (!s->cpus[0]) {
+        CPUArchState *env;
+        int i = 0;
+
+        for (env = first_cpu; env; env = env->next_cpu) {
+            s->cpus[i++] = arm_env_get_cpu(env);
+        }
+    }
+
     memory_region_init_io(&s->iomem, &slcr_ops, s, "slcr", 0x1000);
     sysbus_init_mmio(dev, &s->iomem);
 
@@ -550,7 +633,7 @@ static void zynq_slcr_class_init(ObjectClass *klass, void *data)
 
 static TypeInfo zynq_slcr_info = {
     .class_init = zynq_slcr_class_init,
-    .name  = "xilinx,zynq_slcr",
+    .name  = "xlnx.ps7-slcr",
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size  = sizeof(ZynqSLCRState),
 };

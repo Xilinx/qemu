@@ -1196,7 +1196,7 @@ void qdev_prop_set_netdev(DeviceState *dev, const char *name, NetClientState *va
     assert_no_error(errp);
 }
 
-void qdev_prop_set_macaddr(DeviceState *dev, const char *name, uint8_t *value)
+int qdev_prop_set_macaddr(DeviceState *dev, const char *name, uint8_t *value)
 {
     Error *errp = NULL;
     char str[2 * 6 + 5 + 1];
@@ -1204,7 +1204,7 @@ void qdev_prop_set_macaddr(DeviceState *dev, const char *name, uint8_t *value)
              value[0], value[1], value[2], value[3], value[4], value[5]);
 
     object_property_set_str(OBJECT(dev), str, name, &errp);
-    assert_no_error(errp);
+    return errp != NULL;
 }
 
 void qdev_prop_set_enum(DeviceState *dev, const char *name, int value)

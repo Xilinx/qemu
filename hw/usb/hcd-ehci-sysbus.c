@@ -64,7 +64,7 @@ static void ehci_sysbus_class_init(ObjectClass *klass, void *data)
 }
 
 TypeInfo ehci_xlnx_type_info = {
-    .name          = "xlnx,ps7-usb",
+    .name          = "xlnx.ps7-usb",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(EHCISysBusState),
     .class_init    = ehci_sysbus_class_init,

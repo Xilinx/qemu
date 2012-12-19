@@ -218,7 +218,7 @@ static int load_dtb(hwaddr addr, const struct arm_boot_info *binfo)
 #ifdef CONFIG_FDT
     uint32_t *mem_reg_property;
     uint32_t mem_reg_propsize;
-    void *fdt = NULL;
+    void *fdt = binfo->fdt;
     char *filename;
     int size, rc;
     Error *errp = NULL;
@@ -231,7 +231,11 @@ static int load_dtb(hwaddr addr, const struct arm_boot_info *binfo)
         return -1;
     }
 
-    fdt = load_device_tree(filename, &size);
+    if (!fdt) {
+        fdt = load_device_tree(filename, &size);
+    } else {
+        size = binfo->fdt_size;
+    }
     if (!fdt) {
         fprintf(stderr, "Couldn't open dtb file %s\n", filename);
         g_free(filename);
@@ -360,6 +364,7 @@ void arm_load_kernel(ARMCPU *cpu, struct arm_boot_info *info)
     machine_opts = qemu_opts_find(qemu_find_opts("machine"), 0);
     if (machine_opts) {
         info->dtb_filename = qemu_opt_get(machine_opts, "dtb");
+        is_linux = qemu_opt_get_bool(machine_opts, "linux", 0) ? 1 : 0;
     } else {
         info->dtb_filename = NULL;
     }

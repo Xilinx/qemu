@@ -260,3 +260,39 @@ static void i2c_slave_register_types(void)
 }
 
 type_init(i2c_slave_register_types)
+
+typedef struct I2CAutoConnectArg {
+    i2c_bus *bus;
+    int current;
+    int first;
+    int num;
+} I2CAutoConnectArg;
+
+static int i2c_auto_connect_slave(Object *child, void *opaque)
+{
+    I2CAutoConnectArg *arg = opaque;
+    I2CSlave *dev = (I2CSlave *)object_dynamic_cast(child, TYPE_I2C_SLAVE);
+
+    if (!dev) {
+        return 0;
+    }
+
+    if (arg->current >= arg->first && arg->current < arg->first + arg->num) {
+        qdev_set_parent_bus(DEVICE(dev), &arg->bus->qbus);
+    }
+    arg->current++;
+    return 0;
+}
+
+void i2c_auto_connect_slaves(DeviceState *parent,
+                             i2c_bus *bus, int first, int num)
+{
+    I2CAutoConnectArg arg = {
+        .bus = bus,
+        .current = 0,
+        .first = first,
+        .num = num,
+    };
+
+    object_child_foreach(OBJECT(parent), i2c_auto_connect_slave, &arg);
+}

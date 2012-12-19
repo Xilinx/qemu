@@ -4,6 +4,7 @@
 #include "host-utils.h"
 #include "sysemu.h"
 #include "bitops.h"
+#include "qemu-timer.h"
 
 #ifndef CONFIG_USER_ONLY
 static inline int get_phys_addr(CPUARMState *env, uint32_t address,
@@ -334,6 +335,17 @@ static int ccsidr_read(CPUARMState *env, const ARMCPRegInfo *ri,
     return 0;
 }
 
+static int pmccntr_read(CPUARMState *env, const ARMCPRegInfo *ri,
+                       uint64_t *value)
+{
+    *value = (qemu_get_clock_ns(vm_clock) >> 6) & 0xffffffff;
+    return 0;
+}
+static int pmccntr_write(CPUARMState *env, const ARMCPRegInfo *ri,
+                        uint64_t value)
+{
+	return 0;
+}
 static int csselr_write(CPUARMState *env, const ARMCPRegInfo *ri,
                         uint64_t value)
 {
@@ -385,7 +397,7 @@ static const ARMCPRegInfo v7_cp_reginfo[] = {
       .access = PL0_RW, .type = ARM_CP_CONST, .resetvalue = 0 },
     /* Unimplemented, RAZ/WI. XXX PMUSERENR */
     { .name = "PMCCNTR", .cp = 15, .crn = 9, .crm = 13, .opc1 = 0, .opc2 = 0,
-      .access = PL0_RW, .type = ARM_CP_CONST, .resetvalue = 0 },
+      .access = PL0_RW, .readfn = pmccntr_read, .writefn = pmccntr_write },
     { .name = "PMXEVTYPER", .cp = 15, .crn = 9, .crm = 13, .opc1 = 0, .opc2 = 1,
       .access = PL0_RW,
       .fieldoffset = offsetof(CPUARMState, cp15.c9_pmxevtyper),
