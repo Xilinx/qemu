@@ -72,6 +72,8 @@ struct kvm_run;
  * @host_tid: Host thread ID.
  * @running: #true if CPU is currently running (usermode).
  * @created: Indicates whether the CPU thread has been successfully created.
+ * @interrupt_request: Indicates a pending interrupt request.
+ * @halted: Nonzero if the CPU is in suspended state.
  * @stop: Indicates a pending stop request.
  * @stopped: Indicates the CPU has been artificially stopped.
  * @env_ptr: Pointer to subclass-specific CPUArchState field.
@@ -103,6 +105,7 @@ struct CPUState {
     bool stop;
     bool stopped;
     volatile sig_atomic_t exit_request;
+    uint32_t interrupt_request;
 
     void *env_ptr; /* CPUArchState */
     struct TranslationBlock *current_tb;
@@ -114,6 +117,7 @@ struct CPUState {
 
     /* TODO Move common fields from CPUArchState here. */
     int cpu_index; /* used by alpha TCG */
+    uint32_t halted; /* used by alpha, cris, ppc TCG */
 };
 
 

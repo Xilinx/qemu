@@ -1077,8 +1077,8 @@ void tb_invalidate_phys_page_range(tb_page_addr_t start, tb_page_addr_t end,
             tb_phys_invalidate(tb, -1);
             if (cpu != NULL) {
                 cpu->current_tb = saved_tb;
-                if (env && env->interrupt_request && cpu->current_tb) {
-                    cpu_interrupt(env, env->interrupt_request);
+                if (env && cpu->interrupt_request && cpu->current_tb) {
+                    cpu_interrupt(env, cpu->interrupt_request);
                 }
             }
         }
@@ -1456,8 +1456,8 @@ static void tcg_handle_interrupt(CPUArchState *env, int mask)
     CPUState *cpu = ENV_GET_CPU(env);
     int old_mask;
 
-    old_mask = env->interrupt_request;
-    env->interrupt_request |= mask;
+    old_mask = cpu->interrupt_request;
+    cpu->interrupt_request |= mask;
 
     /*
      * If called from iothread context, wake the target cpu in
@@ -1625,7 +1625,7 @@ void cpu_interrupt(CPUArchState *env, int mask)
 {
     CPUState *cpu = ENV_GET_CPU(env);
 
-    env->interrupt_request |= mask;
+    cpu->interrupt_request |= mask;
     cpu_unlink_tb(cpu);
 }
 
