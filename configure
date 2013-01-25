@@ -3087,7 +3087,7 @@ fi
 
 if test "$solaris" = "no" ; then
     if $ld --version 2>/dev/null | grep "GNU ld" >/dev/null 2>/dev/null ; then
-        LDFLAGS="-Wl,--warn-common $LDFLAGS"
+        LDFLAGS="$LDFLAGS"
     fi
 fi
 

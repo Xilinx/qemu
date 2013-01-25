@@ -6,6 +6,7 @@ stub-obj-y = stubs/
 # Target-independent parts used in system and user emulation
 universal-obj-y =
 universal-obj-y += qemu-log.o
+universal-obj-y += hexdump.o
 
 #######################################################################
 # QObject
@@ -45,7 +46,7 @@ coroutine-obj-$(CONFIG_WIN32) += coroutine-win32.o
 #######################################################################
 # block-obj-y is code used by both qemu system emulation and qemu-img
 
-block-obj-y = iov.o cache-utils.o qemu-option.o module.o async.o
+block-obj-y = iov.o cache-utils.o qemu-option.o module.o async.o hexdump.o
 block-obj-y += nbd.o block.o blockjob.o aes.o qemu-config.o
 block-obj-y += thread-pool.o qemu-progress.o qemu-sockets.o uri.o notify.o
 block-obj-y += $(coroutine-obj-y) $(qobject-obj-y) $(version-obj-y)
