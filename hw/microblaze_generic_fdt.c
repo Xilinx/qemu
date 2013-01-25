@@ -183,6 +183,9 @@ microblaze_generic_fdt_reset(MicroBlazeCPU *cpu, void *fdt)
             {"spartan3adsp", 0xc},
             {"spartan6", 0xd},
             {"virtex6", 0xe},
+            {"kintex7", 0x10},
+            {"artix7", 0x11},
+            {"zynq7000", 0x12},
             {"spartan2", 0xf0},
             {NULL, 0},
         };
@@ -231,6 +234,11 @@ microblaze_generic_fdt_reset(MicroBlazeCPU *cpu, void *fdt)
             {"8.00.a", 0x12},
             {"8.00.b", 0x13},
             {"8.10.a", 0x14},
+            {"8.20.a", 0x15},
+            {"8.20.b", 0x16},
+            {"8.30.a", 0x17},
+            {"8.40.a", 0x18},
+            {"8.40.b", 0x19},
             /* FIXME There is no keycode defined in MBV for these versions */
             {"2.10.a", 0x10},
             {"3.00.a", 0x20},
