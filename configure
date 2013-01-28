@@ -4292,9 +4292,6 @@ fi
 
 if [ "$dtc_internal" = "yes" ]; then
   echo "config-host.h: subdir-dtc" >> $config_host_mak
-else
-  echo "DENIED!!!"
-  exit 1
 fi
 
 # build tree in object directory in case the source is not in the current directory
