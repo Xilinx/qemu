@@ -8,10 +8,10 @@
  */
 
 #include "hw.h"
-#include "qemu-timer.h"
+#include "qemu/timer.h"
 #include "sysbus.h"
 #include "primecell.h"
-#include "sysemu.h"
+#include "sysemu/sysemu.h"
 
 #define LOCK_VALUE 0xa05f
 
@@ -75,7 +75,7 @@ static int board_id(arm_sysctl_state *s)
 
 static void arm_sysctl_reset(DeviceState *d)
 {
-    arm_sysctl_state *s = FROM_SYSBUS(arm_sysctl_state, sysbus_from_qdev(d));
+    arm_sysctl_state *s = FROM_SYSBUS(arm_sysctl_state, SYS_BUS_DEVICE(d));
 
     s->leds = 0;
     s->lockval = 0;
@@ -410,7 +410,7 @@ static void arm_sysctl_class_init(ObjectClass *klass, void *data)
     dc->props = arm_sysctl_properties;
 }
 
-static TypeInfo arm_sysctl_info = {
+static const TypeInfo arm_sysctl_info = {
     .name          = "realview_sysctl",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(arm_sysctl_state),

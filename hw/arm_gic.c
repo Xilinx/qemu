@@ -39,7 +39,8 @@ static const uint8_t gic_id[] = {
 static inline int gic_get_current_cpu(GICState *s)
 {
     if (s->num_cpu > 1) {
-        return cpu_single_env->cpu_index;
+        CPUState *cpu = ENV_GET_CPU(cpu_single_env);
+        return cpu->cpu_index;
     }
     return 0;
 }
@@ -73,7 +74,7 @@ void gic_update(GICState *s)
             }
         }
         level = 0;
-        if (best_prio <= s->priority_mask[cpu]) {
+        if (best_prio < s->priority_mask[cpu]) {
             s->current_pending[cpu] = best_irq;
             if (best_prio < s->running_priority[cpu]) {
                 DPRINTF("Raised pending IRQ %d (cpu %d)\n", best_irq, cpu);
@@ -374,7 +375,8 @@ static void gic_dist_writeb(void *opaque, hwaddr offset,
           value = 0xff;
         for (i = 0; i < 8; i++) {
             if (value & (1 << i)) {
-                int mask = (irq < GIC_INTERNAL) ? (1 << cpu) : GIC_TARGET(irq);
+                int mask =
+                    (irq < GIC_INTERNAL) ? (1 << cpu) : GIC_TARGET(irq + i);
                 int cm = (irq < GIC_INTERNAL) ? (1 << cpu) : ALL_CPU_MASK;
 
                 if (!GIC_TEST_ENABLED(irq + i, cm)) {
@@ -417,7 +419,7 @@ static void gic_dist_writeb(void *opaque, hwaddr offset,
 
         for (i = 0; i < 8; i++) {
             if (value & (1 << i)) {
-                GIC_SET_PENDING(irq + i, GIC_TARGET(irq));
+                GIC_SET_PENDING(irq + i, GIC_TARGET(irq + i));
             }
         }
     } else if (offset < 0x300) {
@@ -702,7 +704,7 @@ static void arm_gic_class_init(ObjectClass *klass, void *data)
     dc->no_user = 1;
 }
 
-static TypeInfo arm_gic_info = {
+static const TypeInfo arm_gic_info = {
     .name = TYPE_ARM_GIC,
     .parent = TYPE_ARM_GIC_COMMON,
     .instance_size = sizeof(GICState),

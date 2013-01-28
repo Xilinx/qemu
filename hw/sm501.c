@@ -25,11 +25,12 @@
 #include <stdio.h>
 #include "hw.h"
 #include "serial.h"
-#include "console.h"
+#include "ui/console.h"
 #include "devices.h"
 #include "sysbus.h"
 #include "qdev-addr.h"
-#include "range.h"
+#include "qemu/range.h"
+#include "ui/pixel_ops.h"
 
 /*
  * Status: 2010/05/07
@@ -1163,8 +1164,6 @@ static const MemoryRegionOps sm501_2d_engine_ops = {
 
 /* draw line functions for all console modes */
 
-#include "pixel_ops.h"
-
 typedef void draw_line_func(uint8_t *d, const uint8_t *s,
 			    int width, const uint32_t *pal);
 
@@ -1429,9 +1428,9 @@ void sm501_init(MemoryRegion *address_space_mem, uint32_t base,
     qdev_prop_set_uint32(dev, "num-ports", 2);
     qdev_prop_set_taddr(dev, "dma-offset", base);
     qdev_init_nofail(dev);
-    sysbus_mmio_map(sysbus_from_qdev(dev), 0,
+    sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0,
                     base + MMIO_BASE_OFFSET + SM501_USB_HOST);
-    sysbus_connect_irq(sysbus_from_qdev(dev), 0, irq);
+    sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, irq);
 
     /* bridge to serial emulation module */
     if (chr) {

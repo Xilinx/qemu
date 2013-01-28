@@ -26,12 +26,14 @@
  */
 
 #include "sysbus.h"
-#include "net.h"
+#include "net/net.h"
 #include "flash.h"
-#include "sysemu.h"
+#include "sysemu/sysemu.h"
 #include "boards.h"
-#include "device_tree.h"
-#include "exec-memory.h"
+#include "sysemu/device_tree.h"
+#include "exec/memory.h"
+#include "exec/address-spaces.h"
+#include "qemu/config-file.h"
 
 #include "fdt_generic_util.h"
 #include "fdt_generic_devices.h"

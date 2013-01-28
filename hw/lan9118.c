@@ -11,9 +11,9 @@
  */
 
 #include "sysbus.h"
-#include "net.h"
+#include "net/net.h"
 #include "devices.h"
-#include "sysemu.h"
+#include "sysemu/sysemu.h"
 #include "ptimer.h"
 /* For crc32 */
 #include <zlib.h>
@@ -401,7 +401,7 @@ static void phy_reset(lan9118_state *s)
 
 static void lan9118_reset(DeviceState *d)
 {
-    lan9118_state *s = FROM_SYSBUS(lan9118_state, sysbus_from_qdev(d));
+    lan9118_state *s = FROM_SYSBUS(lan9118_state, SYS_BUS_DEVICE(d));
     s->irq_cfg &= (IRQ_TYPE | IRQ_POL);
     s->int_sts = 0;
     s->int_en = 0;
@@ -1368,7 +1368,7 @@ static void lan9118_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_lan9118;
 }
 
-static TypeInfo lan9118_info = {
+static const TypeInfo lan9118_info = {
     .name          = "lan9118",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(lan9118_state),
@@ -1391,7 +1391,7 @@ void lan9118_init(NICInfo *nd, uint32_t base, qemu_irq irq)
     dev = qdev_create(NULL, "lan9118");
     qdev_set_nic_properties(dev, nd);
     qdev_init_nofail(dev);
-    s = sysbus_from_qdev(dev);
+    s = SYS_BUS_DEVICE(dev);
     sysbus_mmio_map(s, 0, base);
     sysbus_connect_irq(s, 0, irq);
 }

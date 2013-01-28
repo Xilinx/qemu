@@ -24,9 +24,9 @@
  */
 
 #include "serial.h"
-#include "qemu-char.h"
-#include "qemu-timer.h"
-#include "exec-memory.h"
+#include "char/char.h"
+#include "qemu/timer.h"
+#include "exec/address-spaces.h"
 
 //#define DEBUG_SERIAL
 
@@ -266,8 +266,6 @@ static void serial_xmit(void *opaque)
             s->tsr = fifo_get(s,XMIT_FIFO);
             if (!s->xmit_fifo.count)
                 s->lsr |= UART_LSR_THRE;
-        } else if ((s->lsr & UART_LSR_THRE)) {
-            return;
         } else {
             s->tsr = s->thr;
             s->lsr |= UART_LSR_THRE;
@@ -279,7 +277,7 @@ static void serial_xmit(void *opaque)
         /* in loopback mode, say that we just received a char */
         serial_receive1(s, &s->tsr, 1);
     } else if (qemu_chr_fe_write(s->chr, &s->tsr, 1) != 1) {
-        if ((s->tsr_retry >= 0) && (s->tsr_retry <= MAX_XMIT_RETRY)) {
+        if ((s->tsr_retry > 0) && (s->tsr_retry <= MAX_XMIT_RETRY)) {
             s->tsr_retry++;
             qemu_mod_timer(s->transmit_timer,  new_xmit_ts + s->char_transmit_time);
             return;
@@ -718,7 +716,7 @@ const MemoryRegionOps serial_io_ops = {
 };
 
 SerialState *serial_init(int base, qemu_irq irq, int baudbase,
-                         CharDriverState *chr)
+                         CharDriverState *chr, MemoryRegion *system_io)
 {
     SerialState *s;
 
@@ -732,7 +730,7 @@ SerialState *serial_init(int base, qemu_irq irq, int baudbase,
     vmstate_register(NULL, base, &vmstate_serial, s);
 
     memory_region_init_io(&s->io, &serial_io_ops, s, "serial", 8);
-    memory_region_add_subregion(get_system_io(), base, &s->io);
+    memory_region_add_subregion(system_io, base, &s->io);
 
     return s;
 }

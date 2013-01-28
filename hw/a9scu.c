@@ -107,7 +107,7 @@ static const MemoryRegionOps a9_scu_ops = {
 
 static void a9_scu_reset(DeviceState *dev)
 {
-    A9SCUState *s = FROM_SYSBUS(A9SCUState, sysbus_from_qdev(dev));
+    A9SCUState *s = FROM_SYSBUS(A9SCUState, SYS_BUS_DEVICE(dev));
     s->control = 0;
 }
 

@@ -21,11 +21,11 @@
  *
  */
 
-#include "sysemu.h"
+#include "sysemu/sysemu.h"
 #include "sysbus.h"
-#include "net.h"
+#include "net/net.h"
 #include "arm-misc.h"
-#include "exec-memory.h"
+#include "exec/address-spaces.h"
 #include "exynos4210.h"
 #include "boards.h"
 
@@ -87,7 +87,7 @@ static void lan9215_init(uint32_t base, qemu_irq irq)
         qdev_set_nic_properties(dev, &nd_table[0]);
         qdev_prop_set_uint32(dev, "mode_16bit", 1);
         qdev_init_nofail(dev);
-        s = sysbus_from_qdev(dev);
+        s = SYS_BUS_DEVICE(dev);
         sysbus_mmio_map(s, 0, base);
         sysbus_connect_irq(s, 0, irq);
     }
@@ -150,12 +150,14 @@ static QEMUMachine exynos4_machines[EXYNOS4_NUM_OF_BOARDS] = {
         .desc = "Samsung NURI board (Exynos4210)",
         .init = nuri_init,
         .max_cpus = EXYNOS4210_NCPUS,
+        DEFAULT_MACHINE_OPTIONS,
     },
     [EXYNOS4_BOARD_SMDKC210] = {
         .name = "smdkc210",
         .desc = "Samsung SMDKC210 board (Exynos4210)",
         .init = smdkc210_init,
         .max_cpus = EXYNOS4210_NCPUS,
+        DEFAULT_MACHINE_OPTIONS,
     },
 };
 

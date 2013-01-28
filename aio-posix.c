@@ -14,9 +14,9 @@
  */
 
 #include "qemu-common.h"
-#include "block.h"
-#include "qemu-queue.h"
-#include "qemu_socket.h"
+#include "block/block.h"
+#include "qemu/queue.h"
+#include "qemu/sockets.h"
 
 struct AioHandler
 {
@@ -264,5 +264,6 @@ bool aio_poll(AioContext *ctx, bool blocking)
         }
     }
 
-    return progress;
+    assert(progress || busy);
+    return true;
 }

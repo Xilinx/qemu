@@ -27,7 +27,7 @@
 #include "boards.h"
 #include "xen_backend.h"
 #include "xen_domainbuild.h"
-#include "blockdev.h"
+#include "sysemu/blockdev.h"
 
 static void xen_init_pv(QEMUMachineInitArgs *args)
 {
@@ -115,6 +115,7 @@ static QEMUMachine xenpv_machine = {
     .init = xen_init_pv,
     .max_cpus = 1,
     .default_machine_opts = "accel=xen",
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static void xenpv_machine_init(void)

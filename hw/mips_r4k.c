@@ -13,19 +13,19 @@
 #include "pc.h"
 #include "serial.h"
 #include "isa.h"
-#include "net.h"
-#include "sysemu.h"
+#include "net/net.h"
+#include "sysemu/sysemu.h"
 #include "boards.h"
 #include "flash.h"
-#include "qemu-log.h"
+#include "qemu/log.h"
 #include "mips-bios.h"
 #include "ide.h"
 #include "loader.h"
 #include "elf.h"
 #include "mc146818rtc.h"
 #include "i8254.h"
-#include "blockdev.h"
-#include "exec-memory.h"
+#include "sysemu/blockdev.h"
+#include "exec/address-spaces.h"
 
 #define MAX_IDE_BUS 2
 
@@ -302,6 +302,7 @@ static QEMUMachine mips_machine = {
     .name = "mips",
     .desc = "mips r4k platform",
     .init = mips_r4k_init,
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static void mips_machine_init(void)

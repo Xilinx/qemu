@@ -18,14 +18,14 @@
  */
 #include "hw.h"
 #include "audio/audio.h"
-#include "sysemu.h"
-#include "console.h"
+#include "sysemu/sysemu.h"
+#include "ui/console.h"
 #include "omap.h"
 #include "boards.h"
 #include "arm-misc.h"
 #include "devices.h"
 #include "loader.h"
-#include "exec-memory.h"
+#include "exec/address-spaces.h"
 
 static uint32_t static_readb(void *opaque, hwaddr offset)
 {
@@ -280,6 +280,7 @@ static QEMUMachine palmte_machine = {
     .name = "cheetah",
     .desc = "Palm Tungsten|E aka. Cheetah PDA (OMAP310)",
     .init = palmte_init,
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static void palmte_machine_init(void)

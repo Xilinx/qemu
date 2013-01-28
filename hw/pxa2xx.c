@@ -9,12 +9,12 @@
 
 #include "sysbus.h"
 #include "pxa.h"
-#include "sysemu.h"
+#include "sysemu/sysemu.h"
 #include "serial.h"
 #include "i2c.h"
 #include "ssi.h"
-#include "qemu-char.h"
-#include "blockdev.h"
+#include "char/char.h"
+#include "sysemu/blockdev.h"
 
 static struct {
     hwaddr io_base;
@@ -1194,7 +1194,7 @@ static void pxa2xx_rtc_sysbus_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_pxa2xx_rtc_regs;
 }
 
-static TypeInfo pxa2xx_rtc_sysbus_info = {
+static const TypeInfo pxa2xx_rtc_sysbus_info = {
     .name          = "pxa2xx_rtc",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(PXA2xxRTCState),
@@ -1442,7 +1442,7 @@ static void pxa2xx_i2c_slave_class_init(ObjectClass *klass, void *data)
     k->send = pxa2xx_i2c_tx;
 }
 
-static TypeInfo pxa2xx_i2c_slave_info = {
+static const TypeInfo pxa2xx_i2c_slave_info = {
     .name          = "pxa2xx-i2c-slave",
     .parent        = TYPE_I2C_SLAVE,
     .instance_size = sizeof(PXA2xxI2CSlaveState),
@@ -1456,7 +1456,7 @@ PXA2xxI2CState *pxa2xx_i2c_init(hwaddr base,
     SysBusDevice *i2c_dev;
     PXA2xxI2CState *s;
 
-    i2c_dev = sysbus_from_qdev(qdev_create(NULL, "pxa2xx_i2c"));
+    i2c_dev = SYS_BUS_DEVICE(qdev_create(NULL, "pxa2xx_i2c"));
     qdev_prop_set_uint32(&i2c_dev->qdev, "size", region_size + 1);
     qdev_prop_set_uint32(&i2c_dev->qdev, "offset", base & region_size);
 
@@ -1510,7 +1510,7 @@ static void pxa2xx_i2c_class_init(ObjectClass *klass, void *data)
     dc->props = pxa2xx_i2c_properties;
 }
 
-static TypeInfo pxa2xx_i2c_info = {
+static const TypeInfo pxa2xx_i2c_info = {
     .name          = "pxa2xx_i2c",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(PXA2xxI2CState),
@@ -2045,7 +2045,7 @@ PXA2xxState *pxa270_init(MemoryRegion *address_space,
                     qdev_get_gpio_in(s->pic, PXA27X_PIC_OST_4_11),
                     NULL);
 
-    s->gpio = pxa2xx_gpio_init(0x40e00000, &s->cpu->env, s->pic, 121);
+    s->gpio = pxa2xx_gpio_init(0x40e00000, s->cpu, s->pic, 121);
 
     dinfo = drive_get(IF_SD, 0, 0);
     if (!dinfo) {
@@ -2176,7 +2176,7 @@ PXA2xxState *pxa255_init(MemoryRegion *address_space, unsigned int sdram_size)
                     qdev_get_gpio_in(s->pic, PXA2XX_PIC_OST_0 + 3),
                     NULL);
 
-    s->gpio = pxa2xx_gpio_init(0x40e00000, &s->cpu->env, s->pic, 85);
+    s->gpio = pxa2xx_gpio_init(0x40e00000, s->cpu, s->pic, 85);
 
     dinfo = drive_get(IF_SD, 0, 0);
     if (!dinfo) {
@@ -2273,7 +2273,7 @@ static void pxa2xx_ssp_class_init(ObjectClass *klass, void *data)
     sdc->init = pxa2xx_ssp_init;
 }
 
-static TypeInfo pxa2xx_ssp_info = {
+static const TypeInfo pxa2xx_ssp_info = {
     .name          = "pxa2xx-ssp",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(PXA2xxSSPState),

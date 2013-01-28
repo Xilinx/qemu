@@ -23,7 +23,7 @@
 #if !defined(CONFIG_USER_ONLY)
 #include "hw/loader.h"
 #endif
-#include "sysemu.h"
+#include "sysemu/sysemu.h"
 
 static void cp_reg_reset(gpointer key, gpointer value, gpointer opaque)
 {
@@ -64,7 +64,7 @@ static void arm_cpu_reset(CPUState *s)
     CPUARMState *env = &cpu->env;
 
     if (qemu_loglevel_mask(CPU_LOG_RESET)) {
-        qemu_log("CPU Reset (CPU %d)\n", env->cpu_index);
+        qemu_log("CPU Reset (CPU %d)\n", s->cpu_index);
         log_cpu_state(env, 0);
     }
 
@@ -778,7 +778,7 @@ static void cpu_register(const ARMCPUInfo *info)
         .class_size = sizeof(ARMCPUClass),
     };
 
-    type_register_static(&type_info);
+    type_register(&type_info);
 }
 
 static const TypeInfo arm_cpu_type_info = {

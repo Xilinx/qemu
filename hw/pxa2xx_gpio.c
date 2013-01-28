@@ -250,21 +250,22 @@ static const MemoryRegionOps pxa_gpio_ops = {
 };
 
 DeviceState *pxa2xx_gpio_init(hwaddr base,
-                CPUARMState *env, DeviceState *pic, int lines)
+                              ARMCPU *cpu, DeviceState *pic, int lines)
 {
+    CPUState *cs = CPU(cpu);
     DeviceState *dev;
 
     dev = qdev_create(NULL, "pxa2xx-gpio");
     qdev_prop_set_int32(dev, "lines", lines);
-    qdev_prop_set_int32(dev, "ncpu", env->cpu_index);
+    qdev_prop_set_int32(dev, "ncpu", cs->cpu_index);
     qdev_init_nofail(dev);
 
-    sysbus_mmio_map(sysbus_from_qdev(dev), 0, base);
-    sysbus_connect_irq(sysbus_from_qdev(dev), 0,
+    sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, base);
+    sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0,
                     qdev_get_gpio_in(pic, PXA2XX_PIC_GPIO_0));
-    sysbus_connect_irq(sysbus_from_qdev(dev), 1,
+    sysbus_connect_irq(SYS_BUS_DEVICE(dev), 1,
                     qdev_get_gpio_in(pic, PXA2XX_PIC_GPIO_1));
-    sysbus_connect_irq(sysbus_from_qdev(dev), 2,
+    sysbus_connect_irq(SYS_BUS_DEVICE(dev), 2,
                     qdev_get_gpio_in(pic, PXA2XX_PIC_GPIO_X));
 
     return dev;
@@ -276,7 +277,7 @@ static int pxa2xx_gpio_initfn(SysBusDevice *dev)
 
     s = FROM_SYSBUS(PXA2xxGPIOInfo, dev);
 
-    s->cpu = arm_env_get_cpu(qemu_get_cpu(s->ncpu));
+    s->cpu = ARM_CPU(qemu_get_cpu(s->ncpu));
 
     qdev_init_gpio_in(&dev->qdev, pxa2xx_gpio_set, s->lines);
     qdev_init_gpio_out(&dev->qdev, s->handler, s->lines);
@@ -296,7 +297,7 @@ static int pxa2xx_gpio_initfn(SysBusDevice *dev)
  */
 void pxa2xx_gpio_read_notifier(DeviceState *dev, qemu_irq handler)
 {
-    PXA2xxGPIOInfo *s = FROM_SYSBUS(PXA2xxGPIOInfo, sysbus_from_qdev(dev));
+    PXA2xxGPIOInfo *s = FROM_SYSBUS(PXA2xxGPIOInfo, SYS_BUS_DEVICE(dev));
     s->read_notify = handler;
 }
 
@@ -334,7 +335,7 @@ static void pxa2xx_gpio_class_init(ObjectClass *klass, void *data)
     dc->props = pxa2xx_gpio_properties;
 }
 
-static TypeInfo pxa2xx_gpio_info = {
+static const TypeInfo pxa2xx_gpio_info = {
     .name          = "pxa2xx-gpio",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(PXA2xxGPIOInfo),

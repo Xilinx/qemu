@@ -11,9 +11,9 @@
 #include "devices.h"
 #include "boards.h"
 #include "arm-misc.h"
-#include "net.h"
-#include "exec-memory.h"
-#include "sysemu.h"
+#include "net/net.h"
+#include "exec/address-spaces.h"
+#include "sysemu/sysemu.h"
 
 typedef struct {
     SysBusDevice busdev;
@@ -512,6 +512,7 @@ static QEMUMachine integratorcp_machine = {
     .desc = "ARM Integrator/CP (ARM926EJ-S)",
     .init = integratorcp_init,
     .is_default = 1,
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static void integratorcp_machine_init(void)
@@ -535,7 +536,7 @@ static void core_class_init(ObjectClass *klass, void *data)
     dc->props = core_properties;
 }
 
-static TypeInfo core_info = {
+static const TypeInfo core_info = {
     .name          = "integrator_core",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(integratorcm_state),
@@ -549,7 +550,7 @@ static void icp_pic_class_init(ObjectClass *klass, void *data)
     sdc->init = icp_pic_init;
 }
 
-static TypeInfo icp_pic_info = {
+static const TypeInfo icp_pic_info = {
     .name          = "integrator_pic",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(icp_pic_state),

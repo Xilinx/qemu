@@ -18,8 +18,8 @@
  */
 
 #include "sysbus.h"
-#include "monitor.h"
-#include "exec-memory.h"
+#include "monitor/monitor.h"
+#include "exec/address-spaces.h"
 
 static void sysbus_dev_print(Monitor *mon, DeviceState *dev, int indent);
 static char *sysbus_get_fw_dev_path(DeviceState *dev);
@@ -131,7 +131,7 @@ DeviceState *sysbus_create_varargs(const char *name,
     int n;
 
     dev = qdev_create(NULL, name);
-    s = sysbus_from_qdev(dev);
+    s = SYS_BUS_DEVICE(dev);
     qdev_init_nofail(dev);
     if (addr != (hwaddr)-1) {
         sysbus_mmio_map(s, 0, addr);
@@ -163,7 +163,7 @@ DeviceState *sysbus_try_create_varargs(const char *name,
     if (!dev) {
         return NULL;
     }
-    s = sysbus_from_qdev(dev);
+    s = SYS_BUS_DEVICE(dev);
     qdev_init_nofail(dev);
     if (addr != (hwaddr)-1) {
         sysbus_mmio_map(s, 0, addr);
@@ -184,7 +184,7 @@ DeviceState *sysbus_try_create_varargs(const char *name,
 
 static void sysbus_dev_print(Monitor *mon, DeviceState *dev, int indent)
 {
-    SysBusDevice *s = sysbus_from_qdev(dev);
+    SysBusDevice *s = SYS_BUS_DEVICE(dev);
     hwaddr size;
     int i;
 
@@ -198,7 +198,7 @@ static void sysbus_dev_print(Monitor *mon, DeviceState *dev, int indent)
 
 static char *sysbus_get_fw_dev_path(DeviceState *dev)
 {
-    SysBusDevice *s = sysbus_from_qdev(dev);
+    SysBusDevice *s = SYS_BUS_DEVICE(dev);
     char path[40];
     int off;
 
@@ -255,7 +255,7 @@ static void sysbus_device_class_init(ObjectClass *klass, void *data)
     k->bus_type = TYPE_SYSTEM_BUS;
 }
 
-static TypeInfo sysbus_device_type_info = {
+static const TypeInfo sysbus_device_type_info = {
     .name = TYPE_SYS_BUS_DEVICE,
     .parent = TYPE_DEVICE,
     .instance_size = sizeof(SysBusDevice),

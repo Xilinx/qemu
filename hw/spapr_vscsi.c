@@ -34,7 +34,6 @@
 #include "hw.h"
 #include "scsi.h"
 #include "scsi-defs.h"
-#include "net.h" /* Remove that when we can */
 #include "srp.h"
 #include "hw/qdev.h"
 #include "hw/spapr.h"
@@ -968,7 +967,7 @@ static void spapr_vscsi_class_init(ObjectClass *klass, void *data)
     k->rtce_window_size = 0x10000000;
 }
 
-static TypeInfo spapr_vscsi_info = {
+static const TypeInfo spapr_vscsi_info = {
     .name          = "spapr-vscsi",
     .parent        = TYPE_VIO_SPAPR_DEVICE,
     .instance_size = sizeof(VSCSIState),

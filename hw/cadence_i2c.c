@@ -18,12 +18,12 @@
  *  with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "qemu-timer.h"
+#include "qemu/log.h"
+#include "qemu/bitops.h"
+#include "qemu/timer.h"
 #include "sysbus.h"
 #include "i2c.h"
 #include "fifo.h"
-#include "qemu-log.h"
-#include "bitops.h"
 
 #define TYPE_CADENCE_I2C                  "xlnx.ps7-i2c"
 #define CADENCE_I2C(obj)                  \

@@ -29,8 +29,8 @@
 #include "hw.h"
 #include "audiodev.h"
 #include "audio/audio.h"
-#include "pci.h"
-#include "dma.h"
+#include "pci/pci.h"
+#include "sysemu/dma.h"
 
 /* Missing stuff:
    SCTRL_P[12](END|ST)INC
@@ -1073,7 +1073,7 @@ static void es1370_class_init (ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_es1370;
 }
 
-static TypeInfo es1370_info = {
+static const TypeInfo es1370_info = {
     .name          = "ES1370",
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof (ES1370State),

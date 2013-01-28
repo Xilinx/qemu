@@ -16,12 +16,15 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
+#ifndef HW_S390_VIRTIO_BUS_H
+#define HW_S390_VIRTIO_BUS_H 1
 
 #include "virtio-blk.h"
 #include "virtio-net.h"
 #include "virtio-rng.h"
 #include "virtio-serial.h"
 #include "virtio-scsi.h"
+#include "virtio-bus.h"
 
 #define VIRTIO_DEV_OFFS_TYPE		0	/* 8 bits */
 #define VIRTIO_DEV_OFFS_NUM_VQ		1	/* 8 bits */
@@ -57,7 +60,23 @@
 #define S390_VIRTIO_BUS(obj) \
      OBJECT_CHECK(VirtIOS390Bus, (obj), TYPE_S390_VIRTIO_BUS)
 
+/* virtio-s390-bus */
+
+typedef struct VirtioBusState VirtioS390BusState;
+typedef struct VirtioBusClass VirtioS390BusClass;
+
+#define TYPE_VIRTIO_S390_BUS "virtio-s390-bus"
+#define VIRTIO_S390_BUS(obj) \
+        OBJECT_CHECK(VirtioS390BusState, (obj), TYPE_VIRTIO_S390_BUS)
+#define VIRTIO_S390_BUS_GET_CLASS(obj) \
+        OBJECT_GET_CLASS(VirtioS390BusClass, obj, TYPE_VIRTIO_S390_BUS)
+#define VIRTIO_S390_BUS_CLASS(klass) \
+        OBJECT_CLASS_CHECK(VirtioS390BusClass, klass, TYPE_VIRTIO_S390_BUS)
+
+
 typedef struct VirtIOS390Device VirtIOS390Device;
+
+void virtio_s390_bus_new(VirtioBusState *bus, VirtIOS390Device *dev);
 
 typedef struct VirtIOS390DeviceClass {
     DeviceClass qdev;
@@ -77,6 +96,7 @@ struct VirtIOS390Device {
     virtio_net_conf net;
     VirtIOSCSIConf scsi;
     VirtIORNGConf rng;
+    VirtioBusState bus;
 };
 
 typedef struct VirtIOS390Bus {
@@ -100,3 +120,5 @@ VirtIOS390Device *s390_virtio_bus_find_mem(VirtIOS390Bus *bus, ram_addr_t mem);
 void s390_virtio_device_sync(VirtIOS390Device *dev);
 void s390_virtio_reset_idx(VirtIOS390Device *dev);
 
+
+#endif

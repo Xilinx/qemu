@@ -22,7 +22,7 @@
  */
 
 #include "cpu.h"
-#include "disas.h"
+#include "disas/disas.h"
 #include "tcg-op.h"
 
 #include "helper.h"
@@ -1017,7 +1017,7 @@ static TCGv_i64 fpu_f64[32];
 static uint32_t gen_opc_hflags[OPC_BUF_SIZE];
 static target_ulong gen_opc_btarget[OPC_BUF_SIZE];
 
-#include "gen-icount.h"
+#include "exec/gen-icount.h"
 
 #define gen_helper_0e0i(name, arg) do {                           \
     TCGv_i32 helper_tmp = tcg_const_i32(arg);                     \
@@ -13769,9 +13769,10 @@ static void gen_mipsdsp_bitinsn(CPUMIPSState *env, DisasContext *ctx,
             check_dsp(ctx);
             {
                 imm = (ctx->opcode >> 16) & 0x03FF;
+                imm = (int16_t)(imm << 6) >> 6;
                 tcg_gen_movi_tl(cpu_gpr[ret], \
                                 (target_long)((int32_t)imm << 16 | \
-                                (uint32_t)(uint16_t)imm));
+                                (uint16_t)imm));
             }
             break;
         case OPC_REPLV_PH:
@@ -15579,13 +15580,13 @@ gen_intermediate_code_internal (CPUMIPSState *env, TranslationBlock *tb,
             if (lj < j) {
                 lj++;
                 while (lj < j)
-                    gen_opc_instr_start[lj++] = 0;
+                    tcg_ctx.gen_opc_instr_start[lj++] = 0;
             }
-            gen_opc_pc[lj] = ctx.pc;
+            tcg_ctx.gen_opc_pc[lj] = ctx.pc;
             gen_opc_hflags[lj] = ctx.hflags & MIPS_HFLAG_BMASK;
             gen_opc_btarget[lj] = ctx.btarget;
-            gen_opc_instr_start[lj] = 1;
-            gen_opc_icount[lj] = num_insns;
+            tcg_ctx.gen_opc_instr_start[lj] = 1;
+            tcg_ctx.gen_opc_icount[lj] = num_insns;
         }
         if (num_insns + 1 == max_insns && (tb->cflags & CF_LAST_IO))
             gen_io_start();
@@ -15662,7 +15663,7 @@ done_generating:
         j = tcg_ctx.gen_opc_ptr - tcg_ctx.gen_opc_buf;
         lj++;
         while (lj <= j)
-            gen_opc_instr_start[lj++] = 0;
+            tcg_ctx.gen_opc_instr_start[lj++] = 0;
     } else {
         tb->size = ctx.pc - pc_start;
         tb->icount = num_insns;
@@ -15877,13 +15878,10 @@ MIPSCPU *cpu_mips_init(const char *cpu_model)
 
 void cpu_state_reset(CPUMIPSState *env)
 {
-    if (qemu_loglevel_mask(CPU_LOG_RESET)) {
-        qemu_log("CPU Reset (CPU %d)\n", env->cpu_index);
-        log_cpu_state(env, 0);
-    }
-
-    memset(env, 0, offsetof(CPUMIPSState, breakpoints));
-    tlb_flush(env, 1);
+#ifndef CONFIG_USER_ONLY
+    MIPSCPU *cpu = mips_env_get_cpu(env);
+    CPUState *cs = CPU(cpu);
+#endif
 
     /* Reset registers to their default values */
     env->CP0_PRid = env->cpu_model->CP0_PRid;
@@ -15952,7 +15950,7 @@ void cpu_state_reset(CPUMIPSState *env)
     env->CP0_Random = env->tlb->nb_tlb - 1;
     env->tlb->tlb_in_use = env->tlb->nb_tlb;
     env->CP0_Wired = 0;
-    env->CP0_EBase = 0x80000000 | (env->cpu_index & 0x3FF);
+    env->CP0_EBase = 0x80000000 | (cs->cpu_index & 0x3FF);
     env->CP0_Status = (1 << CP0St_BEV) | (1 << CP0St_ERL);
     /* vectored interrupts not implemented, timer on int 7,
        no performance counters. */
@@ -15975,13 +15973,13 @@ void cpu_state_reset(CPUMIPSState *env)
 
         /* Only TC0 on VPE 0 starts as active.  */
         for (i = 0; i < ARRAY_SIZE(env->tcs); i++) {
-            env->tcs[i].CP0_TCBind = env->cpu_index << CP0TCBd_CurVPE;
+            env->tcs[i].CP0_TCBind = cs->cpu_index << CP0TCBd_CurVPE;
             env->tcs[i].CP0_TCHalt = 1;
         }
         env->active_tc.CP0_TCHalt = 1;
         env->halted = 1;
 
-        if (!env->cpu_index) {
+        if (cs->cpu_index == 0) {
             /* VPE0 starts up enabled.  */
             env->mvp->CP0_MVPControl |= (1 << CP0MVPCo_EVP);
             env->CP0_VPEConf0 |= (1 << CP0VPEC0_MVP) | (1 << CP0VPEC0_VPA);
@@ -16002,7 +16000,7 @@ void cpu_state_reset(CPUMIPSState *env)
 
 void restore_state_to_opc(CPUMIPSState *env, TranslationBlock *tb, int pc_pos)
 {
-    env->active_tc.PC = gen_opc_pc[pc_pos];
+    env->active_tc.PC = tcg_ctx.gen_opc_pc[pc_pos];
     env->hflags &= ~MIPS_HFLAG_BMASK;
     env->hflags |= gen_opc_hflags[pc_pos];
     switch (env->hflags & MIPS_HFLAG_BMASK_BASE) {

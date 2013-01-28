@@ -25,9 +25,9 @@
  */
 
 #include "sysbus.h"
-#include "qemu-char.h"
-#include "qemu-log.h"
-#include "net.h"
+#include "char/char.h"
+#include "qemu/log.h"
+#include "net/net.h"
 #include "net/checksum.h"
 
 #ifdef DEBUG_XGMAC
@@ -418,7 +418,7 @@ static void xgmac_enet_class_init(ObjectClass *klass, void *data)
     dc->props = xgmac_properties;
 }
 
-static TypeInfo xgmac_enet_info = {
+static const TypeInfo xgmac_enet_info = {
     .name          = "xgmac",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(struct XgmacState),

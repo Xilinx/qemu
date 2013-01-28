@@ -13,7 +13,7 @@
 #include "hw/pc.h"
 #include "hw/ioapic_internal.h"
 #include "hw/apic_internal.h"
-#include "kvm.h"
+#include "sysemu/kvm.h"
 
 /* PC Utility function */
 void kvm_pc_setup_irq_routing(bool pci_enabled)
@@ -150,7 +150,7 @@ static void kvm_ioapic_class_init(ObjectClass *klass, void *data)
     dc->props    = kvm_ioapic_properties;
 }
 
-static TypeInfo kvm_ioapic_info = {
+static const TypeInfo kvm_ioapic_info = {
     .name  = "kvm-ioapic",
     .parent = TYPE_IOAPIC_COMMON,
     .instance_size = sizeof(KVMIOAPICState),

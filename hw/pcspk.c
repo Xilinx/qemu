@@ -26,7 +26,7 @@
 #include "pc.h"
 #include "isa.h"
 #include "audio/audio.h"
-#include "qemu-timer.h"
+#include "qemu/timer.h"
 #include "i8254.h"
 #include "pcspk.h"
 
@@ -187,7 +187,7 @@ static void pcspk_class_initfn(ObjectClass *klass, void *data)
     dc->props = pcspk_properties;
 }
 
-static TypeInfo pcspk_info = {
+static const TypeInfo pcspk_info = {
     .name           = "isa-pcspk",
     .parent         = TYPE_ISA_DEVICE,
     .instance_size  = sizeof(PCSpkState),

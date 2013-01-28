@@ -11,7 +11,7 @@
  */
 #include "hw/i8259_internal.h"
 #include "hw/apic_internal.h"
-#include "kvm.h"
+#include "sysemu/kvm.h"
 
 static void kvm_pic_get(PICCommonState *s)
 {
@@ -123,7 +123,7 @@ static void kvm_i8259_class_init(ObjectClass *klass, void *data)
     k->post_load  = kvm_pic_put;
 }
 
-static TypeInfo kvm_i8259_info = {
+static const TypeInfo kvm_i8259_info = {
     .name  = "kvm-i8259",
     .parent = TYPE_PIC_COMMON,
     .instance_size = sizeof(PICCommonState),

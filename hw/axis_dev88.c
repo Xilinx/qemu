@@ -23,15 +23,15 @@
  */
 
 #include "sysbus.h"
-#include "net.h"
+#include "net/net.h"
 #include "flash.h"
 #include "boards.h"
 #include "etraxfs.h"
 #include "loader.h"
 #include "elf.h"
 #include "cris-boot.h"
-#include "blockdev.h"
-#include "exec-memory.h"
+#include "sysemu/blockdev.h"
+#include "exec/address-spaces.h"
 
 #define D(x)
 #define DNAND(x)
@@ -300,7 +300,7 @@ void axisdev88_init(QEMUMachineInitArgs *args)
     /* FIXME: Is there a proper way to signal vectors to the CPU core?  */
     qdev_prop_set_ptr(dev, "interrupt_vector", &env->interrupt_vector);
     qdev_init_nofail(dev);
-    s = sysbus_from_qdev(dev);
+    s = SYS_BUS_DEVICE(dev);
     sysbus_mmio_map(s, 0, 0x3001c000);
     sysbus_connect_irq(s, 0, cpu_irq[0]);
     sysbus_connect_irq(s, 1, cpu_irq[1]);
@@ -355,6 +355,7 @@ static QEMUMachine axisdev88_machine = {
     .desc = "AXIS devboard 88",
     .init = axisdev88_init,
     .is_default = 1,
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static void axisdev88_machine_init(void)

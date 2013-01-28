@@ -18,9 +18,10 @@
  */
 
 #include "qdev.h"
-#include "monitor.h"
+#include "monitor/monitor.h"
 #include "qmp-commands.h"
-#include "arch_init.h"
+#include "sysemu/arch_init.h"
+#include "qemu/config-file.h"
 
 /*
  * Aliases were a bad idea from the start.  Let's keep them
@@ -282,6 +283,7 @@ static DeviceState *qbus_find_dev(BusState *bus, char *elem)
 static BusState *qbus_find_recursive(BusState *bus, const char *name,
                                      const char *bus_typename)
 {
+    BusClass *bus_class = BUS_GET_CLASS(bus);
     BusChild *kid;
     BusState *child, *ret;
     int match = 1;
@@ -291,6 +293,17 @@ static BusState *qbus_find_recursive(BusState *bus, const char *name,
     }
     if (bus_typename && !object_dynamic_cast(OBJECT(bus), bus_typename)) {
         match = 0;
+    }
+    if ((bus_class->max_dev != 0) && (bus_class->max_dev <= bus->max_index)) {
+        if (name != NULL) {
+            /* bus was explicitly specified: return an error. */
+            qerror_report(ERROR_CLASS_GENERIC_ERROR, "Bus '%s' is full",
+                          bus->name);
+            return NULL;
+        } else {
+            /* bus was not specified: try to find another one. */
+            match = 0;
+        }
     }
     if (match) {
         return bus;
@@ -563,13 +576,13 @@ static void qbus_print(Monitor *mon, BusState *bus, int indent)
 }
 #undef qdev_printf
 
-void do_info_qtree(Monitor *mon)
+void do_info_qtree(Monitor *mon, const QDict *qdict)
 {
     if (sysbus_get_default())
         qbus_print(mon, sysbus_get_default(), 0);
 }
 
-void do_info_qdm(Monitor *mon)
+void do_info_qdm(Monitor *mon, const QDict *qdict)
 {
     object_class_foreach(qdev_print_devinfo, TYPE_DEVICE, false, NULL);
 }
@@ -613,4 +626,55 @@ void qdev_machine_init(void)
 {
     qdev_get_peripheral_anon();
     qdev_get_peripheral();
+}
+
+QemuOptsList qemu_device_opts = {
+    .name = "device",
+    .implied_opt_name = "driver",
+    .head = QTAILQ_HEAD_INITIALIZER(qemu_device_opts.head),
+    .desc = {
+        /*
+         * no elements => accept any
+         * sanity checking will happen later
+         * when setting device properties
+         */
+        { /* end of list */ }
+    },
+};
+
+QemuOptsList qemu_global_opts = {
+    .name = "global",
+    .head = QTAILQ_HEAD_INITIALIZER(qemu_global_opts.head),
+    .desc = {
+        {
+            .name = "driver",
+            .type = QEMU_OPT_STRING,
+        },{
+            .name = "property",
+            .type = QEMU_OPT_STRING,
+        },{
+            .name = "value",
+            .type = QEMU_OPT_STRING,
+        },
+        { /* end of list */ }
+    },
+};
+
+int qemu_global_option(const char *str)
+{
+    char driver[64], property[64];
+    QemuOpts *opts;
+    int rc, offset;
+
+    rc = sscanf(str, "%63[^.].%63[^=]%n", driver, property, &offset);
+    if (rc < 2 || str[offset] != '=') {
+        error_report("can't parse: \"%s\"", str);
+        return -1;
+    }
+
+    opts = qemu_opts_create_nofail(&qemu_global_opts);
+    qemu_opt_set(opts, "driver", driver);
+    qemu_opt_set(opts, "property", property);
+    qemu_opt_set(opts, "value", str+offset+1);
+    return 0;
 }

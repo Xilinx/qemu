@@ -25,11 +25,11 @@
 
 #include <hw/hw.h>
 #include <hw/pc.h>
-#include <hw/pci.h>
+#include <hw/pci/pci.h>
 #include <hw/isa.h>
-#include "blockdev.h"
-#include "sysemu.h"
-#include "dma.h"
+#include "sysemu/blockdev.h"
+#include "sysemu/sysemu.h"
+#include "sysemu/dma.h"
 
 #include <hw/ide/pci.h>
 
@@ -251,7 +251,7 @@ static void piix3_ide_class_init(ObjectClass *klass, void *data)
     dc->no_user = 1;
 }
 
-static TypeInfo piix3_ide_info = {
+static const TypeInfo piix3_ide_info = {
     .name          = "piix3-ide",
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(PCIIDEState),
@@ -271,7 +271,7 @@ static void piix3_ide_xen_class_init(ObjectClass *klass, void *data)
     dc->unplug = pci_piix3_xen_ide_unplug;
 }
 
-static TypeInfo piix3_ide_xen_info = {
+static const TypeInfo piix3_ide_xen_info = {
     .name          = "piix3-ide-xen",
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(PCIIDEState),
@@ -292,7 +292,7 @@ static void piix4_ide_class_init(ObjectClass *klass, void *data)
     dc->no_user = 1;
 }
 
-static TypeInfo piix4_ide_info = {
+static const TypeInfo piix4_ide_info = {
     .name          = "piix4-ide",
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(PCIIDEState),

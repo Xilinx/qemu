@@ -17,7 +17,7 @@
  */
 
 #include "sysbus.h"
-#include "qemu-timer.h"
+#include "qemu/timer.h"
 
 #ifdef CADENCE_TTC_ERR_DEBUG
 #define DB_PRINT(...) do { \
@@ -474,7 +474,7 @@ static void cadence_ttc_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_cadence_ttc;
 }
 
-static TypeInfo cadence_ttc_info = {
+static const TypeInfo cadence_ttc_info = {
     .name  = "xlnx.ps7-ttc",
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size  = sizeof(CadenceTTCState),

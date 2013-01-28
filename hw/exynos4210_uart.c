@@ -20,8 +20,8 @@
  */
 
 #include "sysbus.h"
-#include "sysemu.h"
-#include "qemu-char.h"
+#include "sysemu/sysemu.h"
+#include "char/char.h"
 
 #include "exynos4210.h"
 
@@ -615,7 +615,7 @@ DeviceState *exynos4210_uart_create(hwaddr addr,
     qdev_prop_set_uint32(dev, "rx-size", fifo_size);
     qdev_prop_set_uint32(dev, "tx-size", fifo_size);
 
-    bus = sysbus_from_qdev(dev);
+    bus = SYS_BUS_DEVICE(dev);
     qdev_init_nofail(dev);
     if (addr != (hwaddr)-1) {
         sysbus_mmio_map(bus, 0, addr);
@@ -661,7 +661,7 @@ static void exynos4210_uart_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_exynos4210_uart;
 }
 
-static TypeInfo exynos4210_uart_info = {
+static const TypeInfo exynos4210_uart_info = {
     .name          = "exynos4210.uart",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(Exynos4210UartState),

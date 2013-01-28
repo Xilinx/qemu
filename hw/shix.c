@@ -29,10 +29,10 @@
 */
 #include "hw.h"
 #include "sh.h"
-#include "sysemu.h"
+#include "sysemu/sysemu.h"
 #include "boards.h"
 #include "loader.h"
-#include "exec-memory.h"
+#include "exec/address-spaces.h"
 
 #define BIOS_FILENAME "shix_bios.bin"
 #define BIOS_ADDRESS 0xA0000000
@@ -92,6 +92,7 @@ static QEMUMachine shix_machine = {
     .desc = "shix card",
     .init = shix_init,
     .is_default = 1,
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static void shix_machine_init(void)

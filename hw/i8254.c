@@ -24,7 +24,7 @@
 #include "hw.h"
 #include "pc.h"
 #include "isa.h"
-#include "qemu-timer.h"
+#include "qemu/timer.h"
 #include "i8254.h"
 #include "i8254_internal.h"
 
@@ -347,7 +347,7 @@ static void pit_class_initfn(ObjectClass *klass, void *data)
     dc->props = pit_properties;
 }
 
-static TypeInfo pit_info = {
+static const TypeInfo pit_info = {
     .name          = "isa-pit",
     .parent        = TYPE_PIT_COMMON,
     .instance_size = sizeof(PITCommonState),

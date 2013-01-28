@@ -7,14 +7,14 @@
  */
 #include "hw.h"
 #include "mcf.h"
-#include "qemu-timer.h"
+#include "qemu/timer.h"
 #include "ptimer.h"
-#include "sysemu.h"
-#include "net.h"
+#include "sysemu/sysemu.h"
+#include "net/net.h"
 #include "boards.h"
 #include "loader.h"
 #include "elf.h"
-#include "exec-memory.h"
+#include "exec/address-spaces.h"
 
 #define SYS_FREQ 66000000
 
@@ -292,6 +292,7 @@ static QEMUMachine mcf5208evb_machine = {
     .desc = "MCF5206EVB",
     .init = mcf5208evb_init,
     .is_default = 1,
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static void mcf5208evb_machine_init(void)

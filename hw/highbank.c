@@ -21,12 +21,12 @@
 #include "arm-misc.h"
 #include "devices.h"
 #include "loader.h"
-#include "net.h"
-#include "sysemu.h"
+#include "net/net.h"
+#include "sysemu/sysemu.h"
 #include "boards.h"
 #include "sysbus.h"
-#include "blockdev.h"
-#include "exec-memory.h"
+#include "sysemu/blockdev.h"
+#include "exec/address-spaces.h"
 
 #define SMP_BOOT_ADDR 0x100
 #define SMP_BOOT_REG  0x40
@@ -44,9 +44,12 @@ static void hb_write_secondary(ARMCPU *cpu, const struct arm_boot_info *info)
         0xe210000f, /* ands r0, r0, #0x0f */
         0xe3a03040, /* mov r3, #0x40 - jump address is 0x40 + 0x10 * core id */
         0xe0830200, /* add r0, r3, r0, lsl #4 */
-        0xe59f2018, /* ldr r2, privbase */
+        0xe59f2024, /* ldr r2, privbase */
         0xe3a01001, /* mov r1, #1 */
-        0xe5821100, /* str r1, [r2, #256] */
+        0xe5821100, /* str r1, [r2, #256] - set GICC_CTLR.Enable */
+        0xe3a010ff, /* mov r1, #0xff */
+        0xe5821104, /* str r1, [r2, #260] - set GICC_PMR.Priority to 0xff */
+        0xf57ff04f, /* dsb */
         0xe320f003, /* wfi */
         0xe5901000, /* ldr     r1, [r0] */
         0xe1110001, /* tst     r1, r1 */
@@ -133,7 +136,7 @@ static VMStateDescription vmstate_highbank_regs = {
 
 static void highbank_regs_reset(DeviceState *dev)
 {
-    SysBusDevice *sys_dev = sysbus_from_qdev(dev);
+    SysBusDevice *sys_dev = SYS_BUS_DEVICE(dev);
     HighbankRegsState *s = FROM_SYSBUS(HighbankRegsState, sys_dev);
 
     s->regs[0x40] = 0x05F20121;
@@ -165,7 +168,7 @@ static void highbank_regs_class_init(ObjectClass *klass, void *data)
     dc->reset = highbank_regs_reset;
 }
 
-static TypeInfo highbank_regs_info = {
+static const TypeInfo highbank_regs_info = {
     .name          = "highbank-regs",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(HighbankRegsState),
@@ -248,7 +251,7 @@ static void highbank_init(QEMUMachineInitArgs *args)
     qdev_prop_set_uint32(dev, "num-cpu", smp_cpus);
     qdev_prop_set_uint32(dev, "num-irq", NIRQ_GIC);
     qdev_init_nofail(dev);
-    busdev = sysbus_from_qdev(dev);
+    busdev = SYS_BUS_DEVICE(dev);
     sysbus_mmio_map(busdev, 0, GIC_BASE_ADDR);
     for (n = 0; n < smp_cpus; n++) {
         sysbus_connect_irq(busdev, n, cpu_irq[n]);
@@ -260,21 +263,21 @@ static void highbank_init(QEMUMachineInitArgs *args)
 
     dev = qdev_create(NULL, "l2x0");
     qdev_init_nofail(dev);
-    busdev = sysbus_from_qdev(dev);
+    busdev = SYS_BUS_DEVICE(dev);
     sysbus_mmio_map(busdev, 0, 0xfff12000);
 
     dev = qdev_create(NULL, "sp804");
     qdev_prop_set_uint32(dev, "freq0", 150000000);
     qdev_prop_set_uint32(dev, "freq1", 150000000);
     qdev_init_nofail(dev);
-    busdev = sysbus_from_qdev(dev);
+    busdev = SYS_BUS_DEVICE(dev);
     sysbus_mmio_map(busdev, 0, 0xfff34000);
     sysbus_connect_irq(busdev, 0, pic[18]);
     sysbus_create_simple("pl011", 0xfff36000, pic[20]);
 
     dev = qdev_create(NULL, "highbank-regs");
     qdev_init_nofail(dev);
-    busdev = sysbus_from_qdev(dev);
+    busdev = SYS_BUS_DEVICE(dev);
     sysbus_mmio_map(busdev, 0, 0xfff3c000);
 
     sysbus_create_simple("pl061", 0xfff30000, pic[14]);
@@ -291,19 +294,19 @@ static void highbank_init(QEMUMachineInitArgs *args)
         dev = qdev_create(NULL, "xgmac");
         qdev_set_nic_properties(dev, &nd_table[0]);
         qdev_init_nofail(dev);
-        sysbus_mmio_map(sysbus_from_qdev(dev), 0, 0xfff50000);
-        sysbus_connect_irq(sysbus_from_qdev(dev), 0, pic[77]);
-        sysbus_connect_irq(sysbus_from_qdev(dev), 1, pic[78]);
-        sysbus_connect_irq(sysbus_from_qdev(dev), 2, pic[79]);
+        sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, 0xfff50000);
+        sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, pic[77]);
+        sysbus_connect_irq(SYS_BUS_DEVICE(dev), 1, pic[78]);
+        sysbus_connect_irq(SYS_BUS_DEVICE(dev), 2, pic[79]);
 
         qemu_check_nic_model(&nd_table[1], "xgmac");
         dev = qdev_create(NULL, "xgmac");
         qdev_set_nic_properties(dev, &nd_table[1]);
         qdev_init_nofail(dev);
-        sysbus_mmio_map(sysbus_from_qdev(dev), 0, 0xfff51000);
-        sysbus_connect_irq(sysbus_from_qdev(dev), 0, pic[80]);
-        sysbus_connect_irq(sysbus_from_qdev(dev), 1, pic[81]);
-        sysbus_connect_irq(sysbus_from_qdev(dev), 2, pic[82]);
+        sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, 0xfff51000);
+        sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, pic[80]);
+        sysbus_connect_irq(SYS_BUS_DEVICE(dev), 1, pic[81]);
+        sysbus_connect_irq(SYS_BUS_DEVICE(dev), 2, pic[82]);
     }
 
     highbank_binfo.ram_size = ram_size;
@@ -326,8 +329,9 @@ static QEMUMachine highbank_machine = {
     .name = "highbank",
     .desc = "Calxeda Highbank (ECX-1000)",
     .init = highbank_init,
-    .use_scsi = 1,
+    .block_default_type = IF_SCSI,
     .max_cpus = 4,
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static void highbank_machine_init(void)

@@ -25,9 +25,9 @@
 #include "pc.h"
 #include "isa.h"
 #include "qdev.h"
-#include "net.h"
+#include "net/net.h"
 #include "ne2000.h"
-#include "exec-memory.h"
+#include "exec/address-spaces.h"
 
 typedef struct ISANE2000State {
     ISADevice dev;
@@ -97,7 +97,7 @@ static void isa_ne2000_class_initfn(ObjectClass *klass, void *data)
     dc->props = ne2000_isa_properties;
 }
 
-static TypeInfo ne2000_isa_info = {
+static const TypeInfo ne2000_isa_info = {
     .name          = "ne2k_isa",
     .parent        = TYPE_ISA_DEVICE,
     .instance_size = sizeof(ISANE2000State),

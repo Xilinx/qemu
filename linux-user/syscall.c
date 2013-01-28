@@ -28,6 +28,7 @@
 #include <fcntl.h>
 #include <time.h>
 #include <limits.h>
+#include <grp.h>
 #include <sys/types.h>
 #include <sys/ipc.h>
 #include <sys/msg.h>
@@ -35,6 +36,9 @@
 #include <sys/time.h>
 #include <sys/stat.h>
 #include <sys/mount.h>
+#include <sys/file.h>
+#include <sys/fsuid.h>
+#include <sys/personality.h>
 #include <sys/prctl.h>
 #include <sys/resource.h>
 #include <sys/mman.h>
@@ -72,7 +76,7 @@ int __clone2(int (*fn)(void *), void *child_stack_base,
 #include <sys/epoll.h>
 #endif
 #ifdef CONFIG_ATTR
-#include "qemu-xattr.h"
+#include "qemu/xattr.h"
 #endif
 
 #define termios host_termios
@@ -579,12 +583,6 @@ _syscall4(int, sys_prlimit64, pid_t, pid, int, resource,
           const struct host_rlimit64 *, new_limit,
           struct host_rlimit64 *, old_limit)
 #endif
-
-extern int personality(int);
-extern int flock(int, int);
-extern int setfsuid(int);
-extern int setfsgid(int);
-extern int setgroups(int, gid_t *);
 
 /* ARM EABI and MIPS expect 64bit types aligned even on pairs or registers */
 #ifdef TARGET_ARM
@@ -4514,6 +4512,16 @@ static int target_to_host_fcntl_cmd(int cmd)
     return -TARGET_EINVAL;
 }
 
+#define TRANSTBL_CONVERT(a) { -1, TARGET_##a, -1, a }
+static const bitmask_transtbl flock_tbl[] = {
+    TRANSTBL_CONVERT(F_RDLCK),
+    TRANSTBL_CONVERT(F_WRLCK),
+    TRANSTBL_CONVERT(F_UNLCK),
+    TRANSTBL_CONVERT(F_EXLCK),
+    TRANSTBL_CONVERT(F_SHLCK),
+    { 0, 0, 0, 0 }
+};
+
 static abi_long do_fcntl(int fd, int cmd, abi_ulong arg)
 {
     struct flock fl;
@@ -4530,7 +4538,8 @@ static abi_long do_fcntl(int fd, int cmd, abi_ulong arg)
     case TARGET_F_GETLK:
         if (!lock_user_struct(VERIFY_READ, target_fl, arg, 1))
             return -TARGET_EFAULT;
-        fl.l_type = tswap16(target_fl->l_type);
+        fl.l_type =
+                  target_to_host_bitmask(tswap16(target_fl->l_type), flock_tbl);
         fl.l_whence = tswap16(target_fl->l_whence);
         fl.l_start = tswapal(target_fl->l_start);
         fl.l_len = tswapal(target_fl->l_len);
@@ -4540,7 +4549,8 @@ static abi_long do_fcntl(int fd, int cmd, abi_ulong arg)
         if (ret == 0) {
             if (!lock_user_struct(VERIFY_WRITE, target_fl, arg, 0))
                 return -TARGET_EFAULT;
-            target_fl->l_type = tswap16(fl.l_type);
+            target_fl->l_type =
+                          host_to_target_bitmask(tswap16(fl.l_type), flock_tbl);
             target_fl->l_whence = tswap16(fl.l_whence);
             target_fl->l_start = tswapal(fl.l_start);
             target_fl->l_len = tswapal(fl.l_len);
@@ -4553,7 +4563,8 @@ static abi_long do_fcntl(int fd, int cmd, abi_ulong arg)
     case TARGET_F_SETLKW:
         if (!lock_user_struct(VERIFY_READ, target_fl, arg, 1))
             return -TARGET_EFAULT;
-        fl.l_type = tswap16(target_fl->l_type);
+        fl.l_type =
+                  target_to_host_bitmask(tswap16(target_fl->l_type), flock_tbl);
         fl.l_whence = tswap16(target_fl->l_whence);
         fl.l_start = tswapal(target_fl->l_start);
         fl.l_len = tswapal(target_fl->l_len);
@@ -4565,7 +4576,8 @@ static abi_long do_fcntl(int fd, int cmd, abi_ulong arg)
     case TARGET_F_GETLK64:
         if (!lock_user_struct(VERIFY_READ, target_fl64, arg, 1))
             return -TARGET_EFAULT;
-        fl64.l_type = tswap16(target_fl64->l_type) >> 1;
+        fl64.l_type =
+           target_to_host_bitmask(tswap16(target_fl64->l_type), flock_tbl) >> 1;
         fl64.l_whence = tswap16(target_fl64->l_whence);
         fl64.l_start = tswap64(target_fl64->l_start);
         fl64.l_len = tswap64(target_fl64->l_len);
@@ -4575,7 +4587,8 @@ static abi_long do_fcntl(int fd, int cmd, abi_ulong arg)
         if (ret == 0) {
             if (!lock_user_struct(VERIFY_WRITE, target_fl64, arg, 0))
                 return -TARGET_EFAULT;
-            target_fl64->l_type = tswap16(fl64.l_type) >> 1;
+            target_fl64->l_type =
+                   host_to_target_bitmask(tswap16(fl64.l_type), flock_tbl) >> 1;
             target_fl64->l_whence = tswap16(fl64.l_whence);
             target_fl64->l_start = tswap64(fl64.l_start);
             target_fl64->l_len = tswap64(fl64.l_len);
@@ -4587,7 +4600,8 @@ static abi_long do_fcntl(int fd, int cmd, abi_ulong arg)
     case TARGET_F_SETLKW64:
         if (!lock_user_struct(VERIFY_READ, target_fl64, arg, 1))
             return -TARGET_EFAULT;
-        fl64.l_type = tswap16(target_fl64->l_type) >> 1;
+        fl64.l_type =
+           target_to_host_bitmask(tswap16(target_fl64->l_type), flock_tbl) >> 1;
         fl64.l_whence = tswap16(target_fl64->l_whence);
         fl64.l_start = tswap64(target_fl64->l_start);
         fl64.l_len = tswap64(target_fl64->l_len);
@@ -6213,8 +6227,11 @@ abi_long do_syscall(void *cpu_env, int num, abi_long arg1,
             ret = get_errno(settimeofday(&tv, NULL));
         }
         break;
-#if defined(TARGET_NR_select) && !defined(TARGET_S390X) && !defined(TARGET_S390)
+#if defined(TARGET_NR_select)
     case TARGET_NR_select:
+#if defined(TARGET_S390X) || defined(TARGET_ALPHA)
+        ret = do_select(arg1, arg2, arg3, arg4, arg5);
+#else
         {
             struct target_sel_arg_struct *sel;
             abi_ulong inp, outp, exp, tvp;
@@ -6230,6 +6247,7 @@ abi_long do_syscall(void *cpu_env, int num, abi_long arg1,
             unlock_user_struct(sel, arg1, 0);
             ret = do_select(nsel, inp, outp, exp, tvp);
         }
+#endif
         break;
 #endif
 #ifdef TARGET_NR_pselect6
@@ -7153,12 +7171,8 @@ abi_long do_syscall(void *cpu_env, int num, abi_long arg1,
         }
         break;
 #endif /* TARGET_NR_getdents64 */
-#if defined(TARGET_NR__newselect) || defined(TARGET_S390X)
-#ifdef TARGET_S390X
-    case TARGET_NR_select:
-#else
+#if defined(TARGET_NR__newselect)
     case TARGET_NR__newselect:
-#endif
         ret = do_select(arg1, arg2, arg3, arg4, arg5);
         break;
 #endif
@@ -7448,24 +7462,6 @@ abi_long do_syscall(void *cpu_env, int num, abi_long arg1,
 #else
         goto unimplemented;
 #endif
-#endif
-#ifdef TARGET_NR_pread
-    case TARGET_NR_pread:
-        if (regpairs_aligned(cpu_env))
-            arg4 = arg5;
-        if (!(p = lock_user(VERIFY_WRITE, arg2, arg3, 0)))
-            goto efault;
-        ret = get_errno(pread(arg1, p, arg3, arg4));
-        unlock_user(p, arg2, ret);
-        break;
-    case TARGET_NR_pwrite:
-        if (regpairs_aligned(cpu_env))
-            arg4 = arg5;
-        if (!(p = lock_user(VERIFY_READ, arg2, arg3, 1)))
-            goto efault;
-        ret = get_errno(pwrite(arg1, p, arg3, arg4));
-        unlock_user(p, arg2, 0);
-        break;
 #endif
 #ifdef TARGET_NR_pread64
     case TARGET_NR_pread64:

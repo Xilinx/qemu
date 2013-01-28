@@ -31,9 +31,9 @@
  */
 
 #include "qemu-common.h"
-#include "qemu-timer.h"
-#include "monitor.h"
-#include "sysemu.h"
+#include "qemu/timer.h"
+#include "monitor/monitor.h"
+#include "sysemu/sysemu.h"
 #include "trace.h"
 
 #include <dirent.h>
@@ -1314,7 +1314,7 @@ static int usb_host_open(USBHostDevice *dev, int bus_num,
 
     dev->bus_num = bus_num;
     dev->addr = addr;
-    strcpy(dev->port, port);
+    pstrcpy(dev->port, sizeof(dev->port), port);
     dev->fd = fd;
 
     /* read the device description */
@@ -1476,6 +1476,7 @@ static int usb_host_initfn(USBDevice *dev)
 {
     USBHostDevice *s = DO_UPCAST(USBHostDevice, dev, dev);
 
+    dev->flags |= (1 << USB_DEV_FLAG_IS_HOST);
     dev->auto_attach = 0;
     s->fd = -1;
     s->hub_fd = -1;
@@ -1533,7 +1534,7 @@ static void usb_host_class_initfn(ObjectClass *klass, void *data)
     dc->props = usb_host_dev_properties;
 }
 
-static TypeInfo usb_host_dev_info = {
+static const TypeInfo usb_host_dev_info = {
     .name          = "usb-host",
     .parent        = TYPE_USB_DEVICE,
     .instance_size = sizeof(USBHostDevice),
@@ -1759,7 +1760,7 @@ static int usb_host_auto_scan(void *opaque, int bus_num,
         if (f->addr > 0 && f->addr != addr) {
             continue;
         }
-        if (f->port != NULL && (port == NULL || strcmp(f->port, port) != 0)) {
+        if (f->port != NULL && strcmp(f->port, port) != 0) {
             continue;
         }
 
@@ -1997,7 +1998,7 @@ static void hex2str(int val, char *str, size_t size)
     }
 }
 
-void usb_host_info(Monitor *mon)
+void usb_host_info(Monitor *mon, const QDict *qdict)
 {
     struct USBAutoFilter *f;
     struct USBHostDevice *s;

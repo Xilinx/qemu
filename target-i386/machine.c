@@ -4,7 +4,7 @@
 #include "hw/isa.h"
 
 #include "cpu.h"
-#include "kvm.h"
+#include "sysemu/kvm.h"
 
 static const VMStateDescription vmstate_segment = {
     .name = "segment",
@@ -265,10 +265,11 @@ static int cpu_post_load(void *opaque, int version_id)
 
     cpu_breakpoint_remove_all(env, BP_CPU);
     cpu_watchpoint_remove_all(env, BP_CPU);
-    for (i = 0; i < 4; i++)
+    for (i = 0; i < DR7_MAX_BP; i++) {
         hw_breakpoint_insert(env, i);
-
+    }
     tlb_flush(env, 1);
+
     return 0;
 }
 
@@ -324,6 +325,24 @@ static const VMStateDescription vmstate_fpop_ip_dp = {
         VMSTATE_UINT16(fpop, CPUX86State),
         VMSTATE_UINT64(fpip, CPUX86State),
         VMSTATE_UINT64(fpdp, CPUX86State),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static bool tsc_adjust_needed(void *opaque)
+{
+    CPUX86State *env = opaque;
+
+    return env->tsc_adjust != 0;
+}
+
+static const VMStateDescription vmstate_msr_tsc_adjust = {
+    .name = "cpu/msr_tsc_adjust",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .minimum_version_id_old = 1,
+    .fields      = (VMStateField[]) {
+        VMSTATE_UINT64(tsc_adjust, CPUX86State),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -477,6 +496,9 @@ static const VMStateDescription vmstate_cpu = {
         } , {
             .vmsd = &vmstate_fpop_ip_dp,
             .needed = fpop_ip_dp_needed,
+        }, {
+            .vmsd = &vmstate_msr_tsc_adjust,
+            .needed = tsc_adjust_needed,
         }, {
             .vmsd = &vmstate_msr_tscdeadline,
             .needed = tscdeadline_needed,

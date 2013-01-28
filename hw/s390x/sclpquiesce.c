@@ -12,7 +12,7 @@
  *
  */
 #include <hw/qdev.h>
-#include "sysemu.h"
+#include "sysemu/sysemu.h"
 #include "sclp.h"
 #include "event-facility.h"
 
@@ -107,7 +107,7 @@ static void quiesce_class_init(ObjectClass *klass, void *data)
     k->write_event_data = NULL;
 }
 
-static TypeInfo sclp_quiesce_info = {
+static const TypeInfo sclp_quiesce_info = {
     .name          = "sclpquiesce",
     .parent        = TYPE_SCLP_EVENT,
     .instance_size = sizeof(SCLPEvent),

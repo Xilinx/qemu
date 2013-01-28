@@ -20,7 +20,7 @@
 
 #include "i2c.h"
 #include "hw.h"
-#include "blockdev.h"
+#include "sysemu/blockdev.h"
 
 #ifndef PCA9548_DEBUG
 #define PCA9548_DEBUG 0

@@ -20,9 +20,9 @@
 
 # include "hw.h"
 # include "flash.h"
-# include "blockdev.h"
+# include "sysemu/blockdev.h"
 # include "sysbus.h"
-#include "qemu-error.h"
+#include "qemu/error-report.h"
 
 # define NAND_CMD_READ0		0x00
 # define NAND_CMD_READ1		0x01
@@ -224,7 +224,7 @@ static const struct {
 
 static void nand_reset(DeviceState *dev)
 {
-    NANDFlashState *s = FROM_SYSBUS(NANDFlashState, sysbus_from_qdev(dev));
+    NANDFlashState *s = FROM_SYSBUS(NANDFlashState, SYS_BUS_DEVICE(dev));
     s->cmd = NAND_CMD_READ0;
     s->addr = 0;
     s->addrlen = 0;
@@ -435,7 +435,7 @@ static void nand_class_init(ObjectClass *klass, void *data)
     dc->props = nand_properties;
 }
 
-static TypeInfo nand_info = {
+static const TypeInfo nand_info = {
     .name          = "nand",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(NANDFlashState),

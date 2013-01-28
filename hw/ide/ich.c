@@ -61,12 +61,12 @@
  */
 
 #include <hw/hw.h>
-#include <hw/msi.h>
+#include <hw/pci/msi.h>
 #include <hw/pc.h>
-#include <hw/pci.h>
+#include <hw/pci/pci.h>
 #include <hw/isa.h>
-#include "block.h"
-#include "dma.h"
+#include "block/block.h"
+#include "sysemu/dma.h"
 
 #include <hw/ide/pci.h>
 #include <hw/ide/ahci.h>
@@ -156,7 +156,7 @@ static void ich_ahci_class_init(ObjectClass *klass, void *data)
     dc->reset = pci_ich9_reset;
 }
 
-static TypeInfo ich_ahci_info = {
+static const TypeInfo ich_ahci_info = {
     .name          = "ich9-ahci",
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(AHCIPCIState),

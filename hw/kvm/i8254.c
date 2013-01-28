@@ -22,11 +22,11 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#include "qemu-timer.h"
-#include "sysemu.h"
+#include "qemu/timer.h"
+#include "sysemu/sysemu.h"
 #include "hw/i8254.h"
 #include "hw/i8254_internal.h"
-#include "kvm.h"
+#include "sysemu/kvm.h"
 
 #define KVM_PIT_REINJECT_BIT 0
 
@@ -302,7 +302,7 @@ static void kvm_pit_class_init(ObjectClass *klass, void *data)
     dc->props = kvm_pit_properties;
 }
 
-static TypeInfo kvm_pit_info = {
+static const TypeInfo kvm_pit_info = {
     .name          = "kvm-pit",
     .parent        = TYPE_PIT_COMMON,
     .instance_size = sizeof(KVMPITState),

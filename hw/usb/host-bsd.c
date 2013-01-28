@@ -25,7 +25,7 @@
  */
 
 #include "qemu-common.h"
-#include "monitor.h"
+#include "monitor/monitor.h"
 #include "hw/usb.h"
 
 /* usb.h declares these */
@@ -292,6 +292,7 @@ static void usb_host_handle_destroy(USBDevice *opaque)
 
 static int usb_host_initfn(USBDevice *dev)
 {
+    dev->flags |= (1 << USB_DEV_FLAG_IS_HOST);
     return 0;
 }
 
@@ -406,7 +407,7 @@ static void usb_host_class_initfn(ObjectClass *klass, void *data)
     uc->handle_destroy = usb_host_handle_destroy;
 }
 
-static TypeInfo usb_host_dev_info = {
+static const TypeInfo usb_host_dev_info = {
     .name          = "usb-host",
     .parent        = TYPE_USB_DEVICE,
     .instance_size = sizeof(USBHostDevice),
@@ -632,7 +633,7 @@ static int usb_host_info_device(void *opaque,
     return 0;
 }
 
-void usb_host_info(Monitor *mon)
+void usb_host_info(Monitor *mon, const QDict *qdict)
 {
     usb_host_scan(mon, usb_host_info_device);
 }

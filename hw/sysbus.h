@@ -4,7 +4,7 @@
 /* Devices attached directly to the main system bus.  */
 
 #include "qdev.h"
-#include "memory.h"
+#include "exec/memory.h"
 
 #define QDEV_MAX_MMIO 32
 #define QDEV_MAX_PIO 32
@@ -44,7 +44,6 @@ struct SysBusDevice {
 };
 
 /* Macros to compensate for lack of type inheritance in C.  */
-#define sysbus_from_qdev(dev) ((SysBusDevice *)(dev))
 #define FROM_SYSBUS(type, dev) DO_UPCAST(type, busdev, dev)
 
 void *sysbus_new(void);

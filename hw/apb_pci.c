@@ -27,13 +27,13 @@
    the secondary PCI bridge.  */
 
 #include "sysbus.h"
-#include "pci.h"
-#include "pci_host.h"
-#include "pci_bridge.h"
-#include "pci_internals.h"
+#include "pci/pci.h"
+#include "pci/pci_host.h"
+#include "pci/pci_bridge.h"
+#include "pci/pci_bus.h"
 #include "apb_pci.h"
-#include "sysemu.h"
-#include "exec-memory.h"
+#include "sysemu/sysemu.h"
+#include "exec/address-spaces.h"
 
 /* debug APB */
 //#define DEBUG_APB
@@ -365,7 +365,7 @@ PCIBus *pci_apb_init(hwaddr special_base,
     /* Ultrasparc PBM main bus */
     dev = qdev_create(NULL, "pbm");
     qdev_init_nofail(dev);
-    s = sysbus_from_qdev(dev);
+    s = SYS_BUS_DEVICE(dev);
     /* apb_config */
     sysbus_mmio_map(s, 0, special_base);
     /* PCI configuration space */
@@ -486,7 +486,7 @@ static void pbm_pci_host_class_init(ObjectClass *klass, void *data)
     k->class_id = PCI_CLASS_BRIDGE_HOST;
 }
 
-static TypeInfo pbm_pci_host_info = {
+static const TypeInfo pbm_pci_host_info = {
     .name          = "pbm-pci",
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(PCIDevice),
@@ -502,7 +502,7 @@ static void pbm_host_class_init(ObjectClass *klass, void *data)
     dc->reset = pci_pbm_reset;
 }
 
-static TypeInfo pbm_host_info = {
+static const TypeInfo pbm_host_info = {
     .name          = "pbm",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(APBState),
@@ -525,7 +525,7 @@ static void pbm_pci_bridge_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_pci_device;
 }
 
-static TypeInfo pbm_pci_bridge_info = {
+static const TypeInfo pbm_pci_bridge_info = {
     .name          = "pbm-bridge",
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(PCIBridge),

@@ -1,3 +1,6 @@
+#ifndef HW_PCMCIA_H
+#define HW_PCMCIA_H 1
+
 /* PCMCIA/Cardbus */
 
 #include "qemu-common.h"
@@ -11,7 +14,7 @@ typedef struct {
 
 void pcmcia_socket_register(PCMCIASocket *socket);
 void pcmcia_socket_unregister(PCMCIASocket *socket);
-void pcmcia_info(Monitor *mon);
+void pcmcia_info(Monitor *mon, const QDict *qdict);
 
 struct PCMCIACardState {
     void *state;
@@ -49,3 +52,5 @@ struct PCMCIACardState {
 
 /* dscm1xxxx.c */
 PCMCIACardState *dscm1xxxx_init(DriveInfo *bdrv);
+
+#endif

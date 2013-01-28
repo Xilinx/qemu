@@ -2,12 +2,12 @@
 #define HW_PC_H
 
 #include "qemu-common.h"
-#include "memory.h"
-#include "ioport.h"
+#include "exec/memory.h"
+#include "exec/ioport.h"
 #include "isa.h"
 #include "fdc.h"
-#include "net.h"
-#include "memory.h"
+#include "net/net.h"
+#include "exec/memory.h"
 #include "ioapic.h"
 
 /* PC-style peripherals (also used by other machines).  */
@@ -40,8 +40,8 @@ qemu_irq *i8259_init(ISABus *bus, qemu_irq parent_irq);
 qemu_irq *kvm_i8259_init(ISABus *bus);
 int pic_read_irq(DeviceState *d);
 int pic_get_output(DeviceState *d);
-void pic_info(Monitor *mon);
-void irq_info(Monitor *mon);
+void pic_info(Monitor *mon, const QDict *qdict);
+void irq_info(Monitor *mon, const QDict *qdict);
 
 /* Global System Interrupts */
 
@@ -79,6 +79,7 @@ void pc_register_ferr_irq(qemu_irq irq);
 void pc_acpi_smi_interrupt(void *opaque, int irq, int level);
 
 void pc_cpus_init(const char *cpu_model);
+void pc_acpi_init(const char *default_dsdt);
 void *pc_memory_init(MemoryRegion *system_memory,
                     const char *kernel_filename,
                     const char *kernel_cmdline,

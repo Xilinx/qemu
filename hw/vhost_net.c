@@ -13,12 +13,12 @@
  * GNU GPL, version 2 or (at your option) any later version.
  */
 
-#include "net.h"
+#include "net/net.h"
 #include "net/tap.h"
 
 #include "virtio-net.h"
 #include "vhost_net.h"
-#include "qemu-error.h"
+#include "qemu/error-report.h"
 
 #include "config.h"
 
@@ -109,6 +109,9 @@ struct vhost_net *vhost_net_init(NetClientState *backend, int devfd,
         (1 << VHOST_NET_F_VIRTIO_NET_HDR);
     net->backend = r;
 
+    net->dev.nvqs = 2;
+    net->dev.vqs = net->vqs;
+
     r = vhost_dev_init(&net->dev, devfd, "/dev/vhost-net", force);
     if (r < 0) {
         goto fail;
@@ -142,9 +145,6 @@ int vhost_net_start(struct vhost_net *net,
 {
     struct vhost_vring_file file = { };
     int r;
-
-    net->dev.nvqs = 2;
-    net->dev.vqs = net->vqs;
 
     r = vhost_dev_enable_notifiers(&net->dev, dev);
     if (r < 0) {
@@ -200,6 +200,17 @@ void vhost_net_cleanup(struct vhost_net *net)
     vhost_dev_cleanup(&net->dev);
     g_free(net);
 }
+
+bool vhost_net_virtqueue_pending(VHostNetState *net, int idx)
+{
+    return vhost_virtqueue_pending(&net->dev, idx);
+}
+
+void vhost_net_virtqueue_mask(VHostNetState *net, VirtIODevice *dev,
+                              int idx, bool mask)
+{
+    vhost_virtqueue_mask(&net->dev, dev, idx, mask);
+}
 #else
 struct vhost_net *vhost_net_init(NetClientState *backend, int devfd,
                                  bool force)
@@ -232,6 +243,16 @@ unsigned vhost_net_get_features(struct vhost_net *net, unsigned features)
     return features;
 }
 void vhost_net_ack_features(struct vhost_net *net, unsigned features)
+{
+}
+
+bool vhost_net_virtqueue_pending(VHostNetState *net, int idx)
+{
+    return -ENOSYS;
+}
+
+void vhost_net_virtqueue_mask(VHostNetState *net, VirtIODevice *dev,
+                              int idx, bool mask)
 {
 }
 #endif

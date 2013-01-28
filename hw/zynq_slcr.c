@@ -15,14 +15,15 @@
  */
 
 #include "hw.h"
-#include "qemu-timer.h"
+#include "qemu/timer.h"
 #include "sysbus.h"
-#include "sysemu.h"
-#ifdef CONFIG_FDT
-#include "device_tree.h"
-#endif
+#include "sysemu/sysemu.h"
 
 #define NUM_CPUS 2
+#ifdef CONFIG_FDT
+#include "qemu/config-file.h"
+#include "sysemu/device_tree.h"
+#endif
 
 #ifdef ZYNQ_ARM_SLCR_ERR_DEBUG
 #define DB_PRINT(...) do { \
@@ -239,7 +240,7 @@ static void zynq_slcr_reset(DeviceState *d)
 {
     int i;
     ZynqSLCRState *s =
-            FROM_SYSBUS(ZynqSLCRState, sysbus_from_qdev(d));
+            FROM_SYSBUS(ZynqSLCRState, SYS_BUS_DEVICE(d));
 
     DB_PRINT("RESET\n");
 
@@ -631,7 +632,7 @@ static void zynq_slcr_class_init(ObjectClass *klass, void *data)
     dc->reset = zynq_slcr_reset;
 }
 
-static TypeInfo zynq_slcr_info = {
+static const TypeInfo zynq_slcr_info = {
     .class_init = zynq_slcr_class_init,
     .name  = "xlnx.ps7-slcr",
     .parent = TYPE_SYS_BUS_DEVICE,

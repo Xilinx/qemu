@@ -18,11 +18,10 @@
  */
 
 #include "hw.h"
-#include "block.h"
-#include "sysemu.h"
-#include "net.h"
+#include "block/block.h"
+#include "sysemu/sysemu.h"
 #include "boards.h"
-#include "monitor.h"
+#include "monitor/monitor.h"
 #include "loader.h"
 #include "elf.h"
 #include "hw/virtio.h"
@@ -30,9 +29,10 @@
 #include "hw/virtio-serial.h"
 #include "hw/virtio-net.h"
 #include "hw/sysbus.h"
-#include "kvm.h"
+#include "sysemu/kvm.h"
 
 #include "hw/s390-virtio-bus.h"
+#include "hw/virtio-bus.h"
 
 /* #define DEBUG_S390 */
 
@@ -111,10 +111,12 @@ VirtIOS390Bus *s390_virtio_bus_init(ram_addr_t *ram_size)
     return bus;
 }
 
-static void s390_virtio_irq(CPUS390XState *env, int config_change, uint64_t token)
+static void s390_virtio_irq(S390CPU *cpu, int config_change, uint64_t token)
 {
+    CPUS390XState *env = &cpu->env;
+
     if (kvm_enabled()) {
-        kvm_s390_virtio_irq(env, config_change, token);
+        kvm_s390_virtio_irq(cpu, config_change, token);
     } else {
         cpu_inject_ext(env, VIRTIO_EXT_CODE, config_change, token);
     }
@@ -137,14 +139,13 @@ static int s390_virtio_device_init(VirtIOS390Device *dev, VirtIODevice *vdev)
 
     bus->dev_offs += dev_len;
 
-    virtio_bind_device(vdev, &virtio_s390_bindings, dev);
+    virtio_bind_device(vdev, &virtio_s390_bindings, DEVICE(dev));
     dev->host_features = vdev->get_features(vdev, dev->host_features);
     s390_virtio_device_sync(dev);
     s390_virtio_reset_idx(dev);
     if (dev->qdev.hotplugged) {
         S390CPU *cpu = s390_cpu_addr2state(0);
-        CPUS390XState *env = &cpu->env;
-        s390_virtio_irq(env, VIRTIO_PARAM_DEV_ADD, dev->dev_offs);
+        s390_virtio_irq(cpu, VIRTIO_PARAM_DEV_ADD, dev->dev_offs);
     }
 
     return 0;
@@ -364,19 +365,32 @@ VirtIOS390Device *s390_virtio_bus_find_mem(VirtIOS390Bus *bus, ram_addr_t mem)
     return NULL;
 }
 
-static void virtio_s390_notify(void *opaque, uint16_t vector)
+/* DeviceState to VirtIOS390Device. Note: used on datapath,
+ * be careful and test performance if you change this.
+ */
+static inline VirtIOS390Device *to_virtio_s390_device_fast(DeviceState *d)
 {
-    VirtIOS390Device *dev = (VirtIOS390Device*)opaque;
-    uint64_t token = s390_virtio_device_vq_token(dev, vector);
-    S390CPU *cpu = s390_cpu_addr2state(0);
-    CPUS390XState *env = &cpu->env;
-
-    s390_virtio_irq(env, 0, token);
+    return container_of(d, VirtIOS390Device, qdev);
 }
 
-static unsigned virtio_s390_get_features(void *opaque)
+/* DeviceState to VirtIOS390Device. TODO: use QOM. */
+static inline VirtIOS390Device *to_virtio_s390_device(DeviceState *d)
 {
-    VirtIOS390Device *dev = (VirtIOS390Device*)opaque;
+    return container_of(d, VirtIOS390Device, qdev);
+}
+
+static void virtio_s390_notify(DeviceState *d, uint16_t vector)
+{
+    VirtIOS390Device *dev = to_virtio_s390_device_fast(d);
+    uint64_t token = s390_virtio_device_vq_token(dev, vector);
+    S390CPU *cpu = s390_cpu_addr2state(0);
+
+    s390_virtio_irq(cpu, 0, token);
+}
+
+static unsigned virtio_s390_get_features(DeviceState *d)
+{
+    VirtIOS390Device *dev = to_virtio_s390_device(d);
     return dev->host_features;
 }
 
@@ -406,7 +420,7 @@ static void s390_virtio_net_class_init(ObjectClass *klass, void *data)
     dc->props = s390_virtio_net_properties;
 }
 
-static TypeInfo s390_virtio_net = {
+static const TypeInfo s390_virtio_net = {
     .name          = "virtio-net-s390",
     .parent        = TYPE_VIRTIO_S390_DEVICE,
     .instance_size = sizeof(VirtIOS390Device),
@@ -432,7 +446,7 @@ static void s390_virtio_blk_class_init(ObjectClass *klass, void *data)
     dc->props = s390_virtio_blk_properties;
 }
 
-static TypeInfo s390_virtio_blk = {
+static const TypeInfo s390_virtio_blk = {
     .name          = "virtio-blk-s390",
     .parent        = TYPE_VIRTIO_S390_DEVICE,
     .instance_size = sizeof(VirtIOS390Device),
@@ -454,7 +468,7 @@ static void s390_virtio_serial_class_init(ObjectClass *klass, void *data)
     dc->props = s390_virtio_serial_properties;
 }
 
-static TypeInfo s390_virtio_serial = {
+static const TypeInfo s390_virtio_serial = {
     .name          = "virtio-serial-s390",
     .parent        = TYPE_VIRTIO_S390_DEVICE,
     .instance_size = sizeof(VirtIOS390Device),
@@ -476,7 +490,7 @@ static void s390_virtio_rng_class_init(ObjectClass *klass, void *data)
     k->init = s390_virtio_rng_init;
 }
 
-static TypeInfo s390_virtio_rng = {
+static const TypeInfo s390_virtio_rng = {
     .name          = "virtio-rng-s390",
     .parent        = TYPE_VIRTIO_S390_DEVICE,
     .instance_size = sizeof(VirtIOS390Device),
@@ -488,6 +502,8 @@ static int s390_virtio_busdev_init(DeviceState *dev)
 {
     VirtIOS390Device *_dev = (VirtIOS390Device *)dev;
     VirtIOS390DeviceClass *_info = VIRTIO_S390_DEVICE_GET_CLASS(dev);
+
+    virtio_s390_bus_new(&_dev->bus, _dev);
 
     return _info->init(_dev);
 }
@@ -501,7 +517,7 @@ static void virtio_s390_device_class_init(ObjectClass *klass, void *data)
     dc->unplug = qdev_simple_unplug_cb;
 }
 
-static TypeInfo virtio_s390_device_info = {
+static const TypeInfo virtio_s390_device_info = {
     .name = TYPE_VIRTIO_S390_DEVICE,
     .parent = TYPE_DEVICE,
     .instance_size = sizeof(VirtIOS390Device),
@@ -524,7 +540,7 @@ static void s390_virtio_scsi_class_init(ObjectClass *klass, void *data)
     dc->props = s390_virtio_scsi_properties;
 }
 
-static TypeInfo s390_virtio_scsi = {
+static const TypeInfo s390_virtio_scsi = {
     .name          = "virtio-scsi-s390",
     .parent        = TYPE_VIRTIO_S390_DEVICE,
     .instance_size = sizeof(VirtIOS390Device),
@@ -549,15 +565,43 @@ static void s390_virtio_bridge_class_init(ObjectClass *klass, void *data)
     dc->no_user = 1;
 }
 
-static TypeInfo s390_virtio_bridge_info = {
+static const TypeInfo s390_virtio_bridge_info = {
     .name          = "s390-virtio-bridge",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(SysBusDevice),
     .class_init    = s390_virtio_bridge_class_init,
 };
 
+/* virtio-s390-bus */
+
+void virtio_s390_bus_new(VirtioBusState *bus, VirtIOS390Device *dev)
+{
+    DeviceState *qdev = DEVICE(dev);
+    BusState *qbus;
+    qbus_create_inplace((BusState *)bus, TYPE_VIRTIO_S390_BUS, qdev, NULL);
+    qbus = BUS(bus);
+    qbus->allow_hotplug = 0;
+}
+
+static void virtio_s390_bus_class_init(ObjectClass *klass, void *data)
+{
+    VirtioBusClass *k = VIRTIO_BUS_CLASS(klass);
+    BusClass *bus_class = BUS_CLASS(klass);
+    bus_class->max_dev = 1;
+    k->notify = virtio_s390_notify;
+    k->get_features = virtio_s390_get_features;
+}
+
+static const TypeInfo virtio_s390_bus_info = {
+    .name          = TYPE_VIRTIO_S390_BUS,
+    .parent        = TYPE_VIRTIO_BUS,
+    .instance_size = sizeof(VirtioS390BusState),
+    .class_init    = virtio_s390_bus_class_init,
+};
+
 static void s390_virtio_register_types(void)
 {
+    type_register_static(&virtio_s390_bus_info);
     type_register_static(&s390_virtio_bus_info);
     type_register_static(&virtio_s390_device_info);
     type_register_static(&s390_virtio_serial);

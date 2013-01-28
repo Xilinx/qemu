@@ -20,7 +20,7 @@
 #include "apic.h"
 #include "apic_internal.h"
 #include "trace.h"
-#include "kvm.h"
+#include "sysemu/kvm.h"
 
 static int apic_irq_delivered;
 bool apic_report_tpr_access;
@@ -385,7 +385,7 @@ static void apic_common_class_init(ObjectClass *klass, void *data)
     sc->init = apic_init_common;
 }
 
-static TypeInfo apic_common_type = {
+static const TypeInfo apic_common_type = {
     .name = TYPE_APIC_COMMON,
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(APICCommonState),

@@ -2,7 +2,7 @@
  * MIPS ASE DSP Instruction emulation helpers for QEMU.
  *
  * Copyright (c) 2012  Jia Liu <proljc@gmail.com>
- *                     Dongxue Zhang <elat.era@gmail.com>
+ *                     Dongxue Zhang <elta.era@gmail.com>
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
@@ -482,35 +482,6 @@ static inline uint8_t mipsdsp_rrshift1_sub_u8(uint8_t a, uint8_t b)
     temp = (uint16_t)a - (uint16_t)b + 1;
 
     return (temp >> 1) & 0x00FF;
-}
-
-static inline int64_t mipsdsp_rashift_short_acc(int32_t ac,
-                                                int32_t shift,
-                                                CPUMIPSState *env)
-{
-    int32_t sign, temp31;
-    int64_t temp, acc;
-
-    sign = (env->active_tc.HI[ac] >> 31) & 0x01;
-    acc = ((int64_t)env->active_tc.HI[ac] << 32) |
-          ((int64_t)env->active_tc.LO[ac] & 0xFFFFFFFF);
-    if (shift == 0) {
-        temp = acc;
-    } else {
-        if (sign == 0) {
-            temp = (((int64_t)0x01 << (32 - shift + 1)) - 1) & (acc >> shift);
-        } else {
-            temp = ((((int64_t)0x01 << (shift + 1)) - 1) << (32 - shift)) |
-                   (acc >> shift);
-        }
-    }
-
-    temp31 = (temp >> 31) & 0x01;
-    if (sign != temp31) {
-        set_DSPControl_overflow_flag(1, 23, env);
-    }
-
-    return temp;
 }
 
 /*  128 bits long. p[0] is LO, p[1] is HI. */
@@ -2502,7 +2473,7 @@ DP_OB(dpsu_h_obr, 0, 24, 16, 8, 0, 24, 16, 8, 0);
 void helper_##name(uint32_t ac, target_ulong rs, target_ulong rt,              \
                    CPUMIPSState *env)                                          \
 {                                                                              \
-    uint16_t rsB, rsA, rtB, rtA;                                               \
+    int16_t rsB, rsA, rtB, rtA;                                                \
     int32_t  tempA, tempB;                                                     \
     int64_t  acc;                                                              \
                                                                                \
@@ -3152,7 +3123,7 @@ target_ulong helper_##name(CPUMIPSState *env, target_ulong rs,  \
                                                                 \
     filter = ((int32_t)0x01 << size) - 1;                       \
     filter = filter << pos;                                     \
-    temprs = rs & filter;                                       \
+    temprs = (rs << pos) & filter;                              \
     temprt = rt & ~filter;                                      \
     temp = temprs | temprt;                                     \
                                                                 \
@@ -3407,7 +3378,7 @@ target_ulong helper_extr_w(target_ulong ac, target_ulong shift,
     int32_t tempI;
     int64_t tempDL[2];
 
-    shift = shift & 0x0F;
+    shift = shift & 0x1F;
 
     mipsdsp_rndrashift_short_acc(tempDL, ac, shift, env);
     if ((tempDL[1] != 0 || (tempDL[0] & MIPSDSP_LHI) != 0) &&
@@ -3435,7 +3406,7 @@ target_ulong helper_extr_r_w(target_ulong ac, target_ulong shift,
 {
     int64_t tempDL[2];
 
-    shift = shift & 0x0F;
+    shift = shift & 0x1F;
 
     mipsdsp_rndrashift_short_acc(tempDL, ac, shift, env);
     if ((tempDL[1] != 0 || (tempDL[0] & MIPSDSP_LHI) != 0) &&
@@ -3462,7 +3433,7 @@ target_ulong helper_extr_rs_w(target_ulong ac, target_ulong shift,
     int32_t tempI, temp64;
     int64_t tempDL[2];
 
-    shift = shift & 0x0F;
+    shift = shift & 0x1F;
 
     mipsdsp_rndrashift_short_acc(tempDL, ac, shift, env);
     if ((tempDL[1] != 0 || (tempDL[0] & MIPSDSP_LHI) != 0) &&
@@ -3645,11 +3616,15 @@ target_ulong helper_dextr_rs_l(target_ulong ac, target_ulong shift,
 target_ulong helper_extr_s_h(target_ulong ac, target_ulong shift,
                              CPUMIPSState *env)
 {
-    int64_t temp;
+    int64_t temp, acc;
 
-    shift = shift & 0x0F;
+    shift = shift & 0x1F;
 
-    temp = mipsdsp_rashift_short_acc(ac, shift, env);
+    acc = ((int64_t)env->active_tc.HI[ac] << 32) |
+          ((int64_t)env->active_tc.LO[ac] & 0xFFFFFFFF);
+
+    temp = acc >> shift;
+
     if (temp > (int64_t)0x7FFF) {
         temp = 0x00007FFF;
         set_DSPControl_overflow_flag(1, 23, env);
@@ -3814,17 +3789,18 @@ void helper_shilo(target_ulong ac, target_ulong rs, CPUMIPSState *env)
 
     rs5_0 = rs & 0x3F;
     rs5_0 = (int8_t)(rs5_0 << 2) >> 2;
-    rs5_0 = MIPSDSP_ABS(rs5_0);
+
+    if (unlikely(rs5_0 == 0)) {
+        return;
+    }
+
     acc   = (((uint64_t)env->active_tc.HI[ac] << 32) & MIPSDSP_LHI) |
             ((uint64_t)env->active_tc.LO[ac] & MIPSDSP_LLO);
-    if (rs5_0 == 0) {
-        temp = acc;
+
+    if (rs5_0 > 0) {
+        temp = acc >> rs5_0;
     } else {
-        if (rs5_0 > 0) {
-            temp = acc >> rs5_0;
-        } else {
-            temp = acc << rs5_0;
-        }
+        temp = acc << -rs5_0;
     }
 
     env->active_tc.HI[ac] = (target_ulong)(int32_t)((temp & MIPSDSP_LHI) >> 32);
@@ -3947,7 +3923,11 @@ void helper_wrdsp(target_ulong rs, target_ulong mask_num, CPUMIPSState *env)
     if (mask[4] == 1) {
         overwrite &= 0x00FFFFFF;
         newbits   &= 0x00FFFFFF;
+#if defined(TARGET_MIPS64)
         newbits   |= 0xFF000000 & rs;
+#else
+        newbits   |= 0x0F000000 & rs;
+#endif
     }
 
     if (mask[5] == 1) {
@@ -3998,7 +3978,11 @@ target_ulong helper_rddsp(target_ulong masknum, CPUMIPSState *env)
     }
 
     if (mask[4] == 1) {
+#if defined(TARGET_MIPS64)
         temp |= dsp & 0xFF000000;
+#else
+        temp |= dsp & 0x0F000000;
+#endif
     }
 
     if (mask[5] == 1) {

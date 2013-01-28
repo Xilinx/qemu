@@ -23,10 +23,10 @@
 
 #include "hw.h"
 #include "sysbus.h"
-#include "sysemu.h"
+#include "sysemu/sysemu.h"
 #include "trace.h"
-#include "qemu-error.h"
-#include "blockdev.h"
+#include "qemu/error-report.h"
+#include "sysemu/blockdev.h"
 #include "sd.h"
 
 enum {
@@ -288,7 +288,7 @@ static void milkymist_memcard_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_milkymist_memcard;
 }
 
-static TypeInfo milkymist_memcard_info = {
+static const TypeInfo milkymist_memcard_info = {
     .name          = "milkymist-memcard",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(MilkymistMemcardState),

@@ -27,17 +27,17 @@
 #include "hw.h"
 #include "sh.h"
 #include "devices.h"
-#include "sysemu.h"
+#include "sysemu/sysemu.h"
 #include "boards.h"
-#include "pci.h"
-#include "net.h"
+#include "pci/pci.h"
+#include "net/net.h"
 #include "sh7750_regs.h"
 #include "ide.h"
 #include "loader.h"
 #include "usb.h"
 #include "flash.h"
-#include "blockdev.h"
-#include "exec-memory.h"
+#include "sysemu/blockdev.h"
+#include "exec/address-spaces.h"
 
 #define FLASH_BASE 0x00000000
 #define FLASH_SIZE 0x02000000
@@ -262,7 +262,7 @@ static void r2d_init(QEMUMachineInitArgs *args)
     irq = r2d_fpga_init(address_space_mem, 0x04000000, sh7750_irl(s));
 
     dev = qdev_create(NULL, "sh_pci");
-    busdev = sysbus_from_qdev(dev);
+    busdev = SYS_BUS_DEVICE(dev);
     qdev_init_nofail(dev);
     sysbus_mmio_map(busdev, 0, P4ADDR(0x1e200000));
     sysbus_mmio_map(busdev, 1, A7ADDR(0x1e200000));
@@ -347,6 +347,7 @@ static QEMUMachine r2d_machine = {
     .name = "r2d",
     .desc = "r2d-plus board",
     .init = r2d_init,
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static void r2d_machine_init(void)

@@ -7,19 +7,19 @@
  * later.  See the COPYING file in the top-level directory.
  */
 
-#include "blockdev.h"
+#include "sysemu/blockdev.h"
 #include "hw/block-common.h"
-#include "blockjob.h"
-#include "monitor.h"
-#include "qerror.h"
-#include "qemu-option.h"
-#include "qemu-config.h"
-#include "qemu-objects.h"
-#include "sysemu.h"
-#include "block_int.h"
+#include "block/blockjob.h"
+#include "monitor/monitor.h"
+#include "qapi/qmp/qerror.h"
+#include "qemu/option.h"
+#include "qemu/config-file.h"
+#include "qapi/qmp/types.h"
+#include "sysemu/sysemu.h"
+#include "block/block_int.h"
 #include "qmp-commands.h"
 #include "trace.h"
-#include "arch_init.h"
+#include "sysemu/arch_init.h"
 
 static QTAILQ_HEAD(drivelist, DriveInfo) drives = QTAILQ_HEAD_INITIALIZER(drives);
 
@@ -275,7 +275,7 @@ static bool do_check_io_limits(BlockIOLimit *io_limits)
     return true;
 }
 
-DriveInfo *drive_init(QemuOpts *opts, int default_to_scsi)
+DriveInfo *drive_init(QemuOpts *opts, BlockInterfaceType block_default_type)
 {
     const char *buf;
     const char *file = NULL;
@@ -325,7 +325,7 @@ DriveInfo *drive_init(QemuOpts *opts, int default_to_scsi)
             return NULL;
 	}
     } else {
-        type = default_to_scsi ? IF_SCSI : IF_IDE;
+        type = block_default_type;
     }
 
     max_devs = if_max_devs[type];
@@ -568,7 +568,7 @@ DriveInfo *drive_init(QemuOpts *opts, int default_to_scsi)
         break;
     case IF_VIRTIO:
         /* add virtio block device */
-        opts = qemu_opts_create(qemu_find_opts("device"), NULL, 0, NULL);
+        opts = qemu_opts_create_nofail(qemu_find_opts("device"));
         if (arch_type == QEMU_ARCH_S390X) {
             qemu_opt_set(opts, "driver", "virtio-blk-s390");
         } else {
@@ -707,6 +707,7 @@ void qmp_transaction(BlockdevActionList *dev_list, Error **errp)
     int ret = 0;
     BlockdevActionList *dev_entry = dev_list;
     BlkTransactionStates *states, *next;
+    Error *local_err = NULL;
 
     QSIMPLEQ_HEAD(snap_bdrv_states, BlkTransactionStates) snap_bdrv_states;
     QSIMPLEQ_INIT(&snap_bdrv_states);
@@ -786,12 +787,12 @@ void qmp_transaction(BlockdevActionList *dev_list, Error **errp)
 
         /* create new image w/backing file */
         if (mode != NEW_IMAGE_MODE_EXISTING) {
-            ret = bdrv_img_create(new_image_file, format,
-                                  states->old_bs->filename,
-                                  states->old_bs->drv->format_name,
-                                  NULL, -1, flags);
-            if (ret) {
-                error_set(errp, QERR_OPEN_FILE_FAILED, new_image_file);
+            bdrv_img_create(new_image_file, format,
+                            states->old_bs->filename,
+                            states->old_bs->drv->format_name,
+                            NULL, -1, flags, &local_err);
+            if (error_is_set(&local_err)) {
+                error_propagate(errp, local_err);
                 goto delete_and_fail;
             }
         }
@@ -1263,8 +1264,8 @@ void qmp_drive_mirror(const char *device, const char *target,
         assert(format && drv);
         bdrv_get_geometry(bs, &size);
         size *= 512;
-        ret = bdrv_img_create(target, format,
-                              NULL, NULL, NULL, size, flags);
+        bdrv_img_create(target, format,
+                        NULL, NULL, NULL, size, flags, &local_err);
     } else {
         switch (mode) {
         case NEW_IMAGE_MODE_EXISTING:
@@ -1272,18 +1273,18 @@ void qmp_drive_mirror(const char *device, const char *target,
             break;
         case NEW_IMAGE_MODE_ABSOLUTE_PATHS:
             /* create new image with backing file */
-            ret = bdrv_img_create(target, format,
-                                  source->filename,
-                                  source->drv->format_name,
-                                  NULL, -1, flags);
+            bdrv_img_create(target, format,
+                            source->filename,
+                            source->drv->format_name,
+                            NULL, -1, flags, &local_err);
             break;
         default:
             abort();
         }
     }
 
-    if (ret) {
-        error_set(errp, QERR_OPEN_FILE_FAILED, target);
+    if (error_is_set(&local_err)) {
+        error_propagate(errp, local_err);
         return;
     }
 
@@ -1426,3 +1427,121 @@ BlockJobInfoList *qmp_query_block_jobs(Error **errp)
     bdrv_iterate(do_qmp_query_block_jobs_one, &prev);
     return dummy.next;
 }
+
+QemuOptsList qemu_drive_opts = {
+    .name = "drive",
+    .head = QTAILQ_HEAD_INITIALIZER(qemu_drive_opts.head),
+    .desc = {
+        {
+            .name = "bus",
+            .type = QEMU_OPT_NUMBER,
+            .help = "bus number",
+        },{
+            .name = "unit",
+            .type = QEMU_OPT_NUMBER,
+            .help = "unit number (i.e. lun for scsi)",
+        },{
+            .name = "if",
+            .type = QEMU_OPT_STRING,
+            .help = "interface (ide, scsi, sd, mtd, floppy, pflash, virtio)",
+        },{
+            .name = "index",
+            .type = QEMU_OPT_NUMBER,
+            .help = "index number",
+        },{
+            .name = "cyls",
+            .type = QEMU_OPT_NUMBER,
+            .help = "number of cylinders (ide disk geometry)",
+        },{
+            .name = "heads",
+            .type = QEMU_OPT_NUMBER,
+            .help = "number of heads (ide disk geometry)",
+        },{
+            .name = "secs",
+            .type = QEMU_OPT_NUMBER,
+            .help = "number of sectors (ide disk geometry)",
+        },{
+            .name = "trans",
+            .type = QEMU_OPT_STRING,
+            .help = "chs translation (auto, lba. none)",
+        },{
+            .name = "media",
+            .type = QEMU_OPT_STRING,
+            .help = "media type (disk, cdrom)",
+        },{
+            .name = "snapshot",
+            .type = QEMU_OPT_BOOL,
+            .help = "enable/disable snapshot mode",
+        },{
+            .name = "file",
+            .type = QEMU_OPT_STRING,
+            .help = "disk image",
+        },{
+            .name = "cache",
+            .type = QEMU_OPT_STRING,
+            .help = "host cache usage (none, writeback, writethrough, "
+                    "directsync, unsafe)",
+        },{
+            .name = "aio",
+            .type = QEMU_OPT_STRING,
+            .help = "host AIO implementation (threads, native)",
+        },{
+            .name = "format",
+            .type = QEMU_OPT_STRING,
+            .help = "disk format (raw, qcow2, ...)",
+        },{
+            .name = "serial",
+            .type = QEMU_OPT_STRING,
+            .help = "disk serial number",
+        },{
+            .name = "rerror",
+            .type = QEMU_OPT_STRING,
+            .help = "read error action",
+        },{
+            .name = "werror",
+            .type = QEMU_OPT_STRING,
+            .help = "write error action",
+        },{
+            .name = "addr",
+            .type = QEMU_OPT_STRING,
+            .help = "pci address (virtio only)",
+        },{
+            .name = "readonly",
+            .type = QEMU_OPT_BOOL,
+            .help = "open drive file as read-only",
+        },{
+            .name = "iops",
+            .type = QEMU_OPT_NUMBER,
+            .help = "limit total I/O operations per second",
+        },{
+            .name = "iops_rd",
+            .type = QEMU_OPT_NUMBER,
+            .help = "limit read operations per second",
+        },{
+            .name = "iops_wr",
+            .type = QEMU_OPT_NUMBER,
+            .help = "limit write operations per second",
+        },{
+            .name = "bps",
+            .type = QEMU_OPT_NUMBER,
+            .help = "limit total bytes per second",
+        },{
+            .name = "bps_rd",
+            .type = QEMU_OPT_NUMBER,
+            .help = "limit read bytes per second",
+        },{
+            .name = "bps_wr",
+            .type = QEMU_OPT_NUMBER,
+            .help = "limit write bytes per second",
+        },{
+            .name = "copy-on-read",
+            .type = QEMU_OPT_BOOL,
+            .help = "copy read data from backing file into image file",
+        },{
+            .name = "boot",
+            .type = QEMU_OPT_BOOL,
+            .help = "(deprecated, ignored)",
+        },
+        { /* end of list */ }
+    },
+};

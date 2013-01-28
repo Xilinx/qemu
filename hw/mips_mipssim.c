@@ -29,14 +29,14 @@
 #include "mips_cpudevs.h"
 #include "serial.h"
 #include "isa.h"
-#include "net.h"
-#include "sysemu.h"
+#include "net/net.h"
+#include "sysemu/sysemu.h"
 #include "boards.h"
 #include "mips-bios.h"
 #include "loader.h"
 #include "elf.h"
 #include "sysbus.h"
-#include "exec-memory.h"
+#include "exec/address-spaces.h"
 
 static struct _loaderparams {
     int ram_size;
@@ -123,7 +123,7 @@ static void mipsnet_init(int base, qemu_irq irq, NICInfo *nd)
     qdev_set_nic_properties(dev, nd);
     qdev_init_nofail(dev);
 
-    s = sysbus_from_qdev(dev);
+    s = SYS_BUS_DEVICE(dev);
     sysbus_connect_irq(s, 0, irq);
     memory_region_add_subregion(get_system_io(),
                                 base,
@@ -217,7 +217,8 @@ mips_mipssim_init(QEMUMachineInitArgs *args)
     /* A single 16450 sits at offset 0x3f8. It is attached to
        MIPS CPU INT2, which is interrupt 4. */
     if (serial_hds[0])
-        serial_init(0x3f8, env->irq[4], 115200, serial_hds[0]);
+        serial_init(0x3f8, env->irq[4], 115200, serial_hds[0],
+                    get_system_io());
 
     if (nd_table[0].used)
         /* MIPSnet uses the MIPS CPU INT0, which is interrupt 2. */
@@ -228,6 +229,7 @@ static QEMUMachine mips_mipssim_machine = {
     .name = "mipssim",
     .desc = "MIPS MIPSsim platform",
     .init = mips_mipssim_init,
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static void mips_mipssim_machine_init(void)

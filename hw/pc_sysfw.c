@@ -23,15 +23,15 @@
  * THE SOFTWARE.
  */
 
-#include "blockdev.h"
+#include "sysemu/blockdev.h"
 #include "sysbus.h"
 #include "hw.h"
 #include "pc.h"
 #include "hw/boards.h"
 #include "loader.h"
-#include "sysemu.h"
+#include "sysemu/sysemu.h"
 #include "flash.h"
-#include "kvm.h"
+#include "sysemu/kvm.h"
 
 #define BIOS_FILENAME "bios.bin"
 
@@ -84,6 +84,10 @@ static void pc_fw_add_pflash_drv(void)
         bios_name = BIOS_FILENAME;
     }
     filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, bios_name);
+    if (!filename) {
+        error_report("Can't open BIOS image %s", bios_name);
+        exit(1);
+    }
 
     opts = drive_add(IF_PFLASH, -1, filename, "readonly=on");
 
@@ -98,7 +102,9 @@ static void pc_fw_add_pflash_drv(void)
       return;
     }
 
-    drive_init(opts, machine->use_scsi);
+    if (!drive_init(opts, machine->block_default_type)) {
+        qemu_opts_del(opts);
+    }
 }
 
 static void pc_system_flash_init(MemoryRegion *rom_memory,
@@ -250,7 +256,7 @@ static void pcsysfw_class_init (ObjectClass *klass, void *data)
     dc->props = pcsysfw_properties;
 }
 
-static TypeInfo pcsysfw_info = {
+static const TypeInfo pcsysfw_info = {
     .name          = "pc-sysfw",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof (PcSysFwDevice),

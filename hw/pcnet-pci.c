@@ -27,11 +27,11 @@
  * AMD Publication# 19436  Rev:E  Amendment/0  Issue Date: June 2000
  */
 
-#include "pci.h"
-#include "net.h"
+#include "pci/pci.h"
+#include "net/net.h"
 #include "loader.h"
-#include "qemu-timer.h"
-#include "dma.h"
+#include "qemu/timer.h"
+#include "sysemu/dma.h"
 
 #include "pcnet.h"
 
@@ -361,7 +361,7 @@ static void pcnet_class_init(ObjectClass *klass, void *data)
     dc->props = pcnet_properties;
 }
 
-static TypeInfo pcnet_info = {
+static const TypeInfo pcnet_info = {
     .name          = "pcnet",
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(PCIPCNetState),

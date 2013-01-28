@@ -18,12 +18,12 @@
 #include "i2c.h"
 #include "ssi.h"
 #include "boards.h"
-#include "sysemu.h"
+#include "sysemu/sysemu.h"
 #include "flash.h"
-#include "blockdev.h"
-#include "console.h"
+#include "sysemu/blockdev.h"
+#include "ui/console.h"
 #include "audio/audio.h"
-#include "exec-memory.h"
+#include "exec/address-spaces.h"
 
 #ifdef DEBUG_Z2
 #define DPRINTF(fmt, ...) \
@@ -185,7 +185,7 @@ static void zipit_lcd_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_zipit_lcd_state;
 }
 
-static TypeInfo zipit_lcd_info = {
+static const TypeInfo zipit_lcd_info = {
     .name          = "zipit-lcd",
     .parent        = TYPE_SSI_SLAVE,
     .instance_size = sizeof(ZipitLCD),
@@ -288,7 +288,7 @@ static void aer915_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_aer915_state;
 }
 
-static TypeInfo aer915_info = {
+static const TypeInfo aer915_info = {
     .name          = "aer915",
     .parent        = TYPE_I2C_SLAVE,
     .instance_size = sizeof(AER915State),
@@ -373,6 +373,7 @@ static QEMUMachine z2_machine = {
     .name = "z2",
     .desc = "Zipit Z2 (PXA27x)",
     .init = z2_init,
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static void z2_machine_init(void)

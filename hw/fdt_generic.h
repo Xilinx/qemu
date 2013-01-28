@@ -8,8 +8,8 @@
 
 #include "qemu-common.h"
 #include "sysbus.h"
-#include "device_tree.h"
-#include "qemu-coroutine.h"
+#include "sysemu/device_tree.h"
+#include "block/coroutine.h"
 
 typedef struct FDTDevOpaque {
     char *node_path;

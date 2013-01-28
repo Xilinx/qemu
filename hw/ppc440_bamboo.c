@@ -13,20 +13,20 @@
 
 #include "config.h"
 #include "qemu-common.h"
-#include "net.h"
+#include "net/net.h"
 #include "hw.h"
-#include "pci.h"
+#include "pci/pci.h"
 #include "boards.h"
-#include "kvm.h"
+#include "sysemu/kvm.h"
 #include "kvm_ppc.h"
-#include "device_tree.h"
+#include "sysemu/device_tree.h"
 #include "loader.h"
 #include "elf.h"
-#include "exec-memory.h"
+#include "exec/address-spaces.h"
 #include "serial.h"
 #include "ppc.h"
 #include "ppc405.h"
-#include "sysemu.h"
+#include "sysemu/sysemu.h"
 #include "sysbus.h"
 
 #define BINARY_DEVICE_TREE_FILE "bamboo.dtb"
@@ -195,7 +195,7 @@ static void bamboo_init(QEMUMachineInitArgs *args)
     env = &cpu->env;
 
     qemu_register_reset(main_cpu_reset, cpu);
-    ppc_booke_timers_init(env, 400000000, 0);
+    ppc_booke_timers_init(cpu, 400000000, 0);
     ppc_dcr_init(env, NULL, NULL);
 
     /* interrupt controller */
@@ -295,6 +295,7 @@ static QEMUMachine bamboo_machine = {
     .name = "bamboo",
     .desc = "bamboo",
     .init = bamboo_init,
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static void bamboo_machine_init(void)

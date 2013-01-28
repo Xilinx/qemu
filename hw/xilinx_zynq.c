@@ -17,12 +17,12 @@
 
 #include "sysbus.h"
 #include "arm-misc.h"
-#include "net.h"
-#include "exec-memory.h"
-#include "sysemu.h"
+#include "net/net.h"
+#include "exec/address-spaces.h"
+#include "sysemu/sysemu.h"
 #include "boards.h"
 #include "flash.h"
-#include "blockdev.h"
+#include "sysemu/blockdev.h"
 #include "loader.h"
 #include "ssi.h"
 #include "i2c.h"
@@ -81,7 +81,7 @@ static void gem_init(NICInfo *nd, uint32_t base, qemu_irq irq)
     dev = qdev_create(NULL, "xlnx.ps7-ethernet");
     qdev_set_nic_properties(dev, nd);
     qdev_init_nofail(dev);
-    s = sysbus_from_qdev(dev);
+    s = SYS_BUS_DEVICE(dev);
     sysbus_mmio_map(s, 0, base);
     sysbus_connect_irq(s, 0, irq);
 }
@@ -102,7 +102,7 @@ static inline void zynq_init_spi_flashes(uint32_t base_addr, qemu_irq irq,
     qdev_prop_set_uint8(dev, "num-ss-bits", num_ss);
     qdev_prop_set_uint8(dev, "num-busses", num_busses);
     qdev_init_nofail(dev);
-    busdev = sysbus_from_qdev(dev);
+    busdev = SYS_BUS_DEVICE(dev);
     sysbus_mmio_map(busdev, 0, base_addr);
     if (is_qspi) {
         sysbus_mmio_map(busdev, 1, 0xFC000000);
@@ -242,7 +242,7 @@ static void zynq_init(QEMUMachineInitArgs *args)
         assert_no_error(errp);
     }
     qdev_init_nofail(dev);
-    busdev = sysbus_from_qdev(dev);
+    busdev = SYS_BUS_DEVICE(dev);
     sysbus_mmio_map(busdev, 0, 0xe000e000);
     sysbus_mmio_map(busdev, 1, 0xe2000000);
     sysbus_mmio_map(busdev, 2, 0xe1000000);
@@ -256,12 +256,12 @@ static void zynq_init(QEMUMachineInitArgs *args)
         object_property_set_link(OBJECT(dev), OBJECT(cpus[1]), "cpu1", NULL);
         assert_no_error(errp);
     }
-    sysbus_mmio_map(sysbus_from_qdev(dev), 0, 0xF8000000);
+    sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, 0xF8000000);
 
     dev = qdev_create(NULL, "a9mpcore_priv");
     qdev_prop_set_uint32(dev, "num-cpu", smp_cpus);
     qdev_init_nofail(dev);
-    busdev = sysbus_from_qdev(dev);
+    busdev = SYS_BUS_DEVICE(dev);
     sysbus_mmio_map(busdev, 0, 0xF8F00000);
     for (n = 0; n < smp_cpus; n++) {
         sysbus_connect_irq(busdev, n, cpu_irq[n]);
@@ -274,13 +274,13 @@ static void zynq_init(QEMUMachineInitArgs *args)
     dev = qdev_create(NULL, "xlnx.ps7-usb");
     dev->id = "zynq-usb-0";
     qdev_init_nofail(dev);
-    busdev = sysbus_from_qdev(dev);
+    busdev = SYS_BUS_DEVICE(dev);
     sysbus_mmio_map(busdev, 0, 0xE0002000);
     sysbus_connect_irq(busdev, 0, pic[53-IRQ_OFFSET]);
 
     dev = qdev_create(NULL, "xlnx.ps7-usb");
     dev->id = "zynq-usb-1";
-    busdev = sysbus_from_qdev(dev);
+    busdev = SYS_BUS_DEVICE(dev);
     qdev_init_nofail(dev);
     sysbus_mmio_map(busdev, 0, 0xE0003000);
     sysbus_connect_irq(busdev, 0, pic[76-IRQ_OFFSET]);
@@ -326,7 +326,7 @@ static void zynq_init(QEMUMachineInitArgs *args)
     qdev_prop_set_uint16(dev, "data_buffer_dep",  256);
 
     qdev_init_nofail(dev);
-    busdev = sysbus_from_qdev(dev);
+    busdev = SYS_BUS_DEVICE(dev);
     sysbus_mmio_map(busdev, 0, 0xF8003000);
     sysbus_connect_irq(busdev, 0, pic[45-IRQ_OFFSET]); /* abort irq line */
     for (n = 0; n < 8; ++n) { /* event irqs */
@@ -334,16 +334,16 @@ static void zynq_init(QEMUMachineInitArgs *args)
     }
     dev = qdev_create(NULL, "generic-sdhci");
     qdev_init_nofail(dev);
-    sysbus_mmio_map(sysbus_from_qdev(dev), 0, 0xE0100000);
-    sysbus_connect_irq(sysbus_from_qdev(dev), 0, pic[56-IRQ_OFFSET]);
+    sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, 0xE0100000);
+    sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, pic[56-IRQ_OFFSET]);
 
     dev = qdev_create(NULL, "generic-sdhci");
     qdev_init_nofail(dev);
-    sysbus_mmio_map(sysbus_from_qdev(dev), 0, 0xE0101000);
-    sysbus_connect_irq(sysbus_from_qdev(dev), 0, pic[79-IRQ_OFFSET]);
+    sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, 0xE0101000);
+    sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, pic[79-IRQ_OFFSET]);
     dev = qdev_create(NULL, "xlnx.ps7-dev-cfg");
     qdev_init_nofail(dev);
-    busdev = sysbus_from_qdev(dev);
+    busdev = SYS_BUS_DEVICE(dev);
     sysbus_connect_irq(busdev, 0, pic[40-IRQ_OFFSET]);
     sysbus_mmio_map(busdev, 0, 0xF8007000);
 
@@ -364,9 +364,10 @@ static QEMUMachine zynq_machine = {
     .name = "xilinx-zynq-a9",
     .desc = "Xilinx Zynq Platform Baseboard for Cortex-A9",
     .init = zynq_init,
-    .use_scsi = 1,
+    .block_default_type = IF_SCSI,
     .max_cpus = MAX_CPUS,
-    .no_sdcard = 1
+    .no_sdcard = 1,
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static void zynq_machine_init(void)

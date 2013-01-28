@@ -28,15 +28,15 @@
  * THE SOFTWARE.
  */
 #include "hw.h"
-#include "arch_init.h"
+#include "sysemu/arch_init.h"
 #include "smbus.h"
 #include "boards.h"
 #include "mc146818rtc.h"
 #include "xen.h"
-#include "kvm.h"
+#include "sysemu/kvm.h"
 #include "kvm/clock.h"
 #include "q35.h"
-#include "exec-memory.h"
+#include "exec/address-spaces.h"
 #include "ich9.h"
 #include "hw/ide/pci.h"
 #include "hw/ide/ahci.h"
@@ -87,6 +87,7 @@ static void pc_q35_init(QEMUMachineInitArgs *args)
     qemu_irq *cmos_s3;
 
     pc_cpus_init(cpu_model);
+    pc_acpi_init("q35-acpi-dsdt.aml");
 
     kvmclock_create();
 
@@ -208,11 +209,12 @@ static void pc_q35_init(QEMUMachineInitArgs *args)
 }
 
 static QEMUMachine pc_q35_machine = {
-    .name = "q35-next",
+    .name = "pc-q35-1.4",
     .alias = "q35",
-    .desc = "Q35 chipset PC",
+    .desc = "Standard PC (Q35 + ICH9, 2009)",
     .init = pc_q35_init,
     .max_cpus = 255,
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static void pc_q35_machine_init(void)

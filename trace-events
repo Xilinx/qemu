@@ -98,6 +98,15 @@ virtio_blk_rw_complete(void *req, int ret) "req %p ret %d"
 virtio_blk_handle_write(void *req, uint64_t sector, size_t nsectors) "req %p sector %"PRIu64" nsectors %zu"
 virtio_blk_handle_read(void *req, uint64_t sector, size_t nsectors) "req %p sector %"PRIu64" nsectors %zu"
 
+# hw/dataplane/virtio-blk.c
+virtio_blk_data_plane_start(void *s) "dataplane %p"
+virtio_blk_data_plane_stop(void *s) "dataplane %p"
+virtio_blk_data_plane_process_request(void *s, unsigned int out_num, unsigned int in_num, unsigned int head) "dataplane %p out_num %u in_num %u head %u"
+virtio_blk_data_plane_complete_request(void *s, unsigned int head, int ret) "dataplane %p head %u ret %d"
+
+# hw/dataplane/vring.c
+vring_setup(uint64_t physical, void *desc, void *avail, void *used) "vring physical %#"PRIx64" desc %p avail %p used %p"
+
 # thread-pool.c
 thread_pool_submit(void *req, void *opaque) "req %p opaque %p"
 thread_pool_complete(void *req, void *opaque, int ret) "req %p opaque %p ret %d"
@@ -157,6 +166,13 @@ ecc_mem_readl_ecr0(uint32_t ret) "Read event count 1 %08x"
 ecc_mem_readl_ecr1(uint32_t ret) "Read event count 2 %08x"
 ecc_diag_mem_writeb(uint64_t addr, uint32_t val) "Write diagnostic %"PRId64" = %02x"
 ecc_diag_mem_readb(uint64_t addr, uint32_t ret) "Read diagnostic %"PRId64"= %02x"
+
+# hw/fw_cfg.c
+fw_cfg_write(void *s, uint8_t value) "%p %d"
+fw_cfg_select(void *s, uint16_t key, int ret) "%p key %d = %d"
+fw_cfg_read(void *s, uint8_t ret) "%p = %d"
+fw_cfg_add_file_dupe(void *s, char *name) "%p %s"
+fw_cfg_add_file(void *s, int index, char *name, size_t len) "%p #%d: %s (%zd bytes)"
 
 # hw/hd-geometry.c
 hd_geometry_lchs_guess(void *bs, int cyls, int heads, int secs) "bs %p LCHS %d %d %d"
@@ -298,8 +314,6 @@ usb_uhci_frame_loop_stop_idle(void) ""
 usb_uhci_frame_loop_continue(void) ""
 usb_uhci_mmio_readw(uint32_t addr, uint32_t val) "addr 0x%04x, ret 0x%04x"
 usb_uhci_mmio_writew(uint32_t addr, uint32_t val) "addr 0x%04x, val 0x%04x"
-usb_uhci_mmio_readl(uint32_t addr, uint32_t val) "addr 0x%04x, ret 0x%08x"
-usb_uhci_mmio_writel(uint32_t addr, uint32_t val) "addr 0x%04x, val 0x%08x"
 usb_uhci_queue_add(uint32_t token) "token 0x%x"
 usb_uhci_queue_del(uint32_t token, const char *reason) "token 0x%x: %s"
 usb_uhci_packet_add(uint32_t token, uint32_t addr) "token 0x%x, td 0x%x"
@@ -535,6 +549,7 @@ spice_vmc_write(ssize_t out, int len) "spice wrottn %zd of requested %d"
 spice_vmc_read(int bytes, int len) "spice read %d of requested %d"
 spice_vmc_register_interface(void *scd) "spice vmc registered interface %p"
 spice_vmc_unregister_interface(void *scd) "spice vmc unregistered interface %p"
+spice_vmc_event(int event) "spice vmc event %d"
 
 # hw/lm32_pic.c
 lm32_pic_raise_irq(void) "Raise CPU interrupt"
@@ -724,6 +739,14 @@ mipsnet_receive(uint32_t size) "receiving len=%u"
 mipsnet_read(uint64_t addr, uint32_t val) "read addr=0x%" PRIx64 " val=0x%x"
 mipsnet_write(uint64_t addr, uint64_t val) "write addr=0x%" PRIx64 " val=0x%" PRIx64 ""
 mipsnet_irq(uint32_t isr, uint32_t intctl) "set irq to %d (%02x)"
+
+# hw/pc87312.c
+pc87312_io_read(uint32_t addr, uint32_t val) "read addr=%x val=%x"
+pc87312_io_write(uint32_t addr, uint32_t val) "write addr=%x val=%x"
+pc87312_info_floppy(uint32_t base) "base 0x%x"
+pc87312_info_ide(uint32_t base) "base 0x%x"
+pc87312_info_parallel(uint32_t base, uint32_t irq) "base 0x%x, irq %u"
+pc87312_info_serial(int n, uint32_t base, uint32_t irq) "id=%d, base 0x%x, irq %u"
 
 # xen-all.c
 xen_ram_alloc(unsigned long ram_addr, unsigned long size) "requested: %#lx, size %#lx"
@@ -1006,8 +1029,10 @@ qxl_send_events_vm_stopped(int qid, uint32_t events) "%d %d"
 qxl_set_guest_bug(int qid) "%d"
 qxl_interrupt_client_monitors_config(int qid, int num_heads, void *heads) "%d %d %p"
 qxl_client_monitors_config_unsupported_by_guest(int qid, uint32_t int_mask, void *client_monitors_config) "%d %X %p"
+qxl_client_monitors_config_unsupported_by_device(int qid, int revision) "%d revision=%d"
 qxl_client_monitors_config_capped(int qid, int requested, int limit) "%d %d %d"
 qxl_client_monitors_config_crc(int qid, unsigned size, uint32_t crc32) "%d %u %u"
+qxl_set_client_capabilities_unsupported_by_revision(int qid, int revision) "%d revision=%d"
 
 # hw/qxl-render.c
 qxl_render_blit_guest_primary_initialized(void) ""
@@ -1022,3 +1047,16 @@ spapr_pci_rtas_ibm_change_msi(unsigned func, unsigned req) "func %u, requested %
 spapr_pci_rtas_ibm_query_interrupt_source_number(unsigned ioa, unsigned intr) "queries for #%u, IRQ%u"
 spapr_pci_msi_write(uint64_t addr, uint64_t data, uint32_t dt_irq) "@%"PRIx64"<=%"PRIx64" IRQ %u"
 spapr_pci_lsi_set(const char *busname, int pin, uint32_t irq) "%s PIN%d IRQ %u"
+
+# hw/xics.c
+xics_icp_check_ipi(int server, uint8_t mfrr) "CPU %d can take IPI mfrr=%#x"
+xics_icp_accept(uint32_t old_xirr, uint32_t new_xirr) "icp_accept: XIRR %#"PRIx32"->%#"PRIx32
+xics_icp_eoi(int server, uint32_t xirr, uint32_t new_xirr) "icp_eoi: server %d given XIRR %#"PRIx32" new XIRR %#"PRIx32
+xics_icp_irq(int server, int nr, uint8_t priority) "cpu %d trying to deliver irq %#"PRIx32" priority %#x"
+xics_icp_raise(uint32_t xirr, uint8_t pending_priority) "raising IRQ new XIRR=%#x new pending priority=%#x"
+xics_set_irq_msi(int srcno, int nr) "set_irq_msi: srcno %d [irq %#x]"
+xics_masked_pending(void) "set_irq_msi: masked pending"
+xics_set_irq_lsi(int srcno, int nr) "set_irq_lsi: srcno %d [irq %#x]"
+xics_ics_write_xive(int nr, int srcno, int server, uint8_t priority) "ics_write_xive: irq %#x [src %d] server %#x prio %#x"
+xics_ics_reject(int nr, int srcno) "reject irq %#x [src %d]"
+xics_ics_eoi(int nr) "ics_eoi: irq %#x"

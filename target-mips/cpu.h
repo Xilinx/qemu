@@ -12,8 +12,8 @@
 #include "config.h"
 #include "qemu-common.h"
 #include "mips-defs.h"
-#include "cpu-defs.h"
-#include "softfloat.h"
+#include "exec/cpu-defs.h"
+#include "fpu/softfloat.h"
 
 struct CPUMIPSState;
 
@@ -560,7 +560,7 @@ static inline int cpu_mips_hw_interrupts_pending(CPUMIPSState *env)
     return r;
 }
 
-#include "cpu-all.h"
+#include "exec/cpu-all.h"
 
 /* Memory access type :
  * may be needed for precise access rights control and precise exceptions.
@@ -738,7 +738,7 @@ static inline bool cpu_has_work(CPUState *cpu)
     return has_work;
 }
 
-#include "exec-all.h"
+#include "exec/exec-all.h"
 
 static inline void cpu_pc_from_tb(CPUMIPSState *env, TranslationBlock *tb)
 {
@@ -751,7 +751,7 @@ static inline void compute_hflags(CPUMIPSState *env)
 {
     env->hflags &= ~(MIPS_HFLAG_COP1X | MIPS_HFLAG_64 | MIPS_HFLAG_CP0 |
                      MIPS_HFLAG_F64 | MIPS_HFLAG_FPU | MIPS_HFLAG_KSU |
-                     MIPS_HFLAG_UX);
+                     MIPS_HFLAG_UX | MIPS_HFLAG_DSP | MIPS_HFLAG_DSPR2);
     if (!(env->CP0_Status & (1 << CP0St_EXL)) &&
         !(env->CP0_Status & (1 << CP0St_ERL)) &&
         !(env->hflags & MIPS_HFLAG_DM)) {

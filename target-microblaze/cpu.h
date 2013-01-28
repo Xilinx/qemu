@@ -26,8 +26,8 @@
 
 #define CPUArchState struct CPUMBState
 
-#include "cpu-defs.h"
-#include "softfloat.h"
+#include "exec/cpu-defs.h"
+#include "fpu/softfloat.h"
 struct CPUMBState;
 typedef struct CPUMBState CPUMBState;
 #if !defined(CONFIG_USER_ONLY)
@@ -274,7 +274,6 @@ struct CPUMBState {
 
 MicroBlazeCPU *cpu_mb_init(const char *cpu_model);
 int cpu_mb_exec(CPUMBState *s);
-void cpu_mb_close(CPUMBState *s);
 void do_interrupt(CPUMBState *env);
 /* you can call this signal handler from your SIGBUS and SIGSEGV
    signal handlers to inform the virtual CPU of exceptions. non zero
@@ -353,7 +352,7 @@ static inline int cpu_interrupts_enabled(CPUMBState *env)
     return env->sregs[SR_MSR] & MSR_IE;
 }
 
-#include "cpu-all.h"
+#include "exec/cpu-all.h"
 
 static inline target_ulong cpu_get_pc(CPUMBState *env)
 {
@@ -381,7 +380,7 @@ static inline bool cpu_has_work(CPUState *cpu)
     return env->interrupt_request & (CPU_INTERRUPT_HARD | CPU_INTERRUPT_NMI);
 }
 
-#include "exec-all.h"
+#include "exec/exec-all.h"
 
 static inline void cpu_pc_from_tb(CPUMBState *env, TranslationBlock *tb)
 {

@@ -24,8 +24,8 @@
 #include "hw.h"
 #include "pc.h"
 #include "isa.h"
-#include "monitor.h"
-#include "qemu-timer.h"
+#include "monitor/monitor.h"
+#include "qemu/timer.h"
 #include "i8259_internal.h"
 
 /* debug PIC */
@@ -407,7 +407,7 @@ static void pic_init(PICCommonState *s)
     qdev_init_gpio_in(&s->dev.qdev, pic_set_irq, 8);
 }
 
-void pic_info(Monitor *mon)
+void pic_info(Monitor *mon, const QDict *qdict)
 {
     int i;
     PICCommonState *s;
@@ -425,7 +425,7 @@ void pic_info(Monitor *mon)
     }
 }
 
-void irq_info(Monitor *mon)
+void irq_info(Monitor *mon, const QDict *qdict)
 {
 #ifndef DEBUG_IRQ_COUNT
     monitor_printf(mon, "irq statistic code not compiled.\n");
@@ -481,7 +481,7 @@ static void i8259_class_init(ObjectClass *klass, void *data)
     dc->reset = pic_reset;
 }
 
-static TypeInfo i8259_info = {
+static const TypeInfo i8259_info = {
     .name       = "isa-i8259",
     .instance_size = sizeof(PICCommonState),
     .parent     = TYPE_PIC_COMMON,

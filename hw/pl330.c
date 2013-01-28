@@ -15,9 +15,9 @@
  */
 
 #include "sysbus.h"
-#include "qemu-timer.h"
-#include "dma.h"
-#include "hexdump.h"
+#include "qemu/timer.h"
+#include "qemu/hexdump.h"
+#include "sysemu/dma.h"
 
 #ifndef PL330_ERR_DEBUG
 #define PL330_ERR_DEBUG 0
@@ -1493,7 +1493,7 @@ static void pl330_chan_reset(PL330Chan *ch)
 static void pl330_reset(DeviceState *d)
 {
     int i;
-    PL330 *s = FROM_SYSBUS(PL330, sysbus_from_qdev(d));
+    PL330 *s = FROM_SYSBUS(PL330, SYS_BUS_DEVICE(d));
 
     s->inten = 0;
     s->int_status = 0;

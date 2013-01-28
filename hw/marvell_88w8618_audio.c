@@ -222,7 +222,7 @@ static void mv88w8618_audio_write(void *opaque, hwaddr offset,
 static void mv88w8618_audio_reset(DeviceState *d)
 {
     mv88w8618_audio_state *s = FROM_SYSBUS(mv88w8618_audio_state,
-                                           sysbus_from_qdev(d));
+                                           SYS_BUS_DEVICE(d));
 
     s->playback_mode = 0;
     s->status = 0;
@@ -288,7 +288,7 @@ static void mv88w8618_audio_class_init(ObjectClass *klass, void *data)
     dc->props = mv88w8618_audio_properties;
 }
 
-static TypeInfo mv88w8618_audio_info = {
+static const TypeInfo mv88w8618_audio_info = {
     .name          = "mv88w8618_audio",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(mv88w8618_audio_state),

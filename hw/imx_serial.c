@@ -19,8 +19,8 @@
 
 #include "hw.h"
 #include "sysbus.h"
-#include "sysemu.h"
-#include "qemu-char.h"
+#include "sysemu/sysemu.h"
+#include "char/char.h"
 #include "imx.h"
 
 //#define DEBUG_SERIAL 1
@@ -425,7 +425,7 @@ void imx_serial_create(int uart, const hwaddr addr, qemu_irq irq)
     }
 
     qdev_prop_set_chr(dev, "chardev", chr);
-    bus = sysbus_from_qdev(dev);
+    bus = SYS_BUS_DEVICE(dev);
     qdev_init_nofail(dev);
     if (addr != (hwaddr)-1) {
         sysbus_mmio_map(bus, 0, addr);
@@ -452,7 +452,7 @@ static void imx_serial_class_init(ObjectClass *klass, void *data)
     dc->props = imx32_serial_properties;
 }
 
-static TypeInfo imx_serial_info = {
+static const TypeInfo imx_serial_info = {
     .name = "imx-serial",
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(IMXSerialState),

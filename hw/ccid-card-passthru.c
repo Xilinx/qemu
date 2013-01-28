@@ -8,9 +8,9 @@
  * See the COPYING file in the top-level directory.
  */
 
-#include "qemu-char.h"
-#include "qemu_socket.h"
-#include "monitor.h"
+#include "char/char.h"
+#include "qemu/sockets.h"
+#include "monitor/monitor.h"
 #include "hw/ccid.h"
 #include "libcacard/vscard_common.h"
 
@@ -336,7 +336,7 @@ static void passthru_class_initfn(ObjectClass *klass, void *data)
     dc->props = passthru_card_properties;
 }
 
-static TypeInfo passthru_card_info = {
+static const TypeInfo passthru_card_info = {
     .name          = PASSTHRU_DEV_NAME,
     .parent        = TYPE_CCID_CARD,
     .instance_size = sizeof(PassthruState),

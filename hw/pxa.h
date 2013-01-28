@@ -9,7 +9,7 @@
 #ifndef PXA_H
 # define PXA_H			"pxa.h"
 
-#include "memory.h"
+#include "exec/memory.h"
 
 /* Interrupt numbers */
 # define PXA2XX_PIC_SSP3	0
@@ -69,7 +69,7 @@ DeviceState *pxa2xx_pic_init(hwaddr base, ARMCPU *cpu);
 
 /* pxa2xx_gpio.c */
 DeviceState *pxa2xx_gpio_init(hwaddr base,
-                CPUARMState *env, DeviceState *pic, int lines);
+                              ARMCPU *cpu, DeviceState *pic, int lines);
 void pxa2xx_gpio_read_notifier(DeviceState *dev, qemu_irq handler);
 
 /* pxa2xx_dma.c */

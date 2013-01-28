@@ -17,8 +17,8 @@
  */
 
 #include "sysbus.h"
-#include "qemu-char.h"
-#include "qemu-timer.h"
+#include "char/char.h"
+#include "qemu/timer.h"
 
 #ifdef CADENCE_UART_ERR_DEBUG
 #define DB_PRINT(...) do { \
@@ -502,7 +502,7 @@ static void cadence_uart_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_cadence_uart;
 }
 
-static TypeInfo cadence_uart_info = {
+static const TypeInfo cadence_uart_info = {
     .name          = "xlnx.ps7-uart",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(UartState),

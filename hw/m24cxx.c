@@ -20,7 +20,7 @@
 
 #include "i2c.h"
 #include "hw.h"
-#include "blockdev.h"
+#include "sysemu/blockdev.h"
 
 #ifndef M24CXX_DEBUG
 #define M24CXX_DEBUG 0

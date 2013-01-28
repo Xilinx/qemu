@@ -130,11 +130,15 @@ static int arm_gic_common_init(SysBusDevice *dev)
 
 static void arm_gic_common_reset(DeviceState *dev)
 {
-    GICState *s = FROM_SYSBUS(GICState, sysbus_from_qdev(dev));
+    GICState *s = FROM_SYSBUS(GICState, SYS_BUS_DEVICE(dev));
     int i;
     memset(s->irq_state, 0, GIC_MAXIRQ * sizeof(gic_irq_state));
     for (i = 0 ; i < s->num_cpu; i++) {
-        s->priority_mask[i] = 0xf0;
+        if (s->revision == REV_11MPCORE) {
+            s->priority_mask[i] = 0xf0;
+        } else {
+            s->priority_mask[i] = 0;
+        }
         s->current_pending[i] = 1023;
         s->running_irq[i] = 1023;
         s->running_priority[i] = 0x100;
@@ -174,7 +178,7 @@ static void arm_gic_common_class_init(ObjectClass *klass, void *data)
     sc->init = arm_gic_common_init;
 }
 
-static TypeInfo arm_gic_common_type = {
+static const TypeInfo arm_gic_common_type = {
     .name = TYPE_ARM_GIC_COMMON,
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(GICState),

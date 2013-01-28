@@ -23,10 +23,10 @@
  * THE SOFTWARE.
  */
 #include "hw.h"
-#include "qemu-char.h"
+#include "char/char.h"
 #include "isa.h"
 #include "pc.h"
-#include "sysemu.h"
+#include "sysemu/sysemu.h"
 
 //#define DEBUG_PARALLEL
 
@@ -599,7 +599,7 @@ static void parallel_isa_class_initfn(ObjectClass *klass, void *data)
     dc->props = parallel_isa_properties;
 }
 
-static TypeInfo parallel_isa_info = {
+static const TypeInfo parallel_isa_info = {
     .name          = "isa-parallel",
     .parent        = TYPE_ISA_DEVICE,
     .instance_size = sizeof(ISAParallelState),

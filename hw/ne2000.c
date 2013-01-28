@@ -22,11 +22,11 @@
  * THE SOFTWARE.
  */
 #include "hw.h"
-#include "pci.h"
-#include "net.h"
+#include "pci/pci.h"
+#include "net/net.h"
 #include "ne2000.h"
 #include "loader.h"
-#include "sysemu.h"
+#include "sysemu/sysemu.h"
 
 /* debug NE2000 card */
 //#define DEBUG_NE2000
@@ -773,7 +773,7 @@ static void ne2000_class_init(ObjectClass *klass, void *data)
     dc->props = ne2000_properties;
 }
 
-static TypeInfo ne2000_info = {
+static const TypeInfo ne2000_info = {
     .name          = "ne2k_pci",
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(PCINE2000State),

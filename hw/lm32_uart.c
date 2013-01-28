@@ -25,8 +25,8 @@
 #include "hw.h"
 #include "sysbus.h"
 #include "trace.h"
-#include "qemu-char.h"
-#include "qemu-error.h"
+#include "char/char.h"
+#include "qemu/error-report.h"
 
 enum {
     R_RXTX = 0,
@@ -281,7 +281,7 @@ static void lm32_uart_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_lm32_uart;
 }
 
-static TypeInfo lm32_uart_info = {
+static const TypeInfo lm32_uart_info = {
     .name          = "lm32-uart",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(LM32UartState),

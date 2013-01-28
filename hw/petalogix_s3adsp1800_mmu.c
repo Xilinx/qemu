@@ -25,14 +25,14 @@
 
 #include "sysbus.h"
 #include "hw.h"
-#include "net.h"
+#include "net/net.h"
 #include "flash.h"
-#include "sysemu.h"
+#include "sysemu/sysemu.h"
 #include "devices.h"
 #include "boards.h"
 #include "xilinx.h"
-#include "blockdev.h"
-#include "exec-memory.h"
+#include "sysemu/blockdev.h"
+#include "exec/address-spaces.h"
 
 #include "microblaze_boot.h"
 #include "microblaze_pic_cpu.h"
@@ -115,7 +115,8 @@ static QEMUMachine petalogix_s3adsp1800_machine = {
     .name = "petalogix-s3adsp1800",
     .desc = "PetaLogix linux refdesign for xilinx Spartan 3ADSP1800",
     .init = petalogix_s3adsp1800_init,
-    .is_default = 1
+    .is_default = 1,
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static void petalogix_s3adsp1800_machine_init(void)

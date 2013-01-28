@@ -1,11 +1,13 @@
 config-devices.*
 config-all-devices.*
+config-all-disas.*
 config-host.*
 config-target.*
-trace.h
-trace.c
-trace-dtrace.h
-trace-dtrace.dtrace
+trace/generated-tracers.h
+trace/generated-tracers.c
+trace/generated-tracers-dtrace.h
+trace/generated-tracers-dtrace.dtrace
+libcacard/trace/generated-tracers.c
 *-timestamp
 *-softmmu
 *-darwin-user
@@ -47,6 +49,7 @@ test-qmp-output-visitor
 test-string-input-visitor
 test-string-output-visitor
 test-visitor-serialization
+fsdev/virtfs-proxy-helper
 fsdev/virtfs-proxy-helper.1
 fsdev/virtfs-proxy-helper.pod
 .gdbinit
@@ -68,6 +71,7 @@ fsdev/virtfs-proxy-helper.pod
 *.tp
 *.vr
 *.d
+!scripts/qemu-guest-agent/fsfreeze-hook.d
 *.o
 *.lo
 *.la

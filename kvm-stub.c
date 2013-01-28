@@ -12,10 +12,10 @@
 
 #include "qemu-common.h"
 #include "hw/hw.h"
-#include "hw/msi.h"
+#include "hw/pci/msi.h"
 #include "cpu.h"
-#include "gdbstub.h"
-#include "kvm.h"
+#include "exec/gdbstub.h"
+#include "sysemu/kvm.h"
 
 KVMState *kvm_state;
 bool kvm_kernel_irqchip;
@@ -24,7 +24,7 @@ bool kvm_irqfds_allowed;
 bool kvm_msi_via_irqfd_allowed;
 bool kvm_gsi_routing_allowed;
 
-int kvm_init_vcpu(CPUArchState *env)
+int kvm_init_vcpu(CPUState *cpu)
 {
     return -ENOSYS;
 }
@@ -129,6 +129,11 @@ int kvm_irqchip_add_msi_route(KVMState *s, MSIMessage msg)
 
 void kvm_irqchip_release_virq(KVMState *s, int virq)
 {
+}
+
+int kvm_irqchip_update_msi_route(KVMState *s, int virq, MSIMessage msg)
+{
+    return -ENOSYS;
 }
 
 int kvm_irqchip_add_irqfd_notifier(KVMState *s, EventNotifier *n, int virq)

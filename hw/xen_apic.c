@@ -10,7 +10,7 @@
  * later. See the COPYING file in the top-level directory.
  */
 #include "hw/apic_internal.h"
-#include "hw/msi.h"
+#include "hw/pci/msi.h"
 #include "xen.h"
 
 static uint64_t xen_apic_mem_read(void *opaque, hwaddr addr,
@@ -80,7 +80,7 @@ static void xen_apic_class_init(ObjectClass *klass, void *data)
     k->external_nmi = xen_apic_external_nmi;
 }
 
-static TypeInfo xen_apic_info = {
+static const TypeInfo xen_apic_info = {
     .name = "xen-apic",
     .parent = TYPE_APIC_COMMON,
     .instance_size = sizeof(APICCommonState),

@@ -20,7 +20,7 @@
 #ifndef QEMU_PPC_CPU_QOM_H
 #define QEMU_PPC_CPU_QOM_H
 
-#include "qemu/cpu.h"
+#include "qom/cpu.h"
 #include "cpu.h"
 
 #ifdef TARGET_PPC64
@@ -50,6 +50,9 @@ typedef struct PowerPCCPUClass {
     /*< public >*/
 
     void (*parent_reset)(CPUState *cpu);
+
+    /* TODO inline fields here */
+    ppc_def_t *info;
 } PowerPCCPUClass;
 
 /**
@@ -72,6 +75,8 @@ static inline PowerPCCPU *ppc_env_get_cpu(CPUPPCState *env)
 }
 
 #define ENV_GET_CPU(e) CPU(ppc_env_get_cpu(e))
+
+PowerPCCPUClass *ppc_cpu_class_by_pvr(uint32_t pvr);
 
 
 #endif

@@ -28,14 +28,14 @@
 #include <sys/stat.h>
 #include "hw/hw.h"
 #include "hw/pc.h"
-#include "qemu-error.h"
-#include "console.h"
+#include "qemu/error-report.h"
+#include "ui/console.h"
 #include "hw/loader.h"
-#include "monitor.h"
-#include "range.h"
-#include "sysemu.h"
-#include "hw/pci.h"
-#include "hw/msi.h"
+#include "monitor/monitor.h"
+#include "qemu/range.h"
+#include "sysemu/sysemu.h"
+#include "hw/pci/pci.h"
+#include "hw/pci/msi.h"
 #include "kvm_i386.h"
 
 #define MSIX_PAGE_SIZE 0x1000
@@ -46,6 +46,7 @@
 #define IORESOURCE_IRQ      0x00000400
 #define IORESOURCE_DMA      0x00000800
 #define IORESOURCE_PREFETCH 0x00002000  /* No side effects */
+#define IORESOURCE_MEM_64   0x00100000
 
 //#define DEVICE_ASSIGNMENT_DEBUG
 
@@ -442,9 +443,13 @@ static int assigned_dev_register_regions(PCIRegion *io_regions,
 
         /* handle memory io regions */
         if (cur_region->type & IORESOURCE_MEM) {
-            int t = cur_region->type & IORESOURCE_PREFETCH
-                ? PCI_BASE_ADDRESS_MEM_PREFETCH
-                : PCI_BASE_ADDRESS_SPACE_MEMORY;
+            int t = PCI_BASE_ADDRESS_SPACE_MEMORY;
+            if (cur_region->type & IORESOURCE_PREFETCH) {
+                t |= PCI_BASE_ADDRESS_MEM_PREFETCH;
+            }
+            if (cur_region->type & IORESOURCE_MEM_64) {
+                t |= PCI_BASE_ADDRESS_MEM_TYPE_64;
+            }
 
             /* map physical memory */
             pci_dev->v_addrs[i].u.r_virtbase = mmap(NULL, cur_region->size,
@@ -632,7 +637,8 @@ again:
         rp->valid = 0;
         rp->resource_fd = -1;
         size = end - start + 1;
-        flags &= IORESOURCE_IO | IORESOURCE_MEM | IORESOURCE_PREFETCH;
+        flags &= IORESOURCE_IO | IORESOURCE_MEM | IORESOURCE_PREFETCH
+                 | IORESOURCE_MEM_64;
         if (size == 0 || (flags & ~IORESOURCE_PREFETCH) == 0) {
             continue;
         }
@@ -1025,6 +1031,19 @@ static bool assigned_dev_msix_masked(MSIXTableEntry *entry)
     return (entry->ctrl & cpu_to_le32(0x1)) != 0;
 }
 
+/*
+ * When MSI-X is first enabled the vector table typically has all the
+ * vectors masked, so we can't use that as the obvious test to figure out
+ * how many vectors to initially enable.  Instead we look at the data field
+ * because this is what worked for pci-assign for a long time.  This makes
+ * sure the physical MSI-X state tracks the guest's view, which is important
+ * for some VF/PF and PF/fw communication channels.
+ */
+static bool assigned_dev_msix_skipped(MSIXTableEntry *entry)
+{
+    return !entry->data;
+}
+
 static int assigned_dev_update_msix_mmio(PCIDevice *pci_dev)
 {
     AssignedDevice *adev = DO_UPCAST(AssignedDevice, dev, pci_dev);
@@ -1035,7 +1054,7 @@ static int assigned_dev_update_msix_mmio(PCIDevice *pci_dev)
 
     /* Get the usable entry number for allocating */
     for (i = 0; i < adev->msix_max; i++, entry++) {
-        if (assigned_dev_msix_masked(entry)) {
+        if (assigned_dev_msix_skipped(entry)) {
             continue;
         }
         entries_nr++;
@@ -1064,7 +1083,7 @@ static int assigned_dev_update_msix_mmio(PCIDevice *pci_dev)
     for (i = 0; i < adev->msix_max; i++, entry++) {
         adev->msi_virq[i] = -1;
 
-        if (assigned_dev_msix_masked(entry)) {
+        if (assigned_dev_msix_skipped(entry)) {
             continue;
         }
 

@@ -37,7 +37,7 @@ static int a9mp_priv_init(SysBusDevice *dev)
     qdev_prop_set_uint32(s->gic, "num-cpu", s->num_cpu);
     qdev_prop_set_uint32(s->gic, "num-irq", s->num_irq);
     qdev_init_nofail(s->gic);
-    gicbusdev = sysbus_from_qdev(s->gic);
+    gicbusdev = SYS_BUS_DEVICE(s->gic);
 
     /* Pass through outbound IRQ lines from the GIC */
     sysbus_pass_irq(dev, gicbusdev);
@@ -48,17 +48,17 @@ static int a9mp_priv_init(SysBusDevice *dev)
     qdev = qdev_create(NULL, "arm_a9_scu");
     qdev_prop_set_uint32(qdev, "num-cpu", s->num_cpu);
     qdev_init_nofail(qdev);
-    scubusdev = sysbus_from_qdev(qdev);
+    scubusdev = SYS_BUS_DEVICE(qdev);
 
     qdev = qdev_create(NULL, "arm,cortex-a9-twd-timer");
     qdev_prop_set_uint32(qdev, "num-cpu", s->num_cpu);
     qdev_init_nofail(qdev);
-    timerbusdev = sysbus_from_qdev(qdev);
+    timerbusdev = SYS_BUS_DEVICE(qdev);
 
     qdev = qdev_create(NULL, "arm,cortex-a9-twd-timer");
     qdev_prop_set_uint32(qdev, "num-cpu", s->num_cpu);
     qdev_init_nofail(qdev);
-    wdtbusdev = sysbus_from_qdev(qdev);
+    wdtbusdev = SYS_BUS_DEVICE(qdev);
 
     /* Memory map (addresses are offsets from PERIPHBASE):
      *  0x0000-0x00ff -- Snoop Control Unit
@@ -123,7 +123,7 @@ static void a9mp_priv_class_init(ObjectClass *klass, void *data)
     dc->props = a9mp_priv_properties;
 }
 
-static TypeInfo a9mp_priv_info = {
+static const TypeInfo a9mp_priv_info = {
     .name          = "a9mpcore_priv",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(A9MPPrivState),

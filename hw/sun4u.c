@@ -22,15 +22,15 @@
  * THE SOFTWARE.
  */
 #include "hw.h"
-#include "pci.h"
+#include "pci/pci.h"
 #include "apb_pci.h"
 #include "pc.h"
 #include "serial.h"
 #include "nvram.h"
 #include "fdc.h"
-#include "net.h"
-#include "qemu-timer.h"
-#include "sysemu.h"
+#include "net/net.h"
+#include "qemu/timer.h"
+#include "sysemu/sysemu.h"
 #include "boards.h"
 #include "firmware_abi.h"
 #include "fw_cfg.h"
@@ -38,8 +38,8 @@
 #include "ide.h"
 #include "loader.h"
 #include "elf.h"
-#include "blockdev.h"
-#include "exec-memory.h"
+#include "sysemu/blockdev.h"
+#include "exec/address-spaces.h"
 
 //#define DEBUG_IRQ
 //#define DEBUG_EBUS
@@ -618,7 +618,7 @@ static void ebus_class_init(ObjectClass *klass, void *data)
     k->class_id = PCI_CLASS_BRIDGE_OTHER;
 }
 
-static TypeInfo ebus_info = {
+static const TypeInfo ebus_info = {
     .name          = "ebus",
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(EbusState),
@@ -646,7 +646,7 @@ static void prom_init(hwaddr addr, const char *bios_name)
 
     dev = qdev_create(NULL, "openprom");
     qdev_init_nofail(dev);
-    s = sysbus_from_qdev(dev);
+    s = SYS_BUS_DEVICE(dev);
 
     sysbus_mmio_map(s, 0, addr);
 
@@ -695,7 +695,7 @@ static void prom_class_init(ObjectClass *klass, void *data)
     dc->props = prom_properties;
 }
 
-static TypeInfo prom_info = {
+static const TypeInfo prom_info = {
     .name          = "openprom",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(PROMState),
@@ -729,7 +729,7 @@ static void ram_init(hwaddr addr, ram_addr_t RAM_size)
 
     /* allocate RAM */
     dev = qdev_create(NULL, "memory");
-    s = sysbus_from_qdev(dev);
+    s = SYS_BUS_DEVICE(dev);
 
     d = FROM_SYSBUS(RamDevice, s);
     d->size = RAM_size;
@@ -752,7 +752,7 @@ static void ram_class_init(ObjectClass *klass, void *data)
     dc->props = ram_properties;
 }
 
-static TypeInfo ram_info = {
+static const TypeInfo ram_info = {
     .name          = "memory",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(RamDevice),
@@ -886,9 +886,7 @@ static void sun4uv_init(MemoryRegion *address_space_mem,
     if (kernel_cmdline) {
         fw_cfg_add_i32(fw_cfg, FW_CFG_CMDLINE_SIZE,
                        strlen(kernel_cmdline) + 1);
-        fw_cfg_add_bytes(fw_cfg, FW_CFG_CMDLINE_DATA,
-                         (uint8_t*)strdup(kernel_cmdline),
-                         strlen(kernel_cmdline) + 1);
+        fw_cfg_add_string(fw_cfg, FW_CFG_CMDLINE_DATA, kernel_cmdline);
     } else {
         fw_cfg_add_i32(fw_cfg, FW_CFG_CMDLINE_SIZE, 0);
     }
@@ -978,6 +976,7 @@ static QEMUMachine sun4u_machine = {
     .init = sun4u_init,
     .max_cpus = 1, // XXX for now
     .is_default = 1,
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static QEMUMachine sun4v_machine = {
@@ -985,6 +984,7 @@ static QEMUMachine sun4v_machine = {
     .desc = "Sun4v platform",
     .init = sun4v_init,
     .max_cpus = 1, // XXX for now
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static QEMUMachine niagara_machine = {
@@ -992,6 +992,7 @@ static QEMUMachine niagara_machine = {
     .desc = "Sun4v platform, Niagara",
     .init = niagara_init,
     .max_cpus = 1, // XXX for now
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static void sun4u_register_types(void)

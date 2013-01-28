@@ -20,7 +20,7 @@
  */
 
 #include "sysbus.h"
-#include "qemu-timer.h"
+#include "qemu/timer.h"
 
 /* This device implements the per-cpu private timer and watchdog block
  * which is used in both the ARM11MPCore and Cortex-A9MP.
@@ -49,11 +49,13 @@ typedef struct {
 
 static inline int get_current_cpu(ARMMPTimerState *s)
 {
-    if (cpu_single_env->cpu_index >= s->num_cpu) {
+    CPUState *cpu_single_cpu = ENV_GET_CPU(cpu_single_env);
+
+    if (cpu_single_cpu->cpu_index >= s->num_cpu) {
         hw_error("arm_mptimer: num-cpu %d but this cpu is %d!\n",
-                 s->num_cpu, cpu_single_env->cpu_index);
+                 s->num_cpu, cpu_single_cpu->cpu_index);
     }
-    return cpu_single_env->cpu_index;
+    return cpu_single_cpu->cpu_index;
 }
 
 static inline void timerblock_update_irq(TimerBlock *tb)
@@ -210,7 +212,7 @@ static void timerblock_reset(TimerBlock *tb)
 static void arm_mptimer_reset(DeviceState *dev)
 {
     ARMMPTimerState *s =
-        FROM_SYSBUS(ARMMPTimerState, sysbus_from_qdev(dev));
+        FROM_SYSBUS(ARMMPTimerState, SYS_BUS_DEVICE(dev));
     int i;
     /* We reset every timer in the array, not just the ones we're using,
      * because vmsave will look at every array element.
@@ -300,7 +302,7 @@ static void arm_mptimer_class_init(ObjectClass *klass, void *data)
     dc->props = arm_mptimer_properties;
 }
 
-static TypeInfo arm_mptimer_info = {
+static const TypeInfo arm_mptimer_info = {
     .name          = "arm,cortex-a9-twd-timer",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(ARMMPTimerState),

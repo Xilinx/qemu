@@ -28,9 +28,9 @@
  */
 
 #include "hw.h"
-#include "sysemu.h"
+#include "sysemu/sysemu.h"
 #include "sysbus.h"
-#include "kvm.h"
+#include "sysemu/kvm.h"
 
 #define MAX_CPUS 32
 
@@ -124,21 +124,23 @@ static void spin_write(void *opaque, hwaddr addr, uint64_t value,
     SpinState *s = opaque;
     int env_idx = addr / sizeof(SpinInfo);
     CPUPPCState *env;
+    CPUState *cpu = NULL;
     SpinInfo *curspin = &s->spin[env_idx];
     uint8_t *curspin_p = (uint8_t*)curspin;
 
     for (env = first_cpu; env != NULL; env = env->next_cpu) {
-        if (env->cpu_index == env_idx) {
+        cpu = CPU(ppc_env_get_cpu(env));
+        if (cpu->cpu_index == env_idx) {
             break;
         }
     }
 
-    if (!env) {
+    if (cpu == NULL) {
         /* Unknown CPU */
         return;
     }
 
-    if (!env->cpu_index) {
+    if (cpu->cpu_index == 0) {
         /* primary CPU doesn't spin */
         return;
     }
@@ -194,7 +196,7 @@ static int ppce500_spin_initfn(SysBusDevice *dev)
 {
     SpinState *s;
 
-    s = FROM_SYSBUS(SpinState, sysbus_from_qdev(dev));
+    s = FROM_SYSBUS(SpinState, SYS_BUS_DEVICE(dev));
 
     memory_region_init_io(&s->iomem, &spin_rw_ops, s, "e500 spin pv device",
                           sizeof(SpinInfo) * MAX_CPUS);
@@ -212,7 +214,7 @@ static void ppce500_spin_class_init(ObjectClass *klass, void *data)
     k->init = ppce500_spin_initfn;
 }
 
-static TypeInfo ppce500_spin_info = {
+static const TypeInfo ppce500_spin_info = {
     .name          = "e500-spin",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(SpinState),

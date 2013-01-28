@@ -14,12 +14,12 @@
  */
 
 #include "sysbus.h"
-#include "exec-memory.h"
+#include "exec/address-spaces.h"
 #include "hw.h"
 #include "arm-misc.h"
 #include "devices.h"
-#include "net.h"
-#include "sysemu.h"
+#include "net/net.h"
+#include "sysemu/sysemu.h"
 #include "boards.h"
 #include "serial.h"
 #include "imx.h"
@@ -146,6 +146,7 @@ static QEMUMachine kzm_machine = {
     .name = "kzm",
     .desc = "ARM KZM Emulation Baseboard (ARM1136)",
     .init = kzm_init,
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static void kzm_machine_init(void)

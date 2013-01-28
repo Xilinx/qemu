@@ -14,13 +14,14 @@
  */
 
 #include "hmp.h"
-#include "net.h"
-#include "qemu-option.h"
-#include "qemu-timer.h"
+#include "net/net.h"
+#include "char/char.h"
+#include "qemu/option.h"
+#include "qemu/timer.h"
 #include "qmp-commands.h"
-#include "qemu_socket.h"
-#include "monitor.h"
-#include "console.h"
+#include "qemu/sockets.h"
+#include "monitor/monitor.h"
+#include "ui/console.h"
 
 static void hmp_handle_error(Monitor *mon, Error **errp)
 {
@@ -30,7 +31,7 @@ static void hmp_handle_error(Monitor *mon, Error **errp)
     }
 }
 
-void hmp_info_name(Monitor *mon)
+void hmp_info_name(Monitor *mon, const QDict *qdict)
 {
     NameInfo *info;
 
@@ -41,7 +42,7 @@ void hmp_info_name(Monitor *mon)
     qapi_free_NameInfo(info);
 }
 
-void hmp_info_version(Monitor *mon)
+void hmp_info_version(Monitor *mon, const QDict *qdict)
 {
     VersionInfo *info;
 
@@ -54,7 +55,7 @@ void hmp_info_version(Monitor *mon)
     qapi_free_VersionInfo(info);
 }
 
-void hmp_info_kvm(Monitor *mon)
+void hmp_info_kvm(Monitor *mon, const QDict *qdict)
 {
     KvmInfo *info;
 
@@ -69,7 +70,7 @@ void hmp_info_kvm(Monitor *mon)
     qapi_free_KvmInfo(info);
 }
 
-void hmp_info_status(Monitor *mon)
+void hmp_info_status(Monitor *mon, const QDict *qdict)
 {
     StatusInfo *info;
 
@@ -88,7 +89,7 @@ void hmp_info_status(Monitor *mon)
     qapi_free_StatusInfo(info);
 }
 
-void hmp_info_uuid(Monitor *mon)
+void hmp_info_uuid(Monitor *mon, const QDict *qdict)
 {
     UuidInfo *info;
 
@@ -97,7 +98,7 @@ void hmp_info_uuid(Monitor *mon)
     qapi_free_UuidInfo(info);
 }
 
-void hmp_info_chardev(Monitor *mon)
+void hmp_info_chardev(Monitor *mon, const QDict *qdict)
 {
     ChardevInfoList *char_info, *info;
 
@@ -110,7 +111,7 @@ void hmp_info_chardev(Monitor *mon)
     qapi_free_ChardevInfoList(char_info);
 }
 
-void hmp_info_mice(Monitor *mon)
+void hmp_info_mice(Monitor *mon, const QDict *qdict)
 {
     MouseInfoList *mice_list, *mouse;
 
@@ -130,7 +131,7 @@ void hmp_info_mice(Monitor *mon)
     qapi_free_MouseInfoList(mice_list);
 }
 
-void hmp_info_migrate(Monitor *mon)
+void hmp_info_migrate(Monitor *mon, const QDict *qdict)
 {
     MigrationInfo *info;
     MigrationCapabilityStatusList *caps, *cap;
@@ -208,7 +209,7 @@ void hmp_info_migrate(Monitor *mon)
     qapi_free_MigrationCapabilityStatusList(caps);
 }
 
-void hmp_info_migrate_capabilities(Monitor *mon)
+void hmp_info_migrate_capabilities(Monitor *mon, const QDict *qdict)
 {
     MigrationCapabilityStatusList *caps, *cap;
 
@@ -227,13 +228,13 @@ void hmp_info_migrate_capabilities(Monitor *mon)
     qapi_free_MigrationCapabilityStatusList(caps);
 }
 
-void hmp_info_migrate_cache_size(Monitor *mon)
+void hmp_info_migrate_cache_size(Monitor *mon, const QDict *qdict)
 {
     monitor_printf(mon, "xbzrel cache size: %" PRId64 " kbytes\n",
                    qmp_query_migrate_cache_size(NULL) >> 10);
 }
 
-void hmp_info_cpus(Monitor *mon)
+void hmp_info_cpus(Monitor *mon, const QDict *qdict)
 {
     CpuInfoList *cpu_list, *cpu;
 
@@ -271,7 +272,7 @@ void hmp_info_cpus(Monitor *mon)
     qapi_free_CpuInfoList(cpu_list);
 }
 
-void hmp_info_block(Monitor *mon)
+void hmp_info_block(Monitor *mon, const QDict *qdict)
 {
     BlockInfoList *block_list, *info;
 
@@ -325,7 +326,7 @@ void hmp_info_block(Monitor *mon)
     qapi_free_BlockInfoList(block_list);
 }
 
-void hmp_info_blockstats(Monitor *mon)
+void hmp_info_blockstats(Monitor *mon, const QDict *qdict)
 {
     BlockStatsList *stats_list, *stats;
 
@@ -359,7 +360,7 @@ void hmp_info_blockstats(Monitor *mon)
     qapi_free_BlockStatsList(stats_list);
 }
 
-void hmp_info_vnc(Monitor *mon)
+void hmp_info_vnc(Monitor *mon, const QDict *qdict)
 {
     VncInfo *info;
     Error *err = NULL;
@@ -405,7 +406,7 @@ out:
     qapi_free_VncInfo(info);
 }
 
-void hmp_info_spice(Monitor *mon)
+void hmp_info_spice(Monitor *mon, const QDict *qdict)
 {
     SpiceChannelList *chan;
     SpiceInfo *info;
@@ -452,7 +453,7 @@ out:
     qapi_free_SpiceInfo(info);
 }
 
-void hmp_info_balloon(Monitor *mon)
+void hmp_info_balloon(Monitor *mon, const QDict *qdict)
 {
     BalloonInfo *info;
     Error *err = NULL;
@@ -569,7 +570,7 @@ static void hmp_info_pci_device(Monitor *mon, const PciDeviceInfo *dev)
     }
 }
 
-void hmp_info_pci(Monitor *mon)
+void hmp_info_pci(Monitor *mon, const QDict *qdict)
 {
     PciInfoList *info_list, *info;
     Error *err = NULL;
@@ -592,7 +593,7 @@ void hmp_info_pci(Monitor *mon)
     qapi_free_PciInfoList(info_list);
 }
 
-void hmp_info_block_jobs(Monitor *mon)
+void hmp_info_block_jobs(Monitor *mon, const QDict *qdict)
 {
     BlockJobInfoList *list;
     Error *err = NULL;
@@ -1334,4 +1335,27 @@ void hmp_nbd_server_stop(Monitor *mon, const QDict *qdict)
 
     qmp_nbd_server_stop(&errp);
     hmp_handle_error(mon, &errp);
+}
+
+void hmp_chardev_add(Monitor *mon, const QDict *qdict)
+{
+    const char *args = qdict_get_str(qdict, "args");
+    Error *err = NULL;
+    QemuOpts *opts;
+
+    opts = qemu_opts_parse(qemu_find_opts("chardev"), args, 1);
+    if (opts == NULL) {
+        error_setg(&err, "Parsing chardev args failed\n");
+    } else {
+        qemu_chr_new_from_opts(opts, NULL, &err);
+    }
+    hmp_handle_error(mon, &err);
+}
+
+void hmp_chardev_remove(Monitor *mon, const QDict *qdict)
+{
+    Error *local_err = NULL;
+
+    qmp_chardev_remove(qdict_get_str(qdict, "id"), &local_err);
+    hmp_handle_error(mon, &local_err);
 }

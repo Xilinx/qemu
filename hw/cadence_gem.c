@@ -25,9 +25,11 @@
 #include <zlib.h> /* For crc32 */
 
 #include "sysbus.h"
-#include "net.h"
+#include "net/net.h"
 #include "net/checksum.h"
-#include "exec-memory.h"
+#include "exec/memory.h"
+#include "exec/address-spaces.h"
+#include "sysemu/dma.h"
 
 #ifdef CADENCE_GEM_ERR_DEBUG
 #define DB_PRINT(...) do { \
@@ -421,8 +423,8 @@ static int gem_can_receive(NetClientState *nc)
         }
         return 0;
     }
-    cpu_physical_memory_read(s->rx_desc_addr,
-                             (uint8_t *)&desc[0], sizeof(desc));
+    dma_memory_read(&dma_context_memory, s->rx_desc_addr,
+                    (uint8_t *)&desc[0], sizeof(desc));
     if (rx_desc_get_ownership(desc) == 1) {
         memory_region_del_subregion(get_system_memory(), &s->rx_desc_snoop_mem);
         memory_region_add_subregion(get_system_memory(),
@@ -972,7 +974,7 @@ static void gem_phy_reset(GemState *s)
 
 static void gem_reset(DeviceState *d)
 {
-    GemState *s = FROM_SYSBUS(GemState, sysbus_from_qdev(d));
+    GemState *s = FROM_SYSBUS(GemState, SYS_BUS_DEVICE(d));
 
     DB_PRINT("\n");
 
@@ -1251,7 +1253,7 @@ static void gem_class_init(ObjectClass *klass, void *data)
     dc->reset = gem_reset;
 }
 
-static TypeInfo gem_info = {
+static const TypeInfo gem_info = {
     .class_init = gem_class_init,
     .name  = "xlnx.ps7-ethernet",
     .parent = TYPE_SYS_BUS_DEVICE,

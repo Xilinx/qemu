@@ -24,7 +24,7 @@
 
 #include "sysbus.h"
 #include "hw.h"
-#include "net.h"
+#include "net/net.h"
 
 #define D(x)
 #define R_TX_BUF0     0
@@ -248,7 +248,7 @@ static void xilinx_ethlite_class_init(ObjectClass *klass, void *data)
     dc->props = xilinx_ethlite_properties;
 }
 
-static TypeInfo xilinx_ethlite_info = {
+static const TypeInfo xilinx_ethlite_info = {
     .name          = "xlnx.xps-ethernetlite",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(struct xlx_ethlite),

@@ -11,11 +11,11 @@
 #include "ssi.h"
 #include "arm-misc.h"
 #include "devices.h"
-#include "qemu-timer.h"
+#include "qemu/timer.h"
 #include "i2c.h"
-#include "net.h"
+#include "net/net.h"
 #include "boards.h"
-#include "exec-memory.h"
+#include "exec/address-spaces.h"
 
 #define GPIO_A 0
 #define GPIO_B 1
@@ -1286,8 +1286,8 @@ static void stellaris_init(const char *kernel_filename, const char *cpu_model,
         enet = qdev_create(NULL, "stellaris_enet");
         qdev_set_nic_properties(enet, &nd_table[0]);
         qdev_init_nofail(enet);
-        sysbus_mmio_map(sysbus_from_qdev(enet), 0, 0x40048000);
-        sysbus_connect_irq(sysbus_from_qdev(enet), 0, pic[42]);
+        sysbus_mmio_map(SYS_BUS_DEVICE(enet), 0, 0x40048000);
+        sysbus_connect_irq(SYS_BUS_DEVICE(enet), 0, pic[42]);
     }
     if (board->peripherals & BP_GAMEPAD) {
         qemu_irq gpad_irq[5];
@@ -1331,12 +1331,14 @@ static QEMUMachine lm3s811evb_machine = {
     .name = "lm3s811evb",
     .desc = "Stellaris LM3S811EVB",
     .init = lm3s811evb_init,
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static QEMUMachine lm3s6965evb_machine = {
     .name = "lm3s6965evb",
     .desc = "Stellaris LM3S6965EVB",
     .init = lm3s6965evb_init,
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static void stellaris_machine_init(void)
@@ -1354,7 +1356,7 @@ static void stellaris_i2c_class_init(ObjectClass *klass, void *data)
     sdc->init = stellaris_i2c_init;
 }
 
-static TypeInfo stellaris_i2c_info = {
+static const TypeInfo stellaris_i2c_info = {
     .name          = "stellaris-i2c",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(stellaris_i2c_state),
@@ -1368,7 +1370,7 @@ static void stellaris_gptm_class_init(ObjectClass *klass, void *data)
     sdc->init = stellaris_gptm_init;
 }
 
-static TypeInfo stellaris_gptm_info = {
+static const TypeInfo stellaris_gptm_info = {
     .name          = "stellaris-gptm",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(gptm_state),
@@ -1382,7 +1384,7 @@ static void stellaris_adc_class_init(ObjectClass *klass, void *data)
     sdc->init = stellaris_adc_init;
 }
 
-static TypeInfo stellaris_adc_info = {
+static const TypeInfo stellaris_adc_info = {
     .name          = "stellaris-adc",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(stellaris_adc_state),

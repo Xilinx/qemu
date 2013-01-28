@@ -23,9 +23,8 @@
  */
 
 #include "sysbus.h"
-#include "qemu-char.h"
-#include "qemu-log.h"
-#include "net.h"
+#include "qemu/log.h"
+#include "net/net.h"
 #include "net/checksum.h"
 
 #include "stream.h"
@@ -909,7 +908,7 @@ static void xilinx_enet_class_init(ObjectClass *klass, void *data)
     ssc->push = axienet_stream_push;
 }
 
-static TypeInfo xilinx_enet_info = {
+static const TypeInfo xilinx_enet_info = {
     .name          = "xlnx.axi-ethernet",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(struct XilinxAXIEnet),

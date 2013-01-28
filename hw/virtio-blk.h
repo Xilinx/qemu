@@ -105,10 +105,10 @@ struct VirtIOBlkConf
     char *serial;
     uint32_t scsi;
     uint32_t config_wce;
+    uint32_t data_plane;
 };
 
 #define DEFINE_VIRTIO_BLK_FEATURES(_state, _field) \
-        DEFINE_VIRTIO_COMMON_FEATURES(_state, _field), \
-        DEFINE_PROP_BIT("config-wce", _state, _field, VIRTIO_BLK_F_CONFIG_WCE, true)
+        DEFINE_VIRTIO_COMMON_FEATURES(_state, _field)
 
 #endif

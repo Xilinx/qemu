@@ -22,12 +22,12 @@
 #include "boards.h"
 #include "elf.h"
 #include "serial.h"
-#include "net.h"
+#include "net/net.h"
 #include "loader.h"
-#include "exec-memory.h"
-#include "sysemu.h"
+#include "exec/address-spaces.h"
+#include "sysemu/sysemu.h"
 #include "sysbus.h"
-#include "qtest.h"
+#include "sysemu/qtest.h"
 
 #define KERNEL_LOAD_ADDR 0x100
 
@@ -50,7 +50,7 @@ static void openrisc_sim_net_init(MemoryRegion *address_space,
     qdev_set_nic_properties(dev, nd);
     qdev_init_nofail(dev);
 
-    s = sysbus_from_qdev(dev);
+    s = SYS_BUS_DEVICE(dev);
     sysbus_connect_irq(s, 0, irq);
     memory_region_add_subregion(address_space, base,
                                 sysbus_mmio_get_region(s, 0));
@@ -107,7 +107,7 @@ static void openrisc_sim_init(QEMUMachineInitArgs *args)
     for (n = 0; n < smp_cpus; n++) {
         cpu = cpu_openrisc_init(cpu_model);
         if (cpu == NULL) {
-            qemu_log("Unable to find CPU defineition!\n");
+            qemu_log("Unable to find CPU definition!\n");
             exit(1);
         }
         qemu_register_reset(main_cpu_reset, cpu);
@@ -139,6 +139,7 @@ static QEMUMachine openrisc_sim_machine = {
     .init = openrisc_sim_init,
     .max_cpus = 1,
     .is_default = 1,
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static void openrisc_sim_machine_init(void)

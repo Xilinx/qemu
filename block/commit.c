@@ -13,8 +13,8 @@
  */
 
 #include "trace.h"
-#include "block_int.h"
-#include "blockjob.h"
+#include "block/block_int.h"
+#include "block/blockjob.h"
 #include "qemu/ratelimit.h"
 
 enum {
@@ -65,7 +65,7 @@ static void coroutine_fn commit_run(void *opaque)
     BlockDriverState *active = s->active;
     BlockDriverState *top = s->top;
     BlockDriverState *base = s->base;
-    BlockDriverState *overlay_bs = NULL;
+    BlockDriverState *overlay_bs;
     int64_t sector_num, end;
     int ret = 0;
     int n = 0;
@@ -92,8 +92,6 @@ static void coroutine_fn commit_run(void *opaque)
         }
     }
 
-    overlay_bs = bdrv_find_overlay(active, top);
-
     end = s->common.len >> BDRV_SECTOR_BITS;
     buf = qemu_blockalign(top, COMMIT_BUFFER_SIZE);
 
@@ -103,7 +101,7 @@ static void coroutine_fn commit_run(void *opaque)
 
 wait:
         /* Note that even when no rate limit is applied we need to yield
-         * with no pending I/O here so that qemu_aio_flush() returns.
+         * with no pending I/O here so that bdrv_drain_all() returns.
          */
         block_job_sleep_ns(&s->common, rt_clock, delay_ns);
         if (block_job_is_cancelled(&s->common)) {
@@ -156,7 +154,8 @@ exit_restore_reopen:
     if (s->base_flags != bdrv_get_flags(base)) {
         bdrv_reopen(base, s->base_flags, NULL);
     }
-    if (s->orig_overlay_flags != bdrv_get_flags(overlay_bs)) {
+    overlay_bs = bdrv_find_overlay(active, top);
+    if (overlay_bs && s->orig_overlay_flags != bdrv_get_flags(overlay_bs)) {
         bdrv_reopen(overlay_bs, s->orig_overlay_flags, NULL);
     }
 

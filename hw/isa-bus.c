@@ -17,11 +17,11 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 #include "hw.h"
-#include "monitor.h"
+#include "monitor/monitor.h"
 #include "sysbus.h"
-#include "sysemu.h"
+#include "sysemu/sysemu.h"
 #include "isa.h"
-#include "exec-memory.h"
+#include "exec/address-spaces.h"
 
 static ISABus *isabus;
 hwaddr isa_mem_base = 0;
@@ -215,7 +215,7 @@ static void isabus_bridge_class_init(ObjectClass *klass, void *data)
     dc->no_user = 1;
 }
 
-static TypeInfo isabus_bridge_info = {
+static const TypeInfo isabus_bridge_info = {
     .name          = "isabus-bridge",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(SysBusDevice),
@@ -229,7 +229,7 @@ static void isa_device_class_init(ObjectClass *klass, void *data)
     k->bus_type = TYPE_ISA_BUS;
 }
 
-static TypeInfo isa_device_type_info = {
+static const TypeInfo isa_device_type_info = {
     .name = TYPE_ISA_DEVICE,
     .parent = TYPE_DEVICE,
     .instance_size = sizeof(ISADevice),
@@ -262,6 +262,15 @@ static char *isabus_get_fw_dev_path(DeviceState *dev)
 MemoryRegion *isa_address_space(ISADevice *dev)
 {
     return get_system_memory();
+}
+
+MemoryRegion *isa_address_space_io(ISADevice *dev)
+{
+    if (dev) {
+        return isa_bus_from_device(dev)->address_space_io;
+    }
+
+    return isabus->address_space_io;
 }
 
 type_init(isabus_register_types)

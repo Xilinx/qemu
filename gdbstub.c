@@ -29,17 +29,18 @@
 
 #include "qemu.h"
 #else
-#include "monitor.h"
-#include "qemu-char.h"
-#include "sysemu.h"
-#include "gdbstub.h"
+#include "monitor/monitor.h"
+#include "char/char.h"
+#include "sysemu/sysemu.h"
+#include "exec/gdbstub.h"
 #endif
 
 #define MAX_PACKET_LENGTH 4096
 
 #include "cpu.h"
-#include "qemu_socket.h"
-#include "kvm.h"
+#include "qemu/sockets.h"
+#include "sysemu/kvm.h"
+#include "qemu/bitops.h"
 
 #ifndef TARGET_CPU_MEMORY_RW_DEBUG
 static inline int target_memory_rw_debug(CPUArchState *env, target_ulong addr,
@@ -1535,27 +1536,34 @@ static int cpu_gdb_write_register(CPUAlphaState *env, uint8_t *mem_buf, int n)
 }
 #elif defined (TARGET_S390X)
 
-#define NUM_CORE_REGS S390_NUM_TOTAL_REGS
+#define NUM_CORE_REGS  S390_NUM_REGS
 
 static int cpu_gdb_read_register(CPUS390XState *env, uint8_t *mem_buf, int n)
 {
+    uint64_t val;
+    int cc_op;
+
     switch (n) {
-        case S390_PSWM_REGNUM: GET_REGL(env->psw.mask); break;
-        case S390_PSWA_REGNUM: GET_REGL(env->psw.addr); break;
-        case S390_R0_REGNUM ... S390_R15_REGNUM:
-            GET_REGL(env->regs[n-S390_R0_REGNUM]); break;
-        case S390_A0_REGNUM ... S390_A15_REGNUM:
-            GET_REG32(env->aregs[n-S390_A0_REGNUM]); break;
-        case S390_FPC_REGNUM: GET_REG32(env->fpc); break;
-        case S390_F0_REGNUM ... S390_F15_REGNUM:
-            /* XXX */
-            break;
-        case S390_PC_REGNUM: GET_REGL(env->psw.addr); break;
-        case S390_CC_REGNUM:
-            env->cc_op = calc_cc(env, env->cc_op, env->cc_src, env->cc_dst,
-                                 env->cc_vr);
-            GET_REG32(env->cc_op);
-            break;
+    case S390_PSWM_REGNUM:
+        cc_op = calc_cc(env, env->cc_op, env->cc_src, env->cc_dst, env->cc_vr);
+        val = deposit64(env->psw.mask, 44, 2, cc_op);
+        GET_REGL(val);
+        break;
+    case S390_PSWA_REGNUM:
+        GET_REGL(env->psw.addr);
+        break;
+    case S390_R0_REGNUM ... S390_R15_REGNUM:
+        GET_REGL(env->regs[n-S390_R0_REGNUM]);
+        break;
+    case S390_A0_REGNUM ... S390_A15_REGNUM:
+        GET_REG32(env->aregs[n-S390_A0_REGNUM]);
+        break;
+    case S390_FPC_REGNUM:
+        GET_REG32(env->fpc);
+        break;
+    case S390_F0_REGNUM ... S390_F15_REGNUM:
+        GET_REG64(env->fregs[n-S390_F0_REGNUM].ll);
+        break;
     }
 
     return 0;
@@ -1570,20 +1578,30 @@ static int cpu_gdb_write_register(CPUS390XState *env, uint8_t *mem_buf, int n)
     tmp32 = ldl_p(mem_buf);
 
     switch (n) {
-        case S390_PSWM_REGNUM: env->psw.mask = tmpl; break;
-        case S390_PSWA_REGNUM: env->psw.addr = tmpl; break;
-        case S390_R0_REGNUM ... S390_R15_REGNUM:
-            env->regs[n-S390_R0_REGNUM] = tmpl; break;
-        case S390_A0_REGNUM ... S390_A15_REGNUM:
-            env->aregs[n-S390_A0_REGNUM] = tmp32; r=4; break;
-        case S390_FPC_REGNUM: env->fpc = tmp32; r=4; break;
-        case S390_F0_REGNUM ... S390_F15_REGNUM:
-            /* XXX */
-            break;
-        case S390_PC_REGNUM: env->psw.addr = tmpl; break;
-        case S390_CC_REGNUM: env->cc_op = tmp32; r=4; break;
+    case S390_PSWM_REGNUM:
+        env->psw.mask = tmpl;
+        env->cc_op = extract64(tmpl, 44, 2);
+        break;
+    case S390_PSWA_REGNUM:
+        env->psw.addr = tmpl;
+        break;
+    case S390_R0_REGNUM ... S390_R15_REGNUM:
+        env->regs[n-S390_R0_REGNUM] = tmpl;
+        break;
+    case S390_A0_REGNUM ... S390_A15_REGNUM:
+        env->aregs[n-S390_A0_REGNUM] = tmp32;
+        r = 4;
+        break;
+    case S390_FPC_REGNUM:
+        env->fpc = tmp32;
+        r = 4;
+        break;
+    case S390_F0_REGNUM ... S390_F15_REGNUM:
+        env->fregs[n-S390_F0_REGNUM].ll = tmpl;
+        break;
+    default:
+        return 0;
     }
-
     return r;
 }
 #elif defined (TARGET_LM32)
@@ -2383,9 +2401,10 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
             thread = strtoull(p+16, (char **)&p, 16);
             env = find_cpu(thread);
             if (env != NULL) {
+                CPUState *cpu = ENV_GET_CPU(env);
                 cpu_synchronize_state(env);
                 len = snprintf((char *)mem_buf, sizeof(mem_buf),
-                               "CPU#%d [%s]", env->cpu_index,
+                               "CPU#%d [%s]", cpu->cpu_index,
                                env->halted ? "halted " : "running");
                 memtohex(buf, mem_buf, len);
                 put_packet(s, buf);

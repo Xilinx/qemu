@@ -20,7 +20,7 @@
  */
 
 #include "qemu-common.h"
-#include "qemu-timer.h"
+#include "qemu/timer.h"
 #include "watchdog.h"
 #include "hw.h"
 #include "isa.h"
@@ -129,7 +129,7 @@ static void wdt_ib700_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_ib700;
 }
 
-static TypeInfo wdt_ib700_info = {
+static const TypeInfo wdt_ib700_info = {
     .name          = "ib700",
     .parent        = TYPE_ISA_DEVICE,
     .instance_size = sizeof(IB700State),

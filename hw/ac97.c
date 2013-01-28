@@ -20,8 +20,8 @@
 #include "hw.h"
 #include "audiodev.h"
 #include "audio/audio.h"
-#include "pci.h"
-#include "dma.h"
+#include "pci/pci.h"
+#include "sysemu/dma.h"
 
 enum {
     AC97_Reset                     = 0x00,
@@ -1423,7 +1423,7 @@ static void ac97_class_init (ObjectClass *klass, void *data)
     dc->props = ac97_properties;
 }
 
-static TypeInfo ac97_info = {
+static const TypeInfo ac97_info = {
     .name          = "AC97",
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof (AC97LinkState),

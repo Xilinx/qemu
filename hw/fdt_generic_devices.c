@@ -1,9 +1,10 @@
-#include "blockdev.h"
-
 #include "fdt_generic_util.h"
 #include "fdt_generic_devices.h"
-#include "exec-memory.h"
-#include "qemu-log.h"
+#include "sysemu/blockdev.h"
+#include "exec/memory.h"
+#include "exec/address-spaces.h"
+#include "qemu/log.h"
+#include "char/char.h"
 
 #include "serial.h"
 #include "flash.h"

@@ -25,10 +25,10 @@
  *
  */
 #include "cpu.h"
-#include "sysemu.h"
-#include "qemu-char.h"
+#include "sysemu/sysemu.h"
+#include "char/char.h"
 #include "hw/qdev.h"
-#include "device_tree.h"
+#include "sysemu/device_tree.h"
 
 #include "hw/spapr.h"
 #include "hw/spapr_vio.h"
@@ -131,6 +131,7 @@ static void rtas_query_cpu_stopped_state(sPAPREnvironment *spapr,
 {
     target_ulong id;
     CPUPPCState *env;
+    CPUState *cpu;
 
     if (nargs != 1 || nret != 2) {
         rtas_st(rets, 0, -3);
@@ -139,7 +140,8 @@ static void rtas_query_cpu_stopped_state(sPAPREnvironment *spapr,
 
     id = rtas_ld(args, 0);
     for (env = first_cpu; env; env = env->next_cpu) {
-        if (env->cpu_index != id) {
+        cpu = CPU(ppc_env_get_cpu(env));
+        if (cpu->cpu_index != id) {
             continue;
         }
 
@@ -176,9 +178,9 @@ static void rtas_start_cpu(sPAPREnvironment *spapr,
     r3 = rtas_ld(args, 2);
 
     for (env = first_cpu; env; env = env->next_cpu) {
-        cpu = ENV_GET_CPU(env);
+        cpu = CPU(ppc_env_get_cpu(env));
 
-        if (env->cpu_index != id) {
+        if (cpu->cpu_index != id) {
             continue;
         }
 
@@ -242,7 +244,7 @@ target_ulong spapr_rtas_call(sPAPREnvironment *spapr,
     return H_PARAMETER;
 }
 
-void spapr_rtas_register(const char *name, spapr_rtas_fn fn)
+int spapr_rtas_register(const char *name, spapr_rtas_fn fn)
 {
     int i;
 
@@ -258,7 +260,7 @@ void spapr_rtas_register(const char *name, spapr_rtas_fn fn)
     rtas_next->name = name;
     rtas_next->fn = fn;
 
-    rtas_next++;
+    return (rtas_next++ - rtas_table) + TOKEN_BASE;
 }
 
 int spapr_rtas_device_tree_setup(void *fdt, hwaddr rtas_addr,
@@ -301,7 +303,7 @@ int spapr_rtas_device_tree_setup(void *fdt, hwaddr rtas_addr,
     for (i = 0; i < TOKEN_MAX; i++) {
         struct rtas_call *call = &rtas_table[i];
 
-        if (!call->fn) {
+        if (!call->name) {
             continue;
         }
 

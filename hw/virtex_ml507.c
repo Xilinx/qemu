@@ -25,22 +25,21 @@
 #include "sysbus.h"
 #include "hw.h"
 #include "serial.h"
-#include "net.h"
 #include "flash.h"
-#include "sysemu.h"
+#include "sysemu/sysemu.h"
 #include "devices.h"
 #include "boards.h"
-#include "device_tree.h"
+#include "sysemu/device_tree.h"
 #include "loader.h"
 #include "elf.h"
-#include "qemu-log.h"
-#include "exec-memory.h"
+#include "qemu/log.h"
+#include "exec/address-spaces.h"
 
 #include "ppc.h"
 #include "ppc4xx.h"
 #include "ppc405.h"
 
-#include "blockdev.h"
+#include "sysemu/blockdev.h"
 #include "xilinx.h"
 
 #define EPAPR_MAGIC    (0x45504150)
@@ -94,7 +93,7 @@ static PowerPCCPU *ppc440_init_xilinx(ram_addr_t *ram_size,
     }
     env = &cpu->env;
 
-    ppc_booke_timers_init(env, sysclk, 0/* no flags */);
+    ppc_booke_timers_init(cpu, sysclk, 0/* no flags */);
 
     ppc_dcr_init(env, NULL, NULL);
 
@@ -264,6 +263,7 @@ static QEMUMachine virtex_machine = {
     .name = "virtex-ml507",
     .desc = "Xilinx Virtex ML507 reference design",
     .init = virtex_init,
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static void virtex_machine_init(void)

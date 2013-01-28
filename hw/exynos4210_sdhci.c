@@ -19,8 +19,8 @@
  */
 
 #include "sdhci.h"
-#include "dma.h"
-#include "bitops.h"
+#include "sysemu/dma.h"
+#include "qemu/bitops.h"
 
 #define EXYNOS4_SDHC_CAPABILITIES    0x05E80080
 #define EXYNOS4_SDHC_MAX_BUFSZ       512

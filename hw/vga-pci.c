@@ -24,11 +24,11 @@
  * THE SOFTWARE.
  */
 #include "hw.h"
-#include "console.h"
-#include "pci.h"
+#include "ui/console.h"
+#include "pci/pci.h"
 #include "vga_int.h"
-#include "pixel_ops.h"
-#include "qemu-timer.h"
+#include "ui/pixel_ops.h"
+#include "qemu/timer.h"
 #include "loader.h"
 
 #define PCI_VGA_IOPORT_OFFSET 0x400
@@ -200,7 +200,7 @@ static void vga_class_init(ObjectClass *klass, void *data)
     dc->props = vga_pci_properties;
 }
 
-static TypeInfo vga_info = {
+static const TypeInfo vga_info = {
     .name          = "VGA",
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(PCIVGAState),

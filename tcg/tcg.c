@@ -37,9 +37,9 @@
 #endif
 
 #include "qemu-common.h"
-#include "cache-utils.h"
-#include "host-utils.h"
-#include "qemu-timer.h"
+#include "qemu/cache-utils.h"
+#include "qemu/host-utils.h"
+#include "qemu/timer.h"
 
 /* Note: the long term plan is to reduce the dependancies on the QEMU
    CPU definitions. Currently they are used for qemu_ld/st
@@ -800,7 +800,6 @@ static char *tcg_get_arg_str_idx(TCGContext *s, char *buf, int buf_size,
 
     assert(idx >= 0 && idx < s->nb_temps);
     ts = &s->temps[idx];
-    assert(ts);
     if (idx < s->nb_globals) {
         pstrcpy(buf, buf_size, ts->name);
     } else {

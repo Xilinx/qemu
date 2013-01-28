@@ -11,7 +11,7 @@
    implement one.  Most of the commends relating to brightness and geometry
    setup are ignored. */
 #include "ssi.h"
-#include "console.h"
+#include "ui/console.h"
 
 //#define DEBUG_SSD0323 1
 
@@ -357,7 +357,7 @@ static void ssd0323_class_init(ObjectClass *klass, void *data)
     k->cs_polarity = SSI_CS_HIGH;
 }
 
-static TypeInfo ssd0323_info = {
+static const TypeInfo ssd0323_info = {
     .name          = "ssd0323",
     .parent        = TYPE_SSI_SLAVE,
     .instance_size = sizeof(ssd0323_state),

@@ -26,12 +26,12 @@
 
 
 #include "hw.h"
-#include "pci.h"
-#include "net.h"
+#include "pci/pci.h"
+#include "net/net.h"
 #include "net/checksum.h"
 #include "loader.h"
-#include "sysemu.h"
-#include "dma.h"
+#include "sysemu/sysemu.h"
+#include "sysemu/dma.h"
 
 #include "e1000_hw.h"
 
@@ -61,6 +61,8 @@ static int debugflags = DBGBIT(TXERR) | DBGBIT(GENERAL);
 
 /* this is the size past which hardware will drop packets when setting LPE=0 */
 #define MAXIMUM_ETHERNET_VLAN_SIZE 1522
+/* this is the size past which hardware will drop packets when setting LPE=1 */
+#define MAXIMUM_ETHERNET_LPE_SIZE 16384
 
 /*
  * HW models:
@@ -164,6 +166,11 @@ static void
 set_phy_ctrl(E1000State *s, int index, uint16_t val)
 {
     if ((val & MII_CR_AUTO_NEG_EN) && (val & MII_CR_RESTART_AUTO_NEG)) {
+        /* no need auto-negotiation if link was down */
+        if (s->nic->nc.link_down) {
+            s->phy_reg[PHY_STATUS] |= MII_SR_AUTONEG_COMPLETE;
+            return;
+        }
         s->nic->nc.link_down = true;
         e1000_link_down(s);
         s->phy_reg[PHY_STATUS] &= ~MII_SR_AUTONEG_COMPLETE;
@@ -809,8 +816,9 @@ e1000_receive(NetClientState *nc, const uint8_t *buf, size_t size)
     }
 
     /* Discard oversized packets if !LPE and !SBP. */
-    if (size > MAXIMUM_ETHERNET_VLAN_SIZE
-        && !(s->mac_reg[RCTL] & E1000_RCTL_LPE)
+    if ((size > MAXIMUM_ETHERNET_LPE_SIZE ||
+        (size > MAXIMUM_ETHERNET_VLAN_SIZE
+        && !(s->mac_reg[RCTL] & E1000_RCTL_LPE)))
         && !(s->mac_reg[RCTL] & E1000_RCTL_SBP)) {
         return size;
     }
@@ -1319,7 +1327,7 @@ static void e1000_class_init(ObjectClass *klass, void *data)
     dc->props = e1000_properties;
 }
 
-static TypeInfo e1000_info = {
+static const TypeInfo e1000_info = {
     .name          = "e1000",
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(E1000State),

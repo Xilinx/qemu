@@ -27,17 +27,17 @@
 #include <linux/vfio.h>
 
 #include "config.h"
-#include "event_notifier.h"
-#include "exec-memory.h"
-#include "kvm.h"
-#include "memory.h"
-#include "msi.h"
-#include "msix.h"
-#include "pci.h"
+#include "qemu/event_notifier.h"
+#include "exec/address-spaces.h"
+#include "sysemu/kvm.h"
+#include "exec/memory.h"
+#include "pci/msi.h"
+#include "pci/msix.h"
+#include "pci/pci.h"
 #include "qemu-common.h"
-#include "qemu-error.h"
-#include "qemu-queue.h"
-#include "range.h"
+#include "qemu/error-report.h"
+#include "qemu/queue.h"
+#include "qemu/range.h"
 
 /* #define DEBUG_VFIO */
 #ifdef DEBUG_VFIO
@@ -275,7 +275,7 @@ static void vfio_enable_intx_kvm(VFIODevice *vdev)
     int ret, argsz;
     int32_t *pfd;
 
-    if (!kvm_irqchip_in_kernel() ||
+    if (!kvm_irqfds_enabled() ||
         vdev->intx.route.mode != PCI_INTX_ENABLED ||
         !kvm_check_extension(kvm_state, KVM_CAP_IRQFD_RESAMPLE)) {
         return;
@@ -438,7 +438,8 @@ static int vfio_enable_intx(VFIODevice *vdev)
      * Only conditional to avoid generating error messages on platforms
      * where we won't actually use the result anyway.
      */
-    if (kvm_check_extension(kvm_state, KVM_CAP_IRQFD_RESAMPLE)) {
+    if (kvm_irqfds_enabled() &&
+        kvm_check_extension(kvm_state, KVM_CAP_IRQFD_RESAMPLE)) {
         vdev->intx.route = pci_device_route_intx_to_irq(&vdev->pdev,
                                                         vdev->intx.pin);
     }
@@ -561,8 +562,8 @@ static int vfio_enable_vectors(VFIODevice *vdev, bool msix)
     return ret;
 }
 
-static int vfio_msix_vector_use(PCIDevice *pdev,
-                                unsigned int nr, MSIMessage msg)
+static int vfio_msix_vector_do_use(PCIDevice *pdev, unsigned int nr,
+                                   MSIMessage *msg, IOHandler *handler)
 {
     VFIODevice *vdev = DO_UPCAST(VFIODevice, pdev, pdev);
     VFIOMSIVector *vector;
@@ -586,7 +587,7 @@ static int vfio_msix_vector_use(PCIDevice *pdev,
      * Attempt to enable route through KVM irqchip,
      * default to userspace handling if unavailable.
      */
-    vector->virq = kvm_irqchip_add_msi_route(kvm_state, msg);
+    vector->virq = msg ? kvm_irqchip_add_msi_route(kvm_state, *msg) : -1;
     if (vector->virq < 0 ||
         kvm_irqchip_add_irqfd_notifier(kvm_state, &vector->interrupt,
                                        vector->virq) < 0) {
@@ -595,7 +596,7 @@ static int vfio_msix_vector_use(PCIDevice *pdev,
             vector->virq = -1;
         }
         qemu_set_fd_handler(event_notifier_get_fd(&vector->interrupt),
-                            vfio_msi_interrupt, NULL, vector);
+                            handler, NULL, vector);
     }
 
     /*
@@ -636,6 +637,12 @@ static int vfio_msix_vector_use(PCIDevice *pdev,
     }
 
     return 0;
+}
+
+static int vfio_msix_vector_use(PCIDevice *pdev,
+                                unsigned int nr, MSIMessage msg)
+{
+    return vfio_msix_vector_do_use(pdev, nr, &msg, vfio_msi_interrupt);
 }
 
 static void vfio_msix_vector_release(PCIDevice *pdev, unsigned int nr)
@@ -696,8 +703,24 @@ static void vfio_enable_msix(VFIODevice *vdev)
 
     vdev->interrupt = VFIO_INT_MSIX;
 
+    /*
+     * Some communication channels between VF & PF or PF & fw rely on the
+     * physical state of the device and expect that enabling MSI-X from the
+     * guest enables the same on the host.  When our guest is Linux, the
+     * guest driver call to pci_enable_msix() sets the enabling bit in the
+     * MSI-X capability, but leaves the vector table masked.  We therefore
+     * can't rely on a vector_use callback (from request_irq() in the guest)
+     * to switch the physical device into MSI-X mode because that may come a
+     * long time after pci_enable_msix().  This code enables vector 0 with
+     * triggering to userspace, then immediately release the vector, leaving
+     * the physical device with no vectors enabled, but MSI-X enabled, just
+     * like the guest view.
+     */
+    vfio_msix_vector_do_use(&vdev->pdev, 0, NULL, NULL);
+    vfio_msix_vector_release(&vdev->pdev, 0);
+
     if (msix_set_vector_notifiers(&vdev->pdev, vfio_msix_vector_use,
-                                  vfio_msix_vector_release)) {
+                                  vfio_msix_vector_release, NULL)) {
         error_report("vfio: msix_set_vector_notifiers failed\n");
     }
 
@@ -1814,13 +1837,13 @@ static int vfio_get_device(VFIOGroup *group, const char *name, VFIODevice *vdev)
         error_report("Warning, device %s does not support reset\n", name);
     }
 
-    if (dev_info.num_regions != VFIO_PCI_NUM_REGIONS) {
+    if (dev_info.num_regions < VFIO_PCI_CONFIG_REGION_INDEX + 1) {
         error_report("vfio: unexpected number of io regions %u\n",
                      dev_info.num_regions);
         goto error;
     }
 
-    if (dev_info.num_irqs != VFIO_PCI_NUM_IRQS) {
+    if (dev_info.num_irqs < VFIO_PCI_MSIX_IRQ_INDEX + 1) {
         error_report("vfio: unexpected number of irqs %u\n", dev_info.num_irqs);
         goto error;
     }

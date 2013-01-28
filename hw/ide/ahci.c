@@ -22,14 +22,14 @@
  */
 
 #include <hw/hw.h>
-#include <hw/msi.h>
+#include <hw/pci/msi.h>
 #include <hw/pc.h>
-#include <hw/pci.h>
+#include <hw/pci/pci.h>
 #include <hw/sysbus.h>
 
-#include "monitor.h"
-#include "dma.h"
-#include "cpu-common.h"
+#include "monitor/monitor.h"
+#include "sysemu/dma.h"
+#include "exec/cpu-common.h"
 #include "internal.h"
 #include <hw/ide/pci.h>
 #include <hw/ide/ahci.h>
@@ -1247,7 +1247,7 @@ static void sysbus_ahci_class_init(ObjectClass *klass, void *data)
     dc->reset = sysbus_ahci_reset;
 }
 
-static TypeInfo sysbus_ahci_info = {
+static const TypeInfo sysbus_ahci_info = {
     .name          = "sysbus-ahci",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(SysbusAHCIState),

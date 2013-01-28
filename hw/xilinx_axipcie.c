@@ -24,12 +24,13 @@
  */
 
 #include "sysbus.h"
-#include "sysemu.h"
-#include "qemu-log.h"
+#include "sysemu/sysemu.h"
+#include "qemu/log.h"
+#include "pci/pci.h"
+#include "exec/memory.h"
+#include "exec/address-spaces.h"
 #include "fifo.h"
 
-#include "pci.h"
-#include "exec-memory.h"
 #include "fdt_generic_util.h"
 
 #define XILINX_AXI_PCIE_DEBUG 1

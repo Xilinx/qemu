@@ -25,12 +25,12 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "sysemu.h"
+#include "sysemu/sysemu.h"
 #include "boards.h"
 #include "loader.h"
 #include "elf.h"
-#include "memory.h"
-#include "exec-memory.h"
+#include "exec/memory.h"
+#include "exec/address-spaces.h"
 
 static uint64_t translate_phys_addr(void *env, uint64_t addr)
 {
@@ -106,6 +106,7 @@ static QEMUMachine xtensa_sim_machine = {
     .is_default = true,
     .init = xtensa_sim_init,
     .max_cpus = 4,
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static void xtensa_sim_machine_init(void)

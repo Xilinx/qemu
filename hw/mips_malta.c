@@ -26,27 +26,27 @@
 #include "pc.h"
 #include "serial.h"
 #include "fdc.h"
-#include "net.h"
+#include "net/net.h"
 #include "boards.h"
 #include "smbus.h"
-#include "block.h"
+#include "block/block.h"
 #include "flash.h"
 #include "mips.h"
 #include "mips_cpudevs.h"
-#include "pci.h"
-#include "qemu-char.h"
-#include "sysemu.h"
-#include "arch_init.h"
+#include "pci/pci.h"
+#include "char/char.h"
+#include "sysemu/sysemu.h"
+#include "sysemu/arch_init.h"
 #include "boards.h"
-#include "qemu-log.h"
+#include "qemu/log.h"
 #include "mips-bios.h"
 #include "ide.h"
 #include "loader.h"
 #include "elf.h"
 #include "mc146818rtc.h"
 #include "i8254.h"
-#include "blockdev.h"
-#include "exec-memory.h"
+#include "sysemu/blockdev.h"
+#include "exec/address-spaces.h"
 #include "sysbus.h"             /* SysBusDevice */
 
 //#define DEBUG_BOARD_INIT
@@ -743,10 +743,13 @@ static int64_t load_kernel (void)
     return kernel_entry;
 }
 
-static void malta_mips_config(CPUMIPSState *env)
+static void malta_mips_config(MIPSCPU *cpu)
 {
+    CPUMIPSState *env = &cpu->env;
+    CPUState *cs = CPU(cpu);
+
     env->mvp->CP0_MVPConf0 |= ((smp_cpus - 1) << CP0MVPC0_PVPE) |
-                         ((smp_cpus * env->nr_threads - 1) << CP0MVPC0_PTC);
+                         ((smp_cpus * cs->nr_threads - 1) << CP0MVPC0_PTC);
 }
 
 static void main_cpu_reset(void *opaque)
@@ -763,7 +766,7 @@ static void main_cpu_reset(void *opaque)
         env->CP0_Status &= ~((1 << CP0St_BEV) | (1 << CP0St_ERL));
     }
 
-    malta_mips_config(env);
+    malta_mips_config(cpu);
 }
 
 static void cpu_request_exit(void *opaque, int irq, int level)
@@ -1004,7 +1007,7 @@ static void mips_malta_class_init(ObjectClass *klass, void *data)
     k->init = mips_malta_sysbus_device_init;
 }
 
-static TypeInfo mips_malta_device = {
+static const TypeInfo mips_malta_device = {
     .name          = "mips-malta",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(MaltaState),
@@ -1017,6 +1020,7 @@ static QEMUMachine mips_malta_machine = {
     .init = mips_malta_init,
     .max_cpus = 16,
     .is_default = 1,
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static void mips_malta_register_types(void)

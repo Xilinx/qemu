@@ -23,12 +23,13 @@
  */
 
 #include "hw.h"
-#include "blockdev.h"
-#include "qemu-timer.h"
+#include "sysemu/blockdev.h"
+#include "sysemu/dma.h"
+#include "qemu/timer.h"
+#include "block/block_int.h"
+#include "qemu/bitops.h"
+
 #include "sdhci.h"
-#include "block_int.h"
-#include "dma.h"
-#include "bitops.h"
 
 /* host controller debug messages */
 #ifndef SDHC_DEBUG

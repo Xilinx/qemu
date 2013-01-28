@@ -24,7 +24,7 @@
 #include "hw.h"
 #include "isa.h"
 #include "pc.h"
-#include "kvm.h"
+#include "sysemu/kvm.h"
 #include "qdev.h"
 
 //#define VMPORT_DEBUG
@@ -155,7 +155,7 @@ static void vmport_class_initfn(ObjectClass *klass, void *data)
     dc->no_user = 1;
 }
 
-static TypeInfo vmport_info = {
+static const TypeInfo vmport_info = {
     .name          = "vmport",
     .parent        = TYPE_ISA_DEVICE,
     .instance_size = sizeof(VMPortState),

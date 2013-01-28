@@ -27,15 +27,15 @@
 
 #include "sysbus.h"
 #include "hw.h"
-#include "net.h"
+#include "net/net.h"
 #include "flash.h"
-#include "sysemu.h"
+#include "sysemu/sysemu.h"
 #include "devices.h"
 #include "boards.h"
 #include "xilinx.h"
-#include "blockdev.h"
+#include "sysemu/blockdev.h"
 #include "serial.h"
-#include "exec-memory.h"
+#include "exec/address-spaces.h"
 #include "ssi.h"
 
 #include "microblaze_boot.h"
@@ -147,7 +147,7 @@ petalogix_ml605_init(QEMUMachineInitArgs *args)
         dev = qdev_create(NULL, "xlnx.xps-spi");
         qdev_prop_set_uint8(dev, "num-ss-bits", NUM_SPI_FLASHES);
         qdev_init_nofail(dev);
-        busdev = sysbus_from_qdev(dev);
+        busdev = SYS_BUS_DEVICE(dev);
         sysbus_mmio_map(busdev, 0, 0x40a00000);
         sysbus_connect_irq(busdev, 0, irq[4]);
 
@@ -173,7 +173,8 @@ static QEMUMachine petalogix_ml605_machine = {
     .name = "petalogix-ml605",
     .desc = "PetaLogix linux refdesign for xilinx ml605 little endian",
     .init = petalogix_ml605_init,
-    .is_default = 0
+    .is_default = 0,
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static void petalogix_ml605_machine_init(void)

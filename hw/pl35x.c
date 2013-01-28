@@ -24,10 +24,10 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/timer.h"
+#include "sysemu/sysemu.h"
 #include "hw.h"
-#include "qemu-timer.h"
 #include "sysbus.h"
-#include "sysemu.h"
 #include "flash.h"
 
 #ifdef PL35X_ERR_DEBUG

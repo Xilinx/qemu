@@ -26,13 +26,13 @@
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 #include "hw.h"
-#include "console.h"
+#include "ui/console.h"
 #include "omap.h"
 #include "boards.h"
 #include "arm-misc.h"
 #include "flash.h"
-#include "blockdev.h"
-#include "exec-memory.h"
+#include "sysemu/blockdev.h"
+#include "exec/address-spaces.h"
 
 /*****************************************************************************/
 /* Siemens SX1 Cellphone V1 */
@@ -219,12 +219,14 @@ static QEMUMachine sx1_machine_v2 = {
     .name = "sx1",
     .desc = "Siemens SX1 (OMAP310) V2",
     .init = sx1_init_v2,
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static QEMUMachine sx1_machine_v1 = {
     .name = "sx1-v1",
     .desc = "Siemens SX1 (OMAP310) V1",
     .init = sx1_init_v1,
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static void sx1_machine_init(void)

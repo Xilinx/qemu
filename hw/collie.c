@@ -15,8 +15,8 @@
 #include "strongarm.h"
 #include "arm-misc.h"
 #include "flash.h"
-#include "blockdev.h"
-#include "exec-memory.h"
+#include "sysemu/blockdev.h"
+#include "exec/address-spaces.h"
 
 static struct arm_boot_info collie_binfo = {
     .loader_start = SA_SDCS0,
@@ -62,6 +62,7 @@ static QEMUMachine collie_machine = {
     .name = "collie",
     .desc = "Collie PDA (SA-1110)",
     .init = collie_init,
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static void collie_machine_init(void)

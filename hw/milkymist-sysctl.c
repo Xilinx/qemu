@@ -23,11 +23,11 @@
 
 #include "hw.h"
 #include "sysbus.h"
-#include "sysemu.h"
+#include "sysemu/sysemu.h"
 #include "trace.h"
-#include "qemu-timer.h"
+#include "qemu/timer.h"
 #include "ptimer.h"
-#include "qemu-error.h"
+#include "qemu/error-report.h"
 
 enum {
     CTRL_ENABLE      = (1<<0),
@@ -323,7 +323,7 @@ static void milkymist_sysctl_class_init(ObjectClass *klass, void *data)
     dc->props = milkymist_sysctl_properties;
 }
 
-static TypeInfo milkymist_sysctl_info = {
+static const TypeInfo milkymist_sysctl_info = {
     .name          = "milkymist-sysctl",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(MilkymistSysctlState),

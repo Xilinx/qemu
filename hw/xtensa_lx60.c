@@ -25,17 +25,18 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "sysemu.h"
+#include "sysemu/sysemu.h"
 #include "boards.h"
 #include "loader.h"
 #include "elf.h"
-#include "memory.h"
-#include "exec-memory.h"
+#include "exec/memory.h"
+#include "exec/address-spaces.h"
 #include "serial.h"
-#include "net.h"
+#include "net/net.h"
 #include "sysbus.h"
 #include "flash.h"
-#include "blockdev.h"
+#include "sysemu/blockdev.h"
+#include "char/char.h"
 #include "xtensa_bootparam.h"
 
 typedef struct LxBoardDesc {
@@ -130,7 +131,7 @@ static void lx60_net_init(MemoryRegion *address_space,
     qdev_set_nic_properties(dev, nd);
     qdev_init_nofail(dev);
 
-    s = sysbus_from_qdev(dev);
+    s = SYS_BUS_DEVICE(dev);
     sysbus_connect_irq(s, 0, irq);
     memory_region_add_subregion(address_space, base,
             sysbus_mmio_get_region(s, 0));
@@ -294,6 +295,7 @@ static QEMUMachine xtensa_lx60_machine = {
     .desc = "lx60 EVB (" XTENSA_DEFAULT_CPU_MODEL ")",
     .init = xtensa_lx60_init,
     .max_cpus = 4,
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static QEMUMachine xtensa_lx200_machine = {
@@ -301,6 +303,7 @@ static QEMUMachine xtensa_lx200_machine = {
     .desc = "lx200 EVB (" XTENSA_DEFAULT_CPU_MODEL ")",
     .init = xtensa_lx200_init,
     .max_cpus = 4,
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static void xtensa_lx_machines_init(void)

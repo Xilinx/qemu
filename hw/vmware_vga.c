@@ -23,8 +23,8 @@
  */
 #include "hw.h"
 #include "loader.h"
-#include "console.h"
-#include "pci.h"
+#include "ui/console.h"
+#include "pci/pci.h"
 
 #undef VERBOSE
 #define HW_RECT_ACCEL
@@ -1244,7 +1244,7 @@ static void vmsvga_class_init(ObjectClass *klass, void *data)
     dc->props = vga_vmware_properties;
 }
 
-static TypeInfo vmsvga_info = {
+static const TypeInfo vmsvga_info = {
     .name          = "vmware-svga",
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(struct pci_vmsvga_state_s),

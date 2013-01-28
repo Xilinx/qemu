@@ -52,13 +52,13 @@
 #include <zlib.h>
 
 #include "hw.h"
-#include "pci.h"
-#include "dma.h"
-#include "qemu-timer.h"
-#include "net.h"
+#include "pci/pci.h"
+#include "sysemu/dma.h"
+#include "qemu/timer.h"
+#include "net/net.h"
 #include "loader.h"
-#include "sysemu.h"
-#include "iov.h"
+#include "sysemu/sysemu.h"
+#include "qemu/iov.h"
 
 /* debug RTL8139 card */
 //#define DEBUG_RTL8139 1
@@ -1258,7 +1258,8 @@ static void rtl8139_reset(DeviceState *d)
     s->BasicModeStatus  = 0x7809;
     //s->BasicModeStatus |= 0x0040; /* UTP medium */
     s->BasicModeStatus |= 0x0020; /* autonegotiation completed */
-    s->BasicModeStatus |= 0x0004; /* link is up */
+    /* preserve link state */
+    s->BasicModeStatus |= s->nic->nc.link_down ? 0 : 0x04;
 
     s->NWayAdvert    = 0x05e1; /* all modes, full duplex */
     s->NWayLPAR      = 0x05e1; /* all modes, full duplex */
@@ -3539,7 +3540,7 @@ static void rtl8139_class_init(ObjectClass *klass, void *data)
     dc->props = rtl8139_properties;
 }
 
-static TypeInfo rtl8139_info = {
+static const TypeInfo rtl8139_info = {
     .name          = "rtl8139",
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(RTL8139State),

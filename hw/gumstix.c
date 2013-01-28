@@ -36,12 +36,12 @@
 
 #include "hw.h"
 #include "pxa.h"
-#include "net.h"
+#include "net/net.h"
 #include "flash.h"
 #include "devices.h"
 #include "boards.h"
-#include "blockdev.h"
-#include "exec-memory.h"
+#include "sysemu/blockdev.h"
+#include "exec/address-spaces.h"
 
 static const int sector_len = 128 * 1024;
 
@@ -122,12 +122,14 @@ static QEMUMachine connex_machine = {
     .name = "connex",
     .desc = "Gumstix Connex (PXA255)",
     .init = connex_init,
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static QEMUMachine verdex_machine = {
     .name = "verdex",
     .desc = "Gumstix Verdex (PXA270)",
     .init = verdex_init,
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static void gumstix_machine_init(void)

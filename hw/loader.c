@@ -43,14 +43,14 @@
  */
 
 #include "hw.h"
-#include "disas.h"
-#include "monitor.h"
-#include "sysemu.h"
+#include "disas/disas.h"
+#include "monitor/monitor.h"
+#include "sysemu/sysemu.h"
 #include "uboot_image.h"
 #include "loader.h"
 #include "fw_cfg.h"
-#include "memory.h"
-#include "exec-memory.h"
+#include "exec/memory.h"
+#include "exec/address-spaces.h"
 
 #include <zlib.h>
 
@@ -778,7 +778,7 @@ void *rom_ptr(hwaddr addr)
     return rom->data + (addr - rom->addr);
 }
 
-void do_info_roms(Monitor *mon)
+void do_info_roms(Monitor *mon, const QDict *qdict)
 {
     Rom *rom;
 

@@ -25,7 +25,7 @@
 #include "isa.h"
 #include "pc.h"
 #include "ps2.h"
-#include "sysemu.h"
+#include "sysemu/sysemu.h"
 
 /* debug PC keyboard */
 //#define DEBUG_KBD
@@ -512,7 +512,7 @@ static void i8042_class_initfn(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_kbd_isa;
 }
 
-static TypeInfo i8042_info = {
+static const TypeInfo i8042_info = {
     .name          = "i8042",
     .parent        = TYPE_ISA_DEVICE,
     .instance_size = sizeof(ISAKBDState),

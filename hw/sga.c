@@ -24,10 +24,10 @@
  * sgabios code originally available at code.google.com/p/sgabios
  *
  */
-#include "pci.h"
+#include "pci/pci.h"
 #include "pc.h"
 #include "loader.h"
-#include "sysemu.h"
+#include "sysemu/sysemu.h"
 
 #define SGABIOS_FILENAME "sgabios.bin"
 
@@ -48,7 +48,7 @@ static void sga_class_initfn(ObjectClass *klass, void *data)
     dc->desc = "Serial Graphics Adapter";
 }
 
-static TypeInfo sga_info = {
+static const TypeInfo sga_info = {
     .name          = "sga",
     .parent        = TYPE_ISA_DEVICE,
     .instance_size = sizeof(ISASGAState),

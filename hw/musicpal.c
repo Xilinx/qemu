@@ -12,18 +12,19 @@
 #include "sysbus.h"
 #include "arm-misc.h"
 #include "devices.h"
-#include "net.h"
-#include "sysemu.h"
+#include "net/net.h"
+#include "sysemu/sysemu.h"
 #include "boards.h"
 #include "serial.h"
-#include "qemu-timer.h"
+#include "qemu/timer.h"
 #include "ptimer.h"
-#include "block.h"
+#include "block/block.h"
 #include "flash.h"
-#include "console.h"
+#include "ui/console.h"
 #include "i2c.h"
-#include "blockdev.h"
-#include "exec-memory.h"
+#include "sysemu/blockdev.h"
+#include "exec/address-spaces.h"
+#include "ui/pixel_ops.h"
 
 #define MP_MISC_BASE            0x80002000
 #define MP_MISC_SIZE            0x00001000
@@ -427,7 +428,7 @@ static void mv88w8618_eth_class_init(ObjectClass *klass, void *data)
     dc->props = mv88w8618_eth_properties;
 }
 
-static TypeInfo mv88w8618_eth_info = {
+static const TypeInfo mv88w8618_eth_info = {
     .name          = "mv88w8618_eth",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(mv88w8618_eth_state),
@@ -491,8 +492,6 @@ static inline void glue(set_lcd_pixel, depth) \
 SET_LCD_PIXEL(8, uint8_t)
 SET_LCD_PIXEL(16, uint16_t)
 SET_LCD_PIXEL(32, uint32_t)
-
-#include "pixel_ops.h"
 
 static void lcd_refresh(void *opaque)
 {
@@ -644,7 +643,7 @@ static void musicpal_lcd_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &musicpal_lcd_vmsd;
 }
 
-static TypeInfo musicpal_lcd_info = {
+static const TypeInfo musicpal_lcd_info = {
     .name          = "musicpal_lcd",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(musicpal_lcd_state),
@@ -717,7 +716,7 @@ static void mv88w8618_pic_write(void *opaque, hwaddr offset,
 static void mv88w8618_pic_reset(DeviceState *d)
 {
     mv88w8618_pic_state *s = FROM_SYSBUS(mv88w8618_pic_state,
-                                         sysbus_from_qdev(d));
+                                         SYS_BUS_DEVICE(d));
 
     s->level = 0;
     s->enabled = 0;
@@ -763,7 +762,7 @@ static void mv88w8618_pic_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &mv88w8618_pic_vmsd;
 }
 
-static TypeInfo mv88w8618_pic_info = {
+static const TypeInfo mv88w8618_pic_info = {
     .name          = "mv88w8618_pic",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(mv88w8618_pic_state),
@@ -874,7 +873,7 @@ static void mv88w8618_pit_write(void *opaque, hwaddr offset,
 static void mv88w8618_pit_reset(DeviceState *d)
 {
     mv88w8618_pit_state *s = FROM_SYSBUS(mv88w8618_pit_state,
-                                         sysbus_from_qdev(d));
+                                         SYS_BUS_DEVICE(d));
     int i;
 
     for (i = 0; i < 4; i++) {
@@ -940,7 +939,7 @@ static void mv88w8618_pit_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &mv88w8618_pit_vmsd;
 }
 
-static TypeInfo mv88w8618_pit_info = {
+static const TypeInfo mv88w8618_pit_info = {
     .name          = "mv88w8618_pit",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(mv88w8618_pit_state),
@@ -1020,7 +1019,7 @@ static void mv88w8618_flashcfg_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &mv88w8618_flashcfg_vmsd;
 }
 
-static TypeInfo mv88w8618_flashcfg_info = {
+static const TypeInfo mv88w8618_flashcfg_info = {
     .name          = "mv88w8618_flashcfg",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(mv88w8618_flashcfg_state),
@@ -1289,7 +1288,7 @@ static const MemoryRegionOps musicpal_gpio_ops = {
 static void musicpal_gpio_reset(DeviceState *d)
 {
     musicpal_gpio_state *s = FROM_SYSBUS(musicpal_gpio_state,
-                                         sysbus_from_qdev(d));
+                                         SYS_BUS_DEVICE(d));
 
     s->lcd_brightness = 0;
     s->out_state = 0;
@@ -1342,7 +1341,7 @@ static void musicpal_gpio_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &musicpal_gpio_vmsd;
 }
 
-static TypeInfo musicpal_gpio_info = {
+static const TypeInfo musicpal_gpio_info = {
     .name          = "musicpal_gpio",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(musicpal_gpio_state),
@@ -1496,7 +1495,7 @@ static void musicpal_key_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &musicpal_key_vmsd;
 }
 
-static TypeInfo musicpal_key_info = {
+static const TypeInfo musicpal_key_info = {
     .name          = "musicpal_key",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(musicpal_key_state),
@@ -1608,12 +1607,12 @@ static void musicpal_init(QEMUMachineInitArgs *args)
     dev = qdev_create(NULL, "mv88w8618_eth");
     qdev_set_nic_properties(dev, &nd_table[0]);
     qdev_init_nofail(dev);
-    sysbus_mmio_map(sysbus_from_qdev(dev), 0, MP_ETH_BASE);
-    sysbus_connect_irq(sysbus_from_qdev(dev), 0, pic[MP_ETH_IRQ]);
+    sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, MP_ETH_BASE);
+    sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, pic[MP_ETH_IRQ]);
 
     sysbus_create_simple("mv88w8618_wlan", MP_WLAN_BASE, NULL);
 
-    musicpal_misc_init(sysbus_from_qdev(dev));
+    musicpal_misc_init(SYS_BUS_DEVICE(dev));
 
     dev = sysbus_create_simple("musicpal_gpio", MP_GPIO_BASE, pic[MP_GPIO_IRQ]);
     i2c_dev = sysbus_create_simple("gpio_i2c", -1, NULL);
@@ -1642,7 +1641,7 @@ static void musicpal_init(QEMUMachineInitArgs *args)
 
     wm8750_dev = i2c_create_slave(i2c, "wm8750", MP_WM_ADDR);
     dev = qdev_create(NULL, "mv88w8618_audio");
-    s = sysbus_from_qdev(dev);
+    s = SYS_BUS_DEVICE(dev);
     qdev_prop_set_ptr(dev, "wm8750", wm8750_dev);
     qdev_init_nofail(dev);
     sysbus_mmio_map(s, 0, MP_AUDIO_BASE);
@@ -1659,6 +1658,7 @@ static QEMUMachine musicpal_machine = {
     .name = "musicpal",
     .desc = "Marvell 88w8618 / MusicPal (ARM926EJ-S)",
     .init = musicpal_init,
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static void musicpal_machine_init(void)
@@ -1675,7 +1675,7 @@ static void mv88w8618_wlan_class_init(ObjectClass *klass, void *data)
     sdc->init = mv88w8618_wlan_init;
 }
 
-static TypeInfo mv88w8618_wlan_info = {
+static const TypeInfo mv88w8618_wlan_info = {
     .name          = "mv88w8618_wlan",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(SysBusDevice),

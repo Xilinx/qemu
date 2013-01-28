@@ -10,7 +10,7 @@
 #include "boards.h"
 #include "loader.h"
 #include "elf.h"
-#include "exec-memory.h"
+#include "exec/address-spaces.h"
 
 #define KERNEL_LOAD_ADDR 0x10000
 
@@ -73,6 +73,7 @@ static QEMUMachine dummy_m68k_machine = {
     .name = "dummy",
     .desc = "Dummy board",
     .init = dummy_m68k_init,
+    DEFAULT_MACHINE_OPTIONS,
 };
 
 static void dummy_m68k_machine_init(void)

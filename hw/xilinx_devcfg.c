@@ -22,8 +22,8 @@
  * THE SOFTWARE.
  */
 
+#include "sysemu/sysemu.h"
 #include "sysbus.h"
-#include "sysemu.h"
 #include "ptimer.h"
 
 /* FIXME: get rid of hardcoded nastiness */

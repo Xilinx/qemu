@@ -38,10 +38,10 @@
 
 #include "hw.h"
 #include "flash.h"
-#include "block.h"
-#include "qemu-timer.h"
-#include "exec-memory.h"
-#include "host-utils.h"
+#include "block/block.h"
+#include "qemu/timer.h"
+#include "exec/address-spaces.h"
+#include "qemu/host-utils.h"
 #include "sysbus.h"
 
 #define PFLASH_BUG(fmt, ...) \
@@ -319,6 +319,9 @@ static void pflash_write(pflash_t *pfl, hwaddr offset,
             DPRINTF("%s: Write to buffer\n", __func__);
             pfl->status |= 0x80; /* Ready! */
             break;
+        case 0xf0: /* Probe for AMD flash */
+            DPRINTF("%s: Probe for AMD flash\n", __func__);
+            goto reset_flash;
         case 0xff: /* Read array mode */
             DPRINTF("%s: Read array mode\n", __func__);
             goto reset_flash;
@@ -726,7 +729,7 @@ pflash_t *pflash_cfi01_register(hwaddr base,
                                 uint16_t id2, uint16_t id3, int be)
 {
     DeviceState *dev = qdev_create(NULL, "cfi.pflash01");
-    SysBusDevice *busdev = sysbus_from_qdev(dev);
+    SysBusDevice *busdev = SYS_BUS_DEVICE(dev);
     pflash_t *pfl = (pflash_t *)object_dynamic_cast(OBJECT(dev),
                                                     "cfi.pflash01");
 

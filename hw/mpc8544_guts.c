@@ -18,7 +18,7 @@
  */
 
 #include "hw.h"
-#include "sysemu.h"
+#include "sysemu/sysemu.h"
 #include "sysbus.h"
 
 #define MPC8544_GUTS_MMIO_SIZE        0x1000
@@ -112,7 +112,7 @@ static int mpc8544_guts_initfn(SysBusDevice *dev)
 {
     GutsState *s;
 
-    s = FROM_SYSBUS(GutsState, sysbus_from_qdev(dev));
+    s = FROM_SYSBUS(GutsState, SYS_BUS_DEVICE(dev));
 
     memory_region_init_io(&s->iomem, &mpc8544_guts_ops, s,
                           "mpc6544.guts", MPC8544_GUTS_MMIO_SIZE);
@@ -128,7 +128,7 @@ static void mpc8544_guts_class_init(ObjectClass *klass, void *data)
     k->init = mpc8544_guts_initfn;
 }
 
-static TypeInfo mpc8544_guts_info = {
+static const TypeInfo mpc8544_guts_info = {
     .name          = "mpc8544-guts",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(GutsState),

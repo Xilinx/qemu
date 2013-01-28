@@ -24,11 +24,11 @@
  * THE SOFTWARE.
  */
 #include "hw.h"
-#include "console.h"
+#include "ui/console.h"
 #include "pc.h"
 #include "vga_int.h"
-#include "pixel_ops.h"
-#include "qemu-timer.h"
+#include "ui/pixel_ops.h"
+#include "qemu/timer.h"
 #include "loader.h"
 
 typedef struct ISAVGAState {
@@ -86,7 +86,7 @@ static void vga_class_initfn(ObjectClass *klass, void *data)
     dc->props = vga_isa_properties;
 }
 
-static TypeInfo vga_info = {
+static const TypeInfo vga_info = {
     .name          = "isa-vga",
     .parent        = TYPE_ISA_DEVICE,
     .instance_size = sizeof(ISAVGAState),

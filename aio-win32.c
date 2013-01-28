@@ -16,9 +16,9 @@
  */
 
 #include "qemu-common.h"
-#include "block.h"
-#include "qemu-queue.h"
-#include "qemu_socket.h"
+#include "block/block.h"
+#include "qemu/queue.h"
+#include "qemu/sockets.h"
 
 struct AioHandler {
     EventNotifier *e;
@@ -214,5 +214,6 @@ bool aio_poll(AioContext *ctx, bool blocking)
         events[ret - WAIT_OBJECT_0] = events[--count];
     }
 
-    return progress;
+    assert(progress || busy);
+    return true;
 }

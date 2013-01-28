@@ -25,7 +25,7 @@
 #include "hw.h"
 #include "pc.h"
 #include "isa.h"
-#include "qemu-timer.h"
+#include "qemu/timer.h"
 #include "i8254.h"
 #include "i8254_internal.h"
 
@@ -294,7 +294,7 @@ static void pit_common_class_init(ObjectClass *klass, void *data)
     dc->no_user = 1;
 }
 
-static TypeInfo pit_common_type = {
+static const TypeInfo pit_common_type = {
     .name          = TYPE_PIT_COMMON,
     .parent        = TYPE_ISA_DEVICE,
     .instance_size = sizeof(PITCommonState),

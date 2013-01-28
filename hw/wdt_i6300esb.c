@@ -22,10 +22,10 @@
 #include <inttypes.h>
 
 #include "qemu-common.h"
-#include "qemu-timer.h"
+#include "qemu/timer.h"
 #include "watchdog.h"
 #include "hw.h"
-#include "pci.h"
+#include "pci/pci.h"
 
 /*#define I6300ESB_DEBUG 1*/
 
@@ -439,7 +439,7 @@ static void i6300esb_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_i6300esb;
 }
 
-static TypeInfo i6300esb_info = {
+static const TypeInfo i6300esb_info = {
     .name          = "i6300esb",
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(I6300State),

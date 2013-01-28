@@ -12,8 +12,8 @@
  */
 
 #include "trace.h"
-#include "blockjob.h"
-#include "block_int.h"
+#include "block/blockjob.h"
+#include "block/block_int.h"
 #include "qemu/ratelimit.h"
 
 enum {
@@ -205,7 +205,7 @@ static void coroutine_fn mirror_run(void *opaque)
             }
 
             /* Note that even when no rate limit is applied we need to yield
-             * with no pending I/O here so that qemu_aio_flush() returns.
+             * with no pending I/O here so that bdrv_drain_all() returns.
              */
             block_job_sleep_ns(&s->common, rt_clock, delay_ns);
             if (block_job_is_cancelled(&s->common)) {
@@ -225,7 +225,7 @@ static void coroutine_fn mirror_run(void *opaque)
     }
 
 immediate_exit:
-    g_free(s->buf);
+    qemu_vfree(s->buf);
     bdrv_set_dirty_tracking(bs, false);
     bdrv_iostatus_disable(s->target);
     if (s->should_complete && ret == 0) {

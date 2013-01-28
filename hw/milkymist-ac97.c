@@ -25,7 +25,7 @@
 #include "sysbus.h"
 #include "trace.h"
 #include "audio/audio.h"
-#include "qemu-error.h"
+#include "qemu/error-report.h"
 
 enum {
     R_AC97_CTRL = 0,
@@ -329,7 +329,7 @@ static void milkymist_ac97_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_milkymist_ac97;
 }
 
-static TypeInfo milkymist_ac97_info = {
+static const TypeInfo milkymist_ac97_info = {
     .name          = "milkymist-ac97",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(MilkymistAC97State),

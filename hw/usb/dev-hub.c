@@ -184,6 +184,7 @@ static void usb_hub_detach(USBPort *port1)
         port->wPortStatus &= ~PORT_STAT_ENABLE;
         port->wPortChange |= PORT_STAT_C_ENABLE;
     }
+    usb_wakeup(s->intr);
 }
 
 static void usb_hub_child_detach(USBPort *port1, USBDevice *child)
@@ -363,6 +364,7 @@ static void usb_hub_handle_control(USBDevice *dev, USBPacket *p,
                     port->wPortChange |= PORT_STAT_C_RESET;
                     /* set enable bit */
                     port->wPortStatus |= PORT_STAT_ENABLE;
+                    usb_wakeup(s->intr);
                 }
                 break;
             case PORT_POWER:
@@ -566,7 +568,7 @@ static void usb_hub_class_initfn(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_usb_hub;
 }
 
-static TypeInfo hub_info = {
+static const TypeInfo hub_info = {
     .name          = "usb-hub",
     .parent        = TYPE_USB_DEVICE,
     .instance_size = sizeof(USBHubState),

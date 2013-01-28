@@ -1,8 +1,8 @@
 #include "hw/hw.h"
 #include "hw/usb.h"
 #include "hw/qdev.h"
-#include "sysemu.h"
-#include "monitor.h"
+#include "sysemu/sysemu.h"
+#include "monitor/monitor.h"
 #include "trace.h"
 
 static void usb_bus_dev_print(Monitor *mon, DeviceState *qdev, int indent);
@@ -166,6 +166,9 @@ const char *usb_device_get_product_desc(USBDevice *dev)
 const USBDesc *usb_device_get_usb_desc(USBDevice *dev)
 {
     USBDeviceClass *klass = USB_DEVICE_GET_CLASS(dev);
+    if (dev->usb_desc) {
+        return dev->usb_desc;
+    }
     return klass->usb_desc;
 }
 
@@ -183,6 +186,14 @@ void usb_device_flush_ep_queue(USBDevice *dev, USBEndpoint *ep)
     USBDeviceClass *klass = USB_DEVICE_GET_CLASS(dev);
     if (klass->flush_ep_queue) {
         klass->flush_ep_queue(dev, ep);
+    }
+}
+
+void usb_device_ep_stopped(USBDevice *dev, USBEndpoint *ep)
+{
+    USBDeviceClass *klass = USB_DEVICE_GET_CLASS(dev);
+    if (klass->ep_stopped) {
+        klass->ep_stopped(dev, ep);
     }
 }
 
@@ -531,7 +542,7 @@ static char *usb_get_fw_dev_path(DeviceState *qdev)
     return fw_path;
 }
 
-void usb_info(Monitor *mon)
+void usb_info(Monitor *mon, const QDict *qdict)
 {
     USBBus *bus;
     USBDevice *dev;
@@ -617,7 +628,7 @@ static void usb_device_class_init(ObjectClass *klass, void *data)
     k->props    = usb_props;
 }
 
-static TypeInfo usb_device_type_info = {
+static const TypeInfo usb_device_type_info = {
     .name = TYPE_USB_DEVICE,
     .parent = TYPE_DEVICE,
     .instance_size = sizeof(USBDevice),

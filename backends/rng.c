@@ -11,7 +11,7 @@
  */
 
 #include "qemu/rng.h"
-#include "qerror.h"
+#include "qapi/qmp/qerror.h"
 
 void rng_backend_request_entropy(RngBackend *s, size_t size,
                                  EntropyReceiveFunc *receive_entropy,
@@ -76,7 +76,7 @@ static void rng_backend_init(Object *obj)
                              NULL);
 }
 
-static TypeInfo rng_backend_info = {
+static const TypeInfo rng_backend_info = {
     .name = TYPE_RNG_BACKEND,
     .parent = TYPE_OBJECT,
     .instance_size = sizeof(RngBackend),

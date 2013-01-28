@@ -3,7 +3,7 @@
 
 #include "hw/hw.h"
 #include "hw/virtio.h"
-#include "memory.h"
+#include "exec/memory.h"
 
 /* Generic structures common for any vhost based device. */
 struct vhost_virtqueue {
@@ -18,6 +18,7 @@ struct vhost_virtqueue {
     void *ring;
     unsigned long long ring_phys;
     unsigned ring_size;
+    EventNotifier masked_notifier;
 };
 
 typedef unsigned long vhost_log_chunk_t;
@@ -53,4 +54,13 @@ void vhost_dev_stop(struct vhost_dev *hdev, VirtIODevice *vdev);
 int vhost_dev_enable_notifiers(struct vhost_dev *hdev, VirtIODevice *vdev);
 void vhost_dev_disable_notifiers(struct vhost_dev *hdev, VirtIODevice *vdev);
 
+/* Test and clear masked event pending status.
+ * Should be called after unmask to avoid losing events.
+ */
+bool vhost_virtqueue_pending(struct vhost_dev *hdev, int n);
+
+/* Mask/unmask events from this vq.
+ */
+void vhost_virtqueue_mask(struct vhost_dev *hdev, VirtIODevice *vdev, int n,
+                          bool mask);
 #endif

@@ -20,14 +20,14 @@
  */
 
 #include "hw.h"
-#include "sysemu.h"
+#include "sysemu/sysemu.h"
 #include "boards.h"
-#include "monitor.h"
+#include "monitor/monitor.h"
 #include "loader.h"
 #include "elf.h"
 #include "hw/sysbus.h"
-#include "kvm.h"
-#include "device_tree.h"
+#include "sysemu/kvm.h"
+#include "sysemu/device_tree.h"
 #include "kvm_ppc.h"
 
 #include "hw/spapr.h"
@@ -80,9 +80,7 @@ static char *vio_format_dev_name(VIOsPAPRDevice *dev)
     char *name;
 
     /* Device tree style name device@reg */
-    if (asprintf(&name, "%s@%x", pc->dt_name, dev->reg) < 0) {
-        return NULL;
-    }
+    name = g_strdup_printf("%s@%x", pc->dt_name, dev->reg);
 
     return name;
 }
@@ -101,12 +99,8 @@ static int vio_make_devnode(VIOsPAPRDevice *dev,
     }
 
     dt_name = vio_format_dev_name(dev);
-    if (!dt_name) {
-        return -ENOMEM;
-    }
-
     node_off = fdt_add_subnode(fdt, vdevice_off, dt_name);
-    free(dt_name);
+    g_free(dt_name);
     if (node_off < 0) {
         return node_off;
     }
@@ -444,9 +438,6 @@ static int spapr_vio_busdev_init(DeviceState *qdev)
     /* Don't overwrite ids assigned on the command line */
     if (!dev->qdev.id) {
         id = vio_format_dev_name(dev);
-        if (!id) {
-            return -1;
-        }
         dev->qdev.id = id;
     }
 
@@ -536,7 +527,7 @@ static void spapr_vio_bridge_class_init(ObjectClass *klass, void *data)
     dc->no_user = 1;
 }
 
-static TypeInfo spapr_vio_bridge_info = {
+static const TypeInfo spapr_vio_bridge_info = {
     .name          = "spapr-vio-bridge",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(SysBusDevice),
@@ -552,7 +543,7 @@ static void vio_spapr_device_class_init(ObjectClass *klass, void *data)
     k->props = spapr_vio_props;
 }
 
-static TypeInfo spapr_vio_type_info = {
+static const TypeInfo spapr_vio_type_info = {
     .name = TYPE_VIO_SPAPR_DEVICE,
     .parent = TYPE_DEVICE,
     .instance_size = sizeof(VIOsPAPRDevice),
@@ -646,20 +637,12 @@ int spapr_populate_chosen_stdout(void *fdt, VIOsPAPRBus *bus)
     }
 
     name = vio_format_dev_name(dev);
-    if (!name) {
-        return -ENOMEM;
-    }
-
-    if (asprintf(&path, "/vdevice/%s", name) < 0) {
-        path = NULL;
-        ret = -ENOMEM;
-        goto out;
-    }
+    path = g_strdup_printf("/vdevice/%s", name);
 
     ret = fdt_setprop_string(fdt, offset, "linux,stdout-path", path);
-out:
-    free(name);
-    free(path);
+
+    g_free(name);
+    g_free(path);
 
     return ret;
 }

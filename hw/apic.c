@@ -16,12 +16,12 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, see <http://www.gnu.org/licenses/>
  */
-#include "qemu-thread.h"
+#include "qemu/thread.h"
 #include "apic_internal.h"
 #include "apic.h"
 #include "ioapic.h"
-#include "msi.h"
-#include "host-utils.h"
+#include "pci/msi.h"
+#include "qemu/host-utils.h"
 #include "trace.h"
 #include "pc.h"
 #include "apic-msidef.h"
@@ -895,7 +895,7 @@ static void apic_class_init(ObjectClass *klass, void *data)
     k->post_load = apic_post_load;
 }
 
-static TypeInfo apic_info = {
+static const TypeInfo apic_info = {
     .name          = "apic",
     .instance_size = sizeof(APICCommonState),
     .parent        = TYPE_APIC_COMMON,

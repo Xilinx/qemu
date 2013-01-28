@@ -25,10 +25,10 @@
 #include "hw.h"
 #include "sysbus.h"
 #include "trace.h"
-#include "console.h"
+#include "ui/console.h"
 #include "framebuffer.h"
-#include "pixel_ops.h"
-#include "qemu-error.h"
+#include "ui/pixel_ops.h"
+#include "qemu/error-report.h"
 
 #define BITS 8
 #include "milkymist-vgafb_template.h"
@@ -319,7 +319,7 @@ static void milkymist_vgafb_class_init(ObjectClass *klass, void *data)
     dc->props = milkymist_vgafb_properties;
 }
 
-static TypeInfo milkymist_vgafb_info = {
+static const TypeInfo milkymist_vgafb_info = {
     .name          = "milkymist-vgafb",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(MilkymistVgafbState),

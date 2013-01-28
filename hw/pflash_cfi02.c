@@ -37,10 +37,10 @@
 
 #include "hw.h"
 #include "flash.h"
-#include "qemu-timer.h"
-#include "block.h"
-#include "exec-memory.h"
-#include "host-utils.h"
+#include "qemu/timer.h"
+#include "block/block.h"
+#include "exec/address-spaces.h"
+#include "qemu/host-utils.h"
 #include "sysbus.h"
 
 //#define PFLASH_DEBUG
@@ -760,7 +760,7 @@ pflash_t *pflash_cfi02_register(hwaddr base,
                                 int be)
 {
     DeviceState *dev = qdev_create(NULL, "cfi.pflash02");
-    SysBusDevice *busdev = sysbus_from_qdev(dev);
+    SysBusDevice *busdev = SYS_BUS_DEVICE(dev);
     pflash_t *pfl = (pflash_t *)object_dynamic_cast(OBJECT(dev),
                                                     "cfi.pflash02");
 

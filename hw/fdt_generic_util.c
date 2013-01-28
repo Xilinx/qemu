@@ -43,8 +43,9 @@
 } while (0);
 
 #include "fdt_generic_util.h"
-#include "net.h"
-#include "exec-memory.h"
+#include "net/net.h"
+#include "exec/memory.h"
+#include "exec/address-spaces.h"
 
 /* FIXME: wrap direct calls into libfdt */
 
@@ -240,7 +241,7 @@ qemu_irq *fdt_get_irq_info(FDTMachineInfo *fdti, char *node_path, int irq_idx,
     }
     node_name = qemu_devtree_get_node_name(fdt, intc_node_path);
 
-    while (intc->state == DEV_STATE_CREATED) {
+    while (!intc->realized) {
         fdt_init_yield(fdti);
     }
 
@@ -505,7 +506,7 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
         }
         child = fdt_init_get_opaque(fdti, children[i]);
         if (child) {
-            while (child->state == DEV_STATE_CREATED) {
+            while (!child->realized) {
                 DB_PRINT_NP(1, "Waiting on child %s to qdev_init\n",
                             children[i]);
                 fdt_init_yield(fdti);
@@ -538,7 +539,7 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
             if (!errp) {
                 DB_PRINT_NP(0, "mmio region %d mapped to %#llx\n", i,
                             (unsigned long long)base);
-                sysbus_mmio_map(sysbus_from_qdev(DEVICE(dev)), i, base);
+                sysbus_mmio_map(SYS_BUS_DEVICE(dev), i, base);
             } else {
                 break;
             }
@@ -567,7 +568,7 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
             while (*irqs) {
                 DB_PRINT_NP(0, "FDT: (%s) connecting irq %d: %s\n", dev_type, j,
                             irq_info);
-                sysbus_connect_irq(sysbus_from_qdev(DEVICE(dev)), j++, *irqs);
+                sysbus_connect_irq(SYS_BUS_DEVICE(dev), j++, *irqs);
                 irqs++;
             }
         }

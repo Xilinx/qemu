@@ -10,8 +10,8 @@
  */
 
 #include "qemu-common.h"
-#include "qemu-option.h"
-#include "qemu-config.h"
+#include "qemu/option.h"
+#include "qemu/config-file.h"
 #include "trace.h"
 
 #include "hw/usb.h"
@@ -757,7 +757,7 @@ static void usb_uas_class_initfn(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_usb_uas;
 }
 
-static TypeInfo uas_info = {
+static const TypeInfo uas_info = {
     .name          = "usb-uas",
     .parent        = TYPE_USB_DEVICE,
     .instance_size = sizeof(UASDevice),

@@ -13,13 +13,15 @@
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/config-file.h"
+#include "exec/memory.h"
+#include "exec/address-spaces.h"
+#include "sysemu/sysemu.h"
+#include "sysemu/blockdev.h"
 #include "sysbus.h"
 #include "arm-misc.h"
-#include "sysemu.h"
 #include "boards.h"
-#include "exec-memory.h"
 #include "loader.h"
-#include "blockdev.h"
 #include "flash.h"
 
 #include <libfdt.h>
@@ -221,7 +223,7 @@ static void arm_generic_fdt_init(QEMUMachineInitArgs *args)
     /* ZYNQ SCU: */
     {
         DeviceState *dev = qdev_create(NULL, "arm_a9_scu");
-        SysBusDevice *busdev = sysbus_from_qdev(dev);
+        SysBusDevice *busdev = SYS_BUS_DEVICE(dev);
 
         qdev_prop_set_uint32(dev, "num-cpu", smp_cpus);
         qdev_init_nofail(dev);
@@ -252,7 +254,7 @@ static void arm_generic_fdt_init(QEMUMachineInitArgs *args)
         assert_no_error(errp);
     }
     qdev_init_nofail(dev);
-    busdev = sysbus_from_qdev(dev);
+    busdev = SYS_BUS_DEVICE(dev);
     sysbus_mmio_map(busdev, 0, 0xe000e000);
     sysbus_mmio_map(busdev, 2, 0xe1000000);
 
@@ -290,9 +292,7 @@ static QEMUMachine arm_generic_fdt_machine = {
     .name = MACHINE_NAME,
     .desc = "ARM device tree driven machine model",
     .init = arm_generic_fdt_init,
-    .use_scsi = 1,
     .max_cpus = MAX_CPUS,
-    .no_sdcard = 1
 };
 
 static void arm_generic_fdt_machine_init(void)

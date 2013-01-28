@@ -20,7 +20,7 @@
 
 #include "cpu.h"
 #include "mmu.h"
-#include "host-utils.h"
+#include "qemu/host-utils.h"
 
 
 //#define CRIS_HELPER_DEBUG
@@ -28,7 +28,7 @@
 
 #ifdef CRIS_HELPER_DEBUG
 #define D(x) x
-#define D_LOG(...) qemu_log(__VA__ARGS__)
+#define D_LOG(...) qemu_log(__VA_ARGS__)
 #else
 #define D(x)
 #define D_LOG(...) do { } while (0)
