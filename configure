@@ -2375,11 +2375,23 @@ if test "$fdt" != "no" ; then
 int main(void) { return 0; }
 EOF
   if compile_prog "" "$fdt_libs" ; then
+    #system DTC is good - use it
     fdt=yes
+  elif test -d ${source_path}/dtc/libfdt ; then
+    #have submodule DTC - use it
+    fdt=yes
+    dtc_internal="yes"
+    fdt_cflags="-I\$(BUILD_DIR)/dtc/libfdt"
+    fdt_libs="-L\$(BUILD_DIR)/dtc/libfdt $fdt_libs"
+  elif test "$fdt" = "yes" ; then
+    #have neither and want - prompt for system/submodule install
+    echo "ERROR: DTC not present. Your options:"
+    echo "  (1) Preferred: Install the DTC devel package"
+    echo "  (2) Fetch the DTC submodule, using:"
+    echo "      git submodule update --init dtc"
+    exit 1
   else
-    if test "$fdt" = "yes" ; then
-      feature_not_found "fdt"
-    fi
+    #dont have and dont want
     fdt_libs=
     fdt=no
   fi
@@ -3242,7 +3254,7 @@ if test "$cpu" = "ppc64" -a "$targetos" != "Darwin" ; then
 fi
 
 # add pixman flags after all config tests are done
-QEMU_CFLAGS="$QEMU_CFLAGS $pixman_cflags"
+QEMU_CFLAGS="$QEMU_CFLAGS $pixman_cflags $fdt_cflags"
 libs_softmmu="$libs_softmmu $pixman_libs"
 
 echo "Install prefix    $prefix"
@@ -4276,6 +4288,13 @@ done # for target in $targets
 
 if [ "$pixman" = "internal" ]; then
   echo "config-host.h: subdir-pixman" >> $config_host_mak
+fi
+
+if [ "$dtc_internal" = "yes" ]; then
+  echo "config-host.h: subdir-dtc" >> $config_host_mak
+else
+  echo "DENIED!!!"
+  exit 1
 fi
 
 # build tree in object directory in case the source is not in the current directory

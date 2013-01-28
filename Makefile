@@ -127,6 +127,9 @@ subdir-%:
 subdir-pixman: pixman/Makefile
 	$(call quiet-command,$(MAKE) $(SUBDIR_MAKEFLAGS) -C pixman V="$(V)" all,)
 
+subdir-dtc:
+	$(call quiet-command,$(MAKE) CC=$(CC) AR=$(AR) LD=$(LD) $(SUBDIR_MAKEFLAGS) -C dtc V="$(V)" libfdt,)
+
 pixman/Makefile: $(SRC_PATH)/pixman/configure
 	(cd pixman; CFLAGS="$(CFLAGS) -fPIC $(extra_cflags) $(extra_ldflags)" $(SRC_PATH)/pixman/configure $(AUTOCONF_HOST) --disable-gtk --disable-shared --enable-static)
 
