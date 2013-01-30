@@ -2369,6 +2369,9 @@ fi
 
 ##########################################
 # fdt probe
+
+fdt=yes
+
 if test "$fdt" != "no" ; then
   fdt_libs="-lfdt"
   cat > $TMPC << EOF
