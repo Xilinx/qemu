@@ -2384,6 +2384,11 @@ EOF
     #have submodule DTC - use it
     fdt=yes
     dtc_internal="yes"
+    mkdir -p dtc
+    if [ "$source_path" != `pwd` ]; then
+       symlink "$source_path/dtc/Makefile" "dtc/Makefile"
+       symlink "$source_path/dtc/scripts" "dtc/scripts"
+    fi
     fdt_cflags="-I\$(SRC_PATH)/dtc/libfdt"
     fdt_libs="-L\$(BUILD_DIR)/dtc/libfdt $fdt_libs"
   elif test "$fdt" = "yes" ; then

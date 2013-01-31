@@ -136,20 +136,11 @@ pixman/Makefile: $(SRC_PATH)/pixman/configure
 $(SRC_PATH)/pixman/configure:
 	(cd $(SRC_PATH)/pixman; autoreconf -v --install)
 
-#FIXME: Libfdt make insists on building tests
-
 DTC_MAKE_ARGS=-I$(SRC_PATH)/dtc VPATH=$(SRC_PATH)/dtc -C dtc V="$(V)" LIBFDT_srcdir=$(SRC_PATH)/dtc/libfdt
 DTC_CFLAGS="$(CFLAGS) $(extra_cflags) -I$(BUILD_DIR)/dtc -I$(SRC_PATH)/dtc -I$(SRC_PATH)/dtc/libfdt"
 
-subdir-dtc:dtc/libfdt dtc/tests dtc/scripts dtc/Makefile
+subdir-dtc:dtc/libfdt dtc/tests
 	$(call quiet-command,$(MAKE) $(DTC_MAKE_ARGS) CPPFLAGS=$(DTC_CFLAGS) CC=$(CC) AR=$(AR) LD=$(LD) $(SUBDIR_MAKEFLAGS) libfdt,)
-
-dtc/Makefile:
-	echo include $(SRC_PATH)/dtc/Makefile >> $(BUILD_DIR)/dtc/Makefile
-
-#FIXME: find a better way to access dtc scripts in out of tree build
-dtc/scripts:
-	cp -r $(SRC_PATH)/dtc/scripts $(BUILD_DIR)/dtc
 
 dtc/%:
 	mkdir -p $@
