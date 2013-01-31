@@ -130,14 +130,29 @@ subdir-%:
 subdir-pixman: pixman/Makefile
 	$(call quiet-command,$(MAKE) $(SUBDIR_MAKEFLAGS) -C pixman V="$(V)" all,)
 
-subdir-dtc:
-	$(call quiet-command,$(MAKE) CC=$(CC) AR=$(AR) LD=$(LD) $(SUBDIR_MAKEFLAGS) -C dtc V="$(V)" libfdt,)
-
 pixman/Makefile: $(SRC_PATH)/pixman/configure
 	(cd pixman; CFLAGS="$(CFLAGS) -fPIC $(extra_cflags) $(extra_ldflags)" $(SRC_PATH)/pixman/configure $(AUTOCONF_HOST) --disable-gtk --disable-shared --enable-static)
 
 $(SRC_PATH)/pixman/configure:
 	(cd $(SRC_PATH)/pixman; autoreconf -v --install)
+
+#FIXME: Libfdt make insists on building tests
+
+DTC_MAKE_ARGS=-I$(SRC_PATH)/dtc VPATH=$(SRC_PATH)/dtc -C dtc V="$(V)" LIBFDT_srcdir=$(SRC_PATH)/dtc/libfdt
+DTC_CFLAGS="$(CFLAGS) $(extra_cflags) -I$(BUILD_DIR)/dtc -I$(SRC_PATH)/dtc -I$(SRC_PATH)/dtc/libfdt"
+
+subdir-dtc:dtc/libfdt dtc/tests dtc/scripts dtc/Makefile
+	$(call quiet-command,$(MAKE) $(DTC_MAKE_ARGS) CPPFLAGS=$(DTC_CFLAGS) CC=$(CC) AR=$(AR) LD=$(LD) $(SUBDIR_MAKEFLAGS) libfdt,)
+
+dtc/Makefile:
+	echo include $(SRC_PATH)/dtc/Makefile >> $(BUILD_DIR)/dtc/Makefile
+
+#FIXME: find a better way to access dtc scripts in out of tree build
+dtc/scripts:
+	cp -r $(SRC_PATH)/dtc/scripts $(BUILD_DIR)/dtc
+
+dtc/%:
+	mkdir -p $@
 
 $(SUBDIR_RULES): libqemuutil.a libqemustub.a $(common-obj-y)
 
@@ -256,7 +271,7 @@ distclean: clean
 	rm -rf $$d || exit 1 ; \
         done
 	if test -f pixman/config.log; then make -C pixman distclean; fi
-	if test -f dtc/version_gen.h; then make -C dtc clean; fi
+	if test -f dtc/version_gen.h; then make $(DTC_MAKE_ARGS) clean; fi
 
 KEYMAPS=da     en-gb  et  fr     fr-ch  is  lt  modifiers  no  pt-br  sv \
 ar      de     en-us  fi  fr-be  hr     it  lv  nl         pl  ru     th \

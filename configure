@@ -2384,7 +2384,7 @@ EOF
     #have submodule DTC - use it
     fdt=yes
     dtc_internal="yes"
-    fdt_cflags="-I\$(BUILD_DIR)/dtc/libfdt"
+    fdt_cflags="-I\$(SRC_PATH)/dtc/libfdt"
     fdt_libs="-L\$(BUILD_DIR)/dtc/libfdt $fdt_libs"
   elif test "$fdt" = "yes" ; then
     #have neither and want - prompt for system/submodule install
