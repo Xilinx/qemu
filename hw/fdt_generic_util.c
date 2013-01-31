@@ -504,7 +504,8 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
             DB_PRINT_NP(1, "Waiting on child %s to qdev_create\n", children[i]);
             fdt_init_yield(fdti);
         }
-        child = fdt_init_get_opaque(fdti, children[i]);
+        child = (DeviceState *)object_dynamic_cast(fdt_init_get_opaque(fdti,
+                                                   children[i]), TYPE_DEVICE);
         if (child) {
             while (!child->realized) {
                 DB_PRINT_NP(1, "Waiting on child %s to qdev_init\n",
