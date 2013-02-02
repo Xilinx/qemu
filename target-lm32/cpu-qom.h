@@ -75,4 +75,6 @@ static inline LM32CPU *lm32_env_get_cpu(CPULM32State *env)
 extern const struct VMStateDescription vmstate_lm32_cpu;
 #endif
 
+void lm32_cpu_do_interrupt(CPUState *cpu);
+
 #endif

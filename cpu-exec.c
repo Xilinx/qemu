@@ -183,6 +183,10 @@ volatile sig_atomic_t exit_request;
 int cpu_exec(CPUArchState *env)
 {
     CPUState *cpu = ENV_GET_CPU(env);
+#if !(defined(CONFIG_USER_ONLY) && \
+      (defined(TARGET_M68K) || defined(TARGET_PPC) || defined(TARGET_S390X)))
+    CPUClass *cc = CPU_GET_CLASS(cpu);
+#endif
     int ret, interrupt_request;
     TranslationBlock *tb;
     uint8_t *tc_ptr;
@@ -250,12 +254,12 @@ int cpu_exec(CPUArchState *env)
                        which will be handled outside the cpu execution
                        loop */
 #if defined(TARGET_I386)
-                    do_interrupt(env);
+                    cc->do_interrupt(cpu);
 #endif
                     ret = env->exception_index;
                     break;
 #else
-                    do_interrupt(env);
+                    cc->do_interrupt(cpu);
                     env->exception_index = -1;
 #endif
                 }
@@ -365,7 +369,7 @@ int cpu_exec(CPUArchState *env)
                     if ((interrupt_request & CPU_INTERRUPT_HARD)
                         && (env->ie & IE_IE)) {
                         env->exception_index = EXCP_IRQ;
-                        do_interrupt(env);
+                        cc->do_interrupt(cpu);
                         next_tb = 0;
                     }
 #elif defined(TARGET_MICROBLAZE)
@@ -374,7 +378,7 @@ int cpu_exec(CPUArchState *env)
                         && !(env->sregs[SR_MSR] & (MSR_EIP | MSR_BIP))
                         && !(env->iflags & (D_FLAG | IMM_FLAG))) {
                         env->exception_index = EXCP_IRQ;
-                        do_interrupt(env);
+                        cc->do_interrupt(cpu);
                         next_tb = 0;
                     }
 #elif defined(TARGET_MIPS)
@@ -383,7 +387,7 @@ int cpu_exec(CPUArchState *env)
                         /* Raise it */
                         env->exception_index = EXCP_EXT_INTERRUPT;
                         env->error_code = 0;
-                        do_interrupt(env);
+                        cc->do_interrupt(cpu);
                         next_tb = 0;
                     }
 #elif defined(TARGET_OPENRISC)
@@ -399,7 +403,7 @@ int cpu_exec(CPUArchState *env)
                         }
                         if (idx >= 0) {
                             env->exception_index = idx;
-                            do_interrupt(env);
+                            cc->do_interrupt(cpu);
                             next_tb = 0;
                         }
                     }
@@ -414,7 +418,7 @@ int cpu_exec(CPUArchState *env)
                                   cpu_pil_allowed(env, pil)) ||
                                   type != TT_EXTINT) {
                                 env->exception_index = env->interrupt_index;
-                                do_interrupt(env);
+                                cc->do_interrupt(cpu);
                                 next_tb = 0;
                             }
                         }
@@ -423,7 +427,7 @@ int cpu_exec(CPUArchState *env)
                     if (interrupt_request & CPU_INTERRUPT_FIQ
                         && !(env->uncached_cpsr & CPSR_F)) {
                         env->exception_index = EXCP_FIQ;
-                        do_interrupt(env);
+                        cc->do_interrupt(cpu);
                         next_tb = 0;
                     }
                     /* ARMv7-M interrupt return works by loading a magic value
@@ -439,19 +443,19 @@ int cpu_exec(CPUArchState *env)
                         && ((IS_M(env) && env->regs[15] < 0xfffffff0)
                             || !(env->uncached_cpsr & CPSR_I))) {
                         env->exception_index = EXCP_IRQ;
-                        do_interrupt(env);
+                        cc->do_interrupt(cpu);
                         next_tb = 0;
                     }
 #elif defined(TARGET_UNICORE32)
                     if (interrupt_request & CPU_INTERRUPT_HARD
                         && !(env->uncached_asr & ASR_I)) {
                         env->exception_index = UC32_EXCP_INTR;
-                        do_interrupt(env);
+                        cc->do_interrupt(cpu);
                         next_tb = 0;
                     }
 #elif defined(TARGET_SH4)
                     if (interrupt_request & CPU_INTERRUPT_HARD) {
-                        do_interrupt(env);
+                        cc->do_interrupt(cpu);
                         next_tb = 0;
                     }
 #elif defined(TARGET_ALPHA)
@@ -482,7 +486,7 @@ int cpu_exec(CPUArchState *env)
                         if (idx >= 0) {
                             env->exception_index = idx;
                             env->error_code = 0;
-                            do_interrupt(env);
+                            cc->do_interrupt(cpu);
                             next_tb = 0;
                         }
                     }
@@ -491,7 +495,7 @@ int cpu_exec(CPUArchState *env)
                         && (env->pregs[PR_CCS] & I_FLAG)
                         && !env->locked_irq) {
                         env->exception_index = EXCP_IRQ;
-                        do_interrupt(env);
+                        cc->do_interrupt(cpu);
                         next_tb = 0;
                     }
                     if (interrupt_request & CPU_INTERRUPT_NMI) {
@@ -503,7 +507,7 @@ int cpu_exec(CPUArchState *env)
                         }
                         if ((env->pregs[PR_CCS] & m_flag_archval)) {
                             env->exception_index = EXCP_NMI;
-                            do_interrupt(env);
+                            cc->do_interrupt(cpu);
                             next_tb = 0;
                         }
                     }
@@ -523,13 +527,13 @@ int cpu_exec(CPUArchState *env)
 #elif defined(TARGET_S390X) && !defined(CONFIG_USER_ONLY)
                     if ((interrupt_request & CPU_INTERRUPT_HARD) &&
                         (env->psw.mask & PSW_MASK_EXT)) {
-                        do_interrupt(env);
+                        cc->do_interrupt(cpu);
                         next_tb = 0;
                     }
 #elif defined(TARGET_XTENSA)
                     if (interrupt_request & CPU_INTERRUPT_HARD) {
                         env->exception_index = EXC_IRQ;
-                        do_interrupt(env);
+                        cc->do_interrupt(cpu);
                         next_tb = 0;
                     }
 #endif
