@@ -94,7 +94,7 @@ int i2c_start_transfer(i2c_bus *bus, uint8_t address, int recv)
 
     QTAILQ_FOREACH(kid, &bus->qbus.children, sibling) {
         DeviceState *qdev = kid->child;
-        I2CSlave *candidate = I2C_SLAVE_FROM_QDEV(qdev);
+        I2CSlave *candidate = I2C_SLAVE(qdev);
         if (address >= candidate->address &&
                 address < candidate->address + candidate->address_range) {
             slave = candidate;
@@ -211,7 +211,7 @@ const VMStateDescription vmstate_i2c_slave = {
 
 static int i2c_slave_qdev_init(DeviceState *dev)
 {
-    I2CSlave *s = I2C_SLAVE_FROM_QDEV(dev);
+    I2CSlave *s = I2C_SLAVE(dev);
     I2CSlaveClass *sc = I2C_SLAVE_GET_CLASS(s);
 
     return sc->init(s);

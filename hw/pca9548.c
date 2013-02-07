@@ -48,7 +48,7 @@ typedef struct {
 
 static void pca9548_reset(DeviceState *dev)
 {
-    PCA9548State *s = FROM_I2C_SLAVE(PCA9548State, I2C_SLAVE_FROM_QDEV(dev));
+    PCA9548State *s = FROM_I2C_SLAVE(PCA9548State, I2C_SLAVE(dev));
 
     s->control_reg = 0;
 }

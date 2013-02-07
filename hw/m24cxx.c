@@ -82,7 +82,7 @@ static void m24cxx_sync(I2CSlave *i2c)
 
 static void m24cxx_reset(DeviceState *dev)
 {
-    M24CXXState *s = FROM_I2C_SLAVE(M24CXXState, I2C_SLAVE_FROM_QDEV(dev));
+    M24CXXState *s = FROM_I2C_SLAVE(M24CXXState, I2C_SLAVE(dev));
 
     m24cxx_sync(I2C_SLAVE(s));
     s->state = STOPPED;

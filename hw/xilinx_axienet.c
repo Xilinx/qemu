@@ -517,7 +517,7 @@ static void enet_write(void *opaque, hwaddr addr,
             if ((addr & 1) && value & RCW1_RST) {
                 axienet_rx_reset(s);
             } else {
-                qemu_flush_queued_packets(&s->nic->nc);
+                qemu_flush_queued_packets(qemu_get_queue(s->nic));
             }
             break;
 
@@ -620,7 +620,7 @@ static const MemoryRegionOps enet_ops = {
 
 static int eth_can_rx(NetClientState *nc)
 {
-    struct XilinxAXIEnet *s = DO_UPCAST(NICState, nc, nc)->opaque;
+    struct XilinxAXIEnet *s = qemu_get_nic_opaque(nc);
 
     /* RX enabled?  */
     return !axienet_rx_resetting(s) && axienet_rx_enabled(s) && !s->rxing;
@@ -643,7 +643,7 @@ static int enet_match_addr(const uint8_t *buf, uint32_t f0, uint32_t f1)
 
 static ssize_t eth_rx(NetClientState *nc, const uint8_t *buf, size_t size)
 {
-    struct XilinxAXIEnet *s = DO_UPCAST(NICState, nc, nc)->opaque;
+    struct XilinxAXIEnet *s = qemu_get_nic_opaque(nc);
     static const unsigned char sa_bcast[6] = {0xff, 0xff, 0xff,
                                               0xff, 0xff, 0xff};
     static const unsigned char sa_ipmcast[3] = {0x01, 0x00, 0x52};
@@ -791,7 +791,7 @@ static ssize_t eth_rx(NetClientState *nc, const uint8_t *buf, size_t size)
 static void eth_cleanup(NetClientState *nc)
 {
     /* FIXME.  */
-    struct XilinxAXIEnet *s = DO_UPCAST(NICState, nc, nc)->opaque;
+    struct XilinxAXIEnet *s = qemu_get_nic_opaque(nc);
     g_free(s->rxmem);
     g_free(s);
 }
@@ -832,7 +832,7 @@ axienet_stream_push(StreamSlave *obj, uint8_t *buf, size_t size, uint32_t *hdr)
         buf[write_off + 1] = csum & 0xff;
     }
 
-    qemu_send_packet(&s->nic->nc, buf, size);
+    qemu_send_packet(qemu_get_queue(s->nic), buf, size);
 
     s->stats.tx_bytes += size;
     s->regs[R_IS] |= IS_TX_COMPLETE;
@@ -852,7 +852,7 @@ static void transfer_timer(void *opaque)
     struct XilinxAXIEnet *s = (struct XilinxAXIEnet *)opaque;
 
     s->rxing = false;
-    qemu_flush_queued_packets(&s->nic->nc);
+    qemu_flush_queued_packets(qemu_get_queue(s->nic));
 }
 
 static int xilinx_enet_init(SysBusDevice *dev)
@@ -867,7 +867,7 @@ static int xilinx_enet_init(SysBusDevice *dev)
     qemu_macaddr_default_if_unset(&s->conf.macaddr);
     s->nic = qemu_new_nic(&net_xilinx_enet_info, &s->conf,
                           object_get_typename(OBJECT(dev)), dev->qdev.id, s);
-    qemu_format_nic_info_str(&s->nic->nc, s->conf.macaddr.a);
+    qemu_format_nic_info_str(qemu_get_queue(s->nic), s->conf.macaddr.a);
 
     tdk_init(&s->TEMAC.phy);
     mdio_attach(&s->TEMAC.mdio_bus, &s->TEMAC.phy, s->c_phyaddr);
