@@ -758,7 +758,9 @@ static ssize_t gem_receive(NetClientState *nc, const uint8_t *buf, size_t size)
     s->rx_desc_addr = last_desc_addr;
     if (rx_desc_get_wrap(desc)) {
         s->rx_desc_addr = s->regs[GEM_RXQBASE];
+        DB_PRINT("wrapping RX descriptor list\n");
     } else {
+        DB_PRINT("incrementing RX descriptor list\n");
         s->rx_desc_addr += 8;
     }
 
@@ -1115,10 +1117,6 @@ static void gem_write(void *opaque, hwaddr offset, uint64_t val,
         if (!(val & GEM_NWCTRL_TXENA)) {
             /* Reset to start of Q when transmit disabled. */
             s->tx_desc_addr = s->regs[GEM_TXQBASE];
-        }
-        if (!(val & GEM_NWCTRL_RXENA)) {
-            /* Reset to start of Q when receive disabled. */
-            s->rx_desc_addr = s->regs[GEM_RXQBASE];
         }
         if (gem_can_receive(qemu_get_queue(s->nic))) {
             qemu_flush_queued_packets(qemu_get_queue(s->nic));
