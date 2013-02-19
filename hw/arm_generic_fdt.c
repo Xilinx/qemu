@@ -168,10 +168,6 @@ static void arm_generic_fdt_init(QEMUMachineInitArgs *args)
         }
         irqp = arm_pic_init_cpu(cpus[n]);
         cpu_irq[n] = irqp[ARM_PIC_CPU_IRQ];
-        /* FIXME: handle this somewhere central */
-        object_property_add_child(container_get(qdev_get_machine(),
-                                  "/unattached"), g_strdup_printf("cpu[%d]", n),
-                                  OBJECT(cpus[n]), NULL);
     }
 
     /* find memory node */
