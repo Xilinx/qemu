@@ -479,7 +479,11 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
                         get_int_be(val, len) ? "true" : "false");
         } else if (!strncmp(p->type, "link", 4)) {
             char target_node_path[DT_PATH_LENGTH];
-            DeviceState *linked_dev;
+            char propname_target[1024];
+            strcpy(propname_target, propname);
+            strcat(propname_target, "-target");
+
+            Object *linked_dev, *proxy;
 
             if (qemu_devtree_get_node_by_phandle(fdti->fdt, target_node_path,
                                                 get_int_be(val, len))) {
@@ -489,10 +493,18 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
                 fdt_init_yield(fdti);
             }
             linked_dev = fdt_init_get_opaque(fdti, target_node_path);
-            object_property_set_link(OBJECT(dev), OBJECT(linked_dev), propname,
-                                     &errp);
+
+            proxy = object_property_get_link(linked_dev, propname_target,
+                                             &errp);
+            if (!errp && proxy) {
+                DB_PRINT_NP(0, "detected proxy object for %s connection\n",
+                            propname);
+                linked_dev = proxy;
+            }
+            errp = NULL;
+            object_property_set_link(OBJECT(dev), linked_dev, propname, &errp);
             DB_PRINT_NP(0, "set link %s %p->%p\n", propname, OBJECT(dev),
-                        OBJECT(linked_dev));
+                        linked_dev);
             assert_no_error(errp);
         }
     }
