@@ -191,6 +191,7 @@ common-obj-y += hid.o
 common-obj-$(CONFIG_SSI) += ssi.o
 common-obj-$(CONFIG_SSI_M25P80) += m25p80.o
 common-obj-$(CONFIG_SSI_SD) += ssi-sd.o
+common-obj-$(CONFIG_CLOCK) += fixed-clock.o
 common-obj-$(CONFIG_SD) += sd.o
 common-obj-y += bt.o bt-l2cap.o bt-sdp.o bt-hci.o bt-hid.o
 common-obj-y += bt-hci-csr.o
