@@ -23,8 +23,6 @@
 #include "qemu/atomic.h"
 #include "sysemu/qtest.h"
 
-int tb_invalidated_flag;
-
 //#define CONFIG_DEBUG_EXEC
 
 bool qemu_cpu_has_work(CPUState *cpu)
@@ -34,7 +32,9 @@ bool qemu_cpu_has_work(CPUState *cpu)
 
 void cpu_loop_exit(CPUArchState *env)
 {
-    env->current_tb = NULL;
+    CPUState *cpu = ENV_GET_CPU(env);
+
+    cpu->current_tb = NULL;
     longjmp(env->jmp_env, 1);
 }
 
@@ -56,6 +56,7 @@ void cpu_resume_from_signal(CPUArchState *env, void *puc)
 static void cpu_exec_nocache(CPUArchState *env, int max_cycles,
                              TranslationBlock *orig_tb)
 {
+    CPUState *cpu = ENV_GET_CPU(env);
     tcg_target_ulong next_tb;
     TranslationBlock *tb;
 
@@ -66,10 +67,10 @@ static void cpu_exec_nocache(CPUArchState *env, int max_cycles,
 
     tb = tb_gen_code(env, orig_tb->pc, orig_tb->cs_base, orig_tb->flags,
                      max_cycles);
-    env->current_tb = tb;
+    cpu->current_tb = tb;
     /* execute the generated code */
     next_tb = tcg_qemu_tb_exec(env, tb->tc_ptr);
-    env->current_tb = NULL;
+    cpu->current_tb = NULL;
 
     if ((next_tb & 3) == 2) {
         /* Restore PC.  This may happen if async event occurs before
@@ -90,13 +91,13 @@ static TranslationBlock *tb_find_slow(CPUArchState *env,
     tb_page_addr_t phys_pc, phys_page1;
     target_ulong virt_page2;
 
-    tb_invalidated_flag = 0;
+    tcg_ctx.tb_ctx.tb_invalidated_flag = 0;
 
     /* find translated block using physical mappings */
     phys_pc = get_page_addr_code(env, pc);
     phys_page1 = phys_pc & TARGET_PAGE_MASK;
     h = tb_phys_hash_func(phys_pc);
-    ptb1 = &tb_phys_hash[h];
+    ptb1 = &tcg_ctx.tb_ctx.tb_phys_hash[h];
     for(;;) {
         tb = *ptb1;
         if (!tb)
@@ -128,8 +129,8 @@ static TranslationBlock *tb_find_slow(CPUArchState *env,
     /* Move the last found TB to the head of the list */
     if (likely(*ptb1)) {
         *ptb1 = tb->phys_hash_next;
-        tb->phys_hash_next = tb_phys_hash[h];
-        tb_phys_hash[h] = tb;
+        tb->phys_hash_next = tcg_ctx.tb_ctx.tb_phys_hash[h];
+        tcg_ctx.tb_ctx.tb_phys_hash[h] = tb;
     }
     /* we add the TB in the virtual pc hash table */
     env->tb_jmp_cache[tb_jmp_cache_hash_func(pc)] = tb;
@@ -198,7 +199,7 @@ int cpu_exec(CPUArchState *env)
     cpu_single_env = env;
 
     if (unlikely(exit_request)) {
-        env->exit_request = 1;
+        cpu->exit_request = 1;
     }
 
 #if defined(TARGET_I386)
@@ -539,8 +540,8 @@ int cpu_exec(CPUArchState *env)
                         next_tb = 0;
                     }
                 }
-                if (unlikely(env->exit_request)) {
-                    env->exit_request = 0;
+                if (unlikely(cpu->exit_request)) {
+                    cpu->exit_request = 0;
                     env->exception_index = EXCP_INTERRUPT;
                     cpu_loop_exit(env);
                 }
@@ -563,16 +564,16 @@ int cpu_exec(CPUArchState *env)
 #endif
                 }
 #endif /* DEBUG_DISAS || CONFIG_DEBUG_EXEC */
-                spin_lock(&tb_lock);
+                spin_lock(&tcg_ctx.tb_ctx.tb_lock);
                 tb = tb_find_fast(env);
                 /* Note: we do it here to avoid a gcc bug on Mac OS X when
                    doing it in tb_find_slow */
-                if (tb_invalidated_flag) {
+                if (tcg_ctx.tb_ctx.tb_invalidated_flag) {
                     /* as some TB could have been invalidated because
                        of memory exceptions while generating the code, we
                        must recompute the hash index here */
                     next_tb = 0;
-                    tb_invalidated_flag = 0;
+                    tcg_ctx.tb_ctx.tb_invalidated_flag = 0;
                 }
 #ifdef CONFIG_DEBUG_EXEC
                 qemu_log_mask(CPU_LOG_EXEC, "Trace %p [" TARGET_FMT_lx "] %s\n",
@@ -585,15 +586,15 @@ int cpu_exec(CPUArchState *env)
                 if (next_tb != 0 && tb->page_addr[1] == -1) {
                     tb_add_jump((TranslationBlock *)(next_tb & ~3), next_tb & 3, tb);
                 }
-                spin_unlock(&tb_lock);
+                spin_unlock(&tcg_ctx.tb_ctx.tb_lock);
 
                 /* cpu_interrupt might be called while translating the
                    TB, but before it is linked into a potentially
                    infinite loop and becomes env->current_tb. Avoid
                    starting execution if there is a pending interrupt. */
-                env->current_tb = tb;
+                cpu->current_tb = tb;
                 barrier();
-                if (likely(!env->exit_request)) {
+                if (likely(!cpu->exit_request)) {
                     tc_ptr = tb->tc_ptr;
                     /* execute the generated code */
                     next_tb = tcg_qemu_tb_exec(env, tc_ptr);
@@ -625,7 +626,7 @@ int cpu_exec(CPUArchState *env)
                         }
                     }
                 }
-                env->current_tb = NULL;
+                cpu->current_tb = NULL;
                 /* reset soft MMU for next block (it can currently
                    only be set by a memory fault) */
             } /* for(;;) */

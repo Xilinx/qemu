@@ -111,7 +111,7 @@ static int pending_cpus;
 /* Make sure everything is in a consistent state for calling fork().  */
 void fork_start(void)
 {
-    pthread_mutex_lock(&tb_lock);
+    pthread_mutex_lock(&tcg_ctx.tb_ctx.tb_lock);
     pthread_mutex_lock(&exclusive_lock);
     mmap_fork_start();
 }
@@ -129,11 +129,11 @@ void fork_end(int child)
         pthread_mutex_init(&cpu_list_mutex, NULL);
         pthread_cond_init(&exclusive_cond, NULL);
         pthread_cond_init(&exclusive_resume, NULL);
-        pthread_mutex_init(&tb_lock, NULL);
+        pthread_mutex_init(&tcg_ctx.tb_ctx.tb_lock, NULL);
         gdbserver_fork(thread_env);
     } else {
         pthread_mutex_unlock(&exclusive_lock);
-        pthread_mutex_unlock(&tb_lock);
+        pthread_mutex_unlock(&tcg_ctx.tb_ctx.tb_lock);
     }
 }
 
@@ -151,13 +151,16 @@ static inline void exclusive_idle(void)
 static inline void start_exclusive(void)
 {
     CPUArchState *other;
+    CPUState *other_cpu;
+
     pthread_mutex_lock(&exclusive_lock);
     exclusive_idle();
 
     pending_cpus = 1;
     /* Make all other cpus stop executing.  */
     for (other = first_cpu; other; other = other->next_cpu) {
-        if (other->running) {
+        other_cpu = ENV_GET_CPU(other);
+        if (other_cpu->running) {
             pending_cpus++;
             cpu_exit(other);
         }
@@ -176,19 +179,19 @@ static inline void end_exclusive(void)
 }
 
 /* Wait for exclusive ops to finish, and begin cpu execution.  */
-static inline void cpu_exec_start(CPUArchState *env)
+static inline void cpu_exec_start(CPUState *cpu)
 {
     pthread_mutex_lock(&exclusive_lock);
     exclusive_idle();
-    env->running = 1;
+    cpu->running = true;
     pthread_mutex_unlock(&exclusive_lock);
 }
 
 /* Mark cpu as not executing, and release pending exclusive ops.  */
-static inline void cpu_exec_end(CPUArchState *env)
+static inline void cpu_exec_end(CPUState *cpu)
 {
     pthread_mutex_lock(&exclusive_lock);
-    env->running = 0;
+    cpu->running = false;
     if (pending_cpus > 1) {
         pending_cpus--;
         if (pending_cpus == 1) {
@@ -210,11 +213,11 @@ void cpu_list_unlock(void)
 }
 #else /* if !CONFIG_USE_NPTL */
 /* These are no-ops because we are not threadsafe.  */
-static inline void cpu_exec_start(CPUArchState *env)
+static inline void cpu_exec_start(CPUState *cpu)
 {
 }
 
-static inline void cpu_exec_end(CPUArchState *env)
+static inline void cpu_exec_end(CPUState *cpu)
 {
 }
 
@@ -697,15 +700,16 @@ done:
 
 void cpu_loop(CPUARMState *env)
 {
+    CPUState *cs = CPU(arm_env_get_cpu(env));
     int trapnr;
     unsigned int n, insn;
     target_siginfo_t info;
     uint32_t addr;
 
     for(;;) {
-        cpu_exec_start(env);
+        cpu_exec_start(cs);
         trapnr = cpu_arm_exec(env);
-        cpu_exec_end(env);
+        cpu_exec_end(cs);
         switch(trapnr) {
         case EXCP_UDEF:
             {
@@ -912,14 +916,15 @@ void cpu_loop(CPUARMState *env)
 
 void cpu_loop(CPUUniCore32State *env)
 {
+    CPUState *cs = CPU(uc32_env_get_cpu(env));
     int trapnr;
     unsigned int n, insn;
     target_siginfo_t info;
 
     for (;;) {
-        cpu_exec_start(env);
+        cpu_exec_start(cs);
         trapnr = uc32_cpu_exec(env);
-        cpu_exec_end(env);
+        cpu_exec_end(cs);
         switch (trapnr) {
         case UC32_EXCP_PRIV:
             {
@@ -1367,14 +1372,15 @@ static int do_store_exclusive(CPUPPCState *env)
 
 void cpu_loop(CPUPPCState *env)
 {
+    CPUState *cs = CPU(ppc_env_get_cpu(env));
     target_siginfo_t info;
     int trapnr;
     target_ulong ret;
 
     for(;;) {
-        cpu_exec_start(env);
+        cpu_exec_start(cs);
         trapnr = cpu_ppc_exec(env);
-        cpu_exec_end(env);
+        cpu_exec_end(cs);
         switch(trapnr) {
         case POWERPC_EXCP_NONE:
             /* Just go on */
@@ -2184,14 +2190,15 @@ static int do_store_exclusive(CPUMIPSState *env)
 
 void cpu_loop(CPUMIPSState *env)
 {
+    CPUState *cs = CPU(mips_env_get_cpu(env));
     target_siginfo_t info;
     int trapnr, ret;
     unsigned int syscall_num;
 
     for(;;) {
-        cpu_exec_start(env);
+        cpu_exec_start(cs);
         trapnr = cpu_mips_exec(env);
-        cpu_exec_end(env);
+        cpu_exec_end(cs);
         switch(trapnr) {
         case EXCP_SYSCALL:
             syscall_num = env->active_tc.gpr[2] - 4000;
@@ -3098,22 +3105,18 @@ static void handle_arg_help(const char *arg)
 static void handle_arg_log(const char *arg)
 {
     int mask;
-    const CPULogItem *item;
 
-    mask = cpu_str_to_log_mask(arg);
+    mask = qemu_str_to_log_mask(arg);
     if (!mask) {
-        printf("Log items (comma separated):\n");
-        for (item = cpu_log_items; item->mask != 0; item++) {
-            printf("%-10s %s\n", item->name, item->help);
-        }
+        qemu_print_log_usage(stdout);
         exit(1);
     }
-    cpu_set_log(mask);
+    qemu_set_log(mask);
 }
 
 static void handle_arg_log_filename(const char *arg)
 {
-    cpu_set_log_filename(arg);
+    qemu_set_log_filename(arg);
 }
 
 static void handle_arg_set_env(const char *arg)
@@ -3480,7 +3483,7 @@ int main(int argc, char **argv, char **envp)
 #endif
 
     /* init debug */
-    cpu_set_log_filename(log_file);
+    qemu_set_log_filename(log_file);
     optind = parse_args(argc, argv);
 
     /* Zero out regs */

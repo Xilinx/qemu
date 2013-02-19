@@ -287,7 +287,9 @@ static void qemu_cleanup_net_client(NetClientState *nc)
 {
     QTAILQ_REMOVE(&net_clients, nc, next);
 
-    nc->info->cleanup(nc);
+    if (nc->info->cleanup) {
+        nc->info->cleanup(nc);
+    }
 }
 
 static void qemu_free_net_client(NetClientState *nc)
@@ -351,7 +353,7 @@ void qemu_del_net_client(NetClientState *nc)
 
 void qemu_del_nic(NICState *nic)
 {
-    int i, queues = nic->conf->queues;
+    int i, queues = MAX(nic->conf->queues, 1);
 
     /* If this is a peer NIC and peer has already been deleted, free it now. */
     if (nic->peer_deleted) {

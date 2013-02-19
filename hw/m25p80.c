@@ -403,11 +403,10 @@ static void complete_collecting_data(Flash *s)
         flash_erase(s, s->cur_addr, s->cmd_in_progress);
         break;
     case WRSR:
-    	if (s->write_enable) {
-    		s->state = STATE_IDLE;
-    		s->write_enable = false;
-    	}
-    	break;
+        if (s->write_enable) {
+            s->write_enable = false;
+        }
+        break;
     default:
         break;
     }
@@ -471,14 +470,14 @@ static void decode_new_cmd(Flash *s, uint32_t value)
         s->len = 0;
         s->state = STATE_COLLECTING_DATA;
         break;
-        
-	case WRSR:
-		if (s->write_enable) {
-			s->needed_bytes = 1;
-			s->pos = 0;
-        	s->len = 0;
-			s->state = STATE_COLLECTING_DATA;
-		}
+
+    case WRSR:
+        if (s->write_enable) {
+            s->needed_bytes = 1;
+            s->pos = 0;
+            s->len = 0;
+            s->state = STATE_COLLECTING_DATA;
+        }
         break;
 
     case WRDI:

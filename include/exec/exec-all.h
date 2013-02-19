@@ -168,6 +168,25 @@ struct TranslationBlock {
     uint32_t icount;
 };
 
+#include "exec/spinlock.h"
+
+typedef struct TBContext TBContext;
+
+struct TBContext {
+
+    TranslationBlock *tbs;
+    TranslationBlock *tb_phys_hash[CODE_GEN_PHYS_HASH_SIZE];
+    int nb_tbs;
+    /* any access to the tbs or the page table must use this lock */
+    spinlock_t tb_lock;
+
+    /* statistics */
+    int tb_flush_count;
+    int tb_phys_invalidate_count;
+
+    int tb_invalidated_flag;
+};
+
 static inline unsigned int tb_jmp_cache_hash_page(target_ulong pc)
 {
     target_ulong tmp;
@@ -191,8 +210,6 @@ static inline unsigned int tb_phys_hash_func(tb_page_addr_t pc)
 void tb_free(TranslationBlock *tb);
 void tb_flush(CPUArchState *env);
 void tb_phys_invalidate(TranslationBlock *tb, tb_page_addr_t page_addr);
-
-extern TranslationBlock *tb_phys_hash[CODE_GEN_PHYS_HASH_SIZE];
 
 #if defined(USE_DIRECT_JUMP)
 
@@ -274,12 +291,6 @@ static inline void tb_add_jump(TranslationBlock *tb, int n,
         tb_next->jmp_first = (TranslationBlock *)((uintptr_t)(tb) | (n));
     }
 }
-
-#include "exec/spinlock.h"
-
-extern spinlock_t tb_lock;
-
-extern int tb_invalidated_flag;
 
 /* The return address may point to the start of the next instruction.
    Subtracting one gets us the call instruction itself.  */
@@ -393,11 +404,13 @@ extern volatile sig_atomic_t exit_request;
    instruction of a TB so that interrupts take effect immediately.  */
 static inline int can_do_io(CPUArchState *env)
 {
+    CPUState *cpu = ENV_GET_CPU(env);
+
     if (!use_icount) {
         return 1;
     }
     /* If not executing code then assume we are ok.  */
-    if (!env->current_tb) {
+    if (cpu->current_tb == NULL) {
         return 1;
     }
     return env->can_do_io != 0;
