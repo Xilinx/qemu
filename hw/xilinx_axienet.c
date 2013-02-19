@@ -365,6 +365,23 @@ struct XilinxAXIEnet {
     uint8_t *rxmem;
 };
 
+#define TYPE_XILINX_AXI_ENET_DATA_STREAM "xilinx-axienet-data-stream"
+#define TYPE_XILINX_AXI_ENET_CONTROL_STREAM "xilinx-axienet-control-stream"
+
+#define XILINX_AXI_ENET_DATA_STREAM(obj) \
+     OBJECT_CHECK(XilinxAXIEnetStreamSlave, (obj),\
+     TYPE_XILINX_AXI_ENET_DATA_STREAM)
+
+#define XILINX_AXI_ENET_CONTROL_STREAM(obj) \
+     OBJECT_CHECK(XilinxAXIEnetStreamSlave, (obj),\
+     TYPE_XILINX_AXI_ENET_CONTROL_STREAM)
+
+typedef struct XilinxAXIEnetStreamSlave {
+    Object parent;
+
+    struct XilinxAXIEnet *enet;
+} XilinxAXIEnetStreamSlave;
+
 static void axienet_rx_reset(struct XilinxAXIEnet *s)
 {
     s->rcw[1] = RCW1_JUM | RCW1_FCS | RCW1_RX | RCW1_VLAN;
@@ -795,11 +812,20 @@ static void eth_cleanup(NetClientState *nc)
     g_free(s->rxmem);
     g_free(s);
 }
+static void
+
+axienet_control_stream_push(StreamSlave *obj, uint8_t *buf, size_t size,
+                         uint32_t *hdr)
+{
+    /* ... */
+}
 
 static void
-axienet_stream_push(StreamSlave *obj, uint8_t *buf, size_t size, uint32_t *hdr)
+axienet_data_stream_push(StreamSlave *obj, uint8_t *buf, size_t size,
+                         uint32_t *hdr)
 {
-    struct XilinxAXIEnet *s = FROM_SYSBUS(typeof(*s), SYS_BUS_DEVICE(obj));
+    XilinxAXIEnetStreamSlave *ds = XILINX_AXI_ENET_DATA_STREAM(obj);
+    struct XilinxAXIEnet *s = ds->enet;
 
     /* TX enable ?  */
     if (!(s->tc & TC_TX)) {
@@ -858,6 +884,28 @@ static void transfer_timer(void *opaque)
 static int xilinx_enet_init(SysBusDevice *dev)
 {
     struct XilinxAXIEnet *s = FROM_SYSBUS(typeof(*s), dev);
+    XilinxAXIEnetStreamSlave *ds = XILINX_AXI_ENET_DATA_STREAM(
+                        object_new(TYPE_XILINX_AXI_ENET_DATA_STREAM));
+    XilinxAXIEnetStreamSlave *cs = XILINX_AXI_ENET_CONTROL_STREAM(
+                        object_new(TYPE_XILINX_AXI_ENET_CONTROL_STREAM));
+    Error *errp = NULL;
+
+    object_property_add_child(OBJECT(s), "axistream-connected-target",
+                              (Object *)ds, &errp);
+    assert_no_error(errp);
+    object_property_add_link(OBJECT(ds), "enet", "xlnx.axi-ethernet",
+                             (Object **) &ds->enet, &errp);
+    assert_no_error(errp);
+    object_property_set_link(OBJECT(ds), OBJECT(s), "enet", &errp);
+    assert_no_error(errp);
+
+    object_property_add_child(OBJECT(s), "control-stream", (Object *)cs, &errp);
+    assert_no_error(errp);
+    object_property_add_link(OBJECT(cs), "enet", "xlnx.axi-ethernet",
+                             (Object **) &cs->enet, &errp);
+    assert_no_error(errp);
+    object_property_set_link(OBJECT(cs), OBJECT(s), "enet", &errp);
+    assert_no_error(errp);
 
     sysbus_init_irq(dev, &s->irq);
 
@@ -901,11 +949,16 @@ static void xilinx_enet_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     SysBusDeviceClass *k = SYS_BUS_DEVICE_CLASS(klass);
-    StreamSlaveClass *ssc = STREAM_SLAVE_CLASS(klass);
 
     k->init = xilinx_enet_init;
     dc->props = xilinx_enet_properties;
-    ssc->push = axienet_stream_push;
+}
+
+static void xilinx_enet_stream_class_init(ObjectClass *klass, void *data)
+{
+    StreamSlaveClass *ssc = STREAM_SLAVE_CLASS(klass);
+
+    ssc->push = data;
 }
 
 static const TypeInfo xilinx_enet_info = {
@@ -914,6 +967,26 @@ static const TypeInfo xilinx_enet_info = {
     .instance_size = sizeof(struct XilinxAXIEnet),
     .class_init    = xilinx_enet_class_init,
     .instance_init = xilinx_enet_initfn,
+};
+
+static const TypeInfo xilinx_enet_data_stream_info = {
+    .name          = TYPE_XILINX_AXI_ENET_DATA_STREAM,
+    .parent        = TYPE_OBJECT,
+    .instance_size = sizeof(struct XilinxAXIEnetStreamSlave),
+    .class_init    = xilinx_enet_stream_class_init,
+    .class_data    = axienet_data_stream_push,
+    .interfaces = (InterfaceInfo[]) {
+            { TYPE_STREAM_SLAVE },
+            { }
+    }
+};
+
+static const TypeInfo xilinx_enet_control_stream_info = {
+    .name          = TYPE_XILINX_AXI_ENET_CONTROL_STREAM,
+    .parent        = TYPE_OBJECT,
+    .instance_size = sizeof(struct XilinxAXIEnetStreamSlave),
+    .class_init    = xilinx_enet_stream_class_init,
+    .class_data    = axienet_control_stream_push,
     .interfaces = (InterfaceInfo[]) {
             { TYPE_STREAM_SLAVE },
             { }
@@ -923,6 +996,8 @@ static const TypeInfo xilinx_enet_info = {
 static void xilinx_enet_register_types(void)
 {
     type_register_static(&xilinx_enet_info);
+    type_register_static(&xilinx_enet_data_stream_info);
+    type_register_static(&xilinx_enet_control_stream_info);
 }
 
 type_init(xilinx_enet_register_types)
