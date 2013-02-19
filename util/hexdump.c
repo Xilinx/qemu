@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 /*
  * Helper to hexdump a buffer
  *
@@ -21,8 +20,6 @@
  * GNU GPL, version 2 or (at your option) any later version.
  */
 
-=======
->>>>>>> 5880b0ec1458210f323f3f086cdb7c900521fc21
 #include "qemu-common.h"
 #include "qemu/hexdump.h"
 

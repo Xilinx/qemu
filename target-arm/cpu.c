@@ -512,7 +512,7 @@ static void cortex_a9_initfn(Object *obj)
     {
         ARMCPRegInfo cbar = {
             .name = "CBAR", .cp = 15, .crn = 15,  .crm = 0, .opc1 = 4,
-            .opc2 = 0, .access = PL1_R|PL3_W, .resetvalue = cpu->reset_cbar,
+            .opc2 = 0, .access = PL1_R|PL3_W, .resetvalue = 0xf8f00000,
             .fieldoffset = offsetof(CPUARMState, cp15.c15_config_base_address)
         };
         define_one_arm_cp_reg(cpu, &cbar);
