@@ -22,6 +22,7 @@
 #include "qemu-common.h"
 #if !defined(CONFIG_USER_ONLY)
 #include "hw/loader.h"
+#include "hw/qdev-properties.h"
 #endif
 #include "sysemu/sysemu.h"
 
@@ -741,7 +742,13 @@ static void arm_any_initfn(Object *obj)
 typedef struct ARMCPUInfo {
     const char *name;
     void (*initfn)(Object *obj);
+    Property *props;
 } ARMCPUInfo;
+
+static Property cortex_a9_properties[] = {
+    DEFINE_PROP_UINT32("reset-cbar", ARMCPU, reset_cbar, 0),
+    DEFINE_PROP_END_OF_LIST(),
+};
 
 static const ARMCPUInfo arm_cpus[] = {
     { .name = "arm926",      .initfn = arm926_initfn },
@@ -757,7 +764,8 @@ static const ARMCPUInfo arm_cpus[] = {
     { .name = "arm11mpcore", .initfn = arm11mpcore_initfn },
     { .name = "cortex-m3",   .initfn = cortex_m3_initfn },
     { .name = "cortex-a8",   .initfn = cortex_a8_initfn },
-    { .name = "cortex-a9",   .initfn = cortex_a9_initfn },
+    { .name = "cortex-a9",   .initfn = cortex_a9_initfn,
+      .props = cortex_a9_properties },
     { .name = "cortex-a15",  .initfn = cortex_a15_initfn },
     { .name = "ti925t",      .initfn = ti925t_initfn },
     { .name = "sa1100",      .initfn = sa1100_initfn },
@@ -778,6 +786,16 @@ static const ARMCPUInfo arm_cpus[] = {
     { .name = "any",         .initfn = arm_any_initfn },
 };
 
+static void arm_cpu_specific_class_init(ObjectClass *oc, void *data)
+{
+    DeviceClass*dc = DEVICE_CLASS(oc);
+    ARMCPUInfo *aci = (ARMCPUInfo *)data;
+
+    if (aci && aci->props) {
+        dc->props = aci->props;
+    }
+}
+
 static void arm_cpu_class_init(ObjectClass *oc, void *data)
 {
     ARMCPUClass *acc = ARM_CPU_CLASS(oc);
@@ -796,6 +814,8 @@ static void cpu_register(const ARMCPUInfo *info)
         .instance_size = sizeof(ARMCPU),
         .instance_init = info->initfn,
         .class_size = sizeof(ARMCPUClass),
+        .class_init = arm_cpu_specific_class_init,
+        .class_data = (void *)info,
     };
 
     type_info.name = g_strdup_printf("%s-" TYPE_ARM_CPU, info->name);
