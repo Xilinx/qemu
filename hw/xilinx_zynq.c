@@ -270,6 +270,8 @@ static void zynq_init(QEMUMachineInitArgs *args)
         pic[n] = qdev_get_gpio_in(dev, n);
     }
 
+    zynq_init_zc70x_i2c(0xE0004000, pic[57-IRQ_OFFSET]);
+    zynq_init_zc70x_i2c(0xE0005000, pic[80-IRQ_OFFSET]);
     dev = qdev_create(NULL, "xlnx.ps7-usb");
     dev->id = "zynq-usb-0";
     qdev_init_nofail(dev);
@@ -283,8 +285,6 @@ static void zynq_init(QEMUMachineInitArgs *args)
     qdev_init_nofail(dev);
     sysbus_mmio_map(busdev, 0, 0xE0003000);
     sysbus_connect_irq(busdev, 0, pic[76-IRQ_OFFSET]);
-    zynq_init_zc70x_i2c(0xE0004000, pic[57-IRQ_OFFSET]);
-    zynq_init_zc70x_i2c(0xE0005000, pic[80-IRQ_OFFSET]);
 
     zynq_init_spi_flashes(0xE0006000, pic[58-IRQ_OFFSET], false);
     zynq_init_spi_flashes(0xE0007000, pic[81-IRQ_OFFSET], false);
