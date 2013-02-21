@@ -18,12 +18,12 @@
  *  with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "qemu/log.h"
 #include "qemu/bitops.h"
 #include "qemu/timer.h"
 #include "sysbus.h"
 #include "i2c.h"
 #include "fifo.h"
+#include "qemu/log.h"
 
 #define TYPE_CADENCE_I2C                  "xlnx.ps7-i2c"
 #define CADENCE_I2C(obj)                  \
@@ -67,7 +67,7 @@
 
 /* Just approximate for the moment */
 
-#define NS_PER_PCLK 1000ull
+#define NS_PER_PCLK 10ull
 
 /* FIXME: this struct defintion is generic, may belong in bitops or somewhere
  * like that
@@ -347,34 +347,31 @@ static void cadence_i2c_reset(DeviceState *d)
     fifo8_reset(&s->fifo);
 }
 
-static int cadence_i2c_init(SysBusDevice *dev)
+static void cadence_i2c_realize(DeviceState *dev, Error **errp)
 {
     CadenceI2CState *s = CADENCE_I2C(dev);
+    SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
 
-    DB_PRINT("\n");
     memory_region_init_io(&s->iomem, &cadence_i2c_ops, s, TYPE_CADENCE_I2C,
                           R_MAX * 4);
-    sysbus_init_mmio(dev, &s->iomem);
-    sysbus_init_irq(dev, &s->irq);
+    sysbus_init_mmio(sbd, &s->iomem);
+    sysbus_init_irq(sbd, &s->irq);
 
-    s->bus = i2c_init_bus(&dev->qdev, "i2c");
+    s->bus = i2c_init_bus(dev, "i2c");
     i2c_auto_connect_slaves(DEVICE(dev), s->bus, 0, 128);
 
     s->transfer_timer = qemu_new_timer_ns(vm_clock, cadence_i2c_do_txrx, s);
 
     fifo8_create(&s->fifo, FIFO_WIDTH);
-
-    return 0;
 }
 
 static void cadence_i2c_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-    SysBusDeviceClass *sbdc = SYS_BUS_DEVICE_CLASS(klass);
 
     dc->vmsd = &cadence_i2c_vmstate;
     dc->reset = cadence_i2c_reset;
-    sbdc->init = cadence_i2c_init;
+    dc->realize = cadence_i2c_realize;
 }
 
 static const TypeInfo cadence_i2c_type_info = {

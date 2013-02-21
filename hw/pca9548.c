@@ -46,16 +46,21 @@ typedef struct {
     uint8_t chip_enable; /*property */
 } PCA9548State;
 
+#define TYPE_PCA9548 "pca-9548"
+
+#define PCA9548(obj) \
+     OBJECT_CHECK(PCA9548State, (obj), TYPE_PCA9548)
+
 static void pca9548_reset(DeviceState *dev)
 {
-    PCA9548State *s = FROM_I2C_SLAVE(PCA9548State, I2C_SLAVE(dev));
+    PCA9548State *s = PCA9548(dev);
 
     s->control_reg = 0;
 }
 
 static int pca9548_recv(I2CSlave *i2c)
 {
-    PCA9548State *s = (PCA9548State *)i2c;
+    PCA9548State *s = PCA9548(i2c);
     int i;
     int ret = 0;
 
@@ -76,7 +81,7 @@ static int pca9548_recv(I2CSlave *i2c)
 
 static int pca9548_send(I2CSlave *i2c, uint8_t data)
 {
-    PCA9548State *s = (PCA9548State *)i2c;
+    PCA9548State *s = PCA9548(i2c);
     int i;
     int ret = -1;
 
@@ -98,7 +103,7 @@ static int pca9548_send(I2CSlave *i2c, uint8_t data)
 
 static void pca9548_event(I2CSlave *i2c, enum i2c_event event)
 {
-    PCA9548State *s = (PCA9548State *)i2c;
+    PCA9548State *s = PCA9548(i2c);
     int i;
 
     s->event = event;
@@ -129,7 +134,7 @@ static void pca9548_event(I2CSlave *i2c, enum i2c_event event)
 
 static void pca9548_decode_address(I2CSlave *i2c, uint8_t address)
 {
-    PCA9548State *s = (PCA9548State *)i2c;
+    PCA9548State *s = PCA9548(i2c);
     int i;
 
     s->control_decoded = address ==
@@ -147,10 +152,10 @@ static void pca9548_decode_address(I2CSlave *i2c, uint8_t address)
     }
 }
 
-static void pca9548_early_init(Object *obj)
+static void pca9548_init(Object *obj)
 {
     int i;
-    PCA9548State *s = (PCA9548State *)obj;
+    PCA9548State *s = PCA9548(obj);
 
     for (i = 0; i < NUM_BUSSES; ++i) {
         char bus_name[16];
@@ -160,17 +165,15 @@ static void pca9548_early_init(Object *obj)
     }
 }
 
-static int pca9548_init(I2CSlave *i2c)
+static void pca9548_realize(DeviceState *dev, Error **errp)
 {
-    I2CSlave *i2cs =  I2C_SLAVE(i2c);
+    I2CSlave *i2cs =  I2C_SLAVE(dev);
 
     /* Switch decodes the enitre address range, trample any previously set
      * values for address and range
      */
     i2cs->address = 0;
     i2cs->address_range = 0x80;
-
-    return 0;
 }
 
 static const VMStateDescription vmstate_PCA9548 = {
@@ -199,21 +202,22 @@ static void pca9548_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     I2CSlaveClass *k = I2C_SLAVE_CLASS(klass);
 
-    k->init = pca9548_init;
     k->event = pca9548_event;
     k->recv = pca9548_recv;
     k->send = pca9548_send;
     k->decode_address = pca9548_decode_address;
+
+    dc->realize = pca9548_realize;
     dc->reset = pca9548_reset;
     dc->vmsd = &vmstate_PCA9548;
     dc->props = pca9548_properties;
 }
 
 static TypeInfo pca9548_info = {
-    .name          = "pca9548",
+    .name          = TYPE_PCA9548,
     .parent        = TYPE_I2C_SLAVE,
     .instance_size = sizeof(PCA9548State),
-    .instance_init = pca9548_early_init,
+    .instance_init = pca9548_init,
     .class_init    = pca9548_class_init,
 };
 

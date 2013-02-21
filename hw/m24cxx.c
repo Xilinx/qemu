@@ -56,6 +56,11 @@ typedef struct {
     uint8_t *storage;
 } M24CXXState;
 
+#define TYPE_M24CXX "at.24c08"
+
+#define M24CXX(obj) \
+     OBJECT_CHECK(M24CXXState, (obj), TYPE_M24CXX)
+
 static void m24cxx_sync_complete(void *opaque, int ret)
 {
     /* do nothing. Masters do not directly interact with the backing store,
@@ -65,7 +70,7 @@ static void m24cxx_sync_complete(void *opaque, int ret)
 
 static void m24cxx_sync(I2CSlave *i2c)
 {
-    M24CXXState *s = (M24CXXState *)i2c;
+    M24CXXState *s = M24CXX(i2c);
     int64_t nb_sectors;
     QEMUIOVector iov;
 
@@ -82,7 +87,7 @@ static void m24cxx_sync(I2CSlave *i2c)
 
 static void m24cxx_reset(DeviceState *dev)
 {
-    M24CXXState *s = FROM_I2C_SLAVE(M24CXXState, I2C_SLAVE(dev));
+    M24CXXState *s = M24CXX(dev);
 
     m24cxx_sync(I2C_SLAVE(s));
     s->state = STOPPED;
@@ -91,7 +96,7 @@ static void m24cxx_reset(DeviceState *dev)
 
 static int m24cxx_recv(I2CSlave *i2c)
 {
-    M24CXXState *s = (M24CXXState *)i2c;
+    M24CXXState *s = M24CXX(i2c);
     int ret = 0;
 
     if (s->state == READING) {
@@ -108,7 +113,7 @@ static int m24cxx_recv(I2CSlave *i2c)
 
 static int m24cxx_send(I2CSlave *i2c, uint8_t data)
 {
-    M24CXXState *s = (M24CXXState *)i2c;
+    M24CXXState *s = M24CXX(i2c);
 
     switch (s->state) {
     case (ADDRESSING):
@@ -131,7 +136,7 @@ static int m24cxx_send(I2CSlave *i2c, uint8_t data)
 
 static void m24cxx_event(I2CSlave *i2c, enum i2c_event event)
 {
-    M24CXXState *s = (M24CXXState *)i2c;
+    M24CXXState *s = M24CXX(i2c);
 
     switch (event) {
     case I2C_START_SEND:
@@ -154,15 +159,16 @@ static void m24cxx_event(I2CSlave *i2c, enum i2c_event event)
 
 static void m24cxx_decode_address(I2CSlave *i2c, uint8_t address)
 {
-    M24CXXState *s = (M24CXXState *)i2c;
+    M24CXXState *s = M24CXX(i2c);
 
     s->cur_addr &= ~(0x0300);
     s->cur_addr |= (address & ((s->size - 1) >> 8)) << 8;
 }
 
-static int m24cxx_init(I2CSlave *i2c)
+static void m24cxx_realize(DeviceState *dev, Error **errp)
 {
-    M24CXXState *s = (M24CXXState *)i2c;
+    M24CXXState *s = M24CXX(dev);
+    I2CSlave *i2c = I2C_SLAVE(dev);
     DriveInfo *dinfo = drive_get_next(IF_MTD);
 
     i2c->address_range = s->size >> 8 ? s->size >> 8 : 1;
@@ -174,13 +180,12 @@ static int m24cxx_init(I2CSlave *i2c)
         /* FIXME: Move to late init */
         if (bdrv_read(s->bdrv, 0, s->storage, DIV_ROUND_UP(s->size,
                                                     BDRV_SECTOR_SIZE))) {
-            fprintf(stderr, "Failed to initialize I2C eeprom!\n");
-            return 1;
+            error_setg(errp, "Failed to initialize I2C EEPROM!\n");
+            return;
         }
     } else {
         memset(s->storage, 0xFF, s->size);
     }
-    return 0;
 }
 
 static void m24cxx_pre_save(void *opaque)
@@ -189,7 +194,7 @@ static void m24cxx_pre_save(void *opaque)
 }
 
 static const VMStateDescription vmstate_m24cxx = {
-    .name = "m25cxx",
+    .name = "m24cxx",
     .version_id = 1,
     .minimum_version_id = 1,
     .minimum_version_id_old = 1,
@@ -212,18 +217,19 @@ static void m24cxx_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     I2CSlaveClass *k = I2C_SLAVE_CLASS(klass);
 
-    k->init = m24cxx_init;
     k->event = m24cxx_event;
     k->recv = m24cxx_recv;
     k->send = m24cxx_send;
     k->decode_address = m24cxx_decode_address;
+
+    dc->realize = m24cxx_realize;
     dc->reset = m24cxx_reset;
     dc->vmsd = &vmstate_m24cxx;
     dc->props = m24cxx_properties;
 }
 
 static TypeInfo m24cxx_info = {
-    .name          = "at.24c08",
+    .name          = TYPE_M24CXX,
     .parent        = TYPE_I2C_SLAVE,
     .instance_size = sizeof(M24CXXState),
     .class_init    = m24cxx_class_init,
