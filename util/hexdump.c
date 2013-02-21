@@ -1,17 +1,10 @@
 /*
  * Helper to hexdump a buffer
  *
+ * Copyright (c) 2013 Red Hat, Inc.
+ * Copyright (c) 2013 Gerd Hoffmann <kraxel@redhat.com>
  * Copyright (c) 2013 Peter Crosthwaite <peter.crosthwaite@xilinx.com>
  * Copyright (c) 2013 Xilinx, Inc
- *
- * Factored out from iov.c:
- * Copyright IBM, Corp. 2007, 2008
- * Copyright (C) 2010 Red Hat, Inc.
- *
- * Author(s):
- *  Anthony Liguori <aliguori@us.ibm.com>
- *  Amit Shah <amit.shah@redhat.com>
- *  Michael Tokarev <mjt@tls.msk.ru>
  *
  * This work is licensed under the terms of the GNU GPL, version 2.  See
  * the COPYING file in the top-level directory.
@@ -21,7 +14,6 @@
  */
 
 #include "qemu-common.h"
-#include "qemu/hexdump.h"
 
 void hexdump(const char *buf, FILE *fp, const char *prefix, size_t size)
 {

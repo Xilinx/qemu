@@ -40,7 +40,7 @@
 
 #define IRQ_OFFSET 32 /* pic interrupts start from index 32 */
 
-int dma_irqs[8] = {
+static const int dma_irqs[8] = {
     46, 47, 48, 49, 72, 73, 74, 75
 };
 
