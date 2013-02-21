@@ -10,13 +10,14 @@
 
 #include "sysbus.h"
 
-/* A9MP private memory region.  */
-
 typedef struct A9MPPrivState {
     SysBusDevice busdev;
     uint32_t num_cpu;
     MemoryRegion container;
+    DeviceState *mptimer;
+    DeviceState *wdt;
     DeviceState *gic;
+    DeviceState *scu;
     uint32_t num_irq;
 } A9MPPrivState;
 
@@ -30,7 +31,6 @@ static int a9mp_priv_init(SysBusDevice *dev)
 {
     A9MPPrivState *s = FROM_SYSBUS(A9MPPrivState, dev);
     SysBusDevice *timerbusdev, *wdtbusdev, *gicbusdev, *scubusdev;
-    DeviceState *qdev;
     int i;
 
     s->gic = qdev_create(NULL, "arm.gic");
@@ -45,20 +45,20 @@ static int a9mp_priv_init(SysBusDevice *dev)
     /* Pass through inbound GPIO lines to the GIC */
     qdev_init_gpio_in(&s->busdev.qdev, a9mp_priv_set_irq, s->num_irq - 32);
 
-    qdev = qdev_create(NULL, "arm_a9_scu");
-    qdev_prop_set_uint32(qdev, "num-cpu", s->num_cpu);
-    qdev_init_nofail(qdev);
-    scubusdev = SYS_BUS_DEVICE(qdev);
+    s->scu = qdev_create(NULL, "arm_a9_scu");
+    qdev_prop_set_uint32(s->scu, "num-cpu", s->num_cpu);
+    qdev_init_nofail(s->scu);
+    scubusdev = SYS_BUS_DEVICE(s->scu);
 
-    qdev = qdev_create(NULL, "arm,cortex-a9-twd-timer");
-    qdev_prop_set_uint32(qdev, "num-cpu", s->num_cpu);
-    qdev_init_nofail(qdev);
-    timerbusdev = SYS_BUS_DEVICE(qdev);
+    s->mptimer = qdev_create(NULL, "arm,cortex-a9-twd-timer");
+    qdev_prop_set_uint32(s->mptimer, "num-cpu", s->num_cpu);
+    qdev_init_nofail(s->mptimer);
+    timerbusdev = SYS_BUS_DEVICE(s->mptimer);
 
-    qdev = qdev_create(NULL, "arm,cortex-a9-twd-timer");
-    qdev_prop_set_uint32(qdev, "num-cpu", s->num_cpu);
-    qdev_init_nofail(qdev);
-    wdtbusdev = SYS_BUS_DEVICE(qdev);
+    s->wdt = qdev_create(NULL, "arm,cortex-a9-twd-timer");
+    qdev_prop_set_uint32(s->wdt, "num-cpu", s->num_cpu);
+    qdev_init_nofail(s->wdt);
+    wdtbusdev = SYS_BUS_DEVICE(s->wdt);
 
     /* Memory map (addresses are offsets from PERIPHBASE):
      *  0x0000-0x00ff -- Snoop Control Unit

@@ -20,6 +20,9 @@ typedef struct A9SCUState {
     uint32_t num_cpu;
 } A9SCUState;
 
+#define TYPE_A9_SCU "arm_a9_scu"
+#define A9_SCU(obj) OBJECT_CHECK(A9SCUState, (obj), TYPE_A9_SCU)
+
 static uint64_t a9_scu_read(void *opaque, hwaddr offset,
                             unsigned size)
 {
@@ -107,21 +110,21 @@ static const MemoryRegionOps a9_scu_ops = {
 
 static void a9_scu_reset(DeviceState *dev)
 {
-    A9SCUState *s = FROM_SYSBUS(A9SCUState, SYS_BUS_DEVICE(dev));
+    A9SCUState *s = A9_SCU(dev);
     s->control = 0;
 }
 
-static int a9_scu_init(SysBusDevice *dev)
+static void a9_scu_realize(DeviceState *dev, Error ** errp)
 {
-    A9SCUState *s = FROM_SYSBUS(A9SCUState, dev);
+    A9SCUState *s = A9_SCU(dev);
+    SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
 
     memory_region_init_io(&s->iomem, &a9_scu_ops, s, "a9-scu", 0x100);
-    sysbus_init_mmio(dev, &s->iomem);
-    return 0;
+    sysbus_init_mmio(sbd, &s->iomem);
 }
 
 static const VMStateDescription vmstate_a9_scu = {
-    .name = "a9_scu",
+    .name = "a9-scu",
     .version_id = 1,
     .minimum_version_id = 1,
     .fields = (VMStateField[]) {
@@ -139,16 +142,15 @@ static Property a9_scu_properties[] = {
 static void a9_scu_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-    SysBusDeviceClass *k = SYS_BUS_DEVICE_CLASS(klass);
 
-    k->init = a9_scu_init;
+    dc->realize = a9_scu_realize;
     dc->props = a9_scu_properties;
     dc->vmsd = &vmstate_a9_scu;
     dc->reset = a9_scu_reset;
 }
 
-static TypeInfo a9_scu_info = {
-    .name          = "arm_a9_scu",
+static const TypeInfo a9_scu_info = {
+    .name          = TYPE_A9_SCU,
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(A9SCUState),
     .class_init    = a9_scu_class_init,
