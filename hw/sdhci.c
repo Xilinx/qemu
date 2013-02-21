@@ -1237,17 +1237,17 @@ static Property sdhci_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static int sdhci_realize(SysBusDevice *busdev)
+static void sdhci_realize(DeviceState *dev, Error ** errp)
 {
-    SDHCIState *s = SDHCI(busdev);
+    SDHCIState *s = SDHCI(dev);
+    SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
 
     s->buf_maxsz = sdhci_get_fifolen(s);
     s->fifo_buffer = g_malloc0(s->buf_maxsz);
-    sysbus_init_irq(busdev, &s->irq);
+    sysbus_init_irq(sbd, &s->irq);
     memory_region_init_io(&s->iomem, &sdhci_mmio_ops, s, "sdhci",
             SDHC_REGISTERS_MAP_SIZE);
-    sysbus_init_mmio(busdev, &s->iomem);
-    return 0;
+    sysbus_init_mmio(sbd, &s->iomem);
 }
 
 static void sdhci_generic_reset(DeviceState *ds)
@@ -1259,13 +1259,12 @@ static void sdhci_generic_reset(DeviceState *ds)
 static void sdhci_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-    SysBusDeviceClass *sbdc = SYS_BUS_DEVICE_CLASS(klass);
     SDHCIClass *k = SDHCI_CLASS(klass);
 
     dc->vmsd = &sdhci_vmstate;
     dc->props = sdhci_properties;
     dc->reset = sdhci_generic_reset;
-    sbdc->init = sdhci_realize;
+    dc->realize = sdhci_realize;
 
     k->reset = sdhci_reset;
     k->mem_read = sdhci_read;
