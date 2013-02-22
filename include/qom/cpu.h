@@ -135,6 +135,23 @@ void cpu_reset(CPUState *cpu);
 ObjectClass *cpu_class_by_name(const char *typename, const char *cpu_model);
 
 /**
+ * cpu_class_set_vmsd:
+ * @cc: CPU class
+ * @value: Value to set.
+ *
+ * Sets #VMStateDescription for @cc.
+ */
+#ifndef CONFIG_USER_ONLY
+static inline void cpu_class_set_vmsd(CPUClass *cc,
+                                      const struct VMStateDescription *value)
+{
+    cc->vmsd = value;
+}
+#else
+#define cpu_class_set_vmsd(cpu, val) ((cpu)->vmsd = NULL)
+#endif
+
+/**
  * qemu_cpu_has_work:
  * @cpu: The vCPU to check.
  *
