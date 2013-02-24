@@ -308,6 +308,11 @@ static void zynq_init(QEMUMachineInitArgs *args)
         }
     }
 
+    dev = qdev_create(NULL, "xlnx.ps7-dev-cfg");
+    qdev_init_nofail(dev);
+    busdev = SYS_BUS_DEVICE(dev);
+    sysbus_connect_irq(busdev, 0, pic[40-IRQ_OFFSET]);
+    sysbus_mmio_map(busdev, 0, 0xF8007000);
     dev = qdev_create(NULL, "pl330");
     qdev_prop_set_uint8(dev, "num_chnls",  8);
     qdev_prop_set_uint8(dev, "num_periph_req",  4);
@@ -336,11 +341,6 @@ static void zynq_init(QEMUMachineInitArgs *args)
     qdev_init_nofail(dev);
     sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, 0xE0101000);
     sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, pic[79-IRQ_OFFSET]);
-    dev = qdev_create(NULL, "xlnx.ps7-dev-cfg");
-    qdev_init_nofail(dev);
-    busdev = SYS_BUS_DEVICE(dev);
-    sysbus_connect_irq(busdev, 0, pic[40-IRQ_OFFSET]);
-    sysbus_mmio_map(busdev, 0, 0xF8007000);
 
     zynq_binfo.ram_size = ram_size;
     zynq_binfo.kernel_filename = kernel_filename;

@@ -551,7 +551,7 @@ static void xilinx_spips_realize(DeviceState *dev, Error **errp)
 static void xilinx_qspips_realize(DeviceState *dev, Error **errp)
 {
     XilinxSPIPS *s = XILINX_SPIPS(dev);
-    XilinxQSPIPS *q = XILINX_SPIPS(dev);
+    XilinxQSPIPS *q = XILINX_QSPIPS(dev);
     SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
 
     DB_PRINT("realized qspips\n");
