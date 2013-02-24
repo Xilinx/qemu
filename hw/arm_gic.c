@@ -712,9 +712,15 @@ static const TypeInfo arm_gic_info = {
     .class_size = sizeof(ARMGICClass),
 };
 
+static const TypeInfo arm_gic_info_alias = {
+    .name = "arm.cortex-a9-gic",
+    .parent = TYPE_ARM_GIC,
+};
+
 static void arm_gic_register_types(void)
 {
     type_register_static(&arm_gic_info);
+    type_register_static(&arm_gic_info_alias);
 }
 
 type_init(arm_gic_register_types)
