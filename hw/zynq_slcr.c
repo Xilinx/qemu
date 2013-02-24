@@ -639,9 +639,15 @@ static const TypeInfo zynq_slcr_info = {
     .instance_size  = sizeof(ZynqSLCRState),
 };
 
+static const TypeInfo zynq_slcr_info_alias = {
+    .name = "xlnx.zynq-slcr",
+    .parent = "xlnx.ps7-slcr",
+};
+
 static void zynq_slcr_register_types(void)
 {
     type_register_static(&zynq_slcr_info);
+    type_register_static(&zynq_slcr_info_alias);
 }
 
 type_init(zynq_slcr_register_types)
