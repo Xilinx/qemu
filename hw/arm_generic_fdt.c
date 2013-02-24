@@ -172,7 +172,10 @@ static void arm_generic_fdt_init(QEMUMachineInitArgs *args)
 
     /* find memory node */
     /* FIXME it could be good to fix case when you don't find memory node */
-    qemu_devtree_get_node_by_name(fdt, node_path, "memory@");
+    while (qemu_devtree_get_node_by_name(fdt, node_path, "memory@")) {
+        qemu_devtree_add_subnode(fdt, "/memory@0");
+        qemu_devtree_setprop_cells(fdt, "/memory@0", "reg", 0, args->ram_size);
+    }
 
     while (1) {
         ram_base = qemu_devtree_getprop_cell(fdt, node_path, "reg",
