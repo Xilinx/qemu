@@ -19,11 +19,11 @@
 #include "sysbus.h"
 #include "sysemu/sysemu.h"
 
-#define NUM_CPUS 2
 #ifdef CONFIG_FDT
 #include "qemu/config-file.h"
 #include "sysemu/device_tree.h"
 #endif
+#define NUM_CPUS 2
 
 #ifdef ZYNQ_ARM_SLCR_ERR_DEBUG
 #define DB_PRINT(...) do { \
