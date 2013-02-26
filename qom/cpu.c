@@ -43,6 +43,11 @@ static void cpu_common_reset(CPUState *cpu)
     cpu->halted = 0;
 }
 
+static void cpu_device_reset(DeviceState *dev)
+{
+    cpu_reset(CPU(dev));
+}
+
 static void cpu_common_halt(DeviceState *dev)
 {
     CPUState *s = CPU(dev);
@@ -80,6 +85,7 @@ static void cpu_class_init(ObjectClass *klass, void *data)
 
     k->class_by_name = cpu_common_class_by_name;
     k->reset = cpu_common_reset;
+    dc->reset = cpu_device_reset;
     dc->halt = cpu_common_halt;
     dc->unhalt = cpu_common_unhalt;
     dc->realize = cpu_common_realizefn;
