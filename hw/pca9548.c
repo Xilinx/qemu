@@ -46,7 +46,7 @@ typedef struct {
     uint8_t chip_enable; /*property */
 } PCA9548State;
 
-#define TYPE_PCA9548 "pca-9548"
+#define TYPE_PCA9548 "pca9548"
 
 #define PCA9548(obj) \
      OBJECT_CHECK(PCA9548State, (obj), TYPE_PCA9548)
