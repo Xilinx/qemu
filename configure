@@ -226,6 +226,7 @@ coroutine=""
 seccomp=""
 glusterfs=""
 virtio_blk_data_plane=""
+gtk=""
 
 # parse CC options first
 for opt do
@@ -895,6 +896,10 @@ for opt do
   --disable-virtio-blk-data-plane) virtio_blk_data_plane="no"
   ;;
   --enable-virtio-blk-data-plane) virtio_blk_data_plane="yes"
+  ;;
+  --disable-gtk) gtk="no"
+  ;;
+  --enable-gtk) gtk="yes"
   ;;
   *) echo "ERROR: unknown option $opt"; show_help="yes"
   ;;
@@ -1634,6 +1639,26 @@ if test "$sparse" != "no" ; then
     fi
     sparse=no
   fi
+fi
+
+##########################################
+# GTK probe
+
+if test "$gtk" != "no"; then
+    if $pkg_config --exists 'gtk+-2.0 >= 2.18.0' && \
+       $pkg_config --exists 'vte >= 0.24.0'; then
+	gtk_cflags=`$pkg_config --cflags gtk+-2.0 2>/dev/null`
+	gtk_libs=`$pkg_config --libs gtk+-2.0 2>/dev/null`
+	vte_cflags=`$pkg_config --cflags vte 2>/dev/null`
+	vte_libs=`$pkg_config --libs vte 2>/dev/null`
+	libs_softmmu="$gtk_libs $vte_libs $libs_softmmu"
+	gtk="yes"
+    else
+	if test "$gtk" = "yes" ; then
+	    feature_not_found "gtk"
+	fi
+	gtk="no"
+    fi
 fi
 
 ##########################################
@@ -3111,20 +3136,27 @@ if compile_prog "" "" ; then
 fi
 
 ########################################
-# check whether we can disable the -Wunused-but-set-variable
-# option with a pragma (this is needed to silence a warning in
-# some versions of the valgrind VALGRIND_STACK_DEREGISTER macro.)
-# This test has to be compiled with -Werror as otherwise an
-# unknown pragma is only a warning.
+# check whether we can disable warning option with a pragma (this is needed
+# to silence warnings in the headers of some versions of external libraries).
+# This test has to be compiled with -Werror as otherwise an unknown pragma is
+# only a warning.
+#
+# If we can't selectively disable warning in the code, disable -Werror so that
+# the build doesn't fail anyway.
+
 pragma_disable_unused_but_set=no
 cat > $TMPC << EOF
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
+#pragma GCC diagnostic ignored "-Wstrict-prototypes"
+
 int main(void) {
     return 0;
 }
 EOF
 if compile_prog "-Werror" "" ; then
     pragma_diagnostic_available=yes
+else
+    werror=no
 fi
 
 ########################################
@@ -3239,6 +3271,7 @@ fi
 
 qemu_confdir=$sysconfdir$confsuffix
 qemu_datadir=$datadir$confsuffix
+qemu_localedir="$datadir/locale"
 
 tools=""
 if test "$want_tools" = "yes" ; then
@@ -3322,6 +3355,7 @@ if test "$darwin" = "yes" ; then
 fi
 echo "pixman            $pixman"
 echo "SDL support       $sdl"
+echo "GTK support       $gtk"
 echo "curses support    $curses"
 echo "curl support      $curl"
 echo "mingw32 support   $mingw32"
@@ -3411,6 +3445,7 @@ echo "qemu_localstatedir=$local_statedir" >> $config_host_mak
 echo "qemu_helperdir=$libexecdir" >> $config_host_mak
 echo "extra_cflags=$EXTRA_CFLAGS" >> $config_host_mak
 echo "extra_ldflags=$EXTRA_LDFLAGS" >> $config_host_mak
+echo "qemu_localedir=$qemu_localedir" >> $config_host_mak
 
 echo "ARCH=$ARCH" >> $config_host_mak
 if test "$debug_tcg" = "yes" ; then
@@ -3612,6 +3647,11 @@ if test "$bluez" = "yes" ; then
   echo "BLUEZ_CFLAGS=$bluez_cflags" >> $config_host_mak
 fi
 echo "GLIB_CFLAGS=$glib_cflags" >> $config_host_mak
+if test "$gtk" = "yes" ; then
+  echo "CONFIG_GTK=y" >> $config_host_mak
+  echo "GTK_CFLAGS=$gtk_cflags" >> $config_host_mak
+  echo "VTE_CFLAGS=$vte_cflags" >> $config_host_mak
+fi
 if test "$xen" = "yes" ; then
   echo "CONFIG_XEN_BACKEND=y" >> $config_host_mak
   echo "CONFIG_XEN_CTRL_INTERFACE_VERSION=$xen_ctrl_version" >> $config_host_mak
@@ -3744,7 +3784,7 @@ fi
 # USB host support
 case "$usb" in
 linux)
-  echo "HOST_USB=linux" >> $config_host_mak
+  echo "HOST_USB=linux legacy" >> $config_host_mak
 ;;
 bsd)
   echo "HOST_USB=bsd" >> $config_host_mak
@@ -4330,7 +4370,7 @@ DIRS="$DIRS roms/seabios roms/vgabios"
 DIRS="$DIRS qapi-generated"
 FILES="Makefile tests/tcg/Makefile qdict-test-data.txt"
 FILES="$FILES tests/tcg/cris/Makefile tests/tcg/cris/.gdbinit"
-FILES="$FILES tests/tcg/lm32/Makefile"
+FILES="$FILES tests/tcg/lm32/Makefile po/Makefile"
 FILES="$FILES pc-bios/optionrom/Makefile pc-bios/keymaps"
 FILES="$FILES pc-bios/spapr-rtas/Makefile"
 FILES="$FILES roms/seabios/Makefile roms/vgabios/Makefile"
