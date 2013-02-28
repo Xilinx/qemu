@@ -11,6 +11,8 @@
  * 2 of the License, or (at your option) any later version.
  */
 
+#include "qemu-common.h"
+#include "qemu/log.h"
 #include "qemu/bitops.h"
 
 #define BITOP_WORD(nr)		((nr) / BITS_PER_LONG)
@@ -139,4 +141,77 @@ unsigned long find_last_bit(const unsigned long *addr, unsigned long size)
 
     /* Not found */
     return size;
+}
+void uint32_array_reset(uint32_t *state, const UInt32StateInfo *info, int num)
+{
+    int i = 0;
+
+    for (i = 0; i < num; ++i) {
+        state[i] = info[i].reset;
+    }
+}
+
+void uint32_write(uint32_t *state, const UInt32StateInfo *info, uint32_t val,
+                  const char *prefix, bool debug)
+{
+    int i;
+    uint32_t new_val;
+    int width = info->width ? info->width : 32;
+
+    uint32_t no_w0_mask = info->ro | info->w1c | info->nw0 |
+                        ~((1ull << width) - 1);
+    uint32_t no_w1_mask = info->ro | info->w1c | info->nw1 |
+                        ~((1ull << width) - 1);
+
+    if (!info->name) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: write to undefined device state "
+                      "(written value: %#08x)\n", prefix, val);
+        return;
+    }
+
+    if (!strcmp(info->name, "MCTRL")) {
+        fprintf(stderr, "MCTRL %x %x %x\n", no_w0_mask, no_w1_mask, val);
+    }
+
+    if (debug) {
+        fprintf(stderr, "%s:%s: write of value %08x\n", prefix, info->name,
+                val);
+    }
+
+    /*FIXME: skip over if no LOG_GUEST_ERROR */
+    for (i = 0; i <= 1; ++i) {
+        uint32_t test = (val ^ (i ? 0 : ~0)) & (i ? info->ge1 : info->ge0);
+        if (test) {
+            qemu_log_mask(LOG_GUEST_ERROR, "%s:%s bits %#08x may not be written"
+                          " to %d\n", prefix, info->name, test, i);
+        }
+    }
+
+    new_val = val & ~(no_w1_mask & val);
+    new_val |= no_w1_mask & *state & val;
+    new_val |= no_w0_mask & *state & ~val;
+    new_val &= ~(val & info->w1c);
+    *state = new_val;
+}
+
+uint32_t uint32_read(uint32_t *state, const UInt32StateInfo *info,
+                     const char *prefix, bool debug)
+{
+    uint32_t ret = *state;
+
+    /* clear on read */
+    ret &= ~info->cor;
+    *state = ret;
+
+    if (!info->name) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: read from undefined device state "
+                      "(read value: %#08x)\n", prefix, ret);
+        return ret;
+    }
+
+    if (debug) {
+        fprintf(stderr, "%s:%s: read of value %08x\n", prefix, info->name, ret);
+    }
+
+    return ret;
 }
