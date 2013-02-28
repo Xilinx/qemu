@@ -82,6 +82,11 @@ void do_qemu_set_log(int log_flags, bool use_own_buffers)
     }
 }
 
+int qemu_get_log_flags(void)
+{
+    return qemu_loglevel;
+}
+
 void qemu_set_log_filename(const char *filename)
 {
     g_free(logfilename);
