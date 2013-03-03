@@ -118,7 +118,7 @@ static int sysbus_device_init(DeviceState *dev)
     SysBusDevice *sd = SYS_BUS_DEVICE(dev);
     SysBusDeviceClass *sbc = SYS_BUS_DEVICE_GET_CLASS(sd);
 
-    return sbc->init(sd);
+    return sbc->init ? sbc->init(sd) : 0;
 }
 
 DeviceState *sysbus_create_varargs(const char *name,
