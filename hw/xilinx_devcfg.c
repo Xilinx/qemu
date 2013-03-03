@@ -41,7 +41,7 @@
 #define CYCLES_BTT_MAX 10000 /*approximate 10k cycles per delay interval */
 
 #ifndef XILINX_DEVCFG_ERR_DEBUG
-#define XILINX_DEVCFG_ERR_DEBUG 0
+#define XILINX_DEVCFG_ERR_DEBUG 1
 #endif
 #define DB_PRINT(...) do { \
     if (XILINX_DEVCFG_ERR_DEBUG) { \
