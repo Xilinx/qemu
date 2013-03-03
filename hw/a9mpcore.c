@@ -33,7 +33,7 @@ static int a9mp_priv_init(SysBusDevice *dev)
     SysBusDevice *timerbusdev, *wdtbusdev, *gicbusdev, *scubusdev;
     int i;
 
-    s->gic = qdev_create(NULL, "arm.gic");
+    s->gic = qdev_create(NULL, "arm_gic");
     qdev_prop_set_uint32(s->gic, "num-cpu", s->num_cpu);
     qdev_prop_set_uint32(s->gic, "num-irq", s->num_irq);
     qdev_init_nofail(s->gic);
@@ -45,17 +45,17 @@ static int a9mp_priv_init(SysBusDevice *dev)
     /* Pass through inbound GPIO lines to the GIC */
     qdev_init_gpio_in(&s->busdev.qdev, a9mp_priv_set_irq, s->num_irq - 32);
 
-    s->scu = qdev_create(NULL, "arm_a9_scu");
+    s->scu = qdev_create(NULL, "a9-scu");
     qdev_prop_set_uint32(s->scu, "num-cpu", s->num_cpu);
     qdev_init_nofail(s->scu);
     scubusdev = SYS_BUS_DEVICE(s->scu);
 
-    s->mptimer = qdev_create(NULL, "arm,cortex-a9-twd-timer");
+    s->mptimer = qdev_create(NULL, "arm_mptimer");
     qdev_prop_set_uint32(s->mptimer, "num-cpu", s->num_cpu);
     qdev_init_nofail(s->mptimer);
     timerbusdev = SYS_BUS_DEVICE(s->mptimer);
 
-    s->wdt = qdev_create(NULL, "arm,cortex-a9-twd-timer");
+    s->wdt = qdev_create(NULL, "arm_mptimer");
     qdev_prop_set_uint32(s->wdt, "num-cpu", s->num_cpu);
     qdev_init_nofail(s->wdt);
     wdtbusdev = SYS_BUS_DEVICE(s->wdt);

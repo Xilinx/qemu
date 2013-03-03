@@ -25,7 +25,7 @@
 
 #ifdef DEBUG_GIC
 #define DPRINTF(fmt, ...) \
-do { fprintf(stderr, "arm.gic: " fmt , ## __VA_ARGS__); } while (0)
+do { fprintf(stderr, "arm_gic: " fmt , ## __VA_ARGS__); } while (0)
 #else
 #define DPRINTF(fmt, ...) do {} while(0)
 #endif
