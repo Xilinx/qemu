@@ -397,6 +397,11 @@ void arm_load_kernel(ARMCPU *cpu, struct arm_boot_info *info)
     big_endian = 0;
 #endif
 
+    /* Assume that raw images are linux kernels, and ELF images are not.  */
+    kernel_size = load_elf(info->kernel_filename, NULL, NULL, &elf_entry,
+                           NULL, NULL, big_endian, ELF_MACHINE, 1);
+    entry = elf_entry;
+
     /* We want to put the initrd far enough into RAM that when the
      * kernel is uncompressed it will not clobber the initrd. However
      * on boards without much RAM we must ensure that we still leave
@@ -407,13 +412,10 @@ void arm_load_kernel(ARMCPU *cpu, struct arm_boot_info *info)
      * halfway into RAM, and for boards with 256MB of RAM or more we put
      * the initrd at 128MB.
      */
-    info->initrd_start = info->loader_start +
-        MIN(info->ram_size / 2, 128 * 1024 * 1024);
+    info->initrd_start = ((kernel_size >= 0) ? QEMU_ALIGN_UP(elf_entry, 4096) :
+                          info->loader_start) + MIN(info->ram_size / 2,
+                          128 * 1024 * 1024);
 
-    /* Assume that raw images are linux kernels, and ELF images are not.  */
-    kernel_size = load_elf(info->kernel_filename, NULL, NULL, &elf_entry,
-                           NULL, NULL, big_endian, ELF_MACHINE, 1);
-    entry = elf_entry;
     if (kernel_size < 0) {
         kernel_size = load_uimage(info->kernel_filename, &entry, NULL,
                                   &is_linux);
