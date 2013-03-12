@@ -596,7 +596,7 @@ static int zynq_slcr_init(SysBusDevice *dev)
         int i = 0;
 
         for (env = first_cpu; env; env = env->next_cpu) {
-            s->cpus[i++] = arm_env_get_cpu(env);
+            s->cpus[i++] = DEVICE(arm_env_get_cpu(env));
         }
     }
 
