@@ -80,7 +80,6 @@ static int uart16550_fdt_init(char *node_path, FDTMachineInfo *fdti,
     uint32_t baudrate;
     qemu_irq irqline;
     char irq_info[1024];
-    void *serial = NULL;
     Error *errp = NULL;
 
     base = qemu_devtree_getprop_cell(fdti->fdt, node_path, "reg", 0,
@@ -101,8 +100,8 @@ static int uart16550_fdt_init(char *node_path, FDTMachineInfo *fdti,
                 ", irq: %s, baud %d\n", base, irq_info, baudrate);
 
     /* it_shift = 2, reg-shift in DTS - for Xilnx IP is hardcoded */
-    serial = serial_mm_init(address_space_mem, base, 2, irqline, baudrate,
-                            qemu_char_get_next_serial(), DEVICE_LITTLE_ENDIAN);
+    serial_mm_init(address_space_mem, base, 2, irqline, baudrate,
+                   qemu_char_get_next_serial(), DEVICE_LITTLE_ENDIAN);
     return 0;
 }
 
