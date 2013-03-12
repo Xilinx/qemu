@@ -413,6 +413,15 @@ static void cortex_m3_initfn(Object *obj)
     cpu->midr = 0x410fc231;
 }
 
+static void arm_v7m_class_init(ObjectClass *oc, void *data)
+{
+#ifndef CONFIG_USER_ONLY
+    CPUClass *cc = CPU_CLASS(oc);
+
+    cc->do_interrupt = arm_v7m_cpu_do_interrupt;
+#endif
+}
+
 static const ARMCPRegInfo cortexa8_cp_reginfo[] = {
     { .name = "L2LOCKDOWN", .cp = 15, .crn = 9, .crm = 0, .opc1 = 1, .opc2 = 0,
       .access = PL1_RW, .type = ARM_CP_CONST, .resetvalue = 0 },
@@ -754,6 +763,7 @@ typedef struct ARMCPUInfo {
     const char *name;
     void (*initfn)(Object *obj);
     Property *props;
+    void (*class_init)(ObjectClass *oc, void *data);
 } ARMCPUInfo;
 
 static Property cortex_a9_properties[] = {
@@ -773,7 +783,8 @@ static const ARMCPUInfo arm_cpus[] = {
     { .name = "arm1136",     .initfn = arm1136_initfn },
     { .name = "arm1176",     .initfn = arm1176_initfn },
     { .name = "arm11mpcore", .initfn = arm11mpcore_initfn },
-    { .name = "cortex-m3",   .initfn = cortex_m3_initfn },
+    { .name = "cortex-m3",   .initfn = cortex_m3_initfn,
+                             .class_init = arm_v7m_class_init },
     { .name = "cortex-a8",   .initfn = cortex_a8_initfn },
     { .name = "cortex-a9",   .initfn = cortex_a9_initfn,
       .props = cortex_a9_properties },
@@ -832,6 +843,7 @@ static void cpu_register(const ARMCPUInfo *info)
         .class_size = sizeof(ARMCPUClass),
         .class_init = arm_cpu_specific_class_init,
         .class_data = (void *)info,
+        .class_init = info->class_init,
     };
 
     type_info.name = g_strdup_printf("%s-" TYPE_ARM_CPU, info->name);

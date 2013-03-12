@@ -127,7 +127,7 @@ typedef struct {
     SysBusDevice busdev;
     MemoryRegion iomem;
 
-    ARMCPU *cpus[NUM_CPUS];
+    DeviceState *cpus[NUM_CPUS];
 
     union {
         struct {
@@ -485,12 +485,13 @@ static void zynq_slcr_write(void *opaque, hwaddr offset,
                     bool is_clkstop = val &
                                     (1 << (A9_CPU_RST_CTRL_CLKSTOP_SHIFT + i));
                     if (is_rst) {
-                        CPU_GET_CLASS(CPU(s->cpus[i]))->reset(CPU(s->cpus[i]));
                         DB_PRINT("resetting cpu %d\n", i);
+                        device_reset(s->cpus[i]);
                     }
-                    s->cpus[i]->env.halted = is_rst || is_clkstop;
-                    DB_PRINT("%shalting cpu %d\n", s->cpus[i]->env.halted ?
+                    DB_PRINT("%shalting cpu %d\n", is_rst || is_clkstop ?
                              "" : "un", i);
+                    (is_rst || is_clkstop ?
+                                device_halt : device_unhalt)(s->cpus[i]);
                 }
             }
             break;
@@ -589,6 +590,7 @@ static const MemoryRegionOps slcr_ops = {
 
 static int zynq_slcr_init(SysBusDevice *dev)
 {
+    int i;
     ZynqSLCRState *s = FROM_SYSBUS(ZynqSLCRState, dev);
 
     if (!s->cpus[0]) {
@@ -603,11 +605,12 @@ static int zynq_slcr_init(SysBusDevice *dev)
     memory_region_init_io(&s->iomem, &slcr_ops, s, "slcr", 0x1000);
     sysbus_init_mmio(dev, &s->iomem);
 
-    object_property_add_link(OBJECT(dev), "cpu0", TYPE_ARM_CPU,
-                             (Object **) &s->cpus[0], NULL);
-    object_property_add_link(OBJECT(dev), "cpu1", TYPE_ARM_CPU,
-                             (Object **) &s->cpus[1], NULL);
-
+    for (i = 0; i < NUM_CPUS; ++i) {
+        gchar *name = g_strdup_printf("cpu%d", i);
+        object_property_add_link(OBJECT(dev), name, TYPE_DEVICE,
+                                 (Object **) &s->cpus[i], NULL);
+        g_free(name);
+    }
     return 0;
 }
 
