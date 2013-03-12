@@ -169,10 +169,6 @@ void uint32_write(uint32_t *state, const UInt32StateInfo *info, uint32_t val,
         return;
     }
 
-    if (!strcmp(info->name, "MCTRL")) {
-        fprintf(stderr, "MCTRL %x %x %x\n", no_w0_mask, no_w1_mask, val);
-    }
-
     if (debug) {
         fprintf(stderr, "%s:%s: write of value %08x\n", prefix, info->name,
                 val);
