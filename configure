@@ -241,7 +241,8 @@ for opt do
   ;;
   --cpu=*) cpu="$optarg"
   ;;
-  --extra-cflags=*) EXTRA_CFLAGS="$optarg"
+  --extra-cflags=*) QEMU_CFLAGS="$optarg $QEMU_CFLAGS"
+                    EXTRA_CFLAGS="$optarg"
   ;;
   --extra-ldflags=*) LDFLAGS="$optarg $LDFLAGS"
                      EXTRA_LDFLAGS="$optarg"
@@ -912,34 +913,35 @@ done
 case "$cpu" in
     sparc)
            LDFLAGS="-m32 $LDFLAGS"
-           EXTRA_CFLAGS="-m32 -mcpu=ultrasparc $EXTRA_CFLAGS"
+           CPU_CFLAGS="-m32 -mcpu=ultrasparc"
            ;;
     sparc64)
            LDFLAGS="-m64 $LDFLAGS"
-           EXTRA_CFLAGS="-m64 -mcpu=ultrasparc $EXTRA_CFLAGS"
+           CPU_CFLAGS="-m64 -mcpu=ultrasparc"
            ;;
     s390)
-           EXTRA_CFLAGS="-m31 -march=z990 $EXTRA_CFLAGS"
+           CPU_CFLAGS="-m31 -march=z990"
            LDFLAGS="-m31 $LDFLAGS"
            ;;
     s390x)
-           EXTRA_CFLAGS="-m64 -march=z990 $EXTRA_CFLAGS"
+           CPU_CFLAGS="-m64 -march=z990"
            LDFLAGS="-m64 $LDFLAGS"
            ;;
     i386)
-           EXTRA_CFLAGS="-m32 $EXTRA_CFLAGS"
+           CPU_CFLAGS="-m32"
            LDFLAGS="-m32 $LDFLAGS"
            cc_i386='$(CC) -m32'
            ;;
     x86_64)
-           EXTRA_CFLAGS="-m64 $EXTRA_CFLAGS"
+           CPU_CFLAGS="-m64"
            LDFLAGS="-m64 $LDFLAGS"
            cc_i386='$(CC) -m32'
            ;;
     # No special flags required for other host CPUs
 esac
 
-QEMU_CFLAGS="$EXTRA_CFLAGS $QEMU_CFLAGS"
+QEMU_CFLAGS="$CPU_CFLAGS $QEMU_CFLAGS"
+EXTRA_CFLAGS="$CPU_CFLAGS $EXTRA_CFLAGS"
 
 default_target_list=""
 
@@ -2419,10 +2421,10 @@ if test "$fdt" != "no" ; then
 int main(void) { return 0; }
 EOF
   if compile_prog "" "$fdt_libs" ; then
-    #system DTC is good - use it
+    # system DTC is good - use it
     fdt=yes
   elif test -d ${source_path}/dtc/libfdt ; then
-    #have submodule DTC - use it
+    # have submodule DTC - use it
     fdt=yes
     dtc_internal="yes"
     mkdir -p dtc
@@ -2433,14 +2435,14 @@ EOF
     fdt_cflags="-I\$(SRC_PATH)/dtc/libfdt"
     fdt_libs="-L\$(BUILD_DIR)/dtc/libfdt $fdt_libs"
   elif test "$fdt" = "yes" ; then
-    #have neither and want - prompt for system/submodule install
+    # have neither and want - prompt for system/submodule install
     echo "ERROR: DTC not present. Your options:"
     echo "  (1) Preferred: Install the DTC devel package"
     echo "  (2) Fetch the DTC submodule, using:"
     echo "      git submodule update --init dtc"
     exit 1
   else
-    #dont have and dont want
+    # don't have and dont wan't
     fdt_libs=
     fdt=no
   fi
