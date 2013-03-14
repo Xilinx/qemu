@@ -304,7 +304,6 @@ microblaze_generic_fdt_init(QEMUMachineInitArgs *args)
     MicroBlazeCPU *cpu;
     MemoryRegion *address_space_mem = get_system_memory();
     MemoryRegion *lmb_bram = g_new(MemoryRegion, 1);
-    MemoryRegion *ddr_ram = g_new(MemoryRegion, 1);
     hwaddr ram_base;
     void *fdt = NULL;
     const char *dtb_arg;
@@ -347,10 +346,6 @@ microblaze_generic_fdt_init(QEMUMachineInitArgs *args)
     memory_region_init_ram(lmb_bram, "microblaze_fdt.lmb_bram", LMB_BRAM_SIZE);
     vmstate_register_ram_global(lmb_bram);
     memory_region_add_subregion(address_space_mem, 0, lmb_bram);
-
-    memory_region_init_ram(ddr_ram, "microblaze_fdt.ddr_ram", ram_size);
-    vmstate_register_ram_global(ddr_ram);
-    memory_region_add_subregion(address_space_mem, ram_base, ddr_ram);
 
     /* Instantiate peripherals from the FDT.  */
     irqs[0] = *microblaze_pic_init_cpu(&cpu->env);

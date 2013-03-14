@@ -121,10 +121,8 @@ static void arm_generic_fdt_init(QEMUMachineInitArgs *args)
     const char *cpu_model = args->cpu_model;
     ARMCPU *cpus[MAX_CPUS];
     MemoryRegion *address_space_mem = get_system_memory();
-    MemoryRegion *ram;
     ram_addr_t ram_base, ram_size;
     unsigned int ram_num_regions = 0;
-    char ram_region_name[50];
     ram_addr_t ram_kernel_base = 0, ram_kernel_size = 0;
     qemu_irq cpu_irq[MAX_CPUS+1];
     DeviceState *dev;
@@ -197,15 +195,6 @@ static void arm_generic_fdt_init(QEMUMachineInitArgs *args)
          */
         ram_kernel_base = ram_base;
         ram_kernel_size = ram_size;
-
-        /* create a unique name for the region */
-        snprintf(ram_region_name, 50, "zynq.ext_ram_%d", ram_num_regions);
-
-        /* Memory node */
-        ram = g_new(MemoryRegion, 1);
-        memory_region_init_ram(ram, ram_region_name, ram_size);
-        vmstate_register_ram_global(ram);
-        memory_region_add_subregion(address_space_mem, ram_base, ram);
     }
     /* Assert that at least one region of memory exists */
     assert(ram_num_regions > 0);

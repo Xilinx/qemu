@@ -134,6 +134,58 @@ static int i2c_bus_fdt_init(char *node_path, FDTMachineInfo *fdti, void *priv)
     return 0;
 }
 
+static int memory_fdt_init(char *node_path, FDTMachineInfo *fdti, void *priv)
+{
+    MemoryRegion *address_space_mem = get_system_memory();
+    unsigned int ram_num_regions = 0;
+    Error *errp = NULL;
+    char *ro_str;
+    int readonly;
+
+    ro_str = qemu_devtree_getprop(fdti->fdt, node_path,
+                                  "read-only", NULL, false, &errp);
+    /* Found the read-only property?  */
+    readonly = errp == NULL;
+    g_free(ro_str);
+
+    errp = NULL;
+    while (1) {
+        char ram_region_name[50];
+        uint64_t size = 0;
+        MemoryRegion *mr;
+        hwaddr base;
+
+        base = qemu_devtree_getprop_cell(fdti->fdt, node_path, "reg",
+                                         (ram_num_regions * 2) + 0, false,
+                                         &errp);
+        size = qemu_devtree_getprop_cell(fdti->fdt, node_path, "reg",
+                                         (ram_num_regions * 2) + 1, false,
+                                         &errp);
+        /* If an error is set, then no more cells exist in the property and thus
+         * no more memory regions are defined.
+         */
+        if (error_is_set(&errp)) {
+            break;
+        }
+        ram_num_regions++;
+
+        /* XXX: node_path might not be the friendliest name for QEMU.  */
+        snprintf(ram_region_name, 50, "%s.%d", node_path, ram_num_regions);
+
+        mr = g_new(MemoryRegion, 1);
+        DB_PRINT_NP(0, "memory created at %#llx size %#lx ro=%d\n",
+                    (unsigned long long)base, size, readonly);
+
+        /* Create the RAM/ROM.  */
+        memory_region_init_ram(mr, node_path, size);
+        memory_region_set_readonly(mr, readonly);
+
+        vmstate_register_ram_global(mr);
+        memory_region_add_subregion(address_space_mem, base, mr);
+    }
+    return 0;
+}
+
 static inline void razwi_unimp_rw(void *opaque, hwaddr addr, uint64_t val64,
                            unsigned int size, bool rnw) {
     char str[1024];
@@ -163,6 +215,8 @@ const MemoryRegionOps razwi_unimp_ops = {
     .write = razwi_unimp_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
+
+fdt_register_compatibility_n(memory_fdt_init, "device_type:memory", 0);
 
 fdt_register_compatibility_n(uart16550_fdt_init, "compatible:ns16550", 0);
 fdt_register_compatibility_n(uart16550_fdt_init, "compatible:ns16550a", 1);
