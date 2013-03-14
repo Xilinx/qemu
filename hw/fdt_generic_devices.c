@@ -137,6 +137,7 @@ static int i2c_bus_fdt_init(char *node_path, FDTMachineInfo *fdti, void *priv)
 static int memory_fdt_init(char *node_path, FDTMachineInfo *fdti, void *priv)
 {
     MemoryRegion *address_space_mem = get_system_memory();
+    FDTMemoryInfo *meminfo;
     unsigned int ram_num_regions = 0;
     Error *errp = NULL;
     char *ro_str;
@@ -148,6 +149,7 @@ static int memory_fdt_init(char *node_path, FDTMachineInfo *fdti, void *priv)
     readonly = errp == NULL;
     g_free(ro_str);
 
+    meminfo = g_new(FDTMemoryInfo, 1);
     errp = NULL;
     while (1) {
         char ram_region_name[50];
@@ -168,6 +170,8 @@ static int memory_fdt_init(char *node_path, FDTMachineInfo *fdti, void *priv)
             break;
         }
         ram_num_regions++;
+        meminfo->last_base = base;
+        meminfo->last_size = size;
 
         /* XXX: node_path might not be the friendliest name for QEMU.  */
         snprintf(ram_region_name, 50, "%s.%d", node_path, ram_num_regions);
@@ -183,6 +187,9 @@ static int memory_fdt_init(char *node_path, FDTMachineInfo *fdti, void *priv)
         vmstate_register_ram_global(mr);
         memory_region_add_subregion(address_space_mem, base, mr);
     }
+
+    meminfo->nr_regions = ram_num_regions;
+    fdt_init_set_opaque(fdti, node_path, meminfo);
     return 0;
 }
 

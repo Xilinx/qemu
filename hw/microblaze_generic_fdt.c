@@ -304,15 +304,16 @@ microblaze_generic_fdt_init(QEMUMachineInitArgs *args)
     MicroBlazeCPU *cpu;
     MemoryRegion *address_space_mem = get_system_memory();
     MemoryRegion *lmb_bram = g_new(MemoryRegion, 1);
-    hwaddr ram_base;
+    ram_addr_t ram_kernel_base = 0, ram_kernel_size = 0;
     void *fdt = NULL;
     const char *dtb_arg;
     QemuOpts *machine_opts;
-    Error *errp = NULL;
     qemu_irq *irqs = g_new0(qemu_irq, 2);
 
     /* for memory node */
     char node_path[DT_PATH_LENGTH];
+    FDTMachineInfo *fdti;
+    FDTMemoryInfo *meminfo;
 
     machine_opts = qemu_opts_find(qemu_find_opts("machine"), 0);
     if (!machine_opts) {
@@ -332,26 +333,29 @@ microblaze_generic_fdt_init(QEMUMachineInitArgs *args)
     /* init CPUs */
     cpu = cpu_mb_init("microblaze");
 
-    /* find memory node */
-    /* FIXME it could be good to fix case when you don't find memory node */
-    qemu_devtree_get_node_by_name(fdt, node_path, "memory@");
-    ram_base = qemu_devtree_getprop_cell(fdt, node_path, "reg", 0,
-                                            false, &errp);
-    ram_size = qemu_devtree_getprop_cell(fdt, node_path, "reg", 1,
-                                            false, &errp);
-    assert_no_error(errp);
-
-    /* FIXME: instantiate from FDT like evrything else */
     /* Attach emulated BRAM through the LMB.  */
     memory_region_init_ram(lmb_bram, "microblaze_fdt.lmb_bram", LMB_BRAM_SIZE);
     vmstate_register_ram_global(lmb_bram);
     memory_region_add_subregion(address_space_mem, 0, lmb_bram);
 
+    /* find memory node */
+    while (qemu_devtree_get_node_by_name(fdt, node_path, "memory@")) {
+        qemu_devtree_add_subnode(fdt, "/memory@0");
+        qemu_devtree_setprop_cells(fdt, "/memory@0", "reg", 0, args->ram_size);
+    }
+
     /* Instantiate peripherals from the FDT.  */
     irqs[0] = *microblaze_pic_init_cpu(&cpu->env);
-    fdt_init_destroy_fdti(fdt_generic_create_machine(fdt, irqs));
+    fdti = fdt_generic_create_machine(fdt, irqs);
+    meminfo = fdt_init_get_opaque(fdti, node_path);
 
-    microblaze_load_kernel(cpu, ram_base, ram_size, NULL,
+    /* Assert that at least one region of memory exists */
+    assert(meminfo->nr_regions > 0);
+    ram_kernel_base = meminfo->last_base;
+    ram_kernel_size = meminfo->last_size;
+    fdt_init_destroy_fdti(fdti);
+
+    microblaze_load_kernel(cpu, ram_kernel_base, ram_kernel_size, NULL,
                                         microblaze_generic_fdt_reset, fdt);
     return;
 no_dtb_arg:
