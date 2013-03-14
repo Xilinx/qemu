@@ -303,7 +303,6 @@ microblaze_generic_fdt_init(QEMUMachineInitArgs *args)
 {
     MicroBlazeCPU *cpu;
     MemoryRegion *address_space_mem = get_system_memory();
-    MemoryRegion *lmb_bram = g_new(MemoryRegion, 1);
     ram_addr_t ram_kernel_base = 0, ram_kernel_size = 0;
     void *fdt = NULL;
     const char *dtb_arg;
@@ -333,10 +332,19 @@ microblaze_generic_fdt_init(QEMUMachineInitArgs *args)
     /* init CPUs */
     cpu = cpu_mb_init("microblaze");
 
-    /* Attach emulated BRAM through the LMB.  */
-    memory_region_init_ram(lmb_bram, "microblaze_fdt.lmb_bram", LMB_BRAM_SIZE);
-    vmstate_register_ram_global(lmb_bram);
-    memory_region_add_subregion(address_space_mem, 0, lmb_bram);
+    /* Device-trees normally don't specify microblaze local RAMs allthough
+       linux kernels depend on their existance.  If the LMB RAMs are not
+       specified, instantiate them as we've always done.  Don't add them
+       to the fdt though, as linux won't boot if the lmb entry is there.  */
+    if (qemu_devtree_get_node_by_name(fdt, node_path, "lmb")) {
+        /* Device tree does not provide the lmb connected brams. Instantiate
+           by default 128K at zero for backwards compatibility.  */
+        MemoryRegion *lmb_ram = g_new(MemoryRegion, 1);
+        memory_region_init_ram(lmb_ram, "microblaze_fdt.lmb_ram",
+                               LMB_BRAM_SIZE);
+        vmstate_register_ram_global(lmb_ram);
+        memory_region_add_subregion(address_space_mem, 0, lmb_ram);
+    }
 
     /* find memory node */
     while (qemu_devtree_get_node_by_name(fdt, node_path, "memory@")) {
