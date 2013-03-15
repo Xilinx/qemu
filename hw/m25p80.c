@@ -21,8 +21,11 @@
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "hw.h"
+#include "hw/hw.h"
 #include "sysemu/blockdev.h"
+#include "hw/ssi.h"
+#include "hw/devices.h"
+#include "qemu/config-file.h"
 #include "ssi.h"
 #include "devices.h"
 #include "qemu/config-file.h"

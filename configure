@@ -228,6 +228,7 @@ glusterfs=""
 virtio_blk_data_plane=""
 gtk=""
 gtkabi="2.0"
+tpm="no"
 
 # parse CC options first
 for opt do
@@ -905,6 +906,8 @@ for opt do
   ;;
   --with-gtkabi=*) gtkabi="$optarg"
   ;;
+  --enable-tpm) tpm="yes"
+  ;;
   *) echo "ERROR: unknown option $opt"; show_help="yes"
   ;;
   esac
@@ -989,6 +992,10 @@ microblaze-linux-user \
 microblazeel-linux-user \
 mips-linux-user \
 mipsel-linux-user \
+mips64-linux-user \
+mips64el-linux-user \
+mipsn32-linux-user \
+mipsn32el-linux-user \
 or32-linux-user \
 ppc-linux-user \
 ppc64-linux-user \
@@ -1159,6 +1166,7 @@ echo "  --enable-glusterfs       enable GlusterFS backend"
 echo "  --disable-glusterfs      disable GlusterFS backend"
 echo "  --enable-gcov            enable test coverage analysis with gcov"
 echo "  --gcov=GCOV              use specified gcov [$gcov_tool]"
+echo "  --enable-tpm             enable TPM support"
 echo ""
 echo "NOTE: The object files are built at the place where configure is launched"
 exit 1
@@ -2448,6 +2456,8 @@ EOF
   fi
 fi
 
+libs_softmmu="$libs_softmmu $fdt_libs"
+
 ##########################################
 # opengl probe, used by milkymist-tmu2
 if test "$opengl" != "no" ; then
@@ -2778,6 +2788,20 @@ if compile_prog "" "" ; then
   epoll_pwait=yes
 fi
 
+# check for sendfile support
+sendfile=no
+cat > $TMPC << EOF
+#include <sys/sendfile.h>
+
+int main(void)
+{
+    return sendfile(0, 0, 0, 0);
+}
+EOF
+if compile_prog "" "" ; then
+  sendfile=yes
+fi
+
 # Check if tools are available to build documentation.
 if test "$docs" != "no" ; then
   if has makeinfo && has pod2man; then
@@ -2822,7 +2846,13 @@ if test "$libiscsi" != "no" ; then
 #include <iscsi/iscsi.h>
 int main(void) { iscsi_unmap_sync(NULL,0,0,0,NULL,0); return 0; }
 EOF
-  if compile_prog "" "-liscsi" ; then
+  if $pkg_config --atleast-version=1.7.0 libiscsi --modversion >/dev/null 2>&1; then
+    libiscsi="yes"
+    libiscsi_cflags=$($pkg_config --cflags libiscsi 2>/dev/null)
+    libiscsi_libs=$($pkg_config --libs libiscsi 2>/dev/null)
+    CFLAGS="$CFLAGS $libiscsi_cflags"
+    LIBS="$LIBS $libiscsi_libs"
+  elif compile_prog "" "-liscsi" ; then
     libiscsi="yes"
     LIBS="$LIBS -liscsi"
   else
@@ -2890,7 +2920,7 @@ EOF
   spice_cflags=$($pkg_config --cflags spice-protocol spice-server 2>/dev/null)
   spice_libs=$($pkg_config --libs spice-protocol spice-server 2>/dev/null)
   if $pkg_config --atleast-version=0.12.0 spice-server >/dev/null 2>&1 && \
-     $pkg_config --atleast-version=0.12.2 spice-protocol > /dev/null 2>&1 && \
+     $pkg_config --atleast-version=0.12.3 spice-protocol > /dev/null 2>&1 && \
      compile_prog "$spice_cflags" "$spice_libs" ; then
     spice="yes"
     libs_softmmu="$libs_softmmu $spice_libs"
@@ -3432,6 +3462,7 @@ echo "GlusterFS support $glusterfs"
 echo "virtio-blk-data-plane $virtio_blk_data_plane"
 echo "gcov              $gcov_tool"
 echo "gcov enabled      $gcov"
+echo "TPM support       $tpm"
 
 if test "$sdl_too_old" = "yes"; then
 echo "-> Your SDL version is too old - please upgrade to have SDL support"
@@ -3639,6 +3670,9 @@ if test "$epoll_create1" = "yes" ; then
 fi
 if test "$epoll_pwait" = "yes" ; then
   echo "CONFIG_EPOLL_PWAIT=y" >> $config_host_mak
+fi
+if test "$sendfile" = "yes" ; then
+  echo "CONFIG_SENDFILE=y" >> $config_host_mak
 fi
 if test "$inotify" = "yes" ; then
   echo "CONFIG_INOTIFY=y" >> $config_host_mak
@@ -4004,7 +4038,6 @@ case "$target_arch2" in
     target_nptl="yes"
     gdb_xml_files="arm-core.xml arm-vfp.xml arm-vfp3.xml arm-neon.xml"
     target_llong_alignment=4
-    target_libs_softmmu="$fdt_libs"
   ;;
   cris)
     target_nptl="yes"
@@ -4023,7 +4056,6 @@ case "$target_arch2" in
     TARGET_ARCH=microblaze
     bflt="yes"
     target_nptl="yes"
-    target_libs_softmmu="$fdt_libs"
   ;;
   mips|mipsel)
     TARGET_ARCH=mips
@@ -4031,9 +4063,10 @@ case "$target_arch2" in
     target_nptl="yes"
   ;;
   mipsn32|mipsn32el)
-    TARGET_ARCH=mipsn32
+    TARGET_ARCH=mips64
     TARGET_BASE_ARCH=mips
     echo "TARGET_ABI_MIPSN32=y" >> $config_target_mak
+    echo "TARGET_ABI32=y" >> $config_target_mak
   ;;
   mips64|mips64el)
     TARGET_ARCH=mips64
@@ -4048,21 +4081,18 @@ case "$target_arch2" in
   ppc)
     gdb_xml_files="power-core.xml power-fpu.xml power-altivec.xml power-spe.xml"
     target_nptl="yes"
-    target_libs_softmmu="$fdt_libs"
   ;;
   ppcemb)
     TARGET_BASE_ARCH=ppc
     TARGET_ABI_DIR=ppc
     gdb_xml_files="power-core.xml power-fpu.xml power-altivec.xml power-spe.xml"
     target_nptl="yes"
-    target_libs_softmmu="$fdt_libs"
   ;;
   ppc64)
     TARGET_BASE_ARCH=ppc
     TARGET_ABI_DIR=ppc
     gdb_xml_files="power64-core.xml power-fpu.xml power-altivec.xml power-spe.xml"
     target_long_alignment=8
-    target_libs_softmmu="$fdt_libs"
   ;;
   ppc64abi32)
     TARGET_ARCH=ppc64
@@ -4070,7 +4100,6 @@ case "$target_arch2" in
     TARGET_ABI_DIR=ppc
     echo "TARGET_ABI32=y" >> $config_target_mak
     gdb_xml_files="power64-core.xml power-fpu.xml power-altivec.xml power-spe.xml"
-    target_libs_softmmu="$fdt_libs"
   ;;
   sh4|sh4eb)
     TARGET_ARCH=sh4
@@ -4152,7 +4181,7 @@ case "$target_arch2" in
     echo "CONFIG_NO_XEN=y" >> $config_target_mak
 esac
 case "$target_arch2" in
-  i386|x86_64|ppcemb|ppc|ppc64|s390x)
+  arm|i386|x86_64|ppcemb|ppc|ppc64|s390x)
     # Make sure the target and host cpus are compatible
     if test "$kvm" = "yes" -a "$target_softmmu" = "yes" -a \
       \( "$target_arch2" = "$cpu" -o \
@@ -4172,9 +4201,6 @@ case "$target_arch2" in
   i386|x86_64)
     echo "CONFIG_HAVE_GET_MEMORY_MAPPING=y" >> $config_target_mak
 esac
-if test "$target_arch2" = "ppc64" -a "$fdt" = "yes"; then
-  echo "CONFIG_PSERIES=y" >> $config_target_mak
-fi
 if test "$target_bigendian" = "yes" ; then
   echo "TARGET_WORDS_BIGENDIAN=y" >> $config_target_mak
 fi
@@ -4349,6 +4375,12 @@ if test "$gprof" = "yes" ; then
   fi
 fi
 
+if test "$tpm" = "yes"; then
+  if test "$target_softmmu" = "yes" ; then
+    echo "CONFIG_TPM=y" >> $config_host_mak
+  fi
+fi
+
 if test "$ARCH" = "tci"; then
   linker_script=""
 else
@@ -4391,6 +4423,7 @@ FILES="$FILES tests/tcg/lm32/Makefile po/Makefile"
 FILES="$FILES pc-bios/optionrom/Makefile pc-bios/keymaps"
 FILES="$FILES pc-bios/spapr-rtas/Makefile"
 FILES="$FILES roms/seabios/Makefile roms/vgabios/Makefile"
+FILES="$FILES pc-bios/qemu-icon.bmp"
 for bios_file in \
     $source_path/pc-bios/*.bin \
     $source_path/pc-bios/*.aml \

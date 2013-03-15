@@ -22,13 +22,14 @@
  * THE SOFTWARE.
  */
 
-#include "sysbus.h"
+#include "hw/sysbus.h"
 #include "qemu/timer.h"
-#include "ptimer.h"
+#include "hw/ptimer.h"
 #include "qemu/log.h"
-#include "qdev-addr.h"
+#include "hw/qdev-addr.h"
+#include "qapi/qmp/qerror.h"
 
-#include "stream.h"
+#include "hw/stream.h"
 
 #define D(x)
 

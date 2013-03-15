@@ -29,7 +29,7 @@
 #include "pci/pci.h"
 #include "exec/memory.h"
 #include "exec/address-spaces.h"
-#include "fifo.h"
+#include "qemu/fifo8.h"
 
 #include "fdt_generic_util.h"
 

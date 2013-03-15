@@ -29,6 +29,7 @@
 #include "hw.h"
 #include "sysbus.h"
 #include "flash.h"
+#include "qapi/qmp/qerror.h"
 
 #ifdef PL35X_ERR_DEBUG
 #define DB_PRINT(...) do { \

@@ -262,7 +262,7 @@ CPUState *qemu_get_cpu(int index)
         env = env->next_cpu;
     }
 
-    return cpu;
+    return env ? cpu : NULL;
 }
 
 void cpu_exec_init(CPUArchState *env)
@@ -497,7 +497,7 @@ void cpu_exit(CPUArchState *env)
     CPUState *cpu = ENV_GET_CPU(env);
 
     cpu->exit_request = 1;
-    cpu_unlink_tb(cpu);
+    cpu->tcg_exit_req = 1;
 }
 
 void cpu_abort(CPUArchState *env, const char *fmt, ...)
@@ -846,6 +846,8 @@ static void *file_ram_alloc(RAMBlock *block,
                             const char *path)
 {
     char *filename;
+    char *sanitized_name;
+    char *c;
     void *area;
     int fd;
 #ifdef MAP_POPULATE
@@ -867,7 +869,16 @@ static void *file_ram_alloc(RAMBlock *block,
         return NULL;
     }
 
-    filename = g_strdup_printf("%s/qemu_back_mem.XXXXXX", path);
+    /* Make name safe to use with mkstemp by replacing '/' with '_'. */
+    sanitized_name = g_strdup(block->mr->name);
+    for (c = sanitized_name; *c != '\0'; c++) {
+        if (*c == '/')
+            *c = '_';
+    }
+
+    filename = g_strdup_printf("%s/qemu_back_mem.%s.XXXXXX", path,
+                               sanitized_name);
+    g_free(sanitized_name);
 
     fd = mkstemp(filename);
     if (fd < 0) {

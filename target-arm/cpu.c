@@ -762,8 +762,8 @@ static void arm_any_initfn(Object *obj)
 typedef struct ARMCPUInfo {
     const char *name;
     void (*initfn)(Object *obj);
-    Property *props;
     void (*class_init)(ObjectClass *oc, void *data);
+    Property *props;
 } ARMCPUInfo;
 
 static Property cortex_a9_properties[] = {
@@ -841,9 +841,8 @@ static void cpu_register(const ARMCPUInfo *info)
         .instance_size = sizeof(ARMCPU),
         .instance_init = info->initfn,
         .class_size = sizeof(ARMCPUClass),
-        .class_init = arm_cpu_specific_class_init,
-        .class_data = (void *)info,
         .class_init = info->class_init,
+        .class_data = (void *)info,
     };
 
     type_info.name = g_strdup_printf("%s-" TYPE_ARM_CPU, info->name);

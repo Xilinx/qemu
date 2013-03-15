@@ -22,7 +22,7 @@
 #include "qemu/timer.h"
 #include "sysbus.h"
 #include "i2c.h"
-#include "fifo.h"
+#include "qemu/fifo8.h"
 #include "qemu/log.h"
 
 #define TYPE_CADENCE_I2C                  "xlnx.ps7-i2c"

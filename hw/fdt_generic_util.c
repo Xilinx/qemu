@@ -97,7 +97,7 @@ static void fdt_init_node(void *args)
 
     simple_bus_fdt_init(node_path, fdti);
 
-    char *all_compats = NULL, *compat, *node_name, *next_compat;
+    char *all_compats = NULL, *compat, *node_name, *next_compat, *device_type;
     int compat_len;
 
     DB_PRINT_NP(1, "enter\n");
@@ -124,11 +124,13 @@ static void fdt_init_node(void *args)
 
 try_next_compat:
     if (compat_len == 0) {
-        goto invalidate;
+        goto no_compat;
     }
-    if (!fdt_init_compat(node_path, fdti, compat)) {
+    char *compat_prefixed = g_strdup_printf("compatible:%s", compat);
+    if (!fdt_init_compat(node_path, fdti, compat_prefixed)) {
         goto exit;
     }
+    g_free(compat_prefixed);
     if (!fdt_init_qdev(node_path, fdti, compat)) {
         goto exit;
     }
@@ -139,7 +141,15 @@ try_next_compat:
     }
     compat = next_compat+1;
     goto try_next_compat;
-invalidate:
+no_compat:
+    device_type = qemu_devtree_getprop(fdti->fdt, node_path,
+                                       "device_type", NULL, false, NULL);
+    device_type = g_strdup_printf("device_type:%s", device_type);
+    if (!fdt_init_compat(node_path, fdti, device_type)) {
+        goto exit;
+    }
+
+
     DB_PRINT_NP(0, "FDT: Unsupported peripheral invalidated - "
                 "compatibilities %s\n", all_compats);
     qemu_devtree_setprop_string(fdti->fdt, node_path, "compatible",

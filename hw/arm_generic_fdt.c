@@ -26,6 +26,7 @@
 
 #include <libfdt.h>
 #include "fdt_generic_util.h"
+#include "fdt_generic_devices.h"
 
 #define MACHINE_NAME "arm-generic-fdt"
 
@@ -299,4 +300,9 @@ static void arm_generic_fdt_machine_init(void)
     qemu_register_machine(&arm_generic_fdt_machine);
 }
 
+int endian = 0;
+
 machine_init(arm_generic_fdt_machine_init);
+
+fdt_register_compatibility_opaque(pflash_cfi01_fdt_init,
+                                  "compatibile:cfi-flash", 0, &endian);

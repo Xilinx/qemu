@@ -822,7 +822,7 @@ Example:
 -> { "execute": "netdev_add", "arguments": { "type": "user", "id": "netdev1" } }
 <- { "return": {} }
 
-Note: The supported device options are the same ones supported by the '-net'
+Note: The supported device options are the same ones supported by the '-netdev'
       command-line argument, which are listed in the '-help' output or QEMU's
       manual
 
@@ -2713,6 +2713,24 @@ EQMP
         .name       = "query-target",
         .args_type  = "",
         .mhandler.cmd_new = qmp_marshal_input_query_target,
+    },
+
+    {
+        .name       = "query-tpm",
+        .args_type  = "",
+        .mhandler.cmd_new = qmp_marshal_input_query_tpm,
+    },
+
+    {
+        .name       = "query-tpm-models",
+        .args_type  = "",
+        .mhandler.cmd_new = qmp_marshal_input_query_tpm_models,
+    },
+
+    {
+        .name       = "query-tpm-types",
+        .args_type  = "",
+        .mhandler.cmd_new = qmp_marshal_input_query_tpm_types,
     },
 
     {

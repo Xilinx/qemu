@@ -4,11 +4,11 @@
 #include "qemu-common.h"
 #include "exec/memory.h"
 #include "exec/ioport.h"
-#include "isa.h"
-#include "fdc.h"
+#include "hw/isa.h"
+#include "hw/fdc.h"
 #include "net/net.h"
 #include "exec/memory.h"
-#include "ioapic.h"
+#include "hw/ioapic.h"
 
 /* PC-style peripherals (also used by other machines).  */
 
@@ -216,6 +216,11 @@ int e820_add_entry(uint64_t, uint64_t, uint32_t);
             .driver   = "virtio-blk-pci",\
             .property = "discard_granularity",\
             .value    = stringify(0),\
+	},{\
+            .driver   = "virtio-serial-pci",\
+            .property = "vectors",\
+            /* DEV_NVECTORS_UNSPECIFIED as a uint32_t string */\
+            .value    = stringify(0xFFFFFFFF),\
 	}
 
 #endif

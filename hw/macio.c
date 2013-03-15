@@ -22,11 +22,11 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#include "hw.h"
-#include "ppc/mac.h"
-#include "pci/pci.h"
-#include "mac_dbdma.h"
-#include "escc.h"
+#include "hw/hw.h"
+#include "hw/ppc/mac.h"
+#include "hw/pci/pci.h"
+#include "hw/mac_dbdma.h"
+#include "hw/escc.h"
 
 #define TYPE_MACIO "macio"
 #define MACIO(obj) OBJECT_CHECK(MacIOState, (obj), TYPE_MACIO)
@@ -188,7 +188,7 @@ static int macio_newworld_initfn(PCIDevice *d)
     sysbus_dev = SYS_BUS_DEVICE(&ns->ide[1]);
     sysbus_connect_irq(sysbus_dev, 0, ns->irqs[3]);
     sysbus_connect_irq(sysbus_dev, 1, ns->irqs[4]);
-    macio_ide_register_dma(&ns->ide[0], s->dbdma, 0x1a);
+    macio_ide_register_dma(&ns->ide[1], s->dbdma, 0x1a);
     ret = qdev_init(DEVICE(&ns->ide[1]));
     if (ret < 0) {
         return ret;

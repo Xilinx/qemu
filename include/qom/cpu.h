@@ -78,6 +78,8 @@ struct kvm_run;
  * @halted: Nonzero if the CPU is in suspended state.
  * @stop: Indicates a pending stop request.
  * @stopped: Indicates the CPU has been artificially stopped.
+ * @tcg_exit_req: Set to force TCG to stop executing linked TBs for this
+ *           CPU and return to its top level loop.
  * @env_ptr: Pointer to subclass-specific CPUArchState field.
  * @current_tb: Currently executing TB.
  * @kvm_fd: vCPU file descriptor for KVM.
@@ -107,6 +109,7 @@ struct CPUState {
     bool stop;
     bool stopped;
     volatile sig_atomic_t exit_request;
+    volatile sig_atomic_t tcg_exit_req;
     uint32_t interrupt_request;
 
     void *env_ptr; /* CPUArchState */
@@ -143,9 +146,13 @@ ObjectClass *cpu_class_by_name(const char *typename, const char *cpu_model);
 /**
  * cpu_class_set_vmsd:
  * @cc: CPU class
- * @value: Value to set.
+ * @value: Value to set. Unused for %CONFIG_USER_ONLY.
  *
  * Sets #VMStateDescription for @cc.
+ *
+ * The @value argument is intentionally discarded for the non-softmmu targets
+ * to avoid linker errors or excessive preprocessor usage. If this behavior
+ * is undesired, you should assign #CPUState.vmsd directly instead.
  */
 #ifndef CONFIG_USER_ONLY
 static inline void cpu_class_set_vmsd(CPUClass *cc,
@@ -154,7 +161,7 @@ static inline void cpu_class_set_vmsd(CPUClass *cc,
     cc->vmsd = value;
 }
 #else
-#define cpu_class_set_vmsd(cpu, val) ((cpu)->vmsd = NULL)
+#define cpu_class_set_vmsd(cc, value) ((cc)->vmsd = NULL)
 #endif
 
 /**

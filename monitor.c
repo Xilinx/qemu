@@ -23,7 +23,7 @@
  */
 #include <dirent.h>
 #include "hw/hw.h"
-#include "hw/qdev.h"
+#include "monitor/qdev.h"
 #include "hw/usb.h"
 #include "hw/pcmcia.h"
 #include "hw/pc.h"
@@ -47,6 +47,7 @@
 #include "migration/migration.h"
 #include "sysemu/kvm.h"
 #include "qemu/acl.h"
+#include "tpm/tpm.h"
 #include "qapi/qmp/qint.h"
 #include "qapi/qmp/qfloat.h"
 #include "qapi/qmp/qlist.h"
@@ -2717,6 +2718,13 @@ static mon_cmd_t info_cmds[] = {
         .params     = "",
         .help       = "show available trace-events & their state",
         .mhandler.cmd = do_trace_print_events,
+    },
+    {
+        .name       = "tpm",
+        .args_type  = "",
+        .params     = "",
+        .help       = "show the TPM device",
+        .mhandler.cmd = hmp_info_tpm,
     },
     {
         .name       = NULL,

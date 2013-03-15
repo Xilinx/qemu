@@ -74,6 +74,5 @@ static inline CRISCPU *cris_env_get_cpu(CPUCRISState *env)
 #define ENV_OFFSET offsetof(CRISCPU, env)
 
 void cris_cpu_do_interrupt(CPUState *cpu);
-void crisv10_cpu_do_interrupt(CPUState *cpu);
 
 #endif

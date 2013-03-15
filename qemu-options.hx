@@ -1408,7 +1408,8 @@ DEF("netdev", HAS_ARG, QEMU_OPTION_netdev,
 #ifdef CONFIG_VDE
     "vde|"
 #endif
-    "socket],id=str[,option][,option][,...]\n", QEMU_ARCH_ALL)
+    "socket|"
+    "hubport],id=str[,option][,option][,...]\n", QEMU_ARCH_ALL)
 STEXI
 @item -net nic[,vlan=@var{n}][,macaddr=@var{mac}][,model=@var{type}] [,name=@var{name}][,addr=@var{addr}][,vectors=@var{v}]
 @findex -net
@@ -1729,6 +1730,14 @@ vde_switch -F -sock /tmp/myswitch
 # launch QEMU instance
 qemu-system-i386 linux.img -net nic -net vde,sock=/tmp/myswitch
 @end example
+
+@item -netdev hubport,id=@var{id},hubid=@var{hubid}
+
+Create a hub port on QEMU "vlan" @var{hubid}.
+
+The hubport netdev lets you connect a NIC to a QEMU "vlan" instead of a single
+netdev.  @code{-net} and @code{-device} with parameter @option{vlan} create the
+required hub automatically.
 
 @item -net dump[,vlan=@var{n}][,file=@var{file}][,len=@var{len}]
 Dump network traffic on VLAN @var{n} to file @var{file} (@file{qemu-vlan0.pcap} by default).
@@ -2099,23 +2108,13 @@ QEMU supports using either local sheepdog devices or remote networked
 devices.
 
 Syntax for specifying a sheepdog device
-@table @list
-``sheepdog:<vdiname>''
-
-``sheepdog:<vdiname>:<snapid>''
-
-``sheepdog:<vdiname>:<tag>''
-
-``sheepdog:<host>:<port>:<vdiname>''
-
-``sheepdog:<host>:<port>:<vdiname>:<snapid>''
-
-``sheepdog:<host>:<port>:<vdiname>:<tag>''
-@end table
+@example
+sheepdog[+tcp|+unix]://[host:port]/vdiname[?socket=path][#snapid|#tag]
+@end example
 
 Example
 @example
-qemu-system-i386 --drive file=sheepdog:192.0.2.1:30000:MyVirtualMachine
+qemu-system-i386 --drive file=sheepdog://192.0.2.1:30000/MyVirtualMachine
 @end example
 
 See also @url{http://http://www.osrg.net/sheepdog/}.
@@ -2133,7 +2132,7 @@ gluster[+transport]://[server[:port]]/volname/image[?socket=...]
 
 Example
 @example
-qemu-system-x86_84 --drive file=gluster://192.0.2.1/testvol/a.img
+qemu-system-x86_64 --drive file=gluster://192.0.2.1/testvol/a.img
 @end example
 
 See also @url{http://www.gluster.org}.
@@ -2217,6 +2216,80 @@ STEXI
 @end table
 ETEXI
 DEFHEADING()
+
+#ifdef CONFIG_TPM
+DEFHEADING(TPM device options:)
+
+DEF("tpmdev", HAS_ARG, QEMU_OPTION_tpmdev, \
+    "-tpmdev passthrough,id=id[,path=path][,cancel-path=path]\n"
+    "                use path to provide path to a character device; default is /dev/tpm0\n"
+    "                use cancel-path to provide path to TPM's cancel sysfs entry; if\n"
+    "                not provided it will be searched for in /sys/class/misc/tpm?/device\n",
+    QEMU_ARCH_ALL)
+STEXI
+
+The general form of a TPM device option is:
+@table @option
+
+@item -tpmdev @var{backend} ,id=@var{id} [,@var{options}]
+@findex -tpmdev
+Backend type must be:
+@option{passthrough}.
+
+The specific backend type will determine the applicable options.
+The @code{-tpmdev} option requires a @code{-device} option.
+
+Options to each backend are described below.
+
+Use 'help' to print all available TPM backend types.
+@example
+qemu -tpmdev help
+@end example
+
+@item -tpmdev passthrough, id=@var{id}, path=@var{path}, cancel-path=@var{cancel-path}
+
+(Linux-host only) Enable access to the host's TPM using the passthrough
+driver.
+
+@option{path} specifies the path to the host's TPM device, i.e., on
+a Linux host this would be @code{/dev/tpm0}.
+@option{path} is optional and by default @code{/dev/tpm0} is used.
+
+@option{cancel-path} specifies the path to the host TPM device's sysfs
+entry allowing for cancellation of an ongoing TPM command.
+@option{cancel-path} is optional and by default QEMU will search for the
+sysfs entry to use.
+
+Some notes about using the host's TPM with the passthrough driver:
+
+The TPM device accessed by the passthrough driver must not be
+used by any other application on the host.
+
+Since the host's firmware (BIOS/UEFI) has already initialized the TPM,
+the VM's firmware (BIOS/UEFI) will not be able to initialize the
+TPM again and may therefore not show a TPM-specific menu that would
+otherwise allow the user to configure the TPM, e.g., allow the user to
+enable/disable or activate/deactivate the TPM.
+Further, if TPM ownership is released from within a VM then the host's TPM
+will get disabled and deactivated. To enable and activate the
+TPM again afterwards, the host has to be rebooted and the user is
+required to enter the firmware's menu to enable and activate the TPM.
+If the TPM is left disabled and/or deactivated most TPM commands will fail.
+
+To create a passthrough TPM use the following two options:
+@example
+-tpmdev passthrough,id=tpm0 -device tpm-tis,tpmdev=tpm0
+@end example
+Note that the @code{-tpmdev} id is @code{tpm0} and is referenced by
+@code{tpmdev=tpm0} in the device option.
+
+@end table
+
+ETEXI
+
+DEFHEADING()
+
+#endif
 
 DEFHEADING(Linux/Multiboot boot specific:)
 STEXI
