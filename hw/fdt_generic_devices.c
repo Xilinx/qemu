@@ -9,8 +9,6 @@
 #include "serial.h"
 #include "flash.h"
 
-#include "flash.h"
-
 #define FLASH_SECTOR_SIZE (64 * 1024)
 
 /* FIXME: This file should go away. When these devices are properly QOMified
@@ -177,7 +175,7 @@ static int memory_fdt_init(char *node_path, FDTMachineInfo *fdti, void *priv)
 
         mr = g_new(MemoryRegion, 1);
         DB_PRINT_NP(0, "memory created at %#llx size %#lx ro=%d\n",
-                    (unsigned long long)base, size, readonly);
+                    (unsigned long long)base, (unsigned long)size, readonly);
 
         /* Create the RAM/ROM.  */
         memory_region_init_ram(mr, node_path, size);
