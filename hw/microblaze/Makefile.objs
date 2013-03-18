@@ -1,6 +1,9 @@
 obj-y += microblaze_generic_fdt.o
 obj-y += xilinx_spi.o
+obj-y += xilinx_spips.o
 obj-y += xilinx_ethlite.o
+
+obj-y += arm_gic.o arm_gic_common.o
 
 obj-y := $(addprefix ../,$(obj-y))
 
