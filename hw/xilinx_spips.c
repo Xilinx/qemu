@@ -365,14 +365,12 @@ static void xilinx_spips_flush_txfifo(XilinxSPIPS *s)
     }
 }
 
-static inline void rx_data_bytes(XilinxSPIPS *s, uint32_t *value, int max)
+static inline void rx_data_bytes(XilinxSPIPS *s, uint8_t *value, int max)
 {
     int i;
 
-    *value = 0;
     for (i = 0; i < max && !fifo8_is_empty(&s->rx_fifo); ++i) {
-        uint32_t next = fifo8_pop(&s->rx_fifo) & 0xFF;
-        *value |= next << 8 * (s->regs[R_CONFIG] & ENDIAN ? 3-i : i);
+        value[i] = fifo8_pop(&s->rx_fifo);
     }
 }
 
@@ -382,6 +380,7 @@ static uint64_t xilinx_spips_read(void *opaque, hwaddr addr,
     XilinxSPIPS *s = opaque;
     uint32_t mask = ~0;
     uint32_t ret;
+    uint8_t rx_buf[4];
 
     addr >>= 2;
     switch (addr) {
@@ -411,7 +410,10 @@ static uint64_t xilinx_spips_read(void *opaque, hwaddr addr,
         mask = 0;
         break;
     case R_RX_DATA:
-        rx_data_bytes(s, &ret, s->num_txrx_bytes);
+        memset(rx_buf, 0, sizeof(rx_buf));
+        rx_data_bytes(s, rx_buf, s->num_txrx_bytes);
+        ret = s->regs[R_CONFIG] & ENDIAN ? cpu_to_be32(*(uint32_t *)rx_buf)
+                        : cpu_to_le32(*(uint32_t *)rx_buf);
         DB_PRINT_L(0, "addr=" TARGET_FMT_plx " = %x\n", addr * 4, ret);
         xilinx_spips_update_ixr(s);
         return ret;
