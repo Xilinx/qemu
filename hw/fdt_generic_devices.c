@@ -245,3 +245,18 @@ fdt_register_instance_n(i2c_bus_fdt_init, "i2c@4", 4);
 fdt_register_instance_n(i2c_bus_fdt_init, "i2c@5", 5);
 fdt_register_instance_n(i2c_bus_fdt_init, "i2c@6", 6);
 fdt_register_instance_n(i2c_bus_fdt_init, "i2c@7", 7);
+
+static const TypeInfo fdt_qom_aliases [] = {
+    {   .name = "generic-ahci", .parent = "sysbus-ahci" }
+};
+
+static void fdt_generic_register_types(void)
+{
+    int i;
+
+    for (i = 0; i < ARRAY_SIZE(fdt_qom_aliases); ++i) {
+        type_register_static(&fdt_qom_aliases[i]);
+    }
+}
+
+type_init(fdt_generic_register_types)

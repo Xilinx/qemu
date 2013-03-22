@@ -536,11 +536,15 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
     if (object_dynamic_cast(dev, TYPE_DEVICE)) {
         /* connect nic if appropriate */
         static int nics;
+        const char *short_name = qemu_devtree_get_node_name(fdti->fdt, node_path);
+
         qdev_set_nic_properties(DEVICE(dev), &nd_table[nics]);
         if (nd_table[nics].instantiated) {
             DB_PRINT_NP(0, "NIC instantiated: %s\n", dev_type);
             nics++;
         }
+        DB_PRINT_NP(0, "Short naming node: %s\n", short_name);
+        (DEVICE(dev))->id = g_strdup(short_name);
         qdev_init_nofail(DEVICE(dev));
     }
 

@@ -178,6 +178,9 @@ struct Property {
     uint8_t      bitnr;
     uint8_t      qtype;
     int64_t      defval;
+    int          arrayoffset;
+    PropertyInfo *arrayinfo;
+    int          arrayfieldsize;
 };
 
 struct PropertyInfo {

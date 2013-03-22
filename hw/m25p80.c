@@ -30,14 +30,16 @@
 #include "devices.h"
 #include "qemu/config-file.h"
 
-#ifdef M25P80_ERR_DEBUG
-#define DB_PRINT(...) do { \
-    fprintf(stderr,  ": %s: ", __func__); \
-    fprintf(stderr, ## __VA_ARGS__); \
-    } while (0);
-#else
-    #define DB_PRINT(...)
+#ifndef M25P80_ERR_DEBUG
+#define M25P80_ERR_DEBUG 0
 #endif
+
+#define DB_PRINT_L(level, ...) do { \
+    if (M25P80_ERR_DEBUG > (level)) { \
+        fprintf(stderr,  ": %s: ", __func__); \
+        fprintf(stderr, ## __VA_ARGS__); \
+    } \
+} while (0);
 
 /* Fields for FlashPartInfo->flags */
 
@@ -332,13 +334,14 @@ static void flash_erase(Flash *s, int offset, FlashCMD cmd)
         abort();
     }
 
-    DB_PRINT("offset = %#x, len = %d\n", offset, len);
+    DB_PRINT_L(0, "offset = %#x, len = %d\n", offset, len);
     if ((s->pi->flags & capa_to_assert) != capa_to_assert) {
-        hw_error("m25p80: %dk erase size not supported by device\n", len);
-    }
+        qemu_log_mask(LOG_GUEST_ERROR, "M25P80: %dk erase size not supported by"
+                      " device\n", len);
+    };
 
     if (!s->write_enable) {
-        DB_PRINT("erase with write protect!\n");
+        qemu_log_mask(LOG_GUEST_ERROR, "M25P80: erase with write protect!\n");
         return;
     }
     memset(s->storage + offset, 0xff, len);
@@ -360,12 +363,12 @@ void flash_write8(Flash *s, uint64_t addr, uint8_t data)
     uint8_t prev = s->storage[s->cur_addr];
 
     if (!s->write_enable) {
-        DB_PRINT("write with write protect!\n");
+        qemu_log_mask(LOG_GUEST_ERROR, "M25P80: write with write protect!\n");
     }
 
     if ((prev ^ data) & data) {
-        DB_PRINT("programming zero to one! addr=%lx  %x -> %x\n",
-                  addr, prev, data);
+        DB_PRINT_L(1, "programming zero to one! addr=%x  %x -> %x\n",
+                  (unsigned)addr, (unsigned)prev, (unsigned)data);
     }
 
     if (s->pi->flags & WR_1) {
@@ -418,7 +421,7 @@ static void complete_collecting_data(Flash *s)
 static void decode_new_cmd(Flash *s, uint32_t value)
 {
     s->cmd_in_progress = value;
-    DB_PRINT("decoded new command:%x\n", value);
+    DB_PRINT_L(0, "decoded new command:%x\n", value);
 
     switch (value) {
 
@@ -498,7 +501,7 @@ static void decode_new_cmd(Flash *s, uint32_t value)
         break;
 
     case JEDEC_READ:
-        DB_PRINT("populated jedec code\n");
+        DB_PRINT_L(0, "populated jedec code\n");
         s->data[0] = (s->pi->jedec >> 16) & 0xff;
         s->data[1] = (s->pi->jedec >> 8) & 0xff;
         s->data[2] = s->pi->jedec & 0xff;
@@ -515,16 +518,17 @@ static void decode_new_cmd(Flash *s, uint32_t value)
 
     case BULK_ERASE:
         if (s->write_enable) {
-            DB_PRINT("chip erase\n");
+            DB_PRINT_L(0, "chip erase\n");
             flash_erase(s, 0, BULK_ERASE);
         } else {
-            DB_PRINT("chip erase with write protect!\n");
+            qemu_log_mask(LOG_GUEST_ERROR, "M25P80: chip erase with write "
+                          "protect!\n");
         }
         break;
     case NOP:
         break;
     default:
-        DB_PRINT("Unknown cmd %x\n", value);
+        qemu_log_mask(LOG_GUEST_ERROR, "M25P80: Unknown cmd %x\n", value);
         break;
     }
 }
@@ -540,7 +544,7 @@ static int m25p80_cs(SSISlave *ss, bool select)
         flash_sync_dirty(s, -1);
     }
 
-    DB_PRINT("%sselect\n", select ? "de" : "");
+    DB_PRINT_L(0, "%sselect\n", select ? "de" : "");
 
     return 0;
 }
@@ -553,15 +557,15 @@ static uint32_t m25p80_transfer8(SSISlave *ss, uint32_t tx)
     switch (s->state) {
 
     case STATE_PAGE_PROGRAM:
-        DB_PRINT("page program cur_addr=%lx data=%x\n", s->cur_addr,
-                 (uint8_t)tx);
+        DB_PRINT_L(1, "page program cur_addr=%x data=%x\n", (unsigned)s->cur_addr,
+                 (unsigned)(uint8_t)tx);
         flash_write8(s, s->cur_addr, (uint8_t)tx);
         s->cur_addr++;
         break;
 
     case STATE_READ:
         r = s->storage[s->cur_addr];
-        DB_PRINT("READ 0x%lx=%x\n", s->cur_addr, r);
+        DB_PRINT_L(1, "READ %#x=%x\n", (unsigned)s->cur_addr, (unsigned)r);
         s->cur_addr = (s->cur_addr + 1) % s->size;
         break;
 
@@ -608,7 +612,7 @@ static int m25p80_init(SSISlave *ss)
     dinfo = drive_get_next(IF_MTD);
 
     if (dinfo && dinfo->bdrv) {
-        DB_PRINT("Binding to IF_MTD drive\n");
+        DB_PRINT_L(0, "Binding to IF_MTD drive\n");
         s->bdrv = dinfo->bdrv;
         /* FIXME: Move to late init */
         if (bdrv_read(s->bdrv, 0, s->storage, DIV_ROUND_UP(s->size,
@@ -617,6 +621,7 @@ static int m25p80_init(SSISlave *ss)
             return 1;
         }
     } else {
+        DB_PRINT_L(0, "No BDRV - binding to RAM\n");
         memset(s->storage, 0xFF, s->size);
     }
 
