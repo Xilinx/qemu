@@ -871,7 +871,7 @@ xilinx_axienet_control_stream_push(StreamSlave *obj, uint8_t *buf, size_t len)
 
     if (len != CONTROL_PAYLOAD_SIZE) {
         hw_error("AXI Enet requires %d byte control stream payload\n",
-                 CONTROL_PAYLOAD_SIZE);
+                 (int)CONTROL_PAYLOAD_SIZE);
     }
 
     memcpy(s->hdr, buf, len);

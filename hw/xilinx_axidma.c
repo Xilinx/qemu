@@ -393,7 +393,7 @@ xilinx_axidma_control_stream_push(StreamSlave *obj, unsigned char *buf,
 
     if (len != CONTROL_PAYLOAD_SIZE) {
         hw_error("AXI DMA requires %d byte control stream payload\n",
-                 CONTROL_PAYLOAD_SIZE);
+                 (int)CONTROL_PAYLOAD_SIZE);
     }
 
     memcpy(s->app, buf, len);
