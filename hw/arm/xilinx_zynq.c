@@ -78,8 +78,8 @@ static void gem_init(NICInfo *nd, uint32_t base, qemu_irq irq)
     DeviceState *dev;
     SysBusDevice *s;
 
-    qemu_check_nic_model(nd, "xlnx.ps7-ethernet");
-    dev = qdev_create(NULL, "xlnx.ps7-ethernet");
+    qemu_check_nic_model(nd, "cadence_gem");
+    dev = qdev_create(NULL, "cadence_gem");
     qdev_set_nic_properties(dev, nd);
     qdev_init_nofail(dev);
     s = SYS_BUS_DEVICE(dev);
@@ -243,7 +243,7 @@ static void zynq_init(QEMUMachineInitArgs *args)
     sysbus_mmio_map(busdev, 1, 0xe2000000);
     sysbus_mmio_map(busdev, 2, 0xe1000000);
 
-    dev = qdev_create(NULL, "xlnx.ps7-slcr");
+    dev = qdev_create(NULL, "xilinx,zynq_slcr");
     qdev_init_nofail(dev);
     Error *errp = NULL;
     object_property_set_link(OBJECT(dev), OBJECT(cpus[0]), "cpu0", &errp);
@@ -292,12 +292,12 @@ static void zynq_init(QEMUMachineInitArgs *args)
     sysbus_create_simple("xlnx,ps7-usb", 0xE0003000, pic[76-IRQ_OFFSET]);
 #endif
 
-    sysbus_create_simple("xlnx.ps7-uart", 0xE0000000, pic[59-IRQ_OFFSET]);
-    sysbus_create_simple("xlnx.ps7-uart", 0xE0001000, pic[82-IRQ_OFFSET]);
+    sysbus_create_simple("cadence_uart", 0xE0000000, pic[59-IRQ_OFFSET]);
+    sysbus_create_simple("cadence_uart", 0xE0001000, pic[82-IRQ_OFFSET]);
 
-    sysbus_create_varargs("xlnx.ps7-ttc", 0xF8001000,
+    sysbus_create_varargs("cadence_ttc", 0xF8001000,
             pic[42-IRQ_OFFSET], pic[43-IRQ_OFFSET], pic[44-IRQ_OFFSET], NULL);
-    sysbus_create_varargs("xlnx.ps7-ttc", 0xF8002000,
+    sysbus_create_varargs("cadence_ttc", 0xF8002000,
             pic[69-IRQ_OFFSET], pic[70-IRQ_OFFSET], pic[71-IRQ_OFFSET], NULL);
 
     for (n = 0; n < nb_nics; n++) {

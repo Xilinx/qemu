@@ -1006,10 +1006,6 @@ static void xilinx_enet_init(Object *obj)
 }
 
 static Property xilinx_enet_properties[] = {
-    DEFINE_PROP_UINT32("phyaddr_", struct XilinxAXIEnet, c_phyaddr, 7),
-    DEFINE_PROP_UINT32("rxmem", struct XilinxAXIEnet, c_rxmem, 0x1000),
-    DEFINE_PROP_UINT32("txmem", struct XilinxAXIEnet, c_txmem, 0x1000),
-    DEFINE_NIC_PROPERTIES(struct XilinxAXIEnet, conf),
     DEFINE_PROP_UINT32("phyaddr", XilinxAXIEnet, c_phyaddr, 7),
     DEFINE_PROP_UINT32("rxmem", XilinxAXIEnet, c_rxmem, 0x1000),
     DEFINE_PROP_UINT32("txmem", XilinxAXIEnet, c_txmem, 0x1000),

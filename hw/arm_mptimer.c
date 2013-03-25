@@ -300,7 +300,7 @@ static void arm_mptimer_class_init(ObjectClass *klass, void *data)
 }
 
 static const TypeInfo arm_mptimer_info = {
-    .name          = "arm,cortex-a9-twd-timer",
+    .name          = "arm_mptimer",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(ARMMPTimerState),
     .class_init    = arm_mptimer_class_init,

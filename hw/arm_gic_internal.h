@@ -122,7 +122,7 @@ typedef struct ARMGICCommonClass {
     void (*post_load)(GICState *s);
 } ARMGICCommonClass;
 
-#define TYPE_ARM_GIC "arm.gic"
+#define TYPE_ARM_GIC "arm_gic"
 #define ARM_GIC(obj) \
      OBJECT_CHECK(GICState, (obj), TYPE_ARM_GIC)
 #define ARM_GIC_CLASS(klass) \

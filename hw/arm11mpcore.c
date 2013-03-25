@@ -127,7 +127,7 @@ static int mpcore_priv_init(SysBusDevice *dev)
 {
     ARM11MPCorePriveState *s = FROM_SYSBUS(ARM11MPCorePriveState, dev);
 
-    s->gic = qdev_create(NULL, "arm.gic");
+    s->gic = qdev_create(NULL, "arm_gic");
     qdev_prop_set_uint32(s->gic, "num-cpu", s->num_cpu);
     qdev_prop_set_uint32(s->gic, "num-irq", s->num_irq);
     /* Request the legacy 11MPCore GIC behaviour: */
@@ -140,7 +140,7 @@ static int mpcore_priv_init(SysBusDevice *dev)
     /* Pass through inbound GPIO lines to the GIC */
     qdev_init_gpio_in(&s->busdev.qdev, mpcore_priv_set_irq, s->num_irq - 32);
 
-    s->mptimer = qdev_create(NULL, "arm,cortex-a9-twd-timer");
+    s->mptimer = qdev_create(NULL, "arm_mptimer");
     qdev_prop_set_uint32(s->mptimer, "num-cpu", s->num_cpu);
     qdev_init_nofail(s->mptimer);
 

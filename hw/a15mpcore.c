@@ -41,7 +41,7 @@ static int a15mp_priv_init(SysBusDevice *dev)
 {
     A15MPPrivState *s = FROM_SYSBUS(A15MPPrivState, dev);
     SysBusDevice *busdev;
-    const char *gictype = "arm.gic";
+    const char *gictype = "arm_gic";
 
     if (kvm_irqchip_in_kernel()) {
         gictype = "kvm-arm-gic";

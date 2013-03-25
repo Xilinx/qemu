@@ -584,7 +584,7 @@ static void serial_receive1(void *opaque, const uint8_t *buf, int size)
         }
         s->lsr |= UART_LSR_DR;
         /* call the timeout receive callback in 4 char transmit time */
-        qemu_mod_timer(s->fifo_timeout_timer, qemu_get_clock_ns (vm_clock) + s->char_transmit_time / 16);
+        qemu_mod_timer(s->fifo_timeout_timer, qemu_get_clock_ns (vm_clock) + s->char_transmit_time * 4);
     } else {
         if (s->lsr & UART_LSR_DR)
             s->lsr |= UART_LSR_OE;

@@ -26,9 +26,6 @@
 #include "hw/ssi.h"
 #include "hw/devices.h"
 #include "qemu/config-file.h"
-#include "ssi.h"
-#include "devices.h"
-#include "qemu/config-file.h"
 
 #ifndef M25P80_ERR_DEBUG
 #define M25P80_ERR_DEBUG 0

@@ -76,7 +76,7 @@ static void ehci_xlnx_class_init(ObjectClass *oc, void *data)
 }
 
 static const TypeInfo ehci_xlnx_type_info = {
-    .name          = "xlnx.ps7-usb",
+    .name          = "xlnx,ps7-usb",
     .parent        = TYPE_SYS_BUS_EHCI,
     .class_init    = ehci_xlnx_class_init,
 };

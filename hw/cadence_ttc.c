@@ -475,7 +475,7 @@ static void cadence_ttc_class_init(ObjectClass *klass, void *data)
 }
 
 static const TypeInfo cadence_ttc_info = {
-    .name  = "xlnx.ps7-ttc",
+    .name  = "cadence_ttc",
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size  = sizeof(CadenceTTCState),
     .class_init = cadence_ttc_class_init,

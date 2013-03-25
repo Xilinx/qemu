@@ -503,7 +503,7 @@ static void cadence_uart_class_init(ObjectClass *klass, void *data)
 }
 
 static const TypeInfo cadence_uart_info = {
-    .name          = "xlnx.ps7-uart",
+    .name          = "cadence_uart",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(UartState),
     .class_init    = cadence_uart_class_init,
