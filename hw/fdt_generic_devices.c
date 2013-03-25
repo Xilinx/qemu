@@ -176,7 +176,16 @@ fdt_register_instance_n(i2c_bus_fdt_init, "i2c@6", 6);
 fdt_register_instance_n(i2c_bus_fdt_init, "i2c@7", 7);
 
 static const TypeInfo fdt_qom_aliases [] = {
-    {   .name = "generic-ahci", .parent = "sysbus-ahci" }
+    {   .name = "generic-ahci",             .parent = "sysbus-ahci"         },
+    {   .name = "xlnx.ps7-ethernet",        .parent = "cadence_gem"         },
+    {   .name = "xlnx.ps7-ttc",             .parent = "cadence_ttc"         },
+    {   .name = "xlnx.ps7-uart",            .parent = "cadence_uart"        },
+    {   .name = "arm.cortex-a9-twd-timer",  .parent = "arm_mptimer"         },
+    {   .name = "xlnx.ps7-slcr",            .parent = "xilinx,zynq_slcr"    },
+    {   .name = "xlnx.zynq-slcr",           .parent = "xilinx,zynq_slcr"    },
+    {   .name = "arm.cortex-a9-gic",        .parent = "arm_gic"             },
+    {   .name = "arm.gic",                  .parent = "arm_gic"             },
+    {   .name = "arm_a9_scu",               .parent = "a9-scu"              },
 };
 
 static void fdt_generic_register_types(void)
