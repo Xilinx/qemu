@@ -287,7 +287,7 @@ static void xilinx_spips_flush_txfifo(XilinxSPIPS *s)
 
     for (;;) {
         int i;
-        uint8_t tx;
+        uint8_t tx = 0;
         uint8_t tx_rx[num_effective_busses(s)];
 
         if (fifo8_is_empty(&s->tx_fifo)) {
@@ -500,7 +500,7 @@ static void xilinx_spips_write(void *opaque, hwaddr addr,
     }
     s->regs[addr] = (s->regs[addr] & ~mask) | (value & mask);
 no_reg_update:
-    if (man_start_com && s->regs[R_CONFIG] & MAN_START_EN ||
+    if ((man_start_com && s->regs[R_CONFIG] & MAN_START_EN) ||
             (fifo8_is_empty(&s->tx_fifo) && s->regs[R_CONFIG] & MAN_START_EN)) {
         xilinx_spips_flush_txfifo(s);
     }
