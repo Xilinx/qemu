@@ -9,8 +9,6 @@
 #include "serial.h"
 #include "flash.h"
 
-#include "flash.h"
-
 #define FLASH_SECTOR_SIZE (64 * 1024)
 
 /* FIXME: This file should go away. When these devices are properly QOMified
@@ -254,7 +252,7 @@ static const TypeInfo fdt_qom_aliases [] = {
     {   .name = "xlnx.ps7-ethernet",        .parent = "cadence_gem"         },
     {   .name = "xlnx.ps7-ttc",             .parent = "cadence_ttc"         },
     {   .name = "xlnx.ps7-uart",            .parent = "cadence_uart"        },
-    {   .name = "arm.cortext-a9-twd-timer", .parent = "arm_mptimer"         },
+    {   .name = "arm.cortex-a9-twd-timer",  .parent = "arm_mptimer"         },
     {   .name = "xlnx.ps7-slcr",            .parent = "xilinx,zynq_slcr"    },
     {   .name = "xlnx.zynq-slcr",           .parent = "xilinx,zynq_slcr"    },
     {   .name = "arm.cortex-a9-gic",        .parent = "arm_gic"             },
