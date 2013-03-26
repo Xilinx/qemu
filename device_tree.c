@@ -440,12 +440,15 @@ int qemu_devtree_get_node_by_name(void *fdt, char *node_path,
     char *name = NULL;
 
     do {
+        char *at;
+
         offset = fdt_next_node(fdt, offset, NULL);
         name = (void *)fdt_get_name(fdt, offset, NULL);
         if (!name) {
             continue;
         }
-        if (!strncmp(name, cmpname, strlen(cmpname))) {
+        at = memchr(name, '@', strlen(name));
+        if (!strncmp(name, cmpname, at ? at - name : strlen(name) )) {
             break;
         }
     } while (offset > 0);

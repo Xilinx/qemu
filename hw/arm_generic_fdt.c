@@ -191,7 +191,7 @@ static void arm_generic_fdt_init(QEMUMachineInitArgs *args)
     char *qspi_clone_spi_flash_node_name = zynq_ps7_qspi_flash_node_clone(fdt);
 
     /* find memory node */
-    while (qemu_devtree_get_node_by_name(fdt, node_path, "memory@")) {
+    while (qemu_devtree_get_node_by_name(fdt, node_path, "memory")) {
         qemu_devtree_add_subnode(fdt, "/memory@0");
         qemu_devtree_setprop_cells(fdt, "/memory@0", "reg", 0, args->ram_size);
     }

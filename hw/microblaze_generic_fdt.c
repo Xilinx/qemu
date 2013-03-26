@@ -50,7 +50,7 @@ microblaze_generic_fdt_reset(MicroBlazeCPU *cpu, void *fdt)
     CPUMBState *env = &cpu->env;
 
     char node_path[DT_PATH_LENGTH];
-    qemu_devtree_get_node_by_name(fdt, node_path, "cpu@");
+    qemu_devtree_get_node_by_name(fdt, node_path, "cpu");
     int t;
     int use_exc = 0;
 
@@ -347,7 +347,7 @@ microblaze_generic_fdt_init(QEMUMachineInitArgs *args)
     }
 
     /* find memory node */
-    while (qemu_devtree_get_node_by_name(fdt, node_path, "memory@")) {
+    while (qemu_devtree_get_node_by_name(fdt, node_path, "memory")) {
         qemu_devtree_add_subnode(fdt, "/memory@0");
         qemu_devtree_setprop_cells(fdt, "/memory@0", "reg", 0, args->ram_size);
     }
