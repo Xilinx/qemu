@@ -269,14 +269,14 @@ static void zynq_init(QEMUMachineInitArgs *args)
 
     zynq_init_zc70x_i2c(0xE0004000, pic[57-IRQ_OFFSET]);
     zynq_init_zc70x_i2c(0xE0005000, pic[80-IRQ_OFFSET]);
-    dev = qdev_create(NULL, "xlnx.ps7-usb");
+    dev = qdev_create(NULL, "xlnx,ps7-usb");
     dev->id = "zynq-usb-0";
     qdev_init_nofail(dev);
     busdev = SYS_BUS_DEVICE(dev);
     sysbus_mmio_map(busdev, 0, 0xE0002000);
     sysbus_connect_irq(busdev, 0, pic[53-IRQ_OFFSET]);
 
-    dev = qdev_create(NULL, "xlnx.ps7-usb");
+    dev = qdev_create(NULL, "xlnx,ps7-usb");
     dev->id = "zynq-usb-1";
     busdev = SYS_BUS_DEVICE(dev);
     qdev_init_nofail(dev);
