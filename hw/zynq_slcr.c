@@ -246,19 +246,19 @@ static void zynq_slcr_reset(DeviceState *d)
 
     s->lockval = 1;
     /* 0x100 - 0x11C */
-    s->pll[ARM_PLL_CTRL] = 0x0001A008;
-    s->pll[DDR_PLL_CTRL] = 0x0001A008;
-    s->pll[IO_PLL_CTRL] = 0x0001A008;
+    s->pll[ARM_PLL_CTRL] = 0x00028008;
+    s->pll[DDR_PLL_CTRL] = 0x00020008;
+    s->pll[IO_PLL_CTRL] = 0x0001e008;
     s->pll[PLL_STATUS] = 0x0000003F;
-    s->pll[ARM_PPL_CFG] = 0x00014000;
-    s->pll[DDR_PLL_CFG] = 0x00014000;
-    s->pll[IO_PLL_CFG] = 0x00014000;
+    s->pll[ARM_PPL_CFG] = 0x000fa220;
+    s->pll[DDR_PLL_CFG] = 0x0012c220;
+    s->pll[IO_PLL_CFG] = 0x001452c0;
 
     /* 0x120 - 0x16C */
-    s->clk[ARM_CLK_CTRL] = 0x1F000400;
+    s->clk[ARM_CLK_CTRL] = 0x1F000200;
     s->clk[DDR_CLK_CTRL] = 0x18400003;
     s->clk[DCI_CLK_CTRL] = 0x01E03201;
-    s->clk[APER_CLK_CTRL] = 0x01FFCCCD;
+    s->clk[APER_CLK_CTRL] = 0x01ed044d;
     s->clk[USB0_CLK_CTRL] = s->clk[USB1_CLK_CTRL] = 0x00101941;
     s->clk[GEM0_RCLK_CTRL] = s->clk[GEM1_RCLK_CTRL] = 0x00000001;
     s->clk[GEM0_CLK_CTRL] = s->clk[GEM1_CLK_CTRL] = 0x00003C01;
