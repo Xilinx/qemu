@@ -189,8 +189,8 @@ static void zynq_slcr_set_qspi(ZynqSLCRState *s, void *fdt)
      * configuration is required to setup for the second QSPI flash*/
     if (qemu_devtree_get_num_children(fdt, node_path, 1)) {
         DB_PRINT("DT, PS7 QSPI: child node found\n");
-        /* Set MIO 2 - 6  with QSPI + LVCOMS18 (0x202) */
-        for (i = 2; i <= 6; i++) {
+        /* Set MIO 1 - 6 (qspi0)  with QSPI + LVCOMS18 (0x202) */
+        for (i = 1; i <= 6; i++) {
             s->mio[i] = 0x00000202;
         }
 
@@ -198,8 +198,11 @@ static void zynq_slcr_set_qspi(ZynqSLCRState *s, void *fdt)
         if (qemu_devtree_getprop_cell(fdt, node_path, "is-dual", 0,
                                         false, &errp) ==  1) {
             DB_PRINT("DT, PS QSPI is in dual\n");
-            /* Set MIO 8 - 13  with QSPI + LVCOMS18 (0x202) */
-            for (i = 8; i <= 13; i++) {
+            /* Set MIO 0 (qspi1_cs) with QSPI + LVCOMS18 (0x202) */
+            s->mio[0] = 0x00000202;
+
+            /* Set MIO 9 - 13 (qspi1) with QSPI + LVCOMS18 (0x202) */
+            for (i = 9; i <= 13; i++) {
                 s->mio[i] = 0x00000202;
             }
         }
