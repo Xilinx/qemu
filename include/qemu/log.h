@@ -154,8 +154,6 @@ static inline void qemu_set_log(int log_flags)
 #endif
 }
 
-int qemu_get_log_flags(void);
-
 void qemu_set_log_filename(const char *filename);
 int qemu_str_to_log_mask(const char *str);
 

@@ -240,6 +240,7 @@ int cpu_exec(CPUArchState *env)
 #elif defined(TARGET_LM32)
 #elif defined(TARGET_MICROBLAZE)
 #elif defined(TARGET_MIPS)
+#elif defined(TARGET_MOXIE)
 #elif defined(TARGET_OPENRISC)
 #elif defined(TARGET_SH4)
 #elif defined(TARGET_CRIS)
@@ -570,10 +571,7 @@ int cpu_exec(CPUArchState *env)
                 if (qemu_loglevel_mask(CPU_LOG_TB_CPU)) {
                     /* restore flags in standard format */
 #if defined(TARGET_I386)
-                    env->eflags = env->eflags | cpu_cc_compute_all(env, CC_OP)
-                        | (DF & DF_MASK);
                     log_cpu_state(env, CPU_DUMP_CCOP);
-                    env->eflags &= ~(DF_MASK | CC_O | CC_S | CC_Z | CC_A | CC_P | CC_C);
 #elif defined(TARGET_M68K)
                     cpu_m68k_flush_flags(env, env->cc_op);
                     env->cc_op = CC_OP_FLAGS;
@@ -692,6 +690,7 @@ int cpu_exec(CPUArchState *env)
               | env->cc_dest | (env->cc_x << 4);
 #elif defined(TARGET_MICROBLAZE)
 #elif defined(TARGET_MIPS)
+#elif defined(TARGET_MOXIE)
 #elif defined(TARGET_OPENRISC)
 #elif defined(TARGET_SH4)
 #elif defined(TARGET_ALPHA)

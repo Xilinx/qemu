@@ -15,6 +15,7 @@
 
 #include "monitor/monitor.h"
 #include "qapi/qmp/qerror.h"
+#include "backends/tpm.h"
 #include "tpm_int.h"
 #include "tpm/tpm.h"
 #include "qemu/config-file.h"
@@ -145,6 +146,7 @@ static int configure_tpm(QemuOpts *opts)
     const char *id;
     const TPMDriverOps *be;
     TPMBackend *drv;
+    Error *local_err = NULL;
 
     if (!QLIST_EMPTY(&tpm_backends)) {
         error_report("Only one TPM is allowed.\n");
@@ -177,6 +179,13 @@ static int configure_tpm(QemuOpts *opts)
         return 1;
     }
 
+    tpm_backend_open(drv, &local_err);
+    if (local_err) {
+        qerror_report_err(local_err);
+        error_free(local_err);
+        return 1;
+    }
+
     QLIST_INSERT_HEAD(&tpm_backends, drv, list);
 
     return 0;
@@ -197,7 +206,7 @@ void tpm_cleanup(void)
 
     QLIST_FOREACH_SAFE(drv, &tpm_backends, list, next) {
         QLIST_REMOVE(drv, list);
-        drv->ops->destroy(drv);
+        tpm_backend_destroy(drv);
     }
 }
 
@@ -257,14 +266,13 @@ static TPMInfo *qmp_query_tpm_inst(TPMBackend *drv)
 
     res->id = g_strdup(drv->id);
     res->model = drv->fe_model;
-    res->type = drv->ops->type;
-    res->tpm_options = g_new0(TpmTypeOptions, 1);
+    res->options = g_new0(TpmTypeOptions, 1);
 
-    switch (res->type) {
+    switch (drv->ops->type) {
     case TPM_TYPE_PASSTHROUGH:
-        res->tpm_options->kind = TPM_TYPE_OPTIONS_KIND_TPM_PASSTHROUGH_OPTIONS;
+        res->options->kind = TPM_TYPE_OPTIONS_KIND_PASSTHROUGH;
         tpo = g_new0(TPMPassthroughOptions, 1);
-        res->tpm_options->tpm_passthrough_options = tpo;
+        res->options->passthrough = tpo;
         if (drv->path) {
             tpo->path = g_strdup(drv->path);
             tpo->has_path = true;

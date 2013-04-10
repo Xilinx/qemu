@@ -24,15 +24,15 @@
 #include "monitor/monitor.h"
 #include "hw/loader.h"
 #include "elf.h"
-#include "hw/virtio.h"
-#include "hw/virtio-rng.h"
-#include "hw/virtio-serial.h"
-#include "hw/virtio-net.h"
+#include "hw/virtio/virtio.h"
+#include "hw/virtio/virtio-rng.h"
+#include "hw/virtio/virtio-serial.h"
+#include "hw/virtio/virtio-net.h"
 #include "hw/sysbus.h"
 #include "sysemu/kvm.h"
 
 #include "hw/s390x/s390-virtio-bus.h"
-#include "hw/virtio-bus.h"
+#include "hw/virtio/virtio-bus.h"
 
 /* #define DEBUG_S390 */
 
@@ -202,16 +202,24 @@ static int s390_virtio_serial_init(VirtIOS390Device *dev)
     return r;
 }
 
-static int s390_virtio_scsi_init(VirtIOS390Device *dev)
+static int s390_virtio_scsi_init(VirtIOS390Device *s390_dev)
 {
-    VirtIODevice *vdev;
+    VirtIOSCSIS390 *dev = VIRTIO_SCSI_S390(s390_dev);
+    DeviceState *vdev = DEVICE(&dev->vdev);
 
-    vdev = virtio_scsi_init((DeviceState *)dev, &dev->scsi);
-    if (!vdev) {
+    qdev_set_parent_bus(vdev, BUS(&s390_dev->bus));
+    if (qdev_init(vdev) < 0) {
         return -1;
     }
 
-    return s390_virtio_device_init(dev, vdev);
+    return s390_virtio_device_init(s390_dev, VIRTIO_DEVICE(vdev));
+}
+
+static void s390_virtio_scsi_instance_init(Object *obj)
+{
+    VirtIOSCSIS390 *dev = VIRTIO_SCSI_S390(obj);
+    object_initialize(OBJECT(&dev->vdev), TYPE_VIRTIO_SCSI);
+    object_property_add_child(obj, "virtio-backend", OBJECT(&dev->vdev), NULL);
 }
 
 static int s390_virtio_rng_init(VirtIOS390Device *dev)
@@ -435,12 +443,7 @@ static const TypeInfo s390_virtio_net = {
 };
 
 static Property s390_virtio_blk_properties[] = {
-    DEFINE_BLOCK_PROPERTIES(VirtIOBlkS390, blk.conf),
-    DEFINE_BLOCK_CHS_PROPERTIES(VirtIOBlkS390, blk.conf),
-    DEFINE_PROP_STRING("serial", VirtIOBlkS390, blk.serial),
-#ifdef __linux__
-    DEFINE_PROP_BIT("scsi", VirtIOBlkS390, blk.scsi, 0, true),
-#endif
+    DEFINE_VIRTIO_BLK_PROPERTIES(VirtIOBlkS390, blk),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -543,7 +546,8 @@ static const TypeInfo virtio_s390_device_info = {
 };
 
 static Property s390_virtio_scsi_properties[] = {
-    DEFINE_VIRTIO_SCSI_PROPERTIES(VirtIOS390Device, host_features, scsi),
+    DEFINE_VIRTIO_SCSI_PROPERTIES(VirtIOSCSIS390, vdev.conf),
+    DEFINE_VIRTIO_SCSI_FEATURES(VirtIOS390Device, host_features),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -557,9 +561,10 @@ static void s390_virtio_scsi_class_init(ObjectClass *klass, void *data)
 }
 
 static const TypeInfo s390_virtio_scsi = {
-    .name          = "virtio-scsi-s390",
+    .name          = TYPE_VIRTIO_SCSI_S390,
     .parent        = TYPE_VIRTIO_S390_DEVICE,
-    .instance_size = sizeof(VirtIOS390Device),
+    .instance_size = sizeof(VirtIOSCSIS390),
+    .instance_init = s390_virtio_scsi_instance_init,
     .class_init    = s390_virtio_scsi_class_init,
 };
 

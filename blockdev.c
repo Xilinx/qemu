@@ -31,7 +31,7 @@
  */
 
 #include "sysemu/blockdev.h"
-#include "hw/block-common.h"
+#include "hw/block/block.h"
 #include "block/blockjob.h"
 #include "monitor/monitor.h"
 #include "qapi/qmp/qerror.h"
@@ -658,7 +658,11 @@ DriveInfo *drive_init(QemuOpts *all_opts, BlockInterfaceType block_default_type)
         abort();
     }
     if (!file || !*file) {
-        return dinfo;
+        if (qdict_size(bs_opts)) {
+            file = NULL;
+        } else {
+            return dinfo;
+        }
     }
     if (snapshot) {
         /* always use cache=unsafe with snapshot */
@@ -697,10 +701,10 @@ DriveInfo *drive_init(QemuOpts *all_opts, BlockInterfaceType block_default_type)
     if (ret < 0) {
         if (ret == -EMEDIUMTYPE) {
             error_report("could not open disk image %s: not in %s format",
-                         file, drv->format_name);
+                         file ?: dinfo->id, drv->format_name);
         } else {
             error_report("could not open disk image %s: %s",
-                         file, strerror(-ret));
+                         file ?: dinfo->id, strerror(-ret));
         }
         goto err;
     }
@@ -1065,7 +1069,6 @@ void qmp_block_set_io_throttle(const char *device, int64_t bps, int64_t bps_rd,
     }
 
     bs->io_limits = io_limits;
-    bs->slice_time = BLOCK_IO_SLICE_TIME;
 
     if (!bs->io_limits_enabled && bdrv_io_limits_enabled(bs)) {
         bdrv_io_limits_enable(bs);
@@ -1126,6 +1129,9 @@ void qmp_block_resize(const char *device, int64_t size, Error **errp)
         error_set(errp, QERR_INVALID_PARAMETER_VALUE, "size", "a >0 size");
         return;
     }
+
+    /* complete all in-flight operations before resizing the device */
+    bdrv_drain_all();
 
     switch (bdrv_truncate(bs, size)) {
     case 0:

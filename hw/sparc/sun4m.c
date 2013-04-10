@@ -23,19 +23,19 @@
  */
 #include "hw/sysbus.h"
 #include "qemu/timer.h"
-#include "hw/sun4m.h"
-#include "hw/nvram.h"
-#include "hw/sparc32_dma.h"
-#include "hw/fdc.h"
+#include "hw/sparc/sun4m.h"
+#include "hw/timer/m48t59.h"
+#include "hw/sparc/sparc32_dma.h"
+#include "hw/block/fdc.h"
 #include "sysemu/sysemu.h"
 #include "net/net.h"
 #include "hw/boards.h"
-#include "hw/firmware_abi.h"
-#include "hw/esp.h"
-#include "hw/pc.h"
-#include "hw/isa.h"
-#include "hw/fw_cfg.h"
-#include "hw/escc.h"
+#include "hw/sparc/firmware_abi.h"
+#include "hw/scsi/esp.h"
+#include "hw/i386/pc.h"
+#include "hw/isa/isa.h"
+#include "hw/nvram/fw_cfg.h"
+#include "hw/char/escc.h"
 #include "hw/empty_slot.h"
 #include "hw/qdev-addr.h"
 #include "hw/loader.h"
@@ -575,7 +575,6 @@ static void tcx_init(hwaddr addr, int vram_size, int width,
     SysBusDevice *s;
 
     dev = qdev_create(NULL, "SUNW,tcx");
-    qdev_prop_set_taddr(dev, "addr", addr);
     qdev_prop_set_uint32(dev, "vram_size", vram_size);
     qdev_prop_set_uint16(dev, "width", width);
     qdev_prop_set_uint16(dev, "height", height);

@@ -26,10 +26,10 @@
 #include "hw/boards.h"
 #include "hw/pci/pci.h"
 #include "net/net.h"
-#include "hw/pc.h"
+#include "hw/i386/pc.h"
 #include "monitor/monitor.h"
-#include "hw/scsi.h"
-#include "hw/virtio-blk.h"
+#include "hw/scsi/scsi.h"
+#include "hw/virtio/virtio-blk.h"
 #include "qemu/config-file.h"
 #include "sysemu/blockdev.h"
 #include "qapi/error.h"
@@ -99,7 +99,7 @@ static int scsi_hot_add(Monitor *mon, DeviceState *adapter,
     dinfo->unit = qemu_opt_get_number(dinfo->opts, "unit", -1);
     dinfo->bus = scsibus->busnr;
     scsidev = scsi_bus_legacy_add_drive(scsibus, dinfo->bdrv, dinfo->unit,
-                                        false, -1);
+                                        false, -1, NULL);
     if (!scsidev) {
         return -1;
     }

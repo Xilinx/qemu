@@ -68,13 +68,14 @@ struct CharDriverState {
     void (*chr_close)(struct CharDriverState *chr);
     void (*chr_accept_input)(struct CharDriverState *chr);
     void (*chr_set_echo)(struct CharDriverState *chr, bool echo);
-    void (*chr_guest_open)(struct CharDriverState *chr);
-    void (*chr_guest_close)(struct CharDriverState *chr);
+    void (*chr_set_fe_open)(struct CharDriverState *chr, int fe_open);
     void *opaque;
     int idle_tag;
     char *label;
     char *filename;
-    int opened;
+    int be_open;
+    int fe_open;
+    int explicit_fe_open;
     int avail_connections;
     QemuOpts *opts;
     QTAILQ_ENTRY(CharDriverState) next;
@@ -127,21 +128,12 @@ void qemu_chr_delete(CharDriverState *chr);
 void qemu_chr_fe_set_echo(struct CharDriverState *chr, bool echo);
 
 /**
- * @qemu_chr_fe_open:
+ * @qemu_chr_fe_set_open:
  *
- * Open a character backend.  This function call is an indication that the
- * front end is ready to begin doing I/O.
+ * Set character frontend open status.  This is an indication that the
+ * front end is ready (or not) to begin doing I/O.
  */
-void qemu_chr_fe_open(struct CharDriverState *chr);
-
-/**
- * @qemu_chr_fe_close:
- *
- * Close a character backend.  This function call indicates that the front end
- * no longer is able to process I/O.  To process I/O again, the front end will
- * call @qemu_chr_fe_open.
- */
-void qemu_chr_fe_close(struct CharDriverState *chr);
+void qemu_chr_fe_set_open(struct CharDriverState *chr, int fe_open);
 
 /**
  * @qemu_chr_fe_printf:
@@ -170,6 +162,21 @@ int qemu_chr_fe_add_watch(CharDriverState *s, GIOCondition cond,
 int qemu_chr_fe_write(CharDriverState *s, const uint8_t *buf, int len);
 
 /**
+ * @qemu_chr_fe_write_all:
+ *
+ * Write data to a character backend from the front end.  This function will
+ * send data from the front end to the back end.  Unlike @qemu_chr_fe_write,
+ * this function will block if the back end cannot consume all of the data
+ * attempted to be written.
+ *
+ * @buf the data
+ * @len the number of bytes to send
+ *
+ * Returns: the number of bytes consumed
+ */
+int qemu_chr_fe_write_all(CharDriverState *s, const uint8_t *buf, int len);
+
+/**
  * @qemu_chr_fe_ioctl:
  *
  * Issue a device specific ioctl to a backend.
@@ -194,6 +201,35 @@ int qemu_chr_fe_ioctl(CharDriverState *s, int cmd, void *arg);
  *          descriptor.
  */
 int qemu_chr_fe_get_msgfd(CharDriverState *s);
+
+/**
+ * @qemu_chr_fe_claim:
+ *
+ * Claim a backend before using it, should be called before calling
+ * qemu_chr_add_handlers(). 
+ *
+ * Returns: -1 if the backend is already in use by another frontend, 0 on
+ *          success.
+ */
+int qemu_chr_fe_claim(CharDriverState *s);
+
+/**
+ * @qemu_chr_fe_claim_no_fail:
+ *
+ * Like qemu_chr_fe_claim, but will exit qemu with an error when the
+ * backend is already in use.
+ */
+void qemu_chr_fe_claim_no_fail(CharDriverState *s);
+
+/**
+ * @qemu_chr_fe_claim:
+ *
+ * Release a backend for use by another frontend.
+ *
+ * Returns: -1 if the backend is already in use by another frontend, 0 on
+ *          success.
+ */
+void qemu_chr_fe_release(CharDriverState *s);
 
 /**
  * @qemu_chr_be_can_write:
@@ -235,7 +271,7 @@ void qemu_chr_add_handlers(CharDriverState *s,
                            IOEventHandler *fd_event,
                            void *opaque);
 
-void qemu_chr_generic_open(CharDriverState *s);
+void qemu_chr_be_generic_open(CharDriverState *s);
 void qemu_chr_accept_input(CharDriverState *s);
 int qemu_chr_add_client(CharDriverState *s, int fd);
 void qemu_chr_info_print(Monitor *mon, const QObject *ret_data);

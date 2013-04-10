@@ -1,13 +1,5 @@
-obj-y += microblaze_generic_fdt.o
-obj-y += xilinx_spi.o
-obj-y += xilinx_spips.o
-obj-y += xilinx_ethlite.o
-
-obj-y += arm_gic.o arm_gic_common.o
-
-obj-y := $(addprefix ../,$(obj-y))
-
 obj-y += petalogix_s3adsp1800_mmu.o
 obj-y += petalogix_ml605_mmu.o
 obj-y += boot.o
 obj-y += pic_cpu.o
+obj-(CONFIG_FDT_GENERIC) += microblaze_generic_fdt.o

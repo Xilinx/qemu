@@ -496,7 +496,9 @@
 #
 # @total: total amount of bytes involved in the migration process
 #
-# @duplicate: number of duplicate pages (since 1.2)
+# @duplicate: number of duplicate (zero) pages (since 1.2)
+#
+# @skipped: number of skipped zero pages (since 1.5)
 #
 # @normal : number of normal pages (since 1.2)
 #
@@ -509,8 +511,8 @@
 ##
 { 'type': 'MigrationStats',
   'data': {'transferred': 'int', 'remaining': 'int', 'total': 'int' ,
-           'duplicate': 'int', 'normal': 'int', 'normal-bytes': 'int',
-           'dirty-pages-rate' : 'int' } }
+           'duplicate': 'int', 'skipped': 'int', 'normal': 'int',
+           'normal-bytes': 'int', 'dirty-pages-rate' : 'int' } }
 
 ##
 # @XBZRLECacheStats
@@ -1832,6 +1834,17 @@
 { 'command': 'query-migrate-cache-size', 'returns': 'int' }
 
 ##
+## @query-cpu-max
+##
+## query maximum number of CPUs supported by machine
+##
+## Returns: number of CPUs
+##
+## Since: 1.5
+###
+{ 'command': 'query-cpu-max', 'returns': 'int' }
+
+##
 # @ObjectPropertyInfo:
 #
 # @name: the name of the property
@@ -2354,7 +2367,9 @@
 # Notes: When this command completes, the device may not be removed from the
 #        guest.  Hot removal is an operation that requires guest cooperation.
 #        This command merely requests that the guest begin the hot removal
-#        process.
+#        process.  Completion of the device removal process is signaled with a
+#        DEVICE_DELETED event. Guest reset will automatically complete removal
+#        for all devices.
 #
 # Since: 0.14.0
 ##
@@ -2575,6 +2590,8 @@
 # devices
 #
 # @vhostforce: #optional vhost on for non-MSIX virtio guests
+#
+# @queues: #optional number of queues to be created for multiqueue capable tap
 #
 # Since 1.2
 ##
@@ -2994,9 +3011,9 @@
 ##
 { 'enum': 'TargetType',
   'data': [ 'alpha', 'arm', 'cris', 'i386', 'lm32', 'm68k', 'microblazeel',
-            'microblaze', 'mips64el', 'mips64', 'mipsel', 'mips', 'or32',
-            'ppc64', 'ppcemb', 'ppc', 's390x', 'sh4eb', 'sh4', 'sparc64',
-            'sparc', 'unicore32', 'x86_64', 'xtensaeb', 'xtensa' ] }
+            'microblaze', 'mips64el', 'mips64', 'mipsel', 'mips', 'moxie',
+            'or32', 'ppc64', 'ppcemb', 'ppc', 's390x', 'sh4eb', 'sh4',
+            'sparc64', 'sparc', 'unicore32', 'x86_64', 'xtensaeb', 'xtensa' ] }
 
 ##
 # @TargetInfo:
@@ -3403,13 +3420,12 @@
 #
 # A union referencing different TPM backend types' configuration options
 #
-# @tpm-passthough-options: TPMPassthroughOptions describing the TPM
-#                          passthrough configuration options
+# @passthrough: The configuration options for the TPM passthrough type
 #
 # Since: 1.5
 ##
 { 'union': 'TpmTypeOptions',
-   'data': { 'tpm-passthrough-options' : 'TPMPassthroughOptions' } }
+   'data': { 'passthrough' : 'TPMPassthroughOptions' } }
 
 ##
 # @TpmInfo:
@@ -3420,17 +3436,14 @@
 #
 # @model: The TPM frontend model
 #
-# @type: The TPM (backend) type being used
-#
-# @tpm-options: The TPM (backend) type configuration options
+# @options: The TPM (backend) type configuration options
 #
 # Since: 1.5
 ##
 { 'type': 'TPMInfo',
   'data': {'id': 'str',
            'model': 'TpmModel',
-           'type': 'TpmType',
-           'tpm-options': 'TpmTypeOptions' } }
+           'options': 'TpmTypeOptions' } }
 
 ##
 # @query-tpm:
@@ -3442,3 +3455,61 @@
 # Since: 1.5
 ##
 { 'command': 'query-tpm', 'returns': ['TPMInfo'] }
+
+##
+# @AcpiTableOptions
+#
+# Specify an ACPI table on the command line to load.
+#
+# At most one of @file and @data can be specified. The list of files specified
+# by any one of them is loaded and concatenated in order. If both are omitted,
+# @data is implied.
+#
+# Other fields / optargs can be used to override fields of the generic ACPI
+# table header; refer to the ACPI specification 5.0, section 5.2.6 System
+# Description Table Header. If a header field is not overridden, then the
+# corresponding value from the concatenated blob is used (in case of @file), or
+# it is filled in with a hard-coded value (in case of @data).
+#
+# String fields are copied into the matching ACPI member from lowest address
+# upwards, and silently truncated / NUL-padded to length.
+#
+# @sig: #optional table signature / identifier (4 bytes)
+#
+# @rev: #optional table revision number (dependent on signature, 1 byte)
+#
+# @oem_id: #optional OEM identifier (6 bytes)
+#
+# @oem_table_id: #optional OEM table identifier (8 bytes)
+#
+# @oem_rev: #optional OEM-supplied revision number (4 bytes)
+#
+# @asl_compiler_id: #optional identifier of the utility that created the table
+#                   (4 bytes)
+#
+# @asl_compiler_rev: #optional revision number of the utility that created the
+#                    table (4 bytes)
+#
+# @file: #optional colon (:) separated list of pathnames to load and
+#        concatenate as table data. The resultant binary blob is expected to
+#        have an ACPI table header. At least one file is required. This field
+#        excludes @data.
+#
+# @data: #optional colon (:) separated list of pathnames to load and
+#        concatenate as table data. The resultant binary blob must not have an
+#        ACPI table header. At least one file is required. This field excludes
+#        @file.
+#
+# Since 1.5
+##
+{ 'type': 'AcpiTableOptions',
+  'data': {
+    '*sig':               'str',
+    '*rev':               'uint8',
+    '*oem_id':            'str',
+    '*oem_table_id':      'str',
+    '*oem_rev':           'uint32',
+    '*asl_compiler_id':   'str',
+    '*asl_compiler_rev':  'uint32',
+    '*file':              'str',
+    '*data':              'str' }}

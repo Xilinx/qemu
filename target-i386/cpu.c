@@ -42,9 +42,9 @@
 
 #include "sysemu/sysemu.h"
 #ifndef CONFIG_USER_ONLY
-#include "hw/xen.h"
+#include "hw/xen/xen.h"
 #include "hw/sysbus.h"
-#include "hw/apic_internal.h"
+#include "hw/i386/apic_internal.h"
 #endif
 
 static void x86_cpu_vendor_words2str(char *dst, uint32_t vendor1,
@@ -388,16 +388,17 @@ typedef struct x86_def_t {
           /* missing:
           CPUID_VME, CPUID_DTS, CPUID_SS, CPUID_HT, CPUID_TM, CPUID_PBE */
 #define TCG_EXT_FEATURES (CPUID_EXT_SSE3 | CPUID_EXT_MONITOR | \
-          CPUID_EXT_SSSE3 | CPUID_EXT_CX16 | CPUID_EXT_POPCNT | \
-          CPUID_EXT_MOVBE | CPUID_EXT_HYPERVISOR)
+          CPUID_EXT_SSSE3 | CPUID_EXT_CX16 | CPUID_EXT_SSE41 | \
+          CPUID_EXT_SSE42 | CPUID_EXT_POPCNT | CPUID_EXT_MOVBE | \
+          CPUID_EXT_HYPERVISOR)
           /* missing:
           CPUID_EXT_PCLMULQDQ, CPUID_EXT_DTES64, CPUID_EXT_DSCPL,
           CPUID_EXT_VMX, CPUID_EXT_SMX, CPUID_EXT_EST, CPUID_EXT_TM2,
           CPUID_EXT_CID, CPUID_EXT_FMA, CPUID_EXT_XTPR, CPUID_EXT_PDCM,
-          CPUID_EXT_PCID, CPUID_EXT_DCA, CPUID_EXT_SSE41, CPUID_EXT_SSE42,
-          CPUID_EXT_X2APIC, CPUID_EXT_TSC_DEADLINE_TIMER, CPUID_EXT_AES,
-          CPUID_EXT_XSAVE, CPUID_EXT_OSXSAVE, CPUID_EXT_AVX,
-          CPUID_EXT_F16C, CPUID_EXT_RDRAND */
+          CPUID_EXT_PCID, CPUID_EXT_DCA, CPUID_EXT_X2APIC,
+          CPUID_EXT_TSC_DEADLINE_TIMER, CPUID_EXT_AES, CPUID_EXT_XSAVE,
+          CPUID_EXT_OSXSAVE, CPUID_EXT_AVX, CPUID_EXT_F16C,
+          CPUID_EXT_RDRAND */
 #define TCG_EXT2_FEATURES ((TCG_FEATURES & CPUID_EXT2_AMD_ALIASES) | \
           CPUID_EXT2_NX | CPUID_EXT2_MMXEXT | CPUID_EXT2_RDTSCP | \
           CPUID_EXT2_3DNOW | CPUID_EXT2_3DNOWEXT)
@@ -2048,8 +2049,6 @@ static void mce_init(X86CPU *cpu)
     }
 }
 
-#define MSI_ADDR_BASE 0xfee00000
-
 #ifndef CONFIG_USER_ONLY
 static void x86_cpu_apic_init(X86CPU *cpu, Error **errp)
 {
@@ -2089,7 +2088,7 @@ static void x86_cpu_apic_init(X86CPU *cpu, Error **errp)
            on the global memory bus. */
         /* XXX: what if the base changes? */
         sysbus_mmio_map_overlap(SYS_BUS_DEVICE(env->apic_state), 0,
-                                MSI_ADDR_BASE, 0x1000);
+                                APIC_DEFAULT_ADDRESS, 0x1000);
         apic_mapped = 1;
     }
 }
@@ -2130,14 +2129,14 @@ static void x86_cpu_realizefn(DeviceState *dev, Error **errp)
         env->cpuid_ext3_features &= TCG_EXT3_FEATURES;
         env->cpuid_svm_features &= TCG_SVM_FEATURES;
     } else {
-#ifdef CONFIG_KVM
-        filter_features_for_kvm(cpu);
-#endif
         if (check_cpuid && kvm_check_features_against_host(cpu)
             && enforce_cpuid) {
             error_setg(errp, "Host's CPU doesn't support requested features");
             return;
         }
+#ifdef CONFIG_KVM
+        filter_features_for_kvm(cpu);
+#endif
     }
 
 #ifndef CONFIG_USER_ONLY

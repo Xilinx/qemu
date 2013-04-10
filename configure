@@ -27,6 +27,17 @@ printf " '%s'" "$0" "$@" >> config.log
 echo >> config.log
 echo "#" >> config.log
 
+error_exit() {
+    echo
+    echo "ERROR: $1"
+    while test -n "$2"; do
+        echo "       $2"
+        shift
+    done
+    echo
+    exit 1
+}
+
 do_cc() {
     # Run the compiler, capturing its output to the log.
     echo $cc "$@" >> config.log
@@ -46,11 +57,10 @@ do_cc() {
     esac
     echo $cc -Werror "$@" >> config.log
     $cc -Werror "$@" >> config.log 2>&1 && return $?
-    echo "ERROR: configure test passed without -Werror but failed with -Werror."
-    echo "This is probably a bug in the configure script. The failing command"
-    echo "will be at the bottom of config.log."
-    echo "You can run configure with --disable-werror to bypass this check."
-    exit 1
+    error_exit "configure test passed without -Werror but failed with -Werror." \
+        "This is probably a bug in the configure script. The failing command" \
+        "will be at the bottom of config.log." \
+        "You can run configure with --disable-werror to bypass this check."
 }
 
 compile_object() {
@@ -217,7 +227,7 @@ spice=""
 rbd=""
 smartcard_nss=""
 usb_redir=""
-opengl=""
+glx=""
 zlib="yes"
 guest_agent="yes"
 want_tools="yes"
@@ -494,11 +504,10 @@ SunOS)
         LDFLAGS="-L/opt/SUNWspro/prod/lib -R/opt/SUNWspro/prod/lib $LDFLAGS"
         LIBS="-lsunmath $LIBS"
       else
-        echo "QEMU will not link correctly on Solaris 8/X86 or 9/x86 without"
-        echo "libsunmath from the Sun Studio compilers tools, due to a lack of"
-        echo "C99 math features in libm.so in Solaris 8/x86 and Solaris 9/x86"
-        echo "Studio 11 can be downloaded from www.sun.com."
-        exit 1
+        error_exit "QEMU will not link correctly on Solaris 8/X86 or 9/x86 without" \
+            "libsunmath from the Sun Studio compilers tools, due to a lack of" \
+            "C99 math features in libm.so in Solaris 8/x86 and Solaris 9/x86" \
+            "Studio 11 can be downloaded from www.sun.com."
       fi
     fi
   fi
@@ -562,6 +571,11 @@ if test "$mingw32" = "yes" ; then
   QEMU_CFLAGS="-DWIN32_LEAN_AND_MEAN -DWINVER=0x501 $QEMU_CFLAGS"
   # enable C99/POSIX format strings (needs mingw32-runtime 3.15 or later)
   QEMU_CFLAGS="-D__USE_MINGW_ANSI_STDIO=1 $QEMU_CFLAGS"
+  if test "$cpu" = "i386"; then
+    # We need something better than i386 for __sync_val_compare_and_swap
+    # and can expect that QEMU will only run on i686 or later.
+    QEMU_CFLAGS="-march=i686 $QEMU_CFLAGS"
+  fi
   LIBS="-lwinmm -lws2_32 -liphlpapi $LIBS"
 cat > $TMPC << EOF
 int main(void) { return 0; }
@@ -858,9 +872,9 @@ for opt do
   ;;
   --enable-vhost-net) vhost_net="yes"
   ;;
-  --disable-opengl) opengl="no"
+  --disable-glx) glx="no"
   ;;
-  --enable-opengl) opengl="yes"
+  --enable-glx) glx="yes"
   ;;
   --disable-rbd) rbd="no"
   ;;
@@ -964,6 +978,7 @@ mips-softmmu \
 mipsel-softmmu \
 mips64-softmmu \
 mips64el-softmmu \
+moxie-softmmu \
 or32-softmmu \
 ppc-softmmu \
 ppcemb-softmmu \
@@ -1053,11 +1068,14 @@ echo "  --mandir=PATH            install man pages in PATH"
 echo "  --datadir=PATH           install firmware in PATH$confsuffix"
 echo "  --docdir=PATH            install documentation in PATH$confsuffix"
 echo "  --bindir=PATH            install binaries in PATH"
+echo "  --libdir=PATH            install libraries in PATH"
 echo "  --sysconfdir=PATH        install config in PATH$confsuffix"
 echo "  --localstatedir=PATH     install local state in PATH"
 echo "  --with-confsuffix=SUFFIX suffix for QEMU data inside datadir and sysconfdir [$confsuffix]"
 echo "  --enable-debug-tcg       enable TCG debugging"
 echo "  --disable-debug-tcg      disable TCG debugging (default)"
+echo "  --enable-debug-info       enable debugging information (default)"
+echo "  --disable-debug-info      disable debugging information"
 echo "  --enable-debug           enable common debug build options"
 echo "  --enable-sparse          enable sparse checker"
 echo "  --disable-sparse         disable sparse checker (default)"
@@ -1179,8 +1197,7 @@ if test "$ARCH" = "unknown"; then
         echo "Unsupported CPU = $cpu, will use TCG with TCI (experimental)"
         ARCH=tci
     else
-        echo "Unsupported CPU = $cpu, try --enable-tcg-interpreter"
-        exit 1
+        error_exit "Unsupported CPU = $cpu, try --enable-tcg-interpreter"
     fi
 fi
 
@@ -1192,8 +1209,7 @@ EOF
 if compile_object ; then
   : C compiler works ok
 else
-    echo "ERROR: \"$cc\" either does not exist or does not work"
-    exit 1
+    error_exit "\"$cc\" either does not exist or does not work"
 fi
 
 # Consult white-list to determine whether to enable werror
@@ -1248,8 +1264,7 @@ fi
 
 if test "$static" = "yes" ; then
   if test "$pie" = "yes" ; then
-    echo "static and pie are mutually incompatible"
-    exit 1
+    error_exit "static and pie are mutually incompatible"
   else
     pie="no"
   fi
@@ -1288,8 +1303,7 @@ EOF
     fi
   else
     if test "$pie" = "yes"; then
-      echo "PIE not available due to missing toolchain support"
-      exit 1
+      error_exit "PIE not available due to missing toolchain support"
     else
       echo "Disabling PIE due to missing toolchain support"
       pie="no"
@@ -1304,40 +1318,36 @@ if test "$solaris" = "yes" ; then
   if has $install; then
     :
   else
-    echo "Solaris install program not found. Use --install=/usr/ucb/install or"
-    echo "install fileutils from www.blastwave.org using pkg-get -i fileutils"
-    echo "to get ginstall which is used by default (which lives in /opt/csw/bin)"
-    exit 1
+    error_exit "Solaris install program not found. Use --install=/usr/ucb/install or" \
+        "install fileutils from www.blastwave.org using pkg-get -i fileutils" \
+        "to get ginstall which is used by default (which lives in /opt/csw/bin)"
   fi
   if test "`path_of $install`" = "/usr/sbin/install" ; then
-    echo "Error: Solaris /usr/sbin/install is not an appropriate install program."
-    echo "try ginstall from the GNU fileutils available from www.blastwave.org"
-    echo "using pkg-get -i fileutils, or use --install=/usr/ucb/install"
-    exit 1
+    error_exit "Solaris /usr/sbin/install is not an appropriate install program." \
+        "try ginstall from the GNU fileutils available from www.blastwave.org" \
+        "using pkg-get -i fileutils, or use --install=/usr/ucb/install"
   fi
   if has ar; then
     :
   else
-    echo "Error: No path includes ar"
     if test -f /usr/ccs/bin/ar ; then
-      echo "Add /usr/ccs/bin to your path and rerun configure"
+      error_exit "No path includes ar" \
+          "Add /usr/ccs/bin to your path and rerun configure"
     fi
-    exit 1
+    error_exit "No path includes ar"
   fi
 fi
 
 if ! has $python; then
-  echo "Python not found. Use --python=/path/to/python"
-  exit 1
+  error_exit "Python not found. Use --python=/path/to/python"
 fi
 
 # Note that if the Python conditional here evaluates True we will exit
 # with status 1 which is a shell 'false' value.
 if ! "$python" -c 'import sys; sys.exit(sys.version_info < (2,4) or sys.version_info >= (3,))'; then
-  echo "Cannot use '$python', Python 2.4 or later is required."
-  echo "Note that Python 3 or later is not yet supported."
-  echo "Use --python=/path/to/python to specify a supported Python."
-  exit 1
+  error_exit "Cannot use '$python', Python 2.4 or later is required." \
+      "Note that Python 3 or later is not yet supported." \
+      "Use --python=/path/to/python to specify a supported Python."
 fi
 
 if test -z "${target_list+xxx}" ; then
@@ -1356,11 +1366,8 @@ esac
 feature_not_found() {
   feature=$1
 
-  echo "ERROR"
-  echo "ERROR: User requested feature $feature"
-  echo "ERROR: configure was not able to find it"
-  echo "ERROR"
-  exit 1;
+  error_exit "User requested feature $feature" \
+      "configure was not able to find it"
 }
 
 if test -z "$cross_prefix" ; then
@@ -1402,8 +1409,7 @@ fi
 # pkg-config probe
 
 if ! has "$pkg_config_exe"; then
-  echo "Error: pkg-config binary '$pkg_config_exe' not found"
-  exit 1
+  error_exit "pkg-config binary '$pkg_config_exe' not found"
 fi
 
 ##########################################
@@ -1442,11 +1448,8 @@ EOF
     if compile_prog "" "-lz" ; then
         :
     else
-        echo
-        echo "Error: zlib check failed"
-        echo "Make sure to have the zlib libs and headers installed."
-        echo
-        exit 1
+        error_exit "zlib check failed" \
+            "Make sure to have the zlib libs and headers installed."
     fi
 fi
 
@@ -1623,14 +1626,12 @@ if test "$xen_pci_passthrough" != "no"; then
     xen_pci_passthrough=yes
   else
     if test "$xen_pci_passthrough" = "yes"; then
-      echo "ERROR"
-      echo "ERROR: User requested feature Xen PCI Passthrough"
-      echo "ERROR: but this feature require /sys from Linux"
       if test "$xen_ctrl_version" -lt 340; then
-        echo "ERROR: This feature does not work with Xen 3.3"
+        error_exit "User requested feature Xen PCI Passthrough" \
+            "This feature does not work with Xen 3.3"
       fi
-      echo "ERROR"
-      exit 1;
+      error_exit "User requested feature Xen PCI Passthrough" \
+          " but this feature requires /sys from Linux"
     fi
     xen_pci_passthrough=no
   fi
@@ -2004,11 +2005,8 @@ EOF
     if compile_prog "$cfl" "$lib" ; then
         :
     else
-        echo
-        echo "Error: $drv check failed"
-        echo "Make sure to have the $drv libs and headers installed."
-        echo
-        exit 1
+        error_exit "$drv check failed" \
+            "Make sure to have the $drv libs and headers installed."
     fi
 }
 
@@ -2023,11 +2021,8 @@ for drv in $audio_drv_list; do
 
     fmod)
     if test -z $fmod_lib || test -z $fmod_inc; then
-        echo
-        echo "Error: You must specify path to FMOD library and headers"
-        echo "Example: --fmod-inc=/path/include/fmod --fmod-lib=/path/lib/libfmod-3.74.so"
-        echo
-        exit 1
+        error_exit "You must specify path to FMOD library and headers" \
+            "Example: --fmod-inc=/path/include/fmod --fmod-lib=/path/lib/libfmod-3.74.so"
     fi
     audio_drv_probe $drv fmod.h $fmod_lib "return FSOUND_GetVersion();" "-I $fmod_inc"
     libs_softmmu="$fmod_lib $libs_softmmu"
@@ -2070,11 +2065,8 @@ for drv in $audio_drv_list; do
 
     *)
     echo "$audio_possible_drivers" | grep -q "\<$drv\>" || {
-        echo
-        echo "Error: Unknown driver '$drv' selected"
-        echo "Possible drivers are: $audio_possible_drivers"
-        echo
-        exit 1
+        error_exit "Unknown driver '$drv' selected" \
+            "Possible drivers are: $audio_possible_drivers"
     }
     ;;
     esac
@@ -2203,8 +2195,7 @@ then
     LIBS="$glib_libs $LIBS"
     libs_qga="$glib_libs $libs_qga"
 else
-    echo "glib-$glib_req_ver required to compile QEMU"
-    exit 1
+    error_exit "glib-$glib_req_ver required to compile QEMU"
 fi
 
 ##########################################
@@ -2221,11 +2212,10 @@ if test "$pixman" = ""; then
 fi
 if test "$pixman" = "none"; then
   if test "$want_tools" != "no" -o "$softmmu" != "no"; then
-    echo "ERROR: pixman disabled but system emulation or tools build"
-    echo "       enabled.  You can turn off pixman only if you also"
-    echo "       disable all system emulation targets and the tools"
-    echo "       build with '--disable-tools --disable-system'."
-    exit 1
+    error_exit "pixman disabled but system emulation or tools build" \
+        "enabled.  You can turn off pixman only if you also" \
+        "disable all system emulation targets and the tools" \
+        "build with '--disable-tools --disable-system'."
   fi
   pixman_cflags=
   pixman_libs=
@@ -2234,12 +2224,11 @@ elif test "$pixman" = "system"; then
   pixman_libs=`$pkg_config --libs pixman-1 2>/dev/null`
 else
   if test ! -d ${source_path}/pixman/pixman; then
-    echo "ERROR: pixman not present. Your options:"
-    echo "  (1) Preferred: Install the pixman devel package (any recent"
-    echo "      distro should have packages as Xorg needs pixman too)."
-    echo "  (2) Fetch the pixman submodule, using:"
-    echo "      git submodule update --init pixman"
-    exit 1
+    error_exit "pixman not present. Your options:" \
+        "  (1) Preferred: Install the pixman devel package (any recent" \
+        "      distro should have packages as Xorg needs pixman too)." \
+        "  (2) Fetch the pixman submodule, using:" \
+        "      git submodule update --init pixman"
   fi
   mkdir -p pixman/pixman
   pixman_cflags="-I\$(SRC_PATH)/pixman/pixman -I\$(BUILD_DIR)/pixman/pixman"
@@ -2298,11 +2287,8 @@ else
 fi
 
 if test "$mingw32" != yes -a "$pthread" = no; then
-  echo
-  echo "Error: pthread check failed"
-  echo "Make sure to have the pthread libs and headers installed."
-  echo
-  exit 1
+  error_exit "pthread check failed" \
+      "Make sure to have the pthread libs and headers installed."
 fi
 
 ##########################################
@@ -2357,8 +2343,7 @@ fi
 
 if test "$virtio_blk_data_plane" = "yes" -a \
 	"$linux_aio" != "yes" ; then
-  echo "Error: virtio-blk-data-plane requires Linux AIO, please try --enable-linux-aio"
-  exit 1
+  error_exit "virtio-blk-data-plane requires Linux AIO, please try --enable-linux-aio"
 elif test -z "$virtio_blk_data_plane" ; then
   virtio_blk_data_plane=$linux_aio
 fi
@@ -2436,7 +2421,7 @@ EOF
     fdt=yes
     dtc_internal="yes"
     mkdir -p dtc
-    if [ "$source_path" != `pwd` ]; then
+    if [ "$source_path" != `pwd` ] ; then
        symlink "$source_path/dtc/Makefile" "dtc/Makefile"
        symlink "$source_path/dtc/scripts" "dtc/scripts"
     fi
@@ -2450,7 +2435,7 @@ EOF
     echo "      git submodule update --init dtc"
     exit 1
   else
-    # don't have and dont wan't
+    # don't have and don't want
     fdt_libs=
     fdt=no
   fi
@@ -2459,23 +2444,23 @@ fi
 libs_softmmu="$libs_softmmu $fdt_libs"
 
 ##########################################
-# opengl probe, used by milkymist-tmu2
-if test "$opengl" != "no" ; then
-  opengl_libs="-lGL -lX11"
+# GLX probe, used by milkymist-tmu2
+if test "$glx" != "no" ; then
+  glx_libs="-lGL -lX11"
   cat > $TMPC << EOF
 #include <X11/Xlib.h>
 #include <GL/gl.h>
 #include <GL/glx.h>
-int main(void) { return GL_VERSION != 0; }
+int main(void) { glBegin(0); glXQueryVersion(0,0,0); return 0; }
 EOF
-  if compile_prog "" "-lGL" ; then
-    opengl=yes
+  if compile_prog "" "-lGL -lX11" ; then
+    glx=yes
   else
-    if test "$opengl" = "yes" ; then
-      feature_not_found "opengl"
+    if test "$glx" = "yes" ; then
+      feature_not_found "glx"
     fi
-    opengl_libs=
-    opengl=no
+    glx_libs=
+    glx=no
   fi
 fi
 
@@ -2876,10 +2861,7 @@ elif compile_prog "" "-lm" ; then
   LIBS="-lm $LIBS"
   libs_qga="-lm $libs_qga"
 else
-  echo
-  echo "Error: libm check failed"
-  echo
-  exit 1
+  error_exit "libm check failed"
 fi
 
 ##########################################
@@ -3055,11 +3037,8 @@ fi
 
 $python "$source_path/scripts/tracetool.py" "--backend=$trace_backend" --check-backend  > /dev/null 2> /dev/null
 if test "$?" -ne 0 ; then
-  echo
-  echo "Error: invalid trace backend"
-  echo "Please choose a supported trace backend."
-  echo
-  exit 1
+  error_exit "invalid trace backend" \
+      "Please choose a supported trace backend."
 fi
 
 ##########################################
@@ -3074,10 +3053,7 @@ EOF
     LIBS="-lust -lurcu-bp $LIBS"
     libs_qga="-lust -lurcu-bp $libs_qga"
   else
-    echo
-    echo "Error: Trace backend 'ust' missing libust header files"
-    echo
-    exit 1
+    error_exit "Trace backend 'ust' missing libust header files"
   fi
 fi
 
@@ -3085,10 +3061,7 @@ fi
 # For 'dtrace' backend, test if 'dtrace' command is present
 if test "$trace_backend" = "dtrace"; then
   if ! has 'dtrace' ; then
-    echo
-    echo "Error: dtrace command is not found in PATH $PATH"
-    echo
-    exit 1
+    error_exit "dtrace command is not found in PATH $PATH"
   fi
   trace_backend_stap="no"
   if has 'stap' ; then
@@ -3122,34 +3095,58 @@ fi
 ##########################################
 # check and set a backend for coroutine
 
-# default is ucontext, but always fallback to gthread
-# windows autodetected by make
-if test "$coroutine" = "" -o "$coroutine" = "ucontext"; then
-  if test "$darwin" != "yes"; then
-    cat > $TMPC << EOF
+# We prefer ucontext, but it's not always possible. The fallback
+# is sigcontext. gthread is not selectable except explicitly, because
+# it is not functional enough to run QEMU proper. (It is occasionally
+# useful for debugging purposes.)  On Windows the only valid backend
+# is the Windows-specific one.
+
+ucontext_works=no
+if test "$darwin" != "yes"; then
+  cat > $TMPC << EOF
 #include <ucontext.h>
 #ifdef __stub_makecontext
 #error Ignoring glibc stub makecontext which will always fail
 #endif
 int main(void) { makecontext(0, 0, 0); return 0; }
 EOF
-    if compile_prog "" "" ; then
-        coroutine_backend=ucontext
-    else
-	coroutine_backend=gthread
-    fi
+  if compile_prog "" "" ; then
+    ucontext_works=yes
   fi
-elif test "$coroutine" = "gthread" ; then
-  coroutine_backend=gthread
-elif test "$coroutine" = "windows" ; then
-  coroutine_backend=windows
-elif test "$coroutine" = "sigaltstack" ; then
-  coroutine_backend=sigaltstack
+fi
+
+if test "$coroutine" = ""; then
+  if test "$mingw32" = "yes"; then
+    coroutine=win32
+  elif test "$ucontext_works" = "yes"; then
+    coroutine=ucontext
+  else
+    coroutine=sigaltstack
+  fi
 else
-  echo
-  echo "Error: unknown coroutine backend $coroutine"
-  echo
-  exit 1
+  case $coroutine in
+  windows)
+    if test "$mingw32" != "yes"; then
+      error_exit "'windows' coroutine backend only valid for Windows"
+    fi
+    # Unfortunately the user visible backend name doesn't match the
+    # coroutine-*.c filename for this case, so we have to adjust it here.
+    coroutine=win32
+    ;;
+  ucontext)
+    if test "$ucontext_works" != "yes"; then
+      feature_not_found "ucontext"
+    fi
+    ;;
+  gthread|sigaltstack)
+    if test "$mingw32" = "yes"; then
+      error_exit "only the 'windows' coroutine backend is valid for Windows"
+    fi
+    ;;
+  *)
+    error_exit "unknown coroutine backend $coroutine"
+    ;;
+  esac
 fi
 
 ##########################################
@@ -3334,8 +3331,7 @@ if test "$softmmu" = yes ; then
       tools="$tools fsdev/virtfs-proxy-helper\$(EXESUF)"
     else
       if test "$virtfs" = yes; then
-        echo "VirtFS is supported only on Linux and requires libcap-devel and libattr-devel"
-        exit 1
+        error_exit "VirtFS is supported only on Linux and requires libcap-devel and libattr-devel"
       fi
       virtfs=no
     fi
@@ -3453,11 +3449,11 @@ echo "rbd support       $rbd"
 echo "xfsctl support    $xfs"
 echo "nss used          $smartcard_nss"
 echo "usb net redir     $usb_redir"
-echo "OpenGL support    $opengl"
+echo "GLX support       $glx"
 echo "libiscsi support  $libiscsi"
 echo "build guest agent $guest_agent"
 echo "seccomp support   $seccomp"
-echo "coroutine backend $coroutine_backend"
+echo "coroutine backend $coroutine"
 echo "GlusterFS support $glusterfs"
 echo "virtio-blk-data-plane $virtio_blk_data_plane"
 echo "gcov              $gcov_tool"
@@ -3764,8 +3760,8 @@ if test "$usb_redir" = "yes" ; then
   echo "CONFIG_USB_REDIR=y" >> $config_host_mak
 fi
 
-if test "$opengl" = "yes" ; then
-  echo "CONFIG_OPENGL=y" >> $config_host_mak
+if test "$glx" = "yes" ; then
+  echo "CONFIG_GLX=y" >> $config_host_mak
 fi
 
 if test "$libiscsi" = "yes" ; then
@@ -3790,11 +3786,7 @@ if test "$rbd" = "yes" ; then
   echo "CONFIG_RBD=y" >> $config_host_mak
 fi
 
-if test "$coroutine_backend" = "ucontext" ; then
-  echo "CONFIG_UCONTEXT_COROUTINE=y" >> $config_host_mak
-elif test "$coroutine_backend" = "sigaltstack" ; then
-  echo "CONFIG_SIGALTSTACK_COROUTINE=y" >> $config_host_mak
-fi
+echo "CONFIG_COROUTINE_BACKEND=$coroutine" >> $config_host_mak
 
 if test "$open_by_handle_at" = "yes" ; then
   echo "CONFIG_OPEN_BY_HANDLE=y" >> $config_host_mak
@@ -3829,7 +3821,7 @@ if test "$glusterfs" = "yes" ; then
 fi
 
 if test "$virtio_blk_data_plane" = "yes" ; then
-  echo "CONFIG_VIRTIO_BLK_DATA_PLANE=y" >> $config_host_mak
+  echo 'CONFIG_VIRTIO_BLK_DATA_PLANE=$(CONFIG_VIRTIO)' >> $config_host_mak
 fi
 
 # USB host support
@@ -3914,8 +3906,6 @@ else
   echo "AUTOCONF_HOST := "                             >> $config_host_mak
 fi
 echo "LDFLAGS=$LDFLAGS" >> $config_host_mak
-echo "ARLIBS_BEGIN=$arlibs_begin" >> $config_host_mak
-echo "ARLIBS_END=$arlibs_end" >> $config_host_mak
 echo "LIBS+=$LIBS" >> $config_host_mak
 echo "LIBS_TOOLS+=$libs_tools" >> $config_host_mak
 echo "EXESUF=$EXESUF" >> $config_host_mak
@@ -3970,7 +3960,7 @@ target_arch2=`echo $target | cut -d '-' -f 1`
 target_bigendian="no"
 
 case "$target_arch2" in
-  armeb|lm32|m68k|microblaze|mips|mipsn32|mips64|or32|ppc|ppcemb|ppc64|ppc64abi32|s390x|sh4eb|sparc|sparc64|sparc32plus|xtensaeb)
+  armeb|lm32|m68k|microblaze|mips|mipsn32|mips64|moxie|or32|ppc|ppcemb|ppc64|ppc64abi32|s390x|sh4eb|sparc|sparc64|sparc32plus|xtensaeb)
   target_bigendian=yes
   ;;
 esac
@@ -3984,22 +3974,20 @@ case "$target" in
     ;;
   ${target_arch2}-linux-user)
     if test "$linux" != "yes" ; then
-      echo "ERROR: Target '$target' is only available on a Linux host"
-      exit 1
+      error_exit "Target '$target' is only available on a Linux host"
     fi
     target_user_only="yes"
     target_linux_user="yes"
     ;;
   ${target_arch2}-bsd-user)
     if test "$bsd" != "yes" ; then
-      echo "ERROR: Target '$target' is only available on a BSD host"
-      exit 1
+      error_exit "Target '$target' is only available on a BSD host"
     fi
     target_user_only="yes"
     target_bsd_user="yes"
     ;;
   *)
-    echo "ERROR: Target '$target' not recognised"
+    error_exit "Target '$target' not recognised"
     exit 1
     ;;
 esac
@@ -4043,7 +4031,7 @@ case "$target_arch2" in
     target_nptl="yes"
   ;;
   lm32)
-    target_libs_softmmu="$opengl_libs"
+    target_libs_softmmu="$glx_libs"
   ;;
   m68k)
     bflt="yes"
@@ -4073,6 +4061,8 @@ case "$target_arch2" in
     TARGET_BASE_ARCH=mips
     echo "TARGET_ABI_MIPSN64=y" >> $config_target_mak
     target_long_alignment=8
+  ;;
+  moxie)
   ;;
   or32)
     TARGET_ARCH=openrisc
@@ -4128,8 +4118,7 @@ case "$target_arch2" in
     TARGET_ARCH=xtensa
   ;;
   *)
-    echo "Unsupported target CPU"
-    exit 1
+    error_exit "Unsupported target CPU"
   ;;
 esac
 # TARGET_BASE_ARCH needs to be defined after TARGET_ARCH
@@ -4144,7 +4133,7 @@ upper() {
 }
 
 case "$cpu" in
-  arm|i386|x86_64|ppc)
+  i386|x86_64|ppc)
     # The TCG interpreter currently does not support ld/st optimization.
     if test "$tcg_interpreter" = "no" ; then
         echo "CONFIG_QEMU_LDST_OPTIMIZATION=y" >> $config_target_mak
@@ -4310,6 +4299,10 @@ for i in $ARCH $TARGET_BASE_ARCH ; do
   mips*)
     echo "CONFIG_MIPS_DIS=y"  >> $config_target_mak
     echo "CONFIG_MIPS_DIS=y"  >> config-all-disas.mak
+  ;;
+  moxie*)
+    echo "CONFIG_MOXIE_DIS=y"  >> $config_target_mak
+    echo "CONFIG_MOXIE_DIS=y"  >> config-all-disas.mak
   ;;
   or32)
     echo "CONFIG_OPENRISC_DIS=y"  >> $config_target_mak

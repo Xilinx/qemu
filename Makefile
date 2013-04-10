@@ -35,6 +35,9 @@ GENERATED_HEADERS = config-host.h qemu-options.def
 GENERATED_HEADERS += qmp-commands.h qapi-types.h qapi-visit.h
 GENERATED_SOURCES += qmp-marshal.c qapi-types.c qapi-visit.c
 
+GENERATED_HEADERS += trace/generated-events.h
+GENERATED_SOURCES += trace/generated-events.c
+
 GENERATED_HEADERS += trace/generated-tracers.h
 ifeq ($(TRACE_BACKEND),dtrace)
 GENERATED_HEADERS += trace/generated-tracers-dtrace.h
@@ -73,7 +76,10 @@ config-all-devices.mak:
 	$(call quiet-command,echo '# no devices' > $@,"  GEN   $@")
 else
 config-all-devices.mak: $(SUBDIR_DEVICES_MAK)
-	$(call quiet-command,cat $(SUBDIR_DEVICES_MAK) | grep =y | sort -u > $@,"  GEN   $@")
+	$(call quiet-command, sed -n \
+             's|^\([^=]*\)=\(.*\)$$|\1:=$$(findstring y,$$(\1)\2)|p' \
+             $(SUBDIR_DEVICES_MAK) | sort -u > $@, \
+             "  GEN   $@")
 endif
 
 -include $(SUBDIR_DEVICES_MAK_DEP)

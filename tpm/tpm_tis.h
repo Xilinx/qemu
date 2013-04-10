@@ -17,7 +17,7 @@
 #ifndef TPM_TPM_TIS_H
 #define TPM_TPM_TIS_H
 
-#include "hw/isa.h"
+#include "hw/isa/isa.h"
 #include "qemu-common.h"
 
 #define TPM_TIS_ADDR_BASE           0xFED40000
@@ -35,10 +35,10 @@
 #define TYPE_TPM_TIS                "tpm-tis"
 
 
-typedef struct TPMSizedBuffer {
+struct TPMSizedBuffer {
     uint32_t size;
     uint8_t  *buffer;
-} TPMSizedBuffer;
+};
 
 typedef enum {
     TPM_TIS_STATE_IDLE = 0,

@@ -273,63 +273,6 @@ static inline uint64_t deposit64(uint64_t value, int start, int length,
     return (value & ~mask) | ((fieldval << start) & mask);
 }
 
-/**
- * A descriptor for a Uint32 that is part of guest accessible device state
- * @ro: whether or not the bit is read-only state comming out of reset
- * @w1c: bits with the common write 1 to clear semantic.
- * @nw0: bits that cant be written with a 0 by the guest (sticky 1)
- * @nw1: bits that cant be written with a 1 by the guest (sticky 0)
- * @reset: reset value.
- * @ge1: Bits that when written 1 indicate a guest error
- * @ge0: Bits that when written 0 indicate a guest error
- * @cor: Bits that are clear on read
- * @width: width of the uint32t. Only the @width least significant bits are
- * valid. All others are silent Read-as-reset/WI.
- */
-
-typedef struct UInt32StateInfo {
-    const char *name;
-    uint32_t ro;
-    uint32_t w1c;
-    uint32_t nw0;
-    uint32_t nw1;
-    uint32_t reset;
-    uint32_t ge1;
-    uint32_t ge0;
-    uint32_t cor;
-    int width;
-} UInt32StateInfo;
-
-/**
- * reset an array of u32s
- * @array: array of u32s to reset
- * @info: corresponding array of UInt32StateInfos to get reset values from
- * @num: number of values to reset
- */
-
-void uint32_array_reset(uint32_t *array, const UInt32StateInfo *info, int num);
-
-/**
- * write a value to a uint32_t subject to its restrictions
- * @state: Pointer to location to be written
- * @info: Definition of variable
- * @val: value to write
- * @prefix: Debug and error message prefix
- * @debug: Turn on noisy debug printfery
- */
-
-void uint32_write(uint32_t *state, const UInt32StateInfo *info, uint32_t val,
-                  const char *prefix, bool debug);
-
-/**
- * write a value from a uint32_t subject to its restrictions
- * @state: Pointer to location to be read
- * @info: Definition of variable
- * @prefix: Debug and error message prefix
- * @debug: Turn on noisy debug printfery
- */
-
-uint32_t uint32_read(uint32_t *state, const UInt32StateInfo *info,
-                     const char *prefix, bool debug);
+#define ONES(num) ((num) == 64 ? ~0ull : (1ull << (num)) - 1)
 
 #endif

@@ -11,9 +11,7 @@
 #include "sysemu/sysemu.h"
 #include "sysemu/cpus.h"
 #include "sysemu/kvm.h"
-#include "hw/apic_internal.h"
-
-#define APIC_DEFAULT_ADDRESS    0xfee00000
+#include "hw/i386/apic_internal.h"
 
 #define VAPIC_IO_PORT           0x7e
 

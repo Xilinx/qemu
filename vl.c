@@ -117,12 +117,12 @@ int main(int argc, char **argv)
 #include "hw/boards.h"
 #include "hw/usb.h"
 #include "hw/pcmcia.h"
-#include "hw/pc.h"
-#include "hw/isa.h"
+#include "hw/i386/pc.h"
+#include "hw/isa/isa.h"
 #include "hw/bt.h"
-#include "hw/watchdog.h"
-#include "hw/smbios.h"
-#include "hw/xen.h"
+#include "sysemu/watchdog.h"
+#include "hw/i386/smbios.h"
+#include "hw/xen/xen.h"
 #include "hw/qdev.h"
 #include "hw/loader.h"
 #include "monitor/qdev.h"
@@ -137,7 +137,7 @@ int main(int argc, char **argv)
 #include "char/char.h"
 #include "qemu/cache-utils.h"
 #include "sysemu/blockdev.h"
-#include "hw/block-common.h"
+#include "hw/block/block.h"
 #include "migration/block.h"
 #include "tpm/tpm.h"
 #include "sysemu/dma.h"
@@ -650,7 +650,7 @@ void runstate_set(RunState new_state)
                 RunState_lookup[new_state]);
         abort();
     }
-
+    trace_runstate_set(new_state);
     current_run_state = new_state;
 }
 
@@ -668,6 +668,11 @@ StatusInfo *qmp_query_status(Error **errp)
     info->status = current_run_state;
 
     return info;
+}
+
+int64_t qmp_query_cpu_max(Error **errp)
+{
+    return current_machine->max_cpus;
 }
 
 /***********************************************************/
@@ -1281,9 +1286,9 @@ char *get_boot_devices_list(size_t *size)
 
     if (boot_strict && *size > 0) {
         list[total-1] = '\n';
-        list = g_realloc(list, total + 4);
-        memcpy(&list[total], "HALT", 4);
-        *size = total + 4;
+        list = g_realloc(list, total + 5);
+        memcpy(&list[total], "HALT", 5);
+        *size = total + 5;
     }
     return list;
 }
@@ -2399,6 +2404,7 @@ static int mon_init_func(QemuOpts *opts, void *opaque)
         exit(1);
     }
 
+    qemu_chr_fe_claim_no_fail(chr);
     monitor_init(chr, flags);
     return 0;
 }
@@ -2548,7 +2554,7 @@ static int virtcon_parse(const char *devname)
         qemu_opt_set(bus_opts, "driver", "virtio-serial-s390");
     } else {
         qemu_opt_set(bus_opts, "driver", "virtio-serial-pci");
-    } 
+    }
 
     dev_opts = qemu_opts_create_nofail(device);
     qemu_opt_set(dev_opts, "driver", "virtconsole");
@@ -2600,7 +2606,7 @@ static int sclp_parse(const char *devname)
 }
 
 static int debugcon_parse(const char *devname)
-{   
+{
     QemuOpts *opts;
 
     if (!qemu_chr_new("debugcon", devname, NULL)) {
@@ -2943,6 +2949,8 @@ int main(int argc, char **argv, char **envp)
 
     nb_numa_nodes = 0;
     nb_nics = 0;
+
+    bdrv_init_with_whitelist();
 
     autostart= 1;
 
@@ -3587,7 +3595,9 @@ int main(int argc, char **argv, char **envp)
                 break;
             }
             case QEMU_OPTION_acpitable:
-                do_acpitable_option(optarg);
+                opts = qemu_opts_parse(qemu_find_opts("acpi"), optarg, 1);
+                g_assert(opts != NULL);
+                do_acpitable_option(opts);
                 break;
             case QEMU_OPTION_smbios:
                 do_smbios_option(optarg);
@@ -3735,8 +3745,8 @@ int main(int argc, char **argv, char **envp)
 			}
 			p += 8;
 			os_set_proc_name(p);
-		     }	
-		 }	
+		     }
+		 }
                 break;
             case QEMU_OPTION_prom_env:
                 if (nb_prom_envs >= MAX_PROM_ENVS) {
@@ -4201,8 +4211,6 @@ int main(int argc, char **argv, char **envp)
     }
 
     cpu_exec_init_all();
-
-    bdrv_init_with_whitelist();
 
     blk_mig_init();
 
