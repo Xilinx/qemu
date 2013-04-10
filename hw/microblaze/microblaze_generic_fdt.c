@@ -314,6 +314,8 @@ microblaze_generic_fdt_init(QEMUMachineInitArgs *args)
     FDTMachineInfo *fdti;
     FDTMemoryInfo *meminfo;
 
+    fdt_generic_num_cpus = 1;
+
     machine_opts = qemu_opts_find(qemu_find_opts("machine"), 0);
     if (!machine_opts) {
         goto no_dtb_arg;
