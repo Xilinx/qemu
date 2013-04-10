@@ -97,14 +97,6 @@
 
 #define READ_BUF_LEN 4096
 
-#if !GLIB_CHECK_VERSION(2, 14, 0)
-static guint g_timeout_add_seconds(guint interval, GSourceFunc function,
-                                   gpointer data)
-{
-    return g_timeout_add(interval * 1000, function, data);
-}
-#endif
-
 /***********************************************************/
 /* character device */
 
