@@ -2411,6 +2411,7 @@ fdt=yes
 if test "$fdt" != "no" ; then
   fdt_libs="-lfdt"
   cat > $TMPC << EOF
+#include <libfdt.h>
 int main(void) { return 0; }
 EOF
   if compile_prog "" "$fdt_libs" ; then
