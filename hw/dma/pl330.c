@@ -1601,7 +1601,7 @@ static void pl330_realize(DeviceState *dev, Error **errp)
 
     pl330_queue_init(&s->read_queue, s->rd_q_dep, s);
     pl330_queue_init(&s->write_queue, s->wr_q_dep, s);
-    pl330_fifo_init(&s->fifo, s->data_buffer_dep);
+    pl330_fifo_init(&s->fifo, 2 * s->data_buffer_dep);
 }
 
 static Property pl330_properties[] = {
@@ -1623,7 +1623,7 @@ static Property pl330_properties[] = {
     DEFINE_PROP_UINT8("wr_q_dep", PL330State, wr_q_dep, 16),
     DEFINE_PROP_UINT8("rd_cap", PL330State, rd_cap, 8),
     DEFINE_PROP_UINT8("rd_q_dep", PL330State, rd_q_dep, 16),
-    DEFINE_PROP_UINT16("data_buffer_dep", PL330State, data_buffer_dep, 256),
+    DEFINE_PROP_UINT16("data_buffer_dep", PL330State, data_buffer_dep, 128),
 
     DEFINE_PROP_END_OF_LIST(),
 };
