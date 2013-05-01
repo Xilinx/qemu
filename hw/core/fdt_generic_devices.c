@@ -4,7 +4,7 @@
 #include "exec/memory.h"
 #include "exec/address-spaces.h"
 #include "qemu/log.h"
-#include "char/char.h"
+#include "sysemu/char.h"
 #include "block/coroutine.h"
 
 #include "hw/char/serial.h"
@@ -261,6 +261,7 @@ static const TypeInfo fdt_qom_aliases [] = {
     {   .name = "arm.cortex-a9-gic",        .parent = "arm_gic"             },
     {   .name = "arm.gic",                  .parent = "arm_gic"             },
     {   .name = "arm_a9_scu",               .parent = "a9-scu"              },
+    {   .name = "xlnx.ps7-usb",             .parent = "xlnx,ps7-usb"        },
 };
 
 static void fdt_generic_register_types(void)

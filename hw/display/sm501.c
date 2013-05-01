@@ -26,9 +26,8 @@
 #include "hw/hw.h"
 #include "hw/char/serial.h"
 #include "ui/console.h"
-#include "hw/arm/devices.h"
+#include "hw/devices.h"
 #include "hw/sysbus.h"
-#include "hw/qdev-addr.h"
 #include "qemu/range.h"
 #include "ui/pixel_ops.h"
 
@@ -1383,6 +1382,10 @@ static void sm501_update_display(void *opaque)
 	sm501_draw_crt(s);
 }
 
+static const GraphicHwOps sm501_ops = {
+    .gfx_update  = sm501_update_display,
+};
+
 void sm501_init(MemoryRegion *address_space_mem, uint32_t base,
                 uint32_t local_mem_bytes, qemu_irq irq, CharDriverState *chr)
 {
@@ -1430,7 +1433,7 @@ void sm501_init(MemoryRegion *address_space_mem, uint32_t base,
     /* bridge to usb host emulation module */
     dev = qdev_create(NULL, "sysbus-ohci");
     qdev_prop_set_uint32(dev, "num-ports", 2);
-    qdev_prop_set_taddr(dev, "dma-offset", base);
+    qdev_prop_set_uint64(dev, "dma-offset", base);
     qdev_init_nofail(dev);
     sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0,
                     base + MMIO_BASE_OFFSET + SM501_USB_HOST);
@@ -1445,6 +1448,5 @@ void sm501_init(MemoryRegion *address_space_mem, uint32_t base,
     }
 
     /* create qemu graphic console */
-    s->con = graphic_console_init(sm501_update_display, NULL,
-                                  NULL, NULL, s);
+    s->con = graphic_console_init(&sm501_ops, s);
 }

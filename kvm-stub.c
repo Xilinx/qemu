@@ -14,7 +14,6 @@
 #include "hw/hw.h"
 #include "hw/pci/msi.h"
 #include "cpu.h"
-#include "exec/gdbstub.h"
 #include "sysemu/kvm.h"
 
 KVMState *kvm_state;
@@ -42,11 +41,11 @@ void kvm_cpu_synchronize_state(CPUArchState *env)
 {
 }
 
-void kvm_cpu_synchronize_post_reset(CPUArchState *env)
+void kvm_cpu_synchronize_post_reset(CPUState *cpu)
 {
 }
 
-void kvm_cpu_synchronize_post_init(CPUArchState *env)
+void kvm_cpu_synchronize_post_init(CPUState *cpu)
 {
 }
 
@@ -101,16 +100,6 @@ int kvm_set_signal_mask(CPUArchState *env, const sigset_t *sigset)
     abort();
 }
 #endif
-
-int kvm_set_ioeventfd_pio_word(int fd, uint16_t addr, uint16_t val, bool assign)
-{
-    return -ENOSYS;
-}
-
-int kvm_set_ioeventfd_mmio(int fd, uint32_t adr, uint32_t val, bool assign, uint32_t len)
-{
-    return -ENOSYS;
-}
 
 int kvm_on_sigbus_vcpu(CPUState *cpu, int code, void *addr)
 {

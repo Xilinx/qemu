@@ -16,6 +16,9 @@
 #include <hw/virtio/virtio-net.h>
 #include <hw/virtio/virtio-serial.h>
 #include <hw/virtio/virtio-scsi.h>
+#ifdef CONFIG_VHOST_SCSI
+#include <hw/virtio/vhost-scsi.h>
+#endif
 #include <hw/virtio/virtio-balloon.h>
 #include <hw/virtio/virtio-rng.h>
 #include <hw/virtio/virtio-bus.h>
@@ -73,10 +76,7 @@ struct VirtioCcwDevice {
     SubchDev *sch;
     VirtIODevice *vdev;
     char *bus_id;
-    NICConf nic;
     uint32_t host_features[VIRTIO_CCW_FEATURE_SIZE];
-    virtio_serial_conf serial;
-    virtio_net_conf net;
     VirtIORNGConf rng;
     VirtioBusState bus;
     /* Guest provided values: */
@@ -104,6 +104,17 @@ typedef struct VirtIOSCSICcw {
     VirtIOSCSI vdev;
 } VirtIOSCSICcw;
 
+/* vhost-scsi-ccw */
+
+#define TYPE_VHOST_SCSI_CCW "vhost-scsi-ccw"
+#define VHOST_SCSI_CCW(obj) \
+        OBJECT_CHECK(VHostSCSICcw, (obj), TYPE_VHOST_SCSI_CCW)
+
+typedef struct VHostSCSICcw {
+    VirtioCcwDevice parent_obj;
+    VHostSCSI vdev;
+} VHostSCSICcw;
+
 /* virtio-blk-ccw */
 
 #define TYPE_VIRTIO_BLK_CCW "virtio-blk-ccw"
@@ -126,6 +137,28 @@ typedef struct VirtIOBalloonCcw {
     VirtioCcwDevice parent_obj;
     VirtIOBalloon vdev;
 } VirtIOBalloonCcw;
+
+/* virtio-serial-ccw */
+
+#define TYPE_VIRTIO_SERIAL_CCW "virtio-serial-ccw"
+#define VIRTIO_SERIAL_CCW(obj) \
+        OBJECT_CHECK(VirtioSerialCcw, (obj), TYPE_VIRTIO_SERIAL_CCW)
+
+typedef struct VirtioSerialCcw {
+    VirtioCcwDevice parent_obj;
+    VirtIOSerial vdev;
+} VirtioSerialCcw;
+
+/* virtio-net-ccw */
+
+#define TYPE_VIRTIO_NET_CCW "virtio-net-ccw"
+#define VIRTIO_NET_CCW(obj) \
+        OBJECT_CHECK(VirtIONetCcw, (obj), TYPE_VIRTIO_NET_CCW)
+
+typedef struct VirtIONetCcw {
+    VirtioCcwDevice parent_obj;
+    VirtIONet vdev;
+} VirtIONetCcw;
 
 VirtualCssBus *virtual_css_bus_init(void);
 void virtio_ccw_device_update_status(SubchDev *sch);

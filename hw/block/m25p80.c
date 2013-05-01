@@ -24,7 +24,6 @@
 #include "hw/hw.h"
 #include "sysemu/blockdev.h"
 #include "hw/ssi.h"
-#include "hw/arm/devices.h"
 #include "qemu/config-file.h"
 
 #ifndef M25P80_ERR_DEBUG

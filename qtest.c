@@ -13,7 +13,7 @@
 
 #include "sysemu/qtest.h"
 #include "hw/qdev.h"
-#include "char/char.h"
+#include "sysemu/char.h"
 #include "exec/ioport.h"
 #include "exec/memory.h"
 #include "hw/irq.h"
@@ -271,8 +271,8 @@ static void qtest_process_command(CharDriverState *chr, gchar **words)
         uint32_t value;
 
         g_assert(words[1] && words[2]);
-        addr = strtol(words[1], NULL, 0);
-        value = strtol(words[2], NULL, 0);
+        addr = strtoul(words[1], NULL, 0);
+        value = strtoul(words[2], NULL, 0);
 
         if (words[0][3] == 'b') {
             cpu_outb(addr, value);
@@ -290,7 +290,7 @@ static void qtest_process_command(CharDriverState *chr, gchar **words)
         uint32_t value = -1U;
 
         g_assert(words[1]);
-        addr = strtol(words[1], NULL, 0);
+        addr = strtoul(words[1], NULL, 0);
 
         if (words[0][2] == 'b') {
             value = cpu_inb(addr);

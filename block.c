@@ -667,16 +667,22 @@ static int bdrv_open_flags(BlockDriverState *bs, int flags)
  * Removes all processed options from *options.
  */
 static int bdrv_open_common(BlockDriverState *bs, BlockDriverState *file,
-    const char *filename, QDict *options,
-    int flags, BlockDriver *drv)
+    QDict *options, int flags, BlockDriver *drv)
 {
     int ret, open_flags;
+    const char *filename;
 
     assert(drv != NULL);
     assert(bs->file == NULL);
     assert(options != NULL && bs->options != options);
 
-    trace_bdrv_open_common(bs, filename, flags, drv->format_name);
+    if (file != NULL) {
+        filename = file->filename;
+    } else {
+        filename = qdict_get_try_str(options, "filename");
+    }
+
+    trace_bdrv_open_common(bs, filename ?: "", flags, drv->format_name);
 
     if (use_bdrv_whitelist && !bdrv_is_whitelisted(drv)) {
         return -ENOTSUP;
@@ -716,8 +722,15 @@ static int bdrv_open_common(BlockDriverState *bs, BlockDriverState *file,
     if (drv->bdrv_file_open) {
         assert(file == NULL);
         assert(drv->bdrv_parse_filename || filename != NULL);
-        ret = drv->bdrv_file_open(bs, filename, options, open_flags);
+        ret = drv->bdrv_file_open(bs, options, open_flags);
     } else {
+        if (file == NULL) {
+            qerror_report(ERROR_CLASS_GENERIC_ERROR, "Can't use '%s' as a "
+                          "block driver for the protocol level",
+                          drv->format_name);
+            ret = -EINVAL;
+            goto free_and_fail;
+        }
         assert(file != NULL);
         bs->file = file;
         ret = drv->bdrv_open(bs, options, open_flags);
@@ -773,6 +786,18 @@ int bdrv_file_open(BlockDriverState **pbs, const char *filename,
     bs->options = options;
     options = qdict_clone_shallow(options);
 
+    /* Fetch the file name from the options QDict if necessary */
+    if (!filename) {
+        filename = qdict_get_try_str(options, "filename");
+    } else if (filename && !qdict_haskey(options, "filename")) {
+        qdict_put(options, "filename", qstring_from_str(filename));
+    } else {
+        qerror_report(ERROR_CLASS_GENERIC_ERROR, "Can't specify 'file' and "
+                      "'filename' options at the same time");
+        ret = -EINVAL;
+        goto fail;
+    }
+
     /* Find the right block driver */
     drvname = qdict_get_try_str(options, "driver");
     if (drvname) {
@@ -801,6 +826,7 @@ int bdrv_file_open(BlockDriverState **pbs, const char *filename,
             ret = -EINVAL;
             goto fail;
         }
+        qdict_del(options, "filename");
     } else if (!drv->bdrv_parse_filename && !filename) {
         qerror_report(ERROR_CLASS_GENERIC_ERROR,
                       "The '%s' block driver requires a file name",
@@ -809,7 +835,7 @@ int bdrv_file_open(BlockDriverState **pbs, const char *filename,
         goto fail;
     }
 
-    ret = bdrv_open_common(bs, NULL, filename, options, flags, drv);
+    ret = bdrv_open_common(bs, NULL, options, flags, drv);
     if (ret < 0) {
         goto fail;
     }
@@ -838,18 +864,35 @@ fail:
     return ret;
 }
 
-int bdrv_open_backing_file(BlockDriverState *bs)
+/*
+ * Opens the backing file for a BlockDriverState if not yet open
+ *
+ * options is a QDict of options to pass to the block drivers, or NULL for an
+ * empty set of options. The reference to the QDict is transferred to this
+ * function (even on failure), so if the caller intends to reuse the dictionary,
+ * it needs to use QINCREF() before calling bdrv_file_open.
+ */
+int bdrv_open_backing_file(BlockDriverState *bs, QDict *options)
 {
     char backing_filename[PATH_MAX];
     int back_flags, ret;
     BlockDriver *back_drv = NULL;
 
     if (bs->backing_hd != NULL) {
+        QDECREF(options);
         return 0;
     }
 
+    /* NULL means an empty set of options */
+    if (options == NULL) {
+        options = qdict_new();
+    }
+
     bs->open_flags &= ~BDRV_O_NO_BACKING;
-    if (bs->backing_file[0] == '\0') {
+    if (qdict_haskey(options, "file.filename")) {
+        backing_filename[0] = '\0';
+    } else if (bs->backing_file[0] == '\0' && qdict_size(options) == 0) {
+        QDECREF(options);
         return 0;
     }
 
@@ -864,7 +907,8 @@ int bdrv_open_backing_file(BlockDriverState *bs)
     /* backing files always opened read-only */
     back_flags = bs->open_flags & ~(BDRV_O_RDWR | BDRV_O_SNAPSHOT);
 
-    ret = bdrv_open(bs->backing_hd, backing_filename, NULL,
+    ret = bdrv_open(bs->backing_hd,
+                    *backing_filename ? backing_filename : NULL, options,
                     back_flags, back_drv);
     if (ret < 0) {
         bdrv_delete(bs->backing_hd);
@@ -1008,7 +1052,7 @@ int bdrv_open(BlockDriverState *bs, const char *filename, QDict *options,
     }
 
     /* Open the image */
-    ret = bdrv_open_common(bs, file, filename, options, flags, drv);
+    ret = bdrv_open_common(bs, file, options, flags, drv);
     if (ret < 0) {
         goto unlink_and_fail;
     }
@@ -1020,7 +1064,10 @@ int bdrv_open(BlockDriverState *bs, const char *filename, QDict *options,
 
     /* If there is a backing file, use it */
     if ((flags & BDRV_O_NO_BACKING) == 0) {
-        ret = bdrv_open_backing_file(bs);
+        QDict *backing_options;
+
+        extract_subqdict(options, &backing_options, "backing.");
+        ret = bdrv_open_backing_file(bs, backing_options);
         if (ret < 0) {
             goto close_and_fail;
         }
@@ -2131,27 +2178,21 @@ static void coroutine_fn bdrv_rw_co_entry(void *opaque)
 }
 
 /*
- * Process a synchronous request using coroutines
+ * Process a vectored synchronous request using coroutines
  */
-static int bdrv_rw_co(BlockDriverState *bs, int64_t sector_num, uint8_t *buf,
-                      int nb_sectors, bool is_write)
+static int bdrv_rwv_co(BlockDriverState *bs, int64_t sector_num,
+                       QEMUIOVector *qiov, bool is_write)
 {
-    QEMUIOVector qiov;
-    struct iovec iov = {
-        .iov_base = (void *)buf,
-        .iov_len = nb_sectors * BDRV_SECTOR_SIZE,
-    };
     Coroutine *co;
     RwCo rwco = {
         .bs = bs,
         .sector_num = sector_num,
-        .nb_sectors = nb_sectors,
-        .qiov = &qiov,
+        .nb_sectors = qiov->size >> BDRV_SECTOR_BITS,
+        .qiov = qiov,
         .is_write = is_write,
         .ret = NOT_DONE,
     };
-
-    qemu_iovec_init_external(&qiov, &iov, 1);
+    assert((qiov->size & (BDRV_SECTOR_SIZE - 1)) == 0);
 
     /**
      * In sync call context, when the vcpu is blocked, this throttling timer
@@ -2175,6 +2216,22 @@ static int bdrv_rw_co(BlockDriverState *bs, int64_t sector_num, uint8_t *buf,
         }
     }
     return rwco.ret;
+}
+
+/*
+ * Process a synchronous request using coroutines
+ */
+static int bdrv_rw_co(BlockDriverState *bs, int64_t sector_num, uint8_t *buf,
+                      int nb_sectors, bool is_write)
+{
+    QEMUIOVector qiov;
+    struct iovec iov = {
+        .iov_base = (void *)buf,
+        .iov_len = nb_sectors * BDRV_SECTOR_SIZE,
+    };
+
+    qemu_iovec_init_external(&qiov, &iov, 1);
+    return bdrv_rwv_co(bs, sector_num, &qiov, is_write);
 }
 
 /* return < 0 if error. See bdrv_write() for the return codes */
@@ -2208,6 +2265,11 @@ int bdrv_write(BlockDriverState *bs, int64_t sector_num,
                const uint8_t *buf, int nb_sectors)
 {
     return bdrv_rw_co(bs, sector_num, (uint8_t *)buf, nb_sectors, true);
+}
+
+int bdrv_writev(BlockDriverState *bs, int64_t sector_num, QEMUIOVector *qiov)
+{
+    return bdrv_rwv_co(bs, sector_num, qiov, true);
 }
 
 int bdrv_pread(BlockDriverState *bs, int64_t offset,
@@ -2255,15 +2317,15 @@ int bdrv_pread(BlockDriverState *bs, int64_t offset,
     return count1;
 }
 
-int bdrv_pwrite(BlockDriverState *bs, int64_t offset,
-                const void *buf, int count1)
+int bdrv_pwritev(BlockDriverState *bs, int64_t offset, QEMUIOVector *qiov)
 {
     uint8_t tmp_buf[BDRV_SECTOR_SIZE];
     int len, nb_sectors, count;
     int64_t sector_num;
     int ret;
 
-    count = count1;
+    count = qiov->size;
+
     /* first write to align to sector start */
     len = (BDRV_SECTOR_SIZE - offset) & (BDRV_SECTOR_SIZE - 1);
     if (len > count)
@@ -2272,24 +2334,32 @@ int bdrv_pwrite(BlockDriverState *bs, int64_t offset,
     if (len > 0) {
         if ((ret = bdrv_read(bs, sector_num, tmp_buf, 1)) < 0)
             return ret;
-        memcpy(tmp_buf + (offset & (BDRV_SECTOR_SIZE - 1)), buf, len);
+        qemu_iovec_to_buf(qiov, 0, tmp_buf + (offset & (BDRV_SECTOR_SIZE - 1)),
+                          len);
         if ((ret = bdrv_write(bs, sector_num, tmp_buf, 1)) < 0)
             return ret;
         count -= len;
         if (count == 0)
-            return count1;
+            return qiov->size;
         sector_num++;
-        buf += len;
     }
 
     /* write the sectors "in place" */
     nb_sectors = count >> BDRV_SECTOR_BITS;
     if (nb_sectors > 0) {
-        if ((ret = bdrv_write(bs, sector_num, buf, nb_sectors)) < 0)
+        QEMUIOVector qiov_inplace;
+
+        qemu_iovec_init(&qiov_inplace, qiov->niov);
+        qemu_iovec_concat(&qiov_inplace, qiov, len,
+                          nb_sectors << BDRV_SECTOR_BITS);
+        ret = bdrv_writev(bs, sector_num, &qiov_inplace);
+        qemu_iovec_destroy(&qiov_inplace);
+        if (ret < 0) {
             return ret;
+        }
+
         sector_num += nb_sectors;
         len = nb_sectors << BDRV_SECTOR_BITS;
-        buf += len;
         count -= len;
     }
 
@@ -2297,11 +2367,24 @@ int bdrv_pwrite(BlockDriverState *bs, int64_t offset,
     if (count > 0) {
         if ((ret = bdrv_read(bs, sector_num, tmp_buf, 1)) < 0)
             return ret;
-        memcpy(tmp_buf, buf, count);
+        qemu_iovec_to_buf(qiov, qiov->size - count, tmp_buf, count);
         if ((ret = bdrv_write(bs, sector_num, tmp_buf, 1)) < 0)
             return ret;
     }
-    return count1;
+    return qiov->size;
+}
+
+int bdrv_pwrite(BlockDriverState *bs, int64_t offset,
+                const void *buf, int count1)
+{
+    QEMUIOVector qiov;
+    struct iovec iov = {
+        .iov_base   = (void *) buf,
+        .iov_len    = count1,
+    };
+
+    qemu_iovec_init_external(&qiov, &iov, 1);
+    return bdrv_pwritev(bs, offset, &qiov);
 }
 
 /*
@@ -3184,13 +3267,28 @@ int bdrv_get_info(BlockDriverState *bs, BlockDriverInfo *bdi)
 int bdrv_save_vmstate(BlockDriverState *bs, const uint8_t *buf,
                       int64_t pos, int size)
 {
+    QEMUIOVector qiov;
+    struct iovec iov = {
+        .iov_base   = (void *) buf,
+        .iov_len    = size,
+    };
+
+    qemu_iovec_init_external(&qiov, &iov, 1);
+    return bdrv_writev_vmstate(bs, &qiov, pos);
+}
+
+int bdrv_writev_vmstate(BlockDriverState *bs, QEMUIOVector *qiov, int64_t pos)
+{
     BlockDriver *drv = bs->drv;
-    if (!drv)
+
+    if (!drv) {
         return -ENOMEDIUM;
-    if (drv->bdrv_save_vmstate)
-        return drv->bdrv_save_vmstate(bs, buf, pos, size);
-    if (bs->file)
-        return bdrv_save_vmstate(bs->file, buf, pos, size);
+    } else if (drv->bdrv_save_vmstate) {
+        return drv->bdrv_save_vmstate(bs, qiov, pos);
+    } else if (bs->file) {
+        return bdrv_writev_vmstate(bs->file, qiov, pos);
+    }
+
     return -ENOTSUP;
 }
 

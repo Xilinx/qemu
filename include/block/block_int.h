@@ -87,8 +87,7 @@ struct BlockDriver {
     void (*bdrv_reopen_abort)(BDRVReopenState *reopen_state);
 
     int (*bdrv_open)(BlockDriverState *bs, QDict *options, int flags);
-    int (*bdrv_file_open)(BlockDriverState *bs, const char *filename,
-                          QDict *options, int flags);
+    int (*bdrv_file_open)(BlockDriverState *bs, QDict *options, int flags);
     int (*bdrv_read)(BlockDriverState *bs, int64_t sector_num,
                      uint8_t *buf, int nb_sectors);
     int (*bdrv_write)(BlockDriverState *bs, int64_t sector_num,
@@ -164,8 +163,8 @@ struct BlockDriver {
                                   const char *snapshot_name);
     int (*bdrv_get_info)(BlockDriverState *bs, BlockDriverInfo *bdi);
 
-    int (*bdrv_save_vmstate)(BlockDriverState *bs, const uint8_t *buf,
-                             int64_t pos, int size);
+    int (*bdrv_save_vmstate)(BlockDriverState *bs, QEMUIOVector *qiov,
+                             int64_t pos);
     int (*bdrv_load_vmstate)(BlockDriverState *bs, uint8_t *buf,
                              int64_t pos, int size);
 

@@ -63,7 +63,8 @@
 typedef enum {
     RBD_AIO_READ,
     RBD_AIO_WRITE,
-    RBD_AIO_DISCARD
+    RBD_AIO_DISCARD,
+    RBD_AIO_FLUSH
 } RBDAIOCmd;
 
 typedef struct RBDAIOCB {
@@ -379,8 +380,7 @@ static void qemu_rbd_complete_aio(RADOSCB *rcb)
 
     r = rcb->ret;
 
-    if (acb->cmd == RBD_AIO_WRITE ||
-        acb->cmd == RBD_AIO_DISCARD) {
+    if (acb->cmd != RBD_AIO_READ) {
         if (r < 0) {
             acb->ret = r;
             acb->error = 1;
@@ -441,8 +441,21 @@ static int qemu_rbd_aio_flush_cb(void *opaque)
     return (s->qemu_aio_count > 0);
 }
 
-static int qemu_rbd_open(BlockDriverState *bs, const char *filename,
-                         QDict *options, int flags)
+/* TODO Convert to fine grained options */
+static QemuOptsList runtime_opts = {
+    .name = "rbd",
+    .head = QTAILQ_HEAD_INITIALIZER(runtime_opts.head),
+    .desc = {
+        {
+            .name = "filename",
+            .type = QEMU_OPT_STRING,
+            .help = "Specification of the rbd image",
+        },
+        { /* end of list */ }
+    },
+};
+
+static int qemu_rbd_open(BlockDriverState *bs, QDict *options, int flags)
 {
     BDRVRBDState *s = bs->opaque;
     char pool[RBD_MAX_POOL_NAME_SIZE];
@@ -450,7 +463,22 @@ static int qemu_rbd_open(BlockDriverState *bs, const char *filename,
     char conf[RBD_MAX_CONF_SIZE];
     char clientname_buf[RBD_MAX_CONF_SIZE];
     char *clientname;
+    QemuOpts *opts;
+    Error *local_err = NULL;
+    const char *filename;
     int r;
+
+    opts = qemu_opts_create_nofail(&runtime_opts);
+    qemu_opts_absorb_qdict(opts, options, &local_err);
+    if (error_is_set(&local_err)) {
+        qerror_report_err(local_err);
+        error_free(local_err);
+        qemu_opts_del(opts);
+        return -EINVAL;
+    }
+
+    filename = qemu_opt_get(opts, "filename");
+    qemu_opts_del(opts);
 
     if (qemu_rbd_parsename(filename, pool, sizeof(pool),
                            snap_buf, sizeof(snap_buf),
@@ -659,6 +687,16 @@ static int rbd_aio_discard_wrapper(rbd_image_t image,
 #endif
 }
 
+static int rbd_aio_flush_wrapper(rbd_image_t image,
+                                 rbd_completion_t comp)
+{
+#ifdef LIBRBD_SUPPORTS_AIO_FLUSH
+    return rbd_aio_flush(image, comp);
+#else
+    return -ENOTSUP;
+#endif
+}
+
 static BlockDriverAIOCB *rbd_start_aio(BlockDriverState *bs,
                                        int64_t sector_num,
                                        QEMUIOVector *qiov,
@@ -679,7 +717,7 @@ static BlockDriverAIOCB *rbd_start_aio(BlockDriverState *bs,
     acb = qemu_aio_get(&rbd_aiocb_info, bs, cb, opaque);
     acb->cmd = cmd;
     acb->qiov = qiov;
-    if (cmd == RBD_AIO_DISCARD) {
+    if (cmd == RBD_AIO_DISCARD || cmd == RBD_AIO_FLUSH) {
         acb->bounce = NULL;
     } else {
         acb->bounce = qemu_blockalign(bs, qiov->size);
@@ -723,6 +761,9 @@ static BlockDriverAIOCB *rbd_start_aio(BlockDriverState *bs,
     case RBD_AIO_DISCARD:
         r = rbd_aio_discard_wrapper(s->image, off, size, c);
         break;
+    case RBD_AIO_FLUSH:
+        r = rbd_aio_flush_wrapper(s->image, c);
+        break;
     default:
         r = -EINVAL;
     }
@@ -762,6 +803,16 @@ static BlockDriverAIOCB *qemu_rbd_aio_writev(BlockDriverState *bs,
                          RBD_AIO_WRITE);
 }
 
+#ifdef LIBRBD_SUPPORTS_AIO_FLUSH
+static BlockDriverAIOCB *qemu_rbd_aio_flush(BlockDriverState *bs,
+                                            BlockDriverCompletionFunc *cb,
+                                            void *opaque)
+{
+    return rbd_start_aio(bs, 0, NULL, 0, cb, opaque, RBD_AIO_FLUSH);
+}
+
+#else
+
 static int qemu_rbd_co_flush(BlockDriverState *bs)
 {
 #if LIBRBD_VERSION_CODE >= LIBRBD_VERSION(0, 1, 1)
@@ -772,6 +823,7 @@ static int qemu_rbd_co_flush(BlockDriverState *bs)
     return 0;
 #endif
 }
+#endif
 
 static int qemu_rbd_getinfo(BlockDriverState *bs, BlockDriverInfo *bdi)
 {
@@ -949,7 +1001,12 @@ static BlockDriver bdrv_rbd = {
 
     .bdrv_aio_readv         = qemu_rbd_aio_readv,
     .bdrv_aio_writev        = qemu_rbd_aio_writev,
+
+#ifdef LIBRBD_SUPPORTS_AIO_FLUSH
+    .bdrv_aio_flush         = qemu_rbd_aio_flush,
+#else
     .bdrv_co_flush_to_disk  = qemu_rbd_co_flush,
+#endif
 
 #ifdef LIBRBD_SUPPORTS_DISCARD
     .bdrv_aio_discard       = qemu_rbd_aio_discard,

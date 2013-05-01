@@ -250,8 +250,8 @@ int kvm_check_extension(KVMState *s, unsigned int extension);
 uint32_t kvm_arch_get_supported_cpuid(KVMState *env, uint32_t function,
                                       uint32_t index, int reg);
 void kvm_cpu_synchronize_state(CPUArchState *env);
-void kvm_cpu_synchronize_post_reset(CPUArchState *env);
-void kvm_cpu_synchronize_post_init(CPUArchState *env);
+void kvm_cpu_synchronize_post_reset(CPUState *cpu);
+void kvm_cpu_synchronize_post_init(CPUState *cpu);
 
 /* generic hooks - to be moved/refactored once there are more users */
 
@@ -262,17 +262,17 @@ static inline void cpu_synchronize_state(CPUArchState *env)
     }
 }
 
-static inline void cpu_synchronize_post_reset(CPUArchState *env)
+static inline void cpu_synchronize_post_reset(CPUState *cpu)
 {
     if (kvm_enabled()) {
-        kvm_cpu_synchronize_post_reset(env);
+        kvm_cpu_synchronize_post_reset(cpu);
     }
 }
 
-static inline void cpu_synchronize_post_init(CPUArchState *env)
+static inline void cpu_synchronize_post_init(CPUState *cpu)
 {
     if (kvm_enabled()) {
-        kvm_cpu_synchronize_post_init(env);
+        kvm_cpu_synchronize_post_init(cpu);
     }
 }
 
@@ -283,10 +283,6 @@ int kvm_physical_memory_addr_from_host(KVMState *s, void *ram_addr,
 #endif
 
 #endif
-int kvm_set_ioeventfd_mmio(int fd, uint32_t adr, uint32_t val, bool assign,
-                           uint32_t size);
-
-int kvm_set_ioeventfd_pio_word(int fd, uint16_t adr, uint16_t val, bool assign);
 
 int kvm_irqchip_add_msi_route(KVMState *s, MSIMessage msg);
 int kvm_irqchip_update_msi_route(KVMState *s, int virq, MSIMessage msg);

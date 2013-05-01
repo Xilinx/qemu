@@ -1173,9 +1173,6 @@ void register_cp_regs_for_features(ARMCPU *cpu)
     if (arm_feature(env, ARM_FEATURE_DUMMY_C15_REGS)) {
         define_arm_cp_regs(cpu, dummy_c15_cp_reginfo);
     }
-    if (arm_feature(env, ARM_FEATURE_MPIDR)) {
-        define_arm_cp_regs(cpu, mpidr_cp_reginfo);
-    }
     if (arm_feature(env, ARM_FEATURE_LPAE)) {
         define_arm_cp_regs(cpu, lpae_cp_reginfo);
     }
@@ -1188,12 +1185,17 @@ void register_cp_regs_for_features(ARMCPU *cpu)
             /* Note that the MIDR isn't a simple constant register because
              * of the TI925 behaviour where writes to another register can
              * cause the MIDR value to change.
+             *
+             * Unimlplemented register in the c15 0 0 0 space default to
+             * MIDR. Define MIDR first as this entire space, then CTR, TCMTR
+             * and friends override accordingly.
              */
             { .name = "MIDR",
-              .cp = 15, .crn = 0, .crm = 0, .opc1 = 0, .opc2 = 0,
+              .cp = 15, .crn = 0, .crm = 0, .opc1 = 0, .opc2 = CP_ANY,
               .access = PL1_R, .resetvalue = cpu->midr,
               .writefn = arm_cp_write_ignore,
-              .fieldoffset = offsetof(CPUARMState, cp15.c0_cpuid) },
+              .fieldoffset = offsetof(CPUARMState, cp15.c0_cpuid),
+              .type = ARM_CP_OVERRIDE },
             { .name = "CTR",
               .cp = 15, .crn = 0, .crm = 0, .opc1 = 0, .opc2 = 1,
               .access = PL1_R, .type = ARM_CP_CONST, .resetvalue = cpu->ctr },
@@ -1230,21 +1232,20 @@ void register_cp_regs_for_features(ARMCPU *cpu)
             arm_feature(env, ARM_FEATURE_STRONGARM)) {
             ARMCPRegInfo *r;
             /* Register the blanket "writes ignored" value first to cover the
-             * whole space. Then define the specific ID registers, but update
-             * their access field to allow write access, so that they ignore
-             * writes rather than causing them to UNDEF.
+             * whole space. Then update the specific ID registers to allow write
+             * access, so that they ignore writes rather than causing them to
+             * UNDEF.
              */
             define_one_arm_cp_reg(cpu, &crn0_wi_reginfo);
             for (r = id_cp_reginfo; r->type != ARM_CP_SENTINEL; r++) {
                 r->access = PL1_RW;
-                define_one_arm_cp_reg(cpu, r);
             }
-        } else {
-            /* Just register the standard ID registers (read-only, meaning
-             * that writes will UNDEF).
-             */
-            define_arm_cp_regs(cpu, id_cp_reginfo);
         }
+        define_arm_cp_regs(cpu, id_cp_reginfo);
+    }
+
+    if (arm_feature(env, ARM_FEATURE_MPIDR)) {
+        define_arm_cp_regs(cpu, mpidr_cp_reginfo);
     }
 
     if (arm_feature(env, ARM_FEATURE_AUXCR)) {
@@ -1401,7 +1402,9 @@ void define_one_arm_cp_reg_with_opaque(ARMCPU *cpu,
                 ARMCPRegInfo *r2 = g_memdup(r, sizeof(ARMCPRegInfo));
                 int is64 = (r->type & ARM_CP_64BIT) ? 1 : 0;
                 *key = ENCODE_CP_REG(r->cp, is64, r->crn, crm, opc1, opc2);
-                r2->opaque = opaque;
+                if (opaque) {
+                    r2->opaque = opaque;
+                }
                 /* Make sure reginfo passed to helpers for wildcarded regs
                  * has the correct crm/opc1/opc2 for this reg, not CP_ANY:
                  */

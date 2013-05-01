@@ -10,8 +10,8 @@
  */
 
 #include "hw/sysbus.h"
-#include "hw/arm.h"
-#include "hw/arm/devices.h"
+#include "hw/arm/arm.h"
+#include "hw/devices.h"
 #include "net/net.h"
 #include "sysemu/sysemu.h"
 #include "hw/boards.h"
@@ -170,12 +170,12 @@ static void eth_rx_desc_put(uint32_t addr, mv88w8618_rx_desc *desc)
     cpu_to_le16s(&desc->buffer_size);
     cpu_to_le32s(&desc->buffer);
     cpu_to_le32s(&desc->next);
-    cpu_physical_memory_write(addr, (void *)desc, sizeof(*desc));
+    cpu_physical_memory_write(addr, desc, sizeof(*desc));
 }
 
 static void eth_rx_desc_get(uint32_t addr, mv88w8618_rx_desc *desc)
 {
-    cpu_physical_memory_read(addr, (void *)desc, sizeof(*desc));
+    cpu_physical_memory_read(addr, desc, sizeof(*desc));
     le32_to_cpus(&desc->cmdstat);
     le16_to_cpus(&desc->bytes);
     le16_to_cpus(&desc->buffer_size);
@@ -229,12 +229,12 @@ static void eth_tx_desc_put(uint32_t addr, mv88w8618_tx_desc *desc)
     cpu_to_le16s(&desc->bytes);
     cpu_to_le32s(&desc->buffer);
     cpu_to_le32s(&desc->next);
-    cpu_physical_memory_write(addr, (void *)desc, sizeof(*desc));
+    cpu_physical_memory_write(addr, desc, sizeof(*desc));
 }
 
 static void eth_tx_desc_get(uint32_t addr, mv88w8618_tx_desc *desc)
 {
-    cpu_physical_memory_read(addr, (void *)desc, sizeof(*desc));
+    cpu_physical_memory_read(addr, desc, sizeof(*desc));
     le32_to_cpus(&desc->cmdstat);
     le16_to_cpus(&desc->res);
     le16_to_cpus(&desc->bytes);
@@ -601,6 +601,11 @@ static const MemoryRegionOps musicpal_lcd_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
+static const GraphicHwOps musicpal_gfx_ops = {
+    .invalidate  = lcd_invalidate,
+    .gfx_update  = lcd_refresh,
+};
+
 static int musicpal_lcd_init(SysBusDevice *dev)
 {
     musicpal_lcd_state *s = FROM_SYSBUS(musicpal_lcd_state, dev);
@@ -611,8 +616,7 @@ static int musicpal_lcd_init(SysBusDevice *dev)
                           "musicpal-lcd", MP_LCD_SIZE);
     sysbus_init_mmio(dev, &s->iomem);
 
-    s->con = graphic_console_init(lcd_refresh, lcd_invalidate,
-                                  NULL, NULL, s);
+    s->con = graphic_console_init(&musicpal_gfx_ops, s);
     qemu_console_resize(s->con, 128*3, 64*3);
 
     qdev_init_gpio_in(&dev->qdev, musicpal_lcd_gpio_brigthness_in, 3);

@@ -39,7 +39,7 @@ typedef struct StreamSlaveClass {
      * returned. If the slave short returns, the master must wait before trying
      * again, the slave may continue to just return 0 waiting for the vm time to
      * advance. The can_push() function can be used to trap the point in time
-     * where the slave is ready to recieve agai, otherwise polling on a QEMU
+     * where the slave is ready to recieve again, otherwise polling on a QEMU
      * timer will work.
      * @obj: Stream slave to push to
      * @buf: Data to write

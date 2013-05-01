@@ -298,6 +298,90 @@ int endian = 1;
 int endian;
 #endif
 
+/* strdup + fixup illegal commas for dots.  */
+static char *propdup_fixup(char *s)
+{
+    char *new;
+    size_t len = strlen(s);
+    size_t i;
+
+    new = g_malloc(len + 1);
+    for (i = 0; i < len; i++) {
+        new[i] = s[i] == ',' ? '.' : s[i];
+    }
+    new[len] = 0;
+    return new;
+}
+
+/* Load a big-endian integer from memory. p is not assumed to have proper
+   alignment.  */
+static uint64_t load_int_be(const uint8_t *p, unsigned int len)
+{
+    uint64_t ret = 0;
+
+    assert(len > 0 && len < sizeof ret);
+    do {
+        ret <<= 8;
+        ret += *p++;
+    } while (--len);
+    return ret;
+}
+
+/* Create the MicroBlaze CPU and try to set all properties that
+   match dtb and QEMU Device description.  */
+/* This is temporary code. Once all of the PVR fields used in
+   microblaze_generic_fdt_reset() have been mapped to properties,
+   all of this can be replaced with generic fdt machinery.  */
+#include "qapi/qmp/types.h"
+#include "qom/qom-qobject.h"
+static MicroBlazeCPU *mb_create(const char *model, void *fdt)
+{
+    QEMUDevtreeProp *prop, *props;
+    MicroBlazeCPU *cpu;
+    Error *errp = NULL;
+    char node_path[DT_PATH_LENGTH];
+
+    cpu = MICROBLAZE_CPU(object_new(TYPE_MICROBLAZE_CPU));
+    qemu_devtree_get_node_by_name(fdt, node_path, "cpu");
+
+    /* Walk the device-tree properties.  */
+    props = qemu_devtree_get_props(fdt, node_path);
+    for (prop = props; prop->name; prop++) {
+        char *propname = propdup_fixup(prop->name);
+        ObjectProperty *p;
+        uint64_t u64;
+        union {
+            QInt *qint;
+            QBool *qbool;
+            QObject *qobj;
+        } v;
+
+        /* See if devtree prop matches QEMU device props.  */
+        p = object_property_find(OBJECT(cpu), propname, NULL);
+        if (!p) {
+            g_free(propname);
+            continue;
+        }
+
+        /* Match, now convert it. We only support ints and bools. In
+           practice, only ints are used at the moment.
+           FIXME: we should probably create a dt-props visitor.  */
+        u64 = load_int_be(prop->value, prop->len);
+        if (!strcmp(p->type, "bool")) {
+            v.qbool = qbool_from_int(!!u64);
+        } else {
+            v.qint = qint_from_int(u64);
+        }
+
+        /* Set the prop.  */
+        object_property_set_qobject(OBJECT(cpu), v.qobj, propname, &errp);
+        assert_no_error(errp);
+        g_free(propname);
+    }
+    object_property_set_bool(OBJECT(cpu), true, "realized", NULL);
+    return cpu;
+}
+
 static void
 microblaze_generic_fdt_init(QEMUMachineInitArgs *args)
 {
@@ -332,7 +416,7 @@ microblaze_generic_fdt_init(QEMUMachineInitArgs *args)
     }
 
     /* init CPUs */
-    cpu = cpu_mb_init("microblaze");
+    cpu = mb_create("microblaze", fdt);
 
     /* Device-trees normally don't specify microblaze local RAMs allthough
        linux kernels depend on their existance.  If the LMB RAMs are not

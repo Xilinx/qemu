@@ -27,7 +27,7 @@
 #include "hw/fdt_generic_util.h"
 #include "hw/fdt_generic_devices.h"
 
-#include "hw/arm.h"
+#include "hw/arm/arm.h"
 
 #define MACHINE_NAME "arm-generic-fdt"
 

@@ -137,7 +137,7 @@ int bdrv_parse_cache_flags(const char *mode, int *flags);
 int bdrv_parse_discard_flags(const char *mode, int *flags);
 int bdrv_file_open(BlockDriverState **pbs, const char *filename,
                    QDict *options, int flags);
-int bdrv_open_backing_file(BlockDriverState *bs);
+int bdrv_open_backing_file(BlockDriverState *bs, QDict *options);
 int bdrv_open(BlockDriverState *bs, const char *filename, QDict *options,
               int flags, BlockDriver *drv);
 BlockReopenQueue *bdrv_reopen_queue(BlockReopenQueue *bs_queue,
@@ -166,10 +166,12 @@ int bdrv_read_unthrottled(BlockDriverState *bs, int64_t sector_num,
                           uint8_t *buf, int nb_sectors);
 int bdrv_write(BlockDriverState *bs, int64_t sector_num,
                const uint8_t *buf, int nb_sectors);
+int bdrv_writev(BlockDriverState *bs, int64_t sector_num, QEMUIOVector *qiov);
 int bdrv_pread(BlockDriverState *bs, int64_t offset,
                void *buf, int count);
 int bdrv_pwrite(BlockDriverState *bs, int64_t offset,
                 const void *buf, int count);
+int bdrv_pwritev(BlockDriverState *bs, int64_t offset, QEMUIOVector *qiov);
 int bdrv_pwrite_sync(BlockDriverState *bs, int64_t offset,
     const void *buf, int count);
 int coroutine_fn bdrv_co_readv(BlockDriverState *bs, int64_t sector_num,
@@ -348,6 +350,7 @@ void path_combine(char *dest, int dest_size,
                   const char *base_path,
                   const char *filename);
 
+int bdrv_writev_vmstate(BlockDriverState *bs, QEMUIOVector *qiov, int64_t pos);
 int bdrv_save_vmstate(BlockDriverState *bs, const uint8_t *buf,
                       int64_t pos, int size);
 

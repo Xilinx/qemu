@@ -419,7 +419,7 @@ void cpu_synchronize_all_post_reset(void)
     CPUArchState *cpu;
 
     for (cpu = first_cpu; cpu; cpu = cpu->next_cpu) {
-        cpu_synchronize_post_reset(cpu);
+        cpu_synchronize_post_reset(ENV_GET_CPU(cpu));
     }
 }
 
@@ -428,7 +428,7 @@ void cpu_synchronize_all_post_init(void)
     CPUArchState *cpu;
 
     for (cpu = first_cpu; cpu; cpu = cpu->next_cpu) {
-        cpu_synchronize_post_init(cpu);
+        cpu_synchronize_post_init(ENV_GET_CPU(cpu));
     }
 }
 
@@ -862,9 +862,29 @@ static void qemu_cpu_kick_thread(CPUState *cpu)
     }
 #else /* _WIN32 */
     if (!qemu_cpu_is_self(cpu)) {
-        SuspendThread(cpu->hThread);
+        CONTEXT tcgContext;
+
+        if (SuspendThread(cpu->hThread) == (DWORD)-1) {
+            fprintf(stderr, "qemu:%s: GetLastError:%lu\n", __func__,
+                    GetLastError());
+            exit(1);
+        }
+
+        /* On multi-core systems, we are not sure that the thread is actually
+         * suspended until we can get the context.
+         */
+        tcgContext.ContextFlags = CONTEXT_CONTROL;
+        while (GetThreadContext(cpu->hThread, &tcgContext) != 0) {
+            continue;
+        }
+
         cpu_signal(0);
-        ResumeThread(cpu->hThread);
+
+        if (ResumeThread(cpu->hThread) == (DWORD)-1) {
+            fprintf(stderr, "qemu:%s: GetLastError:%lu\n", __func__,
+                    GetLastError());
+            exit(1);
+        }
     }
 #endif
 }

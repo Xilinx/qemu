@@ -12,7 +12,7 @@
 
 #include "hw/sysbus.h"
 #include "qemu/timer.h"
-#include "hw/arm.h"
+#include "hw/arm/arm.h"
 #include "exec/address-spaces.h"
 #include "gic_internal.h"
 
@@ -172,7 +172,7 @@ static uint32_t nvic_readl(nvic_state *s, uint32_t offset)
         return 10000;
     case 0xd00: /* CPUID Base.  */
         return cpu_single_env->cp15.c0_cpuid;
-    case 0xd04: /* Interrypt Control State.  */
+    case 0xd04: /* Interrupt Control State.  */
         /* VECTACTIVE */
         val = s->gic.running_irq[0];
         if (val == 1023) {

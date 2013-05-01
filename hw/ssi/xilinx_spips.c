@@ -515,7 +515,6 @@ static void xilinx_spips_write(void *opaque, hwaddr addr,
     case R_TXD3:
         tx_data_bytes(s, (uint32_t)value, 3);
         goto no_reg_update;
-        break;
     }
     s->regs[addr] = (s->regs[addr] & ~mask) | (value & mask);
 no_reg_update:
@@ -755,7 +754,7 @@ static const TypeInfo xilinx_spips_info = {
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size  = sizeof(XilinxSPIPS),
     .class_init = xilinx_spips_class_init,
-    .class_size = sizeof (XilinxSPIPSClass),
+    .class_size = sizeof(XilinxSPIPSClass),
 };
 
 static const TypeInfo xilinx_qspips_info = {

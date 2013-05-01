@@ -24,7 +24,6 @@
  */
 
 #include "hw/sysbus.h"
-#include "char/char.h"
 
 static const TypeInfo fixed_clock_info = {
     .name          = "xlnx.zynq-pll",

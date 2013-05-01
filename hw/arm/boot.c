@@ -9,7 +9,7 @@
 
 #include "config.h"
 #include "hw/hw.h"
-#include "hw/arm.h"
+#include "hw/arm/arm.h"
 #include "sysemu/sysemu.h"
 #include "hw/boards.h"
 #include "hw/loader.h"
@@ -128,7 +128,7 @@ static void set_kernel_args(const struct arm_boot_info *info)
         int cmdline_size;
 
         cmdline_size = strlen(info->kernel_cmdline);
-        cpu_physical_memory_write(p + 8, (void *)info->kernel_cmdline,
+        cpu_physical_memory_write(p + 8, info->kernel_cmdline,
                                   cmdline_size + 1);
         cmdline_size = (cmdline_size >> 2) + 1;
         WRITE_WORD(p, cmdline_size + 2);
@@ -219,7 +219,7 @@ static void set_kernel_args_old(const struct arm_boot_info *info)
     }
     s = info->kernel_cmdline;
     if (s) {
-        cpu_physical_memory_write(p, (void *)s, strlen(s) + 1);
+        cpu_physical_memory_write(p, s, strlen(s) + 1);
     } else {
         WRITE_WORD(p, 0);
     }
@@ -436,10 +436,15 @@ void arm_load_kernel(ARMCPU *cpu, struct arm_boot_info *info)
     info->entry = entry;
     if (is_linux) {
         if (info->initrd_filename) {
-            initrd_size = load_image_targphys(info->initrd_filename,
-                                              info->initrd_start,
-                                              info->ram_size -
-                                              info->initrd_start);
+            initrd_size = load_uramdisk(info->initrd_filename,
+                                        info->initrd_start,
+                                        info->ram_size -
+                                        info->initrd_start);
+            if (initrd_size < 0)
+                initrd_size = load_image_targphys(info->initrd_filename,
+                                                  info->initrd_start,
+                                                  info->ram_size -
+                                                  info->initrd_start);
             if (initrd_size < 0) {
                 fprintf(stderr, "qemu: could not load initrd '%s'\n",
                         info->initrd_filename);

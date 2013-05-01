@@ -25,6 +25,9 @@
 #include "hw/virtio/virtio-serial.h"
 #include "hw/virtio/virtio-scsi.h"
 #include "hw/virtio/virtio-bus.h"
+#ifdef CONFIG_VHOST_SCSI
+#include "hw/virtio/vhost-scsi.h"
+#endif
 
 #define VIRTIO_DEV_OFFS_TYPE		0	/* 8 bits */
 #define VIRTIO_DEV_OFFS_NUM_VQ		1	/* 8 bits */
@@ -89,10 +92,7 @@ struct VirtIOS390Device {
     ram_addr_t feat_offs;
     uint8_t feat_len;
     VirtIODevice *vdev;
-    NICConf nic;
     uint32_t host_features;
-    virtio_serial_conf serial;
-    virtio_net_conf net;
     VirtIORNGConf rng;
     VirtioBusState bus;
 };
@@ -140,5 +140,40 @@ typedef struct VirtIOSCSIS390 {
     VirtIOS390Device parent_obj;
     VirtIOSCSI vdev;
 } VirtIOSCSIS390;
+
+/* virtio-serial-s390 */
+
+#define TYPE_VIRTIO_SERIAL_S390 "virtio-serial-s390"
+#define VIRTIO_SERIAL_S390(obj) \
+        OBJECT_CHECK(VirtIOSerialS390, (obj), TYPE_VIRTIO_SERIAL_S390)
+
+typedef struct VirtIOSerialS390 {
+    VirtIOS390Device parent_obj;
+    VirtIOSerial vdev;
+} VirtIOSerialS390;
+
+/* virtio-net-s390 */
+
+#define TYPE_VIRTIO_NET_S390 "virtio-net-s390"
+#define VIRTIO_NET_S390(obj) \
+        OBJECT_CHECK(VirtIONetS390, (obj), TYPE_VIRTIO_NET_S390)
+
+typedef struct VirtIONetS390 {
+    VirtIOS390Device parent_obj;
+    VirtIONet vdev;
+} VirtIONetS390;
+
+/* vhost-scsi-s390 */
+
+#ifdef CONFIG_VHOST_SCSI
+#define TYPE_VHOST_SCSI_S390 "vhost-scsi-s390"
+#define VHOST_SCSI_S390(obj) \
+        OBJECT_CHECK(VHostSCSIS390, (obj), TYPE_VHOST_SCSI_S390)
+
+typedef struct VHostSCSIS390 {
+    VirtIOS390Device parent_obj;
+    VHostSCSI vdev;
+} VHostSCSIS390;
+#endif
 
 #endif

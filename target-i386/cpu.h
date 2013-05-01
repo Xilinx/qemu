@@ -803,6 +803,7 @@ typedef struct CPUX86State {
 #endif
     uint64_t system_time_msr;
     uint64_t wall_clock_msr;
+    uint64_t steal_time_msr;
     uint64_t async_pf_en_msr;
     uint64_t pv_eoi_en_msr;
 
@@ -896,6 +897,7 @@ typedef struct CPUX86State {
 #include "cpu-qom.h"
 
 X86CPU *cpu_x86_init(const char *cpu_model);
+X86CPU *cpu_x86_create(const char *cpu_model, Error **errp);
 int cpu_x86_exec(CPUX86State *s);
 void x86_cpu_list(FILE *f, fprintf_function cpu_fprintf);
 void x86_cpudef_setup(void);

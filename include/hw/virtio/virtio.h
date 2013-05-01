@@ -171,6 +171,18 @@ typedef struct VirtioDeviceClass {
     void (*set_config)(VirtIODevice *vdev, const uint8_t *config);
     void (*reset)(VirtIODevice *vdev);
     void (*set_status)(VirtIODevice *vdev, uint8_t val);
+    /* Test and clear event pending status.
+     * Should be called after unmask to avoid losing events.
+     * If backend does not support masking,
+     * must check in frontend instead.
+     */
+    bool (*guest_notifier_pending)(VirtIODevice *vdev, int n);
+    /* Mask/unmask events from this vq. Any events reported
+     * while masked will become pending.
+     * If backend does not support masking,
+     * must mask in frontend instead.
+     */
+    void (*guest_notifier_mask)(VirtIODevice *vdev, int n, bool mask);
 } VirtioDeviceClass;
 
 void virtio_init(VirtIODevice *vdev, const char *name,
@@ -246,7 +258,6 @@ VirtIODevice *virtio_net_init(DeviceState *dev, NICConf *conf,
                               uint32_t host_features);
 typedef struct virtio_serial_conf virtio_serial_conf;
 VirtIODevice *virtio_serial_init(DeviceState *dev, virtio_serial_conf *serial);
-VirtIODevice *virtio_balloon_init(DeviceState *dev);
 typedef struct VirtIOSCSIConf VirtIOSCSIConf;
 VirtIODevice *virtio_scsi_init(DeviceState *dev, VirtIOSCSIConf *conf);
 typedef struct VirtIORNGConf VirtIORNGConf;
@@ -258,7 +269,6 @@ VirtIODevice *virtio_9p_init(DeviceState *dev, V9fsConf *conf);
 
 void virtio_net_exit(VirtIODevice *vdev);
 void virtio_serial_exit(VirtIODevice *vdev);
-void virtio_balloon_exit(VirtIODevice *vdev);
 void virtio_scsi_exit(VirtIODevice *vdev);
 void virtio_rng_exit(VirtIODevice *vdev);
 
