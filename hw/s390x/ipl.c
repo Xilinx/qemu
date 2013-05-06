@@ -23,7 +23,6 @@
 #define INITRD_PARM_START               0x010408UL
 #define INITRD_PARM_SIZE                0x010410UL
 #define PARMFILE_START                  0x001000UL
-#define ZIPL_FILENAME                   "s390-zipl.rom"
 #define ZIPL_IMAGE_START                0x009000UL
 #define IPL_PSW_MASK                    (PSW_MASK_32 | PSW_MASK_64)
 
@@ -48,11 +47,13 @@ typedef struct S390IPLClass {
 typedef struct S390IPLState {
     /*< private >*/
     SysBusDevice parent_obj;
-    /*< public >*/
+    uint64_t start_addr;
 
+    /*< public >*/
     char *kernel;
     char *initrd;
     char *cmdline;
+    char *firmware;
 } S390IPLState;
 
 
@@ -77,19 +78,24 @@ static int s390_ipl_init(SysBusDevice *dev)
 
         /* Load zipl bootloader */
         if (bios_name == NULL) {
-            bios_name = ZIPL_FILENAME;
+            bios_name = ipl->firmware;
         }
 
         bios_filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, bios_name);
-        bios_size = load_image_targphys(bios_filename, ZIPL_IMAGE_START, 4096);
+        bios_size = load_elf(bios_filename, NULL, NULL, &ipl->start_addr, NULL,
+                             NULL, 1, ELF_MACHINE, 0);
+        if (bios_size == -1UL) {
+            bios_size = load_image_targphys(bios_filename, ZIPL_IMAGE_START,
+                                            4096);
+            ipl->start_addr = ZIPL_IMAGE_START;
+            if (bios_size > 4096) {
+                hw_error("stage1 bootloader is > 4k\n");
+            }
+        }
         g_free(bios_filename);
 
         if ((long)bios_size < 0) {
             hw_error("could not load bootloader '%s'\n", bios_name);
-        }
-
-        if (bios_size > 4096) {
-            hw_error("stage1 bootloader is > 4k\n");
         }
         return 0;
     } else {
@@ -104,6 +110,13 @@ static int s390_ipl_init(SysBusDevice *dev)
         }
         /* we have to overwrite values in the kernel image, which are "rom" */
         strcpy(rom_ptr(KERN_PARM_AREA), ipl->cmdline);
+
+        /*
+         * we can not rely on the ELF entry point, since up to 3.2 this
+         * value was 0x800 (the SALIPL loader) and it wont work. For
+         * all (Linux) cases 0x10000 (KERN_IMAGE_START) should be fine.
+         */
+        ipl->start_addr = KERN_IMAGE_START;
     }
     if (ipl->initrd) {
         ram_addr_t initrd_offset, initrd_size;
@@ -131,6 +144,7 @@ static Property s390_ipl_properties[] = {
     DEFINE_PROP_STRING("kernel", S390IPLState, kernel),
     DEFINE_PROP_STRING("initrd", S390IPLState, initrd),
     DEFINE_PROP_STRING("cmdline", S390IPLState, cmdline),
+    DEFINE_PROP_STRING("firmware", S390IPLState, firmware),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -138,16 +152,7 @@ static void s390_ipl_reset(DeviceState *dev)
 {
     S390IPLState *ipl = S390_IPL(dev);
 
-    if (ipl->kernel) {
-        /*
-         * we can not rely on the ELF entry point, since up to 3.2 this
-         * value was 0x800 (the SALIPL loader) and it wont work. For
-         * all (Linux) cases 0x10000 (KERN_IMAGE_START) should be fine.
-         */
-        return s390_ipl_cpu(KERN_IMAGE_START);
-    } else {
-        return s390_ipl_cpu(ZIPL_IMAGE_START);
-    }
+    s390_ipl_cpu(ipl->start_addr);
 }
 
 static void s390_ipl_class_init(ObjectClass *klass, void *data)

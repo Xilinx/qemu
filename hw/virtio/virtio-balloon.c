@@ -344,15 +344,11 @@ static int virtio_balloon_device_init(VirtIODevice *vdev)
 
     virtio_init(vdev, "virtio-balloon", VIRTIO_ID_BALLOON, 8);
 
-    vdev->get_config = virtio_balloon_get_config;
-    vdev->set_config = virtio_balloon_set_config;
-    vdev->get_features = virtio_balloon_get_features;
-
     ret = qemu_add_balloon_handler(virtio_balloon_to_target,
                                    virtio_balloon_stat, s);
 
     if (ret < 0) {
-        virtio_common_cleanup(VIRTIO_DEVICE(s));
+        virtio_cleanup(VIRTIO_DEVICE(s));
         return -1;
     }
 
@@ -381,7 +377,7 @@ static int virtio_balloon_device_exit(DeviceState *qdev)
     balloon_stats_destroy_timer(s);
     qemu_remove_balloon_handler(s);
     unregister_savevm(qdev, "virtio-balloon", s);
-    virtio_common_cleanup(vdev);
+    virtio_cleanup(vdev);
     return 0;
 }
 

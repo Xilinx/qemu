@@ -79,8 +79,6 @@ typedef struct VirtioBusClass VirtioS390BusClass;
 
 typedef struct VirtIOS390Device VirtIOS390Device;
 
-void virtio_s390_bus_new(VirtioBusState *bus, VirtIOS390Device *dev);
-
 typedef struct VirtIOS390DeviceClass {
     DeviceClass qdev;
     int (*init)(VirtIOS390Device *dev);
@@ -93,7 +91,6 @@ struct VirtIOS390Device {
     uint8_t feat_len;
     VirtIODevice *vdev;
     uint32_t host_features;
-    VirtIORNGConf rng;
     VirtioBusState bus;
 };
 
@@ -175,5 +172,16 @@ typedef struct VHostSCSIS390 {
     VHostSCSI vdev;
 } VHostSCSIS390;
 #endif
+
+/* virtio-rng-s390 */
+
+#define TYPE_VIRTIO_RNG_S390 "virtio-rng-s390"
+#define VIRTIO_RNG_S390(obj) \
+        OBJECT_CHECK(VirtIORNGS390, (obj), TYPE_VIRTIO_RNG_S390)
+
+typedef struct VirtIORNGS390 {
+    VirtIOS390Device parent_obj;
+    VirtIORNG vdev;
+} VirtIORNGS390;
 
 #endif

@@ -277,7 +277,7 @@ usb_packet_state_fault(int bus, const char *port, int ep, void *p, const char *o
 
 # hw/usb/bus.c
 usb_port_claim(int bus, const char *port) "bus %d, port %s"
-usb_port_attach(int bus, const char *port) "bus %d, port %s"
+usb_port_attach(int bus, const char *port, const char *devspeed, const char *portspeed) "bus %d, port %s, devspeed %s, portspeed %s"
 usb_port_detach(int bus, const char *port) "bus %d, port %s"
 usb_port_release(int bus, const char *port) "bus %d, port %s"
 
@@ -776,7 +776,7 @@ pvscsi_update_irq_msi(void) "sending MSI notification"
 pvscsi_cmp_ring_put(unsigned long addr) "got completion descriptor 0x%lx"
 pvscsi_msg_ring_put(unsigned long addr) "got message descriptor 0x%lx"
 pvscsi_complete_request(uint64_t context, uint64_t len, uint8_t sense_key) "completion: ctx: 0x%"PRIx64", len: 0x%"PRIx64", sense key: %u"
-pvscsi_get_sg_list(int nsg, size_t size) "get SG list: depth: %u, size: %lu"
+pvscsi_get_sg_list(int nsg, size_t size) "get SG list: depth: %u, size: %zu"
 pvscsi_get_next_sg_elem(uint32_t flags) "unknown flags in SG element (val: 0x%x)"
 pvscsi_command_complete_not_found(uint32_t tag) "can't find request for tag 0x%x"
 pvscsi_command_complete_data_run(void) "not all data required for command transferred"
@@ -1153,3 +1153,10 @@ virtio_ccw_new_device(int cssid, int ssid, int schid, int devno, const char *dev
 
 # migration.c
 migrate_set_state(int new_state) "new state %d"
+
+# kvm-all.c
+kvm_ioctl(int type, void *arg) "type %d, arg %p"
+kvm_vm_ioctl(int type, void *arg) "type %d, arg %p"
+kvm_vcpu_ioctl(int cpu_index, int type, void *arg) "cpu_index %d, type %d, arg %p"
+kvm_run_exit(int cpu_index, uint32_t reason) "cpu_index %d, reason %d"
+

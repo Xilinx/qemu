@@ -251,7 +251,6 @@ fdt_register_instance_n(i2c_bus_fdt_init, "i2c@6", 6);
 fdt_register_instance_n(i2c_bus_fdt_init, "i2c@7", 7);
 
 static const TypeInfo fdt_qom_aliases [] = {
-    {   .name = "generic-ahci",             .parent = "sysbus-ahci"         },
     {   .name = "xlnx.ps7-ethernet",        .parent = "cadence_gem"         },
     {   .name = "xlnx.ps7-ttc",             .parent = "cadence_ttc"         },
     {   .name = "xlnx.ps7-uart",            .parent = "cadence_uart"        },
