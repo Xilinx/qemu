@@ -77,6 +77,8 @@ struct CadenceTTCState {
     SysBusDevice parent_obj;
 
     MemoryRegion iomem;
+
+    uint8_t bit_width;
     CadenceTimerState timer[3];
 };
 
@@ -478,11 +480,17 @@ static const VMStateDescription vmstate_cadence_ttc = {
     }
 };
 
+static Property cadence_ttc_props[] = {
+    DEFINE_PROP_UINT8("width", CadenceTTCState, bit_width, 16),
+    DEFINE_PROP_END_OF_LIST(),
+};
+
 static void cadence_ttc_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->vmsd = &vmstate_cadence_ttc;
+    dc->props = cadence_ttc_props;
 }
 
 static const TypeInfo cadence_ttc_info = {
