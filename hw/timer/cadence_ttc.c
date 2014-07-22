@@ -45,6 +45,8 @@
 #define CLOCK_CTRL_PS_EN    0x00000001
 #define CLOCK_CTRL_PS_V     0x0000001e
 
+typedef struct CadenceTTCState CadenceTTCState;
+
 typedef struct {
     QEMUTimer *timer;
     int freq;
@@ -62,6 +64,8 @@ typedef struct {
     uint64_t cpu_time;
     unsigned int cpu_time_valid;
 
+    CadenceTTCState *container;
+
     qemu_irq irq;
 } CadenceTimerState;
 
@@ -69,12 +73,12 @@ typedef struct {
 #define CADENCE_TTC(obj) \
     OBJECT_CHECK(CadenceTTCState, (obj), TYPE_CADENCE_TTC)
 
-typedef struct CadenceTTCState {
+struct CadenceTTCState {
     SysBusDevice parent_obj;
 
     MemoryRegion iomem;
     CadenceTimerState timer[3];
-} CadenceTTCState;
+};
 
 static void cadence_timer_update(CadenceTimerState *s)
 {
@@ -415,6 +419,7 @@ static void cadence_ttc_init(Object *obj)
 
     for (i = 0; i < 3; ++i) {
         cadence_timer_init(133000000, &s->timer[i]);
+        s->timer[i].container = s;
         sysbus_init_irq(SYS_BUS_DEVICE(obj), &s->timer[i].irq);
     }
 
