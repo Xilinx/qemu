@@ -53,9 +53,9 @@ typedef struct {
 
     uint32_t reg_clock;
     uint32_t reg_count;
-    uint32_t reg_value;
-    uint16_t reg_interval;
-    uint16_t reg_match[3];
+    uint64_t reg_value;
+    uint32_t reg_interval;
+    uint32_t reg_match[3];
     uint32_t reg_intr;
     uint32_t reg_intr_en;
     uint32_t reg_event_ctrl;
@@ -165,8 +165,10 @@ static void cadence_timer_run(CadenceTimerState *s)
     }
 
     { /* figure out what's going to happen next (rollover or match) */
-        int64_t interval = (uint64_t)((s->reg_count & COUNTER_CTRL_INT) ?
-                (int64_t)s->reg_interval + 1 : 0x10000ULL) << 16;
+        int64_t interval = (s->reg_count & COUNTER_CTRL_INT) ?
+                           (int64_t)s->reg_interval + 1 :
+                           1ull << s->container->bit_width;
+        interval <<= 16;
         next_value = (s->reg_count & COUNTER_CTRL_DEC) ? -1ULL : interval;
         for (i = 0; i < 3; ++i) {
             int64_t cand = (uint64_t)s->reg_match[i] << 16;
@@ -189,8 +191,10 @@ static void cadence_timer_sync(CadenceTimerState *s)
 {
     int i;
     int64_t r, x;
-    int64_t interval = ((s->reg_count & COUNTER_CTRL_INT) ?
-            (int64_t)s->reg_interval + 1 : 0x10000ULL) << 16;
+    int64_t interval = (s->reg_count & COUNTER_CTRL_INT) ?
+                       (int64_t)s->reg_interval + 1 :
+                       1ull << s->container->bit_width;
+    interval <<= 16;
     uint64_t old_time = s->cpu_time;
 
     s->cpu_time = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
@@ -224,7 +228,8 @@ static void cadence_timer_sync(CadenceTimerState *s)
     while (x < 0) {
         x += interval;
     }
-    s->reg_value = (uint32_t)(x % interval);
+    s->reg_value = x % interval;
+
     cadence_timer_update(s);
 }
 
@@ -259,7 +264,7 @@ static uint32_t cadence_ttc_read_imp(void *opaque, hwaddr offset)
     case 0x18: /* counter value */
     case 0x1c:
     case 0x20:
-        return (uint16_t)(s->reg_value >> 16);
+        return (uint32_t)(s->reg_value >> 16);
 
     case 0x24: /* reg_interval counter */
     case 0x28:
@@ -457,9 +462,9 @@ static const VMStateDescription vmstate_cadence_timer = {
     .fields = (VMStateField[]) {
         VMSTATE_UINT32(reg_clock, CadenceTimerState),
         VMSTATE_UINT32(reg_count, CadenceTimerState),
-        VMSTATE_UINT32(reg_value, CadenceTimerState),
-        VMSTATE_UINT16(reg_interval, CadenceTimerState),
-        VMSTATE_UINT16_ARRAY(reg_match, CadenceTimerState, 3),
+        VMSTATE_UINT64(reg_value, CadenceTimerState),
+        VMSTATE_UINT32(reg_interval, CadenceTimerState),
+        VMSTATE_UINT32_ARRAY(reg_match, CadenceTimerState, 3),
         VMSTATE_UINT32(reg_intr, CadenceTimerState),
         VMSTATE_UINT32(reg_intr_en, CadenceTimerState),
         VMSTATE_UINT32(reg_event_ctrl, CadenceTimerState),
