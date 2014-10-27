@@ -328,6 +328,7 @@ static void cadence_ttc_write(void *opaque, hwaddr offset,
         uint64_t value, unsigned size)
 {
     CadenceTimerState *s = cadence_timer_from_addr(opaque, offset);
+    uint64_t mask = (1ull << s->container->bit_width) - 1;
 
     DB_PRINT("addr: %08x data %08x\n", (unsigned)offset, (unsigned)value);
 
@@ -352,25 +353,25 @@ static void cadence_ttc_write(void *opaque, hwaddr offset,
     case 0x24: /* interval register */
     case 0x28:
     case 0x2c:
-        s->reg_interval = value & 0xffff;
+        s->reg_interval = value & mask;
         break;
 
     case 0x30: /* match register */
     case 0x34:
     case 0x38:
-        s->reg_match[0] = value & 0xffff;
+        s->reg_match[0] = value & mask;
         break;
 
     case 0x3c: /* match register */
     case 0x40:
     case 0x44:
-        s->reg_match[1] = value & 0xffff;
+        s->reg_match[1] = value & mask;
         break;
 
     case 0x48: /* match register */
     case 0x4c:
     case 0x50:
-        s->reg_match[2] = value & 0xffff;
+        s->reg_match[2] = value & mask;
         break;
 
     case 0x54: /* interrupt register */
