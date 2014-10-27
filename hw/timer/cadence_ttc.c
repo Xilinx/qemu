@@ -177,7 +177,7 @@ static void cadence_timer_run(CadenceTimerState *s)
             }
         }
     }
-    DB_PRINT("next timer event value: %09llx\n",
+    DB_PRINT("next timer event value: %16llx\n",
             (unsigned long long)next_value);
 
     event_interval = next_value - (int64_t)s->reg_value;
