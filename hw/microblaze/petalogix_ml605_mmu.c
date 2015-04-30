@@ -58,7 +58,7 @@
 #define AXIENET_BASEADDR 0x82780000
 #define AXIDMA_BASEADDR 0x84600000
 
-static void machine_cpu_reset(MicroBlazeCPU *cpu)
+static void machine_cpu_reset(MicroBlazeCPU *cpu, void *opaque)
 {
     CPUMBState *env = &cpu->env;
 
@@ -177,8 +177,8 @@ petalogix_ml605_init(QEMUMachineInitArgs *args)
     }
 
     microblaze_load_kernel(cpu, ddr_base, ram_size, BINARY_DEVICE_TREE_FILE,
-                                                            machine_cpu_reset);
-
+                                                    machine_cpu_reset, NULL,
+                                                    NULL, 0);
 }
 
 static QEMUMachine petalogix_ml605_machine = {

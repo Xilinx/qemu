@@ -362,7 +362,9 @@ void qdev_prop_set_netdev(DeviceState *dev, const char *name,
 
 void qdev_set_nic_properties(DeviceState *dev, NICInfo *nd)
 {
-    qdev_prop_set_macaddr(dev, "mac", nd->macaddr.a);
+    if (qdev_prop_set_macaddr(dev, "mac", nd->macaddr.a)) {
+        return;
+    }
     if (nd->netdev) {
         qdev_prop_set_netdev(dev, "netdev", nd->netdev);
     }

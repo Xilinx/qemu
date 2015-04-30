@@ -35,7 +35,8 @@
 
 static struct
 {
-    void (*machine_cpu_reset)(MicroBlazeCPU *);
+    void (*machine_cpu_reset)(MicroBlazeCPU *, void *);
+    void *machine_cpu_reset_opaque;
     uint32_t bootstrap_pc;
     uint32_t cmdline;
     uint32_t fdt;
@@ -51,23 +52,19 @@ static void main_cpu_reset(void *opaque)
     env->regs[7] = boot_info.fdt;
     env->sregs[SR_PC] = boot_info.bootstrap_pc;
     if (boot_info.machine_cpu_reset) {
-        boot_info.machine_cpu_reset(cpu);
+        boot_info.machine_cpu_reset(cpu, boot_info.machine_cpu_reset_opaque);
     }
 }
 
 static int microblaze_load_dtb(hwaddr addr,
                                       uint32_t ramsize,
                                       const char *kernel_cmdline,
-                                      const char *dtb_filename)
+                               void *fdt,
+                               int fdt_size)
 {
-    int fdt_size;
 #ifdef CONFIG_FDT
-    void *fdt = NULL;
     int r;
 
-    if (dtb_filename) {
-        fdt = load_device_tree(dtb_filename, &fdt_size);
-    }
     if (!fdt) {
         return 0;
     }
@@ -102,26 +99,34 @@ static uint64_t translate_kernel_address(void *opaque, uint64_t addr)
 
 void microblaze_load_kernel(MicroBlazeCPU *cpu, hwaddr ddr_base,
                             uint32_t ramsize, const char *dtb_filename,
-                            void (*machine_cpu_reset)(MicroBlazeCPU *))
+                            void (*machine_cpu_reset)(MicroBlazeCPU *, void *),
+                            void *machine_cpu_reset_opaque,
+                            void *fdt, int fdt_size)
 {
     QemuOpts *machine_opts;
     const char *kernel_filename = NULL;
     const char *kernel_cmdline = NULL;
+    const char *dtb_arg = NULL;
 
     machine_opts = qemu_opts_find(qemu_find_opts("machine"), 0);
     if (machine_opts) {
-        const char *dtb_arg;
         kernel_filename = qemu_opt_get(machine_opts, "kernel");
         kernel_cmdline = qemu_opt_get(machine_opts, "append");
         dtb_arg = qemu_opt_get(machine_opts, "dtb");
+    }
+    if (!fdt) {
         if (dtb_arg) { /* Preference a -dtb argument */
             dtb_filename = dtb_arg;
         } else { /* default to pcbios dtb as passed by machine_init */
             dtb_filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, dtb_filename);
         }
+        if (dtb_filename) {
+            fdt = load_device_tree(dtb_filename, &fdt_size);
+        }
     }
 
     boot_info.machine_cpu_reset = machine_cpu_reset;
+    boot_info.machine_cpu_reset_opaque = machine_cpu_reset_opaque;
     qemu_register_reset(main_cpu_reset, cpu);
 
     if (kernel_filename) {
@@ -145,7 +150,7 @@ void microblaze_load_kernel(MicroBlazeCPU *cpu, hwaddr ddr_base,
                                    big_endian, ELF_MACHINE, 0);
         }
         /* Always boot into physical ram.  */
-        boot_info.bootstrap_pc = ddr_base + (entry & 0x0fffffff);
+        boot_info.bootstrap_pc = (uint32_t)entry;
 
         /* If it wasn't an ELF image, try an u-boot image.  */
         if (kernel_size < 0) {
@@ -171,7 +176,7 @@ void microblaze_load_kernel(MicroBlazeCPU *cpu, hwaddr ddr_base,
         /* Provide a device-tree.  */
         boot_info.fdt = boot_info.cmdline + 4096;
         microblaze_load_dtb(boot_info.fdt, ram_size, kernel_cmdline,
-                                                     dtb_filename);
+                             fdt, fdt_size);
     }
 
 }

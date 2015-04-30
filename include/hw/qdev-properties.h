@@ -160,7 +160,7 @@ void qdev_prop_set_chr(DeviceState *dev, const char *name, CharDriverState *valu
 void qdev_prop_set_netdev(DeviceState *dev, const char *name, NetClientState *value);
 int qdev_prop_set_drive(DeviceState *dev, const char *name, BlockDriverState *value) QEMU_WARN_UNUSED_RESULT;
 void qdev_prop_set_drive_nofail(DeviceState *dev, const char *name, BlockDriverState *value);
-void qdev_prop_set_macaddr(DeviceState *dev, const char *name, uint8_t *value);
+int qdev_prop_set_macaddr(DeviceState *dev, const char *name, uint8_t *value);
 void qdev_prop_set_enum(DeviceState *dev, const char *name, int value);
 /* FIXME: Remove opaque pointer properties.  */
 void qdev_prop_set_ptr(DeviceState *dev, const char *name, void *value);

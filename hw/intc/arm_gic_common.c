@@ -20,6 +20,8 @@
 
 #include "gic_internal.h"
 
+#include "hw/fdt_generic_devices.h"
+
 static void gic_pre_save(void *opaque)
 {
     GICState *s = (GICState *)opaque;
@@ -84,6 +86,10 @@ static void arm_gic_common_realize(DeviceState *dev, Error **errp)
     GICState *s = ARM_GIC_COMMON(dev);
     int num_irq = s->num_irq;
 
+    if (!s->num_cpu) {
+        s->num_cpu = fdt_generic_num_cpus;
+    }
+
     if (s->num_cpu > NCPU) {
         error_setg(errp, "requested %u CPUs exceeds GIC maximum %d",
                    s->num_cpu, NCPU);
@@ -138,8 +144,8 @@ static void arm_gic_common_reset(DeviceState *dev)
 }
 
 static Property arm_gic_common_properties[] = {
-    DEFINE_PROP_UINT32("num-cpu", GICState, num_cpu, 1),
-    DEFINE_PROP_UINT32("num-irq", GICState, num_irq, 32),
+    DEFINE_PROP_UINT32("num-cpu", GICState, num_cpu, 0),
+    DEFINE_PROP_UINT32("num-irq", GICState, num_irq, 96),
     /* Revision can be 1 or 2 for GIC architecture specification
      * versions 1 or 2, or 0 to indicate the legacy 11MPCore GIC.
      * (Internally, 0xffffffff also indicates "not a GIC but an NVIC".)

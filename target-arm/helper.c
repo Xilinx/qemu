@@ -4,6 +4,7 @@
 #include "qemu/host-utils.h"
 #include "sysemu/sysemu.h"
 #include "qemu/bitops.h"
+#include "qemu/timer.h"
 
 #ifndef CONFIG_USER_ONLY
 static inline int get_phys_addr(CPUARMState *env, uint32_t address,
@@ -334,6 +335,17 @@ static int ccsidr_read(CPUARMState *env, const ARMCPRegInfo *ri,
     return 0;
 }
 
+static int pmccntr_read(CPUARMState *env, const ARMCPRegInfo *ri,
+                       uint64_t *value)
+{
+    *value = (qemu_get_clock_ns(vm_clock) >> 6) & 0xffffffff;
+    return 0;
+}
+static int pmccntr_write(CPUARMState *env, const ARMCPRegInfo *ri,
+                        uint64_t value)
+{
+	return 0;
+}
 static int csselr_write(CPUARMState *env, const ARMCPRegInfo *ri,
                         uint64_t value)
 {
@@ -385,7 +397,7 @@ static const ARMCPRegInfo v7_cp_reginfo[] = {
       .access = PL0_RW, .type = ARM_CP_CONST, .resetvalue = 0 },
     /* Unimplemented, RAZ/WI. XXX PMUSERENR */
     { .name = "PMCCNTR", .cp = 15, .crn = 9, .crm = 13, .opc1 = 0, .opc2 = 0,
-      .access = PL0_RW, .type = ARM_CP_CONST, .resetvalue = 0 },
+      .access = PL0_RW, .readfn = pmccntr_read, .writefn = pmccntr_write },
     { .name = "PMXEVTYPER", .cp = 15, .crn = 9, .crm = 13, .opc1 = 0, .opc2 = 1,
       .access = PL0_RW,
       .fieldoffset = offsetof(CPUARMState, cp15.c9_pmxevtyper),
@@ -408,6 +420,10 @@ static const ARMCPRegInfo v7_cp_reginfo[] = {
       .fieldoffset = offsetof(CPUARMState, cp15.c9_pminten),
       .resetvalue = 0,
       .writefn = pmintenclr_write },
+    { .name = "VBAR", .cp = 15, .crn = 12, .crm = 0, .opc1 = 0, .opc2 = 0,
+      .access = PL1_RW,
+      .fieldoffset = offsetof(CPUARMState, cp15.c12_vector_base_address),
+      .resetvalue = 0 },
     { .name = "SCR", .cp = 15, .crn = 1, .crm = 1, .opc1 = 0, .opc2 = 0,
       .access = PL1_RW, .fieldoffset = offsetof(CPUARMState, cp15.c1_scr),
       .resetvalue = 0, },
@@ -1157,9 +1173,6 @@ void register_cp_regs_for_features(ARMCPU *cpu)
     if (arm_feature(env, ARM_FEATURE_DUMMY_C15_REGS)) {
         define_arm_cp_regs(cpu, dummy_c15_cp_reginfo);
     }
-    if (arm_feature(env, ARM_FEATURE_MPIDR)) {
-        define_arm_cp_regs(cpu, mpidr_cp_reginfo);
-    }
     if (arm_feature(env, ARM_FEATURE_LPAE)) {
         define_arm_cp_regs(cpu, lpae_cp_reginfo);
     }
@@ -1172,12 +1185,17 @@ void register_cp_regs_for_features(ARMCPU *cpu)
             /* Note that the MIDR isn't a simple constant register because
              * of the TI925 behaviour where writes to another register can
              * cause the MIDR value to change.
+             *
+             * Unimlplemented register in the c15 0 0 0 space default to
+             * MIDR. Define MIDR first as this entire space, then CTR, TCMTR
+             * and friends override accordingly.
              */
             { .name = "MIDR",
-              .cp = 15, .crn = 0, .crm = 0, .opc1 = 0, .opc2 = 0,
+              .cp = 15, .crn = 0, .crm = 0, .opc1 = 0, .opc2 = CP_ANY,
               .access = PL1_R, .resetvalue = cpu->midr,
               .writefn = arm_cp_write_ignore,
-              .fieldoffset = offsetof(CPUARMState, cp15.c0_cpuid) },
+              .fieldoffset = offsetof(CPUARMState, cp15.c0_cpuid),
+              .type = ARM_CP_OVERRIDE },
             { .name = "CTR",
               .cp = 15, .crn = 0, .crm = 0, .opc1 = 0, .opc2 = 1,
               .access = PL1_R, .type = ARM_CP_CONST, .resetvalue = cpu->ctr },
@@ -1214,21 +1232,20 @@ void register_cp_regs_for_features(ARMCPU *cpu)
             arm_feature(env, ARM_FEATURE_STRONGARM)) {
             ARMCPRegInfo *r;
             /* Register the blanket "writes ignored" value first to cover the
-             * whole space. Then define the specific ID registers, but update
-             * their access field to allow write access, so that they ignore
-             * writes rather than causing them to UNDEF.
+             * whole space. Then update the specific ID registers to allow write
+             * access, so that they ignore writes rather than causing them to
+             * UNDEF.
              */
             define_one_arm_cp_reg(cpu, &crn0_wi_reginfo);
             for (r = id_cp_reginfo; r->type != ARM_CP_SENTINEL; r++) {
                 r->access = PL1_RW;
-                define_one_arm_cp_reg(cpu, r);
             }
-        } else {
-            /* Just register the standard ID registers (read-only, meaning
-             * that writes will UNDEF).
-             */
-            define_arm_cp_regs(cpu, id_cp_reginfo);
         }
+        define_arm_cp_regs(cpu, id_cp_reginfo);
+    }
+
+    if (arm_feature(env, ARM_FEATURE_MPIDR)) {
+        define_arm_cp_regs(cpu, mpidr_cp_reginfo);
     }
 
     if (arm_feature(env, ARM_FEATURE_AUXCR)) {
@@ -1385,7 +1402,9 @@ void define_one_arm_cp_reg_with_opaque(ARMCPU *cpu,
                 ARMCPRegInfo *r2 = g_memdup(r, sizeof(ARMCPRegInfo));
                 int is64 = (r->type & ARM_CP_64BIT) ? 1 : 0;
                 *key = ENCODE_CP_REG(r->cp, is64, r->crn, crm, opc1, opc2);
-                r2->opaque = opaque;
+                if (opaque) {
+                    r2->opaque = opaque;
+                }
                 /* Make sure reginfo passed to helpers for wildcarded regs
                  * has the correct crm/opc1/opc2 for this reg, not CP_ANY:
                  */
@@ -1896,7 +1915,17 @@ void arm_cpu_do_interrupt(CPUState *cs)
     }
     /* High vectors.  */
     if (env->cp15.c1_sys & (1 << 13)) {
+        /* when enabled, base address cannot be remapped.  */
         addr += 0xffff0000;
+    } else if (arm_feature(env, ARM_FEATURE_V7)) {
+        /* ARM v7 architectures provide a vector base address register to remap
+         * the interrupt vector table.
+         * This register is only followed in non-monitor mode, and has a secure
+         * and un-secure copy. Since the cpu is always in a un-secure operation
+         * and is never in monitor mode this feature is always active.
+         * Note: only bits 31:5 are valid.
+         */
+        addr += env->cp15.c12_vector_base_address & 0xffffffe0;
     }
     switch_mode (env, new_mode);
     env->spsr = cpsr_read(env);

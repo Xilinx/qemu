@@ -15,6 +15,7 @@ int load_aout(const char *filename, hwaddr addr, int max_sz,
               int bswap_needed, hwaddr target_page_size);
 int load_uimage(const char *filename, hwaddr *ep,
                 hwaddr *loadaddr, int *is_linux);
+int load_uramdisk(const char *filename, hwaddr addr, uint64_t max_sz);
 
 ssize_t read_targphys(const char *name,
                       int fd, hwaddr dst_addr, size_t nbytes);

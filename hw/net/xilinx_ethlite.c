@@ -47,6 +47,213 @@
 #define CTRL_P     0x2
 #define CTRL_S     0x1
 
+#define R_MDIOADDR (0x07E4 / 4)  /* MDIO Address Register */
+#define R_MDIOWR (0x07E8 / 4)    /* MDIO Write Data Register */
+#define R_MDIORD (0x07EC / 4)    /* MDIO Read Data Register */
+#define R_MDIOCTRL (0x07F0 / 4)  /* MDIO Control Register */
+
+/* MDIO Address Register Bit Masks */
+#define R_MDIOADDR_REGADR_MASK  0x0000001F  /* Register Address */
+#define R_MDIOADDR_PHYADR_MASK  0x000003E0  /* PHY Address */
+#define R_MDIOADDR_PHYADR_SHIFT 5
+#define R_MDIOADDR_OP_MASK      0x00000400    /* RD/WR Operation */
+
+/* MDIO Write Data Register Bit Masks */
+#define R_MDIOWR_WRDATA_MASK    0x0000FFFF /* Data to be Written */
+
+/* MDIO Read Data Register Bit Masks */
+#define R_MDIORD_RDDATA_MASK    0x0000FFFF /* Data to be Read */
+
+/* MDIO Control Register Bit Masks */
+#define R_MDIOCTRL_MDIOSTS_MASK 0x00000001   /* MDIO Status Mask */
+#define R_MDIOCTRL_MDIOEN_MASK  0x00000008   /* MDIO Enable */
+
+/* Advertisement control register. */
+#define ADVERTISE_10HALF        0x0020  /* Try for 10mbps half-duplex  */
+#define ADVERTISE_10FULL        0x0040  /* Try for 10mbps full-duplex  */
+#define ADVERTISE_100HALF       0x0080  /* Try for 100mbps half-duplex */
+#define ADVERTISE_100FULL       0x0100  /* Try for 100mbps full-duplex */
+
+#define DPHY(x)
+
+struct PHY {
+    uint32_t regs[32];
+
+    int link;
+
+    unsigned int (*read)(struct PHY *phy, unsigned int req);
+    void (*write)(struct PHY *phy, unsigned int req,
+                  unsigned int data);
+};
+
+static unsigned int tdk_read(struct PHY *phy, unsigned int req)
+{
+    int regnum;
+    unsigned r = 0;
+
+    regnum = req & 0x1f;
+
+    switch (regnum) {
+    case 1:
+        if (!phy->link) {
+            break;
+        }
+        /* MR1.  */
+        /* Speeds and modes.  */
+        r |= (1 << 13) | (1 << 14);
+        r |= (1 << 11) | (1 << 12);
+        r |= (1 << 5); /* Autoneg complete.  */
+        r |= (1 << 3); /* Autoneg able.  */
+        r |= (1 << 2); /* link.  */
+        r |= (1 << 1); /* link.  */
+        break;
+    case 5:
+        /* Link partner ability.
+           We are kind; always agree with whatever best mode
+           the guest advertises.  */
+        r = 1 << 14; /* Success.  */
+        /* Copy advertised modes.  */
+        r |= phy->regs[4] & (15 << 5);
+        /* Autoneg support.  */
+        r |= 1;
+        break;
+    case 17:
+        /* Marvel PHY on many xilinx boards.  */
+        r = 0x4c00; /* 100Mb  */
+        break;
+    case 18:
+        {
+            /* Diagnostics reg.  */
+            int duplex = 0;
+            int speed_100 = 0;
+            if (!phy->link) {
+                break;
+            }
+            /* Are we advertising 100 half or 100 duplex ? */
+            speed_100 = !!(phy->regs[4] & ADVERTISE_100HALF);
+            speed_100 |= !!(phy->regs[4] & ADVERTISE_100FULL);
+            /* Are we advertising 10 duplex or 100 duplex ? */
+            duplex = !!(phy->regs[4] & ADVERTISE_100FULL);
+            duplex |= !!(phy->regs[4] & ADVERTISE_10FULL);
+            r = (speed_100 << 10) | (duplex << 11);
+        }
+        break;
+
+    default:
+        r = phy->regs[regnum];
+        break;
+    }
+    DPHY(qemu_log("\n%s %x = reg[%d]\n", __func__, r, regnum));
+    return r;
+}
+
+static void
+tdk_write(struct PHY *phy, unsigned int req, unsigned int data)
+{
+    int regnum;
+
+    regnum = req & 0x1f;
+    DPHY(qemu_log("%s reg[%d] = %x\n", __func__, regnum, data));
+    switch (regnum) {
+    default:
+        phy->regs[regnum] = data;
+        break;
+    }
+
+    /* Unconditionally clear regs[BMCR][BMCR_RESET] */
+    phy->regs[0] &= ~0x8000;
+}
+
+static void
+tdk_init(struct PHY *phy)
+{
+    phy->regs[0] = 0x3100;
+    /* PHY Id.  */
+    phy->regs[2] = 0x0141;
+    phy->regs[3] = 0x0cc2;
+    /* Autonegotiation advertisement reg.  */
+    phy->regs[4] = 0x01E1;
+    phy->link = 1;
+
+    phy->read = tdk_read;
+    phy->write = tdk_write;
+}
+
+struct MDIOBus {
+    /* bus.  */
+    int mdc;
+    int mdio;
+
+    /* decoder.  */
+    enum {
+        PREAMBLE,
+        SOF,
+        OPC,
+        ADDR,
+        REQ,
+        TURNAROUND,
+        DATA
+    } state;
+    unsigned int drive;
+
+    unsigned int cnt;
+    unsigned int addr;
+    unsigned int opc;
+    unsigned int req;
+    unsigned int data;
+
+    struct PHY *devs[32];
+};
+
+static void
+mdio_attach(struct MDIOBus *bus, struct PHY *phy, unsigned int addr)
+{
+    bus->devs[addr & 0x1f] = phy;
+}
+
+#ifdef USE_THIS_DEAD_CODE
+static void
+mdio_detach(struct MDIOBus *bus, struct PHY *phy, unsigned int addr)
+{
+    bus->devs[addr & 0x1f] = NULL;
+}
+#endif
+
+static uint16_t mdio_read_req(struct MDIOBus *bus, unsigned int addr,
+                  unsigned int reg)
+{
+    struct PHY *phy;
+    uint16_t data;
+
+    phy = bus->devs[addr];
+    if (phy && phy->read) {
+        data = phy->read(phy, reg);
+    } else {
+        data = 0xffff;
+    }
+    DPHY(qemu_log("%s addr=%d reg=%d data=%x\n", __func__, addr, reg, data));
+    return data;
+}
+
+static void mdio_write_req(struct MDIOBus *bus, unsigned int addr,
+               unsigned int reg, uint16_t data)
+{
+    struct PHY *phy;
+
+    DPHY(qemu_log("%s addr=%d reg=%d data=%x\n", __func__, addr, reg, data));
+    phy = bus->devs[addr];
+    if (phy && phy->write) {
+        phy->write(phy, reg, data);
+    }
+}
+
+struct TEMAC  {
+    struct MDIOBus mdio_bus;
+    struct PHY phy;
+
+    void *parent;
+};
+
 struct xlx_ethlite
 {
     SysBusDevice busdev;
@@ -60,12 +267,15 @@ struct xlx_ethlite
     unsigned int txbuf;
     unsigned int rxbuf;
 
+uint32_t c_phyaddr;
+    struct TEMAC TEMAC;
+
     uint32_t regs[R_MAX];
 };
 
 static inline void eth_pulse_irq(struct xlx_ethlite *s)
 {
-    /* Only the first gie reg is active.  */
+    /* Only the first gie reg is active. */
     if (s->regs[R_TX_GIE0] & GIE_GIE) {
         qemu_irq_pulse(s->irq);
     }
@@ -89,13 +299,16 @@ eth_read(void *opaque, hwaddr addr, unsigned int size)
         case R_RX_CTRL1:
         case R_RX_CTRL0:
             r = s->regs[addr];
-            D(qemu_log("%s " TARGET_FMT_plx "=%x\n", __func__, addr * 4, r));
+            break;
+        case R_MDIOCTRL:
+            r = s->regs[addr] & (~R_MDIOCTRL_MDIOSTS_MASK); /* Always ready.  */
             break;
 
         default:
             r = tswap32(s->regs[addr]);
             break;
     }
+    D(qemu_log("%s " TARGET_FMT_plx "=%x\n", __func__, addr * 4, r));
     return r;
 }
 
@@ -148,6 +361,25 @@ eth_write(void *opaque, hwaddr addr,
                        __func__, addr * 4, value));
             s->regs[addr] = value;
             break;
+        case R_MDIOCTRL:
+            if (((unsigned int)value & R_MDIOCTRL_MDIOSTS_MASK) != 0) {
+                struct TEMAC *t = &s->TEMAC;
+                unsigned int op = s->regs[R_MDIOADDR] & R_MDIOADDR_OP_MASK;
+                unsigned int phyaddr = (s->regs[R_MDIOADDR] &
+                    R_MDIOADDR_PHYADR_MASK) >> R_MDIOADDR_PHYADR_SHIFT;
+                unsigned int regaddr = s->regs[R_MDIOADDR] &
+                    R_MDIOADDR_REGADR_MASK;
+                if (op) {
+                    /* read PHY registers */
+                    s->regs[R_MDIORD] = mdio_read_req(
+                        &t->mdio_bus, phyaddr, regaddr);
+                } else {
+                    /* write PHY registers */
+                    mdio_write_req(&t->mdio_bus, phyaddr, regaddr,
+                        s->regs[R_MDIOWR]);
+                }
+            }
+            s->regs[addr] = value;
 
         default:
             s->regs[addr] = tswap32(value);
@@ -191,8 +423,9 @@ static ssize_t eth_rx(NetClientState *nc, const uint8_t *buf, size_t size)
     memcpy(&s->regs[rxbase + R_RX_BUF0], buf, size);
 
     s->regs[rxbase + R_RX_CTRL0] |= CTRL_S;
-    if (s->regs[rxbase + R_RX_CTRL0] & CTRL_I)
+    if (s->regs[R_RX_CTRL0] & CTRL_I) {
         eth_pulse_irq(s);
+    }
 
     /* If c_rx_pingpong was set flip buffers.  */
     s->rxbuf ^= s->c_rx_pingpong;
@@ -229,10 +462,13 @@ static int xilinx_ethlite_init(SysBusDevice *dev)
     s->nic = qemu_new_nic(&net_xilinx_ethlite_info, &s->conf,
                           object_get_typename(OBJECT(dev)), dev->qdev.id, s);
     qemu_format_nic_info_str(qemu_get_queue(s->nic), s->conf.macaddr.a);
+    tdk_init(&s->TEMAC.phy);
+    mdio_attach(&s->TEMAC.mdio_bus, &s->TEMAC.phy, s->c_phyaddr);
     return 0;
 }
 
 static Property xilinx_ethlite_properties[] = {
+    DEFINE_PROP_UINT32("phyaddr", struct xlx_ethlite, c_phyaddr, 7),
     DEFINE_PROP_UINT32("tx-ping-pong", struct xlx_ethlite, c_tx_pingpong, 1),
     DEFINE_PROP_UINT32("rx-ping-pong", struct xlx_ethlite, c_rx_pingpong, 1),
     DEFINE_NIC_PROPERTIES(struct xlx_ethlite, conf),

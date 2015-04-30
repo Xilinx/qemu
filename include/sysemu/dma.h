@@ -112,6 +112,9 @@ static inline bool dma_memory_valid(DMAContext *dma,
                                     dma_addr_t addr, dma_addr_t len,
                                     DMADirection dir)
 {
+    if (!dma) {
+        dma = &dma_context_memory;
+    }
     if (!dma_has_iommu(dma)) {
         return true;
     } else {
@@ -125,6 +128,9 @@ static inline int dma_memory_rw_relaxed(DMAContext *dma, dma_addr_t addr,
                                         void *buf, dma_addr_t len,
                                         DMADirection dir)
 {
+    if (!dma) {
+        dma = &dma_context_memory;
+    }
     if (!dma_has_iommu(dma)) {
         /* Fast-path for no IOMMU */
         address_space_rw(dma->as, addr, buf, len, dir == DMA_DIRECTION_FROM_DEVICE);
@@ -181,6 +187,9 @@ static inline void *dma_memory_map(DMAContext *dma,
                                    dma_addr_t addr, dma_addr_t *len,
                                    DMADirection dir)
 {
+    if (!dma) {
+        dma = &dma_context_memory;
+    }
     if (!dma_has_iommu(dma)) {
         hwaddr xlen = *len;
         void *p;
@@ -200,6 +209,9 @@ static inline void dma_memory_unmap(DMAContext *dma,
                                     void *buffer, dma_addr_t len,
                                     DMADirection dir, dma_addr_t access_len)
 {
+    if (!dma) {
+        dma = &dma_context_memory;
+    }
     if (!dma_has_iommu(dma)) {
         address_space_unmap(dma->as, buffer, (hwaddr)len,
                             dir == DMA_DIRECTION_FROM_DEVICE, access_len);

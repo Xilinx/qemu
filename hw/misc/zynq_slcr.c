@@ -19,6 +19,12 @@
 #include "hw/sysbus.h"
 #include "sysemu/sysemu.h"
 
+#ifdef CONFIG_FDT
+#include "qemu/config-file.h"
+#include "sysemu/device_tree.h"
+#endif
+#define NUM_CPUS 2
+
 #ifdef ZYNQ_ARM_SLCR_ERR_DEBUG
 #define DB_PRINT(...) do { \
     fprintf(stderr,  ": %s: ", __func__); \
@@ -114,9 +120,14 @@ typedef enum {
   RESET_MAX
 } ResetValues;
 
+#define A9_CPU_RST_CTRL_RST_SHIFT 0
+#define A9_CPU_RST_CTRL_CLKSTOP_SHIFT 4
+
 typedef struct {
     SysBusDevice busdev;
     MemoryRegion iomem;
+
+    DeviceState *cpus[NUM_CPUS];
 
     union {
         struct {
@@ -156,6 +167,78 @@ typedef struct {
     };
 } ZynqSLCRState;
 
+/* Set up PS7 QSPI MIO registers based on the dtb */
+static void zynq_slcr_set_qspi(ZynqSLCRState *s, void *fdt)
+{
+    int i;
+    Error *errp = NULL;
+    char node_path[DT_PATH_LENGTH];
+
+    memset(node_path, 0, sizeof(node_path));
+    /* find the Zynq QSPI node path with compatible string, return if node
+     * not found */
+    if (qemu_devtree_node_by_compatible(fdt, node_path,
+                                        "xlnx,zynq-qspi-1.0")) {
+        DB_PRINT("DT, PS7 QSPI node not found\n");
+        return ;
+    }
+
+    /* Check if there is a child node and assume the child node is a QSPI
+     * flash node. Then set up the MIO registers for the first QSPI flash.
+     * Use the is-dual property to determine whether MIO registers
+     * configuration is required to setup for the second QSPI flash*/
+    if (qemu_devtree_get_num_children(fdt, node_path, 1)) {
+        DB_PRINT("DT, PS7 QSPI: child node found\n");
+        /* Set MIO 1 - 6 (qspi0)  with QSPI + LVCOMS18 (0x202) */
+        for (i = 1; i <= 6; i++) {
+            s->mio[i] = 0x00000202;
+        }
+
+        /* Check for dual mode */
+        if (qemu_devtree_getprop_cell(fdt, node_path, "is-dual", 0,
+                                        false, &errp) ==  1) {
+            DB_PRINT("DT, PS QSPI is in dual\n");
+            /* Set MIO 0 (qspi1_cs) with QSPI + LVCOMS18 (0x202) */
+            s->mio[0] = 0x00000202;
+
+            /* Set MIO 9 - 13 (qspi1) with QSPI + LVCOMS18 (0x202) */
+            for (i = 9; i <= 13; i++) {
+                s->mio[i] = 0x00000202;
+            }
+        }
+    }
+}
+
+static void zynq_slcr_fdt_config(ZynqSLCRState *s)
+{
+#ifdef CONFIG_FDT
+    QemuOpts *machine_opts;
+    const char *dtb_filename;
+    int fdt_size;
+    void *fdt = NULL;
+
+    /* identify dtb file name from qemu opts */
+    machine_opts = qemu_opts_find(qemu_find_opts("machine"), 0);
+    if (machine_opts) {
+        dtb_filename = qemu_opt_get(machine_opts, "dtb");
+    } else {
+        dtb_filename = NULL;
+    }
+
+    if (dtb_filename) {
+        fdt = load_device_tree(dtb_filename, &fdt_size);
+    }
+
+    if (!fdt) {
+        return;
+    }
+
+    zynq_slcr_set_qspi(s, fdt);
+#endif
+
+    return;
+}
+
 static void zynq_slcr_reset(DeviceState *d)
 {
     int i;
@@ -166,19 +249,19 @@ static void zynq_slcr_reset(DeviceState *d)
 
     s->lockval = 1;
     /* 0x100 - 0x11C */
-    s->pll[ARM_PLL_CTRL] = 0x0001A008;
-    s->pll[DDR_PLL_CTRL] = 0x0001A008;
-    s->pll[IO_PLL_CTRL] = 0x0001A008;
+    s->pll[ARM_PLL_CTRL] = 0x00028008;
+    s->pll[DDR_PLL_CTRL] = 0x00020008;
+    s->pll[IO_PLL_CTRL] = 0x0001e008;
     s->pll[PLL_STATUS] = 0x0000003F;
-    s->pll[ARM_PPL_CFG] = 0x00014000;
-    s->pll[DDR_PLL_CFG] = 0x00014000;
-    s->pll[IO_PLL_CFG] = 0x00014000;
+    s->pll[ARM_PPL_CFG] = 0x000fa220;
+    s->pll[DDR_PLL_CFG] = 0x0012c220;
+    s->pll[IO_PLL_CFG] = 0x001452c0;
 
     /* 0x120 - 0x16C */
-    s->clk[ARM_CLK_CTRL] = 0x1F000400;
+    s->clk[ARM_CLK_CTRL] = 0x1F000200;
     s->clk[DDR_CLK_CTRL] = 0x18400003;
     s->clk[DCI_CLK_CTRL] = 0x01E03201;
-    s->clk[APER_CLK_CTRL] = 0x01FFCCCD;
+    s->clk[APER_CLK_CTRL] = 0x01ed044d;
     s->clk[USB0_CLK_CTRL] = s->clk[USB1_CLK_CTRL] = 0x00101941;
     s->clk[GEM0_RCLK_CTRL] = s->clk[GEM1_RCLK_CTRL] = 0x00000001;
     s->clk[GEM0_CLK_CTRL] = s->clk[GEM1_CLK_CTRL] = 0x00003C01;
@@ -243,6 +326,8 @@ static void zynq_slcr_reset(DeviceState *d)
     s->ddriob[0] = s->ddriob[1] = s->ddriob[2] = s->ddriob[3] = 0x00000e00;
     s->ddriob[4] = s->ddriob[5] = s->ddriob[6] = 0x00000e00;
     s->ddriob[12] = 0x00000021;
+
+    zynq_slcr_fdt_config(s);
 }
 
 static inline uint32_t zynq_slcr_read_imp(void *opaque,
@@ -342,6 +427,7 @@ static void zynq_slcr_write(void *opaque, hwaddr offset,
                           uint64_t val, unsigned size)
 {
     ZynqSLCRState *s = (ZynqSLCRState *)opaque;
+    int i;
 
     DB_PRINT("offset: %08x data: %08x\n", (unsigned)offset, (unsigned)val);
 
@@ -396,6 +482,21 @@ static void zynq_slcr_write(void *opaque, hwaddr offset,
                 goto bad_reg;
             }
             s->reset[(offset - 0x200) / 4] = val;
+            if (offset - 0x200 == A9_CPU * 4) { /* CPU Reset */
+                for (i = 0; i < NUM_CPUS && s->cpus[i]; ++i) {
+                    bool is_rst = val & (1 << (A9_CPU_RST_CTRL_RST_SHIFT + i));
+                    bool is_clkstop = val &
+                                    (1 << (A9_CPU_RST_CTRL_CLKSTOP_SHIFT + i));
+                    if (is_rst) {
+                        DB_PRINT("resetting cpu %d\n", i);
+                        device_reset(s->cpus[i]);
+                    }
+                    DB_PRINT("%shalting cpu %d\n", is_rst || is_clkstop ?
+                             "" : "un", i);
+                    (is_rst || is_clkstop ?
+                                device_halt : device_unhalt)(s->cpus[i]);
+                }
+            }
             break;
         case 0x300:
             s->apu_ctrl = val;
@@ -492,11 +593,27 @@ static const MemoryRegionOps slcr_ops = {
 
 static int zynq_slcr_init(SysBusDevice *dev)
 {
+    int i;
     ZynqSLCRState *s = FROM_SYSBUS(ZynqSLCRState, dev);
+
+    if (!s->cpus[0]) {
+        CPUArchState *env;
+        int i = 0;
+
+        for (env = first_cpu; env; env = env->next_cpu) {
+            s->cpus[i++] = DEVICE(arm_env_get_cpu(env));
+        }
+    }
 
     memory_region_init_io(&s->iomem, &slcr_ops, s, "slcr", 0x1000);
     sysbus_init_mmio(dev, &s->iomem);
 
+    for (i = 0; i < NUM_CPUS; ++i) {
+        gchar *name = g_strdup_printf("cpu%d", i);
+        object_property_add_link(OBJECT(dev), name, TYPE_DEVICE,
+                                 (Object **) &s->cpus[i], NULL);
+        g_free(name);
+    }
     return 0;
 }
 

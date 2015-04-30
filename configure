@@ -2500,9 +2500,14 @@ fi
 
 ##########################################
 # fdt probe
+
+fdt=yes
+
 if test "$fdt" != "no" ; then
   fdt_libs="-lfdt"
+  # explicitly check for libfdt_env.h as it is missing in some stable installs
   cat > $TMPC << EOF
+#include <libfdt_env.h>
 int main(void) { return 0; }
 EOF
   if compile_prog "" "$fdt_libs" ; then
@@ -3394,7 +3399,7 @@ fi
 
 if test "$solaris" = "no" ; then
     if $ld --version 2>/dev/null | grep "GNU ld" >/dev/null 2>/dev/null ; then
-        LDFLAGS="-Wl,--warn-common $LDFLAGS"
+        LDFLAGS="$LDFLAGS"
     fi
 fi
 

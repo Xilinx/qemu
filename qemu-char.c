@@ -2944,7 +2944,7 @@ void qmp_ringbuf_write(const char *device, const char *data,
     }
 
     if (has_format && (format == DATA_FORMAT_BASE64)) {
-        write_data = g_base64_decode(data, &write_count);
+        write_data = g_base64_decode(data, (gsize *)&write_count);
     } else {
         write_data = (uint8_t *)data;
         write_count = strlen(data);

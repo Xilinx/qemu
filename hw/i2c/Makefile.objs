@@ -4,4 +4,6 @@ common-obj-$(CONFIG_ACPI) += smbus_ich9.o
 common-obj-$(CONFIG_APM) += pm_smbus.o
 common-obj-$(CONFIG_BITBANG_I2C) += bitbang_i2c.o
 common-obj-$(CONFIG_EXYNOS4) += exynos4210_i2c.o
+common-obj-$(CONFIG_CADENCE) += cadence_i2c.o
+common-obj-$(CONFIG_PCA9548) += pca9548.o
 obj-$(CONFIG_OMAP) += omap_i2c.o

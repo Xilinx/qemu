@@ -2541,7 +2541,7 @@ void usb_ehci_initfn(EHCIState *s, DeviceState *dev)
     qemu_register_reset(ehci_reset, s);
     qemu_add_vm_change_state_handler(usb_ehci_vm_state_change, s);
 
-    memory_region_init(&s->mem, "ehci", MMIO_SIZE);
+    memory_region_init_ram(&s->mem, "ehci", MMIO_SIZE);
     memory_region_init_io(&s->mem_caps, &ehci_mmio_caps_ops, s,
                           "capabilities", CAPA_SIZE);
     memory_region_init_io(&s->mem_opreg, &ehci_mmio_opreg_ops, s,

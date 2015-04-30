@@ -522,6 +522,60 @@ out:
     return ret;
 }
 
+/* Load a U-Boot ramdisk.  */
+int load_uramdisk(const char *filename, hwaddr addr, uint64_t max_sz)
+{
+    int fd;
+    int size;
+    uboot_image_header_t h;
+    uboot_image_header_t *hdr = &h;
+    uint8_t *data = NULL;
+    int ret = -1;
+
+    fd = open(filename, O_RDONLY | O_BINARY);
+    if (fd < 0) {
+        return -1;
+    }
+
+    size = read(fd, hdr, sizeof(uboot_image_header_t));
+    if (size < 0) {
+        goto out;
+    }
+
+    bswap_uboot_header(hdr);
+
+    if (hdr->ih_magic != IH_MAGIC) {
+        goto out;
+    }
+
+    if (hdr->ih_type != IH_TYPE_RAMDISK) {
+        fprintf(stderr, "Can only load u-boot image type \"ramdisk\"\n");
+        goto out;
+    }
+
+    if (hdr->ih_size > max_sz) {
+        ret = -1;
+        goto out;
+    }
+
+    data = g_malloc(hdr->ih_size);
+
+    if (read(fd, data, hdr->ih_size) != hdr->ih_size) {
+        fprintf(stderr, "Error reading file\n");
+        goto out;
+    }
+
+    rom_add_blob_fixed(filename, data, hdr->ih_size, addr);
+    ret = hdr->ih_size;
+
+out:
+    if (data) {
+        g_free(data);
+    }
+    close(fd);
+    return ret;
+}
+
 /*
  * Functions for reboot-persistent memory regions.
  *  - used for vga bios and option roms.

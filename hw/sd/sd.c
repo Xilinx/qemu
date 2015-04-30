@@ -690,11 +690,24 @@ static sd_rsp_type_t sd_normal_command(SDState *sd,
         break;
 
     case 1:	/* CMD1:   SEND_OP_CMD */
-        if (!sd->spi)
-            goto bad_cmd;
+	    /* ACMD41: SD_APP_OP_COND */
+        if (sd->spi) {
+            /* SEND_OP_CMD */
+            sd->state = sd_transfer_state;
+            return sd_r1;
+        }
+        switch (sd->state) {
+        case sd_idle_state:
+            /* We accept any voltage.  10000 V is nothing.  */
+            if (req.arg)
+                sd->state = sd_ready_state;
 
-        sd->state = sd_transfer_state;
-        return sd_r1;
+            return sd_r3;
+
+        default:
+            break;
+        }
+        break;
 
     case 2:	/* CMD2:   ALL_SEND_CID */
         if (sd->spi)
@@ -794,6 +807,9 @@ static sd_rsp_type_t sd_normal_command(SDState *sd,
         break;
 
     case 8:	/* CMD8:   SEND_IF_COND */
+        if (sd->spi) {
+            goto bad_cmd;
+        }
         /* Physical Layer Specification Version 2.00 command */
         switch (sd->state) {
         case sd_idle_state:
@@ -1105,6 +1121,7 @@ static sd_rsp_type_t sd_normal_command(SDState *sd,
         break;
 
     /* Erase commands (Class 5) */
+    case 35:
     case 32:	/* CMD32:  ERASE_WR_BLK_START */
         switch (sd->state) {
         case sd_transfer_state:
@@ -1116,6 +1133,7 @@ static sd_rsp_type_t sd_normal_command(SDState *sd,
         }
         break;
 
+    case 36:
     case 33:	/* CMD33:  ERASE_WR_BLK_END */
         switch (sd->state) {
         case sd_transfer_state:
@@ -1277,6 +1295,7 @@ static sd_rsp_type_t sd_app_command(SDState *sd,
         }
         switch (sd->state) {
         case sd_idle_state:
+        case sd_ready_state:
             /* We accept any voltage.  10000 V is nothing.  */
             if (req.arg)
                 sd->state = sd_ready_state;

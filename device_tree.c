@@ -71,7 +71,9 @@ void *load_device_tree(const char *filename_path, int *sizep)
     int ret;
     void *fdt = NULL;
 
-    *sizep = 0;
+    if (sizep) {
+        *sizep = 0;
+    }
     dt_size = get_image_size(filename_path);
     if (dt_size < 0) {
         printf("Unable to get size of device tree file '%s'\n",
@@ -104,7 +106,9 @@ void *load_device_tree(const char *filename_path, int *sizep)
             filename_path);
         goto fail;
     }
-    *sizep = dt_size;
+    if (sizep) {
+        *sizep = dt_size;
+    }
     return fdt;
 
 fail:
@@ -178,8 +182,9 @@ int qemu_devtree_setprop_string(void *fdt, const char *node_path,
     return r;
 }
 
-const void *qemu_devtree_getprop(void *fdt, const char *node_path,
-                                 const char *property, int *lenp)
+void *qemu_devtree_getprop(void *fdt, const char *node_path,
+                                 const char *property, int *lenp,
+                                 bool inherit, Error **errp)
 {
     int len;
     const void *r;
@@ -188,24 +193,37 @@ const void *qemu_devtree_getprop(void *fdt, const char *node_path,
     }
     r = fdt_getprop(fdt, findnode_nofail(fdt, node_path), property, lenp);
     if (!r) {
-        fprintf(stderr, "%s: Couldn't get %s/%s: %s\n", __func__,
-                node_path, property, fdt_strerror(*lenp));
-        exit(1);
+        char parent[DT_PATH_LENGTH];
+        if (inherit && !qemu_devtree_getparent(fdt, parent, node_path)) {
+            return qemu_devtree_getprop(fdt, parent, property, lenp, true,
+                                                                errp);
+        }
+        /* FIXME: Be smarter */
+        error_set(errp, QERR_UNDEFINED_ERROR);
+        return NULL;
     }
-    return r;
+    return g_memdup(r, *lenp);
 }
 
 uint32_t qemu_devtree_getprop_cell(void *fdt, const char *node_path,
-                                   const char *property)
+                                   const char *property, int offset,
+                                   bool inherit, Error **errp)
 {
     int len;
-    const uint32_t *p = qemu_devtree_getprop(fdt, node_path, property, &len);
-    if (len != 4) {
-        fprintf(stderr, "%s: %s/%s not 4 bytes long (not a cell?)\n",
-                __func__, node_path, property);
-        exit(1);
+    uint32_t ret;
+    uint32_t *p = qemu_devtree_getprop(fdt, node_path, property, &len,
+                                                                inherit, errp);
+    if (errp && *errp) {
+        return 0;
     }
-    return be32_to_cpu(*p);
+    if (len < (offset+1)*4) {
+        /* FIXME: Be smarter */
+        error_set(errp, QERR_UNDEFINED_ERROR);
+        return 0;
+    }
+    ret = be32_to_cpu(p[offset]);
+    g_free(p);
+    return ret;
 }
 
 uint32_t qemu_devtree_get_phandle(void *fdt, const char *path)
@@ -317,5 +335,204 @@ void qemu_devtree_dumpdtb(void *fdt, int size)
             exit(g_file_set_contents(dumpdtb, fdt, size, NULL) ? 0 : 1);
         }
     }
+}
 
+char *qemu_devtree_get_node_name(void *fdt, const char *node_path)
+{
+    const char *ret = fdt_get_name(fdt, fdt_path_offset(fdt, node_path), NULL);
+    return ret ? strdup(ret) : NULL;
+}
+
+int qemu_devtree_get_node_depth(void *fdt, const char *node_path)
+{
+    return fdt_node_depth(fdt, fdt_path_offset(fdt, node_path));
+}
+
+
+int qemu_devtree_num_props(void *fdt, const char *node_path)
+{
+    int offset = fdt_path_offset(fdt, node_path);
+    int ret = 0;
+
+    for (offset = fdt_first_property_offset(fdt, offset);
+            offset != -FDT_ERR_NOTFOUND;
+            offset = fdt_next_property_offset(fdt, offset)) {
+        ret++;
+    }
+    return ret;
+}
+
+QEMUDevtreeProp *qemu_devtree_get_props(void *fdt, const char *node_path)
+{
+    QEMUDevtreeProp *ret = g_new0(QEMUDevtreeProp,
+                                    qemu_devtree_num_props(fdt, node_path) + 1);
+    int offset = fdt_path_offset(fdt, node_path);
+    int i = 0;
+
+    for (offset = fdt_first_property_offset(fdt, offset);
+            offset != -FDT_ERR_NOTFOUND;
+            offset = fdt_next_property_offset(fdt, offset)) {
+        const char *propname;
+        const void *val = fdt_getprop_by_offset(fdt, offset, &propname,
+                                                    &ret[i].len);
+
+        ret[i].name = g_strdup(propname);
+        ret[i].value = g_memdup(val, ret[i].len);
+        i++;
+    }
+    return ret;
+}
+
+static void qemu_devtree_children_info(void *fdt, const char *node_path,
+        int depth, int *num, char **returned_paths) {
+    int offset = fdt_path_offset(fdt, node_path);
+    int root_depth = fdt_node_depth(fdt, offset);
+    int cur_depth = root_depth;
+
+    if (num) {
+        *num = 0;
+    }
+    for (;;) {
+        offset = fdt_next_node(fdt, offset, &cur_depth);
+        if (cur_depth <= root_depth) {
+            break;
+        }
+        if (cur_depth <= root_depth + depth || depth == 0) {
+            if (returned_paths) {
+                returned_paths[*num] = g_malloc0(DT_PATH_LENGTH);
+                fdt_get_path(fdt, offset, returned_paths[*num], DT_PATH_LENGTH);
+            }
+            if (num) {
+                (*num)++;
+            }
+        }
+    }
+}
+
+char **qemu_devtree_get_children(void *fdt, const char *node_path, int depth)
+{
+    int num_children = qemu_devtree_get_num_children(fdt, node_path, depth);
+    char **ret = g_malloc0(sizeof(*ret) * num_children);
+
+    qemu_devtree_children_info(fdt, node_path, depth, &num_children, ret);
+    return ret;
+}
+
+int qemu_devtree_get_num_children(void *fdt, const char *node_path, int depth)
+{
+    int ret;
+
+    qemu_devtree_children_info(fdt, node_path, depth, &ret, NULL);
+    return ret;
+}
+
+int qemu_devtree_node_by_compatible(void *fdt, char *node_path,
+                        const char *compats)
+{
+    int offset = fdt_node_offset_by_compatible(fdt, 0, compats);
+    return offset > 0 ?
+        fdt_get_path(fdt, offset, node_path, DT_PATH_LENGTH) : 1;
+}
+
+int qemu_devtree_get_node_by_name(void *fdt, char *node_path,
+        const char *cmpname) {
+    int offset = 0;
+    char *name = NULL;
+
+    do {
+        char *at;
+
+        offset = fdt_next_node(fdt, offset, NULL);
+        name = (void *)fdt_get_name(fdt, offset, NULL);
+        if (!name) {
+            continue;
+        }
+        at = memchr(name, '@', strlen(name));
+        if (!strncmp(name, cmpname, at ? at - name : strlen(name) )) {
+            break;
+        }
+    } while (offset > 0);
+    return offset > 0 ?
+        fdt_get_path(fdt, offset, node_path, DT_PATH_LENGTH) : 1;
+}
+
+int qemu_devtree_get_node_by_phandle(void *fdt, char *node_path, int phandle)
+{
+    return fdt_get_path(fdt, fdt_node_offset_by_phandle(fdt, phandle),
+                            node_path, DT_PATH_LENGTH);
+}
+
+int qemu_devtree_getparent(void *fdt, char *node_path, const char *current)
+{
+    int offset = fdt_path_offset(fdt, current);
+    int parent_offset = fdt_supernode_atdepth_offset(fdt, offset,
+        fdt_node_depth(fdt, offset) - 1, NULL);
+
+    return parent_offset > 0 ?
+        fdt_get_path(fdt, parent_offset, node_path, DT_PATH_LENGTH) : 1;
+}
+
+int qemu_devtree_get_root_node(void *fdt, char *node_path)
+{
+    return fdt_get_path(fdt, 0, node_path, DT_PATH_LENGTH);
+}
+
+static void devtree_scan(void *fdt, int *num_nodes, int info_dump)
+{
+    int depth = 0, offset = 0;
+
+    if (num_nodes) {
+        *num_nodes = 0;
+    }
+    for (;;) {
+        offset = fdt_next_node(fdt, offset, &depth);
+        if (num_nodes) {
+            (*num_nodes)++;
+        }
+        if (offset <= 0 || depth <= 0) {
+            break;
+        }
+
+        if (info_dump) {
+            char node_path[DT_PATH_LENGTH];
+            char *all_compats = NULL;
+            int compat_len;
+            Error *errp = NULL;
+
+            if (fdt_get_path(fdt, offset, node_path, DT_PATH_LENGTH)) {
+                sprintf(node_path, "(none)");
+            } else {
+                all_compats = qemu_devtree_getprop(fdt, node_path, "compatible",
+                                                    &compat_len, false, &errp);
+            }
+            if (!errp) {
+                char *i = all_compats;
+                for (;;) {
+                    char *j = rawmemchr(i, '\0');
+                    compat_len -= ((j+1)-i);
+                    if (!compat_len) {
+                        break;
+                    }
+                    *j = ' ';
+                    i = j+1;
+                }
+            }
+            printf("OFFSET: %d, DEPTH: %d, PATH: %s, COMPATS: %s\n",
+                    offset, depth, node_path,
+                    all_compats ? all_compats : "(none)");
+        }
+    }
+}
+
+void devtree_info_dump(void *fdt)
+{
+    devtree_scan(fdt, NULL, 1);
+}
+
+int devtree_get_num_nodes(void *fdt)
+{
+    int ret;
+
+    devtree_scan(fdt, &ret, 0);
+    return ret;
 }

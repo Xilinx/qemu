@@ -230,9 +230,11 @@ static int load_dtb(hwaddr addr, const struct arm_boot_info *binfo)
 #ifdef CONFIG_FDT
     uint32_t *mem_reg_property;
     uint32_t mem_reg_propsize;
-    void *fdt = NULL;
+    void *fdt = binfo->fdt;
     char *filename;
     int size, rc;
+    Error *errp = NULL;
+
     uint32_t acells, scells, hival;
 
     filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, binfo->dtb_filename);
@@ -241,7 +243,11 @@ static int load_dtb(hwaddr addr, const struct arm_boot_info *binfo)
         return -1;
     }
 
-    fdt = load_device_tree(filename, &size);
+    if (!fdt) {
+        fdt = load_device_tree(filename, &size);
+    } else {
+        size = binfo->fdt_size;
+    }
     if (!fdt) {
         fprintf(stderr, "Couldn't open dtb file %s\n", filename);
         g_free(filename);
@@ -249,8 +255,12 @@ static int load_dtb(hwaddr addr, const struct arm_boot_info *binfo)
     }
     g_free(filename);
 
-    acells = qemu_devtree_getprop_cell(fdt, "/", "#address-cells");
-    scells = qemu_devtree_getprop_cell(fdt, "/", "#size-cells");
+    acells = qemu_devtree_getprop_cell(fdt, "/", "#address-cells", 0,
+                                        false, &errp);
+    scells = qemu_devtree_getprop_cell(fdt, "/", "#size-cells", 0,
+                                        false, &errp);
+    assert_no_error(errp);
+
     if (acells == 0 || scells == 0) {
         fprintf(stderr, "dtb file invalid (#address-cells or #size-cells 0)\n");
         return -1;
@@ -277,10 +287,12 @@ static int load_dtb(hwaddr addr, const struct arm_boot_info *binfo)
         exit(1);
     }
 
-    rc = qemu_devtree_setprop(fdt, "/memory", "reg", mem_reg_property,
-                              mem_reg_propsize * sizeof(uint32_t));
-    if (rc < 0) {
-        fprintf(stderr, "couldn't set /memory/reg\n");
+    if (!binfo->fdt) {
+        rc = qemu_devtree_setprop(fdt, "/memory", "reg", mem_reg_property,
+                                  mem_reg_propsize * sizeof(uint32_t));
+        if (rc < 0) {
+            fprintf(stderr, "couldn't set /memory/reg\n");
+        }
     }
 
     if (binfo->kernel_cmdline && *binfo->kernel_cmdline) {
@@ -366,6 +378,7 @@ void arm_load_kernel(ARMCPU *cpu, struct arm_boot_info *info)
     machine_opts = qemu_opts_find(qemu_find_opts("machine"), 0);
     if (machine_opts) {
         info->dtb_filename = qemu_opt_get(machine_opts, "dtb");
+        is_linux = qemu_opt_get_bool(machine_opts, "linux", 0) ? 1 : 0;
     } else {
         info->dtb_filename = NULL;
     }
@@ -386,6 +399,11 @@ void arm_load_kernel(ARMCPU *cpu, struct arm_boot_info *info)
     big_endian = 0;
 #endif
 
+    /* Assume that raw images are linux kernels, and ELF images are not.  */
+    kernel_size = load_elf(info->kernel_filename, NULL, NULL, &elf_entry,
+                           NULL, NULL, big_endian, ELF_MACHINE, 1);
+    entry = elf_entry;
+
     /* We want to put the initrd far enough into RAM that when the
      * kernel is uncompressed it will not clobber the initrd. However
      * on boards without much RAM we must ensure that we still leave
@@ -396,13 +414,10 @@ void arm_load_kernel(ARMCPU *cpu, struct arm_boot_info *info)
      * halfway into RAM, and for boards with 256MB of RAM or more we put
      * the initrd at 128MB.
      */
-    info->initrd_start = info->loader_start +
-        MIN(info->ram_size / 2, 128 * 1024 * 1024);
+    info->initrd_start = ((kernel_size >= 0) ? QEMU_ALIGN_UP(elf_entry, 4096) :
+                          info->loader_start) + MIN(info->ram_size / 2,
+                          128 * 1024 * 1024);
 
-    /* Assume that raw images are linux kernels, and ELF images are not.  */
-    kernel_size = load_elf(info->kernel_filename, NULL, NULL, &elf_entry,
-                           NULL, NULL, big_endian, ELF_MACHINE, 1);
-    entry = elf_entry;
     if (kernel_size < 0) {
         kernel_size = load_uimage(info->kernel_filename, &entry, NULL,
                                   &is_linux);
@@ -421,10 +436,15 @@ void arm_load_kernel(ARMCPU *cpu, struct arm_boot_info *info)
     info->entry = entry;
     if (is_linux) {
         if (info->initrd_filename) {
-            initrd_size = load_image_targphys(info->initrd_filename,
-                                              info->initrd_start,
-                                              info->ram_size -
-                                              info->initrd_start);
+            initrd_size = load_uramdisk(info->initrd_filename,
+                                        info->initrd_start,
+                                        info->ram_size -
+                                        info->initrd_start);
+            if (initrd_size < 0)
+                initrd_size = load_image_targphys(info->initrd_filename,
+                                                  info->initrd_start,
+                                                  info->ram_size -
+                                                  info->initrd_start);
             if (initrd_size < 0) {
                 fprintf(stderr, "qemu: could not load initrd '%s'\n",
                         info->initrd_filename);

@@ -24,6 +24,7 @@
 #include "hw/hw.h"
 #include "sysemu/blockdev.h"
 #include "hw/ssi.h"
+#include "qemu/config-file.h"
 
 #ifndef M25P80_ERR_DEBUG
 #define M25P80_ERR_DEBUG 0
@@ -61,6 +62,17 @@ typedef struct FlashPartInfo {
     uint32_t page_size;
     uint8_t flags;
 } FlashPartInfo;
+
+/* FIXME: Make this accessible as a debug mode utility */
+
+static void dump_flash_part_info(const FlashPartInfo *fp)
+{
+    fprintf(stderr, "%s jedec:%06x ext-jedec:%04x sector-size:%06x "
+                    "num-sectors:%04x write-1:%c erase-4k:%c erase-32k:%c\n",
+            fp->part_name, fp->jedec, fp->ext_jedec, fp->sector_size,
+            fp->n_sectors, fp->flags & WR_1 ? 'Y' : 'N',
+            fp->flags & ER_4K ? 'Y' : 'N',  fp->flags & ER_32K ? 'Y' : 'N');
+}
 
 /* adapted from linux */
 
@@ -179,6 +191,8 @@ static const FlashPartInfo known_devices[] = {
 
     /* Numonyx -- n25q128 */
     { INFO("n25q128",      0x20ba18,      0,  64 << 10, 256, 0) },
+    { INFO("n25q128al1",   0x20ba18,      0,  64 << 10, 256, 0) },
+    { INFO("n25q128a13",   0x20ba18,      0,  64 << 10, 256, 0) },
 };
 
 typedef enum {
@@ -584,6 +598,7 @@ static uint32_t m25p80_transfer8(SSISlave *ss, uint32_t tx)
 static int m25p80_init(SSISlave *ss)
 {
     DriveInfo *dinfo;
+    QemuOpts *machine_opts;
     Flash *s = FROM_SSI_SLAVE(Flash, ss);
     M25P80Class *mc = M25P80_GET_CLASS(s);
 
@@ -609,6 +624,14 @@ static int m25p80_init(SSISlave *ss)
         memset(s->storage, 0xFF, s->size);
     }
 
+    machine_opts = qemu_opts_find(qemu_find_opts("machine"), 0);
+    if (machine_opts && qemu_opt_get_bool(machine_opts, "trial", 0)) {
+        int i;
+
+        for (i = 0; i < ARRAY_SIZE(known_devices); ++i) {
+            dump_flash_part_info(&known_devices[i]);
+        }
+    }
     return 0;
 }
 

@@ -64,7 +64,7 @@ static char *read_splashfile(char *filename, size_t *file_sizep,
     unsigned int filehead;
     int bmp_bpp;
 
-    res = g_file_get_contents(filename, &content, file_sizep, &err);
+    res = g_file_get_contents(filename, &content, (gsize *)file_sizep, &err);
     if (res == FALSE) {
         error_report("failed to read splash file '%s'", filename);
         g_error_free(err);

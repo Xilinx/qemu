@@ -157,7 +157,9 @@ static void uart_rx_reset(UartState *s)
 {
     s->rx_wpos = 0;
     s->rx_count = 0;
-    qemu_chr_accept_input(s->chr);
+    if (s->chr) {
+        qemu_chr_accept_input(s->chr);
+    }
 
     s->r[R_SR] |= UART_SR_INTR_REMPTY;
     s->r[R_SR] &= ~UART_SR_INTR_RFUL;
@@ -297,9 +299,7 @@ static void uart_write_tx_fifo(UartState *s, const uint8_t *buf, int size)
         return;
     }
 
-    while (size) {
-        size -= qemu_chr_fe_write(s->chr, buf, size);
-    }
+    qemu_chr_fe_write_all(s->chr, buf, size);
 }
 
 static void uart_receive(void *opaque, const uint8_t *buf, int size)
@@ -426,7 +426,8 @@ static const MemoryRegionOps uart_ops = {
 
 static void cadence_uart_reset(UartState *s)
 {
-    s->r[R_CR] = 0x00000128;
+    //s->r[R_CR] = 0x00000128;
+    s->r[R_CR] = UART_CR_RX_EN | UART_CR_TX_EN | UART_CR_STOPBRK;
     s->r[R_IMR] = 0;
     s->r[R_CISR] = 0;
     s->r[R_RTRIG] = 0x00000020;

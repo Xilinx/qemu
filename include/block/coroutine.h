@@ -138,6 +138,15 @@ bool qemu_co_queue_next(CoQueue *queue);
 void qemu_co_queue_restart_all(CoQueue *queue);
 
 /**
+ * Transfers control to the next coroutine in the CoQueue and removes it from
+ * the queue.
+ *
+ * Returns true once after control transfers back to caller, or false
+ * immediately if the queue is empty.
+ */
+bool qemu_co_queue_enter_next(CoQueue *queue);
+
+/**
  * Checks if the CoQueue is empty.
  */
 bool qemu_co_queue_empty(CoQueue *queue);

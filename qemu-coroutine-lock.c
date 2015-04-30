@@ -112,6 +112,19 @@ void qemu_co_queue_restart_all(CoQueue *queue)
     qemu_co_queue_do_restart(queue, false);
 }
 
+bool qemu_co_queue_enter_next(CoQueue *queue)
+{
+    Coroutine *next;
+
+    next = QTAILQ_FIRST(&queue->entries);
+    if (next) {
+        QTAILQ_REMOVE(&queue->entries, next, co_queue_next);
+        qemu_coroutine_enter(next, NULL);
+    }
+
+    return (next != NULL);
+}
+
 bool qemu_co_queue_empty(CoQueue *queue)
 {
     return (QTAILQ_FIRST(&queue->entries) == NULL);

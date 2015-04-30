@@ -87,6 +87,9 @@ typedef struct DeviceClass {
 
     /* callbacks */
     void (*reset)(DeviceState *dev);
+    void (*halt)(DeviceState *dev);
+    void (*unhalt)(DeviceState *dev);
+
     DeviceRealize realize;
     DeviceUnrealize unrealize;
 
@@ -282,6 +285,20 @@ void qdev_machine_init(void);
  * Reset a single device (by calling the reset method).
  */
 void device_reset(DeviceState *dev);
+
+/**
+ * @device_halt
+ *
+ * Halt a single device (by calling the halt method).
+ */
+void device_halt(DeviceState *dev);
+
+/**
+ * @device_unhalt
+ *
+ * Unhalt a single device (by calling the unhalt method).
+ */
+void device_unhalt(DeviceState *dev);
 
 const struct VMStateDescription *qdev_get_vmsd(DeviceState *dev);
 

@@ -1,3 +1,5 @@
+common-obj-$(CONFIG_CLOCK) += fixed-clock.o
+common-obj-$(CONFIG_CLOCK) += zynq-pll.o
 common-obj-$(CONFIG_APPLESMC) += applesmc.o
 common-obj-$(CONFIG_MAX111X) += max111x.o
 common-obj-$(CONFIG_TMP105) += tmp105.o

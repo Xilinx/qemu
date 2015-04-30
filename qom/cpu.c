@@ -140,6 +140,25 @@ static void cpu_common_reset(CPUState *cpu)
     cpu->halted = 0;
 }
 
+static void cpu_device_reset(DeviceState *dev)
+{
+    cpu_reset(CPU(dev));
+}
+
+static void cpu_common_halt(DeviceState *dev)
+{
+    CPUState *s = CPU(dev);
+
+    s->halted = 1;
+}
+
+static void cpu_common_unhalt(DeviceState *dev)
+{
+    CPUState *s = CPU(dev);
+
+    s->halted = 0;
+}
+
 ObjectClass *cpu_class_by_name(const char *typename, const char *cpu_model)
 {
     CPUClass *cc = CPU_CLASS(object_class_by_name(typename));
@@ -180,6 +199,9 @@ static void cpu_class_init(ObjectClass *klass, void *data)
     k->write_elf32_note = cpu_common_write_elf32_note;
     k->write_elf64_qemunote = cpu_common_write_elf64_qemunote;
     k->write_elf64_note = cpu_common_write_elf64_note;
+    dc->reset = cpu_device_reset;
+    dc->halt = cpu_common_halt;
+    dc->unhalt = cpu_common_unhalt;
     dc->realize = cpu_common_realizefn;
     dc->no_user = 1;
 }

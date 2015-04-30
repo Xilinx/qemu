@@ -417,6 +417,10 @@ static QemuOptsList qemu_machine_opts = {
             .name = "dt_compatible",
             .type = QEMU_OPT_STRING,
             .help = "Overrides the \"compatible\" property of the dt root node",
+        },{
+            .name = "trial",
+            .type = QEMU_OPT_BOOL,
+            .help = "Trial mode - Just create the machine and exit"
         }, {
             .name = "dump-guest-core",
             .type = QEMU_OPT_BOOL,
@@ -429,6 +433,10 @@ static QemuOptsList qemu_machine_opts = {
             .name = "usb",
             .type = QEMU_OPT_BOOL,
             .help = "Set on/off to enable/disable usb",
+        },{
+            .name = "linux",
+            .type = QEMU_OPT_BOOL,
+            .help = "Bootstrap Linux",
         },
         { /* End of list */ }
     },
@@ -4399,6 +4407,10 @@ int main(int argc, char **argv, char **envp)
         if (load_vmstate(loadvm) < 0) {
             autostart = 0;
         }
+    }
+
+    if (machine_opts && qemu_opt_get_bool(machine_opts, "trial", 0)) {
+        exit(0);
     }
 
     if (incoming) {

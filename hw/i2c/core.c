@@ -19,6 +19,8 @@ struct i2c_bus
 
 static Property i2c_props[] = {
     DEFINE_PROP_UINT8("address", struct I2CSlave, address, 0),
+    DEFINE_PROP_UINT8("address-range", struct I2CSlave, address_range, 1),
+    DEFINE_PROP_UINT8("reg", struct I2CSlave, address, 0),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -93,7 +95,8 @@ int i2c_start_transfer(i2c_bus *bus, uint8_t address, int recv)
     QTAILQ_FOREACH(kid, &bus->qbus.children, sibling) {
         DeviceState *qdev = kid->child;
         I2CSlave *candidate = I2C_SLAVE(qdev);
-        if (candidate->address == address) {
+        if (address >= candidate->address &&
+                address < candidate->address + candidate->address_range) {
             slave = candidate;
             break;
         }
@@ -109,6 +112,9 @@ int i2c_start_transfer(i2c_bus *bus, uint8_t address, int recv)
     bus->current_dev = slave;
     if (sc->event) {
         sc->event(slave, recv ? I2C_START_RECV : I2C_START_SEND);
+    }
+    if (sc->decode_address) {
+        sc->decode_address(slave, address);
     }
     return 0;
 }
@@ -192,12 +198,13 @@ static int i2c_slave_post_load(void *opaque, int version_id)
 
 const VMStateDescription vmstate_i2c_slave = {
     .name = "I2CSlave",
-    .version_id = 1,
-    .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
+    .version_id = 2,
+    .minimum_version_id = 2,
+    .minimum_version_id_old = 2,
     .post_load = i2c_slave_post_load,
     .fields      = (VMStateField []) {
         VMSTATE_UINT8(address, I2CSlave),
+        VMSTATE_UINT8(address_range, I2CSlave),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -210,12 +217,21 @@ static int i2c_slave_qdev_init(DeviceState *dev)
     return sc->init(s);
 }
 
-DeviceState *i2c_create_slave(i2c_bus *bus, const char *name, uint8_t addr)
+
+DeviceState *i2c_create_slave_no_init(i2c_bus *bus, const char *name,
+                                      uint8_t addr)
 {
     DeviceState *dev;
 
     dev = qdev_create(&bus->qbus, name);
     qdev_prop_set_uint8(dev, "address", addr);
+    return dev;
+}
+
+DeviceState *i2c_create_slave(i2c_bus *bus, const char *name, uint8_t addr)
+{
+    DeviceState *dev = i2c_create_slave_no_init(bus, name, addr);
+
     qdev_init_nofail(dev);
     return dev;
 }
@@ -244,3 +260,39 @@ static void i2c_slave_register_types(void)
 }
 
 type_init(i2c_slave_register_types)
+
+typedef struct I2CAutoConnectArg {
+    i2c_bus *bus;
+    int current;
+    int first;
+    int num;
+} I2CAutoConnectArg;
+
+static int i2c_auto_connect_slave(Object *child, void *opaque)
+{
+    I2CAutoConnectArg *arg = opaque;
+    I2CSlave *dev = (I2CSlave *)object_dynamic_cast(child, TYPE_I2C_SLAVE);
+
+    if (!dev) {
+        return 0;
+    }
+
+    if (arg->current >= arg->first && arg->current < arg->first + arg->num) {
+        qdev_set_parent_bus(DEVICE(dev), &arg->bus->qbus);
+    }
+    arg->current++;
+    return 0;
+}
+
+void i2c_auto_connect_slaves(DeviceState *parent,
+                             i2c_bus *bus, int first, int num)
+{
+    I2CAutoConnectArg arg = {
+        .bus = bus,
+        .current = 0,
+        .first = first,
+        .num = num,
+    };
+
+    object_child_foreach(OBJECT(parent), i2c_auto_connect_slave, &arg);
+}

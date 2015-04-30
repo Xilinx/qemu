@@ -22,6 +22,8 @@
 #include "hw/sysbus.h"
 #include "qemu/timer.h"
 
+#include "hw/fdt_generic_devices.h"
+
 /* This device implements the per-cpu private timer and watchdog block
  * which is used in both the ARM11MPCore and Cortex-A9MP.
  */
@@ -223,6 +225,9 @@ static int arm_mptimer_init(SysBusDevice *dev)
 {
     ARMMPTimerState *s = FROM_SYSBUS(ARMMPTimerState, dev);
     int i;
+    if (!s->num_cpu) {
+        s->num_cpu = fdt_generic_num_cpus;
+    }
     if (s->num_cpu < 1 || s->num_cpu > MAX_CPUS) {
         hw_error("%s: num-cpu must be between 1 and %d\n", __func__, MAX_CPUS);
     }
