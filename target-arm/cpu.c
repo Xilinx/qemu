@@ -122,6 +122,12 @@ static void arm_cpu_reset(CPUState *s)
     cpu->powered_off = cpu->start_powered_off;
     s->halted = cpu->start_powered_off;
 
+    /* Reset value of SCTLR_V is controlled by input signal VINITHI.  */
+    env->cp15.sctlr_ns &= ~SCTLR_V;
+    env->cp15.sctlr_s &= ~SCTLR_V;
+    env->cp15.sctlr_ns |= env->vinithi ? SCTLR_V : 0;
+    env->cp15.sctlr_s |= env->vinithi ? SCTLR_V : 0;
+
     if (arm_feature(env, ARM_FEATURE_IWMMXT)) {
         env->iwmmxt.cregs[ARM_IWMMXT_wCID] = 0x69051000 | 'Q';
     }
@@ -408,6 +414,13 @@ static void arm_cpu_set_ncpuhalt(void *opaque, int irq, int level)
 #endif
     cpu_halt_reset_common(cs, &cs->arch_halt_pin, level, false);
 }
+static void arm_cpu_set_vinithi(void *opaque, int irq, int level)
+{
+    CPUState *cs = opaque;
+    ARMCPU *cpu = ARM_CPU(cs);
+
+    cpu->env.vinithi = level;
+}
 #endif
 
 static inline void unset_feature(CPUARMState *env, int feature)
@@ -462,6 +475,7 @@ static void arm_cpu_initfn(Object *obj)
     }
 
     qdev_init_gpio_in_named(DEVICE(cpu), arm_cpu_set_ncpuhalt, "ncpuhalt", 1);
+    qdev_init_gpio_in_named(DEVICE(cpu), arm_cpu_set_vinithi, "vinithi", 1);
 
     cpu->gt_timer[GTIMER_PHYS] = timer_new(QEMU_CLOCK_VIRTUAL, GTIMER_SCALE,
                                                 arm_gt_ptimer_cb, cpu);

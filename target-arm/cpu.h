@@ -514,9 +514,11 @@ typedef struct CPUARMState {
     CPU_COMMON
 
     /* These fields after the common ones so they are preserved on reset.  */
-
     /* Internal CPU feature flags.  */
     uint64_t features;
+
+    /* Controls the reset value of SCTLR_V.  */
+    bool vinithi;
 
     MemoryTransactionAttr *memattr_ns;
     MemoryTransactionAttr *memattr_s;
