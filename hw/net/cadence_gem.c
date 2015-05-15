@@ -24,8 +24,7 @@
 
 #include <zlib.h> /* For crc32 */
 
-#include "hw/sysbus.h"
-#include "net/net.h"
+#include "hw/net/cadence_gem.h"
 #include "net/checksum.h"
 #include "sysemu/dma.h"
 #include "qemu/log.h"
@@ -38,12 +37,6 @@
 #else
     #define DB_PRINT(...)
 #endif
-
-#define MAX_PRIORITY_QUEUES             16
-#define MAX_TYPE1_SCREENERS             16
-#define MAX_TYPE2_SCREENERS             16
-#define MAX_TYPE2_SCREENERS_ETHTYPE     8
-#define MAX_TYPE2_SCREENERS_COMPARE     32
 
 #define GEM_NWCTRL        (0x00000000/4) /* Network Control reg */
 #define GEM_NWCFG         (0x00000004/4) /* Network Config reg */
@@ -226,8 +219,6 @@
 #define GEM_T2CW1_COMPARE_OFFSET_WIDTH  (8 - GEM_T2CW1_COMPARE_OFFSET_SHIFT + 1)
 #define GEM_T2CW1_OFFSET_VALUE_SHIFT    (0)
 #define GEM_T2CW1_OFFSET_VALUE_WIDTH    (6 - GEM_T2CW1_OFFSET_VALUE_SHIFT + 1)
-
-#define CADENCE_GEM_MAXREG        (0x00000800/4) /* Last valid GEM address */
 
 /*****************************************/
 #define GEM_NWCTRL_TXSTART     0x00000200 /* Transmit Enable */
@@ -428,58 +419,6 @@ static inline void rx_desc_set_sar(unsigned *desc, int sar_idx)
                         sar_idx);
     desc[1] |= R_DESC_1_RX_SAR_MATCH;
 }
-
-#define TYPE_CADENCE_GEM "cadence_gem"
-#define CADENCE_GEM(obj) OBJECT_CHECK(CadenceGEMState, (obj), TYPE_CADENCE_GEM)
-
-#define GEM_MAX_PACKET_LEN (16 * 1024)
-#define GEM_MAX_DESC_LEN 4
-
-typedef struct CadenceGEMState {
-    SysBusDevice parent_obj;
-
-    MemoryTransactionAttr *memattr;
-    MemoryRegion iomem;
-    MemoryRegion *dma_mr;
-    AddressSpace *dma_as;
-    NICState *nic;
-    NICConf conf;
-    qemu_irq irq[MAX_PRIORITY_QUEUES];
-
-    /* Static properties */
-    uint8_t num_priority_queues;
-    uint8_t num_type1_screeners;
-    uint8_t num_type2_screeners;
-    uint8_t num_type2_screeners_ethtype;
-    uint8_t num_type2_screeners_compare;
-
-    /* GEM registers backing store */
-    uint32_t regs[CADENCE_GEM_MAXREG];
-    /* Mask of register bits which are write only */
-    uint32_t regs_wo[CADENCE_GEM_MAXREG];
-    /* Mask of register bits which are read only */
-    uint32_t regs_ro[CADENCE_GEM_MAXREG];
-    /* Mask of register bits which are clear on read */
-    uint32_t regs_rtc[CADENCE_GEM_MAXREG];
-    /* Mask of register bits which are write 1 to clear */
-    uint32_t regs_w1c[CADENCE_GEM_MAXREG];
-
-    /* PHY registers backing store */
-    uint16_t phy_regs[32];
-
-    uint8_t phy_loop; /* Are we in phy loopback? */
-
-    /* The current DMA descriptor pointers */
-    uint32_t rx_desc_addr[MAX_PRIORITY_QUEUES];
-    uint32_t tx_desc_addr[MAX_PRIORITY_QUEUES];
-
-    uint8_t can_rx_state; /* Debug only */
-
-    unsigned rx_desc[MAX_PRIORITY_QUEUES][GEM_MAX_DESC_LEN];
-
-    bool sar_active[4];
-    uint8_t packet[GEM_MAX_PACKET_LEN];
-} CadenceGEMState;
 
 static inline uint64_t tx_desc_get_buffer(CadenceGEMState *s, unsigned *desc)
 {
