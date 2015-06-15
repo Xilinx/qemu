@@ -2262,9 +2262,8 @@ static const ARMCPRegInfo strongarm_cp_reginfo[] = {
 
 static uint64_t mpidr_read_val(CPUARMState *env)
 {
-    CPUState *cs = CPU(arm_env_get_cpu(env));
     ARMCPU *cpu = ARM_CPU(arm_env_get_cpu(env));
-    uint32_t mpidr = cs->cpu_index;
+    uint64_t mpidr = cpu->mp_affinity;
 
     if (arm_feature(env, ARM_FEATURE_V7MP)) {
         mpidr |= (1U << 31);
