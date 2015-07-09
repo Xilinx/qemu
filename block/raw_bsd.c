@@ -209,6 +209,7 @@ static int raw_open(BlockDriverState *bs, QDict *options, int flags,
 {
     bs->sg = bs->file->sg;
 
+#if 0
     if (bs->probed && !bdrv_is_read_only(bs)) {
         fprintf(stderr,
                 "WARNING: Image format was not specified for '%s' and probing "
@@ -219,6 +220,7 @@ static int raw_open(BlockDriverState *bs, QDict *options, int flags,
                 "restrictions.\n",
                 bs->file->filename);
     }
+#endif
 
     return 0;
 }

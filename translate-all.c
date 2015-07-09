@@ -60,6 +60,8 @@
 #include "exec/cputlb.h"
 #include "translate-all.h"
 #include "qemu/timer.h"
+#include "qemu/etrace.h"
+#include "exec/cpu-all.h"
 
 //#define DEBUG_TB_INVALIDATE
 //#define DEBUG_FLUSH
@@ -1069,6 +1071,20 @@ TranslationBlock *tb_gen_code(CPUState *cpu,
         phys_page2 = get_page_addr_code(env, virt_page2);
     }
     tb_link_page(tb, phys_pc, phys_page2);
+
+    if (qemu_etrace_mask(ETRACE_F_TRANSLATION)) {
+        CPUState *cpu = ENV_GET_CPU(env);
+        hwaddr phys_addr = pc;
+
+#if !defined(CONFIG_USER_ONLY)
+        phys_addr = cpu_get_phys_page_debug(cpu, pc & TARGET_PAGE_MASK);
+        phys_addr += pc & ~TARGET_PAGE_MASK;
+#endif
+        etrace_dump_tb(&qemu_etracer, NULL, cpu->cpu_index,
+                       tb->pc, phys_addr, tb->size,
+                       tb->tc_ptr, code_gen_size);
+    }
+
     return tb;
 }
 

@@ -306,6 +306,11 @@ void qemu_chr_be_write(CharDriverState *s, uint8_t *buf, int len)
     }
 }
 
+int qemu_chr_fe_get_fd(CharDriverState *s)
+{
+    return s->get_fd ? s->get_fd(s) : -1;
+}
+
 int qemu_chr_fe_get_msgfd(CharDriverState *s)
 {
     int fd;
@@ -3041,6 +3046,12 @@ static void tcp_chr_close(CharDriverState *chr)
     qemu_chr_be_event(chr, CHR_EVENT_CLOSED);
 }
 
+static int tcp_get_fd(CharDriverState *chr)
+{
+    TCPCharDriver *s = chr->opaque;
+    return s->fd;
+}
+
 static void qemu_chr_finish_socket_connection(CharDriverState *chr, int fd)
 {
     TCPCharDriver *s = chr->opaque;
@@ -3744,6 +3755,9 @@ CharDriverState *qemu_chr_new(const char *label, const char *filename, void (*in
         qemu_chr_fe_claim_no_fail(chr);
         monitor_init(chr, MONITOR_USE_READLINE);
     }
+    if (!chr) {
+        qemu_opts_del(opts);
+    }
     return chr;
 }
 
@@ -4137,6 +4151,7 @@ static CharDriverState *qmp_chardev_open_socket(ChardevSocket *sock,
     chr->chr_close = tcp_chr_close;
     chr->get_msgfds = tcp_get_msgfds;
     chr->set_msgfds = tcp_set_msgfds;
+    chr->get_fd = tcp_get_fd;
     chr->chr_add_client = tcp_chr_add_client;
     chr->chr_add_watch = tcp_chr_add_watch;
     chr->chr_update_read_handler = tcp_chr_update_read_handler;

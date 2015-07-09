@@ -64,6 +64,8 @@ struct CharDriverState {
     int (*chr_ioctl)(struct CharDriverState *s, int cmd, void *arg);
     int (*get_msgfds)(struct CharDriverState *s, int* fds, int num);
     int (*set_msgfds)(struct CharDriverState *s, int *fds, int num);
+    int (*get_fd)(struct CharDriverState *s);
+    int (*get_msgfd)(struct CharDriverState *s);
     int (*chr_add_client)(struct CharDriverState *chr, int fd);
     IOEventHandler *chr_event;
     IOCanReadHandler *chr_can_read;
@@ -227,6 +229,15 @@ int qemu_chr_fe_read_all(CharDriverState *s, uint8_t *buf, int len);
  *          return value depends on the semantics of @cmd
  */
 int qemu_chr_fe_ioctl(CharDriverState *s, int cmd, void *arg);
+
+/**
+ * @qemu_chr_fe_get_fd:
+ *
+ * For backends that support it, return the underlying file-descriptor.
+ *
+ * Returns: -1 if the operation is unsupported.
+ */
+int qemu_chr_fe_get_fd(CharDriverState *s);
 
 /**
  * @qemu_chr_fe_get_msgfd:

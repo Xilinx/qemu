@@ -226,10 +226,12 @@ bool drive_check_orphaned(void)
         /* Unless this is a default drive, this may be an oversight. */
         if (!blk_get_attached_dev(blk) && !dinfo->is_default &&
             dinfo->type != IF_NONE) {
+#if 0
             fprintf(stderr, "Warning: Orphaned drive without device: "
                     "id=%s,file=%s,if=%s,bus=%d,unit=%d\n",
                     blk_name(blk), blk_bs(blk)->filename, if_name[dinfo->type],
                     dinfo->bus, dinfo->unit);
+#endif
             rs = true;
         }
     }

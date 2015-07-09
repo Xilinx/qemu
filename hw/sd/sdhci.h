@@ -84,6 +84,8 @@
 #define SDHC_CARD_PRESENT              0x00010000
 #define SDHC_CARD_DETECT               0x00040000
 #define SDHC_WRITE_PROTECT             0x00080000
+#define SDHC_DAT_LVL_SHIFT             20
+#define SDHC_DAT_LVL_LENGTH            4
 #define TRANSFERRING_DATA(x)           \
     ((x) & (SDHC_DOING_READ | SDHC_DOING_WRITE))
 
@@ -176,10 +178,16 @@
 #define SDHC_ERRINTSIGEN               0x3A
 
 /* ROC Auto CMD12 error status register 0x0 */
+/* 16 MSB are the Host Control Register 2.  */
 #define SDHC_ACMD12ERRSTS              0x3C
+#define SDHC_HOSTCTL2                  0x3E
+#define SDHC_CTRL2_VOLTAGE_SWITCH      (1 << 3)
+#define SDHC_CTRL2_SAMPLING_CLKSEL     (1 << 23)
+#define SDHC_CTRL2_EXECUTE_TUNING      (1 << 22)
 
 /* HWInit Capabilities Register 0x05E80080 */
 #define SDHC_CAPAREG                   0x40
+#define SDHC_CAPAREG_HI                0x44
 #define SDHC_CAN_DO_DMA                0x00400000
 #define SDHC_CAN_DO_ADMA2              0x00080000
 #define SDHC_CAN_DO_ADMA1              0x00100000
@@ -217,7 +225,7 @@
 
 /* HWInit Host Controller Version Register 0x0401 */
 #define SDHC_HCVER                      0xFE
-#define SD_HOST_SPECv2_VERS             0x2401
+#define SD_HOST_SPECv2_VERS             0x2402
 
 #define SDHC_REGISTERS_MAP_SIZE         0x100
 #define SDHC_INSERTION_DELAY            (get_ticks_per_sec())
@@ -239,6 +247,8 @@ typedef struct SDHCIState {
     };
     SDState *card;
     MemoryRegion iomem;
+    MemoryRegion *dma_mr;
+    AddressSpace *dma_as;
 
     QEMUTimer *insert_timer;       /* timer for 'changing' sd card. */
     QEMUTimer *transfer_timer;
@@ -268,9 +278,10 @@ typedef struct SDHCIState {
     uint16_t norintsigen;  /* Normal Interrupt Signal Enable Register */
     uint16_t errintsigen;  /* Error Interrupt Signal Enable Register */
     uint16_t acmd12errsts; /* Auto CMD12 error status register */
+    uint16_t hostctl2;     /* Host Control 2 */
     uint64_t admasysaddr;  /* ADMA System Address Register */
 
-    uint32_t capareg;      /* Capabilities Register */
+    uint64_t capareg;      /* Capabilities Register */
     uint32_t maxcurr;      /* Maximum Current Capabilities Register */
     uint8_t  *fifo_buffer; /* SD host i/o FIFO buffer */
     uint32_t buf_maxsz;
@@ -281,6 +292,7 @@ typedef struct SDHCIState {
     /* Force Event Auto CMD12 Error Interrupt Reg - write only */
     /* Force Event Error Interrupt Register- write only */
     /* RO Host Controller Version Register always reads as 0x2401 */
+
 } SDHCIState;
 
 extern const VMStateDescription sdhci_vmstate;

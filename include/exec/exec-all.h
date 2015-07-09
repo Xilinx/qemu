@@ -103,6 +103,9 @@ void tlb_flush(CPUState *cpu, int flush_global);
 void tlb_set_page(CPUState *cpu, target_ulong vaddr,
                   hwaddr paddr, int prot,
                   int mmu_idx, target_ulong size);
+void tlb_set_page_attr(CPUState *cpu, target_ulong vaddr,
+                  hwaddr paddr, int prot,
+                  int mmu_idx, target_ulong size, unsigned int attr_idx);
 void tb_invalidate_phys_addr(AddressSpace *as, hwaddr addr);
 #else
 static inline void tlb_flush_page(CPUState *cpu, target_ulong addr)
@@ -341,6 +344,10 @@ bool io_mem_read(struct MemoryRegion *mr, hwaddr addr,
                  uint64_t *pvalue, unsigned size);
 bool io_mem_write(struct MemoryRegion *mr, hwaddr addr,
                   uint64_t value, unsigned size);
+bool io_mem_read_attr(MemoryRegion *mr, hwaddr addr, uint64_t *pval, unsigned size,
+                      MemoryTransactionAttr *attr);
+bool io_mem_write_attr(MemoryRegion *mr, hwaddr addr,
+                  uint64_t val, unsigned size, MemoryTransactionAttr *attr);
 
 void tlb_fill(CPUState *cpu, target_ulong addr, int is_write, int mmu_idx,
               uintptr_t retaddr);
@@ -358,6 +365,7 @@ tb_page_addr_t get_page_addr_code(CPUArchState *env1, target_ulong addr);
 #endif
 
 /* vl.c */
+extern bool tcg_tb_chain;
 extern int singlestep;
 
 /* cpu-exec.c */

@@ -53,6 +53,7 @@ static TCGv env_btarget;
 static TCGv env_iflags;
 static TCGv env_res_addr;
 static TCGv env_res_val;
+static TCGv env_exclusive_lock;
 
 #include "exec/gen-icount.h"
 
@@ -862,7 +863,7 @@ static inline TCGv *compute_ldst_addr(DisasContext *dc, TCGv *t)
     int stackprot = 0;
 
     /* All load/stores use ra.  */
-    if (dc->ra == 1) {
+    if (dc->ra == 1 && dc->cpu->cfg.stackproc) {
         stackprot = 1;
     }
 
@@ -996,6 +997,11 @@ static void dec_load(DisasContext *dc)
             addr = &t;
         }
         tcg_gen_andi_tl(t, t, ~3);
+
+#ifndef CONFIG_USER_ONLY
+        /* Try to get the multi-arch lock.  */
+        gen_helper_exclusive_try_lock(cpu_env, *addr);
+#endif
     }
 
     /* If we get a fault on a dslot, the jmpstate better be in sync.  */
@@ -1090,6 +1096,7 @@ static void dec_store(DisasContext *dc)
         tcg_gen_qemu_ld_tl(tval, swx_addr, cpu_mmu_index(&dc->cpu->env),
                            MO_TEUL);
         tcg_gen_brcond_tl(TCG_COND_NE, env_res_val, tval, swx_skip);
+        tcg_gen_brcondi_tl(TCG_COND_EQ, env_exclusive_lock, 0, swx_skip);
         write_carryi(dc, 0);
         tcg_temp_free(tval);
     }
@@ -1155,6 +1162,9 @@ static void dec_store(DisasContext *dc)
 
     if (ex) {
         gen_set_label(swx_skip);
+#ifndef CONFIG_USER_ONLY
+        gen_helper_exclusive_unlock(cpu_env, env_res_addr);
+#endif
     }
     tcg_temp_free(swx_addr);
 
@@ -1247,19 +1257,11 @@ static void dec_br(DisasContext *dc)
     if (mbar == 2 && dc->imm == 4) {
         /* mbar IMM & 16 decodes to sleep.  */
         if (dc->rd & 16) {
-            TCGv_i32 tmp_hlt = tcg_const_i32(EXCP_HLT);
-            TCGv_i32 tmp_1 = tcg_const_i32(1);
-
             LOG_DIS("sleep\n");
-
             t_sync_flags(dc);
-            tcg_gen_st_i32(tmp_1, cpu_env,
-                           -offsetof(MicroBlazeCPU, env)
-                           +offsetof(CPUState, halted));
             tcg_gen_movi_tl(cpu_SR[SR_PC], dc->pc + 4);
-            gen_helper_raise_exception(cpu_env, tmp_hlt);
-            tcg_temp_free_i32(tmp_hlt);
-            tcg_temp_free_i32(tmp_1);
+            dc->is_jmp = DISAS_UPDATE;
+            gen_helper_sleep(cpu_env);
             return;
         }
         LOG_DIS("mbar %d\n", dc->rd);
@@ -1951,6 +1953,9 @@ void mb_tcg_init(void)
     env_res_val = tcg_global_mem_new(TCG_AREG0,
                      offsetof(CPUMBState, res_val),
                      "res_val");
+    env_exclusive_lock = tcg_global_mem_new(TCG_AREG0,
+                             offsetof(CPUMBState, exclusive_lock),
+                             "exclusive_lock");
     for (i = 0; i < ARRAY_SIZE(cpu_R); i++) {
         cpu_R[i] = tcg_global_mem_new(TCG_AREG0,
                           offsetof(CPUMBState, regs[i]),

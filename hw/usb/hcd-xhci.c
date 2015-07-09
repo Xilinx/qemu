@@ -484,7 +484,7 @@ struct XHCIState {
     XHCIRing cmd_ring;
 };
 
-#define TYPE_XHCI "nec-usb-xhci"
+#define TYPE_XHCI "generic-usb-xhci"
 
 #define XHCI(obj) \
     OBJECT_CHECK(XHCIState, (obj), TYPE_XHCI)

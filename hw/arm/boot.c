@@ -17,13 +17,16 @@
 #include "sysemu/device_tree.h"
 #include "qemu/config-file.h"
 #include "exec/address-spaces.h"
+#include "sysemu/kvm.h"
+
+#include "hw/guest/linux.h"
 
 /* Kernel boot protocol is specified in the kernel docs
  * Documentation/arm/Booting and Documentation/arm64/booting.txt
  * They have different preferred image load offsets from system RAM base.
  */
 #define KERNEL_ARGS_ADDR 0x100
-#define KERNEL_LOAD_ADDR 0x00010000
+#define KERNEL_LOAD_ADDR 0x00008000
 #define KERNEL64_LOAD_ADDR 0x00080000
 
 typedef enum {
@@ -35,15 +38,32 @@ typedef enum {
     FIXUP_GIC_CPU_IF, /* overwrite with GIC CPU interface address */
     FIXUP_BOOTREG,    /* overwrite with boot register address */
     FIXUP_DSB,        /* overwrite with correct DSB insn for cpu */
+    FIXUP_EL,         /* overwrite with kernel entry EL */
     FIXUP_MAX,
 } FixupType;
 
 typedef struct ARMInsnFixup {
     uint32_t insn;
     FixupType fixup;
+    int shift;
+    int length;
 } ARMInsnFixup;
 
 static const ARMInsnFixup bootloader_aarch64[] = {
+    { 0xd5384240 }, /* mrs x0, currentel */
+    { 0x7100301f }, /* cmp w0, #0xc */
+    { 0x54000001 + (9 << 5) }, /* b.ne ELx_start */
+/* Jump down from EL3 to ELx */
+    { 0x10000001 + (9 << 5) }, /* adr x1, ELx_start */
+    { 0xd53e1100 }, /* mrs x0, scr_el3 */
+    { 0xb2400000 }, /* orr x0, x0, #0x1 - SCR.NS */
+    { 0xb2780000 }, /* orr x0, x0, #0x80 - SCR.HCE */
+    { 0xd51e1100 }, /* msr scr_el3, x0 */
+    { 0xd2807820, FIXUP_EL, 7, 2 }, /* movz x0, 0x3c1 (+ EL<<2) */
+    { 0xd51e4000 }, /* msr spsr_el3, x0 */
+    { 0xd51e4021 }, /* msr elr_el3, x1 */
+    { 0xd69f03e0 }, /* eret */
+/* ELx_start: */
     { 0x580000c0 }, /* ldr x0, arg ; Load the lower 32-bits of DTB */
     { 0xaa1f03e1 }, /* mov x1, xzr */
     { 0xaa1f03e2 }, /* mov x2, xzr */
@@ -125,6 +145,10 @@ static void write_bootloader(const char *name, hwaddr addr,
     for (i = 0; i < len; i++) {
         uint32_t insn = insns[i].insn;
         FixupType fixup = insns[i].fixup;
+        int shift = insns[i].shift;
+        int length = insns[i].length ? insns[i].length : 32;
+
+        assert(shift + length <= 32);
 
         switch (fixup) {
         case FIXUP_NONE:
@@ -135,7 +159,8 @@ static void write_bootloader(const char *name, hwaddr addr,
         case FIXUP_GIC_CPU_IF:
         case FIXUP_BOOTREG:
         case FIXUP_DSB:
-            insn = fixupcontext[fixup];
+        case FIXUP_EL:
+            insn = deposit32(insn, shift, length, fixupcontext[fixup]);
             break;
         default:
             abort();
@@ -170,7 +195,7 @@ static void default_reset_secondary(ARMCPU *cpu,
 {
     CPUARMState *env = &cpu->env;
 
-    stl_phys_notdirty(&address_space_memory, info->smp_bootreg_addr, 0);
+    stl_phys_notdirty(first_cpu->as, info->smp_bootreg_addr, 0);
     env->regs[15] = info->smp_loader_start;
 }
 
@@ -335,11 +360,14 @@ static void set_kernel_args_old(const struct arm_boot_info *info)
 static int load_dtb(hwaddr addr, const struct arm_boot_info *binfo,
                     hwaddr addr_limit)
 {
-    void *fdt = NULL;
-    int size, rc;
+    void *fdt = binfo->fdt;
+    int size = binfo->fdt_size;
+    int rc;
     uint32_t acells, scells;
 
-    if (binfo->dtb_filename) {
+    if (fdt) {
+        /* do nothing */
+    } else if (binfo->dtb_filename) {
         char *filename;
         filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, binfo->dtb_filename);
         if (!filename) {
@@ -371,8 +399,9 @@ static int load_dtb(hwaddr addr, const struct arm_boot_info *binfo,
         return 0;
     }
 
-    acells = qemu_fdt_getprop_cell(fdt, "/", "#address-cells");
-    scells = qemu_fdt_getprop_cell(fdt, "/", "#size-cells");
+    acells = qemu_fdt_getprop_cell(fdt, "/", "#address-cells", 0, false, &error_abort);
+    scells = qemu_fdt_getprop_cell(fdt, "/", "#size-cells", 0, false, &error_abort);
+
     if (acells == 0 || scells == 0) {
         fprintf(stderr, "dtb file invalid (#address-cells or #size-cells 0)\n");
         goto fail;
@@ -387,17 +416,40 @@ static int load_dtb(hwaddr addr, const struct arm_boot_info *binfo,
         goto fail;
     }
 
-    rc = qemu_fdt_setprop_sized_cells(fdt, "/memory", "reg",
-                                      acells, binfo->loader_start,
-                                      scells, binfo->ram_size);
-    if (rc < 0) {
-        fprintf(stderr, "couldn't set /memory/reg\n");
-        goto fail;
+    if (!binfo->fdt) {
+        rc = qemu_fdt_setprop_sized_cells(fdt, "/memory", "reg",
+                                          acells, binfo->loader_start,
+                                          scells, binfo->ram_size);
+        if (rc < 0) {
+            fprintf(stderr, "couldn't set /memory/reg\n");
+            goto fail;
+        }
     }
 
     if (binfo->kernel_cmdline && *binfo->kernel_cmdline) {
-        rc = qemu_fdt_setprop_string(fdt, "/chosen", "bootargs",
-                                     binfo->kernel_cmdline);
+        int i;
+        char args[1024];
+        const char *part;
+
+        memset(args, 0, sizeof(args));
+        for (i = 0; i < 3; ++i) {
+            switch (i) {
+            case 0:
+                part = qemu_fdt_getprop_string(fdt, "/chosen", "bootargs", 0,
+                                               false, NULL);
+                break;
+            case 1:
+                part = " ";
+                break;
+            case 2:
+                part = binfo->kernel_cmdline;
+                break;
+            }
+            if (part) {
+                strcat(args, part);
+            }
+        }
+        rc = qemu_fdt_setprop_string(fdt, "/chosen", "bootargs", args);
         if (rc < 0) {
             fprintf(stderr, "couldn't set /chosen/bootargs\n");
             goto fail;
@@ -440,6 +492,19 @@ fail:
     return -1;
 }
 
+static int do_linux_dev_init(Object *obj, void *opaue)
+{
+    if (object_dynamic_cast(obj, TYPE_LINUX_DEVICE)) {
+        LinuxDevice *ld = LINUX_DEVICE(obj);
+        LinuxDeviceClass *ldc = LINUX_DEVICE_GET_CLASS(obj);
+
+        if (ldc->linux_init) {
+            ldc->linux_init(ld);
+        }
+    }
+    return 0;
+}
+
 static void do_cpu_reset(void *opaque)
 {
     ARMCPU *cpu = opaque;
@@ -470,6 +535,7 @@ static void do_cpu_reset(void *opaque)
             if (CPU(cpu) == first_cpu) {
                 if (env->aarch64) {
                     env->pc = info->loader_start;
+                    env->pstate = PSTATE_MODE_EL1h;
                 } else {
                     env->regs[15] = info->loader_start;
                 }
@@ -484,8 +550,13 @@ static void do_cpu_reset(void *opaque)
             } else {
                 info->secondary_cpu_reset_hook(cpu, info);
             }
+            /* FIXME: Be less brute force */
+            /* FIXME: this create deps on reset ordering */
+            object_child_foreach_recursive(object_get_root(),
+                                           do_linux_dev_init, NULL);
         }
     }
+
 }
 
 /**
@@ -548,6 +619,7 @@ void arm_load_kernel(ARMCPU *cpu, struct arm_boot_info *info)
     hwaddr entry, kernel_load_offset;
     int big_endian;
     static const ARMInsnFixup *primary_loader;
+    hwaddr alloc_start;
 
     /* CPU objects (unlike devices) are not automatically reset on system
      * reset, so we must always register a handler to do so. If we're
@@ -616,6 +688,8 @@ void arm_load_kernel(ARMCPU *cpu, struct arm_boot_info *info)
     }
 
     info->dtb_filename = qemu_opt_get(qemu_get_machine_opts(), "dtb");
+    is_linux = object_property_get_bool(OBJECT(qdev_get_machine()),
+                                        "linux", NULL);
 
     if (!info->secondary_cpu_reset_hook) {
         info->secondary_cpu_reset_hook = default_reset_secondary;
@@ -633,6 +707,11 @@ void arm_load_kernel(ARMCPU *cpu, struct arm_boot_info *info)
     big_endian = 0;
 #endif
 
+    /* Assume that raw images are linux kernels, and ELF images are not.  */
+    kernel_size = load_elf(info->kernel_filename, NULL, NULL, &elf_entry,
+                           NULL, NULL, big_endian, elf_machine, 1);
+    entry = elf_entry;
+
     /* We want to put the initrd far enough into RAM that when the
      * kernel is uncompressed it will not clobber the initrd. However
      * on boards without much RAM we must ensure that we still leave
@@ -643,31 +722,10 @@ void arm_load_kernel(ARMCPU *cpu, struct arm_boot_info *info)
      * halfway into RAM, and for boards with 256MB of RAM or more we put
      * the initrd at 128MB.
      */
-    info->initrd_start = info->loader_start +
-        MIN(info->ram_size / 2, 128 * 1024 * 1024);
+    alloc_start = ((kernel_size >= 0) ? QEMU_ALIGN_UP(elf_entry, 4096) :
+                   info->loader_start) + MIN(info->ram_size / 2,
+                   128 * 1024 * 1024);
 
-    /* Assume that raw images are linux kernels, and ELF images are not.  */
-    kernel_size = load_elf(info->kernel_filename, NULL, NULL, &elf_entry,
-                           &elf_low_addr, &elf_high_addr, big_endian,
-                           elf_machine, 1);
-    if (kernel_size > 0 && have_dtb(info)) {
-        /* If there is still some room left at the base of RAM, try and put
-         * the DTB there like we do for images loaded with -bios or -pflash.
-         */
-        if (elf_low_addr > info->loader_start
-            || elf_high_addr < info->loader_start) {
-            /* Pass elf_low_addr as address limit to load_dtb if it may be
-             * pointing into RAM, otherwise pass '0' (no limit)
-             */
-            if (elf_low_addr < info->loader_start) {
-                elf_low_addr = 0;
-            }
-            if (load_dtb(info->loader_start, info, elf_low_addr) < 0) {
-                exit(1);
-            }
-        }
-    }
-    entry = elf_entry;
     if (kernel_size < 0) {
         kernel_size = load_uimage(info->kernel_filename, &entry, NULL,
                                   &is_linux, NULL, NULL);
@@ -696,14 +754,14 @@ void arm_load_kernel(ARMCPU *cpu, struct arm_boot_info *info)
 
         if (info->initrd_filename) {
             initrd_size = load_ramdisk(info->initrd_filename,
-                                       info->initrd_start,
+                                       alloc_start,
                                        info->ram_size -
-                                       info->initrd_start);
+                                       alloc_start);
             if (initrd_size < 0) {
                 initrd_size = load_image_targphys(info->initrd_filename,
-                                                  info->initrd_start,
+                                                  alloc_start,
                                                   info->ram_size -
-                                                  info->initrd_start);
+                                                  alloc_start);
             }
             if (initrd_size < 0) {
                 fprintf(stderr, "qemu: could not load initrd '%s'\n",
@@ -713,7 +771,13 @@ void arm_load_kernel(ARMCPU *cpu, struct arm_boot_info *info)
         } else {
             initrd_size = 0;
         }
+        info->initrd_start = alloc_start;
         info->initrd_size = initrd_size;
+        alloc_start += initrd_size;
+        /* Some kernels will trash anything in the 4K page the initrd
+         * ends in, so make sure the anything else isn't caught up in that.
+         */
+        alloc_start = QEMU_ALIGN_UP(alloc_start, 4096);
 
         fixupcontext[FIXUP_BOARDID] = info->board_id;
 
@@ -721,16 +785,13 @@ void arm_load_kernel(ARMCPU *cpu, struct arm_boot_info *info)
          * we point to the kernel args.
          */
         if (have_dtb(info)) {
-            /* Place the DTB after the initrd in memory. Note that some
-             * kernels will trash anything in the 4K page the initrd
-             * ends in, so make sure the DTB isn't caught up in that.
-             */
-            hwaddr dtb_start = QEMU_ALIGN_UP(info->initrd_start + initrd_size,
-                                             4096);
-            if (load_dtb(dtb_start, info, 0) < 0) {
+            int dtb_size = load_dtb(alloc_start, info, 0);
+            if (dtb_size < 0) {
                 exit(1);
             }
-            fixupcontext[FIXUP_ARGPTR] = dtb_start;
+            fixupcontext[FIXUP_ARGPTR] = alloc_start;
+            alloc_start += dtb_size;
+            alloc_start = QEMU_ALIGN_UP(alloc_start, 4096);
         } else {
             fixupcontext[FIXUP_ARGPTR] = info->loader_start + KERNEL_ARGS_ADDR;
             if (info->ram_size >= (1ULL << 32)) {
@@ -741,6 +802,11 @@ void arm_load_kernel(ARMCPU *cpu, struct arm_boot_info *info)
             }
         }
         fixupcontext[FIXUP_ENTRYPOINT] = entry;
+
+        fixupcontext[FIXUP_EL] = 1;
+        if (arm_feature(&cpu->env, ARM_FEATURE_EL2)) {
+            fixupcontext[FIXUP_EL] = 2;
+        }
 
         write_bootloader("bootloader", info->loader_start,
                          primary_loader, fixupcontext);

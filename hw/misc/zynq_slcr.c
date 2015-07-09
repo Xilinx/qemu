@@ -17,7 +17,13 @@
 #include "hw/hw.h"
 #include "qemu/timer.h"
 #include "hw/sysbus.h"
+#include "hw/fdt_generic_devices.h"
 #include "sysemu/sysemu.h"
+
+#ifdef CONFIG_FDT
+#include "qemu/config-file.h"
+#include "sysemu/device_tree.h"
+#endif
 
 #ifndef ZYNQ_SLCR_ERR_DEBUG
 #define ZYNQ_SLCR_ERR_DEBUG 0
@@ -169,6 +175,10 @@ enum {
 #define ZYNQ_SLCR_MMIO_SIZE     0x1000
 #define ZYNQ_SLCR_NUM_REGS      (ZYNQ_SLCR_MMIO_SIZE / 4)
 
+#define ZYNQ_SLCR_NUM_CPUS 2
+
+#define A9_CPU_RST_CTRL_RST_SHIFT 0
+
 #define TYPE_ZYNQ_SLCR "xilinx,zynq_slcr"
 #define ZYNQ_SLCR(obj) OBJECT_CHECK(ZynqSLCRState, (obj), TYPE_ZYNQ_SLCR)
 
@@ -176,9 +186,82 @@ typedef struct ZynqSLCRState {
     SysBusDevice parent_obj;
 
     MemoryRegion iomem;
+    qemu_irq cpu_resets[ZYNQ_SLCR_NUM_CPUS];
 
     uint32_t regs[ZYNQ_SLCR_NUM_REGS];
 } ZynqSLCRState;
+
+/* Set up PS7 QSPI MIO registers based on the dtb */
+static void zynq_slcr_set_qspi(ZynqSLCRState *s, void *fdt)
+{
+    int i;
+    Error *errp = NULL;
+    char node_path[DT_PATH_LENGTH];
+
+    memset(node_path, 0, sizeof(node_path));
+    /* find the Zynq QSPI node path with compatible string, return if node
+     * not found */
+    if (qemu_devtree_node_by_compatible(fdt, node_path,
+                                        "xlnx,zynq-qspi-1.0")) {
+        DB_PRINT("DT, PS7 QSPI node not found\n");
+        return ;
+    }
+
+    /* Check if there is a child node and assume the child node is a QSPI
+     * flash node. Then set up the MIO registers for the first QSPI flash.
+     * Use the is-dual property to determine whether MIO registers
+     * configuration is required to setup for the second QSPI flash*/
+    if (qemu_devtree_get_num_children(fdt, node_path, 1)) {
+        DB_PRINT("DT, PS7 QSPI: child node found\n");
+        /* Set MIO 1 - 6 (qspi0)  with QSPI + LVCOMS18 (0x202) */
+        for (i = 1; i <= 6; i++) {
+            s->regs[MIO+i] = 0x00000202;
+        }
+
+        /* Check for dual mode */
+        if (qemu_fdt_getprop_cell(fdt, node_path, "is-dual", 0,
+                                  false, &errp) ==  1) {
+            DB_PRINT("DT, PS QSPI is in dual\n");
+            /* Set MIO 0 (qspi1_cs) with QSPI + LVCOMS18 (0x202) */
+            s->regs[MIO+0] = 0x00000202;
+
+            /* Set MIO 9 - 13 (qspi1) with QSPI + LVCOMS18 (0x202) */
+            for (i = 9; i <= 13; i++) {
+                s->regs[MIO+i] = 0x00000202;
+            }
+        }
+    }
+}
+
+static void zynq_slcr_fdt_config(ZynqSLCRState *s)
+{
+#ifdef CONFIG_FDT
+    QemuOpts *machine_opts;
+    const char *dtb_filename;
+    int fdt_size;
+    void *fdt = NULL;
+
+    /* identify dtb file name from qemu opts */
+    machine_opts = qemu_opts_find(qemu_find_opts("machine"), 0);
+    if (machine_opts) {
+        dtb_filename = qemu_opt_get(machine_opts, "dtb");
+    } else {
+        dtb_filename = NULL;
+    }
+
+    if (dtb_filename) {
+        fdt = load_device_tree(dtb_filename, &fdt_size);
+    }
+
+    if (!fdt) {
+        return;
+    }
+
+    zynq_slcr_set_qspi(s, fdt);
+#endif
+
+    return;
+}
 
 static void zynq_slcr_reset(DeviceState *d)
 {
@@ -198,10 +281,10 @@ static void zynq_slcr_reset(DeviceState *d)
     s->regs[IO_PLL_CFG]     = 0x00014000;
 
     /* 0x120 - 0x16C */
-    s->regs[ARM_CLK_CTRL]   = 0x1F000400;
+    s->regs[ARM_CLK_CTRL]   = 0x1F000200;
     s->regs[DDR_CLK_CTRL]   = 0x18400003;
     s->regs[DCI_CLK_CTRL]   = 0x01E03201;
-    s->regs[APER_CLK_CTRL]  = 0x01FFCCCD;
+    s->regs[APER_CLK_CTRL]  = 0x01ed044d;
     s->regs[USB0_CLK_CTRL]  = s->regs[USB1_CLK_CTRL]    = 0x00101941;
     s->regs[GEM0_RCLK_CTRL] = s->regs[GEM1_RCLK_CTRL]   = 0x00000001;
     s->regs[GEM0_CLK_CTRL]  = s->regs[GEM1_CLK_CTRL]    = 0x00003C01;
@@ -272,6 +355,8 @@ static void zynq_slcr_reset(DeviceState *d)
     s->regs[DDRIOB + 4] = s->regs[DDRIOB + 5] = s->regs[DDRIOB + 6]
                         = 0x00000e00;
     s->regs[DDRIOB + 12] = 0x00000021;
+
+    zynq_slcr_fdt_config(s);
 }
 
 
@@ -358,6 +443,7 @@ static void zynq_slcr_write(void *opaque, hwaddr offset,
 {
     ZynqSLCRState *s = (ZynqSLCRState *)opaque;
     offset /= 4;
+    int i;
 
     DB_PRINT("addr: %08" HWADDR_PRIx " data: %08" PRIx64 "\n", offset * 4, val);
 
@@ -394,7 +480,7 @@ static void zynq_slcr_write(void *opaque, hwaddr offset,
     }
 
     if (!s->regs[LOCKSTA]) {
-        s->regs[offset / 4] = val;
+        s->regs[offset] = val;
     } else {
         DB_PRINT("SCLR registers are locked. Unlock them first\n");
         return;
@@ -406,6 +492,14 @@ static void zynq_slcr_write(void *opaque, hwaddr offset,
             qemu_system_reset_request();
         }
         break;
+    case A9_CPU_RST_CTRL:
+        for (i = 0; i < ZYNQ_SLCR_NUM_CPUS; ++i) {
+            bool rst = extract32(val, A9_CPU_RST_CTRL_RST_SHIFT + i, 1);
+
+            qemu_set_irq(s->cpu_resets[i], rst);
+            DB_PRINT("%sresetting cpu %d\n", rst ? "" : "un-", i);
+        }
+        break;
     }
 }
 
@@ -415,6 +509,25 @@ static const MemoryRegionOps slcr_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
+static void zynq_slcr_realize(DeviceState *dev, Error **errp)
+{
+    int i;
+    CPUState *env = first_cpu;
+
+    /* FIXME: Make this not suck */
+    for (i  = 0; i < fdt_generic_num_cpus && i < ZYNQ_SLCR_NUM_CPUS; ++i) {
+        Object *cpu_obj = OBJECT(env);
+        if (!cpu_obj->parent) {
+            char *cpu_child_name = g_strdup_printf("cpu-%d\n", i);
+            object_property_add_child(qdev_get_machine(), cpu_child_name,
+                                      cpu_obj, &error_abort);
+        }
+        qdev_connect_gpio_out(dev, i,
+                              qdev_get_gpio_in_named(DEVICE(env), "reset", 0));
+        env = CPU_NEXT(env);
+    }
+}
+
 static void zynq_slcr_init(Object *obj)
 {
     ZynqSLCRState *s = ZYNQ_SLCR(obj);
@@ -422,6 +535,8 @@ static void zynq_slcr_init(Object *obj)
     memory_region_init_io(&s->iomem, obj, &slcr_ops, s, "slcr",
                           ZYNQ_SLCR_MMIO_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->iomem);
+
+    qdev_init_gpio_out(DEVICE(obj), s->cpu_resets, ZYNQ_SLCR_NUM_CPUS);
 }
 
 static const VMStateDescription vmstate_zynq_slcr = {
@@ -440,6 +555,7 @@ static void zynq_slcr_class_init(ObjectClass *klass, void *data)
 
     dc->vmsd = &vmstate_zynq_slcr;
     dc->reset = zynq_slcr_reset;
+    dc->realize = zynq_slcr_realize;
 }
 
 static const TypeInfo zynq_slcr_info = {

@@ -33,6 +33,7 @@
 #include "sysemu/char.h"
 #include "sysemu/sysemu.h"
 #include "exec/gdbstub.h"
+#include "hw/remote-port.h"
 #endif
 
 #define MAX_PACKET_LENGTH 4096
@@ -286,10 +287,25 @@ enum RSState {
     RS_CHKSUM1,
     RS_CHKSUM2,
 };
+
+/* GDBClusters represent clusters with 1 or more CPUs.  */
+typedef struct GDBCluster {
+    struct {
+        CPUState *first;
+        CPUState *last;
+    } cpus;
+    bool attached;
+} GDBCluster;
+
 typedef struct GDBState {
+    GDBCluster *clusters;
+    int num_clusters;
+    int cur_cluster;
+
     CPUState *c_cpu; /* current CPU for step/continue ops */
     CPUState *g_cpu; /* current CPU for other ops */
     CPUState *query_cpu; /* for q{f|s}ThreadInfo */
+    int query_cluster;
     enum RSState state; /* parsing state */
     char line_buf[MAX_PACKET_LENGTH];
     int line_buf_index;
@@ -297,6 +313,11 @@ typedef struct GDBState {
     uint8_t last_packet[MAX_PACKET_LENGTH + 4];
     int last_packet_len;
     int signal;
+    bool client_connected;
+    bool multiprocess;
+    char threadid_str[64];
+    bool break_on_guest_error;
+    bool breakpoints_per_core;
 #ifdef CONFIG_USER_ONLY
     int fd;
     int running_state;
@@ -308,6 +329,56 @@ typedef struct GDBState {
     gdb_syscall_complete_cb current_syscall_cb;
 } GDBState;
 
+static void gdb_autosplit_cpus(GDBState *s)
+{
+    /* FIXME: this should be done explicitely from a QOM CLUSTER
+     * container. Maybe autocreated from dts files.
+     * In the meantime, follow a simple logic. Consecutive cores
+     * of the same kind, form a cluster.
+     */
+    CPUState *cpu = first_cpu;
+    CPUState *cpu_prev = NULL;
+
+    assert(s->clusters == NULL);
+    assert(s->num_clusters == 0);
+
+    while(cpu) {
+        if (!cpu_prev || (CPU_GET_CLASS(cpu) != CPU_GET_CLASS(cpu_prev))) {
+            /* New cluster.  */
+            s->clusters = g_renew(typeof(s->clusters[0]), s->clusters,
+                                  s->num_clusters + 1);
+            if (s->num_clusters) {
+                s->clusters[s->num_clusters - 1].cpus.last = cpu_prev;
+            }
+            s->clusters[s->num_clusters].attached = false;
+            s->clusters[s->num_clusters].cpus.first = cpu;
+            s->num_clusters++;
+        }
+        cpu_prev = cpu;
+        cpu = CPU_NEXT(cpu);
+    }
+    s->clusters[s->num_clusters - 1].cpus.last = cpu_prev;
+
+#ifdef DEBUG_GDB
+    {
+        unsigned int i;
+
+        for (i = 0; i < s->num_clusters; i++) {
+            cpu = s->clusters[i].cpus.first;
+            while (cpu) {
+                CPUClass *cc = CPU_GET_CLASS(cpu);
+                const char *name = object_get_canonical_path(OBJECT(cpu));
+                qemu_log("Cluster%d: CPU%d %s xml=%s\n", i, cpu->cpu_index, name, cc->gdb_core_xml_file);
+                if (cpu == s->clusters[i].cpus.last) {
+                    break;
+                }
+                cpu = CPU_NEXT(cpu);
+            }
+        }
+    }
+#endif
+}
+
 /* By default use no IRQs and no timers while single stepping so as to
  * make single stepping like an ICE HW step.
  */
@@ -317,6 +388,7 @@ static GDBState *gdbserver_state;
 
 bool gdb_has_xml;
 
+static void gdb_output(GDBState *s, const char *msg, int len);
 int semihosting_target = SEMIHOSTING_TARGET_AUTO;
 
 #ifdef CONFIG_USER_ONLY
@@ -515,7 +587,7 @@ static int memtox(char *buf, const char *mem, int len)
 }
 
 static const char *get_feature_xml(const char *p, const char **newp,
-                                   CPUClass *cc)
+                                   CPUClass *cc, CPUState *cpu)
 {
     size_t len;
     int i;
@@ -530,9 +602,8 @@ static const char *get_feature_xml(const char *p, const char **newp,
     name = NULL;
     if (strncmp(p, "target.xml", len) == 0) {
         /* Generate the XML description for this CPU.  */
-        if (!target_xml[0]) {
+        if (1 || !target_xml[0]) {
             GDBRegisterState *r;
-            CPUState *cpu = first_cpu;
 
             snprintf(target_xml, sizeof(target_xml),
                      "<?xml version=\"1.0\"?>"
@@ -545,6 +616,11 @@ static const char *get_feature_xml(const char *p, const char **newp,
                 pstrcat(target_xml, sizeof(target_xml), "<xi:include href=\"");
                 pstrcat(target_xml, sizeof(target_xml), r->xml);
                 pstrcat(target_xml, sizeof(target_xml), "\"/>");
+            }
+            if (cc->gdb_arch) {
+                pstrcat(target_xml, sizeof(target_xml), "<architecture>");
+                pstrcat(target_xml, sizeof(target_xml), cc->gdb_arch);
+                pstrcat(target_xml, sizeof(target_xml), "</architecture>");
             }
             pstrcat(target_xml, sizeof(target_xml), "</target>");
         }
@@ -655,7 +731,8 @@ static inline int xlat_gdb_type(CPUState *cpu, int gdbtype)
 }
 #endif
 
-static int gdb_breakpoint_insert(target_ulong addr, target_ulong len, int type)
+static int gdb_breakpoint_insert(GDBState *s,
+                                 target_ulong addr, target_ulong len, int type)
 {
     CPUState *cpu;
     int err = 0;
@@ -667,6 +744,10 @@ static int gdb_breakpoint_insert(target_ulong addr, target_ulong len, int type)
     switch (type) {
     case GDB_BREAKPOINT_SW:
     case GDB_BREAKPOINT_HW:
+        if (s->breakpoints_per_core) {
+            cpu_breakpoint_insert(s->c_cpu, addr, BP_GDB, NULL);
+            return 0;
+        }
         CPU_FOREACH(cpu) {
             err = cpu_breakpoint_insert(cpu, addr, BP_GDB, NULL);
             if (err) {
@@ -692,7 +773,8 @@ static int gdb_breakpoint_insert(target_ulong addr, target_ulong len, int type)
     }
 }
 
-static int gdb_breakpoint_remove(target_ulong addr, target_ulong len, int type)
+static int gdb_breakpoint_remove(GDBState *s,
+                                 target_ulong addr, target_ulong len, int type)
 {
     CPUState *cpu;
     int err = 0;
@@ -704,6 +786,10 @@ static int gdb_breakpoint_remove(target_ulong addr, target_ulong len, int type)
     switch (type) {
     case GDB_BREAKPOINT_SW:
     case GDB_BREAKPOINT_HW:
+        if (s->breakpoints_per_core) {
+            err = cpu_breakpoint_remove(s->c_cpu, addr, BP_GDB);
+            return err;
+        }
         CPU_FOREACH(cpu) {
             err = cpu_breakpoint_remove(cpu, addr, BP_GDB);
             if (err) {
@@ -756,25 +842,155 @@ static void gdb_set_cpu_pc(GDBState *s, target_ulong pc)
     }
 }
 
-static CPUState *find_cpu(uint32_t thread_id)
+static CPUState *find_cpu(GDBState *s, int32_t pid, int32_t thread_id)
 {
+    GDBCluster *cl;
     CPUState *cpu;
 
-    CPU_FOREACH(cpu) {
-        if (cpu_index(cpu) == thread_id) {
+    if (pid <= 0) {
+        pid = 1;
+    }
+
+    cl = &s->clusters[pid - 1];
+    cpu = cl->cpus.first;
+
+    while (cpu) {
+        if (cpu_index(cpu) == thread_id || thread_id <= 0) {
             return cpu;
         }
+
+        if (cpu == cl->cpus.last) {
+            break;
+        }
+        cpu = CPU_NEXT(cpu);
     }
 
     return NULL;
 }
 
+static void gdb_monitor(GDBState *s, const char *line)
+{
+    unsigned long val;
+    const char *p = line;
+
+    fprintf(stderr, "%s: %s\n", __func__, line);
+    if (strncmp(p,"break_on_guest_error",20) == 0) {
+        p += 20;
+        fprintf(stderr, "p %s\n", p);
+        if (*p == '=') {
+            p++;
+            val = strtoul(p, (char **)&p, 16);
+            s->break_on_guest_error = !!val;
+        }
+        gdb_output(s, s->break_on_guest_error ? "1\n" : "0\n", 2);
+        put_packet(s, "OK");
+    }
+}
+
+#define MAX_PLIST 8 * 1024
+static char *gdb_get_process_list(GDBState *s)
+{
+    CPUState *cpu;
+    char *buf;
+    unsigned int i;
+    int len;
+
+    buf = g_malloc0(MAX_PLIST);
+
+#undef HEADER
+#define HEADER "<?xml version=\"1.0\"?>\n" \
+    "<!DOCTYPE target SYSTEM \"osdata.dtd\">\n<osdata type=\"processes\">\n"
+
+    pstrcat(buf, MAX_PLIST, HEADER);
+    for (i = 0; i < s->num_clusters; i++) {
+        char lbuf[64];
+        unsigned int num_cores = 0;
+
+        len = snprintf(lbuf, sizeof(lbuf),
+                       "<item>\n <column name=\"pid\">%u</column>\n <column name=\"cores\">",
+                       i + 1);
+        pstrcat(buf, MAX_PLIST, lbuf);
+
+        cpu = s->clusters[i].cpus.first;
+        while (cpu) {
+            len = snprintf(lbuf, sizeof(lbuf), "%s%u",
+                           num_cores ? "," : "", cpu_index(cpu));
+            pstrcat(buf, MAX_PLIST, lbuf);
+            if (cpu == s->clusters[i].cpus.last) {
+                break;
+            }
+            cpu = CPU_NEXT(cpu);
+            num_cores++;
+        }
+        pstrcat(buf, MAX_PLIST, "</column>\n</item>\n");
+    }
+    len = len;
+    pstrcat(buf, MAX_PLIST, "</osdata>");
+    return buf;
+}
+
+static void gdb_thread_id(const char *p, const char **next_p,
+                          int32_t *pid_p, int32_t *tid_p)
+{
+    /* We are flexible here and accept extended thread ids even if
+     * multiprocess support was not signaled by the peer.
+     */
+    uint32_t pid = 1, tid;
+    bool extended = *p == 'p';
+
+    if (extended) {
+        p++;
+        pid = strtoull(p, (char **)&p, 16);
+        p++;
+    }
+    tid = strtoull(p, (char **)&p, 16);
+
+    if (pid <= 0) {
+        pid = 1;
+    }
+
+    if (pid_p) {
+        *pid_p = pid;
+    }
+    if (tid_p) {
+        *tid_p = tid;
+    }
+    if (next_p) {
+        *next_p = p;
+    }
+}
+
+static const char *gdb_gen_thread_id(GDBState *s, uint32_t pid, uint32_t tid)
+{
+    static char id[64];
+    unsigned int pos = 0;
+
+    if (s->multiprocess) {
+        pos += snprintf(id, sizeof(id), "p%x.", pid);
+    }
+    snprintf(id + pos, sizeof(id) - pos, "%x", tid);
+    return id;
+}
+
+static void gdb_match_supported(GDBState *s, const char *p)
+{
+    p = strchr(p, ':');
+    while (p) {
+        p++;
+        if (strncmp(p, "multiprocess", 12) == 0) {
+            s->multiprocess = true;
+        }
+        p = strchr(p, ':');
+    }
+}
+
 static int gdb_handle_packet(GDBState *s, const char *line_buf)
 {
+    GDBCluster *cl = &s->clusters[s->cur_cluster];
     CPUState *cpu;
     CPUClass *cc;
     const char *p;
-    uint32_t thread;
+    int32_t cluster, thread;
     int ch, reg_size, type, res;
     char buf[MAX_PACKET_LENGTH];
     uint8_t mem_buf[MAX_PACKET_LENGTH];
@@ -787,10 +1003,17 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
     p = line_buf;
     ch = *p++;
     switch(ch) {
+    case '!':
+        put_packet(s, "OK");
+        break;
     case '?':
+        s->cur_cluster = 0;
+        cl = &s->clusters[s->cur_cluster];
+        s->c_cpu = cl->cpus.first;
+        s->g_cpu = cl->cpus.first;
         /* TODO: Make this return the correct value for user-mode.  */
-        snprintf(buf, sizeof(buf), "T%02xthread:%02x;", GDB_SIGNAL_TRAP,
-                 cpu_index(s->c_cpu));
+        snprintf(buf, sizeof(buf), "T%02xthread:%s;", GDB_SIGNAL_TRAP,
+                 gdb_gen_thread_id(s, s->cur_cluster + 1, cpu_index(s->c_cpu)));
         put_packet(s, buf);
         /* Remove all the breakpoints when this query is issued,
          * because gdb is doing and initial connect and the state
@@ -844,7 +1067,7 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
                 }
                 thread = 0;
                 if (*p == ':') {
-                    thread = strtoull(p+1, (char **)&p, 16);
+                    gdb_thread_id(p + 1, &p, &cluster, &thread);
                 }
                 action = tolower(action);
                 if (res == 0 || (res == 'c' && action == 's')) {
@@ -855,11 +1078,13 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
             }
             if (res) {
                 if (res_thread != -1 && res_thread != 0) {
-                    cpu = find_cpu(res_thread);
+                    cpu = find_cpu(s, cluster, res_thread);
                     if (cpu == NULL) {
                         put_packet(s, "E22");
                         break;
                     }
+                    s->cur_cluster = cluster - 1;
+                    cl = &s->clusters[s->cur_cluster];
                     s->c_cpu = cpu;
                 }
                 if (res == 's') {
@@ -868,6 +1093,28 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
                 s->signal = res_signal;
                 gdb_continue(s);
                 return RS_IDLE;
+            }
+            break;
+        } else if (strncmp(p, "Attach", 6) == 0) {
+            cluster = s->num_clusters + 1;
+            p += 6;
+            if (*p == ';') {
+                p++;
+                cluster = strtoull(p, (char **)&p, 16);
+            }
+            if (cluster <= s->num_clusters) {
+                s->cur_cluster = cluster - 1;
+                cl = &s->clusters[s->cur_cluster];
+                cl->attached = true;
+                s->c_cpu = cl->cpus.first;
+                s->g_cpu = cl->cpus.first;
+                snprintf(buf, sizeof(buf), "T%02xthread:%s;",
+                         GDB_SIGNAL_TRAP,
+                         gdb_gen_thread_id(s, cluster, cpu_index(s->c_cpu)));
+
+                put_packet(s, buf);
+            } else {
+                put_packet(s, "E22");
             }
             break;
         } else {
@@ -881,6 +1128,13 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
 #endif
     case 'D':
         /* Detach packet */
+        if (*p == ';') {
+            cluster = strtoull(p + 1, (char **)&p, 16);
+            s->clusters[cluster - 1].attached = false;
+            /* FIXME: Remove all breakpoints for the cluster.  */
+            put_packet(s, "OK");
+            break;
+        }
         gdb_breakpoint_remove_all();
         gdb_syscall_mode = GDB_SYS_DISABLED;
         gdb_continue(s);
@@ -1005,9 +1259,9 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
             p++;
         len = strtoull(p, (char **)&p, 16);
         if (ch == 'Z')
-            res = gdb_breakpoint_insert(addr, len, type);
+            res = gdb_breakpoint_insert(s, addr, len, type);
         else
-            res = gdb_breakpoint_remove(addr, len, type);
+            res = gdb_breakpoint_remove(s, addr, len, type);
         if (res >= 0)
              put_packet(s, "OK");
         else if (res == -ENOSYS)
@@ -1017,18 +1271,16 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
         break;
     case 'H':
         type = *p++;
-        thread = strtoull(p, (char **)&p, 16);
-        if (thread == -1 || thread == 0) {
-            put_packet(s, "OK");
-            break;
-        }
-        cpu = find_cpu(thread);
+        gdb_thread_id(p, &p, &cluster, &thread);
+        cpu = find_cpu(s, cluster, thread);
         if (cpu == NULL) {
             put_packet(s, "E22");
             break;
         }
         switch (type) {
         case 'c':
+            s->cur_cluster = cluster - 1;
+            cl = &s->clusters[s->cur_cluster];
             s->c_cpu = cpu;
             put_packet(s, "OK");
             break;
@@ -1042,8 +1294,8 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
         }
         break;
     case 'T':
-        thread = strtoull(p, (char **)&p, 16);
-        cpu = find_cpu(thread);
+        gdb_thread_id(p, &p, &cluster, &thread);
+        cpu = find_cpu(s, cluster, thread);
 
         if (cpu != NULL) {
             put_packet(s, "OK");
@@ -1076,33 +1328,103 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
             sstep_flags = type;
             put_packet(s, "OK");
             break;
+        } else if (strncmp(p,"qemu.bps-per-core",17) == 0) {
+            p += 17;
+            if (*p != '=') {
+                /* Display current setting */
+                snprintf(buf, sizeof(buf), "%d", s->breakpoints_per_core);
+                put_packet(s, buf);
+                break;
+            }
+            p++;
+            s->breakpoints_per_core = strtoul(p, (char **)&p, 0);
+            put_packet(s, "OK");
+            break;
+        } else if (strncmp(p,"qemu.debug-context",18) == 0) {
+            unsigned int i = 0, len = 0, found = 0;
+            cc = CPU_GET_CLASS(s->g_cpu);
+
+            /* Display or change the context */
+            p += 18;
+            if (*p != '=') {
+                *buf = '\0';
+                while (cc->debug_contexts && cc->debug_contexts[i]) {
+                    len += snprintf(buf + len, sizeof(buf) - len,
+                                    "%s%s", i == 0 ? "" : ",",
+                                    cc->debug_contexts[i]);
+                    i++;
+                }
+                put_packet(s, buf);
+                break;
+            }
+            p++;
+            if (cc->set_debug_context) {
+                while (cc->debug_contexts && cc->debug_contexts[i]) {
+                    if (strcmp(p, cc->debug_contexts[i]) == 0) {
+                        cc->set_debug_context(s->g_cpu, i);
+                        put_packet(s, "OK");
+                        found = 1;
+                        break;
+                    }
+                    i++;
+                }
+            }
+            if (!found) {
+                put_packet(s, "E22");
+            }
+            break;
         } else if (strcmp(p,"C") == 0) {
             /* "Current thread" remains vague in the spec, so always return
              *  the first CPU (gdb returns the first thread). */
-            put_packet(s, "QC1");
+            snprintf(buf, sizeof(buf), "C%s",
+                     gdb_gen_thread_id(s, s->cur_cluster + 1, cpu_index(cl->cpus.first)));
+            put_packet(s, buf);
             break;
         } else if (strcmp(p,"fThreadInfo") == 0) {
-            s->query_cpu = first_cpu;
+            s->query_cluster = 0;
+            s->query_cpu = s->clusters[s->query_cluster].cpus.first;
             goto report_cpuinfo;
         } else if (strcmp(p,"sThreadInfo") == 0) {
         report_cpuinfo:
             if (s->query_cpu) {
-                snprintf(buf, sizeof(buf), "m%x", cpu_index(s->query_cpu));
+                snprintf(buf, sizeof(buf), "m%s",
+                         gdb_gen_thread_id(s, s->query_cluster + 1, cpu_index(s->query_cpu)));
                 put_packet(s, buf);
-                s->query_cpu = CPU_NEXT(s->query_cpu);
+                if (s->query_cpu == s->clusters[s->query_cluster].cpus.last) {
+                    s->query_cluster++;
+                    if (s->query_cluster == s->num_clusters) {
+                        s->query_cluster = 0;
+                    }
+                    s->query_cpu = NULL;
+                    if (s->clusters[s->query_cluster].attached) {
+                        s->query_cpu = s->clusters[s->query_cluster].cpus.first;
+                    }
+                } else {
+                    s->query_cpu = CPU_NEXT(s->query_cpu);
+                }
             } else
                 put_packet(s, "l");
             break;
         } else if (strncmp(p,"ThreadExtraInfo,", 16) == 0) {
-            thread = strtoull(p+16, (char **)&p, 16);
-            cpu = find_cpu(thread);
+            gdb_thread_id(p + 16, &p, &cluster, &thread);
+            cpu = find_cpu(s, cluster, thread);
             if (cpu != NULL) {
                 cpu_synchronize_state(cpu);
-                len = snprintf((char *)mem_buf, sizeof(mem_buf),
-                               "CPU#%d [%s]", cpu->cpu_index,
-                               cpu->halted ? "halted " : "running");
+                if (!cpu->gdb_id) {
+                    const char *name = object_get_canonical_path(OBJECT(cpu));
+
+                    len = snprintf((char *)mem_buf, sizeof(mem_buf),
+                                   "CPU#%d %s", cpu->cpu_index, name);
+                } else {
+                    len = snprintf((char *)mem_buf, sizeof(mem_buf),
+                                   "%s", cpu->gdb_id);
+                }
+                len += snprintf((char *)mem_buf + len, sizeof(mem_buf) - len,
+                               " [%s]", cpu->halted ? "halted " : "running");
                 memtohex(buf, mem_buf, len);
                 put_packet(s, buf);
+            } else {
+                put_packet(s, "E22");
             }
             break;
         }
@@ -1119,7 +1441,7 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
             put_packet(s, buf);
             break;
         }
-#else /* !CONFIG_USER_ONLY */
+#endif /* !CONFIG_USER_ONLY */
         else if (strncmp(p, "Rcmd,", 5) == 0) {
             int len = strlen(p + 5);
 
@@ -1130,17 +1452,32 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
             hextomem(mem_buf, p + 5, len);
             len = len / 2;
             mem_buf[len++] = 0;
+            if (strncmp((char *) mem_buf, "gdbmon.", 7) == 0) {
+                /* Display or change the sstep_flags */
+                p = (char *) &mem_buf[7];
+                gdb_monitor(s, p);
+                break;
+            }
+#ifndef CONFIG_USER_ONLY
             qemu_chr_be_write(s->mon_chr, mem_buf, len);
             put_packet(s, "OK");
+#endif
             break;
         }
-#endif /* !CONFIG_USER_ONLY */
+        if (strncmp(p, "Attached", 8) == 0) {
+            put_packet(s, "1");
+            break;
+        }
         if (strncmp(p, "Supported", 9) == 0) {
+            gdb_match_supported(s, p + 9);
+
             snprintf(buf, sizeof(buf), "PacketSize=%x", MAX_PACKET_LENGTH);
-            cc = CPU_GET_CLASS(first_cpu);
+            cc = CPU_GET_CLASS(cl->cpus.first);
             if (cc->gdb_core_xml_file != NULL) {
                 pstrcat(buf, sizeof(buf), ";qXfer:features:read+");
             }
+            pstrcat(buf, sizeof(buf), ";qXfer:osdata:read+");
+            pstrcat(buf, sizeof(buf), ";multiprocess+");
             put_packet(s, buf);
             break;
         }
@@ -1148,14 +1485,14 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
             const char *xml;
             target_ulong total_len;
 
-            cc = CPU_GET_CLASS(first_cpu);
+            cc = CPU_GET_CLASS(s->g_cpu);
             if (cc->gdb_core_xml_file == NULL) {
                 goto unknown_command;
             }
 
             gdb_has_xml = true;
             p += 19;
-            xml = get_feature_xml(p, &p, cc);
+            xml = get_feature_xml(p, &p, cc, s->g_cpu);
             if (!xml) {
                 snprintf(buf, sizeof(buf), "E00");
                 put_packet(s, buf);
@@ -1187,6 +1524,41 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
             put_packet_binary(s, buf, len + 1);
             break;
         }
+        /* FIXME: Merge with the XML handling to avoid code duplication.  */
+        if (strncmp(p, "Xfer:osdata:read:processes:", 27) == 0) {
+            const char *plist;
+            target_ulong total_len;
+
+            plist = gdb_get_process_list(s);
+
+            p += 27;
+            if (*p == ':')
+                p++;
+            addr = strtoul(p, (char **)&p, 16);
+            if (*p == ',')
+                p++;
+            len = strtoul(p, (char **)&p, 16);
+
+            total_len = strlen(plist);
+            if (addr > total_len) {
+                snprintf(buf, sizeof(buf), "E00");
+                put_packet(s, buf);
+                break;
+            }
+
+            if (len > (MAX_PACKET_LENGTH - 5) / 2)
+                len = (MAX_PACKET_LENGTH - 5) / 2;
+            if (len < total_len - addr) {
+                buf[0] = 'm';
+                len = memtox(buf + 1, plist + addr, len);
+            } else {
+                buf[0] = 'l';
+                len = memtox(buf + 1, plist + addr, total_len - addr);
+            }
+            put_packet_binary(s, buf, len + 1);
+            g_free((void *) plist);
+            break;
+        }
         /* Unrecognised 'q' command.  */
         goto unknown_command;
 
@@ -1200,10 +1572,71 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
     return RS_IDLE;
 }
 
+static void gdb_output(GDBState *s, const char *msg, int len)
+{
+    char buf[MAX_PACKET_LENGTH];
+
+    buf[0] = 'O';
+    if (len > (MAX_PACKET_LENGTH/2) - 1) {
+        len = (MAX_PACKET_LENGTH/2) - 1;
+    }
+    memtohex(buf + 1, (uint8_t *)msg, len);
+    put_packet(s, buf);
+}
+
 void gdb_set_stop_cpu(CPUState *cpu)
 {
+    GDBState *s = gdbserver_state;
+    int i;
+
+    if (!gdbserver_state) {
+        return;
+    }
+
+    for (i = 1; i <= s->num_clusters; i++) {
+        if (find_cpu(s, i, cpu_index(cpu))) {
+            s->cur_cluster = i - 1;
+            break;
+        }
+    }
+
     gdbserver_state->c_cpu = cpu;
     gdbserver_state->g_cpu = cpu;
+}
+
+static int gdbserver_has_client(void)
+{
+    return gdbserver_state && gdbserver_state->client_connected;
+}
+
+int gdbserver_break(const char *msg)
+{
+
+    if (!gdbserver_has_client()) {
+        return 1;
+    }
+
+    if (msg) {
+        gdb_output(gdbserver_state, msg, strlen(msg));
+    }
+
+    if (!gdbserver_state->break_on_guest_error) {
+        return 0;
+    }
+
+    /* If there's a CPU running, break it's execution.  */
+    if (current_cpu) {
+        current_cpu->exception_index = EXCP_DEBUG;
+        if (current_cpu->current_tb) {
+            /* Break out of current TB and request debug action.  */
+            cpu_loop_exit(current_cpu);
+        }
+    }
+#ifndef CONFIG_USER_ONLY
+    /* Request global debug action.  */
+    qemu_system_debug_request();
+#endif
+    return 0;
 }
 
 #ifndef CONFIG_USER_ONLY
@@ -1239,8 +1672,10 @@ static void gdb_vm_state_change(void *opaque, int running, RunState state)
                 break;
             }
             snprintf(buf, sizeof(buf),
-                     "T%02xthread:%02x;%swatch:" TARGET_FMT_lx ";",
-                     GDB_SIGNAL_TRAP, cpu_index(cpu), type,
+                     "T%02xthread:%s;%swatch:" TARGET_FMT_lx ";",
+                     GDB_SIGNAL_TRAP,
+                     gdb_gen_thread_id(s, s->cur_cluster + 1, cpu_index(cpu)),
+                     type,
                      (target_ulong)cpu->watchpoint_hit->vaddr);
             cpu->watchpoint_hit = NULL;
             goto send_packet;
@@ -1273,7 +1708,8 @@ static void gdb_vm_state_change(void *opaque, int running, RunState state)
         ret = GDB_SIGNAL_UNKNOWN;
         break;
     }
-    snprintf(buf, sizeof(buf), "T%02xthread:%02x;", ret, cpu_index(cpu));
+    snprintf(buf, sizeof(buf), "T%02xthread:%s;", ret,
+             gdb_gen_thread_id(s, s->cur_cluster + 1, cpu_index(cpu)));
 
 send_packet:
     put_packet(s, buf);
@@ -1418,9 +1854,14 @@ static void gdb_read_byte(GDBState *s, int ch)
                 put_buffer(s, &reply, 1);
                 s->state = RS_IDLE;
             } else {
+                bool tw_en;
+
                 reply = '+';
                 put_buffer(s, &reply, 1);
+
+                tw_en = rp_time_warp_enable(false);
                 s->state = gdb_handle_packet(s, s->line_buf);
+                rp_time_warp_enable(tw_en);
             }
             break;
         default:
@@ -1510,6 +1951,7 @@ gdb_handlesig(CPUState *cpu, int sig)
         } else if (n == 0 || errno != EAGAIN) {
             /* XXX: Connection closed.  Should probably wait for another
                connection before continuing.  */
+              s->client_connected = false;
             return sig;
         }
     }
@@ -1564,7 +2006,7 @@ static void gdb_accept(void)
     gdb_has_xml = false;
 
     gdbserver_state = s;
-
+    s->client_connected = true;
     fcntl(fd, F_SETFL, O_NONBLOCK);
 }
 
@@ -1649,21 +2091,16 @@ static void gdb_chr_event(void *opaque, int event)
     case CHR_EVENT_OPENED:
         vm_stop(RUN_STATE_PAUSED);
         gdb_has_xml = false;
+        gdbserver_state->multiprocess = false;
+        gdbserver_state->client_connected = true;
         break;
+    case CHR_EVENT_CLOSED: {
+        gdbserver_state->client_connected = false;
+        break;
+    }
     default:
         break;
     }
-}
-
-static void gdb_monitor_output(GDBState *s, const char *msg, int len)
-{
-    char buf[MAX_PACKET_LENGTH];
-
-    buf[0] = 'O';
-    if (len > (MAX_PACKET_LENGTH/2) - 1)
-        len = (MAX_PACKET_LENGTH/2) - 1;
-    memtohex(buf + 1, (uint8_t *)msg, len);
-    put_packet(s, buf);
 }
 
 static int gdb_monitor_write(CharDriverState *chr, const uint8_t *buf, int len)
@@ -1674,10 +2111,10 @@ static int gdb_monitor_write(CharDriverState *chr, const uint8_t *buf, int len)
     max_sz = (sizeof(gdbserver_state->last_packet) - 2) / 2;
     for (;;) {
         if (len <= max_sz) {
-            gdb_monitor_output(gdbserver_state, p, len);
+            gdb_output(gdbserver_state, p, len);
             break;
         }
-        gdb_monitor_output(gdbserver_state, p, max_sz);
+        gdb_output(gdbserver_state, p, max_sz);
         p += max_sz;
         len -= max_sz;
     }
@@ -1744,6 +2181,7 @@ int gdbserver_start(const char *device)
         mon_chr = s->mon_chr;
         memset(s, 0, sizeof(GDBState));
     }
+    gdb_autosplit_cpus(s);
     s->c_cpu = first_cpu;
     s->g_cpu = first_cpu;
     s->chr = chr;

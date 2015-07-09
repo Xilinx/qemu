@@ -99,6 +99,8 @@ petalogix_s3adsp1800_init(MachineState *machine)
                           1, 0x89, 0x18, 0x0000, 0x0, 1);
 
     dev = qdev_create(NULL, "xlnx.xps-intc");
+    object_property_add_child(qdev_get_machine(), "intc", OBJECT(dev),
+                              &error_abort);
     qdev_prop_set_uint32(dev, "kind-of-intr",
                          1 << ETHLITE_IRQ | 1 << UARTLITE_IRQ);
     qdev_init_nofail(dev);
@@ -109,19 +111,29 @@ petalogix_s3adsp1800_init(MachineState *machine)
         irq[i] = qdev_get_gpio_in(dev, i);
     }
 
-    sysbus_create_simple("xlnx.xps-uartlite", UARTLITE_BASEADDR,
-                         irq[UARTLITE_IRQ]);
+    dev = qdev_create(NULL, "xlnx.xps-uartlite");
+    object_property_add_child(qdev_get_machine(), "uart", OBJECT(dev),
+                              &error_abort);
+    qdev_init_nofail(dev);
+    sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, UARTLITE_BASEADDR);
+    sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, irq[UARTLITE_IRQ]);
 
+#if 0
     /* 2 timers at irq 2 @ 62 Mhz.  */
     dev = qdev_create(NULL, "xlnx.xps-timer");
+    object_property_add_child(qdev_get_machine(), "timer", OBJECT(dev),
+                              &error_abort);
     qdev_prop_set_uint32(dev, "one-timer-only", 0);
     qdev_prop_set_uint32(dev, "clock-frequency", 62 * 1000000);
     qdev_init_nofail(dev);
     sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, TIMER_BASEADDR);
     sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, irq[TIMER_IRQ]);
+#endif
 
     qemu_check_nic_model(&nd_table[0], "xlnx.xps-ethernetlite");
     dev = qdev_create(NULL, "xlnx.xps-ethernetlite");
+    object_property_add_child(qdev_get_machine(), "enet", OBJECT(dev),
+                              &error_abort);
     qdev_set_nic_properties(dev, &nd_table[0]);
     qdev_prop_set_uint32(dev, "tx-ping-pong", 0);
     qdev_prop_set_uint32(dev, "rx-ping-pong", 0);
@@ -132,7 +144,8 @@ petalogix_s3adsp1800_init(MachineState *machine)
     microblaze_load_kernel(cpu, ddr_base, ram_size,
                            machine->initrd_filename,
                            BINARY_DEVICE_TREE_FILE,
-                           machine_cpu_reset);
+                           machine_cpu_reset,
+                           NULL, 0);
 }
 
 static QEMUMachine petalogix_s3adsp1800_machine = {

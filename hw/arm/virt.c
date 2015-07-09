@@ -65,6 +65,9 @@ enum {
     VIRT_CPUPERIPHS,
     VIRT_GIC_DIST,
     VIRT_GIC_CPU,
+    VIRT_GIC_VIC,
+    VIRT_GIC_VIC_ALIAS,
+    VIRT_GIC_VCPU,
     VIRT_UART,
     VIRT_MMIO,
     VIRT_RTC,
@@ -124,6 +127,9 @@ static const MemMapEntry a15memmap[] = {
     /* GIC distributor and CPU interfaces sit inside the CPU peripheral space */
     [VIRT_GIC_DIST] =   { 0x08000000, 0x00010000 },
     [VIRT_GIC_CPU] =    { 0x08010000, 0x00010000 },
+    [VIRT_GIC_VIC] = { 0x8020000, 0x10000 },
+    [VIRT_GIC_VIC_ALIAS] = { 0x8020000, 0x80000 },
+    [VIRT_GIC_VCPU] = { 0x80a0000, 0x10000 },
     [VIRT_UART] =       { 0x09000000, 0x00001000 },
     [VIRT_RTC] =        { 0x09010000, 0x00001000 },
     [VIRT_FW_CFG] =     { 0x09020000, 0x0000000a },
@@ -147,6 +153,14 @@ static VirtBoardInfo machines[] = {
     },
     {
         .cpu_model = "cortex-a57",
+        .memmap = a15memmap,
+        .irqmap = a15irqmap,
+    },
+    {
+        .cpu_model = "cortex-a57",
+        /* Use the A15 private peripheral model for now: probably wrong! */
+        .qdevname = "a15mpcore_priv",
+        .gic_compatible = "arm,cortex-a15-gic",
         .memmap = a15memmap,
         .irqmap = a15irqmap,
     },
@@ -315,6 +329,10 @@ static void fdt_add_cpu_nodes(const VirtBoardInfo *vbi)
 static void fdt_add_gic_node(const VirtBoardInfo *vbi)
 {
     uint32_t gic_phandle;
+    uint32_t irqflags = GIC_FDT_IRQ_FLAGS_LEVEL_HI;
+
+    irqflags = deposit32(irqflags, GIC_FDT_IRQ_PPI_CPU_START,
+                         GIC_FDT_IRQ_PPI_CPU_WIDTH, (1 << vbi->smp_cpus) - 1);
 
     gic_phandle = qemu_fdt_alloc_phandle(vbi->fdt);
     qemu_fdt_setprop_cell(vbi->fdt, "/", "interrupt-parent", gic_phandle);
@@ -329,8 +347,14 @@ static void fdt_add_gic_node(const VirtBoardInfo *vbi)
                                      2, vbi->memmap[VIRT_GIC_DIST].base,
                                      2, vbi->memmap[VIRT_GIC_DIST].size,
                                      2, vbi->memmap[VIRT_GIC_CPU].base,
-                                     2, vbi->memmap[VIRT_GIC_CPU].size);
+                                     2, vbi->memmap[VIRT_GIC_CPU].size,
+                                     2, vbi->memmap[VIRT_GIC_VIC].base,
+                                     2, vbi->memmap[VIRT_GIC_VIC].size,
+                                     2, vbi->memmap[VIRT_GIC_VCPU].base,
+                                     2, vbi->memmap[VIRT_GIC_VCPU].size);
     qemu_fdt_setprop_cell(vbi->fdt, "/intc", "phandle", gic_phandle);
+    qemu_fdt_setprop_cells(vbi->fdt, "/intc", "interrupts",
+                               GIC_FDT_IRQ_TYPE_PPI, 9, irqflags);
 }
 
 static void create_gic(const VirtBoardInfo *vbi, qemu_irq *pic)
@@ -339,6 +363,8 @@ static void create_gic(const VirtBoardInfo *vbi, qemu_irq *pic)
     DeviceState *gicdev;
     SysBusDevice *gicbusdev;
     const char *gictype = "arm_gic";
+    int hregion = (smp_cpus + 1) + 1;
+    int vregion = (smp_cpus + 1) * 2 + 1;
     int i;
 
     if (kvm_irqchip_in_kernel()) {
@@ -356,6 +382,12 @@ static void create_gic(const VirtBoardInfo *vbi, qemu_irq *pic)
     gicbusdev = SYS_BUS_DEVICE(gicdev);
     sysbus_mmio_map(gicbusdev, 0, vbi->memmap[VIRT_GIC_DIST].base);
     sysbus_mmio_map(gicbusdev, 1, vbi->memmap[VIRT_GIC_CPU].base);
+    if (!kvm_enabled()) {
+        sysbus_mmio_map(gicbusdev, hregion,
+                        vbi->memmap[VIRT_GIC_VIC].base);
+        sysbus_mmio_map(gicbusdev, vregion,
+                        vbi->memmap[VIRT_GIC_VCPU].base);
+    }
 
     /* Wire the outputs from each CPU's generic timer to the
      * appropriate GIC PPI inputs, and the GIC's IRQ output to
@@ -372,8 +404,20 @@ static void create_gic(const VirtBoardInfo *vbi, qemu_irq *pic)
         /* virtual timer */
         qdev_connect_gpio_out(cpudev, 1,
                               qdev_get_gpio_in(gicdev, ppibase + 27));
-
         sysbus_connect_irq(gicbusdev, i, qdev_get_gpio_in(cpudev, ARM_CPU_IRQ));
+        sysbus_connect_irq(gicbusdev, smp_cpus + i,
+                           qdev_get_gpio_in(cpudev, ARM_CPU_VIRQ));
+        /* Hypervisor timer.  */
+        qdev_connect_gpio_out(cpudev, 2,
+                              qdev_get_gpio_in(gicdev, ppibase + 26));
+        /* Maintenance interrupt.  */
+        sysbus_connect_irq(gicbusdev, smp_cpus * 2 + i,
+                           qdev_get_gpio_in(gicdev, ppibase + 25));
+        if (!kvm_enabled()) {
+            /* Per CPU Virtual Interface Control.  */
+            sysbus_mmio_map(gicbusdev, hregion + 1 + i,
+                            vbi->memmap[VIRT_GIC_VIC_ALIAS].base + i * 0x10000);
+        }
     }
 
     for (i = 0; i < NUM_IRQS; i++) {

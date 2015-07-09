@@ -24,28 +24,10 @@
 
 #define TYPE_MICROBLAZE_CPU "microblaze-cpu"
 
-#define MICROBLAZE_CPU_CLASS(klass) \
-    OBJECT_CLASS_CHECK(MicroBlazeCPUClass, (klass), TYPE_MICROBLAZE_CPU)
 #define MICROBLAZE_CPU(obj) \
     OBJECT_CHECK(MicroBlazeCPU, (obj), TYPE_MICROBLAZE_CPU)
-#define MICROBLAZE_CPU_GET_CLASS(obj) \
-    OBJECT_GET_CLASS(MicroBlazeCPUClass, (obj), TYPE_MICROBLAZE_CPU)
-
-/**
- * MicroBlazeCPUClass:
- * @parent_realize: The parent class' realize handler.
- * @parent_reset: The parent class' reset handler.
- *
- * A MicroBlaze CPU model.
- */
-typedef struct MicroBlazeCPUClass {
-    /*< private >*/
-    CPUClass parent_class;
-    /*< public >*/
-
-    DeviceRealize parent_realize;
-    void (*parent_reset)(CPUState *cpu);
-} MicroBlazeCPUClass;
+#define MICROBLAZE_CPU_PARENT_CLASS \
+    object_class_get_parent(object_class_by_name(TYPE_MICROBLAZE_CPU))
 
 /**
  * MicroBlazeCPU:
@@ -58,6 +40,13 @@ typedef struct MicroBlazeCPU {
     CPUState parent_obj;
     uint32_t base_vectors;
     /*< public >*/
+
+    qemu_irq mb_sleep;
+
+    /* Microblaze Configuration Settings */
+    struct {
+        bool stackproc;
+    } cfg;
 
     CPUMBState env;
 } MicroBlazeCPU;

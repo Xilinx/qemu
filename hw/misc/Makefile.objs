@@ -1,3 +1,5 @@
+common-obj-$(CONFIG_CLOCK) += fixed-clock.o
+common-obj-$(CONFIG_CLOCK) += zynq-pll.o
 common-obj-$(CONFIG_APPLESMC) += applesmc.o
 common-obj-$(CONFIG_MAX111X) += max111x.o
 common-obj-$(CONFIG_TMP105) += tmp105.o
@@ -5,6 +7,24 @@ common-obj-$(CONFIG_ISA_DEBUG) += debugexit.o
 common-obj-$(CONFIG_SGA) += sga.o
 common-obj-$(CONFIG_ISA_TESTDEV) += pc-testdev.o
 common-obj-$(CONFIG_PCI_TESTDEV) += pci-testdev.o
+
+common-obj-$(CONFIG_RONALDO) += xilinx_ronaldo_ocmc.o
+common-obj-$(CONFIG_RONALDO) += ronaldo-iou-slcr.o
+common-obj-$(CONFIG_RONALDO) += xilinx-lpd-slcr.o
+common-obj-$(CONFIG_RONALDO) += xilinx-xppu.o
+common-obj-$(CONFIG_RONALDO) += xilinx_ronaldo_rpu_ctrl.o
+obj-$(CONFIG_RONALDO_ARM) += xilinx_ronaldo_apu_ctrl.o
+common-obj-$(CONFIG_RONALDO) += xilinx_ronaldo_pmu_local.o
+common-obj-$(CONFIG_RONALDO) += xilinx_ronaldo_pmu_global.o
+common-obj-$(CONFIG_RONALDO) += xilinx_ronaldo_crf.o
+common-obj-$(CONFIG_RONALDO) += xilinx_ronaldo_crl.o
+common-obj-$(CONFIG_RONALDO) += xilinx_ronaldo_ams.o
+common-obj-$(CONFIG_RONALDO) += xilinx_ronaldo_sysmon.o
+common-obj-$(CONFIG_RONALDO) += mem_ctrl.o
+common-obj-$(CONFIG_RONALDO) += test_component.o
+common-obj-$(CONFIG_RONALDO) += arm-smmu.o
+
+common-obj-$(CONFIG_XILINX_AXI) += stream-fifo.o
 
 obj-$(CONFIG_VMPORT) += vmport.o
 
@@ -21,7 +41,6 @@ common-obj-$(CONFIG_MACIO) += macio/
 
 ifeq ($(CONFIG_PCI), y)
 obj-$(CONFIG_KVM) += ivshmem.o
-obj-$(CONFIG_LINUX) += vfio.o
 endif
 
 obj-$(CONFIG_REALVIEW) += arm_sysctl.o
@@ -41,3 +60,6 @@ obj-$(CONFIG_SLAVIO) += slavio_misc.o
 obj-$(CONFIG_ZYNQ) += zynq_slcr.o
 
 obj-$(CONFIG_PVPANIC) += pvpanic.o
+
+obj-y += blob-loader.o
+obj-y += aux.o

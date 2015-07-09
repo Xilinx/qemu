@@ -108,8 +108,8 @@ static void serial_receive1(void *opaque, const uint8_t *buf, int size);
 static inline void recv_fifo_put(SerialState *s, uint8_t chr)
 {
     /* Receive overruns do not overwrite FIFO contents. */
-    if (!fifo8_is_full(&s->recv_fifo)) {
-        fifo8_push(&s->recv_fifo, chr);
+    if (!fifo_is_full(&s->recv_fifo)) {
+        fifo_push8(&s->recv_fifo, chr);
     } else {
         s->lsr |= UART_LSR_OE;
     }
@@ -229,8 +229,8 @@ static gboolean serial_xmit(GIOChannel *chan, GIOCondition cond, void *opaque)
             assert(!(s->lsr & UART_LSR_THRE));
 
             if (s->fcr & UART_FCR_FE) {
-                assert(!fifo8_is_empty(&s->xmit_fifo));
-                s->tsr = fifo8_pop(&s->xmit_fifo);
+                assert(!fifo_is_empty(&s->xmit_fifo));
+                s->tsr = fifo_pop8(&s->xmit_fifo);
                 if (!s->xmit_fifo.num) {
                     s->lsr |= UART_LSR_THRE;
                 }
@@ -317,10 +317,10 @@ static void serial_ioport_write(void *opaque, hwaddr addr, uint64_t val,
             s->thr = (uint8_t) val;
             if(s->fcr & UART_FCR_FE) {
                 /* xmit overruns overwrite data, so make space if needed */
-                if (fifo8_is_full(&s->xmit_fifo)) {
-                    fifo8_pop(&s->xmit_fifo);
+                if (fifo_is_full(&s->xmit_fifo)) {
+                    fifo_pop8(&s->xmit_fifo);
                 }
-                fifo8_push(&s->xmit_fifo, s->thr);
+                fifo_push8(&s->xmit_fifo, s->thr);
             }
             s->thr_ipending = 0;
             s->lsr &= ~UART_LSR_THRE;
@@ -387,13 +387,13 @@ static void serial_ioport_write(void *opaque, hwaddr addr, uint64_t val,
             s->lsr &= ~(UART_LSR_DR | UART_LSR_BI);
             timer_del(s->fifo_timeout_timer);
             s->timeout_ipending = 0;
-            fifo8_reset(&s->recv_fifo);
+            fifo_reset(&s->recv_fifo);
         }
 
         if (val & UART_FCR_XFR) {
             s->lsr |= UART_LSR_THRE;
             s->thr_ipending = 1;
-            fifo8_reset(&s->xmit_fifo);
+            fifo_reset(&s->xmit_fifo);
         }
 
         serial_write_fcr(s, val & 0xC9);
@@ -461,8 +461,8 @@ static uint64_t serial_ioport_read(void *opaque, hwaddr addr, unsigned size)
             ret = s->divider & 0xff;
         } else {
             if(s->fcr & UART_FCR_FE) {
-                ret = fifo8_is_empty(&s->recv_fifo) ?
-                            0 : fifo8_pop(&s->recv_fifo);
+                ret = fifo_is_empty(&s->recv_fifo) ?
+                            0 : fifo_pop8(&s->recv_fifo);
                 if (s->recv_fifo.num == 0) {
                     s->lsr &= ~(UART_LSR_DR | UART_LSR_BI);
                 } else {
@@ -680,7 +680,7 @@ const VMStateDescription vmstate_serial_tsr = {
 static bool serial_recv_fifo_needed(void *opaque)
 {
     SerialState *s = (SerialState *)opaque;
-    return !fifo8_is_empty(&s->recv_fifo);
+    return !fifo_is_empty(&s->recv_fifo);
 
 }
 
@@ -689,7 +689,7 @@ const VMStateDescription vmstate_serial_recv_fifo = {
     .version_id = 1,
     .minimum_version_id = 1,
     .fields = (VMStateField[]) {
-        VMSTATE_STRUCT(recv_fifo, SerialState, 1, vmstate_fifo8, Fifo8),
+        VMSTATE_STRUCT(recv_fifo, SerialState, 1, vmstate_fifo, Fifo),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -697,7 +697,7 @@ const VMStateDescription vmstate_serial_recv_fifo = {
 static bool serial_xmit_fifo_needed(void *opaque)
 {
     SerialState *s = (SerialState *)opaque;
-    return !fifo8_is_empty(&s->xmit_fifo);
+    return !fifo_is_empty(&s->xmit_fifo);
 }
 
 const VMStateDescription vmstate_serial_xmit_fifo = {
@@ -705,7 +705,7 @@ const VMStateDescription vmstate_serial_xmit_fifo = {
     .version_id = 1,
     .minimum_version_id = 1,
     .fields = (VMStateField[]) {
-        VMSTATE_STRUCT(xmit_fifo, SerialState, 1, vmstate_fifo8, Fifo8),
+        VMSTATE_STRUCT(xmit_fifo, SerialState, 1, vmstate_fifo, Fifo),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -829,8 +829,8 @@ static void serial_reset(void *opaque)
     timer_del(s->fifo_timeout_timer);
     timer_del(s->modem_status_poll);
 
-    fifo8_reset(&s->recv_fifo);
-    fifo8_reset(&s->xmit_fifo);
+    fifo_reset(&s->recv_fifo);
+    fifo_reset(&s->xmit_fifo);
 
     s->last_xmit_ts = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
 
@@ -856,8 +856,8 @@ void serial_realize_core(SerialState *s, Error **errp)
 
     qemu_chr_add_handlers(s->chr, serial_can_receive1, serial_receive1,
                           serial_event, s);
-    fifo8_create(&s->recv_fifo, UART_FIFO_LENGTH);
-    fifo8_create(&s->xmit_fifo, UART_FIFO_LENGTH);
+    fifo_create8(&s->recv_fifo, UART_FIFO_LENGTH);
+    fifo_create8(&s->xmit_fifo, UART_FIFO_LENGTH);
     serial_reset(s);
 }
 

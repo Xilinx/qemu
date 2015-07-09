@@ -50,14 +50,15 @@
                                     s->priority1[irq][cpu] :            \
                                     s->priority2[(irq) - GIC_INTERNAL])
 #define GIC_TARGET(irq) s->irq_target[irq]
+#define GIC_GROUP(irq) s->irq_state[irq].group
 
 /* The special cases for the revision property: */
 #define REV_11MPCORE 0
 #define REV_NVIC 0xffffffff
 
 void gic_set_pending_private(GICState *s, int cpu, int irq);
-uint32_t gic_acknowledge_irq(GICState *s, int cpu);
-void gic_complete_irq(GICState *s, int cpu, int irq);
+uint32_t gic_acknowledge_irq(GICState *s, int cpu, bool secure);
+void gic_complete_irq(GICState *s, int cpu, int irq, bool secure);
 void gic_update(GICState *s);
 void gic_init_irqs_and_distributor(GICState *s);
 void gic_set_priority(GICState *s, int cpu, int irq, uint8_t val);

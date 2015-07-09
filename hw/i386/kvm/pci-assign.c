@@ -458,7 +458,7 @@ static void assigned_dev_register_regions(PCIRegion *io_regions,
                                            OBJECT(pci_dev), name,
                                            cur_region->size, virtbase);
                 vmstate_register_ram(&pci_dev->v_addrs[i].real_iomem,
-                                     &pci_dev->dev.qdev);
+                                     DEVICE(&pci_dev->dev));
             }
 
             assigned_dev_iomem_setup(&pci_dev->dev, i, cur_region->size);
@@ -792,6 +792,7 @@ fail:
 
 static void assign_device(AssignedDevice *dev, Error **errp)
 {
+    DeviceState *d = DEVICE(&dev->dev);
     uint32_t flags = KVM_DEV_ASSIGN_ENABLE_IOMMU;
     int r;
 
@@ -805,7 +806,7 @@ static void assign_device(AssignedDevice *dev, Error **errp)
 
     if (!kvm_check_extension(kvm_state, KVM_CAP_IOMMU)) {
         error_setg(errp, "No IOMMU found.  Unable to assign device \"%s\"",
-                   dev->dev.qdev.id);
+                   d->id);
         return;
     }
 
@@ -844,6 +845,7 @@ static void verify_irqchip_in_kernel(Error **errp)
 
 static int assign_intx(AssignedDevice *dev, Error **errp)
 {
+    DeviceState *d = DEVICE(&dev->dev);
     AssignedIRQType new_type;
     PCIINTxRoute intx_route;
     bool intx_host_msi;
@@ -925,7 +927,7 @@ retry:
                          "Failed to assign irq for \"%s\"\n"
                          "Perhaps you are assigning a device "
                          "that shares an IRQ with another device?",
-                         dev->dev.qdev.id);
+                         d->id);
         return r;
     }
 
@@ -956,7 +958,7 @@ static void assigned_dev_update_irq_routing(PCIDevice *dev)
         error_report("%s", error_get_pretty(err));
         error_free(err);
         err = NULL;
-        qdev_unplug(&dev->qdev, &err);
+        qdev_unplug(DEVICE(dev), &err);
         assert(!err);
     }
 }
@@ -1688,7 +1690,7 @@ static const VMStateDescription vmstate_assigned_device = {
 
 static void reset_assigned_device(DeviceState *dev)
 {
-    PCIDevice *pci_dev = DO_UPCAST(PCIDevice, qdev, dev);
+    PCIDevice *pci_dev = PCI_DEVICE(dev);
     AssignedDevice *adev = DO_UPCAST(AssignedDevice, dev, pci_dev);
     char reset_file[64];
     const char reset[] = "1";
@@ -1744,6 +1746,7 @@ static void reset_assigned_device(DeviceState *dev)
 
 static int assigned_initfn(struct PCIDevice *pci_dev)
 {
+    DeviceState *d = DEVICE(pci_dev);
     AssignedDevice *dev = DO_UPCAST(AssignedDevice, dev, pci_dev);
     uint8_t e_intx;
     int r;
@@ -1946,7 +1949,7 @@ static void assigned_dev_load_option_rom(AssignedDevice *dev)
             object_get_typename(OBJECT(dev)));
     memory_region_init_ram(&dev->dev.rom, OBJECT(dev), name, st.st_size,
                            &error_abort);
-    vmstate_register_ram(&dev->dev.rom, &dev->dev.qdev);
+    vmstate_register_ram(&dev->dev.rom, DEVICE(&dev->dev));
     ptr = memory_region_get_ram_ptr(&dev->dev.rom);
     memset(ptr, 0xff, st.st_size);
 

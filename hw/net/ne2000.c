@@ -720,6 +720,8 @@ static NetClientInfo net_ne2000_info = {
 static int pci_ne2000_init(PCIDevice *pci_dev)
 {
     PCINE2000State *d = DO_UPCAST(PCINE2000State, dev, pci_dev);
+    DeviceState *ds = DEVICE(pci_dev);
+
     NE2000State *s;
     uint8_t *pci_conf;
 
@@ -735,7 +737,7 @@ static int pci_ne2000_init(PCIDevice *pci_dev)
     ne2000_reset(s);
 
     s->nic = qemu_new_nic(&net_ne2000_info, &s->c,
-                          object_get_typename(OBJECT(pci_dev)), pci_dev->qdev.id, s);
+                          object_get_typename(OBJECT(pci_dev)), ds->id, s);
     qemu_format_nic_info_str(qemu_get_queue(s->nic), s->c.macaddr.a);
 
     return 0;
@@ -758,7 +760,7 @@ static void ne2000_instance_init(Object *obj)
 
     device_add_bootindex_property(obj, &s->c.bootindex,
                                   "bootindex", "/ethernet-phy@0",
-                                  &pci_dev->qdev, NULL);
+                                  DEVICE(pci_dev), NULL);
 }
 
 static Property ne2000_properties[] = {

@@ -15,7 +15,8 @@
 static inline int get_phys_addr(CPUARMState *env, target_ulong address,
                                 int access_type, int is_user,
                                 hwaddr *phys_ptr, int *prot,
-                                target_ulong *page_size);
+                                target_ulong *page_size, int max_stage,
+                                unsigned int *attr_idx);
 
 /* Definitions for the PMCCNTR and PMCR registers */
 #define PMCRD   0x8
@@ -115,6 +116,70 @@ static int aarch64_fpu_gdb_set_reg(CPUARMState *env, uint8_t *buf, int reg)
     default:
         return 0;
     }
+}
+
+static int aarch64_elx_gdb_get_reg(CPUARMState *env, uint8_t *buf, int reg, int el)
+{
+    switch (reg) {
+    case 0:
+        stfq_le_p(buf, env->elr_el[el]);
+        return 8;
+    case 1:
+        stfq_le_p(buf, env->cp15.esr_el[el]);
+        return 8;
+    case 2:
+        stfq_le_p(buf, env->banked_spsr[aarch64_banked_spsr_index(el)]);
+        return 8;
+    default:
+        return 0;
+    }
+}
+
+static int aarch64_elx_gdb_set_reg(CPUARMState *env, uint8_t *buf, int reg, int el)
+{
+    switch (reg) {
+    case 0:
+        env->elr_el[el] = ldfq_le_p(buf);
+        return 8;
+    case 1:
+        env->cp15.esr_el[el] = ldfq_le_p(buf);
+        return 8;
+    case 2:
+        env->banked_spsr[aarch64_banked_spsr_index(el)] = ldfq_le_p(buf);
+        return 8;
+    default:
+        return 0;
+    }
+}
+
+static int aarch64_el1_gdb_get_reg(CPUARMState *env, uint8_t *buf, int reg)
+{
+    return aarch64_elx_gdb_get_reg(env, buf, reg, 1);
+}
+
+static int aarch64_el1_gdb_set_reg(CPUARMState *env, uint8_t *buf, int reg)
+{
+    return aarch64_elx_gdb_set_reg(env, buf, reg, 1);
+}
+
+static int aarch64_el2_gdb_get_reg(CPUARMState *env, uint8_t *buf, int reg)
+{
+    return aarch64_elx_gdb_get_reg(env, buf, reg, 2);
+}
+
+static int aarch64_el2_gdb_set_reg(CPUARMState *env, uint8_t *buf, int reg)
+{
+    return aarch64_elx_gdb_set_reg(env, buf, reg, 2);
+}
+
+static int aarch64_el3_gdb_get_reg(CPUARMState *env, uint8_t *buf, int reg)
+{
+    return aarch64_elx_gdb_get_reg(env, buf, reg, 3);
+}
+
+static int aarch64_el3_gdb_set_reg(CPUARMState *env, uint8_t *buf, int reg)
+{
+    return aarch64_elx_gdb_set_reg(env, buf, reg, 3);
 }
 
 static uint64_t raw_read(CPUARMState *env, const ARMCPRegInfo *ri)
@@ -334,9 +399,10 @@ static void contextidr_write(CPUARMState *env, const ARMCPRegInfo *ri,
                              uint64_t value)
 {
     ARMCPU *cpu = arm_env_get_cpu(env);
+    unsigned int cur_el = arm_current_el(env);
 
     if (raw_read(env, ri) != value && !arm_feature(env, ARM_FEATURE_MPU)
-        && !extended_addresses_enabled(env)) {
+        && !extended_addresses_enabled(env, cur_el)) {
         /* For VMSA (when not using the LPAE long descriptor page table
          * format) this register includes the ASID, so do a TLB flush.
          * For PMSA it is purely a process ID and no action is needed.
@@ -593,7 +659,7 @@ static const ARMCPRegInfo v6_cp_reginfo[] = {
     { .name = "CPACR", .state = ARM_CP_STATE_BOTH, .opc0 = 3,
       .crn = 1, .crm = 0, .opc1 = 0, .opc2 = 2,
       .access = PL1_RW, .fieldoffset = offsetof(CPUARMState, cp15.c1_coproc),
-      .resetvalue = 0, .writefn = cpacr_write },
+      .resetvalue = 0x3 << 20, .writefn = cpacr_write },
     REGINFO_SENTINEL
 };
 
@@ -608,14 +674,47 @@ static CPAccessResult pmreg_access(CPUARMState *env, const ARMCPRegInfo *ri)
     return CP_ACCESS_OK;
 }
 
+#define PMCCFILTR_NSH 0x8000000
+#define PMCCFILTR_P 0x80000000
+#define PMCCFILTR_U 0x40000000
+
+#define PMXEVTYPER_P 0x80000000
+#define PMXEVTYPER_U 0x40000000
+
+
 #ifndef CONFIG_USER_ONLY
 
 static inline bool arm_ccnt_enabled(CPUARMState *env)
 {
-    /* This does not support checking PMCCFILTR_EL0 register */
+    /* This does not support checking for the secure/non-secure
+     * components of the PMCCFILTR_EL0 register
+     */
 
     if (!(env->cp15.c9_pmcr & PMCRE)) {
         return false;
+    }
+
+    switch (arm_current_el(env)) {
+    case 2:
+        if (!(env->cp15.pmccfiltr_el0 & PMCCFILTR_NSH)) {
+            return false;
+        } else {
+          break;
+        }
+    case 1:
+        if (env->cp15.pmccfiltr_el0 & PMCCFILTR_P ||
+            env->cp15.c9_pmxevtyper & PMXEVTYPER_P) {
+            return false;
+        } else {
+            break;
+        }
+    case 0:
+        if (env->cp15.pmccfiltr_el0 & PMCCFILTR_U ||
+            env->cp15.c9_pmxevtyper & PMXEVTYPER_U) {
+            return false;
+        } else {
+            break;
+        }
     }
 
     return true;
@@ -1106,6 +1205,12 @@ static CPAccessResult gt_counter_access(CPUARMState *env, int timeridx)
         !extract32(env->cp15.c14_cntkctl, timeridx, 1)) {
         return CP_ACCESS_TRAP;
     }
+    if (arm_feature(env, ARM_FEATURE_EL2)) {
+        if (arm_current_el(env) == 1 && timeridx == GTIMER_PHYS &&
+            !extract32(env->cp15.cnthctl_el2, 0, 1)) {
+            return CP_ACCESS_TRAP;
+        }
+    }
     return CP_ACCESS_OK;
 }
 
@@ -1117,6 +1222,13 @@ static CPAccessResult gt_timer_access(CPUARMState *env, int timeridx)
     if (arm_current_el(env) == 0 &&
         !extract32(env->cp15.c14_cntkctl, 9 - timeridx, 1)) {
         return CP_ACCESS_TRAP;
+    }
+    if (arm_feature(env, ARM_FEATURE_EL2)) {
+        if (arm_current_el(env) == 1 && timeridx == GTIMER_PHYS &&
+            !extract32(env->cp15.cnthctl_el2, 1, 1)) {
+            qemu_log("TRAP timer access\n");
+            return CP_ACCESS_TRAP;
+        }
     }
     return CP_ACCESS_OK;
 }
@@ -1156,9 +1268,10 @@ static void gt_recalc_timer(ARMCPU *cpu, int timeridx)
         /* Timer enabled: calculate and set current ISTATUS, irq, and
          * reset timer to when ISTATUS next has to change
          */
+        uint64_t offset = timeridx == GTIMER_VIRT ? cpu->env.cp15.cntvoff_el2 : 0;
         uint64_t count = gt_get_countervalue(&cpu->env);
         /* Note that this must be unsigned 64 bit arithmetic: */
-        int istatus = count >= gt->cval;
+        int istatus = (count - offset) >= gt->cval;
         uint64_t nexttick;
 
         gt->ctl = deposit32(gt->ctl, 2, 1, istatus);
@@ -1169,20 +1282,20 @@ static void gt_recalc_timer(ARMCPU *cpu, int timeridx)
             nexttick = UINT64_MAX;
         } else {
             /* Next transition is when we hit cval */
-            nexttick = gt->cval;
+            nexttick = gt->cval + offset;
         }
         /* Note that the desired next expiry time might be beyond the
          * signed-64-bit range of a QEMUTimer -- in this case we just
          * set the timer for as far in the future as possible. When the
          * timer expires we will reset the timer for any remaining period.
          */
-        if (nexttick > INT64_MAX / GTIMER_SCALE) {
+        if (nexttick > INT64_MAX / GTIMER_SCALE && (int64_t)count > (int64_t)nexttick) {
             nexttick = INT64_MAX / GTIMER_SCALE;
         }
         timer_mod(cpu->gt_timer[timeridx], nexttick);
     } else {
         /* Timer disabled: ISTATUS and timer output always clear */
-        gt->ctl &= ~4;
+//        gt->ctl &= ~4;
         qemu_set_irq(cpu->gt_timer_outputs[timeridx], 0);
         timer_del(cpu->gt_timer[timeridx]);
     }
@@ -1196,43 +1309,46 @@ static void gt_cnt_reset(CPUARMState *env, const ARMCPRegInfo *ri)
     timer_del(cpu->gt_timer[timeridx]);
 }
 
-static uint64_t gt_cnt_read(CPUARMState *env, const ARMCPRegInfo *ri)
+static uint64_t gt_pcnt_read(CPUARMState *env, const ARMCPRegInfo *ri)
 {
     return gt_get_countervalue(env);
 }
 
-static void gt_cval_write(CPUARMState *env, const ARMCPRegInfo *ri,
-                          uint64_t value)
+static uint64_t gt_vcnt_read(CPUARMState *env, const ARMCPRegInfo *ri)
 {
-    int timeridx = ri->opc1 & 1;
+    uint64_t r;
+    r = gt_get_countervalue(env) - env->cp15.cntvoff_el2;
+    return r;
+}
 
+static void gt_cval_write_common(CPUARMState *env, const ARMCPRegInfo *ri,
+                                 int timeridx, uint64_t value)
+{
     env->cp15.c14_timer[timeridx].cval = value;
     gt_recalc_timer(arm_env_get_cpu(env), timeridx);
 }
 
-static uint64_t gt_tval_read(CPUARMState *env, const ARMCPRegInfo *ri)
+static uint64_t gt_tval_read_common(CPUARMState *env, const ARMCPRegInfo *ri,
+                                    int timeridx)
 {
-    int timeridx = ri->crm & 1;
-
+    uint64_t offset = timeridx == GTIMER_VIRT ? env->cp15.cntvoff_el2 : 0;
     return (uint32_t)(env->cp15.c14_timer[timeridx].cval -
-                      gt_get_countervalue(env));
+                      (gt_get_countervalue(env) - offset));
 }
 
-static void gt_tval_write(CPUARMState *env, const ARMCPRegInfo *ri,
-                          uint64_t value)
+static void gt_tval_write_common(CPUARMState *env, const ARMCPRegInfo *ri,
+                                 int timeridx, uint64_t value)
 {
-    int timeridx = ri->crm & 1;
-
-    env->cp15.c14_timer[timeridx].cval = gt_get_countervalue(env) +
+    uint64_t offset = timeridx == GTIMER_VIRT ? env->cp15.cntvoff_el2 : 0;
+    env->cp15.c14_timer[timeridx].cval = (gt_get_countervalue(env) - offset) +
         + sextract64(value, 0, 32);
     gt_recalc_timer(arm_env_get_cpu(env), timeridx);
 }
 
-static void gt_ctl_write(CPUARMState *env, const ARMCPRegInfo *ri,
-                         uint64_t value)
+static void gt_ctl_write_common(CPUARMState *env, const ARMCPRegInfo *ri,
+                                int timeridx, uint64_t value)
 {
     ARMCPU *cpu = arm_env_get_cpu(env);
-    int timeridx = ri->crm & 1;
     uint32_t oldval = env->cp15.c14_timer[timeridx].ctl;
 
     env->cp15.c14_timer[timeridx].ctl = deposit64(oldval, 0, 2, value);
@@ -1248,18 +1364,126 @@ static void gt_ctl_write(CPUARMState *env, const ARMCPRegInfo *ri,
     }
 }
 
+static void gt_phys_cval_write(CPUARMState *env, const ARMCPRegInfo *ri,
+                               uint64_t value)
+{
+    gt_cval_write_common(env, ri, GTIMER_PHYS, value);
+}
+
+static uint64_t gt_phys_tval_read(CPUARMState *env, const ARMCPRegInfo *ri)
+{
+    return gt_tval_read_common(env, ri, GTIMER_PHYS);
+}
+
+static void gt_phys_tval_write(CPUARMState *env, const ARMCPRegInfo *ri,
+                               uint64_t value)
+{
+    gt_tval_write_common(env, ri, GTIMER_PHYS, value);
+}
+
+static void gt_phys_ctl_write(CPUARMState *env, const ARMCPRegInfo *ri,
+                              uint64_t value)
+{
+    gt_ctl_write_common(env, ri, GTIMER_PHYS, value);
+}
+
+static void gt_ps_cval_write(CPUARMState *env, const ARMCPRegInfo *ri,
+                             uint64_t value)
+{
+    gt_cval_write_common(env, ri, GTIMER_PHYSSEC, value);
+}
+
+static uint64_t gt_ps_tval_read(CPUARMState *env, const ARMCPRegInfo *ri)
+{
+    return gt_tval_read_common(env, ri, GTIMER_PHYSSEC);
+}
+
+static void gt_ps_tval_write(CPUARMState *env, const ARMCPRegInfo *ri,
+                             uint64_t value)
+{
+    gt_tval_write_common(env, ri, GTIMER_PHYSSEC, value);
+}
+
+static void gt_ps_ctl_write(CPUARMState *env, const ARMCPRegInfo *ri,
+                            uint64_t value)
+{
+    gt_ctl_write_common(env, ri, GTIMER_PHYSSEC, value);
+}
+
+static void gt_virt_cval_write(CPUARMState *env, const ARMCPRegInfo *ri,
+                               uint64_t value)
+{
+    gt_cval_write_common(env, ri, GTIMER_VIRT, value);
+}
+
+static uint64_t gt_virt_tval_read(CPUARMState *env, const ARMCPRegInfo *ri)
+{
+    return gt_tval_read_common(env, ri, GTIMER_VIRT);
+}
+
+static void gt_virt_tval_write(CPUARMState *env, const ARMCPRegInfo *ri,
+                               uint64_t value)
+{
+    gt_tval_write_common(env, ri, GTIMER_VIRT, value);
+}
+
+static void gt_virt_ctl_write(CPUARMState *env, const ARMCPRegInfo *ri,
+                              uint64_t value)
+{
+    gt_ctl_write_common(env, ri, GTIMER_VIRT, value);
+}
+
+static void gt_virt_off_write(CPUARMState *env, const ARMCPRegInfo *ri,
+                              uint64_t value)
+{
+    env->cp15.cntvoff_el2 = value;
+}
+
+static void gt_hyp_cval_write(CPUARMState *env, const ARMCPRegInfo *ri,
+                              uint64_t value)
+{
+    gt_cval_write_common(env, ri, GTIMER_HYP, value);
+}
+
+static uint64_t gt_hyp_tval_read(CPUARMState *env, const ARMCPRegInfo *ri)
+{
+    return gt_tval_read_common(env, ri, GTIMER_HYP);
+}
+
+static void gt_hyp_tval_write(CPUARMState *env, const ARMCPRegInfo *ri,
+                              uint64_t value)
+{
+    gt_tval_write_common(env, ri, GTIMER_HYP, value);
+}
+
+static void gt_hyp_ctl_write(CPUARMState *env, const ARMCPRegInfo *ri,
+                              uint64_t value)
+{
+    gt_ctl_write_common(env, ri, GTIMER_HYP, value);
+}
+
 void arm_gt_ptimer_cb(void *opaque)
 {
     ARMCPU *cpu = opaque;
-
     gt_recalc_timer(cpu, GTIMER_PHYS);
 }
 
 void arm_gt_vtimer_cb(void *opaque)
 {
     ARMCPU *cpu = opaque;
-
     gt_recalc_timer(cpu, GTIMER_VIRT);
+}
+
+void arm_gt_htimer_cb(void *opaque)
+{
+    ARMCPU *cpu = opaque;
+    gt_recalc_timer(cpu, GTIMER_HYP);
+}
+
+void arm_gt_pstimer_cb(void *opaque)
+{
+    ARMCPU *cpu = opaque;
+    gt_recalc_timer(cpu, GTIMER_PHYSSEC);
 }
 
 static const ARMCPRegInfo generic_timer_cp_reginfo[] = {
@@ -1293,7 +1517,7 @@ static const ARMCPRegInfo generic_timer_cp_reginfo[] = {
       .fieldoffset = offsetoflow32(CPUARMState,
                                    cp15.c14_timer[GTIMER_PHYS].ctl),
       .resetfn = arm_cp_reset_ignore,
-      .writefn = gt_ctl_write, .raw_writefn = raw_write,
+      .writefn = gt_phys_ctl_write, .raw_writefn = raw_write,
     },
     { .name = "CNTP_CTL_EL0", .state = ARM_CP_STATE_AA64,
       .opc0 = 3, .opc1 = 3, .crn = 14, .crm = 2, .opc2 = 1,
@@ -1301,7 +1525,7 @@ static const ARMCPRegInfo generic_timer_cp_reginfo[] = {
       .accessfn = gt_ptimer_access,
       .fieldoffset = offsetof(CPUARMState, cp15.c14_timer[GTIMER_PHYS].ctl),
       .resetvalue = 0,
-      .writefn = gt_ctl_write, .raw_writefn = raw_write,
+      .writefn = gt_phys_ctl_write, .raw_writefn = raw_write,
     },
     { .name = "CNTV_CTL", .cp = 15, .crn = 14, .crm = 3, .opc1 = 0, .opc2 = 1,
       .type = ARM_CP_IO | ARM_CP_NO_MIGRATE, .access = PL1_RW | PL0_R,
@@ -1309,7 +1533,7 @@ static const ARMCPRegInfo generic_timer_cp_reginfo[] = {
       .fieldoffset = offsetoflow32(CPUARMState,
                                    cp15.c14_timer[GTIMER_VIRT].ctl),
       .resetfn = arm_cp_reset_ignore,
-      .writefn = gt_ctl_write, .raw_writefn = raw_write,
+      .writefn = gt_virt_ctl_write, .raw_writefn = raw_write,
     },
     { .name = "CNTV_CTL_EL0", .state = ARM_CP_STATE_AA64,
       .opc0 = 3, .opc1 = 3, .crn = 14, .crm = 3, .opc2 = 1,
@@ -1317,51 +1541,52 @@ static const ARMCPRegInfo generic_timer_cp_reginfo[] = {
       .accessfn = gt_vtimer_access,
       .fieldoffset = offsetof(CPUARMState, cp15.c14_timer[GTIMER_VIRT].ctl),
       .resetvalue = 0,
-      .writefn = gt_ctl_write, .raw_writefn = raw_write,
+      .writefn = gt_virt_ctl_write, .raw_writefn = raw_write,
     },
     /* TimerValue views: a 32 bit downcounting view of the underlying state */
     { .name = "CNTP_TVAL", .cp = 15, .crn = 14, .crm = 2, .opc1 = 0, .opc2 = 0,
       .type = ARM_CP_NO_MIGRATE | ARM_CP_IO, .access = PL1_RW | PL0_R,
       .accessfn = gt_ptimer_access,
-      .readfn = gt_tval_read, .writefn = gt_tval_write,
+      .readfn = gt_phys_tval_read, .writefn = gt_phys_tval_write,
     },
     { .name = "CNTP_TVAL_EL0", .state = ARM_CP_STATE_AA64,
       .opc0 = 3, .opc1 = 3, .crn = 14, .crm = 2, .opc2 = 0,
       .type = ARM_CP_NO_MIGRATE | ARM_CP_IO, .access = PL1_RW | PL0_R,
-      .readfn = gt_tval_read, .writefn = gt_tval_write,
+      .accessfn = gt_ptimer_access,
+      .readfn = gt_phys_tval_read, .writefn = gt_phys_tval_write,
     },
     { .name = "CNTV_TVAL", .cp = 15, .crn = 14, .crm = 3, .opc1 = 0, .opc2 = 0,
       .type = ARM_CP_NO_MIGRATE | ARM_CP_IO, .access = PL1_RW | PL0_R,
       .accessfn = gt_vtimer_access,
-      .readfn = gt_tval_read, .writefn = gt_tval_write,
+      .readfn = gt_virt_tval_read, .writefn = gt_virt_tval_write,
     },
     { .name = "CNTV_TVAL_EL0", .state = ARM_CP_STATE_AA64,
       .opc0 = 3, .opc1 = 3, .crn = 14, .crm = 3, .opc2 = 0,
       .type = ARM_CP_NO_MIGRATE | ARM_CP_IO, .access = PL1_RW | PL0_R,
-      .readfn = gt_tval_read, .writefn = gt_tval_write,
+      .readfn = gt_virt_tval_read, .writefn = gt_virt_tval_write,
     },
     /* The counter itself */
     { .name = "CNTPCT", .cp = 15, .crm = 14, .opc1 = 0,
       .access = PL0_R, .type = ARM_CP_64BIT | ARM_CP_NO_MIGRATE | ARM_CP_IO,
       .accessfn = gt_pct_access,
-      .readfn = gt_cnt_read, .resetfn = arm_cp_reset_ignore,
+      .readfn = gt_pcnt_read, .resetfn = arm_cp_reset_ignore,
     },
     { .name = "CNTPCT_EL0", .state = ARM_CP_STATE_AA64,
       .opc0 = 3, .opc1 = 3, .crn = 14, .crm = 0, .opc2 = 1,
       .access = PL0_R, .type = ARM_CP_NO_MIGRATE | ARM_CP_IO,
       .accessfn = gt_pct_access,
-      .readfn = gt_cnt_read, .resetfn = gt_cnt_reset,
+      .readfn = gt_pcnt_read, .resetfn = gt_cnt_reset,
     },
     { .name = "CNTVCT", .cp = 15, .crm = 14, .opc1 = 1,
       .access = PL0_R, .type = ARM_CP_64BIT | ARM_CP_NO_MIGRATE | ARM_CP_IO,
       .accessfn = gt_vct_access,
-      .readfn = gt_cnt_read, .resetfn = arm_cp_reset_ignore,
+      .readfn = gt_vcnt_read, .resetfn = arm_cp_reset_ignore,
     },
     { .name = "CNTVCT_EL0", .state = ARM_CP_STATE_AA64,
       .opc0 = 3, .opc1 = 3, .crn = 14, .crm = 0, .opc2 = 2,
       .access = PL0_R, .type = ARM_CP_NO_MIGRATE | ARM_CP_IO,
       .accessfn = gt_vct_access,
-      .readfn = gt_cnt_read, .resetfn = gt_cnt_reset,
+      .readfn = gt_vcnt_read, .resetfn = gt_cnt_reset,
     },
     /* Comparison value, indicating when the timer goes off */
     { .name = "CNTP_CVAL", .cp = 15, .crm = 14, .opc1 = 2,
@@ -1369,7 +1594,7 @@ static const ARMCPRegInfo generic_timer_cp_reginfo[] = {
       .type = ARM_CP_64BIT | ARM_CP_IO | ARM_CP_NO_MIGRATE,
       .fieldoffset = offsetof(CPUARMState, cp15.c14_timer[GTIMER_PHYS].cval),
       .accessfn = gt_ptimer_access, .resetfn = arm_cp_reset_ignore,
-      .writefn = gt_cval_write, .raw_writefn = raw_write,
+      .writefn = gt_phys_cval_write, .raw_writefn = raw_write,
     },
     { .name = "CNTP_CVAL_EL0", .state = ARM_CP_STATE_AA64,
       .opc0 = 3, .opc1 = 3, .crn = 14, .crm = 2, .opc2 = 2,
@@ -1377,14 +1602,14 @@ static const ARMCPRegInfo generic_timer_cp_reginfo[] = {
       .type = ARM_CP_IO,
       .fieldoffset = offsetof(CPUARMState, cp15.c14_timer[GTIMER_PHYS].cval),
       .resetvalue = 0, .accessfn = gt_vtimer_access,
-      .writefn = gt_cval_write, .raw_writefn = raw_write,
+      .writefn = gt_phys_cval_write, .raw_writefn = raw_write,
     },
     { .name = "CNTV_CVAL", .cp = 15, .crm = 14, .opc1 = 3,
       .access = PL1_RW | PL0_R,
       .type = ARM_CP_64BIT | ARM_CP_IO | ARM_CP_NO_MIGRATE,
       .fieldoffset = offsetof(CPUARMState, cp15.c14_timer[GTIMER_VIRT].cval),
       .accessfn = gt_vtimer_access, .resetfn = arm_cp_reset_ignore,
-      .writefn = gt_cval_write, .raw_writefn = raw_write,
+      .writefn = gt_virt_cval_write, .raw_writefn = raw_write,
     },
     { .name = "CNTV_CVAL_EL0", .state = ARM_CP_STATE_AA64,
       .opc0 = 3, .opc1 = 3, .crn = 14, .crm = 3, .opc2 = 2,
@@ -1392,7 +1617,7 @@ static const ARMCPRegInfo generic_timer_cp_reginfo[] = {
       .type = ARM_CP_IO,
       .fieldoffset = offsetof(CPUARMState, cp15.c14_timer[GTIMER_VIRT].cval),
       .resetvalue = 0, .accessfn = gt_vtimer_access,
-      .writefn = gt_cval_write, .raw_writefn = raw_write,
+      .writefn = gt_virt_cval_write, .raw_writefn = raw_write,
     },
     REGINFO_SENTINEL
 };
@@ -1442,11 +1667,23 @@ static void ats_write(CPUARMState *env, const ARMCPRegInfo *ri, uint64_t value)
     int prot;
     int ret, is_user = ri->opc2 & 2;
     int access_type = ri->opc2 & 1;
+    int tr_el = !is_user;
+    int max_stage = 1;
     uint64_t par64;
+    unsigned int attr_idx;
 
-    ret = get_phys_addr(env, value, access_type, is_user,
-                        &phys_addr, &prot, &page_size);
-    if (extended_addresses_enabled(env)) {
+    if (ri->opc2 & 4) {
+        max_stage = 2;
+    } else {
+        tr_el = (ri->opc1 >> 1) & 3;
+        if (tr_el == 0) {
+            tr_el = !is_user;
+        }
+    }
+
+    ret = get_phys_addr(env, value, access_type, tr_el,
+                        &phys_addr, &prot, &page_size, max_stage, &attr_idx);
+    if (extended_addresses_enabled(env, tr_el)) {
         /* ret is a DFSR/IFSR value for the long descriptor
          * translation table format, but with WnR always clear.
          * Convert it to a 64-bit PAR.
@@ -1551,6 +1788,63 @@ static uint64_t pmsav5_insn_ap_read(CPUARMState *env, const ARMCPRegInfo *ri)
 {
     return simple_mpu_ap_bits(env->cp15.pmsav5_insn_ap);
 }
+
+static uint64_t pmsav7_read(CPUARMState *env, const ARMCPRegInfo *ri)
+{
+    uint32_t *u32p = (void *)env + ri->fieldoffset;
+
+    u32p += env->cp15.c6_rgnr;
+    return *u32p;
+}
+
+static void pmsav7_write(CPUARMState *env, const ARMCPRegInfo *ri,
+                         uint64_t value)
+{
+    ARMCPU *cpu = arm_env_get_cpu(env);
+    uint32_t *u32p = (void *)env + ri->fieldoffset;
+
+    u32p += env->cp15.c6_rgnr;
+    tlb_flush(CPU(cpu), 1); /* Mappings may have changed - purge! */
+    *u32p = value;
+}
+
+static void pmsav7_reset(CPUARMState *env, const ARMCPRegInfo *ri)
+{
+    int i;
+    uint32_t *u32p = (void *)env + ri->fieldoffset;
+
+    for (i = 0; i < 16; ++i) {
+        u32p[i] = 0;
+    }
+}
+
+static const ARMCPRegInfo pmsav7_cp_reginfo[] = {
+    { .name = "DFSR", .cp = 15, .crn = 5, .crm = 0, .opc1 = 0, .opc2 = 0,
+      .access = PL1_RW,
+      .fieldoffset = offsetof(CPUARMState, cp15.esr_el[1]), .resetvalue = 0, },
+    { .name = "IFSR", .cp = 15, .crn = 5, .crm = 0, .opc1 = 0, .opc2 = 1,
+      .access = PL1_RW,
+      .fieldoffset = offsetof(CPUARMState, cp15.ifsr_ns), .resetvalue = 0, },
+    { .name = "DFAR", .cp = 15, .crn = 6, .crm = 0, .opc1 = 0, .opc2 = 0,
+      .access = PL1_RW, .fieldoffset = offsetof(CPUARMState, cp15.far_el[1]),
+      .resetvalue = 0, },
+    { .name = "DRBAR", .cp = 15, .crn = 6, .opc1 = 0, .crm = 1, .opc2 = 0,
+      .access = PL1_RW,
+      .fieldoffset = offsetof(CPUARMState, cp15.c6_drbar[0]),
+      .readfn = pmsav7_read, .writefn = pmsav7_write, .resetfn = pmsav7_reset },
+    { .name = "DRSR", .cp = 15, .crn = 6, .opc1 = 0, .crm = 1, .opc2 = 2,
+      .access = PL1_RW,
+      .fieldoffset = offsetof(CPUARMState, cp15.c6_drsr[0]),
+      .readfn = pmsav7_read, .writefn = pmsav7_write, .resetfn = pmsav7_reset },
+    { .name = "DRACR", .cp = 15, .crn = 6, .opc1 = 0, .crm = 1, .opc2 = 4,
+      .access = PL1_RW,
+      .fieldoffset = offsetof(CPUARMState, cp15.c6_dracr[0]),
+      .readfn = pmsav7_read, .writefn = pmsav7_write, .resetfn = pmsav7_reset },
+    { .name = "RGNR", .cp = 15, .crn = 6, .opc1 = 0, .crm = 2, .opc2 = 0,
+      .access = PL1_RW,
+      .fieldoffset = offsetof(CPUARMState, cp15.c6_rgnr), .resetvalue = 0, },
+    REGINFO_SENTINEL
+};
 
 static const ARMCPRegInfo pmsav5_cp_reginfo[] = {
     { .name = "DATA_AP", .cp = 15, .crn = 5, .crm = 0, .opc1 = 0, .opc2 = 0,
@@ -1664,7 +1958,7 @@ static void vmsa_ttbcr_reset(CPUARMState *env, const ARMCPRegInfo *ri)
     tcr->base_mask = 0xffffc000u;
 }
 
-static void vmsa_tcr_el1_write(CPUARMState *env, const ARMCPRegInfo *ri,
+static void vmsa_tcr_elx_write(CPUARMState *env, const ARMCPRegInfo *ri,
                                uint64_t value)
 {
     ARMCPU *cpu = arm_env_get_cpu(env);
@@ -1715,7 +2009,7 @@ static const ARMCPRegInfo vmsa_cp_reginfo[] = {
                              offsetof(CPUARMState, cp15.ttbr1_ns) } },
     { .name = "TCR_EL1", .state = ARM_CP_STATE_AA64,
       .opc0 = 3, .crn = 2, .crm = 0, .opc1 = 0, .opc2 = 2,
-      .access = PL1_RW, .writefn = vmsa_tcr_el1_write,
+      .access = PL1_RW, .writefn = vmsa_tcr_elx_write,
       .resetfn = vmsa_ttbcr_reset, .raw_writefn = raw_write,
       .fieldoffset = offsetof(CPUARMState, cp15.tcr_el[1]) },
     { .name = "TTBCR", .cp = 15, .crn = 2, .crm = 0, .opc1 = 0, .opc2 = 2,
@@ -1727,6 +2021,11 @@ static const ARMCPRegInfo vmsa_cp_reginfo[] = {
       .opc0 = 3, .crn = 6, .crm = 0, .opc1 = 0, .opc2 = 0,
       .access = PL1_RW, .fieldoffset = offsetof(CPUARMState, cp15.far_el[1]),
       .resetvalue = 0, },
+    { .name = "PAR_EL1", .state = ARM_CP_STATE_AA64,
+      .opc0 = 3, .opc1 = 0, .crn = 7, .crm = 4, .opc2 = 0,
+      .access = PL1_RW, .resetvalue = 0,
+      .fieldoffset = offsetoflow32(CPUARMState, cp15.par_el[1]),
+      .writefn = par_write },
     { .name = "DFAR", .cp = 15, .opc1 = 0, .crn = 6, .crm = 0, .opc2 = 0,
       .access = PL1_RW, .resetvalue = 0,
       .bank_fieldoffsets = { offsetof(CPUARMState, cp15.dfar_s),
@@ -1907,6 +2206,9 @@ static const ARMCPRegInfo strongarm_cp_reginfo[] = {
 static uint64_t mpidr_read(CPUARMState *env, const ARMCPRegInfo *ri)
 {
     CPUState *cs = CPU(arm_env_get_cpu(env));
+    unsigned int cur_el = arm_current_el(env);
+    bool secure = arm_is_secure(env);
+
     uint32_t mpidr = cs->cpu_index;
     /* We don't support setting cluster ID ([8..11]) (known as Aff1
      * in later ARM ARM versions), or any of the higher affinity level fields,
@@ -1920,6 +2222,11 @@ static uint64_t mpidr_read(CPUARMState *env, const ARMCPRegInfo *ri)
          * not currently model any of those cores.
          */
     }
+
+    if (arm_feature(env, ARM_FEATURE_EL2) && cur_el == 1 && !secure) {
+        mpidr = env->vmpidr_el2;
+    }
+
     return mpidr;
 }
 
@@ -2329,6 +2636,11 @@ static const ARMCPRegInfo v8_cp_reginfo[] = {
       .access = PL1_RW, .accessfn = sp_el0_access,
       .type = ARM_CP_NO_MIGRATE,
       .fieldoffset = offsetof(CPUARMState, sp_el[0]) },
+    { .name = "SP_EL1", .state = ARM_CP_STATE_AA64,
+      .type = ARM_CP_NO_MIGRATE,
+      .opc0 = 3, .opc1 = 4, .crn = 4, .crm = 1, .opc2 = 0,
+      .access = PL2_RW,
+      .fieldoffset = offsetof(CPUARMState, sp_el[1]) },
     { .name = "SPSel", .state = ARM_CP_STATE_AA64,
       .opc0 = 3, .opc1 = 0, .crn = 4, .crm = 2, .opc2 = 0,
       .type = ARM_CP_NO_MIGRATE,
@@ -2349,6 +2661,19 @@ static const ARMCPRegInfo v8_el3_no_el2_cp_reginfo[] = {
       .readfn = arm_cp_read_zero, .writefn = arm_cp_write_ignore },
     REGINFO_SENTINEL
 };
+
+static void vttbr_write(CPUARMState *env, const ARMCPRegInfo *ri,
+                        uint64_t value)
+{
+    ARMCPU *cpu = arm_env_get_cpu(env);
+
+    if (raw_read(env, ri) != value) {
+        tlb_flush(CPU(cpu), 1);
+        raw_write(env, ri, value);
+    }
+
+
+}
 
 static void hcr_write(CPUARMState *env, const ARMCPRegInfo *ri, uint64_t value)
 {
@@ -2376,10 +2701,152 @@ static void hcr_write(CPUARMState *env, const ARMCPRegInfo *ri, uint64_t value)
 }
 
 static const ARMCPRegInfo v8_el2_cp_reginfo[] = {
+#ifndef CONFIG_USER_ONLY
+    /* 64 bit address translation operations */
+    { .name = "AT_S12E1R", .state = ARM_CP_STATE_AA64,
+      .opc0 = 1, .opc1 = 4, .crn = 7, .crm = 8, .opc2 = 4,
+      .access = PL2_W, .type = ARM_CP_NO_MIGRATE, .writefn = ats_write },
+    { .name = "AT_S12E1W", .state = ARM_CP_STATE_AA64,
+      .opc0 = 1, .opc1 = 4, .crn = 7, .crm = 8, .opc2 = 5,
+      .access = PL2_W, .type = ARM_CP_NO_MIGRATE, .writefn = ats_write },
+    { .name = "AT_S1E2R", .state = ARM_CP_STATE_AA64,
+      .opc0 = 1, .opc1 = 4, .crn = 7, .crm = 8, .opc2 = 0,
+      .access = PL2_W, .type = ARM_CP_NO_MIGRATE, .writefn = ats_write },
+#if 0
+    { .name = "AT_S1E1W", .state = ARM_CP_STATE_AA64,
+      .opc0 = 1, .opc1 = 0, .crn = 7, .crm = 8, .opc2 = 1,
+      .access = PL1_W, .type = ARM_CP_NO_MIGRATE, .writefn = ats_write },
+    { .name = "AT_S1E0R", .state = ARM_CP_STATE_AA64,
+      .opc0 = 1, .opc1 = 0, .crn = 7, .crm = 8, .opc2 = 2,
+      .access = PL1_W, .type = ARM_CP_NO_MIGRATE, .writefn = ats_write },
+    { .name = "AT_S1E0W", .state = ARM_CP_STATE_AA64,
+      .opc0 = 1, .opc1 = 0, .crn = 7, .crm = 8, .opc2 = 3,
+      .access = PL1_W, .type = ARM_CP_NO_MIGRATE, .writefn = ats_write },
+#endif
+    /* FIXME: Some of the Virtual counter regs are available in EL0.  */
+    { .name = "VTCR_EL2", .state = ARM_CP_STATE_AA64,
+      .opc0 = 3, .opc1 = 4, .crn = 2, .crm = 1, .opc2 = 2,
+      .access = PL2_RW, .fieldoffset = offsetof(CPUARMState, cp15.vtcr_el2) },
+
+    { .name = "CNTHP_CTL_EL2", .state = ARM_CP_STATE_AA64,
+      .type = ARM_CP_IO,
+      .opc0 = 3, .opc1 = 4, .crn = 14, .crm = 2, .opc2 = 1,
+      .access = PL2_RW,
+      .fieldoffset = offsetof(CPUARMState, cp15.c14_timer[GTIMER_HYP].ctl),
+      .resetvalue = 0,
+      .writefn = gt_hyp_ctl_write, .raw_writefn = raw_write,
+    },
+    { .name = "CNTHP_CVAL_EL2", .state = ARM_CP_STATE_AA64,
+      .opc0 = 3, .opc1 = 4, .crn = 14, .crm = 2, .opc2 = 2,
+      .fieldoffset = offsetof(CPUARMState, cp15.c14_timer[GTIMER_HYP].cval),
+      .type = ARM_CP_IO, .access = PL2_RW,
+      .writefn = gt_hyp_cval_write, .raw_writefn = raw_write,
+    },
+    { .name = "CNTHP_TVAL_EL2", .state = ARM_CP_STATE_AA64,
+      .opc0 = 3, .opc1 = 4, .crn = 14, .crm = 2, .opc2 = 0,
+      .type = ARM_CP_NO_MIGRATE | ARM_CP_IO, .access = PL2_RW,
+      .readfn = gt_hyp_tval_read, .writefn = gt_hyp_tval_write,
+    },
+    { .name = "CNTHCTL_EL2", .state = ARM_CP_STATE_AA64,
+      .opc0 = 3, .opc1 = 4, .crn = 14, .crm = 1, .opc2 = 0,
+      .access = PL2_RW,
+      .fieldoffset = offsetof(CPUARMState, cp15.cnthctl_el2) },
+    { .name = "CNTVOFF_EL2", .state = ARM_CP_STATE_AA64,
+      .opc0 = 3, .opc1 = 4, .crn = 14, .crm = 0, .opc2 = 3,
+      .access = PL2_RW,
+      .writefn = gt_virt_off_write,
+      .fieldoffset = offsetof(CPUARMState, cp15.cntvoff_el2)},
+#endif
+
+    { .name = "VMPIDR_EL2", .state = ARM_CP_STATE_AA64,
+      .type = ARM_CP_NO_MIGRATE,
+      .opc0 = 3, .opc1 = 4, .crn = 0, .crm = 0, .opc2 = 5,
+      .access = PL2_RW,
+      .fieldoffset = offsetof(CPUARMState, vmpidr_el2) },
+    { .name = "VPIDR_EL2", .state = ARM_CP_STATE_AA64,
+      .type = ARM_CP_NO_MIGRATE,
+      .opc0 = 3, .opc1 = 4, .crn = 0, .crm = 0, .opc2 = 0,
+      .access = PL2_RW,
+      .readfn = arm_cp_read_zero, .writefn = arm_cp_write_ignore, },
+    { .name = "HSTR_EL2", .state = ARM_CP_STATE_AA64,
+      .type = ARM_CP_NO_MIGRATE,
+      .opc0 = 3, .opc1 = 4, .crn = 1, .crm = 1, .opc2 = 3,
+      .access = PL2_RW,
+      .readfn = arm_cp_read_zero, .writefn = arm_cp_write_ignore, },
+
+    { .name = "MDCR_EL2", .state = ARM_CP_STATE_AA64,
+      .type = ARM_CP_NO_MIGRATE,
+      .opc0 = 3, .opc1 = 4, .crn = 1, .crm = 1, .opc2 = 1,
+      .access = PL2_RW,
+      .readfn = arm_cp_read_zero, .writefn = arm_cp_write_ignore, },
+
+
+
+    { .name = "VTTBR_EL2", .state = ARM_CP_STATE_AA64,
+      .opc0 = 3, .opc1 = 4, .crn = 2, .crm = 1, .opc2 = 0,
+      .access = PL2_RW, .fieldoffset = offsetof(CPUARMState, cp15.vttbr_el2),
+      .writefn = vttbr_write },
+
+    { .name = "FPEXC_EL2", .state = ARM_CP_STATE_AA64,
+      .type = ARM_CP_NO_MIGRATE,
+      .opc0 = 3, .opc1 = 4, .crn = 5, .crm = 3, .opc2 = 0,
+      .access = PL2_RW,
+      .readfn = arm_cp_read_zero, .writefn = arm_cp_write_ignore, },
+    { .name = "TLBI_ALLE1", .state = ARM_CP_STATE_AA64,
+      .opc0 = 1, .opc1 = 4, .crn = 8, .crm = 7, .opc2 = 4,
+      .access = PL2_W, .type = ARM_CP_NO_MIGRATE,
+      .writefn = tlbiall_write },
+    { .name = "TLBI_ALLE1IS", .state = ARM_CP_STATE_AA64,
+      .opc0 = 1, .opc1 = 4, .crn = 8, .crm = 3, .opc2 = 4,
+      .access = PL2_W, .type = ARM_CP_NO_MIGRATE,
+      .writefn = tlbiall_write },
+    { .name = "TLBI_IPAS2E1IS", .state = ARM_CP_STATE_AA64,
+      .opc0 = 1, .opc1 = 4, .crn = 8, .crm = 0, .opc2 = 1,
+      .access = PL2_W, .type = ARM_CP_NO_MIGRATE,
+      .writefn = tlbiall_write },
+    { .name = "TLBI_VMALLE2IS", .state = ARM_CP_STATE_AA64,
+      .opc0 = 1, .opc1 = 4, .crn = 8, .crm = 3, .opc2 = 1,
+      .access = PL2_W, .type = ARM_CP_NO_MIGRATE,
+      .writefn = tlbiall_write },
+    { .name = "TLBIALLE2", .state = ARM_CP_STATE_AA64,
+      .opc0 = 1, .opc1 = 4, .crn = 8, .crm = 7, .opc2 = 0,
+      .type = ARM_CP_NO_MIGRATE, .access = PL2_W, .writefn = tlbiall_write },
+    { .name = "TLBI_VAAE2", .state = ARM_CP_STATE_AA64,
+      .opc0 = 1, .opc1 = 4, .crn = 8, .crm = 7, .opc2 = 1,
+      .access = PL2_W, .type = ARM_CP_NO_MIGRATE,
+      .writefn = tlbi_aa64_vaa_write },
+
+    { .name = "TPIDR_EL2", .state = ARM_CP_STATE_AA64,
+      .opc0 = 3, .opc1 = 4, .opc2 = 2, .crn = 13, .crm = 0,
+      .access = PL2_RW,
+      .fieldoffset = offsetof(CPUARMState, cp15.tpidr_el[2]), .resetvalue = 0 },
+    { .name = "SP_EL2", .state = ARM_CP_STATE_AA64,
+      .type = ARM_CP_NO_MIGRATE,
+      .opc0 = 3, .opc1 = 6, .crn = 4, .crm = 1, .opc2 = 0,
+      .access = PL3_RW,
+      .fieldoffset = offsetof(CPUARMState, sp_el[2]) },
+    { .name = "SCTLR_EL2", .state = ARM_CP_STATE_AA64,
+      .type = ARM_CP_NO_MIGRATE,
+      .opc0 = 3, .opc1 = 4, .crn = 1, .crm = 0, .opc2 = 0,
+      .access = PL2_RW,
+      .fieldoffset = offsetof(CPUARMState, cp15.sctlr_el[2]) },
     { .name = "HCR_EL2", .state = ARM_CP_STATE_AA64,
       .opc0 = 3, .opc1 = 4, .crn = 1, .crm = 1, .opc2 = 0,
       .access = PL2_RW, .fieldoffset = offsetof(CPUARMState, cp15.hcr_el2),
       .writefn = hcr_write },
+    { .name = "CPTR_EL2", .state = ARM_CP_STATE_AA64,
+      .type = ARM_CP_NO_MIGRATE,
+      .opc0 = 3, .opc1 = 4, .crn = 1, .crm = 1, .opc2 = 2,
+      .access = PL2_RW, .fieldoffset = offsetof(CPUARMState, cptr_el[0]) },
+    { .name = "TTBR0_EL2", .state = ARM_CP_STATE_AA64,
+      .opc0 = 3, .opc1 = 4, .crn = 2, .crm = 0, .opc2 = 0,
+      .access = PL2_RW, .fieldoffset = offsetof(CPUARMState, cp15.ttbr0_el[2]),
+      .writefn = vmsa_ttbr_write, .resetvalue = 0 },
+    { .name = "TCR_EL2", .state = ARM_CP_STATE_AA64,
+      .opc0 = 3, .opc1 = 4, .crn = 2, .crm = 0, .opc2 = 2,
+      .access = PL2_RW, .writefn = vmsa_tcr_elx_write,
+      .resetfn = vmsa_ttbcr_reset, .raw_writefn = raw_write,
+      .fieldoffset = offsetof(CPUARMState, cp15.tcr_el[2]) },
     { .name = "DACR32_EL2", .state = ARM_CP_STATE_AA64,
       .opc0 = 3, .opc1 = 4, .crn = 3, .crm = 0, .opc2 = 0,
       .access = PL2_RW, .resetvalue = 0,
@@ -2401,10 +2868,18 @@ static const ARMCPRegInfo v8_el2_cp_reginfo[] = {
     { .name = "FAR_EL2", .state = ARM_CP_STATE_AA64,
       .opc0 = 3, .opc1 = 4, .crn = 6, .crm = 0, .opc2 = 0,
       .access = PL2_RW, .fieldoffset = offsetof(CPUARMState, cp15.far_el[2]) },
+    { .name = "HPFAR_EL2", .state = ARM_CP_STATE_AA64,
+      .type = ARM_CP_NO_MIGRATE,
+      .opc0 = 3, .opc1 = 4, .crn = 6, .crm = 0, .opc2 = 4,
+      .access = PL2_RW, .fieldoffset = offsetof(CPUARMState, cp15.hpfar_el2) },
     { .name = "SPSR_EL2", .state = ARM_CP_STATE_AA64,
       .type = ARM_CP_NO_MIGRATE,
       .opc0 = 3, .opc1 = 4, .crn = 4, .crm = 0, .opc2 = 0,
       .access = PL2_RW, .fieldoffset = offsetof(CPUARMState, banked_spsr[6]) },
+    { .name = "MAIR_EL2", .state = ARM_CP_STATE_AA64,
+      .opc0 = 3, .opc1 = 4, .crn = 10, .crm = 2, .opc2 = 0,
+      .access = PL2_RW, .fieldoffset = offsetof(CPUARMState, cp15.mair_el[2]),
+      .resetvalue = 0 },
     { .name = "VBAR_EL2", .state = ARM_CP_STATE_AA64,
       .opc0 = 3, .opc1 = 4, .crn = 12, .crm = 0, .opc2 = 0,
       .access = PL2_RW, .writefn = vbar_write,
@@ -2414,10 +2889,40 @@ static const ARMCPRegInfo v8_el2_cp_reginfo[] = {
 };
 
 static const ARMCPRegInfo el3_cp_reginfo[] = {
+#ifndef CONFIG_USER_ONLY
+    { .name = "CNTPS_CTL_EL1", .state = ARM_CP_STATE_AA64,
+      .type = ARM_CP_IO,
+      .opc0 = 3, .opc1 = 7, .crn = 14, .crm = 2, .opc2 = 1,
+      .access = PL1_RW | PLX_SECURE,
+      .fieldoffset = offsetof(CPUARMState, cp15.c14_timer[GTIMER_PHYSSEC].ctl),
+      .resetvalue = 0,
+      .writefn = gt_ps_ctl_write, .raw_writefn = raw_write },
+    { .name = "CNTPS_CVAL_EL1", .state = ARM_CP_STATE_AA64,
+      .opc0 = 3, .opc1 = 7, .crn = 14, .crm = 2, .opc2 = 2,
+      .fieldoffset = offsetof(CPUARMState, cp15.c14_timer[GTIMER_PHYSSEC].cval),
+      .type = ARM_CP_IO, .access = PL1_RW | PLX_SECURE,
+      .writefn = gt_ps_cval_write, .raw_writefn = raw_write },
+    { .name = "CNTPS_TVAL_EL1", .state = ARM_CP_STATE_AA64,
+      .opc0 = 3, .opc1 = 7, .crn = 14, .crm = 2, .opc2 = 0,
+      .type = ARM_CP_NO_MIGRATE | ARM_CP_IO, .access = PL1_RW | PLX_SECURE,
+      .readfn = gt_ps_tval_read, .writefn = gt_ps_tval_write },
+#endif
+    { .name = "TLBIALLE3", .state = ARM_CP_STATE_AA64,
+      .opc0 = 1, .opc1 = 6, .crn = 8, .crm = 7, .opc2 = 0,
+      .type = ARM_CP_NO_MIGRATE, .access = PL3_W, .writefn = tlbiall_write },
+    { .name = "CPTR_EL3", .state = ARM_CP_STATE_AA64,
+      .type = ARM_CP_NO_MIGRATE,
+      .opc0 = 3, .opc1 = 6, .crn = 1, .crm = 1, .opc2 = 2,
+      .access = PL3_RW, .fieldoffset = offsetof(CPUARMState, cptr_el[1]) },
     { .name = "SCR_EL3", .state = ARM_CP_STATE_AA64,
       .opc0 = 3, .opc1 = 6, .crn = 1, .crm = 1, .opc2 = 0,
       .access = PL3_RW, .fieldoffset = offsetof(CPUARMState, cp15.scr_el3),
       .resetvalue = 0, .writefn = scr_write },
+    { .name = "TPIDR_EL3", .state = ARM_CP_STATE_AA64,
+      .opc0 = 3, .opc1 = 6, .crn = 13, .crm = 0, .opc2 = 2,
+      .access = PL3_RW,
+      .fieldoffset = offsetof(CPUARMState, cp15.tpidr_el[3]),
+      .resetvalue = 0 },
     { .name = "SCR",  .type = ARM_CP_NO_MIGRATE,
       .cp = 15, .opc1 = 0, .crn = 1, .crm = 1, .opc2 = 0,
       .access = PL3_RW, .fieldoffset = offsetoflow32(CPUARMState, cp15.scr_el3),
@@ -2447,7 +2952,7 @@ static const ARMCPRegInfo el3_cp_reginfo[] = {
       .fieldoffset = offsetof(CPUARMState, cp15.ttbr0_el[3]) },
     { .name = "TCR_EL3", .state = ARM_CP_STATE_AA64,
       .opc0 = 3, .opc1 = 6, .crn = 2, .crm = 0, .opc2 = 2,
-      .access = PL3_RW, .writefn = vmsa_tcr_el1_write,
+      .access = PL3_RW, .writefn = vmsa_tcr_elx_write,
       .resetfn = vmsa_ttbcr_reset, .raw_writefn = raw_write,
       .fieldoffset = offsetof(CPUARMState, cp15.tcr_el[3]) },
     { .name = "ELR_EL3", .state = ARM_CP_STATE_AA64,
@@ -2466,6 +2971,11 @@ static const ARMCPRegInfo el3_cp_reginfo[] = {
       .type = ARM_CP_NO_MIGRATE,
       .opc0 = 3, .opc1 = 6, .crn = 4, .crm = 0, .opc2 = 0,
       .access = PL3_RW, .fieldoffset = offsetof(CPUARMState, banked_spsr[7]) },
+    { .name = "MAIR_EL3", .state = ARM_CP_STATE_AA64,
+      .opc0 = 3, .opc1 = 6, .crn = 10, .crm = 2, .opc2 = 0,
+      .access = PL3_RW,
+      .fieldoffset = offsetof(CPUARMState, cp15.mair_el[3]),
+      .resetvalue = 0 },
     { .name = "VBAR_EL3", .state = ARM_CP_STATE_AA64,
       .opc0 = 3, .opc1 = 6, .crn = 12, .crm = 0, .opc2 = 0,
       .access = PL3_RW, .writefn = vbar_write,
@@ -3076,13 +3586,9 @@ void register_cp_regs_for_features(ARMCPU *cpu)
         define_arm_cp_regs(cpu, el3_cp_reginfo);
     }
     if (arm_feature(env, ARM_FEATURE_MPU)) {
-        /* These are the MPU registers prior to PMSAv6. Any new
-         * PMSA core later than the ARM946 will require that we
-         * implement the PMSAv6 or PMSAv7 registers, which are
-         * completely different.
-         */
-        assert(!arm_feature(env, ARM_FEATURE_V6));
-        define_arm_cp_regs(cpu, pmsav5_cp_reginfo);
+        define_arm_cp_regs(cpu, arm_feature(env, ARM_FEATURE_V6) ||
+                                arm_feature(env, ARM_FEATURE_V7) ?
+                           pmsav7_cp_reginfo : pmsav5_cp_reginfo);
     } else {
         define_arm_cp_regs(cpu, vmsa_cp_reginfo);
     }
@@ -3156,6 +3662,22 @@ void register_cp_regs_for_features(ARMCPU *cpu)
             { .name = "DUMMY",
               .cp = 15, .crn = 0, .crm = 7, .opc1 = 0, .opc2 = CP_ANY,
               .access = PL1_R, .type = ARM_CP_CONST, .resetvalue = 0 },
+            /* FIXME: This is imple defined for A53 doesnt belong here */
+            { .name = "L2CTLR_EL1", .state = ARM_CP_STATE_AA64,
+              .opc0 = 3, .opc1 = 1, .opc2 = 2, .crn = 11, .crm = 0,
+              .access = PL1_RW,
+              .fieldoffset = offsetof(CPUARMState, cp15.l2ctlr_el1),
+              .resetvalue = 0x03600021, },
+            { .name = "CPUECTLR_EL1", .state = ARM_CP_STATE_AA64,
+              .opc0 = 3, .opc1 = 1, .opc2 = 1, .crn = 15, .crm = 2,
+              .access = PL1_RW,
+              .fieldoffset = offsetof(CPUARMState, cp15.cpu_ectlr_el1),
+            },
+            { .name = "CPUACTLR_EL1", .state = ARM_CP_STATE_AA64,
+              .opc0 = 3, .opc1 = 1, .opc2 = 0, .crn = 15, .crm = 2,
+              .access = PL1_RW,
+              .fieldoffset = offsetof(CPUARMState, cp15.cpu_actlr_el1),
+            },
             REGINFO_SENTINEL
         };
         ARMCPRegInfo id_v8_midr_cp_reginfo[] = {
@@ -3183,10 +3705,13 @@ void register_cp_regs_for_features(ARMCPU *cpu)
             /* TCMTR and TLBTR exist in v8 but have no 64-bit versions */
             { .name = "TCMTR",
               .cp = 15, .crn = 0, .crm = 0, .opc1 = 0, .opc2 = 2,
-              .access = PL1_R, .type = ARM_CP_CONST, .resetvalue = 0 },
+              .access = PL1_R, .type = ARM_CP_CONST, .resetvalue = cpu->tcmtr },
             { .name = "TLBTR",
               .cp = 15, .crn = 0, .crm = 0, .opc1 = 0, .opc2 = 3,
               .access = PL1_R, .type = ARM_CP_CONST, .resetvalue = 0 },
+            { .name = "MPUIR",
+              .cp = 15, .crn = 0, .crm = 0, .opc1 = 0, .opc2 = 4,
+              .access = PL1_R, .type = ARM_CP_CONST, .resetvalue = 0x00001000 },
             REGINFO_SENTINEL
         };
         ARMCPRegInfo crn0_wi_reginfo = {
@@ -3231,6 +3756,11 @@ void register_cp_regs_for_features(ARMCPU *cpu)
             .resetvalue = cpu->reset_auxcr
         };
         define_one_arm_cp_reg(cpu, &auxcr);
+    }
+
+    /* FIXME: Delete */
+    if (!cpu->reset_cbar) {
+        cpu->reset_cbar = 0xf8f00000;
     }
 
     if (arm_feature(env, ARM_FEATURE_CBAR)) {
@@ -3315,6 +3845,24 @@ void arm_cpu_register_gdb_regs_for_features(ARMCPU *cpu)
         gdb_register_coprocessor(cs, vfp_gdb_get_reg, vfp_gdb_set_reg,
                                  19, "arm-vfp.xml", 0);
     }
+
+    if (arm_feature(env, ARM_FEATURE_AARCH64)) {
+        gdb_register_coprocessor(cs, aarch64_el1_gdb_get_reg,
+                                 aarch64_el1_gdb_set_reg,
+                                 3, "aarch64-el1.xml", 0);
+        if (arm_feature(env, ARM_FEATURE_EL2)) {
+            gdb_register_coprocessor(cs, aarch64_el2_gdb_get_reg,
+                                     aarch64_el2_gdb_set_reg,
+                                     3, "aarch64-el2.xml", 0);
+        }
+
+        if (arm_feature(env, ARM_FEATURE_EL3)) {
+            gdb_register_coprocessor(cs, aarch64_el3_gdb_get_reg,
+                                     aarch64_el3_gdb_set_reg,
+                                     3, "aarch64-el3.xml", 0);
+        }
+    }
+
 }
 
 /* Sort alphabetically by type name, except for "any". */
@@ -3604,7 +4152,7 @@ void define_one_arm_cp_reg_with_opaque(ARMCPU *cpu,
             break;
         }
         /* assert our permissions are not too lax (stricter is fine) */
-        assert((r->access & ~mask) == 0);
+        assert(((r->access & ~PLX_SECURE) & ~mask) == 0);
     }
 
     /* Check that the register definition has enough info to handle
@@ -3935,6 +4483,11 @@ uint32_t HELPER(get_r13_banked)(CPUARMState *env, uint32_t mode)
     return 0;
 }
 
+unsigned int arm_wfi_needs_trap(CPUARMState *env)
+{
+    return 0;
+}
+
 unsigned int arm_excp_target_el(CPUState *cs, unsigned int excp_idx)
 {
     return 1;
@@ -3993,6 +4546,57 @@ void switch_mode(CPUARMState *env, int mode)
     env->regs[13] = env->banked_r13[i];
     env->regs[14] = env->banked_r14[i];
     env->spsr = env->banked_spsr[i];
+}
+
+/* Returns 0 if wfi can go ahead or the target-el to trap into.  */
+unsigned int arm_wfi_needs_trap(CPUARMState *env)
+{
+    unsigned int cur_el = arm_current_el(env);
+    unsigned int target_el = 0;
+
+    switch (cur_el) {
+    case 0:
+        if (!(env->cp15.sctlr_el[2] & SCTLR_nTWI)) {
+            target_el = 1;
+        }
+    case 1:
+        if (arm_feature(env, ARM_FEATURE_EL2)
+            && (env->cp15.hcr_el2 & HCR_TWI)) {
+            target_el = 2;
+        }
+    case 2:
+        if (arm_feature(env, ARM_FEATURE_EL3)
+            && (env->cp15.scr_el3 & SCR_TWI)) {
+            target_el = 3;
+        }
+        break;
+    }
+    return target_el;
+}
+
+unsigned int arm_wfe_needs_trap(CPUARMState *env)
+{
+    unsigned int cur_el = arm_current_el(env);
+    unsigned int target_el = 0;
+
+    switch (cur_el) {
+    case 0:
+        if (!(env->cp15.sctlr_el[2] & SCTLR_nTWE)) {
+            target_el = 1;
+        }
+    case 1:
+        if (arm_feature(env, ARM_FEATURE_EL2)
+            && (env->cp15.hcr_el2 & HCR_TWE)) {
+            target_el = 2;
+        }
+    case 2:
+        if (arm_feature(env, ARM_FEATURE_EL3)
+            && (env->cp15.scr_el3 & SCR_TWE)) {
+            target_el = 3;
+        }
+        break;
+    }
+    return target_el;
 }
 
 /* Physical Interrupt Target EL Lookup Table
@@ -4098,10 +4702,30 @@ unsigned int arm_excp_target_el(CPUState *cs, unsigned int excp_idx)
     ARMCPU *cpu = ARM_CPU(cs);
     CPUARMState *env = &cpu->env;
     unsigned int cur_el = arm_current_el(env);
-    unsigned int target_el;
+    unsigned int target_el = 1;
+    bool route_to_el2 = false;
     bool secure = arm_is_secure(env);
 
+    if (!secure
+        && arm_feature(env, ARM_FEATURE_EL2)
+        && cur_el < 2
+        && (env->cp15.hcr_el2 & HCR_TGE)) {
+        route_to_el2 = true;
+    }
+
+    target_el = MAX(cur_el, route_to_el2 ? 2 : 1);
+
     switch (excp_idx) {
+    case EXCP_WFI:
+        target_el = arm_wfi_needs_trap(env);
+        break;
+    case EXCP_PREFETCH_ABORT:
+    case EXCP_DATA_ABORT:
+        target_el = MAX(cur_el, 1);
+        if (cur_el < 2 && env->stage2_fault) {
+            target_el = 2;
+        }
+        break;
     case EXCP_HVC:
     case EXCP_HYP_TRAP:
         target_el = 2;
@@ -4193,7 +4817,7 @@ void arm_v7m_cpu_do_interrupt(CPUState *cs)
     uint32_t lr;
     uint32_t addr;
 
-    arm_log_exception(cs->exception_index);
+    arm_log_exception(cs->cpu_index, cs->exception_index);
 
     lr = 0xfffffff1;
     if (env->v7m.current_sp)
@@ -4282,7 +4906,16 @@ void arm_cpu_do_interrupt(CPUState *cs)
 
     assert(!IS_M(env));
 
-    arm_log_exception(cs->exception_index);
+    arm_log_exception(cs->cpu_index, cs->exception_index);
+
+    /* Interrupt received, if we were in WFI, clear the interrupt
+     * GPIO signal to PMU
+     */
+    if (cpu->is_in_wfi) {
+        cpu->is_in_wfi = false;
+
+        qemu_set_irq(cpu->wfi, 0);
+    }
 
     if (arm_is_psci_call(cpu, cs->exception_index)) {
         arm_handle_psci_call(cpu);
@@ -4438,6 +5071,7 @@ void arm_cpu_do_interrupt(CPUState *cs)
     if ((env->uncached_cpsr & CPSR_M) == ARM_CPU_MODE_MON) {
         env->cp15.scr_el3 &= ~SCR_NS;
     }
+    pmccntr_sync(env);
 
     switch_mode (env, new_mode);
     /* For exceptions taken to AArch32 we must clear the SS bit in both
@@ -4458,6 +5092,8 @@ void arm_cpu_do_interrupt(CPUState *cs)
     env->regs[14] = env->regs[15] + offset;
     env->regs[15] = addr;
     cs->interrupt_request |= CPU_INTERRUPT_EXITTB;
+
+    pmccntr_sync(env);
 }
 
 /* Check section/page access permissions.
@@ -4770,35 +5406,44 @@ typedef enum {
     permission_fault = 3,
 } MMUFaultType;
 
-static int get_phys_addr_lpae(CPUARMState *env, target_ulong address,
-                              int access_type, int is_user,
-                              hwaddr *phys_ptr, int *prot,
-                              target_ulong *page_size_ptr)
+static int get_phys_addr_lpae_common(CPUARMState *env, target_ulong address,
+                                     int access_type, int tr_el,
+                                     hwaddr *phys_ptr, int *prot,
+                                     target_ulong *page_size_ptr,
+                                     TCR *tcr,
+                                     uint64_t ttbr0, uint64_t ttbr1,
+                                     TCR *s2_tcr, uint64_t s2_ttbr0,
+                                     int stage, int max_stage,
+                                     unsigned int *attr_idx)
 {
     CPUState *cs = CPU(arm_env_get_cpu(env));
     /* Read an LPAE long-descriptor translation table. */
     MMUFaultType fault_type = translation_fault;
     uint32_t level = 1;
-    uint32_t epd;
+    uint32_t epd = 0;
     int32_t tsz;
     uint32_t tg;
     uint64_t ttbr;
-    int ttbr_select;
+    int ttbr_select = 0;
     hwaddr descaddr, descmask;
     uint32_t tableattrs;
+    uint32_t attrs, s2attrs = 0;
     target_ulong page_size;
-    uint32_t attrs;
     int32_t granule_sz = 9;
     int32_t va_size = 32;
     int32_t tbi = 0;
-    TCR *tcr = &env->cp15.tcr_el[arm_is_secure(env) ? 3 : 1];
+    int is_user = tr_el == 0;
 
-    if (arm_el_is_aa64(env, 1)) {
+    if (arm_el_is_aa64(env, MAX(tr_el, 1))) {
         va_size = 64;
-        if (extract64(address, 55, 1))
-            tbi = extract64(tcr->raw_tcr, 38, 1);
-        else
-            tbi = extract64(tcr->raw_tcr, 37, 1);
+        if (tr_el <= 1 && stage == 1) {
+            if (extract64(address, 55, 1))
+                tbi = extract64(tcr->raw_tcr, 38, 1);
+            else
+                tbi = extract64(tcr->raw_tcr, 37, 1);
+        } else if (stage == 1) {
+            tbi = extract64(tcr->raw_tcr, 20, 1);
+        }
         tbi *= 8;
     }
 
@@ -4808,15 +5453,17 @@ static int get_phys_addr_lpae(CPUARMState *env, target_ulong address,
      * TTBCR/TTBR0/TTBR1 in accordance with ARM ARM DDI0406C table B-32:
      */
     uint32_t t0sz = extract32(tcr->raw_tcr, 0, 6);
-    if (arm_el_is_aa64(env, 1)) {
+    if (arm_el_is_aa64(env, MAX(tr_el, 1))) {
         t0sz = MIN(t0sz, 39);
         t0sz = MAX(t0sz, 16);
     }
     uint32_t t1sz = extract32(tcr->raw_tcr, 16, 6);
-    if (arm_el_is_aa64(env, 1)) {
+    if (arm_el_is_aa64(env, MAX(tr_el, 1))) {
         t1sz = MIN(t1sz, 39);
         t1sz = MAX(t1sz, 16);
     }
+
+    if (tr_el <= 1 && stage <= 1) {
     if (t0sz && !extract64(address, va_size - t0sz, t0sz - tbi)) {
         /* there is a ttbr0 region and we are in it (high bits all zero) */
         ttbr_select = 0;
@@ -4834,6 +5481,7 @@ static int get_phys_addr_lpae(CPUARMState *env, target_ulong address,
         fault_type = translation_fault;
         goto do_fault;
     }
+    }
 
     /* Note that QEMU ignores shareability and cacheability attributes,
      * so we don't need to do anything with the SH, ORGN, IRGN fields
@@ -4843,8 +5491,11 @@ static int get_phys_addr_lpae(CPUARMState *env, target_ulong address,
      * we will always flush the TLB any time the ASID is changed).
      */
     if (ttbr_select == 0) {
-        ttbr = A32_BANKED_CURRENT_REG_GET(env, ttbr0);
-        epd = extract32(tcr->raw_tcr, 7, 1);
+        ttbr = ttbr0;
+
+        if (tr_el <= 1 && stage == 1) {
+            epd = extract32(tcr->raw_tcr, 7, 1);
+        }
         tsz = t0sz;
 
         tg = extract32(tcr->raw_tcr, 14, 2);
@@ -4855,7 +5506,7 @@ static int get_phys_addr_lpae(CPUARMState *env, target_ulong address,
             granule_sz = 11;
         }
     } else {
-        ttbr = A32_BANKED_CURRENT_REG_GET(env, ttbr1);
+        ttbr = ttbr1;
         epd = extract32(tcr->raw_tcr, 23, 1);
         tsz = t1sz;
 
@@ -4886,6 +5537,12 @@ static int get_phys_addr_lpae(CPUARMState *env, target_ulong address,
      */
     level = 4 - (va_size - tsz - 4) / granule_sz;
 
+    if (stage == 2) {
+        level = 3 - extract32(tcr->raw_tcr, 6, 2);
+        if (granule_sz == 9) {
+            level = 2 - extract32(tcr->raw_tcr, 6, 2);
+        }
+    }
     /* Clear the vaddr bits which aren't part of the within-region address,
      * so that we don't have to special case things when calculating the
      * first descriptor address.
@@ -4902,10 +5559,27 @@ static int get_phys_addr_lpae(CPUARMState *env, target_ulong address,
 
     tableattrs = 0;
     for (;;) {
-        uint64_t descriptor;
+        uint64_t descriptor = descaddr;
 
         descaddr |= (address >> (granule_sz * (4 - level))) & descmask;
         descaddr &= ~7ULL;
+        if (stage == 1
+            && (tr_el <= 1 && (env->cp15.hcr_el2 & HCR_VM))) {
+            target_ulong s2va = descaddr, s2size;
+            hwaddr s2pa = 0;
+            int s2prot;
+            int ret;
+
+            ret = get_phys_addr_lpae_common(env, s2va, 0, tr_el,
+                                    &s2pa, &s2prot, &s2size,
+                                    s2_tcr, s2_ttbr0, s2_ttbr0,
+                                    0, 0, 2, 2, attr_idx);
+            if (ret) {
+                env->stage2_fault = 1;
+                return ret | 1 << 7;
+            }
+            descaddr = s2pa;
+        }
         descriptor = ldq_phys(cs->as, descaddr);
         if (!(descriptor & 1) ||
             (!(descriptor & 2) && (level == 3))) {
@@ -4931,8 +5605,9 @@ static int get_phys_addr_lpae(CPUARMState *env, target_ulong address,
         page_size = (1ULL << ((granule_sz * (4 - level)) + 3));
         descaddr |= (address & (page_size - 1));
         /* Extract attributes from the descriptor and merge with table attrs */
-        attrs = extract64(descriptor, 2, 10)
+        s2attrs = attrs = extract64(descriptor, 2, 10)
             | (extract64(descriptor, 52, 12) << 10);
+        if (stage == 1) {
         attrs |= extract32(tableattrs, 0, 2) << 11; /* XN, PXN */
         attrs |= extract32(tableattrs, 3, 1) << 5; /* APTable[1] => AP[2] */
         /* The sense of AP[1] vs APTable[0] is reversed, as APTable[0] == 1
@@ -4940,6 +5615,7 @@ static int get_phys_addr_lpae(CPUARMState *env, target_ulong address,
          */
         if (extract32(tableattrs, 2, 1)) {
             attrs &= ~(1 << 4);
+        }
         }
         /* Since we're always in the Non-secure state, NSTable is ignored. */
         break;
@@ -4955,26 +5631,73 @@ static int get_phys_addr_lpae(CPUARMState *env, target_ulong address,
     fault_type = permission_fault;
     if (is_user && !(attrs & (1 << 4))) {
         /* Unprivileged access not enabled */
+        qemu_log("Fault\n");
         goto do_fault;
     }
     *prot = PAGE_READ | PAGE_WRITE | PAGE_EXEC;
+    if (stage == 0 && tr_el < 2) {
     if ((arm_feature(env, ARM_FEATURE_V8) && is_user && (attrs & (1 << 12))) ||
         (!arm_feature(env, ARM_FEATURE_V8) && (attrs & (1 << 12))) ||
         (!is_user && (attrs & (1 << 11)))) {
         /* XN/UXN or PXN. Since we only implement EL0/EL1 we unconditionally
          * treat XN/UXN as UXN for v8.
          */
-        if (access_type == 2) {
+        if (tr_el <= 1 && stage == 1 && access_type == 2) {
+            qemu_log("XN\n");
             goto do_fault;
         }
         *prot &= ~PAGE_EXEC;
     }
-    if (attrs & (1 << 5)) {
-        /* Write access forbidden */
-        if (access_type == 1) {
-            goto do_fault;
+    }
+    if (stage == 1) {
+        if (attrs & (1 << 3)) {
+            /* NS downgrade */
+            *attr_idx = MEM_ATTR_NS;
         }
-        *prot &= ~PAGE_WRITE;
+        if (attrs & (1 << 5)) {
+            /* Write access forbidden */
+            if (access_type == 1) {
+//                qemu_log("Write access forbidden %x\n", attrs);
+                goto do_fault;
+            }
+            *prot &= ~PAGE_WRITE;
+        }
+    } else {
+        if (s2attrs & (1 << 11)) {
+                if (access_type == 2) {
+                    goto do_fault;
+                }
+                *prot &= ~PAGE_EXEC;
+        }
+        switch ((s2attrs >> 4) & 3) {
+        /* None.  */
+        case 0:
+            qemu_log("Access %d to None access\n", access_type);
+            fault_type = access_fault;
+            goto do_fault;
+            break;
+        /* RO.  */
+        case 1:
+            if (access_type == 1) {
+//                qemu_log("Access %d to RO access\n", access_type);
+                fault_type = permission_fault;
+                goto do_fault;
+            }
+            *prot &= ~PAGE_WRITE;
+            break;
+        /* WO.  */
+        case 2:
+            if (access_type == 0) {
+                qemu_log("Access %d to WO access\n", access_type);
+                fault_type = permission_fault;
+                goto do_fault;
+            }
+            *prot &= ~PAGE_READ;
+            break;
+        /* RW.  */
+        case 3:
+            break;
+        }
     }
 
     *phys_ptr = descaddr;
@@ -4986,9 +5709,195 @@ do_fault:
     return (1 << 9) | (fault_type << 2) | level;
 }
 
-static int get_phys_addr_mpu(CPUARMState *env, uint32_t address,
-                             int access_type, int is_user,
-                             hwaddr *phys_ptr, int *prot)
+static int get_phys_addr_lpae(CPUARMState *env, target_ulong address,
+                              int access_type, int tr_el,
+                              hwaddr *phys_ptr, int *prot,
+                              target_ulong *page_size_ptr, int max_stage,
+                              unsigned int *attr_idx)
+{
+    uint32_t control = A32_BANKED_CURRENT_REG_GET(env, sctlr);
+    TCR *tcontrol = &env->cp15.tcr_el[1];
+    uint64_t ttbr0 = env->cp15.ttbr0_el[1];
+    uint64_t ttbr1 = env->cp15.ttbr1_el[1];
+    TCR *s2_tcontrol = &env->cp15.vtcr_el2;
+    uint64_t s2_ttbr0 = env->cp15.vttbr_el2;
+    hwaddr ipa = 0;
+    int ret;
+
+    if (tr_el > 0) {
+        control = env->cp15.sctlr_el[tr_el];
+        tcontrol = &env->cp15.tcr_el[tr_el];
+        ttbr0 = env->cp15.ttbr0_el[tr_el];
+    }
+
+    if (tr_el > 1 || !(env->cp15.hcr_el2 & HCR_VM)) {
+        max_stage = 1;
+    }
+
+    if ((control & SCTLR_M)) {
+    ret = get_phys_addr_lpae_common(env, address, access_type, tr_el,
+                                    phys_ptr, prot, page_size_ptr,
+                                    tcontrol, ttbr0, ttbr1,
+                                    s2_tcontrol, s2_ttbr0, 1, max_stage,
+                                    attr_idx);
+    } else {
+        /* MMU/MPU disabled.  */
+        *phys_ptr = address;
+        *prot = PAGE_READ | PAGE_WRITE | PAGE_EXEC;
+        *page_size_ptr = 4096;
+        ret = 0;
+    }
+
+    /* FIXME: Should not apply if we are in Secure EL0 or 1.  */
+    if (max_stage > 1 && ret == 0
+        && tr_el <= 1 && (env->cp15.hcr_el2 & HCR_VM)) {
+        target_ulong psize;
+        int pprot;
+        ipa = *phys_ptr;
+        ipa = *phys_ptr;
+        ret = get_phys_addr_lpae_common(env, ipa, access_type, tr_el,
+                                        phys_ptr, &pprot, &psize,
+                                        s2_tcontrol, s2_ttbr0, s2_ttbr0,
+                                        0, 0, 2, 2, attr_idx);
+        if (ret) {
+            env->stage2_fault = 1;
+            env->cp15.hpfar_el2 = extract64(ipa, 12, 47) << 4;
+        }
+        if (psize < *page_size_ptr) {
+            *page_size_ptr = psize;
+        }
+        *prot = *prot & pprot;
+    }
+    return ret;
+}
+
+static inline void get_phys_addr_pmsav7_default(CPUARMState *env,
+                                                int32_t address, int *prot)
+{
+    uint32_t sctlr = A32_BANKED_CURRENT_REG_GET(env, sctlr);
+
+    *prot = PAGE_READ | PAGE_WRITE;
+    switch (address) {
+    case 0xF0000000 ... 0xFFFFFFFF:
+        if (sctlr << 13) { /* hivecs execing is ok */
+            *prot |= PAGE_EXEC;
+        }
+        break;
+    case 0x00000000 ... 0x7FFFFFFF:
+        *prot |= PAGE_EXEC;
+        break;
+    }
+
+}
+
+static int get_phys_addr_pmsav7(CPUARMState *env, uint32_t address,
+                                int access_type, int is_user,
+                                hwaddr *phys_ptr, int *prot)
+{
+    uint32_t sctlr = A32_BANKED_CURRENT_REG_GET(env, sctlr);
+    int n;
+    *phys_ptr = address;
+    *prot = 0;
+
+    if (!(sctlr & 0x1)) { /* MPU disabled */
+        get_phys_addr_pmsav7_default(env, address, prot);
+    } else { /* MPU enabled */
+        for (n = 15; n >= 0; n--) { /*region search */
+            uint32_t base = env->cp15.c6_drbar[n];
+            uint32_t rsize = extract32(env->cp15.c6_drsr[n], 1, 5) + 1;
+            int snd;
+
+            if (!(env->cp15.c6_drsr[n] & 0x1)) {
+                continue;
+            }
+            if (rsize < 2) {
+                qemu_log_mask(LOG_GUEST_ERROR, "DRSR.Rsize field can not be 0");
+            }
+
+            if (address < base || address > base - 1 + (1ull << rsize)) {
+                continue;
+            }
+
+            if (rsize < 8) { /* no subregions for regions < 256 bytes */
+                break;
+            }
+
+            rsize -= 3; /* sub region size (power of 2) */
+            snd = (address - base) >> rsize & 0x7;
+            if (env->cp15.c6_drsr[n] & 1 << (snd + 8)) {
+                continue;
+            }
+            break;
+        }
+
+        if (n == -1) { /* no hits */
+            if (is_user || !(sctlr & 1 << 17)) { /* BR */
+                /* background fault */
+                return -1;
+            } else {
+                get_phys_addr_pmsav7_default(env, address, prot);
+            }
+        } else { /* a MPU hit! */
+            uint32_t ap = extract32(env->cp15.c6_dracr[n], 8, 3);
+
+            if (is_user) { /* User mode AP bit decoding */
+                switch (ap) {
+                case 0:
+                case 1:
+                case 5:
+                    break; /* no access */
+                case 3:
+                    *prot |= PAGE_WRITE;
+                    /* fall through */
+                case 2:
+                case 6:
+                    *prot |= PAGE_READ | PAGE_EXEC;
+                    break;
+                default:
+                    qemu_log_mask(LOG_GUEST_ERROR, "Bad value for AP bits in "
+                                  "DRACR");
+                }
+            } else { /* Priv. mode AP bits decoding */
+                switch (ap) {
+                case 0:
+                    break; /* no access */
+                case 1:
+                case 2:
+                case 3:
+                    *prot |= PAGE_WRITE;
+                    /* fall through */
+                case 5:
+                case 6:
+                    *prot |= PAGE_READ | PAGE_EXEC;
+                    break;
+                default:
+                    qemu_log_mask(LOG_GUEST_ERROR, "Bad value for AP bits in "
+                                  "DRACR");
+                }
+            }
+
+            /* execute never */
+            *prot &= env->cp15.c6_dracr[n] & 1 << 12 ? ~PAGE_EXEC : ~0;
+        }
+    }
+
+    switch (access_type) {
+    case 0:
+        return *prot & PAGE_READ ? 0 : 0x405;
+    case 1:
+        return *prot & PAGE_WRITE ? 0 : 0x405;
+    case 2:
+        return *prot & PAGE_EXEC ? 0 : 0x405;
+    default:
+        abort(); /* should be unreachable */
+        return 0;
+    }
+
+}
+
+static int get_phys_addr_pmsav5(CPUARMState *env, uint32_t address,
+                                int access_type, int is_user,
+                                hwaddr *phys_ptr, int *prot)
 {
     int n;
     uint32_t mask;
@@ -5054,38 +5963,44 @@ static int get_phys_addr_mpu(CPUARMState *env, uint32_t address,
  * MPU state on MPU based systems.
  *
  * Returns 0 if the translation was successful. Otherwise, phys_ptr,
- * prot and page_size are not filled in, and the return value provides
- * information on why the translation aborted, in the format of a
- * DFSR/IFSR fault register, with the following caveats:
+ * prot and page_size may or may-not filled in, and the return value
+ * provides information on why the translation aborted, in the format
+ * of a DFSR/IFSR fault register, with the following caveats:
  *  * we honour the short vs long DFSR format differences.
  *  * the WnR bit is never set (the caller must do this).
- *  * for MPU based systems we don't bother to return a full FSR format
+ *  * for PMSAv5 based systems we don't bother to return a full FSR format
  *    value.
  *
  * @env: CPUARMState
  * @address: virtual address to get physical address for
  * @access_type: 0 for read, 1 for write, 2 for execute
- * @is_user: 0 for privileged access, 1 for user
+ * @tr_el: Translation EL
  * @phys_ptr: set to the physical address corresponding to the virtual address
  * @prot: set to the permissions for the page containing phys_ptr
  * @page_size: set to the size of the page containing phys_ptr
  */
 static inline int get_phys_addr(CPUARMState *env, target_ulong address,
-                                int access_type, int is_user,
+                                int access_type, int tr_el,
                                 hwaddr *phys_ptr, int *prot,
-                                target_ulong *page_size)
+                                target_ulong *page_size, int max_stage,
+                                unsigned int *attr_idx)
 {
+    int is_user = tr_el == 0;
     /* This is not entirely correct as get_phys_addr() can also be called
      * from ats_write() for an address translation of a specific regime.
      */
     uint32_t sctlr = A32_BANKED_CURRENT_REG_GET(env, sctlr);
+    if (tr_el > 0) {
+        sctlr = env->cp15.sctlr_el[tr_el];
+    }
 
     /* Fast Context Switch Extension.  */
     if (address < 0x02000000) {
         address += A32_BANKED_CURRENT_REG_GET(env, fcseidr);
     }
 
-    if ((sctlr & SCTLR_M) == 0) {
+    if ((sctlr & SCTLR_M) == 0
+         && !(tr_el <= 1 && (env->cp15.hcr_el2 & HCR_VM))) {
         /* MMU/MPU disabled.  */
         *phys_ptr = address;
         *prot = PAGE_READ | PAGE_WRITE | PAGE_EXEC;
@@ -5093,11 +6008,12 @@ static inline int get_phys_addr(CPUARMState *env, target_ulong address,
         return 0;
     } else if (arm_feature(env, ARM_FEATURE_MPU)) {
         *page_size = TARGET_PAGE_SIZE;
-	return get_phys_addr_mpu(env, address, access_type, is_user, phys_ptr,
-				 prot);
-    } else if (extended_addresses_enabled(env)) {
-        return get_phys_addr_lpae(env, address, access_type, is_user, phys_ptr,
-                                  prot, page_size);
+    return (arm_feature(env, ARM_FEATURE_V6) || arm_feature(env, ARM_FEATURE_V7)
+            ? get_phys_addr_pmsav7 : get_phys_addr_pmsav5)(env, address,
+                                    access_type, is_user, phys_ptr, prot);
+    } else if (extended_addresses_enabled(env, tr_el)) {
+        return get_phys_addr_lpae(env, address, access_type, tr_el, phys_ptr,
+                                  prot, page_size, max_stage, attr_idx);
     } else if (sctlr & SCTLR_XP) {
         return get_phys_addr_v6(env, address, access_type, is_user, phys_ptr,
                                 prot, page_size);
@@ -5115,19 +6031,23 @@ int arm_cpu_handle_mmu_fault(CPUState *cs, vaddr address,
     hwaddr phys_addr;
     target_ulong page_size;
     int prot;
-    int ret, is_user;
+    int cur_el = arm_current_el(env);
+    int ret;
     uint32_t syn;
-    bool same_el = (arm_current_el(env) != 0);
+    bool secure = arm_is_secure(env);
+    unsigned int attr_idx = secure ? MEM_ATTR_SEC : MEM_ATTR_NS;
 
-    is_user = mmu_idx == MMU_USER_IDX;
-    ret = get_phys_addr(env, address, access_type, is_user, &phys_addr, &prot,
-                        &page_size);
+    ret = get_phys_addr(env, address, access_type, cur_el, &phys_addr, &prot,
+                        &page_size, 2, &attr_idx);
     if (ret == 0) {
         /* Map a single [sub]page.  */
         phys_addr &= TARGET_PAGE_MASK;
         address &= TARGET_PAGE_MASK;
-        tlb_set_page(cs, address, phys_addr, prot, mmu_idx, page_size);
+        tlb_set_page_attr(cs, address, phys_addr, prot, mmu_idx, page_size,
+                          attr_idx);
         return 0;
+    } else if (ret == -1) {
+        ret = 0;
     }
 
     /* AArch64 syndrome does not have an LPAE bit */
@@ -5137,10 +6057,12 @@ int arm_cpu_handle_mmu_fault(CPUState *cs, vaddr address,
      * information; this is always true for exceptions reported to EL1.
      */
     if (access_type == 2) {
-        syn = syn_insn_abort(same_el, 0, 0, syn);
+        int target_el = arm_excp_target_el(cs, EXCP_PREFETCH_ABORT);
+        syn = syn_insn_abort(cur_el == target_el, 0, 0, syn);
         cs->exception_index = EXCP_PREFETCH_ABORT;
     } else {
-        syn = syn_data_abort(same_el, 0, 0, 0, access_type == 1, syn);
+        int target_el = arm_excp_target_el(cs, EXCP_DATA_ABORT);
+        syn = syn_data_abort(cur_el == target_el, env->aarch64, 1, 4, env->mem_rt, 0, 0, 0, access_type == 1, syn);
         if (access_type == 1 && arm_feature(env, ARM_FEATURE_V6)) {
             ret |= (1 << 11);
         }
@@ -5158,10 +6080,28 @@ hwaddr arm_cpu_get_phys_page_debug(CPUState *cs, vaddr addr)
     ARMCPU *cpu = ARM_CPU(cs);
     hwaddr phys_addr;
     target_ulong page_size;
+    int cur_el = arm_current_el(&cpu->env);
     int prot;
     int ret;
+    unsigned int dummy;
 
-    ret = get_phys_addr(&cpu->env, addr, 0, 0, &phys_addr, &prot, &page_size);
+    switch (cpu->env.debug_ctx) {
+        case DEBUG_EL0:
+            cur_el = 0;
+            break;
+        case DEBUG_EL1:
+            cur_el = 1;
+            break;
+        case DEBUG_EL2:
+            cur_el = 2;
+            break;
+        case DEBUG_EL3:
+            cur_el = 3;
+            break;
+        default:
+            break;
+    }
+    ret = get_phys_addr(&cpu->env, addr, 0, cur_el, &phys_addr, &prot, &page_size, 2, &dummy);
 
     if (ret != 0) {
         return -1;

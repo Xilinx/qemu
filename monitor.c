@@ -1132,15 +1132,13 @@ static void do_log(Monitor *mon, const QDict *qdict)
     const char *items = qdict_get_str(qdict, "items");
 
     if (!strcmp(items, "none")) {
-        mask = 0;
+        qemu_set_log_level(0, 0);
     } else {
-        mask = qemu_str_to_log_mask(items);
-        if (!mask) {
+        if (!qemu_setup_log_args(items)) {
             help_cmd(mon, "log");
             return;
         }
     }
-    qemu_set_log(mask);
 }
 
 static void do_singlestep(Monitor *mon, const QDict *qdict)

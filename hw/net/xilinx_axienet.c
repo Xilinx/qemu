@@ -99,7 +99,7 @@ static unsigned int tdk_read(struct PHY *phy, unsigned int req)
             break;
         case 17:
             /* Marvell PHY on many xilinx boards.  */
-            r = 0x8000; /* 1000Mb  */
+            r = 0x8c00; /* 1000Mb  */
             break;
         case 18:
             {
@@ -152,8 +152,8 @@ tdk_init(struct PHY *phy)
 {
     phy->regs[0] = 0x3100;
     /* PHY Id.  */
-    phy->regs[2] = 0x0300;
-    phy->regs[3] = 0xe400;
+    phy->regs[2] = 0x0141;
+    phy->regs[3] = 0x0cc2;
     /* Autonegotiation advertisement reg.  */
     phy->regs[4] = 0x01E1;
     phy->link = 1;
@@ -690,14 +690,15 @@ static void axienet_eth_rx_notify(void *opaque)
                                            axienet_eth_rx_notify, s)) {
         size_t ret = stream_push(s->tx_control_dev,
                                  (void *)s->rxapp + CONTROL_PAYLOAD_SIZE
-                                 - s->rxappsize, s->rxappsize);
+                                 - s->rxappsize, s->rxappsize,
+                                 STREAM_ATTR_EOP);
         s->rxappsize -= ret;
     }
 
     while (s->rxsize && stream_can_push(s->tx_data_dev,
                                         axienet_eth_rx_notify, s)) {
         size_t ret = stream_push(s->tx_data_dev, (void *)s->rxmem + s->rxpos,
-                                 s->rxsize);
+                                 s->rxsize, STREAM_ATTR_EOP);
         s->rxsize -= ret;
         s->rxpos += ret;
         if (!s->rxsize) {
@@ -866,7 +867,8 @@ static void eth_cleanup(NetClientState *nc)
 }
 
 static size_t
-xilinx_axienet_control_stream_push(StreamSlave *obj, uint8_t *buf, size_t len)
+xilinx_axienet_control_stream_push(StreamSlave *obj, uint8_t *buf, size_t len,
+                                   uint32_t attr)
 {
     int i;
     XilinxAXIEnetStreamSlave *cs = XILINX_AXI_ENET_CONTROL_STREAM(obj);
@@ -886,10 +888,17 @@ xilinx_axienet_control_stream_push(StreamSlave *obj, uint8_t *buf, size_t len)
 }
 
 static size_t
-xilinx_axienet_data_stream_push(StreamSlave *obj, uint8_t *buf, size_t size)
+xilinx_axienet_data_stream_push(StreamSlave *obj, uint8_t *buf, size_t size,
+                                uint32_t attr)
 {
     XilinxAXIEnetStreamSlave *ds = XILINX_AXI_ENET_DATA_STREAM(obj);
     XilinxAXIEnet *s = ds->enet;
+
+    /* FIXME. buffer if not EOP. Or add a better scatter-gathering +
+       zero copying flow to the stream if.  */
+    if (!stream_attr_has_eop(attr)) {
+        hw_error("No EOP.\n");
+    }
 
     /* TX enable ?  */
     if (!(s->tc & TC_TX)) {

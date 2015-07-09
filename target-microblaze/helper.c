@@ -114,6 +114,8 @@ int mb_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int rw,
     return r;
 }
 
+#include "hw/remote-port.h"
+
 void mb_cpu_do_interrupt(CPUState *cs)
 {
     MicroBlazeCPU *cpu = MICROBLAZE_CPU(cs);
@@ -124,7 +126,13 @@ void mb_cpu_do_interrupt(CPUState *cs)
     assert(!((env->iflags & D_FLAG) && (env->iflags & IMM_FLAG)));
     assert(!(env->iflags & (DRTI_FLAG | DRTE_FLAG | DRTB_FLAG)));
 /*    assert(env->sregs[SR_MSR] & (MSR_EE)); Only for HW exceptions.  */
-    env->res_addr = RES_ADDR_NONE;
+    if (env->res_addr != RES_ADDR_NONE) {
+        if (env->exclusive_lock) {
+            rp_unlock(env->res_addr);
+            env->exclusive_lock = false;
+        }
+        env->res_addr = RES_ADDR_NONE;
+    }
     switch (cs->exception_index) {
         case EXCP_HW_EXCP:
             if (!(env->pvr.regs[0] & PVR0_USE_EXC_MASK)) {

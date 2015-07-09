@@ -147,18 +147,16 @@ static void fw_cfg_bootsplash(FWCfgState *s)
     const char *temp;
 
     /* get user configuration */
-    QemuOptsList *plist = qemu_find_opts("boot-opts");
-    QemuOpts *opts = QTAILQ_FIRST(&plist->head);
-    if (opts != NULL) {
-        temp = qemu_opt_get(opts, "splash");
-        if (temp != NULL) {
-            boot_splash_filename = temp;
-        }
-        temp = qemu_opt_get(opts, "splash-time");
-        if (temp != NULL) {
-            p = (char *)temp;
-            boot_splash_time = strtol(p, (char **)&p, 10);
-        }
+    QemuOpts *opts = qemu_get_boot_opts();
+
+    temp = qemu_opt_get(opts, "splash");
+    if (temp != NULL) {
+        boot_splash_filename = temp;
+    }
+    temp = qemu_opt_get(opts, "splash-time");
+    if (temp != NULL) {
+        p = (char *)temp;
+        boot_splash_time = strtol(p, (char **)&p, 10);
     }
 
     /* insert splash time if user configurated */
@@ -213,14 +211,12 @@ static void fw_cfg_reboot(FWCfgState *s)
     const char *temp;
 
     /* get user configuration */
-    QemuOptsList *plist = qemu_find_opts("boot-opts");
-    QemuOpts *opts = QTAILQ_FIRST(&plist->head);
-    if (opts != NULL) {
-        temp = qemu_opt_get(opts, "reboot-timeout");
-        if (temp != NULL) {
-            p = (char *)temp;
-            reboot_timeout = strtol(p, (char **)&p, 10);
-        }
+    QemuOpts *opts = qemu_get_boot_opts();
+
+    temp = qemu_opt_get(opts, "reboot-timeout");
+    if (temp != NULL) {
+        p = (char *)temp;
+        reboot_timeout = strtol(p, (char **)&p, 10);
     }
     /* validate the input */
     if (reboot_timeout > 0xffff) {

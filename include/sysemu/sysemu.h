@@ -138,6 +138,8 @@ extern QEMUClockType rtc_clock;
 extern const char *mem_path;
 extern int mem_prealloc;
 
+extern uint64_t global_sync_quantum;
+
 #define MAX_NODES 128
 
 /* The following shall be true for all CPUs:
@@ -226,6 +228,7 @@ void qemu_register_boot_set(QEMUBootSetHandler *func, void *opaque);
 void qemu_boot_set(const char *boot_order, Error **errp);
 
 QemuOpts *qemu_get_machine_opts(void);
+QemuOpts *qemu_get_boot_opts(void);
 
 bool usb_enabled(bool default_usb);
 

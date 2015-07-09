@@ -127,8 +127,17 @@ static void init_delay_params(SyncClocks *sc, const CPUState *cpu)
 }
 #endif /* CONFIG USER ONLY */
 
+#include "qemu/etrace.h"
+
 void cpu_loop_exit(CPUState *cpu)
 {
+    if (cpu->halted && qemu_etrace_mask(ETRACE_F_EXEC)) {
+        const char *dev_name = object_get_canonical_path(OBJECT(cpu));
+        etrace_event_u64(&qemu_etracer, cpu->cpu_index,
+                         ETRACE_EVU64_F_PREV_VAL,
+                         dev_name, "sleep", 1, 0);
+    }
+
     cpu->current_tb = NULL;
     siglongjmp(cpu->jmp_env, 1);
 }
@@ -171,7 +180,7 @@ static inline tcg_target_ulong cpu_tb_exec(CPUState *cpu, uint8_t *tb_ptr)
     cpu->can_do_io = 0;
     next_tb = tcg_qemu_tb_exec(env, tb_ptr);
     cpu->can_do_io = 1;
-    trace_exec_tb_exit((void *) (next_tb & ~TB_EXIT_MASK),
+    trace_exec_tb_exit(cpu->cpu_index, (void *) (next_tb & ~TB_EXIT_MASK),
                        next_tb & TB_EXIT_MASK);
 
     if ((next_tb & TB_EXIT_MASK) > TB_EXIT_IDX1) {
@@ -219,7 +228,7 @@ static void cpu_exec_nocache(CPUArchState *env, int max_cycles,
                      max_cycles | CF_NOCACHE);
     cpu->current_tb = tb;
     /* execute the generated code */
-    trace_exec_tb_nocache(tb, tb->pc);
+    trace_exec_tb_nocache(cpu->cpu_index, tb, tb->pc);
     cpu_tb_exec(cpu, tb->tc_ptr);
     cpu->current_tb = NULL;
     tb_phys_invalidate(tb, -1);
@@ -341,7 +350,12 @@ int cpu_exec(CPUArchState *env)
         if (!cpu_has_work(cpu)) {
             return EXCP_HALTED;
         }
-
+        if (qemu_etrace_mask(ETRACE_F_EXEC)) {
+            const char *dev_name = object_get_canonical_path(OBJECT(cpu));
+            etrace_event_u64(&qemu_etracer, cpu->cpu_index,
+                             ETRACE_EVU64_F_PREV_VAL,
+                             dev_name, "sleep", 0, 1);
+        }
         cpu->halted = 0;
     }
 
@@ -467,10 +481,22 @@ int cpu_exec(CPUArchState *env)
                     qemu_log("Trace %p [" TARGET_FMT_lx "] %s\n",
                              tb->tc_ptr, tb->pc, lookup_symbol(tb->pc));
                 }
+                if (qemu_etrace_mask(ETRACE_F_CPU)) {
+                    /* FIXME: Create a binary representation.
+                              printf is too slow!!  */
+                    qemu_etracer.current_unit_id = cpu->cpu_index;
+                    cpu_dump_state(cpu, (void *) &qemu_etracer,
+                                   etrace_note_fprintf, 0);
+                }
+                if (qemu_etrace_mask(ETRACE_F_EXEC)) {
+                    etrace_dump_exec_start(&qemu_etracer, cpu->cpu_index,
+                                           tb->pc);
+                }
+
                 /* see if we can patch the calling TB. When the TB
                    spans two pages, we cannot safely do a direct
                    jump. */
-                if (next_tb != 0 && tb->page_addr[1] == -1) {
+                if (tcg_tb_chain && next_tb != 0 && tb->page_addr[1] == -1) {
                     tb_add_jump((TranslationBlock *)(next_tb & ~TB_EXIT_MASK),
                                 next_tb & TB_EXIT_MASK, tb);
                 }
@@ -484,7 +510,8 @@ int cpu_exec(CPUArchState *env)
                 cpu->current_tb = tb;
                 barrier();
                 if (likely(!cpu->exit_request)) {
-                    trace_exec_tb(tb, tb->pc);
+                    bool tb_exit = false;
+                    trace_exec_tb(cpu->cpu_index, tb, tb->pc);
                     tc_ptr = tb->tc_ptr;
                     /* execute the generated code */
                     next_tb = cpu_tb_exec(cpu, tc_ptr);
@@ -499,6 +526,7 @@ int cpu_exec(CPUArchState *env)
                          */
                         tb = (TranslationBlock *)(next_tb & ~TB_EXIT_MASK);
                         next_tb = 0;
+                        tb_exit = true;
                         break;
                     case TB_EXIT_ICOUNT_EXPIRED:
                     {
@@ -527,11 +555,28 @@ int cpu_exec(CPUArchState *env)
                             cpu_loop_exit(cpu);
                         }
                         break;
+                        tb_exit = true;
                     }
                     default:
+                        tb_exit = false;
                         break;
                     }
+                    if (qemu_etrace_mask(ETRACE_F_EXEC)) {
+                        target_ulong cs_base, pc;
+                        int flags;
+
+                        if (tb_exit) {
+                            /* TB early exit, ask for CPU state.  */
+                            cpu_get_tb_cpu_state(env, &pc, &cs_base, &flags);
+                        } else {
+                            /* TB didn't exit, assume we ran all of it.  */
+                            pc = tb->pc + tb->size;
+                        }
+                        etrace_dump_exec_end(&qemu_etracer,
+                                             cpu->cpu_index, pc);
+                    }
                 }
+                qemu_etracer.exec_start_valid = false;
                 cpu->current_tb = NULL;
                 /* Try to align the host and virtual clocks
                    if the guest is in advance */
@@ -552,6 +597,15 @@ int cpu_exec(CPUArchState *env)
             if (have_tb_lock) {
                 spin_unlock(&tcg_ctx.tb_ctx.tb_lock);
                 have_tb_lock = false;
+            }
+
+            if (qemu_etrace_mask(ETRACE_F_EXEC)
+                && qemu_etracer.exec_start_valid) {
+                target_ulong cs_base, pc;
+                int flags;
+
+                cpu_get_tb_cpu_state(env, &pc, &cs_base, &flags);
+                etrace_dump_exec_end(&qemu_etracer, cpu->cpu_index, pc);
             }
         }
     } /* for(;;) */

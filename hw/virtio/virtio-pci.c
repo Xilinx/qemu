@@ -93,7 +93,7 @@ static void virtio_pci_bus_new(VirtioBusState *bus, size_t bus_size,
 /* DeviceState to VirtIOPCIProxy. For use off data-path. TODO: use QOM. */
 static inline VirtIOPCIProxy *to_virtio_pci_proxy(DeviceState *d)
 {
-    return container_of(d, VirtIOPCIProxy, pci_dev.qdev);
+    return VIRTIO_PCI(d);
 }
 
 /* DeviceState to VirtIOPCIProxy. Note: used on datapath,
@@ -101,7 +101,7 @@ static inline VirtIOPCIProxy *to_virtio_pci_proxy(DeviceState *d)
  */
 static inline VirtIOPCIProxy *to_virtio_pci_proxy_fast(DeviceState *d)
 {
-    return container_of(d, VirtIOPCIProxy, pci_dev.qdev);
+    return VIRTIO_PCI(d);
 }
 
 static void virtio_pci_notify(DeviceState *d, uint16_t vector)

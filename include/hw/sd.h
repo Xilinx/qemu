@@ -48,6 +48,7 @@
 #define ERASE_RESET		(1 << 13)
 #define CURRENT_STATE		(7 << 9)
 #define READY_FOR_DATA		(1 << 8)
+#define SWTICH_ERROR		(1 << 7)
 #define APP_CMD			(1 << 5)
 #define AKE_SEQ_ERROR		(1 << 3)
 #define OCR_CCS_BITN        30
@@ -66,9 +67,14 @@ typedef struct {
     uint8_t crc;
 } SDRequest;
 
+#define SD_VOLTAGE_33 33
+#define SD_VOLTAGE_18 18
+
 typedef struct SDState SDState;
 
 SDState *sd_init(BlockBackend *bs, bool is_spi);
+SDState *mmc_init(BlockBackend *bs);
+
 int sd_do_command(SDState *sd, SDRequest *req,
                   uint8_t *response);
 void sd_write_data(SDState *sd, uint8_t value);
@@ -76,5 +82,7 @@ uint8_t sd_read_data(SDState *sd);
 void sd_set_cb(SDState *sd, qemu_irq readonly, qemu_irq insert);
 bool sd_data_ready(SDState *sd);
 void sd_enable(SDState *sd, bool enable);
+uint8_t sd_get_dat_lines(SDState *sd);
+void sd_set_voltage(SDState *sd, int v);
 
 #endif	/* __hw_sd_h */

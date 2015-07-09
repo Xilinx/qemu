@@ -59,6 +59,11 @@ bool rom_file_has_mr = true;
 
 static int roms_loaded;
 
+
+extern AddressSpace *loader_as;
+
+AddressSpace *loader_as;
+
 /* return the size or -1 if error */
 int get_image_size(const char *filename)
 {
@@ -139,7 +144,7 @@ int load_image_targphys(const char *filename,
     int size;
 
     size = get_image_size(filename);
-    if (size > max_sz) {
+    if (max_sz && size > max_sz) {
         return -1;
     }
     if (size > 0) {
@@ -694,6 +699,8 @@ struct Rom {
     size_t datasize;
 
     uint8_t *data;
+    /* FIXME: consolidate these two */
+    AddressSpace *as;
     MemoryRegion *mr;
     int isrom;
     char *fw_dir;
@@ -706,12 +713,41 @@ struct Rom {
 static FWCfgState *fw_cfg;
 static QTAILQ_HEAD(, Rom) roms = QTAILQ_HEAD_INITIALIZER(roms);
 
+static void rom_reset(Rom *rom)
+{
+    if (rom->fw_file || rom->data == NULL) {
+        return;
+    }
+    if (rom->mr) {
+        void *host = memory_region_get_ram_ptr(rom->mr);
+        memcpy(host, rom->data, rom->datasize);
+    } else {
+        cpu_physical_memory_write_rom(rom->as ? rom->as : first_cpu->as,
+                                      rom->addr, rom->data, rom->datasize);
+    }
+    if (rom->isrom) {
+        /* rom needs to be written only once */
+        g_free(rom->data);
+        rom->data = NULL;
+    }
+    /*
+     * The rom loader is really on the same level as firmware in the guest
+     * shadowing a ROM into RAM. Such a shadowing mechanism needs to ensure
+     * that the instruction cache for that new region is clear, so that the
+     * CPU definitely fetches its instructions from the just written data.
+     */
+    cpu_flush_icache_range(rom->addr, rom->datasize);
+}
+
 static void rom_insert(Rom *rom)
 {
     Rom *item;
 
     if (roms_loaded) {
-        hw_error ("ROM images must be loaded at startup\n");
+        /* Hot loading is one-shot */
+        rom->isrom = 1;
+        rom_reset(rom);
+        return;
     }
 
     /* list is ordered by load address */
@@ -775,6 +811,7 @@ int rom_add_file(const char *file, const char *fw_dir,
 
     rom->datasize = rom->romsize;
     rom->data     = g_malloc0(rom->datasize);
+    rom->as       = loader_as;
     lseek(fd, 0, SEEK_SET);
     rc = read(fd, rom->data, rom->datasize);
     if (rc != rom->datasize) {
@@ -835,6 +872,7 @@ ram_addr_t rom_add_blob(const char *name, const void *blob, size_t len,
     rom->addr     = addr;
     rom->romsize  = len;
     rom->datasize = len;
+    rom->as       = loader_as;
     rom->data     = g_malloc0(rom->datasize);
     memcpy(rom->data, blob, len);
     rom_insert(rom);
@@ -873,6 +911,7 @@ int rom_add_elf_program(const char *name, void *data, size_t datasize,
     rom->addr     = addr;
     rom->datasize = datasize;
     rom->romsize  = romsize;
+    rom->as       = loader_as;
     rom->data     = data;
     rom_insert(rom);
     return 0;
@@ -888,11 +927,12 @@ int rom_add_option(const char *file, int32_t bootindex)
     return rom_add_file(file, "genroms", 0, bootindex, true);
 }
 
-static void rom_reset(void *unused)
+static void roms_reset(void *unused)
 {
     Rom *rom;
 
     QTAILQ_FOREACH(rom, &roms, next) {
+        rom_reset(rom);
         if (rom->fw_file) {
             continue;
         }
@@ -903,7 +943,7 @@ static void rom_reset(void *unused)
             void *host = memory_region_get_ram_ptr(rom->mr);
             memcpy(host, rom->data, rom->datasize);
         } else {
-            cpu_physical_memory_write_rom(&address_space_memory,
+            cpu_physical_memory_write_rom(rom->as ? rom->as : first_cpu->as,
                                           rom->addr, rom->data, rom->datasize);
         }
         if (rom->isrom) {
@@ -936,7 +976,6 @@ int rom_load_all(void)
                     "(rom %s. free=0x" TARGET_FMT_plx
                     ", addr=0x" TARGET_FMT_plx ")\n",
                     rom->name, addr, rom->addr);
-            return -1;
         }
         addr  = rom->addr;
         addr += rom->romsize;
@@ -944,7 +983,7 @@ int rom_load_all(void)
         rom->isrom = int128_nz(section.size) && memory_region_is_rom(section.mr);
         memory_region_unref(section.mr);
     }
-    qemu_register_reset(rom_reset, NULL);
+    qemu_register_reset(roms_reset, NULL);
     return 0;
 }
 

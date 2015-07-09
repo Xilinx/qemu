@@ -88,7 +88,7 @@ static bool cpu_thread_is_idle(CPUState *cpu)
     return true;
 }
 
-static bool all_cpu_threads_idle(void)
+bool all_cpu_threads_idle(void)
 {
     CPUState *cpu;
 
@@ -143,9 +143,8 @@ int64_t cpu_get_icount_raw(void)
 
     icount = timers_state.qemu_icount;
     if (cpu) {
-        if (!cpu_can_do_io(cpu)) {
+        if (!cpu_can_do_io(cpu) && 0) {
             fprintf(stderr, "Bad icount read\n");
-            exit(1);
         }
         icount -= (cpu->icount_decr.u16.low + cpu->icount_extra);
     }
@@ -341,12 +340,22 @@ static int64_t qemu_icount_round(int64_t count)
     return (count + (1 << icount_time_shift) - 1) >> icount_time_shift;
 }
 
+static bool icount_idle_timewarps = true;
+void qemu_icount_enable_idle_timewarps(bool enable)
+{
+    icount_idle_timewarps = enable;
+}
+
 static void icount_warp_rt(void *opaque)
 {
     /* The icount_warp_timer is rescheduled soon after vm_clock_warp_start
      * changes from -1 to another value, so the race here is okay.
      */
     if (atomic_read(&vm_clock_warp_start) == -1) {
+        return;
+    }
+
+    if (icount_idle_timewarps) {
         return;
     }
 
@@ -373,6 +382,32 @@ static void icount_warp_rt(void *opaque)
     if (qemu_clock_expired(QEMU_CLOCK_VIRTUAL)) {
         qemu_clock_notify(QEMU_CLOCK_VIRTUAL);
     }
+}
+
+void tcg_clock_warp(int64_t dest)
+{
+    int64_t clock = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+
+    if (clock < dest) {
+#if 0
+        int64_t deadline = qemu_clock_deadline_ns_all(QEMU_CLOCK_VIRTUAL);
+        int64_t warp = MIN(dest - clock, deadline);
+        qemu_icount_bias += warp;
+#endif
+        qemu_clock_run_timers(QEMU_CLOCK_VIRTUAL);
+        clock = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+    }
+    qemu_notify_event();
+}
+
+bool tcg_idle_clock_warp(int64_t dest)
+{
+    if (!all_cpu_threads_idle()) {
+        return false;
+    }
+
+    tcg_clock_warp(dest);
+    return true;
 }
 
 void qtest_clock_warp(int64_t dest)
@@ -403,6 +438,10 @@ void qemu_clock_warp(QEMUClockType type)
      * need for if statements all over the place.
      */
     if (type != QEMU_CLOCK_VIRTUAL || !use_icount) {
+        return;
+    }
+
+    if (!icount_idle_timewarps) {
         return;
     }
 
@@ -1399,6 +1438,15 @@ static void tcg_exec_all(void)
                 break;
             }
         } else if (cpu->stop || cpu->stopped) {
+            break;
+        }
+        /* Randomize whether to advance to next CPU on exit request.
+         * If exit requests repeatedly occur in a regular pattern,
+         * this can cause CPU starvation. The starvation can be causes
+         * on either of the "never-advance" and "always-advance" policies.
+         * So roll the dice.
+         */
+        if (exit_request && (rand() & 1)) {
             break;
         }
     }

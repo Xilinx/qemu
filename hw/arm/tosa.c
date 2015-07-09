@@ -232,8 +232,16 @@ static void tosa_init(MachineState *machine)
     memory_region_set_readonly(rom, true);
     memory_region_add_subregion(address_space_mem, 0, rom);
 
-    tmio = tc6393xb_init(address_space_mem, 0x10000000,
-            qdev_get_gpio_in(mpu->gpio, TOSA_GPIO_TC6393XB_INT));
+    /*
+     * FIXME: remove this fishy cast when the board gets some
+     * more QOMification
+     */
+    tmio = (TC6393xbState *)object_new("TC6393xb");
+    sysbus_mmio_map(SYS_BUS_DEVICE(tmio), 0, 0x10000000);
+    sysbus_mmio_map(SYS_BUS_DEVICE(tmio), 1, 0x10100000);
+    sysbus_connect_irq(SYS_BUS_DEVICE(tmio), 0,
+                       qdev_get_gpio_in(mpu->gpio, TOSA_GPIO_TC6393XB_INT));
+    object_property_set_bool(OBJECT(tmio), true, "realized", NULL);
 
     scp0 = sysbus_create_simple("scoop", 0x08800000, NULL);
     scp1 = sysbus_create_simple("scoop", 0x14800040, NULL);

@@ -253,7 +253,7 @@ static void shpc_free_devices_in_slot(SHPCDevice *shpc, int slot)
     for (devfn = PCI_DEVFN(pci_slot, 0);
          devfn <= PCI_DEVFN(pci_slot, PCI_FUNC_MAX - 1);
          ++devfn) {
-        PCIDevice *affected_dev = shpc->sec_bus->devices[devfn];
+        DeviceState *affected_dev = DEVICE(shpc->sec_bus->devices[devfn]);
         if (affected_dev) {
             object_unparent(OBJECT(affected_dev));
         }

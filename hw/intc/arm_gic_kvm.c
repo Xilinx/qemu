@@ -395,7 +395,7 @@ static void kvm_arm_gic_put(GICState *s)
 
     for (cpu = 0; cpu < s->num_cpu; cpu++) {
         /* s->cpu_enabled[cpu] -> GICC_CTLR */
-        reg = s->cpu_enabled[cpu];
+        reg = s->ctrl[cpu];
         kvm_gicc_access(s, 0x00, cpu, &reg, true);
 
         /* s->priority_mask[cpu] -> GICC_PMR */
@@ -495,7 +495,7 @@ static void kvm_arm_gic_get(GICState *s)
     for (cpu = 0; cpu < s->num_cpu; cpu++) {
         /* GICC_CTLR -> s->cpu_enabled[cpu] */
         kvm_gicc_access(s, 0x00, cpu, &reg, false);
-        s->cpu_enabled[cpu] = (reg & 1);
+        s->ctrl[cpu] = (reg & 1);
 
         /* GICC_PMR -> s->priority_mask[cpu] */
         kvm_gicc_access(s, 0x04, cpu, &reg, false);
@@ -556,6 +556,14 @@ static void kvm_arm_gic_realize(DeviceState *dev, Error **errp)
      */
     for (i = 0; i < s->num_cpu; i++) {
         sysbus_init_irq(sbd, &s->parent_irq[i]);
+    }
+
+    for (i = 0; i < s->num_cpu; i++) {
+        sysbus_init_irq(sbd, &s->parent_irq[GIC_N_REALCPU + i]);
+    }
+
+    for (i = 0; i < s->num_cpu; i++) {
+        sysbus_init_irq(sbd, &s->maint[i]);
     }
 
     /* Try to create the device via the device control API */

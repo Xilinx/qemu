@@ -34,6 +34,7 @@
 #include "qemu/timer.h"
 #include "qemu/envlist.h"
 
+bool tcg_tb_chain = true;
 int singlestep;
 #if defined(CONFIG_USE_GUEST_BASE)
 unsigned long mmap_min_addr;
@@ -850,6 +851,8 @@ int main(int argc, char **argv)
                 usage();
             }
             optind++;
+        } else if (!strcmp(r, "no-tb-chain")) {
+            tcg_tb_chain = false;
         } else if (!strcmp(r, "singlestep")) {
             singlestep = 1;
         } else if (!strcmp(r, "strace")) {
@@ -863,14 +866,10 @@ int main(int argc, char **argv)
     /* init debug */
     qemu_set_log_filename(log_file);
     if (log_mask) {
-        int mask;
-
-        mask = qemu_str_to_log_mask(log_mask);
-        if (!mask) {
+        if (!qemu_setup_log_args(log_mask)) {
             qemu_print_log_usage(stdout);
             exit(1);
         }
-        qemu_set_log(mask);
     }
 
     if (optind >= argc) {

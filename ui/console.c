@@ -1225,18 +1225,27 @@ static QemuConsole *new_console(DisplayState *ds, console_type_t console_type,
     return s;
 }
 
-static void qemu_alloc_display(DisplaySurface *surface, int width, int height)
+static void qemu_alloc_display_format(DisplaySurface *surface,
+                                      pixman_format_code_t format,
+                                      int width, int height)
 {
     qemu_pixman_image_unref(surface->image);
     surface->image = NULL;
 
-    surface->format = PIXMAN_x8r8g8b8;
+    surface->format = format;
     surface->image = pixman_image_create_bits(surface->format,
                                               width, height,
-                                              NULL, width * 4);
+                                              NULL,
+                                              width * PIXMAN_FORMAT_BPP(format)
+                                                    / 8);
     assert(surface->image != NULL);
 
     surface->flags = QEMU_ALLOCATED_FLAG;
+}
+
+static void qemu_alloc_display(DisplaySurface *surface, int width, int height)
+{
+    qemu_alloc_display_format(surface, PIXMAN_x8r8g8b8, width, height);
 }
 
 DisplaySurface *qemu_create_displaysurface(int width, int height)
@@ -1245,6 +1254,16 @@ DisplaySurface *qemu_create_displaysurface(int width, int height)
 
     trace_displaysurface_create(surface, width, height);
     qemu_alloc_display(surface, width, height);
+    return surface;
+}
+
+DisplaySurface *qemu_create_displaysurface_format(pixman_format_code_t format,
+                                                  int width, int height)
+{
+    DisplaySurface *surface = g_new0(DisplaySurface, 1);
+
+    trace_displaysurface_create(surface, width, height);
+    qemu_alloc_display_format(surface, format, width, height);
     return surface;
 }
 

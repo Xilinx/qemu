@@ -13,6 +13,7 @@
 
 #include "sysemu/qtest.h"
 #include "hw/qdev.h"
+#include "hw/sysbus.h"
 #include "sysemu/char.h"
 #include "exec/ioport.h"
 #include "exec/memory.h"
@@ -143,6 +144,26 @@ static bool qtest_opened;
  * where NUM is an IRQ number.  For the PC, interrupts can be intercepted
  * simply with "irq_intercept_in ioapic" (note that IRQ0 comes out with
  * NUM=0 even though it is remapped to GSI 2).
+ *
+ * IRQ controlling:
+ *
+ * > gpio_set_out QOM-PATH IRQ-NUM VAL
+ * < OK
+ *
+ * > gpio_set_in QOM-PATH IRQ-NUM VAL
+ * < OK
+ *
+ * > irq_set_out QOM-PATH IRQ-NUM VAL
+ * < OK
+ *
+ * VAL is 0 or 1.
+ *
+ * gpio_set_x raises or lowers the given gpio_in/gpio_out exported by
+ * the device at QOM-PATH.
+ *
+ * irq_set_out raises or lowers the given irq exported by the device at
+ * QOM-PATH. This mechanism is device specifc. Only SYSBUS devices are
+ * supported at the moment.
  */
 
 static int hex2nib(char ch)
@@ -282,6 +303,62 @@ static void qtest_process_command(CharDriverState *chr, gchar **words)
         qtest_send_prefix(chr);
         qtest_send(chr, "OK\n");
 
+    } else if (strcmp(words[0], "irq_set_out") == 0) {
+        Object *obj;
+        unsigned int irq_nr, val;
+
+        g_assert(words[1] && words[2] && words[3]);
+
+        obj = object_resolve_path(words[1], NULL);
+        irq_nr = strtoul(words[2], NULL, 0);
+        val = strtoul(words[3], NULL, 0);
+
+        if (!obj) {
+            qtest_send_prefix(chr);
+            qtest_send(chr, "FAIL Unknown device\n");
+            return;
+        }
+
+        if (object_dynamic_cast(obj, TYPE_SYS_BUS_DEVICE)) {
+            SysBusDevice *dev = SYS_BUS_DEVICE(obj);
+            char *irq_name = g_strdup_printf(SYSBUS_DEVICE_GPIO_IRQ "-%d",
+                                             irq_nr);
+            qemu_irq irq = qdev_get_gpio_out_named(DEVICE(dev), irq_name, 0);
+            if (irq == NULL) {
+                qtest_send_prefix(chr);
+                qtest_send(chr, "FAIL Invalid irq-nr\n");
+                return;
+            }
+            qemu_set_irq(irq, val);
+            qtest_send(chr, "OK\n");
+        } else {
+            qtest_send_prefix(chr);
+            qtest_send(chr, "FAIL Unsupported device type\n");
+        }
+    } else if (strcmp(words[0], "gpio_set_in") == 0
+               || strcmp(words[0], "gpio_set_out") == 0) {
+	DeviceState *dev;
+        qemu_irq irq;
+        unsigned int irq_nr, val;
+
+        g_assert(words[1] && words[2] && words[3]);
+        dev = DEVICE(object_resolve_path(words[1], NULL));
+        irq_nr = strtoul(words[2], NULL, 0);
+        val = strtoul(words[3], NULL, 0);
+
+        if (!dev) {
+            qtest_send_prefix(chr);
+            qtest_send(chr, "FAIL Unknown device\n");
+            return;
+        }
+
+        if (words[0][9] == 'o') {
+            irq = qdev_get_gpio_out(dev, irq_nr);
+        } else {
+            irq = qdev_get_gpio_in(dev, irq_nr);
+        }
+        qemu_set_irq(irq, val);
+        qtest_send(chr, "OK\n");
     } else if (strcmp(words[0], "outb") == 0 ||
                strcmp(words[0], "outw") == 0 ||
                strcmp(words[0], "outl") == 0) {

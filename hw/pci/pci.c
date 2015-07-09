@@ -36,6 +36,7 @@
 #include "hw/pci/msix.h"
 #include "exec/address-spaces.h"
 #include "hw/hotplug.h"
+#include "hw/sysbus.h"
 
 //#define DEBUG_PCI
 #ifdef DEBUG_PCI
@@ -149,6 +150,9 @@ static void pci_change_irq_level(PCIDevice *pci_dev, int irq_num, int change)
     PCIBus *bus;
     for (;;) {
         bus = pci_dev->bus;
+        if (!bus) {
+            return;
+        }
         irq_num = bus->map_irq(pci_dev, irq_num);
         if (bus->set_irq)
             break;
@@ -225,7 +229,7 @@ static void pci_do_device_reset(PCIDevice *dev)
  */
 void pci_device_reset(PCIDevice *dev)
 {
-    qdev_reset_all(&dev->qdev);
+    qdev_reset_all(DEVICE(dev));
     pci_do_device_reset(dev);
 }
 
@@ -805,12 +809,14 @@ static void do_pci_unregister_device(PCIDevice *pci_dev)
 static PCIDevice *do_pci_register_device(PCIDevice *pci_dev, PCIBus *bus,
                                          const char *name, int devfn)
 {
+    SysBusDevice *sbd = SYS_BUS_DEVICE(pci_dev);
     PCIDeviceClass *pc = PCI_DEVICE_GET_CLASS(pci_dev);
     PCIConfigReadFunc *config_read = pc->config_read;
     PCIConfigWriteFunc *config_write = pc->config_write;
     AddressSpace *dma_as;
+    int i;
 
-    if (devfn < 0) {
+    if (bus && devfn < 0) {
         for(devfn = bus->devfn_min ; devfn < ARRAY_SIZE(bus->devices);
             devfn += PCI_FUNC_MAX) {
             if (!bus->devices[devfn])
@@ -819,7 +825,7 @@ static PCIDevice *do_pci_register_device(PCIDevice *pci_dev, PCIBus *bus,
         error_report("PCI: no slot/function available for %s, all in use", name);
         return NULL;
     found: ;
-    } else if (bus->devices[devfn]) {
+    } else if (bus && bus->devices[devfn]) {
         error_report("PCI: slot %d function %d not available for %s, in use by %s",
                      PCI_SLOT(devfn), PCI_FUNC(devfn), name, bus->devices[devfn]->name);
         return NULL;
@@ -827,7 +833,11 @@ static PCIDevice *do_pci_register_device(PCIDevice *pci_dev, PCIBus *bus,
 
     pci_dev->bus = bus;
     pci_dev->devfn = devfn;
-    dma_as = pci_device_iommu_address_space(pci_dev);
+    if (bus) {
+        dma_as = pci_device_iommu_address_space(pci_dev);
+    } else {
+        dma_as = &address_space_memory;
+    }
 
     memory_region_init_alias(&pci_dev->bus_master_enable_region,
                              OBJECT(pci_dev), "bus master",
@@ -865,7 +875,7 @@ static PCIDevice *do_pci_register_device(PCIDevice *pci_dev, PCIBus *bus,
     if (pc->is_bridge) {
         pci_init_mask_bridge(pci_dev);
     }
-    if (pci_init_multifunction(bus, pci_dev)) {
+    if (bus && pci_init_multifunction(bus, pci_dev)) {
         do_pci_unregister_device(pci_dev);
         return NULL;
     }
@@ -876,7 +886,13 @@ static PCIDevice *do_pci_register_device(PCIDevice *pci_dev, PCIBus *bus,
         config_write = pci_default_write_config;
     pci_dev->config_read = config_read;
     pci_dev->config_write = config_write;
-    bus->devices[devfn] = pci_dev;
+    if (bus) {
+        bus->devices[devfn] = pci_dev;
+    }
+    pci_dev->irq_raw = g_new0(qemu_irq, PCI_NUM_PINS);
+    for (i = 0; i < PCI_NUM_PINS; ++i) {
+        sysbus_init_irq(sbd, &pci_dev->irq_raw[i]);
+    }
     pci_dev->version_id = 2; /* Current pci device vmstate version */
     return pci_dev;
 }
@@ -915,6 +931,8 @@ static int pci_unregister_device(DeviceState *dev)
 void pci_register_bar(PCIDevice *pci_dev, int region_num,
                       uint8_t type, MemoryRegion *memory)
 {
+    SysBusDevice *sbd = SYS_BUS_DEVICE(pci_dev);
+
     PCIIORegion *r;
     uint32_t addr;
     uint64_t wmask;
@@ -932,7 +950,6 @@ void pci_register_bar(PCIDevice *pci_dev, int region_num,
     r->addr = PCI_BAR_UNMAPPED;
     r->size = size;
     r->type = type;
-    r->memory = NULL;
 
     wmask = ~(size - 1);
     addr = pci_bar(pci_dev, region_num);
@@ -949,11 +966,13 @@ void pci_register_bar(PCIDevice *pci_dev, int region_num,
         pci_set_long(pci_dev->wmask + addr, wmask & 0xffffffff);
         pci_set_long(pci_dev->cmask + addr, 0xffffffff);
     }
-    pci_dev->io_regions[region_num].memory = memory;
-    pci_dev->io_regions[region_num].address_space
-        = type & PCI_BASE_ADDRESS_SPACE_IO
-        ? pci_dev->bus->address_space_io
-        : pci_dev->bus->address_space_mem;
+    r->memory = memory;
+    sysbus_init_mmio_n(sbd, memory, region_num);
+    if (pci_dev->bus) {
+        r->address_space = type & PCI_BASE_ADDRESS_SPACE_IO ?
+                           pci_dev->bus->address_space_io :
+                           pci_dev->bus->address_space_mem;
+    }
 }
 
 static void pci_update_vga(PCIDevice *pci_dev)
@@ -1188,6 +1207,9 @@ static void pci_irq_handler(void *opaque, int irq_num, int level)
     if (!change)
         return;
 
+    if (pci_dev->irq_raw[irq_num]) {
+        qemu_set_irq(pci_dev->irq_raw[irq_num], level);
+    }
     pci_set_irq_state(pci_dev, irq_num, level);
     pci_update_irq_status(pci_dev);
     if (pci_irq_disabled(pci_dev))
@@ -1474,6 +1496,7 @@ static PciBridgeInfo *qmp_query_pci_bridge(PCIDevice *dev, PCIBus *bus,
 static PciDeviceInfo *qmp_query_pci_device(PCIDevice *dev, PCIBus *bus,
                                            int bus_num)
 {
+    DeviceState *d = DEVICE(dev);
     const pci_class_desc *desc;
     PciDeviceInfo *info;
     uint8_t type;
@@ -1495,7 +1518,7 @@ static PciDeviceInfo *qmp_query_pci_device(PCIDevice *dev, PCIBus *bus,
     info->id.vendor = pci_get_word(dev->config + PCI_VENDOR_ID);
     info->id.device = pci_get_word(dev->config + PCI_DEVICE_ID);
     info->regions = qmp_query_pci_regions(dev);
-    info->qdev_id = g_strdup(dev->qdev.id ? dev->qdev.id : "");
+    info->qdev_id = g_strdup(d->id ? d->id : "");
 
     if (dev->config[PCI_INTERRUPT_PIN] != 0) {
         info->has_irq = true;
@@ -1620,7 +1643,7 @@ PCIDevice *pci_nic_init(NICInfo *nd, PCIBus *rootbus,
     }
 
     pci_dev = pci_create(bus, devfn, pci_nic_names[i]);
-    dev = &pci_dev->qdev;
+    dev = DEVICE(pci_dev);
     qdev_set_nic_properties(dev, nd);
     if (qdev_init(dev) < 0)
         return NULL;
@@ -1755,7 +1778,8 @@ static int pci_qdev_init(DeviceState *qdev)
         pci_dev->cap_present |= QEMU_PCI_CAP_EXPRESS;
     }
 
-    bus = PCI_BUS(qdev_get_parent_bus(qdev));
+    bus = (PCIBus *)object_dynamic_cast(OBJECT(qdev_get_parent_bus(qdev)),
+                                        TYPE_PCI_BUS);
     pci_dev = do_pci_register_device(pci_dev, bus,
                                      object_get_typename(OBJECT(qdev)),
                                      pci_dev->devfn);
@@ -1802,7 +1826,7 @@ PCIDevice *pci_create_simple_multifunction(PCIBus *bus, int devfn,
                                            const char *name)
 {
     PCIDevice *dev = pci_create_multifunction(bus, devfn, multifunction, name);
-    qdev_init_nofail(&dev->qdev);
+    qdev_init_nofail(DEVICE(dev));
     return dev;
 }
 
@@ -1989,7 +2013,7 @@ static int pci_add_option_rom(PCIDevice *pdev, bool is_default_rom)
     }
     pdev->has_rom = true;
     memory_region_init_ram(&pdev->rom, OBJECT(pdev), name, size, &error_abort);
-    vmstate_register_ram(&pdev->rom, &pdev->qdev);
+    vmstate_register_ram(&pdev->rom, DEVICE(pdev));
     ptr = memory_region_get_ram_ptr(&pdev->rom);
     load_image(path, ptr);
     g_free(path);
@@ -2009,7 +2033,7 @@ static void pci_del_option_rom(PCIDevice *pdev)
     if (!pdev->has_rom)
         return;
 
-    vmstate_unregister_ram(&pdev->rom, &pdev->qdev);
+    vmstate_unregister_ram(&pdev->rom, DEVICE(pdev));
     pdev->has_rom = false;
 }
 
@@ -2188,7 +2212,7 @@ static char *pcibus_get_fw_dev_path(DeviceState *dev)
 
 static char *pcibus_get_dev_path(DeviceState *dev)
 {
-    PCIDevice *d = container_of(dev, PCIDevice, qdev);
+    PCIDevice *d = PCI_DEVICE(dev);
     PCIDevice *t;
     int slot_depth;
     /* Path format: Domain:00:Slot.Function:Slot.Function....:Slot.Function.
@@ -2368,7 +2392,7 @@ void pci_bus_get_w64_range(PCIBus *bus, Range *range)
 
 static const TypeInfo pci_device_type_info = {
     .name = TYPE_PCI_DEVICE,
-    .parent = TYPE_DEVICE,
+    .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(PCIDevice),
     .abstract = true,
     .class_size = sizeof(PCIDeviceClass),

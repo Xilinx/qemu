@@ -79,9 +79,10 @@ typedef enum {
 
 #define BDRV_O_CACHE_MASK  (BDRV_O_NOCACHE | BDRV_O_CACHE_WB | BDRV_O_NO_FLUSH)
 
-#define BDRV_SECTOR_BITS   9
-#define BDRV_SECTOR_SIZE   (1ULL << BDRV_SECTOR_BITS)
-#define BDRV_SECTOR_MASK   ~(BDRV_SECTOR_SIZE - 1)
+#define BDRV_SECTOR_BITS        9
+#define BDRV_SECTOR_SIZE        (1ULL << BDRV_SECTOR_BITS)
+#define BDRV_SECTOR_OFFSET_MASK (BDRV_SECTOR_SIZE - 1)
+#define BDRV_SECTOR_MASK        ~(BDRV_SECTOR_OFFSET_MASK)
 
 /*
  * Allocation status flags
@@ -205,6 +206,8 @@ int bdrv_write(BlockDriverState *bs, int64_t sector_num,
                const uint8_t *buf, int nb_sectors);
 int bdrv_write_zeroes(BlockDriverState *bs, int64_t sector_num,
                int nb_sectors, BdrvRequestFlags flags);
+int bdrv_rw(BlockDriverState *bs, int64_t sector_num,
+            const uint8_t *buf, int nb_sectors, bool is_write);
 BlockAIOCB *bdrv_aio_write_zeroes(BlockDriverState *bs, int64_t sector_num,
                                   int nb_sectors, BdrvRequestFlags flags,
                                   BlockCompletionFunc *cb, void *opaque);

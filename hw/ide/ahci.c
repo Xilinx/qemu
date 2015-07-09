@@ -120,30 +120,14 @@ static uint32_t  ahci_port_read(AHCIState *s, int port, int offset)
 
 static void ahci_irq_raise(AHCIState *s, AHCIDevice *dev)
 {
-    AHCIPCIState *d = container_of(s, AHCIPCIState, ahci);
-    PCIDevice *pci_dev =
-        (PCIDevice *)object_dynamic_cast(OBJECT(d), TYPE_PCI_DEVICE);
-
     DPRINTF(0, "raise irq\n");
-
-    if (pci_dev && msi_enabled(pci_dev)) {
-        msi_notify(pci_dev, 0);
-    } else {
-        qemu_irq_raise(s->irq);
-    }
+    qemu_irq_raise(s->irq);
 }
 
 static void ahci_irq_lower(AHCIState *s, AHCIDevice *dev)
 {
-    AHCIPCIState *d = container_of(s, AHCIPCIState, ahci);
-    PCIDevice *pci_dev =
-        (PCIDevice *)object_dynamic_cast(OBJECT(d), TYPE_PCI_DEVICE);
-
     DPRINTF(0, "lower irq\n");
-
-    if (!pci_dev || !msi_enabled(pci_dev)) {
-        qemu_irq_lower(s->irq);
-    }
+    qemu_irq_lower(s->irq);
 }
 
 static void ahci_check_irq(AHCIState *s)
@@ -1404,7 +1388,7 @@ const VMStateDescription vmstate_ahci = {
     },
 };
 
-#define TYPE_SYSBUS_AHCI "sysbus-ahci"
+#define TYPE_SYSBUS_AHCI "generic-ahci"
 #define SYSBUS_AHCI(obj) OBJECT_CHECK(SysbusAHCIState, (obj), TYPE_SYSBUS_AHCI)
 
 typedef struct SysbusAHCIState {
@@ -1441,6 +1425,20 @@ static void sysbus_ahci_realize(DeviceState *dev, Error **errp)
 
     sysbus_init_mmio(sbd, &s->ahci.mem);
     sysbus_init_irq(sbd, &s->ahci.irq);
+
+    s->ahci.as = s->ahci.dma_mr ?
+                 address_space_init_shareable(s->ahci.dma_mr, NULL) :
+                 &address_space_memory;
+}
+
+static void sysbus_ahci_init(Object *obj) {
+    SysbusAHCIState *s = SYSBUS_AHCI(obj);
+
+    object_property_add_link(obj, "dma", TYPE_MEMORY_REGION,
+                             (Object **)&s->ahci.dma_mr,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             &error_abort);
 }
 
 static Property sysbus_ahci_properties[] = {
@@ -1463,6 +1461,7 @@ static const TypeInfo sysbus_ahci_info = {
     .name          = TYPE_SYSBUS_AHCI,
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(SysbusAHCIState),
+    .instance_init = sysbus_ahci_init,
     .class_init    = sysbus_ahci_class_init,
 };
 

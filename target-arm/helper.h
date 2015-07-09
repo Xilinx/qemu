@@ -1,3 +1,8 @@
+#if !defined(CONFIG_USER_ONLY)
+DEF_HELPER_2(exclusive_try_lock, void, env, i64)
+DEF_HELPER_2(exclusive_unlock, void, env, i64)
+#endif
+
 DEF_HELPER_FLAGS_1(clz, TCG_CALL_NO_RWG_SE, i32, i32)
 DEF_HELPER_FLAGS_1(sxtb16, TCG_CALL_NO_RWG_SE, i32, i32)
 DEF_HELPER_FLAGS_1(uxtb16, TCG_CALL_NO_RWG_SE, i32, i32)
@@ -50,6 +55,9 @@ DEF_HELPER_2(exception_internal, void, env, i32)
 DEF_HELPER_3(exception_with_syndrome, void, env, i32, i32)
 DEF_HELPER_1(wfi, void, env)
 DEF_HELPER_1(wfe, void, env)
+DEF_HELPER_1(sev, void, env)
+DEF_HELPER_1(sevl, void, env)
+DEF_HELPER_1(yield, void, env)
 DEF_HELPER_1(pre_hvc, void, env)
 DEF_HELPER_2(pre_smc, void, env, i32)
 
@@ -77,6 +85,9 @@ DEF_HELPER_3(set_user_reg, void, env, i32, i32)
 
 DEF_HELPER_1(vfp_get_fpscr, i32, env)
 DEF_HELPER_2(vfp_set_fpscr, void, env, i32)
+
+DEF_HELPER_1(print_tcg32, void, i32)
+DEF_HELPER_1(print_tcg64, void, i64)
 
 DEF_HELPER_3(vfp_adds, f32, f32, f32, ptr)
 DEF_HELPER_3(vfp_addd, f64, f64, f64, ptr)

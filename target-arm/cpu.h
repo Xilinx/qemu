@@ -56,6 +56,7 @@
 #define EXCP_SMC            13   /* Secure Monitor Call */
 #define EXCP_VIRQ           14
 #define EXCP_VFIQ           15
+#define EXCP_WFI            16
 
 #define ARMV7M_EXCP_RESET   1
 #define ARMV7M_EXCP_NMI     2
@@ -102,6 +103,10 @@ struct arm_boot_info;
 
 #define NB_MMU_MODES 4
 
+#define NB_MEM_ATTR 2
+#define MEM_ATTR_NS 0
+#define MEM_ATTR_SEC 1
+
 /* We currently assume float and double are IEEE single and double
    precision respectively.
    Doing runtime conversions is tricky because VFP registers may contain
@@ -118,7 +123,9 @@ typedef struct ARMGenericTimer {
 
 #define GTIMER_PHYS 0
 #define GTIMER_VIRT 1
-#define NUM_GTIMERS 2
+#define GTIMER_HYP  2
+#define GTIMER_PHYSSEC  3
+#define NUM_GTIMERS 4
 
 typedef struct {
     uint64_t raw_tcr;
@@ -179,6 +186,11 @@ typedef struct CPUARMState {
 
     uint64_t elr_el[4]; /* AArch64 exception link regs  */
     uint64_t sp_el[4]; /* AArch64 banked stack pointers */
+    uint32_t cptr_el[2];
+    uint64_t vmpidr_el2;
+
+    uint32_t stage2_fault;
+    uint32_t mem_rt;
 
     /* System control coprocessor (cp15) */
     struct {
@@ -225,6 +237,10 @@ typedef struct CPUARMState {
         };
         /* MMU translation table base control. */
         TCR tcr_el[4];
+        TCR vtcr_el2; /* Virtualization Translation Control.  */
+        uint64_t vttbr_el2; /* Virtualization Translation Table Base.  */
+        uint32_t c2_mask; /* MMU translation table base selection mask.  */
+        uint32_t c2_base_mask; /* MMU translation table base 0 mask. */
         uint32_t c2_data; /* MPU data cachable bits.  */
         uint32_t c2_insn; /* MPU instruction cachable bits.  */
         union { /* MMU domain access control register
@@ -279,6 +295,7 @@ typedef struct CPUARMState {
             };
             uint64_t far_el[4];
         };
+        uint64_t hpfar_el2;
         union { /* Translation result. */
             struct {
                 uint64_t _unused_par_0;
@@ -288,6 +305,12 @@ typedef struct CPUARMState {
             };
             uint64_t par_el[4];
         };
+
+        uint32_t c6_rgnr;
+        uint32_t c6_drbar[16];
+        uint32_t c6_drsr[16];
+        uint32_t c6_dracr[16];
+
         uint32_t c9_insn; /* Cache lockdown registers.  */
         uint32_t c9_data;
         uint64_t c9_pmcr; /* performance monitor control register */
@@ -359,6 +382,8 @@ typedef struct CPUARMState {
         };
         uint64_t c14_cntfrq; /* Counter Frequency register */
         uint64_t c14_cntkctl; /* Timer Control register */
+        uint64_t cntvoff_el2;
+        uint32_t cnthctl_el2;
         ARMGenericTimer c14_timer[NUM_GTIMERS];
         uint32_t c15_cpar; /* XScale Coprocessor Access Register */
         uint32_t c15_ticonfig; /* TI925T configuration byte.  */
@@ -379,6 +404,9 @@ typedef struct CPUARMState {
          */
         uint64_t c15_ccnt;
         uint64_t pmccfiltr_el0; /* Performance Monitor Filter Register */
+        uint64_t l2ctlr_el1;
+        uint64_t cpu_ectlr_el1;
+        uint64_t cpu_actlr_el1;
     } cp15;
 
     struct {
@@ -455,10 +483,14 @@ typedef struct CPUARMState {
     uint64_t exclusive_addr;
     uint64_t exclusive_val;
     uint64_t exclusive_high;
+    /* Multi-instance lock implemented by remote-port.  */
+    uint32_t exclusive_lock;
 #if defined(CONFIG_USER_ONLY)
     uint64_t exclusive_test;
     uint32_t exclusive_info;
 #endif
+
+    uint32_t debug_ctx;
 
     /* iwMMXt coprocessor state.  */
     struct {
@@ -486,9 +518,22 @@ typedef struct CPUARMState {
     /* Internal CPU feature flags.  */
     uint64_t features;
 
+    MemoryTransactionAttr *memattr_ns;
+    MemoryTransactionAttr *memattr_s;
+
     void *nvic;
     const struct arm_boot_info *boot_info;
 } CPUARMState;
+
+
+enum {
+        DEBUG_CURRENT_EL = 0,
+        DEBUG_EL0 = 1,
+        DEBUG_EL1 = 2,
+        DEBUG_EL2 = 3,
+        DEBUG_EL3 = 4,
+        DEBUG_PHYS = 5,
+};
 
 #include "cpu-qom.h"
 
@@ -777,6 +822,9 @@ static inline void xpsr_write(CPUARMState *env, uint32_t val, uint32_t mask)
 #define SCR_AARCH32_MASK      (0x3fff & ~(SCR_RW | SCR_ST))
 #define SCR_AARCH64_MASK      (0x3fff & ~SCR_NET)
 
+#define CNTHCTL_EL1PCTEN        (1U << 1)
+#define CNTHCTL_EL1PCEN         (1U << 2)
+
 /* Return the current FPSCR value.  */
 uint32_t vfp_get_fpscr(CPUARMState *env);
 void vfp_set_fpscr(CPUARMState *env, uint32_t val);
@@ -908,7 +956,7 @@ static inline bool arm_is_secure_below_el3(CPUARMState *env)
     if (arm_feature(env, ARM_FEATURE_EL3)) {
         return !(env->cp15.scr_el3 & SCR_NS);
     } else {
-        /* If EL2 is not supported then the secure state is implementation
+        /* If EL3 is not supported then the secure state is implementation
          * defined, in which case QEMU defaults to non-secure.
          */
         return false;
@@ -946,18 +994,34 @@ static inline bool arm_is_secure(CPUARMState *env)
 /* Return true if the specified exception level is running in AArch64 state. */
 static inline bool arm_el_is_aa64(CPUARMState *env, int el)
 {
-    /* We don't currently support EL2, and this isn't valid for EL0
-     * (if we're in EL0, is_a64() is what you want, and if we're not in EL0
-     * then the state of EL0 isn't well defined.)
-     */
-    assert(el == 1 || el == 3);
+    bool r = false;
+    uint32_t spsr = env->banked_spsr[0];
 
-    /* AArch64-capable CPUs always run with EL1 in AArch64 mode. This
-     * is a QEMU-imposed simplification which we may wish to change later.
-     * If we in future support EL2 and/or EL3, then the state of lower
-     * exception levels is controlled by the HCR.RW and SCR.RW bits.
-     */
-    return arm_feature(env, ARM_FEATURE_AARCH64);
+    switch (el) {
+    case 0:
+        r =  !(spsr & PSTATE_nRW);
+        break;
+    case 1:
+        if (!arm_is_secure_below_el3(env) &&
+            arm_feature(env, ARM_FEATURE_EL2)) {
+            r = env->cp15.hcr_el2 & HCR_RW;
+            break;
+        }
+        /* Fallthrough */
+    case 2:
+        if (arm_feature(env, ARM_FEATURE_EL3)) {
+            r = env->cp15.scr_el3 & SCR_RW;
+            break;
+        }
+        /* Fallthrough */
+    case 3:
+        if (arm_feature(env, ARM_FEATURE_AARCH64)) {
+            r = true;
+        }
+        break;
+    }
+//    printf("%s: el=%d r=%d\n", __func__, el, r);
+    return r;
 }
 
 /* Function for determing whether guest cp register reads and writes should
@@ -1004,6 +1068,8 @@ static inline bool access_secure_reg(CPUARMState *env)
                        (_val))
 
 void arm_cpu_list(FILE *f, fprintf_function cpu_fprintf);
+unsigned int arm_wfi_needs_trap(CPUARMState *env);
+unsigned int arm_wfe_needs_trap(CPUARMState *env);
 unsigned int arm_excp_target_el(CPUState *cs, unsigned int excp_idx);
 
 /* Interface between CPU and Interrupt controller.  */
@@ -1194,6 +1260,7 @@ static inline bool cptype_valid(int cptype)
  * described with these bits, then use a laxer set of restrictions, and
  * do the more restrictive/complex check inside a helper function.
  */
+#define PLX_SECURE 0x100
 #define PL3_R 0x80
 #define PL3_W 0x40
 #define PL2_R (0x20 | PL3_R)
@@ -1220,6 +1287,11 @@ static inline int arm_current_el(CPUARMState *env)
     switch (env->uncached_cpsr & 0x1f) {
     case ARM_CPU_MODE_USR:
         return 0;
+    case ARM_CPU_MODE_SVC:
+        if (arm_is_secure(env)) {
+            return 3;
+        }
+        return 1;
     case ARM_CPU_MODE_HYP:
         return 2;
     case ARM_CPU_MODE_MON:
@@ -1411,9 +1483,12 @@ static inline bool cpreg_field_is_64bit(const ARMCPRegInfo *ri)
     return (ri->state == ARM_CP_STATE_AA64) || (ri->type & ARM_CP_64BIT);
 }
 
-static inline bool cp_access_ok(int current_el,
+static inline bool cp_access_ok(int current_el, bool ns,
                                 const ARMCPRegInfo *ri, int isread)
 {
+    if (ns && (ri->access & PLX_SECURE)) {
+        return false;
+    }
     return (ri->access >> ((current_el * 2) + isread)) & 1;
 }
 
@@ -1668,6 +1743,7 @@ static inline bool arm_singlestep_active(CPUARMState *env)
 #define ARM_TBFLAG_SS_ACTIVE_MASK (1 << ARM_TBFLAG_SS_ACTIVE_SHIFT)
 #define ARM_TBFLAG_PSTATE_SS_SHIFT 19
 #define ARM_TBFLAG_PSTATE_SS_MASK (1 << ARM_TBFLAG_PSTATE_SS_SHIFT)
+
 /* We store the bottom two bits of the CPAR as TB flags and handle
  * checks on the other bits at runtime
  */
@@ -1738,6 +1814,10 @@ static inline void cpu_get_tb_cpu_state(CPUARMState *env, target_ulong *pc,
         fpen = 3;
     }
 
+    if (arm_current_el(env) > 1) {
+        fpen = !extract32(env->cptr_el[arm_current_el(env) - 2], 10, 1);
+    }
+
     if (is_a64(env)) {
         *pc = env->pc;
         *flags = ARM_TBFLAG_AARCH64_STATE_MASK
@@ -1757,6 +1837,9 @@ static inline void cpu_get_tb_cpu_state(CPUARMState *env, target_ulong *pc,
             if (env->pstate & PSTATE_SS) {
                 *flags |= ARM_TBFLAG_AA64_PSTATE_SS_MASK;
             }
+        }
+        if (!arm_is_secure(env)) {
+            *flags |= ARM_TBFLAG_NS_MASK;
         }
     } else {
         int privmode;

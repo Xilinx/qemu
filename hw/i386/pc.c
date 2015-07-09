@@ -1311,10 +1311,11 @@ DeviceState *pc_vga_init(ISABus *isa_bus, PCIBus *pci_bus)
 
     if (pci_bus) {
         PCIDevice *pcidev = pci_vga_init(pci_bus);
-        dev = pcidev ? &pcidev->qdev : NULL;
+        dev = DEVICE(pcidev);
     } else if (isa_bus) {
         ISADevice *isadev = isa_vga_init(isa_bus);
         dev = isadev ? DEVICE(isadev) : NULL;
+        dev = DEVICE(isadev);
     }
     return dev;
 }

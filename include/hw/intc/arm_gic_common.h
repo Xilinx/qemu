@@ -29,10 +29,13 @@
 #define GIC_INTERNAL 32
 #define GIC_NR_SGIS 16
 /* Maximum number of possible CPU interfaces, determined by GIC architecture */
-#define GIC_NCPU 8
+/* Include a vCPU interface per CPU.  */
+#define GIC_N_REALCPU 8
+#define GIC_NCPU (GIC_N_REALCPU * 2)
 
 #define MAX_NR_GROUP_PRIO 128
 #define GIC_NR_APRS (MAX_NR_GROUP_PRIO / 32)
+#define GICV_NR_LR 8
 
 typedef struct gic_irq_state {
     /* The enable bits are only banked for per-cpu interrupts.  */
@@ -42,6 +45,7 @@ typedef struct gic_irq_state {
     uint8_t level;
     bool model; /* 0 = N:N, 1 = 1:N */
     bool edge_trigger; /* true: edge-triggered, false: level-triggered  */
+    bool group;
 } gic_irq_state;
 
 typedef struct GICState {
@@ -50,13 +54,26 @@ typedef struct GICState {
     /*< public >*/
 
     qemu_irq parent_irq[GIC_NCPU];
+    qemu_irq parent_fiq[GIC_NCPU];
+    qemu_irq maint[GIC_N_REALCPU];
+
     bool enabled;
-    bool cpu_enabled[GIC_NCPU];
+    bool enabled_grp0;
+
+    struct {
+        bool enable_grp[2];
+        bool ack_ctl;
+        bool fiq_en;
+        bool eoirmode;
+        bool eoirmode_ns;
+    } gicc_ctrl[GIC_NCPU];
+    uint32_t ctrl[GIC_NCPU];
 
     gic_irq_state irq_state[GIC_MAXIRQ];
     uint8_t irq_target[GIC_MAXIRQ];
     uint8_t priority1[GIC_INTERNAL][GIC_NCPU];
     uint8_t priority2[GIC_MAXIRQ - GIC_INTERNAL];
+    bool eoir[GIC_MAXIRQ];
     uint16_t last_active[GIC_MAXIRQ][GIC_NCPU];
     /* For each SGI on the target CPU, we store 8 bits
      * indicating which source CPUs have made this SGI
@@ -94,6 +111,19 @@ typedef struct GICState {
      */
     uint32_t apr[GIC_NR_APRS][GIC_NCPU];
 
+    struct {
+        uint32_t hcr[GIC_N_REALCPU];
+        uint32_t vtr[GIC_N_REALCPU];
+        uint32_t misr[GIC_N_REALCPU];
+        uint64_t eisr[GIC_N_REALCPU];
+        uint64_t elrsr[GIC_N_REALCPU];
+        uint32_t apr[GIC_N_REALCPU];
+        uint32_t lr[GIC_N_REALCPU][GICV_NR_LR];
+
+        uint32_t pending_prio[GIC_N_REALCPU];
+        uint8_t pending_lrn[GIC_N_REALCPU];
+    } gich;
+
     uint32_t num_cpu;
 
     MemoryRegion iomem; /* Distributor */
@@ -102,8 +132,13 @@ typedef struct GICState {
      */
     struct GICState *backref[GIC_NCPU];
     MemoryRegion cpuiomem[GIC_NCPU + 1]; /* CPU interfaces */
+    MemoryRegion hypiomem[GIC_NCPU + 1]; /* Virtual control interfaces */
+    MemoryRegion vcpuiomem; /* Virtual CPU interface */
+    uint32_t map_stride;
     uint32_t num_irq;
     uint32_t revision;
+    bool disable_security;
+    bool disable_linux_gic_init;
     int dev_fd; /* kvm device fd if backed by kvm vgic support */
 } GICState;
 

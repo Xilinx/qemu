@@ -14,8 +14,13 @@
 #ifndef __DEVICE_TREE_H__
 #define __DEVICE_TREE_H__
 
+#include "qemu-common.h"
+#include "qapi/qmp/qerror.h"
+
 void *create_device_tree(int *sizep);
 void *load_device_tree(const char *filename_path, int *sizep);
+
+/* property setters */
 
 int qemu_fdt_setprop(void *fdt, const char *node_path,
                      const char *property, const void *val, int size);
@@ -28,11 +33,20 @@ int qemu_fdt_setprop_string(void *fdt, const char *node_path,
 int qemu_fdt_setprop_phandle(void *fdt, const char *node_path,
                              const char *property,
                              const char *target_node_path);
-const void *qemu_fdt_getprop(void *fdt, const char *node_path,
-                             const char *property, int *lenp);
+void *qemu_fdt_getprop(void *fdt, const char *node_path,
+                             const char *property, int *lenp,
+                             bool inherit, Error **errp);
 uint32_t qemu_fdt_getprop_cell(void *fdt, const char *node_path,
-                               const char *property);
+                               const char *property, int offset,
+                               bool inherit, Error **errp);
+uint64_t qemu_fdt_getprop_sized_cell(void *fdt, const char *node_path,
+                                     const char *property, int offset,
+                                     int size, Error **errp);
+char *qemu_fdt_getprop_string(void *fdt, const char*node_path,
+                              const char *property, int cell,
+                              bool inherit, Error **errp);
 uint32_t qemu_fdt_get_phandle(void *fdt, const char *path);
+uint32_t qemu_fdt_check_phandle(void *fdt, const char *path);
 uint32_t qemu_fdt_alloc_phandle(void *fdt);
 int qemu_fdt_nop_node(void *fdt, const char *node_path);
 int qemu_fdt_add_subnode(void *fdt, const char *name);
@@ -109,5 +123,38 @@ int qemu_fdt_setprop_sized_cells_from_array(void *fdt,
                                                 ARRAY_SIZE(qdt_tmp) / 2,  \
                                                 qdt_tmp);                 \
     })
+
+typedef struct QEMUDevtreeProp {
+    char *name;
+    int len;
+    void *value;
+} QEMUDevtreeProp;
+
+/* node queries */
+
+char *qemu_devtree_get_node_name(void *fdt, const char *node_path);
+int qemu_devtree_get_node_depth(void *fdt, const char *node_path);
+int qemu_devtree_get_num_children(void *fdt, const char *node_path, int depth);
+char **qemu_devtree_get_children(void *fdt, const char *node_path, int depth);
+int qemu_devtree_num_props(void *fdt, const char *node_path);
+QEMUDevtreeProp *qemu_devtree_get_props(void *fdt, const char *node_path);
+
+/* node getters */
+
+int qemu_devtree_node_by_compatible(void *fdt, char *node_path,
+                        const char *compats);
+int qemu_devtree_get_node_by_name(void *fdt, char *node_path,
+                        const char *cmpname);
+int qemu_devtree_get_node_by_phandle(void *fdt, char *node_path, int phandle);
+int qemu_devtree_getparent(void *fdt, char *node_path,
+                        const char *current);
+int qemu_devtree_get_root_node(void *fdt, char *node_path);
+
+/* misc */
+
+int devtree_get_num_nodes(void *fdt);
+void devtree_info_dump(void *fdt);
+
+#define DT_PATH_LENGTH 1024
 
 #endif /* __DEVICE_TREE_H__ */

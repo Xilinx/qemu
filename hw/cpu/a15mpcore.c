@@ -87,20 +87,42 @@ static void a15mp_priv_realize(DeviceState *dev, Error **errp)
         /* virtual timer */
         qdev_connect_gpio_out(cpudev, 1,
                               qdev_get_gpio_in(gicdev, ppibase + 27));
+        qdev_connect_gpio_out(cpudev, 2,
+                              qdev_get_gpio_in(gicdev, ppibase + 26));
+        if (!kvm_enabled()) {
+            /* Maintenance interrupt.  */
+            sysbus_connect_irq(busdev, s->num_cpu * 2 + i,
+                               qdev_get_gpio_in(gicdev, ppibase + 25));
+        }
     }
 
     /* Memory map (addresses are offsets from PERIPHBASE):
      *  0x0000-0x0fff -- reserved
      *  0x1000-0x1fff -- GIC Distributor
      *  0x2000-0x2fff -- GIC CPU interface
-     *  0x4000-0x4fff -- GIC virtual interface control (not modelled)
-     *  0x5000-0x5fff -- GIC virtual interface control (not modelled)
-     *  0x6000-0x7fff -- GIC virtual CPU interface (not modelled)
+     *  0x4000-0x4fff -- GIC virtual interface control (only with emulation)
+     *  0x5000-0x5fff -- GIC virtual interface control alias (only with emul)
+     *  0x6000-0x7fff -- GIC virtual CPU interface (only with emulation)
      */
     memory_region_add_subregion(&s->container, 0x1000,
                                 sysbus_mmio_get_region(busdev, 0));
     memory_region_add_subregion(&s->container, 0x2000,
                                 sysbus_mmio_get_region(busdev, 1));
+    if (!kvm_enabled()) {
+        int hregion = (s->num_cpu + 1) + 1;
+        int vregion = (s->num_cpu + 1) * 2 + 1;
+
+        /* Add the Hypervisor (virtual interface control) reg areas.  */
+        memory_region_add_subregion(&s->container, 0x4000,
+                                    sysbus_mmio_get_region(busdev, hregion));
+        for (i = 1; i <= s->num_cpu; i++) {
+            memory_region_add_subregion(&s->container, 0x5000 + i * 0x200,
+                                        sysbus_mmio_get_region(busdev,
+                                                               hregion + i));
+        }
+        memory_region_add_subregion(&s->container, 0x6000,
+                                    sysbus_mmio_get_region(busdev, vregion));
+    }
 }
 
 static Property a15mp_priv_properties[] = {

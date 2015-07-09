@@ -28,6 +28,24 @@
 
 #if !defined(CONFIG_USER_ONLY)
 
+#include "hw/remote-port.h"
+
+void HELPER(exclusive_try_lock)(CPUMBState *env, uint32_t addr)
+{
+    if (env->exclusive_lock) {
+        rp_unlock(env->res_addr);
+    }
+    env->exclusive_lock = rp_try_lock(addr);
+}
+
+void HELPER(exclusive_unlock)(CPUMBState *env, uint32_t addr)
+{
+    if (env->exclusive_lock) {
+        rp_unlock(addr);
+    }
+    env->exclusive_lock = false;
+}
+
 /* Try to fill the TLB and return an exception if error. If retaddr is
  * NULL, it means that the function was called in C code (i.e. not
  * from generated code or from helper.c)
@@ -88,6 +106,26 @@ void helper_raise_exception(CPUMBState *env, uint32_t index)
     CPUState *cs = CPU(mb_env_get_cpu(env));
 
     cs->exception_index = index;
+    cpu_loop_exit(cs);
+}
+
+void helper_sleep(CPUMBState *env)
+{
+    MicroBlazeCPU *cpu = mb_env_get_cpu(env);
+    CPUState *cs = CPU(cpu);
+    CPUClass *cc = CPU_GET_CLASS(cs);
+
+    if (cc->has_work(cs)) {
+        cs->exception_index = EXCP_YIELD;
+        cpu_loop_exit(cs);
+        return;
+    }
+
+#if !defined(CONFIG_USER_ONLY)
+    qemu_set_irq(cpu->mb_sleep, true);
+#endif
+    cs->exception_index = EXCP_HLT;
+    cs->halted = 1;
     cpu_loop_exit(cs);
 }
 

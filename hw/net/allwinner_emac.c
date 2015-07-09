@@ -18,7 +18,7 @@
  */
 #include "hw/sysbus.h"
 #include "net/net.h"
-#include "qemu/fifo8.h"
+#include "qemu/fifo.h"
 #include "hw/net/allwinner_emac.h"
 #include <zlib.h>
 
@@ -139,34 +139,34 @@ static void aw_emac_update_irq(AwEmacState *s)
 
 static void aw_emac_tx_reset(AwEmacState *s, int chan)
 {
-    fifo8_reset(&s->tx_fifo[chan]);
+    fifo_reset(&s->tx_fifo[chan]);
     s->tx_length[chan] = 0;
 }
 
 static void aw_emac_rx_reset(AwEmacState *s)
 {
-    fifo8_reset(&s->rx_fifo);
+    fifo_reset(&s->rx_fifo);
     s->rx_num_packets = 0;
     s->rx_packet_size = 0;
     s->rx_packet_pos = 0;
 }
 
-static void fifo8_push_word(Fifo8 *fifo, uint32_t val)
+static void fifo_push_word(Fifo *fifo, uint32_t val)
 {
-    fifo8_push(fifo, val);
-    fifo8_push(fifo, val >> 8);
-    fifo8_push(fifo, val >> 16);
-    fifo8_push(fifo, val >> 24);
+    fifo_push8(fifo, val);
+    fifo_push8(fifo, val >> 8);
+    fifo_push8(fifo, val >> 16);
+    fifo_push8(fifo, val >> 24);
 }
 
-static uint32_t fifo8_pop_word(Fifo8 *fifo)
+static uint32_t fifo_pop_word(Fifo *fifo)
 {
     uint32_t ret;
 
-    ret = fifo8_pop(fifo);
-    ret |= fifo8_pop(fifo) << 8;
-    ret |= fifo8_pop(fifo) << 16;
-    ret |= fifo8_pop(fifo) << 24;
+    ret = fifo_pop8(fifo);
+    ret |= fifo_pop8(fifo) << 8;
+    ret |= fifo_pop8(fifo) << 16;
+    ret |= fifo_pop8(fifo) << 24;
 
     return ret;
 }
@@ -179,37 +179,37 @@ static int aw_emac_can_receive(NetClientState *nc)
      * To avoid packet drops, allow reception only when there is space
      * for a full frame: 1522 + 8 (rx headers) + 2 (padding).
      */
-    return (s->ctl & EMAC_CTL_RX_EN) && (fifo8_num_free(&s->rx_fifo) >= 1532);
+    return (s->ctl & EMAC_CTL_RX_EN) && (fifo_num_free(&s->rx_fifo) >= 1532);
 }
 
 static ssize_t aw_emac_receive(NetClientState *nc, const uint8_t *buf,
                                size_t size)
 {
     AwEmacState *s = qemu_get_nic_opaque(nc);
-    Fifo8 *fifo = &s->rx_fifo;
+    Fifo *fifo = &s->rx_fifo;
     size_t padded_size, total_size;
     uint32_t crc;
 
     padded_size = size > 60 ? size : 60;
     total_size = QEMU_ALIGN_UP(RX_HDR_SIZE + padded_size + CRC_SIZE, 4);
 
-    if (!(s->ctl & EMAC_CTL_RX_EN) || (fifo8_num_free(fifo) < total_size)) {
+    if (!(s->ctl & EMAC_CTL_RX_EN) || (fifo_num_free(fifo) < total_size)) {
         return -1;
     }
 
-    fifo8_push_word(fifo, EMAC_UNDOCUMENTED_MAGIC);
-    fifo8_push_word(fifo, EMAC_RX_HEADER(padded_size + CRC_SIZE,
-                                         EMAC_RX_IO_DATA_STATUS_OK));
-    fifo8_push_all(fifo, buf, size);
+    fifo_push_word(fifo, EMAC_UNDOCUMENTED_MAGIC);
+    fifo_push_word(fifo, EMAC_RX_HEADER(padded_size + CRC_SIZE,
+                                        EMAC_RX_IO_DATA_STATUS_OK));
+    fifo_push_all(fifo, buf, size);
     crc = crc32(~0, buf, size);
 
     if (padded_size != size) {
-        fifo8_push_all(fifo, padding, padded_size - size);
+        fifo_push_all(fifo, padding, padded_size - size);
         crc = crc32(crc, padding, padded_size - size);
     }
 
-    fifo8_push_word(fifo, crc);
-    fifo8_push_all(fifo, padding, QEMU_ALIGN_UP(padded_size, 4) - padded_size);
+    fifo_push_word(fifo, crc);
+    fifo_push_all(fifo, padding, QEMU_ALIGN_UP(padded_size, 4) - padded_size);
     s->rx_num_packets++;
 
     s->int_sta |= EMAC_INT_RX;
@@ -247,7 +247,7 @@ static void aw_emac_reset(DeviceState *dev)
 static uint64_t aw_emac_read(void *opaque, hwaddr offset, unsigned size)
 {
     AwEmacState *s = opaque;
-    Fifo8 *fifo = &s->rx_fifo;
+    Fifo *fifo = &s->rx_fifo;
     NetClientState *nc;
     uint64_t ret;
 
@@ -267,7 +267,7 @@ static uint64_t aw_emac_read(void *opaque, hwaddr offset, unsigned size)
             return 0;
         }
 
-        ret = fifo8_pop_word(fifo);
+        ret = fifo_pop_word(fifo);
 
         switch (s->rx_packet_pos) {
         case 0:     /* Word is magic header */
@@ -315,7 +315,7 @@ static void aw_emac_write(void *opaque, hwaddr offset, uint64_t value,
                           unsigned size)
 {
     AwEmacState *s = opaque;
-    Fifo8 *fifo;
+    Fifo *fifo;
     NetClientState *nc = qemu_get_queue(s->nic);
     int chan;
 
@@ -343,13 +343,13 @@ static void aw_emac_write(void *opaque, hwaddr offset, uint64_t value,
             fifo = &s->tx_fifo[chan];
             len = s->tx_length[chan];
 
-            if (len > fifo8_num_used(fifo)) {
-                len = fifo8_num_used(fifo);
+            if (len > fifo_num_used(fifo)) {
+                len = fifo_num_used(fifo);
                 qemu_log_mask(LOG_GUEST_ERROR,
                               "allwinner_emac: TX length > fifo data length\n");
             }
             if (len > 0) {
-                data = fifo8_pop_buf(fifo, len, &ret);
+                data = fifo_pop_buf(fifo, len, &ret);
                 qemu_send_packet(nc, data, ret);
                 aw_emac_tx_reset(s, chan);
                 /* Raise TX interrupt */
@@ -374,12 +374,12 @@ static void aw_emac_write(void *opaque, hwaddr offset, uint64_t value,
         break;
     case EMAC_TX_IO_DATA_REG:
         fifo = &s->tx_fifo[s->tx_channel];
-        if (fifo8_num_free(fifo) < 4) {
+        if (fifo_num_free(fifo) < 4) {
             qemu_log_mask(LOG_GUEST_ERROR,
                           "allwinner_emac: TX data overruns fifo\n");
             break;
         }
-        fifo8_push_word(fifo, value);
+        fifo_push_word(fifo, value);
         break;
     case EMAC_RX_CTL_REG:
         s->rx_ctl = value;
@@ -457,9 +457,9 @@ static void aw_emac_realize(DeviceState *dev, Error **errp)
                           object_get_typename(OBJECT(dev)), dev->id, s);
     qemu_format_nic_info_str(qemu_get_queue(s->nic), s->conf.macaddr.a);
 
-    fifo8_create(&s->rx_fifo, RX_FIFO_SIZE);
-    fifo8_create(&s->tx_fifo[0], TX_FIFO_SIZE);
-    fifo8_create(&s->tx_fifo[1], TX_FIFO_SIZE);
+    fifo_create8(&s->rx_fifo, RX_FIFO_SIZE);
+    fifo_create8(&s->tx_fifo[0], TX_FIFO_SIZE);
+    fifo_create8(&s->tx_fifo[1], TX_FIFO_SIZE);
 }
 
 static Property aw_emac_properties[] = {
@@ -503,12 +503,12 @@ static const VMStateDescription vmstate_aw_emac = {
         VMSTATE_UINT32(int_ctl, AwEmacState),
         VMSTATE_UINT32(int_sta, AwEmacState),
         VMSTATE_UINT32(phy_target, AwEmacState),
-        VMSTATE_FIFO8(rx_fifo, AwEmacState),
+        VMSTATE_FIFO(rx_fifo, AwEmacState),
         VMSTATE_UINT32(rx_num_packets, AwEmacState),
         VMSTATE_UINT32(rx_packet_size, AwEmacState),
         VMSTATE_UINT32(rx_packet_pos, AwEmacState),
         VMSTATE_STRUCT_ARRAY(tx_fifo, AwEmacState, NUM_TX_FIFOS, 1,
-                             vmstate_fifo8, Fifo8),
+                             vmstate_fifo, Fifo),
         VMSTATE_UINT32_ARRAY(tx_length, AwEmacState, NUM_TX_FIFOS),
         VMSTATE_UINT32(tx_channel, AwEmacState),
         VMSTATE_END_OF_LIST()

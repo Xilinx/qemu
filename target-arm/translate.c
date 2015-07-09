@@ -56,8 +56,10 @@ static uint32_t gen_opc_condexec_bits[OPC_BUF_SIZE];
 
 #if defined(CONFIG_USER_ONLY)
 #define IS_USER(s) 1
+#define IS_NS(s) 1
 #else
 #define IS_USER(s) (s->user)
+#define IS_NS(s) (s->ns)
 #endif
 
 TCGv_ptr cpu_env;
@@ -67,6 +69,7 @@ static TCGv_i32 cpu_R[16];
 static TCGv_i32 cpu_CF, cpu_NF, cpu_VF, cpu_ZF;
 static TCGv_i64 cpu_exclusive_addr;
 static TCGv_i64 cpu_exclusive_val;
+static TCGv_i32 cpu_exclusive_lock;
 #ifdef CONFIG_USER_ONLY
 static TCGv_i64 cpu_exclusive_test;
 static TCGv_i32 cpu_exclusive_info;
@@ -103,6 +106,8 @@ void arm_translate_init(void)
         offsetof(CPUARMState, exclusive_addr), "exclusive_addr");
     cpu_exclusive_val = tcg_global_mem_new_i64(TCG_AREG0,
         offsetof(CPUARMState, exclusive_val), "exclusive_val");
+    cpu_exclusive_lock = tcg_global_mem_new_i32(TCG_AREG0,
+        offsetof(CPUARMState, exclusive_lock), "exclusive_lock");
 #ifdef CONFIG_USER_ONLY
     cpu_exclusive_test = tcg_global_mem_new_i64(TCG_AREG0,
         offsetof(CPUARMState, exclusive_test), "exclusive_test");
@@ -4052,6 +4057,10 @@ static void gen_rfe(DisasContext *s, TCGv_i32 pc, TCGv_i32 cpsr)
 static void gen_nop_hint(DisasContext *s, int val)
 {
     switch (val) {
+    case 1:
+        gen_set_pc_im(s, s->pc);
+        s->is_jmp = DISAS_YIELD;
+        break;
     case 3: /* wfi */
         gen_set_pc_im(s, s->pc);
         s->is_jmp = DISAS_WFI;
@@ -4061,8 +4070,12 @@ static void gen_nop_hint(DisasContext *s, int val)
         s->is_jmp = DISAS_WFE;
         break;
     case 4: /* sev */
+        gen_helper_sev(cpu_env);
+        break;
     case 5: /* sevl */
-        /* TODO: Implement SEV, SEVL and WFE.  May help SMP performance.  */
+        gen_helper_sevl(cpu_env);
+        break;
+        break;
     default: /* nop */
         break;
     }
@@ -7094,7 +7107,7 @@ static int disas_coproc_insn(DisasContext *s, uint32_t insn)
             ENCODE_CP_REG(cpnum, is64, s->ns, crn, crm, opc1, opc2));
     if (ri) {
         /* Check access permissions */
-        if (!cp_access_ok(s->current_el, ri, isread)) {
+        if (!cp_access_ok(s->current_el, s->ns, ri, isread)) {
             return 1;
         }
 
@@ -7395,11 +7408,22 @@ static void gen_load_exclusive(DisasContext *s, int rt, int rt2,
     }
 
     store_reg(s, rt, tmp);
+#ifndef CONFIG_USER_ONLY
+    {
+        TCGv_i64 tmp64 = tcg_temp_new_i64();
+        tcg_gen_extu_i32_i64(tmp64, addr);
+        gen_helper_exclusive_try_lock(cpu_env, tmp64);
+        tcg_temp_free_i64(tmp64);
+    }
+#endif
     tcg_gen_extu_i32_i64(cpu_exclusive_addr, addr);
 }
 
 static void gen_clrex(DisasContext *s)
 {
+#ifndef CONFIG_USER_ONLY
+    gen_helper_exclusive_unlock(cpu_env, cpu_exclusive_addr);
+#endif
     tcg_gen_movi_i64(cpu_exclusive_addr, -1);
 }
 
@@ -7429,6 +7453,9 @@ static void gen_store_exclusive(DisasContext *s, int rd, int rt, int rt2,
        } */
     fail_label = gen_new_label();
     done_label = gen_new_label();
+
+    tcg_gen_brcondi_i32(TCG_COND_EQ, cpu_exclusive_lock, 0, fail_label);
+
     extaddr = tcg_temp_new_i64();
     tcg_gen_extu_i32_i64(extaddr, addr);
     tcg_gen_brcond_i64(TCG_COND_NE, extaddr, cpu_exclusive_addr, fail_label);
@@ -7494,6 +7521,7 @@ static void gen_store_exclusive(DisasContext *s, int rd, int rt, int rt2,
     gen_set_label(fail_label);
     tcg_gen_movi_i32(cpu_R[rd], 1);
     gen_set_label(done_label);
+    gen_helper_exclusive_unlock(cpu_env, cpu_exclusive_addr);
     tcg_gen_movi_i64(cpu_exclusive_addr, -1);
 }
 #endif
@@ -7959,6 +7987,9 @@ static void disas_arm_insn(DisasContext *s, unsigned int insn)
             default:
                 goto illegal_op;
             }
+            /* bkpt */
+            ARCH(5);
+            gen_exception_insn(s, 4, EXCP_BKPT, syn_aa32_bkpt(imm16, false));
             break;
         }
         case 0x8: /* signed multiply */
@@ -11034,6 +11065,7 @@ static inline void gen_intermediate_code_internal(ARMCPU *cpu,
     dc->condexec_cond = ARM_TBFLAG_CONDEXEC(tb->flags) >> 4;
 #if !defined(CONFIG_USER_ONLY)
     dc->user = (ARM_TBFLAG_PRIV(tb->flags) == 0);
+    dc->ns = ARM_TBFLAG_NS(tb->flags);
 #endif
     dc->ns = ARM_TBFLAG_NS(tb->flags);
     dc->cpacr_fpen = ARM_TBFLAG_CPACR_FPEN(tb->flags);

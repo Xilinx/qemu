@@ -331,6 +331,8 @@ typedef struct RAMList {
 } RAMList;
 extern RAMList ram_list;
 
+extern const char *machine_path;
+
 /* Flags stored in the low bits of the TLB virtual address.  These are
    defined so that fast path ram access is all zeros.  */
 /* Zero if TLB entry is valid.  */

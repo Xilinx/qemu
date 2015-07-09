@@ -28,6 +28,7 @@
 #include "sysemu/dma.h"
 #include "qemu/timer.h"
 #include "qemu/bitops.h"
+#include "qemu/log.h"
 
 #include "sdhci.h"
 
@@ -42,17 +43,17 @@
     #define ERRPRINT(fmt, args...)        do { } while (0)
 #elif SDHC_DEBUG == 1
     #define DPRINT_L1(fmt, args...)       \
-        do {fprintf(stderr, "QEMU SDHC: "fmt, ## args); } while (0)
+        do { qemu_log_mask(DEV_LOG_SDHCI, "sdhci: "fmt, ## args); } while (0)
     #define DPRINT_L2(fmt, args...)       do { } while (0)
     #define ERRPRINT(fmt, args...)        \
-        do {fprintf(stderr, "QEMU SDHC ERROR: "fmt, ## args); } while (0)
+        do { qemu_log_mask(DEV_LOG_SDHCI, "sdhci: ERROR: "fmt, ## args); } while (0)
 #else
     #define DPRINT_L1(fmt, args...)       \
-        do {fprintf(stderr, "QEMU SDHC: "fmt, ## args); } while (0)
+        do { qemu_log_mask(DEV_LOG_SDHCI, "sdhci: "fmt, ## args); } while (0)
     #define DPRINT_L2(fmt, args...)       \
-        do {fprintf(stderr, "QEMU SDHC: "fmt, ## args); } while (0)
+        do { qemu_log_mask_level(DEV_LOG_SDHCI, 1, "sdhci: "fmt, ## args); } while (0)
     #define ERRPRINT(fmt, args...)        \
-        do {fprintf(stderr, "QEMU SDHC ERROR: "fmt, ## args); } while (0)
+        do { qemu_log_mask(DEV_LOG_SDHCI, "sdhci:  ERROR: "fmt, ## args); } while (0)
 #endif
 
 /* Default SD/MMC host controller features information, which will be
@@ -60,6 +61,12 @@
  * If not stated otherwise:
  * 0 - not supported, 1 - supported, other - prohibited.
  */
+#define SDHC_CAPAB_DRIVER_D       1ull       /* Driver type D support */
+#define SDHC_CAPAB_DRIVER_C       1ull       /* Driver type C support */
+#define SDHC_CAPAB_DRIVER_A       1ull       /* Driver type A support */
+#define SDHC_CAPAB_DDR50          1ull       /* DDR50 support */
+#define SDHC_CAPAB_SDR104         1ull       /* SDR104 support */
+#define SDHC_CAPAB_SDR50          1ull       /* SDR50 support */
 #define SDHC_CAPAB_64BITBUS       0ul        /* 64-bit System Bus Support */
 #define SDHC_CAPAB_18V            1ul        /* Voltage support 1.8v */
 #define SDHC_CAPAB_30V            0ul        /* Voltage support 3.0v */
@@ -107,7 +114,10 @@
 #endif
 
 #define SDHC_CAPAB_REG_DEFAULT                                 \
-   ((SDHC_CAPAB_64BITBUS << 28) | (SDHC_CAPAB_18V << 26) |     \
+   ((SDHC_CAPAB_DRIVER_D << 38) | (SDHC_CAPAB_DRIVER_C << 37) |\
+    (SDHC_CAPAB_DRIVER_A << 36) | (SDHC_CAPAB_DDR50 << 34) |   \
+    (SDHC_CAPAB_SDR104 << 33) | (SDHC_CAPAB_SDR50 << 32) |     \
+    (SDHC_CAPAB_64BITBUS << 28) | (SDHC_CAPAB_18V << 26) |     \
     (SDHC_CAPAB_30V << 25) | (SDHC_CAPAB_33V << 24) |          \
     (SDHC_CAPAB_SUSPRESUME << 23) | (SDHC_CAPAB_SDMA << 22) |  \
     (SDHC_CAPAB_HIGHSPEED << 21) | (SDHC_CAPAB_ADMA1 << 20) |  \
@@ -491,7 +501,7 @@ static void sdhci_sdma_transfer_multi_blocks(SDHCIState *s)
                     s->blkcnt--;
                 }
             }
-            dma_memory_write(&address_space_memory, s->sdmasysad,
+            dma_memory_write(s->dma_as, s->sdmasysad,
                              &s->fifo_buffer[begin], s->data_count - begin);
             s->sdmasysad += s->data_count - begin;
             if (s->data_count == block_size) {
@@ -513,7 +523,7 @@ static void sdhci_sdma_transfer_multi_blocks(SDHCIState *s)
                 s->data_count = block_size;
                 boundary_count -= block_size - begin;
             }
-            dma_memory_read(&address_space_memory, s->sdmasysad,
+            dma_memory_read(s->dma_as, s->sdmasysad,
                             &s->fifo_buffer[begin], s->data_count);
             s->sdmasysad += s->data_count - begin;
             if (s->data_count == block_size) {
@@ -552,11 +562,9 @@ static void sdhci_sdma_transfer_single_block(SDHCIState *s)
         for (n = 0; n < datacnt; n++) {
             s->fifo_buffer[n] = sd_read_data(s->card);
         }
-        dma_memory_write(&address_space_memory, s->sdmasysad, s->fifo_buffer,
-                         datacnt);
+        dma_memory_write(s->dma_as, s->sdmasysad, s->fifo_buffer, datacnt);
     } else {
-        dma_memory_read(&address_space_memory, s->sdmasysad, s->fifo_buffer,
-                        datacnt);
+        dma_memory_read(s->dma_as, s->sdmasysad, s->fifo_buffer, datacnt);
         for (n = 0; n < datacnt; n++) {
             sd_write_data(s->card, s->fifo_buffer[n]);
         }
@@ -583,7 +591,7 @@ static void get_adma_description(SDHCIState *s, ADMADescr *dscr)
     hwaddr entry_addr = (hwaddr)s->admasysaddr;
     switch (SDHC_DMA_TYPE(s->hostctl)) {
     case SDHC_CTRL_ADMA2_32:
-        dma_memory_read(&address_space_memory, entry_addr, (uint8_t *)&adma2,
+        dma_memory_read(s->dma_as, entry_addr, (uint8_t *)&adma2,
                         sizeof(adma2));
         adma2 = le64_to_cpu(adma2);
         /* The spec does not specify endianness of descriptor table.
@@ -595,7 +603,7 @@ static void get_adma_description(SDHCIState *s, ADMADescr *dscr)
         dscr->incr = 8;
         break;
     case SDHC_CTRL_ADMA1_32:
-        dma_memory_read(&address_space_memory, entry_addr, (uint8_t *)&adma1,
+        dma_memory_read(s->dma_as, entry_addr, (uint8_t *)&adma1,
                         sizeof(adma1));
         adma1 = le32_to_cpu(adma1);
         dscr->addr = (hwaddr)(adma1 & 0xFFFFF000);
@@ -608,12 +616,11 @@ static void get_adma_description(SDHCIState *s, ADMADescr *dscr)
         }
         break;
     case SDHC_CTRL_ADMA2_64:
-        dma_memory_read(&address_space_memory, entry_addr,
-                        (uint8_t *)(&dscr->attr), 1);
-        dma_memory_read(&address_space_memory, entry_addr + 2,
+        dma_memory_read(s->dma_as, entry_addr, (uint8_t *)(&dscr->attr), 1);
+        dma_memory_read(s->dma_as, entry_addr + 2,
                         (uint8_t *)(&dscr->length), 2);
         dscr->length = le16_to_cpu(dscr->length);
-        dma_memory_read(&address_space_memory, entry_addr + 4,
+        dma_memory_read(s->dma_as, entry_addr + 4,
                         (uint8_t *)(&dscr->addr), 8);
         dscr->attr = le64_to_cpu(dscr->attr);
         dscr->attr &= 0xfffffff8;
@@ -631,7 +638,7 @@ static void sdhci_do_adma(SDHCIState *s)
     ADMADescr dscr;
     int i;
 
-    for (i = 0; i < SDHC_ADMA_DESCS_PER_DELAY; ++i) {
+    for (i = 0; ; ++i) {
         s->admaerr &= ~SDHC_ADMAERR_LENGTH_MISMATCH;
 
         get_adma_description(s, &dscr);
@@ -653,11 +660,11 @@ static void sdhci_do_adma(SDHCIState *s)
             return;
         }
 
-        length = dscr.length ? dscr.length : 65536;
+        length = 0;
 
         switch (dscr.attr & SDHC_ADMA_ATTR_ACT_MASK) {
         case SDHC_ADMA_ATTR_ACT_TRAN:  /* data transfer */
-
+            length = dscr.length ? dscr.length : 65536;
             if (s->trnmod & SDHC_TRNS_READ) {
                 while (length) {
                     if (s->data_count == 0) {
@@ -673,7 +680,7 @@ static void sdhci_do_adma(SDHCIState *s)
                         s->data_count = block_size;
                         length -= block_size - begin;
                     }
-                    dma_memory_write(&address_space_memory, dscr.addr,
+                    dma_memory_write(s->dma_as, dscr.addr,
                                      &s->fifo_buffer[begin],
                                      s->data_count - begin);
                     dscr.addr += s->data_count - begin;
@@ -697,7 +704,7 @@ static void sdhci_do_adma(SDHCIState *s)
                         s->data_count = block_size;
                         length -= block_size - begin;
                     }
-                    dma_memory_read(&address_space_memory, dscr.addr,
+                    dma_memory_read(s->dma_as, dscr.addr,
                                     &s->fifo_buffer[begin],
                                     s->data_count - begin);
                     dscr.addr += s->data_count - begin;
@@ -761,7 +768,7 @@ static void sdhci_do_adma(SDHCIState *s)
 
     /* we have unfinished business - reschedule to continue ADMA */
     timer_mod(s->transfer_timer,
-                   qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + SDHC_TRANSFER_DELAY);
+                   qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + SDHC_TRANSFER_DELAY / 16);
 }
 
 /* Perform data transfer according to controller configuration */
@@ -829,7 +836,7 @@ static void sdhci_data_transfer(void *opaque)
 
 static bool sdhci_can_issue_command(SDHCIState *s)
 {
-    if (!SDHC_CLOCK_IS_ON(s->clkcon) || !(s->pwrcon & SDHC_POWER_ON) ||
+    if (!SDHC_CLOCK_IS_ON(s->clkcon) ||
         (((s->prnsts & SDHC_DATA_INHIBIT) || s->stopped_state) &&
         ((s->cmdreg & SDHC_CMD_DATA_PRESENT) ||
         ((s->cmdreg & SDHC_CMD_RESPONSE) == SDHC_CMD_RSP_WITH_BUSY &&
@@ -884,6 +891,8 @@ static uint64_t sdhci_read(void *opaque, hwaddr offset, unsigned size)
         break;
     case SDHC_PRNSTS:
         ret = s->prnsts;
+        ret = deposit32(ret, SDHC_DAT_LVL_SHIFT, SDHC_DAT_LVL_LENGTH,
+                        sd_get_dat_lines(s->card));
         break;
     case SDHC_HOSTCTL:
         ret = s->hostctl | (s->pwrcon << 8) | (s->blkgap << 16) |
@@ -902,10 +911,13 @@ static uint64_t sdhci_read(void *opaque, hwaddr offset, unsigned size)
         ret = s->norintsigen | (s->errintsigen << 16);
         break;
     case SDHC_ACMD12ERRSTS:
-        ret = s->acmd12errsts;
+        ret = s->acmd12errsts | (s->hostctl2 << 16);
         break;
+    case SDHC_CAPAREG_HI:
+	ret = extract64(s->capareg, 32, 32);
+	break;
     case SDHC_CAPAREG:
-        ret = s->capareg;
+	ret = extract64(s->capareg, 0, 32);
         break;
     case SDHC_MAXCURR:
         ret = s->maxcurr;
@@ -991,6 +1003,9 @@ sdhci_write(void *opaque, hwaddr offset, uint64_t val, unsigned size)
     uint32_t value = val;
     value <<= shift;
 
+    DPRINT_L1("%s: addr %" HWADDR_PRIx " data %" PRIx32 " size %u\n", __func__,
+              offset, value, size);
+
     switch (offset & ~0x3) {
     case SDHC_SYSAD:
         s->sdmasysad = (s->sdmasysad & mask) | value;
@@ -1038,10 +1053,18 @@ sdhci_write(void *opaque, hwaddr offset, uint64_t val, unsigned size)
         MASKED_WRITE(s->hostctl, mask, value);
         MASKED_WRITE(s->pwrcon, mask >> 8, value >> 8);
         MASKED_WRITE(s->wakcon, mask >> 24, value >> 24);
-        if (!(s->prnsts & SDHC_CARD_PRESENT) || ((s->pwrcon >> 1) & 0x7) < 5 ||
-                !(s->capareg & (1 << (31 - ((s->pwrcon >> 1) & 0x7))))) {
-            s->pwrcon &= ~SDHC_POWER_ON;
+        break;
+    case SDHC_ACMD12ERRSTS:
+        /* This implements a very simplified view.  */
+        if (value & SDHC_CTRL2_EXECUTE_TUNING) {
+            /* Signal immediate completition of tuning.  */
+            value &= ~SDHC_CTRL2_EXECUTE_TUNING;
+            value |= SDHC_CTRL2_SAMPLING_CLKSEL;
         }
+        s->acmd12errsts = value;
+        MASKED_WRITE(s->hostctl2, mask >> 16, value >> 16);
+        sd_set_voltage(s->card, s->hostctl2 & SDHC_CTRL2_VOLTAGE_SWITCH ?
+                                SD_VOLTAGE_18 : SD_VOLTAGE_33);
         break;
     case SDHC_CLKCON:
         if (!(mask & 0xFF000000)) {
@@ -1144,19 +1167,14 @@ static inline unsigned int sdhci_get_fifolen(SDHCIState *s)
 
 static void sdhci_initfn(SDHCIState *s)
 {
-    DriveInfo *di;
-
-    di = drive_get_next(IF_SD);
-    s->card = sd_init(di ? blk_by_legacy_dinfo(di) : NULL, false);
-    if (s->card == NULL) {
-        exit(1);
-    }
-    s->eject_cb = qemu_allocate_irq(sdhci_insert_eject_cb, s, 0);
-    s->ro_cb = qemu_allocate_irq(sdhci_card_readonly_cb, s, 0);
-    sd_set_cb(s->card, s->ro_cb, s->eject_cb);
-
     s->insert_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, sdhci_raise_insertion_irq, s);
     s->transfer_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, sdhci_data_transfer, s);
+
+    object_property_add_link(OBJECT(s), "dma", TYPE_MEMORY_REGION,
+                             (Object **)&s->dma_mr,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             &error_abort);
 }
 
 static void sdhci_uninitfn(SDHCIState *s)
@@ -1207,6 +1225,7 @@ const VMStateDescription sdhci_vmstate = {
         VMSTATE_VBUFFER_UINT32(fifo_buffer, SDHCIState, 1, NULL, 0, buf_maxsz),
         VMSTATE_TIMER(insert_timer, SDHCIState),
         VMSTATE_TIMER(transfer_timer, SDHCIState),
+        VMSTATE_UINT16(hostctl2, SDHCIState),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -1214,8 +1233,8 @@ const VMStateDescription sdhci_vmstate = {
 /* Capabilities registers provide information on supported features of this
  * specific host controller implementation */
 static Property sdhci_properties[] = {
-    DEFINE_PROP_UINT32("capareg", SDHCIState, capareg,
-            SDHC_CAPAB_REG_DEFAULT),
+    DEFINE_PROP_UINT64("capareg", SDHCIState, capareg,
+                       SDHC_CAPAB_REG_DEFAULT),
     DEFINE_PROP_UINT32("maxcurr", SDHCIState, maxcurr, 0),
     DEFINE_PROP_END_OF_LIST(),
 };
@@ -1280,12 +1299,17 @@ static void sdhci_sysbus_realize(DeviceState *dev, Error ** errp)
     SDHCIState *s = SYSBUS_SDHCI(dev);
     SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
 
+    s->eject_cb = qemu_allocate_irq(sdhci_insert_eject_cb, s, 0);
+    s->ro_cb = qemu_allocate_irq(sdhci_card_readonly_cb, s, 0);
+
     s->buf_maxsz = sdhci_get_fifolen(s);
     s->fifo_buffer = g_malloc0(s->buf_maxsz);
     sysbus_init_irq(sbd, &s->irq);
     memory_region_init_io(&s->iomem, OBJECT(s), &sdhci_mmio_ops, s, "sdhci",
             SDHC_REGISTERS_MAP_SIZE);
     sysbus_init_mmio(sbd, &s->iomem);
+    s->dma_as = s->dma_mr ? address_space_init_shareable(s->dma_mr, NULL)
+                          : &address_space_memory;
 }
 
 static void sdhci_sysbus_class_init(ObjectClass *klass, void *data)

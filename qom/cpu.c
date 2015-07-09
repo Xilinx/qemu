@@ -25,6 +25,9 @@
 #include "qemu/log.h"
 #include "qemu/error-report.h"
 #include "sysemu/sysemu.h"
+#include "exec/memory.h"
+#include "qapi/visitor.h"
+#include "hw/qdev-properties.h"
 
 bool cpu_exists(int64_t id)
 {
@@ -236,6 +239,9 @@ static void cpu_common_reset(CPUState *cpu)
 {
     CPUClass *cc = CPU_GET_CLASS(cpu);
 
+    bool old_halt = cpu->halt_pin;
+    bool old_reset = cpu->reset_pin;
+
     if (qemu_loglevel_mask(CPU_LOG_RESET)) {
         qemu_log("CPU Reset (CPU %d)\n", cpu->cpu_index);
         log_cpu_state(cpu, cc->reset_dump_flags);
@@ -251,11 +257,32 @@ static void cpu_common_reset(CPUState *cpu)
     cpu->can_do_io = 0;
     cpu->exception_index = -1;
     memset(cpu->tb_jmp_cache, 0, TB_JMP_CACHE_SIZE * sizeof(void *));
+    cpu_halt_gpio(cpu, 0, old_halt);
+    cpu_reset_gpio(cpu, 0, old_reset);
 }
 
 static bool cpu_common_has_work(CPUState *cs)
 {
     return false;
+}
+
+static void cpu_device_reset(DeviceState *dev)
+{
+    cpu_reset(CPU(dev));
+}
+
+static void cpu_common_halt(DeviceState *dev)
+{
+    CPUState *s = CPU(dev);
+
+    s->halted = 1;
+}
+
+static void cpu_common_unhalt(DeviceState *dev)
+{
+    CPUState *s = CPU(dev);
+
+    s->halted = 0;
 }
 
 ObjectClass *cpu_class_by_name(const char *typename, const char *cpu_model)
@@ -308,18 +335,53 @@ static void cpu_common_realizefn(DeviceState *dev, Error **errp)
     }
 }
 
+static void cpu_set_mr(Object *obj, Visitor *v, void *opaque,
+                       const char *name, Error **errp)
+{
+    CPUState *cpu = CPU(obj);
+    Error *local_err = NULL;
+    char *path = NULL;
+
+    visit_type_str(v, &path, name, &local_err);
+
+    if (!local_err && strcmp(path, "") != 0) {
+        cpu->mr = MEMORY_REGION(object_resolve_link(obj, name, path,
+                                &local_err));
+    }
+
+    if (local_err) {
+        error_propagate(errp, local_err);
+        return;
+    }
+
+    object_ref(OBJECT(cpu->mr));
+    cpu->as = address_space_init_shareable(cpu->mr, NULL);
+}
+
 static void cpu_common_initfn(Object *obj)
 {
     CPUState *cpu = CPU(obj);
     CPUClass *cc = CPU_GET_CLASS(obj);
 
     cpu->gdb_num_regs = cpu->gdb_num_g_regs = cc->gdb_num_core_regs;
+    qdev_init_gpio_in_named(DEVICE(obj), cpu_reset_gpio, "reset",1);
+    qdev_init_gpio_in_named(DEVICE(obj), cpu_halt_gpio, "halt", 1);
+    object_property_add(obj, "mr", "link<" TYPE_MEMORY_REGION ">",
+                        NULL, /* FIXME: Implement the getter */
+                        cpu_set_mr,
+                        NULL, /* FIXME: Implement the cleanup */
+                        NULL, &error_abort);
 }
 
 static int64_t cpu_common_get_arch_id(CPUState *cpu)
 {
     return cpu->cpu_index;
 }
+
+static Property cpu_common_properties[] = {
+    DEFINE_PROP_STRING("gdb-id", CPUState, gdb_id),
+    DEFINE_PROP_END_OF_LIST(),
+};
 
 static void cpu_class_init(ObjectClass *klass, void *data)
 {
@@ -344,7 +406,11 @@ static void cpu_class_init(ObjectClass *klass, void *data)
     k->cpu_exec_enter = cpu_common_noop;
     k->cpu_exec_exit = cpu_common_noop;
     k->cpu_exec_interrupt = cpu_common_exec_interrupt;
+    dc->reset = cpu_device_reset;
+    dc->halt = cpu_common_halt;
+    dc->unhalt = cpu_common_unhalt;
     dc->realize = cpu_common_realizefn;
+    dc->props = cpu_common_properties;
     /*
      * Reason: CPUs still need special care by board code: wiring up
      * IRQs, adding reset handlers, halting non-first CPUs, ...

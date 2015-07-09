@@ -132,6 +132,20 @@ static void machine_set_dtb(Object *obj, const char *value, Error **errp)
     ms->dtb = g_strdup(value);
 }
 
+static char *machine_get_hw_dtb(Object *obj, Error **errp)
+{
+    MachineState *ms = MACHINE(obj);
+
+    return g_strdup(ms->hw_dtb);
+}
+
+static void machine_set_hw_dtb(Object *obj, const char *value, Error **errp)
+{
+    MachineState *ms = MACHINE(obj);
+
+    ms->hw_dtb = g_strdup(value);
+}
+
 static char *machine_get_dumpdtb(Object *obj, Error **errp)
 {
     MachineState *ms = MACHINE(obj);
@@ -201,6 +215,21 @@ static void machine_set_dump_guest_core(Object *obj, bool value, Error **errp)
     MachineState *ms = MACHINE(obj);
 
     ms->dump_guest_core = value;
+}
+
+
+static bool machine_get_linux(Object *obj, Error **errp)
+{
+    MachineState *ms = MACHINE(obj);
+
+    return ms->is_linux;
+}
+
+static void machine_set_linux(Object *obj, bool value, Error **errp)
+{
+    MachineState *ms = MACHINE(obj);
+
+    ms->is_linux = value;
 }
 
 static bool machine_get_mem_merge(Object *obj, Error **errp)
@@ -328,6 +357,11 @@ static void machine_initfn(Object *obj)
     object_property_set_description(obj, "dtb",
                                     "Linux kernel device tree file",
                                     NULL);
+    object_property_add_str(obj, "hw-dtb",
+                            machine_get_hw_dtb, machine_set_hw_dtb, NULL);
+    object_property_set_description(obj, "hw-dtb",
+                                    "Dump current dtb to a file and quit",
+                                    NULL);
     object_property_add_str(obj, "dumpdtb",
                             machine_get_dumpdtb, machine_set_dumpdtb, NULL);
     object_property_set_description(obj, "dumpdtb",
@@ -353,6 +387,11 @@ static void machine_initfn(Object *obj)
                              NULL);
     object_property_set_description(obj, "dump-guest-core",
                                     "Include guest memory in  a core dump",
+                                    NULL);
+    object_property_add_bool(obj, "linux",
+                             machine_get_linux, machine_set_linux, NULL);
+    object_property_set_description(obj, "linux",
+                                    "Force a Linux style boot",
                                     NULL);
     object_property_add_bool(obj, "mem-merge",
                              machine_get_mem_merge,

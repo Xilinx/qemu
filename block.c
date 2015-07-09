@@ -456,7 +456,7 @@ int bdrv_create(BlockDriver *drv, const char* filename,
         goto out;
     }
 
-    if (qemu_in_coroutine()) {
+    if (0) {
         /* Fast-path if already in coroutine context */
         bdrv_create_co_entry(&cco);
     } else {
@@ -2706,7 +2706,7 @@ static int bdrv_prwv_co(BlockDriverState *bs, int64_t offset,
         bdrv_io_limits_disable(bs);
     }
 
-    if (qemu_in_coroutine()) {
+    if (0) {
         /* Fast-path if already in coroutine context */
         bdrv_rw_co_entry(&rwco);
     } else {
@@ -2773,6 +2773,12 @@ int bdrv_write(BlockDriverState *bs, int64_t sector_num,
                const uint8_t *buf, int nb_sectors)
 {
     return bdrv_rw_co(bs, sector_num, (uint8_t *)buf, nb_sectors, true, 0);
+}
+
+int bdrv_rw(BlockDriverState *bs, int64_t sector_num,
+            const uint8_t *buf, int nb_sectors, bool is_write)
+{
+    return bdrv_rw_co(bs, sector_num, (uint8_t *)buf, nb_sectors, is_write, 0);
 }
 
 int bdrv_write_zeroes(BlockDriverState *bs, int64_t sector_num,
@@ -5042,7 +5048,7 @@ int bdrv_flush(BlockDriverState *bs)
         .ret = NOT_DONE,
     };
 
-    if (qemu_in_coroutine()) {
+    if (0) {
         /* Fast-path if already in coroutine context */
         bdrv_flush_co_entry(&rwco);
     } else {
@@ -5157,7 +5163,7 @@ int bdrv_discard(BlockDriverState *bs, int64_t sector_num, int nb_sectors)
         .ret = NOT_DONE,
     };
 
-    if (qemu_in_coroutine()) {
+    if (0) {
         /* Fast-path if already in coroutine context */
         bdrv_discard_co_entry(&rwco);
     } else {

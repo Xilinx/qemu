@@ -113,11 +113,20 @@ int main(int argc, char **argv)
 #include "sysemu/arch_init.h"
 #include "qemu/osdep.h"
 
+#include "qemu/etrace.h"
+
 #include "ui/qemu-spice.h"
 #include "qapi/string-input-visitor.h"
 #include "qapi/opts-visitor.h"
 #include "qom/object_interfaces.h"
 #include "qapi-event.h"
+
+#if defined(CONFIG_LIBGCRYPT)
+#include <gcrypt.h>
+#endif
+
+//#define DEBUG_NET
+//#define DEBUG_SLIRP
 
 #define DEFAULT_RAM_SIZE 128
 
@@ -133,6 +142,8 @@ static int display_remote;
 const char* keyboard_layout = NULL;
 ram_addr_t ram_size;
 const char *mem_path = NULL;
+uint64_t global_sync_quantum = 0;
+const char *machine_path = NULL;
 int mem_prealloc = 0; /* force preallocation of physical target memory */
 bool enable_mlock = false;
 int nb_nics;
@@ -205,6 +216,7 @@ static NotifierList machine_init_done_notifiers =
 bool xen_allowed;
 uint32_t xen_domid;
 enum xen_mode xen_mode = XEN_EMULATE;
+bool tcg_tb_chain = true;
 
 static int has_defaults = 1;
 static int default_serial = 1;
@@ -344,6 +356,12 @@ static QemuOptsList qemu_boot_opts = {
         }, {
             .name = "strict",
             .type = QEMU_OPT_BOOL,
+        }, {
+            .name = "mode",
+            .type = QEMU_OPT_NUMBER,
+        }, {
+            .name = "cpu",
+            .type = QEMU_OPT_NUMBER,
         },
         { /*End of list */ }
     },
@@ -503,6 +521,17 @@ static QemuOptsList qemu_semihosting_config_opts = {
 QemuOpts *qemu_get_machine_opts(void)
 {
     return qemu_find_opts_singleton("machine");
+}
+
+/**
+ * Get boot options
+ *
+ * Returns: boot options (never null).
+ */
+
+QemuOpts *qemu_get_boot_opts(void)
+{
+    return qemu_find_opts_singleton("boot-opts");
 }
 
 const char *qemu_get_vm_name(void)
@@ -1606,7 +1635,9 @@ void qemu_devices_reset(void)
 
     /* reset all devices */
     QTAILQ_FOREACH_SAFE(re, &reset_handlers, entry, nre) {
-        re->func(re->opaque);
+        if (re->func) {
+            re->func(re->opaque);
+        }
     }
 }
 
@@ -2951,6 +2982,9 @@ int main(int argc, char **argv, char **envp)
             case QEMU_OPTION_append:
                 qemu_opts_set(qemu_find_opts("machine"), 0, "append", optarg);
                 break;
+            case QEMU_OPTION_hw_dtb:
+                qemu_opts_set(qemu_find_opts("machine"), 0, "hw-dtb", optarg);
+                break;
             case QEMU_OPTION_dtb:
                 qemu_opts_set(qemu_find_opts("machine"), 0, "dtb", optarg);
                 break;
@@ -3111,11 +3145,23 @@ int main(int argc, char **argv, char **envp)
                 }
                 break;
 #endif
+            case QEMU_OPTION_etrace:
+                qemu_arg_etrace = optarg;
+                break;
+            case QEMU_OPTION_etrace_flags:
+                qemu_arg_etrace_flags = optarg;
+                break;
             case QEMU_OPTION_mempath:
                 mem_path = optarg;
                 break;
             case QEMU_OPTION_mem_prealloc:
                 mem_prealloc = 1;
+                break;
+            case QEMU_OPTION_sync_quantum:
+                global_sync_quantum = strtoull(optarg, (char **) &optarg, 10);
+                break;
+            case QEMU_OPTION_machine_path:
+                machine_path = optarg;
                 break;
             case QEMU_OPTION_d:
                 log_mask = optarg;
@@ -3602,6 +3648,9 @@ int main(int argc, char **argv, char **envp)
                     tcg_tb_size = 0;
                 }
                 break;
+            case QEMU_OPTION_no_tb_chain:
+                tcg_tb_chain = false;
+                break;
             case QEMU_OPTION_icount:
                 icount_opts = qemu_opts_parse(qemu_find_opts("icount"),
                                               optarg, 1);
@@ -3752,6 +3801,17 @@ int main(int argc, char **argv, char **envp)
 
     os_daemonize();
 
+    if (qemu_arg_etrace) {
+        qemu_etrace_enabled = etrace_init(&qemu_etracer, qemu_arg_etrace,
+                                          qemu_arg_etrace_flags,
+                                          0, 32);
+        if (!qemu_etrace_enabled) {
+            perror(qemu_arg_etrace);
+            exit(1);
+        }
+        atexit(qemu_etrace_cleanup);
+    }
+
     if (qemu_init_main_loop(&main_loop_err)) {
         error_report("%s", error_get_pretty(main_loop_err));
         exit(1);
@@ -3812,17 +3872,14 @@ int main(int argc, char **argv, char **envp)
      * location or level of logging.
      */
     if (log_mask) {
-        int mask;
         if (log_file) {
             qemu_set_log_filename(log_file);
         }
 
-        mask = qemu_str_to_log_mask(log_mask);
-        if (!mask) {
+        if (!qemu_setup_log_args(log_mask)) {
             qemu_print_log_usage(stdout);
             exit(1);
         }
-        qemu_set_log(mask);
     }
 
     if (!is_daemonized()) {
@@ -3982,6 +4039,18 @@ int main(int argc, char **argv, char **envp)
     }
 #endif
 
+#if defined(CONFIG_LIBGCRYPT)
+    if (!gcry_check_version (GCRYPT_VERSION)) {
+        printf("libgcrypt version mismatch\n");
+        exit(1);
+    }
+    /* Disable secure memory.
+     * FIXME: We might want to use secmem at some point.  */
+    gcry_control (GCRYCTL_DISABLE_SECMEM, 0);
+    /* Tell Libgcrypt that initialization has completed. */
+    gcry_control (GCRYCTL_INITIALIZATION_FINISHED, 0);
+#endif
+
     socket_init();
 
     if (qemu_opts_foreach(qemu_find_opts("chardev"), chardev_init_func, NULL, 1) != 0)
@@ -4066,6 +4135,7 @@ int main(int argc, char **argv, char **envp)
 
         boot_menu = qemu_opt_get_bool(opts, "menu", boot_menu);
         boot_strict = qemu_opt_get_bool(opts, "strict", false);
+
     }
 
     if (!kernel_cmdline) {
@@ -4085,10 +4155,12 @@ int main(int argc, char **argv, char **envp)
         exit(1);
     }
 
+#if 0
     if (!linux_boot && qemu_opt_get(machine_opts, "dtb")) {
         fprintf(stderr, "-dtb only allowed with -kernel option\n");
         exit(1);
     }
+#endif
 
     os_set_line_buffering();
 
@@ -4329,6 +4401,10 @@ int main(int argc, char **argv, char **envp)
         return 0;
     }
 
+    if (machine_opts && qemu_opt_get_bool(machine_opts, "trial", 0)) {
+        exit(0);
+    }
+
     if (incoming) {
         Error *local_err = NULL;
         qemu_start_incoming_migration(incoming, &local_err);
@@ -4350,6 +4426,10 @@ int main(int argc, char **argv, char **envp)
         }
     }
 
+    if (qemu_etrace_mask(ETRACE_F_GPIO)) {
+        qemu_etrace_gpio_init();
+    }
+
     main_loop();
     bdrv_close_all();
     pause_all_vcpus();
@@ -4359,4 +4439,13 @@ int main(int argc, char **argv, char **envp)
 #endif
 
     return 0;
+}
+
+static void __attribute__((constructor)) startup_banner(void)
+{
+    fprintf(stderr,
+        "--------------------------------------------------------------------\n"
+        "Xilinx QEMU %s %s.\n"
+        "--------------------------------------------------------------------\n"
+        , __DATE__, __TIME__);
 }

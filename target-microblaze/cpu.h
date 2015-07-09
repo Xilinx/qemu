@@ -131,6 +131,7 @@ typedef struct CPUMBState CPUMBState;
 #define PVR0_FAULT			0x00100000
 #define PVR0_VERSION_MASK               0x0000FF00
 #define PVR0_USER1_MASK                 0x000000FF
+#define PVR0_SPROT_MASK                 0x00000001
 
 /* User 2 PVR mask */
 #define PVR1_USER2_MASK                 0xFFFFFFFF
@@ -227,6 +228,7 @@ typedef struct CPUMBState CPUMBState;
 #define CC_EQ  0
 
 #define NB_MMU_MODES    3
+#define NB_MEM_ATTR     1
 
 #define STREAM_EXCEPTION (1 << 0)
 #define STREAM_ATOMIC    (1 << 1)
@@ -251,6 +253,7 @@ struct CPUMBState {
 #define RES_ADDR_NONE 0xffffffff /* Use 0xffffffff to indicate no reservation */
     uint32_t res_addr;
     uint32_t res_val;
+    uint32_t exclusive_lock;
 
     /* Internal flags.  */
 #define IMM_FLAG	4
@@ -262,6 +265,7 @@ struct CPUMBState {
 /* TB dependent CPUMBState.  */
 #define IFLAGS_TB_MASK  (D_FLAG | IMM_FLAG | DRTI_FLAG | DRTE_FLAG | DRTB_FLAG)
     uint32_t iflags;
+    uint32_t wakeup;
 
     struct {
         uint32_t regs[16];

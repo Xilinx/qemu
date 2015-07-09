@@ -23,7 +23,7 @@
 #define AW_EMAC_H
 
 #include "net/net.h"
-#include "qemu/fifo8.h"
+#include "qemu/fifo.h"
 
 #define TYPE_AW_EMAC "allwinner-emac"
 #define AW_EMAC(obj) OBJECT_CHECK(AwEmacState, (obj), TYPE_AW_EMAC)
@@ -198,12 +198,12 @@ typedef struct AwEmacState {
     uint32_t       int_sta;
     uint32_t       phy_target;
 
-    Fifo8          rx_fifo;
+    Fifo           rx_fifo;
     uint32_t       rx_num_packets;
     uint32_t       rx_packet_size;
     uint32_t       rx_packet_pos;
 
-    Fifo8          tx_fifo[NUM_TX_FIFOS];
+    Fifo           tx_fifo[NUM_TX_FIFOS];
     uint32_t       tx_length[NUM_TX_FIFOS];
     uint32_t       tx_channel;
 } AwEmacState;
