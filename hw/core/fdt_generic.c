@@ -31,6 +31,7 @@
 #ifndef FDT_GENERIC_ERR_DEBUG
 #define FDT_GENERIC_ERR_DEBUG 0
 #endif
+#define LOG_LEVEL_MASK(x) (1<<x)	// Where is this normally defined?
 #define DB_PRINT(...) do { \
     if (FDT_GENERIC_ERR_DEBUG) { \
         qemu_log_mask(LOG_FDT | LOG_LEVEL_MASK(2), ": %s: ", __func__); \

@@ -82,7 +82,6 @@ static void ronaldo_sdhci_realize(DeviceState *dev, Error **errp)
 {
     DeviceClass *dc_parent = DEVICE_CLASS(RONALDO_SDHCI_PARENT_CLASS);
     RonaldoSDHCIState *s = RONALDO_SDHCI(dev);
-    SDHCIState *ss = SYSBUS_SDHCI(dev);
     DriveInfo *di_sd;
     DriveInfo *di_mmc;
 

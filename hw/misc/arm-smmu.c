@@ -6145,7 +6145,7 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
     unsigned int outputsize;
     unsigned int grainsize = -1;
     unsigned int stride;
-    unsigned int level;
+    unsigned int level = 0;
     unsigned int firstblocklevel = 0;
     unsigned int tg;
     unsigned int ps;
