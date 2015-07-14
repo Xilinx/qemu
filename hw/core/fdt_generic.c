@@ -31,10 +31,10 @@
 #ifndef FDT_GENERIC_ERR_DEBUG
 #define FDT_GENERIC_ERR_DEBUG 0
 #endif
-#define DB_PRINT(...) do { \
-    if (FDT_GENERIC_ERR_DEBUG) { \
-        qemu_log_mask(LOG_FDT | LOG_LEVEL_MASK(2), ": %s: ", __func__); \
-        qemu_log_mask(LOG_FDT | LOG_LEVEL_MASK(2), ## __VA_ARGS__); \
+#define DB_PRINT(lvl, ...) do { \
+    if (FDT_GENERIC_ERR_DEBUG > (lvl)) { \
+        qemu_log_mask_level(LOG_FDT, lvl, ": %s: ", __func__); \
+        qemu_log_mask_level(LOG_FDT, lvl, ## __VA_ARGS__); \
     } \
 } while (0);
 
@@ -136,9 +136,9 @@ void fdt_init_yield(FDTMachineInfo *fdti)
     static int yield_index;
     int this_yield = yield_index++;
 
-    DB_PRINT("yield #%d\n", this_yield);
+    DB_PRINT(1, "Yield #%d\n", this_yield);
     qemu_co_queue_wait(fdti->cq);
-    DB_PRINT("unyield #%d\n", this_yield);
+    DB_PRINT(1, "Unyield #%d\n", this_yield);
 }
 
 void fdt_init_set_opaque(FDTMachineInfo *fdti, char *node_path, void *opaque)
