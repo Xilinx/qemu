@@ -1128,7 +1128,6 @@ static void do_logfile(Monitor *mon, const QDict *qdict)
 
 static void do_log(Monitor *mon, const QDict *qdict)
 {
-    int mask;
     const char *items = qdict_get_str(qdict, "items");
 
     if (!strcmp(items, "none")) {

@@ -628,7 +628,9 @@ static void trim_xilinx_version(char *x)
         }
         if (DIGIT(x[1])) {
             char *p;
-            strtol(x+1, &p, 0);
+            if (strtol(x+1, &p, 0)) {
+                p = p;	/* -Werror */
+            }
             if ( *p == '.') {
                 *x = 0;
                 return;

@@ -614,7 +614,7 @@ void arm_load_kernel(ARMCPU *cpu, struct arm_boot_info *info)
     int kernel_size;
     int initrd_size;
     int is_linux = 0;
-    uint64_t elf_entry, elf_low_addr, elf_high_addr;
+    uint64_t elf_entry;
     int elf_machine;
     hwaddr entry, kernel_load_offset;
     int big_endian;

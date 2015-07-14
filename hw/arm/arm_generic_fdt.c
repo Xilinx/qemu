@@ -137,8 +137,8 @@ static void arm_generic_fdt_init(MachineState *machine)
 {
     ram_addr_t ram_kernel_base = 0, ram_kernel_size = 0;
 
-    void *fdt;
-    void *sw_fdt;
+    void *fdt = NULL;
+    void *sw_fdt = NULL;
     int fdt_size, sw_fdt_size;
     const char *dtb_arg, *hw_dtb_arg;
     char node_path[DT_PATH_LENGTH];

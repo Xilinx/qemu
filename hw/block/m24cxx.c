@@ -21,6 +21,7 @@
 #include "hw/i2c/i2c.h"
 #include "hw/hw.h"
 #include "sysemu/blockdev.h"
+#include "sysemu/block-backend.h"
 
 #ifndef M24CXX_DEBUG
 #define M24CXX_DEBUG 0
