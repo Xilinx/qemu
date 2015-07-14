@@ -234,9 +234,10 @@ void mmu_write(CPUMBState *env, uint32_t rn, uint32_t v)
         case MMU_R_TLBHI:
             i = env->mmu.regs[MMU_R_TLBX] & 0xff;
             if (rn == MMU_R_TLBHI) {
-                if (i < 3 && !(v & TLB_VALID) && qemu_loglevel_mask(~0))
+                if (i < 3 && !(v & TLB_VALID) && qemu_loglevel_mask(~0)) {
                     D(qemu_log("invalidating index %x at pc=%x\n",
                              i, env->sregs[SR_PC]));
+		}
                 env->mmu.tids[i] = env->mmu.regs[MMU_R_PID] & 0xff;
                 mmu_flush_idx(env, i);
             }

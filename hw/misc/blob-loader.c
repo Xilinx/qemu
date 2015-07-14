@@ -43,7 +43,7 @@ extern AddressSpace *loader_as;
 static void blob_loader_realize(DeviceState *dev, Error **errp)
 {
     BlobLoaderState *s = BLOB_LOADER(dev);
-    int size;
+    int size = 0;
     hwaddr entry;
 
     if (s->cpu_nr != BLOB_LOADER_CPU_NONE) {
