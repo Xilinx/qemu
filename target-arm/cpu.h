@@ -1799,6 +1799,8 @@ static bool arm_cpu_is_big_endian(CPUARMState *env)
  */
 #define ARM_TBFLAG_NS_SHIFT         19
 #define ARM_TBFLAG_NS_MASK          (1 << ARM_TBFLAG_NS_SHIFT)
+#define ARM_TBFLAG_MOE_SHIFT        20
+#define ARM_TBFLAG_MOE_MASK         (1 << ARM_TBFLAG_MOE_SHIFT)
 
 /* Bit usage when in AArch64 state: currently we have no A64 specific bits */
 
@@ -1829,6 +1831,8 @@ static bool arm_cpu_is_big_endian(CPUARMState *env)
     (((F) & ARM_TBFLAG_XSCALE_CPAR_MASK) >> ARM_TBFLAG_XSCALE_CPAR_SHIFT)
 #define ARM_TBFLAG_NS(F) \
     (((F) & ARM_TBFLAG_NS_MASK) >> ARM_TBFLAG_NS_SHIFT)
+#define ARM_TBFLAG_MOE(F) \
+    (((F) & ARM_TBFLAG_MOE_MASK) >> ARM_TBFLAG_MOE_SHIFT)
 
 /* Return the exception level to which FP-disabled exceptions should
  * be taken, or 0 if FP is enabled.
@@ -1959,6 +1963,9 @@ static inline void cpu_get_tb_cpu_state(CPUARMState *env, target_ulong *pc,
                 *flags |= ARM_TBFLAG_PSTATE_SS_MASK;
             }
         }
+    }
+    if (arm_cpu_is_big_endian(env)) {
+        *flags |= ARM_TBFLAG_MOE_MASK;
     }
     *flags |= fp_exception_el(env) << ARM_TBFLAG_FPEXC_EL_SHIFT;
 

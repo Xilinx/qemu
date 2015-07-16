@@ -7683,7 +7683,7 @@ static void disas_arm_insn(DisasContext *s, unsigned int insn)
         if ((insn & 0x0ffffdff) == 0x01010000) {
             ARCH(6);
             /* setend */
-            if (((insn >> 9) & 1) != s->bswap_code) {
+            if (((insn >> 9) & 1) != !!(s->mo_endianness == MO_BE)) {
                 /* Dynamic endianness switching not implemented. */
                 qemu_log_mask(LOG_UNIMP, "arm: unimplemented setend\n");
                 goto illegal_op;
@@ -11002,7 +11002,7 @@ static void disas_thumb_insn(CPUARMState *env, DisasContext *s)
             case 2:
                 /* setend */
                 ARCH(6);
-                if (((insn >> 3) & 1) != s->bswap_code) {
+                if (((insn >> 3) & 1) != !!(s->mo_endianness == MO_BE)) {
                     /* Dynamic endianness switching not implemented. */
                     qemu_log_mask(LOG_UNIMP, "arm: unimplemented setend\n");
                     goto illegal_op;
@@ -11183,7 +11183,7 @@ static inline void gen_intermediate_code_internal(ARMCPU *cpu,
     dc->el3_is_aa64 = arm_el_is_aa64(env, 3);
     dc->thumb = ARM_TBFLAG_THUMB(tb->flags);
     dc->bswap_code = ARM_TBFLAG_BSWAP_CODE(tb->flags);
-    dc->mo_endianness = MO_TE;
+    dc->mo_endianness = ARM_TBFLAG_MOE(tb->flags) ? MO_BE : MO_LE;
     dc->condexec_mask = (ARM_TBFLAG_CONDEXEC(tb->flags) & 0xf) << 1;
     dc->condexec_cond = ARM_TBFLAG_CONDEXEC(tb->flags) >> 4;
     dc->mmu_idx = ARM_TBFLAG_MMUIDX(tb->flags);
