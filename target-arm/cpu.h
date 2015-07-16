@@ -1876,6 +1876,27 @@ static inline int fp_exception_el(CPUARMState *env)
     return 0;
 }
 
+#ifdef CONFIG_USER_ONLY
+/* get_user and put_user respectively return and expect data according
+ * to TARGET_WORDS_BIGENDIAN, but ldrex/strex emulation needs to take
+ * into account CPSR.E.
+ *
+ *            TARGET_WORDS_BIGENDIAN  CPSR.E    need swap?
+ *   LE/LE                 no           0          no
+ *   LE/BE                 no           1          yes
+ *   BE8/LE                yes          0          yes
+ *   BE8/BE                yes          1          no
+ */
+static inline bool arm_cpu_bswap_data(CPUARMState *env)
+{
+    return
+#ifdef TARGET_WORDS_BIGENDIAN
+       !
+#endif
+       !(env->uncached_cpsr & CPSR_E);
+}
+#endif
+
 static inline void cpu_get_tb_cpu_state(CPUARMState *env, target_ulong *pc,
                                         target_ulong *cs_base, int *flags)
 {
