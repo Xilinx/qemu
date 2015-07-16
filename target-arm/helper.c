@@ -4989,7 +4989,10 @@ void arm_cpu_do_interrupt(CPUState *cs)
     /* Clear IT bits.  */
     env->condexec_bits = 0;
     /* Switch to the new mode, and to the correct instruction set.  */
-    env->uncached_cpsr = (env->uncached_cpsr & ~CPSR_M) | new_mode;
+    env->uncached_cpsr = (env->uncached_cpsr & ~(CPSR_M)) | new_mode;
+    /* Set new mode endianess */
+    env->uncached_cpsr = (env->uncached_cpsr & !(CPSR_E)) |
+        (env->cp15.sctlr_el[arm_current_el(env)] & SCTLR_EE ? CPSR_E : 0);
     env->daif |= mask;
     /* this is a lie, as the was no c1_sys on V4T/V5, but who cares
      * and we should just guard the thumb mode on V4 */
@@ -5056,6 +5059,12 @@ static inline bool regime_translation_disabled(CPUARMState *env,
         return (env->cp15.hcr_el2 & HCR_VM) == 0;
     }
     return (regime_sctlr(env, mmu_idx) & SCTLR_M) == 0;
+}
+
+static inline bool regime_translation_big_endian(CPUARMState *env,
+                                                 ARMMMUIdx mmu_idx)
+{
+    return (regime_sctlr(env, mmu_idx) & SCTLR_EE) != 0;
 }
 
 /* Return the TCR controlling this translation regime */
@@ -5307,20 +5316,28 @@ static bool get_level1_table_address(CPUARMState *env, ARMMMUIdx mmu_idx,
  * was being done for a CPU load/store or an address translation instruction
  * (but not if it was for a debug access).
  */
-static uint32_t arm_ldl_ptw(CPUState *cs, hwaddr addr, bool is_secure)
+static uint32_t arm_ldl_ptw(CPUState *cs, hwaddr addr, bool is_secure, bool be)
 {
     MemTxAttrs attrs = {};
 
     attrs.secure = is_secure;
-    return address_space_ldl(cs->as, addr, attrs, NULL);
+    if (be) {
+        return address_space_ldl_be(cs->as, addr, attrs, NULL);
+    } else {
+        return address_space_ldl_le(cs->as, addr, attrs, NULL);
+    }
 }
 
-static uint64_t arm_ldq_ptw(CPUState *cs, hwaddr addr, bool is_secure)
+static uint64_t arm_ldq_ptw(CPUState *cs, hwaddr addr, bool is_secure, bool be)
 {
     MemTxAttrs attrs = {};
 
     attrs.secure = is_secure;
-    return address_space_ldq(cs->as, addr, attrs, NULL);
+    if (be) {
+        return address_space_ldq_be(cs->as, addr, attrs, NULL);
+    } else {
+        return address_space_ldq_le(cs->as, addr, attrs, NULL);
+    }
 }
 
 static bool get_phys_addr_v5(CPUARMState *env, uint32_t address,
@@ -5346,7 +5363,8 @@ static bool get_phys_addr_v5(CPUARMState *env, uint32_t address,
         code = 5;
         goto do_fault;
     }
-    desc = arm_ldl_ptw(cs, table, regime_is_secure(env, mmu_idx));
+    desc = arm_ldl_ptw(cs, table, regime_is_secure(env, mmu_idx),
+                       regime_translation_big_endian(env, mmu_idx));
     type = (desc & 3);
     domain = (desc >> 5) & 0x0f;
     if (regime_el(env, mmu_idx) == 1) {
@@ -5382,7 +5400,8 @@ static bool get_phys_addr_v5(CPUARMState *env, uint32_t address,
             /* Fine pagetable.  */
             table = (desc & 0xfffff000) | ((address >> 8) & 0xffc);
         }
-        desc = arm_ldl_ptw(cs, table, regime_is_secure(env, mmu_idx));
+        desc = arm_ldl_ptw(cs, table, regime_is_secure(env, mmu_idx),
+                           regime_translation_big_endian(env, mmu_idx));
         switch (desc & 3) {
         case 0: /* Page translation fault.  */
             code = 7;
@@ -5462,7 +5481,8 @@ static bool get_phys_addr_v6(CPUARMState *env, uint32_t address,
         code = 5;
         goto do_fault;
     }
-    desc = arm_ldl_ptw(cs, table, regime_is_secure(env, mmu_idx));
+    desc = arm_ldl_ptw(cs, table, regime_is_secure(env, mmu_idx),
+                       regime_translation_big_endian(env, mmu_idx));
     type = (desc & 3);
     if (type == 0 || (type == 3 && !arm_feature(env, ARM_FEATURE_PXN))) {
         /* Section translation fault, or attempt to use the encoding
@@ -5513,7 +5533,8 @@ static bool get_phys_addr_v6(CPUARMState *env, uint32_t address,
         ns = extract32(desc, 3, 1);
         /* Lookup l2 entry.  */
         table = (desc & 0xfffffc00) | ((address >> 10) & 0x3fc);
-        desc = arm_ldl_ptw(cs, table, regime_is_secure(env, mmu_idx));
+        desc = arm_ldl_ptw(cs, table, regime_is_secure(env, mmu_idx),
+                           regime_translation_big_endian(env, mmu_idx));
         ap = ((desc >> 4) & 3) | ((desc >> 7) & 4);
         switch (desc & 3) {
         case 0: /* Page translation fault.  */
@@ -5761,7 +5782,8 @@ static bool get_phys_addr_lpae(CPUARMState *env, target_ulong address,
         descaddr |= (address >> (granule_sz * (4 - level))) & descmask;
         descaddr &= ~7ULL;
         nstable = extract32(tableattrs, 4, 1);
-        descriptor = arm_ldq_ptw(cs, descaddr, !nstable);
+        descriptor = arm_ldq_ptw(cs, descaddr, !nstable,
+                                 regime_translation_big_endian(env, mmu_idx));
         if (!(descriptor & 1) ||
             (!(descriptor & 2) && (level == 3))) {
             /* Invalid, or the Reserved level 3 encoding */
