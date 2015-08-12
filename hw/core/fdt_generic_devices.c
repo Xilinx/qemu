@@ -202,6 +202,9 @@ fdt_register_instance_n(i2c_bus_fdt_init, "i2c@7", 7);
 
 static const TypeInfo fdt_qom_aliases [] = {
     {   .name = "xlnx.ps7-ethernet",        .parent = "cadence_gem"         },
+    {   .name = "cdns,gem",                 .parent = "cadence_gem"         },
+    {   .name = "cdns,zynq-gem",            .parent = "cadence_gem"         },
+    {   .name = "cdns,zynqmp-gem",          .parent = "cadence_gem"         },
     {   .name = "xlnx.ps7-ttc",             .parent = "cadence_ttc"         },
     {   .name = "cdns.ttc",                 .parent = "cadence_ttc"         },
     {   .name = "cdns.uart-r1p8",           .parent = "cadence_uart"        },
