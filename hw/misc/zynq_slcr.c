@@ -274,7 +274,7 @@ static void zynq_slcr_reset(DeviceState *d)
     /* 0x100 - 0x11C */
     s->regs[ARM_PLL_CTRL]   = 0x0001A008;
     s->regs[DDR_PLL_CTRL]   = 0x0001A008;
-    s->regs[IO_PLL_CTRL]    = 0x0001A008;
+    s->regs[IO_PLL_CTRL]    = 0x0001e008;
     s->regs[PLL_STATUS]     = 0x0000003F;
     s->regs[ARM_PLL_CFG]    = 0x00014000;
     s->regs[DDR_PLL_CFG]    = 0x00014000;
