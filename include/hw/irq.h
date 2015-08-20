@@ -1,6 +1,8 @@
 #ifndef QEMU_IRQ_H
 #define QEMU_IRQ_H
 
+#include "qom/object.h"
+
 /* Generic IRQ/GPIO pin infrastructure.  */
 
 #define TYPE_IRQ "irq"
@@ -8,6 +10,14 @@
 typedef struct IRQState *qemu_irq;
 
 typedef void (*qemu_irq_handler)(void *opaque, int n, int level);
+
+struct IRQState {
+    Object parent_obj;
+
+    qemu_irq_handler handler;
+    void *opaque;
+    int n;
+};
 
 void qemu_set_irq(qemu_irq irq, int level);
 

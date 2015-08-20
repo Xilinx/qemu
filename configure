@@ -335,6 +335,9 @@ libssh2=""
 vhdx=""
 quorum=""
 numa=""
+libgcrypt="yes"
+
+dtc_internal=""
 
 # parse CC options first
 for opt do
@@ -996,6 +999,8 @@ for opt do
   ;;
   --enable-fdt) fdt="yes"
   ;;
+  --force-internal-fdt) dtc_internal="yes"
+  ;;
   --disable-linux-aio) linux_aio="no"
   ;;
   --enable-linux-aio) linux_aio="yes"
@@ -1128,6 +1133,10 @@ for opt do
   --disable-numa) numa="no"
   ;;
   --enable-numa) numa="yes"
+  ;;
+  --disable-libgcrypt) libgcrypt="no"
+  ;;
+  --enable-libgcrypt) libgcrypt="yes"
   ;;
   *)
       echo "ERROR: unknown option $opt"
@@ -1400,6 +1409,8 @@ Advanced options (experts only):
   --enable-quorum          enable quorum block filter support
   --disable-numa           disable libnuma support
   --enable-numa            enable libnuma support
+  --disable-libgcrypt      disable devices that depend on libgcrypt
+  --enable-libgcrypt       enable use of libgcrypt
 
 NOTE: The object files are built at the place where configure is launched
 EOF
@@ -1823,7 +1834,8 @@ fi
 # libseccomp check
 
 if test "$seccomp" != "no" ; then
-    if $pkg_config --atleast-version=2.1.0 libseccomp; then
+    if test "$cpu" = "i386" || test "$cpu" = "x86_64" &&
+        $pkg_config --atleast-version=2.1.1 libseccomp; then
         libs_softmmu="$libs_softmmu `$pkg_config --libs libseccomp`"
         QEMU_CFLAGS="$QEMU_CFLAGS `$pkg_config --cflags libseccomp`"
 	seccomp="yes"
@@ -2726,7 +2738,7 @@ fi
 if test "$modules" = yes; then
     shacmd_probe="sha1sum sha1 shasum"
     for c in $shacmd_probe; do
-        if which $c >/dev/null 2>&1; then
+        if has $c; then
             shacmd="$c"
             break
         fi
@@ -2868,6 +2880,34 @@ EOF
       feature_not_found "rados block device" "Install librbd/ceph devel"
     fi
     rbd=no
+  fi
+fi
+
+##########################################
+# libgcrypt probe
+if test "$libgcrypt" != "no" ; then
+  cat > $TMPC <<EOF
+#include <stdio.h>
+#include <gcrypt.h>
+int main(void)
+{
+    /* TODO: Check for specific version ranges.  */
+    if (!gcry_check_version (GCRYPT_VERSION)) {
+        printf("libgcrypt version mismatch\n");
+        exit(1);
+    }
+    return 0;
+}
+EOF
+  libgcrypt_cflags=`libgcrypt-config --cflags`
+  libgcrypt_libs=`libgcrypt-config --libs`
+  if compile_prog "$libgcrypt_cflags" "$libgcrypt_libs" ; then
+    libgcrypt=yes
+    libs_softmmu="$libgcrypt_libs $libs_softmmu"
+    QEMU_CFLAGS="$QEMU_CFLAGS $libgcrypt_cflags"
+  else
+    feature_not_found "libgcrypt"
+    libgcrypt=no
   fi
 fi
 
@@ -3025,7 +3065,7 @@ if test "$fdt" != "no" ; then
 #include <libfdt_env.h>
 int main(void) { return 0; }
 EOF
-  if compile_prog "" "$fdt_libs" ; then
+  if compile_prog "" "$fdt_libs" && test "$dtc_internal" != "yes" ; then
     # system DTC is good - use it
     fdt=yes
   elif test -d ${source_path}/dtc/libfdt ; then
@@ -3038,7 +3078,7 @@ EOF
        symlink "$source_path/dtc/scripts" "dtc/scripts"
     fi
     fdt_cflags="-I\$(SRC_PATH)/dtc/libfdt"
-    fdt_libs="-L\$(BUILD_DIR)/dtc/libfdt $fdt_libs"
+    fdt_libs="\$(BUILD_DIR)/dtc/libfdt/libfdt.a"
   elif test "$fdt" = "yes" ; then
     # have neither and want - prompt for system/submodule install
     error_exit "DTC (libfdt) not present. Your options:" \
@@ -3047,6 +3087,7 @@ EOF
         "      git submodule update --init dtc"
   else
     # don't have and don't want
+    dtc_internal=
     fdt_libs=
     fdt=no
   fi
@@ -4104,7 +4145,7 @@ fi
 
 if test "$solaris" = "no" ; then
     if $ld --version 2>/dev/null | grep "GNU ld" >/dev/null 2>/dev/null ; then
-        LDFLAGS="-Wl,--warn-common $LDFLAGS"
+        LDFLAGS="$LDFLAGS"
     fi
 fi
 
@@ -4333,6 +4374,7 @@ echo "gcov              $gcov_tool"
 echo "gcov enabled      $gcov"
 echo "TPM support       $tpm"
 echo "libssh2 support   $libssh2"
+echo "libgcrypt         $libgcrypt"
 echo "TPM passthrough   $tpm_passthrough"
 echo "QOM debugging     $qom_cast_debug"
 echo "vhdx              $vhdx"
@@ -4793,6 +4835,10 @@ if test "$quorum" = "yes" ; then
   echo "CONFIG_QUORUM=y" >> $config_host_mak
 fi
 
+if test "$libgcrypt" = "yes" ; then
+  echo "CONFIG_LIBGCRYPT=y" >> $config_host_mak
+fi
+
 if test "$vhdx" = "yes" ; then
   echo "CONFIG_VHDX=y" >> $config_host_mak
 fi
@@ -5024,12 +5070,15 @@ case "$target_name" in
   arm|armeb)
     TARGET_ARCH=arm
     bflt="yes"
-    gdb_xml_files="arm-core.xml arm-vfp.xml arm-vfp3.xml arm-neon.xml"
+    gdb_xml_files="arm-core.xml arm-vfp.xml arm-vfp3.xml arm-neon.xml arm-sys.xml"
   ;;
   aarch64)
     TARGET_BASE_ARCH=arm
     bflt="yes"
-    gdb_xml_files="aarch64-core.xml aarch64-fpu.xml arm-core.xml arm-vfp.xml arm-vfp3.xml arm-neon.xml"
+    arm_gdb_xml_files="arm-core.xml arm-vfp.xml arm-vfp3.xml arm-neon.xml arm-sys.xml"
+    armv8_gdb_xml_files="aarch64-el1.xml aarch64-el2.xml aarch64-el3.xml"
+    gdb_xml_files="aarch64-core.xml aarch64-fpu.xml $arm_gdb_xml_files $armv8_gdb_xml_files"
+    echo $gdb_xml_files
   ;;
   cris)
   ;;

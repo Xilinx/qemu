@@ -7,6 +7,7 @@
 #include "exec/memory.h"
 #include "sysemu/dma.h"
 #include "qapi/error.h"
+#include "hw/sysbus.h"
 
 /* PCI includes legacy ISA access.  */
 #include "hw/isa/isa.h"
@@ -88,6 +89,7 @@
 #define PCI_DEVICE_ID_REDHAT_SERIAL2     0x0003
 #define PCI_DEVICE_ID_REDHAT_SERIAL4     0x0004
 #define PCI_DEVICE_ID_REDHAT_TEST        0x0005
+#define PCI_DEVICE_ID_REDHAT_SDHCI       0x0006
 #define PCI_DEVICE_ID_REDHAT_QXL         0x0100
 
 #define FMT_PCIBUS                      PRIx64
@@ -218,7 +220,7 @@ typedef void (*MSIVectorPollNotifier)(PCIDevice *dev,
                                       unsigned int vector_end);
 
 struct PCIDevice {
-    DeviceState qdev;
+    SysBusDevice parent_obj;
 
     /* PCI config space */
     uint8_t *config;
@@ -247,6 +249,8 @@ struct PCIDevice {
     /* do not access the following fields */
     PCIConfigReadFunc *config_read;
     PCIConfigWriteFunc *config_write;
+
+    qemu_irq *irq_raw;
 
     /* Legacy PCI VGA regions */
     MemoryRegion *vga_regions[QEMU_PCI_VGA_NUM_REGIONS];

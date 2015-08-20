@@ -30,5 +30,9 @@ extern const MemoryRegionOps unassigned_mem_ops;
 bool memory_region_access_valid(MemoryRegion *mr, hwaddr addr,
                                 unsigned size, bool is_write);
 
+bool memory_region_access_valid_attr(MemoryRegion *mr, hwaddr addr,
+                                     unsigned size, bool is_write,
+                                     MemoryTransactionAttr *attr);
+
 #endif
 #endif

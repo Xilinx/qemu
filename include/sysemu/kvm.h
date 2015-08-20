@@ -45,6 +45,7 @@ extern bool kvm_async_interrupts_allowed;
 extern bool kvm_halt_in_kernel_allowed;
 extern bool kvm_eventfds_allowed;
 extern bool kvm_irqfds_allowed;
+extern bool kvm_resamplefds_allowed;
 extern bool kvm_msi_via_irqfd_allowed;
 extern bool kvm_gsi_routing_allowed;
 extern bool kvm_gsi_direct_mapping;
@@ -100,6 +101,15 @@ extern bool kvm_readonly_mem_allowed;
  * with a configuration where it is meaningful to use them).
  */
 #define kvm_irqfds_enabled() (kvm_irqfds_allowed)
+
+/**
+ * kvm_resamplefds_enabled:
+ *
+ * Returns: true if we can use resamplefds to inject interrupts into
+ * a KVM CPU (ie the kernel supports resamplefds and we are running
+ * with a configuration where it is meaningful to use them).
+ */
+#define kvm_resamplefds_enabled() (kvm_resamplefds_allowed)
 
 /**
  * kvm_msi_via_irqfd_enabled:
@@ -163,6 +173,7 @@ extern KVMState *kvm_state;
 
 /* external API */
 
+bool kvm_has_free_slot(MachineState *ms);
 int kvm_has_sync_mmu(void);
 int kvm_has_vcpu_events(void);
 int kvm_has_robust_singlestep(void);

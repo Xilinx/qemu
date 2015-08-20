@@ -33,7 +33,7 @@ DEF("machine", HAS_ARG, QEMU_OPTION_machine, \
     "                property accel=accel1[:accel2[:...]] selects accelerator\n"
     "                supported accelerators are kvm, xen, tcg (default: tcg)\n"
     "                kernel_irqchip=on|off controls accelerated irqchip support\n"
-    "                vmport=on|off controls emulation of vmport (default: on)\n"
+    "                vmport=on|off|auto controls emulation of vmport (default: auto)\n"
     "                kvm_shadow_mem=size of KVM shadow MMU\n"
     "                dump-guest-core=on|off include guest memory in a core dump (default=on)\n"
     "                mem-merge=on|off controls memory merge support (default: on)\n"
@@ -52,8 +52,10 @@ than one accelerator specified, the next one is used if the previous one fails
 to initialize.
 @item kernel_irqchip=on|off
 Enables in-kernel irqchip support for the chosen accelerator when available.
-@item vmport=on|off
-Enables emulation of VMWare IO port, for vmmouse etc. (enabled by default)
+@item vmport=on|off|auto
+Enables emulation of VMWare IO port, for vmmouse etc. auto says to select the
+value based on accel. For accel=xen the default is off otherwise the default
+is on.
 @item kvm_shadow_mem=size
 Defines the size of the KVM shadow MMU.
 @item dump-guest-core=on|off
@@ -184,7 +186,7 @@ DEF("boot", HAS_ARG, QEMU_OPTION_boot,
     "                'rb_timeout': the timeout before guest reboot when boot failed, unit is ms\n",
     QEMU_ARCH_ALL)
 STEXI
-@item -boot [order=@var{drives}][,once=@var{drives}][,menu=on|off][,splash=@var{sp_name}][,splash-time=@var{sp_time}][,reboot-timeout=@var{rb_timeout}][,strict=on|off]
+@item -boot [order=@var{drives}][,once=@var{drives}][,menu=on|off][,splash=@var{sp_name}][,splash-time=@var{sp_time}][,reboot-timeout=@var{rb_timeout}][,strict=on|off][,mode=@var{mode}][,cpu=@var{cpu}]
 @findex -boot
 Specify boot order @var{drives} as a string of drive letters. Valid
 drive letters depend on the target achitecture. The x86 PC uses: a, b
@@ -243,6 +245,29 @@ gigabytes respectively. Optional pair @var{slots}, @var{maxmem} could be used
 to set amount of hotluggable memory slots and possible maximum amount of memory.
 ETEXI
 
+DEF("etrace", HAS_ARG, QEMU_OPTION_etrace,
+    "-etrace FILE  dump execution trace to FILE\n", QEMU_ARCH_ALL)
+STEXI
+@item -etrace @var{path}
+@findex -etrace
+Dump an execution trace to @var{path}.
+ETEXI
+
+DEF("etrace-flags", HAS_ARG, QEMU_OPTION_etrace_flags,
+    "-etrace-flags FLAGS  Execution trace flags\n\texec,translation,mem,cpu\n", QEMU_ARCH_ALL)
+STEXI
+@item -etrace-flags
+@findex -etrace-flags
+Execution trace flags.
+
+@example
+exec          Trace instruction execution.
+translation   Trace TB translation with TB contents. (for off-line disassembly)
+mem           Trace memory accesses (Only MMIO at the moment).
+cpu           Trace CPU register state (slow, currently not binary).
+@end example
+ETEXI
+
 DEF("mem-path", HAS_ARG, QEMU_OPTION_mempath,
     "-mem-path FILE  provide backing storage for guest RAM\n", QEMU_ARCH_ALL)
 STEXI
@@ -258,6 +283,27 @@ STEXI
 @item -mem-prealloc
 @findex -mem-prealloc
 Preallocate memory when using -mem-path.
+ETEXI
+
+DEF("sync-quantum", HAS_ARG, QEMU_OPTION_sync_quantum,
+    "-sync-quantum Max time between synchroniation, nanoseconds.\n", QEMU_ARCH_ALL)
+STEXI
+@item -sync-quantum @var{val}
+@findex -sync-quantum
+Maximum time between synchronization @var{val}.
+This value is used to drive periodic synchronization with remote port peers.
+It is also used to set device models sync-quantum properties controlling
+the maximum amount of ahead of time simulation that is prefered (only a hint).
+ETEXI
+
+DEF("machine-path", HAS_ARG, QEMU_OPTION_machine_path,
+    "-machine-path DIR A directory in which to create machine nodes\n", QEMU_ARCH_ALL)
+STEXI
+@item -machine-path @var{path}
+@findex -machine-path
+Selects the machine path.
+Multi-arch machine nodes will be created in @var{path}.
+This option sets -mem-shared-path to the given @var{path}
 ETEXI
 
 DEF("k", HAS_ARG, QEMU_OPTION_k,
@@ -2598,6 +2644,16 @@ Use @var{file1} and @var{file2} as modules and pass arg=foo as parameter to the
 first module.
 ETEXI
 
+DEF("hw-dtb", HAS_ARG, QEMU_OPTION_hw_dtb, \
+    "-hw-dtb file    use 'file' as device tree image\n", QEMU_ARCH_ALL)
+STEXI
+@item -hw-dtb @var{file}
+@findex -hw-dtb
+Use @var{file} as a device tree binary (dtb) image used to create the
+emulated machine. This dtb will not be passed to the kernel, use -dtb
+for that.
+ETEXI
+
 DEF("dtb", HAS_ARG, QEMU_OPTION_dtb, \
     "-dtb    file    use 'file' as device tree image\n", QEMU_ARCH_ALL)
 STEXI
@@ -2787,6 +2843,14 @@ STEXI
 @item -qmp @var{dev}
 @findex -qmp
 Like -monitor but opens in 'control' mode.
+ETEXI
+DEF("qmp-pretty", HAS_ARG, QEMU_OPTION_qmp_pretty, \
+    "-qmp-pretty dev like -qmp but uses pretty JSON formatting\n",
+    QEMU_ARCH_ALL)
+STEXI
+@item -qmp-pretty @var{dev}
+@findex -qmp-pretty
+Like -qmp but uses pretty JSON formatting.
 ETEXI
 
 DEF("mon", HAS_ARG, QEMU_OPTION_mon, \
@@ -3157,6 +3221,14 @@ STEXI
 Set TB size.
 ETEXI
 
+DEF("no-tb-chain", 0, QEMU_OPTION_no_tb_chain, \
+    "-no-tb-chain      Disable TB chaining\n", QEMU_ARCH_ALL)
+STEXI
+@item -no-tb-chain
+@findex -no-tb-chain
+Disable TB chaining.
+ETEXI
+
 DEF("incoming", HAS_ARG, QEMU_OPTION_incoming, \
     "-incoming p     prepare for incoming migration, listen on port p\n",
     QEMU_ARCH_ALL)
@@ -3216,7 +3288,17 @@ DEF("semihosting", 0, QEMU_OPTION_semihosting,
 STEXI
 @item -semihosting
 @findex -semihosting
-Semihosting mode (ARM, M68K, Xtensa only).
+Enable semihosting mode (ARM, M68K, Xtensa only).
+ETEXI
+DEF("semihosting-config", HAS_ARG, QEMU_OPTION_semihosting_config,
+    "-semihosting-config [enable=on|off,]target=native|gdb|auto   semihosting configuration\n",
+QEMU_ARCH_ARM | QEMU_ARCH_M68K | QEMU_ARCH_XTENSA | QEMU_ARCH_LM32)
+STEXI
+@item -semihosting-config [enable=on|off,]target=native|gdb|auto
+@findex -semihosting-config
+Enable semihosting and define where the semihosting calls will be addressed,
+to QEMU (@code{native}) or to GDB (@code{gdb}). The default is @code{auto}, which means
+@code{gdb} during debug sessions and @code{native} otherwise (ARM, M68K, Xtensa only).
 ETEXI
 DEF("old-param", 0, QEMU_OPTION_old_param,
     "-old-param      old param mode\n", QEMU_ARCH_ARM)

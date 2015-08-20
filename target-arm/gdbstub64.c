@@ -19,11 +19,65 @@
 #include "config.h"
 #include "qemu-common.h"
 #include "exec/gdbstub.h"
+#include "internals.h"
+
+/* FIXME: This should be generalized and moved into helper.c */
+static void map_a32_to_a64_regs(CPUARMState *env)
+{
+    unsigned int i;
+
+    for (i = 0; i < 8; i++) {
+        env->xregs[i] = env->regs[i];
+    }
+    for (i = 0; i < ARRAY_SIZE(env->usr_regs); i++) {
+        env->xregs[i + 8] = env->usr_regs[i];
+    }
+    env->xregs[13] = env->banked_r13[bank_number(ARM_CPU_MODE_USR)];
+    env->xregs[14] = env->banked_r14[bank_number(ARM_CPU_MODE_USR)];
+
+    for (i = 0; i < ARRAY_SIZE(env->fiq_regs); i++) {
+        env->xregs[i + 24] = env->fiq_regs[i];
+    }
+    env->xregs[29] = env->banked_r13[bank_number(ARM_CPU_MODE_FIQ)];
+    env->xregs[30] = env->banked_r14[bank_number(ARM_CPU_MODE_FIQ)];
+
+    /* HAX!  */
+    env->xregs[31] = env->regs[13];
+
+    env->pc = env->regs[15];
+    pstate_write(env, env->spsr | (1 << 4));
+}
+
+static void map_a64_to_a32_regs(CPUARMState *env)
+{
+    unsigned int i = 0;
+
+    for (i = 0; i < 8; i++) {
+        env->regs[i] = env->xregs[i];
+    }
+    for (i = 0; i < ARRAY_SIZE(env->usr_regs); i++) {
+        env->usr_regs[i] = env->xregs[i + 8];
+    }
+    env->banked_r13[bank_number(ARM_CPU_MODE_USR)] = env->xregs[13];
+    env->banked_r14[bank_number(ARM_CPU_MODE_USR)] = env->xregs[14];
+
+    for (i = 0; i < ARRAY_SIZE(env->usr_regs); i++) {
+        env->fiq_regs[i] = env->xregs[i + 24];
+    }
+    env->banked_r13[bank_number(ARM_CPU_MODE_FIQ)] = env->xregs[29];
+    env->banked_r14[bank_number(ARM_CPU_MODE_FIQ)] = env->xregs[30];
+
+    env->regs[15] = env->pc;
+}
 
 int aarch64_cpu_gdb_read_register(CPUState *cs, uint8_t *mem_buf, int n)
 {
     ARMCPU *cpu = ARM_CPU(cs);
     CPUARMState *env = &cpu->env;
+
+    if (!is_a64(env)) {
+        map_a32_to_a64_regs(env);
+    }
 
     if (n < 31) {
         /* Core integer register.  */
@@ -31,7 +85,30 @@ int aarch64_cpu_gdb_read_register(CPUState *cs, uint8_t *mem_buf, int n)
     }
     switch (n) {
     case 31:
-        return gdb_get_reg64(mem_buf, env->xregs[31]);
+    {
+        unsigned int cur_el = arm_current_el(env);
+        uint64_t sp;
+
+        aarch64_save_sp(env, cur_el);
+        switch (env->debug_ctx) {
+            case DEBUG_EL0:
+                sp = env->sp_el[0];
+                break;
+            case DEBUG_EL1:
+                sp = env->sp_el[1];
+                break;
+            case DEBUG_EL2:
+                sp = env->sp_el[2];
+                break;
+            case DEBUG_EL3:
+                sp = env->sp_el[3];
+                break;
+            default:
+                sp = env->xregs[31];
+                break;
+        }
+        return gdb_get_reg64(mem_buf, sp);
+    }
     case 32:
         return gdb_get_reg64(mem_buf, env->pc);
     case 33:
@@ -46,26 +123,60 @@ int aarch64_cpu_gdb_write_register(CPUState *cs, uint8_t *mem_buf, int n)
     ARMCPU *cpu = ARM_CPU(cs);
     CPUARMState *env = &cpu->env;
     uint64_t tmp;
+    int rlen = 0;
+
+    if (!is_a64(env)) {
+        map_a32_to_a64_regs(env);
+    }
 
     tmp = ldq_p(mem_buf);
 
     if (n < 31) {
         /* Core integer register.  */
         env->xregs[n] = tmp;
-        return 8;
+        rlen = 8;
     }
     switch (n) {
-    case 31:
-        env->xregs[31] = tmp;
-        return 8;
+    case 31: {
+        unsigned int cur_el = arm_current_el(env);
+
+        aarch64_save_sp(env, cur_el);
+        switch (env->debug_ctx) {
+            case DEBUG_EL0:
+                env->sp_el[0] = tmp;
+                break;
+            case DEBUG_EL1:
+                env->sp_el[1] = tmp;
+                break;
+            case DEBUG_EL2:
+                env->sp_el[2] = tmp;
+                break;
+            case DEBUG_EL3:
+                env->sp_el[3] = tmp;
+                break;
+            default:
+                env->xregs[31] = tmp;
+                break;
+        }
+        aarch64_restore_sp(env, cur_el);
+        rlen = 8;
+        break;
+    }
     case 32:
         env->pc = tmp;
-        return 8;
+        rlen = 8;
+        break;
     case 33:
         /* CPSR */
         pstate_write(env, tmp);
-        return 4;
+        rlen = 4;
+        break;
     }
+
+    if (!is_a64(env)) {
+        map_a64_to_a32_regs(env);
+    }
+
     /* Unknown register.  */
-    return 0;
+    return rlen;
 }

@@ -229,6 +229,8 @@ struct PL330State {
     qemu_irq irq_abort;
     qemu_irq *irq;
 
+    MemoryRegion *dma_mr;
+    AddressSpace *dma_as;
     /* Config registers. cfg[5] = CfgDn. */
     uint32_t cfg[6];
 #define EVENT_SEC_STATE 3
@@ -1087,7 +1089,7 @@ static inline const PL330InsnDesc *pl330_fetch_insn(PL330Chan *ch)
     uint8_t opcode;
     int i;
 
-    dma_memory_read(&address_space_memory, ch->pc, &opcode, 1);
+    dma_memory_read(ch->parent->dma_as, ch->pc, &opcode, 1);
     for (i = 0; insn_desc[i].size; i++) {
         if ((opcode & insn_desc[i].opmask) == insn_desc[i].opcode) {
             return &insn_desc[i];
@@ -1101,7 +1103,7 @@ static inline void pl330_exec_insn(PL330Chan *ch, const PL330InsnDesc *insn)
     uint8_t buf[PL330_INSN_MAXSIZE];
 
     assert(insn->size <= PL330_INSN_MAXSIZE);
-    dma_memory_read(&address_space_memory, ch->pc, buf, insn->size);
+    dma_memory_read(ch->parent->dma_as, ch->pc, buf, insn->size);
     insn->exec(ch, buf[0], &buf[1], insn->size - 1);
 }
 
@@ -1165,7 +1167,7 @@ static int pl330_exec_cycle(PL330Chan *channel)
     if (q != NULL && q->len <= pl330_fifo_num_free(&s->fifo)) {
         int len = q->len - (q->addr & (q->len - 1));
 
-        dma_memory_read(&address_space_memory, q->addr, buf, len);
+        dma_memory_read(channel->parent->dma_as, q->addr, buf, len);
         if (PL330_ERR_DEBUG > 1) {
             DB_PRINT("PL330 read from memory @%08" PRIx32 " (size = %08x):\n",
                       q->addr, len);
@@ -1197,7 +1199,7 @@ static int pl330_exec_cycle(PL330Chan *channel)
             fifo_res = pl330_fifo_get(&s->fifo, buf, len, q->tag);
         }
         if (fifo_res == PL330_FIFO_OK || q->z) {
-            dma_memory_write(&address_space_memory, q->addr, buf, len);
+            dma_memory_write(channel->parent->dma_as, q->addr, buf, len);
             if (PL330_ERR_DEBUG > 1) {
                 DB_PRINT("PL330 read from memory @%08" PRIx32
                          " (size = %08x):\n", q->addr, len);
@@ -1615,6 +1617,20 @@ static void pl330_realize(DeviceState *dev, Error **errp)
     pl330_queue_init(&s->read_queue, s->rd_q_dep, s);
     pl330_queue_init(&s->write_queue, s->wr_q_dep, s);
     pl330_fifo_init(&s->fifo, s->data_width / 4 * s->data_buffer_dep);
+
+    s->dma_as = s->dma_mr ? address_space_init_shareable(s->dma_mr, NULL)
+                          : &address_space_memory;
+}
+
+static void pl330_init(Object *obj)
+{
+    PL330State *s = PL330(obj);
+
+    object_property_add_link(obj, "dma", TYPE_MEMORY_REGION,
+                             (Object **)&s->dma_mr,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             &error_abort);
 }
 
 static Property pl330_properties[] = {
@@ -1655,6 +1671,7 @@ static const TypeInfo pl330_type_info = {
     .name           = TYPE_PL330,
     .parent         = TYPE_SYS_BUS_DEVICE,
     .instance_size  = sizeof(PL330State),
+    .instance_init  = pl330_init,
     .class_init      = pl330_class_init,
 };
 

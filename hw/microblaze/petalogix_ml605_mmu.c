@@ -64,25 +64,10 @@
 #define SPI_IRQ             4
 #define UART16550_IRQ       5
 
-static void machine_cpu_reset(MicroBlazeCPU *cpu)
-{
-    CPUMBState *env = &cpu->env;
-
-    env->pvr.regs[10] = 0x0e000000; /* virtex 6 */
-    /* setup pvr to match kernel setting */
-    env->pvr.regs[5] |= PVR5_DCACHE_WRITEBACK_MASK;
-    env->pvr.regs[0] |= PVR0_USE_FPU_MASK | PVR0_ENDI;
-    env->pvr.regs[0] = (env->pvr.regs[0] & ~PVR0_VERSION_MASK) | (0x14 << 8);
-    env->pvr.regs[2] ^= PVR2_USE_FPU2_MASK;
-    env->pvr.regs[4] = 0xc56b8000;
-    env->pvr.regs[5] = 0xc56be000;
-}
-
 static void
 petalogix_ml605_init(MachineState *machine)
 {
     ram_addr_t ram_size = machine->ram_size;
-    MemoryRegion *address_space_mem = get_system_memory();
     DeviceState *dev, *dma, *eth0;
     Object *ds, *cs;
     MicroBlazeCPU *cpu;
@@ -91,22 +76,39 @@ petalogix_ml605_init(MachineState *machine)
     int i;
     MemoryRegion *phys_lmb_bram = g_new(MemoryRegion, 1);
     MemoryRegion *phys_ram = g_new(MemoryRegion, 1);
+
+    MemoryRegion *cpu_mr = g_new(MemoryRegion, 1);
+    MemoryRegion *ddr_mr = g_new(MemoryRegion, 1);
+
     qemu_irq irq[32];
+
+    /* 32 bit system */
+    memory_region_init(cpu_mr, qdev_get_machine(), "cpu-mr", 1ull << 32);
+    memory_region_init(ddr_mr, qdev_get_machine(), "ddr-mr", 1ull << 32);
+    memory_region_add_subregion_overlap(cpu_mr, 0, ddr_mr, -1);
 
     /* init CPUs */
     cpu = MICROBLAZE_CPU(object_new(TYPE_MICROBLAZE_CPU));
+    /* Use FPU but don't use floating point conversion and square
+     * root instructions
+     */
+    object_property_set_int(OBJECT(cpu), 1, "use-fpu", &error_abort);
+    object_property_set_bool(OBJECT(cpu), true, "dcache-writeback",
+                             &error_abort);
+    object_property_set_bool(OBJECT(cpu), true, "endianness", &error_abort);
     object_property_set_bool(OBJECT(cpu), true, "realized", &error_abort);
+    object_property_set_link(OBJECT(cpu), OBJECT(cpu_mr), "mr", &error_abort);
 
     /* Attach emulated BRAM through the LMB.  */
     memory_region_init_ram(phys_lmb_bram, NULL, "petalogix_ml605.lmb_bram",
                            LMB_BRAM_SIZE, &error_abort);
     vmstate_register_ram_global(phys_lmb_bram);
-    memory_region_add_subregion(address_space_mem, 0x00000000, phys_lmb_bram);
+    memory_region_add_subregion(cpu_mr, 0x00000000, phys_lmb_bram);
 
     memory_region_init_ram(phys_ram, NULL, "petalogix_ml605.ram", ram_size,
                            &error_abort);
     vmstate_register_ram_global(phys_ram);
-    memory_region_add_subregion(address_space_mem, MEMORY_BASEADDR, phys_ram);
+    memory_region_add_subregion(ddr_mr, MEMORY_BASEADDR, phys_ram);
 
     dinfo = drive_get(IF_PFLASH, 0, 0);
     /* 5th parameter 2 means bank-width
@@ -121,14 +123,15 @@ petalogix_ml605_init(MachineState *machine)
     dev = qdev_create(NULL, "xlnx.xps-intc");
     qdev_prop_set_uint32(dev, "kind-of-intr", 1 << TIMER_IRQ);
     qdev_init_nofail(dev);
-    sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, INTC_BASEADDR);
+    memory_region_add_subregion(cpu_mr, INTC_BASEADDR,
+                                sysbus_mmio_get_region(SYS_BUS_DEVICE(dev), 0));
     sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0,
                        qdev_get_gpio_in(DEVICE(cpu), MB_CPU_IRQ));
     for (i = 0; i < 32; i++) {
         irq[i] = qdev_get_gpio_in(dev, i);
     }
 
-    serial_mm_init(address_space_mem, UART16550_BASEADDR + 0x1000, 2,
+    serial_mm_init(cpu_mr, UART16550_BASEADDR + 0x1000, 2,
                    irq[UART16550_IRQ], 115200, serial_hds[0],
                    DEVICE_LITTLE_ENDIAN);
 
@@ -137,13 +140,18 @@ petalogix_ml605_init(MachineState *machine)
     qdev_prop_set_uint32(dev, "one-timer-only", 0);
     qdev_prop_set_uint32(dev, "clock-frequency", 100 * 1000000);
     qdev_init_nofail(dev);
-    sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, TIMER_BASEADDR);
+    memory_region_add_subregion(cpu_mr, TIMER_BASEADDR,
+                                sysbus_mmio_get_region(SYS_BUS_DEVICE(dev), 0));
     sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, irq[TIMER_IRQ]);
 
     /* axi ethernet and dma initialization. */
     qemu_check_nic_model(&nd_table[0], "xlnx.axi-ethernet");
     eth0 = qdev_create(NULL, "xlnx.axi-ethernet");
     dma = qdev_create(NULL, "xlnx.axi-dma");
+
+    object_property_set_link(OBJECT(dma), OBJECT(ddr_mr), "sg", &error_abort);
+    object_property_set_link(OBJECT(dma), OBJECT(ddr_mr), "s2mm", &error_abort);
+    object_property_set_link(OBJECT(dma), OBJECT(ddr_mr), "mm2s", &error_abort);
 
     /* FIXME: attach to the sysbus instead */
     object_property_add_child(qdev_get_machine(), "xilinx-eth", OBJECT(eth0),
@@ -163,7 +171,9 @@ petalogix_ml605_init(MachineState *machine)
     object_property_set_link(OBJECT(eth0), OBJECT(cs),
                              "axistream-control-connected", &error_abort);
     qdev_init_nofail(eth0);
-    sysbus_mmio_map(SYS_BUS_DEVICE(eth0), 0, AXIENET_BASEADDR);
+    memory_region_add_subregion(cpu_mr, AXIENET_BASEADDR,
+                                sysbus_mmio_get_region(SYS_BUS_DEVICE(eth0),
+                                                       0));
     sysbus_connect_irq(SYS_BUS_DEVICE(eth0), 0, irq[AXIENET_IRQ]);
 
     ds = object_property_get_link(OBJECT(eth0),
@@ -176,7 +186,8 @@ petalogix_ml605_init(MachineState *machine)
     object_property_set_link(OBJECT(dma), OBJECT(cs),
                              "axistream-control-connected", &error_abort);
     qdev_init_nofail(dma);
-    sysbus_mmio_map(SYS_BUS_DEVICE(dma), 0, AXIDMA_BASEADDR);
+    memory_region_add_subregion(cpu_mr, AXIDMA_BASEADDR,
+                                sysbus_mmio_get_region(SYS_BUS_DEVICE(dma), 0));
     sysbus_connect_irq(SYS_BUS_DEVICE(dma), 0, irq[AXIDMA_IRQ0]);
     sysbus_connect_irq(SYS_BUS_DEVICE(dma), 1, irq[AXIDMA_IRQ1]);
 
@@ -187,7 +198,8 @@ petalogix_ml605_init(MachineState *machine)
         qdev_prop_set_uint8(dev, "num-ss-bits", NUM_SPI_FLASHES);
         qdev_init_nofail(dev);
         busdev = SYS_BUS_DEVICE(dev);
-        sysbus_mmio_map(busdev, 0, SPI_BASEADDR);
+        memory_region_add_subregion(cpu_mr, SPI_BASEADDR,
+                                    sysbus_mmio_get_region(busdev, 0));
         sysbus_connect_irq(busdev, 0, irq[SPI_IRQ]);
 
         spi = (SSIBus *)qdev_get_child_bus(dev, "spi");
@@ -201,11 +213,15 @@ petalogix_ml605_init(MachineState *machine)
         }
     }
 
+    /* setup PVR to match kernel settings */
+    cpu->env.pvr.regs[4] = 0xc56b8000;
+    cpu->env.pvr.regs[5] = 0xc56be000;
+    cpu->env.pvr.regs[10] = 0x0e000000; /* virtex 6 */
+
     microblaze_load_kernel(cpu, MEMORY_BASEADDR, ram_size,
                            machine->initrd_filename,
                            BINARY_DEVICE_TREE_FILE,
-                           machine_cpu_reset);
-
+                           NULL, NULL, 0);
 }
 
 static QEMUMachine petalogix_ml605_machine = {

@@ -3,6 +3,8 @@ common-obj-$(CONFIG_I8259) += i8259_common.o i8259.o
 common-obj-$(CONFIG_PL190) += pl190.o
 common-obj-$(CONFIG_PUV3) += puv3_intc.o
 common-obj-$(CONFIG_XILINX) += xilinx_intc.o
+common-obj-$(CONFIG_XILINX_IOMODULE_INTC) += xilinx_iomod_intc.o
+common-obj-$(CONFIG_XILINX_IOMODULE_INTC) += xilinx_ronaldo_ipi.o
 common-obj-$(CONFIG_ETRAXFS) += etraxfs_pic.o
 common-obj-$(CONFIG_IMX) += imx_avic.o
 common-obj-$(CONFIG_LM32) += lm32_pic.o
@@ -12,6 +14,8 @@ common-obj-$(CONFIG_IOAPIC) += ioapic_common.o
 common-obj-$(CONFIG_ARM_GIC) += arm_gic_common.o
 common-obj-$(CONFIG_ARM_GIC) += arm_gic.o
 common-obj-$(CONFIG_OPENPIC) += openpic.o
+common-obj-$(CONFIG_RONALDO) += xilinx-ronaldo-gicp.o
+common-obj-$(CONFIG_RONALDO) += xilinx-ronaldo-intc-redirect.o
 
 obj-$(CONFIG_APIC) += apic.o apic_common.o
 obj-$(CONFIG_ARM_GIC_KVM) += arm_gic_kvm.o

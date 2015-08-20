@@ -94,6 +94,8 @@
 /* B Format   */
 #define MASK_OP_B_DISP24(op)   (MASK_BITS_SHIFT(op, 16, 31) + \
                                (MASK_BITS_SHIFT(op, 8, 15) << 16))
+#define MASK_OP_B_DISP24_SEXT(op)   (MASK_BITS_SHIFT(op, 16, 31) + \
+                                    (MASK_BITS_SHIFT_SEXT(op, 8, 15) << 16))
 /* BIT Format */
 #define MASK_OP_BIT_D(op)      MASK_BITS_SHIFT(op, 28, 31)
 #define MASK_OP_BIT_POS2(op)   MASK_BITS_SHIFT(op, 23, 27)
@@ -114,26 +116,32 @@
 /* BOL Format */
 #define MASK_OP_BOL_OFF16(op)  ((MASK_BITS_SHIFT(op, 16, 21) +        \
                                (MASK_BITS_SHIFT(op, 28, 31) << 6)) + \
-                               (MASK_BITS_SHIFT(op, 22, 27) >> 10))
-
+                               (MASK_BITS_SHIFT(op, 22, 27) << 10))
+#define MASK_OP_BOL_OFF16_SEXT(op)  ((MASK_BITS_SHIFT(op, 16, 21) +        \
+                                    (MASK_BITS_SHIFT(op, 28, 31) << 6)) + \
+                                    (MASK_BITS_SHIFT_SEXT(op, 22, 27) << 10))
 #define MASK_OP_BOL_S2(op)     MASK_BITS_SHIFT(op, 12, 15)
 #define MASK_OP_BOL_S1D(op)    MASK_BITS_SHIFT(op, 8, 11)
 
 /* BRC Format */
 #define MASK_OP_BRC_OP2(op)    MASK_BITS_SHIFT(op, 31, 31)
 #define MASK_OP_BRC_DISP15(op) MASK_BITS_SHIFT(op, 16, 30)
+#define MASK_OP_BRC_DISP15_SEXT(op) MASK_BITS_SHIFT_SEXT(op, 16, 30)
 #define MASK_OP_BRC_CONST4(op) MASK_BITS_SHIFT(op, 12, 15)
+#define MASK_OP_BRC_CONST4_SEXT(op) MASK_BITS_SHIFT_SEXT(op, 12, 15)
 #define MASK_OP_BRC_S1(op)     MASK_BITS_SHIFT(op, 8, 11)
 
 /* BRN Format */
 #define MASK_OP_BRN_OP2(op)    MASK_BITS_SHIFT(op, 31, 31)
 #define MASK_OP_BRN_DISP15(op) MASK_BITS_SHIFT(op, 16, 30)
+#define MASK_OP_BRN_DISP15_SEXT(op) MASK_BITS_SHIFT_SEXT(op, 16, 30)
 #define MASK_OP_BRN_N(op)      (MASK_BITS_SHIFT(op, 12, 15) + \
                                (MASK_BITS_SHIFT(op, 7, 7) << 4))
 #define MASK_OP_BRN_S1(op)     MASK_BITS_SHIFT(op, 8, 11)
 /* BRR Format */
 #define MASK_OP_BRR_OP2(op)    MASK_BITS_SHIFT(op, 31, 31)
 #define MASK_OP_BRR_DISP15(op) MASK_BITS_SHIFT(op, 16, 30)
+#define MASK_OP_BRR_DISP15_SEXT(op) MASK_BITS_SHIFT_SEXT(op, 16, 30)
 #define MASK_OP_BRR_S2(op)     MASK_BITS_SHIFT(op, 12, 15)
 #define MASK_OP_BRR_S1(op)     MASK_BITS_SHIFT(op, 8, 11)
 
@@ -145,6 +153,7 @@
 #define MASK_OP_RC_D(op)       MASK_OP_META_D(op)
 #define MASK_OP_RC_OP2(op)     MASK_BITS_SHIFT(op, 21, 27)
 #define MASK_OP_RC_CONST9(op)  MASK_BITS_SHIFT(op, 12, 20)
+#define MASK_OP_RC_CONST9_SEXT(op)  MASK_BITS_SHIFT_SEXT(op, 12, 20)
 #define MASK_OP_RC_S1(op)      MASK_OP_META_S1(op)
 
 /* RCPW Format */
@@ -162,6 +171,7 @@
 #define MASK_OP_RCR_S3(op)     MASK_BITS_SHIFT(op, 24, 27)
 #define MASK_OP_RCR_OP2(op)    MASK_BITS_SHIFT(op, 21, 23)
 #define MASK_OP_RCR_CONST9(op) MASK_BITS_SHIFT(op, 12, 20)
+#define MASK_OP_RCR_CONST9_SEXT(op) MASK_BITS_SHIFT_SEXT(op, 12, 20)
 #define MASK_OP_RCR_S1(op)     MASK_OP_META_S1(op)
 
 /* RCRR Format */
@@ -185,6 +195,7 @@
 
 #define MASK_OP_RLC_D(op)       MASK_OP_META_D(op)
 #define MASK_OP_RLC_CONST16(op) MASK_BITS_SHIFT(op, 12, 27)
+#define MASK_OP_RLC_CONST16_SEXT(op) MASK_BITS_SHIFT_SEXT(op, 12, 27)
 #define MASK_OP_RLC_S1(op)      MASK_OP_META_S1(op)
 
 /* RR  Format */
@@ -438,10 +449,16 @@ enum {
     OPCM_32_BO_ADDRMODE_LDMST_BITREVERSE_CIRCULAR    = 0x69,
 /* BOL Format */
     OPC1_32_BOL_LD_A_LONGOFF                         = 0x99,
-    OPC1_32_BOL_LD_W_LONFOFF                         = 0x19,
+    OPC1_32_BOL_LD_W_LONGOFF                         = 0x19,
     OPC1_32_BOL_LEA_LONGOFF                          = 0xd9,
     OPC1_32_BOL_ST_W_LONGOFF                         = 0x59,
     OPC1_32_BOL_ST_A_LONGOFF                         = 0xb5, /* 1.6 only */
+    OPC1_32_BOL_LD_B_LONGOFF                         = 0x79, /* 1.6 only */
+    OPC1_32_BOL_LD_BU_LONGOFF                        = 0x39, /* 1.6 only */
+    OPC1_32_BOL_LD_H_LONGOFF                         = 0xc9, /* 1.6 only */
+    OPC1_32_BOL_LD_HU_LONGOFF                        = 0xb9, /* 1.6 only */
+    OPC1_32_BOL_ST_B_LONGOFF                         = 0xe9, /* 1.6 only */
+    OPC1_32_BOL_ST_H_LONGOFF                         = 0xf9, /* 1.6 only */
 /* BRC Format */
     OPCM_32_BRC_EQ_NEQ                               = 0xdf,
     OPCM_32_BRC_GE                                   = 0xff,
@@ -478,6 +495,7 @@ enum {
     OPC1_32_RLC_ADDIH_A                              = 0x11,
     OPC1_32_RLC_MFCR                                 = 0x4d,
     OPC1_32_RLC_MOV                                  = 0x3b,
+    OPC1_32_RLC_MOV_64                               = 0xfb, /* 1.6 only */
     OPC1_32_RLC_MOV_U                                = 0xbb,
     OPC1_32_RLC_MOV_H                                = 0x7b,
     OPC1_32_RLC_MOVH_A                               = 0x91,
@@ -486,7 +504,7 @@ enum {
     OPCM_32_RR_LOGICAL_SHIFT                         = 0x0f,
     OPCM_32_RR_ACCUMULATOR                           = 0x0b,
     OPCM_32_RR_ADRESS                                = 0x01,
-    OPCM_32_RR_FLOAT                                 = 0x4b,
+    OPCM_32_RR_DIVIDE                                = 0x4b,
     OPCM_32_RR_IDIRECT                               = 0x2d,
 /* RR1 Format */
     OPCM_32_RR1_MUL                                  = 0xb3,
@@ -763,8 +781,8 @@ enum {
 };
 /* OPCM_32_BRC_GE                                   */
 enum {
-    OP2_BRC_JGE                                  = 0x00,
-    OPC_BRC_JGE_U                                = 0x01,
+    OP2_32_BRC_JGE                               = 0x00,
+    OPC_32_BRC_JGE_U                             = 0x01,
 };
 /* OPCM_32_BRC_JLT                                  */
 enum {
@@ -937,7 +955,7 @@ enum {
     OPC2_32_RCR_MSUB_64                          = 0x03,
     OPC2_32_RCR_MSUBS_32                         = 0x05,
     OPC2_32_RCR_MSUBS_64                         = 0x07,
-    OPC2_32_RCR_MSUB_U_32                        = 0x02,
+    OPC2_32_RCR_MSUB_U_64                        = 0x02,
     OPC2_32_RCR_MSUBS_U_32                       = 0x04,
     OPC2_32_RCR_MSUBS_U_64                       = 0x06,
 };
@@ -1024,8 +1042,8 @@ enum {
     OPC2_32_RR_MAX_BU                            = 0x5b,
     OPC2_32_RR_MAX_H                             = 0x7a,
     OPC2_32_RR_MAX_HU                            = 0x7b,
-    OPC2_32_RR_MIN                               = 0x19,
-    OPC2_32_RR_MIN_U                             = 0x18,
+    OPC2_32_RR_MIN                               = 0x18,
+    OPC2_32_RR_MIN_U                             = 0x19,
     OPC2_32_RR_MIN_B                             = 0x58,
     OPC2_32_RR_MIN_BU                            = 0x59,
     OPC2_32_RR_MIN_H                             = 0x78,

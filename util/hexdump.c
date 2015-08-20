@@ -19,6 +19,9 @@ void qemu_hexdump(const char *buf, FILE *fp, const char *prefix, size_t size)
 {
     unsigned int b;
 
+    if (!fp) {
+        return;
+    }
     for (b = 0; b < size; b++) {
         if ((b % 16) == 0) {
             fprintf(fp, "%s: %04x:", prefix, b);

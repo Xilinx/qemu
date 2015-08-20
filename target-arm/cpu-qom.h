@@ -30,6 +30,8 @@
     OBJECT_CHECK(ARMCPU, (obj), TYPE_ARM_CPU)
 #define ARM_CPU_GET_CLASS(obj) \
     OBJECT_GET_CLASS(ARMCPUClass, (obj), TYPE_ARM_CPU)
+#define ARM_CPU_PARENT_CLASS \
+    object_class_get_parent(object_class_by_name(TYPE_ARM_CPU))
 
 /**
  * ARMCPUClass:
@@ -60,6 +62,8 @@ typedef struct ARMCPU {
 
     CPUARMState env;
 
+    bool is_in_wfi;
+
     /* Coprocessor information */
     GHashTable *cp_regs;
     /* For marshalling (mostly coprocessor) register state between the
@@ -87,6 +91,9 @@ typedef struct ARMCPU {
     /* GPIO outputs for generic timer */
     qemu_irq gt_timer_outputs[NUM_GTIMERS];
 
+    /* WFI notification */
+    qemu_irq wfi;
+
     /* 'compatible' string for this CPU for Linux device trees */
     const char *dtb_compatible;
 
@@ -100,6 +107,8 @@ typedef struct ARMCPU {
     bool start_powered_off;
     /* CPU currently in PSCI powered-off state */
     bool powered_off;
+    /* CPU has security extension */
+    bool has_el3;
 
     /* PSCI conduit used to invoke PSCI methods
      * 0 - disabled, 1 - smc, 2 - hvc
@@ -125,6 +134,7 @@ typedef struct ARMCPU {
      * prefix means a constant register.
      */
     uint32_t midr;
+    uint32_t tcmtr;
     uint32_t reset_fpsid;
     uint32_t mvfr0;
     uint32_t mvfr1;
@@ -167,6 +177,11 @@ typedef struct ARMCPU {
     /* DCZ blocksize, in log_2(words), ie low 4 bits of DCZID_EL0 */
     uint32_t dcz_blocksize;
     uint64_t rvbar;
+    int pe;
+
+    MemoryRegion *mr_secure;
+    AddressSpace *as_secure;
+    AddressSpace *as_ns;
 } ARMCPU;
 
 #define TYPE_AARCH64_CPU "aarch64-cpu"
@@ -212,6 +227,8 @@ int arm_cpu_gdb_write_register(CPUState *cpu, uint8_t *buf, int reg);
 /* Callback functions for the generic timer's timers. */
 void arm_gt_ptimer_cb(void *opaque);
 void arm_gt_vtimer_cb(void *opaque);
+void arm_gt_htimer_cb(void *opaque);
+void arm_gt_pstimer_cb(void *opaque);
 
 #ifdef TARGET_AARCH64
 int aarch64_cpu_gdb_read_register(CPUState *cpu, uint8_t *buf, int reg);

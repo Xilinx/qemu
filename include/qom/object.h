@@ -1101,6 +1101,22 @@ Object *object_resolve_path_type(const char *path, const char *typename,
 Object *object_resolve_path_component(Object *parent, const gchar *part);
 
 /**
+ * object_resolve_link:
+ * @obj: The object containing the link property
+ * @name: Name of the link property
+ * @path: the path to resolve
+ * @errp: Error object to populate in case of error
+ *
+ * Lookup an object and ensure its type matches a link property type.  This
+ * is similar to object_resolve_path() except type verification against the
+ * link property is performed.
+ *
+ * Returns: The matched object or NULL on path lookup failures.
+ */
+Object *object_resolve_link(Object *obj, const char *name,
+                            const char *path, Error **errp);
+
+/**
  * object_property_add_child:
  * @obj: the object to add a property to
  * @name: the name of the property
@@ -1302,6 +1318,9 @@ void object_property_set_description(Object *obj, const char *name,
 int object_child_foreach(Object *obj, int (*fn)(Object *child, void *opaque),
                          void *opaque);
 
+int object_child_foreach_recursive(Object *obj,
+                                   int (*fn)(Object *child, void *opaque),
+                                   void *opaque);
 /**
  * container_get:
  * @root: root of the #path, e.g., object_get_root()

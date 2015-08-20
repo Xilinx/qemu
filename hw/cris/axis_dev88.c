@@ -39,6 +39,10 @@
 
 struct nand_state_t
 {
+    /*< private >*/
+    SysBusDevice parent_obj;
+    /*< public > */
+
     DeviceState *nand;
     MemoryRegion iomem;
     unsigned int rdy:1;
@@ -46,6 +50,11 @@ struct nand_state_t
     unsigned int cle:1;
     unsigned int ce:1;
 };
+
+#define TYPE_AXIS_DEV88_NAND "axis-dev88-nand"
+
+#define AXIS_DEV88_NAND(obj) \
+    OBJECT_CHECK(struct nand_state_t, (obj), TYPE_AXIS_DEV88_NAND)
 
 static struct nand_state_t nand_state;
 static uint64_t nand_read(void *opaque, hwaddr addr, unsigned size)
@@ -80,6 +89,21 @@ static const MemoryRegionOps nand_ops = {
     .read = nand_read,
     .write = nand_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
+};
+
+static void axis_dev88_nand_init(Object *obj)
+{
+    struct nand_state_t *ns = AXIS_DEV88_NAND(obj);
+
+    memory_region_init_io(&ns->iomem, NULL, &nand_ops, ns, "nand", 0x05000000);
+    sysbus_init_mmio(SYS_BUS_DEVICE(obj), &ns->iomem);
+}
+
+static const TypeInfo axis_dev88_nand_info = {
+    .name           = TYPE_AXIS_DEV88_NAND,
+    .parent         = TYPE_SYS_BUS_DEVICE,
+    .instance_size  = sizeof(struct nand_state_t),
+    .instance_init  = axis_dev88_nand_init,
 };
 
 struct tempsensor_t
@@ -238,6 +262,13 @@ static const MemoryRegionOps gpio_ops = {
     },
 };
 
+static void axis_dev88_register(void)
+{
+    type_register_static(&axis_dev88_nand_info);
+}
+
+type_init(axis_dev88_register)
+
 #define INTMEM_SIZE (128 * 1024)
 
 static struct cris_load_info li;
@@ -283,13 +314,12 @@ void axisdev88_init(MachineState *machine)
     memory_region_add_subregion(address_space_mem, 0x38000000, phys_intmem);
 
       /* Attach a NAND flash to CS1.  */
+    object_initialize(&nand_state, sizeof(nand_state), TYPE_AXIS_DEV88_NAND);
+    sysbus_mmio_map(SYS_BUS_DEVICE(&nand_state), 0, 0x10000000);
     nand = drive_get(IF_MTD, 0, 0);
     nand_state.nand = nand_init(nand ? blk_by_legacy_dinfo(nand) : NULL,
                                 NAND_MFR_STMICRO, 0x39);
-    memory_region_init_io(&nand_state.iomem, NULL, &nand_ops, &nand_state,
-                          "nand", 0x05000000);
-    memory_region_add_subregion(address_space_mem, 0x10000000,
-                                &nand_state.iomem);
+    object_property_set_bool(OBJECT(&nand_state), true, "realized", NULL);
 
     gpio_state.nand = &nand_state;
     memory_region_init_io(&gpio_state.iomem, NULL, &gpio_ops, &gpio_state,

@@ -12,6 +12,7 @@
  */
 #include "hw/hw.h"
 #include "hw/devices.h"
+#include "hw/sysbus.h"
 #include "hw/block/flash.h"
 #include "ui/console.h"
 #include "ui/pixel_ops.h"
@@ -83,6 +84,10 @@
 #define NAND_MODE_ECC_RST   0x60
 
 struct TC6393xbState {
+    /*< private >*/
+    SysBusDevice parent_obj;
+    /*< public >*/
+
     MemoryRegion iomem;
     qemu_irq irq;
     qemu_irq *sub_irqs;
@@ -134,6 +139,11 @@ struct TC6393xbState {
     unsigned blank : 1,
              blanked : 1;
 };
+
+#define TYPE_TC6393XB "TC6393xb"
+
+#define TC6393XB(obj) \
+    OBJECT_CHECK(TC6393xbState, (obj), TYPE_TC6393XB)
 
 qemu_irq *tc6393xb_gpio_in_get(TC6393xbState *s)
 {
@@ -553,9 +563,9 @@ static const GraphicHwOps tc6393xb_gfx_ops = {
     .gfx_update  = tc6393xb_update_display,
 };
 
-TC6393xbState *tc6393xb_init(MemoryRegion *sysmem, uint32_t base, qemu_irq irq)
+static void tc6393xb_init(Object *obj)
 {
-    TC6393xbState *s;
+    TC6393xbState *s = TC6393XB(obj);
     DriveInfo *nand;
     static const MemoryRegionOps tc6393xb_ops = {
         .read = tc6393xb_readb,
@@ -567,8 +577,7 @@ TC6393xbState *tc6393xb_init(MemoryRegion *sysmem, uint32_t base, qemu_irq irq)
         },
     };
 
-    s = (TC6393xbState *) g_malloc0(sizeof(TC6393xbState));
-    s->irq = irq;
+    sysbus_init_irq(SYS_BUS_DEVICE(s), &s->irq);
     s->gpio_in = qemu_allocate_irqs(tc6393xb_gpio_set, s, TC6393XB_GPIOS);
 
     s->l3v = *qemu_allocate_irqs(tc6393xb_l3v, s, 1);
@@ -581,16 +590,29 @@ TC6393xbState *tc6393xb_init(MemoryRegion *sysmem, uint32_t base, qemu_irq irq)
                          NAND_MFR_TOSHIBA, 0x76);
 
     memory_region_init_io(&s->iomem, NULL, &tc6393xb_ops, s, "tc6393xb", 0x10000);
-    memory_region_add_subregion(sysmem, base, &s->iomem);
+    sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->iomem);
 
     memory_region_init_ram(&s->vram, NULL, "tc6393xb.vram", 0x100000,
                            &error_abort);
     vmstate_register_ram_global(&s->vram);
     s->vram_ptr = memory_region_get_ram_ptr(&s->vram);
-    memory_region_add_subregion(sysmem, base + 0x100000, &s->vram);
+    sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->vram);
+
     s->scr_width = 480;
     s->scr_height = 640;
     s->con = graphic_console_init(NULL, 0, &tc6393xb_gfx_ops, s);
-
-    return s;
 }
+
+static const TypeInfo tc6393xb_info = {
+    .name           = TYPE_TC6393XB,
+    .parent         = TYPE_SYS_BUS_DEVICE,
+    .instance_size  = sizeof(TC6393xbState),
+    .instance_init  = tc6393xb_init,
+};
+
+static void tc6393xb_register(void)
+{
+    type_register_static(&tc6393xb_info);
+}
+
+type_init(tc6393xb_register)

@@ -234,9 +234,14 @@ static void pc_init1(MachineState *machine,
 
     pc_vga_init(isa_bus, pci_enabled ? pci_bus : NULL);
 
+    assert(pc_machine->vmport != ON_OFF_AUTO_MAX);
+    if (pc_machine->vmport == ON_OFF_AUTO_AUTO) {
+        pc_machine->vmport = xen_enabled() ? ON_OFF_AUTO_OFF : ON_OFF_AUTO_ON;
+    }
+
     /* init basic PC hardware */
     pc_basic_device_init(isa_bus, gsi, &rtc_state, &floppy,
-                         !pc_machine->vmport, 0x4);
+                         (pc_machine->vmport != ON_OFF_AUTO_ON), 0x4);
 
     pc_nic_init(isa_bus, pci_bus);
 
@@ -248,8 +253,8 @@ static void pc_init1(MachineState *machine,
         } else {
             dev = pci_piix3_ide_init(pci_bus, hd, piix3_devfn + 1);
         }
-        idebus[0] = qdev_get_child_bus(&dev->qdev, "ide.0");
-        idebus[1] = qdev_get_child_bus(&dev->qdev, "ide.1");
+        idebus[0] = qdev_get_child_bus(DEVICE(dev), "ide.0");
+        idebus[1] = qdev_get_child_bus(DEVICE(dev), "ide.1");
     } else {
         for(i = 0; i < MAX_IDE_BUS; i++) {
             ISADevice *dev;
@@ -303,9 +308,38 @@ static void pc_init_pci(MachineState *machine)
     pc_init1(machine, 1, 1);
 }
 
+static void pc_compat_2_2(MachineState *machine)
+{
+    x86_cpu_compat_set_features("kvm64", FEAT_1_EDX, 0, CPUID_VME);
+    x86_cpu_compat_set_features("kvm32", FEAT_1_EDX, 0, CPUID_VME);
+    x86_cpu_compat_set_features("Conroe", FEAT_1_EDX, 0, CPUID_VME);
+    x86_cpu_compat_set_features("Penryn", FEAT_1_EDX, 0, CPUID_VME);
+    x86_cpu_compat_set_features("Nehalem", FEAT_1_EDX, 0, CPUID_VME);
+    x86_cpu_compat_set_features("Westmere", FEAT_1_EDX, 0, CPUID_VME);
+    x86_cpu_compat_set_features("SandyBridge", FEAT_1_EDX, 0, CPUID_VME);
+    x86_cpu_compat_set_features("Haswell", FEAT_1_EDX, 0, CPUID_VME);
+    x86_cpu_compat_set_features("Broadwell", FEAT_1_EDX, 0, CPUID_VME);
+    x86_cpu_compat_set_features("Opteron_G1", FEAT_1_EDX, 0, CPUID_VME);
+    x86_cpu_compat_set_features("Opteron_G2", FEAT_1_EDX, 0, CPUID_VME);
+    x86_cpu_compat_set_features("Opteron_G3", FEAT_1_EDX, 0, CPUID_VME);
+    x86_cpu_compat_set_features("Opteron_G4", FEAT_1_EDX, 0, CPUID_VME);
+    x86_cpu_compat_set_features("Opteron_G5", FEAT_1_EDX, 0, CPUID_VME);
+    x86_cpu_compat_set_features("Haswell", FEAT_1_ECX, 0, CPUID_EXT_F16C);
+    x86_cpu_compat_set_features("Haswell", FEAT_1_ECX, 0, CPUID_EXT_RDRAND);
+    x86_cpu_compat_set_features("Broadwell", FEAT_1_ECX, 0, CPUID_EXT_F16C);
+    x86_cpu_compat_set_features("Broadwell", FEAT_1_ECX, 0, CPUID_EXT_RDRAND);
+}
+
 static void pc_compat_2_1(MachineState *machine)
 {
+    PCMachineState *pcms = PC_MACHINE(machine);
+
+    pc_compat_2_2(machine);
     smbios_uuid_encoded = false;
+    x86_cpu_compat_set_features("coreduo", FEAT_1_ECX, CPUID_EXT_VMX, 0);
+    x86_cpu_compat_set_features("core2duo", FEAT_1_ECX, CPUID_EXT_VMX, 0);
+    x86_cpu_compat_kvm_no_autodisable(FEAT_8000_0001_ECX, CPUID_EXT3_SVM);
+    pcms->enforce_aligned_dimm = false;
 }
 
 static void pc_compat_2_0(MachineState *machine)
@@ -340,7 +374,7 @@ static void pc_compat_1_7(MachineState *machine)
     gigabyte_align = false;
     option_rom_has_mr = true;
     legacy_acpi_table_size = 6414;
-    x86_cpu_compat_disable_kvm_features(FEAT_1_ECX, CPUID_EXT_X2APIC);
+    x86_cpu_compat_kvm_no_autoenable(FEAT_1_ECX, CPUID_EXT_X2APIC);
 }
 
 static void pc_compat_1_6(MachineState *machine)
@@ -372,7 +406,13 @@ static void pc_compat_1_3(MachineState *machine)
 static void pc_compat_1_2(MachineState *machine)
 {
     pc_compat_1_3(machine);
-    x86_cpu_compat_disable_kvm_features(FEAT_KVM, KVM_FEATURE_PV_EOI);
+    x86_cpu_compat_kvm_no_autoenable(FEAT_KVM, KVM_FEATURE_PV_EOI);
+}
+
+static void pc_init_pci_2_2(MachineState *machine)
+{
+    pc_compat_2_2(machine);
+    pc_init_pci(machine);
 }
 
 static void pc_init_pci_2_1(MachineState *machine)
@@ -443,7 +483,7 @@ static void pc_init_isa(MachineState *machine)
     if (!machine->cpu_model) {
         machine->cpu_model = "486";
     }
-    x86_cpu_compat_disable_kvm_features(FEAT_KVM, KVM_FEATURE_PV_EOI);
+    x86_cpu_compat_kvm_no_autoenable(FEAT_KVM, KVM_FEATURE_PV_EOI);
     enable_compat_apic_id_mode();
     pc_init1(machine, 0, 1);
 }
@@ -468,17 +508,25 @@ static void pc_xen_hvm_init(MachineState *machine)
     .desc = "Standard PC (i440FX + PIIX, 1996)", \
     .hot_add_cpu = pc_hot_add_cpu
 
-#define PC_I440FX_2_2_MACHINE_OPTIONS                           \
+#define PC_I440FX_2_3_MACHINE_OPTIONS                           \
     PC_I440FX_MACHINE_OPTIONS,                                  \
     .default_machine_opts = "firmware=bios-256k.bin",           \
     .default_display = "std"
 
-static QEMUMachine pc_i440fx_machine_v2_2 = {
-    PC_I440FX_2_2_MACHINE_OPTIONS,
-    .name = "pc-i440fx-2.2",
+static QEMUMachine pc_i440fx_machine_v2_3 = {
+    PC_I440FX_2_3_MACHINE_OPTIONS,
+    .name = "pc-i440fx-2.3",
     .alias = "pc",
     .init = pc_init_pci,
     .is_default = 1,
+};
+
+#define PC_I440FX_2_2_MACHINE_OPTIONS PC_I440FX_2_3_MACHINE_OPTIONS
+
+static QEMUMachine pc_i440fx_machine_v2_2 = {
+    PC_I440FX_2_2_MACHINE_OPTIONS,
+    .name = "pc-i440fx-2.2",
+    .init = pc_init_pci_2_2,
 };
 
 #define PC_I440FX_2_1_MACHINE_OPTIONS                           \
@@ -913,22 +961,12 @@ static QEMUMachine xenfv_machine = {
     .max_cpus = HVM_MAX_VCPUS,
     .default_machine_opts = "accel=xen",
     .hot_add_cpu = pc_hot_add_cpu,
-    .compat_props = (GlobalProperty[]) {
-        /* xenfv has no fwcfg and so does not load acpi from QEMU.
-         * as such new acpi features don't work.
-         */
-        {
-            .driver   = "PIIX4_PM",
-            .property = "acpi-pci-hotplug-with-bridge-support",
-            .value    = "off",
-        },
-        { /* end of list */ }
-    },
 };
 #endif
 
 static void pc_machine_init(void)
 {
+    qemu_register_pc_machine(&pc_i440fx_machine_v2_3);
     qemu_register_pc_machine(&pc_i440fx_machine_v2_2);
     qemu_register_pc_machine(&pc_i440fx_machine_v2_1);
     qemu_register_pc_machine(&pc_i440fx_machine_v2_0);

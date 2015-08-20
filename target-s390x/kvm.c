@@ -106,7 +106,7 @@ const KVMCapabilityInfo kvm_arch_required_capabilities[] = {
 static int cap_sync_regs;
 static int cap_async_pf;
 
-static void *legacy_s390_alloc(size_t size);
+static void *legacy_s390_alloc(size_t size, uint64_t *align);
 
 static int kvm_s390_check_clear_cmma(KVMState *s)
 {
@@ -208,7 +208,7 @@ int kvm_arch_put_registers(CPUState *cs, int level)
     CPUS390XState *env = &cpu->env;
     struct kvm_sregs sregs;
     struct kvm_regs regs;
-    struct kvm_fpu fpu;
+    struct kvm_fpu fpu = {};
     int r;
     int i;
 
@@ -404,7 +404,7 @@ int kvm_arch_get_registers(CPUState *cs)
  * to grow. We also have to use MAP parameters that avoid
  * read-only mapping of guest pages.
  */
-static void *legacy_s390_alloc(size_t size)
+static void *legacy_s390_alloc(size_t size, uint64_t *align)
 {
     void *mem;
 
@@ -827,18 +827,18 @@ static int handle_b9(S390CPU *cpu, struct kvm_run *run, uint8_t ipa1)
     return r;
 }
 
-static int handle_eb(S390CPU *cpu, struct kvm_run *run, uint8_t ipa1)
+static int handle_eb(S390CPU *cpu, struct kvm_run *run, uint8_t ipbl)
 {
     int r = 0;
 
-    switch (ipa1) {
+    switch (ipbl) {
     case PRIV_EB_SQBS:
         /* just inject exception */
         r = -1;
         break;
     default:
         r = -1;
-        DPRINTF("KVM: unhandled PRIV: 0xeb%x\n", ipa1);
+        DPRINTF("KVM: unhandled PRIV: 0xeb%x\n", ipbl);
         break;
     }
 
@@ -1039,7 +1039,7 @@ static int handle_instruction(S390CPU *cpu, struct kvm_run *run)
         r = handle_b9(cpu, run, ipa1);
         break;
     case IPA0_EB:
-        r = handle_eb(cpu, run, ipa1);
+        r = handle_eb(cpu, run, run->s390_sieic.ipb & 0xff);
         break;
     case IPA0_DIAG:
         r = handle_diag(cpu, run, run->s390_sieic.ipb);
@@ -1272,7 +1272,7 @@ void kvm_s390_crw_mchk(void)
     struct kvm_s390_irq irq = {
         .type = KVM_S390_MCHK,
         .u.mchk.cr14 = 1 << 28,
-        .u.mchk.mcic = 0x00400f1d40330000,
+        .u.mchk.mcic = 0x00400f1d40330000ULL,
     };
     kvm_s390_floating_interrupt(&irq);
 }
@@ -1294,7 +1294,6 @@ void kvm_arch_init_irq_routing(KVMState *s)
      * have to override the common code kvm_halt_in_kernel_allowed setting.
      */
     if (kvm_check_extension(s, KVM_CAP_IRQ_ROUTING)) {
-        kvm_irqfds_allowed = true;
         kvm_gsi_routing_allowed = true;
         kvm_halt_in_kernel_allowed = false;
     }

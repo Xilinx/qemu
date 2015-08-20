@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<!-- Copyright (C) 2009-2012 Free Software Foundation, Inc.
+     Contributed by ARM Ltd.
+
+     Copying and distribution of this file, with or without modification,
+     are permitted in any medium without royalty provided the copyright
+     notice and this notice are preserved.  -->
+
+<!DOCTYPE feature SYSTEM "gdb-target.dtd">
+<feature name="org.gnu.gdb.aarch64.el3">
+  <reg name="elr_el3" bitsize="64"/>
+  <reg name="esr_el3" bitsize="64"/>
+  <reg name="spsr_el3" bitsize="64"/>
+  <reg name="ttbr0_el3" bitsize="64"/>
+</feature>

@@ -2347,7 +2347,7 @@ EQMP
 
     {
         .name       = "query-blockstats",
-        .args_type  = "",
+        .args_type  = "query-nodes:b?",
         .mhandler.cmd_new = qmp_marshal_input_query_blockstats,
     },
 
@@ -3184,6 +3184,9 @@ migrate-set-capabilities
 Enable/Disable migration capabilities
 
 - "xbzrle": XBZRLE support
+- "rdma-pin-all": pin all pages when using RDMA during migration
+- "auto-converge": throttle down guest to help convergence of migration
+- "zero-blocks": compress zero blocks during block migration
 
 Arguments:
 
@@ -3208,6 +3211,9 @@ Query current migration capabilities
 
 - "capabilities": migration capabilities state
          - "xbzrle" : XBZRLE state (json-bool)
+         - "rdma-pin-all" : RDMA Pin Page state (json-bool)
+         - "auto-converge" : Auto Converge state (json-bool)
+         - "zero-blocks" : Zero Blocks state (json-bool)
 
 Arguments:
 
@@ -3791,47 +3797,49 @@ Example:
 EQMP
 
     {
-        .name       = "input-send-event",
-        .args_type  = "console:i,events:q",
-        .mhandler.cmd_new = qmp_marshal_input_input_send_event,
+        .name       = "x-input-send-event",
+        .args_type  = "console:i?,events:q",
+        .mhandler.cmd_new = qmp_marshal_input_x_input_send_event,
     },
 
 SQMP
-@input-send-event
+@x-input-send-event
 -----------------
 
 Send input event to guest.
 
 Arguments:
 
-- "console": console index.
+- "console": console index. (json-int, optional)
 - "events": list of input events.
 
 The consoles are visible in the qom tree, under
 /backend/console[$index]. They have a device link and head property, so
 it is possible to map which console belongs to which device and display.
 
+Note: this command is experimental, and not a stable API.
+
 Example (1):
 
 Press left mouse button.
 
--> { "execute": "input-send-event",
+-> { "execute": "x-input-send-event",
     "arguments": { "console": 0,
                    "events": [ { "type": "btn",
-                    "data" : { "down": true, "button": "Left" } } } }
+                    "data" : { "down": true, "button": "Left" } } ] } }
 <- { "return": {} }
 
--> { "execute": "input-send-event",
+-> { "execute": "x-input-send-event",
     "arguments": { "console": 0,
                    "events": [ { "type": "btn",
-                    "data" : { "down": false, "button": "Left" } } } }
+                    "data" : { "down": false, "button": "Left" } } ] } }
 <- { "return": {} }
 
 Example (2):
 
 Press ctrl-alt-del.
 
--> { "execute": "input-send-event",
+-> { "execute": "x-input-send-event",
      "arguments": { "console": 0, "events": [
         { "type": "key", "data" : { "down": true,
           "key": {"type": "qcode", "data": "ctrl" } } },
@@ -3845,7 +3853,7 @@ Example (3):
 
 Move mouse pointer to absolute coordinates (20000, 400).
 
--> { "execute": "input-send-event" ,
+-> { "execute": "x-input-send-event" ,
   "arguments": { "console": 0, "events": [
                { "type": "abs", "data" : { "axis": "X", "value" : 20000 } },
                { "type": "abs", "data" : { "axis": "Y", "value" : 400 } } ] } }

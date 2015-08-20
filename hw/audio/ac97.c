@@ -1323,7 +1323,7 @@ static const MemoryRegionOps ac97_io_nabm_ops = {
 
 static void ac97_on_reset (DeviceState *dev)
 {
-    AC97LinkState *s = container_of(dev, AC97LinkState, dev.qdev);
+    AC97LinkState *s = (AC97LinkState *)dev;
 
     reset_bm_regs (s, &s->bm_regs[0]);
     reset_bm_regs (s, &s->bm_regs[1]);
@@ -1383,7 +1383,7 @@ static int ac97_initfn (PCIDevice *dev)
     pci_register_bar (&s->dev, 0, PCI_BASE_ADDRESS_SPACE_IO, &s->io_nam);
     pci_register_bar (&s->dev, 1, PCI_BASE_ADDRESS_SPACE_IO, &s->io_nabm);
     AUD_register_card ("ac97", &s->card);
-    ac97_on_reset (&s->dev.qdev);
+    ac97_on_reset (DEVICE(&s->dev));
     return 0;
 }
 

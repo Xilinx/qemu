@@ -250,6 +250,16 @@ void tlb_set_page(CPUState *cpu, target_ulong vaddr,
                   int mmu_idx, target_ulong size)
 {
     CPUArchState *env = cpu->env_ptr;
+    env->memattr[0].as = cpu->as;
+    tlb_set_page_attr(cpu, vaddr, paddr, prot, mmu_idx, size, 0);
+}
+
+void tlb_set_page_attr(CPUState *cpu, target_ulong vaddr,
+                       hwaddr paddr, int prot,
+                       int mmu_idx, target_ulong size,
+                       unsigned int attr_idx)
+{
+    CPUArchState *env = cpu->env_ptr;
     MemoryRegionSection *section;
     unsigned int index;
     target_ulong address;
@@ -258,6 +268,7 @@ void tlb_set_page(CPUState *cpu, target_ulong vaddr,
     CPUTLBEntry *te;
     hwaddr iotlb, xlat, sz;
     unsigned vidx = env->vtlb_index++ % CPU_VTLB_SIZE;
+    CPUBusAttr *attr = &env->memattr[attr_idx];
 
     assert(size >= TARGET_PAGE_SIZE);
     if (size != TARGET_PAGE_SIZE) {
@@ -265,12 +276,13 @@ void tlb_set_page(CPUState *cpu, target_ulong vaddr,
     }
 
     sz = size;
-    section = address_space_translate_for_iotlb(cpu->as, paddr,
-                                                &xlat, &sz);
+    section = address_space_translate_for_iotlb(attr->as, paddr,
+                                                &xlat, &sz, &prot, &attr->attr);
     assert(sz >= TARGET_PAGE_SIZE);
 
 #if defined(DEBUG_TLB)
-    printf("tlb_set_page: vaddr=" TARGET_FMT_lx " paddr=0x" TARGET_FMT_plx
+    qemu_log_mask(CPU_LOG_MMU,
+           "tlb_set_page: vaddr=" TARGET_FMT_lx " paddr=0x" TARGET_FMT_plx
            " prot=%x idx=%d\n",
            vaddr, paddr, prot, mmu_idx);
 #endif
@@ -295,9 +307,11 @@ void tlb_set_page(CPUState *cpu, target_ulong vaddr,
     /* do not discard the translation in te, evict it into a victim tlb */
     env->tlb_v_table[mmu_idx][vidx] = *te;
     env->iotlb_v[mmu_idx][vidx] = env->iotlb[mmu_idx][index];
+    env->iotlb_attr_v[mmu_idx][vidx] = env->iotlb_attr[mmu_idx][index];
 
     /* refill the tlb */
     env->iotlb[mmu_idx][index] = iotlb - vaddr;
+    env->iotlb_attr[mmu_idx][index] = *attr;
     te->addend = addend - vaddr;
     if (prot & PAGE_READ) {
         te->addr_read = address;

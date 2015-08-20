@@ -57,6 +57,24 @@ uint32_t HELPER(neon_tbl)(CPUARMState *env, uint32_t ireg, uint32_t def,
 
 #if !defined(CONFIG_USER_ONLY)
 
+#include "hw/remote-port.h"
+
+void HELPER(exclusive_try_lock)(CPUARMState *env, uint64_t addr)
+{
+    if (env->exclusive_lock) {
+        rp_unlock(env->exclusive_addr);
+    }
+    env->exclusive_lock = rp_try_lock(addr);
+}
+
+void HELPER(exclusive_unlock)(CPUARMState *env, uint64_t addr)
+{
+    if (env->exclusive_lock) {
+        rp_unlock(addr);
+    }
+    env->exclusive_lock = false;
+}
+
 /* try to fill the TLB and return an exception if error. If retaddr is
  * NULL, it means that the function was called in C code (i.e. not
  * from generated code or from helper.c)
@@ -79,6 +97,16 @@ void tlb_fill(CPUState *cs, target_ulong addr, int is_write, int mmu_idx,
     }
 }
 #endif
+
+void HELPER(print_tcg32)(uint32_t a)
+{
+    fprintf(stderr, "TCG variable is %" PRIx32 "\n", a);
+}
+
+void HELPER(print_tcg64)(uint64_t a)
+{
+    fprintf(stderr, "TCG variable is %" PRIx64 "\n", a);
+}
 
 uint32_t HELPER(add_setq)(CPUARMState *env, uint32_t a, uint32_t b)
 {
@@ -212,16 +240,95 @@ uint32_t HELPER(usat16)(CPUARMState *env, uint32_t x, uint32_t shift)
 void HELPER(wfi)(CPUARMState *env)
 {
     CPUState *cs = CPU(arm_env_get_cpu(env));
+    ARMCPUClass *acc = ARM_CPU_GET_CLASS(cs);
+    CPUClass *cc = CPU_CLASS(acc);
+    ARMCPU *cpu = arm_env_get_cpu(env);
 
-    cs->exception_index = EXCP_HLT;
-    cs->halted = 1;
+    if (cc->has_work(cs)) {
+        cs->exception_index = EXCP_YIELD;
+        cpu_loop_exit(cs);
+        return;
+    }
+
+    if (arm_wfi_needs_trap(env)) {
+        env->pc -= 4;
+        env->exception.syndrome = syn_aa64_wfx(false);
+        raise_exception(env, EXCP_WFI);
+    }
+
+    if (use_icount) {
+        cs->exception_index = EXCP_YIELD;
+    } else {
+        cs->exception_index = EXCP_HLT;
+        cs->halted = 1;
+    }
+
+    cpu->is_in_wfi = true;
+    qemu_set_irq(cpu->wfi, 1);
+
     cpu_loop_exit(cs);
 }
 
 void HELPER(wfe)(CPUARMState *env)
 {
-    CPUState *cs = CPU(arm_env_get_cpu(env));
+    ARMCPU *ac = ARM_CPU(arm_env_get_cpu(env));
+    CPUState *cs = CPU(ac);
 
+    switch (ac->pe) {
+    case  1:
+        ac->pe = 0;
+        return;
+    case  0:
+        if (arm_wfe_needs_trap(env)) {
+            env->pc -= 4;
+            env->exception.syndrome = syn_aa64_wfx(true);
+            raise_exception(env, EXCP_WFI);
+        }
+
+#if 0
+        if (use_icount) {
+            cs->exception_index = EXCP_HLT;
+        } else {
+            cs->exception_index = EXCP_HLT;
+            cs->halted = 1;
+        }
+#else
+        cs->exception_index = EXCP_YIELD;
+#endif
+        cpu_loop_exit(cs);
+        return;
+    default:
+        g_assert_not_reached();
+    }
+}
+
+void HELPER(sev)(CPUARMState *env)
+{
+    CPUState *cs = CPU(arm_env_get_cpu(env));
+    CPUState *i;
+
+    for (i = first_cpu; i; i = CPU_NEXT(i)) {
+        ARMCPU *ac = ARM_CPU(i);
+        ac->pe = 1;
+        if (i == cs || i->halt_pin || i->reset_pin || i->arch_halt_pin) {
+            continue;
+        }
+        cpu_reset_interrupt(i, CPU_INTERRUPT_HALT);
+        cpu_interrupt(i, CPU_INTERRUPT_EXITTB);
+        i->halted = 0;
+    }
+}
+
+void HELPER(sevl)(CPUARMState *env)
+{
+    ARMCPU *ac = arm_env_get_cpu(env);
+
+    ac->pe = 1;
+}
+
+void HELPER(yield)(CPUARMState *env)
+{
+    CPUState *cs = CPU(arm_env_get_cpu(env));
     /* Don't actually halt the CPU, just yield back to top
      * level loop
      */
@@ -361,7 +468,7 @@ void HELPER(msr_i_pstate)(CPUARMState *env, uint32_t op, uint32_t imm)
      * Note that SPSel is never OK from EL0; we rely on handle_msr_i()
      * to catch that case at translate time.
      */
-    if (arm_current_el(env) == 0 && !(env->cp15.c1_sys & SCTLR_UMA)) {
+    if (arm_current_el(env) == 0 && !(env->cp15.sctlr_el[1] & SCTLR_UMA)) {
         raise_exception(env, EXCP_UDEF);
     }
 
@@ -462,11 +569,13 @@ void HELPER(pre_smc)(CPUARMState *env, uint32_t syndrome)
 
 void HELPER(exception_return)(CPUARMState *env)
 {
+    ARMCPU *ac = arm_env_get_cpu(env);
     int cur_el = arm_current_el(env);
     unsigned int spsr_idx = aarch64_banked_spsr_index(cur_el);
     uint32_t spsr = env->banked_spsr[spsr_idx];
     int new_el, i;
 
+    pmccntr_sync(env);
     aarch64_save_sp(env, cur_el);
 
     env->exclusive_addr = -1;
@@ -482,10 +591,10 @@ void HELPER(exception_return)(CPUARMState *env)
         spsr &= ~PSTATE_SS;
     }
 
+    new_el = extract32(spsr, 2, 2);
     if (spsr & PSTATE_nRW) {
         /* TODO: We currently assume EL1/2/3 are running in AArch64.  */
         env->aarch64 = 0;
-        new_el = 0;
         env->uncached_cpsr = 0x10;
         cpsr_write(env, spsr, ~0);
         if (!arm_singlestep_active(env)) {
@@ -495,7 +604,7 @@ void HELPER(exception_return)(CPUARMState *env)
             env->regs[i] = env->xregs[i];
         }
 
-        env->regs[15] = env->elr_el[1] & ~0x1;
+        env->regs[15] = env->elr_el[cur_el] & ~0x1;
     } else {
         new_el = extract32(spsr, 2, 2);
         if (new_el > cur_el
@@ -503,6 +612,10 @@ void HELPER(exception_return)(CPUARMState *env)
             /* Disallow return to an EL which is unimplemented or higher
              * than the current one.
              */
+            goto illegal_return;
+        }
+        if (new_el == 2 && !(env->cp15.scr_el3 & SCR_NS)) {
+            /* Disallow return to Secure-EL2.  */
             goto illegal_return;
         }
         if (extract32(spsr, 1, 1)) {
@@ -522,6 +635,9 @@ void HELPER(exception_return)(CPUARMState *env)
         env->pc = env->elr_el[cur_el];
     }
 
+    arm_secure_state_sync(ac);
+    pmccntr_sync(env);
+
     return;
 
 illegal_return:
@@ -537,6 +653,7 @@ illegal_return:
     spsr &= PSTATE_NZCV | PSTATE_DAIF;
     spsr |= pstate_read(env) & ~(PSTATE_NZCV | PSTATE_DAIF);
     pstate_write(env, spsr);
+    pmccntr_sync(env);
     if (!arm_singlestep_active(env)) {
         env->pstate &= ~PSTATE_SS;
     }
@@ -575,7 +692,7 @@ static bool linked_bp_matches(ARMCPU *cpu, int lbn)
      * short descriptor format (in which case it holds both PROCID and ASID),
      * since we don't implement the optional v7 context ID masking.
      */
-    contextidr = extract64(env->cp15.contextidr_el1, 0, 32);
+    contextidr = extract64(env->cp15.contextidr_el[1], 0, 32);
 
     switch (bt) {
     case 3: /* linked context ID match */
@@ -749,7 +866,7 @@ void arm_debug_excp_handler(CPUState *cs)
                 bool same_el = arm_debug_target_el(env) == arm_current_el(env);
 
                 env->exception.syndrome = syn_watchpoint(same_el, 0, wnr);
-                if (extended_addresses_enabled(env)) {
+                if (extended_addresses_enabled(env, arm_current_el(env))) {
                     env->exception.fsr = (1 << 9) | 0x22;
                 } else {
                     env->exception.fsr = 0x2;
@@ -764,7 +881,7 @@ void arm_debug_excp_handler(CPUState *cs)
         if (check_breakpoints(cpu)) {
             bool same_el = (arm_debug_target_el(env) == arm_current_el(env));
             env->exception.syndrome = syn_breakpoint(same_el);
-            if (extended_addresses_enabled(env)) {
+            if (extended_addresses_enabled(env, arm_current_el(env))) {
                 env->exception.fsr = (1 << 9) | 0x22;
             } else {
                 env->exception.fsr = 0x2;

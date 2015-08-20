@@ -278,7 +278,7 @@ void ich9_lpc_set_irq(void *opaque, int pirq, int level)
  */
 int ich9_lpc_map_irq(PCIDevice *pci_dev, int intx)
 {
-    BusState *bus = qdev_get_parent_bus(&pci_dev->qdev);
+    BusState *bus = qdev_get_parent_bus(DEVICE(pci_dev));
     PCIBus *pci_bus = PCI_BUS(bus);
     PCIDevice *lpc_pdev =
             pci_bus->devices[PCI_DEVFN(ICH9_LPC_DEV, ICH9_LPC_FUNC)];
@@ -365,7 +365,7 @@ void ich9_lpc_pm_init(PCIDevice *lpc_pci)
     sci_irq = qemu_allocate_irqs(ich9_set_sci, lpc, 1);
     ich9_pm_init(lpc_pci, &lpc->pm, sci_irq[0]);
 
-    ich9_lpc_reset(&lpc->d.qdev);
+    ich9_lpc_reset(DEVICE(lpc));
 }
 
 /* APM */
@@ -575,7 +575,7 @@ static int ich9_lpc_init(PCIDevice *d)
     ICH9LPCState *lpc = ICH9_LPC_DEVICE(d);
     ISABus *isa_bus;
 
-    isa_bus = isa_bus_new(&d->qdev, get_system_io());
+    isa_bus = isa_bus_new(DEVICE(d), get_system_io());
 
     pci_set_long(d->wmask + ICH9_LPC_PMBASE,
                  ICH9_LPC_PMBASE_BASE_ADDRESS_MASK);

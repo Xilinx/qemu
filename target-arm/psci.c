@@ -88,7 +88,7 @@ void arm_handle_psci_call(ARMCPU *cpu)
     uint64_t context_id, mpidr;
     target_ulong entry;
     int32_t ret = 0;
-    int i;
+    int i, el;
 
     for (i = 0; i < 4; i++) {
         /*
@@ -174,14 +174,6 @@ void arm_handle_psci_call(ARMCPU *cpu)
          * The PSCI spec mandates that newly brought up CPUs enter the
          * exception level of the caller in the same execution mode as
          * the caller, with context_id in x0/r0, respectively.
-         *
-         * For now, it is sufficient to assert() that CPUs come out of
-         * reset in the same mode as the calling CPU, since we only
-         * implement EL1, which means that
-         * (a) there is no EL2 for the calling CPU to trap into to change
-         *     its state
-         * (b) the newly brought up CPU enters EL1 immediately after coming
-         *     out of reset in the default state
          */
         assert(is_a64(env) == is_a64(&target_cpu->env));
         if (is_a64(env)) {
@@ -189,6 +181,11 @@ void arm_handle_psci_call(ARMCPU *cpu)
                 ret = QEMU_PSCI_RET_INVALID_PARAMS;
                 break;
             }
+
+            /* Change to match the calling CPU EL */
+            el = arm_current_el(&cpu->env);
+            pstate_write(&target_cpu->env, PSTATE_DAIF |
+                                           aarch64_pstate_mode(el, true));
             target_cpu->env.xregs[0] = context_id;
         } else {
             target_cpu->env.regs[0] = context_id;

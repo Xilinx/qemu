@@ -125,12 +125,13 @@ typedef struct CPUMBState CPUMBState;
 #define PVR0_USE_EXC_MASK               0x04000000
 #define PVR0_USE_ICACHE_MASK            0x02000000
 #define PVR0_USE_DCACHE_MASK            0x01000000
-#define PVR0_USE_MMU                    0x00800000      /* new */
+#define PVR0_USE_MMU_MASK               0x00800000
 #define PVR0_USE_BTC			0x00400000
-#define PVR0_ENDI			0x00200000
+#define PVR0_ENDI_MASK                  0x00200000
 #define PVR0_FAULT			0x00100000
 #define PVR0_VERSION_MASK               0x0000FF00
 #define PVR0_USER1_MASK                 0x000000FF
+#define PVR0_SPROT_MASK                 0x00000001
 
 /* User 2 PVR mask */
 #define PVR1_USER2_MASK                 0xFFFFFFFF
@@ -214,7 +215,9 @@ typedef struct CPUMBState CPUMBState;
 /* MSR Reset value PVR mask */
 #define PVR11_MSR_RESET_VALUE_MASK      0x000007FF
 
-
+#define C_PVR_NONE                      0
+#define C_PVR_BASIC                     1
+#define C_PVR_FULL                      2
 
 /* CPU flags.  */
 
@@ -227,6 +230,7 @@ typedef struct CPUMBState CPUMBState;
 #define CC_EQ  0
 
 #define NB_MMU_MODES    3
+#define NB_MEM_ATTR     1
 
 #define STREAM_EXCEPTION (1 << 0)
 #define STREAM_ATOMIC    (1 << 1)
@@ -242,7 +246,6 @@ struct CPUMBState {
 
     uint32_t imm;
     uint32_t regs[33];
-    uint32_t sregs[24];
     float_status fp_status;
     /* Stack protectors. Yes, it's a hw feature.  */
     uint32_t slr, shr;
@@ -251,6 +254,7 @@ struct CPUMBState {
 #define RES_ADDR_NONE 0xffffffff /* Use 0xffffffff to indicate no reservation */
     uint32_t res_addr;
     uint32_t res_val;
+    uint32_t exclusive_lock;
 
     /* Internal flags.  */
 #define IMM_FLAG	4
@@ -262,10 +266,7 @@ struct CPUMBState {
 /* TB dependent CPUMBState.  */
 #define IFLAGS_TB_MASK  (D_FLAG | IMM_FLAG | DRTI_FLAG | DRTE_FLAG | DRTB_FLAG)
     uint32_t iflags;
-
-    struct {
-        uint32_t regs[16];
-    } pvr;
+    uint32_t wakeup;
 
 #if !defined(CONFIG_USER_ONLY)
     /* Unified MMU.  */
@@ -273,6 +274,14 @@ struct CPUMBState {
 #endif
 
     CPU_COMMON
+
+    /* These fields are preserved on reset.  */
+
+    struct {
+        uint32_t regs[16];
+    } pvr;
+
+    uint32_t sregs[24];
 };
 
 #include "cpu-qom.h"

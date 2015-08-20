@@ -92,6 +92,21 @@ static bool kvm_arm_gic_can_save_restore(GICState *s)
     return s->dev_fd >= 0;
 }
 
+static bool kvm_gic_supports_attr(GICState *s, int group, int attrnum)
+{
+    struct kvm_device_attr attr = {
+        .group = group,
+        .attr = attrnum,
+        .flags = 0,
+    };
+
+    if (s->dev_fd == -1) {
+        return false;
+    }
+
+    return kvm_device_ioctl(s->dev_fd, KVM_HAS_DEVICE_ATTR, &attr) == 0;
+}
+
 static void kvm_gic_access(GICState *s, int group, int offset,
                                    int cpu, uint32_t *val, bool write)
 {
@@ -380,7 +395,7 @@ static void kvm_arm_gic_put(GICState *s)
 
     for (cpu = 0; cpu < s->num_cpu; cpu++) {
         /* s->cpu_enabled[cpu] -> GICC_CTLR */
-        reg = s->cpu_enabled[cpu];
+        reg = s->ctrl[cpu];
         kvm_gicc_access(s, 0x00, cpu, &reg, true);
 
         /* s->priority_mask[cpu] -> GICC_PMR */
@@ -480,7 +495,7 @@ static void kvm_arm_gic_get(GICState *s)
     for (cpu = 0; cpu < s->num_cpu; cpu++) {
         /* GICC_CTLR -> s->cpu_enabled[cpu] */
         kvm_gicc_access(s, 0x00, cpu, &reg, false);
-        s->cpu_enabled[cpu] = (reg & 1);
+        s->ctrl[cpu] = (reg & 1);
 
         /* GICC_PMR -> s->priority_mask[cpu] */
         kvm_gicc_access(s, 0x04, cpu, &reg, false);
@@ -543,6 +558,14 @@ static void kvm_arm_gic_realize(DeviceState *dev, Error **errp)
         sysbus_init_irq(sbd, &s->parent_irq[i]);
     }
 
+    for (i = 0; i < s->num_cpu; i++) {
+        sysbus_init_irq(sbd, &s->parent_irq[GIC_N_REALCPU + i]);
+    }
+
+    for (i = 0; i < s->num_cpu; i++) {
+        sysbus_init_irq(sbd, &s->maint[i]);
+    }
+
     /* Try to create the device via the device control API */
     s->dev_fd = -1;
     ret = kvm_create_device(kvm_state, KVM_DEV_TYPE_ARM_VGIC_V2, false);
@@ -551,6 +574,11 @@ static void kvm_arm_gic_realize(DeviceState *dev, Error **errp)
     } else if (ret != -ENODEV && ret != -ENOTSUP) {
         error_setg_errno(errp, -ret, "error creating in-kernel VGIC");
         return;
+    }
+
+    if (kvm_gic_supports_attr(s, KVM_DEV_ARM_VGIC_GRP_NR_IRQS, 0)) {
+        uint32_t numirqs = s->num_irq;
+        kvm_gic_access(s, KVM_DEV_ARM_VGIC_GRP_NR_IRQS, 0, 0, &numirqs, 1);
     }
 
     /* Distributor */

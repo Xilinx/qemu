@@ -122,7 +122,7 @@ int armv7m_nvic_acknowledge_irq(void *opaque)
     nvic_state *s = (nvic_state *)opaque;
     uint32_t irq;
 
-    irq = gic_acknowledge_irq(&s->gic, 0);
+    irq = gic_acknowledge_irq(&s->gic, 0, false);
     if (irq == 1023)
         hw_error("Interrupt but no vector\n");
     if (irq >= 32)
@@ -135,7 +135,7 @@ void armv7m_nvic_complete_irq(void *opaque, int irq)
     nvic_state *s = (nvic_state *)opaque;
     if (irq >= 16)
         irq += 16;
-    gic_complete_irq(&s->gic, 0, irq);
+    gic_complete_irq(&s->gic, 0, irq, false);
 }
 
 static uint32_t nvic_readl(nvic_state *s, uint32_t offset)
@@ -465,7 +465,7 @@ static void armv7m_nvic_reset(DeviceState *dev)
      * as enabled by default, and with a priority mask which allows
      * all interrupts through.
      */
-    s->gic.cpu_enabled[0] = true;
+    s->gic.ctrl[0] = true;
     s->gic.priority_mask[0] = 0x100;
     /* The NVIC as a whole is always enabled. */
     s->gic.enabled = true;

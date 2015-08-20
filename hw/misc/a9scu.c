@@ -9,6 +9,7 @@
  */
 
 #include "hw/misc/a9scu.h"
+#include "hw/fdt_generic_devices.h"
 
 static uint64_t a9_scu_read(void *opaque, hwaddr offset,
                             unsigned size)
@@ -106,6 +107,10 @@ static void a9_scu_init(Object *obj)
     A9SCUState *s = A9_SCU(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
 
+    if (!s->num_cpu) {
+        s->num_cpu = fdt_generic_num_cpus;
+    }
+
     memory_region_init_io(&s->iomem, obj, &a9_scu_ops, s,
                           "a9-scu", 0x100);
     sysbus_init_mmio(sbd, &s->iomem);
@@ -123,7 +128,7 @@ static const VMStateDescription vmstate_a9_scu = {
 };
 
 static Property a9_scu_properties[] = {
-    DEFINE_PROP_UINT32("num-cpu", A9SCUState, num_cpu, 1),
+    DEFINE_PROP_UINT32("num-cpu", A9SCUState, num_cpu, 0),
     DEFINE_PROP_END_OF_LIST(),
 };
 
