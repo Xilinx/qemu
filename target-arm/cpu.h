@@ -1649,6 +1649,20 @@ static inline CPUARMState *cpu_init(const char *cpu_model)
 
 /* MMU modes definitions */
 #define MMU_MODE0_SUFFIX _user
+/* This doen't really apply to our version yet but this mapping
+ * with upstream makes it easy to bring in certain patches.
+  */
+typedef enum ARMMMUIdx {
+    ARMMMUIdx_S12NSE0 = 0,
+    ARMMMUIdx_S12NSE1 = 1,
+    ARMMMUIdx_S1E2 = 2,
+    ARMMMUIdx_S1E3 = 3,
+    ARMMMUIdx_S1SE0 = 0,
+    ARMMMUIdx_S1SE1 = 1,
+    ARMMMUIdx_S2NS = 1,
+} ARMMMUIdx;
+
+
 #define MMU_MODE1_SUFFIX _kernel
 #define MMU_USER_IDX 0
 static inline int cpu_mmu_index (CPUARMState *env)
