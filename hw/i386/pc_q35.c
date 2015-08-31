@@ -242,9 +242,14 @@ static void pc_q35_init(MachineState *machine)
 
     pc_register_ferr_irq(gsi[13]);
 
+    assert(pc_machine->vmport != ON_OFF_AUTO_MAX);
+    if (pc_machine->vmport == ON_OFF_AUTO_AUTO) {
+        pc_machine->vmport = xen_enabled() ? ON_OFF_AUTO_OFF : ON_OFF_AUTO_ON;
+    }
+
     /* init basic PC hardware */
     pc_basic_device_init(isa_bus, gsi, &rtc_state, &floppy,
-                         !pc_machine->vmport, 0xff0104);
+                         (pc_machine->vmport != ON_OFF_AUTO_ON), 0xff0104);
 
     /* connect pm stuff to lpc */
     ich9_lpc_pm_init(lpc);
@@ -254,8 +259,8 @@ static void pc_q35_init(MachineState *machine)
                                            PCI_DEVFN(ICH9_SATA1_DEV,
                                                      ICH9_SATA1_FUNC),
                                            true, "ich9-ahci");
-    idebus[0] = qdev_get_child_bus(&ahci->qdev, "ide.0");
-    idebus[1] = qdev_get_child_bus(&ahci->qdev, "ide.1");
+    idebus[0] = qdev_get_child_bus(DEVICE(ahci), "ide.0");
+    idebus[1] = qdev_get_child_bus(DEVICE(ahci), "ide.1");
     g_assert(MAX_SATA_PORTS == ICH_AHCI(ahci)->ahci.ports);
     ide_drive_get(hd, ICH_AHCI(ahci)->ahci.ports);
     ahci_ide_create_devs(ahci, hd);
@@ -282,9 +287,38 @@ static void pc_q35_init(MachineState *machine)
     }
 }
 
+static void pc_compat_2_2(MachineState *machine)
+{
+    x86_cpu_compat_set_features("kvm64", FEAT_1_EDX, 0, CPUID_VME);
+    x86_cpu_compat_set_features("kvm32", FEAT_1_EDX, 0, CPUID_VME);
+    x86_cpu_compat_set_features("Conroe", FEAT_1_EDX, 0, CPUID_VME);
+    x86_cpu_compat_set_features("Penryn", FEAT_1_EDX, 0, CPUID_VME);
+    x86_cpu_compat_set_features("Nehalem", FEAT_1_EDX, 0, CPUID_VME);
+    x86_cpu_compat_set_features("Westmere", FEAT_1_EDX, 0, CPUID_VME);
+    x86_cpu_compat_set_features("SandyBridge", FEAT_1_EDX, 0, CPUID_VME);
+    x86_cpu_compat_set_features("Haswell", FEAT_1_EDX, 0, CPUID_VME);
+    x86_cpu_compat_set_features("Broadwell", FEAT_1_EDX, 0, CPUID_VME);
+    x86_cpu_compat_set_features("Opteron_G1", FEAT_1_EDX, 0, CPUID_VME);
+    x86_cpu_compat_set_features("Opteron_G2", FEAT_1_EDX, 0, CPUID_VME);
+    x86_cpu_compat_set_features("Opteron_G3", FEAT_1_EDX, 0, CPUID_VME);
+    x86_cpu_compat_set_features("Opteron_G4", FEAT_1_EDX, 0, CPUID_VME);
+    x86_cpu_compat_set_features("Opteron_G5", FEAT_1_EDX, 0, CPUID_VME);
+    x86_cpu_compat_set_features("Haswell", FEAT_1_ECX, 0, CPUID_EXT_F16C);
+    x86_cpu_compat_set_features("Haswell", FEAT_1_ECX, 0, CPUID_EXT_RDRAND);
+    x86_cpu_compat_set_features("Broadwell", FEAT_1_ECX, 0, CPUID_EXT_F16C);
+    x86_cpu_compat_set_features("Broadwell", FEAT_1_ECX, 0, CPUID_EXT_RDRAND);
+}
+
 static void pc_compat_2_1(MachineState *machine)
 {
+    PCMachineState *pcms = PC_MACHINE(machine);
+
+    pc_compat_2_2(machine);
+    pcms->enforce_aligned_dimm = false;
     smbios_uuid_encoded = false;
+    x86_cpu_compat_set_features("coreduo", FEAT_1_ECX, CPUID_EXT_VMX, 0);
+    x86_cpu_compat_set_features("core2duo", FEAT_1_ECX, CPUID_EXT_VMX, 0);
+    x86_cpu_compat_kvm_no_autodisable(FEAT_8000_0001_ECX, CPUID_EXT3_SVM);
 }
 
 static void pc_compat_2_0(MachineState *machine)
@@ -301,7 +335,7 @@ static void pc_compat_1_7(MachineState *machine)
     smbios_defaults = false;
     gigabyte_align = false;
     option_rom_has_mr = true;
-    x86_cpu_compat_disable_kvm_features(FEAT_1_ECX, CPUID_EXT_X2APIC);
+    x86_cpu_compat_kvm_no_autoenable(FEAT_1_ECX, CPUID_EXT_X2APIC);
 }
 
 static void pc_compat_1_6(MachineState *machine)
@@ -321,6 +355,12 @@ static void pc_compat_1_4(MachineState *machine)
     pc_compat_1_5(machine);
     x86_cpu_compat_set_features("n270", FEAT_1_ECX, 0, CPUID_EXT_MOVBE);
     x86_cpu_compat_set_features("Westmere", FEAT_1_ECX, 0, CPUID_EXT_PCLMULQDQ);
+}
+
+static void pc_q35_init_2_2(MachineState *machine)
+{
+    pc_compat_2_2(machine);
+    pc_q35_init(machine);
 }
 
 static void pc_q35_init_2_1(MachineState *machine)
@@ -366,16 +406,24 @@ static void pc_q35_init_1_4(MachineState *machine)
     .hot_add_cpu = pc_hot_add_cpu, \
     .units_per_default_bus = 1
 
-#define PC_Q35_2_2_MACHINE_OPTIONS                      \
+#define PC_Q35_2_3_MACHINE_OPTIONS                      \
     PC_Q35_MACHINE_OPTIONS,                             \
     .default_machine_opts = "firmware=bios-256k.bin",   \
     .default_display = "std"
 
+static QEMUMachine pc_q35_machine_v2_3 = {
+    PC_Q35_2_3_MACHINE_OPTIONS,
+    .name = "pc-q35-2.3",
+    .alias = "q35",
+    .init = pc_q35_init,
+};
+
+#define PC_Q35_2_2_MACHINE_OPTIONS PC_Q35_2_3_MACHINE_OPTIONS
+
 static QEMUMachine pc_q35_machine_v2_2 = {
     PC_Q35_2_2_MACHINE_OPTIONS,
     .name = "pc-q35-2.2",
-    .alias = "q35",
-    .init = pc_q35_init,
+    .init = pc_q35_init_2_2,
 };
 
 #define PC_Q35_2_1_MACHINE_OPTIONS                      \
@@ -454,6 +502,7 @@ static QEMUMachine pc_q35_machine_v1_4 = {
 
 static void pc_q35_machine_init(void)
 {
+    qemu_register_pc_machine(&pc_q35_machine_v2_3);
     qemu_register_pc_machine(&pc_q35_machine_v2_2);
     qemu_register_pc_machine(&pc_q35_machine_v2_1);
     qemu_register_pc_machine(&pc_q35_machine_v2_0);

@@ -121,10 +121,10 @@ void DMA_register_channel (int nchan,
 {
 }
 
-static int fw_cfg_boot_set(void *opaque, const char *boot_device)
+static void fw_cfg_boot_set(void *opaque, const char *boot_device,
+                            Error **errp)
 {
     fw_cfg_add_i16(opaque, FW_CFG_BOOT_DEVICE, boot_device[0]);
-    return 0;
 }
 
 static void nvram_init(M48t59State *nvram, uint8_t *macaddr,
@@ -221,8 +221,9 @@ static void cpu_kick_irq(SPARCCPU *cpu)
 {
     CPUSPARCState *env = &cpu->env;
     CPUState *cs = CPU(cpu);
+    DeviceState *d = DEVICE(cpu);
 
-    cs->halted = 0;
+    device_unhalt(d);
     cpu_check_irqs(env);
     qemu_cpu_kick(cs);
 }
@@ -249,20 +250,19 @@ static void dummy_cpu_set_irq(void *opaque, int irq, int level)
 
 static void main_cpu_reset(void *opaque)
 {
-    SPARCCPU *cpu = opaque;
-    CPUState *cs = CPU(cpu);
+    DeviceState *d = DEVICE(opaque);
 
-    cpu_reset(cs);
-    cs->halted = 0;
+    device_reset(d);
+    device_unhalt(d);
 }
 
 static void secondary_cpu_reset(void *opaque)
 {
-    SPARCCPU *cpu = opaque;
-    CPUState *cs = CPU(cpu);
+    DeviceState *d = DEVICE(opaque);
 
-    cpu_reset(cs);
-    cs->halted = 1;
+    device_reset(d);
+    device_halt(d);
+
 }
 
 static void cpu_halt_signal(void *opaque, int irq, int level)
@@ -859,7 +859,7 @@ static const TypeInfo ram_info = {
 static void cpu_devinit(const char *cpu_model, unsigned int id,
                         uint64_t prom_addr, qemu_irq **cpu_irqs)
 {
-    CPUState *cs;
+    DeviceState *d;
     SPARCCPU *cpu;
     CPUSPARCState *env;
 
@@ -875,8 +875,8 @@ static void cpu_devinit(const char *cpu_model, unsigned int id,
         qemu_register_reset(main_cpu_reset, cpu);
     } else {
         qemu_register_reset(secondary_cpu_reset, cpu);
-        cs = CPU(cpu);
-        cs->halted = 1;
+        d = DEVICE(cpu);
+        device_halt(DEIVCE(cpu));
     }
     *cpu_irqs = qemu_allocate_irqs(cpu_set_irq, cpu, MAX_PILS);
     env->prom_addr = prom_addr;
@@ -1084,7 +1084,7 @@ static void sun4m_hw_init(const struct sun4m_hwdef *hwdef,
         ecc_init(hwdef->ecc_base, slavio_irq[28],
                  hwdef->ecc_version);
 
-    fw_cfg = fw_cfg_init(0, 0, CFG_ADDR, CFG_ADDR + 2);
+    fw_cfg = fw_cfg_init_mem(CFG_ADDR, CFG_ADDR + 2);
     fw_cfg_add_i16(fw_cfg, FW_CFG_MAX_CPUS, (uint16_t)max_cpus);
     fw_cfg_add_i32(fw_cfg, FW_CFG_ID, 1);
     fw_cfg_add_i64(fw_cfg, FW_CFG_RAM_SIZE, (uint64_t)ram_size);

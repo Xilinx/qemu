@@ -87,7 +87,9 @@ static void reschedule_dma(void *opaque)
 {
     DMAAIOCB *dbs = (DMAAIOCB *)opaque;
 
-    qemu_bh_delete(dbs->bh);
+    if (dbs->bh) {
+        qemu_bh_delete(dbs->bh);
+    }
     dbs->bh = NULL;
     dma_blk_cb(dbs, 0);
 }
@@ -137,7 +139,7 @@ static void dma_blk_cb(void *opaque, int ret)
     trace_dma_blk_cb(dbs, ret);
 
     dbs->acb = NULL;
-    dbs->sector_num += dbs->iov.size / 512;
+    dbs->sector_num += DIV_ROUND_UP(dbs->iov.size, 512);
 
     if (dbs->sg_cur_index == dbs->sg->nsg || ret < 0) {
         dma_complete(dbs, ret);
@@ -160,6 +162,9 @@ static void dma_blk_cb(void *opaque, int ret)
     }
 
     if (dbs->iov.size == 0) {
+        if (dbs->common.cb) {
+            dbs->common.cb(dbs->common.opaque, ret);
+        }
         trace_dma_map_wait(dbs);
         cpu_register_map_client(dbs, continue_after_map_failure);
         return;
@@ -170,7 +175,7 @@ static void dma_blk_cb(void *opaque, int ret)
     }
 
     dbs->acb = dbs->io_func(dbs->blk, dbs->sector_num, &dbs->iov,
-                            dbs->iov.size / 512, dma_blk_cb, dbs);
+                            DIV_ROUND_UP(dbs->iov.size, 512), dma_blk_cb, dbs);
     assert(dbs->acb);
 }
 

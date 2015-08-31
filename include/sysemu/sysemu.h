@@ -138,6 +138,8 @@ extern QEMUClockType rtc_clock;
 extern const char *mem_path;
 extern int mem_prealloc;
 
+extern uint64_t global_sync_quantum;
+
 #define MAX_NODES 128
 
 /* The following shall be true for all CPUs:
@@ -161,6 +163,7 @@ typedef struct node_info {
 extern NodeInfo numa_info[MAX_NODES];
 void set_numa_nodes(void);
 void set_numa_modes(void);
+void query_numa_node_mem(uint64_t node_mem[]);
 extern QemuOptsList qemu_numa_opts;
 int numa_init_func(QemuOpts *opts, void *opaque);
 
@@ -215,8 +218,17 @@ void del_boot_device_path(DeviceState *dev, const char *suffix);
 void device_add_bootindex_property(Object *obj, int32_t *bootindex,
                                    const char *name, const char *suffix,
                                    DeviceState *dev, Error **errp);
+void restore_boot_order(void *opaque);
+void validate_bootdevices(const char *devices, Error **errp);
+
+/* handler to set the boot_device order for a specific type of QEMUMachine */
+typedef void QEMUBootSetHandler(void *opaque, const char *boot_order,
+                                Error **errp);
+void qemu_register_boot_set(QEMUBootSetHandler *func, void *opaque);
+void qemu_boot_set(const char *boot_order, Error **errp);
 
 QemuOpts *qemu_get_machine_opts(void);
+QemuOpts *qemu_get_boot_opts(void);
 
 bool usb_enabled(bool default_usb);
 

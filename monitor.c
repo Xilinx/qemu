@@ -1042,6 +1042,11 @@ static void do_info_jit(Monitor *mon, const QDict *qdict)
     dump_drift_info((FILE *)mon, monitor_fprintf);
 }
 
+static void do_info_opcount(Monitor *mon, const QDict *qdict)
+{
+    dump_opcount_info((FILE *)mon, monitor_fprintf);
+}
+
 static void do_info_history(Monitor *mon, const QDict *qdict)
 {
     int i;
@@ -1123,19 +1128,16 @@ static void do_logfile(Monitor *mon, const QDict *qdict)
 
 static void do_log(Monitor *mon, const QDict *qdict)
 {
-    int mask;
     const char *items = qdict_get_str(qdict, "items");
 
     if (!strcmp(items, "none")) {
-        mask = 0;
+        qemu_set_log_level(0, 0);
     } else {
-        mask = qemu_str_to_log_mask(items);
-        if (!mask) {
+        if (!qemu_setup_log_args(items)) {
             help_cmd(mon, "log");
             return;
         }
     }
-    qemu_set_log(mask);
 }
 
 static void do_singlestep(Monitor *mon, const QDict *qdict)
@@ -1489,17 +1491,15 @@ static void do_ioport_write(Monitor *mon, const QDict *qdict)
 
 static void do_boot_set(Monitor *mon, const QDict *qdict)
 {
-    int res;
+    Error *local_err = NULL;
     const char *bootdevice = qdict_get_str(qdict, "bootdevice");
 
-    res = qemu_boot_set(bootdevice);
-    if (res == 0) {
-        monitor_printf(mon, "boot device list now set to %s\n", bootdevice);
-    } else if (res > 0) {
-        monitor_printf(mon, "setting boot device list failed\n");
+    qemu_boot_set(bootdevice, &local_err);
+    if (local_err) {
+        monitor_printf(mon, "%s\n", error_get_pretty(local_err));
+        error_free(local_err);
     } else {
-        monitor_printf(mon, "no function defined to set boot device list for "
-                       "this architecture\n");
+        monitor_printf(mon, "boot device list now set to %s\n", bootdevice);
     }
 }
 
@@ -1948,7 +1948,10 @@ static void do_info_numa(Monitor *mon, const QDict *qdict)
 {
     int i;
     CPUState *cpu;
+    uint64_t *node_mem;
 
+    node_mem = g_new0(uint64_t, nb_numa_nodes);
+    query_numa_node_mem(node_mem);
     monitor_printf(mon, "%d nodes\n", nb_numa_nodes);
     for (i = 0; i < nb_numa_nodes; i++) {
         monitor_printf(mon, "node %d cpus:", i);
@@ -1959,8 +1962,9 @@ static void do_info_numa(Monitor *mon, const QDict *qdict)
         }
         monitor_printf(mon, "\n");
         monitor_printf(mon, "node %d size: %" PRId64 " MB\n", i,
-            numa_info[i].node_mem >> 20);
+                       node_mem[i] >> 20);
     }
+    g_free(node_mem);
 }
 
 #ifdef CONFIG_PROFILER
@@ -2624,10 +2628,10 @@ static mon_cmd_t info_cmds[] = {
     },
     {
         .name       = "block",
-        .args_type  = "verbose:-v,device:B?",
-        .params     = "[-v] [device]",
+        .args_type  = "nodes:-n,verbose:-v,device:B?",
+        .params     = "[-n] [-v] [device]",
         .help       = "show info of one block device or all block devices "
-                      "(and details of images with -v option)",
+                      "(-n: show named nodes; -v: show details)",
         .mhandler.cmd = hmp_info_block,
     },
     {
@@ -2733,6 +2737,13 @@ static mon_cmd_t info_cmds[] = {
         .params     = "",
         .help       = "show dynamic compiler info",
         .mhandler.cmd = do_info_jit,
+    },
+    {
+        .name       = "opcount",
+        .args_type  = "",
+        .params     = "",
+        .help       = "show dynamic compiler opcode counters",
+        .mhandler.cmd = do_info_opcount,
     },
     {
         .name       = "kvm",
@@ -2968,7 +2979,7 @@ static target_long monitor_get_ccr (const struct MonitorDef *md, int val)
 
     u = 0;
     for (i = 0; i < 8; i++)
-        u |= env->crf[i] << (32 - (4 * i));
+        u |= env->crf[i] << (32 - (4 * (i + 1)));
 
     return u;
 }
@@ -4317,16 +4328,13 @@ void object_add_completion(ReadLineState *rs, int nb_args, const char *str)
 static void peripheral_device_del_completion(ReadLineState *rs,
                                              const char *str, size_t len)
 {
-    Object *peripheral;
-    GSList *list = NULL, *item;
+    Object *peripheral = container_get(qdev_get_machine(), "/peripheral");
+    GSList *list, *item;
 
-    peripheral = object_resolve_path("/machine/peripheral/", NULL);
-    if (peripheral == NULL) {
+    list = qdev_build_hotpluggable_device_list(peripheral);
+    if (!list) {
         return;
     }
-
-    object_child_foreach(peripheral, qdev_build_hotpluggable_device_list,
-                         &list);
 
     for (item = list; item; item = g_slist_next(item)) {
         DeviceState *dev = item->data;
@@ -4694,7 +4702,7 @@ static void monitor_find_completion_by_table(Monitor *mon,
             }
         }
         str = args[nb_args - 1];
-        if (*ptype == '-' && ptype[1] != '\0') {
+        while (*ptype == '-' && ptype[1] != '\0') {
             ptype = next_arg_type(ptype);
         }
         switch(*ptype) {

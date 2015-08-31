@@ -36,6 +36,7 @@
 
 char *exec_path;
 
+bool tcg_tb_chain = true;
 int singlestep;
 const char *filename;
 const char *argv0;
@@ -564,7 +565,7 @@ do_kernel_trap(CPUARMState *env)
         end_exclusive();
         break;
     case 0xffff0fe0: /* __kernel_get_tls */
-        env->regs[0] = env->cp15.tpidrro_el0;
+        env->regs[0] = env->cp15.tpidrro_el[0];
         break;
     case 0xffff0f60: /* __kernel_cmpxchg64 */
         arm_kernel_cmpxchg64_helper(env);
@@ -3472,12 +3473,10 @@ static void handle_arg_log(const char *arg)
 {
     int mask;
 
-    mask = qemu_str_to_log_mask(arg);
-    if (!mask) {
+    if (!qemu_setup_log_args(arg)) {
         qemu_print_log_usage(stdout);
         exit(1);
     }
-    qemu_set_log(mask);
 }
 
 static void handle_arg_log_filename(const char *arg)
@@ -3621,6 +3620,11 @@ static void handle_arg_reserved_va(const char *arg)
 }
 #endif
 
+static void handle_arg_no_tb_chain(const char *arg)
+{
+    tcg_tb_chain = false;
+}
+
 static void handle_arg_singlestep(const char *arg)
 {
     singlestep = 1;
@@ -3679,6 +3683,8 @@ static const struct qemu_argument arg_table[] = {
      "logfile",     "write logs to 'logfile' (default stderr)"},
     {"p",          "QEMU_PAGESIZE",    true,  handle_arg_pagesize,
      "pagesize",   "set the host page size to 'pagesize'"},
+    {"no-tb-chain", "QEMU_NO_TB_CHAIN",  false, handle_arg_no_tb_chain,
+     "",           "Disable TB chaining"},
     {"singlestep", "QEMU_SINGLESTEP",  false, handle_arg_singlestep,
      "",           "run in singlestep mode"},
     {"strace",     "QEMU_STRACE",      false, handle_arg_strace,
@@ -3905,7 +3911,7 @@ int main(int argc, char **argv, char **envp)
 #endif
 #elif defined(TARGET_MIPS)
 #if defined(TARGET_ABI_MIPSN32) || defined(TARGET_ABI_MIPSN64)
-        cpu_model = "20Kc";
+        cpu_model = "5KEf";
 #else
         cpu_model = "24Kf";
 #endif

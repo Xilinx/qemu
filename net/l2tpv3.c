@@ -489,12 +489,12 @@ static struct mmsghdr *build_l2tpv3_vector(NetL2TPV3State *s, int count)
     struct iovec *iov;
     struct mmsghdr *msgvec, *result;
 
-    msgvec = g_malloc(sizeof(struct mmsghdr) * count);
+    msgvec = g_new(struct mmsghdr, count);
     result = msgvec;
     for (i = 0; i < count ; i++) {
         msgvec->msg_hdr.msg_name = NULL;
         msgvec->msg_hdr.msg_namelen = 0;
-        iov =  g_malloc(sizeof(struct iovec) * IOVSIZE);
+        iov =  g_new(struct iovec, IOVSIZE);
         msgvec->msg_hdr.msg_iov = iov;
         iov->iov_base = g_malloc(s->header_size);
         iov->iov_len = s->header_size;
@@ -516,7 +516,7 @@ static void net_l2tpv3_cleanup(NetClientState *nc)
     qemu_purge_queued_packets(nc);
     l2tpv3_read_poll(s, false);
     l2tpv3_write_poll(s, false);
-    if (s->fd > 0) {
+    if (s->fd >= 0) {
         close(s->fd);
     }
     destroy_vector(s->msgvec, MAX_L2TPV3_MSGCNT, IOVSIZE);
@@ -660,7 +660,6 @@ int net_init_l2tpv3(const NetClientOptions *opts,
     if (fd == -1) {
         fd = -errno;
         error_report("l2tpv3_open : socket creation failed, errno = %d", -fd);
-        freeaddrinfo(result);
         goto outerr;
     }
     if (bind(fd, (struct sockaddr *) result->ai_addr, result->ai_addrlen)) {
@@ -696,8 +695,7 @@ int net_init_l2tpv3(const NetClientOptions *opts,
         goto outerr;
     }
 
-    s->dgram_dst = g_malloc(sizeof(struct sockaddr_storage));
-    memset(s->dgram_dst, '\0' , sizeof(struct sockaddr_storage));
+    s->dgram_dst = g_new0(struct sockaddr_storage, 1);
     memcpy(s->dgram_dst, result->ai_addr, result->ai_addrlen);
     s->dst_size = result->ai_addrlen;
 
@@ -731,7 +729,7 @@ int net_init_l2tpv3(const NetClientOptions *opts,
     }
 
     s->msgvec = build_l2tpv3_vector(s, MAX_L2TPV3_MSGCNT);
-    s->vec = g_malloc(sizeof(struct iovec) * MAX_L2TPV3_IOVCNT);
+    s->vec = g_new(struct iovec, MAX_L2TPV3_IOVCNT);
     s->header_buf = g_malloc(s->header_size);
 
     qemu_set_nonblock(fd);
@@ -746,7 +744,7 @@ int net_init_l2tpv3(const NetClientOptions *opts,
     return 0;
 outerr:
     qemu_del_net_client(nc);
-    if (fd > 0) {
+    if (fd >= 0) {
         close(fd);
     }
     if (result) {

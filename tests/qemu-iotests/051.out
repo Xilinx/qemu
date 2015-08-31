@@ -1,6 +1,6 @@
 QA output created by 051
-Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=134217728 
-Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=134217728 backing_file='TEST_DIR/t.IMGFMT.base' 
+Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=134217728
+Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=134217728 backing_file='TEST_DIR/t.IMGFMT.base'
 
 === Unknown option ===
 
@@ -50,6 +50,7 @@ Testing: -drive file=TEST_DIR/t.qcow2,driver=qcow2,backing.file.filename=TEST_DI
 QEMU X.Y.Z monitor - type 'help' for more information
 (qemu) i[K[Din[K[D[Dinf[K[D[D[Dinfo[K[D[D[D[Dinfo [K[D[D[D[D[Dinfo b[K[D[D[D[D[D[Dinfo bl[K[D[D[D[D[D[D[Dinfo blo[K[D[D[D[D[D[D[D[Dinfo bloc[K[D[D[D[D[D[D[D[D[Dinfo block[K
 ide0-hd0: TEST_DIR/t.qcow2 (qcow2)
+    Cache mode:       writeback
     Backing file:     TEST_DIR/t.qcow2.orig (chain depth: 1)
 (qemu) q[K[Dqu[K[D[Dqui[K[D[D[Dquit[K
 
@@ -85,7 +86,7 @@ QEMU_PROG: -drive file=TEST_DIR/t.qcow2,format=qcow2,lazy-refcounts=foo: could n
 
 === With version 2 images enabling lazy refcounts must fail ===
 
-Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=134217728 
+Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=134217728
 Testing: -drive file=TEST_DIR/t.qcow2,format=qcow2,lazy-refcounts=on
 QEMU_PROG: -drive file=TEST_DIR/t.qcow2,format=qcow2,lazy-refcounts=on: could not open disk image TEST_DIR/t.qcow2: Lazy refcounts require a qcow2 image with at least qemu 1.1 compatibility level
 

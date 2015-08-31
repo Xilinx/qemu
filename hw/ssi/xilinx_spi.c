@@ -27,7 +27,7 @@
 #include "hw/sysbus.h"
 #include "sysemu/sysemu.h"
 #include "qemu/log.h"
-#include "qemu/fifo8.h"
+#include "qemu/fifo.h"
 
 #include "hw/ssi.h"
 
@@ -57,6 +57,7 @@
 #define R_SPICR_TXFF_RST     (1 << 5)
 #define R_SPICR_RXFF_RST     (1 << 6)
 #define R_SPICR_MTI          (1 << 8)
+#define R_SPICR_MANUAL_SS_EN (1 << 7)
 
 #define R_SPISR     (0x64 / 4)
 #define SR_TX_FULL    (1 << 3)
@@ -89,15 +90,15 @@ typedef struct XilinxSPI {
 
     SSIBus *spi;
 
-    Fifo8 rx_fifo;
-    Fifo8 tx_fifo;
+    Fifo rx_fifo;
+    Fifo tx_fifo;
 
     uint32_t regs[R_MAX];
 } XilinxSPI;
 
 static void txfifo_reset(XilinxSPI *s)
 {
-    fifo8_reset(&s->tx_fifo);
+    fifo_reset(&s->tx_fifo);
 
     s->regs[R_SPISR] &= ~SR_TX_FULL;
     s->regs[R_SPISR] |= SR_TX_EMPTY;
@@ -105,7 +106,7 @@ static void txfifo_reset(XilinxSPI *s)
 
 static void rxfifo_reset(XilinxSPI *s)
 {
-    fifo8_reset(&s->rx_fifo);
+    fifo_reset(&s->rx_fifo);
 
     s->regs[R_SPISR] |= SR_RX_EMPTY;
     s->regs[R_SPISR] &= ~SR_RX_FULL;
@@ -125,8 +126,8 @@ static void xlx_spi_update_irq(XilinxSPI *s)
     uint32_t pending;
 
     s->regs[R_IPISR] |=
-            (!fifo8_is_empty(&s->rx_fifo) ? IRQ_DRR_NOT_EMPTY : 0) |
-            (fifo8_is_full(&s->rx_fifo) ? IRQ_DRR_FULL : 0);
+            (!fifo_is_empty(&s->rx_fifo) ? IRQ_DRR_NOT_EMPTY : 0) |
+            (fifo_is_full(&s->rx_fifo) ? IRQ_DRR_FULL : 0);
 
     pending = s->regs[R_IPISR] & s->regs[R_IPIER];
 
@@ -154,6 +155,7 @@ static void xlx_spi_do_reset(XilinxSPI *s)
     s->regs[R_SPISSR] = ~0;
     xlx_spi_update_irq(s);
     xlx_spi_update_cs(s);
+    s->regs[R_SPICR] = R_SPICR_MTI | R_SPICR_MANUAL_SS_EN;
 }
 
 static void xlx_spi_reset(DeviceState *d)
@@ -171,16 +173,16 @@ static void spi_flush_txfifo(XilinxSPI *s)
     uint32_t tx;
     uint32_t rx;
 
-    while (!fifo8_is_empty(&s->tx_fifo)) {
-        tx = (uint32_t)fifo8_pop(&s->tx_fifo);
+    while (!fifo_is_empty(&s->tx_fifo)) {
+        tx = (uint32_t)fifo_pop8(&s->tx_fifo);
         DB_PRINT("data tx:%x\n", tx);
         rx = ssi_transfer(s->spi, tx);
         DB_PRINT("data rx:%x\n", rx);
-        if (fifo8_is_full(&s->rx_fifo)) {
+        if (fifo_is_full(&s->rx_fifo)) {
             s->regs[R_IPISR] |= IRQ_DRR_OVERRUN;
         } else {
-            fifo8_push(&s->rx_fifo, (uint8_t)rx);
-            if (fifo8_is_full(&s->rx_fifo)) {
+            fifo_push8(&s->rx_fifo, (uint8_t)rx);
+            if (fifo_is_full(&s->rx_fifo)) {
                 s->regs[R_SPISR] |= SR_RX_FULL;
                 s->regs[R_IPISR] |= IRQ_DRR_FULL;
             }
@@ -205,14 +207,14 @@ spi_read(void *opaque, hwaddr addr, unsigned int size)
     addr >>= 2;
     switch (addr) {
     case R_SPIDRR:
-        if (fifo8_is_empty(&s->rx_fifo)) {
+        if (fifo_is_empty(&s->rx_fifo)) {
             DB_PRINT("Read from empty FIFO!\n");
             return 0xdeadbeef;
         }
 
         s->regs[R_SPISR] &= ~SR_RX_FULL;
-        r = fifo8_pop(&s->rx_fifo);
-        if (fifo8_is_empty(&s->rx_fifo)) {
+        r = fifo_pop8(&s->rx_fifo);
+        if (fifo_is_empty(&s->rx_fifo)) {
             s->regs[R_SPISR] |= SR_RX_EMPTY;
         }
         break;
@@ -253,8 +255,8 @@ spi_write(void *opaque, hwaddr addr,
 
     case R_SPIDTR:
         s->regs[R_SPISR] &= ~SR_TX_EMPTY;
-        fifo8_push(&s->tx_fifo, (uint8_t)value);
-        if (fifo8_is_full(&s->tx_fifo)) {
+        fifo_push8(&s->tx_fifo, (uint8_t)value);
+        if (fifo_is_full(&s->tx_fifo)) {
             s->regs[R_SPISR] |= SR_TX_FULL;
         }
         if (!spi_master_enabled(s)) {
@@ -330,9 +332,8 @@ static int xilinx_spi_init(SysBusDevice *sbd)
 
     sysbus_init_irq(sbd, &s->irq);
     s->cs_lines = g_new0(qemu_irq, s->num_cs);
-    ssi_auto_connect_slaves(dev, s->cs_lines, s->spi);
     for (i = 0; i < s->num_cs; ++i) {
-        sysbus_init_irq(sbd, &s->cs_lines[i]);
+        qdev_init_gpio_out(dev, &s->cs_lines[i], 1);
     }
 
     memory_region_init_io(&s->mmio, OBJECT(s), &spi_ops, s,
@@ -341,8 +342,8 @@ static int xilinx_spi_init(SysBusDevice *sbd)
 
     s->irqline = -1;
 
-    fifo8_create(&s->tx_fifo, FIFO_CAPACITY);
-    fifo8_create(&s->rx_fifo, FIFO_CAPACITY);
+    fifo_create8(&s->tx_fifo, FIFO_CAPACITY);
+    fifo_create8(&s->rx_fifo, FIFO_CAPACITY);
 
     return 0;
 }
@@ -352,8 +353,8 @@ static const VMStateDescription vmstate_xilinx_spi = {
     .version_id = 1,
     .minimum_version_id = 1,
     .fields = (VMStateField[]) {
-        VMSTATE_FIFO8(tx_fifo, XilinxSPI),
-        VMSTATE_FIFO8(rx_fifo, XilinxSPI),
+        VMSTATE_FIFO(tx_fifo, XilinxSPI),
+        VMSTATE_FIFO(rx_fifo, XilinxSPI),
         VMSTATE_UINT32_ARRAY(regs, XilinxSPI, R_MAX),
         VMSTATE_END_OF_LIST()
     }

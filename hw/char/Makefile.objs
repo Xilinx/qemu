@@ -6,6 +6,7 @@ common-obj-$(CONFIG_SERIAL) += serial.o serial-isa.o
 common-obj-$(CONFIG_SERIAL_PCI) += serial-pci.o
 common-obj-$(CONFIG_VIRTIO) += virtio-console.o
 common-obj-$(CONFIG_XILINX) += xilinx_uartlite.o
+common-obj-$(CONFIG_XILINX_IOMODULE_UART) += xilinx_iomod_uart.o
 common-obj-$(CONFIG_XEN_BACKEND) += xen_console.o
 common-obj-$(CONFIG_CADENCE) += cadence_uart.o
 

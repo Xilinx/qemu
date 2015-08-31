@@ -26,6 +26,7 @@
 #define SDHCI_H
 
 #include "qemu-common.h"
+#include "hw/pci/pci.h"
 #include "hw/sysbus.h"
 #include "hw/sd.h"
 
@@ -73,6 +74,7 @@
 
 /* R/ROC Present State Register 0x000A0000 */
 #define SDHC_PRNSTS                    0x24
+#define SDHC_CMD_LVL_SHIFT             24
 #define SDHC_CMD_INHIBIT               0x00000001
 #define SDHC_DATA_INHIBIT              0x00000002
 #define SDHC_DAT_LINE_ACTIVE           0x00000004
@@ -83,6 +85,8 @@
 #define SDHC_CARD_PRESENT              0x00010000
 #define SDHC_CARD_DETECT               0x00040000
 #define SDHC_WRITE_PROTECT             0x00080000
+#define SDHC_DAT_LVL_SHIFT             20
+#define SDHC_DAT_LVL_LENGTH            4
 #define TRANSFERRING_DATA(x)           \
     ((x) & (SDHC_DOING_READ | SDHC_DOING_WRITE))
 
@@ -175,10 +179,16 @@
 #define SDHC_ERRINTSIGEN               0x3A
 
 /* ROC Auto CMD12 error status register 0x0 */
+/* 16 MSB are the Host Control Register 2.  */
 #define SDHC_ACMD12ERRSTS              0x3C
+#define SDHC_HOSTCTL2                  0x3E
+#define SDHC_CTRL2_VOLTAGE_SWITCH      (1 << 3)
+#define SDHC_CTRL2_SAMPLING_CLKSEL     (1 << 23)
+#define SDHC_CTRL2_EXECUTE_TUNING      (1 << 22)
 
 /* HWInit Capabilities Register 0x05E80080 */
 #define SDHC_CAPAREG                   0x40
+#define SDHC_CAPAREG_HI                0x44
 #define SDHC_CAN_DO_DMA                0x00400000
 #define SDHC_CAN_DO_ADMA2              0x00080000
 #define SDHC_CAN_DO_ADMA1              0x00100000
@@ -216,7 +226,7 @@
 
 /* HWInit Host Controller Version Register 0x0401 */
 #define SDHC_HCVER                      0xFE
-#define SD_HOST_SPECv2_VERS             0x2401
+#define SD_HOST_SPECv2_VERS             0x2402
 
 #define SDHC_REGISTERS_MAP_SIZE         0x100
 #define SDHC_INSERTION_DELAY            (get_ticks_per_sec())
@@ -232,9 +242,14 @@ enum {
 
 /* SD/MMC host controller state */
 typedef struct SDHCIState {
-    SysBusDevice busdev;
+    union {
+        PCIDevice pcidev;
+        SysBusDevice busdev;
+    };
     SDState *card;
     MemoryRegion iomem;
+    MemoryRegion *dma_mr;
+    AddressSpace *dma_as;
 
     QEMUTimer *insert_timer;       /* timer for 'changing' sd card. */
     QEMUTimer *transfer_timer;
@@ -264,9 +279,10 @@ typedef struct SDHCIState {
     uint16_t norintsigen;  /* Normal Interrupt Signal Enable Register */
     uint16_t errintsigen;  /* Error Interrupt Signal Enable Register */
     uint16_t acmd12errsts; /* Auto CMD12 error status register */
+    uint16_t hostctl2;     /* Host Control 2 */
     uint64_t admasysaddr;  /* ADMA System Address Register */
 
-    uint32_t capareg;      /* Capabilities Register */
+    uint64_t capareg;      /* Capabilities Register */
     uint32_t maxcurr;      /* Maximum Current Capabilities Register */
     uint8_t  *fifo_buffer; /* SD host i/o FIFO buffer */
     uint32_t buf_maxsz;
@@ -277,36 +293,16 @@ typedef struct SDHCIState {
     /* Force Event Auto CMD12 Error Interrupt Reg - write only */
     /* Force Event Error Interrupt Register- write only */
     /* RO Host Controller Version Register always reads as 0x2401 */
+
 } SDHCIState;
-
-typedef struct SDHCIClass {
-    SysBusDeviceClass busdev_class;
-
-    void (*reset)(SDHCIState *s);
-    uint32_t (*mem_read)(SDHCIState *s, unsigned int offset, unsigned size);
-    void (*mem_write)(SDHCIState *s, unsigned int offset, uint32_t value,
-            unsigned size);
-    void (*send_command)(SDHCIState *s);
-    bool (*can_issue_command)(SDHCIState *s);
-    void (*data_transfer)(SDHCIState *s);
-    void (*end_data_transfer)(SDHCIState *s);
-    void (*do_sdma_single)(SDHCIState *s);
-    void (*do_sdma_multi)(SDHCIState *s);
-    void (*do_adma)(SDHCIState *s);
-    void (*read_block_from_card)(SDHCIState *s);
-    void (*write_block_to_card)(SDHCIState *s);
-    uint32_t (*bdata_read)(SDHCIState *s, unsigned size);
-    void (*bdata_write)(SDHCIState *s, uint32_t value, unsigned size);
-} SDHCIClass;
 
 extern const VMStateDescription sdhci_vmstate;
 
-#define TYPE_SDHCI            "generic-sdhci"
-#define SDHCI(obj)            \
-     OBJECT_CHECK(SDHCIState, (obj), TYPE_SDHCI)
-#define SDHCI_CLASS(klass)    \
-     OBJECT_CLASS_CHECK(SDHCIClass, (klass), TYPE_SDHCI)
-#define SDHCI_GET_CLASS(obj)  \
-     OBJECT_GET_CLASS(SDHCIClass, (obj), TYPE_SDHCI)
+#define TYPE_PCI_SDHCI "sdhci-pci"
+#define PCI_SDHCI(obj) OBJECT_CHECK(SDHCIState, (obj), TYPE_PCI_SDHCI)
+
+#define TYPE_SYSBUS_SDHCI "generic-sdhci"
+#define SYSBUS_SDHCI(obj)                               \
+     OBJECT_CHECK(SDHCIState, (obj), TYPE_SYSBUS_SDHCI)
 
 #endif /* SDHCI_H */

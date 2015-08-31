@@ -28,6 +28,7 @@
 #include "qemu/osdep.h"
 #include "qemu/queue.h"
 #ifndef CONFIG_USER_ONLY
+#include "exec/memory-attr.h"
 #include "exec/hwaddr.h"
 #endif
 
@@ -102,12 +103,21 @@ typedef struct CPUTLBEntry {
 
 QEMU_BUILD_BUG_ON(sizeof(CPUTLBEntry) != (1 << CPU_TLB_ENTRY_BITS));
 
+
+typedef struct CPUBusAttr
+{
+    AddressSpace *as;
+    MemoryTransactionAttr attr;
+} CPUBusAttr;
+
 #define CPU_COMMON_TLB \
     /* The meaning of the MMU modes is defined in the target code. */   \
     CPUTLBEntry tlb_table[NB_MMU_MODES][CPU_TLB_SIZE];                  \
     CPUTLBEntry tlb_v_table[NB_MMU_MODES][CPU_VTLB_SIZE];               \
     hwaddr iotlb[NB_MMU_MODES][CPU_TLB_SIZE];                           \
     hwaddr iotlb_v[NB_MMU_MODES][CPU_VTLB_SIZE];                        \
+    CPUBusAttr iotlb_attr[NB_MMU_MODES][CPU_TLB_SIZE];                  \
+    CPUBusAttr iotlb_attr_v[NB_MMU_MODES][CPU_VTLB_SIZE];                  \
     target_ulong tlb_flush_addr;                                        \
     target_ulong tlb_flush_mask;                                        \
     target_ulong vtlb_index;                                            \
@@ -123,5 +133,6 @@ QEMU_BUILD_BUG_ON(sizeof(CPUTLBEntry) != (1 << CPU_TLB_ENTRY_BITS));
 #define CPU_COMMON                                                      \
     /* soft mmu support */                                              \
     CPU_COMMON_TLB                                                      \
+    CPUBusAttr memattr[NB_MEM_ATTR];                                    \
 
 #endif

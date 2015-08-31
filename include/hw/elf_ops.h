@@ -204,33 +204,35 @@ static int glue(load_elf, SZ)(const char *name, int fd,
         glue(bswap_ehdr, SZ)(&ehdr);
     }
 
-    switch (elf_machine) {
+    if (elf_machine != ehdr.e_machine) {
+        /* check if its a backward compatible machine. */
+        switch (elf_machine) {
         case EM_PPC64:
-            if (EM_PPC64 != ehdr.e_machine)
-                if (EM_PPC != ehdr.e_machine) {
-                    ret = ELF_LOAD_WRONG_ARCH;
-                    goto fail;
-                }
-            break;
-        case EM_X86_64:
-            if (EM_X86_64 != ehdr.e_machine)
-                if (EM_386 != ehdr.e_machine) {
-                    ret = ELF_LOAD_WRONG_ARCH;
-                    goto fail;
-                }
-            break;
-        case EM_MICROBLAZE:
-            if (EM_MICROBLAZE != ehdr.e_machine)
-                if (EM_MICROBLAZE_OLD != ehdr.e_machine) {
-                    ret = ELF_LOAD_WRONG_ARCH;
-                    goto fail;
-                }
-            break;
-        default:
-            if (elf_machine != ehdr.e_machine) {
+            if (EM_PPC != ehdr.e_machine) {
                 ret = ELF_LOAD_WRONG_ARCH;
                 goto fail;
             }
+            break;
+        case EM_X86_64:
+            if (EM_386 != ehdr.e_machine) {
+                ret = ELF_LOAD_WRONG_ARCH;
+                goto fail;
+            }
+            break;
+        case EM_MICROBLAZE:
+            if (EM_MICROBLAZE_OLD != ehdr.e_machine) {
+                ret = ELF_LOAD_WRONG_ARCH;
+                goto fail;
+            }
+            break;
+        case EM_AARCH64:
+            if (EM_ARM != ehdr.e_machine) {
+                goto fail;
+            }
+            break;
+        default:
+            goto fail;
+        }
     }
 
     if (pentry)

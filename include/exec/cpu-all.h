@@ -313,6 +313,13 @@ typedef struct RAMBlock {
     int fd;
 } RAMBlock;
 
+static inline void *ramblock_ptr(RAMBlock *block, ram_addr_t offset)
+{
+    assert(offset < block->length);
+    assert(block->host);
+    return (char *)block->host + offset;
+}
+
 typedef struct RAMList {
     QemuMutex mutex;
     /* Protected by the iothread lock.  */
@@ -323,6 +330,8 @@ typedef struct RAMList {
     uint32_t version;
 } RAMList;
 extern RAMList ram_list;
+
+extern const char *machine_path;
 
 /* Flags stored in the low bits of the TLB virtual address.  These are
    defined so that fast path ram access is all zeros.  */
@@ -335,6 +344,7 @@ extern RAMList ram_list;
 #define TLB_MMIO        (1 << 5)
 
 void dump_exec_info(FILE *f, fprintf_function cpu_fprintf);
+void dump_opcount_info(FILE *f, fprintf_function cpu_fprintf);
 ram_addr_t last_ram_offset(void);
 void qemu_mutex_lock_ramlist(void);
 void qemu_mutex_unlock_ramlist(void);

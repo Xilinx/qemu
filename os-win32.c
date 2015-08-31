@@ -56,6 +56,15 @@ int setenv(const char *name, const char *value, int overwrite)
     return result;
 }
 
+void *rawmemchr(const void *s, int c)
+{
+    const char *s8 = s;
+    while (*s8 != c) {
+        s8++;
+    }
+    return (void *) s8;
+}
+
 static BOOL WINAPI qemu_ctrl_handler(DWORD type)
 {
     qemu_system_shutdown_request();

@@ -6,7 +6,7 @@
 
 struct aes_key_st {
     uint32_t rd_key[4 *(AES_MAXNR + 1)];
-    int rounds;
+    int8_t rounds;
 };
 typedef struct aes_key_st AES_KEY;
 

@@ -33,3 +33,4 @@ obj-$(CONFIG_CG3) += cg3.o
 obj-$(CONFIG_VGA) += vga.o
 
 common-obj-$(CONFIG_QXL) += qxl.o qxl-logger.o qxl-render.o
+common-obj-y += dpcd.o xilinx_dp.o

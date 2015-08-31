@@ -60,6 +60,8 @@
 #include "exec/cputlb.h"
 #include "translate-all.h"
 #include "qemu/timer.h"
+#include "qemu/etrace.h"
+#include "exec/cpu-all.h"
 
 //#define DEBUG_TB_INVALIDATE
 //#define DEBUG_FLUSH
@@ -264,6 +266,12 @@ bool cpu_restore_state(CPUState *cpu, uintptr_t retaddr)
     tb = tb_find_pc(retaddr);
     if (tb) {
         cpu_restore_state_from_tb(cpu, tb, retaddr);
+        if (tb->cflags & CF_NOCACHE) {
+            /* one-shot translation, invalidate it immediately */
+            cpu->current_tb = NULL;
+            tb_phys_invalidate(tb, -1);
+            tb_free(tb);
+        }
         return true;
     }
     return false;
@@ -1063,6 +1071,20 @@ TranslationBlock *tb_gen_code(CPUState *cpu,
         phys_page2 = get_page_addr_code(env, virt_page2);
     }
     tb_link_page(tb, phys_pc, phys_page2);
+
+    if (qemu_etrace_mask(ETRACE_F_TRANSLATION)) {
+        CPUState *cpu = ENV_GET_CPU(env);
+        hwaddr phys_addr = pc;
+
+#if !defined(CONFIG_USER_ONLY)
+        phys_addr = cpu_get_phys_page_debug(cpu, pc & TARGET_PAGE_MASK);
+        phys_addr += pc & ~TARGET_PAGE_MASK;
+#endif
+        etrace_dump_tb(&qemu_etracer, NULL, cpu->cpu_index,
+                       tb->pc, phys_addr, tb->size,
+                       tb->tc_ptr, code_gen_size);
+    }
+
     return tb;
 }
 
@@ -1534,7 +1556,7 @@ void cpu_io_recompile(CPUState *cpu, uintptr_t retaddr)
        branch.  */
 #if defined(TARGET_MIPS)
     if ((env->hflags & MIPS_HFLAG_BMASK) != 0 && n > 1) {
-        env->active_tc.PC -= 4;
+        env->active_tc.PC -= (env->hflags & MIPS_HFLAG_B16 ? 2 : 4);
         cpu->icount_decr.u16.low++;
         env->hflags &= ~MIPS_HFLAG_BMASK;
     }
@@ -1643,6 +1665,11 @@ void dump_exec_info(FILE *f, fprintf_function cpu_fprintf)
             tcg_ctx.tb_ctx.tb_phys_invalidate_count);
     cpu_fprintf(f, "TLB flush count     %d\n", tlb_flush_count);
     tcg_dump_info(f, cpu_fprintf);
+}
+
+void dump_opcount_info(FILE *f, fprintf_function cpu_fprintf)
+{
+    tcg_dump_op_count(f, cpu_fprintf);
 }
 
 #else /* CONFIG_USER_ONLY */

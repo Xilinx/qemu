@@ -91,6 +91,15 @@ static inline int dma_memory_rw_relaxed(AddressSpace *as, dma_addr_t addr,
     return address_space_rw(as, addr, buf, len, dir == DMA_DIRECTION_FROM_DEVICE);
 }
 
+static inline int dma_memory_rw_relaxed_attr(AddressSpace *as, dma_addr_t addr,
+                                             void *buf, dma_addr_t len,
+                                             DMADirection dir,
+                                             MemoryTransactionAttr *attr)
+{
+    return address_space_rw_attr(as, addr, buf, len,
+                                 dir == DMA_DIRECTION_FROM_DEVICE, attr);
+}
+
 static inline int dma_memory_read_relaxed(AddressSpace *as, dma_addr_t addr,
                                           void *buf, dma_addr_t len)
 {
@@ -102,6 +111,16 @@ static inline int dma_memory_write_relaxed(AddressSpace *as, dma_addr_t addr,
 {
     return dma_memory_rw_relaxed(as, addr, (void *)buf, len,
                                  DMA_DIRECTION_FROM_DEVICE);
+}
+
+static inline int dma_memory_rw_attr(AddressSpace *as, dma_addr_t addr,
+                                     void *buf, dma_addr_t len,
+                                     DMADirection dir,
+                                     MemoryTransactionAttr *attr)
+{
+    dma_barrier(as, dir);
+
+    return dma_memory_rw_relaxed_attr(as, addr, buf, len, dir, attr);
 }
 
 static inline int dma_memory_rw(AddressSpace *as, dma_addr_t addr,

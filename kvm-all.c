@@ -120,6 +120,7 @@ bool kvm_async_interrupts_allowed;
 bool kvm_halt_in_kernel_allowed;
 bool kvm_eventfds_allowed;
 bool kvm_irqfds_allowed;
+bool kvm_resamplefds_allowed;
 bool kvm_msi_via_irqfd_allowed;
 bool kvm_gsi_routing_allowed;
 bool kvm_gsi_direct_mapping;
@@ -132,7 +133,7 @@ static const KVMCapabilityInfo kvm_required_capabilites[] = {
     KVM_CAP_LAST_INFO
 };
 
-static KVMSlot *kvm_alloc_slot(KVMState *s)
+static KVMSlot *kvm_get_free_slot(KVMState *s)
 {
     int i;
 
@@ -140,6 +141,22 @@ static KVMSlot *kvm_alloc_slot(KVMState *s)
         if (s->slots[i].memory_size == 0) {
             return &s->slots[i];
         }
+    }
+
+    return NULL;
+}
+
+bool kvm_has_free_slot(MachineState *ms)
+{
+    return kvm_get_free_slot(KVM_STATE(ms->accelerator));
+}
+
+static KVMSlot *kvm_alloc_slot(KVMState *s)
+{
+    KVMSlot *slot = kvm_get_free_slot(s);
+
+    if (slot) {
+        return slot;
     }
 
     fprintf(stderr, "%s: no free slot available\n", __func__);
@@ -400,7 +417,7 @@ static int kvm_physical_sync_dirty_bitmap(MemoryRegionSection *section)
 {
     KVMState *s = kvm_state;
     unsigned long size, allocated_size = 0;
-    KVMDirtyLog d;
+    KVMDirtyLog d = {};
     KVMSlot *mem;
     int ret = 0;
     hwaddr start_addr = section->offset_within_address_space;
@@ -634,8 +651,10 @@ static void kvm_set_phys_mem(MemoryRegionSection *section, bool add)
     unsigned delta;
 
     /* kvm works in page size chunks, but the function may be called
-       with sub-page size and unaligned start address. */
-    delta = TARGET_PAGE_ALIGN(size) - size;
+       with sub-page size and unaligned start address. Pad the start
+       address to next and truncate size to previous page boundary. */
+    delta = (TARGET_PAGE_SIZE - (start_addr & ~TARGET_PAGE_MASK));
+    delta &= ~TARGET_PAGE_MASK;
     if (delta > size) {
         return;
     }
@@ -1258,7 +1277,7 @@ static int kvm_irqchip_assign_irqfd(KVMState *s, int fd, int rfd, int virq,
 
 int kvm_irqchip_add_adapter_route(KVMState *s, AdapterInfo *adapter)
 {
-    struct kvm_irq_routing_entry kroute;
+    struct kvm_irq_routing_entry kroute = {};
     int virq;
 
     if (!kvm_gsi_routing_enabled()) {
@@ -1565,6 +1584,12 @@ static int kvm_init(MachineState *ms)
 
     kvm_eventfds_allowed =
         (kvm_check_extension(s, KVM_CAP_IOEVENTFD) > 0);
+
+    kvm_irqfds_allowed =
+        (kvm_check_extension(s, KVM_CAP_IRQFD) > 0);
+
+    kvm_resamplefds_allowed =
+        (kvm_check_extension(s, KVM_CAP_IRQFD_RESAMPLE) > 0);
 
     ret = kvm_arch_init(s);
     if (ret < 0) {

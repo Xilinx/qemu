@@ -16,6 +16,15 @@ int load_image(const char *filename, uint8_t *addr); /* deprecated */
 ssize_t load_image_size(const char *filename, void *addr, size_t size);
 int load_image_targphys(const char *filename, hwaddr,
                         uint64_t max_sz);
+
+/* This is the limit on the maximum uncompressed image size that
+ * load_image_gzipped_buffer() and load_image_gzipped() will read. It prevents
+ * g_malloc() in those functions from allocating a huge amount of memory.
+ */
+#define LOAD_IMAGE_MAX_GUNZIP_BYTES (256 << 20)
+
+int load_image_gzipped_buffer(const char *filename, uint64_t max_sz,
+                              uint8_t **buffer);
 int load_image_gzipped(const char *filename, hwaddr addr, uint64_t max_sz);
 
 #define ELF_LOAD_FAILED       -1
@@ -59,7 +68,7 @@ extern bool rom_file_has_mr;
 int rom_add_file(const char *file, const char *fw_dir,
                  hwaddr addr, int32_t bootindex,
                  bool option_rom);
-void *rom_add_blob(const char *name, const void *blob, size_t len,
+ram_addr_t rom_add_blob(const char *name, const void *blob, size_t len,
                    hwaddr addr, const char *fw_file_name,
                    FWCfgReadCallback fw_callback, void *callback_opaque);
 int rom_add_elf_program(const char *name, void *data, size_t datasize,

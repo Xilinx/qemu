@@ -23,6 +23,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "exec/memory-attr.h"
 #include "qemu-common.h"
 #include "exec/cpu-common.h"
 #ifndef CONFIG_USER_ONLY
@@ -41,8 +42,38 @@
 #define MEMORY_REGION(obj) \
         OBJECT_CHECK(MemoryRegion, (obj), TYPE_MEMORY_REGION)
 
+#define TYPE_MEMORY_TRANSACTION_ATTR "qemu:memory-transaction-attr"
+#define MEMORY_TRANSACTION_ATTR(obj) \
+        OBJECT_CHECK(MemoryTransactionAttr, (obj), TYPE_MEMORY_TRANSACTION_ATTR)
+
 typedef struct MemoryRegionOps MemoryRegionOps;
 typedef struct MemoryRegionMmio MemoryRegionMmio;
+
+typedef struct MemoryTransaction
+{
+    union {
+        uint64_t *p64;
+        uint64_t u64;
+        uint32_t u32;
+        uint16_t u16;
+        uint8_t  u8;
+    } data;
+    bool rw;
+    hwaddr addr;
+    unsigned int size;
+    MemoryTransactionAttr *attr;
+    void *opaque;
+} MemoryTransaction;
+
+static inline void dump_memory_transaction(MemoryTransaction *tr, FILE *fp,
+                                           const char *prefix)
+{
+    if (!fp) {
+        return;
+    }
+    fprintf(fp, "%s: %s: %ub @%" HWADDR_PRIx " : %" PRIx64 "\n", prefix,
+            tr->rw ? "write" : "read", tr->size, tr->addr, tr->data.u64);
+}
 
 struct MemoryRegionMmio {
     CPUReadMemoryFunc *read[3];
@@ -71,6 +102,8 @@ struct IOMMUTLBEntry {
  * Memory region callbacks
  */
 struct MemoryRegionOps {
+    void (*access)(MemoryTransaction *tr);
+
     /* Read from the memory region. @addr is relative to @mr; @size is
      * in bytes. */
     uint64_t (*read)(void *opaque,
@@ -102,6 +135,9 @@ struct MemoryRegionOps {
          */
         bool (*accepts)(void *opaque, hwaddr addr,
                         unsigned size, bool is_write);
+
+        /* The same function as accepts except is passed a MemoryTransaction */
+        bool (*accepts_tr)(MemoryTransaction *tr);
     } valid;
     /* Internal implementation constraints: */
     struct {
@@ -130,6 +166,8 @@ typedef struct MemoryRegionIOMMUOps MemoryRegionIOMMUOps;
 struct MemoryRegionIOMMUOps {
     /* Return a TLB entry that contains a given address. */
     IOMMUTLBEntry (*translate)(MemoryRegion *iommu, hwaddr addr, bool is_write);
+    IOMMUTLBEntry (*translate_attr)(MemoryRegion *iommu, hwaddr addr,
+                                    bool is_write, MemoryTransactionAttr *attr);
 };
 
 typedef struct CoalescedMemoryRange CoalescedMemoryRange;
@@ -146,10 +184,11 @@ struct MemoryRegion {
     hwaddr addr;
     void (*destructor)(MemoryRegion *mr);
     ram_addr_t ram_addr;
+    uint64_t align;
     bool subpage;
     bool terminates;
     bool romd_mode;
-    bool ram;
+    uint8_t ram;
     bool skip_dump;
     bool readonly; /* For RAM regions */
     bool enabled;
@@ -159,11 +198,9 @@ struct MemoryRegion {
     MemoryRegion *alias;
     hwaddr alias_offset;
     int32_t priority;
-    bool may_overlap;
     QTAILQ_HEAD(subregions, MemoryRegion) subregions;
     QTAILQ_ENTRY(MemoryRegion) subregions_link;
     QTAILQ_HEAD(coalesced_ranges, CoalescedMemoryRange) coalesced;
-    const char *name;
     uint8_t dirty_log_mask;
     unsigned ioeventfd_nb;
     MemoryRegionIoeventfd *ioeventfds;
@@ -838,6 +875,7 @@ void memory_region_add_subregion_overlap(MemoryRegion *mr,
  */
 ram_addr_t memory_region_get_ram_addr(MemoryRegion *mr);
 
+uint64_t memory_region_get_alignment(const MemoryRegion *mr);
 /**
  * memory_region_del_subregion: Remove a subregion.
  *
@@ -999,6 +1037,8 @@ void mtree_info(fprintf_function mon_printf, void *f);
  */
 void address_space_init(AddressSpace *as, MemoryRegion *root, const char *name);
 
+AddressSpace *address_space_init_shareable(MemoryRegion *root,
+                                           const char *name);
 
 /**
  * address_space_destroy: destroy an address space
@@ -1024,6 +1064,8 @@ void address_space_destroy(AddressSpace *as);
  */
 bool address_space_rw(AddressSpace *as, hwaddr addr, uint8_t *buf,
                       int len, bool is_write);
+bool address_space_rw_attr(AddressSpace *as, hwaddr addr, uint8_t *buf,
+                      int len, bool is_write, MemoryTransactionAttr *attr);
 
 /**
  * address_space_write: write to address space.
@@ -1064,6 +1106,10 @@ MemoryRegion *address_space_translate(AddressSpace *as, hwaddr addr,
                                       hwaddr *xlat, hwaddr *len,
                                       bool is_write);
 
+MemoryRegion *address_space_translate_attr(AddressSpace *as, hwaddr addr,
+                                      hwaddr *xlat, hwaddr *plen,
+                                      bool is_write, MemoryTransactionAttr *attr);
+
 /* address_space_access_valid: check for validity of accessing an address
  * space range
  *
@@ -1079,7 +1125,29 @@ MemoryRegion *address_space_translate(AddressSpace *as, hwaddr addr,
  * @len: length of the area to be checked
  * @is_write: indicates the transfer direction
  */
-bool address_space_access_valid(AddressSpace *as, hwaddr addr, int len, bool is_write);
+bool address_space_access_valid(AddressSpace *as, hwaddr addr, int len,
+                                bool is_write);
+
+/* address_space_access_valid_attr: check for validity of accessing an address
+ * space range, similar to above but is also passed a MemoryTransactionAttr
+ *
+ * Check whether memory is assigned to the given address space range, and
+ * access is permitted by any IOMMU regions that are active for the address
+ * space.
+ *
+ * For now, addr and len should be aligned to a page size.  This limitation
+ * will be lifted in the future.
+ *
+ * @as: #AddressSpace to be accessed
+ * @addr: address within that address space
+ * @len: length of the area to be checked
+ * @is_write: indicates the transfer direction
+ * @attr: Passes down specific memory transaction attributes
+ *        (such as secure/nonsecure)
+ */
+bool address_space_access_valid_attr(AddressSpace *as, hwaddr addr, int len,
+                                     bool is_write,
+                                     MemoryTransactionAttr *attr);
 
 /* address_space_map: map a physical memory region into a host virtual address
  *

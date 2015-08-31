@@ -196,6 +196,8 @@ PixelFormat qemu_different_endianness_pixelformat(int bpp);
 PixelFormat qemu_default_pixelformat(int bpp);
 
 DisplaySurface *qemu_create_displaysurface(int width, int height);
+DisplaySurface *qemu_create_displaysurface_format(pixman_format_code_t format,
+                                                  int width, int height);
 void qemu_free_displaysurface(DisplaySurface *surface);
 
 static inline int is_surface_bgr(DisplaySurface *surface)

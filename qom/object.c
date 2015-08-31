@@ -391,6 +391,7 @@ void object_unparent(Object *obj)
     if (obj->parent) {
         object_property_del_child(obj->parent, obj, NULL);
     }
+    obj->parent = NULL;
 }
 
 static void object_deinit(Object *obj, TypeImpl *type)
@@ -436,7 +437,7 @@ Object *object_new(const char *typename)
 {
     TypeImpl *ti = type_get_by_name(typename);
 
-    return object_new_with_type(ti);
+    return ti ? object_new_with_type(ti) : NULL;
 }
 
 Object *object_dynamic_cast(Object *obj, const char *typename)
@@ -666,21 +667,40 @@ void object_class_foreach(void (*fn)(ObjectClass *klass, void *opaque),
     enumerating_types = false;
 }
 
-int object_child_foreach(Object *obj, int (*fn)(Object *child, void *opaque),
-                         void *opaque)
+static int do_object_child_foreach(Object *obj,
+                                   int (*fn)(Object *child, void *opaque),
+                                   void *opaque, bool recurse)
 {
     ObjectProperty *prop, *next;
     int ret = 0;
 
     QTAILQ_FOREACH_SAFE(prop, &obj->properties, node, next) {
         if (object_property_is_child(prop)) {
-            ret = fn(prop->opaque, opaque);
+            Object *child = prop->opaque;
+
+            ret = fn(child, opaque);
             if (ret != 0) {
                 break;
+            }
+            if (recurse) {
+                do_object_child_foreach(child, fn, opaque, true);
             }
         }
     }
     return ret;
+}
+
+int object_child_foreach(Object *obj, int (*fn)(Object *child, void *opaque),
+                         void *opaque)
+{
+    return do_object_child_foreach(obj, fn, opaque, false);
+}
+
+int object_child_foreach_recursive(Object *obj,
+                                   int (*fn)(Object *child, void *opaque),
+                                   void *opaque)
+{
+    return do_object_child_foreach(obj, fn, opaque, true);
 }
 
 static void object_class_get_list_tramp(ObjectClass *klass, void *opaque)
@@ -789,6 +809,29 @@ ObjectProperty *object_property_find(Object *obj, const char *name,
     return NULL;
 }
 
+static ObjectProperty *object_property_find_traverse(Object **obj,
+                                                     const char **name,
+                                                     Error **errp)
+{
+    const char *slash = strchr(*name, '/');
+
+    if (slash) {
+        Error *err = NULL;
+        char *child_name = g_strndup(*name, slash - *name);
+        *obj = object_property_get_link(*obj, child_name, &err);
+        g_free(child_name);
+        if (err) {
+            error_propagate(errp, err);
+        } else {
+            *name = slash + 1;
+            return object_property_find_traverse(obj, name, errp);
+        }
+        return NULL;
+    }
+
+    return object_property_find(*obj, *name, errp);
+}
+
 void object_property_del(Object *obj, const char *name, Error **errp)
 {
     ObjectProperty *prop = object_property_find(obj, name, errp);
@@ -811,7 +854,7 @@ void object_property_del(Object *obj, const char *name, Error **errp)
 void object_property_get(Object *obj, Visitor *v, const char *name,
                          Error **errp)
 {
-    ObjectProperty *prop = object_property_find(obj, name, errp);
+    ObjectProperty *prop = object_property_find_traverse(&obj, &name, errp);
     if (prop == NULL) {
         return;
     }
@@ -826,7 +869,7 @@ void object_property_get(Object *obj, Visitor *v, const char *name,
 void object_property_set(Object *obj, Visitor *v, const char *name,
                          Error **errp)
 {
-    ObjectProperty *prop = object_property_find(obj, name, errp);
+    ObjectProperty *prop = object_property_find_traverse(&obj, &name, errp);
     if (prop == NULL) {
         return;
     }
@@ -1140,17 +1183,8 @@ static void object_get_link_property(Object *obj, Visitor *v, void *opaque,
     }
 }
 
-/*
- * object_resolve_link:
- *
- * Lookup an object and ensure its type matches the link property type.  This
- * is similar to object_resolve_path() except type verification against the
- * link property is performed.
- *
- * Returns: The matched object or NULL on path lookup failures.
- */
-static Object *object_resolve_link(Object *obj, const char *name,
-                                   const char *path, Error **errp)
+Object *object_resolve_link(Object *obj, const char *name,
+                            const char *path, Error **errp)
 {
     const char *type;
     gchar *target_type;

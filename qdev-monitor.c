@@ -180,6 +180,44 @@ static const char *find_typename_by_alias(const char *alias)
     return NULL;
 }
 
+static DeviceClass *qdev_get_device_class(const char **driver, Error **errp)
+{
+    ObjectClass *oc;
+    DeviceClass *dc;
+
+    oc = object_class_by_name(*driver);
+    if (!oc) {
+        const char *typename = find_typename_by_alias(*driver);
+
+        if (typename) {
+            *driver = typename;
+            oc = object_class_by_name(*driver);
+        }
+    }
+
+    if (!object_class_dynamic_cast(oc, TYPE_DEVICE)) {
+        error_setg(errp, "'%s' is not a valid device model name", *driver);
+        return NULL;
+    }
+
+    if (object_class_is_abstract(oc)) {
+        error_set(errp, QERR_INVALID_PARAMETER_VALUE, "driver",
+                  "non-abstract device type");
+        return NULL;
+    }
+
+    dc = DEVICE_CLASS(oc);
+    if (dc->cannot_instantiate_with_device_add_yet ||
+        (qdev_hotplug && !dc->hotpluggable)) {
+        error_set(errp, QERR_INVALID_PARAMETER_VALUE, "driver",
+                  "pluggable device type");
+        return NULL;
+    }
+
+    return dc;
+}
+
+
 int qdev_device_help(QemuOpts *opts)
 {
     Error *local_err = NULL;
@@ -197,19 +235,14 @@ int qdev_device_help(QemuOpts *opts)
         return 0;
     }
 
-    if (!object_class_by_name(driver)) {
-        const char *typename = find_typename_by_alias(driver);
-
-        if (typename) {
-            driver = typename;
-        }
+    qdev_get_device_class(&driver, &local_err);
+    if (local_err) {
+        goto error;
     }
 
     prop_list = qmp_device_list_properties(driver, &local_err);
     if (local_err) {
-        error_printf("%s\n", error_get_pretty(local_err));
-        error_free(local_err);
-        return 1;
+        goto error;
     }
 
     for (prop = prop_list; prop; prop = prop->next) {
@@ -224,6 +257,11 @@ int qdev_device_help(QemuOpts *opts)
     }
 
     qapi_free_DevicePropertyInfoList(prop_list);
+    return 1;
+
+error:
+    error_printf("%s\n", error_get_pretty(local_err));
+    error_free(local_err);
     return 1;
 }
 
@@ -325,43 +363,74 @@ static DeviceState *qbus_find_dev(BusState *bus, char *elem)
     return NULL;
 }
 
-static BusState *qbus_find_recursive(BusState *bus, const char *name,
-                                     const char *bus_typename)
-{
-    BusClass *bus_class = BUS_GET_CLASS(bus);
-    BusChild *kid;
-    BusState *child, *ret;
-    int match = 1;
+typedef struct DoQBusFindRecursiveArgs {
+    const char *name;
+    const char *bus_typename;
+    BusState *ret;
+} DoQBusFindRecursiveArgs;
 
-    if (name && (strcmp(bus->name, name) != 0)) {
-        match = 0;
-    } else if (bus_typename && !object_dynamic_cast(OBJECT(bus), bus_typename)) {
-        match = 0;
+/* inverted return - one on success and 0 on failure as it is used with
+ * object_child_foreach which stops searching on failure. We want the
+ * reverse, stop searching on sucess and keep searching on failure.
+ */
+
+static int do_qbus_find_recursive(Object *obj, void *opaque)
+{
+    DoQBusFindRecursiveArgs *args = opaque;
+    BusState *bus, *child;
+    BusClass *bus_class;
+    BusChild *kid;
+
+    if (!object_dynamic_cast(OBJECT(obj), TYPE_BUS)) {
+        goto not_a_bus;
+    }
+    bus = BUS(obj);
+    bus_class = BUS_GET_CLASS(bus);
+    if (args->name && (strcmp(bus->name, args->name) != 0)) {
+        goto no_match;
+    } else if (args->bus_typename &&
+               !object_dynamic_cast(OBJECT(bus), args->bus_typename)) {
+        goto no_match;
     } else if ((bus_class->max_dev != 0) && (bus_class->max_dev <= bus->max_index)) {
-        if (name != NULL) {
+        if (args->name != NULL) {
             /* bus was explicitly specified: return an error. */
             qerror_report(ERROR_CLASS_GENERIC_ERROR, "Bus '%s' is full",
                           bus->name);
-            return NULL;
+            return 0;
         } else {
             /* bus was not specified: try to find another one. */
-            match = 0;
+            goto no_match;
         }
     }
-    if (match) {
-        return bus;
-    }
+    args->ret = bus;
+    return 1;
+no_match:
 
     QTAILQ_FOREACH(kid, &bus->children, sibling) {
         DeviceState *dev = kid->child;
         QLIST_FOREACH(child, &dev->child_bus, sibling) {
-            ret = qbus_find_recursive(child, name, bus_typename);
-            if (ret) {
-                return ret;
+            if(do_qbus_find_recursive(OBJECT(child), opaque)) {
+                return 1;
             }
         }
     }
-    return NULL;
+
+not_a_bus:
+    return object_child_foreach(obj, do_qbus_find_recursive, args);
+}
+
+static BusState *qbus_find_recursive(Object *obj, const char *name,
+                                     const char *bus_typename)
+{
+    DoQBusFindRecursiveArgs args = {
+        .name = name,
+        .bus_typename = bus_typename,
+        .ret = NULL,
+    };
+    bool ret = do_qbus_find_recursive(obj, &args);
+
+    assert(ret == !!args.ret);
+    return args.ret;
 }
 
 static BusState *qbus_find(const char *path)
@@ -380,7 +449,7 @@ static BusState *qbus_find(const char *path)
             assert(!path[0]);
             elem[0] = len = 0;
         }
-        bus = qbus_find_recursive(sysbus_get_default(), elem, NULL);
+        bus = qbus_find_recursive(object_get_root(), elem, NULL);
         if (!bus) {
             qerror_report(QERR_BUS_NOT_FOUND, elem);
             return NULL;
@@ -455,7 +524,6 @@ static BusState *qbus_find(const char *path)
 
 DeviceState *qdev_device_add(QemuOpts *opts)
 {
-    ObjectClass *oc;
     DeviceClass *dc;
     const char *driver, *path, *id;
     DeviceState *dev;
@@ -469,33 +537,10 @@ DeviceState *qdev_device_add(QemuOpts *opts)
     }
 
     /* find driver */
-    oc = object_class_by_name(driver);
-    if (!oc) {
-        const char *typename = find_typename_by_alias(driver);
-
-        if (typename) {
-            driver = typename;
-            oc = object_class_by_name(driver);
-        }
-    }
-
-    if (!object_class_dynamic_cast(oc, TYPE_DEVICE)) {
-        qerror_report(ERROR_CLASS_GENERIC_ERROR,
-                      "'%s' is not a valid device model name", driver);
-        return NULL;
-    }
-
-    if (object_class_is_abstract(oc)) {
-        qerror_report(QERR_INVALID_PARAMETER_VALUE, "driver",
-                      "non-abstract device type");
-        return NULL;
-    }
-
-    dc = DEVICE_CLASS(oc);
-    if (dc->cannot_instantiate_with_device_add_yet ||
-        (qdev_hotplug && !dc->hotpluggable)) {
-        qerror_report(QERR_INVALID_PARAMETER_VALUE, "driver",
-                      "pluggable device type");
+    dc = qdev_get_device_class(&driver, &err);
+    if (err) {
+        qerror_report_err(err);
+        error_free(err);
         return NULL;
     }
 
@@ -513,7 +558,7 @@ DeviceState *qdev_device_add(QemuOpts *opts)
             return NULL;
         }
     } else if (dc->bus_type != NULL) {
-        bus = qbus_find_recursive(sysbus_get_default(), NULL, dc->bus_type);
+        bus = qbus_find_recursive(object_get_root(), NULL, dc->bus_type);
         if (!bus) {
             qerror_report(ERROR_CLASS_GENERIC_ERROR,
                           "No '%s' bus found for device '%s'",
@@ -531,11 +576,16 @@ DeviceState *qdev_device_add(QemuOpts *opts)
 
     if (bus) {
         qdev_set_parent_bus(dev, bus);
+    } else {
+        if (dc->reset) {
+            qemu_register_reset((void (*)(void *))dc->reset, dev);
+        }
     }
 
     id = qemu_opts_id(opts);
     if (id) {
-        dev->id = id;
+        /* FIXME: Qdev String props cant handle consts */
+        dev->id = (char *)id;
     }
 
     if (dev->id) {
@@ -633,7 +683,10 @@ static void qdev_print(Monitor *mon, DeviceState *dev, int indent)
         qdev_print_props(mon, dev, DEVICE_CLASS(class)->props, indent);
         class = object_class_get_parent(class);
     } while (class != object_class_by_name(TYPE_DEVICE));
-    bus_print_dev(dev->parent_bus, mon, dev, indent);
+
+    if (class == object_class_by_name(TYPE_SYS_BUS_DEVICE)) {
+        bus_print_dev(dev->parent_bus, mon, dev, indent);
+    }
     QLIST_FOREACH(child, &dev->child_bus, sibling) {
         qbus_print(mon, child, indent);
     }

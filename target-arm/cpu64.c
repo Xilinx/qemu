@@ -27,6 +27,8 @@
 #include "sysemu/sysemu.h"
 #include "sysemu/kvm.h"
 
+#include "hw/fdt_generic_devices.h"
+
 static inline void set_feature(CPUARMState *env, int feature)
 {
     env->features |= 1ULL << feature;
@@ -36,7 +38,7 @@ static inline void set_feature(CPUARMState *env, int feature)
 static uint64_t a57_l2ctlr_read(CPUARMState *env, const ARMCPRegInfo *ri)
 {
     /* Number of processors is in [25:24]; otherwise we RAZ */
-    return (smp_cpus - 1) << 24;
+    return (MAX(smp_cpus, fdt_generic_num_cpus) - 1) << 24;
 }
 #endif
 
@@ -68,7 +70,8 @@ static const ARMCPRegInfo cortexa57_cp_reginfo[] = {
       .access = PL1_RW, .type = ARM_CP_CONST | ARM_CP_64BIT, .resetvalue = 0 },
     { .name = "CPUECTLR_EL1", .state = ARM_CP_STATE_AA64,
       .opc0 = 3, .opc1 = 1, .crn = 15, .crm = 2, .opc2 = 1,
-      .access = PL1_RW, .type = ARM_CP_CONST, .resetvalue = 0 },
+      .access = PL1_RW, .resetvalue = 0,
+      .readfn = arm_cp_read_zero, .writefn = arm_cp_write_ignore },
     { .name = "CPUECTLR",
       .cp = 15, .opc1 = 1, .crm = 15,
       .access = PL1_RW, .type = ARM_CP_CONST | ARM_CP_64BIT, .resetvalue = 0 },
@@ -96,12 +99,16 @@ static void aarch64_a57_initfn(Object *obj)
     set_feature(&cpu->env, ARM_FEATURE_NEON);
     set_feature(&cpu->env, ARM_FEATURE_GENERIC_TIMER);
     set_feature(&cpu->env, ARM_FEATURE_AARCH64);
+    set_feature(&cpu->env, ARM_FEATURE_MPIDR);
     set_feature(&cpu->env, ARM_FEATURE_CBAR_RO);
     set_feature(&cpu->env, ARM_FEATURE_V8_AES);
     set_feature(&cpu->env, ARM_FEATURE_V8_SHA1);
     set_feature(&cpu->env, ARM_FEATURE_V8_SHA256);
     set_feature(&cpu->env, ARM_FEATURE_V8_PMULL);
     set_feature(&cpu->env, ARM_FEATURE_CRC);
+    set_feature(&cpu->env, ARM_FEATURE_EL2);
+    set_feature(&cpu->env, ARM_FEATURE_EL3);
+    set_feature(&cpu->env, ARM_FEATURE_AUXCR);
     cpu->kvm_target = QEMU_KVM_ARM_TARGET_CORTEX_A57;
     cpu->midr = 0x411fd070;
     cpu->reset_fpsid = 0x41034070;
@@ -126,8 +133,8 @@ static void aarch64_a57_initfn(Object *obj)
     cpu->id_isar5 = 0x00011121;
     cpu->id_aa64pfr0 = 0x00002222;
     cpu->id_aa64dfr0 = 0x10305106;
-    cpu->id_aa64isar0 = 0x00011120;
-    cpu->id_aa64mmfr0 = 0x00001124;
+    cpu->id_aa64isar0 = 0x00010000;
+    cpu->id_aa64mmfr0 = 0x00001122;
     cpu->dbgdidr = 0x3516d000;
     cpu->clidr = 0x0a200023;
     cpu->ccsidr[0] = 0x701fe00a; /* 32KB L1 dcache */
@@ -151,7 +158,7 @@ static void aarch64_any_initfn(Object *obj)
     set_feature(&cpu->env, ARM_FEATURE_V8_SHA256);
     set_feature(&cpu->env, ARM_FEATURE_V8_PMULL);
     set_feature(&cpu->env, ARM_FEATURE_CRC);
-    cpu->ctr = 0x80038003; /* 32 byte I and D cacheline size, VIPT icache */
+    cpu->ctr = 0x80030003; /* 32 byte I and D cacheline size, VIPT icache */
     cpu->dcz_blocksize = 7; /*  512 bytes */
 }
 #endif
@@ -192,6 +199,43 @@ static void aarch64_cpu_set_pc(CPUState *cs, vaddr value)
     }
 }
 
+static vaddr aarch64_cpu_get_pc(CPUState *cs)
+{
+    ARMCPU *cpu = ARM_CPU(cs);
+
+    return is_a64(&cpu->env) ? cpu->env.pc : cpu->env.regs[15];
+}
+
+static const char *a64_debug_ctx[] = {
+       [DEBUG_CURRENT_EL] = "current-el",
+       [DEBUG_EL0] = "el0",
+       [DEBUG_EL1] = "el1",
+       [DEBUG_EL2] = "el2",
+       [DEBUG_EL3] = "el3",
+       [DEBUG_PHYS] = "phys",
+};
+
+static int a64_memory_rw_debug(CPUState *cs, vaddr addr,
+                               uint8_t *buf, int len, bool is_write)
+{
+    ARMCPU *cpu = ARM_CPU(cs);
+    int r;
+
+    if (cpu->env.debug_ctx == DEBUG_PHYS) {
+        address_space_rw(cs->as, addr, buf, len, is_write);
+        return 0;
+    }
+
+    r = cpu_memory_rw_debug(cs, addr, buf, len, is_write);
+    return r;
+}
+
+static void set_debug_context(CPUState *cs, unsigned int ctx)
+{
+    ARMCPU *cpu = ARM_CPU(cs);
+    cpu->env.debug_ctx = ctx;
+}
+
 static void aarch64_cpu_class_init(ObjectClass *oc, void *data)
 {
     CPUClass *cc = CPU_CLASS(oc);
@@ -201,10 +245,15 @@ static void aarch64_cpu_class_init(ObjectClass *oc, void *data)
 #endif
     cc->cpu_exec_interrupt = arm_cpu_exec_interrupt;
     cc->set_pc = aarch64_cpu_set_pc;
+    cc->get_pc = aarch64_cpu_get_pc;
+    cc->debug_contexts = a64_debug_ctx;
+    cc->set_debug_context = set_debug_context;
+    cc->memory_rw_debug = a64_memory_rw_debug;
     cc->gdb_read_register = aarch64_cpu_gdb_read_register;
     cc->gdb_write_register = aarch64_cpu_gdb_write_register;
     cc->gdb_num_core_regs = 34;
     cc->gdb_core_xml_file = "aarch64-core.xml";
+    cc->gdb_arch = "aarch64";
 }
 
 static void aarch64_cpu_register(const ARMCPUInfo *info)

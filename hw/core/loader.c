@@ -59,6 +59,11 @@ bool rom_file_has_mr = true;
 
 static int roms_loaded;
 
+
+extern AddressSpace *loader_as;
+
+AddressSpace *loader_as;
+
 /* return the size or -1 if error */
 int get_image_size(const char *filename)
 {
@@ -80,6 +85,13 @@ int load_image(const char *filename, uint8_t *addr)
     if (fd < 0)
         return -1;
     size = lseek(fd, 0, SEEK_END);
+    if (size == -1) {
+        fprintf(stderr, "file %-20s: get size error: %s\n",
+                filename, strerror(errno));
+        close(fd);
+        return -1;
+    }
+
     lseek(fd, 0, SEEK_SET);
     if (read(fd, addr, size) != size) {
         close(fd);
@@ -132,7 +144,7 @@ int load_image_targphys(const char *filename,
     int size;
 
     size = get_image_size(filename);
-    if (size > max_sz) {
+    if (max_sz && size > max_sz) {
         return -1;
     }
     if (size > 0) {
@@ -607,14 +619,9 @@ int load_ramdisk(const char *filename, hwaddr addr, uint64_t max_sz)
                             NULL, NULL);
 }
 
-/* This simply prevents g_malloc in the function below from allocating
- * a huge amount of memory, by placing a limit on the maximum
- * uncompressed image size that load_image_gzipped will read.
- */
-#define LOAD_IMAGE_MAX_GUNZIP_BYTES (256 << 20)
-
-/* Load a gzip-compressed kernel. */
-int load_image_gzipped(const char *filename, hwaddr addr, uint64_t max_sz)
+/* Load a gzip-compressed kernel to a dynamically allocated buffer. */
+int load_image_gzipped_buffer(const char *filename, uint64_t max_sz,
+                              uint8_t **buffer)
 {
     uint8_t *compressed_data = NULL;
     uint8_t *data = NULL;
@@ -646,13 +653,30 @@ int load_image_gzipped(const char *filename, hwaddr addr, uint64_t max_sz)
         goto out;
     }
 
-    rom_add_blob_fixed(filename, data, bytes, addr);
+    /* trim to actual size and return to caller */
+    *buffer = g_realloc(data, bytes);
     ret = bytes;
+    /* ownership has been transferred to caller */
+    data = NULL;
 
  out:
     g_free(compressed_data);
     g_free(data);
     return ret;
+}
+
+/* Load a gzip-compressed kernel. */
+int load_image_gzipped(const char *filename, hwaddr addr, uint64_t max_sz)
+{
+    int bytes;
+    uint8_t *data;
+
+    bytes = load_image_gzipped_buffer(filename, max_sz, &data);
+    if (bytes != -1) {
+        rom_add_blob_fixed(filename, data, bytes, addr);
+        g_free(data);
+    }
+    return bytes;
 }
 
 /*
@@ -675,6 +699,8 @@ struct Rom {
     size_t datasize;
 
     uint8_t *data;
+    /* FIXME: consolidate these two */
+    AddressSpace *as;
     MemoryRegion *mr;
     int isrom;
     char *fw_dir;
@@ -687,12 +713,41 @@ struct Rom {
 static FWCfgState *fw_cfg;
 static QTAILQ_HEAD(, Rom) roms = QTAILQ_HEAD_INITIALIZER(roms);
 
+static void rom_reset(Rom *rom)
+{
+    if (rom->fw_file || rom->data == NULL) {
+        return;
+    }
+    if (rom->mr) {
+        void *host = memory_region_get_ram_ptr(rom->mr);
+        memcpy(host, rom->data, rom->datasize);
+    } else {
+        cpu_physical_memory_write_rom(rom->as ? rom->as : first_cpu->as,
+                                      rom->addr, rom->data, rom->datasize);
+    }
+    if (rom->isrom) {
+        /* rom needs to be written only once */
+        g_free(rom->data);
+        rom->data = NULL;
+    }
+    /*
+     * The rom loader is really on the same level as firmware in the guest
+     * shadowing a ROM into RAM. Such a shadowing mechanism needs to ensure
+     * that the instruction cache for that new region is clear, so that the
+     * CPU definitely fetches its instructions from the just written data.
+     */
+    cpu_flush_icache_range(rom->addr, rom->datasize);
+}
+
 static void rom_insert(Rom *rom)
 {
     Rom *item;
 
     if (roms_loaded) {
-        hw_error ("ROM images must be loaded at startup\n");
+        /* Hot loading is one-shot */
+        rom->isrom = 1;
+        rom_reset(rom);
+        return;
     }
 
     /* list is ordered by load address */
@@ -748,8 +803,15 @@ int rom_add_file(const char *file, const char *fw_dir,
     }
     rom->addr     = addr;
     rom->romsize  = lseek(fd, 0, SEEK_END);
+    if (rom->romsize == -1) {
+        fprintf(stderr, "rom: file %-20s: get size error: %s\n",
+                rom->name, strerror(errno));
+        goto err;
+    }
+
     rom->datasize = rom->romsize;
     rom->data     = g_malloc0(rom->datasize);
+    rom->as       = loader_as;
     lseek(fd, 0, SEEK_SET);
     rc = read(fd, rom->data, rom->datasize);
     if (rc != rom->datasize) {
@@ -798,28 +860,31 @@ err:
     return -1;
 }
 
-void *rom_add_blob(const char *name, const void *blob, size_t len,
+ram_addr_t rom_add_blob(const char *name, const void *blob, size_t len,
                    hwaddr addr, const char *fw_file_name,
                    FWCfgReadCallback fw_callback, void *callback_opaque)
 {
     Rom *rom;
-    void *data = NULL;
+    ram_addr_t ret = RAM_ADDR_MAX;
 
     rom           = g_malloc0(sizeof(*rom));
     rom->name     = g_strdup(name);
     rom->addr     = addr;
     rom->romsize  = len;
     rom->datasize = len;
+    rom->as       = loader_as;
     rom->data     = g_malloc0(rom->datasize);
     memcpy(rom->data, blob, len);
     rom_insert(rom);
     if (fw_file_name && fw_cfg) {
         char devpath[100];
+        void *data;
 
         snprintf(devpath, sizeof(devpath), "/rom@%s", fw_file_name);
 
         if (rom_file_has_mr) {
             data = rom_set_mr(rom, OBJECT(fw_cfg), devpath);
+            ret = memory_region_get_ram_addr(rom->mr);
         } else {
             data = rom->data;
         }
@@ -828,7 +893,7 @@ void *rom_add_blob(const char *name, const void *blob, size_t len,
                                  fw_callback, callback_opaque,
                                  data, rom->romsize);
     }
-    return data;
+    return ret;
 }
 
 /* This function is specific for elf program because we don't need to allocate
@@ -846,6 +911,7 @@ int rom_add_elf_program(const char *name, void *data, size_t datasize,
     rom->addr     = addr;
     rom->datasize = datasize;
     rom->romsize  = romsize;
+    rom->as       = loader_as;
     rom->data     = data;
     rom_insert(rom);
     return 0;
@@ -861,11 +927,12 @@ int rom_add_option(const char *file, int32_t bootindex)
     return rom_add_file(file, "genroms", 0, bootindex, true);
 }
 
-static void rom_reset(void *unused)
+static void roms_reset(void *unused)
 {
     Rom *rom;
 
     QTAILQ_FOREACH(rom, &roms, next) {
+        rom_reset(rom);
         if (rom->fw_file) {
             continue;
         }
@@ -876,7 +943,7 @@ static void rom_reset(void *unused)
             void *host = memory_region_get_ram_ptr(rom->mr);
             memcpy(host, rom->data, rom->datasize);
         } else {
-            cpu_physical_memory_write_rom(&address_space_memory,
+            cpu_physical_memory_write_rom(rom->as ? rom->as : first_cpu->as,
                                           rom->addr, rom->data, rom->datasize);
         }
         if (rom->isrom) {
@@ -909,7 +976,6 @@ int rom_load_all(void)
                     "(rom %s. free=0x" TARGET_FMT_plx
                     ", addr=0x" TARGET_FMT_plx ")\n",
                     rom->name, addr, rom->addr);
-            return -1;
         }
         addr  = rom->addr;
         addr += rom->romsize;
@@ -917,7 +983,7 @@ int rom_load_all(void)
         rom->isrom = int128_nz(section.size) && memory_region_is_rom(section.mr);
         memory_region_unref(section.mr);
     }
-    qemu_register_reset(rom_reset, NULL);
+    qemu_register_reset(roms_reset, NULL);
     return 0;
 }
 

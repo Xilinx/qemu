@@ -131,8 +131,8 @@ void aarch64_cpu_dump_state(CPUState *cs, FILE *f,
     uint32_t psr = pstate_read(env);
     int i;
 
-    cpu_fprintf(f, "PC=%016"PRIx64"  SP=%016"PRIx64"\n",
-            env->pc, env->xregs[31]);
+    cpu_fprintf(f, "PC=%016"PRIx64"  SP=%016"PRIx64" EL=%d\n",
+            env->pc, env->xregs[31], arm_current_el(env));
     for (i = 0; i < 31; i++) {
         cpu_fprintf(f, "X%02d=%016"PRIx64, i, env->xregs[i]);
         if ((i % 4) == 3) {
@@ -164,6 +164,15 @@ void aarch64_cpu_dump_state(CPUState *cs, FILE *f,
         cpu_fprintf(f, "FPCR: %08x  FPSR: %08x\n",
                     vfp_get_fpcr(env), vfp_get_fpsr(env));
     }
+
+    for (i = 0; i < 4; i++) {
+        cpu_fprintf(f, "SP_EL%d=%" PRIx64 " ", i, env->sp_el[i]);
+        if (i > 0) {
+            cpu_fprintf(f, "ELR_EL%d=%" PRIx64 " ", i, env->elr_el[i]);
+            cpu_fprintf(f, "SPSR_EL%d=%" PRIx64 " ", i, env->banked_spsr[i - 1]);
+        }
+    }
+    cpu_fprintf(f, "\n");
 }
 
 void gen_a64_set_pc_im(uint64_t val)
@@ -748,6 +757,7 @@ static void do_fp_st(DisasContext *s, int srcidx, TCGv_i64 tcg_addr, int size)
     } else {
         TCGv_i64 tcg_hiaddr = tcg_temp_new_i64();
         tcg_gen_qemu_st_i64(tmp, tcg_addr, get_mem_index(s), MO_TEQ);
+        tcg_gen_qemu_st64(tmp, tcg_addr, get_mem_index(s));
         tcg_gen_ld_i64(tmp, cpu_env, fp_reg_hi_offset(s, srcidx));
         tcg_gen_addi_i64(tcg_hiaddr, tcg_addr, 8);
         tcg_gen_qemu_st_i64(tmp, tcg_hiaddr, get_mem_index(s), MO_TEQ);
@@ -1170,18 +1180,22 @@ static void handle_hint(DisasContext *s, uint32_t insn,
     }
 
     switch (selector) {
+    case 1: /* YIELD */
+        s->is_jmp = DISAS_YIELD;
+        return;
     case 0: /* NOP */
         return;
     case 3: /* WFI */
         s->is_jmp = DISAS_WFI;
         return;
-    case 1: /* YIELD */
     case 2: /* WFE */
         s->is_jmp = DISAS_WFE;
         return;
     case 4: /* SEV */
+        gen_helper_sev(cpu_env);
+        return;
     case 5: /* SEVL */
-        /* we treat all as NOP at least for now */
+        gen_helper_sevl(cpu_env);
         return;
     default:
         /* default specified as NOP equivalent */
@@ -1192,6 +1206,7 @@ static void handle_hint(DisasContext *s, uint32_t insn,
 static void gen_clrex(DisasContext *s, uint32_t insn)
 {
     tcg_gen_movi_i64(cpu_exclusive_addr, -1);
+    gen_helper_sev(cpu_env);
 }
 
 /* CLREX, DSB, DMB, ISB */
@@ -1322,7 +1337,11 @@ static void handle_sys(DisasContext *s, uint32_t insn, bool isread,
     }
 
     /* Check access permissions */
-    if (!cp_access_ok(s->current_el, ri, isread)) {
+    if (!cp_access_ok(s->current_el, s->ns, ri, isread)) {
+        qemu_log_mask(LOG_UNIMP, "%s access error to supported AArch64 "
+                      "system register op0:%d op1:%d crn:%d crm:%d op2:%d el=%d\n",
+                      isread ? "read" : "write", op0, op1, crn, crm, op2,
+			s->current_el);
         unallocated_encoding(s);
         return;
     }
@@ -1527,7 +1546,7 @@ static void disas_exc(DisasContext *s, uint32_t insn)
             break;
         }
         /* HLT */
-        unsupported_encoding(s, insn);
+//        unsupported_encoding(s, insn);
         break;
     case 5:
         if (op2_ll < 1 || op2_ll > 3) {
@@ -1741,7 +1760,7 @@ static void gen_store_exclusive(DisasContext *s, int rd, int rt, int rt2,
     tcg_gen_movi_i64(cpu_reg(s, rd), 1);
     gen_set_label(done_label);
     tcg_gen_movi_i64(cpu_exclusive_addr, -1);
-
+    gen_helper_sev(cpu_env);
 }
 #endif
 
@@ -2302,6 +2321,12 @@ static void disas_ldst_reg_unsigned_imm(DisasContext *s, uint32_t insn)
 /* Load/store register (all forms) */
 static void disas_ldst_reg(DisasContext *s, uint32_t insn)
 {
+
+    TCGv_i32 tmp = tcg_temp_new_i32();
+    tcg_gen_movi_i32(tmp, extract32(insn, 0, 5));
+    tcg_gen_st_i32(tmp, cpu_env, offsetof(CPUARMState, mem_rt));
+    tcg_temp_free_i32(tmp);
+
     switch (extract32(insn, 24, 2)) {
     case 0:
         if (extract32(insn, 21, 1) == 1 && extract32(insn, 10, 2) == 2) {
@@ -10924,6 +10949,7 @@ void gen_intermediate_code_internal_a64(ARMCPU *cpu,
     dc->condexec_cond = 0;
 #if !defined(CONFIG_USER_ONLY)
     dc->user = (ARM_TBFLAG_AA64_EL(tb->flags) == 0);
+    dc->ns = ARM_TBFLAG_NS(tb->flags);
 #endif
     dc->cpacr_fpen = ARM_TBFLAG_AA64_FPEN(tb->flags);
     dc->vec_len = 0;
@@ -11074,9 +11100,14 @@ void gen_intermediate_code_internal_a64(ARMCPU *cpu,
         case DISAS_EXC:
         case DISAS_SWI:
             break;
+        case DISAS_YIELD:
+            gen_a64_set_pc_im(dc->pc);
+            gen_helper_yield(cpu_env);
+            break;
         case DISAS_WFE:
             gen_a64_set_pc_im(dc->pc);
             gen_helper_wfe(cpu_env);
+            tcg_gen_exit_tb(0);
             break;
         case DISAS_WFI:
             /* This is a special case because we don't want to just halt the CPU
@@ -11095,7 +11126,7 @@ done_generating:
 #ifdef DEBUG_DISAS
     if (qemu_loglevel_mask(CPU_LOG_TB_IN_ASM)) {
         qemu_log("----------------\n");
-        qemu_log("IN: %s\n", lookup_symbol(pc_start));
+        qemu_log("CPU: %d, IN: %s\n",  CPU(cpu)->cpu_index, lookup_symbol(pc_start));
         log_target_disas(env, pc_start, dc->pc - pc_start,
                          4 | (dc->bswap_code << 1));
         qemu_log("\n");

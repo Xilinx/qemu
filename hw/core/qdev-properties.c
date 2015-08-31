@@ -33,6 +33,12 @@ void qdev_prop_allow_set_link_before_realize(Object *obj, const char *name,
     }
 }
 
+
+void qdev_prop_allow_set_link(Object *obj, const char *name,
+                              Object *val, Error **errp)
+{
+}
+
 void *qdev_get_prop_ptr(DeviceState *dev, Property *prop)
 {
     void *ptr = dev;

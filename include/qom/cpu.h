@@ -89,6 +89,7 @@ struct TranslationBlock;
  * @get_paging_enabled: Callback for inquiring whether paging is enabled.
  * @get_memory_mapping: Callback for obtaining the memory mappings.
  * @set_pc: Callback for setting the Program Counter register.
+ * @get_pc: Callback for getting the Program Counter register.
  * @synchronize_from_tb: Callback for synchronizing state from a TCG
  * #TranslationBlock.
  * @handle_mmu_fault: Callback for handling an MMU fault.
@@ -134,6 +135,7 @@ typedef struct CPUClass {
     void (*get_memory_mapping)(CPUState *cpu, MemoryMappingList *list,
                                Error **errp);
     void (*set_pc)(CPUState *cpu, vaddr value);
+    vaddr (*get_pc)(CPUState *cpu);
     void (*synchronize_from_tb)(CPUState *cpu, struct TranslationBlock *tb);
     int (*handle_mmu_fault)(CPUState *cpu, vaddr address, int rw,
                             int mmu_index);
@@ -151,7 +153,10 @@ typedef struct CPUClass {
     int (*write_elf32_qemunote)(WriteCoreDumpFunction f, CPUState *cpu,
                                 void *opaque);
 
+    void (*set_debug_context)(CPUState *cpu, unsigned int ctx);
+    const char **debug_contexts;
     const struct VMStateDescription *vmsd;
+    const char *gdb_arch;
     int gdb_num_core_regs;
     const char *gdb_core_xml_file;
     bool gdb_stop_before_watchpoint;
@@ -224,6 +229,7 @@ struct kvm_run;
  * @mem_io_pc: Host Program Counter at which the memory was accessed.
  * @mem_io_vaddr: Target virtual address at which the memory was accessed.
  * @kvm_fd: vCPU file descriptor for KVM.
+ * @gdb_id: String to appear for the GDB target
  *
  * State of one CPU core or thread.
  */
@@ -255,6 +261,7 @@ struct CPUState {
     int64_t icount_extra;
     sigjmp_buf jmp_env;
 
+    MemoryRegion *mr;
     AddressSpace *as;
     MemoryListener *tcg_as_listener;
 
@@ -300,6 +307,12 @@ struct CPUState {
        (absolute value) offset as small as possible.  This reduces code
        size, especially for hosts without large memory offsets.  */
     volatile sig_atomic_t tcg_exit_req;
+
+    bool reset_pin; /* state of reset pin */
+    bool halt_pin; /* state of halt pin */
+    bool arch_halt_pin;
+
+    char *gdb_id;
 };
 
 QTAILQ_HEAD(CPUTailQ, CPUState);
@@ -671,5 +684,10 @@ extern const struct VMStateDescription vmstate_cpu_common;
     .flags = VMS_STRUCT,                                                    \
     .offset = 0,                                                            \
 }
+
+void cpu_halt_gpio(void *opaque, int irq, int level);
+void cpu_reset_gpio(void *opaque, int irq, int level);
+
+void cpu_halt_reset_common(CPUState *cpu, bool *change, bool val, bool force);
 
 #endif

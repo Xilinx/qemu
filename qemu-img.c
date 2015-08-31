@@ -1126,7 +1126,6 @@ static int img_compare(int argc, char **argv)
 
     blk1 = img_open("image_1", filename1, fmt1, flags, true, quiet);
     if (!blk1) {
-        error_report("Can't open file %s", filename1);
         ret = 2;
         goto out3;
     }
@@ -1134,7 +1133,6 @@ static int img_compare(int argc, char **argv)
 
     blk2 = img_open("image_2", filename2, fmt2, flags, true, quiet);
     if (!blk2) {
-        error_report("Can't open file %s", filename2);
         ret = 2;
         goto out2;
     }
@@ -1482,7 +1480,6 @@ static int img_convert(int argc, char **argv)
                              true, quiet);
         g_free(id);
         if (!blk[bs_i]) {
-            error_report("Could not open '%s'", argv[optind + bs_i]);
             ret = -1;
             goto out;
         }
@@ -1530,6 +1527,20 @@ static int img_convert(int argc, char **argv)
     proto_drv = bdrv_find_protocol(out_filename, true);
     if (!proto_drv) {
         error_report("Unknown protocol '%s'", out_filename);
+        ret = -1;
+        goto out;
+    }
+
+    if (!drv->create_opts) {
+        error_report("Format driver '%s' does not support image creation",
+                     drv->format_name);
+        ret = -1;
+        goto out;
+    }
+
+    if (!proto_drv->create_opts) {
+        error_report("Protocol driver '%s' does not support image creation",
+                     proto_drv->format_name);
         ret = -1;
         goto out;
     }
@@ -2962,7 +2973,6 @@ static int img_amend(int argc, char **argv)
 
     blk = img_open("image", filename, fmt, flags, true, quiet);
     if (!blk) {
-        error_report("Could not open image '%s'", filename);
         ret = -1;
         goto out;
     }
@@ -2973,6 +2983,13 @@ static int img_amend(int argc, char **argv)
     if (has_help_option(options)) {
         /* If the format was auto-detected, print option help here */
         ret = print_block_option_help(filename, fmt);
+        goto out;
+    }
+
+    if (!bs->drv->create_opts) {
+        error_report("Format driver '%s' does not support any options to amend",
+                     fmt);
+        ret = -1;
         goto out;
     }
 

@@ -156,7 +156,10 @@
 #define AHCI_SCR_SCTL_DET                 0xf
 
 #define SATA_FIS_TYPE_REGISTER_H2D        0x27
-#define SATA_FIS_REG_H2D_UPDATE_COMMAND_REGISTER 0x80
+#define   SATA_FIS_REG_H2D_UPDATE_COMMAND_REGISTER 0x80
+#define SATA_FIS_TYPE_REGISTER_D2H        0x34
+#define SATA_FIS_TYPE_PIO_SETUP           0x5f
+#define SATA_FIS_TYPE_SDB                 0xA1
 
 #define AHCI_CMD_HDR_CMD_FIS_LEN           0x1f
 #define AHCI_CMD_HDR_PRDT_LEN              16
@@ -186,6 +189,9 @@
 
 #define READ_FPDMA_QUEUED                  0x60
 #define WRITE_FPDMA_QUEUED                 0x61
+#define NCQ_NON_DATA                       0x63
+#define RECEIVE_FPDMA_QUEUED               0x65
+#define SEND_FPDMA_QUEUED                  0x64
 
 #define RES_FIS_DSFIS                      0x00
 #define RES_FIS_PSFIS                      0x20
@@ -278,6 +284,7 @@ typedef struct AHCIState {
     uint32_t idp_index;     /* Current IDP index */
     int32_t ports;
     qemu_irq irq;
+    MemoryRegion *dma_mr;
     AddressSpace *as;
 } AHCIState;
 

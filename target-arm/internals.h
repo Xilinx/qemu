@@ -58,20 +58,22 @@ static const char * const excnames[] = {
     [EXCP_SMC] = "Secure Monitor Call",
     [EXCP_VIRQ] = "Virtual IRQ",
     [EXCP_VFIQ] = "Virtual FIQ",
+    [EXCP_WFI] = "WFI",
 };
 
-static inline void arm_log_exception(int idx)
+static inline void arm_log_exception(int cpu_index, int exception_index)
 {
     if (qemu_loglevel_mask(CPU_LOG_INT)) {
         const char *exc = NULL;
 
-        if (idx >= 0 && idx < ARRAY_SIZE(excnames)) {
-            exc = excnames[idx];
+        if (exception_index >= 0 && exception_index < ARRAY_SIZE(excnames)) {
+            exc = excnames[exception_index];
         }
         if (!exc) {
             exc = "unknown";
         }
-        qemu_log_mask(CPU_LOG_INT, "Taking exception %d [%s]\n", idx, exc);
+        qemu_log_mask(CPU_LOG_INT, "CPU %d: Taking exception %d [%s]\n",
+                      cpu_index, exception_index, exc);
     }
 }
 
@@ -151,11 +153,31 @@ static inline void update_spsel(CPUARMState *env, uint32_t imm)
  * This is always the case if our translation regime is 64 bit,
  * but depends on TTBCR.EAE for 32 bit.
  */
-static inline bool extended_addresses_enabled(CPUARMState *env)
+static inline bool extended_addresses_enabled(CPUARMState *env, int tr_el)
 {
-    return arm_el_is_aa64(env, 1)
-        || ((arm_feature(env, ARM_FEATURE_LPAE)
-             && (env->cp15.c2_control & TTBCR_EAE)));
+    TCR *tcr;
+
+    tr_el = MAX(tr_el, 1);
+    tcr = &env->cp15.tcr_el[tr_el];
+    return arm_el_is_aa64(env, tr_el) ||
+           (arm_feature(env, ARM_FEATURE_LPAE) && (tcr->raw_tcr & TTBCR_EAE));
+}
+
+static inline void arm_secure_state_sync(ARMCPU *cpu)
+{
+    CPUState *cs = CPU(cpu);
+    AddressSpace *n;
+    bool secure = arm_is_secure(&cpu->env);
+
+    n = secure ? cpu->as_secure : cpu->as_ns;
+
+    if (cs->as != n) {
+        /* HACK.  */
+        qemu_log("switch as from %s to %s %p\n", !secure ? "secure" : "ns", secure ? "secure" : "ns", n);
+        cs->as = n;
+        tcg_cpu_address_space_init(cs, n);
+        tlb_flush(cs, 1);
+    }
 }
 
 /* Valid Syndrome Register EC field values */
@@ -213,6 +235,12 @@ enum arm_exception_class {
 static inline uint32_t syn_uncategorized(void)
 {
     return (EC_UNCATEGORIZED << ARM_EL_EC_SHIFT) | ARM_EL_IL;
+}
+
+static inline uint32_t syn_aa64_wfx(bool wfe)
+{
+    return (EC_WFX_TRAP << ARM_EL_EC_SHIFT) | ARM_EL_IL
+        | (1 << 24) | (14 << 20) | wfe;
 }
 
 static inline uint32_t syn_aa64_svc(uint32_t imm16)
@@ -319,11 +347,21 @@ static inline uint32_t syn_insn_abort(int same_el, int ea, int s1ptw, int fsc)
         | (ea << 9) | (s1ptw << 7) | fsc;
 }
 
-static inline uint32_t syn_data_abort(int same_el, int ea, int cm, int s1ptw,
+static inline uint32_t syn_data_abort(bool same_el, bool il, int isv,
+                                      unsigned int size, int srt,
+                                      int ea, int cm, int s1ptw,
                                       int wnr, int fsc)
 {
+    const unsigned int mapsize[9] = {-1, 0, 1, -1, 2, -1, -1, -1, 3 };
+    unsigned int sas;
+
+    assert(size <= 8);
+    sas = mapsize[size];
+    assert(sas != -1);
     return (EC_DATAABORT << ARM_EL_EC_SHIFT) | (same_el << ARM_EL_EC_SHIFT)
-        | (ea << 9) | (cm << 8) | (s1ptw << 7) | (wnr << 6) | fsc;
+        | (il << 25) | (isv << 24) | (sas << 22) | (srt << 16)
+        | (ea << 9) | (cm << 8)
+        | (s1ptw << 7) | (wnr << 6) | fsc;
 }
 
 static inline uint32_t syn_swstep(int same_el, int isv, int ex)
