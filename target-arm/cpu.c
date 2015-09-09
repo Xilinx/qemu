@@ -1524,6 +1524,7 @@ static int armv8_timer_fdt_init(char *node_path, FDTMachineInfo *fdti,
 {
     CPUState *cpu;
     bool map_mode = false;
+    qemu_irq *sec_irqs = fdt_get_irq(fdti, node_path, 0, &map_mode);
     qemu_irq *ns_irqs = fdt_get_irq(fdti, node_path, 1, &map_mode);
     qemu_irq *v_irqs = fdt_get_irq(fdti, node_path, 2, &map_mode);
     qemu_irq *h_irqs = fdt_get_irq(fdti, node_path, 3, &map_mode);
@@ -1536,12 +1537,14 @@ static int armv8_timer_fdt_init(char *node_path, FDTMachineInfo *fdti,
         if (!arm_feature(&acpu->env, ARM_FEATURE_GENERIC_TIMER)) {
             continue;
         }
+        assert(*sec_irqs);
         assert(*ns_irqs);
         assert(*v_irqs);
         assert(*h_irqs);
         qdev_connect_gpio_out(DEVICE(acpu), 0, *ns_irqs++);
         qdev_connect_gpio_out(DEVICE(acpu), 1, *v_irqs++);
         qdev_connect_gpio_out(DEVICE(acpu), 2, *h_irqs++);
+        qdev_connect_gpio_out(DEVICE(acpu), 3, *sec_irqs++);
     }
 
     return 0;
