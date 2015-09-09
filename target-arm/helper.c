@@ -3052,6 +3052,12 @@ static CPAccessResult ctr_el0_access(CPUARMState *env, const ARMCPRegInfo *ri)
     return CP_ACCESS_OK;
 }
 
+static void dcc_write(CPUARMState *env, const ARMCPRegInfo *ri,
+                        uint64_t value)
+{
+    putchar(value);
+}
+
 static const ARMCPRegInfo debug_cp_reginfo[] = {
     /* DBGDRAR, DBGDSAR: always RAZ since we don't implement memory mapped
      * debug components. The AArch64 version of DBGDRAR is named MDRAR_EL1;
@@ -3095,6 +3101,12 @@ static const ARMCPRegInfo debug_cp_reginfo[] = {
     { .name = "DBGVCR",
       .cp = 14, .opc1 = 0, .crn = 0, .crm = 7, .opc2 = 0,
       .access = PL1_RW, .type = ARM_CP_NOP },
+    { .name = "DBGDTRTX_EL0", .state = ARM_CP_STATE_AA64,
+      .opc0 = 2, .opc1 = 3, .crn = 0, .crm = 5, .opc2 = 0,
+      .access = PL0_W, .writefn = dcc_write },
+    { .name = "MDCCSR_EL0", .state = ARM_CP_STATE_AA64,
+      .opc0 = 2, .opc1 = 3, .crn = 0, .crm = 1, .opc2 = 0,
+      .access = PL0_R, .type = ARM_CP_CONST, .resetvalue = 0 },
     REGINFO_SENTINEL
 };
 
