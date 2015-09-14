@@ -32,7 +32,7 @@
 #include "sysemu/dma.h"
 
 #ifndef XILINX_SMMU500_ERR_DEBUG
-#define XILINX_SMMU500_ERR_DEBUG 1
+#define XILINX_SMMU500_ERR_DEBUG 0
 #endif
 
 #define TYPE_XILINX_SMMU500 "arm.mmu-500"
@@ -40,8 +40,20 @@
 #define XILINX_SMMU500(obj) \
      OBJECT_CHECK(SMMU, (obj), TYPE_XILINX_SMMU500)
 
-#define D(x)
-#define D_PTW(x)
+#define DEBUG_DEV_SMMU 0
+#define DEBUG_DEV_SMMU_PTW 0
+
+#define D(...) do {             \
+    if (DEBUG_DEV_SMMU) {       \
+        qemu_log(__VA_ARGS__);  \
+    }                           \
+} while (0);
+
+#define D_PTW(...) do {         \
+    if (DEBUG_DEV_SMMU_PTW) {   \
+        qemu_log(__VA_ARGS__);  \
+    }                           \
+} while (0);
 
 REG32(SMMU_SCR0, 0x0)
     FIELD(SMMU_SCR0, NSCFG, 2, 28)
@@ -6131,8 +6143,6 @@ static int smmu_stream_id_match(SMMU *s, uint32_t stream_id)
     uint32_t s2cr;
     unsigned int cbndx = -1;
 
-//    printf("%s: sid=%x nr_smr=%d\n", __func__, stream_id, nr_smr);
-
     for (i = 0; i < nr_smr; i++) {
         uint32_t v = s->regs[R_SMMU_SMR0 + i];
         bool valid = F_EX32(v, SMMU_SMR0, VALID);
@@ -6143,7 +6153,6 @@ static int smmu_stream_id_match(SMMU *s, uint32_t stream_id)
         if (valid && (~mask & id) == (~mask & stream_id)) {
             s2cr = s->regs[R_SMMU_S2CR0 + i];
             cbndx = F_EX32(s2cr, SMMU_S2CR0, CBNDX_VMID);
-//            printf("cbndx=%d\n", cbndx);
             break;
         }
     }
@@ -6191,7 +6200,7 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
     if (F_EX32(sctlr, SMMU_CB0_SCTLR, M) == 0) {
         req->pa = req->va;
         req->prot = IOMMU_RW;
-        qemu_log("SMMU disabled for context %d sctlr=%x\n", cb, sctlr);
+        D("SMMU disabled for context %d sctlr=%x\n", cb, sctlr);
         return;
     }
 
@@ -6223,7 +6232,6 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
     }
 
     inputsize = 64 - tsz;
-    qemu_log("smmu: tg=%d t0sz=%d\n", tg, t0sz);
     switch (tg) {
     case 1:
         /* 64KB pages.  */
@@ -6285,14 +6293,15 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
         dma_memory_read(s->as, descaddr, &desc, sizeof(desc));
         type = desc & 3;
 
-        D_PTW(qemu_log("smmu: S%d L%d va=%lx gz=%d descaddr=%lx desc=%lx asb=%d index=%lx\n",
-                 req->stage, level, req->va, grainsize, descaddr, desc, addrselectbottom, index));
+        D_PTW("smmu: S%d L%d va=%lx gz=%d descaddr=%lx desc=%lx "
+              "asb=%d index=%lx\n", req->stage, level, req->va,
+              grainsize, descaddr, desc, addrselectbottom, index);
         ttbr = extract64(desc, 0, 48);
         ttbr &= ~descmask;
 
         /* special case.  */
         if (!(type & 2) && level == 3) {
-            qemu_log("smmu: bad level 3 desc\n");
+            D("smmu: bad level 3 desc\n");
             goto do_fault;
         }
 
@@ -6303,7 +6312,7 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
         case 2:
         case 0:
             /* Invalid.  */
-            qemu_log("smmu: bad desc\n");
+            D("smmu: bad desc\n");
             goto do_fault;
             break;
         case 1:
@@ -6341,14 +6350,14 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
     req->prot = IOMMU_RW;
     if ((attrs & (1 << 8)) == 0) {
         /* Access flag */
-        qemu_log("smmu: access forbidden %x\n", attrs);
+        D("smmu: access forbidden %x\n", attrs);
         goto do_fault;
     }
     if (req->stage == 1) {
         if (attrs & (1 << 5)) {
             /* Write access forbidden */
             if (req->access == IOMMU_WO) {
-                qemu_log("smmu: Write access forbidden %x\n", attrs);
+                D("smmu: Write access forbidden %x\n", attrs);
                 goto do_fault;
             }
             req->prot &= ~IOMMU_WO;
@@ -6388,11 +6397,11 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
     }
 
     req->pa = ttbr;
-    qemu_log("SMMU: %lx -> %lx\n", req->va, req->pa);
+    D("SMMU: %lx -> %lx\n", req->va, req->pa);
     return;
 
 do_fault:
-    qemu_log("smmu fault\n");
+    D("smmu fault\n");
     smmu_fault(s, cb, req, level);
 }
 
@@ -6494,7 +6503,7 @@ static void smmu500_gat(SMMU *s, uint64_t v, bool wr, bool s2)
     int prot;
     bool err;
 
-    qemu_log("ATS: va=%lx cb=%d wr=%d s2=%d\n", va, cb, wr, s2);
+    D("ATS: va=%lx cb=%d wr=%d s2=%d\n", va, cb, wr, s2);
     err = smmu500_at(s, cb, va, wr, s2, &pa, &prot);
 
     s->regs[R_SMMU_GPAR] = pa | err;
