@@ -70,6 +70,8 @@
 # define MAX_OOB		0x1000
 # define MAX_PARM_PAGE_SIZE     256
 # define MAX_EXT_PARM_PAGE_SIZE 48
+
+# define NUM_PARAMETER_PAGES_OFFSET    14
 typedef struct NANDFlashState NANDFlashState;
 struct NANDFlashState {
     DeviceState parent_obj;
@@ -409,8 +411,26 @@ static void nand_command(NANDFlashState *s)
         s->ioaddr = s->io;
         s->ioaddr0 = s->io;
         s->iolen = 0;
-        for (j = 0; j < 3; ++j) {
-            for (i = 0; i < 256; ++i) {
+        int num_parameter_pages = \
+            nand_flash_ids[s->chip_id].param_page[NUM_PARAMETER_PAGES_OFFSET];
+
+        /* If number of parameter pages not mentioned, use 3 as default */
+        if (!num_parameter_pages) {
+            num_parameter_pages = 3;
+        }
+
+        /* Copy Required number of parameter Pages */
+        for (j = 0; j < num_parameter_pages; ++j) {
+            for (i = 0; i < MAX_PARM_PAGE_SIZE; ++i) {
+                nand_pushio_byte(s, nand_flash_ids[s->chip_id].param_page[i],
+                                 false);
+            }
+        }
+
+        /* Copy Required number of Ext parameter Pages */
+        for (j = 0; j < num_parameter_pages; ++j) {
+            for (i = MAX_PARM_PAGE_SIZE; \
+                i < (MAX_PARM_PAGE_SIZE + MAX_EXT_PARM_PAGE_SIZE); ++i) {
                 nand_pushio_byte(s, nand_flash_ids[s->chip_id].param_page[i],
                                  false);
             }
