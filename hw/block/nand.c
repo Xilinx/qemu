@@ -89,6 +89,10 @@ struct NANDFlashState {
     uint8_t *ioaddr, *ioaddr0;
     int iolen;
 
+    uint8_t reg_data[16];
+    int reglen;
+    uint8_t *regaddr;
+
     uint32_t cmd;
     uint64_t addr;
     int addrlen;
@@ -345,11 +349,18 @@ static void nand_reset(DeviceState *dev)
     s->status |= NAND_IOSTATUS_AREADY;
 }
 
-static inline void nand_pushio_byte(NANDFlashState *s, uint8_t value)
+static inline void nand_pushio_byte(NANDFlashState *s, uint8_t value, bool reg)
 {
-    s->ioaddr[s->iolen++] = value;
-    for (value = s->buswidth; --value;) {
-        s->ioaddr[s->iolen++] = 0;
+    if (reg) { /* Push bytes for register read */
+        s->regaddr[s->reglen++] = value;
+        for (value = s->buswidth; --value;) {
+            s->reg_data[s->reglen++] = 0;
+        }
+    } else {
+        s->ioaddr[s->iolen++] = value;
+        for (value = s->buswidth; --value;) {
+            s->ioaddr[s->iolen++] = 0;
+        }
     }
 }
 
@@ -365,27 +376,26 @@ static void nand_command(NANDFlashState *s)
     switch (s->cmd) {
 
     case NAND_CMD_READID:
-        s->ioaddr = s->io;
-        s->ioaddr0 = NULL;
-        s->iolen = 0;
+        s->reglen = 0;
+        s->regaddr = s->reg_data;
         switch (s->addr & 0xFF) {
         case 0x20:
-            nand_pushio_byte(s, 'O');
-            nand_pushio_byte(s, 'N');
-            nand_pushio_byte(s, 'F');
-            nand_pushio_byte(s, 'I');
+            nand_pushio_byte(s, 'O', true);
+            nand_pushio_byte(s, 'N', true);
+            nand_pushio_byte(s, 'F', true);
+            nand_pushio_byte(s, 'I', true);
             break;
         case 0x00:
-            nand_pushio_byte(s, s->manf_id);
-            nand_pushio_byte(s, s->chip_id);
-            nand_pushio_byte(s, 'Q'); /* Don't-care byte (often 0xa5) */
+            nand_pushio_byte(s, s->manf_id, true);
+            nand_pushio_byte(s, s->chip_id, true);
+            nand_pushio_byte(s, 'Q', true); /* Don't-care byte (often 0xa5) */
             if (nand_flash_ids[s->chip_id].options & NAND_SAMSUNG_LP) {
                 /* Page Size, Block Size, Spare Size; bit 6 indicates
                  * 8 vs 16 bit width NAND.
                  */
-                nand_pushio_byte(s, (s->buswidth == 2) ? 0x55 : 0x15);
+                nand_pushio_byte(s, (s->buswidth == 2) ? 0x55 : 0x15, true);
             } else {
-                nand_pushio_byte(s, 0xc0); /* Multi-plane */
+                nand_pushio_byte(s, 0xc0, true); /* Multi-plane */
             }
             break;
             default:
@@ -401,7 +411,8 @@ static void nand_command(NANDFlashState *s)
         s->iolen = 0;
         for (j = 0; j < 3; ++j) {
             for (i = 0; i < 256; ++i) {
-                nand_pushio_byte(s, nand_flash_ids[s->chip_id].param_page[i]);
+                nand_pushio_byte(s, nand_flash_ids[s->chip_id].param_page[i],
+                                 false);
             }
         }
         break;
@@ -418,7 +429,7 @@ static void nand_command(NANDFlashState *s)
         s->ioaddr = s->io;
         s->ioaddr0 = s->io;
         for (i = s->addr & 0xFF; i < 4; ++i) {
-            nand_pushio_byte(s, s->features[i]);
+            nand_pushio_byte(s, s->features[i], false);
         }
         break;
 
@@ -470,7 +481,7 @@ static void nand_command(NANDFlashState *s)
         s->ioaddr = s->io;
         s->ioaddr0 = NULL;
         s->iolen = 0;
-        nand_pushio_byte(s, s->status);
+        nand_pushio_byte(s, s->status, false);
         break;
 
     default:
@@ -750,11 +761,32 @@ void nand_setio(DeviceState *dev, uint32_t value)
    }
 }
 
+static uint32_t nand_readreg(NANDFlashState *s)
+{
+    int offset;
+    uint32_t x = 0;
+
+    if (s->ce || s->reglen <= 0) {
+        return 0;
+    }
+
+    for (offset = s->buswidth; offset--;) {
+        x |= s->regaddr[offset] << (offset << 3);
+    }
+    s->reglen -= s->buswidth;
+    s->regaddr += s->buswidth;
+    return x;
+}
+
 uint32_t nand_getio(DeviceState *dev)
 {
     int offset;
     uint32_t x = 0;
     NANDFlashState *s = NAND(dev);
+
+    if (s->cmd == NAND_CMD_READID) {
+        return nand_readreg(s);
+    }
 
     if (s->ce || s->iolen <= 0) {
         return 0;
