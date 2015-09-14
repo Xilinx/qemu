@@ -654,7 +654,8 @@ static void xilinx_spips_flush_fifo_g(XilinxSPIPS *s)
     }
 }
 
-static int xilinx_spips_num_dummies(uint8_t command) {
+static int xilinx_spips_num_dummies(XilinxQSPIPS *qs, uint8_t command)
+{
     switch (command) { /* check for dummies */
     case READ: /* no dummy bytes/cycles */
     case PP:
@@ -669,14 +670,14 @@ static int xilinx_spips_num_dummies(uint8_t command) {
     case QOR:
     case DOR_4:
     case QOR_4:
-        return 1;
+        return 1 * (1 << (qs->spi_mode - 1));
     case DIOR: /* FIXME: these vary between vendor - set to spansion */
     case FAST_READ_4:
     case DIOR_4:
-        return 2;
+        return 2 * (1 << (qs->spi_mode - 1));
     case QIOR: /* 2 Mode and 1 dummy byte */
     case QIOR_4:
-        return 5;
+        return 5 * (1 << (qs->spi_mode - 1));
     default:
         return -1;
     }
@@ -685,6 +686,7 @@ static int xilinx_spips_num_dummies(uint8_t command) {
 static void xilinx_spips_flush_txfifo(XilinxSPIPS *s)
 {
     int debug_level = 0;
+    XilinxQSPIPS *q = XILINX_QSPIPS(s);
 
     for (;;) {
         int i;
@@ -774,7 +776,7 @@ static void xilinx_spips_flush_txfifo(XilinxSPIPS *s)
                 s->snoop_state++;
                 break;
             }
-            num_dummies = xilinx_spips_num_dummies(tx);
+            num_dummies = xilinx_spips_num_dummies(q, tx);
             if (num_dummies == -1) {
                 s->snoop_state = SNOOP_NONE;
             } else {
@@ -1228,7 +1230,7 @@ lqspi_read(void *opaque, hwaddr addr, unsigned int size)
                                               LQSPI_CFG_MODE_WIDTH));
         }
         /* dummy bytes */
-        for (; i < xilinx_spips_num_dummies(inst_code); ++i) {
+        for (; i < xilinx_spips_num_dummies(q, inst_code); ++i) {
             DB_PRINT_L(0, "pushing dummy byte\n");
             fifo_push8(&s->tx_fifo, 0);
         }
