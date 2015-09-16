@@ -29,6 +29,7 @@ common-obj-$(CONFIG_RONALDO) += xilinx-smmu_reg.o
 common-obj-$(CONFIG_RONALDO) += arm-smmu.o
 common-obj-$(CONFIG_RONALDO) += xilinx-ddrc.o
 common-obj-$(CONFIG_RONALDO) += xilinx-ddr_phy.o
+common-obj-$(CONFIG_RONALDO) += xilinx-serdes.o
 
 common-obj-$(CONFIG_XILINX_AXI) += stream-fifo.o
 
