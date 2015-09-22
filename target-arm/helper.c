@@ -2260,31 +2260,35 @@ static const ARMCPRegInfo strongarm_cp_reginfo[] = {
     REGINFO_SENTINEL
 };
 
-static uint64_t mpidr_read(CPUARMState *env, const ARMCPRegInfo *ri)
+static uint64_t mpidr_read_val(CPUARMState *env)
 {
     CPUState *cs = CPU(arm_env_get_cpu(env));
-    unsigned int cur_el = arm_current_el(env);
-    bool secure = arm_is_secure(env);
-
+    ARMCPU *cpu = ARM_CPU(arm_env_get_cpu(env));
     uint32_t mpidr = cs->cpu_index;
-    /* We don't support setting cluster ID ([8..11]) (known as Aff1
-     * in later ARM ARM versions), or any of the higher affinity level fields,
-     * so these bits always RAZ.
-     */
+
     if (arm_feature(env, ARM_FEATURE_V7MP)) {
         mpidr |= (1U << 31);
         /* Cores which are uniprocessor (non-coherent)
          * but still implement the MP extensions set
-         * bit 30. (For instance, A9UP.) However we do
-         * not currently model any of those cores.
+         * bit 30. (For instance, Cortex-R5).
          */
+        if (cpu->mp_is_up) {
+            mpidr |= (1u << 30);
+        }
     }
-
-    if (arm_feature(env, ARM_FEATURE_EL2) && cur_el == 1 && !secure) {
-        mpidr = env->vmpidr_el2;
-    }
-
     return mpidr;
+}
+
+static uint64_t mpidr_read(CPUARMState *env, const ARMCPRegInfo *ri)
+{
+    unsigned int cur_el = arm_current_el(env);
+    bool secure = arm_is_secure(env);
+
+    if (arm_feature(env, ARM_FEATURE_EL2) && !secure && cur_el == 1) {
+        fprintf(stderr, "Return Early\n");
+        return env->vmpidr_el2;
+    }
+    return mpidr_read_val(env);
 }
 
 static const ARMCPRegInfo mpidr_cp_reginfo[] = {
