@@ -452,7 +452,7 @@ static void arm_cpu_set_mr_secure(Object *obj, Visitor *v, void *opaque,
     ac->as_secure = address_space_init_shareable(ac->mr_secure, NULL);
 }
 
-#define ARM_CPUS_PER_CLUSTER 8
+#define ARM_CPUS_PER_CLUSTER 4
 
 static void arm_cpu_initfn(Object *obj)
 {
