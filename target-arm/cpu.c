@@ -947,6 +947,7 @@ static void cortex_r4_initfn(Object *obj)
     cpu->id_isar3 = 0x01112131;
     cpu->id_isar4 = 0x0010142;
     cpu->id_isar5 = 0x0;
+    cpu->mp_is_up = true;
 }
 
 static void cortex_r5_initfn(Object *obj)
