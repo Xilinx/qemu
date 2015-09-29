@@ -33,7 +33,7 @@
 #define XILINX_DDRC_ERR_DEBUG 0
 #endif
 
-#define TYPE_XILINX_DDRC "xlnx.ddrc"
+#define TYPE_XILINX_DDRC "xlnx.zynqmp-ddrc"
 
 #define XILINX_DDRC(obj) \
      OBJECT_CHECK(DDRC, (obj), TYPE_XILINX_DDRC)

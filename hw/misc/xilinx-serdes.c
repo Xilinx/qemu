@@ -33,7 +33,7 @@
 #define XILINX_SERDES_ERR_DEBUG 0
 #endif
 
-#define TYPE_XILINX_SERDES "xlnx.serdes"
+#define TYPE_XILINX_SERDES "xlnx.zynqmp-serdes"
 
 #define XILINX_SERDES(obj) \
      OBJECT_CHECK(SERDES, (obj), TYPE_XILINX_SERDES)
