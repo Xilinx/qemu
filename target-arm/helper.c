@@ -2284,7 +2284,6 @@ static uint64_t mpidr_read(CPUARMState *env, const ARMCPRegInfo *ri)
     bool secure = arm_is_secure(env);
 
     if (arm_feature(env, ARM_FEATURE_EL2) && !secure && cur_el == 1) {
-        fprintf(stderr, "Return Early\n");
         return env->vmpidr_el2;
     }
     return mpidr_read_val(env);
