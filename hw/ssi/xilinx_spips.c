@@ -656,6 +656,11 @@ static void xilinx_spips_flush_fifo_g(XilinxSPIPS *s)
 
 static int xilinx_spips_num_dummies(XilinxQSPIPS *qs, uint8_t command)
 {
+    if (!qs) {
+        /* The SPI device is not a QSPI device */
+        return -1;
+    }
+
     switch (command) { /* check for dummies */
     case READ: /* no dummy bytes/cycles */
     case PP:
@@ -686,7 +691,8 @@ static int xilinx_spips_num_dummies(XilinxQSPIPS *qs, uint8_t command)
 static void xilinx_spips_flush_txfifo(XilinxSPIPS *s)
 {
     int debug_level = 0;
-    XilinxQSPIPS *q = XILINX_QSPIPS(s);
+    XilinxQSPIPS *q = (XilinxQSPIPS *) object_dynamic_cast(OBJECT(s),
+                                                           TYPE_XILINX_QSPIPS);
 
     for (;;) {
         int i;
