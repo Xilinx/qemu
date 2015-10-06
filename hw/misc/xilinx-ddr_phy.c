@@ -33,7 +33,7 @@
 #define XILINX_DDR_PHY_ERR_DEBUG 0
 #endif
 
-#define TYPE_XILINX_DDR_PHY "xlnx.ddr_phy"
+#define TYPE_XILINX_DDR_PHY "xlnx.zynqmp-ddr-phy"
 
 #define XILINX_DDR_PHY(obj) \
      OBJECT_CHECK(DDR_PHY, (obj), TYPE_XILINX_DDR_PHY)
