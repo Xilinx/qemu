@@ -641,6 +641,8 @@ static void rp_read_pkt(RemotePort *s, RemotePortDynPkt *dpkt)
 
     if (pkt->hdr.len) {
         rp_dpkt_alloc(dpkt, sizeof pkt->hdr + pkt->hdr.len);
+        /* pkt may move due to realloc.  */
+        pkt = dpkt->pkt;
         rp_recv(s, s->fd, &pkt->hdr + 1, pkt->hdr.len);
         rp_decode_payload(pkt);
     }
