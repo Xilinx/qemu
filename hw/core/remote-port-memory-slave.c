@@ -44,6 +44,7 @@ typedef struct RemotePortMemorySlave {
     struct RemotePort *rp;
     MemoryRegion *mr;
     AddressSpace *as;
+    RemotePortDynPkt rsp;
 } RemotePortMemorySlave;
 
 static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
@@ -53,7 +54,6 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
     size_t enclen;
     int64_t delay;
     uint8_t *data = NULL;
-    RemotePortDynPkt rsp;
 
     if (dir == DMA_DIRECTION_TO_DEVICE) {
         pktlen += pkt->busaccess.len;
@@ -65,10 +65,9 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
     assert(pkt->busaccess.stream_width == pkt->busaccess.len);
     assert(!(pkt->hdr.flags & RP_PKT_FLAGS_response));
 
-    memset(&rsp, 0, sizeof(rsp));
-    rp_dpkt_alloc(&rsp, pktlen);
+    rp_dpkt_alloc(&s->rsp, pktlen);
     if (dir == DMA_DIRECTION_TO_DEVICE) {
-        data = (uint8_t *)(rsp.pkt + 1);
+        data = (uint8_t *)(s->rsp.pkt + 1);
     }
     if (dir == DMA_DIRECTION_FROM_DEVICE && REMOTE_PORT_DEBUG_LEVEL > 0) {
         DB_PRINT_L(0, "address: %" PRIx64 "\n", pkt->busaccess.addr);
@@ -88,7 +87,7 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
 
     enclen = (dir == DMA_DIRECTION_FROM_DEVICE ? rp_encode_write_resp :
                                                  rp_encode_read_resp)(
-                    pkt->hdr.id, pkt->hdr.dev, &rsp.pkt->busaccess,
+                    pkt->hdr.id, pkt->hdr.dev, &s->rsp.pkt->busaccess,
                     pkt->busaccess.timestamp + delay,
                     pkt->busaccess.addr,
                     pkt->busaccess.attributes,
@@ -97,7 +96,7 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
                     pkt->busaccess.stream_width);
     assert(enclen == pktlen);
 
-    rp_write(s->rp, (void *)rsp.pkt, pktlen);
+    rp_write(s->rp, (void *)s->rsp.pkt, pktlen);
 }
 
 static void rp_memory_master_realize(DeviceState *dev, Error **errp)
