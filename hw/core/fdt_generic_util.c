@@ -456,6 +456,9 @@ fail:
     error_setg(errp, "%s", __func__);
 }
 
+static uint32_t imap_cache[4096];
+static bool imap_cached = false;
+
 qemu_irq *fdt_get_irq_info(FDTMachineInfo *fdti, char *node_path, int irq_idx,
                           char *info, bool *map_mode) {
     void *fdt = fdti->fdt;
@@ -504,7 +507,8 @@ qemu_irq *fdt_get_irq_info(FDTMachineInfo *fdti, char *node_path, int irq_idx,
         int num_matches = 0;
         int len;
         uint32_t imap_mask[intc_cells];
-        static uint32_t *imap;
+        uint32_t *imap_p;
+        uint32_t *imap;
         bool use_parent = false;
 
         for (k = 0; k < intc_cells; ++k) {
@@ -527,8 +531,13 @@ qemu_irq *fdt_get_irq_info(FDTMachineInfo *fdti, char *node_path, int irq_idx,
             use_parent = true;
             errp = NULL;
 
-            imap = qemu_fdt_getprop(fdt, node_path, "interrupt-map", &len,
-                                      use_parent, &errp);
+            imap_p = qemu_fdt_getprop(fdt, node_path, "interrupt-map",
+                                      &len, use_parent, &errp);
+            if (!imap_cached) {
+                memcpy(imap_cache, imap_p, len);
+                imap_cached = true;
+            }
+            imap = imap_cache;
 
             if (errp) {
                 goto fail;
@@ -538,6 +547,7 @@ qemu_irq *fdt_get_irq_info(FDTMachineInfo *fdti, char *node_path, int irq_idx,
         len /= sizeof(uint32_t);
 
         i = 0;
+        assert(imap);
         while (i < len) {
             if (!use_parent) {
                 /* Only re-sync the interrupt-map when the device has it's
