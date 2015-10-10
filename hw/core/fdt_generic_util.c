@@ -161,10 +161,12 @@ FDTMachineInfo *fdt_generic_create_machine(void *fdt, qemu_irq *cpu_irq)
 
     /* parse the device tree */
     if (!qemu_devtree_get_root_node(fdt, node_path)) {
+        memory_region_transaction_begin();
         fdt_init_set_opaque(fdti, node_path, NULL);
         simple_bus_fdt_init(node_path, fdti);
         while (qemu_co_enter_next(fdti->cq));
         fdt_init_all_irqs(fdti);
+        memory_region_transaction_commit();
     } else {
         fprintf(stderr, "FDT: ERROR: cannot get root node from device tree %s\n"
             , node_path);
