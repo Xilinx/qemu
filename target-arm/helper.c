@@ -1257,35 +1257,40 @@ static CPAccessResult gt_cntfrq_access(CPUARMState *env, const ARMCPRegInfo *ri)
 
 static CPAccessResult gt_counter_access(CPUARMState *env, int timeridx)
 {
+    unsigned int cur_el = arm_current_el(env);
+    bool secure = arm_is_secure(env);
+
     /* CNT[PV]CT: not visible from PL0 if ELO[PV]CTEN is zero */
-    if (arm_current_el(env) == 0 &&
+    if (cur_el == 0 &&
         !extract32(env->cp15.c14_cntkctl, timeridx, 1)) {
         return CP_ACCESS_TRAP;
     }
-    if (arm_feature(env, ARM_FEATURE_EL2)) {
-        if (arm_current_el(env) == 1 && timeridx == GTIMER_PHYS &&
-            !extract32(env->cp15.cnthctl_el2, 0, 1)) {
-            return CP_ACCESS_TRAP;
-        }
+
+    if (arm_feature(env, ARM_FEATURE_EL2) &&
+        timeridx == GTIMER_PHYS && !secure && cur_el < 2 &&
+        !extract32(env->cp15.cnthctl_el2, 0, 1)) {
+        return CP_ACCESS_TRAP;
     }
     return CP_ACCESS_OK;
 }
 
 static CPAccessResult gt_timer_access(CPUARMState *env, int timeridx)
 {
+    unsigned int cur_el = arm_current_el(env);
+    bool secure = arm_is_secure(env);
+
     /* CNT[PV]_CVAL, CNT[PV]_CTL, CNT[PV]_TVAL: not visible from PL0 if
      * EL0[PV]TEN is zero.
      */
-    if (arm_current_el(env) == 0 &&
+    if (cur_el == 0 &&
         !extract32(env->cp15.c14_cntkctl, 9 - timeridx, 1)) {
         return CP_ACCESS_TRAP;
     }
-    if (arm_feature(env, ARM_FEATURE_EL2)) {
-        if (arm_current_el(env) == 1 && timeridx == GTIMER_PHYS &&
-            !extract32(env->cp15.cnthctl_el2, 1, 1)) {
-            qemu_log("TRAP timer access\n");
-            return CP_ACCESS_TRAP;
-        }
+
+    if (arm_feature(env, ARM_FEATURE_EL2) &&
+        timeridx == GTIMER_PHYS && !secure && cur_el < 2 &&
+        !extract32(env->cp15.cnthctl_el2, 1, 1)) {
+        return CP_ACCESS_TRAP;
     }
     return CP_ACCESS_OK;
 }
