@@ -51,7 +51,7 @@
 
 
 #define RP_VERSION_MAJOR 3
-#define RP_VERSION_MINOR 1
+#define RP_VERSION_MINOR 2
 
 /* Could be auto generated.  */
 enum rp_cmd {
@@ -104,7 +104,8 @@ struct rp_pkt_hello {
 
 
 enum {
-    RP_BUS_ATTR_EOP  =  (1 << 0),
+    RP_BUS_ATTR_EOP        =  (1 << 0),
+    RP_BUS_ATTR_SECURE     =  (1 << 1),
 };
 
 struct rp_pkt_busaccess {
