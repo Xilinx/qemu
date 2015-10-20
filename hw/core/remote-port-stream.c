@@ -80,7 +80,7 @@ static void rp_stream_notify(void *opaque)
         enclen = rp_encode_write_resp(s->pkt.hdr.id, s->rp_dev,
                                       &rsp.pkt->busaccess,
                                       s->pkt.busaccess.timestamp + delay,
-                                      0,
+                                      0, 0,
                                       s->pkt.busaccess.attributes,
                                       s->pkt.busaccess.len,
                                       s->pkt.busaccess.width,
@@ -142,7 +142,7 @@ static size_t rp_stream_stream_push(StreamSlave *obj, uint8_t *buf,
 
     clk = rp_normalized_vmclk(s->rp);
     enclen = rp_encode_write(s->current_id++, s->rp_dev, &pkt, clk,
-                             0, rp_attr, len, 0, 4);
+                             0, 0, rp_attr, len, 0, 4);
 
     rp_rsp_mutex_lock(s->rp);
     rp_write(s->rp, (void *) &pkt, enclen);

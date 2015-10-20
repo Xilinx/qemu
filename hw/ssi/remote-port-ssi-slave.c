@@ -61,6 +61,7 @@ static void rp_ssi_slave_write(RemotePortDevice *rpd, struct rp_pkt *pkt)
     enclen = rp_encode_read_resp(
                     pkt->hdr.id, pkt->hdr.dev, &rsp.pkt->busaccess,
                     pkt->busaccess.timestamp + delay,
+                    0,
                     pkt->busaccess.addr,
                     pkt->busaccess.attributes,
                     pkt->busaccess.len,

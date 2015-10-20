@@ -76,6 +76,7 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
                      pkt->busaccess.len);
     }
     s->attr->secure = pkt->busaccess.attributes & RP_BUS_ATTR_SECURE;
+    s->attr->master_id = pkt->busaccess.master_id;
     dma_memory_rw_attr(s->as, pkt->busaccess.addr, data, pkt->busaccess.len,
                        dir, s->attr);
     if (dir == DMA_DIRECTION_TO_DEVICE && REMOTE_PORT_DEBUG_LEVEL > 0) {
@@ -92,6 +93,7 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
                                                  rp_encode_read_resp)(
                     pkt->hdr.id, pkt->hdr.dev, &s->rsp.pkt->busaccess,
                     pkt->busaccess.timestamp + delay,
+                    pkt->busaccess.master_id,
                     pkt->busaccess.addr,
                     pkt->busaccess.attributes,
                     pkt->busaccess.len,

@@ -78,7 +78,8 @@ static uint64_t rp_io_read(void *opaque, hwaddr addr, unsigned size,
     clk = rp_normalized_vmclk(s->rp);
     id = rp_new_id(s->rp);
     rp_attr |= attr->secure ? RP_BUS_ATTR_SECURE : 0;
-    len = rp_encode_read(id, s->rp_dev, &pkt, clk, addr + map->offset,
+    len = rp_encode_read(id, s->rp_dev, &pkt, clk,
+                         attr->master_id, addr + map->offset,
                          rp_attr, size, 0, size);
 
     rp_rsp_mutex_lock(s->rp);
@@ -132,7 +133,8 @@ static void rp_io_write(void *opaque, hwaddr addr, uint64_t value,
     clk = rp_normalized_vmclk(s->rp);
     id = rp_new_id(s->rp);
     rp_attr |= attr->secure ? RP_BUS_ATTR_SECURE : 0;
-    len = rp_encode_write(id, s->rp_dev, &pay.pkt, clk, addr + map->offset,
+    len = rp_encode_write(id, s->rp_dev, &pay.pkt, clk,
+                          attr->master_id, addr + map->offset,
                           rp_attr, size, 0, size);
 
     rp_rsp_mutex_lock(s->rp);

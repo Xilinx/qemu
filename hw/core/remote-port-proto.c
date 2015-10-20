@@ -119,6 +119,7 @@ int rp_decode_payload(struct rp_pkt *pkt)
         assert(pkt->hdr.len >= sizeof pkt->busaccess - sizeof pkt->hdr);
         pkt->busaccess.timestamp = be64toh(pkt->busaccess.timestamp);
         pkt->busaccess.addr = be64toh(pkt->busaccess.addr);
+        pkt->busaccess.master_id = be16toh(pkt->busaccess.master_id);
         pkt->busaccess.attributes = be64toh(pkt->busaccess.attributes);
         pkt->busaccess.len = be32toh(pkt->busaccess.len);
         pkt->busaccess.width = be32toh(pkt->busaccess.width);
@@ -163,11 +164,12 @@ size_t rp_encode_hello(uint32_t id, uint32_t dev, struct rp_pkt_hello *pkt,
 }
 
 static void rp_encode_busaccess_common(struct rp_pkt_busaccess *pkt,
-                                  int64_t clk,
+                                  int64_t clk, uint16_t master_id,
                                   uint64_t addr, uint32_t attr, uint32_t size,
                                   uint32_t width, uint32_t stream_width)
 {
     pkt->timestamp = htobe64(clk);
+    pkt->master_id = htobe16(master_id);
     pkt->addr = htobe64(addr);
     pkt->attributes = htobe64(attr);
     pkt->len = htobe32(size);
@@ -177,49 +179,53 @@ static void rp_encode_busaccess_common(struct rp_pkt_busaccess *pkt,
 
 size_t rp_encode_read(uint32_t id, uint32_t dev,
                       struct rp_pkt_busaccess *pkt,
-                      int64_t clk,
+                      int64_t clk, uint16_t master_id,
                       uint64_t addr, uint32_t attr, uint32_t size,
                       uint32_t width, uint32_t stream_width)
 {
     rp_encode_hdr(&pkt->hdr, RP_CMD_read, id, dev,
                   sizeof *pkt - sizeof pkt->hdr, 0);
-    rp_encode_busaccess_common(pkt, clk, addr, attr, size, width, stream_width);
+    rp_encode_busaccess_common(pkt, clk, master_id, addr, attr,
+                               size, width, stream_width);
     return sizeof *pkt;
 }
 
 size_t rp_encode_read_resp(uint32_t id, uint32_t dev,
                            struct rp_pkt_busaccess *pkt,
-                           int64_t clk,
+                           int64_t clk, uint16_t master_id,
                            uint64_t addr, uint32_t attr, uint32_t size,
                            uint32_t width, uint32_t stream_width)
 {
     rp_encode_hdr(&pkt->hdr, RP_CMD_read, id, dev,
                   sizeof *pkt - sizeof pkt->hdr + size, RP_PKT_FLAGS_response);
-    rp_encode_busaccess_common(pkt, clk, addr, attr, size, width, stream_width);
+    rp_encode_busaccess_common(pkt, clk, master_id, addr, attr,
+                               size, width, stream_width);
     return sizeof *pkt + size;
 }
 
 size_t rp_encode_write(uint32_t id, uint32_t dev,
                        struct rp_pkt_busaccess *pkt,
-                       int64_t clk,
+                       int64_t clk, uint16_t master_id,
                        uint64_t addr, uint32_t attr, uint32_t size,
                        uint32_t width, uint32_t stream_width)
 {
     rp_encode_hdr(&pkt->hdr, RP_CMD_write, id, dev,
                   sizeof *pkt - sizeof pkt->hdr + size, 0);
-    rp_encode_busaccess_common(pkt, clk, addr, attr, size, width, stream_width);
+    rp_encode_busaccess_common(pkt, clk, master_id, addr, attr,
+                               size, width, stream_width);
     return sizeof *pkt;
 }
 
 size_t rp_encode_write_resp(uint32_t id, uint32_t dev,
                        struct rp_pkt_busaccess *pkt,
-                       int64_t clk,
+                       int64_t clk, uint16_t master_id,
                        uint64_t addr, uint32_t attr, uint32_t size,
                        uint32_t width, uint32_t stream_width)
 {
     rp_encode_hdr(&pkt->hdr, RP_CMD_write, id, dev,
                   sizeof *pkt - sizeof pkt->hdr, RP_PKT_FLAGS_response);
-    rp_encode_busaccess_common(pkt, clk, addr, attr, size, width, stream_width);
+    rp_encode_busaccess_common(pkt, clk, master_id, addr, attr,
+                               size, width, stream_width);
     return sizeof *pkt;
 }
 

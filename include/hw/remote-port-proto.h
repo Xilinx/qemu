@@ -50,8 +50,8 @@
  */
 
 
-#define RP_VERSION_MAJOR 3
-#define RP_VERSION_MINOR 2
+#define RP_VERSION_MAJOR 4
+#define RP_VERSION_MINOR 0
 
 /* Could be auto generated.  */
 enum rp_cmd {
@@ -125,6 +125,9 @@ struct rp_pkt_busaccess {
        addr should repeat itself around this width. Set to same as len
        for incremental (normal) accesses.  In bytes.  */
     uint32_t stream_width;
+
+    /* Implementation specific source or master-id.  */
+    uint16_t master_id;
 } __attribute__ ((packed));
 
 enum {
@@ -195,25 +198,25 @@ static inline void *rp_busaccess_dataptr(struct rp_pkt_busaccess *pkt)
 
 size_t rp_encode_read(uint32_t id, uint32_t dev,
                       struct rp_pkt_busaccess *pkt,
-                      int64_t clk,
+                      int64_t clk, uint16_t master_id,
                       uint64_t addr, uint32_t attr, uint32_t size,
                       uint32_t width, uint32_t stream_width);
 
 size_t rp_encode_read_resp(uint32_t id, uint32_t dev,
                            struct rp_pkt_busaccess *pkt,
-                           int64_t clk,
+                           int64_t clk, uint16_t master_id,
                            uint64_t addr, uint32_t attr, uint32_t size,
                            uint32_t width, uint32_t stream_width);
 
 size_t rp_encode_write(uint32_t id, uint32_t dev,
                        struct rp_pkt_busaccess *pkt,
-                       int64_t clk,
+                       int64_t clk, uint16_t master_id,
                        uint64_t addr, uint32_t attr, uint32_t size,
                        uint32_t width, uint32_t stream_width);
 
 size_t rp_encode_write_resp(uint32_t id, uint32_t dev,
                        struct rp_pkt_busaccess *pkt,
-                       int64_t clk,
+                       int64_t clk, uint16_t master_id,
                        uint64_t addr, uint32_t attr, uint32_t size,
                        uint32_t width, uint32_t stream_width);
 
