@@ -69,6 +69,7 @@ static uint64_t rp_io_read(void *opaque, hwaddr addr, unsigned size,
     int64_t rclk;
     uint8_t *data;
     uint32_t id;
+    uint64_t rp_attr = 0;
     int len;
     int i;
     RemotePortDynPkt rsp;
@@ -76,8 +77,9 @@ static uint64_t rp_io_read(void *opaque, hwaddr addr, unsigned size,
     DB_PRINT_L(1, "\n");
     clk = rp_normalized_vmclk(s->rp);
     id = rp_new_id(s->rp);
-    len = rp_encode_read(id, s->rp_dev, &pkt, clk, addr + map->offset, 0, size,
-                         0, size);
+    rp_attr |= attr->secure ? RP_BUS_ATTR_SECURE : 0;
+    len = rp_encode_read(id, s->rp_dev, &pkt, clk, addr + map->offset,
+                         rp_attr, size, 0, size);
 
     rp_rsp_mutex_lock(s->rp);
     rp_write(s->rp, (void *) &pkt, len);
@@ -109,6 +111,7 @@ static void rp_io_write(void *opaque, hwaddr addr, uint64_t value,
     RemotePortMemoryMaster *s = map->parent;
     int64_t clk;
     int64_t rclk;
+    uint64_t rp_attr = 0;
     uint32_t id;
     RemotePortDynPkt rsp;
 
@@ -128,8 +131,9 @@ static void rp_io_write(void *opaque, hwaddr addr, uint64_t value,
     assert(size <= 8);
     clk = rp_normalized_vmclk(s->rp);
     id = rp_new_id(s->rp);
-    len = rp_encode_write(id, s->rp_dev, &pay.pkt, clk, addr + map->offset, 0,
-                          size, 0, size);
+    rp_attr |= attr->secure ? RP_BUS_ATTR_SECURE : 0;
+    len = rp_encode_write(id, s->rp_dev, &pay.pkt, clk, addr + map->offset,
+                          rp_attr, size, 0, size);
 
     rp_rsp_mutex_lock(s->rp);
 

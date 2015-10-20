@@ -44,6 +44,7 @@ typedef struct RemotePortMemorySlave {
     struct RemotePort *rp;
     MemoryRegion *mr;
     AddressSpace *as;
+    MemoryTransactionAttr *attr;
     RemotePortDynPkt rsp;
 } RemotePortMemorySlave;
 
@@ -74,7 +75,9 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
         qemu_hexdump((const char *)data, stderr, ": write: ",
                      pkt->busaccess.len);
     }
-    dma_memory_rw(s->as, pkt->busaccess.addr, data, pkt->busaccess.len, dir);
+    s->attr->secure = pkt->busaccess.attributes & RP_BUS_ATTR_SECURE;
+    dma_memory_rw_attr(s->as, pkt->busaccess.addr, data, pkt->busaccess.len,
+                       dir, s->attr);
     if (dir == DMA_DIRECTION_TO_DEVICE && REMOTE_PORT_DEBUG_LEVEL > 0) {
         DB_PRINT_L(0, "address: %" PRIx64 "\n", pkt->busaccess.addr);
         qemu_hexdump((const char *)data, stderr, ": read: ",
@@ -106,6 +109,7 @@ static void rp_memory_master_realize(DeviceState *dev, Error **errp)
     /* FIXME: do something with per paster address spaces */
     s->as = s->mr ? address_space_init_shareable(s->mr, NULL)
                   : &address_space_memory;
+    s->attr = MEMORY_TRANSACTION_ATTR(object_new(TYPE_MEMORY_TRANSACTION_ATTR));
 }
 
 static void rp_memory_master_write(RemotePortDevice *s, struct rp_pkt *pkt)
