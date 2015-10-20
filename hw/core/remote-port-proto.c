@@ -1,5 +1,5 @@
 /*
- * QEMU remote attach
+ * Remote-port protocol
  *
  * Copyright (c) 2013 Xilinx Inc
  * Written by Edgar E. Iglesias <edgar.iglesias@xilinx.com>
@@ -22,31 +22,51 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+
 #define _BSD_SOURCE
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stddef.h>
 #include <assert.h>
-#ifndef _WIN32
 #include <endian.h>
-#endif
 #include "hw/remote-port-proto.h"
 
 #undef MIN
 #define MIN(x, y) (x < y ? x : y)
 
+#if defined(__linux__)
+#  include <endian.h>
+#elif defined(__FreeBSD__) || defined(__NetBSD__)
+#  include <sys/endian.h>
+#elif defined(__OpenBSD__)
+#  include <sys/types.h>
+#  define be16toh(x) betoh16(x)
+#  define be32toh(x) betoh32(x)
+#  define be64toh(x) betoh64(x)
+#endif
+
+/* Fallback for ancient Linux systems.  */
 #ifndef htobe64
-/* QEMU fallbacks for pre-historic build machines.  */
-#include "qemu-common.h"
+#include <byteswap.h>
 
-#define htobe64 cpu_to_be64
-#define htobe32 cpu_to_be32
-#define htobe16 cpu_to_be16
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+#define htobe64(x) bswap_64(x)
+#define htobe32(x) bswap_32(x)
+#define htobe16(x) bswap_16(x)
 
-#define be64toh be64_to_cpu
-#define be32toh be32_to_cpu
-#define be16toh be16_to_cpu
+#define be64toh(x) bswap_64(x)
+#define be32toh(x) bswap_32(x)
+#define be16toh(x) bswap_16(x)
+#else
+#define htobe64(x) x
+#define htobe32(x) x
+#define htobe16(x) x
+
+#define be64toh(x) x
+#define be32toh(x) x
+#define be16toh(x) x
+#endif
 #endif
 
 #define RP_OPT_ENT(name) [RP_OPT_ ## name] = offsetof(struct rp_cfg_state, name)
@@ -86,11 +106,6 @@ int rp_decode_hdr(struct rp_pkt *pkt)
 int rp_decode_payload(struct rp_pkt *pkt)
 {
     int used = 0;
-
-#if 0
-    qemu_hexdump((void *) pkt, stdout, "pkt-decode",
-                 pkt->hdr.len + sizeof pkt->hdr);
-#endif
 
     switch (pkt->hdr.cmd) {
     case RP_CMD_hello:
