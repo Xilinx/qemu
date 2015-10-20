@@ -73,7 +73,7 @@
 #define GEM_WOLAN         (0x000000B8/4) /* Wake on LAN reg */
 #define GEM_IPGSTRETCH    (0x000000BC/4) /* IPG Stretch reg */
 #define GEM_SVLAN         (0x000000C0/4) /* Stacked VLAN reg */
-#define GEM_MODID         (0x000000FC/4) /* Module ID reg */
+#define GEM_REVISION      (0x000000FC/4) /* Revision reg */
 #define GEM_OCTTXLO       (0x00000100/4) /* Octects transmitted Low reg */
 #define GEM_OCTTXHI       (0x00000104/4) /* Octects transmitted High reg */
 #define GEM_TXCNT         (0x00000108/4) /* Error-free Frames transmitted */
@@ -332,6 +332,8 @@
 #define DESC_1_RX_SOF 0x00004000
 #define DESC_1_RX_EOF 0x00008000
 
+#define GEM_REVISION_VALUE 0x00020118
+
 static inline unsigned tx_desc_get_used(unsigned *desc)
 {
     return (desc[1] & DESC_1_USED) ? 1 : 0;
@@ -477,7 +479,7 @@ static void gem_init_register_masks(CadenceGEMState *s)
     s->regs_ro[GEM_RXQBASE]  = 0x00000003;
     s->regs_ro[GEM_TXQBASE]  = 0x00000003;
     s->regs_ro[GEM_RXSTATUS] = 0xFFFFFFF0;
-    s->regs_ro[GEM_MODID]    = 0xFFFFFFFF;
+    s->regs_ro[GEM_REVISION] = 0xFFFFFFFF;
 
     /* Mask of register bits which are clear on read */
     memset(&s->regs_rtc[0], 0, sizeof(s->regs_rtc));
@@ -1261,7 +1263,7 @@ static void gem_reset(DeviceState *d)
     s->regs[GEM_TXPAUSE] = 0x0000ffff;
     s->regs[GEM_TXPARTIALSF] = 0x000003ff;
     s->regs[GEM_RXPARTIALSF] = 0x000003ff;
-    s->regs[GEM_MODID] = 0x00020118;
+    s->regs[GEM_REVISION] = s->revision;
     s->regs[GEM_DESCONF] = 0x02500111;
     s->regs[GEM_DESCONF2] = 0x2ab13fff;
     s->regs[GEM_DESCONF5] = 0x002f2145;
@@ -1580,6 +1582,8 @@ static const VMStateDescription vmstate_cadence_gem = {
 
 static Property gem_properties[] = {
     DEFINE_NIC_PROPERTIES(CadenceGEMState, conf),
+    DEFINE_PROP_UINT32("revision", CadenceGEMState, revision,
+                       GEM_REVISION_VALUE),
     DEFINE_PROP_UINT8("num-priority-queues", CadenceGEMState,
                       num_priority_queues, 1),
     DEFINE_PROP_UINT8("num-type-1-screeners", CadenceGEMState,

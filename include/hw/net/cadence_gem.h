@@ -80,6 +80,7 @@ typedef struct CadenceGEMState {
     uint32_t tx_desc_addr[MAX_PRIORITY_QUEUES];
 
     uint8_t can_rx_state; /* Debug only */
+    uint32_t revision;
 
     unsigned rx_desc[MAX_PRIORITY_QUEUES][GEM_MAX_DESC_LEN];
 
