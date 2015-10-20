@@ -58,7 +58,8 @@ struct RemotePortMemoryMaster {
     struct RemotePort *rp;
 };
 
-static uint64_t rp_io_read(void *opaque, hwaddr addr, unsigned size)
+static uint64_t rp_io_read(void *opaque, hwaddr addr, unsigned size,
+                           MemoryTransactionAttr *attr)
 {
     RemotePortMap *map = opaque;
     RemotePortMemoryMaster *s = map->parent;
@@ -102,7 +103,7 @@ static uint64_t rp_io_read(void *opaque, hwaddr addr, unsigned size)
 }
 
 static void rp_io_write(void *opaque, hwaddr addr, uint64_t value,
-                        unsigned size)
+                        unsigned size, MemoryTransactionAttr *attr)
 {
     RemotePortMap *map = opaque;
     RemotePortMemoryMaster *s = map->parent;
@@ -148,9 +149,24 @@ static void rp_io_write(void *opaque, hwaddr addr, uint64_t value,
     DB_PRINT_L(1, "\n");
 }
 
+static void rp_io_access(MemoryTransaction *tr)
+{
+    MemoryTransactionAttr *attr = tr->attr;
+    void *opaque = tr->opaque;
+    hwaddr addr = tr->addr;
+    unsigned size = tr->size;
+    uint64_t value = tr->data.u64;;
+    bool is_write = tr->rw;
+
+    if (is_write) {
+        rp_io_write(opaque, addr, value, size, attr);
+    } else {
+        tr->data.u64 = rp_io_read(opaque, addr, size, attr);
+    }
+}
+
 static const MemoryRegionOps rp_ops = {
-    .read = rp_io_read,
-    .write = rp_io_write,
+    .access = rp_io_access,
     .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
