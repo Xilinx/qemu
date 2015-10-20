@@ -1776,7 +1776,6 @@ static const MemoryRegionOps pmu_global_ops = {
 static void gpio_mb_sleep_h(void *opaque, int n, int level)
 {
     PMU_GLOBAL *s = XILINX_PMU_GLOBAL(opaque);
-    qemu_log("mb_sleep! level=%d\n", level);
     AF_DP32(s->regs, GLOBAL_CNTRL, MB_SLEEP, !!level);
 }
 
