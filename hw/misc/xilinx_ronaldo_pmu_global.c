@@ -1730,7 +1730,8 @@ static void pwr_state_handler(void *opaque, int n, int level)
     s->regs[R_PWR_STATE] = deposit32(s->regs[R_PWR_STATE], n, 1, level);
 }
 
-static uint64_t pmu_global_read(void *opaque, hwaddr addr, unsigned size)
+static uint64_t pmu_global_read(void *opaque, hwaddr addr, unsigned size,
+                                MemoryTransactionAttr *attr)
 {
     PMU_GLOBAL *s = XILINX_PMU_GLOBAL(opaque);
     RegisterInfo *r = &s->regs_info[addr / 4];
@@ -1747,7 +1748,7 @@ static uint64_t pmu_global_read(void *opaque, hwaddr addr, unsigned size)
 }
 
 static void pmu_global_write(void *opaque, hwaddr addr, uint64_t value,
-                      unsigned size)
+                      unsigned size, MemoryTransactionAttr *attr)
 {
     PMU_GLOBAL *s = XILINX_PMU_GLOBAL(opaque);
     RegisterInfo *r = &s->regs_info[addr / 4];
@@ -1763,9 +1764,32 @@ static void pmu_global_write(void *opaque, hwaddr addr, uint64_t value,
     register_write(r, value, ~0);
 }
 
+static void pmu_global_access(MemoryTransaction *tr)
+{
+    MemoryTransactionAttr *attr = tr->attr;
+    void *opaque = tr->opaque;
+    hwaddr addr = tr->addr;
+    unsigned size = tr->size;
+    uint64_t value = tr->data.u64;;
+    bool is_write = tr->rw;
+
+    if (!attr->secure) {
+        /* Ignore NS accesses.  */
+        if (!is_write) {
+            tr->data.u64 = 0;
+        }
+        return;
+    }
+
+    if (is_write) {
+        pmu_global_write(opaque, addr, value, size, attr);
+    } else {
+        tr->data.u64 = pmu_global_read(opaque, addr, size, attr);
+    }
+}
+
 static const MemoryRegionOps pmu_global_ops = {
-    .read = pmu_global_read,
-    .write = pmu_global_write,
+    .access = pmu_global_access,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
