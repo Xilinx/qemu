@@ -998,16 +998,10 @@ typedef struct PMU_GLOBAL {
     qemu_irq irq_req_pwrdwn_int;
     qemu_irq irq_req_swrst_int;
     qemu_irq irq_req_logclr_int;
-    qemu_irq irq_error_srst_2;
-    qemu_irq irq_error_srst_1;
-    qemu_irq irq_error_sig_2;
     qemu_irq irq_req_pwrup_int;
-    qemu_irq irq_error_sig_1;
     qemu_irq irq_addr_error_int;
     qemu_irq irq_error_int_2;
     qemu_irq irq_error_int_1;
-    qemu_irq irq_error_por_2;
-    qemu_irq irq_error_por_1;
     qemu_irq irq_req_iso_int;
 
     uint32_t regs[R_MAX];
@@ -1814,25 +1808,14 @@ static void pmu_global_init(Object *obj)
     memory_region_init_io(&s->iomem, obj, &pmu_global_ops, s,
                           TYPE_XILINX_PMU_GLOBAL, R_MAX * 4);
     sysbus_init_mmio(sbd, &s->iomem);
-    sysbus_init_irq(sbd, &s->irq_req_logclr_int);
-    sysbus_init_irq(sbd, &s->irq_req_swrst_int);
-    /* FIMXE: This is really "ISO REQ" I'm using this as a dummy to keep
-     * ordering happy
-     */
-    sysbus_init_irq(sbd, &s->irq_error_srst_2);
-
-    sysbus_init_irq(sbd, &s->irq_req_pwrdwn_int);
-    sysbus_init_irq(sbd, &s->irq_req_pwrup_int);
-
-    sysbus_init_irq(sbd, &s->irq_error_srst_1);
-    sysbus_init_irq(sbd, &s->irq_error_sig_2);
-    sysbus_init_irq(sbd, &s->irq_error_sig_1);
-    sysbus_init_irq(sbd, &s->irq_addr_error_int);
-    sysbus_init_irq(sbd, &s->irq_error_int_2);
+    sysbus_init_irq(sbd, &s->irq_req_logclr_int); /* 23 */
+    sysbus_init_irq(sbd, &s->irq_req_iso_int);    /* 24 */
+    sysbus_init_irq(sbd, &s->irq_req_swrst_int);  /* 26 */
+    sysbus_init_irq(sbd, &s->irq_req_pwrup_int);  /* 27 */
+    sysbus_init_irq(sbd, &s->irq_req_pwrdwn_int); /* 28 */
+    sysbus_init_irq(sbd, &s->irq_addr_error_int); /* 29 */
     sysbus_init_irq(sbd, &s->irq_error_int_1);
-    sysbus_init_irq(sbd, &s->irq_error_por_2);
-    sysbus_init_irq(sbd, &s->irq_error_por_1);
-    sysbus_init_irq(sbd, &s->irq_req_iso_int);
+    sysbus_init_irq(sbd, &s->irq_error_int_2);
 
     qdev_init_gpio_in_named(DEVICE(obj), gpio_mb_sleep_h, "mb_sleep", 1);
     qdev_init_gpio_in_named(DEVICE(obj), pwr_state_handler, "pwr_state", 24);
