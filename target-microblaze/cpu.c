@@ -150,6 +150,11 @@ static void mb_cpu_reset(CPUState *s)
     env->mmu.c_mmu_tlb_access = 3;
     env->mmu.c_mmu_zones = 16;
 #endif
+
+    env->memattr[0].as = s->as;
+    if (cpu->env.memattr_p) {
+        env->memattr[0].attr = *cpu->env.memattr_p;
+    }
 }
 
 static void mb_cpu_realizefn(DeviceState *dev, Error **errp)
@@ -235,6 +240,12 @@ static void mb_cpu_initfn(Object *obj)
 
     qdev_init_gpio_out_named(DEVICE(cpu), &cpu->mb_sleep, "mb_sleep", 1);
 #endif
+
+    object_property_add_link(obj, "memattr", TYPE_MEMORY_TRANSACTION_ATTR,
+                             (Object **)&cpu->env.memattr_p,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             &error_abort);
 
     if (tcg_enabled() && !tcg_initialized) {
         tcg_initialized = true;
