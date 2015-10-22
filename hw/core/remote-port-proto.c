@@ -29,7 +29,6 @@
 #include <stdio.h>
 #include <stddef.h>
 #include <assert.h>
-#include <endian.h>
 #include "hw/remote-port-proto.h"
 
 #undef MIN
