@@ -47,25 +47,25 @@
 
 /* Fallback for ancient Linux systems.  */
 #ifndef htobe64
-#include <byteswap.h>
+#  include <byteswap.h>
 
-#if __BYTE_ORDER == __LITTLE_ENDIAN
-#define htobe64(x) bswap_64(x)
-#define htobe32(x) bswap_32(x)
-#define htobe16(x) bswap_16(x)
+#  if __BYTE_ORDER == __LITTLE_ENDIAN
+#    define htobe64(x) bswap_64(x)
+#    define htobe32(x) bswap_32(x)
+#    define htobe16(x) bswap_16(x)
 
-#define be64toh(x) bswap_64(x)
-#define be32toh(x) bswap_32(x)
-#define be16toh(x) bswap_16(x)
-#else
-#define htobe64(x) x
-#define htobe32(x) x
-#define htobe16(x) x
+#    define be64toh(x) bswap_64(x)
+#    define be32toh(x) bswap_32(x)
+#    define be16toh(x) bswap_16(x)
+#  else
+#    define htobe64(x) x
+#    define htobe32(x) x
+#    define htobe16(x) x
 
-#define be64toh(x) x
-#define be32toh(x) x
-#define be16toh(x) x
-#endif
+#    define be64toh(x) x
+#    define be32toh(x) x
+#    define be16toh(x) x
+#  endif
 #endif
 
 #define RP_OPT_ENT(name) [RP_OPT_ ## name] = offsetof(struct rp_cfg_state, name)
