@@ -793,6 +793,12 @@ static IOMMUTLBEntry xmpu_master_translate(XMPUMaster *xm, hwaddr addr,
                            s->prefix, xr.end);
         }
 
+        if (xr.start < s->cfg.base) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "%s: Too low region start address %" PRIx64 "\n",
+                           s->prefix, xr.end);
+        }
+
         xr.start &= ~s->addr_mask;
         xr.end &= ~s->addr_mask;
         xr.start -= s->cfg.base;
