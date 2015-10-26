@@ -356,7 +356,9 @@ int cpu_exec(CPUArchState *env)
                              ETRACE_EVU64_F_PREV_VAL,
                              dev_name, "sleep", 0, 1);
         }
-        cpu->halted = 0;
+        if (!cpu->arch_halt_pin && !cpu->halt_pin) {
+            cpu->halted = 0;
+        }
     }
 
     current_cpu = cpu;
