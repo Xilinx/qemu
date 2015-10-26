@@ -5641,7 +5641,7 @@ static int get_phys_addr_lpae_common(CPUARMState *env, target_ulong address,
     uint32_t tableattrs;
     uint32_t attrs, s2attrs = 0;
     target_ulong page_size;
-    int32_t granule_sz = 9;
+    int32_t stride = 9;
     int32_t va_size = 32;
     int inputsize;
     int32_t tbi = 0;
@@ -5729,10 +5729,10 @@ static int get_phys_addr_lpae_common(CPUARMState *env, target_ulong address,
 
         tg = extract32(tcr->raw_tcr, 14, 2);
         if (tg == 1) { /* 64KB pages */
-            granule_sz = 13;
+            stride = 13;
         }
         if (tg == 2) { /* 16KB pages */
-            granule_sz = 11;
+            stride = 11;
         }
     } else {
         ttbr = ttbr1;
@@ -5741,15 +5741,15 @@ static int get_phys_addr_lpae_common(CPUARMState *env, target_ulong address,
 
         tg = extract32(tcr->raw_tcr, 30, 2);
         if (tg == 3)  { /* 64KB pages */
-            granule_sz = 13;
+            stride = 13;
         }
         if (tg == 1) { /* 16KB pages */
-            granule_sz = 11;
+            stride = 11;
         }
     }
 
     /* Here we should have set up all the parameters for the translation:
-     * va_size, inputsize, ttbr, epd, granule_sz, tbi
+     * va_size, inputsize, ttbr, epd, stride, tbi
      */
 
     if (epd) {
@@ -5759,20 +5759,20 @@ static int get_phys_addr_lpae_common(CPUARMState *env, target_ulong address,
 
     /* The starting level depends on the virtual address size (which can be
      * up to 48 bits) and the translation granule size. It indicates the number
-     * of strides (granule_sz bits at a time) needed to consume the bits
+     * of strides (stride bits at a time) needed to consume the bits
      * of the input address. In the pseudocode this is:
      *  level = 4 - RoundUp((inputsize - grainsize) / stride)
      * where their 'inputsize' is our 'inputsize', 'grainsize' is
-     * our 'granule_sz + 3' and 'stride' is our 'granule_sz'.
+     * our 'stride + 3' and 'stride' is our 'stride'.
      * Applying the usual "rounded up m/n is (m+n-1)/n" and simplifying:
-     *     = 4 - (inputsize - granule_sz - 3 + granule_sz - 1) / granule_sz
-     *     = 4 - (inputsize - 4) / granule_sz;
+     *     = 4 - (inputsize - stride - 3 + stride - 1) / stride
+     *     = 4 - (inputsize - 4) / stride;
      */
-    level = 4 - (inputsize - 4) / granule_sz;
+    level = 4 - (inputsize - 4) / stride;
 
     if (stage == 2) {
         level = 3 - extract32(tcr->raw_tcr, 6, 2);
-        if (granule_sz == 9) {
+        if (stride == 9) {
             level = 2 - extract32(tcr->raw_tcr, 6, 2);
         }
     }
@@ -5784,17 +5784,17 @@ static int get_phys_addr_lpae_common(CPUARMState *env, target_ulong address,
         address &= (1ULL << inputsize) - 1;
     }
 
-    descmask = (1ULL << (granule_sz + 3)) - 1;
+    descmask = (1ULL << (stride + 3)) - 1;
 
     /* Now we can extract the actual base address from the TTBR */
     descaddr = extract64(ttbr, 0, 48);
-    descaddr &= ~((1ULL << (inputsize - (granule_sz * (4 - level)))) - 1);
+    descaddr &= ~((1ULL << (inputsize - (stride * (4 - level)))) - 1);
 
     tableattrs = 0;
     for (;;) {
         uint64_t descriptor = descaddr;
 
-        descaddr |= (address >> (granule_sz * (4 - level))) & descmask;
+        descaddr |= (address >> (stride * (4 - level))) & descmask;
         descaddr &= ~7ULL;
         if (stage == 1
             && (tr_el <= 1 && (env->cp15.hcr_el2 & HCR_VM))) {
@@ -5835,7 +5835,7 @@ static int get_phys_addr_lpae_common(CPUARMState *env, target_ulong address,
          * These are basically the same thing, although the number
          * of bits we pull in from the vaddr varies.
          */
-        page_size = (1ULL << ((granule_sz * (4 - level)) + 3));
+        page_size = (1ULL << ((stride * (4 - level)) + 3));
         descaddr |= (address & (page_size - 1));
         /* Extract attributes from the descriptor and merge with table attrs */
         s2attrs = attrs = extract64(descriptor, 2, 10)
