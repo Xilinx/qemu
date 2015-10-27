@@ -31,6 +31,8 @@
 #include "qemu/log.h"
 #include "sysemu/dma.h"
 
+#include "hw/fdt_generic_util.h"
+
 #ifndef XILINX_SMMU500_ERR_DEBUG
 #define XILINX_SMMU500_ERR_DEBUG 0
 #endif
@@ -6068,13 +6070,25 @@ REG32(SMMU_GATSR, 0x188)
 /* This should be configurable per instance.  */
 #define PAGESIZE (A_SMMU_CB1_TTBR0_LOW - A_SMMU_CB0_TTBR0_LOW)
 
+/* Maximum number of TBUs supported by this model.  */
+#define MAX_TBU 16
+
+typedef struct SMMU SMMU;
+typedef struct TBU {
+    SMMU *smmu;
+    MemoryRegion iommu;
+    AddressSpace *as;
+    MemoryRegion *mr;
+} TBU;
+
 typedef struct SMMU {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
-    MemoryRegion iommu;
 
-    AddressSpace *as;
-    MemoryRegion *mr;
+    MemoryRegion *dma_mr;
+    AddressSpace *dma_as;
+
+    TBU tbu[MAX_TBU];
 
     struct {
         qemu_irq global;
@@ -6290,7 +6304,7 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
         index = (req->va >> (addrselectbottom - 3)) & descmask;
         index &= ~7ULL;
         descaddr = ttbr | index;
-        dma_memory_read(s->as, descaddr, &desc, sizeof(desc));
+        dma_memory_read(s->dma_as, descaddr, &desc, sizeof(desc));
         type = desc & 3;
 
         D_PTW("smmu: S%d L%d va=%lx gz=%d descaddr=%lx desc=%lx "
@@ -6559,9 +6573,10 @@ static IOMMUTLBEntry smmu_translate(MemoryRegion *mr, hwaddr addr,
                                     bool is_write,
                                     MemoryTransactionAttr *attr)
 {
-    SMMU *s = container_of(mr, SMMU, iommu);
+    TBU *tbu = container_of(mr, TBU, iommu);
+    SMMU *s = tbu->smmu;
     IOMMUTLBEntry ret = {
-        .target_as = s->as,
+        .target_as = tbu->as,
         .translated_addr = addr,
         .addr_mask = (1ULL << 12) - 1,
         .perm = IOMMU_RW,
@@ -8287,10 +8302,10 @@ static void smmu500_realize(DeviceState *dev, Error **errp)
         };
     }
 
-    s->as = address_space_init_shareable(s->mr, NULL);
-    memory_region_init_iommu(&s->iommu, OBJECT(dev), &smmu_iommu_ops,
-                             "iommu-smmu", INT64_MAX);
-    sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->iommu);
+    s->dma_as = s->dma_mr ? address_space_init_shareable(s->dma_mr, NULL)
+                          : &address_space_memory;
+
+    assert(s->dma_as);
 
     sysbus_init_irq(SYS_BUS_DEVICE(dev), &s->irq.global);
     for (i = 0; i < 16; i++) {
@@ -8301,18 +8316,57 @@ static void smmu500_realize(DeviceState *dev, Error **errp)
 static void smmu500_init(Object *obj)
 {
     SMMU *s = XILINX_SMMU500(obj);
-    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+    int i;
 
-    memory_region_init_io(&s->iomem, obj, &smmu500_ops, s,
-                          TYPE_XILINX_SMMU500, R_MAX * 4);
-    sysbus_init_mmio(sbd, &s->iomem);
-
-    object_property_add_link(obj, "mr-0", TYPE_MEMORY_REGION,
-                             (Object **)&s->mr,
+    object_property_add_link(obj, "dma", TYPE_MEMORY_REGION,
+                             (Object **)&s->dma_mr,
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_UNREF_ON_RELEASE,
                              &error_abort);
+
+    for (i = 0; i < MAX_TBU; i++) {
+        char *name = g_strdup_printf("mr-%d", i);
+        object_property_add_link(obj, name, TYPE_MEMORY_REGION,
+                                 (Object **)&s->tbu[i].mr,
+                                 qdev_prop_allow_set_link_before_realize,
+                                 OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                                 &error_abort);
+        g_free(name);
+        s->tbu[i].smmu = s;
+    }
 }
+
+static bool smmu_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
+                           Error **errp)
+{
+    SMMU *s = XILINX_SMMU500(obj);
+    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+    ObjectClass *klass = object_class_by_name(TYPE_XILINX_SMMU500);
+    FDTGenericMMapClass *parent_fmc;
+    unsigned int i;
+
+    parent_fmc = FDT_GENERIC_MMAP_CLASS(object_class_get_parent(klass));
+    memory_region_init_io(&s->iomem, OBJECT(obj), &smmu500_ops, s,
+                          TYPE_XILINX_SMMU500, R_MAX * 4);
+    sysbus_init_mmio(sbd, &s->iomem);
+
+    for (i = 0; i < (reg.n - 1); i++) {
+        char *name = g_strdup_printf("smmu-tbu%d", i);
+
+        assert(s->tbu[i].mr);
+        s->tbu[i].as = address_space_init_shareable(s->tbu[i].mr, NULL);
+        memory_region_init_iommu(&s->tbu[i].iommu, OBJECT(sbd), &smmu_iommu_ops,
+                                 name, UINT64_MAX);
+        sysbus_init_mmio(sbd, &s->tbu[i].iommu);
+        g_free(name);
+    }
+
+    return parent_fmc ? parent_fmc->parse_reg(obj, reg, errp) : false;
+}
+
+static Property smmu_properties[] = {
+    DEFINE_PROP_END_OF_LIST(),
+};
 
 static const VMStateDescription vmstate_smmu500 = {
     .name = TYPE_XILINX_SMMU500,
@@ -8328,10 +8382,13 @@ static const VMStateDescription vmstate_smmu500 = {
 static void smmu500_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    FDTGenericMMapClass *fmc = FDT_GENERIC_MMAP_CLASS(klass);
 
     dc->reset = smmu500_reset;
     dc->realize = smmu500_realize;
     dc->vmsd = &vmstate_smmu500;
+    dc->props = smmu_properties;
+    fmc->parse_reg = smmu_parse_reg;
 }
 
 static const TypeInfo smmu500_info = {
@@ -8340,6 +8397,10 @@ static const TypeInfo smmu500_info = {
     .instance_size = sizeof(SMMU),
     .class_init    = smmu500_class_init,
     .instance_init = smmu500_init,
+    .interfaces    = (InterfaceInfo[]) {
+        { TYPE_FDT_GENERIC_MMAP },
+        { },
+    },
 };
 
 static void smmu500_register_types(void)
