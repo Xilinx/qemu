@@ -666,6 +666,7 @@ static void xmpu_reset(DeviceState *dev)
         register_reset(&s->regs_info[i]);
     }
 
+    AF_DP32(s->regs, CTRL, ALIGNCFG, s->cfg.align);
     isr_update_irq(s);
     s->has_reset = true;
     xmpu_flush(s);
