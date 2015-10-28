@@ -372,8 +372,8 @@ static void xmpu_decode_region(XMPU *s, XMPURegion *xr, unsigned int region)
 
     xr->start = s->regs[offset + R_R00_START];
     xr->end = s->regs[offset + R_R00_END];
-    xr->start <<= s->addr_shift;
-    xr->end <<= s->addr_shift;
+    xr->start <<= 12;
+    xr->end <<= 12;
 
     xr->size = xr->end - xr->start;
     xr->master.u32 = s->regs[offset + R_R00_MASTER];
