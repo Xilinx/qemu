@@ -807,6 +807,9 @@ static IOMMUTLBEntry xmpu_master_translate(XMPUMaster *xm, hwaddr addr,
         return ret;
     }
 
+    /* Convert to an absolute address to simplify the compare logic.  */
+    addr += s->cfg.base;
+
     /* Lookup if this address fits a region.  */
     for (i = NR_XMPU_REGIONS - 1; i >= 0; i--) {
         bool id_match;
@@ -837,8 +840,6 @@ static IOMMUTLBEntry xmpu_master_translate(XMPUMaster *xm, hwaddr addr,
 
         xr.start &= ~s->addr_mask;
         xr.end &= ~s->addr_mask;
-        xr.start -= s->cfg.base;
-        xr.end -= s->cfg.base;
 
         id_match = (xr.master.mask & xr.master.id) == (xr.master.mask & attr->master_id);
         match = id_match && (addr >= xr.start && addr < xr.end);
