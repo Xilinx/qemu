@@ -966,12 +966,13 @@ int rom_load_all(void)
     hwaddr addr = 0;
     MemoryRegionSection section;
     Rom *rom;
+    AddressSpace *as;
 
     QTAILQ_FOREACH(rom, &roms, next) {
         if (rom->fw_file) {
             continue;
         }
-        if (addr > rom->addr) {
+        if ((addr > rom->addr) && (as == rom->as)) {
             fprintf(stderr, "rom: requested regions overlap "
                     "(rom %s. free=0x" TARGET_FMT_plx
                     ", addr=0x" TARGET_FMT_plx ")\n",
@@ -982,6 +983,7 @@ int rom_load_all(void)
         section = memory_region_find(get_system_memory(), rom->addr, 1);
         rom->isrom = int128_nz(section.size) && memory_region_is_rom(section.mr);
         memory_region_unref(section.mr);
+        as = rom->as;
     }
     qemu_register_reset(roms_reset, NULL);
     return 0;
