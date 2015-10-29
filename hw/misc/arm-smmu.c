@@ -6223,8 +6223,6 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
     ps = extract64(req->tcr[stage], 32, 3);
     t0sz = extract32(req->tcr[stage], 0, 6);
     tsz = t0sz;
-    inputsize = MIN(inputsize, 48);
-    inputsize = MAX(inputsize, 25);
     req->pa = req->va;
 
     if (req->stage == 1) {
@@ -6377,14 +6375,6 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
             req->prot &= ~IOMMU_WO;
         }
     } else {
-        if (s2attrs & (1 << 11)) {
-#if 0
-                if (req->access == IOMMU_FETCH) {
-                    goto do_fault;
-                }
-                req->prot &= ~IOMMU_FETCH;
-#endif
-        }
         switch ((s2attrs >> 4) & 3) {
         /* None.  */
         case 0:
