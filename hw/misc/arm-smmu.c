@@ -6095,6 +6095,10 @@ typedef struct SMMU {
         qemu_irq context[16];
     } irq;
 
+    struct {
+        uint32_t pamax;
+    } cfg;
+
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
 } SMMU;
@@ -8355,6 +8359,7 @@ static bool smmu_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
 }
 
 static Property smmu_properties[] = {
+    DEFINE_PROP_UINT32("pamax", SMMU, cfg.pamax, 48),
     DEFINE_PROP_END_OF_LIST(),
 };
 
