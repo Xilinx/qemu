@@ -966,7 +966,7 @@ int rom_load_all(void)
     hwaddr addr = 0;
     MemoryRegionSection section;
     Rom *rom;
-    AddressSpace *as;
+    AddressSpace *as = NULL;
 
     QTAILQ_FOREACH(rom, &roms, next) {
         if (rom->fw_file) {
