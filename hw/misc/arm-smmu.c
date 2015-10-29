@@ -6386,6 +6386,16 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
         index = (req->va >> (addrselectbottom - 3)) & descmask;
         index &= ~7ULL;
         descaddr = ttbr | index;
+
+        /* S1 PTW through the S2 system.  */
+        if (req->stage == 1 && req->s2_enabled) {
+            TransReq s2req = *req;
+
+            s2req.stage = 2;
+            s2req.va = descaddr;
+            smmu_ptw64(s, s2req.s2_cb, &s2req);
+            descaddr = s2req.pa;
+        }
         dma_memory_read(s->dma_as, descaddr, &desc, sizeof(desc));
         type = desc & 3;
 
