@@ -6273,7 +6273,7 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
     stride = grainsize - 3;
     if (req->stage == 1) {
         if (grainsize < 16 && (inputsize > (grainsize + 3 * stride))) {
-           level = 0;
+            level = 0;
         } else if (inputsize > (grainsize + 2 * stride)) {
             level = 1;
         } else if (inputsize > (grainsize + stride)) {
