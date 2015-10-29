@@ -51,10 +51,11 @@ REG32(CTRL, 0x0)
     FIELD(CTRL, DEFWRALLOWED, 1, 1)
     FIELD(CTRL, DEFRDALLOWED, 1, 0)
 REG32(ERR_STATUS1, 0x4)
+    FIELD(ERR_STATUS1, AXI_ADDR, 20, 0)
 REG32(ERR_STATUS2, 0x8)
-    FIELD(ERR_STATUS2, AXI_ID, 16, 0)
+    FIELD(ERR_STATUS2, AXI_ID, 10, 0)
 REG32(POISON, 0xc)
-    FIELD(POISON, ATTRIB, 12, 20)
+    FIELD(POISON, ATTRIB, 1, 20)
     FIELD(POISON, BASE, 20, 0)
 REG32(ISR, 0x10)
     FIELD(ISR, SECURITYVIO, 1, 3)
@@ -80,12 +81,12 @@ REG32(LOCK, 0x20)
     FIELD(LOCK, REGWRDIS, 1, 0)
 REG32(ECO, 0xfc)
 REG32(R00_START, 0x100)
-    FIELD(R00_START, ADDR, 28, 0)
+    FIELD(R00_START, ADDR, 20, 0)
 REG32(R00_END, 0x104)
-    FIELD(R00_END, ADDR, 28, 0)
+    FIELD(R00_END, ADDR, 20, 0)
 REG32(R00_MASTER, 0x108)
-    FIELD(R00_MASTER, MASK, 16, 16)
-    FIELD(R00_MASTER, ID, 16, 0)
+    FIELD(R00_MASTER, MASK, 10, 16)
+    FIELD(R00_MASTER, ID, 10, 0)
 REG32(R00_CONFIG, 0x10c)
     FIELD(R00_CONFIG, NSCHECKTYPE, 1, 4)
     FIELD(R00_CONFIG, REGIONNS, 1, 3)
@@ -93,12 +94,12 @@ REG32(R00_CONFIG, 0x10c)
     FIELD(R00_CONFIG, RDALLOWED, 1, 1)
     FIELD(R00_CONFIG, ENABLE, 1, 0)
 REG32(R01_START, 0x110)
-    FIELD(R01_START, ADDR, 28, 0)
+    FIELD(R01_START, ADDR, 20, 0)
 REG32(R01_END, 0x114)
-    FIELD(R01_END, ADDR, 28, 0)
+    FIELD(R01_END, ADDR, 20, 0)
 REG32(R01_MASTER, 0x118)
-    FIELD(R01_MASTER, MASK, 16, 16)
-    FIELD(R01_MASTER, ID, 16, 0)
+    FIELD(R01_MASTER, MASK, 10, 16)
+    FIELD(R01_MASTER, ID, 10, 0)
 REG32(R01_CONFIG, 0x11c)
     FIELD(R01_CONFIG, NSCHECKTYPE, 1, 4)
     FIELD(R01_CONFIG, REGIONNS, 1, 3)
@@ -106,12 +107,12 @@ REG32(R01_CONFIG, 0x11c)
     FIELD(R01_CONFIG, RDALLOWED, 1, 1)
     FIELD(R01_CONFIG, ENABLE, 1, 0)
 REG32(R02_START, 0x120)
-    FIELD(R02_START, ADDR, 28, 0)
+    FIELD(R02_START, ADDR, 20, 0)
 REG32(R02_END, 0x124)
-    FIELD(R02_END, ADDR, 28, 0)
+    FIELD(R02_END, ADDR, 20, 0)
 REG32(R02_MASTER, 0x128)
-    FIELD(R02_MASTER, MASK, 16, 16)
-    FIELD(R02_MASTER, ID, 16, 0)
+    FIELD(R02_MASTER, MASK, 10, 16)
+    FIELD(R02_MASTER, ID, 10, 0)
 REG32(R02_CONFIG, 0x12c)
     FIELD(R02_CONFIG, NSCHECKTYPE, 1, 4)
     FIELD(R02_CONFIG, REGIONNS, 1, 3)
@@ -119,12 +120,12 @@ REG32(R02_CONFIG, 0x12c)
     FIELD(R02_CONFIG, RDALLOWED, 1, 1)
     FIELD(R02_CONFIG, ENABLE, 1, 0)
 REG32(R03_START, 0x130)
-    FIELD(R03_START, ADDR, 28, 0)
+    FIELD(R03_START, ADDR, 20, 0)
 REG32(R03_END, 0x134)
-    FIELD(R03_END, ADDR, 28, 0)
+    FIELD(R03_END, ADDR, 20, 0)
 REG32(R03_MASTER, 0x138)
-    FIELD(R03_MASTER, MASK, 16, 16)
-    FIELD(R03_MASTER, ID, 16, 0)
+    FIELD(R03_MASTER, MASK, 10, 16)
+    FIELD(R03_MASTER, ID, 10, 0)
 REG32(R03_CONFIG, 0x13c)
     FIELD(R03_CONFIG, NSCHECKTYPE, 1, 4)
     FIELD(R03_CONFIG, REGIONNS, 1, 3)
@@ -132,12 +133,12 @@ REG32(R03_CONFIG, 0x13c)
     FIELD(R03_CONFIG, RDALLOWED, 1, 1)
     FIELD(R03_CONFIG, ENABLE, 1, 0)
 REG32(R04_START, 0x140)
-    FIELD(R04_START, ADDR, 28, 0)
+    FIELD(R04_START, ADDR, 20, 0)
 REG32(R04_END, 0x144)
-    FIELD(R04_END, ADDR, 28, 0)
+    FIELD(R04_END, ADDR, 20, 0)
 REG32(R04_MASTER, 0x148)
-    FIELD(R04_MASTER, MASK, 16, 16)
-    FIELD(R04_MASTER, ID, 16, 0)
+    FIELD(R04_MASTER, MASK, 10, 16)
+    FIELD(R04_MASTER, ID, 10, 0)
 REG32(R04_CONFIG, 0x14c)
     FIELD(R04_CONFIG, NSCHECKTYPE, 1, 4)
     FIELD(R04_CONFIG, REGIONNS, 1, 3)
@@ -145,12 +146,12 @@ REG32(R04_CONFIG, 0x14c)
     FIELD(R04_CONFIG, RDALLOWED, 1, 1)
     FIELD(R04_CONFIG, ENABLE, 1, 0)
 REG32(R05_START, 0x150)
-    FIELD(R05_START, ADDR, 28, 0)
+    FIELD(R05_START, ADDR, 20, 0)
 REG32(R05_END, 0x154)
-    FIELD(R05_END, ADDR, 28, 0)
+    FIELD(R05_END, ADDR, 20, 0)
 REG32(R05_MASTER, 0x158)
-    FIELD(R05_MASTER, MASK, 16, 16)
-    FIELD(R05_MASTER, ID, 16, 0)
+    FIELD(R05_MASTER, MASK, 10, 16)
+    FIELD(R05_MASTER, ID, 10, 0)
 REG32(R05_CONFIG, 0x15c)
     FIELD(R05_CONFIG, NSCHECKTYPE, 1, 4)
     FIELD(R05_CONFIG, REGIONNS, 1, 3)
@@ -158,12 +159,12 @@ REG32(R05_CONFIG, 0x15c)
     FIELD(R05_CONFIG, RDALLOWED, 1, 1)
     FIELD(R05_CONFIG, ENABLE, 1, 0)
 REG32(R06_START, 0x160)
-    FIELD(R06_START, ADDR, 28, 0)
+    FIELD(R06_START, ADDR, 20, 0)
 REG32(R06_END, 0x164)
-    FIELD(R06_END, ADDR, 28, 0)
+    FIELD(R06_END, ADDR, 20, 0)
 REG32(R06_MASTER, 0x168)
-    FIELD(R06_MASTER, MASK, 16, 16)
-    FIELD(R06_MASTER, ID, 16, 0)
+    FIELD(R06_MASTER, MASK, 10, 16)
+    FIELD(R06_MASTER, ID, 10, 0)
 REG32(R06_CONFIG, 0x16c)
     FIELD(R06_CONFIG, NSCHECKTYPE, 1, 4)
     FIELD(R06_CONFIG, REGIONNS, 1, 3)
@@ -171,12 +172,12 @@ REG32(R06_CONFIG, 0x16c)
     FIELD(R06_CONFIG, RDALLOWED, 1, 1)
     FIELD(R06_CONFIG, ENABLE, 1, 0)
 REG32(R07_START, 0x170)
-    FIELD(R07_START, ADDR, 28, 0)
+    FIELD(R07_START, ADDR, 20, 0)
 REG32(R07_END, 0x174)
-    FIELD(R07_END, ADDR, 28, 0)
+    FIELD(R07_END, ADDR, 20, 0)
 REG32(R07_MASTER, 0x178)
-    FIELD(R07_MASTER, MASK, 16, 16)
-    FIELD(R07_MASTER, ID, 16, 0)
+    FIELD(R07_MASTER, MASK, 10, 16)
+    FIELD(R07_MASTER, ID, 10, 0)
 REG32(R07_CONFIG, 0x17c)
     FIELD(R07_CONFIG, NSCHECKTYPE, 1, 4)
     FIELD(R07_CONFIG, REGIONNS, 1, 3)
@@ -184,12 +185,12 @@ REG32(R07_CONFIG, 0x17c)
     FIELD(R07_CONFIG, RDALLOWED, 1, 1)
     FIELD(R07_CONFIG, ENABLE, 1, 0)
 REG32(R08_START, 0x180)
-    FIELD(R08_START, ADDR, 28, 0)
+    FIELD(R08_START, ADDR, 20, 0)
 REG32(R08_END, 0x184)
-    FIELD(R08_END, ADDR, 28, 0)
+    FIELD(R08_END, ADDR, 20, 0)
 REG32(R08_MASTER, 0x188)
-    FIELD(R08_MASTER, MASK, 16, 16)
-    FIELD(R08_MASTER, ID, 16, 0)
+    FIELD(R08_MASTER, MASK, 10, 16)
+    FIELD(R08_MASTER, ID, 10, 0)
 REG32(R08_CONFIG, 0x18c)
     FIELD(R08_CONFIG, NSCHECKTYPE, 1, 4)
     FIELD(R08_CONFIG, REGIONNS, 1, 3)
@@ -197,12 +198,12 @@ REG32(R08_CONFIG, 0x18c)
     FIELD(R08_CONFIG, RDALLOWED, 1, 1)
     FIELD(R08_CONFIG, ENABLE, 1, 0)
 REG32(R09_START, 0x190)
-    FIELD(R09_START, ADDR, 28, 0)
+    FIELD(R09_START, ADDR, 20, 0)
 REG32(R09_END, 0x194)
-    FIELD(R09_END, ADDR, 28, 0)
+    FIELD(R09_END, ADDR, 20, 0)
 REG32(R09_MASTER, 0x198)
-    FIELD(R09_MASTER, MASK, 16, 16)
-    FIELD(R09_MASTER, ID, 16, 0)
+    FIELD(R09_MASTER, MASK, 10, 16)
+    FIELD(R09_MASTER, ID, 10, 0)
 REG32(R09_CONFIG, 0x19c)
     FIELD(R09_CONFIG, NSCHECKTYPE, 1, 4)
     FIELD(R09_CONFIG, REGIONNS, 1, 3)
@@ -210,12 +211,12 @@ REG32(R09_CONFIG, 0x19c)
     FIELD(R09_CONFIG, RDALLOWED, 1, 1)
     FIELD(R09_CONFIG, ENABLE, 1, 0)
 REG32(R10_START, 0x1a0)
-    FIELD(R10_START, ADDR, 28, 0)
+    FIELD(R10_START, ADDR, 20, 0)
 REG32(R10_END, 0x1a4)
-    FIELD(R10_END, ADDR, 28, 0)
+    FIELD(R10_END, ADDR, 20, 0)
 REG32(R10_MASTER, 0x1a8)
-    FIELD(R10_MASTER, MASK, 16, 16)
-    FIELD(R10_MASTER, ID, 16, 0)
+    FIELD(R10_MASTER, MASK, 10, 16)
+    FIELD(R10_MASTER, ID, 10, 0)
 REG32(R10_CONFIG, 0x1ac)
     FIELD(R10_CONFIG, NSCHECKTYPE, 1, 4)
     FIELD(R10_CONFIG, REGIONNS, 1, 3)
@@ -223,12 +224,12 @@ REG32(R10_CONFIG, 0x1ac)
     FIELD(R10_CONFIG, RDALLOWED, 1, 1)
     FIELD(R10_CONFIG, ENABLE, 1, 0)
 REG32(R11_START, 0x1b0)
-    FIELD(R11_START, ADDR, 28, 0)
+    FIELD(R11_START, ADDR, 20, 0)
 REG32(R11_END, 0x1b4)
-    FIELD(R11_END, ADDR, 28, 0)
+    FIELD(R11_END, ADDR, 20, 0)
 REG32(R11_MASTER, 0x1b8)
-    FIELD(R11_MASTER, MASK, 16, 16)
-    FIELD(R11_MASTER, ID, 16, 0)
+    FIELD(R11_MASTER, MASK, 10, 16)
+    FIELD(R11_MASTER, ID, 10, 0)
 REG32(R11_CONFIG, 0x1bc)
     FIELD(R11_CONFIG, NSCHECKTYPE, 1, 4)
     FIELD(R11_CONFIG, REGIONNS, 1, 3)
@@ -236,12 +237,12 @@ REG32(R11_CONFIG, 0x1bc)
     FIELD(R11_CONFIG, RDALLOWED, 1, 1)
     FIELD(R11_CONFIG, ENABLE, 1, 0)
 REG32(R12_START, 0x1c0)
-    FIELD(R12_START, ADDR, 28, 0)
+    FIELD(R12_START, ADDR, 20, 0)
 REG32(R12_END, 0x1c4)
-    FIELD(R12_END, ADDR, 28, 0)
+    FIELD(R12_END, ADDR, 20, 0)
 REG32(R12_MASTER, 0x1c8)
-    FIELD(R12_MASTER, MASK, 16, 16)
-    FIELD(R12_MASTER, ID, 16, 0)
+    FIELD(R12_MASTER, MASK, 10, 16)
+    FIELD(R12_MASTER, ID, 10, 0)
 REG32(R12_CONFIG, 0x1cc)
     FIELD(R12_CONFIG, NSCHECKTYPE, 1, 4)
     FIELD(R12_CONFIG, REGIONNS, 1, 3)
@@ -249,12 +250,12 @@ REG32(R12_CONFIG, 0x1cc)
     FIELD(R12_CONFIG, RDALLOWED, 1, 1)
     FIELD(R12_CONFIG, ENABLE, 1, 0)
 REG32(R13_START, 0x1d0)
-    FIELD(R13_START, ADDR, 28, 0)
+    FIELD(R13_START, ADDR, 20, 0)
 REG32(R13_END, 0x1d4)
-    FIELD(R13_END, ADDR, 28, 0)
+    FIELD(R13_END, ADDR, 20, 0)
 REG32(R13_MASTER, 0x1d8)
-    FIELD(R13_MASTER, MASK, 16, 16)
-    FIELD(R13_MASTER, ID, 16, 0)
+    FIELD(R13_MASTER, MASK, 10, 16)
+    FIELD(R13_MASTER, ID, 10, 0)
 REG32(R13_CONFIG, 0x1dc)
     FIELD(R13_CONFIG, NSCHECKTYPE, 1, 4)
     FIELD(R13_CONFIG, REGIONNS, 1, 3)
@@ -262,12 +263,12 @@ REG32(R13_CONFIG, 0x1dc)
     FIELD(R13_CONFIG, RDALLOWED, 1, 1)
     FIELD(R13_CONFIG, ENABLE, 1, 0)
 REG32(R14_START, 0x1e0)
-    FIELD(R14_START, ADDR, 28, 0)
+    FIELD(R14_START, ADDR, 20, 0)
 REG32(R14_END, 0x1e4)
-    FIELD(R14_END, ADDR, 28, 0)
+    FIELD(R14_END, ADDR, 20, 0)
 REG32(R14_MASTER, 0x1e8)
-    FIELD(R14_MASTER, MASK, 16, 16)
-    FIELD(R14_MASTER, ID, 16, 0)
+    FIELD(R14_MASTER, MASK, 10, 16)
+    FIELD(R14_MASTER, ID, 10, 0)
 REG32(R14_CONFIG, 0x1ec)
     FIELD(R14_CONFIG, NSCHECKTYPE, 1, 4)
     FIELD(R14_CONFIG, REGIONNS, 1, 3)
@@ -275,12 +276,12 @@ REG32(R14_CONFIG, 0x1ec)
     FIELD(R14_CONFIG, RDALLOWED, 1, 1)
     FIELD(R14_CONFIG, ENABLE, 1, 0)
 REG32(R15_START, 0x1f0)
-    FIELD(R15_START, ADDR, 28, 0)
+    FIELD(R15_START, ADDR, 20, 0)
 REG32(R15_END, 0x1f4)
-    FIELD(R15_END, ADDR, 28, 0)
+    FIELD(R15_END, ADDR, 20, 0)
 REG32(R15_MASTER, 0x1f8)
-    FIELD(R15_MASTER, MASK, 16, 16)
-    FIELD(R15_MASTER, ID, 16, 0)
+    FIELD(R15_MASTER, MASK, 10, 16)
+    FIELD(R15_MASTER, ID, 10, 0)
 REG32(R15_CONFIG, 0x1fc)
     FIELD(R15_CONFIG, NSCHECKTYPE, 1, 4)
     FIELD(R15_CONFIG, REGIONNS, 1, 3)
@@ -452,12 +453,14 @@ static RegisterAccessInfo xmpu_regs_info[] = {
         .ro = 0xfffffff8,
         .post_write = xmpu_setup_postw,
     },{ .name = "ERR_STATUS1",  .decode.addr = A_ERR_STATUS1,
+        .rsvd = 0xfff00000,
         .ro = 0xffffffff,
     },{ .name = "ERR_STATUS2",  .decode.addr = A_ERR_STATUS2,
-        .rsvd = 0xffff0000,
+        .rsvd = 0xfffffc00,
         .ro = 0xffffffff,
     },{ .name = "POISON",  .decode.addr = A_POISON,
-        .ro = 0xffff0000,
+        .rsvd = 0xffe00000,
+        .ro = 0xffefffff,
         .post_write = xmpu_setup_postw,
     },{ .name = "ISR",  .decode.addr = A_ISR,
         .rsvd = 0xfffffff0,
@@ -479,177 +482,209 @@ static RegisterAccessInfo xmpu_regs_info[] = {
     },{ .name = "LOCK",  .decode.addr = A_LOCK,
     },{ .name = "ECO",  .decode.addr = A_ECO,
     },{ .name = "R00_START",  .decode.addr = A_R00_START,
-        .rsvd = 0xf0000000,
-        .ro = 0xf0000000,
+        .rsvd = 0xfff00000,
+        .ro = 0xfff00000,
     },{ .name = "R00_END",  .decode.addr = A_R00_END,
-        .rsvd = 0xf0000000,
-        .ro = 0xf0000000,
+        .rsvd = 0xfff00000,
+        .ro = 0xfff00000,
     },{ .name = "R00_MASTER",  .decode.addr = A_R00_MASTER,
+        .rsvd = 0xfc00fc00,
+        .ro = 0xfc00fc00,
     },{ .name = "R00_CONFIG",  .decode.addr = A_R00_CONFIG,
         .reset = 0x8,
         .rsvd = 0xffffffe0,
         .ro = 0xffffffe0,
     },{ .name = "R01_START",  .decode.addr = A_R01_START,
-        .rsvd = 0xf0000000,
-        .ro = 0xf0000000,
+        .rsvd = 0xfff00000,
+        .ro = 0xfff00000,
     },{ .name = "R01_END",  .decode.addr = A_R01_END,
-        .rsvd = 0xf0000000,
-        .ro = 0xf0000000,
+        .rsvd = 0xfff00000,
+        .ro = 0xfff00000,
     },{ .name = "R01_MASTER",  .decode.addr = A_R01_MASTER,
+        .rsvd = 0xfc00fc00,
+        .ro = 0xfc00fc00,
     },{ .name = "R01_CONFIG",  .decode.addr = A_R01_CONFIG,
         .reset = 0x8,
         .rsvd = 0xffffffe0,
         .ro = 0xffffffe0,
     },{ .name = "R02_START",  .decode.addr = A_R02_START,
-        .rsvd = 0xf0000000,
-        .ro = 0xf0000000,
+        .rsvd = 0xfff00000,
+        .ro = 0xfff00000,
     },{ .name = "R02_END",  .decode.addr = A_R02_END,
-        .rsvd = 0xf0000000,
-        .ro = 0xf0000000,
+        .rsvd = 0xfff00000,
+        .ro = 0xfff00000,
     },{ .name = "R02_MASTER",  .decode.addr = A_R02_MASTER,
+        .rsvd = 0xfc00fc00,
+        .ro = 0xfc00fc00,
     },{ .name = "R02_CONFIG",  .decode.addr = A_R02_CONFIG,
         .reset = 0x8,
         .rsvd = 0xffffffe0,
         .ro = 0xffffffe0,
     },{ .name = "R03_START",  .decode.addr = A_R03_START,
-        .rsvd = 0xf0000000,
-        .ro = 0xf0000000,
+        .rsvd = 0xfff00000,
+        .ro = 0xfff00000,
     },{ .name = "R03_END",  .decode.addr = A_R03_END,
-        .rsvd = 0xf0000000,
-        .ro = 0xf0000000,
+        .rsvd = 0xfff00000,
+        .ro = 0xfff00000,
     },{ .name = "R03_MASTER",  .decode.addr = A_R03_MASTER,
+        .rsvd = 0xfc00fc00,
+        .ro = 0xfc00fc00,
     },{ .name = "R03_CONFIG",  .decode.addr = A_R03_CONFIG,
         .reset = 0x8,
         .rsvd = 0xffffffe0,
         .ro = 0xffffffe0,
     },{ .name = "R04_START",  .decode.addr = A_R04_START,
-        .rsvd = 0xf0000000,
-        .ro = 0xf0000000,
+        .rsvd = 0xfff00000,
+        .ro = 0xfff00000,
     },{ .name = "R04_END",  .decode.addr = A_R04_END,
-        .rsvd = 0xf0000000,
-        .ro = 0xf0000000,
+        .rsvd = 0xfff00000,
+        .ro = 0xfff00000,
     },{ .name = "R04_MASTER",  .decode.addr = A_R04_MASTER,
+        .rsvd = 0xfc00fc00,
+        .ro = 0xfc00fc00,
     },{ .name = "R04_CONFIG",  .decode.addr = A_R04_CONFIG,
         .reset = 0x8,
         .rsvd = 0xffffffe0,
         .ro = 0xffffffe0,
     },{ .name = "R05_START",  .decode.addr = A_R05_START,
-        .rsvd = 0xf0000000,
-        .ro = 0xf0000000,
+        .rsvd = 0xfff00000,
+        .ro = 0xfff00000,
     },{ .name = "R05_END",  .decode.addr = A_R05_END,
-        .rsvd = 0xf0000000,
-        .ro = 0xf0000000,
+        .rsvd = 0xfff00000,
+        .ro = 0xfff00000,
     },{ .name = "R05_MASTER",  .decode.addr = A_R05_MASTER,
+        .rsvd = 0xfc00fc00,
+        .ro = 0xfc00fc00,
     },{ .name = "R05_CONFIG",  .decode.addr = A_R05_CONFIG,
         .reset = 0x8,
         .rsvd = 0xffffffe0,
         .ro = 0xffffffe0,
     },{ .name = "R06_START",  .decode.addr = A_R06_START,
-        .rsvd = 0xf0000000,
-        .ro = 0xf0000000,
+        .rsvd = 0xfff00000,
+        .ro = 0xfff00000,
     },{ .name = "R06_END",  .decode.addr = A_R06_END,
-        .rsvd = 0xf0000000,
-        .ro = 0xf0000000,
+        .rsvd = 0xfff00000,
+        .ro = 0xfff00000,
     },{ .name = "R06_MASTER",  .decode.addr = A_R06_MASTER,
+        .rsvd = 0xfc00fc00,
+        .ro = 0xfc00fc00,
     },{ .name = "R06_CONFIG",  .decode.addr = A_R06_CONFIG,
         .reset = 0x8,
         .rsvd = 0xffffffe0,
         .ro = 0xffffffe0,
     },{ .name = "R07_START",  .decode.addr = A_R07_START,
-        .rsvd = 0xf0000000,
-        .ro = 0xf0000000,
+        .rsvd = 0xfff00000,
+        .ro = 0xfff00000,
     },{ .name = "R07_END",  .decode.addr = A_R07_END,
-        .rsvd = 0xf0000000,
-        .ro = 0xf0000000,
+        .rsvd = 0xfff00000,
+        .ro = 0xfff00000,
     },{ .name = "R07_MASTER",  .decode.addr = A_R07_MASTER,
+        .rsvd = 0xfc00fc00,
+        .ro = 0xfc00fc00,
     },{ .name = "R07_CONFIG",  .decode.addr = A_R07_CONFIG,
         .reset = 0x8,
         .rsvd = 0xffffffe0,
         .ro = 0xffffffe0,
     },{ .name = "R08_START",  .decode.addr = A_R08_START,
-        .rsvd = 0xf0000000,
-        .ro = 0xf0000000,
+        .rsvd = 0xfff00000,
+        .ro = 0xfff00000,
     },{ .name = "R08_END",  .decode.addr = A_R08_END,
-        .rsvd = 0xf0000000,
-        .ro = 0xf0000000,
+        .rsvd = 0xfff00000,
+        .ro = 0xfff00000,
     },{ .name = "R08_MASTER",  .decode.addr = A_R08_MASTER,
+        .rsvd = 0xfc00fc00,
+        .ro = 0xfc00fc00,
     },{ .name = "R08_CONFIG",  .decode.addr = A_R08_CONFIG,
         .reset = 0x8,
         .rsvd = 0xffffffe0,
         .ro = 0xffffffe0,
     },{ .name = "R09_START",  .decode.addr = A_R09_START,
-        .rsvd = 0xf0000000,
-        .ro = 0xf0000000,
+        .rsvd = 0xfff00000,
+        .ro = 0xfff00000,
     },{ .name = "R09_END",  .decode.addr = A_R09_END,
-        .rsvd = 0xf0000000,
-        .ro = 0xf0000000,
+        .rsvd = 0xfff00000,
+        .ro = 0xfff00000,
     },{ .name = "R09_MASTER",  .decode.addr = A_R09_MASTER,
+        .rsvd = 0xfc00fc00,
+        .ro = 0xfc00fc00,
     },{ .name = "R09_CONFIG",  .decode.addr = A_R09_CONFIG,
         .reset = 0x8,
         .rsvd = 0xffffffe0,
         .ro = 0xffffffe0,
     },{ .name = "R10_START",  .decode.addr = A_R10_START,
-        .rsvd = 0xf0000000,
-        .ro = 0xf0000000,
+        .rsvd = 0xfff00000,
+        .ro = 0xfff00000,
     },{ .name = "R10_END",  .decode.addr = A_R10_END,
-        .rsvd = 0xf0000000,
-        .ro = 0xf0000000,
+        .rsvd = 0xfff00000,
+        .ro = 0xfff00000,
     },{ .name = "R10_MASTER",  .decode.addr = A_R10_MASTER,
+        .rsvd = 0xfc00fc00,
+        .ro = 0xfc00fc00,
     },{ .name = "R10_CONFIG",  .decode.addr = A_R10_CONFIG,
         .reset = 0x8,
         .rsvd = 0xffffffe0,
         .ro = 0xffffffe0,
     },{ .name = "R11_START",  .decode.addr = A_R11_START,
-        .rsvd = 0xf0000000,
-        .ro = 0xf0000000,
+        .rsvd = 0xfff00000,
+        .ro = 0xfff00000,
     },{ .name = "R11_END",  .decode.addr = A_R11_END,
-        .rsvd = 0xf0000000,
-        .ro = 0xf0000000,
+        .rsvd = 0xfff00000,
+        .ro = 0xfff00000,
     },{ .name = "R11_MASTER",  .decode.addr = A_R11_MASTER,
+        .rsvd = 0xfc00fc00,
+        .ro = 0xfc00fc00,
     },{ .name = "R11_CONFIG",  .decode.addr = A_R11_CONFIG,
         .reset = 0x8,
         .rsvd = 0xffffffe0,
         .ro = 0xffffffe0,
     },{ .name = "R12_START",  .decode.addr = A_R12_START,
-        .rsvd = 0xf0000000,
-        .ro = 0xf0000000,
+        .rsvd = 0xfff00000,
+        .ro = 0xfff00000,
     },{ .name = "R12_END",  .decode.addr = A_R12_END,
-        .rsvd = 0xf0000000,
-        .ro = 0xf0000000,
+        .rsvd = 0xfff00000,
+        .ro = 0xfff00000,
     },{ .name = "R12_MASTER",  .decode.addr = A_R12_MASTER,
+        .rsvd = 0xfc00fc00,
+        .ro = 0xfc00fc00,
     },{ .name = "R12_CONFIG",  .decode.addr = A_R12_CONFIG,
         .reset = 0x8,
         .rsvd = 0xffffffe0,
         .ro = 0xffffffe0,
     },{ .name = "R13_START",  .decode.addr = A_R13_START,
-        .rsvd = 0xf0000000,
-        .ro = 0xf0000000,
+        .rsvd = 0xfff00000,
+        .ro = 0xfff00000,
     },{ .name = "R13_END",  .decode.addr = A_R13_END,
-        .rsvd = 0xf0000000,
-        .ro = 0xf0000000,
+        .rsvd = 0xfff00000,
+        .ro = 0xfff00000,
     },{ .name = "R13_MASTER",  .decode.addr = A_R13_MASTER,
+        .rsvd = 0xfc00fc00,
+        .ro = 0xfc00fc00,
     },{ .name = "R13_CONFIG",  .decode.addr = A_R13_CONFIG,
         .reset = 0x8,
         .rsvd = 0xffffffe0,
         .ro = 0xffffffe0,
     },{ .name = "R14_START",  .decode.addr = A_R14_START,
-        .rsvd = 0xf0000000,
-        .ro = 0xf0000000,
+        .rsvd = 0xfff00000,
+        .ro = 0xfff00000,
     },{ .name = "R14_END",  .decode.addr = A_R14_END,
-        .rsvd = 0xf0000000,
-        .ro = 0xf0000000,
+        .rsvd = 0xfff00000,
+        .ro = 0xfff00000,
     },{ .name = "R14_MASTER",  .decode.addr = A_R14_MASTER,
+        .rsvd = 0xfc00fc00,
+        .ro = 0xfc00fc00,
     },{ .name = "R14_CONFIG",  .decode.addr = A_R14_CONFIG,
         .reset = 0x8,
         .rsvd = 0xffffffe0,
         .ro = 0xffffffe0,
     },{ .name = "R15_START",  .decode.addr = A_R15_START,
-        .rsvd = 0xf0000000,
-        .ro = 0xf0000000,
+        .rsvd = 0xfff00000,
+        .ro = 0xfff00000,
     },{ .name = "R15_END",  .decode.addr = A_R15_END,
-        .rsvd = 0xf0000000,
-        .ro = 0xf0000000,
+        .rsvd = 0xfff00000,
+        .ro = 0xfff00000,
     },{ .name = "R15_MASTER",  .decode.addr = A_R15_MASTER,
+        .rsvd = 0xfc00fc00,
+        .ro = 0xfc00fc00,
     },{ .name = "R15_CONFIG",  .decode.addr = A_R15_CONFIG,
         .reset = 0x8,
         .rsvd = 0xffffffe0,
