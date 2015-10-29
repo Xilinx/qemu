@@ -6252,6 +6252,7 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
     unsigned int baselowerbound;
     unsigned int stage = req->stage;
     bool blocktranslate = false;
+    bool epd = false;
     uint32_t tableattrs = 0;
     uint32_t attrs;
     uint32_t s2attrs;
@@ -6291,7 +6292,13 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
             t1sz = extract32(req->tcr[stage], 16, 6);
             tsz = t1sz;
         }
+        epd = extract32(req->tcr[1], 7, 1);
     } else {
+    }
+
+    if (epd) {
+        /* We've already missed the TLB at this stage so fault.  */
+        goto do_fault;
     }
 
     inputsize = 64 - tsz;
