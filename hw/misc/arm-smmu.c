@@ -6224,6 +6224,14 @@ static bool check_s2_startlevel(bool is_aa64, unsigned int pamax, int level,
     return true;
 }
 
+static bool check_out_addr(uint64_t addr, unsigned int outputsize)
+{
+    if (outputsize != 48 && extract64(addr, outputsize, 48 - outputsize)) {
+        return false;
+    }
+    return true;
+}
+
 static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
 {
     static const unsigned int outsize_map[] = {
@@ -6335,6 +6343,11 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
         } else if (inputsize > (grainsize + stride)) {
             level = 2;
         }
+
+        if (inputsize < 25 || inputsize > 48
+            || extract64(req->va, inputsize, 64 - inputsize)) {
+            goto do_fault;
+        }
     } else {
         unsigned int startlevel = extract32(req->tcr[stage], 6, 2);
         bool ok;
@@ -6351,11 +6364,17 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
     }
 
     outputsize = outsize_map[ps];
-    outputsize = outputsize; /* FIXME.  */
+    if (outputsize > s->cfg.pamax) {
+        outputsize = s->cfg.pamax;
+    }
 
     baselowerbound = 3 + inputsize - ((3 - level) * stride + grainsize);
     ttbr = extract64(ttbr, 0, 48);
     ttbr &= ~((1ULL << baselowerbound) - 1);
+
+    if (!check_out_addr(ttbr, outputsize)) {
+        goto do_fault;
+    }
 
     descmask = (1ULL << grainsize) - 1;
     do {
@@ -6371,8 +6390,8 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
         type = desc & 3;
 
         D_PTW("smmu: S%d L%d va=%lx gz=%d descaddr=%lx desc=%lx "
-              "asb=%d index=%lx\n", req->stage, level, req->va,
-              grainsize, descaddr, desc, addrselectbottom, index);
+              "asb=%d index=%lx osize=%d\n", req->stage, level, req->va,
+              grainsize, descaddr, desc, addrselectbottom, index, outputsize);
         ttbr = extract64(desc, 0, 48);
         ttbr &= ~descmask;
 
@@ -6400,10 +6419,17 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
             break;
         case 3:
             tableattrs |= extract64(desc, 59, 5);
+            if (!check_out_addr(ttbr, outputsize)) {
+                goto do_fault;
+            }
             level++;
             break;
         }
     } while (!blocktranslate);
+
+    if (!check_out_addr(ttbr, outputsize)) {
+        goto do_fault;
+    }
 
     {
         unsigned long page_size;
