@@ -6177,6 +6177,53 @@ static int smmu_stream_id_match(SMMU *s, uint32_t stream_id)
     return cbndx;
 }
 
+static bool check_s2_startlevel(bool is_aa64, unsigned int pamax, int level,
+                                int inputsize, int stride)
+{
+    /* Negative levels are never allowed.  */
+    if (level < 0) {
+        return false;
+    }
+
+    if (is_aa64) {
+        switch (stride) {
+        case 13: /* 64KB Pages.  */
+            if (level == 0 || (level == 1 && pamax <= 42)) {
+                return false;
+            }
+            break;
+        case 11: /* 16KB Pages.  */
+            if (level == 0 || (level == 1 && pamax <= 40)) {
+                return false;
+            }
+            break;
+        case 9: /* 4KB Pages.  */
+            if (level == 0 && pamax <= 42) {
+                return false;
+            }
+            break;
+        default:
+            g_assert_not_reached();
+        }
+    } else {
+        const int grainsize = stride + 3;
+        int startsizecheck;
+
+        /* AArch32 only supports 4KB pages. Assert on that.  */
+        assert(stride == 9);
+
+        if (level == 0) {
+            return false;
+        }
+
+        startsizecheck = inputsize - ((3 - level) * stride + grainsize);
+        if (startsizecheck < 1 || startsizecheck > stride + 4) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
 {
     static const unsigned int outsize_map[] = {
@@ -6283,9 +6330,16 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
         }
     } else {
         unsigned int startlevel = extract32(req->tcr[stage], 6, 2);
+        bool ok;
+
         level = 3 - startlevel;
         if (grainsize == 12) {
             level = 2 - startlevel;
+        }
+
+        ok = check_s2_startlevel(true, 40, level, inputsize, stride);
+        if (!ok) {
+            goto do_fault;
         }
     }
 
