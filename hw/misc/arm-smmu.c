@@ -6466,6 +6466,12 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
         D("smmu: access forbidden %x\n", attrs);
         goto do_fault;
     }
+
+    /* AP[1] SBO.  */
+    if (!(attrs & (1 << 4))) {
+        D("smmu: AP[1] should be one but set to zero!\n");
+        goto do_fault;
+    }
     if (req->stage == 1) {
         if (attrs & (1 << 5)) {
             /* Write access forbidden */
