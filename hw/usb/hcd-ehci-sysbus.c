@@ -16,6 +16,7 @@
  */
 
 #include "hw/usb/hcd-ehci.h"
+#include "hw/register.h"
 
 static const VMStateDescription vmstate_ehci_sysbus = {
     .name        = "ehci-sysbus",
@@ -93,11 +94,45 @@ enum PS7USBRegs {
     XLNX_DCCPARAMS  = 0x124,
 };
 
+/* FIXME: Add the functionality of remaining phy registers */
+enum ULPIRegs {
+    VENDOR_ID_L = 0x0,
+    VENDOR_ID_H = 0x1,
+    PRODUCT_ID_L = 0x2,
+    PRODUCT_ID_H = 0x3,
+    SCRATCH_REG_0 = 0x16,
+};
+
+REG32(ULPI_VIEWPORT, PS7USB_ULPIVP_OFFSET)
+    FIELD(ULPI_VIEWPORT, ULPIDATWR, 8, 0)
+    FIELD(ULPI_VIEWPORT, ULPIDATRD, 8, 8)
+    FIELD(ULPI_VIEWPORT, ULPIADDR, 8, 16)
+    FIELD(ULPI_VIEWPORT, ULPIPORT, 3, 24)
+    FIELD(ULPI_VIEWPORT, ULPISS, 1, 27)
+    FIELD(ULPI_VIEWPORT, ULPIRW, 1, 29)
+    FIELD(ULPI_VIEWPORT, ULPIRUN, 1, 30)
+    FIELD(ULPI_VIEWPORT, ULPIWU, 1, 31)
+
+static void ehci_xlnx_reset(DeviceState *dev)
+{
+    PS7USBState *s = XLNX_PS7_USB(dev);
+
+    /* Show phy in normal functioning state after init */
+    s->ulpi_viewport = 0x8000000;
+    /* Vendor and product ID are as per micron ulpi phy specifications */
+    s->ulpireg[VENDOR_ID_L] = 0x24;
+    s->ulpireg[VENDOR_ID_H] = 0x04;
+    s->ulpireg[PRODUCT_ID_L] = 0x4;
+    s->ulpireg[PRODUCT_ID_H] = 0x0;
+
+}
+
 static void ehci_xlnx_class_init(ObjectClass *oc, void *data)
 {
     SysBusEHCIClass *sec = SYS_BUS_EHCI_CLASS(oc);
     DeviceClass *dc = DEVICE_CLASS(oc);
 
+    dc->reset = ehci_xlnx_reset;
     set_bit(DEVICE_CATEGORY_USB, dc->categories);
     sec->capsbase = 0x100;
     sec->opregbase = 0x140;
@@ -143,6 +178,41 @@ static uint64_t xlnx_hwreg_read(void *opaque, hwaddr addr, unsigned size)
     return 0;
 }
 
+static uint64_t xlnx_ulpi_read(void *opaque, hwaddr addr, unsigned size)
+{
+    PS7USBState *s = opaque;
+
+    return s->ulpi_viewport;
+}
+
+static void xlnx_ulpi_write(void *opaque, hwaddr addr, uint64_t data,
+                            unsigned size)
+{
+    PS7USBState *s = opaque;
+    uint8_t ulpiaddr;
+    /* Clear RW feilds before writes */
+    s->ulpi_viewport &= ~ULPIREG_RWBITS_MASK;
+    s->ulpi_viewport |= data & ULPIREG_RWBITS_MASK;
+
+    /* ULPI Wake Up call : Clear the bit when set */
+    if(F_EX32(s->ulpi_viewport, ULPI_VIEWPORT, ULPIWU)) {
+        s->ulpi_viewport = F_DP32(s->ulpi_viewport, ULPI_VIEWPORT, ULPIWU, 0);
+    }
+
+    if (F_EX32(s->ulpi_viewport, ULPI_VIEWPORT, ULPIRUN)) {
+        ulpiaddr = F_EX32(s->ulpi_viewport, ULPI_VIEWPORT, ULPIADDR);
+
+        if (F_EX32(s->ulpi_viewport, ULPI_VIEWPORT, ULPIRW)) {
+            s->ulpireg[ulpiaddr] = F_EX32(s->ulpi_viewport, ULPI_VIEWPORT,
+                                          ULPIDATWR);
+        } else {
+            s->ulpi_viewport = F_DP32(s->ulpi_viewport, ULPI_VIEWPORT,
+                                      ULPIDATRD, s->ulpireg[ulpiaddr]);
+        }
+
+        s->ulpi_viewport = F_DP32(s->ulpi_viewport, ULPI_VIEWPORT, ULPIRUN, 0);
+    }
+}
 
 static const MemoryRegionOps ps7usb_devreg_ops = {
     .read = xlnx_devreg_read,
@@ -153,6 +223,14 @@ static const MemoryRegionOps ps7usb_devreg_ops = {
 
 static const MemoryRegionOps ps7usb_hwreg_ops = {
     .read = xlnx_hwreg_read,
+    .valid.min_access_size = 4,
+    .valid.max_access_size = 4,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+};
+
+static const MemoryRegionOps ps7usb_ulpi_ops = {
+    .read = xlnx_ulpi_read,
+    .write = xlnx_ulpi_write,
     .valid.min_access_size = 4,
     .valid.max_access_size = 4,
     .endianness = DEVICE_LITTLE_ENDIAN,
@@ -170,6 +248,10 @@ static void ehci_xlnx_init(Object *Obj)
     memory_region_init_io(&s->mem_devreg, Obj, &ps7usb_devreg_ops, pp,
                           "ps7usb_devicemode", PS7USB_DEVREG_SIZE);
     memory_region_add_subregion(&pp->mem, PS7USB_DEVREG_OFFSET, &s->mem_devreg);
+
+    memory_region_init_io(&s->mem_ulpi, Obj, &ps7usb_ulpi_ops, s,
+                          "ps7usb_ulpi_viewport", PS7USB_ULPIVP_SIZE);
+    memory_region_add_subregion(&pp->mem, PS7USB_ULPIVP_OFFSET, &s->mem_ulpi);
 }
 
 static const TypeInfo ehci_xlnx_type_info = {

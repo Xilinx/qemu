@@ -388,6 +388,8 @@ typedef struct FUSBH200EHCIState {
 #define PS7USB_DEVREG_SIZE   0x8
 #define PS7USB_HWREG_OFFSET  0x0
 #define PS7USB_HWREG_SIZE    0x18
+#define PS7USB_ULPIVP_OFFSET 0x170
+#define PS7USB_ULPIVP_SIZE   0x4
 
 #define XLNX_ID_DEFVAL        0xE441FA05
 #define XLNX_HWGENERAL_DEFVAL 0x83
@@ -395,11 +397,17 @@ typedef struct FUSBH200EHCIState {
 #define XLNX_HWTXBUF_DEFVAL   0x80060A10
 #define XLNX_HWRXBUF_DEFVAL   0xA10
 
+#define ULPIREG_RWBITS_MASK   0xE0FF00FF
+
 typedef struct PS7USBState {
     EHCISysBusState parent_obj;
 
+    uint32_t ulpi_viewport;
+    uint8_t ulpireg[0x19];
+
     MemoryRegion mem_devreg;
     MemoryRegion mem_hwreg;
+    MemoryRegion mem_ulpi;
 } PS7USBState;
 
 #endif
