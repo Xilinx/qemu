@@ -979,12 +979,7 @@ static IOMMUTLBEntry xmpu_translate(MemoryRegion *mr, hwaddr addr, bool is_write
         attr = &attr_zero;
     }
 
-    if (attr->secure) {
-        xm = container_of(mr, XMPUMaster, iommu);
-    } else {
-        xm = container_of(mr, XMPUMaster, iommu);
-    }
-
+    xm = container_of(mr, XMPUMaster, iommu);
     ret = xmpu_master_translate(xm, addr, attr);
 #if 0
     qemu_log("%s: nr_matched=%d addr=%lx - > %lx (%lx) perm=%x\n",
