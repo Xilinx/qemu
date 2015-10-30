@@ -313,6 +313,15 @@ REG32(EVENT_COUNTER3_OVERFLOW, 0xd00c)
 typedef struct CCI {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
+    MemoryRegion iommu;
+
+    struct {
+        uint64_t stripe_granule_sz;
+    } cfg;
+
+    /* The CCI has three down-stream Master ports.  */
+    AddressSpace *as[3];
+    MemoryRegion *M[3];
 
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
@@ -554,6 +563,42 @@ static const MemoryRegionOps cci400_ops = {
     },
 };
 
+static IOMMUTLBEntry cci_translate(MemoryRegion *mr, hwaddr addr,
+                                   bool is_write, MemoryTransactionAttr *attr)
+{
+    CCI *s = container_of(mr, CCI, iommu);;
+    IOMMUTLBEntry ret = {
+        .iova = addr,
+        .translated_addr = addr,
+        .addr_mask = s->cfg.stripe_granule_sz - 1,
+        .perm = IOMMU_RW,
+    };
+    unsigned int i, mi = 0;
+    bool valid = false;
+
+    /* Is there anything backing this address on M1 or M2?  */
+    for (i = 1; i < ARRAY_SIZE(s->as); i++) {
+        bool t;
+        t = address_space_access_valid_attr(s->as[i], addr, 4, false, attr);
+        if (i > 1) {
+            assert(valid == t);
+        }
+        valid = t;
+    }
+    if (valid) {
+        unsigned int stripe_idx = !!(addr & s->cfg.stripe_granule_sz);
+        /* M0 is for devs. M1 and M2 are the memory ports with striping.  */
+        mi = 1 + stripe_idx;
+    }
+
+    ret.target_as = s->as[mi];
+    return ret;
+}
+
+static MemoryRegionIOMMUOps cci_iommu_ops = {
+    .translate_attr = cci_translate,
+};
+
 static void cci400_realize(DeviceState *dev, Error **errp)
 {
     CCI *s = ARM_CCI400(dev);
@@ -573,16 +618,39 @@ static void cci400_realize(DeviceState *dev, Error **errp)
             .opaque = s,
         };
     }
+
+    for (i = 0; i < ARRAY_SIZE(s->M); i++) {
+        s->as[i] = address_space_init_shareable(s->M[i], NULL);
+        assert(s->as[i]);
+    }
 }
 
 static void cci400_init(Object *obj)
 {
     CCI *s = ARM_CCI400(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+    unsigned int i;
 
     memory_region_init_io(&s->iomem, obj, &cci400_ops, s,
                           TYPE_ARM_CCI400, R_MAX * 4);
     sysbus_init_mmio(sbd, &s->iomem);
+
+    memory_region_init_iommu(&s->iommu, OBJECT(s), &cci_iommu_ops,
+                             "cci-iommu", UINT64_MAX);
+    sysbus_init_mmio(sbd, &s->iommu);
+
+    for (i = 0; i < ARRAY_SIZE(s->M); i++) {
+        char *name = g_strdup_printf("M%d", i);
+        object_property_add_link(obj, name, TYPE_MEMORY_REGION,
+                                 (Object **)&s->M[i],
+                                 qdev_prop_allow_set_link_before_realize,
+                                 OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                                 &error_abort);
+        g_free(name);
+    }
+
+    /* We don't support configurable sizes yet.  */
+    s->cfg.stripe_granule_sz = 4096;
 }
 
 static const VMStateDescription vmstate_cci400 = {
