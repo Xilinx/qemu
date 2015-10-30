@@ -342,6 +342,7 @@ typedef struct EHCIPCIState {
 #define TYPE_EXYNOS4210_EHCI "exynos4210-ehci-usb"
 #define TYPE_TEGRA2_EHCI "tegra2-ehci-usb"
 #define TYPE_FUSBH200_EHCI "fusbh200-ehci-usb"
+#define TYPE_XLNX_PS7_USB "xlnx,ps7-usb"
 
 #define SYS_BUS_EHCI(obj) \
     OBJECT_CHECK(EHCISysBusState, (obj), TYPE_SYS_BUS_EHCI)
@@ -379,5 +380,17 @@ typedef struct FUSBH200EHCIState {
 
     MemoryRegion mem_vendor;
 } FUSBH200EHCIState;
+
+#define XLNX_PS7_USB(obj) \
+    OBJECT_CHECK(PS7USBState, (obj), TYPE_XLNX_PS7_USB)
+
+#define PS7USB_DEVREG_OFFSET 0x120
+#define PS7USB_DEVREG_SIZE   0x8
+
+typedef struct PS7USBState {
+    EHCISysBusState parent_obj;
+
+    MemoryRegion mem_devreg;
+} PS7USBState;
 
 #endif

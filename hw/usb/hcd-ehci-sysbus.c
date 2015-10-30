@@ -83,6 +83,11 @@ static const TypeInfo ehci_type_info = {
     .class_size    = sizeof(SysBusEHCIClass),
 };
 
+enum PS7USBRegs {
+    XLNX_DCIVERSION = 0x120,
+    XLNX_DCCPARAMS  = 0x124,
+};
+
 static void ehci_xlnx_class_init(ObjectClass *oc, void *data)
 {
     SysBusEHCIClass *sec = SYS_BUS_EHCI_CLASS(oc);
@@ -93,10 +98,51 @@ static void ehci_xlnx_class_init(ObjectClass *oc, void *data)
     sec->opregbase = 0x140;
 }
 
+static uint64_t xlnx_devreg_read(void *opaque, hwaddr addr, unsigned size)
+{
+    EHCIState *s = opaque;
+        /* DCIVERSION and DCCPARAMS are mapped at 0x20 words distance from
+         * end of capacity registers
+         */
+    hwaddr offset = s->capsbase + 0x20 + addr;
+
+    switch (offset) {
+    case XLNX_DCIVERSION:
+        return 0x00000001;
+    case XLNX_DCCPARAMS:
+        /* Host mode enabled
+         * Number of endpoints fixed to 12 as per zynq-7000
+         */
+        return 0x0000010C;
+    }
+    return 0;
+}
+
+
+static const MemoryRegionOps ps7usb_devreg_ops = {
+    .read = xlnx_devreg_read,
+    .valid.min_access_size = 4,
+    .valid.max_access_size = 4,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+};
+
+static void ehci_xlnx_init(Object *Obj)
+{
+    EHCISysBusState *p = SYS_BUS_EHCI(Obj);
+    PS7USBState *s = XLNX_PS7_USB(Obj);
+    EHCIState *pp = &p->ehci;
+
+    memory_region_init_io(&s->mem_devreg, Obj, &ps7usb_devreg_ops, pp,
+                          "ps7usb_devicemode", PS7USB_DEVREG_SIZE);
+    memory_region_add_subregion(&pp->mem, PS7USB_DEVREG_OFFSET, &s->mem_devreg);
+}
+
 static const TypeInfo ehci_xlnx_type_info = {
-    .name          = "xlnx,ps7-usb",
+    .name          = TYPE_XLNX_PS7_USB,
     .parent        = TYPE_SYS_BUS_EHCI,
     .class_init    = ehci_xlnx_class_init,
+    .instance_size = sizeof(PS7USBState),
+    .instance_init = ehci_xlnx_init,
 };
 
 static void ehci_exynos4210_class_init(ObjectClass *oc, void *data)
