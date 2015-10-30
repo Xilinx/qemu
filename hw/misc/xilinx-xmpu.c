@@ -789,7 +789,8 @@ static const MemoryRegionOps xmpu_ops = {
 };
 
 static IOMMUTLBEntry xmpu_master_translate(XMPUMaster *xm, hwaddr addr,
-                                           MemoryTransactionAttr *attr)
+                                           MemoryTransactionAttr *attr,
+                                           bool *sec_vio)
 {
     XMPU *s = xm->parent;
     XMPURegion xr;
@@ -811,6 +812,9 @@ static IOMMUTLBEntry xmpu_master_translate(XMPUMaster *xm, hwaddr addr,
     bool sec_access_check;
     unsigned int nr_matched = 0;
     int i;
+
+    /* No security violation by default.  */
+    *sec_vio = false;
 
     if (!s->has_reset) {
         ret.target_as = &xm->down.rw.as;
@@ -878,6 +882,8 @@ static IOMMUTLBEntry xmpu_master_translate(XMPUMaster *xm, hwaddr addr,
                 if (xr.config.wrallowed) {
                     ret.perm |= IOMMU_WO;
                 }
+            } else {
+                *sec_vio = true;
             }
             break;
         }
@@ -910,7 +916,8 @@ static uint64_t zero_read(void *opaque, hwaddr addr, unsigned size, MemoryTransa
     XMPU *s = xm->parent;
     bool poisoncfg = AF_EX32(s->regs, CTRL, POISONCFG);
     uint64_t value = 0;
-    IOMMUTLBEntry ret = xmpu_master_translate(xm, addr, attr);
+    bool sec_vio;
+    IOMMUTLBEntry ret = xmpu_master_translate(xm, addr, attr, &sec_vio);
 
     if (ret.perm & IOMMU_RO) {
         dma_memory_read(&xm->down.rw.as, addr, &value, size);
@@ -924,7 +931,11 @@ static uint64_t zero_read(void *opaque, hwaddr addr, unsigned size, MemoryTransa
             dma_memory_read(as, addr, &value, size);
         }
         AF_DP32(s->regs, ERR_STATUS2, AXI_ID, attr->master_id);
-        AF_DP32(s->regs, ISR, RDPERMVIO, true);
+        if (sec_vio) {
+            AF_DP32(s->regs, ISR, SECURITYVIO, true);
+        } else {
+            AF_DP32(s->regs, ISR, RDPERMVIO, true);
+        }
         isr_update_irq(s);
     }
     return value;
@@ -936,7 +947,8 @@ static void zero_write(void *opaque, hwaddr addr, uint64_t value,
     XMPUMaster *xm = opaque;
     XMPU *s = xm->parent;
     bool poisoncfg = AF_EX32(s->regs, CTRL, POISONCFG);
-    IOMMUTLBEntry ret = xmpu_master_translate(xm, addr, attr);
+    bool sec_vio;
+    IOMMUTLBEntry ret = xmpu_master_translate(xm, addr, attr, &sec_vio);
 
     if (ret.perm & IOMMU_WO) {
         dma_memory_write(&xm->down.rw.as, addr, &value, size);
@@ -950,7 +962,11 @@ static void zero_write(void *opaque, hwaddr addr, uint64_t value,
             dma_memory_write(as, addr, &value, size);
         }
         AF_DP32(s->regs, ERR_STATUS2, AXI_ID, attr->master_id);
-        AF_DP32(s->regs, ISR, WRPERMVIO, true);
+        if (sec_vio) {
+            AF_DP32(s->regs, ISR, SECURITYVIO, true);
+        } else {
+            AF_DP32(s->regs, ISR, WRPERMVIO, true);
+        }
         isr_update_irq(s);
     }
 }
@@ -985,13 +1001,14 @@ static IOMMUTLBEntry xmpu_translate(MemoryRegion *mr, hwaddr addr, bool is_write
     XMPUMaster *xm;
     IOMMUTLBEntry ret;
     MemoryTransactionAttr attr_zero = { {0} };
+    bool sec_vio;
 
     if (!attr) {
         attr = &attr_zero;
     }
 
     xm = container_of(mr, XMPUMaster, iommu);
-    ret = xmpu_master_translate(xm, addr, attr);
+    ret = xmpu_master_translate(xm, addr, attr, &sec_vio);
 #if 0
     qemu_log("%s: nr_matched=%d addr=%lx - > %lx (%lx) perm=%x\n",
            __func__, nr_matched, ret.iova,
