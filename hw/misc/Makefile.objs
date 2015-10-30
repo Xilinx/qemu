@@ -27,6 +27,7 @@ common-obj-$(CONFIG_XLNX_ZYNQMP) += mem_ctrl.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += test_component.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx-smmu_reg.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += arm-smmu.o
+common-obj-$(CONFIG_XLNX_ZYNQMP) += arm-cci400.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx-ddrc.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx-ddr_phy.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx-serdes.o
