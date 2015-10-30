@@ -6505,7 +6505,6 @@ static bool smmu500_at64(SMMU *s, unsigned int cb, hwaddr va,
 {
     unsigned int cb_offset = (cb * PAGESIZE) / 4;
     unsigned int cb2_offset = 0;
-    unsigned int s2_cb = 0;
     TransReq req;
     uint32_t v;
     unsigned int t;
@@ -6517,7 +6516,6 @@ static bool smmu500_at64(SMMU *s, unsigned int cb, hwaddr va,
         req.stage = 2;
         req.s2_enabled = true;
         req.s2_cb = cb;
-        s2_cb = cb;
         cb2_offset = cb_offset;
         break;
     case 1:
@@ -6532,8 +6530,8 @@ static bool smmu500_at64(SMMU *s, unsigned int cb, hwaddr va,
     case 3:
         req.stage = 1;
         req.s2_enabled = true;
-        s2_cb = extract32(v, 8, 8);
-        cb2_offset = (s2_cb * PAGESIZE) / 4;
+        req.s2_cb = extract32(v, 8, 8);
+        cb2_offset = (req.s2_cb * PAGESIZE) / 4;
         break;
     }
 
