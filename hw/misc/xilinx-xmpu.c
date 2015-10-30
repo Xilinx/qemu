@@ -756,10 +756,21 @@ static void xmpu_access(MemoryTransaction *tr)
 {
     MemoryTransactionAttr *attr = tr->attr;
     void *opaque = tr->opaque;
+    XMPU *s = XILINX_XMPU(opaque);
     hwaddr addr = tr->addr;
     unsigned size = tr->size;
     uint64_t value = tr->data.u64;;
     bool is_write = tr->rw;
+    bool locked;
+
+    locked = AF_EX32(s->regs, LOCK, REGWRDIS);
+    if (locked && (addr < A_ISR || addr >= A_LOCK)) {
+        /* Locked access.  */
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: accessing locked register %lx\n",
+                      object_get_canonical_path(OBJECT(s)), addr);
+        tr->data.u64 = 0;
+        return;
+    }
 
     if (is_write) {
         xmpu_write(opaque, addr, value, size, attr);
