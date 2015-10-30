@@ -62,7 +62,6 @@ static void zynq_ps7_usb_nuke_phy(void *fdt)
     int ret = qemu_devtree_node_by_compatible(fdt, usb_node_path,
                                               "xlnx,ps7-usb-1.00.a");
     if (!ret) {
-        qemu_fdt_setprop_string(fdt, usb_node_path, "phy_type", "none");
         qemu_fdt_setprop_string(fdt, usb_node_path, "dr_mode", "host");
     }
 }
