@@ -386,11 +386,20 @@ typedef struct FUSBH200EHCIState {
 
 #define PS7USB_DEVREG_OFFSET 0x120
 #define PS7USB_DEVREG_SIZE   0x8
+#define PS7USB_HWREG_OFFSET  0x0
+#define PS7USB_HWREG_SIZE    0x18
+
+#define XLNX_ID_DEFVAL        0xE441FA05
+#define XLNX_HWGENERAL_DEFVAL 0x83
+#define XLNX_HWHOST_DEFVAL    0x10020001
+#define XLNX_HWTXBUF_DEFVAL   0x80060A10
+#define XLNX_HWRXBUF_DEFVAL   0xA10
 
 typedef struct PS7USBState {
     EHCISysBusState parent_obj;
 
     MemoryRegion mem_devreg;
+    MemoryRegion mem_hwreg;
 } PS7USBState;
 
 #endif

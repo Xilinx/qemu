@@ -84,6 +84,11 @@ static const TypeInfo ehci_type_info = {
 };
 
 enum PS7USBRegs {
+    XLNX_ID = 0x0,
+    XLNX_HWGENERAL = 0x4,
+    XLNX_HWHOST = 0x8,
+    XLNX_HWTXBUF = 0x10,
+    XLNX_HWRXBUF = 0x14,
     XLNX_DCIVERSION = 0x120,
     XLNX_DCCPARAMS  = 0x124,
 };
@@ -118,9 +123,36 @@ static uint64_t xlnx_devreg_read(void *opaque, hwaddr addr, unsigned size)
     return 0;
 }
 
+static uint64_t xlnx_hwreg_read(void *opaque, hwaddr addr, unsigned size)
+{
+    /* All the following registers will just read out default values as per
+     * dwc_usb2_hs_device_controller spec
+     */
+    switch (addr) {
+    case XLNX_ID:
+        return XLNX_ID_DEFVAL;
+    case XLNX_HWGENERAL:
+        return XLNX_HWGENERAL_DEFVAL;
+    case XLNX_HWHOST:
+        return XLNX_HWHOST_DEFVAL;
+    case XLNX_HWTXBUF:
+        return XLNX_HWTXBUF_DEFVAL;
+    case XLNX_HWRXBUF:
+        return XLNX_HWRXBUF_DEFVAL;
+    }
+    return 0;
+}
+
 
 static const MemoryRegionOps ps7usb_devreg_ops = {
     .read = xlnx_devreg_read,
+    .valid.min_access_size = 4,
+    .valid.max_access_size = 4,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+};
+
+static const MemoryRegionOps ps7usb_hwreg_ops = {
+    .read = xlnx_hwreg_read,
     .valid.min_access_size = 4,
     .valid.max_access_size = 4,
     .endianness = DEVICE_LITTLE_ENDIAN,
@@ -131,6 +163,9 @@ static void ehci_xlnx_init(Object *Obj)
     EHCISysBusState *p = SYS_BUS_EHCI(Obj);
     PS7USBState *s = XLNX_PS7_USB(Obj);
     EHCIState *pp = &p->ehci;
+    memory_region_init_io(&s->mem_hwreg, Obj, &ps7usb_hwreg_ops, pp,
+                          "ps7usb_hwreg", PS7USB_HWREG_SIZE);
+    memory_region_add_subregion(&pp->mem, PS7USB_HWREG_OFFSET, &s->mem_hwreg);
 
     memory_region_init_io(&s->mem_devreg, Obj, &ps7usb_devreg_ops, pp,
                           "ps7usb_devicemode", PS7USB_DEVREG_SIZE);
