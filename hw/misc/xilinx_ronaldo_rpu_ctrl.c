@@ -499,26 +499,20 @@ static void update_wfi_out(void *opaque)
     for (i = 0; i < 2; i++) {
         wfi_pending = s->cpu_pwrdwn_req[i] && s->cpu_in_wfi[i];
         qemu_set_irq(s->wfi_out[i], wfi_pending);
-        /* Redirect interrutps only if planning to suspend and
-         * wfi 0->1. This way, if interrupts are disabled, but
-         * arrive, wfi will be skipped.
-         */
-        if (wfi_pending) {
-            qemu_set_irq(s->cpu_power_status[i], 1);
-        }
     }
 }
 
 static void ronaldo_rpu_pwrctl_post_write(RegisterInfo *reg, uint64_t val)
 {
     RPU *s = XILINX_RPU(reg->opaque);
-    int i, new;
+    int i;
+    bool new;
 
     for (i = 0; i < 2; i++) {
         new = !!(val & (1 << i));
-        /* Check if CPU power status has changed. If yes, update GPIOS. */
-        if (!new && s->cpu_pwrdwn_req[i]) {
-            qemu_set_irq(s->cpu_power_status[i], 0);
+        /* Check if CPU's CPUPWRDNREQ has changed. If yes, update GPIOs. */
+        if (new != s->cpu_pwrdwn_req[i]) {
+            qemu_set_irq(s->cpu_power_status[i], new);
         }
         s->cpu_pwrdwn_req[i] = new;
     }
