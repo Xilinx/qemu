@@ -448,7 +448,7 @@ static void nand_command(NANDFlashState *s)
         s->iolen = 0;
         s->ioaddr = s->io;
         s->ioaddr0 = s->io;
-        for (i = s->addr & 0xFF; i < 4; ++i) {
+        for (i = s->addr & 0xFF; i < s->addr + 4; ++i) {
             nand_pushio_byte(s, s->features[i], false);
         }
         break;
