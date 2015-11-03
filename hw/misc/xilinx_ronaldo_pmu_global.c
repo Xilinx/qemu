@@ -1004,6 +1004,7 @@ typedef struct PMU_GLOBAL {
     qemu_irq irq_error_int_1;
     qemu_irq irq_req_iso_int;
 
+    bool ignore_pwr_req;
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
 } PMU_GLOBAL;
@@ -1225,7 +1226,9 @@ static uint64_t req_pwrup_trig_prew(RegisterInfo *reg, uint64_t val64)
     PMU_GLOBAL *s = XILINX_PMU_GLOBAL(reg->opaque);
     uint32_t val = val64;
 
-    s->regs[R_REQ_PWRUP_STATUS] |= val;
+    if (!s->ignore_pwr_req) {
+        s->regs[R_REQ_PWRUP_STATUS] |= val;
+    }
     req_pwrup_int_update_irq(s);
     return 0;
 }
@@ -1868,6 +1871,11 @@ static const FDTGenericGPIOSet pmu_global_client_gpios[] = {
     { },
 };
 
+static Property pmu_global_properties[] = {
+    DEFINE_PROP_BOOL("ignore-pwr-req", PMU_GLOBAL, ignore_pwr_req, false),
+    DEFINE_PROP_END_OF_LIST(),
+};
+
 static void pmu_global_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -1876,6 +1884,7 @@ static void pmu_global_class_init(ObjectClass *klass, void *data)
     dc->reset = pmu_global_reset;
     dc->realize = pmu_global_realize;
     dc->vmsd = &vmstate_pmu_global;
+    dc->props = pmu_global_properties;
     fggc->controller_gpios = pmu_gpios;
     fggc->client_gpios = pmu_global_client_gpios;
 }
