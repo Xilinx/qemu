@@ -31,6 +31,7 @@ common-obj-$(CONFIG_XLNX_ZYNQMP) += arm-cci400.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx-ddrc.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx-ddr_phy.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx-serdes.o
+common-obj-$(CONFIG_XLNX_ZYNQMP) += reset-dev.o
 
 common-obj-$(CONFIG_XILINX_AXI) += stream-fifo.o
 
