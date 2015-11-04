@@ -660,6 +660,10 @@ static RegisterAccessInfo crl_apb_regs_info[] = {
     },{ .name = "RESET_CTRL",  .decode.addr = A_RESET_CTRL,
         .reset = 0x40,
         .rsvd = 0xff8c,
+        .gpios = (RegisterGPIOMapping[]) {
+            { .name = "SRST_B", .bit_pos = 4,   .width = 1 },
+            {},
+        },
     },{ .name = "BLOCKONLY_RST",  .decode.addr = A_BLOCKONLY_RST,
         .rsvd = 0x7dcc,
         .ro = 0x7dcc,
@@ -817,6 +821,7 @@ static const FDTGenericGPIOSet crl_gpios[] = {
         .names = &fdt_generic_gpio_name_set_gpio,
         .gpios = (FDTGenericGPIOConnection[]) {
             { .name = "RST_R5",     .fdt_index = 0,     .range = 2 },
+            { .name = "SRST_B",     .fdt_index = 2  },
             { },
         }
     },
