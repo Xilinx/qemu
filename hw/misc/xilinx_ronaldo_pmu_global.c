@@ -1669,6 +1669,7 @@ static RegisterAccessInfo pmu_global_regs_info[] = {
         .ro = 0xfffff8ff,
         .gpios = (RegisterGPIOMapping[]) {
             { .name = "FPD_RST", .bit_pos = 9, .width = 1 },
+            { .name = "PS_ONLY_RST", .bit_pos = 10, .width = 1 },
             {},
         }
     },{ .name = "ROM_VALIDATION_STATUS",  .decode.addr = A_ROM_VALIDATION_STATUS,
@@ -1867,6 +1868,7 @@ static const FDTGenericGPIOSet pmu_gpios[] = {
         { .name = "pmu_wake", .fdt_index = 0 },
         { .name = "mb_sleep", .fdt_index = 1 },
         { .name = "FPD_RST", .fdt_index = 2 },
+        { .name = "PS_ONLY_RST", .fdt_index = 3 },
         { },
       },
     },
