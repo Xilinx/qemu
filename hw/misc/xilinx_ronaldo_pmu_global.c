@@ -1866,7 +1866,6 @@ static const FDTGenericGPIOSet pmu_gpios[] = {
       .names = &fdt_generic_gpio_name_set_gpio,
       .gpios = (FDTGenericGPIOConnection[]) {
         { .name = "pmu_wake", .fdt_index = 0 },
-        { .name = "mb_sleep", .fdt_index = 1 },
         { .name = "FPD_RST", .fdt_index = 2 },
         { .name = "PS_ONLY_RST", .fdt_index = 3 },
         { },
@@ -1886,6 +1885,13 @@ static const FDTGenericGPIOSet pmu_global_client_gpios[] = {
       .names = &pwr_state_gpios_names,
       .gpios = (FDTGenericGPIOConnection[]) {
         { .name = "pwr_state", .fdt_index = 0, .range = 24 },
+        { },
+      },
+    },
+    {
+      .names = &fdt_generic_gpio_name_set_gpio,
+      .gpios = (FDTGenericGPIOConnection[]) {
+        { .name = "mb_sleep", .fdt_index = 1 },
         { },
       },
     },
