@@ -23,12 +23,14 @@
         OBJECT_CHECK(RemotePortGPIO, (obj), TYPE_REMOTE_PORT_GPIO)
 
 #define MAX_GPIOS 32
+#define CACHE_INVALID -1
 
 typedef struct RemotePortGPIO {
     /* private */
     SysBusDevice parent;
     /* public */
 
+    int8_t cache[MAX_GPIOS];
     uint16_t num_gpios;
     qemu_irq *gpio_out;
 
@@ -43,8 +45,16 @@ static void rp_gpio_handler(void *opaque, int irq, int level)
     RemotePortGPIO *s = opaque;
     struct rp_pkt pkt;
     size_t len;
-    int64_t clk = rp_normalized_vmclk(s->rp);
+    int64_t clk;
 
+    /* If we hit the cache, return early.  */
+    if (s->cache[irq] != CACHE_INVALID && s->cache[irq] == level) {
+        return;
+    }
+    /* Update the cache and update the remote peer.  */
+    s->cache[irq] = level;
+
+    clk = rp_normalized_vmclk(s->rp);
     len = rp_encode_interrupt(s->current_id++, s->rp_dev, &pkt.interrupt, clk,
                               irq, 0, level);
     rp_write(s->rp, (void *)&pkt, len);
@@ -55,6 +65,14 @@ static void rp_gpio_interrupt(RemotePortDevice *s, struct rp_pkt *pkt)
     RemotePortGPIO *rpg = REMOTE_PORT_GPIO(s);
 
     qemu_set_irq(rpg->gpio_out[pkt->interrupt.line], pkt->interrupt.val);
+}
+
+static void rp_gpio_reset(DeviceState *dev)
+{
+    RemotePortGPIO *s = REMOTE_PORT_GPIO(dev);
+
+    /* Mark as invalid.  */
+    memset(s->cache, CACHE_INVALID, s->num_gpios);
 }
 
 static void rp_gpio_realize(DeviceState *dev, Error **errp)
@@ -111,6 +129,7 @@ static void rp_gpio_class_init(ObjectClass *oc, void *data)
     FDTGenericIntcClass *fgic = FDT_GENERIC_INTC_CLASS(oc);
 
     rpdc->ops[RP_CMD_interrupt] = rp_gpio_interrupt;
+    dc->reset = rp_gpio_reset;
     dc->realize = rp_gpio_realize;
     dc->props = rp_properties;
     fgic->get_irq = rp_fdt_get_irq;
