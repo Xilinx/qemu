@@ -6081,7 +6081,7 @@ typedef struct TBU {
     MemoryRegion *mr;
 } TBU;
 
-typedef struct SMMU {
+struct SMMU {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
 
@@ -6101,7 +6101,7 @@ typedef struct SMMU {
 
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
-} SMMU;
+};
 
 /* Generic page attributes.  */
 typedef struct PageAttr {
