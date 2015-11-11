@@ -314,7 +314,7 @@
 /***********************************************************************/
 
 #define DESC_1_USED 0x80000000
-#define DESC_1_LENGTH 0x00001FFF
+#define DESC_1_LENGTH 0x00003FFF
 
 #define DESC_1_TX_WRAP 0x40000000
 #define DESC_1_TX_LAST 0x00008000
