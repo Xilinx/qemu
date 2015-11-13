@@ -28,6 +28,7 @@
 #include "exec/memory.h"
 #include "qapi/visitor.h"
 #include "hw/qdev-properties.h"
+#include "exec/memory-attr.h"
 
 bool cpu_exists(int64_t id)
 {
@@ -335,29 +336,6 @@ static void cpu_common_realizefn(DeviceState *dev, Error **errp)
     }
 }
 
-static void cpu_set_mr(Object *obj, Visitor *v, void *opaque,
-                       const char *name, Error **errp)
-{
-    CPUState *cpu = CPU(obj);
-    Error *local_err = NULL;
-    char *path = NULL;
-
-    visit_type_str(v, &path, name, &local_err);
-
-    if (!local_err && strcmp(path, "") != 0) {
-        cpu->mr = MEMORY_REGION(object_resolve_link(obj, name, path,
-                                &local_err));
-    }
-
-    if (local_err) {
-        error_propagate(errp, local_err);
-        return;
-    }
-
-    object_ref(OBJECT(cpu->mr));
-    cpu->as = address_space_init_shareable(cpu->mr, NULL);
-}
-
 static void cpu_common_initfn(Object *obj)
 {
     CPUState *cpu = CPU(obj);
@@ -366,6 +344,7 @@ static void cpu_common_initfn(Object *obj)
     cpu->gdb_num_regs = cpu->gdb_num_g_regs = cc->gdb_num_core_regs;
     qdev_init_gpio_in_named(DEVICE(obj), cpu_reset_gpio, "reset",1);
     qdev_init_gpio_in_named(DEVICE(obj), cpu_halt_gpio, "halt", 1);
+
     object_property_add(obj, "mr", "link<" TYPE_MEMORY_REGION ">",
                         NULL, /* FIXME: Implement the getter */
                         cpu_set_mr,

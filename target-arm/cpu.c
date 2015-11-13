@@ -237,11 +237,12 @@ static void arm_cpu_reset(CPUState *s)
     if (kvm_enabled()) {
         kvm_arm_reset_vcpu(cpu);
     }
-#endif
 
     if (!runstate_is_running()) {
         cc->set_pc(s, old_pc);
     }
+#endif
+
     cpu->is_in_wfi = true;
     qemu_set_irq(cpu->wfi, 1);
 
@@ -428,6 +429,7 @@ static inline void unset_feature(CPUARMState *env, int feature)
     env->features &= ~(1ULL << feature);
 }
 
+#ifndef CONFIG_USER_ONLY
 static void arm_cpu_set_mr_secure(Object *obj, Visitor *v, void *opaque,
                               const char *name, Error **errp)
 {
@@ -451,6 +453,7 @@ static void arm_cpu_set_mr_secure(Object *obj, Visitor *v, void *opaque,
     object_ref(OBJECT(ac->mr_secure));
     ac->as_secure = address_space_init_shareable(ac->mr_secure, NULL);
 }
+#endif
 
 #define ARM_CPUS_PER_CLUSTER 4
 
@@ -519,6 +522,7 @@ static void arm_cpu_initfn(Object *obj)
         }
     }
 
+#ifndef CONFIG_USER_ONLY
     object_property_add(obj, "mr-secure", "link<" TYPE_MEMORY_REGION ">",
                         NULL, /* FIXME: Implement the getter */
                         arm_cpu_set_mr_secure,
@@ -536,6 +540,7 @@ static void arm_cpu_initfn(Object *obj)
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_UNREF_ON_RELEASE,
                              &error_abort);
+#endif
 }
 
 static Property arm_cpu_reset_cbar_property =
@@ -1441,13 +1446,15 @@ static void set_debug_context(CPUState *cs, unsigned int ctx)
 static int arm_memory_rw_debug(CPUState *cs, vaddr addr,
                                uint8_t *buf, int len, bool is_write)
 {
-    ARMCPU *cpu = ARM_CPU(cs);
     int r;
+#ifndef CONFIG_USER_ONLY
+    ARMCPU *cpu = ARM_CPU(cs);
 
     if (cpu->env.debug_ctx == DEBUG_PHYS) {
         address_space_rw(cs->as, addr, buf, len, is_write);
         return 0;
     }
+#endif
 
     r = cpu_memory_rw_debug(cs, addr, buf, len, is_write);
     return r;
@@ -1532,6 +1539,8 @@ static void arm_cpu_register_types(void)
 
 type_init(arm_cpu_register_types)
 
+#ifndef CONFIG_USER_ONLY
+
 static int armv8_timer_fdt_init(char *node_path, FDTMachineInfo *fdti,
                                 void *priv)
 {
@@ -1565,6 +1574,8 @@ static int armv8_timer_fdt_init(char *node_path, FDTMachineInfo *fdti,
 
 fdt_register_compatibility_n(armv8_timer_fdt_init,
                              "compatible:arm,armv8-timer", 13);
+
+#endif
 
 static const TypeInfo fdt_qom_aliases [] = {
 #if defined(TARGET_AARCH64)

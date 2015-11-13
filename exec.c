@@ -2172,7 +2172,35 @@ int cpu_memory_rw_debug(CPUState *cpu, target_ulong addr,
     return 0;
 }
 
+void cpu_set_mr(Object *obj, Visitor *v, void *opaque,
+                const char *name, Error **errp)
+{
+}
+
 #else
+
+void cpu_set_mr(Object *obj, Visitor *v, void *opaque,
+                const char *name, Error **errp)
+{
+    CPUState *cpu = CPU(obj);
+    Error *local_err = NULL;
+    char *path = NULL;
+
+    visit_type_str(v, &path, name, &local_err);
+
+    if (!local_err && strcmp(path, "") != 0) {
+        cpu->mr = MEMORY_REGION(object_resolve_link(obj, name, path,
+                                &local_err));
+    }
+
+    if (local_err) {
+        error_propagate(errp, local_err);
+        return;
+    }
+
+    object_ref(OBJECT(cpu->mr));
+    cpu->as = address_space_init_shareable(cpu->mr, NULL);
+}
 
 static void invalidate_and_set_dirty(hwaddr addr,
                                      hwaddr length)

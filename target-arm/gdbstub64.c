@@ -21,6 +21,8 @@
 #include "exec/gdbstub.h"
 #include "internals.h"
 
+#ifndef CONFIG_USER_ONLY
+
 /* FIXME: This should be generalized and moved into helper.c */
 static void map_a32_to_a64_regs(CPUARMState *env)
 {
@@ -70,14 +72,18 @@ static void map_a64_to_a32_regs(CPUARMState *env)
     env->regs[15] = env->pc;
 }
 
+#endif
+
 int aarch64_cpu_gdb_read_register(CPUState *cs, uint8_t *mem_buf, int n)
 {
     ARMCPU *cpu = ARM_CPU(cs);
     CPUARMState *env = &cpu->env;
 
+#ifndef CONFIG_USER_ONLY
     if (!is_a64(env)) {
         map_a32_to_a64_regs(env);
     }
+#endif
 
     if (n < 31) {
         /* Core integer register.  */
@@ -125,9 +131,11 @@ int aarch64_cpu_gdb_write_register(CPUState *cs, uint8_t *mem_buf, int n)
     uint64_t tmp;
     int rlen = 0;
 
+#ifndef CONFIG_USER_ONLY
     if (!is_a64(env)) {
         map_a32_to_a64_regs(env);
     }
+#endif
 
     tmp = ldq_p(mem_buf);
 
@@ -173,9 +181,11 @@ int aarch64_cpu_gdb_write_register(CPUState *cs, uint8_t *mem_buf, int n)
         break;
     }
 
+#ifndef CONFIG_USER_ONLY
     if (!is_a64(env)) {
         map_a64_to_a32_regs(env);
     }
+#endif
 
     /* Unknown register.  */
     return rlen;

@@ -269,13 +269,15 @@ static const char *a64_debug_ctx[] = {
 static int a64_memory_rw_debug(CPUState *cs, vaddr addr,
                                uint8_t *buf, int len, bool is_write)
 {
-    ARMCPU *cpu = ARM_CPU(cs);
     int r;
+#ifndef CONFIG_USER_ONLY
+    ARMCPU *cpu = ARM_CPU(cs);
 
     if (cpu->env.debug_ctx == DEBUG_PHYS) {
         address_space_rw(cs->as, addr, buf, len, is_write);
         return 0;
     }
+#endif
 
     r = cpu_memory_rw_debug(cs, addr, buf, len, is_write);
     return r;

@@ -28,9 +28,9 @@
 #include "qemu/osdep.h"
 #include "qemu/queue.h"
 #ifndef CONFIG_USER_ONLY
-#include "exec/memory-attr.h"
 #include "exec/hwaddr.h"
 #endif
+#include "exec/memory-attr.h"
 
 #ifndef TARGET_LONG_BITS
 #error TARGET_LONG_BITS must be defined before including this header
@@ -69,6 +69,11 @@ typedef uint64_t target_ulong;
 #define TB_JMP_ADDR_MASK (TB_JMP_PAGE_SIZE - 1)
 #define TB_JMP_PAGE_MASK (TB_JMP_CACHE_SIZE - TB_JMP_PAGE_SIZE)
 
+typedef struct CPUBusAttr {
+    AddressSpace *as;
+    MemoryTransactionAttr attr;
+} CPUBusAttr;
+
 #if !defined(CONFIG_USER_ONLY)
 #define CPU_TLB_BITS 8
 #define CPU_TLB_SIZE (1 << CPU_TLB_BITS)
@@ -102,13 +107,6 @@ typedef struct CPUTLBEntry {
 } CPUTLBEntry;
 
 QEMU_BUILD_BUG_ON(sizeof(CPUTLBEntry) != (1 << CPU_TLB_ENTRY_BITS));
-
-
-typedef struct CPUBusAttr
-{
-    AddressSpace *as;
-    MemoryTransactionAttr attr;
-} CPUBusAttr;
 
 #define CPU_COMMON_TLB \
     /* The meaning of the MMU modes is defined in the target code. */   \

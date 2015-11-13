@@ -1859,9 +1859,11 @@ static void gdb_read_byte(GDBState *s, int ch)
                 reply = '+';
                 put_buffer(s, &reply, 1);
 
+#ifndef CONFIG_USER_ONLY
                 tw_en = rp_time_warp_enable(false);
                 s->state = gdb_handle_packet(s, s->line_buf);
                 rp_time_warp_enable(tw_en);
+#endif
             }
             break;
         default:

@@ -173,6 +173,7 @@ static inline bool extended_addresses_enabled(CPUARMState *env, int tr_el)
            (arm_feature(env, ARM_FEATURE_LPAE) && (tcr->raw_tcr & TTBCR_EAE));
 }
 
+#if !defined(CONFIG_USER_ONLY)
 static inline void arm_secure_state_sync(ARMCPU *cpu)
 {
     CPUState *cs = CPU(cpu);
@@ -189,6 +190,12 @@ static inline void arm_secure_state_sync(ARMCPU *cpu)
         tlb_flush(cs, 1);
     }
 }
+#else
+static inline void arm_secure_state_sync(ARMCPU *cpu)
+{
+    return;
+}
+#endif
 
 /* Valid Syndrome Register EC field values */
 enum arm_exception_class {
