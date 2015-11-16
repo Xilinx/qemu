@@ -1778,6 +1778,8 @@ static void pmu_global_access(MemoryTransaction *tr)
         if (!is_write) {
             tr->data.u64 = 0;
         }
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "Non secure accesses to PMU global are invalid\n");
         return;
     }
 
