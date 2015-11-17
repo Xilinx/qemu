@@ -342,7 +342,7 @@ struct XMPU {
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
     const char *prefix;
-    bool has_reset;
+    bool enabled;
 };
 
 typedef struct XMPURegion {
@@ -438,6 +438,9 @@ static void xmpu_flush(XMPU *s)
         memory_region_set_readonly(&s->masters[i].iommu, true);
         memory_region_transaction_commit();
     }
+
+    /* Invalidate the all-bypass fast-path.  */
+    s->enabled = true;
 }
 
 static void xmpu_setup_postw(RegisterInfo *reg, uint64_t val64)
@@ -703,8 +706,10 @@ static void xmpu_reset(DeviceState *dev)
 
     AF_DP32(s->regs, CTRL, ALIGNCFG, s->cfg.align);
     isr_update_irq(s);
-    s->has_reset = true;
     xmpu_flush(s);
+
+    /* After reset, the XMPU goes back to bypass for everything.  */
+    s->enabled = false;
 }
 
 static uint64_t xmpu_read(void *opaque, hwaddr addr, unsigned size,
@@ -816,7 +821,7 @@ static IOMMUTLBEntry xmpu_master_translate(XMPUMaster *xm, hwaddr addr,
     /* No security violation by default.  */
     *sec_vio = false;
 
-    if (!s->has_reset) {
+    if (!s->enabled) {
         ret.target_as = &xm->down.rw.as;
         ret.perm = IOMMU_RW;
         return ret;
