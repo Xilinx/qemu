@@ -303,6 +303,7 @@ typedef struct XMPUMaster {
     MemoryRegion *parent_mr;
     uint64_t size;
 
+    MemoryRegion mr;
     MemoryRegion iommu;
 
     struct {
@@ -343,6 +344,7 @@ struct XMPU {
     RegisterInfo regs_info[R_MAX];
     const char *prefix;
     bool enabled;
+    qemu_irq enabled_signal;
 };
 
 typedef struct XMPURegion {
@@ -419,9 +421,37 @@ static uint64_t ids_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
+static void xmpu_update_enabled(XMPU *s)
+{
+    bool regions_enabled = false;
+    bool default_wr = AF_EX32(s->regs, CTRL, DEFWRALLOWED);
+    bool default_rd = AF_EX32(s->regs, CTRL, DEFRDALLOWED);
+    int i;
+
+    /* Lookup if this address fits a region.  */
+    for (i = NR_XMPU_REGIONS - 1; i >= 0; i--) {
+        XMPURegion xr;
+        xmpu_decode_region(s, &xr, i);
+        if (!xr.config.enable) {
+            continue;
+        }
+        qemu_log("regions_enabled\n");
+        regions_enabled = true;
+        break;
+    }
+
+    s->enabled = true;
+    if (!regions_enabled && default_wr && default_rd) {
+        s->enabled = false;
+    }
+}
+
 static void xmpu_flush(XMPU *s)
 {
     unsigned int i;
+
+    xmpu_update_enabled(s);
+    qemu_set_irq(s->enabled_signal, s->enabled);
 
     for (i = 0; i < s->cfg.nr_masters; i++) {
         IOMMUTLBEntry entry = {
@@ -436,11 +466,9 @@ static void xmpu_flush(XMPU *s)
         memory_region_transaction_begin();
         memory_region_set_readonly(&s->masters[i].iommu, false);
         memory_region_set_readonly(&s->masters[i].iommu, true);
+        memory_region_set_enabled(&s->masters[i].iommu, s->enabled);
         memory_region_transaction_commit();
     }
-
-    /* Invalidate the all-bypass fast-path.  */
-    s->enabled = true;
 }
 
 static void xmpu_setup_postw(RegisterInfo *reg, uint64_t val64)
@@ -707,9 +735,6 @@ static void xmpu_reset(DeviceState *dev)
     AF_DP32(s->regs, CTRL, ALIGNCFG, s->cfg.align);
     isr_update_irq(s);
     xmpu_flush(s);
-
-    /* After reset, the XMPU goes back to bypass for everything.  */
-    s->enabled = false;
 }
 
 static uint64_t xmpu_read(void *opaque, hwaddr addr, unsigned size,
@@ -1073,6 +1098,8 @@ static void xmpu_init(Object *obj)
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_UNREF_ON_RELEASE,
                              &error_abort);
+
+    qdev_init_gpio_out(DEVICE(sbd), &s->enabled_signal, 1);
 }
 
 static bool xmpu_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
@@ -1129,7 +1156,17 @@ static bool xmpu_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
         memory_region_init_iommu(&s->masters[mid].iommu,
                                  OBJECT(s), &xmpu_iommu_ops,
                                  name, reg.s[i + 1]);
-        sysbus_init_mmio(sbd, &s->masters[mid].iommu);
+        g_free(name);
+
+        name = g_strdup_printf("xmpu-mr-%d\n", mid);
+        memory_region_init(&s->masters[mid].mr, OBJECT(s), name, UINT64_MAX);
+
+        memory_region_add_subregion_overlap(&s->masters[mid].mr,
+                                            0, &s->masters[mid].down.rw.mr, 0);
+        memory_region_add_subregion_overlap(&s->masters[mid].mr,
+                                            0, &s->masters[mid].iommu, 1);
+        memory_region_set_enabled(&s->masters[mid].iommu, false);
+        sysbus_init_mmio(sbd, &s->masters[mid].mr);
         g_free(name);
     }
     s->cfg.nr_masters = (i / 2) + 1;
