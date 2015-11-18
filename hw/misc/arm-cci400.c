@@ -30,6 +30,8 @@
 #include "qemu/bitops.h"
 #include "qemu/log.h"
 
+#include "hw/fdt_generic_util.h"
+
 #ifndef ARM_CCI400_ERR_DEBUG
 #define ARM_CCI400_ERR_DEBUG 0
 #endif
@@ -325,6 +327,8 @@ typedef struct CCI {
 
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
+
+    uint64_t enable_mask;
 } CCI;
 
 static RegisterAccessInfo cci400_regs_info[] = {
@@ -625,6 +629,16 @@ static void cci400_realize(DeviceState *dev, Error **errp)
     }
 }
 
+static void sig_handler(void *opaque, int n, int level)
+{
+    CCI *s = ARM_CCI400(opaque);
+    uint64_t level64 = level;
+
+    s->enable_mask &= ~(1ULL << n);
+    s->enable_mask |= level64 << n;
+    memory_region_set_enabled(&s->iommu, !!s->enable_mask);
+}
+
 static void cci400_init(Object *obj)
 {
     CCI *s = ARM_CCI400(obj);
@@ -649,6 +663,8 @@ static void cci400_init(Object *obj)
         g_free(name);
     }
 
+    qdev_init_gpio_in_named(DEVICE(sbd), sig_handler, "enable", 16);
+
     /* We don't support configurable sizes yet.  */
     s->cfg.stripe_granule_sz = 4096;
 }
@@ -664,13 +680,27 @@ static const VMStateDescription vmstate_cci400 = {
     }
 };
 
+static const FDTGenericGPIOSet gpio_sets[] = {
+    {
+      .names = &fdt_generic_gpio_name_set_gpio,
+      .gpios = (FDTGenericGPIOConnection[]) {
+        { .name = "enable", .fdt_index = 0, .range = 16 },
+        { },
+      },
+    },
+    { },
+};
+
 static void cci400_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    FDTGenericGPIOClass *fggc = FDT_GENERIC_GPIO_CLASS(klass);
 
     dc->reset = cci400_reset;
     dc->realize = cci400_realize;
     dc->vmsd = &vmstate_cci400;
+    fggc->controller_gpios = gpio_sets;
+
 }
 
 static const TypeInfo cci400_info = {
@@ -679,6 +709,10 @@ static const TypeInfo cci400_info = {
     .instance_size = sizeof(CCI),
     .class_init    = cci400_class_init,
     .instance_init = cci400_init,
+    .interfaces    = (InterfaceInfo[]) {
+        { TYPE_FDT_GENERIC_GPIO },
+        { }
+    },
 };
 
 static void cci400_register_types(void)
