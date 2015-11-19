@@ -347,7 +347,7 @@ int cpu_exec(CPUArchState *env)
     volatile bool have_tb_lock = false;
 
     if (cpu->halted) {
-        if (!cpu_has_work(cpu)) {
+        if (!cpu_has_work(cpu) || cpu->arch_halt_pin || cpu->halt_pin) {
             return EXCP_HALTED;
         }
         if (qemu_etrace_mask(ETRACE_F_EXEC)) {
@@ -356,9 +356,8 @@ int cpu_exec(CPUArchState *env)
                              ETRACE_EVU64_F_PREV_VAL,
                              dev_name, "sleep", 0, 1);
         }
-        if (!cpu->arch_halt_pin && !cpu->halt_pin) {
-            cpu->halted = 0;
-        }
+
+        cpu->halted = 0;
     }
 
     current_cpu = cpu;
