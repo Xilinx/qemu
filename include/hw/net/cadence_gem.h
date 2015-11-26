@@ -33,7 +33,7 @@
 #include "net/net.h"
 #include "hw/sysbus.h"
 
-#define MAX_PRIORITY_QUEUES             16
+#define MAX_PRIORITY_QUEUES             8
 #define MAX_TYPE1_SCREENERS             16
 #define MAX_TYPE2_SCREENERS             16
 #define MAX_TYPE2_SCREENERS_ETHTYPE     8
