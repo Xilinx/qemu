@@ -1250,6 +1250,7 @@ static void gem_phy_reset(CadenceGEMState *s)
 static void gem_reset(DeviceState *d)
 {
     int i;
+    uint32_t qmask;
     CadenceGEMState *s = CADENCE_GEM(d);
 
     DB_PRINT("\n");
@@ -1268,6 +1269,13 @@ static void gem_reset(DeviceState *d)
     s->regs[GEM_DESCONF2] = 0x2ab13fff;
     s->regs[GEM_DESCONF5] = 0x002f2145;
     s->regs[GEM_DESCONF6] = 0x00000200;
+
+    /* Set the DMA priority queue enabled Design Conf bits.  */
+    assert(s->num_priority_queues <= 8);
+    qmask = (1 << s->num_priority_queues) - 1;
+    /* Bit zero is reserved, tied to zero.  */
+    qmask &= ~1;
+    s->regs[GEM_DESCONF6] |= qmask;
 
     for (i = 0; i < 4; i++) {
         s->sar_active[i] = false;
