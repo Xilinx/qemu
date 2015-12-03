@@ -302,11 +302,11 @@ static const VMStateDescription vmstate_xilinx_dpdma = {
 
 static void xilinx_dpdma_update_irq(XilinxDPDMAState *s)
 {
-    uint32_t flags;
+    bool flags;
 
     flags = ((s->registers[DPDMA_ISR] & (~s->registers[DPDMA_IMR]))
-          | (s->registers[DPDMA_EISR] & (~s->registers[DPDMA_EIMR])));
-    qemu_set_irq(s->irq, flags == 0);
+          || (s->registers[DPDMA_EISR] & (~s->registers[DPDMA_EIMR])));
+    qemu_set_irq(s->irq, flags);
 }
 
 static uint64_t xilinx_dpdma_descriptor_start_address(XilinxDPDMAState *s,
