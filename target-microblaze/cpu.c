@@ -239,13 +239,13 @@ static void mb_cpu_initfn(Object *obj)
     qdev_init_gpio_in_named(DEVICE(cpu), microblaze_set_wakeup, "wakeup", 2);
 
     qdev_init_gpio_out_named(DEVICE(cpu), &cpu->mb_sleep, "mb_sleep", 1);
-#endif
 
     object_property_add_link(obj, "memattr", TYPE_MEMORY_TRANSACTION_ATTR,
                              (Object **)&cpu->env.memattr_p,
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_UNREF_ON_RELEASE,
                              &error_abort);
+#endif
 
     if (tcg_enabled() && !tcg_initialized) {
         tcg_initialized = true;
@@ -276,6 +276,7 @@ static Property mb_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
+#ifndef CONFIG_USER_ONLY
 static const FDTGenericGPIOSet mb_ctrl_gpios[] = {
     {
       .names = &fdt_generic_gpio_name_set_gpio,
@@ -287,6 +288,7 @@ static const FDTGenericGPIOSet mb_ctrl_gpios[] = {
     },
     { },
 };
+#endif
 
 static void mb_cpu_class_init(ObjectClass *oc, void *data)
 {
@@ -333,10 +335,12 @@ static const TypeInfo mb_cpu_type_info = {
     .instance_init = mb_cpu_initfn,
     .class_size = sizeof(MicroBlazeCPUClass),
     .class_init = mb_cpu_class_init,
+#ifndef CONFIG_USER_ONLY
     .interfaces    = (InterfaceInfo[]) {
         { TYPE_FDT_GENERIC_GPIO },
         { }
     },
+#endif
 };
 
 static void mb_cpu_register_types(void)
