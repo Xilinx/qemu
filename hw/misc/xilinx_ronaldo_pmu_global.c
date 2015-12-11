@@ -957,6 +957,35 @@ REG32(ERROR_SIG_DIS_2, 0x594)
     FIELD(ERROR_SIG_DIS_2, PLL_LOCK, 5, 8)
     FIELD(ERROR_SIG_DIS_2, PL, 4, 2)
     FIELD(ERROR_SIG_DIS_2, TO, 2, 0)
+REG32(ERROR_EN_1, 0x5A0)
+    FIELD(ERROR_EN_1, AUX3, 1, 31)
+    FIELD(ERROR_EN_1, AUX2, 1, 30)
+    FIELD(ERROR_EN_1, AUX1, 1, 29)
+    FIELD(ERROR_EN_1, AUX0, 1, 28)
+    FIELD(ERROR_EN_1, DFT, 1, 27)
+    FIELD(ERROR_EN_1, CLK_MON, 1, 26)
+    FIELD(ERROR_EN_1, XMPU, 2, 24)
+    FIELD(ERROR_EN_1, PWR_SUPPLY, 8, 16)
+    FIELD(ERROR_EN_1, FPD_SWDT, 1, 13)
+    FIELD(ERROR_EN_1, LPD_SWDT, 1, 12)
+    FIELD(ERROR_EN_1, RPU_CCF, 1, 9)
+    FIELD(ERROR_EN_1, RPU_LS, 2, 6)
+    FIELD(ERROR_EN_1, FPD_TEMP, 1, 5)
+    FIELD(ERROR_EN_1, LPD_TEMP, 1, 4)
+    FIELD(ERROR_EN_1, RPU1, 1, 3)
+    FIELD(ERROR_EN_1, RPU0, 1, 2)
+    FIELD(ERROR_EN_1, OCM_ECC, 1, 1)
+    FIELD(ERROR_EN_1, DDR_ECC, 1, 0)
+REG32(ERROR_EN_2, 0x5A4)
+    FIELD(ERROR_EN_2, CSU_ROM, 1, 26)
+    FIELD(ERROR_EN_2, PMU_PB, 1, 25)
+    FIELD(ERROR_EN_2, PMU_SERVICE, 1, 24)
+    FIELD(ERROR_EN_2, PMU_FW, 4, 18)
+    FIELD(ERROR_EN_2, PMU_UC, 1, 17)
+    FIELD(ERROR_EN_2, CSU, 1, 16)
+    FIELD(ERROR_EN_2, PLL_LOCK, 5, 8)
+    FIELD(ERROR_EN_2, PL, 4, 2)
+    FIELD(ERROR_EN_2, TO, 2, 0)
 REG32(AIB_CNTRL, 0x600)
     FIELD(AIB_CNTRL, FPD_AFI_FS, 1, 3)
     FIELD(AIB_CNTRL, FPD_AFI_FM, 1, 2)
@@ -1005,6 +1034,12 @@ typedef struct PMU_GLOBAL {
     qemu_irq irq_req_iso_int;
 
     bool ignore_pwr_req;
+    /* Record hardware error events, so error status register can be updated
+     * if error is enabled in error enable register.
+     */
+    uint32_t error_1;
+    uint32_t error_2;
+
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
 } PMU_GLOBAL;
@@ -1292,6 +1327,7 @@ static void error_int_2_update_irq(PMU_GLOBAL *s)
 static void error_status_2_postw(RegisterInfo *reg, uint64_t val64)
 {
     PMU_GLOBAL *s = XILINX_PMU_GLOBAL(reg->opaque);
+    s->error_2 = val64;
     error_int_2_update_irq(s);
 }
 
@@ -1321,9 +1357,46 @@ static void error_int_1_update_irq(PMU_GLOBAL *s)
     qemu_set_irq(s->irq_error_int_1, pending);
 }
 
+/* Set error in ERROR_STATUS_1 register if it is enabled in ERROR_EN_1 and
+ * error input is set.
+ * Error is only cleared by explicitly writing a 1 to its corresponding
+ * ERROR_STATUS_1 register bit.
+ */
+static void set_error_1(PMU_GLOBAL *s)
+{
+    s->regs[R_ERROR_STATUS_1] |= s->error_1 & s->regs[R_ERROR_EN_1];
+    error_int_1_update_irq(s);
+}
+
+static void error_en_1_postw(RegisterInfo *reg, uint64_t val64)
+{
+    PMU_GLOBAL *s = XILINX_PMU_GLOBAL(reg->opaque);
+
+    set_error_1(s);
+}
+
+/* Set error in ERROR_STATUS_2 register if it is enabled in ERROR_EN_2 and
+ * error input is set.
+ * Error is only cleared by explicitly writing a 1 to its corresponding
+ * ERROR_STATUS_2 register bit.
+ */
+static void set_error_2(PMU_GLOBAL *s)
+{
+    s->regs[R_ERROR_STATUS_2] |= s->error_2 & s->regs[R_ERROR_EN_2];
+    error_int_2_update_irq(s);
+}
+
+static void error_en_2_postw(RegisterInfo *reg, uint64_t val64)
+{
+    PMU_GLOBAL *s = XILINX_PMU_GLOBAL(reg->opaque);
+
+    set_error_2(s);
+}
+
 static void error_status_1_postw(RegisterInfo *reg, uint64_t val64)
 {
     PMU_GLOBAL *s = XILINX_PMU_GLOBAL(reg->opaque);
+    s->error_1 = val64;
     error_int_1_update_irq(s);
 }
 
@@ -1659,6 +1732,10 @@ static RegisterAccessInfo pmu_global_regs_info[] = {
     },{ .name = "ERROR_SIG_DIS_2",  .decode.addr = A_ERROR_SIG_DIS_2,
         .rsvd = 0xf8c0e0c0,
         .pre_write = error_sig_dis_2_prew,
+    },{ .name = "ERROR_EN_1",  .decode.addr = A_ERROR_EN_1,
+        .post_write = error_en_1_postw,
+    },{ .name = "ERROR_EN_2",  .decode.addr = A_ERROR_EN_2,
+        .post_write = error_en_2_postw,
     },{ .name = "AIB_CNTRL",  .decode.addr = A_AIB_CNTRL,
         .rsvd = 0xfffffff0,
     },{ .name = "AIB_STATUS",  .decode.addr = A_AIB_STATUS,
@@ -1713,6 +1790,9 @@ static void pmu_global_reset(DeviceState *dev)
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
         register_reset(&s->regs_info[i]);
     }
+
+    s->error_1 = 0;
+    s->error_2 = 0;
 
     req_pwrdwn_int_update_irq(s);
     req_swrst_int_update_irq(s);
