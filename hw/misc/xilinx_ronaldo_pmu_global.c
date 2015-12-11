@@ -1811,6 +1811,20 @@ static void pwr_state_handler(void *opaque, int n, int level)
     s->regs[R_PWR_STATE] = deposit32(s->regs[R_PWR_STATE], n, 1, level);
 }
 
+static void error_handler(void *opaque, int n, int level)
+{
+    PMU_GLOBAL *s = XILINX_PMU_GLOBAL(opaque);
+
+    /* First 32 gpios are for ERROR_STATUS_1 */
+    if (n < 32) {
+        s->error_1 = deposit32(s->error_1, n, 1, level);
+        set_error_1(s);
+    } else {
+        s->error_2 = deposit32(s->error_2, n, 1, level);
+        set_error_2(s);
+    }
+}
+
 static uint64_t pmu_global_read(void *opaque, hwaddr addr, unsigned size,
                                 MemoryTransactionAttr *attr)
 {
@@ -1923,11 +1937,16 @@ static void pmu_global_init(Object *obj)
     sysbus_init_irq(sbd, &s->irq_req_pwrup_int);  /* 27 */
     sysbus_init_irq(sbd, &s->irq_req_pwrdwn_int); /* 28 */
     sysbus_init_irq(sbd, &s->irq_addr_error_int); /* 29 */
-    sysbus_init_irq(sbd, &s->irq_error_int_1);
-    sysbus_init_irq(sbd, &s->irq_error_int_2);
 
     qdev_init_gpio_in_named(DEVICE(obj), gpio_mb_sleep_h, "mb_sleep", 1);
     qdev_init_gpio_in_named(DEVICE(obj), pwr_state_handler, "pwr_state", 24);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->irq_error_int_1,
+                             "error_1_out", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->irq_error_int_2,
+                             "error_2_out", 1);
+
+    /* GPIOs that can be used from qtest */
+    qdev_init_gpio_in(DEVICE(obj), error_handler, 64);
 }
 
 static const VMStateDescription vmstate_pmu_global = {
@@ -1960,6 +1979,12 @@ static const FDTGenericGPIONameSet pwr_state_gpios_names = {
     .names_propname = "pwr-state-gpio-names",
 };
 
+static const FDTGenericGPIONameSet error_out_gpios_names = {
+    .propname = "error-out-gpios",
+    .cells_propname = "#gpio-cells",
+    .names_propname = "error-out-names",
+};
+
 static const FDTGenericGPIOSet pmu_global_client_gpios[] = {
     {
       .names = &pwr_state_gpios_names,
@@ -1972,6 +1997,14 @@ static const FDTGenericGPIOSet pmu_global_client_gpios[] = {
       .names = &fdt_generic_gpio_name_set_gpio,
       .gpios = (FDTGenericGPIOConnection[]) {
         { .name = "mb_sleep", .fdt_index = 1 },
+        { },
+      },
+    },
+    {
+      .names = &error_out_gpios_names,
+      .gpios = (FDTGenericGPIOConnection[]) {
+        { .name = "error_1_out", .fdt_index = 0 },
+        { .name = "error_2_out", .fdt_index = 1 },
         { },
       },
     },
