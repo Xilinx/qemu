@@ -3473,10 +3473,12 @@ static void handle_arg_log(const char *arg)
 {
     int mask;
 
-    if (!qemu_setup_log_args(arg)) {
+    mask = qemu_str_to_log_mask(arg, false);
+    if (!mask) {
         qemu_print_log_usage(stdout);
-        exit(1);
+        exit(EXIT_FAILURE);
     }
+    qemu_set_log(mask);
 }
 
 static void handle_arg_log_filename(const char *arg)
