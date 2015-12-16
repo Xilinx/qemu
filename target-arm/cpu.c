@@ -104,11 +104,13 @@ static void cp_reg_reset(gpointer key, gpointer value, gpointer opaque)
 /* CPUClass::reset() */
 static void arm_cpu_reset(CPUState *s)
 {
-    CPUClass *cc = CPU_GET_CLASS(s);
     ARMCPU *cpu = ARM_CPU(s);
     ARMCPUClass *acc = ARM_CPU_GET_CLASS(cpu);
     CPUARMState *env = &cpu->env;
+#ifndef CONFIG_USER_ONLY
+    CPUClass *cc = CPU_GET_CLASS(s);
     vaddr old_pc = cc->get_pc(s);
+#endif
 
     acc->parent_reset(s);
 
