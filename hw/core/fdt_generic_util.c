@@ -314,8 +314,9 @@ static qemu_irq fdt_get_gpio(FDTMachineInfo *fdti, char *node_path,
                                          cells_propname, 0, false, &errp);
     if (errp) {
         *end = true;
-        reason = g_strdup_printf("cant get parent \"%s\" property\n",
-                                 cells_propname);
+        reason = g_strdup_printf("cant get the property \"%s\" from the " \
+                                 "parent \"%s\"\n",
+                                 cells_propname, parent_node_path);
         free_reason = true;
         goto fail;
     }
@@ -417,7 +418,7 @@ static qemu_irq fdt_get_gpio(FDTMachineInfo *fdti, char *node_path,
         return ret;
     }
 fail:
-    fprintf(stderr, "Failure: %s\n", reason);
+    fprintf(stderr, "%s Failed: %s\n", node_path, reason);
 fail_silent:
     if (free_reason) {
         g_free((void *)reason);
