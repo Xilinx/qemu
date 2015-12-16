@@ -329,56 +329,6 @@ typedef struct GDBState {
     gdb_syscall_complete_cb current_syscall_cb;
 } GDBState;
 
-static void gdb_autosplit_cpus(GDBState *s)
-{
-    /* FIXME: this should be done explicitely from a QOM CLUSTER
-     * container. Maybe autocreated from dts files.
-     * In the meantime, follow a simple logic. Consecutive cores
-     * of the same kind, form a cluster.
-     */
-    CPUState *cpu = first_cpu;
-    CPUState *cpu_prev = NULL;
-
-    assert(s->clusters == NULL);
-    assert(s->num_clusters == 0);
-
-    while(cpu) {
-        if (!cpu_prev || (CPU_GET_CLASS(cpu) != CPU_GET_CLASS(cpu_prev))) {
-            /* New cluster.  */
-            s->clusters = g_renew(typeof(s->clusters[0]), s->clusters,
-                                  s->num_clusters + 1);
-            if (s->num_clusters) {
-                s->clusters[s->num_clusters - 1].cpus.last = cpu_prev;
-            }
-            s->clusters[s->num_clusters].attached = false;
-            s->clusters[s->num_clusters].cpus.first = cpu;
-            s->num_clusters++;
-        }
-        cpu_prev = cpu;
-        cpu = CPU_NEXT(cpu);
-    }
-    s->clusters[s->num_clusters - 1].cpus.last = cpu_prev;
-
-#ifdef DEBUG_GDB
-    {
-        unsigned int i;
-
-        for (i = 0; i < s->num_clusters; i++) {
-            cpu = s->clusters[i].cpus.first;
-            while (cpu) {
-                CPUClass *cc = CPU_GET_CLASS(cpu);
-                const char *name = object_get_canonical_path(OBJECT(cpu));
-                qemu_log("Cluster%d: CPU%d %s xml=%s\n", i, cpu->cpu_index, name, cc->gdb_core_xml_file);
-                if (cpu == s->clusters[i].cpus.last) {
-                    break;
-                }
-                cpu = CPU_NEXT(cpu);
-            }
-        }
-    }
-#endif
-}
-
 /* By default use no IRQs and no timers while single stepping so as to
  * make single stepping like an ICE HW step.
  */
@@ -1854,14 +1804,11 @@ static void gdb_read_byte(GDBState *s, int ch)
                 put_buffer(s, &reply, 1);
                 s->state = RS_IDLE;
             } else {
-                bool tw_en;
-
                 reply = '+';
                 put_buffer(s, &reply, 1);
-
-#ifndef CONFIG_USER_ONLY
-                tw_en = rp_time_warp_enable(false);
                 s->state = gdb_handle_packet(s, s->line_buf);
+#ifndef CONFIG_USER_ONLY
+                bool tw_en = rp_time_warp_enable(false);
                 rp_time_warp_enable(tw_en);
 #endif
             }
@@ -2071,6 +2018,57 @@ void gdbserver_fork(CPUArchState *env)
     cpu_watchpoint_remove_all(cpu, BP_GDB);
 }
 #else
+static void gdb_autosplit_cpus(GDBState *s)
+{
+    /* FIXME: this should be done explicitely from a QOM CLUSTER
+     * container. Maybe autocreated from dts files.
+     * In the meantime, follow a simple logic. Consecutive cores
+     * of the same kind, form a cluster.
+     */
+    CPUState *cpu = first_cpu;
+    CPUState *cpu_prev = NULL;
+
+    assert(s->clusters == NULL);
+    assert(s->num_clusters == 0);
+
+    while (cpu) {
+        if (!cpu_prev || (CPU_GET_CLASS(cpu) != CPU_GET_CLASS(cpu_prev))) {
+            /* New cluster.  */
+            s->clusters = g_renew(typeof(s->clusters[0]), s->clusters,
+                                  s->num_clusters + 1);
+            if (s->num_clusters) {
+                s->clusters[s->num_clusters - 1].cpus.last = cpu_prev;
+            }
+            s->clusters[s->num_clusters].attached = false;
+            s->clusters[s->num_clusters].cpus.first = cpu;
+            s->num_clusters++;
+        }
+        cpu_prev = cpu;
+        cpu = CPU_NEXT(cpu);
+    }
+    s->clusters[s->num_clusters - 1].cpus.last = cpu_prev;
+
+#ifdef DEBUG_GDB
+    {
+        unsigned int i;
+
+        for (i = 0; i < s->num_clusters; i++) {
+            cpu = s->clusters[i].cpus.first;
+            while (cpu) {
+                CPUClass *cc = CPU_GET_CLASS(cpu);
+                const char *name = object_get_canonical_path(OBJECT(cpu));
+                qemu_log("Cluster%d: CPU%d %s xml=%s\n", i, cpu->cpu_index,
+                         name, cc->gdb_core_xml_file);
+                if (cpu == s->clusters[i].cpus.last) {
+                    break;
+                }
+                cpu = CPU_NEXT(cpu);
+            }
+        }
+    }
+#endif
+}
+
 static int gdb_chr_can_receive(void *opaque)
 {
   /* We can handle an arbitrarily large amount of data.
