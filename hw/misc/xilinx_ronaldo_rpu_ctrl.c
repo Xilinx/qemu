@@ -405,10 +405,7 @@ typedef struct RPU {
 
     /* WFIs towards PMU. */
     qemu_irq wfi_out[2];
-    /* CPU Power status towards INTC Redirect. */
-    qemu_irq cpu_power_status[2];
 
-    bool cpu_pwrdwn_req[2];
     bool cpu_in_wfi[2];
 
     uint32_t regs[R_MAX];
@@ -495,9 +492,13 @@ static void update_wfi_out(void *opaque)
 {
     RPU *s = XILINX_RPU(opaque);
     unsigned int i, wfi_pending;
+    unsigned int pwrdnreq[2];
+
+    pwrdnreq[0] = AF_EX32(s->regs, RPU_0_PWRDWN, EN);
+    pwrdnreq[1] = AF_EX32(s->regs, RPU_1_PWRDWN, EN);
 
     for (i = 0; i < 2; i++) {
-        wfi_pending = s->cpu_pwrdwn_req[i] && s->cpu_in_wfi[i];
+        wfi_pending = pwrdnreq[i] && s->cpu_in_wfi[i];
         qemu_set_irq(s->wfi_out[i], wfi_pending);
     }
 }
@@ -505,17 +506,6 @@ static void update_wfi_out(void *opaque)
 static void ronaldo_rpu_pwrctl_post_write(RegisterInfo *reg, uint64_t val)
 {
     RPU *s = XILINX_RPU(reg->opaque);
-    int i;
-    bool new;
-
-    for (i = 0; i < 2; i++) {
-        new = !!(val & (1 << i));
-        /* Check if CPU's CPUPWRDNREQ has changed. If yes, update GPIOs. */
-        if (new != s->cpu_pwrdwn_req[i]) {
-            qemu_set_irq(s->cpu_power_status[i], new);
-        }
-        s->cpu_pwrdwn_req[i] = new;
-    }
     update_wfi_out(s);
 }
 
@@ -589,6 +579,11 @@ static RegisterAccessInfo rpu_regs_info[] = {
         .reset = 0x3f,
         .ro = 0x3f,
     },{ .name = "RPU_0_PWRDWN",  .decode.addr = A_RPU_0_PWRDWN,
+        .gpios = (RegisterGPIOMapping[]) {
+            { .name = "R5_0_PWRDWN_REQ",
+              .bit_pos = R_RPU_0_PWRDWN_EN_SHIFT, .width = 1 },
+            {},
+        },
         .post_write = ronaldo_rpu_pwrctl_post_write,
     },{ .name = "RPU_0_ISR",  .decode.addr = A_RPU_0_ISR,
         .w1c = 0x1ffffff,
@@ -617,6 +612,11 @@ static RegisterAccessInfo rpu_regs_info[] = {
         .reset = 0x3f,
         .ro = 0x3f,
     },{ .name = "RPU_1_PWRDWN",  .decode.addr = A_RPU_1_PWRDWN,
+        .gpios = (RegisterGPIOMapping[]) {
+            { .name = "R5_1_PWRDWN_REQ",
+              .bit_pos = R_RPU_1_PWRDWN_EN_SHIFT, .width = 1 },
+            {},
+        },
         .post_write = ronaldo_rpu_pwrctl_post_write,
     },{ .name = "RPU_1_ISR",  .decode.addr = A_RPU_1_ISR,
         .w1c = 0x1ffffff,
@@ -647,7 +647,6 @@ static void rpu_reset(DeviceState *dev)
 
     for (i = 0; i < 2; i++) {
         s->cpu_in_wfi[i] = false;
-        s->cpu_pwrdwn_req[i] = false;
     }
     update_wfi_out(s);
 }
@@ -751,9 +750,6 @@ static void rpu_init(Object *obj)
 
     /* wfi_out is used to connect to PMU GPIs. */
     qdev_init_gpio_out_named(DEVICE(obj), s->wfi_out, "wfi_out", 2);
-    /* CPU_POWER_STATUS is used to connect to INTC redirect. */
-    qdev_init_gpio_out_named(DEVICE(obj), s->cpu_power_status,
-                             "CPU_POWER_STATUS", 2);
     /* wfi_in is used as input from CPUs as wfi request. */
     qdev_init_gpio_in_named(DEVICE(obj), ronaldo_rpu_handle_wfi, "wfi_in", 2);
 }
@@ -776,7 +772,8 @@ static const FDTGenericGPIOSet rpu_controller_gpios [] = {
             { .name = "R5_0_HALT",          .fdt_index = 0 },
             { .name = "R5_1_HALT",          .fdt_index = 1 },
             { .name = "R5_SLSPLIT",         .fdt_index = 2 },
-            { .name = "CPU_POWER_STATUS",     .fdt_index = 3, .range = 2 },
+            { .name = "R5_0_PWRDWN_REQ",     .fdt_index = 3, },
+            { .name = "R5_1_PWRDWN_REQ",     .fdt_index = 4, },
             { .name = "wfi_in",             .fdt_index = 5, .range = 2 },
             { .name = "R5_0_VINITHI",          .fdt_index = 7 },
             { .name = "R5_1_VINITHI",          .fdt_index = 8 },
