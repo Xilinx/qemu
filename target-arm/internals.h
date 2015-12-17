@@ -369,14 +369,8 @@ static inline uint32_t syn_data_abort(bool same_el, bool il, int isv,
                                       int ea, int cm, int s1ptw,
                                       int wnr, int fsc)
 {
-    const unsigned int mapsize[9] = {-1, 0, 1, -1, 2, -1, -1, -1, 3 };
-    unsigned int sas;
-
-    assert(size <= 8);
-    sas = mapsize[size];
-    assert(sas != -1);
     return (EC_DATAABORT << ARM_EL_EC_SHIFT) | (same_el << ARM_EL_EC_SHIFT)
-        | (il << 25) | (isv << 24) | (sas << 22) | (srt << 16)
+        | (il << 25) | (isv << 24) | (size << 22) | (srt << 16)
         | (ea << 9) | (cm << 8)
         | (s1ptw << 7) | (wnr << 6) | fsc;
 }

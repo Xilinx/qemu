@@ -6275,9 +6275,9 @@ int arm_cpu_handle_mmu_fault(CPUState *cs, vaddr address,
     } else {
         int target_el = arm_excp_target_el(cs, EXCP_DATA_ABORT);
         bool isv = target_el == 2;
-
         syn = syn_data_abort(cur_el == target_el, env->aarch64, isv,
-                             4, env->mem_rt, 0, 0, 0, access_type == 1, syn);
+                             env->mem_size, env->mem_rt,
+                             0, 0, 0, access_type == 1, syn);
         if (access_type == 1 && arm_feature(env, ARM_FEATURE_V6)) {
             ret |= (1 << 11);
         }

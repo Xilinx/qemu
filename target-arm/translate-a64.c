@@ -2322,9 +2322,12 @@ static void disas_ldst_reg_unsigned_imm(DisasContext *s, uint32_t insn)
 static void disas_ldst_reg(DisasContext *s, uint32_t insn)
 {
 
+    int size = extract32(insn, 30, 2);
     TCGv_i32 tmp = tcg_temp_new_i32();
     tcg_gen_movi_i32(tmp, extract32(insn, 0, 5));
     tcg_gen_st_i32(tmp, cpu_env, offsetof(CPUARMState, mem_rt));
+    tcg_gen_movi_i32(tmp, size);
+    tcg_gen_st_i32(tmp, cpu_env, offsetof(CPUARMState, mem_size));
     tcg_temp_free_i32(tmp);
 
     switch (extract32(insn, 24, 2)) {

@@ -191,6 +191,7 @@ typedef struct CPUARMState {
 
     uint32_t stage2_fault;
     uint32_t mem_rt;
+    uint32_t mem_size;
 
     /* System control coprocessor (cp15) */
     struct {
