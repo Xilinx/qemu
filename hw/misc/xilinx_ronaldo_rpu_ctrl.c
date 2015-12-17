@@ -690,11 +690,19 @@ static const MemoryRegionOps rpu_ops = {
     },
 };
 
-static void ronaldo_rpu_handle_wfi(void *opaque, int irq, int level)
+static void ronaldo_rpu_0_handle_wfi(void *opaque, int irq, int level)
 {
     RPU *s = XILINX_RPU(opaque);
 
-    s->cpu_in_wfi[irq] = level;
+    s->cpu_in_wfi[0] = level;
+    update_wfi_out(s);
+}
+
+static void ronaldo_rpu_1_handle_wfi(void *opaque, int irq, int level)
+{
+    RPU *s = XILINX_RPU(opaque);
+
+    s->cpu_in_wfi[1] = level;
     update_wfi_out(s);
 }
 
@@ -751,7 +759,8 @@ static void rpu_init(Object *obj)
     /* wfi_out is used to connect to PMU GPIs. */
     qdev_init_gpio_out_named(DEVICE(obj), s->wfi_out, "wfi_out", 2);
     /* wfi_in is used as input from CPUs as wfi request. */
-    qdev_init_gpio_in_named(DEVICE(obj), ronaldo_rpu_handle_wfi, "wfi_in", 2);
+    qdev_init_gpio_in_named(DEVICE(obj), ronaldo_rpu_0_handle_wfi, "wfi_in_0", 1);
+    qdev_init_gpio_in_named(DEVICE(obj), ronaldo_rpu_1_handle_wfi, "wfi_in_1", 1);
 }
 
 static const VMStateDescription vmstate_rpu = {
@@ -774,7 +783,8 @@ static const FDTGenericGPIOSet rpu_controller_gpios [] = {
             { .name = "R5_SLSPLIT",         .fdt_index = 2 },
             { .name = "R5_0_PWRDWN_REQ",     .fdt_index = 3, },
             { .name = "R5_1_PWRDWN_REQ",     .fdt_index = 4, },
-            { .name = "wfi_in",             .fdt_index = 5, .range = 2 },
+            { .name = "wfi_in_0",             .fdt_index = 5, },
+            { .name = "wfi_in_1",             .fdt_index = 6, },
             { .name = "R5_0_VINITHI",          .fdt_index = 7 },
             { .name = "R5_1_VINITHI",          .fdt_index = 8 },
             { },
