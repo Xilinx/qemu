@@ -637,6 +637,10 @@ static uint32_t gic_dist_readb(void *opaque, hwaddr offset, bool secure)
     } else /* offset >= 0xfe0 */ {
         if (offset & 3) {
             res = 0;
+        } else if (offset == 0xfe8 && s->revision != REV_11MPCORE &&
+                                      s->revision != REV_NVIC) {
+            /* ICPIDR2 includes the GICv1 or GICv2 version information */
+            res = gic_id[(offset - 0xfe0) >> 2] | (s->revision << 4);
         } else {
             res = gic_id[(offset - 0xfe0) >> 2];
         }
