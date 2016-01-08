@@ -1254,10 +1254,15 @@ static Property device_props[] = {
 
 static void device_pwr_hlt_cntrl(void *opaque, const char *from)
 {
+    const char *to;
     DeviceState *dev = DEVICE(opaque);
 
     dev->ps.active = dev->ps.power && !dev->ps.halt;
-    PM_DEBUG_PRINT("%s: from %s to %s\n", dev->id, from, PM_STATE(dev));
+    to = PM_STATE(dev);
+
+    if (from != to) {
+        PM_DEBUG_PRINT("%s: from %s to %s\n", dev->id, from, to);
+    }
 }
 
 static void device_pwr_cntrl(void *opaque, int n, int level)
