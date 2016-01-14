@@ -316,6 +316,13 @@ microblaze_generic_fdt_init(MachineState *machine)
     ram_kernel_base = object_property_get_int(OBJECT(main_mem), "addr", NULL);
     ram_kernel_size = object_property_get_int(OBJECT(main_mem), "size", NULL);
 
+    if ((int64_t)ram_kernel_size < 0) {
+        error_report("dtb files has no memory node");
+        error_report("the QEMU model assumes that external memory is attached,"
+                     " caching is enabled and MMU is enabled");
+        exit(1);
+    }
+
     if (!memory_region_is_mapped(main_mem)) {
         /* If the memory region is not mapped, map it here.
          * It has to be mapped somewhere, so guess that the base address
