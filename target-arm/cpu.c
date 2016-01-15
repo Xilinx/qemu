@@ -1510,7 +1510,7 @@ static void cpu_register(const ARMCPUInfo *info)
         .class_init = info->class_init,
     };
 
-    type_info.name = g_strdup_printf("arm.%s", info->name);
+    type_info.name = g_strdup_printf("%s-" TYPE_ARM_CPU, info->name);
     type_register(&type_info);
     g_free((void *)type_info.name);
 }
