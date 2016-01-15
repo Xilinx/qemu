@@ -45,6 +45,7 @@
 
 /* public */
 XenXC xen_xc = XC_HANDLER_INITIAL_VALUE;
+xenforeignmemory_handle *xen_fmem = NULL;
 struct xs_handle *xenstore = NULL;
 const char *xen_protocol;
 
@@ -719,7 +720,7 @@ int xen_be_init(void)
         goto err;
     }
 
-    if (xen_xc == XC_HANDLER_INITIAL_VALUE) {
+    if (xen_xc == XC_HANDLER_INITIAL_VALUE || xen_fmem == NULL) {
         /* Check if xen_init() have been called */
         goto err;
     }
