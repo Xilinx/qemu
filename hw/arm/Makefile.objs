@@ -10,5 +10,5 @@ obj-$(CONFIG_DIGIC) += digic.o
 obj-y += omap1.o omap2.o strongarm.o
 obj-$(CONFIG_ALLWINNER_A10) += allwinner-a10.o cubieboard.o
 obj-$(CONFIG_FDT_GENERIC) += arm_generic_fdt.o fdt-generic-devices.o
-obj-$(CONFIG_XLNX_ZYNQMP) += xlnx-zynqmp.o
+obj-$(CONFIG_ZYNQ) += xilinx_zynq.o
 obj-$(CONFIG_XLNX_ZYNQMP) += xlnx-zynqmp.o xlnx-ep108.o

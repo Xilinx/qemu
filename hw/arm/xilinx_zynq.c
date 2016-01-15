@@ -114,7 +114,7 @@ static inline void zynq_init_spi_flashes(uint32_t base_addr, qemu_irq irq,
     int num_busses =  is_qspi ? NUM_QSPI_BUSSES : 1;
     int num_ss = is_qspi ? NUM_QSPI_FLASHES : NUM_SPI_FLASHES;
 
-    dev = qdev_create(NULL, is_qspi ? "xlnx.ps7-qspi" : "xlnx.ps7-spi");
+    dev = qdev_create(NULL, is_qspi ? "xlnx.ps7-qspi" : "cdns.spi-r1p6");
     qdev_prop_set_uint8(dev, "num-txrx-bytes", is_qspi ? 4 : 1);
     qdev_prop_set_uint8(dev, "num-ss-bits", num_ss);
     qdev_prop_set_uint8(dev, "num-busses", num_busses);
@@ -170,6 +170,7 @@ static inline void zynq_init_zc70x_i2c(uint32_t base_addr, qemu_irq irq)
 static void zynq_init(MachineState *machine)
 {
     ram_addr_t ram_size = machine->ram_size;
+    const char *cpu_model = machine->cpu_model;
     const char *kernel_filename = machine->kernel_filename;
     const char *kernel_cmdline = machine->kernel_cmdline;
     const char *initrd_filename = machine->initrd_filename;
@@ -179,8 +180,6 @@ static void zynq_init(MachineState *machine)
     MemoryRegion *address_space_mem = get_system_memory();
     MemoryRegion *ext_ram = g_new(MemoryRegion, 1);
     MemoryRegion *ocm_ram = g_new(MemoryRegion, 1);
-    ObjectClass *cpu_oc;
-    ARMCPU *cpu;
     DeviceState *dev;
     SysBusDevice *busdev;
     qemu_irq pic[64];
@@ -190,6 +189,7 @@ static void zynq_init(MachineState *machine)
     if (machine->cpu_model) {
         error_report("Zynq does not support CPU model override!\n");
         exit(1);
+    }
     if (!cpu_model) {
         cpu_model = "cortex-a9";
     }
@@ -198,17 +198,31 @@ static void zynq_init(MachineState *machine)
     for (n = 0; n < smp_cpus; n++) {
         cpu[n] = ARM_CPU(object_new(object_class_get_name(cpu_oc)));
 
-        object_property_set_int(OBJECT(cpu), ZYNQ_BOARD_MIDR, "midr", &err);
+        /* By default A9 CPUs have EL3 enabled.  This board does not
+         * currently support EL3 so the CPU EL3 property is disabled before
+         * realization.
+         */
+        if (object_property_find(OBJECT(cpu[n]), "has_el3", NULL)) {
+            object_property_set_bool(OBJECT(cpu[n]), false, "has_el3", &err);
+            if (err) {
+                error_report("%s", error_get_pretty(err));
+                exit(1);
+            }
+        }
+
+        object_property_set_int(OBJECT(cpu[n]), ZYNQ_BOARD_MIDR, "midr", &err);
         if (err) {
             error_report("%s", error_get_pretty(err));
             exit(1);
         }
-        object_property_set_int(OBJECT(cpu[n]), MPCORE_PERIPHBASE, "reset-cbar",
-                                &err);
+
+        object_property_set_int(OBJECT(cpu[n]), MPCORE_PERIPHBASE,
+                                "reset-cbar", &err);
         if (err) {
             error_report("%s", error_get_pretty(err));
             exit(1);
         }
+
         object_property_set_bool(OBJECT(cpu[n]), true, "realized", &err);
         if (err) {
             error_report("%s", error_get_pretty(err));
@@ -251,13 +265,19 @@ static void zynq_init(MachineState *machine)
         qdev_prop_set_string(att_dev, "name", "pl353.pflash");
         qdev_init_nofail(att_dev);
         object_property_set_link(OBJECT(dev), OBJECT(att_dev), "dev0", &errp);
-        assert_no_error(errp);
+        if (err) {
+            error_report("%s", error_get_pretty(err));
+            exit(1);
+        }
 
         dinfo = drive_get_next(IF_PFLASH);
         att_dev = nand_init(dinfo ? blk_by_legacy_dinfo(dinfo) : NULL,
                             NAND_MFR_STMICRO, 0xaa);
         object_property_set_link(OBJECT(dev), OBJECT(att_dev), "dev1", &errp);
-        assert_no_error(errp);
+        if (err) {
+            error_report("%s", error_get_pretty(err));
+            exit(1);
+        }
     }
     qdev_init_nofail(dev);
     busdev = SYS_BUS_DEVICE(dev);
@@ -265,9 +285,9 @@ static void zynq_init(MachineState *machine)
     sysbus_mmio_map(busdev, 1, 0xe2000000);
     sysbus_mmio_map(busdev, 2, 0xe1000000);
 
-    memory_region_init_ram(ext_ram, NULL, "zynq.ext_ram", ram_size,
-                           &error_abort);
-    vmstate_register_ram_global(ext_ram);
+    /* DDR remapped to address zero.  */
+    memory_region_allocate_system_memory(ext_ram, NULL, "zynq.ext_ram",
+                                         ram_size);
     memory_region_add_subregion(address_space_mem, 0, ext_ram);
 
     /* 256K of on-chip memory */
@@ -291,11 +311,11 @@ static void zynq_init(MachineState *machine)
     sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, 0xF8000000);
     for (n = 0; n < smp_cpus; n++) {
         qdev_connect_gpio_out(dev, n,
-                              qdev_get_gpio_in(DEVICE(cpu[n]), ARM_CPU_RESET));
+                              qdev_get_gpio_in(DEVICE(cpu[n]), 0));
     }
 
     mpcore = A9MPCORE_PRIV(object_new("a9mpcore_priv"));
-    qdev_prop_set_uint32(DEVICE(mpcore), "num-cpu", 1);
+    qdev_prop_set_uint32(DEVICE(mpcore), "num-cpu", smp_cpus);
     qdev_prop_set_uint32(DEVICE(mpcore), "midr", ZYNQ_BOARD_MIDR);
     qdev_prop_set_uint64(DEVICE(mpcore), "reset-cbar", MPCORE_PERIPHBASE);
     object_property_set_bool(OBJECT(mpcore), true, "realized", &err);
@@ -306,31 +326,24 @@ static void zynq_init(MachineState *machine)
     }
     busdev = SYS_BUS_DEVICE(DEVICE(mpcore));
     sysbus_mmio_map(busdev, 0, MPCORE_PERIPHBASE);
-    dev = qdev_create(NULL, "a9mpcore_priv");
-    qdev_prop_set_uint32(dev, "num-cpu", smp_cpus);
-    qdev_init_nofail(dev);
-    busdev = SYS_BUS_DEVICE(dev);
-    sysbus_mmio_map(busdev, 0, MPCORE_PERIPHBASE);
     for (n = 0; n < smp_cpus; n++) {
         sysbus_connect_irq(busdev, n,
                            qdev_get_gpio_in(DEVICE(cpu[n]), ARM_CPU_IRQ));
     }
 
     for (n = 0; n < 64; n++) {
-        pic[n] = qdev_get_gpio_in(DEVICE(mpcore), n);
+        pic[n] = qdev_get_gpio_in(dev, n);
     }
 
     zynq_init_zc70x_i2c(0xE0004000, pic[57-IRQ_OFFSET]);
     zynq_init_zc70x_i2c(0xE0005000, pic[80-IRQ_OFFSET]);
     dev = qdev_create(NULL, "xlnx,ps7-usb");
-    dev->id = "zynq-usb-0";
     qdev_init_nofail(dev);
     busdev = SYS_BUS_DEVICE(dev);
     sysbus_mmio_map(busdev, 0, 0xE0002000);
     sysbus_connect_irq(busdev, 0, pic[53-IRQ_OFFSET]);
 
     dev = qdev_create(NULL, "xlnx,ps7-usb");
-    dev->id = "zynq-usb-1";
     busdev = SYS_BUS_DEVICE(dev);
     qdev_init_nofail(dev);
     sysbus_mmio_map(busdev, 0, 0xE0003000);
@@ -339,11 +352,6 @@ static void zynq_init(MachineState *machine)
     zynq_init_spi_flashes(0xE0006000, pic[58-IRQ_OFFSET], false);
     zynq_init_spi_flashes(0xE0007000, pic[81-IRQ_OFFSET], false);
     zynq_init_spi_flashes(0xE000D000, pic[51-IRQ_OFFSET], true);
-
-#if 0
-    sysbus_create_simple("xlnx,ps7-usb", 0xE0002000, pic[53-IRQ_OFFSET]);
-    sysbus_create_simple("xlnx,ps7-usb", 0xE0003000, pic[76-IRQ_OFFSET]);
-#endif
 
     sysbus_create_simple("cadence_uart", 0xE0000000, pic[59-IRQ_OFFSET]);
     sysbus_create_simple("cadence_uart", 0xE0001000, pic[82-IRQ_OFFSET]);
@@ -404,6 +412,7 @@ static void zynq_init(MachineState *machine)
     zynq_binfo.smp_loader_start = SMP_BOOT_ADDR;
     zynq_binfo.board_id = 0xd32;
     zynq_binfo.loader_start = 0;
+
     arm_load_kernel(ARM_CPU(first_cpu), &zynq_binfo);
 }
 
