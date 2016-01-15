@@ -498,6 +498,7 @@ static inline int xen_xc_domain_add_to_physmap(XenXC xch, uint32_t domid,
 }
 #endif
 
+#ifdef CONFIG_XEN_PV_DOMAIN_BUILD
 #if CONFIG_XEN_CTRL_INTERFACE_VERSION < 470
 static inline int xen_domain_create(XenXC xc, uint32_t ssidref,
                                     xen_domain_handle_t handle, uint32_t flags,
@@ -512,6 +513,7 @@ static inline int xen_domain_create(XenXC xc, uint32_t ssidref,
 {
     return xc_domain_create(xc, ssidref, handle, flags, pdomid, NULL);
 }
+#endif
 #endif
 
 #if CONFIG_XEN_CTRL_INTERFACE_VERSION < 471
