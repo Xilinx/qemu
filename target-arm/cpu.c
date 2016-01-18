@@ -1581,8 +1581,12 @@ fdt_register_compatibility_n(armv8_timer_fdt_init,
 
 static const TypeInfo fdt_qom_aliases [] = {
 #if defined(TARGET_AARCH64)
+    /* FIXME: Remove these aliases when the device tree has been updated */
     {   .name = "arm.armv8",                .parent = "cortex-a53-arm-cpu"  },
+    {   .name = "arm.cortex-a53",           .parent = "cortex-a53-arm-cpu"  },
+    {   .name = "arm.cortex-a57",           .parent = "cortex-a57-arm-cpu"  },
 #endif
+    {   .name = "arm.cortex-r5",            .parent = "cortex-r5-arm-cpu"  },
 };
 
 static void fdt_generic_register_types(void)
