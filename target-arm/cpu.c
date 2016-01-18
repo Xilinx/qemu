@@ -1581,7 +1581,7 @@ fdt_register_compatibility_n(armv8_timer_fdt_init,
 
 static const TypeInfo fdt_qom_aliases [] = {
 #if defined(TARGET_AARCH64)
-    {   .name = "arm.armv8",                .parent = "cortex-a57-arm-cpu"  },
+    {   .name = "arm.armv8",                .parent = "cortex-a53-arm-cpu"  },
 #endif
 };
 
