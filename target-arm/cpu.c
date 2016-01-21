@@ -1587,6 +1587,7 @@ static const TypeInfo fdt_qom_aliases [] = {
     {   .name = "arm.cortex-a57",           .parent = "cortex-a57-arm-cpu"  },
 #endif
     {   .name = "arm.cortex-r5",            .parent = "cortex-r5-arm-cpu"  },
+    {   .name = "arm.cortex-a9",            .parent = "cortex-a9-arm-cpu"  },
 };
 
 static void fdt_generic_register_types(void)
