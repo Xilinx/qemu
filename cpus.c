@@ -355,7 +355,7 @@ static void icount_warp_rt(void *opaque)
         return;
     }
 
-    if (icount_idle_timewarps) {
+    if (!icount_idle_timewarps) {
         return;
     }
 
