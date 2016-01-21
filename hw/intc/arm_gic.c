@@ -37,8 +37,16 @@ do { fprintf(stderr, "arm_gic: " fmt , ## __VA_ARGS__); } while (0)
 
 #define IDLE_PRIORITY 0xff
 
-static const uint8_t gic_id[] = {
-    0x90, 0x13, 0x04, 0x00, 0x0d, 0xf0, 0x05, 0xb1
+static const uint8_t gic_id_11mpcore[] = {
+    0x00, 0x00, 0x00, 0x00, 0x90, 0x13, 0x04, 0x00, 0x0d, 0xf0, 0x05, 0xb1
+};
+
+static const uint8_t gic_id_gicv1[] = {
+    0x04, 0x00, 0x00, 0x00, 0x90, 0xb3, 0x1b, 0x00, 0x0d, 0xf0, 0x05, 0xb1
+};
+
+static const uint8_t gic_id_gicv2[] = {
+    0x04, 0x00, 0x00, 0x00, 0x90, 0xb4, 0x2b, 0x00, 0x0d, 0xf0, 0x05, 0xb1
 };
 
 #define NUM_CPU(s) ((s)->num_cpu)
@@ -632,18 +640,31 @@ static uint32_t gic_dist_readb(void *opaque, hwaddr offset, bool secure)
         }
 
         res = s->sgi_pending[irq][cpu];
-    } else if (offset < 0xfe0) {
+    } else if (offset < 0xfd0) {
         goto bad_reg;
-    } else /* offset >= 0xfe0 */ {
+    } else if (offset < 0x1000) {
         if (offset & 3) {
             res = 0;
-        } else if (offset == 0xfe8 && s->revision != REV_11MPCORE &&
-                                      s->revision != REV_NVIC) {
-            /* ICPIDR2 includes the GICv1 or GICv2 version information */
-            res = gic_id[(offset - 0xfe0) >> 2] | (s->revision << 4);
         } else {
-            res = gic_id[(offset - 0xfe0) >> 2];
+            switch (s->revision) {
+            case REV_11MPCORE:
+                res = gic_id_11mpcore[(offset - 0xfd0) >> 2];
+                break;
+            case 1:
+                res = gic_id_gicv1[(offset - 0xfd0) >> 2];
+                break;
+            case 2:
+                res = gic_id_gicv2[(offset - 0xfd0) >> 2];
+                break;
+            case REV_NVIC:
+                /* Shouldn't be able to get here */
+                abort();
+            default:
+                res = 0;
+            }
         }
+    } else {
+        g_assert_not_reached();
     }
     return res;
 bad_reg:
