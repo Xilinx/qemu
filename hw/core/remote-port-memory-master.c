@@ -190,7 +190,7 @@ static bool rp_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
                          Error **errp)
 {
     RemotePortMemoryMaster *s = REMOTE_PORT_MEMORY_MASTER(obj);
-    FDTGenericMMapClass *parent_fmc = 
+    FDTGenericMMapClass *parent_fmc =
         FDT_GENERIC_MMAP_CLASS(REMOTE_PORT_MEMORY_MASTER_PARENT_CLASS);
     int i;
 
