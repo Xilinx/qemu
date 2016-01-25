@@ -73,7 +73,7 @@ typedef struct GICState {
     uint8_t irq_target[GIC_MAXIRQ];
     uint8_t priority1[GIC_INTERNAL][GIC_NCPU];
     uint8_t priority2[GIC_MAXIRQ - GIC_INTERNAL];
-    bool eoir[GIC_MAXIRQ];
+    bool eoir[GIC_NCPU][GIC_MAXIRQ];
     uint16_t last_active[GIC_MAXIRQ][GIC_NCPU];
     /* For each SGI on the target CPU, we store 8 bits
      * indicating which source CPUs have made this SGI

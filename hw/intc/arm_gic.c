@@ -177,7 +177,8 @@ void gic_update(GICState *s)
         for (irq = 0; irq < s->num_irq; irq++) {
             if (GIC_TEST_ENABLED(irq, cm) && gic_test_pending(s, irq, cm) &&
                 (irq < GIC_INTERNAL || GIC_TARGET(irq) & cm)) {
-                if (GIC_GET_PRIORITY(irq, cpu) < best_prio && !s->eoir[irq]) {
+                if (GIC_GET_PRIORITY(irq, cpu) < best_prio &&
+                    !s->eoir[cpu][irq]) {
                     best_prio = GIC_GET_PRIORITY(irq, cpu);
                     best_irq = irq;
                 }
@@ -405,7 +406,7 @@ static void gic_complete_irq_force(GICState *s, int cpu, int irq, bool force, bo
     }
 
     if (force) {
-        s->eoir[irq] = false;
+        s->eoir[cpu][irq] = false;
         eoirmode = false;
     }
 
@@ -424,7 +425,7 @@ static void gic_complete_irq_force(GICState *s, int cpu, int irq, bool force, bo
         return; /* No active IRQ.  */
 
     if (eoirmode) {
-        s->eoir[irq] = true;
+        s->eoir[cpu][irq] = true;
         gic_set_running_irq(s, cpu, 1023);
         gic_update(s);
         return;
