@@ -101,6 +101,26 @@ static uint64_t couter_low_value_postr(RegisterInfo *reg, uint64_t val64)
     return low_ticks;
 }
 
+static uint64_t couter_high_value_postr(RegisterInfo *reg, uint64_t val64)
+{
+    CXTSGen *s = XILINX_CXTSGEN(reg->opaque);
+    uint64_t current_ticks, total_ticks;
+    uint32_t high_ticks;
+
+    if (s->enabled) {
+        current_ticks = muldiv64(qemu_clock_get_us(QEMU_CLOCK_VIRTUAL),
+                                 get_ticks_per_sec(), 1000000);
+        total_ticks = current_ticks - s->tick_offset;
+        high_ticks = (uint32_t) (total_ticks >> 32);
+    } else {
+        /* Timer is disabled, return the time when it was disabled */
+        high_ticks = (uint32_t) (s->tick_offset >> 32);
+    }
+
+    return high_ticks;
+}
+
+
 static RegisterAccessInfo cxtsgen_regs_info[] = {
     {   .name = "COUNTER_CONTROL_REGISTER",  .decode.addr = A_COUNTER_CONTROL_REGISTER,
         .rsvd = 0xfffffffc, .post_write = counter_control_postw,
@@ -110,6 +130,7 @@ static RegisterAccessInfo cxtsgen_regs_info[] = {
     },{ .name = "CURRENT_COUNTER_VALUE_LOWER_REGISTER",  .decode.addr = A_CURRENT_COUNTER_VALUE_LOWER_REGISTER,
         .post_read = couter_low_value_postr,
     },{ .name = "CURRENT_COUNTER_VALUE_UPPER_REGISTER",  .decode.addr = A_CURRENT_COUNTER_VALUE_UPPER_REGISTER,
+        .post_read = couter_high_value_postr,
     },{ .name = "BASE_FREQUENCY_ID_REGISTER",  .decode.addr = A_BASE_FREQUENCY_ID_REGISTER,
     }
 };
