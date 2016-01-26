@@ -55,13 +55,25 @@ typedef struct CXTSGen {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
 
+    bool enabled;
+
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
 } CXTSGen;
 
+static void counter_control_postw(RegisterInfo *reg, uint64_t val64)
+{
+    CXTSGen *s = XILINX_CXTSGEN(reg->opaque);
+    bool new_status = extract32(s->regs[R_COUNTER_CONTROL_REGISTER],
+                                R_COUNTER_CONTROL_REGISTER_EN_SHIFT,
+                                R_COUNTER_CONTROL_REGISTER_EN_LENGTH);
+
+    s->enabled = new_status;
+}
+
 static RegisterAccessInfo cxtsgen_regs_info[] = {
     {   .name = "COUNTER_CONTROL_REGISTER",  .decode.addr = A_COUNTER_CONTROL_REGISTER,
-        .rsvd = 0xfffffffc,
+        .rsvd = 0xfffffffc, .post_write = counter_control_postw,
     },{ .name = "COUNTER_STATUS_REGISTER",  .decode.addr = A_COUNTER_STATUS_REGISTER,
         .rsvd = 0xfffffffd,
         .ro = 0x2,
