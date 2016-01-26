@@ -56,6 +56,7 @@ typedef struct CXTSGen {
     MemoryRegion iomem;
 
     bool enabled;
+    uint64_t tick_offset;
 
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
@@ -67,8 +68,37 @@ static void counter_control_postw(RegisterInfo *reg, uint64_t val64)
     bool new_status = extract32(s->regs[R_COUNTER_CONTROL_REGISTER],
                                 R_COUNTER_CONTROL_REGISTER_EN_SHIFT,
                                 R_COUNTER_CONTROL_REGISTER_EN_LENGTH);
+    uint64_t current_ticks;
+
+    current_ticks = muldiv64(qemu_clock_get_us(QEMU_CLOCK_VIRTUAL),
+                             get_ticks_per_sec(), 1000000);
+
+    if ((s->enabled && !new_status) ||
+        (!s->enabled && new_status)) {
+        /* The timer is being disabled or enabled */
+        s->tick_offset = current_ticks - s->tick_offset;
+    }
 
     s->enabled = new_status;
+}
+
+static uint64_t couter_low_value_postr(RegisterInfo *reg, uint64_t val64)
+{
+    CXTSGen *s = XILINX_CXTSGEN(reg->opaque);
+    uint64_t current_ticks, total_ticks;
+    uint32_t low_ticks;
+
+    if (s->enabled) {
+        current_ticks = muldiv64(qemu_clock_get_us(QEMU_CLOCK_VIRTUAL),
+                                 get_ticks_per_sec(), 1000000);
+        total_ticks = current_ticks - s->tick_offset;
+        low_ticks = (uint32_t) total_ticks;
+    } else {
+        /* Timer is disabled, return the time when it was disabled */
+        low_ticks = (uint32_t) s->tick_offset;
+    }
+
+    return low_ticks;
 }
 
 static RegisterAccessInfo cxtsgen_regs_info[] = {
@@ -78,6 +108,7 @@ static RegisterAccessInfo cxtsgen_regs_info[] = {
         .rsvd = 0xfffffffd,
         .ro = 0x2,
     },{ .name = "CURRENT_COUNTER_VALUE_LOWER_REGISTER",  .decode.addr = A_CURRENT_COUNTER_VALUE_LOWER_REGISTER,
+        .post_read = couter_low_value_postr,
     },{ .name = "CURRENT_COUNTER_VALUE_UPPER_REGISTER",  .decode.addr = A_CURRENT_COUNTER_VALUE_UPPER_REGISTER,
     },{ .name = "BASE_FREQUENCY_ID_REGISTER",  .decode.addr = A_BASE_FREQUENCY_ID_REGISTER,
     }
@@ -92,6 +123,8 @@ static void cxtsgen_reset(DeviceState *dev)
         register_reset(&s->regs_info[i]);
     }
 
+    s->tick_offset = 0;
+    s->enabled = false;
 }
 
 static uint64_t cxtsgen_read(void *opaque, hwaddr addr, unsigned size)
