@@ -177,6 +177,7 @@ enum {
 
 #define ZYNQ_SLCR_NUM_CPUS 2
 
+#define FPGA_RST_VALID_BITS 0x01f33F0F
 #define A9_CPU_RST_CTRL_RST_SHIFT 0
 
 #define TYPE_ZYNQ_SLCR "xilinx,zynq_slcr"
@@ -187,6 +188,9 @@ typedef struct ZynqSLCRState {
 
     MemoryRegion iomem;
     qemu_irq cpu_resets[ZYNQ_SLCR_NUM_CPUS];
+
+    /* PS to PL reset signals.  */
+    qemu_irq fpga_resets[17];
 
     uint32_t regs[ZYNQ_SLCR_NUM_REGS];
 } ZynqSLCRState;
@@ -261,6 +265,28 @@ static void zynq_slcr_fdt_config(ZynqSLCRState *s)
 #endif
 
     return;
+}
+
+static void zynq_slcr_update_fpga_resets(ZynqSLCRState *s)
+{
+    uint32_t val = s->regs[FPGA_RST_CTRL];
+    int out_idx = 0;
+    int i;
+
+    /* FPGA OUT Resets.  */
+    for (i = 0; i < 32; i++) {
+        bool rst = extract32(val, i, 1);
+        bool valid = extract32(FPGA_RST_VALID_BITS, i, 1);
+
+        /* Ignore reserved bits.  */
+        if (!valid) {
+            continue;
+        }
+
+        assert(out_idx < ARRAY_SIZE(s->fpga_resets));
+        qemu_set_irq(s->fpga_resets[out_idx], rst);
+        out_idx++;
+    }
 }
 
 static void zynq_slcr_reset(DeviceState *d)
@@ -357,6 +383,7 @@ static void zynq_slcr_reset(DeviceState *d)
     s->regs[DDRIOB + 12] = 0x00000021;
 
     zynq_slcr_fdt_config(s);
+    zynq_slcr_update_fpga_resets(s);
 }
 
 
@@ -500,6 +527,11 @@ static void zynq_slcr_write(void *opaque, hwaddr offset,
             DB_PRINT("%sresetting cpu %d\n", rst ? "" : "un-", i);
         }
         break;
+    case FPGA_RST_CTRL:
+        /* Mask off invalid bits.  */
+        s->regs[offset] &= FPGA_RST_VALID_BITS;
+        zynq_slcr_update_fpga_resets(s);
+        break;
     }
 }
 
@@ -537,6 +569,7 @@ static void zynq_slcr_init(Object *obj)
     sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->iomem);
 
     qdev_init_gpio_out(DEVICE(obj), s->cpu_resets, ZYNQ_SLCR_NUM_CPUS);
+    qdev_init_gpio_out(DEVICE(obj), s->fpga_resets, ARRAY_SIZE(s->fpga_resets));
 }
 
 static const VMStateDescription vmstate_zynq_slcr = {
