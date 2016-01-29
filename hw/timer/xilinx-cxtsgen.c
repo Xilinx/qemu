@@ -177,9 +177,32 @@ static void cxtsgen_write(void *opaque, hwaddr addr, uint64_t value,
     register_write(r, value, ~0);
 }
 
+static void cxtsgen_access(MemoryTransaction *tr)
+{
+    MemoryTransactionAttr *attr = tr->attr;
+    void *opaque = tr->opaque;
+    hwaddr addr = tr->addr;
+    unsigned size = tr->size;
+    uint64_t value = tr->data.u64;;
+    bool is_write = tr->rw;
+
+    if (is_write && !attr->secure) {
+        /* Ignore NS writes  */
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "Non secure writes to the system timestamp generator " \
+                      "are invalid\n");
+        return;
+    }
+
+    if (is_write) {
+        cxtsgen_write(opaque, addr, value, size);
+    } else {
+        tr->data.u64 = cxtsgen_read(opaque, addr, size);
+    }
+}
+
 static const MemoryRegionOps cxtsgen_ops = {
-    .read = cxtsgen_read,
-    .write = cxtsgen_write,
+    .access = cxtsgen_access,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
