@@ -1,5 +1,5 @@
 /*
- * QEMU model of the CXTSGEN System Time Stamp Generator
+ * QEMU model of the ARM Generic Timer
  *
  * Copyright (c) 2014 Xilinx Inc.
  *
@@ -29,16 +29,14 @@
 #include "qemu/bitops.h"
 #include "qemu/log.h"
 
-#ifndef XILINX_CXTSGEN_ERR_DEBUG
-#define XILINX_CXTSGEN_ERR_DEBUG 0
+#ifndef ARM_GEN_TIMER_ERR_DEBUG
+#define ARM_GEN_TIMER_ERR_DEBUG 0
 #endif
 
-/* FIXME: This is ARM IP we should rebadge globally accordingly */
+#define TYPE_ARM_GEN_TIMER "arm.generic-timer"
 
-#define TYPE_XILINX_CXTSGEN "xilinx.cxtsgen"
-
-#define XILINX_CXTSGEN(obj) \
-     OBJECT_CHECK(CXTSGen, (obj), TYPE_XILINX_CXTSGEN)
+#define ARM_GEN_TIMER(obj) \
+     OBJECT_CHECK(ARMGenTimer, (obj), TYPE_ARM_GEN_TIMER)
 
 REG32(COUNTER_CONTROL_REGISTER, 0x0)
     FIELD(COUNTER_CONTROL_REGISTER, EN, 1, 1)
@@ -51,7 +49,7 @@ REG32(BASE_FREQUENCY_ID_REGISTER, 0x20)
 
 #define R_MAX (R_BASE_FREQUENCY_ID_REGISTER + 1)
 
-typedef struct CXTSGen {
+typedef struct ARMGenTimer {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
 
@@ -60,11 +58,11 @@ typedef struct CXTSGen {
 
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
-} CXTSGen;
+} ARMGenTimer;
 
 static void counter_control_postw(RegisterInfo *reg, uint64_t val64)
 {
-    CXTSGen *s = XILINX_CXTSGEN(reg->opaque);
+    ARMGenTimer *s = ARM_GEN_TIMER(reg->opaque);
     bool new_status = extract32(s->regs[R_COUNTER_CONTROL_REGISTER],
                                 R_COUNTER_CONTROL_REGISTER_EN_SHIFT,
                                 R_COUNTER_CONTROL_REGISTER_EN_LENGTH);
@@ -84,7 +82,7 @@ static void counter_control_postw(RegisterInfo *reg, uint64_t val64)
 
 static uint64_t couter_low_value_postr(RegisterInfo *reg, uint64_t val64)
 {
-    CXTSGen *s = XILINX_CXTSGEN(reg->opaque);
+    ARMGenTimer *s = ARM_GEN_TIMER(reg->opaque);
     uint64_t current_ticks, total_ticks;
     uint32_t low_ticks;
 
@@ -103,7 +101,7 @@ static uint64_t couter_low_value_postr(RegisterInfo *reg, uint64_t val64)
 
 static uint64_t couter_high_value_postr(RegisterInfo *reg, uint64_t val64)
 {
-    CXTSGen *s = XILINX_CXTSGEN(reg->opaque);
+    ARMGenTimer *s = ARM_GEN_TIMER(reg->opaque);
     uint64_t current_ticks, total_ticks;
     uint32_t high_ticks;
 
@@ -121,23 +119,28 @@ static uint64_t couter_high_value_postr(RegisterInfo *reg, uint64_t val64)
 }
 
 
-static RegisterAccessInfo cxtsgen_regs_info[] = {
-    {   .name = "COUNTER_CONTROL_REGISTER",  .decode.addr = A_COUNTER_CONTROL_REGISTER,
-        .rsvd = 0xfffffffc, .post_write = counter_control_postw,
-    },{ .name = "COUNTER_STATUS_REGISTER",  .decode.addr = A_COUNTER_STATUS_REGISTER,
-        .rsvd = 0xfffffffd,
-        .ro = 0x2,
-    },{ .name = "CURRENT_COUNTER_VALUE_LOWER_REGISTER",  .decode.addr = A_CURRENT_COUNTER_VALUE_LOWER_REGISTER,
+static RegisterAccessInfo arm_gen_timer_regs_info[] = {
+    {   .name = "COUNTER_CONTROL_REGISTER",
+        .decode.addr = A_COUNTER_CONTROL_REGISTER,
+        .rsvd = 0xfffffffc,
+        .post_write = counter_control_postw,
+    },{ .name = "COUNTER_STATUS_REGISTER",
+        .decode.addr = A_COUNTER_STATUS_REGISTER,
+        .rsvd = 0xfffffffd, .ro = 0x2,
+    },{ .name = "CURRENT_COUNTER_VALUE_LOWER_REGISTER",
+        .decode.addr = A_CURRENT_COUNTER_VALUE_LOWER_REGISTER,
         .post_read = couter_low_value_postr,
-    },{ .name = "CURRENT_COUNTER_VALUE_UPPER_REGISTER",  .decode.addr = A_CURRENT_COUNTER_VALUE_UPPER_REGISTER,
+    },{ .name = "CURRENT_COUNTER_VALUE_UPPER_REGISTER",
+        .decode.addr = A_CURRENT_COUNTER_VALUE_UPPER_REGISTER,
         .post_read = couter_high_value_postr,
-    },{ .name = "BASE_FREQUENCY_ID_REGISTER",  .decode.addr = A_BASE_FREQUENCY_ID_REGISTER,
+    },{ .name = "BASE_FREQUENCY_ID_REGISTER",
+        .decode.addr = A_BASE_FREQUENCY_ID_REGISTER,
     }
 };
 
-static void cxtsgen_reset(DeviceState *dev)
+static void arm_gen_timer_reset(DeviceState *dev)
 {
-    CXTSGen *s = XILINX_CXTSGEN(dev);
+    ARMGenTimer *s = ARM_GEN_TIMER(dev);
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
@@ -148,9 +151,9 @@ static void cxtsgen_reset(DeviceState *dev)
     s->enabled = false;
 }
 
-static uint64_t cxtsgen_read(void *opaque, hwaddr addr, unsigned size)
+static uint64_t arm_gen_timer_read(void *opaque, hwaddr addr, unsigned size)
 {
-    CXTSGen *s = XILINX_CXTSGEN(opaque);
+    ARMGenTimer *s = ARM_GEN_TIMER(opaque);
     RegisterInfo *r = &s->regs_info[addr / 4];
 
     if (!r->data) {
@@ -162,10 +165,10 @@ static uint64_t cxtsgen_read(void *opaque, hwaddr addr, unsigned size)
     return register_read(r);
 }
 
-static void cxtsgen_write(void *opaque, hwaddr addr, uint64_t value,
+static void arm_gen_timer_write(void *opaque, hwaddr addr, uint64_t value,
                       unsigned size)
 {
-    CXTSGen *s = XILINX_CXTSGEN(opaque);
+    ARMGenTimer *s = ARM_GEN_TIMER(opaque);
     RegisterInfo *r = &s->regs_info[addr / 4];
 
     if (!r->data) {
@@ -177,7 +180,7 @@ static void cxtsgen_write(void *opaque, hwaddr addr, uint64_t value,
     register_write(r, value, ~0);
 }
 
-static void cxtsgen_access(MemoryTransaction *tr)
+static void arm_gen_timer_access(MemoryTransaction *tr)
 {
     MemoryTransactionAttr *attr = tr->attr;
     void *opaque = tr->opaque;
@@ -195,14 +198,14 @@ static void cxtsgen_access(MemoryTransaction *tr)
     }
 
     if (is_write) {
-        cxtsgen_write(opaque, addr, value, size);
+        arm_gen_timer_write(opaque, addr, value, size);
     } else {
-        tr->data.u64 = cxtsgen_read(opaque, addr, size);
+        tr->data.u64 = arm_gen_timer_read(opaque, addr, size);
     }
 }
 
-static const MemoryRegionOps cxtsgen_ops = {
-    .access = cxtsgen_access,
+static const MemoryRegionOps arm_gen_timer_ops = {
+    .access = arm_gen_timer_access,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
@@ -210,68 +213,69 @@ static const MemoryRegionOps cxtsgen_ops = {
     },
 };
 
-static void cxtsgen_realize(DeviceState *dev, Error **errp)
+static void arm_gen_timer_realize(DeviceState *dev, Error **errp)
 {
-    CXTSGen *s = XILINX_CXTSGEN(dev);
+    ARMGenTimer *s = ARM_GEN_TIMER(dev);
     const char *prefix = object_get_canonical_path(OBJECT(dev));
     unsigned int i;
 
-    for (i = 0; i < ARRAY_SIZE(cxtsgen_regs_info); ++i) {
-        RegisterInfo *r = &s->regs_info[cxtsgen_regs_info[i].decode.addr/4];
+    for (i = 0; i < ARRAY_SIZE(arm_gen_timer_regs_info); ++i) {
+        RegisterInfo *r =
+                    &s->regs_info[arm_gen_timer_regs_info[i].decode.addr / 4];
 
         *r = (RegisterInfo) {
             .data = (uint8_t *)&s->regs[
-                    cxtsgen_regs_info[i].decode.addr/4],
+                    arm_gen_timer_regs_info[i].decode.addr/4],
             .data_size = sizeof(uint32_t),
-            .access = &cxtsgen_regs_info[i],
-            .debug = XILINX_CXTSGEN_ERR_DEBUG,
+            .access = &arm_gen_timer_regs_info[i],
+            .debug = ARM_GEN_TIMER_ERR_DEBUG,
             .prefix = prefix,
             .opaque = s,
         };
     }
 }
 
-static void cxtsgen_init(Object *obj)
+static void arm_gen_timer_init(Object *obj)
 {
-    CXTSGen *s = XILINX_CXTSGEN(obj);
+    ARMGenTimer *s = ARM_GEN_TIMER(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
 
-    memory_region_init_io(&s->iomem, obj, &cxtsgen_ops, s,
-                          TYPE_XILINX_CXTSGEN, R_MAX * 4);
+    memory_region_init_io(&s->iomem, obj, &arm_gen_timer_ops, s,
+                          TYPE_ARM_GEN_TIMER, R_MAX * 4);
     sysbus_init_mmio(sbd, &s->iomem);
 }
 
-static const VMStateDescription vmstate_cxtsgen = {
-    .name = TYPE_XILINX_CXTSGEN,
+static const VMStateDescription vmstate_arm_gen_timer = {
+    .name = TYPE_ARM_GEN_TIMER,
     .version_id = 1,
     .minimum_version_id = 1,
     .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
-        VMSTATE_UINT32_ARRAY(regs, CXTSGen, R_MAX),
+        VMSTATE_UINT32_ARRAY(regs, ARMGenTimer, R_MAX),
         VMSTATE_END_OF_LIST(),
     }
 };
 
-static void cxtsgen_class_init(ObjectClass *klass, void *data)
+static void arm_gen_timer_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->reset = cxtsgen_reset;
-    dc->realize = cxtsgen_realize;
-    dc->vmsd = &vmstate_cxtsgen;
+    dc->reset = arm_gen_timer_reset;
+    dc->realize = arm_gen_timer_realize;
+    dc->vmsd = &vmstate_arm_gen_timer;
 }
 
-static const TypeInfo cxtsgen_info = {
-    .name          = TYPE_XILINX_CXTSGEN,
+static const TypeInfo arm_gen_timer_info = {
+    .name          = TYPE_ARM_GEN_TIMER,
     .parent        = TYPE_SYS_BUS_DEVICE,
-    .instance_size = sizeof(CXTSGen),
-    .class_init    = cxtsgen_class_init,
-    .instance_init = cxtsgen_init,
+    .instance_size = sizeof(ARMGenTimer),
+    .class_init    = arm_gen_timer_class_init,
+    .instance_init = arm_gen_timer_init,
 };
 
-static void cxtsgen_register_types(void)
+static void arm_gen_timer_register_types(void)
 {
-    type_register_static(&cxtsgen_info);
+    type_register_static(&arm_gen_timer_info);
 }
 
-type_init(cxtsgen_register_types)
+type_init(arm_gen_timer_register_types)
