@@ -5631,8 +5631,16 @@ typedef enum {
 static bool check_s2_startlevel(ARMCPU *cpu, bool is_aa64, int level,
                                 int inputsize, int stride)
 {
+    const int grainsize = stride + 3;
+    int startsizecheck;
+
     /* Negative levels are never allowed.  */
     if (level < 0) {
+        return false;
+    }
+
+    startsizecheck = inputsize - ((3 - level) * stride + grainsize);
+    if (startsizecheck < 1 || startsizecheck > stride + 4) {
         return false;
     }
 
@@ -5659,18 +5667,10 @@ static bool check_s2_startlevel(ARMCPU *cpu, bool is_aa64, int level,
             g_assert_not_reached();
         }
     } else {
-        const int grainsize = stride + 3;
-        int startsizecheck;
-
         /* AArch32 only supports 4KB pages. Assert on that.  */
         assert(stride == 9);
 
         if (level == 0) {
-            return false;
-        }
-
-        startsizecheck = inputsize - ((3 - level) * stride + grainsize);
-        if (startsizecheck < 1 || startsizecheck > stride + 4) {
             return false;
         }
     }
