@@ -30,7 +30,7 @@
 #include "qemu/bitops.h"
 #include "qemu/log.h"
 
-#include "sdhci.h"
+#include "sdhci-internal.h"
 
 /* host controller debug messages */
 #ifndef SDHC_DEBUG

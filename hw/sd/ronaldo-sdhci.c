@@ -33,8 +33,7 @@
 
 #include "hw/fdt_generic_util.h"
 
-#include "hw/sd.h"
-#include "sdhci.h"
+#include "sdhci-internal.h"
 
 #ifndef RONALDO_SDHCI_ERR_DEBUG
 #define RONALDO_SDHCI_ERR_DEBUG 0

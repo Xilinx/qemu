@@ -31,7 +31,7 @@
 
 #include "hw/hw.h"
 #include "sysemu/block-backend.h"
-#include "hw/sd.h"
+#include "hw/sd/sd.h"
 #include "qemu/bitmap.h"
 #include "qemu/log.h"
 

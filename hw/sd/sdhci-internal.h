@@ -21,14 +21,10 @@
  * You should have received a copy of the GNU General Public License along
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
+#ifndef SDHCI_INTERNAL_H
+#define SDHCI_INTERNAL_H
 
-#ifndef SDHCI_H
-#define SDHCI_H
-
-#include "qemu-common.h"
-#include "hw/pci/pci.h"
-#include "hw/sysbus.h"
-#include "hw/sd.h"
+#include "hw/sd/sdhci.h"
 
 /* R/W SDMA System Address register 0x0 */
 #define SDHC_SYSAD                     0x00
@@ -74,7 +70,6 @@
 
 /* R/ROC Present State Register 0x000A0000 */
 #define SDHC_PRNSTS                    0x24
-#define SDHC_CMD_LVL_SHIFT             24
 #define SDHC_CMD_INHIBIT               0x00000001
 #define SDHC_DATA_INHIBIT              0x00000002
 #define SDHC_DAT_LINE_ACTIVE           0x00000004
@@ -85,8 +80,6 @@
 #define SDHC_CARD_PRESENT              0x00010000
 #define SDHC_CARD_DETECT               0x00040000
 #define SDHC_WRITE_PROTECT             0x00080000
-#define SDHC_DAT_LVL_SHIFT             20
-#define SDHC_DAT_LVL_LENGTH            4
 #define TRANSFERRING_DATA(x)           \
     ((x) & (SDHC_DOING_READ | SDHC_DOING_WRITE))
 
@@ -179,16 +172,10 @@
 #define SDHC_ERRINTSIGEN               0x3A
 
 /* ROC Auto CMD12 error status register 0x0 */
-/* 16 MSB are the Host Control Register 2.  */
 #define SDHC_ACMD12ERRSTS              0x3C
-#define SDHC_HOSTCTL2                  0x3E
-#define SDHC_CTRL2_VOLTAGE_SWITCH      (1 << 3)
-#define SDHC_CTRL2_SAMPLING_CLKSEL     (1 << 23)
-#define SDHC_CTRL2_EXECUTE_TUNING      (1 << 22)
 
 /* HWInit Capabilities Register 0x05E80080 */
 #define SDHC_CAPAREG                   0x40
-#define SDHC_CAPAREG_HI                0x44
 #define SDHC_CAN_DO_DMA                0x00400000
 #define SDHC_CAN_DO_ADMA2              0x00080000
 #define SDHC_CAN_DO_ADMA1              0x00100000
@@ -226,7 +213,7 @@
 
 /* HWInit Host Controller Version Register 0x0401 */
 #define SDHC_HCVER                      0xFE
-#define SD_HOST_SPECv2_VERS             0x2402
+#define SD_HOST_SPECv2_VERS             0x2401
 
 #define SDHC_REGISTERS_MAP_SIZE         0x100
 #define SDHC_INSERTION_DELAY            (get_ticks_per_sec())
@@ -234,75 +221,47 @@
 #define SDHC_ADMA_DESCS_PER_DELAY       5
 #define SDHC_CMD_RESPONSE               (3 << 0)
 
+/* ROC Auto CMD12 error status register 0x0 */
+/* 16 MSB are the Host Control Register 2.  */
+#define SDHC_ACMD12ERRSTS              0x3C
+#define SDHC_HOSTCTL2                  0x3E
+#define SDHC_CTRL2_VOLTAGE_SWITCH      (1 << 3)
+#define SDHC_CTRL2_SAMPLING_CLKSEL     (1 << 23)
+#define SDHC_CTRL2_EXECUTE_TUNING      (1 << 22)
+
+/* R/ROC Present State Register 0x000A0000 */
+#define SDHC_PRNSTS                    0x24
+#define SDHC_CMD_LVL_SHIFT             24
+#define SDHC_CMD_INHIBIT               0x00000001
+#define SDHC_DATA_INHIBIT              0x00000002
+#define SDHC_DAT_LINE_ACTIVE           0x00000004
+#define SDHC_DOING_WRITE               0x00000100
+#define SDHC_DOING_READ                0x00000200
+#define SDHC_SPACE_AVAILABLE           0x00000400
+#define SDHC_DATA_AVAILABLE            0x00000800
+#define SDHC_CARD_PRESENT              0x00010000
+#define SDHC_CARD_DETECT               0x00040000
+#define SDHC_WRITE_PROTECT             0x00080000
+#define SDHC_DAT_LVL_SHIFT             20
+#define SDHC_DAT_LVL_LENGTH            4
+#define TRANSFERRING_DATA(x)           \
+    ((x) & (SDHC_DOING_READ | SDHC_DOING_WRITE))
+
+/* HWInit Capabilities Register 0x05E80080 */
+#define SDHC_CAPAREG                   0x40
+#define SDHC_CAPAREG_HI                0x44
+#define SDHC_CAN_DO_DMA                0x00400000
+#define SDHC_CAN_DO_ADMA2              0x00080000
+#define SDHC_CAN_DO_ADMA1              0x00100000
+#define SDHC_64_BIT_BUS_SUPPORT        (1 << 28)
+#define SDHC_CAPAB_BLOCKSIZE(x)        (((x) >> 16) & 0x3)
+
 enum {
     sdhc_not_stopped = 0, /* normal SDHC state */
     sdhc_gap_read   = 1,  /* SDHC stopped at block gap during read operation */
     sdhc_gap_write  = 2   /* SDHC stopped at block gap during write operation */
 };
 
-/* SD/MMC host controller state */
-typedef struct SDHCIState {
-    union {
-        PCIDevice pcidev;
-        SysBusDevice busdev;
-    };
-    SDState *card;
-    MemoryRegion iomem;
-    MemoryRegion *dma_mr;
-    AddressSpace *dma_as;
-
-    QEMUTimer *insert_timer;       /* timer for 'changing' sd card. */
-    QEMUTimer *transfer_timer;
-    qemu_irq eject_cb;
-    qemu_irq ro_cb;
-    qemu_irq irq;
-
-    uint32_t sdmasysad;    /* SDMA System Address register */
-    uint16_t blksize;      /* Host DMA Buff Boundary and Transfer BlkSize Reg */
-    uint16_t blkcnt;       /* Blocks count for current transfer */
-    uint32_t argument;     /* Command Argument Register */
-    uint16_t trnmod;       /* Transfer Mode Setting Register */
-    uint16_t cmdreg;       /* Command Register */
-    uint32_t rspreg[4];    /* Response Registers 0-3 */
-    uint32_t prnsts;       /* Present State Register */
-    uint8_t  hostctl;      /* Host Control Register */
-    uint8_t  pwrcon;       /* Power control Register */
-    uint8_t  blkgap;       /* Block Gap Control Register */
-    uint8_t  wakcon;       /* WakeUp Control Register */
-    uint16_t clkcon;       /* Clock control Register */
-    uint8_t  timeoutcon;   /* Timeout Control Register */
-    uint8_t  admaerr;      /* ADMA Error Status Register */
-    uint16_t norintsts;    /* Normal Interrupt Status Register */
-    uint16_t errintsts;    /* Error Interrupt Status Register */
-    uint16_t norintstsen;  /* Normal Interrupt Status Enable Register */
-    uint16_t errintstsen;  /* Error Interrupt Status Enable Register */
-    uint16_t norintsigen;  /* Normal Interrupt Signal Enable Register */
-    uint16_t errintsigen;  /* Error Interrupt Signal Enable Register */
-    uint16_t acmd12errsts; /* Auto CMD12 error status register */
-    uint16_t hostctl2;     /* Host Control 2 */
-    uint64_t admasysaddr;  /* ADMA System Address Register */
-
-    uint64_t capareg;      /* Capabilities Register */
-    uint32_t maxcurr;      /* Maximum Current Capabilities Register */
-    uint8_t  *fifo_buffer; /* SD host i/o FIFO buffer */
-    uint32_t buf_maxsz;
-    uint16_t data_count;   /* current element in FIFO buffer */
-    uint8_t  stopped_state;/* Current SDHC state */
-    /* Buffer Data Port Register - virtual access point to R and W buffers */
-    /* Software Reset Register - always reads as 0 */
-    /* Force Event Auto CMD12 Error Interrupt Reg - write only */
-    /* Force Event Error Interrupt Register- write only */
-    /* RO Host Controller Version Register always reads as 0x2401 */
-
-} SDHCIState;
-
 extern const VMStateDescription sdhci_vmstate;
 
-#define TYPE_PCI_SDHCI "sdhci-pci"
-#define PCI_SDHCI(obj) OBJECT_CHECK(SDHCIState, (obj), TYPE_PCI_SDHCI)
-
-#define TYPE_SYSBUS_SDHCI "generic-sdhci"
-#define SYSBUS_SDHCI(obj)                               \
-     OBJECT_CHECK(SDHCIState, (obj), TYPE_SYSBUS_SDHCI)
-
-#endif /* SDHCI_H */
+#endif
