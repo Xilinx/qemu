@@ -15,7 +15,6 @@
 #include "hw/misc/a9scu.h"
 #include "hw/timer/arm_mptimer.h"
 #include "hw/timer/a9gtimer.h"
-#include "qapi/visitor.h"
 
 #define TYPE_A9MPCORE_PRIV "a9mpcore_priv"
 #define A9MPCORE_PRIV(obj) \
@@ -29,8 +28,6 @@ typedef struct A9MPPrivState {
     uint32_t num_cpu;
     MemoryRegion container;
     uint32_t num_irq;
-
-    ARMCPU *cpu;
 
     A9SCUState scu;
     GICState gic;

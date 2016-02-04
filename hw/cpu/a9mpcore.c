@@ -8,6 +8,7 @@
  * This code is licensed under the GPL.
  */
 
+#include "qemu/osdep.h"
 #include "hw/cpu/a9mpcore.h"
 
 static void a9mp_priv_set_irq(void *opaque, int irq, int level)
@@ -17,53 +18,9 @@ static void a9mp_priv_set_irq(void *opaque, int irq, int level)
     qemu_set_irq(qdev_get_gpio_in(DEVICE(&s->gic), irq), level);
 }
 
-static void a9mpcore_init_cpus(Object *obj, Visitor *v,
-                               void *opaque, const char *name,
-                               Error **errp)
-{
-    A9MPPrivState *s = A9MPCORE_PRIV(obj);
-    ObjectClass *cpu_oc;
-    Error *err = NULL;
-    int i;
-    int64_t value;
-
-    visit_type_int(v, &value, name, &err);
-    if (err) {
-        error_propagate(errp, err);
-        return;
-    }
-    s->num_cpu = value;
-
-    s->cpu = g_new0(ARMCPU, s->num_cpu);
-    cpu_oc = cpu_class_by_name(TYPE_ARM_CPU, "cortex-a9");
-
-    for (i = 0; i < s->num_cpu; i++) {
-        object_initialize(&s->cpu[i], sizeof(*s->cpu),
-                          object_class_get_name(cpu_oc));
-
-        object_property_add_alias(obj, "midr", OBJECT(&s->cpu[i]),
-                                  "midr", NULL);
-        object_property_add_alias(obj, "reset-cbar", OBJECT(&s->cpu[i]),
-                                  "reset-cbar", NULL);
-        /* This fails to pass through thte reset-cbar property
-         * The qdev_alias_all_properties() also fails with multiple CPUs
-         * Hence the code above is used instead
-         * qdev_alias_all_properties(DEVICE(&s->cpu[i]), obj);
-         */
-    }
-}
-
 static void a9mp_priv_initfn(Object *obj)
 {
     A9MPPrivState *s = A9MPCORE_PRIV(obj);
-
-    /* Set up the CPU to be initiated */
-    object_property_add(obj, "num-cpu", "int",
-                        NULL, a9mpcore_init_cpus,
-                        NULL, NULL, NULL);
-    /* Use this as the default */
-    s->cpu = NULL;
-    s->num_cpu = 1;
 
     memory_region_init(&s->container, obj, "a9mp-priv-container", 0x2000);
     sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->container);
@@ -94,17 +51,6 @@ static void a9mp_priv_realize(DeviceState *dev, Error **errp)
     Error *err = NULL;
     int i;
 
-    if (s->cpu) {
-        for (i = 0; i < s->num_cpu; i++) {
-            object_property_set_bool(OBJECT(&s->cpu[i]), true,
-                                     "realized", &err);
-            if (err) {
-                error_propagate(errp, err);
-                return;
-            }
-        }
-    }
-
     scudev = DEVICE(&s->scu);
     qdev_prop_set_uint32(scudev, "num-cpu", s->num_cpu);
     object_property_set_bool(OBJECT(&s->scu), true, "realized", &err);
@@ -129,12 +75,6 @@ static void a9mp_priv_realize(DeviceState *dev, Error **errp)
 
     /* Pass through inbound GPIO lines to the GIC */
     qdev_init_gpio_in(dev, a9mp_priv_set_irq, s->num_irq - 32);
-
-    /* Connect the GIC to the first CPU */
-    if (s->cpu) {
-        sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0,
-                           qdev_get_gpio_in(DEVICE(s->cpu), ARM_CPU_IRQ));
-    }
 
     gtimerdev = DEVICE(&s->gtimer);
     qdev_prop_set_uint32(gtimerdev, "num-cpu", s->num_cpu);
@@ -205,6 +145,7 @@ static void a9mp_priv_realize(DeviceState *dev, Error **errp)
 }
 
 static Property a9mp_priv_properties[] = {
+    DEFINE_PROP_UINT32("num-cpu", A9MPPrivState, num_cpu, 1),
     /* The Cortex-A9MP may have anything from 0 to 224 external interrupt
      * IRQ lines (with another 32 internal). We default to 64+32, which
      * is the number provided by the Cortex-A9MP test chip in the

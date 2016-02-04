@@ -317,8 +317,6 @@ static void zynq_init(MachineState *machine)
 
     mpcore = A9MPCORE_PRIV(object_new("a9mpcore_priv"));
     qdev_prop_set_uint32(DEVICE(mpcore), "num-cpu", smp_cpus);
-    qdev_prop_set_uint32(DEVICE(mpcore), "midr", ZYNQ_BOARD_MIDR);
-    qdev_prop_set_uint64(DEVICE(mpcore), "reset-cbar", MPCORE_PERIPHBASE);
     object_property_set_bool(OBJECT(mpcore), true, "realized", &err);
     if (err != NULL) {
         error_report("Couldn't realize the Zynq A9MPCore: %s",
