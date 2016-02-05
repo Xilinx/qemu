@@ -458,13 +458,13 @@ static inline uint64_t sd_addr_to_wpnum(uint64_t addr)
     return addr >> (HWBLOCK_SHIFT + SECTOR_SHIFT + WPGROUP_SHIFT);
 }
 
-static void sd_reset(SDState *sd, BlockBackend *blk)
+static void sd_reset(SDState *sd)
 {
     uint64_t size;
     uint64_t sect;
 
-    if (blk) {
-        blk_get_geometry(blk, &sect);
+    if (sd->blk) {
+        blk_get_geometry(sd->blk, &sect);
     } else {
         sect = 0;
     }
@@ -482,11 +482,8 @@ static void sd_reset(SDState *sd, BlockBackend *blk)
     sd_set_cardstatus(sd);
     sd_set_sdstatus(sd);
 
-    sd->blk = blk;
-
-    if (sd->wp_groups)
-        g_free(sd->wp_groups);
-    sd->wp_switch = blk ? blk_is_read_only(blk) : false;
+    g_free(sd->wp_groups);
+    sd->wp_switch = sd->blk ? blk_is_read_only(sd->blk) : false;
     sd->wpgrps_size = sect;
     sd->wp_groups = bitmap_new(sd->wpgrps_size);
     memset(sd->function_group, 0, sizeof(sd->function_group));
@@ -506,7 +503,7 @@ static void sd_cardchange(void *opaque, bool load)
 
     qemu_set_irq(sd->inserted_cb, blk_is_inserted(sd->blk));
     if (blk_is_inserted(sd->blk)) {
-        sd_reset(sd, sd->blk);
+        sd_reset(sd);
         qemu_set_irq(sd->readonly_cb, sd->wp_switch);
     }
 }
@@ -565,9 +562,13 @@ static SDState *sd_do_init(BlockBackend *blk, bool is_spi, bool is_mmc)
     sd->spi = is_spi;
     sd->mmc = is_mmc;
     sd->enable = true;
-    sd_reset(sd, blk);
+    sd->blk = blk;
+    sd_reset(sd);
     if (sd->blk) {
-        blk_attach_dev_nofail(sd->blk, sd);
+        /* Attach dev if not already attached.  (This call ignores an
+         * error return code if sd->blk is already attached.) */
+        /* FIXME ignoring blk_attach_dev() failure is dangerously brittle */
+        blk_attach_dev(sd->blk, sd);
         blk_set_dev_ops(sd->blk, &sd_block_ops, sd);
     }
     vmstate_register(NULL, -1, &sd_vmstate, sd);
@@ -883,7 +884,7 @@ static sd_rsp_type_t sd_normal_command(SDState *sd,
         default:
             sd->state = sd_idle_state;
             sd->uhs = false;
-            sd_reset(sd, sd->blk);
+            sd_reset(sd);
             return sd->spi ? sd_r1 : sd_r0;
         }
         break;
