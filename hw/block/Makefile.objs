@@ -11,7 +11,6 @@ common-obj-$(CONFIG_ONENAND) += onenand.o
 common-obj-$(CONFIG_NVME_PCI) += nvme.o
 common-obj-$(CONFIG_ARASAN_NFC) += arasan_nfc.o
 common-obj-$(CONFIG_M24CXX) += m24cxx.o
-common-obj-$(CONFIG_SD) += sd.o
 
 obj-$(CONFIG_SH4) += tc58128.o
 
