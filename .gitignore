@@ -109,3 +109,4 @@ cscope.*
 tags
 TAGS
 *~
+util/qemu-nand-creator

@@ -223,6 +223,8 @@ qemu-io$(EXESUF): qemu-io.o $(block-obj-y) libqemuutil.a libqemustub.a
 
 qemu-bridge-helper$(EXESUF): qemu-bridge-helper.o
 
+util/qemu-nand-creator$(EXESUF): util/qemu-nand-creator.o
+
 fsdev/virtfs-proxy-helper$(EXESUF): fsdev/virtfs-proxy-helper.o fsdev/virtio-9p-marshal.o libqemuutil.a libqemustub.a
 fsdev/virtfs-proxy-helper$(EXESUF): LIBS += -lcap
 
@@ -292,6 +294,7 @@ clean:
 	rm -f fsdev/*.pod
 	rm -rf .libs */.libs
 	rm -f qemu-img-cmds.h
+	rm -f util/qemu-nand-creator
 	@# May not be present in GENERATED_HEADERS
 	rm -f trace/generated-tracers-dtrace.dtrace*
 	rm -f trace/generated-tracers-dtrace.h*
