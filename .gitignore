@@ -110,3 +110,5 @@ tags
 TAGS
 *~
 util/qemu-nand-creator
+util/flash-stripe-*
+util/flash-unstripe-*
