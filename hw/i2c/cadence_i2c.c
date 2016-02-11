@@ -313,10 +313,6 @@ static void cadence_i2c_write(void *opaque, hwaddr offset,
             s->regs[R_STATUS] &= ~STATUS_RXOVF;
             fifo_reset(&s->fifo);
         }
-        if (new_value & CONTROL_SLVMON) {
-            qemu_log_mask(LOG_UNIMP, "slave monitor mode selected "
-                          "(un-implemented)");
-        }
         if (!(value & CONTROL_HOLD)) {
             bool idle = s->regs[R_CONTROL] & CONTROL_RW ?
                         !s->regs[R_TRANSFER_SIZE] : fifo_is_empty(&s->fifo);
@@ -331,9 +327,18 @@ static void cadence_i2c_write(void *opaque, hwaddr offset,
             qemu_log_mask(LOG_UNIMP, "cadence i2c: 10 bit addressing selected "
                           "(unimplmented)");
         }
-        i2c_start_transfer(s->bus, new_value & 0x7f,
-                           s->regs[R_CONTROL] & CONTROL_RW);
-        s->regs[R_STATUS] |= STATUS_BA;
+        if (i2c_start_transfer(s->bus, new_value & 0x7f,
+                               s->regs[R_CONTROL] & CONTROL_RW)) {
+            DB_PRINT("No match for device 0x%x\n", new_value);
+        } else {
+            DB_PRINT("device 0x%x probe success\n", new_value);
+            if (s->regs[R_CONTROL] & CONTROL_SLVMON) {
+                /* Set "device found" in slave monitor mode */
+                s->regs[R_ISR] |= ISR_SLV_RDY;
+            } else {
+                s->regs[R_STATUS] |= STATUS_BA;
+            }
+        }
         break;
     case R_DATA:
         if (fifo_is_full(&s->fifo)) {
