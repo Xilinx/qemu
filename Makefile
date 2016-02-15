@@ -225,12 +225,12 @@ qemu-bridge-helper$(EXESUF): qemu-bridge-helper.o
 
 util/qemu-nand-creator$(EXESUF): util/qemu-nand-creator.o
 util/flash-stripe$(EXESUF):
-	gcc util/flash-stripe.c -o util/flash-stripe-be -DFLASH_STRIPE_BE
-	gcc util/flash-stripe.c -o util/flash-unstripe-be -DFLASH_STRIPE_BE -DUNSTRIPE
-	gcc util/flash-stripe.c -o util/flash-stripe-be-bw -DFLASH_STRIPE_BE -DFLASH_STRIPE_BW
-	gcc util/flash-stripe.c -o util/flash-unstripe-be-bw -DFLASH_STRIPE_BE -DUNSTRIPE -DFLASH_STRIPE_BW
-	gcc util/flash-stripe.c -o util/flash-stripe-bw -DFLASH_STRIPE_BW
-	gcc util/flash-stripe.c -o util/flash-unstripe-bw -DUNSTRIPE -DFLASH_STRIPE_BW
+	gcc $(SRC_PATH)/util/flash-stripe.c -o util/flash-stripe-be -DFLASH_STRIPE_BE
+	gcc $(SRC_PATH)/util/flash-stripe.c -o util/flash-unstripe-be -DFLASH_STRIPE_BE -DUNSTRIPE
+	gcc $(SRC_PATH)/util/flash-stripe.c -o util/flash-stripe-be-bw -DFLASH_STRIPE_BE -DFLASH_STRIPE_BW
+	gcc $(SRC_PATH)/util/flash-stripe.c -o util/flash-unstripe-be-bw -DFLASH_STRIPE_BE -DUNSTRIPE -DFLASH_STRIPE_BW
+	gcc $(SRC_PATH)/util/flash-stripe.c -o util/flash-stripe-bw -DFLASH_STRIPE_BW
+	gcc $(SRC_PATH)/util/flash-stripe.c -o util/flash-unstripe-bw -DUNSTRIPE -DFLASH_STRIPE_BW
 
 fsdev/virtfs-proxy-helper$(EXESUF): fsdev/virtfs-proxy-helper.o fsdev/virtio-9p-marshal.o libqemuutil.a libqemustub.a
 fsdev/virtfs-proxy-helper$(EXESUF): LIBS += -lcap
