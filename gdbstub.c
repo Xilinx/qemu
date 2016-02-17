@@ -287,10 +287,24 @@ enum RSState {
     RS_CHKSUM1,
     RS_CHKSUM2,
 };
+
+/* GDBClusters represent clusters with 1 or more CPUs.
+ * Each cluster specifies the first and last CPU in that group
+ */
+typedef struct GDBCluster {
+    struct {
+        CPUState *first;
+        CPUState *last;
+    } cpus;
+    bool attached;
+} GDBCluster;
+
 typedef struct GDBState {
     CPUState *c_cpu; /* current CPU for step/continue ops */
     CPUState *g_cpu; /* current CPU for other ops */
     CPUState *query_cpu; /* for q{f|s}ThreadInfo */
+    GDBCluster *clusters;
+    int num_clusters;
     enum RSState state; /* parsing state */
     char line_buf[MAX_PACKET_LENGTH];
     int line_buf_index;
@@ -1661,6 +1675,34 @@ void gdbserver_fork(CPUState *cpu)
     cpu_watchpoint_remove_all(cpu, BP_GDB);
 }
 #else
+
+static void gdb_autosplit_cpus(GDBState *s)
+{
+    /* Consecutive cores of the same kind form a cluster */
+    CPUState *cpu = first_cpu;
+    CPUState *cpu_prev = NULL;
+
+    assert(s->clusters == NULL);
+    assert(s->num_clusters == 0);
+
+    while (cpu) {
+        if (!cpu_prev || (CPU_GET_CLASS(cpu) != CPU_GET_CLASS(cpu_prev))) {
+            /* New cluster */
+            s->clusters = g_renew(typeof(s->clusters[0]), s->clusters,
+                                  s->num_clusters + 1);
+            if (s->num_clusters) {
+                s->clusters[s->num_clusters - 1].cpus.last = cpu_prev;
+            }
+            s->clusters[s->num_clusters].attached = false;
+            s->clusters[s->num_clusters].cpus.first = cpu;
+            s->num_clusters++;
+        }
+        cpu_prev = cpu;
+        cpu = CPU_NEXT(cpu);
+    }
+    s->clusters[s->num_clusters - 1].cpus.last = cpu_prev;
+}
+
 static int gdb_chr_can_receive(void *opaque)
 {
   /* We can handle an arbitrarily large amount of data.
@@ -1779,6 +1821,7 @@ int gdbserver_start(const char *device)
         mon_chr = s->mon_chr;
         memset(s, 0, sizeof(GDBState));
     }
+    gdb_autosplit_cpus(s);
     s->c_cpu = first_cpu;
     s->g_cpu = first_cpu;
     s->chr = chr;
