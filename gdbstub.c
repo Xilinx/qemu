@@ -305,6 +305,8 @@ typedef struct GDBState {
     CPUState *query_cpu; /* for q{f|s}ThreadInfo */
     GDBCluster *clusters;
     int num_clusters;
+    int cur_cluster;
+    int query_cluster;
     enum RSState state; /* parsing state */
     char line_buf[MAX_PACKET_LENGTH];
     int line_buf_index;
@@ -797,6 +799,7 @@ static int is_query_packet(const char *p, const char *query, char separator)
 
 static int gdb_handle_packet(GDBState *s, const char *line_buf)
 {
+    GDBCluster *cl = &s->clusters[s->cur_cluster];
     CPUState *cpu;
     CPUClass *cc;
     const char *p;
@@ -814,6 +817,10 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
     ch = *p++;
     switch(ch) {
     case '?':
+        s->cur_cluster = 0;
+        cl = &s->clusters[s->cur_cluster];
+        s->c_cpu = cl->cpus.first;
+        s->g_cpu = cl->cpus.first;
         /* TODO: Make this return the correct value for user-mode.  */
         snprintf(buf, sizeof(buf), "T%02xthread:%02x;", GDB_SIGNAL_TRAP,
                  cpu_index(s->c_cpu));
@@ -886,6 +893,7 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
                         put_packet(s, "E22");
                         break;
                     }
+                    cl = &s->clusters[s->cur_cluster];
                     s->c_cpu = cpu;
                 }
                 if (res == 's') {
@@ -1066,6 +1074,7 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
         }
         switch (type) {
         case 'c':
+            cl = &s->clusters[s->cur_cluster];
             s->c_cpu = cpu;
             put_packet(s, "OK");
             break;
@@ -1119,14 +1128,26 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
             put_packet(s, "QC1");
             break;
         } else if (strcmp(p,"fThreadInfo") == 0) {
-            s->query_cpu = first_cpu;
+            s->query_cluster = 0;
+            s->query_cpu = s->clusters[s->query_cluster].cpus.first;
             goto report_cpuinfo;
         } else if (strcmp(p,"sThreadInfo") == 0) {
         report_cpuinfo:
             if (s->query_cpu) {
                 snprintf(buf, sizeof(buf), "m%x", cpu_index(s->query_cpu));
                 put_packet(s, buf);
-                s->query_cpu = CPU_NEXT(s->query_cpu);
+                if (s->query_cpu == s->clusters[s->query_cluster].cpus.last) {
+                    s->query_cluster++;
+                    if (s->query_cluster == s->num_clusters) {
+                        s->query_cluster = 0;
+                    }
+                    s->query_cpu = NULL;
+                    if (s->clusters[s->query_cluster].attached) {
+                        s->query_cpu = s->clusters[s->query_cluster].cpus.first;
+                    }
+                } else {
+                    s->query_cpu = CPU_NEXT(s->query_cpu);
+                }
             } else
                 put_packet(s, "l");
             break;
@@ -1175,7 +1196,7 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
 #endif /* !CONFIG_USER_ONLY */
         if (is_query_packet(p, "Supported", ':')) {
             snprintf(buf, sizeof(buf), "PacketSize=%x", MAX_PACKET_LENGTH);
-            cc = CPU_GET_CLASS(first_cpu);
+            cc = CPU_GET_CLASS(cl->cpus.first);
             if (cc->gdb_core_xml_file != NULL) {
                 pstrcat(buf, sizeof(buf), ";qXfer:features:read+");
             }
