@@ -776,14 +776,28 @@ static void gdb_set_cpu_pc(GDBState *s, target_ulong pc)
     cpu_set_pc(cpu, pc);
 }
 
-static CPUState *find_cpu(uint32_t thread_id)
+static CPUState *find_cpu(GDBState *s, uint32_t pid, uint32_t thread_id)
 {
+    GDBCluster *cl;
     CPUState *cpu;
 
-    CPU_FOREACH(cpu) {
-        if (cpu_index(cpu) == thread_id) {
+    if (pid == 0) {
+        pid = 1;
+    }
+
+    cl = &s->clusters[pid - 1];
+    cpu = cl->cpus.first;
+
+    while (cpu) {
+        if (cpu_index(cpu) == thread_id || thread_id == 0) {
             return cpu;
         }
+
+        if (cpu == cl->cpus.last) {
+            break;
+        }
+
+        cpu = CPU_NEXT(cpu);
     }
 
     return NULL;
@@ -915,7 +929,7 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
             }
             if (res) {
                 if (res_thread != -1 && res_thread != 0) {
-                    cpu = find_cpu(res_thread);
+                    cpu = find_cpu(s, cluster, res_thread);
                     if (cpu == NULL) {
                         put_packet(s, "E22");
                         break;
@@ -1100,7 +1114,7 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
             break;
         }
         gdb_thread_id(p, &p, &cluster, &thread);
-        cpu = find_cpu(thread);
+        cpu = find_cpu(s, cluster, thread);
         if (cpu == NULL) {
             put_packet(s, "E22");
             break;
@@ -1123,7 +1137,7 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
         break;
     case 'T':
         gdb_thread_id(p, &p, &cluster, &thread);
-        cpu = find_cpu(thread);
+        cpu = find_cpu(s, cluster, thread);
 
         if (cpu != NULL) {
             put_packet(s, "OK");
@@ -1187,7 +1201,8 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
             break;
         } else if (strncmp(p,"ThreadExtraInfo,", 16) == 0) {
             gdb_thread_id(p + 16, &p, &cluster, &thread);
-            cpu = find_cpu(thread);
+            cpu = find_cpu(s, cluster, thread);
+
             if (cpu != NULL) {
                 cpu_synchronize_state(cpu);
                 /* memtohex() doubles the required space */
