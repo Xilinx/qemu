@@ -315,6 +315,7 @@ typedef struct GDBState {
     int last_packet_len;
     int signal;
     bool multiprocess;
+    bool breakpoints_per_core;
 #ifdef CONFIG_USER_ONLY
     int fd;
     int running_state;
@@ -679,7 +680,8 @@ static inline int xlat_gdb_type(CPUState *cpu, int gdbtype)
 }
 #endif
 
-static int gdb_breakpoint_insert(target_ulong addr, target_ulong len, int type)
+static int gdb_breakpoint_insert(GDBState *s, target_ulong addr,
+                                 target_ulong len, int type)
 {
     CPUState *cpu;
     int err = 0;
@@ -691,6 +693,10 @@ static int gdb_breakpoint_insert(target_ulong addr, target_ulong len, int type)
     switch (type) {
     case GDB_BREAKPOINT_SW:
     case GDB_BREAKPOINT_HW:
+        if (s->breakpoints_per_core) {
+            cpu_breakpoint_insert(s->c_cpu, addr, BP_GDB, NULL);
+            return 0;
+        }
         CPU_FOREACH(cpu) {
             err = cpu_breakpoint_insert(cpu, addr, BP_GDB, NULL);
             if (err) {
@@ -716,7 +722,8 @@ static int gdb_breakpoint_insert(target_ulong addr, target_ulong len, int type)
     }
 }
 
-static int gdb_breakpoint_remove(target_ulong addr, target_ulong len, int type)
+static int gdb_breakpoint_remove(GDBState *s, target_ulong addr,
+                                 target_ulong len, int type)
 {
     CPUState *cpu;
     int err = 0;
@@ -728,6 +735,10 @@ static int gdb_breakpoint_remove(target_ulong addr, target_ulong len, int type)
     switch (type) {
     case GDB_BREAKPOINT_SW:
     case GDB_BREAKPOINT_HW:
+        if (s->breakpoints_per_core) {
+            err = cpu_breakpoint_remove(s->c_cpu, addr, BP_GDB);
+            return err;
+        }
         CPU_FOREACH(cpu) {
             err = cpu_breakpoint_remove(cpu, addr, BP_GDB);
             if (err) {
@@ -1121,9 +1132,9 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
             p++;
         len = strtoull(p, (char **)&p, 16);
         if (ch == 'Z')
-            res = gdb_breakpoint_insert(addr, len, type);
+            res = gdb_breakpoint_insert(s, addr, len, type);
         else
-            res = gdb_breakpoint_remove(addr, len, type);
+            res = gdb_breakpoint_remove(s, addr, len, type);
         if (res >= 0)
              put_packet(s, "OK");
         else if (res == -ENOSYS)
@@ -1193,6 +1204,19 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
             p++;
             type = strtoul(p, (char **)&p, 16);
             sstep_flags = type;
+            put_packet(s, "OK");
+            break;
+        } else if (strncmp(p, "qemu.bps-per-core", 17) == 0) {
+            unsigned long result;
+            p += 17;
+            if (*p != '=') {
+                snprintf(buf, sizeof(buf), "%d", s->breakpoints_per_core);
+                put_packet(s, buf);
+                break;
+            }
+            p++;
+            qemu_strtoul(p, &p, 0, &result);
+            s->breakpoints_per_core = !!result;
             put_packet(s, "OK");
             break;
         } else if (strcmp(p,"C") == 0) {
