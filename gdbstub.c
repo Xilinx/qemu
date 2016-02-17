@@ -533,7 +533,7 @@ static int memtox(char *buf, const char *mem, int len)
 }
 
 static const char *get_feature_xml(const char *p, const char **newp,
-                                   CPUClass *cc)
+                                   CPUClass *cc, CPUState *cpu)
 {
     size_t len;
     int i;
@@ -550,7 +550,6 @@ static const char *get_feature_xml(const char *p, const char **newp,
         /* Generate the XML description for this CPU.  */
         if (!target_xml[0]) {
             GDBRegisterState *r;
-            CPUState *cpu = first_cpu;
 
             pstrcat(target_xml, sizeof(target_xml),
                     "<?xml version=\"1.0\"?>"
@@ -1313,14 +1312,14 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
             const char *xml;
             target_ulong total_len;
 
-            cc = CPU_GET_CLASS(first_cpu);
+            cc = CPU_GET_CLASS(s->g_cpu);
             if (cc->gdb_core_xml_file == NULL) {
                 goto unknown_command;
             }
 
             gdb_has_xml = true;
             p += 19;
-            xml = get_feature_xml(p, &p, cc);
+            xml = get_feature_xml(p, &p, cc, s->g_cpu);
             if (!xml) {
                 snprintf(buf, sizeof(buf), "E00");
                 put_packet(s, buf);
