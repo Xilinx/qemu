@@ -789,6 +789,33 @@ static CPUState *find_cpu(uint32_t thread_id)
     return NULL;
 }
 
+static void gdb_thread_id(const char *p, const char **next_p,
+                          uint32_t *pid_p, uint32_t *tid_p)
+{
+    uint32_t tid, pid = 1;
+    bool extended = *p == 'p';
+
+    if (extended) {
+        p++;
+        qemu_strtoull(p, &p, 16, (uint64_t *) &pid);
+        p++;
+    }
+    qemu_strtoull(p, &p, 16, (uint64_t *) &tid);
+
+    if (pid <= 0) {
+        pid = 1;
+    }
+    if (pid_p) {
+        *pid_p = pid;
+    }
+    if (tid_p) {
+        *tid_p = tid;
+    }
+    if (next_p) {
+        *next_p = p;
+    }
+}
+
 static int is_query_packet(const char *p, const char *query, char separator)
 {
     unsigned int query_len = strlen(query);
@@ -803,7 +830,7 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
     CPUState *cpu;
     CPUClass *cc;
     const char *p;
-    uint32_t thread;
+    uint32_t thread, cluster;
     int ch, reg_size, type, res;
     char buf[MAX_PACKET_LENGTH];
     uint8_t mem_buf[MAX_PACKET_LENGTH];
@@ -877,7 +904,7 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
                 }
                 thread = 0;
                 if (*p == ':') {
-                    thread = strtoull(p+1, (char **)&p, 16);
+                    gdb_thread_id(p + 1, &p, &cluster, &thread);
                 }
                 action = tolower(action);
                 if (res == 0 || (res == 'c' && action == 's')) {
@@ -893,6 +920,7 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
                         put_packet(s, "E22");
                         break;
                     }
+                    s->cur_cluster = cluster - 1;
                     cl = &s->clusters[s->cur_cluster];
                     s->c_cpu = cpu;
                 }
@@ -913,6 +941,10 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
         exit(0);
     case 'D':
         /* Detach packet */
+        if (*p == ';') {
+            qemu_strtoull(p + 1, &p, 16, (uint64_t *) &cluster);
+            s->clusters[cluster - 1].attached = false;
+        }
         gdb_breakpoint_remove_all();
         gdb_syscall_mode = GDB_SYS_DISABLED;
         gdb_continue(s);
@@ -1067,6 +1099,7 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
             put_packet(s, "OK");
             break;
         }
+        gdb_thread_id(p, &p, &cluster, &thread);
         cpu = find_cpu(thread);
         if (cpu == NULL) {
             put_packet(s, "E22");
@@ -1074,6 +1107,7 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
         }
         switch (type) {
         case 'c':
+            s->cur_cluster = cluster - 1;
             cl = &s->clusters[s->cur_cluster];
             s->c_cpu = cpu;
             put_packet(s, "OK");
@@ -1088,7 +1122,7 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
         }
         break;
     case 'T':
-        thread = strtoull(p, (char **)&p, 16);
+        gdb_thread_id(p, &p, &cluster, &thread);
         cpu = find_cpu(thread);
 
         if (cpu != NULL) {
@@ -1152,7 +1186,7 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
                 put_packet(s, "l");
             break;
         } else if (strncmp(p,"ThreadExtraInfo,", 16) == 0) {
-            thread = strtoull(p+16, (char **)&p, 16);
+            gdb_thread_id(p + 16, &p, &cluster, &thread);
             cpu = find_cpu(thread);
             if (cpu != NULL) {
                 cpu_synchronize_state(cpu);
