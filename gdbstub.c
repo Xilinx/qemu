@@ -314,6 +314,7 @@ typedef struct GDBState {
     uint8_t last_packet[MAX_PACKET_LENGTH + 4];
     int last_packet_len;
     int signal;
+    bool multiprocess;
 #ifdef CONFIG_USER_ONLY
     int fd;
     int running_state;
@@ -830,6 +831,18 @@ static void gdb_thread_id(const char *p, const char **next_p,
     }
 }
 
+static void gdb_match_supported(GDBState *s, const char *p)
+{
+    p = strchr(p, ':');
+    while (p) {
+        p++;
+        if (strncmp(p, "multiprocess", 12) == 0) {
+            s->multiprocess = true;
+        }
+        p = strchr(p, ':');
+    }
+}
+
 static int is_query_packet(const char *p, const char *query, char separator)
 {
     unsigned int query_len = strlen(query);
@@ -1244,11 +1257,14 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
         }
 #endif /* !CONFIG_USER_ONLY */
         if (is_query_packet(p, "Supported", ':')) {
+            gdb_match_supported(s, p + 9);
+
             snprintf(buf, sizeof(buf), "PacketSize=%x", MAX_PACKET_LENGTH);
             cc = CPU_GET_CLASS(cl->cpus.first);
             if (cc->gdb_core_xml_file != NULL) {
                 pstrcat(buf, sizeof(buf), ";qXfer:features:read+");
             }
+            pstrcat(buf, sizeof(buf), ";multiprocess+");
             put_packet(s, buf);
             break;
         }
@@ -1795,6 +1811,7 @@ static void gdb_chr_event(void *opaque, int event)
     case CHR_EVENT_OPENED:
         vm_stop(RUN_STATE_PAUSED);
         gdb_has_xml = false;
+        gdbserver_state->multiprocess = false;
         break;
     default:
         break;
