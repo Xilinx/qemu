@@ -981,6 +981,26 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
                 return RS_IDLE;
             }
             break;
+        } else if (strncmp(p, "Attach", 6) == 0) {
+            cluster = s->num_clusters + 1;
+            p += 6;
+            if (*p == ';') {
+                p++;
+                qemu_strtoull(p, &p, 16, (uint64_t *) &cluster);
+            }
+            if (cluster <= s->num_clusters) {
+                s->cur_cluster = cluster - 1;
+                cl = &s->clusters[s->cur_cluster];
+                cl->attached = true;
+                s->c_cpu = cl->cpus.first;
+                s->g_cpu = cl->cpus.first;
+
+                snprintf(buf, sizeof(buf), "T%02xthread:%s;",
+                         GDB_SIGNAL_TRAP,
+                         gdb_gen_thread_id(s, cluster, cpu_index(s->c_cpu)));
+                put_packet(s, buf);
+            }
+            break;
         } else {
             goto unknown_command;
         }
