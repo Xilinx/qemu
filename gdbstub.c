@@ -831,6 +831,18 @@ static void gdb_thread_id(const char *p, const char **next_p,
     }
 }
 
+static const char *gdb_gen_thread_id(GDBState *s, uint32_t pid, uint32_t tid)
+{
+    static char id[64];
+    unsigned int pos = 0;
+
+    if (s->multiprocess) {
+        pos += snprintf(id, sizeof(id), "p%x.", pid);
+    }
+    snprintf(id + pos, sizeof(id) - pos, "%x", tid);
+    return id;
+}
+
 static void gdb_match_supported(GDBState *s, const char *p)
 {
     p = strchr(p, ':');
@@ -876,8 +888,8 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
         s->c_cpu = cl->cpus.first;
         s->g_cpu = cl->cpus.first;
         /* TODO: Make this return the correct value for user-mode.  */
-        snprintf(buf, sizeof(buf), "T%02xthread:%02x;", GDB_SIGNAL_TRAP,
-                 cpu_index(s->c_cpu));
+        snprintf(buf, sizeof(buf), "T%02xthread:%s;", GDB_SIGNAL_TRAP,
+                 gdb_gen_thread_id(s, s->cur_cluster + 1, cpu_index(s->c_cpu)));
         put_packet(s, buf);
         /* Remove all the breakpoints when this query is issued,
          * because gdb is doing and initial connect and the state
@@ -1186,7 +1198,10 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
         } else if (strcmp(p,"C") == 0) {
             /* "Current thread" remains vague in the spec, so always return
              *  the first CPU (gdb returns the first thread). */
-            put_packet(s, "QC1");
+            snprintf(buf, sizeof(buf), "C%s",
+                     gdb_gen_thread_id(s, s->cur_cluster + 1,
+                                       cpu_index(cl->cpus.first)));
+            put_packet(s, buf);
             break;
         } else if (strcmp(p,"fThreadInfo") == 0) {
             s->query_cluster = 0;
@@ -1195,7 +1210,9 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
         } else if (strcmp(p,"sThreadInfo") == 0) {
         report_cpuinfo:
             if (s->query_cpu) {
-                snprintf(buf, sizeof(buf), "m%x", cpu_index(s->query_cpu));
+                snprintf(buf, sizeof(buf), "m%s",
+                         gdb_gen_thread_id(s, s->query_cluster + 1,
+                                           cpu_index(s->query_cpu)));
                 put_packet(s, buf);
                 if (s->query_cpu == s->clusters[s->query_cluster].cpus.last) {
                     s->query_cluster++;
@@ -1366,8 +1383,10 @@ static void gdb_vm_state_change(void *opaque, int running, RunState state)
                 break;
             }
             snprintf(buf, sizeof(buf),
-                     "T%02xthread:%02x;%swatch:" TARGET_FMT_lx ";",
-                     GDB_SIGNAL_TRAP, cpu_index(cpu), type,
+                     "T%02xthread:%s;%swatch:" TARGET_FMT_lx ";",
+                     GDB_SIGNAL_TRAP,
+                     gdb_gen_thread_id(s, s->cur_cluster + 1, cpu_index(cpu)),
+                     type,
                      (target_ulong)cpu->watchpoint_hit->vaddr);
             cpu->watchpoint_hit = NULL;
             goto send_packet;
