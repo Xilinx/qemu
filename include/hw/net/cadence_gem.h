@@ -32,6 +32,7 @@
 
 #include "net/net.h"
 #include "hw/sysbus.h"
+#include "hw/mdio/mdio.h"
 
 #define MAX_PRIORITY_QUEUES             8
 #define MAX_TYPE1_SCREENERS             16
@@ -70,9 +71,6 @@ typedef struct CadenceGEMState {
     /* Mask of register bits which are write 1 to clear */
     uint32_t regs_w1c[CADENCE_GEM_MAXREG];
 
-    /* PHY registers backing store */
-    uint16_t phy_regs[32];
-
     uint8_t phy_loop; /* Are we in phy loopback? */
 
     /* The current DMA descriptor pointers */
@@ -86,6 +84,7 @@ typedef struct CadenceGEMState {
 
     bool sar_active[4];
     uint8_t packet[GEM_MAX_PACKET_LEN];
+    MDIO *mdio;
 } CadenceGEMState;
 
 #define CADENCE_GEM_H

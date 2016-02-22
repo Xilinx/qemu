@@ -515,17 +515,9 @@ static void phy_update_link(CadenceGEMState *s)
     DB_PRINT("down %d\n", qemu_get_queue(s->nic)->link_down);
 
     /* Autonegotiation status mirrors link status.  */
-    if (qemu_get_queue(s->nic)->link_down) {
-        s->phy_regs[PHY_REG_STATUS] &= ~(PHY_REG_STATUS_ANEGCMPL |
-                                         PHY_REG_STATUS_LINK);
-    } else {
-        s->phy_regs[PHY_REG_STATUS] |= (PHY_REG_STATUS_ANEGCMPL |
-                                         PHY_REG_STATUS_LINK);
-        s->phy_regs[PHY_REG_INT_ST] |= (PHY_REG_INT_ST_ANEGCMPL |
-                                        PHY_REG_INT_ST_ENERGY);
+    if (!qemu_get_queue(s->nic)->link_down) {
         s->regs[GEM_ISR] |= GEM_INT_AUTONEG & ~(s->regs[GEM_IMR]);
     }
-    s->phy_regs[PHY_REG_INT_ST] |= PHY_REG_INT_ST_LINKC;
     s->regs[GEM_ISR] |= GEM_INT_LINK_CHNG & ~(s->regs[GEM_IMR]);
 }
 
@@ -1220,33 +1212,6 @@ static void gem_transmit(CadenceGEMState *s)
     }
 }
 
-static void gem_phy_reset(CadenceGEMState *s)
-{
-    memset(&s->phy_regs[0], 0, sizeof(s->phy_regs));
-    s->phy_regs[PHY_REG_CONTROL] = 0x1140;
-    s->phy_regs[PHY_REG_STATUS] = 0x7969;
-    s->phy_regs[PHY_REG_PHYID1] = 0x0141;
-    s->phy_regs[PHY_REG_PHYID2] = 0x0CC2;
-    s->phy_regs[PHY_REG_ANEGADV] = 0x01E1;
-    s->phy_regs[PHY_REG_LINKPABIL] = 0xCDE1;
-    s->phy_regs[PHY_REG_ANEGEXP] = 0x000F;
-    s->phy_regs[PHY_REG_NEXTP] = 0x2001;
-    s->phy_regs[PHY_REG_LINKPNEXTP] = 0x40E6;
-    s->phy_regs[PHY_REG_100BTCTRL] = 0x0300;
-    s->phy_regs[PHY_REG_1000BTSTAT] = 0x7C00;
-    s->phy_regs[PHY_REG_EXTSTAT] = 0x3000;
-    s->phy_regs[PHY_REG_PHYSPCFC_CTL] = 0x0078;
-    s->phy_regs[PHY_REG_PHYSPCFC_ST] = 0xBC00;
-    s->phy_regs[PHY_REG_EXT_PHYSPCFC_CTL] = 0x0C60;
-    s->phy_regs[PHY_REG_LED] = 0x4100;
-    s->phy_regs[PHY_REG_EXT_PHYSPCFC_CTL2] = 0x000A;
-    s->phy_regs[PHY_REG_EXT_PHYSPCFC_ST] = 0x848B;
-
-    phy_update_link(s);
-
-    gem_update_int_status(s);
-}
-
 static void gem_reset(DeviceState *d)
 {
     int i;
@@ -1281,33 +1246,18 @@ static void gem_reset(DeviceState *d)
         s->sar_active[i] = false;
     }
 
-    gem_phy_reset(s);
-
+    phy_update_link(s);
     gem_update_int_status(s);
 }
 
-static uint16_t gem_phy_read(CadenceGEMState *s, unsigned reg_num)
+static void gem_phy_loopback_setup(CadenceGEMState *s, unsigned reg_num,
+                                   uint16_t val)
 {
-    DB_PRINT("reg: %d value: 0x%04x\n", reg_num, s->phy_regs[reg_num]);
-    return s->phy_regs[reg_num];
-}
-
-static void gem_phy_write(CadenceGEMState *s, unsigned reg_num, uint16_t val)
-{
-    DB_PRINT("reg: %d value: 0x%04x\n", reg_num, val);
-
     switch (reg_num) {
     case PHY_REG_CONTROL:
         if (val & PHY_REG_CONTROL_RST) {
             /* Phy reset */
-            gem_phy_reset(s);
-            val &= ~(PHY_REG_CONTROL_RST | PHY_REG_CONTROL_LOOP);
             s->phy_loop = 0;
-        }
-        if (val & PHY_REG_CONTROL_ANEG) {
-            /* Complete autonegotiation immediately */
-            val &= ~PHY_REG_CONTROL_ANEG;
-            s->phy_regs[PHY_REG_STATUS] |= PHY_REG_STATUS_ANEGCMPL;
         }
         if (val & PHY_REG_CONTROL_LOOP) {
             DB_PRINT("PHY placed in loopback\n");
@@ -1317,7 +1267,6 @@ static void gem_phy_write(CadenceGEMState *s, unsigned reg_num, uint16_t val)
         }
         break;
     }
-    s->phy_regs[reg_num] = val;
 }
 
 /*
@@ -1342,12 +1291,10 @@ static uint64_t gem_read(void *opaque, hwaddr offset, unsigned size)
             uint32_t phy_addr, reg_num;
 
             phy_addr = (retval & GEM_PHYMNTNC_ADDR) >> GEM_PHYMNTNC_ADDR_SHFT;
-            if (phy_addr == BOARD_PHY_ADDRESS || phy_addr == 0) {
-                reg_num = (retval & GEM_PHYMNTNC_REG) >> GEM_PHYMNTNC_REG_SHIFT;
-                retval &= 0xFFFF0000;
-                retval |= gem_phy_read(s, reg_num);
-            } else {
-                retval |= 0xFFFF; /* No device at this address */
+            reg_num = (retval & GEM_PHYMNTNC_REG) >> GEM_PHYMNTNC_REG_SHIFT;
+            retval &= 0xFFFF0000;
+            if (s->mdio) {
+                retval |= s->mdio->read(s->mdio, phy_addr, reg_num);
             }
         }
         break;
@@ -1474,9 +1421,10 @@ static void gem_write(void *opaque, hwaddr offset, uint64_t val,
             uint32_t phy_addr, reg_num;
 
             phy_addr = (val & GEM_PHYMNTNC_ADDR) >> GEM_PHYMNTNC_ADDR_SHFT;
-            if (phy_addr == BOARD_PHY_ADDRESS || phy_addr == 0) {
-                reg_num = (val & GEM_PHYMNTNC_REG) >> GEM_PHYMNTNC_REG_SHIFT;
-                gem_phy_write(s, reg_num, val);
+            reg_num = (val & GEM_PHYMNTNC_REG) >> GEM_PHYMNTNC_REG_SHIFT;
+            gem_phy_loopback_setup(s, reg_num, val);
+            if (s->mdio) {
+                s->mdio->write(s->mdio, phy_addr, reg_num, val);
             }
         }
         break;
@@ -1569,6 +1517,10 @@ static void gem_init(Object *obj)
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_UNREF_ON_RELEASE,
                              &error_abort);
+    object_property_add_link(obj, "mdio", TYPE_MDIO, (Object **)&s->mdio,
+                             qdev_prop_allow_set_link,
+                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             &error_abort);
 }
 
 static const VMStateDescription vmstate_cadence_gem = {
@@ -1577,7 +1529,6 @@ static const VMStateDescription vmstate_cadence_gem = {
     .minimum_version_id = 3,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, CadenceGEMState, CADENCE_GEM_MAXREG),
-        VMSTATE_UINT16_ARRAY(phy_regs, CadenceGEMState, 32),
         VMSTATE_UINT8(phy_loop, CadenceGEMState),
         VMSTATE_UINT32_ARRAY(rx_desc_addr, CadenceGEMState,
                              MAX_PRIORITY_QUEUES),
