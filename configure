@@ -4175,7 +4175,12 @@ if test "$want_tools" = "yes" ; then
   tools="qemu-img\$(EXESUF) qemu-io\$(EXESUF) $tools"
   if [ "$linux" = "yes" -o "$bsd" = "yes" -o "$solaris" = "yes" ] ; then
     tools="qemu-nbd\$(EXESUF) $tools"
-    tools="$tools util/flash-stripe\$(EXESUF)"
+    tools="$tools util/flash-stripe-be\$(EXESUF)"
+    tools="$tools util/flash-unstripe-be\$(EXESUF)"
+    tools="$tools util/flash-stripe-be-bw\$(EXESUF)"
+    tools="$tools util/flash-unstripe-be-bw\$(EXESUF)"
+    tools="$tools util/flash-stripe-bw\$(EXESUF)"
+    tools="$tools util/flash-unstripe-bw\$(EXESUF)"
     tools="$tools util/qemu-nand-creator\$(EXESUF) "
   fi
 fi
