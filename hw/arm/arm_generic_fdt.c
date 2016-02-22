@@ -66,6 +66,35 @@ static void zynq_ps7_usb_nuke_phy(void *fdt)
     }
 }
 
+static int zynq_ps7_mdio_phy_connect(char *node_path, FDTMachineInfo *fdti,
+                                     void *Opaque)
+{
+    Object *parent;
+    char parent_node_path[DT_PATH_LENGTH];
+
+    /* Register MDIO obj instance to fdti, useful during child registration */
+    fdt_init_set_opaque(fdti, node_path, Opaque);
+    if (qemu_devtree_getparent(fdti->fdt, parent_node_path, node_path)) {
+        abort();
+    }
+
+    /* Wait for the parent to be created */
+    while (!fdt_init_has_opaque(fdti, parent_node_path)) {
+        fdt_init_yield(fdti);
+    }
+
+    /* Get the parent obj (i.e gem object), which was registerd in fdti */
+    parent = fdt_init_get_opaque(fdti, parent_node_path);
+
+    /* Add parent to mdio node */
+    object_property_add_child(OBJECT(parent), "mdio_child", OBJECT(Opaque),
+                              NULL);
+
+    /* Set mdio property of gem device */
+    object_property_set_link(OBJECT(parent), OBJECT(Opaque), "mdio", NULL);
+    return 0;
+}
+
 static char *zynq_ps7_qspi_flash_node_clone(void *fdt)
 {
     char qspi_node_path[DT_PATH_LENGTH];
@@ -290,6 +319,13 @@ static void arm_generic_fdt_init_plnx(MachineState *machine)
 
     /* Mark the simple-bus as incompatible as it breaks the Zynq boot */
     add_to_compat_table(NULL, "compatible:simple-bus", NULL);
+
+    {
+        DeviceState *dev = qdev_create(NULL, "mdio");
+        qdev_init_nofail(dev);
+        /* Add MDIO Connect Call back */
+        add_to_inst_bind_table(zynq_ps7_mdio_phy_connect, "mdio", dev);
+    }
 
     arm_generic_fdt_init(machine);
 
