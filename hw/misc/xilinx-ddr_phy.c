@@ -4991,6 +4991,18 @@ typedef struct DDR_PHY {
     RegisterInfo regs_info[R_MAX];
 } DDR_PHY;
 
+static uint64_t ddr_phy_pgsr0_post_read(RegisterInfo *reg, uint64_t val)
+{
+    DDR_PHY *s = reg->opaque;
+
+    /* Flip the bits stored in the register as some guests require the status
+     * to change and we don't fully model the device.
+     */
+    s->regs[R_PGSR0] ^= R_PGSR0_DIDONE_MASK;
+
+    return val;
+}
+
 static RegisterAccessInfo ddr_phy_regs_info[] = {
     {   .name = "RIDR",  .decode.addr = A_RIDR,
         .reset = 0x112112,
@@ -5024,7 +5036,8 @@ static RegisterAccessInfo ddr_phy_regs_info[] = {
     },{ .name = "PGSR0",  .decode.addr = A_PGSR0,
         .ro = 0xffffffff,
         /* Report all ready.  */
-        .reset = 0x8000ffff,
+        .reset = 0x8000000f,
+        .post_read = ddr_phy_pgsr0_post_read,
     },{ .name = "PGSR1",  .decode.addr = A_PGSR1,
         .ro = 0xffffffff,
     },{ .name = "PGSR2",  .decode.addr = A_PGSR2,
