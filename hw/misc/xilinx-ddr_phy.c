@@ -4991,6 +4991,34 @@ typedef struct DDR_PHY {
     RegisterInfo regs_info[R_MAX];
 } DDR_PHY;
 
+#define DDR_PIR_REACT(val, src, dest) \
+    do { \
+        if (val & R_PIR_ ## src ## _MASK) { \
+            AF_DP32(s->regs, PGSR0, dest , 0x1);\
+        } \
+    } while (0)
+
+static uint64_t ddr_phy_pir_pre_write(RegisterInfo *reg, uint64_t val)
+{
+    DDR_PHY *s = reg->opaque;
+
+    /* Set the corresponding bit in the PGSR0 register */
+    DDR_PIR_REACT(val, DRAMINIT, DIDONE);
+    DDR_PIR_REACT(val, ZCAL, ZCDONE);
+    DDR_PIR_REACT(val, DCAL, DCDONE);
+    DDR_PIR_REACT(val, PLLINIT, PLDONE);
+    DDR_PIR_REACT(val, WLADJ, WLADONE);
+    DDR_PIR_REACT(val, RDDSKW, RDDONE);
+    DDR_PIR_REACT(val, WRDSKW, WDDONE);
+    DDR_PIR_REACT(val, RDEYE, REDONE);
+    DDR_PIR_REACT(val, WREYE, WEDONE);
+    DDR_PIR_REACT(val, WL, WLDONE);
+    DDR_PIR_REACT(val, QSGATE, QSGDONE);
+    DDR_PIR_REACT(val, VREF, VDONE);
+
+    return val;
+}
+
 static uint64_t ddr_phy_pgsr0_post_read(RegisterInfo *reg, uint64_t val)
 {
     DDR_PHY *s = reg->opaque;
@@ -5010,6 +5038,7 @@ static RegisterAccessInfo ddr_phy_regs_info[] = {
     },{ .name = "PIR",  .decode.addr = A_PIR,
         .ro = 0x9fe00008,
         .w1c = 0x60000001,
+        .pre_write = ddr_phy_pir_pre_write,
     },{ .name = "PGCR0",  .decode.addr = A_PGCR0,
         .reset = 0x7001e00,
         .ro = 0x78f820ff,
