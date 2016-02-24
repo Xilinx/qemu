@@ -213,7 +213,7 @@
 
 /* HWInit Host Controller Version Register 0x0401 */
 #define SDHC_HCVER                      0xFE
-#define SD_HOST_SPECv2_VERS             0x2401
+#define SD_HOST_SPECv2_VERS             0x2402
 
 #define SDHC_REGISTERS_MAP_SIZE         0x100
 #define SDHC_INSERTION_DELAY            (get_ticks_per_sec())
