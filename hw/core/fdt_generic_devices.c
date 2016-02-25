@@ -217,6 +217,7 @@ static const TypeInfo fdt_qom_aliases [] = {
     {   .name = "xlnx.xuartps",             .parent = "cadence_uart"        },
     {   .name = "simple-bus",               .parent = "qemu:memory-region"  },
     {   .name = "xlnx,axi-dpdma-1.0",       .parent = "xlnx.dpdma"          },
+    {   .name = "xlnx,xps-gpio-1.00.a",     .parent = "xlnx.axi-gpio"       },
 };
 
 static void fdt_generic_register_types(void)
