@@ -980,6 +980,14 @@ static void cortex_r5_initfn(Object *obj)
     define_arm_cp_regs(cpu, cortexr5_cp_reginfo);
 }
 
+static void cortex_r5f_initfn(Object *obj)
+{
+    ARMCPU *cpu = ARM_CPU(obj);
+
+    cortex_r5_initfn(obj);
+    set_feature(&cpu->env, ARM_FEATURE_VFP3);
+}
+
 static const ARMCPRegInfo cortexa8_cp_reginfo[] = {
     { .name = "L2LOCKDOWN", .cp = 15, .crn = 9, .crm = 0, .opc1 = 1, .opc2 = 0,
       .access = PL1_RW, .type = ARM_CP_CONST, .resetvalue = 0 },
@@ -1374,6 +1382,7 @@ static const ARMCPUInfo arm_cpus[] = {
                              .class_init = arm_v7m_class_init },
     { .name = "cortex-r4",   .initfn = cortex_r4_initfn },
     { .name = "cortex-r5",   .initfn = cortex_r5_initfn },
+    { .name = "cortex-r5f",  .initfn = cortex_r5f_initfn },
     { .name = "cortex-a8",   .initfn = cortex_a8_initfn },
     { .name = "cortex-a9",   .initfn = cortex_a9_initfn },
     { .name = "cortex-a15",  .initfn = cortex_a15_initfn },
@@ -1587,6 +1596,7 @@ static const TypeInfo fdt_qom_aliases [] = {
     {   .name = "arm.cortex-a57",           .parent = "cortex-a57-arm-cpu"  },
 #endif
     {   .name = "arm.cortex-r5",            .parent = "cortex-r5-arm-cpu"  },
+    {   .name = "arm.cortex-r5f",           .parent = "cortex-r5f-arm-cpu"  },
     {   .name = "arm.cortex-a9",            .parent = "cortex-a9-arm-cpu"  },
 };
 
