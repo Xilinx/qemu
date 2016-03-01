@@ -46,6 +46,7 @@
 #define R_IXR_RSVD          (0x7ffffffe)
 
 #define XFSBL_PLATFORM_QEMU  0X00003000U
+#define QEMU_IDCODE          0x4600093
 
 REG32(CSU_STATUS, 0x0)
     FIELD(CSU_STATUS, BOOT_ENC, 1, 1)
@@ -450,7 +451,7 @@ static const RegisterAccessInfo csu_core_regs_info[] = {
     },{ .name = "JTAG_SEC",  .decode.addr = A_JTAG_SEC,
     },{ .name = "JTAG_DAP_CFG",  .decode.addr = A_JTAG_DAP_CFG,
     },{ .name = "IDCODE",  .decode.addr = A_IDCODE,
-        .ro = 0xffffffff,
+        .ro = 0xffffffff, .reset = QEMU_IDCODE,
     },{ .name = "VERSION",  .decode.addr = A_VERSION,
         .ro = 0xfffff,
         .reset = XFSBL_PLATFORM_QEMU,
