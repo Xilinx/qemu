@@ -268,6 +268,12 @@ static void si57x_event(I2CSlave *i2c, enum i2c_event event)
     }
 }
 
+static int si57x_init(I2CSlave *i2c)
+{
+    /* Nothing to do */
+    return 0;
+}
+
 static Property si57x_properties[] = {
     DEFINE_PROP_UINT16("temperature-stability", Si57xState, temp_stab,
                        TEMP_STAB_50PPM),
@@ -279,6 +285,7 @@ static void si57x_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     I2CSlaveClass *k = I2C_SLAVE_CLASS(klass);
 
+    k->init = si57x_init;
     k->event = si57x_event;
     k->recv = si57x_rx;
     k->send = si57x_tx;
