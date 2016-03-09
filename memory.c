@@ -1149,6 +1149,13 @@ static void memory_region_get_priority(Object *obj, Visitor *v, void *opaque,
     visit_type_uint32(v, (uint32_t *)&value, name, errp);
 }
 
+static bool memory_region_get_may_overlap(Object *obj, Error **errp)
+{
+    MemoryRegion *mr = MEMORY_REGION(obj);
+
+    return mr->may_overlap;
+}
+
 static void memory_region_set_priority(Object *obj, Visitor *v, void *opaque,
                                        const char *name, Error **errp)
 {
@@ -1288,6 +1295,10 @@ static void memory_region_initfn(Object *obj)
                         NULL, /* FIXME: Add getter */
                         memory_region_set_ram,
                         NULL, NULL, &error_abort);
+    object_property_add_bool(OBJECT(mr), "may-overlap",
+                             memory_region_get_may_overlap,
+                             NULL, /* memory_region_set_may_overlap */
+                             &error_abort);
     object_property_add(OBJECT(mr), "size", "uint64",
                         memory_region_get_size,
                         memory_region_set_object_size,
