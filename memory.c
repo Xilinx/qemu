@@ -1507,10 +1507,9 @@ void memory_region_init_io(MemoryRegion *mr,
                            uint64_t size)
 {
     memory_region_init(mr, owner, name, size);
-    mr->ops = ops;
+    mr->ops = ops ? ops : &unassigned_mem_ops;
     mr->opaque = opaque;
     mr->terminates = true;
-    mr->ram_addr = ~(ram_addr_t)0;
 }
 
 void memory_region_init_ram(MemoryRegion *mr,
@@ -1524,6 +1523,7 @@ void memory_region_init_ram(MemoryRegion *mr,
     mr->terminates = true;
     mr->destructor = memory_region_destructor_ram;
     mr->ram_addr = qemu_ram_alloc(size, mr, errp);
+    mr->dirty_log_mask = tcg_enabled() ? (1 << DIRTY_MEMORY_CODE) : 0;
 }
 
 #ifdef __linux__
@@ -1540,6 +1540,7 @@ void memory_region_init_ram_from_file(MemoryRegion *mr,
     mr->terminates = true;
     mr->destructor = memory_region_destructor_ram;
     mr->ram_addr = qemu_ram_alloc_from_file(size, mr, share, path, errp);
+    mr->dirty_log_mask = tcg_enabled() ? (1 << DIRTY_MEMORY_CODE) : 0;
 }
 #endif
 
@@ -1553,6 +1554,7 @@ void memory_region_init_ram_ptr(MemoryRegion *mr,
     mr->ram = 3;
     mr->terminates = true;
     mr->destructor = memory_region_destructor_ram;
+    mr->dirty_log_mask = tcg_enabled() ? (1 << DIRTY_MEMORY_CODE) : 0;
 
     /* qemu_ram_alloc_from_ptr cannot fail with ptr != NULL.  */
     assert(ptr != NULL);
@@ -1572,7 +1574,6 @@ void memory_region_init_alias(MemoryRegion *mr,
                               uint64_t size)
 {
     memory_region_init(mr, owner, name, size);
-    memory_region_ref(orig);
     mr->alias = orig;
     mr->alias_offset = offset;
 }
@@ -1620,6 +1621,7 @@ static void memory_region_finalize(Object *obj)
 
     assert(QTAILQ_EMPTY(&mr->subregions));
     assert(memory_region_transaction_depth == 0);
+
     mr->destructor(mr);
     memory_region_clear_coalescing(mr);
     g_free(mr->ioeventfds);
@@ -2280,6 +2282,7 @@ void address_space_init(AddressSpace *as, MemoryRegion *root, const char *name)
         return;
     }
 
+    memory_region_ref(root);
     memory_region_transaction_begin();
     as->root = root;
     as->current_map = g_new(FlatView, 1);
