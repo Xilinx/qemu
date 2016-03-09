@@ -168,7 +168,7 @@ static bool memory_listener_match(MemoryListener *listener,
     } while (0)
 
 /* No need to ref/unref .mr, the FlatRange keeps it alive.  */
-#define MEMORY_LISTENER_UPDATE_REGION(fr, as, dir, callback)            \
+#define MEMORY_LISTENER_UPDATE_REGION(fr, as, dir, callback, _args...)  \
     MEMORY_LISTENER_CALL(callback, dir, (&(MemoryRegionSection) {       \
         .mr = (fr)->mr,                                                 \
         .address_space = (as),                                          \
@@ -176,7 +176,7 @@ static bool memory_listener_match(MemoryListener *listener,
         .size = (fr)->addr.size,                                        \
         .offset_within_address_space = int128_get64((fr)->addr.start),  \
         .readonly = (fr)->readonly,                                     \
-              }))
+              }), ##_args)
 
 struct CoalescedMemoryRange {
     AddrRange addr;
@@ -831,10 +831,15 @@ static void address_space_update_topology_pass(AddressSpace *as,
 
             if (adding) {
                 MEMORY_LISTENER_UPDATE_REGION(frnew, as, Forward, region_nop);
-                if (frold->dirty_log_mask && !frnew->dirty_log_mask) {
-                    MEMORY_LISTENER_UPDATE_REGION(frnew, as, Reverse, log_stop);
-                } else if (frnew->dirty_log_mask && !frold->dirty_log_mask) {
-                    MEMORY_LISTENER_UPDATE_REGION(frnew, as, Forward, log_start);
+                if (frnew->dirty_log_mask & ~frold->dirty_log_mask) {
+                    MEMORY_LISTENER_UPDATE_REGION(frnew, as, Forward, log_start,
+                                                  frold->dirty_log_mask,
+                                                  frnew->dirty_log_mask);
+                }
+                if (frold->dirty_log_mask & ~frnew->dirty_log_mask) {
+                    MEMORY_LISTENER_UPDATE_REGION(frnew, as, Reverse, log_stop,
+                                                  frold->dirty_log_mask,
+                                                  frnew->dirty_log_mask);
                 }
             }
 
