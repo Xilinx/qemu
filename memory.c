@@ -1239,28 +1239,16 @@ static void memory_region_get_size(Object *obj, Visitor *v, void *opaque,
     visit_type_uint64(v, &value, name, errp);
 }
 
-static void memory_region_set_size(Object *obj, Visitor *v, void *opaque,
+static void memory_region_set_object_size(Object *obj, Visitor *v, void *opaque,
                                    const char *name, Error **errp)
 {
     MemoryRegion *mr = MEMORY_REGION(obj);
     Error *local_err = NULL;
-    uint64_t value;
-    Int128 v128;
+    uint64_t size;
 
-    visit_type_uint64(v, &value, name, &local_err);
-    v128 = int128_make64(value);
-    if (local_err) {
-        error_propagate(errp, local_err);
-        return;
-    }
+    visit_type_uint64(v, &size, name, &local_err);
 
-    if (!int128_eq(v128, mr->size)) {
-        mr->size = v128;
-        if (mr->ram) {
-            memory_region_do_set_ram(mr);
-        }
-        memory_region_readd_subregion(mr);
-    }
+    memory_region_set_size(mr, size);
 }
 
 static void memory_region_initfn(Object *obj)
@@ -1302,7 +1290,7 @@ static void memory_region_initfn(Object *obj)
                         NULL, NULL, &error_abort);
     object_property_add(OBJECT(mr), "size", "uint64",
                         memory_region_get_size,
-                        memory_region_set_size,
+                        memory_region_set_object_size,
                         NULL, NULL, &error_abort);
 }
 
@@ -2030,6 +2018,25 @@ void memory_region_set_enabled(MemoryRegion *mr, bool enabled)
     }
     memory_region_transaction_begin();
     mr->enabled = enabled;
+    memory_region_update_pending = true;
+    memory_region_transaction_commit();
+}
+
+void memory_region_set_size(MemoryRegion *mr, uint64_t size)
+{
+    Int128 s = int128_make64(size);
+
+    if (size == UINT64_MAX) {
+        s = int128_2_64();
+    }
+    if (int128_eq(s, mr->size)) {
+        return;
+    }
+    memory_region_transaction_begin();
+    mr->size = s;
+    if (mr->ram) {
+        memory_region_do_set_ram(mr);
+    }
     memory_region_update_pending = true;
     memory_region_transaction_commit();
 }
