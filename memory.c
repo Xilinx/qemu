@@ -435,37 +435,6 @@ static MemTxResult memory_region_read_with_attrs_accessor(MemoryRegion *mr,
     return r;
 }
 
-static MemTxResult memory_region_write_accessor(MemoryRegion *mr,
-                                                hwaddr addr,
-                                                uint64_t *value,
-                                                unsigned size,
-                                                unsigned shift,
-                                                uint64_t mask,
-                                                MemTxAttrs attrs)
-{
-    uint64_t tmp;
-
-    tmp = (*value >> shift) & mask;
-    trace_memory_region_ops_write(mr, addr, tmp, size);
-    mr->ops->write(mr->opaque, addr, tmp, size);
-    return MEMTX_OK;
-}
-
-static MemTxResult memory_region_write_with_attrs_accessor(MemoryRegion *mr,
-                                                           hwaddr addr,
-                                                           uint64_t *value,
-                                                           unsigned size,
-                                                           unsigned shift,
-                                                           uint64_t mask,
-                                                           MemTxAttrs attrs)
-{
-    uint64_t tmp;
-
-    tmp = (*value >> shift) & mask;
-    trace_memory_region_ops_write(mr, addr, tmp, size);
-    return mr->ops->write_with_attrs(mr->opaque, addr, tmp, size, attrs);
-}
-
 static MemTxResult memory_region_read_accessor_attr(MemoryRegion *mr,
                                                     hwaddr addr,
                                                     uint64_t *value,
@@ -506,6 +475,38 @@ static MemTxResult memory_region_oldmmio_write_accessor(MemoryRegion *mr,
     return MEMTX_OK;
 }
 
+static MemTxResult memory_region_write_accessor(MemoryRegion *mr,
+                                                hwaddr addr,
+                                                uint64_t *value,
+                                                unsigned size,
+                                                unsigned shift,
+                                                uint64_t mask,
+                                                MemTxAttrs attrs)
+{
+    uint64_t tmp;
+
+    tmp = (*value >> shift) & mask;
+    trace_memory_region_ops_write(mr, addr, tmp, size);
+    mr->ops->write(mr->opaque, addr, tmp, size);
+    return MEMTX_OK;
+}
+
+static MemTxResult memory_region_write_with_attrs_accessor(MemoryRegion *mr,
+                                                           hwaddr addr,
+                                                           uint64_t *value,
+                                                           unsigned size,
+                                                           unsigned shift,
+                                                           uint64_t mask,
+                                                           MemTxAttrs attrs)
+{
+    uint64_t tmp;
+
+    tmp = (*value >> shift) & mask;
+    trace_memory_region_ops_write(mr, addr, tmp, size);
+    return mr->ops->write_with_attrs(mr->opaque, addr, tmp, size, attrs);
+}
+
+/* FIXME: Remove */
 static MemTxResult memory_region_write_accessor_attr(MemoryRegion *mr,
                                                      hwaddr addr,
                                                      uint64_t *value,
@@ -850,7 +851,6 @@ static void address_space_update_topology_pass(AddressSpace *as,
         }
     }
 }
-
 
 static void address_space_update_topology(AddressSpace *as)
 {
