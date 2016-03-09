@@ -30,6 +30,8 @@
 
 //#define DEBUG_UNASSIGNED
 
+#define RAM_ADDR_INVALID (~(ram_addr_t)0)
+
 static unsigned memory_region_transaction_depth;
 static bool memory_region_update_pending;
 static bool ioeventfd_update_pending;
@@ -971,7 +973,7 @@ void memory_region_init(MemoryRegion *mr,
                         uint64_t size)
 {
     if (!owner) {
-        owner = qdev_get_machine();
+        owner = container_get(qdev_get_machine(), "/unattached");
     }
 
     object_initialize(mr, sizeof(*mr), TYPE_MEMORY_REGION);
@@ -1181,6 +1183,9 @@ static void memory_region_do_set_ram(MemoryRegion *mr) {
     if (mr->ram_addr) {
         qemu_ram_free(mr->ram_addr);
     }
+    if (int128_eq(mr->size, int128_make64(0))) {
+        return;
+    }
     switch (mr->ram) {
     case(0):
         mr->ram_addr = 0;
@@ -1264,6 +1269,7 @@ static void memory_region_initfn(Object *obj)
     ObjectProperty *op;
 
     mr->ops = &unassigned_mem_ops;
+    mr->ram_addr = RAM_ADDR_INVALID;
     mr->enabled = true;
     mr->romd_mode = true;
     mr->destructor = memory_region_destructor_none;
