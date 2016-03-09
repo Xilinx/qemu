@@ -1931,7 +1931,9 @@ void memory_region_add_eventfd(MemoryRegion *mr,
     };
     unsigned i;
 
-    adjust_endianness(mr, &mrfd.data, size);
+    if (size) {
+        adjust_endianness(mr, &mrfd.data, size);
+    }
     memory_region_transaction_begin();
     for (i = 0; i < mr->ioeventfd_nb; ++i) {
         if (memory_region_ioeventfd_before(mrfd, mr->ioeventfds[i])) {
@@ -1964,7 +1966,9 @@ void memory_region_del_eventfd(MemoryRegion *mr,
     };
     unsigned i;
 
-    adjust_endianness(mr, &mrfd.data, size);
+    if (size) {
+        adjust_endianness(mr, &mrfd.data, size);
+    }
     memory_region_transaction_begin();
     for (i = 0; i < mr->ioeventfd_nb; ++i) {
         if (memory_region_ioeventfd_equal(mrfd, mr->ioeventfds[i])) {
