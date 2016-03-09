@@ -30,7 +30,7 @@
 #ifndef CONFIG_USER_ONLY
 #include "exec/hwaddr.h"
 #endif
-#include "exec/memory-attr.h"
+#include "exec/memattrs.h"
 
 #ifndef TARGET_LONG_BITS
 #error TARGET_LONG_BITS must be defined before including this header
@@ -71,7 +71,7 @@ typedef uint64_t target_ulong;
 
 typedef struct CPUBusAttr {
     AddressSpace *as;
-    MemoryTransactionAttr attr;
+    MemTxAttrs attr;
 } CPUBusAttr;
 
 #if !defined(CONFIG_USER_ONLY)

@@ -256,15 +256,17 @@ static void arm_cpu_reset(CPUState *s)
         env->memattr[MEM_ATTR_NS].attr = *cpu->env.memattr_ns;
     }
 
+    env->memattr[MEM_ATTR_NS].as = cpu->as_ns;
+    if (cpu->env.memattr_ns) {
+        env->memattr[MEM_ATTR_NS].attr = *cpu->env.memattr_ns;
+    }
+
     env->memattr[MEM_ATTR_SEC].as = cpu->as_secure;
     if (cpu->env.memattr_s) {
         env->memattr[MEM_ATTR_SEC].attr = *cpu->env.memattr_s;
-    } else {
-        env->memattr[MEM_ATTR_SEC].attr = (MemoryTransactionAttr) { {0} };
-        if (arm_feature(env, ARM_FEATURE_EL3)) {
+    } else if (arm_feature(env, ARM_FEATURE_EL3)) {
             /* Only set secure mode if the CPU support EL3 */
             env->memattr[MEM_ATTR_SEC].attr.secure = true;
-        }
     }
 }
 

@@ -522,8 +522,8 @@ typedef struct CPUARMState {
     /* Controls the reset value of SCTLR_V.  */
     bool vinithi;
 
-    MemoryTransactionAttr *memattr_ns;
-    MemoryTransactionAttr *memattr_s;
+    MemTxAttrs *memattr_ns;
+    MemTxAttrs *memattr_s;
 
     void *nvic;
     const struct arm_boot_info *boot_info;

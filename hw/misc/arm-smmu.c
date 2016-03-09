@@ -6666,7 +6666,7 @@ static void smmu_nscr0_pw(RegisterInfo *reg, uint64_t val)
 
 static IOMMUTLBEntry smmu_translate(MemoryRegion *mr, hwaddr addr,
                                     bool is_write,
-                                    MemoryTransactionAttr *attr)
+                                    MemTxAttrs attr)
 {
     TBU *tbu = container_of(mr, TBU, iommu);
     SMMU *s = tbu->smmu;
@@ -6681,18 +6681,13 @@ static IOMMUTLBEntry smmu_translate(MemoryRegion *mr, hwaddr addr,
     hwaddr pa = va;
     int prot;
     bool err = false;
-    uint64_t master_id = 0;
+    uint64_t master_id = attr.master_id;
     bool clientpd = AF_EX32(s->regs, SMMU_SCR0, CLIENTPD);
 
     if (clientpd) {
         return ret;
     }
 
-    if (attr) {
-        master_id = attr->master_id;
-    } else {
-        assert(0);
-    }
     cb = smmu_stream_id_match(s, master_id);
 
     if (cb >= 0) {

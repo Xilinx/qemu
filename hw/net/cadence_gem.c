@@ -729,7 +729,8 @@ static void gem_get_rx_desc(CadenceGEMState *s, int q)
     DB_PRINT("read descriptor 0x%x\n", (unsigned)s->rx_desc_addr[q]);
     /* read current descriptor */
     address_space_rw_attr(s->dma_as, s->rx_desc_addr[q], (uint8_t *)s->rx_desc[q],
-                    sizeof(uint32_t) * gem_get_desc_len(s, true), false, s->memattr);
+                    sizeof(uint32_t) * gem_get_desc_len(s, true), false,
+                    *s->attr);
 
     /* Descriptor owned by software ? */
     if (rx_desc_get_ownership(s->rx_desc[q]) == 1 &&
@@ -950,7 +951,8 @@ found_q:
         /* Copy packet data to emulated DMA buffer */
         address_space_rw_attr(s->dma_as, rx_desc_get_buffer(s, s->rx_desc[q]) +
                                     rxbuf_offset,
-                         rxbuf_ptr, MIN(bytes_to_copy, rxbufsize), true, s->memattr);
+                              rxbuf_ptr, MIN(bytes_to_copy, rxbufsize), true,
+                              *s->attr);
         rxbuf_ptr += MIN(bytes_to_copy, rxbufsize);
         bytes_to_copy -= MIN(bytes_to_copy, rxbufsize);
 
@@ -986,7 +988,8 @@ found_q:
         /* Descriptor write-back.  */
         address_space_rw_attr(s->dma_as, s->rx_desc_addr[q],
                          (uint8_t *)s->rx_desc[q],
-                         sizeof(uint32_t) * gem_get_desc_len(s, true), true, s->memattr);
+                         sizeof(uint32_t) * gem_get_desc_len(s, true), true,
+                         *s->attr);
 
         /* Next descriptor */
         if (rx_desc_get_wrap(s->rx_desc[q])) {
@@ -1107,7 +1110,7 @@ static void gem_transmit(CadenceGEMState *s)
         DB_PRINT("read descriptor 0x%" HWADDR_PRIx "\n", packet_desc_addr);
         address_space_rw_attr(s->dma_as, packet_desc_addr, (uint8_t *)desc,
                         sizeof(uint32_t) * gem_get_desc_len(s, false), false,
-                        s->memattr);
+                        *s->attr);
         /* Handle all descriptors owned by hardware */
         while (tx_desc_get_used(desc) == 0) {
 
@@ -1132,7 +1135,7 @@ static void gem_transmit(CadenceGEMState *s)
              * contig buffer.
              */
             address_space_rw_attr(s->dma_as, tx_desc_get_buffer(s, desc), p,
-                            tx_desc_get_length(desc), false, s->memattr);
+                            tx_desc_get_length(desc), false, *s->attr);
             p += tx_desc_get_length(desc);
             total_bytes += tx_desc_get_length(desc);
 
@@ -1145,11 +1148,11 @@ static void gem_transmit(CadenceGEMState *s)
                  */
                 address_space_rw_attr(s->dma_as, s->tx_desc_addr[q],
                                 (uint8_t *)desc_first, sizeof(desc_first),
-                                false, s->memattr);
+                                false, *s->attr);
                 tx_desc_set_used(desc_first);
                 address_space_rw_attr(s->dma_as, s->tx_desc_addr[q],
                                  (uint8_t *)desc_first, sizeof(desc_first),
-                                 true, s->memattr);
+                                 true, *s->attr);
                 /* Advance the hardware current descriptor past this packet */
                 if (tx_desc_get_wrap(desc)) {
                     s->tx_desc_addr[q] = s->regs[gem_sr(q, 0, GEM_TXQBASE, 1,
@@ -1200,7 +1203,7 @@ static void gem_transmit(CadenceGEMState *s)
             DB_PRINT("read descriptor 0x%" HWADDR_PRIx "\n", packet_desc_addr);
             address_space_rw_attr(s->dma_as, packet_desc_addr, (uint8_t *)desc,
                             sizeof(uint32_t) * gem_get_desc_len(s, false),
-                            false, s->memattr);
+                            false, *s->attr);
         }
 
         if (tx_desc_get_used(desc) && !q) {
@@ -1502,6 +1505,11 @@ static void gem_realize(DeviceState *dev, Error **errp)
             sysbus_init_irq(SYS_BUS_DEVICE(dev), &s->irq[i]);
         }
     }
+
+    if (!s->attr) {
+        s->attr = MEMORY_TRANSACTION_ATTR(
+                      object_new(TYPE_MEMORY_TRANSACTION_ATTR));
+    }
 }
 
 static void gem_init(Object *obj)
@@ -1518,7 +1526,7 @@ static void gem_init(Object *obj)
                              OBJ_PROP_LINK_UNREF_ON_RELEASE,
                              &error_abort);
     object_property_add_link(obj, "memattr", TYPE_MEMORY_TRANSACTION_ATTR,
-                             (Object **)&s->memattr,
+                             (Object **)&s->attr,
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_UNREF_ON_RELEASE,
                              &error_abort);

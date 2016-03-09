@@ -28,7 +28,7 @@
 #include "exec/memory.h"
 #include "qapi/visitor.h"
 #include "hw/qdev-properties.h"
-#include "exec/memory-attr.h"
+#include "exec/memattrs.h"
 
 bool cpu_exists(int64_t id)
 {

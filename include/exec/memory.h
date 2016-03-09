@@ -23,7 +23,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "exec/memory-attr.h"
+#include "exec/memattrs.h"
 #include "qemu-common.h"
 #include "exec/cpu-common.h"
 #ifndef CONFIG_USER_ONLY
@@ -44,7 +44,7 @@
 
 #define TYPE_MEMORY_TRANSACTION_ATTR "qemu:memory-transaction-attr"
 #define MEMORY_TRANSACTION_ATTR(obj) \
-        OBJECT_CHECK(MemoryTransactionAttr, (obj), TYPE_MEMORY_TRANSACTION_ATTR)
+        OBJECT_CHECK(MemTxAttrs, (obj), TYPE_MEMORY_TRANSACTION_ATTR)
 
 typedef struct MemoryRegionOps MemoryRegionOps;
 typedef struct MemoryRegionMmio MemoryRegionMmio;
@@ -61,7 +61,7 @@ typedef struct MemoryTransaction
     bool rw;
     hwaddr addr;
     unsigned int size;
-    MemoryTransactionAttr *attr;
+    MemTxAttrs attr;
     void *opaque;
 } MemoryTransaction;
 
@@ -167,7 +167,7 @@ struct MemoryRegionIOMMUOps {
     /* Return a TLB entry that contains a given address. */
     IOMMUTLBEntry (*translate)(MemoryRegion *iommu, hwaddr addr, bool is_write);
     IOMMUTLBEntry (*translate_attr)(MemoryRegion *iommu, hwaddr addr,
-                                    bool is_write, MemoryTransactionAttr *attr);
+                                    bool is_write, MemTxAttrs attr);
 };
 
 typedef struct CoalescedMemoryRange CoalescedMemoryRange;
@@ -1065,7 +1065,7 @@ void address_space_destroy(AddressSpace *as);
 bool address_space_rw(AddressSpace *as, hwaddr addr, uint8_t *buf,
                       int len, bool is_write);
 bool address_space_rw_attr(AddressSpace *as, hwaddr addr, uint8_t *buf,
-                      int len, bool is_write, MemoryTransactionAttr *attr);
+                      int len, bool is_write, MemTxAttrs attr);
 
 /**
  * address_space_write: write to address space.
@@ -1108,7 +1108,7 @@ MemoryRegion *address_space_translate(AddressSpace *as, hwaddr addr,
 
 MemoryRegion *address_space_translate_attr(AddressSpace *as, hwaddr addr,
                                       hwaddr *xlat, hwaddr *plen,
-                                      bool is_write, MemoryTransactionAttr *attr);
+                                      bool is_write, MemTxAttrs attr);
 
 /* address_space_access_valid: check for validity of accessing an address
  * space range
@@ -1147,7 +1147,7 @@ bool address_space_access_valid(AddressSpace *as, hwaddr addr, int len,
  */
 bool address_space_access_valid_attr(AddressSpace *as, hwaddr addr, int len,
                                      bool is_write,
-                                     MemoryTransactionAttr *attr);
+                                     MemTxAttrs attr);
 
 /* address_space_map: map a physical memory region into a host virtual address
  *

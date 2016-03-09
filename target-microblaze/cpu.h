@@ -285,7 +285,7 @@ struct CPUMBState {
 
     /* MicroBlaze does not have state that affects the memory attributes so
      * we end up only needing one instance.  */
-    MemoryTransactionAttr *memattr_p;
+    MemTxAttrs *memattr_p;
 };
 
 #include "cpu-qom.h"

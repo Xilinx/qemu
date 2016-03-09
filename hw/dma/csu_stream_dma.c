@@ -114,7 +114,7 @@ enum {
 typedef struct RonaldoCSUDMA {
     SysBusDevice busdev;
     MemoryRegion iomem;
-    MemoryTransactionAttr *memattr;
+    MemTxAttrs *attr;
     MemoryRegion *dma_mr;
     AddressSpace *dma_as;
     qemu_irq irq;
@@ -275,11 +275,13 @@ static void dmach_write(RonaldoCSUDMA *s, uint8_t *buf, unsigned int len)
         unsigned int i;
 
         for (i = 0; i < len; i += 4) {
-            address_space_rw_attr(s->dma_as, s->regs[R_ADDR], buf, 4, true, s->memattr);
+            address_space_rw_attr(s->dma_as, s->regs[R_ADDR], buf, 4, true,
+                                  *s->attr);
             buf += 4;
         }
     } else {
-        address_space_rw_attr(s->dma_as, s->regs[R_ADDR], buf, len, true, s->memattr);
+        address_space_rw_attr(s->dma_as, s->regs[R_ADDR], buf, len, true,
+                              *s->attr);
     }
 }
 
@@ -301,10 +303,12 @@ static inline void dmach_read(RonaldoCSUDMA *s, uint8_t *buf, unsigned int len)
         unsigned int i;
 
         for (i = 0; i < len; i += 4) {
-            address_space_rw_attr(s->dma_as, s->regs[R_ADDR], buf + i, 4, false, s->memattr);
+            address_space_rw_attr(s->dma_as, s->regs[R_ADDR], buf + i, 4,
+                                  false, *s->attr);
         }
     } else {
-        address_space_rw_attr(s->dma_as, s->regs[R_ADDR], buf, len, false, s->memattr);
+        address_space_rw_attr(s->dma_as, s->regs[R_ADDR], buf, len, false,
+                              *s->attr);
     }
     dmach_data_process(s, buf, len);
 }
@@ -605,6 +609,11 @@ static void ronaldo_csu_dma_realize(DeviceState *dev, Error **errp)
 
     s->dma_as = s->dma_mr ? address_space_init_shareable(s->dma_mr, NULL)
                           : &address_space_memory;
+
+    if (!s->attr) {
+        s->attr = MEMORY_TRANSACTION_ATTR(
+                      object_new(TYPE_MEMORY_TRANSACTION_ATTR));
+    }
 }
 
 static void ronaldo_csu_dma_init(Object *obj)
@@ -625,7 +634,7 @@ static void ronaldo_csu_dma_init(Object *obj)
                              OBJ_PROP_LINK_UNREF_ON_RELEASE,
                              &error_abort);
     object_property_add_link(obj, "memattr", TYPE_MEMORY_TRANSACTION_ATTR,
-                             (Object **)&s->memattr,
+                             (Object **)&s->attr,
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_UNREF_ON_RELEASE,
                              &error_abort);

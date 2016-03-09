@@ -568,7 +568,7 @@ static const MemoryRegionOps cci400_ops = {
 };
 
 static IOMMUTLBEntry cci_translate(MemoryRegion *mr, hwaddr addr,
-                                   bool is_write, MemoryTransactionAttr *attr)
+                                   bool is_write, MemTxAttrs attr)
 {
     CCI *s = container_of(mr, CCI, iommu);;
     IOMMUTLBEntry ret = {

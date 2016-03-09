@@ -940,7 +940,7 @@ static void gic_dist_writel(void *opaque, hwaddr offset,
 
 static void gic_dist_access(MemoryTransaction *tr)
 {
-    bool sec = tr->attr->secure;
+    bool sec = tr->attr.secure;
     if (tr->rw) {
         switch (tr->size) {
         case 1:
@@ -1119,7 +1119,7 @@ static void gic_cpu_write(GICState *s, int cpu, int offset, uint32_t value, bool
 static void thiscpu_access(MemoryTransaction *tr)
 {
     GICState *s = (GICState *) tr->opaque;
-    bool sec = tr->attr->secure;
+    bool sec = tr->attr.secure;
 
     if (tr->rw) {
         gic_cpu_write(s, gic_get_current_cpu(s), tr->addr, tr->data.u32, sec);
@@ -1136,7 +1136,7 @@ static void cpu_access(MemoryTransaction *tr)
     GICState **backref = (GICState **) tr->opaque;
     GICState *s = *backref;
     int id = (backref - s->backref);
-    bool sec = tr->attr->secure;
+    bool sec = tr->attr.secure;
 
     if (tr->rw) {
         gic_cpu_write(s, id, tr->addr, tr->data.u32, sec);

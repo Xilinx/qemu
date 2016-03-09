@@ -94,7 +94,7 @@ static inline int dma_memory_rw_relaxed(AddressSpace *as, dma_addr_t addr,
 static inline int dma_memory_rw_relaxed_attr(AddressSpace *as, dma_addr_t addr,
                                              void *buf, dma_addr_t len,
                                              DMADirection dir,
-                                             MemoryTransactionAttr *attr)
+                                             MemTxAttrs attr)
 {
     return address_space_rw_attr(as, addr, buf, len,
                                  dir == DMA_DIRECTION_FROM_DEVICE, attr);
@@ -116,7 +116,7 @@ static inline int dma_memory_write_relaxed(AddressSpace *as, dma_addr_t addr,
 static inline int dma_memory_rw_attr(AddressSpace *as, dma_addr_t addr,
                                      void *buf, dma_addr_t len,
                                      DMADirection dir,
-                                     MemoryTransactionAttr *attr)
+                                     MemTxAttrs attr)
 {
     dma_barrier(as, dir);
 

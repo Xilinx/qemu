@@ -162,9 +162,9 @@ static inline DATA_TYPE glue(io_read, SUFFIX)(CPUArchState *env,
     cpu->mem_io_vaddr = addr;
     if (mr->iommu_ops) {
         address_space_rw_attr(cpu->as, physaddr, (void *) &val, 1 << SHIFT,
-                              false, &busattr->attr);
+                              false, busattr->attr);
     } else {
-        io_mem_read_attr(mr, physaddr, &val, 1 << SHIFT, &busattr->attr);
+        io_mem_read_attr(mr, physaddr, &val, 1 << SHIFT, busattr->attr);
     }
 
     if (qemu_etrace_mask(ETRACE_F_MEM)) {
@@ -403,9 +403,9 @@ static inline void glue(io_write, SUFFIX)(CPUArchState *env,
     cpu->mem_io_pc = retaddr;
     if (mr->iommu_ops) {
         address_space_rw_attr(cpu->as, physaddr, (void *) &val, 1 << SHIFT,
-                              true, &busattr->attr);
+                              true, busattr->attr);
     } else {
-        io_mem_write_attr(mr, physaddr, val, 1 << SHIFT, &busattr->attr);
+        io_mem_write_attr(mr, physaddr, val, 1 << SHIFT, busattr->attr);
     }
 }
 

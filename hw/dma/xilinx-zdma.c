@@ -195,7 +195,7 @@ typedef union {
 typedef struct ZDMA {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
-    MemoryTransactionAttr *memattr;
+    MemTxAttrs *attr;
     MemoryRegion *dma_mr;
     AddressSpace *dma_as;
     qemu_irq irq_zdma_ch0;
@@ -326,7 +326,7 @@ static bool zdma_load_descriptor(ZDMA *s, uint64_t addr, void *buf)
 
     /* Load descriptors. FIXME: handle endiannes conversion.  */
     address_space_rw_attr(s->dma_as, addr, buf, sizeof(ZDMADescr), false,
-                          s->memattr);
+                          *s->attr);
     return true;
 }
 
@@ -378,7 +378,7 @@ static uint64_t zdma_update_descr_addr(ZDMA *s, bool type, unsigned int basereg)
         addr = zdma_get_regaddr64(s, basereg);
         addr += sizeof(s->dsc_dst);
         address_space_rw_attr(s->dma_as, addr, (void *) &next, 8, false,
-                              s->memattr);
+                              *s->attr);
         zdma_put_regaddr64(s, basereg, next);
     }
     return next;
@@ -427,7 +427,7 @@ static void zdma_write_dst(ZDMA *s, uint8_t *buf, uint32_t len)
         }
 
         address_space_rw_attr(s->dma_as, s->dsc_dst.addr, buf, dlen, true,
-                              s->memattr);
+                              *s->attr);
         if (burst_type == AXI_BURST_INCR) {
             s->dsc_dst.addr += dlen;
         }
@@ -499,7 +499,7 @@ static void zdma_process_descr(ZDMA *s)
             }
         } else {
             address_space_rw_attr(s->dma_as, src_addr, s->buf, len, false,
-                                  s->memattr);
+                                  *s->attr);
             if (burst_type == AXI_BURST_INCR) {
                 src_addr += len;
             }
@@ -795,7 +795,7 @@ static void zdma_init(Object *obj)
                              OBJ_PROP_LINK_UNREF_ON_RELEASE,
                              &error_abort);
     object_property_add_link(obj, "memattr", TYPE_MEMORY_TRANSACTION_ATTR,
-                             (Object **)&s->memattr,
+                             (Object **)&s->attr,
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_UNREF_ON_RELEASE,
                              &error_abort);

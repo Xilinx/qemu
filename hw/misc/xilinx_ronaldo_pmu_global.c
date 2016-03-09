@@ -1826,7 +1826,7 @@ static void error_handler(void *opaque, int n, int level)
 }
 
 static uint64_t pmu_global_read(void *opaque, hwaddr addr, unsigned size,
-                                MemoryTransactionAttr *attr)
+                                MemTxAttrs attr)
 {
     PMU_GLOBAL *s = XILINX_PMU_GLOBAL(opaque);
     RegisterInfo *r = &s->regs_info[addr / 4];
@@ -1843,7 +1843,7 @@ static uint64_t pmu_global_read(void *opaque, hwaddr addr, unsigned size,
 }
 
 static void pmu_global_write(void *opaque, hwaddr addr, uint64_t value,
-                      unsigned size, MemoryTransactionAttr *attr)
+                      unsigned size, MemTxAttrs attr)
 {
     PMU_GLOBAL *s = XILINX_PMU_GLOBAL(opaque);
     RegisterInfo *r = &s->regs_info[addr / 4];
@@ -1861,14 +1861,14 @@ static void pmu_global_write(void *opaque, hwaddr addr, uint64_t value,
 
 static void pmu_global_access(MemoryTransaction *tr)
 {
-    MemoryTransactionAttr *attr = tr->attr;
+    MemTxAttrs attr = tr->attr;
     void *opaque = tr->opaque;
     hwaddr addr = tr->addr;
     unsigned size = tr->size;
     uint64_t value = tr->data.u64;;
     bool is_write = tr->rw;
 
-    if (!attr->secure) {
+    if (!attr.secure) {
         /* Ignore NS accesses.  */
         if (!is_write) {
             tr->data.u64 = 0;

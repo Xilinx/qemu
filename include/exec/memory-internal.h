@@ -32,7 +32,7 @@ bool memory_region_access_valid(MemoryRegion *mr, hwaddr addr,
 
 bool memory_region_access_valid_attr(MemoryRegion *mr, hwaddr addr,
                                      unsigned size, bool is_write,
-                                     MemoryTransactionAttr *attr);
+                                     MemTxAttrs attr);
 
 #endif
 #endif

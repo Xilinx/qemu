@@ -392,9 +392,9 @@ bool io_mem_read(struct MemoryRegion *mr, hwaddr addr,
 bool io_mem_write(struct MemoryRegion *mr, hwaddr addr,
                   uint64_t value, unsigned size);
 bool io_mem_read_attr(MemoryRegion *mr, hwaddr addr, uint64_t *pval, unsigned size,
-                      MemoryTransactionAttr *attr);
+                      MemTxAttrs attr);
 bool io_mem_write_attr(MemoryRegion *mr, hwaddr addr,
-                  uint64_t val, unsigned size, MemoryTransactionAttr *attr);
+                  uint64_t val, unsigned size, MemTxAttrs attr);
 
 void tlb_fill(CPUState *cpu, target_ulong addr, int is_write, int mmu_idx,
               uintptr_t retaddr);

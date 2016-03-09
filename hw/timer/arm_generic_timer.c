@@ -182,14 +182,14 @@ static void arm_gen_timer_write(void *opaque, hwaddr addr, uint64_t value,
 
 static void arm_gen_timer_access(MemoryTransaction *tr)
 {
-    MemoryTransactionAttr *attr = tr->attr;
+    MemTxAttrs attr = tr->attr;
     void *opaque = tr->opaque;
     hwaddr addr = tr->addr;
     unsigned size = tr->size;
     uint64_t value = tr->data.u64;;
     bool is_write = tr->rw;
 
-    if (is_write && !attr->secure) {
+    if (is_write && !attr.secure) {
         /* Ignore NS writes  */
         qemu_log_mask(LOG_GUEST_ERROR,
                       "Non secure writes to the system timestamp generator " \

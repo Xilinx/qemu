@@ -389,7 +389,7 @@ static void memory_region_oldmmio_read_accessor(MemoryRegion *mr,
                                                 unsigned size,
                                                 unsigned shift,
                                                 uint64_t mask,
-                                                MemoryTransactionAttr *attr)
+                                                MemTxAttrs attr)
 {
     uint64_t tmp;
 
@@ -404,7 +404,7 @@ static void memory_region_read_accessor(MemoryRegion *mr,
                                         unsigned size,
                                         unsigned shift,
                                         uint64_t mask,
-                                        MemoryTransactionAttr *attr)
+                                        MemTxAttrs attr)
 {
     uint64_t tmp;
 
@@ -422,7 +422,7 @@ static void memory_region_oldmmio_write_accessor(MemoryRegion *mr,
                                                  unsigned size,
                                                  unsigned shift,
                                                  uint64_t mask,
-                                                 MemoryTransactionAttr *attr)
+                                                 MemTxAttrs attr)
 {
     uint64_t tmp;
 
@@ -437,7 +437,7 @@ static void memory_region_write_accessor(MemoryRegion *mr,
                                          unsigned size,
                                          unsigned shift,
                                          uint64_t mask,
-                                         MemoryTransactionAttr *attr)
+                                         MemTxAttrs attr)
 {
     uint64_t tmp;
 
@@ -455,7 +455,7 @@ static void memory_region_read_accessor_attr(MemoryRegion *mr,
                                              unsigned size,
                                              unsigned shift,
                                              uint64_t mask,
-                                             MemoryTransactionAttr *attr)
+                                             MemTxAttrs attr)
 {
     MemoryTransaction tr = {{0}};
 
@@ -477,7 +477,7 @@ static void memory_region_write_accessor_attr(MemoryRegion *mr,
                                              unsigned size,
                                              unsigned shift,
                                              uint64_t mask,
-                                             MemoryTransactionAttr *attr)
+                                             MemTxAttrs attr)
 {
     MemoryTransaction tr = {{0}};
 
@@ -506,9 +506,9 @@ static void access_with_adjusted_size(hwaddr addr,
                                                      unsigned size,
                                                      unsigned shift,
                                                      uint64_t mask,
-                                                     MemoryTransactionAttr *attr),
+                                                     MemTxAttrs attr),
                                       MemoryRegion *mr,
-                                      MemoryTransactionAttr *attr)
+                                      MemTxAttrs attr)
 {
     uint64_t access_mask;
     unsigned access_size;
@@ -1311,7 +1311,7 @@ bool memory_region_access_valid_attr(MemoryRegion *mr,
                                      hwaddr addr,
                                      unsigned size,
                                      bool is_write,
-                                     MemoryTransactionAttr *attr)
+                                     MemTxAttrs attr)
 {
     int access_size_min, access_size_max;
     int access_size, i;
@@ -1363,13 +1363,14 @@ bool memory_region_access_valid(MemoryRegion *mr,
                                 unsigned size,
                                 bool is_write)
 {
-    return memory_region_access_valid_attr(mr, addr, size, is_write, NULL);
+    return memory_region_access_valid_attr(mr, addr, size, is_write,
+                                           MEMTXATTRS_UNSPECIFIED);
 }
 
 static uint64_t memory_region_dispatch_read1(MemoryRegion *mr,
                                              hwaddr addr,
                                              unsigned size,
-                                             MemoryTransactionAttr *attr)
+                                             MemTxAttrs attr)
 {
     uint64_t data = 0;
 
@@ -1396,7 +1397,7 @@ static bool memory_region_dispatch_read(MemoryRegion *mr,
                                         hwaddr addr,
                                         uint64_t *pval,
                                         unsigned size,
-                                        MemoryTransactionAttr *attr)
+                                        MemTxAttrs attr)
 {
     if (!memory_region_access_valid_attr(mr, addr, size, false, attr)) {
         *pval = unassigned_mem_read(mr, addr, size);
@@ -1412,7 +1413,7 @@ static bool memory_region_dispatch_write(MemoryRegion *mr,
                                          hwaddr addr,
                                          uint64_t data,
                                          unsigned size,
-                                         MemoryTransactionAttr *attr)
+                                         MemTxAttrs attr)
 {
     if (!memory_region_access_valid_attr(mr, addr, size, true, attr)) {
         unassigned_mem_write(mr, addr, data, size);
@@ -2247,30 +2248,28 @@ void address_space_destroy(AddressSpace *as)
 
 bool io_mem_read(MemoryRegion *mr, hwaddr addr, uint64_t *pval, unsigned size)
 {
-    MemoryTransactionAttr attr_zero = {};
-    return memory_region_dispatch_read(mr, addr, pval, size, &attr_zero);
+    return memory_region_dispatch_read(mr, addr, pval, size,
+                                       MEMTXATTRS_UNSPECIFIED);
 }
 
 bool io_mem_write(MemoryRegion *mr, hwaddr addr,
                   uint64_t val, unsigned size)
 {
-    MemoryTransactionAttr attr_zero = {};
-    return memory_region_dispatch_write(mr, addr, val, size, &attr_zero);
+    return memory_region_dispatch_write(mr, addr, val, size,
+                                        MEMTXATTRS_UNSPECIFIED);
 }
 
 bool io_mem_read_attr(MemoryRegion *mr, hwaddr addr, uint64_t *pval, unsigned size,
-                      MemoryTransactionAttr *attr)
+                      MemTxAttrs attr)
 {
     return memory_region_dispatch_read(mr, addr, pval, size, attr);
 }
 
 bool io_mem_write_attr(MemoryRegion *mr, hwaddr addr,
-                  uint64_t val, unsigned size, MemoryTransactionAttr *attr)
+                  uint64_t val, unsigned size, MemTxAttrs attr)
 {
     return memory_region_dispatch_write(mr, addr, val, size, attr);
 }
-
-
 
 typedef struct MemoryRegionList MemoryRegionList;
 
@@ -2468,30 +2467,30 @@ static const TypeInfo memory_region_info = {
 
 static bool memory_transaction_attr_get_secure(Object *obj, Error **errp)
 {
-    MemoryTransactionAttr *mattr = MEMORY_TRANSACTION_ATTR(obj);
+    MemTxAttrs *mattr = MEMORY_TRANSACTION_ATTR(obj);
     return mattr->secure;
 }
 
 static void memory_transaction_attr_set_secure(Object *obj, bool value,
                                                Error **errp)
 {
-    MemoryTransactionAttr *mattr = MEMORY_TRANSACTION_ATTR(obj);
+    MemTxAttrs *mattr = MEMORY_TRANSACTION_ATTR(obj);
     mattr->secure = value;
 }
 
 static void mattr_get_master_id(Object *obj, Visitor *v, void *opaque,
-                                   const char *name, Error **errp)
+                                const char *name, Error **errp)
 {
-    MemoryTransactionAttr *mattr = MEMORY_TRANSACTION_ATTR(obj);
+    MemTxAttrs *mattr = MEMORY_TRANSACTION_ATTR(obj);
     uint64_t value = mattr->master_id;
 
     visit_type_uint64(v, &value, name, errp);
 }
 
 static void mattr_set_master_id(Object *obj, Visitor *v, void *opaque,
-                                   const char *name, Error **errp)
+                                const char *name, Error **errp)
 {
-    MemoryTransactionAttr *mattr = MEMORY_TRANSACTION_ATTR(obj);
+    MemTxAttrs *mattr = MEMORY_TRANSACTION_ATTR(obj);
     Error *local_err = NULL;
     uint64_t value;
 
@@ -2501,7 +2500,7 @@ static void mattr_set_master_id(Object *obj, Visitor *v, void *opaque,
 
 static void memory_transaction_attr_initfn(Object *obj)
 {
-    MemoryTransactionAttr *mattr = MEMORY_TRANSACTION_ATTR(obj);
+    MemTxAttrs *mattr = MEMORY_TRANSACTION_ATTR(obj);
 
     object_property_add_bool(OBJECT(mattr), "secure",
                         memory_transaction_attr_get_secure,
@@ -2516,7 +2515,7 @@ static void memory_transaction_attr_initfn(Object *obj)
 static const TypeInfo memory_transaction_attr_info = {
     .parent             = TYPE_OBJECT,
     .name               = TYPE_MEMORY_TRANSACTION_ATTR,
-    .instance_size      = sizeof(MemoryTransactionAttr),
+    .instance_size      = sizeof(MemTxAttrs),
     .instance_init      = memory_transaction_attr_initfn,
     .interfaces         = (InterfaceInfo[]) {
         { TYPE_FDT_GENERIC_MMAP },

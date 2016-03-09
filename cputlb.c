@@ -374,7 +374,7 @@ void tlb_set_page_attr(CPUState *cpu, target_ulong vaddr,
 
     sz = size;
     section = address_space_translate_for_iotlb(attr->as, paddr,
-                                                &xlat, &sz, &prot, &attr->attr);
+                                                &xlat, &sz, &prot, attr->attr);
     assert(sz >= TARGET_PAGE_SIZE);
 
 #if defined(DEBUG_TLB)

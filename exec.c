@@ -359,17 +359,11 @@ static inline bool memory_access_is_direct(MemoryRegion *mr, bool is_write)
 MemoryRegion *address_space_translate_attr(AddressSpace *as, hwaddr addr,
                                            hwaddr *xlat, hwaddr *plen,
                                            bool is_write,
-                                           MemoryTransactionAttr *attr)
+                                           MemTxAttrs attr)
 {
     IOMMUTLBEntry iotlb;
     MemoryRegionSection *section;
     MemoryRegion *mr;
-
-    MemoryTransactionAttr attr_zero = {{0}};
-
-    if (!attr) {
-        attr = &attr_zero;
-    }
 
     for (;;) {
         section = address_space_translate_internal(as->dispatch, addr, &addr, plen, true);
@@ -409,12 +403,13 @@ MemoryRegion *address_space_translate(AddressSpace *as, hwaddr addr,
                                       hwaddr *xlat, hwaddr *plen,
                                       bool is_write)
 {
-    return address_space_translate_attr(as, addr, xlat, plen, is_write, NULL);
+    return address_space_translate_attr(as, addr, xlat, plen, is_write,
+                                        MEMTXATTRS_UNSPECIFIED);
 }
 
 MemoryRegionSection *
 address_space_translate_for_iotlb(AddressSpace *as, hwaddr addr, hwaddr *xlat,
-                                  hwaddr *plen, int *prot, MemoryTransactionAttr *attr)
+                                  hwaddr *plen, int *prot, MemTxAttrs attr)
 {
     IOMMUTLBEntry iotlb;
     MemoryRegionSection *section;
@@ -426,11 +421,6 @@ address_space_translate_for_iotlb(AddressSpace *as, hwaddr addr, hwaddr *xlat,
     AddressSpace *orig_as = as;
     MemoryRegion *mr;
     hwaddr len = *plen;
-    MemoryTransactionAttr attr_zero = {{0}};
-
-    if (!attr) {
-        attr = &attr_zero;
-    }
 
     assert(prot);
 
@@ -1843,7 +1833,7 @@ static const MemoryRegionOps watch_mem_ops = {
 
 static void subpage_access(MemoryTransaction *tr)
 {
-    MemoryTransactionAttr *attr = tr->attr;
+    MemTxAttrs attr = tr->attr;
     subpage_t *subpage = tr->opaque;
     hwaddr addr = tr->addr;
     unsigned len = tr->size;
@@ -1915,7 +1905,7 @@ static bool subpage_accepts(void *opaque, hwaddr addr,
 
 static bool subpage_accepts_tr(MemoryTransaction *tr)
 {
-    MemoryTransactionAttr *attr = tr->attr;
+    MemTxAttrs attr = tr->attr;
     subpage_t *subpage = tr->opaque;
     hwaddr addr = tr->addr;
     unsigned len = tr->size;
@@ -1924,7 +1914,7 @@ static bool subpage_accepts_tr(MemoryTransaction *tr)
 #if defined(DEBUG_SUBPAGE)
     fprintf(stderr, "%s: subpage %p %c len %u addr " TARGET_FMT_plx
             " secure: %d\n",
-           __func__, subpage, is_write ? 'w' : 'r', len, addr, attr->secure);
+           __func__, subpage, is_write ? 'w' : 'r', len, addr, attr.secure);
 #endif
 
     return address_space_access_valid_attr(subpage->as, addr + subpage->base,
@@ -2242,7 +2232,7 @@ static int memory_access_size(MemoryRegion *mr, unsigned l, hwaddr addr)
 }
 
 bool address_space_rw_attr(AddressSpace *as, hwaddr addr, uint8_t *buf,
-                      int len, bool is_write, MemoryTransactionAttr *attr)
+                      int len, bool is_write, MemTxAttrs attr)
 {
     hwaddr l;
     uint8_t *ptr;
@@ -2250,11 +2240,6 @@ bool address_space_rw_attr(AddressSpace *as, hwaddr addr, uint8_t *buf,
     hwaddr addr1;
     MemoryRegion *mr;
     bool error = false;
-    MemoryTransactionAttr attr_zero = {{0}};
-
-    if (!attr) {
-        attr = &attr_zero;
-    }
 
     while (len > 0) {
         l = len;
@@ -2341,7 +2326,8 @@ bool address_space_rw_attr(AddressSpace *as, hwaddr addr, uint8_t *buf,
 bool address_space_rw(AddressSpace *as, hwaddr addr, uint8_t *buf,
                       int len, bool is_write)
 {
-    return address_space_rw_attr(as, addr, buf, len, is_write, NULL);
+    return address_space_rw_attr(as, addr, buf, len, is_write,
+                                 MEMTXATTRS_UNSPECIFIED);
 }
 
 
@@ -2475,7 +2461,7 @@ static void cpu_notify_map_clients(void)
 
 bool address_space_access_valid_attr(AddressSpace *as, hwaddr addr,
                                      int len, bool is_write,
-                                     MemoryTransactionAttr *attr)
+                                     MemTxAttrs attr)
 {
     MemoryRegion *mr;
     hwaddr l, xlat;
@@ -2500,7 +2486,8 @@ bool address_space_access_valid_attr(AddressSpace *as, hwaddr addr,
 bool address_space_access_valid(AddressSpace *as, hwaddr addr, int len,
                                 bool is_write)
 {
-    return address_space_access_valid_attr(as, addr, len, is_write, NULL);
+    return address_space_access_valid_attr(as, addr, len, is_write,
+                                           MEMTXATTRS_UNSPECIFIED);
 }
 
 /* Map a physical memory region into a host virtual address.

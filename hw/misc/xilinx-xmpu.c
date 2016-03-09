@@ -738,12 +738,12 @@ static void xmpu_reset(DeviceState *dev)
 }
 
 static uint64_t xmpu_read(void *opaque, hwaddr addr, unsigned size,
-                          MemoryTransactionAttr *attr)
+                          MemTxAttrs attr)
 {
     XMPU *s = XILINX_XMPU(opaque);
     RegisterInfo *r = &s->regs_info[addr / 4];
 
-    if (!attr->secure) {
+    if (!attr.secure) {
         /* Non secure, return zero */
         return 0;
     }
@@ -759,12 +759,12 @@ static uint64_t xmpu_read(void *opaque, hwaddr addr, unsigned size,
 }
 
 static void xmpu_write(void *opaque, hwaddr addr, uint64_t value,
-                      unsigned size, MemoryTransactionAttr *attr)
+                      unsigned size, MemTxAttrs attr)
 {
     XMPU *s = XILINX_XMPU(opaque);
     RegisterInfo *r = &s->regs_info[addr / 4];
 
-    if (!attr->secure) {
+    if (!attr.secure) {
         return;
     }
 
@@ -784,7 +784,7 @@ static void xmpu_write(void *opaque, hwaddr addr, uint64_t value,
 
 static void xmpu_access(MemoryTransaction *tr)
 {
-    MemoryTransactionAttr *attr = tr->attr;
+    MemTxAttrs attr = tr->attr;
     void *opaque = tr->opaque;
     XMPU *s = XILINX_XMPU(opaque);
     hwaddr addr = tr->addr;
@@ -819,7 +819,7 @@ static const MemoryRegionOps xmpu_ops = {
 };
 
 static IOMMUTLBEntry xmpu_master_translate(XMPUMaster *xm, hwaddr addr,
-                                           MemoryTransactionAttr *attr,
+                                           MemTxAttrs attr,
                                            bool *sec_vio)
 {
     XMPU *s = xm->parent;
@@ -838,7 +838,7 @@ static IOMMUTLBEntry xmpu_master_translate(XMPUMaster *xm, hwaddr addr,
     };
     bool default_wr = AF_EX32(s->regs, CTRL, DEFWRALLOWED);
     bool default_rd = AF_EX32(s->regs, CTRL, DEFRDALLOWED);
-    bool sec = attr->secure;
+    bool sec = attr.secure;
     bool sec_access_check;
     unsigned int nr_matched = 0;
     int i;
@@ -886,7 +886,8 @@ static IOMMUTLBEntry xmpu_master_translate(XMPUMaster *xm, hwaddr addr,
         xr.start &= ~s->addr_mask;
         xr.end &= ~s->addr_mask;
 
-        id_match = (xr.master.mask & xr.master.id) == (xr.master.mask & attr->master_id);
+        id_match = (xr.master.mask & xr.master.id) ==
+                       (xr.master.mask & attr.master_id);
         match = id_match && (addr >= xr.start && addr < xr.end);
         if (match) {
             nr_matched++;
@@ -940,7 +941,8 @@ static IOMMUTLBEntry xmpu_master_translate(XMPUMaster *xm, hwaddr addr,
     return ret;
 }
 
-static uint64_t zero_read(void *opaque, hwaddr addr, unsigned size, MemoryTransactionAttr *attr)
+static uint64_t zero_read(void *opaque, hwaddr addr, unsigned size,
+                          MemTxAttrs attr)
 {
     XMPUMaster *xm = opaque;
     XMPU *s = xm->parent;
@@ -960,7 +962,7 @@ static uint64_t zero_read(void *opaque, hwaddr addr, unsigned size, MemoryTransa
             addr = (AF_EX32(s->regs, POISON, BASE) << 12) | (addr & 0xfff);
             dma_memory_read(as, addr, &value, size);
         }
-        AF_DP32(s->regs, ERR_STATUS2, AXI_ID, attr->master_id);
+        AF_DP32(s->regs, ERR_STATUS2, AXI_ID, attr.master_id);
         if (sec_vio) {
             AF_DP32(s->regs, ISR, SECURITYVIO, true);
         } else {
@@ -972,7 +974,7 @@ static uint64_t zero_read(void *opaque, hwaddr addr, unsigned size, MemoryTransa
 }
 
 static void zero_write(void *opaque, hwaddr addr, uint64_t value,
-                       unsigned size, MemoryTransactionAttr *attr)
+                       unsigned size, MemTxAttrs attr)
 {
     XMPUMaster *xm = opaque;
     XMPU *s = xm->parent;
@@ -991,7 +993,7 @@ static void zero_write(void *opaque, hwaddr addr, uint64_t value,
             addr = (AF_EX32(s->regs, POISON, BASE) << 12) | (addr & 0xfff);
             dma_memory_write(as, addr, &value, size);
         }
-        AF_DP32(s->regs, ERR_STATUS2, AXI_ID, attr->master_id);
+        AF_DP32(s->regs, ERR_STATUS2, AXI_ID, attr.master_id);
         if (sec_vio) {
             AF_DP32(s->regs, ISR, SECURITYVIO, true);
         } else {
@@ -1003,7 +1005,7 @@ static void zero_write(void *opaque, hwaddr addr, uint64_t value,
 
 static void zero_access(MemoryTransaction *tr)
 {
-    MemoryTransactionAttr *attr = tr->attr;
+    MemTxAttrs attr = tr->attr;
     void *opaque = tr->opaque;
     hwaddr addr = tr->addr;
     unsigned size = tr->size;
@@ -1026,16 +1028,12 @@ static const MemoryRegionOps zero_ops = {
     },
 };
 
-static IOMMUTLBEntry xmpu_translate(MemoryRegion *mr, hwaddr addr, bool is_write, MemoryTransactionAttr *attr)
+static IOMMUTLBEntry xmpu_translate(MemoryRegion *mr, hwaddr addr,
+                                    bool is_write, MemTxAttrs attr)
 {
     XMPUMaster *xm;
     IOMMUTLBEntry ret;
-    MemoryTransactionAttr attr_zero = { {0} };
     bool sec_vio;
-
-    if (!attr) {
-        attr = &attr_zero;
-    }
 
     xm = container_of(mr, XMPUMaster, iommu);
     ret = xmpu_master_translate(xm, addr, attr, &sec_vio);

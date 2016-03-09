@@ -579,7 +579,7 @@ static bool xppu_ap_check(XPPU *s, MemoryTransaction *tr, uint32_t apl)
         readonly = F_EX32(val32, MASTER_ID00, MIDR);
         mask = F_EX32(val32, MASTER_ID00, MIDM);
 
-        if ((mid & mask) != (tr->attr->master_id & mask)) {
+        if ((mid & mask) != (tr->attr.master_id & mask)) {
             continue;
         }
 
@@ -596,7 +596,7 @@ static bool xppu_ap_check(XPPU *s, MemoryTransaction *tr, uint32_t apl)
             continue;
         }
 
-        if (!tr->attr->secure && !tz) {
+        if (!tr->attr.secure && !tz) {
             AF_DP32(s->regs, ISR, APER_TZ, true);
             continue;
         }
@@ -641,7 +641,7 @@ static void xppu_ap_access(MemoryTransaction *tr)
         if (isr_free) {
             AF_DP32(s->regs, ISR, APER_PERM, true);
             AF_DP32(s->regs, ERR_STATUS1, AXI_ADDR, addr >> 12);
-            AF_DP32(s->regs, ERR_STATUS2, AXI_ID, tr->attr->master_id);
+            AF_DP32(s->regs, ERR_STATUS2, AXI_ID, tr->attr.master_id);
         }
 
         /* Poison the transaction.
@@ -672,12 +672,12 @@ static const MemoryRegionOps xppu_ap_ops = {
 };
 
 static uint64_t xppu_read(void *opaque, hwaddr addr, unsigned size,
-                          MemoryTransactionAttr *attr)
+                          MemTxAttrs attr)
 {
     XPPU *s = XILINX_XPPU(opaque);
     RegisterInfo *r = &s->regs_info[addr / 4];
 
-    if (!attr->secure) {
+    if (!attr.secure) {
         /* Non secure, return zero */
         return 0;
     }
@@ -700,12 +700,12 @@ static uint64_t xppu_read(void *opaque, hwaddr addr, unsigned size,
 }
 
 static void xppu_write(void *opaque, hwaddr addr, uint64_t value,
-                       unsigned size, MemoryTransactionAttr *attr)
+                       unsigned size, MemTxAttrs attr)
 {
     XPPU *s = XILINX_XPPU(opaque);
     RegisterInfo *r = &s->regs_info[addr / 4];
 
-    if (!attr->secure) {
+    if (!attr.secure) {
         return;
     }
 
@@ -729,7 +729,7 @@ static void xppu_write(void *opaque, hwaddr addr, uint64_t value,
 
 static void xppu_access(MemoryTransaction *tr)
 {
-    MemoryTransactionAttr *attr = tr->attr;
+    MemTxAttrs attr = tr->attr;
     void *opaque = tr->opaque;
     hwaddr addr = tr->addr;
     unsigned size = tr->size;
