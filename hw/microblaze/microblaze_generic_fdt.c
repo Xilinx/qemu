@@ -26,6 +26,7 @@
  */
 
 #include "hw/sysbus.h"
+#include "qemu/log.h"
 #include "net/net.h"
 #include "hw/block/flash.h"
 #include "sysemu/sysemu.h"
@@ -236,6 +237,13 @@ microblaze_generic_fdt_init(MachineState *machine)
     char dma_path[DT_PATH_LENGTH] = { 0 };
     uint32_t memory_phandle;
 
+    /* For Ethernet nodes */
+    char **eth_paths;
+    char *phy_path;
+    char *mdio_path;
+    uint32_t n_eth;
+    uint32_t prop_val;
+
     machine_opts = qemu_opts_find(qemu_find_opts("machine"), 0);
     if (!machine_opts) {
         goto no_dtb_arg;
@@ -307,6 +315,31 @@ microblaze_generic_fdt_init(MachineState *machine)
                 qemu_fdt_setprop_phandle(fdt, dma_path, "mm2s", node_path);
             }
         }
+
+        /* Copy phyaddr value from phy node reg property */
+        n_eth = qemu_devtree_get_n_nodes_by_name(fdt, &eth_paths, "ethernet");
+
+        while (n_eth--) {
+            mdio_path = qemu_devtree_get_child_by_name(fdt, eth_paths[n_eth],
+                                                       "mdio");
+            if (mdio_path) {
+                phy_path = qemu_devtree_get_child_by_name(fdt, mdio_path,
+                                                          "phy");
+                if (phy_path) {
+                    prop_val = qemu_fdt_getprop_cell(fdt, phy_path, "reg", 0,
+                                                     NULL, &error_abort);
+                    qemu_fdt_setprop_cell(fdt, eth_paths[n_eth], "xlnx,phyaddr",
+                                          prop_val);
+                    g_free(phy_path);
+                } else {
+                    qemu_log_mask(LOG_GUEST_ERROR, "phy not found in %s",
+                                  mdio_path);
+                }
+                g_free(mdio_path);
+            }
+            g_free(eth_paths[n_eth]);
+        }
+        g_free(eth_paths);
     }
 
     /* Instantiate peripherals from the FDT.  */
