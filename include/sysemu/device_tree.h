@@ -150,6 +150,35 @@ int qemu_devtree_getparent(void *fdt, char *node_path,
                         const char *current);
 int qemu_devtree_get_root_node(void *fdt, char *node_path);
 
+/* qemu_devtree_get_child_by_name: Check for the matching node name under
+ * structural block of parent node and returns node path.
+ * args:
+ *     fdt: flatend device tree fp
+ *     parent_path : path of the parent, whose child to be searched
+ *     cmpname : node name of child
+ * return:
+ *     Node path of the child
+ * Note:
+ *     Returned string memory should be deallocated by g_free()
+ */
+char *qemu_devtree_get_child_by_name(void *fdt, char *parent_path,
+                                     const char *cmpname);
+
+/* qemu_devtree_get_n_nodes_by_name: Same as qemu_devtree_get_node_by_name but
+ * returns all the possible node paths matching the node name.
+ * args:
+ *     fdt: flatend device tree
+ *     array: pointer to hold array of strings
+ *     cmpname: node name to search for
+ * return:
+ *     Returns number of matching nodes found
+ * Note:
+ *     Array of strings should be released after usage. Each of the individual
+ *     strings in the array and the array itself should be released.
+ */
+int qemu_devtree_get_n_nodes_by_name(void *fdt, char ***array,
+                                     const char *cmpname);
+
 /* misc */
 
 int devtree_get_num_nodes(void *fdt);
