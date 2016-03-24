@@ -801,7 +801,7 @@ static uint32_t m25p80_transfer(SSISlave *ss, uint32_t tx, int num_bits)
         break;
 
     case STATE_COLLECTING_DATA:
-        assert(num_bits = 8);
+        assert(num_bits == 8);
         s->data[s->len] = (uint8_t)tx;
         s->len++;
 
@@ -811,7 +811,7 @@ static uint32_t m25p80_transfer(SSISlave *ss, uint32_t tx, int num_bits)
         break;
 
     case STATE_READING_DATA:
-        assert(num_bits = 8);
+        assert(num_bits == 8);
         r = s->data[s->pos];
         s->pos++;
         if (s->pos == s->len) {
@@ -832,7 +832,7 @@ static uint32_t m25p80_transfer(SSISlave *ss, uint32_t tx, int num_bits)
         break;
     default:
     case STATE_IDLE:
-        assert(num_bits = 8);
+        assert(num_bits == 8);
         decode_new_cmd(s, (uint8_t)tx);
         break;
     }
