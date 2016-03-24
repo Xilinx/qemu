@@ -321,14 +321,18 @@ static inline int num_effective_busses(XilinxSPIPS *s)
 
 static void xilinx_spips_update_cs_lines_legacy_mangle(XilinxSPIPS *s,
                                                        int *field) {
-    *field = ~(s->regs[R_CONFIG] >> CS_SHIFT) & 0x01;
+    *field = ~((s->regs[R_CONFIG] & R_CONFIG_CS) >> CS_SHIFT);
     /* In dual parallel, mirror low CS to both */
     if (num_effective_busses(s) == 2) {
+        /* Signle bit chip-select for qspi */
+        *field &= 0x1;
         *field &= ~(1 << 1);
         *field |= *field << 1;
     /* Dual stack U-Page */
     } else if (s->regs[R_LQSPI_CFG] & LQSPI_CFG_TWO_MEM &&
                s->regs[R_LQSPI_STS] & LQSPI_CFG_U_PAGE) {
+        /* Signle bit chip-select for qspi */
+        *field &= 0x1;
         /* change from CS0 to CS1 */
         *field <<= 1;
     }
