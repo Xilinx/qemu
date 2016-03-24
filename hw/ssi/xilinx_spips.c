@@ -356,6 +356,9 @@ static void xilinx_spips_update_cs_lines(XilinxSPIPS *s)
     if (!AF_EX32(s->regs, GQSPI_SELECT, GENERIC_QSPI_EN)) {
         xilinx_spips_update_cs_lines_legacy_mangle(s, &field);
     } else {
+        if (!s->regs[R_GQSPI_GF_SNAPSHOT]) {
+            return;
+        }
         xilinx_spips_update_cs_lines_generic_mangle(s, &field);
     }
 
@@ -528,6 +531,10 @@ static void xilinx_spips_flush_fifo_g(XilinxSPIPS *s)
             s->regs[R_GQSPI_GF_SNAPSHOT] = fifo_pop32(&s->fifo_g);
             DB_PRINT_L(0, "Popped GQSPI command %" PRIx32 "\n",
                        s->regs[R_GQSPI_GF_SNAPSHOT]);
+            if (!s->regs[R_GQSPI_GF_SNAPSHOT]) {
+                DB_PRINT_L(0, "Dummy GQSPI Delay Command Entry, Do nothing");
+                continue;
+            }
             xilinx_spips_update_cs_lines(s);
 
             busses = AF_EX32(s->regs, GQSPI_GF_SNAPSHOT, DATA_BUS_SELECT);
