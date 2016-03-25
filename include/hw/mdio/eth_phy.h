@@ -110,6 +110,7 @@ static const uint16_t default_readonly_mask[32] = {
     [PHY_ID1] = 0xffff,
     [PHY_ID2] = 0xffff,
     [PHY_LP_ABILITY] = 0xffff,
+    [PHY_SPEC_STATUS] = 0xffff,
 };
 
 typedef struct PhyPartInfo {
