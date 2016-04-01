@@ -256,7 +256,7 @@ static uint16_t sd_crc16(void *message, size_t width)
 static void sd_set_ocr(SDState *sd)
 {
     /* All voltages OK, card power-up OK, Standard Capacity SD Memory Card */
-    sd->ocr = 0xc0ffff00 | (sd->mmc ? 0 : 1 << 24);
+    sd->ocr = 0x80ffff00 | (sd->mmc ? 0 : 1 << 24);
 }
 
 static void sd_set_scr(SDState *sd)
