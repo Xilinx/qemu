@@ -478,14 +478,11 @@ static uint64_t rpu_0_ids_prew(RegisterInfo *reg, uint64_t val64)
 
 static void rpu_rpu_glbl_cntl_postw(RegisterInfo *reg, uint64_t val64)
 {
-#if 0
     RPU *s = XILINX_RPU(reg->opaque);
     bool tcm_comb = AF_EX32(s->regs, RPU_GLBL_CNTL, TCM_COMB);
-#endif
-    /*
+
     memory_region_set_enabled(s->atcm1_for_rpu0, tcm_comb);
     memory_region_set_enabled(s->btcm1_for_rpu0, tcm_comb);
-    memory_region_set_enabled(s->rpu1_for_main_bus, !tcm_comb); */
 }
 
 static void update_wfi_out(void *opaque)
@@ -727,6 +724,16 @@ static void rpu_realize(DeviceState *dev, Error **errp)
         register_init(r);
         qdev_pass_all_gpios(DEVICE(r), dev);
     }
+
+    if (!s->atcm1_for_rpu0) {
+        error_set(errp, QERR_MISSING_PARAMETER, "atcm1-for-rpu0");
+        return;
+    }
+
+    if (!s->btcm1_for_rpu0) {
+        error_set(errp, QERR_MISSING_PARAMETER, "btcm1-for-rpu0");
+        return;
+    }
 }
 
 static void rpu_init(Object *obj)
@@ -740,6 +747,10 @@ static void rpu_init(Object *obj)
     sysbus_init_irq(sbd, &s->irq_rpu_1);
     sysbus_init_irq(sbd, &s->irq_rpu_0);
 
+    /* xtcm1-for-rpu0 are the aliases for the tcm in lockstep mode.
+     * This link allows to enable/disable those aliases when we are in
+     * lock-step/normal mode.
+     */
     object_property_add_link(obj, "atcm1-for-rpu0", TYPE_MEMORY_REGION,
                              (Object **)&s->atcm1_for_rpu0,
                              qdev_prop_allow_set_link_before_realize,
