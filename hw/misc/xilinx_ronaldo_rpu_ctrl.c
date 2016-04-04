@@ -405,6 +405,8 @@ typedef struct RPU {
     /* MemoryRegion for the rpu1 caches. */
     MemoryRegion *icache_for_rpu1;
     MemoryRegion *dcache_for_rpu1;
+    /* Second part of the DDR. */
+    MemoryRegion *ddr;
 
     /* WFIs towards PMU. */
     qemu_irq wfi_out[2];
@@ -490,6 +492,7 @@ static void rpu_rpu_glbl_cntl_postw(RegisterInfo *reg, uint64_t val64)
 
     memory_region_set_enabled(s->icache_for_rpu1, sls_split);
     memory_region_set_enabled(s->dcache_for_rpu1, sls_split);
+    memory_region_set_enabled(s->ddr, sls_split);
 }
 
 static void update_wfi_out(void *opaque)
@@ -752,9 +755,15 @@ static void rpu_realize(DeviceState *dev, Error **errp)
         return;
     }
 
+    if (!s->ddr) {
+        error_set(errp, QERR_MISSING_PARAMETER, "ddr-mem-for-rpu");
+        return;
+    }
+
     /* RPUs starts in lockstep mode, so the rpu1 caches are not accessible. */
     memory_region_set_enabled(s->icache_for_rpu1, false);
     memory_region_set_enabled(s->dcache_for_rpu1, false);
+    memory_region_set_enabled(s->ddr, false);
 }
 
 static void rpu_init(Object *obj)
@@ -798,6 +807,15 @@ static void rpu_init(Object *obj)
                              &error_abort);
     object_property_add_link(obj, "dcache-for-rpu1", TYPE_MEMORY_REGION,
                              (Object **)&s->dcache_for_rpu1,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             &error_abort);
+
+    /* Link to the second part of the DDR which is enabled in split mode and
+     * disabled in lockstep mode.
+     */
+    object_property_add_link(obj, "ddr-mem-for-rpu", TYPE_MEMORY_REGION,
+                             (Object **)&s->ddr,
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_UNREF_ON_RELEASE,
                              &error_abort);
