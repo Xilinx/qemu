@@ -402,6 +402,9 @@ typedef struct RPU {
     MemoryRegion *atcm1_for_rpu0;
     MemoryRegion *btcm1_for_rpu0;
     MemoryRegion *rpu1_for_main_bus;
+    /* MemoryRegion for the rpu1 caches. */
+    MemoryRegion *icache_for_rpu1;
+    MemoryRegion *dcache_for_rpu1;
 
     /* WFIs towards PMU. */
     qemu_irq wfi_out[2];
@@ -480,9 +483,13 @@ static void rpu_rpu_glbl_cntl_postw(RegisterInfo *reg, uint64_t val64)
 {
     RPU *s = XILINX_RPU(reg->opaque);
     bool tcm_comb = AF_EX32(s->regs, RPU_GLBL_CNTL, TCM_COMB);
+    bool sls_split = AF_EX32(s->regs, RPU_GLBL_CNTL, SLSPLIT);
 
     memory_region_set_enabled(s->atcm1_for_rpu0, tcm_comb);
     memory_region_set_enabled(s->btcm1_for_rpu0, tcm_comb);
+
+    memory_region_set_enabled(s->icache_for_rpu1, sls_split);
+    memory_region_set_enabled(s->dcache_for_rpu1, sls_split);
 }
 
 static void update_wfi_out(void *opaque)
@@ -734,6 +741,20 @@ static void rpu_realize(DeviceState *dev, Error **errp)
         error_set(errp, QERR_MISSING_PARAMETER, "btcm1-for-rpu0");
         return;
     }
+
+    if (!s->icache_for_rpu1) {
+        error_set(errp, QERR_MISSING_PARAMETER, "icache-for-rpu1");
+        return;
+    }
+
+    if (!s->dcache_for_rpu1) {
+        error_set(errp, QERR_MISSING_PARAMETER, "dcache-for-rpu1");
+        return;
+    }
+
+    /* RPUs starts in lockstep mode, so the rpu1 caches are not accessible. */
+    memory_region_set_enabled(s->icache_for_rpu1, false);
+    memory_region_set_enabled(s->dcache_for_rpu1, false);
 }
 
 static void rpu_init(Object *obj)
@@ -763,6 +784,20 @@ static void rpu_init(Object *obj)
                              &error_abort);
     object_property_add_link(obj, "rpu1-for-main-bus", TYPE_MEMORY_REGION,
                              (Object **)&s->atcm1_for_rpu0,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             &error_abort);
+
+    /* This link allows to enable/disable those memory region when we are in
+     * lock-step/normal mode.
+     */
+    object_property_add_link(obj, "icache-for-rpu1", TYPE_MEMORY_REGION,
+                             (Object **)&s->icache_for_rpu1,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             &error_abort);
+    object_property_add_link(obj, "dcache-for-rpu1", TYPE_MEMORY_REGION,
+                             (Object **)&s->dcache_for_rpu1,
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_UNREF_ON_RELEASE,
                              &error_abort);
