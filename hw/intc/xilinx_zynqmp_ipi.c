@@ -32,7 +32,7 @@
 
 #include "hw/fdt_generic_util.h"
 
-#define TYPE_XILINX_IPI "xlnx.ronaldo_ipi"
+#define TYPE_XILINX_IPI "xlnx.zynqmp_ipi"
 
 #define XILINX_IPI(obj) \
      OBJECT_CHECK(IPI, (obj), TYPE_XILINX_IPI)

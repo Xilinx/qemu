@@ -38,7 +38,7 @@
 #define XILINX_CRL_APB_ERR_DEBUG 0
 #endif
 
-#define TYPE_XILINX_CRL_APB "xlnx.ronaldo-crl"
+#define TYPE_XILINX_CRL_APB "xlnx.zynqmp-crl"
 
 #define XILINX_CRL_APB(obj) \
      OBJECT_CHECK(CRL_APB, (obj), TYPE_XILINX_CRL_APB)

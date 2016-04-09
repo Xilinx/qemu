@@ -35,7 +35,7 @@
 #define GIC_PROXY_ERR_DEBUG 0
 #endif
 
-#define TYPE_XILINX_GIC_PROXY "xlnx.ronaldo-gicp"
+#define TYPE_XILINX_GIC_PROXY "xlnx.zynqmp-gicp"
 
 #define XILINX_GIC_PROXY(obj) \
      OBJECT_CHECK(GICProxy, (obj), TYPE_XILINX_GIC_PROXY)

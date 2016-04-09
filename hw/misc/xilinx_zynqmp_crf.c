@@ -35,7 +35,7 @@
 #define XILINX_CRF_APB_ERR_DEBUG 0
 #endif
 
-#define TYPE_XILINX_CRF_APB "xlnx.ronaldo_crf"
+#define TYPE_XILINX_CRF_APB "xlnx.zynqmp_crf"
 
 #define XILINX_CRF_APB(obj) \
      OBJECT_CHECK(CRF_APB, (obj), TYPE_XILINX_CRF_APB)

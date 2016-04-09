@@ -510,7 +510,7 @@ static void update_wfi_out(void *opaque)
     }
 }
 
-static void ronaldo_rpu_pwrctl_post_write(RegisterInfo *reg, uint64_t val)
+static void zynqmp_rpu_pwrctl_post_write(RegisterInfo *reg, uint64_t val)
 {
     RPU *s = XILINX_RPU(reg->opaque);
     update_wfi_out(s);
@@ -591,7 +591,7 @@ static RegisterAccessInfo rpu_regs_info[] = {
               .bit_pos = R_RPU_0_PWRDWN_EN_SHIFT, .width = 1 },
             {},
         },
-        .post_write = ronaldo_rpu_pwrctl_post_write,
+        .post_write = zynqmp_rpu_pwrctl_post_write,
     },{ .name = "RPU_0_ISR",  .decode.addr = A_RPU_0_ISR,
         .w1c = 0x1ffffff,
         .post_write = rpu_0_isr_postw,
@@ -624,7 +624,7 @@ static RegisterAccessInfo rpu_regs_info[] = {
               .bit_pos = R_RPU_1_PWRDWN_EN_SHIFT, .width = 1 },
             {},
         },
-        .post_write = ronaldo_rpu_pwrctl_post_write,
+        .post_write = zynqmp_rpu_pwrctl_post_write,
     },{ .name = "RPU_1_ISR",  .decode.addr = A_RPU_1_ISR,
         .w1c = 0x1ffffff,
         .post_write = rpu_1_isr_postw,
@@ -697,7 +697,7 @@ static const MemoryRegionOps rpu_ops = {
     },
 };
 
-static void ronaldo_rpu_0_handle_wfi(void *opaque, int irq, int level)
+static void zynqmp_rpu_0_handle_wfi(void *opaque, int irq, int level)
 {
     RPU *s = XILINX_RPU(opaque);
 
@@ -705,7 +705,7 @@ static void ronaldo_rpu_0_handle_wfi(void *opaque, int irq, int level)
     update_wfi_out(s);
 }
 
-static void ronaldo_rpu_1_handle_wfi(void *opaque, int irq, int level)
+static void zynqmp_rpu_1_handle_wfi(void *opaque, int irq, int level)
 {
     RPU *s = XILINX_RPU(opaque);
 
@@ -823,8 +823,8 @@ static void rpu_init(Object *obj)
     /* wfi_out is used to connect to PMU GPIs. */
     qdev_init_gpio_out_named(DEVICE(obj), s->wfi_out, "wfi_out", 2);
     /* wfi_in is used as input from CPUs as wfi request. */
-    qdev_init_gpio_in_named(DEVICE(obj), ronaldo_rpu_0_handle_wfi, "wfi_in_0", 1);
-    qdev_init_gpio_in_named(DEVICE(obj), ronaldo_rpu_1_handle_wfi, "wfi_in_1", 1);
+    qdev_init_gpio_in_named(DEVICE(obj), zynqmp_rpu_0_handle_wfi, "wfi_in_0", 1);
+    qdev_init_gpio_in_named(DEVICE(obj), zynqmp_rpu_1_handle_wfi, "wfi_in_1", 1);
 }
 
 static const VMStateDescription vmstate_rpu = {

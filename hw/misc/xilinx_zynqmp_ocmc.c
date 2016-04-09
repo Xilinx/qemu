@@ -34,7 +34,7 @@
 #define XILINX_OCM_ERR_DEBUG 0
 #endif
 
-#define TYPE_XILINX_OCM "xlnx.ronaldo-ocmc"
+#define TYPE_XILINX_OCM "xlnx.zynqmp-ocmc"
 
 #define XILINX_OCM(obj) \
      OBJECT_CHECK(OCMC, (obj), TYPE_XILINX_OCM)

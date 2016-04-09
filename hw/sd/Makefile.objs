@@ -3,7 +3,7 @@ common-obj-$(CONFIG_SSI_SD) += ssi-sd.o
 common-obj-$(CONFIG_SD) += sd.o
 common-obj-$(CONFIG_SDHCI) += sdhci.o
 
-common-obj-$(CONFIG_XLNX_ZYNQMP) += ronaldo-sdhci.o
+common-obj-$(CONFIG_XLNX_ZYNQMP) += zynqmp-sdhci.o
 
 obj-$(CONFIG_MILKYMIST) += milkymist-memcard.o
 obj-$(CONFIG_OMAP) += omap_mmc.o

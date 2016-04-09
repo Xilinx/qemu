@@ -218,7 +218,7 @@ static const TypeInfo fdt_qom_aliases [] = {
     {   .name = "simple-bus",               .parent = "qemu:memory-region"  },
     {   .name = "xlnx,axi-dpdma-1.0",       .parent = "xlnx.dpdma"          },
     {   .name = "xlnx,xps-gpio-1.00.a",     .parent = "xlnx.axi-gpio"       },
-    {   .name = "arasan,sdhci-8.9a",        .parent = "xilinx.ronaldo-sdhci"},
+    {   .name = "arasan,sdhci-8.9a",        .parent = "xilinx.zynqmp-sdhci"},
 };
 
 static void fdt_generic_register_types(void)

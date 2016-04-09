@@ -1,5 +1,5 @@
 /*
- * QEMU model of Ronaldo CSU Stream DMA
+ * QEMU model of ZynqMP CSU Stream DMA
  *
  * Copyright (c) 2013 Xilinx Inc
  * Copyright (c) 2013 Peter Crosthwaite <peter.crosthwaite@xilinx.com>
@@ -36,18 +36,18 @@
 
 #include "hw/fdt_generic_util.h"
 
-#define TYPE_RONALDO_CSU_DMA "ronaldo.csu-dma"
+#define TYPE_ZYNQMP_CSU_DMA "zynqmp.csu-dma"
 
-#define RONALDO_CSU_DMA(obj) \
-     OBJECT_CHECK(RonaldoCSUDMA, (obj), TYPE_RONALDO_CSU_DMA)
+#define ZYNQMP_CSU_DMA(obj) \
+     OBJECT_CHECK(ZynqMPCSUDMA, (obj), TYPE_ZYNQMP_CSU_DMA)
 
-#ifndef RONALDO_CSU_DMA_ERR_DEBUG
-#define RONALDO_CSU_DMA_ERR_DEBUG 0
+#ifndef ZYNQMP_CSU_DMA_ERR_DEBUG
+#define ZYNQMP_CSU_DMA_ERR_DEBUG 0
 #endif
 
 #define DB_PRINT_L(lvl, fmt, args...) do {\
-    if (RONALDO_CSU_DMA_ERR_DEBUG > lvl) {\
-        fprintf(stderr, TYPE_RONALDO_CSU_DMA ": %s:" fmt, __func__, ## args);\
+    if (ZYNQMP_CSU_DMA_ERR_DEBUG > lvl) {\
+        fprintf(stderr, TYPE_ZYNQMP_CSU_DMA ": %s:" fmt, __func__, ## args);\
     } \
 } while (0);
 
@@ -111,7 +111,7 @@ enum {
     CTRL2_RSVD                      = (~((1 << 28) - 1))
 };
 
-typedef struct RonaldoCSUDMA {
+typedef struct ZynqMPCSUDMA {
     SysBusDevice busdev;
     MemoryRegion iomem;
     MemTxAttrs *attr;
@@ -129,10 +129,10 @@ typedef struct RonaldoCSUDMA {
 
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
-} RonaldoCSUDMA;
+} ZynqMPCSUDMA;
 
-/* This is a ronaldo specific CSU hack.  */
-static int dmach_validate_addr(RonaldoCSUDMA *s)
+/* This is a zynqmp specific CSU hack.  */
+static int dmach_validate_addr(ZynqMPCSUDMA *s)
 {
     /* priv ROM access?  */
     if (s->regs[R_ADDR] >= 0xffc00000 && s->regs[R_ADDR] < 0xffc20000) {
@@ -145,7 +145,7 @@ static int dmach_validate_addr(RonaldoCSUDMA *s)
     return 0;
 }
 
-static bool dmach_is_paused(RonaldoCSUDMA *s)
+static bool dmach_is_paused(ZynqMPCSUDMA *s)
 {
     bool paused;
 
@@ -154,17 +154,17 @@ static bool dmach_is_paused(RonaldoCSUDMA *s)
     return paused;
 }
 
-static bool dmach_get_eop(RonaldoCSUDMA *s)
+static bool dmach_get_eop(ZynqMPCSUDMA *s)
 {
     return s->regs[R_SIZE] & 1;
 }
 
-static uint32_t dmach_get_size(RonaldoCSUDMA *s)
+static uint32_t dmach_get_size(ZynqMPCSUDMA *s)
 {
     return s->regs[R_SIZE] & ~3;
 }
 
-static void dmach_set_size(RonaldoCSUDMA *s, uint32_t size)
+static void dmach_set_size(ZynqMPCSUDMA *s, uint32_t size)
 {
     assert((size & 3) == 0);
 
@@ -172,17 +172,17 @@ static void dmach_set_size(RonaldoCSUDMA *s, uint32_t size)
     s->regs[R_SIZE] |= size;
 }
 
-static bool dmach_burst_is_fixed(RonaldoCSUDMA *s)
+static bool dmach_burst_is_fixed(ZynqMPCSUDMA *s)
 {
     return !!(s->regs[R_CTRL] & CTRL_AXI_BURST_FIXED);
 }
 
-static bool dmach_timeout_enabled(RonaldoCSUDMA *s)
+static bool dmach_timeout_enabled(ZynqMPCSUDMA *s)
 {
     return s->regs[R_CTRL2] & CTRL2_TIMEOUT_EN;
 }
 
-static inline void dmach_update_dma_cnt(RonaldoCSUDMA *s, int a)
+static inline void dmach_update_dma_cnt(ZynqMPCSUDMA *s, int a)
 {
     int cnt;
 
@@ -191,7 +191,7 @@ static inline void dmach_update_dma_cnt(RonaldoCSUDMA *s, int a)
     AF_DP32(s->regs, STATUS, DMA_DONE_CNT, cnt);
 }
 
-static void dmach_done(RonaldoCSUDMA *s)
+static void dmach_done(ZynqMPCSUDMA *s)
 {
     dmach_update_dma_cnt(s, +1);
     s->regs[R_STATUS] &= ~STATUS_DMA_BUSY;
@@ -203,7 +203,7 @@ static void dmach_done(RonaldoCSUDMA *s)
     }
 }
 
-static void dmach_advance(RonaldoCSUDMA *s, unsigned int len)
+static void dmach_advance(ZynqMPCSUDMA *s, unsigned int len)
 {
     uint32_t size = dmach_get_size(s);
 
@@ -223,7 +223,7 @@ static void dmach_advance(RonaldoCSUDMA *s, unsigned int len)
     }
 }
 
-static void dmach_data_process(RonaldoCSUDMA *s, uint8_t *buf, unsigned int len)
+static void dmach_data_process(ZynqMPCSUDMA *s, uint8_t *buf, unsigned int len)
 {
     unsigned int bswap;
     unsigned int i;
@@ -262,7 +262,7 @@ static void dmach_data_process(RonaldoCSUDMA *s, uint8_t *buf, unsigned int len)
 }
 
 /* len is in bytes.  */
-static void dmach_write(RonaldoCSUDMA *s, uint8_t *buf, unsigned int len)
+static void dmach_write(ZynqMPCSUDMA *s, uint8_t *buf, unsigned int len)
 {
     int err = dmach_validate_addr(s);
 
@@ -286,7 +286,7 @@ static void dmach_write(RonaldoCSUDMA *s, uint8_t *buf, unsigned int len)
 }
 
 /* len is in bytes.  */
-static inline void dmach_read(RonaldoCSUDMA *s, uint8_t *buf, unsigned int len)
+static inline void dmach_read(ZynqMPCSUDMA *s, uint8_t *buf, unsigned int len)
 {
     int raz = dmach_validate_addr(s);
 
@@ -313,14 +313,14 @@ static inline void dmach_read(RonaldoCSUDMA *s, uint8_t *buf, unsigned int len)
     dmach_data_process(s, buf, len);
 }
 
-static void ronaldu_csu_dma_update_irq(RonaldoCSUDMA *s)
+static void ronaldu_csu_dma_update_irq(ZynqMPCSUDMA *s)
 {
     qemu_set_irq(s->irq, !!(s->regs[R_INT_STATUS] & ~s->regs[R_INT_MASK]));
 }
 
-static void ronaldo_csu_dma_reset(DeviceState *dev)
+static void zynqmp_csu_dma_reset(DeviceState *dev)
 {
-    RonaldoCSUDMA *s = RONALDO_CSU_DMA(dev);
+    ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(dev);
     int i;
 
     for (i = 0; i < R_MAX; i++) {
@@ -328,10 +328,10 @@ static void ronaldo_csu_dma_reset(DeviceState *dev)
     }
 }
 
-static size_t ronaldo_csu_dma_stream_push(StreamSlave *obj, uint8_t *buf,
+static size_t zynqmp_csu_dma_stream_push(StreamSlave *obj, uint8_t *buf,
                                           size_t len, uint32_t attr)
 {
-    RonaldoCSUDMA *s = RONALDO_CSU_DMA(obj);
+    ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(obj);
     uint32_t size = dmach_get_size(s);
     uint32_t btt = MIN(size, len);
 
@@ -354,7 +354,7 @@ static size_t ronaldo_csu_dma_stream_push(StreamSlave *obj, uint8_t *buf,
     return btt;
 }
 
-static bool ronaldo_csu_dma_stream_can_push(StreamSlave *obj,
+static bool zynqmp_csu_dma_stream_can_push(StreamSlave *obj,
                                             StreamCanPushNotifyFn notify,
                                             void *notify_opaque)
 {
@@ -362,16 +362,16 @@ static bool ronaldo_csu_dma_stream_can_push(StreamSlave *obj,
     return true;
 }
 
-static void ronaldo_csu_dma_src_notify(void *opaque)
+static void zynqmp_csu_dma_src_notify(void *opaque)
 {
-    RonaldoCSUDMA *s = RONALDO_CSU_DMA(opaque);
+    ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(opaque);
     unsigned char buf[4 * 1024];
 
     /* Stop the backpreassure timer.  */
     ptimer_stop(s->src_timer);
 
     while (dmach_get_size(s) && !dmach_is_paused(s) &&
-           stream_can_push(s->tx_dev, ronaldo_csu_dma_src_notify, s)) {
+           stream_can_push(s->tx_dev, zynqmp_csu_dma_src_notify, s)) {
         uint32_t size = dmach_get_size(s);
         unsigned int plen = MIN(size, sizeof buf);
         uint32_t attr = 0;
@@ -391,7 +391,7 @@ static void ronaldo_csu_dma_src_notify(void *opaque)
     /* REMOVE-ME?: Check for flow-control timeout. This is all theoretical as
        we currently never see backpreassure.  */
     if (dmach_timeout_enabled(s) && dmach_get_size(s)
-        && !stream_can_push(s->tx_dev, ronaldo_csu_dma_src_notify, s)) {
+        && !stream_can_push(s->tx_dev, zynqmp_csu_dma_src_notify, s)) {
         unsigned int timeout = AF_EX32(s->regs, CTRL, TIMEOUT);
         unsigned int div = extract32(s->regs[R_CTRL2], 4, 12) + 1;
         unsigned int freq = 400 * 1000 * 1000;
@@ -407,11 +407,11 @@ static void ronaldo_csu_dma_src_notify(void *opaque)
 
 static void r_ctrl_post_write(RegisterInfo *reg, uint64_t val)
 {
-    RonaldoCSUDMA *s = RONALDO_CSU_DMA(reg->opaque);
+    ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(reg->opaque);
 
     if (!s->is_dst) {
         if (!dmach_is_paused(s)) {
-            ronaldo_csu_dma_src_notify(s);
+            zynqmp_csu_dma_src_notify(s);
         }
     } else {
         if (!dmach_is_paused(s) && s->notify) {
@@ -422,7 +422,7 @@ static void r_ctrl_post_write(RegisterInfo *reg, uint64_t val)
 
 static uint64_t size_pre_write(RegisterInfo *reg, uint64_t val)
 {
-    RonaldoCSUDMA *s = RONALDO_CSU_DMA(reg->opaque);
+    ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(reg->opaque);
     if (dmach_get_size(s) != 0) {
         qemu_log_mask(LOG_GUEST_ERROR,
                       "csu-dma: Starting DMA while already running.\n");
@@ -432,7 +432,7 @@ static uint64_t size_pre_write(RegisterInfo *reg, uint64_t val)
 
 static void size_post_write(RegisterInfo *reg, uint64_t val)
 {
-    RonaldoCSUDMA *s = RONALDO_CSU_DMA(reg->opaque);
+    ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(reg->opaque);
 
     s->regs[R_STATUS] |= STATUS_DMA_BUSY;
     /* When starting the DMA channel with a zero length, it signals
@@ -444,7 +444,7 @@ static void size_post_write(RegisterInfo *reg, uint64_t val)
     }
 
     if (!s->is_dst) {
-        ronaldo_csu_dma_src_notify(s);
+        zynqmp_csu_dma_src_notify(s);
     } else {
         if (s->notify) {
             s->notify(s->notify_opaque);
@@ -454,7 +454,7 @@ static void size_post_write(RegisterInfo *reg, uint64_t val)
 
 static uint64_t int_status_pre_write(RegisterInfo *reg, uint64_t val)
 {
-    RonaldoCSUDMA *s = RONALDO_CSU_DMA(reg->opaque);
+    ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(reg->opaque);
 
     /* DMA counter decrements on interrupt clear */
     if (~val & s->regs[R_INT_STATUS] & INT_DONE) {
@@ -466,14 +466,14 @@ static uint64_t int_status_pre_write(RegisterInfo *reg, uint64_t val)
 
 static void int_status_post_write(RegisterInfo *reg, uint64_t val)
 {
-    RonaldoCSUDMA *s = RONALDO_CSU_DMA(reg->opaque);
+    ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(reg->opaque);
 
     ronaldu_csu_dma_update_irq(s);
 }
 
 static uint64_t int_enable_pre_write(RegisterInfo *reg, uint64_t val)
 {
-    RonaldoCSUDMA *s = RONALDO_CSU_DMA(reg->opaque);
+    ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(reg->opaque);
     uint32_t v32 = val;
 
     s->regs[R_INT_MASK] &= ~v32;
@@ -483,7 +483,7 @@ static uint64_t int_enable_pre_write(RegisterInfo *reg, uint64_t val)
 
 static uint64_t int_disable_pre_write(RegisterInfo *reg, uint64_t val)
 {
-    RonaldoCSUDMA *s = RONALDO_CSU_DMA(reg->opaque);
+    ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(reg->opaque);
     uint32_t v32 = val;
 
     s->regs[R_INT_MASK] |= v32;
@@ -493,7 +493,7 @@ static uint64_t int_disable_pre_write(RegisterInfo *reg, uint64_t val)
 
 static void src_timeout_hit(void *opaque)
 {
-    RonaldoCSUDMA *s = RONALDO_CSU_DMA(opaque);
+    ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(opaque);
 
     /* Ignore if the timeout is masked.  */
     if (!dmach_timeout_enabled(s)) {
@@ -504,7 +504,7 @@ static void src_timeout_hit(void *opaque)
     ronaldu_csu_dma_update_irq(s);
 }
 
-static const RegisterAccessInfo *ronaldo_csu_dma_regs_info[] = {
+static const RegisterAccessInfo *zynqmp_csu_dma_regs_info[] = {
 #define DMACH_REGINFO(NAME, snd)                                              \
 (const RegisterAccessInfo []) {                                               \
     [R_ADDR] = { .name =  #NAME "_ADDR" },                                    \
@@ -561,7 +561,7 @@ static const RegisterAccessInfo *ronaldo_csu_dma_regs_info[] = {
     DMACH_REGINFO(DMA_DST, false)
 };
 
-static const MemoryRegionOps ronaldo_csu_dma_ops = {
+static const MemoryRegionOps zynqmp_csu_dma_ops = {
     .read = register_read_memory_le,
     .write = register_write_memory_le,
     .endianness = DEVICE_LITTLE_ENDIAN,
@@ -571,7 +571,7 @@ static const MemoryRegionOps ronaldo_csu_dma_ops = {
     }
 };
 
-static void map_dma_channel(const char *prefix, RonaldoCSUDMA *s)
+static void map_dma_channel(const char *prefix, ZynqMPCSUDMA *s)
 {
     int i;
 
@@ -581,23 +581,23 @@ static void map_dma_channel(const char *prefix, RonaldoCSUDMA *s)
         *r = (RegisterInfo) {
             .data = (uint8_t *)&s->regs[i],
             .data_size = sizeof(uint32_t),
-            .access = &ronaldo_csu_dma_regs_info[!!s->is_dst][i],
-            .debug = RONALDO_CSU_DMA_ERR_DEBUG,
+            .access = &zynqmp_csu_dma_regs_info[!!s->is_dst][i],
+            .debug = ZYNQMP_CSU_DMA_ERR_DEBUG,
             .prefix = prefix,
             .opaque = s,
         };
-        memory_region_init_io(&r->mem, OBJECT(s), &ronaldo_csu_dma_ops, r,
+        memory_region_init_io(&r->mem, OBJECT(s), &zynqmp_csu_dma_ops, r,
                               r->access->name, 4);
         memory_region_add_subregion(&s->iomem, i * 4, &r->mem);
     }
 }
 
-static void ronaldo_csu_dma_realize(DeviceState *dev, Error **errp)
+static void zynqmp_csu_dma_realize(DeviceState *dev, Error **errp)
 {
-    RonaldoCSUDMA *s = RONALDO_CSU_DMA(dev);
+    ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(dev);
     SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
 
-    memory_region_init(&s->iomem, OBJECT(dev), "ronaldo.csu-dma", 0x800);
+    memory_region_init(&s->iomem, OBJECT(dev), "zynqmp.csu-dma", 0x800);
     sysbus_init_mmio(sbd, &s->iomem);
 
     const char *prefix = object_get_canonical_path(OBJECT(dev));
@@ -616,9 +616,9 @@ static void ronaldo_csu_dma_realize(DeviceState *dev, Error **errp)
     }
 }
 
-static void ronaldo_csu_dma_init(Object *obj)
+static void zynqmp_csu_dma_init(Object *obj)
 {
-    RonaldoCSUDMA *s = RONALDO_CSU_DMA(obj);
+    ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
 
     sysbus_init_irq(sbd, &s->irq);
@@ -641,52 +641,52 @@ static void ronaldo_csu_dma_init(Object *obj)
 
 }
 
-static const VMStateDescription vmstate_ronaldo_csu_dma = {
-    .name = "ronaldo_csu_dma",
+static const VMStateDescription vmstate_zynqmp_csu_dma = {
+    .name = "zynqmp_csu_dma",
     .version_id = 2,
     .minimum_version_id = 2,
     .minimum_version_id_old = 2,
     .fields = (VMStateField[]) {
-        VMSTATE_PTIMER(src_timer, RonaldoCSUDMA),
-        VMSTATE_UINT32_ARRAY(regs, RonaldoCSUDMA, R_MAX),
+        VMSTATE_PTIMER(src_timer, ZynqMPCSUDMA),
+        VMSTATE_UINT32_ARRAY(regs, ZynqMPCSUDMA, R_MAX),
         VMSTATE_END_OF_LIST(),
     }
 };
 
-static Property ronaldo_csu_dma_properties [] = {
-    DEFINE_PROP_BOOL("is-dst", RonaldoCSUDMA, is_dst, false),
+static Property zynqmp_csu_dma_properties [] = {
+    DEFINE_PROP_BOOL("is-dst", ZynqMPCSUDMA, is_dst, false),
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static void ronaldo_csu_dma_class_init(ObjectClass *klass, void *data)
+static void zynqmp_csu_dma_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     StreamSlaveClass *ssc = STREAM_SLAVE_CLASS(klass);
 
-    dc->reset = ronaldo_csu_dma_reset;
-    dc->realize = ronaldo_csu_dma_realize;
-    dc->vmsd = &vmstate_ronaldo_csu_dma;
-    dc->props = ronaldo_csu_dma_properties;
+    dc->reset = zynqmp_csu_dma_reset;
+    dc->realize = zynqmp_csu_dma_realize;
+    dc->vmsd = &vmstate_zynqmp_csu_dma;
+    dc->props = zynqmp_csu_dma_properties;
 
-    ssc->push = ronaldo_csu_dma_stream_push;
-    ssc->can_push = ronaldo_csu_dma_stream_can_push;
+    ssc->push = zynqmp_csu_dma_stream_push;
+    ssc->can_push = zynqmp_csu_dma_stream_can_push;
 }
 
-static const TypeInfo ronaldo_csu_dma_info = {
-    .name          = TYPE_RONALDO_CSU_DMA,
+static const TypeInfo zynqmp_csu_dma_info = {
+    .name          = TYPE_ZYNQMP_CSU_DMA,
     .parent        = TYPE_SYS_BUS_DEVICE,
-    .instance_size = sizeof(RonaldoCSUDMA),
-    .class_init    = ronaldo_csu_dma_class_init,
-    .instance_init = ronaldo_csu_dma_init,
+    .instance_size = sizeof(ZynqMPCSUDMA),
+    .class_init    = zynqmp_csu_dma_class_init,
+    .instance_init = zynqmp_csu_dma_init,
     .interfaces = (InterfaceInfo[]) {
         { TYPE_STREAM_SLAVE },
         { }
     }
 };
 
-static void ronaldo_csu_dma_register_types(void)
+static void zynqmp_csu_dma_register_types(void)
 {
-    type_register_static(&ronaldo_csu_dma_info);
+    type_register_static(&zynqmp_csu_dma_info);
 }
 
-type_init(ronaldo_csu_dma_register_types)
+type_init(zynqmp_csu_dma_register_types)

@@ -33,7 +33,7 @@
 #define XILINX_AMS_ERR_DEBUG 0
 #endif
 
-#define TYPE_XILINX_AMS "xlnx.ronaldo_ams"
+#define TYPE_XILINX_AMS "xlnx.zynqmp_ams"
 
 #define XILINX_AMS(obj) \
      OBJECT_CHECK(AMS, (obj), TYPE_XILINX_AMS)

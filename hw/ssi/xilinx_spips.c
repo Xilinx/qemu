@@ -285,7 +285,7 @@ typedef struct {
 
     StreamSlave *dma;
     uint8_t dma_buf[4];
-} RonaldoQSPIPS;
+} ZynqMPQSPIPS;
 
 typedef struct XilinxSPIPSClass {
     SysBusDeviceClass parent_class;
@@ -298,7 +298,7 @@ typedef struct XilinxSPIPSClass {
 
 #define TYPE_XILINX_SPIPS "cdns.spi-r1p6"
 #define TYPE_XILINX_QSPIPS "xlnx.ps7-qspi"
-#define TYPE_RONALDO_QSPIPS "xlnx.usmp-gqspi"
+#define TYPE_ZYNQMP_QSPIPS "xlnx.usmp-gqspi"
 
 #define XILINX_SPIPS(obj) \
      OBJECT_CHECK(XilinxSPIPS, (obj), TYPE_XILINX_SPIPS)
@@ -310,8 +310,8 @@ typedef struct XilinxSPIPSClass {
 #define XILINX_QSPIPS(obj) \
      OBJECT_CHECK(XilinxQSPIPS, (obj), TYPE_XILINX_QSPIPS)
 
-#define RONALDO_QSPIPS(obj) \
-     OBJECT_CHECK(RonaldoQSPIPS, (obj), TYPE_RONALDO_QSPIPS)
+#define ZYNQMP_QSPIPS(obj) \
+     OBJECT_CHECK(ZynqMPQSPIPS, (obj), TYPE_ZYNQMP_QSPIPS)
 
 static inline int num_effective_busses(XilinxSPIPS *s)
 {
@@ -384,17 +384,17 @@ static void xilinx_spips_update_cs_lines(XilinxSPIPS *s)
 }
 
 
-#define RONALDO_ONLY(a) ((ronaldo) ? (a) : (0))
+#define ZYNQMP_ONLY(a) ((zynqmp) ? (a) : (0))
 
 static void xilinx_spips_update_ixr(XilinxSPIPS *s)
 {
     int new_irqline;
     uint32_t qspi_int, gqspi_int;
-    bool ronaldo = false;
+    bool zynqmp = false;
 
 
-    if (object_dynamic_cast(OBJECT(s), TYPE_RONALDO_QSPIPS)) {
-        ronaldo = true;
+    if (object_dynamic_cast(OBJECT(s), TYPE_ZYNQMP_QSPIPS)) {
+        zynqmp = true;
     }
     /* these are pure functions of fifo state, set them here */
     s->regs[R_GQSPI_ISR] &= ~IXR_SELF_CLEAR;
@@ -420,7 +420,7 @@ static void xilinx_spips_update_ixr(XilinxSPIPS *s)
             (fifo_is_full(&s->rx_fifo) ? IXR_RX_FIFO_FULL : 0) |
             (s->rx_fifo.num >= s->regs[R_RX_THRES] ?
                                     IXR_RX_FIFO_NOT_EMPTY : 0) |
-            RONALDO_ONLY(fifo_is_empty(&s->tx_fifo) ? IXR_TX_FIFO_EMPTY : 0) |
+            ZYNQMP_ONLY(fifo_is_empty(&s->tx_fifo) ? IXR_TX_FIFO_EMPTY : 0) |
             (fifo_is_full(&s->tx_fifo) ? IXR_TX_FIFO_FULL : 0) |
             (s->tx_fifo.num < s->regs[R_TX_THRES] ? IXR_TX_FIFO_NOT_FULL : 0);
     }
@@ -917,9 +917,9 @@ static inline int rx_data_bytes(XilinxSPIPS *s, uint8_t *value, int max)
     return max - i;
 }
 
-static void ronaldo_qspips_notify(void *opaque)
+static void zynqmp_qspips_notify(void *opaque)
 {
-    RonaldoQSPIPS *rq = RONALDO_QSPIPS(opaque);
+    ZynqMPQSPIPS *rq = ZYNQMP_QSPIPS(opaque);
     XilinxSPIPS *s = XILINX_SPIPS(rq);
     Fifo *recv_fifo;
 
@@ -937,7 +937,7 @@ static void ronaldo_qspips_notify(void *opaque)
 
     while (/* FIXME: impelement byte granularity */
            recv_fifo->num >= 4 /* FIXME: APIify */
-           && stream_can_push(rq->dma, ronaldo_qspips_notify, rq))
+           && stream_can_push(rq->dma, zynqmp_qspips_notify, rq))
     {
         size_t ret;
         uint32_t num;
@@ -1176,8 +1176,8 @@ static void xilinx_qspips_write(void *opaque, hwaddr addr,
     if (s->regs[R_CMND] & R_CMND_RXFIFO_DRAIN) {
         fifo_reset(&s->rx_fifo);
     }
-    if (object_dynamic_cast(OBJECT(s), TYPE_RONALDO_QSPIPS)) {
-        ronaldo_qspips_notify(s);
+    if (object_dynamic_cast(OBJECT(s), TYPE_ZYNQMP_QSPIPS)) {
+        zynqmp_qspips_notify(s);
     }
 }
 
@@ -1321,7 +1321,7 @@ static void xilinx_spips_realize(DeviceState *dev, Error **errp)
 
     fifo_create8(&s->rx_fifo, xsc->rx_fifo_size);
     fifo_create8(&s->tx_fifo, xsc->tx_fifo_size);
-    /* FIXME: Move to ronaldo specific state */
+    /* FIXME: Move to zynqmp specific state */
     fifo_create8(&s->rx_fifo_g, xsc->rx_fifo_size);
     fifo_create8(&s->tx_fifo_g, xsc->tx_fifo_size);
     fifo_create32(&s->fifo_g, 32);
@@ -1349,9 +1349,9 @@ static void xilinx_qspips_realize(DeviceState *dev, Error **errp)
     q->lqspi_cached_addr = ~0ULL;
 }
 
-static void ronaldo_qspips_init(Object *obj)
+static void zynqmp_qspips_init(Object *obj)
 {
-    RonaldoQSPIPS *rq = RONALDO_QSPIPS(obj);
+    ZynqMPQSPIPS *rq = ZYNQMP_QSPIPS(obj);
 
     object_property_add_link(obj, "stream-connected-dma", TYPE_STREAM_SLAVE,
                              (Object **)&rq->dma,
@@ -1449,18 +1449,18 @@ static const TypeInfo xilinx_qspips_info = {
     .instance_init = xilinx_qspips_init,
 };
 
-static const TypeInfo ronaldo_qspips_info = {
-    .name  = TYPE_RONALDO_QSPIPS,
+static const TypeInfo zynqmp_qspips_info = {
+    .name  = TYPE_ZYNQMP_QSPIPS,
     .parent = TYPE_XILINX_QSPIPS,
-    .instance_size  = sizeof(RonaldoQSPIPS),
-    .instance_init = ronaldo_qspips_init,
+    .instance_size  = sizeof(ZynqMPQSPIPS),
+    .instance_init = zynqmp_qspips_init,
 };
 
 static void xilinx_spips_register_types(void)
 {
     type_register_static(&xilinx_spips_info);
     type_register_static(&xilinx_qspips_info);
-    type_register_static(&ronaldo_qspips_info);
+    type_register_static(&zynqmp_qspips_info);
 }
 
 type_init(xilinx_spips_register_types)

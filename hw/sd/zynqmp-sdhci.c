@@ -1,5 +1,5 @@
 /*
- * Ronaldo SDHCI controller.
+ * ZynqMP SDHCI controller.
  *
  * Copyright (c) 2013 Xilinx Inc
  * Copyright (c) 2013 Peter Crosthwaite <peter.crosthwaite@xilinx.com>
@@ -35,31 +35,31 @@
 
 #include "sdhci-internal.h"
 
-#ifndef RONALDO_SDHCI_ERR_DEBUG
-#define RONALDO_SDHCI_ERR_DEBUG 0
+#ifndef ZYNQMP_SDHCI_ERR_DEBUG
+#define ZYNQMP_SDHCI_ERR_DEBUG 0
 #endif
 
-#define TYPE_RONALDO_SDHCI "xilinx.ronaldo-sdhci"
+#define TYPE_ZYNQMP_SDHCI "xilinx.zynqmp-sdhci"
 
-#define RONALDO_SDHCI(obj) \
-     OBJECT_CHECK(RonaldoSDHCIState, (obj), TYPE_RONALDO_SDHCI)
+#define ZYNQMP_SDHCI(obj) \
+     OBJECT_CHECK(ZynqMPSDHCIState, (obj), TYPE_ZYNQMP_SDHCI)
 
-#define RONALDO_SDHCI_PARENT_CLASS \
-    object_class_get_parent(object_class_by_name(TYPE_RONALDO_SDHCI))
+#define ZYNQMP_SDHCI_PARENT_CLASS \
+    object_class_get_parent(object_class_by_name(TYPE_ZYNQMP_SDHCI))
 
-typedef struct RonaldoSDHCIState {
+typedef struct ZynqMPSDHCIState {
     /*< private >*/
     SDHCIState parent_obj;
     /*< public >*/
     SDState *sd_card;
     SDState *mmc_card;
     uint8_t drive_index;
-} RonaldoSDHCIState;
+} ZynqMPSDHCIState;
 
-static void ronaldo_sdhci_slottype_handler(void *opaque, int n, int level)
+static void zynqmp_sdhci_slottype_handler(void *opaque, int n, int level)
 {
     SDHCIState *ss = SYSBUS_SDHCI(opaque);
-    RonaldoSDHCIState *s = RONALDO_SDHCI(opaque);
+    ZynqMPSDHCIState *s = ZYNQMP_SDHCI(opaque);
 
     assert(n == 0);
 
@@ -68,19 +68,19 @@ static void ronaldo_sdhci_slottype_handler(void *opaque, int n, int level)
     sd_set_cb(ss->card, ss->ro_cb, ss->eject_cb);
 }
 
-static void ronaldo_sdhci_reset(DeviceState *dev)
+static void zynqmp_sdhci_reset(DeviceState *dev)
 {
-    RonaldoSDHCIState *s = RONALDO_SDHCI(dev);
+    ZynqMPSDHCIState *s = ZYNQMP_SDHCI(dev);
     SDHCIState *ss = SYSBUS_SDHCI(dev);
 
     ss->card = s->sd_card;
     sd_set_cb(ss->card, ss->ro_cb, ss->eject_cb);
 }
 
-static void ronaldo_sdhci_realize(DeviceState *dev, Error **errp)
+static void zynqmp_sdhci_realize(DeviceState *dev, Error **errp)
 {
-    DeviceClass *dc_parent = DEVICE_CLASS(RONALDO_SDHCI_PARENT_CLASS);
-    RonaldoSDHCIState *s = RONALDO_SDHCI(dev);
+    DeviceClass *dc_parent = DEVICE_CLASS(ZYNQMP_SDHCI_PARENT_CLASS);
+    ZynqMPSDHCIState *s = ZYNQMP_SDHCI(dev);
     DriveInfo *di_sd;
     DriveInfo *di_mmc;
 
@@ -92,33 +92,33 @@ static void ronaldo_sdhci_realize(DeviceState *dev, Error **errp)
 
     dc_parent->realize(dev, errp);
 
-    qdev_init_gpio_in_named(dev, ronaldo_sdhci_slottype_handler, "SLOTTYPE", 1);
+    qdev_init_gpio_in_named(dev, zynqmp_sdhci_slottype_handler, "SLOTTYPE", 1);
 }
 
-static Property ronaldo_sdhci_properties[] = {
-    DEFINE_PROP_UINT8("drive-index", RonaldoSDHCIState, drive_index, 0),
+static Property zynqmp_sdhci_properties[] = {
+    DEFINE_PROP_UINT8("drive-index", ZynqMPSDHCIState, drive_index, 0),
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static void ronaldo_sdhci_class_init(ObjectClass *klass, void *data)
+static void zynqmp_sdhci_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->realize = ronaldo_sdhci_realize;
-    dc->props = ronaldo_sdhci_properties;
-    dc->reset = ronaldo_sdhci_reset;
+    dc->realize = zynqmp_sdhci_realize;
+    dc->props = zynqmp_sdhci_properties;
+    dc->reset = zynqmp_sdhci_reset;
 }
 
-static const TypeInfo ronaldo_sdhci_info = {
-    .name          = TYPE_RONALDO_SDHCI,
+static const TypeInfo zynqmp_sdhci_info = {
+    .name          = TYPE_ZYNQMP_SDHCI,
     .parent        = TYPE_SYSBUS_SDHCI,
-    .class_init    = ronaldo_sdhci_class_init,
-    .instance_size = sizeof(RonaldoSDHCIState),
+    .class_init    = zynqmp_sdhci_class_init,
+    .instance_size = sizeof(ZynqMPSDHCIState),
 };
 
-static void ronaldo_sdhci_register_types(void)
+static void zynqmp_sdhci_register_types(void)
 {
-    type_register_static(&ronaldo_sdhci_info);
+    type_register_static(&zynqmp_sdhci_info);
 }
 
-type_init(ronaldo_sdhci_register_types)
+type_init(zynqmp_sdhci_register_types)

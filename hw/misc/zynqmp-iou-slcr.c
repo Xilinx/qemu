@@ -31,14 +31,14 @@
 #include "hw/register.h"
 #include "hw/fdt_generic_util.h"
 
-#ifndef RONALDO_IOU_SLCR_ERR_DEBUG
-#define RONALDO_IOU_SLCR_ERR_DEBUG 0
+#ifndef ZYNQMP_IOU_SLCR_ERR_DEBUG
+#define ZYNQMP_IOU_SLCR_ERR_DEBUG 0
 #endif
 
-#define TYPE_RONALDO_IOU_SLCR "xilinx.ronaldo-iou-slcr"
+#define TYPE_ZYNQMP_IOU_SLCR "xilinx.zynqmp-iou-slcr"
 
-#define RONALDO_IOU_SLCR(obj) \
-     OBJECT_CHECK(RonaldoIOUSLCR, (obj), TYPE_RONALDO_IOU_SLCR)
+#define ZYNQMP_IOU_SLCR(obj) \
+     OBJECT_CHECK(ZynqMPIOUSLCR, (obj), TYPE_ZYNQMP_IOU_SLCR)
 
 REG32(MIO, 0x0)
     #define R_MIO_RSVD               0xffffff01
@@ -48,9 +48,9 @@ REG32(SD_SLOTTYPE, 0x310)
 
 #define R_MAX ((R_SD_SLOTTYPE) + 1)
 
-typedef struct RonaldoIOUSLCR RonaldoIOUSLCR;
+typedef struct ZynqMPIOUSLCR ZynqMPIOUSLCR;
 
-struct RonaldoIOUSLCR {
+struct ZynqMPIOUSLCR {
     SysBusDevice busdev;
     MemoryRegion iomem;
 
@@ -58,7 +58,7 @@ struct RonaldoIOUSLCR {
     RegisterInfo regs_info[R_MAX];
 };
 
-static const RegisterAccessInfo ronaldo_iou_slcr_regs_info[] = {
+static const RegisterAccessInfo zynqmp_iou_slcr_regs_info[] = {
 #define M(x) \
     {   .name = "MIO" #x,             .decode.addr = A_MIO + 4 * x,         \
             .rsvd = R_MIO_RSVD,                                             \
@@ -82,9 +82,9 @@ static const RegisterAccessInfo ronaldo_iou_slcr_regs_info[] = {
     }
 };
 
-static void ronaldo_iou_slcr_reset(DeviceState *dev)
+static void zynqmp_iou_slcr_reset(DeviceState *dev)
 {
-    RonaldoIOUSLCR *s = RONALDO_IOU_SLCR(dev);
+    ZynqMPIOUSLCR *s = ZYNQMP_IOU_SLCR(dev);
     int i;
 
     for (i = 0; i < R_MAX; ++i) {
@@ -92,7 +92,7 @@ static void ronaldo_iou_slcr_reset(DeviceState *dev)
     }
 }
 
-static const MemoryRegionOps ronaldo_iou_slcr_ops = {
+static const MemoryRegionOps zynqmp_iou_slcr_ops = {
     .read = register_read_memory_le,
     .write = register_write_memory_le,
     .endianness = DEVICE_LITTLE_ENDIAN,
@@ -102,54 +102,54 @@ static const MemoryRegionOps ronaldo_iou_slcr_ops = {
     }
 };
 
-static void ronaldo_iou_slcr_realize(DeviceState *dev, Error **errp)
+static void zynqmp_iou_slcr_realize(DeviceState *dev, Error **errp)
 {
-    RonaldoIOUSLCR *s = RONALDO_IOU_SLCR(dev);
+    ZynqMPIOUSLCR *s = ZYNQMP_IOU_SLCR(dev);
     const char *prefix = object_get_canonical_path(OBJECT(dev));
     int i;
 
-    for (i = 0; i < ARRAY_SIZE(ronaldo_iou_slcr_regs_info); ++i) {
+    for (i = 0; i < ARRAY_SIZE(zynqmp_iou_slcr_regs_info); ++i) {
         RegisterInfo *r = &s->regs_info[i];
 
         *r = (RegisterInfo) {
             .data = (uint8_t *)&s->regs[
-                    ronaldo_iou_slcr_regs_info[i].decode.addr/4],
+                    zynqmp_iou_slcr_regs_info[i].decode.addr/4],
             .data_size = sizeof(uint32_t),
-            .access = &ronaldo_iou_slcr_regs_info[i],
-            .debug = RONALDO_IOU_SLCR_ERR_DEBUG,
+            .access = &zynqmp_iou_slcr_regs_info[i],
+            .debug = ZYNQMP_IOU_SLCR_ERR_DEBUG,
             .prefix = prefix,
             .opaque = s,
         };
         register_init(r);
         qdev_pass_all_gpios(DEVICE(r), dev);
 
-        memory_region_init_io(&r->mem, OBJECT(dev), &ronaldo_iou_slcr_ops, r,
+        memory_region_init_io(&r->mem, OBJECT(dev), &zynqmp_iou_slcr_ops, r,
                               r->access->name, 4);
         memory_region_add_subregion(&s->iomem, r->access->decode.addr, &r->mem);
     }
     return;
 }
 
-static void ronaldo_iou_slcr_init(Object *obj)
+static void zynqmp_iou_slcr_init(Object *obj)
 {
-    RonaldoIOUSLCR *s = RONALDO_IOU_SLCR(obj);
+    ZynqMPIOUSLCR *s = ZYNQMP_IOU_SLCR(obj);
 
     memory_region_init(&s->iomem, obj, "MMIO", R_MAX * 4);
     sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->iomem);
 }
 
-static const VMStateDescription vmstate_ronaldo_iou_slcr = {
-    .name = "ronaldo_iou_slcr",
+static const VMStateDescription vmstate_zynqmp_iou_slcr = {
+    .name = "zynqmp_iou_slcr",
     .version_id = 1,
     .minimum_version_id = 1,
     .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
-        VMSTATE_UINT32_ARRAY(regs, RonaldoIOUSLCR, R_MAX),
+        VMSTATE_UINT32_ARRAY(regs, ZynqMPIOUSLCR, R_MAX),
         VMSTATE_END_OF_LIST(),
     }
 };
 
-static const FDTGenericGPIOSet ronaldo_iou_slcr_controller_gpios [] = {
+static const FDTGenericGPIOSet zynqmp_iou_slcr_controller_gpios [] = {
     {
         /* FIXME: this could be a much better name */
         .names = &fdt_generic_gpio_name_set_gpio,
@@ -162,33 +162,33 @@ static const FDTGenericGPIOSet ronaldo_iou_slcr_controller_gpios [] = {
     { },
 };
 
-static void ronaldo_iou_slcr_class_init(ObjectClass *klass, void *data)
+static void zynqmp_iou_slcr_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     FDTGenericGPIOClass *fggc = FDT_GENERIC_GPIO_CLASS(klass);
 
-    dc->reset = ronaldo_iou_slcr_reset;
-    dc->realize = ronaldo_iou_slcr_realize;
-    dc->vmsd = &vmstate_ronaldo_iou_slcr;
+    dc->reset = zynqmp_iou_slcr_reset;
+    dc->realize = zynqmp_iou_slcr_realize;
+    dc->vmsd = &vmstate_zynqmp_iou_slcr;
 
-    fggc->controller_gpios = ronaldo_iou_slcr_controller_gpios;
+    fggc->controller_gpios = zynqmp_iou_slcr_controller_gpios;
 }
 
-static const TypeInfo ronaldo_iou_slcr_info = {
-    .name          = TYPE_RONALDO_IOU_SLCR,
+static const TypeInfo zynqmp_iou_slcr_info = {
+    .name          = TYPE_ZYNQMP_IOU_SLCR,
     .parent        = TYPE_SYS_BUS_DEVICE,
-    .instance_size = sizeof(RonaldoIOUSLCR),
-    .class_init    = ronaldo_iou_slcr_class_init,
-    .instance_init = ronaldo_iou_slcr_init,
+    .instance_size = sizeof(ZynqMPIOUSLCR),
+    .class_init    = zynqmp_iou_slcr_class_init,
+    .instance_init = zynqmp_iou_slcr_init,
     .interfaces    = (InterfaceInfo[]) {
         { TYPE_FDT_GENERIC_GPIO },
         { },
     }
 };
 
-static void ronaldo_iou_slcr_register_types(void)
+static void zynqmp_iou_slcr_register_types(void)
 {
-    type_register_static(&ronaldo_iou_slcr_info);
+    type_register_static(&zynqmp_iou_slcr_info);
 }
 
-type_init(ronaldo_iou_slcr_register_types)
+type_init(zynqmp_iou_slcr_register_types)

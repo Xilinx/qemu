@@ -1,5 +1,5 @@
 /*
- * Implementation of Interrupt redirect component for Ronaldo ACPUs and RCPUs.
+ * Implementation of Interrupt redirect component for ZynqMP ACPUs and RCPUs.
  * Based on power state of a CPU (one of ACPUs or RCPUs) interrupt lines going
  * from GIC (IRQ, FIQ, VIRQ and VFIQ for ACPUs or IRQ for RPCUs) are directed
  * either to PMU (OR'ed) or to the CPU.
@@ -34,10 +34,10 @@
 
 #include "hw/fdt_generic_util.h"
 
-#define TYPE_XILINX_RONALDO_INTC_REDIRECT "xlnx.ronaldo-intc-redirect"
+#define TYPE_XILINX_ZYNQMP_INTC_REDIRECT "xlnx.zynqmp-intc-redirect"
 
-#define XILINX_RONALDO_INTC_REDIRECT(obj) \
-     OBJECT_CHECK(INTCRedirect, (obj), TYPE_XILINX_RONALDO_INTC_REDIRECT)
+#define XILINX_ZYNQMP_INTC_REDIRECT(obj) \
+     OBJECT_CHECK(INTCRedirect, (obj), TYPE_XILINX_ZYNQMP_INTC_REDIRECT)
 
 #define NUM_LINES_FROM_GIC  4
 
@@ -56,7 +56,7 @@ typedef struct INTCRedirect {
 
 static void intc_redirect_update_irqs(void *opaque)
 {
-    INTCRedirect *s = XILINX_RONALDO_INTC_REDIRECT(opaque);
+    INTCRedirect *s = XILINX_ZYNQMP_INTC_REDIRECT(opaque);
     unsigned int i;
 
     /* If CPU has set PWRDWN to 1, direct interrupts to PMU,
@@ -73,7 +73,7 @@ static void intc_redirect_update_irqs(void *opaque)
 
 static void intc_redirect_in_from_gic(void *opaque, int irq, int level)
 {
-    INTCRedirect *s = XILINX_RONALDO_INTC_REDIRECT(opaque);
+    INTCRedirect *s = XILINX_ZYNQMP_INTC_REDIRECT(opaque);
 
     s->irq_in = deposit32(s->irq_in, irq, 1, level);
     intc_redirect_update_irqs(s);
@@ -81,7 +81,7 @@ static void intc_redirect_in_from_gic(void *opaque, int irq, int level)
 
 static void intc_redirect_pwr_cntrl_enable(void *opaque, int irq, int level)
 {
-    INTCRedirect *s = XILINX_RONALDO_INTC_REDIRECT(opaque);
+    INTCRedirect *s = XILINX_ZYNQMP_INTC_REDIRECT(opaque);
 
     s->cpu_pwrdwn_en = level;
     intc_redirect_update_irqs(s);
@@ -89,7 +89,7 @@ static void intc_redirect_pwr_cntrl_enable(void *opaque, int irq, int level)
 
 static void intc_redirect_init(Object *obj)
 {
-    INTCRedirect *s = XILINX_RONALDO_INTC_REDIRECT(obj);
+    INTCRedirect *s = XILINX_ZYNQMP_INTC_REDIRECT(obj);
     DeviceState *dev = DEVICE(obj);
 
     qdev_init_gpio_in_named(dev, intc_redirect_in_from_gic, "gic_in", 4);
@@ -104,7 +104,7 @@ static int intc_redirect_get_irq(FDTGenericIntc *obj, qemu_irq *irqs,
                           Error **errp)
 {
     if (cells[0] >= NUM_LINES_FROM_GIC) {
-        error_setg(errp, "Ronaldo intc redirect only supports %u interrupts,"
+        error_setg(errp, "ZynqMP intc redirect only supports %u interrupts,"
                    "index %" PRIu32 " requested", NUM_LINES_FROM_GIC, cells[0]);
         return 0;
     }
@@ -156,7 +156,7 @@ static void intc_redirect_class_init(ObjectClass *oc, void *data)
 }
 
 static const TypeInfo intc_redirect_info = {
-    .name          = TYPE_XILINX_RONALDO_INTC_REDIRECT,
+    .name          = TYPE_XILINX_ZYNQMP_INTC_REDIRECT,
     .parent        = TYPE_DEVICE,
     .instance_size = sizeof(INTCRedirect),
     .instance_init = intc_redirect_init,

@@ -33,7 +33,7 @@
 #define XILINX_SYSMON_ERR_DEBUG 0
 #endif
 
-#define TYPE_XILINX_SYSMON "xlnx.ronaldo_sysmon"
+#define TYPE_XILINX_SYSMON "xlnx.zynqmp_sysmon"
 
 #define XILINX_SYSMON(obj) \
      OBJECT_CHECK(SYSMON, (obj), TYPE_XILINX_SYSMON)
