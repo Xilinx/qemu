@@ -268,9 +268,9 @@ typedef struct {
 typedef struct {
     XilinxSPIPS parent_obj;
 
-    uint32_t lqspi_hack_size;
-    uint32_t lqspi_hack_src;
-    uint32_t lqspi_hack_dst;
+    uint32_t lqspi_size;
+    uint32_t lqspi_src;
+    uint32_t lqspi_dst;
 
     MemoryRegion *hack_dma;
     AddressSpace *hack_as;
@@ -1149,11 +1149,11 @@ static void xilinx_qspips_write(void *opaque, hwaddr addr,
     if ((addr >> 2) == R_LQSPI_CFG &&
                ((lqspi_cfg_old ^ value) & ~LQSPI_CFG_U_PAGE)) {
         q->lqspi_cached_addr = ~0ULL;
-        if (q->lqspi_hack_size) {
+        if (q->lqspi_size) {
 #define LQSPI_HACK_CHUNK_SIZE (1 * 1024 * 1024)
-            uint32_t src = q->lqspi_hack_src;
-            uint32_t dst = q->lqspi_hack_dst;
-            uint32_t btt = q->lqspi_hack_size;
+            uint32_t src = q->lqspi_src;
+            uint32_t dst = q->lqspi_dst;
+            uint32_t btt = q->lqspi_size;
 
             assert(!(btt % LQSPI_HACK_CHUNK_SIZE));
             fprintf(stderr, "QEMU: Syncing LQSPI - this may be slow "
@@ -1389,9 +1389,9 @@ static Property xilinx_spips_properties[] = {
 };
 
 static Property xilinx_qspips_properties[] = {
-    DEFINE_PROP_UINT32("lqspi-hack-size", XilinxQSPIPS, lqspi_hack_size, 0),
-    DEFINE_PROP_UINT32("lqspi-hack-src", XilinxQSPIPS, lqspi_hack_src, 0),
-    DEFINE_PROP_UINT32("lqspi-hack-dst", XilinxQSPIPS, lqspi_hack_dst, 0),
+    DEFINE_PROP_UINT32("lqspi-size", XilinxQSPIPS, lqspi_size, 0),
+    DEFINE_PROP_UINT32("lqspi-src", XilinxQSPIPS, lqspi_src, 0),
+    DEFINE_PROP_UINT32("lqspi-dst", XilinxQSPIPS, lqspi_dst, 0),
     DEFINE_PROP_END_OF_LIST(),
 };
 
