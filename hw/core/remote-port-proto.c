@@ -43,6 +43,15 @@
 #  define be16toh(x) betoh16(x)
 #  define be32toh(x) betoh32(x)
 #  define be64toh(x) betoh64(x)
+#elif defined(__WIN32)
+/* We assume little endian.  */
+#    define htobe64(x) _byteswap_uint64(x)
+#    define htobe32(x) _byteswap_ulong(x)
+#    define htobe16(x) _byteswap_ushort(x)
+
+#    define be64toh(x) _byteswap_uint64(x)
+#    define be32toh(x) _byteswap_ulong(x)
+#    define be16toh(x) _byteswap_ushort(x)
 #endif
 
 /* Fallback for ancient Linux systems.  */
