@@ -2283,7 +2283,7 @@ static const ARMCPRegInfo strongarm_cp_reginfo[] = {
     REGINFO_SENTINEL
 };
 
-static uint64_t mpidr_read_val(CPUARMState *env)
+uint64_t mpidr_read_val(CPUARMState *env)
 {
     ARMCPU *cpu = ARM_CPU(arm_env_get_cpu(env));
     uint64_t mpidr = cpu->mp_affinity;

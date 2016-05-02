@@ -54,6 +54,24 @@ int arm_cpu_gdb_read_register(CPUState *cs, uint8_t *mem_buf, int n)
     case 25:
         /* CPSR */
         return gdb_get_reg32(mem_buf, cpsr_read(env));
+    case 26:
+        return gdb_get_reg32(mem_buf, env->cp15.c0_cpuid);
+    case 27:
+        return gdb_get_reg32(mem_buf, env->cp15.c1_coproc);
+    case 28:
+        return gdb_get_reg32(mem_buf, env->cp15.c2_mask);
+    case 29:
+        return gdb_get_reg32(mem_buf, env->cp15.c2_base_mask);
+    case 30:
+        return gdb_get_reg32(mem_buf, env->cp15.c2_data);
+    case 31:
+        return gdb_get_reg32(mem_buf, env->cp15.c2_insn);
+    case 32:
+        return gdb_get_reg32(mem_buf, env->cp15.esr_el[1]);
+    case 33:
+        return gdb_get_reg32(mem_buf, env->vmpidr_el2);
+    case 34:
+        return gdb_get_reg32(mem_buf, mpidr_read_val(env));
     }
     /* Unknown register.  */
     return 0;
@@ -95,6 +113,33 @@ int arm_cpu_gdb_write_register(CPUState *cs, uint8_t *mem_buf, int n)
     case 25:
         /* CPSR */
         cpsr_write(env, tmp, 0xffffffff);
+        return 4;
+    case 26:
+        env->cp15.c0_cpuid = tmp;
+        return 4;
+    case 27:
+        env->cp15.c1_coproc = tmp;
+        return 4;
+    case 28:
+        env->cp15.c2_mask = tmp;
+        return 4;
+    case 29:
+        env->cp15.c2_base_mask = tmp;
+        return 4;
+    case 30:
+        env->cp15.c2_data = tmp;
+        return 4;
+    case 31:
+        env->cp15.c2_insn = tmp;
+        return 4;
+    case 32:
+        env->cp15.esr_el[1] = tmp;
+        return 4;
+    case 33:
+        env->vmpidr_el2 = tmp;
+        return 4;
+    case 34:
+        cpu->mp_affinity = tmp;
         return 4;
     }
     /* Unknown register.  */
