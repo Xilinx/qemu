@@ -13,6 +13,7 @@ common-obj-$(CONFIG_XLNX_ZYNQMP) += csu_stream_switch.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx_zynqmp_ocmc.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += zynqmp-iou-slcr.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx-lpd-slcr.o
+common-obj-$(CONFIG_XLNX_ZYNQMP) += xlnx-lpd-gpv.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx-xmpu.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx-xppu.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx_zynqmp_rpu_ctrl.o
