@@ -52,24 +52,18 @@ REG32(VREFN, 0x14)
     FIELD(VREFN, SUPPLY_VAL, 16, 0)
 REG32(SUPPLY3, 0x18)
     FIELD(SUPPLY3, SUPPLY_VAL, 16, 0)
-REG32(SUPPLY4, 0x1c)
+REG32(CAL_SUPPLY_OFFSET, 0x20)
+    FIELD(CAL_SUPPLY_OFFSET, CAL_SUPPLY_OFFSET_VAL, 16, 0)
+REG32(CAL_ADC_BIPOLAR_OFFSET, 0x24)
+    FIELD(CAL_ADC_BIPOLAR_OFFSET, CAL_ADC_BIPOLAR_OFFSET_VAL, 16, 0)
+REG32(CAL_GAIN_ERROR, 0x28)
+    FIELD(CAL_GAIN_ERROR, CAL_GAIN_ERROR_VAL, 16, 0)
+REG32(SUPPLY4, 0x34)
     FIELD(SUPPLY4, SUPPLY_VAL, 16, 0)
-REG32(RSVD_4_CAL_0, 0x20)
-    FIELD(RSVD_4_CAL_0, TBD, 16, 0)
-REG32(SUPPLY5, 0x24)
+REG32(SUPPLY5, 0x38)
     FIELD(SUPPLY5, SUPPLY_VAL, 16, 0)
-REG32(SUPPLY6, 0x28)
+REG32(SUPPLY6, 0x3C)
     FIELD(SUPPLY6, SUPPLY_VAL, 16, 0)
-REG32(SUPPLY7, 0x2c)
-    FIELD(SUPPLY7, SUPPLY_VAL, 16, 0)
-REG32(SUPPLY8, 0x30)
-    FIELD(SUPPLY8, SUPPLY_VAL, 16, 0)
-REG32(SUPPLY9, 0x34)
-    FIELD(SUPPLY9, SUPPLY_VAL, 16, 0)
-REG32(SUPPLY10, 0x38)
-    FIELD(SUPPLY10, SUPPLY_VAL, 16, 0)
-REG32(SUPPLY11, 0x3c)
-    FIELD(SUPPLY11, SUPPLY_VAL, 16, 0)
 REG32(VAUX00, 0x40)
     FIELD(VAUX00, VAUX_VAL, 16, 0)
 REG32(VAUX01, 0x44)
@@ -124,45 +118,13 @@ REG32(MAX_SUPPLY5, 0xa4)
     FIELD(MAX_SUPPLY5, SUPPLY_VAL, 16, 0)
 REG32(MAX_SUPPLY6, 0xa8)
     FIELD(MAX_SUPPLY6, SUPPLY_VAL, 16, 0)
-REG32(MAX_SUPPLY7, 0xac)
-    FIELD(MAX_SUPPLY7, SUPPLY_VAL, 16, 0)
 REG32(MIN_SUPPLY4, 0xb0)
     FIELD(MIN_SUPPLY4, SUPPLY_VAL, 16, 0)
 REG32(MIN_SUPPLY5, 0xb4)
     FIELD(MIN_SUPPLY5, SUPPLY_VAL, 16, 0)
 REG32(MIN_SUPPLY6, 0xb8)
     FIELD(MIN_SUPPLY6, SUPPLY_VAL, 16, 0)
-REG32(MIN_SUPPLY7, 0xbc)
-    FIELD(MIN_SUPPLY7, SUPPLY_VAL, 16, 0)
-REG32(MAX_SUPPLY8, 0xc0)
-    FIELD(MAX_SUPPLY8, SUPPLY_VAL, 16, 0)
-REG32(MAX_SUPPLY9, 0xc4)
-    FIELD(MAX_SUPPLY9, SUPPLY_VAL, 16, 0)
-REG32(MAX_SUPPLY10, 0xc8)
-    FIELD(MAX_SUPPLY10, SUPPLY_VAL, 16, 0)
-REG32(MAX_SUPPLY11, 0xcc)
-    FIELD(MAX_SUPPLY11, SUPPLY_VAL, 16, 0)
-REG32(MIN_SUPPLY8, 0xd0)
-    FIELD(MIN_SUPPLY8, SUPPLY_VAL, 16, 0)
-REG32(MIN_SUPPLY9, 0xd4)
-    FIELD(MIN_SUPPLY9, SUPPLY_VAL, 16, 0)
-REG32(MIN_SUPPLY10, 0xd8)
-    FIELD(MIN_SUPPLY10, SUPPLY_VAL, 16, 0)
-REG32(MIN_SUPPLY11, 0xdc)
-    FIELD(MIN_SUPPLY11, SUPPLY_VAL, 16, 0)
-REG32(RSVD_4_CAL_1, 0xe0)
-    FIELD(RSVD_4_CAL_1, TBD, 16, 0)
-REG32(RSVD_4_CAL_2, 0xe4)
-    FIELD(RSVD_4_CAL_2, TBD, 16, 0)
-REG32(RSVD_4_CAL_3, 0xe8)
-    FIELD(RSVD_4_CAL_3, TBD, 16, 0)
-REG32(RSVD_4_CAL_4, 0xec)
-    FIELD(RSVD_4_CAL_4, TBD, 16, 0)
-REG32(RSVD_4_CAL_5, 0xf0)
-    FIELD(RSVD_4_CAL_5, TBD, 16, 0)
-REG32(RSVD_4_CAL_6, 0xf4)
-    FIELD(RSVD_4_CAL_6, TBD, 16, 0)
-REG32(STATUS_FLAG, 0xf8)
+REG32(STATUS_FLAG, 0xfc)
     FIELD(STATUS_FLAG, CLK_OSC_USED, 1, 15)
     FIELD(STATUS_FLAG, BLOCK_IN_RESET, 1, 14)
     FIELD(STATUS_FLAG, JTAG_DISABLED, 1, 11)
@@ -172,101 +134,160 @@ REG32(STATUS_FLAG, 0xf8)
     FIELD(STATUS_FLAG, ALM_XTRA, 4, 4)
     FIELD(STATUS_FLAG, OT, 1, 3)
     FIELD(STATUS_FLAG, ALM, 3, 0)
-REG32(CONFIG_REG0, 0xfc)
-    FIELD(CONFIG_REG0, CAL_AVERAGING, 1, 15)
+REG32(CONFIG_REG0, 0x100)
     FIELD(CONFIG_REG0, AVERAGING, 2, 12)
     FIELD(CONFIG_REG0, EXTERNAL_MUX, 1, 11)
     FIELD(CONFIG_REG0, BU, 1, 10)
     FIELD(CONFIG_REG0, EC, 1, 9)
     FIELD(CONFIG_REG0, ACQ, 1, 8)
-    FIELD(CONFIG_REG0, MUX_CHANNEL, 5, 0)
-REG32(CONFIG_REG1, 0x100)
-    FIELD(CONFIG_REG1, SEQUENCE_MODE1, 2, 14)
-    FIELD(CONFIG_REG1, SEQUENCE_MODE0, 2, 12)
+    FIELD(CONFIG_REG0, MUX_CHANNEL, 6, 0)
+REG32(CONFIG_REG1, 0x104)
+    FIELD(CONFIG_REG1, SEQUENCE_MODE, 4, 12)
     FIELD(CONFIG_REG1, ALARM_DISABLE_6_3, 4, 8)
-    FIELD(CONFIG_REG1, CALIBRATION_MODE, 4, 4)
-    FIELD(CONFIG_REG1, ALARM_DISABLE_3_1, 3, 1)
+    FIELD(CONFIG_REG1, ALARM_DISABLE_2_0, 3, 1)
     FIELD(CONFIG_REG1, OVER_TEMP_DISABLE, 1, 0)
-REG32(CONFIG_REG2, 0x104)
+REG32(CONFIG_REG2, 0x108)
     FIELD(CONFIG_REG2, CLOCK_DIVIDER, 8, 8)
-    FIELD(CONFIG_REG2, POWER_DOWN, 2, 4)
+    FIELD(CONFIG_REG2, POWER_DOWN, 4, 4)
+    FIELD(CONFIG_REG2, TEST_CHANNEL_EN, 1, 2)
     FIELD(CONFIG_REG2, TEST_MODE, 2, 0)
-REG32(RSVD_4_TEST_0, 0x108)
-    FIELD(RSVD_4_TEST_0, TBD, 16, 0)
-REG32(RSVD_4_TEST_1, 0x10c)
-    FIELD(RSVD_4_TEST_1, TBD, 16, 0)
-REG32(RSVD_4_TEST_2, 0x110)
-    FIELD(RSVD_4_TEST_2, TBD, 16, 0)
-REG32(RSVD_4_TEST_3, 0x114)
-    FIELD(RSVD_4_TEST_3, TBD, 16, 0)
-REG32(RSVD_4_TEST_4, 0x118)
-    FIELD(RSVD_4_TEST_4, TBD, 16, 0)
-REG32(SEQ_CHANNEL0, 0x11c)
-    FIELD(SEQ_CHANNEL0, CHANNEL0, 16, 0)
-REG32(SEQ_CHANNEL1, 0x120)
-    FIELD(SEQ_CHANNEL1, CHANNEL1, 16, 0)
-REG32(SEQ_AVERAGE0, 0x124)
+REG32(SEQ_CHANNEL0, 0x120)
+    FIELD(SEQ_CHANNEL0, CURRENT_MON, 1, 15)
+    FIELD(SEQ_CHANNEL0, SUPPLY3, 1, 14)
+    FIELD(SEQ_CHANNEL0, VREFN, 1, 13)
+    FIELD(SEQ_CHANNEL0, VREFP, 1, 12)
+    FIELD(SEQ_CHANNEL0, VP_VN, 1, 11)
+    FIELD(SEQ_CHANNEL0, SUPPLY2, 1, 10)
+    FIELD(SEQ_CHANNEL0, SUPPLY1, 1, 9)
+    FIELD(SEQ_CHANNEL0, TEMPERATURE, 1, 8)
+    FIELD(SEQ_CHANNEL0, SUPPLY6, 1, 7)
+    FIELD(SEQ_CHANNEL0, SUPPLY5, 1, 6)
+    FIELD(SEQ_CHANNEL0, SUPPLY4, 1, 5)
+    FIELD(SEQ_CHANNEL0, TEST_CHANNEL, 1, 3)
+    FIELD(SEQ_CHANNEL0, CALIBRATION, 1, 0)
+REG32(SEQ_CHANNEL1, 0x124)
+    FIELD(SEQ_CHANNEL1, VAUX0F, 1, 15)
+    FIELD(SEQ_CHANNEL1, VAUX0E, 1, 14)
+    FIELD(SEQ_CHANNEL1, VAUX0D, 1, 13)
+    FIELD(SEQ_CHANNEL1, VAUX0C, 1, 12)
+    FIELD(SEQ_CHANNEL1, VAUX0B, 1, 11)
+    FIELD(SEQ_CHANNEL1, VAUX0A, 1, 10)
+    FIELD(SEQ_CHANNEL1, VAUX09, 1, 9)
+    FIELD(SEQ_CHANNEL1, VAUX08, 1, 8)
+    FIELD(SEQ_CHANNEL1, VAUX07, 1, 7)
+    FIELD(SEQ_CHANNEL1, VAUX06, 1, 6)
+    FIELD(SEQ_CHANNEL1, VAUX05, 1, 5)
+    FIELD(SEQ_CHANNEL1, VAUX04, 1, 4)
+    FIELD(SEQ_CHANNEL1, VAUX03, 1, 3)
+    FIELD(SEQ_CHANNEL1, VAUX02, 1, 2)
+    FIELD(SEQ_CHANNEL1, VAUX01, 1, 1)
+    FIELD(SEQ_CHANNEL1, VAUX00, 1, 0)
+REG32(SEQ_AVERAGE0, 0x128)
     FIELD(SEQ_AVERAGE0, AVERAGE0, 16, 0)
-REG32(SEQ_AVERAGE1, 0x128)
+REG32(SEQ_AVERAGE1, 0x12c)
     FIELD(SEQ_AVERAGE1, AVERAGE1, 16, 0)
-REG32(SEQ_INPUT_MODE0, 0x12c)
+REG32(SEQ_INPUT_MODE0, 0x130)
     FIELD(SEQ_INPUT_MODE0, INPUT_MODE0, 16, 0)
-REG32(SEQ_INPUT_MODE1, 0x130)
+REG32(SEQ_INPUT_MODE1, 0x134)
     FIELD(SEQ_INPUT_MODE1, INPUT_MODE1, 16, 0)
-REG32(SEQ_ACQ0, 0x134)
+REG32(SEQ_ACQ0, 0x138)
     FIELD(SEQ_ACQ0, ACQ0, 16, 0)
-REG32(SEQ_ACQ1, 0x138)
+REG32(SEQ_ACQ1, 0x13c)
     FIELD(SEQ_ACQ1, ACQ1, 16, 0)
-REG32(ALARM_TEMPERATURE_UPPER, 0x13c)
+REG32(ALARM_TEMPERATURE_UPPER, 0x140)
     FIELD(ALARM_TEMPERATURE_UPPER, TEMPERATURE_ALARM, 16, 0)
-REG32(ALARM_SUPPLY1_UPPER, 0x140)
+REG32(ALARM_SUPPLY1_UPPER, 0x144)
     FIELD(ALARM_SUPPLY1_UPPER, SUPPLY_ALARM, 16, 0)
-REG32(ALARM_SUPPLY2_UPPER, 0x144)
+REG32(ALARM_SUPPLY2_UPPER, 0x148)
     FIELD(ALARM_SUPPLY2_UPPER, SUPPLY_ALARM, 16, 0)
-REG32(ALARM_OT_UPPER, 0x148)
+REG32(ALARM_OT_UPPER, 0x14C)
     FIELD(ALARM_OT_UPPER, OT_ALARM, 16, 0)
-REG32(ALARM_TEMPERATURE_LOWER, 0x14c)
+REG32(ALARM_TEMPERATURE_LOWER, 0x150)
     FIELD(ALARM_TEMPERATURE_LOWER, TEMPERATURE_ALARM, 16, 0)
-REG32(ALARM_SUPPLY1_LOWER, 0x150)
+REG32(ALARM_SUPPLY1_LOWER, 0x154)
     FIELD(ALARM_SUPPLY1_LOWER, SUPPLY_ALARM, 16, 0)
-REG32(ALARM_SUPPLY2_LOWER, 0x154)
+REG32(ALARM_SUPPLY2_LOWER, 0x158)
     FIELD(ALARM_SUPPLY2_LOWER, SUPPLY_ALARM, 16, 0)
-REG32(ALARM_OT_LOWER, 0x158)
+REG32(ALARM_OT_LOWER, 0x15c)
     FIELD(ALARM_OT_LOWER, OT_ALARM, 16, 0)
-REG32(ALARM_SUPPLY3_UPPER, 0x15c)
+REG32(ALARM_SUPPLY3_UPPER, 0x160)
     FIELD(ALARM_SUPPLY3_UPPER, SUPPLY_ALARM, 16, 0)
-REG32(ALARM_SUPPLY4_UPPER, 0x160)
+REG32(ALARM_SUPPLY4_UPPER, 0x164)
     FIELD(ALARM_SUPPLY4_UPPER, SUPPLY_ALARM, 16, 0)
-REG32(ALARM_SUPPLY5_UPPER, 0x164)
+REG32(ALARM_SUPPLY5_UPPER, 0x168)
     FIELD(ALARM_SUPPLY5_UPPER, SUPPLY_ALARM, 16, 0)
-REG32(ALARM_SUPPLY6_UPPER, 0x168)
+REG32(ALARM_SUPPLY6_UPPER, 0x16c)
     FIELD(ALARM_SUPPLY6_UPPER, SUPPLY_ALARM, 16, 0)
-REG32(ALARM_SUPPLY3_LOWER, 0x16c)
+REG32(ALARM_SUPPLY3_LOWER, 0x170)
     FIELD(ALARM_SUPPLY3_LOWER, SUPPLY_ALARM, 16, 0)
-REG32(ALARM_SUPPLY4_LOWER, 0x170)
+REG32(ALARM_SUPPLY4_LOWER, 0x174)
     FIELD(ALARM_SUPPLY4_LOWER, SUPPLY_ALARM, 16, 0)
-REG32(ALARM_SUPPLY5_LOWER, 0x174)
+REG32(ALARM_SUPPLY5_LOWER, 0x178)
     FIELD(ALARM_SUPPLY5_LOWER, SUPPLY_ALARM, 16, 0)
-REG32(ALARM_SUPPLY6_LOWER, 0x178)
+REG32(ALARM_SUPPLY6_LOWER, 0x17c)
     FIELD(ALARM_SUPPLY6_LOWER, SUPPLY_ALARM, 16, 0)
-REG32(ALARM_SUPPLY7_UPPER, 0x17c)
+REG32(ALARM_SUPPLY7_UPPER, 0x180)
     FIELD(ALARM_SUPPLY7_UPPER, SUPPLY_ALARM, 16, 0)
-REG32(ALARM_SUPPLY8_UPPER, 0x180)
+REG32(ALARM_SUPPLY8_UPPER, 0x184)
     FIELD(ALARM_SUPPLY8_UPPER, SUPPLY_ALARM, 16, 0)
-REG32(ALARM_SUPPLY9_UPPER, 0x184)
+REG32(ALARM_SUPPLY9_UPPER, 0x188)
     FIELD(ALARM_SUPPLY9_UPPER, SUPPLY_ALARM, 16, 0)
-REG32(ALARM_SUPPLY10_UPPER, 0x188)
+REG32(ALARM_SUPPLY10_UPPER, 0x18C)
     FIELD(ALARM_SUPPLY10_UPPER, SUPPLY_ALARM, 16, 0)
-REG32(ALARM_SUPPLY7_LOWER, 0x18c)
+REG32(ALARM_VCCAMS_UPPER, 0x190)
+    FIELD(ALARM_VCCAMS_UPPER, SUPPLY_ALARM, 16, 0)
+REG32(ALARM_TREMOTE_UPPER, 0x194)
+    FIELD(ALARM_TREMOTE_UPPER, SUPPLY_ALARM, 16, 0)
+REG32(ALARM_SUPPLY7_LOWER, 0x1a0)
     FIELD(ALARM_SUPPLY7_LOWER, SUPPLY_ALARM, 16, 0)
-REG32(ALARM_SUPPLY8_LOWER, 0x190)
+REG32(ALARM_SUPPLY8_LOWER, 0x1a4)
     FIELD(ALARM_SUPPLY8_LOWER, SUPPLY_ALARM, 16, 0)
-REG32(ALARM_SUPPLY9_LOWER, 0x194)
+REG32(ALARM_SUPPLY9_LOWER, 0x1a8)
     FIELD(ALARM_SUPPLY9_LOWER, SUPPLY_ALARM, 16, 0)
-REG32(ALARM_SUPPLY10_LOWER, 0x198)
+REG32(ALARM_SUPPLY10_LOWER, 0x1ac)
     FIELD(ALARM_SUPPLY10_LOWER, SUPPLY_ALARM, 16, 0)
+REG32(ALARM_VCCAMS_LOWER, 0x1b0)
+    FIELD(ALARM_VCCAMS_LOWER, SUPPLY_ALARM, 16, 0)
+REG32(ALARM_TREMOTE_LOWER, 0x1b4)
+    FIELD(ALARM_TREMOTE_LOWER, SUPPLY_ALARM, 16, 0)
+REG32(SUPPLY7, 0x200)
+    FIELD(SUPPLY7, SUPPLY_VAL, 16, 0)
+REG32(SUPPLY8, 0x204)
+    FIELD(SUPPLY8, SUPPLY_VAL, 16, 0)
+REG32(SUPPLY9, 0x208)
+    FIELD(SUPPLY9, SUPPLY_VAL, 16, 0)
+REG32(SUPPLY10, 0x20c)
+    FIELD(SUPPLY10, SUPPLY_VAL, 16, 0)
+REG32(VCCAMS, 0x210)
+    FIELD(VCCAMS, SUPPLY_VAL, 16, 0)
+REG32(TEMPERATURE_REMOTE, 0x214)
+    FIELD(TEMPERATURE_REMOTE, SUPPLY_VAL, 16, 0)
+REG32(MAX_SUPPLY7, 0x280)
+    FIELD(MAX_SUPPLY7, SUPPLY_VAL, 16, 0)
+REG32(MAX_SUPPLY8, 0x284)
+    FIELD(MAX_SUPPLY8, SUPPLY_VAL, 16, 0)
+REG32(MAX_SUPPLY9, 0x288)
+    FIELD(MAX_SUPPLY9, SUPPLY_VAL, 16, 0)
+REG32(MAX_SUPPLY10, 0x28c)
+    FIELD(MAX_SUPPLY10, SUPPLY_VAL, 16, 0)
+REG32(MAX_VCCAMS, 0x290)
+    FIELD(MAX_VCCAMS, SUPPLY_VAL, 16, 0)
+REG32(MAX_TEMPERATURE_REMOTE, 0x294)
+    FIELD(MAX_TEMPERATURE_REMOTE, SUPPLY_VAL, 16, 0)
+REG32(MIN_SUPPLY7, 0x2a0)
+    FIELD(MIN_SUPPLY7, SUPPLY_VAL, 16, 0)
+REG32(MIN_SUPPLY8, 0x2a4)
+    FIELD(MIN_SUPPLY8, SUPPLY_VAL, 16, 0)
+REG32(MIN_SUPPLY9, 0x2a8)
+    FIELD(MIN_SUPPLY9, SUPPLY_VAL, 16, 0)
+REG32(MIN_SUPPLY10, 0x2ac)
+    FIELD(MIN_SUPPLY10, SUPPLY_VAL, 16, 0)
+REG32(MIN_VCCAMS, 0x2b0)
+    FIELD(MIN_VCCAMS, SUPPLY_VAL, 16, 0)
+REG32(MIN_TEMPERATURE_REMOTE, 0x2b4)
+    FIELD(MIN_TEMPERATURE_REMOTE, SUPPLY_VAL, 16, 0)
 
-#define R_MAX (R_ALARM_SUPPLY10_LOWER + 1)
+#define R_MAX (R_MIN_TEMPERATURE_REMOTE + 1)
 
 typedef struct SYSMON {
     SysBusDevice parent_obj;
@@ -291,23 +312,17 @@ static RegisterAccessInfo sysmon_regs_info[] = {
         .ro = 0xffff,
     },{ .name = "SUPPLY3",  .decode.addr = A_SUPPLY3,
         .ro = 0xffff,
-    },{ .name = "SUPPLY4",  .decode.addr = A_SUPPLY4,
+    },{ .name = "CAL_SUPPLY_OFFSET",  .decode.addr = A_CAL_SUPPLY_OFFSET,
         .ro = 0xffff,
-    },{ .name = "RSVD_4_CAL_0",  .decode.addr = A_RSVD_4_CAL_0,
+    },{ .name = "CAL_ADC_BIPOLAR_OFFSET",
+        .decode.addr = A_CAL_ADC_BIPOLAR_OFFSET, .ro = 0xffff,
+    },{ .name = "CAL_GAIN_ERROR",  .decode.addr = A_CAL_GAIN_ERROR,
+        .ro = 0xffff,
+    },{ .name = "SUPPLY4",  .decode.addr = A_SUPPLY4,
         .ro = 0xffff,
     },{ .name = "SUPPLY5",  .decode.addr = A_SUPPLY5,
         .ro = 0xffff,
     },{ .name = "SUPPLY6",  .decode.addr = A_SUPPLY6,
-        .ro = 0xffff,
-    },{ .name = "SUPPLY7",  .decode.addr = A_SUPPLY7,
-        .ro = 0xffff,
-    },{ .name = "SUPPLY8",  .decode.addr = A_SUPPLY8,
-        .ro = 0xffff,
-    },{ .name = "SUPPLY9",  .decode.addr = A_SUPPLY9,
-        .ro = 0xffff,
-    },{ .name = "SUPPLY10",  .decode.addr = A_SUPPLY10,
-        .ro = 0xffff,
-    },{ .name = "SUPPLY11",  .decode.addr = A_SUPPLY11,
         .ro = 0xffff,
     },{ .name = "VAUX00",  .decode.addr = A_VAUX00,
         .ro = 0xffff,
@@ -367,8 +382,6 @@ static RegisterAccessInfo sysmon_regs_info[] = {
         .ro = 0xffff,
     },{ .name = "MAX_SUPPLY6",  .decode.addr = A_MAX_SUPPLY6,
         .ro = 0xffff,
-    },{ .name = "MAX_SUPPLY7",  .decode.addr = A_MAX_SUPPLY7,
-        .ro = 0xffff,
     },{ .name = "MIN_SUPPLY4",  .decode.addr = A_MIN_SUPPLY4,
         .reset = 0xffff,
         .ro = 0xffff,
@@ -378,55 +391,17 @@ static RegisterAccessInfo sysmon_regs_info[] = {
     },{ .name = "MIN_SUPPLY6",  .decode.addr = A_MIN_SUPPLY6,
         .reset = 0xffff,
         .ro = 0xffff,
-    },{ .name = "MIN_SUPPLY7",  .decode.addr = A_MIN_SUPPLY7,
-        .reset = 0xffff,
-        .ro = 0xffff,
-    },{ .name = "MAX_SUPPLY8",  .decode.addr = A_MAX_SUPPLY8,
-        .ro = 0xffff,
-    },{ .name = "MAX_SUPPLY9",  .decode.addr = A_MAX_SUPPLY9,
-        .ro = 0xffff,
-    },{ .name = "MAX_SUPPLY10",  .decode.addr = A_MAX_SUPPLY10,
-        .ro = 0xffff,
-    },{ .name = "MAX_SUPPLY11",  .decode.addr = A_MAX_SUPPLY11,
-        .ro = 0xffff,
-    },{ .name = "MIN_SUPPLY8",  .decode.addr = A_MIN_SUPPLY8,
-        .reset = 0xffff,
-        .ro = 0xffff,
-    },{ .name = "MIN_SUPPLY9",  .decode.addr = A_MIN_SUPPLY9,
-        .reset = 0xffff,
-        .ro = 0xffff,
-    },{ .name = "MIN_SUPPLY10",  .decode.addr = A_MIN_SUPPLY10,
-        .reset = 0xffff,
-        .ro = 0xffff,
-    },{ .name = "MIN_SUPPLY11",  .decode.addr = A_MIN_SUPPLY11,
-        .reset = 0xffff,
-        .ro = 0xffff,
-    },{ .name = "RSVD_4_CAL_1",  .decode.addr = A_RSVD_4_CAL_1,
-        .ro = 0xffff,
-    },{ .name = "RSVD_4_CAL_2",  .decode.addr = A_RSVD_4_CAL_2,
-        .ro = 0xffff,
-    },{ .name = "RSVD_4_CAL_3",  .decode.addr = A_RSVD_4_CAL_3,
-        .ro = 0xffff,
-    },{ .name = "RSVD_4_CAL_4",  .decode.addr = A_RSVD_4_CAL_4,
-        .ro = 0xffff,
-    },{ .name = "RSVD_4_CAL_5",  .decode.addr = A_RSVD_4_CAL_5,
-        .ro = 0xffff,
-    },{ .name = "RSVD_4_CAL_6",  .decode.addr = A_RSVD_4_CAL_6,
-        .ro = 0xffff,
     },{ .name = "STATUS_FLAG",  .decode.addr = A_STATUS_FLAG,
         .rsvd = 0x3000,
         .ro = 0xffff,
     },{ .name = "CONFIG_REG0",  .decode.addr = A_CONFIG_REG0,
-        .rsvd = 0x40e0,
+        .rsvd = 0xc0c0,
     },{ .name = "CONFIG_REG1",  .decode.addr = A_CONFIG_REG1,
+        .rsvd = 0xf0,
     },{ .name = "CONFIG_REG2",  .decode.addr = A_CONFIG_REG2,
-        .rsvd = 0xcc,
-    },{ .name = "RSVD_4_TEST_0",  .decode.addr = A_RSVD_4_TEST_0,
-    },{ .name = "RSVD_4_TEST_1",  .decode.addr = A_RSVD_4_TEST_1,
-    },{ .name = "RSVD_4_TEST_2",  .decode.addr = A_RSVD_4_TEST_2,
-    },{ .name = "RSVD_4_TEST_3",  .decode.addr = A_RSVD_4_TEST_3,
-    },{ .name = "RSVD_4_TEST_4",  .decode.addr = A_RSVD_4_TEST_4,
+        .rsvd = 0x08,
     },{ .name = "SEQ_CHANNEL0",  .decode.addr = A_SEQ_CHANNEL0,
+        .rsvd = 0x16,
     },{ .name = "SEQ_CHANNEL1",  .decode.addr = A_SEQ_CHANNEL1,
     },{ .name = "SEQ_AVERAGE0",  .decode.addr = A_SEQ_AVERAGE0,
     },{ .name = "SEQ_AVERAGE1",  .decode.addr = A_SEQ_AVERAGE1,
@@ -434,11 +409,13 @@ static RegisterAccessInfo sysmon_regs_info[] = {
     },{ .name = "SEQ_INPUT_MODE1",  .decode.addr = A_SEQ_INPUT_MODE1,
     },{ .name = "SEQ_ACQ0",  .decode.addr = A_SEQ_ACQ0,
     },{ .name = "SEQ_ACQ1",  .decode.addr = A_SEQ_ACQ1,
-    },{ .name = "ALARM_TEMPERATURE_UPPER",  .decode.addr = A_ALARM_TEMPERATURE_UPPER,
+    },{ .name = "ALARM_TEMPERATURE_UPPER",
+        .decode.addr = A_ALARM_TEMPERATURE_UPPER,
     },{ .name = "ALARM_SUPPLY1_UPPER",  .decode.addr = A_ALARM_SUPPLY1_UPPER,
     },{ .name = "ALARM_SUPPLY2_UPPER",  .decode.addr = A_ALARM_SUPPLY2_UPPER,
     },{ .name = "ALARM_OT_UPPER",  .decode.addr = A_ALARM_OT_UPPER,
-    },{ .name = "ALARM_TEMPERATURE_LOWER",  .decode.addr = A_ALARM_TEMPERATURE_LOWER,
+    },{ .name = "ALARM_TEMPERATURE_LOWER",
+        .decode.addr = A_ALARM_TEMPERATURE_LOWER,
     },{ .name = "ALARM_SUPPLY1_LOWER",  .decode.addr = A_ALARM_SUPPLY1_LOWER,
     },{ .name = "ALARM_SUPPLY2_LOWER",  .decode.addr = A_ALARM_SUPPLY2_LOWER,
     },{ .name = "ALARM_OT_LOWER",  .decode.addr = A_ALARM_OT_LOWER,
@@ -454,10 +431,56 @@ static RegisterAccessInfo sysmon_regs_info[] = {
     },{ .name = "ALARM_SUPPLY8_UPPER",  .decode.addr = A_ALARM_SUPPLY8_UPPER,
     },{ .name = "ALARM_SUPPLY9_UPPER",  .decode.addr = A_ALARM_SUPPLY9_UPPER,
     },{ .name = "ALARM_SUPPLY10_UPPER",  .decode.addr = A_ALARM_SUPPLY10_UPPER,
+    },{ .name = "ALARM_VCCAMS_UPPER",  .decode.addr = A_ALARM_VCCAMS_UPPER,
+    },{ .name = "ALARM_TREMOTE_UPPER",  .decode.addr = A_ALARM_TREMOTE_UPPER,
     },{ .name = "ALARM_SUPPLY7_LOWER",  .decode.addr = A_ALARM_SUPPLY7_LOWER,
     },{ .name = "ALARM_SUPPLY8_LOWER",  .decode.addr = A_ALARM_SUPPLY8_LOWER,
     },{ .name = "ALARM_SUPPLY9_LOWER",  .decode.addr = A_ALARM_SUPPLY9_LOWER,
     },{ .name = "ALARM_SUPPLY10_LOWER",  .decode.addr = A_ALARM_SUPPLY10_LOWER,
+    },{ .name = "ALARM_VCCAMS_LOWER",  .decode.addr = A_ALARM_VCCAMS_LOWER,
+    },{ .name = "ALARM_TREMOTE_LOWER",  .decode.addr = A_ALARM_TREMOTE_LOWER,
+    },{ .name = "SUPPLY7",  .decode.addr = A_SUPPLY7,
+        .ro = 0xffff,
+    },{ .name = "SUPPLY8",  .decode.addr = A_SUPPLY8,
+        .ro = 0xffff,
+    },{ .name = "SUPPLY9",  .decode.addr = A_SUPPLY9,
+        .ro = 0xffff,
+    },{ .name = "SUPPLY10",  .decode.addr = A_SUPPLY10,
+        .ro = 0xffff,
+    },{ .name = "VCCAMS",  .decode.addr = A_VCCAMS,
+        .ro = 0xffff,
+    },{ .name = "TEMPERATURE_REMOTE",  .decode.addr = A_TEMPERATURE_REMOTE,
+        .ro = 0xffff,
+    },{ .name = "MAX_SUPPLY7",  .decode.addr = A_MAX_SUPPLY7,
+        .ro = 0xffff,
+    },{ .name = "MAX_SUPPLY8",  .decode.addr = A_MAX_SUPPLY8,
+        .ro = 0xffff,
+    },{ .name = "MAX_SUPPLY9",  .decode.addr = A_MAX_SUPPLY9,
+        .ro = 0xffff,
+    },{ .name = "MAX_SUPPLY10",  .decode.addr = A_MAX_SUPPLY10,
+        .ro = 0xffff,
+    },{ .name = "MAX_VCCAMS",  .decode.addr = A_MAX_VCCAMS,
+        .ro = 0xffff,
+    },{ .name = "MAX_TEMPERATURE_REMOTE",
+        .decode.addr = A_MAX_TEMPERATURE_REMOTE,
+        .ro = 0xffff,
+    },{ .name = "MIN_SUPPLY7",  .decode.addr = A_MIN_SUPPLY7,
+        .reset = 0xffff,
+        .ro = 0xffff,
+    },{ .name = "MIN_SUPPLY8",  .decode.addr = A_MIN_SUPPLY8,
+        .reset = 0xffff,
+        .ro = 0xffff,
+    },{ .name = "MIN_SUPPLY9",  .decode.addr = A_MIN_SUPPLY9,
+        .reset = 0xffff,
+        .ro = 0xffff,
+    },{ .name = "MIN_SUPPLY10",  .decode.addr = A_MIN_SUPPLY10,
+        .reset = 0xffff,
+        .ro = 0xffff,
+    },{ .name = "MIN_VCCAMS",  .decode.addr = A_MIN_VCCAMS,
+        .ro = 0xffff,
+    },{ .name = "MIN_TEMPERATURE_REMOTE",
+        .decode.addr = A_MIN_TEMPERATURE_REMOTE,
+        .ro = 0xffff,
     }
 };
 
