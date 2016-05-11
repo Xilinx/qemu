@@ -22,7 +22,7 @@
 #define REMOTE_PORT_GPIO(obj) \
         OBJECT_CHECK(RemotePortGPIO, (obj), TYPE_REMOTE_PORT_GPIO)
 
-#define MAX_GPIOS 32
+#define MAX_GPIOS 164
 #define CACHE_INVALID -1
 
 typedef struct RemotePortGPIO {
@@ -31,7 +31,7 @@ typedef struct RemotePortGPIO {
     /* public */
 
     int8_t cache[MAX_GPIOS];
-    uint16_t num_gpios;
+    uint32_t num_gpios;
     qemu_irq *gpio_out;
 
     uint64_t current_id;
@@ -102,7 +102,7 @@ static void rp_gpio_init(Object *obj)
 
 static Property rp_properties[] = {
     DEFINE_PROP_UINT32("rp-chan0", RemotePortGPIO, rp_dev, 0),
-    DEFINE_PROP_UINT16("num-gpios", RemotePortGPIO, num_gpios, 16),
+    DEFINE_PROP_UINT32("num-gpios", RemotePortGPIO, num_gpios, 16),
     DEFINE_PROP_END_OF_LIST(),
 };
 
