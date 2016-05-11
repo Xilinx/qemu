@@ -170,8 +170,193 @@ REG32(JTAG_DAP_CFG, 0x3c)
 REG32(IDCODE, 0x40)
 REG32(VERSION, 0x44)
     FIELD(VERSION, PS_VERSION, 4, 0)
+REG32(CSU_ROM_DIGEST_0, 0x50)
+REG32(CSU_ROM_DIGEST_1, 0x54)
+REG32(CSU_ROM_DIGEST_2, 0x58)
+REG32(CSU_ROM_DIGEST_3, 0x5C)
+REG32(CSU_ROM_DIGEST_4, 0x60)
+REG32(CSU_ROM_DIGEST_5, 0x64)
+REG32(CSU_ROM_DIGEST_6, 0x68)
+REG32(CSU_ROM_DIGEST_7, 0x6C)
+REG32(CSU_ROM_DIGEST_8, 0x70)
+REG32(CSU_ROM_DIGEST_9, 0x74)
+REG32(CSU_ROM_DIGEST_10, 0x78)
+REG32(CSU_ROM_DIGEST_11, 0x7C)
+REG32(AES_STATUS, 0x1000)
+    FIELD(AES_STATUS, OKR_ZEROED, 1, 11)
+    FIELD(AES_STATUS, BOOT_ZEROED, 1, 10)
+    FIELD(AES_STATUS, KUP_ZEROED, 1, 9)
+    FIELD(AES_STATUS, AES_KEY_ZEROED, 1, 8)
+    FIELD(AES_STATUS, KEY_INIT_DONE, 1, 4)
+    FIELD(AES_STATUS, GCM_TAG_PASS, 1, 3)
+    FIELD(AES_STATUS, DONE, 1, 2)
+    FIELD(AES_STATUS, READY, 1, 1)
+    FIELD(AES_STATUS, BUSY, 1, 0)
+REG32(AES_KEY_SRC, 0x1004)
+    FIELD(AES_KEY_SRC, KEY_SRC, 4, 0)
+REG32(AES_KEY_LOAD, 0x1008)
+    FIELD(AES_KEY_LOAD, KEY_LOAD, 1, 0)
+REG32(AES_START_MSG, 0x100c)
+    FIELD(AES_START_MSG, START_MSG, 1, 0)
+REG32(AES_RESET, 0x1010)
+    FIELD(AES_RESET, RESET, 1, 0)
+REG32(AES_KEY_CLEAR, 0x1014)
+    FIELD(AES_KEY_CLEAR, AES_KUP_ZERO, 1, 1)
+    FIELD(AES_KEY_CLEAR, AES_KEY_ZERO, 1, 0)
+REG32(AES_KUP_WR, 0x101c)
+    FIELD(AES_KUP_WR, IV_WRITE, 1, 1)
+    FIELD(AES_KUP_WR, KUP_WRITE, 1, 0)
+REG32(AES_KUP_0, 0x1020)
+REG32(AES_KUP_1, 0x1024)
+REG32(AES_KUP_2, 0x1028)
+REG32(AES_KUP_3, 0x102c)
+REG32(AES_KUP_4, 0x1030)
+REG32(AES_KUP_5, 0x1034)
+REG32(AES_KUP_6, 0x1038)
+REG32(AES_KUP_7, 0x103c)
+REG32(AES_IV_0, 0x1040)
+REG32(AES_IV_1, 0x1044)
+REG32(AES_IV_2, 0x1048)
+REG32(AES_IV_3, 0x104c)
+REG32(SHA_START, 0x2000)
+    FIELD(SHA_START, START_MSG, 1, 0)
+REG32(SHA_RESET, 0x2004)
+    FIELD(SHA_RESET, RESET, 1, 0)
+REG32(SHA_DONE, 0x2008)
+    FIELD(SHA_DONE, SHA_DONE, 1, 0)
+REG32(SHA_DIGEST_0, 0x2010)
+REG32(SHA_DIGEST_1, 0x2014)
+REG32(SHA_DIGEST_2, 0x2018)
+REG32(SHA_DIGEST_3, 0x201c)
+REG32(SHA_DIGEST_4, 0x2020)
+REG32(SHA_DIGEST_5, 0x2024)
+REG32(SHA_DIGEST_6, 0x2028)
+REG32(SHA_DIGEST_7, 0x202c)
+REG32(SHA_DIGEST_8, 0x2030)
+REG32(SHA_DIGEST_9, 0x2034)
+REG32(SHA_DIGEST_10, 0x2038)
+REG32(SHA_DIGEST_11, 0x203c)
+REG32(PCAP_PROG, 0x3000)
+    FIELD(PCAP_PROG, PCFG_PROG_B, 1, 0)
+REG32(PCAP_RDWR, 0x3004)
+    FIELD(PCAP_RDWR, PCAP_RDWR_B, 1, 0)
+REG32(PCAP_CTRL, 0x3008)
+    FIELD(PCAP_CTRL, PCFG_GSR, 1, 3)
+    FIELD(PCAP_CTRL, PCFG_GTS, 1, 2)
+    FIELD(PCAP_CTRL, PCFG_POR_CNT_4K, 1, 1)
+    FIELD(PCAP_CTRL, PCAP_PR, 1, 0)
+REG32(PCAP_RESET, 0x300c)
+    FIELD(PCAP_RESET, RESET, 1, 0)
+REG32(PCAP_STATUS, 0x3010)
+    FIELD(PCAP_STATUS, PCFG_GWE, 1, 13)
+    FIELD(PCAP_STATUS, PCFG_MCAP_MODE, 1, 12)
+    FIELD(PCAP_STATUS, PL_GTS_USR_B, 1, 11)
+    FIELD(PCAP_STATUS, PL_GTS_CFG_B, 1, 10)
+    FIELD(PCAP_STATUS, PL_GPWRDWN_B, 1, 9)
+    FIELD(PCAP_STATUS, PL_GHIGH_B, 1, 8)
+    FIELD(PCAP_STATUS, PL_FST_CFG, 1, 7)
+    FIELD(PCAP_STATUS, PL_CFG_RESET_B, 1, 6)
+    FIELD(PCAP_STATUS, PL_SEU_ERROR, 1, 5)
+    FIELD(PCAP_STATUS, PL_EOS, 1, 4)
+    FIELD(PCAP_STATUS, PL_DONE, 1, 3)
+    FIELD(PCAP_STATUS, PL_INIT, 1, 2)
+    FIELD(PCAP_STATUS, PCAP_RD_IDLE, 1, 1)
+    FIELD(PCAP_STATUS, PCAP_WR_IDLE, 1, 0)
+REG32(TAMPER_STATUS, 0x5000)
+    FIELD(TAMPER_STATUS, TAMPER_13, 1, 13)
+    FIELD(TAMPER_STATUS, TAMPER_12, 1, 12)
+    FIELD(TAMPER_STATUS, TAMPER_11, 1, 11)
+    FIELD(TAMPER_STATUS, TAMPER_10, 1, 10)
+    FIELD(TAMPER_STATUS, TAMPER_9, 1, 9)
+    FIELD(TAMPER_STATUS, TAMPER_8, 1, 8)
+    FIELD(TAMPER_STATUS, TAMPER_7, 1, 7)
+    FIELD(TAMPER_STATUS, TAMPER_6, 1, 6)
+    FIELD(TAMPER_STATUS, TAMPER_5, 1, 5)
+    FIELD(TAMPER_STATUS, TAMPER_4, 1, 4)
+    FIELD(TAMPER_STATUS, TAMPER_3, 1, 3)
+    FIELD(TAMPER_STATUS, TAMPER_2, 1, 2)
+    FIELD(TAMPER_STATUS, TAMPER_1, 1, 1)
+    FIELD(TAMPER_STATUS, TAMPER_0, 1, 0)
+REG32(CSU_TAMPER_0, 0x5004)
+    FIELD(CSU_TAMPER_0, BBRAM_ERASE, 1, 5)
+    FIELD(CSU_TAMPER_0, SEC_LOCKDOWN_1, 1, 3)
+    FIELD(CSU_TAMPER_0, SEC_LOCKDOWN_0, 1, 2)
+    FIELD(CSU_TAMPER_0, SYS_RESET, 1, 1)
+    FIELD(CSU_TAMPER_0, SYS_INTERRUPT, 1, 0)
+REG32(CSU_TAMPER_1, 0x5008)
+    FIELD(CSU_TAMPER_1, BBRAM_ERASE, 1, 5)
+    FIELD(CSU_TAMPER_1, SEC_LOCKDOWN_1, 1, 3)
+    FIELD(CSU_TAMPER_1, SEC_LOCKDOWN_0, 1, 2)
+    FIELD(CSU_TAMPER_1, SYS_RESET, 1, 1)
+    FIELD(CSU_TAMPER_1, SYS_INTERRUPT, 1, 0)
+REG32(CSU_TAMPER_2, 0x500C)
+    FIELD(CSU_TAMPER_2, BBRAM_ERASE, 1, 5)
+    FIELD(CSU_TAMPER_2, SEC_LOCKDOWN_1, 1, 3)
+    FIELD(CSU_TAMPER_2, SEC_LOCKDOWN_0, 1, 2)
+    FIELD(CSU_TAMPER_2, SYS_RESET, 1, 1)
+    FIELD(CSU_TAMPER_2, SYS_INTERRUPT, 1, 0)
+REG32(CSU_TAMPER_3, 0x5010)
+    FIELD(CSU_TAMPER_3, BBRAM_ERASE, 1, 5)
+    FIELD(CSU_TAMPER_3, SEC_LOCKDOWN_1, 1, 3)
+    FIELD(CSU_TAMPER_3, SEC_LOCKDOWN_0, 1, 2)
+    FIELD(CSU_TAMPER_3, SYS_RESET, 1, 1)
+    FIELD(CSU_TAMPER_3, SYS_INTERRUPT, 1, 0)
+REG32(CSU_TAMPER_4, 0x5014)
+    FIELD(CSU_TAMPER_4, BBRAM_ERASE, 1, 5)
+    FIELD(CSU_TAMPER_4, SEC_LOCKDOWN_1, 1, 3)
+    FIELD(CSU_TAMPER_4, SEC_LOCKDOWN_0, 1, 2)
+    FIELD(CSU_TAMPER_4, SYS_RESET, 1, 1)
+    FIELD(CSU_TAMPER_4, SYS_INTERRUPT, 1, 0)
+REG32(CSU_TAMPER_5, 0x5018)
+    FIELD(CSU_TAMPER_5, BBRAM_ERASE, 1, 5)
+    FIELD(CSU_TAMPER_5, SEC_LOCKDOWN_1, 1, 3)
+    FIELD(CSU_TAMPER_5, SEC_LOCKDOWN_0, 1, 2)
+    FIELD(CSU_TAMPER_5, SYS_RESET, 1, 1)
+    FIELD(CSU_TAMPER_5, SYS_INTERRUPT, 1, 0)
+REG32(CSU_TAMPER_6, 0x501C)
+    FIELD(CSU_TAMPER_6, BBRAM_ERASE, 1, 5)
+    FIELD(CSU_TAMPER_6, SEC_LOCKDOWN_1, 1, 3)
+    FIELD(CSU_TAMPER_6, SEC_LOCKDOWN_0, 1, 2)
+    FIELD(CSU_TAMPER_6, SYS_RESET, 1, 1)
+    FIELD(CSU_TAMPER_6, SYS_INTERRUPT, 1, 0)
+REG32(CSU_TAMPER_7, 0x5020)
+    FIELD(CSU_TAMPER_7, BBRAM_ERASE, 1, 5)
+    FIELD(CSU_TAMPER_7, SEC_LOCKDOWN_1, 1, 3)
+    FIELD(CSU_TAMPER_7, SEC_LOCKDOWN_0, 1, 2)
+    FIELD(CSU_TAMPER_7, SYS_RESET, 1, 1)
+    FIELD(CSU_TAMPER_7, SYS_INTERRUPT, 1, 0)
+REG32(CSU_TAMPER_8, 0x5024)
+    FIELD(CSU_TAMPER_8, BBRAM_ERASE, 1, 5)
+    FIELD(CSU_TAMPER_8, SEC_LOCKDOWN_1, 1, 3)
+    FIELD(CSU_TAMPER_8, SEC_LOCKDOWN_0, 1, 2)
+    FIELD(CSU_TAMPER_8, SYS_RESET, 1, 1)
+    FIELD(CSU_TAMPER_8, SYS_INTERRUPT, 1, 0)
+REG32(CSU_TAMPER_9, 0x5028)
+    FIELD(CSU_TAMPER_9, BBRAM_ERASE, 1, 5)
+    FIELD(CSU_TAMPER_9, SEC_LOCKDOWN_1, 1, 3)
+    FIELD(CSU_TAMPER_9, SEC_LOCKDOWN_0, 1, 2)
+    FIELD(CSU_TAMPER_9, SYS_RESET, 1, 1)
+    FIELD(CSU_TAMPER_9, SYS_INTERRUPT, 1, 0)
+REG32(CSU_TAMPER_10, 0x502C)
+    FIELD(CSU_TAMPER_10, BBRAM_ERASE, 1, 5)
+    FIELD(CSU_TAMPER_10, SEC_LOCKDOWN_1, 1, 3)
+    FIELD(CSU_TAMPER_10, SEC_LOCKDOWN_0, 1, 2)
+    FIELD(CSU_TAMPER_10, SYS_RESET, 1, 1)
+    FIELD(CSU_TAMPER_10, SYS_INTERRUPT, 1, 0)
+REG32(CSU_TAMPER_11, 0x5030)
+    FIELD(CSU_TAMPER_11, BBRAM_ERASE, 1, 5)
+    FIELD(CSU_TAMPER_11, SEC_LOCKDOWN_1, 1, 3)
+    FIELD(CSU_TAMPER_11, SEC_LOCKDOWN_0, 1, 2)
+    FIELD(CSU_TAMPER_11, SYS_RESET, 1, 1)
+    FIELD(CSU_TAMPER_11, SYS_INTERRUPT, 1, 0)
+REG32(CSU_TAMPER_12, 0x5034)
+    FIELD(CSU_TAMPER_12, BBRAM_ERASE, 1, 5)
+    FIELD(CSU_TAMPER_12, SEC_LOCKDOWN_1, 1, 3)
+    FIELD(CSU_TAMPER_12, SEC_LOCKDOWN_0, 1, 2)
+    FIELD(CSU_TAMPER_12, SYS_RESET, 1, 1)
+    FIELD(CSU_TAMPER_12, SYS_INTERRUPT, 1, 0)
 
-#define R_MAX (R_VERSION + 1)
+#define R_MAX (R_CSU_TAMPER_12 + 1)
 
 typedef struct CSU {
     SysBusDevice parent_obj;
@@ -247,6 +432,84 @@ static const RegisterAccessInfo csu_core_regs_info[] = {
         .ro = 0xfffff,
         .reset = XFSBL_PLATFORM_QEMU,
     },
+#define P(n) \
+    {   .name = "CSU_ROM_DIGEST_" #n, \
+        .decode.addr = A_CSU_ROM_DIGEST_0 + n * 4, \
+        .reset = 0xffffffff, \
+        .ro = 0xffffffff, },
+    P(0) P(1) P(2) P(3) P(4) P(5) P(6) P(7) P(8) P(9) P(10) P(11)
+#undef P
+    { .name = "AES_STATUS",  .decode.addr = A_AES_STATUS,
+        .reset = 0xf00,
+        .rsvd = 0xc0,
+        .ro = 0xfff,
+    },{ .name = "AES_KEY_SRC",  .decode.addr = A_AES_KEY_SRC,
+    },{ .name = "AES_KEY_LOAD",  .decode.addr = A_AES_KEY_LOAD,
+    },{ .name = "AES_START_MSG",  .decode.addr = A_AES_START_MSG,
+    },{ .name = "AES_RESET",  .decode.addr = A_AES_RESET,
+    },{ .name = "AES_KEY_CLEAR",  .decode.addr = A_AES_KEY_CLEAR,
+    },{ .name = "AES_KUP_WR",  .decode.addr = A_AES_KUP_WR,
+    },{ .name = "AES_KUP_0",  .decode.addr = A_AES_KUP_0,
+    },{ .name = "AES_KUP_1",  .decode.addr = A_AES_KUP_1,
+    },{ .name = "AES_KUP_2",  .decode.addr = A_AES_KUP_2,
+    },{ .name = "AES_KUP_3",  .decode.addr = A_AES_KUP_3,
+    },{ .name = "AES_KUP_4",  .decode.addr = A_AES_KUP_4,
+    },{ .name = "AES_KUP_5",  .decode.addr = A_AES_KUP_5,
+    },{ .name = "AES_KUP_6",  .decode.addr = A_AES_KUP_6,
+    },{ .name = "AES_KUP_7",  .decode.addr = A_AES_KUP_7,
+    },{ .name = "AES_IV_0",  .decode.addr = A_AES_IV_0,
+        .ro = 0xffffffff,
+    },{ .name = "AES_IV_1",  .decode.addr = A_AES_IV_1,
+        .ro = 0xffffffff,
+    },{ .name = "AES_IV_2",  .decode.addr = A_AES_IV_2,
+        .ro = 0xffffffff,
+    },{ .name = "AES_IV_3",  .decode.addr = A_AES_IV_3,
+        .ro = 0xffffffff,
+    },{ .name = "SHA_START",  .decode.addr = A_SHA_START,
+    },{ .name = "SHA_RESET",  .decode.addr = A_SHA_RESET,
+    },{ .name = "SHA_DONE",  .decode.addr = A_SHA_DONE,
+        .ro = 0x1,
+    },{ .name = "SHA_DIGEST_0",  .decode.addr = A_SHA_DIGEST_0,
+        .ro = 0xffffffff,
+    },{ .name = "SHA_DIGEST_1",  .decode.addr = A_SHA_DIGEST_1,
+        .ro = 0xffffffff,
+    },{ .name = "SHA_DIGEST_2",  .decode.addr = A_SHA_DIGEST_2,
+        .ro = 0xffffffff,
+    },{ .name = "SHA_DIGEST_3",  .decode.addr = A_SHA_DIGEST_3,
+        .ro = 0xffffffff,
+    },{ .name = "SHA_DIGEST_4",  .decode.addr = A_SHA_DIGEST_4,
+        .ro = 0xffffffff,
+    },{ .name = "SHA_DIGEST_5",  .decode.addr = A_SHA_DIGEST_5,
+        .ro = 0xffffffff,
+    },{ .name = "SHA_DIGEST_6",  .decode.addr = A_SHA_DIGEST_6,
+        .ro = 0xffffffff,
+    },{ .name = "SHA_DIGEST_7",  .decode.addr = A_SHA_DIGEST_7,
+        .ro = 0xffffffff,
+    },{ .name = "SHA_DIGEST_8",  .decode.addr = A_SHA_DIGEST_8,
+        .ro = 0xffffffff,
+    },{ .name = "SHA_DIGEST_9",  .decode.addr = A_SHA_DIGEST_9,
+        .ro = 0xffffffff,
+    },{ .name = "SHA_DIGEST_10",  .decode.addr = A_SHA_DIGEST_10,
+        .ro = 0xffffffff,
+    },{ .name = "SHA_DIGEST_11",  .decode.addr = A_SHA_DIGEST_11,
+        .ro = 0xffffffff,
+    },{ .name = "PCAP_PROG",  .decode.addr = A_PCAP_PROG,
+    },{ .name = "PCAP_RDWR",  .decode.addr = A_PCAP_RDWR,
+    },{ .name = "PCAP_CTRL",  .decode.addr = A_PCAP_CTRL,
+        .reset = 0x1,
+    },{ .name = "PCAP_RESET",  .decode.addr = A_PCAP_RESET,
+    },{ .name = "PCAP_STATUS",  .decode.addr = A_PCAP_STATUS,
+        .reset = 0x3,
+        .rsvd = 0x1fffc000,
+        .ro = 0xffffffff,
+    },{ .name = "TAMPER_STATUS",  .decode.addr = A_TAMPER_STATUS,
+        .w1c = 0x3fff,
+    },
+#define P(n) \
+    {   .name = "CSU_TAMPER_" #n, .decode.addr = A_CSU_TAMPER_0 + n * 4 \
+    },
+    P(0) P(1) P(2) P(3) P(4) P(5) P(6) P(7) P(8) P(9) P(10) P(11) P(12)
+#undef P
 };
 
 static const MemoryRegionOps csu_core_ops = {
