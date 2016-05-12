@@ -130,17 +130,6 @@ struct rp_pkt_busaccess {
     uint16_t master_id;
 } __attribute__ ((packed));
 
-enum {
-    WIRE_IRQ_0       = 0,
-    WIRE_IRQ_MAX     = 127,
-    WIRE_HALT_0      = 128,
-    WIRE_HALT_MAX    = 159,
-    WIRE_RESET_0     = 160,
-    WIRE_RESET_MAX   = 191,
-
-    WIRE_MAX = 192
-};
-
 struct rp_pkt_interrupt {
     struct rp_pkt_hdr hdr;
     uint64_t timestamp;
