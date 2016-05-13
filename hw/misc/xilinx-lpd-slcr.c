@@ -65,8 +65,73 @@ REG32(SAFETY_CHK0, 0x40)
 REG32(SAFETY_CHK1, 0x44)
 REG32(SAFETY_CHK2, 0x48)
 REG32(SAFETY_CHK3, 0x4c)
+REG32(CSUPMU_WDT_CLK_SEL, 0x00000050)
+REG32(ADMA_CFG, 0x0000200C)
+REG32(ADMA_RAM, 0x00002010)
+REG32(ERR_AIBAXI_ISR, 0x00003000)
+REG32(ERR_AIBAXI_IMR, 0x00003008)
+REG32(ERR_AIBAXI_IER, 0x00003010)
+REG32(ERR_AIBAXI_IDR, 0x00003018)
+REG32(ERR_AIBAPB_ISR, 0x00003020)
+REG32(ERR_AIBAPB_IMR, 0x00003024)
+REG32(ERR_AIBAPB_IER, 0x00003028)
+REG32(ERR_AIBAPB_IDR, 0x0000302C)
+REG32(ISO_AIBAXI_REQ, 0x00003030)
+REG32(ISO_AIBAXI_TYPE, 0x00003038)
+REG32(ISO_AIBAXI_ACK, 0x00003040)
+REG32(ISO_AIBAPB_REQ, 0x00003048)
+REG32(ISO_AIBAPB_TYPE, 0x0000304C)
+REG32(ISO_AIBAPB_ACK, 0x00003050)
+REG32(ERR_ATB_ISR, 0x00006000)
+REG32(ERR_ATB_IMR, 0x00006004)
+REG32(ERR_ATB_IER, 0x00006008)
+REG32(ERR_ATB_IDR, 0x0000600C)
+REG32(ATB_CMD_STORE_EN, 0x00006010)
+REG32(ATB_RESP_EN, 0x00006014)
+REG32(ATB_RESP_TYPE, 0x00006018)
+REG32(ATB_PRESCALE, 0x00006020)
+REG32(MUTEX0, 0x00007000)
+REG32(MUTEX1, 0x00007004)
+REG32(MUTEX2, 0x00007008)
+REG32(MUTEX3, 0x0000700C)
+REG32(GICP0_IRQ_STATUS, 0x00008000)
+REG32(GICP0_IRQ_MASK, 0x00008004)
+REG32(GICP0_IRQ_ENABLE, 0x00008008)
+REG32(GICP0_IRQ_DISABLE, 0x0000800C)
+REG32(GICP0_IRQ_TRIGGER, 0x00008010)
+REG32(GICP1_IRQ_STATUS, 0x00008014)
+REG32(GICP1_IRQ_MASK, 0x00008018)
+REG32(GICP1_IRQ_ENABLE, 0x0000801C)
+REG32(GICP1_IRQ_DISABLE, 0x00008020)
+REG32(GICP1_IRQ_TRIGGER, 0x00008024)
+REG32(GICP2_IRQ_STATUS, 0x00008028)
+REG32(GICP2_IRQ_MASK, 0x0000802C)
+REG32(GICP2_IRQ_ENABLE, 0x00008030)
+REG32(GICP2_IRQ_DISABLE, 0x00008034)
+REG32(GICP2_IRQ_TRIGGER, 0x00008038)
+REG32(GICP3_IRQ_STATUS, 0x0000803C)
+REG32(GICP3_IRQ_MASK, 0x00008040)
+REG32(GICP3_IRQ_ENABLE, 0x00008044)
+REG32(GICP3_IRQ_DISABLE, 0x00008048)
+REG32(GICP3_IRQ_TRIGGER, 0x0000804C)
+REG32(GICP4_IRQ_STATUS, 0x00008050)
+REG32(GICP4_IRQ_MASK, 0x00008054)
+REG32(GICP4_IRQ_ENABLE, 0x00008058)
+REG32(GICP4_IRQ_DISABLE, 0x0000805C)
+REG32(GICP4_IRQ_TRIGGER, 0x00008060)
+REG32(GICP_PMU_IRQ_STATUS, 0x000080A0)
+REG32(GICP_PMU_IRQ_MASK, 0x000080A4)
+REG32(GICP_PMU_IRQ_ENABLE, 0x000080A8)
+REG32(GICP_PMU_IRQ_DISABLE, 0x000080AC)
+REG32(GICP_PMU_IRQ_TRIGGER, 0x000080B0)
+REG32(AFI_FS, 0x00009000)
+REG32(LPD_CCI, 0x0000A000)
+REG32(LPD_CCI_ADDRMAP, 0x0000A004)
+REG32(LPD_CCI_QVNPREALLOC, 0x0000A008)
+REG32(LPD_SMMU, 0x0000A020)
+REG32(LPD_APU, 0x0000A040)
 
-#define R_MAX (R_SAFETY_CHK3 + 1)
+#define R_MAX (R_LPD_APU + 1)
 
 typedef struct LPD_SLCR {
     SysBusDevice parent_obj;
@@ -148,7 +213,161 @@ static RegisterAccessInfo lpd_slcr_regs_info[] = {
     },{ .name = "SAFETY_CHK1",  .decode.addr = A_SAFETY_CHK1,
     },{ .name = "SAFETY_CHK2",  .decode.addr = A_SAFETY_CHK2,
     },{ .name = "SAFETY_CHK3",  .decode.addr = A_SAFETY_CHK3,
-    }
+    },{ .name = "CSUPMU_WDT_CLK_SEL", .decode.addr = A_CSUPMU_WDT_CLK_SEL,
+        .reset = 0,
+        .ro = 0xFFFFFFFE,
+    },{ .name = "ADMA_CFG", .decode.addr = A_ADMA_CFG,
+        .reset = 0x00000028,
+        .ro = 0xFFFFFFFF,
+    },{ .name = "ADMA_RAM", .decode.addr = A_ADMA_RAM,
+        .reset = 0x00003B3B,
+        .ro = 0xFFFFFF00,
+    },{ .name = "ERR_AIBAXI_ISR", .decode.addr = A_ERR_AIBAXI_ISR,
+        .reset = 0,
+        .w1c = 0xFFFFFFFF,
+    },{ .name = "ERR_AIBAXI_IMR", .decode.addr = A_ERR_AIBAXI_IMR,
+        .reset = 0x1DCF000F,
+        .ro = 0xFFFFFFFF,
+    },{ .name = "ERR_AIBAXI_IER", .decode.addr = A_ERR_AIBAXI_IER,
+        .reset = 0,
+    },{ .name = "ERR_AIBAXI_IDR", .decode.addr = A_ERR_AIBAXI_IDR,
+        .reset = 0,
+    },{ .name = "ERR_AIBAPB_ISR", .decode.addr = A_ERR_AIBAPB_ISR,
+        .reset = 0,
+        .w1c = 0xFFFFFFFF,
+    },{ .name = "ERR_AIBAPB_IMR", .decode.addr = A_ERR_AIBAPB_IMR,
+        .reset = 0x00000001,
+        .ro = 0xFFFFFFFF,
+    },{ .name = "ERR_AIBAPB_IER", .decode.addr = A_ERR_AIBAPB_IER,
+        .reset = 0,
+    },{ .name = "ERR_AIBAPB_IDR", .decode.addr = A_ERR_AIBAPB_IDR,
+        .reset = 0,
+    },{ .name = "ISO_AIBAXI_REQ", .decode.addr = A_ISO_AIBAXI_REQ,
+        .reset = 0,
+    },{ .name = "ISO_AIBAXI_TYPE", .decode.addr = A_ISO_AIBAXI_TYPE,
+        .reset = 0x19CF000F,
+    },{ .name = "ISO_AIBAXI_ACK", .decode.addr = A_ISO_AIBAXI_ACK,
+        .reset = 0,
+        .ro = 0xFFFFFFFF,
+    },{ .name = "ISO_AIBAPB_REQ", .decode.addr = A_ISO_AIBAPB_REQ,
+        .reset = 0,
+    },{ .name = "ISO_AIBAPB_TYPE", .decode.addr = A_ISO_AIBAPB_TYPE,
+        .reset = 0x00000001,
+    },{ .name = "ISO_AIBAPB_ACK", .decode.addr = A_ISO_AIBAPB_ACK,
+        .reset = 0,
+        .ro = 0xFFFFFFFF,
+    },{ .name = "ERR_ATB_ISR", .decode.addr = A_ERR_ATB_ISR,
+        .reset = 0,
+        .w1c = 0xFFFFFFFF,
+    },{ .name = "ERR_ATB_IMR", .decode.addr = A_ERR_ATB_IMR,
+        .reset = 0x00000003,
+        .ro = 0xFFFFFFFF,
+    },{ .name = "ERR_ATB_IER", .decode.addr = A_ERR_ATB_IER,
+        .reset = 0,
+    },{ .name = "ERR_ATB_IDR", .decode.addr = A_ERR_ATB_IDR,
+        .reset = 0,
+    },{ .name = "ATB_CMD_STORE_EN", .decode.addr = A_ATB_CMD_STORE_EN,
+        .reset = 0x00000003,
+    },{ .name = "ATB_RESP_EN", .decode.addr = A_ATB_RESP_EN,
+        .reset = 0,
+    },{ .name = "ATB_RESP_TYPE", .decode.addr = A_ATB_RESP_TYPE,
+        .reset = 0x00000003,
+    },{ .name = "ATB_PRESCALE", .decode.addr = A_ATB_PRESCALE,
+        .reset = 0x0000FFFF,
+    },{ .name = "MUTEX0", .decode.addr = A_MUTEX0,
+        .reset = 0,
+    },{ .name = "MUTEX1", .decode.addr = A_MUTEX1,
+        .reset = 0,
+    },{ .name = "MUTEX2", .decode.addr = A_MUTEX2,
+        .reset = 0,
+    },{ .name = "MUTEX3", .decode.addr = A_MUTEX3,
+        .reset = 0,
+    },{ .name = "GICP0_IRQ_STATUS", .decode.addr = A_GICP0_IRQ_STATUS,
+        .reset = 0,
+        .w1c = 0xFFFFFFFF,
+    },{ .name = "GICP0_IRQ_MASK", .decode.addr = A_GICP0_IRQ_MASK,
+        .reset = 0xFFFFFFFF,
+        .ro = 0xFFFFFFFF,
+    },{ .name = "GICP0_IRQ_ENABLE", .decode.addr = A_GICP0_IRQ_ENABLE,
+        .reset = 0,
+    },{ .name = "GICP0_IRQ_DISABLE", .decode.addr = A_GICP0_IRQ_DISABLE,
+        .reset = 0,
+    },{ .name = "GICP0_IRQ_TRIGGER", .decode.addr = A_GICP0_IRQ_TRIGGER,
+        .reset = 0,
+    },{ .name = "GICP1_IRQ_STATUS", .decode.addr = A_GICP1_IRQ_STATUS,
+        .reset = 0,
+        .w1c = 0xFFFFFFFF,
+    },{ .name = "GICP1_IRQ_MASK", .decode.addr = A_GICP1_IRQ_MASK,
+        .reset = 0xFFFFFFFF,
+        .ro = 0xFFFFFFFF,
+    },{ .name = "GICP1_IRQ_ENABLE", .decode.addr = A_GICP1_IRQ_ENABLE,
+        .reset = 0,
+    },{ .name = "GICP1_IRQ_DISABLE", .decode.addr = A_GICP1_IRQ_DISABLE,
+        .reset = 0,
+    },{ .name = "GICP1_IRQ_TRIGGER", .decode.addr = A_GICP1_IRQ_TRIGGER,
+        .reset = 0,
+    },{ .name = "GICP2_IRQ_STATUS", .decode.addr = A_GICP2_IRQ_STATUS,
+        .reset = 0,
+        .w1c = 0xFFFFFFFF,
+    },{ .name = "GICP2_IRQ_MASK", .decode.addr = A_GICP2_IRQ_MASK,
+        .reset = 0xFFFFFFFF,
+        .ro = 0xFFFFFFFF,
+    },{ .name = "GICP2_IRQ_ENABLE", .decode.addr = A_GICP2_IRQ_ENABLE,
+        .reset = 0,
+    },{ .name = "GICP2_IRQ_DISABLE", .decode.addr = A_GICP2_IRQ_DISABLE,
+        .reset = 0,
+    },{ .name = "GICP2_IRQ_TRIGGER", .decode.addr = A_GICP2_IRQ_TRIGGER,
+        .reset = 0,
+    },{ .name = "GICP3_IRQ_STATUS", .decode.addr = A_GICP3_IRQ_STATUS,
+        .reset = 0,
+        .w1c = 0xFFFFFFFF,
+    },{ .name = "GICP3_IRQ_MASK", .decode.addr = A_GICP3_IRQ_MASK,
+        .reset = 0xFFFFFFFF,
+        .ro = 0xFFFFFFFF,
+    },{ .name = "GICP3_IRQ_ENABLE", .decode.addr = A_GICP3_IRQ_ENABLE,
+        .reset = 0,
+    },{ .name = "GICP3_IRQ_DISABLE", .decode.addr = A_GICP3_IRQ_DISABLE,
+        .reset = 0,
+    },{ .name = "GICP3_IRQ_TRIGGER", .decode.addr = A_GICP3_IRQ_TRIGGER,
+        .reset = 0,
+    },{ .name = "GICP4_IRQ_STATUS", .decode.addr = A_GICP4_IRQ_STATUS,
+        .reset = 0,
+        .w1c = 0xFFFFFFFF,
+    },{ .name = "GICP4_IRQ_MASK", .decode.addr = A_GICP4_IRQ_MASK,
+        .reset = 0xFFFFFFFF,
+        .ro = 0xFFFFFFFF,
+    },{ .name = "GICP4_IRQ_ENABLE", .decode.addr = A_GICP4_IRQ_ENABLE,
+        .reset = 0,
+    },{ .name = "GICP4_IRQ_DISABLE", .decode.addr = A_GICP4_IRQ_DISABLE,
+        .reset = 0,
+    },{ .name = "GICP4_IRQ_TRIGGER", .decode.addr = A_GICP4_IRQ_TRIGGER,
+        .reset = 0,
+    },{ .name = "GICP_PMU_IRQ_STATUS", .decode.addr = A_GICP_PMU_IRQ_STATUS,
+        .reset = 0,
+        .w1c = 0xFFFFFFFF,
+    },{ .name = "GICP_PMU_IRQ_MASK", .decode.addr = A_GICP_PMU_IRQ_MASK,
+        .reset = 0x000000FF,
+        .ro = 0xFFFFFFFF,
+    },{ .name = "GICP_PMU_IRQ_ENABLE", .decode.addr = A_GICP_PMU_IRQ_ENABLE,
+        .reset = 0,
+    },{ .name = "GICP_PMU_IRQ_DISABLE", .decode.addr = A_GICP_PMU_IRQ_DISABLE,
+        .reset = 0,
+    },{ .name = "GICP_PMU_IRQ_TRIGGER", .decode.addr = A_GICP_PMU_IRQ_TRIGGER,
+        .reset = 0,
+    },{ .name = "AFI_FS", .decode.addr = A_AFI_FS,
+        .reset = 0x00000200,
+    },{ .name = "LPD_CCI", .decode.addr = A_LPD_CCI,
+        .reset = 0x03801C07,
+    },{ .name = "LPD_CCI_ADDRMAP", .decode.addr = A_LPD_CCI_ADDRMAP,
+        .reset = 0x00C000FF,
+    },{ .name = "LPD_CCI_QVNPREALLOC", .decode.addr = A_LPD_CCI_QVNPREALLOC,
+        .reset = 0x00330330,
+        .ro = 0x0000F00F,
+    },{ .name = "LPD_SMMU", .decode.addr = A_LPD_SMMU,
+        .reset = 0x0000003F,
+    },{ .name = "LPD_APU", .decode.addr = A_LPD_APU,
+        .reset = 0x00000001,
+    },
 };
 
 static void lpd_slcr_reset(DeviceState *dev)
