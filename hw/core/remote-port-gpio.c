@@ -33,6 +33,7 @@ typedef struct RemotePortGPIO {
     int8_t cache[MAX_GPIOS];
     uint32_t num_gpios;
     qemu_irq *gpio_out;
+    uint16_t cell_offset_irq_num;
 
     uint64_t current_id;
 
@@ -103,6 +104,8 @@ static void rp_gpio_init(Object *obj)
 static Property rp_properties[] = {
     DEFINE_PROP_UINT32("rp-chan0", RemotePortGPIO, rp_dev, 0),
     DEFINE_PROP_UINT32("num-gpios", RemotePortGPIO, num_gpios, 16),
+    DEFINE_PROP_UINT16("cell-offset-irq-num", RemotePortGPIO,
+                       cell_offset_irq_num, 0),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -112,13 +115,14 @@ static int rp_fdt_get_irq(FDTGenericIntc *obj, qemu_irq *irqs,
 {
     RemotePortGPIO *s = REMOTE_PORT_GPIO(obj);
 
-    if (cells[0] >= s->num_gpios) {
+    if (cells[s->cell_offset_irq_num] >= s->num_gpios) {
         error_setg(errp, "RP-GPIO was setup for %u interrupts: index %"
-                   PRIu32 " requested", s->num_gpios, cells[0]);
+                   PRIu32 " requested", s->num_gpios,
+                   cells[s->cell_offset_irq_num]);
         return 0;
     }
 
-    (*irqs) = qdev_get_gpio_in(DEVICE(obj), cells[0]);
+    (*irqs) = qdev_get_gpio_in(DEVICE(obj), cells[s->cell_offset_irq_num]);
     return 1;
 };
 
