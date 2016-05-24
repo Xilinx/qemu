@@ -800,6 +800,12 @@ REG32(ODTCFG_SHADOW, 0x2240)
 
 #define R_MAX (R_ODTCFG_SHADOW + 1)
 
+#define R_STAT_OPERATING_MODE_SR     3
+#define R_STAT_OPERATING_MODE_NORMAL 1
+
+#define R_STAT_SELFREF_TYPE_SRSW 2
+#define R_STAT_SELFREF_TYPE_NONE 0
+
 typedef struct DDRC {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
@@ -807,6 +813,26 @@ typedef struct DDRC {
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
 } DDRC;
+
+static void ddrc_pwrctl_post_write(RegisterInfo *reg, uint64_t val)
+{
+    DDRC *s = XILINX_DDRC(reg->opaque);
+
+    /*
+     * Software requests self-refresh enter. Pretend that we complied and update
+     * the STAT register accordingly.
+     */
+    if (val & R_PWRCTL_SELFREF_SW_MASK) {
+        AF_DP32(s->regs, STAT, OPERATING_MODE, R_STAT_OPERATING_MODE_SR);
+        AF_DP32(s->regs, STAT, SELFREF_TYPE, R_STAT_SELFREF_TYPE_SRSW);
+    }
+
+    /* switch to normal mode */
+    if (!(val & R_PWRCTL_SELFREF_SW_MASK)) {
+        AF_DP32(s->regs, STAT, OPERATING_MODE, R_STAT_OPERATING_MODE_NORMAL);
+        AF_DP32(s->regs, STAT, SELFREF_TYPE, R_STAT_SELFREF_TYPE_NONE);
+    }
+}
 
 static RegisterAccessInfo ddrc_regs_info[] = {
     {   .name = "MSTR",  .decode.addr = A_MSTR,
@@ -825,6 +851,7 @@ static RegisterAccessInfo ddrc_regs_info[] = {
     },{ .name = "DERATEINT",  .decode.addr = A_DERATEINT,
         .reset = 0x800000,
     },{ .name = "PWRCTL",  .decode.addr = A_PWRCTL,
+        .post_write = ddrc_pwrctl_post_write,
     },{ .name = "PWRTMG",  .decode.addr = A_PWRTMG,
         .reset = 0x402010,
     },{ .name = "HWLPCTL",  .decode.addr = A_HWLPCTL,
