@@ -530,7 +530,12 @@ static void rp_event_notify(RemotePort *s)
     unsigned char d = 0;
     ssize_t r;
 
+#ifdef _WIN32
+    /* Mingw is sensitive about doing write's to socket descriptors.  */
+    r = qemu_send_wrap(s->event.pipe.write, &d, sizeof d, 0);
+#else
     r = qemu_write_full(s->event.pipe.write, &d, sizeof d);
+#endif
     if (r == 0) {
         hw_error("%s: pipe closed\n", s->prefix);
     }
@@ -548,17 +553,16 @@ static void rp_pt_handover_pkt(RemotePort *s, RemotePortDynPkt *dpkt)
     qemu_cond_signal(&s->progress_cond);
     qemu_mutex_unlock(&s->rsp_mutex);
     while (1) {
-#ifdef _WIN32
-	abort();
-#else
-        int sval;
-
         if (qemu_sem_timedwait(&s->rx_queue.sem, 2 * 1000) == 0) {
             break;
         }
-        sem_getvalue(&s->rx_queue.sem.sem, &sval);
-        printf("semwait: %d rpos=%u wpos=%u\n", sval,
-               s->rx_queue.rpos, s->rx_queue.wpos);
+#ifndef _WIN32
+        {
+            int sval;
+            sem_getvalue(&s->rx_queue.sem.sem, &sval);
+            printf("semwait: %d rpos=%u wpos=%u\n", sval,
+                   s->rx_queue.rpos, s->rx_queue.wpos);
+        }
 #endif
     }
 }
@@ -723,11 +727,46 @@ static void rp_realize(DeviceState *dev, Error **errp)
         qemu_set_block(s->fd);
     }
 
+
 #ifdef _WIN32
-    r = -1;
+    /* Create a socket connection between two sockets. We auto-bind
+     * and read out the port selected by the kernel.
+     */
+    {
+        char *name;
+        int port;
+
+        s->event.pipe.read = inet_listen("127.0.0.1:0", NULL,
+                                         256, SOCK_STREAM, 0, &error_abort);
+        if (s->event.pipe.read < 0) {
+            perror("socket read");
+            exit(EXIT_FAILURE);
+        }
+
+        {
+            struct sockaddr_in saddr;
+            socklen_t slen = sizeof saddr;
+            int r;
+
+            r = getsockname(s->event.pipe.read, &saddr, &slen);
+            if (r < 0) {
+                perror("getsockname");
+                exit(EXIT_FAILURE);
+            }
+            port = htons(saddr.sin_port);
+        }
+
+        qemu_set_fd_handler(s->event.pipe.read, rp_event_read, NULL, s);
+        name = g_strdup_printf("127.0.0.1:%d", port);
+        s->event.pipe.write = inet_connect(name, &error_abort);
+        g_free(name);
+        if (s->event.pipe.write < 0) {
+            perror("socket write");
+            exit(EXIT_FAILURE);
+        }
+    }
 #else
     r = qemu_pipe(s->event.pipes);
-#endif
     if (r < 0) {
         error_report("%s: Unable to create remort-port internal pipes\n",
                     s->prefix);
@@ -735,6 +774,7 @@ static void rp_realize(DeviceState *dev, Error **errp)
     }
     qemu_set_nonblock(s->event.pipe.read);
     qemu_set_fd_handler(s->event.pipe.read, rp_event_read, NULL, s);
+#endif
 
 
     /* Pick up the quantum from the local property setup.
@@ -918,6 +958,9 @@ static void rp_class_init(ObjectClass *klass, void *data)
     /* The remaining part is only done for instances that run in multi-arch
        mode.  */
 
+#ifdef _WIN32
+    printf("WARNING: Windows does not support the shared semaphore map\n");
+#else
     /* Create the global exclusive lock file.  */
     name = rp_lock_fd_name("exclusive");
     rpc->lock.fd = open(name, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
@@ -932,9 +975,6 @@ static void rp_class_init(ObjectClass *klass, void *data)
         exit(EXIT_FAILURE);
     }
 
-#ifdef _WIN32
-    exit(EXIT_FAILURE);
-#else
     rpc->lock.sem = mmap(0, RP_LOCK_FILESIZE,
                          PROT_READ | PROT_WRITE, MAP_SHARED, rpc->lock.fd, 0);
     if (rpc->lock.sem == MAP_FAILED) {
