@@ -53,6 +53,13 @@
 #define RP_VERSION_MAJOR 4
 #define RP_VERSION_MINOR 0
 
+#if defined(_WIN32) && defined(__MINGW32__)
+/* mingw GCC has a bug with packed attributes.  */
+#define PACKED __attribute__ ((gcc_struct, packed))
+#else
+#define PACKED __attribute__ ((packed))
+#endif
+
 /* Could be auto generated.  */
 enum rp_cmd {
     RP_CMD_nop         = 0,
@@ -84,23 +91,23 @@ struct rp_pkt_hdr {
     uint32_t id;
     uint32_t flags;
     uint32_t dev;
-} __attribute__ ((packed));
+} PACKED;
 
 struct rp_pkt_cfg {
     struct rp_pkt_hdr hdr;
     uint32_t opt;
     uint8_t set;
-} __attribute__ ((packed));
+} PACKED;
 
 struct rp_version {
     uint16_t major;
     uint16_t minor;
-} __attribute__ ((packed));
+} PACKED;
 
 struct rp_pkt_hello {
     struct rp_pkt_hdr hdr;
     struct rp_version version;
-} __attribute__ ((packed));
+} PACKED;
 
 
 enum {
@@ -128,7 +135,7 @@ struct rp_pkt_busaccess {
 
     /* Implementation specific source or master-id.  */
     uint16_t master_id;
-} __attribute__ ((packed));
+} PACKED;
 
 struct rp_pkt_interrupt {
     struct rp_pkt_hdr hdr;
@@ -136,12 +143,12 @@ struct rp_pkt_interrupt {
     uint64_t vector;
     uint32_t line;
     uint8_t val;
-} __attribute__ ((packed));
+} PACKED;
 
 struct rp_pkt_sync {
     struct rp_pkt_hdr hdr;
     uint64_t timestamp;
-} __attribute__ ((packed));
+} PACKED;
 
 struct rp_pkt {
     union {
