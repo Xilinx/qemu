@@ -18,6 +18,7 @@
 #include "hw/arm/xlnx-zynqmp.h"
 #include "hw/intc/arm_gic_common.h"
 #include "exec/address-spaces.h"
+#include "sysemu/sysemu.h"
 
 #define GIC_NUM_SPI_INTR 160
 
@@ -64,7 +65,7 @@ static void xlnx_zynqmp_init(Object *obj)
     XlnxZynqMPState *s = XLNX_ZYNQMP(obj);
     int i;
 
-    for (i = 0; i < XLNX_ZYNQMP_NUM_CPUS; i++) {
+    for (i = 0; i < smp_cpus; i++) {
         object_initialize(&s->cpu[i], sizeof(s->cpu[i]),
                           "cortex-a53-" TYPE_ARM_CPU);
         object_property_add_child(obj, "cpu[*]", OBJECT(&s->cpu[i]),
@@ -95,7 +96,7 @@ static void xlnx_zynqmp_realize(DeviceState *dev, Error **errp)
 
     qdev_prop_set_uint32(DEVICE(&s->gic), "num-irq", GIC_NUM_SPI_INTR + 32);
     qdev_prop_set_uint32(DEVICE(&s->gic), "revision", 2);
-    qdev_prop_set_uint32(DEVICE(&s->gic), "num-cpu", XLNX_ZYNQMP_NUM_CPUS);
+    qdev_prop_set_uint32(DEVICE(&s->gic), "num-cpu", smp_cpus);
     object_property_set_bool(OBJECT(&s->gic), true, "realized", &err);
     if (err) {
         error_propagate((errp), (err));
@@ -121,7 +122,7 @@ static void xlnx_zynqmp_realize(DeviceState *dev, Error **errp)
         }
     }
 
-    for (i = 0; i < XLNX_ZYNQMP_NUM_CPUS; i++) {
+    for (i = 0; i < smp_cpus; i++) {
         qemu_irq irq;
 
         object_property_set_int(OBJECT(&s->cpu[i]), QEMU_PSCI_CONDUIT_SMC,

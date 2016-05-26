@@ -72,6 +72,7 @@ static QEMUMachine xlnx_ep108_machine = {
     .name = "xlnx-ep108",
     .desc = "Xilinx ZynqMP EP108 board",
     .init = xlnx_ep108_init,
+    .max_cpus = XLNX_ZYNQMP_NUM_CPUS,
 };
 
 static void xlnx_ep108_machine_init(void)
