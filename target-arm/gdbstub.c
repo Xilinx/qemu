@@ -69,9 +69,9 @@ int arm_cpu_gdb_read_register(CPUState *cs, uint8_t *mem_buf, int n)
     case 32:
         return gdb_get_reg32(mem_buf, env->cp15.esr_el[1]);
     case 33:
-        return gdb_get_reg32(mem_buf, env->vmpidr_el2);
-    case 34:
         return gdb_get_reg32(mem_buf, mpidr_read_val(env));
+    case 34:
+        return gdb_get_reg32(mem_buf, env->elr_el[1]);
     }
     /* Unknown register.  */
     return 0;
@@ -136,10 +136,10 @@ int arm_cpu_gdb_write_register(CPUState *cs, uint8_t *mem_buf, int n)
         env->cp15.esr_el[1] = tmp;
         return 4;
     case 33:
-        env->vmpidr_el2 = tmp;
-        return 4;
+        /* Writing to the MPIDR is not supported */
+        return 0;
     case 34:
-        cpu->mp_affinity = tmp;
+        env->elr_el[1] = tmp;
         return 4;
     }
     /* Unknown register.  */
