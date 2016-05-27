@@ -2287,6 +2287,12 @@ uint64_t mpidr_read_val(CPUARMState *env)
 {
     ARMCPU *cpu = ARM_CPU(arm_env_get_cpu(env));
     uint64_t mpidr = cpu->mp_affinity;
+    unsigned int cur_el = arm_current_el(env);
+    bool secure = arm_is_secure(env);
+
+    if (arm_feature(env, ARM_FEATURE_EL2) && !secure && cur_el == 1) {
+        return env->vmpidr_el2;
+    }
 
     if (arm_feature(env, ARM_FEATURE_V7MP)) {
         mpidr |= (1U << 31);
@@ -2303,12 +2309,6 @@ uint64_t mpidr_read_val(CPUARMState *env)
 
 static uint64_t mpidr_read(CPUARMState *env, const ARMCPRegInfo *ri)
 {
-    unsigned int cur_el = arm_current_el(env);
-    bool secure = arm_is_secure(env);
-
-    if (arm_feature(env, ARM_FEATURE_EL2) && !secure && cur_el == 1) {
-        return env->vmpidr_el2;
-    }
     return mpidr_read_val(env);
 }
 
