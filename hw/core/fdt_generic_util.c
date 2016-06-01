@@ -472,26 +472,38 @@ qemu_irq *fdt_get_irq_info(FDTMachineInfo *fdti, char *node_path, int irq_idx,
     Error *errp = NULL;
 
     intc_phandle = qemu_fdt_getprop_cell(fdt, node_path, "interrupt-parent",
-                                                                0, true, &errp);
+                                         0, true, &errp);
     if (errp) {
         errp = NULL;
         intc_cells = qemu_fdt_getprop_cell(fdt, node_path,
                                            "#interrupt-cells", 0, true, &errp);
-        if (errp) {
-            goto fail;
-        }
         *map_mode = true;
     } else {
         if (qemu_devtree_get_node_by_phandle(fdt, intc_node_path,
                                              intc_phandle)) {
             goto fail;
         }
-        intc_cells = qemu_fdt_getprop_cell(fdt, intc_node_path,
-                                           "#interrupt-cells", 0, true, &errp);
-        if (errp) {
-            goto fail;
+
+        /* Check if the device is using interrupt-maps */
+        qemu_fdt_getprop_cell(fdt, node_path, "interrupt-map-mask", 0,
+                              false, &errp);
+        if (!errp) {
+            errp = NULL;
+            intc_cells = qemu_fdt_getprop_cell(fdt, node_path,
+                                               "#interrupt-cells", 0,
+                                               true, &errp);
+            *map_mode = true;
+        } else {
+            errp = NULL;
+            intc_cells = qemu_fdt_getprop_cell(fdt, intc_node_path,
+                                               "#interrupt-cells", 0,
+                                               true, &errp);
+            *map_mode = false;
         }
-        *map_mode = false;
+    }
+
+    if (errp) {
+        goto fail;
     }
 
     DB_PRINT_NP(2, "%s intc_phandle: %d\n", node_path, intc_phandle);
