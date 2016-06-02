@@ -401,6 +401,8 @@ typedef struct RPU {
 
     MemoryRegion *atcm1_for_rpu0;
     MemoryRegion *btcm1_for_rpu0;
+    MemoryRegion atcm1_mask;
+    MemoryRegion btcm1_mask;
     MemoryRegion *rpu1_for_main_bus;
     /* MemoryRegion for the rpu1 caches. */
     MemoryRegion *icache_for_rpu1;
@@ -487,8 +489,8 @@ static void rpu_rpu_glbl_cntl_postw(RegisterInfo *reg, uint64_t val64)
     bool tcm_comb = AF_EX32(s->regs, RPU_GLBL_CNTL, TCM_COMB);
     bool sls_split = AF_EX32(s->regs, RPU_GLBL_CNTL, SLSPLIT);
 
-    memory_region_set_enabled(s->atcm1_for_rpu0, tcm_comb);
-    memory_region_set_enabled(s->btcm1_for_rpu0, tcm_comb);
+    memory_region_set_enabled(&s->atcm1_mask, !tcm_comb);
+    memory_region_set_enabled(&s->btcm1_mask, !tcm_comb);
 
     memory_region_set_enabled(s->icache_for_rpu1, sls_split);
     memory_region_set_enabled(s->dcache_for_rpu1, sls_split);
@@ -697,6 +699,31 @@ static const MemoryRegionOps rpu_ops = {
     },
 };
 
+static uint64_t disabled_tcm_read(void *opaque, hwaddr addr, unsigned size)
+{
+    Object *obj = OBJECT(opaque);
+
+    qemu_log_mask(LOG_GUEST_ERROR, "%s: Read to unmapped TCM while RPU is in"
+                  " lockstep mode @%" HWADDR_PRIx "\n",
+                  object_get_canonical_path(obj), addr);
+    return 0;
+}
+
+static void disabled_tcm_write(void *opaque, hwaddr addr, uint64_t value,
+                               unsigned size)
+{
+    Object *obj = OBJECT(opaque);
+
+    qemu_log_mask(LOG_GUEST_ERROR, "%s: Write to unmapped TCM while RPU is in"
+                  " lockstep mode @%" HWADDR_PRIx "\n",
+                  object_get_canonical_path(obj), addr);
+}
+
+static const MemoryRegionOps disabled_tcm_ops = {
+    .read = disabled_tcm_read,
+    .write = disabled_tcm_write,
+};
+
 static void zynqmp_rpu_0_handle_wfi(void *opaque, int irq, int level)
 {
     RPU *s = XILINX_RPU(opaque);
@@ -718,6 +745,9 @@ static void rpu_realize(DeviceState *dev, Error **errp)
     RPU *s = XILINX_RPU(dev);
     const char *prefix = object_get_canonical_path(OBJECT(dev));
     unsigned int i;
+    hwaddr region_addr;
+    MemoryRegion *region_container;
+    uint32_t region_priority;
 
     for (i = 0; i < ARRAY_SIZE(rpu_regs_info); ++i) {
         RegisterInfo *r = &s->regs_info[rpu_regs_info[i].decode.addr/4];
@@ -764,6 +794,35 @@ static void rpu_realize(DeviceState *dev, Error **errp)
     memory_region_set_enabled(s->icache_for_rpu1, false);
     memory_region_set_enabled(s->dcache_for_rpu1, false);
     memory_region_set_enabled(s->ddr, false);
+
+    /* This initialize some "mask" memory region
+     * Basically they hide what is behind so the *tcm are not accessible.
+     */
+    memory_region_init_io(&s->atcm1_mask, OBJECT(s), &disabled_tcm_ops, s,
+                          "atcm1_mask", memory_region_size(s->atcm1_for_rpu0));
+    region_container = MEMORY_REGION(object_property_get_link(
+                                                OBJECT(s->atcm1_for_rpu0),
+                                                "container", NULL));
+    region_addr = object_property_get_int(OBJECT(s->atcm1_for_rpu0), "addr",
+                                          NULL);
+    region_priority = object_property_get_int(OBJECT(s->atcm1_for_rpu0),
+                                              "priority", NULL) + 1;
+    object_property_set_int(OBJECT(&s->atcm1_mask), region_priority, "priority",
+                            NULL);
+    memory_region_add_subregion(region_container, region_addr, &s->atcm1_mask);
+
+    memory_region_init_io(&s->btcm1_mask, OBJECT(s), &disabled_tcm_ops, s,
+                          "btcm1_mask", memory_region_size(s->btcm1_for_rpu0));
+    region_container = MEMORY_REGION(object_property_get_link(
+                                                OBJECT(s->btcm1_for_rpu0),
+                                                "container", NULL));
+    region_addr = object_property_get_int(OBJECT(s->btcm1_for_rpu0), "addr",
+                                          NULL);
+    region_priority = object_property_get_int(OBJECT(s->btcm1_for_rpu0),
+                                              "priority", NULL) + 1;
+    object_property_set_int(OBJECT(&s->btcm1_mask), region_priority, "priority",
+                            NULL);
+    memory_region_add_subregion(region_container, region_addr, &s->btcm1_mask);
 }
 
 static void rpu_init(Object *obj)
