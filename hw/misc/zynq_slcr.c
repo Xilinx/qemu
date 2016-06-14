@@ -178,6 +178,10 @@ enum {
 #define ZYNQ_SLCR_NUM_CPUS 2
 
 #define FPGA_RST_VALID_BITS 0x01f33F0F
+/* The action of the FPGA_RST_CTRL register on the reset pins
+ * should be inverted as the resets are active low.
+ */
+#define FPGA_RST_INVERT_BITS 0x0000000F
 #define A9_CPU_RST_CTRL_RST_SHIFT 0
 
 #define TYPE_ZYNQ_SLCR "xilinx,zynq_slcr"
@@ -270,6 +274,8 @@ static void zynq_slcr_fdt_config(ZynqSLCRState *s)
 static void zynq_slcr_update_fpga_resets(ZynqSLCRState *s)
 {
     uint32_t val = s->regs[FPGA_RST_CTRL];
+    /* Invert the active low resets */
+    val ^= FPGA_RST_INVERT_BITS;
     int out_idx = 0;
     int i;
 
