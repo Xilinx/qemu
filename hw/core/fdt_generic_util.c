@@ -65,13 +65,15 @@ typedef struct QEMUIRQSharedState {
     int num;
     bool (*merge_fn)(bool *, int);
 /* FIXME: remove artificial limit */
-#define MAX_IRQ_SHARED_INPUTS 16
+#define MAX_IRQ_SHARED_INPUTS 128
     bool inputs[MAX_IRQ_SHARED_INPUTS];
 } QEMUIRQSharedState;
 
 static bool qemu_irq_shared_or_handler(bool *inputs, int n)
 {
     int i;
+
+    assert(n < MAX_IRQ_SHARED_INPUTS);
 
     for (i = 0; i < n; ++i) {
         if (inputs[i]) {
@@ -85,6 +87,8 @@ static bool qemu_irq_shared_and_handler(bool *inputs, int n)
 {
     int i;
 
+    assert(n < MAX_IRQ_SHARED_INPUTS);
+
     for (i = 0; i < n; ++i) {
         if (!inputs[i]) {
             return false;
@@ -97,6 +101,7 @@ static void qemu_irq_shared_handler(void *opaque, int n, int level)
 {
     QEMUIRQSharedState *s = opaque;
 
+    assert(n < MAX_IRQ_SHARED_INPUTS);
     s->inputs[n] = level;
     qemu_set_irq(s->sink, s->merge_fn(s->inputs, s->num));
 }
