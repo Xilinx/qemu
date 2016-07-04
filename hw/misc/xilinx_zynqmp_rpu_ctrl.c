@@ -32,6 +32,7 @@
 #include "qemu/log.h"
 
 #include "hw/fdt_generic_util.h"
+#include "hw/intc/xlnx_scu_gic.h"
 
 #ifndef XILINX_RPU_ERR_DEBUG
 #define XILINX_RPU_ERR_DEBUG 0
@@ -409,6 +410,9 @@ typedef struct RPU {
     MemoryRegion *dcache_for_rpu1;
     /* Second part of the DDR. */
     MemoryRegion *ddr;
+
+    /* GIC associated to the RPUs. */
+    XlnxSCUGICState *gic;
 
     /* WFIs towards PMU. */
     qemu_irq wfi_out[2];
@@ -790,6 +794,11 @@ static void rpu_realize(DeviceState *dev, Error **errp)
         return;
     }
 
+    if (!s->gic) {
+        error_set(errp, QERR_MISSING_PARAMETER, "gic-for-rpu");
+        return;
+    }
+
     /* RPUs starts in lockstep mode, so the rpu1 caches are not accessible. */
     memory_region_set_enabled(s->icache_for_rpu1, false);
     memory_region_set_enabled(s->dcache_for_rpu1, false);
@@ -875,6 +884,15 @@ static void rpu_init(Object *obj)
      */
     object_property_add_link(obj, "ddr-mem-for-rpu", TYPE_MEMORY_REGION,
                              (Object **)&s->ddr,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             &error_abort);
+
+    /* Link to the GIC which allow to inject irq through rpu_intr/rpu_mask
+     * registers
+     */
+    object_property_add_link(obj, "gic-for-rpu", TYPE_XLNX_SCU_GIC,
+                             (Object **)&s->gic,
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_UNREF_ON_RELEASE,
                              &error_abort);
