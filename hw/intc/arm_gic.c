@@ -293,6 +293,13 @@ static void gic_set_irq(void *opaque, int irq, int level)
     gic_update(s);
 }
 
+static void gic_set_irq_cb(void *opaque, int irq, int level)
+{
+    ARMGICClass *agc = ARM_GIC_GET_CLASS((Object *)opaque);
+
+    agc->irq_handler(opaque, irq, level);
+}
+
 static void gic_set_running_irq(GICState *s, int cpu, int irq)
 {
     s->running_irq[cpu] = irq;
@@ -1364,7 +1371,7 @@ void gic_init_irqs_and_distributor(GICState *s)
     if (s->revision != REV_NVIC) {
         i += (GIC_INTERNAL * s->num_cpu);
     }
-    qdev_init_gpio_in(DEVICE(s), gic_set_irq, i);
+    qdev_init_gpio_in(DEVICE(s), gic_set_irq_cb, i);
     for (i = 0; i < GIC_N_REALCPU; i++) {
         sysbus_init_irq(sbd, &s->parent_irq[i]);
     }
@@ -1517,6 +1524,7 @@ static void arm_gic_class_init(ObjectClass *klass, void *data)
     FDTGenericGPIOClass *fggc = FDT_GENERIC_GPIO_CLASS(klass);
     LinuxDeviceClass *ldc = LINUX_DEVICE_CLASS(klass);
 
+    agc->irq_handler = gic_set_irq;
     agc->parent_realize = dc->realize;
     dc->realize = arm_gic_realize;
     fgic->auto_parent = arm_gic_fdt_auto_parent;

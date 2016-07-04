@@ -35,8 +35,8 @@ typedef struct ARMGICClass {
     /*< private >*/
     ARMGICCommonClass parent_class;
     /*< public >*/
-
     DeviceRealize parent_realize;
+    qemu_irq_handler irq_handler;
 } ARMGICClass;
 
 #endif
