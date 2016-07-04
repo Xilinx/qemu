@@ -575,6 +575,7 @@ typedef struct CRL_APB {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
     qemu_irq irq_ir;
+    qemu_irq mon_irq_ir;
 
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
@@ -609,6 +610,49 @@ static uint64_t ir_disable_prew(RegisterInfo *reg, uint64_t val64)
 
     s->regs[R_IR_MASK] |= val;
     ir_update_irq(s);
+    return 0;
+}
+
+static void mon_ir_update_irq(CRL_APB *s)
+{
+    bool pending = s->regs[R_CLKMON_STATUS] & ~s->regs[R_CLKMON_MASK];
+    qemu_set_irq(s->mon_irq_ir, pending);
+}
+
+static void mon_ir_status_postw(RegisterInfo *reg, uint64_t val64)
+{
+    CRL_APB *s = XILINX_CRL_APB(reg->opaque);
+
+    mon_ir_update_irq(s);
+}
+
+static uint64_t mon_ir_enable_prew(RegisterInfo *reg, uint64_t val64)
+{
+    CRL_APB *s = XILINX_CRL_APB(reg->opaque);
+    uint32_t val = val64;
+
+    s->regs[R_CLKMON_MASK] &= ~val;
+    mon_ir_update_irq(s);
+    return 0;
+}
+
+static uint64_t mon_ir_disable_prew(RegisterInfo *reg, uint64_t val64)
+{
+    CRL_APB *s = XILINX_CRL_APB(reg->opaque);
+    uint32_t val = val64;
+
+    s->regs[R_CLKMON_MASK] |= val;
+    mon_ir_update_irq(s);
+    return 0;
+}
+
+static uint64_t mon_ir_trigger_prew(RegisterInfo *reg, uint64_t val64)
+{
+    CRL_APB *s = XILINX_CRL_APB(reg->opaque);
+    uint32_t val = val64;
+
+    s->regs[R_CLKMON_STATUS] |= (~s->regs[R_CLKMON_MASK]) & val;
+    mon_ir_update_irq(s);
     return 0;
 }
 
@@ -778,12 +822,16 @@ static RegisterAccessInfo crl_apb_regs_info[] = {
     },{ .name = "CLKMON_STATUS",  .decode.addr = A_CLKMON_STATUS,
         .reset = 0x00000000,
         .w1c = 0xFFFF,
+        .post_write = mon_ir_status_postw,
     },{ .name = "CLKMON_MASK",  .decode.addr = A_CLKMON_MASK,
         .reset = 0x0000FFFF,
         .ro = 0xFFFF,
     },{ .name = "CLKMON_ENABLE",  .decode.addr = A_CLKMON_ENABLE,
+        .pre_write = mon_ir_enable_prew,
     },{ .name = "CLKMON_DISABLE",  .decode.addr = A_CLKMON_DISABLE,
+        .pre_write = mon_ir_disable_prew,
     },{ .name = "CLKMON_TRIGGER",  .decode.addr = A_CLKMON_TRIGGER,
+        .pre_write = mon_ir_trigger_prew,
     },{ .name = "CHKR0_CLKA_UPPER",  .decode.addr = A_CHKR0_CLKA_UPPER,
     },{ .name = "CHKR0_CLKA_LOWER",  .decode.addr = A_CHKR0_CLKA_LOWER,
     },{ .name = "CHKR0_CLKB_CNT",  .decode.addr = A_CHKR0_CLKB_CNT,
@@ -972,6 +1020,8 @@ static void crl_apb_init(Object *obj)
                           TYPE_XILINX_CRL_APB, R_MAX * 4);
     sysbus_init_mmio(sbd, &s->iomem);
     sysbus_init_irq(sbd, &s->irq_ir);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->mon_irq_ir, "clkmon_error_out",
+                             1);
 }
 
 static const VMStateDescription vmstate_crl_apb = {
@@ -997,6 +1047,17 @@ static const FDTGenericGPIOSet crl_gpios[] = {
     { },
 };
 
+static const FDTGenericGPIOSet crl_client_gpios [] = {
+    {
+        .names = &fdt_generic_gpio_name_set_gpio,
+        .gpios = (FDTGenericGPIOConnection [])  {
+            { .name = "clkmon_error_out", .fdt_index = 0, .range = 1 },
+            { },
+        },
+    },
+    { },
+};
+
 static void crl_apb_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -1006,6 +1067,7 @@ static void crl_apb_class_init(ObjectClass *klass, void *data)
     dc->realize = crl_apb_realize;
     dc->vmsd = &vmstate_crl_apb;
     fggc->controller_gpios = crl_gpios;
+    fggc->client_gpios = crl_client_gpios;
 }
 
 static const TypeInfo crl_apb_info = {
