@@ -28,6 +28,8 @@
 #include "hw/register.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
+#include "hw/intc/xlnx_scu_gic.h"
+#include "hw/fdt_generic_util.h"
 
 #ifndef XILINX_LPD_SLCR_ERR_DEBUG
 #define XILINX_LPD_SLCR_ERR_DEBUG 0
@@ -133,10 +135,19 @@ REG32(LPD_APU, 0x0000A040)
 
 #define R_MAX (R_LPD_APU + 1)
 
+#define OFFSET_TO_BANK(offset) (((offset >> 2) - R_GICP0_IRQ_STATUS)           \
+                                / (R_GICP1_IRQ_STATUS - R_GICP0_IRQ_STATUS))
+#define GIC_IRQ_STATUS(n) (R_GICP0_IRQ_STATUS + (0x14 >> 2) * (n))
+
 typedef struct LPD_SLCR {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
     qemu_irq irq_isr;
+
+    /* GIC associated to the RPUs. */
+    XlnxSCUGICState *rpu_gic;
+    /* GIC associated to the APUs. */
+    XlnxSCUGICState *apu_gic;
 
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
@@ -212,6 +223,56 @@ static uint64_t mutex_prew(RegisterInfo *reg, uint64_t val64)
     } else {
         return s->regs[reg->access->decode.addr >> 2];
     }
+}
+
+/* RPU, APU IRQ injection callbacks. */
+static void lpd_slcr_peripheral_irq_update(LPD_SLCR *s, uint8_t bank)
+{
+    xlnx_scu_gic_set_intr(s->rpu_gic, bank, s->regs[GIC_IRQ_STATUS(bank)], 1);
+    xlnx_scu_gic_set_intr(s->apu_gic, bank, s->regs[GIC_IRQ_STATUS(bank)], 1);
+}
+
+static uint64_t lpd_slcr_ier_prew(RegisterInfo *reg, uint64_t val64)
+{
+    LPD_SLCR *s = XILINX_LPD_SLCR(reg->opaque);
+    uint32_t val = protection_prew(reg, val64);
+    uint32_t mask_offset = (reg->access->decode.addr >> 2)
+                         - (R_GICP0_IRQ_ENABLE - R_GICP0_IRQ_MASK);
+
+    s->regs[mask_offset] &= ~val;
+    return 0;
+}
+
+static uint64_t lpd_slcr_idr_prew(RegisterInfo *reg, uint64_t val64)
+{
+    LPD_SLCR *s = XILINX_LPD_SLCR(reg->opaque);
+    uint32_t val = protection_prew(reg, val64);
+    uint32_t mask_offset = (reg->access->decode.addr >> 2)
+                         - (R_GICP0_IRQ_DISABLE - R_GICP0_IRQ_MASK);
+
+    s->regs[mask_offset] |= val;
+    return 0;
+}
+
+static void lpd_slcr_inttrig_posw(RegisterInfo *reg, uint64_t val64)
+{
+    LPD_SLCR *s = XILINX_LPD_SLCR(reg->opaque);
+    uint32_t val = val64;
+    uint32_t mask_offset = (reg->access->decode.addr >> 2)
+                         - (R_GICP0_IRQ_TRIGGER - R_GICP0_IRQ_MASK);
+    uint32_t status_offset = (reg->access->decode.addr >> 2)
+                           - (R_GICP0_IRQ_TRIGGER - R_GICP0_IRQ_STATUS);
+    uint32_t enable = ~(s->regs[mask_offset]) & val;
+    s->regs[status_offset] |= enable;
+
+    lpd_slcr_peripheral_irq_update(s, OFFSET_TO_BANK(reg->access->decode.addr));
+}
+
+static void lpd_slcr_intstatus_posw(RegisterInfo *reg, uint64_t val64)
+{
+    LPD_SLCR *s = XILINX_LPD_SLCR(reg->opaque);
+
+    lpd_slcr_peripheral_irq_update(s, OFFSET_TO_BANK(reg->access->decode.addr));
 }
 
 static RegisterAccessInfo lpd_slcr_regs_info[] = {
@@ -359,87 +420,97 @@ static RegisterAccessInfo lpd_slcr_regs_info[] = {
         .reset = 0,
         .w1c = 0xFFFFFFFF,
         .pre_write = protection_prew,
+        .post_write = lpd_slcr_intstatus_posw,
     },{ .name = "GICP0_IRQ_MASK", .decode.addr = A_GICP0_IRQ_MASK,
         .reset = 0xFFFFFFFF,
         .ro = 0xFFFFFFFF,
         .pre_write = protection_prew,
     },{ .name = "GICP0_IRQ_ENABLE", .decode.addr = A_GICP0_IRQ_ENABLE,
         .reset = 0,
-        .pre_write = protection_prew,
+        .pre_write = lpd_slcr_ier_prew,
     },{ .name = "GICP0_IRQ_DISABLE", .decode.addr = A_GICP0_IRQ_DISABLE,
         .reset = 0,
-        .pre_write = protection_prew,
+        .pre_write = lpd_slcr_idr_prew,
     },{ .name = "GICP0_IRQ_TRIGGER", .decode.addr = A_GICP0_IRQ_TRIGGER,
         .reset = 0,
         .pre_write = protection_prew,
+        .post_write = lpd_slcr_inttrig_posw,
     },{ .name = "GICP1_IRQ_STATUS", .decode.addr = A_GICP1_IRQ_STATUS,
         .reset = 0,
         .w1c = 0xFFFFFFFF,
         .pre_write = protection_prew,
+        .post_write = lpd_slcr_intstatus_posw,
     },{ .name = "GICP1_IRQ_MASK", .decode.addr = A_GICP1_IRQ_MASK,
         .reset = 0xFFFFFFFF,
         .ro = 0xFFFFFFFF,
         .pre_write = protection_prew,
     },{ .name = "GICP1_IRQ_ENABLE", .decode.addr = A_GICP1_IRQ_ENABLE,
         .reset = 0,
-        .pre_write = protection_prew,
+        .pre_write = lpd_slcr_ier_prew,
     },{ .name = "GICP1_IRQ_DISABLE", .decode.addr = A_GICP1_IRQ_DISABLE,
         .reset = 0,
-        .pre_write = protection_prew,
+        .pre_write = lpd_slcr_idr_prew,
     },{ .name = "GICP1_IRQ_TRIGGER", .decode.addr = A_GICP1_IRQ_TRIGGER,
         .reset = 0,
         .pre_write = protection_prew,
+        .post_write = lpd_slcr_inttrig_posw,
     },{ .name = "GICP2_IRQ_STATUS", .decode.addr = A_GICP2_IRQ_STATUS,
         .reset = 0,
         .w1c = 0xFFFFFFFF,
         .pre_write = protection_prew,
+        .post_write = lpd_slcr_intstatus_posw,
     },{ .name = "GICP2_IRQ_MASK", .decode.addr = A_GICP2_IRQ_MASK,
         .reset = 0xFFFFFFFF,
         .ro = 0xFFFFFFFF,
         .pre_write = protection_prew,
     },{ .name = "GICP2_IRQ_ENABLE", .decode.addr = A_GICP2_IRQ_ENABLE,
         .reset = 0,
-        .pre_write = protection_prew,
+        .pre_write = lpd_slcr_ier_prew,
     },{ .name = "GICP2_IRQ_DISABLE", .decode.addr = A_GICP2_IRQ_DISABLE,
         .reset = 0,
-        .pre_write = protection_prew,
+        .pre_write = lpd_slcr_idr_prew,
     },{ .name = "GICP2_IRQ_TRIGGER", .decode.addr = A_GICP2_IRQ_TRIGGER,
         .reset = 0,
         .pre_write = protection_prew,
+        .post_write = lpd_slcr_inttrig_posw,
     },{ .name = "GICP3_IRQ_STATUS", .decode.addr = A_GICP3_IRQ_STATUS,
         .reset = 0,
         .w1c = 0xFFFFFFFF,
         .pre_write = protection_prew,
+        .post_write = lpd_slcr_intstatus_posw,
     },{ .name = "GICP3_IRQ_MASK", .decode.addr = A_GICP3_IRQ_MASK,
         .reset = 0xFFFFFFFF,
         .ro = 0xFFFFFFFF,
         .pre_write = protection_prew,
     },{ .name = "GICP3_IRQ_ENABLE", .decode.addr = A_GICP3_IRQ_ENABLE,
         .reset = 0,
-        .pre_write = protection_prew,
+        .pre_write = lpd_slcr_ier_prew,
     },{ .name = "GICP3_IRQ_DISABLE", .decode.addr = A_GICP3_IRQ_DISABLE,
         .reset = 0,
-        .pre_write = protection_prew,
+        .pre_write = lpd_slcr_idr_prew,
     },{ .name = "GICP3_IRQ_TRIGGER", .decode.addr = A_GICP3_IRQ_TRIGGER,
         .reset = 0,
         .pre_write = protection_prew,
+        .post_write = lpd_slcr_inttrig_posw,
     },{ .name = "GICP4_IRQ_STATUS", .decode.addr = A_GICP4_IRQ_STATUS,
         .reset = 0,
         .w1c = 0xFFFFFFFF,
         .pre_write = protection_prew,
+        .post_write = lpd_slcr_intstatus_posw,
     },{ .name = "GICP4_IRQ_MASK", .decode.addr = A_GICP4_IRQ_MASK,
         .reset = 0xFFFFFFFF,
         .ro = 0xFFFFFFFF,
         .pre_write = protection_prew,
     },{ .name = "GICP4_IRQ_ENABLE", .decode.addr = A_GICP4_IRQ_ENABLE,
         .reset = 0,
-        .pre_write = protection_prew,
+        .pre_write = lpd_slcr_ier_prew,
     },{ .name = "GICP4_IRQ_DISABLE", .decode.addr = A_GICP4_IRQ_DISABLE,
         .reset = 0,
-        .pre_write = protection_prew,
+        .pre_write = lpd_slcr_idr_prew,
     },{ .name = "GICP4_IRQ_TRIGGER", .decode.addr = A_GICP4_IRQ_TRIGGER,
         .reset = 0,
         .pre_write = protection_prew,
+        .post_write = lpd_slcr_inttrig_posw,
     },{ .name = "GICP_PMU_IRQ_STATUS", .decode.addr = A_GICP_PMU_IRQ_STATUS,
         .reset = 0,
         .pre_write = protection_prew,
@@ -536,6 +607,16 @@ static void lpd_slcr_realize(DeviceState *dev, Error **errp)
     const char *prefix = object_get_canonical_path(OBJECT(dev));
     unsigned int i;
 
+    if (!s->rpu_gic) {
+        error_set(errp, QERR_MISSING_PARAMETER, "gic-for-rpu");
+        return;
+    }
+
+    if (!s->apu_gic) {
+        error_set(errp, QERR_MISSING_PARAMETER, "gic-for-apu");
+        return;
+    }
+
     for (i = 0; i < ARRAY_SIZE(lpd_slcr_regs_info); ++i) {
         RegisterInfo *r = &s->regs_info[lpd_slcr_regs_info[i].decode.addr/4];
 
@@ -560,6 +641,19 @@ static void lpd_slcr_init(Object *obj)
                           TYPE_XILINX_LPD_SLCR, R_MAX * 4);
     sysbus_init_mmio(sbd, &s->iomem);
     sysbus_init_irq(sbd, &s->irq_isr);
+
+    /* Link to the GIC which allow to inject irq through registers.
+     */
+    object_property_add_link(obj, "gic-for-rpu", TYPE_XLNX_SCU_GIC,
+                             (Object **)&s->rpu_gic,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             &error_abort);
+    object_property_add_link(obj, "gic-for-apu", TYPE_XLNX_SCU_GIC,
+                             (Object **)&s->apu_gic,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             &error_abort);
 }
 
 static const VMStateDescription vmstate_lpd_slcr = {
