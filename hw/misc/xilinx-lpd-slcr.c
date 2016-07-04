@@ -184,6 +184,19 @@ static uint64_t itr_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
+static uint64_t mutex_prew(RegisterInfo *reg, uint64_t val64)
+{
+    LPD_SLCR *s = XILINX_LPD_SLCR(reg->opaque);
+
+    if (!val64) {
+        return 0;
+    } else if (!s->regs[reg->access->decode.addr >> 2]) {
+        return val64;
+    } else {
+        return s->regs[reg->access->decode.addr >> 2];
+    }
+}
+
 static RegisterAccessInfo lpd_slcr_regs_info[] = {
     {   .name = "WPROT0",  .decode.addr = A_WPROT0,
         .reset = 0x1,
@@ -276,12 +289,16 @@ static RegisterAccessInfo lpd_slcr_regs_info[] = {
         .reset = 0x0000FFFF,
     },{ .name = "MUTEX0", .decode.addr = A_MUTEX0,
         .reset = 0,
+        .pre_write = mutex_prew,
     },{ .name = "MUTEX1", .decode.addr = A_MUTEX1,
         .reset = 0,
+        .pre_write = mutex_prew,
     },{ .name = "MUTEX2", .decode.addr = A_MUTEX2,
         .reset = 0,
+        .pre_write = mutex_prew,
     },{ .name = "MUTEX3", .decode.addr = A_MUTEX3,
         .reset = 0,
+        .pre_write = mutex_prew,
     },{ .name = "GICP0_IRQ_STATUS", .decode.addr = A_GICP0_IRQ_STATUS,
         .reset = 0,
         .w1c = 0xFFFFFFFF,
