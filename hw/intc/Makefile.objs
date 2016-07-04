@@ -16,6 +16,7 @@ common-obj-$(CONFIG_ARM_GIC) += arm_gic.o
 common-obj-$(CONFIG_OPENPIC) += openpic.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx-zynqmp-gicp.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx-zynqmp-intc-redirect.o
+common-obj-$(CONFIG_XLNX_ZYNQMP) += xlnx_scu_gic.o
 
 obj-$(CONFIG_APIC) += apic.o apic_common.o
 obj-$(CONFIG_ARM_GIC_KVM) += arm_gic_kvm.o
