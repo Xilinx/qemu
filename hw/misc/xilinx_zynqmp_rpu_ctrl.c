@@ -394,6 +394,13 @@ REG32(RPU_1_AXI_OVER, 0x228)
 
 #define R_MAX (R_RPU_1_AXI_OVER + 1)
 
+/* Returns the interrupt bank from the register offset. */
+#define INT_INJ_BANK_FROM_OFFSET(n) (((n) <= R_RPU_INTR_4)                     \
+                                     ? ((n) - R_RPU_INTR_0)                    \
+                                     : ((n) - R_RPU_INTR_MASK_0))
+#define R_RPU_INTR(n) (n + R_RPU_INTR_0)
+#define R_RPU_INTR_MASK(n) (n + R_RPU_INTR_MASK_0)
+
 typedef struct RPU {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
@@ -433,6 +440,17 @@ static void rpu_1_isr_postw(RegisterInfo *reg, uint64_t val64)
 {
     RPU *s = XILINX_RPU(reg->opaque);
     rpu_1_update_irq(s);
+}
+
+static void ronaldo_rpu_update_irq_injection(RegisterInfo *reg, uint64_t val)
+{
+    RPU *s = XILINX_RPU(reg->opaque);
+
+    uint8_t bank = INT_INJ_BANK_FROM_OFFSET(reg->access->decode.addr >> 2);
+    uint32_t irqs = s->regs[R_RPU_INTR(bank)] &
+                    s->regs[R_RPU_INTR_MASK(bank)];
+
+    xlnx_scu_gic_set_intr(s->gic, bank, irqs, 0);
 }
 
 static uint64_t rpu_1_ien_prew(RegisterInfo *reg, uint64_t val64)
@@ -565,15 +583,25 @@ static RegisterAccessInfo rpu_regs_info[] = {
     },{ .name = "RPU_ERR_INJ",  .decode.addr = A_RPU_ERR_INJ,
     },{ .name = "RPU_CCF_MASK",  .decode.addr = A_RPU_CCF_MASK,
     },{ .name = "RPU_INTR_0",  .decode.addr = A_RPU_INTR_0,
+        .post_write = ronaldo_rpu_update_irq_injection,
     },{ .name = "RPU_INTR_1",  .decode.addr = A_RPU_INTR_1,
+        .post_write = ronaldo_rpu_update_irq_injection,
     },{ .name = "RPU_INTR_2",  .decode.addr = A_RPU_INTR_2,
+        .post_write = ronaldo_rpu_update_irq_injection,
     },{ .name = "RPU_INTR_3",  .decode.addr = A_RPU_INTR_3,
+        .post_write = ronaldo_rpu_update_irq_injection,
     },{ .name = "RPU_INTR_4",  .decode.addr = A_RPU_INTR_4,
+        .post_write = ronaldo_rpu_update_irq_injection,
     },{ .name = "RPU_INTR_MASK_0",  .decode.addr = A_RPU_INTR_MASK_0,
+        .post_write = ronaldo_rpu_update_irq_injection,
     },{ .name = "RPU_INTR_MASK_1",  .decode.addr = A_RPU_INTR_MASK_1,
+        .post_write = ronaldo_rpu_update_irq_injection,
     },{ .name = "RPU_INTR_MASK_2",  .decode.addr = A_RPU_INTR_MASK_2,
+        .post_write = ronaldo_rpu_update_irq_injection,
     },{ .name = "RPU_INTR_MASK_3",  .decode.addr = A_RPU_INTR_MASK_3,
+        .post_write = ronaldo_rpu_update_irq_injection,
     },{ .name = "RPU_INTR_MASK_4",  .decode.addr = A_RPU_INTR_MASK_4,
+        .post_write = ronaldo_rpu_update_irq_injection,
     },{ .name = "RPU_CCF_VAL",  .decode.addr = A_RPU_CCF_VAL,
         .reset = 0x7,
     },{ .name = "RPU_SAFETY_CHK",  .decode.addr = A_RPU_SAFETY_CHK,
