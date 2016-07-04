@@ -142,6 +142,22 @@ typedef struct LPD_SLCR {
     RegisterInfo regs_info[R_MAX];
 } LPD_SLCR;
 
+/*
+ * This allows to enable/disable the write.
+ * All protected register have to set that as a pre_write callback.
+ */
+static uint64_t protection_prew(RegisterInfo *reg, uint64_t val64)
+{
+    LPD_SLCR *s = XILINX_LPD_SLCR(reg->opaque);
+    bool w_dis = AF_EX32(s->regs, WPROT0, ACTIVE);
+
+    if (w_dis) {
+        val64 = s->regs[reg->access->decode.addr >> 2];
+    }
+
+    return val64;
+}
+
 static void isr_update_irq(LPD_SLCR *s)
 {
     bool pending = s->regs[R_ISR] & ~s->regs[R_IMR];
@@ -157,7 +173,7 @@ static void isr_postw(RegisterInfo *reg, uint64_t val64)
 static uint64_t ier_prew(RegisterInfo *reg, uint64_t val64)
 {
     LPD_SLCR *s = XILINX_LPD_SLCR(reg->opaque);
-    uint32_t val = val64;
+    uint32_t val = protection_prew(reg, val64);
 
     s->regs[R_IMR] &= ~val;
     isr_update_irq(s);
@@ -167,7 +183,7 @@ static uint64_t ier_prew(RegisterInfo *reg, uint64_t val64)
 static uint64_t idr_prew(RegisterInfo *reg, uint64_t val64)
 {
     LPD_SLCR *s = XILINX_LPD_SLCR(reg->opaque);
-    uint32_t val = val64;
+    uint32_t val = protection_prew(reg, val64);
 
     s->regs[R_IMR] |= val;
     isr_update_irq(s);
@@ -177,7 +193,7 @@ static uint64_t idr_prew(RegisterInfo *reg, uint64_t val64)
 static uint64_t itr_prew(RegisterInfo *reg, uint64_t val64)
 {
     LPD_SLCR *s = XILINX_LPD_SLCR(reg->opaque);
-    uint32_t val = val64;
+    uint32_t val = protection_prew(reg, val64);
 
     s->regs[R_ISR] |= val;
     isr_update_irq(s);
@@ -187,11 +203,12 @@ static uint64_t itr_prew(RegisterInfo *reg, uint64_t val64)
 static uint64_t mutex_prew(RegisterInfo *reg, uint64_t val64)
 {
     LPD_SLCR *s = XILINX_LPD_SLCR(reg->opaque);
+    uint32_t val = protection_prew(reg, val64);
 
-    if (!val64) {
+    if (!val) {
         return 0;
     } else if (!s->regs[reg->access->decode.addr >> 2]) {
-        return val64;
+        return val;
     } else {
         return s->regs[reg->access->decode.addr >> 2];
     }
@@ -204,9 +221,11 @@ static RegisterAccessInfo lpd_slcr_regs_info[] = {
     },{ .name = "ISR",  .decode.addr = A_ISR,
         .w1c = 0x1,
         .post_write = isr_postw,
+        .pre_write = protection_prew,
     },{ .name = "IMR",  .decode.addr = A_IMR,
         .reset = 0x1,
         .ro = 0x1,
+        .pre_write = protection_prew,
     },{ .name = "IER",  .decode.addr = A_IER,
         .pre_write = ier_prew,
     },{ .name = "IDR",  .decode.addr = A_IDR,
@@ -214,79 +233,116 @@ static RegisterAccessInfo lpd_slcr_regs_info[] = {
     },{ .name = "ITR",  .decode.addr = A_ITR,
         .pre_write = itr_prew,
     },{ .name = "ECO",  .decode.addr = A_ECO,
+        .pre_write = protection_prew,
     },{ .name = "PERSISTENT0",  .decode.addr = A_PERSISTENT0,
+        .pre_write = protection_prew,
     },{ .name = "PERSISTENT1",  .decode.addr = A_PERSISTENT1,
+        .pre_write = protection_prew,
     },{ .name = "PERSISTENT2",  .decode.addr = A_PERSISTENT2,
+        .pre_write = protection_prew,
     },{ .name = "PERSISTENT3",  .decode.addr = A_PERSISTENT3,
+        .pre_write = protection_prew,
     },{ .name = "PERSISTENT4",  .decode.addr = A_PERSISTENT4,
+        .pre_write = protection_prew,
     },{ .name = "PERSISTENT5",  .decode.addr = A_PERSISTENT5,
+        .pre_write = protection_prew,
     },{ .name = "PERSISTENT6",  .decode.addr = A_PERSISTENT6,
+        .pre_write = protection_prew,
     },{ .name = "PERSISTENT7",  .decode.addr = A_PERSISTENT7,
+        .pre_write = protection_prew,
     },{ .name = "SAFETY_CHK0",  .decode.addr = A_SAFETY_CHK0,
+        .pre_write = protection_prew,
     },{ .name = "SAFETY_CHK1",  .decode.addr = A_SAFETY_CHK1,
+        .pre_write = protection_prew,
     },{ .name = "SAFETY_CHK2",  .decode.addr = A_SAFETY_CHK2,
+        .pre_write = protection_prew,
     },{ .name = "SAFETY_CHK3",  .decode.addr = A_SAFETY_CHK3,
+        .pre_write = protection_prew,
     },{ .name = "CSUPMU_WDT_CLK_SEL", .decode.addr = A_CSUPMU_WDT_CLK_SEL,
         .reset = 0,
         .ro = 0xFFFFFFFE,
+        .pre_write = protection_prew,
     },{ .name = "ADMA_CFG", .decode.addr = A_ADMA_CFG,
         .reset = 0x00000028,
         .ro = 0xFFFFFFFF,
+        .pre_write = protection_prew,
     },{ .name = "ADMA_RAM", .decode.addr = A_ADMA_RAM,
         .reset = 0x00003B3B,
         .ro = 0xFFFFFF00,
+        .pre_write = protection_prew,
     },{ .name = "ERR_AIBAXI_ISR", .decode.addr = A_ERR_AIBAXI_ISR,
         .reset = 0,
         .w1c = 0xFFFFFFFF,
     },{ .name = "ERR_AIBAXI_IMR", .decode.addr = A_ERR_AIBAXI_IMR,
         .reset = 0x1DCF000F,
         .ro = 0xFFFFFFFF,
+        .pre_write = protection_prew,
     },{ .name = "ERR_AIBAXI_IER", .decode.addr = A_ERR_AIBAXI_IER,
         .reset = 0,
+        .pre_write = protection_prew,
     },{ .name = "ERR_AIBAXI_IDR", .decode.addr = A_ERR_AIBAXI_IDR,
         .reset = 0,
+        .pre_write = protection_prew,
     },{ .name = "ERR_AIBAPB_ISR", .decode.addr = A_ERR_AIBAPB_ISR,
         .reset = 0,
         .w1c = 0xFFFFFFFF,
+        .pre_write = protection_prew,
     },{ .name = "ERR_AIBAPB_IMR", .decode.addr = A_ERR_AIBAPB_IMR,
         .reset = 0x00000001,
         .ro = 0xFFFFFFFF,
+        .pre_write = protection_prew,
     },{ .name = "ERR_AIBAPB_IER", .decode.addr = A_ERR_AIBAPB_IER,
         .reset = 0,
+        .pre_write = protection_prew,
     },{ .name = "ERR_AIBAPB_IDR", .decode.addr = A_ERR_AIBAPB_IDR,
         .reset = 0,
+        .pre_write = protection_prew,
     },{ .name = "ISO_AIBAXI_REQ", .decode.addr = A_ISO_AIBAXI_REQ,
         .reset = 0,
+        .pre_write = protection_prew,
     },{ .name = "ISO_AIBAXI_TYPE", .decode.addr = A_ISO_AIBAXI_TYPE,
         .reset = 0x19CF000F,
+        .pre_write = protection_prew,
     },{ .name = "ISO_AIBAXI_ACK", .decode.addr = A_ISO_AIBAXI_ACK,
         .reset = 0,
         .ro = 0xFFFFFFFF,
+        .pre_write = protection_prew,
     },{ .name = "ISO_AIBAPB_REQ", .decode.addr = A_ISO_AIBAPB_REQ,
         .reset = 0,
+        .pre_write = protection_prew,
     },{ .name = "ISO_AIBAPB_TYPE", .decode.addr = A_ISO_AIBAPB_TYPE,
         .reset = 0x00000001,
+        .pre_write = protection_prew,
     },{ .name = "ISO_AIBAPB_ACK", .decode.addr = A_ISO_AIBAPB_ACK,
         .reset = 0,
         .ro = 0xFFFFFFFF,
+        .pre_write = protection_prew,
     },{ .name = "ERR_ATB_ISR", .decode.addr = A_ERR_ATB_ISR,
         .reset = 0,
         .w1c = 0xFFFFFFFF,
+        .pre_write = protection_prew,
     },{ .name = "ERR_ATB_IMR", .decode.addr = A_ERR_ATB_IMR,
         .reset = 0x00000003,
         .ro = 0xFFFFFFFF,
+        .pre_write = protection_prew,
     },{ .name = "ERR_ATB_IER", .decode.addr = A_ERR_ATB_IER,
         .reset = 0,
+        .pre_write = protection_prew,
     },{ .name = "ERR_ATB_IDR", .decode.addr = A_ERR_ATB_IDR,
         .reset = 0,
+        .pre_write = protection_prew,
     },{ .name = "ATB_CMD_STORE_EN", .decode.addr = A_ATB_CMD_STORE_EN,
         .reset = 0x00000003,
+        .pre_write = protection_prew,
     },{ .name = "ATB_RESP_EN", .decode.addr = A_ATB_RESP_EN,
         .reset = 0,
+        .pre_write = protection_prew,
     },{ .name = "ATB_RESP_TYPE", .decode.addr = A_ATB_RESP_TYPE,
         .reset = 0x00000003,
+        .pre_write = protection_prew,
     },{ .name = "ATB_PRESCALE", .decode.addr = A_ATB_PRESCALE,
         .reset = 0x0000FFFF,
+        .pre_write = protection_prew,
     },{ .name = "MUTEX0", .decode.addr = A_MUTEX0,
         .reset = 0,
         .pre_write = mutex_prew,
@@ -302,88 +358,124 @@ static RegisterAccessInfo lpd_slcr_regs_info[] = {
     },{ .name = "GICP0_IRQ_STATUS", .decode.addr = A_GICP0_IRQ_STATUS,
         .reset = 0,
         .w1c = 0xFFFFFFFF,
+        .pre_write = protection_prew,
     },{ .name = "GICP0_IRQ_MASK", .decode.addr = A_GICP0_IRQ_MASK,
         .reset = 0xFFFFFFFF,
         .ro = 0xFFFFFFFF,
+        .pre_write = protection_prew,
     },{ .name = "GICP0_IRQ_ENABLE", .decode.addr = A_GICP0_IRQ_ENABLE,
         .reset = 0,
+        .pre_write = protection_prew,
     },{ .name = "GICP0_IRQ_DISABLE", .decode.addr = A_GICP0_IRQ_DISABLE,
         .reset = 0,
+        .pre_write = protection_prew,
     },{ .name = "GICP0_IRQ_TRIGGER", .decode.addr = A_GICP0_IRQ_TRIGGER,
         .reset = 0,
+        .pre_write = protection_prew,
     },{ .name = "GICP1_IRQ_STATUS", .decode.addr = A_GICP1_IRQ_STATUS,
         .reset = 0,
         .w1c = 0xFFFFFFFF,
+        .pre_write = protection_prew,
     },{ .name = "GICP1_IRQ_MASK", .decode.addr = A_GICP1_IRQ_MASK,
         .reset = 0xFFFFFFFF,
         .ro = 0xFFFFFFFF,
+        .pre_write = protection_prew,
     },{ .name = "GICP1_IRQ_ENABLE", .decode.addr = A_GICP1_IRQ_ENABLE,
         .reset = 0,
+        .pre_write = protection_prew,
     },{ .name = "GICP1_IRQ_DISABLE", .decode.addr = A_GICP1_IRQ_DISABLE,
         .reset = 0,
+        .pre_write = protection_prew,
     },{ .name = "GICP1_IRQ_TRIGGER", .decode.addr = A_GICP1_IRQ_TRIGGER,
         .reset = 0,
+        .pre_write = protection_prew,
     },{ .name = "GICP2_IRQ_STATUS", .decode.addr = A_GICP2_IRQ_STATUS,
         .reset = 0,
         .w1c = 0xFFFFFFFF,
+        .pre_write = protection_prew,
     },{ .name = "GICP2_IRQ_MASK", .decode.addr = A_GICP2_IRQ_MASK,
         .reset = 0xFFFFFFFF,
         .ro = 0xFFFFFFFF,
+        .pre_write = protection_prew,
     },{ .name = "GICP2_IRQ_ENABLE", .decode.addr = A_GICP2_IRQ_ENABLE,
         .reset = 0,
+        .pre_write = protection_prew,
     },{ .name = "GICP2_IRQ_DISABLE", .decode.addr = A_GICP2_IRQ_DISABLE,
         .reset = 0,
+        .pre_write = protection_prew,
     },{ .name = "GICP2_IRQ_TRIGGER", .decode.addr = A_GICP2_IRQ_TRIGGER,
         .reset = 0,
+        .pre_write = protection_prew,
     },{ .name = "GICP3_IRQ_STATUS", .decode.addr = A_GICP3_IRQ_STATUS,
         .reset = 0,
         .w1c = 0xFFFFFFFF,
+        .pre_write = protection_prew,
     },{ .name = "GICP3_IRQ_MASK", .decode.addr = A_GICP3_IRQ_MASK,
         .reset = 0xFFFFFFFF,
         .ro = 0xFFFFFFFF,
+        .pre_write = protection_prew,
     },{ .name = "GICP3_IRQ_ENABLE", .decode.addr = A_GICP3_IRQ_ENABLE,
         .reset = 0,
+        .pre_write = protection_prew,
     },{ .name = "GICP3_IRQ_DISABLE", .decode.addr = A_GICP3_IRQ_DISABLE,
         .reset = 0,
+        .pre_write = protection_prew,
     },{ .name = "GICP3_IRQ_TRIGGER", .decode.addr = A_GICP3_IRQ_TRIGGER,
         .reset = 0,
+        .pre_write = protection_prew,
     },{ .name = "GICP4_IRQ_STATUS", .decode.addr = A_GICP4_IRQ_STATUS,
         .reset = 0,
         .w1c = 0xFFFFFFFF,
+        .pre_write = protection_prew,
     },{ .name = "GICP4_IRQ_MASK", .decode.addr = A_GICP4_IRQ_MASK,
         .reset = 0xFFFFFFFF,
         .ro = 0xFFFFFFFF,
+        .pre_write = protection_prew,
     },{ .name = "GICP4_IRQ_ENABLE", .decode.addr = A_GICP4_IRQ_ENABLE,
         .reset = 0,
+        .pre_write = protection_prew,
     },{ .name = "GICP4_IRQ_DISABLE", .decode.addr = A_GICP4_IRQ_DISABLE,
         .reset = 0,
+        .pre_write = protection_prew,
     },{ .name = "GICP4_IRQ_TRIGGER", .decode.addr = A_GICP4_IRQ_TRIGGER,
         .reset = 0,
+        .pre_write = protection_prew,
     },{ .name = "GICP_PMU_IRQ_STATUS", .decode.addr = A_GICP_PMU_IRQ_STATUS,
         .reset = 0,
+        .pre_write = protection_prew,
         .w1c = 0xFFFFFFFF,
     },{ .name = "GICP_PMU_IRQ_MASK", .decode.addr = A_GICP_PMU_IRQ_MASK,
         .reset = 0x000000FF,
         .ro = 0xFFFFFFFF,
+        .pre_write = protection_prew,
     },{ .name = "GICP_PMU_IRQ_ENABLE", .decode.addr = A_GICP_PMU_IRQ_ENABLE,
         .reset = 0,
+        .pre_write = protection_prew,
     },{ .name = "GICP_PMU_IRQ_DISABLE", .decode.addr = A_GICP_PMU_IRQ_DISABLE,
         .reset = 0,
+        .pre_write = protection_prew,
     },{ .name = "GICP_PMU_IRQ_TRIGGER", .decode.addr = A_GICP_PMU_IRQ_TRIGGER,
         .reset = 0,
+        .pre_write = protection_prew,
     },{ .name = "AFI_FS", .decode.addr = A_AFI_FS,
         .reset = 0x00000200,
+        .pre_write = protection_prew,
     },{ .name = "LPD_CCI", .decode.addr = A_LPD_CCI,
         .reset = 0x03801C07,
+        .pre_write = protection_prew,
     },{ .name = "LPD_CCI_ADDRMAP", .decode.addr = A_LPD_CCI_ADDRMAP,
         .reset = 0x00C000FF,
+        .pre_write = protection_prew,
     },{ .name = "LPD_CCI_QVNPREALLOC", .decode.addr = A_LPD_CCI_QVNPREALLOC,
         .reset = 0x00330330,
         .ro = 0x0000F00F,
+        .pre_write = protection_prew,
     },{ .name = "LPD_SMMU", .decode.addr = A_LPD_SMMU,
         .reset = 0x0000003F,
+        .pre_write = protection_prew,
     },{ .name = "LPD_APU", .decode.addr = A_LPD_APU,
         .reset = 0x00000001,
+        .pre_write = protection_prew,
     },
 };
 
