@@ -298,9 +298,12 @@ static void zynq_slcr_update_fpga_resets(ZynqSLCRState *s)
 static void zynq_slcr_reset(DeviceState *d)
 {
     ZynqSLCRState *s = ZYNQ_SLCR(d);
-    int i;
+    int i, boot_mode;
 
     DB_PRINT("RESET\n");
+
+    boot_mode = qemu_opt_get_number(qemu_get_boot_opts(),
+                                    "mode", 0);
 
     s->regs[LOCKSTA] = 1;
     /* 0x100 - 0x11C */
@@ -344,7 +347,7 @@ static void zynq_slcr_reset(DeviceState *d)
     s->regs[FPGA_RST_CTRL]  = 0x01F33F0F;
     s->regs[RST_REASON]     = 0x00000040;
 
-    s->regs[BOOT_MODE]      = 0x00000001;
+    s->regs[BOOT_MODE]      = boot_mode;
 
     /* 0x700 - 0x7D4 */
     for (i = 0; i < 54; i++) {
