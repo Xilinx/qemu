@@ -36,7 +36,6 @@
 #include "hw/pci/msix.h"
 #include "exec/address-spaces.h"
 #include "hw/hotplug.h"
-#include "hw/sysbus.h"
 
 //#define DEBUG_PCI
 #ifdef DEBUG_PCI
@@ -809,12 +808,10 @@ static void do_pci_unregister_device(PCIDevice *pci_dev)
 static PCIDevice *do_pci_register_device(PCIDevice *pci_dev, PCIBus *bus,
                                          const char *name, int devfn)
 {
-    SysBusDevice *sbd = SYS_BUS_DEVICE(pci_dev);
     PCIDeviceClass *pc = PCI_DEVICE_GET_CLASS(pci_dev);
     PCIConfigReadFunc *config_read = pc->config_read;
     PCIConfigWriteFunc *config_write = pc->config_write;
     AddressSpace *dma_as;
-    int i;
 
     if (bus && devfn < 0) {
         for(devfn = bus->devfn_min ; devfn < ARRAY_SIZE(bus->devices);
@@ -886,13 +883,7 @@ static PCIDevice *do_pci_register_device(PCIDevice *pci_dev, PCIBus *bus,
         config_write = pci_default_write_config;
     pci_dev->config_read = config_read;
     pci_dev->config_write = config_write;
-    if (bus) {
-        bus->devices[devfn] = pci_dev;
-    }
-    pci_dev->irq_raw = g_new0(qemu_irq, PCI_NUM_PINS);
-    for (i = 0; i < PCI_NUM_PINS; ++i) {
-        sysbus_init_irq(sbd, &pci_dev->irq_raw[i]);
-    }
+    bus->devices[devfn] = pci_dev;
     pci_dev->version_id = 2; /* Current pci device vmstate version */
     return pci_dev;
 }
@@ -931,8 +922,6 @@ static int pci_unregister_device(DeviceState *dev)
 void pci_register_bar(PCIDevice *pci_dev, int region_num,
                       uint8_t type, MemoryRegion *memory)
 {
-    SysBusDevice *sbd = SYS_BUS_DEVICE(pci_dev);
-
     PCIIORegion *r;
     uint32_t addr;
     uint64_t wmask;
@@ -967,12 +956,9 @@ void pci_register_bar(PCIDevice *pci_dev, int region_num,
         pci_set_long(pci_dev->cmask + addr, 0xffffffff);
     }
     r->memory = memory;
-    sysbus_init_mmio_n(sbd, memory, region_num);
-    if (pci_dev->bus) {
-        r->address_space = type & PCI_BASE_ADDRESS_SPACE_IO ?
-                           pci_dev->bus->address_space_io :
-                           pci_dev->bus->address_space_mem;
-    }
+    r->address_space = type & PCI_BASE_ADDRESS_SPACE_IO ?
+                       pci_dev->bus->address_space_io :
+                       pci_dev->bus->address_space_mem;
 }
 
 static void pci_update_vga(PCIDevice *pci_dev)
@@ -1207,9 +1193,6 @@ static void pci_irq_handler(void *opaque, int irq_num, int level)
     if (!change)
         return;
 
-    if (pci_dev->irq_raw[irq_num]) {
-        qemu_set_irq(pci_dev->irq_raw[irq_num], level);
-    }
     pci_set_irq_state(pci_dev, irq_num, level);
     pci_update_irq_status(pci_dev);
     if (pci_irq_disabled(pci_dev))
@@ -2392,7 +2375,7 @@ void pci_bus_get_w64_range(PCIBus *bus, Range *range)
 
 static const TypeInfo pci_device_type_info = {
     .name = TYPE_PCI_DEVICE,
-    .parent = TYPE_SYS_BUS_DEVICE,
+    .parent = TYPE_DEVICE,
     .instance_size = sizeof(PCIDevice),
     .abstract = true,
     .class_size = sizeof(PCIDeviceClass),

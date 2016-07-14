@@ -7,7 +7,6 @@
 #include "exec/memory.h"
 #include "sysemu/dma.h"
 #include "qapi/error.h"
-#include "hw/sysbus.h"
 
 /* PCI includes legacy ISA access.  */
 #include "hw/isa/isa.h"
@@ -221,7 +220,7 @@ typedef void (*MSIVectorPollNotifier)(PCIDevice *dev,
                                       unsigned int vector_end);
 
 struct PCIDevice {
-    SysBusDevice parent_obj;
+    DeviceState qdev;
 
     /* PCI config space */
     uint8_t *config;
@@ -250,8 +249,6 @@ struct PCIDevice {
     /* do not access the following fields */
     PCIConfigReadFunc *config_read;
     PCIConfigWriteFunc *config_write;
-
-    qemu_irq *irq_raw;
 
     /* Legacy PCI VGA regions */
     MemoryRegion *vga_regions[QEMU_PCI_VGA_NUM_REGIONS];
