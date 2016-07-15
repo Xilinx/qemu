@@ -19,6 +19,8 @@
 #ifndef _CPU_SH4_H
 #define _CPU_SH4_H
 
+#define NB_MEM_ATTR     1
+
 #include "config.h"
 #include "qemu-common.h"
 

@@ -20,6 +20,8 @@
 #ifndef CPU_M68K_H
 #define CPU_M68K_H
 
+#define NB_MEM_ATTR     1
+
 #define TARGET_LONG_BITS 32
 
 #define CPUArchState struct CPUM68KState

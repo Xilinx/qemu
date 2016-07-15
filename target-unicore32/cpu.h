@@ -11,6 +11,8 @@
 #ifndef QEMU_UNICORE32_CPU_H
 #define QEMU_UNICORE32_CPU_H
 
+#define NB_MEM_ATTR     1
+
 #define TARGET_LONG_BITS                32
 #define TARGET_PAGE_BITS                12
 

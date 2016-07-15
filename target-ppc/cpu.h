@@ -19,6 +19,8 @@
 #if !defined (__CPU_PPC_H__)
 #define __CPU_PPC_H__
 
+#define NB_MEM_ATTR     1
+
 #include "config.h"
 #include "qemu-common.h"
 

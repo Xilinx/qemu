@@ -20,6 +20,8 @@
 #ifndef CPU_LM32_H
 #define CPU_LM32_H
 
+#define NB_MEM_ATTR     1
+
 #define TARGET_LONG_BITS 32
 
 #define CPUArchState struct CPULM32State

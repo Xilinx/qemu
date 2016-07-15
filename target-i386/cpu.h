@@ -22,6 +22,8 @@
 #include "config.h"
 #include "qemu-common.h"
 
+#define NB_MEM_ATTR     1
+
 #ifdef TARGET_X86_64
 #define TARGET_LONG_BITS 64
 #else

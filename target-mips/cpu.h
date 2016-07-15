@@ -1,6 +1,8 @@
 #if !defined (__MIPS_CPU_H__)
 #define __MIPS_CPU_H__
 
+#define NB_MEM_ATTR     1
+
 //#define DEBUG_OP
 
 #define ALIGNED_ONLY

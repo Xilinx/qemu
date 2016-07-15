@@ -19,6 +19,8 @@
 #if !defined(__TRICORE_CPU_H__)
 #define __TRICORE_CPU_H__
 
+#define NB_MEM_ATTR     1
+
 #include "tricore-defs.h"
 #include "config.h"
 #include "qemu-common.h"

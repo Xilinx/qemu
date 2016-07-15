@@ -23,6 +23,8 @@
 #include "config.h"
 #include "qemu-common.h"
 
+#define NB_MEM_ATTR     1
+
 #define TARGET_LONG_BITS 64
 #define ALIGNED_ONLY
 

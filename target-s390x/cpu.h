@@ -22,6 +22,8 @@
 #ifndef CPU_S390X_H
 #define CPU_S390X_H
 
+#define NB_MEM_ATTR     1
+
 #include "config.h"
 #include "qemu-common.h"
 
