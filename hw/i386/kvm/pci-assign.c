@@ -1746,7 +1746,6 @@ static void reset_assigned_device(DeviceState *dev)
 
 static int assigned_initfn(struct PCIDevice *pci_dev)
 {
-    DeviceState *d = DEVICE(pci_dev);
     AssignedDevice *dev = DO_UPCAST(AssignedDevice, dev, pci_dev);
     uint8_t e_intx;
     int r;
