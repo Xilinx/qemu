@@ -24,7 +24,7 @@
 #include "migration/migration.h"
 #include "qapi/qmp/qerror.h"
 #include "qemu/event_notifier.h"
-#include "qemu/fifo8.h"
+#include "qemu/fifo.h"
 #include "sysemu/char.h"
 
 #include <sys/mman.h>
@@ -75,7 +75,7 @@ typedef struct IVShmemState {
 
     CharDriverState **eventfd_chr;
     CharDriverState *server_chr;
-    Fifo8 incoming_fifo;
+    Fifo incoming_fifo;
     MemoryRegion ivshmem_mmio;
 
     /* We might need to register the BAR before we actually have the memory.
@@ -448,25 +448,25 @@ static void ivshmem_read(void *opaque, const uint8_t *buf, int size)
     int guest_max_eventfd;
     long incoming_posn;
 
-    if (fifo8_is_empty(&s->incoming_fifo) && size == sizeof(incoming_posn)) {
+    if (fifo_is_empty(&s->incoming_fifo) && size == sizeof(incoming_posn)) {
         memcpy(&incoming_posn, buf, size);
     } else {
         const uint8_t *p;
         uint32_t num;
 
         IVSHMEM_DPRINTF("short read of %d bytes\n", size);
-        num = MAX(size, sizeof(long) - fifo8_num_used(&s->incoming_fifo));
-        fifo8_push_all(&s->incoming_fifo, buf, num);
-        if (fifo8_num_used(&s->incoming_fifo) < sizeof(incoming_posn)) {
+        num = MAX(size, sizeof(long) - fifo_num_used(&s->incoming_fifo));
+        fifo_push_all(&s->incoming_fifo, buf, num);
+        if (fifo_num_used(&s->incoming_fifo) < sizeof(incoming_posn)) {
             return;
         }
         size -= num;
         buf += num;
-        p = fifo8_pop_buf(&s->incoming_fifo, sizeof(incoming_posn), &num);
+        p = fifo_pop_buf(&s->incoming_fifo, sizeof(incoming_posn), &num);
         g_assert(num == sizeof(incoming_posn));
         memcpy(&incoming_posn, p, sizeof(incoming_posn));
         if (size > 0) {
-            fifo8_push_all(&s->incoming_fifo, buf, size);
+            fifo_push_all(&s->incoming_fifo, buf, size);
         }
     }
 
@@ -712,7 +712,7 @@ static int pci_ivshmem_init(PCIDevice *dev)
         s->ivshmem_size = ivshmem_get_size(s);
     }
 
-    fifo8_create(&s->incoming_fifo, sizeof(long));
+    fifo_create8(&s->incoming_fifo, sizeof(long));
 
     register_savevm(DEVICE(dev), "ivshmem", 0, 0, ivshmem_save, ivshmem_load,
                                                                         dev);
@@ -847,7 +847,7 @@ static void pci_ivshmem_uninit(PCIDevice *dev)
     memory_region_del_subregion(&s->bar, &s->ivshmem);
     vmstate_unregister_ram(&s->ivshmem, DEVICE(dev));
     unregister_savevm(DEVICE(dev), "ivshmem", s);
-    fifo8_destroy(&s->incoming_fifo);
+    fifo_destroy(&s->incoming_fifo);
 }
 
 static Property ivshmem_properties[] = {
