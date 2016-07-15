@@ -343,7 +343,7 @@ static int kvm_dirty_pages_log_change(hwaddr phys_addr,
 }
 
 static void kvm_log_start(MemoryListener *listener,
-                          MemoryRegionSection *section)
+                          MemoryRegionSection *section, int old, int new)
 {
     int r;
 
@@ -355,7 +355,7 @@ static void kvm_log_start(MemoryListener *listener,
 }
 
 static void kvm_log_stop(MemoryListener *listener,
-                          MemoryRegionSection *section)
+                         MemoryRegionSection *section, int old, int new)
 {
     int r;
 
