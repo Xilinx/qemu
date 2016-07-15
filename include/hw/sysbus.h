@@ -6,6 +6,7 @@
 #include "hw/qdev.h"
 #include "exec/memory.h"
 
+#define QDEV_MAX_MMIO 32
 #define QDEV_MAX_PIO 32
 
 #define TYPE_SYSTEM_BUS "System"
@@ -49,8 +50,13 @@ struct SysBusDevice {
     DeviceState parent_obj;
     /*< public >*/
 
+    int num_mmio;
+    struct {
+        hwaddr addr;
+        MemoryRegion *memory;
+    } mmio[QDEV_MAX_MMIO];
     int num_pio;
-    pio_addr_t pio[QDEV_MAX_PIO];
+    uint32_t pio[QDEV_MAX_PIO];
 };
 
 typedef int FindSysbusDeviceFunc(SysBusDevice *sbdev, void *opaque);
