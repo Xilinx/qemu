@@ -859,7 +859,6 @@ static const TypeInfo ram_info = {
 static void cpu_devinit(const char *cpu_model, unsigned int id,
                         uint64_t prom_addr, qemu_irq **cpu_irqs)
 {
-    DeviceState *d;
     SPARCCPU *cpu;
     CPUSPARCState *env;
 
@@ -875,8 +874,8 @@ static void cpu_devinit(const char *cpu_model, unsigned int id,
         qemu_register_reset(main_cpu_reset, cpu);
     } else {
         qemu_register_reset(secondary_cpu_reset, cpu);
-        d = DEVICE(cpu);
-        device_halt(DEIVCE(cpu));
+        DEVICE(cpu);
+        device_halt(DEVICE(cpu));
     }
     *cpu_irqs = qemu_allocate_irqs(cpu_set_irq, cpu, MAX_PILS);
     env->prom_addr = prom_addr;
