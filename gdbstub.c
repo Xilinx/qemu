@@ -1807,7 +1807,7 @@ static void gdb_read_byte(GDBState *s, int ch)
                 reply = '+';
                 put_buffer(s, &reply, 1);
                 s->state = gdb_handle_packet(s, s->line_buf);
-#ifndef CONFIG_USER_ONLY
+#ifdef CONFIG_REMOTE_PORT
                 bool tw_en = rp_time_warp_enable(false);
                 rp_time_warp_enable(tw_en);
 #endif
