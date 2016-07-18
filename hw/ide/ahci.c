@@ -1401,7 +1401,7 @@ typedef struct SysbusAHCIState {
 } SysbusAHCIState;
 
 static const VMStateDescription vmstate_sysbus_ahci = {
-    .name = "sysbus-ahci",
+    .name = "generic-ahci",
     .unmigratable = 1, /* Still buggy under I/O load */
     .fields = (VMStateField[]) {
         VMSTATE_AHCI(ahci, SysbusAHCIState),
