@@ -1,0 +1,135 @@
+                           Fault Injection Framework
+                           =========================
+
+Introduction
+------------
+
+The fault injection framework allows users to write python scripts to inject
+faults through the QMP (QEMU Machine Protocol) during execution.
+
+Basically it's composed of a Python API which makes some QMP commands easy to
+send to the machine:
+  * read/write a memory location from a CPU view.
+  * set a GPIO line.
+  * get/set a QOM property.
+
+In addition it allows the Python script to be notified back by QEMU so it can
+do any of the previous commands at a given time.
+
+Today the available function in the API are the following:
+  * notify(time_ns, cb)
+  * inject_write(address, value, size, cpu)
+  * read(address, size, cpu)
+  * get_qom_property(path, property)
+  * set_qom_property(path, property, value)
+  * set_gpio(path, gpio, num, value)
+
+Empty Example
+-------------
+
+This is an empty example to begin:
+
+import fault_injection
+import sys
+
+framework = None
+
+def main():
+    # The injection framework will parse the command line automatically
+    # (eg: the qmp socket/port.. etc)
+    sys.stdout.write('Fault Injection Example\n')
+    global framework
+    framework = fault_injection.FaultInjectionFramework(sys.argv[1])
+
+    framework.run()
+    sys.exit(1)
+
+if __name__ == '__main__':
+    main()
+
+To run the example just save the example in `script/qmp/example_scenario`
+Run qemu with the additional arguments: `-S -qmp unix:/path/to/qmp-sock,server`
+in order to wait for a qmp connection and stop the QEMU machine.
+Run the example with: `./example_scenario /path/to/qmp-sock`
+
+It will start the simulation inside QEMU and do nothing else.
+
+Adding a callback at a given time
+---------------------------------
+
+As described above a callback can be added in the python scenario.
+For example we can create the following callback which write 0xDEADBEEF @0 with
+a size of 4 from cpu 0 and then reads it back:
+
+def write_mem_callback():
+    print 'write_mem_callback()'
+    framework.write(0x0, 0xDEADBEEF, 4, 0)
+    val = framework.read(0x0, 4, 0)
+    print 'value read: 0x%8.8X' %val
+
+Then we can notify it in the main function before framework.run():
+`framework.notify(1000000000, write_mem_callback)`
+
+The script works as expected:
+
+write_mem_callback()
+value read: 0xDEADBEEF
+
+Using the python interpreter
+----------------------------
+
+The Python interpreter can be used to send the command above:
+For example to set the vinithi bit to 1 for the /rpu_cpu@0 the following
+commands can be done in the script/qmp directory:
+
+$ python
+>>> import fault_injection
+>>> inj=fault_injection.FaultInjectionFramework("../../qmp-sock", 0)
+Connected to QEMU 2.2.50
+
+>>> inj.help()
+
+Fault Injection Framework Commands
+==================================
+
+cont()
+ * Resume the simulation when the Virtual Machine is stopped.
+
+run()
+ * Start the simulation when the notify are set.
+
+notify(time_ns, cb)
+ * Notify the callback cb in guest time time_ns.
+
+write(address, value, size, cpu)
+ * Write @value of size @size at @address from @cpu.
+ * @cpu can be either a qom path or the cpu id.
+
+read(address, size, cpu)
+ * Read a value of size @size at @address from @cpu.
+ * @cpu can be either a qom path or the cpu id.
+ * Returns the value.
+
+get_qom_property(path, property)
+ * Get a qom property.
+ * Returns the qom property named @property in @path.
+
+set_qom_property(path, property, value)
+ * Set the property named @property in @path with @value.
+
+set_gpio(path, gpio, num, value)
+ * Set the gpio named @gpio number @num in @path with the @val.
+ * @val is a boolean.
+
+>>> inj.set_gpio('/rpu_cpu@0', 'vinithi', 0, 1)
+
+Notes
+-----
+
+The user can turn debug information on by passing a level to the framework
+constructor eg:
+"framework = fault_injection.FaultInjectionFramework(1)" will print timed traces
+such as write or read.
+"framework = fault_injection.FaultInjectionFramework(2)" will print the QMP
+commands as well.
+
