@@ -75,3 +75,18 @@
 { 'event': 'FAULT_EVENT',
   'data': { 'event_id': 'int', 'time_ns': 'int'} }
 
+##
+# @inject_gpio
+#
+# @device_name: Path to the device.
+# @gpio:        Name of the GPIO will be unnamed-gpio if omitted.
+# @num:         Number of the GPIO line.
+# @val:         Value (boolean) to be set for the GPIO.
+#
+# Returns: nothing in case of success
+#
+# Since 2.6
+##
+{ 'command': 'inject_gpio',
+  'data': {'device_name': 'str', '*gpio': 'str', 'num': 'int', 'val': 'int'} }
+

@@ -3917,3 +3917,22 @@ Example:
 <- { "return": {} }
 
 EQMP
+
+    {
+        .name       = "inject_gpio",
+        .args_type  = "device_name:s,gpio:s?,num:i,val:i",
+        .mhandler.cmd_new = qmp_marshal_input_inject_gpio,
+    },
+
+SQMP
+inject_gpio
+-----------
+
+Inject a GPIO.
+
+Example:
+
+-> { "execute": "inject_gpio", "arguments": { "device_name": "/machine/device", "gpio": "clk_error", "num": "0", "val": "1" } }
+<- { "return": {} }
+
+EQMP

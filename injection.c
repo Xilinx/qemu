@@ -18,6 +18,7 @@
 #include "exec/memory.h"
 #include "qom/cpu.h"
 #include "qemu/log.h"
+#include "qemu/queue.h"
 #include "sysemu/sysemu.h"
 
 typedef struct FaultEventEntry FaultEventEntry;
@@ -179,4 +180,30 @@ void qmp_trigger_event(int64_t time_ns, int64_t event_id, Error **errp)
     }
 
     mod_next_event_timer();
+}
+
+void qmp_inject_gpio(const char *device_name, bool has_gpio, const char *gpio,
+                     int64_t num, int64_t val, Error **errp)
+{
+    DeviceState *dev;
+    qemu_irq irq;
+
+    dev = DEVICE(object_resolve_path(device_name, NULL));
+    if (!dev) {
+        error_set(errp, ERROR_CLASS_DEVICE_NOT_FOUND,
+                  "Device '%s' is not a device", device_name);
+        return;
+    }
+
+    irq = qdev_get_gpio_in_named(dev, has_gpio ? gpio : NULL, num);
+    if (!irq) {
+        error_set(errp, ERROR_CLASS_DEVICE_NOT_FOUND,
+                  "GPIO '%s' doesn't exists", has_gpio ? gpio : "unnammed");
+        return;
+    }
+
+    DPRINTF("inject gpio device %s, gpio %s, num %" PRId64 ", val %" PRIx64
+            "\n", device_name, gpio, num, val);
+
+    qemu_set_irq(irq, val);
 }
