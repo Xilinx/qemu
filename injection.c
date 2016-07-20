@@ -18,6 +18,11 @@
 #include "exec/memory.h"
 #include "qom/cpu.h"
 #include "qemu/log.h"
+#include "sysemu/sysemu.h"
+
+typedef struct FaultEventEntry FaultEventEntry;
+static QLIST_HEAD(, FaultEventEntry) events = QLIST_HEAD_INITIALIZER(events);
+static QEMUTimer *timer;
 
 #ifndef DEBUG_FAULT_INJECTION
 #define DEBUG_FAULT_INJECTION 0
@@ -112,3 +117,66 @@ int64_t qmp_read_mem(int64_t addr, int64_t size, bool has_cpu, int64_t cpu,
     }
 }
 
+struct FaultEventEntry {
+    uint64_t time_ns;
+    int64_t val;
+    QLIST_ENTRY(FaultEventEntry) node;
+};
+
+static void mod_next_event_timer(void)
+{
+    uint64_t val;
+    FaultEventEntry *entry;
+
+    if (QLIST_EMPTY(&events)) {
+        return;
+    } else {
+        val = QLIST_FIRST(&events)->time_ns;
+    }
+
+    QLIST_FOREACH(entry, &events, node) {
+        if (val > entry->time_ns) {
+            val = entry->time_ns;
+        }
+    }
+
+    timer_mod(timer, val);
+}
+
+static void do_fault(void *opaque)
+{
+    FaultEventEntry *entry;
+    FaultEventEntry *next;
+    uint64_t current_time = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+
+    QLIST_FOREACH_SAFE(entry, &events, node, next) {
+        if (entry->time_ns < current_time) {
+            DPRINTF("fault %ld happened @%ld!\n", entry->val,
+                    qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
+            qapi_event_send_fault_event(entry->val, current_time, &error_abort);
+            QLIST_REMOVE(entry, node);
+            g_free(entry);
+            vm_stop_from_timer(RUN_STATE_DEBUG);
+        }
+    }
+
+    mod_next_event_timer();
+}
+
+void qmp_trigger_event(int64_t time_ns, int64_t event_id, Error **errp)
+{
+    FaultEventEntry *entry;
+
+    DPRINTF("trigger_event(%ld, %ld)\n", time_ns, event_id);
+
+    entry = g_new0(FaultEventEntry, 1);
+    entry->time_ns = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + time_ns;
+    entry->val = event_id;
+    QLIST_INSERT_HEAD(&events, entry, node);
+
+    if (!timer) {
+        timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, do_fault, NULL);
+    }
+
+    mod_next_event_timer();
+}

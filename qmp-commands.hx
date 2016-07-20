@@ -3898,3 +3898,22 @@ Example:
 <- { "return": {} }
 
 EQMP
+
+    {
+        .name       = "trigger_event",
+        .args_type  = "time_ns:i,event_id:i",
+        .mhandler.cmd_new = qmp_marshal_input_trigger_event,
+    },
+
+SQMP
+@trigger_event
+-------------
+
+Trigger an event in a given time.
+
+Example:
+
+-> { "execute": "trigger_event", "arguments": { "time_ns": "10", "event_id": "0" } }
+<- { "return": {} }
+
+EQMP
