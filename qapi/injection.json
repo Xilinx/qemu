@@ -1,0 +1,50 @@
+# -*- mode: python -*-
+#
+# Copyright (C) 2016 Fred KONRAD <fred.konrad@greensocs.com>
+#
+# This work is licensed under the terms of the GNU GPL, version 2 or later.
+# See the COPYING file in the top-level directory.
+
+##
+# @read_mem:
+#
+# Read a memory location from a CPU point of view. The @qom name of the CPU is
+# used if provided. The @cpu id is used if no @qom name are provided.
+# If both the @qom name or @cpu id are not provided the access is done from cpu
+# 0.
+#
+# @addr: The address to read.
+# @size: The size of the access.
+# @cpu: The optional index of the CPU doing the access.
+# @qom: The optional qom name of the CPU doing the access.
+#
+# Returns: the value read
+#
+# Since 2.6
+##
+{ 'command': 'read_mem',
+  'data': {'addr': 'int', 'size': 'int', '*cpu': 'int', '*qom': 'str'},
+  'returns': 'int'}
+
+##
+# @write_mem:
+#
+# Write a memory location from a CPU point of view. The @qom name of the CPU is
+# used if provided. The @cpu id is used if no @qom name are provided.
+# If both the @qom name or @cpu id are not provided the access is done from cpu
+# 0.
+#
+# @address: The address to write.
+# @val: The value which will be written.
+# @size: The size of the access.
+# @cpu: The optional index of the CPU doing the access.
+# @qom: The optional qom name of the CPU doing the access.
+#
+# Returns: nothing in case of success
+#
+# Since 2.6
+##
+{ 'command': 'write_mem',
+  'data': {'addr': 'int', 'val': 'int', 'size': 'int', '*cpu': 'int',
+           '*qom': 'str'} }
+

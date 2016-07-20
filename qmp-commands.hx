@@ -3860,3 +3860,41 @@ Move mouse pointer to absolute coordinates (20000, 400).
 <- { "return": {} }
 
 EQMP
+
+    {
+        .name       = "read_mem",
+        .args_type  = "addr:i,size:i,cpu:i?,qom:s?",
+        .mhandler.cmd_new = qmp_marshal_input_read_mem,
+    },
+
+SQMP
+read_mem
+---------
+
+Read a memory location.
+
+Example:
+
+-> { "execute": "read_mem", "arguments": { "cpu": "0", "addr": "0", "size": "4" } }
+<- { "return": {"3735928559"} }
+
+EQMP
+
+    {
+        .name       = "write_mem",
+        .args_type  = "addr:i,val:i,size:i,cpu:i?,qom:s?",
+        .mhandler.cmd_new = qmp_marshal_input_write_mem,
+    },
+
+SQMP
+write_mem
+---------
+
+Write a memory location.
+
+Example:
+
+-> { "execute": "write_mem", "arguments": { "cpu": "0", "addr": "0", "size": "4", "val": "3735928559" } }
+<- { "return": {} }
+
+EQMP

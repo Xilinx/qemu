@@ -79,7 +79,7 @@ common-obj-$(CONFIG_SMARTCARD_NSS) += $(libcacard-y)
 # qapi
 
 common-obj-y += qmp-marshal.o
-common-obj-y += qmp.o hmp.o
+common-obj-y += qmp.o hmp.o injection.o
 endif
 
 #######################################################################

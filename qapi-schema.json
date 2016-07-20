@@ -14,6 +14,9 @@
 # Tracing commands
 { 'include': 'qapi/trace.json' }
 
+# QAPI fault injection
+{ 'include': 'qapi/injection.json' }
+
 ##
 # LostTickPolicy:
 #
