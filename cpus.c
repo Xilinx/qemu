@@ -1332,6 +1332,17 @@ void cpu_stop_current(void)
     }
 }
 
+void vm_stop_from_timer(RunState state)
+{
+    qemu_system_vmstop_request_prepare();
+    qemu_system_vmstop_request(state);
+    /*
+     * FIXME: should not return to device code in case
+     * vm_stop() has been requested.
+     */
+    cpu_stop_current();
+}
+
 int vm_stop(RunState state)
 {
     if (qemu_in_vcpu_thread()) {
