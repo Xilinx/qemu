@@ -22,38 +22,59 @@
  * TODO: add some xenbus / xenstore concepts overview here.
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdarg.h>
-#include <string.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <inttypes.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/mman.h>
+#include "qemu/osdep.h"
 #include <sys/signal.h>
 
 #include "hw/hw.h"
+#include "hw/sysbus.h"
 #include "sysemu/char.h"
 #include "qemu/log.h"
 #include "hw/xen/xen_backend.h"
 
 #include <xen/grant_table.h>
 
+#define TYPE_XENSYSDEV "xensysdev"
+
+DeviceState *xen_sysdev;
+
 /* ------------------------------------------------------------- */
 
 /* public */
-XenXC xen_xc = XC_HANDLER_INITIAL_VALUE;
+xc_interface *xen_xc = NULL;
 xenforeignmemory_handle *xen_fmem = NULL;
 struct xs_handle *xenstore = NULL;
 const char *xen_protocol;
 
 /* private */
+struct xs_dirs {
+    char *xs_dir;
+    QTAILQ_ENTRY(xs_dirs) list;
+};
+static QTAILQ_HEAD(xs_dirs_head, xs_dirs) xs_cleanup =
+    QTAILQ_HEAD_INITIALIZER(xs_cleanup);
+
 static QTAILQ_HEAD(XenDeviceHead, XenDevice) xendevs = QTAILQ_HEAD_INITIALIZER(xendevs);
 static int debug = 0;
 
 /* ------------------------------------------------------------- */
+
+static void xenstore_cleanup_dir(char *dir)
+{
+    struct xs_dirs *d;
+
+    d = g_malloc(sizeof(*d));
+    d->xs_dir = dir;
+    QTAILQ_INSERT_TAIL(&xs_cleanup, d, list);
+}
+
+void xen_config_cleanup(void)
+{
+    struct xs_dirs *d;
+
+    QTAILQ_FOREACH(d, &xs_cleanup, list) {
+        xs_rm(xenstore, 0, d->xs_dir);
+    }
+}
 
 int xenstore_write_str(const char *base, const char *node, const char *val)
 {
@@ -81,6 +102,30 @@ char *xenstore_read_str(const char *base, const char *node)
         free(str);
     }
     return ret;
+}
+
+int xenstore_mkdir(char *path, int p)
+{
+    struct xs_permissions perms[2] = {
+        {
+            .id    = 0, /* set owner: dom0 */
+        }, {
+            .id    = xen_domid,
+            .perms = p,
+        }
+    };
+
+    if (!xs_mkdir(xenstore, 0, path)) {
+        xen_be_printf(NULL, 0, "xs_mkdir %s: failed\n", path);
+        return -1;
+    }
+    xenstore_cleanup_dir(g_strdup(path));
+
+    if (!xs_set_permissions(xenstore, 0, path, perms, 2)) {
+        xen_be_printf(NULL, 0, "xs_set_permissions %s: failed\n", path);
+        return -1;
+    }
+    return 0;
 }
 
 int xenstore_write_int(const char *base, const char *node, int ival)
@@ -716,14 +761,16 @@ int xen_be_init(void)
         return -1;
     }
 
-    if (qemu_set_fd_handler(xs_fileno(xenstore), xenstore_update, NULL, NULL) < 0) {
-        goto err;
-    }
+    qemu_set_fd_handler(xs_fileno(xenstore), xenstore_update, NULL, NULL);
 
-    if (xen_xc == XC_HANDLER_INITIAL_VALUE || xen_fmem == NULL) {
+    if (xen_xc == NULL || xen_fmem == NULL) {
         /* Check if xen_init() have been called */
         goto err;
     }
+
+    xen_sysdev = qdev_create(NULL, TYPE_XENSYSDEV);
+    qdev_init_nofail(xen_sysdev);
+
     return 0;
 
 err:
@@ -736,6 +783,20 @@ err:
 
 int xen_be_register(const char *type, struct XenDevOps *ops)
 {
+    char path[50];
+    int rc;
+
+    if (ops->backend_register) {
+        rc = ops->backend_register();
+        if (rc) {
+            return rc;
+        }
+    }
+
+    snprintf(path, sizeof(path), "device-model/%u/backends/%s", xen_domid,
+             type);
+    xenstore_mkdir(path, XS_PERM_NONE);
+
     return xenstore_scan(type, xen_domid, ops);
 }
 
@@ -810,3 +871,35 @@ void xen_be_printf(struct XenDevice *xendev, int msg_level, const char *fmt, ...
     }
     qemu_log_flush();
 }
+
+static int xen_sysdev_init(SysBusDevice *dev)
+{
+    return 0;
+}
+
+static Property xen_sysdev_properties[] = {
+    {/* end of property list */},
+};
+
+static void xen_sysdev_class_init(ObjectClass *klass, void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(klass);
+    SysBusDeviceClass *k = SYS_BUS_DEVICE_CLASS(klass);
+
+    k->init = xen_sysdev_init;
+    dc->props = xen_sysdev_properties;
+}
+
+static const TypeInfo xensysdev_info = {
+    .name          = TYPE_XENSYSDEV,
+    .parent        = TYPE_SYS_BUS_DEVICE,
+    .instance_size = sizeof(SysBusDevice),
+    .class_init    = xen_sysdev_class_init,
+};
+
+static void xenbe_register_types(void)
+{
+    type_register_static(&xensysdev_info);
+}
+
+type_init(xenbe_register_types);
