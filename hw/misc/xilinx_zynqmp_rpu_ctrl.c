@@ -423,6 +423,8 @@ typedef struct RPU {
 
     /* WFIs towards PMU. */
     qemu_irq wfi_out[2];
+    /* Comparators fault. */
+    qemu_irq comp_fault[2];
 
     bool cpu_in_wfi[2];
 
@@ -925,6 +927,8 @@ static void rpu_init(Object *obj)
                              OBJ_PROP_LINK_UNREF_ON_RELEASE,
                              &error_abort);
 
+    /* comp_fault gpios are connected to the PMU. */
+    qdev_init_gpio_out_named(DEVICE(obj), s->comp_fault, "comp_fault", 2);
     /* wfi_out is used to connect to PMU GPIs. */
     qdev_init_gpio_out_named(DEVICE(obj), s->wfi_out, "wfi_out", 2);
     /* wfi_in is used as input from CPUs as wfi request. */
@@ -950,12 +954,12 @@ static const FDTGenericGPIOSet rpu_controller_gpios [] = {
             { .name = "R5_0_HALT",          .fdt_index = 0 },
             { .name = "R5_1_HALT",          .fdt_index = 1 },
             { .name = "R5_SLSPLIT",         .fdt_index = 2 },
-            { .name = "R5_0_PWRDWN_REQ",     .fdt_index = 3, },
-            { .name = "R5_1_PWRDWN_REQ",     .fdt_index = 4, },
-            { .name = "wfi_in_0",             .fdt_index = 5, },
-            { .name = "wfi_in_1",             .fdt_index = 6, },
-            { .name = "R5_0_VINITHI",          .fdt_index = 7 },
-            { .name = "R5_1_VINITHI",          .fdt_index = 8 },
+            { .name = "R5_0_PWRDWN_REQ",    .fdt_index = 3 },
+            { .name = "R5_1_PWRDWN_REQ",    .fdt_index = 4 },
+            { .name = "wfi_in_0",           .fdt_index = 5 },
+            { .name = "wfi_in_1",           .fdt_index = 6 },
+            { .name = "R5_0_VINITHI",       .fdt_index = 7 },
+            { .name = "R5_1_VINITHI",       .fdt_index = 8 },
             { },
         },
     },
@@ -966,7 +970,8 @@ static const FDTGenericGPIOSet rpu_client_gpios [] = {
     {
         .names = &fdt_generic_gpio_name_set_gpio,
         .gpios = (FDTGenericGPIOConnection [])  {
-            { .name = "wfi_out",            .fdt_index = 0, .range = 2 },
+            { .name = "comp_fault",         .fdt_index = 0, .range = 2 },
+            { .name = "wfi_out",            .fdt_index = 2, .range = 2 },
             { },
         },
     },
