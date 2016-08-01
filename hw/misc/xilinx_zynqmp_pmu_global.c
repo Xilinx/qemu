@@ -43,26 +43,21 @@
 
 REG32(GLOBAL_CNTRL, 0x0)
     FIELD(GLOBAL_CNTRL, MB_SLEEP, 1, 16)
+    FIELD(GLOBAL_CNTRL, WRITE_QOS, 4, 12)
+    FIELD(GLOBAL_CNTRL, READ_QOS, 4, 8)
     FIELD(GLOBAL_CNTRL, FW_IS_PRESENT, 1, 4)
     FIELD(GLOBAL_CNTRL, COHERENT, 1, 2)
     FIELD(GLOBAL_CNTRL, SLVERR_ENABLE, 1, 1)
     FIELD(GLOBAL_CNTRL, DONT_SLEEP, 1, 0)
-REG32(SCU_PWR_STATUS_INIT, 0x8)
-    FIELD(SCU_PWR_STATUS_INIT, ACPU3, 1, 3)
-    FIELD(SCU_PWR_STATUS_INIT, ACPU2, 1, 2)
-    FIELD(SCU_PWR_STATUS_INIT, ACPU1, 1, 1)
-    FIELD(SCU_PWR_STATUS_INIT, ACPU0, 1, 0)
-REG32(MEM_CNTRL, 0xc)
-    FIELD(MEM_CNTRL, ROM1_KEN, 1, 23)
-    FIELD(MEM_CNTRL, ROM1_EMA, 3, 20)
-    FIELD(MEM_CNTRL, ROM0_KEN, 1, 19)
-    FIELD(MEM_CNTRL, ROM0_EMA, 3, 16)
-    FIELD(MEM_CNTRL, ECC_RAM_EMAS, 1, 11)
-    FIELD(MEM_CNTRL, ECC_RAM_EMAW, 2, 9)
-    FIELD(MEM_CNTRL, ECC_RAM_EMA, 3, 6)
-    FIELD(MEM_CNTRL, DATA_RAM_EMAS, 1, 5)
-    FIELD(MEM_CNTRL, DATA_RAM_EMAW, 2, 3)
-    FIELD(MEM_CNTRL, DATA_RAM_EMA, 3, 0)
+REG32(PS_CNTRL, 0x4)
+    FIELD(PS_CNTRL, PROG_GATE_STATUS, 1, 16)
+    FIELD(PS_CNTRL, PROG_ENABLE, 1, 1)
+    FIELD(PS_CNTRL, PROG_GATE, 1, 0)
+REG32(APU_PWR_STATUS_INIT, 0x8)
+    FIELD(APU_PWR_STATUS_INIT, ACPU3, 1, 3)
+    FIELD(APU_PWR_STATUS_INIT, ACPU2, 1, 2)
+    FIELD(APU_PWR_STATUS_INIT, ACPU1, 1, 1)
+    FIELD(APU_PWR_STATUS_INIT, ACPU0, 1, 0)
 REG32(ADDR_ERROR_STATUS, 0x10)
     FIELD(ADDR_ERROR_STATUS, STATUS, 1, 0)
 REG32(ADDR_ERROR_INT_MASK, 0x14)
@@ -78,7 +73,6 @@ REG32(GLOBAL_GEN_STORAGE3, 0x3c)
 REG32(GLOBAL_GEN_STORAGE4, 0x40)
 REG32(GLOBAL_GEN_STORAGE5, 0x44)
 REG32(GLOBAL_GEN_STORAGE6, 0x48)
-REG32(GLOBAL_GEN_STORAGE7, 0x4c)
 REG32(PERS_GLOB_GEN_STORAGE0, 0x50)
 REG32(PERS_GLOB_GEN_STORAGE1, 0x54)
 REG32(PERS_GLOB_GEN_STORAGE2, 0x58)
@@ -87,6 +81,8 @@ REG32(PERS_GLOB_GEN_STORAGE4, 0x60)
 REG32(PERS_GLOB_GEN_STORAGE5, 0x64)
 REG32(PERS_GLOB_GEN_STORAGE6, 0x68)
 REG32(PERS_GLOB_GEN_STORAGE7, 0x6c)
+REG32(DDR_CNTRL, 0x70)
+    FIELD(DDR_CNTRL, RET, 1, 0)
 REG32(PWR_STATE, 0x100)
     FIELD(PWR_STATE, PL, 1, 23)
     FIELD(PWR_STATE, FP, 1, 22)
@@ -135,7 +131,6 @@ REG32(RAM_RET_CNTRL, 0x108)
     FIELD(RAM_RET_CNTRL, TCM0A, 1, 12)
     FIELD(RAM_RET_CNTRL, L2_BANK0, 1, 7)
 REG32(PWR_SUPPLY_STATUS, 0x10c)
-    FIELD(PWR_SUPPLY_STATUS, VCC_PSAUX, 1, 2)
     FIELD(PWR_SUPPLY_STATUS, VCC_INT, 1, 1)
     FIELD(PWR_SUPPLY_STATUS, VCC_PSINTFP, 1, 0)
 REG32(REQ_PWRUP_STATUS, 0x110)
@@ -498,66 +493,66 @@ REG32(REQ_SWRST_TRIG, 0x420)
     FIELD(REQ_SWRST_TRIG, ACPU2, 1, 2)
     FIELD(REQ_SWRST_TRIG, ACPU1, 1, 1)
     FIELD(REQ_SWRST_TRIG, ACPU0, 1, 0)
-REG32(REQ_LOGCLR_STATUS, 0x510)
-    FIELD(REQ_LOGCLR_STATUS, FP, 1, 17)
-    FIELD(REQ_LOGCLR_STATUS, LP, 1, 16)
-    FIELD(REQ_LOGCLR_STATUS, USB1, 1, 13)
-    FIELD(REQ_LOGCLR_STATUS, USB0, 1, 12)
-    FIELD(REQ_LOGCLR_STATUS, RPU, 1, 10)
-    FIELD(REQ_LOGCLR_STATUS, PP1, 1, 7)
-    FIELD(REQ_LOGCLR_STATUS, PP0, 1, 6)
-    FIELD(REQ_LOGCLR_STATUS, ACPU3, 1, 3)
-    FIELD(REQ_LOGCLR_STATUS, ACPU2, 1, 2)
-    FIELD(REQ_LOGCLR_STATUS, ACPU1, 1, 1)
-    FIELD(REQ_LOGCLR_STATUS, ACPU0, 1, 0)
-REG32(REQ_LOGCLR_INT_MASK, 0x514)
-    FIELD(REQ_LOGCLR_INT_MASK, FP, 1, 17)
-    FIELD(REQ_LOGCLR_INT_MASK, LP, 1, 16)
-    FIELD(REQ_LOGCLR_INT_MASK, USB1, 1, 13)
-    FIELD(REQ_LOGCLR_INT_MASK, USB0, 1, 12)
-    FIELD(REQ_LOGCLR_INT_MASK, RPU, 1, 10)
-    FIELD(REQ_LOGCLR_INT_MASK, PP1, 1, 7)
-    FIELD(REQ_LOGCLR_INT_MASK, PP0, 1, 6)
-    FIELD(REQ_LOGCLR_INT_MASK, ACPU3, 1, 3)
-    FIELD(REQ_LOGCLR_INT_MASK, ACPU2, 1, 2)
-    FIELD(REQ_LOGCLR_INT_MASK, ACPU1, 1, 1)
-    FIELD(REQ_LOGCLR_INT_MASK, ACPU0, 1, 0)
-REG32(REQ_LOGCLR_INT_EN, 0x518)
-    FIELD(REQ_LOGCLR_INT_EN, FP, 1, 17)
-    FIELD(REQ_LOGCLR_INT_EN, LP, 1, 16)
-    FIELD(REQ_LOGCLR_INT_EN, USB1, 1, 13)
-    FIELD(REQ_LOGCLR_INT_EN, USB0, 1, 12)
-    FIELD(REQ_LOGCLR_INT_EN, RPU, 1, 10)
-    FIELD(REQ_LOGCLR_INT_EN, PP1, 1, 7)
-    FIELD(REQ_LOGCLR_INT_EN, PP0, 1, 6)
-    FIELD(REQ_LOGCLR_INT_EN, ACPU3, 1, 3)
-    FIELD(REQ_LOGCLR_INT_EN, ACPU2, 1, 2)
-    FIELD(REQ_LOGCLR_INT_EN, ACPU1, 1, 1)
-    FIELD(REQ_LOGCLR_INT_EN, ACPU0, 1, 0)
-REG32(REQ_LOGCLR_INT_DIS, 0x51c)
-    FIELD(REQ_LOGCLR_INT_DIS, FP, 1, 17)
-    FIELD(REQ_LOGCLR_INT_DIS, LP, 1, 16)
-    FIELD(REQ_LOGCLR_INT_DIS, USB1, 1, 13)
-    FIELD(REQ_LOGCLR_INT_DIS, USB0, 1, 12)
-    FIELD(REQ_LOGCLR_INT_DIS, RPU, 1, 10)
-    FIELD(REQ_LOGCLR_INT_DIS, PP1, 1, 7)
-    FIELD(REQ_LOGCLR_INT_DIS, PP0, 1, 6)
-    FIELD(REQ_LOGCLR_INT_DIS, ACPU3, 1, 3)
-    FIELD(REQ_LOGCLR_INT_DIS, ACPU2, 1, 2)
-    FIELD(REQ_LOGCLR_INT_DIS, ACPU1, 1, 1)
-    FIELD(REQ_LOGCLR_INT_DIS, ACPU0, 1, 0)
-REG32(REQ_LOGCLR_TRIG, 0x520)
-    FIELD(REQ_LOGCLR_TRIG, FP, 1, 17)
-    FIELD(REQ_LOGCLR_TRIG, LP, 1, 16)
-    FIELD(REQ_LOGCLR_TRIG, USB1, 1, 13)
-    FIELD(REQ_LOGCLR_TRIG, USB0, 1, 12)
-    FIELD(REQ_LOGCLR_TRIG, RPU, 1, 10)
-    FIELD(REQ_LOGCLR_TRIG, PP1, 1, 7)
-    FIELD(REQ_LOGCLR_TRIG, PP0, 1, 6)
-    FIELD(REQ_LOGCLR_TRIG, ACPU3, 1, 3)
-    FIELD(REQ_LOGCLR_TRIG, ACPU2, 1, 2)
-    FIELD(REQ_LOGCLR_TRIG, ACPU1, 1, 1)
-    FIELD(REQ_LOGCLR_TRIG, ACPU0, 1, 0)
+REG32(REQ_AUX_STATUS, 0x510)
+    FIELD(REQ_AUX_STATUS, SERV_REQ_10, 1, 17)
+    FIELD(REQ_AUX_STATUS, SERV_REQ_9, 1, 16)
+    FIELD(REQ_AUX_STATUS, SERV_REQ_8, 1, 13)
+    FIELD(REQ_AUX_STATUS, SERV_REQ_7, 1, 12)
+    FIELD(REQ_AUX_STATUS, SERV_REQ_6, 1, 10)
+    FIELD(REQ_AUX_STATUS, SERV_REQ_5, 1, 7)
+    FIELD(REQ_AUX_STATUS, SERV_REQ_4, 1, 6)
+    FIELD(REQ_AUX_STATUS, SERV_REQ_3, 1, 3)
+    FIELD(REQ_AUX_STATUS, SERV_REQ_2, 1, 2)
+    FIELD(REQ_AUX_STATUS, SERV_REQ_1, 1, 1)
+    FIELD(REQ_AUX_STATUS, SERV_REQ_0, 1, 0)
+REG32(REQ_AUX_INT_MASK, 0x514)
+    FIELD(REQ_AUX_MASK, SERV_REQ_10, 1, 17)
+    FIELD(REQ_AUX_MASK, SERV_REQ_9, 1, 16)
+    FIELD(REQ_AUX_MASK, SERV_REQ_8, 1, 13)
+    FIELD(REQ_AUX_MASK, SERV_REQ_7, 1, 12)
+    FIELD(REQ_AUX_MASK, SERV_REQ_6, 1, 10)
+    FIELD(REQ_AUX_MASK, SERV_REQ_5, 1, 7)
+    FIELD(REQ_AUX_MASK, SERV_REQ_4, 1, 6)
+    FIELD(REQ_AUX_MASK, SERV_REQ_3, 1, 3)
+    FIELD(REQ_AUX_MASK, SERV_REQ_2, 1, 2)
+    FIELD(REQ_AUX_MASK, SERV_REQ_1, 1, 1)
+    FIELD(REQ_AUX_MASK, SERV_REQ_0, 1, 0)
+REG32(REQ_AUX_INT_EN, 0x518)
+    FIELD(REQ_AUX_INT_EN, SERV_REQ_10, 1, 17)
+    FIELD(REQ_AUX_INT_EN, SERV_REQ_9, 1, 16)
+    FIELD(REQ_AUX_INT_EN, SERV_REQ_8, 1, 13)
+    FIELD(REQ_AUX_INT_EN, SERV_REQ_7, 1, 12)
+    FIELD(REQ_AUX_INT_EN, SERV_REQ_6, 1, 10)
+    FIELD(REQ_AUX_INT_EN, SERV_REQ_5, 1, 7)
+    FIELD(REQ_AUX_INT_EN, SERV_REQ_4, 1, 6)
+    FIELD(REQ_AUX_INT_EN, SERV_REQ_3, 1, 3)
+    FIELD(REQ_AUX_INT_EN, SERV_REQ_2, 1, 2)
+    FIELD(REQ_AUX_INT_EN, SERV_REQ_1, 1, 1)
+    FIELD(REQ_AUX_INT_EN, SERV_REQ_0, 1, 0)
+REG32(REQ_AUX_INT_DIS, 0x51c)
+    FIELD(REQ_AUX_INT_DIS, SERV_REQ_10, 1, 17)
+    FIELD(REQ_AUX_INT_DIS, SERV_REQ_9, 1, 16)
+    FIELD(REQ_AUX_INT_DIS, SERV_REQ_8, 1, 13)
+    FIELD(REQ_AUX_INT_DIS, SERV_REQ_7, 1, 12)
+    FIELD(REQ_AUX_INT_DIS, SERV_REQ_6, 1, 10)
+    FIELD(REQ_AUX_INT_DIS, SERV_REQ_5, 1, 7)
+    FIELD(REQ_AUX_INT_DIS, SERV_REQ_4, 1, 6)
+    FIELD(REQ_AUX_INT_DIS, SERV_REQ_3, 1, 3)
+    FIELD(REQ_AUX_INT_DIS, SERV_REQ_2, 1, 2)
+    FIELD(REQ_AUX_INT_DIS, SERV_REQ_1, 1, 1)
+    FIELD(REQ_AUX_INT_DIS, SERV_REQ_0, 1, 0)
+REG32(REQ_AUX_TRIG, 0x520)
+    FIELD(REQ_AUX_TRIG, SERV_REQ_10, 1, 17)
+    FIELD(REQ_AUX_TRIG, SERV_REQ_9, 1, 16)
+    FIELD(REQ_AUX_TRIG, SERV_REQ_8, 1, 13)
+    FIELD(REQ_AUX_TRIG, SERV_REQ_7, 1, 12)
+    FIELD(REQ_AUX_TRIG, SERV_REQ_6, 1, 10)
+    FIELD(REQ_AUX_TRIG, SERV_REQ_5, 1, 7)
+    FIELD(REQ_AUX_TRIG, SERV_REQ_4, 1, 6)
+    FIELD(REQ_AUX_TRIG, SERV_REQ_3, 1, 3)
+    FIELD(REQ_AUX_TRIG, SERV_REQ_2, 1, 2)
+    FIELD(REQ_AUX_TRIG, SERV_REQ_1, 1, 1)
+    FIELD(REQ_AUX_TRIG, SERV_REQ_0, 1, 0)
 REG32(LOGCLR_STATUS, 0x524)
     FIELD(LOGCLR_STATUS, FP, 1, 17)
     FIELD(LOGCLR_STATUS, LP, 1, 16)
@@ -1015,11 +1010,15 @@ REG32(ROM_VALIDATION_DIGEST_8, 0x634)
 REG32(ROM_VALIDATION_DIGEST_9, 0x638)
 REG32(ROM_VALIDATION_DIGEST_10, 0x63c)
 REG32(ROM_VALIDATION_DIGEST_11, 0x640)
-REG32(SAFETY_CHK, 0x700)
-REG32(ECO_1, 0x800)
-REG32(ECO_2, 0x804)
+REG32(SAFETY_GATE, 0x650)
+REG32(MBIST_RST, 0x700)
+REG32(MBIST_PG_EN, 0x704)
+REG32(MBIST_SETUP, 0x708)
+REG32(MBIST_DONE, 0x710)
+REG32(MBIST_GOOD, 0x714)
+REG32(SAFETY_CHK, 0x800)
 
-#define R_MAX (R_ECO_2 + 1)
+#define R_MAX (R_SAFETY_CHK + 1)
 
 typedef struct PMU_GLOBAL {
     SysBusDevice parent_obj;
@@ -1128,45 +1127,45 @@ static uint64_t req_swrst_trig_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
-static void req_logclr_int_update_irq(PMU_GLOBAL *s)
+static void req_aux_int_update_irq(PMU_GLOBAL *s)
 {
-    bool pending = s->regs[R_REQ_LOGCLR_STATUS] & ~s->regs[R_REQ_LOGCLR_INT_MASK];
+    bool pending = s->regs[R_REQ_AUX_STATUS] & ~s->regs[R_REQ_AUX_INT_MASK];
     qemu_set_irq(s->irq_req_logclr_int, pending);
 }
 
-static void req_logclr_status_postw(RegisterInfo *reg, uint64_t val64)
+static void req_aux_status_postw(RegisterInfo *reg, uint64_t val64)
 {
     PMU_GLOBAL *s = XILINX_PMU_GLOBAL(reg->opaque);
-    req_logclr_int_update_irq(s);
+    req_aux_int_update_irq(s);
 }
 
-static uint64_t req_logclr_int_en_prew(RegisterInfo *reg, uint64_t val64)
+static uint64_t req_aux_int_en_prew(RegisterInfo *reg, uint64_t val64)
 {
     PMU_GLOBAL *s = XILINX_PMU_GLOBAL(reg->opaque);
     uint32_t val = val64;
 
-    s->regs[R_REQ_LOGCLR_INT_MASK] &= ~val;
-    req_logclr_int_update_irq(s);
+    s->regs[R_REQ_AUX_INT_MASK] &= ~val;
+    req_aux_int_update_irq(s);
     return 0;
 }
 
-static uint64_t req_logclr_int_dis_prew(RegisterInfo *reg, uint64_t val64)
+static uint64_t req_aux_int_dis_prew(RegisterInfo *reg, uint64_t val64)
 {
     PMU_GLOBAL *s = XILINX_PMU_GLOBAL(reg->opaque);
     uint32_t val = val64;
 
-    s->regs[R_REQ_LOGCLR_INT_MASK] |= val;
-    req_logclr_int_update_irq(s);
+    s->regs[R_REQ_AUX_INT_MASK] |= val;
+    req_aux_int_update_irq(s);
     return 0;
 }
 
-static uint64_t req_logclr_trig_prew(RegisterInfo *reg, uint64_t val64)
+static uint64_t req_aux_trig_prew(RegisterInfo *reg, uint64_t val64)
 {
     PMU_GLOBAL *s = XILINX_PMU_GLOBAL(reg->opaque);
     uint32_t val = val64;
 
-    s->regs[R_REQ_LOGCLR_STATUS] |= val;
-    req_logclr_int_update_irq(s);
+    s->regs[R_REQ_AUX_STATUS] |= val;
+    req_aux_int_update_irq(s);
     return 0;
 }
 
@@ -1500,19 +1499,19 @@ static uint64_t req_iso_trig_prew(RegisterInfo *reg, uint64_t val64)
 
 static RegisterAccessInfo pmu_global_regs_info[] = {
     {   .name = "GLOBAL_CNTRL",  .decode.addr = A_GLOBAL_CNTRL,
-        .rsvd = 0xffffffe8,
-        .ro = 0xffffffe8,
+        .rsvd = 0xfffe00e8,
+        .ro = 0xffff00e8,
+        .reset = 0x00008800,
         .gpios = (RegisterGPIOMapping[]) {
             { .name = "pmu_wake", .bit_pos = 0, .width = 1 },
             {},
         }
-    },{ .name = "SCU_PWR_STATUS_INIT",  .decode.addr = A_SCU_PWR_STATUS_INIT,
+    },{ .name = "PS_CNTRL",  .decode.addr = A_PS_CNTRL,
+        .rsvd = 0xfffefffc,
+        .ro = 0xfffffffc,
+    },{ .name = "APU_PWR_STATUS_INIT",  .decode.addr = A_APU_PWR_STATUS_INIT,
         .rsvd = 0xfffffff0,
         .ro = 0xfffffff0,
-    },{ .name = "MEM_CNTRL",  .decode.addr = A_MEM_CNTRL,
-        .reset = 0x880000,
-        .rsvd = 0xff00f000,
-        .ro = 0xff00f000,
     },{ .name = "ADDR_ERROR_STATUS",  .decode.addr = A_ADDR_ERROR_STATUS,
         .rsvd = 0xfffffffe,
         .ro = 0xfffffffe,
@@ -1533,18 +1532,27 @@ static RegisterAccessInfo pmu_global_regs_info[] = {
     },{ .name = "GLOBAL_GEN_STORAGE4",  .decode.addr = A_GLOBAL_GEN_STORAGE4,
     },{ .name = "GLOBAL_GEN_STORAGE5",  .decode.addr = A_GLOBAL_GEN_STORAGE5,
     },{ .name = "GLOBAL_GEN_STORAGE6",  .decode.addr = A_GLOBAL_GEN_STORAGE6,
-    },{ .name = "GLOBAL_GEN_STORAGE7",  .decode.addr = A_GLOBAL_GEN_STORAGE7,
     },{ .name = "PERS_GLOB_GEN_STORAGE0",  .decode.addr = A_PERS_GLOB_GEN_STORAGE0,
+        .inhibit_reset = 0xFFFFFFFF,
     },{ .name = "PERS_GLOB_GEN_STORAGE1",  .decode.addr = A_PERS_GLOB_GEN_STORAGE1,
+        .inhibit_reset = 0xFFFFFFFF,
     },{ .name = "PERS_GLOB_GEN_STORAGE2",  .decode.addr = A_PERS_GLOB_GEN_STORAGE2,
+        .inhibit_reset = 0xFFFFFFFF,
     },{ .name = "PERS_GLOB_GEN_STORAGE3",  .decode.addr = A_PERS_GLOB_GEN_STORAGE3,
+        .inhibit_reset = 0xFFFFFFFF,
     },{ .name = "PERS_GLOB_GEN_STORAGE4",  .decode.addr = A_PERS_GLOB_GEN_STORAGE4,
+        .inhibit_reset = 0xFFFFFFFF,
     },{ .name = "PERS_GLOB_GEN_STORAGE5",  .decode.addr = A_PERS_GLOB_GEN_STORAGE5,
+        .inhibit_reset = 0xFFFFFFFF,
     },{ .name = "PERS_GLOB_GEN_STORAGE6",  .decode.addr = A_PERS_GLOB_GEN_STORAGE6,
+        .inhibit_reset = 0xFFFFFFFF,
     },{ .name = "PERS_GLOB_GEN_STORAGE7",  .decode.addr = A_PERS_GLOB_GEN_STORAGE7,
+        .inhibit_reset = 0xFFFFFFFF,
+    },{ .name = "DDR_CNTRL",  .decode.addr = A_DDR_CNTRL,
+        .rsvd = 0xfffffffe,
     },{ .name = "PWR_STATE",  .decode.addr = A_PWR_STATE,
-        .reset = 0x00FFFCBF,
-        .rsvd = 0xfe400340,
+        .reset = 0x00fffcbf,
+        .rsvd = 0xff000340,
         .ro = 0xffffffff,
     },{ .name = "AUX_PWR_STATE",  .decode.addr = A_AUX_PWR_STATE,
         .reset = 0xff080,
@@ -1557,8 +1565,8 @@ static RegisterAccessInfo pmu_global_regs_info[] = {
         /* FIXME: Added 0x3 to reset bits so FPD will be
          * properly powered up by PMUROM.
          */
-        .reset = 0x7,
-        .rsvd = 0xfffffff8,
+        .reset = 0x3,
+        .rsvd = 0xfffffffc,
         .ro = 0xffffffff,
     },{ .name = "REQ_PWRUP_STATUS",  .decode.addr = A_REQ_PWRUP_STATUS,
         .rsvd = 0xff000b40,
@@ -1620,21 +1628,21 @@ static RegisterAccessInfo pmu_global_regs_info[] = {
         .pre_write = req_swrst_int_dis_prew,
     },{ .name = "REQ_SWRST_TRIG",  .decode.addr = A_REQ_SWRST_TRIG,
         .pre_write = req_swrst_trig_prew,
-    },{ .name = "REQ_LOGCLR_STATUS",  .decode.addr = A_REQ_LOGCLR_STATUS,
+    },{ .name = "REQ_AUX_STATUS",  .decode.addr = A_REQ_AUX_STATUS,
         .rsvd = 0xfffccb30,
         .ro = 0xfffccb30,
         .w1c = 0x334cf,
-        .post_write = req_logclr_status_postw,
-    },{ .name = "REQ_LOGCLR_INT_MASK",  .decode.addr = A_REQ_LOGCLR_INT_MASK,
+        .post_write = req_aux_status_postw,
+    },{ .name = "REQ_AUX_INT_MASK",  .decode.addr = A_REQ_AUX_INT_MASK,
         .reset = 0x334cf,
         .rsvd = 0xfffccb30,
         .ro = 0xffffffff,
-    },{ .name = "REQ_LOGCLR_INT_EN",  .decode.addr = A_REQ_LOGCLR_INT_EN,
-        .pre_write = req_logclr_int_en_prew,
-    },{ .name = "REQ_LOGCLR_INT_DIS",  .decode.addr = A_REQ_LOGCLR_INT_DIS,
-        .pre_write = req_logclr_int_dis_prew,
-    },{ .name = "REQ_LOGCLR_TRIG",  .decode.addr = A_REQ_LOGCLR_TRIG,
-        .pre_write = req_logclr_trig_prew,
+    },{ .name = "REQ_AUX_INT_EN",  .decode.addr = A_REQ_AUX_INT_EN,
+        .pre_write = req_aux_int_en_prew,
+    },{ .name = "REQ_AUX_INT_DIS",  .decode.addr = A_REQ_AUX_INT_DIS,
+        .pre_write = req_aux_int_dis_prew,
+    },{ .name = "REQ_AUX_TRIG",  .decode.addr = A_REQ_AUX_TRIG,
+        .pre_write = req_aux_trig_prew,
     },{ .name = "LOGCLR_STATUS",  .decode.addr = A_LOGCLR_STATUS,
         .rsvd = 0xfffccb30,
         .ro = 0xffffffff,
@@ -1776,9 +1784,13 @@ static RegisterAccessInfo pmu_global_regs_info[] = {
         .ro = 0xffffffff,
     },{ .name = "ROM_VALIDATION_DIGEST_11",  .decode.addr = A_ROM_VALIDATION_DIGEST_11,
         .ro = 0xffffffff,
+    },{ .name = "SAFETY_GATE",  .decode.addr = A_SAFETY_GATE,
+    },{ .name = "MBIST_RST",  .decode.addr = A_MBIST_RST,
+    },{ .name = "MBIST_PG_EN",  .decode.addr = A_MBIST_PG_EN,
+    },{ .name = "MBIST_SETUP",  .decode.addr = A_MBIST_SETUP,
+    },{ .name = "MBIST_DONE",  .decode.addr = A_MBIST_DONE, .ro = 0xffffffff,
+    },{ .name = "MBIST_GOOD",  .decode.addr = A_MBIST_GOOD, .ro = 0xffffffff,
     },{ .name = "SAFETY_CHK",  .decode.addr = A_SAFETY_CHK,
-    },{ .name = "ECO_1",  .decode.addr = A_ECO_1,
-    },{ .name = "ECO_2",  .decode.addr = A_ECO_2,
     }
 };
 
@@ -1796,7 +1808,7 @@ static void pmu_global_reset(DeviceState *dev)
 
     req_pwrdwn_int_update_irq(s);
     req_swrst_int_update_irq(s);
-    req_logclr_int_update_irq(s);
+    req_aux_int_update_irq(s);
     req_pwrup_int_update_irq(s);
     addr_error_int_update_irq(s);
     error_int_2_update_irq(s);
