@@ -438,6 +438,19 @@ static void rpu_1_update_irq(RPU *s)
     qemu_set_irq(s->irq_rpu_1, pending);
 }
 
+static void ronaldo_rpu_err_inj(RegisterInfo *reg, uint64_t val64)
+{
+    RPU *s = XILINX_RPU(reg->opaque);
+    bool comp_0 = AF_EX32(s->regs, RPU_ERR_INJ, DCCMINP);
+    bool comp_1 = AF_EX32(s->regs, RPU_ERR_INJ, DCCMINP2);
+
+    /* Inject an error in the comparator
+     * Works even if the CLAMP bit is cleared.
+     */
+    qemu_set_irq(s->comp_fault[0], comp_0);
+    qemu_set_irq(s->comp_fault[1], comp_1);
+}
+
 static void rpu_1_isr_postw(RegisterInfo *reg, uint64_t val64)
 {
     RPU *s = XILINX_RPU(reg->opaque);
@@ -583,6 +596,7 @@ static RegisterAccessInfo rpu_regs_info[] = {
     },{ .name = "RPU_TCM_SYN",  .decode.addr = A_RPU_TCM_SYN,
         .reset = 0x280280,
     },{ .name = "RPU_ERR_INJ",  .decode.addr = A_RPU_ERR_INJ,
+        .post_write = ronaldo_rpu_err_inj,
     },{ .name = "RPU_CCF_MASK",  .decode.addr = A_RPU_CCF_MASK,
     },{ .name = "RPU_INTR_0",  .decode.addr = A_RPU_INTR_0,
         .post_write = ronaldo_rpu_update_irq_injection,
