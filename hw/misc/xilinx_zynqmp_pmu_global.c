@@ -1497,6 +1497,25 @@ static uint64_t req_iso_trig_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
+static void mbist_rst_postw(RegisterInfo *reg, uint64_t val64)
+{
+    PMU_GLOBAL *s = XILINX_PMU_GLOBAL(reg->opaque);
+
+    /* Reset the MBIST_DONE, MBIST_GOOD registers */
+    s->regs[R_MBIST_DONE] &= s->regs[R_MBIST_RST];
+    s->regs[R_MBIST_GOOD] &= s->regs[R_MBIST_RST];
+}
+
+static void mbist_pg_en_postw(RegisterInfo *reg, uint64_t val64)
+{
+    PMU_GLOBAL *s = XILINX_PMU_GLOBAL(reg->opaque);
+
+    s->regs[R_MBIST_DONE] |= s->regs[R_MBIST_RST]
+                           & s->regs[R_MBIST_SETUP] & s->regs[R_MBIST_PG_EN];
+    s->regs[R_MBIST_GOOD] |= s->regs[R_MBIST_RST]
+                           & s->regs[R_MBIST_SETUP] & s->regs[R_MBIST_PG_EN];
+}
+
 static RegisterAccessInfo pmu_global_regs_info[] = {
     {   .name = "GLOBAL_CNTRL",  .decode.addr = A_GLOBAL_CNTRL,
         .rsvd = 0xfffe00e8,
@@ -1786,7 +1805,9 @@ static RegisterAccessInfo pmu_global_regs_info[] = {
         .ro = 0xffffffff,
     },{ .name = "SAFETY_GATE",  .decode.addr = A_SAFETY_GATE,
     },{ .name = "MBIST_RST",  .decode.addr = A_MBIST_RST,
+        .post_write = mbist_rst_postw,
     },{ .name = "MBIST_PG_EN",  .decode.addr = A_MBIST_PG_EN,
+        .post_write = mbist_pg_en_postw,
     },{ .name = "MBIST_SETUP",  .decode.addr = A_MBIST_SETUP,
     },{ .name = "MBIST_DONE",  .decode.addr = A_MBIST_DONE, .ro = 0xffffffff,
     },{ .name = "MBIST_GOOD",  .decode.addr = A_MBIST_GOOD, .ro = 0xffffffff,
