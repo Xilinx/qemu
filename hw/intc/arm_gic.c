@@ -1062,6 +1062,8 @@ static uint32_t gic_cpu_read(GICState *s, int cpu, int offset, bool secure)
         break;
     case 0xd0: case 0xd4: case 0xd8: case 0xdc:
         return s->apr[(offset - 0xd0) / 4][cpu];
+    case 0xFC:
+        return s->c_iidr;
     default:
         qemu_log_mask(LOG_GUEST_ERROR,
                       "gic_cpu_read: Bad offset %x\n", (int)offset);

@@ -95,6 +95,11 @@ typedef struct GICState {
     uint8_t  bpr[GIC_NCPU];
     uint8_t  abpr[GIC_NCPU];
 
+    /* The Interface Identification Register.
+     * This is implementation defined
+     */
+    uint32_t c_iidr;
+
     /* The APR is implementation defined, so we choose a layout identical to
      * the KVM ABI layout for QEMU's implementation of the gic:
      * If an interrupt for preemption level X is active, then

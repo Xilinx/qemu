@@ -154,6 +154,10 @@ static void arm_gic_common_reset(DeviceState *dev)
             s->irq_target[i] = 1;
         }
     }
+    if (!s->c_iidr) {
+        s->c_iidr |= s->revision << 16;
+        s->c_iidr |= 0x43B;
+    }
     s->enabled = false;
 }
 
@@ -213,6 +217,8 @@ static Property arm_gic_common_properties[] = {
     DEFINE_PROP_BOOL("disable-linux-gic-init", GICState,
                      disable_linux_gic_init, false),
     DEFINE_PROP_UINT32("map-stride", GICState, map_stride, 0x1000),
+    /* We set this later if it isn't set */
+    DEFINE_PROP_UINT32("int-id", GICState, c_iidr, 0),
     DEFINE_PROP_END_OF_LIST(),
 };
 
