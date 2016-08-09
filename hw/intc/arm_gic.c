@@ -1032,11 +1032,6 @@ static uint32_t gic_cpu_read(GICState *s, int cpu, int offset, bool secure)
 {
     bool virt = cpu >= GIC_N_REALCPU;
 
-    /* GIC reg aliasing.  */
-    if (s->revision == 2) {
-        offset &= ~0xf000;
-    }
-
     switch (offset) {
     case 0x00: /* Control */
         return gicc_encode_ctrl(s, cpu, secure);
@@ -1074,11 +1069,6 @@ static uint32_t gic_cpu_read(GICState *s, int cpu, int offset, bool secure)
 static void gic_cpu_write(GICState *s, int cpu, int offset, uint32_t value, bool secure)
 {
     bool virt = cpu >= GIC_N_REALCPU;
-
-    /* GIC reg aliasing.  */
-    if (s->revision == 2) {
-        offset &= ~0xf000;
-    }
 
     switch (offset) {
     case 0x00: /* Control */
