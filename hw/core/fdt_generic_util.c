@@ -935,7 +935,23 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
             errp = NULL;
             if (linked_dev) {
                 object_property_set_link(OBJECT(dev), linked_dev, propname,
-                                         &error_abort);
+                                         &errp);
+                if (errp) {
+                    /* Unable to set the property, maybe it is a memory
+                     * alias?
+                     */
+                    MemoryRegion *alias_mr;
+                    int offset = len / 2;
+                    alias_mr =
+                        sysbus_mmio_get_region(SYS_BUS_DEVICE(linked_dev),
+                                               get_int_be(val + offset,
+                                                          len - offset));
+
+                    object_property_set_link(OBJECT(dev), OBJECT(alias_mr),
+                                             propname, &error_abort);
+
+                    errp = NULL;
+                }
                 DB_PRINT_NP(0, "set link %s\n", propname);
             }
         } else {
