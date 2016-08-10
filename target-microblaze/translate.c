@@ -710,7 +710,8 @@ static void dec_div(DisasContext *dc)
 static void dec_barrel(DisasContext *dc)
 {
     TCGv t0;
-    bool s, t;
+    unsigned int imm_w, imm_s;
+    bool s, t, e;
 
     if ((dc->tb_flags & MSR_EE_FLAG)
           && (dc->cpu->env.pvr.regs[2] & PVR2_ILL_OPCODE_EXC_MASK)
@@ -720,27 +721,38 @@ static void dec_barrel(DisasContext *dc)
         return;
     }
 
+    e = extract32(dc->imm, 14, 1);
     s = extract32(dc->imm, 10, 1);
     t = extract32(dc->imm, 9, 1);
+    imm_w = extract32(dc->imm, 6, 5);
+    imm_s = extract32(dc->imm, 0, 5);
 
-    LOG_DIS("bs%s%s r%d r%d r%d\n",
+    LOG_DIS("bs%s%s%s r%d r%d r%d\n",
+            e ? "e" : "",
             s ? "l" : "r", t ? "a" : "l", dc->rd, dc->ra, dc->rb);
 
-    t0 = tcg_temp_new();
+    if (e) {
+        uint32_t mask = (1UL << imm_w) - 1;
 
-    tcg_gen_mov_tl(t0, *(dec_alu_op_b(dc)));
-    tcg_gen_andi_tl(t0, t0, 31);
-
-    if (s) {
-        tcg_gen_shl_tl(cpu_R[dc->rd], cpu_R[dc->ra], t0);
+        tcg_gen_shri_tl(cpu_R[dc->rd], cpu_R[dc->ra], imm_s);
+        tcg_gen_andi_tl(cpu_R[dc->rd], cpu_R[dc->rd], mask);
     } else {
-        if (t) {
-            tcg_gen_sar_tl(cpu_R[dc->rd], cpu_R[dc->ra], t0);
+        t0 = tcg_temp_new();
+
+        tcg_gen_mov_tl(t0, *(dec_alu_op_b(dc)));
+        tcg_gen_andi_tl(t0, t0, 31);
+
+        if (s) {
+            tcg_gen_shl_tl(cpu_R[dc->rd], cpu_R[dc->ra], t0);
         } else {
-            tcg_gen_shr_tl(cpu_R[dc->rd], cpu_R[dc->ra], t0);
+            if (t) {
+                tcg_gen_sar_tl(cpu_R[dc->rd], cpu_R[dc->ra], t0);
+            } else {
+                tcg_gen_shr_tl(cpu_R[dc->rd], cpu_R[dc->ra], t0);
+            }
         }
+        tcg_temp_free(t0);
     }
-    tcg_temp_free(t0);
 }
 
 static void dec_bit(DisasContext *dc)
