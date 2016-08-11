@@ -639,7 +639,10 @@ static void xilinx_spips_flush_fifo_g(XilinxSPIPS *s)
             }
             /* fallthrough */
         default:
-            s->regs[R_GQSPI_DATA_STS]--;
+            if (s->regs[R_GQSPI_DATA_STS] != 0) {
+                /* Don't let this wrap around */
+                s->regs[R_GQSPI_DATA_STS]--;
+            }
         }
 
         if (AF_EX32(s->regs, GQSPI_GF_SNAPSHOT, RECIEVE)) {
