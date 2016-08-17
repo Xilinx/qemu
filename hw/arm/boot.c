@@ -782,7 +782,7 @@ void arm_load_kernel(ARMCPU *cpu, struct arm_boot_info *info)
 
         fixupcontext[FIXUP_BOARDID] = info->board_id;
 
-        if (fdt_path_offset(info->fdt, "/psci") > 0) {
+        if (info->fdt && (fdt_path_offset(info->fdt, "/psci") > 0)) {
             /* There is a PSCI node in the DTS and the image being loaded is a
              * Linux image. Therefore tell QEMU to handle the PSCI calls as
              * ATF is not loaded.
