@@ -711,7 +711,7 @@ static void dec_barrel(DisasContext *dc)
 {
     TCGv t0;
     unsigned int imm_w, imm_s;
-    bool s, t, e, i;
+    bool s, t, e = 0, i = 0;
 
     if ((dc->tb_flags & MSR_EE_FLAG)
           && (dc->cpu->env.pvr.regs[2] & PVR2_ILL_OPCODE_EXC_MASK)
@@ -721,8 +721,11 @@ static void dec_barrel(DisasContext *dc)
         return;
     }
 
-    i = extract32(dc->imm, 15, 1);
-    e = extract32(dc->imm, 14, 1);
+    if (dc->type_b) {
+        /* Insert and extract are only available in immediate mode.  */
+        i = extract32(dc->imm, 15, 1);
+        e = extract32(dc->imm, 14, 1);
+    }
     s = extract32(dc->imm, 10, 1);
     t = extract32(dc->imm, 9, 1);
     imm_w = extract32(dc->imm, 6, 5);
