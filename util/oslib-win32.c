@@ -470,3 +470,14 @@ void os_mem_prealloc(int fd, char *area, size_t memory)
         memset(area + pagesize * i, 0, 1);
     }
 }
+
+/* Backported from recent QEMU for compat reasons with remote-port.  */
+ssize_t qemu_send_wrap(int sockfd, const void *buf, size_t len, int flags)
+{
+    int ret;
+    ret = send(sockfd, buf, len, flags);
+    if (ret < 0) {
+        errno = socket_error();
+    }
+    return ret;
+}
