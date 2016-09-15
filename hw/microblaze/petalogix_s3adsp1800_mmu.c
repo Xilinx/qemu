@@ -98,8 +98,8 @@ petalogix_s3adsp1800_init(MachineState *machine)
                          1 << ETHLITE_IRQ | 1 << UARTLITE_IRQ);
     qdev_init_nofail(dev);
     sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, INTC_BASEADDR);
-    sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0,
-                       qdev_get_gpio_in(DEVICE(cpu), MB_CPU_IRQ));
+    qdev_connect_gpio_out_named(DEVICE(dev), "Outputs", 0,
+                                qdev_get_gpio_in(DEVICE(cpu), MB_CPU_IRQ));
     for (i = 0; i < 32; i++) {
         irq[i] = qdev_get_gpio_in(dev, i);
     }

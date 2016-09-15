@@ -125,8 +125,8 @@ petalogix_ml605_init(MachineState *machine)
     qdev_init_nofail(dev);
     memory_region_add_subregion(cpu_mr, INTC_BASEADDR,
                                 sysbus_mmio_get_region(SYS_BUS_DEVICE(dev), 0));
-    sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0,
-                       qdev_get_gpio_in(DEVICE(cpu), MB_CPU_IRQ));
+    qdev_connect_gpio_out_named(DEVICE(dev), "Outputs", 0,
+                                qdev_get_gpio_in(DEVICE(cpu), MB_CPU_IRQ));
     for (i = 0; i < 32; i++) {
         irq[i] = qdev_get_gpio_in(dev, i);
     }
