@@ -6280,7 +6280,11 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
 
     ttbr = req->ttbr[stage][0];
     tg = extract32(req->tcr[stage], 14, 2);
-    ps = extract64(req->tcr[stage], 32, 3);
+    if (stage == 1) {
+        ps = extract64(req->tcr[stage], 32, 3);
+    } else {
+        ps = extract64(req->tcr[stage], 16, 3);
+    }
     t0sz = extract32(req->tcr[stage], 0, 6);
     tsz = t0sz;
     req->pa = req->va;
