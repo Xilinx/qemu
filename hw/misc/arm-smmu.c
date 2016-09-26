@@ -6568,7 +6568,7 @@ static bool smmu500_at64(SMMU *s, unsigned int cb, hwaddr va,
 
     req.ttbr[1][1] = s->regs[R_SMMU_CB0_TTBR1_HIGH + cb_offset];
     req.ttbr[1][1] <<= 32;
-    req.ttbr[1][1] = s->regs[R_SMMU_CB0_TTBR1_LOW + cb_offset];
+    req.ttbr[1][1] |= s->regs[R_SMMU_CB0_TTBR1_LOW + cb_offset];
 
     if (req.s2_enabled) {
         req.tcr[2] = s->regs[R_SMMU_CB0_TCR_LPAE + cb2_offset];
