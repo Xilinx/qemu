@@ -7,16 +7,15 @@ the COPYING file in the top-level directory.
 The 'loader' device allows the user to load multiple images or values into
 QEMU at startup.
 
-Loading Memory Values
+Loading Data into Memory Values
 ---------------------
 The loader device allows memory values to be set from the command line. This
 can be done by following the syntax below:
 
-    -device loader,addr=<addr>,data=<data>,data-len=<len>
-    -device loader,addr=<addr>,cpu-num=<cpu-num>
+     -device loader,addr=<addr>,data=<data>,data-len=<data-len>
+                   [,data-be=<data-be>][,cpu-num=<cpu-num>]
 
-    <addr>      - The address to store the data or the value to use as the
-                  CPU's PC.
+    <addr>      - The address to store the data in.
     <data>      - The value to be written to the address. The maximum size of
                   the data is 8 bytes.
     <data-len>  - The length of the data in bytes. This argument must be
@@ -24,22 +23,43 @@ can be done by following the syntax below:
     <data-be>   - Set to true if the data to be stored on the guest should be
                   written as big endian data. The default is to write little
                   endian data.
-    <cpu-num>   - This will cause the CPU to be reset and the PC to be set to
-                  the value of addr.
+    <cpu-num>   - The number of the CPU's address space where the data should
+                  be loaded. If not specified the address space of the first
+                  CPU is used.
 
-For all values both hex and decimal values are allowed. By default the values
+All values are parsed using the standard QemuOps parsing. This allows the user
+to specify any values in any format supported. By default the values
 will be parsed as decimal. To use hex values the user should prefix the number
 with a '0x'.
 
 An example of loading value 0x8000000e to address 0xfd1a0104 is:
     -device loader,addr=0xfd1a0104,data=0x8000000e,data-len=4
 
+Setting a CPU's Program Counter
+---------------------
+The loader device allows the CPU's PC to be set from the command line. This
+can be done by following the syntax below:
+
+     -device loader,addr=<addr>,cpu-num=<cpu-num>
+
+    <addr>      - The value to use as the CPU's PC.
+    <cpu-num>   - The number of the CPU whose PC should be set to the
+                  specified value.
+
+All values are parsed using the standard QemuOps parsing. This allows the user
+to specify any values in any format supported. By default the values
+will be parsed as decimal. To use hex values the user should prefix the number
+with a '0x'.
+
+An example of setting CPU 0's PC to 0x8000 is:
+    -device loader,addr=0x8000,cpu-num=0
+
 Loading Files
--------------
+---------------------
 The loader device also allows files to be loaded into memory. This can be done
 similarly to setting memory values. The syntax is shown below:
 
-    -device loader,file=<file>,addr=<addr>,cpu-num=<cpu-num>,force-raw=<raw>
+    -device loader,file=<file>[,addr=<addr>][,cpu-num=<cpu-num>][,force-raw=<raw>]
 
     <file>      - A file to be loaded into memory
     <addr>      - The addr in memory that the file should be loaded. This is
@@ -51,11 +71,12 @@ similarly to setting memory values. The syntax is shown below:
                   the value in the header. This option should only be used
                   for the boot image.
                   This will also cause the image to be written to the specified
-                  CPUs address space.
+                  CPU's address space. If not specified, the default is CPU 0.
     <force-raw> - Forces the file to be treated as a raw image. This can be
                   used to specify the load address of ELF files.
 
-For all values both hex and decimal values are allowed. By default the values
+All values are parsed using the standard QemuOps parsing. This allows the user
+to specify any values in any format supported. By default the values
 will be parsed as decimal. To use hex values the user should prefix the number
 with a '0x'.
 
