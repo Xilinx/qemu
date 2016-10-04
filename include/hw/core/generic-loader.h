@@ -36,6 +36,7 @@ typedef struct GenericLoaderState {
 
     bool force_raw;
     bool data_be;
+    bool set_pc;
 } GenericLoaderState;
 
 #define TYPE_GENERIC_LOADER "loader"
