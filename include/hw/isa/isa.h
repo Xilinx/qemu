@@ -3,8 +3,8 @@
 
 /* ISA bus */
 
-#include "exec/ioport.h"
 #include "exec/memory.h"
+#include "exec/ioport.h"
 #include "hw/qdev.h"
 
 #define ISA_NUM_IRQS 16
@@ -21,11 +21,56 @@
 #define ISA_BUS(obj) OBJECT_CHECK(ISABus, (obj), TYPE_ISA_BUS)
 
 #define TYPE_APPLE_SMC "isa-applesmc"
+#define APPLESMC_MAX_DATA_LENGTH       32
+#define APPLESMC_PROP_IO_BASE "iobase"
 
-static inline bool applesmc_find(void)
+static inline uint16_t applesmc_port(void)
 {
-    return object_resolve_path_type("", TYPE_APPLE_SMC, NULL);
+    Object *obj = object_resolve_path_type("", TYPE_APPLE_SMC, NULL);
+
+    if (obj) {
+        return object_property_get_int(obj, APPLESMC_PROP_IO_BASE, NULL);
+    }
+    return 0;
 }
+
+#define TYPE_ISADMA "isa-dma"
+
+#define ISADMA_CLASS(klass) \
+    OBJECT_CLASS_CHECK(IsaDmaClass, (klass), TYPE_ISADMA)
+#define ISADMA_GET_CLASS(obj) \
+    OBJECT_GET_CLASS(IsaDmaClass, (obj), TYPE_ISADMA)
+#define ISADMA(obj) \
+    INTERFACE_CHECK(IsaDma, (obj), TYPE_ISADMA)
+
+struct IsaDma {
+    Object parent;
+};
+
+typedef enum {
+    ISADMA_TRANSFER_VERIFY,
+    ISADMA_TRANSFER_READ,
+    ISADMA_TRANSFER_WRITE,
+    ISADMA_TRANSFER_ILLEGAL,
+} IsaDmaTransferMode;
+
+typedef int (*IsaDmaTransferHandler)(void *opaque, int nchan, int pos,
+                                     int size);
+
+typedef struct IsaDmaClass {
+    InterfaceClass parent;
+
+    IsaDmaTransferMode (*get_transfer_mode)(IsaDma *obj, int nchan);
+    bool (*has_autoinitialization)(IsaDma *obj, int nchan);
+    int (*read_memory)(IsaDma *obj, int nchan, void *buf, int pos, int len);
+    int (*write_memory)(IsaDma *obj, int nchan, void *buf, int pos, int len);
+    void (*hold_DREQ)(IsaDma *obj, int nchan);
+    void (*release_DREQ)(IsaDma *obj, int nchan);
+    void (*schedule)(IsaDma *obj);
+    void (*register_channel)(IsaDma *obj, int nchan,
+                             IsaDmaTransferHandler transfer_handler,
+                             void *opaque);
+} IsaDmaClass;
 
 typedef struct ISADeviceClass {
     DeviceClass parent_class;
@@ -36,8 +81,10 @@ struct ISABus {
     BusState parent_obj;
     /*< public >*/
 
+    MemoryRegion *address_space;
     MemoryRegion *address_space_io;
     qemu_irq *irqs;
+    IsaDma *dma[2];
 };
 
 struct ISADevice {
@@ -50,10 +97,13 @@ struct ISADevice {
     int ioport_id;
 };
 
-ISABus *isa_bus_new(DeviceState *dev, MemoryRegion *address_space_io);
+ISABus *isa_bus_new(DeviceState *dev, MemoryRegion *address_space,
+                    MemoryRegion *address_space_io, Error **errp);
 void isa_bus_irqs(ISABus *bus, qemu_irq *irqs);
 qemu_irq isa_get_irq(ISADevice *dev, int isairq);
 void isa_init_irq(ISADevice *dev, qemu_irq *p, int isairq);
+void isa_bus_dma(ISABus *bus, IsaDma *dma8, IsaDma *dma16);
+IsaDma *isa_get_dma(ISABus *bus, int nchan);
 MemoryRegion *isa_address_space(ISADevice *dev);
 MemoryRegion *isa_address_space_io(ISADevice *dev);
 ISADevice *isa_create(ISABus *bus, const char *name);
@@ -97,17 +147,6 @@ static inline ISABus *isa_bus_from_device(ISADevice *d)
     return ISA_BUS(qdev_get_parent_bus(DEVICE(d)));
 }
 
-extern hwaddr isa_mem_base;
-
-/* dma.c */
-int DMA_get_channel_mode (int nchan);
-int DMA_read_memory (int nchan, void *buf, int pos, int size);
-int DMA_write_memory (int nchan, void *buf, int pos, int size);
-void DMA_hold_DREQ (int nchan);
-void DMA_release_DREQ (int nchan);
-void DMA_schedule(int nchan);
-void DMA_init(int high_page_enable, qemu_irq *cpu_request_exit);
-void DMA_register_channel (int nchan,
-                           DMA_transfer_handler transfer_handler,
-                           void *opaque);
+/* i8257.c */
+void DMA_init(ISABus *bus, int high_page_enable);
 #endif

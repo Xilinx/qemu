@@ -52,11 +52,20 @@ case $line in
     done
     echo "    NULL"
     ;;
- CONFIG_*=y) # configuration
+ CONFIG_*='$(CONFIG_SOFTMMU)'|CONFIG_*=y) # configuration
     name=${line%=*}
     echo "#define $name 1"
     ;;
  CONFIG_*=*) # configuration
+    name=${line%=*}
+    value=${line#*=}
+    echo "#define $name $value"
+    ;;
+ HAVE_*=y) # configuration
+    name=${line%=*}
+    echo "#define $name 1"
+    ;;
+ HAVE_*=*) # configuration
     name=${line%=*}
     value=${line#*=}
     echo "#define $name $value"

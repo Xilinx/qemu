@@ -37,8 +37,6 @@ typedef struct {
 
     /*< public >*/
     MemoryRegion iomem;
-    bool ttrig_polarity;
-
     uint32_t r[CADENCE_UART_R_MAX];
     uint8_t rx_fifo[CADENCE_UART_RX_FIFO_SIZE];
     uint8_t tx_fifo[CADENCE_UART_TX_FIFO_SIZE];
@@ -49,9 +47,6 @@ typedef struct {
     CharDriverState *chr;
     qemu_irq irq;
     QEMUTimer *fifo_trigger_handle;
-
-    /* debug only */
-    bool old_irq;
 } CadenceUARTState;
 
 #define CADENCE_UART_H

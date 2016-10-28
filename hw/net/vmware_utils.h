@@ -18,10 +18,7 @@
 #define VMWARE_UTILS_H
 
 #include "qemu/range.h"
-
-#ifndef VMW_SHPRN
-#define VMW_SHPRN(fmt, ...) do {} while (0)
-#endif
+#include "vmxnet_debug.h"
 
 /*
  * Shared memory access functions with byte swap support
@@ -52,7 +49,7 @@ vmw_shmem_rw(hwaddr addr, void *buf, int len, int is_write)
 }
 
 static inline void
-vmw_shmem_set(hwaddr addr, uint8 val, int len)
+vmw_shmem_set(hwaddr addr, uint8_t val, int len)
 {
     int i;
     VMW_SHPRN("SHMEM set: %" PRIx64 ", len: %d (value 0x%X)", addr, len, val);

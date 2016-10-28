@@ -22,12 +22,13 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include <glib.h>
 
 #include "qemu-common.h"
 #include "migration/migration.h"
 #include "migration/vmstate.h"
-#include "block/coroutine.h"
+#include "qemu/coroutine.h"
 
 static char temp_file[] = "/tmp/vmst.test.XXXXXX";
 static int temp_fd;
@@ -60,16 +61,6 @@ static QEMUFile *open_test_file(bool write)
     return qemu_fdopen(fd, write ? "wb" : "rb");
 }
 
-/* Open a read-only qemu-file from an existing memory block */
-static QEMUFile *open_mem_file_read(const void *data, size_t len)
-{
-    /* The qsb gets freed by qemu_fclose */
-    QEMUSizedBuffer *qsb = qsb_create(data, len);
-    g_assert(qsb);
-
-    return qemu_bufopen("r", qsb);
-}
-
 /*
  * Check that the contents of the memory-buffered file f match
  * the given size/data.
@@ -95,7 +86,7 @@ static void save_vmstate(const VMStateDescription *desc, void *obj)
     QEMUFile *f = open_test_file(true);
 
     /* Save file with vmstate */
-    vmstate_save_state(f, desc, obj);
+    vmstate_save_state(f, desc, obj, NULL);
     qemu_put_byte(f, QEMU_VM_EOF);
     g_assert(!qemu_file_get_error(f));
     qemu_fclose(f);
@@ -404,7 +395,7 @@ static void test_save_noskip(void)
     QEMUFile *fsave = qemu_bufopen("w", NULL);
     TestStruct obj = { .a = 1, .b = 2, .c = 3, .d = 4, .e = 5, .f = 6,
                        .skip_c_e = false };
-    vmstate_save_state(fsave, &vmstate_skipping, &obj);
+    vmstate_save_state(fsave, &vmstate_skipping, &obj, NULL);
     g_assert(!qemu_file_get_error(fsave));
 
     uint8_t expected[] = {
@@ -424,7 +415,7 @@ static void test_save_skip(void)
     QEMUFile *fsave = qemu_bufopen("w", NULL);
     TestStruct obj = { .a = 1, .b = 2, .c = 3, .d = 4, .e = 5, .f = 6,
                        .skip_c_e = true };
-    vmstate_save_state(fsave, &vmstate_skipping, &obj);
+    vmstate_save_state(fsave, &vmstate_skipping, &obj, NULL);
     g_assert(!qemu_file_get_error(fsave));
 
     uint8_t expected[] = {
@@ -450,7 +441,9 @@ static void test_load_noskip(void)
         QEMU_VM_EOF, /* just to ensure we won't get EOF reported prematurely */
     };
 
-    QEMUFile *loading = open_mem_file_read(buf, sizeof(buf));
+    QEMUSizedBuffer *qsb = qsb_create(buf, sizeof(buf));
+    g_assert(qsb);
+    QEMUFile *loading = qemu_bufopen("r", qsb);
     TestStruct obj = { .skip_c_e = false };
     vmstate_load_state(loading, &vmstate_skipping, &obj, 2);
     g_assert(!qemu_file_get_error(loading));
@@ -461,6 +454,7 @@ static void test_load_noskip(void)
     g_assert_cmpint(obj.e, ==, 50);
     g_assert_cmpint(obj.f, ==, 60);
     qemu_fclose(loading);
+    qsb_free(qsb);
 }
 
 static void test_load_skip(void)
@@ -473,7 +467,9 @@ static void test_load_skip(void)
         QEMU_VM_EOF, /* just to ensure we won't get EOF reported prematurely */
     };
 
-    QEMUFile *loading = open_mem_file_read(buf, sizeof(buf));
+    QEMUSizedBuffer *qsb = qsb_create(buf, sizeof(buf));
+    g_assert(qsb);
+    QEMUFile *loading = qemu_bufopen("r", qsb);
     TestStruct obj = { .skip_c_e = true, .c = 300, .e = 500 };
     vmstate_load_state(loading, &vmstate_skipping, &obj, 2);
     g_assert(!qemu_file_get_error(loading));
@@ -484,6 +480,7 @@ static void test_load_skip(void)
     g_assert_cmpint(obj.e, ==, 500);
     g_assert_cmpint(obj.f, ==, 60);
     qemu_fclose(loading);
+    qsb_free(qsb);
 }
 
 int main(int argc, char **argv)

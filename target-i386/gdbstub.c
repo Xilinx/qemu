@@ -17,7 +17,7 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
-#include "config.h"
+#include "qemu/osdep.h"
 #include "qemu-common.h"
 #include "exec/gdbstub.h"
 
@@ -61,8 +61,8 @@ int x86_cpu_gdb_read_register(CPUState *cs, uint8_t *mem_buf, int n)
         n -= IDX_XMM_REGS;
         if (n < CPU_NB_REGS32 ||
             (TARGET_LONG_BITS == 64 && env->hflags & HF_CS64_MASK)) {
-            stq_p(mem_buf, env->xmm_regs[n].XMM_Q(0));
-            stq_p(mem_buf + 8, env->xmm_regs[n].XMM_Q(1));
+            stq_p(mem_buf, env->xmm_regs[n].ZMM_Q(0));
+            stq_p(mem_buf + 8, env->xmm_regs[n].ZMM_Q(1));
             return 16;
         }
     } else {
@@ -170,8 +170,8 @@ int x86_cpu_gdb_write_register(CPUState *cs, uint8_t *mem_buf, int n)
         n -= IDX_XMM_REGS;
         if (n < CPU_NB_REGS32 ||
             (TARGET_LONG_BITS == 64 && env->hflags & HF_CS64_MASK)) {
-            env->xmm_regs[n].XMM_Q(0) = ldq_p(mem_buf);
-            env->xmm_regs[n].XMM_Q(1) = ldq_p(mem_buf + 8);
+            env->xmm_regs[n].ZMM_Q(0) = ldq_p(mem_buf);
+            env->xmm_regs[n].ZMM_Q(1) = ldq_p(mem_buf + 8);
             return 16;
         }
     } else {

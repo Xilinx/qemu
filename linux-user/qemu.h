@@ -1,22 +1,20 @@
 #ifndef QEMU_H
 #define QEMU_H
 
-#include <signal.h>
-#include <string.h>
 
 #include "cpu.h"
+#include "exec/exec-all.h"
 #include "exec/cpu_ldst.h"
 
 #undef DEBUG_REMAP
 #ifdef DEBUG_REMAP
-#include <stdlib.h>
 #endif /* DEBUG_REMAP */
 
 #include "exec/user/abitypes.h"
 
 #include "exec/user/thunk.h"
 #include "syscall_defs.h"
-#include "syscall.h"
+#include "target_syscall.h"
 #include "exec/gdbstub.h"
 #include "qemu/queue.h"
 
@@ -36,8 +34,6 @@ struct image_info {
         abi_ulong       start_brk;
         abi_ulong       brk;
         abi_ulong       start_mmap;
-        abi_ulong       mmap;
-        abi_ulong       rss;
         abi_ulong       start_stack;
         abi_ulong       stack_limit;
         abi_ulong       entry;
@@ -145,12 +141,6 @@ extern const char *qemu_uname_release;
 extern unsigned long mmap_min_addr;
 
 /* ??? See if we can avoid exposing so much of the loader internals.  */
-/*
- * MAX_ARG_PAGES defines the number of pages allocated for arguments
- * and envelope for the new program. 32 should suffice, this gives
- * a maximum env+arg of 128kB w/4KB pages!
- */
-#define MAX_ARG_PAGES 33
 
 /* Read a good amount of data initially, to hopefully get all the
    program headers loaded.  */
@@ -162,7 +152,6 @@ extern unsigned long mmap_min_addr;
  */
 struct linux_binprm {
         char buf[BPRM_BUF_SIZE] __attribute__((aligned));
-        void *page[MAX_ARG_PAGES];
         abi_ulong p;
 	int fd;
         int e_uid, e_gid;
@@ -261,8 +250,6 @@ abi_long target_mremap(abi_ulong old_addr, abi_ulong old_size,
 int target_msync(abi_ulong start, abi_ulong len, int flags);
 extern unsigned long last_brk;
 extern abi_ulong mmap_next_start;
-void mmap_lock(void);
-void mmap_unlock(void);
 abi_ulong mmap_find_vma(abi_ulong, abi_ulong);
 void cpu_list_lock(void);
 void cpu_list_unlock(void);

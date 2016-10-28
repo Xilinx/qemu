@@ -44,10 +44,12 @@ typedef struct VirtioBusClass {
     void (*notify)(DeviceState *d, uint16_t vector);
     void (*save_config)(DeviceState *d, QEMUFile *f);
     void (*save_queue)(DeviceState *d, int n, QEMUFile *f);
+    void (*save_extra_state)(DeviceState *d, QEMUFile *f);
     int (*load_config)(DeviceState *d, QEMUFile *f);
     int (*load_queue)(DeviceState *d, int n, QEMUFile *f);
     int (*load_done)(DeviceState *d, QEMUFile *f);
-    unsigned (*get_features)(DeviceState *d);
+    int (*load_extra_state)(DeviceState *d, QEMUFile *f);
+    bool (*has_extra_state)(DeviceState *d);
     bool (*query_guest_notifiers)(DeviceState *d);
     int (*set_guest_notifiers)(DeviceState *d, int nvqs, bool assign);
     int (*set_host_notifier)(DeviceState *d, int n, bool assigned);
@@ -56,12 +58,18 @@ typedef struct VirtioBusClass {
      * transport independent init function.
      * This is called by virtio-bus just after the device is plugged.
      */
-    void (*device_plugged)(DeviceState *d);
+    void (*device_plugged)(DeviceState *d, Error **errp);
+    /*
+     * Re-evaluate setup after feature bits have been validated
+     * by the device backend.
+     */
+    void (*post_plugged)(DeviceState *d, Error **errp);
     /*
      * transport independent exit function.
      * This is called by virtio-bus just before the device is unplugged.
      */
     void (*device_unplugged)(DeviceState *d);
+    int (*query_nvectors)(DeviceState *d);
     /*
      * Does the transport have variable vring alignment?
      * (ie can it ever call virtio_queue_set_align()?)
@@ -74,7 +82,7 @@ struct VirtioBusState {
     BusState parent_obj;
 };
 
-int virtio_bus_device_plugged(VirtIODevice *vdev);
+void virtio_bus_device_plugged(VirtIODevice *vdev, Error **errp);
 void virtio_bus_reset(VirtioBusState *bus);
 void virtio_bus_device_unplugged(VirtIODevice *bus);
 /* Get the device id of the plugged device. */
@@ -84,9 +92,6 @@ size_t virtio_bus_get_vdev_config_len(VirtioBusState *bus);
 /* Get the features of the plugged device. */
 uint32_t virtio_bus_get_vdev_features(VirtioBusState *bus,
                                     uint32_t requested_features);
-/* Set the features of the plugged device. */
-void virtio_bus_set_vdev_features(VirtioBusState *bus,
-                                  uint32_t requested_features);
 /* Get bad features of the plugged device. */
 uint32_t virtio_bus_get_vdev_bad_features(VirtioBusState *bus);
 /* Get config of the plugged device. */

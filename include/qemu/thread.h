@@ -1,8 +1,6 @@
 #ifndef __QEMU_THREAD_H
 #define __QEMU_THREAD_H 1
 
-#include <inttypes.h>
-#include <stdbool.h>
 
 typedef struct QemuMutex QemuMutex;
 typedef struct QemuCond QemuCond;
@@ -24,9 +22,6 @@ void qemu_mutex_destroy(QemuMutex *mutex);
 void qemu_mutex_lock(QemuMutex *mutex);
 int qemu_mutex_trylock(QemuMutex *mutex);
 void qemu_mutex_unlock(QemuMutex *mutex);
-
-#define rcu_read_lock() do { } while (0)
-#define rcu_read_unlock() do { } while (0)
 
 void qemu_cond_init(QemuCond *cond);
 void qemu_cond_destroy(QemuCond *cond);
@@ -60,5 +55,9 @@ void qemu_thread_get_self(QemuThread *thread);
 bool qemu_thread_is_self(QemuThread *thread);
 void qemu_thread_exit(void *retval);
 void qemu_thread_naming(bool enable);
+
+struct Notifier;
+void qemu_thread_atexit_add(struct Notifier *notifier);
+void qemu_thread_atexit_remove(struct Notifier *notifier);
 
 #endif

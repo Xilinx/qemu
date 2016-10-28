@@ -16,8 +16,10 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
+#include "qemu/osdep.h"
 #include <hw/hw.h>
 #include "sysemu/dma.h"
+#include "qapi/error.h"
 #include "qemu/error-report.h"
 #include <hw/ide/internal.h>
 #include "sysemu/block-backend.h"
@@ -118,7 +120,8 @@ IDEDevice *ide_create_drive(IDEBus *bus, int unit, DriveInfo *drive)
 
     dev = qdev_create(&bus->qbus, drive->media_cd ? "ide-cd" : "ide-hd");
     qdev_prop_set_uint32(dev, "unit", unit);
-    qdev_prop_set_drive_nofail(dev, "drive", blk_by_legacy_dinfo(drive));
+    qdev_prop_set_drive(dev, "drive", blk_by_legacy_dinfo(drive),
+                        &error_fatal);
     qdev_init_nofail(dev);
     return DO_UPCAST(IDEDevice, qdev, dev);
 }
@@ -163,6 +166,7 @@ static int ide_dev_initfn(IDEDevice *dev, IDEDriveKind kind)
         return -1;
     }
 
+    blkconf_blocksizes(&dev->conf);
     if (dev->conf.logical_block_size != 512) {
         error_report("logical_block_size must be 512 for IDE");
         return -1;
@@ -170,10 +174,9 @@ static int ide_dev_initfn(IDEDevice *dev, IDEDriveKind kind)
 
     blkconf_serial(&dev->conf, &dev->serial);
     if (kind != IDE_CD) {
-        blkconf_geometry(&dev->conf, &dev->chs_trans, 65536, 16, 255, &err);
+        blkconf_geometry(&dev->conf, &dev->chs_trans, 65535, 16, 255, &err);
         if (err) {
-            error_report("%s", error_get_pretty(err));
-            error_free(err);
+            error_report_err(err);
             return -1;
         }
     }
@@ -198,22 +201,22 @@ static int ide_dev_initfn(IDEDevice *dev, IDEDriveKind kind)
     return 0;
 }
 
-static void ide_dev_get_bootindex(Object *obj, Visitor *v, void *opaque,
-                                  const char *name, Error **errp)
+static void ide_dev_get_bootindex(Object *obj, Visitor *v, const char *name,
+                                  void *opaque, Error **errp)
 {
     IDEDevice *d = IDE_DEVICE(obj);
 
-    visit_type_int32(v, &d->conf.bootindex, name, errp);
+    visit_type_int32(v, name, &d->conf.bootindex, errp);
 }
 
-static void ide_dev_set_bootindex(Object *obj, Visitor *v, void *opaque,
-                                  const char *name, Error **errp)
+static void ide_dev_set_bootindex(Object *obj, Visitor *v, const char *name,
+                                  void *opaque, Error **errp)
 {
     IDEDevice *d = IDE_DEVICE(obj);
     int32_t boot_index;
     Error *local_err = NULL;
 
-    visit_type_int32(v, &boot_index, name, &local_err);
+    visit_type_int32(v, name, &boot_index, &local_err);
     if (local_err) {
         goto out;
     }

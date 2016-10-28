@@ -17,6 +17,7 @@
  * GNU GPL, version 2 or (at your option) any later version.
  */
 
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/audio/audio.h"
 #include "audio/audio.h"
@@ -1323,7 +1324,7 @@ static const MemoryRegionOps ac97_io_nabm_ops = {
 
 static void ac97_on_reset (DeviceState *dev)
 {
-    AC97LinkState *s = (AC97LinkState *)dev;
+    AC97LinkState *s = container_of(dev, AC97LinkState, dev.qdev);
 
     reset_bm_regs (s, &s->bm_regs[0]);
     reset_bm_regs (s, &s->bm_regs[1]);
@@ -1337,7 +1338,7 @@ static void ac97_on_reset (DeviceState *dev)
     mixer_reset (s);
 }
 
-static int ac97_initfn (PCIDevice *dev)
+static void ac97_realize(PCIDevice *dev, Error **errp)
 {
     AC97LinkState *s = DO_UPCAST (AC97LinkState, dev, dev);
     uint8_t *c = s->dev.config;
@@ -1383,8 +1384,7 @@ static int ac97_initfn (PCIDevice *dev)
     pci_register_bar (&s->dev, 0, PCI_BASE_ADDRESS_SPACE_IO, &s->io_nam);
     pci_register_bar (&s->dev, 1, PCI_BASE_ADDRESS_SPACE_IO, &s->io_nabm);
     AUD_register_card ("ac97", &s->card);
-    ac97_on_reset (DEVICE(&s->dev));
-    return 0;
+    ac97_on_reset (&s->dev.qdev);
 }
 
 static int ac97_init (PCIBus *bus)
@@ -1403,7 +1403,7 @@ static void ac97_class_init (ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS (klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS (klass);
 
-    k->init = ac97_initfn;
+    k->realize = ac97_realize;
     k->vendor_id = PCI_VENDOR_ID_INTEL;
     k->device_id = PCI_DEVICE_ID_INTEL_82801AA_5;
     k->revision = 0x01;

@@ -22,6 +22,7 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/sysbus.h"
 #include "hw/char/escc.h"
@@ -714,7 +715,7 @@ MemoryRegion *escc_init(hwaddr base, qemu_irq irqA, qemu_irq irqB,
     return &d->mmio;
 }
 
-static const uint8_t qcode_to_keycode[Q_KEY_CODE_MAX] = {
+static const uint8_t qcode_to_keycode[Q_KEY_CODE__MAX] = {
     [Q_KEY_CODE_SHIFT]         = 99,
     [Q_KEY_CODE_SHIFT_R]       = 110,
     [Q_KEY_CODE_ALT]           = 19,
@@ -841,14 +842,16 @@ static void sunkbd_handle_event(DeviceState *dev, QemuConsole *src,
 {
     ChannelState *s = (ChannelState *)dev;
     int qcode, keycode;
+    InputKeyEvent *key;
 
-    assert(evt->kind == INPUT_EVENT_KIND_KEY);
-    qcode = qemu_input_key_value_to_qcode(evt->key->key);
+    assert(evt->type == INPUT_EVENT_KIND_KEY);
+    key = evt->u.key.data;
+    qcode = qemu_input_key_value_to_qcode(key->key);
     trace_escc_sunkbd_event_in(qcode, QKeyCode_lookup[qcode],
-                               evt->key->down);
+                               key->down);
 
     if (qcode == Q_KEY_CODE_CAPS_LOCK) {
-        if (evt->key->down) {
+        if (key->down) {
             s->caps_lock_mode ^= 1;
             if (s->caps_lock_mode == 2) {
                 return; /* Drop second press */
@@ -862,7 +865,7 @@ static void sunkbd_handle_event(DeviceState *dev, QemuConsole *src,
     }
 
     if (qcode == Q_KEY_CODE_NUM_LOCK) {
-        if (evt->key->down) {
+        if (key->down) {
             s->num_lock_mode ^= 1;
             if (s->num_lock_mode == 2) {
                 return; /* Drop second press */
@@ -876,7 +879,7 @@ static void sunkbd_handle_event(DeviceState *dev, QemuConsole *src,
     }
 
     keycode = qcode_to_keycode[qcode];
-    if (!evt->key->down) {
+    if (!key->down) {
         keycode |= 0x80;
     }
     trace_escc_sunkbd_event_out(keycode);
@@ -1035,6 +1038,7 @@ static void escc_class_init(ObjectClass *klass, void *data)
     dc->reset = escc_reset;
     dc->vmsd = &vmstate_escc;
     dc->props = escc_properties;
+    set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
 }
 
 static const TypeInfo escc_info = {

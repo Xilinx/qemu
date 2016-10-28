@@ -16,15 +16,16 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
+#include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "hw/hw.h"
 #include "monitor/monitor.h"
 #include "hw/sysbus.h"
 #include "sysemu/sysemu.h"
 #include "hw/isa/isa.h"
-#include "exec/address-spaces.h"
+#include "hw/i386/pc.h"
 
 static ISABus *isabus;
-hwaddr isa_mem_base = 0;
 
 static void isabus_dev_print(Monitor *mon, DeviceState *dev, int indent);
 static char *isabus_get_fw_dev_path(DeviceState *dev);
@@ -37,6 +38,12 @@ static void isa_bus_class_init(ObjectClass *klass, void *data)
     k->get_fw_dev_path = isabus_get_fw_dev_path;
 }
 
+static const TypeInfo isa_dma_info = {
+    .name = TYPE_ISADMA,
+    .parent = TYPE_INTERFACE,
+    .class_size = sizeof(IsaDmaClass),
+};
+
 static const TypeInfo isa_bus_info = {
     .name = TYPE_ISA_BUS,
     .parent = TYPE_BUS,
@@ -44,10 +51,11 @@ static const TypeInfo isa_bus_info = {
     .class_init = isa_bus_class_init,
 };
 
-ISABus *isa_bus_new(DeviceState *dev, MemoryRegion *address_space_io)
+ISABus *isa_bus_new(DeviceState *dev, MemoryRegion* address_space,
+                    MemoryRegion *address_space_io, Error **errp)
 {
     if (isabus) {
-        fprintf(stderr, "Can't create a second ISA bus\n");
+        error_setg(errp, "Can't create a second ISA bus");
         return NULL;
     }
     if (!dev) {
@@ -56,15 +64,13 @@ ISABus *isa_bus_new(DeviceState *dev, MemoryRegion *address_space_io)
     }
 
     isabus = ISA_BUS(qbus_create(TYPE_ISA_BUS, dev, NULL));
+    isabus->address_space = address_space;
     isabus->address_space_io = address_space_io;
     return isabus;
 }
 
 void isa_bus_irqs(ISABus *bus, qemu_irq *irqs)
 {
-    if (!bus) {
-        hw_error("Can't set isa irqs with no isa bus present.");
-    }
     bus->irqs = irqs;
 }
 
@@ -89,6 +95,20 @@ void isa_init_irq(ISADevice *dev, qemu_irq *p, int isairq)
     dev->isairq[dev->nirqs] = isairq;
     *p = isa_get_irq(dev, isairq);
     dev->nirqs++;
+}
+
+void isa_bus_dma(ISABus *bus, IsaDma *dma8, IsaDma *dma16)
+{
+    assert(bus && dma8 && dma16);
+    assert(!bus->dma[0] && !bus->dma[1]);
+    bus->dma[0] = dma8;
+    bus->dma[1] = dma16;
+}
+
+IsaDma *isa_get_dma(ISABus *bus, int nchan)
+{
+    assert(bus);
+    return bus->dma[nchan > 3 ? 1 : 0];
 }
 
 static inline void isa_init_ioport(ISADevice *dev, uint16_t ioport)
@@ -136,10 +156,6 @@ ISADevice *isa_create(ISABus *bus, const char *name)
 {
     DeviceState *dev;
 
-    if (!bus) {
-        hw_error("Tried to create isa device %s with no isa bus present.",
-                 name);
-    }
     dev = qdev_create(BUS(bus), name);
     return ISA_DEVICE(dev);
 }
@@ -148,10 +164,6 @@ ISADevice *isa_try_create(ISABus *bus, const char *name)
 {
     DeviceState *dev;
 
-    if (!bus) {
-        hw_error("Tried to create isa device %s with no isa bus present.",
-                 name);
-    }
     dev = qdev_try_create(BUS(bus), name);
     return ISA_DEVICE(dev);
 }
@@ -177,6 +189,9 @@ ISADevice *isa_vga_init(ISABus *bus)
         return isa_create_simple(bus, "isa-vga");
     case VGA_VMWARE:
         fprintf(stderr, "%s: vmware_vga: no PCI bus\n", __func__);
+        return NULL;
+    case VGA_VIRTIO:
+        fprintf(stderr, "%s: virtio-vga: no PCI bus\n", __func__);
         return NULL;
     case VGA_NONE:
     default:
@@ -229,6 +244,7 @@ static const TypeInfo isa_device_type_info = {
 
 static void isabus_register_types(void)
 {
+    type_register_static(&isa_dma_info);
     type_register_static(&isa_bus_info);
     type_register_static(&isabus_bridge_info);
     type_register_static(&isa_device_type_info);
@@ -250,7 +266,11 @@ static char *isabus_get_fw_dev_path(DeviceState *dev)
 
 MemoryRegion *isa_address_space(ISADevice *dev)
 {
-    return get_system_memory();
+    if (dev) {
+        return isa_bus_from_device(dev)->address_space;
+    }
+
+    return isabus->address_space;
 }
 
 MemoryRegion *isa_address_space_io(ISADevice *dev)
@@ -263,3 +283,28 @@ MemoryRegion *isa_address_space_io(ISADevice *dev)
 }
 
 type_init(isabus_register_types)
+
+static void parallel_init(ISABus *bus, int index, CharDriverState *chr)
+{
+    DeviceState *dev;
+    ISADevice *isadev;
+
+    isadev = isa_create(bus, "isa-parallel");
+    dev = DEVICE(isadev);
+    qdev_prop_set_uint32(dev, "index", index);
+    qdev_prop_set_chr(dev, "chardev", chr);
+    qdev_init_nofail(dev);
+}
+
+void parallel_hds_isa_init(ISABus *bus, int n)
+{
+    int i;
+
+    assert(n <= MAX_PARALLEL_PORTS);
+
+    for (i = 0; i < n; i++) {
+        if (parallel_hds[i]) {
+            parallel_init(bus, i, parallel_hds[i]);
+        }
+    }
+}

@@ -19,6 +19,7 @@
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
 #include "hw/pci/pci_ids.h"
 #include "hw/pci/msi.h"
 #include "hw/pci/pcie.h"
@@ -60,11 +61,7 @@ static int xio3130_downstream_initfn(PCIDevice *d)
     PCIESlot *s = PCIE_SLOT(d);
     int rc;
 
-    rc = pci_bridge_initfn(d, TYPE_PCIE_BUS);
-    if (rc < 0) {
-        return rc;
-    }
-
+    pci_bridge_initfn(d, TYPE_PCIE_BUS);
     pcie_port_init_reg(d);
 
     rc = msi_init(d, XIO3130_MSI_OFFSET, XIO3130_MSI_NR_VECTOR,
@@ -92,7 +89,7 @@ static int xio3130_downstream_initfn(PCIDevice *d)
         goto err_pcie_cap;
     }
     pcie_cap_arifwd_init(d);
-    rc = pcie_aer_init(d, XIO3130_AER_OFFSET);
+    rc = pcie_aer_init(d, XIO3130_AER_OFFSET, PCI_ERR_SIZEOF);
     if (rc < 0) {
         goto err;
     }

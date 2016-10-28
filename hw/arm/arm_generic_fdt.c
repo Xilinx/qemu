@@ -13,6 +13,9 @@
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
+#include "cpu.h"
+#include "exec/cpu-all.h"
 #include "qemu/config-file.h"
 #include "exec/memory.h"
 #include "exec/address-spaces.h"
@@ -21,7 +24,9 @@
 #include "hw/sysbus.h"
 #include "hw/boards.h"
 #include "hw/loader.h"
+#include "qapi/error.h"
 #include "hw/block/flash.h"
+#include "qemu/error-report.h"
 
 #include <libfdt.h>
 #include "hw/fdt_generic_util.h"
@@ -163,22 +168,21 @@ static struct arm_boot_info arm_generic_fdt_binfo = {};
 
 static void arm_generic_fdt_init(MachineState *machine)
 {
-    ram_addr_t ram_kernel_base = 0, ram_kernel_size = 0;
+    ram_addr_t ram_kernel_base = 0, ram_kernel_size = 0, start_addr;
 
     void *fdt = NULL;
     void *sw_fdt = NULL;
-    int fdt_size, sw_fdt_size;
+    int fdt_size, sw_fdt_size, mem_offset = 0;
     const char *dtb_arg, *hw_dtb_arg;
     char node_path[DT_PATH_LENGTH];
     FDTMachineInfo *fdti;
-    MemoryRegion *main_mem;
+    MemoryRegion *mem_area;
     char *qspi_clone_spi_flash_node_name = NULL;
-
-    /*char *qspi_clone_spi_flash_node_name; */
 
     dtb_arg = qemu_opt_get(qemu_get_machine_opts(), "dtb");
     hw_dtb_arg = qemu_opt_get(qemu_get_machine_opts(), "hw-dtb");
     if (!dtb_arg && !hw_dtb_arg) {
+        fprintf(stderr, "hw_dtb_arg: %s\n", hw_dtb_arg);
         goto no_dtb_arg;
     }
 
@@ -232,13 +236,26 @@ static void arm_generic_fdt_init(MachineState *machine)
     /* Instantiate peripherals from the FDT.  */
     fdti = fdt_generic_create_machine(fdt, NULL);
 
-    main_mem = MEMORY_REGION(object_resolve_path(node_path, NULL));
-    ram_kernel_base = object_property_get_int(OBJECT(main_mem), "addr", NULL);
-    ram_kernel_size = object_property_get_int(OBJECT(main_mem), "size", NULL);
+    mem_area = MEMORY_REGION(object_resolve_path(node_path, NULL));
+    ram_kernel_base = object_property_get_int(OBJECT(mem_area), "addr", NULL);
+    ram_kernel_size = object_property_get_int(OBJECT(mem_area), "size", NULL);
 
-    if (!memory_region_is_mapped(main_mem)) {
-        /* If is not mapped, map it here */
-        memory_region_add_subregion(get_system_memory(), 0, main_mem);
+    if (!strcmp(MACHINE_GET_CLASS(machine)->name, "arm-generic-fdt-plnx")) {
+    do {
+        mem_offset = fdt_node_offset_by_compatible(fdt, mem_offset,
+                                                   "qemu:memory-region");
+        if (mem_offset > 0) {
+            fdt_get_path(fdt, mem_offset, node_path, DT_PATH_LENGTH);
+            mem_area = MEMORY_REGION(object_resolve_path(node_path, NULL));
+
+            if (!memory_region_is_mapped(mem_area)) {
+                start_addr =  object_property_get_int(OBJECT(mem_area),
+                                                      "addr", NULL);
+                memory_region_add_subregion(get_system_memory(), start_addr,
+                                            mem_area);
+            }
+        }
+    } while (mem_offset > 0);
     }
 
     fdt_init_destroy_fdti(fdti);
@@ -342,29 +359,24 @@ static void arm_generic_fdt_init_plnx(MachineState *machine)
 
 }
 
-static QEMUMachine arm_generic_fdt_machine = {
-    .name = MACHINE_NAME,
-    .desc = "ARM device tree driven machine model",
-    .init = arm_generic_fdt_init,
-    .max_cpus = MAX_CPUS,
-};
-
-static QEMUMachine arm_generic_fdt_machine_plnx = {
-    .name = MACHINE_NAME "-plnx",
-    .desc = "ARM device tree driven machine model for PetaLinux Zynq",
-    .init = arm_generic_fdt_init_plnx,
-    .max_cpus = MAX_CPUS,
-};
-
-static void arm_generic_fdt_machine_init(void)
-{
-    qemu_register_machine(&arm_generic_fdt_machine);
-    qemu_register_machine(&arm_generic_fdt_machine_plnx);
-}
-
 int endian = 0;
 
-machine_init(arm_generic_fdt_machine_init);
+static void arm_generic_fdt_machine_init(MachineClass *mc)
+{
+    mc->desc = "ARM device tree driven machine model";
+    mc->init = arm_generic_fdt_init;
+    mc->max_cpus = MAX_CPUS;
+}
+
+static void arm_generic_fdt_plnx_machine_init(MachineClass *mc)
+{
+    mc->desc = "ARM device tree driven machine model for PetaLinux Zynq";
+    mc->init = arm_generic_fdt_init_plnx;
+    mc->max_cpus = MAX_CPUS;
+}
 
 fdt_register_compatibility_opaque(pflash_cfi01_fdt_init,
                                   "compatibile:cfi-flash", 0, &endian);
+
+DEFINE_MACHINE(MACHINE_NAME, arm_generic_fdt_machine_init)
+DEFINE_MACHINE(MACHINE_NAME "-plnx", arm_generic_fdt_plnx_machine_init)

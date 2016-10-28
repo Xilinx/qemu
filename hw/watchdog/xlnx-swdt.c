@@ -24,9 +24,12 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "hw/register.h"
+#include "qemu/timer.h"
 #include "qemu/bitops.h"
+#include "qapi/error.h"
 #include "qemu/log.h"
 
 #include "qapi/qmp/qerror.h"
@@ -249,7 +252,7 @@ static void swdt_realize(DeviceState *dev, Error **errp)
     unsigned int i;
 
     if (!s->pclk) {
-        error_set(errp, QERR_MISSING_PARAMETER, "pclk");
+        error_set(errp, ERROR_CLASS_DEVICE_NOT_FOUND, "pclk");
         return;
     }
 

@@ -103,11 +103,16 @@ typedef struct CUDAState {
     uint8_t last_b;
     uint8_t last_acr;
 
+    /* MacOS 9 is racy and requires a delay upon setting the SR_INT bit */
+    QEMUTimer *sr_delay_timer;
+
     int data_in_size;
     int data_in_index;
     int data_out_index;
 
     qemu_irq irq;
+    uint16_t adb_poll_mask;
+    uint8_t autopoll_rate_ms;
     uint8_t autopoll;
     uint8_t data_in[128];
     uint8_t data_out[16];
@@ -131,7 +136,6 @@ typedef struct MACIOIDEState {
 
     MemoryRegion mem;
     IDEBus bus;
-    BlockAIOCB *aiocb;
     IDEDMA dma;
     void *dbdma;
     bool dma_active;

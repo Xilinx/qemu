@@ -16,6 +16,21 @@ int load_image(const char *filename, uint8_t *addr); /* deprecated */
 ssize_t load_image_size(const char *filename, void *addr, size_t size);
 int load_image_targphys(const char *filename, hwaddr,
                         uint64_t max_sz);
+int load_image_targphys_as(const char *filename,
+                           hwaddr addr, uint64_t max_sz, AddressSpace *as);
+
+/**
+ * load_image_mr: load an image into a memory region
+ * @filename: Path to the image file
+ * @mr: Memory Region to load into
+ *
+ * Load the specified file into the memory region.
+ * The file loaded is registered as a ROM, so its contents will be
+ * reinstated whenever the system is reset.
+ * If the file is larger than the memory region's size the call will fail.
+ * Returns -1 on failure, or the size of the file.
+ */
+int load_image_mr(const char *filename, MemoryRegion *mr);
 
 /* This is the limit on the maximum uncompressed image size that
  * load_image_gzipped_buffer() and load_image_gzipped() will read. It prevents
@@ -32,16 +47,74 @@ int load_image_gzipped(const char *filename, hwaddr addr, uint64_t max_sz);
 #define ELF_LOAD_WRONG_ARCH   -3
 #define ELF_LOAD_WRONG_ENDIAN -4
 const char *load_elf_strerror(int error);
+
+/** load_elf_as:
+ * @filename: Path of ELF file
+ * @translate_fn: optional function to translate load addresses
+ * @translate_opaque: opaque data passed to @translate_fn
+ * @pentry: Populated with program entry point. Ignored if NULL.
+ * @lowaddr: Populated with lowest loaded address. Ignored if NULL.
+ * @highaddr: Populated with highest loaded address. Ignored if NULL.
+ * @bigendian: Expected ELF endianness. 0 for LE otherwise BE
+ * @elf_machine: Expected ELF machine type
+ * @clear_lsb: Set to mask off LSB of addresses (Some architectures use
+ *             this for non-address data)
+ * @data_swab: Set to order of byte swapping for data. 0 for no swap, 1
+ *             for swapping bytes within halfwords, 2 for bytes within
+ *             words and 3 for within doublewords.
+ * @as: The AddressSpace to load the ELF to. The value of address_space_memory
+ *      is used if nothing is supplied here.
+ *
+ * Load an ELF file's contents to the emulated system's address space.
+ * Clients may optionally specify a callback to perform address
+ * translations. @pentry, @lowaddr and @highaddr are optional pointers
+ * which will be populated with various load information. @bigendian and
+ * @elf_machine give the expected endianness and machine for the ELF the
+ * load will fail if the target ELF does not match. Some architectures
+ * have some architecture-specific behaviours that come into effect when
+ * their particular values for @elf_machine are set.
+ * If no @elf_machine is provided the machine will default to the value
+ * in the ELFs header and no checks will be carried out against the
+ * machine type.
+ */
+
+int load_elf_as(const char *filename,
+                uint64_t (*translate_fn)(void *, uint64_t),
+                void *translate_opaque, uint64_t *pentry, uint64_t *lowaddr,
+                uint64_t *highaddr, int big_endian, int elf_machine,
+                int clear_lsb, int data_swab, AddressSpace *as);
+
+/** load_elf:
+ * Same as above, but doesn't allow the caller to specify an AddressSpace
+ */
+
 int load_elf(const char *filename, uint64_t (*translate_fn)(void *, uint64_t),
              void *translate_opaque, uint64_t *pentry, uint64_t *lowaddr,
              uint64_t *highaddr, int big_endian, int elf_machine,
-             int clear_lsb);
+             int clear_lsb, int data_swab);
+
+/** load_elf_hdr:
+ * @filename: Path of ELF file
+ * @hdr: Buffer to populate with header data. Header data will not be
+ * filled if set to NULL.
+ * @is64: Set to true if the ELF is 64bit. Ignored if set to NULL
+ * @errp: Populated with an error in failure cases
+ *
+ * Inspect an ELF file's header. Read its full header contents into a
+ * buffer and/or determine if the ELF is 64bit.
+ */
+void load_elf_hdr(const char *filename, void *hdr, bool *is64, Error **errp);
+
 int load_aout(const char *filename, hwaddr addr, int max_sz,
               int bswap_needed, hwaddr target_page_size);
 int load_uimage(const char *filename, hwaddr *ep,
                 hwaddr *loadaddr, int *is_linux,
                 uint64_t (*translate_fn)(void *, uint64_t),
                 void *translate_opaque);
+int load_uimage_as(const char *filename, hwaddr *ep,
+                   hwaddr *loadaddr, int *is_linux,
+                   uint64_t (*translate_fn)(void *, uint64_t),
+                   void *translate_opaque, AddressSpace *as);
 
 /**
  * load_ramdisk:
@@ -67,23 +140,36 @@ extern bool rom_file_has_mr;
 
 int rom_add_file(const char *file, const char *fw_dir,
                  hwaddr addr, int32_t bootindex,
-                 bool option_rom);
-ram_addr_t rom_add_blob(const char *name, const void *blob, size_t len,
-                   hwaddr addr, const char *fw_file_name,
-                   FWCfgReadCallback fw_callback, void *callback_opaque);
+                 bool option_rom, MemoryRegion *mr, AddressSpace *as);
+MemoryRegion *rom_add_blob(const char *name, const void *blob, size_t len,
+                           size_t max_len, hwaddr addr,
+                           const char *fw_file_name,
+                           FWCfgReadCallback fw_callback,
+                           void *callback_opaque);
 int rom_add_elf_program(const char *name, void *data, size_t datasize,
-                        size_t romsize, hwaddr addr);
-int rom_load_all(void);
-void rom_load_done(void);
+                        size_t romsize, hwaddr addr, AddressSpace *as);
+int rom_check_and_register_reset(void);
 void rom_set_fw(FWCfgState *f);
+void rom_set_order_override(int order);
+void rom_reset_order_override(void);
 int rom_copy(uint8_t *dest, hwaddr addr, size_t size);
 void *rom_ptr(hwaddr addr);
-void do_info_roms(Monitor *mon, const QDict *qdict);
+void hmp_info_roms(Monitor *mon, const QDict *qdict);
 
 #define rom_add_file_fixed(_f, _a, _i)          \
-    rom_add_file(_f, NULL, _a, _i, false)
+    rom_add_file(_f, NULL, _a, _i, false, NULL, NULL)
 #define rom_add_blob_fixed(_f, _b, _l, _a)      \
-    rom_add_blob(_f, _b, _l, _a, NULL, NULL, NULL)
+    rom_add_blob(_f, _b, _l, _l, _a, NULL, NULL, NULL)
+
+#define rom_add_file_mr(_f, _mr, _i)            \
+    rom_add_file(_f, NULL, 0, _i, false, _mr, NULL)
+
+#define rom_add_file_as(_f, _as, _i)            \
+    rom_add_file(_f, NULL, 0, _i, false, NULL, _as)
+#define rom_add_file_fixed_as(_f, _a, _i, _as)          \
+    rom_add_file(_f, NULL, _a, _i, false, NULL, _as)
+#define rom_add_blob_fixed_as(_f, _b, _l, _a, _as)      \
+    rom_add_blob(_f, _b, _l, _l, _a, NULL, NULL, _as)
 
 #define PC_ROM_MIN_VGA     0xc0000
 #define PC_ROM_MIN_OPTION  0xc8000

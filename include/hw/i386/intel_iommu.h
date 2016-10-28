@@ -49,6 +49,7 @@ typedef struct VTDContextCacheEntry VTDContextCacheEntry;
 typedef struct IntelIOMMUState IntelIOMMUState;
 typedef struct VTDAddressSpace VTDAddressSpace;
 typedef struct VTDIOTLBEntry VTDIOTLBEntry;
+typedef struct VTDBus VTDBus;
 
 /* Context-Entry */
 struct VTDContextEntry {
@@ -65,7 +66,7 @@ struct VTDContextCacheEntry {
 };
 
 struct VTDAddressSpace {
-    uint8_t bus_num;
+    PCIBus *bus;
     uint8_t devfn;
     AddressSpace as;
     MemoryRegion iommu;
@@ -73,10 +74,16 @@ struct VTDAddressSpace {
     VTDContextCacheEntry context_cache_entry;
 };
 
+struct VTDBus {
+    PCIBus* bus;		/* A reference to the bus to provide translation for */
+    VTDAddressSpace *dev_as[0];	/* A table of VTDAddressSpace objects indexed by devfn */
+};
+
 struct VTDIOTLBEntry {
     uint64_t gfn;
     uint16_t domain_id;
     uint64_t slpte;
+    uint64_t mask;
     bool read_flags;
     bool write_flags;
 };
@@ -114,7 +121,13 @@ struct IntelIOMMUState {
     GHashTable *iotlb;              /* IOTLB */
 
     MemoryRegionIOMMUOps iommu_ops;
-    VTDAddressSpace **address_spaces[VTD_PCI_BUS_MAX];
+    GHashTable *vtd_as_by_busptr;   /* VTDBus objects indexed by PCIBus* reference */
+    VTDBus *vtd_as_by_bus_num[VTD_PCI_BUS_MAX]; /* VTDBus objects indexed by bus number */
 };
+
+/* Find the VTD Address space associated with the given bus pointer,
+ * create a new one if none exists
+ */
+VTDAddressSpace *vtd_find_add_as(IntelIOMMUState *s, PCIBus *bus, int devfn);
 
 #endif

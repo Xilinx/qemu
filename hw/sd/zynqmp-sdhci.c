@@ -23,6 +23,7 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "qemu/log.h"
 
@@ -33,7 +34,9 @@
 
 #include "hw/fdt_generic_util.h"
 
-#include "sdhci-internal.h"
+#include "hw/sd/sd.h"
+#include "hw/sd/sdhci.h"
+#include "qapi/error.h"
 
 #ifndef ZYNQMP_SDHCI_ERR_DEBUG
 #define ZYNQMP_SDHCI_ERR_DEBUG 0
@@ -50,7 +53,9 @@
 typedef struct ZynqMPSDHCIState {
     /*< private >*/
     SDHCIState parent_obj;
+
     /*< public >*/
+    SDState *card;
     SDState *sd_card;
     SDState *mmc_card;
     uint8_t drive_index;
@@ -64,30 +69,55 @@ static void zynqmp_sdhci_slottype_handler(void *opaque, int n, int level)
     assert(n == 0);
 
     ss->capareg = deposit64(ss->capareg, 30, 2, level);
-    ss->card = extract64(ss->capareg, 30, 2) ? s->mmc_card : s->sd_card;
-    sd_set_cb(ss->card, ss->ro_cb, ss->eject_cb);
+    s->card = extract64(ss->capareg, 30, 2) ? s->mmc_card : s->sd_card;
+    sd_set_cb(s->card, ss->ro_cb, ss->eject_cb);
 }
 
 static void zynqmp_sdhci_reset(DeviceState *dev)
 {
     ZynqMPSDHCIState *s = ZYNQMP_SDHCI(dev);
     SDHCIState *ss = SYSBUS_SDHCI(dev);
+    DeviceClass *dc_parent = DEVICE_CLASS(ZYNQMP_SDHCI_PARENT_CLASS);
 
-    ss->card = s->sd_card;
-    sd_set_cb(ss->card, ss->ro_cb, ss->eject_cb);
+    dc_parent->reset(dev);
+
+    s->card = s->sd_card;
+    sd_set_cb(s->card, ss->ro_cb, ss->eject_cb);
 }
 
 static void zynqmp_sdhci_realize(DeviceState *dev, Error **errp)
 {
     DeviceClass *dc_parent = DEVICE_CLASS(ZYNQMP_SDHCI_PARENT_CLASS);
     ZynqMPSDHCIState *s = ZYNQMP_SDHCI(dev);
-    DriveInfo *di_sd;
-    DriveInfo *di_mmc;
+    DriveInfo *di_sd, *di_mmc;
+    BlockBackend *blk_sd;
+    DeviceState *carddev_sd;
+    static int index_offset = 0;
+
+    /* Xilinx: This device is used in some Zynq-7000 devices which don't
+     * set the drive-index property. In order to avoid errors we increament
+     * the drive index each time we call this.
+     * The other solution could be to just ignore the error returned when
+     * connecting the drive. That seems risky though.
+     */
+    if (!s->drive_index) {
+        s->drive_index += index_offset;
+        index_offset++;
+    }
 
     di_sd = drive_get_by_index(IF_SD , s->drive_index);
-    di_mmc = drive_get_by_index(IF_SD, (s->drive_index + 2));
+    blk_sd = di_sd ? blk_by_legacy_dinfo(di_sd) : NULL;
 
-    s->sd_card = sd_init(di_sd ? blk_by_legacy_dinfo(di_sd) : NULL, false);
+    carddev_sd = qdev_create(qdev_get_child_bus(DEVICE(dev), "sd-bus"), TYPE_SD_CARD);
+
+    qdev_prop_set_drive(carddev_sd, "drive", blk_sd, &error_fatal);
+    object_property_set_bool(OBJECT(carddev_sd), false, "spi", &error_fatal);
+    object_property_set_bool(OBJECT(carddev_sd), false, "mmc", &error_fatal);
+    object_property_set_bool(OBJECT(carddev_sd), true, "realized", &error_fatal);
+
+    s->sd_card = SD_CARD(carddev_sd);
+
+    di_mmc = drive_get_by_index(IF_SD, (s->drive_index + 2));
     s->mmc_card = mmc_init(di_mmc ? blk_by_legacy_dinfo(di_mmc) : NULL);
 
     dc_parent->realize(dev, errp);

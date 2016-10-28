@@ -27,7 +27,9 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+#include "qemu/osdep.h"
 #include "qemu-common.h"
+#include "cpu.h"
 #include "hw/hw.h"
 #include "qapi/visitor.h"
 #include "qemu/range.h"
@@ -45,6 +47,7 @@
 #include "hw/pci/pci_bus.h"
 #include "exec/address-spaces.h"
 #include "sysemu/sysemu.h"
+#include "qom/cpu.h"
 
 static int ich9_lpc_sci_irq(ICH9LPCState *lpc);
 
@@ -138,6 +141,7 @@ static void ich9_cc_reset(ICH9LPCState *lpc)
     pci_set_long(c + ICH9_CC_D27IR, ICH9_CC_DIR_DEFAULT);
     pci_set_long(c + ICH9_CC_D26IR, ICH9_CC_DIR_DEFAULT);
     pci_set_long(c + ICH9_CC_D25IR, ICH9_CC_DIR_DEFAULT);
+    pci_set_long(c + ICH9_CC_GCS, ICH9_CC_GCS_DEFAULT);
 
     ich9_cc_update(lpc);
 }
@@ -278,7 +282,7 @@ void ich9_lpc_set_irq(void *opaque, int pirq, int level)
  */
 int ich9_lpc_map_irq(PCIDevice *pci_dev, int intx)
 {
-    BusState *bus = qdev_get_parent_bus(DEVICE(pci_dev));
+    BusState *bus = qdev_get_parent_bus(&pci_dev->qdev);
     PCIBus *pci_bus = PCI_BUS(bus);
     PCIDevice *lpc_pdev =
             pci_bus->devices[PCI_DEVFN(ICH9_LPC_DEV, ICH9_LPC_FUNC)];
@@ -311,6 +315,16 @@ PCIINTxRoute ich9_route_intx_pin_to_irq(void *opaque, int pirq_pin)
     }
 
     return route;
+}
+
+void ich9_generate_smi(void)
+{
+    cpu_interrupt(first_cpu, CPU_INTERRUPT_SMI);
+}
+
+void ich9_generate_nmi(void)
+{
+    cpu_interrupt(first_cpu, CPU_INTERRUPT_NMI);
 }
 
 static int ich9_lpc_sci_irq(ICH9LPCState *lpc)
@@ -357,15 +371,14 @@ static void ich9_set_sci(void *opaque, int irq_num, int level)
     }
 }
 
-void ich9_lpc_pm_init(PCIDevice *lpc_pci)
+void ich9_lpc_pm_init(PCIDevice *lpc_pci, bool smm_enabled)
 {
     ICH9LPCState *lpc = ICH9_LPC_DEVICE(lpc_pci);
-    qemu_irq *sci_irq;
+    qemu_irq sci_irq;
 
-    sci_irq = qemu_allocate_irqs(ich9_set_sci, lpc, 1);
-    ich9_pm_init(lpc_pci, &lpc->pm, sci_irq[0]);
-
-    ich9_lpc_reset(DEVICE(lpc));
+    sci_irq = qemu_allocate_irq(ich9_set_sci, lpc, 0);
+    ich9_pm_init(lpc_pci, &lpc->pm, smm_enabled, sci_irq);
+    ich9_lpc_reset(&lpc->d.qdev);
 }
 
 /* APM */
@@ -378,10 +391,13 @@ static void ich9_apm_ctrl_changed(uint32_t val, void *arg)
     acpi_pm1_cnt_update(&lpc->pm.acpi_regs,
                         val == ICH9_APM_ACPI_ENABLE,
                         val == ICH9_APM_ACPI_DISABLE);
+    if (val == ICH9_APM_ACPI_ENABLE || val == ICH9_APM_ACPI_DISABLE) {
+        return;
+    }
 
     /* SMI_EN = PMBASE + 30. SMI control and enable register */
     if (lpc->pm.smi_en & ICH9_PMIO_SMI_EN_APMC_EN) {
-        cpu_interrupt(first_cpu, CPU_INTERRUPT_SMI);
+        cpu_interrupt(current_cpu, CPU_INTERRUPT_SMI);
     }
 }
 
@@ -395,18 +411,33 @@ ich9_lpc_pmbase_update(ICH9LPCState *lpc)
     ich9_pm_iospace_update(&lpc->pm, pm_io_base);
 }
 
-/* config:RBCA */
-static void ich9_lpc_rcba_update(ICH9LPCState *lpc, uint32_t rbca_old)
+/* config:RCBA */
+static void ich9_lpc_rcba_update(ICH9LPCState *lpc, uint32_t rcba_old)
 {
-    uint32_t rbca = pci_get_long(lpc->d.config + ICH9_LPC_RCBA);
+    uint32_t rcba = pci_get_long(lpc->d.config + ICH9_LPC_RCBA);
 
-    if (rbca_old & ICH9_LPC_RCBA_EN) {
-            memory_region_del_subregion(get_system_memory(), &lpc->rbca_mem);
+    if (rcba_old & ICH9_LPC_RCBA_EN) {
+        memory_region_del_subregion(get_system_memory(), &lpc->rcrb_mem);
     }
-    if (rbca & ICH9_LPC_RCBA_EN) {
-            memory_region_add_subregion_overlap(get_system_memory(),
-                                                rbca & ICH9_LPC_RCBA_BA_MASK,
-                                                &lpc->rbca_mem, 1);
+    if (rcba & ICH9_LPC_RCBA_EN) {
+        memory_region_add_subregion_overlap(get_system_memory(),
+                                            rcba & ICH9_LPC_RCBA_BA_MASK,
+                                            &lpc->rcrb_mem, 1);
+    }
+}
+
+/* config:GEN_PMCON* */
+static void
+ich9_lpc_pmcon_update(ICH9LPCState *lpc)
+{
+    uint16_t gen_pmcon_1 = pci_get_word(lpc->d.config + ICH9_LPC_GEN_PMCON_1);
+    uint16_t wmask;
+
+    if (gen_pmcon_1 & ICH9_LPC_GEN_PMCON_1_SMI_LOCK) {
+        wmask = pci_get_word(lpc->d.wmask + ICH9_LPC_GEN_PMCON_1);
+        wmask &= ~ICH9_LPC_GEN_PMCON_1_SMI_LOCK;
+        pci_set_word(lpc->d.wmask + ICH9_LPC_GEN_PMCON_1, wmask);
+        lpc->pm.smi_en_wmask &= ~1;
     }
 }
 
@@ -415,7 +446,8 @@ static int ich9_lpc_post_load(void *opaque, int version_id)
     ICH9LPCState *lpc = opaque;
 
     ich9_lpc_pmbase_update(lpc);
-    ich9_lpc_rcba_update(lpc, 0 /* disabled ICH9_LPC_RBCA_EN */);
+    ich9_lpc_rcba_update(lpc, 0 /* disabled ICH9_LPC_RCBA_EN */);
+    ich9_lpc_pmcon_update(lpc);
     return 0;
 }
 
@@ -423,14 +455,14 @@ static void ich9_lpc_config_write(PCIDevice *d,
                                   uint32_t addr, uint32_t val, int len)
 {
     ICH9LPCState *lpc = ICH9_LPC_DEVICE(d);
-    uint32_t rbca_old = pci_get_long(d->config + ICH9_LPC_RCBA);
+    uint32_t rcba_old = pci_get_long(d->config + ICH9_LPC_RCBA);
 
     pci_default_write_config(d, addr, val, len);
     if (ranges_overlap(addr, len, ICH9_LPC_PMBASE, 4)) {
         ich9_lpc_pmbase_update(lpc);
     }
     if (ranges_overlap(addr, len, ICH9_LPC_RCBA, 4)) {
-        ich9_lpc_rcba_update(lpc, rbca_old);
+        ich9_lpc_rcba_update(lpc, rcba_old);
     }
     if (ranges_overlap(addr, len, ICH9_LPC_PIRQA_ROUT, 4)) {
         pci_bus_fire_intx_routing_notifier(lpc->d.bus);
@@ -438,13 +470,16 @@ static void ich9_lpc_config_write(PCIDevice *d,
     if (ranges_overlap(addr, len, ICH9_LPC_PIRQE_ROUT, 4)) {
         pci_bus_fire_intx_routing_notifier(lpc->d.bus);
     }
+    if (ranges_overlap(addr, len, ICH9_LPC_GEN_PMCON_1, 8)) {
+        ich9_lpc_pmcon_update(lpc);
+    }
 }
 
 static void ich9_lpc_reset(DeviceState *qdev)
 {
     PCIDevice *d = PCI_DEVICE(qdev);
     ICH9LPCState *lpc = ICH9_LPC_DEVICE(d);
-    uint32_t rbca_old = pci_get_long(d->config + ICH9_LPC_RCBA);
+    uint32_t rcba_old = pci_get_long(d->config + ICH9_LPC_RCBA);
     int i;
 
     for (i = 0; i < 4; i++) {
@@ -463,13 +498,14 @@ static void ich9_lpc_reset(DeviceState *qdev)
     ich9_cc_reset(lpc);
 
     ich9_lpc_pmbase_update(lpc);
-    ich9_lpc_rcba_update(lpc, rbca_old);
+    ich9_lpc_rcba_update(lpc, rcba_old);
 
     lpc->sci_level = 0;
     lpc->rst_cnt = 0;
 }
 
-static const MemoryRegionOps rbca_mmio_ops = {
+/* root complex register block is mapped into memory space */
+static const MemoryRegionOps rcrb_mmio_ops = {
     .read = ich9_cc_read,
     .write = ich9_cc_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
@@ -494,7 +530,7 @@ static void ich9_lpc_machine_ready(Notifier *n, void *opaque)
         /* lpt */
         pci_conf[0x82] |= 0x04;
     }
-    if (memory_region_present(io_as, 0x3f0)) {
+    if (memory_region_present(io_as, 0x3f2)) {
         /* floppy */
         pci_conf[0x82] |= 0x08;
     }
@@ -537,14 +573,13 @@ Object *ich9_lpc_find(void)
     return o;
 }
 
-static void ich9_lpc_get_sci_int(Object *obj, Visitor *v,
-                                 void *opaque, const char *name,
-                                 Error **errp)
+static void ich9_lpc_get_sci_int(Object *obj, Visitor *v, const char *name,
+                                 void *opaque, Error **errp)
 {
     ICH9LPCState *lpc = ICH9_LPC_DEVICE(obj);
     uint32_t value = ich9_lpc_sci_irq(lpc);
 
-    visit_type_uint32(v, &value, name, errp);
+    visit_type_uint32(v, name, &value, errp);
 }
 
 static void ich9_lpc_add_properties(ICH9LPCState *lpc)
@@ -570,18 +605,22 @@ static void ich9_lpc_initfn(Object *obj)
     ich9_lpc_add_properties(lpc);
 }
 
-static int ich9_lpc_init(PCIDevice *d)
+static void ich9_lpc_realize(PCIDevice *d, Error **errp)
 {
     ICH9LPCState *lpc = ICH9_LPC_DEVICE(d);
     ISABus *isa_bus;
 
-    isa_bus = isa_bus_new(DEVICE(d), get_system_io());
+    isa_bus = isa_bus_new(DEVICE(d), get_system_memory(), get_system_io(),
+                          errp);
+    if (!isa_bus) {
+        return;
+    }
 
     pci_set_long(d->wmask + ICH9_LPC_PMBASE,
                  ICH9_LPC_PMBASE_BASE_ADDRESS_MASK);
 
-    memory_region_init_io(&lpc->rbca_mem, OBJECT(d), &rbca_mmio_ops, lpc,
-                            "lpc-rbca-mmio", ICH9_CC_SIZE);
+    memory_region_init_io(&lpc->rcrb_mem, OBJECT(d), &rcrb_mmio_ops, lpc,
+                          "lpc-rcrb-mmio", ICH9_CC_SIZE);
 
     lpc->isa_bus = isa_bus;
 
@@ -596,7 +635,6 @@ static int ich9_lpc_init(PCIDevice *d)
     memory_region_add_subregion_overlap(pci_address_space_io(d),
                                         ICH9_RST_CNT_IOPORT, &lpc->rst_cnt_mem,
                                         1);
-    return 0;
 }
 
 static void ich9_device_plug_cb(HotplugHandler *hotplug_dev,
@@ -610,8 +648,17 @@ static void ich9_device_plug_cb(HotplugHandler *hotplug_dev,
 static void ich9_device_unplug_request_cb(HotplugHandler *hotplug_dev,
                                           DeviceState *dev, Error **errp)
 {
-    error_setg(errp, "acpi: device unplug request for not supported device"
-               " type: %s", object_get_typename(OBJECT(dev)));
+    ICH9LPCState *lpc = ICH9_LPC_DEVICE(hotplug_dev);
+
+    ich9_pm_device_unplug_request_cb(&lpc->pm, dev, errp);
+}
+
+static void ich9_device_unplug_cb(HotplugHandler *hotplug_dev,
+                                  DeviceState *dev, Error **errp)
+{
+    ICH9LPCState *lpc = ICH9_LPC_DEVICE(hotplug_dev);
+
+    ich9_pm_device_unplug_cb(&lpc->pm, dev, errp);
 }
 
 static bool ich9_rst_cnt_needed(void *opaque)
@@ -625,6 +672,7 @@ static const VMStateDescription vmstate_ich9_rst_cnt = {
     .name = "ICH9LPC/rst_cnt",
     .version_id = 1,
     .minimum_version_id = 1,
+    .needed = ich9_rst_cnt_needed,
     .fields = (VMStateField[]) {
         VMSTATE_UINT8(rst_cnt, ICH9LPCState),
         VMSTATE_END_OF_LIST()
@@ -644,13 +692,15 @@ static const VMStateDescription vmstate_ich9_lpc = {
         VMSTATE_UINT32(sci_level, ICH9LPCState),
         VMSTATE_END_OF_LIST()
     },
-    .subsections = (VMStateSubsection[]) {
-        {
-            .vmsd = &vmstate_ich9_rst_cnt,
-            .needed = ich9_rst_cnt_needed
-        },
-        { 0 }
+    .subsections = (const VMStateDescription*[]) {
+        &vmstate_ich9_rst_cnt,
+        NULL
     }
+};
+
+static Property ich9_lpc_properties[] = {
+    DEFINE_PROP_BOOL("noreboot", ICH9LPCState, pin_strap.spkr_hi, true),
+    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void ich9_lpc_class_init(ObjectClass *klass, void *data)
@@ -662,8 +712,9 @@ static void ich9_lpc_class_init(ObjectClass *klass, void *data)
 
     set_bit(DEVICE_CATEGORY_BRIDGE, dc->categories);
     dc->reset = ich9_lpc_reset;
-    k->init = ich9_lpc_init;
+    k->realize = ich9_lpc_realize;
     dc->vmsd = &vmstate_ich9_lpc;
+    dc->props = ich9_lpc_properties;
     k->config_write = ich9_lpc_config_write;
     dc->desc = "ICH9 LPC bridge";
     k->vendor_id = PCI_VENDOR_ID_INTEL;
@@ -677,6 +728,7 @@ static void ich9_lpc_class_init(ObjectClass *klass, void *data)
     dc->cannot_instantiate_with_device_add_yet = true;
     hc->plug = ich9_device_plug_cb;
     hc->unplug_request = ich9_device_unplug_request_cb;
+    hc->unplug = ich9_device_unplug_cb;
     adevc->ospm_status = ich9_pm_ospm_status;
 }
 

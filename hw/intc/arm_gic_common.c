@@ -18,7 +18,9 @@
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
 #include "gic_internal.h"
+#include "qapi/error.h"
 #include "hw/fdt_generic_util.h"
 
 #include "hw/fdt_generic_devices.h"

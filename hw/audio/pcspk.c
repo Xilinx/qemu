@@ -22,6 +22,7 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/i386/pc.h"
 #include "hw/isa/isa.h"
@@ -167,7 +168,7 @@ static void pcspk_initfn(Object *obj)
 {
     PCSpkState *s = PC_SPEAKER(obj);
 
-    memory_region_init_io(&s->ioport, OBJECT(s), &pcspk_io_ops, s, "elcr", 1);
+    memory_region_init_io(&s->ioport, OBJECT(s), &pcspk_io_ops, s, "pcspk", 1);
 }
 
 static void pcspk_realizefn(DeviceState *dev, Error **errp)

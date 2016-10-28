@@ -16,14 +16,8 @@
 
 #include "qapi/qmp/qobject.h"
 #include "qapi/qmp/qdict.h"
-#include "qapi/error.h"
 
 typedef void (QmpCommandFunc)(QDict *, QObject **, Error **);
-
-typedef enum QmpCommandType
-{
-    QCT_NORMAL,
-} QmpCommandType;
 
 typedef enum QmpCommandOptions
 {
@@ -34,7 +28,6 @@ typedef enum QmpCommandOptions
 typedef struct QmpCommand
 {
     const char *name;
-    QmpCommandType type;
     QmpCommandFunc *fn;
     QmpCommandOptions options;
     QTAILQ_ENTRY(QmpCommand) node;

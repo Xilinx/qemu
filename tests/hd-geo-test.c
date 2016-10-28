@@ -15,14 +15,10 @@
  * Improvements welcome.
  */
 
+#include "qemu/osdep.h"
 #include <glib.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
 #include "qemu-common.h"
 #include "libqtest.h"
-
-static const char test_image[] = "/tmp/qtest.XXXXXX";
 
 static char *create_test_img(int secs)
 {
@@ -208,13 +204,13 @@ static int setup_ide(int argc, char *argv[], int argv_sz,
 {
     char *s1, *s2, *s3;
 
-    s1 = g_strdup_printf("-drive id=drive%d,if=%s,format=raw",
+    s1 = g_strdup_printf("-drive id=drive%d,if=%s",
                          ide_idx, dev ? "none" : "ide");
     s2 = dev ? g_strdup("") : g_strdup_printf(",index=%d", ide_idx);
 
     if (img_secs[img_idx] >= 0) {
         setup_mbr(img_idx, mbr);
-        s3 = g_strdup_printf(",file=%s", img_file_name[img_idx]);
+        s3 = g_strdup_printf(",format=raw,file=%s", img_file_name[img_idx]);
     } else {
         s3 = g_strdup(",media=cdrom");
     }

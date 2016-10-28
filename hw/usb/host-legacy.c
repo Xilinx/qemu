@@ -30,6 +30,7 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "qemu-common.h"
 #include "hw/usb.h"
 #include "hw/usb/host.h"
@@ -128,7 +129,6 @@ USBDevice *usb_host_device_open(USBBus *bus, const char *devname)
     qdev_prop_set_uint32(&dev->qdev, "hostaddr",  filter.addr);
     qdev_prop_set_uint32(&dev->qdev, "vendorid",  filter.vendor_id);
     qdev_prop_set_uint32(&dev->qdev, "productid", filter.product_id);
-    qdev_init_nofail(&dev->qdev);
     return dev;
 
 fail:

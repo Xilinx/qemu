@@ -50,7 +50,8 @@
  *
  */
 
-#include "qemu-common.h"
+#include "qemu/osdep.h"
+#include "qemu/cutils.h"
 #include "block/block_int.h"
 #include "qemu/error-report.h"
 #include "qemu/thread.h"
@@ -59,7 +60,6 @@
 #include "qapi/qmp/qjson.h"
 #include "qemu/atomic.h"
 
-#include <inttypes.h>
 #include <xseg/xseg.h>
 #include <xseg/protocol.h>
 
@@ -291,7 +291,7 @@ static int qemu_archipelago_init(BDRVArchipelagoState *s)
 
     ret = qemu_archipelago_xseg_init(s);
     if (ret < 0) {
-        error_report("Cannot initialize XSEG. Aborting...\n");
+        error_report("Cannot initialize XSEG. Aborting...");
         goto err_exit;
     }
 
@@ -645,7 +645,7 @@ static int qemu_archipelago_create_volume(Error **errp, const char *volname,
 
     target = xseg_get_target(xseg, req);
     if (!target) {
-        error_setg(errp, "Cannot get XSEG target.\n");
+        error_setg(errp, "Cannot get XSEG target.");
         goto err_exit;
     }
     memcpy(target, volname, targetlen);
@@ -889,7 +889,7 @@ static BlockAIOCB *qemu_archipelago_aio_rw(BlockDriverState *bs,
     return &aio_cb->common;
 
 err_exit:
-    error_report("qemu_archipelago_aio_rw(): I/O Error\n");
+    error_report("qemu_archipelago_aio_rw(): I/O Error");
     qemu_aio_unref(aio_cb);
     return NULL;
 }

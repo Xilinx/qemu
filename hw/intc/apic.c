@@ -16,6 +16,9 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, see <http://www.gnu.org/licenses/>
  */
+#include "qemu/osdep.h"
+#include "qemu-common.h"
+#include "cpu.h"
 #include "qemu/thread.h"
 #include "hw/i386/apic_internal.h"
 #include "hw/i386/apic.h"
@@ -51,28 +54,12 @@ static int apic_ffs_bit(uint32_t value)
     return ctz32(value);
 }
 
-static inline void apic_set_bit(uint32_t *tab, int index)
-{
-    int i, mask;
-    i = index >> 5;
-    mask = 1 << (index & 0x1f);
-    tab[i] |= mask;
-}
-
 static inline void apic_reset_bit(uint32_t *tab, int index)
 {
     int i, mask;
     i = index >> 5;
     mask = 1 << (index & 0x1f);
     tab[i] &= ~mask;
-}
-
-static inline int apic_get_bit(uint32_t *tab, int index)
-{
-    int i, mask;
-    i = index >> 5;
-    mask = 1 << (index & 0x1f);
-    return !!(tab[i] & mask);
 }
 
 /* return -1 if no bit is set */
@@ -318,7 +305,7 @@ static uint8_t apic_get_tpr(APICCommonState *s)
     return s->tpr >> 4;
 }
 
-static int apic_get_ppr(APICCommonState *s)
+int apic_get_ppr(APICCommonState *s)
 {
     int tpr, isrv, ppr;
 
@@ -370,13 +357,14 @@ static int apic_irq_pending(APICCommonState *s)
 static void apic_update_irq(APICCommonState *s)
 {
     CPUState *cpu;
+    DeviceState *dev = (DeviceState *)s;
 
     cpu = CPU(s->cpu);
     if (!qemu_cpu_is_self(cpu)) {
         cpu_interrupt(cpu, CPU_INTERRUPT_POLL);
     } else if (apic_irq_pending(s) > 0) {
         cpu_interrupt(cpu, CPU_INTERRUPT_HARD);
-    } else if (!apic_accept_pic_intr(&s->busdev.qdev) || !pic_get_output(isa_pic)) {
+    } else if (!apic_accept_pic_intr(dev) || !pic_get_output(isa_pic)) {
         cpu_reset_interrupt(cpu, CPU_INTERRUPT_HARD);
     }
 }
@@ -549,10 +537,12 @@ static void apic_deliver(DeviceState *dev, uint8_t dest, uint8_t dest_mode,
 
 static bool apic_check_pic(APICCommonState *s)
 {
-    if (!apic_accept_pic_intr(&s->busdev.qdev) || !pic_get_output(isa_pic)) {
+    DeviceState *dev = (DeviceState *)s;
+
+    if (!apic_accept_pic_intr(dev) || !pic_get_output(isa_pic)) {
         return false;
     }
-    apic_deliver_pic_intr(&s->busdev.qdev, 1);
+    apic_deliver_pic_intr(dev, 1);
     return true;
 }
 
@@ -736,7 +726,7 @@ static uint32_t apic_mem_readl(void *opaque, hwaddr addr)
         val = s->divide_conf;
         break;
     default:
-        s->esr |= ESR_ILLEGAL_ADDRESS;
+        s->esr |= APIC_ESR_ILLEGAL_ADDRESS;
         val = 0;
         break;
     }
@@ -849,7 +839,7 @@ static void apic_mem_writel(void *opaque, hwaddr addr, uint32_t val)
         }
         break;
     default:
-        s->esr |= ESR_ILLEGAL_ADDRESS;
+        s->esr |= APIC_ESR_ILLEGAL_ADDRESS;
         break;
     }
 }
@@ -886,7 +876,7 @@ static void apic_realize(DeviceState *dev, Error **errp)
     s->timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, apic_timer, s);
     local_apics[s->idx] = s;
 
-    msi_supported = true;
+    msi_nonbroken = true;
 }
 
 static void apic_class_init(ObjectClass *klass, void *data)

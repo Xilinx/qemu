@@ -17,9 +17,12 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
 #include "cpu.h"
 #include "qemu/host-utils.h"
 #include "sysemu/sysemu.h"
+#include "exec/semihost.h"
+#include "exec/log.h"
 
 int lm32_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int rw,
                               int mmu_idx)
@@ -80,7 +83,7 @@ void lm32_watchpoint_insert(CPULM32State *env, int idx, target_ulong address,
 
     switch (wp_type) {
     case LM32_WP_DISABLED:
-        /* nothing to to */
+        /* nothing to do */
         break;
     case LM32_WP_READ:
         flags = BP_CPU | BP_STOP_BEFORE_ACCESS | BP_MEM_READ;
@@ -162,7 +165,7 @@ void lm32_cpu_do_interrupt(CPUState *cs)
 
     switch (cs->exception_index) {
     case EXCP_SYSTEMCALL:
-        if (unlikely(semihosting_enabled)) {
+        if (unlikely(semihosting_enabled())) {
             /* do_semicall() returns true if call was handled. Otherwise
              * do the normal exception handling. */
             if (lm32_cpu_do_semihosting(cs)) {

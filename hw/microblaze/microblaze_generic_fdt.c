@@ -25,6 +25,8 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
+#include "cpu.h"
 #include "hw/sysbus.h"
 #include "qemu/log.h"
 #include "net/net.h"
@@ -34,6 +36,8 @@
 #include "sysemu/device_tree.h"
 #include "exec/memory.h"
 #include "exec/address-spaces.h"
+#include "qemu/error-report.h"
+#include "qapi/error.h"
 #include "qemu/config-file.h"
 
 #include "hw/fdt_generic_util.h"
@@ -209,6 +213,14 @@ microblaze_generic_fdt_reset(MicroBlazeCPU *cpu)
     }
 }
 
+static void secondary_cpu_reset(void *opaque)
+{
+    MicroBlazeCPU *cpu = MICROBLAZE_CPU(opaque);
+
+    /* Configure secondary cores.  */
+    microblaze_generic_fdt_reset(cpu);
+}
+
 #define LMB_BRAM_SIZE  (128 * 1024)
 
 #define MACHINE_NAME "microblaze-fdt"
@@ -222,6 +234,7 @@ int endian;
 static void
 microblaze_generic_fdt_init(MachineState *machine)
 {
+    CPUState *cpu;
     ram_addr_t ram_kernel_base = 0, ram_kernel_size = 0;
     void *fdt = NULL;
     const char *dtb_arg, *hw_dtb_arg;
@@ -349,13 +362,6 @@ microblaze_generic_fdt_init(MachineState *machine)
     ram_kernel_base = object_property_get_int(OBJECT(main_mem), "addr", NULL);
     ram_kernel_size = object_property_get_int(OBJECT(main_mem), "size", NULL);
 
-    if ((int64_t)ram_kernel_size < 0) {
-        error_report("The DTB file has no memory node");
-        error_report("The QEMU model assumes that external memory is attached,"
-                     " caching is enabled and MMU is enabled");
-        exit(1);
-    }
-
     if (!memory_region_is_mapped(main_mem)) {
         /* If the memory region is not mapped, map it here.
          * It has to be mapped somewhere, so guess that the base address
@@ -382,32 +388,35 @@ microblaze_generic_fdt_init(MachineState *machine)
     fdt_g = fdt;
     microblaze_load_kernel(MICROBLAZE_CPU(first_cpu), ram_kernel_base,
                            ram_kernel_size, machine->initrd_filename, NULL,
-                           microblaze_generic_fdt_reset, fdt, fdt_size);
+                           microblaze_generic_fdt_reset);
+
+    /* Register FDT to prop mapper for secondary cores.  */
+    cpu = CPU_NEXT(first_cpu);
+    while (cpu) {
+        qemu_register_reset(secondary_cpu_reset, cpu);
+        cpu = CPU_NEXT(cpu);
+    }
+
     return;
 no_dtb_arg:
     hw_error("DTB must be specified for %s machine model\n", MACHINE_NAME);
     return;
 }
 
-static QEMUMachine microblaze_generic_fdt = {
-    .name = MACHINE_NAME,
-    .desc = "Microblaze device tree driven machine model",
-    .init = microblaze_generic_fdt_init,
-};
-
-static QEMUMachine microblaze_generic_fdt_plnx = {
-    .name = MACHINE_NAME "-plnx",
-    .desc = "Microblaze device tree driven machine model for PetaLinux",
-    .init = microblaze_generic_fdt_init,
-};
-
-static void microblaze_fdt_init(void)
+static void microblaze_generic_fdt_machine_init(MachineClass *mc)
 {
-    qemu_register_machine(&microblaze_generic_fdt);
-    qemu_register_machine(&microblaze_generic_fdt_plnx);
+    mc->desc = "Microblaze device tree driven machine model";
+    mc->init = microblaze_generic_fdt_init;
 }
 
-machine_init(microblaze_fdt_init);
+static void microblaze_generic_fdt_plnx_machine_init(MachineClass *mc)
+{
+    mc->desc = "Microblaze device tree driven machine model for PetaLinux";
+    mc->init = microblaze_generic_fdt_init;
+}
 
 fdt_register_compatibility_opaque(pflash_cfi01_fdt_init, "compatible:cfi-flash",
                                   0, &endian);
+
+DEFINE_MACHINE(MACHINE_NAME, microblaze_generic_fdt_machine_init)
+DEFINE_MACHINE(MACHINE_NAME "-plnx", microblaze_generic_fdt_plnx_machine_init)

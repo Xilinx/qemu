@@ -1,18 +1,19 @@
+#include "qemu/osdep.h"
 #include "hw/fdt_generic_util.h"
 #include "hw/fdt_generic_devices.h"
+#include "qom/object.h"
 #include "sysemu/blockdev.h"
 #include "exec/memory.h"
 #include "exec/address-spaces.h"
 #include "qemu/log.h"
+#include "qapi/error.h"
 #include "sysemu/char.h"
-#include "block/coroutine.h"
+#include "qemu/coroutine.h"
+#include "qapi-types.h"
 
 #include "hw/char/serial.h"
 #include "hw/block/flash.h"
 #include "hw/qdev-core.h"
-
-/*FIXME: move to convenient header */
-extern const char *machine_path;
 
 #define FLASH_SECTOR_SIZE (64 * 1024)
 
@@ -30,14 +31,14 @@ extern const char *machine_path;
 #endif
 #define DB_PRINT(lvl, ...) do { \
     if (FDT_GENERIC_UTIL_ERR_DEBUG > (lvl)) { \
-        qemu_log_mask_level(LOG_FDT, lvl, ": %s: ", __func__); \
-        qemu_log_mask_level(LOG_FDT, lvl, ## __VA_ARGS__); \
+        qemu_log_mask(lvl, ": %s: ", __func__); \
+        qemu_log_mask(lvl, ## __VA_ARGS__); \
     } \
 } while (0);
 
 #define DB_PRINT_NP(lvl, ...) do { \
     if (FDT_GENERIC_UTIL_ERR_DEBUG > (lvl)) { \
-        qemu_log_mask_level(LOG_FDT, lvl, "%s", node_path); \
+        qemu_log_mask(lvl, "%s", node_path); \
         DB_PRINT((lvl), ## __VA_ARGS__); \
     } \
 } while (0);
@@ -154,23 +155,6 @@ static inline void razwi_unimp_rw(void *opaque, hwaddr addr, uint64_t val64,
     qemu_log_mask(LOG_UNIMP, "%s", str);
 }
 
-static void razwi_unimp_write(void *opaque, hwaddr addr, uint64_t val64,
-                              unsigned int size) {
-    razwi_unimp_rw(opaque, addr, val64, size, false);
-}
-
-static uint64_t razwi_unimp_read(void *opaque, hwaddr addr, unsigned int size)
-{
-    razwi_unimp_rw(opaque, addr, 0ull, size, true);
-    return 0ull;
-}
-
-const MemoryRegionOps razwi_unimp_ops = {
-    .read = razwi_unimp_read,
-    .write = razwi_unimp_write,
-    .endianness = DEVICE_NATIVE_ENDIAN,
-};
-
 fdt_register_compatibility_n(uart16550_fdt_init, "compatible:ns16550", 0);
 fdt_register_compatibility_n(uart16550_fdt_init, "compatible:ns16550a", 1);
 
@@ -212,14 +196,20 @@ static const TypeInfo fdt_qom_aliases [] = {
     {   .name = "cdns.ttc",                 .parent = "cadence_ttc"         },
     {   .name = "cdns.uart",                .parent = "cadence_uart"        },
     {   .name = "xlnx.ps7-uart",            .parent = "cadence_uart"        },
+/* When running MicroBlaze this is not include, which casues QEMU to crash as
+ * it doesn't have information on the TYPE_SYS_BUS_EHCI device.
+ */
+#ifdef CONFIG_USB_EHCI_SYSBUS
     {   .name = "xlnx.ps7-usb",             .parent = "xlnx,ps7-usb"        },
     {   .name = "xlnx.zynq-usb",            .parent = "xlnx,ps7-usb"        },
+#endif
     {   .name = "xlnx.zynq-qspi",           .parent = "xlnx.ps7-qspi"       },
     {   .name = "xlnx.xuartps",             .parent = "cadence_uart"        },
     {   .name = "simple-bus",               .parent = "qemu:memory-region"  },
     {   .name = "xlnx,axi-dpdma-1.0",       .parent = "xlnx.dpdma"          },
     {   .name = "xlnx,xps-gpio-1.00.a",     .parent = "xlnx.axi-gpio"       },
     {   .name = "arasan,sdhci-8.9a",        .parent = "xilinx.zynqmp-sdhci" },
+    {   .name = "cdns.spi-r1p6",            .parent = "xlnx.ps7-spi"        },
     {   .name = "xlnx,eth-dma",             .parent = "xlnx.axi-dma"        },
 };
 

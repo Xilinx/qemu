@@ -25,28 +25,31 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/fdt_generic_util.h"
 #include "hw/fdt_generic_devices.h"
 #include "net/net.h"
 #include "exec/memory.h"
 #include "exec/address-spaces.h"
 #include "hw/sysbus.h"
+#include "qapi/error.h"
 #include "sysemu/sysemu.h"
 #include "qemu/log.h"
+#include "qom/cpu.h"
 
 #ifndef FDT_GENERIC_UTIL_ERR_DEBUG
-#define FDT_GENERIC_UTIL_ERR_DEBUG 2
+#define FDT_GENERIC_UTIL_ERR_DEBUG 3
 #endif
 #define DB_PRINT(lvl, ...) do { \
     if (FDT_GENERIC_UTIL_ERR_DEBUG > (lvl)) { \
-        qemu_log_mask_level(LOG_FDT, lvl, ": %s: ", __func__); \
-        qemu_log_mask_level(LOG_FDT, lvl, ## __VA_ARGS__); \
+        qemu_log_mask(LOG_FDT, ": %s: ", __func__); \
+        qemu_log_mask(LOG_FDT, ## __VA_ARGS__); \
     } \
 } while (0);
 
 #define DB_PRINT_NP(lvl, ...) do { \
     if (FDT_GENERIC_UTIL_ERR_DEBUG > (lvl)) { \
-       qemu_log_mask_level(LOG_FDT, lvl, "%s", node_path); \
+       qemu_log_mask(LOG_FDT, "%s", node_path); \
        DB_PRINT((lvl), ## __VA_ARGS__); \
     } \
 } while (0);
@@ -459,6 +462,7 @@ static void fdt_get_irq_info_from_intc(FDTMachineInfo *fdti, qemu_irq *ret,
 
     intc_fdt_class->get_irq(FDT_GENERIC_INTC(intc), ret, cells, num_cells,
                             max, errp);
+
     return;
 fail:
     error_setg(errp, "%s", __func__);
@@ -735,19 +739,30 @@ static inline const char *trim_vendor(const char *s)
 static Object *fdt_create_from_compat(const char *compat, char **dev_type)
 {
     Object *ret = NULL;
-
     char *c = g_strdup(compat);
+
+    /* Try to create the object */
     ret = object_new(c);
+
     if (!ret) {
-        /* QEMU substitutes "."s for ","s in device names, so try with that
-         * substitutution
-         */
-        substitute_char(c, ',', '.');
-        ret = object_new(c);
-    }
-    if (!ret) {
-        /* try again with the version string trimmed */
+        /* Trim the version off the end and try again */
         trim_version(c);
+        ret = object_new(c);
+
+        if (!ret) {
+            /* Replace commas with full stops */
+            substitute_char(c, ',', '.');
+            ret = object_new(c);
+        }
+    }
+
+    if (!ret) {
+        /* Restart with the orginal string and now replace commas with full stops
+         * and try again. This means that versions are still included.
+         */
+        g_free(c);
+        c = g_strdup(compat);
+        substitute_char(c, ',', '.');
         ret = object_new(c);
     }
 
@@ -1098,7 +1113,7 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
                     int size_default = fdt_generic_reg_cells_defaults[i];
 
                     DB_PRINT_NP(0, "WARNING: no %s for %s container, assuming "
-                                " default of \n%d", size_prop_name, pnp,
+                                "default of %d\n", size_prop_name, pnp,
                                 size_default);
                     nc = size_default;
                     error_free(errp);

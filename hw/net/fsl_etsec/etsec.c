@@ -26,12 +26,14 @@
  * This implementation doesn't include ring priority, TCP/IP Off-Load, QoS.
  */
 
+#include "qemu/osdep.h"
 #include "sysemu/sysemu.h"
 #include "hw/sysbus.h"
 #include "trace.h"
 #include "hw/ptimer.h"
 #include "etsec.h"
 #include "registers.h"
+#include "qemu/log.h"
 
 /* #define HEX_DUMP */
 /* #define DEBUG_REGISTER */
@@ -338,30 +340,26 @@ static void etsec_reset(DeviceState *d)
         MII_SR_100X_FD_CAPS     | MII_SR_100T4_CAPS;
 }
 
-static void etsec_cleanup(NetClientState *nc)
-{
-    /* qemu_log("eTSEC cleanup\n"); */
-}
-
-static int etsec_can_receive(NetClientState *nc)
-{
-    eTSEC *etsec = qemu_get_nic_opaque(nc);
-
-    return etsec->rx_buffer_len == 0;
-}
-
 static ssize_t etsec_receive(NetClientState *nc,
                              const uint8_t  *buf,
                              size_t          size)
 {
+    ssize_t ret;
     eTSEC *etsec = qemu_get_nic_opaque(nc);
 
 #if defined(HEX_DUMP)
     fprintf(stderr, "%s receive size:%d\n", etsec->nic->nc.name, size);
     qemu_hexdump(buf, stderr, "", size);
 #endif
-    etsec_rx_ring_write(etsec, buf, size);
-    return size;
+    /* Flush is unnecessary as are already in receiving path */
+    etsec->need_flush = false;
+    ret = etsec_rx_ring_write(etsec, buf, size);
+    if (ret == 0) {
+        /* The packet will be queued, let's flush it when buffer is available
+         * again. */
+        etsec->need_flush = true;
+    }
+    return ret;
 }
 
 
@@ -375,9 +373,7 @@ static void etsec_set_link_status(NetClientState *nc)
 static NetClientInfo net_etsec_info = {
     .type = NET_CLIENT_OPTIONS_KIND_NIC,
     .size = sizeof(NICState),
-    .can_receive = etsec_can_receive,
     .receive = etsec_receive,
-    .cleanup = etsec_cleanup,
     .link_status_changed = etsec_set_link_status,
 };
 
@@ -449,10 +445,7 @@ DeviceState *etsec_create(hwaddr         base,
 
     dev = qdev_create(NULL, "eTSEC");
     qdev_set_nic_properties(dev, nd);
-
-    if (qdev_init(dev)) {
-        return NULL;
-    }
+    qdev_init_nofail(dev);
 
     sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, tx_irq);
     sysbus_connect_irq(SYS_BUS_DEVICE(dev), 1, rx_irq);

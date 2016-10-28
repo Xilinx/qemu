@@ -14,7 +14,6 @@
 
 #include "sysemu/sysemu.h" /* for MAX_NODES */
 #include "qom/object.h"
-#include "qapi/error.h"
 #include "exec/memory.h"
 #include "qemu/option.h"
 #include "qemu/bitmap.h"
@@ -45,7 +44,6 @@ struct HostMemoryBackendClass {
  *
  * @parent: opaque parent object container
  * @size: amount of memory backend provides
- * @id: unique identification string in memdev namespace
  * @mr: MemoryRegion representing host memory belonging to backend
  */
 struct HostMemoryBackend {

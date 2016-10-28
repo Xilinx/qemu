@@ -24,9 +24,12 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "hw/register.h"
 #include "qemu/bitops.h"
+#include "qapi/qmp/qerror.h"
+#include "qapi/error.h"
 #include "qemu/log.h"
 #include "hw/intc/xlnx_scu_gic.h"
 #include "hw/fdt_generic_util.h"
@@ -608,12 +611,12 @@ static void lpd_slcr_realize(DeviceState *dev, Error **errp)
     unsigned int i;
 
     if (!s->rpu_gic) {
-        error_set(errp, QERR_MISSING_PARAMETER, "gic-for-rpu");
+        error_set(errp, ERROR_CLASS_GENERIC_ERROR, "gic-for-rpu");
         return;
     }
 
     if (!s->apu_gic) {
-        error_set(errp, QERR_MISSING_PARAMETER, "gic-for-apu");
+        error_set(errp, ERROR_CLASS_GENERIC_ERROR, "gic-for-apu");
         return;
     }
 

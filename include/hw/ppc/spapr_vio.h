@@ -34,7 +34,7 @@
 #define TYPE_SPAPR_VIO_BUS "spapr-vio-bus"
 #define SPAPR_VIO_BUS(obj) OBJECT_CHECK(VIOsPAPRBus, (obj), TYPE_SPAPR_VIO_BUS)
 
-struct VIOsPAPRDevice;
+#define TYPE_SPAPR_VIO_BRIDGE "spapr-vio-bridge"
 
 typedef struct VIOsPAPR_CRQ {
     uint64_t qladdr;
@@ -52,7 +52,7 @@ typedef struct VIOsPAPRDeviceClass {
     const char *dt_name, *dt_type, *dt_compatible;
     target_ulong signal_mask;
     uint32_t rtce_window_size;
-    int (*init)(VIOsPAPRDevice *dev);
+    void (*realize)(VIOsPAPRDevice *dev, Error **errp);
     void (*reset)(VIOsPAPRDevice *dev);
     int (*devnode)(VIOsPAPRDevice *dev, void *fdt, int node_off);
 } VIOsPAPRDeviceClass;
@@ -61,9 +61,11 @@ struct VIOsPAPRDevice {
     DeviceState qdev;
     uint32_t reg;
     uint32_t irq;
-    target_ulong signal_state;
+    uint64_t signal_state;
     VIOsPAPR_CRQ crq;
     AddressSpace as;
+    MemoryRegion mrroot;
+    MemoryRegion mrbypass;
     sPAPRTCETable *tcet;
 };
 
@@ -86,6 +88,8 @@ extern int spapr_vio_signal(VIOsPAPRDevice *dev, target_ulong mode);
 
 static inline qemu_irq spapr_vio_qirq(VIOsPAPRDevice *dev)
 {
+    sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
+
     return xics_get_qirq(spapr->icp, dev->irq);
 }
 
@@ -124,7 +128,7 @@ static inline int spapr_vio_dma_set(VIOsPAPRDevice *dev, uint64_t taddr,
 
 int spapr_vio_send_crq(VIOsPAPRDevice *dev, uint8_t *crq);
 
-VIOsPAPRDevice *vty_lookup(sPAPREnvironment *spapr, target_ulong reg);
+VIOsPAPRDevice *vty_lookup(sPAPRMachineState *spapr, target_ulong reg);
 void vty_putchars(VIOsPAPRDevice *sdev, uint8_t *buf, int len);
 void spapr_vty_create(VIOsPAPRBus *bus, CharDriverState *chardev);
 void spapr_vlan_create(VIOsPAPRBus *bus, NICInfo *nd);
@@ -138,5 +142,7 @@ extern const VMStateDescription vmstate_spapr_vio;
 
 #define VMSTATE_SPAPR_VIO(_f, _s) \
     VMSTATE_STRUCT(_f, _s, 0, vmstate_spapr_vio, VIOsPAPRDevice)
+
+void spapr_vio_set_bypass(VIOsPAPRDevice *dev, bool bypass);
 
 #endif /* _HW_SPAPR_VIO_H */

@@ -21,6 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/input/adb.h"
 #include "ui/console.h"
@@ -88,7 +89,7 @@ int adb_request(ADBBusState *s, uint8_t *obuf, const uint8_t *buf, int len)
 }
 
 /* XXX: move that to cuda ? */
-int adb_poll(ADBBusState *s, uint8_t *obuf)
+int adb_poll(ADBBusState *s, uint8_t *obuf, uint16_t poll_mask)
 {
     ADBDevice *d;
     int olen, i;
@@ -99,13 +100,15 @@ int adb_poll(ADBBusState *s, uint8_t *obuf)
         if (s->poll_index >= s->nb_devices)
             s->poll_index = 0;
         d = s->devices[s->poll_index];
-        buf[0] = ADB_READREG | (d->devaddr << 4);
-        olen = adb_request(s, obuf + 1, buf, 1);
-        /* if there is data, we poll again the same device */
-        if (olen > 0) {
-            obuf[0] = buf[0];
-            olen++;
-            break;
+        if ((1 << d->devaddr) & poll_mask) {
+            buf[0] = ADB_READREG | (d->devaddr << 4);
+            olen = adb_request(s, obuf + 1, buf, 1);
+            /* if there is data, we poll again the same device */
+            if (olen > 0) {
+                obuf[0] = buf[0];
+                olen++;
+                break;
+            }
         }
         s->poll_index++;
     }
@@ -116,6 +119,17 @@ static const TypeInfo adb_bus_type_info = {
     .name = TYPE_ADB_BUS,
     .parent = TYPE_BUS,
     .instance_size = sizeof(ADBBusState),
+};
+
+static const VMStateDescription vmstate_adb_device = {
+    .name = "adb_device",
+    .version_id = 0,
+    .minimum_version_id = 0,
+    .fields = (VMStateField[]) {
+        VMSTATE_INT32(devaddr, ADBDevice),
+        VMSTATE_INT32(handler, ADBDevice),
+        VMSTATE_END_OF_LIST()
+    }
 };
 
 static void adb_device_realizefn(DeviceState *dev, Error **errp)
@@ -301,9 +315,10 @@ static int adb_kbd_request(ADBDevice *d, uint8_t *obuf,
 
 static const VMStateDescription vmstate_adb_kbd = {
     .name = "adb_kbd",
-    .version_id = 1,
-    .minimum_version_id = 1,
+    .version_id = 2,
+    .minimum_version_id = 2,
     .fields = (VMStateField[]) {
+        VMSTATE_STRUCT(parent_obj, KBDState, 0, vmstate_adb_device, ADBDevice),
         VMSTATE_BUFFER(data, KBDState),
         VMSTATE_INT32(rptr, KBDState),
         VMSTATE_INT32(wptr, KBDState),
@@ -350,6 +365,7 @@ static void adb_kbd_class_init(ObjectClass *oc, void *data)
 
     akc->parent_realize = dc->realize;
     dc->realize = adb_kbd_realizefn;
+    set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
 
     adc->devreq = adb_kbd_request;
     dc->reset = adb_kbd_reset;
@@ -515,9 +531,11 @@ static void adb_mouse_reset(DeviceState *dev)
 
 static const VMStateDescription vmstate_adb_mouse = {
     .name = "adb_mouse",
-    .version_id = 1,
-    .minimum_version_id = 1,
+    .version_id = 2,
+    .minimum_version_id = 2,
     .fields = (VMStateField[]) {
+        VMSTATE_STRUCT(parent_obj, MouseState, 0, vmstate_adb_device,
+                       ADBDevice),
         VMSTATE_INT32(buttons_state, MouseState),
         VMSTATE_INT32(last_buttons_state, MouseState),
         VMSTATE_INT32(dx, MouseState),
@@ -552,6 +570,7 @@ static void adb_mouse_class_init(ObjectClass *oc, void *data)
 
     amc->parent_realize = dc->realize;
     dc->realize = adb_mouse_realizefn;
+    set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
 
     adc->devreq = adb_mouse_request;
     dc->reset = adb_mouse_reset;

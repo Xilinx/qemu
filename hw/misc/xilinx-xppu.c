@@ -25,10 +25,12 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "hw/register.h"
 #include "qemu/bitops.h"
 #include "sysemu/dma.h"
+#include "qapi/error.h"
 #include "qemu/log.h"
 
 #include "hw/fdt_generic_util.h"
@@ -657,8 +659,8 @@ static void xppu_ap_access(MemoryTransaction *tr)
 
     /* The access is accepted, let it through.  */
     tr->data.u64 = cpu_to_le64(tr->data.u64);
-    address_space_rw_attr(s->as, addr, (uint8_t *) &tr->data.u64,
-                          tr->size, tr->rw, tr->attr);
+    address_space_rw(s->as, addr, tr->attr, (uint8_t *) &tr->data.u64,
+                          tr->size, tr->rw);
     tr->data.u64 = le64_to_cpu(tr->data.u64);
 }
 

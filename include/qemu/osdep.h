@@ -1,12 +1,88 @@
+/*
+ * OS includes and handling of OS dependencies
+ *
+ * This header exists to pull in some common system headers that
+ * most code in QEMU will want, and to fix up some possible issues with
+ * it (missing defines, Windows weirdness, and so on).
+ *
+ * To avoid getting into possible circular include dependencies, this
+ * file should not include any other QEMU headers, with the exceptions
+ * of config-host.h, config-target.h, qemu/compiler.h,
+ * sysemu/os-posix.h, sysemu/os-win32.h, glib-compat.h and
+ * qemu/typedefs.h, all of which are doing a similar job to this file
+ * and are under similar constraints.
+ *
+ * This header also contains prototypes for functions defined in
+ * os-*.c and util/oslib-*.c; those would probably be better split
+ * out into separate header files.
+ *
+ * In an ideal world this header would contain only:
+ *  (1) things which everybody needs
+ *  (2) things without which code would work on most platforms but
+ *      fail to compile or misbehave on a minority of host OSes
+ *
+ * This work is licensed under the terms of the GNU GPL, version 2 or later.
+ * See the COPYING file in the top-level directory.
+ */
 #ifndef QEMU_OSDEP_H
 #define QEMU_OSDEP_H
 
 #include "config-host.h"
+#ifdef NEED_CPU_H
+#include "config-target.h"
+#endif
+#include "qemu/compiler.h"
+
+/* Older versions of C++ don't get definitions of various macros from
+ * stdlib.h unless we define these macros before first inclusion of
+ * that system header.
+ */
+#ifndef __STDC_CONSTANT_MACROS
+#define __STDC_CONSTANT_MACROS
+#endif
+#ifndef __STDC_LIMIT_MACROS
+#define __STDC_LIMIT_MACROS
+#endif
+#ifndef __STDC_FORMAT_MACROS
+#define __STDC_FORMAT_MACROS
+#endif
+
+/* The following block of code temporarily renames the daemon() function so the
+ * compiler does not see the warning associated with it in stdlib.h on OSX
+ */
+#ifdef __APPLE__
+#define daemon qemu_fake_daemon_function
+#include <stdlib.h>
+#undef daemon
+extern int daemon(int, int);
+#endif
+
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <sys/types.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <strings.h>
+#include <inttypes.h>
+#include <limits.h>
+/* Put unistd.h before time.h as that triggers localtime_r/gmtime_r
+ * function availability on recentish Mingw-w64 platforms. */
+#include <unistd.h>
+#include <time.h>
+#include <ctype.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <assert.h>
+/* setjmp must be declared before sysemu/os-win32.h
+ * because it is redefined there. */
+#include <setjmp.h>
+#include <signal.h>
+
 #ifdef __OpenBSD__
 #include <sys/signal.h>
 #endif
@@ -18,49 +94,50 @@
 #define WEXITSTATUS(x) (x)
 #endif
 
-#include <sys/time.h>
-
-#if defined(CONFIG_SOLARIS) && CONFIG_SOLARIS_VERSION < 10
-/* [u]int_fast*_t not in <sys/int_types.h> */
-typedef unsigned char           uint_fast8_t;
-typedef unsigned int            uint_fast16_t;
-typedef signed int              int_fast16_t;
+#ifdef _WIN32
+#include "sysemu/os-win32.h"
 #endif
 
-#ifndef glue
-#define xglue(x, y) x ## y
-#define glue(x, y) xglue(x, y)
-#define stringify(s)	tostring(s)
-#define tostring(s)	#s
+#ifdef CONFIG_POSIX
+#include "sysemu/os-posix.h"
 #endif
 
-#ifndef likely
-#if __GNUC__ < 3
-#define __builtin_expect(x, n) (x)
+#include "glib-compat.h"
+#include "qemu/typedefs.h"
+
+#ifndef O_LARGEFILE
+#define O_LARGEFILE 0
+#endif
+#ifndef O_BINARY
+#define O_BINARY 0
+#endif
+#ifndef MAP_ANONYMOUS
+#define MAP_ANONYMOUS MAP_ANON
+#endif
+#ifndef ENOMEDIUM
+#define ENOMEDIUM ENODEV
+#endif
+#if !defined(ENOTSUP)
+#define ENOTSUP 4096
+#endif
+#if !defined(ECANCELED)
+#define ECANCELED 4097
+#endif
+#if !defined(EMEDIUMTYPE)
+#define EMEDIUMTYPE 4098
+#endif
+#ifndef TIME_MAX
+#define TIME_MAX LONG_MAX
 #endif
 
-#define likely(x)   __builtin_expect(!!(x), 1)
-#define unlikely(x)   __builtin_expect(!!(x), 0)
-#endif
-
-#ifndef container_of
-#define container_of(ptr, type, member) ({                      \
-        const typeof(((type *) 0)->member) *__mptr = (ptr);     \
-        (type *) ((char *) __mptr - offsetof(type, member));})
-#endif
-
-/* Convert from a base type to a parent type, with compile time checking.  */
-#ifdef __GNUC__
-#define DO_UPCAST(type, field, dev) ( __extension__ ( { \
-    char __attribute__((unused)) offset_must_be_zero[ \
-        -offsetof(type, field)]; \
-    container_of(dev, type, field);}))
+/* HOST_LONG_BITS is the size of a native pointer in bits. */
+#if UINTPTR_MAX == UINT32_MAX
+# define HOST_LONG_BITS 32
+#elif UINTPTR_MAX == UINT64_MAX
+# define HOST_LONG_BITS 64
 #else
-#define DO_UPCAST(type, field, dev) container_of(dev, type, field)
+# error Unknown pointer size
 #endif
-
-#define typeof_field(type, field) typeof(((type *)0)->field)
-#define type_check(t1,t2) ((t1*)0 - (t2*)0)
 
 #ifndef MIN
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
@@ -75,6 +152,12 @@ typedef signed int              int_fast16_t;
 #define MIN_NON_ZERO(a, b) (((a) != 0 && (a) < (b)) ? (a) : (b))
 #endif
 
+/* Round number down to multiple */
+#define QEMU_ALIGN_DOWN(n, m) ((n) / (m) * (m))
+
+/* Round number up to multiple */
+#define QEMU_ALIGN_UP(n, m) QEMU_ALIGN_DOWN((n) + (m) - 1, (m))
+
 #ifndef ROUND_UP
 #define ROUND_UP(n,d) (((n) + (d) - 1) & -(d))
 #endif
@@ -87,20 +170,6 @@ typedef signed int              int_fast16_t;
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 #endif
 
-#ifndef always_inline
-#if !((__GNUC__ < 3) || defined(__APPLE__))
-#ifdef __OPTIMIZE__
-#undef inline
-#define inline __attribute__ (( always_inline )) __inline__
-#endif
-#endif
-#else
-#undef inline
-#define inline always_inline
-#endif
-
-#define qemu_printf printf
-
 int qemu_daemon(int nochdir, int noclose);
 void *qemu_try_memalign(size_t alignment, size_t size);
 void *qemu_memalign(size_t alignment, size_t size);
@@ -111,6 +180,8 @@ void qemu_anon_ram_free(void *ptr, size_t size);
 #define QEMU_MADV_INVALID -1
 
 #if defined(CONFIG_MADVISE)
+
+#include <sys/mman.h>
 
 #define QEMU_MADV_WILLNEED  MADV_WILLNEED
 #define QEMU_MADV_DONTNEED  MADV_DONTNEED
@@ -144,6 +215,11 @@ void qemu_anon_ram_free(void *ptr, size_t size);
 #else
 #define QEMU_MADV_HUGEPAGE QEMU_MADV_INVALID
 #endif
+#ifdef MADV_NOHUGEPAGE
+#define QEMU_MADV_NOHUGEPAGE MADV_NOHUGEPAGE
+#else
+#define QEMU_MADV_NOHUGEPAGE QEMU_MADV_INVALID
+#endif
 
 #elif defined(CONFIG_POSIX_MADVISE)
 
@@ -155,6 +231,7 @@ void qemu_anon_ram_free(void *ptr, size_t size);
 #define QEMU_MADV_DODUMP QEMU_MADV_INVALID
 #define QEMU_MADV_DONTDUMP QEMU_MADV_INVALID
 #define QEMU_MADV_HUGEPAGE  QEMU_MADV_INVALID
+#define QEMU_MADV_NOHUGEPAGE  QEMU_MADV_INVALID
 
 #else /* no-op */
 
@@ -166,6 +243,7 @@ void qemu_anon_ram_free(void *ptr, size_t size);
 #define QEMU_MADV_DODUMP QEMU_MADV_INVALID
 #define QEMU_MADV_DONTDUMP QEMU_MADV_INVALID
 #define QEMU_MADV_HUGEPAGE  QEMU_MADV_INVALID
+#define QEMU_MADV_NOHUGEPAGE  QEMU_MADV_INVALID
 
 #endif
 
@@ -220,8 +298,12 @@ static inline void qemu_timersub(const struct timeval *val1,
 
 void qemu_set_cloexec(int fd);
 
-void qemu_set_version(const char *);
-const char *qemu_get_version(void);
+/* QEMU "hardware version" setting. Used to replace code that exposed
+ * QEMU_VERSION to guests in the past and need to keep compatibilty.
+ * Do not use qemu_hw_version() in new code.
+ */
+void qemu_set_hw_version(const char *);
+const char *qemu_hw_version(void);
 
 void fips_set_state(bool requested);
 bool fips_get_state(void);
@@ -258,5 +340,21 @@ unsigned long qemu_getauxval(unsigned long type);
 void qemu_set_tty_echo(int fd, bool echo);
 
 void os_mem_prealloc(int fd, char *area, size_t sz);
+
+int qemu_read_password(char *buf, int buf_size);
+
+/**
+ * qemu_fork:
+ *
+ * A version of fork that avoids signal handler race
+ * conditions that can lead to child process getting
+ * signals that are otherwise only expected by the
+ * parent. It also resets all signal handlers to the
+ * default settings.
+ *
+ * Returns 0 to child process, pid number to parent
+ * or -1 on failure.
+ */
+pid_t qemu_fork(Error **errp);
 
 #endif

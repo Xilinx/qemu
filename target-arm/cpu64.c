@@ -18,6 +18,8 @@
  * <http://www.gnu.org/licenses/gpl-2.0.html>
  */
 
+#include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "cpu.h"
 #include "qemu-common.h"
 #if !defined(CONFIG_USER_ONLY)
@@ -27,18 +29,21 @@
 #include "sysemu/sysemu.h"
 #include "sysemu/kvm.h"
 
-#include "hw/fdt_generic_devices.h"
-
 static inline void set_feature(CPUARMState *env, int feature)
 {
     env->features |= 1ULL << feature;
+}
+
+static inline void unset_feature(CPUARMState *env, int feature)
+{
+    env->features &= ~(1ULL << feature);
 }
 
 #ifndef CONFIG_USER_ONLY
 static uint64_t a57_a53_l2ctlr_read(CPUARMState *env, const ARMCPRegInfo *ri)
 {
     /* Number of processors is in [25:24]; otherwise we RAZ */
-    return (MAX(smp_cpus, fdt_generic_num_cpus) - 1) << 24;
+    return (smp_cpus - 1) << 24;
 }
 #endif
 
@@ -70,8 +75,7 @@ static const ARMCPRegInfo cortex_a57_a53_cp_reginfo[] = {
       .access = PL1_RW, .type = ARM_CP_CONST | ARM_CP_64BIT, .resetvalue = 0 },
     { .name = "CPUECTLR_EL1", .state = ARM_CP_STATE_AA64,
       .opc0 = 3, .opc1 = 1, .crn = 15, .crm = 2, .opc2 = 1,
-      .access = PL1_RW, .resetvalue = 0,
-      .readfn = arm_cp_read_zero, .writefn = arm_cp_write_ignore },
+      .access = PL1_RW, .type = ARM_CP_CONST, .resetvalue = 0 },
     { .name = "CPUECTLR",
       .cp = 15, .opc1 = 1, .crm = 15,
       .access = PL1_RW, .type = ARM_CP_CONST | ARM_CP_64BIT, .resetvalue = 0 },
@@ -94,6 +98,7 @@ static void aarch64_a57_initfn(Object *obj)
 {
     ARMCPU *cpu = ARM_CPU(obj);
 
+    cpu->dtb_compatible = "arm,cortex-a57";
     set_feature(&cpu->env, ARM_FEATURE_V8);
     set_feature(&cpu->env, ARM_FEATURE_VFP4);
     set_feature(&cpu->env, ARM_FEATURE_NEON);
@@ -111,6 +116,7 @@ static void aarch64_a57_initfn(Object *obj)
     set_feature(&cpu->env, ARM_FEATURE_AUXCR);
     cpu->kvm_target = QEMU_KVM_ARM_TARGET_CORTEX_A57;
     cpu->midr = 0x411fd070;
+    cpu->revidr = 0x00000000;
     cpu->reset_fpsid = 0x41034070;
     cpu->mvfr0 = 0x10110222;
     cpu->mvfr1 = 0x12111111;
@@ -135,8 +141,8 @@ static void aarch64_a57_initfn(Object *obj)
     cpu->id_aa64dfr0 = 0x10305106;
     cpu->pmceid0 = 0x00000000;
     cpu->pmceid1 = 0x00000000;
-    cpu->id_aa64isar0 = 0x00010000;
-    cpu->id_aa64mmfr0 = 0x00001122;
+    cpu->id_aa64isar0 = 0x00011120;
+    cpu->id_aa64mmfr0 = 0x00001124;
     cpu->dbgdidr = 0x3516d000;
     cpu->clidr = 0x0a200023;
     cpu->ccsidr[0] = 0x701fe00a; /* 32KB L1 dcache */
@@ -166,7 +172,9 @@ static void aarch64_a53_initfn(Object *obj)
     set_feature(&cpu->env, ARM_FEATURE_EL2);
     set_feature(&cpu->env, ARM_FEATURE_EL3);
     set_feature(&cpu->env, ARM_FEATURE_AUXCR);
+    cpu->kvm_target = QEMU_KVM_ARM_TARGET_CORTEX_A53;
     cpu->midr = 0x410fd034;
+    cpu->revidr = 0x00000000;
     cpu->reset_fpsid = 0x41034070;
     cpu->mvfr0 = 0x10110222;
     cpu->mvfr1 = 0x12111111;
@@ -214,7 +222,7 @@ static void aarch64_any_initfn(Object *obj)
     set_feature(&cpu->env, ARM_FEATURE_V8_SHA256);
     set_feature(&cpu->env, ARM_FEATURE_V8_PMULL);
     set_feature(&cpu->env, ARM_FEATURE_CRC);
-    cpu->ctr = 0x80030003; /* 32 byte I and D cacheline size, VIPT icache */
+    cpu->ctr = 0x80038003; /* 32 byte I and D cacheline size, VIPT icache */
     cpu->dcz_blocksize = 7; /*  512 bytes */
 }
 #endif
@@ -234,8 +242,42 @@ static const ARMCPUInfo aarch64_cpus[] = {
     { .name = NULL }
 };
 
+static bool aarch64_cpu_get_aarch64(Object *obj, Error **errp)
+{
+    ARMCPU *cpu = ARM_CPU(obj);
+
+    return arm_feature(&cpu->env, ARM_FEATURE_AARCH64);
+}
+
+static void aarch64_cpu_set_aarch64(Object *obj, bool value, Error **errp)
+{
+    ARMCPU *cpu = ARM_CPU(obj);
+
+    /* At this time, this property is only allowed if KVM is enabled.  This
+     * restriction allows us to avoid fixing up functionality that assumes a
+     * uniform execution state like do_interrupt.
+     */
+    if (!kvm_enabled()) {
+        error_setg(errp, "'aarch64' feature cannot be disabled "
+                         "unless KVM is enabled");
+        return;
+    }
+
+    if (value == false) {
+        unset_feature(&cpu->env, ARM_FEATURE_AARCH64);
+    } else {
+        set_feature(&cpu->env, ARM_FEATURE_AARCH64);
+    }
+}
+
 static void aarch64_cpu_initfn(Object *obj)
 {
+    object_property_add_bool(obj, "aarch64", aarch64_cpu_get_aarch64,
+                             aarch64_cpu_set_aarch64, NULL);
+    object_property_set_description(obj, "aarch64",
+                                    "Set on/off to enable/disable aarch64 "
+                                    "execution state ",
+                                    NULL);
 }
 
 static void aarch64_cpu_finalizefn(Object *obj)
@@ -272,21 +314,9 @@ static const char *a64_debug_ctx[] = {
        [DEBUG_PHYS] = "phys",
 };
 
-static int a64_memory_rw_debug(CPUState *cs, vaddr addr,
-                               uint8_t *buf, int len, bool is_write)
+static gchar *aarch64_gdb_arch_name(CPUState *cs)
 {
-    int r;
-#ifndef CONFIG_USER_ONLY
-    ARMCPU *cpu = ARM_CPU(cs);
-
-    if (cpu->env.debug_ctx == DEBUG_PHYS) {
-        address_space_rw(cs->as, addr, buf, len, is_write);
-        return 0;
-    }
-#endif
-
-    r = cpu_memory_rw_debug(cs, addr, buf, len, is_write);
-    return r;
+    return g_strdup("aarch64");
 }
 
 static void set_debug_context(CPUState *cs, unsigned int ctx)
@@ -299,20 +329,16 @@ static void aarch64_cpu_class_init(ObjectClass *oc, void *data)
 {
     CPUClass *cc = CPU_CLASS(oc);
 
-#if !defined(CONFIG_USER_ONLY)
-    cc->do_interrupt = aarch64_cpu_do_interrupt;
-#endif
     cc->cpu_exec_interrupt = arm_cpu_exec_interrupt;
     cc->set_pc = aarch64_cpu_set_pc;
     cc->get_pc = aarch64_cpu_get_pc;
     cc->debug_contexts = a64_debug_ctx;
     cc->set_debug_context = set_debug_context;
-    cc->memory_rw_debug = a64_memory_rw_debug;
     cc->gdb_read_register = aarch64_cpu_gdb_read_register;
     cc->gdb_write_register = aarch64_cpu_gdb_write_register;
     cc->gdb_num_core_regs = 34;
     cc->gdb_core_xml_file = "aarch64-core.xml";
-    cc->gdb_arch = "aarch64";
+    cc->gdb_arch_name = aarch64_gdb_arch_name;
 }
 
 static void aarch64_cpu_register(const ARMCPUInfo *info)

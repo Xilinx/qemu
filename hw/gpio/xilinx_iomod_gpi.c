@@ -23,6 +23,7 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "hw/register.h"
 #include "qemu/log.h"
@@ -92,10 +93,10 @@ static void irq_handler(void *opaque, int irq, int level)
     }
 }
 
+
 static void named_irq_handler(void *opaque, int n, int level)
 {
-    XilinxGPI *s;
-    s = XILINX_IO_MODULE_GPI(opaque);
+    XilinxGPI *s  = XILINX_IO_MODULE_GPI(opaque);
     irq_handler(s, n, level);
 }
 

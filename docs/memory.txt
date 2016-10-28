@@ -26,14 +26,28 @@ These represent memory as seen from the CPU or a device's viewpoint.
 Types of regions
 ----------------
 
-There are four types of memory regions (all represented by a single C type
+There are multiple types of memory regions (all represented by a single C type
 MemoryRegion):
 
 - RAM: a RAM region is simply a range of host memory that can be made available
   to the guest.
+  You typically initialize these with memory_region_init_ram().  Some special
+  purposes require the variants memory_region_init_resizeable_ram(),
+  memory_region_init_ram_from_file(), or memory_region_init_ram_ptr().
 
 - MMIO: a range of guest memory that is implemented by host callbacks;
   each read or write causes a callback to be called on the host.
+  You initialize these with memory_region_init_io(), passing it a
+  MemoryRegionOps structure describing the callbacks.
+
+- ROM: a ROM memory region works like RAM for reads (directly accessing
+  a region of host memory), but like MMIO for writes (invoking a callback).
+  You initialize these with memory_region_init_rom_device().
+
+- IOMMU region: an IOMMU region translates addresses of accesses made to it
+  and forwards them to some other target memory region.  As the name suggests,
+  these are only needed for modelling an IOMMU, not for simple devices.
+  You initialize these with memory_region_init_iommu().
 
 - container: a container simply includes other memory regions, each at
   a different offset.  Containers are useful for grouping several regions
@@ -45,12 +59,22 @@ MemoryRegion):
   can overlay a subregion of RAM with MMIO or ROM, or a PCI controller
   that does not prevent card from claiming overlapping BARs.
 
+  You initialize a pure container with memory_region_init().
+
 - alias: a subsection of another region.  Aliases allow a region to be
   split apart into discontiguous regions.  Examples of uses are memory banks
   used when the guest address space is smaller than the amount of RAM
   addressed, or a memory controller that splits main memory to expose a "PCI
   hole".  Aliases may point to any type of region, including other aliases,
   but an alias may not point back to itself, directly or indirectly.
+  You initialize these with memory_region_init_alias().
+
+- reservation region: a reservation region is primarily for debugging.
+  It claims I/O space that is not supposed to be handled by QEMU itself.
+  The typical use is to track parts of the address space which will be
+  handled by the host kernel when KVM is enabled.
+  You initialize these with memory_region_init_reservation(), or by
+  passing a NULL callback parameter to memory_region_init_io().
 
 It is valid to add subregions to a region which is not a pure container
 (that is, to an MMIO, RAM or ROM region). This means that the region
@@ -73,17 +97,66 @@ stability.
 Region lifecycle
 ----------------
 
-A region is created by one of the constructor functions (memory_region_init*())
-and attached to an object.  It is then destroyed by object_unparent() or simply
-when the parent object dies.
+A region is created by one of the memory_region_init*() functions and
+attached to an object, which acts as its owner or parent.  QEMU ensures
+that the owner object remains alive as long as the region is visible to
+the guest, or as long as the region is in use by a virtual CPU or another
+device.  For example, the owner object will not die between an
+address_space_map operation and the corresponding address_space_unmap.
 
-In between, a region can be added to an address space
-by using memory_region_add_subregion() and removed using
-memory_region_del_subregion().  Destroying the region implicitly
-removes the region from the address space.
+After creation, a region can be added to an address space or a
+container with memory_region_add_subregion(), and removed using
+memory_region_del_subregion().
 
-Region attributes may be changed at any point; they take effect once
-the region becomes exposed to the guest.
+Various region attributes (read-only, dirty logging, coalesced mmio,
+ioeventfd) can be changed during the region lifecycle.  They take effect
+as soon as the region is made visible.  This can be immediately, later,
+or never.
+
+Destruction of a memory region happens automatically when the owner
+object dies.
+
+If however the memory region is part of a dynamically allocated data
+structure, you should call object_unparent() to destroy the memory region
+before the data structure is freed.  For an example see VFIOMSIXInfo
+and VFIOQuirk in hw/vfio/pci.c.
+
+You must not destroy a memory region as long as it may be in use by a
+device or CPU.  In order to do this, as a general rule do not create or
+destroy memory regions dynamically during a device's lifetime, and only
+call object_unparent() in the memory region owner's instance_finalize
+callback.  The dynamically allocated data structure that contains the
+memory region then should obviously be freed in the instance_finalize
+callback as well.
+
+If you break this rule, the following situation can happen:
+
+- the memory region's owner had a reference taken via memory_region_ref
+  (for example by address_space_map)
+
+- the region is unparented, and has no owner anymore
+
+- when address_space_unmap is called, the reference to the memory region's
+  owner is leaked.
+
+
+There is an exception to the above rule: it is okay to call
+object_unparent at any time for an alias or a container region.  It is
+therefore also okay to create or destroy alias and container regions
+dynamically during a device's lifetime.
+
+This exceptional usage is valid because aliases and containers only help
+QEMU building the guest's memory map; they are never accessed directly.
+memory_region_ref and memory_region_unref are never called on aliases
+or containers, and the above situation then cannot happen.  Exploiting
+this exception is rarely necessary, and therefore it is discouraged,
+but nevertheless it is used in a few places.
+
+For regions that "have no owner" (NULL is passed at creation time), the
+machine object is actually used as the owner.  Since instance_finalize is
+never called for the machine object, you must never call object_unparent
+on regions that have no owner, unless they are aliases or containers.
+
 
 Overlapping regions and priority
 --------------------------------
@@ -107,14 +180,14 @@ aliases that leave holes then the lower priority region will appear in these
 holes too.)
 
 For example, suppose we have a container A of size 0x8000 with two subregions
-B and C. B is a container mapped at 0x2000, size 0x4000, priority 1; C is
-an MMIO region mapped at 0x0, size 0x6000, priority 2. B currently has two
+B and C. B is a container mapped at 0x2000, size 0x4000, priority 2; C is
+an MMIO region mapped at 0x0, size 0x6000, priority 1. B currently has two
 of its own subregions: D of size 0x1000 at offset 0 and E of size 0x1000 at
 offset 0x2000. As a diagram:
 
-        0      1000   2000   3000   4000   5000   6000   7000    8000
-        |------|------|------|------|------|------|------|-------|
-  A:    [                                                       ]
+        0      1000   2000   3000   4000   5000   6000   7000   8000
+        |------|------|------|------|------|------|------|------|
+  A:    [                                                      ]
   C:    [CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC]
   B:                  [                          ]
   D:                  [DDDDD]
@@ -174,7 +247,7 @@ system_memory: container@0-2^48-1
  |
  +---- himem: alias@0x100000000-0x11fffffff ---> #ram (0xe0000000-0xffffffff)
  |
- +---- vga-window: alias@0xa0000-0xbfffff ---> #pci (0xa0000-0xbffff)
+ +---- vga-window: alias@0xa0000-0xbffff ---> #pci (0xa0000-0xbffff)
  |      (prio 1)
  |
  +---- pci-hole: alias@0xe0000000-0xffffffff ---> #pci (0xe0000000-0xffffffff)
@@ -215,13 +288,6 @@ BAR containing MMIO registers is mapped after it.
 Note that if the guest maps a BAR outside the PCI hole, it would not be
 visible as the pci-hole alias clips it to a 0.5GB range.
 
-Attributes
-----------
-
-Various region attributes (read-only, dirty logging, coalesced mmio, ioeventfd)
-can be changed during the region lifecycle.  They take effect once the region
-is made visible (which can be immediately, later, or never).
-
 MMIO Operations
 ---------------
 
@@ -231,8 +297,9 @@ various constraints can be supplied to control how these callbacks are called:
  - .valid.min_access_size, .valid.max_access_size define the access sizes
    (in bytes) which the device accepts; accesses outside this range will
    have device and bus specific behaviour (ignored, or machine check)
- - .valid.aligned specifies that the device only accepts naturally aligned
-   accesses.  Unaligned accesses invoke device and bus specific behaviour.
+ - .valid.unaligned specifies that the *device being modelled* supports
+    unaligned accesses; if false, unaligned accesses will invoke the
+    appropriate bus or CPU specific behaviour.
  - .impl.min_access_size, .impl.max_access_size define the access sizes
    (in bytes) supported by the *implementation*; other access sizes will be
    emulated using the ones available.  For example a 4-byte write will be
@@ -240,5 +307,5 @@ various constraints can be supplied to control how these callbacks are called:
  - .impl.unaligned specifies that the *implementation* supports unaligned
    accesses; if false, unaligned accesses will be emulated by two aligned
    accesses.
- - .old_mmio can be used to ease porting from code using
+ - .old_mmio eases the porting of code that was formerly using
    cpu_register_io_memory(). It should not be used in new code.

@@ -14,6 +14,7 @@
 #ifndef _QEMU_VIRTIO_BLK_H
 #define _QEMU_VIRTIO_BLK_H
 
+#include "standard-headers/linux/virtio_blk.h"
 #include "hw/virtio/virtio.h"
 #include "hw/block/block.h"
 #include "sysemu/iothread.h"
@@ -23,86 +24,10 @@
 #define VIRTIO_BLK(obj) \
         OBJECT_CHECK(VirtIOBlock, (obj), TYPE_VIRTIO_BLK)
 
-/* from Linux's linux/virtio_blk.h */
-
-/* The ID for virtio_block */
-#define VIRTIO_ID_BLOCK 2
-
-/* Feature bits */
-#define VIRTIO_BLK_F_BARRIER    0       /* Does host support barriers? */
-#define VIRTIO_BLK_F_SIZE_MAX   1       /* Indicates maximum segment size */
-#define VIRTIO_BLK_F_SEG_MAX    2       /* Indicates maximum # of segments */
-#define VIRTIO_BLK_F_GEOMETRY   4       /* Indicates support of legacy geometry */
-#define VIRTIO_BLK_F_RO         5       /* Disk is read-only */
-#define VIRTIO_BLK_F_BLK_SIZE   6       /* Block size of disk is available*/
-#define VIRTIO_BLK_F_SCSI       7       /* Supports scsi command passthru */
-/* #define VIRTIO_BLK_F_IDENTIFY   8       ATA IDENTIFY supported, DEPRECATED */
-#define VIRTIO_BLK_F_WCE        9       /* write cache enabled */
-#define VIRTIO_BLK_F_TOPOLOGY   10      /* Topology information is available */
-#define VIRTIO_BLK_F_CONFIG_WCE 11      /* write cache configurable */
-
-#define VIRTIO_BLK_ID_BYTES     20      /* ID string length */
-
-struct virtio_blk_config
-{
-    uint64_t capacity;
-    uint32_t size_max;
-    uint32_t seg_max;
-    uint16_t cylinders;
-    uint8_t heads;
-    uint8_t sectors;
-    uint32_t blk_size;
-    uint8_t physical_block_exp;
-    uint8_t alignment_offset;
-    uint16_t min_io_size;
-    uint32_t opt_io_size;
-    uint8_t wce;
-} QEMU_PACKED;
-
-/* These two define direction. */
-#define VIRTIO_BLK_T_IN         0
-#define VIRTIO_BLK_T_OUT        1
-
-/* This bit says it's a scsi command, not an actual read or write. */
-#define VIRTIO_BLK_T_SCSI_CMD   2
-
-/* Flush the volatile write cache */
-#define VIRTIO_BLK_T_FLUSH      4
-
-/* return the device ID string */
-#define VIRTIO_BLK_T_GET_ID     8
-
-/* Barrier before this op. */
-#define VIRTIO_BLK_T_BARRIER    0x80000000
-
-/* This is the first element of the read scatter-gather list. */
-struct virtio_blk_outhdr
-{
-    /* VIRTIO_BLK_T* */
-    uint32_t type;
-    /* io priority. */
-    uint32_t ioprio;
-    /* Sector (ie. 512 byte offset) */
-    uint64_t sector;
-};
-
-#define VIRTIO_BLK_S_OK         0
-#define VIRTIO_BLK_S_IOERR      1
-#define VIRTIO_BLK_S_UNSUPP     2
-
 /* This is the last element of the write scatter-gather list */
 struct virtio_blk_inhdr
 {
     unsigned char status;
-};
-
-/* SCSI pass-through header */
-struct virtio_scsi_inhdr
-{
-    uint32_t errors;
-    uint32_t data_len;
-    uint32_t sense_len;
-    uint32_t residual;
 };
 
 struct VirtIOBlkConf
@@ -112,7 +37,7 @@ struct VirtIOBlkConf
     char *serial;
     uint32_t scsi;
     uint32_t config_wce;
-    uint32_t data_plane;
+    uint32_t request_merging;
 };
 
 struct VirtIOBlockDataPlane;
@@ -128,36 +53,39 @@ typedef struct VirtIOBlock {
     unsigned short sector_mask;
     bool original_wce;
     VMChangeStateEntry *change;
-    /* Function to push to vq and notify guest */
-    void (*complete_request)(struct VirtIOBlockReq *req, unsigned char status);
-    Notifier migration_state_notifier;
+    bool dataplane_disabled;
+    bool dataplane_started;
     struct VirtIOBlockDataPlane *dataplane;
 } VirtIOBlock;
 
-typedef struct MultiReqBuffer {
-    BlockRequest        blkreq[32];
-    unsigned int        num_writes;
-} MultiReqBuffer;
-
 typedef struct VirtIOBlockReq {
-    VirtIOBlock *dev;
     VirtQueueElement elem;
+    int64_t sector_num;
+    VirtIOBlock *dev;
     struct virtio_blk_inhdr *in;
     struct virtio_blk_outhdr out;
     QEMUIOVector qiov;
+    size_t in_len;
     struct VirtIOBlockReq *next;
+    struct VirtIOBlockReq *mr_next;
     BlockAcctCookie acct;
 } VirtIOBlockReq;
 
-VirtIOBlockReq *virtio_blk_alloc_request(VirtIOBlock *s);
+#define VIRTIO_BLK_MAX_MERGE_REQS 32
 
+typedef struct MultiReqBuffer {
+    VirtIOBlockReq *reqs[VIRTIO_BLK_MAX_MERGE_REQS];
+    unsigned int num_reqs;
+    bool is_write;
+} MultiReqBuffer;
+
+void virtio_blk_init_request(VirtIOBlock *s, VirtIOBlockReq *req);
 void virtio_blk_free_request(VirtIOBlockReq *req);
-
-int virtio_blk_handle_scsi_req(VirtIOBlock *blk,
-                               VirtQueueElement *elem);
 
 void virtio_blk_handle_request(VirtIOBlockReq *req, MultiReqBuffer *mrb);
 
-void virtio_submit_multiwrite(BlockBackend *blk, MultiReqBuffer *mrb);
+void virtio_blk_submit_multireq(BlockBackend *blk, MultiReqBuffer *mrb);
+
+void virtio_blk_handle_vq(VirtIOBlock *s, VirtQueue *vq);
 
 #endif

@@ -18,6 +18,10 @@
  *  with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
+#include "qapi/error.h"
+#include "qemu/error-report.h"
+#include "qemu/log.h"
 #include "hw/i2c/i2c.h"
 #include "hw/hw.h"
 #include "sysemu/blockdev.h"
@@ -63,6 +67,20 @@ typedef struct {
 
 #define M24CXX(obj) \
      OBJECT_CHECK(M24CXXState, (obj), TYPE_M24CXX)
+
+/* Get rid of this */
+static BlockAIOCB *blk_aio_writev(BlockBackend *blk, int64_t sector_num,
+                           QEMUIOVector *iov, int nb_sectors,
+                           BlockCompletionFunc *cb, void *opaque)
+{
+    return bdrv_aio_writev(blk_bs(blk), sector_num, iov, nb_sectors, cb, opaque);
+}
+
+static int blk_read(BlockBackend *blk, int64_t sector_num, uint8_t *buf,
+             int nb_sectors)
+{
+    return bdrv_read(blk_bs(blk), sector_num, buf, nb_sectors);
+}
 
 static void m24cxx_sync_complete(void *opaque, int ret)
 {

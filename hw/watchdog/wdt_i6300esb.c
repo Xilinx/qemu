@@ -19,7 +19,7 @@
  * By Richard W.M. Jones (rjones@redhat.com).
  */
 
-#include <inttypes.h>
+#include "qemu/osdep.h"
 
 #include "qemu-common.h"
 #include "qemu/timer.h"
@@ -103,6 +103,10 @@ struct I6300State {
 
 typedef struct I6300State I6300State;
 
+#define TYPE_WATCHDOG_I6300ESB_DEVICE "i6300esb"
+#define WATCHDOG_I6300ESB_DEVICE(obj) \
+    OBJECT_CHECK(I6300State, (obj), TYPE_WATCHDOG_I6300ESB_DEVICE)
+
 /* This function is called when the watchdog has either been enabled
  * (hence it starts counting down) or has been keep-alived.
  */
@@ -125,8 +129,9 @@ static void i6300esb_restart_timer(I6300State *d, int stage)
     else
         timeout <<= 5;
 
-    /* Get the timeout in units of ticks_per_sec. */
-    timeout = get_ticks_per_sec() * timeout / 33000000;
+    /* Get the timeout in nanoseconds. */
+
+    timeout = timeout * 30; /* on a PCI bus, 1 tick is 30 ns*/
 
     i6300esb_debug("stage %d, timeout %" PRIi64 "\n", d->stage, timeout);
 
@@ -144,7 +149,7 @@ static void i6300esb_disable_timer(I6300State *d)
 static void i6300esb_reset(DeviceState *dev)
 {
     PCIDevice *pdev = PCI_DEVICE(dev);
-    I6300State *d = DO_UPCAST(I6300State, dev, pdev);
+    I6300State *d = WATCHDOG_I6300ESB_DEVICE(pdev);
 
     i6300esb_debug("I6300State = %p\n", d);
 
@@ -195,7 +200,7 @@ static void i6300esb_timer_expired(void *vp)
         if (d->reboot_enabled) {
             d->previous_reboot_flag = 1;
             watchdog_perform_action(); /* This reboots, exits, etc */
-            i6300esb_reset(DEVICE(d));
+            i6300esb_reset(&d->dev.qdev);
         }
 
         /* In "free running mode" we start stage 1 again. */
@@ -207,7 +212,7 @@ static void i6300esb_timer_expired(void *vp)
 static void i6300esb_config_write(PCIDevice *dev, uint32_t addr,
                                   uint32_t data, int len)
 {
-    I6300State *d = DO_UPCAST(I6300State, dev, dev);
+    I6300State *d = WATCHDOG_I6300ESB_DEVICE(dev);
     int old;
 
     i6300esb_debug("addr = %x, data = %x, len = %d\n", addr, data, len);
@@ -235,7 +240,7 @@ static void i6300esb_config_write(PCIDevice *dev, uint32_t addr,
 
 static uint32_t i6300esb_config_read(PCIDevice *dev, uint32_t addr, int len)
 {
-    I6300State *d = DO_UPCAST(I6300State, dev, dev);
+    I6300State *d = WATCHDOG_I6300ESB_DEVICE(dev);
     uint32_t data;
 
     i6300esb_debug ("addr = %x, len = %d\n", addr, len);
@@ -369,7 +374,7 @@ static const MemoryRegionOps i6300esb_ops = {
             i6300esb_mem_writel,
         },
     },
-    .endianness = DEVICE_NATIVE_ENDIAN,
+    .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
 static const VMStateDescription vmstate_i6300esb = {
@@ -398,7 +403,7 @@ static const VMStateDescription vmstate_i6300esb = {
         VMSTATE_INT32(free_run, I6300State),
         VMSTATE_INT32(locked, I6300State),
         VMSTATE_INT32(enabled, I6300State),
-        VMSTATE_TIMER(timer, I6300State),
+        VMSTATE_TIMER_PTR(timer, I6300State),
         VMSTATE_UINT32(timer1_preload, I6300State),
         VMSTATE_UINT32(timer2_preload, I6300State),
         VMSTATE_INT32(stage, I6300State),
@@ -408,9 +413,9 @@ static const VMStateDescription vmstate_i6300esb = {
     }
 };
 
-static int i6300esb_init(PCIDevice *dev)
+static void i6300esb_realize(PCIDevice *dev, Error **errp)
 {
-    I6300State *d = DO_UPCAST(I6300State, dev, dev);
+    I6300State *d = WATCHDOG_I6300ESB_DEVICE(dev);
 
     i6300esb_debug("I6300State = %p\n", d);
 
@@ -421,8 +426,6 @@ static int i6300esb_init(PCIDevice *dev)
                           "i6300esb", 0x10);
     pci_register_bar(&d->dev, 0, 0, &d->io_mem);
     /* qemu_register_coalesced_mmio (addr, 0x10); ? */
-
-    return 0;
 }
 
 static WatchdogTimerModel model = {
@@ -437,7 +440,7 @@ static void i6300esb_class_init(ObjectClass *klass, void *data)
 
     k->config_read = i6300esb_config_read;
     k->config_write = i6300esb_config_write;
-    k->init = i6300esb_init;
+    k->realize = i6300esb_realize;
     k->vendor_id = PCI_VENDOR_ID_INTEL;
     k->device_id = PCI_DEVICE_ID_INTEL_ESB_9;
     k->class_id = PCI_CLASS_SYSTEM_OTHER;
@@ -447,7 +450,7 @@ static void i6300esb_class_init(ObjectClass *klass, void *data)
 }
 
 static const TypeInfo i6300esb_info = {
-    .name          = "i6300esb",
+    .name          = TYPE_WATCHDOG_I6300ESB_DEVICE,
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(I6300State),
     .class_init    = i6300esb_class_init,

@@ -11,8 +11,10 @@
  *
  */
 
+#include "qemu/osdep.h"
 #include <glib.h>
-#include "block/coroutine.h"
+#include "qemu/coroutine.h"
+#include "qemu/coroutine_int.h"
 
 /*
  * Check that qemu_in_coroutine() works
@@ -120,6 +122,30 @@ static void test_yield(void)
         i++;
     }
     g_assert_cmpint(i, ==, 5); /* coroutine must yield 5 times */
+}
+
+static void coroutine_fn c2_fn(void *opaque)
+{
+    qemu_coroutine_yield();
+}
+
+static void coroutine_fn c1_fn(void *opaque)
+{
+    Coroutine *c2 = opaque;
+    qemu_coroutine_enter(c2, NULL);
+}
+
+static void test_co_queue(void)
+{
+    Coroutine *c1;
+    Coroutine *c2;
+
+    c1 = qemu_coroutine_create(c1_fn);
+    c2 = qemu_coroutine_create(c2_fn);
+
+    qemu_coroutine_enter(c1, c2);
+    memset(c1, 0xff, sizeof(Coroutine));
+    qemu_coroutine_enter(c2, NULL);
 }
 
 /*
@@ -337,12 +363,13 @@ static void perf_cost(void)
                    "%luns per coroutine",
                    maxcycles,
                    duration, ops,
-                   (unsigned long)(1000000000 * duration) / maxcycles);
+                   (unsigned long)(1000000000.0 * duration / maxcycles));
 }
 
 int main(int argc, char **argv)
 {
     g_test_init(&argc, &argv, NULL);
+    g_test_add_func("/basic/co_queue", test_co_queue);
     g_test_add_func("/basic/lifecycle", test_lifecycle);
     g_test_add_func("/basic/yield", test_yield);
     g_test_add_func("/basic/nesting", test_nesting);

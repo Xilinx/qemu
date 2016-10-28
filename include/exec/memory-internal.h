@@ -23,16 +23,13 @@
 typedef struct AddressSpaceDispatch AddressSpaceDispatch;
 
 void address_space_init_dispatch(AddressSpace *as);
+void address_space_unregister(AddressSpace *as);
 void address_space_destroy_dispatch(AddressSpace *as);
 
 extern const MemoryRegionOps unassigned_mem_ops;
 
 bool memory_region_access_valid(MemoryRegion *mr, hwaddr addr,
-                                unsigned size, bool is_write);
-
-bool memory_region_access_valid_attr(MemoryRegion *mr, hwaddr addr,
-                                     unsigned size, bool is_write,
-                                     MemTxAttrs attr);
-
+                                unsigned size, bool is_write,
+                                MemTxAttrs attr);
 #endif
 #endif

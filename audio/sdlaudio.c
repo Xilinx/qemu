@@ -21,6 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+#include "qemu/osdep.h"
 #include <SDL.h>
 #include <SDL_thread.h>
 #include "qemu-common.h"
@@ -55,6 +56,7 @@ static struct SDLAudioState {
     SDL_mutex *mutex;
     SDL_sem *sem;
     int initialized;
+    bool driver_created;
 } glob_sdl;
 typedef struct SDLAudioState SDLAudioState;
 
@@ -332,7 +334,8 @@ static void sdl_fini_out (HWVoiceOut *hw)
     sdl_close (&glob_sdl);
 }
 
-static int sdl_init_out (HWVoiceOut *hw, struct audsettings *as)
+static int sdl_init_out(HWVoiceOut *hw, struct audsettings *as,
+                        void *drv_opaque)
 {
     SDLVoiceOut *sdl = (SDLVoiceOut *) hw;
     SDLAudioState *s = &glob_sdl;
@@ -392,6 +395,10 @@ static int sdl_ctl_out (HWVoiceOut *hw, int cmd, ...)
 static void *sdl_audio_init (void)
 {
     SDLAudioState *s = &glob_sdl;
+    if (s->driver_created) {
+        sdl_logerr("Can't create multiple sdl backends\n");
+        return NULL;
+    }
 
     if (SDL_InitSubSystem (SDL_INIT_AUDIO)) {
         sdl_logerr ("SDL failed to initialize audio subsystem\n");
@@ -413,6 +420,7 @@ static void *sdl_audio_init (void)
         return NULL;
     }
 
+    s->driver_created = true;
     return s;
 }
 
@@ -423,6 +431,7 @@ static void sdl_audio_fini (void *opaque)
     SDL_DestroySemaphore (s->sem);
     SDL_DestroyMutex (s->mutex);
     SDL_QuitSubSystem (SDL_INIT_AUDIO);
+    s->driver_created = false;
 }
 
 static struct audio_option sdl_options[] = {

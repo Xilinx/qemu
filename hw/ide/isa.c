@@ -22,6 +22,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+#include "qemu/osdep.h"
 #include <hw/hw.h>
 #include <hw/i386/pc.h>
 #include <hw/isa/isa.h>
@@ -74,7 +75,8 @@ static void isa_ide_realizefn(DeviceState *dev, Error **errp)
     isa_init_irq(isadev, &s->irq, s->isairq);
     ide_init2(&s->bus, s->irq);
     vmstate_register(dev, 0, &vmstate_ide_isa, s);
-};
+    ide_register_restart_cb(&s->bus);
+}
 
 ISADevice *isa_ide_init(ISABus *bus, int iobase, int iobase2, int isairq,
                         DriveInfo *hd0, DriveInfo *hd1)
@@ -88,9 +90,7 @@ ISADevice *isa_ide_init(ISABus *bus, int iobase, int iobase2, int isairq,
     qdev_prop_set_uint32(dev, "iobase",  iobase);
     qdev_prop_set_uint32(dev, "iobase2", iobase2);
     qdev_prop_set_uint32(dev, "irq",     isairq);
-    if (qdev_init(dev) < 0) {
-        return NULL;
-    }
+    qdev_init_nofail(dev);
 
     s = ISA_IDE(dev);
     if (hd0) {

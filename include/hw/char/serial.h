@@ -28,7 +28,7 @@
 #include "hw/hw.h"
 #include "sysemu/sysemu.h"
 #include "exec/memory.h"
-#include "qemu/fifo.h"
+#include "qemu/fifo8.h"
 
 #define UART_FIFO_LENGTH    16      /* 16550A Fifo Length */
 
@@ -60,8 +60,8 @@ struct SerialState {
 
     /* Time when the last byte was successfully sent out of the tsr */
     uint64_t last_xmit_ts;
-    Fifo recv_fifo;
-    Fifo xmit_fifo;
+    Fifo8 recv_fifo;
+    Fifo8 xmit_fifo;
     /* Interrupt trigger level for recv_fifo */
     uint8_t recv_fifo_itl;
 
@@ -92,6 +92,6 @@ SerialState *serial_mm_init(MemoryRegion *address_space,
 
 /* serial-isa.c */
 #define TYPE_ISA_SERIAL "isa-serial"
-bool serial_isa_init(ISABus *bus, int index, CharDriverState *chr);
+void serial_hds_isa_init(ISABus *bus, int n);
 
 #endif

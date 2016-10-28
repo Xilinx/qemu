@@ -24,6 +24,7 @@
  * inside "#if defined(TODO) ... #endif" statements to make tests easier.
  */
 
+#include "qemu/osdep.h"
 #include "cpu.h"
 #include "cpu-models.h"
 
@@ -1124,8 +1125,6 @@
     POWERPC_DEF("POWER5",        CPU_POWERPC_POWER5,                 POWER5,
                 "POWER5")
 #endif
-    POWERPC_DEF("POWER5+",       CPU_POWERPC_POWER5P,                POWER5P,
-                "POWER5+")
     POWERPC_DEF("POWER5+_v2.1",  CPU_POWERPC_POWER5P_v21,            POWER5P,
                 "POWER5+ v2.1")
 #if defined(TODO)
@@ -1140,12 +1139,14 @@
                 "POWER7 v2.3")
     POWERPC_DEF("POWER7+_v2.1",  CPU_POWERPC_POWER7P_v21,            POWER7,
                 "POWER7+ v2.1")
-    POWERPC_DEF("POWER8E_v1.0",  CPU_POWERPC_POWER8E_v10,            POWER8,
-                "POWER8E v1.0")
-    POWERPC_DEF("POWER8_v1.0",   CPU_POWERPC_POWER8_v10,             POWER8,
-                "POWER8 v1.0")
-    POWERPC_DEF("970",           CPU_POWERPC_970,                    970,
-                "PowerPC 970")
+    POWERPC_DEF("POWER8E_v2.1",  CPU_POWERPC_POWER8E_v21,            POWER8,
+                "POWER8E v2.1")
+    POWERPC_DEF("POWER8_v2.0",   CPU_POWERPC_POWER8_v20,             POWER8,
+                "POWER8 v2.0")
+    POWERPC_DEF("POWER8NVL_v1.0",CPU_POWERPC_POWER8NVL_v10,          POWER8,
+                "POWER8NVL v1.0")
+    POWERPC_DEF("970_v2.2",      CPU_POWERPC_970_v22,                970,
+                "PowerPC 970 v2.2")
     POWERPC_DEF("970fx_v1.0",    CPU_POWERPC_970FX_v10,              970,
                 "PowerPC 970FX v1.0 (G5)")
     POWERPC_DEF("970fx_v2.0",    CPU_POWERPC_970FX_v20,              970,
@@ -1387,11 +1388,14 @@ PowerPCCPUAlias ppc_cpu_aliases[] = {
     { "Dino",  "POWER3" },
     { "POWER3+", "631" },
     { "POWER5gr", "POWER5" },
-    { "POWER5gs", "POWER5+" },
+    { "POWER5+", "POWER5+_v2.1" },
+    { "POWER5gs", "POWER5+_v2.1" },
     { "POWER7", "POWER7_v2.3" },
     { "POWER7+", "POWER7+_v2.1" },
-    { "POWER8E", "POWER8E_v1.0" },
-    { "POWER8", "POWER8_v1.0" },
+    { "POWER8E", "POWER8E_v2.1" },
+    { "POWER8", "POWER8_v2.0" },
+    { "POWER8NVL", "POWER8NVL_v1.0" },
+    { "970", "970_v2.2" },
     { "970fx", "970fx_v3.1" },
     { "970mp", "970mp_v1.1" },
     { "Apache", "RS64" },

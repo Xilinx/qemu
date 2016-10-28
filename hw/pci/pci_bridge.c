@@ -29,6 +29,7 @@
  *                    VA Linux Systems Japan K.K.
  */
 
+#include "qemu/osdep.h"
 #include "hw/pci/pci_bridge.h"
 #include "hw/pci/pci_bus.h"
 #include "qemu/range.h"
@@ -115,7 +116,7 @@ pcibus_t pci_bridge_get_base(const PCIDevice *bridge, uint8_t type)
     return base;
 }
 
-/* accessor funciton to get bridge filtering limit */
+/* accessor function to get bridge filtering limit */
 pcibus_t pci_bridge_get_limit(const PCIDevice *bridge, uint8_t type)
 {
     pcibus_t limit;
@@ -332,9 +333,8 @@ void pci_bridge_reset(DeviceState *qdev)
 }
 
 /* default qdev initialization function for PCI-to-PCI bridge */
-int pci_bridge_initfn(PCIDevice *dev, const char *typename)
+void pci_bridge_initfn(PCIDevice *dev, const char *typename)
 {
-    DeviceState *d = DEVICE(dev);
     PCIBus *parent = dev->bus;
     PCIBridge *br = PCI_BRIDGE(dev);
     PCIBus *sec_bus = &br->sec_bus;
@@ -364,11 +364,11 @@ int pci_bridge_initfn(PCIDevice *dev, const char *typename)
      * Since PCI Bridge devices have a single bus each, we don't need the index:
      * let users address the bus using the device name.
      */
-    if (!br->bus_name && d->id && *d->id) {
-        br->bus_name = d->id;
+    if (!br->bus_name && dev->qdev.id && *dev->qdev.id) {
+	    br->bus_name = dev->qdev.id;
     }
 
-    qbus_create_inplace(sec_bus, sizeof(br->sec_bus), typename, d,
+    qbus_create_inplace(sec_bus, sizeof(br->sec_bus), typename, DEVICE(dev),
                         br->bus_name);
     sec_bus->parent_dev = dev;
     sec_bus->map_irq = br->map_irq ? br->map_irq : pci_swizzle_map_irq_fn;
@@ -379,7 +379,6 @@ int pci_bridge_initfn(PCIDevice *dev, const char *typename)
     br->windows = pci_bridge_region_init(br);
     QLIST_INIT(&sec_bus->child);
     QLIST_INSERT_HEAD(&parent->child, sec_bus, sibling);
-    return 0;
 }
 
 /* default qdev clean up function for PCI-to-PCI bridge */

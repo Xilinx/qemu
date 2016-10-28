@@ -16,13 +16,15 @@
  * GNU GPL, version 2 or (at your option) any later version.
  */
 
-# include "hw/hw.h"
-# include "hw/block/flash.h"
+#ifndef NAND_IO
+
+#include "qemu/osdep.h"
+#include "hw/hw.h"
+#include "hw/block/flash.h"
 #include "sysemu/block-backend.h"
 #include "hw/qdev.h"
+#include "qapi/error.h"
 #include "qemu/error-report.h"
-#include "qemu/bitops.h"
-#include "qemu/log.h"
 
 #ifndef NAND_ERR_DEBUG
 #define NAND_ERR_DEBUG 1
@@ -50,24 +52,19 @@
 # define NAND_CMD_BLOCKERASE1	0x60
 # define NAND_CMD_BLOCKERASE2	0xd0
 # define NAND_CMD_READSTATUS	0x70
-# define NAND_CMD_READSTATUS_ENHANCED	0x78
 # define NAND_CMD_COPYBACKPRG1	0x85
 # define NAND_CMD_READ_PARAMETER_PAGE 0xec
-
-#define NAND_CMD_GET_FEATURES 0xee
-#define NAND_CMD_SET_FEATURES 0xef
 
 # define NAND_IOSTATUS_ERROR	(1 << 0)
 # define NAND_IOSTATUS_PLANE0	(1 << 1)
 # define NAND_IOSTATUS_PLANE1	(1 << 2)
 # define NAND_IOSTATUS_PLANE2	(1 << 3)
 # define NAND_IOSTATUS_PLANE3	(1 << 4)
-# define NAND_IOSTATUS_AREADY   (1 << 5)
 # define NAND_IOSTATUS_READY    (1 << 6)
 # define NAND_IOSTATUS_UNPROTCT	(1 << 7)
 
-# define MAX_PAGE		0x10000
-# define MAX_OOB		0x1000
+# define MAX_PAGE		0x800
+# define MAX_OOB		0x40
 # define MAX_PARM_PAGE_SIZE     256
 # define MAX_EXT_PARM_PAGE_SIZE 48
 
@@ -78,9 +75,8 @@ struct NANDFlashState {
 
     uint8_t manf_id, chip_id;
     uint8_t buswidth; /* in BYTES */
-    uint64_t size;
-    uint64_t pages;
-    int page_shift, erase_shift, addr_shift, oob_size;
+    int size, pages;
+    int page_shift, oob_shift, erase_shift, addr_shift;
     uint8_t *storage;
     BlockBackend *blk;
     int mem_oob;
@@ -88,12 +84,8 @@ struct NANDFlashState {
     uint8_t cle, ale, ce, wp, gnd;
 
     uint8_t io[MAX_PAGE + MAX_OOB + 0x400];
-    uint8_t *ioaddr, *ioaddr0;
+    uint8_t *ioaddr;
     int iolen;
-
-    uint8_t reg_data[16];
-    int reglen;
-    uint8_t *regaddr;
 
     uint32_t cmd;
     uint64_t addr;
@@ -101,7 +93,10 @@ struct NANDFlashState {
     int status;
     int offset;
 
-    uint8_t features[0x100];
+    void (*blk_write)(NANDFlashState *s);
+    void (*blk_erase)(NANDFlashState *s);
+    void (*blk_load)(NANDFlashState *s, uint64_t addr, int offset);
+
     uint32_t ioaddr_vmstate;
 };
 
@@ -109,6 +104,15 @@ struct NANDFlashState {
 
 #define NAND(obj) \
     OBJECT_CHECK(NANDFlashState, (obj), TYPE_NAND)
+
+static void mem_and(uint8_t *dest, const uint8_t *src, size_t n)
+{
+    /* Like memcpy() but we logical-AND the data into the destination */
+    int i;
+    for (i = 0; i < n; i++) {
+        dest[i] &= src[i];
+    }
+}
 
 # define NAND_NO_AUTOINCR	0x00000001
 # define NAND_BUSWIDTH_16	0x00000002
@@ -120,52 +124,35 @@ struct NANDFlashState {
 # define NAND_NO_READRDY	0x00000100
 # define NAND_SAMSUNG_LP	(NAND_NO_PADDING | NAND_COPYBACK)
 
-static inline uint64_t nand_page_size(NANDFlashState *s)
-{
-    return 1ull << s->page_shift;
-}
+# define NAND_IO
 
-/* Get the current page address */
+# define PAGE(addr)		((addr) >> ADDR_SHIFT)
+# define PAGE_START(page)	(PAGE(page) * (PAGE_SIZE + OOB_SIZE))
+# define PAGE_MASK		((1 << ADDR_SHIFT) - 1)
+# define OOB_SHIFT		(PAGE_SHIFT - 5)
+# define OOB_SIZE		(1 << OOB_SHIFT)
+# define SECTOR(addr)		((addr) >> (9 + ADDR_SHIFT - PAGE_SHIFT))
+# define SECTOR_OFFSET(addr)	((addr) & ((511 >> PAGE_SHIFT) << 8))
 
-static inline uint64_t nand_page(NANDFlashState *s)
-{
-    return s->addr >> s->addr_shift;
-}
-
-/* Get the starting address in backing storage for the speficied page */
-
-static inline uint64_t nand_page_start(NANDFlashState *s, uint64_t page)
-{
-    uint64_t stride = (1 << s->page_shift);
-
-    /* OOB Size is added to stride between pages */
-    stride +=  s->oob_size;
-    return page * stride;
-}
-
-static inline uint64_t nand_oob_size(NANDFlashState *s)
-{
-    return s->oob_size;
-}
-
-static inline uint64_t nand_sector(NANDFlashState *s, uint64_t addr)
-{
-    return addr >> (BDRV_SECTOR_BITS + s->addr_shift - s->page_shift);
-}
-
-static inline uint64_t nand_sector_offset(NANDFlashState *s, uint64_t addr)
-{
-    /* FIXME: This code assumes that when the page size is smaller than the
-     * block sector size, the addr shift is 8. All NAND devices are as such,
-     * bus assert this condition.
-     */
-    assert(s->page_shift >= BDRV_SECTOR_BITS || s->addr_shift == 8);
-    return addr & (BDRV_SECTOR_OFFSET_MASK >> s->page_shift) << 8;
-}
+# define PAGE_SIZE		256
+# define PAGE_SHIFT		8
+# define PAGE_SECTORS		1
+# define ADDR_SHIFT		8
+# include "nand.c"
+# define PAGE_SIZE		512
+# define PAGE_SHIFT		9
+# define PAGE_SECTORS		1
+# define ADDR_SHIFT		8
+# include "nand.c"
+# define PAGE_SIZE		2048
+# define PAGE_SHIFT		11
+# define PAGE_SECTORS		4
+# define ADDR_SHIFT		16
+# include "nand.c"
 
 /* Information based on Linux drivers/mtd/nand/nand_ids.c */
 static const struct {
-    uint64_t size;
+    int size;
     int width;
     int page_shift;
     int erase_shift;
@@ -217,6 +204,7 @@ static const struct {
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
         }
     },
+
     [0x6e] = { 1,	8,	8, 4, 0 },
     [0x64] = { 2,	8,	8, 4, 0 },
     [0x6b] = { 4,	8,	9, 4, 0 },
@@ -272,6 +260,7 @@ static const struct {
     [0xc2] = { 64,	16,	0, 0, LP_OPTIONS16 },
 
     /* 1 Gigabit */
+    /* 1 Gigabit */
     [0xa1] = { 128, 8, 0, 0, LP_OPTIONS, 64,
              .param_page = {
                 0x4F, 0x4E, 0x46, 0x49, 0x02, 0x00, 0x1, 0x0,
@@ -316,38 +305,38 @@ static const struct {
     [0xaa] = {
         256, 8, 0, 0, LP_OPTIONS,
         .param_page = {
-	        0x4F, 0x4E, 0x46, 0x49, 0x02, 0x00, 0x00, 0x00,
-	        0x3F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	        0x4D, 0x49, 0x43, 0x52, 0x4F, 0x4E, 0x20, 0x20,
-	        0x20, 0x20, 0x20, 0x20, 0x4D, 0x54, 0x32, 0x39,
-	        0x46, 0x32, 0x47, 0x30, 0x38, 0x41, 0x42, 0x42,
-	        0x45, 0x41, 0x48, 0x43, 0x20, 0x20, 0x20, 0x20,
-	        0x2C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	        0x00, 0x08, 0x00, 0x00, 0x40, 0x00, 0x00, 0x02,
-	        0x00, 0x00, 0x10, 0x00, 0x40, 0x00, 0x00, 0x00,
-	        0x00, 0x08, 0x00, 0x00, 0x01, 0x23, 0x01, 0x28,
-	        0x00, 0x01, 0x05, 0x01, 0x00, 0x00, 0x04, 0x00,
-	        0x04, 0x01, 0x0E, 0x00, 0x00, 0x00, 0x00, 0x00,
-	        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	        0x0A, 0x1F, 0x00, 0x1F, 0x00, 0x58, 0x02, 0xB8,
-	        0x0B, 0x19, 0x00, 0x64, 0x00, 0x00, 0x00, 0x00,
-	        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	        0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00,
-	        0x00, 0x02, 0x04, 0x80, 0x01, 0x81, 0x04, 0x01,
-	        0x02, 0x01, 0x0A, 0x00, 0x00, 0x00, 0x00, 0x00,
-	        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x57, 0x1E
+            0x4F, 0x4E, 0x46, 0x49, 0x02, 0x00, 0x00, 0x00,
+            0x3F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x4D, 0x49, 0x43, 0x52, 0x4F, 0x4E, 0x20, 0x20,
+            0x20, 0x20, 0x20, 0x20, 0x4D, 0x54, 0x32, 0x39,
+            0x46, 0x32, 0x47, 0x30, 0x38, 0x41, 0x42, 0x42,
+            0x45, 0x41, 0x48, 0x43, 0x20, 0x20, 0x20, 0x20,
+            0x2C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x08, 0x00, 0x00, 0x40, 0x00, 0x00, 0x02,
+            0x00, 0x00, 0x10, 0x00, 0x40, 0x00, 0x00, 0x00,
+            0x00, 0x08, 0x00, 0x00, 0x01, 0x23, 0x01, 0x28,
+            0x00, 0x01, 0x05, 0x01, 0x00, 0x00, 0x04, 0x00,
+            0x04, 0x01, 0x0E, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x0A, 0x1F, 0x00, 0x1F, 0x00, 0x58, 0x02, 0xB8,
+            0x0B, 0x19, 0x00, 0x64, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00,
+            0x00, 0x02, 0x04, 0x80, 0x01, 0x81, 0x04, 0x01,
+            0x02, 0x01, 0x0A, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x57, 0x1E
         }
     },
     [0xda] = { 256,	8,	0, 0, LP_OPTIONS },
@@ -383,68 +372,42 @@ static void nand_reset(DeviceState *dev)
     s->offset = 0;
     s->status &= NAND_IOSTATUS_UNPROTCT;
     s->status |= NAND_IOSTATUS_READY;
-    s->status |= NAND_IOSTATUS_AREADY;
 }
 
-static inline void nand_pushio_byte(NANDFlashState *s, uint8_t value, bool reg)
+static inline void nand_pushio_byte(NANDFlashState *s, uint8_t value)
 {
-    if (reg) { /* Push bytes for register read */
-        s->regaddr[s->reglen++] = value;
-        for (value = s->buswidth; --value;) {
-            s->reg_data[s->reglen++] = 0;
-        }
-    } else {
-        s->ioaddr[s->iolen++] = value;
-        for (value = s->buswidth; --value;) {
-            s->ioaddr[s->iolen++] = 0;
-        }
+    s->ioaddr[s->iolen++] = value;
+    for (value = s->buswidth; --value;) {
+        s->ioaddr[s->iolen++] = 0;
     }
 }
-
-static void nand_blk_erase(NANDFlashState *s);
-static void nand_blk_rw(NANDFlashState *s, int offset, bool is_write);
 
 static void nand_command(NANDFlashState *s)
 {
     int i, j;
     unsigned int offset;
-
-    DB_PRINT_L("Executing NAND Command %x\n", s->cmd);
     switch (s->cmd) {
-
-    case NAND_CMD_READID:
-        s->reglen = 0;
-        s->regaddr = s->reg_data;
-        switch (s->addr & 0xFF) {
-        case 0x20:
-            nand_pushio_byte(s, 'O', true);
-            nand_pushio_byte(s, 'N', true);
-            nand_pushio_byte(s, 'F', true);
-            nand_pushio_byte(s, 'I', true);
-            break;
-        case 0x00:
-            nand_pushio_byte(s, s->manf_id, true);
-            nand_pushio_byte(s, s->chip_id, true);
-            nand_pushio_byte(s, 'Q', true); /* Don't-care byte (often 0xa5) */
-            if (nand_flash_ids[s->chip_id].options & NAND_SAMSUNG_LP) {
-                /* Page Size, Block Size, Spare Size; bit 6 indicates
-                 * 8 vs 16 bit width NAND.
-                 */
-                nand_pushio_byte(s, (s->buswidth == 2) ? 0x55 : 0x15, true);
-            } else {
-                nand_pushio_byte(s, 0xc0, true); /* Multi-plane */
-            }
-            break;
-            default:
-                qemu_log_mask(LOG_GUEST_ERROR, "Invalid address for NAND "
-                              "Read ID command: %#02" PRIx8 "\n",
-                              (uint8_t)s->addr);
-        }
+    case NAND_CMD_READ0:
+        s->iolen = 0;
         break;
 
+    case NAND_CMD_READID:
+        s->ioaddr = s->io;
+        s->iolen = 0;
+        nand_pushio_byte(s, s->manf_id);
+        nand_pushio_byte(s, s->chip_id);
+        nand_pushio_byte(s, 'Q'); /* Don't-care byte (often 0xa5) */
+        if (nand_flash_ids[s->chip_id].options & NAND_SAMSUNG_LP) {
+            /* Page Size, Block Size, Spare Size; bit 6 indicates
+             * 8 vs 16 bit width NAND.
+             */
+            nand_pushio_byte(s, (s->buswidth == 2) ? 0x55 : 0x15);
+        } else {
+            nand_pushio_byte(s, 0xc0); /* Multi-plane */
+        }
+        break;
     case NAND_CMD_READ_PARAMETER_PAGE:
         s->ioaddr = s->io;
-        s->ioaddr0 = s->io;
         s->iolen = 0;
         int num_parameter_pages = \
             nand_flash_ids[s->chip_id].param_page[NUM_PARAMETER_PAGES_OFFSET];
@@ -457,8 +420,7 @@ static void nand_command(NANDFlashState *s)
         /* Copy Required number of parameter Pages */
         for (j = 0; j < num_parameter_pages; ++j) {
             for (i = 0; i < MAX_PARM_PAGE_SIZE; ++i) {
-                nand_pushio_byte(s, nand_flash_ids[s->chip_id].param_page[i],
-                                 false);
+                nand_pushio_byte(s, nand_flash_ids[s->chip_id].param_page[i]);
             }
         }
 
@@ -466,57 +428,35 @@ static void nand_command(NANDFlashState *s)
         for (j = 0; j < num_parameter_pages; ++j) {
             for (i = MAX_PARM_PAGE_SIZE; \
                 i < (MAX_PARM_PAGE_SIZE + MAX_EXT_PARM_PAGE_SIZE); ++i) {
-                nand_pushio_byte(s, nand_flash_ids[s->chip_id].param_page[i],
-                                 false);
+                nand_pushio_byte(s, nand_flash_ids[s->chip_id].param_page[i]);
             }
         }
         break;
 
-    case NAND_CMD_SET_FEATURES:
-        DB_PRINT_L("NAND set features started\n");
-        s->iolen = 4;
-        s->ioaddr = s->io;
-        s->ioaddr0 = s->io;
-        break;
-
-    case NAND_CMD_GET_FEATURES:
-        s->iolen = 0;
-        s->ioaddr = s->io;
-        s->ioaddr0 = s->io;
-        for (i = s->addr & 0xFF; i < s->addr + 4; ++i) {
-            nand_pushio_byte(s, s->features[i], false);
-        }
-        break;
-
-    case NAND_CMD_COPYBACKPRG1:
-        s->cmd = NAND_CMD_PAGEPROGRAM1;
     case NAND_CMD_RANDOMREAD2:
-        if (s->addrlen <= 2) { /* column change only */
-            offset = s->addr & ((1 << s->addr_shift) - 1);
-            s->iolen += s->ioaddr - s->ioaddr0;
-            s->ioaddr = s->ioaddr0 + offset;
-            s->iolen -= offset;
-            break;
-        }
-        /* random read with page change - fallthrough */
     case NAND_CMD_NOSERIALREAD2:
         if (!(nand_flash_ids[s->chip_id].options & NAND_SAMSUNG_LP))
             break;
-        s->offset = 0;
-        /* fallthrough to regular read */
-    case NAND_CMD_PAGEPROGRAM1:
-    case NAND_CMD_READ0:
-        offset = s->offset + (s->addr & ((1 << s->addr_shift) - 1));
-        nand_blk_rw(s, offset, false);
+        offset = s->addr & ((1 << s->addr_shift) - 1);
+        s->blk_load(s, s->addr, offset);
+        if (s->gnd)
+            s->iolen = (1 << s->page_shift) - offset;
+        else
+            s->iolen = (1 << s->page_shift) + (1 << s->oob_shift) - offset;
         break;
 
     case NAND_CMD_RESET:
         nand_reset(DEVICE(s));
         break;
 
+    case NAND_CMD_PAGEPROGRAM1:
+        s->ioaddr = s->io;
+        s->iolen = 0;
+        break;
+
     case NAND_CMD_PAGEPROGRAM2:
         if (s->wp) {
-            nand_blk_rw(s, 0, true);
+            s->blk_write(s);
         }
         break;
 
@@ -525,18 +465,18 @@ static void nand_command(NANDFlashState *s)
 
     case NAND_CMD_BLOCKERASE2:
         s->addr &= (1ull << s->addrlen * 8) - 1;
-        s->addr <<= s->addr_shift;
+        s->addr <<= nand_flash_ids[s->chip_id].options & NAND_SAMSUNG_LP ?
+                                                                    16 : 8;
+
         if (s->wp) {
-            nand_blk_erase(s);
+            s->blk_erase(s);
         }
         break;
 
-    case NAND_CMD_READSTATUS_ENHANCED:
     case NAND_CMD_READSTATUS:
         s->ioaddr = s->io;
-        s->ioaddr0 = NULL;
         s->iolen = 0;
-        nand_pushio_byte(s, s->status, false);
+        nand_pushio_byte(s, s->status);
         break;
 
     default:
@@ -590,44 +530,44 @@ static const VMStateDescription vmstate_nand = {
 
 static void nand_realize(DeviceState *dev, Error **errp)
 {
-    uint64_t pagesize;
+    int pagesize;
     NANDFlashState *s = NAND(dev);
 
     s->buswidth = nand_flash_ids[s->chip_id].width >> 3;
     s->size = nand_flash_ids[s->chip_id].size << 20;
     if (nand_flash_ids[s->chip_id].options & NAND_SAMSUNG_LP) {
-        if (!nand_flash_ids[s->chip_id].page_shift) {
-            s->page_shift = 11;
-        } else {
-            s->page_shift = nand_flash_ids[s->chip_id].page_shift;
-        }
-        if (!nand_flash_ids[s->chip_id].erase_shift) {
-            s->erase_shift = 6;
-        } else {
-            s->erase_shift = nand_flash_ids[s->chip_id].erase_shift;
-        }
+        s->page_shift = 11;
+        s->erase_shift = 6;
     } else {
         s->page_shift = nand_flash_ids[s->chip_id].page_shift;
         s->erase_shift = nand_flash_ids[s->chip_id].erase_shift;
     }
 
-    if (!nand_flash_ids[s->chip_id].oob_size) {
-        s->oob_size = s->page_shift - (s->page_shift > 11 ? 3 : 5);
-    } else {
-        s->oob_size = nand_flash_ids[s->chip_id].oob_size;
+    switch (1 << s->page_shift) {
+    case 256:
+        nand_init_256(s);
+        break;
+    case 512:
+        nand_init_512(s);
+        break;
+    case 2048:
+        nand_init_2048(s);
+        break;
+    default:
+        error_setg(errp, "Unsupported NAND block size %#x",
+                   1 << s->page_shift);
+        return;
     }
 
-    s->pages = s->size >> s->page_shift;
-    /* FIXME: Include in the table as a parameterisable property,
-     * this assumption is not reliable!
-     */
-    s->addr_shift = s->page_shift > 9 ? 16 : 8;
-
-    pagesize = s->oob_size;
+    pagesize = 1 << s->oob_shift;
     s->mem_oob = 1;
     if (s->blk) {
+        if (blk_is_read_only(s->blk)) {
+            error_setg(errp, "Can't use a read-only drive");
+            return;
+        }
         if (blk_getlength(s->blk) >=
-                (s->pages << s->page_shift) + (s->pages * s->oob_size)) {
+                (s->pages << s->page_shift) + (s->pages << s->oob_shift)) {
             pagesize = 0;
             s->mem_oob = 0;
         }
@@ -640,7 +580,6 @@ static void nand_realize(DeviceState *dev, Error **errp)
     }
     /* Give s->ioaddr a sane value in case we save state before it is used. */
     s->ioaddr = s->io;
-    s->ioaddr = NULL;
 }
 
 static Property nand_properties[] = {
@@ -712,11 +651,10 @@ void nand_setio(DeviceState *dev, uint32_t value)
             if (value == NAND_CMD_RANDOMREAD1) {
                 s->addr &= ~((1 << s->addr_shift) - 1);
                 s->addrlen = 0;
-                s->cmd = value;
                 return;
             }
         }
-        if (value == NAND_CMD_READ0 || value == NAND_CMD_PAGEPROGRAM1) {
+        if (value == NAND_CMD_READ0) {
             s->offset = 0;
         } else if (value == NAND_CMD_READ1) {
             s->offset = 0x100;
@@ -734,8 +672,7 @@ void nand_setio(DeviceState *dev, uint32_t value)
                 s->cmd == NAND_CMD_BLOCKERASE2 ||
                 s->cmd == NAND_CMD_NOSERIALREAD2 ||
                 s->cmd == NAND_CMD_RANDOMREAD2 ||
-                s->cmd == NAND_CMD_RESET ||
-                s->cmd == NAND_CMD_SET_FEATURES) {
+                s->cmd == NAND_CMD_RESET) {
             nand_command(s);
         }
 
@@ -746,17 +683,15 @@ void nand_setio(DeviceState *dev, uint32_t value)
 
     if (s->ale) {
         unsigned int shift = s->addrlen * 8;
-        uint64_t mask = ~(0xffULL << shift);
-        uint64_t v = (uint64_t) value << shift;
+        uint64_t mask = ~(0xffull << shift);
+        uint64_t v = (uint64_t)value << shift;
 
         s->addr = (s->addr & mask) | v;
         s->addrlen ++;
 
         switch (s->addrlen) {
         case 1:
-            if (s->cmd == NAND_CMD_READID ||
-                    s->cmd == NAND_CMD_READ_PARAMETER_PAGE ||
-                    s->cmd == NAND_CMD_GET_FEATURES) {
+            if (s->cmd == NAND_CMD_READID) {
                 nand_command(s);
             }
             break;
@@ -791,46 +726,21 @@ void nand_setio(DeviceState *dev, uint32_t value)
         }
     }
 
-    if (!s->cle && !s->ale && s->cmd == NAND_CMD_COPYBACKPRG1) {
-        nand_command(s);
-    }
-
-    if (!s->cle && !s->ale && (s->cmd == NAND_CMD_PAGEPROGRAM1)) {
-        for (i = s->buswidth; i-- && s->iolen; value >>= 8) {
-            *s->ioaddr &= (uint8_t)value;
-            s->ioaddr++;
-            s->iolen--;
+    if (!s->cle && !s->ale && s->cmd == NAND_CMD_PAGEPROGRAM1) {
+        if (s->iolen < (1 << s->page_shift) + (1 << s->oob_shift)) {
+            for (i = s->buswidth; i--; value >>= 8) {
+                s->io[s->iolen ++] = (uint8_t) (value & 0xff);
+            }
+        }
+    } else if (!s->cle && !s->ale && s->cmd == NAND_CMD_COPYBACKPRG1) {
+        if ((s->addr & ((1 << s->addr_shift) - 1)) <
+                (1 << s->page_shift) + (1 << s->oob_shift)) {
+            for (i = s->buswidth; i--; s->addr++, value >>= 8) {
+                s->io[s->iolen + (s->addr & ((1 << s->addr_shift) - 1))] =
+                    (uint8_t) (value & 0xff);
+            }
         }
     }
-
-    if (!s->cle && !s->ale && s->cmd == NAND_CMD_SET_FEATURES) {
-        if (s->iolen--) {
-            *s->ioaddr = value;
-            s->ioaddr++;
-        }
-        if (!s->iolen) {
-        s->features[s->addr & 0xFF] = (uint8_t)*s->ioaddr0;
-        DB_PRINT_L("setting nand features: %x\n",
-                       *(uint32_t *)s->ioaddr0);
-        }
-   }
-}
-
-static uint32_t nand_readreg(NANDFlashState *s)
-{
-    int offset;
-    uint32_t x = 0;
-
-    if (s->ce || s->reglen <= 0) {
-        return 0;
-    }
-
-    for (offset = s->buswidth; offset--;) {
-        x |= s->regaddr[offset] << (offset << 3);
-    }
-    s->reglen -= s->buswidth;
-    s->regaddr += s->buswidth;
-    return x;
 }
 
 uint32_t nand_getio(DeviceState *dev)
@@ -839,8 +749,16 @@ uint32_t nand_getio(DeviceState *dev)
     uint32_t x = 0;
     NANDFlashState *s = NAND(dev);
 
-    if (s->cmd == NAND_CMD_READID) {
-        return nand_readreg(s);
+    /* Allow sequential reading */
+    if (!s->iolen && s->cmd == NAND_CMD_READ0) {
+        offset = (int) (s->addr & ((1 << s->addr_shift) - 1)) + s->offset;
+        s->offset = 0;
+
+        s->blk_load(s, s->addr, offset);
+        if (s->gnd)
+            s->iolen = (1 << s->page_shift) - offset;
+        else
+            s->iolen = (1 << s->page_shift) + (1 << s->oob_shift) - offset;
     }
 
     if (s->ce || s->iolen <= 0) {
@@ -855,19 +773,9 @@ uint32_t nand_getio(DeviceState *dev)
      */
     if (s->cmd != NAND_CMD_READSTATUS) {
         s->addr   += s->buswidth;
-        if (s->addr & (1 << s->page_shift)) {
-            s->addr -= 1 << s->page_shift;
-            s->addr += 1 << s->addr_shift;
-        }
         s->ioaddr += s->buswidth;
         s->iolen  -= s->buswidth;
     }
-
-    /* Allow sequential reading */
-    if (!s->iolen && s->cmd == NAND_CMD_READ0) {
-        nand_blk_rw(s, 0, false);
-    }
-
     return x;
 }
 
@@ -888,7 +796,7 @@ DeviceState *nand_init(BlockBackend *blk, int manf_id, int chip_id)
     qdev_prop_set_uint8(dev, "manufacturer_id", manf_id);
     qdev_prop_set_uint8(dev, "chip_id", chip_id);
     if (blk) {
-        qdev_prop_set_drive_nofail(dev, "drive", blk);
+        qdev_prop_set_drive(dev, "drive", blk, &error_fatal);
     }
 
     qdev_init_nofail(dev);
@@ -897,123 +805,166 @@ DeviceState *nand_init(BlockBackend *blk, int manf_id, int chip_id)
 
 type_init(nand_register_types)
 
-/* Erase a single block */
-static void nand_blk_erase(NANDFlashState *s)
+#else
+
+/* Program a single page */
+static void glue(nand_blk_write_, PAGE_SIZE)(NANDFlashState *s)
 {
-    uint64_t page_size = nand_page_size(s);
-    uint64_t erase_page = nand_page(s) & ~((1 << s->erase_shift) - 1);
-    uint64_t erase_addr = erase_page << s->addr_shift;
-    uint64_t erase_page_start = nand_page_start(s, erase_page);
-    uint64_t oob_size = nand_oob_size(s);
+    uint64_t off, page, sector, soff;
+    uint8_t iobuf[(PAGE_SECTORS + 2) * 0x200];
+    if (PAGE(s->addr) >= s->pages)
+        return;
 
-    uint64_t i, sector;
-    uint8_t iobuf[BDRV_SECTOR_SIZE] = { [0 ... BDRV_SECTOR_SIZE - 1] = 0xff, };
+    if (!s->blk) {
+        mem_and(s->storage + PAGE_START(s->addr) + (s->addr & PAGE_MASK) +
+                        s->offset, s->io, s->iolen);
+    } else if (s->mem_oob) {
+        sector = SECTOR(s->addr);
+        off = (s->addr & PAGE_MASK) + s->offset;
+        soff = SECTOR_OFFSET(s->addr);
+        if (blk_pread(s->blk, sector << BDRV_SECTOR_BITS, iobuf,
+                      PAGE_SECTORS << BDRV_SECTOR_BITS) < 0) {
+            printf("%s: read error in sector %" PRIu64 "\n", __func__, sector);
+            return;
+        }
 
-    if (erase_page >= s->pages) {
+        mem_and(iobuf + (soff | off), s->io, MIN(s->iolen, PAGE_SIZE - off));
+        if (off + s->iolen > PAGE_SIZE) {
+            page = PAGE(s->addr);
+            mem_and(s->storage + (page << OOB_SHIFT), s->io + PAGE_SIZE - off,
+                            MIN(OOB_SIZE, off + s->iolen - PAGE_SIZE));
+        }
+
+        if (blk_pwrite(s->blk, sector << BDRV_SECTOR_BITS, iobuf,
+                       PAGE_SECTORS << BDRV_SECTOR_BITS, 0) < 0) {
+            printf("%s: write error in sector %" PRIu64 "\n", __func__, sector);
+        }
+    } else {
+        off = PAGE_START(s->addr) + (s->addr & PAGE_MASK) + s->offset;
+        sector = off >> 9;
+        soff = off & 0x1ff;
+        if (blk_pread(s->blk, sector << BDRV_SECTOR_BITS, iobuf,
+                      (PAGE_SECTORS + 2) << BDRV_SECTOR_BITS) < 0) {
+            printf("%s: read error in sector %" PRIu64 "\n", __func__, sector);
+            return;
+        }
+
+        mem_and(iobuf + soff, s->io, s->iolen);
+
+        if (blk_pwrite(s->blk, sector << BDRV_SECTOR_BITS, iobuf,
+                       (PAGE_SECTORS + 2) << BDRV_SECTOR_BITS, 0) < 0) {
+            printf("%s: write error in sector %" PRIu64 "\n", __func__, sector);
+        }
+    }
+    s->offset = 0;
+}
+
+/* Erase a single block */
+static void glue(nand_blk_erase_, PAGE_SIZE)(NANDFlashState *s)
+{
+    uint64_t i, page, addr;
+    uint8_t iobuf[0x200] = { [0 ... 0x1ff] = 0xff, };
+    addr = s->addr & ~((1 << (ADDR_SHIFT + s->erase_shift)) - 1);
+
+    if (PAGE(addr) >= s->pages) {
         return;
     }
 
     if (!s->blk) {
-        memset(s->storage + erase_page_start,
-                        0xff, (page_size + oob_size) << s->erase_shift);
+        memset(s->storage + PAGE_START(addr),
+                        0xff, (PAGE_SIZE + OOB_SIZE) << s->erase_shift);
     } else if (s->mem_oob) {
-        memset(s->storage + (erase_page * s->oob_size),
-                        0xff, oob_size << s->erase_shift);
-        i = nand_sector(s, erase_addr);
-        sector = nand_sector(s, erase_addr + (s->addr_shift + s->erase_shift));
-        for (; i < sector; i ++) {
-            if (blk_write(s->blk, i, iobuf, 1) < 0) {
+        memset(s->storage + (PAGE(addr) << OOB_SHIFT),
+                        0xff, OOB_SIZE << s->erase_shift);
+        i = SECTOR(addr);
+        page = SECTOR(addr + (1 << (ADDR_SHIFT + s->erase_shift)));
+        for (; i < page; i ++)
+            if (blk_pwrite(s->blk, i << BDRV_SECTOR_BITS, iobuf,
+                           BDRV_SECTOR_SIZE, 0) < 0) {
                 printf("%s: write error in sector %" PRIu64 "\n", __func__, i);
             }
-        }
     } else {
-        uint64_t erase_page_end = erase_page_start +
-                        ((page_size + oob_size) << s->erase_shift);
-
-        if (erase_page_start & BDRV_SECTOR_OFFSET_MASK) {
-            i = erase_page_start;
-            sector = i >> BDRV_SECTOR_BITS;
-            if (blk_read(s->blk, sector, iobuf, 1) < 0) {
-                printf("%s: read error in sector %" PRIu64 "\n", __func__, sector);
-            }
-            i &= BDRV_SECTOR_OFFSET_MASK;
-            memset(iobuf + i, 0xff, BDRV_SECTOR_SIZE - i);
-            if (blk_write(s->blk, sector, iobuf, 1) < 0) {
-                printf("%s: write error in sector %" PRIu64 "\n", __func__, sector);
-            }
+        addr = PAGE_START(addr);
+        page = addr >> 9;
+        if (blk_pread(s->blk, page << BDRV_SECTOR_BITS, iobuf,
+                      BDRV_SECTOR_SIZE) < 0) {
+            printf("%s: read error in sector %" PRIu64 "\n", __func__, page);
+        }
+        memset(iobuf + (addr & 0x1ff), 0xff, (~addr & 0x1ff) + 1);
+        if (blk_pwrite(s->blk, page << BDRV_SECTOR_BITS, iobuf,
+                       BDRV_SECTOR_SIZE, 0) < 0) {
+            printf("%s: write error in sector %" PRIu64 "\n", __func__, page);
         }
 
-        memset(iobuf, 0xff, BDRV_SECTOR_SIZE);
-        i = ROUND_UP(erase_page_start, BDRV_SECTOR_SIZE);
-        for  (; i <= erase_page_end - BDRV_SECTOR_SIZE; i += BDRV_SECTOR_SIZE) {
-            sector = i >> BDRV_SECTOR_BITS;
-            if (blk_write(s->blk, sector, iobuf, 1) < 0) {
+        memset(iobuf, 0xff, 0x200);
+        i = (addr & ~0x1ff) + 0x200;
+        for (addr += ((PAGE_SIZE + OOB_SIZE) << s->erase_shift) - 0x200;
+                        i < addr; i += 0x200) {
+            if (blk_pwrite(s->blk, i, iobuf, BDRV_SECTOR_SIZE, 0) < 0) {
                 printf("%s: write error in sector %" PRIu64 "\n",
-                       __func__, sector);
+                       __func__, i >> 9);
             }
         }
 
-        if (erase_page_end & BDRV_SECTOR_OFFSET_MASK) {
-            sector = i >> BDRV_SECTOR_BITS;
-            if (blk_read(s->blk, sector, iobuf, 1) < 0) {
-                printf("%s: read error in sector %" PRIu64 "\n", __func__,
-                       sector);
-            }
-            memset(iobuf, 0xff, erase_page_end & BDRV_SECTOR_OFFSET_MASK);
-            if (blk_write(s->blk, sector, iobuf, 1) < 0) {
-                printf("%s: write error in sector %" PRIu64 "\n", __func__,
-                       sector);
-            }
+        page = i >> 9;
+        if (blk_pread(s->blk, page << BDRV_SECTOR_BITS, iobuf,
+                      BDRV_SECTOR_SIZE) < 0) {
+            printf("%s: read error in sector %" PRIu64 "\n", __func__, page);
+        }
+        memset(iobuf, 0xff, ((addr - 1) & 0x1ff) + 1);
+        if (blk_pwrite(s->blk, page << BDRV_SECTOR_BITS, iobuf,
+                       BDRV_SECTOR_SIZE, 0) < 0) {
+            printf("%s: write error in sector %" PRIu64 "\n", __func__, page);
         }
     }
 }
 
-static void memcpy_dir(void *a, void *b, size_t n, bool reverse)
+static void glue(nand_blk_load_, PAGE_SIZE)(NANDFlashState *s,
+                uint64_t addr, int offset)
 {
-    memcpy(reverse ? b : a, reverse ? a : b, n);
-}
-
-static void nand_blk_rw(NANDFlashState *s, int offset, bool is_write)
-{
-    uint64_t page_addr = s->addr & ~ONES(s->addr_shift);
-    uint64_t page_size = nand_page_size(s);
-    uint64_t page = nand_page(s);
-    uint64_t page_start = nand_page_start(s, page);
-    uint64_t oob_size = nand_oob_size(s);
-    uint64_t sector = nand_sector(s, page_addr);
-    uint64_t sector_offset = nand_sector_offset(s, page_addr);
-    int page_sectors = DIV_ROUND_UP(page_size, BDRV_SECTOR_SIZE);
-
-    if (page >= s->pages) {
+    if (PAGE(addr) >= s->pages) {
         return;
     }
 
     if (s->blk) {
         if (s->mem_oob) {
-            if (blk_rw(s->blk, sector, s->io, page_sectors, is_write) < 0) {
-                printf("%s: %s error in sector %" PRIu64 "\n",
-                       __func__, is_write ? "write" : "read", sector);
+            if (blk_pread(s->blk, SECTOR(addr) << BDRV_SECTOR_BITS, s->io,
+                          PAGE_SECTORS << BDRV_SECTOR_BITS) < 0) {
+                printf("%s: read error in sector %" PRIu64 "\n",
+                                __func__, SECTOR(addr));
             }
-            memcpy_dir(s->io + sector_offset + page_size,
-                       s->storage + (page * s->oob_size), oob_size, is_write);
-            s->ioaddr0 = s->io + sector_offset;
+            memcpy(s->io + SECTOR_OFFSET(s->addr) + PAGE_SIZE,
+                            s->storage + (PAGE(s->addr) << OOB_SHIFT),
+                            OOB_SIZE);
+            s->ioaddr = s->io + SECTOR_OFFSET(s->addr) + offset;
         } else {
-            if (blk_rw(s->blk, page_start >> BDRV_SECTOR_BITS,
-                        s->io, (page_sectors + 4), is_write) < 0) {
-                printf("%s: %s error in sector %" PRIu64 "\n",
-                       __func__, is_write ? "write" : "read",
-                       page_start >> BDRV_SECTOR_BITS);
+            if (blk_pread(s->blk, PAGE_START(addr), s->io,
+                          (PAGE_SECTORS + 2) << BDRV_SECTOR_BITS) < 0) {
+                printf("%s: read error in sector %" PRIu64 "\n",
+                                __func__, PAGE_START(addr) >> 9);
             }
-            s->ioaddr0 = s->io + (page_start & BDRV_SECTOR_OFFSET_MASK);
+            s->ioaddr = s->io + (PAGE_START(addr) & 0x1ff) + offset;
         }
     } else {
-        memcpy_dir(s->io, s->storage + page_start, page_size + oob_size,
-                   is_write);
-        s->ioaddr0 = s->io;
+        memcpy(s->io, s->storage + PAGE_START(s->addr) +
+                        offset, PAGE_SIZE + OOB_SIZE - offset);
+        s->ioaddr = s->io;
     }
-    s->ioaddr = s->ioaddr0 + offset;
-    if (s->gnd)
-        s->iolen = (1 << s->page_shift) - offset;
-    else
-        s->iolen = (1 << s->page_shift) + s->oob_size - offset;
 }
+
+static void glue(nand_init_, PAGE_SIZE)(NANDFlashState *s)
+{
+    s->oob_shift = PAGE_SHIFT - 5;
+    s->pages = s->size >> PAGE_SHIFT;
+    s->addr_shift = ADDR_SHIFT;
+
+    s->blk_erase = glue(nand_blk_erase_, PAGE_SIZE);
+    s->blk_write = glue(nand_blk_write_, PAGE_SIZE);
+    s->blk_load = glue(nand_blk_load_, PAGE_SIZE);
+}
+
+# undef PAGE_SIZE
+# undef PAGE_SHIFT
+# undef PAGE_SECTORS
+# undef ADDR_SHIFT
+#endif	/* NAND_IO */

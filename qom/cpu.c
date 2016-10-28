@@ -18,17 +18,18 @@
  * <http://www.gnu.org/licenses/gpl-2.0.html>
  */
 
+#include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "qemu-common.h"
 #include "qom/cpu.h"
 #include "sysemu/kvm.h"
 #include "qemu/notify.h"
 #include "qemu/log.h"
+#include "exec/log.h"
 #include "qemu/error-report.h"
 #include "sysemu/sysemu.h"
-#include "exec/memory.h"
-#include "qapi/visitor.h"
 #include "hw/qdev-properties.h"
-#include "exec/memattrs.h"
+
 
 bool cpu_exists(int64_t id)
 {
@@ -75,8 +76,7 @@ CPUState *cpu_generic_init(const char *typename, const char *cpu_model)
 
 out:
     if (err != NULL) {
-        error_report("%s", error_get_pretty(err));
-        error_free(err);
+        error_report_err(err);
         object_unref(OBJECT(cpu));
         return NULL;
     }
@@ -101,7 +101,7 @@ void cpu_get_memory_mapping(CPUState *cpu, MemoryMappingList *list,
 {
     CPUClass *cc = CPU_GET_CLASS(cpu);
 
-    return cc->get_memory_mapping(cpu, list, errp);
+    cc->get_memory_mapping(cpu, list, errp);
 }
 
 static void cpu_common_get_memory_mapping(CPUState *cpu,
@@ -119,6 +119,8 @@ void cpu_reset_interrupt(CPUState *cpu, int mask)
 void cpu_exit(CPUState *cpu)
 {
     cpu->exit_request = 1;
+    /* Ensure cpu_exec will see the exit request after TCG has exited.  */
+    smp_wmb();
     cpu->tcg_exit_req = 1;
 }
 
@@ -133,7 +135,7 @@ int cpu_write_elf32_qemunote(WriteCoreDumpFunction f, CPUState *cpu,
 static int cpu_common_write_elf32_qemunote(WriteCoreDumpFunction f,
                                            CPUState *cpu, void *opaque)
 {
-    return -1;
+    return 0;
 }
 
 int cpu_write_elf32_note(WriteCoreDumpFunction f, CPUState *cpu,
@@ -162,7 +164,7 @@ int cpu_write_elf64_qemunote(WriteCoreDumpFunction f, CPUState *cpu,
 static int cpu_common_write_elf64_qemunote(WriteCoreDumpFunction f,
                                            CPUState *cpu, void *opaque)
 {
-    return -1;
+    return 0;
 }
 
 int cpu_write_elf64_note(WriteCoreDumpFunction f, CPUState *cpu,
@@ -189,6 +191,14 @@ static int cpu_common_gdb_read_register(CPUState *cpu, uint8_t *buf, int reg)
 static int cpu_common_gdb_write_register(CPUState *cpu, uint8_t *buf, int reg)
 {
     return 0;
+}
+
+static bool cpu_common_debug_check_watchpoint(CPUState *cpu, CPUWatchpoint *wp)
+{
+    /* If no extra check is required, QEMU watchpoint match can be considered
+     * as an architectural match.
+     */
+    return true;
 }
 
 bool target_words_bigendian(void);
@@ -239,7 +249,6 @@ void cpu_reset(CPUState *cpu)
 static void cpu_common_reset(CPUState *cpu)
 {
     CPUClass *cc = CPU_GET_CLASS(cpu);
-
     bool old_halt = cpu->halt_pin;
     bool old_reset = cpu->reset_pin;
 
@@ -249,14 +258,14 @@ static void cpu_common_reset(CPUState *cpu)
     }
 
     cpu->interrupt_request = 0;
-    cpu->current_tb = NULL;
     cpu->halted = 0;
     cpu->mem_io_pc = 0;
     cpu->mem_io_vaddr = 0;
     cpu->icount_extra = 0;
     cpu->icount_decr.u32 = 0;
-    cpu->can_do_io = 0;
+    cpu->can_do_io = 1;
     cpu->exception_index = -1;
+    cpu->crash_occurred = false;
     memset(cpu->tb_jmp_cache, 0, TB_JMP_CACHE_SIZE * sizeof(void *));
     cpu_halt_gpio(cpu, 0, old_halt);
     cpu_reset_gpio(cpu, 0, old_reset);
@@ -341,15 +350,20 @@ static void cpu_common_initfn(Object *obj)
     CPUState *cpu = CPU(obj);
     CPUClass *cc = CPU_GET_CLASS(obj);
 
+    cpu->cpu_index = -1;
     cpu->gdb_num_regs = cpu->gdb_num_g_regs = cc->gdb_num_core_regs;
+
     qdev_init_gpio_in_named(DEVICE(obj), cpu_reset_gpio, "reset",1);
     qdev_init_gpio_in_named(DEVICE(obj), cpu_halt_gpio, "halt", 1);
 
-    object_property_add(obj, "mr", "link<" TYPE_MEMORY_REGION ">",
-                        NULL, /* FIXME: Implement the getter */
-                        cpu_set_mr,
-                        NULL, /* FIXME: Implement the cleanup */
-                        NULL, &error_abort);
+    qemu_mutex_init(&cpu->work_mutex);
+    QTAILQ_INIT(&cpu->breakpoints);
+    QTAILQ_INIT(&cpu->watchpoints);
+}
+
+static void cpu_common_finalize(Object *obj)
+{
+    cpu_exec_exit(CPU(obj));
 }
 
 static int64_t cpu_common_get_arch_id(CPUState *cpu)
@@ -382,6 +396,7 @@ static void cpu_class_init(ObjectClass *klass, void *data)
     k->gdb_write_register = cpu_common_gdb_write_register;
     k->virtio_is_big_endian = cpu_common_virtio_is_big_endian;
     k->debug_excp_handler = cpu_common_noop;
+    k->debug_check_watchpoint = cpu_common_debug_check_watchpoint;
     k->cpu_exec_enter = cpu_common_noop;
     k->cpu_exec_exit = cpu_common_noop;
     k->cpu_exec_interrupt = cpu_common_exec_interrupt;
@@ -402,6 +417,7 @@ static const TypeInfo cpu_type_info = {
     .parent = TYPE_DEVICE,
     .instance_size = sizeof(CPUState),
     .instance_init = cpu_common_initfn,
+    .instance_finalize = cpu_common_finalize,
     .abstract = true,
     .class_size = sizeof(CPUClass),
     .class_init = cpu_class_init,

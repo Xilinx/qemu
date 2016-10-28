@@ -26,6 +26,8 @@
  * Reference: Finn Thogersons' VGADOC4b
  *   available at http://home.worldonline.dk/~finth/
  */
+#include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "hw/hw.h"
 #include "hw/pci/pci.h"
 #include "ui/console.h"
@@ -235,6 +237,10 @@ typedef struct PCICirrusVGAState {
     CirrusVGAState cirrus_vga;
 } PCICirrusVGAState;
 
+#define TYPE_PCI_CIRRUS_VGA "cirrus-vga"
+#define PCI_CIRRUS_VGA(obj) \
+    OBJECT_CHECK(PCICirrusVGAState, (obj), TYPE_PCI_CIRRUS_VGA)
+
 #define TYPE_ISA_CIRRUS_VGA "isa-cirrus-vga"
 #define ISA_CIRRUS_VGA(obj) \
     OBJECT_CHECK(ISACirrusVGAState, (obj), TYPE_ISA_CIRRUS_VGA)
@@ -271,14 +277,14 @@ static bool blit_region_is_unsafe(struct CirrusVGAState *s,
             + ((int64_t)s->cirrus_blt_height-1) * pitch;
         int32_t max = addr
             + s->cirrus_blt_width;
-        if (min < 0 || max >= s->vga.vram_size) {
+        if (min < 0 || max > s->vga.vram_size) {
             return true;
         }
     } else {
         int64_t max = addr
             + ((int64_t)s->cirrus_blt_height-1) * pitch
             + s->cirrus_blt_width;
-        if (max >= s->vga.vram_size) {
+        if (max > s->vga.vram_size) {
             return true;
         }
     }
@@ -2907,7 +2913,7 @@ static void cirrus_init_common(CirrusVGAState *s, Object *owner,
                                             bank, 1);
     }
     memory_region_add_subregion_overlap(system_memory,
-                                        isa_mem_base + 0x000a0000,
+                                        0x000a0000,
                                         &s->low_mem_container,
                                         1);
     memory_region_set_coalescing(&s->low_mem);
@@ -3006,9 +3012,9 @@ static const TypeInfo isa_cirrus_vga_info = {
  *
  ***************************************/
 
-static int pci_cirrus_vga_initfn(PCIDevice *dev)
+static void pci_cirrus_vga_realize(PCIDevice *dev, Error **errp)
 {
-     PCICirrusVGAState *d = DO_UPCAST(PCICirrusVGAState, dev, dev);
+     PCICirrusVGAState *d = PCI_CIRRUS_VGA(dev);
      CirrusVGAState *s = &d->cirrus_vga;
      PCIDeviceClass *pc = PCI_DEVICE_GET_CLASS(dev);
      int16_t device_id = pc->device_id;
@@ -3017,9 +3023,9 @@ static int pci_cirrus_vga_initfn(PCIDevice *dev)
        Also accept 8 MB/16 MB for backward compatibility. */
      if (s->vga.vram_size_mb != 4 && s->vga.vram_size_mb != 8 &&
          s->vga.vram_size_mb != 16) {
-         error_report("Invalid cirrus_vga ram size '%u'",
-                      s->vga.vram_size_mb);
-         return -1;
+         error_setg(errp, "Invalid cirrus_vga ram size '%u'",
+                    s->vga.vram_size_mb);
+         return;
      }
      /* setup VGA */
      vga_common_init(&s->vga, OBJECT(dev), true);
@@ -3044,7 +3050,6 @@ static int pci_cirrus_vga_initfn(PCIDevice *dev)
      if (device_id == CIRRUS_ID_CLGD5446) {
          pci_register_bar(&d->dev, 1, 0, &s->cirrus_mmio_io);
      }
-     return 0;
 }
 
 static Property pci_vga_cirrus_properties[] = {
@@ -3058,7 +3063,7 @@ static void cirrus_vga_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
-    k->init = pci_cirrus_vga_initfn;
+    k->realize = pci_cirrus_vga_realize;
     k->romfile = VGABIOS_CIRRUS_FILENAME;
     k->vendor_id = PCI_VENDOR_ID_CIRRUS;
     k->device_id = CIRRUS_ID_CLGD5446;
@@ -3071,7 +3076,7 @@ static void cirrus_vga_class_init(ObjectClass *klass, void *data)
 }
 
 static const TypeInfo cirrus_vga_info = {
-    .name          = "cirrus-vga",
+    .name          = TYPE_PCI_CIRRUS_VGA,
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(PCICirrusVGAState),
     .class_init    = cirrus_vga_class_init,

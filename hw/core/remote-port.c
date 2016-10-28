@@ -7,6 +7,7 @@
  * This code is licensed under the GNU GPL.
  */
 
+#include "qemu/osdep.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/dma.h"
 #include "sysemu/char.h"
@@ -17,6 +18,8 @@
 #include "qemu/thread.h"
 #include "qemu/log.h"
 #include "qapi/error.h"
+#include "qemu/error-report.h"
+#include "qom/cpu.h"
 
 #include <semaphore.h>
 #ifndef _WIN32
@@ -68,7 +71,6 @@ struct RemotePort {
     } event;
     CharDriverState *chr;
     bool do_sync;
-    int fd;
     /* To serialize writes to fd.  */
     QemuMutex write_mutex;
 
@@ -196,11 +198,11 @@ static void rp_fatal_error(RemotePort *s, const char *reason)
     exit(EXIT_FAILURE);
 }
 
-static ssize_t rp_recv(RemotePort *s, int fd, void *buf, size_t count)
+static ssize_t rp_recv(RemotePort *s, void *buf, size_t count)
 {
     ssize_t r;
 
-    r = qemu_recv_full(fd, buf, count, 0);
+    r = qemu_chr_fe_read_all(s->chr, buf, count);
     if (r <= 0) {
         rp_fatal_error(s, "Disconnected");
     }
@@ -218,7 +220,7 @@ ssize_t rp_write(RemotePort *s, const void *buf, size_t count)
     ssize_t r;
 
     qemu_mutex_lock(&s->write_mutex);
-    r = qemu_write_full(s->fd, buf, count);
+    r = qemu_chr_fe_write(s->chr, buf, count);
     qemu_mutex_unlock(&s->write_mutex);
     if (r <= 0) {
         error_report("%s: Disconnected r=%zd buf=%p count=%zd\n",
@@ -639,7 +641,7 @@ static void rp_read_pkt(RemotePort *s, RemotePortDynPkt *dpkt)
     struct rp_pkt *pkt = dpkt->pkt;
     int used;
 
-    rp_recv(s, s->fd, pkt, sizeof pkt->hdr);
+    rp_recv(s, pkt, sizeof pkt->hdr);
     used = rp_decode_hdr((void *) &pkt->hdr);
     assert(used == sizeof pkt->hdr);
 
@@ -647,7 +649,7 @@ static void rp_read_pkt(RemotePort *s, RemotePortDynPkt *dpkt)
         rp_dpkt_alloc(dpkt, sizeof pkt->hdr + pkt->hdr.len);
         /* pkt may move due to realloc.  */
         pkt = dpkt->pkt;
-        rp_recv(s, s->fd, &pkt->hdr + 1, pkt->hdr.len);
+        rp_recv(s, &pkt->hdr + 1, pkt->hdr.len);
         rp_decode_payload(pkt);
     }
 }
@@ -723,8 +725,6 @@ static void rp_realize(DeviceState *dev, Error **errp)
                          s->prefix, s->chardesc);
             exit(EXIT_FAILURE);
         }
-        s->fd = qemu_chr_fe_get_fd(s->chr);
-        qemu_set_block(s->fd);
     }
 
 

@@ -7,15 +7,16 @@
  * This code is licensed under the GPL.
  */
 
+#include "qemu/osdep.h"
 #include "hw/sysbus.h"
-#include "hw/ssi.h"
-#include "qemu/fifo.h"
+#include "hw/ssi/ssi.h"
+#include "qemu/log.h"
 
 //#define DEBUG_PL022 1
 
 #ifdef DEBUG_PL022
 #define DPRINTF(fmt, ...) \
-do { fprintf(stderr, "pl022: " fmt , ## __VA_ARGS__); } while (0)
+do { printf("pl022: " fmt , ## __VA_ARGS__); } while (0)
 #define BADF(fmt, ...) \
 do { fprintf(stderr, "pl022: error: " fmt , ## __VA_ARGS__); exit(1);} while (0)
 #else
@@ -43,8 +44,6 @@ do { fprintf(stderr, "pl022: error: " fmt , ## __VA_ARGS__);} while (0)
 #define TYPE_PL022 "pl022"
 #define PL022(obj) OBJECT_CHECK(PL022State, (obj), TYPE_PL022)
 
-#define PL022_FIFO_DEPTH 8
-
 typedef struct PL022State {
     SysBusDevice parent_obj;
 
@@ -56,10 +55,13 @@ typedef struct PL022State {
     uint32_t cpsr;
     uint32_t is;
     uint32_t im;
-
-    Fifo tx_fifo;
-    Fifo rx_fifo;
-
+    /* The FIFO head points to the next empty entry.  */
+    int tx_fifo_head;
+    int rx_fifo_head;
+    int tx_fifo_len;
+    int rx_fifo_len;
+    uint16_t tx_fifo[8];
+    uint16_t rx_fifo[8];
     qemu_irq irq;
     SSIBus *ssi;
 } PL022State;
@@ -69,38 +71,30 @@ static const unsigned char pl022_id[8] =
 
 static void pl022_update(PL022State *s)
 {
-    uint32_t tx_fifo_len = fifo_num_used(&s->tx_fifo);
-    uint32_t rx_fifo_len = fifo_num_used(&s->rx_fifo);
-
     s->sr = 0;
-    if (tx_fifo_len == 0) {
+    if (s->tx_fifo_len == 0)
         s->sr |= PL022_SR_TFE;
-    }
-    if (tx_fifo_len != PL022_FIFO_DEPTH) {
+    if (s->tx_fifo_len != 8)
         s->sr |= PL022_SR_TNF;
-    }
-    if (rx_fifo_len != 0) {
+    if (s->rx_fifo_len != 0)
         s->sr |= PL022_SR_RNE;
-    }
-    if (rx_fifo_len == PL022_FIFO_DEPTH) {
+    if (s->rx_fifo_len == 8)
         s->sr |= PL022_SR_RFF;
-    }
-    if (tx_fifo_len) {
+    if (s->tx_fifo_len)
         s->sr |= PL022_SR_BSY;
-    }
     s->is = 0;
-    if (rx_fifo_len >= 4) {
+    if (s->rx_fifo_len >= 4)
         s->is |= PL022_INT_RX;
-    }
-    if (tx_fifo_len <= 4) {
+    if (s->tx_fifo_len <= 4)
         s->is |= PL022_INT_TX;
-    }
 
     qemu_set_irq(s->irq, (s->is & s->im) != 0);
 }
 
 static void pl022_xfer(PL022State *s)
 {
+    int i;
+    int o;
     int val;
 
     if ((s->cr1 & PL022_CR1_SSE) == 0) {
@@ -109,8 +103,9 @@ static void pl022_xfer(PL022State *s)
         return;
     }
 
-    DPRINTF("Maybe xfer %" PRId32 "/%" PRId32 "\n",
-            fifo_num_used(&s->tx_fifo), fifo_num_used(&s->rx_fifo));
+    DPRINTF("Maybe xfer %d/%d\n", s->tx_fifo_len, s->rx_fifo_len);
+    i = (s->tx_fifo_head - s->tx_fifo_len) & 7;
+    o = s->rx_fifo_head;
     /* ??? We do not emulate the line speed.
        This may break some applications.  The are two problematic cases:
         (a) A driver feeds data into the TX FIFO until it is full,
@@ -123,16 +118,21 @@ static void pl022_xfer(PL022State *s)
        cause the RX FIFO to overflow.  In practice much transmit-only code
        falls into (a) because it flushes the RX FIFO to determine when
        the transfer has completed.  */
-    while (!fifo_is_empty(&s->tx_fifo) && !fifo_is_full(&s->rx_fifo)) {
+    while (s->tx_fifo_len && s->rx_fifo_len < 8) {
         DPRINTF("xfer\n");
-        val = fifo_pop16(&s->tx_fifo);
+        val = s->tx_fifo[i];
         if (s->cr1 & PL022_CR1_LBM) {
             /* Loopback mode.  */
         } else {
             val = ssi_transfer(s->ssi, val);
         }
-        fifo_push16(&s->rx_fifo, val & s->bitmask);
+        s->rx_fifo[o] = val & s->bitmask;
+        i = (i + 1) & 7;
+        o = (o + 1) & 7;
+        s->tx_fifo_len--;
+        s->rx_fifo_len++;
     }
+    s->rx_fifo_head = o;
     pl022_update(s);
 }
 
@@ -151,9 +151,10 @@ static uint64_t pl022_read(void *opaque, hwaddr offset,
     case 0x04: /* CR1 */
       return s->cr1;
     case 0x08: /* DR */
-        if (!fifo_is_empty(&s->rx_fifo)) {
-            val = fifo_pop16(&s->rx_fifo);
+        if (s->rx_fifo_len) {
+            val = s->rx_fifo[(s->rx_fifo_head - s->rx_fifo_len) & 7];
             DPRINTF("RX %02x\n", val);
+            s->rx_fifo_len--;
             pl022_xfer(s);
         } else {
             val = 0;
@@ -199,9 +200,11 @@ static void pl022_write(void *opaque, hwaddr offset,
         pl022_xfer(s);
         break;
     case 0x08: /* DR */
-        if (!fifo_is_full(&s->tx_fifo)) {
+        if (s->tx_fifo_len < 8) {
             DPRINTF("TX %02x\n", (unsigned)value);
-            fifo_push16(&s->tx_fifo, value & s->bitmask);
+            s->tx_fifo[s->tx_fifo_head] = value & s->bitmask;
+            s->tx_fifo_head = (s->tx_fifo_head + 1) & 7;
+            s->tx_fifo_len++;
             pl022_xfer(s);
         }
         break;
@@ -226,8 +229,8 @@ static void pl022_write(void *opaque, hwaddr offset,
 
 static void pl022_reset(PL022State *s)
 {
-    fifo_reset(&s->rx_fifo);
-    fifo_reset(&s->tx_fifo);
+    s->rx_fifo_len = 0;
+    s->tx_fifo_len = 0;
     s->im = 0;
     s->is = PL022_INT_TX;
     s->sr = PL022_SR_TFE | PL022_SR_TNF;
@@ -239,10 +242,24 @@ static const MemoryRegionOps pl022_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
+static int pl022_post_load(void *opaque, int version_id)
+{
+    PL022State *s = opaque;
+
+    if (s->tx_fifo_head < 0 ||
+        s->tx_fifo_head >= ARRAY_SIZE(s->tx_fifo) ||
+        s->rx_fifo_head < 0 ||
+        s->rx_fifo_head >= ARRAY_SIZE(s->rx_fifo)) {
+        return -1;
+    }
+    return 0;
+}
+
 static const VMStateDescription vmstate_pl022 = {
     .name = "pl022_ssp",
-    .version_id = 2,
-    .minimum_version_id = 2,
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .post_load = pl022_post_load,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32(cr0, PL022State),
         VMSTATE_UINT32(cr1, PL022State),
@@ -251,8 +268,26 @@ static const VMStateDescription vmstate_pl022 = {
         VMSTATE_UINT32(cpsr, PL022State),
         VMSTATE_UINT32(is, PL022State),
         VMSTATE_UINT32(im, PL022State),
-        VMSTATE_FIFO(tx_fifo, PL022State),
-        VMSTATE_FIFO(rx_fifo, PL022State),
+        VMSTATE_INT32(tx_fifo_head, PL022State),
+        VMSTATE_INT32(rx_fifo_head, PL022State),
+        VMSTATE_INT32(tx_fifo_len, PL022State),
+        VMSTATE_INT32(rx_fifo_len, PL022State),
+        VMSTATE_UINT16(tx_fifo[0], PL022State),
+        VMSTATE_UINT16(rx_fifo[0], PL022State),
+        VMSTATE_UINT16(tx_fifo[1], PL022State),
+        VMSTATE_UINT16(rx_fifo[1], PL022State),
+        VMSTATE_UINT16(tx_fifo[2], PL022State),
+        VMSTATE_UINT16(rx_fifo[2], PL022State),
+        VMSTATE_UINT16(tx_fifo[3], PL022State),
+        VMSTATE_UINT16(rx_fifo[3], PL022State),
+        VMSTATE_UINT16(tx_fifo[4], PL022State),
+        VMSTATE_UINT16(rx_fifo[4], PL022State),
+        VMSTATE_UINT16(tx_fifo[5], PL022State),
+        VMSTATE_UINT16(rx_fifo[5], PL022State),
+        VMSTATE_UINT16(tx_fifo[6], PL022State),
+        VMSTATE_UINT16(rx_fifo[6], PL022State),
+        VMSTATE_UINT16(tx_fifo[7], PL022State),
+        VMSTATE_UINT16(rx_fifo[7], PL022State),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -266,8 +301,6 @@ static int pl022_init(SysBusDevice *sbd)
     sysbus_init_mmio(sbd, &s->iomem);
     sysbus_init_irq(sbd, &s->irq);
     s->ssi = ssi_create_bus(dev, "ssi");
-    fifo_create16(&s->tx_fifo, PL022_FIFO_DEPTH);
-    fifo_create16(&s->rx_fifo, PL022_FIFO_DEPTH);
     pl022_reset(s);
     vmstate_register(dev, -1, &vmstate_pl022, s);
     return 0;

@@ -9,6 +9,7 @@
  * This work is licensed under the terms of the GNU GPL version 2.
  * See the COPYING file in the top-level directory.
  */
+#include "qemu/osdep.h"
 #include "hw/i386/apic_internal.h"
 #include "hw/pci/msi.h"
 #include "sysemu/kvm.h"
@@ -185,7 +186,7 @@ static void kvm_apic_realize(DeviceState *dev, Error **errp)
                           APIC_SPACE_SIZE);
 
     if (kvm_has_gsi_routing()) {
-        msi_supported = true;
+        msi_nonbroken = true;
     }
 }
 

@@ -22,6 +22,7 @@
  *
  */
 
+#include "qemu/osdep.h"
 #include "hw/intc/xlnx_scu_gic.h"
 #include "hw/fdt_generic_util.h"
 

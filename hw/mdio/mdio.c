@@ -29,6 +29,7 @@
  * - Make the Model use mmio to communicate directly form IO register space.
  */
 
+#include "qemu/osdep.h"
 #include "qemu-common.h"
 #include "qemu/log.h"
 #include "hw/mdio/mdio_slave.h"

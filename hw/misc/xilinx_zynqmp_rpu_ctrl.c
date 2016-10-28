@@ -26,10 +26,13 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "hw/register.h"
 #include "qemu/bitops.h"
+#include "qapi/error.h"
 #include "qemu/log.h"
+#include "qapi/qmp/qerror.h"
 
 #include "hw/fdt_generic_util.h"
 #include "hw/intc/xlnx_scu_gic.h"
@@ -814,32 +817,32 @@ static void rpu_realize(DeviceState *dev, Error **errp)
     }
 
     if (!s->atcm1_for_rpu0) {
-        error_set(errp, QERR_MISSING_PARAMETER, "atcm1-for-rpu0");
+        error_setg(errp, "atcm1-for-rpu0");
         return;
     }
 
     if (!s->btcm1_for_rpu0) {
-        error_set(errp, QERR_MISSING_PARAMETER, "btcm1-for-rpu0");
+        error_setg(errp, "btcm1-for-rpu0");
         return;
     }
 
     if (!s->icache_for_rpu1) {
-        error_set(errp, QERR_MISSING_PARAMETER, "icache-for-rpu1");
+        error_setg(errp, "icache-for-rpu1");
         return;
     }
 
     if (!s->dcache_for_rpu1) {
-        error_set(errp, QERR_MISSING_PARAMETER, "dcache-for-rpu1");
+        error_setg(errp, "dcache-for-rpu1");
         return;
     }
 
     if (!s->ddr) {
-        error_set(errp, QERR_MISSING_PARAMETER, "ddr-mem-for-rpu");
+        error_setg(errp, "ddr-mem-for-rpu");
         return;
     }
 
     if (!s->gic) {
-        error_set(errp, QERR_MISSING_PARAMETER, "gic-for-rpu");
+        error_setg(errp, "gic-for-rpu");
         return;
     }
 

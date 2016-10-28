@@ -25,8 +25,10 @@
  *
  */
 
+#include "qemu/osdep.h"
 #include "hw/mdio/mdio_slave.h"
 #include "hw/mdio/eth_phy.h"
+#include "qemu/log.h"
 
 #ifndef ETH_PHY_DEBUG
 #define ETH_PHY_DEBUG 0

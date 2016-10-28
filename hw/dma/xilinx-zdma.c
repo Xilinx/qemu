@@ -25,10 +25,12 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "hw/register.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
+#include "qapi/error.h"
 #include "sysemu/dma.h"
 
 #ifndef XILINX_ZDMA_ERR_DEBUG
@@ -325,8 +327,7 @@ static bool zdma_load_descriptor(ZDMA *s, uint64_t addr, void *buf)
     }
 
     /* Load descriptors. FIXME: handle endiannes conversion.  */
-    address_space_rw_attr(s->dma_as, addr, buf, sizeof(ZDMADescr), false,
-                          *s->attr);
+    address_space_rw(s->dma_as, addr, *s->attr, buf, sizeof(ZDMADescr), false);
     return true;
 }
 
@@ -377,8 +378,7 @@ static uint64_t zdma_update_descr_addr(ZDMA *s, bool type, unsigned int basereg)
     } else {
         addr = zdma_get_regaddr64(s, basereg);
         addr += sizeof(s->dsc_dst);
-        address_space_rw_attr(s->dma_as, addr, (void *) &next, 8, false,
-                              *s->attr);
+        address_space_rw(s->dma_as, addr, *s->attr, (void *) &next, 8, false);
         zdma_put_regaddr64(s, basereg, next);
     }
     return next;
@@ -426,8 +426,8 @@ static void zdma_write_dst(ZDMA *s, uint8_t *buf, uint32_t len)
             }
         }
 
-        address_space_rw_attr(s->dma_as, s->dsc_dst.addr, buf, dlen, true,
-                              *s->attr);
+        address_space_rw(s->dma_as, s->dsc_dst.addr, *s->attr, buf, dlen,
+                         true);
         if (burst_type == AXI_BURST_INCR) {
             s->dsc_dst.addr += dlen;
         }
@@ -498,8 +498,8 @@ static void zdma_process_descr(ZDMA *s)
                 len = s->cfg.bus_width / 8;
             }
         } else {
-            address_space_rw_attr(s->dma_as, src_addr, s->buf, len, false,
-                                  *s->attr);
+            address_space_rw(s->dma_as, src_addr, *s->attr, s->buf, len,
+                             false);
             if (burst_type == AXI_BURST_INCR) {
                 src_addr += len;
             }

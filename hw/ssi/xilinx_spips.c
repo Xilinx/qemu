@@ -22,15 +22,16 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/sysbus.h"
-#include "sysemu/dma.h"
+#include "sysemu/sysemu.h"
 #include "hw/ptimer.h"
 #include "qemu/log.h"
-#include "qemu/fifo.h"
-#include "hw/ssi.h"
 #include "qemu/bitops.h"
+#include "hw/ssi/xilinx_spips.h"
+#include "qapi/error.h"
 #include "hw/register.h"
-#include "hw/stream.h"
+#include "sysemu/dma.h"
 
 #ifndef XILINX_SPIPS_ERR_DEBUG
 #define XILINX_SPIPS_ERR_DEBUG 0
@@ -38,8 +39,8 @@
 
 #define DB_PRINT_L(level, ...) do { \
     if (XILINX_SPIPS_ERR_DEBUG > (level)) { \
-        qemu_log_mask_level(DEV_LOG_SPI, level, ": %s: ", __func__); \
-        qemu_log_mask_level(DEV_LOG_SPI, level, ## __VA_ARGS__); \
+        qemu_log_mask(DEV_LOG_SPI, ": %s: ", __func__); \
+        qemu_log_mask(DEV_LOG_SPI, ## __VA_ARGS__); \
     } \
 } while (0);
 
@@ -50,8 +51,8 @@
 #define MODEFAIL_GEN_EN     (1 << 17)
 #define MAN_START_COM       (1 << 16)
 #define MAN_START_EN        (1 << 15)
-#define R_CONFIG_MANUAL_CS  (1 << 14)
-#define R_CONFIG_CS         (0xF << 10)
+#define MANUAL_CS           (1 << 14)
+#define CS                  (0xF << 10)
 #define CS_SHIFT            (10)
 #define PERI_SEL            (1 << 9)
 #define REF_CLK             (1 << 8)
@@ -67,6 +68,7 @@
 #define R_INTR_EN           (0x08 / 4)
 #define R_INTR_DIS          (0x0C / 4)
 #define R_INTR_MASK         (0x10 / 4)
+#define IXR_TX_FIFO_UNDERFLOW   (1 << 6)
 /* FIXME: Poll timeout not implemented */
 #define IXR_RX_FIFO_EMPTY       (1 << 11)
 #define IXR_GENERIC_FIFO_FULL   (1 << 10)
@@ -77,9 +79,9 @@
 #define IXR_RX_FIFO_NOT_EMPTY   (1 << 4)
 #define IXR_TX_FIFO_FULL        (1 << 3)
 #define IXR_TX_FIFO_NOT_FULL    (1 << 2)
-#define IXR_POLL_TIMEOUT_EXPIRE (1 << 1)
+#define IXR_TX_FIFO_MODE_FAIL   (1 << 1)
 #define IXR_RX_FIFO_OVERFLOW    (1 << 0)
-#define IXR_ALL                 ((1 << 13)-1)
+#define IXR_ALL                 ((IXR_TX_FIFO_UNDERFLOW<<1)-1)
 #define GQSPI_IXR_MASK          0xFBE
 
 #define IXR_SELF_CLEAR \
@@ -114,19 +116,21 @@
 #define LQSPI_CFG_MODE_EN       (1 << 25)
 #define LQSPI_CFG_MODE_WIDTH    8
 #define LQSPI_CFG_MODE_SHIFT    16
+#define LQSPI_CFG_DUMMY_WIDTH   3
+#define LQSPI_CFG_DUMMY_SHIFT   8
 #define LQSPI_CFG_INST_CODE     0xFF
 
 #define R_CMND        (0xc0 / 4)
     #define R_CMND_RXFIFO_DRAIN   (1 << 19)
     /* FIXME: Implement */
     FIELD(CMND, PARTIAL_BYTE_LEN, 3, 16)
-    #define R_CMND_EXT_ADD        (1 << 15)
+#define R_CMND_EXT_ADD        (1 << 15)
     /* FIXME: implement on finer grain than byte level */
     FIELD(CMND, RX_DISCARD, 7, 8)
     /* FIXME: Implement */
     FIELD(CMND, DUMMY_CYCLES, 6, 2)
-    #define R_CMND_DMA_EN         (1 << 1)
-    #define R_CMND_PUSH_WAIT      (1 << 0)
+#define R_CMND_DMA_EN         (1 << 1)
+#define R_CMND_PUSH_WAIT      (1 << 0)
 
 #define R_TRANSFER_SIZE     (0xc4 / 4)
 
@@ -180,7 +184,7 @@
     FIELD(GQSPI_GF_SNAPSHOT, RECIEVE,           1, 17)
     FIELD(GQSPI_GF_SNAPSHOT, TRANSMIT,          1, 16)
     FIELD(GQSPI_GF_SNAPSHOT, DATA_BUS_SELECT,   2, 14)
-    FIELD(GQSPI_GF_SNAPSHOT, CS,                2, 12)
+    FIELD(GQSPI_GF_SNAPSHOT, CHIP_SELECT,       2, 12)
     FIELD(GQSPI_GF_SNAPSHOT, SPI_MODE,          2, 10)
     FIELD(GQSPI_GF_SNAPSHOT, EXPONENT,          1, 9)
     FIELD(GQSPI_GF_SNAPSHOT, DATA_XFER,         1, 8)
@@ -188,8 +192,6 @@
 
 #define R_GQSPI_MOD_ID        (0x168 / 4)
 #define R_GQSPI_MOD_ID_VALUE  0x010A0000
-
-#define R_MAX 0x200 
 
 /* size of TXRX FIFOs */
 #define RXFF_A          (128)
@@ -200,118 +202,10 @@
 
 /* 16MB per linear region */
 #define LQSPI_ADDRESS_BITS 24
-/* Bite off 4k chunks at a time */
-#define LQSPI_CACHE_SIZE 1024
 
 #define SNOOP_CHECKING 0xFF
 #define SNOOP_NONE 0xFE
 #define SNOOP_STRIPING 0
-
-typedef enum {
-    READ = 0x3,         READ_4 = 0x13,
-    FAST_READ = 0xb,    FAST_READ_4 = 0x0c,
-    DOR = 0x3b,         DOR_4 = 0x3c,
-    QOR = 0x6b,         QOR_4 = 0x6c,
-    DIOR = 0xbb,        DIOR_4 = 0xbc,
-    QIOR = 0xeb,        QIOR_4 = 0xec,
-
-    PP = 0x2,           PP_4 = 0x12,
-    DPP = 0xa2,
-    QPP = 0x32,         QPP_4 = 0x34,
-} FlashCMD;
-
-typedef struct {
-    SysBusDevice parent_obj;
-
-    MemoryRegion iomem;
-    MemoryRegion mmlqspi;
-
-    qemu_irq irq;
-    int irqline;
-
-    uint8_t num_cs;
-    uint8_t num_busses;
-
-    uint8_t snoop_state;
-    uint8_t link_state;
-    uint8_t link_state_next;
-    uint8_t link_state_next_when;
-    qemu_irq *cs_lines;
-    bool *cs_lines_state;
-    SSIBus **spi;
-
-    Fifo rx_fifo;
-    Fifo tx_fifo;
-    /* GQSPI has seperate tx/rx fifos */
-    Fifo rx_fifo_g;
-    Fifo tx_fifo_g;
-    /*
-     * at the end of each generic command, misaligned extra bytes are discard
-     * or padded to tx and rx respectively to round it out (and avoid need for
-     * individual byte access. Since we use byte fifos, keep track of the
-     * alignment WRT to word access.
-     */
-    uint8_t rx_fifo_g_align;
-    uint8_t tx_fifo_g_align;
-
-    Fifo fifo_g;
-
-    uint8_t num_txrx_bytes;
-    uint32_t rx_discard;
-
-    uint32_t regs[R_MAX];
-
-    bool man_start_com;
-    bool man_start_com_g;
-} XilinxSPIPS;
-
-typedef struct {
-    XilinxSPIPS parent_obj;
-
-    uint32_t lqspi_size;
-    uint32_t lqspi_src;
-    uint32_t lqspi_dst;
-
-    MemoryRegion *hack_dma;
-    AddressSpace *hack_as;
-
-    uint8_t spi_mode;
-    uint8_t lqspi_buf[LQSPI_CACHE_SIZE];
-    hwaddr lqspi_cached_addr;
-} XilinxQSPIPS;
-
-typedef struct {
-    XilinxQSPIPS parent_obj;
-
-    StreamSlave *dma;
-    uint8_t dma_buf[4];
-} ZynqMPQSPIPS;
-
-typedef struct XilinxSPIPSClass {
-    SysBusDeviceClass parent_class;
-
-    const MemoryRegionOps *reg_ops;
-
-    uint32_t rx_fifo_size;
-    uint32_t tx_fifo_size;
-} XilinxSPIPSClass;
-
-#define TYPE_XILINX_SPIPS "cdns.spi-r1p6"
-#define TYPE_XILINX_QSPIPS "xlnx.ps7-qspi"
-#define TYPE_ZYNQMP_QSPIPS "xlnx.usmp-gqspi"
-
-#define XILINX_SPIPS(obj) \
-     OBJECT_CHECK(XilinxSPIPS, (obj), TYPE_XILINX_SPIPS)
-#define XILINX_SPIPS_CLASS(klass) \
-     OBJECT_CLASS_CHECK(XilinxSPIPSClass, (klass), TYPE_XILINX_SPIPS)
-#define XILINX_SPIPS_GET_CLASS(obj) \
-     OBJECT_GET_CLASS(XilinxSPIPSClass, (obj), TYPE_XILINX_SPIPS)
-
-#define XILINX_QSPIPS(obj) \
-     OBJECT_CHECK(XilinxQSPIPS, (obj), TYPE_XILINX_QSPIPS)
-
-#define ZYNQMP_QSPIPS(obj) \
-     OBJECT_CHECK(ZynqMPQSPIPS, (obj), TYPE_ZYNQMP_QSPIPS)
 
 static inline int num_effective_busses(XilinxSPIPS *s)
 {
@@ -321,7 +215,7 @@ static inline int num_effective_busses(XilinxSPIPS *s)
 
 static void xilinx_spips_update_cs_lines_legacy_mangle(XilinxSPIPS *s,
                                                        int *field) {
-    *field = ~((s->regs[R_CONFIG] & R_CONFIG_CS) >> CS_SHIFT);
+    *field = ~((s->regs[R_CONFIG] & CS) >> CS_SHIFT);
     /* In dual parallel, mirror low CS to both */
     if (num_effective_busses(s) == 2) {
         /* Signle bit chip-select for qspi */
@@ -337,7 +231,7 @@ static void xilinx_spips_update_cs_lines_legacy_mangle(XilinxSPIPS *s,
         *field <<= 1;
     }
     /* Auto CS */
-    if (!(s->regs[R_CONFIG] & R_CONFIG_MANUAL_CS) &&
+    if (!(s->regs[R_CONFIG] & MANUAL_CS) &&
         fifo_is_empty(&s->tx_fifo)) {
         *field = 0;
     }
@@ -345,7 +239,7 @@ static void xilinx_spips_update_cs_lines_legacy_mangle(XilinxSPIPS *s,
 
 static void xilinx_spips_update_cs_lines_generic_mangle(XilinxSPIPS *s,
                                                         int *field) {
-    *field = AF_EX32(s->regs, GQSPI_GF_SNAPSHOT, CS);
+    *field = AF_EX32(s->regs, GQSPI_GF_SNAPSHOT, CHIP_SELECT);
 }
 
 static void xilinx_spips_update_cs_lines(XilinxSPIPS *s)
@@ -392,16 +286,16 @@ static void xilinx_spips_update_ixr(XilinxSPIPS *s)
     uint32_t qspi_int, gqspi_int;
     bool zynqmp = false;
 
-
     if (object_dynamic_cast(OBJECT(s), TYPE_ZYNQMP_QSPIPS)) {
         zynqmp = true;
     }
+
     /* these are pure functions of fifo state, set them here */
     s->regs[R_GQSPI_ISR] &= ~IXR_SELF_CLEAR;
     s->regs[R_GQSPI_ISR] |=
         (fifo_is_empty(&s->fifo_g) ? IXR_GENERIC_FIFO_EMPTY : 0) |
         (fifo_is_full(&s->fifo_g) ? IXR_GENERIC_FIFO_FULL : 0) |
-        (s->fifo_g.num < s->regs[R_GQSPI_GFIFO_THRESH] ? 
+        (s->fifo_g.num < s->regs[R_GQSPI_GFIFO_THRESH] ?
                                     IXR_GENERIC_FIFO_NOT_FULL : 0) |
 
         (fifo_is_empty(&s->rx_fifo_g) ? IXR_RX_FIFO_EMPTY : 0) |
@@ -445,7 +339,7 @@ static void xilinx_spips_reset(DeviceState *d)
     XilinxSPIPS *s = XILINX_SPIPS(d);
 
     int i;
-    for (i = 0; i < R_MAX; i++) {
+    for (i = 0; i < XLNX_SPIPS_R_MAX; i++) {
         s->regs[i] = 0;
     }
 
@@ -774,8 +668,8 @@ static void xilinx_spips_flush_txfifo(XilinxSPIPS *s)
         case (SNOOP_CHECKING):
             /* assume 3 address bytes */
             s->snoop_state =  3;
-            switch (tx) { /* and check for 4 address bytes */
-            case READ:
+            switch (tx) { /* new instruction code */
+            case READ: /* 3 address bytes, no dummy bytes/cycles */
             case PP:
             case DPP:
             case QPP:
@@ -1148,8 +1042,9 @@ static void xilinx_qspips_write(void *opaque, hwaddr addr,
     uint32_t lqspi_cfg_old = s->regs[R_LQSPI_CFG];
 
     xilinx_spips_write(opaque, addr, value, size);
+    addr >>= 2;
 
-    if ((addr >> 2) == R_LQSPI_CFG &&
+    if (addr == R_LQSPI_CFG &&
                ((lqspi_cfg_old ^ value) & ~LQSPI_CFG_U_PAGE)) {
         q->lqspi_cached_addr = ~0ULL;
         if (q->lqspi_size) {
@@ -1311,13 +1206,15 @@ static void xilinx_spips_realize(DeviceState *dev, Error **errp)
         s->spi[i] = ssi_create_bus(dev, bus_name);
     }
 
-    s->cs_lines = g_new0(qemu_irq, s->num_cs);
-    s->cs_lines_state = g_new0(bool, s->num_cs);
+    s->cs_lines = g_new0(qemu_irq, s->num_cs * s->num_busses);
+    s->cs_lines_state = g_new0(bool, s->num_cs * s->num_busses);
+    ssi_auto_connect_slaves(DEVICE(s), s->cs_lines, s->spi[0]);
+    ssi_auto_connect_slaves(DEVICE(s), s->cs_lines, s->spi[1]);
     sysbus_init_irq(sbd, &s->irq);
-    qdev_init_gpio_out(dev, s->cs_lines, s->num_cs);
+    qdev_init_gpio_out(dev, s->cs_lines, s->num_cs * s->num_busses);
 
     memory_region_init_io(&s->iomem, OBJECT(s), xsc->reg_ops, s,
-                          "spi", R_MAX*4);
+                          "spi", XLNX_SPIPS_R_MAX * 4);
     sysbus_init_mmio(sbd, &s->iomem);
 
     s->irqline = -1;
@@ -1378,7 +1275,7 @@ static const VMStateDescription vmstate_xilinx_spips = {
     .fields = (VMStateField[]) {
         VMSTATE_FIFO(tx_fifo, XilinxSPIPS),
         VMSTATE_FIFO(rx_fifo, XilinxSPIPS),
-        VMSTATE_UINT32_ARRAY(regs, XilinxSPIPS, R_MAX),
+        VMSTATE_UINT32_ARRAY(regs, XilinxSPIPS, XLNX_SPIPS_R_MAX),
         VMSTATE_UINT8(snoop_state, XilinxSPIPS),
         VMSTATE_END_OF_LIST()
     }

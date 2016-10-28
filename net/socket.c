@@ -21,11 +21,12 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#include "config-host.h"
+#include "qemu/osdep.h"
 
 #include "net/net.h"
 #include "clients.h"
 #include "monitor/monitor.h"
+#include "qapi/error.h"
 #include "qemu-common.h"
 #include "qemu/error-report.h"
 #include "qemu/option.h"
@@ -51,21 +52,12 @@ typedef struct NetSocketState {
 static void net_socket_accept(void *opaque);
 static void net_socket_writable(void *opaque);
 
-/* Only read packets from socket when peer can receive them */
-static int net_socket_can_send(void *opaque)
-{
-    NetSocketState *s = opaque;
-
-    return qemu_can_send_packet(&s->nc);
-}
-
 static void net_socket_update_fd_handler(NetSocketState *s)
 {
-    qemu_set_fd_handler2(s->fd,
-                         s->read_poll  ? net_socket_can_send : NULL,
-                         s->read_poll  ? s->send_fn : NULL,
-                         s->write_poll ? net_socket_writable : NULL,
-                         s);
+    qemu_set_fd_handler(s->fd,
+                        s->read_poll ? s->send_fn : NULL,
+                        s->write_poll ? net_socket_writable : NULL,
+                        s);
 }
 
 static void net_socket_read_poll(NetSocketState *s, bool enable)
@@ -142,18 +134,26 @@ static ssize_t net_socket_receive_dgram(NetClientState *nc, const uint8_t *buf, 
     return ret;
 }
 
+static void net_socket_send_completed(NetClientState *nc, ssize_t len)
+{
+    NetSocketState *s = DO_UPCAST(NetSocketState, nc, nc);
+
+    if (!s->read_poll) {
+        net_socket_read_poll(s, true);
+    }
+}
+
 static void net_socket_send(void *opaque)
 {
     NetSocketState *s = opaque;
-    int size, err;
+    int size;
     unsigned l;
     uint8_t buf1[NET_BUFSIZE];
     const uint8_t *buf;
 
     size = qemu_recv(s->fd, buf1, sizeof(buf1), 0);
     if (size < 0) {
-        err = socket_error();
-        if (err != EWOULDBLOCK)
+        if (errno != EWOULDBLOCK)
             goto eoc;
     } else if (size == 0) {
         /* end of connection */
@@ -211,9 +211,13 @@ static void net_socket_send(void *opaque)
             buf += l;
             size -= l;
             if (s->index >= s->packet_len) {
-                qemu_send_packet(&s->nc, s->buf, s->packet_len);
                 s->index = 0;
                 s->state = 0;
+                if (qemu_send_packet_async(&s->nc, s->buf, s->packet_len,
+                                           net_socket_send_completed) == 0) {
+                    net_socket_read_poll(s, false);
+                    break;
+                }
             }
             break;
         }
@@ -234,7 +238,10 @@ static void net_socket_send_dgram(void *opaque)
         net_socket_write_poll(s, false);
         return;
     }
-    qemu_send_packet(&s->nc, s->buf, size);
+    if (qemu_send_packet_async(&s->nc, s->buf, size,
+                               net_socket_send_completed) == 0) {
+        net_socket_read_poll(s, false);
+    }
 }
 
 static int net_socket_mcast_create(struct sockaddr_in *mcastaddr, struct in_addr *localaddr)
@@ -559,7 +566,7 @@ static int net_socket_connect_init(NetClientState *peer,
                                    const char *host_str)
 {
     NetSocketState *s;
-    int fd, connected, ret, err;
+    int fd, connected, ret;
     struct sockaddr_in saddr;
 
     if (parse_host_port(&saddr, host_str) < 0)
@@ -576,14 +583,12 @@ static int net_socket_connect_init(NetClientState *peer,
     for(;;) {
         ret = connect(fd, (struct sockaddr *)&saddr, sizeof(saddr));
         if (ret < 0) {
-            err = socket_error();
-            if (err == EINTR || err == EWOULDBLOCK) {
-            } else if (err == EINPROGRESS) {
+            if (errno == EINTR || errno == EWOULDBLOCK) {
+                /* continue */
+            } else if (errno == EINPROGRESS ||
+                       errno == EALREADY ||
+                       errno == EINVAL) {
                 break;
-#ifdef _WIN32
-            } else if (err == WSAEALREADY || err == WSAEINVAL) {
-                break;
-#endif
             } else {
                 perror("connect");
                 closesocket(fd);
@@ -693,12 +698,14 @@ static int net_socket_udp_init(NetClientState *peer,
 }
 
 int net_init_socket(const NetClientOptions *opts, const char *name,
-                    NetClientState *peer)
+                    NetClientState *peer, Error **errp)
 {
+    /* FIXME error_setg(errp, ...) on failure */
+    Error *err = NULL;
     const NetdevSocketOptions *sock;
 
-    assert(opts->kind == NET_CLIENT_OPTIONS_KIND_SOCKET);
-    sock = opts->socket;
+    assert(opts->type == NET_CLIENT_OPTIONS_KIND_SOCKET);
+    sock = opts->u.socket.data;
 
     if (sock->has_fd + sock->has_listen + sock->has_connect + sock->has_mcast +
         sock->has_udp != 1) {
@@ -715,8 +722,9 @@ int net_init_socket(const NetClientOptions *opts, const char *name,
     if (sock->has_fd) {
         int fd;
 
-        fd = monitor_handle_fd_param(cur_mon, sock->fd);
+        fd = monitor_fd_param(cur_mon, sock->fd, &err);
         if (fd == -1) {
+            error_report_err(err);
             return -1;
         }
         qemu_set_nonblock(fd);

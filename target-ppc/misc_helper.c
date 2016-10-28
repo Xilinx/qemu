@@ -16,6 +16,7 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
+#include "qemu/osdep.h"
 #include "cpu.h"
 #include "exec/helper-proto.h"
 
@@ -77,8 +78,13 @@ void helper_msr_facility_check(CPUPPCState *env, uint32_t bit,
 
 void helper_store_sdr1(CPUPPCState *env, target_ulong val)
 {
+    PowerPCCPU *cpu = ppc_env_get_cpu(env);
+
     if (!env->external_htab) {
-        ppc_store_sdr1(env, val);
+        if (env->spr[SPR_SDR1] != val) {
+            ppc_store_sdr1(env, val);
+            tlb_flush(CPU(cpu), 1);
+        }
     }
 }
 

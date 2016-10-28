@@ -18,6 +18,8 @@
  * <http://www.gnu.org/licenses/lgpl-2.1.html>
  */
 
+#include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "cpu.h"
 #include "kvm_mips.h"
 #include "qemu-common.h"
@@ -53,12 +55,15 @@ static bool mips_cpu_has_work(CPUState *cs)
     CPUMIPSState *env = &cpu->env;
     bool has_work = false;
 
-    /* It is implementation dependent if non-enabled interrupts
-       wake-up the CPU, however most of the implementations only
+    /* Prior to MIPS Release 6 it is implementation dependent if non-enabled
+       interrupts wake-up the CPU, however most of the implementations only
        check for interrupts that can be taken. */
     if ((cs->interrupt_request & CPU_INTERRUPT_HARD) &&
         cpu_mips_hw_interrupts_pending(env)) {
-        has_work = true;
+        if (cpu_mips_hw_interrupts_enabled(env) ||
+            (env->insn_flags & ISA_MIPS32R6)) {
+            has_work = true;
+        }
     }
 
     /* MIPS-MT has the ability to halt the CPU.  */
@@ -70,6 +75,15 @@ static bool mips_cpu_has_work(CPUState *cs)
         }
 
         if (!mips_vpe_active(env)) {
+            has_work = false;
+        }
+    }
+    /* MIPS Release 6 has the ability to halt the CPU.  */
+    if (env->CP0_Config5 & (1 << CP0C5_VP)) {
+        if (cs->interrupt_request & CPU_INTERRUPT_WAKE) {
+            has_work = true;
+        }
+        if (!mips_vp_active(env)) {
             has_work = false;
         }
     }
@@ -97,6 +111,14 @@ static void mips_cpu_reset(CPUState *s)
 #endif
 }
 
+static void mips_cpu_disas_set_info(CPUState *s, disassemble_info *info) {
+#ifdef TARGET_WORDS_BIGENDIAN
+    info->print_insn = print_insn_big_mips;
+#else
+    info->print_insn = print_insn_little_mips;
+#endif
+}
+
 static void mips_cpu_realizefn(DeviceState *dev, Error **errp)
 {
     CPUState *cs = CPU(dev);
@@ -115,7 +137,7 @@ static void mips_cpu_initfn(Object *obj)
     CPUMIPSState *env = &cpu->env;
 
     cs->env_ptr = env;
-    cpu_exec_init(env);
+    cpu_exec_init(cs, &error_abort);
 
     if (tcg_enabled()) {
         mips_tcg_init();
@@ -148,10 +170,19 @@ static void mips_cpu_class_init(ObjectClass *c, void *data)
     cc->do_unassigned_access = mips_cpu_unassigned_access;
     cc->do_unaligned_access = mips_cpu_do_unaligned_access;
     cc->get_phys_page_debug = mips_cpu_get_phys_page_debug;
+    cc->vmsd = &vmstate_mips_cpu;
 #endif
+    cc->disas_set_info = mips_cpu_disas_set_info;
 
     cc->gdb_num_core_regs = 73;
     cc->gdb_stop_before_watchpoint = true;
+
+    /*
+     * Reason: mips_cpu_initfn() calls cpu_exec_init(), which saves
+     * the object in cpus -> dangling pointer after final
+     * object_unref().
+     */
+    dc->cannot_destroy_with_object_finalize_yet = true;
 }
 
 static const TypeInfo mips_cpu_type_info = {

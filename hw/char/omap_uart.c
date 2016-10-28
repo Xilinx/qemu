@@ -17,6 +17,7 @@
  * You should have received a copy of the GNU General Public License along
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
+#include "qemu/osdep.h"
 #include "sysemu/char.h"
 #include "hw/hw.h"
 #include "hw/arm/omap.h"
@@ -55,8 +56,7 @@ struct omap_uart_s *omap_uart_init(hwaddr base,
                 qemu_irq txdma, qemu_irq rxdma,
                 const char *label, CharDriverState *chr)
 {
-    struct omap_uart_s *s = (struct omap_uart_s *)
-            g_malloc0(sizeof(struct omap_uart_s));
+    struct omap_uart_s *s = g_new0(struct omap_uart_s, 1);
 
     s->base = base;
     s->fclk = fclk;
@@ -112,7 +112,8 @@ static void omap_uart_write(void *opaque, hwaddr addr,
     struct omap_uart_s *s = (struct omap_uart_s *) opaque;
 
     if (size == 4) {
-        return omap_badwidth_write8(opaque, addr, value);
+        omap_badwidth_write8(opaque, addr, value);
+        return;
     }
 
     switch (addr) {

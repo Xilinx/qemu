@@ -16,11 +16,8 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
-#include <stdio.h>
-#include <stdint.h>
-#include <stdbool.h>
-#include <string.h>
-#include <assert.h>
+
+#include "qemu/osdep.h"
 
 #include <unistd.h>
 #ifndef _WIN32
@@ -34,6 +31,8 @@
 #include "qemu/timer.h"
 #include "exec/memory.h"
 #include "exec/address-spaces.h"
+#include "cpu.h"
+#include "exec/exec-all.h"
 
 /* Still under development.  */
 #define ETRACE_VERSION_MAJOR 0
@@ -452,7 +451,7 @@ static void etrace_dump_guestmem(struct etracer *t, AddressSpace *as,
     while (guest_len) {
         unsigned int copylen = guest_len > sizeof buf ? sizeof buf : guest_len;
 
-        address_space_rw(as, guest_paddr, buf, copylen, 0);
+        address_space_rw(as, guest_paddr, MEMTXATTRS_UNSPECIFIED, buf, copylen, 0);
         etrace_write(t, buf, copylen);
         guest_len -= copylen;
     }
@@ -501,13 +500,14 @@ static uint64_t etrace_time(void)
     CPUState *cpu = current_cpu;
 
     if (cpu) {
-        void *tb = cpu->current_tb;
+        /* FIX */
+        // void *tb = cpu->current_tb;
 
        /* FIXME: We are not executing any tb at this stage.
            set current_tb to NULL to allow icount reads.  */
-        cpu->current_tb = NULL;
+        // cpu->current_tb = NULL;
         t = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-        cpu->current_tb = tb;
+        // cpu->current_tb = tb;
     } else {
         t = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
     }

@@ -15,52 +15,14 @@
 #ifndef _QEMU_VIRTIO_SERIAL_H
 #define _QEMU_VIRTIO_SERIAL_H
 
+#include "standard-headers/linux/virtio_console.h"
 #include "hw/qdev.h"
 #include "hw/virtio/virtio.h"
-
-/* == Interface shared between the guest kernel and qemu == */
-
-/* The Virtio ID for virtio console / serial ports */
-#define VIRTIO_ID_CONSOLE		3
-
-/* Features supported */
-#define VIRTIO_CONSOLE_F_MULTIPORT	1
-
-#define VIRTIO_CONSOLE_BAD_ID           (~(uint32_t)0)
-
-struct virtio_console_config {
-    /*
-     * These two fields are used by VIRTIO_CONSOLE_F_SIZE which
-     * isn't implemented here yet
-     */
-    uint16_t cols;
-    uint16_t rows;
-
-    uint32_t max_nr_ports;
-} QEMU_PACKED;
-
-struct virtio_console_control {
-    uint32_t id;		/* Port number */
-    uint16_t event;		/* The kind of control event (see below) */
-    uint16_t value;		/* Extra information for the key */
-};
 
 struct virtio_serial_conf {
     /* Max. number of ports we can have for a virtio-serial device */
     uint32_t max_virtserial_ports;
 };
-
-/* Some events for the internal messages (control packets) */
-#define VIRTIO_CONSOLE_DEVICE_READY	0
-#define VIRTIO_CONSOLE_PORT_ADD		1
-#define VIRTIO_CONSOLE_PORT_REMOVE	2
-#define VIRTIO_CONSOLE_PORT_READY	3
-#define VIRTIO_CONSOLE_CONSOLE_PORT	4
-#define VIRTIO_CONSOLE_RESIZE		5
-#define VIRTIO_CONSOLE_PORT_OPEN	6
-#define VIRTIO_CONSOLE_PORT_NAME	7
-
-/* == In-qemu interface == */
 
 #define TYPE_VIRTIO_SERIAL_PORT "virtio-serial-port"
 #define VIRTIO_SERIAL_PORT(obj) \
@@ -97,6 +59,17 @@ typedef struct VirtIOSerialPortClass {
 
         /* Guest is now ready to accept data (virtqueues set up). */
     void (*guest_ready)(VirtIOSerialPort *port);
+
+        /*
+         * Guest has enqueued a buffer for the host to write into.
+         * Called each time a buffer is enqueued by the guest;
+         * irrespective of whether there already were free buffers the
+         * host could have consumed.
+         *
+         * This is dependent on both the guest and host end being
+         * connected.
+         */
+    void (*guest_writable)(VirtIOSerialPort *port);
 
     /*
      * Guest wrote some data to the port. This data is handed over to
@@ -149,7 +122,7 @@ struct VirtIOSerialPort {
      * element popped and continue consuming it once the backend
      * becomes writable again.
      */
-    VirtQueueElement elem;
+    VirtQueueElement *elem;
 
     /*
      * The index and the offset into the iov buffer that was popped in
@@ -207,8 +180,6 @@ struct VirtIOSerial {
     /* bitmap for identifying active ports */
     uint32_t *ports_map;
 
-    struct virtio_console_config config;
-
     struct VirtIOSerialPostLoad *post_load;
 
     virtio_serial_conf serial;
@@ -249,8 +220,5 @@ void virtio_serial_throttle_port(VirtIOSerialPort *port, bool throttle);
 #define TYPE_VIRTIO_SERIAL "virtio-serial-device"
 #define VIRTIO_SERIAL(obj) \
         OBJECT_CHECK(VirtIOSerial, (obj), TYPE_VIRTIO_SERIAL)
-
-#define DEFINE_VIRTIO_SERIAL_PROPERTIES(_state, _field) \
-        DEFINE_PROP_UINT32("max_ports", _state, _field.max_virtserial_ports, 31)
 
 #endif

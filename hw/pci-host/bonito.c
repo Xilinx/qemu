@@ -37,7 +37,7 @@
  * north bridge address to pci address.
  */
 
-#include <assert.h>
+#include "qemu/osdep.h"
 
 #include "hw/hw.h"
 #include "hw/pci/pci.h"
@@ -180,8 +180,6 @@
 #define PCI_ADDR(busno,devno,funno,regno)  \
     ((((busno)<<16)&0xff0000) + (((devno)<<11)&0xf800) + (((funno)<<8)&0x700) + (regno))
 
-#define TYPE_BONITO_PCI_HOST_BRIDGE "Bonito-pcihost"
-
 typedef struct BonitoState BonitoState;
 
 typedef struct PCIBonitoState
@@ -215,16 +213,19 @@ typedef struct PCIBonitoState
 
 } PCIBonitoState;
 
+struct BonitoState {
+    PCIHostState parent_obj;
+    qemu_irq *pic;
+    PCIBonitoState *pci_dev;
+};
+
+#define TYPE_BONITO_PCI_HOST_BRIDGE "Bonito-pcihost"
 #define BONITO_PCI_HOST_BRIDGE(obj) \
     OBJECT_CHECK(BonitoState, (obj), TYPE_BONITO_PCI_HOST_BRIDGE)
 
-struct BonitoState {
-    PCIHostState parent_obj;
-
-    qemu_irq *pic;
-
-    PCIBonitoState *pci_dev;
-};
+#define TYPE_PCI_BONITO "Bonito"
+#define PCI_BONITO(obj) \
+    OBJECT_CHECK(PCIBonitoState, (obj), TYPE_PCI_BONITO)
 
 static void bonito_writel(void *opaque, hwaddr addr,
                           uint64_t val, unsigned size)
@@ -233,7 +234,7 @@ static void bonito_writel(void *opaque, hwaddr addr,
     uint32_t saddr;
     int reset = 0;
 
-    saddr = (addr - BONITO_REGBASE) >> 2;
+    saddr = addr >> 2;
 
     DPRINTF("bonito_writel "TARGET_FMT_plx" val %x saddr %x\n", addr, val, saddr);
     switch (saddr) {
@@ -295,7 +296,7 @@ static uint64_t bonito_readl(void *opaque, hwaddr addr,
     PCIBonitoState *s = opaque;
     uint32_t saddr;
 
-    saddr = (addr - BONITO_REGBASE) >> 2;
+    saddr = addr >> 2;
 
     DPRINTF("bonito_readl "TARGET_FMT_plx"\n", addr);
     switch (saddr) {
@@ -355,6 +356,10 @@ static uint64_t bonito_ldma_readl(void *opaque, hwaddr addr,
     uint32_t val;
     PCIBonitoState *s = opaque;
 
+    if (addr >= sizeof(s->bonldma)) {
+        return 0;
+    }
+
     val = ((uint32_t *)(&s->bonldma))[addr/sizeof(uint32_t)];
 
     return val;
@@ -364,6 +369,10 @@ static void bonito_ldma_writel(void *opaque, hwaddr addr,
                                uint64_t val, unsigned size)
 {
     PCIBonitoState *s = opaque;
+
+    if (addr >= sizeof(s->bonldma)) {
+        return;
+    }
 
     ((uint32_t *)(&s->bonldma))[addr/sizeof(uint32_t)] = val & 0xffffffff;
 }
@@ -384,6 +393,10 @@ static uint64_t bonito_cop_readl(void *opaque, hwaddr addr,
     uint32_t val;
     PCIBonitoState *s = opaque;
 
+    if (addr >= sizeof(s->boncop)) {
+        return 0;
+    }
+
     val = ((uint32_t *)(&s->boncop))[addr/sizeof(uint32_t)];
 
     return val;
@@ -393,6 +406,10 @@ static void bonito_cop_writel(void *opaque, hwaddr addr,
                               uint64_t val, unsigned size)
 {
     PCIBonitoState *s = opaque;
+
+    if (addr >= sizeof(s->boncop)) {
+        return;
+    }
 
     ((uint32_t *)(&s->boncop))[addr/sizeof(uint32_t)] = val & 0xffffffff;
 }
@@ -427,7 +444,7 @@ static uint32_t bonito_sbridge_pciaddr(void *opaque, hwaddr addr)
     cfgaddr |= (s->regs[BONITO_PCIMAP_CFG] & 0xffff) << 16;
 
     idsel = (cfgaddr & BONITO_PCICONF_IDSEL_MASK) >> BONITO_PCICONF_IDSEL_OFFSET;
-    devno = ffs(idsel) - 1;
+    devno = ctz32(idsel);
     funno = (cfgaddr & BONITO_PCICONF_FUN_MASK) >> BONITO_PCICONF_FUN_OFFSET;
     regno = (cfgaddr & BONITO_PCICONF_REG_MASK) >> BONITO_PCICONF_REG_OFFSET;
 
@@ -705,9 +722,9 @@ static int bonito_pcihost_initfn(SysBusDevice *dev)
     return 0;
 }
 
-static int bonito_initfn(PCIDevice *dev)
+static void bonito_realize(PCIDevice *dev, Error **errp)
 {
-    PCIBonitoState *s = DO_UPCAST(PCIBonitoState, dev, dev);
+    PCIBonitoState *s = PCI_BONITO(dev);
     SysBusDevice *sysbus = SYS_BUS_DEVICE(s->pcihost);
     PCIHostState *phb = PCI_HOST_BRIDGE(s->pcihost);
 
@@ -766,8 +783,6 @@ static int bonito_initfn(PCIDevice *dev)
     pci_set_byte(dev->config + PCI_MAX_LAT, 0x00);
 
     qemu_register_reset(bonito_reset, s);
-
-    return 0;
 }
 
 PCIBus *bonito_init(qemu_irq *pic)
@@ -785,8 +800,8 @@ PCIBus *bonito_init(qemu_irq *pic)
     qdev_init_nofail(dev);
 
     /* set the pcihost pointer before bonito_initfn is called */
-    d = pci_create(phb->bus, PCI_DEVFN(0, 0), "Bonito");
-    s = DO_UPCAST(PCIBonitoState, dev, d);
+    d = pci_create(phb->bus, PCI_DEVFN(0, 0), TYPE_PCI_BONITO);
+    s = PCI_BONITO(d);
     s->pcihost = pcihost;
     pcihost->pci_dev = s;
     qdev_init_nofail(DEVICE(d));
@@ -799,7 +814,7 @@ static void bonito_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
-    k->init = bonito_initfn;
+    k->realize = bonito_realize;
     k->vendor_id = 0xdf53;
     k->device_id = 0x00d5;
     k->revision = 0x01;
@@ -814,7 +829,7 @@ static void bonito_class_init(ObjectClass *klass, void *data)
 }
 
 static const TypeInfo bonito_info = {
-    .name          = "Bonito",
+    .name          = TYPE_PCI_BONITO,
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(PCIBonitoState),
     .class_init    = bonito_class_init,

@@ -14,6 +14,7 @@
 #define TCG_TARGET_AARCH64 1
 
 #define TCG_TARGET_INSN_UNIT_SIZE  4
+#define TCG_TARGET_TLB_DISPLACEMENT_BITS 24
 #undef TCG_TARGET_STACK_GROWSUP
 
 typedef enum {
@@ -69,7 +70,8 @@ typedef enum {
 #define TCG_TARGET_HAS_muls2_i32        0
 #define TCG_TARGET_HAS_muluh_i32        0
 #define TCG_TARGET_HAS_mulsh_i32        0
-#define TCG_TARGET_HAS_trunc_shr_i32    0
+#define TCG_TARGET_HAS_extrl_i64_i32    0
+#define TCG_TARGET_HAS_extrh_i64_i32    0
 
 #define TCG_TARGET_HAS_div_i64          1
 #define TCG_TARGET_HAS_rem_i64          1

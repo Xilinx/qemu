@@ -9,6 +9,10 @@
  * GNU GPL, version 2 or (at your option) any later version.
  */
 
+#include "qemu/osdep.h"
+#include "qapi/error.h"
+#include "qemu-common.h"
+#include "cpu.h"
 #include "hw/sysbus.h"
 #include "hw/arm/arm.h"
 #include "hw/devices.h"
@@ -185,11 +189,6 @@ static void eth_rx_desc_get(uint32_t addr, mv88w8618_rx_desc *desc)
     le16_to_cpus(&desc->buffer_size);
     le32_to_cpus(&desc->buffer);
     le32_to_cpus(&desc->next);
-}
-
-static int eth_can_receive(NetClientState *nc)
-{
-    return 1;
 }
 
 static ssize_t eth_receive(NetClientState *nc, const uint8_t *buf, size_t size)
@@ -381,7 +380,6 @@ static void eth_cleanup(NetClientState *nc)
 static NetClientInfo net_mv88w8618_info = {
     .type = NET_CLIENT_OPTIONS_KIND_NIC,
     .size = sizeof(NICState),
-    .can_receive = eth_can_receive,
     .receive = eth_receive,
     .cleanup = eth_cleanup,
 };
@@ -1600,13 +1598,12 @@ static void musicpal_init(MachineState *machine)
     }
 
     /* For now we use a fixed - the original - RAM size */
-    memory_region_init_ram(ram, NULL, "musicpal.ram", MP_RAM_DEFAULT_SIZE,
-                           &error_abort);
-    vmstate_register_ram_global(ram);
+    memory_region_allocate_system_memory(ram, NULL, "musicpal.ram",
+                                         MP_RAM_DEFAULT_SIZE);
     memory_region_add_subregion(address_space_mem, 0, ram);
 
     memory_region_init_ram(sram, NULL, "musicpal.sram", MP_SRAM_SIZE,
-                           &error_abort);
+                           &error_fatal);
     vmstate_register_ram_global(sram);
     memory_region_add_subregion(address_space_mem, MP_SRAM_BASE, sram);
 
@@ -1716,18 +1713,13 @@ static void musicpal_init(MachineState *machine)
     arm_load_kernel(cpu, &musicpal_binfo);
 }
 
-static QEMUMachine musicpal_machine = {
-    .name = "musicpal",
-    .desc = "Marvell 88w8618 / MusicPal (ARM926EJ-S)",
-    .init = musicpal_init,
-};
-
-static void musicpal_machine_init(void)
+static void musicpal_machine_init(MachineClass *mc)
 {
-    qemu_register_machine(&musicpal_machine);
+    mc->desc = "Marvell 88w8618 / MusicPal (ARM926EJ-S)";
+    mc->init = musicpal_init;
 }
 
-machine_init(musicpal_machine_init);
+DEFINE_MACHINE("musicpal", musicpal_machine_init)
 
 static void mv88w8618_wlan_class_init(ObjectClass *klass, void *data)
 {

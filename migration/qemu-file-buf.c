@@ -2,6 +2,10 @@
  * QEMU System Emulator
  *
  * Copyright (c) 2003-2008 Fabrice Bellard
+ * Copyright (c) 2014 IBM Corp.
+ *
+ * Authors:
+ *  Stefan Berger <stefanb@linux.vnet.ibm.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -21,10 +25,12 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+#include "qemu/osdep.h"
 #include "qemu-common.h"
+#include "qemu/error-report.h"
 #include "qemu/iov.h"
 #include "qemu/sockets.h"
-#include "block/coroutine.h"
+#include "qemu/coroutine.h"
 #include "migration/migration.h"
 #include "migration/qemu-file.h"
 #include "migration/qemu-file-internal.h"
@@ -361,43 +367,14 @@ ssize_t qsb_write_at(QEMUSizedBuffer *qsb, const uint8_t *source,
     return count;
 }
 
-/**
- * Create a deep copy of the given QEMUSizedBuffer.
- *
- * @qsb: A QEMUSizedBuffer
- *
- * Returns a clone of @qsb or NULL on allocation failure
- */
-QEMUSizedBuffer *qsb_clone(const QEMUSizedBuffer *qsb)
-{
-    QEMUSizedBuffer *out = qsb_create(NULL, qsb_get_length(qsb));
-    size_t i;
-    ssize_t res;
-    off_t pos = 0;
-
-    if (!out) {
-        return NULL;
-    }
-
-    for (i = 0; i < qsb->n_iov; i++) {
-        res =  qsb_write_at(out, qsb->iov[i].iov_base,
-                            pos, qsb->iov[i].iov_len);
-        if (res < 0) {
-            qsb_free(out);
-            return NULL;
-        }
-        pos += res;
-    }
-
-    return out;
-}
-
 typedef struct QEMUBuffer {
     QEMUSizedBuffer *qsb;
     QEMUFile *file;
+    bool qsb_allocated;
 } QEMUBuffer;
 
-static int buf_get_buffer(void *opaque, uint8_t *buf, int64_t pos, int size)
+static ssize_t buf_get_buffer(void *opaque, uint8_t *buf, int64_t pos,
+                              size_t size)
 {
     QEMUBuffer *s = opaque;
     ssize_t len = qsb_get_length(s->qsb) - pos;
@@ -412,8 +389,8 @@ static int buf_get_buffer(void *opaque, uint8_t *buf, int64_t pos, int size)
     return qsb_get_buffer(s->qsb, pos, len, buf);
 }
 
-static int buf_put_buffer(void *opaque, const uint8_t *buf,
-                          int64_t pos, int size)
+static ssize_t buf_put_buffer(void *opaque, const uint8_t *buf,
+                              int64_t pos, size_t size)
 {
     QEMUBuffer *s = opaque;
 
@@ -424,7 +401,9 @@ static int buf_close(void *opaque)
 {
     QEMUBuffer *s = opaque;
 
-    qsb_free(s->qsb);
+    if (s->qsb_allocated) {
+        qsb_free(s->qsb);
+    }
 
     g_free(s);
 
@@ -462,13 +441,12 @@ QEMUFile *qemu_bufopen(const char *mode, QEMUSizedBuffer *input)
         return NULL;
     }
 
-    s = g_malloc0(sizeof(QEMUBuffer));
-    if (mode[0] == 'r') {
-        s->qsb = input;
-    }
+    s = g_new0(QEMUBuffer, 1);
+    s->qsb = input;
 
     if (s->qsb == NULL) {
         s->qsb = qsb_create(NULL, 0);
+        s->qsb_allocated = true;
     }
     if (!s->qsb) {
         g_free(s);

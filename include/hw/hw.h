@@ -2,7 +2,6 @@
 #ifndef QEMU_HW_H
 #define QEMU_HW_H
 
-#include "qemu-common.h"
 
 #if !defined(CONFIG_USER_ONLY) && !defined(NEED_CPU_H)
 #include "exec/cpu-common.h"
@@ -13,6 +12,7 @@
 #include "block/aio.h"
 #include "migration/vmstate.h"
 #include "qemu/log.h"
+#include "qemu/module.h"
 
 #ifdef NEED_CPU_H
 #if TARGET_LONG_BITS == 64
@@ -41,6 +41,8 @@ typedef void QEMUResetHandler(void *opaque);
 void qemu_register_reset(QEMUResetHandler *func, void *opaque);
 void qemu_unregister_reset(QEMUResetHandler *func, void *opaque);
 
+void QEMU_NORETURN hw_error(const char *fmt, ...) GCC_FMT_ATTR(1, 2);
+
 #ifdef NEED_CPU_H
 #if TARGET_LONG_BITS == 64
 #define VMSTATE_UINTTL_V(_f, _s, _v)                                  \
@@ -49,6 +51,7 @@ void qemu_unregister_reset(QEMUResetHandler *func, void *opaque);
     VMSTATE_UINT64_EQUAL_V(_f, _s, _v)
 #define VMSTATE_UINTTL_ARRAY_V(_f, _s, _n, _v)                        \
     VMSTATE_UINT64_ARRAY_V(_f, _s, _n, _v)
+#define vmstate_info_uinttl vmstate_info_uint64
 #else
 #define VMSTATE_UINTTL_V(_f, _s, _v)                                  \
     VMSTATE_UINT32_V(_f, _s, _v)
@@ -56,6 +59,7 @@ void qemu_unregister_reset(QEMUResetHandler *func, void *opaque);
     VMSTATE_UINT32_EQUAL_V(_f, _s, _v)
 #define VMSTATE_UINTTL_ARRAY_V(_f, _s, _n, _v)                        \
     VMSTATE_UINT32_ARRAY_V(_f, _s, _n, _v)
+#define vmstate_info_uinttl vmstate_info_uint32
 #endif
 #define VMSTATE_UINTTL(_f, _s)                                        \
     VMSTATE_UINTTL_V(_f, _s, 0)

@@ -5,6 +5,7 @@
  * later.  See the COPYING file in the top-level directory.
  */
 
+#include "qemu/osdep.h"
 #include "qemu/config-file.h"
 #include "qemu/option.h"
 #include "qemu/module.h"
@@ -82,4 +83,4 @@ static void fsdev_register_config(void)
     qemu_add_opts(&qemu_fsdev_opts);
     qemu_add_opts(&qemu_virtfs_opts);
 }
-machine_init(fsdev_register_config);
+opts_init(fsdev_register_config);

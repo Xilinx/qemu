@@ -25,11 +25,12 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "hw/register.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
-
+#include "qapi/error.h"
 #include "hw/fdt_generic_util.h"
 
 #ifndef ARM_CCI400_ERR_DEBUG
@@ -568,7 +569,7 @@ static const MemoryRegionOps cci400_ops = {
 };
 
 static IOMMUTLBEntry cci_translate(MemoryRegion *mr, hwaddr addr,
-                                   bool is_write, MemTxAttrs attr)
+                                   bool is_write, MemTxAttrs *attr)
 {
     CCI *s = container_of(mr, CCI, iommu);;
     IOMMUTLBEntry ret = {
@@ -583,7 +584,7 @@ static IOMMUTLBEntry cci_translate(MemoryRegion *mr, hwaddr addr,
     /* Is there anything backing this address on M1 or M2?  */
     for (i = 1; i < ARRAY_SIZE(s->as); i++) {
         bool t;
-        t = address_space_access_valid_attr(s->as[i], addr, 4, false, attr);
+        t = address_space_access_valid(s->as[i], addr, 4, false, *attr);
         if (i > 1) {
             assert(valid == t);
         }
@@ -700,7 +701,6 @@ static void cci400_class_init(ObjectClass *klass, void *data)
     dc->realize = cci400_realize;
     dc->vmsd = &vmstate_cci400;
     fggc->controller_gpios = gpio_sets;
-
 }
 
 static const TypeInfo cci400_info = {

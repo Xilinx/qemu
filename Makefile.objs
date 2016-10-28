@@ -1,37 +1,38 @@
 #######################################################################
 # Common libraries for tools and emulators
-stub-obj-y = stubs/
-util-obj-y = util/ qobject/ qapi/ qapi-types.o qapi-visit.o qapi-event.o
+stub-obj-y = stubs/ crypto/
+util-obj-y = util/ qobject/ qapi/
+util-obj-y += qmp-introspect.o qapi-types.o qapi-visit.o qapi-event.o
 
 #######################################################################
 # block-obj-y is code used by both qemu system emulation and qemu-img
 
 block-obj-y = async.o thread-pool.o
-block-obj-y += nbd.o block.o blockjob.o
+block-obj-y += nbd/
+block-obj-y += block.o blockjob.o
 block-obj-y += main-loop.o iohandler.o qemu-timer.o
 block-obj-$(CONFIG_POSIX) += aio-posix.o
 block-obj-$(CONFIG_WIN32) += aio-win32.o
 block-obj-y += block/
 block-obj-y += qemu-io-cmds.o
 
-block-obj-y += qemu-coroutine.o qemu-coroutine-lock.o qemu-coroutine-io.o
-block-obj-y += qemu-coroutine-sleep.o
-block-obj-y += coroutine-$(CONFIG_COROUTINE_BACKEND).o
-
 block-obj-m = block/
 
+#######################################################################
+# crypto-obj-y is code used by both qemu system emulation and qemu-img
 
-######################################################################
-# smartcard
+crypto-obj-y = crypto/
+crypto-aes-obj-y = crypto/
 
-libcacard-y += libcacard/cac.o libcacard/event.o
-libcacard-y += libcacard/vcard.o libcacard/vreader.o
-libcacard-y += libcacard/vcard_emul_nss.o
-libcacard-y += libcacard/vcard_emul_type.o
-libcacard-y += libcacard/card_7816.o
-libcacard-y += libcacard/vcardt.o
-libcacard/vcard_emul_nss.o-cflags := $(NSS_CFLAGS)
-libcacard/vcard_emul_nss.o-libs := $(NSS_LIBS)
+#######################################################################
+# qom-obj-y is code used by both qemu system emulation and qemu-img
+
+qom-obj-y = qom/
+
+#######################################################################
+# io-obj-y is code used by both qemu system emulation and qemu-img
+
+io-obj-y = io/
 
 ######################################################################
 # Target independent part of system emulation. The long term path is to
@@ -58,6 +59,8 @@ common-obj-y += audio/
 common-obj-y += hw/
 common-obj-y += accel.o
 
+common-obj-y += replay/
+
 common-obj-y += ui/
 common-obj-y += bt-host.o bt-vhci.o
 bt-host.o-cflags := $(BLUEZ_CFLAGS)
@@ -73,18 +76,18 @@ common-obj-y += backends/
 
 common-obj-$(CONFIG_SECCOMP) += qemu-seccomp.o
 
-common-obj-$(CONFIG_SMARTCARD_NSS) += $(libcacard-y)
+common-obj-$(CONFIG_FDT) += device_tree.o
 
 ######################################################################
 # qapi
 
 common-obj-y += qmp-marshal.o
-common-obj-y += qmp.o hmp.o injection.o
+common-obj-y += qmp-introspect.o
+common-obj-y += qmp.o hmp.o
 endif
 
 #######################################################################
 # Target-independent parts used in system and user emulation
-common-obj-y += qemu-log.o
 common-obj-y += tcg-runtime.o
 common-obj-y += hw/
 common-obj-y += qom/
@@ -107,3 +110,8 @@ target-obj-y += trace/
 # by libqemuutil.a.  These should be moved to a separate .json schema.
 qga-obj-y = qga/
 qga-vss-dll-obj-y = qga/
+
+######################################################################
+# contrib
+ivshmem-client-obj-y = contrib/ivshmem-client/
+ivshmem-server-obj-y = contrib/ivshmem-server/

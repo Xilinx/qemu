@@ -1,8 +1,10 @@
+#include "qemu/osdep.h"
 #include <glib.h>
 #include "qemu-common.h"
 #include "block/aio.h"
 #include "block/thread-pool.h"
 #include "block/block.h"
+#include "qapi/error.h"
 #include "qemu/timer.h"
 #include "qemu/error-report.h"
 
@@ -229,9 +231,7 @@ int main(int argc, char **argv)
 
     ctx = aio_context_new(&local_error);
     if (!ctx) {
-        error_report("Failed to create AIO Context: '%s'",
-                     error_get_pretty(local_error));
-        error_free(local_error);
+        error_reportf_err(local_error, "Failed to create AIO Context: ");
         exit(1);
     }
     pool = aio_get_thread_pool(ctx);

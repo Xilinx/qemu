@@ -25,10 +25,12 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "hw/register.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
+#include "qapi/error.h"
 #include "sysemu/dma.h"
 
 #include "hw/fdt_generic_util.h"
@@ -6670,7 +6672,7 @@ static void smmu_nscr0_pw(RegisterInfo *reg, uint64_t val)
 
 static IOMMUTLBEntry smmu_translate(MemoryRegion *mr, hwaddr addr,
                                     bool is_write,
-                                    MemTxAttrs attr)
+                                    MemTxAttrs *attr)
 {
     TBU *tbu = container_of(mr, TBU, iommu);
     SMMU *s = tbu->smmu;
@@ -6685,7 +6687,7 @@ static IOMMUTLBEntry smmu_translate(MemoryRegion *mr, hwaddr addr,
     hwaddr pa = va;
     int prot;
     bool err = false;
-    uint64_t master_id = attr.master_id;
+    uint64_t master_id = attr->master_id;
     bool clientpd = AF_EX32(s->regs, SMMU_SCR0, CLIENTPD);
 
     if (clientpd) {

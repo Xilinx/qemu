@@ -17,6 +17,7 @@
  * You should have received a copy of the GNU General Public License along
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "qemu/timer.h"
 #include "hw/arm/omap.h"
@@ -401,7 +402,7 @@ static void omap_gp_timer_write(void *opaque, hwaddr addr,
         if (s->trigger == gpt_trigger_none)
             omap_gp_timer_out(s, s->scpwm);
         /* TODO: make sure this doesn't overflow 32-bits */
-        s->ticks_per_sec = get_ticks_per_sec() << (s->pre ? s->ptv + 1 : 0);
+        s->ticks_per_sec = NANOSECONDS_PER_SECOND << (s->pre ? s->ptv + 1 : 0);
         omap_gp_timer_update(s);
         break;
 
@@ -444,7 +445,7 @@ static void omap_gp_timer_writeh(void *opaque, hwaddr addr,
     struct omap_gp_timer_s *s = (struct omap_gp_timer_s *) opaque;
 
     if (addr & 2)
-        return omap_gp_timer_write(opaque, addr, (value << 16) | s->writeh);
+        omap_gp_timer_write(opaque, addr, (value << 16) | s->writeh);
     else
         s->writeh = (uint16_t) value;
 }
@@ -468,8 +469,7 @@ static const MemoryRegionOps omap_gp_timer_ops = {
 struct omap_gp_timer_s *omap_gp_timer_init(struct omap_target_agent_s *ta,
                 qemu_irq irq, omap_clk fclk, omap_clk iclk)
 {
-    struct omap_gp_timer_s *s = (struct omap_gp_timer_s *)
-            g_malloc0(sizeof(struct omap_gp_timer_s));
+    struct omap_gp_timer_s *s = g_new0(struct omap_gp_timer_s, 1);
 
     s->ta = ta;
     s->irq = irq;

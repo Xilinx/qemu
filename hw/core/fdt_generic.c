@@ -24,8 +24,9 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/fdt_generic.h"
-#include "block/coroutine.h"
+#include "qemu/coroutine.h"
 #include "qemu/log.h"
 
 #ifndef FDT_GENERIC_ERR_DEBUG
@@ -33,8 +34,8 @@
 #endif
 #define DB_PRINT(lvl, ...) do { \
     if (FDT_GENERIC_ERR_DEBUG > (lvl)) { \
-        qemu_log_mask_level(LOG_FDT, lvl, ": %s: ", __func__); \
-        qemu_log_mask_level(LOG_FDT, lvl, ## __VA_ARGS__); \
+        qemu_log_mask(lvl, ": %s: ", __func__); \
+        qemu_log_mask(lvl, ## __VA_ARGS__); \
     } \
 } while (0);
 

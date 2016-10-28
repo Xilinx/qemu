@@ -22,6 +22,7 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "sysemu/char.h"
 #include "qemu/log.h"
@@ -165,7 +166,7 @@ static void serial_receive(void *opaque, const uint8_t *buf, int size)
 
     /* Got a byte.  */
     if (s->rx_fifo_len >= 16) {
-        qemu_log("WARNING: UART dropped char.\n");
+        D(qemu_log("WARNING: UART dropped char.\n"));
         return;
     }
 
@@ -182,15 +183,13 @@ static void serial_receive(void *opaque, const uint8_t *buf, int size)
 static int serial_can_receive(void *opaque)
 {
     ETRAXSerial *s = opaque;
-    int r;
 
     /* Is the receiver enabled?  */
     if (!(s->regs[RW_REC_CTRL] & (1 << 3))) {
         return 0;
     }
 
-    r = sizeof(s->rx_fifo) - s->rx_fifo_len;
-    return r;
+    return sizeof(s->rx_fifo) - s->rx_fifo_len;
 }
 
 static void serial_event(void *opaque, int event)
@@ -219,6 +218,7 @@ static int etraxfs_ser_init(SysBusDevice *dev)
                           "etraxfs-serial", R_MAX * 4);
     sysbus_init_mmio(dev, &s->mmio);
 
+    /* FIXME use a qdev chardev prop instead of qemu_char_get_next_serial() */
     s->chr = qemu_char_get_next_serial();
     if (s->chr) {
         qemu_chr_add_handlers(s->chr,
@@ -235,6 +235,8 @@ static void etraxfs_ser_class_init(ObjectClass *klass, void *data)
 
     k->init = etraxfs_ser_init;
     dc->reset = etraxfs_ser_reset;
+    /* Reason: init() method uses qemu_char_get_next_serial() */
+    dc->cannot_instantiate_with_device_add_yet = true;
 }
 
 static const TypeInfo etraxfs_ser_info = {

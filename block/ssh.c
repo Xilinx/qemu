@@ -22,17 +22,18 @@
  * THE SOFTWARE.
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdarg.h>
+#include "qemu/osdep.h"
 
 #include <libssh2.h>
 #include <libssh2_sftp.h>
 
 #include "block/block_int.h"
+#include "qapi/error.h"
+#include "qemu/error-report.h"
 #include "qemu/sockets.h"
 #include "qemu/uri.h"
 #include "qapi/qmp/qint.h"
+#include "qapi/qmp/qstring.h"
 
 /* DEBUG_SSH=1 enables the DPRINTF (debugging printf) statements in
  * this block driver code.
@@ -191,7 +192,7 @@ sftp_error_report(BDRVSSHState *s, const char *fs, ...)
 static int parse_uri(const char *filename, QDict *options, Error **errp)
 {
     URI *uri = NULL;
-    QueryParams *qp = NULL;
+    QueryParams *qp;
     int i;
 
     uri = uri_parse(filename);
@@ -247,9 +248,6 @@ static int parse_uri(const char *filename, QDict *options, Error **errp)
     return 0;
 
  err:
-    if (qp) {
-      query_params_free(qp);
-    }
     if (uri) {
       uri_free(uri);
     }
@@ -561,7 +559,7 @@ static int connect_to_ssh(BDRVSSHState *s, QDict *options,
     /* Open the socket and connect. */
     s->sock = inet_connect(s->hostport, errp);
     if (s->sock < 0) {
-        ret = -errno;
+        ret = -EIO;
         goto err;
     }
 
@@ -801,14 +799,15 @@ static coroutine_fn void set_fd_handler(BDRVSSHState *s, BlockDriverState *bs)
             rd_handler, wr_handler);
 
     aio_set_fd_handler(bdrv_get_aio_context(bs), s->sock,
-                       rd_handler, wr_handler, co);
+                       false, rd_handler, wr_handler, co);
 }
 
 static coroutine_fn void clear_fd_handler(BDRVSSHState *s,
                                           BlockDriverState *bs)
 {
     DPRINTF("s->sock=%d", s->sock);
-    aio_set_fd_handler(bdrv_get_aio_context(bs), s->sock, NULL, NULL, NULL);
+    aio_set_fd_handler(bdrv_get_aio_context(bs), s->sock,
+                       false, NULL, NULL, NULL);
 }
 
 /* A non-blocking call returned EAGAIN, so yield, ensuring the

@@ -43,12 +43,13 @@
  *                                  Added rx/tx buffer reset when enabling rx/tx operation
  *
  *  2010-Feb-04  Frediano Ziglio:   Rewrote timer support using QEMU timer only
- *                                  when strictly needed (required for for
+ *                                  when strictly needed (required for
  *                                  Darwin)
  *  2011-Mar-22  Benjamin Poirier:  Implemented VLAN offloading
  */
 
 /* For crc32 */
+#include "qemu/osdep.h"
 #include <zlib.h>
 
 #include "hw/hw.h"
@@ -56,6 +57,7 @@
 #include "sysemu/dma.h"
 #include "qemu/timer.h"
 #include "net/net.h"
+#include "net/eth.h"
 #include "hw/loader.h"
 #include "sysemu/sysemu.h"
 #include "qemu/iov.h"
@@ -63,7 +65,7 @@
 /* debug RTL8139 card */
 //#define DEBUG_RTL8139 1
 
-#define PCI_FREQUENCY 33000000L
+#define PCI_PERIOD 30    /* 30 ns period = 33.333333 Mhz frequency */
 
 #define SET_MASKED(input, mask, curr) \
     ( ( (input) & ~(mask) ) | ( (curr) & (mask) ) )
@@ -72,11 +74,7 @@
 #define MOD2(input, size) \
     ( ( input ) & ( size - 1 )  )
 
-#define ETHER_ADDR_LEN 6
 #define ETHER_TYPE_LEN 2
-#define ETH_HLEN (ETHER_ADDR_LEN * 2 + ETHER_TYPE_LEN)
-#define ETH_P_IP    0x0800      /* Internet Protocol packet */
-#define ETH_P_8021Q 0x8100      /* 802.1Q VLAN Extended Header  */
 #define ETH_MTU     1500
 
 #define VLAN_TCI_LEN 2
@@ -508,7 +506,6 @@ typedef struct RTL8139State {
 
     /* PCI interrupt timer */
     QEMUTimer *timer;
-    int64_t TimerExpire;
 
     MemoryRegion bar_io;
     MemoryRegion bar_mem;
@@ -520,7 +517,7 @@ typedef struct RTL8139State {
 /* Writes tally counters to memory via DMA */
 static void RTL8139TallyCounters_dma_write(RTL8139State *s, dma_addr_t tc_addr);
 
-static void rtl8139_set_next_tctr_time(RTL8139State *s, int64_t current_time);
+static void rtl8139_set_next_tctr_time(RTL8139State *s);
 
 static void prom9346_decode_command(EEprom9346 *eeprom, uint8_t command)
 {
@@ -1017,8 +1014,8 @@ static ssize_t rtl8139_do_receive(NetClientState *nc, const uint8_t *buf, size_t
 
         /* write VLAN info to descriptor variables. */
         if (s->CpCmd & CPlusRxVLAN && be16_to_cpup((uint16_t *)
-                &buf[ETHER_ADDR_LEN * 2]) == ETH_P_8021Q) {
-            dot1q_buf = &buf[ETHER_ADDR_LEN * 2];
+                &buf[ETH_ALEN * 2]) == ETH_P_VLAN) {
+            dot1q_buf = &buf[ETH_ALEN * 2];
             size -= VLAN_HLEN;
             /* if too small buffer, use the tailroom added duing expansion */
             if (size < MIN_BUF_SIZE) {
@@ -1059,10 +1056,10 @@ static ssize_t rtl8139_do_receive(NetClientState *nc, const uint8_t *buf, size_t
 
         /* receive/copy to target memory */
         if (dot1q_buf) {
-            pci_dma_write(d, rx_addr, buf, 2 * ETHER_ADDR_LEN);
-            pci_dma_write(d, rx_addr + 2 * ETHER_ADDR_LEN,
-                          buf + 2 * ETHER_ADDR_LEN + VLAN_HLEN,
-                          size - 2 * ETHER_ADDR_LEN);
+            pci_dma_write(d, rx_addr, buf, 2 * ETH_ALEN);
+            pci_dma_write(d, rx_addr + 2 * ETH_ALEN,
+                          buf + 2 * ETH_ALEN + VLAN_HLEN,
+                          size - 2 * ETH_ALEN);
         } else {
             pci_dma_write(d, rx_addr, buf, size);
         }
@@ -1149,7 +1146,9 @@ static ssize_t rtl8139_do_receive(NetClientState *nc, const uint8_t *buf, size_t
 
         /* if receiver buffer is empty then avail == 0 */
 
-        if (avail != 0 && size + 8 >= avail)
+#define RX_ALIGN(x) (((x) + 3) & ~0x3)
+
+        if (avail != 0 && RX_ALIGN(size + 8) >= avail)
         {
             DPRINTF("rx overflow: rx buffer length %d head 0x%04x "
                 "read 0x%04x === available 0x%04x need 0x%04x\n",
@@ -1158,7 +1157,7 @@ static ssize_t rtl8139_do_receive(NetClientState *nc, const uint8_t *buf, size_t
             s->IntrStatus |= RxOverflow;
             ++s->RxMissed;
             rtl8139_update_irq(s);
-            return size_;
+            return 0;
         }
 
         packet_header |= RxStatusOK;
@@ -1177,7 +1176,7 @@ static ssize_t rtl8139_do_receive(NetClientState *nc, const uint8_t *buf, size_t
         rtl8139_write_buffer(s, (uint8_t *)&val, 4);
 
         /* correct buffer write pointer */
-        s->RxBufAddr = MOD2((s->RxBufAddr + 3) & ~0x3, s->RxBufferSize);
+        s->RxBufAddr = MOD2(RX_ALIGN(s->RxBufAddr), s->RxBufferSize);
 
         /* now we can signal we have received something */
 
@@ -1282,6 +1281,7 @@ static void rtl8139_reset(DeviceState *d)
     s->TCTR = 0;
     s->TimerInt = 0;
     s->TCTR_base = 0;
+    rtl8139_set_next_tctr_time(s);
 
     /* reset tally counters */
     RTL8139TallyCounters_clear(&s->tally_counters);
@@ -1783,12 +1783,12 @@ static void rtl8139_transfer_frame(RTL8139State *s, uint8_t *buf, int size,
         return;
     }
 
-    if (dot1q_buf && size >= ETHER_ADDR_LEN * 2) {
+    if (dot1q_buf && size >= ETH_ALEN * 2) {
         iov = (struct iovec[3]) {
-            { .iov_base = buf, .iov_len = ETHER_ADDR_LEN * 2 },
+            { .iov_base = buf, .iov_len = ETH_ALEN * 2 },
             { .iov_base = (void *) dot1q_buf, .iov_len = VLAN_HLEN },
-            { .iov_base = buf + ETHER_ADDR_LEN * 2,
-                .iov_len = size - ETHER_ADDR_LEN * 2 },
+            { .iov_base = buf + ETH_ALEN * 2,
+                .iov_len = size - ETH_ALEN * 2 },
         };
 
         memcpy(vlan_iov, iov, sizeof(vlan_iov));
@@ -1868,63 +1868,11 @@ static int rtl8139_transmit_one(RTL8139State *s, int descriptor)
 }
 
 /* structures and macros for task offloading */
-typedef struct ip_header
-{
-    uint8_t  ip_ver_len;    /* version and header length */
-    uint8_t  ip_tos;        /* type of service */
-    uint16_t ip_len;        /* total length */
-    uint16_t ip_id;         /* identification */
-    uint16_t ip_off;        /* fragment offset field */
-    uint8_t  ip_ttl;        /* time to live */
-    uint8_t  ip_p;          /* protocol */
-    uint16_t ip_sum;        /* checksum */
-    uint32_t ip_src,ip_dst; /* source and dest address */
-} ip_header;
-
-#define IP_HEADER_VERSION_4 4
-#define IP_HEADER_VERSION(ip) ((ip->ip_ver_len >> 4)&0xf)
-#define IP_HEADER_LENGTH(ip) (((ip->ip_ver_len)&0xf) << 2)
-
-typedef struct tcp_header
-{
-    uint16_t th_sport;		/* source port */
-    uint16_t th_dport;		/* destination port */
-    uint32_t th_seq;			/* sequence number */
-    uint32_t th_ack;			/* acknowledgement number */
-    uint16_t th_offset_flags; /* data offset, reserved 6 bits, TCP protocol flags */
-    uint16_t th_win;			/* window */
-    uint16_t th_sum;			/* checksum */
-    uint16_t th_urp;			/* urgent pointer */
-} tcp_header;
-
-typedef struct udp_header
-{
-    uint16_t uh_sport; /* source port */
-    uint16_t uh_dport; /* destination port */
-    uint16_t uh_ulen;  /* udp length */
-    uint16_t uh_sum;   /* udp checksum */
-} udp_header;
-
-typedef struct ip_pseudo_header
-{
-    uint32_t ip_src;
-    uint32_t ip_dst;
-    uint8_t  zeros;
-    uint8_t  ip_proto;
-    uint16_t ip_payload;
-} ip_pseudo_header;
-
-#define IP_PROTO_TCP 6
-#define IP_PROTO_UDP 17
-
 #define TCP_HEADER_DATA_OFFSET(tcp) (((be16_to_cpu(tcp->th_offset_flags) >> 12)&0xf) << 2)
 #define TCP_FLAGS_ONLY(flags) ((flags)&0x3f)
 #define TCP_HEADER_FLAGS(tcp) TCP_FLAGS_ONLY(be16_to_cpu(tcp->th_offset_flags))
 
 #define TCP_HEADER_CLEAR_FLAGS(tcp, off) ((tcp)->th_offset_flags &= cpu_to_be16(~TCP_FLAGS_ONLY(off)))
-
-#define TCP_FLAG_FIN  0x01
-#define TCP_FLAG_PUSH 0x08
 
 /* produces ones' complement sum of data */
 static uint16_t ones_complement_sum(uint8_t *data, size_t len)
@@ -2075,20 +2023,6 @@ static int rtl8139_cplus_transmit_one(RTL8139State *s)
                 "length to %d\n", txsize);
     }
 
-    if (!s->cplus_txbuffer)
-    {
-        /* out of memory */
-
-        DPRINTF("+++ C+ mode transmiter failed to reallocate %d bytes\n",
-            s->cplus_txbuffer_len);
-
-        /* update tally counter */
-        ++s->tally_counters.TxERR;
-        ++s->tally_counters.TxAbt;
-
-        return 0;
-    }
-
     /* append more data to the packet */
 
     DPRINTF("+++ C+ mode transmit reading %d bytes from host memory at "
@@ -2112,7 +2046,7 @@ static int rtl8139_cplus_transmit_one(RTL8139State *s)
     }
 
     /* transfer ownership to target */
-    txdw0 &= ~CP_RX_OWN;
+    txdw0 &= ~CP_TX_OWN;
 
     /* reset error indicator bits */
     txdw0 &= ~CP_TX_STATUS_UNF;
@@ -2148,7 +2082,7 @@ static int rtl8139_cplus_transmit_one(RTL8139State *s)
                 bswap16(txdw1 & CP_TX_VLAN_TAG_MASK));
 
             dot1q_buffer = (uint16_t *) dot1q_buffer_space;
-            dot1q_buffer[0] = cpu_to_be16(ETH_P_8021Q);
+            dot1q_buffer[0] = cpu_to_be16(ETH_P_VLAN);
             /* BE + le_to_cpu() + ~cpu_to_le()~ = BE */
             dot1q_buffer[1] = cpu_to_le16(txdw1 & CP_TX_VLAN_TAG_MASK);
         } else {
@@ -2164,8 +2098,13 @@ static int rtl8139_cplus_transmit_one(RTL8139State *s)
         {
             DPRINTF("+++ C+ mode offloaded task checksum\n");
 
+            /* Large enough for Ethernet and IP headers? */
+            if (saved_size < ETH_HLEN + sizeof(struct ip_header)) {
+                goto skip_offload;
+            }
+
             /* ip packet header */
-            ip_header *ip = NULL;
+            struct ip_header *ip = NULL;
             int hlen = 0;
             uint8_t  ip_protocol = 0;
             uint16_t ip_data_len = 0;
@@ -2174,223 +2113,240 @@ static int rtl8139_cplus_transmit_one(RTL8139State *s)
             size_t   eth_payload_len  = 0;
 
             int proto = be16_to_cpu(*(uint16_t *)(saved_buffer + 12));
-            if (proto == ETH_P_IP)
+            if (proto != ETH_P_IP)
             {
-                DPRINTF("+++ C+ mode has IP packet\n");
-
-                /* not aligned */
-                eth_payload_data = saved_buffer + ETH_HLEN;
-                eth_payload_len  = saved_size   - ETH_HLEN;
-
-                ip = (ip_header*)eth_payload_data;
-
-                if (IP_HEADER_VERSION(ip) != IP_HEADER_VERSION_4) {
-                    DPRINTF("+++ C+ mode packet has bad IP version %d "
-                        "expected %d\n", IP_HEADER_VERSION(ip),
-                        IP_HEADER_VERSION_4);
-                    ip = NULL;
-                } else {
-                    hlen = IP_HEADER_LENGTH(ip);
-                    ip_protocol = ip->ip_p;
-                    ip_data_len = be16_to_cpu(ip->ip_len) - hlen;
-                }
+                goto skip_offload;
             }
 
-            if (ip)
+            DPRINTF("+++ C+ mode has IP packet\n");
+
+            /* Note on memory alignment: eth_payload_data is 16-bit aligned
+             * since saved_buffer is allocated with g_malloc() and ETH_HLEN is
+             * even.  32-bit accesses must use ldl/stl wrappers to avoid
+             * unaligned accesses.
+             */
+            eth_payload_data = saved_buffer + ETH_HLEN;
+            eth_payload_len  = saved_size   - ETH_HLEN;
+
+            ip = (struct ip_header*)eth_payload_data;
+
+            if (IP_HEADER_VERSION(ip) != IP_HEADER_VERSION_4) {
+                DPRINTF("+++ C+ mode packet has bad IP version %d "
+                    "expected %d\n", IP_HEADER_VERSION(ip),
+                    IP_HEADER_VERSION_4);
+                goto skip_offload;
+            }
+
+            hlen = IP_HDR_GET_LEN(ip);
+            if (hlen < sizeof(struct ip_header) || hlen > eth_payload_len) {
+                goto skip_offload;
+            }
+
+            ip_protocol = ip->ip_p;
+
+            ip_data_len = be16_to_cpu(ip->ip_len);
+            if (ip_data_len < hlen || ip_data_len > eth_payload_len) {
+                goto skip_offload;
+            }
+            ip_data_len -= hlen;
+
+            if (txdw0 & CP_TX_IPCS)
             {
-                if (txdw0 & CP_TX_IPCS)
-                {
-                    DPRINTF("+++ C+ mode need IP checksum\n");
+                DPRINTF("+++ C+ mode need IP checksum\n");
 
-                    if (hlen<sizeof(ip_header) || hlen>eth_payload_len) {/* min header length */
-                        /* bad packet header len */
-                        /* or packet too short */
-                    }
-                    else
-                    {
-                        ip->ip_sum = 0;
-                        ip->ip_sum = ip_checksum(ip, hlen);
-                        DPRINTF("+++ C+ mode IP header len=%d checksum=%04x\n",
-                            hlen, ip->ip_sum);
-                    }
+                ip->ip_sum = 0;
+                ip->ip_sum = ip_checksum(ip, hlen);
+                DPRINTF("+++ C+ mode IP header len=%d checksum=%04x\n",
+                    hlen, ip->ip_sum);
+            }
+
+            if ((txdw0 & CP_TX_LGSEN) && ip_protocol == IP_PROTO_TCP)
+            {
+                /* Large enough for the TCP header? */
+                if (ip_data_len < sizeof(tcp_header)) {
+                    goto skip_offload;
                 }
 
-                if ((txdw0 & CP_TX_LGSEN) && ip_protocol == IP_PROTO_TCP)
+                int large_send_mss = (txdw0 >> 16) & CP_TC_LGSEN_MSS_MASK;
+
+                DPRINTF("+++ C+ mode offloaded task TSO MTU=%d IP data %d "
+                    "frame data %d specified MSS=%d\n", ETH_MTU,
+                    ip_data_len, saved_size - ETH_HLEN, large_send_mss);
+
+                int tcp_send_offset = 0;
+                int send_count = 0;
+
+                /* maximum IP header length is 60 bytes */
+                uint8_t saved_ip_header[60];
+
+                /* save IP header template; data area is used in tcp checksum calculation */
+                memcpy(saved_ip_header, eth_payload_data, hlen);
+
+                /* a placeholder for checksum calculation routine in tcp case */
+                uint8_t *data_to_checksum     = eth_payload_data + hlen - 12;
+                //                    size_t   data_to_checksum_len = eth_payload_len  - hlen + 12;
+
+                /* pointer to TCP header */
+                tcp_header *p_tcp_hdr = (tcp_header*)(eth_payload_data + hlen);
+
+                int tcp_hlen = TCP_HEADER_DATA_OFFSET(p_tcp_hdr);
+
+                /* Invalid TCP data offset? */
+                if (tcp_hlen < sizeof(tcp_header) || tcp_hlen > ip_data_len) {
+                    goto skip_offload;
+                }
+
+                /* ETH_MTU = ip header len + tcp header len + payload */
+                int tcp_data_len = ip_data_len - tcp_hlen;
+                int tcp_chunk_size = ETH_MTU - hlen - tcp_hlen;
+
+                DPRINTF("+++ C+ mode TSO IP data len %d TCP hlen %d TCP "
+                    "data len %d TCP chunk size %d\n", ip_data_len,
+                    tcp_hlen, tcp_data_len, tcp_chunk_size);
+
+                /* note the cycle below overwrites IP header data,
+                   but restores it from saved_ip_header before sending packet */
+
+                int is_last_frame = 0;
+
+                for (tcp_send_offset = 0; tcp_send_offset < tcp_data_len; tcp_send_offset += tcp_chunk_size)
                 {
-                    int large_send_mss = (txdw0 >> 16) & CP_TC_LGSEN_MSS_MASK;
+                    uint16_t chunk_size = tcp_chunk_size;
 
-                    DPRINTF("+++ C+ mode offloaded task TSO MTU=%d IP data %d "
-                        "frame data %d specified MSS=%d\n", ETH_MTU,
-                        ip_data_len, saved_size - ETH_HLEN, large_send_mss);
-
-                    int tcp_send_offset = 0;
-                    int send_count = 0;
-
-                    /* maximum IP header length is 60 bytes */
-                    uint8_t saved_ip_header[60];
-
-                    /* save IP header template; data area is used in tcp checksum calculation */
-                    memcpy(saved_ip_header, eth_payload_data, hlen);
-
-                    /* a placeholder for checksum calculation routine in tcp case */
-                    uint8_t *data_to_checksum     = eth_payload_data + hlen - 12;
-                    //                    size_t   data_to_checksum_len = eth_payload_len  - hlen + 12;
-
-                    /* pointer to TCP header */
-                    tcp_header *p_tcp_hdr = (tcp_header*)(eth_payload_data + hlen);
-
-                    int tcp_hlen = TCP_HEADER_DATA_OFFSET(p_tcp_hdr);
-
-                    /* ETH_MTU = ip header len + tcp header len + payload */
-                    int tcp_data_len = ip_data_len - tcp_hlen;
-                    int tcp_chunk_size = ETH_MTU - hlen - tcp_hlen;
-
-                    DPRINTF("+++ C+ mode TSO IP data len %d TCP hlen %d TCP "
-                        "data len %d TCP chunk size %d\n", ip_data_len,
-                        tcp_hlen, tcp_data_len, tcp_chunk_size);
-
-                    /* note the cycle below overwrites IP header data,
-                       but restores it from saved_ip_header before sending packet */
-
-                    int is_last_frame = 0;
-
-                    for (tcp_send_offset = 0; tcp_send_offset < tcp_data_len; tcp_send_offset += tcp_chunk_size)
+                    /* check if this is the last frame */
+                    if (tcp_send_offset + tcp_chunk_size >= tcp_data_len)
                     {
-                        uint16_t chunk_size = tcp_chunk_size;
-
-                        /* check if this is the last frame */
-                        if (tcp_send_offset + tcp_chunk_size >= tcp_data_len)
-                        {
-                            is_last_frame = 1;
-                            chunk_size = tcp_data_len - tcp_send_offset;
-                        }
-
-                        DPRINTF("+++ C+ mode TSO TCP seqno %08x\n",
-                            be32_to_cpu(p_tcp_hdr->th_seq));
-
-                        /* add 4 TCP pseudoheader fields */
-                        /* copy IP source and destination fields */
-                        memcpy(data_to_checksum, saved_ip_header + 12, 8);
-
-                        DPRINTF("+++ C+ mode TSO calculating TCP checksum for "
-                            "packet with %d bytes data\n", tcp_hlen +
-                            chunk_size);
-
-                        if (tcp_send_offset)
-                        {
-                            memcpy((uint8_t*)p_tcp_hdr + tcp_hlen, (uint8_t*)p_tcp_hdr + tcp_hlen + tcp_send_offset, chunk_size);
-                        }
-
-                        /* keep PUSH and FIN flags only for the last frame */
-                        if (!is_last_frame)
-                        {
-                            TCP_HEADER_CLEAR_FLAGS(p_tcp_hdr, TCP_FLAG_PUSH|TCP_FLAG_FIN);
-                        }
-
-                        /* recalculate TCP checksum */
-                        ip_pseudo_header *p_tcpip_hdr = (ip_pseudo_header *)data_to_checksum;
-                        p_tcpip_hdr->zeros      = 0;
-                        p_tcpip_hdr->ip_proto   = IP_PROTO_TCP;
-                        p_tcpip_hdr->ip_payload = cpu_to_be16(tcp_hlen + chunk_size);
-
-                        p_tcp_hdr->th_sum = 0;
-
-                        int tcp_checksum = ip_checksum(data_to_checksum, tcp_hlen + chunk_size + 12);
-                        DPRINTF("+++ C+ mode TSO TCP checksum %04x\n",
-                            tcp_checksum);
-
-                        p_tcp_hdr->th_sum = tcp_checksum;
-
-                        /* restore IP header */
-                        memcpy(eth_payload_data, saved_ip_header, hlen);
-
-                        /* set IP data length and recalculate IP checksum */
-                        ip->ip_len = cpu_to_be16(hlen + tcp_hlen + chunk_size);
-
-                        /* increment IP id for subsequent frames */
-                        ip->ip_id = cpu_to_be16(tcp_send_offset/tcp_chunk_size + be16_to_cpu(ip->ip_id));
-
-                        ip->ip_sum = 0;
-                        ip->ip_sum = ip_checksum(eth_payload_data, hlen);
-                        DPRINTF("+++ C+ mode TSO IP header len=%d "
-                            "checksum=%04x\n", hlen, ip->ip_sum);
-
-                        int tso_send_size = ETH_HLEN + hlen + tcp_hlen + chunk_size;
-                        DPRINTF("+++ C+ mode TSO transferring packet size "
-                            "%d\n", tso_send_size);
-                        rtl8139_transfer_frame(s, saved_buffer, tso_send_size,
-                            0, (uint8_t *) dot1q_buffer);
-
-                        /* add transferred count to TCP sequence number */
-                        p_tcp_hdr->th_seq = cpu_to_be32(chunk_size + be32_to_cpu(p_tcp_hdr->th_seq));
-                        ++send_count;
+                        is_last_frame = 1;
+                        chunk_size = tcp_data_len - tcp_send_offset;
                     }
 
-                    /* Stop sending this frame */
-                    saved_size = 0;
-                }
-                else if (txdw0 & (CP_TX_TCPCS|CP_TX_UDPCS))
-                {
-                    DPRINTF("+++ C+ mode need TCP or UDP checksum\n");
-
-                    /* maximum IP header length is 60 bytes */
-                    uint8_t saved_ip_header[60];
-                    memcpy(saved_ip_header, eth_payload_data, hlen);
-
-                    uint8_t *data_to_checksum     = eth_payload_data + hlen - 12;
-                    //                    size_t   data_to_checksum_len = eth_payload_len  - hlen + 12;
+                    DPRINTF("+++ C+ mode TSO TCP seqno %08x\n",
+                            ldl_be_p(&p_tcp_hdr->th_seq));
 
                     /* add 4 TCP pseudoheader fields */
                     /* copy IP source and destination fields */
                     memcpy(data_to_checksum, saved_ip_header + 12, 8);
 
-                    if ((txdw0 & CP_TX_TCPCS) && ip_protocol == IP_PROTO_TCP)
+                    DPRINTF("+++ C+ mode TSO calculating TCP checksum for "
+                        "packet with %d bytes data\n", tcp_hlen +
+                        chunk_size);
+
+                    if (tcp_send_offset)
                     {
-                        DPRINTF("+++ C+ mode calculating TCP checksum for "
-                            "packet with %d bytes data\n", ip_data_len);
-
-                        ip_pseudo_header *p_tcpip_hdr = (ip_pseudo_header *)data_to_checksum;
-                        p_tcpip_hdr->zeros      = 0;
-                        p_tcpip_hdr->ip_proto   = IP_PROTO_TCP;
-                        p_tcpip_hdr->ip_payload = cpu_to_be16(ip_data_len);
-
-                        tcp_header* p_tcp_hdr = (tcp_header *) (data_to_checksum+12);
-
-                        p_tcp_hdr->th_sum = 0;
-
-                        int tcp_checksum = ip_checksum(data_to_checksum, ip_data_len + 12);
-                        DPRINTF("+++ C+ mode TCP checksum %04x\n",
-                            tcp_checksum);
-
-                        p_tcp_hdr->th_sum = tcp_checksum;
+                        memcpy((uint8_t*)p_tcp_hdr + tcp_hlen, (uint8_t*)p_tcp_hdr + tcp_hlen + tcp_send_offset, chunk_size);
                     }
-                    else if ((txdw0 & CP_TX_UDPCS) && ip_protocol == IP_PROTO_UDP)
+
+                    /* keep PUSH and FIN flags only for the last frame */
+                    if (!is_last_frame)
                     {
-                        DPRINTF("+++ C+ mode calculating UDP checksum for "
-                            "packet with %d bytes data\n", ip_data_len);
-
-                        ip_pseudo_header *p_udpip_hdr = (ip_pseudo_header *)data_to_checksum;
-                        p_udpip_hdr->zeros      = 0;
-                        p_udpip_hdr->ip_proto   = IP_PROTO_UDP;
-                        p_udpip_hdr->ip_payload = cpu_to_be16(ip_data_len);
-
-                        udp_header *p_udp_hdr = (udp_header *) (data_to_checksum+12);
-
-                        p_udp_hdr->uh_sum = 0;
-
-                        int udp_checksum = ip_checksum(data_to_checksum, ip_data_len + 12);
-                        DPRINTF("+++ C+ mode UDP checksum %04x\n",
-                            udp_checksum);
-
-                        p_udp_hdr->uh_sum = udp_checksum;
+                        TCP_HEADER_CLEAR_FLAGS(p_tcp_hdr, TH_PUSH | TH_FIN);
                     }
+
+                    /* recalculate TCP checksum */
+                    ip_pseudo_header *p_tcpip_hdr = (ip_pseudo_header *)data_to_checksum;
+                    p_tcpip_hdr->zeros      = 0;
+                    p_tcpip_hdr->ip_proto   = IP_PROTO_TCP;
+                    p_tcpip_hdr->ip_payload = cpu_to_be16(tcp_hlen + chunk_size);
+
+                    p_tcp_hdr->th_sum = 0;
+
+                    int tcp_checksum = ip_checksum(data_to_checksum, tcp_hlen + chunk_size + 12);
+                    DPRINTF("+++ C+ mode TSO TCP checksum %04x\n",
+                        tcp_checksum);
+
+                    p_tcp_hdr->th_sum = tcp_checksum;
 
                     /* restore IP header */
                     memcpy(eth_payload_data, saved_ip_header, hlen);
+
+                    /* set IP data length and recalculate IP checksum */
+                    ip->ip_len = cpu_to_be16(hlen + tcp_hlen + chunk_size);
+
+                    /* increment IP id for subsequent frames */
+                    ip->ip_id = cpu_to_be16(tcp_send_offset/tcp_chunk_size + be16_to_cpu(ip->ip_id));
+
+                    ip->ip_sum = 0;
+                    ip->ip_sum = ip_checksum(eth_payload_data, hlen);
+                    DPRINTF("+++ C+ mode TSO IP header len=%d "
+                        "checksum=%04x\n", hlen, ip->ip_sum);
+
+                    int tso_send_size = ETH_HLEN + hlen + tcp_hlen + chunk_size;
+                    DPRINTF("+++ C+ mode TSO transferring packet size "
+                        "%d\n", tso_send_size);
+                    rtl8139_transfer_frame(s, saved_buffer, tso_send_size,
+                        0, (uint8_t *) dot1q_buffer);
+
+                    /* add transferred count to TCP sequence number */
+                    stl_be_p(&p_tcp_hdr->th_seq,
+                             chunk_size + ldl_be_p(&p_tcp_hdr->th_seq));
+                    ++send_count;
                 }
+
+                /* Stop sending this frame */
+                saved_size = 0;
+            }
+            else if (txdw0 & (CP_TX_TCPCS|CP_TX_UDPCS))
+            {
+                DPRINTF("+++ C+ mode need TCP or UDP checksum\n");
+
+                /* maximum IP header length is 60 bytes */
+                uint8_t saved_ip_header[60];
+                memcpy(saved_ip_header, eth_payload_data, hlen);
+
+                uint8_t *data_to_checksum     = eth_payload_data + hlen - 12;
+                //                    size_t   data_to_checksum_len = eth_payload_len  - hlen + 12;
+
+                /* add 4 TCP pseudoheader fields */
+                /* copy IP source and destination fields */
+                memcpy(data_to_checksum, saved_ip_header + 12, 8);
+
+                if ((txdw0 & CP_TX_TCPCS) && ip_protocol == IP_PROTO_TCP)
+                {
+                    DPRINTF("+++ C+ mode calculating TCP checksum for "
+                        "packet with %d bytes data\n", ip_data_len);
+
+                    ip_pseudo_header *p_tcpip_hdr = (ip_pseudo_header *)data_to_checksum;
+                    p_tcpip_hdr->zeros      = 0;
+                    p_tcpip_hdr->ip_proto   = IP_PROTO_TCP;
+                    p_tcpip_hdr->ip_payload = cpu_to_be16(ip_data_len);
+
+                    tcp_header* p_tcp_hdr = (tcp_header *) (data_to_checksum+12);
+
+                    p_tcp_hdr->th_sum = 0;
+
+                    int tcp_checksum = ip_checksum(data_to_checksum, ip_data_len + 12);
+                    DPRINTF("+++ C+ mode TCP checksum %04x\n",
+                        tcp_checksum);
+
+                    p_tcp_hdr->th_sum = tcp_checksum;
+                }
+                else if ((txdw0 & CP_TX_UDPCS) && ip_protocol == IP_PROTO_UDP)
+                {
+                    DPRINTF("+++ C+ mode calculating UDP checksum for "
+                        "packet with %d bytes data\n", ip_data_len);
+
+                    ip_pseudo_header *p_udpip_hdr = (ip_pseudo_header *)data_to_checksum;
+                    p_udpip_hdr->zeros      = 0;
+                    p_udpip_hdr->ip_proto   = IP_PROTO_UDP;
+                    p_udpip_hdr->ip_payload = cpu_to_be16(ip_data_len);
+
+                    udp_header *p_udp_hdr = (udp_header *) (data_to_checksum+12);
+
+                    p_udp_hdr->uh_sum = 0;
+
+                    int udp_checksum = ip_checksum(data_to_checksum, ip_data_len + 12);
+                    DPRINTF("+++ C+ mode UDP checksum %04x\n",
+                        udp_checksum);
+
+                    p_udp_hdr->uh_sum = udp_checksum;
+                }
+
+                /* restore IP header */
+                memcpy(eth_payload_data, saved_ip_header, hlen);
             }
         }
 
+skip_offload:
         /* update tally counter */
         ++s->tally_counters.TxOk;
 
@@ -2652,7 +2608,6 @@ static void rtl8139_IntrMask_write(RTL8139State *s, uint32_t val)
 
     s->IntrMask = val;
 
-    rtl8139_set_next_tctr_time(s, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
     rtl8139_update_irq(s);
 
 }
@@ -2687,13 +2642,7 @@ static void rtl8139_IntrStatus_write(RTL8139State *s, uint32_t val)
     rtl8139_update_irq(s);
 
     s->IntrStatus = newStatus;
-    /*
-     * Computing if we miss an interrupt here is not that correct but
-     * considered that we should have had already an interrupt
-     * and probably emulated is slower is better to assume this resetting was
-     * done before testing on previous rtl8139_update_irq lead to IRQ losing
-     */
-    rtl8139_set_next_tctr_time(s, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
+    rtl8139_set_next_tctr_time(s);
     rtl8139_update_irq(s);
 
 #endif
@@ -2701,8 +2650,6 @@ static void rtl8139_IntrStatus_write(RTL8139State *s, uint32_t val)
 
 static uint32_t rtl8139_IntrStatus_read(RTL8139State *s)
 {
-    rtl8139_set_next_tctr_time(s, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
-
     uint32_t ret = s->IntrStatus;
 
     DPRINTF("IntrStatus read(w) val=0x%04x\n", ret);
@@ -2885,43 +2832,31 @@ static void rtl8139_io_writew(void *opaque, uint8_t addr, uint32_t val)
     }
 }
 
-static void rtl8139_set_next_tctr_time(RTL8139State *s, int64_t current_time)
+static void rtl8139_set_next_tctr_time(RTL8139State *s)
 {
-    int64_t pci_time, next_time;
-    uint32_t low_pci;
+    const uint64_t ns_per_period = (uint64_t)PCI_PERIOD << 32;
 
     DPRINTF("entered rtl8139_set_next_tctr_time\n");
 
-    if (s->TimerExpire && current_time >= s->TimerExpire) {
-        s->IntrStatus |= PCSTimeout;
-        rtl8139_update_irq(s);
-    }
-
-    /* Set QEMU timer only if needed that is
-     * - TimerInt <> 0 (we have a timer)
-     * - mask = 1 (we want an interrupt timer)
-     * - irq = 0  (irq is not already active)
-     * If any of above change we need to compute timer again
-     * Also we must check if timer is passed without QEMU timer
+    /* This function is called at least once per period, so it is a good
+     * place to update the timer base.
+     *
+     * After one iteration of this loop the value in the Timer register does
+     * not change, but the device model is counting up by 2^32 ticks (approx.
+     * 130 seconds).
      */
-    s->TimerExpire = 0;
+    while (s->TCTR_base + ns_per_period <= qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL)) {
+        s->TCTR_base += ns_per_period;
+    }
+
     if (!s->TimerInt) {
-        return;
-    }
-
-    pci_time = muldiv64(current_time - s->TCTR_base, PCI_FREQUENCY,
-                                get_ticks_per_sec());
-    low_pci = pci_time & 0xffffffff;
-    pci_time = pci_time - low_pci + s->TimerInt;
-    if (low_pci >= s->TimerInt) {
-        pci_time += 0x100000000LL;
-    }
-    next_time = s->TCTR_base + muldiv64(pci_time, get_ticks_per_sec(),
-                                                PCI_FREQUENCY);
-    s->TimerExpire = next_time;
-
-    if ((s->IntrMask & PCSTimeout) != 0 && (s->IntrStatus & PCSTimeout) == 0) {
-        timer_mod(s->timer, next_time);
+        timer_del(s->timer);
+    } else {
+        uint64_t delta = (uint64_t)s->TimerInt * PCI_PERIOD;
+        if (s->TCTR_base + delta <= qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL)) {
+            delta += ns_per_period;
+        }
+        timer_mod(s->timer, s->TCTR_base + delta);
     }
 }
 
@@ -2969,14 +2904,14 @@ static void rtl8139_io_writel(void *opaque, uint8_t addr, uint32_t val)
         case Timer:
             DPRINTF("TCTR Timer reset on write\n");
             s->TCTR_base = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-            rtl8139_set_next_tctr_time(s, s->TCTR_base);
+            rtl8139_set_next_tctr_time(s);
             break;
 
         case FlashReg:
             DPRINTF("FlashReg TimerInt write val=0x%08x\n", val);
             if (s->TimerInt != val) {
                 s->TimerInt = val;
-                rtl8139_set_next_tctr_time(s, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
+                rtl8139_set_next_tctr_time(s);
             }
             break;
 
@@ -3191,8 +3126,8 @@ static uint32_t rtl8139_io_readl(void *opaque, uint8_t addr)
             break;
 
         case Timer:
-            ret = muldiv64(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) - s->TCTR_base,
-                           PCI_FREQUENCY, get_ticks_per_sec());
+            ret = (qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) - s->TCTR_base) /
+                  PCI_PERIOD;
             DPRINTF("TCTR Timer read val=0x%08x\n", ret);
             break;
 
@@ -3253,7 +3188,7 @@ static uint32_t rtl8139_mmio_readl(void *opaque, hwaddr addr)
 static int rtl8139_post_load(void *opaque, int version_id)
 {
     RTL8139State* s = opaque;
-    rtl8139_set_next_tctr_time(s, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
+    rtl8139_set_next_tctr_time(s);
     if (version_id < 4) {
         s->cplus_enabled = s->CpCmd != 0;
     }
@@ -3274,6 +3209,7 @@ static const VMStateDescription vmstate_rtl8139_hotplug_ready ={
     .name = "rtl8139/hotplug_ready",
     .version_id = 1,
     .minimum_version_id = 1,
+    .needed = rtl8139_hotplug_ready_needed,
     .fields = (VMStateField[]) {
         VMSTATE_END_OF_LIST()
     }
@@ -3284,10 +3220,8 @@ static void rtl8139_pre_save(void *opaque)
     RTL8139State* s = opaque;
     int64_t current_time = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
 
-    /* set IntrStatus correctly */
-    rtl8139_set_next_tctr_time(s, current_time);
-    s->TCTR = muldiv64(current_time - s->TCTR_base, PCI_FREQUENCY,
-                       get_ticks_per_sec());
+    /* for migration to older versions */
+    s->TCTR = (current_time - s->TCTR_base) / PCI_PERIOD;
     s->rtl8139_mmio_io_addr_dummy = 0;
 }
 
@@ -3370,13 +3304,9 @@ static const VMStateDescription vmstate_rtl8139 = {
         VMSTATE_UINT32_V(cplus_enabled, RTL8139State, 4),
         VMSTATE_END_OF_LIST()
     },
-    .subsections = (VMStateSubsection []) {
-        {
-            .vmsd = &vmstate_rtl8139_hotplug_ready,
-            .needed = rtl8139_hotplug_ready_needed,
-        }, {
-            /* empty */
-        }
+    .subsections = (const VMStateDescription*[]) {
+        &vmstate_rtl8139_hotplug_ready,
+        NULL
     }
 };
 
@@ -3452,24 +3382,15 @@ static void rtl8139_timer(void *opaque)
 
     s->IntrStatus |= PCSTimeout;
     rtl8139_update_irq(s);
-    rtl8139_set_next_tctr_time(s, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
-}
-
-static void rtl8139_cleanup(NetClientState *nc)
-{
-    RTL8139State *s = qemu_get_nic_opaque(nc);
-
-    s->nic = NULL;
+    rtl8139_set_next_tctr_time(s);
 }
 
 static void pci_rtl8139_uninit(PCIDevice *dev)
 {
     RTL8139State *s = RTL8139(dev);
 
-    if (s->cplus_txbuffer) {
-        g_free(s->cplus_txbuffer);
-        s->cplus_txbuffer = NULL;
-    }
+    g_free(s->cplus_txbuffer);
+    s->cplus_txbuffer = NULL;
     timer_del(s->timer);
     timer_free(s->timer);
     qemu_del_nic(s->nic);
@@ -3494,11 +3415,10 @@ static NetClientInfo net_rtl8139_info = {
     .size = sizeof(NICState),
     .can_receive = rtl8139_can_receive,
     .receive = rtl8139_receive,
-    .cleanup = rtl8139_cleanup,
     .link_status_changed = rtl8139_set_link_status,
 };
 
-static int pci_rtl8139_init(PCIDevice *dev)
+static void pci_rtl8139_realize(PCIDevice *dev, Error **errp)
 {
     RTL8139State *s = RTL8139(dev);
     DeviceState *d = DEVICE(dev);
@@ -3538,11 +3458,7 @@ static int pci_rtl8139_init(PCIDevice *dev)
     s->cplus_txbuffer_len = 0;
     s->cplus_txbuffer_offset = 0;
 
-    s->TimerExpire = 0;
     s->timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, rtl8139_timer, s);
-    rtl8139_set_next_tctr_time(s, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
-
-    return 0;
 }
 
 static void rtl8139_instance_init(Object *obj)
@@ -3564,7 +3480,7 @@ static void rtl8139_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
-    k->init = pci_rtl8139_init;
+    k->realize = pci_rtl8139_realize;
     k->exit = pci_rtl8139_uninit;
     k->romfile = "efi-rtl8139.rom";
     k->vendor_id = PCI_VENDOR_ID_REALTEK;

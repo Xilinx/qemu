@@ -109,6 +109,7 @@ struct ICPState {
     uint8_t pending_priority;
     uint8_t mfrr;
     qemu_irq output;
+    bool cap_irq_xics_enabled;
 };
 
 #define TYPE_ICS "ics"
@@ -160,8 +161,9 @@ struct ICSIRQState {
 
 qemu_irq xics_get_qirq(XICSState *icp, int irq);
 void xics_set_irq_type(XICSState *icp, int irq, bool lsi);
-int xics_alloc(XICSState *icp, int src, int irq_hint, bool lsi);
-int xics_alloc_block(XICSState *icp, int src, int num, bool lsi, bool align);
+int xics_alloc(XICSState *icp, int src, int irq_hint, bool lsi, Error **errp);
+int xics_alloc_block(XICSState *icp, int src, int num, bool lsi, bool align,
+                     Error **errp);
 void xics_free(XICSState *icp, int irq, int num);
 
 void xics_cpu_setup(XICSState *icp, PowerPCCPU *cpu);

@@ -22,9 +22,11 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "hw/register.h"
 #include "qemu/bitops.h"
+#include "qapi/qmp/qerror.h"
 #include "qemu/log.h"
 
 #ifndef XILINX_LPD_SLCR_SECURE_ERR_DEBUG
@@ -125,6 +127,10 @@ static RegisterAccessInfo lpd_slcr_secure_regs_info[] = {
         .pre_write = idr_prew,
     },{ .name = "ITR",  .decode.addr = A_ITR,
         .pre_write = itr_prew,
+    },{ .name = "SLCR_RPU",   .decode.addr = A_SLCR_RPU,
+    },{ .name = "SLCR_ADMA",  .decode.addr = A_SLCR_ADMA,
+    },{ .name = "SAFETY_CHK", .decode.addr = A_SAFETY_CHK,
+    },{ .name = "SLCR_USB",   .decode.addr = A_SLCR_USB,
     }
 };
 

@@ -9,11 +9,13 @@
  * This work is licensed under the terms of the GNU GPL, version 2 or later.
  * See the COPYING file in the top-level directory.
  */
+#include "qemu/osdep.h"
 #include "sysemu/hostmem.h"
+#include "hw/boards.h"
+#include "qapi/error.h"
 #include "qapi/visitor.h"
 #include "qapi-types.h"
 #include "qapi-visit.h"
-#include "qapi/qmp/qerror.h"
 #include "qemu/config-file.h"
 #include "qom/object_interfaces.h"
 
@@ -26,18 +28,18 @@ QEMU_BUILD_BUG_ON(HOST_MEM_POLICY_INTERLEAVE != MPOL_INTERLEAVE);
 #endif
 
 static void
-host_memory_backend_get_size(Object *obj, Visitor *v, void *opaque,
-                             const char *name, Error **errp)
+host_memory_backend_get_size(Object *obj, Visitor *v, const char *name,
+                             void *opaque, Error **errp)
 {
     HostMemoryBackend *backend = MEMORY_BACKEND(obj);
     uint64_t value = backend->size;
 
-    visit_type_size(v, &value, name, errp);
+    visit_type_size(v, name, &value, errp);
 }
 
 static void
-host_memory_backend_set_size(Object *obj, Visitor *v, void *opaque,
-                             const char *name, Error **errp)
+host_memory_backend_set_size(Object *obj, Visitor *v, const char *name,
+                             void *opaque, Error **errp)
 {
     HostMemoryBackend *backend = MEMORY_BACKEND(obj);
     Error *local_err = NULL;
@@ -48,7 +50,7 @@ host_memory_backend_set_size(Object *obj, Visitor *v, void *opaque,
         goto out;
     }
 
-    visit_type_size(v, &value, name, &local_err);
+    visit_type_size(v, name, &value, &local_err);
     if (local_err) {
         goto out;
     }
@@ -63,8 +65,8 @@ out:
 }
 
 static void
-host_memory_backend_get_host_nodes(Object *obj, Visitor *v, void *opaque,
-                                   const char *name, Error **errp)
+host_memory_backend_get_host_nodes(Object *obj, Visitor *v, const char *name,
+                                   void *opaque, Error **errp)
 {
     HostMemoryBackend *backend = MEMORY_BACKEND(obj);
     uint16List *host_nodes = NULL;
@@ -91,18 +93,18 @@ host_memory_backend_get_host_nodes(Object *obj, Visitor *v, void *opaque,
         node = &(*node)->next;
     } while (true);
 
-    visit_type_uint16List(v, &host_nodes, name, errp);
+    visit_type_uint16List(v, name, &host_nodes, errp);
 }
 
 static void
-host_memory_backend_set_host_nodes(Object *obj, Visitor *v, void *opaque,
-                                   const char *name, Error **errp)
+host_memory_backend_set_host_nodes(Object *obj, Visitor *v, const char *name,
+                                   void *opaque, Error **errp)
 {
 #ifdef CONFIG_NUMA
     HostMemoryBackend *backend = MEMORY_BACKEND(obj);
     uint16List *l = NULL;
 
-    visit_type_uint16List(v, &l, name, errp);
+    visit_type_uint16List(v, name, &l, errp);
 
     while (l) {
         bitmap_set(backend->host_nodes, l->value, 1);
@@ -113,24 +115,17 @@ host_memory_backend_set_host_nodes(Object *obj, Visitor *v, void *opaque,
 #endif
 }
 
-static void
-host_memory_backend_get_policy(Object *obj, Visitor *v, void *opaque,
-                               const char *name, Error **errp)
+static int
+host_memory_backend_get_policy(Object *obj, Error **errp G_GNUC_UNUSED)
 {
     HostMemoryBackend *backend = MEMORY_BACKEND(obj);
-    int policy = backend->policy;
-
-    visit_type_enum(v, &policy, HostMemPolicy_lookup, NULL, name, errp);
+    return backend->policy;
 }
 
 static void
-host_memory_backend_set_policy(Object *obj, Visitor *v, void *opaque,
-                               const char *name, Error **errp)
+host_memory_backend_set_policy(Object *obj, int policy, Error **errp)
 {
     HostMemoryBackend *backend = MEMORY_BACKEND(obj);
-    int policy;
-
-    visit_type_enum(v, &policy, HostMemPolicy_lookup, NULL, name, errp);
     backend->policy = policy;
 
 #ifndef CONFIG_NUMA
@@ -230,11 +225,10 @@ static void host_memory_backend_set_prealloc(Object *obj, bool value,
 static void host_memory_backend_init(Object *obj)
 {
     HostMemoryBackend *backend = MEMORY_BACKEND(obj);
+    MachineState *machine = MACHINE(qdev_get_machine());
 
-    backend->merge = qemu_opt_get_bool(qemu_get_machine_opts(),
-                                       "mem-merge", true);
-    backend->dump = qemu_opt_get_bool(qemu_get_machine_opts(),
-                                      "dump-guest-core", true);
+    backend->merge = machine_mem_merge(machine);
+    backend->dump = machine_dump_guest_core(machine);
     backend->prealloc = mem_prealloc;
 
     object_property_add_bool(obj, "merge",
@@ -252,9 +246,10 @@ static void host_memory_backend_init(Object *obj)
     object_property_add(obj, "host-nodes", "int",
                         host_memory_backend_get_host_nodes,
                         host_memory_backend_set_host_nodes, NULL, NULL, NULL);
-    object_property_add(obj, "policy", "str",
-                        host_memory_backend_get_policy,
-                        host_memory_backend_set_policy, NULL, NULL, NULL);
+    object_property_add_enum(obj, "policy", "HostMemPolicy",
+                             HostMemPolicy_lookup,
+                             host_memory_backend_get_policy,
+                             host_memory_backend_set_policy, NULL);
 }
 
 MemoryRegion *
@@ -320,9 +315,11 @@ host_memory_backend_memory_complete(UserCreatable *uc, Error **errp)
         assert(maxnode <= MAX_NODES);
         if (mbind(ptr, sz, backend->policy,
                   maxnode ? backend->host_nodes : NULL, maxnode + 1, flags)) {
-            error_setg_errno(errp, errno,
-                             "cannot bind memory to host NUMA nodes");
-            return;
+            if (backend->policy != MPOL_DEFAULT || errno != ENOSYS) {
+                error_setg_errno(errp, errno,
+                                 "cannot bind memory to host NUMA nodes");
+                return;
+            }
         }
 #endif
         /* Preallocate memory after the NUMA policy has been instantiated.
@@ -335,12 +332,26 @@ host_memory_backend_memory_complete(UserCreatable *uc, Error **errp)
     }
 }
 
+static bool
+host_memory_backend_can_be_deleted(UserCreatable *uc, Error **errp)
+{
+    MemoryRegion *mr;
+
+    mr = host_memory_backend_get_memory(MEMORY_BACKEND(uc), errp);
+    if (memory_region_is_mapped(mr)) {
+        return false;
+    } else {
+        return true;
+    }
+}
+
 static void
 host_memory_backend_class_init(ObjectClass *oc, void *data)
 {
     UserCreatableClass *ucc = USER_CREATABLE_CLASS(oc);
 
     ucc->complete = host_memory_backend_memory_complete;
+    ucc->can_be_deleted = host_memory_backend_can_be_deleted;
 }
 
 static const TypeInfo host_memory_backend_info = {

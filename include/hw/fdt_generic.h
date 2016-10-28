@@ -9,7 +9,7 @@
 #include "qemu-common.h"
 #include "hw/irq.h"
 #include "sysemu/device_tree.h"
-#include "block/coroutine.h"
+#include "qemu/coroutine.h"
 
 typedef struct FDTDevOpaque {
     char *node_path;

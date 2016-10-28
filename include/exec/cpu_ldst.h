@@ -23,27 +23,46 @@
  *
  * Used by target op helpers.
  *
- * MMU mode suffixes are defined in target cpu.h.
+ * The syntax for the accessors is:
+ *
+ * load: cpu_ld{sign}{size}_{mmusuffix}(env, ptr)
+ *
+ * store: cpu_st{sign}{size}_{mmusuffix}(env, ptr, val)
+ *
+ * sign is:
+ * (empty): for 32 and 64 bit sizes
+ *   u    : unsigned
+ *   s    : signed
+ *
+ * size is:
+ *   b: 8 bits
+ *   w: 16 bits
+ *   l: 32 bits
+ *   q: 64 bits
+ *
+ * mmusuffix is one of the generic suffixes "data" or "code", or
+ * (for softmmu configs)  a target-specific MMU mode suffix as defined
+ * in target cpu.h.
  */
 #ifndef CPU_LDST_H
 #define CPU_LDST_H
 
 #if defined(CONFIG_USER_ONLY)
 /* All direct uses of g2h and h2g need to go away for usermode softmmu.  */
-#define g2h(x) ((void *)((unsigned long)(target_ulong)(x) + GUEST_BASE))
+#define g2h(x) ((void *)((unsigned long)(target_ulong)(x) + guest_base))
 
 #if HOST_LONG_BITS <= TARGET_VIRT_ADDR_SPACE_BITS
 #define h2g_valid(x) 1
 #else
 #define h2g_valid(x) ({ \
-    unsigned long __guest = (unsigned long)(x) - GUEST_BASE; \
+    unsigned long __guest = (unsigned long)(x) - guest_base; \
     (__guest < (1ul << TARGET_VIRT_ADDR_SPACE_BITS)) && \
-    (!RESERVED_VA || (__guest < RESERVED_VA)); \
+    (!reserved_va || (__guest < reserved_va)); \
 })
 #endif
 
 #define h2g_nocheck(x) ({ \
-    unsigned long __ret = (unsigned long)(x) - GUEST_BASE; \
+    unsigned long __ret = (unsigned long)(x) - guest_base; \
     (abi_ulong)__ret; \
 })
 
@@ -53,135 +72,48 @@
     h2g_nocheck(x); \
 })
 
-#define saddr(x) g2h(x)
-#define laddr(x) g2h(x)
-
-#else /* !CONFIG_USER_ONLY */
-/* NOTE: we use double casts if pointers and target_ulong have
-   different sizes */
-#define saddr(x) (uint8_t *)(intptr_t)(x)
-#define laddr(x) (uint8_t *)(intptr_t)(x)
 #endif
-
-#define ldub_raw(p) ldub_p(laddr((p)))
-#define ldsb_raw(p) ldsb_p(laddr((p)))
-#define lduw_raw(p) lduw_p(laddr((p)))
-#define ldsw_raw(p) ldsw_p(laddr((p)))
-#define ldl_raw(p) ldl_p(laddr((p)))
-#define ldq_raw(p) ldq_p(laddr((p)))
-#define ldfl_raw(p) ldfl_p(laddr((p)))
-#define ldfq_raw(p) ldfq_p(laddr((p)))
-#define stb_raw(p, v) stb_p(saddr((p)), v)
-#define stw_raw(p, v) stw_p(saddr((p)), v)
-#define stl_raw(p, v) stl_p(saddr((p)), v)
-#define stq_raw(p, v) stq_p(saddr((p)), v)
-#define stfl_raw(p, v) stfl_p(saddr((p)), v)
-#define stfq_raw(p, v) stfq_p(saddr((p)), v)
-
 
 #if defined(CONFIG_USER_ONLY)
 
-/* if user mode, no other memory access functions */
-#define ldub(p) ldub_raw(p)
-#define ldsb(p) ldsb_raw(p)
-#define lduw(p) lduw_raw(p)
-#define ldsw(p) ldsw_raw(p)
-#define ldl(p) ldl_raw(p)
-#define ldq(p) ldq_raw(p)
-#define ldfl(p) ldfl_raw(p)
-#define ldfq(p) ldfq_raw(p)
-#define stb(p, v) stb_raw(p, v)
-#define stw(p, v) stw_raw(p, v)
-#define stl(p, v) stl_raw(p, v)
-#define stq(p, v) stq_raw(p, v)
-#define stfl(p, v) stfl_raw(p, v)
-#define stfq(p, v) stfq_raw(p, v)
+/* In user-only mode we provide only the _code and _data accessors. */
 
-#define cpu_ldub_code(env1, p) ldub_raw(p)
-#define cpu_ldsb_code(env1, p) ldsb_raw(p)
-#define cpu_lduw_code(env1, p) lduw_raw(p)
-#define cpu_ldsw_code(env1, p) ldsw_raw(p)
-#define cpu_ldl_code(env1, p) ldl_raw(p)
-#define cpu_ldq_code(env1, p) ldq_raw(p)
+#define MEMSUFFIX _data
+#define DATA_SIZE 1
+#include "exec/cpu_ldst_useronly_template.h"
 
-#define cpu_ldub_data(env, addr) ldub_raw(addr)
-#define cpu_lduw_data(env, addr) lduw_raw(addr)
-#define cpu_ldsw_data(env, addr) ldsw_raw(addr)
-#define cpu_ldl_data(env, addr) ldl_raw(addr)
-#define cpu_ldq_data(env, addr) ldq_raw(addr)
+#define DATA_SIZE 2
+#include "exec/cpu_ldst_useronly_template.h"
 
-#define cpu_stb_data(env, addr, data) stb_raw(addr, data)
-#define cpu_stw_data(env, addr, data) stw_raw(addr, data)
-#define cpu_stl_data(env, addr, data) stl_raw(addr, data)
-#define cpu_stq_data(env, addr, data) stq_raw(addr, data)
+#define DATA_SIZE 4
+#include "exec/cpu_ldst_useronly_template.h"
 
-#define cpu_ldub_kernel(env, addr) ldub_raw(addr)
-#define cpu_lduw_kernel(env, addr) lduw_raw(addr)
-#define cpu_ldsw_kernel(env, addr) ldsw_raw(addr)
-#define cpu_ldl_kernel(env, addr) ldl_raw(addr)
-#define cpu_ldq_kernel(env, addr) ldq_raw(addr)
+#define DATA_SIZE 8
+#include "exec/cpu_ldst_useronly_template.h"
+#undef MEMSUFFIX
 
-#define cpu_stb_kernel(env, addr, data) stb_raw(addr, data)
-#define cpu_stw_kernel(env, addr, data) stw_raw(addr, data)
-#define cpu_stl_kernel(env, addr, data) stl_raw(addr, data)
-#define cpu_stq_kernel(env, addr, data) stq_raw(addr, data)
+#define MEMSUFFIX _code
+#define CODE_ACCESS
+#define DATA_SIZE 1
+#include "exec/cpu_ldst_useronly_template.h"
 
-#define ldub_kernel(p) ldub_raw(p)
-#define ldsb_kernel(p) ldsb_raw(p)
-#define lduw_kernel(p) lduw_raw(p)
-#define ldsw_kernel(p) ldsw_raw(p)
-#define ldl_kernel(p) ldl_raw(p)
-#define ldq_kernel(p) ldq_raw(p)
-#define ldfl_kernel(p) ldfl_raw(p)
-#define ldfq_kernel(p) ldfq_raw(p)
-#define stb_kernel(p, v) stb_raw(p, v)
-#define stw_kernel(p, v) stw_raw(p, v)
-#define stl_kernel(p, v) stl_raw(p, v)
-#define stq_kernel(p, v) stq_raw(p, v)
-#define stfl_kernel(p, v) stfl_raw(p, v)
-#define stfq_kernel(p, vt) stfq_raw(p, v)
+#define DATA_SIZE 2
+#include "exec/cpu_ldst_useronly_template.h"
 
-#define cpu_ldub_data(env, addr) ldub_raw(addr)
-#define cpu_lduw_data(env, addr) lduw_raw(addr)
-#define cpu_ldl_data(env, addr) ldl_raw(addr)
+#define DATA_SIZE 4
+#include "exec/cpu_ldst_useronly_template.h"
 
-#define cpu_stb_data(env, addr, data) stb_raw(addr, data)
-#define cpu_stw_data(env, addr, data) stw_raw(addr, data)
-#define cpu_stl_data(env, addr, data) stl_raw(addr, data)
+#define DATA_SIZE 8
+#include "exec/cpu_ldst_useronly_template.h"
+#undef MEMSUFFIX
+#undef CODE_ACCESS
 
 #else
-
-/* XXX: find something cleaner.
- * Furthermore, this is false for 64 bits targets
- */
-#define ldul_user       ldl_user
-#define ldul_kernel     ldl_kernel
-#define ldul_hypv       ldl_hypv
-#define ldul_executive  ldl_executive
-#define ldul_supervisor ldl_supervisor
 
 /* The memory helpers for tcg-generated code need tcg_target_long etc.  */
 #include "tcg.h"
 
-uint8_t helper_ldb_mmu(CPUArchState *env, target_ulong addr, int mmu_idx);
-uint16_t helper_ldw_mmu(CPUArchState *env, target_ulong addr, int mmu_idx);
-uint32_t helper_ldl_mmu(CPUArchState *env, target_ulong addr, int mmu_idx);
-uint64_t helper_ldq_mmu(CPUArchState *env, target_ulong addr, int mmu_idx);
-
-void helper_stb_mmu(CPUArchState *env, target_ulong addr,
-                    uint8_t val, int mmu_idx);
-void helper_stw_mmu(CPUArchState *env, target_ulong addr,
-                    uint16_t val, int mmu_idx);
-void helper_stl_mmu(CPUArchState *env, target_ulong addr,
-                    uint32_t val, int mmu_idx);
-void helper_stq_mmu(CPUArchState *env, target_ulong addr,
-                    uint64_t val, int mmu_idx);
-
-uint8_t helper_ldb_cmmu(CPUArchState *env, target_ulong addr, int mmu_idx);
-uint16_t helper_ldw_cmmu(CPUArchState *env, target_ulong addr, int mmu_idx);
-uint32_t helper_ldl_cmmu(CPUArchState *env, target_ulong addr, int mmu_idx);
-uint64_t helper_ldq_cmmu(CPUArchState *env, target_ulong addr, int mmu_idx);
-
+#ifdef MMU_MODE0_SUFFIX
 #define CPU_MMU_INDEX 0
 #define MEMSUFFIX MMU_MODE0_SUFFIX
 #define DATA_SIZE 1
@@ -197,7 +129,9 @@ uint64_t helper_ldq_cmmu(CPUArchState *env, target_ulong addr, int mmu_idx);
 #include "exec/cpu_ldst_template.h"
 #undef CPU_MMU_INDEX
 #undef MEMSUFFIX
+#endif
 
+#if (NB_MMU_MODES >= 2) && defined(MMU_MODE1_SUFFIX)
 #define CPU_MMU_INDEX 1
 #define MEMSUFFIX MMU_MODE1_SUFFIX
 #define DATA_SIZE 1
@@ -213,8 +147,9 @@ uint64_t helper_ldq_cmmu(CPUArchState *env, target_ulong addr, int mmu_idx);
 #include "exec/cpu_ldst_template.h"
 #undef CPU_MMU_INDEX
 #undef MEMSUFFIX
+#endif
 
-#if (NB_MMU_MODES >= 3)
+#if (NB_MMU_MODES >= 3) && defined(MMU_MODE2_SUFFIX)
 
 #define CPU_MMU_INDEX 2
 #define MEMSUFFIX MMU_MODE2_SUFFIX
@@ -233,7 +168,7 @@ uint64_t helper_ldq_cmmu(CPUArchState *env, target_ulong addr, int mmu_idx);
 #undef MEMSUFFIX
 #endif /* (NB_MMU_MODES >= 3) */
 
-#if (NB_MMU_MODES >= 4)
+#if (NB_MMU_MODES >= 4) && defined(MMU_MODE3_SUFFIX)
 
 #define CPU_MMU_INDEX 3
 #define MEMSUFFIX MMU_MODE3_SUFFIX
@@ -252,7 +187,7 @@ uint64_t helper_ldq_cmmu(CPUArchState *env, target_ulong addr, int mmu_idx);
 #undef MEMSUFFIX
 #endif /* (NB_MMU_MODES >= 4) */
 
-#if (NB_MMU_MODES >= 5)
+#if (NB_MMU_MODES >= 5) && defined(MMU_MODE4_SUFFIX)
 
 #define CPU_MMU_INDEX 4
 #define MEMSUFFIX MMU_MODE4_SUFFIX
@@ -271,7 +206,7 @@ uint64_t helper_ldq_cmmu(CPUArchState *env, target_ulong addr, int mmu_idx);
 #undef MEMSUFFIX
 #endif /* (NB_MMU_MODES >= 5) */
 
-#if (NB_MMU_MODES >= 6)
+#if (NB_MMU_MODES >= 6) && defined(MMU_MODE5_SUFFIX)
 
 #define CPU_MMU_INDEX 5
 #define MEMSUFFIX MMU_MODE5_SUFFIX
@@ -290,12 +225,126 @@ uint64_t helper_ldq_cmmu(CPUArchState *env, target_ulong addr, int mmu_idx);
 #undef MEMSUFFIX
 #endif /* (NB_MMU_MODES >= 6) */
 
-#if (NB_MMU_MODES > 6)
-#error "NB_MMU_MODES > 6 is not supported for now"
-#endif /* (NB_MMU_MODES > 6) */
+#if (NB_MMU_MODES >= 7) && defined(MMU_MODE6_SUFFIX)
+
+#define CPU_MMU_INDEX 6
+#define MEMSUFFIX MMU_MODE6_SUFFIX
+#define DATA_SIZE 1
+#include "exec/cpu_ldst_template.h"
+
+#define DATA_SIZE 2
+#include "exec/cpu_ldst_template.h"
+
+#define DATA_SIZE 4
+#include "exec/cpu_ldst_template.h"
+
+#define DATA_SIZE 8
+#include "exec/cpu_ldst_template.h"
+#undef CPU_MMU_INDEX
+#undef MEMSUFFIX
+#endif /* (NB_MMU_MODES >= 7) */
+
+#if (NB_MMU_MODES >= 8) && defined(MMU_MODE7_SUFFIX)
+
+#define CPU_MMU_INDEX 7
+#define MEMSUFFIX MMU_MODE7_SUFFIX
+#define DATA_SIZE 1
+#include "exec/cpu_ldst_template.h"
+
+#define DATA_SIZE 2
+#include "exec/cpu_ldst_template.h"
+
+#define DATA_SIZE 4
+#include "exec/cpu_ldst_template.h"
+
+#define DATA_SIZE 8
+#include "exec/cpu_ldst_template.h"
+#undef CPU_MMU_INDEX
+#undef MEMSUFFIX
+#endif /* (NB_MMU_MODES >= 8) */
+
+#if (NB_MMU_MODES >= 9) && defined(MMU_MODE8_SUFFIX)
+
+#define CPU_MMU_INDEX 8
+#define MEMSUFFIX MMU_MODE8_SUFFIX
+#define DATA_SIZE 1
+#include "exec/cpu_ldst_template.h"
+
+#define DATA_SIZE 2
+#include "exec/cpu_ldst_template.h"
+
+#define DATA_SIZE 4
+#include "exec/cpu_ldst_template.h"
+
+#define DATA_SIZE 8
+#include "exec/cpu_ldst_template.h"
+#undef CPU_MMU_INDEX
+#undef MEMSUFFIX
+#endif /* (NB_MMU_MODES >= 9) */
+
+#if (NB_MMU_MODES >= 10) && defined(MMU_MODE9_SUFFIX)
+
+#define CPU_MMU_INDEX 9
+#define MEMSUFFIX MMU_MODE9_SUFFIX
+#define DATA_SIZE 1
+#include "exec/cpu_ldst_template.h"
+
+#define DATA_SIZE 2
+#include "exec/cpu_ldst_template.h"
+
+#define DATA_SIZE 4
+#include "exec/cpu_ldst_template.h"
+
+#define DATA_SIZE 8
+#include "exec/cpu_ldst_template.h"
+#undef CPU_MMU_INDEX
+#undef MEMSUFFIX
+#endif /* (NB_MMU_MODES >= 10) */
+
+#if (NB_MMU_MODES >= 11) && defined(MMU_MODE10_SUFFIX)
+
+#define CPU_MMU_INDEX 10
+#define MEMSUFFIX MMU_MODE10_SUFFIX
+#define DATA_SIZE 1
+#include "exec/cpu_ldst_template.h"
+
+#define DATA_SIZE 2
+#include "exec/cpu_ldst_template.h"
+
+#define DATA_SIZE 4
+#include "exec/cpu_ldst_template.h"
+
+#define DATA_SIZE 8
+#include "exec/cpu_ldst_template.h"
+#undef CPU_MMU_INDEX
+#undef MEMSUFFIX
+#endif /* (NB_MMU_MODES >= 11) */
+
+#if (NB_MMU_MODES >= 12) && defined(MMU_MODE11_SUFFIX)
+
+#define CPU_MMU_INDEX 11
+#define MEMSUFFIX MMU_MODE11_SUFFIX
+#define DATA_SIZE 1
+#include "exec/cpu_ldst_template.h"
+
+#define DATA_SIZE 2
+#include "exec/cpu_ldst_template.h"
+
+#define DATA_SIZE 4
+#include "exec/cpu_ldst_template.h"
+
+#define DATA_SIZE 8
+#include "exec/cpu_ldst_template.h"
+#undef CPU_MMU_INDEX
+#undef MEMSUFFIX
+#endif /* (NB_MMU_MODES >= 12) */
+
+#if (NB_MMU_MODES > 12)
+#error "NB_MMU_MODES > 12 is not supported for now"
+#endif /* (NB_MMU_MODES > 12) */
 
 /* these access are slower, they must be as rare as possible */
-#define CPU_MMU_INDEX (cpu_mmu_index(env))
+#define CPU_MMU_INDEX (cpu_mmu_index(env, false))
 #define MEMSUFFIX _data
 #define DATA_SIZE 1
 #include "exec/cpu_ldst_template.h"
@@ -311,19 +360,7 @@ uint64_t helper_ldq_cmmu(CPUArchState *env, target_ulong addr, int mmu_idx);
 #undef CPU_MMU_INDEX
 #undef MEMSUFFIX
 
-#define ldub(p) ldub_data(p)
-#define ldsb(p) ldsb_data(p)
-#define lduw(p) lduw_data(p)
-#define ldsw(p) ldsw_data(p)
-#define ldl(p) ldl_data(p)
-#define ldq(p) ldq_data(p)
-
-#define stb(p, v) stb_data(p, v)
-#define stw(p, v) stw_data(p, v)
-#define stl(p, v) stl_data(p, v)
-#define stq(p, v) stq_data(p, v)
-
-#define CPU_MMU_INDEX (cpu_mmu_index(env))
+#define CPU_MMU_INDEX (cpu_mmu_index(env, true))
 #define MEMSUFFIX _code
 #define SOFTMMU_CODE_ACCESS
 
@@ -343,6 +380,8 @@ uint64_t helper_ldq_cmmu(CPUArchState *env, target_ulong addr, int mmu_idx);
 #undef MEMSUFFIX
 #undef SOFTMMU_CODE_ACCESS
 
+#endif /* defined(CONFIG_USER_ONLY) */
+
 /**
  * tlb_vaddr_to_host:
  * @env: CPUArchState
@@ -361,6 +400,9 @@ uint64_t helper_ldq_cmmu(CPUArchState *env, target_ulong addr, int mmu_idx);
 static inline void *tlb_vaddr_to_host(CPUArchState *env, target_ulong addr,
                                       int access_type, int mmu_idx)
 {
+#if defined(CONFIG_USER_ONLY)
+    return g2h(vaddr);
+#else
     int index = (addr >> TARGET_PAGE_BITS) & (CPU_TLB_SIZE - 1);
     CPUTLBEntry *tlbentry = &env->tlb_table[mmu_idx][index];
     target_ulong tlb_addr;
@@ -393,8 +435,7 @@ static inline void *tlb_vaddr_to_host(CPUArchState *env, target_ulong addr,
 
     haddr = addr + env->tlb_table[mmu_idx][index].addend;
     return (void *)haddr;
-}
-
 #endif /* defined(CONFIG_USER_ONLY) */
+}
 
 #endif /* CPU_LDST_H */

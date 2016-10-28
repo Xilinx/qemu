@@ -27,9 +27,12 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/register.h"
 #include "hw/qdev-properties.h"
 #include "qemu/bitops.h"
+#include "hw/sysbus.h"
+#include "qapi/error.h"
 #include "qemu/log.h"
 
 #define TYPE_MEM_CTRL "qemu.memory-controller"

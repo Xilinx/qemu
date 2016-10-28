@@ -7,10 +7,10 @@
  * (GNU GPL), version 2 or later.
  */
 
+#include "qemu/osdep.h"
 #include "sysemu/block-backend.h"
 #include "sysemu/dma.h"
 #include "trace.h"
-#include "qemu/range.h"
 #include "qemu/thread.h"
 #include "qemu/main-loop.h"
 
@@ -28,7 +28,8 @@ int dma_memory_set(AddressSpace *as, dma_addr_t addr, uint8_t c, dma_addr_t len)
     memset(fillbuf, c, FILLBUF_SIZE);
     while (len > 0) {
         l = len < FILLBUF_SIZE ? len : FILLBUF_SIZE;
-        error |= address_space_rw(as, addr, fillbuf, l, true);
+        error |= address_space_rw(as, addr, MEMTXATTRS_UNSPECIFIED,
+                                  fillbuf, l, true);
         len -= l;
         addr += l;
     }
@@ -72,7 +73,7 @@ typedef struct {
     BlockBackend *blk;
     BlockAIOCB *acb;
     QEMUSGList *sg;
-    uint64_t sector_num;
+    uint64_t offset;
     DMADirection dir;
     int sg_cur_index;
     dma_addr_t sg_cur_byte;
@@ -87,19 +88,9 @@ static void reschedule_dma(void *opaque)
 {
     DMAAIOCB *dbs = (DMAAIOCB *)opaque;
 
-    if (dbs->bh) {
-        qemu_bh_delete(dbs->bh);
-    }
+    qemu_bh_delete(dbs->bh);
     dbs->bh = NULL;
     dma_blk_cb(dbs, 0);
-}
-
-static void continue_after_map_failure(void *opaque)
-{
-    DMAAIOCB *dbs = (DMAAIOCB *)opaque;
-
-    dbs->bh = qemu_bh_new(reschedule_dma, dbs);
-    qemu_bh_schedule(dbs->bh);
 }
 
 static void dma_blk_unmap(DMAAIOCB *dbs)
@@ -139,7 +130,7 @@ static void dma_blk_cb(void *opaque, int ret)
     trace_dma_blk_cb(dbs, ret);
 
     dbs->acb = NULL;
-    dbs->sector_num += DIV_ROUND_UP(dbs->iov.size, 512);
+    dbs->offset += dbs->iov.size;
 
     if (dbs->sg_cur_index == dbs->sg->nsg || ret < 0) {
         dma_complete(dbs, ret);
@@ -162,11 +153,10 @@ static void dma_blk_cb(void *opaque, int ret)
     }
 
     if (dbs->iov.size == 0) {
-        if (dbs->common.cb) {
-            dbs->common.cb(dbs->common.opaque, ret);
-        }
         trace_dma_map_wait(dbs);
-        cpu_register_map_client(dbs, continue_after_map_failure);
+        dbs->bh = aio_bh_new(blk_get_aio_context(dbs->blk),
+                             reschedule_dma, dbs);
+        cpu_register_map_client(dbs->bh);
         return;
     }
 
@@ -174,8 +164,8 @@ static void dma_blk_cb(void *opaque, int ret)
         qemu_iovec_discard_back(&dbs->iov, dbs->iov.size & ~BDRV_SECTOR_MASK);
     }
 
-    dbs->acb = dbs->io_func(dbs->blk, dbs->sector_num, &dbs->iov,
-                            DIV_ROUND_UP(dbs->iov.size, 512), dma_blk_cb, dbs);
+    dbs->acb = dbs->io_func(dbs->blk, dbs->offset, &dbs->iov, 0,
+                            dma_blk_cb, dbs);
     assert(dbs->acb);
 }
 
@@ -187,6 +177,11 @@ static void dma_aio_cancel(BlockAIOCB *acb)
 
     if (dbs->acb) {
         blk_aio_cancel_async(dbs->acb);
+    }
+    if (dbs->bh) {
+        cpu_unregister_map_client(dbs->bh);
+        qemu_bh_delete(dbs->bh);
+        dbs->bh = NULL;
     }
 }
 
@@ -208,7 +203,7 @@ BlockAIOCB *dma_blk_io(
     dbs->acb = NULL;
     dbs->blk = blk;
     dbs->sg = sg;
-    dbs->sector_num = sector_num;
+    dbs->offset = sector_num << BDRV_SECTOR_BITS;
     dbs->sg_cur_index = 0;
     dbs->sg_cur_byte = 0;
     dbs->dir = dir;
@@ -224,7 +219,7 @@ BlockAIOCB *dma_blk_read(BlockBackend *blk,
                          QEMUSGList *sg, uint64_t sector,
                          void (*cb)(void *opaque, int ret), void *opaque)
 {
-    return dma_blk_io(blk, sg, sector, blk_aio_readv, cb, opaque,
+    return dma_blk_io(blk, sg, sector, blk_aio_preadv, cb, opaque,
                       DMA_DIRECTION_FROM_DEVICE);
 }
 
@@ -232,7 +227,7 @@ BlockAIOCB *dma_blk_write(BlockBackend *blk,
                           QEMUSGList *sg, uint64_t sector,
                           void (*cb)(void *opaque, int ret), void *opaque)
 {
-    return dma_blk_io(blk, sg, sector, blk_aio_writev, cb, opaque,
+    return dma_blk_io(blk, sg, sector, blk_aio_pwritev, cb, opaque,
                       DMA_DIRECTION_TO_DEVICE);
 }
 

@@ -15,13 +15,14 @@
  * GNU GPL, version 2 or (at your option) any later version.
  */
 
+#include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "qemu-common.h"
 #include "qemu/sockets.h"
 #include "qemu/main-loop.h"
 #include "migration/migration.h"
 #include "migration/qemu-file.h"
 #include "block/block.h"
-#include <sys/types.h>
 #include <sys/wait.h>
 
 //#define DEBUG_MIGRATION_EXEC
@@ -36,8 +37,8 @@
 
 void exec_start_outgoing_migration(MigrationState *s, const char *command, Error **errp)
 {
-    s->file = qemu_popen_cmd(command, "w");
-    if (s->file == NULL) {
+    s->to_dst_file = qemu_popen_cmd(command, "w");
+    if (s->to_dst_file == NULL) {
         error_setg_errno(errp, errno, "failed to popen the migration target");
         return;
     }
@@ -49,7 +50,7 @@ static void exec_accept_incoming_migration(void *opaque)
 {
     QEMUFile *f = opaque;
 
-    qemu_set_fd_handler2(qemu_get_fd(f), NULL, NULL, NULL, NULL);
+    qemu_set_fd_handler(qemu_get_fd(f), NULL, NULL, NULL);
     process_incoming_migration(f);
 }
 
@@ -64,6 +65,6 @@ void exec_start_incoming_migration(const char *command, Error **errp)
         return;
     }
 
-    qemu_set_fd_handler2(qemu_get_fd(f), NULL,
-			 exec_accept_incoming_migration, NULL, f);
+    qemu_set_fd_handler(qemu_get_fd(f), exec_accept_incoming_migration, NULL,
+                        f);
 }

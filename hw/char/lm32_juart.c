@@ -17,6 +17,7 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/sysbus.h"
 #include "trace.h"
@@ -117,6 +118,7 @@ static int lm32_juart_init(SysBusDevice *dev)
 {
     LM32JuartState *s = LM32_JUART(dev);
 
+    /* FIXME use a qdev chardev prop instead of qemu_char_get_next_serial() */
     s->chr = qemu_char_get_next_serial();
     if (s->chr) {
         qemu_chr_add_handlers(s->chr, juart_can_rx, juart_rx, juart_event, s);
@@ -144,6 +146,8 @@ static void lm32_juart_class_init(ObjectClass *klass, void *data)
     k->init = lm32_juart_init;
     dc->reset = juart_reset;
     dc->vmsd = &vmstate_lm32_juart;
+    /* Reason: init() method uses qemu_char_get_next_serial() */
+    dc->cannot_instantiate_with_device_add_yet = true;
 }
 
 static const TypeInfo lm32_juart_info = {

@@ -9,6 +9,8 @@
  * See the COPYING file in the top-level directory.
  */
 
+#include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "qemu-common.h"
 #include "qom/object.h"
 #include "qom/qom-qobject.h"
@@ -19,11 +21,12 @@
 void object_property_set_qobject(Object *obj, QObject *value,
                                  const char *name, Error **errp)
 {
-    QmpInputVisitor *mi;
-    mi = qmp_input_visitor_new(value);
-    object_property_set(obj, qmp_input_get_visitor(mi), name, errp);
+    QmpInputVisitor *qiv;
+    /* TODO: Should we reject, rather than ignore, excess input? */
+    qiv = qmp_input_visitor_new(value, false);
+    object_property_set(obj, qmp_input_get_visitor(qiv), name, errp);
 
-    qmp_input_visitor_cleanup(mi);
+    qmp_input_visitor_cleanup(qiv);
 }
 
 QObject *object_property_get_qobject(Object *obj, const char *name,
@@ -31,14 +34,14 @@ QObject *object_property_get_qobject(Object *obj, const char *name,
 {
     QObject *ret = NULL;
     Error *local_err = NULL;
-    QmpOutputVisitor *mo;
+    QmpOutputVisitor *qov;
 
-    mo = qmp_output_visitor_new();
-    object_property_get(obj, qmp_output_get_visitor(mo), name, &local_err);
+    qov = qmp_output_visitor_new();
+    object_property_get(obj, qmp_output_get_visitor(qov), name, &local_err);
     if (!local_err) {
-        ret = qmp_output_get_qobject(mo);
+        ret = qmp_output_get_qobject(qov);
     }
     error_propagate(errp, local_err);
-    qmp_output_visitor_cleanup(mo);
+    qmp_output_visitor_cleanup(qov);
     return ret;
 }

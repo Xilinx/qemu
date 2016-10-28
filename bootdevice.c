@@ -1,7 +1,7 @@
 /*
  * QEMU Boot Device Implement
  *
- * Copyright (c) 2014 HUAWEI TECHNOLOGIES CO.,LTD.
+ * Copyright (c) 2014 HUAWEI TECHNOLOGIES CO., LTD.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -22,10 +22,13 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "sysemu/sysemu.h"
 #include "qapi/visitor.h"
 #include "qemu/error-report.h"
 #include "hw/hw.h"
+#include "hw/qdev-core.h"
 
 typedef struct FWBootEntry FWBootEntry;
 
@@ -105,7 +108,9 @@ void restore_boot_order(void *opaque)
         return;
     }
 
-    qemu_boot_set(normal_boot_order, NULL);
+    if (boot_set_handler) {
+        qemu_boot_set(normal_boot_order, &error_abort);
+    }
 
     qemu_unregister_reset(restore_boot_order, normal_boot_order);
     g_free(normal_boot_order);
@@ -210,7 +215,9 @@ char *get_boot_devices_list(size_t *size, bool ignore_suffixes)
     char *list = NULL;
 
     QTAILQ_FOREACH(i, &fw_boot_order, link) {
-        char *devpath = NULL, *bootpath;
+        char *devpath = NULL,  *suffix = NULL;
+        char *bootpath;
+        char *d;
         size_t len;
 
         if (i->dev) {
@@ -218,20 +225,26 @@ char *get_boot_devices_list(size_t *size, bool ignore_suffixes)
             assert(devpath);
         }
 
-        if (i->suffix && !ignore_suffixes && devpath) {
-            size_t bootpathlen = strlen(devpath) + strlen(i->suffix) + 1;
-
-            bootpath = g_malloc(bootpathlen);
-            snprintf(bootpath, bootpathlen, "%s%s", devpath, i->suffix);
-            g_free(devpath);
-        } else if (devpath) {
-            bootpath = devpath;
-        } else if (!ignore_suffixes) {
-            assert(i->suffix);
-            bootpath = g_strdup(i->suffix);
-        } else {
-            bootpath = g_strdup("");
+        if (!ignore_suffixes) {
+            if (i->dev) {
+                d = qdev_get_own_fw_dev_path_from_handler(i->dev->parent_bus,
+                                                          i->dev);
+                if (d) {
+                    assert(!i->suffix);
+                    suffix = d;
+                } else {
+                    suffix = g_strdup(i->suffix);
+                }
+            } else {
+                suffix = g_strdup(i->suffix);
+            }
         }
+
+        bootpath = g_strdup_printf("%s%s",
+                                   devpath ? devpath : "",
+                                   suffix ? suffix : "");
+        g_free(devpath);
+        g_free(suffix);
 
         if (total) {
             list[total-1] = '\n';
@@ -260,21 +273,21 @@ typedef struct {
     DeviceState *dev;
 } BootIndexProperty;
 
-static void device_get_bootindex(Object *obj, Visitor *v, void *opaque,
-                                 const char *name, Error **errp)
+static void device_get_bootindex(Object *obj, Visitor *v, const char *name,
+                                 void *opaque, Error **errp)
 {
     BootIndexProperty *prop = opaque;
-    visit_type_int32(v, prop->bootindex, name, errp);
+    visit_type_int32(v, name, prop->bootindex, errp);
 }
 
-static void device_set_bootindex(Object *obj, Visitor *v, void *opaque,
-                                 const char *name, Error **errp)
+static void device_set_bootindex(Object *obj, Visitor *v, const char *name,
+                                 void *opaque, Error **errp)
 {
     BootIndexProperty *prop = opaque;
     int32_t boot_index;
     Error *local_err = NULL;
 
-    visit_type_int32(v, &boot_index, name, &local_err);
+    visit_type_int32(v, name, &boot_index, &local_err);
     if (local_err) {
         goto out;
     }

@@ -18,8 +18,13 @@
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
+#include "qapi/error.h"
+#include "qemu-common.h"
+#include "cpu.h"
 #include "sysemu/block-backend.h"
 #include "sysemu/blockdev.h"
+#include "hw/boards.h"
 #include "hw/hw.h"
 #include "hw/arm/arm.h"
 #include "hw/arm/omap.h"
@@ -447,7 +452,8 @@ static void omap_eac_write(void *opaque, hwaddr addr,
     struct omap_eac_s *s = (struct omap_eac_s *) opaque;
 
     if (size != 2) {
-        return omap_badwidth_write16(opaque, addr, value);
+        omap_badwidth_write16(opaque, addr, value);
+        return;
     }
 
     switch (addr) {
@@ -594,8 +600,7 @@ static const MemoryRegionOps omap_eac_ops = {
 static struct omap_eac_s *omap_eac_init(struct omap_target_agent_s *ta,
                 qemu_irq irq, qemu_irq *drq, omap_clk fclk, omap_clk iclk)
 {
-    struct omap_eac_s *s = (struct omap_eac_s *)
-            g_malloc0(sizeof(struct omap_eac_s));
+    struct omap_eac_s *s = g_new0(struct omap_eac_s, 1);
 
     s->irq = irq;
     s->codec.rxdrq = *drq ++;
@@ -692,7 +697,8 @@ static void omap_sti_write(void *opaque, hwaddr addr,
     struct omap_sti_s *s = (struct omap_sti_s *) opaque;
 
     if (size != 4) {
-        return omap_badwidth_write32(opaque, addr, value);
+        omap_badwidth_write32(opaque, addr, value);
+        return;
     }
 
     switch (addr) {
@@ -757,7 +763,8 @@ static void omap_sti_fifo_write(void *opaque, hwaddr addr,
     uint8_t byte = value;
 
     if (size != 1) {
-        return omap_badwidth_write8(opaque, addr, size);
+        omap_badwidth_write8(opaque, addr, size);
+        return;
     }
 
     if (ch == STI_TRACE_CONTROL_CHANNEL) {
@@ -784,8 +791,7 @@ static struct omap_sti_s *omap_sti_init(struct omap_target_agent_s *ta,
                 hwaddr channel_base, qemu_irq irq, omap_clk clk,
                 CharDriverState *chr)
 {
-    struct omap_sti_s *s = (struct omap_sti_s *)
-            g_malloc0(sizeof(struct omap_sti_s));
+    struct omap_sti_s *s = g_new0(struct omap_sti_s, 1);
 
     s->irq = irq;
     omap_sti_reset(s);
@@ -1359,7 +1365,8 @@ static void omap_prcm_write(void *opaque, hwaddr addr,
     struct omap_prcm_s *s = (struct omap_prcm_s *) opaque;
 
     if (size != 4) {
-        return omap_badwidth_write32(opaque, addr, value);
+        omap_badwidth_write32(opaque, addr, value);
+        return;
     }
 
     switch (addr) {
@@ -1801,8 +1808,7 @@ static struct omap_prcm_s *omap_prcm_init(struct omap_target_agent_s *ta,
                 qemu_irq mpu_int, qemu_irq dsp_int, qemu_irq iva_int,
                 struct omap_mpu_state_s *mpu)
 {
-    struct omap_prcm_s *s = (struct omap_prcm_s *)
-            g_malloc0(sizeof(struct omap_prcm_s));
+    struct omap_prcm_s *s = g_new0(struct omap_prcm_s, 1);
 
     s->irq[0] = mpu_int;
     s->irq[1] = dsp_int;
@@ -2180,8 +2186,7 @@ static void omap_sysctl_reset(struct omap_sysctl_s *s)
 static struct omap_sysctl_s *omap_sysctl_init(struct omap_target_agent_s *ta,
                 omap_clk iclk, struct omap_mpu_state_s *mpu)
 {
-    struct omap_sysctl_s *s = (struct omap_sysctl_s *)
-            g_malloc0(sizeof(struct omap_sysctl_s));
+    struct omap_sysctl_s *s = g_new0(struct omap_sysctl_s, 1);
 
     s->mpu = mpu;
     omap_sysctl_reset(s);
@@ -2243,8 +2248,7 @@ struct omap_mpu_state_s *omap2420_mpu_init(MemoryRegion *sysmem,
                 unsigned long sdram_size,
                 const char *core)
 {
-    struct omap_mpu_state_s *s = (struct omap_mpu_state_s *)
-            g_malloc0(sizeof(struct omap_mpu_state_s));
+    struct omap_mpu_state_s *s = g_new0(struct omap_mpu_state_s, 1);
     qemu_irq dma_irqs[4];
     DriveInfo *dinfo;
     int i;
@@ -2267,12 +2271,11 @@ struct omap_mpu_state_s *omap2420_mpu_init(MemoryRegion *sysmem,
     omap_clk_init(s);
 
     /* Memory-mapped stuff */
-    memory_region_init_ram(&s->sdram, NULL, "omap2.dram", s->sdram_size,
-                           &error_abort);
-    vmstate_register_ram_global(&s->sdram);
+    memory_region_allocate_system_memory(&s->sdram, NULL, "omap2.dram",
+                                         s->sdram_size);
     memory_region_add_subregion(sysmem, OMAP2_Q2_BASE, &s->sdram);
     memory_region_init_ram(&s->sram, NULL, "omap2.sram", s->sram_size,
-                           &error_abort);
+                           &error_fatal);
     vmstate_register_ram_global(&s->sram);
     memory_region_add_subregion(sysmem, OMAP2_SRAM_BASE, &s->sram);
 

@@ -22,6 +22,7 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "qemu/log.h"
 
@@ -29,6 +30,7 @@
 #include "qapi/qmp/qerror.h"
 #include "hw/register.h"
 #include "hw/stream.h"
+#include "qapi/error.h"
 #include "hw/remote-port-device.h"
 
 #ifndef REMOTE_PORT_STREAM_ERR_DEBUG

@@ -13,6 +13,8 @@
  * GNU GPL, version 2 or (at your option) any later version.
  */
 
+#include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "qemu-common.h"
 #include "qemu/main-loop.h"
 #include "qemu/sockets.h"
@@ -31,13 +33,29 @@
     do { } while (0)
 #endif
 
+static bool fd_is_socket(int fd)
+{
+    struct stat stat;
+    int ret = fstat(fd, &stat);
+    if (ret == -1) {
+        /* When in doubt say no */
+        return false;
+    }
+    return S_ISSOCK(stat.st_mode);
+}
+
 void fd_start_outgoing_migration(MigrationState *s, const char *fdname, Error **errp)
 {
     int fd = monitor_get_fd(cur_mon, fdname, errp);
     if (fd == -1) {
         return;
     }
-    s->file = qemu_fdopen(fd, "wb");
+
+    if (fd_is_socket(fd)) {
+        s->to_dst_file = qemu_fopen_socket(fd, "wb");
+    } else {
+        s->to_dst_file = qemu_fdopen(fd, "wb");
+    }
 
     migrate_fd_connect(s);
 }
@@ -46,7 +64,7 @@ static void fd_accept_incoming_migration(void *opaque)
 {
     QEMUFile *f = opaque;
 
-    qemu_set_fd_handler2(qemu_get_fd(f), NULL, NULL, NULL, NULL);
+    qemu_set_fd_handler(qemu_get_fd(f), NULL, NULL, NULL);
     process_incoming_migration(f);
 }
 
@@ -58,11 +76,15 @@ void fd_start_incoming_migration(const char *infd, Error **errp)
     DPRINTF("Attempting to start an incoming migration via fd\n");
 
     fd = strtol(infd, NULL, 0);
-    f = qemu_fdopen(fd, "rb");
+    if (fd_is_socket(fd)) {
+        f = qemu_fopen_socket(fd, "rb");
+    } else {
+        f = qemu_fdopen(fd, "rb");
+    }
     if(f == NULL) {
         error_setg_errno(errp, errno, "failed to open the source descriptor");
         return;
     }
 
-    qemu_set_fd_handler2(fd, NULL, fd_accept_incoming_migration, NULL, f);
+    qemu_set_fd_handler(fd, fd_accept_incoming_migration, NULL, f);
 }

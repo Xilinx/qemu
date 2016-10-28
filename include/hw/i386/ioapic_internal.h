@@ -40,7 +40,17 @@
 #define IOAPIC_LVT_DELIV_MODE_SHIFT     8
 
 #define IOAPIC_LVT_MASKED               (1 << IOAPIC_LVT_MASKED_SHIFT)
+#define IOAPIC_LVT_TRIGGER_MODE         (1 << IOAPIC_LVT_TRIGGER_MODE_SHIFT)
 #define IOAPIC_LVT_REMOTE_IRR           (1 << IOAPIC_LVT_REMOTE_IRR_SHIFT)
+#define IOAPIC_LVT_POLARITY             (1 << IOAPIC_LVT_POLARITY_SHIFT)
+#define IOAPIC_LVT_DELIV_STATUS         (1 << IOAPIC_LVT_DELIV_STATUS_SHIFT)
+#define IOAPIC_LVT_DEST_MODE            (1 << IOAPIC_LVT_DEST_MODE_SHIFT)
+#define IOAPIC_LVT_DELIV_MODE           (7 << IOAPIC_LVT_DELIV_MODE_SHIFT)
+
+/* Bits that are read-only for IOAPIC entry */
+#define IOAPIC_RO_BITS                  (IOAPIC_LVT_REMOTE_IRR | \
+                                         IOAPIC_LVT_DELIV_STATUS)
+#define IOAPIC_RW_BITS                  (~(uint64_t)IOAPIC_RO_BITS)
 
 #define IOAPIC_TRIGGER_EDGE             0
 #define IOAPIC_TRIGGER_LEVEL            1
@@ -99,5 +109,7 @@ struct IOAPICCommonState {
 };
 
 void ioapic_reset_common(DeviceState *dev);
+
+void ioapic_print_redtbl(Monitor *mon, IOAPICCommonState *s);
 
 #endif /* !QEMU_IOAPIC_INTERNAL_H */

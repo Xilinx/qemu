@@ -10,6 +10,7 @@
  * the COPYING file in the top-level directory.
  */
 
+#include "qemu/osdep.h"
 #include "sysemu/char.h"
 #include "qemu/error-report.h"
 #include "trace.h"
@@ -92,6 +93,15 @@ static void set_guest_connected(VirtIOSerialPort *port, int guest_connected)
     if (dev->id) {
         qapi_event_send_vserport_change(dev->id, guest_connected,
                                         &error_abort);
+    }
+}
+
+static void guest_writable(VirtIOSerialPort *port)
+{
+    VirtConsole *vcon = VIRTIO_CONSOLE(port);
+
+    if (vcon->chr) {
+        qemu_chr_accept_input(vcon->chr);
     }
 }
 
@@ -188,6 +198,7 @@ static void virtserialport_class_init(ObjectClass *klass, void *data)
     k->unrealize = virtconsole_unrealize;
     k->have_data = flush_buf;
     k->set_guest_connected = set_guest_connected;
+    k->guest_writable = guest_writable;
     dc->props = virtserialport_properties;
 }
 

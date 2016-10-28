@@ -21,6 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/pci/pci.h"
 #include "net/net.h"
@@ -154,6 +155,10 @@ static int ne2000_buffer_full(NE2000State *s)
 {
     int avail, index, boundary;
 
+    if (s->stop <= s->start) {
+        return 1;
+    }
+
     index = s->curpag << 8;
     boundary = s->boundary << 8;
     if (index < boundary)
@@ -163,15 +168,6 @@ static int ne2000_buffer_full(NE2000State *s)
     if (avail < (MAX_ETH_FRAME_SIZE + 4))
         return 1;
     return 0;
-}
-
-int ne2000_can_receive(NetClientState *nc)
-{
-    NE2000State *s = qemu_get_nic_opaque(nc);
-
-    if (s->cmd & E8390_STOP)
-        return 1;
-    return !ne2000_buffer_full(s);
 }
 
 #define MIN_BUF_SIZE 60
@@ -230,6 +226,9 @@ ssize_t ne2000_receive(NetClientState *nc, const uint8_t *buf, size_t size_)
     }
 
     index = s->curpag << 8;
+    if (index >= NE2000_PMEM_END) {
+        index = s->start;
+    }
     /* 4 bytes for header */
     total_len = size + 4;
     /* address for next packet (4 bytes for CRC) */
@@ -253,7 +252,7 @@ ssize_t ne2000_receive(NetClientState *nc, const uint8_t *buf, size_t size_)
         if (index <= s->stop)
             avail = s->stop - index;
         else
-            avail = 0;
+            break;
         len = size;
         if (len > avail)
             len = avail;
@@ -315,13 +314,19 @@ static void ne2000_ioport_write(void *opaque, uint32_t addr, uint32_t val)
         offset = addr | (page << 4);
         switch(offset) {
         case EN0_STARTPG:
-            s->start = val << 8;
+            if (val << 8 <= NE2000_PMEM_END) {
+                s->start = val << 8;
+            }
             break;
         case EN0_STOPPG:
-            s->stop = val << 8;
+            if (val << 8 <= NE2000_PMEM_END) {
+                s->stop = val << 8;
+            }
             break;
         case EN0_BOUNDARY:
-            s->boundary = val;
+            if (val << 8 < NE2000_PMEM_END) {
+                s->boundary = val;
+            }
             break;
         case EN0_IMR:
             s->imr = val;
@@ -362,7 +367,9 @@ static void ne2000_ioport_write(void *opaque, uint32_t addr, uint32_t val)
             s->phys[offset - EN1_PHYS] = val;
             break;
         case EN1_CURPAG:
-            s->curpag = val;
+            if (val << 8 < NE2000_PMEM_END) {
+                s->curpag = val;
+            }
             break;
         case EN1_MULT ... EN1_MULT + 7:
             s->mult[offset - EN1_MULT] = val;
@@ -465,8 +472,9 @@ static inline void ne2000_mem_writel(NE2000State *s, uint32_t addr,
                                      uint32_t val)
 {
     addr &= ~1; /* XXX: check exact behaviour if not even */
-    if (addr < 32 ||
-        (addr >= NE2000_PMEM_START && addr < NE2000_MEM_SIZE)) {
+    if (addr < 32
+        || (addr >= NE2000_PMEM_START
+            && addr + sizeof(uint32_t) <= NE2000_MEM_SIZE)) {
         stl_le_p(s->mem + addr, val);
     }
 }
@@ -495,8 +503,9 @@ static inline uint32_t ne2000_mem_readw(NE2000State *s, uint32_t addr)
 static inline uint32_t ne2000_mem_readl(NE2000State *s, uint32_t addr)
 {
     addr &= ~1; /* XXX: check exact behaviour if not even */
-    if (addr < 32 ||
-        (addr >= NE2000_PMEM_START && addr < NE2000_MEM_SIZE)) {
+    if (addr < 32
+        || (addr >= NE2000_PMEM_START
+            && addr + sizeof(uint32_t) <= NE2000_MEM_SIZE)) {
         return ldl_le_p(s->mem + addr);
     } else {
         return 0xffffffff;
@@ -702,26 +711,15 @@ void ne2000_setup_io(NE2000State *s, DeviceState *dev, unsigned size)
     memory_region_init_io(&s->io, OBJECT(dev), &ne2000_ops, s, "ne2000", size);
 }
 
-static void ne2000_cleanup(NetClientState *nc)
-{
-    NE2000State *s = qemu_get_nic_opaque(nc);
-
-    s->nic = NULL;
-}
-
 static NetClientInfo net_ne2000_info = {
     .type = NET_CLIENT_OPTIONS_KIND_NIC,
     .size = sizeof(NICState),
-    .can_receive = ne2000_can_receive,
     .receive = ne2000_receive,
-    .cleanup = ne2000_cleanup,
 };
 
-static int pci_ne2000_init(PCIDevice *pci_dev)
+static void pci_ne2000_realize(PCIDevice *pci_dev, Error **errp)
 {
     PCINE2000State *d = DO_UPCAST(PCINE2000State, dev, pci_dev);
-    DeviceState *ds = DEVICE(pci_dev);
-
     NE2000State *s;
     uint8_t *pci_conf;
 
@@ -737,10 +735,8 @@ static int pci_ne2000_init(PCIDevice *pci_dev)
     ne2000_reset(s);
 
     s->nic = qemu_new_nic(&net_ne2000_info, &s->c,
-                          object_get_typename(OBJECT(pci_dev)), ds->id, s);
+                          object_get_typename(OBJECT(pci_dev)), pci_dev->qdev.id, s);
     qemu_format_nic_info_str(qemu_get_queue(s->nic), s->c.macaddr.a);
-
-    return 0;
 }
 
 static void pci_ne2000_exit(PCIDevice *pci_dev)
@@ -760,7 +756,7 @@ static void ne2000_instance_init(Object *obj)
 
     device_add_bootindex_property(obj, &s->c.bootindex,
                                   "bootindex", "/ethernet-phy@0",
-                                  DEVICE(pci_dev), NULL);
+                                  &pci_dev->qdev, NULL);
 }
 
 static Property ne2000_properties[] = {
@@ -773,7 +769,7 @@ static void ne2000_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
-    k->init = pci_ne2000_init;
+    k->realize = pci_ne2000_realize;
     k->exit = pci_ne2000_exit;
     k->romfile = "efi-ne2k_pci.rom",
     k->vendor_id = PCI_VENDOR_ID_REALTEK;

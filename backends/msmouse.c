@@ -21,7 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#include <stdlib.h>
+#include "qemu/osdep.h"
 #include "qemu-common.h"
 #include "sysemu/char.h"
 #include "ui/console.h"
@@ -63,11 +63,18 @@ static void msmouse_chr_close (struct CharDriverState *chr)
     g_free (chr);
 }
 
-CharDriverState *qemu_chr_open_msmouse(void)
+static CharDriverState *qemu_chr_open_msmouse(const char *id,
+                                              ChardevBackend *backend,
+                                              ChardevReturn *ret,
+                                              Error **errp)
 {
+    ChardevCommon *common = backend->u.msmouse.data;
     CharDriverState *chr;
 
-    chr = qemu_chr_alloc();
+    chr = qemu_chr_alloc(common, errp);
+    if (!chr) {
+        return NULL;
+    }
     chr->chr_write = msmouse_chr_write;
     chr->chr_close = msmouse_chr_close;
     chr->explicit_be_open = true;
@@ -79,7 +86,8 @@ CharDriverState *qemu_chr_open_msmouse(void)
 
 static void register_types(void)
 {
-    register_char_driver("msmouse", CHARDEV_BACKEND_KIND_MSMOUSE, NULL);
+    register_char_driver("msmouse", CHARDEV_BACKEND_KIND_MSMOUSE, NULL,
+                         qemu_chr_open_msmouse);
 }
 
 type_init(register_types);

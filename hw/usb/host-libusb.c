@@ -33,11 +33,16 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
+#ifndef CONFIG_WIN32
 #include <poll.h>
+#endif
 #include <libusb.h>
 
+#include "qapi/error.h"
 #include "qemu-common.h"
 #include "monitor/monitor.h"
+#include "qemu/error-report.h"
 #include "sysemu/sysemu.h"
 #include "trace.h"
 
@@ -201,6 +206,8 @@ static const char *err_names[] = {
 static libusb_context *ctx;
 static uint32_t loglevel;
 
+#ifndef CONFIG_WIN32
+
 static void usb_host_handle_fd(void *opaque)
 {
     struct timeval tv = { 0, 0 };
@@ -220,9 +227,13 @@ static void usb_host_del_fd(int fd, void *user_data)
     qemu_set_fd_handler(fd, NULL, NULL, NULL);
 }
 
+#endif /* !CONFIG_WIN32 */
+
 static int usb_host_init(void)
 {
+#ifndef CONFIG_WIN32
     const struct libusb_pollfd **poll;
+#endif
     int i, rc;
 
     if (ctx) {
@@ -233,7 +244,9 @@ static int usb_host_init(void)
         return -1;
     }
     libusb_set_debug(ctx, loglevel);
-
+#ifdef CONFIG_WIN32
+    /* FIXME: add support for Windows. */
+#else
     libusb_set_pollfd_notifiers(ctx, usb_host_add_fd,
                                 usb_host_del_fd,
                                 ctx);
@@ -244,6 +257,7 @@ static int usb_host_init(void)
         }
     }
     free(poll);
+#endif
     return 0;
 }
 
@@ -450,6 +464,7 @@ static void usb_host_req_complete_iso(struct libusb_transfer *transfer)
     }
     if (xfer->ring->ep->pid == USB_TOKEN_IN) {
         QTAILQ_INSERT_TAIL(&xfer->ring->copy, xfer, next);
+        usb_wakeup(xfer->ring->ep, 0);
     } else {
         QTAILQ_INSERT_TAIL(&xfer->ring->unused, xfer, next);
     }
@@ -878,8 +893,7 @@ static int usb_host_open(USBHostDevice *s, libusb_device *dev)
 
     usb_device_attach(udev, &local_err);
     if (local_err) {
-        error_report("%s", error_get_pretty(local_err));
-        error_free(local_err);
+        error_report_err(local_err);
         goto fail;
     }
 
@@ -889,6 +903,9 @@ static int usb_host_open(USBHostDevice *s, libusb_device *dev)
 fail:
     trace_usb_host_open_failure(bus_num, addr);
     if (s->dh != NULL) {
+        usb_host_release_interfaces(s);
+        libusb_reset_device(s->dh);
+        usb_host_attach_kernel(s);
         libusb_close(s->dh);
         s->dh = NULL;
         s->dev = NULL;
@@ -1236,7 +1253,7 @@ static void usb_host_handle_control(USBDevice *udev, USBPacket *p,
 
     /* Fix up USB-3 ep0 maxpacket size to allow superspeed connected devices
      * to work redirected to a not superspeed capable hcd */
-    if (udev->speed == USB_SPEED_SUPER &&
+    if ((udev->speedmask & USB_SPEED_MASK_SUPER) &&
         !(udev->port->speedmask & USB_SPEED_MASK_SUPER) &&
         request == 0x8006 && value == 0x100 && index == 0) {
         r->usb3ep0quirk = true;
@@ -1426,7 +1443,7 @@ static void usb_host_free_streams(USBDevice *udev, USBEndpoint **eps,
  * still present in the first place.  Attemping to contine where we
  * left off is impossible.
  *
- * What we are going to to to here is emulate a surprise removal of
+ * What we are going to do here is emulate a surprise removal of
  * the usb device passed through, then kick host scan so the device
  * will get re-attached (and re-initialized by the guest) in case it
  * is still present.
@@ -1637,7 +1654,7 @@ static void usb_host_auto_check(void *unused)
     timer_mod(usb_auto_timer, qemu_clock_get_ms(QEMU_CLOCK_REALTIME) + 2000);
 }
 
-void usb_host_info(Monitor *mon, const QDict *qdict)
+void hmp_info_usbhost(Monitor *mon, const QDict *qdict)
 {
     libusb_device **devs = NULL;
     struct libusb_device_descriptor ddesc;

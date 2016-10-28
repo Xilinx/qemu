@@ -18,9 +18,11 @@
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
 #include "qemu-common.h"
 #include "sysemu/char.h"
 #include "qemu/timer.h"
+#include "qemu/bswap.h"
 #include "hw/irq.h"
 #include "sysemu/bt.h"
 #include "hw/bt.h"
@@ -362,7 +364,7 @@ static int csrhci_ioctl(struct CharDriverState *chr, int cmd, void *arg)
     switch (cmd) {
     case CHR_IOCTL_SERIAL_SET_PARAMS:
         ssp = (QEMUSerialSetParams *) arg;
-        s->baud_delay = get_ticks_per_sec() / ssp->speed;
+        s->baud_delay = NANOSECONDS_PER_SECOND / ssp->speed;
         /* Moments later... (but shorter than 100ms) */
         s->modem_state |= CHR_TIOCM_CTS;
         break;
@@ -388,7 +390,7 @@ static void csrhci_reset(struct csrhci_s *s)
     s->out_len = 0;
     s->out_size = FIFO_LEN;
     s->in_len = 0;
-    s->baud_delay = get_ticks_per_sec();
+    s->baud_delay = NANOSECONDS_PER_SECOND;
     s->enable = 0;
     s->in_hdr = INT_MAX;
     s->in_data = INT_MAX;

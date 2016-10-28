@@ -204,6 +204,7 @@ typedef struct CRW {
 
 #define CRW_RSC_SUBCH 0x3
 #define CRW_RSC_CHP   0x4
+#define CRW_RSC_CSS   0xb
 
 /* I/O interruption code */
 typedef struct IOIntCode {
@@ -219,7 +220,7 @@ typedef struct IOIntCode {
 #define IOINST_SCHID_SSID(_schid)  ((_schid & 0x00060000) >> 17)
 #define IOINST_SCHID_NR(_schid)    (_schid & 0x0000ffff)
 
-#define IO_INT_WORD_ISC(_int_word) ((_int_word & 0x38000000) >> 24)
+#define IO_INT_WORD_ISC(_int_word) ((_int_word & 0x38000000) >> 27)
 #define ISC_TO_ISC_BITS(_isc)      ((0x80 >> _isc) << 24)
 
 #define IO_INT_WORD_AI 0x80000000
@@ -233,9 +234,9 @@ void ioinst_handle_msch(S390CPU *cpu, uint64_t reg1, uint32_t ipb);
 void ioinst_handle_ssch(S390CPU *cpu, uint64_t reg1, uint32_t ipb);
 void ioinst_handle_stcrw(S390CPU *cpu, uint32_t ipb);
 void ioinst_handle_stsch(S390CPU *cpu, uint64_t reg1, uint32_t ipb);
-int ioinst_handle_tsch(CPUS390XState *env, uint64_t reg1, uint32_t ipb);
+int ioinst_handle_tsch(S390CPU *cpu, uint64_t reg1, uint32_t ipb);
 void ioinst_handle_chsc(S390CPU *cpu, uint32_t ipb);
-int ioinst_handle_tpi(CPUS390XState *env, uint32_t ipb);
+int ioinst_handle_tpi(S390CPU *cpu, uint32_t ipb);
 void ioinst_handle_schm(S390CPU *cpu, uint64_t reg1, uint64_t reg2,
                         uint32_t ipb);
 void ioinst_handle_rsch(S390CPU *cpu, uint64_t reg1);

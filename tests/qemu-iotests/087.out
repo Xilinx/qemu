@@ -1,16 +1,14 @@
 QA output created by 087
 Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=134217728
 
-=== Missing ID ===
+=== Missing ID and node-name ===
 
 Testing:
 QMP_VERSION
 {"return": {}}
-{"error": {"class": "GenericError", "desc": "Block device needs an ID"}}
+{"error": {"class": "GenericError", "desc": "'id' and/or 'node-name' need to be specified for the root node"}}
 {"return": {}}
 {"timestamp": {"seconds":  TIMESTAMP, "microseconds":  TIMESTAMP}, "event": "SHUTDOWN"}
-{"timestamp": {"seconds":  TIMESTAMP, "microseconds":  TIMESTAMP}, "event": "DEVICE_TRAY_MOVED", "data": {"device": "ide1-cd0", "tray-open": true}}
-{"timestamp": {"seconds":  TIMESTAMP, "microseconds":  TIMESTAMP}, "event": "DEVICE_TRAY_MOVED", "data": {"device": "floppy0", "tray-open": true}}
 
 
 === Duplicate ID ===
@@ -21,14 +19,11 @@ QMP_VERSION
 {"return": {}}
 {"error": {"class": "GenericError", "desc": "Device with id 'disk' already exists"}}
 {"error": {"class": "GenericError", "desc": "Device name 'test-node' conflicts with an existing node name"}}
-main-loop: WARNING: I/O thread spun for 1000 iterations
-{"error": {"class": "GenericError", "desc": "could not open disk image disk2: node-name=disk is conflicting with a device id"}}
-{"error": {"class": "GenericError", "desc": "could not open disk image disk2: Duplicate node name"}}
-{"error": {"class": "GenericError", "desc": "could not open disk image disk3: node-name=disk3 is conflicting with a device id"}}
+{"error": {"class": "GenericError", "desc": "node-name=disk is conflicting with a device id"}}
+{"error": {"class": "GenericError", "desc": "Duplicate node name"}}
+{"error": {"class": "GenericError", "desc": "Device name 'disk3' conflicts with an existing node name"}}
 {"return": {}}
 {"timestamp": {"seconds":  TIMESTAMP, "microseconds":  TIMESTAMP}, "event": "SHUTDOWN"}
-{"timestamp": {"seconds":  TIMESTAMP, "microseconds":  TIMESTAMP}, "event": "DEVICE_TRAY_MOVED", "data": {"device": "ide1-cd0", "tray-open": true}}
-{"timestamp": {"seconds":  TIMESTAMP, "microseconds":  TIMESTAMP}, "event": "DEVICE_TRAY_MOVED", "data": {"device": "floppy0", "tray-open": true}}
 
 
 === aio=native without O_DIRECT ===
@@ -39,8 +34,6 @@ QMP_VERSION
 {"error": {"class": "GenericError", "desc": "aio=native requires cache.direct=true"}}
 {"return": {}}
 {"timestamp": {"seconds":  TIMESTAMP, "microseconds":  TIMESTAMP}, "event": "SHUTDOWN"}
-{"timestamp": {"seconds":  TIMESTAMP, "microseconds":  TIMESTAMP}, "event": "DEVICE_TRAY_MOVED", "data": {"device": "ide1-cd0", "tray-open": true}}
-{"timestamp": {"seconds":  TIMESTAMP, "microseconds":  TIMESTAMP}, "event": "DEVICE_TRAY_MOVED", "data": {"device": "floppy0", "tray-open": true}}
 
 
 === Encrypted image ===
@@ -49,20 +42,24 @@ Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=134217728 encryption=on
 Testing: -S
 QMP_VERSION
 {"return": {}}
+IMGFMT built-in AES encryption is deprecated
+Support for it will be removed in a future release.
+You can use 'qemu-img convert' to switch to an
+unencrypted IMGFMT image, or a LUKS raw image.
 {"error": {"class": "GenericError", "desc": "blockdev-add doesn't support encrypted devices"}}
 {"return": {}}
 {"timestamp": {"seconds":  TIMESTAMP, "microseconds":  TIMESTAMP}, "event": "SHUTDOWN"}
-{"timestamp": {"seconds":  TIMESTAMP, "microseconds":  TIMESTAMP}, "event": "DEVICE_TRAY_MOVED", "data": {"device": "ide1-cd0", "tray-open": true}}
-{"timestamp": {"seconds":  TIMESTAMP, "microseconds":  TIMESTAMP}, "event": "DEVICE_TRAY_MOVED", "data": {"device": "floppy0", "tray-open": true}}
 
 Testing:
 QMP_VERSION
 {"return": {}}
-{"error": {"class": "GenericError", "desc": "could not open disk image disk: Guest must be stopped for opening of encrypted image"}}
+IMGFMT built-in AES encryption is deprecated
+Support for it will be removed in a future release.
+You can use 'qemu-img convert' to switch to an
+unencrypted IMGFMT image, or a LUKS raw image.
+{"error": {"class": "GenericError", "desc": "Guest must be stopped for opening of encrypted image"}}
 {"return": {}}
 {"timestamp": {"seconds":  TIMESTAMP, "microseconds":  TIMESTAMP}, "event": "SHUTDOWN"}
-{"timestamp": {"seconds":  TIMESTAMP, "microseconds":  TIMESTAMP}, "event": "DEVICE_TRAY_MOVED", "data": {"device": "ide1-cd0", "tray-open": true}}
-{"timestamp": {"seconds":  TIMESTAMP, "microseconds":  TIMESTAMP}, "event": "DEVICE_TRAY_MOVED", "data": {"device": "floppy0", "tray-open": true}}
 
 
 === Missing driver ===
@@ -74,7 +71,5 @@ QMP_VERSION
 {"error": {"class": "GenericError", "desc": "Invalid parameter type for 'driver', expected: string"}}
 {"return": {}}
 {"timestamp": {"seconds":  TIMESTAMP, "microseconds":  TIMESTAMP}, "event": "SHUTDOWN"}
-{"timestamp": {"seconds":  TIMESTAMP, "microseconds":  TIMESTAMP}, "event": "DEVICE_TRAY_MOVED", "data": {"device": "ide1-cd0", "tray-open": true}}
-{"timestamp": {"seconds":  TIMESTAMP, "microseconds":  TIMESTAMP}, "event": "DEVICE_TRAY_MOVED", "data": {"device": "floppy0", "tray-open": true}}
 
 *** done

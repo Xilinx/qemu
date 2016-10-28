@@ -21,9 +21,6 @@
 #ifndef __FPA11_H__
 #define __FPA11_H__
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <errno.h>
 
 #include <cpu.h>
 
@@ -108,7 +105,7 @@ static inline void writeRegister(unsigned int x, unsigned int y)
 
 static inline void writeConditionCodes(unsigned int x)
 {
-        cpsr_write(user_registers,x,CPSR_NZCV);
+    cpsr_write(user_registers, x, CPSR_NZCV, CPSRWriteByInstr);
 }
 
 #define ARM_REG_PC 15

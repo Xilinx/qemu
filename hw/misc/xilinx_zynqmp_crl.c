@@ -25,11 +25,12 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "hw/register.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
-
+#include "qemu/config-file.h"
 #include "sysemu/sysemu.h"
 
 #include "hw/fdt_generic_util.h"
@@ -811,7 +812,7 @@ static RegisterAccessInfo crl_apb_regs_info[] = {
     },{ .name = "I2C0_REF_CTRL",  .decode.addr = A_I2C0_REF_CTRL,
         .reset = 0x01000500,
         .rsvd = 0xfec0c0f8L,
-    },{ .name = "I2C1_REF_CTRL",  .decode.addr = A_I2C0_REF_CTRL,
+    },{ .name = "I2C1_REF_CTRL",  .decode.addr = A_I2C1_REF_CTRL,
         .reset = 0x01000500,
         .rsvd = 0xfec0c0f8L,
     },{ .name = "TIMESTAMP_REF_CTRL",  .decode.addr = A_TIMESTAMP_REF_CTRL,
@@ -928,9 +929,9 @@ static void crl_apb_reset(DeviceState *dev)
 {
     CRL_APB *s = XILINX_CRL_APB(dev);
     unsigned int i;
+    QemuOpts *opts = qemu_find_opts_singleton("boot-opts");
+    uint32_t boot_mode = qemu_opt_get_number(opts, "mode", 0);
 
-    uint32_t boot_mode = qemu_opt_get_number(qemu_get_boot_opts(),
-                                             "mode", 0);
     assert(boot_mode < (1 << R_BOOT_MODE_USER_BOOT_MODE_LENGTH));
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
@@ -955,7 +956,7 @@ static uint64_t crl_apb_read(void *opaque, hwaddr addr, unsigned size)
     RegisterInfo *r = &s->regs_info[addr / 4];
 
     if (!r->data) {
-        qemu_log("%s: Decode error: read from %" HWADDR_PRIx "\n",
+        qemu_log("%s: Decode error: read from 0x%" HWADDR_PRIx "\n",
                  object_get_canonical_path(OBJECT(s)),
                  addr);
         return 0;
@@ -970,7 +971,7 @@ static void crl_apb_write(void *opaque, hwaddr addr, uint64_t value,
     RegisterInfo *r = &s->regs_info[addr / 4];
 
     if (!r->data) {
-        qemu_log("%s: Decode error: read from %" HWADDR_PRIx "=%" PRIx64 "\n",
+        qemu_log("%s: Decode error: write from 0x%" HWADDR_PRIx "=0x%" PRIx64 "\n",
                  object_get_canonical_path(OBJECT(s)),
                  addr, value);
         return;

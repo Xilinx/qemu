@@ -20,6 +20,7 @@
  *
  * Only host-mode and non-DMA accesses are currently supported.
  */
+#include "qemu/osdep.h"
 #include "qemu-common.h"
 #include "qemu/timer.h"
 #include "hw/usb.h"
@@ -554,14 +555,16 @@ static void musb_schedule_cb(USBPort *port, USBPacket *packey)
         timeout = ep->timeout[dir];
     else if (ep->interrupt[dir])
         timeout = 8;
-    else
-        return musb_cb_tick(ep);
+    else {
+        musb_cb_tick(ep);
+        return;
+    }
 
     if (!ep->intv_timer[dir])
         ep->intv_timer[dir] = timer_new_ns(QEMU_CLOCK_VIRTUAL, musb_cb_tick, ep);
 
     timer_mod(ep->intv_timer[dir], qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
-                   muldiv64(timeout, get_ticks_per_sec(), 8000));
+                   muldiv64(timeout, NANOSECONDS_PER_SECOND, 8000));
 }
 
 static int musb_timeout(int ttype, int speed, int val)
@@ -772,9 +775,11 @@ static void musb_rx_packet_complete(USBPacket *packey, void *opaque)
 
         /* NAK timeouts are only generated in Bulk transfers and
          * Data-errors in Isochronous.  */
-        if (ep->interrupt[1])
-            return musb_packet(s, ep, epnum, USB_TOKEN_IN,
-                            packey->iov.size, musb_rx_packet_complete, 1);
+        if (ep->interrupt[1]) {
+            musb_packet(s, ep, epnum, USB_TOKEN_IN,
+                        packey->iov.size, musb_rx_packet_complete, 1);
+            return;
+        }
 
         ep->csr[1] |= MGC_M_RXCSR_DATAERROR;
         if (!epnum)
@@ -864,8 +869,7 @@ static void musb_tx_rdy(MUSBState *s, int epnum)
          * but it doesn't make sense for us to do that.  */
     }
 
-    return musb_packet(s, ep, epnum, pid,
-                    total, musb_tx_packet_complete, 0);
+    musb_packet(s, ep, epnum, pid, total, musb_tx_packet_complete, 0);
 }
 
 static void musb_rx_req(MUSBState *s, int epnum)
@@ -929,8 +933,7 @@ static void musb_rx_req(MUSBState *s, int epnum)
     }
 #endif
 
-    return musb_packet(s, ep, epnum, USB_TOKEN_IN,
-                    total, musb_rx_packet_complete, 1);
+    musb_packet(s, ep, epnum, USB_TOKEN_IN, total, musb_rx_packet_complete, 1);
 }
 
 static uint8_t musb_read_fifo(MUSBEndPoint *ep)

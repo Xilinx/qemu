@@ -16,8 +16,14 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
-#include "config.h"
-#include "qemu-common.h"
+#include "qemu/osdep.h"
+#include "qapi/error.h"
+#include "qemu/cutils.h"
+#include "cpu.h"
+#include "exec/semihost.h"
+#include "exec/exec-all.h"
+
+
 #ifdef CONFIG_USER_ONLY
 #include <stdlib.h>
 #include <stdio.h>
@@ -567,10 +573,12 @@ static const char *get_feature_xml(const char *p, const char **newp,
                 pstrcat(target_xml, sizeof(target_xml), r->xml);
                 pstrcat(target_xml, sizeof(target_xml), "\"/>");
             }
-            if (cc->gdb_arch) {
+            if (cc->gdb_arch_name) {
+                gchar *arch = cc->gdb_arch_name(cpu);
                 pstrcat(target_xml, sizeof(target_xml), "<architecture>");
-                pstrcat(target_xml, sizeof(target_xml), cc->gdb_arch);
+                pstrcat(target_xml, sizeof(target_xml), arch);
                 pstrcat(target_xml, sizeof(target_xml), "</architecture>");
+                g_free(arch);
             }
             pstrcat(target_xml, sizeof(target_xml), "</target>");
         }
@@ -1554,46 +1562,10 @@ void gdb_set_stop_cpu(CPUState *cpu)
     gdbserver_state->g_cpu = cpu;
 }
 
-static int gdbserver_has_client(void)
-{
-    return gdbserver_state && gdbserver_state->client_connected;
-}
-
-int gdbserver_break(const char *msg)
-{
-
-    if (!gdbserver_has_client()) {
-        return 1;
-    }
-
-    if (msg) {
-        gdb_output(gdbserver_state, msg, strlen(msg));
-    }
-
-    if (!gdbserver_state->break_on_guest_error) {
-        return 0;
-    }
-
-    /* If there's a CPU running, break it's execution.  */
-    if (current_cpu) {
-        current_cpu->exception_index = EXCP_DEBUG;
-        if (current_cpu->current_tb) {
-            /* Break out of current TB and request debug action.  */
-            cpu_loop_exit(current_cpu);
-        }
-    }
-#ifndef CONFIG_USER_ONLY
-    /* Request global debug action.  */
-    qemu_system_debug_request();
-#endif
-    return 0;
-}
-
 #ifndef CONFIG_USER_ONLY
 static void gdb_vm_state_change(void *opaque, int running, RunState state)
 {
     GDBState *s = gdbserver_state;
-    CPUArchState *env = s->c_cpu->env_ptr;
     CPUState *cpu = s->c_cpu;
     char buf[256];
     const char *type;
@@ -1630,7 +1602,7 @@ static void gdb_vm_state_change(void *opaque, int running, RunState state)
             cpu->watchpoint_hit = NULL;
             goto send_packet;
         }
-        tb_flush(env);
+        tb_flush(cpu);
         ret = GDB_SIGNAL_TRAP;
         break;
     case RUN_STATE_PAUSED:
@@ -1674,9 +1646,8 @@ send_packet:
     %x  - target_ulong argument printed in hex.
     %lx - 64-bit argument printed in hex.
     %s  - string pointer (target_ulong) and length (int) pair.  */
-void gdb_do_syscall(gdb_syscall_complete_cb cb, const char *fmt, ...)
+void gdb_do_syscallv(gdb_syscall_complete_cb cb, const char *fmt, va_list va)
 {
-    va_list va;
     char *p;
     char *p_end;
     target_ulong addr;
@@ -1690,7 +1661,6 @@ void gdb_do_syscall(gdb_syscall_complete_cb cb, const char *fmt, ...)
 #ifndef CONFIG_USER_ONLY
     vm_stop(RUN_STATE_DEBUG);
 #endif
-    va_start(va, fmt);
     p = s->syscall_buf;
     p_end = &s->syscall_buf[sizeof(s->syscall_buf)];
     *(p++) = 'F';
@@ -1724,7 +1694,6 @@ void gdb_do_syscall(gdb_syscall_complete_cb cb, const char *fmt, ...)
         }
     }
     *p = 0;
-    va_end(va);
 #ifdef CONFIG_USER_ONLY
     put_packet(s, s->syscall_buf);
     gdb_handlesig(s->c_cpu, 0);
@@ -1735,8 +1704,17 @@ void gdb_do_syscall(gdb_syscall_complete_cb cb, const char *fmt, ...)
        is still in the running state, which can cause packets to be dropped
        and state transition 'T' packets to be sent while the syscall is still
        being processed.  */
-    cpu_exit(s->c_cpu);
+    qemu_cpu_kick(s->c_cpu);
 #endif
+}
+
+void gdb_do_syscall(gdb_syscall_complete_cb cb, const char *fmt, ...)
+{
+    va_list va;
+
+    va_start(va, fmt);
+    gdb_do_syscallv(cb, fmt, va);
+    va_end(va);
 }
 
 static void gdb_read_byte(GDBState *s, int ch)
@@ -1862,7 +1840,6 @@ gdb_queuesig (void)
 int
 gdb_handlesig(CPUState *cpu, int sig)
 {
-    CPUArchState *env = cpu->env_ptr;
     GDBState *s;
     char buf[256];
     int n;
@@ -1874,7 +1851,7 @@ gdb_handlesig(CPUState *cpu, int sig)
 
     /* disable single step if it was enabled */
     cpu_single_step(cpu, 0);
-    tb_flush(env);
+    tb_flush(cpu);
 
     if (sig != 0) {
         snprintf(buf, sizeof(buf), "S%02x", target_signal_to_gdb(sig));
@@ -2004,9 +1981,8 @@ int gdbserver_start(int port)
 }
 
 /* Disable gdb stub for child processes.  */
-void gdbserver_fork(CPUArchState *env)
+void gdbserver_fork(CPUState *cpu)
 {
-    CPUState *cpu = ENV_GET_CPU(env);
     GDBState *s = gdbserver_state;
 
     if (gdbserver_fd < 0 || s->fd < 0) {
@@ -2136,6 +2112,7 @@ int gdbserver_start(const char *device)
     char gdbstub_device_name[128];
     CharDriverState *chr = NULL;
     CharDriverState *mon_chr;
+    ChardevCommon common = { 0 };
 
     if (!device)
         return -1;
@@ -2172,7 +2149,7 @@ int gdbserver_start(const char *device)
         qemu_add_vm_change_state_handler(gdb_vm_state_change, NULL);
 
         /* Initialize a monitor terminal for gdb */
-        mon_chr = qemu_chr_alloc();
+        mon_chr = qemu_chr_alloc(&common, &error_abort);
         mon_chr->chr_write = gdb_monitor_write;
         monitor_init(mon_chr, 0);
     } else {

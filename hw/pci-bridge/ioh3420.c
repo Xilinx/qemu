@@ -20,6 +20,7 @@
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
 #include "hw/pci/pci_ids.h"
 #include "hw/pci/msi.h"
 #include "hw/pci/pcie.h"
@@ -97,11 +98,7 @@ static int ioh3420_initfn(PCIDevice *d)
     PCIESlot *s = PCIE_SLOT(d);
     int rc;
 
-    rc = pci_bridge_initfn(d, TYPE_PCIE_BUS);
-    if (rc < 0) {
-        return rc;
-    }
-
+    pci_bridge_initfn(d, TYPE_PCIE_BUS);
     pcie_port_init_reg(d);
 
     rc = pci_bridge_ssvid_init(d, IOH_EP_SSVID_OFFSET,
@@ -129,7 +126,7 @@ static int ioh3420_initfn(PCIDevice *d)
         goto err_pcie_cap;
     }
     pcie_cap_root_init(d);
-    rc = pcie_aer_init(d, IOH_EP_AER_OFFSET);
+    rc = pcie_aer_init(d, IOH_EP_AER_OFFSET, PCI_ERR_SIZEOF);
     if (rc < 0) {
         goto err;
     }

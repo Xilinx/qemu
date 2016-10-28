@@ -10,22 +10,14 @@
  * See the COPYING file in the top-level directory.
  *
  */
-#include <stdlib.h>
-#include <stdio.h>
-#include <errno.h>
-#include <time.h>
-#include <signal.h>
-#include <stdint.h>
-#include <string.h>
-#include <limits.h>
-#include <unistd.h>
-#include <sys/time.h>
+#include "qemu/osdep.h"
 #ifdef __linux__
 #include <sys/syscall.h>
 #include <linux/futex.h>
 #endif
 #include "qemu/thread.h"
 #include "qemu/atomic.h"
+#include "qemu/notify.h"
 
 static bool name_threads;
 
@@ -50,12 +42,8 @@ static void error_exit(int err, const char *msg)
 void qemu_mutex_init(QemuMutex *mutex)
 {
     int err;
-    pthread_mutexattr_t mutexattr;
 
-    pthread_mutexattr_init(&mutexattr);
-    pthread_mutexattr_settype(&mutexattr, PTHREAD_MUTEX_ERRORCHECK);
-    err = pthread_mutex_init(&mutex->lock, &mutexattr);
-    pthread_mutexattr_destroy(&mutexattr);
+    err = pthread_mutex_init(&mutex->lock, NULL);
     if (err)
         error_exit(err, __func__);
 }
@@ -301,16 +289,27 @@ static inline void futex_wake(QemuEvent *ev, int n)
 
 static inline void futex_wait(QemuEvent *ev, unsigned val)
 {
-    futex(ev, FUTEX_WAIT, (int) val, NULL, NULL, 0);
+    while (futex(ev, FUTEX_WAIT, (int) val, NULL, NULL, 0)) {
+        switch (errno) {
+        case EWOULDBLOCK:
+            return;
+        case EINTR:
+            break; /* get out of switch and retry */
+        default:
+            abort();
+        }
+    }
 }
 #else
 static inline void futex_wake(QemuEvent *ev, int n)
 {
+    pthread_mutex_lock(&ev->lock);
     if (n == 1) {
         pthread_cond_signal(&ev->cond);
     } else {
         pthread_cond_broadcast(&ev->cond);
     }
+    pthread_mutex_unlock(&ev->lock);
 }
 
 static inline void futex_wait(QemuEvent *ev, unsigned val)
@@ -390,7 +389,7 @@ void qemu_event_wait(QemuEvent *ev)
             /*
              * Leave the event reset and tell qemu_event_set that there
              * are waiters.  No need to retry, because there cannot be
-             * a concurent busy->free transition.  After the CAS, the
+             * a concurrent busy->free transition.  After the CAS, the
              * event will be either set or busy.
              */
             if (atomic_cmpxchg(&ev->value, EV_FREE, EV_BUSY) == EV_SET) {
@@ -400,6 +399,42 @@ void qemu_event_wait(QemuEvent *ev)
         futex_wait(ev, EV_BUSY);
     }
 }
+
+static pthread_key_t exit_key;
+
+union NotifierThreadData {
+    void *ptr;
+    NotifierList list;
+};
+QEMU_BUILD_BUG_ON(sizeof(union NotifierThreadData) != sizeof(void *));
+
+void qemu_thread_atexit_add(Notifier *notifier)
+{
+    union NotifierThreadData ntd;
+    ntd.ptr = pthread_getspecific(exit_key);
+    notifier_list_add(&ntd.list, notifier);
+    pthread_setspecific(exit_key, ntd.ptr);
+}
+
+void qemu_thread_atexit_remove(Notifier *notifier)
+{
+    union NotifierThreadData ntd;
+    ntd.ptr = pthread_getspecific(exit_key);
+    notifier_remove(notifier);
+    pthread_setspecific(exit_key, ntd.ptr);
+}
+
+static void qemu_thread_atexit_run(void *arg)
+{
+    union NotifierThreadData ntd = { .ptr = arg };
+    notifier_list_notify(&ntd.list, NULL);
+}
+
+static void __attribute__((constructor)) qemu_thread_atexit_init(void)
+{
+    pthread_key_create(&exit_key, qemu_thread_atexit_run);
+}
+
 
 /* Attempt to set the threads name; note that this is for debug, so
  * we're not going to fail if we can't set it.

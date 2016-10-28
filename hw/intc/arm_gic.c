@@ -18,9 +18,13 @@
  *  armv7m_nvic device.
  */
 
+#include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "gic_internal.h"
+#include "qapi/error.h"
 #include "qom/cpu.h"
+#include "qemu/log.h"
+#include "trace.h"
 
 #include "hw/fdt_generic_util.h"
 

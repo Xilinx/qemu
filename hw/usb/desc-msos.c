@@ -1,3 +1,4 @@
+#include "qemu/osdep.h"
 #include "hw/usb.h"
 #include "hw/usb/desc.h"
 
@@ -231,7 +232,7 @@ int usb_desc_msos(const USBDesc *desc,  USBPacket *p,
         length = len;
     }
     memcpy(dest, buf, length);
-    free(buf);
+    g_free(buf);
 
     p->actual_length = length;
     return 0;

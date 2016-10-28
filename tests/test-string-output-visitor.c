@@ -10,9 +10,11 @@
  * See the COPYING file in the top-level directory.
  */
 
+#include "qemu/osdep.h"
 #include <glib.h>
 
 #include "qemu-common.h"
+#include "qapi/error.h"
 #include "qapi/string-output-visitor.h"
 #include "test-qapi-types.h"
 #include "test-qapi-visit.h"
@@ -61,7 +63,7 @@ static void test_visitor_out_int(TestOutputVisitorData *data,
     Error *err = NULL;
     char *str;
 
-    visit_type_int(data->ov, &value, NULL, &err);
+    visit_type_int(data->ov, NULL, &value, &err);
     g_assert(!err);
 
     str = string_output_get_string(data->sov);
@@ -81,7 +83,7 @@ static void test_visitor_out_intList(TestOutputVisitorData *data,
         3, 4, 5, 6, 11, 12, 13, 21, 22, INT64_MAX - 1, INT64_MAX};
     intList *list = NULL, **tmp = &list;
     int i;
-    Error *errp = NULL;
+    Error *err = NULL;
     char *str;
 
     for (i = 0; i < sizeof(value) / sizeof(value[0]); i++) {
@@ -90,8 +92,8 @@ static void test_visitor_out_intList(TestOutputVisitorData *data,
         tmp = &(*tmp)->next;
     }
 
-    visit_type_intList(data->ov, &list, NULL, &errp);
-    g_assert(errp == NULL);
+    visit_type_intList(data->ov, NULL, &list, &err);
+    g_assert(err == NULL);
 
     str = string_output_get_string(data->sov);
     g_assert(str != NULL);
@@ -120,7 +122,7 @@ static void test_visitor_out_bool(TestOutputVisitorData *data,
     bool value = true;
     char *str;
 
-    visit_type_bool(data->ov, &value, NULL, &err);
+    visit_type_bool(data->ov, NULL, &value, &err);
     g_assert(!err);
 
     str = string_output_get_string(data->sov);
@@ -136,7 +138,7 @@ static void test_visitor_out_number(TestOutputVisitorData *data,
     Error *err = NULL;
     char *str;
 
-    visit_type_number(data->ov, &value, NULL, &err);
+    visit_type_number(data->ov, NULL, &value, &err);
     g_assert(!err);
 
     str = string_output_get_string(data->sov);
@@ -153,7 +155,7 @@ static void test_visitor_out_string(TestOutputVisitorData *data,
     Error *err = NULL;
     char *str;
 
-    visit_type_str(data->ov, &string, NULL, &err);
+    visit_type_str(data->ov, NULL, &string, &err);
     g_assert(!err);
 
     str = string_output_get_string(data->sov);
@@ -174,7 +176,7 @@ static void test_visitor_out_no_string(TestOutputVisitorData *data,
     char *str;
 
     /* A null string should return "" */
-    visit_type_str(data->ov, &string, NULL, &err);
+    visit_type_str(data->ov, NULL, &string, &err);
     g_assert(!err);
 
     str = string_output_get_string(data->sov);
@@ -194,10 +196,10 @@ static void test_visitor_out_enum(TestOutputVisitorData *data,
     char *str;
     EnumOne i;
 
-    for (i = 0; i < ENUM_ONE_MAX; i++) {
+    for (i = 0; i < ENUM_ONE__MAX; i++) {
         char *str_human;
 
-        visit_type_EnumOne(data->ov, &i, "unused", &err);
+        visit_type_EnumOne(data->ov, "unused", &i, &err);
         g_assert(!err);
 
         str_human = g_strdup_printf("\"%s\"", EnumOne_lookup[i]);
@@ -217,12 +219,12 @@ static void test_visitor_out_enum(TestOutputVisitorData *data,
 static void test_visitor_out_enum_errors(TestOutputVisitorData *data,
                                          const void *unused)
 {
-    EnumOne i, bad_values[] = { ENUM_ONE_MAX, -1 };
+    EnumOne i, bad_values[] = { ENUM_ONE__MAX, -1 };
     Error *err;
 
     for (i = 0; i < ARRAY_SIZE(bad_values) ; i++) {
         err = NULL;
-        visit_type_EnumOne(data->ov, &bad_values[i], "unused", &err);
+        visit_type_EnumOne(data->ov, "unused", &bad_values[i], &err);
         g_assert(err);
         error_free(err);
     }

@@ -1,16 +1,11 @@
 /* This is the Linux kernel elf-loading code, ported into user space */
 
-#include <stdio.h>
-#include <sys/types.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <unistd.h>
+#include "qemu/osdep.h"
 #include <sys/mman.h>
-#include <stdlib.h>
-#include <string.h>
 
 #include "qemu.h"
 #include "disas/disas.h"
+#include "qemu/path.h"
 
 #ifdef _ARCH_PPC64
 #undef ARCH_DLINFO
@@ -351,8 +346,10 @@ static inline void init_thread(struct target_pt_regs *_regs, struct image_info *
 
     _regs->gpr[1] = infop->start_stack;
 #if defined(TARGET_PPC64) && !defined(TARGET_ABI32)
-    entry = ldq_raw(infop->entry) + infop->load_addr;
-    toc = ldq_raw(infop->entry + 8) + infop->load_addr;
+    get_user_u64(entry, infop->entry);
+    entry += infop->load_addr;
+    get_user_u64(toc, infop->entry + 8);
+    toc += infop->load_addr;
     _regs->gpr[2] = toc;
     infop->entry = entry;
 #endif
@@ -365,8 +362,9 @@ static inline void init_thread(struct target_pt_regs *_regs, struct image_info *
     get_user_ual(_regs->gpr[3], pos);
     pos += sizeof(abi_ulong);
     _regs->gpr[4] = pos;
-    for (tmp = 1; tmp != 0; pos += sizeof(abi_ulong))
-        tmp = ldl(pos);
+    for (tmp = 1; tmp != 0; pos += sizeof(abi_ulong)) {
+        get_user_ual(tmp, pos);
+    }
     _regs->gpr[5] = pos;
 }
 
@@ -737,8 +735,7 @@ static void padzero(abi_ulong elf_bss, abi_ulong last_bss)
            size must be known */
         if (qemu_real_host_page_size < qemu_host_page_size) {
             abi_ulong end_addr, end_addr1;
-            end_addr1 = (elf_bss + qemu_real_host_page_size - 1) &
-                ~(qemu_real_host_page_size - 1);
+            end_addr1 = REAL_HOST_PAGE_ALIGN(elf_bss);
             end_addr = HOST_PAGE_ALIGN(elf_bss);
             if (end_addr1 < end_addr) {
                 mmap((void *)g2h(end_addr1), end_addr - end_addr1,
@@ -1352,9 +1349,7 @@ int load_elf_binary(struct linux_binprm * bprm, struct target_pt_regs * regs,
             }
         }
         if (!bprm->p) {
-            if (elf_interpreter) {
-                free(elf_interpreter);
-            }
+            free(elf_interpreter);
             free (elf_phdata);
             close(bprm->fd);
             return -E2BIG;
@@ -1368,7 +1363,6 @@ int load_elf_binary(struct linux_binprm * bprm, struct target_pt_regs * regs,
     info->mmap = 0;
     elf_entry = (abi_ulong) elf_ex.e_entry;
 
-#if defined(CONFIG_USE_GUEST_BASE)
     /*
      * In case where user has not explicitly set the guest_base, we
      * probe here that should we set it automatically.
@@ -1389,7 +1383,6 @@ int load_elf_binary(struct linux_binprm * bprm, struct target_pt_regs * regs,
             }
         }
     }
-#endif /* CONFIG_USE_GUEST_BASE */
 
     /* Do this so that we can load the interpreter, if need be.  We will
        change some of these later */

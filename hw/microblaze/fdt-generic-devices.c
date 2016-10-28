@@ -1,3 +1,5 @@
+#include "qemu/osdep.h"
+#include "qom/object.h"
 #include "qemu-common.h"
 
 static const TypeInfo fdt_qom_aliases [] = {
@@ -14,5 +16,3 @@ static void fdt_generic_register_types(void)
 }
 
 type_init(fdt_generic_register_types)
-
-

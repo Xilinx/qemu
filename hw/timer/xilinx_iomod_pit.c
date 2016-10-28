@@ -23,11 +23,13 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "hw/ptimer.h"
 #include "hw/register.h"
 #include "qemu/log.h"
 #include "qemu/main-loop.h"
+#include "qapi/error.h"
 #include "hw/fdt_generic_util.h"
 
 #ifndef XILINX_IO_MODULE_PIT_ERR_DEBUG

@@ -25,13 +25,15 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "hw/sysbus.h"
 #include "qemu/log.h"
+#include "cpu.h"
 
 #include "qemu/bitops.h"
 #include "qapi/qmp/qerror.h"
 #include "hw/register.h"
-#include "cpu-qom.h"
 #include "hw/fdt_generic_util.h"
 
 #ifndef ZYNQMP_APU_ERR_DEBUG

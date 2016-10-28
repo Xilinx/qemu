@@ -22,6 +22,9 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
+#include "qemu-common.h"
+#include "cpu.h"
 #include "hw/hw.h"
 #include "hw/nvram/fw_cfg.h"
 #include "multiboot.h"
@@ -156,6 +159,7 @@ int load_multiboot(FWCfgState *fw_cfg,
     MultibootState mbs;
     uint8_t bootinfo[MBI_SIZE];
     uint8_t *mb_bootinfo_data;
+    uint32_t cmdline_len;
 
     /* Ok, let's see if it is a multiboot image.
        The header is 12x32bit long, so the latest entry may be 8192 - 48. */
@@ -194,7 +198,8 @@ int load_multiboot(FWCfgState *fw_cfg,
         }
 
         kernel_size = load_elf(kernel_filename, NULL, NULL, &elf_entry,
-                               &elf_low, &elf_high, 0, ELF_MACHINE, 0);
+                               &elf_low, &elf_high, 0, I386_ELF_MACHINE,
+                               0, 0);
         if (kernel_size < 0) {
             fprintf(stderr, "Error while loading elf kernel\n");
             exit(1);
@@ -258,27 +263,28 @@ int load_multiboot(FWCfgState *fw_cfg,
     mbs.offset_mbinfo = mbs.mb_buf_size;
 
     /* Calculate space for cmdlines, bootloader name, and mb_mods */
-    mbs.mb_buf_size += strlen(kernel_filename) + 1;
-    mbs.mb_buf_size += strlen(kernel_cmdline) + 1;
-    mbs.mb_buf_size += strlen(bootloader_name) + 1;
+    cmdline_len = strlen(kernel_filename) + 1;
+    cmdline_len += strlen(kernel_cmdline) + 1;
     if (initrd_filename) {
         const char *r = initrd_filename;
-        mbs.mb_buf_size += strlen(r) + 1;
+        cmdline_len += strlen(r) + 1;
         mbs.mb_mods_avail = 1;
         while (*(r = get_opt_value(NULL, 0, r))) {
            mbs.mb_mods_avail++;
            r++;
         }
-        mbs.mb_buf_size += MB_MOD_SIZE * mbs.mb_mods_avail;
     }
+
+    mbs.mb_buf_size += cmdline_len;
+    mbs.mb_buf_size += MB_MOD_SIZE * mbs.mb_mods_avail;
+    mbs.mb_buf_size += strlen(bootloader_name) + 1;
 
     mbs.mb_buf_size = TARGET_PAGE_ALIGN(mbs.mb_buf_size);
 
     /* enlarge mb_buf to hold cmdlines, bootloader, mb-info structs */
     mbs.mb_buf            = g_realloc(mbs.mb_buf, mbs.mb_buf_size);
     mbs.offset_cmdlines   = mbs.offset_mbinfo + mbs.mb_mods_avail * MB_MOD_SIZE;
-    mbs.offset_bootloader = mbs.offset_cmdlines + strlen(kernel_filename) + 1 
-                            + strlen(kernel_cmdline) + 1;
+    mbs.offset_bootloader = mbs.offset_cmdlines + cmdline_len;
 
     if (initrd_filename) {
         char *next_initrd, not_last;

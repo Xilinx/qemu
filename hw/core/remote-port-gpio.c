@@ -6,11 +6,13 @@
  * This code is licensed under the GNU GPL.
  */
 
+#include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/dma.h"
 #include "qemu/log.h"
 #include "qapi/qmp/qerror.h"
+#include "qapi/error.h"
 #include "hw/qdev.h"
 
 #include "hw/fdt_generic_util.h"

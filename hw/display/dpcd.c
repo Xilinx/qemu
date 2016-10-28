@@ -26,7 +26,8 @@
  * This is a simple AUX slave which emulate a screen connected.
  */
 
-#include "hw/aux.h"
+#include "qemu/osdep.h"
+#include "hw/misc/aux.h"
 #include "dpcd.h"
 
 /* #define DEBUG_DPCD */

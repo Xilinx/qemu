@@ -14,10 +14,10 @@
 #ifndef QEMU_KVM_H
 #define QEMU_KVM_H
 
-#include <errno.h>
-#include "config-host.h"
 #include "qemu/queue.h"
 #include "qom/cpu.h"
+#include "exec/memattrs.h"
+#include "hw/irq.h"
 
 #ifdef CONFIG_KVM
 #include <linux/kvm.h>
@@ -41,6 +41,7 @@
 
 extern bool kvm_allowed;
 extern bool kvm_kernel_irqchip;
+extern bool kvm_split_irqchip;
 extern bool kvm_async_interrupts_allowed;
 extern bool kvm_halt_in_kernel_allowed;
 extern bool kvm_eventfds_allowed;
@@ -50,6 +51,8 @@ extern bool kvm_msi_via_irqfd_allowed;
 extern bool kvm_gsi_routing_allowed;
 extern bool kvm_gsi_direct_mapping;
 extern bool kvm_readonly_mem_allowed;
+extern bool kvm_direct_msi_allowed;
+extern bool kvm_ioeventfd_any_length_allowed;
 
 #if defined CONFIG_KVM || !defined NEED_CPU_H
 #define kvm_enabled()           (kvm_allowed)
@@ -65,6 +68,16 @@ extern bool kvm_readonly_mem_allowed;
  * following functions or some other specific check instead.
  */
 #define kvm_irqchip_in_kernel() (kvm_kernel_irqchip)
+
+/**
+ * kvm_irqchip_is_split:
+ *
+ * Returns: true if the user asked us to split the irqchip
+ * implementation between user and kernel space. The details are
+ * architecture and machine specific. On PC, it means that the PIC,
+ * IOAPIC, and PIT are in user space while the LAPIC is in the kernel.
+ */
+#define kvm_irqchip_is_split() (kvm_split_irqchip)
 
 /**
  * kvm_async_interrupts_enabled:
@@ -143,21 +156,39 @@ extern bool kvm_readonly_mem_allowed;
  */
 #define kvm_readonly_mem_enabled() (kvm_readonly_mem_allowed)
 
+/**
+ * kvm_direct_msi_enabled:
+ *
+ * Returns: true if KVM allows direct MSI injection.
+ */
+#define kvm_direct_msi_enabled() (kvm_direct_msi_allowed)
+
+/**
+ * kvm_ioeventfd_any_length_enabled:
+ * Returns: true if KVM allows any length io eventfd.
+ */
+#define kvm_ioeventfd_any_length_enabled() (kvm_ioeventfd_any_length_allowed)
+
 #else
 #define kvm_enabled()           (0)
 #define kvm_irqchip_in_kernel() (false)
+#define kvm_irqchip_is_split() (false)
 #define kvm_async_interrupts_enabled() (false)
 #define kvm_halt_in_kernel() (false)
 #define kvm_eventfds_enabled() (false)
 #define kvm_irqfds_enabled() (false)
+#define kvm_resamplefds_enabled() (false)
 #define kvm_msi_via_irqfd_enabled() (false)
 #define kvm_gsi_routing_allowed() (false)
 #define kvm_gsi_direct_mapping() (false)
 #define kvm_readonly_mem_enabled() (false)
+#define kvm_direct_msi_enabled() (false)
+#define kvm_ioeventfd_any_length_enabled() (false)
 #endif
 
 struct kvm_run;
 struct kvm_lapic_state;
+struct kvm_irq_routing_entry;
 
 typedef struct KVMCapabilityInfo {
     const char *name;
@@ -178,8 +209,6 @@ int kvm_has_sync_mmu(void);
 int kvm_has_vcpu_events(void);
 int kvm_has_robust_singlestep(void);
 int kvm_has_debugregs(void);
-int kvm_has_xsave(void);
-int kvm_has_xcrs(void);
 int kvm_has_pit_state2(void);
 int kvm_has_many_ioeventfds(void);
 int kvm_has_gsi_routing(void);
@@ -206,6 +235,10 @@ int kvm_set_signal_mask(CPUState *cpu, const sigset_t *sigset);
 int kvm_on_sigbus_vcpu(CPUState *cpu, int code, void *addr);
 int kvm_on_sigbus(int code, void *addr);
 
+/* interface with exec.c */
+
+void phys_mem_set_alloc(void *(*alloc)(size_t, uint64_t *align));
+
 /* internal API */
 
 int kvm_ioctl(KVMState *s, int type, ...);
@@ -224,6 +257,44 @@ int kvm_vcpu_ioctl(CPUState *cpu, int type, ...);
 int kvm_device_ioctl(int fd, int type, ...);
 
 /**
+ * kvm_vm_check_attr - check for existence of a specific vm attribute
+ * @s: The KVMState pointer
+ * @group: the group
+ * @attr: the attribute of that group to query for
+ *
+ * Returns: 1 if the attribute exists
+ *          0 if the attribute either does not exist or if the vm device
+ *            interface is unavailable
+ */
+int kvm_vm_check_attr(KVMState *s, uint32_t group, uint64_t attr);
+
+/**
+ * kvm_device_check_attr - check for existence of a specific device attribute
+ * @fd: The device file descriptor
+ * @group: the group
+ * @attr: the attribute of that group to query for
+ *
+ * Returns: 1 if the attribute exists
+ *          0 if the attribute either does not exist or if the vm device
+ *            interface is unavailable
+ */
+int kvm_device_check_attr(int fd, uint32_t group, uint64_t attr);
+
+/**
+ * kvm_device_access - set or get value of a specific vm attribute
+ * @fd: The device file descriptor
+ * @group: the group
+ * @attr: the attribute of that group to set or get
+ * @val: pointer to a storage area for the value
+ * @write: true for set and false for get operation
+ *
+ * This function is not allowed to fail. Use kvm_device_check_attr()
+ * in order to check for the availability of optional attributes.
+ */
+void kvm_device_access(int fd, int group, uint64_t attr,
+                       void *val, bool write);
+
+/**
  * kvm_create_device - create a KVM device for the device control API
  * @KVMState: The KVMState pointer
  * @type: The KVM device type (see Documentation/virtual/kvm/devices in the
@@ -235,15 +306,26 @@ int kvm_device_ioctl(int fd, int type, ...);
  */
 int kvm_create_device(KVMState *s, uint64_t type, bool test);
 
+/**
+ * kvm_device_supported - probe whether KVM supports specific device
+ *
+ * @vmfd: The fd handler for VM
+ * @type: type of device
+ *
+ * @return: true if supported, otherwise false.
+ */
+bool kvm_device_supported(int vmfd, uint64_t type);
 
 /* Arch specific hooks */
 
 extern const KVMCapabilityInfo kvm_arch_required_capabilities[];
 
 void kvm_arch_pre_run(CPUState *cpu, struct kvm_run *run);
-void kvm_arch_post_run(CPUState *cpu, struct kvm_run *run);
+MemTxAttrs kvm_arch_post_run(CPUState *cpu, struct kvm_run *run);
 
 int kvm_arch_handle_exit(CPUState *cpu, struct kvm_run *run);
+
+int kvm_arch_handle_ioapic_eoi(CPUState *cpu, struct kvm_run *run);
 
 int kvm_arch_process_async_events(CPUState *cpu);
 
@@ -258,7 +340,7 @@ int kvm_arch_get_registers(CPUState *cpu);
 
 int kvm_arch_put_registers(CPUState *cpu, int level);
 
-int kvm_arch_init(KVMState *s);
+int kvm_arch_init(MachineState *ms, KVMState *s);
 
 int kvm_arch_init_vcpu(CPUState *cpu);
 
@@ -269,6 +351,11 @@ int kvm_arch_on_sigbus_vcpu(CPUState *cpu, int code, void *addr);
 int kvm_arch_on_sigbus(int code, void *addr);
 
 void kvm_arch_init_irq_routing(KVMState *s);
+
+int kvm_arch_fixup_msi_route(struct kvm_irq_routing_entry *route,
+                             uint64_t address, uint32_t data, PCIDevice *dev);
+
+int kvm_arch_msi_data_to_gsi(uint32_t data);
 
 int kvm_set_irq(KVMState *s, int irq, int level);
 int kvm_irqchip_send_msi(KVMState *s, MSIMessage msg);
@@ -359,7 +446,6 @@ int kvm_physical_memory_addr_from_host(KVMState *s, void *ram_addr,
 void kvm_cpu_synchronize_state(CPUState *cpu);
 void kvm_cpu_synchronize_post_reset(CPUState *cpu);
 void kvm_cpu_synchronize_post_init(CPUState *cpu);
-void kvm_cpu_clean_state(CPUState *cpu);
 
 /* generic hooks - to be moved/refactored once there are more users */
 
@@ -384,22 +470,23 @@ static inline void cpu_synchronize_post_init(CPUState *cpu)
     }
 }
 
-static inline void cpu_clean_state(CPUState *cpu)
-{
-    if (kvm_enabled()) {
-        kvm_cpu_clean_state(cpu);
-    }
-}
-
-int kvm_irqchip_add_msi_route(KVMState *s, MSIMessage msg);
-int kvm_irqchip_update_msi_route(KVMState *s, int virq, MSIMessage msg);
+int kvm_irqchip_add_msi_route(KVMState *s, MSIMessage msg, PCIDevice *dev);
+int kvm_irqchip_update_msi_route(KVMState *s, int virq, MSIMessage msg,
+                                 PCIDevice *dev);
 void kvm_irqchip_release_virq(KVMState *s, int virq);
 
 int kvm_irqchip_add_adapter_route(KVMState *s, AdapterInfo *adapter);
+int kvm_irqchip_add_hv_sint_route(KVMState *s, uint32_t vcpu, uint32_t sint);
 
+int kvm_irqchip_add_irqfd_notifier_gsi(KVMState *s, EventNotifier *n,
+                                       EventNotifier *rn, int virq);
+int kvm_irqchip_remove_irqfd_notifier_gsi(KVMState *s, EventNotifier *n,
+                                          int virq);
 int kvm_irqchip_add_irqfd_notifier(KVMState *s, EventNotifier *n,
-                                   EventNotifier *rn, int virq);
-int kvm_irqchip_remove_irqfd_notifier(KVMState *s, EventNotifier *n, int virq);
+                                   EventNotifier *rn, qemu_irq irq);
+int kvm_irqchip_remove_irqfd_notifier(KVMState *s, EventNotifier *n,
+                                      qemu_irq irq);
+void kvm_irqchip_set_qemuirq_gsi(KVMState *s, qemu_irq irq, int gsi);
 void kvm_pc_gsi_handler(void *opaque, int n, int level);
 void kvm_pc_setup_irq_routing(bool pci_enabled);
 void kvm_init_irq_routing(KVMState *s);
@@ -407,6 +494,7 @@ void kvm_init_irq_routing(KVMState *s);
 /**
  * kvm_arch_irqchip_create:
  * @KVMState: The KVMState pointer
+ * @MachineState: The MachineState pointer
  *
  * Allow architectures to create an in-kernel irq chip themselves.
  *
@@ -414,7 +502,7 @@ void kvm_init_irq_routing(KVMState *s);
  *            0: irq chip was not created
  *          > 0: irq chip was created
  */
-int kvm_arch_irqchip_create(KVMState *s);
+int kvm_arch_irqchip_create(MachineState *ms, KVMState *s);
 
 /**
  * kvm_set_one_reg - set a register value in KVM via KVM_SET_ONE_REG ioctl

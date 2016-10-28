@@ -30,9 +30,6 @@
   <reg name="cpsr" bitsize="32" regnum="25"/>
 
   <reg name="c0_cpuid" bitsize="32" regnum="26"/>
-  <reg name="c1_coproc" bitsize="32"/>
-  <reg name="c2_mask" bitsize="32"/>
-  <reg name="c2_base_mask" bitsize="32"/>
   <reg name="c2_data" bitsize="32"/>
   <reg name="c2_insn" bitsize="32"/>
   <reg name="esr_el" bitsize="32"/>

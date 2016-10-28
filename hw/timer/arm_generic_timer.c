@@ -24,10 +24,13 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "hw/register.h"
 #include "qemu/bitops.h"
+#include "qapi/error.h"
 #include "qemu/log.h"
+#include "qemu/timer.h"
 
 #ifndef ARM_GEN_TIMER_ERR_DEBUG
 #define ARM_GEN_TIMER_ERR_DEBUG 0
@@ -69,7 +72,7 @@ static void counter_control_postw(RegisterInfo *reg, uint64_t val64)
     uint64_t current_ticks;
 
     current_ticks = muldiv64(qemu_clock_get_us(QEMU_CLOCK_VIRTUAL),
-                             get_ticks_per_sec(), 1000000);
+                             NANOSECONDS_PER_SECOND, 1000000);
 
     if ((s->enabled && !new_status) ||
         (!s->enabled && new_status)) {
@@ -88,7 +91,7 @@ static uint64_t couter_low_value_postr(RegisterInfo *reg, uint64_t val64)
 
     if (s->enabled) {
         current_ticks = muldiv64(qemu_clock_get_us(QEMU_CLOCK_VIRTUAL),
-                                 get_ticks_per_sec(), 1000000);
+                                 NANOSECONDS_PER_SECOND, 1000000);
         total_ticks = current_ticks - s->tick_offset;
         low_ticks = (uint32_t) total_ticks;
     } else {
@@ -107,7 +110,7 @@ static uint64_t couter_high_value_postr(RegisterInfo *reg, uint64_t val64)
 
     if (s->enabled) {
         current_ticks = muldiv64(qemu_clock_get_us(QEMU_CLOCK_VIRTUAL),
-                                 get_ticks_per_sec(), 1000000);
+                                 NANOSECONDS_PER_SECOND, 1000000);
         total_ticks = current_ticks - s->tick_offset;
         high_ticks = (uint32_t) (total_ticks >> 32);
     } else {

@@ -8,6 +8,10 @@
  * the COPYING file in the top-level directory.
  */
 
+#include "qemu/osdep.h"
+#include "hw/hw.h"
+#include "qapi/error.h"
+#include "qemu/error-report.h"
 #include "hw/register.h"
 #include "qemu/log.h"
 

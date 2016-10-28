@@ -17,6 +17,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "cpu.h"
 #include "qemu-common.h"
 #include "migration/vmstate.h"
@@ -48,6 +50,12 @@ static void moxie_cpu_reset(CPUState *s)
     tlb_flush(s, 1);
 }
 
+static void moxie_cpu_disas_set_info(CPUState *cpu, disassemble_info *info)
+{
+    info->mach = bfd_arch_moxie;
+    info->print_insn = print_insn_moxie;
+}
+
 static void moxie_cpu_realizefn(DeviceState *dev, Error **errp)
 {
     CPUState *cs = CPU(dev);
@@ -66,7 +74,7 @@ static void moxie_cpu_initfn(Object *obj)
     static int inited;
 
     cs->env_ptr = &cpu->env;
-    cpu_exec_init(&cpu->env);
+    cpu_exec_init(cs, &error_abort);
 
     if (tcg_enabled() && !inited) {
         inited = 1;
@@ -114,6 +122,14 @@ static void moxie_cpu_class_init(ObjectClass *oc, void *data)
     cc->get_phys_page_debug = moxie_cpu_get_phys_page_debug;
     cc->vmsd = &vmstate_moxie_cpu;
 #endif
+    cc->disas_set_info = moxie_cpu_disas_set_info;
+
+    /*
+     * Reason: moxie_cpu_initfn() calls cpu_exec_init(), which saves
+     * the object in cpus -> dangling pointer after final
+     * object_unref().
+     */
+    dc->cannot_destroy_with_object_finalize_yet = true;
 }
 
 static void moxielite_initfn(Object *obj)

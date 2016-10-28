@@ -19,9 +19,11 @@
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "exec/address-spaces.h"
 #include "intel_iommu_internal.h"
+#include "hw/pci/pci.h"
 
 /*#define DEBUG_INTEL_IOMMU*/
 #ifdef DEBUG_INTEL_IOMMU
@@ -151,14 +153,27 @@ static gboolean vtd_hash_remove_by_domain(gpointer key, gpointer value,
     return entry->domain_id == domain_id;
 }
 
+/* The shift of an addr for a certain level of paging structure */
+static inline uint32_t vtd_slpt_level_shift(uint32_t level)
+{
+    return VTD_PAGE_SHIFT_4K + (level - 1) * VTD_SL_LEVEL_BITS;
+}
+
+static inline uint64_t vtd_slpt_level_page_mask(uint32_t level)
+{
+    return ~((1ULL << vtd_slpt_level_shift(level)) - 1);
+}
+
 static gboolean vtd_hash_remove_by_page(gpointer key, gpointer value,
                                         gpointer user_data)
 {
     VTDIOTLBEntry *entry = (VTDIOTLBEntry *)value;
     VTDIOTLBPageInvInfo *info = (VTDIOTLBPageInvInfo *)user_data;
-    uint64_t gfn = info->gfn & info->mask;
+    uint64_t gfn = (info->addr >> VTD_PAGE_SHIFT_4K) & info->mask;
+    uint64_t gfn_tlb = (info->addr & entry->mask) >> VTD_PAGE_SHIFT_4K;
     return (entry->domain_id == info->domain_id) &&
-            ((entry->gfn & info->mask) == gfn);
+            (((entry->gfn & info->mask) == gfn) ||
+             (entry->gfn == gfn_tlb));
 }
 
 /* Reset all the gen of VTDAddressSpace to zero and set the gen of
@@ -166,19 +181,17 @@ static gboolean vtd_hash_remove_by_page(gpointer key, gpointer value,
  */
 static void vtd_reset_context_cache(IntelIOMMUState *s)
 {
-    VTDAddressSpace **pvtd_as;
     VTDAddressSpace *vtd_as;
-    uint32_t bus_it;
+    VTDBus *vtd_bus;
+    GHashTableIter bus_it;
     uint32_t devfn_it;
 
+    g_hash_table_iter_init(&bus_it, s->vtd_as_by_busptr);
+
     VTD_DPRINTF(CACHE, "global context_cache_gen=1");
-    for (bus_it = 0; bus_it < VTD_PCI_BUS_MAX; ++bus_it) {
-        pvtd_as = s->address_spaces[bus_it];
-        if (!pvtd_as) {
-            continue;
-        }
+    while (g_hash_table_iter_next (&bus_it, NULL, (void**)&vtd_bus)) {
         for (devfn_it = 0; devfn_it < VTD_PCI_DEVFN_MAX; ++devfn_it) {
-            vtd_as = pvtd_as[devfn_it];
+            vtd_as = vtd_bus->dev_as[devfn_it];
             if (!vtd_as) {
                 continue;
             }
@@ -194,24 +207,46 @@ static void vtd_reset_iotlb(IntelIOMMUState *s)
     g_hash_table_remove_all(s->iotlb);
 }
 
+static uint64_t vtd_get_iotlb_key(uint64_t gfn, uint8_t source_id,
+                                  uint32_t level)
+{
+    return gfn | ((uint64_t)(source_id) << VTD_IOTLB_SID_SHIFT) |
+           ((uint64_t)(level) << VTD_IOTLB_LVL_SHIFT);
+}
+
+static uint64_t vtd_get_iotlb_gfn(hwaddr addr, uint32_t level)
+{
+    return (addr & vtd_slpt_level_page_mask(level)) >> VTD_PAGE_SHIFT_4K;
+}
+
 static VTDIOTLBEntry *vtd_lookup_iotlb(IntelIOMMUState *s, uint16_t source_id,
                                        hwaddr addr)
 {
+    VTDIOTLBEntry *entry;
     uint64_t key;
+    int level;
 
-    key = (addr >> VTD_PAGE_SHIFT_4K) |
-           ((uint64_t)(source_id) << VTD_IOTLB_SID_SHIFT);
-    return g_hash_table_lookup(s->iotlb, &key);
+    for (level = VTD_SL_PT_LEVEL; level < VTD_SL_PML4_LEVEL; level++) {
+        key = vtd_get_iotlb_key(vtd_get_iotlb_gfn(addr, level),
+                                source_id, level);
+        entry = g_hash_table_lookup(s->iotlb, &key);
+        if (entry) {
+            goto out;
+        }
+    }
 
+out:
+    return entry;
 }
 
 static void vtd_update_iotlb(IntelIOMMUState *s, uint16_t source_id,
                              uint16_t domain_id, hwaddr addr, uint64_t slpte,
-                             bool read_flags, bool write_flags)
+                             bool read_flags, bool write_flags,
+                             uint32_t level)
 {
     VTDIOTLBEntry *entry = g_malloc(sizeof(*entry));
     uint64_t *key = g_malloc(sizeof(*key));
-    uint64_t gfn = addr >> VTD_PAGE_SHIFT_4K;
+    uint64_t gfn = vtd_get_iotlb_gfn(addr, level);
 
     VTD_DPRINTF(CACHE, "update iotlb sid 0x%"PRIx16 " gpa 0x%"PRIx64
                 " slpte 0x%"PRIx64 " did 0x%"PRIx16, source_id, addr, slpte,
@@ -226,7 +261,8 @@ static void vtd_update_iotlb(IntelIOMMUState *s, uint16_t source_id,
     entry->slpte = slpte;
     entry->read_flags = read_flags;
     entry->write_flags = write_flags;
-    *key = gfn | ((uint64_t)(source_id) << VTD_IOTLB_SID_SHIFT);
+    entry->mask = vtd_slpt_level_page_mask(level);
+    *key = vtd_get_iotlb_key(gfn, source_id, level);
     g_hash_table_replace(s->iotlb, key, entry);
 }
 
@@ -246,7 +282,8 @@ static void vtd_generate_interrupt(IntelIOMMUState *s, hwaddr mesg_addr_reg,
     data = vtd_get_long_raw(s, mesg_data_reg);
 
     VTD_DPRINTF(FLOG, "msi: addr 0x%"PRIx64 " data 0x%"PRIx32, addr, data);
-    stl_le_phys(&address_space_memory, addr, data);
+    address_space_stl_le(&address_space_memory, addr, data,
+                         MEMTXATTRS_UNSPECIFIED, NULL);
 }
 
 /* Generate a fault event to software via MSI if conditions are met.
@@ -500,12 +537,6 @@ static inline dma_addr_t vtd_get_slpt_base_from_context(VTDContextEntry *ce)
     return ce->lo & VTD_CONTEXT_ENTRY_SLPTPTR;
 }
 
-/* The shift of an addr for a certain level of paging structure */
-static inline uint32_t vtd_slpt_level_shift(uint32_t level)
-{
-    return VTD_PAGE_SHIFT_4K + (level - 1) * VTD_SL_LEVEL_BITS;
-}
-
 static inline uint64_t vtd_get_slpte_addr(uint64_t slpte)
 {
     return slpte & VTD_SL_PT_BASE_ADDR_MASK;
@@ -745,19 +776,23 @@ static inline bool vtd_is_interrupt_addr(hwaddr addr)
 
 /* Map dev to context-entry then do a paging-structures walk to do a iommu
  * translation.
+ *
+ * Called from RCU critical section.
+ *
  * @bus_num: The bus number
  * @devfn: The devfn, which is the  combined of device and function number
  * @is_write: The access is a write operation
  * @entry: IOMMUTLBEntry that contain the addr to be translated and result
  */
-static void vtd_do_iommu_translate(VTDAddressSpace *vtd_as, uint8_t bus_num,
+static void vtd_do_iommu_translate(VTDAddressSpace *vtd_as, PCIBus *bus,
                                    uint8_t devfn, hwaddr addr, bool is_write,
                                    IOMMUTLBEntry *entry)
 {
     IntelIOMMUState *s = vtd_as->iommu_state;
     VTDContextEntry ce;
+    uint8_t bus_num = pci_bus_num(bus);
     VTDContextCacheEntry *cc_entry = &vtd_as->context_cache_entry;
-    uint64_t slpte;
+    uint64_t slpte, page_mask;
     uint32_t level;
     uint16_t source_id = vtd_make_source_id(bus_num, devfn);
     int ret_fr;
@@ -797,6 +832,7 @@ static void vtd_do_iommu_translate(VTDAddressSpace *vtd_as, uint8_t bus_num,
         slpte = iotlb_entry->slpte;
         reads = iotlb_entry->read_flags;
         writes = iotlb_entry->write_flags;
+        page_mask = iotlb_entry->mask;
         goto out;
     }
     /* Try to fetch context-entry from cache first */
@@ -843,12 +879,13 @@ static void vtd_do_iommu_translate(VTDAddressSpace *vtd_as, uint8_t bus_num,
         return;
     }
 
+    page_mask = vtd_slpt_level_page_mask(level);
     vtd_update_iotlb(s, source_id, VTD_CONTEXT_ENTRY_DID(ce.hi), addr, slpte,
-                     reads, writes);
+                     reads, writes, level);
 out:
-    entry->iova = addr & VTD_PAGE_MASK_4K;
-    entry->translated_addr = vtd_get_slpte_addr(slpte) & VTD_PAGE_MASK_4K;
-    entry->addr_mask = ~VTD_PAGE_MASK_4K;
+    entry->iova = addr & page_mask;
+    entry->translated_addr = vtd_get_slpte_addr(slpte) & page_mask;
+    entry->addr_mask = ~page_mask;
     entry->perm = (writes ? 2 : 0) + (reads ? 1 : 0);
 }
 
@@ -870,6 +907,29 @@ static void vtd_context_global_invalidate(IntelIOMMUState *s)
     }
 }
 
+
+/* Find the VTD address space currently associated with a given bus number,
+ */
+static VTDBus *vtd_find_as_from_bus_num(IntelIOMMUState *s, uint8_t bus_num)
+{
+    VTDBus *vtd_bus = s->vtd_as_by_bus_num[bus_num];
+    if (!vtd_bus) {
+        /* Iterate over the registered buses to find the one
+         * which currently hold this bus number, and update the bus_num lookup table:
+         */
+        GHashTableIter iter;
+
+        g_hash_table_iter_init(&iter, s->vtd_as_by_busptr);
+        while (g_hash_table_iter_next (&iter, NULL, (void**)&vtd_bus)) {
+            if (pci_bus_num(vtd_bus->bus) == bus_num) {
+                s->vtd_as_by_bus_num[bus_num] = vtd_bus;
+                return vtd_bus;
+            }
+        }
+    }
+    return vtd_bus;
+}
+
 /* Do a context-cache device-selective invalidation.
  * @func_mask: FM field after shifting
  */
@@ -878,7 +938,7 @@ static void vtd_context_device_invalidate(IntelIOMMUState *s,
                                           uint16_t func_mask)
 {
     uint16_t mask;
-    VTDAddressSpace **pvtd_as;
+    VTDBus *vtd_bus;
     VTDAddressSpace *vtd_as;
     uint16_t devfn;
     uint16_t devfn_it;
@@ -899,11 +959,11 @@ static void vtd_context_device_invalidate(IntelIOMMUState *s,
     }
     VTD_DPRINTF(INV, "device-selective invalidation source 0x%"PRIx16
                     " mask %"PRIu16, source_id, mask);
-    pvtd_as = s->address_spaces[VTD_SID_TO_BUS(source_id)];
-    if (pvtd_as) {
+    vtd_bus = vtd_find_as_from_bus_num(s, VTD_SID_TO_BUS(source_id));
+    if (vtd_bus) {
         devfn = VTD_SID_TO_DEVFN(source_id);
         for (devfn_it = 0; devfn_it < VTD_PCI_DEVFN_MAX; ++devfn_it) {
-            vtd_as = pvtd_as[devfn_it];
+            vtd_as = vtd_bus->dev_as[devfn_it];
             if (vtd_as && ((devfn_it & mask) == (devfn & mask))) {
                 VTD_DPRINTF(INV, "invalidate context-cahce of devfn 0x%"PRIx16,
                             devfn_it);
@@ -963,7 +1023,7 @@ static void vtd_iotlb_page_invalidate(IntelIOMMUState *s, uint16_t domain_id,
 
     assert(am <= VTD_MAMV);
     info.domain_id = domain_id;
-    info.gfn = addr >> VTD_PAGE_SHIFT_4K;
+    info.addr = addr;
     info.mask = ~((1 << am) - 1);
     g_hash_table_foreach_remove(s->iotlb, vtd_hash_remove_by_page, &info);
 }
@@ -1801,11 +1861,11 @@ static IOMMUTLBEntry vtd_iommu_translate(MemoryRegion *iommu, hwaddr addr,
         return ret;
     }
 
-    vtd_do_iommu_translate(vtd_as, vtd_as->bus_num, vtd_as->devfn, addr,
+    vtd_do_iommu_translate(vtd_as, vtd_as->bus, vtd_as->devfn, addr,
                            is_write, &ret);
     VTD_DPRINTF(MMU,
                 "bus %"PRIu8 " slot %"PRIu8 " func %"PRIu8 " devfn %"PRIu8
-                " gpa 0x%"PRIx64 " hpa 0x%"PRIx64, vtd_as->bus_num,
+                " gpa 0x%"PRIx64 " hpa 0x%"PRIx64, pci_bus_num(vtd_as->bus),
                 VTD_PCI_SLOT(vtd_as->devfn), VTD_PCI_FUNC(vtd_as->devfn),
                 vtd_as->devfn, addr, ret.translated_addr);
     return ret;
@@ -1835,6 +1895,38 @@ static Property vtd_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
+
+VTDAddressSpace *vtd_find_add_as(IntelIOMMUState *s, PCIBus *bus, int devfn)
+{
+    uintptr_t key = (uintptr_t)bus;
+    VTDBus *vtd_bus = g_hash_table_lookup(s->vtd_as_by_busptr, &key);
+    VTDAddressSpace *vtd_dev_as;
+
+    if (!vtd_bus) {
+        /* No corresponding free() */
+        vtd_bus = g_malloc0(sizeof(VTDBus) + sizeof(VTDAddressSpace *) * VTD_PCI_DEVFN_MAX);
+        vtd_bus->bus = bus;
+        key = (uintptr_t)bus;
+        g_hash_table_insert(s->vtd_as_by_busptr, &key, vtd_bus);
+    }
+
+    vtd_dev_as = vtd_bus->dev_as[devfn];
+
+    if (!vtd_dev_as) {
+        vtd_bus->dev_as[devfn] = vtd_dev_as = g_malloc0(sizeof(VTDAddressSpace));
+
+        vtd_dev_as->bus = bus;
+        vtd_dev_as->devfn = (uint8_t)devfn;
+        vtd_dev_as->iommu_state = s;
+        vtd_dev_as->context_cache_entry.context_cache_gen = 0;
+        memory_region_init_iommu(&vtd_dev_as->iommu, OBJECT(s),
+                                 &s->iommu_ops, "intel_iommu", UINT64_MAX);
+        address_space_init(&vtd_dev_as->as,
+                           &vtd_dev_as->iommu, "intel_iommu");
+    }
+    return vtd_dev_as;
+}
+
 /* Do the initialization. It will also be called when reset, so pay
  * attention when adding new initialization stuff.
  */
@@ -1857,7 +1949,7 @@ static void vtd_init(IntelIOMMUState *s)
     s->iq_last_desc_type = VTD_INV_DESC_NONE;
     s->next_frcd_reg = 0;
     s->cap = VTD_CAP_FRO | VTD_CAP_NFR | VTD_CAP_ND | VTD_CAP_MGAW |
-             VTD_CAP_SAGAW | VTD_CAP_MAMV | VTD_CAP_PSI;
+             VTD_CAP_SAGAW | VTD_CAP_MAMV | VTD_CAP_PSI | VTD_CAP_SLLPS;
     s->ecap = VTD_ECAP_QI | VTD_ECAP_IRO;
 
     vtd_reset_context_cache(s);
@@ -1927,13 +2019,15 @@ static void vtd_realize(DeviceState *dev, Error **errp)
     IntelIOMMUState *s = INTEL_IOMMU_DEVICE(dev);
 
     VTD_DPRINTF(GENERAL, "");
-    memset(s->address_spaces, 0, sizeof(s->address_spaces));
+    memset(s->vtd_as_by_bus_num, 0, sizeof(s->vtd_as_by_bus_num));
     memory_region_init_io(&s->csrmem, OBJECT(s), &vtd_mem_ops, s,
                           "intel_iommu", DMAR_REG_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->csrmem);
     /* No corresponding destroy */
     s->iotlb = g_hash_table_new_full(vtd_uint64_hash, vtd_uint64_equal,
                                      g_free, g_free);
+    s->vtd_as_by_busptr = g_hash_table_new_full(vtd_uint64_hash, vtd_uint64_equal,
+                                              g_free, g_free);
     vtd_init(s);
 }
 

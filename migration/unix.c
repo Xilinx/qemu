@@ -13,7 +13,7 @@
  * GNU GPL, version 2 or (at your option) any later version.
  */
 
-#include <string.h>
+#include "qemu/osdep.h"
 
 #include "qemu-common.h"
 #include "qemu/error-report.h"
@@ -39,11 +39,11 @@ static void unix_wait_for_connect(int fd, Error *err, void *opaque)
 
     if (fd < 0) {
         DPRINTF("migrate connect error: %s\n", error_get_pretty(err));
-        s->file = NULL;
+        s->to_dst_file = NULL;
         migrate_fd_error(s);
     } else {
         DPRINTF("migrate connect success\n");
-        s->file = qemu_fopen_socket(fd, "wb");
+        s->to_dst_file = qemu_fopen_socket(fd, "wb");
         migrate_fd_connect(s);
     }
 }
@@ -65,7 +65,7 @@ static void unix_accept_incoming_migration(void *opaque)
         c = qemu_accept(s, (struct sockaddr *)&addr, &addrlen);
         err = errno;
     } while (c < 0 && err == EINTR);
-    qemu_set_fd_handler2(s, NULL, NULL, NULL, NULL);
+    qemu_set_fd_handler(s, NULL, NULL, NULL);
     close(s);
 
     DPRINTF("accepted migration\n");
@@ -98,6 +98,6 @@ void unix_start_incoming_migration(const char *path, Error **errp)
         return;
     }
 
-    qemu_set_fd_handler2(s, NULL, unix_accept_incoming_migration, NULL,
-                         (void *)(intptr_t)s);
+    qemu_set_fd_handler(s, unix_accept_incoming_migration, NULL,
+                        (void *)(intptr_t)s);
 }

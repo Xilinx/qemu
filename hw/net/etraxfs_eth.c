@@ -22,10 +22,11 @@
  * THE SOFTWARE.
  */
 
-#include <stdio.h>
+#include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "net/net.h"
 #include "hw/cris/etraxfs.h"
+#include "qemu/error-report.h"
 
 #define D(x)
 
@@ -520,11 +521,6 @@ static int eth_match_groupaddr(ETRAXFSEthState *eth, const unsigned char *sa)
     return match;
 }
 
-static int eth_can_receive(NetClientState *nc)
-{
-    return 1;
-}
-
 static ssize_t eth_receive(NetClientState *nc, const uint8_t *buf, size_t size)
 {
     unsigned char sa_bcast[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
@@ -581,24 +577,10 @@ static const MemoryRegionOps eth_ops = {
     }
 };
 
-static void eth_cleanup(NetClientState *nc)
-{
-    ETRAXFSEthState *eth = qemu_get_nic_opaque(nc);
-
-    /* Disconnect the client.  */
-    eth->dma_out->client.push = NULL;
-    eth->dma_out->client.opaque = NULL;
-    eth->dma_in->client.opaque = NULL;
-    eth->dma_in->client.pull = NULL;
-        g_free(eth);
-}
-
 static NetClientInfo net_etraxfs_info = {
     .type = NET_CLIENT_OPTIONS_KIND_NIC,
     .size = sizeof(NICState),
-    .can_receive = eth_can_receive,
     .receive = eth_receive,
-    .cleanup = eth_cleanup,
     .link_status_changed = eth_set_link,
 };
 
@@ -608,7 +590,8 @@ static int fs_eth_init(SysBusDevice *sbd)
     ETRAXFSEthState *s = ETRAX_FS_ETH(dev);
 
     if (!s->dma_out || !s->dma_in) {
-        hw_error("Unconnected ETRAX-FS Ethernet MAC.\n");
+        error_report("Unconnected ETRAX-FS Ethernet MAC");
+        return -1;
     }
 
     s->dma_out->client.push = eth_tx_push;

@@ -25,6 +25,10 @@
  *
  */
 
+#include "qemu/osdep.h"
+#include "qapi/error.h"
+#include "qemu-common.h"
+#include "cpu.h"
 #include "hw/hw.h"
 #include "trace.h"
 #include "qemu/timer.h"
@@ -88,24 +92,24 @@ static void xics_common_reset(DeviceState *d)
     device_reset(DEVICE(icp->ics));
 }
 
-static void xics_prop_get_nr_irqs(Object *obj, Visitor *v,
-                                  void *opaque, const char *name, Error **errp)
+static void xics_prop_get_nr_irqs(Object *obj, Visitor *v, const char *name,
+                                  void *opaque, Error **errp)
 {
     XICSState *icp = XICS_COMMON(obj);
     int64_t value = icp->nr_irqs;
 
-    visit_type_int(v, &value, name, errp);
+    visit_type_int(v, name, &value, errp);
 }
 
-static void xics_prop_set_nr_irqs(Object *obj, Visitor *v,
-                                  void *opaque, const char *name, Error **errp)
+static void xics_prop_set_nr_irqs(Object *obj, Visitor *v, const char *name,
+                                  void *opaque, Error **errp)
 {
     XICSState *icp = XICS_COMMON(obj);
     XICSStateClass *info = XICS_COMMON_GET_CLASS(icp);
     Error *error = NULL;
     int64_t value;
 
-    visit_type_int(v, &value, name, &error);
+    visit_type_int(v, name, &value, &error);
     if (error) {
         error_propagate(errp, error);
         return;
@@ -122,17 +126,17 @@ static void xics_prop_set_nr_irqs(Object *obj, Visitor *v,
 }
 
 static void xics_prop_get_nr_servers(Object *obj, Visitor *v,
-                                     void *opaque, const char *name,
+                                     const char *name, void *opaque,
                                      Error **errp)
 {
     XICSState *icp = XICS_COMMON(obj);
     int64_t value = icp->nr_servers;
 
-    visit_type_int(v, &value, name, errp);
+    visit_type_int(v, name, &value, errp);
 }
 
 static void xics_prop_set_nr_servers(Object *obj, Visitor *v,
-                                     void *opaque, const char *name,
+                                     const char *name, void *opaque,
                                      Error **errp)
 {
     XICSState *icp = XICS_COMMON(obj);
@@ -140,7 +144,7 @@ static void xics_prop_set_nr_servers(Object *obj, Visitor *v,
     Error *error = NULL;
     int64_t value;
 
-    visit_type_int(v, &value, name, &error);
+    visit_type_int(v, name, &value, &error);
     if (error) {
         error_propagate(errp, error);
         return;
@@ -711,7 +715,7 @@ static int ics_find_free_block(ICSState *ics, int num, int alignnum)
     return -1;
 }
 
-int xics_alloc(XICSState *icp, int src, int irq_hint, bool lsi)
+int xics_alloc(XICSState *icp, int src, int irq_hint, bool lsi, Error **errp)
 {
     ICSState *ics = &icp->ics[src];
     int irq;
@@ -719,14 +723,14 @@ int xics_alloc(XICSState *icp, int src, int irq_hint, bool lsi)
     if (irq_hint) {
         assert(src == xics_find_source(icp, irq_hint));
         if (!ICS_IRQ_FREE(ics, irq_hint - ics->offset)) {
-            trace_xics_alloc_failed_hint(src, irq_hint);
+            error_setg(errp, "can't allocate IRQ %d: already in use", irq_hint);
             return -1;
         }
         irq = irq_hint;
     } else {
         irq = ics_find_free_block(ics, 1, 1);
         if (irq < 0) {
-            trace_xics_alloc_failed_no_left(src);
+            error_setg(errp, "can't allocate IRQ: no IRQ left");
             return -1;
         }
         irq += ics->offset;
@@ -739,10 +743,11 @@ int xics_alloc(XICSState *icp, int src, int irq_hint, bool lsi)
 }
 
 /*
- * Allocate block of consequtive IRQs, returns a number of the first.
+ * Allocate block of consecutive IRQs, and return the number of the first IRQ in the block.
  * If align==true, aligns the first IRQ number to num.
  */
-int xics_alloc_block(XICSState *icp, int src, int num, bool lsi, bool align)
+int xics_alloc_block(XICSState *icp, int src, int num, bool lsi, bool align,
+                     Error **errp)
 {
     int i, first = -1;
     ICSState *ics = &icp->ics[src];
@@ -761,6 +766,10 @@ int xics_alloc_block(XICSState *icp, int src, int num, bool lsi, bool align)
         first = ics_find_free_block(ics, num, num);
     } else {
         first = ics_find_free_block(ics, num, 1);
+    }
+    if (first < 0) {
+        error_setg(errp, "can't find a free %d-IRQ block", num);
+        return -1;
     }
 
     if (first >= 0) {
@@ -806,7 +815,7 @@ void xics_free(XICSState *icp, int irq, int num)
  * Guest interfaces
  */
 
-static target_ulong h_cppr(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static target_ulong h_cppr(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                            target_ulong opcode, target_ulong *args)
 {
     CPUState *cs = CPU(cpu);
@@ -816,7 +825,7 @@ static target_ulong h_cppr(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     return H_SUCCESS;
 }
 
-static target_ulong h_ipi(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static target_ulong h_ipi(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                           target_ulong opcode, target_ulong *args)
 {
     target_ulong server = get_cpu_index_by_dt_id(args[0]);
@@ -830,7 +839,7 @@ static target_ulong h_ipi(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     return H_SUCCESS;
 }
 
-static target_ulong h_xirr(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static target_ulong h_xirr(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                            target_ulong opcode, target_ulong *args)
 {
     CPUState *cs = CPU(cpu);
@@ -840,7 +849,7 @@ static target_ulong h_xirr(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     return H_SUCCESS;
 }
 
-static target_ulong h_xirr_x(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static target_ulong h_xirr_x(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                              target_ulong opcode, target_ulong *args)
 {
     CPUState *cs = CPU(cpu);
@@ -848,11 +857,11 @@ static target_ulong h_xirr_x(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     uint32_t xirr = icp_accept(ss);
 
     args[0] = xirr;
-    args[1] = cpu_get_real_ticks();
+    args[1] = cpu_get_host_ticks();
     return H_SUCCESS;
 }
 
-static target_ulong h_eoi(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static target_ulong h_eoi(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                           target_ulong opcode, target_ulong *args)
 {
     CPUState *cs = CPU(cpu);
@@ -862,7 +871,7 @@ static target_ulong h_eoi(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     return H_SUCCESS;
 }
 
-static target_ulong h_ipoll(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static target_ulong h_ipoll(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                             target_ulong opcode, target_ulong *args)
 {
     CPUState *cs = CPU(cpu);
@@ -874,7 +883,7 @@ static target_ulong h_ipoll(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     return H_SUCCESS;
 }
 
-static void rtas_set_xive(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static void rtas_set_xive(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                           uint32_t token,
                           uint32_t nargs, target_ulong args,
                           uint32_t nret, target_ulong rets)
@@ -902,7 +911,7 @@ static void rtas_set_xive(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     rtas_st(rets, 0, RTAS_OUT_SUCCESS);
 }
 
-static void rtas_get_xive(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static void rtas_get_xive(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                           uint32_t token,
                           uint32_t nargs, target_ulong args,
                           uint32_t nret, target_ulong rets)
@@ -927,7 +936,7 @@ static void rtas_get_xive(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     rtas_st(rets, 2, ics->irqs[nr - ics->offset].priority);
 }
 
-static void rtas_int_off(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static void rtas_int_off(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                          uint32_t token,
                          uint32_t nargs, target_ulong args,
                          uint32_t nret, target_ulong rets)
@@ -953,7 +962,7 @@ static void rtas_int_off(PowerPCCPU *cpu, sPAPREnvironment *spapr,
     rtas_st(rets, 0, RTAS_OUT_SUCCESS);
 }
 
-static void rtas_int_on(PowerPCCPU *cpu, sPAPREnvironment *spapr,
+static void rtas_int_on(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                         uint32_t token,
                         uint32_t nargs, target_ulong args,
                         uint32_t nret, target_ulong rets)

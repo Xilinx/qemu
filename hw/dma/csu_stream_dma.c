@@ -24,6 +24,7 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "qemu/log.h"
 
@@ -32,6 +33,7 @@
 #include "qemu/bitops.h"
 #include "sysemu/dma.h"
 #include "hw/register.h"
+#include "qapi/error.h"
 #include "qemu/main-loop.h"
 
 #include "hw/fdt_generic_util.h"
@@ -275,13 +277,13 @@ static void dmach_write(ZynqMPCSUDMA *s, uint8_t *buf, unsigned int len)
         unsigned int i;
 
         for (i = 0; i < len; i += 4) {
-            address_space_rw_attr(s->dma_as, s->regs[R_ADDR], buf, 4, true,
-                                  *s->attr);
+            address_space_rw(s->dma_as, s->regs[R_ADDR], *s->attr, buf, 4,
+                                  true);
             buf += 4;
         }
     } else {
-        address_space_rw_attr(s->dma_as, s->regs[R_ADDR], buf, len, true,
-                              *s->attr);
+        address_space_rw(s->dma_as, s->regs[R_ADDR], *s->attr, buf, len,
+                              true);
     }
 }
 
@@ -303,12 +305,12 @@ static inline void dmach_read(ZynqMPCSUDMA *s, uint8_t *buf, unsigned int len)
         unsigned int i;
 
         for (i = 0; i < len; i += 4) {
-            address_space_rw_attr(s->dma_as, s->regs[R_ADDR], buf + i, 4,
-                                  false, *s->attr);
+            address_space_rw(s->dma_as, s->regs[R_ADDR], *s->attr, buf + i, 4,
+                             false);
         }
     } else {
-        address_space_rw_attr(s->dma_as, s->regs[R_ADDR], buf, len, false,
-                              *s->attr);
+        address_space_rw(s->dma_as, s->regs[R_ADDR], *s->attr, buf, len,
+                              false);
     }
     dmach_data_process(s, buf, len);
 }

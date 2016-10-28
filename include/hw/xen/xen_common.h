@@ -1,5 +1,7 @@
 #ifndef QEMU_HW_XEN_COMMON_H
-#define QEMU_HW_XEN_COMMON_H
+#define QEMU_HW_XEN_COMMON_H 1
+
+
 
 /*
  * If we have new enough libxenctrl then we do not want/need these compat
@@ -24,7 +26,7 @@
  * We don't support Xen prior to 4.2.0.
  */
 
-/* Xen 4.2 through 4.6 */
+/* Xen 4.2 thru 4.6 */
 #if CONFIG_XEN_CTRL_INTERFACE_VERSION < 471
 
 typedef xc_interface xenforeignmemory_handle;
@@ -47,8 +49,6 @@ typedef xc_gnttab xengnttab_handle;
 #define xengnttab_unmap(h, a, n) xc_gnttab_munmap(h, a, n)
 #define xengnttab_map_grant_refs(h, c, d, r, p) \
     xc_gnttab_map_grant_refs(h, c, d, r, p)
-#define xengnttab_map_domain_grant_refs(h, c, d, r, p) \
-    xc_gnttab_map_domain_grant_refs(h, c, d, r, p)
 
 #define xenforeignmemory_open(l, f) xen_xc
 

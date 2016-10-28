@@ -22,8 +22,11 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/sysbus.h"
+#include "qapi/error.h"
 #include "hw/hw.h"
+#include "qom/cpu.h"
 #include "hw/fdt_generic_util.h"
 
 #define D(x)

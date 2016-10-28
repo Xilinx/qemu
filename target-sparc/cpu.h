@@ -1,9 +1,6 @@
 #ifndef CPU_SPARC_H
 #define CPU_SPARC_H
 
-#define NB_MEM_ATTR     1
-
-#include "config.h"
 #include "qemu-common.h"
 #include "qemu/bswap.h"
 
@@ -32,14 +29,6 @@
 #include "exec/cpu-defs.h"
 
 #include "fpu/softfloat.h"
-
-#define TARGET_HAS_ICE 1
-
-#if !defined(TARGET_SPARC64)
-#define ELF_MACHINE     EM_SPARC
-#else
-#define ELF_MACHINE     EM_SPARCV9
-#endif
 
 /*#define EXCP_INTERRUPT 0x100*/
 
@@ -240,6 +229,7 @@ typedef struct trap_state {
     uint32_t tt;
 } trap_state;
 #endif
+#define TARGET_INSN_START_EXTRA_WORDS 1
 
 typedef struct sparc_def_t {
     const char *name;
@@ -375,15 +365,13 @@ struct CPUTimer
     uint32_t    frequency;
     uint32_t    disabled;
     uint64_t    disabled_mask;
+    uint32_t    npt;
+    uint64_t    npt_mask;
     int64_t     clock_offset;
     QEMUTimer  *qtimer;
 };
 
 typedef struct CPUTimer CPUTimer;
-
-struct QEMUFile;
-void cpu_put_timer(struct QEMUFile *f, CPUTimer *s);
-void cpu_get_timer(struct QEMUFile *f, CPUTimer *s);
 
 typedef struct CPUSPARCState CPUSPARCState;
 
@@ -541,11 +529,12 @@ int sparc_cpu_memory_rw_debug(CPUState *cpu, vaddr addr,
 void gen_intermediate_code_init(CPUSPARCState *env);
 
 /* cpu-exec.c */
-int cpu_sparc_exec(CPUSPARCState *s);
+int cpu_sparc_exec(CPUState *cpu);
 
 /* win_helper.c */
 target_ulong cpu_get_psr(CPUSPARCState *env1);
 void cpu_put_psr(CPUSPARCState *env1, target_ulong val);
+void cpu_put_psr_raw(CPUSPARCState *env1, target_ulong val);
 #ifdef TARGET_SPARC64
 target_ulong cpu_get_ccr(CPUSPARCState *env1);
 void cpu_put_ccr(CPUSPARCState *env1, target_ulong val);
@@ -598,22 +587,12 @@ hwaddr cpu_get_phys_page_nofault(CPUSPARCState *env, target_ulong addr,
 int cpu_sparc_signal_handler(int host_signum, void *pinfo, void *puc);
 
 #ifndef NO_CPU_IO_DEFS
-static inline CPUSPARCState *cpu_init(const char *cpu_model)
-{
-    SPARCCPU *cpu = cpu_sparc_init(cpu_model);
-    if (cpu == NULL) {
-        return NULL;
-    }
-    return &cpu->env;
-}
+#define cpu_init(cpu_model) CPU(cpu_sparc_init(cpu_model))
 #endif
 
 #define cpu_exec cpu_sparc_exec
-#define cpu_gen_code cpu_sparc_gen_code
 #define cpu_signal_handler cpu_sparc_signal_handler
 #define cpu_list sparc_cpu_list
-
-#define CPU_SAVE_VERSION 7
 
 /* MMU modes definitions */
 #if defined (TARGET_SPARC64)
@@ -653,7 +632,7 @@ static inline int cpu_supervisor_mode(CPUSPARCState *env1)
 }
 #endif
 
-static inline int cpu_mmu_index(CPUSPARCState *env1)
+static inline int cpu_mmu_index(CPUSPARCState *env1, bool ifetch)
 {
 #if defined(CONFIG_USER_ONLY)
     return MMU_USER_IDX;

@@ -79,13 +79,11 @@ struct mbuf {
 	int	m_len;			/* Amount of data in this mbuf */
 
 	Slirp *slirp;
-	bool	arp_requested;
+	bool	resolution_requested;
 	uint64_t expiration_date;
+	char   *m_ext;
 	/* start of dynamic buffer area, must be last element */
-	union {
-		char	m_dat[1]; /* ANSI don't like 0 sized arrays */
-		char	*m_ext;
-	};
+	char    m_dat[];
 };
 
 #define ifq_prev m_prev

@@ -26,9 +26,11 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "hw/register.h"
 #include "qemu/bitops.h"
+#include "qapi/error.h"
 #include "qemu/log.h"
 
 #include "sysemu/dma.h"
@@ -435,7 +437,6 @@ static void xmpu_update_enabled(XMPU *s)
         if (!xr.config.enable) {
             continue;
         }
-        qemu_log("regions_enabled\n");
         regions_enabled = true;
         break;
     }
@@ -819,7 +820,7 @@ static const MemoryRegionOps xmpu_ops = {
 };
 
 static IOMMUTLBEntry xmpu_master_translate(XMPUMaster *xm, hwaddr addr,
-                                           MemTxAttrs attr,
+                                           MemTxAttrs *attr,
                                            bool *sec_vio)
 {
     XMPU *s = xm->parent;
@@ -838,7 +839,7 @@ static IOMMUTLBEntry xmpu_master_translate(XMPUMaster *xm, hwaddr addr,
     };
     bool default_wr = AF_EX32(s->regs, CTRL, DEFWRALLOWED);
     bool default_rd = AF_EX32(s->regs, CTRL, DEFRDALLOWED);
-    bool sec = attr.secure;
+    bool sec = attr->secure;
     bool sec_access_check;
     unsigned int nr_matched = 0;
     int i;
@@ -887,7 +888,7 @@ static IOMMUTLBEntry xmpu_master_translate(XMPUMaster *xm, hwaddr addr,
         xr.end &= ~s->addr_mask;
 
         id_match = (xr.master.mask & xr.master.id) ==
-                       (xr.master.mask & attr.master_id);
+                       (xr.master.mask & attr->master_id);
         match = id_match && (addr >= xr.start && addr < xr.end);
         if (match) {
             nr_matched++;
@@ -949,7 +950,7 @@ static uint64_t zero_read(void *opaque, hwaddr addr, unsigned size,
     bool poisoncfg = AF_EX32(s->regs, CTRL, POISONCFG);
     uint64_t value = 0;
     bool sec_vio;
-    IOMMUTLBEntry ret = xmpu_master_translate(xm, addr, attr, &sec_vio);
+    IOMMUTLBEntry ret = xmpu_master_translate(xm, addr, &attr, &sec_vio);
 
     if (ret.perm & IOMMU_RO) {
         dma_memory_read(&xm->down.rw.as, addr, &value, size);
@@ -980,7 +981,7 @@ static void zero_write(void *opaque, hwaddr addr, uint64_t value,
     XMPU *s = xm->parent;
     bool poisoncfg = AF_EX32(s->regs, CTRL, POISONCFG);
     bool sec_vio;
-    IOMMUTLBEntry ret = xmpu_master_translate(xm, addr, attr, &sec_vio);
+    IOMMUTLBEntry ret = xmpu_master_translate(xm, addr, &attr, &sec_vio);
 
     if (ret.perm & IOMMU_WO) {
         dma_memory_write(&xm->down.rw.as, addr, &value, size);
@@ -1029,7 +1030,7 @@ static const MemoryRegionOps zero_ops = {
 };
 
 static IOMMUTLBEntry xmpu_translate(MemoryRegion *mr, hwaddr addr,
-                                    bool is_write, MemTxAttrs attr)
+                                    bool is_write, MemTxAttrs *attr)
 {
     XMPUMaster *xm;
     IOMMUTLBEntry ret;

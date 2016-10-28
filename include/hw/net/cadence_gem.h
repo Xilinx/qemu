@@ -27,12 +27,14 @@
 #define TYPE_CADENCE_GEM "cadence_gem"
 #define CADENCE_GEM(obj) OBJECT_CHECK(CadenceGEMState, (obj), TYPE_CADENCE_GEM)
 
-#define GEM_MAX_PACKET_LEN (16 * 1024)
-#define GEM_MAX_DESC_LEN 4
-
 #include "net/net.h"
 #include "hw/sysbus.h"
 #include "hw/mdio/mdio.h"
+
+#define CADENCE_GEM_MAXREG        (0x00000800/4) /* Last valid GEM address */
+
+#define GEM_MAX_PACKET_LEN (16 * 1024)
+#define GEM_MAX_DESC_LEN 4
 
 #define MAX_PRIORITY_QUEUES             8
 #define MAX_TYPE1_SCREENERS             16
@@ -40,9 +42,8 @@
 #define MAX_TYPE2_SCREENERS_ETHTYPE     8
 #define MAX_TYPE2_SCREENERS_COMPARE     32
 
-#define CADENCE_GEM_MAXREG        (0x00000800/4) /* Last valid GEM address */
-
 typedef struct CadenceGEMState {
+    /*< private >*/
     SysBusDevice parent_obj;
 
     MemTxAttrs *attr;
@@ -78,6 +79,7 @@ typedef struct CadenceGEMState {
     uint32_t tx_desc_addr[MAX_PRIORITY_QUEUES];
 
     uint8_t can_rx_state; /* Debug only */
+
     uint32_t revision;
 
     unsigned rx_desc[MAX_PRIORITY_QUEUES][GEM_MAX_DESC_LEN];

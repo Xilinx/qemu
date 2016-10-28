@@ -1,9 +1,12 @@
 #ifndef QEMU_TIMER_H
 #define QEMU_TIMER_H
 
-#include "qemu/typedefs.h"
 #include "qemu-common.h"
 #include "qemu/notify.h"
+#include "qemu/host-utils.h"
+#include "sysemu/cpus.h"
+
+#define NANOSECONDS_PER_SECOND 1000000000LL
 
 /* timers */
 
@@ -207,12 +210,11 @@ void qemu_clock_notify(QEMUClockType type);
 void qemu_clock_enable(QEMUClockType type, bool enabled);
 
 /**
- * qemu_clock_warp:
- * @type: the clock type
+ * qemu_start_warp_timer:
  *
- * Warp a clock to a new value
+ * Starts a timer for virtual clock update
  */
-void qemu_clock_warp(QEMUClockType type);
+void qemu_start_warp_timer(void);
 
 /**
  * qemu_clock_register_reset_notifier:
@@ -410,7 +412,7 @@ int64_t timerlistgroup_deadline_ns(QEMUTimerListGroup *tlg);
  */
 
 /**
- * timer_init:
+ * timer_init_tl:
  * @ts: the timer to be initialised
  * @timer_list: the timer list to attach the timer to
  * @scale: the scale value for the timer
@@ -423,9 +425,82 @@ int64_t timerlistgroup_deadline_ns(QEMUTimerListGroup *tlg);
  * You need not call an explicit deinit call. Simply make
  * sure it is not on a list with timer_del.
  */
-void timer_init(QEMUTimer *ts,
-                QEMUTimerList *timer_list, int scale,
-                QEMUTimerCB *cb, void *opaque);
+void timer_init_tl(QEMUTimer *ts,
+                   QEMUTimerList *timer_list, int scale,
+                   QEMUTimerCB *cb, void *opaque);
+
+/**
+ * timer_init:
+ * @type: the clock to associate with the timer
+ * @scale: the scale value for the timer
+ * @cb: the callback to call when the timer expires
+ * @opaque: the opaque pointer to pass to the callback
+ *
+ * Initialize a timer with the given scale on the default timer list
+ * associated with the clock.
+ *
+ * You need not call an explicit deinit call. Simply make
+ * sure it is not on a list with timer_del.
+ */
+static inline void timer_init(QEMUTimer *ts, QEMUClockType type, int scale,
+                              QEMUTimerCB *cb, void *opaque)
+{
+    timer_init_tl(ts, main_loop_tlg.tl[type], scale, cb, opaque);
+}
+
+/**
+ * timer_init_ns:
+ * @type: the clock to associate with the timer
+ * @cb: the callback to call when the timer expires
+ * @opaque: the opaque pointer to pass to the callback
+ *
+ * Initialize a timer with nanosecond scale on the default timer list
+ * associated with the clock.
+ *
+ * You need not call an explicit deinit call. Simply make
+ * sure it is not on a list with timer_del.
+ */
+static inline void timer_init_ns(QEMUTimer *ts, QEMUClockType type,
+                                 QEMUTimerCB *cb, void *opaque)
+{
+    timer_init(ts, type, SCALE_NS, cb, opaque);
+}
+
+/**
+ * timer_init_us:
+ * @type: the clock to associate with the timer
+ * @cb: the callback to call when the timer expires
+ * @opaque: the opaque pointer to pass to the callback
+ *
+ * Initialize a timer with microsecond scale on the default timer list
+ * associated with the clock.
+ *
+ * You need not call an explicit deinit call. Simply make
+ * sure it is not on a list with timer_del.
+ */
+static inline void timer_init_us(QEMUTimer *ts, QEMUClockType type,
+                                 QEMUTimerCB *cb, void *opaque)
+{
+    timer_init(ts, type, SCALE_US, cb, opaque);
+}
+
+/**
+ * timer_init_ms:
+ * @type: the clock to associate with the timer
+ * @cb: the callback to call when the timer expires
+ * @opaque: the opaque pointer to pass to the callback
+ *
+ * Initialize a timer with millisecond scale on the default timer list
+ * associated with the clock.
+ *
+ * You need not call an explicit deinit call. Simply make
+ * sure it is not on a list with timer_del.
+ */
+static inline void timer_init_ms(QEMUTimer *ts, QEMUClockType type,
+                                 QEMUTimerCB *cb, void *opaque)
+{
+    timer_init(ts, type, SCALE_MS, cb, opaque);
+}
 
 /**
  * timer_new_tl:
@@ -448,7 +523,7 @@ static inline QEMUTimer *timer_new_tl(QEMUTimerList *timer_list,
                                       void *opaque)
 {
     QEMUTimer *ts = g_malloc0(sizeof(QEMUTimer));
-    timer_init(ts, timer_list, scale, cb, opaque);
+    timer_init_tl(ts, timer_list, scale, cb, opaque);
     return ts;
 }
 
@@ -520,6 +595,17 @@ static inline QEMUTimer *timer_new_ms(QEMUClockType type, QEMUTimerCB *cb,
 {
     return timer_new(type, SCALE_MS, cb, opaque);
 }
+
+/**
+ * timer_deinit:
+ * @ts: the timer to be de-initialised
+ *
+ * Deassociate the timer from any timerlist.  You should
+ * call timer_del before.  After this call, any further
+ * timer_del call cannot cause dangling pointer accesses
+ * even if the previously used timerlist is freed.
+ */
+void timer_deinit(QEMUTimer *ts);
 
 /**
  * timer_free:
@@ -698,9 +784,13 @@ void cpu_enable_ticks(void);
 /* Caller must hold BQL */
 void cpu_disable_ticks(void);
 
-static inline int64_t get_ticks_per_sec(void)
+static inline int64_t get_max_clock_jump(void)
 {
-    return 1000000000LL;
+    /* This should be small enough to prevent excessive interrupts from being
+     * generated by the RTC on clock jumps, but large enough to avoid frequent
+     * unnecessary resets in idle VMs.
+     */
+    return 60 * NANOSECONDS_PER_SECOND;
 }
 
 /*
@@ -726,7 +816,7 @@ static inline int64_t get_clock(void)
 {
     LARGE_INTEGER ti;
     QueryPerformanceCounter(&ti);
-    return muldiv64(ti.QuadPart, get_ticks_per_sec(), clock_freq);
+    return muldiv64(ti.QuadPart, NANOSECONDS_PER_SECOND, clock_freq);
 }
 
 #else
@@ -754,7 +844,6 @@ static inline int64_t get_clock(void)
 int64_t cpu_get_icount_raw(void);
 int64_t cpu_get_icount(void);
 int64_t cpu_get_clock(void);
-int64_t cpu_get_clock_offset(void);
 int64_t cpu_icount_to_ns(int64_t icount);
 
 /*******************************************/
@@ -762,7 +851,7 @@ int64_t cpu_icount_to_ns(int64_t icount);
 
 #if defined(_ARCH_PPC)
 
-static inline int64_t cpu_get_real_ticks(void)
+static inline int64_t cpu_get_host_ticks(void)
 {
     int64_t retval;
 #ifdef _ARCH_PPC64
@@ -788,7 +877,7 @@ static inline int64_t cpu_get_real_ticks(void)
 
 #elif defined(__i386__)
 
-static inline int64_t cpu_get_real_ticks(void)
+static inline int64_t cpu_get_host_ticks(void)
 {
     int64_t val;
     asm volatile ("rdtsc" : "=A" (val));
@@ -797,7 +886,7 @@ static inline int64_t cpu_get_real_ticks(void)
 
 #elif defined(__x86_64__)
 
-static inline int64_t cpu_get_real_ticks(void)
+static inline int64_t cpu_get_host_ticks(void)
 {
     uint32_t low,high;
     int64_t val;
@@ -810,7 +899,7 @@ static inline int64_t cpu_get_real_ticks(void)
 
 #elif defined(__hppa__)
 
-static inline int64_t cpu_get_real_ticks(void)
+static inline int64_t cpu_get_host_ticks(void)
 {
     int val;
     asm volatile ("mfctl %%cr16, %0" : "=r"(val));
@@ -819,7 +908,7 @@ static inline int64_t cpu_get_real_ticks(void)
 
 #elif defined(__ia64)
 
-static inline int64_t cpu_get_real_ticks(void)
+static inline int64_t cpu_get_host_ticks(void)
 {
     int64_t val;
     asm volatile ("mov %0 = ar.itc" : "=r"(val) :: "memory");
@@ -828,7 +917,7 @@ static inline int64_t cpu_get_real_ticks(void)
 
 #elif defined(__s390__)
 
-static inline int64_t cpu_get_real_ticks(void)
+static inline int64_t cpu_get_host_ticks(void)
 {
     int64_t val;
     asm volatile("stck 0(%1)" : "=m" (val) : "a" (&val) : "cc");
@@ -837,7 +926,7 @@ static inline int64_t cpu_get_real_ticks(void)
 
 #elif defined(__sparc__)
 
-static inline int64_t cpu_get_real_ticks (void)
+static inline int64_t cpu_get_host_ticks (void)
 {
 #if defined(_LP64)
     uint64_t        rval;
@@ -875,7 +964,7 @@ static inline int64_t cpu_get_real_ticks (void)
                               : "=r" (value));          \
     }
 
-static inline int64_t cpu_get_real_ticks(void)
+static inline int64_t cpu_get_host_ticks(void)
 {
     /* On kernels >= 2.6.25 rdhwr <reg>, $2 and $3 are emulated */
     uint32_t count;
@@ -891,7 +980,7 @@ static inline int64_t cpu_get_real_ticks(void)
 
 #elif defined(__alpha__)
 
-static inline int64_t cpu_get_real_ticks(void)
+static inline int64_t cpu_get_host_ticks(void)
 {
     uint64_t cc;
     uint32_t cur, ofs;
@@ -906,7 +995,7 @@ static inline int64_t cpu_get_real_ticks(void)
 /* The host CPU doesn't have an easily accessible cycle counter.
    Just return a monotonically increasing value.  This will be
    totally wrong, but hopefully better than nothing.  */
-static inline int64_t cpu_get_real_ticks (void)
+static inline int64_t cpu_get_host_ticks (void)
 {
     static int64_t ticks = 0;
     return ticks++;
@@ -916,11 +1005,10 @@ static inline int64_t cpu_get_real_ticks (void)
 #ifdef CONFIG_PROFILER
 static inline int64_t profile_getclock(void)
 {
-    return cpu_get_real_ticks();
+    return get_clock();
 }
 
-extern int64_t qemu_time, qemu_time_start;
-extern int64_t tlb_flush_time;
+extern int64_t tcg_time;
 extern int64_t dev_time;
 #endif
 

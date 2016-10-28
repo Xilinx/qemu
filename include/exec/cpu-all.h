@@ -24,6 +24,13 @@
 #include "exec/memory.h"
 #include "qemu/thread.h"
 #include "qom/cpu.h"
+#include "qemu/rcu.h"
+
+#define EXCP_INTERRUPT 	0x10000 /* async interruption */
+#define EXCP_HLT        0x10001 /* hlt instruction reached */
+#define EXCP_DEBUG      0x10002 /* cpu stopped after a breakpoint or singlestep */
+#define EXCP_HALTED     0x10003 /* cpu is halted (waiting for external event) */
+#define EXCP_YIELD      0x10004 /* cpu wants to yield timeslice to another */
 
 /* some important defines:
  *
@@ -115,43 +122,9 @@ static inline void tswap64s(uint64_t *s)
 #define bswaptls(s) bswap64s(s)
 #endif
 
-/* CPU memory access without any memory or io remapping */
-
-/*
- * the generic syntax for the memory accesses is:
- *
- * load: ld{type}{sign}{size}{endian}_{access_type}(ptr)
- *
- * store: st{type}{size}{endian}_{access_type}(ptr, val)
- *
- * type is:
- * (empty): integer access
- *   f    : float access
- *
- * sign is:
- * (empty): for floats or 32 bit size
- *   u    : unsigned
- *   s    : signed
- *
- * size is:
- *   b: 8 bits
- *   w: 16 bits
- *   l: 32 bits
- *   q: 64 bits
- *
- * endian is:
- * (empty): target cpu endianness or 8 bit access
- *   r    : reversed target cpu endianness (not implemented yet)
- *   be   : big endian (not implemented yet)
- *   le   : little endian (not implemented yet)
- *
- * access_type is:
- *   raw    : host memory access
- *   user   : user mode access using soft MMU
- *   kernel : kernel mode access using soft MMU
+/* Target-endianness CPU memory access functions. These fit into the
+ * {ld,st}{type}{sign}{size}{endian}_p naming scheme described in bswap.h.
  */
-
-/* target-endianness CPU memory access functions */
 #if defined(TARGET_WORDS_BIGENDIAN)
 #define lduw_p(p) lduw_be_p(p)
 #define ldsw_p(p) ldsw_be_p(p)
@@ -181,25 +154,42 @@ static inline void tswap64s(uint64_t *s)
 /* MMU memory access macros */
 
 #if defined(CONFIG_USER_ONLY)
-#include <assert.h>
 #include "exec/user/abitypes.h"
 
 /* On some host systems the guest address space is reserved on the host.
  * This allows the guest address space to be offset to a convenient location.
  */
-#if defined(CONFIG_USE_GUEST_BASE)
 extern unsigned long guest_base;
 extern int have_guest_base;
 extern unsigned long reserved_va;
-#define GUEST_BASE guest_base
-#define RESERVED_VA reserved_va
-#else
-#define GUEST_BASE 0ul
-#define RESERVED_VA 0ul
-#endif
 
-#define GUEST_ADDR_MAX (RESERVED_VA ? RESERVED_VA : \
+#define GUEST_ADDR_MAX (reserved_va ? reserved_va : \
                                     (1ul << TARGET_VIRT_ADDR_SPACE_BITS) - 1)
+#else
+
+#include "exec/hwaddr.h"
+uint32_t lduw_phys(AddressSpace *as, hwaddr addr);
+uint32_t ldl_phys(AddressSpace *as, hwaddr addr);
+uint64_t ldq_phys(AddressSpace *as, hwaddr addr);
+void stl_phys_notdirty(AddressSpace *as, hwaddr addr, uint32_t val);
+void stw_phys(AddressSpace *as, hwaddr addr, uint32_t val);
+void stl_phys(AddressSpace *as, hwaddr addr, uint32_t val);
+void stq_phys(AddressSpace *as, hwaddr addr, uint64_t val);
+
+uint32_t address_space_lduw(AddressSpace *as, hwaddr addr,
+                            MemTxAttrs attrs, MemTxResult *result);
+uint32_t address_space_ldl(AddressSpace *as, hwaddr addr,
+                            MemTxAttrs attrs, MemTxResult *result);
+uint64_t address_space_ldq(AddressSpace *as, hwaddr addr,
+                            MemTxAttrs attrs, MemTxResult *result);
+void address_space_stl_notdirty(AddressSpace *as, hwaddr addr, uint32_t val,
+                            MemTxAttrs attrs, MemTxResult *result);
+void address_space_stw(AddressSpace *as, hwaddr addr, uint32_t val,
+                            MemTxAttrs attrs, MemTxResult *result);
+void address_space_stl(AddressSpace *as, hwaddr addr, uint32_t val,
+                            MemTxAttrs attrs, MemTxResult *result);
+void address_space_stq(AddressSpace *as, hwaddr addr, uint64_t val,
+                            MemTxAttrs attrs, MemTxResult *result);
 #endif
 
 /* page related stuff */
@@ -208,12 +198,17 @@ extern unsigned long reserved_va;
 #define TARGET_PAGE_MASK ~(TARGET_PAGE_SIZE - 1)
 #define TARGET_PAGE_ALIGN(addr) (((addr) + TARGET_PAGE_SIZE - 1) & TARGET_PAGE_MASK)
 
-/* ??? These should be the larger of uintptr_t and target_ulong.  */
+/* Using intptr_t ensures that qemu_*_page_mask is sign-extended even
+ * when intptr_t is 32-bit and we are aligning a long long.
+ */
 extern uintptr_t qemu_real_host_page_size;
+extern intptr_t qemu_real_host_page_mask;
 extern uintptr_t qemu_host_page_size;
-extern uintptr_t qemu_host_page_mask;
+extern intptr_t qemu_host_page_mask;
 
 #define HOST_PAGE_ALIGN(addr) (((addr) + qemu_host_page_size - 1) & qemu_host_page_mask)
+#define REAL_HOST_PAGE_ALIGN(addr) (((addr) + qemu_real_host_page_size - 1) & \
+                                    qemu_real_host_page_mask)
 
 /* same as PROT_xxx */
 #define PAGE_READ      0x0001
@@ -297,42 +292,6 @@ CPUArchState *cpu_copy(CPUArchState *env);
 
 #if !defined(CONFIG_USER_ONLY)
 
-/* memory API */
-
-typedef struct RAMBlock {
-    struct MemoryRegion *mr;
-    uint8_t *host;
-    ram_addr_t offset;
-    ram_addr_t length;
-    uint32_t flags;
-    char idstr[256];
-    /* Reads can take either the iothread or the ramlist lock.
-     * Writes must take both locks.
-     */
-    QTAILQ_ENTRY(RAMBlock) next;
-    int fd;
-} RAMBlock;
-
-static inline void *ramblock_ptr(RAMBlock *block, ram_addr_t offset)
-{
-    assert(offset < block->length);
-    assert(block->host);
-    return (char *)block->host + offset;
-}
-
-typedef struct RAMList {
-    QemuMutex mutex;
-    /* Protected by the iothread lock.  */
-    unsigned long *dirty_memory[DIRTY_MEMORY_NUM];
-    RAMBlock *mru_block;
-    /* Protected by the ramlist lock.  */
-    QTAILQ_HEAD(, RAMBlock) blocks;
-    uint32_t version;
-} RAMList;
-extern RAMList ram_list;
-
-extern const char *machine_path;
-
 /* Flags stored in the low bits of the TLB virtual address.  These are
    defined so that fast path ram access is all zeros.  */
 /* Zero if TLB entry is valid.  */
@@ -345,9 +304,6 @@ extern const char *machine_path;
 
 void dump_exec_info(FILE *f, fprintf_function cpu_fprintf);
 void dump_opcount_info(FILE *f, fprintf_function cpu_fprintf);
-ram_addr_t last_ram_offset(void);
-void qemu_mutex_lock_ramlist(void);
-void qemu_mutex_unlock_ramlist(void);
 #endif /* !CONFIG_USER_ONLY */
 
 int cpu_memory_rw_debug(CPUState *cpu, target_ulong addr,

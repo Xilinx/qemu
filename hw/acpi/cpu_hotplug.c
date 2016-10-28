@@ -9,8 +9,11 @@
  * This work is licensed under the terms of the GNU GPL, version 2 or later.
  * See the COPYING file in the top-level directory.
  */
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/acpi/cpu_hotplug.h"
+#include "qapi/error.h"
+#include "qom/cpu.h"
 
 static uint64_t cpu_status_read(void *opaque, hwaddr addr, unsigned int size)
 {
@@ -59,8 +62,7 @@ void acpi_cpu_plug_cb(ACPIREGS *ar, qemu_irq irq,
         return;
     }
 
-    ar->gpe.sts[0] |= ACPI_CPU_HOTPLUG_STATUS;
-    acpi_update_sci(ar, irq);
+    acpi_send_gpe_event(ar, irq, ACPI_CPU_HOTPLUG_STATUS);
 }
 
 void acpi_cpu_hotplug_init(MemoryRegion *parent, Object *owner,

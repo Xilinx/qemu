@@ -17,7 +17,9 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
 #include "hw/sysbus.h"
+#include "qapi/error.h"
 #include "monitor/monitor.h"
 #include "exec/address-spaces.h"
 
@@ -93,6 +95,8 @@ bool sysbus_has_irq(SysBusDevice *dev, int n)
     ObjectProperty *r;
 
     r = object_property_find(OBJECT(dev), prop, NULL);
+    g_free(prop);
+
     return (r != NULL);
 }
 
@@ -109,13 +113,19 @@ qemu_irq sysbus_get_connected_irq(SysBusDevice *dev, int n)
 
 void sysbus_connect_irq(SysBusDevice *dev, int n, qemu_irq irq)
 {
+    SysBusDeviceClass *sbd = SYS_BUS_DEVICE_GET_CLASS(dev);
+
     qdev_connect_gpio_out_named(DEVICE(dev), SYSBUS_DEVICE_GPIO_IRQ, n, irq);
+
+    if (sbd->connect_irq_notifier) {
+        sbd->connect_irq_notifier(dev, irq);
+    }
 }
 
 /* Check whether an MMIO region exists */
 bool sysbus_has_mmio(SysBusDevice *dev, unsigned int n)
 {
-    return sysbus_mmio_get_region(dev, n);
+    return (n < dev->num_mmio);
 }
 
 static void sysbus_mmio_map_common(SysBusDevice *dev, int n, hwaddr addr,
@@ -211,9 +221,9 @@ MemoryRegion *sysbus_mmio_get_region(SysBusDevice *dev, int n)
     return ret;
 }
 
-void sysbus_init_ioports(SysBusDevice *dev, pio_addr_t ioport, pio_addr_t size)
+void sysbus_init_ioports(SysBusDevice *dev, uint32_t ioport, uint32_t size)
 {
-    pio_addr_t i;
+    uint32_t i;
 
     for (i = 0; i < size; i++) {
         assert(dev->num_pio < QDEV_MAX_PIO);
@@ -315,21 +325,26 @@ static void sysbus_dev_print(Monitor *mon, DeviceState *dev, int indent)
 static char *sysbus_get_fw_dev_path(DeviceState *dev)
 {
     SysBusDevice *s = SYS_BUS_DEVICE(dev);
-    char path[40];
-    int off;
+    SysBusDeviceClass *sbc = SYS_BUS_DEVICE_GET_CLASS(s);
+    /* for the explicit unit address fallback case: */
+    char *addr, *fw_dev_path;
 
-    off = snprintf(path, sizeof(path), "%s", qdev_fw_name(dev));
-
-    if (sysbus_mmio_get_region(s, 0)) {
-        hwaddr addr;
-        addr = object_property_get_int(OBJECT(sysbus_mmio_get_region(s, 0)),
-                                       "addr", &error_abort);
-        snprintf(path + off, sizeof(path) - off, "@"TARGET_FMT_plx, addr);
-    } else if (s->num_pio) {
-        snprintf(path + off, sizeof(path) - off, "@i%04x", s->pio[0]);
+    if (s->num_mmio) {
+        return g_strdup_printf("%s@" TARGET_FMT_plx, qdev_fw_name(dev),
+                               s->mmio[0].addr);
     }
-
-    return g_strdup(path);
+    if (s->num_pio) {
+        return g_strdup_printf("%s@i%04x", qdev_fw_name(dev), s->pio[0]);
+    }
+    if (sbc->explicit_ofw_unit_address) {
+        addr = sbc->explicit_ofw_unit_address(s);
+        if (addr) {
+            fw_dev_path = g_strdup_printf("%s@%s", qdev_fw_name(dev), addr);
+            g_free(addr);
+            return fw_dev_path;
+        }
+    }
+    return g_strdup(qdev_fw_name(dev));
 }
 
 void sysbus_add_io(SysBusDevice *dev, hwaddr addr,

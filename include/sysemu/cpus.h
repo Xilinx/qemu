@@ -2,6 +2,7 @@
 #define QEMU_CPUS_H
 
 /* cpus.c */
+bool qemu_in_vcpu_thread(void);
 void qemu_init_cpu_loop(void);
 void resume_all_vcpus(void);
 void pause_all_vcpus(void);
@@ -11,7 +12,6 @@ bool all_cpu_threads_idle(void);
 void cpu_synchronize_all_states(void);
 void cpu_synchronize_all_post_reset(void);
 void cpu_synchronize_all_post_init(void);
-void cpu_clean_all_dirty(void);
 
 void tcg_clock_warp(int64_t dest);
 bool tcg_idle_clock_warp(int64_t dest);

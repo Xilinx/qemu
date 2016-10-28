@@ -22,6 +22,7 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "hw/ptimer.h"
 #include "qemu/log.h"
@@ -221,8 +222,9 @@ static void xilinx_timer_realize(DeviceState *dev, Error **errp)
         ptimer_set_freq(xt->ptimer, t->freq_hz);
     }
 
-    object_property_set_int(OBJECT(&t->mmio), R_MAX * 4 * num_timers(t),
-                            "size", &error_abort);
+    memory_region_init_io(&t->mmio, OBJECT(t), &timer_ops, t, "xlnx.xps-timer",
+                          R_MAX * 4 * num_timers(t));
+    sysbus_init_mmio(SYS_BUS_DEVICE(dev), &t->mmio);
 }
 
 static void xilinx_timer_init(Object *obj)
@@ -231,9 +233,6 @@ static void xilinx_timer_init(Object *obj)
 
     /* All timers share a single irq line.  */
     sysbus_init_irq(SYS_BUS_DEVICE(obj), &t->irq);
-    memory_region_init_io(&t->mmio, OBJECT(t), &timer_ops, t,
-                          "xlnx.xps-timer", 0);
-    sysbus_init_mmio(SYS_BUS_DEVICE(obj), &t->mmio);
 }
 
 static Property xilinx_timer_properties[] = {

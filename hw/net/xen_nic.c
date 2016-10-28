@@ -19,19 +19,9 @@
  *  GNU GPL, version 2 or (at your option) any later version.
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdarg.h>
-#include <string.h>
-#include <unistd.h>
-#include <signal.h>
-#include <inttypes.h>
-#include <fcntl.h>
-#include <errno.h>
+#include "qemu/osdep.h"
 #include <sys/socket.h>
 #include <sys/ioctl.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <sys/mman.h>
 #include <sys/wait.h>
 
@@ -234,27 +224,6 @@ static void net_rx_response(struct XenNetDev *netdev,
 
 #define NET_IP_ALIGN 2
 
-static int net_rx_ok(NetClientState *nc)
-{
-    struct XenNetDev *netdev = qemu_get_nic_opaque(nc);
-    RING_IDX rc, rp;
-
-    if (netdev->xendev.be_state != XenbusStateConnected) {
-        return 0;
-    }
-
-    rc = netdev->rx_ring.req_cons;
-    rp = netdev->rx_ring.sring->req_prod;
-    xen_rmb();
-
-    if (rc == rp || RING_REQUEST_CONS_OVERFLOW(&netdev->rx_ring, rc)) {
-        xen_be_printf(&netdev->xendev, 2, "%s: no rx buffers (%d/%d)\n",
-                      __FUNCTION__, rc, rp);
-        return 0;
-    }
-    return 1;
-}
-
 static ssize_t net_rx_packet(NetClientState *nc, const uint8_t *buf, size_t size)
 {
     struct XenNetDev *netdev = qemu_get_nic_opaque(nc);
@@ -271,8 +240,7 @@ static ssize_t net_rx_packet(NetClientState *nc, const uint8_t *buf, size_t size
     xen_rmb(); /* Ensure we see queued requests up to 'rp'. */
 
     if (rc == rp || RING_REQUEST_CONS_OVERFLOW(&netdev->rx_ring, rc)) {
-        xen_be_printf(&netdev->xendev, 2, "no buffer, drop packet\n");
-        return -1;
+        return 0;
     }
     if (size > XC_PAGE_SIZE - NET_IP_ALIGN) {
         xen_be_printf(&netdev->xendev, 0, "packet too big (%lu > %ld)",
@@ -304,7 +272,6 @@ static ssize_t net_rx_packet(NetClientState *nc, const uint8_t *buf, size_t size
 static NetClientInfo net_xen_info = {
     .type = NET_CLIENT_OPTIONS_KIND_NIC,
     .size = sizeof(NICState),
-    .can_receive = net_rx_ok,
     .receive = net_rx_packet,
 };
 
@@ -410,10 +377,6 @@ static void net_disconnect(struct XenDevice *xendev)
         xengnttab_unmap(netdev->xendev.gnttabdev, netdev->rxs, 1);
         netdev->rxs = NULL;
     }
-    if (netdev->nic) {
-        qemu_del_nic(netdev->nic);
-        netdev->nic = NULL;
-    }
 }
 
 static void net_event(struct XenDevice *xendev)
@@ -427,7 +390,12 @@ static int net_free(struct XenDevice *xendev)
 {
     struct XenNetDev *netdev = container_of(xendev, struct XenNetDev, xendev);
 
+    if (netdev->nic) {
+        qemu_del_nic(netdev->nic);
+        netdev->nic = NULL;
+    }
     g_free(netdev->mac);
+    netdev->mac = NULL;
     return 0;
 }
 

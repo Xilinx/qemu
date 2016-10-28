@@ -19,8 +19,14 @@
 #define QVIRTIO_DRIVER          0x2
 #define QVIRTIO_DRIVER_OK       0x4
 
-#define QVIRTIO_NET_DEVICE_ID   0x1
-#define QVIRTIO_BLK_DEVICE_ID   0x2
+#define QVIRTIO_NET_DEVICE_ID       0x1
+#define QVIRTIO_BLK_DEVICE_ID       0x2
+#define QVIRTIO_CONSOLE_DEVICE_ID   0x3
+#define QVIRTIO_RNG_DEVICE_ID       0x4
+#define QVIRTIO_BALLOON_DEVICE_ID   0x5
+#define QVIRTIO_RPMSG_DEVICE_ID     0x7
+#define QVIRTIO_SCSI_DEVICE_ID      0x8
+#define QVIRTIO_9P_DEVICE_ID        0x9
 
 #define QVIRTIO_F_NOTIFY_ON_EMPTY       0x01000000
 #define QVIRTIO_F_ANY_LAYOUT            0x08000000
@@ -93,10 +99,10 @@ typedef struct QVRingIndirectDesc {
 } QVRingIndirectDesc;
 
 typedef struct QVirtioBus {
-    uint8_t (*config_readb)(QVirtioDevice *d, void *addr);
-    uint16_t (*config_readw)(QVirtioDevice *d, void *addr);
-    uint32_t (*config_readl)(QVirtioDevice *d, void *addr);
-    uint64_t (*config_readq)(QVirtioDevice *d, void *addr);
+    uint8_t (*config_readb)(QVirtioDevice *d, uint64_t addr);
+    uint16_t (*config_readw)(QVirtioDevice *d, uint64_t addr);
+    uint32_t (*config_readl)(QVirtioDevice *d, uint64_t addr);
+    uint64_t (*config_readq)(QVirtioDevice *d, uint64_t addr);
 
     /* Get features of the device */
     uint32_t (*get_features)(QVirtioDevice *d);
@@ -144,13 +150,13 @@ static inline uint32_t qvring_size(uint32_t num, uint32_t align)
 }
 
 uint8_t qvirtio_config_readb(const QVirtioBus *bus, QVirtioDevice *d,
-                                                                void *addr);
+                                                                uint64_t addr);
 uint16_t qvirtio_config_readw(const QVirtioBus *bus, QVirtioDevice *d,
-                                                                void *addr);
+                                                                uint64_t addr);
 uint32_t qvirtio_config_readl(const QVirtioBus *bus, QVirtioDevice *d,
-                                                                void *addr);
+                                                                uint64_t addr);
 uint64_t qvirtio_config_readq(const QVirtioBus *bus, QVirtioDevice *d,
-                                                                void *addr);
+                                                                uint64_t addr);
 uint32_t qvirtio_get_features(const QVirtioBus *bus, QVirtioDevice *d);
 void qvirtio_set_features(const QVirtioBus *bus, QVirtioDevice *d,
                                                             uint32_t features);

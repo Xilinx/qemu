@@ -18,14 +18,13 @@
  * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
 #include <zlib.h>
-#include <stdint.h>
 
 #include "qemu-common.h"
 #include "qemu/timer.h"
 #include "qemu/queue.h"
 #include "qemu/atomic.h"
-#include "monitor/monitor.h"
 #include "sysemu/sysemu.h"
 #include "trace.h"
 
@@ -120,9 +119,12 @@ static QXLMode qxl_modes[] = {
     QXL_MODE_EX(2560, 2048),
     QXL_MODE_EX(2800, 2100),
     QXL_MODE_EX(3200, 2400),
+    /* these modes need more than 32 MB video memory */
     QXL_MODE_EX(3840, 2160), /* 4k mainstream */
     QXL_MODE_EX(4096, 2160), /* 4k            */
+    /* these modes need more than 64 MB video memory */
     QXL_MODE_EX(7680, 4320), /* 8k mainstream */
+    /* these modes need more than 128 MB video memory */
     QXL_MODE_EX(8192, 4320), /* 8k            */
 };
 
@@ -269,6 +271,11 @@ static void qxl_spice_monitors_config_async(PCIQXLDevice *qxl, int replay)
                     QXL_COOKIE_TYPE_POST_LOAD_MONITORS_CONFIG,
                     0));
     } else {
+#if SPICE_SERVER_VERSION >= 0x000c06 /* release 0.12.6 */
+        if (qxl->max_outputs) {
+            spice_qxl_set_max_monitors(&qxl->ssd.qxl, qxl->max_outputs);
+        }
+#endif
         qxl->guest_monitors_config = qxl->ram->monitors_config;
         spice_qxl_monitors_config_async(&qxl->ssd.qxl,
                 qxl->ram->monitors_config,
@@ -295,19 +302,6 @@ void qxl_spice_reset_cursor(PCIQXLDevice *qxl)
         cursor_put(qxl->ssd.cursor);
     }
     qxl->ssd.cursor = cursor_builtin_hidden();
-}
-
-
-static inline uint32_t msb_mask(uint32_t val)
-{
-    uint32_t mask;
-
-    do {
-        mask = ~(val - 1) & val;
-        val &= ~mask;
-    } while (mask < val);
-
-    return mask;
 }
 
 static ram_addr_t qxl_rom_size(void)
@@ -366,6 +360,8 @@ static void init_qxl_rom(PCIQXLDevice *d)
     num_pages         -= ram_header_size;
     num_pages         -= surface0_area_size;
     num_pages          = num_pages / QXL_PAGE_SIZE;
+
+    assert(ram_header_size + surface0_area_size <= d->vga.vram_size);
 
     rom->draw_area_offset   = cpu_to_le32(0);
     rom->surface0_area_size = cpu_to_le32(surface0_area_size);
@@ -511,6 +507,10 @@ static void interface_set_compression_level(QXLInstance *sin, int level)
 static void interface_set_mm_time(QXLInstance *sin, uint32_t mm_time)
 {
     PCIQXLDevice *qxl = container_of(sin, PCIQXLDevice, ssd.qxl);
+
+    if (!qemu_spice_display_is_running(&qxl->ssd)) {
+        return;
+    }
 
     trace_qxl_interface_set_mm_time(qxl->id, mm_time);
     qxl->shadow_rom.mm_clock = cpu_to_le32(mm_time);
@@ -704,7 +704,7 @@ static inline void qxl_push_free_res(PCIQXLDevice *d, int flush)
 
 /* called from spice server thread context only */
 static void interface_release_resource(QXLInstance *sin,
-                                       struct QXLReleaseInfoExt ext)
+                                       QXLReleaseInfoExt ext)
 {
     PCIQXLDevice *qxl = container_of(sin, PCIQXLDevice, ssd.qxl);
     QXLReleaseRing *ring;
@@ -996,6 +996,7 @@ static int interface_client_monitors_config(QXLInstance *sin,
     PCIQXLDevice *qxl = container_of(sin, PCIQXLDevice, ssd.qxl);
     QXLRom *rom = memory_region_get_ram_ptr(&qxl->rom_bar);
     int i;
+    unsigned max_outputs = ARRAY_SIZE(rom->client_monitors_config.heads);
 
     if (qxl->revision < 4) {
         trace_qxl_client_monitors_config_unsupported_by_device(qxl->id,
@@ -1018,17 +1019,23 @@ static int interface_client_monitors_config(QXLInstance *sin,
     if (!monitors_config) {
         return 1;
     }
+
+#if SPICE_SERVER_VERSION >= 0x000c06 /* release 0.12.6 */
+    /* limit number of outputs based on setting limit */
+    if (qxl->max_outputs && qxl->max_outputs <= max_outputs) {
+        max_outputs = qxl->max_outputs;
+    }
+#endif
+
     memset(&rom->client_monitors_config, 0,
            sizeof(rom->client_monitors_config));
     rom->client_monitors_config.count = monitors_config->num_of_monitors;
     /* monitors_config->flags ignored */
-    if (rom->client_monitors_config.count >=
-            ARRAY_SIZE(rom->client_monitors_config.heads)) {
+    if (rom->client_monitors_config.count >= max_outputs) {
         trace_qxl_client_monitors_config_capped(qxl->id,
                                 monitors_config->num_of_monitors,
-                                ARRAY_SIZE(rom->client_monitors_config.heads));
-        rom->client_monitors_config.count =
-            ARRAY_SIZE(rom->client_monitors_config.heads);
+                                max_outputs);
+        rom->client_monitors_config.count = max_outputs;
     }
     for (i = 0 ; i < rom->client_monitors_config.count ; ++i) {
         VDAgentMonConfig *monitor = &monitors_config->monitors[i];
@@ -1149,13 +1156,14 @@ static void qxl_soft_reset(PCIQXLDevice *d)
     trace_qxl_soft_reset(d->id);
     qxl_check_state(d);
     qxl_clear_guest_bug(d);
+    qemu_mutex_lock(&d->async_lock);
     d->current_async = QXL_UNDEFINED_IO;
+    qemu_mutex_unlock(&d->async_lock);
 
     if (d->id == 0) {
         qxl_enter_vga_mode(d);
     } else {
         d->mode = QXL_MODE_UNDEFINED;
-        update_displaychangelistener(&d->ssd.dcl, GUI_REFRESH_INTERVAL_IDLE);
     }
 }
 
@@ -1190,7 +1198,7 @@ static void qxl_hard_reset(PCIQXLDevice *d, int loadvm)
 
 static void qxl_reset_handler(DeviceState *dev)
 {
-    PCIQXLDevice *d = DO_UPCAST(PCIQXLDevice, pci.qdev, dev);
+    PCIQXLDevice *d = PCI_QXL(PCI_DEVICE(dev));
 
     qxl_hard_reset(d, 0);
 }
@@ -1880,6 +1888,12 @@ static void qxl_init_ramsize(PCIQXLDevice *qxl)
     if (qxl->vgamem_size_mb < 8) {
         qxl->vgamem_size_mb = 8;
     }
+    /* XXX: we round vgamem_size_mb up to a nearest power of two and it must be
+     * less than vga_common_init()'s maximum on qxl->vga.vram_size (512 now).
+     */
+    if (qxl->vgamem_size_mb > 256) {
+        qxl->vgamem_size_mb = 256;
+    }
     qxl->vgamem_size = qxl->vgamem_size_mb * 1024 * 1024;
 
     /* vga ram (bar 0, total) */
@@ -1910,13 +1924,13 @@ static void qxl_init_ramsize(PCIQXLDevice *qxl)
         qxl->vram32_size = 4096;
         qxl->vram_size = 4096;
     }
-    qxl->vgamem_size = msb_mask(qxl->vgamem_size * 2 - 1);
-    qxl->vga.vram_size = msb_mask(qxl->vga.vram_size * 2 - 1);
-    qxl->vram32_size = msb_mask(qxl->vram32_size * 2 - 1);
-    qxl->vram_size = msb_mask(qxl->vram_size * 2 - 1);
+    qxl->vgamem_size = pow2ceil(qxl->vgamem_size);
+    qxl->vga.vram_size = pow2ceil(qxl->vga.vram_size);
+    qxl->vram32_size = pow2ceil(qxl->vram32_size);
+    qxl->vram_size = pow2ceil(qxl->vram_size);
 }
 
-static int qxl_init_common(PCIQXLDevice *qxl)
+static void qxl_realize_common(PCIQXLDevice *qxl, Error **errp)
 {
     uint8_t* config = qxl->pci.config;
     uint32_t pci_device_rev;
@@ -1945,12 +1959,12 @@ static int qxl_init_common(PCIQXLDevice *qxl)
         break;
     case 4: /* qxl-4 */
         pci_device_rev = QXL_REVISION_STABLE_V12;
-        io_size = msb_mask(QXL_IO_RANGE_SIZE * 2 - 1);
+        io_size = pow2ceil(QXL_IO_RANGE_SIZE);
         break;
     default:
-        error_report("Invalid revision %d for qxl device (max %d)",
-                     qxl->revision, QXL_DEFAULT_REVISION);
-        return -1;
+        error_setg(errp, "Invalid revision %d for qxl device (max %d)",
+                   qxl->revision, QXL_DEFAULT_REVISION);
+        return;
     }
 
     pci_set_byte(&config[PCI_REVISION_ID], pci_device_rev);
@@ -1958,14 +1972,14 @@ static int qxl_init_common(PCIQXLDevice *qxl)
 
     qxl->rom_size = qxl_rom_size();
     memory_region_init_ram(&qxl->rom_bar, OBJECT(qxl), "qxl.vrom",
-                           qxl->rom_size, &error_abort);
+                           qxl->rom_size, &error_fatal);
     vmstate_register_ram(&qxl->rom_bar, &qxl->pci.qdev);
     init_qxl_rom(qxl);
     init_qxl_ram(qxl);
 
     qxl->guest_surfaces.cmds = g_new0(QXLPHYSICAL, qxl->ssd.num_surfaces);
     memory_region_init_ram(&qxl->vram_bar, OBJECT(qxl), "qxl.vram",
-                           qxl->vram_size, &error_abort);
+                           qxl->vram_size, &error_fatal);
     vmstate_register_ram(&qxl->vram_bar, &qxl->pci.qdev);
     memory_region_init_alias(&qxl->vram32_bar, OBJECT(qxl), "qxl.vram32",
                              &qxl->vram_bar, 0, qxl->vram32_size);
@@ -2014,9 +2028,9 @@ static int qxl_init_common(PCIQXLDevice *qxl)
 
     qxl->ssd.qxl.base.sif = &qxl_interface.base;
     if (qemu_spice_add_display_interface(&qxl->ssd.qxl, qxl->vga.con) != 0) {
-        error_report("qxl interface %d.%d not supported by spice-server",
-                     SPICE_INTERFACE_QXL_MAJOR, SPICE_INTERFACE_QXL_MINOR);
-        return -1;
+        error_setg(errp, "qxl interface %d.%d not supported by spice-server",
+                   SPICE_INTERFACE_QXL_MAJOR, SPICE_INTERFACE_QXL_MINOR);
+        return;
     }
     qemu_add_vm_change_state_handler(qxl_vm_change_state_handler, qxl);
 
@@ -2025,15 +2039,13 @@ static int qxl_init_common(PCIQXLDevice *qxl)
 
     qxl->update_area_bh = qemu_bh_new(qxl_render_update_area_bh, qxl);
     qxl->ssd.cursor_bh = qemu_bh_new(qemu_spice_cursor_refresh_bh, &qxl->ssd);
-
-    return 0;
 }
 
-static int qxl_init_primary(PCIDevice *dev)
+static void qxl_realize_primary(PCIDevice *dev, Error **errp)
 {
-    PCIQXLDevice *qxl = DO_UPCAST(PCIQXLDevice, pci, dev);
+    PCIQXLDevice *qxl = PCI_QXL(dev);
     VGACommonState *vga = &qxl->vga;
-    int rc;
+    Error *local_err = NULL;
 
     qxl->id = 0;
     qxl_init_ramsize(qxl);
@@ -2050,31 +2062,31 @@ static int qxl_init_primary(PCIDevice *dev)
     vga->con = graphic_console_init(DEVICE(dev), 0, &qxl_ops, qxl);
     qemu_spice_display_init_common(&qxl->ssd);
 
-    rc = qxl_init_common(qxl);
-    if (rc != 0) {
-        return rc;
+    qxl_realize_common(qxl, &local_err);
+    if (local_err) {
+        error_propagate(errp, local_err);
+        return;
     }
 
     qxl->ssd.dcl.ops = &display_listener_ops;
     qxl->ssd.dcl.con = vga->con;
     register_displaychangelistener(&qxl->ssd.dcl);
-    return rc;
 }
 
-static int qxl_init_secondary(PCIDevice *dev)
+static void qxl_realize_secondary(PCIDevice *dev, Error **errp)
 {
     static int device_id = 1;
-    PCIQXLDevice *qxl = DO_UPCAST(PCIQXLDevice, pci, dev);
+    PCIQXLDevice *qxl = PCI_QXL(dev);
 
     qxl->id = device_id++;
     qxl_init_ramsize(qxl);
     memory_region_init_ram(&qxl->vga.vram, OBJECT(dev), "qxl.vgavram",
-                           qxl->vga.vram_size, &error_abort);
+                           qxl->vga.vram_size, &error_fatal);
     vmstate_register_ram(&qxl->vga.vram, &qxl->pci.qdev);
     qxl->vga.vram_ptr = memory_region_get_ram_ptr(&qxl->vga.vram);
     qxl->vga.con = graphic_console_init(DEVICE(dev), 0, &qxl_ops, qxl);
 
-    return qxl_init_common(qxl);
+    qxl_realize_common(qxl, errp);
 }
 
 static void qxl_pre_save(void *opaque)
@@ -2146,7 +2158,7 @@ static int qxl_post_load(void *opaque, int version)
         qxl_create_guest_primary(d, 1, QXL_SYNC);
 
         /* replay surface-create and cursor-set commands */
-        cmds = g_malloc0(sizeof(QXLCommandExt) * (d->ssd.num_surfaces + 1));
+        cmds = g_new0(QXLCommandExt, d->ssd.num_surfaces + 1);
         for (in = 0, out = 0; in < d->ssd.num_surfaces; in++) {
             if (d->guest_surfaces.cmds[in] == 0) {
                 continue;
@@ -2221,6 +2233,7 @@ static VMStateDescription qxl_vmstate_monitors_config = {
     .name               = "qxl/monitors-config",
     .version_id         = 1,
     .minimum_version_id = 1,
+    .needed = qxl_monitors_config_needed,
     .fields = (VMStateField[]) {
         VMSTATE_UINT64(guest_monitors_config, PCIQXLDevice),
         VMSTATE_END_OF_LIST()
@@ -2254,13 +2267,9 @@ static VMStateDescription qxl_vmstate = {
         VMSTATE_UINT64(guest_cursor, PCIQXLDevice),
         VMSTATE_END_OF_LIST()
     },
-    .subsections = (VMStateSubsection[]) {
-        {
-            .vmsd = &qxl_vmstate_monitors_config,
-            .needed = qxl_monitors_config_needed,
-        }, {
-            /* empty */
-        }
+    .subsections = (const VMStateDescription*[]) {
+        &qxl_vmstate_monitors_config,
+        NULL
     }
 };
 
@@ -2279,7 +2288,31 @@ static Property qxl_properties[] = {
         DEFINE_PROP_UINT32("vram64_size_mb", PCIQXLDevice, vram_size_mb, -1),
         DEFINE_PROP_UINT32("vgamem_mb", PCIQXLDevice, vgamem_size_mb, 16),
         DEFINE_PROP_INT32("surfaces", PCIQXLDevice, ssd.num_surfaces, 1024),
+#if SPICE_SERVER_VERSION >= 0x000c06 /* release 0.12.6 */
+        DEFINE_PROP_UINT16("max_outputs", PCIQXLDevice, max_outputs, 0),
+#endif
         DEFINE_PROP_END_OF_LIST(),
+};
+
+static void qxl_pci_class_init(ObjectClass *klass, void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(klass);
+    PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
+
+    k->vendor_id = REDHAT_PCI_VENDOR_ID;
+    k->device_id = QXL_DEVICE_ID_STABLE;
+    set_bit(DEVICE_CATEGORY_DISPLAY, dc->categories);
+    dc->reset = qxl_reset_handler;
+    dc->vmsd = &qxl_vmstate;
+    dc->props = qxl_properties;
+}
+
+static const TypeInfo qxl_pci_type_info = {
+    .name = TYPE_PCI_QXL,
+    .parent = TYPE_PCI_DEVICE,
+    .instance_size = sizeof(PCIQXLDevice),
+    .abstract = true,
+    .class_init = qxl_pci_class_init,
 };
 
 static void qxl_primary_class_init(ObjectClass *klass, void *data)
@@ -2287,23 +2320,16 @@ static void qxl_primary_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
-    k->init = qxl_init_primary;
+    k->realize = qxl_realize_primary;
     k->romfile = "vgabios-qxl.bin";
-    k->vendor_id = REDHAT_PCI_VENDOR_ID;
-    k->device_id = QXL_DEVICE_ID_STABLE;
     k->class_id = PCI_CLASS_DISPLAY_VGA;
-    set_bit(DEVICE_CATEGORY_DISPLAY, dc->categories);
     dc->desc = "Spice QXL GPU (primary, vga compatible)";
-    dc->reset = qxl_reset_handler;
-    dc->vmsd = &qxl_vmstate;
-    dc->props = qxl_properties;
     dc->hotpluggable = false;
 }
 
 static const TypeInfo qxl_primary_info = {
     .name          = "qxl-vga",
-    .parent        = TYPE_PCI_DEVICE,
-    .instance_size = sizeof(PCIQXLDevice),
+    .parent        = TYPE_PCI_QXL,
     .class_init    = qxl_primary_class_init,
 };
 
@@ -2312,26 +2338,20 @@ static void qxl_secondary_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
-    k->init = qxl_init_secondary;
-    k->vendor_id = REDHAT_PCI_VENDOR_ID;
-    k->device_id = QXL_DEVICE_ID_STABLE;
+    k->realize = qxl_realize_secondary;
     k->class_id = PCI_CLASS_DISPLAY_OTHER;
-    set_bit(DEVICE_CATEGORY_DISPLAY, dc->categories);
     dc->desc = "Spice QXL GPU (secondary)";
-    dc->reset = qxl_reset_handler;
-    dc->vmsd = &qxl_vmstate;
-    dc->props = qxl_properties;
 }
 
 static const TypeInfo qxl_secondary_info = {
     .name          = "qxl",
-    .parent        = TYPE_PCI_DEVICE,
-    .instance_size = sizeof(PCIQXLDevice),
+    .parent        = TYPE_PCI_QXL,
     .class_init    = qxl_secondary_class_init,
 };
 
 static void qxl_register_types(void)
 {
+    type_register_static(&qxl_pci_type_info);
     type_register_static(&qxl_primary_info);
     type_register_static(&qxl_secondary_info);
 }

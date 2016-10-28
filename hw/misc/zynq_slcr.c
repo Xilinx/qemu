@@ -14,11 +14,16 @@
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "qemu/timer.h"
 #include "hw/sysbus.h"
 #include "hw/fdt_generic_devices.h"
 #include "sysemu/sysemu.h"
+#include "qom/cpu.h"
+#include "qemu/error-report.h"
+#include "qapi/error.h"
+#include "qemu/log.h"
 
 #ifdef CONFIG_FDT
 #include "qemu/config-file.h"
@@ -299,11 +304,11 @@ static void zynq_slcr_reset(DeviceState *d)
 {
     ZynqSLCRState *s = ZYNQ_SLCR(d);
     int i, boot_mode;
+    QemuOpts *opts = qemu_find_opts_singleton("boot-opts");
 
     DB_PRINT("RESET\n");
 
-    boot_mode = qemu_opt_get_number(qemu_get_boot_opts(),
-                                    "mode", 0);
+    boot_mode = qemu_opt_get_number(opts, "mode", 0);
 
     s->regs[LOCKSTA] = 1;
     /* 0x100 - 0x11C */
@@ -515,12 +520,12 @@ static void zynq_slcr_write(void *opaque, hwaddr offset,
         return;
     }
 
-    if (!s->regs[LOCKSTA]) {
-        s->regs[offset] = val;
-    } else {
-        DB_PRINT("SCLR registers are locked. Unlock them first\n");
+    if (s->regs[LOCKSTA]) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "SCLR registers are locked. Unlock them first\n");
         return;
     }
+    s->regs[offset] = val;
 
     switch (offset) {
     case PSS_RST_CTRL:

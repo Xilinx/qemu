@@ -14,13 +14,34 @@
 #ifndef __DEVICE_TREE_H__
 #define __DEVICE_TREE_H__
 
-#include "qemu-common.h"
-#include "qapi/qmp/qerror.h"
-
 void *create_device_tree(int *sizep);
 void *load_device_tree(const char *filename_path, int *sizep);
+#ifdef CONFIG_LINUX
+/**
+ * load_device_tree_from_sysfs: reads the device tree information in the
+ * /proc/device-tree directory and return the corresponding binary blob
+ * buffer pointer. Asserts in case of error.
+ */
+void *load_device_tree_from_sysfs(void);
+#endif
 
-/* property setters */
+/**
+ * qemu_fdt_node_path: return the paths of nodes matching a given
+ * name and compat string
+ * @fdt: pointer to the dt blob
+ * @name: node name
+ * @compat: compatibility string
+ * @errp: handle to an error object
+ *
+ * returns a newly allocated NULL-terminated array of node paths.
+ * Use g_strfreev() to free it. If one or more nodes were found, the
+ * array contains the path of each node and the last element equals to
+ * NULL. If there is no error but no matching node was found, the
+ * returned array contains a single element equal to NULL. If an error
+ * was encountered when parsing the blob, the function returns NULL
+ */
+char **qemu_fdt_node_path(void *fdt, const char *name, char *compat,
+                          Error **errp);
 
 int qemu_fdt_setprop(void *fdt, const char *node_path,
                      const char *property, const void *val, int size);
@@ -185,5 +206,14 @@ int devtree_get_num_nodes(void *fdt);
 void devtree_info_dump(void *fdt);
 
 #define DT_PATH_LENGTH 1024
+
+#define FDT_PCI_RANGE_RELOCATABLE          0x80000000
+#define FDT_PCI_RANGE_PREFETCHABLE         0x40000000
+#define FDT_PCI_RANGE_ALIASED              0x20000000
+#define FDT_PCI_RANGE_TYPE_MASK            0x03000000
+#define FDT_PCI_RANGE_MMIO_64BIT           0x03000000
+#define FDT_PCI_RANGE_MMIO                 0x02000000
+#define FDT_PCI_RANGE_IOPORT               0x01000000
+#define FDT_PCI_RANGE_CONFIG               0x00000000
 
 #endif /* __DEVICE_TREE_H__ */

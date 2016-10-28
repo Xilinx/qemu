@@ -29,7 +29,7 @@ struct MSIMessage {
     uint32_t data;
 };
 
-extern bool msi_supported;
+extern bool msi_nonbroken;
 
 void msi_set_message(PCIDevice *dev, MSIMessage msg);
 MSIMessage msi_get_message(PCIDevice *dev, unsigned int vector);
@@ -39,6 +39,7 @@ int msi_init(struct PCIDevice *dev, uint8_t offset,
 void msi_uninit(struct PCIDevice *dev);
 void msi_reset(PCIDevice *dev);
 void msi_notify(PCIDevice *dev, unsigned int vector);
+void msi_send_message(PCIDevice *dev, MSIMessage msg);
 void msi_write_config(PCIDevice *dev, uint32_t addr, uint32_t val, int len);
 unsigned int msi_nr_vectors_allocated(const PCIDevice *dev);
 

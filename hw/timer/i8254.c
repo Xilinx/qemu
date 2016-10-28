@@ -21,6 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/i386/pc.h"
 #include "hw/isa/isa.h"
@@ -35,8 +36,14 @@
 #define RW_STATE_WORD0 3
 #define RW_STATE_WORD1 4
 
-#define I8254_PARENT_CLASS \
-    object_class_get_parent(object_class_by_name(TYPE_I8254))
+#define PIT_CLASS(class) OBJECT_CLASS_CHECK(PITClass, (class), TYPE_I8254)
+#define PIT_GET_CLASS(obj) OBJECT_GET_CLASS(PITClass, (obj), TYPE_I8254)
+
+typedef struct PITClass {
+    PITCommonClass parent_class;
+
+    DeviceRealize parent_realize;
+} PITClass;
 
 static void pit_irq_timer_update(PITChannelState *s, int64_t current_time);
 
@@ -46,7 +53,7 @@ static int pit_get_count(PITChannelState *s)
     int counter;
 
     d = muldiv64(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) - s->count_load_time, PIT_FREQ,
-                 get_ticks_per_sec());
+                 NANOSECONDS_PER_SECOND);
     switch(s->mode) {
     case 0:
     case 1:
@@ -190,6 +197,12 @@ static uint64_t pit_ioport_read(void *opaque, hwaddr addr,
     PITChannelState *s;
 
     addr &= 3;
+
+    if (addr == 3) {
+        /* Mode/Command register is write only, read is ignored */
+        return 0;
+    }
+
     s = &pit->channels[addr];
     if (s->status_latched) {
         s->status_latched = 0;
@@ -250,7 +263,7 @@ static void pit_irq_timer_update(PITChannelState *s, int64_t current_time)
 #ifdef DEBUG_PIT
     printf("irq_level=%d next_delay=%f\n",
            irq_level,
-           (double)(expire_time - current_time) / get_ticks_per_sec());
+           (double)(expire_time - current_time) / NANOSECONDS_PER_SECOND);
 #endif
     s->next_transition_time = expire_time;
     if (expire_time != -1)
@@ -319,7 +332,7 @@ static void pit_post_load(PITCommonState *s)
 static void pit_realizefn(DeviceState *dev, Error **errp)
 {
     PITCommonState *pit = PIT_COMMON(dev);
-    DeviceClass *dc_parent = DEVICE_CLASS(I8254_PARENT_CLASS);
+    PITClass *pc = PIT_GET_CLASS(dev);
     PITChannelState *s;
 
     s = &pit->channels[0];
@@ -332,7 +345,7 @@ static void pit_realizefn(DeviceState *dev, Error **errp)
 
     qdev_init_gpio_in(dev, pit_irq_control, 1);
 
-    dc_parent->realize(dev, errp);
+    pc->parent_realize(dev, errp);
 }
 
 static Property pit_properties[] = {
@@ -342,9 +355,11 @@ static Property pit_properties[] = {
 
 static void pit_class_initfn(ObjectClass *klass, void *data)
 {
+    PITClass *pc = PIT_CLASS(klass);
     PITCommonClass *k = PIT_COMMON_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
 
+    pc->parent_realize = dc->realize;
     dc->realize = pit_realizefn;
     k->set_channel_gate = pit_set_channel_gate;
     k->get_channel_info = pit_get_channel_info_common;
@@ -358,6 +373,7 @@ static const TypeInfo pit_info = {
     .parent        = TYPE_PIT_COMMON,
     .instance_size = sizeof(PITCommonState),
     .class_init    = pit_class_initfn,
+    .class_size    = sizeof(PITClass),
 };
 
 static void pit_register_types(void)

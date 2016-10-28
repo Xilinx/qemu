@@ -2,7 +2,6 @@
 #define SYSEMU_H
 /* Misc. things related to the system emulator.  */
 
-#include "qemu/typedefs.h"
 #include "qemu/option.h"
 #include "qemu/queue.h"
 #include "qemu/timer.h"
@@ -28,6 +27,7 @@ bool runstate_check(RunState state);
 void runstate_set(RunState new_state);
 int runstate_is_running(void);
 bool runstate_needs_reset(void);
+bool runstate_store(char *str, size_t size);
 typedef struct vm_change_state_entry VMChangeStateEntry;
 typedef void VMChangeStateHandler(void *opaque, int running, RunState state);
 
@@ -69,30 +69,68 @@ int qemu_reset_requested_get(void);
 void qemu_system_killed(int signal, pid_t pid);
 void qemu_devices_reset(void);
 void qemu_system_reset(bool report);
+void qemu_system_guest_panicked(void);
+size_t qemu_target_page_bits(void);
 
 void qemu_add_exit_notifier(Notifier *notify);
 void qemu_remove_exit_notifier(Notifier *notify);
 
 void qemu_add_machine_init_done_notifier(Notifier *notify);
 
-void do_savevm(Monitor *mon, const QDict *qdict);
+void hmp_savevm(Monitor *mon, const QDict *qdict);
 int load_vmstate(const char *name);
-void do_delvm(Monitor *mon, const QDict *qdict);
-void do_info_snapshots(Monitor *mon, const QDict *qdict);
+void hmp_delvm(Monitor *mon, const QDict *qdict);
+void hmp_info_snapshots(Monitor *mon, const QDict *qdict);
 
 void qemu_announce_self(void);
+
+/* Subcommands for QEMU_VM_COMMAND */
+enum qemu_vm_cmd {
+    MIG_CMD_INVALID = 0,   /* Must be 0 */
+    MIG_CMD_OPEN_RETURN_PATH,  /* Tell the dest to open the Return path */
+    MIG_CMD_PING,              /* Request a PONG on the RP */
+
+    MIG_CMD_POSTCOPY_ADVISE,       /* Prior to any page transfers, just
+                                      warn we might want to do PC */
+    MIG_CMD_POSTCOPY_LISTEN,       /* Start listening for incoming
+                                      pages as it's running. */
+    MIG_CMD_POSTCOPY_RUN,          /* Start execution */
+
+    MIG_CMD_POSTCOPY_RAM_DISCARD,  /* A list of pages to discard that
+                                      were previously sent during
+                                      precopy but are dirty. */
+    MIG_CMD_PACKAGED,          /* Send a wrapped stream within this stream */
+    MIG_CMD_MAX
+};
+
+#define MAX_VM_CMD_PACKAGED_SIZE (1ul << 24)
 
 bool qemu_savevm_state_blocked(Error **errp);
 void qemu_savevm_state_begin(QEMUFile *f,
                              const MigrationParams *params);
-int qemu_savevm_state_iterate(QEMUFile *f);
-void qemu_savevm_state_complete(QEMUFile *f);
-void qemu_savevm_state_cancel(void);
-uint64_t qemu_savevm_state_pending(QEMUFile *f, uint64_t max_size);
-int qemu_loadvm_state(QEMUFile *f);
+void qemu_savevm_state_header(QEMUFile *f);
+int qemu_savevm_state_iterate(QEMUFile *f, bool postcopy);
+void qemu_savevm_state_cleanup(void);
+void qemu_savevm_state_complete_postcopy(QEMUFile *f);
+void qemu_savevm_state_complete_precopy(QEMUFile *f, bool iterable_only);
+void qemu_savevm_state_pending(QEMUFile *f, uint64_t max_size,
+                               uint64_t *res_non_postcopiable,
+                               uint64_t *res_postcopiable);
+void qemu_savevm_command_send(QEMUFile *f, enum qemu_vm_cmd command,
+                              uint16_t len, uint8_t *data);
+void qemu_savevm_send_ping(QEMUFile *f, uint32_t value);
+void qemu_savevm_send_open_return_path(QEMUFile *f);
+int qemu_savevm_send_packaged(QEMUFile *f, const QEMUSizedBuffer *qsb);
+void qemu_savevm_send_postcopy_advise(QEMUFile *f);
+void qemu_savevm_send_postcopy_listen(QEMUFile *f);
+void qemu_savevm_send_postcopy_run(QEMUFile *f);
 
-/* SLIRP */
-void do_info_slirp(Monitor *mon);
+void qemu_savevm_send_postcopy_ram_discard(QEMUFile *f, const char *name,
+                                           uint16_t len,
+                                           uint64_t *start_list,
+                                           uint64_t *length_list);
+
+int qemu_loadvm_state(QEMUFile *f);
 
 typedef enum DisplayType
 {
@@ -108,7 +146,7 @@ extern int autostart;
 
 typedef enum {
     VGA_NONE, VGA_STD, VGA_CIRRUS, VGA_VMWARE, VGA_XENFB, VGA_QXL,
-    VGA_TCX, VGA_CG3, VGA_DEVICE
+    VGA_TCX, VGA_CG3, VGA_DEVICE, VGA_VIRTIO,
 } VGAInterfaceType;
 
 extern int vga_interface_type;
@@ -118,6 +156,7 @@ extern int graphic_width;
 extern int graphic_height;
 extern int graphic_depth;
 extern DisplayType display_type;
+extern int display_opengl;
 extern const char *keyboard_layout;
 extern int win2k_install_hack;
 extern int alt_grab;
@@ -128,12 +167,12 @@ extern int cursor_hide;
 extern int graphic_rotate;
 extern int no_quit;
 extern int no_shutdown;
-extern int semihosting_enabled;
 extern int old_param;
 extern int boot_menu;
 extern bool boot_strict;
 extern uint8_t *boot_splash_filedata;
 extern size_t boot_splash_filedata_size;
+extern bool enable_mlock;
 extern uint8_t qemu_extra_params_fw[2];
 extern QEMUClockType rtc_clock;
 extern const char *mem_path;
@@ -142,6 +181,7 @@ extern int mem_prealloc;
 extern uint64_t global_sync_quantum;
 
 #define MAX_NODES 128
+#define NUMA_NODE_UNASSIGNED MAX_NODES
 
 /* The following shall be true for all CPUs:
  *   cpu->cpu_index < max_cpus <= MAX_CPUMASK_BITS
@@ -149,24 +189,6 @@ extern uint64_t global_sync_quantum;
  * Note that cpu->get_arch_id() may be larger than MAX_CPUMASK_BITS.
  */
 #define MAX_CPUMASK_BITS 255
-
-extern int nb_numa_nodes;   /* Number of NUMA nodes */
-extern int max_numa_nodeid; /* Highest specified NUMA node ID, plus one.
-                             * For all nodes, nodeid < max_numa_nodeid
-                             */
-
-typedef struct node_info {
-    uint64_t node_mem;
-    DECLARE_BITMAP(node_cpu, MAX_CPUMASK_BITS);
-    struct HostMemoryBackend *node_memdev;
-    bool present;
-} NodeInfo;
-extern NodeInfo numa_info[MAX_NODES];
-void set_numa_nodes(void);
-void set_numa_modes(void);
-void query_numa_node_mem(uint64_t node_mem[]);
-extern QemuOptsList qemu_numa_opts;
-int numa_init_func(QemuOpts *opts, void *opaque);
 
 #define MAX_OPTION_ROMS 16
 typedef struct QEMUOptionRom {
@@ -180,18 +202,11 @@ extern int nb_option_roms;
 extern const char *prom_envs[MAX_PROM_ENVS];
 extern unsigned int nb_prom_envs;
 
-/* pci-hotplug */
-void pci_device_hot_add(Monitor *mon, const QDict *qdict);
-int pci_drive_hot_add(Monitor *mon, const QDict *qdict, DriveInfo *dinfo);
-void do_pci_device_hot_remove(Monitor *mon, const QDict *qdict);
-
 /* generic hotplug */
-void drive_hot_add(Monitor *mon, const QDict *qdict);
+void hmp_drive_add(Monitor *mon, const QDict *qdict);
 
 /* pcie aer error injection */
-void pcie_aer_inject_error_print(Monitor *mon, const QObject *data);
-int do_pcie_aer_inject_error(Monitor *mon,
-                             const QDict *qdict, QObject **ret_data);
+void hmp_pcie_aer_inject_error(Monitor *mon, const QDict *qdict);
 
 /* serial ports */
 
@@ -205,9 +220,9 @@ extern CharDriverState *serial_hds[MAX_SERIAL_PORTS];
 
 extern CharDriverState *parallel_hds[MAX_PARALLEL_PORTS];
 
-void do_usb_add(Monitor *mon, const QDict *qdict);
-void do_usb_del(Monitor *mon, const QDict *qdict);
-void usb_info(Monitor *mon, const QDict *qdict);
+void hmp_usb_add(Monitor *mon, const QDict *qdict);
+void hmp_usb_del(Monitor *mon, const QDict *qdict);
+void hmp_info_usb(Monitor *mon, const QDict *qdict);
 
 void add_boot_device_path(int32_t bootindex, DeviceState *dev,
                           const char *suffix);
@@ -222,16 +237,16 @@ void device_add_bootindex_property(Object *obj, int32_t *bootindex,
 void restore_boot_order(void *opaque);
 void validate_bootdevices(const char *devices, Error **errp);
 
-/* handler to set the boot_device order for a specific type of QEMUMachine */
+/* handler to set the boot_device order for a specific type of MachineClass */
 typedef void QEMUBootSetHandler(void *opaque, const char *boot_order,
                                 Error **errp);
 void qemu_register_boot_set(QEMUBootSetHandler *func, void *opaque);
 void qemu_boot_set(const char *boot_order, Error **errp);
 
 QemuOpts *qemu_get_machine_opts(void);
-QemuOpts *qemu_get_boot_opts(void);
 
-bool usb_enabled(bool default_usb);
+bool defaults_enabled(void);
+bool usb_enabled(void);
 
 extern QemuOptsList qemu_legacy_drive_opts;
 extern QemuOptsList qemu_common_drive_opts;

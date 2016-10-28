@@ -19,15 +19,9 @@
 #ifndef _CPU_SH4_H
 #define _CPU_SH4_H
 
-#define NB_MEM_ATTR     1
-
-#include "config.h"
 #include "qemu-common.h"
 
 #define TARGET_LONG_BITS 32
-#define TARGET_HAS_ICE 1
-
-#define ELF_MACHINE	EM_SH
 
 /* CPU Subtypes */
 #define SH_CPU_SH7750  (1 << 0)
@@ -50,18 +44,18 @@
 #define TARGET_PHYS_ADDR_SPACE_BITS 32
 #define TARGET_VIRT_ADDR_SPACE_BITS 32
 
-#define SR_MD (1 << 30)
-#define SR_RB (1 << 29)
-#define SR_BL (1 << 28)
-#define SR_FD (1 << 15)
-#define SR_M  (1 << 9)
-#define SR_Q  (1 << 8)
-#define SR_I3 (1 << 7)
-#define SR_I2 (1 << 6)
-#define SR_I1 (1 << 5)
-#define SR_I0 (1 << 4)
-#define SR_S  (1 << 1)
-#define SR_T  (1 << 0)
+#define SR_MD 30
+#define SR_RB 29
+#define SR_BL 28
+#define SR_FD 15
+#define SR_M  9
+#define SR_Q  8
+#define SR_I3 7
+#define SR_I2 6
+#define SR_I1 5
+#define SR_I0 4
+#define SR_S  1
+#define SR_T  0
 
 #define FPSCR_MASK             (0x003fffff)
 #define FPSCR_FR               (1 << 21)
@@ -125,6 +119,7 @@ typedef struct tlb_t {
 #define ITLB_SIZE 4
 
 #define NB_MMU_MODES 2
+#define TARGET_INSN_START_EXTRA_WORDS 1
 
 enum sh_features {
     SH_FEATURE_SH4A = 1,
@@ -141,7 +136,10 @@ typedef struct CPUSH4State {
     uint32_t flags;		/* general execution flags */
     uint32_t gregs[24];		/* general registers */
     float32 fregs[32];		/* floating point registers */
-    uint32_t sr;		/* status register */
+    uint32_t sr;                /* status register (with T split out) */
+    uint32_t sr_m;              /* M bit of status register */
+    uint32_t sr_q;              /* Q bit of status register */
+    uint32_t sr_t;              /* T bit of status register */
     uint32_t ssr;		/* saved status register */
     uint32_t spc;		/* saved program counter */
     uint32_t gbr;		/* global base register */
@@ -193,7 +191,7 @@ typedef struct CPUSH4State {
 
 void sh4_translate_init(void);
 SuperHCPU *cpu_sh4_init(const char *cpu_model);
-int cpu_sh4_exec(CPUSH4State * s);
+int cpu_sh4_exec(CPUState *s);
 int cpu_sh4_signal_handler(int host_signum, void *pinfo,
                            void *puc);
 int superh_cpu_handle_mmu_fault(CPUState *cpu, vaddr address, int rw,
@@ -224,17 +222,9 @@ int cpu_sh4_is_cached(CPUSH4State * env, target_ulong addr);
 
 void cpu_load_tlb(CPUSH4State * env);
 
-static inline CPUSH4State *cpu_init(const char *cpu_model)
-{
-    SuperHCPU *cpu = cpu_sh4_init(cpu_model);
-    if (cpu == NULL) {
-        return NULL;
-    }
-    return &cpu->env;
-}
+#define cpu_init(cpu_model) CPU(cpu_sh4_init(cpu_model))
 
 #define cpu_exec cpu_sh4_exec
-#define cpu_gen_code cpu_sh4_gen_code
 #define cpu_signal_handler cpu_sh4_signal_handler
 #define cpu_list sh4_cpu_list
 
@@ -242,9 +232,9 @@ static inline CPUSH4State *cpu_init(const char *cpu_model)
 #define MMU_MODE0_SUFFIX _kernel
 #define MMU_MODE1_SUFFIX _user
 #define MMU_USER_IDX 1
-static inline int cpu_mmu_index (CPUSH4State *env)
+static inline int cpu_mmu_index (CPUSH4State *env, bool ifetch)
 {
-    return (env->sr & SR_MD) == 0 ? 1 : 0;
+    return (env->sr & (1u << SR_MD)) == 0 ? 1 : 0;
 }
 
 #include "exec/cpu-all.h"
@@ -341,6 +331,21 @@ static inline int cpu_ptel_pr (uint32_t ptel)
 
 #define TB_FLAG_PENDING_MOVCA  (1 << 4)
 
+static inline target_ulong cpu_read_sr(CPUSH4State *env)
+{
+    return env->sr | (env->sr_m << SR_M) |
+                     (env->sr_q << SR_Q) |
+                     (env->sr_t << SR_T);
+}
+
+static inline void cpu_write_sr(CPUSH4State *env, target_ulong sr)
+{
+    env->sr_m = (sr >> SR_M) & 1;
+    env->sr_q = (sr >> SR_Q) & 1;
+    env->sr_t = (sr >> SR_T) & 1;
+    env->sr = sr & ~((1u << SR_M) | (1u << SR_Q) | (1u << SR_T));
+}
+
 static inline void cpu_get_tb_cpu_state(CPUSH4State *env, target_ulong *pc,
                                         target_ulong *cs_base, int *flags)
 {
@@ -349,8 +354,8 @@ static inline void cpu_get_tb_cpu_state(CPUSH4State *env, target_ulong *pc,
     *flags = (env->flags & (DELAY_SLOT | DELAY_SLOT_CONDITIONAL
                     | DELAY_SLOT_TRUE | DELAY_SLOT_CLEARME))   /* Bits  0- 3 */
             | (env->fpscr & (FPSCR_FR | FPSCR_SZ | FPSCR_PR))  /* Bits 19-21 */
-            | (env->sr & (SR_MD | SR_RB))                      /* Bits 29-30 */
-            | (env->sr & SR_FD)                                /* Bit 15 */
+            | (env->sr & ((1u << SR_MD) | (1u << SR_RB)))      /* Bits 29-30 */
+            | (env->sr & (1u << SR_FD))                        /* Bit 15 */
             | (env->movcal_backup ? TB_FLAG_PENDING_MOVCA : 0); /* Bit 4 */
 }
 

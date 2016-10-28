@@ -1,3 +1,4 @@
+#include "qemu/osdep.h"
 #include "hw/guest/linux.h"
 
 static const TypeInfo linux_device_info = {

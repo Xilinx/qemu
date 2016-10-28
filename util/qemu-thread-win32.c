@@ -10,11 +10,11 @@
  * See the COPYING file in the top-level directory.
  *
  */
+#include "qemu/osdep.h"
 #include "qemu-common.h"
 #include "qemu/thread.h"
+#include "qemu/notify.h"
 #include <process.h>
-#include <assert.h>
-#include <limits.h>
 
 static bool name_threads;
 
@@ -237,10 +237,34 @@ void qemu_sem_wait(QemuSemaphore *sem)
     }
 }
 
+/* Wrap a Win32 manual-reset event with a fast userspace path.  The idea
+ * is to reset the Win32 event lazily, as part of a test-reset-test-wait
+ * sequence.  Such a sequence is, indeed, how QemuEvents are used by
+ * RCU and other subsystems!
+ *
+ * Valid transitions:
+ * - free->set, when setting the event
+ * - busy->set, when setting the event, followed by futex_wake
+ * - set->free, when resetting the event
+ * - free->busy, when waiting
+ *
+ * set->busy does not happen (it can be observed from the outside but
+ * it really is set->free->busy).
+ *
+ * busy->free provably cannot happen; to enforce it, the set->free transition
+ * is done with an OR, which becomes a no-op if the event has concurrently
+ * transitioned to free or busy (and is faster than cmpxchg).
+ */
+
+#define EV_SET         0
+#define EV_FREE        1
+#define EV_BUSY       -1
+
 void qemu_event_init(QemuEvent *ev, bool init)
 {
     /* Manual reset.  */
-    ev->event = CreateEvent(NULL, TRUE, init, NULL);
+    ev->event = CreateEvent(NULL, TRUE, TRUE, NULL);
+    ev->value = (init ? EV_SET : EV_FREE);
 }
 
 void qemu_event_destroy(QemuEvent *ev)
@@ -250,17 +274,51 @@ void qemu_event_destroy(QemuEvent *ev)
 
 void qemu_event_set(QemuEvent *ev)
 {
-    SetEvent(ev->event);
+    if (atomic_mb_read(&ev->value) != EV_SET) {
+        if (atomic_xchg(&ev->value, EV_SET) == EV_BUSY) {
+            /* There were waiters, wake them up.  */
+            SetEvent(ev->event);
+        }
+    }
 }
 
 void qemu_event_reset(QemuEvent *ev)
 {
-    ResetEvent(ev->event);
+    if (atomic_mb_read(&ev->value) == EV_SET) {
+        /* If there was a concurrent reset (or even reset+wait),
+         * do nothing.  Otherwise change EV_SET->EV_FREE.
+         */
+        atomic_or(&ev->value, EV_FREE);
+    }
 }
 
 void qemu_event_wait(QemuEvent *ev)
 {
-    WaitForSingleObject(ev->event, INFINITE);
+    unsigned value;
+
+    value = atomic_mb_read(&ev->value);
+    if (value != EV_SET) {
+        if (value == EV_FREE) {
+            /* qemu_event_set is not yet going to call SetEvent, but we are
+             * going to do another check for EV_SET below when setting EV_BUSY.
+             * At that point it is safe to call WaitForSingleObject.
+             */
+            ResetEvent(ev->event);
+
+            /* Tell qemu_event_set that there are waiters.  No need to retry
+             * because there cannot be a concurent busy->free transition.
+             * After the CAS, the event will be either set or busy.
+             */
+            if (atomic_cmpxchg(&ev->value, EV_FREE, EV_BUSY) == EV_SET) {
+                value = EV_SET;
+            } else {
+                value = EV_BUSY;
+            }
+        }
+        if (value == EV_BUSY) {
+            WaitForSingleObject(ev->event, INFINITE);
+        }
+    }
 }
 
 struct QemuThreadData {
@@ -268,6 +326,7 @@ struct QemuThreadData {
     void             *(*start_routine)(void *);
     void             *arg;
     short             mode;
+    NotifierList      exit;
 
     /* Only used for joinable threads. */
     bool              exited;
@@ -275,7 +334,33 @@ struct QemuThreadData {
     CRITICAL_SECTION  cs;
 };
 
+static bool atexit_registered;
+static NotifierList main_thread_exit;
+
 static __thread QemuThreadData *qemu_thread_data;
+
+static void run_main_thread_exit(void)
+{
+    notifier_list_notify(&main_thread_exit, NULL);
+}
+
+void qemu_thread_atexit_add(Notifier *notifier)
+{
+    if (!qemu_thread_data) {
+        if (!atexit_registered) {
+            atexit_registered = true;
+            atexit(run_main_thread_exit);
+        }
+        notifier_list_add(&main_thread_exit, notifier);
+    } else {
+        notifier_list_add(&qemu_thread_data->exit, notifier);
+    }
+}
+
+void qemu_thread_atexit_remove(Notifier *notifier)
+{
+    notifier_remove(notifier);
+}
 
 static unsigned __stdcall win32_start_routine(void *arg)
 {
@@ -283,10 +368,6 @@ static unsigned __stdcall win32_start_routine(void *arg)
     void *(*start_routine)(void *) = data->start_routine;
     void *thread_arg = data->arg;
 
-    if (data->mode == QEMU_THREAD_DETACHED) {
-        g_free(data);
-        data = NULL;
-    }
     qemu_thread_data = data;
     qemu_thread_exit(start_routine(thread_arg));
     abort();
@@ -296,12 +377,14 @@ void qemu_thread_exit(void *arg)
 {
     QemuThreadData *data = qemu_thread_data;
 
-    if (data) {
-        assert(data->mode != QEMU_THREAD_DETACHED);
+    notifier_list_notify(&data->exit, NULL);
+    if (data->mode == QEMU_THREAD_JOINABLE) {
         data->ret = arg;
         EnterCriticalSection(&data->cs);
         data->exited = true;
         LeaveCriticalSection(&data->cs);
+    } else {
+        g_free(data);
     }
     _endthreadex(0);
 }
@@ -313,9 +396,10 @@ void *qemu_thread_join(QemuThread *thread)
     HANDLE handle;
 
     data = thread->data;
-    if (!data) {
+    if (data->mode == QEMU_THREAD_DETACHED) {
         return NULL;
     }
+
     /*
      * Because multiple copies of the QemuThread can exist via
      * qemu_thread_get_self, we need to store a value that cannot
@@ -329,7 +413,6 @@ void *qemu_thread_join(QemuThread *thread)
         CloseHandle(handle);
     }
     ret = data->ret;
-    assert(data->mode != QEMU_THREAD_DETACHED);
     DeleteCriticalSection(&data->cs);
     g_free(data);
     return ret;
@@ -347,6 +430,7 @@ void qemu_thread_create(QemuThread *thread, const char *name,
     data->arg = arg;
     data->mode = mode;
     data->exited = false;
+    notifier_list_init(&data->exit);
 
     if (data->mode != QEMU_THREAD_DETACHED) {
         InitializeCriticalSection(&data->cs);
@@ -358,7 +442,7 @@ void qemu_thread_create(QemuThread *thread, const char *name,
         error_exit(GetLastError(), __func__);
     }
     CloseHandle(hThread);
-    thread->data = (mode == QEMU_THREAD_DETACHED) ? NULL : data;
+    thread->data = data;
 }
 
 void qemu_thread_get_self(QemuThread *thread)
@@ -373,11 +457,10 @@ HANDLE qemu_thread_get_handle(QemuThread *thread)
     HANDLE handle;
 
     data = thread->data;
-    if (!data) {
+    if (data->mode == QEMU_THREAD_DETACHED) {
         return NULL;
     }
 
-    assert(data->mode != QEMU_THREAD_DETACHED);
     EnterCriticalSection(&data->cs);
     if (!data->exited) {
         handle = OpenThread(SYNCHRONIZE | THREAD_SUSPEND_RESUME, FALSE,

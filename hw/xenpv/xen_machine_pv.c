@@ -22,11 +22,17 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/boards.h"
+#include "hw/sysbus.h"
 #include "hw/xen/xen_backend.h"
 #include "xen_domainbuild.h"
 #include "sysemu/block-backend.h"
+
+#define TYPE_XENSYSDEV "xensysdev"
+
+DeviceState *xen_sysdev;
 
 static void xen_init_pv(MachineState *machine)
 {
@@ -66,11 +72,17 @@ static void xen_init_pv(MachineState *machine)
         break;
     }
 
+    xen_sysdev = qdev_create(NULL, TYPE_XENSYSDEV);
+    qdev_init_nofail(xen_sysdev);
+
     xen_be_register("console", &xen_console_ops);
     xen_be_register("vkbd", &xen_kbdmouse_ops);
     xen_be_register("vfb", &xen_framebuffer_ops);
     xen_be_register("qdisk", &xen_blkdev_ops);
     xen_be_register("qnic", &xen_netdev_ops);
+#ifdef CONFIG_USB_LIBUSB
+    xen_be_register("qusb", &xen_usb_ops);
+#endif
 
     /* configure framebuffer */
     if (xenfb_enabled) {
@@ -100,17 +112,44 @@ static void xen_init_pv(MachineState *machine)
     xen_init_display(xen_domid);
 }
 
-static QEMUMachine xenpv_machine = {
-    .name = "xenpv",
-    .desc = "Xen Para-virtualized PC",
-    .init = xen_init_pv,
-    .max_cpus = 1,
-    .default_machine_opts = "accel=xen",
-};
-
-static void xenpv_machine_init(void)
+static int xen_sysdev_init(SysBusDevice *dev)
 {
-    qemu_register_machine(&xenpv_machine);
+    return 0;
 }
 
-machine_init(xenpv_machine_init);
+static Property xen_sysdev_properties[] = {
+    {/* end of property list */},
+};
+
+static void xen_sysdev_class_init(ObjectClass *klass, void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(klass);
+    SysBusDeviceClass *k = SYS_BUS_DEVICE_CLASS(klass);
+
+    k->init = xen_sysdev_init;
+    dc->props = xen_sysdev_properties;
+}
+
+static const TypeInfo xensysdev_info = {
+    .name          = TYPE_XENSYSDEV,
+    .parent        = TYPE_SYS_BUS_DEVICE,
+    .instance_size = sizeof(SysBusDevice),
+    .class_init    = xen_sysdev_class_init,
+};
+
+static void xenpv_register_types(void)
+{
+    type_register_static(&xensysdev_info);
+}
+
+type_init(xenpv_register_types);
+
+static void xenpv_machine_init(MachineClass *mc)
+{
+    mc->desc = "Xen Para-virtualized PC";
+    mc->init = xen_init_pv;
+    mc->max_cpus = 1;
+    mc->default_machine_opts = "accel=xen";
+}
+
+DEFINE_MACHINE("xenpv", xenpv_machine_init)

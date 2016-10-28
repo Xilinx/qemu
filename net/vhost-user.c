@@ -8,24 +8,25 @@
  *
  */
 
+#include "qemu/osdep.h"
 #include "clients.h"
 #include "net/vhost_net.h"
 #include "net/vhost-user.h"
 #include "sysemu/char.h"
 #include "qemu/config-file.h"
 #include "qemu/error-report.h"
+#include "qmp-commands.h"
+#include "trace.h"
 
 typedef struct VhostUserState {
     NetClientState nc;
     CharDriverState *chr;
-    bool vhostforce;
     VHostNetState *vhost_net;
 } VhostUserState;
 
 typedef struct VhostUserChardevProps {
     bool is_socket;
     bool is_unix;
-    bool is_server;
 } VhostUserChardevProps;
 
 VHostNetState *vhost_user_get_vhost_net(NetClientState *nc)
@@ -40,38 +41,106 @@ static int vhost_user_running(VhostUserState *s)
     return (s->vhost_net) ? 1 : 0;
 }
 
-static int vhost_user_start(VhostUserState *s)
+static void vhost_user_stop(int queues, NetClientState *ncs[])
 {
-    VhostNetOptions options;
+    VhostUserState *s;
+    int i;
 
-    if (vhost_user_running(s)) {
-        return 0;
+    for (i = 0; i < queues; i++) {
+        assert (ncs[i]->info->type == NET_CLIENT_OPTIONS_KIND_VHOST_USER);
+
+        s = DO_UPCAST(VhostUserState, nc, ncs[i]);
+        if (!vhost_user_running(s)) {
+            continue;
+        }
+
+        if (s->vhost_net) {
+            vhost_net_cleanup(s->vhost_net);
+            s->vhost_net = NULL;
+        }
     }
-
-    options.backend_type = VHOST_BACKEND_TYPE_USER;
-    options.net_backend = &s->nc;
-    options.opaque = s->chr;
-    options.force = s->vhostforce;
-
-    s->vhost_net = vhost_net_init(&options);
-
-    return vhost_user_running(s) ? 0 : -1;
 }
 
-static void vhost_user_stop(VhostUserState *s)
+static int vhost_user_start(int queues, NetClientState *ncs[])
 {
-    if (vhost_user_running(s)) {
-        vhost_net_cleanup(s->vhost_net);
+    VhostNetOptions options;
+    VhostUserState *s;
+    int max_queues;
+    int i;
+
+    options.backend_type = VHOST_BACKEND_TYPE_USER;
+
+    for (i = 0; i < queues; i++) {
+        assert (ncs[i]->info->type == NET_CLIENT_OPTIONS_KIND_VHOST_USER);
+
+        s = DO_UPCAST(VhostUserState, nc, ncs[i]);
+        if (vhost_user_running(s)) {
+            continue;
+        }
+
+        options.net_backend = ncs[i];
+        options.opaque      = s->chr;
+        s->vhost_net = vhost_net_init(&options);
+        if (!s->vhost_net) {
+            error_report("failed to init vhost_net for queue %d", i);
+            goto err;
+        }
+
+        if (i == 0) {
+            max_queues = vhost_net_get_max_queues(s->vhost_net);
+            if (queues > max_queues) {
+                error_report("you are asking more queues than supported: %d",
+                             max_queues);
+                goto err;
+            }
+        }
     }
 
-    s->vhost_net = 0;
+    return 0;
+
+err:
+    vhost_user_stop(i + 1, ncs);
+    return -1;
+}
+
+static ssize_t vhost_user_receive(NetClientState *nc, const uint8_t *buf,
+                                  size_t size)
+{
+    /* In case of RARP (message size is 60) notify backup to send a fake RARP.
+       This fake RARP will be sent by backend only for guest
+       without GUEST_ANNOUNCE capability.
+     */
+    if (size == 60) {
+        VhostUserState *s = DO_UPCAST(VhostUserState, nc, nc);
+        int r;
+        static int display_rarp_failure = 1;
+        char mac_addr[6];
+
+        /* extract guest mac address from the RARP message */
+        memcpy(mac_addr, &buf[6], 6);
+
+        r = vhost_net_notify_migration_done(s->vhost_net, mac_addr);
+
+        if ((r != 0) && (display_rarp_failure)) {
+            fprintf(stderr,
+                    "Vhost user backend fails to broadcast fake RARP\n");
+            fflush(stderr);
+            display_rarp_failure = 0;
+        }
+    }
+
+    return size;
 }
 
 static void vhost_user_cleanup(NetClientState *nc)
 {
     VhostUserState *s = DO_UPCAST(VhostUserState, nc, nc);
 
-    vhost_user_stop(s);
+    if (s->vhost_net) {
+        vhost_net_cleanup(s->vhost_net);
+        s->vhost_net = NULL;
+    }
+
     qemu_purge_queued_packets(nc);
 }
 
@@ -92,72 +161,76 @@ static bool vhost_user_has_ufo(NetClientState *nc)
 static NetClientInfo net_vhost_user_info = {
         .type = NET_CLIENT_OPTIONS_KIND_VHOST_USER,
         .size = sizeof(VhostUserState),
+        .receive = vhost_user_receive,
         .cleanup = vhost_user_cleanup,
         .has_vnet_hdr = vhost_user_has_vnet_hdr,
         .has_ufo = vhost_user_has_ufo,
 };
 
-static void net_vhost_link_down(VhostUserState *s, bool link_down)
-{
-    s->nc.link_down = link_down;
-
-    if (s->nc.peer) {
-        s->nc.peer->link_down = link_down;
-    }
-
-    if (s->nc.info->link_status_changed) {
-        s->nc.info->link_status_changed(&s->nc);
-    }
-
-    if (s->nc.peer && s->nc.peer->info->link_status_changed) {
-        s->nc.peer->info->link_status_changed(s->nc.peer);
-    }
-}
-
 static void net_vhost_user_event(void *opaque, int event)
 {
-    VhostUserState *s = opaque;
+    const char *name = opaque;
+    NetClientState *ncs[MAX_QUEUE_NUM];
+    VhostUserState *s;
+    Error *err = NULL;
+    int queues;
 
+    queues = qemu_find_net_clients_except(name, ncs,
+                                          NET_CLIENT_OPTIONS_KIND_NIC,
+                                          MAX_QUEUE_NUM);
+    assert(queues < MAX_QUEUE_NUM);
+
+    s = DO_UPCAST(VhostUserState, nc, ncs[0]);
+    trace_vhost_user_event(s->chr->label, event);
     switch (event) {
     case CHR_EVENT_OPENED:
-        vhost_user_start(s);
-        net_vhost_link_down(s, false);
-        error_report("chardev \"%s\" went up\n", s->chr->label);
+        if (vhost_user_start(queues, ncs) < 0) {
+            exit(1);
+        }
+        qmp_set_link(name, true, &err);
         break;
     case CHR_EVENT_CLOSED:
-        net_vhost_link_down(s, true);
-        vhost_user_stop(s);
-        error_report("chardev \"%s\" went down\n", s->chr->label);
+        qmp_set_link(name, false, &err);
+        vhost_user_stop(queues, ncs);
         break;
+    }
+
+    if (err) {
+        error_report_err(err);
     }
 }
 
 static int net_vhost_user_init(NetClientState *peer, const char *device,
                                const char *name, CharDriverState *chr,
-                               bool vhostforce)
+                               int queues)
 {
     NetClientState *nc;
     VhostUserState *s;
+    int i;
 
-    nc = qemu_new_net_client(&net_vhost_user_info, peer, device, name);
+    assert(name);
+    assert(queues > 0);
 
-    snprintf(nc->info_str, sizeof(nc->info_str), "vhost-user to %s",
-             chr->label);
+    for (i = 0; i < queues; i++) {
+        nc = qemu_new_net_client(&net_vhost_user_info, peer, device, name);
 
-    s = DO_UPCAST(VhostUserState, nc, nc);
+        snprintf(nc->info_str, sizeof(nc->info_str), "vhost-user%d to %s",
+                 i, chr->label);
 
-    /* We don't provide a receive callback */
-    s->nc.receive_disabled = 1;
-    s->chr = chr;
-    s->vhostforce = vhostforce;
+        nc->queue_index = i;
 
-    qemu_chr_add_handlers(s->chr, NULL, NULL, net_vhost_user_event, s);
+        s = DO_UPCAST(VhostUserState, nc, nc);
+        s->chr = chr;
+    }
+
+    qemu_chr_add_handlers(chr, NULL, NULL, net_vhost_user_event, nc[0].name);
 
     return 0;
 }
 
-static int net_vhost_chardev_opts(const char *name, const char *value,
-                                  void *opaque)
+static int net_vhost_chardev_opts(void *opaque,
+                                  const char *name, const char *value,
+                                  Error **errp)
 {
     VhostUserChardevProps *props = opaque;
 
@@ -166,35 +239,35 @@ static int net_vhost_chardev_opts(const char *name, const char *value,
     } else if (strcmp(name, "path") == 0) {
         props->is_unix = true;
     } else if (strcmp(name, "server") == 0) {
-        props->is_server = true;
     } else {
-        error_report("vhost-user does not support a chardev"
-                     " with the following option:\n %s = %s",
-                     name, value);
+        error_setg(errp,
+                   "vhost-user does not support a chardev with option %s=%s",
+                   name, value);
         return -1;
     }
     return 0;
 }
 
-static CharDriverState *net_vhost_parse_chardev(const NetdevVhostUserOptions *opts)
+static CharDriverState *net_vhost_parse_chardev(
+    const NetdevVhostUserOptions *opts, Error **errp)
 {
     CharDriverState *chr = qemu_chr_find(opts->chardev);
     VhostUserChardevProps props;
 
     if (chr == NULL) {
-        error_report("chardev \"%s\" not found", opts->chardev);
+        error_setg(errp, "chardev \"%s\" not found", opts->chardev);
         return NULL;
     }
 
     /* inspect chardev opts */
     memset(&props, 0, sizeof(props));
-    if (qemu_opt_foreach(chr->opts, net_vhost_chardev_opts, &props, true) != 0) {
+    if (qemu_opt_foreach(chr->opts, net_vhost_chardev_opts, &props, errp)) {
         return NULL;
     }
 
     if (!props.is_socket || !props.is_unix) {
-        error_report("chardev \"%s\" is not a unix socket",
-                     opts->chardev);
+        error_setg(errp, "chardev \"%s\" is not a unix socket",
+                   opts->chardev);
         return NULL;
     }
 
@@ -203,7 +276,7 @@ static CharDriverState *net_vhost_parse_chardev(const NetdevVhostUserOptions *op
     return chr;
 }
 
-static int net_vhost_check_net(QemuOpts *opts, void *opaque)
+static int net_vhost_check_net(void *opaque, QemuOpts *opts, Error **errp)
 {
     const char *name = opaque;
     const char *driver, *netdev;
@@ -218,7 +291,7 @@ static int net_vhost_check_net(QemuOpts *opts, void *opaque)
 
     if (strcmp(netdev, name) == 0 &&
         strncmp(driver, virtio_name, strlen(virtio_name)) != 0) {
-        error_report("vhost-user requires frontend driver virtio-net-*");
+        error_setg(errp, "vhost-user requires frontend driver virtio-net-*");
         return -1;
     }
 
@@ -226,33 +299,33 @@ static int net_vhost_check_net(QemuOpts *opts, void *opaque)
 }
 
 int net_init_vhost_user(const NetClientOptions *opts, const char *name,
-                        NetClientState *peer)
+                        NetClientState *peer, Error **errp)
 {
+    int queues;
     const NetdevVhostUserOptions *vhost_user_opts;
     CharDriverState *chr;
-    bool vhostforce;
 
-    assert(opts->kind == NET_CLIENT_OPTIONS_KIND_VHOST_USER);
-    vhost_user_opts = opts->vhost_user;
+    assert(opts->type == NET_CLIENT_OPTIONS_KIND_VHOST_USER);
+    vhost_user_opts = opts->u.vhost_user.data;
 
-    chr = net_vhost_parse_chardev(vhost_user_opts);
+    chr = net_vhost_parse_chardev(vhost_user_opts, errp);
     if (!chr) {
-        error_report("No suitable chardev found");
         return -1;
     }
 
     /* verify net frontend */
     if (qemu_opts_foreach(qemu_find_opts("device"), net_vhost_check_net,
-                          (char *)name, true) == -1) {
+                          (char *)name, errp)) {
         return -1;
     }
 
-    /* vhostforce for non-MSIX */
-    if (vhost_user_opts->has_vhostforce) {
-        vhostforce = vhost_user_opts->vhostforce;
-    } else {
-        vhostforce = false;
+    queues = vhost_user_opts->has_queues ? vhost_user_opts->queues : 1;
+    if (queues < 1 || queues > MAX_QUEUE_NUM) {
+        error_setg(errp,
+                   "vhost-user number of queues must be in range [1, %d]",
+                   MAX_QUEUE_NUM);
+        return -1;
     }
 
-    return net_vhost_user_init(peer, "vhost_user", name, chr, vhostforce);
+    return net_vhost_user_init(peer, "vhost_user", name, chr, queues);
 }

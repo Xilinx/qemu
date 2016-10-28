@@ -1,9 +1,8 @@
 /* This file is composed of several different files from the upstream
    sourceware.org CVS.  Original file boundaries marked with **** */
 
-#include <string.h>
+#include "qemu/osdep.h"
 #include <math.h>
-#include <stdio.h>
 
 #include "disas/bfd.h"
 
@@ -615,8 +614,6 @@ static const char *const reg_half_names[] =
 
 /* Maximum length of an instruction.  */
 #define MAXLEN 22
-
-#include <setjmp.h>
 
 struct private
 {

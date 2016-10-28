@@ -21,8 +21,9 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "hw/qdev.h"
-#include "hw/sysbus.h"
+#include "qemu/osdep.h"
+#include "qemu-common.h"
+#include "cpu.h"
 #include "monitor/monitor.h"
 #include "monitor/qdev.h"
 #include "qmp-commands.h"
@@ -30,6 +31,10 @@
 #include "qemu/config-file.h"
 
 #include "qemu/etrace.h"
+
+#ifndef CONFIG_USER_ONLY
+#include "hw/qdev.h"
+#include "hw/sysbus.h"
 
 typedef struct {
     DeviceState *dev;
@@ -39,87 +44,81 @@ typedef struct {
     bool set;
 } IRQInterceptState;
 
-#if 0
-static void trace_irq_handler(void *opaque, int n, int level)
-{
-    IRQInterceptState *iis = opaque;
-    uint32_t flags = ETRACE_EVU64_F_NONE;
+// static void trace_irq_handler(void *opaque, int n, int level)
+// {
+//     IRQInterceptState *iis = opaque;
+//     uint32_t flags = ETRACE_EVU64_F_NONE;
 
-    if (iis->set && (iis->level == level)) {
-        return;
-    }
+//     if (iis->set && (iis->level == level)) {
+//         return;
+//     }
 
-    if (iis->set) {
-        flags = ETRACE_EVU64_F_PREV_VAL;
-    }
-    etrace_event_u64(&qemu_etracer, -1, flags, iis->devname,
-                     iis->name, level, iis->level);
-    iis->set = true;
-    iis->level = level;
-}
+//     if (iis->set) {
+//         flags = ETRACE_EVU64_F_PREV_VAL;
+//     }
+//     etrace_event_u64(&qemu_etracer, -1, flags, iis->devname,
+//                      iis->name, level, iis->level);
+//     iis->set = true;
+//     iis->level = level;
+// }
 
-static void intercept_irq(DeviceState *dev, char *irq_name, int i, char *name)
-{
-    IRQInterceptState *iis;
-    qemu_irq new;
+// static void intercept_irq(DeviceState *dev, char *irq_name, int i, char *name)
+// {
+//     IRQInterceptState *iis;
+//     qemu_irq new;
 
-    iis = g_new0(IRQInterceptState, 1);
-    iis->devname = object_get_canonical_path(OBJECT(dev));
-    iis->name = name;
-    new = qemu_allocate_irq(trace_irq_handler, iis, 0);
-    object_property_add_child(OBJECT(dev), name, OBJECT(new), NULL);
-    qdev_connect_gpio_out_named(dev, irq_name, i, new);
-}
-#endif
+//     iis = g_new0(IRQInterceptState, 1);
+//     iis->devname = object_get_canonical_path(OBJECT(dev));
+//     iis->name = name;
+//     new = qemu_allocate_irq(trace_irq_handler, iis, 0);
+//     object_property_add_child(OBJECT(dev), name, OBJECT(new), NULL);
+//     qdev_connect_gpio_out_named(dev, irq_name, i, new);
+// }
 
 static void sysbus_init(SysBusDevice *dev)
 {
     /* FIXME: restore service */
-# if 0
-    unsigned int i = 0;
+    // unsigned int i = 0;
 
-    for (i = 0; i < dev->num_irq; i++) {
-        char *name;
-        int r;
-        /* Unfortunately there is no sysbus_get_irq() :( */
-        char *irq_name = g_strdup_printf(SYSBUS_DEVICE_GPIO_IRQ "-%d", i);
-        qemu_irq irq = qdev_get_gpio_out_named(DEVICE(dev), irq_name, 0);
+    // for (i = 0; i < dev->num_irq; i++) {
+    //     char *name;
+    //     int r;
+    //     /* Unfortunately there is no sysbus_get_irq() :( */
+    //     char *irq_name = g_strdup_printf(SYSBUS_DEVICE_GPIO_IRQ "-%d", i);
+    //     qemu_irq irq = qdev_get_gpio_out_named(DEVICE(dev), irq_name, 0);
 
-        if (!irq) {
-            g_free(irq_name);
-            continue;
-        }
+    //     if (!irq) {
+    //         g_free(irq_name);
+    //         continue;
+    //     }
 
-        r = asprintf(&name, "irq[%u]", i);
-        assert(r > 0);
-        intercept_irq(DEVICE(dev), irq_name, i, name);
-        g_free(irq_name);
-    }
-#endif
+    //     r = asprintf(&name, "irq[%u]", i);
+    //     assert(r > 0);
+    //     intercept_irq(DEVICE(dev), irq_name, i, name);
+    //     g_free(irq_name);
+    // }
 }
 
 static void dev_named_init(DeviceState *dev, NamedGPIOList *l)
 {
-# if 0
-    unsigned int i = 0;
+    // unsigned int i = 0;
 
-    if (!l->num_out) {
-        return;
-    }
+    // if (!l->num_out) {
+    //     return;
+    // }
 
-    for (i = 0; i < l->num_out; i++) {
-        char *name;
-        int r;
+    // for (i = 0; i < l->num_out; i++) {
+    //     char *name;
+    //     int r;
 
-        if (!l->out[i]) {
-            continue;
-        }
+    //     if (!l->out[i]) {
+    //         continue;
+    //     }
 
-        r = asprintf(&name, "%s[%u]", l->name ? l->name : "gpio-out", i);
-        assert(r > 0);
-        intercept_irq(DEVICE(dev), l->name, i, name);
-    }
-#endif
+    //     r = asprintf(&name, "%s[%u]", l->name ? l->name : "gpio-out", i);
+    //     assert(r > 0);
+    //     intercept_irq(DEVICE(dev), l->name, i, name);
+    // }
 }
 
 static int dev_init(Object *obj, void *opaque)
@@ -145,3 +144,5 @@ void qemu_etrace_gpio_init(void)
 {
     object_child_foreach_recursive(object_get_root(), dev_init, NULL);
 }
+
+#endif

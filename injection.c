@@ -10,6 +10,7 @@
 
 #include "qemu/osdep.h"
 #include "qemu-common.h"
+#include "cpu.h"
 #include "qapi/qmp/qerror.h"
 #include "qapi/qmp/qjson.h"
 #include "qmp-commands.h"
@@ -20,6 +21,7 @@
 #include "qemu/log.h"
 #include "qemu/queue.h"
 #include "sysemu/sysemu.h"
+#include "exec/exec-all.h"
 
 typedef struct FaultEventEntry FaultEventEntry;
 static QLIST_HEAD(, FaultEventEntry) events = QLIST_HEAD_INITIALIZER(events);
@@ -34,13 +36,6 @@ static QEMUTimer *timer;
         qemu_log("fault_injection: " fmt , ## __VA_ARGS__);                    \
     }                                                                          \
 } while (0);
-
-/* XXX: Is already implemented upstream */
-static AddressSpace *cpu_get_address_space(CPUState *cpu, int asidx)
-{
-    assert(cpu->as);
-    return &cpu->as[asidx];
-}
 
 void qmp_write_mem(int64_t addr, int64_t val, int64_t size, bool has_cpu,
                    int64_t cpu, bool has_qom, const char *qom, Error **errp)
@@ -72,20 +67,22 @@ void qmp_write_mem(int64_t addr, int64_t val, int64_t size, bool has_cpu,
     }
 
     if (address_space_write(cpu_get_address_space(qemu_get_cpu(cpu_id), 0),
-                            addr, ((uint8_t *)&val), size)) {
+                            addr, MEMTXATTRS_UNSPECIFIED, ((uint8_t *)&val), size)) {
         DPRINTF("write memory failed.\n");
     } else {
         DPRINTF("write memory succeed.\n");
     }
 }
 
-int64_t qmp_read_mem(int64_t addr, int64_t size, bool has_cpu, int64_t cpu,
+ReadValue *qmp_read_mem(int64_t addr, int64_t size, bool has_cpu, int64_t cpu,
                      bool has_qom, const char *qom, Error **errp)
 {
-    int64_t val = 0;
+    ReadValue *ret = g_new0(ReadValue, 1);
     int64_t cpu_id = 0;
     Object *obj;
     CPUState *s;
+
+    ret->value = 0;
 
     if (has_qom) {
         obj = object_resolve_path(qom, NULL);
@@ -98,7 +95,7 @@ int64_t qmp_read_mem(int64_t addr, int64_t size, bool has_cpu, int64_t cpu,
             error_set(errp, ERROR_CLASS_DEVICE_NOT_FOUND,
                             "'%s' is not a CPU or doesn't exists", qom);
             DPRINTF("read memory failed.\n");
-            return 0;
+            return ret;
         }
     } else {
         if (has_cpu) {
@@ -109,12 +106,12 @@ int64_t qmp_read_mem(int64_t addr, int64_t size, bool has_cpu, int64_t cpu,
     }
 
     if (address_space_read(cpu_get_address_space(qemu_get_cpu(cpu_id), 0), addr,
-                           ((uint8_t *) &val), size)) {
+                           MEMTXATTRS_UNSPECIFIED, (uint8_t *) &(ret->value), size)) {
         DPRINTF("read memory failed.\n");
-        return 0;
+        return ret;
     } else {
-        DPRINTF("read memory succeed 0x%" PRIx64 ".\n", val);
-        return val;
+        DPRINTF("read memory succeed 0x%" PRIx64 ".\n", ret->value);
+        return ret;
     }
 }
 

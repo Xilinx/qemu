@@ -21,11 +21,13 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/i386/pc.h"
 #include "hw/isa/isa.h"
 #include "monitor/monitor.h"
 #include "qemu/timer.h"
+#include "qemu/log.h"
 #include "hw/isa/i8259_internal.h"
 
 /* debug PIC */
@@ -229,7 +231,7 @@ int pic_read_irq(DeviceState *d)
     printf("IRQ%d latency=%0.3fus\n",
            irq,
            (double)(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) -
-                    irq_time[irq]) * 1000000.0 / get_ticks_per_sec());
+                    irq_time[irq]) * 1000000.0 / NANOSECONDS_PER_SECOND);
 #endif
     DPRINTF("pic_interrupt: irq=%d\n", irq);
     return intno;
@@ -429,7 +431,7 @@ static void pic_realize(DeviceState *dev, Error **errp)
     pc->parent_realize(dev, errp);
 }
 
-void pic_info(Monitor *mon, const QDict *qdict)
+void hmp_info_pic(Monitor *mon, const QDict *qdict)
 {
     int i;
     PICCommonState *s;
@@ -447,7 +449,7 @@ void pic_info(Monitor *mon, const QDict *qdict)
     }
 }
 
-void irq_info(Monitor *mon, const QDict *qdict)
+void hmp_info_irq(Monitor *mon, const QDict *qdict)
 {
 #ifndef DEBUG_IRQ_COUNT
     monitor_printf(mon, "irq statistic code not compiled.\n");

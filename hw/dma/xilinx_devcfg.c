@@ -24,11 +24,14 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/dma.h"
 #include "hw/sysbus.h"
 #include "qemu/bitops.h"
 #include "hw/register.h"
+#include "qapi/error.h"
+#include "qemu/log.h"
 #include "qemu/bitops.h"
 
 #define TYPE_XILINX_DEVCFG "xlnx.ps7-dev-cfg"

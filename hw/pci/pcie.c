@@ -18,6 +18,8 @@
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "qemu-common.h"
 #include "hw/pci/pci_bridge.h"
 #include "hw/pci/pcie.h"
@@ -26,7 +28,6 @@
 #include "hw/pci/pci_bus.h"
 #include "hw/pci/pcie_regs.h"
 #include "qemu/range.h"
-#include "qapi/qmp/qerror.h"
 
 //#define DEBUG_PCIE
 #ifdef DEBUG_PCIE
@@ -79,12 +80,12 @@ int pcie_cap_init(PCIDevice *dev, uint8_t offset, uint8_t type, uint8_t port)
                  PCI_EXP_LNK_LS_25);
 
     pci_set_word(exp_cap + PCI_EXP_LNKSTA,
-                 PCI_EXP_LNK_MLW_1 | PCI_EXP_LNK_LS_25);
+                 PCI_EXP_LNK_MLW_1 | PCI_EXP_LNK_LS_25 |PCI_EXP_LNKSTA_DLLLA);
 
     pci_set_long(exp_cap + PCI_EXP_DEVCAP2,
                  PCI_EXP_DEVCAP2_EFF | PCI_EXP_DEVCAP2_EETLPP);
 
-    pci_set_word(dev->wmask + pos, PCI_EXP_DEVCTL2_EETLPPB);
+    pci_set_word(dev->wmask + pos + PCI_EXP_DEVCTL2, PCI_EXP_DEVCTL2_EETLPPB);
     return pos;
 }
 
@@ -250,24 +251,42 @@ void pcie_cap_slot_hotplug_cb(HotplugHandler *hotplug_dev, DeviceState *dev,
         return;
     }
 
-    /* TODO: multifunction hot-plug.
-     * Right now, only a device of function = 0 is allowed to be
-     * hot plugged/unplugged.
+    /* To enable multifunction hot-plug, we just ensure the function
+     * 0 added last. When function 0 is added, we set the sltsta and
+     * inform OS via event notification.
      */
-    assert(PCI_FUNC(pci_dev->devfn) == 0);
+    if (pci_get_function_0(pci_dev)) {
+        pci_word_test_and_set_mask(exp_cap + PCI_EXP_SLTSTA,
+                                   PCI_EXP_SLTSTA_PDS);
+        pcie_cap_slot_event(PCI_DEVICE(hotplug_dev),
+                            PCI_EXP_HP_EV_PDC | PCI_EXP_HP_EV_ABP);
+    }
+}
 
-    pci_word_test_and_set_mask(exp_cap + PCI_EXP_SLTSTA,
-                               PCI_EXP_SLTSTA_PDS);
-    pcie_cap_slot_event(PCI_DEVICE(hotplug_dev),
-                        PCI_EXP_HP_EV_PDC | PCI_EXP_HP_EV_ABP);
+static void pcie_unplug_device(PCIBus *bus, PCIDevice *dev, void *opaque)
+{
+    object_unparent(OBJECT(dev));
 }
 
 void pcie_cap_slot_hot_unplug_request_cb(HotplugHandler *hotplug_dev,
                                          DeviceState *dev, Error **errp)
 {
     uint8_t *exp_cap;
+    PCIDevice *pci_dev = PCI_DEVICE(dev);
+    PCIBus *bus = pci_dev->bus;
 
     pcie_cap_slot_hotplug_common(PCI_DEVICE(hotplug_dev), dev, &exp_cap, errp);
+
+    /* In case user cancel the operation of multi-function hot-add,
+     * remove the function that is unexposed to guest individually,
+     * without interaction with guest.
+     */
+    if (pci_dev->devfn &&
+        !bus->devices[0]) {
+        pcie_unplug_device(bus, pci_dev, NULL);
+
+        return;
+    }
 
     pcie_cap_slot_push_attention_button(PCI_DEVICE(hotplug_dev));
 }
@@ -379,11 +398,6 @@ void pcie_cap_slot_reset(PCIDevice *dev)
     hotplug_event_update_event_status(dev);
 }
 
-static void pcie_unplug_device(PCIBus *bus, PCIDevice *dev, void *opaque)
-{
-    object_unparent(OBJECT(dev));
-}
-
 void pcie_cap_slot_write_config(PCIDevice *dev,
                                 uint32_t addr, uint32_t val, int len)
 {
@@ -414,13 +428,13 @@ void pcie_cap_slot_write_config(PCIDevice *dev,
      */
     if ((sltsta & PCI_EXP_SLTSTA_PDS) && (val & PCI_EXP_SLTCTL_PCC) &&
         ((val & PCI_EXP_SLTCTL_PIC_OFF) == PCI_EXP_SLTCTL_PIC_OFF)) {
-            PCIBus *sec_bus = pci_bridge_get_sec_bus(PCI_BRIDGE(dev));
-            pci_for_each_device(sec_bus, pci_bus_num(sec_bus),
-                                pcie_unplug_device, NULL);
+        PCIBus *sec_bus = pci_bridge_get_sec_bus(PCI_BRIDGE(dev));
+        pci_for_each_device(sec_bus, pci_bus_num(sec_bus),
+                            pcie_unplug_device, NULL);
 
-            pci_word_test_and_clear_mask(exp_cap + PCI_EXP_SLTSTA,
-                                         PCI_EXP_SLTSTA_PDS);
-            pci_word_test_and_set_mask(exp_cap + PCI_EXP_SLTSTA,
+        pci_word_test_and_clear_mask(exp_cap + PCI_EXP_SLTSTA,
+                                     PCI_EXP_SLTSTA_PDS);
+        pci_word_test_and_set_mask(exp_cap + PCI_EXP_SLTSTA,
                                        PCI_EXP_SLTSTA_PDC);
     }
 
@@ -595,7 +609,7 @@ void pcie_add_capability(PCIDevice *dev,
 
     assert(offset >= PCI_CONFIG_SPACE_SIZE);
     assert(offset < offset + size);
-    assert(offset + size < PCIE_CONFIG_SPACE_SIZE);
+    assert(offset + size <= PCIE_CONFIG_SPACE_SIZE);
     assert(size >= 8);
     assert(pci_is_express(dev));
 

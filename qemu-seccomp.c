@@ -12,9 +12,19 @@
  * Contributions after 2012-01-13 are licensed under the terms of the
  * GNU GPL, version 2 or (at your option) any later version.
  */
-#include <stdio.h>
+#include "qemu/osdep.h"
 #include <seccomp.h>
 #include "sysemu/seccomp.h"
+
+/* For some architectures (notably ARM) cacheflush is not supported until
+ * libseccomp 2.2.3, but configure enforces that we are using a more recent
+ * version on those hosts, so it is OK for this check to be less strict.
+ */
+#if SCMP_VER_MAJOR >= 3
+  #define HAVE_CACHEFLUSH
+#elif SCMP_VER_MAJOR == 2 && SCMP_VER_MINOR >= 2
+  #define HAVE_CACHEFLUSH
+#endif
 
 struct QemuSeccompSyscall {
     int32_t num;
@@ -229,13 +239,20 @@ static const struct QemuSeccompSyscall seccomp_whitelist[] = {
     { SCMP_SYS(shmdt), 240 },
     { SCMP_SYS(timerfd_create), 240 },
     { SCMP_SYS(shmctl), 240 },
+    { SCMP_SYS(mlockall), 240 },
     { SCMP_SYS(mlock), 240 },
     { SCMP_SYS(munlock), 240 },
     { SCMP_SYS(semctl), 240 },
     { SCMP_SYS(fallocate), 240 },
     { SCMP_SYS(fadvise64), 240 },
     { SCMP_SYS(inotify_init1), 240 },
-    { SCMP_SYS(inotify_add_watch), 240 }
+    { SCMP_SYS(inotify_add_watch), 240 },
+    { SCMP_SYS(mbind), 240 },
+    { SCMP_SYS(memfd_create), 240 },
+#ifdef HAVE_CACHEFLUSH
+    { SCMP_SYS(cacheflush), 240 },
+#endif
+    { SCMP_SYS(sysinfo), 240 },
 };
 
 int seccomp_start(void)

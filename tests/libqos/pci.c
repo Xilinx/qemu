@@ -10,6 +10,7 @@
  * See the COPYING file in the top-level directory.
  */
 
+#include "qemu/osdep.h"
 #include "libqos/pci.h"
 
 #include "hw/pci/pci_regs.h"
@@ -34,11 +35,13 @@ void qpci_device_foreach(QPCIBus *bus, int vendor_id, int device_id,
 
             if (vendor_id != -1 &&
                 qpci_config_readw(dev, PCI_VENDOR_ID) != vendor_id) {
+                g_free(dev);
                 continue;
             }
 
             if (device_id != -1 &&
                 qpci_config_readw(dev, PCI_DEVICE_ID) != device_id) {
+                g_free(dev);
                 continue;
             }
 

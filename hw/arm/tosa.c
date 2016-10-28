@@ -11,6 +11,8 @@
  * GNU GPL, version 2 or (at your option) any later version.
  */
 
+#include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "hw/hw.h"
 #include "hw/arm/pxa.h"
 #include "hw/arm/arm.h"
@@ -19,7 +21,7 @@
 #include "hw/pcmcia.h"
 #include "hw/boards.h"
 #include "hw/i2c/i2c.h"
-#include "hw/ssi.h"
+#include "hw/ssi/ssi.h"
 #include "sysemu/block-backend.h"
 #include "hw/sysbus.h"
 #include "exec/address-spaces.h"
@@ -227,21 +229,13 @@ static void tosa_init(MachineState *machine)
 
     mpu = pxa255_init(address_space_mem, tosa_binfo.ram_size);
 
-    memory_region_init_ram(rom, NULL, "tosa.rom", TOSA_ROM, &error_abort);
+    memory_region_init_ram(rom, NULL, "tosa.rom", TOSA_ROM, &error_fatal);
     vmstate_register_ram_global(rom);
     memory_region_set_readonly(rom, true);
     memory_region_add_subregion(address_space_mem, 0, rom);
 
-    /*
-     * FIXME: remove this fishy cast when the board gets some
-     * more QOMification
-     */
-    tmio = (TC6393xbState *)object_new("TC6393xb");
-    sysbus_mmio_map(SYS_BUS_DEVICE(tmio), 0, 0x10000000);
-    sysbus_mmio_map(SYS_BUS_DEVICE(tmio), 1, 0x10100000);
-    sysbus_connect_irq(SYS_BUS_DEVICE(tmio), 0,
-                       qdev_get_gpio_in(mpu->gpio, TOSA_GPIO_TC6393XB_INT));
-    object_property_set_bool(OBJECT(tmio), true, "realized", NULL);
+    tmio = tc6393xb_init(address_space_mem, 0x10000000,
+            qdev_get_gpio_in(mpu->gpio, TOSA_GPIO_TC6393XB_INT));
 
     scp0 = sysbus_create_simple("scoop", 0x08800000, NULL);
     scp1 = sysbus_create_simple("scoop", 0x14800040, NULL);
@@ -260,18 +254,13 @@ static void tosa_init(MachineState *machine)
     sl_bootparam_write(SL_PXA_PARAM_BASE);
 }
 
-static QEMUMachine tosapda_machine = {
-    .name = "tosa",
-    .desc = "Tosa PDA (PXA255)",
-    .init = tosa_init,
-};
-
-static void tosapda_machine_init(void)
+static void tosapda_machine_init(MachineClass *mc)
 {
-    qemu_register_machine(&tosapda_machine);
+    mc->desc = "Sharp SL-6000 (Tosa) PDA (PXA255)";
+    mc->init = tosa_init;
 }
 
-machine_init(tosapda_machine_init);
+DEFINE_MACHINE("tosa", tosapda_machine_init)
 
 static void tosa_dac_class_init(ObjectClass *klass, void *data)
 {

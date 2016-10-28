@@ -41,6 +41,11 @@ typedef struct {
 #define CHR_IOCTL_PP_EPP_WRITE       11
 #define CHR_IOCTL_PP_DATA_DIR        12
 
+struct ParallelIOArg {
+    void *buffer;
+    int count;
+};
+
 #define CHR_IOCTL_SERIAL_SET_TIOCM   13
 #define CHR_IOCTL_SERIAL_GET_TIOCM   14
 
@@ -64,8 +69,6 @@ struct CharDriverState {
     int (*chr_ioctl)(struct CharDriverState *s, int cmd, void *arg);
     int (*get_msgfds)(struct CharDriverState *s, int* fds, int num);
     int (*set_msgfds)(struct CharDriverState *s, int *fds, int num);
-    int (*get_fd)(struct CharDriverState *s);
-    int (*get_msgfd)(struct CharDriverState *s);
     int (*chr_add_client)(struct CharDriverState *chr, int fd);
     IOEventHandler *chr_event;
     IOCanReadHandler *chr_can_read;
@@ -79,6 +82,7 @@ struct CharDriverState {
     void *opaque;
     char *label;
     char *filename;
+    int logfd;
     int be_open;
     int fe_open;
     int explicit_fe_open;
@@ -87,17 +91,20 @@ struct CharDriverState {
     int is_mux;
     guint fd_in_tag;
     QemuOpts *opts;
+    bool replay;
     QTAILQ_ENTRY(CharDriverState) next;
 };
 
 /**
- * @qemu_chr_alloc:
+ * qemu_chr_alloc:
+ * @backend: the common backend config
+ * @errp: pointer to a NULL-initialized error object
  *
  * Allocate and initialize a new CharDriverState.
  *
- * Returns: a newly allocated CharDriverState.
+ * Returns: a newly allocated CharDriverState, or NULL on error.
  */
-CharDriverState *qemu_chr_alloc(void);
+CharDriverState *qemu_chr_alloc(ChardevCommon *backend, Error **errp);
 
 /**
  * @qemu_chr_new_from_opts:
@@ -114,6 +121,16 @@ CharDriverState *qemu_chr_new_from_opts(QemuOpts *opts,
                                     Error **errp);
 
 /**
+ * @qemu_chr_parse_common:
+ *
+ * Parse the common options available to all character backends.
+ *
+ * @opts the options that still need parsing
+ * @backend a new backend
+ */
+void qemu_chr_parse_common(QemuOpts *opts, ChardevCommon *backend);
+
+/**
  * @qemu_chr_new:
  *
  * Create a new character backend from a URI.
@@ -128,11 +145,35 @@ CharDriverState *qemu_chr_new(const char *label, const char *filename,
                               void (*init)(struct CharDriverState *s));
 
 /**
+ * @qemu_chr_new_noreplay:
+ *
+ * Create a new character backend from a URI.
+ * Character device communications are not written
+ * into the replay log.
+ *
+ * @label the name of the backend
+ * @filename the URI
+ * @init not sure..
+ *
+ * Returns: a new character backend
+ */
+CharDriverState *qemu_chr_new_noreplay(const char *label, const char *filename,
+                                       void (*init)(struct CharDriverState *s));
+
+/**
  * @qemu_chr_delete:
+ *
+ * Destroy a character backend and remove it from the list of
+ * identified character backends.
+ */
+void qemu_chr_delete(CharDriverState *chr);
+
+/**
+ * @qemu_chr_free:
  *
  * Destroy a character backend.
  */
-void qemu_chr_delete(CharDriverState *chr);
+void qemu_chr_free(CharDriverState *chr);
 
 /**
  * @qemu_chr_fe_set_echo:
@@ -231,15 +272,6 @@ int qemu_chr_fe_read_all(CharDriverState *s, uint8_t *buf, int len);
 int qemu_chr_fe_ioctl(CharDriverState *s, int cmd, void *arg);
 
 /**
- * @qemu_chr_fe_get_fd:
- *
- * For backends that support it, return the underlying file-descriptor.
- *
- * Returns: -1 if the operation is unsupported.
- */
-int qemu_chr_fe_get_fd(CharDriverState *s);
-
-/**
  * @qemu_chr_fe_get_msgfd:
  *
  * For backends capable of fd passing, return the latest file descriptor passed
@@ -331,6 +363,15 @@ int qemu_chr_be_can_write(CharDriverState *s);
  */
 void qemu_chr_be_write(CharDriverState *s, uint8_t *buf, int len);
 
+/**
+ * @qemu_chr_be_write_impl:
+ *
+ * Implementation of back end writing. Used by replay module.
+ *
+ * @buf a buffer to receive data from the front end
+ * @len the number of bytes to receive from the front end
+ */
+void qemu_chr_be_write_impl(CharDriverState *s, uint8_t *buf, int len);
 
 /**
  * @qemu_chr_be_event:
@@ -356,27 +397,16 @@ bool chr_is_ringbuf(const CharDriverState *chr);
 QemuOpts *qemu_chr_parse_compat(const char *label, const char *filename);
 
 void register_char_driver(const char *name, ChardevBackendKind kind,
-        void (*parse)(QemuOpts *opts, ChardevBackend *backend, Error **errp));
-
-/* add an eventfd to the qemu devices that are polled */
-CharDriverState *qemu_chr_open_eventfd(int eventfd);
+        void (*parse)(QemuOpts *opts, ChardevBackend *backend, Error **errp),
+        CharDriverState *(*create)(const char *id, ChardevBackend *backend,
+                                   ChardevReturn *ret, Error **errp));
 
 extern int term_escape_char;
 
 CharDriverState *qemu_char_get_next_serial(void);
 
-/* msmouse */
-CharDriverState *qemu_chr_open_msmouse(void);
-
-/* testdev.c */
-CharDriverState *chr_testdev_init(void);
-
-/* baum.c */
-CharDriverState *chr_baum_init(void);
-
 /* console.c */
-typedef CharDriverState *(VcHandler)(ChardevVC *vc);
-
+typedef CharDriverState *(VcHandler)(ChardevVC *vc, Error **errp);
 void register_vc_handler(VcHandler *handler);
-CharDriverState *vc_init(ChardevVC *vc);
+
 #endif

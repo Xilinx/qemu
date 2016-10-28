@@ -46,6 +46,7 @@ static inline bool excp_is_internal(int excp)
         || excp == EXCP_HALTED
         || excp == EXCP_EXCEPTION_EXIT
         || excp == EXCP_KERNEL_TRAP
+        || excp == EXCP_SEMIHOST
         || excp == EXCP_STREX;
 }
 
@@ -68,24 +69,9 @@ static const char * const excnames[] = {
     [EXCP_SMC] = "Secure Monitor Call",
     [EXCP_VIRQ] = "Virtual IRQ",
     [EXCP_VFIQ] = "Virtual FIQ",
+    [EXCP_SEMIHOST] = "Semihosting call",
     [EXCP_WFI] = "WFI",
 };
-
-static inline void arm_log_exception(int cpu_index, int exception_index)
-{
-    if (qemu_loglevel_mask(CPU_LOG_INT)) {
-        const char *exc = NULL;
-
-        if (exception_index >= 0 && exception_index < ARRAY_SIZE(excnames)) {
-            exc = excnames[exception_index];
-        }
-        if (!exc) {
-            exc = "unknown";
-        }
-        qemu_log_mask(CPU_LOG_INT, "CPU %d: Taking exception %d [%s]\n",
-                      cpu_index, exception_index, exc);
-    }
-}
 
 /* Scale factor for generic timers, ie number of ns per tick.
  * This gives a 62.5MHz timer.
@@ -94,19 +80,46 @@ static inline void arm_log_exception(int cpu_index, int exception_index)
 
 /*
  * For AArch64, map a given EL to an index in the banked_spsr array.
+ * Note that this mapping and the AArch32 mapping defined in bank_number()
+ * must agree such that the AArch64<->AArch32 SPSRs have the architecturally
+ * mandated mapping between each other.
  */
 static inline unsigned int aarch64_banked_spsr_index(unsigned int el)
 {
     static const unsigned int map[4] = {
-        [1] = BANK_USRSYS, /* EL1.  */
-        [2] = BANK_HYP,    /* EL2.  */
-        [3] = BANK_MON,    /* EL3.  */
+        [1] = BANK_SVC, /* EL1.  */
+        [2] = BANK_HYP, /* EL2.  */
+        [3] = BANK_MON, /* EL3.  */
     };
     assert(el >= 1 && el <= 3);
     return map[el];
 }
 
-int bank_number(int mode);
+/* Map CPU modes onto saved register banks.  */
+static inline int bank_number(int mode)
+{
+    switch (mode) {
+    case ARM_CPU_MODE_USR:
+    case ARM_CPU_MODE_SYS:
+        return BANK_USRSYS;
+    case ARM_CPU_MODE_SVC:
+        return BANK_SVC;
+    case ARM_CPU_MODE_ABT:
+        return BANK_ABT;
+    case ARM_CPU_MODE_UND:
+        return BANK_UND;
+    case ARM_CPU_MODE_IRQ:
+        return BANK_IRQ;
+    case ARM_CPU_MODE_FIQ:
+        return BANK_FIQ;
+    case ARM_CPU_MODE_HYP:
+        return BANK_HYP;
+    case ARM_CPU_MODE_MON:
+        return BANK_MON;
+    }
+    g_assert_not_reached();
+}
+
 void switch_mode(CPUARMState *, int);
 void arm_cpu_register_gdb_regs_for_features(ARMCPU *cpu);
 void arm_translate_init(void);
@@ -188,39 +201,12 @@ static inline unsigned int arm_pamax(ARMCPU *cpu)
  * This is always the case if our translation regime is 64 bit,
  * but depends on TTBCR.EAE for 32 bit.
  */
-static inline bool extended_addresses_enabled(CPUARMState *env, int tr_el)
+static inline bool extended_addresses_enabled(CPUARMState *env)
 {
-    TCR *tcr;
-
-    tr_el = MAX(tr_el, 1);
-    tcr = &env->cp15.tcr_el[tr_el];
-    return arm_el_is_aa64(env, tr_el) ||
+    TCR *tcr = &env->cp15.tcr_el[arm_is_secure(env) ? 3 : 1];
+    return arm_el_is_aa64(env, 1) ||
            (arm_feature(env, ARM_FEATURE_LPAE) && (tcr->raw_tcr & TTBCR_EAE));
 }
-
-#if !defined(CONFIG_USER_ONLY)
-static inline void arm_secure_state_sync(ARMCPU *cpu)
-{
-    CPUState *cs = CPU(cpu);
-    AddressSpace *n;
-    bool secure = arm_is_secure(&cpu->env);
-
-    n = secure ? cpu->as_secure : cpu->as_ns;
-
-    if (cs->as != n) {
-        /* HACK.  */
-        qemu_log("switch as from %s to %s %p\n", !secure ? "secure" : "ns", secure ? "secure" : "ns", n);
-        cs->as = n;
-        tcg_cpu_address_space_init(cs, n);
-        tlb_flush(cs, 1);
-    }
-}
-#else
-static inline void arm_secure_state_sync(ARMCPU *cpu)
-{
-    return;
-}
-#endif
 
 /* Valid Syndrome Register EC field values */
 enum arm_exception_class {
@@ -263,7 +249,9 @@ enum arm_exception_class {
 
 #define ARM_EL_EC_SHIFT 26
 #define ARM_EL_IL_SHIFT 25
+#define ARM_EL_ISV_SHIFT 24
 #define ARM_EL_IL (1 << ARM_EL_IL_SHIFT)
+#define ARM_EL_ISV (1 << ARM_EL_ISV_SHIFT)
 
 /* Utility functions for constructing various kinds of syndrome value.
  * Note that in general we follow the AArch64 syndrome values; in a
@@ -300,10 +288,10 @@ static inline uint32_t syn_aa64_smc(uint32_t imm16)
     return (EC_AA64_SMC << ARM_EL_EC_SHIFT) | ARM_EL_IL | (imm16 & 0xffff);
 }
 
-static inline uint32_t syn_aa32_svc(uint32_t imm16, bool is_thumb)
+static inline uint32_t syn_aa32_svc(uint32_t imm16, bool is_16bit)
 {
     return (EC_AA32_SVC << ARM_EL_EC_SHIFT) | (imm16 & 0xffff)
-        | (is_thumb ? 0 : ARM_EL_IL);
+        | (is_16bit ? 0 : ARM_EL_IL);
 }
 
 static inline uint32_t syn_aa32_hvc(uint32_t imm16)
@@ -321,10 +309,10 @@ static inline uint32_t syn_aa64_bkpt(uint32_t imm16)
     return (EC_AA64_BKPT << ARM_EL_EC_SHIFT) | ARM_EL_IL | (imm16 & 0xffff);
 }
 
-static inline uint32_t syn_aa32_bkpt(uint32_t imm16, bool is_thumb)
+static inline uint32_t syn_aa32_bkpt(uint32_t imm16, bool is_16bit)
 {
     return (EC_AA32_BKPT << ARM_EL_EC_SHIFT) | (imm16 & 0xffff)
-        | (is_thumb ? 0 : ARM_EL_IL);
+        | (is_16bit ? 0 : ARM_EL_IL);
 }
 
 static inline uint32_t syn_aa64_sysregtrap(int op0, int op1, int op2,
@@ -338,48 +326,48 @@ static inline uint32_t syn_aa64_sysregtrap(int op0, int op1, int op2,
 
 static inline uint32_t syn_cp14_rt_trap(int cv, int cond, int opc1, int opc2,
                                         int crn, int crm, int rt, int isread,
-                                        bool is_thumb)
+                                        bool is_16bit)
 {
     return (EC_CP14RTTRAP << ARM_EL_EC_SHIFT)
-        | (is_thumb ? 0 : ARM_EL_IL)
+        | (is_16bit ? 0 : ARM_EL_IL)
         | (cv << 24) | (cond << 20) | (opc2 << 17) | (opc1 << 14)
         | (crn << 10) | (rt << 5) | (crm << 1) | isread;
 }
 
 static inline uint32_t syn_cp15_rt_trap(int cv, int cond, int opc1, int opc2,
                                         int crn, int crm, int rt, int isread,
-                                        bool is_thumb)
+                                        bool is_16bit)
 {
     return (EC_CP15RTTRAP << ARM_EL_EC_SHIFT)
-        | (is_thumb ? 0 : ARM_EL_IL)
+        | (is_16bit ? 0 : ARM_EL_IL)
         | (cv << 24) | (cond << 20) | (opc2 << 17) | (opc1 << 14)
         | (crn << 10) | (rt << 5) | (crm << 1) | isread;
 }
 
 static inline uint32_t syn_cp14_rrt_trap(int cv, int cond, int opc1, int crm,
                                          int rt, int rt2, int isread,
-                                         bool is_thumb)
+                                         bool is_16bit)
 {
     return (EC_CP14RRTTRAP << ARM_EL_EC_SHIFT)
-        | (is_thumb ? 0 : ARM_EL_IL)
+        | (is_16bit ? 0 : ARM_EL_IL)
         | (cv << 24) | (cond << 20) | (opc1 << 16)
         | (rt2 << 10) | (rt << 5) | (crm << 1) | isread;
 }
 
 static inline uint32_t syn_cp15_rrt_trap(int cv, int cond, int opc1, int crm,
                                          int rt, int rt2, int isread,
-                                         bool is_thumb)
+                                         bool is_16bit)
 {
     return (EC_CP15RRTTRAP << ARM_EL_EC_SHIFT)
-        | (is_thumb ? 0 : ARM_EL_IL)
+        | (is_16bit ? 0 : ARM_EL_IL)
         | (cv << 24) | (cond << 20) | (opc1 << 16)
         | (rt2 << 10) | (rt << 5) | (crm << 1) | isread;
 }
 
-static inline uint32_t syn_fp_access_trap(int cv, int cond, bool is_thumb)
+static inline uint32_t syn_fp_access_trap(int cv, int cond, bool is_16bit)
 {
     return (EC_ADVSIMDFPACCESSTRAP << ARM_EL_EC_SHIFT)
-        | (is_thumb ? 0 : ARM_EL_IL)
+        | (is_16bit ? 0 : ARM_EL_IL)
         | (cv << 24) | (cond << 20);
 }
 
@@ -389,15 +377,27 @@ static inline uint32_t syn_insn_abort(int same_el, int ea, int s1ptw, int fsc)
         | (ea << 9) | (s1ptw << 7) | fsc;
 }
 
-static inline uint32_t syn_data_abort(bool same_el, bool il, int isv,
-                                      unsigned int size, int srt,
-                                      int ea, int cm, int s1ptw,
-                                      int wnr, int fsc)
+static inline uint32_t syn_data_abort_no_iss(int same_el,
+                                             int ea, int cm, int s1ptw,
+                                             int wnr, int fsc)
 {
     return (EC_DATAABORT << ARM_EL_EC_SHIFT) | (same_el << ARM_EL_EC_SHIFT)
-        | (il << 25) | (isv << 24) | (size << 22) | (srt << 16)
-        | (ea << 9) | (cm << 8)
-        | (s1ptw << 7) | (wnr << 6) | fsc;
+           | ARM_EL_IL
+           | (ea << 9) | (cm << 8) | (s1ptw << 7) | (wnr << 6) | fsc;
+}
+
+static inline uint32_t syn_data_abort_with_iss(int same_el,
+                                               int sas, int sse, int srt,
+                                               int sf, int ar,
+                                               int ea, int cm, int s1ptw,
+                                               int wnr, int fsc,
+                                               bool is_16bit)
+{
+    return (EC_DATAABORT << ARM_EL_EC_SHIFT) | (same_el << ARM_EL_EC_SHIFT)
+           | (is_16bit ? 0 : ARM_EL_IL)
+           | ARM_EL_ISV | (sas << 22) | (sse << 21) | (srt << 16)
+           | (sf << 15) | (ar << 14)
+           | (ea << 9) | (cm << 8) | (s1ptw << 7) | (wnr << 6) | fsc;
 }
 
 static inline uint32_t syn_swstep(int same_el, int isv, int ex)
@@ -416,6 +416,12 @@ static inline uint32_t syn_breakpoint(int same_el)
 {
     return (EC_BREAKPOINT << ARM_EL_EC_SHIFT) | (same_el << ARM_EL_EC_SHIFT)
         | ARM_EL_IL | 0x22;
+}
+
+static inline uint32_t syn_wfx(int cv, int cond, int ti)
+{
+    return (EC_WFX_TRAP << ARM_EL_EC_SHIFT) | ARM_EL_IL |
+           (cv << 24) | (cond << 20) | ti;
 }
 
 /* Update a QEMU watchpoint based on the information the guest has set in the
@@ -437,6 +443,9 @@ void hw_breakpoint_update(ARMCPU *cpu, int n);
  */
 void hw_breakpoint_update_all(ARMCPU *cpu);
 
+/* Callback function for checking if a watchpoint should trigger. */
+bool arm_debug_check_watchpoint(CPUState *cs, CPUWatchpoint *wp);
+
 /* Callback function for when a watchpoint or breakpoint triggers. */
 void arm_debug_excp_handler(CPUState *cs);
 
@@ -451,5 +460,30 @@ bool arm_is_psci_call(ARMCPU *cpu, int excp_type);
 /* Actually handle a PSCI call */
 void arm_handle_psci_call(ARMCPU *cpu);
 #endif
+
+/**
+ * ARMMMUFaultInfo: Information describing an ARM MMU Fault
+ * @s2addr: Address that caused a fault at stage 2
+ * @stage2: True if we faulted at stage 2
+ * @s1ptw: True if we faulted at stage 2 while doing a stage 1 page-table walk
+ */
+typedef struct ARMMMUFaultInfo ARMMMUFaultInfo;
+struct ARMMMUFaultInfo {
+    target_ulong s2addr;
+    bool stage2;
+    bool s1ptw;
+};
+
+/* Do a page table walk and add page to TLB if possible */
+bool arm_tlb_fill(CPUState *cpu, vaddr address, int rw, int mmu_idx,
+                  uint32_t *fsr, ARMMMUFaultInfo *fi);
+
+/* Return true if the stage 1 translation regime is using LPAE format page
+ * tables */
+bool arm_s1_regime_using_lpae_format(CPUARMState *env, ARMMMUIdx mmu_idx);
+
+/* Raise a data fault alignment exception for the specified virtual address */
+void arm_cpu_do_unaligned_access(CPUState *cs, vaddr vaddr, int is_write,
+                                 int is_user, uintptr_t retaddr);
 
 #endif

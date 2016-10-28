@@ -16,6 +16,7 @@
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "qemu/timer.h"
 
@@ -44,17 +45,15 @@
 #define CLOCK_CTRL_PS_EN    0x00000001
 #define CLOCK_CTRL_PS_V     0x0000001e
 
-typedef struct CadenceTTCState CadenceTTCState;
-
 typedef struct {
     QEMUTimer *timer;
     int freq;
 
     uint32_t reg_clock;
     uint32_t reg_count;
-    uint64_t reg_value;
-    uint32_t reg_interval;
-    uint32_t reg_match[3];
+    uint32_t reg_value;
+    uint16_t reg_interval;
+    uint16_t reg_match[3];
     uint32_t reg_intr;
     uint32_t reg_intr_en;
     uint32_t reg_event_ctrl;
@@ -63,8 +62,6 @@ typedef struct {
     uint64_t cpu_time;
     unsigned int cpu_time_valid;
 
-    CadenceTTCState *container;
-
     qemu_irq irq;
 } CadenceTimerState;
 
@@ -72,14 +69,12 @@ typedef struct {
 #define CADENCE_TTC(obj) \
     OBJECT_CHECK(CadenceTTCState, (obj), TYPE_CADENCE_TTC)
 
-struct CadenceTTCState {
+typedef struct CadenceTTCState {
     SysBusDevice parent_obj;
 
     MemoryRegion iomem;
-
-    uint8_t bit_width;
     CadenceTimerState timer[3];
-};
+} CadenceTTCState;
 
 static void cadence_timer_update(CadenceTimerState *s)
 {
@@ -99,26 +94,44 @@ static CadenceTimerState *cadence_timer_from_addr(void *opaque,
 
 static uint64_t cadence_timer_get_ns(CadenceTimerState *s, uint64_t timer_steps)
 {
-    int divider = 16;
+    /* timer_steps has max value of 0x100000000. double check it
+     * (or overflow can happen below) */
+    assert(timer_steps <= 1ULL << 32);
 
+    uint64_t r = timer_steps * 1000000000ULL;
     if (s->reg_clock & CLOCK_CTRL_PS_EN) {
-        divider -= ((s->reg_clock & CLOCK_CTRL_PS_V) >> 1) + 1;
+        r >>= 16 - (((s->reg_clock & CLOCK_CTRL_PS_V) >> 1) + 1);
+    } else {
+        r >>= 16;
     }
-    assert(divider >= 0);
-
-    return muldiv64(timer_steps, 1000000000ULL, s->freq) >> divider;
+    r /= (uint64_t)s->freq;
+    return r;
 }
 
 static uint64_t cadence_timer_get_steps(CadenceTimerState *s, uint64_t ns)
 {
-    int multiplier = 16;
+    uint64_t to_divide = 1000000000ULL;
 
-    if (s->reg_clock & CLOCK_CTRL_PS_EN) {
-        multiplier -= ((s->reg_clock & CLOCK_CTRL_PS_V) >> 1) + 1;
+    uint64_t r = ns;
+     /* for very large intervals (> 8s) do some division first to stop
+      * overflow (costs some prescision) */
+    while (r >= 8ULL << 30 && to_divide > 1) {
+        r /= 1000;
+        to_divide /= 1000;
     }
-    assert(multiplier >= 0);
+    r <<= 16;
+    /* keep early-dividing as needed */
+    while (r >= 8ULL << 30 && to_divide > 1) {
+        r /= 1000;
+        to_divide /= 1000;
+    }
+    r *= (uint64_t)s->freq;
+    if (s->reg_clock & CLOCK_CTRL_PS_EN) {
+        r /= 1 << (((s->reg_clock & CLOCK_CTRL_PS_V) >> 1) + 1);
+    }
 
-    return muldiv64(ns, (uint64_t)s->freq << multiplier, 1000000000ULL);
+    r /= to_divide;
+    return r;
 }
 
 /* determine if x is in between a and b, exclusive of a, inclusive of b */
@@ -135,7 +148,6 @@ static void cadence_timer_run(CadenceTimerState *s)
 {
     int i;
     int64_t event_interval, next_value;
-    int64_t next_time;
 
     assert(s->cpu_time_valid); /* cadence_timer_sync must be called first */
 
@@ -145,10 +157,8 @@ static void cadence_timer_run(CadenceTimerState *s)
     }
 
     { /* figure out what's going to happen next (rollover or match) */
-        int64_t interval = (s->reg_count & COUNTER_CTRL_INT) ?
-                           (int64_t)s->reg_interval + 1 :
-                           1ull << s->container->bit_width;
-        interval <<= 16;
+        int64_t interval = (uint64_t)((s->reg_count & COUNTER_CTRL_INT) ?
+                (int64_t)s->reg_interval + 1 : 0x10000ULL) << 16;
         next_value = (s->reg_count & COUNTER_CTRL_DEC) ? -1ULL : interval;
         for (i = 0; i < 3; ++i) {
             int64_t cand = (uint64_t)s->reg_match[i] << 16;
@@ -157,29 +167,22 @@ static void cadence_timer_run(CadenceTimerState *s)
             }
         }
     }
-    DB_PRINT("next timer event value: %16llx\n",
+    DB_PRINT("next timer event value: %09llx\n",
             (unsigned long long)next_value);
 
     event_interval = next_value - (int64_t)s->reg_value;
     event_interval = (event_interval < 0) ? -event_interval : event_interval;
-    next_time = cadence_timer_get_ns(s, event_interval);
 
-    /* Avoid starting timers with zero time to go.  */
-    if (next_time == 0) {
-        timer_del(s->timer);
-    } else {
-        timer_mod(s->timer, s->cpu_time + next_time);
-    }
+    timer_mod(s->timer, s->cpu_time +
+                cadence_timer_get_ns(s, event_interval));
 }
 
 static void cadence_timer_sync(CadenceTimerState *s)
 {
     int i;
     int64_t r, x;
-    int64_t interval = (s->reg_count & COUNTER_CTRL_INT) ?
-                       (int64_t)s->reg_interval + 1 :
-                       1ull << s->container->bit_width;
-    interval <<= 16;
+    int64_t interval = ((s->reg_count & COUNTER_CTRL_INT) ?
+            (int64_t)s->reg_interval + 1 : 0x10000ULL) << 16;
     uint64_t old_time = s->cpu_time;
 
     s->cpu_time = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
@@ -189,7 +192,6 @@ static void cadence_timer_sync(CadenceTimerState *s)
         s->cpu_time_valid = 1;
         return;
     }
-    assert (s->cpu_time >= old_time);
 
     r = (int64_t)cadence_timer_get_steps(s, s->cpu_time - old_time);
     x = (int64_t)s->reg_value + ((s->reg_count & COUNTER_CTRL_DEC) ? -r : r);
@@ -207,15 +209,14 @@ static void cadence_timer_sync(CadenceTimerState *s)
             s->reg_intr |= (2 << i);
         }
     }
-    while (x < 0) {
-        x += interval;
-    }
-    s->reg_value = x % interval;
-
-    if (s->reg_value != x) {
+    if ((x < 0) || (x >= interval)) {
         s->reg_intr |= (s->reg_count & COUNTER_CTRL_INT) ?
             COUNTER_INTR_IV : COUNTER_INTR_OV;
     }
+    while (x < 0) {
+        x += interval;
+    }
+    s->reg_value = (uint32_t)(x % interval);
     cadence_timer_update(s);
 }
 
@@ -250,7 +251,7 @@ static uint32_t cadence_ttc_read_imp(void *opaque, hwaddr offset)
     case 0x18: /* counter value */
     case 0x1c:
     case 0x20:
-        return (uint32_t)(s->reg_value >> 16);
+        return (uint16_t)(s->reg_value >> 16);
 
     case 0x24: /* reg_interval counter */
     case 0x28:
@@ -314,7 +315,6 @@ static void cadence_ttc_write(void *opaque, hwaddr offset,
         uint64_t value, unsigned size)
 {
     CadenceTimerState *s = cadence_timer_from_addr(opaque, offset);
-    uint64_t mask = (1ull << s->container->bit_width) - 1;
 
     DB_PRINT("addr: %08x data %08x\n", (unsigned)offset, (unsigned)value);
 
@@ -339,25 +339,25 @@ static void cadence_ttc_write(void *opaque, hwaddr offset,
     case 0x24: /* interval register */
     case 0x28:
     case 0x2c:
-        s->reg_interval = value & mask;
+        s->reg_interval = value & 0xffff;
         break;
 
     case 0x30: /* match register */
     case 0x34:
     case 0x38:
-        s->reg_match[0] = value & mask;
+        s->reg_match[0] = value & 0xffff;
         break;
 
     case 0x3c: /* match register */
     case 0x40:
     case 0x44:
-        s->reg_match[1] = value & mask;
+        s->reg_match[1] = value & 0xffff;
         break;
 
     case 0x48: /* match register */
     case 0x4c:
     case 0x50:
-        s->reg_match[2] = value & mask;
+        s->reg_match[2] = value & 0xffff;
         break;
 
     case 0x54: /* interrupt register */
@@ -412,8 +412,7 @@ static void cadence_ttc_init(Object *obj)
     int i;
 
     for (i = 0; i < 3; ++i) {
-        cadence_timer_init(233000000, &s->timer[i]);
-        s->timer[i].container = s;
+        cadence_timer_init(133000000, &s->timer[i]);
         sysbus_init_irq(SYS_BUS_DEVICE(obj), &s->timer[i].irq);
     }
 
@@ -447,9 +446,9 @@ static const VMStateDescription vmstate_cadence_timer = {
     .fields = (VMStateField[]) {
         VMSTATE_UINT32(reg_clock, CadenceTimerState),
         VMSTATE_UINT32(reg_count, CadenceTimerState),
-        VMSTATE_UINT64(reg_value, CadenceTimerState),
-        VMSTATE_UINT32(reg_interval, CadenceTimerState),
-        VMSTATE_UINT32_ARRAY(reg_match, CadenceTimerState, 3),
+        VMSTATE_UINT32(reg_value, CadenceTimerState),
+        VMSTATE_UINT16(reg_interval, CadenceTimerState),
+        VMSTATE_UINT16_ARRAY(reg_match, CadenceTimerState, 3),
         VMSTATE_UINT32(reg_intr, CadenceTimerState),
         VMSTATE_UINT32(reg_intr_en, CadenceTimerState),
         VMSTATE_UINT32(reg_event_ctrl, CadenceTimerState),
@@ -470,17 +469,11 @@ static const VMStateDescription vmstate_cadence_ttc = {
     }
 };
 
-static Property cadence_ttc_props[] = {
-    DEFINE_PROP_UINT8("timer-width", CadenceTTCState, bit_width, 16),
-    DEFINE_PROP_END_OF_LIST(),
-};
-
 static void cadence_ttc_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->vmsd = &vmstate_cadence_ttc;
-    dc->props = cadence_ttc_props;
 }
 
 static const TypeInfo cadence_ttc_info = {

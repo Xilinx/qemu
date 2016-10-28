@@ -6,6 +6,16 @@
 # See the COPYING file in the top-level directory.
 
 ##
+# @ReadValue
+#
+# The return value from a read command
+#
+# Since: 2.6
+##
+{ 'struct': 'ReadValue',
+  'data': {'value': 'int'} }
+
+##
 # @read_mem:
 #
 # Read a memory location from a CPU point of view. The @qom name of the CPU is
@@ -18,13 +28,13 @@
 # @cpu: The optional index of the CPU doing the access.
 # @qom: The optional qom name of the CPU doing the access.
 #
-# Returns: the value read
+# Returns: ReadValue, a strucutre with the value read
 #
 # Since 2.6
 ##
 { 'command': 'read_mem',
   'data': {'addr': 'int', 'size': 'int', '*cpu': 'int', '*qom': 'str'},
-  'returns': 'int'}
+  'returns': 'ReadValue'}
 
 ##
 # @write_mem:

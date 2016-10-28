@@ -1,5 +1,5 @@
 /*
- *  Firmware patch provider class and helpers.
+ *  Firmware path provider class and helpers.
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,6 +15,7 @@
  *  along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
 #include "hw/fw-path-provider.h"
 
 char *fw_path_provider_get_dev_path(FWPathProvider *p, BusState *bus,

@@ -22,6 +22,7 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/boards.h"
 #include "sysemu/block-backend.h"
@@ -29,8 +30,9 @@
 #include "qemu/config-file.h"
 #include "sysemu/sysemu.h"
 #include "monitor/monitor.h"
+#include "block/block_int.h"
 
-DriveInfo *add_init_drive(const char *optstr)
+static DriveInfo *add_init_drive(const char *optstr)
 {
     DriveInfo *dinfo;
     QemuOpts *opts;
@@ -50,10 +52,16 @@ DriveInfo *add_init_drive(const char *optstr)
     return dinfo;
 }
 
-void drive_hot_add(Monitor *mon, const QDict *qdict)
+void hmp_drive_add(Monitor *mon, const QDict *qdict)
 {
     DriveInfo *dinfo = NULL;
     const char *opts = qdict_get_str(qdict, "opts");
+    bool node = qdict_get_try_bool(qdict, "node", false);
+
+    if (node) {
+        hmp_drive_add_node(mon, opts);
+        return;
+    }
 
     dinfo = add_init_drive(opts);
     if (!dinfo) {
@@ -69,14 +77,15 @@ void drive_hot_add(Monitor *mon, const QDict *qdict)
         monitor_printf(mon, "OK\n");
         break;
     default:
-        if (pci_drive_hot_add(mon, qdict, dinfo)) {
-            goto err;
-        }
+        monitor_printf(mon, "Can't hot-add drive to type %d\n", dinfo->type);
+        goto err;
     }
     return;
 
 err:
     if (dinfo) {
-        blk_unref(blk_by_legacy_dinfo(dinfo));
+        BlockBackend *blk = blk_by_legacy_dinfo(dinfo);
+        monitor_remove_blk(blk);
+        blk_unref(blk);
     }
 }

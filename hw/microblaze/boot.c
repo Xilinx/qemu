@@ -24,6 +24,9 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
+#include "qemu-common.h"
+#include "cpu.h"
 #include "qemu/option.h"
 #include "qemu/config-file.h"
 #include "qemu/error-report.h"
@@ -32,6 +35,7 @@
 #include "sysemu/sysemu.h"
 #include "hw/loader.h"
 #include "elf.h"
+#include "qemu/cutils.h"
 
 #include "boot.h"
 
@@ -48,13 +52,14 @@ static struct
 static void main_cpu_reset(void *opaque)
 {
     MicroBlazeCPU *cpu = opaque;
+    CPUState *cs = CPU(cpu);
     CPUMBState *env = &cpu->env;
 
-    cpu_reset(CPU(cpu));
+    cpu_reset(cs);
     env->regs[5] = boot_info.cmdline;
     env->regs[6] = boot_info.initrd_start;
     env->regs[7] = boot_info.fdt;
-    env->sregs[SR_PC] = boot_info.bootstrap_pc;
+    cpu_set_pc(cs, boot_info.bootstrap_pc);
     if (boot_info.machine_cpu_reset) {
         boot_info.machine_cpu_reset(cpu);
     }
@@ -65,20 +70,17 @@ static int microblaze_load_dtb(hwaddr addr,
                                uint32_t initrd_start,
                                uint32_t initrd_end,
                                const char *kernel_cmdline,
-                               const char *dtb_filename,
-                               void *fdt,
-                               int fdt_size)
+                               const char *dtb_filename)
 {
+    int fdt_size;
+    void *fdt = NULL;
     int r;
 
+    if (dtb_filename) {
+        fdt = load_device_tree(dtb_filename, &fdt_size);
+    }
     if (!fdt) {
-        /* No fdt information was passed in, load it from the DTB */
-        if (dtb_filename) {
-            fdt = load_device_tree(dtb_filename, &fdt_size);
-        }
-        if (!fdt) {
-            return 0;
-        }
+        return 0;
     }
 
     if (kernel_cmdline) {
@@ -110,24 +112,21 @@ void microblaze_load_kernel(MicroBlazeCPU *cpu, hwaddr ddr_base,
                             uint32_t ramsize,
                             const char *initrd_filename,
                             const char *dtb_filename,
-                            void (*machine_cpu_reset)(MicroBlazeCPU *),
-                            void *fdt, int fdt_size)
+                            void (*machine_cpu_reset)(MicroBlazeCPU *))
 {
     QemuOpts *machine_opts;
     const char *kernel_filename;
     const char *kernel_cmdline;
     const char *dtb_arg;
+    char *filename = NULL;
 
     machine_opts = qemu_get_machine_opts();
     kernel_filename = qemu_opt_get(machine_opts, "kernel");
     kernel_cmdline = qemu_opt_get(machine_opts, "append");
     dtb_arg = qemu_opt_get(machine_opts, "dtb");
-    if (!fdt) {
-        if (dtb_arg) { /* Preference a -dtb argument */
-            dtb_filename = dtb_arg;
-        } else { /* default to pcbios dtb as passed by machine_init */
-            dtb_filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, dtb_filename);
-        }
+    /* default to pcbios dtb as passed by machine_init */
+    if (!dtb_arg) {
+        filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, dtb_filename);
     }
 
     boot_info.machine_cpu_reset = machine_cpu_reset;
@@ -146,12 +145,12 @@ void microblaze_load_kernel(MicroBlazeCPU *cpu, hwaddr ddr_base,
         /* Boots a kernel elf binary.  */
         kernel_size = load_elf(kernel_filename, NULL, NULL,
                                &entry, &low, &high,
-                               big_endian, ELF_MACHINE, 0);
+                               big_endian, EM_MICROBLAZE, 0, 0);
         base32 = entry;
         if (base32 == 0xc0000000) {
             kernel_size = load_elf(kernel_filename, translate_kernel_address,
                                    NULL, &entry, NULL, NULL,
-                                   big_endian, ELF_MACHINE, 0);
+                                   big_endian, EM_MICROBLAZE, 0, 0);
         }
         /* Always boot into physical ram.  */
         boot_info.bootstrap_pc = (uint32_t)entry;
@@ -191,7 +190,7 @@ void microblaze_load_kernel(MicroBlazeCPU *cpu, hwaddr ddr_base,
                                                   ram_size - initrd_offset);
             }
             if (initrd_size < 0) {
-                error_report("qemu: could not load initrd '%s'\n",
+                error_report("qemu: could not load initrd '%s'",
                              initrd_filename);
                 exit(EXIT_FAILURE);
             }
@@ -209,9 +208,8 @@ void microblaze_load_kernel(MicroBlazeCPU *cpu, hwaddr ddr_base,
                             boot_info.initrd_start,
                             boot_info.initrd_end,
                             kernel_cmdline,
-                            dtb_filename,
-                            fdt,
-                            fdt_size);
+                            /* Preference a -dtb argument */
+                            dtb_arg ? dtb_arg : filename);
     }
-
+    g_free(filename);
 }

@@ -31,6 +31,9 @@
  *  - Add indirect descriptors support
  *  - Maybe do autosense (PAPR seems to mandate it, linux doesn't care)
  */
+#include "qemu/osdep.h"
+#include "qemu-common.h"
+#include "cpu.h"
 #include "hw/hw.h"
 #include "hw/scsi/scsi.h"
 #include "block/scsi.h"
@@ -630,7 +633,7 @@ static void vscsi_save_request(QEMUFile *f, SCSIRequest *sreq)
     vscsi_req *req = sreq->hba_private;
     assert(req->active);
 
-    vmstate_save_state(f, &vmstate_spapr_vscsi_req, req);
+    vmstate_save_state(f, &vmstate_spapr_vscsi_req, req, NULL);
 
     DPRINTF("VSCSI: saving tag=%u, current desc#%d, offset=%x\n",
             req->qtag, req->cur_desc_num, req->cur_desc_offset);
@@ -695,7 +698,7 @@ static void vscsi_inquiry_no_target(VSCSIState *s, vscsi_req *req)
     uint8_t resp_data[36];
     int rc, len, alen;
 
-    /* We dont do EVPD. Also check that page_code is 0 */
+    /* We don't do EVPD. Also check that page_code is 0 */
     if ((cdb[1] & 0x01) || cdb[2] != 0) {
         /* Send INVALID FIELD IN CDB */
         vscsi_makeup_sense(s, req, ILLEGAL_REQUEST, 0x24, 0);
@@ -750,7 +753,6 @@ static void vscsi_report_luns(VSCSIState *s, vscsi_req *req)
     len = n+8;
 
     resp_data = g_malloc0(len);
-    memset(resp_data, 0, len);
     stl_be_p(resp_data, n);
     i = found_lun0 ? 8 : 16;
     QTAILQ_FOREACH(kid, &s->bus.qbus.children, sibling) {
@@ -1212,24 +1214,17 @@ static void spapr_vscsi_reset(VIOsPAPRDevice *dev)
     }
 }
 
-static int spapr_vscsi_init(VIOsPAPRDevice *dev)
+static void spapr_vscsi_realize(VIOsPAPRDevice *dev, Error **errp)
 {
     VSCSIState *s = VIO_SPAPR_VSCSI_DEVICE(dev);
-    Error *err = NULL;
 
     dev->crq.SendFunc = vscsi_do_crq;
 
     scsi_bus_new(&s->bus, sizeof(s->bus), DEVICE(dev),
                  &vscsi_scsi_info, NULL);
     if (!dev->qdev.hotplugged) {
-        scsi_bus_legacy_handle_cmdline(&s->bus, &err);
-        if (err != NULL) {
-            error_free(err);
-            return -1;
-        }
+        scsi_bus_legacy_handle_cmdline(&s->bus, errp);
     }
-
-    return 0;
 }
 
 void spapr_vscsi_create(VIOsPAPRBus *bus)
@@ -1281,7 +1276,7 @@ static void spapr_vscsi_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     VIOsPAPRDeviceClass *k = VIO_SPAPR_DEVICE_CLASS(klass);
 
-    k->init = spapr_vscsi_init;
+    k->realize = spapr_vscsi_realize;
     k->reset = spapr_vscsi_reset;
     k->devnode = spapr_vscsi_devnode;
     k->dt_name = "v-scsi";

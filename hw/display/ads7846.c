@@ -10,7 +10,8 @@
  * GNU GPL, version 2 or (at your option) any later version.
  */
 
-#include "hw/ssi.h"
+#include "qemu/osdep.h"
+#include "hw/ssi/ssi.h"
 #include "ui/console.h"
 
 typedef struct {

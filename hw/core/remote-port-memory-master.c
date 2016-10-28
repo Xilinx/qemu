@@ -7,9 +7,11 @@
  * This code is licensed under the GNU GPL.
  */
 
+#include "qemu/osdep.h"
 #include "sysemu/sysemu.h"
 #include "qemu/log.h"
 #include "qapi/qmp/qerror.h"
+#include "qapi/error.h"
 #include "hw/sysbus.h"
 
 #include "hw/remote-port-proto.h"
@@ -52,10 +54,6 @@ struct RemotePortMemoryMaster {
     SysBusDevice parent;
 
     RemotePortMap *mmaps;
-
-    struct {
-        bool relative;
-    } cfg;
 
     /* public */
     uint32_t rp_dev;
@@ -194,7 +192,7 @@ static bool rp_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
                          Error **errp)
 {
     RemotePortMemoryMaster *s = REMOTE_PORT_MEMORY_MASTER(obj);
-    FDTGenericMMapClass *parent_fmc =
+    FDTGenericMMapClass *parent_fmc = 
         FDT_GENERIC_MMAP_CLASS(REMOTE_PORT_MEMORY_MASTER_PARENT_CLASS);
     int i;
 
@@ -202,9 +200,7 @@ static bool rp_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
     for (i = 0; i < reg.n; ++i) {
         char *name = g_strdup_printf("rp-%d", i);
 
-        if (!s->cfg.relative) {
-            s->mmaps[i].offset = reg.a[i];
-        }
+        s->mmaps[i].offset = reg.a[i];
         memory_region_init_io(&s->mmaps[i].iomem, OBJECT(obj), &rp_ops,
                               &s->mmaps[i], name, reg.s[i]);
         sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->mmaps[i].iomem);
@@ -217,7 +213,6 @@ static bool rp_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
 
 static Property rp_properties[] = {
     DEFINE_PROP_UINT32("rp-chan0", RemotePortMemoryMaster, rp_dev, 0),
-    DEFINE_PROP_BOOL("relative", RemotePortMemoryMaster, cfg.relative, false),
     DEFINE_PROP_END_OF_LIST()
 };
 

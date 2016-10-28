@@ -8,11 +8,13 @@
  * This code is licensed under the GNU GPL.
  */
 
+#include "qemu/osdep.h"
 #include "sysemu/sysemu.h"
 #include "qemu/log.h"
 #include "qapi/qmp/qerror.h"
 #include "hw/qdev.h"
-#include "hw/ssi.h"
+#include "qapi/error.h"
+#include "hw/ssi/ssi.h"
 
 #include "hw/remote-port-proto.h"
 #include "hw/remote-port-device.h"

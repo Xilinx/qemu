@@ -7,6 +7,10 @@
  * This code is licensed under the GPL.
  */
 
+#include "qemu/osdep.h"
+#include "qapi/error.h"
+#include "qemu-common.h"
+#include "cpu.h"
 #include "hw/sysbus.h"
 #include "hw/arm/arm.h"
 #include "hw/loader.h"
@@ -128,14 +132,14 @@ typedef struct {
     uint32_t base;
 } BitBandState;
 
-static int bitband_init(SysBusDevice *dev)
+static void bitband_init(Object *obj)
 {
-    BitBandState *s = BITBAND(dev);
+    BitBandState *s = BITBAND(obj);
+    SysBusDevice *dev = SYS_BUS_DEVICE(obj);
 
-    memory_region_init_io(&s->iomem, OBJECT(s), &bitband_ops, &s->base,
+    memory_region_init_io(&s->iomem, obj, &bitband_ops, &s->base,
                           "bitband", 0x02000000);
     sysbus_init_mmio(dev, &s->iomem);
-    return 0;
 }
 
 static void armv7m_bitband_init(void)
@@ -163,29 +167,20 @@ static void armv7m_reset(void *opaque)
 }
 
 /* Init CPU and memory for a v7-M based board.
-   flash_size and sram_size are in kb.
+   mem_size is in bytes.
    Returns the NVIC array.  */
 
-qemu_irq *armv7m_init(MemoryRegion *system_memory,
-                      int flash_size, int sram_size,
+DeviceState *armv7m_init(MemoryRegion *system_memory, int mem_size, int num_irq,
                       const char *kernel_filename, const char *cpu_model)
 {
     ARMCPU *cpu;
     CPUARMState *env;
     DeviceState *nvic;
-    /* FIXME: make this local state.  */
-    static qemu_irq pic[64];
     int image_size;
     uint64_t entry;
     uint64_t lowaddr;
-    int i;
     int big_endian;
-    MemoryRegion *sram = g_new(MemoryRegion, 1);
-    MemoryRegion *flash = g_new(MemoryRegion, 1);
     MemoryRegion *hack = g_new(MemoryRegion, 1);
-
-    flash_size *= 1024;
-    sram_size *= 1024;
 
     if (cpu_model == NULL) {
 	cpu_model = "cortex-m3";
@@ -197,37 +192,14 @@ qemu_irq *armv7m_init(MemoryRegion *system_memory,
     }
     env = &cpu->env;
 
-#if 0
-    /* > 32Mb SRAM gets complicated because it overlaps the bitband area.
-       We don't have proper commandline options, so allocate half of memory
-       as SRAM, up to a maximum of 32Mb, and the rest as code.  */
-    if (ram_size > (512 + 32) * 1024 * 1024)
-        ram_size = (512 + 32) * 1024 * 1024;
-    sram_size = (ram_size / 2) & TARGET_PAGE_MASK;
-    if (sram_size > 32 * 1024 * 1024)
-        sram_size = 32 * 1024 * 1024;
-    code_size = ram_size - sram_size;
-#endif
-
-    /* Flash programming is done via the SCU, so pretend it is ROM.  */
-    memory_region_init_ram(flash, NULL, "armv7m.flash", flash_size,
-                           &error_abort);
-    vmstate_register_ram_global(flash);
-    memory_region_set_readonly(flash, true);
-    memory_region_add_subregion(system_memory, 0, flash);
-    memory_region_init_ram(sram, NULL, "armv7m.sram", sram_size, &error_abort);
-    vmstate_register_ram_global(sram);
-    memory_region_add_subregion(system_memory, 0x20000000, sram);
     armv7m_bitband_init();
 
     nvic = qdev_create(NULL, "armv7m_nvic");
+    qdev_prop_set_uint32(nvic, "num-irq", num_irq);
     env->nvic = nvic;
     qdev_init_nofail(nvic);
     sysbus_connect_irq(SYS_BUS_DEVICE(nvic), 0,
                        qdev_get_gpio_in(DEVICE(cpu), ARM_CPU_IRQ));
-    for (i = 0; i < 64; i++) {
-        pic[i] = qdev_get_gpio_in(nvic, i);
-    }
 
 #ifdef TARGET_WORDS_BIGENDIAN
     big_endian = 1;
@@ -242,9 +214,9 @@ qemu_irq *armv7m_init(MemoryRegion *system_memory,
 
     if (kernel_filename) {
         image_size = load_elf(kernel_filename, NULL, NULL, &entry, &lowaddr,
-                              NULL, big_endian, ELF_MACHINE, 1);
+                              NULL, big_endian, EM_ARM, 1, 0);
         if (image_size < 0) {
-            image_size = load_image_targphys(kernel_filename, 0, flash_size);
+            image_size = load_image_targphys(kernel_filename, 0, mem_size);
             lowaddr = 0;
         }
         if (image_size < 0) {
@@ -256,12 +228,12 @@ qemu_irq *armv7m_init(MemoryRegion *system_memory,
     /* Hack to map an additional page of ram at the top of the address
        space.  This stops qemu complaining about executing code outside RAM
        when returning from an exception.  */
-    memory_region_init_ram(hack, NULL, "armv7m.hack", 0x1000, &error_abort);
+    memory_region_init_ram(hack, NULL, "armv7m.hack", 0x1000, &error_fatal);
     vmstate_register_ram_global(hack);
     memory_region_add_subregion(system_memory, 0xfffff000, hack);
 
     qemu_register_reset(armv7m_reset, cpu);
-    return pic;
+    return nvic;
 }
 
 static Property bitband_properties[] = {
@@ -272,9 +244,7 @@ static Property bitband_properties[] = {
 static void bitband_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-    SysBusDeviceClass *k = SYS_BUS_DEVICE_CLASS(klass);
 
-    k->init = bitband_init;
     dc->props = bitband_properties;
 }
 
@@ -282,6 +252,7 @@ static const TypeInfo bitband_info = {
     .name          = TYPE_BITBAND,
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(BitBandState),
+    .instance_init = bitband_init,
     .class_init    = bitband_class_init,
 };
 

@@ -4,12 +4,12 @@ common-obj-y += fw-path-provider.o
 # irq.o needed for qdev GPIO handling:
 common-obj-y += irq.o
 common-obj-y += hotplug.o
-common-obj-y += nmi.o
 common-obj-y += register.o
+obj-y += nmi.o
 
 common-obj-$(CONFIG_EMPTY_SLOT) += empty_slot.o
+common-obj-$(CONFIG_XILINX_AXI) += stream.o
 common-obj-$(CONFIG_PTIMER) += ptimer.o
-common-obj-$(CONFIG_SOFTMMU) += stream.o
 common-obj-$(CONFIG_SOFTMMU) += sysbus.o
 common-obj-$(CONFIG_SOFTMMU) += machine.o
 common-obj-$(CONFIG_SOFTMMU) += null-machine.o
@@ -22,4 +22,6 @@ obj-$(CONFIG_REMOTE_PORT) += remote-port-memory-master.o
 obj-$(CONFIG_REMOTE_PORT) += remote-port-memory-slave.o
 obj-$(CONFIG_REMOTE_PORT) += remote-port-gpio.o
 obj-$(CONFIG_REMOTE_PORT) += remote-port-stream.o
-common-obj-$(CONFIG_SOFTMMU) += platform-bus.o
+common-obj-$(CONFIG_PLATFORM_BUS) += platform-bus.o
+
+obj-$(CONFIG_SOFTMMU) += generic-loader.o

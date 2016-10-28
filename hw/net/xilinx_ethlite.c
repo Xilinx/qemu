@@ -22,6 +22,9 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
+#include "qemu-common.h"
+#include "cpu.h" /* FIXME should not use tswap* */
 #include "hw/sysbus.h"
 #include "hw/hw.h"
 #include "net/net.h"
@@ -359,6 +362,7 @@ eth_write(void *opaque, hwaddr addr,
             if (!(value & CTRL_S)) {
                 qemu_flush_queued_packets(qemu_get_queue(s->nic));
             }
+            /* fall through */
         case R_TX_LEN0:
         case R_TX_LEN1:
         case R_TX_GIE0:
@@ -444,19 +448,11 @@ static void xilinx_ethlite_reset(DeviceState *dev)
     s->rxbuf = 0;
 }
 
-static void eth_cleanup(NetClientState *nc)
-{
-    struct xlx_ethlite *s = qemu_get_nic_opaque(nc);
-
-    s->nic = NULL;
-}
-
 static NetClientInfo net_xilinx_ethlite_info = {
     .type = NET_CLIENT_OPTIONS_KIND_NIC,
     .size = sizeof(NICState),
     .can_receive = eth_can_rx,
     .receive = eth_rx,
-    .cleanup = eth_cleanup,
 };
 
 static void xilinx_ethlite_realize(DeviceState *dev, Error **errp)

@@ -18,6 +18,7 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "qemu/timer.h"
 #include "hw/usb.h"
@@ -484,7 +485,7 @@ struct XHCIState {
     XHCIRing cmd_ring;
 };
 
-#define TYPE_XHCI "generic-usb-xhci"
+#define TYPE_XHCI "nec-usb-xhci"
 
 #define XHCI(obj) \
     OBJECT_CHECK(XHCIState, (obj), TYPE_XHCI)
@@ -697,11 +698,13 @@ static inline void xhci_dma_write_u32s(XHCIState *xhci, dma_addr_t addr,
                                        uint32_t *buf, size_t len)
 {
     int i;
-    uint32_t tmp[len / sizeof(uint32_t)];
+    uint32_t tmp[5];
+    uint32_t n = len / sizeof(uint32_t);
 
     assert((len % sizeof(uint32_t)) == 0);
+    assert(n <= ARRAY_SIZE(tmp));
 
-    for (i = 0; i < (len / sizeof(uint32_t)); i++) {
+    for (i = 0; i < n; i++) {
         tmp[i] = cpu_to_le32(buf[i]);
     }
     pci_dma_write(PCI_DEVICE(xhci), addr, tmp, len);
@@ -1453,9 +1456,7 @@ static int xhci_ep_nuke_one_xfer(XHCITransfer *t, TRBCCode report)
         t->running_retry = 0;
         killed = 1;
     }
-    if (t->trbs) {
-        g_free(t->trbs);
-    }
+    g_free(t->trbs);
 
     t->trbs = NULL;
     t->trb_count = t->trb_alloced = 0;
@@ -1530,7 +1531,10 @@ static TRBCCode xhci_disable_ep(XHCIState *xhci, unsigned int slotid,
         usb_packet_cleanup(&epctx->transfers[i].packet);
     }
 
-    xhci_set_ep_state(xhci, epctx, NULL, EP_DISABLED);
+    /* only touch guest RAM if we're not resetting the HC */
+    if (xhci->dcbaap_low || xhci->dcbaap_high) {
+        xhci_set_ep_state(xhci, epctx, NULL, EP_DISABLED);
+    }
 
     timer_free(epctx->kick_timer);
     g_free(epctx);
@@ -1793,6 +1797,14 @@ static void xhci_xfer_report(XHCITransfer *xfer)
                 return;
             }
         }
+
+        switch (TRB_TYPE(*trb)) {
+        case TR_SETUP:
+            reported = 0;
+            shortpkt = 0;
+            break;
+        }
+
     }
 }
 
@@ -2182,7 +2194,7 @@ static void xhci_kick_ep(XHCIState *xhci, unsigned int slotid,
             xfer->trbs = NULL;
         }
         if (!xfer->trbs) {
-            xfer->trbs = g_malloc(sizeof(XHCITRB) * length);
+            xfer->trbs = g_new(XHCITRB, length);
             xfer->trb_alloced = length;
         }
         xfer->trb_count = length;
@@ -2195,7 +2207,6 @@ static void xhci_kick_ep(XHCIState *xhci, unsigned int slotid,
         if (epid == 1) {
             if (xhci_fire_ctl_transfer(xhci, xfer) >= 0) {
                 epctx->next_xfer = (epctx->next_xfer + 1) % TD_QUEUE;
-                ep = xfer->packet.ep;
             } else {
                 DPRINTF("xhci: error firing CTL transfer\n");
             }
@@ -3567,7 +3578,7 @@ static void usb_xhci_init(XHCIState *xhci)
     }
 }
 
-static int usb_xhci_initfn(struct PCIDevice *dev)
+static void usb_xhci_realize(struct PCIDevice *dev, Error **errp)
 {
     int i, ret;
 
@@ -3646,8 +3657,6 @@ static int usb_xhci_initfn(struct PCIDevice *dev)
                   &xhci->mem, 0, OFF_MSIX_PBA,
                   0x90);
     }
-
-    return 0;
 }
 
 static void usb_xhci_exit(PCIDevice *dev)
@@ -3855,7 +3864,7 @@ static const VMStateDescription vmstate_xhci = {
 
         /* Runtime Registers & state */
         VMSTATE_INT64(mfindex_start,  XHCIState),
-        VMSTATE_TIMER(mfwrap_timer,   XHCIState),
+        VMSTATE_TIMER_PTR(mfwrap_timer,   XHCIState),
         VMSTATE_STRUCT(cmd_ring, XHCIState, 1, vmstate_xhci_ring, XHCIRing),
 
         VMSTATE_END_OF_LIST()
@@ -3887,7 +3896,7 @@ static void xhci_class_init(ObjectClass *klass, void *data)
     dc->props   = xhci_properties;
     dc->reset   = xhci_reset;
     set_bit(DEVICE_CATEGORY_USB, dc->categories);
-    k->init         = usb_xhci_initfn;
+    k->realize      = usb_xhci_realize;
     k->exit         = usb_xhci_exit;
     k->vendor_id    = PCI_VENDOR_ID_NEC;
     k->device_id    = PCI_DEVICE_ID_NEC_UPD720200;

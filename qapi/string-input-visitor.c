@@ -1,7 +1,7 @@
 /*
  * String parsing visitor
  *
- * Copyright Red Hat, Inc. 2012
+ * Copyright Red Hat, Inc. 2012-2016
  *
  * Author: Paolo Bonzini <pbonzini@redhat.com>
  *
@@ -10,6 +10,8 @@
  *
  */
 
+#include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "qemu-common.h"
 #include "qapi/string-input-visitor.h"
 #include "qapi/visitor-impl.h"
@@ -23,8 +25,6 @@ struct StringInputVisitor
 {
     Visitor visitor;
 
-    bool head;
-
     GList *ranges;
     GList *cur_range;
     int64_t cur;
@@ -32,12 +32,17 @@ struct StringInputVisitor
     const char *string;
 };
 
+static StringInputVisitor *to_siv(Visitor *v)
+{
+    return container_of(v, StringInputVisitor, visitor);
+}
+
 static void free_range(void *range, void *dummy)
 {
     g_free(range);
 }
 
-static void parse_str(StringInputVisitor *siv, Error **errp)
+static int parse_str(StringInputVisitor *siv, const char *name, Error **errp)
 {
     char *str = (char *) siv->string;
     long long start, end;
@@ -45,7 +50,7 @@ static void parse_str(StringInputVisitor *siv, Error **errp)
     char *endptr;
 
     if (siv->ranges) {
-        return;
+        return 0;
     }
 
     do {
@@ -110,19 +115,29 @@ static void parse_str(StringInputVisitor *siv, Error **errp)
         }
     } while (str);
 
-    return;
+    return 0;
 error:
     g_list_foreach(siv->ranges, free_range, NULL);
     g_list_free(siv->ranges);
     siv->ranges = NULL;
+    error_setg(errp, QERR_INVALID_PARAMETER_VALUE, name ? name : "null",
+               "an int64 value or range");
+    return -1;
 }
 
 static void
-start_list(Visitor *v, const char *name, Error **errp)
+start_list(Visitor *v, const char *name, GenericList **list, size_t size,
+           Error **errp)
 {
-    StringInputVisitor *siv = DO_UPCAST(StringInputVisitor, visitor, v);
+    StringInputVisitor *siv = to_siv(v);
 
-    parse_str(siv, errp);
+    /* We don't support visits without a list */
+    assert(list);
+
+    if (parse_str(siv, name, errp) < 0) {
+        *list = NULL;
+        return;
+    }
 
     siv->cur_range = g_list_first(siv->ranges);
     if (siv->cur_range) {
@@ -130,14 +145,15 @@ start_list(Visitor *v, const char *name, Error **errp)
         if (r) {
             siv->cur = r->begin;
         }
+        *list = g_malloc0(size);
+    } else {
+        *list = NULL;
     }
 }
 
-static GenericList *
-next_list(Visitor *v, GenericList **list, Error **errp)
+static GenericList *next_list(Visitor *v, GenericList *tail, size_t size)
 {
-    StringInputVisitor *siv = DO_UPCAST(StringInputVisitor, visitor, v);
-    GenericList **link;
+    StringInputVisitor *siv = to_siv(v);
     Range *r;
 
     if (!siv->ranges || !siv->cur_range) {
@@ -161,36 +177,28 @@ next_list(Visitor *v, GenericList **list, Error **errp)
         siv->cur = r->begin;
     }
 
-    if (siv->head) {
-        link = list;
-        siv->head = false;
-    } else {
-        link = &(*list)->next;
-    }
-
-    *link = g_malloc0(sizeof **link);
-    return *link;
+    tail->next = g_malloc0(size);
+    return tail->next;
 }
 
-static void
-end_list(Visitor *v, Error **errp)
+static void end_list(Visitor *v)
 {
-    StringInputVisitor *siv = DO_UPCAST(StringInputVisitor, visitor, v);
-    siv->head = true;
 }
 
-static void parse_type_int(Visitor *v, int64_t *obj, const char *name,
-                           Error **errp)
+static void parse_type_int64(Visitor *v, const char *name, int64_t *obj,
+                             Error **errp)
 {
-    StringInputVisitor *siv = DO_UPCAST(StringInputVisitor, visitor, v);
+    StringInputVisitor *siv = to_siv(v);
 
     if (!siv->string) {
-        error_set(errp, QERR_INVALID_PARAMETER_TYPE, name ? name : "null",
-                  "integer");
+        error_setg(errp, QERR_INVALID_PARAMETER_TYPE, name ? name : "null",
+                   "integer");
         return;
     }
 
-    parse_str(siv, errp);
+    if (parse_str(siv, name, errp) < 0) {
+        return;
+    }
 
     if (!siv->ranges) {
         goto error;
@@ -217,22 +225,36 @@ static void parse_type_int(Visitor *v, int64_t *obj, const char *name,
     return;
 
 error:
-    error_set(errp, QERR_INVALID_PARAMETER_VALUE, name,
-              "an int64 value or range");
+    error_setg(errp, QERR_INVALID_PARAMETER_VALUE, name ? name : "null",
+               "an int64 value or range");
 }
 
-static void parse_type_size(Visitor *v, uint64_t *obj, const char *name,
+static void parse_type_uint64(Visitor *v, const char *name, uint64_t *obj,
+                              Error **errp)
+{
+    /* FIXME: parse_type_int64 mishandles values over INT64_MAX */
+    int64_t i;
+    Error *err = NULL;
+    parse_type_int64(v, name, &i, &err);
+    if (err) {
+        error_propagate(errp, err);
+    } else {
+        *obj = i;
+    }
+}
+
+static void parse_type_size(Visitor *v, const char *name, uint64_t *obj,
                             Error **errp)
 {
-    StringInputVisitor *siv = DO_UPCAST(StringInputVisitor, visitor, v);
+    StringInputVisitor *siv = to_siv(v);
     Error *err = NULL;
     uint64_t val;
 
     if (siv->string) {
         parse_option_size(name, siv->string, &val, &err);
     } else {
-        error_set(errp, QERR_INVALID_PARAMETER_TYPE, name ? name : "null",
-                  "size");
+        error_setg(errp, QERR_INVALID_PARAMETER_TYPE, name ? name : "null",
+                   "size");
         return;
     }
     if (err) {
@@ -243,10 +265,10 @@ static void parse_type_size(Visitor *v, uint64_t *obj, const char *name,
     *obj = val;
 }
 
-static void parse_type_bool(Visitor *v, bool *obj, const char *name,
+static void parse_type_bool(Visitor *v, const char *name, bool *obj,
                             Error **errp)
 {
-    StringInputVisitor *siv = DO_UPCAST(StringInputVisitor, visitor, v);
+    StringInputVisitor *siv = to_siv(v);
 
     if (siv->string) {
         if (!strcasecmp(siv->string, "on") ||
@@ -263,26 +285,27 @@ static void parse_type_bool(Visitor *v, bool *obj, const char *name,
         }
     }
 
-    error_set(errp, QERR_INVALID_PARAMETER_TYPE, name ? name : "null",
-              "boolean");
+    error_setg(errp, QERR_INVALID_PARAMETER_TYPE, name ? name : "null",
+               "boolean");
 }
 
-static void parse_type_str(Visitor *v, char **obj, const char *name,
+static void parse_type_str(Visitor *v, const char *name, char **obj,
                            Error **errp)
 {
-    StringInputVisitor *siv = DO_UPCAST(StringInputVisitor, visitor, v);
+    StringInputVisitor *siv = to_siv(v);
     if (siv->string) {
         *obj = g_strdup(siv->string);
     } else {
-        error_set(errp, QERR_INVALID_PARAMETER_TYPE, name ? name : "null",
-                  "string");
+        *obj = NULL;
+        error_setg(errp, QERR_INVALID_PARAMETER_TYPE, name ? name : "null",
+                   "string");
     }
 }
 
-static void parse_type_number(Visitor *v, double *obj, const char *name,
+static void parse_type_number(Visitor *v, const char *name, double *obj,
                               Error **errp)
 {
-    StringInputVisitor *siv = DO_UPCAST(StringInputVisitor, visitor, v);
+    StringInputVisitor *siv = to_siv(v);
     char *endp = (char *) siv->string;
     double val;
 
@@ -291,18 +314,17 @@ static void parse_type_number(Visitor *v, double *obj, const char *name,
         val = strtod(siv->string, &endp);
     }
     if (!siv->string || errno || endp == siv->string || *endp) {
-        error_set(errp, QERR_INVALID_PARAMETER_TYPE, name ? name : "null",
-                  "number");
+        error_setg(errp, QERR_INVALID_PARAMETER_TYPE, name ? name : "null",
+                   "number");
         return;
     }
 
     *obj = val;
 }
 
-static void parse_optional(Visitor *v, bool *present, const char *name,
-                           Error **errp)
+static void parse_optional(Visitor *v, const char *name, bool *present)
 {
-    StringInputVisitor *siv = DO_UPCAST(StringInputVisitor, visitor, v);
+    StringInputVisitor *siv = to_siv(v);
 
     if (!siv->string) {
         *present = false;
@@ -330,8 +352,9 @@ StringInputVisitor *string_input_visitor_new(const char *str)
 
     v = g_malloc0(sizeof(*v));
 
-    v->visitor.type_enum = input_type_enum;
-    v->visitor.type_int = parse_type_int;
+    v->visitor.type = VISITOR_INPUT;
+    v->visitor.type_int64 = parse_type_int64;
+    v->visitor.type_uint64 = parse_type_uint64;
     v->visitor.type_size = parse_type_size;
     v->visitor.type_bool = parse_type_bool;
     v->visitor.type_str = parse_type_str;
@@ -342,6 +365,5 @@ StringInputVisitor *string_input_visitor_new(const char *str)
     v->visitor.optional = parse_optional;
 
     v->string = str;
-    v->head = true;
     return v;
 }

@@ -1,5 +1,5 @@
 
-vgabios_variants := stdvga cirrus vmware qxl isavga
+vgabios_variants := stdvga cirrus vmware qxl isavga virtio
 vgabios_targets  := $(subst -isavga,,$(patsubst %,vgabios-%.bin,$(vgabios_variants)))
 pxerom_variants  := e1000 eepro100 ne2k_pci pcnet rtl8139 virtio
 pxerom_targets   := 8086100e 80861209 10500940 10222000 10ec8139 1af41000
@@ -34,6 +34,9 @@ powerpc64_cross_prefix := $(call find-cross-prefix,powerpc64)
 powerpc_cross_prefix := $(call find-cross-prefix,powerpc)
 x86_64_cross_prefix := $(call find-cross-prefix,x86_64)
 
+# tag our seabios builds
+SEABIOS_EXTRAVERSION="-prebuilt.qemu-project.org"
+
 #
 # EfiRom utility is shipped with edk2 / tianocore, in BaseTools/
 #
@@ -61,7 +64,6 @@ default:
 bios: build-seabios-config-seabios-128k build-seabios-config-seabios-256k
 	cp seabios/builds/seabios-128k/bios.bin ../pc-bios/bios.bin
 	cp seabios/builds/seabios-256k/bios.bin ../pc-bios/bios-256k.bin
-	cp seabios/builds/seabios-256k/src/fw/*dsdt.aml ../pc-bios/
 
 seavgabios: $(patsubst %,seavgabios-%,$(vgabios_variants))
 
@@ -75,10 +77,12 @@ build-seabios-config-%: config.%
 	mkdir -p seabios/builds/$*
 	cp $< seabios/builds/$*/.config
 	$(MAKE) -C seabios \
+		EXTRAVERSION=$(SEABIOS_EXTRAVERSION) \
 		CROSS_COMPILE=$(x86_64_cross_prefix) \
 		KCONFIG_CONFIG=$(CURDIR)/seabios/builds/$*/.config \
 		OUT=$(CURDIR)/seabios/builds/$*/ oldnoconfig
 	$(MAKE) -C seabios \
+		EXTRAVERSION=$(SEABIOS_EXTRAVERSION) \
 		CROSS_COMPILE=$(x86_64_cross_prefix) \
 		KCONFIG_CONFIG=$(CURDIR)/seabios/builds/$*/.config \
 		OUT=$(CURDIR)/seabios/builds/$*/ all
@@ -115,19 +119,16 @@ efi-rom-%: build-pxe-roms build-efi-roms
 		-ec ipxe/src/bin-x86_64-efi/$(VID)$(DID).efidrv \
 		-o ../pc-bios/efi-$*.rom
 
-build-pxe-roms: ipxe/src/config/local/general.h
-	$(MAKE) -C ipxe/src GITVERSION="" \
+build-pxe-roms:
+	$(MAKE) -C ipxe/src CONFIG=qemu \
 		CROSS_COMPILE=$(x86_64_cross_prefix) \
 		$(patsubst %,bin/%.rom,$(pxerom_targets))
 
-build-efi-roms: build-pxe-roms ipxe/src/config/local/general.h
-	$(MAKE) -C ipxe/src GITVERSION="" \
+build-efi-roms: build-pxe-roms
+	$(MAKE) -C ipxe/src CONFIG=qemu \
 		CROSS_COMPILE=$(x86_64_cross_prefix) \
 		$(patsubst %,bin-i386-efi/%.efidrv,$(pxerom_targets)) \
 		$(patsubst %,bin-x86_64-efi/%.efidrv,$(pxerom_targets))
-
-ipxe/src/config/local/%: config.ipxe.%
-	cp $< $@
 
 
 slof:

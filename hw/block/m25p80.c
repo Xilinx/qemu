@@ -21,11 +21,12 @@
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "sysemu/block-backend.h"
 #include "sysemu/blockdev.h"
-#include "hw/ssi.h"
-#include "qemu/config-file.h"
+#include "hw/ssi/ssi.h"
+#include "qemu/bitops.h"
 #include "qemu/log.h"
 
 #ifndef M25P80_ERR_DEBUG
@@ -34,8 +35,8 @@
 
 #define DB_PRINT_L(level, ...) do { \
     if (M25P80_ERR_DEBUG > (level)) { \
-        qemu_log_mask_level(DEV_LOG_SPI_DEV, level, ": %s: ", __func__); \
-        qemu_log_mask_level(DEV_LOG_SPI_DEV, level, ## __VA_ARGS__); \
+        qemu_log(": %s: ", __func__); \
+        qemu_log(__VA_ARGS__); \
     } \
 } while (0);
 
@@ -47,7 +48,14 @@
 /* set to allow the page program command to write 0s back to 1. Useful for
  * modelling EEPROM with SPI flash command set
  */
+#define EEPROM 0x100
+
+/* 16 MiB max in 3 byte address mode */
+#define MAX_3BYTES_SIZE 0x1000000
+
 #define WR_1 0x100
+
+#define BAR_7_4_BYTE_ADDR    (1<<7)
 
 typedef struct FlashPartInfo {
     const char *part_name;
@@ -62,22 +70,11 @@ typedef struct FlashPartInfo {
     uint32_t sector_size;
     uint32_t n_sectors;
     uint32_t page_size;
-    uint8_t flags;
+    uint16_t flags;
 
     uint8_t manf_id;
     uint8_t dev_id;
 } FlashPartInfo;
-
-/* FIXME: Make this accessible as a debug mode utility */
-
-static void dump_flash_part_info(const FlashPartInfo *fp)
-{
-    fprintf(stderr, "%s jedec:%06x ext-jedec:%04x sector-size:%06x "
-                    "num-sectors:%04x write-1:%c erase-4k:%c erase-32k:%c\n",
-            fp->part_name, fp->jedec, fp->ext_jedec, fp->sector_size,
-            fp->n_sectors, fp->flags & WR_1 ? 'Y' : 'N',
-            fp->flags & ER_4K ? 'Y' : 'N',  fp->flags & ER_32K ? 'Y' : 'N');
-}
 
 /* adapted from linux */
 
@@ -95,6 +92,30 @@ static void dump_flash_part_info(const FlashPartInfo *fp)
 #define JEDEC_NUMONYX 0x20
 #define JEDEC_WINBOND 0xEF
 #define JEDEC_SPANSION 0x01
+
+/* Numonyx (Micron) Configuration register macros */
+#define VCFG_DUMMY 0x1
+#define VCFG_WRAP_SEQUENTIAL 0x2
+#define NVCFG_XIP_MODE_DISABLED (7 << 9)
+#define NVCFG_XIP_MODE_MASK (7 << 9)
+#define VCFG_XIP_MODE_ENABLED (1 << 3)
+#define CFG_DUMMY_CLK_LEN 4
+#define NVCFG_DUMMY_CLK_POS 12
+#define VCFG_DUMMY_CLK_POS 4
+#define EVCFG_OUT_DRIVER_STRENGHT_DEF 7
+#define EVCFG_VPP_ACCELERATOR (1 << 3)
+#define EVCFG_RESET_HOLD_ENABLED (1 << 4)
+#define NVCFG_DUAL_IO_MASK (1 << 2)
+#define EVCFG_DUAL_IO_ENABLED (1 << 6)
+#define NVCFG_QUAD_IO_MASK (1 << 3)
+#define EVCFG_QUAD_IO_ENABLED (1 << 7)
+#define NVCFG_4BYTE_ADDR_MASK (1 << 0)
+#define NVCFG_LOWER_SEGMENT_MASK (1 << 1)
+#define CFG_UPPER_128MB_SEG_ENABLED 0x3
+
+/* Numonyx (Micron) Flag Status Register macros */
+#define FSR_4BYTE_ADDR_MODE_ENABLED 0x1
+#define FSR_FLASH_READY (1 << 7)
 
 static const FlashPartInfo known_devices[] = {
     /* Atmel -- some are (confusingly) marketed as "DataFlash" */
@@ -239,31 +260,57 @@ typedef enum {
     BRRD = 0x16,
     BRWR = 0x17,
     JEDEC_READ = 0x9f,
+    BULK_ERASE = 0xc7,
+    READ_FSR = 0x70,
+
+    READ = 0x03,
+    READ4 = 0x13,
+    FAST_READ = 0x0b,
+    FAST_READ4 = 0x0c,
+    DOR = 0x3b,
+    DOR4 = 0x3c,
+    QOR = 0x6b,
+    QOR4 = 0x6c,
+    DIOR = 0xbb,
+    DIOR4 = 0xbc,
+    QIOR = 0xeb,
+    QIOR4 = 0xec,
+
+    PP = 0x02,
+    PP4 = 0x12,
+    DPP = 0xa2,
+    QPP = 0x32,
+    QPP4 = 0x34,
     RDID_90 = 0x90,
     RDID_AB = 0xab,
-    READ_EXT_ADDR = 0xc8,
-    WRITE_EXT_ADDR = 0xc5,
-    ENTR_4B_ADDR = 0xb7,
-    EXIT_4B_ADDR = 0xe9,
+    AAI = 0xad,
+
+    ERASE_4K = 0x20,
+    ERASE4_4K = 0x21,
+    ERASE_32K = 0x52,
+    ERASE_SECTOR = 0xd8,
+    ERASE4_SECTOR = 0xdc,
+
+    EN_4BYTE_ADDR = 0xB7,
+    EX_4BYTE_ADDR = 0xE9,
 
     BULK_ERASE_C7 = 0xc7,
     BULK_ERASE_60 = 0x60,
 
-    READ = 0x3,                 READ_4 = 0x13,
-    FAST_READ = 0xb,            FAST_READ_4 = 0x0c,
-    DOR = 0x3b,                 DOR_4 = 0x3c,
-    QOR = 0x6b,                 QOR_4 = 0x6c,
-    DIOR = 0xbb,                DIOR_4 = 0xbc,
-    QIOR = 0xeb,                QIOR_4 = 0xec,
+    EXTEND_ADDR_READ = 0xC8,
+    EXTEND_ADDR_WRITE = 0xC5,
 
-    PP = 0x2,                   PP_4 = 0x12,
-    DPP = 0xa2,                 /* FIXME: figure out DPP_4 */
-    QPP = 0x32,                 QPP_4 = 0x34,
-    AAI = 0xad,
+    RESET_ENABLE = 0x66,
+    RESET_MEMORY = 0x99,
 
-    ERASE_4K = 0x20,
-    ERASE_32K = 0x52,
-    ERASE_SECTOR = 0xd8,        ERASE_SECTOR_4 = 0xdc,
+    RNVCR = 0xB5,
+    WNVCR = 0xB1,
+
+    RVCR = 0x85,
+    WVCR = 0x81,
+
+    REVCR = 0x65,
+    WEVCR = 0x61,
 } FlashCMD;
 
 typedef enum {
@@ -294,10 +341,15 @@ typedef struct Flash {
     uint8_t needed_bytes;
     uint8_t cmd_in_progress;
     uint64_t cur_addr;
+    uint32_t nonvolatile_cfg;
+    uint32_t volatile_cfg;
+    uint32_t enh_volatile_cfg;
     bool write_enable;
+    bool four_bytes_address_mode;
+    bool reset_enable;
+    uint8_t ear;
 
     bool aai_in_progress;
-    bool addr_4b;
     int64_t dirty_page;
 
     uint8_t bar;
@@ -305,7 +357,6 @@ typedef struct Flash {
     uint8_t n_dummy_cycles;
     uint8_t dummy_count;
     const FlashPartInfo *pi;
-
 } Flash;
 
 typedef struct M25P80Class {
@@ -330,25 +381,21 @@ static void blk_sync_complete(void *opaque, int ret)
 
 static void flash_sync_page(Flash *s, int page)
 {
-    int blk_sector, nb_sectors;
     QEMUIOVector iov;
 
     if (!s->blk || blk_is_read_only(s->blk)) {
         return;
     }
 
-    blk_sector = (page * s->pi->page_size) / BDRV_SECTOR_SIZE;
-    nb_sectors = DIV_ROUND_UP(s->pi->page_size, BDRV_SECTOR_SIZE);
     qemu_iovec_init(&iov, 1);
-    qemu_iovec_add(&iov, s->storage + blk_sector * BDRV_SECTOR_SIZE,
-                   nb_sectors * BDRV_SECTOR_SIZE);
-    blk_aio_writev(s->blk, blk_sector, &iov, nb_sectors, blk_sync_complete,
-                   NULL);
+    qemu_iovec_add(&iov, s->storage + page * s->pi->page_size,
+                   s->pi->page_size);
+    blk_aio_pwritev(s->blk, page * s->pi->page_size, &iov, 0,
+                    blk_sync_complete, NULL);
 }
 
 static inline void flash_sync_area(Flash *s, int64_t off, int64_t len)
 {
-    int64_t start, end, nb_sectors;
     QEMUIOVector iov;
 
     if (!s->blk || blk_is_read_only(s->blk)) {
@@ -356,13 +403,9 @@ static inline void flash_sync_area(Flash *s, int64_t off, int64_t len)
     }
 
     assert(!(len % BDRV_SECTOR_SIZE));
-    start = off / BDRV_SECTOR_SIZE;
-    end = (off + len) / BDRV_SECTOR_SIZE;
-    nb_sectors = end - start;
     qemu_iovec_init(&iov, 1);
-    qemu_iovec_add(&iov, s->storage + (start * BDRV_SECTOR_SIZE),
-                                        nb_sectors * BDRV_SECTOR_SIZE);
-    blk_aio_writev(s->blk, start, &iov, nb_sectors, blk_sync_complete, NULL);
+    qemu_iovec_add(&iov, s->storage + off, len);
+    blk_aio_pwritev(s->blk, off, &iov, 0, blk_sync_complete, NULL);
 }
 
 static void flash_erase(Flash *s, int offset, FlashCMD cmd)
@@ -380,10 +423,10 @@ static void flash_erase(Flash *s, int offset, FlashCMD cmd)
         capa_to_assert = ER_32K;
         break;
     case ERASE_SECTOR:
+    case ERASE4_SECTOR:
         len = s->pi->sector_size;
         break;
-    case BULK_ERASE_60:
-    case BULK_ERASE_C7:
+    case BULK_ERASE:
         len = s->size;
         break;
     default:
@@ -410,6 +453,54 @@ static inline void flash_sync_dirty(Flash *s, int64_t newpage)
         flash_sync_page(s, s->dirty_page);
         s->dirty_page = newpage;
     }
+}
+
+static inline
+void flash_write8(Flash *s, uint64_t addr, uint8_t data)
+{
+    int64_t page = addr / s->pi->page_size;
+    uint8_t prev = s->storage[s->cur_addr];
+
+    if (!s->write_enable) {
+        qemu_log_mask(LOG_GUEST_ERROR, "M25P80: write with write protect!\n");
+    }
+
+    if ((prev ^ data) & data) {
+        DB_PRINT_L(1, "programming zero to one! addr=%" PRIx64 "  %" PRIx8
+                   " -> %" PRIx8 "\n", addr, prev, data);
+    }
+
+    if (s->pi->flags & EEPROM) {
+        s->storage[s->cur_addr] = data;
+    } else {
+        s->storage[s->cur_addr] &= data;
+    }
+
+    flash_sync_dirty(s, page);
+    s->dirty_page = page;
+}
+
+static inline int get_addr_length(Flash *s)
+{
+   /* check if eeprom is in use */
+    if (s->pi->flags == EEPROM) {
+        return 2;
+    }
+
+   switch (s->cmd_in_progress) {
+   case PP4:
+   case READ4:
+   case QIOR4:
+   case ERASE4_4K:
+   case ERASE4_SECTOR:
+   case FAST_READ4:
+   case DOR4:
+   case QOR4:
+   case DIOR4:
+       return 4;
+   default:
+       return s->four_bytes_address_mode ? 4 : 3;
+   }
 }
 
 static inline void flash_write(Flash *s, uint8_t data, int num_bits)
@@ -441,27 +532,6 @@ static inline void flash_write(Flash *s, uint8_t data, int num_bits)
     s->dirty_page = page;
 }
 
-
-static inline void do_4_byte_address(Flash *s)
-{
-    s->cur_addr <<= 8;
-    s->cur_addr |= s->data[3];
-}
-
-#define BAR_7_4_BYTE_ADDR    (1<<7)
-
-static inline void check_4_byte_address(Flash *s)
-{
-    /* Allow 4byte address if MSB of bar register is set to 1
-     * Or if 4byte addressing is allowed.
-     */
-    if ((s->bar & BAR_7_4_BYTE_ADDR) || s->addr_4b) {
-        do_4_byte_address(s);
-    } else {
-        s->cur_addr |= s->bar << 24;
-    }
-}
-
 static inline bool set_dummy_cycles(Flash *s, uint8_t num)
 {
     if (s->dummy_count == 0) {
@@ -477,10 +547,19 @@ static inline bool set_dummy_cycles(Flash *s, uint8_t num)
 
 static void complete_collecting_data(Flash *s)
 {
+    int i;
     bool dummy_state = false;
-    s->cur_addr = s->data[0] << 16;
-    s->cur_addr |= s->data[1] << 8;
-    s->cur_addr |= s->data[2];
+
+    s->cur_addr = 0;
+
+    for (i = 0; i < get_addr_length(s); ++i) {
+        s->cur_addr <<= 8;
+        s->cur_addr |= s->data[i];
+    }
+
+    if (get_addr_length(s) == 3) {
+        s->cur_addr += (s->ear & 0x3) * MAX_3BYTES_SIZE;
+    }
 
     s->state = STATE_IDLE;
 
@@ -489,12 +568,10 @@ static void complete_collecting_data(Flash *s)
     case QPP:
     case AAI:
     case PP:
-        check_4_byte_address(s);
         s->state = STATE_PAGE_PROGRAM;
         break;
-    case QPP_4:
-    case PP_4:
-        do_4_byte_address(s);
+    case QPP4:
+    case PP4:
         s->state = STATE_PAGE_PROGRAM;
         break;
     case FAST_READ:
@@ -508,20 +585,18 @@ static void complete_collecting_data(Flash *s)
         if (dummy_state == true) {
             s->state = DUMMY_CYCLE_WAIT;
         } else {
-            check_4_byte_address(s);
             s->state = STATE_READ;
         }
         break;
-    case FAST_READ_4:
-    case DOR_4:
-    case QOR_4:
-    case DIOR_4:
-    case QIOR_4:
+    case FAST_READ4:
+    case DOR4:
+    case QOR4:
+    case DIOR4:
+    case QIOR4:
         /* Fall through after executing dummy cycles/bytes */
         dummy_state = set_dummy_cycles(s, 1);
-    case READ_4:
+    case READ4:
         if (dummy_state == false) {
-            do_4_byte_address(s);
             s->state = STATE_READ;
         } else {
             s->state = DUMMY_CYCLE_WAIT;
@@ -530,11 +605,9 @@ static void complete_collecting_data(Flash *s)
     case ERASE_SECTOR:
     case ERASE_4K:
     case ERASE_32K:
-        check_4_byte_address(s);
         flash_erase(s, s->cur_addr, s->cmd_in_progress);
         break;
-    case ERASE_SECTOR_4:
-        do_4_byte_address(s);
+    case ERASE4_SECTOR:
         flash_erase(s, s->cur_addr, s->cmd_in_progress);
         break;
     case WRSR:
@@ -542,7 +615,18 @@ static void complete_collecting_data(Flash *s)
             s->write_enable = false;
         }
         break;
-    case WRITE_EXT_ADDR:
+    case EXTEND_ADDR_WRITE:
+        s->ear = s->data[0];
+        break;
+    case WNVCR:
+        s->nonvolatile_cfg = s->data[0] | (s->data[1] << 8);
+        break;
+    case WVCR:
+        s->volatile_cfg = s->data[0];
+        break;
+    case WEVCR:
+        s->enh_volatile_cfg = s->data[0];
+        break;
     case BRWR:
         s->bar = s->data[0];
         break;
@@ -553,19 +637,74 @@ static void complete_collecting_data(Flash *s)
     s->cur_addr <<= 3;
 }
 
+static void reset_memory(Flash *s)
+{
+    s->cmd_in_progress = NOP;
+    s->cur_addr = 0;
+    s->ear = 0;
+    s->four_bytes_address_mode = false;
+    s->len = 0;
+    s->needed_bytes = 0;
+    s->pos = 0;
+    s->state = STATE_IDLE;
+    s->write_enable = false;
+    s->reset_enable = false;
+
+    if (((s->pi->jedec >> 16) & 0xFF) == JEDEC_NUMONYX) {
+        s->volatile_cfg = 0;
+        s->volatile_cfg |= VCFG_DUMMY;
+        s->volatile_cfg |= VCFG_WRAP_SEQUENTIAL;
+        if ((s->nonvolatile_cfg & NVCFG_XIP_MODE_MASK)
+                                != NVCFG_XIP_MODE_DISABLED) {
+            s->volatile_cfg |= VCFG_XIP_MODE_ENABLED;
+        }
+        s->volatile_cfg |= deposit32(s->volatile_cfg,
+                            VCFG_DUMMY_CLK_POS,
+                            CFG_DUMMY_CLK_LEN,
+                            extract32(s->nonvolatile_cfg,
+                                        NVCFG_DUMMY_CLK_POS,
+                                        CFG_DUMMY_CLK_LEN)
+                            );
+
+        s->enh_volatile_cfg = 0;
+        s->enh_volatile_cfg |= EVCFG_OUT_DRIVER_STRENGHT_DEF;
+        s->enh_volatile_cfg |= EVCFG_VPP_ACCELERATOR;
+        s->enh_volatile_cfg |= EVCFG_RESET_HOLD_ENABLED;
+        if (s->nonvolatile_cfg & NVCFG_DUAL_IO_MASK) {
+            s->enh_volatile_cfg |= EVCFG_DUAL_IO_ENABLED;
+        }
+        if (s->nonvolatile_cfg & NVCFG_QUAD_IO_MASK) {
+            s->enh_volatile_cfg |= EVCFG_QUAD_IO_ENABLED;
+        }
+        if (!(s->nonvolatile_cfg & NVCFG_4BYTE_ADDR_MASK)) {
+            s->four_bytes_address_mode = true;
+        }
+        if (!(s->nonvolatile_cfg & NVCFG_LOWER_SEGMENT_MASK)) {
+            s->ear = CFG_UPPER_128MB_SEG_ENABLED;
+        }
+    }
+
+    DB_PRINT_L(0, "Reset done.\n");
+}
+
 static void decode_new_cmd(Flash *s, uint32_t value)
 {
     s->cmd_in_progress = value;
     DB_PRINT_L(0, "decoded new command:%x\n", value);
+
+    if (value != RESET_MEMORY) {
+        s->reset_enable = false;
+    }
+
     s->needed_bytes = 0;
 
     switch (value) {
 
-    case READ_4:
-    case ERASE_SECTOR_4:
-    case QPP_4:
-    case PP_4:
-        if (s->addr_4b == false) {
+    case READ4:
+    case ERASE4_SECTOR:
+    case QPP4:
+    case PP4:
+        if (s->four_bytes_address_mode == false) {
             s->needed_bytes += 1;
         }
     case ERASE_4K:
@@ -578,7 +717,7 @@ static void decode_new_cmd(Flash *s, uint32_t value)
     case QOR:
     case FAST_READ:
     case DOR:
-        if (s->addr_4b) {
+        if (s->four_bytes_address_mode) {
             s->needed_bytes += 1;
         }
         s->needed_bytes += 3;
@@ -598,16 +737,16 @@ static void decode_new_cmd(Flash *s, uint32_t value)
             s->state = STATE_PAGE_PROGRAM;
         }
         break;
-    case FAST_READ_4:
-    case DOR_4:
-    case QOR_4:
+    case FAST_READ4:
+    case DOR4:
+    case QOR4:
         s->needed_bytes += 4;
         s->pos = 0;
         s->len = 0;
         s->state = STATE_COLLECTING_DATA;
         break;
 
-    case DIOR_4:
+    case DIOR4:
         s->needed_bytes += 1;
     case DIOR:
         switch ((s->pi->jedec >> 16) & 0xFF) {
@@ -624,7 +763,7 @@ static void decode_new_cmd(Flash *s, uint32_t value)
         s->state = STATE_COLLECTING_DATA;
         break;
 
-    case QIOR_4:
+    case QIOR4:
         s->needed_bytes += 1;
     case QIOR:
         switch ((s->pi->jedec >> 16) & 0xFF) {
@@ -650,7 +789,6 @@ static void decode_new_cmd(Flash *s, uint32_t value)
         }
         break;
 
-    case WRITE_EXT_ADDR:
     case BRWR:
         if (s->write_enable) {
             s->needed_bytes = 1;
@@ -685,7 +823,6 @@ static void decode_new_cmd(Flash *s, uint32_t value)
         break;
 
 
-    case READ_EXT_ADDR:
     case BRRD:
         s->data[0] = s->bar;
         s->pos = 0;
@@ -726,19 +863,83 @@ static void decode_new_cmd(Flash *s, uint32_t value)
     case BULK_ERASE_C7:
         if (s->write_enable) {
             DB_PRINT_L(0, "chip erase\n");
-            flash_erase(s, 0, value);
+            flash_erase(s, 0, BULK_ERASE);
         } else {
             qemu_log_mask(LOG_GUEST_ERROR, "M25P80: chip erase with write "
                           "protect!\n");
         }
         break;
-    case ENTR_4B_ADDR:
-        s->addr_4b = true;
-        break;
-    case EXIT_4B_ADDR:
-        s->addr_4b = false;
-        break;
     case NOP:
+        break;
+    case EN_4BYTE_ADDR:
+        s->four_bytes_address_mode = true;
+        break;
+    case EX_4BYTE_ADDR:
+        s->four_bytes_address_mode = false;
+        break;
+    case EXTEND_ADDR_READ:
+        s->data[0] = s->ear;
+        s->pos = 0;
+        s->len = 1;
+        s->state = STATE_READING_DATA;
+        break;
+    case EXTEND_ADDR_WRITE:
+        if (s->write_enable) {
+            s->needed_bytes = 1;
+            s->pos = 0;
+            s->len = 0;
+            s->state = STATE_COLLECTING_DATA;
+        }
+        break;
+    case RNVCR:
+        s->data[0] = s->nonvolatile_cfg & 0xFF;
+        s->data[1] = (s->nonvolatile_cfg >> 8) & 0xFF;
+        s->pos = 0;
+        s->len = 2;
+        s->state = STATE_READING_DATA;
+        break;
+    case WNVCR:
+        if (s->write_enable) {
+            s->needed_bytes = 2;
+            s->pos = 0;
+            s->len = 0;
+            s->state = STATE_COLLECTING_DATA;
+        }
+        break;
+    case RVCR:
+        s->data[0] = s->volatile_cfg & 0xFF;
+        s->pos = 0;
+        s->len = 1;
+        s->state = STATE_READING_DATA;
+        break;
+    case WVCR:
+        if (s->write_enable) {
+            s->needed_bytes = 1;
+            s->pos = 0;
+            s->len = 0;
+            s->state = STATE_COLLECTING_DATA;
+        }
+    case REVCR:
+        s->data[0] = s->enh_volatile_cfg & 0xFF;
+        s->pos = 0;
+        s->len = 1;
+        s->state = STATE_READING_DATA;
+        break;
+    case WEVCR:
+        if (s->write_enable) {
+            s->needed_bytes = 1;
+            s->pos = 0;
+            s->len = 0;
+            s->state = STATE_COLLECTING_DATA;
+        }
+        break;
+    case RESET_ENABLE:
+        s->reset_enable = true;
+        break;
+    case RESET_MEMORY:
+        if (s->reset_enable) {
+            reset_memory(s);
+        }
         break;
     default:
         qemu_log_mask(LOG_GUEST_ERROR, "M25P80: Unknown cmd %x\n", value);
@@ -842,7 +1043,6 @@ static uint32_t m25p80_transfer(SSISlave *ss, uint32_t tx, int num_bits)
 
 static int m25p80_init(SSISlave *ss)
 {
-    QemuOpts *machine_opts;
     DriveInfo *dinfo;
     Flash *s = M25P80(ss);
     M25P80Class *mc = M25P80_GET_CLASS(s);
@@ -851,44 +1051,36 @@ static int m25p80_init(SSISlave *ss)
 
     s->size = s->pi->sector_size * s->pi->n_sectors;
     s->dirty_page = -1;
-    s->storage = blk_blockalign(s->blk, s->size);
-    s->n_datalines = 1;
 
+    /* FIXME use a qdev drive property instead of drive_get_next() */
     dinfo = drive_get_next(IF_MTD);
 
     if (dinfo) {
         DB_PRINT_L(0, "Binding to IF_MTD drive\n");
         s->blk = blk_by_legacy_dinfo(dinfo);
+        blk_attach_dev_nofail(s->blk, s);
+
+        s->storage = blk_blockalign(s->blk, s->size);
 
         /* FIXME: Move to late init */
-        if (blk_read(s->blk, 0, s->storage,
-                     DIV_ROUND_UP(s->size, BDRV_SECTOR_SIZE))) {
+        if (blk_pread(s->blk, 0, s->storage, s->size) != s->size) {
             fprintf(stderr, "Failed to initialize SPI flash!\n");
             return 1;
         }
     } else {
         DB_PRINT_L(0, "No BDRV - binding to RAM\n");
+        s->storage = blk_blockalign(NULL, s->size);
         memset(s->storage, 0xFF, s->size);
     }
 
-    machine_opts = qemu_opts_find(qemu_find_opts("machine"), 0);
-    if (machine_opts && qemu_opt_get_bool(machine_opts, "trial", 0)) {
-        int i;
-
-        for (i = 0; i < ARRAY_SIZE(known_devices); ++i) {
-            dump_flash_part_info(&known_devices[i]);
-        }
-    }
     return 0;
 }
 
-static void m25p80_reset(DeviceState *dev)
+static void m25p80_reset(DeviceState *d)
 {
-    Flash *s = M25P80(dev);
+    Flash *s = M25P80(d);
 
-    s->bar = 0;
-    s->addr_4b = false;
-    s->dummy_count = 0;
+    reset_memory(s);
 }
 
 static void m25p80_pre_save(void *opaque)
@@ -896,10 +1088,15 @@ static void m25p80_pre_save(void *opaque)
     flash_sync_dirty((Flash *)opaque, -1);
 }
 
+static Property m25p80_properties[] = {
+    DEFINE_PROP_UINT32("nonvolatile-cfg", Flash, nonvolatile_cfg, 0x8FFF),
+    DEFINE_PROP_END_OF_LIST(),
+};
+
 static const VMStateDescription vmstate_m25p80 = {
     .name = "xilinx_spi",
     .version_id = 2,
-    .minimum_version_id = 2,
+    .minimum_version_id = 1,
     .pre_save = m25p80_pre_save,
     .fields = (VMStateField[]) {
         VMSTATE_UINT8(state, Flash),
@@ -910,6 +1107,12 @@ static const VMStateDescription vmstate_m25p80 = {
         VMSTATE_UINT8(cmd_in_progress, Flash),
         VMSTATE_UINT64(cur_addr, Flash),
         VMSTATE_BOOL(write_enable, Flash),
+        VMSTATE_BOOL_V(reset_enable, Flash, 2),
+        VMSTATE_UINT8_V(ear, Flash, 2),
+        VMSTATE_BOOL_V(four_bytes_address_mode, Flash, 2),
+        VMSTATE_UINT32_V(nonvolatile_cfg, Flash, 2),
+        VMSTATE_UINT32_V(volatile_cfg, Flash, 2),
+        VMSTATE_UINT32_V(enh_volatile_cfg, Flash, 2),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -925,8 +1128,9 @@ static void m25p80_class_init(ObjectClass *klass, void *data)
     k->set_cs = m25p80_cs;
     k->set_data_lines = m25p80_num_datalines;
     k->cs_polarity = SSI_CS_LOW;
-    dc->reset = m25p80_reset;
     dc->vmsd = &vmstate_m25p80;
+    dc->props = m25p80_properties;
+    dc->reset = m25p80_reset;
     mc->pi = data;
 }
 

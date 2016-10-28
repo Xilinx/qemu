@@ -15,7 +15,6 @@
 
 #include "qom/object.h"
 #include "qemu-common.h"
-#include "qapi/error.h"
 #include "qapi-types.h"
 #include "qemu/option.h"
 #include "sysemu/tpm.h"
@@ -56,7 +55,7 @@ struct TPMBackend {
     QLIST_ENTRY(TPMBackend) list;
 };
 
-typedef void (TPMRecvDataCB)(TPMState *, uint8_t locty);
+typedef void (TPMRecvDataCB)(TPMState *, uint8_t locty, bool selftest_done);
 
 typedef struct TPMSizedBuffer {
     uint32_t size;
@@ -88,6 +87,10 @@ struct TPMDriverOps {
     void (*cancel_cmd)(TPMBackend *t);
 
     bool (*get_tpm_established_flag)(TPMBackend *t);
+
+    int (*reset_tpm_established_flag)(TPMBackend *t, uint8_t locty);
+
+    TPMVersion (*get_tpm_version)(TPMBackend *t);
 };
 
 
@@ -192,6 +195,15 @@ void tpm_backend_cancel_cmd(TPMBackend *s);
 bool tpm_backend_get_tpm_established_flag(TPMBackend *s);
 
 /**
+ * tpm_backend_reset_tpm_established_flag:
+ * @s: the backend
+ * @locty: the locality number
+ *
+ * Reset the TPM establishment flag.
+ */
+int tpm_backend_reset_tpm_established_flag(TPMBackend *s, uint8_t locty);
+
+/**
  * tpm_backend_open:
  * @s: the backend to open
  * @errp: a pointer to return the #Error object if an error occurs.
@@ -200,6 +212,16 @@ bool tpm_backend_get_tpm_established_flag(TPMBackend *s);
  * function on an already opened backend will not result in an error.
  */
 void tpm_backend_open(TPMBackend *s, Error **errp);
+
+/**
+ * tpm_backend_get_tpm_version:
+ * @s: the backend to call into
+ *
+ * Get the TPM Version that is emulated at the backend.
+ *
+ * Returns TPMVersion.
+ */
+TPMVersion tpm_backend_get_tpm_version(TPMBackend *s);
 
 TPMBackend *qemu_find_tpm(const char *id);
 

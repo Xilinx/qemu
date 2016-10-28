@@ -19,6 +19,7 @@
  * By Richard W.M. Jones (rjones@redhat.com).
  */
 
+#include "qemu/osdep.h"
 #include "qemu-common.h"
 #include "qemu/timer.h"
 #include "sysemu/watchdog.h"
@@ -63,7 +64,7 @@ static void ib700_write_enable_reg(void *vp, uint32_t addr, uint32_t data)
 
     ib700_debug("addr = %x, data = %x\n", addr, data);
 
-    timeout = (int64_t) time_map[data & 0xF] * get_ticks_per_sec();
+    timeout = (int64_t) time_map[data & 0xF] * NANOSECONDS_PER_SECOND;
     timer_mod(s->timer, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + timeout);
 }
 
@@ -93,7 +94,7 @@ static const VMStateDescription vmstate_ib700 = {
     .version_id = 0,
     .minimum_version_id = 0,
     .fields = (VMStateField[]) {
-        VMSTATE_TIMER(timer, IB700State),
+        VMSTATE_TIMER_PTR(timer, IB700State),
         VMSTATE_END_OF_LIST()
     }
 };

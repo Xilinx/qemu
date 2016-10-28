@@ -22,6 +22,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+#include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "qemu/timer.h"
 #include "sysemu/sysemu.h"
 #include "hw/timer/i8254.h"
@@ -33,8 +35,10 @@
 #define CALIBRATION_ROUNDS   3
 
 #define KVM_PIT(obj) OBJECT_CHECK(KVMPITState, (obj), TYPE_KVM_I8254)
-#define KVM_PIT_PARENT_CLASS \
-    object_class_get_parent(object_class_by_name(TYPE_KVM_I8254))
+#define KVM_PIT_CLASS(class) \
+    OBJECT_CLASS_CHECK(KVMPITClass, (class), TYPE_KVM_I8254)
+#define KVM_PIT_GET_CLASS(obj) \
+    OBJECT_GET_CLASS(KVMPITClass, (obj), TYPE_KVM_I8254)
 
 typedef struct KVMPITState {
     PITCommonState parent_obj;
@@ -43,6 +47,12 @@ typedef struct KVMPITState {
     bool vm_stopped;
     int64_t kernel_clock_offset;
 } KVMPITState;
+
+typedef struct KVMPITClass {
+    PITCommonClass parent_class;
+
+    DeviceRealize parent_realize;
+} KVMPITClass;
 
 static int64_t abs64(int64_t v)
 {
@@ -243,7 +253,7 @@ static void kvm_pit_vm_state_change(void *opaque, int running,
 static void kvm_pit_realizefn(DeviceState *dev, Error **errp)
 {
     PITCommonState *pit = PIT_COMMON(dev);
-    DeviceClass *dc_parent = DEVICE_CLASS(KVM_PIT_PARENT_CLASS);
+    KVMPITClass *kpc = KVM_PIT_GET_CLASS(dev);
     KVMPITState *s = KVM_PIT(pit);
     struct kvm_pit_config config = {
         .flags = 0,
@@ -287,7 +297,7 @@ static void kvm_pit_realizefn(DeviceState *dev, Error **errp)
 
     qemu_add_vm_change_state_handler(kvm_pit_vm_state_change, s);
 
-    dc_parent->realize(dev, errp);
+    kpc->parent_realize(dev, errp);
 }
 
 static Property kvm_pit_properties[] = {
@@ -299,9 +309,11 @@ static Property kvm_pit_properties[] = {
 
 static void kvm_pit_class_init(ObjectClass *klass, void *data)
 {
+    KVMPITClass *kpc = KVM_PIT_CLASS(klass);
     PITCommonClass *k = PIT_COMMON_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
 
+    kpc->parent_realize = dc->realize;
     dc->realize = kvm_pit_realizefn;
     k->set_channel_gate = kvm_pit_set_gate;
     k->get_channel_info = kvm_pit_get_channel_info;
@@ -314,6 +326,7 @@ static const TypeInfo kvm_pit_info = {
     .parent        = TYPE_PIT_COMMON,
     .instance_size = sizeof(KVMPITState),
     .class_init = kvm_pit_class_init,
+    .class_size = sizeof(KVMPITClass),
 };
 
 static void kvm_pit_register(void)

@@ -135,7 +135,7 @@ static inline bool cadence_i2c_has_work(CadenceI2CState *s)
         if (!(s->regs[R_CONTROL] & CONTROL_HOLD)) {
             return true;
         }
-        return !fifo_is_empty(&s->fifo);
+        return !fifo8_is_empty(&s->fifo);
     } else {
         if ((s->regs[R_CONTROL] & CONTROL_HOLD)) {
             return !fifo_is_full(&s->fifo) && s->regs[R_TRANSFER_SIZE];
@@ -184,14 +184,14 @@ static void cadence_i2c_do_txrx(void *opaque)
     DB_PRINT("doing transfer at time %llx\n",
              (unsigned long long)qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
     if (!(s->regs[R_CONTROL] & CONTROL_RW)) { /* write */
-        if (fifo_is_empty(&s->fifo)) {
+        if (fifo8_is_empty(&s->fifo)) {
             cadence_i2c_do_stop(s);
         } else {
             uint8_t t = fifo_pop8(&s->fifo);
             if (i2c_send(s->bus, t)) {
                 s->regs[R_ISR] |= ISR_NACK;
             }
-            if (fifo_is_empty(&s->fifo)) {
+            if (fifo8_is_empty(&s->fifo)) {
                 s->regs[R_ISR] |= ISR_COMP;
             }
             if (s->regs[R_TRANSFER_SIZE]) {
@@ -269,12 +269,12 @@ static uint64_t cadence_i2c_read(void *opaque, hwaddr offset,
     ret &= (1ull << info->width) - 1;
 
     if (offset >> 2 == R_DATA) {
-        if (fifo_is_empty(&s->fifo)) {
+        if (fifo8_is_empty(&s->fifo)) {
             s->regs[R_ISR] |= ISR_RX_UNF;
         } else {
             s->regs[R_STATUS] &= ~STATUS_RXOVF;
             ret = fifo_pop8(&s->fifo);
-            if (fifo_is_empty(&s->fifo)) {
+            if (fifo8_is_empty(&s->fifo)) {
                 s->regs[R_STATUS] &= ~STATUS_RXDV;
             }
         }
@@ -311,11 +311,11 @@ static void cadence_i2c_write(void *opaque, hwaddr offset,
             DB_PRINT("clearing fifo\n");
             s->regs[R_TRANSFER_SIZE] = 0;
             s->regs[R_STATUS] &= ~STATUS_RXOVF;
-            fifo_reset(&s->fifo);
+            fifo8_reset(&s->fifo);
         }
         if (!(value & CONTROL_HOLD)) {
             bool idle = s->regs[R_CONTROL] & CONTROL_RW ?
-                        !s->regs[R_TRANSFER_SIZE] : fifo_is_empty(&s->fifo);
+                        !s->regs[R_TRANSFER_SIZE] : fifo8_is_empty(&s->fifo);
             if (idle) {
                 cadence_i2c_do_stop(s);
             }
@@ -371,7 +371,7 @@ static const VMStateDescription cadence_i2c_vmstate = {
     .fields = (VMStateField[]) {
         VMSTATE_FIFO(fifo, CadenceI2CState),
         VMSTATE_UINT32_ARRAY(regs, CadenceI2CState, R_MAX),
-        VMSTATE_TIMER(transfer_timer, CadenceI2CState),
+        VMSTATE_TIMER_PTR(transfer_timer, CadenceI2CState),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -386,7 +386,7 @@ static void cadence_i2c_reset(DeviceState *d)
         s->regs[i] = cadence_i2c_reg_info[i].name ?
                 cadence_i2c_reg_info[i].reset : 0;
     }
-    fifo_reset(&s->fifo);
+    fifo8_reset(&s->fifo);
 }
 
 static void cadence_i2c_realize(DeviceState *dev, Error **errp)

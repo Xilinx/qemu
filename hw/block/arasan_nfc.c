@@ -23,6 +23,7 @@
  * THE SOFTWARE.
  */
 
+#include "qemu/osdep.h"
 #include "qemu/timer.h"
 #include "qemu/bitops.h"
 #include "sysemu/sysemu.h"
@@ -35,6 +36,7 @@
 #include "qemu/fifo.h"
 #include "sysemu/blockdev.h"
 #include "qemu/log.h"
+#include "qapi/error.h"
 
 #ifndef ARASAN_NFC_ERR_DEBUG
 #define ARASAN_NFC_ERR_DEBUG 0
@@ -42,8 +44,8 @@
 
 #define DB_PRINT_L(level, ...) do { \
     if (ARASAN_NFC_ERR_DEBUG > (level)) { \
-        qemu_log_mask_level(DEV_LOG_NANDC, level, ": %s: ", __func__); \
-        qemu_log_mask_level(DEV_LOG_NANDC, level, ## __VA_ARGS__); \
+        qemu_log_mask(DEV_LOG_NANDC, ": %s: ", __func__); \
+        qemu_log_mask(DEV_LOG_NANDC, ## __VA_ARGS__); \
     } \
 } while (0);
 

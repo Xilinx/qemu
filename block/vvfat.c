@@ -22,14 +22,17 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#include <sys/stat.h>
+#include "qemu/osdep.h"
 #include <dirent.h>
-#include "qemu-common.h"
+#include "qapi/error.h"
 #include "block/block_int.h"
 #include "qemu/module.h"
+#include "qemu/bswap.h"
 #include "migration/migration.h"
 #include "qapi/qmp/qint.h"
 #include "qapi/qmp/qbool.h"
+#include "qapi/qmp/qstring.h"
+#include "qemu/cutils.h"
 
 #ifndef S_IWGRP
 #define S_IWGRP 0
@@ -322,6 +325,7 @@ typedef struct BDRVVVFATState {
 
     int fat_type; /* 16 or 32 */
     array_t fat,directory,mapping;
+    char volume_label[11];
 
     unsigned int cluster_size;
     unsigned int sectors_per_cluster;
@@ -859,7 +863,7 @@ static int init_directories(BDRVVVFATState* s,
     {
 	direntry_t* entry=array_get_next(&(s->directory));
 	entry->attributes=0x28; /* archive | volume label */
-        memcpy(entry->name, "QEMU VVFAT ", sizeof(entry->name));
+        memcpy(entry->name, s->volume_label, sizeof(entry->name));
     }
 
     /* Now build FAT, and write back information into directory */
@@ -968,7 +972,8 @@ static int init_directories(BDRVVVFATState* s,
     bootsector->u.fat16.signature=0x29;
     bootsector->u.fat16.id=cpu_to_le32(0xfabe1afd);
 
-    memcpy(bootsector->u.fat16.volume_label,"QEMU VVFAT ",11);
+    memcpy(bootsector->u.fat16.volume_label, s->volume_label,
+           sizeof(bootsector->u.fat16.volume_label));
     memcpy(bootsector->fat_type,(s->fat_type==12?"FAT12   ":s->fat_type==16?"FAT16   ":"FAT32   "),8);
     bootsector->magic[0]=0x55; bootsector->magic[1]=0xaa;
 
@@ -981,12 +986,6 @@ static BDRVVVFATState *vvv = NULL;
 
 static int enable_write_target(BDRVVVFATState *s, Error **errp);
 static int is_consistent(BDRVVVFATState *s);
-
-static void vvfat_rebind(BlockDriverState *bs)
-{
-    BDRVVVFATState *s = bs->opaque;
-    s->bs = bs;
-}
 
 static QemuOptsList runtime_opts = {
     .name = "vvfat",
@@ -1006,6 +1005,11 @@ static QemuOptsList runtime_opts = {
             .name = "floppy",
             .type = QEMU_OPT_BOOL,
             .help = "Create a floppy rather than a hard disk image",
+        },
+        {
+            .name = "label",
+            .type = QEMU_OPT_STRING,
+            .help = "Use a volume label other than QEMU VVFAT",
         },
         {
             .name = "rw",
@@ -1059,8 +1063,8 @@ static void vvfat_parse_filename(const char *filename, QDict *options,
     /* Fill in the options QDict */
     qdict_put(options, "dir", qstring_from_str(filename));
     qdict_put(options, "fat-type", qint_from_int(fat_type));
-    qdict_put(options, "floppy", qbool_from_int(floppy));
-    qdict_put(options, "rw", qbool_from_int(rw));
+    qdict_put(options, "floppy", qbool_from_bool(floppy));
+    qdict_put(options, "rw", qbool_from_bool(rw));
 }
 
 static int vvfat_open(BlockDriverState *bs, QDict *options, int flags,
@@ -1069,7 +1073,7 @@ static int vvfat_open(BlockDriverState *bs, QDict *options, int flags,
     BDRVVVFATState *s = bs->opaque;
     int cyls, heads, secs;
     bool floppy;
-    const char *dirname;
+    const char *dirname, *label;
     QemuOpts *opts;
     Error *local_err = NULL;
     int ret;
@@ -1095,6 +1099,20 @@ static int vvfat_open(BlockDriverState *bs, QDict *options, int flags,
 
     s->fat_type = qemu_opt_get_number(opts, "fat-type", 0);
     floppy = qemu_opt_get_bool(opts, "floppy", false);
+
+    memset(s->volume_label, ' ', sizeof(s->volume_label));
+    label = qemu_opt_get(opts, "label");
+    if (label) {
+        size_t label_length = strlen(label);
+        if (label_length > 11) {
+            error_setg(errp, "vvfat label cannot be longer than 11 bytes");
+            ret = -EINVAL;
+            goto fail;
+        }
+        memcpy(s->volume_label, label, label_length);
+    } else {
+        memcpy(s->volume_label, "QEMU VVFAT", 10);
+    }
 
     if (floppy) {
         /* 1.44MB or 2.88MB floppy.  2.88MB can be FAT12 (default) or FAT16. */
@@ -1162,6 +1180,7 @@ static int vvfat_open(BlockDriverState *bs, QDict *options, int flags,
         bs->read_only = 0;
     }
 
+    bs->request_alignment = BDRV_SECTOR_SIZE; /* No sub-sector I/O supported */
     bs->total_sectors = cyls * heads * secs;
 
     if (init_directories(s, dirname, heads, secs, errp)) {
@@ -1180,9 +1199,10 @@ static int vvfat_open(BlockDriverState *bs, QDict *options, int flags,
 
     /* Disable migration when vvfat is used rw */
     if (s->qcow) {
-        error_set(&s->migration_blocker,
-                  QERR_BLOCK_FORMAT_FEATURE_NOT_SUPPORTED,
-                  "vvfat (rw)", bdrv_get_device_name(bs), "live migration");
+        error_setg(&s->migration_blocker,
+                   "The vvfat (rw) format used by node '%s' "
+                   "does not support live migration",
+                   bdrv_get_device_or_node_name(bs));
         migrate_add_blocker(s->migration_blocker);
     }
 
@@ -1403,14 +1423,31 @@ DLOG(fprintf(stderr, "sector %d not allocated\n", (int)sector_num));
     return 0;
 }
 
-static coroutine_fn int vvfat_co_read(BlockDriverState *bs, int64_t sector_num,
-                                      uint8_t *buf, int nb_sectors)
+static int coroutine_fn
+vvfat_co_preadv(BlockDriverState *bs, uint64_t offset, uint64_t bytes,
+                QEMUIOVector *qiov, int flags)
 {
     int ret;
     BDRVVVFATState *s = bs->opaque;
+    uint64_t sector_num = offset >> BDRV_SECTOR_BITS;
+    int nb_sectors = bytes >> BDRV_SECTOR_BITS;
+    void *buf;
+
+    assert((offset & (BDRV_SECTOR_SIZE - 1)) == 0);
+    assert((bytes & (BDRV_SECTOR_SIZE - 1)) == 0);
+
+    buf = g_try_malloc(bytes);
+    if (bytes && buf == NULL) {
+        return -ENOMEM;
+    }
+
     qemu_co_mutex_lock(&s->lock);
     ret = vvfat_read(bs, sector_num, buf, nb_sectors);
     qemu_co_mutex_unlock(&s->lock);
+
+    qemu_iovec_from_buf(qiov, 0, buf, bytes);
+    g_free(buf);
+
     return ret;
 }
 
@@ -2267,12 +2304,17 @@ DLOG(fprintf(stderr, "commit_direntries for %s, parent_mapping_index %d\n", mapp
 		factor * (old_cluster_count - new_cluster_count));
 
     for (c = first_cluster; !fat_eof(s, c); c = modified_fat_get(s, c)) {
+        direntry_t *first_direntry;
 	void* direntry = array_get(&(s->directory), current_dir_index);
 	int ret = vvfat_read(s->bs, cluster2sector(s, c), direntry,
 		s->sectors_per_cluster);
 	if (ret)
 	    return ret;
-	assert(!strncmp(s->directory.pointer, "QEMU", 4));
+
+        /* The first directory entry on the filesystem is the volume name */
+        first_direntry = (direntry_t*) s->directory.pointer;
+        assert(!memcmp(first_direntry->name, s->volume_label, 11));
+
 	current_dir_index += factor;
     }
 
@@ -2857,19 +2899,36 @@ DLOG(checkpoint());
     return 0;
 }
 
-static coroutine_fn int vvfat_co_write(BlockDriverState *bs, int64_t sector_num,
-                                       const uint8_t *buf, int nb_sectors)
+static int coroutine_fn
+vvfat_co_pwritev(BlockDriverState *bs, uint64_t offset, uint64_t bytes,
+                 QEMUIOVector *qiov, int flags)
 {
     int ret;
     BDRVVVFATState *s = bs->opaque;
+    uint64_t sector_num = offset >> BDRV_SECTOR_BITS;
+    int nb_sectors = bytes >> BDRV_SECTOR_BITS;
+    void *buf;
+
+    assert((offset & (BDRV_SECTOR_SIZE - 1)) == 0);
+    assert((bytes & (BDRV_SECTOR_SIZE - 1)) == 0);
+
+    buf = g_try_malloc(bytes);
+    if (bytes && buf == NULL) {
+        return -ENOMEM;
+    }
+    qemu_iovec_to_buf(qiov, 0, buf, bytes);
+
     qemu_co_mutex_lock(&s->lock);
     ret = vvfat_write(bs, sector_num, buf, nb_sectors);
     qemu_co_mutex_unlock(&s->lock);
+
+    g_free(buf);
+
     return ret;
 }
 
 static int64_t coroutine_fn vvfat_co_get_block_status(BlockDriverState *bs,
-	int64_t sector_num, int nb_sectors, int* n)
+	int64_t sector_num, int nb_sectors, int *n, BlockDriverState **file)
 {
     BDRVVVFATState* s = bs->opaque;
     *n = s->sector_count - sector_num;
@@ -2881,8 +2940,10 @@ static int64_t coroutine_fn vvfat_co_get_block_status(BlockDriverState *bs,
     return BDRV_BLOCK_DATA;
 }
 
-static int write_target_commit(BlockDriverState *bs, int64_t sector_num,
-	const uint8_t* buffer, int nb_sectors) {
+static int coroutine_fn
+write_target_commit(BlockDriverState *bs, uint64_t offset, uint64_t bytes,
+                    QEMUIOVector *qiov, int flags)
+{
     BDRVVVFATState* s = *((BDRVVVFATState**) bs->opaque);
     return try_commit(s);
 }
@@ -2895,22 +2956,25 @@ static void write_target_close(BlockDriverState *bs) {
 
 static BlockDriver vvfat_write_target = {
     .format_name        = "vvfat_write_target",
-    .bdrv_write         = write_target_commit,
+    .bdrv_co_pwritev    = write_target_commit,
     .bdrv_close         = write_target_close,
 };
 
 static int enable_write_target(BDRVVVFATState *s, Error **errp)
 {
     BlockDriver *bdrv_qcow = NULL;
+    BlockDriverState *backing;
     QemuOpts *opts = NULL;
     int ret;
     int size = sector2cluster(s, s->sector_count);
+    QDict *options;
+
     s->used_clusters = calloc(size, 1);
 
     array_init(&(s->commits), sizeof(commit_t));
 
-    s->qcow_filename = g_malloc(1024);
-    ret = get_tmp_filename(s->qcow_filename, 1024);
+    s->qcow_filename = g_malloc(PATH_MAX);
+    ret = get_tmp_filename(s->qcow_filename, PATH_MAX);
     if (ret < 0) {
         error_setg_errno(errp, -ret, "can't create temporary file");
         goto err;
@@ -2924,8 +2988,9 @@ static int enable_write_target(BDRVVVFATState *s, Error **errp)
     }
 
     opts = qemu_opts_create(bdrv_qcow->create_opts, NULL, 0, &error_abort);
-    qemu_opt_set_number(opts, BLOCK_OPT_SIZE, s->sector_count * 512);
-    qemu_opt_set(opts, BLOCK_OPT_BACKING_FILE, "fat:");
+    qemu_opt_set_number(opts, BLOCK_OPT_SIZE, s->sector_count * 512,
+                        &error_abort);
+    qemu_opt_set(opts, BLOCK_OPT_BACKING_FILE, "fat:", &error_abort);
 
     ret = bdrv_create(bdrv_qcow, s->qcow_filename, opts, errp);
     qemu_opts_del(opts);
@@ -2934,9 +2999,10 @@ static int enable_write_target(BDRVVVFATState *s, Error **errp)
     }
 
     s->qcow = NULL;
-    ret = bdrv_open(&s->qcow, s->qcow_filename, NULL, NULL,
-                    BDRV_O_RDWR | BDRV_O_CACHE_WB | BDRV_O_NO_FLUSH,
-                    bdrv_qcow, errp);
+    options = qdict_new();
+    qdict_put(options, "driver", qstring_from_str("qcow"));
+    ret = bdrv_open(&s->qcow, s->qcow_filename, NULL, options,
+                    BDRV_O_RDWR | BDRV_O_NO_FLUSH, errp);
     if (ret < 0) {
         goto err;
     }
@@ -2945,10 +3011,13 @@ static int enable_write_target(BDRVVVFATState *s, Error **errp)
     unlink(s->qcow_filename);
 #endif
 
-    bdrv_set_backing_hd(s->bs, bdrv_new());
-    s->bs->backing_hd->drv = &vvfat_write_target;
-    s->bs->backing_hd->opaque = g_new(void *, 1);
-    *(void**)s->bs->backing_hd->opaque = s;
+    backing = bdrv_new();
+    bdrv_set_backing_hd(s->bs, backing);
+    bdrv_unref(backing);
+
+    s->bs->backing->bs->drv = &vvfat_write_target;
+    s->bs->backing->bs->opaque = g_new(void *, 1);
+    *(void**)s->bs->backing->bs->opaque = s;
 
     return 0;
 
@@ -2982,10 +3051,9 @@ static BlockDriver bdrv_vvfat = {
     .bdrv_parse_filename    = vvfat_parse_filename,
     .bdrv_file_open         = vvfat_open,
     .bdrv_close             = vvfat_close,
-    .bdrv_rebind            = vvfat_rebind,
 
-    .bdrv_read              = vvfat_co_read,
-    .bdrv_write             = vvfat_co_write,
+    .bdrv_co_preadv         = vvfat_co_preadv,
+    .bdrv_co_pwritev        = vvfat_co_pwritev,
     .bdrv_co_get_block_status = vvfat_co_get_block_status,
 };
 

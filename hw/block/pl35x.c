@@ -24,12 +24,15 @@
  * THE SOFTWARE.
  */
 
-#include "qemu/timer.h"
-#include "sysemu/sysemu.h"
+#include "qemu/osdep.h"
 #include "hw/hw.h"
-#include "hw/sysbus.h"
 #include "hw/block/flash.h"
-#include "qapi/qmp/qerror.h"
+#include "qapi/error.h"
+#include "qemu/timer.h"
+#include "sysemu/block-backend.h"
+#include "exec/address-spaces.h"
+#include "qemu/host-utils.h"
+#include "hw/sysbus.h"
 
 #ifdef PL35X_ERR_DEBUG
 #define DB_PRINT(...) do { \

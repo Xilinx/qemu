@@ -10,11 +10,16 @@
  * NVIC.  Much of that is also implemented here.
  */
 
+#include "qemu/osdep.h"
+#include "qapi/error.h"
+#include "qemu-common.h"
+#include "cpu.h"
 #include "hw/sysbus.h"
 #include "qemu/timer.h"
 #include "hw/arm/arm.h"
 #include "exec/address-spaces.h"
 #include "gic_internal.h"
+#include "qemu/log.h"
 
 typedef struct {
     GICState gic;
@@ -450,7 +455,7 @@ static const VMStateDescription vmstate_nvic = {
         VMSTATE_UINT32(systick.control, nvic_state),
         VMSTATE_UINT32(systick.reload, nvic_state),
         VMSTATE_INT64(systick.tick, nvic_state),
-        VMSTATE_TIMER(systick.timer, nvic_state),
+        VMSTATE_TIMER_PTR(systick.timer, nvic_state),
         VMSTATE_END_OF_LIST()
     }
 };
