@@ -27,7 +27,6 @@
 #include "qemu-common.h"
 #include "block/block_int.h"
 #include "qemu/module.h"
-#include "qemu/bswap.h"
 
 /**************************************************************/
 
@@ -105,7 +104,6 @@ static int bochs_open(BlockDriverState *bs, QDict *options, int flags,
     int ret;
 
     bs->read_only = 1; // no write support yet
-    bs->request_alignment = BDRV_SECTOR_SIZE; /* No sub-sector I/O supported */
 
     ret = bdrv_pread(bs->file->bs, 0, &bochs, sizeof(bochs));
     if (ret < 0) {
@@ -223,52 +221,38 @@ static int64_t seek_to_sector(BlockDriverState *bs, int64_t sector_num)
     return bitmap_offset + (512 * (s->bitmap_blocks + extent_offset));
 }
 
-static int coroutine_fn
-bochs_co_preadv(BlockDriverState *bs, uint64_t offset, uint64_t bytes,
-                QEMUIOVector *qiov, int flags)
+static int bochs_read(BlockDriverState *bs, int64_t sector_num,
+                    uint8_t *buf, int nb_sectors)
 {
-    BDRVBochsState *s = bs->opaque;
-    uint64_t sector_num = offset >> BDRV_SECTOR_BITS;
-    int nb_sectors = bytes >> BDRV_SECTOR_BITS;
-    uint64_t bytes_done = 0;
-    QEMUIOVector local_qiov;
     int ret;
-
-    assert((offset & (BDRV_SECTOR_SIZE - 1)) == 0);
-    assert((bytes & (BDRV_SECTOR_SIZE - 1)) == 0);
-
-    qemu_iovec_init(&local_qiov, qiov->niov);
-    qemu_co_mutex_lock(&s->lock);
 
     while (nb_sectors > 0) {
         int64_t block_offset = seek_to_sector(bs, sector_num);
         if (block_offset < 0) {
-            ret = block_offset;
-            goto fail;
-        }
-
-        qemu_iovec_reset(&local_qiov);
-        qemu_iovec_concat(&local_qiov, qiov, bytes_done, 512);
-
-        if (block_offset > 0) {
-            ret = bdrv_co_preadv(bs->file->bs, block_offset, 512,
-                                 &local_qiov, 0);
+            return block_offset;
+        } else if (block_offset > 0) {
+            ret = bdrv_pread(bs->file->bs, block_offset, buf, 512);
             if (ret < 0) {
-                goto fail;
+                return ret;
             }
         } else {
-            qemu_iovec_memset(&local_qiov, 0, 0, 512);
+            memset(buf, 0, 512);
         }
         nb_sectors--;
         sector_num++;
-        bytes_done += 512;
+        buf += 512;
     }
+    return 0;
+}
 
-    ret = 0;
-fail:
+static coroutine_fn int bochs_co_read(BlockDriverState *bs, int64_t sector_num,
+                                      uint8_t *buf, int nb_sectors)
+{
+    int ret;
+    BDRVBochsState *s = bs->opaque;
+    qemu_co_mutex_lock(&s->lock);
+    ret = bochs_read(bs, sector_num, buf, nb_sectors);
     qemu_co_mutex_unlock(&s->lock);
-    qemu_iovec_destroy(&local_qiov);
-
     return ret;
 }
 
@@ -283,7 +267,7 @@ static BlockDriver bdrv_bochs = {
     .instance_size	= sizeof(BDRVBochsState),
     .bdrv_probe		= bochs_probe,
     .bdrv_open		= bochs_open,
-    .bdrv_co_preadv = bochs_co_preadv,
+    .bdrv_read          = bochs_co_read,
     .bdrv_close		= bochs_close,
 };
 

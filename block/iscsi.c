@@ -456,11 +456,8 @@ iscsi_co_writev_flags(BlockDriverState *bs, int64_t sector_num, int nb_sectors,
     struct IscsiTask iTask;
     uint64_t lba;
     uint32_t num_sectors;
-    bool fua = flags & BDRV_REQ_FUA;
+    bool fua;
 
-    if (fua) {
-        assert(iscsilun->dpofua);
-    }
     if (!is_request_lun_aligned(sector_num, nb_sectors, iscsilun)) {
         return -EINVAL;
     }
@@ -475,6 +472,7 @@ iscsi_co_writev_flags(BlockDriverState *bs, int64_t sector_num, int nb_sectors,
     num_sectors = sector_qemu2lun(nb_sectors, iscsilun);
     iscsi_co_init_iscsitask(iscsilun, &iTask);
 retry:
+    fua = iscsilun->dpofua && (flags & BDRV_REQ_FUA);
     if (iscsilun->use_16_for_rw) {
         iTask.task = iscsi_write16_task(iscsilun->iscsi, iscsilun->lun, lba,
                                         NULL, num_sectors * iscsilun->block_size,
@@ -513,6 +511,13 @@ retry:
     iscsi_allocationmap_set(iscsilun, sector_num, nb_sectors);
 
     return 0;
+}
+
+static int coroutine_fn
+iscsi_co_writev(BlockDriverState *bs, int64_t sector_num, int nb_sectors,
+                QEMUIOVector *iov)
+{
+    return iscsi_co_writev_flags(bs, sector_num, nb_sectors, iov, 0);
 }
 
 
@@ -761,7 +766,6 @@ iscsi_aio_ioctl_cb(struct iscsi_context *iscsi, int status,
     acb->ioh->driver_status = 0;
     acb->ioh->host_status   = 0;
     acb->ioh->resid         = 0;
-    acb->ioh->status        = status;
 
 #define SG_ERR_DRIVER_SENSE    0x08
 
@@ -1551,10 +1555,6 @@ static int iscsi_open(BlockDriverState *bs, QDict *options, int flags,
     task = NULL;
 
     iscsi_modesense_sync(iscsilun);
-    if (iscsilun->dpofua) {
-        bs->supported_write_flags = BDRV_REQ_FUA;
-    }
-    bs->supported_zero_flags = BDRV_REQ_MAY_UNMAP;
 
     /* Check the write protect flag of the LUN if we want to write */
     if (iscsilun->type == TYPE_DISK && (flags & BDRV_O_RDWR) &&
@@ -1847,7 +1847,9 @@ static BlockDriver bdrv_iscsi = {
     .bdrv_co_discard      = iscsi_co_discard,
     .bdrv_co_write_zeroes = iscsi_co_write_zeroes,
     .bdrv_co_readv         = iscsi_co_readv,
+    .bdrv_co_writev        = iscsi_co_writev,
     .bdrv_co_writev_flags  = iscsi_co_writev_flags,
+    .supported_write_flags = BDRV_REQ_FUA,
     .bdrv_co_flush_to_disk = iscsi_co_flush,
 
 #ifdef __linux__

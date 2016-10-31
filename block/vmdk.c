@@ -30,7 +30,6 @@
 #include "qapi/qmp/qerror.h"
 #include "qemu/error-report.h"
 #include "qemu/module.h"
-#include "qemu/bswap.h"
 #include "migration/migration.h"
 #include "qemu/cutils.h"
 #include <zlib.h>
@@ -1017,26 +1016,27 @@ static void vmdk_refresh_limits(BlockDriverState *bs, Error **errp)
  */
 static int get_whole_cluster(BlockDriverState *bs,
                              VmdkExtent *extent,
-                             uint64_t cluster_offset,
-                             uint64_t offset,
-                             uint64_t skip_start_bytes,
-                             uint64_t skip_end_bytes)
+                             uint64_t cluster_sector_num,
+                             uint64_t sector_num,
+                             uint64_t skip_start_sector,
+                             uint64_t skip_end_sector)
 {
     int ret = VMDK_OK;
     int64_t cluster_bytes;
     uint8_t *whole_grain;
 
     /* For COW, align request sector_num to cluster start */
+    sector_num = QEMU_ALIGN_DOWN(sector_num, extent->cluster_sectors);
     cluster_bytes = extent->cluster_sectors << BDRV_SECTOR_BITS;
-    offset = QEMU_ALIGN_DOWN(offset, cluster_bytes);
     whole_grain = qemu_blockalign(bs, cluster_bytes);
 
     if (!bs->backing) {
-        memset(whole_grain, 0, skip_start_bytes);
-        memset(whole_grain + skip_end_bytes, 0, cluster_bytes - skip_end_bytes);
+        memset(whole_grain, 0,  skip_start_sector << BDRV_SECTOR_BITS);
+        memset(whole_grain + (skip_end_sector << BDRV_SECTOR_BITS), 0,
+               cluster_bytes - (skip_end_sector << BDRV_SECTOR_BITS));
     }
 
-    assert(skip_end_bytes <= cluster_bytes);
+    assert(skip_end_sector <= extent->cluster_sectors);
     /* we will be here if it's first write on non-exist grain(cluster).
      * try to read from parent image, if exist */
     if (bs->backing && !vmdk_is_cid_valid(bs)) {
@@ -1045,43 +1045,42 @@ static int get_whole_cluster(BlockDriverState *bs,
     }
 
     /* Read backing data before skip range */
-    if (skip_start_bytes > 0) {
+    if (skip_start_sector > 0) {
         if (bs->backing) {
-            ret = bdrv_pread(bs->backing->bs, offset, whole_grain,
-                             skip_start_bytes);
+            ret = bdrv_read(bs->backing->bs, sector_num,
+                            whole_grain, skip_start_sector);
             if (ret < 0) {
                 ret = VMDK_ERROR;
                 goto exit;
             }
         }
-        ret = bdrv_pwrite(extent->file->bs, cluster_offset, whole_grain,
-                          skip_start_bytes);
+        ret = bdrv_write(extent->file->bs, cluster_sector_num, whole_grain,
+                         skip_start_sector);
         if (ret < 0) {
             ret = VMDK_ERROR;
             goto exit;
         }
     }
     /* Read backing data after skip range */
-    if (skip_end_bytes < cluster_bytes) {
+    if (skip_end_sector < extent->cluster_sectors) {
         if (bs->backing) {
-            ret = bdrv_pread(bs->backing->bs, offset + skip_end_bytes,
-                             whole_grain + skip_end_bytes,
-                             cluster_bytes - skip_end_bytes);
+            ret = bdrv_read(bs->backing->bs, sector_num + skip_end_sector,
+                            whole_grain + (skip_end_sector << BDRV_SECTOR_BITS),
+                            extent->cluster_sectors - skip_end_sector);
             if (ret < 0) {
                 ret = VMDK_ERROR;
                 goto exit;
             }
         }
-        ret = bdrv_pwrite(extent->file->bs, cluster_offset + skip_end_bytes,
-                          whole_grain + skip_end_bytes,
-                          cluster_bytes - skip_end_bytes);
+        ret = bdrv_write(extent->file->bs, cluster_sector_num + skip_end_sector,
+                         whole_grain + (skip_end_sector << BDRV_SECTOR_BITS),
+                         extent->cluster_sectors - skip_end_sector);
         if (ret < 0) {
             ret = VMDK_ERROR;
             goto exit;
         }
     }
 
-    ret = VMDK_OK;
 exit:
     qemu_vfree(whole_grain);
     return ret;
@@ -1143,8 +1142,8 @@ static int get_cluster_offset(BlockDriverState *bs,
                               uint64_t offset,
                               bool allocate,
                               uint64_t *cluster_offset,
-                              uint64_t skip_start_bytes,
-                              uint64_t skip_end_bytes)
+                              uint64_t skip_start_sector,
+                              uint64_t skip_end_sector)
 {
     unsigned int l1_index, l2_offset, l2_index;
     int min_index, i, j;
@@ -1231,8 +1230,10 @@ static int get_cluster_offset(BlockDriverState *bs,
          * This problem may occur because of insufficient space on host disk
          * or inappropriate VM shutdown.
          */
-        ret = get_whole_cluster(bs, extent, cluster_sector * BDRV_SECTOR_SIZE,
-                                offset, skip_start_bytes, skip_end_bytes);
+        ret = get_whole_cluster(bs, extent,
+                                cluster_sector,
+                                offset >> BDRV_SECTOR_BITS,
+                                skip_start_sector, skip_end_sector);
         if (ret) {
             return ret;
         }
@@ -1258,26 +1259,15 @@ static VmdkExtent *find_extent(BDRVVmdkState *s,
     return NULL;
 }
 
-static inline uint64_t vmdk_find_offset_in_cluster(VmdkExtent *extent,
-                                                   int64_t offset)
-{
-    uint64_t offset_in_cluster, extent_begin_offset, extent_relative_offset;
-    uint64_t cluster_size = extent->cluster_sectors * BDRV_SECTOR_SIZE;
-
-    extent_begin_offset =
-        (extent->end_sector - extent->sectors) * BDRV_SECTOR_SIZE;
-    extent_relative_offset = offset - extent_begin_offset;
-    offset_in_cluster = extent_relative_offset % cluster_size;
-
-    return offset_in_cluster;
-}
-
 static inline uint64_t vmdk_find_index_in_cluster(VmdkExtent *extent,
                                                   int64_t sector_num)
 {
-    uint64_t offset;
-    offset = vmdk_find_offset_in_cluster(extent, sector_num * BDRV_SECTOR_SIZE);
-    return offset / BDRV_SECTOR_SIZE;
+    uint64_t index_in_cluster, extent_begin_sector, extent_relative_sector_num;
+
+    extent_begin_sector = extent->end_sector - extent->sectors;
+    extent_relative_sector_num = sector_num - extent_begin_sector;
+    index_in_cluster = extent_relative_sector_num % extent->cluster_sectors;
+    return index_in_cluster;
 }
 
 static int64_t coroutine_fn vmdk_co_get_block_status(BlockDriverState *bs,
@@ -1329,57 +1319,38 @@ static int64_t coroutine_fn vmdk_co_get_block_status(BlockDriverState *bs,
 }
 
 static int vmdk_write_extent(VmdkExtent *extent, int64_t cluster_offset,
-                            int64_t offset_in_cluster, QEMUIOVector *qiov,
-                            uint64_t qiov_offset, uint64_t n_bytes,
-                            uint64_t offset)
+                            int64_t offset_in_cluster, const uint8_t *buf,
+                            int nb_sectors, int64_t sector_num)
 {
     int ret;
     VmdkGrainMarker *data = NULL;
     uLongf buf_len;
-    QEMUIOVector local_qiov;
-    struct iovec iov;
+    const uint8_t *write_buf = buf;
+    int write_len = nb_sectors * 512;
     int64_t write_offset;
     int64_t write_end_sector;
 
     if (extent->compressed) {
-        void *compressed_data;
-
         if (!extent->has_marker) {
             ret = -EINVAL;
             goto out;
         }
         buf_len = (extent->cluster_sectors << 9) * 2;
         data = g_malloc(buf_len + sizeof(VmdkGrainMarker));
-
-        compressed_data = g_malloc(n_bytes);
-        qemu_iovec_to_buf(qiov, qiov_offset, compressed_data, n_bytes);
-        ret = compress(data->data, &buf_len, compressed_data, n_bytes);
-        g_free(compressed_data);
-
-        if (ret != Z_OK || buf_len == 0) {
+        if (compress(data->data, &buf_len, buf, nb_sectors << 9) != Z_OK ||
+                buf_len == 0) {
             ret = -EINVAL;
             goto out;
         }
-
-        data->lba = offset >> BDRV_SECTOR_BITS;
+        data->lba = sector_num;
         data->size = buf_len;
-
-        n_bytes = buf_len + sizeof(VmdkGrainMarker);
-        iov = (struct iovec) {
-            .iov_base   = data,
-            .iov_len    = n_bytes,
-        };
-        qemu_iovec_init_external(&local_qiov, &iov, 1);
-    } else {
-        qemu_iovec_init(&local_qiov, qiov->niov);
-        qemu_iovec_concat(&local_qiov, qiov, qiov_offset, n_bytes);
+        write_buf = (uint8_t *)data;
+        write_len = buf_len + sizeof(VmdkGrainMarker);
     }
-
     write_offset = cluster_offset + offset_in_cluster,
-    ret = bdrv_co_pwritev(extent->file->bs, write_offset, n_bytes,
-                          &local_qiov, 0);
+    ret = bdrv_pwrite(extent->file->bs, write_offset, write_buf, write_len);
 
-    write_end_sector = DIV_ROUND_UP(write_offset + n_bytes, BDRV_SECTOR_SIZE);
+    write_end_sector = DIV_ROUND_UP(write_offset + write_len, BDRV_SECTOR_SIZE);
 
     if (extent->compressed) {
         extent->next_cluster_sector = write_end_sector;
@@ -1388,21 +1359,19 @@ static int vmdk_write_extent(VmdkExtent *extent, int64_t cluster_offset,
                                           write_end_sector);
     }
 
-    if (ret < 0) {
+    if (ret != write_len) {
+        ret = ret < 0 ? ret : -EIO;
         goto out;
     }
     ret = 0;
  out:
     g_free(data);
-    if (!extent->compressed) {
-        qemu_iovec_destroy(&local_qiov);
-    }
     return ret;
 }
 
 static int vmdk_read_extent(VmdkExtent *extent, int64_t cluster_offset,
-                            int64_t offset_in_cluster, QEMUIOVector *qiov,
-                            int bytes)
+                            int64_t offset_in_cluster, uint8_t *buf,
+                            int nb_sectors)
 {
     int ret;
     int cluster_bytes, buf_bytes;
@@ -1414,13 +1383,14 @@ static int vmdk_read_extent(VmdkExtent *extent, int64_t cluster_offset,
 
 
     if (!extent->compressed) {
-        ret = bdrv_co_preadv(extent->file->bs,
-                             cluster_offset + offset_in_cluster, bytes,
-                             qiov, 0);
-        if (ret < 0) {
-            return ret;
+        ret = bdrv_pread(extent->file->bs,
+                          cluster_offset + offset_in_cluster,
+                          buf, nb_sectors * 512);
+        if (ret == nb_sectors * 512) {
+            return 0;
+        } else {
+            return -EIO;
         }
-        return 0;
     }
     cluster_bytes = extent->cluster_sectors * 512;
     /* Read two clusters in case GrainMarker + compressed data > one cluster */
@@ -1452,11 +1422,11 @@ static int vmdk_read_extent(VmdkExtent *extent, int64_t cluster_offset,
 
     }
     if (offset_in_cluster < 0 ||
-            offset_in_cluster + bytes > buf_len) {
+            offset_in_cluster + nb_sectors * 512 > buf_len) {
         ret = -EINVAL;
         goto out;
     }
-    qemu_iovec_from_buf(qiov, 0, uncomp_buf + offset_in_cluster, bytes);
+    memcpy(buf, uncomp_buf + offset_in_cluster, nb_sectors * 512);
     ret = 0;
 
  out:
@@ -1465,73 +1435,64 @@ static int vmdk_read_extent(VmdkExtent *extent, int64_t cluster_offset,
     return ret;
 }
 
-static int coroutine_fn
-vmdk_co_preadv(BlockDriverState *bs, uint64_t offset, uint64_t bytes,
-               QEMUIOVector *qiov, int flags)
+static int vmdk_read(BlockDriverState *bs, int64_t sector_num,
+                    uint8_t *buf, int nb_sectors)
 {
     BDRVVmdkState *s = bs->opaque;
     int ret;
-    uint64_t n_bytes, offset_in_cluster;
+    uint64_t n, index_in_cluster;
     VmdkExtent *extent = NULL;
-    QEMUIOVector local_qiov;
     uint64_t cluster_offset;
-    uint64_t bytes_done = 0;
 
-    qemu_iovec_init(&local_qiov, qiov->niov);
-    qemu_co_mutex_lock(&s->lock);
-
-    while (bytes > 0) {
-        extent = find_extent(s, offset >> BDRV_SECTOR_BITS, extent);
+    while (nb_sectors > 0) {
+        extent = find_extent(s, sector_num, extent);
         if (!extent) {
-            ret = -EIO;
-            goto fail;
+            return -EIO;
         }
         ret = get_cluster_offset(bs, extent, NULL,
-                                 offset, false, &cluster_offset, 0, 0);
-        offset_in_cluster = vmdk_find_offset_in_cluster(extent, offset);
-
-        n_bytes = MIN(bytes, extent->cluster_sectors * BDRV_SECTOR_SIZE
-                             - offset_in_cluster);
-
+                                 sector_num << 9, false, &cluster_offset,
+                                 0, 0);
+        index_in_cluster = vmdk_find_index_in_cluster(extent, sector_num);
+        n = extent->cluster_sectors - index_in_cluster;
+        if (n > nb_sectors) {
+            n = nb_sectors;
+        }
         if (ret != VMDK_OK) {
             /* if not allocated, try to read from parent image, if exist */
             if (bs->backing && ret != VMDK_ZEROED) {
                 if (!vmdk_is_cid_valid(bs)) {
-                    ret = -EINVAL;
-                    goto fail;
+                    return -EINVAL;
                 }
-
-                qemu_iovec_reset(&local_qiov);
-                qemu_iovec_concat(&local_qiov, qiov, bytes_done, n_bytes);
-
-                ret = bdrv_co_preadv(bs->backing->bs, offset, n_bytes,
-                                     &local_qiov, 0);
+                ret = bdrv_read(bs->backing->bs, sector_num, buf, n);
                 if (ret < 0) {
-                    goto fail;
+                    return ret;
                 }
             } else {
-                qemu_iovec_memset(qiov, bytes_done, 0, n_bytes);
+                memset(buf, 0, 512 * n);
             }
         } else {
-            qemu_iovec_reset(&local_qiov);
-            qemu_iovec_concat(&local_qiov, qiov, bytes_done, n_bytes);
-
-            ret = vmdk_read_extent(extent, cluster_offset, offset_in_cluster,
-                                   &local_qiov, n_bytes);
+            ret = vmdk_read_extent(extent,
+                            cluster_offset, index_in_cluster * 512,
+                            buf, n);
             if (ret) {
-                goto fail;
+                return ret;
             }
         }
-        bytes -= n_bytes;
-        offset += n_bytes;
-        bytes_done += n_bytes;
+        nb_sectors -= n;
+        sector_num += n;
+        buf += n * 512;
     }
+    return 0;
+}
 
-    ret = 0;
-fail:
+static coroutine_fn int vmdk_co_read(BlockDriverState *bs, int64_t sector_num,
+                                     uint8_t *buf, int nb_sectors)
+{
+    int ret;
+    BDRVVmdkState *s = bs->opaque;
+    qemu_co_mutex_lock(&s->lock);
+    ret = vmdk_read(bs, sector_num, buf, nb_sectors);
     qemu_co_mutex_unlock(&s->lock);
-    qemu_iovec_destroy(&local_qiov);
-
     return ret;
 }
 
@@ -1545,38 +1506,38 @@ fail:
  *
  * Returns: error code with 0 for success.
  */
-static int vmdk_pwritev(BlockDriverState *bs, uint64_t offset,
-                       uint64_t bytes, QEMUIOVector *qiov,
-                       bool zeroed, bool zero_dry_run)
+static int vmdk_write(BlockDriverState *bs, int64_t sector_num,
+                      const uint8_t *buf, int nb_sectors,
+                      bool zeroed, bool zero_dry_run)
 {
     BDRVVmdkState *s = bs->opaque;
     VmdkExtent *extent = NULL;
     int ret;
-    int64_t offset_in_cluster, n_bytes;
+    int64_t index_in_cluster, n;
     uint64_t cluster_offset;
-    uint64_t bytes_done = 0;
     VmdkMetaData m_data;
 
-    if (DIV_ROUND_UP(offset, BDRV_SECTOR_SIZE) > bs->total_sectors) {
-        error_report("Wrong offset: offset=0x%" PRIx64
+    if (sector_num > bs->total_sectors) {
+        error_report("Wrong offset: sector_num=0x%" PRIx64
                      " total_sectors=0x%" PRIx64,
-                     offset, bs->total_sectors);
+                     sector_num, bs->total_sectors);
         return -EIO;
     }
 
-    while (bytes > 0) {
-        extent = find_extent(s, offset >> BDRV_SECTOR_BITS, extent);
+    while (nb_sectors > 0) {
+        extent = find_extent(s, sector_num, extent);
         if (!extent) {
             return -EIO;
         }
-        offset_in_cluster = vmdk_find_offset_in_cluster(extent, offset);
-        n_bytes = MIN(bytes, extent->cluster_sectors * BDRV_SECTOR_SIZE
-                             - offset_in_cluster);
-
-        ret = get_cluster_offset(bs, extent, &m_data, offset,
+        index_in_cluster = vmdk_find_index_in_cluster(extent, sector_num);
+        n = extent->cluster_sectors - index_in_cluster;
+        if (n > nb_sectors) {
+            n = nb_sectors;
+        }
+        ret = get_cluster_offset(bs, extent, &m_data, sector_num << 9,
                                  !(extent->compressed || zeroed),
-                                 &cluster_offset, offset_in_cluster,
-                                 offset_in_cluster + n_bytes);
+                                 &cluster_offset,
+                                 index_in_cluster, index_in_cluster + n);
         if (extent->compressed) {
             if (ret == VMDK_OK) {
                 /* Refuse write to allocated cluster for streamOptimized */
@@ -1585,7 +1546,7 @@ static int vmdk_pwritev(BlockDriverState *bs, uint64_t offset,
                 return -EIO;
             } else {
                 /* allocate */
-                ret = get_cluster_offset(bs, extent, &m_data, offset,
+                ret = get_cluster_offset(bs, extent, &m_data, sector_num << 9,
                                          true, &cluster_offset, 0, 0);
             }
         }
@@ -1595,9 +1556,9 @@ static int vmdk_pwritev(BlockDriverState *bs, uint64_t offset,
         if (zeroed) {
             /* Do zeroed write, buf is ignored */
             if (extent->has_zero_grain &&
-                    offset_in_cluster == 0 &&
-                    n_bytes >= extent->cluster_sectors * BDRV_SECTOR_SIZE) {
-                n_bytes = extent->cluster_sectors * BDRV_SECTOR_SIZE;
+                    index_in_cluster == 0 &&
+                    n >= extent->cluster_sectors) {
+                n = extent->cluster_sectors;
                 if (!zero_dry_run) {
                     /* update L2 tables */
                     if (vmdk_L2update(extent, &m_data, VMDK_GTE_ZEROED)
@@ -1609,8 +1570,9 @@ static int vmdk_pwritev(BlockDriverState *bs, uint64_t offset,
                 return -ENOTSUP;
             }
         } else {
-            ret = vmdk_write_extent(extent, cluster_offset, offset_in_cluster,
-                                    qiov, bytes_done, n_bytes, offset);
+            ret = vmdk_write_extent(extent,
+                            cluster_offset, index_in_cluster * 512,
+                            buf, n, sector_num);
             if (ret) {
                 return ret;
             }
@@ -1623,9 +1585,9 @@ static int vmdk_pwritev(BlockDriverState *bs, uint64_t offset,
                 }
             }
         }
-        bytes -= n_bytes;
-        offset += n_bytes;
-        bytes_done += n_bytes;
+        nb_sectors -= n;
+        sector_num += n;
+        buf += n * 512;
 
         /* update CID on the first write every time the virtual disk is
          * opened */
@@ -1640,40 +1602,15 @@ static int vmdk_pwritev(BlockDriverState *bs, uint64_t offset,
     return 0;
 }
 
-static int coroutine_fn
-vmdk_co_pwritev(BlockDriverState *bs, uint64_t offset, uint64_t bytes,
-                QEMUIOVector *qiov, int flags)
+static coroutine_fn int vmdk_co_write(BlockDriverState *bs, int64_t sector_num,
+                                      const uint8_t *buf, int nb_sectors)
 {
     int ret;
     BDRVVmdkState *s = bs->opaque;
     qemu_co_mutex_lock(&s->lock);
-    ret = vmdk_pwritev(bs, offset, bytes, qiov, false, false);
+    ret = vmdk_write(bs, sector_num, buf, nb_sectors, false, false);
     qemu_co_mutex_unlock(&s->lock);
     return ret;
-}
-
-typedef struct VmdkWriteCompressedCo {
-    BlockDriverState *bs;
-    int64_t sector_num;
-    const uint8_t *buf;
-    int nb_sectors;
-    int ret;
-} VmdkWriteCompressedCo;
-
-static void vmdk_co_write_compressed(void *opaque)
-{
-    VmdkWriteCompressedCo *co = opaque;
-    QEMUIOVector local_qiov;
-    uint64_t offset = co->sector_num * BDRV_SECTOR_SIZE;
-    uint64_t bytes = co->nb_sectors * BDRV_SECTOR_SIZE;
-
-    struct iovec iov = (struct iovec) {
-        .iov_base   = (uint8_t*) co->buf,
-        .iov_len    = bytes,
-    };
-    qemu_iovec_init_external(&local_qiov, &iov, 1);
-
-    co->ret = vmdk_pwritev(co->bs, offset, bytes, &local_qiov, false, false);
 }
 
 static int vmdk_write_compressed(BlockDriverState *bs,
@@ -1682,23 +1619,8 @@ static int vmdk_write_compressed(BlockDriverState *bs,
                                  int nb_sectors)
 {
     BDRVVmdkState *s = bs->opaque;
-
     if (s->num_extents == 1 && s->extents[0].compressed) {
-        Coroutine *co;
-        AioContext *aio_context = bdrv_get_aio_context(bs);
-        VmdkWriteCompressedCo data = {
-            .bs         = bs,
-            .sector_num = sector_num,
-            .buf        = buf,
-            .nb_sectors = nb_sectors,
-            .ret        = -EINPROGRESS,
-        };
-        co = qemu_coroutine_create(vmdk_co_write_compressed);
-        qemu_coroutine_enter(co, &data);
-        while (data.ret == -EINPROGRESS) {
-            aio_poll(aio_context, true);
-        }
-        return data.ret;
+        return vmdk_write(bs, sector_num, buf, nb_sectors, false, false);
     } else {
         return -ENOTSUP;
     }
@@ -1711,15 +1633,12 @@ static int coroutine_fn vmdk_co_write_zeroes(BlockDriverState *bs,
 {
     int ret;
     BDRVVmdkState *s = bs->opaque;
-    uint64_t offset = sector_num * BDRV_SECTOR_SIZE;
-    uint64_t bytes = nb_sectors * BDRV_SECTOR_SIZE;
-
     qemu_co_mutex_lock(&s->lock);
     /* write zeroes could fail if sectors not aligned to cluster, test it with
      * dry_run == true before really updating image */
-    ret = vmdk_pwritev(bs, offset, bytes, NULL, true, true);
+    ret = vmdk_write(bs, sector_num, NULL, nb_sectors, true, true);
     if (!ret) {
-        ret = vmdk_pwritev(bs, offset, bytes, NULL, true, false);
+        ret = vmdk_write(bs, sector_num, NULL, nb_sectors, true, false);
     }
     qemu_co_mutex_unlock(&s->lock);
     return ret;
@@ -1809,12 +1728,12 @@ static int vmdk_create_extent(const char *filename, int64_t filesize,
     header.check_bytes[3] = 0xa;
 
     /* write all the data */
-    ret = blk_pwrite(blk, 0, &magic, sizeof(magic), 0);
+    ret = blk_pwrite(blk, 0, &magic, sizeof(magic));
     if (ret < 0) {
         error_setg(errp, QERR_IO_ERROR);
         goto exit;
     }
-    ret = blk_pwrite(blk, sizeof(magic), &header, sizeof(header), 0);
+    ret = blk_pwrite(blk, sizeof(magic), &header, sizeof(header));
     if (ret < 0) {
         error_setg(errp, QERR_IO_ERROR);
         goto exit;
@@ -1834,7 +1753,7 @@ static int vmdk_create_extent(const char *filename, int64_t filesize,
         gd_buf[i] = cpu_to_le32(tmp);
     }
     ret = blk_pwrite(blk, le64_to_cpu(header.rgd_offset) * BDRV_SECTOR_SIZE,
-                     gd_buf, gd_buf_size, 0);
+                     gd_buf, gd_buf_size);
     if (ret < 0) {
         error_setg(errp, QERR_IO_ERROR);
         goto exit;
@@ -1846,7 +1765,7 @@ static int vmdk_create_extent(const char *filename, int64_t filesize,
         gd_buf[i] = cpu_to_le32(tmp);
     }
     ret = blk_pwrite(blk, le64_to_cpu(header.gd_offset) * BDRV_SECTOR_SIZE,
-                     gd_buf, gd_buf_size, 0);
+                     gd_buf, gd_buf_size);
     if (ret < 0) {
         error_setg(errp, QERR_IO_ERROR);
         goto exit;
@@ -1910,8 +1829,8 @@ static int vmdk_create(const char *filename, QemuOpts *opts, Error **errp)
     int64_t total_size = 0, filesize;
     char *adapter_type = NULL;
     char *backing_file = NULL;
-    char *hw_version = NULL;
     char *fmt = NULL;
+    int flags = 0;
     int ret = 0;
     bool flat, split, compress;
     GString *ext_desc_lines;
@@ -1942,7 +1861,7 @@ static int vmdk_create(const char *filename, QemuOpts *opts, Error **errp)
         "# The Disk Data Base\n"
         "#DDB\n"
         "\n"
-        "ddb.virtualHWVersion = \"%s\"\n"
+        "ddb.virtualHWVersion = \"%d\"\n"
         "ddb.geometry.cylinders = \"%" PRId64 "\"\n"
         "ddb.geometry.heads = \"%" PRIu32 "\"\n"
         "ddb.geometry.sectors = \"63\"\n"
@@ -1959,20 +1878,8 @@ static int vmdk_create(const char *filename, QemuOpts *opts, Error **errp)
                           BDRV_SECTOR_SIZE);
     adapter_type = qemu_opt_get_del(opts, BLOCK_OPT_ADAPTER_TYPE);
     backing_file = qemu_opt_get_del(opts, BLOCK_OPT_BACKING_FILE);
-    hw_version = qemu_opt_get_del(opts, BLOCK_OPT_HWVERSION);
     if (qemu_opt_get_bool_del(opts, BLOCK_OPT_COMPAT6, false)) {
-        if (strcmp(hw_version, "undefined")) {
-            error_setg(errp,
-                       "compat6 cannot be enabled with hwversion set");
-            ret = -EINVAL;
-            goto exit;
-        }
-        g_free(hw_version);
-        hw_version = g_strdup("6");
-    }
-    if (strcmp(hw_version, "undefined") == 0) {
-        g_free(hw_version);
-        hw_version = g_strdup("4");
+        flags |= BLOCK_FLAG_COMPAT6;
     }
     fmt = qemu_opt_get_del(opts, BLOCK_OPT_SUBFMT);
     if (qemu_opt_get_bool_del(opts, BLOCK_OPT_ZEROED_GRAIN, false)) {
@@ -2094,7 +2001,7 @@ static int vmdk_create(const char *filename, QemuOpts *opts, Error **errp)
                            fmt,
                            parent_desc_line,
                            ext_desc_lines->str,
-                           hw_version,
+                           (flags & BLOCK_FLAG_COMPAT6 ? 6 : 4),
                            total_size /
                                (int64_t)(63 * number_heads * BDRV_SECTOR_SIZE),
                            number_heads,
@@ -2121,7 +2028,7 @@ static int vmdk_create(const char *filename, QemuOpts *opts, Error **errp)
 
     blk_set_allow_write_beyond_eof(new_blk, true);
 
-    ret = blk_pwrite(new_blk, desc_offset, desc, desc_len, 0);
+    ret = blk_pwrite(new_blk, desc_offset, desc, desc_len);
     if (ret < 0) {
         error_setg_errno(errp, -ret, "Could not write description");
         goto exit;
@@ -2140,7 +2047,6 @@ exit:
     }
     g_free(adapter_type);
     g_free(backing_file);
-    g_free(hw_version);
     g_free(fmt);
     g_free(desc);
     g_free(path);
@@ -2344,6 +2250,27 @@ static int vmdk_get_info(BlockDriverState *bs, BlockDriverInfo *bdi)
     return 0;
 }
 
+static void vmdk_detach_aio_context(BlockDriverState *bs)
+{
+    BDRVVmdkState *s = bs->opaque;
+    int i;
+
+    for (i = 0; i < s->num_extents; i++) {
+        bdrv_detach_aio_context(s->extents[i].file->bs);
+    }
+}
+
+static void vmdk_attach_aio_context(BlockDriverState *bs,
+                                    AioContext *new_context)
+{
+    BDRVVmdkState *s = bs->opaque;
+    int i;
+
+    for (i = 0; i < s->num_extents; i++) {
+        bdrv_attach_aio_context(s->extents[i].file->bs, new_context);
+    }
+}
+
 static QemuOptsList vmdk_create_opts = {
     .name = "vmdk-create-opts",
     .head = QTAILQ_HEAD_INITIALIZER(vmdk_create_opts.head),
@@ -2371,12 +2298,6 @@ static QemuOptsList vmdk_create_opts = {
             .def_value_str = "off"
         },
         {
-            .name = BLOCK_OPT_HWVERSION,
-            .type = QEMU_OPT_STRING,
-            .help = "VMDK hardware version",
-            .def_value_str = "undefined"
-        },
-        {
             .name = BLOCK_OPT_SUBFMT,
             .type = QEMU_OPT_STRING,
             .help =
@@ -2400,8 +2321,8 @@ static BlockDriver bdrv_vmdk = {
     .bdrv_open                    = vmdk_open,
     .bdrv_check                   = vmdk_check,
     .bdrv_reopen_prepare          = vmdk_reopen_prepare,
-    .bdrv_co_preadv               = vmdk_co_preadv,
-    .bdrv_co_pwritev              = vmdk_co_pwritev,
+    .bdrv_read                    = vmdk_co_read,
+    .bdrv_write                   = vmdk_co_write,
     .bdrv_write_compressed        = vmdk_write_compressed,
     .bdrv_co_write_zeroes         = vmdk_co_write_zeroes,
     .bdrv_close                   = vmdk_close,
@@ -2413,6 +2334,8 @@ static BlockDriver bdrv_vmdk = {
     .bdrv_get_specific_info       = vmdk_get_specific_info,
     .bdrv_refresh_limits          = vmdk_refresh_limits,
     .bdrv_get_info                = vmdk_get_info,
+    .bdrv_detach_aio_context      = vmdk_detach_aio_context,
+    .bdrv_attach_aio_context      = vmdk_attach_aio_context,
 
     .supports_backing             = true,
     .create_opts                  = &vmdk_create_opts,

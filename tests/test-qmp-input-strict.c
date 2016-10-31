@@ -55,7 +55,7 @@ static Visitor *validate_test_init_internal(TestInputVisitorData *data,
     data->obj = qobject_from_jsonv(json_string, ap);
     g_assert(data->obj);
 
-    data->qiv = qmp_input_visitor_new(data->obj, true);
+    data->qiv = qmp_input_visitor_new_strict(data->obj);
     g_assert(data->qiv);
 
     v = qmp_input_get_visitor(data->qiv);
@@ -182,7 +182,10 @@ static void test_validate_fail_struct(TestInputVisitorData *data,
 
     visit_type_TestStruct(v, NULL, &p, &err);
     error_free_or_abort(&err);
-    g_assert(!p);
+    if (p) {
+        g_free(p->string);
+    }
+    g_free(p);
 }
 
 static void test_validate_fail_struct_nested(TestInputVisitorData *data,
@@ -196,7 +199,7 @@ static void test_validate_fail_struct_nested(TestInputVisitorData *data,
 
     visit_type_UserDefTwo(v, NULL, &udp, &err);
     error_free_or_abort(&err);
-    g_assert(!udp);
+    qapi_free_UserDefTwo(udp);
 }
 
 static void test_validate_fail_list(TestInputVisitorData *data,
@@ -210,7 +213,7 @@ static void test_validate_fail_list(TestInputVisitorData *data,
 
     visit_type_UserDefOneList(v, NULL, &head, &err);
     error_free_or_abort(&err);
-    g_assert(!head);
+    qapi_free_UserDefOneList(head);
 }
 
 static void test_validate_fail_union_native_list(TestInputVisitorData *data,
@@ -225,7 +228,7 @@ static void test_validate_fail_union_native_list(TestInputVisitorData *data,
 
     visit_type_UserDefNativeListUnion(v, NULL, &tmp, &err);
     error_free_or_abort(&err);
-    g_assert(!tmp);
+    qapi_free_UserDefNativeListUnion(tmp);
 }
 
 static void test_validate_fail_union_flat(TestInputVisitorData *data,
@@ -239,7 +242,7 @@ static void test_validate_fail_union_flat(TestInputVisitorData *data,
 
     visit_type_UserDefFlatUnion(v, NULL, &tmp, &err);
     error_free_or_abort(&err);
-    g_assert(!tmp);
+    qapi_free_UserDefFlatUnion(tmp);
 }
 
 static void test_validate_fail_union_flat_no_discrim(TestInputVisitorData *data,
@@ -254,13 +257,13 @@ static void test_validate_fail_union_flat_no_discrim(TestInputVisitorData *data,
 
     visit_type_UserDefFlatUnion2(v, NULL, &tmp, &err);
     error_free_or_abort(&err);
-    g_assert(!tmp);
+    qapi_free_UserDefFlatUnion2(tmp);
 }
 
 static void test_validate_fail_alternate(TestInputVisitorData *data,
                                          const void *unused)
 {
-    UserDefAlternate *tmp;
+    UserDefAlternate *tmp = NULL;
     Visitor *v;
     Error *err = NULL;
 
@@ -268,7 +271,7 @@ static void test_validate_fail_alternate(TestInputVisitorData *data,
 
     visit_type_UserDefAlternate(v, NULL, &tmp, &err);
     error_free_or_abort(&err);
-    g_assert(!tmp);
+    qapi_free_UserDefAlternate(tmp);
 }
 
 static void do_test_validate_qmp_introspect(TestInputVisitorData *data,

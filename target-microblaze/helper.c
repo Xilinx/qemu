@@ -20,7 +20,6 @@
 
 #include "qemu/osdep.h"
 #include "cpu.h"
-#include "exec/exec-all.h"
 #include "qemu/host-utils.h"
 #include "exec/log.h"
 

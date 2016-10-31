@@ -12062,6 +12062,5 @@ void restore_state_to_opc(CPUARMState *env, TranslationBlock *tb,
     } else {
         env->regs[15] = data[0];
         env->condexec_bits = data[1];
-        env->exception.syndrome = data[2] << ARM_INSN_START_WORD2_SHIFT;
     }
 }

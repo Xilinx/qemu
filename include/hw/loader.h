@@ -14,10 +14,27 @@
 int get_image_size(const char *filename);
 int load_image(const char *filename, uint8_t *addr); /* deprecated */
 ssize_t load_image_size(const char *filename, void *addr, size_t size);
-int load_image_targphys(const char *filename, hwaddr,
-                        uint64_t max_sz);
+
+/**load_image_targphys_as:
+ * @filename: Path to the image file
+ * @addr: Address to load the image to
+ * @max_sz: The maximum size of the image to load
+ * @as: The AddressSpace to load the ELF to. The value of address_space_memory
+ *      is used if nothing is supplied here.
+ *
+ * Load a fixed image into memory.
+ *
+ * Returns the size of the loaded image on success, -1 otherwise.
+ */
 int load_image_targphys_as(const char *filename,
                            hwaddr addr, uint64_t max_sz, AddressSpace *as);
+
+/** load_image_targphys:
+ * Same as load_image_targphys_as(), but doesn't allow the caller to specify
+ * an AddressSpace.
+ */
+int load_image_targphys(const char *filename, hwaddr,
+                        uint64_t max_sz);
 
 /**
  * load_image_mr: load an image into a memory region
@@ -73,11 +90,9 @@ const char *load_elf_strerror(int error);
  * load will fail if the target ELF does not match. Some architectures
  * have some architecture-specific behaviours that come into effect when
  * their particular values for @elf_machine are set.
- * If no @elf_machine is provided the machine will default to the value
- * in the ELFs header and no checks will be carried out against the
- * machine type.
+ * If @elf_machine is EM_NONE then the machine type will be read from the
+ * ELF header and no checks will be carried out against the machine type.
  */
-
 int load_elf_as(const char *filename,
                 uint64_t (*translate_fn)(void *, uint64_t),
                 void *translate_opaque, uint64_t *pentry, uint64_t *lowaddr,
@@ -85,9 +100,9 @@ int load_elf_as(const char *filename,
                 int clear_lsb, int data_swab, AddressSpace *as);
 
 /** load_elf:
- * Same as above, but doesn't allow the caller to specify an AddressSpace
+ * Same as load_elf_as(), but doesn't allow the caller to specify an
+ * AddressSpace.
  */
-
 int load_elf(const char *filename, uint64_t (*translate_fn)(void *, uint64_t),
              void *translate_opaque, uint64_t *pentry, uint64_t *lowaddr,
              uint64_t *highaddr, int big_endian, int elf_machine,
@@ -107,14 +122,34 @@ void load_elf_hdr(const char *filename, void *hdr, bool *is64, Error **errp);
 
 int load_aout(const char *filename, hwaddr addr, int max_sz,
               int bswap_needed, hwaddr target_page_size);
-int load_uimage(const char *filename, hwaddr *ep,
-                hwaddr *loadaddr, int *is_linux,
-                uint64_t (*translate_fn)(void *, uint64_t),
-                void *translate_opaque);
+
+/** load_uimage_as:
+ * @filename: Path of uimage file
+ * @ep: Populated with program entry point. Ignored if NULL.
+ * @loadaddr: Populated with the load address. Ignored if NULL.
+ * @is_linux: Is set to true if the image loaded is Linux. Ignored if NULL.
+ * @translate_fn: optional function to translate load addresses
+ * @translate_opaque: opaque data passed to @translate_fn
+ * @as: The AddressSpace to load the ELF to. The value of address_space_memory
+ *      is used if nothing is supplied here.
+ *
+ * Loads a u-boot image into memory.
+ *
+ * Returns the size of the loaded image on success, -1 otherwise.
+ */
 int load_uimage_as(const char *filename, hwaddr *ep,
                    hwaddr *loadaddr, int *is_linux,
                    uint64_t (*translate_fn)(void *, uint64_t),
                    void *translate_opaque, AddressSpace *as);
+
+/** load_uimage:
+ * Same as load_uimage_as(), but doesn't allow the caller to specify an
+ * AddressSpace.
+ */
+int load_uimage(const char *filename, hwaddr *ep,
+                hwaddr *loadaddr, int *is_linux,
+                uint64_t (*translate_fn)(void *, uint64_t),
+                void *translate_opaque);
 
 /**
  * load_ramdisk:
@@ -160,10 +195,8 @@ void hmp_info_roms(Monitor *mon, const QDict *qdict);
     rom_add_file(_f, NULL, _a, _i, false, NULL, NULL)
 #define rom_add_blob_fixed(_f, _b, _l, _a)      \
     rom_add_blob(_f, _b, _l, _l, _a, NULL, NULL, NULL)
-
 #define rom_add_file_mr(_f, _mr, _i)            \
     rom_add_file(_f, NULL, 0, _i, false, _mr, NULL)
-
 #define rom_add_file_as(_f, _as, _i)            \
     rom_add_file(_f, NULL, 0, _i, false, NULL, _as)
 #define rom_add_file_fixed_as(_f, _a, _i, _as)          \

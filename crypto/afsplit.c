@@ -24,7 +24,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/bswap.h"
 #include "crypto/afsplit.h"
 #include "crypto/random.h"
 

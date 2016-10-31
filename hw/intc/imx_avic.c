@@ -17,7 +17,6 @@
 
 #include "qemu/osdep.h"
 #include "hw/intc/imx_avic.h"
-#include "qemu/log.h"
 
 #ifndef DEBUG_IMX_AVIC
 #define DEBUG_IMX_AVIC 0
@@ -322,26 +321,28 @@ static void imx_avic_reset(DeviceState *dev)
     memset(s->prio, 0, sizeof s->prio);
 }
 
-static void imx_avic_init(Object *obj)
+static int imx_avic_init(SysBusDevice *sbd)
 {
-    DeviceState *dev = DEVICE(obj);
-    IMXAVICState *s = IMX_AVIC(obj);
-    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+    DeviceState *dev = DEVICE(sbd);
+    IMXAVICState *s = IMX_AVIC(dev);
 
-    memory_region_init_io(&s->iomem, obj, &imx_avic_ops, s,
+    memory_region_init_io(&s->iomem, OBJECT(s), &imx_avic_ops, s,
                           TYPE_IMX_AVIC, 0x1000);
     sysbus_init_mmio(sbd, &s->iomem);
 
     qdev_init_gpio_in(dev, imx_avic_set_irq, IMX_AVIC_NUM_IRQS);
     sysbus_init_irq(sbd, &s->irq);
     sysbus_init_irq(sbd, &s->fiq);
+
+    return 0;
 }
 
 
 static void imx_avic_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-
+    SysBusDeviceClass *k = SYS_BUS_DEVICE_CLASS(klass);
+    k->init = imx_avic_init;
     dc->vmsd = &vmstate_imx_avic;
     dc->reset = imx_avic_reset;
     dc->desc = "i.MX Advanced Vector Interrupt Controller";
@@ -351,7 +352,6 @@ static const TypeInfo imx_avic_info = {
     .name = TYPE_IMX_AVIC,
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(IMXAVICState),
-    .instance_init = imx_avic_init,
     .class_init = imx_avic_class_init,
 };
 

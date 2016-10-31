@@ -38,6 +38,7 @@
 #include "qmp-commands.h"
 #include "qemu/timer.h"
 #include "qapi-event.h"
+#include "block/throttle-groups.h"
 #include "qemu/cutils.h"
 #include "qemu/id.h"
 
@@ -217,6 +218,8 @@ void bdrv_get_full_backing_filename(BlockDriverState *bs, char *dest, size_t sz,
 
 void bdrv_register(BlockDriver *bdrv)
 {
+    bdrv_setup_io_funcs(bdrv);
+
     QLIST_INSERT_HEAD(&bdrv_drivers, bdrv, list);
 }
 
@@ -236,6 +239,8 @@ BlockDriverState *bdrv_new(void)
         QLIST_INIT(&bs->op_blockers[i]);
     }
     notifier_with_return_list_init(&bs->before_write_notifiers);
+    qemu_co_queue_init(&bs->throttled_reqs[0]);
+    qemu_co_queue_init(&bs->throttled_reqs[1]);
     bs->refcnt = 1;
     bs->aio_context = qemu_get_aio_context();
 
@@ -1171,10 +1176,10 @@ BdrvChild *bdrv_root_attach_child(BlockDriverState *child_bs,
     return child;
 }
 
-BdrvChild *bdrv_attach_child(BlockDriverState *parent_bs,
-                             BlockDriverState *child_bs,
-                             const char *child_name,
-                             const BdrvChildRole *child_role)
+static BdrvChild *bdrv_attach_child(BlockDriverState *parent_bs,
+                                    BlockDriverState *child_bs,
+                                    const char *child_name,
+                                    const BdrvChildRole *child_role)
 {
     BdrvChild *child = bdrv_root_attach_child(child_bs, child_name, child_role);
     QLIST_INSERT_HEAD(&parent_bs->children, child, next);
@@ -1212,27 +1217,6 @@ void bdrv_unref_child(BlockDriverState *parent, BdrvChild *child)
     }
 
     bdrv_root_unref_child(child);
-}
-
-
-static void bdrv_parent_cb_change_media(BlockDriverState *bs, bool load)
-{
-    BdrvChild *c;
-    QLIST_FOREACH(c, &bs->parents, next_parent) {
-        if (c->role->change_media) {
-            c->role->change_media(c, load);
-        }
-    }
-}
-
-static void bdrv_parent_cb_resize(BlockDriverState *bs)
-{
-    BdrvChild *c;
-    QLIST_FOREACH(c, &bs->parents, next_parent) {
-        if (c->role->resize) {
-            c->role->resize(c);
-        }
-    }
 }
 
 /*
@@ -1543,6 +1527,12 @@ static int bdrv_open_inherit(BlockDriverState **pbs, const char *filename,
             return -ENODEV;
         }
 
+        if (bs->throttle_state) {
+            error_setg(errp, "Cannot reference an existing block device for "
+                       "which I/O throttling is enabled");
+            return -EINVAL;
+        }
+
         bdrv_ref(bs);
         *pbs = bs;
         return 0;
@@ -1694,7 +1684,9 @@ static int bdrv_open_inherit(BlockDriverState **pbs, const char *filename,
     }
 
     if (!bdrv_key_required(bs)) {
-        bdrv_parent_cb_change_media(bs, true);
+        if (bs->blk) {
+            blk_dev_change_media_cb(bs->blk, true);
+        }
     } else if (!runstate_check(RUN_STATE_PRELAUNCH)
                && !runstate_check(RUN_STATE_INMIGRATE)
                && !runstate_check(RUN_STATE_PAUSED)) { /* HACK */
@@ -2133,6 +2125,11 @@ static void bdrv_close(BlockDriverState *bs)
 
     assert(!bs->job);
 
+    /* Disable I/O limits and drain all pending throttled requests */
+    if (bs->throttle_state) {
+        bdrv_io_limits_disable(bs);
+    }
+
     bdrv_drained_begin(bs); /* complete I/O */
     bdrv_flush(bs);
     bdrv_drain(bs); /* in case flush left pending I/O */
@@ -2140,7 +2137,9 @@ static void bdrv_close(BlockDriverState *bs)
     bdrv_release_named_dirty_bitmaps(bs);
     assert(QLIST_EMPTY(&bs->dirty_bitmaps));
 
-    bdrv_parent_cb_change_media(bs, false);
+    if (bs->blk) {
+        blk_dev_change_media_cb(bs->blk, false);
+    }
 
     if (bs->drv) {
         BdrvChild *child, *next;
@@ -2221,10 +2220,25 @@ void bdrv_close_all(void)
     }
 }
 
+/* Fields that need to stay with the top-level BDS */
+static void bdrv_move_feature_fields(BlockDriverState *bs_dest,
+                                     BlockDriverState *bs_src)
+{
+    /* move some fields that need to stay attached to the device */
+}
+
 static void change_parent_backing_link(BlockDriverState *from,
                                        BlockDriverState *to)
 {
     BdrvChild *c, *next;
+
+    if (from->blk) {
+        /* FIXME We bypass blk_set_bs(), so we need to make these updates
+         * manually. The root problem is not in this change function, but the
+         * existence of BlockDriverState.blk. */
+        to->blk = from->blk;
+        from->blk = NULL;
+    }
 
     QLIST_FOREACH_SAFE(c, &from->parents, next_parent, next) {
         assert(c->role != &child_backing);
@@ -2233,6 +2247,23 @@ static void change_parent_backing_link(BlockDriverState *from,
         QLIST_INSERT_HEAD(&to->parents, c, next_parent);
         bdrv_ref(to);
         bdrv_unref(from);
+    }
+}
+
+static void swap_feature_fields(BlockDriverState *bs_top,
+                                BlockDriverState *bs_new)
+{
+    BlockDriverState tmp;
+
+    bdrv_move_feature_fields(&tmp, bs_top);
+    bdrv_move_feature_fields(bs_top, bs_new);
+    bdrv_move_feature_fields(bs_new, &tmp);
+
+    assert(!bs_new->throttle_state);
+    if (bs_top->throttle_state) {
+        assert(bs_top->io_limits_enabled);
+        bdrv_io_limits_enable(bs_new, throttle_group_get_name(bs_top));
+        bdrv_io_limits_disable(bs_top);
     }
 }
 
@@ -2258,8 +2289,11 @@ void bdrv_append(BlockDriverState *bs_new, BlockDriverState *bs_top)
     assert(!bdrv_requests_pending(bs_new));
 
     bdrv_ref(bs_top);
-
     change_parent_backing_link(bs_top, bs_new);
+
+    /* Some fields always stay on top of the backing file chain */
+    swap_feature_fields(bs_top, bs_new);
+
     bdrv_set_backing_hd(bs_new, bs_top);
     bdrv_unref(bs_top);
 
@@ -2275,6 +2309,16 @@ void bdrv_replace_in_backing_chain(BlockDriverState *old, BlockDriverState *new)
 
     bdrv_ref(old);
 
+    if (old->blk) {
+        /* As long as these fields aren't in BlockBackend, but in the top-level
+         * BlockDriverState, it's not possible for a BDS to have two BBs.
+         *
+         * We really want to copy the fields from old to new, but we go for a
+         * swap instead so that pointers aren't duplicated and cause trouble.
+         * (Also, bdrv_swap() used to do the same.) */
+        assert(!new->blk);
+        swap_feature_fields(old, new);
+    }
     change_parent_backing_link(old, new);
 
     /* Change backing files if a previously independent node is added to the
@@ -2583,7 +2627,9 @@ int bdrv_truncate(BlockDriverState *bs, int64_t offset)
     if (ret == 0) {
         ret = refresh_total_sectors(bs, offset >> BDRV_SECTOR_BITS);
         bdrv_dirty_bitmap_truncate(bs);
-        bdrv_parent_cb_resize(bs);
+        if (bs->blk) {
+            blk_dev_resize_cb(bs->blk);
+        }
     }
     return ret;
 }
@@ -2693,9 +2739,11 @@ int bdrv_set_key(BlockDriverState *bs, const char *key)
     if (ret < 0) {
         bs->valid_key = 0;
     } else if (!bs->valid_key) {
-        /* call the change callback now, we skipped it on open */
         bs->valid_key = 1;
-        bdrv_parent_cb_change_media(bs, true);
+        if (bs->blk) {
+            /* call the change callback now, we skipped it on open */
+            blk_dev_change_media_cb(bs->blk, true);
+        }
     }
     return ret;
 }
@@ -2862,33 +2910,34 @@ BlockDriverState *bdrv_next_node(BlockDriverState *bs)
     return QTAILQ_NEXT(bs, node_list);
 }
 
+/* Iterates over all top-level BlockDriverStates, i.e. BDSs that are owned by
+ * the monitor or attached to a BlockBackend */
+BlockDriverState *bdrv_next(BlockDriverState *bs)
+{
+    if (!bs || bs->blk) {
+        bs = blk_next_root_bs(bs);
+        if (bs) {
+            return bs;
+        }
+    }
+
+    /* Ignore all BDSs that are attached to a BlockBackend here; they have been
+     * handled by the above block already */
+    do {
+        bs = bdrv_next_monitor_owned(bs);
+    } while (bs && bs->blk);
+    return bs;
+}
+
 const char *bdrv_get_node_name(const BlockDriverState *bs)
 {
     return bs->node_name;
 }
 
-const char *bdrv_get_parent_name(const BlockDriverState *bs)
-{
-    BdrvChild *c;
-    const char *name;
-
-    /* If multiple parents have a name, just pick the first one. */
-    QLIST_FOREACH(c, &bs->parents, next_parent) {
-        if (c->role->get_name) {
-            name = c->role->get_name(c);
-            if (name && *name) {
-                return name;
-            }
-        }
-    }
-
-    return NULL;
-}
-
 /* TODO check what callers really want: bs->node_name or blk_name() */
 const char *bdrv_get_device_name(const BlockDriverState *bs)
 {
-    return bdrv_get_parent_name(bs) ?: "";
+    return bs->blk ? blk_name(bs->blk) : "";
 }
 
 /* This can be used to identify nodes that might not have a device
@@ -2897,7 +2946,7 @@ const char *bdrv_get_device_name(const BlockDriverState *bs)
  * absent, then this returns an empty (non-null) string. */
 const char *bdrv_get_device_or_node_name(const BlockDriverState *bs)
 {
-    return bdrv_get_parent_name(bs) ?: bs->node_name;
+    return bs->blk ? blk_name(bs->blk) : bs->node_name;
 }
 
 int bdrv_get_flags(BlockDriverState *bs)
@@ -3152,7 +3201,6 @@ void bdrv_init_with_whitelist(void)
 
 void bdrv_invalidate_cache(BlockDriverState *bs, Error **errp)
 {
-    BdrvChild *child;
     Error *local_err = NULL;
     int ret;
 
@@ -3167,20 +3215,13 @@ void bdrv_invalidate_cache(BlockDriverState *bs, Error **errp)
 
     if (bs->drv->bdrv_invalidate_cache) {
         bs->drv->bdrv_invalidate_cache(bs, &local_err);
-        if (local_err) {
-            bs->open_flags |= BDRV_O_INACTIVE;
-            error_propagate(errp, local_err);
-            return;
-        }
+    } else if (bs->file) {
+        bdrv_invalidate_cache(bs->file->bs, &local_err);
     }
-
-    QLIST_FOREACH(child, &bs->children, next) {
-        bdrv_invalidate_cache(child->bs, &local_err);
-        if (local_err) {
-            bs->open_flags |= BDRV_O_INACTIVE;
-            error_propagate(errp, local_err);
-            return;
-        }
+    if (local_err) {
+        bs->open_flags |= BDRV_O_INACTIVE;
+        error_propagate(errp, local_err);
+        return;
     }
 
     ret = refresh_total_sectors(bs, bs->total_sectors);
@@ -3193,11 +3234,10 @@ void bdrv_invalidate_cache(BlockDriverState *bs, Error **errp)
 
 void bdrv_invalidate_cache_all(Error **errp)
 {
-    BlockDriverState *bs;
+    BlockDriverState *bs = NULL;
     Error *local_err = NULL;
-    BdrvNextIterator *it = NULL;
 
-    while ((it = bdrv_next(it, &bs)) != NULL) {
+    while ((bs = bdrv_next(bs)) != NULL) {
         AioContext *aio_context = bdrv_get_aio_context(bs);
 
         aio_context_acquire(aio_context);
@@ -3210,64 +3250,38 @@ void bdrv_invalidate_cache_all(Error **errp)
     }
 }
 
-static int bdrv_inactivate_recurse(BlockDriverState *bs,
-                                   bool setting_flag)
+static int bdrv_inactivate(BlockDriverState *bs)
 {
-    BdrvChild *child;
     int ret;
 
-    if (!setting_flag && bs->drv->bdrv_inactivate) {
+    if (bs->drv->bdrv_inactivate) {
         ret = bs->drv->bdrv_inactivate(bs);
         if (ret < 0) {
             return ret;
         }
     }
 
-    QLIST_FOREACH(child, &bs->children, next) {
-        ret = bdrv_inactivate_recurse(child->bs, setting_flag);
-        if (ret < 0) {
-            return ret;
-        }
-    }
-
-    if (setting_flag) {
-        bs->open_flags |= BDRV_O_INACTIVE;
-    }
+    bs->open_flags |= BDRV_O_INACTIVE;
     return 0;
 }
 
 int bdrv_inactivate_all(void)
 {
     BlockDriverState *bs = NULL;
-    BdrvNextIterator *it = NULL;
-    int ret = 0;
-    int pass;
+    int ret;
 
-    while ((it = bdrv_next(it, &bs)) != NULL) {
-        aio_context_acquire(bdrv_get_aio_context(bs));
-    }
+    while ((bs = bdrv_next(bs)) != NULL) {
+        AioContext *aio_context = bdrv_get_aio_context(bs);
 
-    /* We do two passes of inactivation. The first pass calls to drivers'
-     * .bdrv_inactivate callbacks recursively so all cache is flushed to disk;
-     * the second pass sets the BDRV_O_INACTIVE flag so that no further write
-     * is allowed. */
-    for (pass = 0; pass < 2; pass++) {
-        it = NULL;
-        while ((it = bdrv_next(it, &bs)) != NULL) {
-            ret = bdrv_inactivate_recurse(bs, pass);
-            if (ret < 0) {
-                goto out;
-            }
+        aio_context_acquire(aio_context);
+        ret = bdrv_inactivate(bs);
+        aio_context_release(aio_context);
+        if (ret < 0) {
+            return ret;
         }
     }
 
-out:
-    it = NULL;
-    while ((it = bdrv_next(it, &bs)) != NULL) {
-        aio_context_release(bdrv_get_aio_context(bs));
-    }
-
-    return ret;
+    return 0;
 }
 
 /**************************************************************/
@@ -3609,7 +3623,6 @@ AioContext *bdrv_get_aio_context(BlockDriverState *bs)
 void bdrv_detach_aio_context(BlockDriverState *bs)
 {
     BdrvAioNotifier *baf;
-    BdrvChild *child;
 
     if (!bs->drv) {
         return;
@@ -3619,11 +3632,17 @@ void bdrv_detach_aio_context(BlockDriverState *bs)
         baf->detach_aio_context(baf->opaque);
     }
 
+    if (bs->throttle_state) {
+        throttle_timers_detach_aio_context(&bs->throttle_timers);
+    }
     if (bs->drv->bdrv_detach_aio_context) {
         bs->drv->bdrv_detach_aio_context(bs);
     }
-    QLIST_FOREACH(child, &bs->children, next) {
-        bdrv_detach_aio_context(child->bs);
+    if (bs->file) {
+        bdrv_detach_aio_context(bs->file->bs);
+    }
+    if (bs->backing) {
+        bdrv_detach_aio_context(bs->backing->bs);
     }
 
     bs->aio_context = NULL;
@@ -3633,7 +3652,6 @@ void bdrv_attach_aio_context(BlockDriverState *bs,
                              AioContext *new_context)
 {
     BdrvAioNotifier *ban;
-    BdrvChild *child;
 
     if (!bs->drv) {
         return;
@@ -3641,11 +3659,17 @@ void bdrv_attach_aio_context(BlockDriverState *bs,
 
     bs->aio_context = new_context;
 
-    QLIST_FOREACH(child, &bs->children, next) {
-        bdrv_attach_aio_context(child->bs, new_context);
+    if (bs->backing) {
+        bdrv_attach_aio_context(bs->backing->bs, new_context);
+    }
+    if (bs->file) {
+        bdrv_attach_aio_context(bs->file->bs, new_context);
     }
     if (bs->drv->bdrv_attach_aio_context) {
         bs->drv->bdrv_attach_aio_context(bs, new_context);
+    }
+    if (bs->throttle_state) {
+        throttle_timers_attach_aio_context(&bs->throttle_timers, new_context);
     }
 
     QLIST_FOREACH(ban, &bs->aio_notifiers, list) {
@@ -3752,11 +3776,10 @@ bool bdrv_recurse_is_first_non_filter(BlockDriverState *bs,
  */
 bool bdrv_is_first_non_filter(BlockDriverState *candidate)
 {
-    BlockDriverState *bs;
-    BdrvNextIterator *it = NULL;
+    BlockDriverState *bs = NULL;
 
     /* walk down the bs forest recursively */
-    while ((it = bdrv_next(it, &bs)) != NULL) {
+    while ((bs = bdrv_next(bs)) != NULL) {
         bool perm;
 
         /* try to recurse in this top level bs */
@@ -3957,53 +3980,4 @@ void bdrv_refresh_filename(BlockDriverState *bs)
                  qstring_get_str(json));
         QDECREF(json);
     }
-}
-
-/*
- * Hot add/remove a BDS's child. So the user can take a child offline when
- * it is broken and take a new child online
- */
-void bdrv_add_child(BlockDriverState *parent_bs, BlockDriverState *child_bs,
-                    Error **errp)
-{
-
-    if (!parent_bs->drv || !parent_bs->drv->bdrv_add_child) {
-        error_setg(errp, "The node %s does not support adding a child",
-                   bdrv_get_device_or_node_name(parent_bs));
-        return;
-    }
-
-    if (!QLIST_EMPTY(&child_bs->parents)) {
-        error_setg(errp, "The node %s already has a parent",
-                   child_bs->node_name);
-        return;
-    }
-
-    parent_bs->drv->bdrv_add_child(parent_bs, child_bs, errp);
-}
-
-void bdrv_del_child(BlockDriverState *parent_bs, BdrvChild *child, Error **errp)
-{
-    BdrvChild *tmp;
-
-    if (!parent_bs->drv || !parent_bs->drv->bdrv_del_child) {
-        error_setg(errp, "The node %s does not support removing a child",
-                   bdrv_get_device_or_node_name(parent_bs));
-        return;
-    }
-
-    QLIST_FOREACH(tmp, &parent_bs->children, next) {
-        if (tmp == child) {
-            break;
-        }
-    }
-
-    if (!tmp) {
-        error_setg(errp, "The node %s does not have a child named %s",
-                   bdrv_get_device_or_node_name(parent_bs),
-                   bdrv_get_device_or_node_name(child->bs));
-        return;
-    }
-
-    parent_bs->drv->bdrv_del_child(parent_bs, child, errp);
 }

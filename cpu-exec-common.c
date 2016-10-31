@@ -20,7 +20,6 @@
 #include "qemu/osdep.h"
 #include "cpu.h"
 #include "sysemu/cpus.h"
-#include "exec/exec-all.h"
 #include "exec/memory-internal.h"
 
 bool exit_request;
@@ -69,6 +68,7 @@ void cpu_reloading_memory_map(void)
 
 void cpu_loop_exit(CPUState *cpu)
 {
+    cpu->current_tb = NULL;
     siglongjmp(cpu->jmp_env, 1);
 }
 
@@ -77,5 +77,6 @@ void cpu_loop_exit_restore(CPUState *cpu, uintptr_t pc)
     if (pc) {
         cpu_restore_state(cpu, pc);
     }
+    cpu->current_tb = NULL;
     siglongjmp(cpu->jmp_env, 1);
 }

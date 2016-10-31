@@ -1,7 +1,7 @@
 /*
  * QEMU Block backends
  *
- * Copyright (C) 2014-2016 Red Hat, Inc.
+ * Copyright (C) 2014 Red Hat, Inc.
  *
  * Authors:
  *  Markus Armbruster <armbru@redhat.com>,
@@ -14,7 +14,6 @@
 #define BLOCK_BACKEND_H
 
 #include "qemu/iov.h"
-#include "block/throttle-groups.h"
 
 /*
  * TODO Have to include block/block.h for a bunch of block layer
@@ -60,24 +59,6 @@ typedef struct BlockDevOps {
     void (*resize_cb)(void *opaque);
 } BlockDevOps;
 
-/* This struct is embedded in (the private) BlockBackend struct and contains
- * fields that must be public. This is in particular for QLIST_ENTRY() and
- * friends so that BlockBackends can be kept in lists outside block-backend.c */
-typedef struct BlockBackendPublic {
-    /* I/O throttling.
-     * throttle_state tells us if this BlockBackend has I/O limits configured.
-     * io_limits_disabled tells us if they are currently being enforced */
-    CoQueue      throttled_reqs[2];
-    unsigned int io_limits_disabled;
-
-    /* The following fields are protected by the ThrottleGroup lock.
-     * See the ThrottleGroup documentation for details. */
-    ThrottleState *throttle_state;
-    ThrottleTimers throttle_timers;
-    unsigned       pending_reqs[2];
-    QLIST_ENTRY(BlockBackendPublic) round_robin;
-} BlockBackendPublic;
-
 BlockBackend *blk_new(Error **errp);
 BlockBackend *blk_new_with_bs(Error **errp);
 BlockBackend *blk_new_open(const char *filename, const char *reference,
@@ -89,16 +70,13 @@ void blk_remove_all_bs(void);
 const char *blk_name(BlockBackend *blk);
 BlockBackend *blk_by_name(const char *name);
 BlockBackend *blk_next(BlockBackend *blk);
+BlockDriverState *blk_next_root_bs(BlockDriverState *bs);
 bool monitor_add_blk(BlockBackend *blk, const char *name, Error **errp);
 void monitor_remove_blk(BlockBackend *blk);
-
-BlockBackendPublic *blk_get_public(BlockBackend *blk);
-BlockBackend *blk_by_public(BlockBackendPublic *public);
 
 BlockDriverState *blk_bs(BlockBackend *blk);
 void blk_remove_bs(BlockBackend *blk);
 void blk_insert_bs(BlockBackend *blk, BlockDriverState *bs);
-bool bdrv_has_blk(BlockDriverState *bs);
 
 void blk_set_allow_write_beyond_eof(BlockBackend *blk, bool allow);
 void blk_iostatus_enable(BlockBackend *blk);
@@ -112,25 +90,28 @@ void blk_attach_dev_nofail(BlockBackend *blk, void *dev);
 void blk_detach_dev(BlockBackend *blk, void *dev);
 void *blk_get_attached_dev(BlockBackend *blk);
 void blk_set_dev_ops(BlockBackend *blk, const BlockDevOps *ops, void *opaque);
-int blk_pread_unthrottled(BlockBackend *blk, int64_t offset, uint8_t *buf,
-                          int count);
-int blk_write_zeroes(BlockBackend *blk, int64_t offset,
-                     int count, BdrvRequestFlags flags);
-BlockAIOCB *blk_aio_write_zeroes(BlockBackend *blk, int64_t offset,
-                                 int count, BdrvRequestFlags flags,
+int blk_read(BlockBackend *blk, int64_t sector_num, uint8_t *buf,
+             int nb_sectors);
+int blk_read_unthrottled(BlockBackend *blk, int64_t sector_num, uint8_t *buf,
+                         int nb_sectors);
+int blk_write(BlockBackend *blk, int64_t sector_num, const uint8_t *buf,
+              int nb_sectors);
+int blk_write_zeroes(BlockBackend *blk, int64_t sector_num,
+                     int nb_sectors, BdrvRequestFlags flags);
+BlockAIOCB *blk_aio_write_zeroes(BlockBackend *blk, int64_t sector_num,
+                                 int nb_sectors, BdrvRequestFlags flags,
                                  BlockCompletionFunc *cb, void *opaque);
 int blk_pread(BlockBackend *blk, int64_t offset, void *buf, int count);
-int blk_pwrite(BlockBackend *blk, int64_t offset, const void *buf, int count,
-               BdrvRequestFlags flags);
+int blk_pwrite(BlockBackend *blk, int64_t offset, const void *buf, int count);
 int64_t blk_getlength(BlockBackend *blk);
 void blk_get_geometry(BlockBackend *blk, uint64_t *nb_sectors_ptr);
 int64_t blk_nb_sectors(BlockBackend *blk);
-BlockAIOCB *blk_aio_preadv(BlockBackend *blk, int64_t offset,
-                           QEMUIOVector *qiov, BdrvRequestFlags flags,
+BlockAIOCB *blk_aio_readv(BlockBackend *blk, int64_t sector_num,
+                          QEMUIOVector *iov, int nb_sectors,
+                          BlockCompletionFunc *cb, void *opaque);
+BlockAIOCB *blk_aio_writev(BlockBackend *blk, int64_t sector_num,
+                           QEMUIOVector *iov, int nb_sectors,
                            BlockCompletionFunc *cb, void *opaque);
-BlockAIOCB *blk_aio_pwritev(BlockBackend *blk, int64_t offset,
-                            QEMUIOVector *qiov, BdrvRequestFlags flags,
-                            BlockCompletionFunc *cb, void *opaque);
 BlockAIOCB *blk_aio_flush(BlockBackend *blk,
                           BlockCompletionFunc *cb, void *opaque);
 BlockAIOCB *blk_aio_discard(BlockBackend *blk,
@@ -138,6 +119,7 @@ BlockAIOCB *blk_aio_discard(BlockBackend *blk,
                             BlockCompletionFunc *cb, void *opaque);
 void blk_aio_cancel(BlockAIOCB *acb);
 void blk_aio_cancel_async(BlockAIOCB *acb);
+int blk_aio_multiwrite(BlockBackend *blk, BlockRequest *reqs, int num_reqs);
 int blk_ioctl(BlockBackend *blk, unsigned long int req, void *buf);
 BlockAIOCB *blk_aio_ioctl(BlockBackend *blk, unsigned long int req, void *buf,
                           BlockCompletionFunc *cb, void *opaque);
@@ -196,8 +178,8 @@ int blk_get_open_flags_from_root_state(BlockBackend *blk);
 
 void *blk_aio_get(const AIOCBInfo *aiocb_info, BlockBackend *blk,
                   BlockCompletionFunc *cb, void *opaque);
-int coroutine_fn blk_co_write_zeroes(BlockBackend *blk, int64_t offset,
-                                     int count, BdrvRequestFlags flags);
+int coroutine_fn blk_co_write_zeroes(BlockBackend *blk, int64_t sector_num,
+                                     int nb_sectors, BdrvRequestFlags flags);
 int blk_write_compressed(BlockBackend *blk, int64_t sector_num,
                          const uint8_t *buf, int nb_sectors);
 int blk_truncate(BlockBackend *blk, int64_t offset);
@@ -210,10 +192,5 @@ int blk_probe_geometry(BlockBackend *blk, HDGeometry *geo);
 BlockAIOCB *blk_abort_aio_request(BlockBackend *blk,
                                   BlockCompletionFunc *cb,
                                   void *opaque, int ret);
-
-void blk_set_io_limits(BlockBackend *blk, ThrottleConfig *cfg);
-void blk_io_limits_disable(BlockBackend *blk);
-void blk_io_limits_enable(BlockBackend *blk, const char *group);
-void blk_io_limits_update_group(BlockBackend *blk, const char *group);
 
 #endif

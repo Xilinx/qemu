@@ -390,7 +390,7 @@ static void flash_sync_page(Flash *s, int page)
     qemu_iovec_init(&iov, 1);
     qemu_iovec_add(&iov, s->storage + page * s->pi->page_size,
                    s->pi->page_size);
-    blk_aio_pwritev(s->blk, page * s->pi->page_size, &iov, 0,
+    blk_aio_writev(s->blk, page * s->pi->page_size, &iov, 0,
                     blk_sync_complete, NULL);
 }
 
@@ -405,7 +405,7 @@ static inline void flash_sync_area(Flash *s, int64_t off, int64_t len)
     assert(!(len % BDRV_SECTOR_SIZE));
     qemu_iovec_init(&iov, 1);
     qemu_iovec_add(&iov, s->storage + off, len);
-    blk_aio_pwritev(s->blk, off, &iov, 0, blk_sync_complete, NULL);
+    blk_aio_writev(s->blk, off, &iov, 0, blk_sync_complete, NULL);
 }
 
 static void flash_erase(Flash *s, int offset, FlashCMD cmd)

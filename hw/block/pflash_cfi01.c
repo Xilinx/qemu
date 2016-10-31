@@ -45,9 +45,7 @@
 #include "qemu/bitops.h"
 #include "exec/address-spaces.h"
 #include "qemu/host-utils.h"
-#include "qemu/log.h"
 #include "hw/sysbus.h"
-#include "sysemu/sysemu.h"
 
 #define PFLASH_BUG(fmt, ...) \
 do { \
@@ -99,7 +97,6 @@ struct pflash_t {
     MemoryRegion mem;
     char *name;
     void *storage;
-    VMChangeStateEntry *vmstate;
 };
 
 static int pflash_post_load(void *opaque, int version_id);
@@ -414,11 +411,11 @@ static void pflash_update(pflash_t *pfl, int offset,
     int offset_end;
     if (pfl->blk) {
         offset_end = offset + size;
-        /* widen to sector boundaries */
-        offset = QEMU_ALIGN_DOWN(offset, BDRV_SECTOR_SIZE);
-        offset_end = QEMU_ALIGN_UP(offset_end, BDRV_SECTOR_SIZE);
-        blk_pwrite(pfl->blk, offset, pfl->storage + offset,
-                   offset_end - offset, 0);
+        /* round to sectors */
+        offset = offset >> 9;
+        offset_end = (offset_end + 511) >> 9;
+        blk_write(pfl->blk, offset, pfl->storage + (offset << 9),
+                  offset_end - offset);
     }
 }
 
@@ -740,7 +737,7 @@ static void pflash_cfi01_realize(DeviceState *dev, Error **errp)
 
     if (pfl->blk) {
         /* read the initial flash content */
-        ret = blk_pread(pfl->blk, 0, pfl->storage, total_len);
+        ret = blk_read(pfl->blk, 0, pfl->storage, total_len >> 9);
 
         if (ret < 0) {
             vmstate_unregister_ram(&pfl->mem, DEVICE(pfl));
@@ -947,25 +944,13 @@ MemoryRegion *pflash_cfi01_get_memory(pflash_t *fl)
     return &fl->mem;
 }
 
-static void postload_update_cb(void *opaque, int running, RunState state)
-{
-    pflash_t *pfl = opaque;
-
-    /* This is called after bdrv_invalidate_cache_all.  */
-    qemu_del_vm_change_state_handler(pfl->vmstate);
-    pfl->vmstate = NULL;
-
-    DPRINTF("%s: updating bdrv for %s\n", __func__, pfl->name);
-    pflash_update(pfl, 0, pfl->sector_len * pfl->nb_blocs);
-}
-
 static int pflash_post_load(void *opaque, int version_id)
 {
     pflash_t *pfl = opaque;
 
     if (!pfl->ro) {
-        pfl->vmstate = qemu_add_vm_change_state_handler(postload_update_cb,
-                                                        pfl);
+        DPRINTF("%s: updating bdrv for %s\n", __func__, pfl->name);
+        pflash_update(pfl, 0, pfl->sector_len * pfl->nb_blocs);
     }
     return 0;
 }

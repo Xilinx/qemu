@@ -43,12 +43,6 @@ static void visitor_output_teardown(TestOutputVisitorData *data,
     data->ov = NULL;
 }
 
-static void visitor_reset(TestOutputVisitorData *data)
-{
-    visitor_output_teardown(data, NULL);
-    visitor_output_setup(data, NULL);
-}
-
 static void test_visitor_out_int(TestOutputVisitorData *data,
                                  const void *unused)
 {
@@ -145,7 +139,6 @@ static void test_visitor_out_enum(TestOutputVisitorData *data,
         g_assert_cmpstr(qstring_get_str(qobject_to_qstring(obj)), ==,
                         EnumOne_lookup[i]);
         qobject_decref(obj);
-        visitor_reset(data);
     }
 }
 
@@ -160,7 +153,6 @@ static void test_visitor_out_enum_errors(TestOutputVisitorData *data,
         visit_type_EnumOne(data->ov, "unused", &bad_values[i], &err);
         g_assert(err);
         error_free(err);
-        visitor_reset(data);
     }
 }
 
@@ -270,7 +262,6 @@ static void test_visitor_out_struct_errors(TestOutputVisitorData *data,
         visit_type_UserDefOne(data->ov, "unused", &pu, &err);
         g_assert(err);
         error_free(err);
-        visitor_reset(data);
     }
 }
 
@@ -375,7 +366,6 @@ static void test_visitor_out_any(TestOutputVisitorData *data,
     qobject_decref(obj);
     qobject_decref(qobj);
 
-    visitor_reset(data);
     qdict = qdict_new();
     qdict_put(qdict, "integer", qint_from_int(-42));
     qdict_put(qdict, "boolean", qbool_from_bool(true));
@@ -452,7 +442,6 @@ static void test_visitor_out_alternate(TestOutputVisitorData *data,
     qapi_free_UserDefAlternate(tmp);
     qobject_decref(arg);
 
-    visitor_reset(data);
     tmp = g_new0(UserDefAlternate, 1);
     tmp->type = QTYPE_QSTRING;
     tmp->u.s = g_strdup("hello");
@@ -466,7 +455,6 @@ static void test_visitor_out_alternate(TestOutputVisitorData *data,
     qapi_free_UserDefAlternate(tmp);
     qobject_decref(arg);
 
-    visitor_reset(data);
     tmp = g_new0(UserDefAlternate, 1);
     tmp->type = QTYPE_QDICT;
     tmp->u.udfu.integer = 1;
@@ -489,24 +477,15 @@ static void test_visitor_out_alternate(TestOutputVisitorData *data,
     qobject_decref(arg);
 }
 
-static void test_visitor_out_null(TestOutputVisitorData *data,
-                                  const void *unused)
+static void test_visitor_out_empty(TestOutputVisitorData *data,
+                                   const void *unused)
 {
     QObject *arg;
-    QDict *qdict;
-    QObject *nil;
 
-    visit_start_struct(data->ov, NULL, NULL, 0, &error_abort);
-    visit_type_null(data->ov, "a", &error_abort);
-    visit_check_struct(data->ov, &error_abort);
-    visit_end_struct(data->ov);
     arg = qmp_output_get_qobject(data->qov);
-    g_assert(qobject_type(arg) == QTYPE_QDICT);
-    qdict = qobject_to_qdict(arg);
-    g_assert_cmpint(qdict_size(qdict), ==, 1);
-    nil = qdict_get(qdict, "a");
-    g_assert(nil);
-    g_assert(qobject_type(nil) == QTYPE_QNULL);
+    g_assert(qobject_type(arg) == QTYPE_QNULL);
+    /* Check that qnull reference counting is sane */
+    g_assert(arg->refcnt == 2);
     qobject_decref(arg);
 }
 
@@ -860,8 +839,8 @@ int main(int argc, char **argv)
                             &out_visitor_data, test_visitor_out_union_flat);
     output_visitor_test_add("/visitor/output/alternate",
                             &out_visitor_data, test_visitor_out_alternate);
-    output_visitor_test_add("/visitor/output/null",
-                            &out_visitor_data, test_visitor_out_null);
+    output_visitor_test_add("/visitor/output/empty",
+                            &out_visitor_data, test_visitor_out_empty);
     output_visitor_test_add("/visitor/output/native_list/int",
                             &out_visitor_data,
                             test_visitor_out_native_list_int);

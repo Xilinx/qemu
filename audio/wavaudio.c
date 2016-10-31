@@ -22,7 +22,7 @@
  * THE SOFTWARE.
  */
 #include "qemu/osdep.h"
-#include "qemu/host-utils.h"
+#include "hw/hw.h"
 #include "qemu/timer.h"
 #include "audio.h"
 

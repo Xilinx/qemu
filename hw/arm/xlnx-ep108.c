@@ -23,7 +23,6 @@
 #include "hw/boards.h"
 #include "qemu/error-report.h"
 #include "exec/address-spaces.h"
-#include "qemu/log.h"
 
 typedef struct XlnxEP108 {
     XlnxZynqMPState soc;

@@ -444,8 +444,10 @@ static int load_dtb(hwaddr addr, const struct arm_boot_info *binfo,
         return 0;
     }
 
-    acells = qemu_fdt_getprop_cell(fdt, "/", "#address-cells", 0, false, &error_abort);
-    scells = qemu_fdt_getprop_cell(fdt, "/", "#size-cells", 0, false, &error_abort);
+    acells = qemu_fdt_getprop_cell(fdt, "/", "#address-cells", 0,
+                                   false, &error_abort);
+    scells = qemu_fdt_getprop_cell(fdt, "/", "#size-cells", 0,
+                                   false, &error_abort);
     if (acells == 0 || scells == 0) {
         fprintf(stderr, "dtb file invalid (#address-cells or #size-cells 0)\n");
         goto fail;

@@ -17,7 +17,6 @@
 #include "trace.h"
 #include "hw/virtio/virtio.h"
 #include "hw/virtio/virtio-gpu.h"
-#include "qapi/error.h"
 
 #ifdef CONFIG_VIRGL
 
@@ -128,7 +127,7 @@ static void virgl_cmd_resource_flush(VirtIOGPU *g,
     trace_virtio_gpu_cmd_res_flush(rf.resource_id,
                                    rf.r.width, rf.r.height, rf.r.x, rf.r.y);
 
-    for (i = 0; i < g->conf.max_outputs; i++) {
+    for (i = 0; i < VIRTIO_GPU_MAX_SCANOUT; i++) {
         if (g->scanout[i].resource_id != rf.resource_id) {
             continue;
         }
@@ -147,7 +146,7 @@ static void virgl_cmd_set_scanout(VirtIOGPU *g,
     trace_virtio_gpu_cmd_set_scanout(ss.scanout_id, ss.resource_id,
                                      ss.r.width, ss.r.height, ss.r.x, ss.r.y);
 
-    if (ss.scanout_id >= g->conf.max_outputs) {
+    if (ss.scanout_id >= VIRTIO_GPU_MAX_SCANOUT) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: illegal scanout id specified %d",
                       __func__, ss.scanout_id);
         cmd->error = VIRTIO_GPU_RESP_ERR_INVALID_SCANOUT_ID;

@@ -15,8 +15,6 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "qemu-common.h"
-#include "cpu.h"
 #include "exec/memory.h"
 #include "exec/address-spaces.h"
 #include "exec/ioport.h"
@@ -47,9 +45,6 @@ static QTAILQ_HEAD(memory_listeners, MemoryListener) memory_listeners
 
 static QTAILQ_HEAD(, AddressSpace) address_spaces
     = QTAILQ_HEAD_INITIALIZER(address_spaces);
-
-static void memory_region_readd_subregion(MemoryRegion *mr);
-static void memory_region_update_container_subregions(MemoryRegion *subregion);
 
 typedef struct AddrRange AddrRange;
 
@@ -232,6 +227,7 @@ struct FlatRange {
     hwaddr offset_in_region;
     AddrRange addr;
     uint8_t dirty_log_mask;
+    bool romd_mode;
     bool readonly;
 };
 
@@ -425,6 +421,31 @@ static MemTxResult memory_region_oldmmio_read_accessor(MemoryRegion *mr,
     return MEMTX_OK;
 }
 
+/* FIXME: Remove */
+static MemTxResult memory_region_read_accessor_attr(MemoryRegion *mr,
+                                                    hwaddr addr,
+                                                    uint64_t *value,
+                                                    unsigned size,
+                                                    unsigned shift,
+                                                    uint64_t mask,
+                                                    MemTxAttrs attrs)
+{
+    MemoryTransaction tr = {{0}};
+
+    if (mr->flush_coalesced_mmio) {
+        qemu_flush_coalesced_mmio_buffer();
+    }
+
+    tr.opaque = mr->opaque;
+    tr.addr = addr;
+    tr.size = size;
+    tr.attr = attrs;
+    mr->ops->access(&tr);
+    *value |= (tr.data.u64 & mask) << shift;
+
+    return 0;
+}
+
 static MemTxResult  memory_region_read_accessor(MemoryRegion *mr,
                                                 hwaddr addr,
                                                 uint64_t *value,
@@ -478,30 +499,6 @@ static MemTxResult memory_region_read_with_attrs_accessor(MemoryRegion *mr,
     return r;
 }
 
-static MemTxResult memory_region_read_accessor_attr(MemoryRegion *mr,
-                                                    hwaddr addr,
-                                                    uint64_t *value,
-                                                    unsigned size,
-                                                    unsigned shift,
-                                                    uint64_t mask,
-                                                    MemTxAttrs attrs)
-{
-    MemoryTransaction tr = {{0}};
-
-    if (mr->flush_coalesced_mmio) {
-        qemu_flush_coalesced_mmio_buffer();
-    }
-
-    tr.opaque = mr->opaque;
-    tr.addr = addr;
-    tr.size = size;
-    tr.attr = attrs;
-    mr->ops->access(&tr);
-    *value |= (tr.data.u64 & mask) << shift;
-
-    return 0;
-}
-
 static MemTxResult memory_region_oldmmio_write_accessor(MemoryRegion *mr,
                                                         hwaddr addr,
                                                         uint64_t *value,
@@ -526,6 +523,33 @@ static MemTxResult memory_region_oldmmio_write_accessor(MemoryRegion *mr,
     }
     mr->ops->old_mmio.write[ctz32(size)](mr->opaque, addr, tmp);
     return MEMTX_OK;
+}
+
+/* FIXME: Remove */
+static MemTxResult memory_region_write_accessor_attr(MemoryRegion *mr,
+                                                     hwaddr addr,
+                                                     uint64_t *value,
+                                                     unsigned size,
+                                                     unsigned shift,
+                                                     uint64_t mask,
+                                                     MemTxAttrs attrs)
+{
+    MemoryTransaction tr = {{0}};
+
+    if (mr->flush_coalesced_mmio) {
+        qemu_flush_coalesced_mmio_buffer();
+    }
+
+    tr.opaque = mr->opaque;
+    tr.rw = true;
+    tr.addr = addr;
+    tr.size = size;
+    tr.attr = attrs;
+    tr.data.u64 = (*value >> shift) & mask;
+    trace_memory_region_ops_write(get_cpu_index(), mr, tr.addr, tr.data.u64, tr.size);
+    mr->ops->access(&tr);
+
+    return 0;
 }
 
 static MemTxResult memory_region_write_accessor(MemoryRegion *mr,
@@ -577,33 +601,6 @@ static MemTxResult memory_region_write_with_attrs_accessor(MemoryRegion *mr,
         trace_memory_region_ops_write(get_cpu_index(), mr, abs_addr, tmp, size);
     }
     return mr->ops->write_with_attrs(mr->opaque, addr, tmp, size, attrs);
-}
-
-/* FIXME: Remove */
-static MemTxResult memory_region_write_accessor_attr(MemoryRegion *mr,
-                                                     hwaddr addr,
-                                                     uint64_t *value,
-                                                     unsigned size,
-                                                     unsigned shift,
-                                                     uint64_t mask,
-                                                     MemTxAttrs attrs)
-{
-    MemoryTransaction tr = {{0}};
-
-    if (mr->flush_coalesced_mmio) {
-        qemu_flush_coalesced_mmio_buffer();
-    }
-
-    tr.opaque = mr->opaque;
-    tr.rw = true;
-    tr.addr = addr;
-    tr.size = size;
-    tr.attr = attrs;
-    tr.data.u64 = (*value >> shift) & mask;
-    trace_memory_region_ops_write(get_cpu_index(), mr, tr.addr, tr.data.u64, tr.size);
-    mr->ops->access(&tr);
-
-    return 0;
 }
 
 static MemTxResult access_with_adjusted_size(hwaddr addr,
@@ -719,6 +716,7 @@ static void render_memory_region(FlatView *view,
 
     fr.mr = mr;
     fr.dirty_log_mask = memory_region_get_dirty_log_mask(mr);
+    fr.romd_mode = mr->romd_mode;
     fr.readonly = readonly;
 
     /* Render the region itself into any gaps left by the current view. */
@@ -1066,6 +1064,26 @@ void memory_region_init(MemoryRegion *mr,
     }
 }
 
+static void memory_region_update_container_subregions(MemoryRegion *subregion)
+{
+    MemoryRegion *mr = subregion->container;
+    MemoryRegion *other;
+
+    memory_region_transaction_begin();
+
+    memory_region_ref(subregion);
+    QTAILQ_FOREACH(other, &mr->subregions, subregions_link) {
+        if (subregion->priority >= other->priority) {
+            QTAILQ_INSERT_BEFORE(other, subregion, subregions_link);
+            goto done;
+        }
+    }
+    QTAILQ_INSERT_TAIL(&mr->subregions, subregion, subregions_link);
+done:
+    memory_region_update_pending |= mr->enabled && subregion->enabled;
+    memory_region_transaction_commit();
+}
+
 static void memory_region_get_addr(Object *obj, Visitor *v, const char *name,
                                    void *opaque, Error **errp)
 {
@@ -1145,6 +1163,21 @@ static void memory_region_get_container(Object *obj, Visitor *v,
     visit_type_str(v, name, &path, errp);
     if (mr->container) {
         g_free(path);
+    }
+}
+
+static void memory_region_readd_subregion(MemoryRegion *mr)
+{
+    MemoryRegion *container = mr->container;
+
+    if (container) {
+        memory_region_transaction_begin();
+        memory_region_ref(mr);
+        memory_region_del_subregion(container, mr);
+        mr->container = container;
+        memory_region_update_container_subregions(mr);
+        memory_region_unref(mr);
+        memory_region_transaction_commit();
     }
 }
 
@@ -1752,7 +1785,11 @@ uint64_t memory_region_size(MemoryRegion *mr)
 
 const char *memory_region_name(const MemoryRegion *mr)
 {
-    return object_get_canonical_path_component(OBJECT(mr));
+    if (!mr->name) {
+        ((MemoryRegion *)mr)->name =
+            object_get_canonical_path_component(OBJECT(mr));
+    }
+    return mr->name;
 }
 
 bool memory_region_is_skip_dump(MemoryRegion *mr)
@@ -1907,7 +1944,7 @@ int memory_region_get_fd(MemoryRegion *mr)
 
     assert(mr->ram_block);
 
-    return qemu_get_ram_fd(memory_region_get_ram_addr(mr));
+    return qemu_get_ram_fd(memory_region_get_ram_addr(mr) & TARGET_PAGE_MASK);
 }
 
 void *memory_region_get_ram_ptr(MemoryRegion *mr)
@@ -1921,7 +1958,8 @@ void *memory_region_get_ram_ptr(MemoryRegion *mr)
         mr = mr->alias;
     }
     assert(mr->ram_block);
-    ptr = qemu_get_ram_ptr(mr->ram_block, memory_region_get_ram_addr(mr));
+    ptr = qemu_get_ram_ptr(mr->ram_block,
+                           memory_region_get_ram_addr(mr) & TARGET_PAGE_MASK);
     rcu_read_unlock();
 
     return ptr + offset;
@@ -1936,7 +1974,7 @@ void memory_region_ram_resize(MemoryRegion *mr, ram_addr_t newsize, Error **errp
 {
     assert(mr->ram_block);
 
-    qemu_ram_resize(mr->ram_block, newsize, errp);
+    qemu_ram_resize(memory_region_get_ram_addr(mr), newsize, errp);
 }
 
 static void memory_region_update_coalesced_range_as(MemoryRegion *mr, AddressSpace *as)
@@ -2125,26 +2163,6 @@ void memory_region_del_eventfd(MemoryRegion *mr,
     memory_region_transaction_commit();
 }
 
-static void memory_region_update_container_subregions(MemoryRegion *subregion)
-{
-    MemoryRegion *mr = subregion->container;
-    MemoryRegion *other;
-
-    memory_region_transaction_begin();
-
-    memory_region_ref(subregion);
-    QTAILQ_FOREACH(other, &mr->subregions, subregions_link) {
-        if (subregion->priority >= other->priority) {
-            QTAILQ_INSERT_BEFORE(other, subregion, subregions_link);
-            goto done;
-        }
-    }
-    QTAILQ_INSERT_TAIL(&mr->subregions, subregion, subregions_link);
-done:
-    memory_region_update_pending |= mr->enabled && subregion->enabled;
-    memory_region_transaction_commit();
-}
-
 static void memory_region_add_subregion_common(MemoryRegion *mr,
                                                hwaddr offset,
                                                MemoryRegion *subregion)
@@ -2212,21 +2230,6 @@ void memory_region_set_size(MemoryRegion *mr, uint64_t size)
     }
     memory_region_update_pending = true;
     memory_region_transaction_commit();
-}
-
-static void memory_region_readd_subregion(MemoryRegion *mr)
-{
-    MemoryRegion *container = mr->container;
-
-    if (container) {
-        memory_region_transaction_begin();
-        memory_region_ref(mr);
-        memory_region_del_subregion(container, mr);
-        mr->container = container;
-        memory_region_update_container_subregions(mr);
-        memory_region_unref(mr);
-        memory_region_transaction_commit();
-    }
 }
 
 void memory_region_set_address(MemoryRegion *mr, hwaddr addr)

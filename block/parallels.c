@@ -33,7 +33,6 @@
 #include "block/block_int.h"
 #include "sysemu/block-backend.h"
 #include "qemu/module.h"
-#include "qemu/bswap.h"
 #include "qemu/bitmap.h"
 #include "qapi/util.h"
 
@@ -513,12 +512,11 @@ static int parallels_create(const char *filename, QemuOpts *opts, Error **errp)
     memset(tmp, 0, sizeof(tmp));
     memcpy(tmp, &header, sizeof(header));
 
-    ret = blk_pwrite(file, 0, tmp, BDRV_SECTOR_SIZE, 0);
+    ret = blk_pwrite(file, 0, tmp, BDRV_SECTOR_SIZE);
     if (ret < 0) {
         goto exit;
     }
-    ret = blk_write_zeroes(file, BDRV_SECTOR_SIZE,
-                           (bat_sectors - 1) << BDRV_SECTOR_BITS, 0);
+    ret = blk_write_zeroes(file, 1, bat_sectors - 1, 0);
     if (ret < 0) {
         goto exit;
     }

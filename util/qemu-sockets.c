@@ -93,7 +93,7 @@ NetworkAddressFamily inet_netfamily(int family)
  *   t     f       PF_INET
  *   t     t       PF_INET6
  *
- * NB, this matrix is only about getting the necessary results
+ * NB, this matrix is only about getting the neccessary results
  * from getaddrinfo(). Some of the cases require further work
  * after reading results from getaddrinfo in order to fully
  * apply the logic the end user wants. eg with the last case
@@ -1145,7 +1145,7 @@ void qapi_copy_SocketAddress(SocketAddress **p_dest,
         return;
     }
 
-    qiv = qmp_input_visitor_new(obj, true);
+    qiv = qmp_input_visitor_new(obj);
     iv = qmp_input_get_visitor(qiv);
     visit_type_SocketAddress(iv, NULL, p_dest, &error_abort);
     qmp_input_visitor_cleanup(qiv);

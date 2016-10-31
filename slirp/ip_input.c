@@ -40,6 +40,7 @@
 
 #include "qemu/osdep.h"
 #include <slirp.h>
+#include <qemu/osdep.h>
 #include "ip_icmp.h"
 
 static struct ip *ip_reass(Slirp *slirp, struct ip *ip, struct ipq *fp);

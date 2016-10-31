@@ -24,7 +24,6 @@
 
 #include "qemu/osdep.h"
 #include "hw/timer/stm32f2xx_timer.h"
-#include "qemu/log.h"
 
 #ifndef STM_TIMER_ERR_DEBUG
 #define STM_TIMER_ERR_DEBUG 0

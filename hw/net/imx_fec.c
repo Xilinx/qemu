@@ -24,7 +24,6 @@
 #include "qemu/osdep.h"
 #include "hw/net/imx_fec.h"
 #include "sysemu/dma.h"
-#include "qemu/log.h"
 
 /* For crc32 */
 #include <zlib.h>

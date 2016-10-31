@@ -850,7 +850,6 @@ int main(int argc, char **argv)
     }
 
     /* init debug */
-    qemu_log_needs_buffers();
     qemu_set_log_filename(log_file);
     if (log_mask) {
         int mask;

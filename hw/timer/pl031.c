@@ -16,7 +16,6 @@
 #include "qemu/timer.h"
 #include "sysemu/sysemu.h"
 #include "qemu/cutils.h"
-#include "qemu/log.h"
 
 //#define DEBUG_PL031
 

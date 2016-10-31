@@ -15,6 +15,7 @@
 #include "target-arm/cpu-qom.h"
 #include "hw/irq.h"
 #include "qemu/notify.h"
+#include "cpu.h"
 
 typedef enum {
     ARM_ENDIANNESS_UNKNOWN = 0,

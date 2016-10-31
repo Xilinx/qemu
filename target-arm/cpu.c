@@ -23,7 +23,6 @@
 #include "cpu.h"
 #include "internals.h"
 #include "qemu-common.h"
-#include "exec/exec-all.h"
 #include "hw/qdev-properties.h"
 #if !defined(CONFIG_USER_ONLY)
 #include "hw/loader.h"
@@ -442,7 +441,6 @@ static inline void set_feature(CPUARMState *env, int feature)
 {
     env->features |= 1ULL << feature;
 }
-
 
 #ifndef CONFIG_USER_ONLY
 static void arm_cpu_set_ncpuhalt(void *opaque, int irq, int level)

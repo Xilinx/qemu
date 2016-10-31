@@ -15,3 +15,4 @@ common-obj-$(CONFIG_XLNX_ZYNQMP) += csu_stream_dma.o
 
 obj-$(CONFIG_OMAP) += omap_dma.o soc_dma.o
 obj-$(CONFIG_PXA2XX) += pxa2xx_dma.o
+obj-$(CONFIG_RASPI) += bcm2835_dma.o

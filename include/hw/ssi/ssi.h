@@ -44,7 +44,6 @@ struct SSISlaveClass {
      */
     uint32_t (*transfer)(SSISlave *dev, uint32_t val);
     uint32_t (*transfer_bits)(SSISlave *dev, uint32_t val, int num_bits);
-
     /* called when the CS line changes. Optional, devices only need to implement
      * this if they have side effects associated with the cs line (beyond
      * tristating the txrx lines).

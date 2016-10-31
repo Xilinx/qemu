@@ -20,9 +20,7 @@
 #include "cpu.h"
 #include "exec/helper-proto.h"
 #include "internals.h"
-#include "exec/exec-all.h"
 #include "exec/cpu_ldst.h"
-#include "sysemu/cpus.h"
 
 #define SIGNBIT (uint32_t)0x80000000
 #define SIGNBIT64 ((uint64_t)1 << 63)

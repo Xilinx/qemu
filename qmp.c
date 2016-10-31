@@ -181,7 +181,6 @@ void qmp_cont(Error **errp)
     Error *local_err = NULL;
     BlockBackend *blk;
     BlockDriverState *bs;
-    BdrvNextIterator *it;
 
     /* if there is a dump in background, we should wait until the dump
      * finished */
@@ -200,9 +199,7 @@ void qmp_cont(Error **errp)
     for (blk = blk_next(NULL); blk; blk = blk_next(blk)) {
         blk_iostatus_reset(blk);
     }
-
-    it = NULL;
-    while ((it = bdrv_next(it, &bs))) {
+    for (bs = bdrv_next(NULL); bs; bs = bdrv_next(bs)) {
         bdrv_add_key(bs, NULL, &local_err);
         if (local_err) {
             error_propagate(errp, local_err);
@@ -666,7 +663,7 @@ void qmp_object_add(const char *type, const char *id,
         }
     }
 
-    qiv = qmp_input_visitor_new(props, true);
+    qiv = qmp_input_visitor_new(props);
     obj = user_creatable_add_type(type, id, pdict,
                                   qmp_input_get_visitor(qiv), errp);
     qmp_input_visitor_cleanup(qiv);

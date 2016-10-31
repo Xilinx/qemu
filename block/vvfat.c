@@ -27,7 +27,6 @@
 #include "qapi/error.h"
 #include "block/block_int.h"
 #include "qemu/module.h"
-#include "qemu/bswap.h"
 #include "migration/migration.h"
 #include "qapi/qmp/qint.h"
 #include "qapi/qmp/qbool.h"
@@ -1110,8 +1109,6 @@ static int vvfat_open(BlockDriverState *bs, QDict *options, int flags,
             goto fail;
         }
         memcpy(s->volume_label, label, label_length);
-    } else {
-        memcpy(s->volume_label, "QEMU VVFAT", 10);
     }
 
     if (floppy) {
@@ -1180,7 +1177,6 @@ static int vvfat_open(BlockDriverState *bs, QDict *options, int flags,
         bs->read_only = 0;
     }
 
-    bs->request_alignment = BDRV_SECTOR_SIZE; /* No sub-sector I/O supported */
     bs->total_sectors = cyls * heads * secs;
 
     if (init_directories(s, dirname, heads, secs, errp)) {
@@ -1423,31 +1419,14 @@ DLOG(fprintf(stderr, "sector %d not allocated\n", (int)sector_num));
     return 0;
 }
 
-static int coroutine_fn
-vvfat_co_preadv(BlockDriverState *bs, uint64_t offset, uint64_t bytes,
-                QEMUIOVector *qiov, int flags)
+static coroutine_fn int vvfat_co_read(BlockDriverState *bs, int64_t sector_num,
+                                      uint8_t *buf, int nb_sectors)
 {
     int ret;
     BDRVVVFATState *s = bs->opaque;
-    uint64_t sector_num = offset >> BDRV_SECTOR_BITS;
-    int nb_sectors = bytes >> BDRV_SECTOR_BITS;
-    void *buf;
-
-    assert((offset & (BDRV_SECTOR_SIZE - 1)) == 0);
-    assert((bytes & (BDRV_SECTOR_SIZE - 1)) == 0);
-
-    buf = g_try_malloc(bytes);
-    if (bytes && buf == NULL) {
-        return -ENOMEM;
-    }
-
     qemu_co_mutex_lock(&s->lock);
     ret = vvfat_read(bs, sector_num, buf, nb_sectors);
     qemu_co_mutex_unlock(&s->lock);
-
-    qemu_iovec_from_buf(qiov, 0, buf, bytes);
-    g_free(buf);
-
     return ret;
 }
 
@@ -2304,17 +2283,12 @@ DLOG(fprintf(stderr, "commit_direntries for %s, parent_mapping_index %d\n", mapp
 		factor * (old_cluster_count - new_cluster_count));
 
     for (c = first_cluster; !fat_eof(s, c); c = modified_fat_get(s, c)) {
-        direntry_t *first_direntry;
 	void* direntry = array_get(&(s->directory), current_dir_index);
 	int ret = vvfat_read(s->bs, cluster2sector(s, c), direntry,
 		s->sectors_per_cluster);
 	if (ret)
 	    return ret;
-
-        /* The first directory entry on the filesystem is the volume name */
-        first_direntry = (direntry_t*) s->directory.pointer;
-        assert(!memcmp(first_direntry->name, s->volume_label, 11));
-
+	assert(!strncmp(s->directory.pointer, "QEMU", 4));
 	current_dir_index += factor;
     }
 
@@ -2899,31 +2873,14 @@ DLOG(checkpoint());
     return 0;
 }
 
-static int coroutine_fn
-vvfat_co_pwritev(BlockDriverState *bs, uint64_t offset, uint64_t bytes,
-                 QEMUIOVector *qiov, int flags)
+static coroutine_fn int vvfat_co_write(BlockDriverState *bs, int64_t sector_num,
+                                       const uint8_t *buf, int nb_sectors)
 {
     int ret;
     BDRVVVFATState *s = bs->opaque;
-    uint64_t sector_num = offset >> BDRV_SECTOR_BITS;
-    int nb_sectors = bytes >> BDRV_SECTOR_BITS;
-    void *buf;
-
-    assert((offset & (BDRV_SECTOR_SIZE - 1)) == 0);
-    assert((bytes & (BDRV_SECTOR_SIZE - 1)) == 0);
-
-    buf = g_try_malloc(bytes);
-    if (bytes && buf == NULL) {
-        return -ENOMEM;
-    }
-    qemu_iovec_to_buf(qiov, 0, buf, bytes);
-
     qemu_co_mutex_lock(&s->lock);
     ret = vvfat_write(bs, sector_num, buf, nb_sectors);
     qemu_co_mutex_unlock(&s->lock);
-
-    g_free(buf);
-
     return ret;
 }
 
@@ -2940,10 +2897,8 @@ static int64_t coroutine_fn vvfat_co_get_block_status(BlockDriverState *bs,
     return BDRV_BLOCK_DATA;
 }
 
-static int coroutine_fn
-write_target_commit(BlockDriverState *bs, uint64_t offset, uint64_t bytes,
-                    QEMUIOVector *qiov, int flags)
-{
+static int write_target_commit(BlockDriverState *bs, int64_t sector_num,
+	const uint8_t* buffer, int nb_sectors) {
     BDRVVVFATState* s = *((BDRVVVFATState**) bs->opaque);
     return try_commit(s);
 }
@@ -2956,7 +2911,7 @@ static void write_target_close(BlockDriverState *bs) {
 
 static BlockDriver vvfat_write_target = {
     .format_name        = "vvfat_write_target",
-    .bdrv_co_pwritev    = write_target_commit,
+    .bdrv_write         = write_target_commit,
     .bdrv_close         = write_target_close,
 };
 
@@ -3052,8 +3007,8 @@ static BlockDriver bdrv_vvfat = {
     .bdrv_file_open         = vvfat_open,
     .bdrv_close             = vvfat_close,
 
-    .bdrv_co_preadv         = vvfat_co_preadv,
-    .bdrv_co_pwritev        = vvfat_co_pwritev,
+    .bdrv_read              = vvfat_co_read,
+    .bdrv_write             = vvfat_co_write,
     .bdrv_co_get_block_status = vvfat_co_get_block_status,
 };
 

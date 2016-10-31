@@ -1,0 +1,324 @@
+* [33m60a3c06[m[34m (internal-qemu/master-internal, xilinx/master-internal)[m [1;37mMerge with mainline QEMU 2.6.5[m [2;37m(by Alistair Francis 3 days ago)[m
+* [33me03c419[m[34m[m [1;37mblockdev: Comment out noisy warning[m [2;37m(by Peter Crosthwaite 1 year, 9 months ago)[m
+* [33m5d9293a[m[34m[m [1;37mblockdev: check for BLOCK_OP_TYPE_INTERNAL_SNAPSHOT[m [2;37m(by Stefan Hajnoczi 1 year, 11 months ago)[m
+* [33m168c858[m[34m[m [1;37mblockdev: acquire AioContext in QMP 'transaction' actions[m [2;37m(by Stefan Hajnoczi 1 year, 11 months ago)[m
+* [33mce7c8a7[m[34m[m [1;37mblockdev: drop unnecessary DriveBackupState field assignment[m [2;37m(by Stefan Hajnoczi 1 year, 11 months ago)[m
+* [33m7513e5c[m[34m[m [1;37mblockdev: update outdated qmp_transaction() comments[m [2;37m(by Stefan Hajnoczi 1 year, 11 months ago)[m
+* [33m41e9f53[m[34m[m [1;37mblockdev: acquire AioContext in change-backing-file[m [2;37m(by Stefan Hajnoczi 1 year, 11 months ago)[m
+* [33m8a0fa60[m[34m[m [1;37mblockdev: acquire AioContext in eject, change, and block_passwd[m [2;37m(by Stefan Hajnoczi 1 year, 11 months ago)[m
+* [33mf0f29ce[m[34m[m [1;37mblockdev: check for BLOCK_OP_TYPE_INTERNAL_SNAPSHOT_DELETE[m [2;37m(by Stefan Hajnoczi 1 year, 11 months ago)[m
+* [33m93caa91[m[34m[m [1;37mblockdev: acquire AioContext in blockdev-snapshot-delete-internal-sync[m [2;37m(by Stefan Hajnoczi 1 year, 11 months ago)[m
+* [33m9e85cd5[m[34m[m [1;37mblock: let commit blockjob run in BDS AioContext[m [2;37m(by Stefan Hajnoczi 2 years ago)[m
+* [33m5a7e7a0[m[34m[m [1;37mblock: let mirror blockjob run in BDS AioContext[m [2;37m(by Stefan Hajnoczi 2 years ago)[m
+* [33mf3e69be[m[34m[m [1;37mblock: let stream blockjob run in BDS AioContext[m [2;37m(by Stefan Hajnoczi 2 years ago)[m
+* [33m761731b[m[34m[m [1;37mblock: let backup blockjob run in BDS AioContext[m [2;37m(by Stefan Hajnoczi 2 years ago)[m
+* [33m723c5d9[m[34m[m [1;37mblockdev: add note that block_job_cb() must be thread-safe[m [2;37m(by Stefan Hajnoczi 2 years ago)[m
+* [33m91fddb0[m[34m[m [1;37mblockdev: acquire AioContext in blockdev_mark_auto_del()[m [2;37m(by Stefan Hajnoczi 2 years ago)[m
+* [33m69691e7[m[34m[m [1;37mblockdev: acquire AioContext in do_qmp_query_block_jobs_one()[m [2;37m(by Stefan Hajnoczi 2 years ago)[m
+* [33m3d948cd[m[34m[m [1;37mblock: acquire AioContext in generic blockjob QMP commands[m [2;37m(by Stefan Hajnoczi 2 years ago)[m
+* [33ma7f53e2[m[34m[m [1;37mblock: Lift device model API into BlockBackend[m [2;37m(by Markus Armbruster 2 years, 1 month ago)[m
+* [33m6007cdd[m[34m[m [1;37mblockdev: Convert qmp_eject(), qmp_change_blockdev() to BlockBackend[m [2;37m(by Markus Armbruster 2 years, 1 month ago)[m
+* [33m26f8b3a[m[34m[m [1;37mblockdev: Fix blockdev-add not to create DriveInfo[m [2;37m(by Markus Armbruster 2 years, 1 month ago)[m
+* [33md3aeb1b[m[34m[m [1;37mblockdev: Drop superfluous DriveInfo member id[m [2;37m(by Markus Armbruster 2 years, 1 month ago)[m
+* [33m4be7463[m[34m[m [1;37mhw: Convert from BlockDriverState to BlockBackend, mostly[m [2;37m(by Markus Armbruster 2 years, 1 month ago)[m
+* [33mfa1d36d[m[34m[m [1;37mblock: Eliminate DriveInfo member bdrv, use blk_by_legacy_dinfo()[m [2;37m(by Markus Armbruster 2 years, 1 month ago)[m
+* [33mfea68bb[m[34m[m [1;37mblock: Eliminate bdrv_iterate(), use bdrv_next()[m [2;37m(by Markus Armbruster 2 years, 1 month ago)[m
+* [33mb9fe8a7[m[34m[m [1;37mblockdev: Eliminate drive_del()[m [2;37m(by Markus Armbruster 2 years, 1 month ago)[m
+* [33m9ba10c9[m[34m[m [1;37mblock: Make BlockBackend own its BlockDriverState[m [2;37m(by Markus Armbruster 2 years, 1 month ago)[m
+* [33m8fb3c76[m[34m[m [1;37mblock: Code motion to get rid of stubs/blockdev.c[m [2;37m(by Markus Armbruster 2 years, 1 month ago)[m
+* [33m18e46a0[m[34m[m [1;37mblock: Connect BlockBackend and DriveInfo[m [2;37m(by Markus Armbruster 2 years, 1 month ago)[m
+* [33m7e7d56d[m[34m[m [1;37mblock: Connect BlockBackend to BlockDriverState[m [2;37m(by Markus Armbruster 2 years, 1 month ago)[m
+* [33m26f54e9[m[34m[m [1;37mblock: New BlockBackend[m [2;37m(by Markus Armbruster 2 years, 1 month ago)[m
+* [33me4e9986[m[34m[m [1;37mblock: Split bdrv_new_root() off bdrv_new()[m [2;37m(by Markus Armbruster 2 years, 1 month ago)[m
+* [33md8f94e1[m[34m[m [1;37mide: Update ide_drive_get to be HBA agnostic[m [2;37m(by John Snow 2 years, 1 month ago)[m
+* [33m21dff8c[m[34m[m [1;37mblockdev: Allow overriding if_max_dev property[m [2;37m(by John Snow 2 years, 1 month ago)[m
+* [33ma66c9dc[m[34m[m [1;37mblockdev: Orphaned drive search[m [2;37m(by John Snow 2 years, 1 month ago)[m
+* [33m20d6cd4[m[34m[m [1;37mModify qemu_opt_rename to realize renaming all items in opts[m [2;37m(by Jun Li 2 years, 1 month ago)[m
+* [33mfbf28a4[m[34m[m [1;37mblock: Drop superfluous conditionals around qemu_opts_del()[m [2;37m(by Markus Armbruster 2 years, 1 month ago)[m
+* [33m5abbf0e[m[34m[m [1;37mblock: Catch simultaneous usage of options and their aliases[m [2;37m(by Kevin Wolf 2 years, 1 month ago)[m
+* [33m247147f[m[34m[m [1;37mblock: Specify -drive legacy option aliases in array[m [2;37m(by Kevin Wolf 2 years, 1 month ago)[m
+* [33m3ae5958[m[34m[m [1;37mblock: Keep DriveInfo alive until BlockDriverState dies[m [2;37m(by Markus Armbruster 2 years, 2 months ago)[m
+* [33ma0f1eab[m[34m[m [1;37mblockdev: Disentangle BlockDriverState and DriveInfo creation[m [2;37m(by Markus Armbruster 2 years, 2 months ago)[m
+* [33m48f364d[m[34m[m [1;37mblockdev: Refuse to drive_del something added with blockdev-add[m [2;37m(by Markus Armbruster 2 years, 2 months ago)[m
+* [33m9e7dac7[m[34m[m [1;37mrename parse_enum_option to qapi_enum_parse and make it public[m [2;37m(by Peter Lieven 2 years, 3 months ago)[m
+* [33m8ad4202[m[34m[m [1;37mblock: acquire AioContext in do_drive_del()[m [2;37m(by Stefan Hajnoczi 2 years, 2 months ago)[m
+* [33m3cbbe9f[m[34m[m [1;37mblockdev: fix drive-mirror 'granularity' error message[m [2;37m(by Stefan Hajnoczi 2 years, 2 months ago)[m
+* [33m927e0e7[m[34m[m [1;37mblock: acquire AioContext in qmp_block_resize()[m [2;37m(by Stefan Hajnoczi 2 years, 2 months ago)[m
+* [33m5839e53[m[34m[m [1;37mblock: Use g_new() & friends where that makes obvious sense[m [2;37m(by Markus Armbruster 2 years, 2 months ago)[m
+* [33m13d8cc5[m[34m[m [1;37mblock: add backing-file option to block-stream[m [2;37m(by Jeff Cody 2 years, 4 months ago)[m
+* [33m54e2690[m[34m[m [1;37mblock: extend block-commit to accept a string for the backing file[m [2;37m(by Jeff Cody 2 years, 4 months ago)[m
+* [33mfa40e65[m[34m[m [1;37mblock: add QAPI command to allow live backing file change[m [2;37m(by Jeff Cody 2 years, 4 months ago)[m
+* [33m7676e2c[m[34m[m [1;37mblock: make 'top' argument to block-commit optional[m [2;37m(by Jeff Cody 2 years, 4 months ago)[m
+* [33m09158f0[m[34m[m [1;37mblock: Add replaces argument to drive-mirror[m [2;37m(by Benoît Canet 2 years, 4 months ago)[m
+* [33m4c828dc[m[34m[m [1;37mblock: Add node-name argument to drive-mirror[m [2;37m(by Benoît Canet 2 years, 5 months ago)[m
+* [33m9c75e16[m[34m[m [1;37mblock: check for RESIZE blocker in the QMP command, not bdrv_truncate()[m [2;37m(by Jeff Cody 2 years, 4 months ago)[m
+* [33mbcada37[m[34m[m [1;37mqapi event: convert other BLOCK_JOB events[m [2;37m(by Wenchao Xia 2 years, 4 months ago)[m
+* [33mae60e8e[m[34m[m [1;37mblockdev: Remove unused DriveInfo reference count[m [2;37m(by Markus Armbruster 2 years, 5 months ago)[m
+* [33m60e19e0[m[34m[m [1;37mblockdev: Rename drive_init(), drive_uninit() to drive_new(), drive_del()[m [2;37m(by Markus Armbruster 2 years, 5 months ago)[m
+* [33mbcf8315[m[34m[m [1;37mblockdev: Move 'serial' option to drive_init()[m [2;37m(by Kevin Wolf 2 years, 5 months ago)[m
+* [33mb15446f[m[34m[m [1;37mblockdev: acquire AioContext in block_set_io_throttle[m [2;37m(by Stefan Hajnoczi 2 years, 6 months ago)[m
+* [33m3cb0e25[m[34m[m [1;37mblockdev: Plug memory leak in drive_init()[m [2;37m(by Markus Armbruster 2 years, 5 months ago)[m
+* [33m6376f95[m[34m[m [1;37mblockdev: Plug memory leak in blockdev_init()[m [2;37m(by Markus Armbruster 2 years, 5 months ago)[m
+* [33mb1422f2[m[34m[m [1;37mblockdev: Don't use qerror_report() in do_drive_del()[m [2;37m(by Markus Armbruster 2 years, 6 months ago)[m
+* [33me8817e7[m[34m[m [1;37mblockdev: Don't use qerror_report_err() in drive_init()[m [2;37m(by Markus Armbruster 2 years, 6 months ago)[m
+* [33m628ff68[m[34m[m [1;37mblock: Move op_blocker check from block_job_create to its caller[m [2;37m(by Fam Zheng 2 years, 5 months ago)[m
+* [33m3718d8a[m[34m[m [1;37mblock: Replace in_use with operation blocker[m [2;37m(by Fam Zheng 2 years, 5 months ago)[m
+* [33m465bee1[m[34m[m [1;37mblock: optimize zero writes with bdrv_write_zeroes[m [2;37m(by Peter Lieven 2 years, 6 months ago)[m
+* [33m82a402e[m[34m[m [1;37mblockdev: add a function to parse enum ids from strings[m [2;37m(by Peter Lieven 2 years, 6 months ago)[m
+*   [33m13de54e[m[34m[m [1;37mMerge remote-tracking branch 'remotes/qmp-unstable/queue/qmp' into staging[m [2;37m(by Peter Maydell 2 years, 6 months ago)[m
+[32m|[m[33m\[m  
+[32m|[m * [33mf231b88[m[34m[m [1;37mqerror.h: Remove QERR defines that are only used once[m [2;37m(by Cole Robinson 2 years, 7 months ago)[m
+* [33m|[m [33mf70edf9[m[34m[m [1;37mblockdev: Clean up fragile use of error_is_set()[m [2;37m(by Markus Armbruster 2 years, 6 months ago)[m
+[33m|[m[33m/[m  
+* [33mf2d953e[m[34m[m [1;37mblock: Catch duplicate IDs in bdrv_new()[m [2;37m(by Kevin Wolf 2 years, 7 months ago)[m
+* [33m98522f6[m[34m[m [1;37mblock: Add errp to bdrv_new()[m [2;37m(by Kevin Wolf 2 years, 7 months ago)[m
+* [33m5450466[m[34m[m [1;37mblock-commit: speed is an optional parameter[m [2;37m(by Max Reitz 2 years, 7 months ago)[m
+* [33mc6e0bd9[m[34m[m [1;37mblockdev: Fix NULL pointer dereference in blockdev-add[m [2;37m(by Kevin Wolf 2 years, 8 months ago)[m
+* [33m8ae8e90[m[34m[m [1;37mblockdev: Fail blockdev-add with encrypted images[m [2;37m(by Kevin Wolf 2 years, 8 months ago)[m
+* [33mddf5636[m[34m[m [1;37mblock: Add reference parameter to bdrv_open()[m [2;37m(by Max Reitz 2 years, 8 months ago)[m
+* [33mf67503e[m[34m[m [1;37mblock: Change BDS parameter of bdrv_open() to **[m [2;37m(by Max Reitz 2 years, 8 months ago)[m
+*   [33m61e8a92[m[34m[m [1;37mMerge remote-tracking branch 'remotes/afaerber/tags/qom-devices-for-peter' into staging[m [2;37m(by Peter Maydell 2 years, 8 months ago)[m
+[34m|[m[35m\[m  
+[34m|[m * [33mf31c41f[m[34m[m [1;37mblock: Handle "rechs" and "large" translation options[m [2;37m(by Paolo Bonzini 2 years, 9 months ago)[m
+* [35m|[m   [33m4c0c9bb[m[34m[m [1;37mMerge remote-tracking branch 'remotes/qmp-unstable/queue/qmp' into staging[m [2;37m(by Peter Maydell 2 years, 8 months ago)[m
+[36m|[m[1;31m\[m [35m\[m  
+[36m|[m * [35m|[m [33m84d18f0[m[34m[m [1;37mUse error_is_set() only when necessary[m [2;37m(by Markus Armbruster 2 years, 9 months ago)[m
+[36m|[m [35m|[m[35m/[m  
+* [35m|[m [33m0c5e94e[m[34m[m [1;37mblock: Open by reference will try device then node_name.[m [2;37m(by Benoît Canet 2 years, 9 months ago)[m
+* [35m|[m [33m57b6bdf[m[34m[m [1;37mblockdev: Fix wrong usage of QDECREF causing snapshoted quorum to crash on close.[m [2;37m(by Benoît Canet 2 years, 9 months ago)[m
+* [35m|[m [33mee13ed1[m[34m[m [1;37mblockdev: Remove 'type' parameter from blockdev_init()[m [2;37m(by Kevin Wolf 2 years, 9 months ago)[m
+[35m|[m[35m/[m  
+* [33m0901f67[m[34m[m [1;37mqmp: Allow to take external snapshots on bs graphs node.[m [2;37m(by Benoît Canet 2 years, 9 months ago)[m
+* [33m3b1dbd1[m[34m[m [1;37mqmp: Allow block_resize to manipulate bs graph nodes.[m [2;37m(by Benoît Canet 2 years, 9 months ago)[m
+* [33m212a5a8[m[34m[m [1;37mblock: Create authorizations mechanism for external snapshot and resize.[m [2;37m(by Benoît Canet 2 years, 9 months ago)[m
+* [33m12d3ba8[m[34m[m [1;37mqmp: Allow to change password on named block driver states.[m [2;37m(by Benoît Canet 2 years, 9 months ago)[m
+* [33mc13163f[m[34m[m [1;37mqmp: Add QMP query-named-block-nodes to list the named BlockDriverState nodes.[m [2;37m(by Benoît Canet 2 years, 9 months ago)[m
+* [33md095b46[m[34m[m [1;37mblockdev: Move "file" to legacy_opts[m [2;37m(by Max Reitz 2 years, 10 months ago)[m
+*   [33m133fe77[m[34m[m [1;37mMerge remote branch 'luiz/queue/qmp' into qmpq[m [2;37m(by Edgar E. Iglesias 2 years, 10 months ago)[m
+[1;32m|[m[1;33m\[m  
+[1;32m|[m * [33m87ea75d[m[34m[m [1;37mqemu-option: Remove qemu_opts_create_nofail[m [2;37m(by Peter Crosthwaite 2 years, 10 months ago)[m
+* [1;33m|[m [33m20a63d2[m[34m[m [1;37mcommit: Support commit active layer[m [2;37m(by Fam Zheng 2 years, 11 months ago)[m
+[1;33m|[m[1;33m/[m  
+* [33m314f7ea[m[34m[m [1;37mqmp_change_blockdev() remove unused has_format[m [2;37m(by Marc-André Lureau 2 years, 11 months ago)[m
+* [33m117e0c8[m[34m[m [1;37mblock/drive-mirror: Reuse backing HD for sync=none[m [2;37m(by Max Reitz 2 years, 11 months ago)[m
+* [33m968854c[m[34m[m [1;37mqmp: access the local QemuOptsLists for drive option[m [2;37m(by Amos Kong 3 years ago)[m
+* [33m1452686[m[34m[m [1;37mblock/drive-mirror: Check for NULL backing_hd[m [2;37m(by Max Reitz 3 years ago)[m
+* [33mec9c10d[m[34m[m [1;37mblockdev: fix drive_init() opts and bs_opts leaks[m [2;37m(by Stefan Hajnoczi 3 years ago)[m
+* [33ma7fdbcf[m[34m[m [1;37mblockdev: fix cdrom read_only flag[m [2;37m(by Fam Zheng 3 years, 1 month ago)[m
+* [33mb681072[m[34m[m [1;37mblockdev: blockdev_init() error conversion[m [2;37m(by Kevin Wolf 3 years, 1 month ago)[m
+* [33m0ebd24e[m[34m[m [1;37mblockdev: Don't disable COR automatically with blockdev-add[m [2;37m(by Kevin Wolf 3 years, 1 month ago)[m
+* [33me34ef04[m[34m[m [1;37mblockdev: Remove 'media' parameter from blockdev_init()[m [2;37m(by Kevin Wolf 3 years, 1 month ago)[m
+* [33m4f8a066[m[34m[m [1;37mblockdev: Remove IF_* check for read-only blockdev_init[m [2;37m(by Kevin Wolf 3 years, 2 months ago)[m
+* [33m394c7d4[m[34m[m [1;37mblockdev: Move virtio-blk device creation to drive_init[m [2;37m(by Kevin Wolf 3 years, 2 months ago)[m
+* [33m87a899c[m[34m[m [1;37mblockdev: Move bus/unit/index processing to drive_init[m [2;37m(by Kevin Wolf 3 years, 2 months ago)[m
+* [33m2692929[m[34m[m [1;37mblockdev: Move parsing of 'boot' option to drive_init[m [2;37m(by Kevin Wolf 3 years, 2 months ago)[m
+* [33mb41a733[m[34m[m [1;37mblockdev: Moving parsing of geometry options to drive_init[m [2;37m(by Kevin Wolf 3 years, 2 months ago)[m
+* [33m593d464[m[34m[m [1;37mblockdev: Move parsing of 'if' option to drive_init[m [2;37m(by Kevin Wolf 3 years, 2 months ago)[m
+* [33m33cb7dc[m[34m[m [1;37mblockdev: Move parsing of 'media' option to drive_init[m [2;37m(by Kevin Wolf 3 years, 2 months ago)[m
+* [33mf298d07[m[34m[m [1;37mblockdev: Pass QDict to blockdev_init()[m [2;37m(by Kevin Wolf 3 years, 2 months ago)[m
+* [33m326642b[m[34m[m [1;37mblockdev: Separate ID generation from DriveInfo creation[m [2;37m(by Kevin Wolf 3 years, 4 months ago)[m
+* [33md26c9a1[m[34m[m [1;37mblockdev: 'blockdev-add' QMP command[m [2;37m(by Kevin Wolf 3 years, 1 month ago)[m
+* [33m2d246f0[m[34m[m [1;37mblockdev: Introduce DriveInfo.enable_auto_del[m [2;37m(by Kevin Wolf 3 years, 1 month ago)[m
+* [33m8f94a6e[m[34m[m [1;37mblock: Improve driver whitelist checks[m [2;37m(by Kevin Wolf 3 years, 1 month ago)[m
+* [33mf6186f4[m[34m[m [1;37mblock: Add BlockDriver.bdrv_check_ext_snapshot.[m [2;37m(by Benoît Canet 3 years, 1 month ago)[m
+* [33m3a6f270[m[34m[m [1;37mblock: Remove unused assignment (fixes warning from clang)[m [2;37m(by Stefan Weil 3 years, 1 month ago)[m
+* [33m1df6fa4[m[34m[m [1;37mblockdev: do not default cache.no-flush to true[m [2;37m(by Paolo Bonzini 3 years, 1 month ago)[m
+* [33maa3fe71[m[34m[m [1;37mblock: Assert validity of BdrvActionOps[m [2;37m(by Max Reitz 3 years, 2 months ago)[m
+* [33m34b5d2c[m[34m[m [1;37mblock: Error parameter for open functions[m [2;37m(by Max Reitz 3 years, 2 months ago)[m
+* [33m44e3e05[m[34m[m [1;37mqmp: add interface blockdev-snapshot-delete-internal-sync[m [2;37m(by Wenchao Xia 3 years, 2 months ago)[m
+* [33mf323bc9[m[34m[m [1;37mqmp: add interface blockdev-snapshot-internal-sync[m [2;37m(by Wenchao Xia 3 years, 2 months ago)[m
+* [33mbbe8601[m[34m[m [1;37mqmp: add internal snapshot support in qmp_transaction[m [2;37m(by Wenchao Xia 3 years, 2 months ago)[m
+* [33mfa510eb[m[34m[m [1;37mblock: use BDS ref for block jobs[m [2;37m(by Fam Zheng 3 years, 2 months ago)[m
+* [33m4f6fd34[m[34m[m [1;37mblock: make bdrv_delete() static[m [2;37m(by Fam Zheng 3 years, 2 months ago)[m
+* [33m2024c1d[m[34m[m [1;37mblock: Add iops_size to do the iops accounting for a given io size.[m [2;37m(by Benoît Canet 3 years, 2 months ago)[m
+* [33m3e9fab6[m[34m[m [1;37mblock: Add support for throttling burst max in QMP and the command line.[m [2;37m(by Benoît Canet 3 years, 2 months ago)[m
+* [33mcc0681c[m[34m[m [1;37mblock: Enable the new throttling code in the block layer.[m [2;37m(by Benoît Canet 3 years, 2 months ago)[m
+* [33mc0447d8[m[34m[m [1;37mRevert "block: Disable driver-specific options for 1.6"[m [2;37m(by Kevin Wolf 3 years, 2 months ago)[m
+* [33mbc72ad6[m[34m[m [1;37maio / timers: Switch entire codebase to the new timer API[m [2;37m(by Alex Bligh 3 years, 2 months ago)[m
+* [33m7780d47[m[34m[m [1;37mblock: better error message for read only format name[m [2;37m(by Fam Zheng 3 years, 2 months ago)[m
+* [33m8b7a541[m[34m[m [1;37mblock: Dont ignore previously set bdrv_flags[m [2;37m(by M. Mohan Kumar 3 years, 3 months ago)[m
+* [33m6db5f5d[m[34m[m [1;37mblock: Bugfix 'format' and 'snapshot' used in drive option[m [2;37m(by Mike Qiu 3 years, 3 months ago)[m
+* [33m8afaefb[m[34m[m [1;37mblock: Disable driver-specific options for 1.6[m [2;37m(by Kevin Wolf 3 years, 3 months ago)[m
+* [33mdfc6f86[m[34m[m [1;37mmisc: Use g_assert_not_reached for code which is expected to be unreachable[m [2;37m(by Stefan Weil 3 years, 3 months ago)[m
+* [33mfc5d3f8[m[34m[m [1;37mImplement sync modes for drive-backup.[m [2;37m(by Ian Main 3 years, 3 months ago)[m
+* [33m29c4e2b[m[34m[m [1;37mblockdev: Split up 'cache' option[m [2;37m(by Kevin Wolf 3 years, 3 months ago)[m
+* [33m0f227a9[m[34m[m [1;37mblockdev: Rename 'readonly' option to 'read-only'[m [2;37m(by Kevin Wolf 3 years, 3 months ago)[m
+* [33m5797522[m[34m[m [1;37mblockdev: Rename I/O throttling options for QMP[m [2;37m(by Kevin Wolf 3 years, 4 months ago)[m
+* [33m74fe54f[m[34m[m [1;37mblock: Allow "driver" option on the top level[m [2;37m(by Kevin Wolf 3 years, 4 months ago)[m
+* [33mb53169e[m[34m[m [1;37mblockdev: add sync mode to drive-backup QMP command[m [2;37m(by Stefan Hajnoczi 3 years, 4 months ago)[m
+* [33m78b18b7[m[34m[m [1;37mblockdev: add Abort transaction[m [2;37m(by Stefan Hajnoczi 3 years, 4 months ago)[m
+* [33m3037f36[m[34m[m [1;37mblockdev: add DriveBackup transaction[m [2;37m(by Stefan Hajnoczi 3 years, 4 months ago)[m
+* [33mf9ea81e[m[34m[m [1;37mblockdev: allow BdrvActionOps->commit() to be NULL[m [2;37m(by Stefan Hajnoczi 3 years, 4 months ago)[m
+* [33mba5d6ab[m[34m[m [1;37mblockdev: rename BlkTransactionStates to singular[m [2;37m(by Stefan Hajnoczi 3 years, 4 months ago)[m
+* [33m99a9add[m[34m[m [1;37mblock: add drive-backup QMP command[m [2;37m(by Stefan Hajnoczi 3 years, 4 months ago)[m
+* [33mac3c5d8[m[34m[m [1;37mblockdev: use bdrv_getlength() in qmp_drive_mirror()[m [2;37m(by Stefan Hajnoczi 3 years, 4 months ago)[m
+* [33mcb78466[m[34m[m [1;37mblockdev: drop redundant proto_drv check[m [2;37m(by Stefan Hajnoczi 3 years, 4 months ago)[m
+* [33m492fdc6[m[34m[m [1;37mRevert "block: Disable driver-specific options for 1.5"[m [2;37m(by Kevin Wolf 3 years, 4 months ago)[m
+* [33m0eef407[m[34m[m [1;37mblockdev: use error_setg_file_open()[m [2;37m(by Luiz Capitulino 3 years, 5 months ago)[m
+* [33m293c51a[m[34m[m [1;37mblockdev: reset werror/rerror on drive_del[m [2;37m(by Stefan Hajnoczi 3 years, 5 months ago)[m
+* [33mb64ec4e[m[34m[m [1;37mblock: add block driver read only whitelist[m [2;37m(by Fam Zheng 3 years, 5 months ago)[m
+* [33mc8a83e8[m[34m[m [1;37mblockdev: Rename BlockdevAction -> TransactionAction[m [2;37m(by Kevin Wolf 3 years, 6 months ago)[m
+* [33mba0c86a[m[34m[m [1;37mblock: make all steps in qmp_transaction() as callback[m [2;37m(by Wenchao Xia 3 years, 6 months ago)[m
+* [33m96b86bf[m[34m[m [1;37mblock: package rollback code in qmp_transaction()[m [2;37m(by Wenchao Xia 3 years, 6 months ago)[m
+* [33m3b0047e[m[34m[m [1;37mblock: package committing code in qmp_transaction()[m [2;37m(by Wenchao Xia 3 years, 6 months ago)[m
+* [33me2a31e8[m[34m[m [1;37mblock: move input parsing code in qmp_transaction()[m [2;37m(by Wenchao Xia 3 years, 6 months ago)[m
+* [33m9b9877e[m[34m[m [1;37mblock: package preparation code in qmp_transaction()[m [2;37m(by Wenchao Xia 3 years, 6 months ago)[m
+* [33m8732901[m[34m[m [1;37mblockdev: Replace "undefined error" in qmp_block_resize[m [2;37m(by Kevin Wolf 3 years, 6 months ago)[m
+* [33m8ec7d39[m[34m[m [1;37mblock: Disable driver-specific options for 1.5[m [2;37m(by Kevin Wolf 3 years, 6 months ago)[m
+* [33m0d09e41[m[34m[m [1;37mhw: move headers to include/[m [2;37m(by Paolo Bonzini 3 years, 9 months ago)[m
+* [33mae29d6c[m[34m[m [1;37mblock: keep I/O throttling slice time constant[m [2;37m(by Stefan Hajnoczi 3 years, 7 months ago)[m
+* [33mc2ad1b0[m[34m[m [1;37mblock: Allow omitting the file name when using driver-specific options[m [2;37m(by Kevin Wolf 3 years, 7 months ago)[m
+* [33m92b7a08[m[34m[m [1;37mblock: complete all IOs before resizing a device[m [2;37m(by Peter Lieven 3 years, 8 months ago)[m
+* [33m3618a09[m[34m[m [1;37mblockdev: Fix up copyright and permission notice[m [2;37m(by Markus Armbruster 3 years, 8 months ago)[m
+* [33m0006383[m[34m[m [1;37mblock: Support driver specific options in drive_init()[m [2;37m(by Kevin Wolf 3 years, 8 months ago)[m
+* [33mbb44619[m[34m[m [1;37mblockdev: Keep a copy of DriveInfo.serial[m [2;37m(by Kevin Wolf 3 years, 8 months ago)[m
+* [33mde9c0ce[m[34m[m [1;37mblock: Add options QDict to bdrv_open() prototype[m [2;37m(by Kevin Wolf 3 years, 8 months ago)[m
+* [33ma9384af[m[34m[m [1;37mblockdev: add discard suboption to -drive[m [2;37m(by Paolo Bonzini 3 years, 9 months ago)[m
+* [33mf382d43[m[34m[m [1;37mqemu-img: Add "Quiet mode" option[m [2;37m(by Miroslav Rezanina 3 years, 9 months ago)[m
+* [33m7d81c14[m[34m[m [1;37mblock: refuse negative iops and bps values[m [2;37m(by Stefan Hajnoczi 3 years, 9 months ago)[m
+* [33mc546194[m[34m[m [1;37mblock: use Error in do_check_io_limits()[m [2;37m(by Stefan Hajnoczi 3 years, 9 months ago)[m
+*   [33m503cb22[m[34m[m [1;37mMerge remote-tracking branch 'kwolf/for-anthony' into staging[m [2;37m(by Anthony Liguori 3 years, 9 months ago)[m
+[1;34m|[m[1;35m\[m  
+[1;34m|[m * [33m8689907[m[34m[m [1;37mblock: Create proper size file for disk mirror[m [2;37m(by Vishvananda Ishaya 3 years, 9 months ago)[m
+[1;34m|[m * [33m02582ab[m[34m[m [1;37mblock: Add special error code for wrong format[m [2;37m(by Stefan Weil 3 years, 9 months ago)[m
+[1;34m|[m * [33m08e4ed6[m[34m[m [1;37mmirror: add buf-size argument to drive-mirror[m [2;37m(by Paolo Bonzini 3 years, 9 months ago)[m
+[1;34m|[m * [33meee13df[m[34m[m [1;37mmirror: allow customizing the granularity[m [2;37m(by Paolo Bonzini 3 years, 9 months ago)[m
+[1;34m|[m * [33mb812f67[m[34m[m [1;37mmirror: perform COW if the cluster size is bigger than the granularity[m [2;37m(by Paolo Bonzini 3 years, 9 months ago)[m
+* [1;35m|[m [33m58513bd[m[34m[m [1;37mblock: Monitor command commit neglects to report some errors[m [2;37m(by Jeff Cody 3 years, 9 months ago)[m
+[1;35m|[m[1;35m/[m  
+* [33m4d45457[m[34m[m [1;37mqemu-option: move standard option definitions out of qemu-config.c[m [2;37m(by Paolo Bonzini 3 years, 11 months ago)[m
+* [33m9c17d61[m[34m[m [1;37msoftmmu: move include files to include/sysemu/[m [2;37m(by Paolo Bonzini 3 years, 10 months ago)[m
+* [33m1de7afc[m[34m[m [1;37mmisc: move include files to include/qemu/[m [2;37m(by Paolo Bonzini 3 years, 10 months ago)[m
+* [33m83c9089[m[34m[m [1;37mmonitor: move include files to include/monitor/[m [2;37m(by Paolo Bonzini 3 years, 10 months ago)[m
+* [33m737e150[m[34m[m [1;37mblock: move include files to include/block/[m [2;37m(by Paolo Bonzini 3 years, 10 months ago)[m
+* [33m7b1b5d1[m[34m[m [1;37mqapi: move include files to include/qobject/[m [2;37m(by Paolo Bonzini 3 years, 10 months ago)[m
+* [33me478b44[m[34m[m [1;37muse qemu_opts_create_nofail[m [2;37m(by Dong Xu Wang 3 years, 11 months ago)[m
+* [33mcf8f242[m[34m[m [1;37mqmp: qmp_drive_mirror(): pass Error object to bdrv_img_create()[m [2;37m(by Luiz Capitulino 3 years, 11 months ago)[m
+* [33m43e1704[m[34m[m [1;37mqmp: qmp_transaction(): pass Error object to bdrv_img_create()[m [2;37m(by Luiz Capitulino 3 years, 11 months ago)[m
+* [33m71c7981[m[34m[m [1;37mblock: bdrv_img_create(): add Error ** argument[m [2;37m(by Luiz Capitulino 3 years, 11 months ago)[m
+* [33m2d0d283[m[34m[m [1;37mSupport default block interfaces per QEMUMachine[m [2;37m(by Christian Borntraeger 3 years, 11 months ago)[m
+* [33m0d92d17[m[34m[m [1;37mIssue warning when deprecated drive parameter boot=on|off is used[m [2;37m(by Jan Kiszka 4 years, 1 month ago)[m
+* [33mb952b55[m[34m[m [1;37mmirror: add support for on-source-error/on-target-error[m [2;37m(by Paolo Bonzini 4 years ago)[m
+* [33md9b902d[m[34m[m [1;37mqmp: add drive-mirror command[m [2;37m(by Paolo Bonzini 4 years ago)[m
+* [33ma66a2a3[m[34m[m [1;37mblock: introduce BLOCK_JOB_READY event[m [2;37m(by Paolo Bonzini 4 years, 3 months ago)[m
+* [33maeae883[m[34m[m [1;37mblock: add block-job-complete[m [2;37m(by Paolo Bonzini 4 years ago)[m
+* [33md5208c4[m[34m[m [1;37mblock: in commit, determine base image from the top image[m [2;37m(by Jeff Cody 4 years, 1 month ago)[m
+* [33m4d5b97d[m[34m[m [1;37mcleanup useless return sentence[m [2;37m(by Amos Kong 4 years, 1 month ago)[m
+* [33m1d80909[m[34m[m [1;37mstream: add on-error argument[m [2;37m(by Paolo Bonzini 4 years, 1 month ago)[m
+* [33m1ceee0d[m[34m[m [1;37miostatus: change is_read to a bool[m [2;37m(by Paolo Bonzini 4 years, 1 month ago)[m
+* [33m92aa5c6[m[34m[m [1;37miostatus: move BlockdevOnError declaration to QAPI[m [2;37m(by Paolo Bonzini 4 years, 1 month ago)[m
+* [33m6e37fb8[m[34m[m [1;37mqmp: add block-job-pause and block-job-resume[m [2;37m(by Paolo Bonzini 4 years, 1 month ago)[m
+* [33m8acc72a[m[34m[m [1;37mblock: add support for job pause/resume[m [2;37m(by Paolo Bonzini 4 years, 1 month ago)[m
+* [33m30e628b[m[34m[m [1;37mblock: add block_job_query[m [2;37m(by Paolo Bonzini 4 years, 1 month ago)[m
+* [33m2f0c9fe[m[34m[m [1;37mblock: move job APIs to separate files[m [2;37m(by Paolo Bonzini 4 years, 1 month ago)[m
+* [33m7ef1507[m[34m[m [1;37mqerror/block: introduce QERR_BLOCK_JOB_NOT_ACTIVE[m [2;37m(by Paolo Bonzini 4 years, 1 month ago)[m
+* [33med61fc1[m[34m[m [1;37mQAPI: add command for live block commit, 'block-commit'[m [2;37m(by Jeff Cody 4 years, 1 month ago)[m
+* [33m9abf2db[m[34m[m [1;37mblockdev: rename block_stream_cb to a generic block_job_cb[m [2;37m(by Jeff Cody 4 years, 1 month ago)[m
+* [33m870f568[m[34m[m [1;37mblock: after creating a live snapshot, make old image read-only[m [2;37m(by Jeff Cody 4 years, 1 month ago)[m
+* [33m80dd1aa[m[34m[m [1;37mblockdev: preserve readonly and snapshot states across media changes[m [2;37m(by Kevin Shanahan 4 years, 1 month ago)[m
+* [33m1f212b9[m[34m[m [1;37mblockdev: flip default cache mode from writethrough to writeback[m [2;37m(by Paolo Bonzini 4 years, 3 months ago)[m
+* [33mc8057f9[m[34m[m [1;37mSupport 'help' as a synonym for '?' in command line options[m [2;37m(by Peter Maydell 4 years, 3 months ago)[m
+* [33m577d0a3[m[34m[m [1;37mblockdev: Don't limit DriveInfo serial to 20 characters[m [2;37m(by Markus Armbruster 4 years, 4 months ago)[m
+* [33maaea3f3[m[34m[m [1;37mblockdev: Drop redundant CHS validation for if=ide[m [2;37m(by Markus Armbruster 4 years, 4 months ago)[m
+* [33m2b58495[m[34m[m [1;37mblock: Geometry and translation hints are now useless, purge them[m [2;37m(by Markus Armbruster 4 years, 4 months ago)[m
+* [33m317bb41[m[34m[m [1;37mblockdev: Save geometry in DriveInfo[m [2;37m(by Markus Armbruster 4 years, 4 months ago)[m
+* [33m04d4abe[m[34m[m [1;37mblockdev: warn when copy_on_read=on and readonly=on[m [2;37m(by Stefan Hajnoczi 4 years, 4 months ago)[m
+* [33m79d21d5[m[34m[m [1;37mblock: Simplify how drive_init() computes default ID[m [2;37m(by Markus Armbruster 4 years, 5 months ago)[m
+* [33m8be7e7e[m[34m[m [1;37mqemu-option: qemu_opts_create(): use error_set()[m [2;37m(by Luiz Capitulino 4 years, 7 months ago)[m
+* [33me86fe18[m[34m[m [1;37mblock: fail live snapshot if disk has no medium[m [2;37m(by Paolo Bonzini 4 years, 7 months ago)[m
+* [33mc83c66c[m[34m[m [1;37mblock: add 'speed' optional parameter to block-stream[m [2;37m(by Stefan Hajnoczi 4 years, 6 months ago)[m
+* [33m882ec7c[m[34m[m [1;37mblock: change block-job-set-speed argument from 'value' to 'speed'[m [2;37m(by Stefan Hajnoczi 4 years, 6 months ago)[m
+* [33m9e6636c[m[34m[m [1;37mblock: use Error mechanism instead of -errno for block_job_set_speed()[m [2;37m(by Stefan Hajnoczi 4 years, 6 months ago)[m
+* [33mfd7f8c6[m[34m[m [1;37mblock: use Error mechanism instead of -errno for block_job_create()[m [2;37m(by Stefan Hajnoczi 4 years, 6 months ago)[m
+* [33med9d420[m[34m[m [1;37mblockdev: open images with BDRV_O_INCOMING on incoming live migration[m [2;37m(by Benoît Canet 4 years, 7 months ago)[m
+* [33m12bde0e[m[34m[m [1;37mblock: cancel jobs when a device is ready to go away[m [2;37m(by Paolo Bonzini 4 years, 7 months ago)[m
+* [33maa2c91b[m[34m[m [1;37mide: Change serial number strncpy() to pstrcpy()[m [2;37m(by Floris Bos 4 years, 8 months ago)[m
+* [33m6cc2a41[m[34m[m [1;37mqmp: convert blockdev-snapshot-sync to a wrapper around transactions[m [2;37m(by Paolo Bonzini 4 years, 8 months ago)[m
+* [33mbc8b094[m[34m[m [1;37madd mode field to blockdev-snapshot-sync transaction item[m [2;37m(by Paolo Bonzini 4 years, 8 months ago)[m
+* [33m52e7c24[m[34m[m [1;37mrename blockdev-group-snapshot-sync[m [2;37m(by Paolo Bonzini 4 years, 8 months ago)[m
+* [33m622d241[m[34m[m [1;37muse QSIMPLEQ_FOREACH_SAFE when freeing list elements[m [2;37m(by Paolo Bonzini 4 years, 8 months ago)[m
+* [33me887749[m[34m[m [1;37mblock: handle -EBUSY in bdrv_commit_all()[m [2;37m(by Stefan Hajnoczi 4 years, 8 months ago)[m
+* [33md0895d6[m[34m[m [1;37mGroup snapshot: Fix format name for backing file[m [2;37m(by Paolo Bonzini 4 years, 8 months ago)[m
+* [33m8802d1f[m[34m[m [1;37mqapi: Introduce blockdev-group-snapshot-sync command[m [2;37m(by Jeff Cody 4 years, 8 months ago)[m
+* [33m1e9eb78[m[34m[m [1;37mblockdev: allow read-only pflash devices[m [2;37m(by Jordan Justen 4 years, 8 months ago)[m
+* [33mc9344f2[m[34m[m [1;37mFix build breakage from last commit.[m [2;37m(by Anthony Liguori 4 years, 9 months ago)[m
+* [33meeb9c1b[m[34m[m [1;37ms390x: fix -drive in the absence of aliases[m [2;37m(by Anthony Liguori 4 years, 9 months ago)[m
+* [33mc8c3080[m[34m[m [1;37mblock: add support for partial streaming[m [2;37m(by Marcelo Tosatti 4 years, 9 months ago)[m
+* [33maa398a5[m[34m[m [1;37mblockdev: make image streaming safe across hotplug[m [2;37m(by Stefan Hajnoczi 4 years, 9 months ago)[m
+* [33mfb5458c[m[34m[m [1;37mqmp: add query-block-jobs[m [2;37m(by Stefan Hajnoczi 4 years, 9 months ago)[m
+* [33m370521a[m[34m[m [1;37mqmp: add block_job_cancel command[m [2;37m(by Stefan Hajnoczi 4 years, 9 months ago)[m
+* [33m2d47c6e[m[34m[m [1;37mqmp: add block_job_set_speed command[m [2;37m(by Stefan Hajnoczi 4 years, 9 months ago)[m
+* [33m12bd451[m[34m[m [1;37mqmp: add block_stream command[m [2;37m(by Stefan Hajnoczi 4 years, 9 months ago)[m
+* [33m2d3735d[m[34m[m [1;37mblock: check bdrv_in_use() before blockdev operations[m [2;37m(by Stefan Hajnoczi 4 years, 9 months ago)[m
+* [33m939a1cc[m[34m[m [1;37mblock: use proper qerrors in qmp_block_resize[m [2;37m(by Stefan Hajnoczi 4 years, 10 months ago)[m
+* [33m80047da[m[34m[m [1;37mqapi: Convert block_set_io_throttle[m [2;37m(by Luiz Capitulino 4 years, 11 months ago)[m
+* [33m333a96e[m[34m[m [1;37mqapi: Convert change[m [2;37m(by Luiz Capitulino 4 years, 11 months ago)[m
+* [33mc245b6a[m[34m[m [1;37mqapi: Convert eject[m [2;37m(by Luiz Capitulino 4 years, 11 months ago)[m
+* [33m92d4855[m[34m[m [1;37mblock: eject_device(): Use error_set()[m [2;37m(by Luiz Capitulino 4 years, 11 months ago)[m
+* [33m6106e24[m[34m[m [1;37mqapi: Convert blockdev_snapshot_sync[m [2;37m(by Luiz Capitulino 4 years, 11 months ago)[m
+* [33m5e7caac[m[34m[m [1;37mqapi: Convert block_resize[m [2;37m(by Luiz Capitulino 4 years, 11 months ago)[m
+* [33ma4dea8a[m[34m[m [1;37mqapi: Convert block_passwd[m [2;37m(by Luiz Capitulino 4 years, 11 months ago)[m
+* [33m922453b[m[34m[m [1;37mblock: convert qemu_aio_flush() calls to bdrv_drain_all()[m [2;37m(by Stefan Hajnoczi 4 years, 11 months ago)[m
+* [33mfb0490f[m[34m[m [1;37mblock: add -drive copy-on-read=on|off[m [2;37m(by Stefan Hajnoczi 5 years ago)[m
+* [33m727f005[m[34m[m [1;37mhmp/qmp: add block_set_io_throttle[m [2;37m(by Zhi Yong Wu 5 years ago)[m
+* [33m0563e19[m[34m[m [1;37mblock: add the blockio limits command line support[m [2;37m(by Zhi Yong Wu 5 years ago)[m
+* [33m025ccaa[m[34m[m [1;37mblock: add eject request callback[m [2;37m(by Paolo Bonzini 5 years ago)[m
+* [33m25ad22b[m[34m[m [1;37mide/atapi scsi-disk: Make monitor eject -f, then change work[m [2;37m(by Markus Armbruster 5 years ago)[m
+* [33m9e6a4c9[m[34m[m [1;37mblock: Drop BlockDriverState member removable[m [2;37m(by Markus Armbruster 5 years ago)[m
+* [33m2c6942f[m[34m[m [1;37mblock: Clean up remaining users of "removable"[m [2;37m(by Markus Armbruster 5 years ago)[m
+* [33mf107639[m[34m[m [1;37mblock: Drop medium lock tracking, ask device models instead[m [2;37m(by Markus Armbruster 5 years ago)[m
+* [33mfa879d6[m[34m[m [1;37mblock: Attach non-qdev devices as well[m [2;37m(by Markus Armbruster 5 years ago)[m
+* [33mc3993cd[m[34m[m [1;37mblock: parse cache mode flags in a single place[m [2;37m(by Stefan Hajnoczi 5 years ago)[m
+* [33m7267c09[m[34m[m [1;37mUse glib memory allocation and free functions[m [2;37m(by Anthony Liguori 5 years ago)[m
+* [33mea8f942[m[34m[m [1;37mblockdev: Make eject fail for non-removable drives even with -f[m [2;37m(by Markus Armbruster 5 years ago)[m
+* [33md967b2f[m[34m[m [1;37mQMP: add snapshot-blkdev-sync command[m [2;37m(by Jes Sorensen 5 years ago)[m
+* [33me7ff8f0[m[34m[m [1;37mblock: drive_init(): Improve CHS setting error message[m [2;37m(by Luiz Capitulino 5 years ago)[m
+* [33m2d3999f[m[34m[m [1;37mblock: drive_init(): Simplify interface type setting[m [2;37m(by Luiz Capitulino 5 years ago)[m
+* [33me4080f9[m[34m[m [1;37mblockdev: Put space after comma in error message[m [2;37m(by Markus Armbruster 5 years ago)[m
+* [33ma659979[m[34m[m [1;37mblock: clarify the meaning of BDRV_O_NOCACHE[m [2;37m(by Christoph Hellwig 5 years ago)[m
+* [33m8d27846[m[34m[m [1;37mblock: Remove type hint, it's guest matter, doesn't belong here[m [2;37m(by Markus Armbruster 5 years ago)[m
+* [33m95b5edc[m[34m[m [1;37mblockdev: Store -drive option media in DriveInfo[m [2;37m(by Markus Armbruster 5 years ago)[m
+* [33md22b2f4[m[34m[m [1;37mDo not delete BlockDriverState when deleting the drive[m [2;37m(by Ryan Harper 6 years ago)[m
+* [33m29f82b3[m[34m[m [1;37mvirtio: use generic name when possible[m [2;37m(by Alexander Graf 6 years ago)[m
+* [33m52f9a17[m[34m[m [1;37mImprove error handling in do_snapshot_blkdev()[m [2;37m(by Jes Sorensen 6 years ago)[m
+* [33ma9ae2bf[m[34m[m [1;37mblockdev: Plug memory leak in drive_init() error paths[m [2;37m(by Markus Armbruster 6 years ago)[m
+* [33m2753d4a[m[34m[m [1;37mblockdev: Plug memory leak in drive_uninit()[m [2;37m(by Markus Armbruster 6 years ago)[m
+* [33m8591675[m[34m[m [1;37mblock: enable in_use flag[m [2;37m(by Marcelo Tosatti 6 years ago)[m
+* [33m84fb392[m[34m[m [1;37mblockdev: add refcount to DriveInfo[m [2;37m(by Marcelo Tosatti 6 years ago)[m
+* [33m319ae52[m[34m[m [1;37mblockdev: Fix drive_add for drives without media[m [2;37m(by Markus Armbruster 6 years ago)[m
+* [33m5645b0f[m[34m[m [1;37mblockdev: Replace drive_add()'s fmt, ... by optstr parameter[m [2;37m(by Markus Armbruster 6 years ago)[m
+* [33m4e5d9b5[m[34m[m [1;37mblockdev: Reject multiple definitions for the same drive[m [2;37m(by Markus Armbruster 6 years ago)[m
+* [33mf1bd51a[m[34m[m [1;37mblockdev: New drive_get_by_index()[m [2;37m(by Markus Armbruster 6 years ago)[m
+* [33m505a7fb[m[34m[m [1;37mblockdev: Factor drive_index_to_{bus,unit}_id out of drive_init()[m [2;37m(by Markus Armbruster 6 years ago)[m
+* [33m2292dda[m[34m[m [1;37mblockdev: Make drive_add() take explicit type, index parameters[m [2;37m(by Markus Armbruster 6 years ago)[m
+* [33m27d6bf4[m[34m[m [1;37mblockdev: Fix regression in -drive if=scsi,index=N[m [2;37m(by Markus Armbruster 6 years ago)[m
+* [33m1960966[m[34m[m [1;37mblockdev: Put BlockInterfaceType names and max_devs in tables[m [2;37m(by Markus Armbruster 6 years ago)[m
+* [33m1383997[m[34m[m [1;37mblockdev: New drive_get_next(), replacing qdev_init_bdrv()[m [2;37m(by Markus Armbruster 6 years ago)[m
+* [33m6d4a2b3[m[34m[m [1;37mblock: add block_resize monitor command[m [2;37m(by Christoph Hellwig 6 years ago)[m
+* [33m850ec11[m[34m[m [1;37mblockdev: Fix drive_del not to crash when drive is not in use[m [2;37m(by Markus Armbruster 6 years ago)[m
+* [33m807105a[m[34m[m [1;37mblockdev: Make drive_init() use error_report()[m [2;37m(by Markus Armbruster 6 years ago)[m
+* [33m4838485[m[34m[m [1;37mblockdev: Fix error message for invalid -drive CHS[m [2;37m(by Markus Armbruster 6 years ago)[m
+* [33mc90f1b3[m[34m[m [1;37mdo_snapshot_blkdev() error on missing snapshot_file argument[m [2;37m(by Jes Sorensen 6 years ago)[m
+* [33mf888256[m[34m[m [1;37mIntroduce do_snapshot_blkdev() and monitor command to handle it.[m [2;37m(by Jes Sorensen 6 years ago)[m
+* [33m0fc0f1f[m[34m[m [1;37mblockdev: check dinfo ptr before using[m [2;37m(by Ryan Harper 6 years ago)[m
+* [33m9063f81[m[34m[m [1;37mImplement drive_del to decouple block removal from device removal[m [2;37m(by Ryan Harper 6 years ago)[m
+* [33m5dba48a[m[34m[m [1;37mscsi-disk: Implement rerror option[m [2;37m(by Kevin Wolf 6 years ago)[m
+* [33m3329f07[m[34m[m [1;37mQemuOpts: make most qemu_*_opts static[m [2;37m(by Gerd Hoffmann 6 years ago)[m
+* [33m199630b[m[34m[m [1;37mFix -snapshot deleting images on disk change[m [2;37m(by Blue Swirl 6 years ago)[m
+* [33m528f766[m[34m[m [1;37mblockdev: Clean up how readonly persists across virtual media change[m [2;37m(by Markus Armbruster 6 years ago)[m
+*   [33m734003e[m[34m[m [1;37mMerge remote branch 'kwolf/for-anthony' into staging[m [2;37m(by Anthony Liguori 6 years ago)[m
+[1;36m|[m[31m\[m  
+[1;36m|[m * [33mdfb0acd[m[34m[m [1;37mblockdev: drive_get_by_id() is no longer used, remove[m [2;37m(by Markus Armbruster 6 years ago)[m
+[1;36m|[m * [33m14bafc5[m[34m[m [1;37mblockdev: Clean up automatic drive deletion[m [2;37m(by Markus Armbruster 6 years ago)[m
+[1;36m|[m * [33me4700e5[m[34m[m [1;37mblockdev: New drive_get_by_blockdev()[m [2;37m(by Markus Armbruster 6 years ago)[m
+[1;36m|[m * [33m0c6f9c1[m[34m[m [1;37mblockdev: Remove drive_get_serial()[m [2;37m(by Markus Armbruster 6 years ago)[m
+* [31m|[m [33meb159d1[m[34m[m [1;37mMonitor: handle optional '-' arg as a bool[m [2;37m(by Luiz Capitulino 6 years ago)[m
+[31m|[m[31m/[m  
+* [33m3b5276b[m[34m[m [1;37mmonitor: allow device to be ejected if no disk is inserted[m [2;37m(by Eduardo Habkost 6 years ago)[m
+* [33mc9b62a7[m[34m[m [1;37mblockdev: Give drives internal linkage[m [2;37m(by Markus Armbruster 6 years ago)[m
+* [33mac59eb9[m[34m[m [1;37mmonitor: Make "commit FOO" complain when FOO doesn't exist[m [2;37m(by Markus Armbruster 6 years ago)[m
+* [33m6ab4b5a[m[34m[m [1;37mblock: Decouple block device "commit all" from DriveInfo[m [2;37m(by Markus Armbruster 6 years ago)[m
+* [33mabd7f68[m[34m[m [1;37mblock: Move error actions from DriveInfo to BlockDriverState[m [2;37m(by Markus Armbruster 6 years ago)[m
+* [33mdd5b0d7[m[34m[m [1;37mFix regression for "-drive file="[m [2;37m(by Markus Armbruster 6 years ago)[m
+* [33m653dbec[m[34m[m [1;37mblock: Fix serial number assignment[m [2;37m(by Luiz Capitulino 6 years ago)[m
+* [33m666daa6[m[34m[m [1;37mblockdev: Collect block device code in new blockdev.c[m [2;37m(by Markus Armbruster 6 years ago)[m

@@ -28,7 +28,6 @@
 #include "qapi/visitor.h"
 #include "qemu/error-report.h"
 #include "hw/hw.h"
-#include "hw/qdev-core.h"
 
 typedef struct FWBootEntry FWBootEntry;
 

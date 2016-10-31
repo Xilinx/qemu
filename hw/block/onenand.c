@@ -285,7 +285,7 @@ static inline int onenand_prog_main(OneNANDState *s, int sec, int secn,
                 dp[i] &= sp[i];
             }
             if (s->blk_cur) {
-                result = blk_pwrite(s->blk_cur, offset, dp, size, 0) < 0;
+                result = blk_pwrite(s->blk_cur, offset, dp, size) < 0;
             }
         }
         if (dp && s->blk_cur) {
@@ -347,7 +347,7 @@ static inline int onenand_prog_spare(OneNANDState *s, int sec, int secn,
             }
             if (s->blk_cur) {
                 result = blk_pwrite(s->blk_cur, offset, dp,
-                                    BDRV_SECTOR_SIZE, 0) < 0;
+                                    BDRV_SECTOR_SIZE) < 0;
             }
         }
         g_free(dp);
@@ -366,7 +366,7 @@ static inline int onenand_erase(OneNANDState *s, int sec, int num)
         if (s->blk_cur) {
             int erasesec = s->secs_cur + (sec >> 5);
             if (blk_pwrite(s->blk_cur, sec << BDRV_SECTOR_BITS, blankbuf,
-                           BDRV_SECTOR_SIZE, 0) < 0) {
+                           BDRV_SECTOR_SIZE) < 0) {
                 goto fail;
             }
             if (blk_pread(s->blk_cur, erasesec << BDRV_SECTOR_BITS, tmpbuf,
@@ -375,7 +375,7 @@ static inline int onenand_erase(OneNANDState *s, int sec, int num)
             }
             memcpy(tmpbuf + ((sec & 31) << 4), blankbuf, 1 << 4);
             if (blk_pwrite(s->blk_cur, erasesec << BDRV_SECTOR_BITS, tmpbuf,
-                           BDRV_SECTOR_SIZE, 0) < 0) {
+                           BDRV_SECTOR_SIZE) < 0) {
                 goto fail;
             }
         } else {

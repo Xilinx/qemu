@@ -36,7 +36,6 @@
 #include "trace.h"
 #include "qemu/option_int.h"
 #include "qemu/cutils.h"
-#include "qemu/bswap.h"
 
 /*
   Differences with QCOW:
@@ -1758,6 +1757,13 @@ static void qcow2_invalidate_cache(BlockDriverState *bs, Error **errp)
 
     qcow2_close(bs);
 
+    bdrv_invalidate_cache(bs->file->bs, &local_err);
+    if (local_err) {
+        error_propagate(errp, local_err);
+        bs->drv = NULL;
+        return;
+    }
+
     memset(s, 0, sizeof(BDRVQcow2State));
     options = qdict_clone_shallow(bs->options);
 
@@ -2201,7 +2207,7 @@ static int qcow2_create2(const char *filename, int64_t total_size,
             cpu_to_be64(QCOW2_COMPAT_LAZY_REFCOUNTS);
     }
 
-    ret = blk_pwrite(blk, 0, header, cluster_size, 0);
+    ret = blk_pwrite(blk, 0, header, cluster_size);
     g_free(header);
     if (ret < 0) {
         error_setg_errno(errp, -ret, "Could not write qcow2 header");
@@ -2211,7 +2217,7 @@ static int qcow2_create2(const char *filename, int64_t total_size,
     /* Write a refcount table with one refcount block */
     refcount_table = g_malloc0(2 * cluster_size);
     refcount_table[0] = cpu_to_be64(2 * cluster_size);
-    ret = blk_pwrite(blk, cluster_size, refcount_table, 2 * cluster_size, 0);
+    ret = blk_pwrite(blk, cluster_size, refcount_table, 2 * cluster_size);
     g_free(refcount_table);
 
     if (ret < 0) {
@@ -2405,75 +2411,21 @@ finish:
     return ret;
 }
 
-
-static bool is_zero_cluster(BlockDriverState *bs, int64_t start)
-{
-    BDRVQcow2State *s = bs->opaque;
-    int nr;
-    BlockDriverState *file;
-    int64_t res = bdrv_get_block_status_above(bs, NULL, start,
-                                              s->cluster_sectors, &nr, &file);
-    return res >= 0 && (res & BDRV_BLOCK_ZERO) && nr == s->cluster_sectors;
-}
-
-static bool is_zero_cluster_top_locked(BlockDriverState *bs, int64_t start)
-{
-    BDRVQcow2State *s = bs->opaque;
-    int nr = s->cluster_sectors;
-    uint64_t off;
-    int ret;
-
-    ret = qcow2_get_cluster_offset(bs, start << BDRV_SECTOR_BITS, &nr, &off);
-    assert(nr == s->cluster_sectors);
-    return ret == QCOW2_CLUSTER_UNALLOCATED || ret == QCOW2_CLUSTER_ZERO;
-}
-
 static coroutine_fn int qcow2_co_write_zeroes(BlockDriverState *bs,
     int64_t sector_num, int nb_sectors, BdrvRequestFlags flags)
 {
     int ret;
     BDRVQcow2State *s = bs->opaque;
 
-    int head = sector_num % s->cluster_sectors;
-    int tail = (sector_num + nb_sectors) % s->cluster_sectors;
-
-    if (head != 0 || tail != 0) {
-        int64_t cl_end = -1;
-
-        sector_num -= head;
-        nb_sectors += head;
-
-        if (tail != 0) {
-            nb_sectors += s->cluster_sectors - tail;
-        }
-
-        if (!is_zero_cluster(bs, sector_num)) {
-            return -ENOTSUP;
-        }
-
-        if (nb_sectors > s->cluster_sectors) {
-            /* Technically the request can cover 2 clusters, f.e. 4k write
-               at s->cluster_sectors - 2k offset. One of these cluster can
-               be zeroed, one unallocated */
-            cl_end = sector_num + nb_sectors - s->cluster_sectors;
-            if (!is_zero_cluster(bs, cl_end)) {
-                return -ENOTSUP;
-            }
-        }
-
-        qemu_co_mutex_lock(&s->lock);
-        /* We can have new write after previous check */
-        if (!is_zero_cluster_top_locked(bs, sector_num) ||
-                (cl_end > 0 && !is_zero_cluster_top_locked(bs, cl_end))) {
-            qemu_co_mutex_unlock(&s->lock);
-            return -ENOTSUP;
-        }
-    } else {
-        qemu_co_mutex_lock(&s->lock);
+    /* Emulate misaligned zero writes */
+    if (sector_num % s->cluster_sectors || nb_sectors % s->cluster_sectors) {
+        return -ENOTSUP;
     }
 
     /* Whatever is left can use real zero clusters */
-    ret = qcow2_zero_clusters(bs, sector_num << BDRV_SECTOR_BITS, nb_sectors);
+    qemu_co_mutex_lock(&s->lock);
+    ret = qcow2_zero_clusters(bs, sector_num << BDRV_SECTOR_BITS,
+        nb_sectors);
     qemu_co_mutex_unlock(&s->lock);
 
     return ret;

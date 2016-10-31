@@ -708,6 +708,7 @@ void cpu_exec_exit(CPUState *cpu)
 void cpu_exec_init(CPUState *cpu, Error **errp)
 {
     CPUClass *cc = CPU_GET_CLASS(cpu);
+    int cpu_index;
     Error *local_err = NULL;
 
     cpu->as = NULL;
@@ -734,7 +735,7 @@ void cpu_exec_init(CPUState *cpu, Error **errp)
 #if defined(CONFIG_USER_ONLY)
     cpu_list_lock();
 #endif
-    cpu->cpu_index = cpu_get_free_index(&local_err);
+    cpu_index = cpu->cpu_index = cpu_get_free_index(&local_err);
     if (local_err) {
         error_propagate(errp, local_err);
 #if defined(CONFIG_USER_ONLY)
@@ -744,16 +745,14 @@ void cpu_exec_init(CPUState *cpu, Error **errp)
     }
     QTAILQ_INSERT_TAIL(&cpus, cpu, node);
 #if defined(CONFIG_USER_ONLY)
-    (void) cc;
     cpu_list_unlock();
-#else
+#endif
     if (qdev_get_vmsd(DEVICE(cpu)) == NULL) {
-        vmstate_register(NULL, cpu->cpu_index, &vmstate_cpu_common, cpu);
+        vmstate_register(NULL, cpu_index, &vmstate_cpu_common, cpu);
     }
     if (cc->vmsd != NULL) {
-        vmstate_register(NULL, cpu->cpu_index, cc->vmsd, cpu);
+        vmstate_register(NULL, cpu_index, cc->vmsd, cpu);
     }
-#endif
 }
 
 #if defined(CONFIG_USER_ONLY)
@@ -1474,16 +1473,34 @@ static void qemu_ram_setup_dump(void *addr, ram_addr_t size)
     }
 }
 
+/* Called within an RCU critical section, or while the ramlist lock
+ * is held.
+ */
+static RAMBlock *find_ram_block(ram_addr_t addr)
+{
+    RAMBlock *block;
+
+    QLIST_FOREACH_RCU(block, &ram_list.blocks, next) {
+        if (block->offset == addr) {
+            return block;
+        }
+    }
+
+    return NULL;
+}
+
 const char *qemu_ram_get_idstr(RAMBlock *rb)
 {
     return rb->idstr;
 }
 
 /* Called with iothread lock held.  */
-void qemu_ram_set_idstr(RAMBlock *new_block, const char *name, DeviceState *dev)
+void qemu_ram_set_idstr(ram_addr_t addr, const char *name, DeviceState *dev)
 {
-    RAMBlock *block;
+    RAMBlock *new_block, *block;
 
+    rcu_read_lock();
+    new_block = find_ram_block(addr);
     assert(new_block);
     assert(!new_block->idstr[0]);
 
@@ -1496,10 +1513,8 @@ void qemu_ram_set_idstr(RAMBlock *new_block, const char *name, DeviceState *dev)
     }
     pstrcat(new_block->idstr, sizeof(new_block->idstr), name);
 
-    rcu_read_lock();
     QLIST_FOREACH_RCU(block, &ram_list.blocks, next) {
-        if (block != new_block &&
-            !strcmp(block->idstr, new_block->idstr)) {
+        if (block != new_block && !strcmp(block->idstr, new_block->idstr)) {
             fprintf(stderr, "RAMBlock \"%s\" already registered, abort!\n",
                     new_block->idstr);
             abort();
@@ -1509,15 +1524,21 @@ void qemu_ram_set_idstr(RAMBlock *new_block, const char *name, DeviceState *dev)
 }
 
 /* Called with iothread lock held.  */
-void qemu_ram_unset_idstr(RAMBlock *block)
+void qemu_ram_unset_idstr(ram_addr_t addr)
 {
+    RAMBlock *block;
+
     /* FIXME: arch_init.c assumes that this is not called throughout
      * migration.  Ignore the problem since hot-unplug during migration
      * does not work anyway.
      */
+
+    rcu_read_lock();
+    block = find_ram_block(addr);
     if (block) {
         memset(block->idstr, 0, sizeof(block->idstr));
     }
+    rcu_read_unlock();
 }
 
 static int memory_try_enable_merging(void *addr, size_t len)
@@ -1537,8 +1558,10 @@ static int memory_try_enable_merging(void *addr, size_t len)
  * resize callback to update device state and/or add assertions to detect
  * misuse, if necessary.
  */
-int qemu_ram_resize(RAMBlock *block, ram_addr_t newsize, Error **errp)
+int qemu_ram_resize(ram_addr_t base, ram_addr_t newsize, Error **errp)
 {
+    RAMBlock *block = find_ram_block(base);
+
     assert(block);
 
     newsize = HOST_PAGE_ALIGN(newsize);
@@ -3199,7 +3222,9 @@ static inline uint32_t address_space_ldl_internal(AddressSpace *as, hwaddr addr,
     } else {
         /* RAM case */
         ptr = qemu_get_ram_ptr(mr->ram_block,
-                               memory_region_get_ram_addr(mr) + addr1);
+                               (memory_region_get_ram_addr(mr)
+                                & TARGET_PAGE_MASK)
+                               + addr1);
         switch (endian) {
         case DEVICE_LITTLE_ENDIAN:
             val = ldl_le_p(ptr);
@@ -3293,7 +3318,9 @@ static inline uint64_t address_space_ldq_internal(AddressSpace *as, hwaddr addr,
     } else {
         /* RAM case */
         ptr = qemu_get_ram_ptr(mr->ram_block,
-                               memory_region_get_ram_addr(mr) + addr1);
+                               (memory_region_get_ram_addr(mr)
+                                & TARGET_PAGE_MASK)
+                               + addr1);
         switch (endian) {
         case DEVICE_LITTLE_ENDIAN:
             val = ldq_le_p(ptr);
@@ -3407,7 +3434,9 @@ static inline uint32_t address_space_lduw_internal(AddressSpace *as,
     } else {
         /* RAM case */
         ptr = qemu_get_ram_ptr(mr->ram_block,
-                               memory_region_get_ram_addr(mr) + addr1);
+                               (memory_region_get_ram_addr(mr)
+                                & TARGET_PAGE_MASK)
+                               + addr1);
         switch (endian) {
         case DEVICE_LITTLE_ENDIAN:
             val = lduw_le_p(ptr);
@@ -3544,7 +3573,7 @@ static inline void address_space_stl_internal(AddressSpace *as,
         r = memory_region_dispatch_write(mr, addr1, val, 4, attrs);
     } else {
         /* RAM case */
-        addr1 += memory_region_get_ram_addr(mr);
+        addr1 += memory_region_get_ram_addr(mr) & TARGET_PAGE_MASK;
         ptr = qemu_get_ram_ptr(mr->ram_block, addr1);
         switch (endian) {
         case DEVICE_LITTLE_ENDIAN:
@@ -3654,7 +3683,7 @@ static inline void address_space_stw_internal(AddressSpace *as,
         r = memory_region_dispatch_write(mr, addr1, val, 2, attrs);
     } else {
         /* RAM case */
-        addr1 += memory_region_get_ram_addr(mr);
+        addr1 += memory_region_get_ram_addr(mr) & TARGET_PAGE_MASK;
         ptr = qemu_get_ram_ptr(mr->ram_block, addr1);
         switch (endian) {
         case DEVICE_LITTLE_ENDIAN:

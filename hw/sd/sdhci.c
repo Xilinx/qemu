@@ -29,9 +29,8 @@
 #include "sysemu/dma.h"
 #include "qemu/timer.h"
 #include "qemu/bitops.h"
-#include "sdhci-internal.h"
-#include "qemu/log.h"
 #include "qapi/error.h"
+#include "sdhci-internal.h"
 
 /* host controller debug messages */
 #ifndef SDHC_DEBUG
@@ -278,9 +277,6 @@ static void sdhci_send_command(SDHCIState *s)
             (s->cmdreg & SDHC_CMD_RESPONSE) == SDHC_CMD_RSP_WITH_BUSY) {
             s->norintsts |= SDHC_NIS_TRSCMP;
         }
-    } else if (rlen != 0 && (s->errintstsen & SDHC_EISEN_CMDIDX)) {
-        s->errintsts |= SDHC_EIS_CMDIDX;
-        s->norintsts |= SDHC_NIS_ERR;
     }
 
     if (s->norintstsen & SDHC_NISEN_CMDCMP) {

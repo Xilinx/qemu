@@ -2036,9 +2036,10 @@ static void property_get_tm(Object *obj, Visitor *v, const char *name,
     if (err) {
         goto out_end;
     }
-    visit_check_struct(v, &err);
 out_end:
-    visit_end_struct(v);
+    error_propagate(errp, err);
+    err = NULL;
+    visit_end_struct(v, errp);
 out:
     error_propagate(errp, err);
 

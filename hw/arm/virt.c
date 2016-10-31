@@ -38,7 +38,6 @@
 #include "net/net.h"
 #include "sysemu/block-backend.h"
 #include "sysemu/device_tree.h"
-#include "sysemu/numa.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/kvm.h"
 #include "hw/boards.h"
@@ -330,7 +329,6 @@ static void fdt_add_cpu_nodes(const VirtBoardInfo *vbi)
 {
     int cpu;
     int addr_cells = 1;
-    unsigned int i;
 
     /*
      * From Documentation/devicetree/bindings/arm/cpus.txt
@@ -378,12 +376,6 @@ static void fdt_add_cpu_nodes(const VirtBoardInfo *vbi)
         } else {
             qemu_fdt_setprop_cell(vbi->fdt, nodename, "reg",
                                   armcpu->mp_affinity);
-        }
-
-        for (i = 0; i < nb_numa_nodes; i++) {
-            if (test_bit(cpu, numa_info[i].node_cpu)) {
-                qemu_fdt_setprop_cell(vbi->fdt, nodename, "numa-node-id", i);
-            }
         }
 
         g_free(nodename);
@@ -1418,9 +1410,13 @@ static void virt_2_6_instance_init(Object *obj)
 static void virt_2_6_class_init(ObjectClass *oc, void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
+    static GlobalProperty compat_props[] = {
+        { /* end of list */ }
+    };
 
     mc->desc = "QEMU 2.6 ARM Virtual Machine";
     mc->alias = "virt";
+    mc->compat_props = compat_props;
 }
 
 static const TypeInfo machvirt_info = {

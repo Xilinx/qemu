@@ -17,7 +17,6 @@
 #include "qemu/bitops.h"
 #include "qemu/main-loop.h"
 #include "qemu/timer.h"
-#include "qemu/log.h"
 #include "trace.h"
 
 #define TIMER_NR_REGS 4
@@ -188,7 +187,7 @@ static void aspeed_timer_set_value(AspeedTimerCtrlState *s, int timer, int reg,
 }
 
 /* Control register operations are broken out into helpers that can be
- * explicitly called on aspeed_timer_reset(), but also from
+ * explictly called on aspeed_timer_reset(), but also from
  * aspeed_timer_ctrl_op().
  */
 
@@ -381,7 +380,7 @@ static void aspeed_timer_reset(DeviceState *dev)
 
     for (i = 0; i < ASPEED_TIMER_NR_TIMERS; i++) {
         AspeedTimer *t = &s->timers[i];
-        /* Explicitly call helpers to avoid any conditional behaviour through
+        /* Explictly call helpers to avoid any conditional behaviour through
          * aspeed_timer_set_ctrl().
          */
         aspeed_timer_ctrl_enable(t, false);

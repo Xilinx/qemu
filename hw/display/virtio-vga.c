@@ -4,7 +4,6 @@
 #include "ui/console.h"
 #include "vga_int.h"
 #include "hw/virtio/virtio-pci.h"
-#include "qapi/error.h"
 
 /*
  * virtio-vga: This extends VirtioPCIProxy.
@@ -90,7 +89,6 @@ static void virtio_vga_realize(VirtIOPCIProxy *vpci_dev, Error **errp)
     VirtIOVGA *vvga = VIRTIO_VGA(vpci_dev);
     VirtIOGPU *g = &vvga->vdev;
     VGACommonState *vga = &vvga->vga;
-    Error *err = NULL;
     uint32_t offset;
     int i;
 
@@ -126,11 +124,7 @@ static void virtio_vga_realize(VirtIOPCIProxy *vpci_dev, Error **errp)
     /* force virtio-1.0 */
     vpci_dev->flags &= ~VIRTIO_PCI_FLAG_DISABLE_MODERN;
     vpci_dev->flags |= VIRTIO_PCI_FLAG_DISABLE_LEGACY;
-    object_property_set_bool(OBJECT(g), true, "realized", &err);
-    if (err) {
-        error_propagate(errp, err);
-        return;
-    }
+    object_property_set_bool(OBJECT(g), true, "realized", errp);
 
     /* add stdvga mmio regions */
     pci_std_vga_mmio_region_init(vga, &vpci_dev->modern_bar,

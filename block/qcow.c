@@ -28,7 +28,6 @@
 #include "block/block_int.h"
 #include "sysemu/block-backend.h"
 #include "qemu/module.h"
-#include "qemu/bswap.h"
 #include <zlib.h>
 #include "qapi/qmp/qerror.h"
 #include "crypto/cipher.h"
@@ -854,14 +853,14 @@ static int qcow_create(const char *filename, QemuOpts *opts, Error **errp)
     }
 
     /* write all the data */
-    ret = blk_pwrite(qcow_blk, 0, &header, sizeof(header), 0);
+    ret = blk_pwrite(qcow_blk, 0, &header, sizeof(header));
     if (ret != sizeof(header)) {
         goto exit;
     }
 
     if (backing_file) {
         ret = blk_pwrite(qcow_blk, sizeof(header),
-                         backing_file, backing_filename_len, 0);
+            backing_file, backing_filename_len);
         if (ret != backing_filename_len) {
             goto exit;
         }
@@ -870,8 +869,8 @@ static int qcow_create(const char *filename, QemuOpts *opts, Error **errp)
     tmp = g_malloc0(BDRV_SECTOR_SIZE);
     for (i = 0; i < ((sizeof(uint64_t)*l1_size + BDRV_SECTOR_SIZE - 1)/
         BDRV_SECTOR_SIZE); i++) {
-        ret = blk_pwrite(qcow_blk, header_size + BDRV_SECTOR_SIZE * i,
-                         tmp, BDRV_SECTOR_SIZE, 0);
+        ret = blk_pwrite(qcow_blk, header_size +
+            BDRV_SECTOR_SIZE*i, tmp, BDRV_SECTOR_SIZE);
         if (ret != BDRV_SECTOR_SIZE) {
             g_free(tmp);
             goto exit;

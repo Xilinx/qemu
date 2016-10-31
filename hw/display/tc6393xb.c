@@ -12,7 +12,6 @@
  */
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "qemu/host-utils.h"
 #include "hw/hw.h"
 #include "hw/devices.h"
 #include "hw/block/flash.h"

@@ -26,6 +26,7 @@
 
 #include "block/accounting.h"
 #include "block/block.h"
+#include "block/throttle-groups.h"
 #include "qemu/option.h"
 #include "qemu/queue.h"
 #include "qemu/coroutine.h"
@@ -37,12 +38,12 @@
 #include "qemu/throttle.h"
 
 #define BLOCK_FLAG_ENCRYPT          1
+#define BLOCK_FLAG_COMPAT6          4
 #define BLOCK_FLAG_LAZY_REFCOUNTS   8
 
 #define BLOCK_OPT_SIZE              "size"
 #define BLOCK_OPT_ENCRYPT           "encryption"
 #define BLOCK_OPT_COMPAT6           "compat6"
-#define BLOCK_OPT_HWVERSION         "hwversion"
 #define BLOCK_OPT_BACKING_FILE      "backing_file"
 #define BLOCK_OPT_BACKING_FMT       "backing_fmt"
 #define BLOCK_OPT_CLUSTER_SIZE      "cluster_size"
@@ -126,6 +127,10 @@ struct BlockDriver {
                      Error **errp);
     int (*bdrv_file_open)(BlockDriverState *bs, QDict *options, int flags,
                           Error **errp);
+    int (*bdrv_read)(BlockDriverState *bs, int64_t sector_num,
+                     uint8_t *buf, int nb_sectors);
+    int (*bdrv_write)(BlockDriverState *bs, int64_t sector_num,
+                      const uint8_t *buf, int nb_sectors);
     void (*bdrv_close)(BlockDriverState *bs);
     int (*bdrv_create)(const char *filename, QemuOpts *opts, Error **errp);
     int (*bdrv_set_key)(BlockDriverState *bs, const char *key);
@@ -148,20 +153,18 @@ struct BlockDriver {
 
     int coroutine_fn (*bdrv_co_readv)(BlockDriverState *bs,
         int64_t sector_num, int nb_sectors, QEMUIOVector *qiov);
-    int coroutine_fn (*bdrv_co_preadv)(BlockDriverState *bs,
-        uint64_t offset, uint64_t bytes, QEMUIOVector *qiov, int flags);
     int coroutine_fn (*bdrv_co_writev)(BlockDriverState *bs,
         int64_t sector_num, int nb_sectors, QEMUIOVector *qiov);
     int coroutine_fn (*bdrv_co_writev_flags)(BlockDriverState *bs,
         int64_t sector_num, int nb_sectors, QEMUIOVector *qiov, int flags);
-    int coroutine_fn (*bdrv_co_pwritev)(BlockDriverState *bs,
-        uint64_t offset, uint64_t bytes, QEMUIOVector *qiov, int flags);
+
+    int supported_write_flags;
 
     /*
      * Efficiently zero a region of the disk image.  Typically an image format
      * would use a compact metadata representation to implement this.  This
-     * function pointer may be NULL or return -ENOSUP and .bdrv_co_writev()
-     * will be called instead.
+     * function pointer may be NULL and .bdrv_co_writev() will be called
+     * instead.
      */
     int coroutine_fn (*bdrv_co_write_zeroes)(BlockDriverState *bs,
         int64_t sector_num, int nb_sectors, BdrvRequestFlags flags);
@@ -291,6 +294,7 @@ struct BlockDriver {
     /* io queue for linux-aio */
     void (*bdrv_io_plug)(BlockDriverState *bs);
     void (*bdrv_io_unplug)(BlockDriverState *bs);
+    void (*bdrv_flush_io_queue)(BlockDriverState *bs);
 
     /**
      * Try to get @bs's logical and physical block size.
@@ -312,11 +316,6 @@ struct BlockDriver {
      * remain so until next I/O callback (e.g. bdrv_co_writev) is called.
      */
     void (*bdrv_drain)(BlockDriverState *bs);
-
-    void (*bdrv_add_child)(BlockDriverState *parent, BlockDriverState *child,
-                           Error **errp);
-    void (*bdrv_del_child)(BlockDriverState *parent, BdrvChild *child,
-                           Error **errp);
 
     QLIST_ENTRY(BlockDriver) list;
 };
@@ -364,25 +363,6 @@ typedef struct BdrvAioNotifier {
 struct BdrvChildRole {
     void (*inherit_options)(int *child_flags, QDict *child_options,
                             int parent_flags, QDict *parent_options);
-
-    void (*change_media)(BdrvChild *child, bool load);
-    void (*resize)(BdrvChild *child);
-
-    /* Returns a name that is supposedly more useful for human users than the
-     * node name for identifying the node in question (in particular, a BB
-     * name), or NULL if the parent can't provide a better name. */
-    const char* (*get_name)(BdrvChild *child);
-
-    /*
-     * If this pair of functions is implemented, the parent doesn't issue new
-     * requests after returning from .drained_begin() until .drained_end() is
-     * called.
-     *
-     * Note that this can be nested. If drained_begin() was called twice, new
-     * I/O is allowed only after drained_end() was called twice, too.
-     */
-    void (*drained_begin)(BdrvChild *child);
-    void (*drained_end)(BdrvChild *child);
 };
 
 extern const BdrvChildRole child_file;
@@ -392,7 +372,6 @@ struct BdrvChild {
     BlockDriverState *bs;
     char *name;
     const BdrvChildRole *role;
-    void *opaque;
     QLIST_ENTRY(BdrvChild) next;
     QLIST_ENTRY(BdrvChild) next_parent;
 };
@@ -418,6 +397,8 @@ struct BlockDriverState {
     BlockDriver *drv; /* NULL means no media */
     void *opaque;
 
+    BlockBackend *blk;          /* owning backend, if any */
+
     AioContext *aio_context; /* event loop used for fd handlers, timers, etc */
     /* long-running tasks intended to always use the same AioContext as this
      * BDS may register themselves in this list to be notified of changes
@@ -441,6 +422,19 @@ struct BlockDriverState {
     /* number of in-flight serialising requests */
     unsigned int serialising_in_flight;
 
+    /* I/O throttling.
+     * throttle_state tells us if this BDS has I/O limits configured.
+     * io_limits_enabled tells us if they are currently being
+     * enforced, but it can be temporarily set to false */
+    CoQueue      throttled_reqs[2];
+    bool         io_limits_enabled;
+    /* The following fields are protected by the ThrottleGroup lock.
+     * See the ThrottleGroup documentation for details. */
+    ThrottleState *throttle_state;
+    ThrottleTimers throttle_timers;
+    unsigned       pending_reqs[2];
+    QLIST_ENTRY(BlockDriverState) round_robin;
+
     /* Offset after the highest byte written to */
     uint64_t wr_highest_offset;
 
@@ -452,11 +446,6 @@ struct BlockDriverState {
 
     /* Alignment requirement for offset/length of I/O requests */
     unsigned int request_alignment;
-    /* Flags honored during pwrite (so far: BDRV_REQ_FUA) */
-    unsigned int supported_write_flags;
-    /* Flags honored during write_zeroes (so far: BDRV_REQ_FUA,
-     * BDRV_REQ_MAY_UNMAP) */
-    unsigned int supported_zero_flags;
 
     /* the following member gives a name to every node on the bs graph. */
     char node_name[32];
@@ -495,10 +484,6 @@ struct BlockDriverState {
     uint64_t write_threshold_offset;
     NotifierWithReturn write_threshold_notifier;
 
-    /* counters for nested bdrv_io_plug and bdrv_io_unplugged_begin */
-    unsigned io_plugged;
-    unsigned io_plug_disabled;
-
     int quiesce_counter;
 };
 
@@ -506,6 +491,9 @@ struct BlockBackendRootState {
     int open_flags;
     bool read_only;
     BlockdevDetectZeroesOptions detect_zeroes;
+
+    char *throttle_group;
+    ThrottleState *throttle_state;
 };
 
 static inline BlockDriverState *backing_bs(BlockDriverState *bs)
@@ -529,16 +517,19 @@ extern BlockDriver bdrv_qcow2;
  */
 void bdrv_setup_io_funcs(BlockDriver *bdrv);
 
-int coroutine_fn bdrv_co_preadv(BlockDriverState *bs,
+int coroutine_fn bdrv_co_do_preadv(BlockDriverState *bs,
     int64_t offset, unsigned int bytes, QEMUIOVector *qiov,
     BdrvRequestFlags flags);
-int coroutine_fn bdrv_co_pwritev(BlockDriverState *bs,
+int coroutine_fn bdrv_co_do_pwritev(BlockDriverState *bs,
     int64_t offset, unsigned int bytes, QEMUIOVector *qiov,
     BdrvRequestFlags flags);
 
 int get_tmp_filename(char *filename, int size);
 BlockDriver *bdrv_probe_all(const uint8_t *buf, int buf_size,
                             const char *filename);
+
+void bdrv_set_io_limits(BlockDriverState *bs,
+                        ThrottleConfig *cfg);
 
 
 /**
@@ -722,13 +713,13 @@ BdrvChild *bdrv_root_attach_child(BlockDriverState *child_bs,
                                   const BdrvChildRole *child_role);
 void bdrv_root_unref_child(BdrvChild *child);
 
-const char *bdrv_get_parent_name(const BlockDriverState *bs);
 void blk_dev_change_media_cb(BlockBackend *blk, bool load);
 bool blk_dev_has_removable_media(BlockBackend *blk);
 bool blk_dev_has_tray(BlockBackend *blk);
 void blk_dev_eject_request(BlockBackend *blk, bool force);
 bool blk_dev_is_tray_open(BlockBackend *blk);
 bool blk_dev_is_medium_locked(BlockBackend *blk);
+void blk_dev_resize_cb(BlockBackend *blk);
 
 void bdrv_set_dirty(BlockDriverState *bs, int64_t cur_sector, int nr_sectors);
 bool bdrv_requests_pending(BlockDriverState *bs);

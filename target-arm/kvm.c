@@ -25,7 +25,6 @@
 #include "hw/arm/arm.h"
 #include "exec/memattrs.h"
 #include "hw/boards.h"
-#include "qemu/log.h"
 
 const KVMCapabilityInfo kvm_arch_required_capabilities[] = {
     KVM_CAP_LAST_INFO

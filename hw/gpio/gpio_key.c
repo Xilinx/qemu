@@ -24,7 +24,6 @@
 
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
-#include "qemu/timer.h"
 
 #define TYPE_GPIOKEY "gpio-key"
 #define GPIOKEY(obj) OBJECT_CHECK(GPIOKEYState, (obj), TYPE_GPIOKEY)

@@ -19,7 +19,6 @@
 
 #include "qemu/osdep.h"
 #include "hw/hw.h"
-#include "qemu/host-utils.h"
 #include "qemu/error-report.h"
 #include "qemu/timer.h"
 #include "ui/qemu-spice.h"

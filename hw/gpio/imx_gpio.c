@@ -19,7 +19,6 @@
 
 #include "qemu/osdep.h"
 #include "hw/gpio/imx_gpio.h"
-#include "qemu/log.h"
 
 #ifndef DEBUG_IMX_GPIO
 #define DEBUG_IMX_GPIO 0

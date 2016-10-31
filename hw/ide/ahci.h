@@ -374,7 +374,7 @@ void ahci_reset(AHCIState *s);
 
 void ahci_ide_create_devs(PCIDevice *dev, DriveInfo **hd);
 
-#define TYPE_SYSBUS_AHCI "generic-ahci"
+#define TYPE_SYSBUS_AHCI "sysbus-ahci"
 #define SYSBUS_AHCI(obj) OBJECT_CHECK(SysbusAHCIState, (obj), TYPE_SYSBUS_AHCI)
 
 typedef struct SysbusAHCIState {

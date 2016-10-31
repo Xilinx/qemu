@@ -42,10 +42,8 @@ void qemu_log(const char *fmt, ...)
     va_end(ap);
 }
 
-static bool log_uses_own_buffers;
-
 /* enable or disable low levels log */
-void qemu_set_log(int log_flags)
+void do_qemu_set_log(int log_flags, bool use_own_buffers)
 {
     qemu_loglevel = log_flags;
 #ifdef CONFIG_TRACE_LOG
@@ -72,7 +70,7 @@ void qemu_set_log(int log_flags)
             qemu_logfile = stderr;
         }
         /* must avoid mmap() usage of glibc by setting a buffer "by hand" */
-        if (log_uses_own_buffers) {
+        if (use_own_buffers) {
             static char logfile_buf[4096];
 
             setvbuf(qemu_logfile, logfile_buf, _IOLBF, sizeof(logfile_buf));
@@ -91,12 +89,6 @@ void qemu_set_log(int log_flags)
         qemu_log_close();
     }
 }
-
-void qemu_log_needs_buffers(void)
-{
-    log_uses_own_buffers = true;
-}
-
 /*
  * Allow the user to include %d in their logfile which will be
  * substituted with the current PID. This is useful for debugging many
@@ -267,6 +259,7 @@ const QEMULogItem qemu_log_items[] = {
     { DEV_LOG_SDHCI, "sdhci", "enable SDHCI log." },
     { DEV_LOG_SPI, "spi", "enable SPI controller log." },
     { DEV_LOG_SPI_DEV, "spi-dev", "enable SPI device logs." },
+
     { 0, NULL, NULL },
 };
 

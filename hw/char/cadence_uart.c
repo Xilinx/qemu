@@ -17,10 +17,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "hw/sysbus.h"
-#include "sysemu/char.h"
-#include "qemu/timer.h"
-#include "qemu/log.h"
 #include "hw/char/cadence_uart.h"
 
 #ifdef CADENCE_UART_ERR_DEBUG

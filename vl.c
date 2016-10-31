@@ -122,10 +122,6 @@ int main(int argc, char **argv)
 #include "sysemu/replay.h"
 #include "qapi/qmp/qerror.h"
 
-#if defined(CONFIG_LIBGCRYPT)
-#include <gcrypt.h>
-#endif
-
 #define MAX_VIRTIO_CONSOLES 1
 #define MAX_SCLP_CONSOLES 1
 
@@ -4335,8 +4331,7 @@ int main(int argc, char **argv, char **envp)
 
     if (qemu_opts_foreach(qemu_find_opts("object"),
                           user_creatable_add_opts_foreach,
-                          object_create_initial, &err)) {
-        error_report_err(err);
+                          object_create_initial, NULL)) {
         exit(1);
     }
 
@@ -4454,8 +4449,7 @@ int main(int argc, char **argv, char **envp)
 
     if (qemu_opts_foreach(qemu_find_opts("object"),
                           user_creatable_add_opts_foreach,
-                          object_create_delayed, &err)) {
-        error_report_err(err);
+                          object_create_delayed, NULL)) {
         exit(1);
     }
 

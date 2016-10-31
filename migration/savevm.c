@@ -27,7 +27,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "cpu.h"
 #include "hw/boards.h"
 #include "hw/hw.h"
 #include "hw/qdev.h"
@@ -1115,7 +1114,7 @@ void qemu_savevm_state_complete_precopy(QEMUFile *f, bool iterable_only)
         qemu_put_be32(f, vmdesc_len);
         qemu_put_buffer(f, (uint8_t *)qjson_get_str(vmdesc), vmdesc_len);
     }
-    qjson_destroy(vmdesc);
+    object_unref(OBJECT(vmdesc));
 
     qemu_fflush(f);
 }
@@ -1170,7 +1169,7 @@ static int qemu_savevm_state(QEMUFile *f, Error **errp)
     MigrationState *ms = migrate_init(&params);
     ms->to_dst_file = f;
 
-    if (migration_is_blocked(errp)) {
+    if (qemu_savevm_state_blocked(errp)) {
         return -EINVAL;
     }
 
@@ -2229,13 +2228,13 @@ void hmp_info_snapshots(Monitor *mon, const QDict *qdict)
 
 void vmstate_register_ram(MemoryRegion *mr, DeviceState *dev)
 {
-    qemu_ram_set_idstr(mr->ram_block,
+    qemu_ram_set_idstr(memory_region_get_ram_addr(mr) & TARGET_PAGE_MASK,
                        memory_region_name(mr), dev);
 }
 
 void vmstate_unregister_ram(MemoryRegion *mr, DeviceState *dev)
 {
-    qemu_ram_unset_idstr(mr->ram_block);
+    qemu_ram_unset_idstr(memory_region_get_ram_addr(mr) & TARGET_PAGE_MASK);
 }
 
 void vmstate_register_ram_global(MemoryRegion *mr)

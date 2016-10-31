@@ -373,10 +373,9 @@ int bdrv_snapshot_load_tmp_by_id_or_name(BlockDriverState *bs,
 bool bdrv_all_can_snapshot(BlockDriverState **first_bad_bs)
 {
     bool ok = true;
-    BlockDriverState *bs;
-    BdrvNextIterator *it = NULL;
+    BlockDriverState *bs = NULL;
 
-    while (ok && (it = bdrv_next(it, &bs))) {
+    while (ok && (bs = bdrv_next(bs))) {
         AioContext *ctx = bdrv_get_aio_context(bs);
 
         aio_context_acquire(ctx);
@@ -394,11 +393,10 @@ int bdrv_all_delete_snapshot(const char *name, BlockDriverState **first_bad_bs,
                              Error **err)
 {
     int ret = 0;
-    BlockDriverState *bs;
-    BdrvNextIterator *it = NULL;
+    BlockDriverState *bs = NULL;
     QEMUSnapshotInfo sn1, *snapshot = &sn1;
 
-    while (ret == 0 && (it = bdrv_next(it, &bs))) {
+    while (ret == 0 && (bs = bdrv_next(bs))) {
         AioContext *ctx = bdrv_get_aio_context(bs);
 
         aio_context_acquire(ctx);
@@ -417,10 +415,9 @@ int bdrv_all_delete_snapshot(const char *name, BlockDriverState **first_bad_bs,
 int bdrv_all_goto_snapshot(const char *name, BlockDriverState **first_bad_bs)
 {
     int err = 0;
-    BlockDriverState *bs;
-    BdrvNextIterator *it = NULL;
+    BlockDriverState *bs = NULL;
 
-    while (err == 0 && (it = bdrv_next(it, &bs))) {
+    while (err == 0 && (bs = bdrv_next(bs))) {
         AioContext *ctx = bdrv_get_aio_context(bs);
 
         aio_context_acquire(ctx);
@@ -438,10 +435,9 @@ int bdrv_all_find_snapshot(const char *name, BlockDriverState **first_bad_bs)
 {
     QEMUSnapshotInfo sn;
     int err = 0;
-    BlockDriverState *bs;
-    BdrvNextIterator *it = NULL;
+    BlockDriverState *bs = NULL;
 
-    while (err == 0 && (it = bdrv_next(it, &bs))) {
+    while (err == 0 && (bs = bdrv_next(bs))) {
         AioContext *ctx = bdrv_get_aio_context(bs);
 
         aio_context_acquire(ctx);
@@ -461,10 +457,9 @@ int bdrv_all_create_snapshot(QEMUSnapshotInfo *sn,
                              BlockDriverState **first_bad_bs)
 {
     int err = 0;
-    BlockDriverState *bs;
-    BdrvNextIterator *it = NULL;
+    BlockDriverState *bs = NULL;
 
-    while (err == 0 && (it = bdrv_next(it, &bs))) {
+    while (err == 0 && (bs = bdrv_next(bs))) {
         AioContext *ctx = bdrv_get_aio_context(bs);
 
         aio_context_acquire(ctx);
@@ -485,10 +480,9 @@ int bdrv_all_create_snapshot(QEMUSnapshotInfo *sn,
 BlockDriverState *bdrv_all_find_vmstate_bs(void)
 {
     bool not_found = true;
-    BlockDriverState *bs;
-    BdrvNextIterator *it = NULL;
+    BlockDriverState *bs = NULL;
 
-    while (not_found && (it = bdrv_next(it, &bs))) {
+    while (not_found && (bs = bdrv_next(bs))) {
         AioContext *ctx = bdrv_get_aio_context(bs);
 
         aio_context_acquire(ctx);

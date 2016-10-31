@@ -336,7 +336,6 @@ static int64_t qemu_icount_round(int64_t count)
     return (count + (1 << icount_time_shift) - 1) >> icount_time_shift;
 }
 
-
 static bool icount_idle_timewarps = true;
 void qemu_icount_enable_idle_timewarps(bool enable)
 {

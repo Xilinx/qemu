@@ -3747,10 +3747,10 @@ Set migration parameters
 - "compress-level": set compression level during migration (json-int)
 - "compress-threads": set compression thread count for migration (json-int)
 - "decompress-threads": set decompression thread count for migration (json-int)
-- "cpu-throttle-initial": set initial percentage of time guest cpus are
-                          throttled for auto-converge (json-int)
-- "cpu-throttle-increment": set throttle increasing percentage for
-                            auto-converge (json-int)
+- "x-cpu-throttle-initial": set initial percentage of time guest cpus are
+                           throttled for auto-converge (json-int)
+- "x-cpu-throttle-increment": set throttle increasing percentage for
+                             auto-converge (json-int)
 
 Arguments:
 
@@ -3764,7 +3764,7 @@ EQMP
     {
         .name       = "migrate-set-parameters",
         .args_type  =
-            "compress-level:i?,compress-threads:i?,decompress-threads:i?,cpu-throttle-initial:i?,cpu-throttle-increment:i?",
+            "compress-level:i?,compress-threads:i?,decompress-threads:i?,x-cpu-throttle-initial:i?,x-cpu-throttle-increment:i?",
         .mhandler.cmd_new = qmp_marshal_migrate_set_parameters,
     },
 SQMP
@@ -3777,10 +3777,10 @@ Query current migration parameters
          - "compress-level" : compression level value (json-int)
          - "compress-threads" : compression thread count value (json-int)
          - "decompress-threads" : decompression thread count value (json-int)
-         - "cpu-throttle-initial" : initial percentage of time guest cpus are
-                                    throttled (json-int)
-         - "cpu-throttle-increment" : throttle increasing percentage for
-                                      auto-converge (json-int)
+         - "x-cpu-throttle-initial" : initial percentage of time guest cpus are
+                                      throttled (json-int)
+         - "x-cpu-throttle-increment" : throttle increasing percentage for
+                                        auto-converge (json-int)
 
 Arguments:
 
@@ -3790,10 +3790,10 @@ Example:
 <- {
       "return": {
          "decompress-threads": 2,
-         "cpu-throttle-increment": 10,
+         "x-cpu-throttle-increment": 10,
          "compress-threads": 8,
          "compress-level": 1,
-         "cpu-throttle-initial": 20
+         "x-cpu-throttle-initial": 20
       }
    }
 
@@ -4398,59 +4398,6 @@ Example:
 EQMP
 
     {
-        .name       = "x-blockdev-change",
-        .args_type  = "parent:B,child:B?,node:B?",
-        .mhandler.cmd_new = qmp_marshal_x_blockdev_change,
-    },
-
-SQMP
-x-blockdev-change
------------------
-
-Dynamically reconfigure the block driver state graph. It can be used
-to add, remove, insert or replace a graph node. Currently only the
-Quorum driver implements this feature to add or remove its child. This
-is useful to fix a broken quorum child.
-
-If @node is specified, it will be inserted under @parent. @child
-may not be specified in this case. If both @parent and @child are
-specified but @node is not, @child will be detached from @parent.
-
-Arguments:
-- "parent": the id or name of the parent node (json-string)
-- "child": the name of a child under the given parent node (json-string, optional)
-- "node": the name of the node that will be added (json-string, optional)
-
-Note: this command is experimental, and not a stable API. It doesn't
-support all kinds of operations, all kinds of children, nor all block
-drivers.
-
-Warning: The data in a new quorum child MUST be consistent with that of
-the rest of the array.
-
-Example:
-
-Add a new node to a quorum
--> { "execute": "blockdev-add",
-     "arguments": { "options": { "driver": "raw",
-                                 "node-name": "new_node",
-                                 "file": { "driver": "file",
-                                           "filename": "test.raw" } } } }
-<- { "return": {} }
--> { "execute": "x-blockdev-change",
-     "arguments": { "parent": "disk1",
-                    "node": "new_node" } }
-<- { "return": {} }
-
-Delete a quorum's node
--> { "execute": "x-blockdev-change",
-     "arguments": { "parent": "disk1",
-                    "child": "children.1" } }
-<- { "return": {} }
-
-EQMP
-
-    {
         .name       = "query-named-block-nodes",
         .args_type  = "",
         .mhandler.cmd_new = qmp_marshal_query_named_block_nodes,
@@ -4772,82 +4719,6 @@ Move mouse pointer to absolute coordinates (20000, 400).
   "arguments": { "events": [
                { "type": "abs", "data" : { "axis": "x", "value" : 20000 } },
                { "type": "abs", "data" : { "axis": "y", "value" : 400 } } ] } }
-<- { "return": {} }
-
-EQMP
-
-    {
-        .name       = "read_mem",
-        .args_type  = "addr:i,size:i,cpu:i?,qom:s?",
-        .mhandler.cmd_new = qmp_marshal_read_mem,
-    },
-
-SQMP
-read_mem
----------
-
-Read a memory location.
-
-Example:
-
--> { "execute": "read_mem", "arguments": { "cpu": "0", "addr": "0", "size": "4" } }
-<- { "return": {"3735928559"} }
-
-EQMP
-
-    {
-        .name       = "write_mem",
-        .args_type  = "addr:i,val:i,size:i,cpu:i?,qom:s?",
-        .mhandler.cmd_new = qmp_marshal_write_mem,
-    },
-
-SQMP
-write_mem
----------
-
-Write a memory location.
-
-Example:
-
--> { "execute": "write_mem", "arguments": { "cpu": "0", "addr": "0", "size": "4", "val": "3735928559" } }
-<- { "return": {} }
-
-EQMP
-
-    {
-        .name       = "trigger_event",
-        .args_type  = "time_ns:i,event_id:i",
-        .mhandler.cmd_new = qmp_marshal_trigger_event,
-    },
-
-SQMP
-@trigger_event
--------------
-
-Trigger an event in a given time.
-
-Example:
-
--> { "execute": "trigger_event", "arguments": { "time_ns": "10", "event_id": "0" } }
-<- { "return": {} }
-
-EQMP
-
-    {
-        .name       = "inject_gpio",
-        .args_type  = "device_name:s,gpio:s?,num:i,val:i",
-        .mhandler.cmd_new = qmp_marshal_inject_gpio,
-    },
-
-SQMP
-inject_gpio
------------
-
-Inject a GPIO.
-
-Example:
-
--> { "execute": "inject_gpio", "arguments": { "device_name": "/machine/device", "gpio": "clk_error", "num": "0", "val": "1" } }
 <- { "return": {} }
 
 EQMP

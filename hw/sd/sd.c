@@ -39,7 +39,6 @@
 #include "hw/qdev-properties.h"
 #include "qemu/error-report.h"
 #include "qemu/timer.h"
-#include "qemu/log.h"
 
 //#define DEBUG_SD 1
 
@@ -137,18 +136,6 @@ struct SDState {
 
     bool enable;
 };
-
-static int blk_write(BlockBackend *blk, int64_t sector_num, const uint8_t *buf,
-              int nb_sectors)
-{
-    return bdrv_write(blk_bs(blk), sector_num, buf, nb_sectors);
-}
-
-static int blk_read(BlockBackend *blk, int64_t sector_num, uint8_t *buf,
-             int nb_sectors)
-{
-    return bdrv_read(blk_bs(blk), sector_num, buf, nb_sectors);
-}
 
 uint8_t sd_get_dat_lines(SDState *sd)
 {
@@ -656,9 +643,7 @@ static SDState *sd_do_init(BlockBackend *blk, bool is_spi, bool is_mmc)
 
     obj = object_new(TYPE_SD_CARD);
     dev = DEVICE(obj);
-    /* Attach dev if not already attached.  (This call ignores an
-     * error return code if sd->blk is already attached.) */
-    /* FIXME ignoring blk_attach_dev() failure is dangerously brittle */
+    /* Xilinx: We need to ignore if this fails for FDT Generic */
     qdev_prop_set_drive(dev, "drive", blk, NULL);
     if (err) {
         error_report("sd_init failed: %s", error_get_pretty(err));
@@ -2216,6 +2201,8 @@ static void sd_realize(DeviceState *dev, Error **errp)
         error_setg(errp, "Cannot use read-only drive as SD card");
         return;
     }
+
+    sd->buf = blk_blockalign(sd->blk, 512);
 
     if (sd->blk) {
         blk_set_dev_ops(sd->blk, &sd_block_ops, sd);

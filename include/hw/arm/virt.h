@@ -31,7 +31,6 @@
 #define QEMU_ARM_VIRT_H
 
 #include "qemu-common.h"
-#include "exec/hwaddr.h"
 
 #define NUM_GICV2M_SPIS       64
 #define NUM_VIRTIO_TRANSPORTS 32

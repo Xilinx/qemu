@@ -218,7 +218,7 @@ static int pxb_dev_init_common(PCIDevice *dev, bool pcie)
     PXBDev *pxb = convert_to_pxb(dev);
     DeviceState *ds, *bds = NULL;
     PCIBus *bus;
-    const char *dev_name = NULL;
+    char *dev_name = NULL;
 
     if (pxb->numa_node != NUMA_NODE_UNASSIGNED &&
         pxb->numa_node >= nb_numa_nodes) {
@@ -236,7 +236,7 @@ static int pxb_dev_init_common(PCIDevice *dev, bool pcie)
     } else {
         bus = pci_bus_new(ds, "pxb-internal", NULL, NULL, 0, TYPE_PXB_BUS);
         bds = qdev_create(BUS(bus), "pci-bridge");
-        bds->id = (char *) dev_name;
+        bds->id = dev_name;
         qdev_prop_set_uint8(bds, PCI_BRIDGE_DEV_PROP_CHASSIS_NR, pxb->bus_nr);
         qdev_prop_set_bit(bds, PCI_BRIDGE_DEV_PROP_SHPC, false);
     }

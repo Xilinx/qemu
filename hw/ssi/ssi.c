@@ -14,7 +14,6 @@
 
 #include "qemu/osdep.h"
 #include "hw/ssi/ssi.h"
-
 #include "hw/fdt_generic_util.h"
 
 struct SSIBus {

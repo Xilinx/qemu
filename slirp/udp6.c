@@ -6,6 +6,7 @@
 #include "qemu/osdep.h"
 #include "qemu-common.h"
 #include "slirp.h"
+#include "qemu/osdep.h"
 #include "udp.h"
 
 void udp6_input(struct mbuf *m)

@@ -26,7 +26,6 @@
 #include "qemu/main-loop.h"
 #include "qemu/error-report.h"
 #include "qemu/config-file.h"
-#include "qemu/bswap.h"
 #include "block/snapshot.h"
 #include "qapi/util.h"
 #include "qapi/qmp/qstring.h"
@@ -46,8 +45,6 @@
 #define QEMU_NBD_OPT_OBJECT        260
 #define QEMU_NBD_OPT_TLSCREDS      261
 #define QEMU_NBD_OPT_IMAGE_OPTS    262
-
-#define MBR_SIZE 512
 
 static NBDExport *exp;
 static bool newproto;
@@ -162,13 +159,12 @@ static int find_partition(BlockBackend *blk, int partition,
                           off_t *offset, off_t *size)
 {
     struct partition_record mbr[4];
-    uint8_t data[MBR_SIZE];
+    uint8_t data[512];
     int i;
     int ext_partnum = 4;
     int ret;
 
-    ret = blk_pread(blk, 0, data, sizeof(data));
-    if (ret < 0) {
+    if ((ret = blk_read(blk, 0, data, 1)) < 0) {
         error_report("error while reading: %s", strerror(-ret));
         exit(EXIT_FAILURE);
     }
@@ -186,12 +182,10 @@ static int find_partition(BlockBackend *blk, int partition,
 
         if (mbr[i].system == 0xF || mbr[i].system == 0x5) {
             struct partition_record ext[4];
-            uint8_t data1[MBR_SIZE];
+            uint8_t data1[512];
             int j;
 
-            ret = blk_pread(blk, mbr[i].start_sector_abs * MBR_SIZE,
-                            data1, sizeof(data1));
-            if (ret < 0) {
+            if ((ret = blk_read(blk, mbr[i].start_sector_abs, data1, 1)) < 0) {
                 error_report("error while reading: %s", strerror(-ret));
                 exit(EXIT_FAILURE);
             }
@@ -527,7 +521,10 @@ int main(int argc, char **argv)
     sa_sigterm.sa_handler = termsig_handler;
     sigaction(SIGTERM, &sa_sigterm, NULL);
 
-    qcrypto_init(&error_fatal);
+    if (qcrypto_init(&local_err) < 0) {
+        error_reportf_err(local_err, "cannot initialize crypto: ");
+        exit(1);
+    }
 
     module_call_init(MODULE_INIT_QOM);
     qemu_add_opts(&qemu_object_opts);

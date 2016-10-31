@@ -20,14 +20,12 @@
 #define CPU_MICROBLAZE_H
 
 #include "qemu-common.h"
-#include "cpu-qom.h"
 
 #define TARGET_LONG_BITS 32
 
 #define CPUArchState struct CPUMBState
 
 #include "exec/cpu-defs.h"
-#include "exec/memory.h"
 #include "fpu/softfloat.h"
 struct CPUMBState;
 typedef struct CPUMBState CPUMBState;
@@ -284,50 +282,7 @@ struct CPUMBState {
     MemTxAttrs *memattr_p;
 };
 
-/**
- * MicroBlazeCPU:
- * @env: #CPUMBState
- *
- * A MicroBlaze CPU.
- */
-struct MicroBlazeCPU {
-    /*< private >*/
-    CPUState parent_obj;
-
-    /*< public >*/
-    qemu_irq mb_sleep;
-
-    /* Microblaze Configuration Settings */
-    struct {
-        bool stackprot;
-        uint32_t base_vectors;
-        uint8_t use_fpu;
-        bool use_mmu;
-        bool dcache_writeback;
-        bool endi;
-        char *version;
-        uint8_t pvr;
-    } cfg;
-
-    CPUMBState env;
-};
-
-static inline MicroBlazeCPU *mb_env_get_cpu(CPUMBState *env)
-{
-    return container_of(env, MicroBlazeCPU, env);
-}
-
-#define ENV_GET_CPU(e) CPU(mb_env_get_cpu(e))
-
-#define ENV_OFFSET offsetof(MicroBlazeCPU, env)
-
-void mb_cpu_do_interrupt(CPUState *cs);
-bool mb_cpu_exec_interrupt(CPUState *cs, int int_req);
-void mb_cpu_dump_state(CPUState *cpu, FILE *f, fprintf_function cpu_fprintf,
-                       int flags);
-hwaddr mb_cpu_get_phys_page_debug(CPUState *cpu, vaddr addr);
-int mb_cpu_gdb_read_register(CPUState *cpu, uint8_t *buf, int reg);
-int mb_cpu_gdb_write_register(CPUState *cpu, uint8_t *buf, int reg);
+#include "cpu-qom.h"
 
 void mb_tcg_init(void);
 MicroBlazeCPU *cpu_mb_init(const char *cpu_model);

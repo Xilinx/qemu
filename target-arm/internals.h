@@ -73,6 +73,21 @@ static const char * const excnames[] = {
     [EXCP_WFI] = "WFI",
 };
 
+static inline void arm_log_exception(int idx)
+{
+    if (qemu_loglevel_mask(CPU_LOG_INT)) {
+        const char *exc = NULL;
+
+        if (idx >= 0 && idx < ARRAY_SIZE(excnames)) {
+            exc = excnames[idx];
+        }
+        if (!exc) {
+            exc = "unknown";
+        }
+        qemu_log_mask(CPU_LOG_INT, "Taking exception %d [%s]\n", idx, exc);
+    }
+}
+
 /* Scale factor for generic timers, ie number of ns per tick.
  * This gives a 62.5MHz timer.
  */
@@ -265,12 +280,6 @@ enum arm_exception_class {
 static inline uint32_t syn_uncategorized(void)
 {
     return (EC_UNCATEGORIZED << ARM_EL_EC_SHIFT) | ARM_EL_IL;
-}
-
-static inline uint32_t syn_aa64_wfx(bool wfe)
-{
-    return (EC_WFX_TRAP << ARM_EL_EC_SHIFT) | ARM_EL_IL
-        | (1 << 24) | (14 << 20) | wfe;
 }
 
 static inline uint32_t syn_aa64_svc(uint32_t imm16)
