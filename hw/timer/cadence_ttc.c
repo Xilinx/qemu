@@ -105,6 +105,8 @@ static uint64_t cadence_timer_get_ns(CadenceTimerState *s, uint64_t timer_steps)
         r >>= 16;
     }
     r /= (uint64_t)s->freq;
+    /* The timer always runs for at least one "cycle".  */
+    r = MAX(r, 1);
     return r;
 }
 
