@@ -115,6 +115,19 @@ static void generic_loader_realize(DeviceState *dev, Error **errp)
 
     qemu_register_reset(generic_loader_reset, dev);
 
+    /* Xilinx: This is the old deprecated command line argument.
+     * This will be removed in the future, print a warning to tell
+     * users.
+     */
+    if (s->cpu_num_dep != CPU_NONE) {
+        fprintf(stderr, "The 'cpu=' command line option has been deprecated " \
+            "and replaced with 'cpu-num='. Please update your command line " \
+            "to use 'cpu-num=' as 'cpu=' will be removed.\n");
+        if (s->cpu_num == CPU_NONE) {
+            s->cpu_num = s->cpu_num_dep;
+        }
+    }
+
     if (s->cpu_num != CPU_NONE) {
         s->cpu = qemu_get_cpu(s->cpu_num);
         if (!s->cpu) {
@@ -175,6 +188,10 @@ static Property generic_loader_props[] = {
     DEFINE_PROP_UINT64("data", GenericLoaderState, data, 0),
     DEFINE_PROP_UINT8("data-len", GenericLoaderState, data_len, 0),
     DEFINE_PROP_BOOL("data-be", GenericLoaderState, data_be, false),
+    /* Xilinx: This is the old deprecated command line argument. It will be
+     * removed in the future.
+     */
+    DEFINE_PROP_UINT32("cpu", GenericLoaderState, cpu_num_dep, CPU_NONE),
     DEFINE_PROP_UINT32("cpu-num", GenericLoaderState, cpu_num, CPU_NONE),
     DEFINE_PROP_BOOL("force-raw", GenericLoaderState, force_raw, false),
     DEFINE_PROP_STRING("file", GenericLoaderState, file),
