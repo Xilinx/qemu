@@ -419,6 +419,14 @@ static void xilinx_spips_flush_fifo_g(XilinxSPIPS *s)
         uint8_t busses;
         uint8_t spi_mode = AF_EX32(s->regs, GQSPI_GF_SNAPSHOT, SPI_MODE);
 
+        /* memset() get's optimised out and results in the kernel seeing bogus
+         * data and complaining. So until memset_s() is supported let's just do
+         * it like this.
+         */
+        memset(tx_rx, 0, sizeof(tx_rx));
+        i = tx_rx[0];
+        i += tx_rx[1];
+
         if (!s->regs[R_GQSPI_DATA_STS]) {
             uint8_t imm;
 
@@ -495,10 +503,7 @@ static void xilinx_spips_flush_fifo_g(XilinxSPIPS *s)
 
         if (!AF_EX32(s->regs, GQSPI_GF_SNAPSHOT, DATA_XFER)) {
             tx_rx[0] = AF_EX32(s->regs, GQSPI_GF_SNAPSHOT, IMMEDIATE_DATA);
-        } else if (!AF_EX32(s->regs, GQSPI_GF_SNAPSHOT, TRANSMIT)) {
-            /* Zero pump */
-            memset(tx_rx, 0, sizeof(tx_rx));
-        } else {
+        } else if (AF_EX32(s->regs, GQSPI_GF_SNAPSHOT, TRANSMIT)) {
             for (i = 0; i < num_stripes; ++i) {
                 if (!fifo_is_empty(&s->tx_fifo_g)) {
                     tx_rx[i] = fifo_pop8(&s->tx_fifo_g);
