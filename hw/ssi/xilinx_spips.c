@@ -81,7 +81,7 @@
 #define IXR_TX_FIFO_NOT_FULL    (1 << 2)
 #define IXR_TX_FIFO_MODE_FAIL   (1 << 1)
 #define IXR_RX_FIFO_OVERFLOW    (1 << 0)
-#define IXR_ALL                 ((IXR_TX_FIFO_UNDERFLOW<<1)-1)
+#define IXR_ALL                 ((1 << 13) - 1)
 #define GQSPI_IXR_MASK          0xFBE
 
 #define IXR_SELF_CLEAR \
@@ -1084,8 +1084,6 @@ static const MemoryRegionOps qspips_ops = {
     .write = xilinx_qspips_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
 };
-
-#define LQSPI_CACHE_SIZE 1024
 
 static uint64_t
 lqspi_read(void *opaque, hwaddr addr, unsigned int size)
