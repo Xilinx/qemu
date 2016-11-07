@@ -68,6 +68,19 @@ static void generic_loader_realize(DeviceState *dev, Error **errp)
 
     s->set_pc = false;
 
+    /* Xilinx: This is the old deprecated command line argument.
+     * This will be removed in the future, print a warning to tell
+     * users.
+     */
+    if (s->cpu_num_dep != CPU_NONE) {
+        fprintf(stderr, "The 'cpu=' command line option has been deprecated " \
+            "and replaced with 'cpu-num='. Please update your command line " \
+            "to use 'cpu-num=' as 'cpu=' will be removed after 2017.2.\n");
+        if (s->cpu_num == CPU_NONE) {
+            s->cpu_num = s->cpu_num_dep;
+        }
+    }
+
     /* Perform some error checking on the user's options */
     if (s->data || s->data_len  || s->data_be) {
         /* User is loading memory values */
@@ -119,19 +132,6 @@ static void generic_loader_realize(DeviceState *dev, Error **errp)
     }
 
     qemu_register_reset(generic_loader_reset, dev);
-
-    /* Xilinx: This is the old deprecated command line argument.
-     * This will be removed in the future, print a warning to tell
-     * users.
-     */
-    if (s->cpu_num_dep != CPU_NONE) {
-        fprintf(stderr, "The 'cpu=' command line option has been deprecated " \
-            "and replaced with 'cpu-num='. Please update your command line " \
-            "to use 'cpu-num=' as 'cpu=' will be removed.\n");
-        if (s->cpu_num == CPU_NONE) {
-            s->cpu_num = s->cpu_num_dep;
-        }
-    }
 
     if (s->cpu_num != CPU_NONE) {
         s->cpu = qemu_get_cpu(s->cpu_num);
