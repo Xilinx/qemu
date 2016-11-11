@@ -140,6 +140,13 @@ static int i2c_bus_fdt_init(char *node_path, FDTMachineInfo *fdti, void *priv)
     return 0;
 }
 
+static int sysmem_fdt_init(char *node_path, FDTMachineInfo *fdti,
+                           void *priv)
+{
+    fdt_init_set_opaque(fdti, node_path, OBJECT(get_system_memory()));
+    return 0;
+}
+
 static inline void razwi_unimp_rw(void *opaque, hwaddr addr, uint64_t val64,
                            unsigned int size, bool rnw) {
     char str[1024];
@@ -153,6 +160,7 @@ static inline void razwi_unimp_rw(void *opaque, hwaddr addr, uint64_t val64,
     qemu_log_mask(LOG_UNIMP, "%s", str);
 }
 
+fdt_register_compatibility(sysmem_fdt_init, "compatible:qemu:system-memory");
 fdt_register_compatibility_n(uart16550_fdt_init, "compatible:ns16550", 0);
 fdt_register_compatibility_n(uart16550_fdt_init, "compatible:ns16550a", 1);
 
