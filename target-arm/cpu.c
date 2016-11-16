@@ -286,12 +286,21 @@ static void arm_cpu_reset(CPUState *s)
 bool arm_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
 {
     CPUClass *cc = CPU_GET_CLASS(cs);
+    ARMCPU *cpu = ARM_CPU(cs);
     CPUARMState *env = cs->env_ptr;
     uint32_t cur_el = arm_current_el(env);
     bool secure = arm_is_secure(env);
     uint32_t target_el;
     uint32_t excp_idx;
     bool ret = false;
+
+    /* Xilinx: If we get here we want to make sure that we update the WFI
+     * status to make sure that the PMU knows we are running again.
+     */
+    if (cpu->is_in_wfi) {
+        cpu->is_in_wfi = false;
+        qemu_set_irq(cpu->wfi, 0);
+    }
 
     if (interrupt_request & CPU_INTERRUPT_FIQ) {
         excp_idx = EXCP_FIQ;
