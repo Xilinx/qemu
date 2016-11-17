@@ -38,6 +38,8 @@
 
 #define MAX_CPUS 4
 
+#define ZYNQ7000_MPCORE_PERIPHBASE 0xF8F00000
+
 #define SMP_BOOT_ADDR 0xfffffff0
 /* Meaningless, but keeps arm boot happy */
 #define SMP_BOOTREG_ADDR 0xfffffffc
@@ -210,6 +212,8 @@ static void arm_generic_fdt_init(MachineState *machine)
 
     /* If booting PetaLinux ARM (Zynq Machine)*/
     if (!strcmp(MACHINE_GET_CLASS(machine)->name, "arm-generic-fdt-plnx")) {
+        int node_offset = 0;
+
         /* Added a dummy flash node, if is-dual property is set to 1*/
         qspi_clone_spi_flash_node_name = zynq_ps7_qspi_flash_node_clone(fdt);
 
@@ -219,6 +223,21 @@ static void arm_generic_fdt_init(MachineState *machine)
             qemu_fdt_setprop_cells(fdt, node_path,
                                    "disable-linux-gic-init", true);
         }
+
+        /* The Zynq-7000 device tree doesn't contain information about the
+         * Configuation Base Address Register (reset-cbar) but we need to set
+         * it in order for Linux to find the SCU. So add it into the device
+         * tree for every A9 CPU.
+         */
+        do {
+            node_offset = fdt_node_offset_by_compatible(fdt, node_offset,
+                                                        "arm,cortex-a9");
+            if (node_offset > 0) {
+                fdt_get_path(fdt, node_offset, node_path, DT_PATH_LENGTH);
+                qemu_fdt_setprop_cells(fdt, node_path, "reset-cbar",
+                                       ZYNQ7000_MPCORE_PERIPHBASE);
+            }
+        } while (node_offset > 0);
     }
 
     /* find memory node or add new one if needed */
@@ -354,7 +373,7 @@ static void arm_generic_fdt_init_plnx(MachineState *machine)
 
         qdev_prop_set_uint32(dev, "num-cpu", fdt_generic_num_cpus);
         qdev_init_nofail(dev);
-        sysbus_mmio_map(busdev, 0, 0xF8F00000);
+        sysbus_mmio_map(busdev, 0, ZYNQ7000_MPCORE_PERIPHBASE);
     }
 
 }
