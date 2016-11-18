@@ -1047,6 +1047,9 @@ static int m25p80_init(SSISlave *ss)
     Flash *s = M25P80(ss);
     M25P80Class *mc = M25P80_GET_CLASS(s);
 
+    /* Xilinx: Set the number of data lines to 1 by default */
+    s->n_datalines = 1;
+
     s->pi = mc->pi;
 
     s->size = s->pi->sector_size * s->pi->n_sectors;
