@@ -202,7 +202,8 @@ static void fdt_init_node(void *args)
 
     simple_bus_fdt_init(node_path, fdti);
 
-    char *all_compats = NULL, *compat, *node_name, *next_compat, *device_type;
+    char *all_compats = NULL, *compat, *node_name, *next_compat;
+    char *device_type = NULL;
     int compat_len;
 
     DB_PRINT_NP(1, "enter\n");
@@ -248,6 +249,14 @@ static void fdt_init_node(void *args)
         goto exit;
     }
 
+    /* Try to create the device using device_type property
+     * Not every device tree node has compatible  property, so
+     * try with device_type.
+     */
+    if (!fdt_init_qdev(node_path, fdti, device_type)) {
+        goto exit;
+    }
+
     if (!all_compats) {
         goto exit;
     }
@@ -263,6 +272,7 @@ exit:
     }
     g_free(node_path);
     g_free(all_compats);
+    g_free(device_type);
     return;
 }
 
