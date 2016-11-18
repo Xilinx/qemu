@@ -211,6 +211,7 @@ static const TypeInfo fdt_qom_aliases [] = {
     {   .name = "arasan,sdhci-8.9a",        .parent = "xilinx.zynqmp-sdhci" },
     {   .name = "cdns.spi-r1p6",            .parent = "xlnx.ps7-spi"        },
     {   .name = "xlnx,eth-dma",             .parent = "xlnx.axi-dma"        },
+    {   .name = "device_type:ethernet-phy", .parent = "88e1116r"            },
 };
 
 static void fdt_generic_register_types(void)
