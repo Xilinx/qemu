@@ -7731,14 +7731,6 @@ static void gen_load_exclusive(DisasContext *s, int rt, int rt2,
     }
 
     store_reg(s, rt, tmp);
-#ifndef CONFIG_USER_ONLY
-    {
-        TCGv_i64 tmp64 = tcg_temp_new_i64();
-        tcg_gen_extu_i32_i64(tmp64, addr);
-        gen_helper_exclusive_try_lock(cpu_env, tmp64);
-        tcg_temp_free_i64(tmp64);
-    }
-#endif
     tcg_gen_extu_i32_i64(cpu_exclusive_addr, addr);
 }
 

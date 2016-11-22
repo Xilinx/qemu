@@ -77,22 +77,6 @@ uint32_t HELPER(neon_tbl)(CPUARMState *env, uint32_t ireg, uint32_t def,
 
 #include "hw/remote-port.h"
 
-void HELPER(exclusive_try_lock)(CPUARMState *env, uint64_t addr)
-{
-    if (env->exclusive_lock) {
-        rp_unlock(env->exclusive_addr);
-    }
-    env->exclusive_lock = rp_try_lock(addr);
-}
-
-void HELPER(exclusive_unlock)(CPUARMState *env, uint64_t addr)
-{
-    if (env->exclusive_lock) {
-        rp_unlock(addr);
-    }
-    env->exclusive_lock = false;
-}
-
 static inline uint32_t merge_syn_data_abort(uint32_t template_syn,
                                             unsigned int target_el,
                                             bool same_el,

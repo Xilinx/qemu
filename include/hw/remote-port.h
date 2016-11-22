@@ -12,7 +12,5 @@
 #include <stdbool.h>
 
 bool rp_time_warp_enable(bool en);
-bool rp_try_lock(uint64_t addr);
-void rp_unlock(uint64_t addr);
 
 #endif

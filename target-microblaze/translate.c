@@ -56,7 +56,6 @@ static TCGv env_btarget;
 static TCGv env_iflags;
 static TCGv env_res_addr;
 static TCGv env_res_val;
-static TCGv env_exclusive_lock;
 
 #include "exec/gen-icount.h"
 
@@ -1021,11 +1020,6 @@ static void dec_load(DisasContext *dc)
             addr = &t;
         }
         tcg_gen_andi_tl(t, t, ~3);
-
-#ifndef CONFIG_USER_ONLY
-        /* Try to get the multi-arch lock.  */
-        gen_helper_exclusive_try_lock(cpu_env, *addr);
-#endif
     }
 
     /* If we get a fault on a dslot, the jmpstate better be in sync.  */
@@ -1120,7 +1114,6 @@ static void dec_store(DisasContext *dc)
         tcg_gen_qemu_ld_tl(tval, swx_addr, cpu_mmu_index(&dc->cpu->env, false),
                            MO_TEUL);
         tcg_gen_brcond_tl(TCG_COND_NE, env_res_val, tval, swx_skip);
-        tcg_gen_brcondi_tl(TCG_COND_EQ, env_exclusive_lock, 0, swx_skip);
         write_carryi(dc, 0);
         tcg_temp_free(tval);
     }
@@ -1186,9 +1179,6 @@ static void dec_store(DisasContext *dc)
 
     if (ex) {
         gen_set_label(swx_skip);
-#ifndef CONFIG_USER_ONLY
-        gen_helper_exclusive_unlock(cpu_env, env_res_addr);
-#endif
     }
     tcg_temp_free(swx_addr);
 
@@ -1937,9 +1927,6 @@ void mb_tcg_init(void)
     env_res_val = tcg_global_mem_new(cpu_env,
                      offsetof(CPUMBState, res_val),
                      "res_val");
-    env_exclusive_lock = tcg_global_mem_new(cpu_env,
-                             offsetof(CPUMBState, exclusive_lock),
-                             "exclusive_lock");
     for (i = 0; i < ARRAY_SIZE(cpu_R); i++) {
         cpu_R[i] = tcg_global_mem_new(cpu_env,
                           offsetof(CPUMBState, regs[i]),

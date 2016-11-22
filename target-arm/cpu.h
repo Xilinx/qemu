@@ -485,8 +485,6 @@ typedef struct CPUARMState {
     uint64_t exclusive_addr;
     uint64_t exclusive_val;
     uint64_t exclusive_high;
-    /* Multi-instance lock implemented by remote-port.  */
-    uint32_t exclusive_lock;
 #if defined(CONFIG_USER_ONLY)
     uint64_t exclusive_test;
     uint32_t exclusive_info;

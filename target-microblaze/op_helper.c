@@ -30,22 +30,6 @@
 
 #if !defined(CONFIG_USER_ONLY)
 
-void HELPER(exclusive_try_lock)(CPUMBState *env, uint32_t addr)
-{
-    if (env->exclusive_lock) {
-        rp_unlock(env->res_addr);
-    }
-    env->exclusive_lock = rp_try_lock(addr);
-}
-
-void HELPER(exclusive_unlock)(CPUMBState *env, uint32_t addr)
-{
-    if (env->exclusive_lock) {
-        rp_unlock(addr);
-    }
-    env->exclusive_lock = false;
-}
-
 /* Try to fill the TLB and return an exception if error. If retaddr is
  * NULL, it means that the function was called in C code (i.e. not
  * from generated code or from helper.c)

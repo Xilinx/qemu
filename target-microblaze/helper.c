@@ -129,10 +129,6 @@ void mb_cpu_do_interrupt(CPUState *cs)
     assert(!(env->iflags & (DRTI_FLAG | DRTE_FLAG | DRTB_FLAG)));
 /*    assert(env->sregs[SR_MSR] & (MSR_EE)); Only for HW exceptions.  */
     if (env->res_addr != RES_ADDR_NONE) {
-        if (env->exclusive_lock) {
-            rp_unlock(env->res_addr);
-            env->exclusive_lock = false;
-        }
         env->res_addr = RES_ADDR_NONE;
     }
     switch (cs->exception_index) {

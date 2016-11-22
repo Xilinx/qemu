@@ -834,174 +834,13 @@ static void rp_init(Object *obj)
     }
 }
 
-typedef struct RemotePortClass {
-    SysBusDeviceClass busdev_class;
-
-    struct {
-        int fd;
-        sem_t *sem;
-    } lock;
-} RemotePortClass;
-
-static char *rp_lock_fd_name(const char *lockname)
-{
-    char *name;
-    int r;
-
-    r = asprintf(&name, "%s/qemu-rport-lockfile-%s",
-                 machine_path, lockname);
-    assert(r > 0);
-    return name;
-}
-
-/* We get passed a virtual or physical address. LOCKFILE_PAGESIZE may not grow
-   beyond any modelled archs page size.  Both RP_LOCK_PAGESIZE and
-   RP_LOCK_GRANULE must be powers of 2. */
-#define RP_LOCK_PAGESIZE 1024
-#define RP_LOCK_GRANULE 8
-#define RP_LOCK_NR_SEM (RP_LOCK_PAGESIZE / RP_LOCK_GRANULE)
-#define RP_LOCK_FILESIZE (RP_LOCK_NR_SEM * sizeof (sem_t))
-
-static unsigned int rp_lock_addr2offset(uint64_t addr)
-{
-    uint32_t a32 = addr;
-
-    a32 /= RP_LOCK_GRANULE;
-    a32 &= RP_LOCK_NR_SEM - 1;
-    return a32;
-}
-
-/* Try to take a machine global lock.  */
-bool rp_try_lock(uint64_t addr)
-{
-    RemotePortClass *rpc;
-    bool ret = true;
-    sem_t *sem;
-    int r;
-    int v = 0xbad;
-
-    rpc = (RemotePortClass *) object_class_by_name(TYPE_REMOTE_PORT);
-    if (rpc->lock.fd == -1) {
-        return true;
-    }
-
-    sem = rpc->lock.sem + rp_lock_addr2offset(addr);
-
-    do {
-        r = sem_trywait(sem);
-    } while (r == -1 && errno == EINTR);
-    if (r == -1) {
-        ret = false;
-        if (errno != EAGAIN) {
-            perror("sem_wait");
-            error_report("%s: Unexpected sem_trywait errno=%d\n",
-                         __func__, errno);
-            exit(1);
-        }
-    }
-
-    /* REMOVEME: Paranoia.  */
-    r = sem_getvalue(sem, &v);
-    assert(r == 0);
-    if (ret && v) {
-       fprintf(stderr, "sem=%p v = %d\n", sem, v);
-       assert(0);
-    }
-    assert(v <= 1);
-    assert(v >= 0);
-    return ret;
-}
-
-void rp_unlock(uint64_t addr)
-{
-    RemotePortClass *rpc;
-    sem_t *sem;
-    int r;
-    int v = 0xbad;
-
-    rpc = (RemotePortClass *) object_class_by_name(TYPE_REMOTE_PORT);
-    if (rpc->lock.fd == -1) {
-        return;
-    }
-
-    sem = rpc->lock.sem + rp_lock_addr2offset(addr);
-
-    /* REMOVEME: Paranoia.  */
-    r = sem_getvalue(sem, &v);
-    assert(r == 0);
-    assert(v <= 1);
-    assert(v >= 0);
-
-    r = sem_post(sem);
-    if (r == -1) {
-        error_report("%s: Failed to release lock! errno=%d\n", __func__, errno);
-        exit(1);
-    }
-}
-
 static void rp_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-    RemotePortClass *rpc = REMOTE_PORT_CLASS(klass);
-    unsigned int i;
-    char *name;
-    int r;
 
     dc->realize = rp_realize;
     dc->vmsd = &vmstate_rp;
     dc->props = rp_properties;
-    rpc->lock.fd = -1;
-
-    if (!machine_path) {
-        return;
-    }
-    /* The remaining part is only done for instances that run in multi-arch
-       mode.  */
-
-#ifdef _WIN32
-    printf("WARNING: Windows does not support the shared semaphore map\n");
-#else
-    /* Create the global exclusive lock file.  */
-    name = rp_lock_fd_name("exclusive");
-    rpc->lock.fd = open(name, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-    if (rpc->lock.fd < 0) {
-        perror(name);
-        exit(EXIT_FAILURE);
-    }
-
-    r = ftruncate(rpc->lock.fd, RP_LOCK_FILESIZE);
-    if (r == -1) {
-        perror(name);
-        exit(EXIT_FAILURE);
-    }
-
-    rpc->lock.sem = mmap(0, RP_LOCK_FILESIZE,
-                         PROT_READ | PROT_WRITE, MAP_SHARED, rpc->lock.fd, 0);
-    if (rpc->lock.sem == MAP_FAILED) {
-        error_report("%s: Failed to create sharedmem sem mmap! errno=%d\n",
-                     __func__, errno);
-        perror(name);
-        exit(EXIT_FAILURE);
-    }
-    free(name);
-
-    /* Reinit locks if needed. This is a bit fragile.
-       sem_init is according to spec undefined if you init a
-       semaphore multiple times.  */
-    for (i = 0; i < RP_LOCK_NR_SEM; i++) {
-        sem_t *sem = rpc->lock.sem + i;
-        int v = 0xbad;
-
-        sem_init(sem, 1, 1);
-        r = sem_getvalue(sem, &v);
-        if (v != 1) {
-            error_report("sem[%d] initialized to 0x%x!!\n"
-                         "Corrupt machine directory!\n", i, v);
-            exit(1);
-        }
-        assert(r == 0i && v == 1);
-    }
-#endif
 }
 
 static const TypeInfo rp_info = {
@@ -1010,7 +849,6 @@ static const TypeInfo rp_info = {
     .instance_size = sizeof(RemotePort),
     .instance_init = rp_init,
     .class_init    = rp_class_init,
-    .class_size    = sizeof(RemotePortClass),
     .interfaces    = (InterfaceInfo[]) {
         { },
     },

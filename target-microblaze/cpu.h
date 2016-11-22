@@ -250,7 +250,6 @@ struct CPUMBState {
 #define RES_ADDR_NONE 0xffffffff /* Use 0xffffffff to indicate no reservation */
     uint32_t res_addr;
     uint32_t res_val;
-    uint32_t exclusive_lock;
 
     /* Internal flags.  */
 #define IMM_FLAG	4

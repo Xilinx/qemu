@@ -539,11 +539,6 @@ DEF_HELPER_2(dc_zva, void, env, i64)
 DEF_HELPER_FLAGS_2(neon_pmull_64_lo, TCG_CALL_NO_RWG_SE, i64, i64, i64)
 DEF_HELPER_FLAGS_2(neon_pmull_64_hi, TCG_CALL_NO_RWG_SE, i64, i64, i64)
 
-#if !defined(CONFIG_USER_ONLY)
-DEF_HELPER_2(exclusive_try_lock, void, env, i64)
-DEF_HELPER_2(exclusive_unlock, void, env, i64)
-#endif
-
 #ifdef TARGET_AARCH64
 #include "helper-a64.h"
 #endif
