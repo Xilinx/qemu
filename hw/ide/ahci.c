@@ -28,6 +28,7 @@
 #include <hw/pci/pci.h>
 
 #include "qemu/error-report.h"
+#include "include/qapi/error.h"
 #include "sysemu/block-backend.h"
 #include "sysemu/dma.h"
 #include "internal.h"
@@ -1681,6 +1682,12 @@ static void sysbus_ahci_init(Object *obj)
 
     sysbus_init_mmio(sbd, &s->ahci.mem);
     sysbus_init_irq(sbd, &s->ahci.irq);
+
+    object_property_add_link(obj, "dma", TYPE_MEMORY_REGION,
+                             (Object **)&s->ahci.dma_mr,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             &error_abort);
 }
 
 static void sysbus_ahci_realize(DeviceState *dev, Error **errp)
@@ -1688,6 +1695,10 @@ static void sysbus_ahci_realize(DeviceState *dev, Error **errp)
     SysbusAHCIState *s = SYSBUS_AHCI(dev);
 
     ahci_realize(&s->ahci, dev, &address_space_memory, s->num_ports);
+
+    s->ahci.as = s->ahci.dma_mr ?
+                 address_space_init_shareable(s->ahci.dma_mr, NULL) :
+                 &address_space_memory;
 }
 
 static Property sysbus_ahci_properties[] = {

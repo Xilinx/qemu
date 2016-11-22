@@ -297,6 +297,7 @@ typedef struct AHCIState {
     uint32_t idp_index;     /* Current IDP index */
     int32_t ports;
     qemu_irq irq;
+    MemoryRegion *dma_mr;
     AddressSpace *as;
 } AHCIState;
 
