@@ -2067,11 +2067,15 @@ static void gdb_chr_event(void *opaque, int event)
     case CHR_EVENT_OPENED:
         vm_stop(RUN_STATE_PAUSED);
         gdb_has_xml = false;
-        gdbserver_state->multiprocess = false;
-        gdbserver_state->client_connected = true;
+        if (gdbserver_state) {
+            gdbserver_state->multiprocess = false;
+            gdbserver_state->client_connected = true;
+        }
         break;
     case CHR_EVENT_CLOSED: {
-        gdbserver_state->client_connected = false;
+        if (gdbserver_state) {
+            gdbserver_state->client_connected = false;
+        }
         break;
     }
     default:
