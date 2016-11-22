@@ -1362,7 +1362,7 @@ static void memory_region_initfn(Object *obj)
     object_property_add_link(OBJECT(mr), "alias", TYPE_MEMORY_REGION,
                              (Object **)&mr->alias,
                              memory_region_set_alias,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             0,
                              &error_abort);
     object_property_add(OBJECT(mr), "addr", "uint64",
                         memory_region_get_addr,
