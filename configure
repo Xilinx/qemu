@@ -5807,7 +5807,8 @@ case "$target_name" in
   aarch64)
     TARGET_BASE_ARCH=arm
     bflt="yes"
-    gdb_xml_files="aarch64-core.xml aarch64-fpu.xml arm-core.xml arm-vfp.xml arm-vfp3.xml arm-neon.xml"
+    armv8_gdb_xml_files="aarch64-el1.xml aarch64-el2.xml aarch64-el3.xml"
+    gdb_xml_files="aarch64-core.xml aarch64-fpu.xml arm-core.xml arm-vfp.xml arm-vfp3.xml arm-neon.xml $armv8_gdb_xml_files"
   ;;
   cris)
   ;;
