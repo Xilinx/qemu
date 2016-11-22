@@ -6263,6 +6263,8 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
     unsigned int stage = req->stage;
     bool blocktranslate = false;
     bool epd = false;
+    bool va64;
+    bool type64;
     uint32_t tableattrs = 0;
     uint32_t attrs;
     uint32_t s2attrs;
@@ -6291,7 +6293,12 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
     tsz = t0sz;
     req->pa = req->va;
 
+    va64 = s->regs[R_SMMU_CBA2R0 + cb] & 1;
     if (req->stage == 1) {
+        type64 = va64 || extract32(req->tcr[1], 31, 1);
+        /* We don't support 32bit page-tables yet.  */
+        assert(type64);
+
         if ((req->va & (1ULL << 63)) == 0) {
         } else {
             static const unsigned int tg1map[] = {
@@ -6300,14 +6307,22 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
                 [2] = 0,
                 [3] = 1,
             };
-            tg = extract32(req->tcr[stage], 30, 2);
-            tg = tg1map[tg];
+            if (!va64 && type64) {
+                /* LPAE uses 4K pages.  */
+                tg = extract32(req->tcr[stage], 30, 2);
+                tg = tg1map[tg];
+                t1sz = extract32(req->tcr[stage], 16, 6);
+            } else {
+                /* Default to 4K.  */
+                tg = 0;
+                t1sz = extract32(req->tcr[stage], 16, 3);
+            }
             ttbr = req->ttbr[stage][1];
-            t1sz = extract32(req->tcr[stage], 16, 6);
             tsz = t1sz;
         }
         epd = extract32(req->tcr[1], 7, 1);
     } else {
+        type64 = true;
     }
 
     if (epd) {
@@ -6600,11 +6615,6 @@ static bool smmu500_at64(SMMU *s, unsigned int cb, hwaddr va,
 static bool smmu500_at(SMMU *s, unsigned int cb, hwaddr va,
                        bool wr, bool s2, hwaddr *pa, int *prot)
 {
-    bool t64;
-
-    t64 = s->regs[R_SMMU_CBA2R0 + cb] & 1;
-    assert(t64);
-
     return smmu500_at64(s, cb, va, wr, s2, pa, prot);
 }
 
