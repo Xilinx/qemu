@@ -1571,6 +1571,15 @@ static void tcg_exec_all(void)
         } else if (cpu->stop || cpu->stopped) {
             break;
         }
+        /* Xilinx: Randomize whether to advance to next CPU on exit request.
+         * If exit requests repeatedly occur in a regular pattern,
+         * this can cause CPU starvation. The starvation can be causes
+         * on either of the "never-advance" and "always-advance" policies.
+         * So roll the dice.
+         */
+        if (exit_request && (rand() & 1)) {
+            break;
+        }
     }
 
     /* Pairs with smp_wmb in qemu_cpu_kick.  */
