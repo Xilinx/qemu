@@ -2919,7 +2919,12 @@ static inline void cpu_physical_memory_write_rom_internal(AddressSpace *as,
 
         if (!(memory_region_is_ram(mr) ||
               memory_region_is_romd(mr))) {
-            address_space_rw(as, addr, MEMTXATTRS_UNSPECIFIED, (uint8_t*) buf, len, true);
+            if (type == WRITE_DATA) {
+                address_space_rw(as, addr, MEMTXATTRS_UNSPECIFIED,
+                                 (uint8_t *) buf, len, true);
+            } else {
+                l = memory_access_size(mr, l, addr1);
+            }
         } else {
             addr1 += memory_region_get_ram_addr(mr);
             /* ROM/RAM case */
