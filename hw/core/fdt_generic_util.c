@@ -869,10 +869,28 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
         object_property_add_child(OBJECT(parent),
                               qemu_devtree_get_node_name(fdti->fdt, node_path),
                               OBJECT(dev), NULL);
-        if (object_dynamic_cast(parent, TYPE_BUS) &&
-               object_dynamic_cast(dev, TYPE_DEVICE)) {
+        if (object_dynamic_cast(dev, TYPE_DEVICE)) {
+            Object *parent_bus = parent;
+
             DB_PRINT_NP(1, "bus parenting node\n");
-            qdev_set_parent_bus(DEVICE(dev), BUS(parent));
+            /* Look for an FDT ancestor that is a Bus.  */
+            while (parent_bus && !object_dynamic_cast(parent_bus, TYPE_BUS)) {
+                parent_bus = parent_bus->parent;
+            }
+
+            if (!parent_bus
+                && object_dynamic_cast(OBJECT(dev), TYPE_SYS_BUS_DEVICE)) {
+                /*
+                 * Didn't find any bus. Use the default sysbus one.
+                 * This allows ad-hoc busses belonging to sysbus devices to be
+                 * visible to -device bus=x.
+                 */
+                parent_bus = OBJECT(sysbus_get_default());
+            }
+
+            if (parent_bus) {
+                qdev_set_parent_bus(DEVICE(dev), BUS(parent_bus));
+            }
         }
     } else {
         DB_PRINT_NP(1, "orphaning node\n");
