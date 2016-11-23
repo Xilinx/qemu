@@ -196,6 +196,7 @@ static const TypeInfo fdt_qom_aliases [] = {
     {   .name = "cdns.ttc",                 .parent = "cadence_ttc"         },
     {   .name = "cdns.uart",                .parent = "cadence_uart"        },
     {   .name = "xlnx.ps7-uart",            .parent = "cadence_uart"        },
+    {   .name = "silabs,si570",             .parent = "si57x"               },
 /* When running MicroBlaze this is not include, which casues QEMU to crash as
  * it doesn't have information on the TYPE_SYS_BUS_EHCI device.
  */
