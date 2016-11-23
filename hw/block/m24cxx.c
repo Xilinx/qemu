@@ -19,13 +19,13 @@
  */
 
 #include "qemu/osdep.h"
-#include "qapi/error.h"
-#include "qemu/error-report.h"
-#include "qemu/log.h"
 #include "hw/i2c/i2c.h"
 #include "hw/hw.h"
 #include "sysemu/blockdev.h"
 #include "sysemu/block-backend.h"
+#include "qemu/log.h"
+#include "qapi/error.h"
+#include "hw/block/m24cxx.h"
 
 #ifndef M24CXX_DEBUG
 #define M24CXX_DEBUG 0
@@ -36,13 +36,6 @@
     } \
 } while (0);
 
-typedef enum {
-    STOPPED,
-    ADDRESSING,
-    READING,
-    WRITING,
-} M24CXXXferState;
-
 const char *m24cxx_state_names[] = {
     [STOPPED] = "STOPPED",
     [ADDRESSING] = "ADDRESSING",
@@ -50,26 +43,12 @@ const char *m24cxx_state_names[] = {
     [WRITING] = "WRITING",
 };
 
-typedef struct {
-    I2CSlave i2c;
-    uint16_t cur_addr;
-    uint8_t state;
-    uint8_t addr_count;
-    uint8_t num_addr_bytes;
-
-    BlockBackend *blk;
-    uint16_t size;
-
-    uint8_t *storage;
-} M24CXXState;
-
-#define TYPE_M24CXX "m24cxx"
-
-#define M24CXX(obj) \
-     OBJECT_CHECK(M24CXXState, (obj), TYPE_M24CXX)
-
 static void m24cxx_sync_complete(void *opaque, int ret)
 {
+    QEMUIOVector *iov = opaque;
+
+    qemu_iovec_destroy(iov);
+    g_free(iov);
     /* do nothing. Masters do not directly interact with the backing store,
      * only the working copy so no mutexing required.
      */
@@ -113,7 +92,7 @@ static int m24cxx_recv(I2CSlave *i2c)
 
     if (s->state == READING) {
         ret = s->storage[s->cur_addr++];
-        DB_PRINT("storage %x <-> %x\n", s->cur_addr-1, ret);
+        DB_PRINT("storage %x <-> %x\n", s->cur_addr - 1, ret);
         s->cur_addr %= s->size;
     } else {
         /* should be impossible even with a degenerate guest */
@@ -231,6 +210,7 @@ static const VMStateDescription vmstate_m24cxx = {
 
 static Property m24cxx_properties[] = {
     DEFINE_PROP_UINT16("size", M24CXXState, size, 1024),
+    DEFINE_PROP_DRIVE("drive", M24CXXState, blk),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -257,7 +237,7 @@ static TypeInfo m24cxx_info = {
     .class_init    = m24cxx_class_init,
 };
 
-static const TypeInfo m24cxx_qom_aliases [] = {
+static const TypeInfo m24cxx_qom_aliases[] = {
     {   .name = "at.24c08",                 .parent = TYPE_M24CXX           },
     {   .name = "at.24c16",                 .parent = TYPE_M24CXX           },
     {   .name = "at.24c32",                 .parent = TYPE_M24CXX           },
