@@ -126,7 +126,7 @@ petalogix_s3adsp1800_init(MachineState *machine)
     microblaze_load_kernel(cpu, ddr_base, ram_size,
                            machine->initrd_filename,
                            BINARY_DEVICE_TREE_FILE,
-                           NULL);
+                           NULL, NULL, 0);
 }
 
 static void petalogix_s3adsp1800_machine_init(MachineClass *mc)

@@ -70,17 +70,20 @@ static int microblaze_load_dtb(hwaddr addr,
                                uint32_t initrd_start,
                                uint32_t initrd_end,
                                const char *kernel_cmdline,
-                               const char *dtb_filename)
+                               const char *dtb_filename,
+                               void *fdt,
+                               int fdt_size)
 {
-    int fdt_size;
-    void *fdt = NULL;
     int r;
 
-    if (dtb_filename) {
-        fdt = load_device_tree(dtb_filename, &fdt_size);
-    }
     if (!fdt) {
-        return 0;
+        /* No fdt information was passed in, load it from the DTB */
+        if (dtb_filename) {
+            fdt = load_device_tree(dtb_filename, &fdt_size);
+        }
+        if (!fdt) {
+            return 0;
+        }
     }
 
     if (kernel_cmdline) {
@@ -112,21 +115,24 @@ void microblaze_load_kernel(MicroBlazeCPU *cpu, hwaddr ddr_base,
                             uint32_t ramsize,
                             const char *initrd_filename,
                             const char *dtb_filename,
-                            void (*machine_cpu_reset)(MicroBlazeCPU *))
+                            void (*machine_cpu_reset)(MicroBlazeCPU *),
+                            void *fdt, int fdt_size)
 {
     QemuOpts *machine_opts;
     const char *kernel_filename;
     const char *kernel_cmdline;
     const char *dtb_arg;
-    char *filename = NULL;
 
     machine_opts = qemu_get_machine_opts();
     kernel_filename = qemu_opt_get(machine_opts, "kernel");
     kernel_cmdline = qemu_opt_get(machine_opts, "append");
     dtb_arg = qemu_opt_get(machine_opts, "dtb");
-    /* default to pcbios dtb as passed by machine_init */
-    if (!dtb_arg) {
-        filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, dtb_filename);
+    if (!fdt) {
+        if (dtb_arg) { /* Preference a -dtb argument */
+            dtb_filename = dtb_arg;
+        } else { /* default to pcbios dtb as passed by machine_init */
+            dtb_filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, dtb_filename);
+        }
     }
 
     boot_info.machine_cpu_reset = machine_cpu_reset;
@@ -208,8 +214,9 @@ void microblaze_load_kernel(MicroBlazeCPU *cpu, hwaddr ddr_base,
                             boot_info.initrd_start,
                             boot_info.initrd_end,
                             kernel_cmdline,
-                            /* Preference a -dtb argument */
-                            dtb_arg ? dtb_arg : filename);
+                            dtb_filename,
+                            fdt,
+                            fdt_size);
     }
-    g_free(filename);
+
 }

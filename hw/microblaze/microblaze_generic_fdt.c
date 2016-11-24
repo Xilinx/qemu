@@ -388,7 +388,7 @@ microblaze_generic_fdt_init(MachineState *machine)
     fdt_g = fdt;
     microblaze_load_kernel(MICROBLAZE_CPU(first_cpu), ram_kernel_base,
                            ram_kernel_size, machine->initrd_filename, NULL,
-                           microblaze_generic_fdt_reset);
+                           microblaze_generic_fdt_reset, fdt, fdt_size);
 
     /* Register FDT to prop mapper for secondary cores.  */
     cpu = CPU_NEXT(first_cpu);
