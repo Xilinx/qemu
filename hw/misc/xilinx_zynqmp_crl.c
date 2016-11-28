@@ -956,7 +956,8 @@ static uint64_t crl_apb_read(void *opaque, hwaddr addr, unsigned size)
     RegisterInfo *r = &s->regs_info[addr / 4];
 
     if (!r->data) {
-        qemu_log("%s: Decode error: read from 0x%" HWADDR_PRIx "\n",
+        qemu_log_mask(LOG_GUEST_ERROR,
+                 "%s: Decode error: read from 0x%" HWADDR_PRIx "\n",
                  object_get_canonical_path(OBJECT(s)),
                  addr);
         return 0;
@@ -971,7 +972,8 @@ static void crl_apb_write(void *opaque, hwaddr addr, uint64_t value,
     RegisterInfo *r = &s->regs_info[addr / 4];
 
     if (!r->data) {
-        qemu_log("%s: Decode error: write from 0x%" HWADDR_PRIx "=0x%" PRIx64 "\n",
+        qemu_log_mask(LOG_GUEST_ERROR,
+                 "%s: Decode error: write from 0x%" HWADDR_PRIx "=0x%" PRIx64 "\n",
                  object_get_canonical_path(OBJECT(s)),
                  addr, value);
         return;
