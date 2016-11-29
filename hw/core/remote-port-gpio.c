@@ -19,29 +19,9 @@
 
 #include "hw/remote-port-proto.h"
 #include "hw/remote-port-device.h"
+#include "hw/remote-port-gpio.h"
 
-#define TYPE_REMOTE_PORT_GPIO "remote-port-gpio"
-#define REMOTE_PORT_GPIO(obj) \
-        OBJECT_CHECK(RemotePortGPIO, (obj), TYPE_REMOTE_PORT_GPIO)
-
-#define MAX_GPIOS 164
 #define CACHE_INVALID -1
-
-typedef struct RemotePortGPIO {
-    /* private */
-    SysBusDevice parent;
-    /* public */
-
-    int8_t cache[MAX_GPIOS];
-    uint32_t num_gpios;
-    qemu_irq *gpio_out;
-    uint16_t cell_offset_irq_num;
-
-    uint64_t current_id;
-
-    uint32_t rp_dev;
-    struct RemotePort *rp;
-} RemotePortGPIO;
 
 static void rp_gpio_handler(void *opaque, int irq, int level)
 {
