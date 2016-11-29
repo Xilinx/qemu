@@ -44,7 +44,7 @@ typedef struct I2CSlaveClass
     /* Notify the slave what address was decoded. Only needed for slaves that
      * decode multiple addresses. Called after event() for I2C_START_RECV/SEND
      */
-    void (*decode_address)(I2CSlave *s, uint8_t address);
+    int (*decode_address)(I2CSlave *s, uint8_t address);
 } I2CSlaveClass;
 
 struct I2CSlave

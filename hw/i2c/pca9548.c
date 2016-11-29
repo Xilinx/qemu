@@ -123,24 +123,33 @@ static void pca9548_event(I2CSlave *i2c, enum i2c_event event)
     }
 }
 
-static void pca9548_decode_address(I2CSlave *i2c, uint8_t address)
+static int pca9548_decode_address(I2CSlave *i2c, uint8_t address)
 {
     PCA9548State *s = PCA9548(i2c);
     int i;
+    uint8_t channel_status = 0;
 
     s->control_decoded = address ==
                     (PCA9548_CONTROL_ADDR | (s->chip_enable & 0x7));
+
     if (s->control_decoded) {
-        return;
+        return 0;
     }
+
     for (i = 0; i < NUM_BUSSES; ++i) {
         if (s->control_reg & (1 << i)) {
             DB_PRINT("starting active bus %d addr:%02x rnw:%d\n", i, address,
                     s->event == I2C_START_RECV);
-            i2c_start_transfer(s->busses[i], address,
-                               s->event == I2C_START_RECV);
+            channel_status |= (i2c_start_transfer(s->busses[i], address,
+                               s->event == I2C_START_RECV)) << i;
         }
     }
+
+    if (s->control_reg == channel_status) {
+        return 1;
+    }
+
+    return 0;
 }
 
 static void pca9548_init(Object *obj)

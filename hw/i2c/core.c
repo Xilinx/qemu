@@ -124,6 +124,11 @@ int i2c_start_transfer(I2CBus *bus, uint8_t address, int recv)
         if (sc->event) {
             sc->event(node->elt, recv ? I2C_START_RECV : I2C_START_SEND);
         }
+        if (sc->decode_address) {
+            if (sc->decode_address(node->elt, address)) {
+                return 1;
+            }
+        }
     }
     return 0;
 }

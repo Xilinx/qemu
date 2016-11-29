@@ -155,14 +155,15 @@ static void m24cxx_event(I2CSlave *i2c, enum i2c_event event)
     DB_PRINT("transitioning to state %s\n", m24cxx_state_names[s->state]);
 }
 
-static void m24cxx_decode_address(I2CSlave *i2c, uint8_t address)
+static int m24cxx_decode_address(I2CSlave *i2c, uint8_t address)
 {
     M24CXXState *s = M24CXX(i2c);
 
     if (m24cxx_uses_i2c_addr(s)) {
         s->cur_addr &= ~(0x0700);
-        deposit32(s->cur_addr, 0, 3, ((s->size >> 8)-1) & address);
+        deposit32(s->cur_addr, 0, 3, ((s->size >> 8) - 1) & address);
     }
+    return 0;
 }
 
 static void m24cxx_realize(DeviceState *dev, Error **errp)
