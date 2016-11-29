@@ -99,4 +99,14 @@ void rp_device_attach(Object *adaptor, Object *dev,
                       Error **errp);
 bool rp_time_warp_enable(bool en);
 
+/**
+ * rp_device_add
+ * @opts:  qdev opts created by the qdev subsystem
+ * @dev: The device to be connected
+ * @errp: Returns an error if the function fails
+ *
+ * Function used in qdev-monitor.c to connect remote port devices.
+ */
+void rp_device_add(QemuOpts *opts, DeviceState *dev, Error **errp);
+
 #endif

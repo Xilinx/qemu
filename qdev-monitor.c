@@ -29,6 +29,9 @@
 #include "qemu/error-report.h"
 #include "qemu/help_option.h"
 
+#include "hw/remote-port.h"
+#include "qemu/cutils.h"
+
 /*
  * Aliases were a bad idea from the start.  Let's keep them
  * from spreading further.
@@ -178,6 +181,9 @@ static int set_property(void *opaque, const char *name, const char *value,
         return 0;
     if (strcmp(name, "bus") == 0)
         return 0;
+    if (strstr(name, "rp-adaptor") == name) {
+        return 0;
+    }
 
     object_property_parse(obj, value, name, &err);
     if (err != NULL) {
@@ -608,6 +614,14 @@ DeviceState *qdev_device_add(QemuOpts *opts, Error **errp)
         object_property_add_child(qdev_get_peripheral_anon(), name,
                                   OBJECT(dev), NULL);
         g_free(name);
+    }
+
+    rp_device_add(opts, dev, &err);
+    if (err != NULL) {
+        error_propagate(errp, err);
+        object_unparent(OBJECT(dev));
+        object_unref(OBJECT(dev));
+        return NULL;
     }
 
     /* set properties */
