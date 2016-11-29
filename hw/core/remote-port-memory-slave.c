@@ -19,6 +19,7 @@
 
 #include "hw/remote-port-proto.h"
 #include "hw/remote-port-device.h"
+#include "hw/remote-port-memory-slave.h"
 
 #ifndef REMOTE_PORT_ERR_DEBUG
 #define REMOTE_PORT_DEBUG_LEVEL 0
@@ -33,22 +34,6 @@
     } \
 } while (0);
 
-
-#define TYPE_REMOTE_PORT_MEMORY_SLAVE "remote-port-memory-slave"
-#define REMOTE_PORT_MEMORY_SLAVE(obj) \
-        OBJECT_CHECK(RemotePortMemorySlave, (obj), \
-                     TYPE_REMOTE_PORT_MEMORY_SLAVE)
-
-typedef struct RemotePortMemorySlave {
-    /* private */
-    DeviceState parent;
-    /* public */
-    struct RemotePort *rp;
-    MemoryRegion *mr;
-    AddressSpace *as;
-    MemTxAttrs attr;
-    RemotePortDynPkt rsp;
-} RemotePortMemorySlave;
 
 static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
                       DMADirection dir)
