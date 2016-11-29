@@ -34,7 +34,7 @@ common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx-ddrc.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx-ddr_phy.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx-serdes.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += reset-dev.o
-common-obj-$(CONFIG_XLNX_ZYNQMP) += si57x.o
+common-obj-$(CONFIG_SI57X) += si57x.o
 
 common-obj-$(CONFIG_XILINX_AXI) += stream-fifo.o
 
