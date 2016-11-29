@@ -3,6 +3,7 @@
 include pci.mak
 include sound.mak
 include usb.mak
+include remote-port-x86.mak
 CONFIG_QXL=$(CONFIG_SPICE)
 CONFIG_VGA_ISA=y
 CONFIG_VGA_CIRRUS=y
