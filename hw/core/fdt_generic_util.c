@@ -871,11 +871,19 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
                               OBJECT(dev), NULL);
         if (object_dynamic_cast(dev, TYPE_DEVICE)) {
             Object *parent_bus = parent;
+            unsigned int depth = 0;
 
             DB_PRINT_NP(1, "bus parenting node\n");
             /* Look for an FDT ancestor that is a Bus.  */
             while (parent_bus && !object_dynamic_cast(parent_bus, TYPE_BUS)) {
+                /*
+                 * Assert against insanely deep hierarchies which are an
+                 * indication of loops.
+                 */
+                assert(depth < 4096);
+
                 parent_bus = parent_bus->parent;
+                depth++;
             }
 
             if (!parent_bus
