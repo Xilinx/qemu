@@ -37,7 +37,9 @@ static const char * const tcg_target_reg_names[TCG_TARGET_NB_REGS] = {
 
 static const int tcg_target_reg_alloc_order[] = {
 #if TCG_TARGET_REG_BITS == 64
+#ifndef _WIN64
     TCG_REG_RBP,
+#endif
     TCG_REG_RBX,
     TCG_REG_R12,
     TCG_REG_R13,
@@ -2302,7 +2304,14 @@ static void tcg_target_qemu_prologue(TCGContext *s)
 			 + stack_addend);
 #else
     tcg_out_mov(s, TCG_TYPE_PTR, TCG_AREG0, tcg_target_call_iarg_regs[0]);
+#ifdef _WIN64
+    /* Emit zeroed stack frame. Fixes Windows longjmp issues??? */
+    for (i = 0; i < stack_addend; i += 8) {
+        tcg_out_pushi(s, 0);
+    }
+#else
     tcg_out_addi(s, TCG_REG_ESP, -stack_addend);
+#endif
     /* jmp *tb.  */
     tcg_out_modrm(s, OPC_GRP5, EXT5_JMPN_Ev, tcg_target_call_iarg_regs[1]);
 #endif
