@@ -49,6 +49,7 @@ struct RemotePortStream {
 
     RemotePort *rp;
     uint32_t rp_dev;
+    uint16_t stream_width;
 
     StreamSlave *tx_dev;
 
@@ -144,7 +145,7 @@ static size_t rp_stream_stream_push(StreamSlave *obj, uint8_t *buf,
 
     clk = rp_normalized_vmclk(s->rp);
     enclen = rp_encode_write(s->current_id++, s->rp_dev, &pkt, clk,
-                             0, 0, rp_attr, len, 0, 4);
+                             0, 0, rp_attr, len, 0, s->stream_width);
 
     rp_rsp_mutex_lock(s->rp);
     rp_write(s->rp, (void *) &pkt, enclen);
@@ -176,6 +177,7 @@ static void rp_stream_init(Object *obj)
 
 static Property rp_properties[] = {
     DEFINE_PROP_UINT32("rp-chan0", RemotePortStream, rp_dev, 0),
+    DEFINE_PROP_UINT16("stream-width", RemotePortStream, stream_width, 4),
     DEFINE_PROP_END_OF_LIST(),
 };
 
