@@ -239,6 +239,12 @@ static void rp_cmd_hello(RemotePort *s, struct rp_pkt *pkt)
                       RP_VERSION_MAJOR, RP_VERSION_MINOR);
         rp_fatal_error(s, "Bad version");
     }
+
+    if (pkt->hello.caps.len) {
+        void *caps = (char *) pkt + pkt->hello.caps.offset;
+
+        rp_process_caps(&s->peer, caps, pkt->hello.caps.len);
+    }
 }
 
 static void rp_cmd_sync(RemotePort *s, struct rp_pkt *pkt)
@@ -284,11 +290,19 @@ static void rp_cmd_sync(RemotePort *s, struct rp_pkt *pkt)
 static void rp_say_hello(RemotePort *s)
 {
     struct rp_pkt_hello pkt;
+    uint32_t caps[] = {
+        CAP_BUSACCESS_EXT_BASE,
+    };
     size_t len;
 
-    len = rp_encode_hello(s->current_id++, 0, &pkt, RP_VERSION_MAJOR,
-                          RP_VERSION_MINOR);
+    len = rp_encode_hello_caps(s->current_id++, 0, &pkt, RP_VERSION_MAJOR,
+                               RP_VERSION_MINOR,
+                               caps, caps, sizeof caps / sizeof caps[0]);
     rp_write(s, (void *) &pkt, len);
+
+    if (sizeof caps) {
+        rp_write(s, caps, sizeof caps);
+    }
 }
 
 static void rp_say_sync(RemotePort *s, int64_t clk)
