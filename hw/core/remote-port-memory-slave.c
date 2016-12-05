@@ -46,7 +46,7 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
     if (dir == DMA_DIRECTION_TO_DEVICE) {
         pktlen += pkt->busaccess.len;
     } else {
-        data = (uint8_t *)(pkt + 1);
+        data = rp_busaccess_dataptr(&pkt->busaccess);
     }
 
     assert(pkt->busaccess.width == 0);
@@ -55,7 +55,7 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
 
     rp_dpkt_alloc(&s->rsp, pktlen);
     if (dir == DMA_DIRECTION_TO_DEVICE) {
-        data = (uint8_t *)(s->rsp.pkt + 1);
+        data = rp_busaccess_dataptr(&s->rsp.pkt->busaccess);
     }
     if (dir == DMA_DIRECTION_FROM_DEVICE && REMOTE_PORT_DEBUG_LEVEL > 0) {
         DB_PRINT_L(0, "address: %" PRIx64 "\n", pkt->busaccess.addr);
