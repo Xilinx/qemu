@@ -95,6 +95,8 @@ static void rp_memory_slave_realize(DeviceState *dev, Error **errp)
 {
     RemotePortMemorySlave *s = REMOTE_PORT_MEMORY_SLAVE(dev);
 
+    s->peer = rp_get_peer(s->rp);
+
     /* FIXME: do something with per paster address spaces */
     s->as = s->mr ? address_space_init_shareable(s->mr, NULL)
                   : &address_space_memory;

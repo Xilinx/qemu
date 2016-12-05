@@ -21,6 +21,7 @@ typedef struct RemotePortMemorySlave {
     DeviceState parent;
     /* public */
     struct RemotePort *rp;
+    struct rp_peer_state *peer;
     MemoryRegion *mr;
     AddressSpace *as;
     MemTxAttrs attr;
