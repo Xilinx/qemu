@@ -824,6 +824,11 @@ void rp_device_attach(Object *adaptor, Object *dev,
     }
 }
 
+struct rp_peer_state *rp_get_peer(RemotePort *s)
+{
+    return &s->peer;
+}
+
 static void rp_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);

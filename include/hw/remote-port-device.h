@@ -53,4 +53,6 @@ RemotePortDynPkt rp_wait_resp(RemotePort *s);
 
 int64_t rp_normalized_vmclk(RemotePort *s);
 
+struct rp_peer_state *rp_get_peer(RemotePort *s);
+
 #endif
