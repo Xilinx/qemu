@@ -91,7 +91,7 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
     rp_write(s->rp, (void *)s->rsp.pkt, pktlen);
 }
 
-static void rp_memory_master_realize(DeviceState *dev, Error **errp)
+static void rp_memory_slave_realize(DeviceState *dev, Error **errp)
 {
     RemotePortMemorySlave *s = REMOTE_PORT_MEMORY_SLAVE(dev);
 
@@ -100,19 +100,19 @@ static void rp_memory_master_realize(DeviceState *dev, Error **errp)
                   : &address_space_memory;
 }
 
-static void rp_memory_master_write(RemotePortDevice *s, struct rp_pkt *pkt)
+static void rp_memory_slave_write(RemotePortDevice *s, struct rp_pkt *pkt)
 {
     return rp_cmd_rw(REMOTE_PORT_MEMORY_SLAVE(s), pkt,
                      DMA_DIRECTION_FROM_DEVICE);
 }
 
-static void rp_memory_master_read(RemotePortDevice *s, struct rp_pkt *pkt)
+static void rp_memory_slave_read(RemotePortDevice *s, struct rp_pkt *pkt)
 {
     return rp_cmd_rw(REMOTE_PORT_MEMORY_SLAVE(s), pkt,
                      DMA_DIRECTION_TO_DEVICE);
 }
 
-static void rp_memory_master_init(Object *obj)
+static void rp_memory_slave_init(Object *obj)
 {
     RemotePortMemorySlave *rpms = REMOTE_PORT_MEMORY_SLAVE(obj);
 
@@ -128,22 +128,22 @@ static void rp_memory_master_init(Object *obj)
                              &error_abort);
 }
 
-static void rp_memory_master_class_init(ObjectClass *oc, void *data)
+static void rp_memory_slave_class_init(ObjectClass *oc, void *data)
 {
     RemotePortDeviceClass *rpdc = REMOTE_PORT_DEVICE_CLASS(oc);
     DeviceClass *dc = DEVICE_CLASS(oc);
 
-    rpdc->ops[RP_CMD_write] = rp_memory_master_write;
-    rpdc->ops[RP_CMD_read] = rp_memory_master_read;
-    dc->realize = rp_memory_master_realize;
+    rpdc->ops[RP_CMD_write] = rp_memory_slave_write;
+    rpdc->ops[RP_CMD_read] = rp_memory_slave_read;
+    dc->realize = rp_memory_slave_realize;
 }
 
 static const TypeInfo rp_info = {
     .name          = TYPE_REMOTE_PORT_MEMORY_SLAVE,
     .parent        = TYPE_DEVICE,
     .instance_size = sizeof(RemotePortMemorySlave),
-    .instance_init = rp_memory_master_init,
-    .class_init    = rp_memory_master_class_init,
+    .instance_init = rp_memory_slave_init,
+    .class_init    = rp_memory_slave_class_init,
     .interfaces    = (InterfaceInfo[]) {
         { TYPE_REMOTE_PORT_DEVICE },
         { },
