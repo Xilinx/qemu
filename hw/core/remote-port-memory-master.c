@@ -59,6 +59,7 @@ struct RemotePortMemoryMaster {
     uint32_t rp_dev;
     bool relative;
     struct RemotePort *rp;
+    struct rp_peer_state *peer;
 };
 
 static uint64_t rp_io_read(void *opaque, hwaddr addr, unsigned size,
@@ -181,6 +182,14 @@ static const MemoryRegionOps rp_ops = {
     .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
+static void rp_memory_master_realize(DeviceState *dev, Error **errp)
+{
+    RemotePortMemoryMaster *s = REMOTE_PORT_MEMORY_MASTER(dev);
+
+    assert(s->rp);
+    s->peer = rp_get_peer(s->rp);
+}
+
 static void rp_memory_master_init(Object *obj)
 {
     RemotePortMemoryMaster *rpms = REMOTE_PORT_MEMORY_MASTER(obj);
@@ -225,6 +234,7 @@ static void rp_memory_master_class_init(ObjectClass *oc, void *data)
     FDTGenericMMapClass *fmc = FDT_GENERIC_MMAP_CLASS(oc);
     DeviceClass *dc = DEVICE_CLASS(oc);
     dc->props = rp_properties;
+    dc->realize = rp_memory_master_realize;
     fmc->parse_reg = rp_parse_reg;
 }
 
