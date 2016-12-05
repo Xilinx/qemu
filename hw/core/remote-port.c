@@ -152,7 +152,7 @@ ssize_t rp_write(RemotePort *s, const void *buf, size_t count)
     if (r <= 0) {
         error_report("%s: Disconnected r=%zd buf=%p count=%zd\n",
                      s->prefix, r, buf, count);
-        rp_fatal_error(s, "Bad read");
+        rp_fatal_error(s, "Bad write");
     }
     return r;
 }
