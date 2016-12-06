@@ -24,7 +24,6 @@
  */
 #include "qemu/osdep.h"
 #include "qemu-common.h"
-#include "qemu/bswap.h"
 #include "audio.h"
 
 #define AUDIO_CAP "mixeng"
@@ -271,7 +270,7 @@ f_sample *mixeng_clip[2][2][2][3] = {
  * August 21, 1998
  * Copyright 1998 Fabrice Bellard.
  *
- * [Rewrote completely the code of Lance Norskog And Sundry
+ * [Rewrote completly the code of Lance Norskog And Sundry
  * Contributors with a more efficient algorithm.]
  *
  * This source code is freely redistributable and may be used for
