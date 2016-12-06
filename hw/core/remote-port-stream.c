@@ -67,9 +67,11 @@ static void rp_stream_notify(void *opaque)
 {
     RemotePortStream *s = REMOTE_PORT_STREAM(opaque);
 
+    /* FIXME: This is completely bogus.  */
     if (s->buf && stream_can_push(s->tx_dev, rp_stream_notify, s)) {
         RemotePortDynPkt rsp;
-        size_t pktlen = sizeof(struct rp_pkt_busaccess);
+        struct rp_encode_busaccess_in in = {0};
+        size_t pktlen = sizeof(struct rp_pkt_busaccess_ext_base);
         size_t enclen;
         int64_t delay = 0; /* FIXME - Implement */
 
@@ -79,16 +81,12 @@ static void rp_stream_notify(void *opaque)
 
         memset(&rsp, 0, sizeof(rsp));
         rp_dpkt_alloc(&rsp, pktlen);
-
-        enclen = rp_encode_write_resp(s->pkt.hdr.id, s->rp_dev,
-                                      &rsp.pkt->busaccess,
-                                      s->pkt.busaccess.timestamp + delay,
-                                      0, 0,
-                                      s->pkt.busaccess.attributes,
-                                      s->pkt.busaccess.len,
-                                      s->pkt.busaccess.width,
-                                      s->pkt.busaccess.stream_width);
-        assert(enclen == pktlen);
+        rp_encode_busaccess_in_rsp_init(&in, &s->pkt);
+        in.clk = s->pkt.busaccess.timestamp + delay;
+        enclen = rp_encode_busaccess(rp_get_peer(s->rp),
+                                     &rsp.pkt->busaccess_ext_base,
+                                     &in);
+        assert(enclen <= pktlen);
 
         rp_write(s->rp, (void *)rsp.pkt, pktlen);
     }
@@ -138,14 +136,22 @@ static size_t rp_stream_stream_push(StreamSlave *obj, uint8_t *buf,
 {
     RemotePortStream *s = REMOTE_PORT_STREAM(obj);
     RemotePortDynPkt rsp;
-    struct rp_pkt_busaccess pkt;
+    struct rp_pkt_busaccess_ext_base pkt;
+    struct rp_encode_busaccess_in in = {0};
     uint64_t rp_attr = stream_attr_has_eop(attr) ? RP_BUS_ATTR_EOP : 0;
     int64_t clk;
     int enclen;
 
     clk = rp_normalized_vmclk(s->rp);
-    enclen = rp_encode_write(s->current_id++, s->rp_dev, &pkt, clk,
-                             0, 0, rp_attr, len, 0, s->stream_width);
+
+    in.cmd = RP_CMD_write;
+    in.id = rp_new_id(s->rp);
+    in.dev = s->rp_dev;
+    in.clk = clk;
+    in.attr = rp_attr;
+    in.size = len;
+    in.stream_width = s->stream_width;
+    enclen = rp_encode_busaccess(rp_get_peer(s->rp), &pkt, &in);
 
     rp_rsp_mutex_lock(s->rp);
     rp_write(s->rp, (void *) &pkt, enclen);
