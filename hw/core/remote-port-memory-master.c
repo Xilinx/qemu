@@ -67,25 +67,28 @@ static uint64_t rp_io_read(void *opaque, hwaddr addr, unsigned size,
 {
     RemotePortMap *map = opaque;
     RemotePortMemoryMaster *s = map->parent;
-    struct rp_pkt_busaccess pkt;
+    struct rp_pkt_busaccess_ext_base pkt;
+    struct rp_encode_busaccess_in in = {0};
     uint64_t value = 0;
-    int64_t clk;
     int64_t rclk;
     uint8_t *data;
-    uint32_t id;
-    uint64_t rp_attr = 0;
     int len;
     int i;
     RemotePortDynPkt rsp;
 
     DB_PRINT_L(1, "\n");
-    clk = rp_normalized_vmclk(s->rp);
-    id = rp_new_id(s->rp);
-    rp_attr |= attr.secure ? RP_BUS_ATTR_SECURE : 0;
     addr += s->relative ? 0 : map->offset;
-    len = rp_encode_read(id, s->rp_dev, &pkt, clk,
-                         attr.master_id, addr,
-                         rp_attr, size, 0, size);
+
+    in.cmd = RP_CMD_read;
+    in.id = rp_new_id(s->rp);
+    in.dev = s->rp_dev;
+    in.clk = rp_normalized_vmclk(s->rp);
+    in.master_id = attr.master_id;
+    in.addr = addr;
+    in.attr |= attr.secure ? RP_BUS_ATTR_SECURE : 0;
+    in.size = size;
+    in.stream_width = size;
+    len = rp_encode_busaccess(s->peer, &pkt, &in);
 
     rp_rsp_mutex_lock(s->rp);
     rp_write(s->rp, (void *) &pkt, len);
@@ -94,14 +97,14 @@ static uint64_t rp_io_read(void *opaque, hwaddr addr, unsigned size,
     /* We dont support out of order answers yet.  */
     assert(rsp.pkt->hdr.id == be32_to_cpu(pkt.hdr.id));
 
-    data = rp_busaccess_dataptr(&rsp.pkt->busaccess);
+    data = rp_busaccess_rx_dataptr(s->peer, &rsp.pkt->busaccess_ext_base);
     for (i = 0; i < size; i++) {
         value |= data[i] << (i *8);
     }
-    rclk = rsp.pkt->busaccess.timestamp;
+    rclk = rsp.pkt->busaccess_ext_base.timestamp;
     rp_dpkt_invalidate(&rsp);
     rp_rsp_mutex_unlock(s->rp);
-    rp_sync_vmclock(s->rp, clk, rclk);
+    rp_sync_vmclock(s->rp, in.clk, rclk);
 
     /* Reads are sync-points, roll the sync timer.  */
     rp_restart_sync_timer(s->rp);
@@ -115,33 +118,37 @@ static void rp_io_write(void *opaque, hwaddr addr, uint64_t value,
 {
     RemotePortMap *map = opaque;
     RemotePortMemoryMaster *s = map->parent;
-    int64_t clk;
     int64_t rclk;
-    uint64_t rp_attr = 0;
-    uint32_t id;
     RemotePortDynPkt rsp;
 
     struct  {
-        struct rp_pkt_busaccess pkt;
-        uint8_t data[8];
+        struct rp_pkt_busaccess_ext_base pkt;
+        uint8_t reserved[8];
     } pay;
+    uint8_t *data = rp_busaccess_tx_dataptr(s->peer, &pay.pkt);
+    struct rp_encode_busaccess_in in = {0};
     int i;
     int len;
 
     DB_PRINT_L(0, "addr: %" HWADDR_PRIx " data: %" PRIx64 "\n", addr, value);
 
     for (i = 0; i < 8; i++) {
-        pay.data[i] = value >> (i * 8);
+        data[i] = value >> (i * 8);
     }
 
     assert(size <= 8);
-    clk = rp_normalized_vmclk(s->rp);
-    id = rp_new_id(s->rp);
-    rp_attr |= attr.secure ? RP_BUS_ATTR_SECURE : 0;
     addr += s->relative ? 0 : map->offset;
-    len = rp_encode_write(id, s->rp_dev, &pay.pkt, clk,
-                          attr.master_id, addr,
-                          rp_attr, size, 0, size);
+
+    in.cmd = RP_CMD_write;
+    in.id = rp_new_id(s->rp);
+    in.dev = s->rp_dev;
+    in.clk = rp_normalized_vmclk(s->rp);
+    in.master_id = attr.master_id;
+    in.addr = addr;
+    in.attr |= attr.secure ? RP_BUS_ATTR_SECURE : 0;
+    in.size = size;
+    in.stream_width = size;
+    len = rp_encode_busaccess(s->peer, &pay.pkt, &in);
 
     rp_rsp_mutex_lock(s->rp);
 
@@ -154,7 +161,7 @@ static void rp_io_write(void *opaque, hwaddr addr, uint64_t value,
     rclk = rsp.pkt->busaccess.timestamp;
     rp_dpkt_invalidate(&rsp);
     rp_rsp_mutex_unlock(s->rp);
-    rp_sync_vmclock(s->rp, clk, rclk);
+    rp_sync_vmclock(s->rp, in.clk, rclk);
     /* Reads are sync-points, roll the sync timer.  */
     rp_restart_sync_timer(s->rp);
     rp_leave_iothread(s->rp);
