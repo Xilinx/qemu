@@ -38,7 +38,8 @@
 static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
                       DMADirection dir)
 {
-    size_t pktlen = sizeof(struct rp_pkt_busaccess);
+    size_t pktlen = sizeof(struct rp_pkt_busaccess_ext_base);
+    struct rp_encode_busaccess_in in = {0};
     size_t enclen;
     int64_t delay;
     uint8_t *data = NULL;
@@ -46,7 +47,7 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
     if (dir == DMA_DIRECTION_TO_DEVICE) {
         pktlen += pkt->busaccess.len;
     } else {
-        data = rp_busaccess_dataptr(&pkt->busaccess);
+        data = rp_busaccess_rx_dataptr(s->peer, &pkt->busaccess_ext_base);
     }
 
     assert(pkt->busaccess.width == 0);
@@ -55,7 +56,8 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
 
     rp_dpkt_alloc(&s->rsp, pktlen);
     if (dir == DMA_DIRECTION_TO_DEVICE) {
-        data = rp_busaccess_dataptr(&s->rsp.pkt->busaccess);
+        data = rp_busaccess_tx_dataptr(s->peer,
+                                       &s->rsp.pkt->busaccess_ext_base);
     }
     if (dir == DMA_DIRECTION_FROM_DEVICE && REMOTE_PORT_DEBUG_LEVEL > 0) {
         DB_PRINT_L(0, "address: %" PRIx64 "\n", pkt->busaccess.addr);
@@ -76,17 +78,11 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
        at the moment. So we just clear the delay.  */
     delay = 0;
 
-    enclen = (dir == DMA_DIRECTION_FROM_DEVICE ? rp_encode_write_resp :
-                                                 rp_encode_read_resp)(
-                    pkt->hdr.id, pkt->hdr.dev, &s->rsp.pkt->busaccess,
-                    pkt->busaccess.timestamp + delay,
-                    pkt->busaccess.master_id,
-                    pkt->busaccess.addr,
-                    pkt->busaccess.attributes,
-                    pkt->busaccess.len,
-                    pkt->busaccess.width,
-                    pkt->busaccess.stream_width);
-    assert(enclen == pktlen);
+    rp_encode_busaccess_in_rsp_init(&in, pkt);
+    in.clk = pkt->busaccess.timestamp + delay;
+    enclen = rp_encode_busaccess(s->peer, &s->rsp.pkt->busaccess_ext_base,
+                                 &in);
+    assert(enclen <= pktlen);
 
     rp_write(s->rp, (void *)s->rsp.pkt, pktlen);
 }
