@@ -51,7 +51,13 @@ typedef struct MemoryRegionMmio MemoryRegionMmio;
 typedef struct MemoryTransaction
 {
     union {
-        uint64_t *p64;
+        /*
+         * Data is passed by values up to 64bit sizes. Beyond
+         * that, a pointer is passed in p8.
+         *
+         * Note that p8 has no alignment restrictions.
+         */
+        uint8_t *p8;
         uint64_t u64;
         uint32_t u32;
         uint16_t u16;
