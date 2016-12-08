@@ -17,22 +17,26 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/log.h"
 #include "hw/i2c/i2c.h"
-#include "i2c-ddc.h"
+#include "hw/i2c/i2c-ddc.h"
 
-/* #define DEBUG_I2CDDC */
-#ifdef DEBUG_I2CDDC
-#define DPRINTF(fmt, ...) do { printf(fmt , ## __VA_ARGS__); } while (0)
-#else
-#define DPRINTF(fmt, ...) do {} while (0)
+#ifndef DEBUG_I2CDDC
+#define DEBUG_I2CDDC 0
 #endif
+
+#define DPRINTF(fmt, ...) do {                                                 \
+    if (DEBUG_I2CDDC) {                                                        \
+        qemu_log("i2c-ddc: " fmt , ## __VA_ARGS__);                            \
+    }                                                                          \
+} while (0);
 
 /* Structure defining a monitor's characteristics in a
  * readable format: this should be passed to build_edid_blob()
  * to convert it into the 128 byte binary EDID blob.
  * Not all bits of the EDID are customisable here.
  */
-typedef struct {
+struct EDIDData {
     char manuf_id[3]; /* three upper case letters */
     uint16_t product_id;
     uint32_t serial_no;
@@ -50,10 +54,12 @@ typedef struct {
     uint8_t hmax; /* kHz */
     uint8_t pixclock; /* MHz / 10 */
     uint8_t timing_data[18];
-} edid_data;
+};
+
+typedef struct EDIDData EDIDData;
 
 /* EDID data for a simple LCD monitor */
-static const edid_data lcd_edid = {
+static const EDIDData lcd_edid = {
     /* The manuf_id ought really to be an assigned EISA ID */
     .manuf_id = "QMU",
     .product_id = 0,
@@ -106,7 +112,7 @@ static void write_ascii_descriptor_block(uint8_t *descblob, uint8_t blocktype,
     }
 }
 
-static void write_range_limits_descriptor(const edid_data *edid,
+static void write_range_limits_descriptor(const EDIDData *edid,
                                           uint8_t *descblob)
 {
     int i;
@@ -124,10 +130,10 @@ static void write_range_limits_descriptor(const edid_data *edid,
     }
 }
 
-static void build_edid_blob(const edid_data *edid, uint8_t *blob)
+static void build_edid_blob(const EDIDData *edid, uint8_t *blob)
 {
     /* Write an EDID 1.3 format blob (128 bytes) based
-     * on the edid_data structure.
+     * on the EDIDData structure.
      */
     int i;
     uint8_t cksum;
@@ -206,28 +212,30 @@ static void build_edid_blob(const edid_data *edid, uint8_t *blob)
     blob[126] = 0;
 
     cksum = 0;
-    DPRINTF("EDID blob:");
     for (i = 0; i < 127; i++) {
         cksum += blob[i];
-        DPRINTF("%c0x%02x,", i % 8 ? ' ' : '\n', blob[i]);
     }
     /* 127 : checksum */
     blob[127] = -cksum;
-    DPRINTF(" 0x%02x\n", blob[127]);
+    if (DEBUG_I2CDDC) {
+        qemu_hexdump((char *)blob, stdout, "", 128);
+    }
 }
 
 static void i2c_ddc_reset(DeviceState *ds)
 {
     I2CDDCState *s = I2CDDC(ds);
-    s->firstbyte = 0;
+
+    s->firstbyte = false;
     s->reg = 0;
 }
 
 static void i2c_ddc_event(I2CSlave *i2c, enum i2c_event event)
 {
     I2CDDCState *s = I2CDDC(i2c);
+
     if (event == I2C_START_SEND) {
-        s->firstbyte = 1;
+        s->firstbyte = true;
     }
 }
 
@@ -236,13 +244,7 @@ static int i2c_ddc_rx(I2CSlave *i2c)
     I2CDDCState *s = I2CDDC(i2c);
 
     int value;
-    /* HACK: Stuff one zero before the EDID.. */
-    if (((s->reg) < (sizeof(s->edid_blob) + 1)) && (s->reg > 0)) {
-        value = s->edid_blob[s->reg - 1];
-    } else {
-        value = 0;
-    }
-
+    value = s->edid_blob[s->reg];
     s->reg++;
     return value;
 }
@@ -252,7 +254,7 @@ static int i2c_ddc_tx(I2CSlave *i2c, uint8_t data)
     I2CDDCState *s = I2CDDC(i2c);
     if (s->firstbyte) {
         s->reg = data;
-        s->firstbyte = 0;
+        s->firstbyte = false;
         DPRINTF("[EDID] Written new pointer: %u\n", data);
         return 1;
     }
@@ -268,15 +270,26 @@ static void i2c_ddc_init(Object *obj)
     build_edid_blob(&lcd_edid, s->edid_blob);
 }
 
+static const VMStateDescription vmstate_i2c_ddc = {
+    .name = TYPE_I2CDDC,
+    .version_id = 1,
+    .fields = (VMStateField[]) {
+        VMSTATE_BOOL(firstbyte, I2CDDCState),
+        VMSTATE_UINT8(reg, I2CDDCState),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static void i2c_ddc_class_init(ObjectClass *oc, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
-    I2CSlaveClass *klass = I2C_SLAVE_CLASS(oc);
+    I2CSlaveClass *isc = I2C_SLAVE_CLASS(oc);
 
     dc->reset = i2c_ddc_reset;
-    klass->event = i2c_ddc_event;
-    klass->recv = i2c_ddc_rx;
-    klass->send = i2c_ddc_tx;
+    dc->vmsd = &vmstate_i2c_ddc;
+    isc->event = i2c_ddc_event;
+    isc->recv = i2c_ddc_rx;
+    isc->send = i2c_ddc_tx;
 }
 
 static TypeInfo i2c_ddc_info = {
