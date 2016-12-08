@@ -140,6 +140,8 @@ static void rp_io_access(MemoryTransaction *tr)
 
 static const MemoryRegionOps rp_ops = {
     .access = rp_io_access,
+    .valid.max_access_size = RP_MAX_ACCESS_SIZE,
+    .impl.unaligned = false,
     .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
