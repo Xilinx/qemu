@@ -2741,7 +2741,19 @@ static MemTxResult address_space_write_continue(AddressSpace *as, hwaddr addr,
                                                        attrs);
                 break;
             default:
-                abort();
+                if (mr->ops->access) {
+                    MemoryTransaction tr = {
+                        .data.p8 = (uint8_t *) buf,
+                        .rw = true,
+                        .addr = addr1,
+                        .size = l,
+                        .attr = attrs,
+                        .opaque = mr->opaque,
+                    };
+                    mr->ops->access(&tr);
+                } else {
+                    abort();
+                }
             }
         } else {
             addr1 += memory_region_get_ram_addr(mr);
@@ -2833,7 +2845,19 @@ MemTxResult address_space_read_continue(AddressSpace *as, hwaddr addr,
                 stb_p(buf, val);
                 break;
             default:
-                abort();
+                if (mr->ops->access) {
+                    MemoryTransaction tr = {
+                        .data.p8 = buf,
+                        .rw = false,
+                        .addr = addr1,
+                        .size = l,
+                        .attr = attrs,
+                        .opaque = mr->opaque,
+                    };
+                    mr->ops->access(&tr);
+                } else {
+                    abort();
+                }
             }
         } else {
             /* RAM case */
