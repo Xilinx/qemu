@@ -292,6 +292,7 @@ static void rp_say_hello(RemotePort *s)
     struct rp_pkt_hello pkt;
     uint32_t caps[] = {
         CAP_BUSACCESS_EXT_BASE,
+        CAP_BUSACCESS_EXT_BYTE_EN,
     };
     size_t len;
 

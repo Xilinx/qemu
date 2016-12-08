@@ -34,6 +34,23 @@
     } \
 } while (0);
 
+/* Slow path dealing with odd stuff like byte-enables.  */
+static void process_data_slow(RemotePortMemorySlave *s,
+                              struct rp_pkt *pkt,
+                              DMADirection dir,
+                              uint8_t *data, uint8_t *byte_en)
+{
+    unsigned int i;
+    unsigned int byte_en_len = pkt->busaccess_ext_base.byte_enable_len;
+
+    for (i = 0; i < pkt->busaccess.len; i++) {
+        if (byte_en && !byte_en[i % byte_en_len]) {
+            continue;
+        }
+        dma_memory_rw_attr(s->as, pkt->busaccess.addr + i, data + i,
+                           1, dir, s->attr);
+    }
+}
 
 static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
                       DMADirection dir)
@@ -43,6 +60,9 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
     size_t enclen;
     int64_t delay;
     uint8_t *data = NULL;
+    uint8_t *byte_en;
+
+    byte_en = rp_busaccess_byte_en_ptr(s->peer, &pkt->busaccess_ext_base);
 
     if (dir == DMA_DIRECTION_TO_DEVICE) {
         pktlen += pkt->busaccess.len;
@@ -66,8 +86,13 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
     }
     s->attr.secure = !!(pkt->busaccess.attributes & RP_BUS_ATTR_SECURE);
     s->attr.master_id = pkt->busaccess.master_id;
-    dma_memory_rw_attr(s->as, pkt->busaccess.addr, data, pkt->busaccess.len,
-                       dir, s->attr);
+
+    if (byte_en) {
+        process_data_slow(s, pkt, dir, data, byte_en);
+    } else {
+        dma_memory_rw_attr(s->as, pkt->busaccess.addr, data,
+                           pkt->busaccess.len, dir, s->attr);
+    }
     if (dir == DMA_DIRECTION_TO_DEVICE && REMOTE_PORT_DEBUG_LEVEL > 0) {
         DB_PRINT_L(0, "address: %" PRIx64 "\n", pkt->busaccess.addr);
         qemu_hexdump((const char *)data, stderr, ": read: ",
