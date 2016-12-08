@@ -304,25 +304,14 @@ size_t rp_encode_busaccess(struct rp_peer_state *peer,
                            struct rp_pkt_busaccess_ext_base *pkt,
                            struct rp_encode_busaccess_in *in) {
     struct rp_pkt_busaccess *pkt_v4_0 = (void *) pkt;
-    enum rp_cmd cmd = in->cmd;
-    uint32_t id = in->id;
-    uint32_t flags = in->flags;
-    uint32_t dev = in->dev;
-    int64_t clk = in->clk;
-    uint64_t master_id = in->master_id;
-    uint64_t addr = in->addr;
-    uint64_t attr = in->attr;
-    uint32_t size = in->size;
-    uint32_t width = in->width;
-    uint32_t stream_width = in->stream_width;
     uint32_t hsize = 0;
     uint32_t ret_size = 0;
 
-    /* Exceptions.  */
-    if (cmd == RP_CMD_write && !(flags & RP_PKT_FLAGS_response)) {
+    /* Allocate packet space.  */
+    if (in->cmd == RP_CMD_write && !(in->flags & RP_PKT_FLAGS_response)) {
         hsize = in->size;
     }
-    if (cmd == RP_CMD_read && (flags & RP_PKT_FLAGS_response)) {
+    if (in->cmd == RP_CMD_read && (in->flags & RP_PKT_FLAGS_response)) {
         hsize = in->size;
         ret_size = in->size;
     }
@@ -331,34 +320,35 @@ size_t rp_encode_busaccess(struct rp_peer_state *peer,
      * old layout. For responses, what matters is if we're responding
      * to a packet with the extensions.
      */
-    if (!peer->caps.busaccess_ext_base && !(attr & RP_BUS_ATTR_EXT_BASE)) {
+    if (!peer->caps.busaccess_ext_base && !(in->attr & RP_BUS_ATTR_EXT_BASE)) {
         /* Old layout.  */
-        assert(master_id < UINT16_MAX);
+        assert(in->master_id < UINT16_MAX);
 
-        rp_encode_hdr(&pkt->hdr, cmd, id, dev,
-                  sizeof *pkt_v4_0 - sizeof pkt->hdr + hsize, flags);
-        rp_encode_busaccess_common(pkt_v4_0, clk, master_id,
-                                   addr, attr,
-                                   size, width, stream_width);
+        rp_encode_hdr(&pkt->hdr, in->cmd, in->id, in->dev,
+                  sizeof *pkt_v4_0 - sizeof pkt->hdr + hsize, in->flags);
+        rp_encode_busaccess_common(pkt_v4_0, in->clk, in->master_id,
+                                   in->addr, in->attr,
+                                   in->size, in->width, in->stream_width);
         return sizeof *pkt_v4_0 + ret_size;
     }
 
-    rp_encode_hdr(&pkt->hdr, cmd, id, dev,
-                  sizeof *pkt - sizeof pkt->hdr + hsize, flags);
-    rp_encode_busaccess_common(pkt_v4_0, clk, master_id, addr,
-                               attr | RP_BUS_ATTR_EXT_BASE,
-                               size, width, stream_width);
-
     /* Encode the extended fields.  */
-    pkt->master_id_31_16 = htobe16(master_id >> 16);
-    pkt->master_id_63_32 = htobe32(master_id >> 32);
+    pkt->master_id_31_16 = htobe16(in->master_id >> 16);
+    pkt->master_id_63_32 = htobe32(in->master_id >> 32);
 
     /* We always put data right after the header.  */
     pkt->data_offset = htobe32(sizeof *pkt);
     pkt->next_offset = 0;
 
-    pkt->byte_enable_offset = 0;
-    pkt->byte_enable_len = 0;
+    pkt->byte_enable_offset = htobe32(sizeof *pkt + hsize);
+    pkt->byte_enable_len = htobe32(in->byte_enable_len);
+    hsize += in->byte_enable_len;
+
+    rp_encode_hdr(&pkt->hdr, in->cmd, in->id, in->dev,
+                  sizeof *pkt - sizeof pkt->hdr + hsize, in->flags);
+    rp_encode_busaccess_common(pkt_v4_0, in->clk, in->master_id, in->addr,
+                               in->attr | RP_BUS_ATTR_EXT_BASE,
+                               in->size, in->width, in->stream_width);
 
     return sizeof *pkt + ret_size;
 }
