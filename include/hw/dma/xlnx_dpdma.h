@@ -35,6 +35,8 @@ struct XlnxDPDMAState {
     /*< private >*/
     SysBusDevice parent_obj;
     /*< public >*/
+    MemoryRegion *dma_mr;
+    AddressSpace *dma_as;
     MemoryRegion iomem;
     uint32_t registers[XLNX_DPDMA_REG_ARRAY_SIZE];
     uint8_t *data[6];

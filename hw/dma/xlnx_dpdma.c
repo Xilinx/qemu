@@ -570,6 +570,14 @@ static const MemoryRegionOps dma_ops = {
     },
 };
 
+static void xlnx_dpdma_realize(DeviceState *dev, Error **errp)
+{
+    XlnxDPDMAState *s = XLNX_DPDMA(dev);
+
+    s->dma_as = s->dma_mr ? address_space_init_shareable(s->dma_mr, NULL)
+                          : &address_space_memory;
+}
+
 static void xlnx_dpdma_init(Object *obj)
 {
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
@@ -579,6 +587,11 @@ static void xlnx_dpdma_init(Object *obj)
                           TYPE_XLNX_DPDMA, 0x1000);
     sysbus_init_mmio(sbd, &s->iomem);
     sysbus_init_irq(sbd, &s->irq);
+    object_property_add_link(obj, "dma", TYPE_MEMORY_REGION,
+                             (Object **)&s->dma_mr,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             &error_abort);
 }
 
 static void xlnx_dpdma_reset(DeviceState *dev)
@@ -604,6 +617,7 @@ static void xlnx_dpdma_class_init(ObjectClass *oc, void *data)
 
     dc->vmsd = &vmstate_xlnx_dpdma;
     dc->reset = xlnx_dpdma_reset;
+    dc->realize = xlnx_dpdma_realize;
 }
 
 static const TypeInfo xlnx_dpdma_info = {
@@ -656,7 +670,7 @@ size_t xlnx_dpdma_start_operation(XlnxDPDMAState *s, uint8_t channel,
             desc_addr = xlnx_dpdma_descriptor_next_address(s, channel);
         }
 
-        if (dma_memory_read(&address_space_memory, desc_addr, &desc,
+        if (dma_memory_read(s->dma_as, desc_addr, &desc,
                             sizeof(DPDMADescriptor))) {
             s->registers[DPDMA_EISR] |= ((1 << 1) << channel);
             xlnx_dpdma_update_irq(s);
@@ -710,7 +724,7 @@ size_t xlnx_dpdma_start_operation(XlnxDPDMAState *s, uint8_t channel,
             if (xlnx_dpdma_desc_is_contiguous(&desc)) {
                 source_addr[0] = xlnx_dpdma_desc_get_source_address(&desc, 0);
                 while (transfer_len != 0) {
-                    if (dma_memory_read(&address_space_memory,
+                    if (dma_memory_read(s->dma_as,
                                         source_addr[0],
                                         &s->data[channel][ptr],
                                         line_size)) {
@@ -738,7 +752,7 @@ size_t xlnx_dpdma_start_operation(XlnxDPDMAState *s, uint8_t channel,
                     size_t fragment_len = DPDMA_FRAG_MAX_SZ
                                     - (source_addr[frag] % DPDMA_FRAG_MAX_SZ);
 
-                    if (dma_memory_read(&address_space_memory,
+                    if (dma_memory_read(s->dma_as,
                                         source_addr[frag],
                                         &(s->data[channel][ptr]),
                                         fragment_len)) {
@@ -758,7 +772,7 @@ size_t xlnx_dpdma_start_operation(XlnxDPDMAState *s, uint8_t channel,
             /* The descriptor need to be updated when it's completed. */
             DPRINTF("update the descriptor with the done flag set.\n");
             xlnx_dpdma_desc_set_done(&desc);
-            dma_memory_write(&address_space_memory, desc_addr, &desc,
+            dma_memory_write(s->dma_as, desc_addr, &desc,
                              sizeof(DPDMADescriptor));
         }
 
