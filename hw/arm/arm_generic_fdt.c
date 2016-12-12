@@ -15,15 +15,12 @@
 
 #include "qemu/osdep.h"
 #include "cpu.h"
-#include "hw/arm/arm.h"
-#include "hw/sysbus.h"
-#include "sysemu/sysemu.h"
-#include "exec/address-spaces.h"
 #include "hw/boards.h"
 #include "hw/loader.h"
 #include "qapi/error.h"
 #include "hw/block/flash.h"
 #include "qemu/error-report.h"
+#include "hw/arm/xlnx-zynqmp.h"
 
 #include <libfdt.h>
 #include "hw/fdt_generic_util.h"
@@ -281,6 +278,79 @@ static void arm_generic_fdt_init(MachineState *machine)
                 }
             }
         } while (mem_offset > 0);
+    }
+
+    /* For ZynqMP let's find out how much memory we have already created, then
+     * based on what the user ser with '-m' let's add more if needed.
+     */
+    if (!zynq_7000) {
+        int mem_node_offset = 0;
+        uint64_t reg_value, memory_max = 0;
+        int mem_container;
+        char mem_node_path[DT_PATH_LENGTH];
+        ram_addr_t ddr_low_size, ddr_high_size;
+        do {
+            mem_node_offset =
+                fdt_node_offset_by_compatible(fdt, mem_node_offset,
+                                              "qemu:memory-region");
+
+            /* Check if we found anything and that it is top level memory */
+            if (mem_node_offset > 0 &&
+                    fdt_node_depth(fdt, mem_node_offset) == 1) {
+                fdt_get_path(fdt, mem_node_offset, mem_node_path,
+                             DT_PATH_LENGTH);
+
+                mem_container = qemu_fdt_getprop_cell(fdt, mem_node_path,
+                                                      "container",
+                                                      0, 0, NULL);
+
+                /* We only want RAM, so we filter to make sure the container of
+                 * what we are looking at is the same as the main memory@0 node
+                 * we just found above.
+                 */
+                if (mem_container != qemu_fdt_get_phandle(fdt, node_path)) {
+                    continue;
+                }
+
+                reg_value = qemu_fdt_getprop_cell(fdt, mem_node_path,
+                                                  "reg", 0, 0, NULL);
+                reg_value = reg_value << 32;
+                reg_value += qemu_fdt_getprop_cell(fdt, mem_node_path,
+                                                   "reg", 1, 0, NULL);
+                reg_value += qemu_fdt_getprop_cell(fdt, mem_node_path,
+                                                   "reg", 2, 0, NULL);
+
+                if (memory_max < reg_value) {
+                    memory_max = reg_value;
+                }
+            }
+        } while (mem_node_offset > 0);
+
+        /* We now have the maximum amount of DDR that has been created. */
+        if (memory_max < machine->ram_size) {
+            MemoryRegion *ram_high = g_new(MemoryRegion, 1);
+            MemoryRegion *ram_low = g_new(MemoryRegion, 1);
+
+            if (machine->ram_size > XLNX_ZYNQMP_MAX_LOW_RAM_SIZE) {
+                ddr_low_size = XLNX_ZYNQMP_MAX_LOW_RAM_SIZE - memory_max;
+                ddr_high_size = machine->ram_size -
+                                    XLNX_ZYNQMP_MAX_LOW_RAM_SIZE;
+
+                memory_region_init_ram(ram_high, NULL, "ddr-ram-high",
+                                       ddr_high_size, &error_fatal);
+                memory_region_add_subregion(mem_area,
+                                            XLNX_ZYNQMP_HIGH_RAM_START,
+                                            ram_high);
+            } else {
+                ddr_low_size = machine->ram_size - memory_max;
+            }
+
+            if (ddr_low_size) {
+                memory_region_init_ram(ram_low, NULL, "ddr-ram-low",
+                                       ddr_low_size, &error_fatal);
+                memory_region_add_subregion(mem_area, memory_max, ram_low);
+            }
+        }
     }
 
     fdt_init_destroy_fdti(fdti);
