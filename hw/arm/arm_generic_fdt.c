@@ -30,6 +30,8 @@
 #include "hw/fdt_generic_devices.h"
 
 #define GENERAL_MACHINE_NAME "arm-generic-fdt"
+#define ZYNQ7000_MACHINE_NAME "arm-generic-fdt-7series"
+#define DEP_GENERAL_MACHINE_NAME "arm-generic-fdt-plnx"
 
 #define MAX_CPUS 4
 
@@ -173,6 +175,18 @@ static void arm_generic_fdt_init(MachineState *machine)
     MemoryRegion *mem_area;
     char *qspi_clone_spi_flash_node_name = NULL;
     ram_addr_t ram_kernel_base = 0, ram_kernel_size = 0, start_addr;
+    bool zynq_7000 = false;
+
+    /* If booting a Zynq-7000 Machine*/
+    if (!strcmp(MACHINE_GET_CLASS(machine)->name, ZYNQ7000_MACHINE_NAME)) {
+        zynq_7000 = true;
+    } else if (!strcmp(MACHINE_GET_CLASS(machine)->name,
+                       DEP_GENERAL_MACHINE_NAME)) {
+        fprintf(stderr, "The '" DEP_GENERAL_MACHINE_NAME "' machine has been" \
+                " deprecated. Please use '" ZYNQ7000_MACHINE_NAME \
+                "' instead.\n");
+        zynq_7000 = true;
+    }
 
     dtb_arg = qemu_opt_get(qemu_get_machine_opts(), "dtb");
     hw_dtb_arg = qemu_opt_get(qemu_get_machine_opts(), "hw-dtb");
@@ -203,8 +217,7 @@ static void arm_generic_fdt_init(MachineState *machine)
         fdt_size = sw_fdt_size;
     }
 
-    /* If booting a Zynq-7000 Machine*/
-    if (!strcmp(MACHINE_GET_CLASS(machine)->name, "arm-generic-fdt-plnx")) {
+    if (zynq_7000) {
         int node_offset = 0;
 
         /* Added a dummy flash node, if is-dual property is set to 1*/
@@ -252,7 +265,7 @@ static void arm_generic_fdt_init(MachineState *machine)
     ram_kernel_base = object_property_get_int(OBJECT(mem_area), "addr", NULL);
     ram_kernel_size = object_property_get_int(OBJECT(mem_area), "size", NULL);
 
-    if (!strcmp(MACHINE_GET_CLASS(machine)->name, "arm-generic-fdt-plnx")) {
+    if (zynq_7000) {
         do {
             mem_offset = fdt_node_offset_by_compatible(fdt, mem_offset,
                                                        "qemu:memory-region");
@@ -293,7 +306,7 @@ static void arm_generic_fdt_init(MachineState *machine)
         g_free(qspi_clone_spi_flash_node_name);
     }
 
-    if (!strcmp(MACHINE_GET_CLASS(machine)->name, "arm-generic-fdt-plnx")) {
+    if (zynq_7000) {
         zynq7000_usb_nuke_phy(fdt);
     }
 
@@ -304,7 +317,7 @@ static void arm_generic_fdt_init(MachineState *machine)
     return;
 }
 
-static void arm_generic_fdt_init_plnx(MachineState *machine)
+static void arm_generic_fdt_7000_init(MachineState *machine)
 {
     MemoryRegion *address_space_mem = get_system_memory();
     DeviceState *dev;
@@ -359,10 +372,18 @@ static void arm_generic_fdt_machine_init(MachineClass *mc)
     mc->max_cpus = MAX_CPUS;
 }
 
-static void arm_generic_fdt_plnx_machine_init(MachineClass *mc)
+static void arm_generic_fdt_7000_machine_init(MachineClass *mc)
 {
-    mc->desc = "ARM device tree driven machine model for PetaLinux Zynq";
-    mc->init = arm_generic_fdt_init_plnx;
+    mc->desc = "ARM device tree driven machine model for the Zynq-7000";
+    mc->init = arm_generic_fdt_7000_init;
+    mc->max_cpus = MAX_CPUS;
+}
+
+/* Deprecated, remove this */
+static void arm_generic_fdt_dep_machine_init(MachineClass *mc)
+{
+    mc->desc = "Deprecated ARM device tree driven machine for the Zynq-7000";
+    mc->init = arm_generic_fdt_7000_init;
     mc->max_cpus = MAX_CPUS;
 }
 
@@ -370,4 +391,5 @@ fdt_register_compatibility_opaque(pflash_cfi01_fdt_init,
                                   "compatibile:cfi-flash", 0, NULL);
 
 DEFINE_MACHINE(GENERAL_MACHINE_NAME, arm_generic_fdt_machine_init)
-DEFINE_MACHINE(GENERAL_MACHINE_NAME "-plnx", arm_generic_fdt_plnx_machine_init)
+DEFINE_MACHINE(ZYNQ7000_MACHINE_NAME, arm_generic_fdt_7000_machine_init)
+DEFINE_MACHINE(DEP_GENERAL_MACHINE_NAME, arm_generic_fdt_dep_machine_init)
