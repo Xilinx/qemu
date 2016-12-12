@@ -15,13 +15,10 @@
 
 #include "qemu/osdep.h"
 #include "cpu.h"
-#include "exec/cpu-all.h"
-#include "qemu/config-file.h"
-#include "exec/memory.h"
-#include "exec/address-spaces.h"
-#include "sysemu/sysemu.h"
-#include "sysemu/blockdev.h"
+#include "hw/arm/arm.h"
 #include "hw/sysbus.h"
+#include "sysemu/sysemu.h"
+#include "exec/address-spaces.h"
 #include "hw/boards.h"
 #include "hw/loader.h"
 #include "qapi/error.h"
@@ -32,9 +29,7 @@
 #include "hw/fdt_generic_util.h"
 #include "hw/fdt_generic_devices.h"
 
-#include "hw/arm/arm.h"
-
-#define MACHINE_NAME "arm-generic-fdt"
+#define GENERAL_MACHINE_NAME "arm-generic-fdt"
 
 #define MAX_CPUS 4
 
@@ -44,13 +39,15 @@
 /* Meaningless, but keeps arm boot happy */
 #define SMP_BOOTREG_ADDR 0xfffffffc
 
+static struct arm_boot_info arm_generic_fdt_binfo = {};
+
 /* Entry point for secondary CPU */
 static uint32_t zynq_smpboot[] = {
     0xe320f003, /* wfi */
     0xeafffffd, /* beq     <wfi> */
 };
 
-static void zynq_write_secondary_boot(ARMCPU *cpu,
+static void arm_write_secondary_boot(ARMCPU *cpu,
                                       const struct arm_boot_info *info)
 {
     int n;
@@ -62,7 +59,7 @@ static void zynq_write_secondary_boot(ARMCPU *cpu,
                        SMP_BOOT_ADDR);
 }
 
-static void zynq_ps7_usb_nuke_phy(void *fdt)
+static void zynq7000_usb_nuke_phy(void *fdt)
 {
     char usb_node_path[DT_PATH_LENGTH];
 
@@ -73,7 +70,7 @@ static void zynq_ps7_usb_nuke_phy(void *fdt)
     }
 }
 
-static int zynq_ps7_mdio_phy_connect(char *node_path, FDTMachineInfo *fdti,
+static int zynq7000_mdio_phy_connect(char *node_path, FDTMachineInfo *fdti,
                                      void *Opaque)
 {
     Object *parent;
@@ -102,7 +99,7 @@ static int zynq_ps7_mdio_phy_connect(char *node_path, FDTMachineInfo *fdti,
     return 0;
 }
 
-static char *zynq_ps7_qspi_flash_node_clone(void *fdt)
+static char *zynq7000_qspi_flash_node_clone(void *fdt)
 {
     char qspi_node_path[DT_PATH_LENGTH];
     char qspi_new_node_path[DT_PATH_LENGTH];
@@ -166,33 +163,30 @@ static char *zynq_ps7_qspi_flash_node_clone(void *fdt)
     return qspi_clone_name;
 }
 
-static struct arm_boot_info arm_generic_fdt_binfo = {};
-
 static void arm_generic_fdt_init(MachineState *machine)
 {
-    ram_addr_t ram_kernel_base = 0, ram_kernel_size = 0, start_addr;
-
-    void *fdt = NULL;
-    void *sw_fdt = NULL;
+    void *fdt = NULL, *sw_fdt = NULL;
     int fdt_size, sw_fdt_size, mem_offset = 0;
     const char *dtb_arg, *hw_dtb_arg;
     char node_path[DT_PATH_LENGTH];
     FDTMachineInfo *fdti;
     MemoryRegion *mem_area;
     char *qspi_clone_spi_flash_node_name = NULL;
+    ram_addr_t ram_kernel_base = 0, ram_kernel_size = 0, start_addr;
 
     dtb_arg = qemu_opt_get(qemu_get_machine_opts(), "dtb");
     hw_dtb_arg = qemu_opt_get(qemu_get_machine_opts(), "hw-dtb");
     if (!dtb_arg && !hw_dtb_arg) {
-        fprintf(stderr, "hw_dtb_arg: %s\n", hw_dtb_arg);
-        goto no_dtb_arg;
+        hw_error("DTB must be specified for %s machine model\n",
+                 MACHINE_GET_CLASS(machine)->name);
+        return;
     }
 
     /* Software dtb is always the -dtb arg */
     if (dtb_arg) {
         sw_fdt = load_device_tree(dtb_arg, &sw_fdt_size);
         if (!sw_fdt) {
-            error_report("Error: Unable to load Device Tree %s\n", dtb_arg);
+            error_report("Error: Unable to load Device Tree %s", dtb_arg);
             exit(1);
         }
     }
@@ -201,21 +195,20 @@ static void arm_generic_fdt_init(MachineState *machine)
     if (hw_dtb_arg) {
         fdt = load_device_tree(hw_dtb_arg, &fdt_size);
         if (!fdt) {
-            hw_error("Error: Unable to load Device Tree %s\n", hw_dtb_arg);
-            return;
+            error_report("Error: Unable to load Device Tree %s", hw_dtb_arg);
+            exit(1);
         }
     } else if (sw_fdt) {
         fdt = sw_fdt;
         fdt_size = sw_fdt_size;
     }
 
-
-    /* If booting PetaLinux ARM (Zynq Machine)*/
+    /* If booting a Zynq-7000 Machine*/
     if (!strcmp(MACHINE_GET_CLASS(machine)->name, "arm-generic-fdt-plnx")) {
         int node_offset = 0;
 
         /* Added a dummy flash node, if is-dual property is set to 1*/
-        qspi_clone_spi_flash_node_name = zynq_ps7_qspi_flash_node_clone(fdt);
+        qspi_clone_spi_flash_node_name = zynq7000_qspi_flash_node_clone(fdt);
 
         /* Ensure that an interrupt controller exists before disabling it */
         if (!qemu_devtree_get_node_by_name(fdt, node_path,
@@ -240,7 +233,7 @@ static void arm_generic_fdt_init(MachineState *machine)
         } while (node_offset > 0);
     }
 
-    /* find memory node or add new one if needed */
+    /* Find a memory node or add new one if needed */
     while (qemu_devtree_get_node_by_name(fdt, node_path, "memory")) {
         qemu_fdt_add_subnode(fdt, "/memory@0");
         qemu_fdt_setprop_cells(fdt, "/memory@0", "reg", 0, machine->ram_size);
@@ -260,21 +253,21 @@ static void arm_generic_fdt_init(MachineState *machine)
     ram_kernel_size = object_property_get_int(OBJECT(mem_area), "size", NULL);
 
     if (!strcmp(MACHINE_GET_CLASS(machine)->name, "arm-generic-fdt-plnx")) {
-    do {
-        mem_offset = fdt_node_offset_by_compatible(fdt, mem_offset,
-                                                   "qemu:memory-region");
-        if (mem_offset > 0) {
-            fdt_get_path(fdt, mem_offset, node_path, DT_PATH_LENGTH);
-            mem_area = MEMORY_REGION(object_resolve_path(node_path, NULL));
+        do {
+            mem_offset = fdt_node_offset_by_compatible(fdt, mem_offset,
+                                                       "qemu:memory-region");
+            if (mem_offset > 0) {
+                fdt_get_path(fdt, mem_offset, node_path, DT_PATH_LENGTH);
+                mem_area = MEMORY_REGION(object_resolve_path(node_path, NULL));
 
-            if (!memory_region_is_mapped(mem_area)) {
-                start_addr =  object_property_get_int(OBJECT(mem_area),
-                                                      "addr", NULL);
-                memory_region_add_subregion(get_system_memory(), start_addr,
-                                            mem_area);
+                if (!memory_region_is_mapped(mem_area)) {
+                    start_addr =  object_property_get_int(OBJECT(mem_area),
+                                                          "addr", NULL);
+                    memory_region_add_subregion(get_system_memory(),
+                                                start_addr, mem_area);
+                }
             }
-        }
-    } while (mem_offset > 0);
+        } while (mem_offset > 0);
     }
 
     fdt_init_destroy_fdti(fdti);
@@ -286,7 +279,7 @@ static void arm_generic_fdt_init(MachineState *machine)
     arm_generic_fdt_binfo.kernel_cmdline = machine->kernel_cmdline;
     arm_generic_fdt_binfo.initrd_filename = machine->initrd_filename;
     arm_generic_fdt_binfo.nb_cpus = fdt_generic_num_cpus;
-    arm_generic_fdt_binfo.write_secondary_boot = zynq_write_secondary_boot;
+    arm_generic_fdt_binfo.write_secondary_boot = arm_write_secondary_boot;
     arm_generic_fdt_binfo.smp_loader_start = SMP_BOOT_ADDR;
     arm_generic_fdt_binfo.smp_bootreg_addr = SMP_BOOTREG_ADDR;
     arm_generic_fdt_binfo.board_id = 0xd32;
@@ -300,19 +293,14 @@ static void arm_generic_fdt_init(MachineState *machine)
         g_free(qspi_clone_spi_flash_node_name);
     }
 
-    /*
-     * FIXME: Probably better implemented as a plnx-specific pre-boot dtb
-     * modifier
-     */
-    zynq_ps7_usb_nuke_phy(fdt);
+    if (!strcmp(MACHINE_GET_CLASS(machine)->name, "arm-generic-fdt-plnx")) {
+        zynq7000_usb_nuke_phy(fdt);
+    }
 
     if (machine->kernel_filename) {
         arm_load_kernel(ARM_CPU(first_cpu), &arm_generic_fdt_binfo);
     }
-    return;
 
-no_dtb_arg:
-    hw_error("DTB must be specified for %s machine model\n", MACHINE_NAME);
     return;
 }
 
@@ -321,33 +309,27 @@ static void arm_generic_fdt_init_plnx(MachineState *machine)
     MemoryRegion *address_space_mem = get_system_memory();
     DeviceState *dev;
     SysBusDevice *busdev;
+    MemoryRegion *ocm_ram;
+    DriveInfo *dinfo;
+    DeviceState *att_dev;
 
-    /*FIXME: Describe OCM in DTB and delete this */
-    /* ZYNQ OCM: */
-    {
-        MemoryRegion *ocm_ram = g_new(MemoryRegion, 1);
-        memory_region_init_ram(ocm_ram, NULL, "zynq.ocm_ram", 256 << 10,
-                               &error_abort);
-        vmstate_register_ram_global(ocm_ram);
-        memory_region_add_subregion(address_space_mem, 0xFFFC0000, ocm_ram);
-    }
+    ocm_ram = g_new(MemoryRegion, 1);
+    memory_region_init_ram(ocm_ram, NULL, "zynq.ocm_ram", 256 << 10,
+                           &error_abort);
+    vmstate_register_ram_global(ocm_ram);
+    memory_region_add_subregion(address_space_mem, 0xFFFC0000, ocm_ram);
 
-    /* FIXME: Descibe NAND in DTB and delete this */
-    /* NAND: */
     dev = qdev_create(NULL, "arm.pl35x");
-    /* FIXME: handle this somewhere central */
     object_property_add_child(container_get(qdev_get_machine(), "/unattached"),
                               "pl353", OBJECT(dev), NULL);
     qdev_prop_set_uint8(dev, "x", 3);
-    {
-        DriveInfo *dinfo = drive_get_next(IF_PFLASH);
-        DeviceState *att_dev = nand_init(dinfo ? blk_by_legacy_dinfo(dinfo)
-                                               : NULL,
-                                         NAND_MFR_STMICRO, 0xaa);
+    dinfo = drive_get_next(IF_PFLASH);
+    att_dev = nand_init(dinfo ? blk_by_legacy_dinfo(dinfo)
+                              : NULL,
+                        NAND_MFR_STMICRO, 0xaa);
+    object_property_set_link(OBJECT(dev), OBJECT(att_dev), "dev1",
+                             &error_abort);
 
-        object_property_set_link(OBJECT(dev), OBJECT(att_dev), "dev1",
-                                 &error_abort);
-    }
     qdev_init_nofail(dev);
     busdev = SYS_BUS_DEVICE(dev);
     sysbus_mmio_map(busdev, 0, 0xe000e000);
@@ -356,29 +338,19 @@ static void arm_generic_fdt_init_plnx(MachineState *machine)
     /* Mark the simple-bus as incompatible as it breaks the Zynq boot */
     add_to_compat_table(NULL, "compatible:simple-bus", NULL);
 
-    {
-        DeviceState *dev = qdev_create(NULL, "mdio");
-        qdev_init_nofail(dev);
-        /* Add MDIO Connect Call back */
-        add_to_inst_bind_table(zynq_ps7_mdio_phy_connect, "mdio", dev);
-    }
+    dev = qdev_create(NULL, "mdio");
+    qdev_init_nofail(dev);
+    /* Add MDIO Connect Call back */
+    add_to_inst_bind_table(zynq7000_mdio_phy_connect, "mdio", dev);
 
     arm_generic_fdt_init(machine);
 
-    /* FIXME: Descibe SCU in DTB and delete this */
-    /* ZYNQ SCU: */
-    {
-        DeviceState *dev = qdev_create(NULL, "a9-scu");
-        SysBusDevice *busdev = SYS_BUS_DEVICE(dev);
-
-        qdev_prop_set_uint32(dev, "num-cpu", fdt_generic_num_cpus);
-        qdev_init_nofail(dev);
-        sysbus_mmio_map(busdev, 0, ZYNQ7000_MPCORE_PERIPHBASE);
-    }
-
+    dev = qdev_create(NULL, "a9-scu");
+    busdev = SYS_BUS_DEVICE(dev);
+    qdev_prop_set_uint32(dev, "num-cpu", fdt_generic_num_cpus);
+    qdev_init_nofail(dev);
+    sysbus_mmio_map(busdev, 0, ZYNQ7000_MPCORE_PERIPHBASE);
 }
-
-int endian = 0;
 
 static void arm_generic_fdt_machine_init(MachineClass *mc)
 {
@@ -395,7 +367,7 @@ static void arm_generic_fdt_plnx_machine_init(MachineClass *mc)
 }
 
 fdt_register_compatibility_opaque(pflash_cfi01_fdt_init,
-                                  "compatibile:cfi-flash", 0, &endian);
+                                  "compatibile:cfi-flash", 0, NULL);
 
-DEFINE_MACHINE(MACHINE_NAME, arm_generic_fdt_machine_init)
-DEFINE_MACHINE(MACHINE_NAME "-plnx", arm_generic_fdt_plnx_machine_init)
+DEFINE_MACHINE(GENERAL_MACHINE_NAME, arm_generic_fdt_machine_init)
+DEFINE_MACHINE(GENERAL_MACHINE_NAME "-plnx", arm_generic_fdt_plnx_machine_init)
