@@ -350,6 +350,13 @@ static void arm_generic_fdt_init(MachineState *machine)
                                        ddr_low_size, &error_fatal);
                 memory_region_add_subregion(mem_area, memory_max, ram_low);
             }
+        } else {
+            /* The device tree generated more or equal amount of memory then
+             * the user specified. Set that internally in QEMU.
+             */
+            ram_size = memory_max;
+            qemu_opt_set_number(qemu_find_opts_singleton("memory"), "size",
+                                memory_max, &error_fatal);
         }
     }
 
