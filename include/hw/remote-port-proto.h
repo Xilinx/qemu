@@ -259,14 +259,14 @@ size_t rp_encode_hello_caps(uint32_t id, uint32_t dev, struct rp_pkt_hello *pkt,
                             uint32_t features_len);
 
 /* rp_encode_hello is deprecated in favor of hello_caps.  */
-static inline size_t
+static inline size_t __attribute__ ((deprecated))
 rp_encode_hello(uint32_t id, uint32_t dev, struct rp_pkt_hello *pkt,
                 uint16_t version_major, uint16_t version_minor) {
     return rp_encode_hello_caps(id, dev, pkt, version_major, version_minor,
                                 NULL, NULL, 0);
 }
 
-static inline void *
+static inline void *__attribute__ ((deprecated))
 rp_busaccess_dataptr(struct rp_pkt_busaccess *pkt)
 {
     /* Right after the packet.  */
@@ -329,28 +329,28 @@ rp_busaccess_byte_en_ptr(struct rp_peer_state *peer,
     return NULL;
 }
 
-size_t
+size_t __attribute__ ((deprecated))
 rp_encode_read(uint32_t id, uint32_t dev,
                struct rp_pkt_busaccess *pkt,
                int64_t clk, uint16_t master_id,
                uint64_t addr, uint64_t attr, uint32_t size,
                uint32_t width, uint32_t stream_width);
 
-size_t
+size_t __attribute__ ((deprecated))
 rp_encode_read_resp(uint32_t id, uint32_t dev,
                     struct rp_pkt_busaccess *pkt,
                     int64_t clk, uint16_t master_id,
                     uint64_t addr, uint64_t attr, uint32_t size,
                     uint32_t width, uint32_t stream_width);
 
-size_t
+size_t __attribute__ ((deprecated))
 rp_encode_write(uint32_t id, uint32_t dev,
                 struct rp_pkt_busaccess *pkt,
                 int64_t clk, uint16_t master_id,
                 uint64_t addr, uint64_t attr, uint32_t size,
                 uint32_t width, uint32_t stream_width);
 
-size_t
+size_t __attribute__ ((deprecated))
 rp_encode_write_resp(uint32_t id, uint32_t dev,
                      struct rp_pkt_busaccess *pkt,
                      int64_t clk, uint16_t master_id,
