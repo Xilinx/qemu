@@ -52,12 +52,6 @@
 #define REMOTE_PORT_CLASS(klass)    \
      OBJECT_CLASS_CHECK(RemotePortClass, (klass), TYPE_REMOTE_PORT)
 
-typedef struct RemotePortMap {
-    RemotePort *parent;
-    MemoryRegion iomem;
-    int id;
-} RemotePortMap;
-
 struct RemotePort {
     DeviceState parent;
 
