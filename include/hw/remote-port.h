@@ -78,7 +78,7 @@ struct RemotePort {
 
     uint32_t current_id;
 
-#define REMOTE_PORT_MAX_DEVS 16
+#define REMOTE_PORT_MAX_DEVS 1024
     RemotePortDevice *devs[REMOTE_PORT_MAX_DEVS];
 };
 
