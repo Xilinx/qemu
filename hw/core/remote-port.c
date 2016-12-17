@@ -761,6 +761,69 @@ static void rp_init(Object *obj)
     }
 }
 
+/* RP helper function to attach a device to an adaptor.  */
+void rp_device_attach(Object *adaptor, Object *dev,
+                      int rp_nr, int dev_nr,
+                      Error **errp)
+{
+    Error *err = NULL;
+    uint32_t nr_devs;
+    char *name;
+    int i;
+
+    assert(adaptor);
+    assert(dev);
+
+    D(printf("%s: rp_nr-%d dev_nr=%d\n", __func__, rp_nr, dev_nr));
+
+    /* Verify that the adaptor is of Remote Port type.  */
+    if (!object_dynamic_cast(adaptor, TYPE_REMOTE_PORT)) {
+        error_setg(errp, "%s is not a Remote-Port adaptor!\n",
+                   object_get_canonical_path(adaptor));
+        return;
+    }
+
+    name = g_strdup_printf("rp-adaptor%d", rp_nr);
+    object_property_set_link(dev, adaptor, name, &err);
+    g_free(name);
+    if (err != NULL) {
+        error_propagate(errp, err);
+        return;
+    }
+
+    name = g_strdup_printf("rp-chan%d", rp_nr);
+    object_property_set_int(dev, dev_nr, name, &err);
+    g_free(name);
+    if (err != NULL
+        && !object_dynamic_cast(dev, TYPE_REMOTE_PORT_DEVICE)) {
+        /*
+         * RP devices that only receive requests may not need to
+         * know their channel/dev number. If not, treat this as
+         * an error.
+         */
+        error_propagate(errp, err);
+        return;
+    }
+    err = NULL;
+
+    nr_devs = object_property_get_int(dev, "nr-devs", &err);
+    if (err) {
+        nr_devs = 1;
+        err = NULL;
+    }
+
+    /* Multi-channel devs use consecutive numbering.  */
+    for (i = 0; i < nr_devs; i++) {
+        name = g_strdup_printf("remote-port-dev%d", dev_nr + i);
+        object_property_set_link(adaptor, dev, name, &err);
+        g_free(name);
+        if (err != NULL) {
+            error_propagate(errp, err);
+            return;
+        }
+    }
+}
+
 static void rp_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);

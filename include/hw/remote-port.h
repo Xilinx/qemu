@@ -82,6 +82,20 @@ struct RemotePort {
     RemotePortDevice *devs[REMOTE_PORT_MAX_DEVS];
 };
 
+/**
+ * rp_device_attach:
+ * @adaptor: The adaptor onto which to attach the device
+ * @dev: The device to be attached to the adaptor
+ * @rp_nr: The remote-port adaptor nr. A device may attach to multiple
+ *         adaptors.
+ * @dev_nr: The device/channel number to bind the device to.
+ * @errp: returns an error if this function fails
+ *
+ * Attaches a device onto an adaptor and binds it to a device number.
+ */
+void rp_device_attach(Object *adaptor, Object *dev,
+                      int rp_nr, int dev_nr,
+                      Error **errp);
 bool rp_time_warp_enable(bool en);
 
 #endif
