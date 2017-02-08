@@ -127,6 +127,11 @@ REG32(ULPI_VIEWPORT, PS7USB_ULPIVP_OFFSET)
 static void ehci_xlnx_reset(DeviceState *dev)
 {
     PS7USBState *s = XLNX_PS7_USB(dev);
+    SysBusDevice *d = SYS_BUS_DEVICE(dev);
+    EHCISysBusState *i = SYS_BUS_EHCI(d);
+    EHCIState *es = &i->ehci;
+
+    ehci_reset(es);
 
     /* Show phy in normal functioning state after init */
     s->ulpi_viewport = 0x8000000;
