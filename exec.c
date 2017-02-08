@@ -59,6 +59,9 @@
 #ifndef _WIN32
 #include "qemu/mmap-alloc.h"
 #endif
+#ifdef _WIN32
+#include <io.h>
+#endif
 
 //#define DEBUG_SUBPAGE
 
@@ -1294,7 +1297,6 @@ void qemu_mutex_unlock_ramlist(void)
     qemu_mutex_unlock(&ram_list.mutex);
 }
 
-#ifdef __linux__
 static void *file_ram_alloc(RAMBlock *block,
                             ram_addr_t memory,
                             const char *path,
@@ -1307,6 +1309,7 @@ static void *file_ram_alloc(RAMBlock *block,
     void *area;
     int fd = -1;
     int64_t page_size;
+
 
     if (kvm_enabled() && !kvm_has_sync_mmu()) {
         error_setg(errp,
@@ -1361,7 +1364,13 @@ static void *file_ram_alloc(RAMBlock *block,
          */
     }
 
+#ifdef _WIN32
+    SYSTEM_INFO SysInfo;
+    GetSystemInfo(&SysInfo);
+    page_size = SysInfo.dwPageSize;
+#else
     page_size = qemu_fd_getpagesize(fd);
+#endif
     block->mr->align = page_size;
 
     if (memory < page_size) {
@@ -1383,8 +1392,16 @@ static void *file_ram_alloc(RAMBlock *block,
         perror("ftruncate");
     }
 
+#ifdef _WIN32
+    HANDLE fd_temp = (HANDLE)_get_osfhandle(fd);
+    HANDLE hMapFile = CreateFileMapping(fd_temp, NULL, PAGE_READWRITE,
+                                        0, memory, NULL);
+    area = MapViewOfFile(hMapFile, FILE_MAP_ALL_ACCESS, 0, 0, 0);
+    if (area == NULL) {
+#else
     area = qemu_ram_mmap(fd, memory, page_size, block->flags & RAM_SHARED);
     if (area == MAP_FAILED) {
+#endif
         error_setg_errno(errp, errno,
                          "unable to map backing store for guest RAM");
         goto error;
@@ -1406,7 +1423,6 @@ error:
     }
     return NULL;
 }
-#endif
 
 /* Called with the ramlist lock held.  */
 static ram_addr_t find_ram_offset(ram_addr_t size)
@@ -1717,7 +1733,6 @@ static void ram_block_add(RAMBlock *new_block, Error **errp)
     }
 }
 
-#ifdef __linux__
 RAMBlock *qemu_ram_alloc_from_file(ram_addr_t size, MemoryRegion *mr,
                                    bool share, const char *mem_path,
                                    Error **errp)
@@ -1763,14 +1778,6 @@ RAMBlock *qemu_ram_alloc_from_file(ram_addr_t size, MemoryRegion *mr,
     }
     return new_block;
 }
-#elif defined(__WIN32)
-RAMBlock *qemu_ram_alloc_from_file(ram_addr_t size, MemoryRegion *mr,
-                                   bool share, const char *mem_path,
-                                   Error **errp)
-{
-    return qemu_ram_alloc(size, mr, errp);
-}
-#endif
 
 static
 RAMBlock *qemu_ram_alloc_internal(ram_addr_t size, ram_addr_t max_size,
@@ -1792,6 +1799,7 @@ RAMBlock *qemu_ram_alloc_internal(ram_addr_t size, ram_addr_t max_size,
     new_block->max_length = max_size;
     assert(max_size >= size);
     new_block->fd = -1;
+
     new_block->host = host;
     if (host) {
         new_block->flags |= RAM_PREALLOC;
@@ -1834,11 +1842,15 @@ static void reclaim_ramblock(RAMBlock *block)
         ;
     } else if (xen_enabled()) {
         xen_invalidate_map_cache_entry(block->host);
-#ifndef _WIN32
     } else if (block->fd >= 0) {
+#ifdef _WIN32
+        if (block->host) {
+            UnmapViewOfFile(block->host);
+        }
+#else
         qemu_ram_munmap(block->host, block->max_length);
-        close(block->fd);
 #endif
+        close(block->fd);
     } else {
         qemu_anon_ram_free(block->host, block->max_length);
     }
