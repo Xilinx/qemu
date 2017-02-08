@@ -26,6 +26,22 @@
 #include "hw/fdt_generic_util.h"
 #include "hw/fdt_generic_devices.h"
 
+#ifndef ARM_GENERIC_FDT_DEBUG
+#define ARM_GENERIC_FDT_DEBUG 3
+#endif
+#define DB_PRINT(lvl, ...) do { \
+    if (ARM_GENERIC_FDT_DEBUG > (lvl)) { \
+        qemu_log_mask(LOG_FDT, ": %s: ", __func__); \
+        qemu_log_mask(LOG_FDT, ## __VA_ARGS__); \
+    } \
+} while (0);
+
+#define DB_PRINT_RAW(lvl, ...) do { \
+    if (ARM_GENERIC_FDT_DEBUG > (lvl)) { \
+        qemu_log_mask(LOG_FDT, ## __VA_ARGS__); \
+    } \
+} while (0);
+
 #define GENERAL_MACHINE_NAME "arm-generic-fdt"
 #define ZYNQ7000_MACHINE_NAME "arm-generic-fdt-7series"
 #define DEP_GENERAL_MACHINE_NAME "arm-generic-fdt-plnx"
@@ -213,26 +229,23 @@ static memory_info init_memory(void *fdt, ram_addr_t ram_size, bool zynq_7000)
                 }
             }
         } while (mem_offset > 0);
-    }
-
-    /* For ZynqMP let's find out how much memory we have already created, then
-     * based on what the user ser with '-m' let's add more if needed.
-     */
-    if (!zynq_7000) {
-        int mem_node_offset = 0;
-        uint64_t reg_value, memory_max = 0;
+    } else {
+        /* Let's find out how much memory we have already created, then
+         * based on what the user ser with '-m' let's add more if needed.
+         */
+        uint64_t reg_value, mem_created = 0;
         int mem_container;
         char mem_node_path[DT_PATH_LENGTH];
-        ram_addr_t ddr_low_size, ddr_high_size;
+
         do {
-            mem_node_offset =
-                fdt_node_offset_by_compatible(fdt, mem_node_offset,
+            mem_offset =
+                fdt_node_offset_by_compatible(fdt, mem_offset,
                                               "qemu:memory-region");
 
             /* Check if we found anything and that it is top level memory */
-            if (mem_node_offset > 0 &&
-                    fdt_node_depth(fdt, mem_node_offset) == 1) {
-                fdt_get_path(fdt, mem_node_offset, mem_node_path,
+            if (mem_offset > 0 &&
+                    fdt_node_depth(fdt, mem_offset) == 1) {
+                fdt_get_path(fdt, mem_offset, mem_node_path,
                              DT_PATH_LENGTH);
 
                 mem_container = qemu_fdt_getprop_cell(fdt, mem_node_path,
@@ -247,51 +260,112 @@ static memory_info init_memory(void *fdt, ram_addr_t ram_size, bool zynq_7000)
                     continue;
                 }
 
+                DB_PRINT(0, "Found top level memory region %s\n",
+                         mem_node_path);
+
                 reg_value = qemu_fdt_getprop_cell(fdt, mem_node_path,
                                                   "reg", 0, 0, NULL);
                 reg_value = reg_value << 32;
                 reg_value += qemu_fdt_getprop_cell(fdt, mem_node_path,
                                                    "reg", 1, 0, NULL);
+
+                DB_PRINT(1, "    Address: 0x%lx ", reg_value);
+
                 reg_value += qemu_fdt_getprop_cell(fdt, mem_node_path,
                                                    "reg", 2, 0, NULL);
 
-                if (memory_max < reg_value) {
-                    memory_max = reg_value;
+                DB_PRINT_RAW(1, "Size: 0x%lx\n", reg_value);
+
+                /* Find the largest address (start address + size) */
+                if (mem_created < reg_value) {
+                    mem_created = reg_value;
                 }
             }
-        } while (mem_node_offset > 0);
+        } while (mem_offset > 0);
+
+        DB_PRINT(0, "Highest memory address from DTS is: 0x%lx/0x%lx\n",
+                 mem_created, ram_size);
 
         /* We now have the maximum amount of DDR that has been created. */
-        if (memory_max < ram_size) {
-            MemoryRegion *ram_high = g_new(MemoryRegion, 1);
-            MemoryRegion *ram_low = g_new(MemoryRegion, 1);
+        if (mem_created == 0) {
+            qemu_log_mask(LOG_GUEST_ERROR, "No memory was specified in the " \
+                          "device tree, are there no memory nodes on the " \
+                          "root level?\n");
+        } else if (mem_created < ram_size) {
+            /* We need to create more memory to match what the user asked for.
+             * We do this based on the qemu:memory-region-spec values.
+             */
+            do {
+                mem_offset =
+                    fdt_node_offset_by_compatible(fdt, mem_offset,
+                                                  "qemu:memory-region-spec");
 
-            if (ram_size > XLNX_ZYNQMP_MAX_LOW_RAM_SIZE) {
-                ddr_low_size = XLNX_ZYNQMP_MAX_LOW_RAM_SIZE - memory_max;
-                ddr_high_size = ram_size -
-                                    XLNX_ZYNQMP_MAX_LOW_RAM_SIZE;
+                if (mem_offset > 0) {
+                    MemoryRegion *container;
+                    MemoryRegion *ram_region = g_new(MemoryRegion, 1);
+                    const char *region_name;
+                    uint64_t region_start, region_size;
+                    int container_offset, container_phandle, ram_prop;
 
-                memory_region_init_ram(ram_high, NULL, "ddr-ram-high",
-                                       ddr_high_size, &error_fatal);
-                memory_region_add_subregion(mem_area,
-                                            XLNX_ZYNQMP_HIGH_RAM_START,
-                                            ram_high);
-            } else {
-                ddr_low_size = ram_size - memory_max;
-            }
+                    fdt_get_path(fdt, mem_offset, mem_node_path,
+                                 DT_PATH_LENGTH);
 
-            if (ddr_low_size) {
-                memory_region_init_ram(ram_low, NULL, "ddr-ram-low",
-                                       ddr_low_size, &error_fatal);
-                memory_region_add_subregion(mem_area, memory_max, ram_low);
-            }
+                    DB_PRINT(0, "Connecting %s\n", mem_node_path);
+
+                    region_name = fdt_get_name(fdt, mem_offset, NULL);
+
+                    /* This assumes two address cells and two size cells */
+                    region_start = qemu_fdt_getprop_cell(fdt, mem_node_path,
+                                                       "reg", 0, 0, NULL);
+                    region_start = region_start << 32;
+                    region_start += qemu_fdt_getprop_cell(fdt, mem_node_path,
+                                                       "reg", 1, 0, NULL);
+
+                    DB_PRINT(1, "    Address: 0x%lx ", region_start);
+
+                    region_size = qemu_fdt_getprop_cell(fdt, mem_node_path,
+                                                         "reg", 2, 0, NULL);
+                    region_size = region_size << 32;
+                    region_size += qemu_fdt_getprop_cell(fdt, mem_node_path,
+                                                         "reg", 3, 0, NULL);
+
+                    region_size = MIN(region_size, ram_size - mem_created);
+                    ram_size -= region_size;
+
+                    DB_PRINT_RAW(1, "Size: 0x%lx\n", region_size);
+
+                    container_phandle = qemu_fdt_getprop_cell(fdt,
+                                                              mem_node_path,
+                                                              "container", 0,
+                                                              0, NULL);
+                    container_offset =
+                            fdt_node_offset_by_phandle(fdt, container_phandle);
+                    fdt_get_path(fdt, container_offset,
+                                 node_path, DT_PATH_LENGTH);
+                    container = MEMORY_REGION(
+                                        object_resolve_path(node_path, NULL));
+
+                    ram_prop = qemu_fdt_getprop_cell(fdt, mem_node_path,
+                                                     "qemu,ram", 0,
+                                                     0, NULL);
+
+                    memory_region_init_ram(ram_region, NULL, region_name,
+                                           region_size, &error_fatal);
+                    object_property_set_int(OBJECT(ram_region), ram_prop,
+                                            "ram", &error_abort);
+                    memory_region_add_subregion(container, region_start,
+                                                ram_region);
+                }
+            } while (mem_offset > 0 && ram_size > mem_created);
         } else {
             /* The device tree generated more or equal amount of memory then
              * the user specified. Set that internally in QEMU.
              */
-            ram_size = memory_max;
+            DB_PRINT(0, "No extra memory is required\n");
+
+            ram_size = mem_created;
             qemu_opt_set_number(qemu_find_opts_singleton("memory"), "size",
-                                memory_max, &error_fatal);
+                                mem_created, &error_fatal);
         }
     }
 

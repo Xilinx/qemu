@@ -183,6 +183,7 @@ fdt_register_compatibility_n(null, "compatible:fixed-clock", 14);
 fdt_register_compatibility_n(null, "compatible:xlnx,pinctrl-zynq", 15);
 fdt_register_compatibility_n(null, "compatible:ulpi-phy", 16);
 fdt_register_compatibility_n(null, "compatible:xlnx,zynq-efuse", 17);
+fdt_register_compatibility_n(null, "compatible:qemu:memory-region-spec", 18);
 
 fdt_register_instance_n(i2c_bus_fdt_init, "i2c@0", 0);
 fdt_register_instance_n(i2c_bus_fdt_init, "i2c@1", 1);
