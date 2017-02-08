@@ -29,11 +29,8 @@ static void map_a32_to_a64_regs(CPUARMState *env)
 {
     unsigned int i;
 
-    for (i = 0; i < 8; i++) {
+    for (i = 0; i < 13; i++) {
         env->xregs[i] = env->regs[i];
-    }
-    for (i = 0; i < ARRAY_SIZE(env->usr_regs); i++) {
-        env->xregs[i + 8] = env->usr_regs[i];
     }
     env->xregs[13] = env->banked_r13[bank_number(ARM_CPU_MODE_USR)];
     env->xregs[14] = env->banked_r14[bank_number(ARM_CPU_MODE_USR)];
@@ -55,11 +52,8 @@ static void map_a64_to_a32_regs(CPUARMState *env)
 {
     unsigned int i = 0;
 
-    for (i = 0; i < 8; i++) {
+    for (i = 0; i < 13; i++) {
         env->regs[i] = env->xregs[i];
-    }
-    for (i = 0; i < ARRAY_SIZE(env->usr_regs); i++) {
-        env->usr_regs[i] = env->xregs[i + 8];
     }
     env->banked_r13[bank_number(ARM_CPU_MODE_USR)] = env->xregs[13];
     env->banked_r14[bank_number(ARM_CPU_MODE_USR)] = env->xregs[14];
