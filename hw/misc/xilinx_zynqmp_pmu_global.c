@@ -37,7 +37,7 @@
 #define XILINX_PMU_GLOBAL_ERR_DEBUG 0
 #endif
 
-#define TYPE_XILINX_PMU_GLOBAL "xlnx.pmu_global"
+#define TYPE_XILINX_PMU_GLOBAL "xlnx,pmu_global"
 
 #define XILINX_PMU_GLOBAL(obj) \
      OBJECT_CHECK(PMU_GLOBAL, (obj), TYPE_XILINX_PMU_GLOBAL)
