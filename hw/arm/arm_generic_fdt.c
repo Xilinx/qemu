@@ -269,12 +269,12 @@ static memory_info init_memory(void *fdt, ram_addr_t ram_size, bool zynq_7000)
                 reg_value += qemu_fdt_getprop_cell(fdt, mem_node_path,
                                                    "reg", 1, 0, NULL);
 
-                DB_PRINT(1, "    Address: 0x%lx ", reg_value);
+                DB_PRINT(1, "    Address: 0x%" PRIx64 " ", reg_value);
 
                 reg_value += qemu_fdt_getprop_cell(fdt, mem_node_path,
                                                    "reg", 2, 0, NULL);
 
-                DB_PRINT_RAW(1, "Size: 0x%lx\n", reg_value);
+                DB_PRINT_RAW(1, "Size: 0x%" PRIx64 "\n", reg_value);
 
                 /* Find the largest address (start address + size) */
                 if (mem_created < reg_value) {
@@ -283,8 +283,8 @@ static memory_info init_memory(void *fdt, ram_addr_t ram_size, bool zynq_7000)
             }
         } while (mem_offset > 0);
 
-        DB_PRINT(0, "Highest memory address from DTS is: 0x%lx/0x%lx\n",
-                 mem_created, ram_size);
+        DB_PRINT(0, "Highest memory address from DTS is: " \
+                 "0x%" PRIx64 "/0x%" PRIx64 "\n", mem_created, ram_size);
 
         /* We now have the maximum amount of DDR that has been created. */
         if (mem_created == 0) {
@@ -321,7 +321,7 @@ static memory_info init_memory(void *fdt, ram_addr_t ram_size, bool zynq_7000)
                     region_start += qemu_fdt_getprop_cell(fdt, mem_node_path,
                                                        "reg", 1, 0, NULL);
 
-                    DB_PRINT(1, "    Address: 0x%lx ", region_start);
+                    DB_PRINT(1, "    Address: 0x%" PRIx64 " ", region_start);
 
                     region_size = qemu_fdt_getprop_cell(fdt, mem_node_path,
                                                          "reg", 2, 0, NULL);
@@ -332,7 +332,7 @@ static memory_info init_memory(void *fdt, ram_addr_t ram_size, bool zynq_7000)
                     region_size = MIN(region_size, ram_size - mem_created);
                     ram_size -= region_size;
 
-                    DB_PRINT_RAW(1, "Size: 0x%lx\n", region_size);
+                    DB_PRINT_RAW(1, "Size: 0x%" PRIx64 "\n", region_size);
 
                     container_phandle = qemu_fdt_getprop_cell(fdt,
                                                               mem_node_path,
