@@ -1344,7 +1344,14 @@ static void *file_ram_alloc(RAMBlock *block,
                                        sanitized_name);
             g_free(sanitized_name);
 
+#ifdef _WIN32
+            /* mktemp is deprecated on Windows, we should move to this instead:
+             * fd = open(_mktemp(filename));
+             */
+            fd = mktemp(filename);
+#else
             fd = mkstemp(filename);
+#endif
             if (fd >= 0) {
                 unlink(filename);
                 g_free(filename);
