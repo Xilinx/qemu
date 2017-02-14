@@ -17,6 +17,7 @@ common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx_zynqmp_ocmc.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += zynqmp-iou-slcr.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xlnx-lpd-slcr-secure.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xlnx-lpd-gpv.o
+common-obj-$(CONFIG_XLNX_ZYNQMP) += xlnx-zynqmp-boot.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx-xmpu.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx-xppu.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx_zynqmp_pmu_local.o
