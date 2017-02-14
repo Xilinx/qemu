@@ -1033,6 +1033,7 @@ typedef struct PMU_GLOBAL {
     qemu_irq irq_error_int_1;
     qemu_irq irq_req_iso_int;
 
+    bool fw_is_present;
     bool ignore_pwr_req;
     /* Record hardware error events, so error status register can be updated
      * if error is enabled in error enable register.
@@ -1836,6 +1837,8 @@ static void pmu_global_reset(DeviceState *dev)
     error_int_2_update_irq(s);
     error_int_1_update_irq(s);
     req_iso_int_update_irq(s);
+
+    AF_DP32(s->regs, GLOBAL_CNTRL, FW_IS_PRESENT, s->fw_is_present);
 }
 
 static void pwr_state_handler(void *opaque, int n, int level)
@@ -2046,6 +2049,7 @@ static const FDTGenericGPIOSet pmu_global_client_gpios[] = {
 };
 
 static Property pmu_global_properties[] = {
+    DEFINE_PROP_BOOL("fw-is-present", PMU_GLOBAL, fw_is_present, false),
     DEFINE_PROP_BOOL("ignore-pwr-req", PMU_GLOBAL, ignore_pwr_req, false),
     DEFINE_PROP_END_OF_LIST(),
 };
