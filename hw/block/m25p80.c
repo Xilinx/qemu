@@ -161,6 +161,7 @@ static const FlashPartInfo known_devices[] = {
     { INFO("mx25l12855e", 0xc22618,      0, 0x00, 0x00,  64 << 10, 256, 0) },
     { INFO("mx25l25635e", 0xc22019,      0, 0x00, 0x00,  64 << 10, 512, 0) },
     { INFO("mx25l25655e", 0xc22619,      0, 0x00, 0x00,  64 << 10, 512, 0) },
+    { INFO("mx66l1g55g",  0xc2261b,      0, 0x00, 0x00,  64 << 10, 2048, ER_4K) },
 
     /* Micron */
     { INFO("n25q032a11",  0x20bb16,      0, 0x00, 0x00,  64 << 10,  64, ER_4K) },
