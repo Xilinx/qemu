@@ -109,7 +109,7 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
                                  &in);
     assert(enclen <= pktlen);
 
-    rp_write(s->rp, (void *)s->rsp.pkt, pktlen);
+    rp_write(s->rp, (void *)s->rsp.pkt, enclen);
 }
 
 static void rp_memory_slave_realize(DeviceState *dev, Error **errp)
