@@ -650,7 +650,13 @@ static void rp_realize(DeviceState *dev, Error **errp)
         nr++;
         assert(r > 0);
 
-        if (s->chardesc) {
+        if (s->chrdev_id) {
+            s->chr = qemu_chr_find(s->chrdev_id);
+        }
+
+        if (s->chr) {
+            /* Found the chardev via commandline */
+        } else if (s->chardesc) {
             s->chr = qemu_chr_new(name, s->chardesc, NULL);
         } else {
             if (!machine_path) {
@@ -752,6 +758,7 @@ static const VMStateDescription vmstate_rp = {
 static Property rp_properties[] = {
     DEFINE_PROP_CHR("chardev", RemotePort, chr),
     DEFINE_PROP_STRING("chardesc", RemotePort, chardesc),
+    DEFINE_PROP_STRING("chrdev-id", RemotePort, chrdev_id),
     DEFINE_PROP_BOOL("sync", RemotePort, do_sync, false),
     DEFINE_PROP_UINT64("sync-quantum", RemotePort, peer.local_cfg.quantum, 0),
     DEFINE_PROP_END_OF_LIST(),

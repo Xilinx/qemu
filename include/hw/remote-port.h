@@ -34,6 +34,7 @@ struct RemotePort {
     QemuMutex write_mutex;
 
     char *chardesc;
+    char *chrdev_id;
     struct rp_peer_state peer;
 
     struct {
