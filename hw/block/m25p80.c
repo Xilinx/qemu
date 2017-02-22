@@ -174,6 +174,7 @@ static const FlashPartInfo known_devices[] = {
     { INFO("n25q256a13",  0x20ba19,      0, 0x00, 0x00,  64 << 10, 512, ER_4K) },
     { INFO("n25q512a11",  0x20bb20,      0, 0x00, 0x00,  64 << 10, 1024, ER_4K) },
     { INFO("n25q512a13",  0x20ba20,      0, 0x00, 0x00,  64 << 10, 1024, ER_4K) },
+    { INFO("m25qu02gcbb", 0x22bb20,      0, 0x00, 0x00,  64 << 10, 2048, ER_4K) },
 
     /* Spansion -- single (large) sector size only, at least
      * for the chips listed here (without boot sectors).
