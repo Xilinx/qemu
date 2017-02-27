@@ -1134,23 +1134,6 @@ static void thiscpu_access(MemoryTransaction *tr)
 #endif
 }
 
-static void cpu_access(MemoryTransaction *tr)
-{
-    GICState **backref = (GICState **) tr->opaque;
-    GICState *s = *backref;
-    int id = (backref - s->backref);
-    bool sec = tr->attr.secure;
-
-    if (tr->rw) {
-        gic_cpu_write(s, id, tr->addr, tr->data.u32, sec);
-    } else {
-        tr->data.u32 = gic_cpu_read(s, id, tr->addr, sec);
-    }
-#ifdef DEBUG_GIC
-    dump_memory_transaction(tr, stderr, __FILE__ ":");
-#endif
-}
-
 static uint32_t gic_hyp_vmcr_read(GICState *s, int vcpu)
 {
     int cpu = vcpu + GIC_N_REALCPU;
@@ -1323,16 +1306,6 @@ static const MemoryRegionOps gic_thiscpu_ops = {
 #endif
 };
 
-static const MemoryRegionOps gic_cpu_ops = {
-#if 1
-    .access = cpu_access,
-#else
-    .read = gic_do_cpu_read,
-    .write = gic_do_cpu_write,
-    .endianness = DEVICE_NATIVE_ENDIAN,
-#endif
-};
-
 static const MemoryRegionOps gic_thishyp_ops = {
     .read = gic_thishyp_read,
     .write = gic_thishyp_write,
@@ -1417,15 +1390,6 @@ static void arm_gic_realize(DeviceState *dev, Error **errp)
      */
     memory_region_init_io(&s->cpuiomem[0], OBJECT(s), &gic_thiscpu_ops, s,
                           "gic_cpu", s->revision >= 2 ? s->map_stride * 2 : 0x100);
-#if 0
-    for (i = 0; i < NUM_CPU(s); i++) {
-        char *region_name = g_strdup_printf("gic_cpu-%d", i);
-        s->backref[i] = s;
-        memory_region_init_io(&s->cpuiomem[i+1], OBJECT(s), &gic_cpu_ops,
-                              &s->backref[i], region_name, 0x100);
-        g_free(region_name);
-    }
-#endif
     memory_region_init_io(&s->hypiomem[0], OBJECT(s), &gic_thishyp_ops, s,
                           "gic_thishyp_cpu", 0x200);
     memory_region_init_io(&s->vcpuiomem, OBJECT(s), &gic_thisvcpu_ops, s,
