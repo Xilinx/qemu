@@ -77,11 +77,6 @@
 #  endif
 #endif
 
-#define RP_OPT_ENT(name) [RP_OPT_ ## name] = offsetof(struct rp_cfg_state, name)
-static const size_t rp_opt_map[] = {
-    RP_OPT_ENT(quantum),
-};
-
 static const char *rp_cmd_names[RP_CMD_max + 1] = {
     [RP_CMD_nop] = "nop",
     [RP_CMD_hello] = "hello",
