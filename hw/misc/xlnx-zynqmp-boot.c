@@ -83,6 +83,15 @@
 
 #define DB_PRINT(fmt, args...) DB_PRINT_L(1, fmt, ## args)
 
+typedef enum {
+    STATE_WAIT_RST = 0,
+    STATE_WAIT_PMUFW,
+    STATE_PMUFW_SETCFG,
+    STATE_WAIT_PMUFW_READY,
+    STATE_RELEASE_CPU,
+    STATE_DONE,
+} BootState;
+
 typedef struct ZynqMPBoot {
     SysBusDevice parent_obj;
 
@@ -92,6 +101,8 @@ typedef struct ZynqMPBoot {
     QEMUBH *bh;
     ptimer_state *ptimer;
 
+    BootState state;
+
     /* ZynqMP Boot reset is active-low.  */
     bool n_reset;
 
@@ -99,6 +110,8 @@ typedef struct ZynqMPBoot {
         uint32_t cpu_num;
         bool use_pmufw;
     } cfg;
+
+    unsigned char *buf;
 } ZynqMPBoot;
 
 static const MemTxAttrs mattr_secure = { .secure = true };
@@ -116,16 +129,15 @@ static uint32_t boot_load32(ZynqMPBoot *s, uint64_t addr)
 }
 
 /*
- * Wait for the PMU to be ready.
+ * Check if the the PMU is ready.
  */
-static void pm_ipi_wait(ZynqMPBoot *s)
+static bool pm_ipi_ready(ZynqMPBoot *s)
 {
     uint32_t r;
 
-    do {
-        r = boot_load32(s, IPI_BASEADDR + IPI_OBS_OFFSET);
-        r &= IPI_PMU_PM_INT_MASK;
-    } while (r);
+    r = boot_load32(s, IPI_BASEADDR + IPI_OBS_OFFSET);
+    r &= IPI_PMU_PM_INT_MASK;
+    return !r;
 }
 
 /*
@@ -140,8 +152,7 @@ static void pm_ipi_send(ZynqMPBoot *s,
                             IPI_BUFFER_TARGET_PMU_OFFSET +
                             IPI_BUFFER_REQ_OFFSET;
 
-    /* Wait until previous interrupt is handled by PMU */
-    pm_ipi_wait(s);
+    assert(pm_ipi_ready(s));
 
     /* Write payload into IPI buffer */
     for (i = 0; i < PAYLOAD_ARG_CNT; i++) {
@@ -160,16 +171,6 @@ static void release_cpu(ZynqMPBoot *s)
     uint32_t r;
 
     DB_PRINT("Starting CPU#%d release\n", s->cfg.cpu_num)
-
-    /* Configure PMU FW.  */
-    if (s->cfg.use_pmufw) {
-        uint32_t pay[6] = {};
-        address_space_write(s->dma_as, 0, mattr_secure,
-                            (void *) pmufw_cfg, sizeof pmufw_cfg);
-        pay[0] = PM_SET_CONFIGURATION;
-        pay[1] = 0;
-        pm_ipi_send(s, pay);
-    }
 
     /*
      * Save and restore PC accross reset to keep ELF loaded entry point valid.
@@ -199,19 +200,80 @@ static bool check_for_pmufw(ZynqMPBoot *s)
     return r & (1 << 4);
 }
 
+static void roll_timer(ZynqMPBoot *s)
+{
+    ptimer_set_limit(s->ptimer, 200000, 1);
+    ptimer_run(s->ptimer, 1);
+}
+
 static void boot_sequence(void *opaque)
 {
     ZynqMPBoot *s = XILINX_ZYNQMP_BOOT(opaque);
+    uint32_t pay[6] = {};
 
-    if (s->cfg.use_pmufw && !check_for_pmufw(s)) {
-        ptimer_set_limit(s->ptimer, 200000, 1);
-        ptimer_run(s->ptimer, 1);
-        return;
-    }
+    switch (s->state) {
+    case STATE_WAIT_PMUFW:
+        if (!s->cfg.use_pmufw) {
+            s->state = STATE_RELEASE_CPU;
+            boot_sequence(s);
+            return;
+        }
 
-    if (s->cfg.cpu_num != CPU_NONE) {
+        if (!check_for_pmufw(s)) {
+            roll_timer(s);
+            return;
+        }
+
+        s->state = STATE_PMUFW_SETCFG;
+        boot_sequence(s);
+        break;
+
+    case STATE_PMUFW_SETCFG:
+        if (!pm_ipi_ready(s)) {
+            roll_timer(s);
+            return;
+        }
+
+        /* Save DDR contents.  */
+        s->buf = g_malloc(sizeof pmufw_cfg);
+        address_space_read(s->dma_as, 0, mattr_secure,
+                           s->buf, sizeof pmufw_cfg);
+        address_space_write(s->dma_as, 0, mattr_secure,
+                            (void *) pmufw_cfg, sizeof pmufw_cfg);
+        pay[0] = PM_SET_CONFIGURATION;
+        pay[1] = 0;
+        pm_ipi_send(s, pay);
+        s->state = STATE_WAIT_PMUFW_READY;
+        boot_sequence(s);
+        break;
+
+    case STATE_WAIT_PMUFW_READY:
+        if (!pm_ipi_ready(s)) {
+            roll_timer(s);
+            return;
+        }
+
+        /* Restore DDR contents.  */
+        address_space_write(s->dma_as, 0, mattr_secure,
+                            s->buf, sizeof pmufw_cfg);
+        g_free(s->buf);
+        s->buf = NULL;
+
+        s->state = STATE_RELEASE_CPU;
+        boot_sequence(s);
+        break;
+
+    case STATE_RELEASE_CPU:
         release_cpu(s);
-    }
+        s->state = STATE_DONE;
+        break;
+
+    case STATE_DONE:
+    case STATE_WAIT_RST:
+        /* These states are not handled here.  */
+        g_assert_not_reached();
+        break;
+    };
 }
 
 static void irq_handler(void *opaque, int irq, int level)
@@ -221,6 +283,7 @@ static void irq_handler(void *opaque, int irq, int level)
     if (!s->n_reset && level) {
         /* Start the boot sequence.  */
         DB_PRINT("Starting the boot sequence\n");
+        s->state = STATE_WAIT_PMUFW;
         boot_sequence(s);
     }
     s->n_reset = level;
