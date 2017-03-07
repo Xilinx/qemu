@@ -119,6 +119,51 @@ static int zynq7000_mdio_phy_connect(char *node_path, FDTMachineInfo *fdti,
     return 0;
 }
 
+static int zynq7000_mdio_phy_create(char *node_path, FDTMachineInfo *fdti,
+                                     void *Opaque)
+{
+    bool has_mdio = false;
+    char parent_node_path[DT_PATH_LENGTH];
+    DeviceState *dev;
+    uint32_t reg;
+
+    if (qemu_devtree_getparent(fdti->fdt, parent_node_path, node_path)) {
+        abort();
+    }
+
+    if (!strcmp(qemu_devtree_get_node_name(fdti->fdt, parent_node_path),
+                "mdio")) {
+        /* To not break the backward compatiblity lets also consider mdio node
+         * dts can as be as below, with mdio node, when which we do not connect
+         * mdio to ethernet instance as mdio node has other instance handler
+         *
+         * mdio {
+         *    ethernet-phy@7 {
+         *        reg = <0x7>;
+         *        device_type = "ethernet-phy";
+         *    };
+         * };
+         */
+        has_mdio = true;
+    }
+
+    if (!has_mdio) {
+        zynq7000_mdio_phy_connect(node_path, fdti, Opaque);
+    }
+
+    /* Wait for the parent to be created */
+    while (!fdt_init_has_opaque(fdti, parent_node_path)) {
+        fdt_init_yield(fdti);
+    }
+
+    dev = qdev_create(NULL, "88e1116r");
+    qdev_set_parent_bus(dev, qdev_get_child_bus(Opaque, "mdio-bus"));
+    reg = qemu_fdt_getprop_cell(fdti->fdt, node_path, "reg", 0, false,
+                                NULL);
+    object_property_set_int(OBJECT(dev), reg, "reg", NULL);
+    return 0;
+}
+
 static char *zynq7000_qspi_flash_node_clone(void *fdt)
 {
     char qspi_node_path[DT_PATH_LENGTH];
@@ -525,6 +570,8 @@ static void arm_generic_fdt_7000_init(MachineState *machine)
     qdev_init_nofail(dev);
     /* Add MDIO Connect Call back */
     add_to_inst_bind_table(zynq7000_mdio_phy_connect, "mdio", dev);
+    add_to_compat_table(zynq7000_mdio_phy_create, "device_type:ethernet-phy",
+                        dev);
 
     arm_generic_fdt_init(machine);
 
