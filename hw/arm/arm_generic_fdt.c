@@ -94,13 +94,18 @@ static int zynq7000_mdio_phy_connect(char *node_path, FDTMachineInfo *fdti,
                                      void *Opaque)
 {
     Object *parent;
+    DeviceState *dev;
     char parent_node_path[DT_PATH_LENGTH];
+
+    if (qemu_devtree_getparent(fdti->fdt, parent_node_path, node_path)) {
+        abort();
+    } else if (qemu_devtree_get_node_name(fdti->fdt, parent_node_path) == "mdio") {
+        node_path = parent_node_path;
+        qemu_devtree_getparent(fdti->fdt, parent_node_path, parent_node_path);
+    }
 
     /* Register MDIO obj instance to fdti, useful during child registration */
     fdt_init_set_opaque(fdti, node_path, Opaque);
-    if (qemu_devtree_getparent(fdti->fdt, parent_node_path, node_path)) {
-        abort();
-    }
 
     /* Wait for the parent to be created */
     while (!fdt_init_has_opaque(fdti, parent_node_path)) {
@@ -116,6 +121,9 @@ static int zynq7000_mdio_phy_connect(char *node_path, FDTMachineInfo *fdti,
 
     /* Set mdio property of gem device */
     object_property_set_link(OBJECT(parent), OBJECT(Opaque), "mdio", NULL);
+
+    dev = qdev_create(NULL,"88e1116r");
+    qdev_set_parent_bus(dev, qdev_get_child_bus(Opaque, "mdio-bus"));
     return 0;
 }
 
@@ -525,6 +533,7 @@ static void arm_generic_fdt_7000_init(MachineState *machine)
     qdev_init_nofail(dev);
     /* Add MDIO Connect Call back */
     add_to_inst_bind_table(zynq7000_mdio_phy_connect, "mdio", dev);
+    add_to_compat_table(zynq7000_mdio_phy_connect, "device_type:ethernet-phy", dev);
 
     arm_generic_fdt_init(machine);
 
