@@ -1275,7 +1275,7 @@ static void memory_region_do_set_ram(MemoryRegion *mr)
             if (*c == '/')
                 *c = '_';
         }
-        filename = g_strdup_printf("%s/qemu-memory-%s",
+        filename = g_strdup_printf("%s" G_DIR_SEPARATOR_S "qemu-memory-%s",
                                    machine_path ? machine_path : ".",
                                    sanitized_name);
         g_free(sanitized_name);

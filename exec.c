@@ -1340,7 +1340,8 @@ static void *file_ram_alloc(RAMBlock *block,
                 }
             }
 
-            filename = g_strdup_printf("%s/qemu_back_mem.%s.XXXXXX", path,
+            filename = g_strdup_printf("%s" G_DIR_SEPARATOR_S "" \
+                                       "qemu_back_mem.%s.XXXXXX", path,
                                        sanitized_name);
             g_free(sanitized_name);
 
