@@ -2035,6 +2035,38 @@ static void par_write(CPUARMState *env, const ARMCPRegInfo *ri, uint64_t value)
 }
 
 #ifndef CONFIG_USER_ONLY
+/* Return the exception level which controls this address translation regime */
+static inline uint32_t regime_el(CPUARMState *env, ARMMMUIdx mmu_idx)
+{
+    switch (mmu_idx) {
+    case ARMMMUIdx_S2NS:
+    case ARMMMUIdx_S1E2:
+    case ARMMMUIdx_S12NSE0:
+    case ARMMMUIdx_S12NSE1:
+        return 2;
+    case ARMMMUIdx_S1E3:
+        return 3;
+    case ARMMMUIdx_S1SE0:
+        return arm_el_is_aa64(env, 3) ? 1 : 3;
+    case ARMMMUIdx_S1SE1:
+    case ARMMMUIdx_S1NSE0:
+    case ARMMMUIdx_S1NSE1:
+        return 1;
+    default:
+        g_assert_not_reached();
+    }
+}
+
+/* Return the TCR controlling this translation regime */
+static inline TCR *regime_tcr(CPUARMState *env, ARMMMUIdx mmu_idx)
+{
+    if (mmu_idx == ARMMMUIdx_S2NS) {
+        return &env->cp15.vtcr_el2;
+    }
+    return &env->cp15.tcr_el[regime_el(env, mmu_idx)];
+}
+
+
 /* get_phys_addr() isn't present for user-mode-only targets */
 
 static CPAccessResult ats_access(CPUARMState *env, const ARMCPRegInfo *ri,
@@ -2070,7 +2102,8 @@ static uint64_t do_ats_write(CPUARMState *env, uint64_t value,
 
     ret = get_phys_addr(env, value, access_type, mmu_idx,
                         &phys_addr, &attrs, &prot, &page_size, &fsr, &fi);
-    if (extended_addresses_enabled(env)) {
+    if (extended_addresses_enabled_el(env, regime_el(env, mmu_idx),
+                                      regime_tcr(env, mmu_idx))) {
         /* fsr is a DFSR/IFSR value for the long descriptor
          * translation table format, but with WnR always clear.
          * Convert it to a 64-bit PAR.
@@ -6699,26 +6732,6 @@ void arm_cpu_do_interrupt(CPUState *cs)
     }
 }
 
-/* Return the exception level which controls this address translation regime */
-static inline uint32_t regime_el(CPUARMState *env, ARMMMUIdx mmu_idx)
-{
-    switch (mmu_idx) {
-    case ARMMMUIdx_S2NS:
-    case ARMMMUIdx_S1E2:
-        return 2;
-    case ARMMMUIdx_S1E3:
-        return 3;
-    case ARMMMUIdx_S1SE0:
-        return arm_el_is_aa64(env, 3) ? 1 : 3;
-    case ARMMMUIdx_S1SE1:
-    case ARMMMUIdx_S1NSE0:
-    case ARMMMUIdx_S1NSE1:
-        return 1;
-    default:
-        g_assert_not_reached();
-    }
-}
-
 /* Return true if this address translation regime is secure */
 static inline bool regime_is_secure(CPUARMState *env, ARMMMUIdx mmu_idx)
 {
@@ -6759,15 +6772,6 @@ static inline bool regime_translation_big_endian(CPUARMState *env,
                                                  ARMMMUIdx mmu_idx)
 {
     return (regime_sctlr(env, mmu_idx) & SCTLR_EE) != 0;
-}
-
-/* Return the TCR controlling this translation regime */
-static inline TCR *regime_tcr(CPUARMState *env, ARMMMUIdx mmu_idx)
-{
-    if (mmu_idx == ARMMMUIdx_S2NS) {
-        return &env->cp15.vtcr_el2;
-    }
-    return &env->cp15.tcr_el[regime_el(env, mmu_idx)];
 }
 
 /* Return the TTBR associated with this translation regime */
