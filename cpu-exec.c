@@ -32,6 +32,7 @@
 #include "hw/i386/apic.h"
 #endif
 #include "sysemu/replay.h"
+#include "qemu/etrace.h"
 
 /* -icount align implementation. */
 
@@ -143,6 +144,19 @@ static inline tcg_target_ulong cpu_tb_exec(CPUState *cpu, TranslationBlock *itb)
                            "CPU%d Trace %p [" TARGET_FMT_lx "] %s\n",
                             cpu->cpu_index,
                            itb->tc_ptr, itb->pc, lookup_symbol(itb->pc));
+
+    if (qemu_etrace_mask(ETRACE_F_CPU)) {
+        /* FIXME: Create a binary representation.
+                  printf is too slow!!  */
+        qemu_etracer.current_unit_id = cpu->cpu_index;
+        cpu_dump_state(cpu, (void *) &qemu_etracer,
+                       etrace_note_fprintf, 0);
+    }
+    if (qemu_etrace_mask(ETRACE_F_EXEC)) {
+        etrace_dump_exec_start(&qemu_etracer, cpu->cpu_index,
+                               itb->pc);
+    }
+
 
 #if defined(DEBUG_DISAS)
     if (qemu_loglevel_mask(CPU_LOG_TB_CPU)) {
@@ -351,6 +365,8 @@ int cpu_exec(CPUState *cpu)
 #ifdef TARGET_I386
     X86CPU *x86_cpu = X86_CPU(cpu);
     CPUArchState *env = &x86_cpu->env;
+#else
+    CPUArchState *env = (CPUArchState *)cpu->env_ptr;
 #endif
     int ret, interrupt_request;
     TranslationBlock *tb;
@@ -368,6 +384,13 @@ int cpu_exec(CPUState *cpu)
             cpu_reset_interrupt(cpu, CPU_INTERRUPT_POLL);
         }
 #endif
+        if (qemu_etrace_mask(ETRACE_F_EXEC)) {
+            const char *dev_name = object_get_canonical_path(OBJECT(cpu));
+            etrace_event_u64(&qemu_etracer, cpu->cpu_index,
+                             ETRACE_EVU64_F_PREV_VAL,
+                             dev_name, "sleep", 0, 1);
+        }
+
         if (!cpu_has_work(cpu)) {
             current_cpu = NULL;
             return EXCP_HALTED;
@@ -519,6 +542,7 @@ int cpu_exec(CPUState *cpu)
                 }
                 tb_unlock();
                 if (likely(!cpu->exit_request)) {
+                    bool tb_exit = false;
                     trace_exec_tb(tb, tb->pc);
                     /* execute the generated code */
                     cpu->current_tb = tb;
@@ -538,6 +562,7 @@ int cpu_exec(CPUState *cpu)
                          */
                         smp_rmb();
                         next_tb = 0;
+                        tb_exit = true;
                         break;
                     case TB_EXIT_ICOUNT_EXPIRED:
                     {
@@ -560,12 +585,29 @@ int cpu_exec(CPUState *cpu)
                             next_tb = 0;
                             cpu_loop_exit(cpu);
                         }
+                        tb_exit = true;
                         break;
                     }
                     default:
+                        tb_exit = false;
                         break;
                     }
+                    if (qemu_etrace_mask(ETRACE_F_EXEC)) {
+                        target_ulong cs_base, pc;
+                        int flags;
+
+                        if (tb_exit) {
+                            /* TB early exit, ask for CPU state.  */
+                            cpu_get_tb_cpu_state(env, &pc, &cs_base, &flags);
+                        } else {
+                            /* TB didn't exit, assume we ran all of it.  */
+                            pc = tb->pc + tb->size;
+                        }
+                        etrace_dump_exec_end(&qemu_etracer,
+                                             cpu->cpu_index, pc);
+                    }
                 }
+                qemu_etracer.exec_start_valid = false;
                 /* Try to align the host and virtual clocks
                    if the guest is in advance */
                 align_clocks(&sc, cpu);
@@ -593,6 +635,15 @@ int cpu_exec(CPUState *cpu)
             g_assert(env == &x86_cpu->env);
 #endif
 #endif /* buggy compiler */
+            if (qemu_etrace_mask(ETRACE_F_EXEC)
+                && qemu_etracer.exec_start_valid) {
+                target_ulong cs_base, pc;
+                int flags;
+
+                cpu_get_tb_cpu_state(env, &pc, &cs_base, &flags);
+                etrace_dump_exec_end(&qemu_etracer, cpu->cpu_index, pc);
+            }
+
             cpu->can_do_io = 1;
             tb_lock_reset();
         }

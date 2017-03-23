@@ -66,8 +66,18 @@ void cpu_reloading_memory_map(void)
 }
 #endif
 
+#include "qemu/etrace.h"
+
 void cpu_loop_exit(CPUState *cpu)
 {
+    if (cpu->halted && qemu_etrace_mask(ETRACE_F_EXEC)) {
+        const char *dev_name = object_get_canonical_path(OBJECT(cpu));
+        etrace_event_u64(&qemu_etracer, cpu->cpu_index,
+                         ETRACE_EVU64_F_PREV_VAL,
+                         dev_name, "sleep", 1, 0);
+    }
+
+
     cpu->current_tb = NULL;
     siglongjmp(cpu->jmp_env, 1);
 }
