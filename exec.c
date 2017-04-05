@@ -3937,9 +3937,7 @@ int qemu_ram_foreach_block(RAMBlockIterFunc func, void *opaque)
 }
 #endif
 
-/* FIXME: rewrite - badly needed */
-
-void cpu_halt_reset_common(CPUState *cpu)
+void cpu_halt_update(CPUState *cpu)
 {
     bool val;
 
@@ -3965,7 +3963,7 @@ void cpu_reset_gpio(void *opaque, int irq, int level)
     }
 
     cpu->reset_pin = level;
-    cpu_halt_reset_common(cpu);
+    cpu_halt_update(cpu);
 }
 
 void cpu_halt_gpio(void *opaque, int irq, int level)
@@ -3973,5 +3971,5 @@ void cpu_halt_gpio(void *opaque, int irq, int level)
     CPUState *cpu = CPU(opaque);
 
     cpu->halt_pin = level;
-    cpu_halt_reset_common(cpu);
+    cpu_halt_update(cpu);
 }

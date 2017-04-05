@@ -844,7 +844,6 @@ extern const struct VMStateDescription vmstate_cpu_common;
 
 void cpu_halt_gpio(void *opaque, int irq, int level);
 void cpu_reset_gpio(void *opaque, int irq, int level);
-
-void cpu_halt_reset_common(CPUState *cpu);
+void cpu_halt_update(CPUState *cpu);
 
 #endif
