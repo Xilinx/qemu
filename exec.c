@@ -3939,28 +3939,20 @@ int qemu_ram_foreach_block(RAMBlockIterFunc func, void *opaque)
 
 /* FIXME: rewrite - badly needed */
 
-void cpu_halt_reset_common(CPUState *cpu, bool *change, bool val, bool force)
+void cpu_halt_reset_common(CPUState *cpu, bool *change, bool val)
 {
     bool new_val;
-    bool old_val = cpu->reset_pin || cpu->halt_pin || cpu->arch_halt_pin;
 
     if (change) {
         *change = val;
     }
+
     new_val = cpu->reset_pin || cpu->halt_pin || cpu->arch_halt_pin;
 
     if (new_val) {
         cpu_interrupt(cpu, CPU_INTERRUPT_HALT);
-    }
-
-    if (new_val == old_val && !force) {
-        return;
-    }
-
-    if (!new_val) {
+    } else {
         cpu_reset_interrupt(cpu, CPU_INTERRUPT_HALT);
-        cpu_interrupt(cpu, CPU_INTERRUPT_EXITTB);
-        cpu->halted = 0;
     }
 }
 
@@ -3971,17 +3963,17 @@ void cpu_reset_gpio(void *opaque, int irq, int level)
     if (level == cpu->reset_pin) {
         return;
     }
+
     if (level || cpu->reset_pin) {
         cpu_reset(cpu);
-        cpu_halt_reset_common(cpu, &cpu->reset_pin, level, true);
-    } else {
-        cpu_halt_reset_common(cpu, &cpu->reset_pin, level, false);
     }
+
+    cpu_halt_reset_common(cpu, &cpu->reset_pin, level);
 }
 
 void cpu_halt_gpio(void *opaque, int irq, int level)
 {
     CPUState *cpu = CPU(opaque);
 
-    cpu_halt_reset_common(cpu, &cpu->halt_pin, level, false);
+    cpu_halt_reset_common(cpu, &cpu->halt_pin, level);
 }

@@ -467,7 +467,7 @@ static void arm_cpu_set_ncpuhalt(void *opaque, int irq, int level)
         return;
     }
 #endif
-    cpu_halt_reset_common(cs, &cs->arch_halt_pin, level, false);
+    cpu_halt_reset_common(cs, &cs->arch_halt_pin, level);
 }
 
 static void arm_cpu_set_vinithi(void *opaque, int irq, int level)
