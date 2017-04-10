@@ -3532,14 +3532,6 @@ STEXI
 Set TB size.
 ETEXI
 
-DEF("no-tb-chain", 0, QEMU_OPTION_no_tb_chain, \
-    "-no-tb-chain      Disable TB chaining\n", QEMU_ARCH_ALL)
-STEXI
-@item -no-tb-chain
-@findex -no-tb-chain
-Disable TB chaining.
-ETEXI
-
 DEF("incoming", HAS_ARG, QEMU_OPTION_incoming, \
     "-incoming tcp:[host]:port[,to=maxport][,ipv4][,ipv6]\n" \
     "-incoming rdma:host:port[,ipv4][,ipv6]\n" \

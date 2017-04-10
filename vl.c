@@ -202,7 +202,6 @@ static NotifierList machine_init_done_notifiers =
 bool xen_allowed;
 uint32_t xen_domid;
 enum xen_mode xen_mode = XEN_EMULATE;
-bool tcg_tb_chain = true;
 
 static int has_defaults = 1;
 static int default_serial = 1;
@@ -3889,9 +3888,6 @@ int main(int argc, char **argv, char **envp)
                 if (tcg_tb_size < 0) {
                     tcg_tb_size = 0;
                 }
-                break;
-            case QEMU_OPTION_no_tb_chain:
-                tcg_tb_chain = false;
                 break;
             case QEMU_OPTION_icount:
                 icount_opts = qemu_opts_parse_noisily(qemu_find_opts("icount"),
