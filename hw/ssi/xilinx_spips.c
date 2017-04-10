@@ -343,6 +343,12 @@ static void xilinx_spips_reset(DeviceState *d)
         s->regs[i] = 0;
     }
 
+    if (s->num_busses < 2) {
+        /* ssi_auto_connect_slaves works only with single spi bus
+         * as the child by itself specify which bus it should connect
+         */
+        ssi_auto_connect_slaves(d, s->cs_lines, s->spi[0]);
+    }
     fifo_reset(&s->rx_fifo);
     fifo_reset(&s->rx_fifo);
     fifo_reset(&s->rx_fifo_g);
@@ -1211,8 +1217,7 @@ static void xilinx_spips_realize(DeviceState *dev, Error **errp)
 
     s->cs_lines = g_new0(qemu_irq, s->num_cs * s->num_busses);
     s->cs_lines_state = g_new0(bool, s->num_cs * s->num_busses);
-    ssi_auto_connect_slaves(DEVICE(s), s->cs_lines, s->spi[0]);
-    ssi_auto_connect_slaves(DEVICE(s), s->cs_lines, s->spi[1]);
+
     sysbus_init_irq(sbd, &s->irq);
     qdev_init_gpio_out(dev, s->cs_lines, s->num_cs * s->num_busses);
 

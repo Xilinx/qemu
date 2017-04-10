@@ -161,7 +161,10 @@ static void xlx_spi_do_reset(XilinxSPI *s)
 
 static void xlx_spi_reset(DeviceState *d)
 {
-    xlx_spi_do_reset(XILINX_SPI(d));
+     XilinxSPI *s = XILINX_SPI(d);
+
+    xlx_spi_do_reset(s);
+    ssi_auto_connect_slaves(d, s->cs_lines, s->spi);
 }
 
 static inline int spi_master_enabled(XilinxSPI *s)
@@ -333,7 +336,6 @@ static void xilinx_spi_realize(DeviceState *dev, Error **errp)
 
     sysbus_init_irq(sbd, &s->irq);
     s->cs_lines = g_new0(qemu_irq, s->num_cs);
-    ssi_auto_connect_slaves(dev, s->cs_lines, s->spi);
     for (i = 0; i < s->num_cs; ++i) {
         sysbus_init_irq(sbd, &s->cs_lines[i]);
     }
