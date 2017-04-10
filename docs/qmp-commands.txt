@@ -3690,6 +3690,91 @@ Move mouse pointer to absolute coordinates (20000, 400).
                { "type": "abs", "data" : { "axis": "y", "value" : 400 } } ] } }
 <- { "return": {} }
 
+EQMP
+
+    {
+        .name       = "read_mem",
+        .args_type  = "addr:i,size:i,cpu:i?,qom:s?",
+        .mhandler.cmd_new = qmp_marshal_read_mem,
+    },
+
+SQMP
+read_mem
+---------
+
+Read a memory location.
+
+Example:
+
+-> { "execute": "read_mem", "arguments": { "cpu": "0", "addr": "0", "size": "4" } }
+<- { "return": {"3735928559"} }
+
+EQMP
+
+    {
+        .name       = "write_mem",
+        .args_type  = "addr:i,val:i,size:i,cpu:i?,qom:s?",
+        .mhandler.cmd_new = qmp_marshal_write_mem,
+    },
+
+SQMP
+write_mem
+---------
+
+Write a memory location.
+
+Example:
+
+-> { "execute": "write_mem", "arguments": { "cpu": "0", "addr": "0", "size": "4", "val": "3735928559" } }
+<- { "return": {} }
+
+EQMP
+
+    {
+        .name       = "trigger_event",
+        .args_type  = "time_ns:i,event_id:i",
+        .mhandler.cmd_new = qmp_marshal_trigger_event,
+    },
+
+SQMP
+@trigger_event
+-------------
+
+Trigger an event in a given time.
+
+Example:
+
+-> { "execute": "trigger_event", "arguments": { "time_ns": "10", "event_id": "0" } }
+<- { "return": {} }
+
+EQMP
+
+    {
+        .name       = "inject_gpio",
+        .args_type  = "device_name:s,gpio:s?,num:i,val:i",
+        .mhandler.cmd_new = qmp_marshal_inject_gpio,
+    },
+
+SQMP
+inject_gpio
+-----------
+
+Inject a GPIO.
+
+Example:
+
+-> { "execute": "inject_gpio", "arguments": { "device_name": "/machine/device", "gpio": "clk_error", "num": "0", "val": "1" } }
+<- { "return": {} }
+
+EQMP
+
+    {
+        .name       = "block-set-write-threshold",
+        .args_type  = "node-name:s,write-threshold:l",
+        .mhandler.cmd_new = qmp_marshal_block_set_write_threshold,
+    },
+
+SQMP
 block-set-write-threshold
 ------------
 
