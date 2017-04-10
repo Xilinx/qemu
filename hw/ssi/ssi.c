@@ -74,22 +74,25 @@ static bool ssi_slave_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
     }
 
     if (ssc->transfer_raw == ssi_transfer_raw_default &&
-        ssc->cs_polarity != SSI_CS_NONE) {
+        ssc->cs_polarity != SSI_CS_NONE &&
+        parent->num_child_bus > 1) {
         qdev_connect_gpio_out(parent, reg.a[0],
                               qdev_get_gpio_in_named(DEVICE(s),
                                                      SSI_GPIO_CS, 0));
     }
 
-    snprintf(bus_name, 16, "spi%" PRIx64, reg.b[0]);
-    parent_bus = qdev_get_child_bus(parent, bus_name);
-    if (!parent_bus) {
-        /* Not every spi bus ends with a numeral
-         * so try just the name as well
-         */
-        snprintf(bus_name, 16, "spi");
+    if (parent->num_child_bus > 1) {
+        snprintf(bus_name, 16, "spi%" PRIx64, reg.b[0]);
         parent_bus = qdev_get_child_bus(parent, bus_name);
+        if (!parent_bus) {
+            /* Not every spi bus ends with a numeral
+             * so try just the name as well
+             */
+            snprintf(bus_name, 16, "spi");
+            parent_bus = qdev_get_child_bus(parent, bus_name);
+        }
+        qdev_set_parent_bus(DEVICE(s), parent_bus);
     }
-    qdev_set_parent_bus(DEVICE(s), parent_bus);
     return false;
 }
 
