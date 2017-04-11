@@ -341,8 +341,15 @@ static bool zynqmp_csu_dma_stream_can_push(StreamSlave *obj,
                                             StreamCanPushNotifyFn notify,
                                             void *notify_opaque)
 {
-    /* DST channel side has no flow-control.  */
-    return true;
+    ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(obj);
+    /* FIXME: DST channel side has no flow-control.  */
+    if (dmach_get_size(s) != 0) {
+        return true;
+    } else {
+        s->notify = notify;
+        s->notify_opaque = notify_opaque;
+        return false;
+    }
 }
 
 static void zynqmp_csu_dma_src_notify(void *opaque)
