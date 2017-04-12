@@ -184,7 +184,7 @@ void dep_register_reset(DepRegisterInfo *reg)
 {
     assert(reg);
     const DepRegisterAccessInfo *ac;
-    uint64_t val, old_val;
+    uint64_t val;
 
     if (!reg->data || !reg->access) {
         return;
@@ -192,8 +192,7 @@ void dep_register_reset(DepRegisterInfo *reg)
 
     ac = reg->access;
 
-    /* FIXME: Not cool */
-    val = old_val = register_read_val(reg);
+    val = register_read_val(reg);
     if (!(val & ac->inhibit_reset)) {
         val = reg->access->reset;
     }
@@ -207,7 +206,7 @@ void dep_register_reset(DepRegisterInfo *reg)
     reg->read_lite = reg->debug || ac->cor ? false : true;
 
     register_write_val(reg, val);
-    dep_register_refresh_gpios(reg, old_val);
+    dep_register_refresh_gpios(reg, ~val);
 }
 
 void dep_register_refresh_gpios(DepRegisterInfo *reg, uint64_t old_value)
