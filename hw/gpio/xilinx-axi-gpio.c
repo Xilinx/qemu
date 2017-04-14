@@ -25,7 +25,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
-#include "hw/register.h"
+#include "hw/register-dep.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
 
@@ -38,18 +38,18 @@
 #define XLNX_AXI_GPIO(obj) \
      OBJECT_CHECK(XlnxAXIGPIO, (obj), TYPE_XLNX_AXI_GPIO)
 
-REG32(GPIO_DATA, 0x00)
-REG32(GPIO_TRI, 0x04)
-REG32(GPIO2_DATA, 0x08)
-REG32(GPIO2_TRI, 0x0C)
-REG32(GIER, 0x11C)
-    FIELD(GIER, GIE, 1, 31)
-REG32(IP_ISR, 0x120)
-    FIELD(IP_ISR, CHANNEL1_ST, 1, 0)
-    FIELD(IP_ISR, CHANNEL2_ST, 1, 1)
-REG32(IP_IER, 0x128)
-    FIELD(IP_IER, CHANNEL1_EN, 1, 0)
-    FIELD(IP_IER, CHANNEL2_EN, 1, 1)
+DEP_REG32(GPIO_DATA, 0x00)
+DEP_REG32(GPIO_TRI, 0x04)
+DEP_REG32(GPIO2_DATA, 0x08)
+DEP_REG32(GPIO2_TRI, 0x0C)
+DEP_REG32(GIER, 0x11C)
+    DEP_FIELD(GIER, GIE, 1, 31)
+DEP_REG32(IP_ISR, 0x120)
+    DEP_FIELD(IP_ISR, CHANNEL1_ST, 1, 0)
+    DEP_FIELD(IP_ISR, CHANNEL2_ST, 1, 1)
+DEP_REG32(IP_IER, 0x128)
+    DEP_FIELD(IP_IER, CHANNEL1_EN, 1, 0)
+    DEP_FIELD(IP_IER, CHANNEL2_EN, 1, 1)
 
 #define R_MAX (R_IP_IER + 1)
 
@@ -61,13 +61,13 @@ typedef struct XlnxAXIGPIO {
     qemu_irq outputs1[32], outputs2[32];
 
     uint32_t regs[R_MAX];
-    RegisterInfo regs_info[R_MAX];
+    DepRegisterInfo regs_info[R_MAX];
 } XlnxAXIGPIO;
 
 /* The interrupts should be triggered when a change arrives on the GPIO pins */
 static void irq_update(XlnxAXIGPIO *s)
 {
-    bool general_enable = AF_EX32(s->regs, GIER, GIE);
+    bool general_enable = DEP_AF_EX32(s->regs, GIER, GIE);
     bool pending = !!(s->regs[R_IP_ISR] & s->regs[R_IP_IER]);
 
     qemu_set_irq(s->parent_irq, general_enable & pending);
@@ -92,10 +92,10 @@ static void data_handler(void *opaque, int irq, int level, int channel)
 
     switch (channel) {
     case 1:
-        AF_DP32(s->regs, IP_ISR, CHANNEL1_ST, 1);
+        DEP_AF_DP32(s->regs, IP_ISR, CHANNEL1_ST, 1);
         break;
     case 2:
-        AF_DP32(s->regs, IP_ISR, CHANNEL2_ST, 1);
+        DEP_AF_DP32(s->regs, IP_ISR, CHANNEL2_ST, 1);
         break;
     }
 
@@ -141,28 +141,28 @@ static void xlnx_axi_gpio_data_post_write(XlnxAXIGPIO *s, uint64_t val,
     }
 }
 
-static void xlnx_axi_gpio_data_post_write1(RegisterInfo *reg, uint64_t val)
+static void xlnx_axi_gpio_data_post_write1(DepRegisterInfo *reg, uint64_t val)
 {
     XlnxAXIGPIO *s = XLNX_AXI_GPIO(reg->opaque);
 
     xlnx_axi_gpio_data_post_write(s, val, 1);
 }
 
-static void xlnx_axi_gpio_data_post_write2(RegisterInfo *reg, uint64_t val)
+static void xlnx_axi_gpio_data_post_write2(DepRegisterInfo *reg, uint64_t val)
 {
     XlnxAXIGPIO *s = XLNX_AXI_GPIO(reg->opaque);
 
     xlnx_axi_gpio_data_post_write(s, val, 2);
 }
 
-static void xlnx_axi_gpio_post_write(RegisterInfo *reg, uint64_t val)
+static void xlnx_axi_gpio_post_write(DepRegisterInfo *reg, uint64_t val)
 {
     XlnxAXIGPIO *s = XLNX_AXI_GPIO(reg->opaque);
 
     irq_update(s);
 }
 
-static uint64_t xlnx_axi_gpi_data_read(RegisterInfo *reg, uint64_t val,
+static uint64_t xlnx_axi_gpi_data_read(DepRegisterInfo *reg, uint64_t val,
                                        uint8_t channel)
 {
     XlnxAXIGPIO *s = XLNX_AXI_GPIO(reg->opaque);
@@ -177,17 +177,17 @@ static uint64_t xlnx_axi_gpi_data_read(RegisterInfo *reg, uint64_t val,
     }
 }
 
-static uint64_t xlnx_axi_gpio_data_post_read(RegisterInfo *reg, uint64_t val)
+static uint64_t xlnx_axi_gpio_data_post_read(DepRegisterInfo *reg, uint64_t val)
 {
     return xlnx_axi_gpi_data_read(reg, val, 1);
 }
 
-static uint64_t xlnx_axi_gpio2_data_post_read(RegisterInfo *reg, uint64_t val)
+static uint64_t xlnx_axi_gpio2_data_post_read(DepRegisterInfo *reg, uint64_t val)
 {
     return xlnx_axi_gpi_data_read(reg, val, 2);
 }
 
-static RegisterAccessInfo xlnx_axi_gpio_regs_info[] = {
+static DepRegisterAccessInfo xlnx_axi_gpio_regs_info[] = {
     {   .name = "GPIO_DATA",  .decode.addr = A_GPIO_DATA,
         .post_read = xlnx_axi_gpio_data_post_read,
         .post_write = xlnx_axi_gpio_data_post_write1,
@@ -211,7 +211,7 @@ static void xlnx_axi_gpio_reset(DeviceState *dev)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        register_reset(&s->regs_info[i]);
+        dep_register_reset(&s->regs_info[i]);
     }
 
     irq_update(s);
@@ -220,7 +220,7 @@ static void xlnx_axi_gpio_reset(DeviceState *dev)
 static uint64_t xlnx_axi_gpio_read(void *opaque, hwaddr addr, unsigned size)
 {
     XlnxAXIGPIO *s = XLNX_AXI_GPIO(opaque);
-    RegisterInfo *r = &s->regs_info[addr / 4];
+    DepRegisterInfo *r = &s->regs_info[addr / 4];
 
     if (!r->data) {
         qemu_log("%s: Decode error: read from %" HWADDR_PRIx "\n",
@@ -228,14 +228,14 @@ static uint64_t xlnx_axi_gpio_read(void *opaque, hwaddr addr, unsigned size)
                  addr);
         return 0;
     }
-    return register_read(r);
+    return dep_register_read(r);
 }
 
 static void xlnx_axi_gpio_write(void *opaque, hwaddr addr, uint64_t value,
                       unsigned size)
 {
     XlnxAXIGPIO *s = XLNX_AXI_GPIO(opaque);
-    RegisterInfo *r = &s->regs_info[addr / 4];
+    DepRegisterInfo *r = &s->regs_info[addr / 4];
 
     if (!r->data) {
         qemu_log("%s: Decode error: write to %" HWADDR_PRIx "=%" PRIx64 "\n",
@@ -243,7 +243,7 @@ static void xlnx_axi_gpio_write(void *opaque, hwaddr addr, uint64_t value,
                  addr, value);
         return;
     }
-    register_write(r, value, ~0);
+    dep_register_write(r, value, ~0);
 }
 
 static const MemoryRegionOps xlnx_axi_gpio_ops = {
@@ -263,10 +263,10 @@ static void xlnx_axi_gpio_realize(DeviceState *dev, Error **errp)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(xlnx_axi_gpio_regs_info); ++i) {
-        RegisterInfo *r =
+        DepRegisterInfo *r =
                     &s->regs_info[xlnx_axi_gpio_regs_info[i].decode.addr/4];
 
-        *r = (RegisterInfo) {
+        *r = (DepRegisterInfo) {
             .data = (uint8_t *)&s->regs[
                     xlnx_axi_gpio_regs_info[i].decode.addr/4],
             .data_size = sizeof(uint32_t),

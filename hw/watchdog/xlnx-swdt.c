@@ -26,7 +26,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
-#include "hw/register.h"
+#include "hw/register-dep.h"
 #include "qemu/timer.h"
 #include "qemu/bitops.h"
 #include "qapi/error.h"
@@ -43,21 +43,21 @@
 #define XLNX_SWDT(obj) \
      OBJECT_CHECK(SWDTState, (obj), TYPE_XLNX_SWDT)
 
-REG32(SWDT_MODE, 0x0)
-    FIELD(SWDT_MODE, ZKEY, 11, 12)
-    FIELD(SWDT_MODE, IRQLN, 2, 7)
-    FIELD(SWDT_MODE, RSTLN, 3, 4)
-    FIELD(SWDT_MODE, IRQEN, 1, 2)
-    FIELD(SWDT_MODE, RSTEN, 1, 1)
-    FIELD(SWDT_MODE, WDEN, 1, 0)
-REG32(SWDT_CONTROL, 0x4)
-    FIELD(SWDT_CONTROL, CKEY, 12, 14)
-    FIELD(SWDT_CONTROL, CRV, 12, 2)
-    FIELD(SWDT_CONTROL, CLKSEL, 2, 0)
-REG32(SWDT_RESTART, 0x8)
-    FIELD(SWDT_RESTART, RSTKEY, 16, 0)
-REG32(SWDT_STATUS, 0xC)
-    FIELD(SWDT_STATUS, WDZ, 1, 0)
+DEP_REG32(SWDT_MODE, 0x0)
+    DEP_FIELD(SWDT_MODE, ZKEY, 11, 12)
+    DEP_FIELD(SWDT_MODE, IRQLN, 2, 7)
+    DEP_FIELD(SWDT_MODE, RSTLN, 3, 4)
+    DEP_FIELD(SWDT_MODE, IRQEN, 1, 2)
+    DEP_FIELD(SWDT_MODE, RSTEN, 1, 1)
+    DEP_FIELD(SWDT_MODE, WDEN, 1, 0)
+DEP_REG32(SWDT_CONTROL, 0x4)
+    DEP_FIELD(SWDT_CONTROL, CKEY, 12, 14)
+    DEP_FIELD(SWDT_CONTROL, CRV, 12, 2)
+    DEP_FIELD(SWDT_CONTROL, CLKSEL, 2, 0)
+DEP_REG32(SWDT_RESTART, 0x8)
+    DEP_FIELD(SWDT_RESTART, RSTKEY, 16, 0)
+DEP_REG32(SWDT_STATUS, 0xC)
+    DEP_FIELD(SWDT_STATUS, WDZ, 1, 0)
 
 #define R_MAX (R_SWDT_STATUS + 1)
 
@@ -75,7 +75,7 @@ typedef struct SWDTState {
     uint32_t current_mode;
     uint32_t current_control;
     uint32_t regs[R_MAX];
-    RegisterInfo regs_info[R_MAX];
+    DepRegisterInfo regs_info[R_MAX];
 } SWDTState;
 
 static void swdt_done_irq_update(SWDTState *s)
@@ -83,7 +83,7 @@ static void swdt_done_irq_update(SWDTState *s)
     qemu_set_irq(s->irq, 1);
     timer_mod(s->irq_done_timer, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL)
                                  + muldiv64(1000000000,
-                                      4 << AF_EX32(s->regs, SWDT_MODE, IRQLN),
+                                      4 << DEP_AF_EX32(s->regs, SWDT_MODE, IRQLN),
                                       s->pclk));
 }
 
@@ -92,7 +92,7 @@ static void swdt_reset_irq_update(SWDTState *s)
     qemu_set_irq(s->rst, 1);
     timer_mod(s->rst_done_timer, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL)
                            + muldiv64(1000000000,
-                                      2 << AF_EX32(s->regs, SWDT_MODE, RSTLN),
+                                      2 << DEP_AF_EX32(s->regs, SWDT_MODE, RSTLN),
                                       s->pclk));
 }
 
@@ -113,8 +113,8 @@ static void swdt_reset_done(void *opaque)
 static void swdt_time_elapsed(void *opaque)
 {
     SWDTState *s = XLNX_SWDT(opaque);
-    bool do_a_reset = AF_EX32(s->regs, SWDT_MODE, RSTEN);
-    bool do_an_irq = AF_EX32(s->regs, SWDT_MODE, IRQEN);
+    bool do_a_reset = DEP_AF_EX32(s->regs, SWDT_MODE, RSTEN);
+    bool do_an_irq = DEP_AF_EX32(s->regs, SWDT_MODE, IRQEN);
 
     s->regs[R_SWDT_STATUS] = 1;
 
@@ -128,20 +128,20 @@ static void swdt_time_elapsed(void *opaque)
 
 static uint32_t swdt_reload_value(SWDTState *s)
 {
-    return (AF_EX32(s->regs, SWDT_CONTROL, CRV) << 12) + 0xFFF;
+    return (DEP_AF_EX32(s->regs, SWDT_CONTROL, CRV) << 12) + 0xFFF;
 }
 
 static uint64_t swdt_next_trigger(SWDTState *s)
 {
     return (muldiv64(1000000000,
-                     8 << (3 * AF_EX32(s->regs, SWDT_CONTROL, CLKSEL)), s->pclk)
+                     8 << (3 * DEP_AF_EX32(s->regs, SWDT_CONTROL, CLKSEL)), s->pclk)
            * swdt_reload_value(s)) + qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
 }
 
 /* Reload the counter, mod the timer. */
 static void swdt_counter_reload(SWDTState *s)
 {
-    bool watchdog_enabled = AF_EX32(s->regs, SWDT_MODE, WDEN);
+    bool watchdog_enabled = DEP_AF_EX32(s->regs, SWDT_MODE, WDEN);
 
     if (watchdog_enabled) {
         s->regs[R_SWDT_STATUS] = 0;
@@ -151,10 +151,10 @@ static void swdt_counter_reload(SWDTState *s)
     }
 }
 
-static void swdt_mode_postw(RegisterInfo *reg, uint64_t val64)
+static void swdt_mode_postw(DepRegisterInfo *reg, uint64_t val64)
 {
     SWDTState *s = XLNX_SWDT(reg->opaque);
-    bool valid = (AF_EX32(s->regs, SWDT_MODE, ZKEY) == 0xABC);
+    bool valid = (DEP_AF_EX32(s->regs, SWDT_MODE, ZKEY) == 0xABC);
 
     if (!valid) {
         /* The write is not valid, just restore the old value of the register.
@@ -168,10 +168,10 @@ static void swdt_mode_postw(RegisterInfo *reg, uint64_t val64)
     swdt_counter_reload(s);
 }
 
-static void swdt_control_postw(RegisterInfo *reg, uint64_t val64)
+static void swdt_control_postw(DepRegisterInfo *reg, uint64_t val64)
 {
     SWDTState *s = XLNX_SWDT(reg->opaque);
-    bool valid = (AF_EX32(s->regs, SWDT_CONTROL, CKEY) == 0x248);
+    bool valid = (DEP_AF_EX32(s->regs, SWDT_CONTROL, CKEY) == 0x248);
 
     if (!valid) {
         /* The write is not valid, just restore the old value of the register.
@@ -183,10 +183,10 @@ static void swdt_control_postw(RegisterInfo *reg, uint64_t val64)
     s->current_control = s->regs[R_SWDT_CONTROL];
 }
 
-static void swdt_restart_key_postw(RegisterInfo *reg, uint64_t val64)
+static void swdt_restart_key_postw(DepRegisterInfo *reg, uint64_t val64)
 {
     SWDTState *s = XLNX_SWDT(reg->opaque);
-    bool valid = (AF_EX32(s->regs, SWDT_RESTART, RSTKEY) == 0x1999);
+    bool valid = (DEP_AF_EX32(s->regs, SWDT_RESTART, RSTKEY) == 0x1999);
 
     if (valid) {
         swdt_counter_reload(s);
@@ -196,7 +196,7 @@ static void swdt_restart_key_postw(RegisterInfo *reg, uint64_t val64)
     s->regs[R_SWDT_RESTART] = 0x0000;
 }
 
-static RegisterAccessInfo swdt_regs_info[] = {
+static DepRegisterAccessInfo swdt_regs_info[] = {
     {   .name = "SWDT_MODE",  .decode.addr = A_SWDT_MODE,
         .reset = 0x000001C2,
         .rsvd = 0x00000E08,
@@ -227,7 +227,7 @@ static void swdt_reset(DeviceState *dev)
     s->current_control = 0x00003FFC;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        register_reset(&s->regs_info[i]);
+        dep_register_reset(&s->regs_info[i]);
     }
 
     swdt_counter_reload(s);
@@ -236,8 +236,8 @@ static void swdt_reset(DeviceState *dev)
 }
 
 static const MemoryRegionOps swdt_ops = {
-    .read = register_read_memory_le,
-    .write = register_write_memory_le,
+    .read = dep_register_read_memory_le,
+    .write = dep_register_write_memory_le,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
@@ -257,9 +257,9 @@ static void swdt_realize(DeviceState *dev, Error **errp)
     }
 
     for (i = 0; i < ARRAY_SIZE(swdt_regs_info); ++i) {
-        RegisterInfo *r = &s->regs_info[i];
+        DepRegisterInfo *r = &s->regs_info[i];
 
-        *r = (RegisterInfo) {
+        *r = (DepRegisterInfo) {
             .data = (uint8_t *)&s->regs[swdt_regs_info[i].decode.addr / 4],
             .data_size = sizeof(uint32_t),
             .access = &swdt_regs_info[i],

@@ -28,7 +28,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
-#include "hw/register.h"
+#include "hw/register-dep.h"
 #include "qemu/bitops.h"
 #include "qapi/error.h"
 #include "qemu/log.h"
@@ -47,249 +47,249 @@
 #define XILINX_XMPU(obj) \
      OBJECT_CHECK(XMPU, (obj), TYPE_XILINX_XMPU)
 
-REG32(CTRL, 0x0)
-    FIELD(CTRL, ALIGNCFG, 1, 3)
-    FIELD(CTRL, POISONCFG, 1, 2)
-    FIELD(CTRL, DEFWRALLOWED, 1, 1)
-    FIELD(CTRL, DEFRDALLOWED, 1, 0)
-REG32(ERR_STATUS1, 0x4)
-    FIELD(ERR_STATUS1, AXI_ADDR, 20, 0)
-REG32(ERR_STATUS2, 0x8)
-    FIELD(ERR_STATUS2, AXI_ID, 10, 0)
-REG32(POISON, 0xc)
-    FIELD(POISON, ATTRIB, 1, 20)
-    FIELD(POISON, BASE, 20, 0)
-REG32(ISR, 0x10)
-    FIELD(ISR, SECURITYVIO, 1, 3)
-    FIELD(ISR, WRPERMVIO, 1, 2)
-    FIELD(ISR, RDPERMVIO, 1, 1)
-    FIELD(ISR, INV_APB, 1, 0)
-REG32(IMR, 0x14)
-    FIELD(IMR, SECURITYVIO, 1, 3)
-    FIELD(IMR, WRPERMVIO, 1, 2)
-    FIELD(IMR, RDPERMVIO, 1, 1)
-    FIELD(IMR, INV_APB, 1, 0)
-REG32(IEN, 0x18)
-    FIELD(IEN, SECURITYVIO, 1, 3)
-    FIELD(IEN, WRPERMVIO, 1, 2)
-    FIELD(IEN, RDPERMVIO, 1, 1)
-    FIELD(IEN, INV_APB, 1, 0)
-REG32(IDS, 0x1c)
-    FIELD(IDS, SECURITYVIO, 1, 3)
-    FIELD(IDS, WRPERMVIO, 1, 2)
-    FIELD(IDS, RDPERMVIO, 1, 1)
-    FIELD(IDS, INV_APB, 1, 0)
-REG32(LOCK, 0x20)
-    FIELD(LOCK, REGWRDIS, 1, 0)
-REG32(ECO, 0xfc)
-REG32(R00_START, 0x100)
-    FIELD(R00_START, ADDR, 20, 0)
-REG32(R00_END, 0x104)
-    FIELD(R00_END, ADDR, 20, 0)
-REG32(R00_MASTER, 0x108)
-    FIELD(R00_MASTER, MASK, 10, 16)
-    FIELD(R00_MASTER, ID, 10, 0)
-REG32(R00_CONFIG, 0x10c)
-    FIELD(R00_CONFIG, NSCHECKTYPE, 1, 4)
-    FIELD(R00_CONFIG, REGIONNS, 1, 3)
-    FIELD(R00_CONFIG, WRALLOWED, 1, 2)
-    FIELD(R00_CONFIG, RDALLOWED, 1, 1)
-    FIELD(R00_CONFIG, ENABLE, 1, 0)
-REG32(R01_START, 0x110)
-    FIELD(R01_START, ADDR, 20, 0)
-REG32(R01_END, 0x114)
-    FIELD(R01_END, ADDR, 20, 0)
-REG32(R01_MASTER, 0x118)
-    FIELD(R01_MASTER, MASK, 10, 16)
-    FIELD(R01_MASTER, ID, 10, 0)
-REG32(R01_CONFIG, 0x11c)
-    FIELD(R01_CONFIG, NSCHECKTYPE, 1, 4)
-    FIELD(R01_CONFIG, REGIONNS, 1, 3)
-    FIELD(R01_CONFIG, WRALLOWED, 1, 2)
-    FIELD(R01_CONFIG, RDALLOWED, 1, 1)
-    FIELD(R01_CONFIG, ENABLE, 1, 0)
-REG32(R02_START, 0x120)
-    FIELD(R02_START, ADDR, 20, 0)
-REG32(R02_END, 0x124)
-    FIELD(R02_END, ADDR, 20, 0)
-REG32(R02_MASTER, 0x128)
-    FIELD(R02_MASTER, MASK, 10, 16)
-    FIELD(R02_MASTER, ID, 10, 0)
-REG32(R02_CONFIG, 0x12c)
-    FIELD(R02_CONFIG, NSCHECKTYPE, 1, 4)
-    FIELD(R02_CONFIG, REGIONNS, 1, 3)
-    FIELD(R02_CONFIG, WRALLOWED, 1, 2)
-    FIELD(R02_CONFIG, RDALLOWED, 1, 1)
-    FIELD(R02_CONFIG, ENABLE, 1, 0)
-REG32(R03_START, 0x130)
-    FIELD(R03_START, ADDR, 20, 0)
-REG32(R03_END, 0x134)
-    FIELD(R03_END, ADDR, 20, 0)
-REG32(R03_MASTER, 0x138)
-    FIELD(R03_MASTER, MASK, 10, 16)
-    FIELD(R03_MASTER, ID, 10, 0)
-REG32(R03_CONFIG, 0x13c)
-    FIELD(R03_CONFIG, NSCHECKTYPE, 1, 4)
-    FIELD(R03_CONFIG, REGIONNS, 1, 3)
-    FIELD(R03_CONFIG, WRALLOWED, 1, 2)
-    FIELD(R03_CONFIG, RDALLOWED, 1, 1)
-    FIELD(R03_CONFIG, ENABLE, 1, 0)
-REG32(R04_START, 0x140)
-    FIELD(R04_START, ADDR, 20, 0)
-REG32(R04_END, 0x144)
-    FIELD(R04_END, ADDR, 20, 0)
-REG32(R04_MASTER, 0x148)
-    FIELD(R04_MASTER, MASK, 10, 16)
-    FIELD(R04_MASTER, ID, 10, 0)
-REG32(R04_CONFIG, 0x14c)
-    FIELD(R04_CONFIG, NSCHECKTYPE, 1, 4)
-    FIELD(R04_CONFIG, REGIONNS, 1, 3)
-    FIELD(R04_CONFIG, WRALLOWED, 1, 2)
-    FIELD(R04_CONFIG, RDALLOWED, 1, 1)
-    FIELD(R04_CONFIG, ENABLE, 1, 0)
-REG32(R05_START, 0x150)
-    FIELD(R05_START, ADDR, 20, 0)
-REG32(R05_END, 0x154)
-    FIELD(R05_END, ADDR, 20, 0)
-REG32(R05_MASTER, 0x158)
-    FIELD(R05_MASTER, MASK, 10, 16)
-    FIELD(R05_MASTER, ID, 10, 0)
-REG32(R05_CONFIG, 0x15c)
-    FIELD(R05_CONFIG, NSCHECKTYPE, 1, 4)
-    FIELD(R05_CONFIG, REGIONNS, 1, 3)
-    FIELD(R05_CONFIG, WRALLOWED, 1, 2)
-    FIELD(R05_CONFIG, RDALLOWED, 1, 1)
-    FIELD(R05_CONFIG, ENABLE, 1, 0)
-REG32(R06_START, 0x160)
-    FIELD(R06_START, ADDR, 20, 0)
-REG32(R06_END, 0x164)
-    FIELD(R06_END, ADDR, 20, 0)
-REG32(R06_MASTER, 0x168)
-    FIELD(R06_MASTER, MASK, 10, 16)
-    FIELD(R06_MASTER, ID, 10, 0)
-REG32(R06_CONFIG, 0x16c)
-    FIELD(R06_CONFIG, NSCHECKTYPE, 1, 4)
-    FIELD(R06_CONFIG, REGIONNS, 1, 3)
-    FIELD(R06_CONFIG, WRALLOWED, 1, 2)
-    FIELD(R06_CONFIG, RDALLOWED, 1, 1)
-    FIELD(R06_CONFIG, ENABLE, 1, 0)
-REG32(R07_START, 0x170)
-    FIELD(R07_START, ADDR, 20, 0)
-REG32(R07_END, 0x174)
-    FIELD(R07_END, ADDR, 20, 0)
-REG32(R07_MASTER, 0x178)
-    FIELD(R07_MASTER, MASK, 10, 16)
-    FIELD(R07_MASTER, ID, 10, 0)
-REG32(R07_CONFIG, 0x17c)
-    FIELD(R07_CONFIG, NSCHECKTYPE, 1, 4)
-    FIELD(R07_CONFIG, REGIONNS, 1, 3)
-    FIELD(R07_CONFIG, WRALLOWED, 1, 2)
-    FIELD(R07_CONFIG, RDALLOWED, 1, 1)
-    FIELD(R07_CONFIG, ENABLE, 1, 0)
-REG32(R08_START, 0x180)
-    FIELD(R08_START, ADDR, 20, 0)
-REG32(R08_END, 0x184)
-    FIELD(R08_END, ADDR, 20, 0)
-REG32(R08_MASTER, 0x188)
-    FIELD(R08_MASTER, MASK, 10, 16)
-    FIELD(R08_MASTER, ID, 10, 0)
-REG32(R08_CONFIG, 0x18c)
-    FIELD(R08_CONFIG, NSCHECKTYPE, 1, 4)
-    FIELD(R08_CONFIG, REGIONNS, 1, 3)
-    FIELD(R08_CONFIG, WRALLOWED, 1, 2)
-    FIELD(R08_CONFIG, RDALLOWED, 1, 1)
-    FIELD(R08_CONFIG, ENABLE, 1, 0)
-REG32(R09_START, 0x190)
-    FIELD(R09_START, ADDR, 20, 0)
-REG32(R09_END, 0x194)
-    FIELD(R09_END, ADDR, 20, 0)
-REG32(R09_MASTER, 0x198)
-    FIELD(R09_MASTER, MASK, 10, 16)
-    FIELD(R09_MASTER, ID, 10, 0)
-REG32(R09_CONFIG, 0x19c)
-    FIELD(R09_CONFIG, NSCHECKTYPE, 1, 4)
-    FIELD(R09_CONFIG, REGIONNS, 1, 3)
-    FIELD(R09_CONFIG, WRALLOWED, 1, 2)
-    FIELD(R09_CONFIG, RDALLOWED, 1, 1)
-    FIELD(R09_CONFIG, ENABLE, 1, 0)
-REG32(R10_START, 0x1a0)
-    FIELD(R10_START, ADDR, 20, 0)
-REG32(R10_END, 0x1a4)
-    FIELD(R10_END, ADDR, 20, 0)
-REG32(R10_MASTER, 0x1a8)
-    FIELD(R10_MASTER, MASK, 10, 16)
-    FIELD(R10_MASTER, ID, 10, 0)
-REG32(R10_CONFIG, 0x1ac)
-    FIELD(R10_CONFIG, NSCHECKTYPE, 1, 4)
-    FIELD(R10_CONFIG, REGIONNS, 1, 3)
-    FIELD(R10_CONFIG, WRALLOWED, 1, 2)
-    FIELD(R10_CONFIG, RDALLOWED, 1, 1)
-    FIELD(R10_CONFIG, ENABLE, 1, 0)
-REG32(R11_START, 0x1b0)
-    FIELD(R11_START, ADDR, 20, 0)
-REG32(R11_END, 0x1b4)
-    FIELD(R11_END, ADDR, 20, 0)
-REG32(R11_MASTER, 0x1b8)
-    FIELD(R11_MASTER, MASK, 10, 16)
-    FIELD(R11_MASTER, ID, 10, 0)
-REG32(R11_CONFIG, 0x1bc)
-    FIELD(R11_CONFIG, NSCHECKTYPE, 1, 4)
-    FIELD(R11_CONFIG, REGIONNS, 1, 3)
-    FIELD(R11_CONFIG, WRALLOWED, 1, 2)
-    FIELD(R11_CONFIG, RDALLOWED, 1, 1)
-    FIELD(R11_CONFIG, ENABLE, 1, 0)
-REG32(R12_START, 0x1c0)
-    FIELD(R12_START, ADDR, 20, 0)
-REG32(R12_END, 0x1c4)
-    FIELD(R12_END, ADDR, 20, 0)
-REG32(R12_MASTER, 0x1c8)
-    FIELD(R12_MASTER, MASK, 10, 16)
-    FIELD(R12_MASTER, ID, 10, 0)
-REG32(R12_CONFIG, 0x1cc)
-    FIELD(R12_CONFIG, NSCHECKTYPE, 1, 4)
-    FIELD(R12_CONFIG, REGIONNS, 1, 3)
-    FIELD(R12_CONFIG, WRALLOWED, 1, 2)
-    FIELD(R12_CONFIG, RDALLOWED, 1, 1)
-    FIELD(R12_CONFIG, ENABLE, 1, 0)
-REG32(R13_START, 0x1d0)
-    FIELD(R13_START, ADDR, 20, 0)
-REG32(R13_END, 0x1d4)
-    FIELD(R13_END, ADDR, 20, 0)
-REG32(R13_MASTER, 0x1d8)
-    FIELD(R13_MASTER, MASK, 10, 16)
-    FIELD(R13_MASTER, ID, 10, 0)
-REG32(R13_CONFIG, 0x1dc)
-    FIELD(R13_CONFIG, NSCHECKTYPE, 1, 4)
-    FIELD(R13_CONFIG, REGIONNS, 1, 3)
-    FIELD(R13_CONFIG, WRALLOWED, 1, 2)
-    FIELD(R13_CONFIG, RDALLOWED, 1, 1)
-    FIELD(R13_CONFIG, ENABLE, 1, 0)
-REG32(R14_START, 0x1e0)
-    FIELD(R14_START, ADDR, 20, 0)
-REG32(R14_END, 0x1e4)
-    FIELD(R14_END, ADDR, 20, 0)
-REG32(R14_MASTER, 0x1e8)
-    FIELD(R14_MASTER, MASK, 10, 16)
-    FIELD(R14_MASTER, ID, 10, 0)
-REG32(R14_CONFIG, 0x1ec)
-    FIELD(R14_CONFIG, NSCHECKTYPE, 1, 4)
-    FIELD(R14_CONFIG, REGIONNS, 1, 3)
-    FIELD(R14_CONFIG, WRALLOWED, 1, 2)
-    FIELD(R14_CONFIG, RDALLOWED, 1, 1)
-    FIELD(R14_CONFIG, ENABLE, 1, 0)
-REG32(R15_START, 0x1f0)
-    FIELD(R15_START, ADDR, 20, 0)
-REG32(R15_END, 0x1f4)
-    FIELD(R15_END, ADDR, 20, 0)
-REG32(R15_MASTER, 0x1f8)
-    FIELD(R15_MASTER, MASK, 10, 16)
-    FIELD(R15_MASTER, ID, 10, 0)
-REG32(R15_CONFIG, 0x1fc)
-    FIELD(R15_CONFIG, NSCHECKTYPE, 1, 4)
-    FIELD(R15_CONFIG, REGIONNS, 1, 3)
-    FIELD(R15_CONFIG, WRALLOWED, 1, 2)
-    FIELD(R15_CONFIG, RDALLOWED, 1, 1)
-    FIELD(R15_CONFIG, ENABLE, 1, 0)
+DEP_REG32(CTRL, 0x0)
+    DEP_FIELD(CTRL, ALIGNCFG, 1, 3)
+    DEP_FIELD(CTRL, POISONCFG, 1, 2)
+    DEP_FIELD(CTRL, DEFWRALLOWED, 1, 1)
+    DEP_FIELD(CTRL, DEFRDALLOWED, 1, 0)
+DEP_REG32(ERR_STATUS1, 0x4)
+    DEP_FIELD(ERR_STATUS1, AXI_ADDR, 20, 0)
+DEP_REG32(ERR_STATUS2, 0x8)
+    DEP_FIELD(ERR_STATUS2, AXI_ID, 10, 0)
+DEP_REG32(POISON, 0xc)
+    DEP_FIELD(POISON, ATTRIB, 1, 20)
+    DEP_FIELD(POISON, BASE, 20, 0)
+DEP_REG32(ISR, 0x10)
+    DEP_FIELD(ISR, SECURITYVIO, 1, 3)
+    DEP_FIELD(ISR, WRPERMVIO, 1, 2)
+    DEP_FIELD(ISR, RDPERMVIO, 1, 1)
+    DEP_FIELD(ISR, INV_APB, 1, 0)
+DEP_REG32(IMR, 0x14)
+    DEP_FIELD(IMR, SECURITYVIO, 1, 3)
+    DEP_FIELD(IMR, WRPERMVIO, 1, 2)
+    DEP_FIELD(IMR, RDPERMVIO, 1, 1)
+    DEP_FIELD(IMR, INV_APB, 1, 0)
+DEP_REG32(IEN, 0x18)
+    DEP_FIELD(IEN, SECURITYVIO, 1, 3)
+    DEP_FIELD(IEN, WRPERMVIO, 1, 2)
+    DEP_FIELD(IEN, RDPERMVIO, 1, 1)
+    DEP_FIELD(IEN, INV_APB, 1, 0)
+DEP_REG32(IDS, 0x1c)
+    DEP_FIELD(IDS, SECURITYVIO, 1, 3)
+    DEP_FIELD(IDS, WRPERMVIO, 1, 2)
+    DEP_FIELD(IDS, RDPERMVIO, 1, 1)
+    DEP_FIELD(IDS, INV_APB, 1, 0)
+DEP_REG32(LOCK, 0x20)
+    DEP_FIELD(LOCK, REGWRDIS, 1, 0)
+DEP_REG32(ECO, 0xfc)
+DEP_REG32(R00_START, 0x100)
+    DEP_FIELD(R00_START, ADDR, 20, 0)
+DEP_REG32(R00_END, 0x104)
+    DEP_FIELD(R00_END, ADDR, 20, 0)
+DEP_REG32(R00_MASTER, 0x108)
+    DEP_FIELD(R00_MASTER, MASK, 10, 16)
+    DEP_FIELD(R00_MASTER, ID, 10, 0)
+DEP_REG32(R00_CONFIG, 0x10c)
+    DEP_FIELD(R00_CONFIG, NSCHECKTYPE, 1, 4)
+    DEP_FIELD(R00_CONFIG, REGIONNS, 1, 3)
+    DEP_FIELD(R00_CONFIG, WRALLOWED, 1, 2)
+    DEP_FIELD(R00_CONFIG, RDALLOWED, 1, 1)
+    DEP_FIELD(R00_CONFIG, ENABLE, 1, 0)
+DEP_REG32(R01_START, 0x110)
+    DEP_FIELD(R01_START, ADDR, 20, 0)
+DEP_REG32(R01_END, 0x114)
+    DEP_FIELD(R01_END, ADDR, 20, 0)
+DEP_REG32(R01_MASTER, 0x118)
+    DEP_FIELD(R01_MASTER, MASK, 10, 16)
+    DEP_FIELD(R01_MASTER, ID, 10, 0)
+DEP_REG32(R01_CONFIG, 0x11c)
+    DEP_FIELD(R01_CONFIG, NSCHECKTYPE, 1, 4)
+    DEP_FIELD(R01_CONFIG, REGIONNS, 1, 3)
+    DEP_FIELD(R01_CONFIG, WRALLOWED, 1, 2)
+    DEP_FIELD(R01_CONFIG, RDALLOWED, 1, 1)
+    DEP_FIELD(R01_CONFIG, ENABLE, 1, 0)
+DEP_REG32(R02_START, 0x120)
+    DEP_FIELD(R02_START, ADDR, 20, 0)
+DEP_REG32(R02_END, 0x124)
+    DEP_FIELD(R02_END, ADDR, 20, 0)
+DEP_REG32(R02_MASTER, 0x128)
+    DEP_FIELD(R02_MASTER, MASK, 10, 16)
+    DEP_FIELD(R02_MASTER, ID, 10, 0)
+DEP_REG32(R02_CONFIG, 0x12c)
+    DEP_FIELD(R02_CONFIG, NSCHECKTYPE, 1, 4)
+    DEP_FIELD(R02_CONFIG, REGIONNS, 1, 3)
+    DEP_FIELD(R02_CONFIG, WRALLOWED, 1, 2)
+    DEP_FIELD(R02_CONFIG, RDALLOWED, 1, 1)
+    DEP_FIELD(R02_CONFIG, ENABLE, 1, 0)
+DEP_REG32(R03_START, 0x130)
+    DEP_FIELD(R03_START, ADDR, 20, 0)
+DEP_REG32(R03_END, 0x134)
+    DEP_FIELD(R03_END, ADDR, 20, 0)
+DEP_REG32(R03_MASTER, 0x138)
+    DEP_FIELD(R03_MASTER, MASK, 10, 16)
+    DEP_FIELD(R03_MASTER, ID, 10, 0)
+DEP_REG32(R03_CONFIG, 0x13c)
+    DEP_FIELD(R03_CONFIG, NSCHECKTYPE, 1, 4)
+    DEP_FIELD(R03_CONFIG, REGIONNS, 1, 3)
+    DEP_FIELD(R03_CONFIG, WRALLOWED, 1, 2)
+    DEP_FIELD(R03_CONFIG, RDALLOWED, 1, 1)
+    DEP_FIELD(R03_CONFIG, ENABLE, 1, 0)
+DEP_REG32(R04_START, 0x140)
+    DEP_FIELD(R04_START, ADDR, 20, 0)
+DEP_REG32(R04_END, 0x144)
+    DEP_FIELD(R04_END, ADDR, 20, 0)
+DEP_REG32(R04_MASTER, 0x148)
+    DEP_FIELD(R04_MASTER, MASK, 10, 16)
+    DEP_FIELD(R04_MASTER, ID, 10, 0)
+DEP_REG32(R04_CONFIG, 0x14c)
+    DEP_FIELD(R04_CONFIG, NSCHECKTYPE, 1, 4)
+    DEP_FIELD(R04_CONFIG, REGIONNS, 1, 3)
+    DEP_FIELD(R04_CONFIG, WRALLOWED, 1, 2)
+    DEP_FIELD(R04_CONFIG, RDALLOWED, 1, 1)
+    DEP_FIELD(R04_CONFIG, ENABLE, 1, 0)
+DEP_REG32(R05_START, 0x150)
+    DEP_FIELD(R05_START, ADDR, 20, 0)
+DEP_REG32(R05_END, 0x154)
+    DEP_FIELD(R05_END, ADDR, 20, 0)
+DEP_REG32(R05_MASTER, 0x158)
+    DEP_FIELD(R05_MASTER, MASK, 10, 16)
+    DEP_FIELD(R05_MASTER, ID, 10, 0)
+DEP_REG32(R05_CONFIG, 0x15c)
+    DEP_FIELD(R05_CONFIG, NSCHECKTYPE, 1, 4)
+    DEP_FIELD(R05_CONFIG, REGIONNS, 1, 3)
+    DEP_FIELD(R05_CONFIG, WRALLOWED, 1, 2)
+    DEP_FIELD(R05_CONFIG, RDALLOWED, 1, 1)
+    DEP_FIELD(R05_CONFIG, ENABLE, 1, 0)
+DEP_REG32(R06_START, 0x160)
+    DEP_FIELD(R06_START, ADDR, 20, 0)
+DEP_REG32(R06_END, 0x164)
+    DEP_FIELD(R06_END, ADDR, 20, 0)
+DEP_REG32(R06_MASTER, 0x168)
+    DEP_FIELD(R06_MASTER, MASK, 10, 16)
+    DEP_FIELD(R06_MASTER, ID, 10, 0)
+DEP_REG32(R06_CONFIG, 0x16c)
+    DEP_FIELD(R06_CONFIG, NSCHECKTYPE, 1, 4)
+    DEP_FIELD(R06_CONFIG, REGIONNS, 1, 3)
+    DEP_FIELD(R06_CONFIG, WRALLOWED, 1, 2)
+    DEP_FIELD(R06_CONFIG, RDALLOWED, 1, 1)
+    DEP_FIELD(R06_CONFIG, ENABLE, 1, 0)
+DEP_REG32(R07_START, 0x170)
+    DEP_FIELD(R07_START, ADDR, 20, 0)
+DEP_REG32(R07_END, 0x174)
+    DEP_FIELD(R07_END, ADDR, 20, 0)
+DEP_REG32(R07_MASTER, 0x178)
+    DEP_FIELD(R07_MASTER, MASK, 10, 16)
+    DEP_FIELD(R07_MASTER, ID, 10, 0)
+DEP_REG32(R07_CONFIG, 0x17c)
+    DEP_FIELD(R07_CONFIG, NSCHECKTYPE, 1, 4)
+    DEP_FIELD(R07_CONFIG, REGIONNS, 1, 3)
+    DEP_FIELD(R07_CONFIG, WRALLOWED, 1, 2)
+    DEP_FIELD(R07_CONFIG, RDALLOWED, 1, 1)
+    DEP_FIELD(R07_CONFIG, ENABLE, 1, 0)
+DEP_REG32(R08_START, 0x180)
+    DEP_FIELD(R08_START, ADDR, 20, 0)
+DEP_REG32(R08_END, 0x184)
+    DEP_FIELD(R08_END, ADDR, 20, 0)
+DEP_REG32(R08_MASTER, 0x188)
+    DEP_FIELD(R08_MASTER, MASK, 10, 16)
+    DEP_FIELD(R08_MASTER, ID, 10, 0)
+DEP_REG32(R08_CONFIG, 0x18c)
+    DEP_FIELD(R08_CONFIG, NSCHECKTYPE, 1, 4)
+    DEP_FIELD(R08_CONFIG, REGIONNS, 1, 3)
+    DEP_FIELD(R08_CONFIG, WRALLOWED, 1, 2)
+    DEP_FIELD(R08_CONFIG, RDALLOWED, 1, 1)
+    DEP_FIELD(R08_CONFIG, ENABLE, 1, 0)
+DEP_REG32(R09_START, 0x190)
+    DEP_FIELD(R09_START, ADDR, 20, 0)
+DEP_REG32(R09_END, 0x194)
+    DEP_FIELD(R09_END, ADDR, 20, 0)
+DEP_REG32(R09_MASTER, 0x198)
+    DEP_FIELD(R09_MASTER, MASK, 10, 16)
+    DEP_FIELD(R09_MASTER, ID, 10, 0)
+DEP_REG32(R09_CONFIG, 0x19c)
+    DEP_FIELD(R09_CONFIG, NSCHECKTYPE, 1, 4)
+    DEP_FIELD(R09_CONFIG, REGIONNS, 1, 3)
+    DEP_FIELD(R09_CONFIG, WRALLOWED, 1, 2)
+    DEP_FIELD(R09_CONFIG, RDALLOWED, 1, 1)
+    DEP_FIELD(R09_CONFIG, ENABLE, 1, 0)
+DEP_REG32(R10_START, 0x1a0)
+    DEP_FIELD(R10_START, ADDR, 20, 0)
+DEP_REG32(R10_END, 0x1a4)
+    DEP_FIELD(R10_END, ADDR, 20, 0)
+DEP_REG32(R10_MASTER, 0x1a8)
+    DEP_FIELD(R10_MASTER, MASK, 10, 16)
+    DEP_FIELD(R10_MASTER, ID, 10, 0)
+DEP_REG32(R10_CONFIG, 0x1ac)
+    DEP_FIELD(R10_CONFIG, NSCHECKTYPE, 1, 4)
+    DEP_FIELD(R10_CONFIG, REGIONNS, 1, 3)
+    DEP_FIELD(R10_CONFIG, WRALLOWED, 1, 2)
+    DEP_FIELD(R10_CONFIG, RDALLOWED, 1, 1)
+    DEP_FIELD(R10_CONFIG, ENABLE, 1, 0)
+DEP_REG32(R11_START, 0x1b0)
+    DEP_FIELD(R11_START, ADDR, 20, 0)
+DEP_REG32(R11_END, 0x1b4)
+    DEP_FIELD(R11_END, ADDR, 20, 0)
+DEP_REG32(R11_MASTER, 0x1b8)
+    DEP_FIELD(R11_MASTER, MASK, 10, 16)
+    DEP_FIELD(R11_MASTER, ID, 10, 0)
+DEP_REG32(R11_CONFIG, 0x1bc)
+    DEP_FIELD(R11_CONFIG, NSCHECKTYPE, 1, 4)
+    DEP_FIELD(R11_CONFIG, REGIONNS, 1, 3)
+    DEP_FIELD(R11_CONFIG, WRALLOWED, 1, 2)
+    DEP_FIELD(R11_CONFIG, RDALLOWED, 1, 1)
+    DEP_FIELD(R11_CONFIG, ENABLE, 1, 0)
+DEP_REG32(R12_START, 0x1c0)
+    DEP_FIELD(R12_START, ADDR, 20, 0)
+DEP_REG32(R12_END, 0x1c4)
+    DEP_FIELD(R12_END, ADDR, 20, 0)
+DEP_REG32(R12_MASTER, 0x1c8)
+    DEP_FIELD(R12_MASTER, MASK, 10, 16)
+    DEP_FIELD(R12_MASTER, ID, 10, 0)
+DEP_REG32(R12_CONFIG, 0x1cc)
+    DEP_FIELD(R12_CONFIG, NSCHECKTYPE, 1, 4)
+    DEP_FIELD(R12_CONFIG, REGIONNS, 1, 3)
+    DEP_FIELD(R12_CONFIG, WRALLOWED, 1, 2)
+    DEP_FIELD(R12_CONFIG, RDALLOWED, 1, 1)
+    DEP_FIELD(R12_CONFIG, ENABLE, 1, 0)
+DEP_REG32(R13_START, 0x1d0)
+    DEP_FIELD(R13_START, ADDR, 20, 0)
+DEP_REG32(R13_END, 0x1d4)
+    DEP_FIELD(R13_END, ADDR, 20, 0)
+DEP_REG32(R13_MASTER, 0x1d8)
+    DEP_FIELD(R13_MASTER, MASK, 10, 16)
+    DEP_FIELD(R13_MASTER, ID, 10, 0)
+DEP_REG32(R13_CONFIG, 0x1dc)
+    DEP_FIELD(R13_CONFIG, NSCHECKTYPE, 1, 4)
+    DEP_FIELD(R13_CONFIG, REGIONNS, 1, 3)
+    DEP_FIELD(R13_CONFIG, WRALLOWED, 1, 2)
+    DEP_FIELD(R13_CONFIG, RDALLOWED, 1, 1)
+    DEP_FIELD(R13_CONFIG, ENABLE, 1, 0)
+DEP_REG32(R14_START, 0x1e0)
+    DEP_FIELD(R14_START, ADDR, 20, 0)
+DEP_REG32(R14_END, 0x1e4)
+    DEP_FIELD(R14_END, ADDR, 20, 0)
+DEP_REG32(R14_MASTER, 0x1e8)
+    DEP_FIELD(R14_MASTER, MASK, 10, 16)
+    DEP_FIELD(R14_MASTER, ID, 10, 0)
+DEP_REG32(R14_CONFIG, 0x1ec)
+    DEP_FIELD(R14_CONFIG, NSCHECKTYPE, 1, 4)
+    DEP_FIELD(R14_CONFIG, REGIONNS, 1, 3)
+    DEP_FIELD(R14_CONFIG, WRALLOWED, 1, 2)
+    DEP_FIELD(R14_CONFIG, RDALLOWED, 1, 1)
+    DEP_FIELD(R14_CONFIG, ENABLE, 1, 0)
+DEP_REG32(R15_START, 0x1f0)
+    DEP_FIELD(R15_START, ADDR, 20, 0)
+DEP_REG32(R15_END, 0x1f4)
+    DEP_FIELD(R15_END, ADDR, 20, 0)
+DEP_REG32(R15_MASTER, 0x1f8)
+    DEP_FIELD(R15_MASTER, MASK, 10, 16)
+    DEP_FIELD(R15_MASTER, ID, 10, 0)
+DEP_REG32(R15_CONFIG, 0x1fc)
+    DEP_FIELD(R15_CONFIG, NSCHECKTYPE, 1, 4)
+    DEP_FIELD(R15_CONFIG, REGIONNS, 1, 3)
+    DEP_FIELD(R15_CONFIG, WRALLOWED, 1, 2)
+    DEP_FIELD(R15_CONFIG, RDALLOWED, 1, 1)
+    DEP_FIELD(R15_CONFIG, ENABLE, 1, 0)
 
 #define R_MAX (R_R15_CONFIG + 1)
 
@@ -343,7 +343,7 @@ struct XMPU {
     } cfg;
 
     uint32_t regs[R_MAX];
-    RegisterInfo regs_info[R_MAX];
+    DepRegisterInfo regs_info[R_MAX];
     const char *prefix;
     bool enabled;
     qemu_irq enabled_signal;
@@ -384,11 +384,11 @@ static void xmpu_decode_region(XMPU *s, XMPURegion *xr, unsigned int region)
     xr->master.u32 = s->regs[offset + R_R00_MASTER];
 
     config = s->regs[offset + R_R00_CONFIG];
-    xr->config.enable = F_EX32(config, R00_CONFIG, ENABLE);
-    xr->config.rdallowed = F_EX32(config, R00_CONFIG, RDALLOWED);
-    xr->config.wrallowed = F_EX32(config, R00_CONFIG, WRALLOWED);
-    xr->config.regionns = F_EX32(config, R00_CONFIG, REGIONNS);
-    xr->config.nschecktype = F_EX32(config, R00_CONFIG, NSCHECKTYPE);
+    xr->config.enable = DEP_F_EX32(config, R00_CONFIG, ENABLE);
+    xr->config.rdallowed = DEP_F_EX32(config, R00_CONFIG, RDALLOWED);
+    xr->config.wrallowed = DEP_F_EX32(config, R00_CONFIG, WRALLOWED);
+    xr->config.regionns = DEP_F_EX32(config, R00_CONFIG, REGIONNS);
+    xr->config.nschecktype = DEP_F_EX32(config, R00_CONFIG, NSCHECKTYPE);
 }
 
 static void isr_update_irq(XMPU *s)
@@ -397,13 +397,13 @@ static void isr_update_irq(XMPU *s)
     qemu_set_irq(s->irq_isr, pending);
 }
 
-static void isr_postw(RegisterInfo *reg, uint64_t val64)
+static void isr_postw(DepRegisterInfo *reg, uint64_t val64)
 {
     XMPU *s = XILINX_XMPU(reg->opaque);
     isr_update_irq(s);
 }
 
-static uint64_t ien_prew(RegisterInfo *reg, uint64_t val64)
+static uint64_t ien_prew(DepRegisterInfo *reg, uint64_t val64)
 {
     XMPU *s = XILINX_XMPU(reg->opaque);
     uint32_t val = val64;
@@ -413,7 +413,7 @@ static uint64_t ien_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
-static uint64_t ids_prew(RegisterInfo *reg, uint64_t val64)
+static uint64_t ids_prew(DepRegisterInfo *reg, uint64_t val64)
 {
     XMPU *s = XILINX_XMPU(reg->opaque);
     uint32_t val = val64;
@@ -426,8 +426,8 @@ static uint64_t ids_prew(RegisterInfo *reg, uint64_t val64)
 static void xmpu_update_enabled(XMPU *s)
 {
     bool regions_enabled = false;
-    bool default_wr = AF_EX32(s->regs, CTRL, DEFWRALLOWED);
-    bool default_rd = AF_EX32(s->regs, CTRL, DEFRDALLOWED);
+    bool default_wr = DEP_AF_EX32(s->regs, CTRL, DEFWRALLOWED);
+    bool default_rd = DEP_AF_EX32(s->regs, CTRL, DEFRDALLOWED);
     int i;
 
     /* Lookup if this address fits a region.  */
@@ -472,13 +472,13 @@ static void xmpu_flush(XMPU *s)
     }
 }
 
-static void xmpu_setup_postw(RegisterInfo *reg, uint64_t val64)
+static void xmpu_setup_postw(DepRegisterInfo *reg, uint64_t val64)
 {
     XMPU *s = XILINX_XMPU(reg->opaque);
     xmpu_flush(s);
 }
 
-static RegisterAccessInfo xmpu_regs_info[] = {
+static DepRegisterAccessInfo xmpu_regs_info[] = {
     {   .name = "CTRL",  .decode.addr = A_CTRL,
         .reset = 0x3,
         .rsvd = 0xfffffff0,
@@ -730,10 +730,10 @@ static void xmpu_reset(DeviceState *dev)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        register_reset(&s->regs_info[i]);
+        dep_register_reset(&s->regs_info[i]);
     }
 
-    AF_DP32(s->regs, CTRL, ALIGNCFG, s->cfg.align);
+    DEP_AF_DP32(s->regs, CTRL, ALIGNCFG, s->cfg.align);
     isr_update_irq(s);
     xmpu_flush(s);
 }
@@ -742,7 +742,7 @@ static uint64_t xmpu_read(void *opaque, hwaddr addr, unsigned size,
                           MemTxAttrs attr)
 {
     XMPU *s = XILINX_XMPU(opaque);
-    RegisterInfo *r = &s->regs_info[addr / 4];
+    DepRegisterInfo *r = &s->regs_info[addr / 4];
 
     if (!attr.secure) {
         /* Non secure, return zero */
@@ -753,17 +753,17 @@ static uint64_t xmpu_read(void *opaque, hwaddr addr, unsigned size,
         qemu_log("%s: Decode error: read from %" HWADDR_PRIx "\n",
                  object_get_canonical_path(OBJECT(s)),
                  addr);
-        AF_DP32(s->regs, ISR, INV_APB, true);
+        DEP_AF_DP32(s->regs, ISR, INV_APB, true);
         return 0;
     }
-    return register_read(r);
+    return dep_register_read(r);
 }
 
 static void xmpu_write(void *opaque, hwaddr addr, uint64_t value,
                       unsigned size, MemTxAttrs attr)
 {
     XMPU *s = XILINX_XMPU(opaque);
-    RegisterInfo *r = &s->regs_info[addr / 4];
+    DepRegisterInfo *r = &s->regs_info[addr / 4];
 
     if (!attr.secure) {
         return;
@@ -773,10 +773,10 @@ static void xmpu_write(void *opaque, hwaddr addr, uint64_t value,
         qemu_log("%s: Decode error: write to %" HWADDR_PRIx "=%" PRIx64 "\n",
                  object_get_canonical_path(OBJECT(s)),
                  addr, value);
-        AF_DP32(s->regs, ISR, INV_APB, true);
+        DEP_AF_DP32(s->regs, ISR, INV_APB, true);
         return;
     }
-    register_write(r, value, ~0);
+    dep_register_write(r, value, ~0);
 
     if (addr > R_R00_MASTER) {
         xmpu_flush(s);
@@ -794,7 +794,7 @@ static void xmpu_access(MemoryTransaction *tr)
     bool is_write = tr->rw;
     bool locked;
 
-    locked = AF_EX32(s->regs, LOCK, REGWRDIS);
+    locked = DEP_AF_EX32(s->regs, LOCK, REGWRDIS);
     if (locked && (addr < A_ISR || addr >= A_LOCK)) {
         /* Locked access.  */
         qemu_log_mask(LOG_GUEST_ERROR, "%s: accessing locked register %lx\n",
@@ -837,8 +837,8 @@ static IOMMUTLBEntry xmpu_master_translate(XMPUMaster *xm, hwaddr addr,
         [IOMMU_WO] = &xm->down.none.as,
         [IOMMU_RW] = &xm->down.rw.as,
     };
-    bool default_wr = AF_EX32(s->regs, CTRL, DEFWRALLOWED);
-    bool default_rd = AF_EX32(s->regs, CTRL, DEFRDALLOWED);
+    bool default_wr = DEP_AF_EX32(s->regs, CTRL, DEFWRALLOWED);
+    bool default_rd = DEP_AF_EX32(s->regs, CTRL, DEFRDALLOWED);
     bool sec = attr->secure;
     bool sec_access_check;
     unsigned int nr_matched = 0;
@@ -947,7 +947,7 @@ static uint64_t zero_read(void *opaque, hwaddr addr, unsigned size,
 {
     XMPUMaster *xm = opaque;
     XMPU *s = xm->parent;
-    bool poisoncfg = AF_EX32(s->regs, CTRL, POISONCFG);
+    bool poisoncfg = DEP_AF_EX32(s->regs, CTRL, POISONCFG);
     uint64_t value = 0;
     bool sec_vio;
     IOMMUTLBEntry ret = xmpu_master_translate(xm, addr, &attr, &sec_vio);
@@ -960,14 +960,14 @@ static uint64_t zero_read(void *opaque, hwaddr addr, unsigned size,
         }
         if (poisoncfg) {
             AddressSpace *as = xm->parent_as;
-            addr = (AF_EX32(s->regs, POISON, BASE) << 12) | (addr & 0xfff);
+            addr = (DEP_AF_EX32(s->regs, POISON, BASE) << 12) | (addr & 0xfff);
             dma_memory_read(as, addr, &value, size);
         }
-        AF_DP32(s->regs, ERR_STATUS2, AXI_ID, attr.master_id);
+        DEP_AF_DP32(s->regs, ERR_STATUS2, AXI_ID, attr.master_id);
         if (sec_vio) {
-            AF_DP32(s->regs, ISR, SECURITYVIO, true);
+            DEP_AF_DP32(s->regs, ISR, SECURITYVIO, true);
         } else {
-            AF_DP32(s->regs, ISR, RDPERMVIO, true);
+            DEP_AF_DP32(s->regs, ISR, RDPERMVIO, true);
         }
         isr_update_irq(s);
     }
@@ -979,7 +979,7 @@ static void zero_write(void *opaque, hwaddr addr, uint64_t value,
 {
     XMPUMaster *xm = opaque;
     XMPU *s = xm->parent;
-    bool poisoncfg = AF_EX32(s->regs, CTRL, POISONCFG);
+    bool poisoncfg = DEP_AF_EX32(s->regs, CTRL, POISONCFG);
     bool sec_vio;
     IOMMUTLBEntry ret = xmpu_master_translate(xm, addr, &attr, &sec_vio);
 
@@ -991,14 +991,14 @@ static void zero_write(void *opaque, hwaddr addr, uint64_t value,
         }
         if (poisoncfg) {
             AddressSpace *as = xm->parent_as;
-            addr = (AF_EX32(s->regs, POISON, BASE) << 12) | (addr & 0xfff);
+            addr = (DEP_AF_EX32(s->regs, POISON, BASE) << 12) | (addr & 0xfff);
             dma_memory_write(as, addr, &value, size);
         }
-        AF_DP32(s->regs, ERR_STATUS2, AXI_ID, attr.master_id);
+        DEP_AF_DP32(s->regs, ERR_STATUS2, AXI_ID, attr.master_id);
         if (sec_vio) {
-            AF_DP32(s->regs, ISR, SECURITYVIO, true);
+            DEP_AF_DP32(s->regs, ISR, SECURITYVIO, true);
         } else {
-            AF_DP32(s->regs, ISR, WRPERMVIO, true);
+            DEP_AF_DP32(s->regs, ISR, WRPERMVIO, true);
         }
         isr_update_irq(s);
     }
@@ -1061,9 +1061,9 @@ static void xmpu_realize(DeviceState *dev, Error **errp)
     s->prefix = object_get_canonical_path(OBJECT(dev));
 
     for (i = 0; i < ARRAY_SIZE(xmpu_regs_info); ++i) {
-        RegisterInfo *r = &s->regs_info[xmpu_regs_info[i].decode.addr/4];
+        DepRegisterInfo *r = &s->regs_info[xmpu_regs_info[i].decode.addr/4];
 
-        *r = (RegisterInfo) {
+        *r = (DepRegisterInfo) {
             .data = (uint8_t *)&s->regs[
                     xmpu_regs_info[i].decode.addr/4],
             .data_size = sizeof(uint32_t),

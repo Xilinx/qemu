@@ -29,7 +29,7 @@
 #include "sysemu/sysemu.h"
 #include "sysemu/dma.h"
 #include "hw/hw.h"
-#include "hw/register.h"
+#include "hw/register-dep.h"
 #include "hw/sysbus.h"
 #include "hw/block/flash.h"
 #include "qapi/qmp/qerror.h"
@@ -67,28 +67,28 @@
  * s/BUFFER/BUF
  */
 
-REG32(PACKET, 0x00)
-    FIELD(PACKET, PACKET_SIZE, 11, 0)
-    FIELD(PACKET, PACKET_COUNT, 12, 12)
+DEP_REG32(PACKET, 0x00)
+    DEP_FIELD(PACKET, PACKET_SIZE, 11, 0)
+    DEP_FIELD(PACKET, PACKET_COUNT, 12, 12)
     #define R_PACKET_RSVD 0xff000800
 
-REG32(MEMORY_ADDR_1, 0x04)
+DEP_REG32(MEMORY_ADDR_1, 0x04)
 
-REG32(MEMORY_ADDR_2, 0x08)
-    FIELD(MEMORY_ADDR_2, MEMORY_ADDR, 8, 0)
+DEP_REG32(MEMORY_ADDR_2, 0x08)
+    DEP_FIELD(MEMORY_ADDR_2, MEMORY_ADDR, 8, 0)
     #define R_MEMORY_ADDR_2_BUS_WIDTH (1 << 24)
-    FIELD(MEMORY_ADDR_2, NFC_BCH_MODE, 3, 25)
-    FIELD(MEMORY_ADDR_2, MODE, 2, 28)
-    FIELD(MEMORY_ADDR_2, CHIP_SELECT, 2, 30)
+    DEP_FIELD(MEMORY_ADDR_2, NFC_BCH_MODE, 3, 25)
+    DEP_FIELD(MEMORY_ADDR_2, MODE, 2, 28)
+    DEP_FIELD(MEMORY_ADDR_2, CHIP_SELECT, 2, 30)
     #define R_MEMORY_ADDR_2_RSVD 0x00FFFF00
 
-REG32(CMD, 0x0C)
-    FIELD(CMD, CMD1, 8, 0)
-    FIELD(CMD, CMD2, 8, 8)
-    FIELD(CMD, PAGE_SIZE, 3, 23)
-    FIELD(CMD, DMA_EN, 2, 26)
+DEP_REG32(CMD, 0x0C)
+    DEP_FIELD(CMD, CMD1, 8, 0)
+    DEP_FIELD(CMD, CMD2, 8, 8)
+    DEP_FIELD(CMD, PAGE_SIZE, 3, 23)
+    DEP_FIELD(CMD, DMA_EN, 2, 26)
     /* deviated from TRM name as its overly long and typod */
-    FIELD(CMD, NUM_ADDR_CYCLES, 3, 28)
+    DEP_FIELD(CMD, NUM_ADDR_CYCLES, 3, 28)
     #define R_CMD_ECC_ON_OFF (1 << 31)
     #define R_CMD_RSVD 0x007F0000
 
@@ -102,7 +102,7 @@ static uint32_t arasan_nfc_page_size_lookup [] = {
     [7] = 0
 };
 
-REG32(PGRAM, 0x10)
+DEP_REG32(PGRAM, 0x10)
     #define R_PGRAM_READ (1 << 0)
     #define R_PGRAM_MULTI_DIE (1 << 1)
     #define R_PGRAM_BLOCK_ERASE (1 << 2)
@@ -132,10 +132,10 @@ REG32(PGRAM, 0x10)
     #define R_PGRAM_ODT_CONFIGURE (1 << 26)
     #define R_PGRAM_RSVD (0x1f << 27)
     
-REG32(INT_STATUS_EN, 0x14)
-REG32(INT_SIGNAL_EN, 0x18)
-REG32(INT_STATUS, 0x1C)
-    /* dropped the redundant STS_EN, REG32 and SIG_EN suffixes from TRM names */
+DEP_REG32(INT_STATUS_EN, 0x14)
+DEP_REG32(INT_SIGNAL_EN, 0x18)
+DEP_REG32(INT_STATUS, 0x1C)
+    /* dropped the redundant STS_EN, DEP_REG32 and SIG_EN suffixes from TRM names */
     #define R_INT_BUFF_WR_RDY (1 << 0)
     #define R_INT_BUFF_RD_RDY (1 << 1)
     #define R_INT_TRANS_COMP (1 << 2)
@@ -146,33 +146,33 @@ REG32(INT_STATUS, 0x1C)
     #define R_INT_RSVD 0xFFFFFF00
     #define R_INT_ANY (~(R_INT_RSVD))
 
-REG32(FLASH_STATUS, 0x28)
-    FIELD(FLASH_STATUS, FLASH_STATUS, 16, 0)
+DEP_REG32(FLASH_STATUS, 0x28)
+    DEP_FIELD(FLASH_STATUS, FLASH_STATUS, 16, 0)
     #define R_FLASH_STATUS_RSVD 0xffff0000
 
-REG32(TIMING, 0x2C)
-    FIELD(TIMING, TCCS_TIME, 2, 0)
+DEP_REG32(TIMING, 0x2C)
+    DEP_FIELD(TIMING, TCCS_TIME, 2, 0)
     #define R_TIMING_SLOW_FAST_TCAD (1 << 2)
-    FIELD(TIMING, DQS_BUFF_SEL, 4, 3)
-    FIELD(TIMING, TADL_TIME, 7, 7)
+    DEP_FIELD(TIMING, DQS_BUFF_SEL, 4, 3)
+    DEP_FIELD(TIMING, TADL_TIME, 7, 7)
 
-REG32(BUF_DATA_PORT, 0x30)
+DEP_REG32(BUF_DATA_PORT, 0x30)
 
-REG32(ECC, 0x34)
-    FIELD(ECC, ECC_ADDR, 16, 0)
-    FIELD(ECC, ECC_SIZE, 11, 16)
+DEP_REG32(ECC, 0x34)
+    DEP_FIELD(ECC, ECC_ADDR, 16, 0)
+    DEP_FIELD(ECC, ECC_SIZE, 11, 16)
     #define R_ECC_SLC_MLC (1 << 25)
     #define R_ECC_RSVD 0xfe000000
 
-REG32(ECC_ERR_COUNT, 0x38)
-    FIELD(ECC_ERR_COUNT, PACKET_BOUND, 8, 0)
-    FIELD(ECC_ERR_COUNT, PAGE_BOUND, 8, 8)
+DEP_REG32(ECC_ERR_COUNT, 0x38)
+    DEP_FIELD(ECC_ERR_COUNT, PACKET_BOUND, 8, 0)
+    DEP_FIELD(ECC_ERR_COUNT, PAGE_BOUND, 8, 8)
     #define R_ECC_ERR_COUNT_RSVD 0xFFFF0000
 
-REG32(ECC_SPARE_CMD, 0x3C)
-    FIELD(ECC_SPARE_CMD, CMD1, 8, 0)
-    FIELD(ECC_SPARE_CMD, CMD2, 8, 8)
-    FIELD(ECC_SPARE_CMD, NUM_ADDR_CYCLES, 3, 28)
+DEP_REG32(ECC_SPARE_CMD, 0x3C)
+    DEP_FIELD(ECC_SPARE_CMD, CMD1, 8, 0)
+    DEP_FIELD(ECC_SPARE_CMD, CMD2, 8, 8)
+    DEP_FIELD(ECC_SPARE_CMD, NUM_ADDR_CYCLES, 3, 28)
     #define R_ECC_SPARE_CMD_RSVD 0x8FFF0000
 
 /* FIXME Finish this */
@@ -186,17 +186,17 @@ REG32(ECC_SPARE_CMD, 0x3C)
 #define R_ERR_COUNT_7BIT (0x64/4)
 #define R_ERR_COUNT_8BIT (0x68/4)
 
-REG32(DMA_SYSTEM_ADDR1, 0x24)
-REG32(DMA_SYSTEM_ADDR0, 0x50)
+DEP_REG32(DMA_SYSTEM_ADDR1, 0x24)
+DEP_REG32(DMA_SYSTEM_ADDR0, 0x50)
 
-REG32(DMA_BUF_BOUNDARY, 0x54)
+DEP_REG32(DMA_BUF_BOUNDARY, 0x54)
     #define R_DMA_BUF_BOUNDARY_RSVD (ONES(29) << 3)
 
-REG32(DATA_INTERFACE,   0x6C)
-    FIELD(DATA_INTERFACE, SDR, 3, 0)
-    FIELD(DATA_INTERFACE, NV_DDR, 3, 3)
-    FIELD(DATA_INTERFACE, NV_DDR2, 3, 6)
-    FIELD(DATA_INTERFACE, DATA_INTF, 2, 9)
+DEP_REG32(DATA_INTERFACE,   0x6C)
+    DEP_FIELD(DATA_INTERFACE, SDR, 3, 0)
+    DEP_FIELD(DATA_INTERFACE, NV_DDR, 3, 3)
+    DEP_FIELD(DATA_INTERFACE, NV_DDR2, 3, 6)
+    DEP_FIELD(DATA_INTERFACE, DATA_INTF, 2, 9)
     #define R_DATA_INTERFACE_RSVD 0xFFFFF800
 
 #define R_MAX (R_DATA_INTERFACE+1)
@@ -235,7 +235,7 @@ typedef struct ArasanNFCState {
     Fifo buffer;
 
     uint32_t regs[R_MAX];
-    RegisterInfo regs_info[R_MAX];
+    DepRegisterInfo regs_info[R_MAX];
 
 } ArasanNFCState;
 
@@ -264,9 +264,9 @@ static void arasan_nfc_ecc_init(ArasanNFCState *s)
 
 static void arasan_nfc_ecc_digest(ArasanNFCState *s, uint8_t data)
 {
-    uint32_t page_size = arasan_nfc_page_size_lookup[AF_EX32(s->regs, CMD,
+    uint32_t page_size = arasan_nfc_page_size_lookup[DEP_AF_EX32(s->regs, CMD,
                                                              PAGE_SIZE)];
-    int ecc_bytes_per_subpage = AF_EX32(s->regs, ECC, ECC_SIZE) /
+    int ecc_bytes_per_subpage = DEP_AF_EX32(s->regs, ECC, ECC_SIZE) /
                                 (page_size / ECC_CODEWORD_SIZE);
 
     s->ecc_digest[s->ecc_pos++] ^= ~data;
@@ -288,15 +288,15 @@ static bool arasan_nfc_ecc_correct(ArasanNFCState *s)
     int i;
     uint8_t cef = 0;
 
-    for (i = 0; i < AF_EX32(s->regs, ECC, ECC_SIZE); ++i) {
+    for (i = 0; i < DEP_AF_EX32(s->regs, ECC, ECC_SIZE); ++i) {
         if (s->ecc_oob[i] != s->ecc_digest[i]) {
             arasan_nfc_irq_event(s, R_INT_MUL_BIT_ERR);
-            if (AF_EX32(s->regs, ECC_ERR_COUNT, PAGE_BOUND) != 0xFF) {
+            if (DEP_AF_EX32(s->regs, ECC_ERR_COUNT, PAGE_BOUND) != 0xFF) {
                 s->regs[R_ECC_ERR_COUNT] +=
                     1 << R_ECC_ERR_COUNT_PAGE_BOUND_SHIFT;
             }
             /* FIXME: All errors in the first packet - not right */
-            if (AF_EX32(s->regs, ECC_ERR_COUNT, PACKET_BOUND) != 0xFF) {
+            if (DEP_AF_EX32(s->regs, ECC_ERR_COUNT, PACKET_BOUND) != 0xFF) {
                 s->regs[R_ECC_ERR_COUNT] +=
                     1 << R_ECC_ERR_COUNT_PACKET_BOUND_SHIFT;
             }
@@ -323,8 +323,8 @@ static void arasan_nfc_do_cmd2(ArasanNFCState *s, bool ecc)
     uint8_t cmd;
 
     nand_setpins(s->current, 1, 0, 0, 1, 0); /* CMD */
-    cmd = ecc ? AF_EX32(s->regs, ECC_SPARE_CMD, CMD2) :
-                AF_EX32(s->regs, CMD, CMD2);
+    cmd = ecc ? DEP_AF_EX32(s->regs, ECC_SPARE_CMD, CMD2) :
+                DEP_AF_EX32(s->regs, CMD, CMD2);
     nand_setio(s->current, cmd);
     DB_PRINT("send second command cycle %#02" PRIx8 "\n", cmd);
 }
@@ -337,13 +337,13 @@ static void arasan_nfc_do_cmd(ArasanNFCState *s, uint8_t addr_cycles, bool ecc,
     uint8_t cmd;
 
     nand_setpins(s->current, 1, 0, 0, 1, 0); /* CMD */
-    cmd = ecc ? AF_EX32(s->regs, ECC_SPARE_CMD, CMD1) :
-                AF_EX32(s->regs, CMD, CMD1);
+    cmd = ecc ? DEP_AF_EX32(s->regs, ECC_SPARE_CMD, CMD1) :
+                DEP_AF_EX32(s->regs, CMD, CMD1);
     nand_setio(s->current, cmd);
     DB_PRINT("send command cycle %#02" PRIx8 "\n", cmd);
 
-    num_cycles = ecc ? AF_EX32(s->regs, ECC_SPARE_CMD, NUM_ADDR_CYCLES) :
-                       AF_EX32(s->regs, CMD, NUM_ADDR_CYCLES);
+    num_cycles = ecc ? DEP_AF_EX32(s->regs, ECC_SPARE_CMD, NUM_ADDR_CYCLES) :
+                       DEP_AF_EX32(s->regs, CMD, NUM_ADDR_CYCLES);
     if (force_addr_cycles) {
         num_cycles = addr_cycles;
     } else if (num_cycles != addr_cycles) {
@@ -380,7 +380,7 @@ static inline void arasan_nfc_do_dma(ArasanNFCState *s, bool rnw)
     int debug_squelch = 5;
 
     /* FIXME: Be less dumb */
-    while (AF_EX32(s->regs, CMD, DMA_EN) == 0x2 &&
+    while (DEP_AF_EX32(s->regs, CMD, DMA_EN) == 0x2 &&
            !(rnw ? fifo_is_empty : fifo_is_full)(&s->buffer) &&
            !s->dbb_blocked) {
         uint32_t dbb_mask = ONES(s->regs[R_DMA_BUF_BOUNDARY] + 12);
@@ -418,7 +418,7 @@ static inline bool arasan_nfc_write_check_ecc(ArasanNFCState *s)
 }
 
 static uint32_t arasan_nfc_get_packet_size(ArasanNFCState *s, uint32_t pgram) {
-    uint32_t packet_size = AF_EX32(s->regs, PACKET, PACKET_SIZE);
+    uint32_t packet_size = DEP_AF_EX32(s->regs, PACKET, PACKET_SIZE);
 
         switch (pgram) {
         case R_PGRAM_SET_FEATURES:
@@ -426,7 +426,7 @@ static uint32_t arasan_nfc_get_packet_size(ArasanNFCState *s, uint32_t pgram) {
         case R_PGRAM_READ_ID:
         case R_PGRAM_READ_STATUS_ENH:
         case R_PGRAM_READ_STATUS:
-        if (AF_EX32(s->regs, DATA_INTERFACE, DATA_INTF)) {
+        if (DEP_AF_EX32(s->regs, DATA_INTERFACE, DATA_INTF)) {
             DB_PRINT("Halving payload size for DDR command\n");
             packet_size /= 2;
         }
@@ -436,7 +436,7 @@ static uint32_t arasan_nfc_get_packet_size(ArasanNFCState *s, uint32_t pgram) {
 
 static void arasan_nfc_set_current(ArasanNFCState *s)
 {
-    int cs_dev = AF_EX32(s->regs, MEMORY_ADDR_2, CHIP_SELECT);
+    int cs_dev = DEP_AF_EX32(s->regs, MEMORY_ADDR_2, CHIP_SELECT);
 
     /* Lazy-init nand if its not initialised at realize,
      * i.e no pflash arg at command line */
@@ -466,7 +466,7 @@ static inline void arasan_nfc_update_state(ArasanNFCState *s)
     case R_PGRAM_READ_STATUS:
     case R_PGRAM_READ_STATUS_ENH:
 		if (!fifo_is_empty(&s->buffer)) {
-            AF_DP32(s->regs, FLASH_STATUS, FLASH_STATUS, fifo_pop8(&s->buffer));
+            DEP_AF_DP32(s->regs, FLASH_STATUS, FLASH_STATUS, fifo_pop8(&s->buffer));
 		    DB_PRINT("read completed\n");
 		    arasan_nfc_irq_event(s, R_INT_TRANS_COMP);
 		    s->regs[R_PGRAM] = 0;
@@ -498,7 +498,7 @@ static inline void arasan_nfc_update_state(ArasanNFCState *s)
             if (arasan_nfc_write_check_ecc(s)) {
                 arasan_nfc_do_cmd(s, 2, true, false);
                 nand_setpins(s->current, 0, 0, 0, 1, 0); /* data */
-                for (i = 0; i < AF_EX32(s->regs, ECC, ECC_SIZE); ++i) {
+                for (i = 0; i < DEP_AF_EX32(s->regs, ECC, ECC_SIZE); ++i) {
                     nand_setio(s->current, s->ecc_digest[i]);
                     DB_PRINT("write ecc byte %#02" PRIx8 "\n", s->ecc_digest[i]);
                 }
@@ -523,7 +523,7 @@ static inline void arasan_nfc_update_state(ArasanNFCState *s)
 
 }
 
-static void arasan_nfc_update_state_pw(RegisterInfo *reg, uint64_t val)
+static void arasan_nfc_update_state_pw(DepRegisterInfo *reg, uint64_t val)
 {
     ArasanNFCState *s = ARASAN_NFC(reg->opaque);
 
@@ -537,12 +537,12 @@ static void arasan_nfc_reset(DeviceState *dev) {
     arasan_nfc_update_state(s);
 }    
 
-static void arasan_nfc_r_unimp_post_write(RegisterInfo *reg, uint64_t val)
+static void arasan_nfc_r_unimp_post_write(DepRegisterInfo *reg, uint64_t val)
 {
 	fprintf(stderr, "unimplemented functionality touched\n");
 }
 
-static uint64_t arasan_nfc_r_buffer_data_port_pr(RegisterInfo *reg, uint64_t val)
+static uint64_t arasan_nfc_r_buffer_data_port_pr(DepRegisterInfo *reg, uint64_t val)
 {
     ArasanNFCState *s = ARASAN_NFC(reg->opaque);
     int i;
@@ -558,7 +558,7 @@ static uint64_t arasan_nfc_r_buffer_data_port_pr(RegisterInfo *reg, uint64_t val
     return cpu_to_le32(*((uint32_t *)buf));
 }
 
-static void arasan_nfc_r_buffer_data_port_pw(RegisterInfo *reg, uint64_t val)
+static void arasan_nfc_r_buffer_data_port_pw(DepRegisterInfo *reg, uint64_t val)
 {
     ArasanNFCState *s = ARASAN_NFC(reg->opaque);
     int i;
@@ -579,14 +579,14 @@ static void arasan_nfc_r_buffer_data_port_pw(RegisterInfo *reg, uint64_t val)
 	arasan_nfc_update_state(s);
 }
 
-static void arasan_nfc_r_dma_system_addr1_pw(RegisterInfo *reg, uint64_t val)
+static void arasan_nfc_r_dma_system_addr1_pw(DepRegisterInfo *reg, uint64_t val)
 {
     ArasanNFCState *s = ARASAN_NFC(reg->opaque);
 
     arasan_nfc_sync_dma_addr(s);
 }
 
-static void arasan_nfc_r_dma_system_addr_pw(RegisterInfo *reg, uint64_t val)
+static void arasan_nfc_r_dma_system_addr_pw(DepRegisterInfo *reg, uint64_t val)
 {
     ArasanNFCState *s = ARASAN_NFC(reg->opaque);
 
@@ -595,7 +595,7 @@ static void arasan_nfc_r_dma_system_addr_pw(RegisterInfo *reg, uint64_t val)
 	arasan_nfc_update_state(s);
 }
 
-static uint64_t r_program_pre_write(RegisterInfo *reg, uint64_t val)
+static uint64_t r_program_pre_write(DepRegisterInfo *reg, uint64_t val)
 {
     ArasanNFCState *s = ARASAN_NFC(reg->opaque);
     int i, j;
@@ -611,7 +611,7 @@ static uint64_t r_program_pre_write(RegisterInfo *reg, uint64_t val)
     for (i = 0; i < 32; ++i) {
         uint32_t pgram = val & (1 << i);
         uint32_t payload_size = arasan_nfc_get_packet_size(s, pgram) *
-                                AF_EX32(s->regs, PACKET, PACKET_COUNT);
+                                DEP_AF_EX32(s->regs, PACKET, PACKET_COUNT);
 
         switch (pgram) {
             case R_PGRAM_READ_STATUS_ENH:
@@ -700,7 +700,7 @@ static uint64_t r_program_pre_write(RegisterInfo *reg, uint64_t val)
             if (arasan_nfc_ecc_enabled(s)) {
                 arasan_nfc_do_cmd(s, 2, true, false);
                 arasan_nfc_do_cmd2(s, true);
-                for (j = 0; j < AF_EX32(s->regs, ECC, ECC_SIZE); ++j) {
+                for (j = 0; j < DEP_AF_EX32(s->regs, ECC, ECC_SIZE); ++j) {
                     s->ecc_oob[j] = nand_getio(s->current);
                     DB_PRINT("read ecc %#02" PRIx8 "\n", s->ecc_oob[j]);
                 }
@@ -713,8 +713,8 @@ static uint64_t r_program_pre_write(RegisterInfo *reg, uint64_t val)
 }
 
 static const MemoryRegionOps arasan_nfc_ops = {
-    .read = register_read_memory_le,
-    .write = register_write_memory_le,
+    .read = dep_register_read_memory_le,
+    .write = dep_register_write_memory_le,
     .endianness = DEVICE_NATIVE_ENDIAN,
     .valid = {
         .min_access_size = 4,
@@ -722,7 +722,7 @@ static const MemoryRegionOps arasan_nfc_ops = {
     }
 };
 
-static const RegisterAccessInfo arasan_nfc_regs_info[] = {
+static const DepRegisterAccessInfo arasan_nfc_regs_info[] = {
     {   .name = "Packet",                   .decode.addr = A_PACKET,
             .rsvd = R_PACKET_RSVD,
             .reset = 0x200 << R_PACKET_PACKET_SIZE_SHIFT,
@@ -790,9 +790,9 @@ static void arasan_nfc_realize(DeviceState *dev, Error ** errp)
                                NAND_MFR_MICRON, 0x44);
     }
     for (i = 0; i < ARRAY_SIZE(arasan_nfc_regs_info); ++i) {
-        RegisterInfo *r = &s->regs_info[i];
+        DepRegisterInfo *r = &s->regs_info[i];
 
-        *r = (RegisterInfo) {
+        *r = (DepRegisterInfo) {
             .data = &s->regs[arasan_nfc_regs_info[i].decode.addr/4],
             .data_size = sizeof(uint32_t),
             .access = &arasan_nfc_regs_info[i],

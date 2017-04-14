@@ -27,7 +27,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
-#include "hw/register.h"
+#include "hw/register-dep.h"
 #include "qemu/bitops.h"
 #include "sysemu/dma.h"
 #include "qapi/error.h"
@@ -44,165 +44,165 @@
 #define XILINX_XPPU(obj) \
      OBJECT_CHECK(XPPU, (obj), TYPE_XILINX_XPPU)
 
-REG32(CTRL, 0x0)
-    FIELD(CTRL, APER_PARITY_EN, 1, 2)
-    FIELD(CTRL, MID_PARITY_EN, 1, 1)
-    FIELD(CTRL, ENABLE, 1, 0)
-REG32(ERR_STATUS1, 0x4)
-    FIELD(ERR_STATUS1, AXI_ADDR, 20, 0)
-REG32(ERR_STATUS2, 0x8)
-    FIELD(ERR_STATUS2, AXI_ID, 10, 0)
-REG32(POISON, 0xc)
-    FIELD(POISON, BASE, 20, 0)
-REG32(ISR, 0x10)
-    FIELD(ISR, APER_PARITY, 1, 7)
-    FIELD(ISR, APER_TZ, 1, 6)
-    FIELD(ISR, APER_PERM, 1, 5)
-    FIELD(ISR, MID_PARITY, 1, 3)
-    FIELD(ISR, MID_RO, 1, 2)
-    FIELD(ISR, MID_MISS, 1, 1)
-    FIELD(ISR, INV_APB, 1, 0)
-REG32(IMR, 0x14)
-    FIELD(IMR, APER_PARITY, 1, 7)
-    FIELD(IMR, APER_TZ, 1, 6)
-    FIELD(IMR, APER_PERM, 1, 5)
-    FIELD(IMR, MID_PARITY, 1, 3)
-    FIELD(IMR, MID_RO, 1, 2)
-    FIELD(IMR, MID_MISS, 1, 1)
-    FIELD(IMR, INV_APB, 1, 0)
-REG32(IEN, 0x18)
-    FIELD(IEN, APER_PARITY, 1, 7)
-    FIELD(IEN, APER_TZ, 1, 6)
-    FIELD(IEN, APER_PERM, 1, 5)
-    FIELD(IEN, MID_PARITY, 1, 3)
-    FIELD(IEN, MID_RO, 1, 2)
-    FIELD(IEN, MID_MISS, 1, 1)
-    FIELD(IEN, INV_APB, 1, 0)
-REG32(IDS, 0x1c)
-    FIELD(IDS, APER_PARITY, 1, 7)
-    FIELD(IDS, APER_TZ, 1, 6)
-    FIELD(IDS, APER_PERM, 1, 5)
-    FIELD(IDS, MID_PARITY, 1, 3)
-    FIELD(IDS, MID_RO, 1, 2)
-    FIELD(IDS, MID_MISS, 1, 1)
-    FIELD(IDS, INV_APB, 1, 0)
-REG32(M_MASTER_IDS, 0x3c)
-REG32(M_APERTURE_32B, 0x40)
-REG32(M_APERTURE_64KB, 0x44)
-REG32(M_APERTURE_1MB, 0x48)
-REG32(M_APERTURE_512MB, 0x4c)
-REG32(BASE_32B, 0x50)
-REG32(BASE_64KB, 0x54)
-REG32(BASE_1MB, 0x58)
-REG32(BASE_512MB, 0x5c)
-REG32(ECO, 0xfc)
-REG32(MASTER_ID00, 0x100)
-    FIELD(MASTER_ID00, MIDP, 1, 31)
-    FIELD(MASTER_ID00, MIDR, 1, 30)
-    FIELD(MASTER_ID00, MIDM, 10, 16)
-    FIELD(MASTER_ID00, MID, 10, 0)
-REG32(MASTER_ID01, 0x104)
-    FIELD(MASTER_ID01, MIDP, 1, 31)
-    FIELD(MASTER_ID01, MIDR, 1, 30)
-    FIELD(MASTER_ID01, MIDM, 10, 16)
-    FIELD(MASTER_ID01, MID, 10, 0)
-REG32(MASTER_ID02, 0x108)
-    FIELD(MASTER_ID02, MIDP, 1, 31)
-    FIELD(MASTER_ID02, MIDR, 1, 30)
-    FIELD(MASTER_ID02, MIDM, 10, 16)
-    FIELD(MASTER_ID02, MID, 10, 0)
-REG32(MASTER_ID03, 0x10c)
-    FIELD(MASTER_ID03, MIDP, 1, 31)
-    FIELD(MASTER_ID03, MIDR, 1, 30)
-    FIELD(MASTER_ID03, MIDM, 10, 16)
-    FIELD(MASTER_ID03, MID, 10, 0)
-REG32(MASTER_ID04, 0x110)
-    FIELD(MASTER_ID04, MIDP, 1, 31)
-    FIELD(MASTER_ID04, MIDR, 1, 30)
-    FIELD(MASTER_ID04, MIDM, 10, 16)
-    FIELD(MASTER_ID04, MID, 10, 0)
-REG32(MASTER_ID05, 0x114)
-    FIELD(MASTER_ID05, MIDP, 1, 31)
-    FIELD(MASTER_ID05, MIDR, 1, 30)
-    FIELD(MASTER_ID05, MIDM, 10, 16)
-    FIELD(MASTER_ID05, MID, 10, 0)
-REG32(MASTER_ID06, 0x118)
-    FIELD(MASTER_ID06, MIDP, 1, 31)
-    FIELD(MASTER_ID06, MIDR, 1, 30)
-    FIELD(MASTER_ID06, MIDM, 10, 16)
-    FIELD(MASTER_ID06, MID, 10, 0)
-REG32(MASTER_ID07, 0x11c)
-    FIELD(MASTER_ID07, MIDP, 1, 31)
-    FIELD(MASTER_ID07, MIDR, 1, 30)
-    FIELD(MASTER_ID07, MIDM, 10, 16)
-    FIELD(MASTER_ID07, MID, 10, 0)
-REG32(MASTER_ID08, 0x120)
-    FIELD(MASTER_ID08, MIDP, 1, 31)
-    FIELD(MASTER_ID08, MIDR, 1, 30)
-    FIELD(MASTER_ID08, MIDM, 10, 16)
-    FIELD(MASTER_ID08, MID, 10, 0)
-REG32(MASTER_ID09, 0x124)
-    FIELD(MASTER_ID09, MIDP, 1, 31)
-    FIELD(MASTER_ID09, MIDR, 1, 30)
-    FIELD(MASTER_ID09, MIDM, 10, 16)
-    FIELD(MASTER_ID09, MID, 10, 0)
-REG32(MASTER_ID10, 0x128)
-    FIELD(MASTER_ID10, MIDP, 1, 31)
-    FIELD(MASTER_ID10, MIDR, 1, 30)
-    FIELD(MASTER_ID10, MIDM, 10, 16)
-    FIELD(MASTER_ID10, MID, 10, 0)
-REG32(MASTER_ID11, 0x12c)
-    FIELD(MASTER_ID11, MIDP, 1, 31)
-    FIELD(MASTER_ID11, MIDR, 1, 30)
-    FIELD(MASTER_ID11, MIDM, 10, 16)
-    FIELD(MASTER_ID11, MID, 10, 0)
-REG32(MASTER_ID12, 0x130)
-    FIELD(MASTER_ID12, MIDP, 1, 31)
-    FIELD(MASTER_ID12, MIDR, 1, 30)
-    FIELD(MASTER_ID12, MIDM, 10, 16)
-    FIELD(MASTER_ID12, MID, 10, 0)
-REG32(MASTER_ID13, 0x134)
-    FIELD(MASTER_ID13, MIDP, 1, 31)
-    FIELD(MASTER_ID13, MIDR, 1, 30)
-    FIELD(MASTER_ID13, MIDM, 10, 16)
-    FIELD(MASTER_ID13, MID, 10, 0)
-REG32(MASTER_ID14, 0x138)
-    FIELD(MASTER_ID14, MIDP, 1, 31)
-    FIELD(MASTER_ID14, MIDR, 1, 30)
-    FIELD(MASTER_ID14, MIDM, 10, 16)
-    FIELD(MASTER_ID14, MID, 10, 0)
-REG32(MASTER_ID15, 0x13c)
-    FIELD(MASTER_ID15, MIDP, 1, 31)
-    FIELD(MASTER_ID15, MIDR, 1, 30)
-    FIELD(MASTER_ID15, MIDM, 10, 16)
-    FIELD(MASTER_ID15, MID, 10, 0)
-REG32(MASTER_ID16, 0x140)
-    FIELD(MASTER_ID16, MIDP, 1, 31)
-    FIELD(MASTER_ID16, MIDR, 1, 30)
-    FIELD(MASTER_ID16, MIDM, 10, 16)
-    FIELD(MASTER_ID16, MID, 10, 0)
-REG32(MASTER_ID17, 0x144)
-    FIELD(MASTER_ID17, MIDP, 1, 31)
-    FIELD(MASTER_ID17, MIDR, 1, 30)
-    FIELD(MASTER_ID17, MIDM, 10, 16)
-    FIELD(MASTER_ID17, MID, 10, 0)
-REG32(MASTER_ID18, 0x148)
-    FIELD(MASTER_ID18, MIDP, 1, 31)
-    FIELD(MASTER_ID18, MIDR, 1, 30)
-    FIELD(MASTER_ID18, MIDM, 10, 16)
-    FIELD(MASTER_ID18, MID, 10, 0)
-REG32(MASTER_ID19, 0x14c)
-    FIELD(MASTER_ID19, MIDP, 1, 31)
-    FIELD(MASTER_ID19, MIDR, 1, 30)
-    FIELD(MASTER_ID19, MIDM, 10, 16)
-    FIELD(MASTER_ID19, MID, 10, 0)
-REG32(RAM_ADJ, 0x1fc)
-    FIELD(RAM_ADJ, MESSAGE_EMAS, 1, 13)
-    FIELD(RAM_ADJ, MESSAGE_EMAW, 2, 11)
-    FIELD(RAM_ADJ, MESSAGE_EMA, 3, 8)
-    FIELD(RAM_ADJ, PERMISSION_EMAS, 1, 5)
-    FIELD(RAM_ADJ, PERMISSION_EMAW, 2, 3)
-    FIELD(RAM_ADJ, PERMISSION_EMA, 3, 0)
+DEP_REG32(CTRL, 0x0)
+    DEP_FIELD(CTRL, APER_PARITY_EN, 1, 2)
+    DEP_FIELD(CTRL, MID_PARITY_EN, 1, 1)
+    DEP_FIELD(CTRL, ENABLE, 1, 0)
+DEP_REG32(ERR_STATUS1, 0x4)
+    DEP_FIELD(ERR_STATUS1, AXI_ADDR, 20, 0)
+DEP_REG32(ERR_STATUS2, 0x8)
+    DEP_FIELD(ERR_STATUS2, AXI_ID, 10, 0)
+DEP_REG32(POISON, 0xc)
+    DEP_FIELD(POISON, BASE, 20, 0)
+DEP_REG32(ISR, 0x10)
+    DEP_FIELD(ISR, APER_PARITY, 1, 7)
+    DEP_FIELD(ISR, APER_TZ, 1, 6)
+    DEP_FIELD(ISR, APER_PERM, 1, 5)
+    DEP_FIELD(ISR, MID_PARITY, 1, 3)
+    DEP_FIELD(ISR, MID_RO, 1, 2)
+    DEP_FIELD(ISR, MID_MISS, 1, 1)
+    DEP_FIELD(ISR, INV_APB, 1, 0)
+DEP_REG32(IMR, 0x14)
+    DEP_FIELD(IMR, APER_PARITY, 1, 7)
+    DEP_FIELD(IMR, APER_TZ, 1, 6)
+    DEP_FIELD(IMR, APER_PERM, 1, 5)
+    DEP_FIELD(IMR, MID_PARITY, 1, 3)
+    DEP_FIELD(IMR, MID_RO, 1, 2)
+    DEP_FIELD(IMR, MID_MISS, 1, 1)
+    DEP_FIELD(IMR, INV_APB, 1, 0)
+DEP_REG32(IEN, 0x18)
+    DEP_FIELD(IEN, APER_PARITY, 1, 7)
+    DEP_FIELD(IEN, APER_TZ, 1, 6)
+    DEP_FIELD(IEN, APER_PERM, 1, 5)
+    DEP_FIELD(IEN, MID_PARITY, 1, 3)
+    DEP_FIELD(IEN, MID_RO, 1, 2)
+    DEP_FIELD(IEN, MID_MISS, 1, 1)
+    DEP_FIELD(IEN, INV_APB, 1, 0)
+DEP_REG32(IDS, 0x1c)
+    DEP_FIELD(IDS, APER_PARITY, 1, 7)
+    DEP_FIELD(IDS, APER_TZ, 1, 6)
+    DEP_FIELD(IDS, APER_PERM, 1, 5)
+    DEP_FIELD(IDS, MID_PARITY, 1, 3)
+    DEP_FIELD(IDS, MID_RO, 1, 2)
+    DEP_FIELD(IDS, MID_MISS, 1, 1)
+    DEP_FIELD(IDS, INV_APB, 1, 0)
+DEP_REG32(M_MASTER_IDS, 0x3c)
+DEP_REG32(M_APERTURE_32B, 0x40)
+DEP_REG32(M_APERTURE_64KB, 0x44)
+DEP_REG32(M_APERTURE_1MB, 0x48)
+DEP_REG32(M_APERTURE_512MB, 0x4c)
+DEP_REG32(BASE_32B, 0x50)
+DEP_REG32(BASE_64KB, 0x54)
+DEP_REG32(BASE_1MB, 0x58)
+DEP_REG32(BASE_512MB, 0x5c)
+DEP_REG32(ECO, 0xfc)
+DEP_REG32(MASTER_ID00, 0x100)
+    DEP_FIELD(MASTER_ID00, MIDP, 1, 31)
+    DEP_FIELD(MASTER_ID00, MIDR, 1, 30)
+    DEP_FIELD(MASTER_ID00, MIDM, 10, 16)
+    DEP_FIELD(MASTER_ID00, MID, 10, 0)
+DEP_REG32(MASTER_ID01, 0x104)
+    DEP_FIELD(MASTER_ID01, MIDP, 1, 31)
+    DEP_FIELD(MASTER_ID01, MIDR, 1, 30)
+    DEP_FIELD(MASTER_ID01, MIDM, 10, 16)
+    DEP_FIELD(MASTER_ID01, MID, 10, 0)
+DEP_REG32(MASTER_ID02, 0x108)
+    DEP_FIELD(MASTER_ID02, MIDP, 1, 31)
+    DEP_FIELD(MASTER_ID02, MIDR, 1, 30)
+    DEP_FIELD(MASTER_ID02, MIDM, 10, 16)
+    DEP_FIELD(MASTER_ID02, MID, 10, 0)
+DEP_REG32(MASTER_ID03, 0x10c)
+    DEP_FIELD(MASTER_ID03, MIDP, 1, 31)
+    DEP_FIELD(MASTER_ID03, MIDR, 1, 30)
+    DEP_FIELD(MASTER_ID03, MIDM, 10, 16)
+    DEP_FIELD(MASTER_ID03, MID, 10, 0)
+DEP_REG32(MASTER_ID04, 0x110)
+    DEP_FIELD(MASTER_ID04, MIDP, 1, 31)
+    DEP_FIELD(MASTER_ID04, MIDR, 1, 30)
+    DEP_FIELD(MASTER_ID04, MIDM, 10, 16)
+    DEP_FIELD(MASTER_ID04, MID, 10, 0)
+DEP_REG32(MASTER_ID05, 0x114)
+    DEP_FIELD(MASTER_ID05, MIDP, 1, 31)
+    DEP_FIELD(MASTER_ID05, MIDR, 1, 30)
+    DEP_FIELD(MASTER_ID05, MIDM, 10, 16)
+    DEP_FIELD(MASTER_ID05, MID, 10, 0)
+DEP_REG32(MASTER_ID06, 0x118)
+    DEP_FIELD(MASTER_ID06, MIDP, 1, 31)
+    DEP_FIELD(MASTER_ID06, MIDR, 1, 30)
+    DEP_FIELD(MASTER_ID06, MIDM, 10, 16)
+    DEP_FIELD(MASTER_ID06, MID, 10, 0)
+DEP_REG32(MASTER_ID07, 0x11c)
+    DEP_FIELD(MASTER_ID07, MIDP, 1, 31)
+    DEP_FIELD(MASTER_ID07, MIDR, 1, 30)
+    DEP_FIELD(MASTER_ID07, MIDM, 10, 16)
+    DEP_FIELD(MASTER_ID07, MID, 10, 0)
+DEP_REG32(MASTER_ID08, 0x120)
+    DEP_FIELD(MASTER_ID08, MIDP, 1, 31)
+    DEP_FIELD(MASTER_ID08, MIDR, 1, 30)
+    DEP_FIELD(MASTER_ID08, MIDM, 10, 16)
+    DEP_FIELD(MASTER_ID08, MID, 10, 0)
+DEP_REG32(MASTER_ID09, 0x124)
+    DEP_FIELD(MASTER_ID09, MIDP, 1, 31)
+    DEP_FIELD(MASTER_ID09, MIDR, 1, 30)
+    DEP_FIELD(MASTER_ID09, MIDM, 10, 16)
+    DEP_FIELD(MASTER_ID09, MID, 10, 0)
+DEP_REG32(MASTER_ID10, 0x128)
+    DEP_FIELD(MASTER_ID10, MIDP, 1, 31)
+    DEP_FIELD(MASTER_ID10, MIDR, 1, 30)
+    DEP_FIELD(MASTER_ID10, MIDM, 10, 16)
+    DEP_FIELD(MASTER_ID10, MID, 10, 0)
+DEP_REG32(MASTER_ID11, 0x12c)
+    DEP_FIELD(MASTER_ID11, MIDP, 1, 31)
+    DEP_FIELD(MASTER_ID11, MIDR, 1, 30)
+    DEP_FIELD(MASTER_ID11, MIDM, 10, 16)
+    DEP_FIELD(MASTER_ID11, MID, 10, 0)
+DEP_REG32(MASTER_ID12, 0x130)
+    DEP_FIELD(MASTER_ID12, MIDP, 1, 31)
+    DEP_FIELD(MASTER_ID12, MIDR, 1, 30)
+    DEP_FIELD(MASTER_ID12, MIDM, 10, 16)
+    DEP_FIELD(MASTER_ID12, MID, 10, 0)
+DEP_REG32(MASTER_ID13, 0x134)
+    DEP_FIELD(MASTER_ID13, MIDP, 1, 31)
+    DEP_FIELD(MASTER_ID13, MIDR, 1, 30)
+    DEP_FIELD(MASTER_ID13, MIDM, 10, 16)
+    DEP_FIELD(MASTER_ID13, MID, 10, 0)
+DEP_REG32(MASTER_ID14, 0x138)
+    DEP_FIELD(MASTER_ID14, MIDP, 1, 31)
+    DEP_FIELD(MASTER_ID14, MIDR, 1, 30)
+    DEP_FIELD(MASTER_ID14, MIDM, 10, 16)
+    DEP_FIELD(MASTER_ID14, MID, 10, 0)
+DEP_REG32(MASTER_ID15, 0x13c)
+    DEP_FIELD(MASTER_ID15, MIDP, 1, 31)
+    DEP_FIELD(MASTER_ID15, MIDR, 1, 30)
+    DEP_FIELD(MASTER_ID15, MIDM, 10, 16)
+    DEP_FIELD(MASTER_ID15, MID, 10, 0)
+DEP_REG32(MASTER_ID16, 0x140)
+    DEP_FIELD(MASTER_ID16, MIDP, 1, 31)
+    DEP_FIELD(MASTER_ID16, MIDR, 1, 30)
+    DEP_FIELD(MASTER_ID16, MIDM, 10, 16)
+    DEP_FIELD(MASTER_ID16, MID, 10, 0)
+DEP_REG32(MASTER_ID17, 0x144)
+    DEP_FIELD(MASTER_ID17, MIDP, 1, 31)
+    DEP_FIELD(MASTER_ID17, MIDR, 1, 30)
+    DEP_FIELD(MASTER_ID17, MIDM, 10, 16)
+    DEP_FIELD(MASTER_ID17, MID, 10, 0)
+DEP_REG32(MASTER_ID18, 0x148)
+    DEP_FIELD(MASTER_ID18, MIDP, 1, 31)
+    DEP_FIELD(MASTER_ID18, MIDR, 1, 30)
+    DEP_FIELD(MASTER_ID18, MIDM, 10, 16)
+    DEP_FIELD(MASTER_ID18, MID, 10, 0)
+DEP_REG32(MASTER_ID19, 0x14c)
+    DEP_FIELD(MASTER_ID19, MIDP, 1, 31)
+    DEP_FIELD(MASTER_ID19, MIDR, 1, 30)
+    DEP_FIELD(MASTER_ID19, MIDM, 10, 16)
+    DEP_FIELD(MASTER_ID19, MID, 10, 0)
+DEP_REG32(RAM_ADJ, 0x1fc)
+    DEP_FIELD(RAM_ADJ, MESSAGE_EMAS, 1, 13)
+    DEP_FIELD(RAM_ADJ, MESSAGE_EMAW, 2, 11)
+    DEP_FIELD(RAM_ADJ, MESSAGE_EMA, 3, 8)
+    DEP_FIELD(RAM_ADJ, PERMISSION_EMAS, 1, 5)
+    DEP_FIELD(RAM_ADJ, PERMISSION_EMAW, 2, 3)
+    DEP_FIELD(RAM_ADJ, PERMISSION_EMA, 3, 0)
 
 #define R_MAX (R_RAM_ADJ + 1)
 
@@ -251,7 +251,7 @@ struct XPPU {
     uint32_t perm_ram[NR_APL_ENTRIES];
 
     uint32_t regs[R_MAX];
-    RegisterInfo regs_info[R_MAX];
+    DepRegisterInfo regs_info[R_MAX];
 };
 
 static bool parity32(uint32_t v)
@@ -273,7 +273,7 @@ static bool check_mid_parity(XPPU *s, uint32_t val32)
     bool p_written;
     bool p_computed;
 
-    if (!AF_EX32(s->regs, CTRL, MID_PARITY_EN)) {
+    if (!DEP_AF_EX32(s->regs, CTRL, MID_PARITY_EN)) {
         return true;
     }
 
@@ -300,7 +300,7 @@ static void check_mid_parities(XPPU *s)
 
         /* Check MID parity.  */
         if (check_mid_parity(s, val32) == false) {
-            AF_DP32(s->regs, ISR, MID_PARITY, true);
+            DEP_AF_DP32(s->regs, ISR, MID_PARITY, true);
             continue;
         }
     }
@@ -323,7 +323,7 @@ static bool check_apl_parity(XPPU *s, uint32_t val32)
     uint32_t p = 0, p_written;
     bool ok;
 
-    if (!AF_EX32(s->regs, CTRL, APER_PARITY_EN)) {
+    if (!DEP_AF_EX32(s->regs, CTRL, APER_PARITY_EN)) {
         return true;
     }
 
@@ -342,7 +342,7 @@ static bool check_apl_parity(XPPU *s, uint32_t val32)
 
     if (!ok) {
         qemu_log_mask(LOG_GUEST_ERROR, "Bad APL parity!\n");
-        AF_DP32(s->regs, ISR, APER_PARITY, true);
+        DEP_AF_DP32(s->regs, ISR, APER_PARITY, true);
     }
     return ok;
 }
@@ -353,13 +353,13 @@ static void isr_update_irq(XPPU *s)
     qemu_set_irq(s->irq_isr, pending);
 }
 
-static void isr_postw(RegisterInfo *reg, uint64_t val64)
+static void isr_postw(DepRegisterInfo *reg, uint64_t val64)
 {
     XPPU *s = XILINX_XPPU(reg->opaque);
     isr_update_irq(s);
 }
 
-static uint64_t ien_prew(RegisterInfo *reg, uint64_t val64)
+static uint64_t ien_prew(DepRegisterInfo *reg, uint64_t val64)
 {
     XPPU *s = XILINX_XPPU(reg->opaque);
     uint32_t val = val64;
@@ -369,7 +369,7 @@ static uint64_t ien_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
-static uint64_t ids_prew(RegisterInfo *reg, uint64_t val64)
+static uint64_t ids_prew(DepRegisterInfo *reg, uint64_t val64)
 {
     XPPU *s = XILINX_XPPU(reg->opaque);
     uint32_t val = val64;
@@ -381,7 +381,7 @@ static uint64_t ids_prew(RegisterInfo *reg, uint64_t val64)
 
 static void update_mrs(XPPU *s)
 {
-    bool xppu_enabled = AF_EX32(s->regs, CTRL, ENABLE);
+    bool xppu_enabled = DEP_AF_EX32(s->regs, CTRL, ENABLE);
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(s->ap); i++) {
@@ -389,7 +389,7 @@ static void update_mrs(XPPU *s)
     }
 }
 
-static void ctrl_postw(RegisterInfo *reg, uint64_t val64)
+static void ctrl_postw(DepRegisterInfo *reg, uint64_t val64)
 {
     XPPU *s = XILINX_XPPU(reg->opaque);
     update_mrs(s);
@@ -397,14 +397,14 @@ static void ctrl_postw(RegisterInfo *reg, uint64_t val64)
     isr_update_irq(s);
 }
 
-static void mid_postw(RegisterInfo *reg, uint64_t val64)
+static void mid_postw(DepRegisterInfo *reg, uint64_t val64)
 {
     XPPU *s = XILINX_XPPU(reg->opaque);
     check_mid_parity(s, val64);
     isr_update_irq(s);
 }
 
-static RegisterAccessInfo xppu_regs_info[] = {
+static DepRegisterAccessInfo xppu_regs_info[] = {
     {   .name = "CTRL",  .decode.addr = A_CTRL,
         .rsvd = 0xfffffff8,
         .ro = 0xfffffff8,
@@ -549,7 +549,7 @@ static void xppu_reset(DeviceState *dev)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        register_reset(&s->regs_info[i]);
+        dep_register_reset(&s->regs_info[i]);
     }
     update_mrs(s);
     isr_update_irq(s);
@@ -577,9 +577,9 @@ static bool xppu_ap_check(XPPU *s, MemoryTransaction *tr, uint32_t apl)
         }
 
         val32 = s->regs[R_MASTER_ID00 + i];
-        mid = F_EX32(val32, MASTER_ID00, MID);
-        readonly = F_EX32(val32, MASTER_ID00, MIDR);
-        mask = F_EX32(val32, MASTER_ID00, MIDM);
+        mid = DEP_F_EX32(val32, MASTER_ID00, MID);
+        readonly = DEP_F_EX32(val32, MASTER_ID00, MIDR);
+        mask = DEP_F_EX32(val32, MASTER_ID00, MIDM);
 
         if ((mid & mask) != (tr->attr.master_id & mask)) {
             continue;
@@ -589,17 +589,17 @@ static bool xppu_ap_check(XPPU *s, MemoryTransaction *tr, uint32_t apl)
 
         /* Check MID parity.  */
         if (check_mid_parity(s, val32) == false) {
-            AF_DP32(s->regs, ISR, MID_PARITY, true);
+            DEP_AF_DP32(s->regs, ISR, MID_PARITY, true);
             continue;
         }
 
         if (readonly && tr->rw) {
-            AF_DP32(s->regs, ISR, MID_RO, true);
+            DEP_AF_DP32(s->regs, ISR, MID_RO, true);
             continue;
         }
 
         if (!tr->attr.secure && !tz) {
-            AF_DP32(s->regs, ISR, APER_TZ, true);
+            DEP_AF_DP32(s->regs, ISR, APER_TZ, true);
             continue;
         }
 
@@ -608,7 +608,7 @@ static bool xppu_ap_check(XPPU *s, MemoryTransaction *tr, uint32_t apl)
 
     if (!mid_match) {
         /* Set if MID checks don't make it past masking and compare.  */
-        AF_DP32(s->regs, ISR, MID_MISS, true);
+        DEP_AF_DP32(s->regs, ISR, MID_MISS, true);
     }
 
     return i < NR_MID_ENTRIES;
@@ -623,7 +623,7 @@ static void xppu_ap_access(MemoryTransaction *tr)
     uint32_t apl;
     bool valid;
     bool isr_free;
-    bool xppu_enabled = AF_EX32(s->regs, CTRL, ENABLE);
+    bool xppu_enabled = DEP_AF_EX32(s->regs, CTRL, ENABLE);
 
     assert(xppu_enabled);
 
@@ -641,9 +641,9 @@ static void xppu_ap_access(MemoryTransaction *tr)
 
     if (!valid) {
         if (isr_free) {
-            AF_DP32(s->regs, ISR, APER_PERM, true);
-            AF_DP32(s->regs, ERR_STATUS1, AXI_ADDR, addr >> 12);
-            AF_DP32(s->regs, ERR_STATUS2, AXI_ID, tr->attr.master_id);
+            DEP_AF_DP32(s->regs, ISR, APER_PERM, true);
+            DEP_AF_DP32(s->regs, ERR_STATUS1, AXI_ADDR, addr >> 12);
+            DEP_AF_DP32(s->regs, ERR_STATUS2, AXI_ID, tr->attr.master_id);
         }
 
         /* Poison the transaction.
@@ -653,7 +653,7 @@ static void xppu_ap_access(MemoryTransaction *tr)
          * Bits 48:32 are zeroed.
          */
         addr &= (1 << 12) - 1;
-        addr |= AF_EX32(s->regs, POISON, BASE) << 12;
+        addr |= DEP_AF_EX32(s->regs, POISON, BASE) << 12;
         isr_update_irq(s);
     }
 
@@ -677,7 +677,7 @@ static uint64_t xppu_read(void *opaque, hwaddr addr, unsigned size,
                           MemTxAttrs attr)
 {
     XPPU *s = XILINX_XPPU(opaque);
-    RegisterInfo *r = &s->regs_info[addr / 4];
+    DepRegisterInfo *r = &s->regs_info[addr / 4];
 
     if (!attr.secure) {
         /* Non secure, return zero */
@@ -694,18 +694,18 @@ static uint64_t xppu_read(void *opaque, hwaddr addr, unsigned size,
         qemu_log("%s: Decode error: read from %" HWADDR_PRIx "\n",
                  object_get_canonical_path(OBJECT(s)),
                  addr);
-        AF_DP32(s->regs, ISR, INV_APB, true);
+        DEP_AF_DP32(s->regs, ISR, INV_APB, true);
         isr_update_irq(s);
         return 0;
     }
-    return register_read(r);
+    return dep_register_read(r);
 }
 
 static void xppu_write(void *opaque, hwaddr addr, uint64_t value,
                        unsigned size, MemTxAttrs attr)
 {
     XPPU *s = XILINX_XPPU(opaque);
-    RegisterInfo *r = &s->regs_info[addr / 4];
+    DepRegisterInfo *r = &s->regs_info[addr / 4];
 
     if (!attr.secure) {
         return;
@@ -722,11 +722,11 @@ static void xppu_write(void *opaque, hwaddr addr, uint64_t value,
         qemu_log("%s: Decode error: write to %" HWADDR_PRIx "=%" PRIx64 "\n",
                  object_get_canonical_path(OBJECT(s)),
                  addr, value);
-        AF_DP32(s->regs, ISR, INV_APB, true);
+        DEP_AF_DP32(s->regs, ISR, INV_APB, true);
         isr_update_irq(s);
         return;
     }
-    register_write(r, value, ~0);
+    dep_register_write(r, value, ~0);
 }
 
 static void xppu_access(MemoryTransaction *tr)
@@ -761,9 +761,9 @@ static void xppu_realize(DeviceState *dev, Error **errp)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(xppu_regs_info); ++i) {
-        RegisterInfo *r = &s->regs_info[xppu_regs_info[i].decode.addr/4];
+        DepRegisterInfo *r = &s->regs_info[xppu_regs_info[i].decode.addr/4];
 
-        *r = (RegisterInfo) {
+        *r = (DepRegisterInfo) {
             .data = (uint8_t *)&s->regs[
                     xppu_regs_info[i].decode.addr/4],
             .data_size = sizeof(uint32_t),

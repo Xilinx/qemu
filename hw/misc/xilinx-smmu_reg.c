@@ -27,7 +27,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
-#include "hw/register.h"
+#include "hw/register-dep.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
 #include "hw/fdt_generic_util.h"
@@ -41,72 +41,72 @@
 #define XILINX_SMMU_REG(obj) \
      OBJECT_CHECK(SMMU_REG, (obj), TYPE_XILINX_SMMU_REG)
 
-REG32(MISC_CTRL, 0x0)
-    FIELD(MISC_CTRL, SLVERR_ENABLE, 1, 0)
-REG32(ISR_0, 0x10)
-    FIELD(ISR_0, ADDR_DECODE_ERR, 1, 31)
-    FIELD(ISR_0, GBL_FLT_IRPT_NS, 1, 4)
-    FIELD(ISR_0, GBL_FLT_IRPT_S, 1, 3)
-    FIELD(ISR_0, COMB_PERF_IRPT_TBU, 1, 2)
-    FIELD(ISR_0, COMB_IRPT_S, 1, 1)
-    FIELD(ISR_0, COMB_IRPT_NS, 1, 0)
-REG32(IMR_0, 0x14)
-    FIELD(IMR_0, ADDR_DECODE_ERR, 1, 31)
-    FIELD(IMR_0, GBL_FLT_IRPT_NS, 1, 4)
-    FIELD(IMR_0, GBL_FLT_IRPT_S, 1, 3)
-    FIELD(IMR_0, COMB_PERF_IRPT_TBU, 1, 2)
-    FIELD(IMR_0, COMB_IRPT_S, 1, 1)
-    FIELD(IMR_0, COMB_IRPT_NS, 1, 0)
-REG32(IER_0, 0x18)
-    FIELD(IER_0, ADDR_DECODE_ERR, 1, 31)
-    FIELD(IER_0, GBL_FLT_IRPT_NS, 1, 4)
-    FIELD(IER_0, GBL_FLT_IRPT_S, 1, 3)
-    FIELD(IER_0, COMB_PERF_IRPT_TBU, 1, 2)
-    FIELD(IER_0, COMB_IRPT_S, 1, 1)
-    FIELD(IER_0, COMB_IRPT_NS, 1, 0)
-REG32(IDR_0, 0x1c)
-    FIELD(IDR_0, ADDR_DECODE_ERR, 1, 31)
-    FIELD(IDR_0, GBL_FLT_IRPT_NS, 1, 4)
-    FIELD(IDR_0, GBL_FLT_IRPT_S, 1, 3)
-    FIELD(IDR_0, COMB_PERF_IRPT_TBU, 1, 2)
-    FIELD(IDR_0, COMB_IRPT_S, 1, 1)
-    FIELD(IDR_0, COMB_IRPT_NS, 1, 0)
-REG32(ITR_0, 0x20)
-    FIELD(ITR_0, ADDR_DECODE_ERR, 1, 31)
-    FIELD(ITR_0, GBL_FLT_IRPT_NS, 1, 4)
-    FIELD(ITR_0, GBL_FLT_IRPT_S, 1, 3)
-    FIELD(ITR_0, COMB_PERF_IRPT_TBU, 1, 2)
-    FIELD(ITR_0, COMB_IRPT_S, 1, 1)
-    FIELD(ITR_0, COMB_IRPT_NS, 1, 0)
-REG32(QREQN, 0x40)
-    FIELD(QREQN, TBU_TBU5_5_CG, 1, 14)
-    FIELD(QREQN, TBU_TBU5_5_PD, 1, 13)
-    FIELD(QREQN, TBU_TBU4_4_CG, 1, 12)
-    FIELD(QREQN, TBU_TBU4_4_PD, 1, 11)
-    FIELD(QREQN, TBU_TBU3_3_CG, 1, 10)
-    FIELD(QREQN, TBU_TBU3_3_PD, 1, 9)
-    FIELD(QREQN, PD_MST_BR_TBU2_2, 1, 8)
-    FIELD(QREQN, PD_SLV_BR_TBU2_2, 1, 7)
-    FIELD(QREQN, TBU_TBU2_2_CG, 1, 6)
-    FIELD(QREQN, TBU_TBU2_2_PD, 1, 5)
-    FIELD(QREQN, TBU_TBU1_1_CG, 1, 4)
-    FIELD(QREQN, TBU_TBU1_1_PD, 1, 3)
-    FIELD(QREQN, TBU_TBU0_0_CG, 1, 2)
-    FIELD(QREQN, TBU_TBU0_0_PD, 1, 1)
-    FIELD(QREQN, TCU, 1, 0)
-REG32(MISC, 0x54)
-    FIELD(MISC, SPNIDEN, 1, 12)
-    FIELD(MISC, ARQOSARB, 4, 8)
-    FIELD(MISC, AWAKEUP_PROG, 1, 7)
-    FIELD(MISC, EMAS, 1, 6)
-    FIELD(MISC, EMAW, 2, 4)
-    FIELD(MISC, EMA, 3, 1)
-REG32(CONFIG_SIGNALS, 0x58)
-    FIELD(CONFIG_SIGNALS, CFG_NORMALIZE, 1, 1)
-REG32(ECO_INFO, 0x100)
-    FIELD(ECO_INFO, ECOREVNUM, 4, 0)
-REG32(ECO_0, 0x104)
-REG32(ECO_1, 0x108)
+DEP_REG32(MISC_CTRL, 0x0)
+    DEP_FIELD(MISC_CTRL, SLVERR_ENABLE, 1, 0)
+DEP_REG32(ISR_0, 0x10)
+    DEP_FIELD(ISR_0, ADDR_DECODE_ERR, 1, 31)
+    DEP_FIELD(ISR_0, GBL_FLT_IRPT_NS, 1, 4)
+    DEP_FIELD(ISR_0, GBL_FLT_IRPT_S, 1, 3)
+    DEP_FIELD(ISR_0, COMB_PERF_IRPT_TBU, 1, 2)
+    DEP_FIELD(ISR_0, COMB_IRPT_S, 1, 1)
+    DEP_FIELD(ISR_0, COMB_IRPT_NS, 1, 0)
+DEP_REG32(IMR_0, 0x14)
+    DEP_FIELD(IMR_0, ADDR_DECODE_ERR, 1, 31)
+    DEP_FIELD(IMR_0, GBL_FLT_IRPT_NS, 1, 4)
+    DEP_FIELD(IMR_0, GBL_FLT_IRPT_S, 1, 3)
+    DEP_FIELD(IMR_0, COMB_PERF_IRPT_TBU, 1, 2)
+    DEP_FIELD(IMR_0, COMB_IRPT_S, 1, 1)
+    DEP_FIELD(IMR_0, COMB_IRPT_NS, 1, 0)
+DEP_REG32(IER_0, 0x18)
+    DEP_FIELD(IER_0, ADDR_DECODE_ERR, 1, 31)
+    DEP_FIELD(IER_0, GBL_FLT_IRPT_NS, 1, 4)
+    DEP_FIELD(IER_0, GBL_FLT_IRPT_S, 1, 3)
+    DEP_FIELD(IER_0, COMB_PERF_IRPT_TBU, 1, 2)
+    DEP_FIELD(IER_0, COMB_IRPT_S, 1, 1)
+    DEP_FIELD(IER_0, COMB_IRPT_NS, 1, 0)
+DEP_REG32(IDR_0, 0x1c)
+    DEP_FIELD(IDR_0, ADDR_DECODE_ERR, 1, 31)
+    DEP_FIELD(IDR_0, GBL_FLT_IRPT_NS, 1, 4)
+    DEP_FIELD(IDR_0, GBL_FLT_IRPT_S, 1, 3)
+    DEP_FIELD(IDR_0, COMB_PERF_IRPT_TBU, 1, 2)
+    DEP_FIELD(IDR_0, COMB_IRPT_S, 1, 1)
+    DEP_FIELD(IDR_0, COMB_IRPT_NS, 1, 0)
+DEP_REG32(ITR_0, 0x20)
+    DEP_FIELD(ITR_0, ADDR_DECODE_ERR, 1, 31)
+    DEP_FIELD(ITR_0, GBL_FLT_IRPT_NS, 1, 4)
+    DEP_FIELD(ITR_0, GBL_FLT_IRPT_S, 1, 3)
+    DEP_FIELD(ITR_0, COMB_PERF_IRPT_TBU, 1, 2)
+    DEP_FIELD(ITR_0, COMB_IRPT_S, 1, 1)
+    DEP_FIELD(ITR_0, COMB_IRPT_NS, 1, 0)
+DEP_REG32(QREQN, 0x40)
+    DEP_FIELD(QREQN, TBU_TBU5_5_CG, 1, 14)
+    DEP_FIELD(QREQN, TBU_TBU5_5_PD, 1, 13)
+    DEP_FIELD(QREQN, TBU_TBU4_4_CG, 1, 12)
+    DEP_FIELD(QREQN, TBU_TBU4_4_PD, 1, 11)
+    DEP_FIELD(QREQN, TBU_TBU3_3_CG, 1, 10)
+    DEP_FIELD(QREQN, TBU_TBU3_3_PD, 1, 9)
+    DEP_FIELD(QREQN, PD_MST_BR_TBU2_2, 1, 8)
+    DEP_FIELD(QREQN, PD_SLV_BR_TBU2_2, 1, 7)
+    DEP_FIELD(QREQN, TBU_TBU2_2_CG, 1, 6)
+    DEP_FIELD(QREQN, TBU_TBU2_2_PD, 1, 5)
+    DEP_FIELD(QREQN, TBU_TBU1_1_CG, 1, 4)
+    DEP_FIELD(QREQN, TBU_TBU1_1_PD, 1, 3)
+    DEP_FIELD(QREQN, TBU_TBU0_0_CG, 1, 2)
+    DEP_FIELD(QREQN, TBU_TBU0_0_PD, 1, 1)
+    DEP_FIELD(QREQN, TCU, 1, 0)
+DEP_REG32(MISC, 0x54)
+    DEP_FIELD(MISC, SPNIDEN, 1, 12)
+    DEP_FIELD(MISC, ARQOSARB, 4, 8)
+    DEP_FIELD(MISC, AWAKEUP_PROG, 1, 7)
+    DEP_FIELD(MISC, EMAS, 1, 6)
+    DEP_FIELD(MISC, EMAW, 2, 4)
+    DEP_FIELD(MISC, EMA, 3, 1)
+DEP_REG32(CONFIG_SIGNALS, 0x58)
+    DEP_FIELD(CONFIG_SIGNALS, CFG_NORMALIZE, 1, 1)
+DEP_REG32(ECO_INFO, 0x100)
+    DEP_FIELD(ECO_INFO, ECOREVNUM, 4, 0)
+DEP_REG32(ECO_0, 0x104)
+DEP_REG32(ECO_1, 0x108)
 
 #define R_MAX (R_ECO_1 + 1)
 
@@ -118,7 +118,7 @@ typedef struct SMMU_REG {
     uint32_t irq_src;
 
     uint32_t regs[R_MAX];
-    RegisterInfo regs_info[R_MAX];
+    DepRegisterInfo regs_info[R_MAX];
 } SMMU_REG;
 
 static void imr_0_update_irq(SMMU_REG *s)
@@ -138,13 +138,13 @@ static void imr_0_update_irq(SMMU_REG *s)
     qemu_set_irq(s->irq_imr_0, pending);
 }
 
-static void isr_0_postw(RegisterInfo *reg, uint64_t val64)
+static void isr_0_postw(DepRegisterInfo *reg, uint64_t val64)
 {
     SMMU_REG *s = XILINX_SMMU_REG(reg->opaque);
     imr_0_update_irq(s);
 }
 
-static uint64_t ier_0_prew(RegisterInfo *reg, uint64_t val64)
+static uint64_t ier_0_prew(DepRegisterInfo *reg, uint64_t val64)
 {
     SMMU_REG *s = XILINX_SMMU_REG(reg->opaque);
     uint32_t val = val64;
@@ -154,7 +154,7 @@ static uint64_t ier_0_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
-static uint64_t idr_0_prew(RegisterInfo *reg, uint64_t val64)
+static uint64_t idr_0_prew(DepRegisterInfo *reg, uint64_t val64)
 {
     SMMU_REG *s = XILINX_SMMU_REG(reg->opaque);
     uint32_t val = val64;
@@ -164,7 +164,7 @@ static uint64_t idr_0_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
-static uint64_t itr_0_prew(RegisterInfo *reg, uint64_t val64)
+static uint64_t itr_0_prew(DepRegisterInfo *reg, uint64_t val64)
 {
     SMMU_REG *s = XILINX_SMMU_REG(reg->opaque);
     uint32_t val = val64;
@@ -174,7 +174,7 @@ static uint64_t itr_0_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
-static RegisterAccessInfo smmu_reg_regs_info[] = {
+static DepRegisterAccessInfo smmu_reg_regs_info[] = {
     {   .name = "MISC_CTRL",  .decode.addr = A_MISC_CTRL,
     },{ .name = "ISR_0",  .decode.addr = A_ISR_0,
         .rsvd = 0x7fffffe0,
@@ -223,7 +223,7 @@ static void smmu_reg_reset(DeviceState *dev)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        register_reset(&s->regs_info[i]);
+        dep_register_reset(&s->regs_info[i]);
     }
 
     imr_0_update_irq(s);
@@ -232,7 +232,7 @@ static void smmu_reg_reset(DeviceState *dev)
 static uint64_t smmu_reg_read(void *opaque, hwaddr addr, unsigned size)
 {
     SMMU_REG *s = XILINX_SMMU_REG(opaque);
-    RegisterInfo *r = &s->regs_info[addr / 4];
+    DepRegisterInfo *r = &s->regs_info[addr / 4];
 
     if (!r->data) {
         qemu_log("%s: Decode error: read from %" HWADDR_PRIx "\n",
@@ -240,14 +240,14 @@ static uint64_t smmu_reg_read(void *opaque, hwaddr addr, unsigned size)
                  addr);
         return 0;
     }
-    return register_read(r);
+    return dep_register_read(r);
 }
 
 static void smmu_reg_write(void *opaque, hwaddr addr, uint64_t value,
                       unsigned size)
 {
     SMMU_REG *s = XILINX_SMMU_REG(opaque);
-    RegisterInfo *r = &s->regs_info[addr / 4];
+    DepRegisterInfo *r = &s->regs_info[addr / 4];
 
     if (!r->data) {
         qemu_log("%s: Decode error: write to %" HWADDR_PRIx "=%" PRIx64 "\n",
@@ -255,7 +255,7 @@ static void smmu_reg_write(void *opaque, hwaddr addr, uint64_t value,
                  addr, value);
         return;
     }
-    register_write(r, value, ~0);
+    dep_register_write(r, value, ~0);
 }
 
 static const MemoryRegionOps smmu_reg_ops = {
@@ -284,9 +284,9 @@ static void smmu_reg_realize(DeviceState *dev, Error **errp)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(smmu_reg_regs_info); ++i) {
-        RegisterInfo *r = &s->regs_info[smmu_reg_regs_info[i].decode.addr/4];
+        DepRegisterInfo *r = &s->regs_info[smmu_reg_regs_info[i].decode.addr/4];
 
-        *r = (RegisterInfo) {
+        *r = (DepRegisterInfo) {
             .data = (uint8_t *)&s->regs[
                     smmu_reg_regs_info[i].decode.addr/4],
             .data_size = sizeof(uint32_t),

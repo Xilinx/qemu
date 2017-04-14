@@ -25,7 +25,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
-#include "hw/register.h"
+#include "hw/register-dep.h"
 #include "qemu/log.h"
 #include "hw/fdt_generic_util.h"
 
@@ -134,10 +134,10 @@ typedef struct XilinxIntC {
     uint32_t irq_mode;
     uint32_t regs[R_MAX_1];
     uint32_t vectors[R_MAX_1];
-    RegisterInfo regs_info0[R_MAX_0];
-    RegisterInfo regs_info1[R_MAX_1];
-    RegisterInfo regs_info2[R_MAX_2];
-    RegisterInfo *regs_infos[3];
+    DepRegisterInfo regs_info0[R_MAX_0];
+    DepRegisterInfo regs_info1[R_MAX_1];
+    DepRegisterInfo regs_info2[R_MAX_2];
+    DepRegisterInfo *regs_infos[3];
     const char *prefix;
     /* Debug only */
     bool irq_output;
@@ -154,8 +154,8 @@ static Property xlx_iom_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static void iom_intc_irq_ack(RegisterInfo *reg, uint64_t val64);
-static void iom_intc_update(RegisterInfo *reg, uint64_t val64);
+static void iom_intc_irq_ack(DepRegisterInfo *reg, uint64_t val64);
+static void iom_intc_update(DepRegisterInfo *reg, uint64_t val64);
 
 static void xlx_iom_irq_update(XilinxIntC *s)
 {
@@ -169,7 +169,7 @@ static void xlx_iom_irq_update(XilinxIntC *s)
     qemu_set_irq(s->parent_irq, s->irq_output);
 }
 
-static void iom_intc_irq_ack(RegisterInfo *reg, uint64_t val64)
+static void iom_intc_irq_ack(DepRegisterInfo *reg, uint64_t val64)
 {
     XilinxIntC *s = XILINX_IO_MODULE_INTC(reg->opaque);
     uint32_t val = val64;
@@ -183,15 +183,15 @@ static void iom_intc_irq_ack(RegisterInfo *reg, uint64_t val64)
     xlx_iom_irq_update(s);
 }
 
-static void iom_intc_update(RegisterInfo *reg, uint64_t val64)
+static void iom_intc_update(DepRegisterInfo *reg, uint64_t val64)
 {
     XilinxIntC *s = XILINX_IO_MODULE_INTC(reg->opaque);
     xlx_iom_irq_update(s);
 }
 
 static const MemoryRegionOps iom_intc_ops = {
-    .read = register_read_memory_le,
-    .write = register_write_memory_le,
+    .read = dep_register_read_memory_le,
+    .write = dep_register_write_memory_le,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
@@ -226,11 +226,11 @@ static void irq_handler(void *opaque, int irq, int level)
     xlx_iom_irq_update(s);
 }
 
-static const RegisterAccessInfo intc_regs_info0[] = {
+static const DepRegisterAccessInfo intc_regs_info0[] = {
     [R_IOM_IRQ_MODE] = { .name = "IRQ_MODE" },
 };
 
-static const RegisterAccessInfo intc_regs_info1[] = {
+static const DepRegisterAccessInfo intc_regs_info1[] = {
     [R_IOM_IRQ_STATUS] = { .name = "IRQ_STATUS", .ro = ~0 },
     [R_IOM_IRQ_PENDING] = { .name = "IRQ_PENDING" , .ro = ~0 },
     [R_IOM_IRQ_ENABLE] = { .name = "IRQ_ENABLE",
@@ -238,10 +238,10 @@ static const RegisterAccessInfo intc_regs_info1[] = {
     [R_IOM_IRQ_ACK] = { .name = "IRQ_ACK", .post_write = iom_intc_irq_ack },
 };
 
-static const RegisterAccessInfo intc_regs_info2[] = {
+static const DepRegisterAccessInfo intc_regs_info2[] = {
 #define REG_VECTOR(n) [R_IOM_IRQ_VECTOR ## n] =                            \
     { .name  = "IRQ_VECTOR" #n,                                            \
-      .ui1 = (RegisterAccessError[]) {                                     \
+      .ui1 = (DepRegisterAccessError[]) {                                     \
              { .mask = ~0, .reason = "IRQ Vectors not implemented" }, {} } }
 
     REG_VECTOR(0),
@@ -278,7 +278,7 @@ static const RegisterAccessInfo intc_regs_info2[] = {
     REG_VECTOR(31),
 };
 
-static const RegisterAccessInfo *intc_reginfos[] = {
+static const DepRegisterAccessInfo *intc_reginfos[] = {
     &intc_regs_info0[0], &intc_regs_info1[0], &intc_regs_info2[0]
 };
 
@@ -297,7 +297,7 @@ static void iom_intc_reset(DeviceState *dev)
 
     for (rmap = 0; rmap < ARRAY_SIZE(intc_reginfos); rmap++) {
         for (i = 0; i < intc_reginfo_sizes[rmap]; ++i) {
-            register_reset(&s->regs_infos[rmap][i]);
+            dep_register_reset(&s->regs_infos[rmap][i]);
         }
     }
 }
@@ -322,9 +322,9 @@ static void xlx_iom_realize(DeviceState *dev, Error **errp)
 
     for (rmap = 0; rmap < ARRAY_SIZE(intc_reginfos); rmap++) {
         for (i = 0; i < intc_reginfo_sizes[rmap]; ++i) {
-            RegisterInfo *r = &s->regs_infos[rmap][i];
+            DepRegisterInfo *r = &s->regs_infos[rmap][i];
 
-            *r = (RegisterInfo) {
+            *r = (DepRegisterInfo) {
                 .data = (uint8_t *)&regmaps[rmap][i],
                 .data_size = sizeof(uint32_t),
                 .access = &intc_reginfos[rmap][i],

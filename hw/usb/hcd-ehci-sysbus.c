@@ -17,7 +17,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/usb/hcd-ehci.h"
-#include "hw/register.h"
+#include "hw/register-dep.h"
 
 static const VMStateDescription vmstate_ehci_sysbus = {
     .name        = "ehci-sysbus",
@@ -114,15 +114,15 @@ enum ULPIRegs {
     SCRATCH_REG_0 = 0x16,
 };
 
-REG32(ULPI_VIEWPORT, PS7USB_ULPIVP_OFFSET)
-    FIELD(ULPI_VIEWPORT, ULPIDATWR, 8, 0)
-    FIELD(ULPI_VIEWPORT, ULPIDATRD, 8, 8)
-    FIELD(ULPI_VIEWPORT, ULPIADDR, 8, 16)
-    FIELD(ULPI_VIEWPORT, ULPIPORT, 3, 24)
-    FIELD(ULPI_VIEWPORT, ULPISS, 1, 27)
-    FIELD(ULPI_VIEWPORT, ULPIRW, 1, 29)
-    FIELD(ULPI_VIEWPORT, ULPIRUN, 1, 30)
-    FIELD(ULPI_VIEWPORT, ULPIWU, 1, 31)
+DEP_REG32(ULPI_VIEWPORT, PS7USB_ULPIVP_OFFSET)
+    DEP_FIELD(ULPI_VIEWPORT, ULPIDATWR, 8, 0)
+    DEP_FIELD(ULPI_VIEWPORT, ULPIDATRD, 8, 8)
+    DEP_FIELD(ULPI_VIEWPORT, ULPIADDR, 8, 16)
+    DEP_FIELD(ULPI_VIEWPORT, ULPIPORT, 3, 24)
+    DEP_FIELD(ULPI_VIEWPORT, ULPISS, 1, 27)
+    DEP_FIELD(ULPI_VIEWPORT, ULPIRW, 1, 29)
+    DEP_FIELD(ULPI_VIEWPORT, ULPIRUN, 1, 30)
+    DEP_FIELD(ULPI_VIEWPORT, ULPIWU, 1, 31)
 
 static void ehci_xlnx_reset(DeviceState *dev)
 {
@@ -211,22 +211,22 @@ static void xlnx_ulpi_write(void *opaque, hwaddr addr, uint64_t data,
     s->ulpi_viewport |= data & ULPIREG_RWBITS_MASK;
 
     /* ULPI Wake Up call : Clear the bit when set */
-    if(F_EX32(s->ulpi_viewport, ULPI_VIEWPORT, ULPIWU)) {
-        s->ulpi_viewport = F_DP32(s->ulpi_viewport, ULPI_VIEWPORT, ULPIWU, 0);
+    if(DEP_F_EX32(s->ulpi_viewport, ULPI_VIEWPORT, ULPIWU)) {
+        s->ulpi_viewport = DEP_F_DP32(s->ulpi_viewport, ULPI_VIEWPORT, ULPIWU, 0);
     }
 
-    if (F_EX32(s->ulpi_viewport, ULPI_VIEWPORT, ULPIRUN)) {
-        ulpiaddr = F_EX32(s->ulpi_viewport, ULPI_VIEWPORT, ULPIADDR);
+    if (DEP_F_EX32(s->ulpi_viewport, ULPI_VIEWPORT, ULPIRUN)) {
+        ulpiaddr = DEP_F_EX32(s->ulpi_viewport, ULPI_VIEWPORT, ULPIADDR);
 
-        if (F_EX32(s->ulpi_viewport, ULPI_VIEWPORT, ULPIRW)) {
-            s->ulpireg[ulpiaddr] = F_EX32(s->ulpi_viewport, ULPI_VIEWPORT,
+        if (DEP_F_EX32(s->ulpi_viewport, ULPI_VIEWPORT, ULPIRW)) {
+            s->ulpireg[ulpiaddr] = DEP_F_EX32(s->ulpi_viewport, ULPI_VIEWPORT,
                                           ULPIDATWR);
         } else {
-            s->ulpi_viewport = F_DP32(s->ulpi_viewport, ULPI_VIEWPORT,
+            s->ulpi_viewport = DEP_F_DP32(s->ulpi_viewport, ULPI_VIEWPORT,
                                       ULPIDATRD, s->ulpireg[ulpiaddr]);
         }
 
-        s->ulpi_viewport = F_DP32(s->ulpi_viewport, ULPI_VIEWPORT, ULPIRUN, 0);
+        s->ulpi_viewport = DEP_F_DP32(s->ulpi_viewport, ULPI_VIEWPORT, ULPIRUN, 0);
     }
 }
 

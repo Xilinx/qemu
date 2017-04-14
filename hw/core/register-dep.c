@@ -12,10 +12,10 @@
 #include "hw/hw.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
-#include "hw/register.h"
+#include "hw/register-dep.h"
 #include "qemu/log.h"
 
-static inline void register_write_log(RegisterInfo *reg, int dir, uint64_t val,
+static inline void register_write_log(DepRegisterInfo *reg, int dir, uint64_t val,
                                       int mask, const char *msg,
                                       const char *reason)
 {
@@ -24,7 +24,7 @@ static inline void register_write_log(RegisterInfo *reg, int dir, uint64_t val,
                   reason ? ": " : "", reason ? reason : "");
 }
 
-static inline void register_write_val(RegisterInfo *reg, uint64_t val)
+static inline void register_write_val(DepRegisterInfo *reg, uint64_t val)
 {
     if (!reg->data) {
         return;
@@ -47,7 +47,7 @@ static inline void register_write_val(RegisterInfo *reg, uint64_t val)
     }
 }
 
-static inline uint64_t register_read_val(RegisterInfo *reg)
+static inline uint64_t register_read_val(DepRegisterInfo *reg)
 {
     switch (reg->data_size) {
     case 1:
@@ -64,11 +64,11 @@ static inline uint64_t register_read_val(RegisterInfo *reg)
     return 0; /* unreachable */
 }
 
-void register_write(RegisterInfo *reg, uint64_t val, uint64_t we)
+void dep_register_write(DepRegisterInfo *reg, uint64_t val, uint64_t we)
 {
     uint64_t old_val, new_val, test, no_w_mask;
-    const RegisterAccessInfo *ac;
-    const RegisterAccessError *rae;
+    const DepRegisterAccessInfo *ac;
+    const DepRegisterAccessError *rae;
 
     assert(reg);
 
@@ -139,17 +139,17 @@ void register_write(RegisterInfo *reg, uint64_t val, uint64_t we)
     }
 register_write_fast:
     register_write_val(reg, new_val);
-    register_refresh_gpios(reg, old_val);
+    dep_register_refresh_gpios(reg, old_val);
 
     if (ac->post_write) {
         ac->post_write(reg, new_val);
     }
 }
 
-uint64_t register_read(RegisterInfo *reg)
+uint64_t dep_register_read(DepRegisterInfo *reg)
 {
     uint64_t ret;
-    const RegisterAccessInfo *ac;
+    const DepRegisterAccessInfo *ac;
 
     assert(reg);
 
@@ -180,10 +180,10 @@ uint64_t register_read(RegisterInfo *reg)
     return ret;
 }
 
-void register_reset(RegisterInfo *reg)
+void dep_register_reset(DepRegisterInfo *reg)
 {
     assert(reg);
-    const RegisterAccessInfo *ac;
+    const DepRegisterAccessInfo *ac;
     uint64_t val, old_val;
 
     if (!reg->data || !reg->access) {
@@ -207,13 +207,13 @@ void register_reset(RegisterInfo *reg)
     reg->read_lite = reg->debug || ac->cor ? false : true;
 
     register_write_val(reg, val);
-    register_refresh_gpios(reg, old_val);
+    dep_register_refresh_gpios(reg, old_val);
 }
 
-void register_refresh_gpios(RegisterInfo *reg, uint64_t old_value)
+void dep_register_refresh_gpios(DepRegisterInfo *reg, uint64_t old_value)
 {
-    const RegisterAccessInfo *ac;
-    const RegisterGPIOMapping *gpio;
+    const DepRegisterAccessInfo *ac;
+    const DepRegisterGPIOMapping *gpio;
 
     ac = reg->access;
     for (gpio = ac->gpios; gpio && gpio->name; gpio++) {
@@ -229,7 +229,7 @@ void register_refresh_gpios(RegisterInfo *reg, uint64_t old_value)
             qemu_irq gpo = qdev_get_gpio_out_named(DEVICE(reg), gpio->name, i);
             /* FIXME: do at init time, not lazily in fast path */
             if (!gpio->width) {
-                ((RegisterGPIOMapping *)gpio)->width = 1;
+                ((DepRegisterGPIOMapping *)gpio)->width = 1;
             }
             gpio_value_old = extract64(old_value,
                                    gpio->bit_pos + i * gpio->width,
@@ -257,17 +257,17 @@ typedef struct DeviceNamedGPIOHandlerOpaque {
 static void register_gpio_handler(void *opaque, int n, int level)
 {
     DeviceNamedGPIOHandlerOpaque *gho = opaque;
-    RegisterInfo *reg = REGISTER(gho->dev);
+    DepRegisterInfo *reg = DEP_REGISTER(gho->dev);
 
-    const RegisterAccessInfo *ac;
-    const RegisterGPIOMapping *gpio;
+    const DepRegisterAccessInfo *ac;
+    const DepRegisterGPIOMapping *gpio;
 
     ac = reg->access;
     for (gpio = ac->gpios; gpio && gpio->name; gpio++) {
         if (gpio->input && !strcmp(gho->name, gpio->name)) {
             /* FIXME: do at init time, not lazily in fast path */
             if (!gpio->width) {
-                ((RegisterGPIOMapping *)gpio)->width = 1;
+                ((DepRegisterGPIOMapping *)gpio)->width = 1;
             }
             register_write_val(reg, deposit64(register_read_val(reg),
                                               gpio->bit_pos + n * gpio->width,
@@ -282,22 +282,22 @@ static void register_gpio_handler(void *opaque, int n, int level)
 
 /* FIXME: Convert to proper QOM init fn */
 
-void register_init(RegisterInfo *reg)
+void dep_register_init(DepRegisterInfo *reg)
 {
     assert(reg);
-    const RegisterAccessInfo *ac;
-    const RegisterGPIOMapping *gpio;
+    const DepRegisterAccessInfo *ac;
+    const DepRegisterGPIOMapping *gpio;
 
     if (!reg->data || !reg->access) {
         return;
     }
 
-    object_initialize((void *)reg, sizeof(*reg), TYPE_REGISTER);
+    object_initialize((void *)reg, sizeof(*reg), TYPE_DEP_REGISTER);
 
     ac = reg->access;
     for (gpio = ac->gpios; gpio && gpio->name; gpio++) {
         if (!gpio->num) {
-            ((RegisterGPIOMapping *)gpio)->num = 1;
+            ((DepRegisterGPIOMapping *)gpio)->num = 1;
         }
         if (gpio->input) {
             DeviceNamedGPIOHandlerOpaque gho = {
@@ -323,7 +323,7 @@ void register_init(RegisterInfo *reg)
 static inline void register_write_memory(void *opaque, hwaddr addr,
                                          uint64_t value, unsigned size, bool be)
 {
-    RegisterInfo *reg = opaque;
+    DepRegisterInfo *reg = opaque;
     uint64_t we = ~0;
     int shift = 0;
 
@@ -333,17 +333,17 @@ static inline void register_write_memory(void *opaque, hwaddr addr,
     }
 
     assert(size + addr <= reg->data_size);
-    register_write(reg, value << shift, we << shift);
+    dep_register_write(reg, value << shift, we << shift);
 }
 
-void register_write_memory_be(void *opaque, hwaddr addr, uint64_t value,
+void dep_register_write_memory_be(void *opaque, hwaddr addr, uint64_t value,
                               unsigned size)
 {
     register_write_memory(opaque, addr, value, size, true);
 }
 
 
-void register_write_memory_le(void *opaque, hwaddr addr, uint64_t value,
+void dep_register_write_memory_le(void *opaque, hwaddr addr, uint64_t value,
                               unsigned size)
 {
     register_write_memory(opaque, addr, value, size, false);
@@ -352,24 +352,24 @@ void register_write_memory_le(void *opaque, hwaddr addr, uint64_t value,
 static inline uint64_t register_read_memory(void *opaque, hwaddr addr,
                                             unsigned size, bool be)
 {
-    RegisterInfo *reg = opaque;
+    DepRegisterInfo *reg = opaque;
     int shift = 8 * (be ? reg->data_size - size - addr : addr);
 
-    return register_read(reg) >> shift;
+    return dep_register_read(reg) >> shift;
 }
 
-uint64_t register_read_memory_be(void *opaque, hwaddr addr, unsigned size)
+uint64_t dep_register_read_memory_be(void *opaque, hwaddr addr, unsigned size)
 {
     return register_read_memory(opaque, addr, size, true);
 }
 
-uint64_t register_read_memory_le(void *opaque, hwaddr addr, unsigned size)
+uint64_t dep_register_read_memory_le(void *opaque, hwaddr addr, unsigned size)
 {
     return register_read_memory(opaque, addr, size, false);
 }
 
 static const TypeInfo register_info = {
-    .name  = TYPE_REGISTER,
+    .name  = TYPE_DEP_REGISTER,
     .parent = TYPE_DEVICE,
 };
 

@@ -26,7 +26,7 @@
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "hw/ptimer.h"
-#include "hw/register.h"
+#include "hw/register-dep.h"
 #include "qemu/log.h"
 #include "qemu/main-loop.h"
 #include "qapi/error.h"
@@ -73,7 +73,7 @@ typedef struct XilinxPIT {
     QEMUBH *bh;
     ptimer_state *ptimer;
     uint32_t regs[R_MAX];
-    RegisterInfo regs_info[R_MAX];
+    DepRegisterInfo regs_info[R_MAX];
     const char *prefix;
 } XilinxPIT;
 
@@ -86,7 +86,7 @@ static Property xlx_iom_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static uint64_t pit_ctr_pr(RegisterInfo *reg, uint64_t val)
+static uint64_t pit_ctr_pr(DepRegisterInfo *reg, uint64_t val)
 {
     XilinxPIT *s = XILINX_IO_MODULE_PIT(reg->opaque);
     uint32_t r;
@@ -104,7 +104,7 @@ static uint64_t pit_ctr_pr(RegisterInfo *reg, uint64_t val)
     return r;
 }
 
-static void pit_control_pw(RegisterInfo *reg, uint64_t value)
+static void pit_control_pw(DepRegisterInfo *reg, uint64_t value)
 {
     XilinxPIT *s = XILINX_IO_MODULE_PIT(reg->opaque);
     uint32_t v32 = value;
@@ -179,15 +179,15 @@ static void iom_pit_ps_config(void *opaque, int n, int level)
     s->ps_enable = level;
 }
 
-static const RegisterAccessInfo pit_regs_info[] = {
+static const DepRegisterAccessInfo pit_regs_info[] = {
     [R_IOM_PIT_PRELOAD] = { .name = "PRELOAD" },
     [R_IOM_PIT_COUNTER] = { .name = "COUNTER", .post_read = pit_ctr_pr },
     [R_IOM_PIT_CONTROL] = { .name = "CONTROL", .post_write = pit_control_pw },
 };
 
 static const MemoryRegionOps iom_pit_ops = {
-    .read = register_read_memory_le,
-    .write = register_write_memory_le,
+    .read = dep_register_read_memory_le,
+    .write = dep_register_write_memory_le,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
@@ -201,7 +201,7 @@ static void iom_pit_reset(DeviceState *dev)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        register_reset(&s->regs_info[i]);
+        dep_register_reset(&s->regs_info[i]);
     }
     s->ps_level = false;
 }
@@ -214,9 +214,9 @@ static void xlx_iom_realize(DeviceState *dev, Error **errp)
     s->prefix = object_get_canonical_path(OBJECT(dev));
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        RegisterInfo *r = &s->regs_info[i];
+        DepRegisterInfo *r = &s->regs_info[i];
 
-        *r = (RegisterInfo) {
+        *r = (DepRegisterInfo) {
             .data = (uint8_t *)&s->regs[i],
             .data_size = sizeof(uint32_t),
             .access = &pit_regs_info[i],

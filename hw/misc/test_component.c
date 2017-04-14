@@ -27,7 +27,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
-#include "hw/register.h"
+#include "hw/register-dep.h"
 #include "qemu/log.h"
 
 #ifndef IRQ_TEST_COMPONENT_ERR_DEBUG
@@ -39,21 +39,21 @@
 #define IRQ_TEST_COMPONENT(obj) \
      OBJECT_CHECK(IRQTestComponent, (obj), TYPE_IRQ_TEST_COMPONENT)
 
-REG32(CONFIG, 0x0)
-REG32(STATUS, 0x4)
-    FIELD(STATUS, POWER, 1, 0)
-    FIELD(STATUS, HALT, 1, 1)
-REG32(DATA, 0x8)
-REG32(IRQ_STATUS, 0x10)
-    FIELD(IRQ_STATUS, IRQ0, 1, 0)
-REG32(IRQ_MASK, 0x14)
-    FIELD(IRQ_MASK, IRQ0, 1, 0)
-REG32(IRQ_ENABLE, 0x18)
-    FIELD(IRQ_ENABLE, IRQ0, 1, 0)
-REG32(IRQ_DISABLE, 0x1c)
-    FIELD(IRQ_DISABLE, IRQ0, 1, 0)
-REG32(IRQ_TRIGGER, 0x20)
-    FIELD(IRQ_TRIGGER, IRQ0, 1, 0)
+DEP_REG32(CONFIG, 0x0)
+DEP_REG32(STATUS, 0x4)
+    DEP_FIELD(STATUS, POWER, 1, 0)
+    DEP_FIELD(STATUS, HALT, 1, 1)
+DEP_REG32(DATA, 0x8)
+DEP_REG32(IRQ_STATUS, 0x10)
+    DEP_FIELD(IRQ_STATUS, IRQ0, 1, 0)
+DEP_REG32(IRQ_MASK, 0x14)
+    DEP_FIELD(IRQ_MASK, IRQ0, 1, 0)
+DEP_REG32(IRQ_ENABLE, 0x18)
+    DEP_FIELD(IRQ_ENABLE, IRQ0, 1, 0)
+DEP_REG32(IRQ_DISABLE, 0x1c)
+    DEP_FIELD(IRQ_DISABLE, IRQ0, 1, 0)
+DEP_REG32(IRQ_TRIGGER, 0x20)
+    DEP_FIELD(IRQ_TRIGGER, IRQ0, 1, 0)
 
 #define R_MAX ((R_IRQ_TRIGGER) + 1)
 
@@ -65,7 +65,7 @@ typedef struct IRQTestComponent {
     qemu_irq pmu_wake;
 
     uint32_t regs[R_MAX];
-    RegisterInfo regs_info[R_MAX];
+    DepRegisterInfo regs_info[R_MAX];
 } IRQTestComponent;
 
 static void itc_update_irq(void *opaque)
@@ -91,7 +91,7 @@ static void itc_generate_irq(void *opaque, int n, int level)
 
 /* Generate status read. */
 
-static uint64_t itc_status_postr(RegisterInfo *reg, uint64_t val64)
+static uint64_t itc_status_postr(DepRegisterInfo *reg, uint64_t val64)
 {
     IRQTestComponent *s = IRQ_TEST_COMPONENT(reg->opaque);
     DeviceState *dev = DEVICE(s);
@@ -104,14 +104,14 @@ static uint64_t itc_status_postr(RegisterInfo *reg, uint64_t val64)
     return tmp;
 }
 
-static void itc_irq_status_postw(RegisterInfo *reg, uint64_t val64)
+static void itc_irq_status_postw(DepRegisterInfo *reg, uint64_t val64)
 {
     IRQTestComponent *s = IRQ_TEST_COMPONENT(reg->opaque);
 
     itc_update_irq(s);
 }
 
-static void itc_irq_enable_postw(RegisterInfo *reg, uint64_t val64)
+static void itc_irq_enable_postw(DepRegisterInfo *reg, uint64_t val64)
 {
     IRQTestComponent *s = IRQ_TEST_COMPONENT(reg->opaque);
     uint32_t val = val64;
@@ -120,7 +120,7 @@ static void itc_irq_enable_postw(RegisterInfo *reg, uint64_t val64)
     itc_update_irq(s);
 }
 
-static void itc_irq_disable_postw(RegisterInfo *reg, uint64_t val64)
+static void itc_irq_disable_postw(DepRegisterInfo *reg, uint64_t val64)
 {
     IRQTestComponent *s = IRQ_TEST_COMPONENT(reg->opaque);
     uint32_t val = val64;
@@ -129,7 +129,7 @@ static void itc_irq_disable_postw(RegisterInfo *reg, uint64_t val64)
     itc_update_irq(s);
 }
 
-static void itc_irq_trigger_postw(RegisterInfo *reg, uint64_t val64)
+static void itc_irq_trigger_postw(DepRegisterInfo *reg, uint64_t val64)
 {
     IRQTestComponent *s = IRQ_TEST_COMPONENT(reg->opaque);
     uint32_t val = val64;
@@ -138,7 +138,7 @@ static void itc_irq_trigger_postw(RegisterInfo *reg, uint64_t val64)
     itc_update_irq(s);
 }
 
-static RegisterAccessInfo irq_test_comp_regs_info[] = {
+static DepRegisterAccessInfo irq_test_comp_regs_info[] = {
     {   .name = "CONFIG",  .decode.addr = A_CONFIG,
         .rsvd = 0xffffffff,
     },{   .name = "STATUS",  .decode.addr = A_STATUS,
@@ -172,7 +172,7 @@ static void irq_test_comp_reset(DeviceState *dev)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        register_reset(&s->regs_info[i]);
+        dep_register_reset(&s->regs_info[i]);
     }
     itc_update_irq(s);
 }
@@ -180,7 +180,7 @@ static void irq_test_comp_reset(DeviceState *dev)
 static uint64_t irq_test_comp_read(void *opaque, hwaddr addr, unsigned size)
 {
     IRQTestComponent *s = IRQ_TEST_COMPONENT(opaque);
-    RegisterInfo *r = &s->regs_info[addr / 4];
+    DepRegisterInfo *r = &s->regs_info[addr / 4];
 
     if (!r->data) {
         qemu_log_mask(LOG_GUEST_ERROR,
@@ -189,14 +189,14 @@ static uint64_t irq_test_comp_read(void *opaque, hwaddr addr, unsigned size)
                       addr);
         return 0;
     }
-    return register_read(r);
+    return dep_register_read(r);
 }
 
 static void irq_test_comp_write(void *opaque, hwaddr addr, uint64_t value,
                       unsigned size)
 {
     IRQTestComponent *s = IRQ_TEST_COMPONENT(opaque);
-    RegisterInfo *r = &s->regs_info[addr / 4];
+    DepRegisterInfo *r = &s->regs_info[addr / 4];
 
     if (!r->data) {
         qemu_log_mask(LOG_GUEST_ERROR,
@@ -205,7 +205,7 @@ static void irq_test_comp_write(void *opaque, hwaddr addr, uint64_t value,
                       addr, value);
         return;
     }
-    register_write(r, value, ~0);
+    dep_register_write(r, value, ~0);
 }
 
 static const MemoryRegionOps irq_test_comp_ops = {
@@ -225,10 +225,10 @@ static void irq_test_comp_realize(DeviceState *dev, Error **errp)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(irq_test_comp_regs_info); ++i) {
-        RegisterInfo *r = &s->regs_info[
+        DepRegisterInfo *r = &s->regs_info[
                             irq_test_comp_regs_info[i].decode.addr/4];
 
-        *r = (RegisterInfo) {
+        *r = (DepRegisterInfo) {
             .data = (uint8_t *)&s->regs[
                     irq_test_comp_regs_info[i].decode.addr/4],
             .data_size = sizeof(uint32_t),
@@ -237,7 +237,7 @@ static void irq_test_comp_realize(DeviceState *dev, Error **errp)
             .prefix = prefix,
             .opaque = s,
         };
-        register_init(r);
+        dep_register_init(r);
     }
 }
 

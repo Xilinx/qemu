@@ -35,7 +35,7 @@
 #include "hw/stream.h"
 #include "qemu/bitops.h"
 #include "qapi/qmp/qerror.h"
-#include "hw/register.h"
+#include "hw/register-dep.h"
 
 #ifndef ZYNQMP_CSU_SSS_ERR_DEBUG
 #define ZYNQMP_CSU_SSS_ERR_DEBUG 0
@@ -123,7 +123,7 @@ struct ZynqMPCSUSSS {
     ZynqMPCSUSSSStream rx_devs[NUM_REMOTES];
 
     uint32_t regs[R_MAX];
-    RegisterInfo regs_info[R_MAX];
+    DepRegisterInfo regs_info[R_MAX];
 
     StreamCanPushNotifyFn notifys[NUM_REMOTES];
     void *notify_opaques[NUM_REMOTES];
@@ -147,7 +147,7 @@ static void zynqmp_csu_sss_reset(DeviceState *dev)
     int i;
  
     for (i = 0; i < R_MAX; ++i) {
-        register_reset(&s->regs_info[i]);
+        dep_register_reset(&s->regs_info[i]);
     }
     zynqmp_csu_sss_notify_all(s);
 }
@@ -223,19 +223,19 @@ static size_t zynqmp_csu_sss_stream_push(StreamSlave *obj, uint8_t *buf,
     return (tx != NO_REMOTE) ? stream_push(s->tx_devs[tx], buf, len, attr) : 0;
 }
 
-static void r_cfg_post_write(RegisterInfo *reg, uint64_t val) {
+static void r_cfg_post_write(DepRegisterInfo *reg, uint64_t val) {
     ZynqMPCSUSSS *s = ZYNQMP_CSU_SSS(reg->opaque);
 
     zynqmp_csu_sss_notify_all(s);
 }
 
-static const RegisterAccessInfo zynqmp_csu_sss_regs_info[] = {
+static const DepRegisterAccessInfo zynqmp_csu_sss_regs_info[] = {
     [R_CFG] = { .name = "R_CFG", .ro = R_CFG_RSVD, .post_write = r_cfg_post_write },
 };
 
 static const MemoryRegionOps zynqmp_csu_sss_ops = {
-    .read = register_read_memory_le,
-    .write = register_write_memory_le,
+    .read = dep_register_read_memory_le,
+    .write = dep_register_write_memory_le,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
@@ -252,9 +252,9 @@ static void zynqmp_csu_sss_realize(DeviceState *dev, Error **errp)
     int i;
 
     for (i = 0; i < R_MAX; ++i) {
-        RegisterInfo *r = &s->regs_info[i];
+        DepRegisterInfo *r = &s->regs_info[i];
 
-        *r = (RegisterInfo) {
+        *r = (DepRegisterInfo) {
             .data = (uint8_t *)&s->regs[i],
             .data_size = sizeof(uint32_t),
             .access = &zynqmp_csu_sss_regs_info[i],

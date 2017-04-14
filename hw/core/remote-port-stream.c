@@ -28,7 +28,7 @@
 
 #include "qemu/bitops.h"
 #include "qapi/qmp/qerror.h"
-#include "hw/register.h"
+#include "hw/register-dep.h"
 #include "hw/stream.h"
 #include "qapi/error.h"
 #include "hw/remote-port-device.h"

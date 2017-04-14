@@ -33,7 +33,7 @@
 
 #include "qemu/bitops.h"
 #include "qapi/qmp/qerror.h"
-#include "hw/register.h"
+#include "hw/register-dep.h"
 #include "hw/fdt_generic_util.h"
 
 #ifndef ZYNQMP_APU_ERR_DEBUG
@@ -57,16 +57,16 @@
 
 #define DB_PRINT(fmt, args...) DB_PRINT_L(1, fmt, ## args)
 
-REG32(RVBARADDR0L, 0x40)
-REG32(RVBARADDR0H, 0x44)
-REG32(RVBARADDR1L, 0x48)
-REG32(RVBARADDR1H, 0x4c)
-REG32(RVBARADDR2L, 0x50)
-REG32(RVBARADDR2H, 0x54)
-REG32(RVBARADDR3L, 0x58)
-REG32(RVBARADDR3H, 0x5c)
-REG32(PWRCTL, 0x90)
-    FIELD(PWRCTL, CPUPWRDWNREQ, 3, 0)
+DEP_REG32(RVBARADDR0L, 0x40)
+DEP_REG32(RVBARADDR0H, 0x44)
+DEP_REG32(RVBARADDR1L, 0x48)
+DEP_REG32(RVBARADDR1H, 0x4c)
+DEP_REG32(RVBARADDR2L, 0x50)
+DEP_REG32(RVBARADDR2H, 0x54)
+DEP_REG32(RVBARADDR3L, 0x58)
+DEP_REG32(RVBARADDR3H, 0x5c)
+DEP_REG32(PWRCTL, 0x90)
+    DEP_FIELD(PWRCTL, CPUPWRDWNREQ, 3, 0)
 
 #define R_MAX ((R_PWRCTL) + 1)
 
@@ -88,7 +88,7 @@ struct ZynqMPAPU {
     uint8_t cpu_in_wfi;
 
     uint32_t regs[R_MAX];
-    RegisterInfo regs_info[R_MAX];
+    DepRegisterInfo regs_info[R_MAX];
 };
 
 static void update_wfi_out(void *opaque)
@@ -108,7 +108,7 @@ static void zynqmp_apu_reset(DeviceState *dev)
     int i;
  
     for (i = 0; i < R_MAX; ++i) {
-        register_reset(&s->regs_info[i]);
+        dep_register_reset(&s->regs_info[i]);
     }
 
     s->cpu_pwrdwn_req = 0;
@@ -116,7 +116,7 @@ static void zynqmp_apu_reset(DeviceState *dev)
     update_wfi_out(s);
 }
 
-static void zynqmp_apu_rvbar_post_write(RegisterInfo *reg, uint64_t val)
+static void zynqmp_apu_rvbar_post_write(DepRegisterInfo *reg, uint64_t val)
 {
     ZynqMPAPU *s = ZYNQMP_APU(reg->opaque);
     int i;
@@ -130,7 +130,7 @@ static void zynqmp_apu_rvbar_post_write(RegisterInfo *reg, uint64_t val)
     }
 }
 
-static void zynqmp_apu_pwrctl_post_write(RegisterInfo *reg, uint64_t val)
+static void zynqmp_apu_pwrctl_post_write(DepRegisterInfo *reg, uint64_t val)
 {
     ZynqMPAPU *s = ZYNQMP_APU(reg->opaque);
     unsigned int i, new;
@@ -147,7 +147,7 @@ static void zynqmp_apu_pwrctl_post_write(RegisterInfo *reg, uint64_t val)
     update_wfi_out(s);
 }
 
-static const RegisterAccessInfo zynqmp_apu_regs_info[] = {
+static const DepRegisterAccessInfo zynqmp_apu_regs_info[] = {
 #define RVBAR_REGDEF(n) \
     {   .name = "RVBAR CPU " #n " Low",  .decode.addr = A_RVBARADDR ## n ## L, \
             .reset = 0xffff0000ul,                                             \
@@ -164,8 +164,8 @@ static const RegisterAccessInfo zynqmp_apu_regs_info[] = {
 };
 
 static const MemoryRegionOps zynqmp_apu_ops = {
-    .read = register_read_memory_le,
-    .write = register_write_memory_le,
+    .read = dep_register_read_memory_le,
+    .write = dep_register_write_memory_le,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
@@ -188,9 +188,9 @@ static void zynqmp_apu_realize(DeviceState *dev, Error **errp)
     int i;
 
     for (i = 0; i < ARRAY_SIZE(zynqmp_apu_regs_info); ++i) {
-        RegisterInfo *r = &s->regs_info[i];
+        DepRegisterInfo *r = &s->regs_info[i];
 
-        *r = (RegisterInfo) {
+        *r = (DepRegisterInfo) {
             .data = (uint8_t *)&s->regs[
                     zynqmp_apu_regs_info[i].decode.addr/4],
             .data_size = sizeof(uint32_t),

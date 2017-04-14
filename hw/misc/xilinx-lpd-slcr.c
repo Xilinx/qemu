@@ -26,7 +26,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
-#include "hw/register.h"
+#include "hw/register-dep.h"
 #include "qemu/bitops.h"
 #include "qapi/qmp/qerror.h"
 #include "qapi/error.h"
@@ -43,98 +43,98 @@
 #define XILINX_LPD_SLCR(obj) \
      OBJECT_CHECK(LPD_SLCR, (obj), TYPE_XILINX_LPD_SLCR)
 
-REG32(WPROT0, 0x0)
-    FIELD(WPROT0, ACTIVE, 1, 0)
-REG32(CTRL, 0x4)
-    FIELD(CTRL, SLVERR_ENABLE, 1, 0)
-REG32(ISR, 0x8)
-    FIELD(ISR, ADDR_DECODE_ERR, 1, 0)
-REG32(IMR, 0xc)
-    FIELD(IMR, ADDR_DECODE_ERR, 1, 0)
-REG32(IER, 0x10)
-    FIELD(IER, ADDR_DECODE_ERR, 1, 0)
-REG32(IDR, 0x14)
-    FIELD(IDR, ADDR_DECODE_ERR, 1, 0)
-REG32(ITR, 0x18)
-    FIELD(ITR, ADDR_DECODE_ERR, 1, 0)
-REG32(ECO, 0x1c)
-REG32(PERSISTENT0, 0x20)
-REG32(PERSISTENT1, 0x24)
-REG32(PERSISTENT2, 0x28)
-REG32(PERSISTENT3, 0x2c)
-REG32(PERSISTENT4, 0x30)
-REG32(PERSISTENT5, 0x34)
-REG32(PERSISTENT6, 0x38)
-REG32(PERSISTENT7, 0x3c)
-REG32(SAFETY_CHK0, 0x40)
-REG32(SAFETY_CHK1, 0x44)
-REG32(SAFETY_CHK2, 0x48)
-REG32(SAFETY_CHK3, 0x4c)
-REG32(CSUPMU_WDT_CLK_SEL, 0x00000050)
-REG32(ADMA_CFG, 0x0000200C)
-REG32(ADMA_RAM, 0x00002010)
-REG32(ERR_AIBAXI_ISR, 0x00003000)
-REG32(ERR_AIBAXI_IMR, 0x00003008)
-REG32(ERR_AIBAXI_IER, 0x00003010)
-REG32(ERR_AIBAXI_IDR, 0x00003018)
-REG32(ERR_AIBAPB_ISR, 0x00003020)
-REG32(ERR_AIBAPB_IMR, 0x00003024)
-REG32(ERR_AIBAPB_IER, 0x00003028)
-REG32(ERR_AIBAPB_IDR, 0x0000302C)
-REG32(ISO_AIBAXI_REQ, 0x00003030)
-REG32(ISO_AIBAXI_TYPE, 0x00003038)
-REG32(ISO_AIBAXI_ACK, 0x00003040)
-REG32(ISO_AIBAPB_REQ, 0x00003048)
-REG32(ISO_AIBAPB_TYPE, 0x0000304C)
-REG32(ISO_AIBAPB_ACK, 0x00003050)
-REG32(ERR_ATB_ISR, 0x00006000)
-REG32(ERR_ATB_IMR, 0x00006004)
-REG32(ERR_ATB_IER, 0x00006008)
-REG32(ERR_ATB_IDR, 0x0000600C)
-REG32(ATB_CMD_STORE_EN, 0x00006010)
-REG32(ATB_RESP_EN, 0x00006014)
-REG32(ATB_RESP_TYPE, 0x00006018)
-REG32(ATB_PRESCALE, 0x00006020)
-REG32(MUTEX0, 0x00007000)
-REG32(MUTEX1, 0x00007004)
-REG32(MUTEX2, 0x00007008)
-REG32(MUTEX3, 0x0000700C)
-REG32(GICP0_IRQ_STATUS, 0x00008000)
-REG32(GICP0_IRQ_MASK, 0x00008004)
-REG32(GICP0_IRQ_ENABLE, 0x00008008)
-REG32(GICP0_IRQ_DISABLE, 0x0000800C)
-REG32(GICP0_IRQ_TRIGGER, 0x00008010)
-REG32(GICP1_IRQ_STATUS, 0x00008014)
-REG32(GICP1_IRQ_MASK, 0x00008018)
-REG32(GICP1_IRQ_ENABLE, 0x0000801C)
-REG32(GICP1_IRQ_DISABLE, 0x00008020)
-REG32(GICP1_IRQ_TRIGGER, 0x00008024)
-REG32(GICP2_IRQ_STATUS, 0x00008028)
-REG32(GICP2_IRQ_MASK, 0x0000802C)
-REG32(GICP2_IRQ_ENABLE, 0x00008030)
-REG32(GICP2_IRQ_DISABLE, 0x00008034)
-REG32(GICP2_IRQ_TRIGGER, 0x00008038)
-REG32(GICP3_IRQ_STATUS, 0x0000803C)
-REG32(GICP3_IRQ_MASK, 0x00008040)
-REG32(GICP3_IRQ_ENABLE, 0x00008044)
-REG32(GICP3_IRQ_DISABLE, 0x00008048)
-REG32(GICP3_IRQ_TRIGGER, 0x0000804C)
-REG32(GICP4_IRQ_STATUS, 0x00008050)
-REG32(GICP4_IRQ_MASK, 0x00008054)
-REG32(GICP4_IRQ_ENABLE, 0x00008058)
-REG32(GICP4_IRQ_DISABLE, 0x0000805C)
-REG32(GICP4_IRQ_TRIGGER, 0x00008060)
-REG32(GICP_PMU_IRQ_STATUS, 0x000080A0)
-REG32(GICP_PMU_IRQ_MASK, 0x000080A4)
-REG32(GICP_PMU_IRQ_ENABLE, 0x000080A8)
-REG32(GICP_PMU_IRQ_DISABLE, 0x000080AC)
-REG32(GICP_PMU_IRQ_TRIGGER, 0x000080B0)
-REG32(AFI_FS, 0x00009000)
-REG32(LPD_CCI, 0x0000A000)
-REG32(LPD_CCI_ADDRMAP, 0x0000A004)
-REG32(LPD_CCI_QVNPREALLOC, 0x0000A008)
-REG32(LPD_SMMU, 0x0000A020)
-REG32(LPD_APU, 0x0000A040)
+DEP_REG32(WPROT0, 0x0)
+    DEP_FIELD(WPROT0, ACTIVE, 1, 0)
+DEP_REG32(CTRL, 0x4)
+    DEP_FIELD(CTRL, SLVERR_ENABLE, 1, 0)
+DEP_REG32(ISR, 0x8)
+    DEP_FIELD(ISR, ADDR_DECODE_ERR, 1, 0)
+DEP_REG32(IMR, 0xc)
+    DEP_FIELD(IMR, ADDR_DECODE_ERR, 1, 0)
+DEP_REG32(IER, 0x10)
+    DEP_FIELD(IER, ADDR_DECODE_ERR, 1, 0)
+DEP_REG32(IDR, 0x14)
+    DEP_FIELD(IDR, ADDR_DECODE_ERR, 1, 0)
+DEP_REG32(ITR, 0x18)
+    DEP_FIELD(ITR, ADDR_DECODE_ERR, 1, 0)
+DEP_REG32(ECO, 0x1c)
+DEP_REG32(PERSISTENT0, 0x20)
+DEP_REG32(PERSISTENT1, 0x24)
+DEP_REG32(PERSISTENT2, 0x28)
+DEP_REG32(PERSISTENT3, 0x2c)
+DEP_REG32(PERSISTENT4, 0x30)
+DEP_REG32(PERSISTENT5, 0x34)
+DEP_REG32(PERSISTENT6, 0x38)
+DEP_REG32(PERSISTENT7, 0x3c)
+DEP_REG32(SAFETY_CHK0, 0x40)
+DEP_REG32(SAFETY_CHK1, 0x44)
+DEP_REG32(SAFETY_CHK2, 0x48)
+DEP_REG32(SAFETY_CHK3, 0x4c)
+DEP_REG32(CSUPMU_WDT_CLK_SEL, 0x00000050)
+DEP_REG32(ADMA_CFG, 0x0000200C)
+DEP_REG32(ADMA_RAM, 0x00002010)
+DEP_REG32(ERR_AIBAXI_ISR, 0x00003000)
+DEP_REG32(ERR_AIBAXI_IMR, 0x00003008)
+DEP_REG32(ERR_AIBAXI_IER, 0x00003010)
+DEP_REG32(ERR_AIBAXI_IDR, 0x00003018)
+DEP_REG32(ERR_AIBAPB_ISR, 0x00003020)
+DEP_REG32(ERR_AIBAPB_IMR, 0x00003024)
+DEP_REG32(ERR_AIBAPB_IER, 0x00003028)
+DEP_REG32(ERR_AIBAPB_IDR, 0x0000302C)
+DEP_REG32(ISO_AIBAXI_REQ, 0x00003030)
+DEP_REG32(ISO_AIBAXI_TYPE, 0x00003038)
+DEP_REG32(ISO_AIBAXI_ACK, 0x00003040)
+DEP_REG32(ISO_AIBAPB_REQ, 0x00003048)
+DEP_REG32(ISO_AIBAPB_TYPE, 0x0000304C)
+DEP_REG32(ISO_AIBAPB_ACK, 0x00003050)
+DEP_REG32(ERR_ATB_ISR, 0x00006000)
+DEP_REG32(ERR_ATB_IMR, 0x00006004)
+DEP_REG32(ERR_ATB_IER, 0x00006008)
+DEP_REG32(ERR_ATB_IDR, 0x0000600C)
+DEP_REG32(ATB_CMD_STORE_EN, 0x00006010)
+DEP_REG32(ATB_RESP_EN, 0x00006014)
+DEP_REG32(ATB_RESP_TYPE, 0x00006018)
+DEP_REG32(ATB_PRESCALE, 0x00006020)
+DEP_REG32(MUTEX0, 0x00007000)
+DEP_REG32(MUTEX1, 0x00007004)
+DEP_REG32(MUTEX2, 0x00007008)
+DEP_REG32(MUTEX3, 0x0000700C)
+DEP_REG32(GICP0_IRQ_STATUS, 0x00008000)
+DEP_REG32(GICP0_IRQ_MASK, 0x00008004)
+DEP_REG32(GICP0_IRQ_ENABLE, 0x00008008)
+DEP_REG32(GICP0_IRQ_DISABLE, 0x0000800C)
+DEP_REG32(GICP0_IRQ_TRIGGER, 0x00008010)
+DEP_REG32(GICP1_IRQ_STATUS, 0x00008014)
+DEP_REG32(GICP1_IRQ_MASK, 0x00008018)
+DEP_REG32(GICP1_IRQ_ENABLE, 0x0000801C)
+DEP_REG32(GICP1_IRQ_DISABLE, 0x00008020)
+DEP_REG32(GICP1_IRQ_TRIGGER, 0x00008024)
+DEP_REG32(GICP2_IRQ_STATUS, 0x00008028)
+DEP_REG32(GICP2_IRQ_MASK, 0x0000802C)
+DEP_REG32(GICP2_IRQ_ENABLE, 0x00008030)
+DEP_REG32(GICP2_IRQ_DISABLE, 0x00008034)
+DEP_REG32(GICP2_IRQ_TRIGGER, 0x00008038)
+DEP_REG32(GICP3_IRQ_STATUS, 0x0000803C)
+DEP_REG32(GICP3_IRQ_MASK, 0x00008040)
+DEP_REG32(GICP3_IRQ_ENABLE, 0x00008044)
+DEP_REG32(GICP3_IRQ_DISABLE, 0x00008048)
+DEP_REG32(GICP3_IRQ_TRIGGER, 0x0000804C)
+DEP_REG32(GICP4_IRQ_STATUS, 0x00008050)
+DEP_REG32(GICP4_IRQ_MASK, 0x00008054)
+DEP_REG32(GICP4_IRQ_ENABLE, 0x00008058)
+DEP_REG32(GICP4_IRQ_DISABLE, 0x0000805C)
+DEP_REG32(GICP4_IRQ_TRIGGER, 0x00008060)
+DEP_REG32(GICP_PMU_IRQ_STATUS, 0x000080A0)
+DEP_REG32(GICP_PMU_IRQ_MASK, 0x000080A4)
+DEP_REG32(GICP_PMU_IRQ_ENABLE, 0x000080A8)
+DEP_REG32(GICP_PMU_IRQ_DISABLE, 0x000080AC)
+DEP_REG32(GICP_PMU_IRQ_TRIGGER, 0x000080B0)
+DEP_REG32(AFI_FS, 0x00009000)
+DEP_REG32(LPD_CCI, 0x0000A000)
+DEP_REG32(LPD_CCI_ADDRMAP, 0x0000A004)
+DEP_REG32(LPD_CCI_QVNPREALLOC, 0x0000A008)
+DEP_REG32(LPD_SMMU, 0x0000A020)
+DEP_REG32(LPD_APU, 0x0000A040)
 
 #define R_MAX (R_LPD_APU + 1)
 
@@ -153,17 +153,17 @@ typedef struct LPD_SLCR {
     XlnxSCUGICState *apu_gic;
 
     uint32_t regs[R_MAX];
-    RegisterInfo regs_info[R_MAX];
+    DepRegisterInfo regs_info[R_MAX];
 } LPD_SLCR;
 
 /*
  * This allows to enable/disable the write.
  * All protected register have to set that as a pre_write callback.
  */
-static uint64_t protection_prew(RegisterInfo *reg, uint64_t val64)
+static uint64_t protection_prew(DepRegisterInfo *reg, uint64_t val64)
 {
     LPD_SLCR *s = XILINX_LPD_SLCR(reg->opaque);
-    bool w_dis = AF_EX32(s->regs, WPROT0, ACTIVE);
+    bool w_dis = DEP_AF_EX32(s->regs, WPROT0, ACTIVE);
 
     if (w_dis) {
         val64 = s->regs[reg->access->decode.addr >> 2];
@@ -178,13 +178,13 @@ static void isr_update_irq(LPD_SLCR *s)
     qemu_set_irq(s->irq_isr, pending);
 }
 
-static void isr_postw(RegisterInfo *reg, uint64_t val64)
+static void isr_postw(DepRegisterInfo *reg, uint64_t val64)
 {
     LPD_SLCR *s = XILINX_LPD_SLCR(reg->opaque);
     isr_update_irq(s);
 }
 
-static uint64_t ier_prew(RegisterInfo *reg, uint64_t val64)
+static uint64_t ier_prew(DepRegisterInfo *reg, uint64_t val64)
 {
     LPD_SLCR *s = XILINX_LPD_SLCR(reg->opaque);
     uint32_t val = protection_prew(reg, val64);
@@ -194,7 +194,7 @@ static uint64_t ier_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
-static uint64_t idr_prew(RegisterInfo *reg, uint64_t val64)
+static uint64_t idr_prew(DepRegisterInfo *reg, uint64_t val64)
 {
     LPD_SLCR *s = XILINX_LPD_SLCR(reg->opaque);
     uint32_t val = protection_prew(reg, val64);
@@ -204,7 +204,7 @@ static uint64_t idr_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
-static uint64_t itr_prew(RegisterInfo *reg, uint64_t val64)
+static uint64_t itr_prew(DepRegisterInfo *reg, uint64_t val64)
 {
     LPD_SLCR *s = XILINX_LPD_SLCR(reg->opaque);
     uint32_t val = protection_prew(reg, val64);
@@ -214,7 +214,7 @@ static uint64_t itr_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
-static uint64_t mutex_prew(RegisterInfo *reg, uint64_t val64)
+static uint64_t mutex_prew(DepRegisterInfo *reg, uint64_t val64)
 {
     LPD_SLCR *s = XILINX_LPD_SLCR(reg->opaque);
     uint32_t val = protection_prew(reg, val64);
@@ -235,7 +235,7 @@ static void lpd_slcr_peripheral_irq_update(LPD_SLCR *s, uint8_t bank)
     xlnx_scu_gic_set_intr(s->apu_gic, bank, s->regs[GIC_IRQ_STATUS(bank)], 1);
 }
 
-static uint64_t lpd_slcr_ier_prew(RegisterInfo *reg, uint64_t val64)
+static uint64_t lpd_slcr_ier_prew(DepRegisterInfo *reg, uint64_t val64)
 {
     LPD_SLCR *s = XILINX_LPD_SLCR(reg->opaque);
     uint32_t val = protection_prew(reg, val64);
@@ -246,7 +246,7 @@ static uint64_t lpd_slcr_ier_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
-static uint64_t lpd_slcr_idr_prew(RegisterInfo *reg, uint64_t val64)
+static uint64_t lpd_slcr_idr_prew(DepRegisterInfo *reg, uint64_t val64)
 {
     LPD_SLCR *s = XILINX_LPD_SLCR(reg->opaque);
     uint32_t val = protection_prew(reg, val64);
@@ -257,7 +257,7 @@ static uint64_t lpd_slcr_idr_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
-static void lpd_slcr_inttrig_posw(RegisterInfo *reg, uint64_t val64)
+static void lpd_slcr_inttrig_posw(DepRegisterInfo *reg, uint64_t val64)
 {
     LPD_SLCR *s = XILINX_LPD_SLCR(reg->opaque);
     uint32_t val = val64;
@@ -271,14 +271,14 @@ static void lpd_slcr_inttrig_posw(RegisterInfo *reg, uint64_t val64)
     lpd_slcr_peripheral_irq_update(s, OFFSET_TO_BANK(reg->access->decode.addr));
 }
 
-static void lpd_slcr_intstatus_posw(RegisterInfo *reg, uint64_t val64)
+static void lpd_slcr_intstatus_posw(DepRegisterInfo *reg, uint64_t val64)
 {
     LPD_SLCR *s = XILINX_LPD_SLCR(reg->opaque);
 
     lpd_slcr_peripheral_irq_update(s, OFFSET_TO_BANK(reg->access->decode.addr));
 }
 
-static RegisterAccessInfo lpd_slcr_regs_info[] = {
+static DepRegisterAccessInfo lpd_slcr_regs_info[] = {
     {   .name = "WPROT0",  .decode.addr = A_WPROT0,
         .reset = 0x1,
     },{ .name = "CTRL",  .decode.addr = A_CTRL,
@@ -559,7 +559,7 @@ static void lpd_slcr_reset(DeviceState *dev)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        register_reset(&s->regs_info[i]);
+        dep_register_reset(&s->regs_info[i]);
     }
 
     isr_update_irq(s);
@@ -568,7 +568,7 @@ static void lpd_slcr_reset(DeviceState *dev)
 static uint64_t lpd_slcr_read(void *opaque, hwaddr addr, unsigned size)
 {
     LPD_SLCR *s = XILINX_LPD_SLCR(opaque);
-    RegisterInfo *r = &s->regs_info[addr / 4];
+    DepRegisterInfo *r = &s->regs_info[addr / 4];
 
     if (!r->data) {
         qemu_log("%s: Decode error: read from %" HWADDR_PRIx "\n",
@@ -576,14 +576,14 @@ static uint64_t lpd_slcr_read(void *opaque, hwaddr addr, unsigned size)
                  addr);
         return 0;
     }
-    return register_read(r);
+    return dep_register_read(r);
 }
 
 static void lpd_slcr_write(void *opaque, hwaddr addr, uint64_t value,
                       unsigned size)
 {
     LPD_SLCR *s = XILINX_LPD_SLCR(opaque);
-    RegisterInfo *r = &s->regs_info[addr / 4];
+    DepRegisterInfo *r = &s->regs_info[addr / 4];
 
     if (!r->data) {
         qemu_log("%s: Decode error: write to %" HWADDR_PRIx "=%" PRIx64 "\n",
@@ -591,7 +591,7 @@ static void lpd_slcr_write(void *opaque, hwaddr addr, uint64_t value,
                  addr, value);
         return;
     }
-    register_write(r, value, ~0);
+    dep_register_write(r, value, ~0);
 }
 
 static const MemoryRegionOps lpd_slcr_ops = {
@@ -621,9 +621,9 @@ static void lpd_slcr_realize(DeviceState *dev, Error **errp)
     }
 
     for (i = 0; i < ARRAY_SIZE(lpd_slcr_regs_info); ++i) {
-        RegisterInfo *r = &s->regs_info[lpd_slcr_regs_info[i].decode.addr/4];
+        DepRegisterInfo *r = &s->regs_info[lpd_slcr_regs_info[i].decode.addr/4];
 
-        *r = (RegisterInfo) {
+        *r = (DepRegisterInfo) {
             .data = (uint8_t *)&s->regs[
                     lpd_slcr_regs_info[i].decode.addr/4],
             .data_size = sizeof(uint32_t),

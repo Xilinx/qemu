@@ -1241,7 +1241,7 @@ static void exynos4210_update_resolution(Exynos4210fimdState *s)
 {
     DisplaySurface *surface = qemu_console_surface(s->console);
 
-    /* LCD resolution is stored in VIDEO TIME CONTROL REGISTER 2 */
+    /* LCD resolution is stored in VIDEO TIME CONTROL DEP_REGISTER 2 */
     uint32_t width = ((s->vidtcon[2] >> FIMD_VIDTCON2_HOR_SHIFT) &
             FIMD_VIDTCON2_SIZE_MASK) + 1;
     uint32_t height = ((s->vidtcon[2] >> FIMD_VIDTCON2_VER_SHIFT) &

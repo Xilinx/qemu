@@ -26,7 +26,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
-#include "hw/register.h"
+#include "hw/register-dep.h"
 #include "qemu/bitops.h"
 #include "qapi/error.h"
 #include "qemu/log.h"
@@ -41,14 +41,14 @@
 #define ARM_GEN_TIMER(obj) \
      OBJECT_CHECK(ARMGenTimer, (obj), TYPE_ARM_GEN_TIMER)
 
-REG32(COUNTER_CONTROL_REGISTER, 0x0)
-    FIELD(COUNTER_CONTROL_REGISTER, EN, 1, 1)
-    FIELD(COUNTER_CONTROL_REGISTER, HDBG, 1, 0)
-REG32(COUNTER_STATUS_REGISTER, 0x4)
-    FIELD(COUNTER_STATUS_REGISTER, DBGH, 1, 1)
-REG32(CURRENT_COUNTER_VALUE_LOWER_REGISTER, 0x8)
-REG32(CURRENT_COUNTER_VALUE_UPPER_REGISTER, 0xc)
-REG32(BASE_FREQUENCY_ID_REGISTER, 0x20)
+DEP_REG32(COUNTER_CONTROL_REGISTER, 0x0)
+    DEP_FIELD(COUNTER_CONTROL_REGISTER, EN, 1, 1)
+    DEP_FIELD(COUNTER_CONTROL_REGISTER, HDBG, 1, 0)
+DEP_REG32(COUNTER_STATUS_REGISTER, 0x4)
+    DEP_FIELD(COUNTER_STATUS_REGISTER, DBGH, 1, 1)
+DEP_REG32(CURRENT_COUNTER_VALUE_LOWER_REGISTER, 0x8)
+DEP_REG32(CURRENT_COUNTER_VALUE_UPPER_REGISTER, 0xc)
+DEP_REG32(BASE_FREQUENCY_ID_REGISTER, 0x20)
 
 #define R_MAX (R_BASE_FREQUENCY_ID_REGISTER + 1)
 
@@ -60,10 +60,10 @@ typedef struct ARMGenTimer {
     uint64_t tick_offset;
 
     uint32_t regs[R_MAX];
-    RegisterInfo regs_info[R_MAX];
+    DepRegisterInfo regs_info[R_MAX];
 } ARMGenTimer;
 
-static void counter_control_postw(RegisterInfo *reg, uint64_t val64)
+static void counter_control_postw(DepRegisterInfo *reg, uint64_t val64)
 {
     ARMGenTimer *s = ARM_GEN_TIMER(reg->opaque);
     bool new_status = extract32(s->regs[R_COUNTER_CONTROL_REGISTER],
@@ -83,7 +83,7 @@ static void counter_control_postw(RegisterInfo *reg, uint64_t val64)
     s->enabled = new_status;
 }
 
-static uint64_t couter_low_value_postr(RegisterInfo *reg, uint64_t val64)
+static uint64_t couter_low_value_postr(DepRegisterInfo *reg, uint64_t val64)
 {
     ARMGenTimer *s = ARM_GEN_TIMER(reg->opaque);
     uint64_t current_ticks, total_ticks;
@@ -102,7 +102,7 @@ static uint64_t couter_low_value_postr(RegisterInfo *reg, uint64_t val64)
     return low_ticks;
 }
 
-static uint64_t couter_high_value_postr(RegisterInfo *reg, uint64_t val64)
+static uint64_t couter_high_value_postr(DepRegisterInfo *reg, uint64_t val64)
 {
     ARMGenTimer *s = ARM_GEN_TIMER(reg->opaque);
     uint64_t current_ticks, total_ticks;
@@ -122,7 +122,7 @@ static uint64_t couter_high_value_postr(RegisterInfo *reg, uint64_t val64)
 }
 
 
-static RegisterAccessInfo arm_gen_timer_regs_info[] = {
+static DepRegisterAccessInfo arm_gen_timer_regs_info[] = {
     {   .name = "COUNTER_CONTROL_REGISTER",
         .decode.addr = A_COUNTER_CONTROL_REGISTER,
         .rsvd = 0xfffffffc,
@@ -147,7 +147,7 @@ static void arm_gen_timer_reset(DeviceState *dev)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        register_reset(&s->regs_info[i]);
+        dep_register_reset(&s->regs_info[i]);
     }
 
     s->tick_offset = 0;
@@ -157,7 +157,7 @@ static void arm_gen_timer_reset(DeviceState *dev)
 static uint64_t arm_gen_timer_read(void *opaque, hwaddr addr, unsigned size)
 {
     ARMGenTimer *s = ARM_GEN_TIMER(opaque);
-    RegisterInfo *r = &s->regs_info[addr / 4];
+    DepRegisterInfo *r = &s->regs_info[addr / 4];
 
     if (!r->data) {
         qemu_log("%s: Decode error: read from %" HWADDR_PRIx "\n",
@@ -165,14 +165,14 @@ static uint64_t arm_gen_timer_read(void *opaque, hwaddr addr, unsigned size)
                  addr);
         return 0;
     }
-    return register_read(r);
+    return dep_register_read(r);
 }
 
 static void arm_gen_timer_write(void *opaque, hwaddr addr, uint64_t value,
                       unsigned size)
 {
     ARMGenTimer *s = ARM_GEN_TIMER(opaque);
-    RegisterInfo *r = &s->regs_info[addr / 4];
+    DepRegisterInfo *r = &s->regs_info[addr / 4];
 
     if (!r->data) {
         qemu_log("%s: Decode error: write to %" HWADDR_PRIx "=%" PRIx64 "\n",
@@ -180,7 +180,7 @@ static void arm_gen_timer_write(void *opaque, hwaddr addr, uint64_t value,
                  addr, value);
         return;
     }
-    register_write(r, value, ~0);
+    dep_register_write(r, value, ~0);
 }
 
 static void arm_gen_timer_access(MemoryTransaction *tr)
@@ -223,10 +223,10 @@ static void arm_gen_timer_realize(DeviceState *dev, Error **errp)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(arm_gen_timer_regs_info); ++i) {
-        RegisterInfo *r =
+        DepRegisterInfo *r =
                     &s->regs_info[arm_gen_timer_regs_info[i].decode.addr / 4];
 
-        *r = (RegisterInfo) {
+        *r = (DepRegisterInfo) {
             .data = (uint8_t *)&s->regs[
                     arm_gen_timer_regs_info[i].decode.addr/4],
             .data_size = sizeof(uint32_t),

@@ -29,7 +29,7 @@
 
 #include "qemu/bitops.h"
 #include "qapi/qmp/qerror.h"
-#include "hw/register.h"
+#include "hw/register-dep.h"
 #include "hw/fdt_generic_util.h"
 
 #ifndef ZYNQMP_IOU_SLCR_ERR_DEBUG
@@ -41,10 +41,10 @@
 #define ZYNQMP_IOU_SLCR(obj) \
      OBJECT_CHECK(ZynqMPIOUSLCR, (obj), TYPE_ZYNQMP_IOU_SLCR)
 
-REG32(MIO, 0x0)
+DEP_REG32(MIO, 0x0)
     #define R_MIO_RSVD               0xffffff01
 
-REG32(SD_SLOTTYPE, 0x310)
+DEP_REG32(SD_SLOTTYPE, 0x310)
     #define R_SD_SLOTTYPE_RSVD       0xffffff9c
 
 #define R_MAX ((R_SD_SLOTTYPE) + 1)
@@ -56,10 +56,10 @@ struct ZynqMPIOUSLCR {
     MemoryRegion iomem;
 
     uint32_t regs[R_MAX];
-    RegisterInfo regs_info[R_MAX];
+    DepRegisterInfo regs_info[R_MAX];
 };
 
-static const RegisterAccessInfo zynqmp_iou_slcr_regs_info[] = {
+static const DepRegisterAccessInfo zynqmp_iou_slcr_regs_info[] = {
 #define M(x) \
     {   .name = "MIO" #x,             .decode.addr = A_MIO + 4 * x,         \
             .rsvd = R_MIO_RSVD,                                             \
@@ -75,7 +75,7 @@ static const RegisterAccessInfo zynqmp_iou_slcr_regs_info[] = {
 #undef M
     {   .name = "SD Slot TYPE",             .decode.addr = A_SD_SLOTTYPE,
             .rsvd = R_SD_SLOTTYPE_RSVD,
-            .gpios = (RegisterGPIOMapping []) {
+            .gpios = (DepRegisterGPIOMapping []) {
                 { .name = "SD0_SLOTTYPE",   .bit_pos = 0,    .width = 2 },
                 { .name = "SD1_SLOTTYPE",   .bit_pos = 15,    .width = 2 },
                 {},
@@ -89,13 +89,13 @@ static void zynqmp_iou_slcr_reset(DeviceState *dev)
     int i;
 
     for (i = 0; i < R_MAX; ++i) {
-        register_reset(&s->regs_info[i]);
+        dep_register_reset(&s->regs_info[i]);
     }
 }
 
 static const MemoryRegionOps zynqmp_iou_slcr_ops = {
-    .read = register_read_memory_le,
-    .write = register_write_memory_le,
+    .read = dep_register_read_memory_le,
+    .write = dep_register_write_memory_le,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
@@ -110,9 +110,9 @@ static void zynqmp_iou_slcr_realize(DeviceState *dev, Error **errp)
     int i;
 
     for (i = 0; i < ARRAY_SIZE(zynqmp_iou_slcr_regs_info); ++i) {
-        RegisterInfo *r = &s->regs_info[i];
+        DepRegisterInfo *r = &s->regs_info[i];
 
-        *r = (RegisterInfo) {
+        *r = (DepRegisterInfo) {
             .data = (uint8_t *)&s->regs[
                     zynqmp_iou_slcr_regs_info[i].decode.addr/4],
             .data_size = sizeof(uint32_t),
@@ -121,7 +121,7 @@ static void zynqmp_iou_slcr_realize(DeviceState *dev, Error **errp)
             .prefix = prefix,
             .opaque = s,
         };
-        register_init(r);
+        dep_register_init(r);
         qdev_pass_all_gpios(DEVICE(r), dev);
 
         memory_region_init_io(&r->mem, OBJECT(dev), &zynqmp_iou_slcr_ops, r,

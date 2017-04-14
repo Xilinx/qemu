@@ -28,7 +28,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "hw/register.h"
+#include "hw/register-dep.h"
 #include "hw/qdev-properties.h"
 #include "qemu/bitops.h"
 #include "hw/sysbus.h"

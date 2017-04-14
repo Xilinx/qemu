@@ -32,7 +32,7 @@
 #include "hw/ptimer.h"
 #include "qemu/bitops.h"
 #include "sysemu/dma.h"
-#include "hw/register.h"
+#include "hw/register-dep.h"
 #include "qapi/error.h"
 #include "qemu/main-loop.h"
 
@@ -76,7 +76,7 @@ enum {
 };
 
 /* The DMA_DONE_CNT is write to clear.  */
-FIELD(STATUS, DMA_DONE_CNT, 3, 13)
+DEP_FIELD(STATUS, DMA_DONE_CNT, 3, 13)
 
 enum {
     CTRL_PAUSE_MEM                  = (1 << 0),
@@ -90,7 +90,7 @@ enum {
     CTRL_RSVD                       = (~((1 << 25) - 1))
 };
 
-FIELD(CTRL, TIMEOUT, 12, 10)
+DEP_FIELD(CTRL, TIMEOUT, 12, 10)
 
 enum {
     INT_FIFO_OVERFLOW               = 1 << 7,
@@ -130,7 +130,7 @@ typedef struct ZynqMPCSUDMA {
     void *notify_opaque;
 
     uint32_t regs[R_MAX];
-    RegisterInfo regs_info[R_MAX];
+    DepRegisterInfo regs_info[R_MAX];
 } ZynqMPCSUDMA;
 
 /* This is a zynqmp specific CSU hack.  */
@@ -189,8 +189,8 @@ static inline void dmach_update_dma_cnt(ZynqMPCSUDMA *s, int a)
     int cnt;
 
     /* Increase dma_cnt.  */
-    cnt = AF_EX32(s->regs, STATUS, DMA_DONE_CNT) + a;
-    AF_DP32(s->regs, STATUS, DMA_DONE_CNT, cnt);
+    cnt = DEP_AF_EX32(s->regs, STATUS, DMA_DONE_CNT) + a;
+    DEP_AF_DP32(s->regs, STATUS, DMA_DONE_CNT, cnt);
 }
 
 static void dmach_done(ZynqMPCSUDMA *s)
@@ -326,7 +326,7 @@ static void zynqmp_csu_dma_reset(DeviceState *dev)
     int i;
 
     for (i = 0; i < R_MAX; i++) {
-        register_reset(&s->regs_info[i]);
+        dep_register_reset(&s->regs_info[i]);
     }
 }
 
@@ -394,7 +394,7 @@ static void zynqmp_csu_dma_src_notify(void *opaque)
        we currently never see backpreassure.  */
     if (dmach_timeout_enabled(s) && dmach_get_size(s)
         && !stream_can_push(s->tx_dev, zynqmp_csu_dma_src_notify, s)) {
-        unsigned int timeout = AF_EX32(s->regs, CTRL, TIMEOUT);
+        unsigned int timeout = DEP_AF_EX32(s->regs, CTRL, TIMEOUT);
         unsigned int div = extract32(s->regs[R_CTRL2], 4, 12) + 1;
         unsigned int freq = 400 * 1000 * 1000;
 
@@ -407,7 +407,7 @@ static void zynqmp_csu_dma_src_notify(void *opaque)
     ronaldu_csu_dma_update_irq(s);
 }
 
-static void r_ctrl_post_write(RegisterInfo *reg, uint64_t val)
+static void r_ctrl_post_write(DepRegisterInfo *reg, uint64_t val)
 {
     ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(reg->opaque);
 
@@ -422,7 +422,7 @@ static void r_ctrl_post_write(RegisterInfo *reg, uint64_t val)
     }
 }
 
-static uint64_t size_pre_write(RegisterInfo *reg, uint64_t val)
+static uint64_t size_pre_write(DepRegisterInfo *reg, uint64_t val)
 {
     ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(reg->opaque);
     if (dmach_get_size(s) != 0) {
@@ -432,7 +432,7 @@ static uint64_t size_pre_write(RegisterInfo *reg, uint64_t val)
     return val;
 }
 
-static void size_post_write(RegisterInfo *reg, uint64_t val)
+static void size_post_write(DepRegisterInfo *reg, uint64_t val)
 {
     ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(reg->opaque);
 
@@ -454,7 +454,7 @@ static void size_post_write(RegisterInfo *reg, uint64_t val)
     }
 }
 
-static uint64_t int_status_pre_write(RegisterInfo *reg, uint64_t val)
+static uint64_t int_status_pre_write(DepRegisterInfo *reg, uint64_t val)
 {
     ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(reg->opaque);
 
@@ -466,14 +466,14 @@ static uint64_t int_status_pre_write(RegisterInfo *reg, uint64_t val)
     return val;
 }
 
-static void int_status_post_write(RegisterInfo *reg, uint64_t val)
+static void int_status_post_write(DepRegisterInfo *reg, uint64_t val)
 {
     ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(reg->opaque);
 
     ronaldu_csu_dma_update_irq(s);
 }
 
-static uint64_t int_enable_pre_write(RegisterInfo *reg, uint64_t val)
+static uint64_t int_enable_pre_write(DepRegisterInfo *reg, uint64_t val)
 {
     ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(reg->opaque);
     uint32_t v32 = val;
@@ -483,7 +483,7 @@ static uint64_t int_enable_pre_write(RegisterInfo *reg, uint64_t val)
     return 0;
 }
 
-static uint64_t int_disable_pre_write(RegisterInfo *reg, uint64_t val)
+static uint64_t int_disable_pre_write(DepRegisterInfo *reg, uint64_t val)
 {
     ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(reg->opaque);
     uint32_t v32 = val;
@@ -506,9 +506,9 @@ static void src_timeout_hit(void *opaque)
     ronaldu_csu_dma_update_irq(s);
 }
 
-static const RegisterAccessInfo *zynqmp_csu_dma_regs_info[] = {
+static const DepRegisterAccessInfo *zynqmp_csu_dma_regs_info[] = {
 #define DMACH_REGINFO(NAME, snd)                                              \
-(const RegisterAccessInfo []) {                                               \
+(const DepRegisterAccessInfo []) {                                               \
     [R_ADDR] = { .name =  #NAME "_ADDR" },                                    \
     [R_SIZE] = { .name =  #NAME "_SIZE",                                      \
                                .pre_write = size_pre_write,                   \
@@ -516,7 +516,7 @@ static const RegisterAccessInfo *zynqmp_csu_dma_regs_info[] = {
     [R_STATUS] = { .name =  #NAME "_STATUS",                                  \
             .ro = STATUS_RSVD,                                                \
             .w1c = R_STATUS_DMA_DONE_CNT_MASK,                                \
-            .ge1 = (RegisterAccessError[]) {                                  \
+            .ge1 = (DepRegisterAccessError[]) {                                  \
                  { .mask = ~(R_STATUS_DMA_DONE_CNT_MASK),                     \
                    .reason = "cannot write to status register" },             \
                    {},                                                        \
@@ -526,7 +526,7 @@ static const RegisterAccessInfo *zynqmp_csu_dma_regs_info[] = {
         .ro = (snd) ? CTRL_RSVD : 0,                                          \
         .reset = ((snd) ? 0 : 0x40 << CTRL_SSS_FIFOTHRESH_SHIFT) |            \
                  R_CTRL_TIMEOUT_MASK | 0x80 << CTRL_FIFO_THRESH_SHIFT,        \
-        .ge1 = (RegisterAccessError[]) {                                      \
+        .ge1 = (DepRegisterAccessError[]) {                                      \
             { .mask = (snd) ? CTRL_RSVD : 0,                                  \
               .reason = "write of 1 to reserved bit" },                       \
             {},                                                               \
@@ -549,11 +549,11 @@ static const RegisterAccessInfo *zynqmp_csu_dma_regs_info[] = {
         .reset = 0x8 << CTRL2_MAX_OUTS_CMDS_SHIFT |                           \
                  0xFFF << CTRL2_TIMEOUT_PRE_SHIFT | 0x081b0000,               \
         .ro = CTRL2_RSVD,                                                     \
-        .ge0 = (RegisterAccessError[]) {                                      \
+        .ge0 = (DepRegisterAccessError[]) {                                      \
             { .mask = 0x00090000, .reason = "reserved - do not modify" },     \
             {}                                                                \
         },                                                                    \
-        .ge1 = (RegisterAccessError[]) {                                      \
+        .ge1 = (DepRegisterAccessError[]) {                                      \
             { .mask = 0x00F60000, .reason = "reserved - do not modify" },     \
             {}                                                                \
         }                                                                     \
@@ -564,8 +564,8 @@ static const RegisterAccessInfo *zynqmp_csu_dma_regs_info[] = {
 };
 
 static const MemoryRegionOps zynqmp_csu_dma_ops = {
-    .read = register_read_memory_le,
-    .write = register_write_memory_le,
+    .read = dep_register_read_memory_le,
+    .write = dep_register_write_memory_le,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
@@ -578,9 +578,9 @@ static void map_dma_channel(const char *prefix, ZynqMPCSUDMA *s)
     int i;
 
     for (i = 0; i < R_MAX; ++i) {
-        RegisterInfo *r = &s->regs_info[i];
+        DepRegisterInfo *r = &s->regs_info[i];
 
-        *r = (RegisterInfo) {
+        *r = (DepRegisterInfo) {
             .data = (uint8_t *)&s->regs[i],
             .data_size = sizeof(uint32_t),
             .access = &zynqmp_csu_dma_regs_info[!!s->is_dst][i],

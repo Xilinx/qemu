@@ -8,16 +8,16 @@
  * the COPYING file in the top-level directory.
  */
 
-#ifndef REGISTER_H
-#define REGISTER_H
+#ifndef DEP_REGISTER_H
+#define DEP_REGISTER_H
 
 #include "hw/qdev-core.h"
 #include "exec/memory.h"
 #include "hw/irq.h"
 
-typedef struct RegisterInfo RegisterInfo;
-typedef struct RegisterAccessInfo RegisterAccessInfo;
-typedef struct RegisterDecodeInfo RegisterDecodeInfo;
+typedef struct DepRegisterInfo DepRegisterInfo;
+typedef struct DepRegisterAccessInfo DepRegisterAccessInfo;
+typedef struct DepRegisterDecodeInfo DepRegisterDecodeInfo;
 
 /**
  * A register access error message
@@ -25,21 +25,21 @@ typedef struct RegisterDecodeInfo RegisterDecodeInfo;
  * @reason: Reason why this access is an error
  */
 
-typedef struct RegisterAccessError {
+typedef struct DepRegisterAccessError {
     uint64_t mask;
     const char *reason;
-} RegisterAccessError;
+} DepRegisterAccessError;
 
 #define REG_GPIO_POL_HIGH 0
 #define REG_GPIO_POL_LOW  1
-typedef struct RegisterGPIOMapping {
+typedef struct DepRegisterGPIOMapping {
     const char *name;
     uint8_t bit_pos;
     bool input;
     bool polarity;
     uint8_t num;
     uint8_t width;
-} RegisterGPIOMapping;
+} DepRegisterGPIOMapping;
 
 /**
  * Access description for a register that is part of guest accessible device
@@ -68,12 +68,12 @@ typedef struct RegisterGPIOMapping {
  * allowing this function to modify the value before return to the client.
  */
 
-#define REG_DECODE_READ (1 << 0)
-#define REG_DECODE_WRITE (1 << 1)
-#define REG_DECODE_EXECUTE (1 << 2)
-#define REG_DECODE_RW (REG_DECODE_READ | REG_DECODE_WRITE)
+#define DEP_REG_DECODE_READ (1 << 0)
+#define DEP_REG_DECODE_WRITE (1 << 1)
+#define DEP_REG_DECODE_EXECUTE (1 << 2)
+#define REG_DECODE_RW (DEP_REG_DECODE_READ | DEP_REG_DECODE_WRITE)
 
-struct RegisterAccessInfo {
+struct DepRegisterAccessInfo {
     const char *name;
     uint64_t ro;
     uint64_t w1c;
@@ -83,17 +83,17 @@ struct RegisterAccessInfo {
     /* HACK - get rid of me */
     uint64_t inhibit_reset;
 
-    const RegisterAccessError *ge0;
-    const RegisterAccessError *ge1;
-    const RegisterAccessError *ui0;
-    const RegisterAccessError *ui1;
+    const DepRegisterAccessError *ge0;
+    const DepRegisterAccessError *ge1;
+    const DepRegisterAccessError *ui0;
+    const DepRegisterAccessError *ui1;
 
-    uint64_t (*pre_write)(RegisterInfo *reg, uint64_t val);
-    void (*post_write)(RegisterInfo *reg, uint64_t val);
+    uint64_t (*pre_write)(DepRegisterInfo *reg, uint64_t val);
+    void (*post_write)(DepRegisterInfo *reg, uint64_t val);
 
-    uint64_t (*post_read)(RegisterInfo *reg, uint64_t val);
+    uint64_t (*post_read)(DepRegisterInfo *reg, uint64_t val);
 
-    const RegisterGPIOMapping *gpios;
+    const DepRegisterGPIOMapping *gpios;
 
     size_t storage;
     int data_size;
@@ -124,13 +124,13 @@ struct RegisterAccessInfo {
  * @mem: optional Memory region for the register
  */
 
-struct RegisterInfo {
+struct DepRegisterInfo {
     DeviceState parent_obj;
 
     void *data;
     int data_size;
 
-    const RegisterAccessInfo *access;
+    const DepRegisterAccessInfo *access;
 
     bool debug;
     const char *prefix;
@@ -143,11 +143,11 @@ struct RegisterInfo {
     MemoryRegion mem;
 };
 
-#define TYPE_REGISTER "qemu,register"
-#define REGISTER(obj) OBJECT_CHECK(RegisterInfo, (obj), TYPE_REGISTER)
+#define TYPE_DEP_REGISTER "qemu,dep-register"
+#define DEP_REGISTER(obj) OBJECT_CHECK(DepRegisterInfo, (obj), TYPE_DEP_REGISTER)
 
-struct RegisterDecodeInfo {
-    RegisterInfo *reg;
+struct DepRegisterDecodeInfo {
+    DepRegisterInfo *reg;
     hwaddr addr;
     unsigned len;
 };
@@ -159,7 +159,7 @@ struct RegisterDecodeInfo {
  * @we: write enable mask
  */
 
-void register_write(RegisterInfo *reg, uint64_t val, uint64_t we);
+void dep_register_write(DepRegisterInfo *reg, uint64_t val, uint64_t we);
 
 /**
  * read a value from a register, subject to its restrictions
@@ -167,21 +167,21 @@ void register_write(RegisterInfo *reg, uint64_t val, uint64_t we);
  * returns: value read
  */
 
-uint64_t register_read(RegisterInfo *reg);
+uint64_t dep_register_read(DepRegisterInfo *reg);
 
 /**
  * reset a register
  * @reg: register to reset
  */
 
-void register_reset(RegisterInfo *reg);
+void dep_register_reset(DepRegisterInfo *reg);
 
 /**
  * initialize a register. Gpio's are setup as IOs to the specified device.
  * @reg: Register to initialize
  */
 
-void register_init(RegisterInfo *reg);
+void dep_register_init(DepRegisterInfo *reg);
 
 /**
  * Refresh GPIO outputs based on diff between old value register current value.
@@ -192,25 +192,25 @@ void register_init(RegisterInfo *reg);
  * @old_value: previous value of register
  */
 
-void register_refresh_gpios(RegisterInfo *reg, uint64_t old_value);
+void dep_register_refresh_gpios(DepRegisterInfo *reg, uint64_t old_value);
 
-void register_write_memory_be(void *opaque, hwaddr addr, uint64_t value,
+void dep_register_write_memory_be(void *opaque, hwaddr addr, uint64_t value,
                               unsigned size);
-void register_write_memory_le(void *opaque, hwaddr addr, uint64_t value,
+void dep_register_write_memory_le(void *opaque, hwaddr addr, uint64_t value,
                               unsigned size);
 
-uint64_t register_read_memory_be(void *opaque, hwaddr addr, unsigned size);
-uint64_t register_read_memory_le(void *opaque, hwaddr addr, unsigned size);
+uint64_t dep_register_read_memory_be(void *opaque, hwaddr addr, unsigned size);
+uint64_t dep_register_read_memory_le(void *opaque, hwaddr addr, unsigned size);
 
 /* Define constants for a 32 bit register */
 
-#define REG32(reg, addr) \
+#define DEP_REG32(reg, addr) \
 enum { A_ ## reg = (addr) }; \
 enum { R_ ## reg = (addr) / 4 };
 
 /* Define SHIFT, LEGTH and MASK constants for a field within a register */
 
-#define FIELD(reg, field, length, shift) \
+#define DEP_FIELD(reg, field, length, shift) \
 enum { R_ ## reg ## _ ## field ## _SHIFT = (shift)}; \
 enum { R_ ## reg ## _ ## field ## _LENGTH = (length)}; \
 enum { R_ ## reg ## _ ## field ## _MASK = (((1ULL << (length)) - 1) \
@@ -218,18 +218,18 @@ enum { R_ ## reg ## _ ## field ## _MASK = (((1ULL << (length)) - 1) \
 
 /* Extract a field from a register */
 
-#define F_EX32(storage, reg, field) \
+#define DEP_F_EX32(storage, reg, field) \
     extract32((storage), R_ ## reg ## _ ## field ## _SHIFT, \
               R_ ## reg ## _ ## field ## _LENGTH)
 
 /* Extract a field from an array of registers */
 
-#define AF_EX32(regs, reg, field) \
-    F_EX32((regs)[R_ ## reg], reg, field)
+#define DEP_AF_EX32(regs, reg, field) \
+    DEP_F_EX32((regs)[R_ ## reg], reg, field)
 
 /* Deposit a register field.  */
 
-#define F_DP32(storage, reg, field, val) ({                               \
+#define DEP_F_DP32(storage, reg, field, val) ({                               \
     struct {                                                              \
         unsigned int v:R_ ## reg ## _ ## field ## _LENGTH;                \
     } v = { .v = val };                                                   \
@@ -240,6 +240,6 @@ enum { R_ ## reg ## _ ## field ## _MASK = (((1ULL << (length)) - 1) \
 
 /* Deposit a field to array of registers.  */
 
-#define AF_DP32(regs, reg, field, val) \
-    (regs)[R_ ## reg] = F_DP32((regs)[R_ ## reg], reg, field, val);
+#define DEP_AF_DP32(regs, reg, field, val) \
+    (regs)[R_ ## reg] = DEP_F_DP32((regs)[R_ ## reg], reg, field, val);
 #endif

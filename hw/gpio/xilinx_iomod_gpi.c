@@ -25,7 +25,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
-#include "hw/register.h"
+#include "hw/register-dep.h"
 #include "qemu/log.h"
 
 #include "hw/fdt_generic_util.h"
@@ -55,7 +55,7 @@ typedef struct XilinxGPI {
         uint32_t size;
     } cfg;
     uint32_t regs[R_MAX];
-    RegisterInfo regs_info[R_MAX];
+    DepRegisterInfo regs_info[R_MAX];
     const char *prefix;
 } XilinxGPI;
 
@@ -67,8 +67,8 @@ static Property xlx_iom_properties[] = {
 };
 
 static const MemoryRegionOps iom_gpi_ops = {
-    .read = register_read_memory_le,
-    .write = register_write_memory_le,
+    .read = dep_register_read_memory_le,
+    .write = dep_register_write_memory_le,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
@@ -110,7 +110,7 @@ static void ien_handler(void *opaque, int n, int level)
     s->regs[R_IOM_GPI] &= s->ien;
 }
 
-static const RegisterAccessInfo gpi_regs_info[] = {
+static const DepRegisterAccessInfo gpi_regs_info[] = {
     [R_IOM_GPI] = { .name = "GPI", .ro = ~0 },
 };
 
@@ -120,7 +120,7 @@ static void iom_gpi_reset(DeviceState *dev)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        register_reset(&s->regs_info[i]);
+        dep_register_reset(&s->regs_info[i]);
     }
     /* Disable all interrupts initially. */
     s->ien = 0;
@@ -133,9 +133,9 @@ static void xlx_iom_realize(DeviceState *dev, Error **errp)
     s->prefix = object_get_canonical_path(OBJECT(dev));
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        RegisterInfo *r = &s->regs_info[i];
+        DepRegisterInfo *r = &s->regs_info[i];
 
-        *r = (RegisterInfo) {
+        *r = (DepRegisterInfo) {
             .data = (uint8_t *)&s->regs[i],
             .data_size = sizeof(uint32_t),
             .access = &gpi_regs_info[i],

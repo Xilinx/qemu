@@ -29,7 +29,7 @@
 #include "sysemu/dma.h"
 #include "hw/sysbus.h"
 #include "qemu/bitops.h"
-#include "hw/register.h"
+#include "hw/register-dep.h"
 #include "qapi/error.h"
 #include "qemu/log.h"
 #include "qemu/bitops.h"
@@ -188,7 +188,7 @@ typedef struct XilinxDevcfg {
     uint8_t dma_command_fifo_num;
 
     uint32_t regs[R_MAX];
-    RegisterInfo regs_info[R_MAX];
+    DepRegisterInfo regs_info[R_MAX];
 } XilinxDevcfg;
 
 static const VMStateDescription vmstate_xilinx_devcfg = {
@@ -218,7 +218,7 @@ static void xilinx_devcfg_reset(DeviceState *dev)
     int i;
 
     for (i = 0; i < R_MAX; ++i) {
-        register_reset(&s->regs_info[i]);
+        dep_register_reset(&s->regs_info[i]);
     }
 }
 
@@ -257,14 +257,14 @@ static void xilinx_devcfg_dma_go(XilinxDevcfg *s)
     }
 }
 
-static void r_ixr_post_write(RegisterInfo *reg, uint64_t val)
+static void r_ixr_post_write(DepRegisterInfo *reg, uint64_t val)
 {
     XilinxDevcfg *s = XILINX_DEVCFG(reg->opaque);
 
     xilinx_devcfg_update_ixr(s);
 }
 
-static uint64_t r_ctrl_pre_write(RegisterInfo *reg, uint64_t val)
+static uint64_t r_ctrl_pre_write(DepRegisterInfo *reg, uint64_t val)
 {
     XilinxDevcfg *s = XILINX_DEVCFG(reg->opaque);
     int i;
@@ -278,7 +278,7 @@ static uint64_t r_ctrl_pre_write(RegisterInfo *reg, uint64_t val)
     return val;
 }
 
-static void r_ctrl_post_write(RegisterInfo *reg, uint64_t val)
+static void r_ctrl_post_write(DepRegisterInfo *reg, uint64_t val)
 {
     uint32_t aes_en = extract32(val, PCFG_AES_EN_SHIFT, PCFG_AES_EN_LEN);
 
@@ -289,7 +289,7 @@ static void r_ctrl_post_write(RegisterInfo *reg, uint64_t val)
     }
 }
 
-static void r_unlock_post_write(RegisterInfo *reg, uint64_t val)
+static void r_unlock_post_write(DepRegisterInfo *reg, uint64_t val)
 {
     XilinxDevcfg *s = XILINX_DEVCFG(reg->opaque);
 
@@ -302,7 +302,7 @@ static void r_unlock_post_write(RegisterInfo *reg, uint64_t val)
     }
 }
 
-static uint64_t r_lock_pre_write(RegisterInfo *reg, uint64_t val)
+static uint64_t r_lock_pre_write(DepRegisterInfo *reg, uint64_t val)
 {
     XilinxDevcfg *s = XILINX_DEVCFG(reg->opaque);
 
@@ -310,7 +310,7 @@ static uint64_t r_lock_pre_write(RegisterInfo *reg, uint64_t val)
     return s->regs[R_LOCK] | val;
 }
 
-static void r_dma_dst_len_post_write(RegisterInfo *reg, uint64_t val)
+static void r_dma_dst_len_post_write(DepRegisterInfo *reg, uint64_t val)
 {
     XilinxDevcfg *s = XILINX_DEVCFG(reg->opaque);
 
@@ -326,12 +326,12 @@ static void r_dma_dst_len_post_write(RegisterInfo *reg, uint64_t val)
     xilinx_devcfg_dma_go(s);
 }
 
-static const RegisterAccessInfo xilinx_devcfg_regs_info[] = {
+static const DepRegisterAccessInfo xilinx_devcfg_regs_info[] = {
     {   .name = "CTRL",                 .decode.addr = R_CTRL * 4,
         .reset = PCAP_PR | PCAP_MODE | 0x3 << 13,
         .ro = 0x107f6000,
         .rsvd = 0x1 << 15 | 0x3 << 13,
-        .ui1 = (RegisterAccessError[]) {
+        .ui1 = (DepRegisterAccessError[]) {
             { .mask = FORCE_RST, .reason = "PS reset not implemented" },
             { .mask = PCAP_MODE, .reason = "FPGA Fabric doesnt exist" },
             { .mask = PCFG_AES_EN_MASK, .reason = "AES not implmented" },
@@ -389,8 +389,8 @@ static const RegisterAccessInfo xilinx_devcfg_regs_info[] = {
 };
 
 static const MemoryRegionOps devcfg_reg_ops = {
-    .read = register_read_memory_le,
-    .write = register_write_memory_le,
+    .read = dep_register_read_memory_le,
+    .write = dep_register_write_memory_le,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
@@ -405,9 +405,9 @@ static void xilinx_devcfg_realize(DeviceState *dev, Error **errp)
     int i;
 
     for (i = 0; i < ARRAY_SIZE(xilinx_devcfg_regs_info); ++i) {
-        RegisterInfo *r = &s->regs_info[i];
+        DepRegisterInfo *r = &s->regs_info[i];
 
-        *r = (RegisterInfo) {
+        *r = (DepRegisterInfo) {
             .data = &s->regs[
 		    xilinx_devcfg_regs_info[i].decode.addr/4],
             .data_size = sizeof(uint32_t),

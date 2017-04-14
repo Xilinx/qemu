@@ -27,7 +27,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
-#include "hw/register.h"
+#include "hw/register-dep.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
 
@@ -42,254 +42,254 @@
 #define XILINX_PMU_LOCAL(obj) \
      OBJECT_CHECK(PMULocal, (obj), TYPE_XILINX_PMU_LOCAL)
 
-REG32(ACPU0_PWR_CNTRL, 0x0)
-    FIELD(ACPU0_PWR_CNTRL, ISOLATION, 1, 4)
-    FIELD(ACPU0_PWR_CNTRL, PWR_GATES, 4, 0)
-REG32(ACPU0_PWR_STATUS, 0x4)
-    FIELD(ACPU0_PWR_STATUS, PWR_GATES, 4, 0)
-REG32(ACPU1_PWR_CNTRL, 0x10)
-    FIELD(ACPU1_PWR_CNTRL, ISOLATION, 1, 4)
-    FIELD(ACPU1_PWR_CNTRL, PWR_GATES, 4, 0)
-REG32(ACPU1_PWR_STATUS, 0x14)
-    FIELD(ACPU1_PWR_STATUS, PWR_GATES, 4, 0)
-REG32(ACPU2_PWR_CNTRL, 0x20)
-    FIELD(ACPU2_PWR_CNTRL, ISOLATION, 1, 4)
-    FIELD(ACPU2_PWR_CNTRL, PWR_GATES, 4, 0)
-REG32(ACPU2_PWR_STATUS, 0x24)
-    FIELD(ACPU2_PWR_STATUS, PWR_GATES, 4, 0)
-REG32(ACPU3_PWR_CNTRL, 0x30)
-    FIELD(ACPU3_PWR_CNTRL, ISOLATION, 1, 4)
-    FIELD(ACPU3_PWR_CNTRL, PWR_GATES, 4, 0)
-REG32(ACPU3_PWR_STATUS, 0x34)
-    FIELD(ACPU3_PWR_STATUS, PWR_GATES, 4, 0)
-REG32(PP0_PWR_CNTRL, 0x40)
-    FIELD(PP0_PWR_CNTRL, ISOLATION, 1, 4)
-    FIELD(PP0_PWR_CNTRL, PWR_GATES, 4, 0)
-REG32(PP0_PWR_STATUS, 0x44)
-    FIELD(PP0_PWR_STATUS, PWR_GATES, 4, 0)
-REG32(PP1_PWR_CNTRL, 0x48)
-    FIELD(PP1_PWR_CNTRL, ISOLATION, 1, 4)
-    FIELD(PP1_PWR_CNTRL, PWR_GATES, 4, 0)
-REG32(PP1_PWR_STATUS, 0x4c)
-    FIELD(PP1_PWR_STATUS, PWR_GATES, 4, 0)
-REG32(USB0_PWR_CNTRL, 0x60)
-    FIELD(USB0_PWR_CNTRL, ISOLATION, 1, 4)
-    FIELD(USB0_PWR_CNTRL, PWR_GATES, 4, 0)
-REG32(USB0_PWR_STATUS, 0x64)
-    FIELD(USB0_PWR_STATUS, PWR_GATES, 4, 0)
-REG32(USB1_PWR_CNTRL, 0x70)
-    FIELD(USB1_PWR_CNTRL, ISOLATION, 1, 4)
-    FIELD(USB1_PWR_CNTRL, PWR_GATES, 4, 0)
-REG32(USB1_PWR_STATUS, 0x74)
-    FIELD(USB1_PWR_STATUS, PWR_GATES, 4, 0)
-REG32(RPU_PWR_CNTRL, 0x80)
-    FIELD(RPU_PWR_CNTRL, ISOLATION, 1, 4)
-    FIELD(RPU_PWR_CNTRL, PWR_GATES, 4, 0)
-REG32(RPU_PWR_STATUS, 0x84)
-    FIELD(RPU_PWR_STATUS, PWR_GATES, 4, 0)
-REG32(L2_PWR_CNTRL, 0xb0)
-    FIELD(L2_PWR_CNTRL, BANK0, 1, 0)
-REG32(L2_RET_CNTRL, 0xb4)
-    FIELD(L2_RET_CNTRL, BANK0, 1, 0)
-REG32(L2_CE_CNTRL, 0xb8)
-    FIELD(L2_CE_CNTRL, BANK0, 1, 0)
-REG32(L2_PWR_STATUS, 0xbc)
-    FIELD(L2_PWR_STATUS, BANK0, 1, 0)
-REG32(OCM_PWR_CNTRL, 0xc0)
-    FIELD(OCM_PWR_CNTRL, BANK3, 1, 24)
-    FIELD(OCM_PWR_CNTRL, BANK2, 1, 16)
-    FIELD(OCM_PWR_CNTRL, BANK1, 1, 8)
-    FIELD(OCM_PWR_CNTRL, BANK0, 1, 0)
-REG32(OCM_RET_CNTRL, 0xc4)
-    FIELD(OCM_RET_CNTRL, BANK3, 1, 3)
-    FIELD(OCM_RET_CNTRL, BANK2, 1, 2)
-    FIELD(OCM_RET_CNTRL, BANK1, 1, 1)
-    FIELD(OCM_RET_CNTRL, BANK0, 1, 0)
-REG32(OCM_CE_CNTRL, 0xc8)
-    FIELD(OCM_CE_CNTRL, BANK3, 1, 3)
-    FIELD(OCM_CE_CNTRL, BANK2, 1, 2)
-    FIELD(OCM_CE_CNTRL, BANK1, 1, 1)
-    FIELD(OCM_CE_CNTRL, BANK0, 1, 0)
-REG32(OCM_PWR_STATUS, 0xcc)
-    FIELD(OCM_PWR_STATUS, BANK3, 1, 24)
-    FIELD(OCM_PWR_STATUS, BANK2, 1, 16)
-    FIELD(OCM_PWR_STATUS, BANK1, 1, 8)
-    FIELD(OCM_PWR_STATUS, BANK0, 1, 0)
-REG32(TCM_PWR_CNTRL, 0xd0)
-    FIELD(TCM_PWR_CNTRL, TCMB1, 1, 24)
-    FIELD(TCM_PWR_CNTRL, TCMA1, 1, 16)
-    FIELD(TCM_PWR_CNTRL, TCMB0, 1, 8)
-    FIELD(TCM_PWR_CNTRL, TCMA0, 1, 0)
-REG32(TCM_RET_CNTRL, 0xd4)
-    FIELD(TCM_RET_CNTRL, TCMB1, 1, 3)
-    FIELD(TCM_RET_CNTRL, TCMA1, 1, 2)
-    FIELD(TCM_RET_CNTRL, TCMB0, 1, 1)
-    FIELD(TCM_RET_CNTRL, TCMA0, 1, 0)
-REG32(TCM_CE_CNTRL, 0xd8)
-    FIELD(TCM_CE_CNTRL, TCMB1, 1, 3)
-    FIELD(TCM_CE_CNTRL, TCMA1, 1, 2)
-    FIELD(TCM_CE_CNTRL, TCMB0, 1, 1)
-    FIELD(TCM_CE_CNTRL, TCMA0, 1, 0)
-REG32(TCM_PWR_STATUS, 0xdc)
-    FIELD(TCM_PWR_STATUS, TCMB1, 1, 24)
-    FIELD(TCM_PWR_STATUS, TCMA1, 1, 16)
-    FIELD(TCM_PWR_STATUS, TCMB0, 1, 8)
-    FIELD(TCM_PWR_STATUS, TCMA0, 1, 0)
-REG32(DOMAIN_ISO_CNTRL, 0xf0)
-    FIELD(DOMAIN_ISO_CNTRL, LP_FP_LOCKED, 1, 31)
-    FIELD(DOMAIN_ISO_CNTRL, FP_PL, 1, 5)
-    FIELD(DOMAIN_ISO_CNTRL, LP_PL_PCAP, 1, 4)
-    FIELD(DOMAIN_ISO_CNTRL, LP_PL_Non_PCAP, 1, 3)
-    FIELD(DOMAIN_ISO_CNTRL, LP_FP_2, 1, 2)
-    FIELD(DOMAIN_ISO_CNTRL, LP_FP_1, 1, 1)
-    FIELD(DOMAIN_ISO_CNTRL, PMU, 1, 0)
-REG32(LOC_PWR_STATE, 0x100)
-    FIELD(LOC_PWR_STATE, USB1, 1, 21)
-    FIELD(LOC_PWR_STATE, USB0, 1, 20)
-    FIELD(LOC_PWR_STATE, OCM_BANK3, 1, 19)
-    FIELD(LOC_PWR_STATE, OCM_BANK2, 1, 18)
-    FIELD(LOC_PWR_STATE, OCM_BANK1, 1, 17)
-    FIELD(LOC_PWR_STATE, OCM_BANK0, 1, 16)
-    FIELD(LOC_PWR_STATE, TCM1B, 1, 15)
-    FIELD(LOC_PWR_STATE, TCM1A, 1, 14)
-    FIELD(LOC_PWR_STATE, TCM0B, 1, 13)
-    FIELD(LOC_PWR_STATE, TCM0A, 1, 12)
-    FIELD(LOC_PWR_STATE, R5_1, 1, 11)
-    FIELD(LOC_PWR_STATE, R5_0, 1, 10)
-    FIELD(LOC_PWR_STATE, L2, 1, 7)
-    FIELD(LOC_PWR_STATE, GPU_PP1, 1, 5)
-    FIELD(LOC_PWR_STATE, GPU_PP0, 1, 4)
-    FIELD(LOC_PWR_STATE, ACPU3, 1, 3)
-    FIELD(LOC_PWR_STATE, ACPU2, 1, 2)
-    FIELD(LOC_PWR_STATE, ACPU1, 1, 1)
-    FIELD(LOC_PWR_STATE, ACPU0, 1, 0)
-REG32(LOC_AUX_PWR_STATE, 0x104)
-    FIELD(LOC_AUX_PWR_STATE, ACPU3_EMUL, 1, 31)
-    FIELD(LOC_AUX_PWR_STATE, ACPU2_EMUL, 1, 30)
-    FIELD(LOC_AUX_PWR_STATE, ACPU1_EMUL, 1, 29)
-    FIELD(LOC_AUX_PWR_STATE, ACPU0_EMUL, 1, 28)
-    FIELD(LOC_AUX_PWR_STATE, RPU_EMUL, 1, 27)
-    FIELD(LOC_AUX_PWR_STATE, OCM_BANK3, 1, 19)
-    FIELD(LOC_AUX_PWR_STATE, OCM_BANK2, 1, 18)
-    FIELD(LOC_AUX_PWR_STATE, OCM_BANK1, 1, 17)
-    FIELD(LOC_AUX_PWR_STATE, OCM_BANK0, 1, 16)
-    FIELD(LOC_AUX_PWR_STATE, TCM1B, 1, 15)
-    FIELD(LOC_AUX_PWR_STATE, TCM1A, 1, 14)
-    FIELD(LOC_AUX_PWR_STATE, TCM0B, 1, 13)
-    FIELD(LOC_AUX_PWR_STATE, TCM0A, 1, 12)
-    FIELD(LOC_AUX_PWR_STATE, L2, 1, 7)
-REG32(LOCAL_RESET, 0x200)
-    FIELD(LOCAL_RESET, CSU_RST, 1, 0)
-REG32(LOCAL_CNTRL, 0x204)
-    FIELD(LOCAL_CNTRL, BUS_CLK_DIS, 1, 0)
-REG32(GPO1_READ, 0x214)
-    FIELD(GPO1_READ, MIO_GPO, 6, 0)
-REG32(GPO2_READ, 0x218)
-    FIELD(GPO2_READ, DAP_RPU_WAKE_ACK, 1, 9)
-    FIELD(GPO2_READ, DAP_FP_WAKE_ACK, 1, 8)
-REG32(GPO3_READ, 0x21c)
-REG32(GPI1_MASK, 0x224)
-    FIELD(GPI1_MASK, APB_AIB_ERROR, 1, 31)
-    FIELD(GPI1_MASK, AXI_AIB_ERROR, 1, 30)
-    FIELD(GPI1_MASK, ERROR_REG2_INT, 1, 29)
-    FIELD(GPI1_MASK, ERROR_REG1_INT, 1, 28)
-    FIELD(GPI1_MASK, DBG_ACPU3_PWRUP_REQ, 1, 23)
-    FIELD(GPI1_MASK, DBG_ACPU2_PWRUP_REQ, 1, 22)
-    FIELD(GPI1_MASK, DBG_ACPU1_PWRUP_REQ, 1, 21)
-    FIELD(GPI1_MASK, DBG_ACPU0_PWRUP_REQ, 1, 20)
-    FIELD(GPI1_MASK, FPD_WAKE_GIC_PROX, 1, 16)
-    FIELD(GPI1_MASK, MIO_WAKE, 6, 10)
-    FIELD(GPI1_MASK, DAP_RPU_WAKE, 1, 9)
-    FIELD(GPI1_MASK, DAP_FP_WAKE, 1, 8)
-    FIELD(GPI1_MASK, USB1_WAKE, 1, 7)
-    FIELD(GPI1_MASK, USB0_WAKE, 1, 6)
-    FIELD(GPI1_MASK, R5_1_WAKE, 1, 5)
-    FIELD(GPI1_MASK, R5_0_WAKE, 1, 4)
-    FIELD(GPI1_MASK, ACPU3_WAKE, 1, 3)
-    FIELD(GPI1_MASK, ACPU2_WAKE, 1, 2)
-    FIELD(GPI1_MASK, ACPU1_WAKE, 1, 1)
-    FIELD(GPI1_MASK, ACPU0_WAKE, 1, 0)
-REG32(GPI2_MASK, 0x228)
-    FIELD(GPI2_MASK, DBG_ACPU3_RST_REQ, 1, 23)
-    FIELD(GPI2_MASK, DBG_ACPU2_RST_REQ, 1, 22)
-    FIELD(GPI2_MASK, DBG_ACPU1_RST_REQ, 1, 21)
-    FIELD(GPI2_MASK, DBG_ACPU0_RST_REQ, 1, 20)
-    FIELD(GPI2_MASK, CP_ACPU3_RST_REQ, 1, 19)
-    FIELD(GPI2_MASK, CP_ACPU2_RST_REQ, 1, 18)
-    FIELD(GPI2_MASK, CP_ACPU1_RST_REQ, 1, 17)
-    FIELD(GPI2_MASK, CP_ACPU0_RST_REQ, 1, 16)
-    FIELD(GPI2_MASK, FP_LP_PWRDWN_ACK, 1, 6)
-    FIELD(GPI2_MASK, R5_1_PWRDWN_REQ, 1, 5)
-    FIELD(GPI2_MASK, R5_0_PWRDWN_REQ, 1, 4)
-    FIELD(GPI2_MASK, ACPU3_PWRDWN_REQ, 1, 3)
-    FIELD(GPI2_MASK, ACPU2_PWRDWN_REQ, 1, 2)
-    FIELD(GPI2_MASK, ACPU1_PWRDWN_REQ, 1, 1)
-    FIELD(GPI2_MASK, ACPU0_PWRDWN_REQ, 1, 0)
-REG32(GPI3_MASK, 0x22c)
-REG32(LOCAL_GEN_STORAGE0, 0x300)
-REG32(LOCAL_GEN_STORAGE1, 0x304)
-REG32(LOCAL_GEN_STORAGE2, 0x308)
-REG32(LOCAL_GEN_STORAGE3, 0x30c)
-REG32(PERS_LOC_GEN_STORAGE0, 0x310)
-REG32(PERS_LOC_GEN_STORAGE1, 0x314)
-REG32(PERS_LOC_GEN_STORAGE2, 0x318)
-REG32(PERS_LOC_GEN_STORAGE3, 0x31c)
-REG32(ADDR_ERROR_STATUS, 0x320)
-    FIELD(ADDR_ERROR_STATUS, STATUS, 1, 0)
-REG32(ADDR_ERROR_INT_MASK, 0x324)
-    FIELD(ADDR_ERROR_INT_MASK, MASK, 1, 0)
-REG32(ADDR_ERROR_INT_EN, 0x328)
-    FIELD(ADDR_ERROR_INT_EN, EN, 1, 0)
-REG32(ADDR_ERROR_INT_DIS, 0x32c)
-    FIELD(ADDR_ERROR_INT_DIS, _, 1, 0)
-REG32(MBISR_CNTRL, 0x330)
-    FIELD(MBISR_CNTRL, FPD_GROUP, 1, 5)
-    FIELD(MBISR_CNTRL, ENABLE, 1, 0)
-REG32(MBISR_STATUS, 0x334)
-    FIELD(MBISR_STATUS, PASS, 1, 4)
-    FIELD(MBISR_STATUS, DONE, 1, 0)
-REG32(PMU_PB_ERR, 0x338)
-    FIELD(PMU_PB_ERR, PBERR_FLAG, 1, 31)
-    FIELD(PMU_PB_ERR, PBERR_DATA, 31, 0)
-REG32(PMU_SERV_ERR, 0x33c)
-    FIELD(PMU_SERV_ERR, FWERR, 4, 28)
-    FIELD(PMU_SERV_ERR, SERVERR_FLAG, 1, 23)
-    FIELD(PMU_SERV_ERR, SERVERR_DATA, 20, 0)
-REG32(PWR_ACK_ERR_LPD, 0x340)
-REG32(PWR_ACK_ERR_FPD, 0x344)
-REG32(SERV_LOGCLR_ERR, 0x348)
-REG32(LOGCLR_TRIG, 0x350)
-    FIELD(LOGCLR_TRIG, FP, 1, 17)
-    FIELD(LOGCLR_TRIG, LP, 1, 16)
-    FIELD(LOGCLR_TRIG, USB1, 1, 13)
-    FIELD(LOGCLR_TRIG, USB0, 1, 12)
-    FIELD(LOGCLR_TRIG, RPU, 1, 10)
-    FIELD(LOGCLR_TRIG, PP1, 1, 7)
-    FIELD(LOGCLR_TRIG, PP0, 1, 6)
-    FIELD(LOGCLR_TRIG, ACPU3, 1, 3)
-    FIELD(LOGCLR_TRIG, ACPU2, 1, 2)
-    FIELD(LOGCLR_TRIG, ACPU1, 1, 1)
-    FIELD(LOGCLR_TRIG, ACPU0, 1, 0)
-REG32(LOGCLR_ACK, 0x354)
-    FIELD(LOGCLR_ACK, FP, 1, 17)
-    FIELD(LOGCLR_ACK, LP, 1, 16)
-    FIELD(LOGCLR_ACK, USB1, 1, 13)
-    FIELD(LOGCLR_ACK, USB0, 1, 12)
-    FIELD(LOGCLR_ACK, RPU, 1, 10)
-    FIELD(LOGCLR_ACK, PP1, 1, 7)
-    FIELD(LOGCLR_ACK, PP0, 1, 6)
-    FIELD(LOGCLR_ACK, ACPU3, 1, 3)
-    FIELD(LOGCLR_ACK, ACPU2, 1, 2)
-    FIELD(LOGCLR_ACK, ACPU1, 1, 1)
-    FIELD(LOGCLR_ACK, ACPU0, 1, 0)
-REG32(APU_WFI_STATUS, 0x360)
-    FIELD(APU_WFI_STATUS, L2_WFI, 1, 16)
-    FIELD(APU_WFI_STATUS, ACPU3_WFI, 1, 3)
-    FIELD(APU_WFI_STATUS, ACPU2_WFI, 1, 2)
-    FIELD(APU_WFI_STATUS, ACPU1_WFI, 1, 1)
-    FIELD(APU_WFI_STATUS, ACPU0_WFI, 1, 0)
-REG32(ECO_1, 0x400)
-REG32(ECO_2, 0x404)
+DEP_REG32(ACPU0_PWR_CNTRL, 0x0)
+    DEP_FIELD(ACPU0_PWR_CNTRL, ISOLATION, 1, 4)
+    DEP_FIELD(ACPU0_PWR_CNTRL, PWR_GATES, 4, 0)
+DEP_REG32(ACPU0_PWR_STATUS, 0x4)
+    DEP_FIELD(ACPU0_PWR_STATUS, PWR_GATES, 4, 0)
+DEP_REG32(ACPU1_PWR_CNTRL, 0x10)
+    DEP_FIELD(ACPU1_PWR_CNTRL, ISOLATION, 1, 4)
+    DEP_FIELD(ACPU1_PWR_CNTRL, PWR_GATES, 4, 0)
+DEP_REG32(ACPU1_PWR_STATUS, 0x14)
+    DEP_FIELD(ACPU1_PWR_STATUS, PWR_GATES, 4, 0)
+DEP_REG32(ACPU2_PWR_CNTRL, 0x20)
+    DEP_FIELD(ACPU2_PWR_CNTRL, ISOLATION, 1, 4)
+    DEP_FIELD(ACPU2_PWR_CNTRL, PWR_GATES, 4, 0)
+DEP_REG32(ACPU2_PWR_STATUS, 0x24)
+    DEP_FIELD(ACPU2_PWR_STATUS, PWR_GATES, 4, 0)
+DEP_REG32(ACPU3_PWR_CNTRL, 0x30)
+    DEP_FIELD(ACPU3_PWR_CNTRL, ISOLATION, 1, 4)
+    DEP_FIELD(ACPU3_PWR_CNTRL, PWR_GATES, 4, 0)
+DEP_REG32(ACPU3_PWR_STATUS, 0x34)
+    DEP_FIELD(ACPU3_PWR_STATUS, PWR_GATES, 4, 0)
+DEP_REG32(PP0_PWR_CNTRL, 0x40)
+    DEP_FIELD(PP0_PWR_CNTRL, ISOLATION, 1, 4)
+    DEP_FIELD(PP0_PWR_CNTRL, PWR_GATES, 4, 0)
+DEP_REG32(PP0_PWR_STATUS, 0x44)
+    DEP_FIELD(PP0_PWR_STATUS, PWR_GATES, 4, 0)
+DEP_REG32(PP1_PWR_CNTRL, 0x48)
+    DEP_FIELD(PP1_PWR_CNTRL, ISOLATION, 1, 4)
+    DEP_FIELD(PP1_PWR_CNTRL, PWR_GATES, 4, 0)
+DEP_REG32(PP1_PWR_STATUS, 0x4c)
+    DEP_FIELD(PP1_PWR_STATUS, PWR_GATES, 4, 0)
+DEP_REG32(USB0_PWR_CNTRL, 0x60)
+    DEP_FIELD(USB0_PWR_CNTRL, ISOLATION, 1, 4)
+    DEP_FIELD(USB0_PWR_CNTRL, PWR_GATES, 4, 0)
+DEP_REG32(USB0_PWR_STATUS, 0x64)
+    DEP_FIELD(USB0_PWR_STATUS, PWR_GATES, 4, 0)
+DEP_REG32(USB1_PWR_CNTRL, 0x70)
+    DEP_FIELD(USB1_PWR_CNTRL, ISOLATION, 1, 4)
+    DEP_FIELD(USB1_PWR_CNTRL, PWR_GATES, 4, 0)
+DEP_REG32(USB1_PWR_STATUS, 0x74)
+    DEP_FIELD(USB1_PWR_STATUS, PWR_GATES, 4, 0)
+DEP_REG32(RPU_PWR_CNTRL, 0x80)
+    DEP_FIELD(RPU_PWR_CNTRL, ISOLATION, 1, 4)
+    DEP_FIELD(RPU_PWR_CNTRL, PWR_GATES, 4, 0)
+DEP_REG32(RPU_PWR_STATUS, 0x84)
+    DEP_FIELD(RPU_PWR_STATUS, PWR_GATES, 4, 0)
+DEP_REG32(L2_PWR_CNTRL, 0xb0)
+    DEP_FIELD(L2_PWR_CNTRL, BANK0, 1, 0)
+DEP_REG32(L2_RET_CNTRL, 0xb4)
+    DEP_FIELD(L2_RET_CNTRL, BANK0, 1, 0)
+DEP_REG32(L2_CE_CNTRL, 0xb8)
+    DEP_FIELD(L2_CE_CNTRL, BANK0, 1, 0)
+DEP_REG32(L2_PWR_STATUS, 0xbc)
+    DEP_FIELD(L2_PWR_STATUS, BANK0, 1, 0)
+DEP_REG32(OCM_PWR_CNTRL, 0xc0)
+    DEP_FIELD(OCM_PWR_CNTRL, BANK3, 1, 24)
+    DEP_FIELD(OCM_PWR_CNTRL, BANK2, 1, 16)
+    DEP_FIELD(OCM_PWR_CNTRL, BANK1, 1, 8)
+    DEP_FIELD(OCM_PWR_CNTRL, BANK0, 1, 0)
+DEP_REG32(OCM_RET_CNTRL, 0xc4)
+    DEP_FIELD(OCM_RET_CNTRL, BANK3, 1, 3)
+    DEP_FIELD(OCM_RET_CNTRL, BANK2, 1, 2)
+    DEP_FIELD(OCM_RET_CNTRL, BANK1, 1, 1)
+    DEP_FIELD(OCM_RET_CNTRL, BANK0, 1, 0)
+DEP_REG32(OCM_CE_CNTRL, 0xc8)
+    DEP_FIELD(OCM_CE_CNTRL, BANK3, 1, 3)
+    DEP_FIELD(OCM_CE_CNTRL, BANK2, 1, 2)
+    DEP_FIELD(OCM_CE_CNTRL, BANK1, 1, 1)
+    DEP_FIELD(OCM_CE_CNTRL, BANK0, 1, 0)
+DEP_REG32(OCM_PWR_STATUS, 0xcc)
+    DEP_FIELD(OCM_PWR_STATUS, BANK3, 1, 24)
+    DEP_FIELD(OCM_PWR_STATUS, BANK2, 1, 16)
+    DEP_FIELD(OCM_PWR_STATUS, BANK1, 1, 8)
+    DEP_FIELD(OCM_PWR_STATUS, BANK0, 1, 0)
+DEP_REG32(TCM_PWR_CNTRL, 0xd0)
+    DEP_FIELD(TCM_PWR_CNTRL, TCMB1, 1, 24)
+    DEP_FIELD(TCM_PWR_CNTRL, TCMA1, 1, 16)
+    DEP_FIELD(TCM_PWR_CNTRL, TCMB0, 1, 8)
+    DEP_FIELD(TCM_PWR_CNTRL, TCMA0, 1, 0)
+DEP_REG32(TCM_RET_CNTRL, 0xd4)
+    DEP_FIELD(TCM_RET_CNTRL, TCMB1, 1, 3)
+    DEP_FIELD(TCM_RET_CNTRL, TCMA1, 1, 2)
+    DEP_FIELD(TCM_RET_CNTRL, TCMB0, 1, 1)
+    DEP_FIELD(TCM_RET_CNTRL, TCMA0, 1, 0)
+DEP_REG32(TCM_CE_CNTRL, 0xd8)
+    DEP_FIELD(TCM_CE_CNTRL, TCMB1, 1, 3)
+    DEP_FIELD(TCM_CE_CNTRL, TCMA1, 1, 2)
+    DEP_FIELD(TCM_CE_CNTRL, TCMB0, 1, 1)
+    DEP_FIELD(TCM_CE_CNTRL, TCMA0, 1, 0)
+DEP_REG32(TCM_PWR_STATUS, 0xdc)
+    DEP_FIELD(TCM_PWR_STATUS, TCMB1, 1, 24)
+    DEP_FIELD(TCM_PWR_STATUS, TCMA1, 1, 16)
+    DEP_FIELD(TCM_PWR_STATUS, TCMB0, 1, 8)
+    DEP_FIELD(TCM_PWR_STATUS, TCMA0, 1, 0)
+DEP_REG32(DOMAIN_ISO_CNTRL, 0xf0)
+    DEP_FIELD(DOMAIN_ISO_CNTRL, LP_FP_LOCKED, 1, 31)
+    DEP_FIELD(DOMAIN_ISO_CNTRL, FP_PL, 1, 5)
+    DEP_FIELD(DOMAIN_ISO_CNTRL, LP_PL_PCAP, 1, 4)
+    DEP_FIELD(DOMAIN_ISO_CNTRL, LP_PL_Non_PCAP, 1, 3)
+    DEP_FIELD(DOMAIN_ISO_CNTRL, LP_FP_2, 1, 2)
+    DEP_FIELD(DOMAIN_ISO_CNTRL, LP_FP_1, 1, 1)
+    DEP_FIELD(DOMAIN_ISO_CNTRL, PMU, 1, 0)
+DEP_REG32(LOC_PWR_STATE, 0x100)
+    DEP_FIELD(LOC_PWR_STATE, USB1, 1, 21)
+    DEP_FIELD(LOC_PWR_STATE, USB0, 1, 20)
+    DEP_FIELD(LOC_PWR_STATE, OCM_BANK3, 1, 19)
+    DEP_FIELD(LOC_PWR_STATE, OCM_BANK2, 1, 18)
+    DEP_FIELD(LOC_PWR_STATE, OCM_BANK1, 1, 17)
+    DEP_FIELD(LOC_PWR_STATE, OCM_BANK0, 1, 16)
+    DEP_FIELD(LOC_PWR_STATE, TCM1B, 1, 15)
+    DEP_FIELD(LOC_PWR_STATE, TCM1A, 1, 14)
+    DEP_FIELD(LOC_PWR_STATE, TCM0B, 1, 13)
+    DEP_FIELD(LOC_PWR_STATE, TCM0A, 1, 12)
+    DEP_FIELD(LOC_PWR_STATE, R5_1, 1, 11)
+    DEP_FIELD(LOC_PWR_STATE, R5_0, 1, 10)
+    DEP_FIELD(LOC_PWR_STATE, L2, 1, 7)
+    DEP_FIELD(LOC_PWR_STATE, GPU_PP1, 1, 5)
+    DEP_FIELD(LOC_PWR_STATE, GPU_PP0, 1, 4)
+    DEP_FIELD(LOC_PWR_STATE, ACPU3, 1, 3)
+    DEP_FIELD(LOC_PWR_STATE, ACPU2, 1, 2)
+    DEP_FIELD(LOC_PWR_STATE, ACPU1, 1, 1)
+    DEP_FIELD(LOC_PWR_STATE, ACPU0, 1, 0)
+DEP_REG32(LOC_AUX_PWR_STATE, 0x104)
+    DEP_FIELD(LOC_AUX_PWR_STATE, ACPU3_EMUL, 1, 31)
+    DEP_FIELD(LOC_AUX_PWR_STATE, ACPU2_EMUL, 1, 30)
+    DEP_FIELD(LOC_AUX_PWR_STATE, ACPU1_EMUL, 1, 29)
+    DEP_FIELD(LOC_AUX_PWR_STATE, ACPU0_EMUL, 1, 28)
+    DEP_FIELD(LOC_AUX_PWR_STATE, RPU_EMUL, 1, 27)
+    DEP_FIELD(LOC_AUX_PWR_STATE, OCM_BANK3, 1, 19)
+    DEP_FIELD(LOC_AUX_PWR_STATE, OCM_BANK2, 1, 18)
+    DEP_FIELD(LOC_AUX_PWR_STATE, OCM_BANK1, 1, 17)
+    DEP_FIELD(LOC_AUX_PWR_STATE, OCM_BANK0, 1, 16)
+    DEP_FIELD(LOC_AUX_PWR_STATE, TCM1B, 1, 15)
+    DEP_FIELD(LOC_AUX_PWR_STATE, TCM1A, 1, 14)
+    DEP_FIELD(LOC_AUX_PWR_STATE, TCM0B, 1, 13)
+    DEP_FIELD(LOC_AUX_PWR_STATE, TCM0A, 1, 12)
+    DEP_FIELD(LOC_AUX_PWR_STATE, L2, 1, 7)
+DEP_REG32(LOCAL_RESET, 0x200)
+    DEP_FIELD(LOCAL_RESET, CSU_RST, 1, 0)
+DEP_REG32(LOCAL_CNTRL, 0x204)
+    DEP_FIELD(LOCAL_CNTRL, BUS_CLK_DIS, 1, 0)
+DEP_REG32(GPO1_READ, 0x214)
+    DEP_FIELD(GPO1_READ, MIO_GPO, 6, 0)
+DEP_REG32(GPO2_READ, 0x218)
+    DEP_FIELD(GPO2_READ, DAP_RPU_WAKE_ACK, 1, 9)
+    DEP_FIELD(GPO2_READ, DAP_FP_WAKE_ACK, 1, 8)
+DEP_REG32(GPO3_READ, 0x21c)
+DEP_REG32(GPI1_MASK, 0x224)
+    DEP_FIELD(GPI1_MASK, APB_AIB_ERROR, 1, 31)
+    DEP_FIELD(GPI1_MASK, AXI_AIB_ERROR, 1, 30)
+    DEP_FIELD(GPI1_MASK, ERROR_REG2_INT, 1, 29)
+    DEP_FIELD(GPI1_MASK, ERROR_REG1_INT, 1, 28)
+    DEP_FIELD(GPI1_MASK, DBG_ACPU3_PWRUP_REQ, 1, 23)
+    DEP_FIELD(GPI1_MASK, DBG_ACPU2_PWRUP_REQ, 1, 22)
+    DEP_FIELD(GPI1_MASK, DBG_ACPU1_PWRUP_REQ, 1, 21)
+    DEP_FIELD(GPI1_MASK, DBG_ACPU0_PWRUP_REQ, 1, 20)
+    DEP_FIELD(GPI1_MASK, FPD_WAKE_GIC_PROX, 1, 16)
+    DEP_FIELD(GPI1_MASK, MIO_WAKE, 6, 10)
+    DEP_FIELD(GPI1_MASK, DAP_RPU_WAKE, 1, 9)
+    DEP_FIELD(GPI1_MASK, DAP_FP_WAKE, 1, 8)
+    DEP_FIELD(GPI1_MASK, USB1_WAKE, 1, 7)
+    DEP_FIELD(GPI1_MASK, USB0_WAKE, 1, 6)
+    DEP_FIELD(GPI1_MASK, R5_1_WAKE, 1, 5)
+    DEP_FIELD(GPI1_MASK, R5_0_WAKE, 1, 4)
+    DEP_FIELD(GPI1_MASK, ACPU3_WAKE, 1, 3)
+    DEP_FIELD(GPI1_MASK, ACPU2_WAKE, 1, 2)
+    DEP_FIELD(GPI1_MASK, ACPU1_WAKE, 1, 1)
+    DEP_FIELD(GPI1_MASK, ACPU0_WAKE, 1, 0)
+DEP_REG32(GPI2_MASK, 0x228)
+    DEP_FIELD(GPI2_MASK, DBG_ACPU3_RST_REQ, 1, 23)
+    DEP_FIELD(GPI2_MASK, DBG_ACPU2_RST_REQ, 1, 22)
+    DEP_FIELD(GPI2_MASK, DBG_ACPU1_RST_REQ, 1, 21)
+    DEP_FIELD(GPI2_MASK, DBG_ACPU0_RST_REQ, 1, 20)
+    DEP_FIELD(GPI2_MASK, CP_ACPU3_RST_REQ, 1, 19)
+    DEP_FIELD(GPI2_MASK, CP_ACPU2_RST_REQ, 1, 18)
+    DEP_FIELD(GPI2_MASK, CP_ACPU1_RST_REQ, 1, 17)
+    DEP_FIELD(GPI2_MASK, CP_ACPU0_RST_REQ, 1, 16)
+    DEP_FIELD(GPI2_MASK, FP_LP_PWRDWN_ACK, 1, 6)
+    DEP_FIELD(GPI2_MASK, R5_1_PWRDWN_REQ, 1, 5)
+    DEP_FIELD(GPI2_MASK, R5_0_PWRDWN_REQ, 1, 4)
+    DEP_FIELD(GPI2_MASK, ACPU3_PWRDWN_REQ, 1, 3)
+    DEP_FIELD(GPI2_MASK, ACPU2_PWRDWN_REQ, 1, 2)
+    DEP_FIELD(GPI2_MASK, ACPU1_PWRDWN_REQ, 1, 1)
+    DEP_FIELD(GPI2_MASK, ACPU0_PWRDWN_REQ, 1, 0)
+DEP_REG32(GPI3_MASK, 0x22c)
+DEP_REG32(LOCAL_GEN_STORAGE0, 0x300)
+DEP_REG32(LOCAL_GEN_STORAGE1, 0x304)
+DEP_REG32(LOCAL_GEN_STORAGE2, 0x308)
+DEP_REG32(LOCAL_GEN_STORAGE3, 0x30c)
+DEP_REG32(PERS_LOC_GEN_STORAGE0, 0x310)
+DEP_REG32(PERS_LOC_GEN_STORAGE1, 0x314)
+DEP_REG32(PERS_LOC_GEN_STORAGE2, 0x318)
+DEP_REG32(PERS_LOC_GEN_STORAGE3, 0x31c)
+DEP_REG32(ADDR_ERROR_STATUS, 0x320)
+    DEP_FIELD(ADDR_ERROR_STATUS, STATUS, 1, 0)
+DEP_REG32(ADDR_ERROR_INT_MASK, 0x324)
+    DEP_FIELD(ADDR_ERROR_INT_MASK, MASK, 1, 0)
+DEP_REG32(ADDR_ERROR_INT_EN, 0x328)
+    DEP_FIELD(ADDR_ERROR_INT_EN, EN, 1, 0)
+DEP_REG32(ADDR_ERROR_INT_DIS, 0x32c)
+    DEP_FIELD(ADDR_ERROR_INT_DIS, _, 1, 0)
+DEP_REG32(MBISR_CNTRL, 0x330)
+    DEP_FIELD(MBISR_CNTRL, FPD_GROUP, 1, 5)
+    DEP_FIELD(MBISR_CNTRL, ENABLE, 1, 0)
+DEP_REG32(MBISR_STATUS, 0x334)
+    DEP_FIELD(MBISR_STATUS, PASS, 1, 4)
+    DEP_FIELD(MBISR_STATUS, DONE, 1, 0)
+DEP_REG32(PMU_PB_ERR, 0x338)
+    DEP_FIELD(PMU_PB_ERR, PBERR_FLAG, 1, 31)
+    DEP_FIELD(PMU_PB_ERR, PBERR_DATA, 31, 0)
+DEP_REG32(PMU_SERV_ERR, 0x33c)
+    DEP_FIELD(PMU_SERV_ERR, FWERR, 4, 28)
+    DEP_FIELD(PMU_SERV_ERR, SERVERR_FLAG, 1, 23)
+    DEP_FIELD(PMU_SERV_ERR, SERVERR_DATA, 20, 0)
+DEP_REG32(PWR_ACK_ERR_LPD, 0x340)
+DEP_REG32(PWR_ACK_ERR_FPD, 0x344)
+DEP_REG32(SERV_LOGCLR_ERR, 0x348)
+DEP_REG32(LOGCLR_TRIG, 0x350)
+    DEP_FIELD(LOGCLR_TRIG, FP, 1, 17)
+    DEP_FIELD(LOGCLR_TRIG, LP, 1, 16)
+    DEP_FIELD(LOGCLR_TRIG, USB1, 1, 13)
+    DEP_FIELD(LOGCLR_TRIG, USB0, 1, 12)
+    DEP_FIELD(LOGCLR_TRIG, RPU, 1, 10)
+    DEP_FIELD(LOGCLR_TRIG, PP1, 1, 7)
+    DEP_FIELD(LOGCLR_TRIG, PP0, 1, 6)
+    DEP_FIELD(LOGCLR_TRIG, ACPU3, 1, 3)
+    DEP_FIELD(LOGCLR_TRIG, ACPU2, 1, 2)
+    DEP_FIELD(LOGCLR_TRIG, ACPU1, 1, 1)
+    DEP_FIELD(LOGCLR_TRIG, ACPU0, 1, 0)
+DEP_REG32(LOGCLR_ACK, 0x354)
+    DEP_FIELD(LOGCLR_ACK, FP, 1, 17)
+    DEP_FIELD(LOGCLR_ACK, LP, 1, 16)
+    DEP_FIELD(LOGCLR_ACK, USB1, 1, 13)
+    DEP_FIELD(LOGCLR_ACK, USB0, 1, 12)
+    DEP_FIELD(LOGCLR_ACK, RPU, 1, 10)
+    DEP_FIELD(LOGCLR_ACK, PP1, 1, 7)
+    DEP_FIELD(LOGCLR_ACK, PP0, 1, 6)
+    DEP_FIELD(LOGCLR_ACK, ACPU3, 1, 3)
+    DEP_FIELD(LOGCLR_ACK, ACPU2, 1, 2)
+    DEP_FIELD(LOGCLR_ACK, ACPU1, 1, 1)
+    DEP_FIELD(LOGCLR_ACK, ACPU0, 1, 0)
+DEP_REG32(APU_WFI_STATUS, 0x360)
+    DEP_FIELD(APU_WFI_STATUS, L2_WFI, 1, 16)
+    DEP_FIELD(APU_WFI_STATUS, ACPU3_WFI, 1, 3)
+    DEP_FIELD(APU_WFI_STATUS, ACPU2_WFI, 1, 2)
+    DEP_FIELD(APU_WFI_STATUS, ACPU1_WFI, 1, 1)
+    DEP_FIELD(APU_WFI_STATUS, ACPU0_WFI, 1, 0)
+DEP_REG32(ECO_1, 0x400)
+DEP_REG32(ECO_2, 0x404)
 
 #define R_MAX (R_ECO_2 + 1)
 
@@ -300,7 +300,7 @@ typedef struct PMULocal {
     qemu_irq fpd_pwr_cntrl;
 
     uint32_t regs[R_MAX];
-    RegisterInfo regs_info[R_MAX];
+    DepRegisterInfo regs_info[R_MAX];
 } PMULocal;
 
 static void addr_error_update_irq(PMULocal *s)
@@ -309,13 +309,13 @@ static void addr_error_update_irq(PMULocal *s)
     qemu_set_irq(s->irq_addr_error, pending);
 }
 
-static void addr_error_status_postw(RegisterInfo *reg, uint64_t val64)
+static void addr_error_status_postw(DepRegisterInfo *reg, uint64_t val64)
 {
     PMULocal *s = XILINX_PMU_LOCAL(reg->opaque);
     addr_error_update_irq(s);
 }
 
-static uint64_t addr_error_int_en_prew(RegisterInfo *reg, uint64_t val64)
+static uint64_t addr_error_int_en_prew(DepRegisterInfo *reg, uint64_t val64)
 {
     PMULocal *s = XILINX_PMU_LOCAL(reg->opaque);
     uint32_t val = val64;
@@ -325,7 +325,7 @@ static uint64_t addr_error_int_en_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
-static uint64_t addr_error_int_dis_prew(RegisterInfo *reg, uint64_t val64)
+static uint64_t addr_error_int_dis_prew(DepRegisterInfo *reg, uint64_t val64)
 {
     PMULocal *s = XILINX_PMU_LOCAL(reg->opaque);
     uint32_t val = val64;
@@ -427,7 +427,7 @@ static struct {
     { .end = true }
 };
 
-static void prop_power_gate_postw(RegisterInfo *reg, uint64_t val64)
+static void prop_power_gate_postw(DepRegisterInfo *reg, uint64_t val64)
 {
     PMULocal *s = XILINX_PMU_LOCAL(reg->opaque);
     uint64_t addr = reg->access->decode.addr;
@@ -470,7 +470,7 @@ static void prop_power_gate_postw(RegisterInfo *reg, uint64_t val64)
  * FIXME: At the moment, this looks like the best place from which to control
  * the state of the FPD. If a better location is found, this should be moved.
  */
-static void domain_iso_cntrl_postw(RegisterInfo *reg, uint64_t val64)
+static void domain_iso_cntrl_postw(DepRegisterInfo *reg, uint64_t val64)
 {
     PMULocal *s = XILINX_PMU_LOCAL(reg->opaque);
     uint32_t val = val64;
@@ -482,7 +482,7 @@ static void domain_iso_cntrl_postw(RegisterInfo *reg, uint64_t val64)
     }
 }
 
-static RegisterAccessInfo pmu_local_regs_info[] = {
+static DepRegisterAccessInfo pmu_local_regs_info[] = {
 #define ACPU_PWR_REGDEF(n) \
     {   .name = "ACPU" #n "_PWR_CNTRL", \
         .decode.addr = A_ACPU ## n ## _PWR_CNTRL, \
@@ -490,7 +490,7 @@ static RegisterAccessInfo pmu_local_regs_info[] = {
         .rsvd = 0xffffffe0, \
         .ro = 0xffffffe0, \
         .post_write = prop_power_gate_postw, \
-        .gpios = (RegisterGPIOMapping[]) { \
+        .gpios = (DepRegisterGPIOMapping[]) { \
             { .name = "ACPU" #n "_PWR_CNTRL", .bit_pos = 0, .width = 1 }, \
             {}, \
         } \
@@ -509,7 +509,7 @@ static RegisterAccessInfo pmu_local_regs_info[] = {
         .rsvd = 0xffffffe0,
         .ro = 0xffffffe0,
         .post_write = prop_power_gate_postw,
-        .gpios = (RegisterGPIOMapping[]) {
+        .gpios = (DepRegisterGPIOMapping[]) {
             { .name = "PP0_PWR_CNTRL", .bit_pos = 0, .width = 1 },
             {},
         }
@@ -522,7 +522,7 @@ static RegisterAccessInfo pmu_local_regs_info[] = {
         .rsvd = 0xffffffe0,
         .ro = 0xffffffe0,
         .post_write = prop_power_gate_postw,
-        .gpios = (RegisterGPIOMapping[]) {
+        .gpios = (DepRegisterGPIOMapping[]) {
             { .name = "PP1_PWR_CNTRL", .bit_pos = 0, .width = 1 },
             {},
         }
@@ -535,7 +535,7 @@ static RegisterAccessInfo pmu_local_regs_info[] = {
         .rsvd = 0xffffffe0,
         .ro = 0xffffffe0,
         .post_write = prop_power_gate_postw,
-        .gpios = (RegisterGPIOMapping[]) {
+        .gpios = (DepRegisterGPIOMapping[]) {
             { .name = "USB0_PWR_CNTRL", .bit_pos = 0, .width = 1 },
             {},
         }
@@ -548,7 +548,7 @@ static RegisterAccessInfo pmu_local_regs_info[] = {
         .rsvd = 0xffffffe0,
         .ro = 0xffffffe0,
         .post_write = prop_power_gate_postw,
-        .gpios = (RegisterGPIOMapping[]) {
+        .gpios = (DepRegisterGPIOMapping[]) {
             { .name = "USB1_PWR_CNTRL", .bit_pos = 0, .width = 1 },
             {},
         }
@@ -561,7 +561,7 @@ static RegisterAccessInfo pmu_local_regs_info[] = {
         .rsvd = 0xffffffe0,
         .ro = 0xffffffe0,
         .post_write = prop_power_gate_postw,
-        .gpios = (RegisterGPIOMapping[]) {
+        .gpios = (DepRegisterGPIOMapping[]) {
             { .name = "RPU_PWR_CNTRL", .bit_pos = 0, .width = 1 },
             {},
         }
@@ -574,14 +574,14 @@ static RegisterAccessInfo pmu_local_regs_info[] = {
         .rsvd = 0xfffffffe,
         .ro = 0xfffffffe,
         .post_write = prop_power_gate_postw,
-        .gpios = (RegisterGPIOMapping[]) {
+        .gpios = (DepRegisterGPIOMapping[]) {
             { .name = "L2_PWR_CNTRL", .bit_pos = 0, .width = 1 },
             {},
         }
     },{ .name = "L2_RET_CNTRL",  .decode.addr = A_L2_RET_CNTRL,
         .rsvd = 0xfffffffe,
         .ro = 0xfffffffe,
-        .gpios = (RegisterGPIOMapping[]) {
+        .gpios = (DepRegisterGPIOMapping[]) {
             { .name = "L2_RET_CNTRL", .bit_pos = 0, .width = 1 },
             {},
         }
@@ -598,7 +598,7 @@ static RegisterAccessInfo pmu_local_regs_info[] = {
         .rsvd = 0xfefefefe,
         .ro = 0xfefefefe,
         .post_write = prop_power_gate_postw,
-        .gpios = (RegisterGPIOMapping[]) {
+        .gpios = (DepRegisterGPIOMapping[]) {
             { .name = "OCM_PWR_CNTRL_BANK0", .bit_pos = 0, .width = 1 },
             { .name = "OCM_PWR_CNTRL_BANK1", .bit_pos = 8, .width = 1 },
             { .name = "OCM_PWR_CNTRL_BANK2", .bit_pos = 16, .width = 1 },
@@ -608,7 +608,7 @@ static RegisterAccessInfo pmu_local_regs_info[] = {
     },{ .name = "OCM_RET_CNTRL",  .decode.addr = A_OCM_RET_CNTRL,
         .rsvd = 0xfffffff0,
         .ro = 0xfffffff0,
-        .gpios = (RegisterGPIOMapping[]) {
+        .gpios = (DepRegisterGPIOMapping[]) {
             { .name = "OCM_RET_CNTRL_BANK0", .bit_pos = 0, .width = 1 },
             { .name = "OCM_RET_CNTRL_BANK1", .bit_pos = 1, .width = 1 },
             { .name = "OCM_RET_CNTRL_BANK2", .bit_pos = 2, .width = 1 },
@@ -628,7 +628,7 @@ static RegisterAccessInfo pmu_local_regs_info[] = {
         .rsvd = 0xfefefefe,
         .ro = 0xfefefefe,
         .post_write = prop_power_gate_postw,
-        .gpios = (RegisterGPIOMapping[]) {
+        .gpios = (DepRegisterGPIOMapping[]) {
             { .name = "TCM_PWR_CNTRL_A0", .bit_pos = 0, .width = 1 },
             { .name = "TCM_PWR_CNTRL_B0", .bit_pos = 8, .width = 1 },
             { .name = "TCM_PWR_CNTRL_A1", .bit_pos = 16, .width = 1 },
@@ -638,7 +638,7 @@ static RegisterAccessInfo pmu_local_regs_info[] = {
     },{ .name = "TCM_RET_CNTRL",  .decode.addr = A_TCM_RET_CNTRL,
         .rsvd = 0xfffffff0,
         .ro = 0xfffffff0,
-        .gpios = (RegisterGPIOMapping[]) {
+        .gpios = (DepRegisterGPIOMapping[]) {
             { .name = "TCM_RET_CNTRL_A0", .bit_pos = 0, .width = 1 },
             { .name = "TCM_RET_CNTRL_B0", .bit_pos = 1, .width = 1 },
             { .name = "TCM_RET_CNTRL_A1", .bit_pos = 2, .width = 1 },
@@ -671,7 +671,7 @@ static RegisterAccessInfo pmu_local_regs_info[] = {
         .rsvd = 0xfffffffe,
         .ro = 0xfffffffe,
         .inhibit_reset = 1u << 31,
-        .gpios = (RegisterGPIOMapping[]) {
+        .gpios = (DepRegisterGPIOMapping[]) {
             { .name = "CSU_RST", .bit_pos = 0, .width = 1 },
             {},
         }
@@ -689,14 +689,14 @@ static RegisterAccessInfo pmu_local_regs_info[] = {
     },{ .name = "GPI1_MASK",  .decode.addr = A_GPI1_MASK,
         .rsvd = 0xf0e0000,
         .ro = 0xf0e0000,
-        .gpios = (RegisterGPIOMapping[]) {
+        .gpios = (DepRegisterGPIOMapping[]) {
             { .name = "GPI1_ENABLE", .bit_pos = 0, .width = 32 },
             {},
         }
     },{ .name = "GPI2_MASK",  .decode.addr = A_GPI2_MASK,
         .rsvd = 0xff00ff80,
         .ro = 0xff00ff80,
-        .gpios = (RegisterGPIOMapping[]) {
+        .gpios = (DepRegisterGPIOMapping[]) {
             { .name = "GPI2_ENABLE", .bit_pos = 0, .width = 32 },
             {},
         }
@@ -751,11 +751,11 @@ static void pmu_local_reset(DeviceState *dev)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        register_reset(&s->regs_info[i]);
+        dep_register_reset(&s->regs_info[i]);
     }
 
     /*
-     * since post_write is not called on register_reset, we have to manually
+     * since post_write is not called on dep_register_reset, we have to manually
      * call the post_write function for the DOMAIN_ISO_CNTRL register to
      * ensure that the FPD power state is updated correctly on reset
      */
@@ -768,34 +768,34 @@ static void pmu_local_reset(DeviceState *dev)
 static uint64_t pmu_local_read(void *opaque, hwaddr addr, unsigned size)
 {
     PMULocal *s = XILINX_PMU_LOCAL(opaque);
-    RegisterInfo *r = &s->regs_info[addr / 4];
+    DepRegisterInfo *r = &s->regs_info[addr / 4];
 
     if (!r->data) {
         qemu_log("%s: Decode error: read from %" HWADDR_PRIx "\n",
                  object_get_canonical_path(OBJECT(s)),
                  addr);
-        AF_DP32(s->regs, ADDR_ERROR_STATUS, STATUS, true);
+        DEP_AF_DP32(s->regs, ADDR_ERROR_STATUS, STATUS, true);
         addr_error_update_irq(s);
         return 0;
     }
-    return register_read(r);
+    return dep_register_read(r);
 }
 
 static void pmu_local_write(void *opaque, hwaddr addr, uint64_t value,
                       unsigned size)
 {
     PMULocal *s = XILINX_PMU_LOCAL(opaque);
-    RegisterInfo *r = &s->regs_info[addr / 4];
+    DepRegisterInfo *r = &s->regs_info[addr / 4];
 
     if (!r->data) {
         qemu_log("%s: Decode error: write to %" HWADDR_PRIx "=%" PRIx64 "\n",
                  object_get_canonical_path(OBJECT(s)),
                  addr, value);
-        AF_DP32(s->regs, ADDR_ERROR_STATUS, STATUS, true);
+        DEP_AF_DP32(s->regs, ADDR_ERROR_STATUS, STATUS, true);
         addr_error_update_irq(s);
         return;
     }
-    register_write(r, value, ~0);
+    dep_register_write(r, value, ~0);
 }
 
 static const MemoryRegionOps pmu_local_ops = {
@@ -815,9 +815,9 @@ static void pmu_local_realize(DeviceState *dev, Error **errp)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(pmu_local_regs_info); ++i) {
-        RegisterInfo *r = &s->regs_info[pmu_local_regs_info[i].decode.addr/4];
+        DepRegisterInfo *r = &s->regs_info[pmu_local_regs_info[i].decode.addr/4];
 
-        *r = (RegisterInfo) {
+        *r = (DepRegisterInfo) {
             .data = (uint8_t *)&s->regs[
                     pmu_local_regs_info[i].decode.addr/4],
             .data_size = sizeof(uint32_t),
@@ -826,7 +826,7 @@ static void pmu_local_realize(DeviceState *dev, Error **errp)
             .prefix = prefix,
             .opaque = s,
         };
-        register_init(r);
+        dep_register_init(r);
         qdev_pass_all_gpios(DEVICE(r), dev);
     }
     qdev_init_gpio_out_named(dev, &s->fpd_pwr_cntrl, "fpd_pwr_cntrl", 1);

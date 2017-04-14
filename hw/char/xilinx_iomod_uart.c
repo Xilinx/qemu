@@ -27,7 +27,7 @@
 #include "hw/sysbus.h"
 #include "hw/ptimer.h"
 #include "sysemu/char.h"
-#include "hw/register.h"
+#include "hw/register-dep.h"
 #include "qemu/log.h"
 
 #ifndef XILINX_IO_MODULE_UART_ERR_DEBUG
@@ -69,9 +69,9 @@ typedef struct XilinxUART {
     CharDriverState *chr;
     uint32_t regs[R_MAX_0];
     uint32_t baud;
-    RegisterInfo regs_info0[R_MAX_0];
-    RegisterInfo regs_info1[R_MAX_1];
-    RegisterInfo *regs_infos[2];
+    DepRegisterInfo regs_info0[R_MAX_0];
+    DepRegisterInfo regs_info1[R_MAX_1];
+    DepRegisterInfo *regs_infos[2];
     const char *prefix;
 } XilinxUART;
 
@@ -117,7 +117,7 @@ static void uart_event(void *opaque, int event)
 {
 }
 
-static uint64_t uart_rx_pr(RegisterInfo *reg, uint64_t val)
+static uint64_t uart_rx_pr(DepRegisterInfo *reg, uint64_t val)
 {
     XilinxUART *s = XILINX_IO_MODULE_UART(reg->opaque);
     s->regs[R_IOM_UART_STATUS] &= ~IOM_UART_STATUS_OVERRUN;
@@ -125,14 +125,14 @@ static uint64_t uart_rx_pr(RegisterInfo *reg, uint64_t val)
     return s->regs[R_IOM_UART_RX];
 }
 
-static uint64_t uart_sts_pr(RegisterInfo *reg, uint64_t val)
+static uint64_t uart_sts_pr(DepRegisterInfo *reg, uint64_t val)
 {
     XilinxUART *s = XILINX_IO_MODULE_UART(reg->opaque);
     s->regs[R_IOM_UART_STATUS] &= ~IOM_UART_STATUS_OVERRUN;
     return val;
 }
 
-static void uart_tx_pw(RegisterInfo *reg, uint64_t value)
+static void uart_tx_pw(DepRegisterInfo *reg, uint64_t value)
 {
     XilinxUART *s = XILINX_IO_MODULE_UART(reg->opaque);
     if (s->cfg.use_tx && s->chr) {
@@ -144,16 +144,16 @@ static void uart_tx_pw(RegisterInfo *reg, uint64_t value)
     }
 }
 
-static const RegisterAccessInfo uart_regs_info0[] = {
+static const DepRegisterAccessInfo uart_regs_info0[] = {
     [R_IOM_UART_RX] = { .name = "UART_RX", .post_read = uart_rx_pr },
     [R_IOM_UART_TX] = { .name = "UART_TX", .post_write = uart_tx_pw },
     [R_IOM_UART_STATUS] = { .name = "UART_STATUS", .post_read = uart_sts_pr },
 };
 
-static const RegisterAccessInfo uart_regs_info1[] = {
+static const DepRegisterAccessInfo uart_regs_info1[] = {
     [R_IOM_UART_BAUD] = { .name = "UART_BAUD" },
 };
-static const RegisterAccessInfo *uart_reginfos[] = {
+static const DepRegisterAccessInfo *uart_reginfos[] = {
     &uart_regs_info0[0], &uart_regs_info1[0]
 };
 
@@ -163,8 +163,8 @@ static const unsigned int uart_reginfo_sizes[] = {
 };
 
 static const MemoryRegionOps iom_uart_ops = {
-    .read = register_read_memory_le,
-    .write = register_write_memory_le,
+    .read = dep_register_read_memory_le,
+    .write = dep_register_write_memory_le,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
@@ -180,7 +180,7 @@ static void iom_uart_reset(DeviceState *dev)
 
     for (rmap = 0; rmap < ARRAY_SIZE(uart_reginfos); rmap++) {
         for (i = 0; i < uart_reginfo_sizes[rmap]; ++i) {
-            register_reset(&s->regs_infos[rmap][i]);
+            dep_register_reset(&s->regs_infos[rmap][i]);
         }
     }
 }
@@ -195,9 +195,9 @@ static void xlx_iom_realize(DeviceState *dev, Error **errp)
 
     for (rmap = 0; rmap < ARRAY_SIZE(uart_reginfos); rmap++) {
         for (i = 0; i < uart_reginfo_sizes[rmap]; ++i) {
-            RegisterInfo *r = &s->regs_infos[rmap][i];
+            DepRegisterInfo *r = &s->regs_infos[rmap][i];
 
-            *r = (RegisterInfo) {
+            *r = (DepRegisterInfo) {
                 .data = (uint8_t *)&regmaps[rmap][i],
                 .data_size = sizeof(uint32_t),
                 .access = &uart_reginfos[rmap][i],

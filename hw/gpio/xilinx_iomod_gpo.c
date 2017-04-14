@@ -25,7 +25,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
-#include "hw/register.h"
+#include "hw/register-dep.h"
 #include "qemu/log.h"
 
 #ifndef XILINX_IO_MODULE_GPO_ERR_DEBUG
@@ -49,7 +49,7 @@ typedef struct XilinxGPO {
         uint32_t size;
         uint32_t init;
     } cfg;
-    RegisterInfo regs_info[R_MAX];
+    DepRegisterInfo regs_info[R_MAX];
 
     qemu_irq outputs[32];
     const char *prefix;
@@ -63,8 +63,8 @@ static Property xlx_iom_properties[] = {
 };
 
 static const MemoryRegionOps iom_gpo_ops = {
-    .read = register_read_memory_le,
-    .write = register_write_memory_le,
+    .read = dep_register_read_memory_le,
+    .write = dep_register_write_memory_le,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
@@ -72,7 +72,7 @@ static const MemoryRegionOps iom_gpo_ops = {
     },
 };
 
-static void gpo_pw(RegisterInfo *reg, uint64_t value)
+static void gpo_pw(DepRegisterInfo *reg, uint64_t value)
 {
     XilinxGPO *s = XILINX_IO_MODULE_GPO(reg->opaque);
     unsigned int i;
@@ -83,12 +83,12 @@ static void gpo_pw(RegisterInfo *reg, uint64_t value)
     }
 }
 
-static uint64_t gpo_pr(RegisterInfo *reg, uint64_t value)
+static uint64_t gpo_pr(DepRegisterInfo *reg, uint64_t value)
 {
     return 0;
 }
 
-static const RegisterAccessInfo gpo_regs_info[] = {
+static const DepRegisterAccessInfo gpo_regs_info[] = {
     [R_IOM_GPO] = { .name = "GPO", .post_write = gpo_pw, .post_read = gpo_pr, },
 };
 
@@ -106,9 +106,9 @@ static void xlx_iom_realize(DeviceState *dev, Error **errp)
     s->prefix = object_get_canonical_path(OBJECT(dev));
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        RegisterInfo *r = &s->regs_info[i];
+        DepRegisterInfo *r = &s->regs_info[i];
 
-        *r = (RegisterInfo) {
+        *r = (DepRegisterInfo) {
             .data_size = sizeof(uint32_t),
             .access = &gpo_regs_info[i],
             .debug = XILINX_IO_MODULE_GPO_ERR_DEBUG,

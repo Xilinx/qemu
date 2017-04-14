@@ -27,7 +27,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
-#include "hw/register.h"
+#include "hw/register-dep.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
 
@@ -40,120 +40,120 @@
 #define XILINX_OCM(obj) \
      OBJECT_CHECK(OCMC, (obj), TYPE_XILINX_OCM)
 
-REG32(OCM_ERR_CTRL, 0x0)
-    FIELD(OCM_ERR_CTRL, UE_RES, 1, 3)
-    FIELD(OCM_ERR_CTRL, PWR_ERR_RES, 1, 2)
-    FIELD(OCM_ERR_CTRL, PZ_ERR_RES, 1, 1)
-    FIELD(OCM_ERR_CTRL, APB_ERR_RES, 1, 0)
-REG32(OCM_ISR, 0x4)
-    FIELD(OCM_ISR, UE_RMW, 1, 10)
-    FIELD(OCM_ISR, FIX_BURST_WR, 1, 9)
-    FIELD(OCM_ISR, FIX_BURST_RD, 1, 8)
-    FIELD(OCM_ISR, ECC_UE, 1, 7)
-    FIELD(OCM_ISR, ECC_CE, 1, 6)
-    FIELD(OCM_ISR, LOCK_ERR_WR, 1, 5)
-    FIELD(OCM_ISR, LOCK_ERR_RD, 1, 4)
-    FIELD(OCM_ISR, INV_OCM_WR, 1, 3)
-    FIELD(OCM_ISR, INV_OCM_RD, 1, 2)
-    FIELD(OCM_ISR, PWR_DWN, 1, 1)
-    FIELD(OCM_ISR, INV_APB, 1, 0)
-REG32(OCM_IMR, 0x8)
-    FIELD(OCM_IMR, UE_RMW, 1, 10)
-    FIELD(OCM_IMR, FIX_BURST_WR, 1, 9)
-    FIELD(OCM_IMR, FIX_BURST_RD, 1, 8)
-    FIELD(OCM_IMR, ECC_UE, 1, 7)
-    FIELD(OCM_IMR, ECC_CE, 1, 6)
-    FIELD(OCM_IMR, LOCK_ERR_WR, 1, 5)
-    FIELD(OCM_IMR, LOCK_ERR_RD, 1, 4)
-    FIELD(OCM_IMR, INV_OCM_WR, 1, 3)
-    FIELD(OCM_IMR, INV_OCM_RD, 1, 2)
-    FIELD(OCM_IMR, PWR_DWN, 1, 1)
-    FIELD(OCM_IMR, INV_APB, 1, 0)
-REG32(OCM_IEN, 0xc)
-    FIELD(OCM_IEN, UE_RMW, 1, 10)
-    FIELD(OCM_IEN, FIX_BURST_WR, 1, 9)
-    FIELD(OCM_IEN, FIX_BURST_RD, 1, 8)
-    FIELD(OCM_IEN, ECC_UE, 1, 7)
-    FIELD(OCM_IEN, ECC_CE, 1, 6)
-    FIELD(OCM_IEN, LOCK_ERR_WR, 1, 5)
-    FIELD(OCM_IEN, LOCK_ERR_RD, 1, 4)
-    FIELD(OCM_IEN, INV_OCM_WR, 1, 3)
-    FIELD(OCM_IEN, INV_OCM_RD, 1, 2)
-    FIELD(OCM_IEN, PWR_DWN, 1, 1)
-    FIELD(OCM_IEN, INV_APB, 1, 0)
-REG32(OCM_IDS, 0x10)
-    FIELD(OCM_IDS, UE_RMW, 1, 10)
-    FIELD(OCM_IDS, FIX_BURST_WR, 1, 9)
-    FIELD(OCM_IDS, FIX_BURST_RD, 1, 8)
-    FIELD(OCM_IDS, ECC_UE, 1, 7)
-    FIELD(OCM_IDS, ECC_CE, 1, 6)
-    FIELD(OCM_IDS, LOCK_ERR_WR, 1, 5)
-    FIELD(OCM_IDS, LOCK_ERR_RD, 1, 4)
-    FIELD(OCM_IDS, INV_OCM_WR, 1, 3)
-    FIELD(OCM_IDS, INV_OCM_RD, 1, 2)
-    FIELD(OCM_IDS, PWR_DWN, 1, 1)
-    FIELD(OCM_IDS, INV_APB, 1, 0)
-REG32(OCM_ECC_CNTL, 0x14)
-    FIELD(OCM_ECC_CNTL, FI_MODE, 1, 2)
-    FIELD(OCM_ECC_CNTL, DET_ONLY, 1, 1)
-    FIELD(OCM_ECC_CNTL, ECC_ON_OFF, 1, 0)
-REG32(OCM_CLR_EXE, 0x18)
-    FIELD(OCM_CLR_EXE, MON_7, 1, 7)
-    FIELD(OCM_CLR_EXE, MON_6, 1, 6)
-    FIELD(OCM_CLR_EXE, MON_5, 1, 5)
-    FIELD(OCM_CLR_EXE, MON_4, 1, 4)
-    FIELD(OCM_CLR_EXE, MON_3, 1, 3)
-    FIELD(OCM_CLR_EXE, MON_2, 1, 2)
-    FIELD(OCM_CLR_EXE, MON_1, 1, 1)
-    FIELD(OCM_CLR_EXE, MON_0, 1, 0)
-REG32(OCM_CE_FFA, 0x1c)
-    FIELD(OCM_CE_FFA, ADDR, 18, 0)
-REG32(OCM_CE_FFD0, 0x20)
-REG32(OCM_CE_FFD1, 0x24)
-REG32(OCM_CE_FFD2, 0x28)
-REG32(OCM_CE_FFD3, 0x2c)
-REG32(OCM_CE_FFE, 0x30)
-    FIELD(OCM_CE_FFE, SYNDROME, 16, 0)
-REG32(OCM_UE_FFA, 0x34)
-    FIELD(OCM_UE_FFA, ADDR, 18, 0)
-REG32(OCM_UE_FFD0, 0x38)
-REG32(OCM_UE_FFD1, 0x3c)
-REG32(OCM_UE_FFD2, 0x40)
-REG32(OCM_UE_FFD3, 0x44)
-REG32(OCM_UE_FFE, 0x48)
-    FIELD(OCM_UE_FFE, SYNDROME, 16, 0)
-REG32(OCM_FI_D0, 0x4c)
-REG32(OCM_FI_D1, 0x50)
-REG32(OCM_FI_D2, 0x54)
-REG32(OCM_FI_D3, 0x58)
-REG32(OCM_FI_SY, 0x5c)
-    FIELD(OCM_FI_SY, DATA, 16, 0)
-REG32(OCM_EMA, 0x60)
-    FIELD(OCM_EMA, BANK3, 3, 9)
-    FIELD(OCM_EMA, BANK2, 3, 6)
-    FIELD(OCM_EMA, BANK1, 3, 3)
-    FIELD(OCM_EMA, BANK0, 3, 0)
-REG32(OCM_EMAW, 0x64)
-    FIELD(OCM_EMAW, BANK3, 2, 6)
-    FIELD(OCM_EMAW, BANK2, 2, 4)
-    FIELD(OCM_EMAW, BANK1, 2, 2)
-    FIELD(OCM_EMAW, BANK0, 2, 0)
-REG32(OCM_EMAS, 0x68)
-    FIELD(OCM_EMAS, BANK3, 1, 3)
-    FIELD(OCM_EMAS, BANK2, 1, 2)
-    FIELD(OCM_EMAS, BANK1, 1, 1)
-    FIELD(OCM_EMAS, BANK0, 1, 0)
-REG32(OCM_CE_CNT, 0x6c)
-    FIELD(OCM_CE_CNT, COUNT, 16, 0)
-REG32(OCM_RMW_UE_FFA, 0x70)
-    FIELD(OCM_RMW_UE_FFA, ADDR, 18, 0)
-REG32(OCM_FI_CNTR, 0x74)
-    FIELD(OCM_FI_CNTR, COUNT, 24, 0)
-REG32(OCM_DBG_SYN_TOMEM, 0x78)
-REG32(OCM_DBG_SYN_FROMEM, 0x7c)
-REG32(OCM_IMP, 0x80)
-    FIELD(OCM_IMP, SIZE, 4, 0)
-REG32(OCM_ECO, 0xffc)
+DEP_REG32(OCM_ERR_CTRL, 0x0)
+    DEP_FIELD(OCM_ERR_CTRL, UE_RES, 1, 3)
+    DEP_FIELD(OCM_ERR_CTRL, PWR_ERR_RES, 1, 2)
+    DEP_FIELD(OCM_ERR_CTRL, PZ_ERR_RES, 1, 1)
+    DEP_FIELD(OCM_ERR_CTRL, APB_ERR_RES, 1, 0)
+DEP_REG32(OCM_ISR, 0x4)
+    DEP_FIELD(OCM_ISR, UE_RMW, 1, 10)
+    DEP_FIELD(OCM_ISR, FIX_BURST_WR, 1, 9)
+    DEP_FIELD(OCM_ISR, FIX_BURST_RD, 1, 8)
+    DEP_FIELD(OCM_ISR, ECC_UE, 1, 7)
+    DEP_FIELD(OCM_ISR, ECC_CE, 1, 6)
+    DEP_FIELD(OCM_ISR, LOCK_ERR_WR, 1, 5)
+    DEP_FIELD(OCM_ISR, LOCK_ERR_RD, 1, 4)
+    DEP_FIELD(OCM_ISR, INV_OCM_WR, 1, 3)
+    DEP_FIELD(OCM_ISR, INV_OCM_RD, 1, 2)
+    DEP_FIELD(OCM_ISR, PWR_DWN, 1, 1)
+    DEP_FIELD(OCM_ISR, INV_APB, 1, 0)
+DEP_REG32(OCM_IMR, 0x8)
+    DEP_FIELD(OCM_IMR, UE_RMW, 1, 10)
+    DEP_FIELD(OCM_IMR, FIX_BURST_WR, 1, 9)
+    DEP_FIELD(OCM_IMR, FIX_BURST_RD, 1, 8)
+    DEP_FIELD(OCM_IMR, ECC_UE, 1, 7)
+    DEP_FIELD(OCM_IMR, ECC_CE, 1, 6)
+    DEP_FIELD(OCM_IMR, LOCK_ERR_WR, 1, 5)
+    DEP_FIELD(OCM_IMR, LOCK_ERR_RD, 1, 4)
+    DEP_FIELD(OCM_IMR, INV_OCM_WR, 1, 3)
+    DEP_FIELD(OCM_IMR, INV_OCM_RD, 1, 2)
+    DEP_FIELD(OCM_IMR, PWR_DWN, 1, 1)
+    DEP_FIELD(OCM_IMR, INV_APB, 1, 0)
+DEP_REG32(OCM_IEN, 0xc)
+    DEP_FIELD(OCM_IEN, UE_RMW, 1, 10)
+    DEP_FIELD(OCM_IEN, FIX_BURST_WR, 1, 9)
+    DEP_FIELD(OCM_IEN, FIX_BURST_RD, 1, 8)
+    DEP_FIELD(OCM_IEN, ECC_UE, 1, 7)
+    DEP_FIELD(OCM_IEN, ECC_CE, 1, 6)
+    DEP_FIELD(OCM_IEN, LOCK_ERR_WR, 1, 5)
+    DEP_FIELD(OCM_IEN, LOCK_ERR_RD, 1, 4)
+    DEP_FIELD(OCM_IEN, INV_OCM_WR, 1, 3)
+    DEP_FIELD(OCM_IEN, INV_OCM_RD, 1, 2)
+    DEP_FIELD(OCM_IEN, PWR_DWN, 1, 1)
+    DEP_FIELD(OCM_IEN, INV_APB, 1, 0)
+DEP_REG32(OCM_IDS, 0x10)
+    DEP_FIELD(OCM_IDS, UE_RMW, 1, 10)
+    DEP_FIELD(OCM_IDS, FIX_BURST_WR, 1, 9)
+    DEP_FIELD(OCM_IDS, FIX_BURST_RD, 1, 8)
+    DEP_FIELD(OCM_IDS, ECC_UE, 1, 7)
+    DEP_FIELD(OCM_IDS, ECC_CE, 1, 6)
+    DEP_FIELD(OCM_IDS, LOCK_ERR_WR, 1, 5)
+    DEP_FIELD(OCM_IDS, LOCK_ERR_RD, 1, 4)
+    DEP_FIELD(OCM_IDS, INV_OCM_WR, 1, 3)
+    DEP_FIELD(OCM_IDS, INV_OCM_RD, 1, 2)
+    DEP_FIELD(OCM_IDS, PWR_DWN, 1, 1)
+    DEP_FIELD(OCM_IDS, INV_APB, 1, 0)
+DEP_REG32(OCM_ECC_CNTL, 0x14)
+    DEP_FIELD(OCM_ECC_CNTL, FI_MODE, 1, 2)
+    DEP_FIELD(OCM_ECC_CNTL, DET_ONLY, 1, 1)
+    DEP_FIELD(OCM_ECC_CNTL, ECC_ON_OFF, 1, 0)
+DEP_REG32(OCM_CLR_EXE, 0x18)
+    DEP_FIELD(OCM_CLR_EXE, MON_7, 1, 7)
+    DEP_FIELD(OCM_CLR_EXE, MON_6, 1, 6)
+    DEP_FIELD(OCM_CLR_EXE, MON_5, 1, 5)
+    DEP_FIELD(OCM_CLR_EXE, MON_4, 1, 4)
+    DEP_FIELD(OCM_CLR_EXE, MON_3, 1, 3)
+    DEP_FIELD(OCM_CLR_EXE, MON_2, 1, 2)
+    DEP_FIELD(OCM_CLR_EXE, MON_1, 1, 1)
+    DEP_FIELD(OCM_CLR_EXE, MON_0, 1, 0)
+DEP_REG32(OCM_CE_FFA, 0x1c)
+    DEP_FIELD(OCM_CE_FFA, ADDR, 18, 0)
+DEP_REG32(OCM_CE_FFD0, 0x20)
+DEP_REG32(OCM_CE_FFD1, 0x24)
+DEP_REG32(OCM_CE_FFD2, 0x28)
+DEP_REG32(OCM_CE_FFD3, 0x2c)
+DEP_REG32(OCM_CE_FFE, 0x30)
+    DEP_FIELD(OCM_CE_FFE, SYNDROME, 16, 0)
+DEP_REG32(OCM_UE_FFA, 0x34)
+    DEP_FIELD(OCM_UE_FFA, ADDR, 18, 0)
+DEP_REG32(OCM_UE_FFD0, 0x38)
+DEP_REG32(OCM_UE_FFD1, 0x3c)
+DEP_REG32(OCM_UE_FFD2, 0x40)
+DEP_REG32(OCM_UE_FFD3, 0x44)
+DEP_REG32(OCM_UE_FFE, 0x48)
+    DEP_FIELD(OCM_UE_FFE, SYNDROME, 16, 0)
+DEP_REG32(OCM_FI_D0, 0x4c)
+DEP_REG32(OCM_FI_D1, 0x50)
+DEP_REG32(OCM_FI_D2, 0x54)
+DEP_REG32(OCM_FI_D3, 0x58)
+DEP_REG32(OCM_FI_SY, 0x5c)
+    DEP_FIELD(OCM_FI_SY, DATA, 16, 0)
+DEP_REG32(OCM_EMA, 0x60)
+    DEP_FIELD(OCM_EMA, BANK3, 3, 9)
+    DEP_FIELD(OCM_EMA, BANK2, 3, 6)
+    DEP_FIELD(OCM_EMA, BANK1, 3, 3)
+    DEP_FIELD(OCM_EMA, BANK0, 3, 0)
+DEP_REG32(OCM_EMAW, 0x64)
+    DEP_FIELD(OCM_EMAW, BANK3, 2, 6)
+    DEP_FIELD(OCM_EMAW, BANK2, 2, 4)
+    DEP_FIELD(OCM_EMAW, BANK1, 2, 2)
+    DEP_FIELD(OCM_EMAW, BANK0, 2, 0)
+DEP_REG32(OCM_EMAS, 0x68)
+    DEP_FIELD(OCM_EMAS, BANK3, 1, 3)
+    DEP_FIELD(OCM_EMAS, BANK2, 1, 2)
+    DEP_FIELD(OCM_EMAS, BANK1, 1, 1)
+    DEP_FIELD(OCM_EMAS, BANK0, 1, 0)
+DEP_REG32(OCM_CE_CNT, 0x6c)
+    DEP_FIELD(OCM_CE_CNT, COUNT, 16, 0)
+DEP_REG32(OCM_RMW_UE_FFA, 0x70)
+    DEP_FIELD(OCM_RMW_UE_FFA, ADDR, 18, 0)
+DEP_REG32(OCM_FI_CNTR, 0x74)
+    DEP_FIELD(OCM_FI_CNTR, COUNT, 24, 0)
+DEP_REG32(OCM_DBG_SYN_TOMEM, 0x78)
+DEP_REG32(OCM_DBG_SYN_FROMEM, 0x7c)
+DEP_REG32(OCM_IMP, 0x80)
+    DEP_FIELD(OCM_IMP, SIZE, 4, 0)
+DEP_REG32(OCM_ECO, 0xffc)
 
 #define R_MAX (R_OCM_ECO + 1)
 
@@ -167,12 +167,12 @@ typedef struct OCMC {
     } cfg;
 
     uint32_t regs[R_MAX];
-    RegisterInfo regs_info[R_MAX];
+    DepRegisterInfo regs_info[R_MAX];
 } OCMC;
 
 static const MemoryRegionOps ocm_ops = {
-    .read = register_read_memory_le,
-    .write = register_write_memory_le,
+    .read = dep_register_read_memory_le,
+    .write = dep_register_write_memory_le,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
@@ -186,13 +186,13 @@ static void ocm_update_irq(OCMC *s)
     qemu_set_irq(s->irq, pending);
 }
 
-static void ocm_isr_postw(RegisterInfo *reg, uint64_t val64)
+static void ocm_isr_postw(DepRegisterInfo *reg, uint64_t val64)
 {
     OCMC *s = XILINX_OCM(reg->opaque);
     ocm_update_irq(s);
 }
 
-static uint64_t ocm_ien_prew(RegisterInfo *reg, uint64_t val64)
+static uint64_t ocm_ien_prew(DepRegisterInfo *reg, uint64_t val64)
 {
     OCMC *s = XILINX_OCM(reg->opaque);
     uint32_t val = val64;
@@ -202,7 +202,7 @@ static uint64_t ocm_ien_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
-static uint64_t ocm_ids_prew(RegisterInfo *reg, uint64_t val64)
+static uint64_t ocm_ids_prew(DepRegisterInfo *reg, uint64_t val64)
 {
     OCMC *s = XILINX_OCM(reg->opaque);
     uint32_t val = val64;
@@ -212,7 +212,7 @@ static uint64_t ocm_ids_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
-static RegisterAccessInfo ocm_regs_info[] = {
+static DepRegisterAccessInfo ocm_regs_info[] = {
     {   .name = "OCM_ERR_CTRL",  .decode.addr = A_OCM_ERR_CTRL,
         .rsvd = 0xfffffff0,
     },{ .name = "OCM_ISR",  .decode.addr = A_OCM_ISR,
@@ -327,7 +327,7 @@ static void ocm_reset(DeviceState *dev)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        register_reset(&s->regs_info[i]);
+        dep_register_reset(&s->regs_info[i]);
     }
 
     s->regs[R_OCM_IMP] = ocmc_imp_encode_memsize(s, s->cfg.memsize);
@@ -341,9 +341,9 @@ static void ocm_realize(DeviceState *dev, Error **errp)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(ocm_regs_info); ++i) {
-        RegisterInfo *r = &s->regs_info[i];
+        DepRegisterInfo *r = &s->regs_info[i];
 
-        *r = (RegisterInfo) {
+        *r = (DepRegisterInfo) {
             .data = (uint8_t *)&s->regs[
                     ocm_regs_info[i].decode.addr/4],
             .data_size = sizeof(uint32_t),

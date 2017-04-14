@@ -27,7 +27,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
-#include "hw/register.h"
+#include "hw/register-dep.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
 #include "qapi/error.h"
@@ -43,113 +43,113 @@
      OBJECT_CHECK(ZDMA, (obj), TYPE_XILINX_ZDMA)
 
 #define ZDMA_INT_BF(REG) \
-    FIELD(ZDMA_CH_ ## REG, DMA_PAUSE, 1, 11)       \
-    FIELD(ZDMA_CH_ ## REG, DMA_DONE, 1, 10)        \
-    FIELD(ZDMA_CH_ ## REG, AXI_WR_DATA, 1, 9)      \
-    FIELD(ZDMA_CH_ ## REG, AXI_RD_DATA, 1, 8)      \
-    FIELD(ZDMA_CH_ ## REG, AXI_RD_DST_DSCR, 1, 7)  \
-    FIELD(ZDMA_CH_ ## REG, AXI_RD_SRC_DSCR, 1, 6)  \
-    FIELD(ZDMA_CH_ ## REG, IRQ_DST_ACCT_ERR, 1, 5) \
-    FIELD(ZDMA_CH_ ## REG, IRQ_SRC_ACCT_ERR, 1, 4) \
-    FIELD(ZDMA_CH_ ## REG, BYTE_CNT_OVRFL, 1, 3)   \
-    FIELD(ZDMA_CH_ ## REG, DST_DSCR_DONE, 1, 2)    \
-    FIELD(ZDMA_CH_ ## REG, SRC_DSCR_DONE, 1, 1)    \
-    FIELD(ZDMA_CH_ ## REG, INV_APB, 1, 0)
+    DEP_FIELD(ZDMA_CH_ ## REG, DMA_PAUSE, 1, 11)       \
+    DEP_FIELD(ZDMA_CH_ ## REG, DMA_DONE, 1, 10)        \
+    DEP_FIELD(ZDMA_CH_ ## REG, AXI_WR_DATA, 1, 9)      \
+    DEP_FIELD(ZDMA_CH_ ## REG, AXI_RD_DATA, 1, 8)      \
+    DEP_FIELD(ZDMA_CH_ ## REG, AXI_RD_DST_DSCR, 1, 7)  \
+    DEP_FIELD(ZDMA_CH_ ## REG, AXI_RD_SRC_DSCR, 1, 6)  \
+    DEP_FIELD(ZDMA_CH_ ## REG, IRQ_DST_ACCT_ERR, 1, 5) \
+    DEP_FIELD(ZDMA_CH_ ## REG, IRQ_SRC_ACCT_ERR, 1, 4) \
+    DEP_FIELD(ZDMA_CH_ ## REG, BYTE_CNT_OVRFL, 1, 3)   \
+    DEP_FIELD(ZDMA_CH_ ## REG, DST_DSCR_DONE, 1, 2)    \
+    DEP_FIELD(ZDMA_CH_ ## REG, SRC_DSCR_DONE, 1, 1)    \
+    DEP_FIELD(ZDMA_CH_ ## REG, INV_APB, 1, 0)
 
-REG32(ZDMA_ERR_CTRL, 0x0)
-    FIELD(ZDMA_ERR_CTRL, APB_ERR_RES, 1, 0)
-REG32(ZDMA_CH_ECO, 0x4)
-REG32(ZDMA_CH_ISR, 0x100)
+DEP_REG32(ZDMA_ERR_CTRL, 0x0)
+    DEP_FIELD(ZDMA_ERR_CTRL, APB_ERR_RES, 1, 0)
+DEP_REG32(ZDMA_CH_ECO, 0x4)
+DEP_REG32(ZDMA_CH_ISR, 0x100)
     ZDMA_INT_BF(ISR)
-REG32(ZDMA_CH_IMR, 0x104)
+DEP_REG32(ZDMA_CH_IMR, 0x104)
     ZDMA_INT_BF(IMR)
-REG32(ZDMA_CH_IEN, 0x108)
+DEP_REG32(ZDMA_CH_IEN, 0x108)
     ZDMA_INT_BF(IEN)
-REG32(ZDMA_CH_IDS, 0x10c)
+DEP_REG32(ZDMA_CH_IDS, 0x10c)
     ZDMA_INT_BF(IDS)
-REG32(ZDMA_CH_CTRL0, 0x110)
-    FIELD(ZDMA_CH_CTRL0, OVR_FETCH, 1, 7)
-    FIELD(ZDMA_CH_CTRL0, POINT_TYPE, 1, 6)
-    FIELD(ZDMA_CH_CTRL0, MODE, 2, 4)
-    FIELD(ZDMA_CH_CTRL0, RATE_CNTL, 1, 3)
-    FIELD(ZDMA_CH_CTRL0, CONT_ADDR, 1, 2)
-    FIELD(ZDMA_CH_CTRL0, CONT, 1, 1)
-REG32(ZDMA_CH_CTRL1, 0x114)
-    FIELD(ZDMA_CH_CTRL1, DST_ISSUE, 5, 5)
-    FIELD(ZDMA_CH_CTRL1, SRC_ISSUE, 5, 0)
-REG32(ZDMA_CH_PERIF, 0x118)
-    FIELD(ZDMA_CH_PERIF, PROG_CELL_CNT, 4, 2)
-    FIELD(ZDMA_CH_PERIF, SIDE, 1, 1)
-    FIELD(ZDMA_CH_PERIF, EN, 1, 0)
-REG32(ZDMA_CH_STATUS, 0x11c)
-    FIELD(ZDMA_CH_STATUS, STATE, 2, 0)
-REG32(ZDMA_CH_DATA_ATTR, 0x120)
-    FIELD(ZDMA_CH_DATA_ATTR, ARBURST, 2, 26)
-    FIELD(ZDMA_CH_DATA_ATTR, ARCACHE, 4, 22)
-    FIELD(ZDMA_CH_DATA_ATTR, ARQOS, 4, 18)
-    FIELD(ZDMA_CH_DATA_ATTR, ARLEN, 4, 14)
-    FIELD(ZDMA_CH_DATA_ATTR, AWBURST, 2, 12)
-    FIELD(ZDMA_CH_DATA_ATTR, AWCACHE, 4, 8)
-    FIELD(ZDMA_CH_DATA_ATTR, AWQOS, 4, 4)
-    FIELD(ZDMA_CH_DATA_ATTR, AWLEN, 4, 0)
-REG32(ZDMA_CH_DSCR_ATTR, 0x124)
-    FIELD(ZDMA_CH_DSCR_ATTR, AXCOHRNT, 1, 8)
-    FIELD(ZDMA_CH_DSCR_ATTR, AXCACHE, 4, 4)
-    FIELD(ZDMA_CH_DSCR_ATTR, AXQOS, 4, 0)
-REG32(ZDMA_CH_SRC_DSCR_WORD0, 0x128)
-REG32(ZDMA_CH_SRC_DSCR_WORD1, 0x12c)
-    FIELD(ZDMA_CH_SRC_DSCR_WORD1, MSB, 17, 0)
-REG32(ZDMA_CH_SRC_DSCR_WORD2, 0x130)
-    FIELD(ZDMA_CH_SRC_DSCR_WORD2, SIZE, 30, 0)
-REG32(ZDMA_CH_SRC_DSCR_WORD3, 0x134)
-    FIELD(ZDMA_CH_SRC_DSCR_WORD3, CMD, 2, 3)
-    FIELD(ZDMA_CH_SRC_DSCR_WORD3, INTR, 1, 2)
-    FIELD(ZDMA_CH_SRC_DSCR_WORD3, TYPE, 1, 1)
-    FIELD(ZDMA_CH_SRC_DSCR_WORD3, COHRNT, 1, 0)
-REG32(ZDMA_CH_DST_DSCR_WORD0, 0x138)
-REG32(ZDMA_CH_DST_DSCR_WORD1, 0x13c)
-    FIELD(ZDMA_CH_DST_DSCR_WORD1, MSB, 17, 0)
-REG32(ZDMA_CH_DST_DSCR_WORD2, 0x140)
-    FIELD(ZDMA_CH_DST_DSCR_WORD2, SIZE, 30, 0)
-REG32(ZDMA_CH_DST_DSCR_WORD3, 0x144)
-    FIELD(ZDMA_CH_DST_DSCR_WORD3, INTR, 1, 2)
-    FIELD(ZDMA_CH_DST_DSCR_WORD3, TYPE, 1, 1)
-    FIELD(ZDMA_CH_DST_DSCR_WORD3, COHRNT, 1, 0)
-REG32(ZDMA_CH_WR_ONLY_WORD0, 0x148)
-REG32(ZDMA_CH_WR_ONLY_WORD1, 0x14c)
-REG32(ZDMA_CH_WR_ONLY_WORD2, 0x150)
-REG32(ZDMA_CH_WR_ONLY_WORD3, 0x154)
-REG32(ZDMA_CH_SRC_START_LSB, 0x158)
-REG32(ZDMA_CH_SRC_START_MSB, 0x15c)
-    FIELD(ZDMA_CH_SRC_START_MSB, ADDR, 17, 0)
-REG32(ZDMA_CH_DST_START_LSB, 0x160)
-REG32(ZDMA_CH_DST_START_MSB, 0x164)
-    FIELD(ZDMA_CH_DST_START_MSB, ADDR, 17, 0)
-REG32(ZDMA_CH_SRC_CUR_PYLD_LSB, 0x168)
-REG32(ZDMA_CH_SRC_CUR_PYLD_MSB, 0x16c)
-    FIELD(ZDMA_CH_SRC_CUR_PYLD_MSB, ADDR, 17, 0)
-REG32(ZDMA_CH_DST_CUR_PYLD_LSB, 0x170)
-REG32(ZDMA_CH_DST_CUR_PYLD_MSB, 0x174)
-    FIELD(ZDMA_CH_DST_CUR_PYLD_MSB, ADDR, 17, 0)
-REG32(ZDMA_CH_SRC_CUR_DSCR_LSB, 0x178)
-REG32(ZDMA_CH_SRC_CUR_DSCR_MSB, 0x17c)
-    FIELD(ZDMA_CH_SRC_CUR_DSCR_MSB, ADDR, 17, 0)
-REG32(ZDMA_CH_DST_CUR_DSCR_LSB, 0x180)
-REG32(ZDMA_CH_DST_CUR_DSCR_MSB, 0x184)
-    FIELD(ZDMA_CH_DST_CUR_DSCR_MSB, ADDR, 17, 0)
-REG32(ZDMA_CH_TOTAL_BYTE, 0x188)
-REG32(ZDMA_CH_RATE_CNTL, 0x18c)
-    FIELD(ZDMA_CH_RATE_CNTL, CNT, 12, 0)
-REG32(ZDMA_CH_IRQ_SRC_ACCT, 0x190)
-    FIELD(ZDMA_CH_IRQ_SRC_ACCT, CNT, 8, 0)
-REG32(ZDMA_CH_IRQ_DST_ACCT, 0x194)
-    FIELD(ZDMA_CH_IRQ_DST_ACCT, CNT, 8, 0)
-REG32(ZDMA_CH_DBG0, 0x198)
-    FIELD(ZDMA_CH_DBG0, CMN_BUF_FREE, 9, 0)
-REG32(ZDMA_CH_DBG1, 0x19c)
-    FIELD(ZDMA_CH_DBG1, CMN_BUF_OCC, 9, 0)
-REG32(ZDMA_CH_CTRL2, 0x200)
-    FIELD(ZDMA_CH_CTRL2, EN, 1, 0)
+DEP_REG32(ZDMA_CH_CTRL0, 0x110)
+    DEP_FIELD(ZDMA_CH_CTRL0, OVR_FETCH, 1, 7)
+    DEP_FIELD(ZDMA_CH_CTRL0, POINT_TYPE, 1, 6)
+    DEP_FIELD(ZDMA_CH_CTRL0, MODE, 2, 4)
+    DEP_FIELD(ZDMA_CH_CTRL0, RATE_CNTL, 1, 3)
+    DEP_FIELD(ZDMA_CH_CTRL0, CONT_ADDR, 1, 2)
+    DEP_FIELD(ZDMA_CH_CTRL0, CONT, 1, 1)
+DEP_REG32(ZDMA_CH_CTRL1, 0x114)
+    DEP_FIELD(ZDMA_CH_CTRL1, DST_ISSUE, 5, 5)
+    DEP_FIELD(ZDMA_CH_CTRL1, SRC_ISSUE, 5, 0)
+DEP_REG32(ZDMA_CH_PERIF, 0x118)
+    DEP_FIELD(ZDMA_CH_PERIF, PROG_CELL_CNT, 4, 2)
+    DEP_FIELD(ZDMA_CH_PERIF, SIDE, 1, 1)
+    DEP_FIELD(ZDMA_CH_PERIF, EN, 1, 0)
+DEP_REG32(ZDMA_CH_STATUS, 0x11c)
+    DEP_FIELD(ZDMA_CH_STATUS, STATE, 2, 0)
+DEP_REG32(ZDMA_CH_DATA_ATTR, 0x120)
+    DEP_FIELD(ZDMA_CH_DATA_ATTR, ARBURST, 2, 26)
+    DEP_FIELD(ZDMA_CH_DATA_ATTR, ARCACHE, 4, 22)
+    DEP_FIELD(ZDMA_CH_DATA_ATTR, ARQOS, 4, 18)
+    DEP_FIELD(ZDMA_CH_DATA_ATTR, ARLEN, 4, 14)
+    DEP_FIELD(ZDMA_CH_DATA_ATTR, AWBURST, 2, 12)
+    DEP_FIELD(ZDMA_CH_DATA_ATTR, AWCACHE, 4, 8)
+    DEP_FIELD(ZDMA_CH_DATA_ATTR, AWQOS, 4, 4)
+    DEP_FIELD(ZDMA_CH_DATA_ATTR, AWLEN, 4, 0)
+DEP_REG32(ZDMA_CH_DSCR_ATTR, 0x124)
+    DEP_FIELD(ZDMA_CH_DSCR_ATTR, AXCOHRNT, 1, 8)
+    DEP_FIELD(ZDMA_CH_DSCR_ATTR, AXCACHE, 4, 4)
+    DEP_FIELD(ZDMA_CH_DSCR_ATTR, AXQOS, 4, 0)
+DEP_REG32(ZDMA_CH_SRC_DSCR_WORD0, 0x128)
+DEP_REG32(ZDMA_CH_SRC_DSCR_WORD1, 0x12c)
+    DEP_FIELD(ZDMA_CH_SRC_DSCR_WORD1, MSB, 17, 0)
+DEP_REG32(ZDMA_CH_SRC_DSCR_WORD2, 0x130)
+    DEP_FIELD(ZDMA_CH_SRC_DSCR_WORD2, SIZE, 30, 0)
+DEP_REG32(ZDMA_CH_SRC_DSCR_WORD3, 0x134)
+    DEP_FIELD(ZDMA_CH_SRC_DSCR_WORD3, CMD, 2, 3)
+    DEP_FIELD(ZDMA_CH_SRC_DSCR_WORD3, INTR, 1, 2)
+    DEP_FIELD(ZDMA_CH_SRC_DSCR_WORD3, TYPE, 1, 1)
+    DEP_FIELD(ZDMA_CH_SRC_DSCR_WORD3, COHRNT, 1, 0)
+DEP_REG32(ZDMA_CH_DST_DSCR_WORD0, 0x138)
+DEP_REG32(ZDMA_CH_DST_DSCR_WORD1, 0x13c)
+    DEP_FIELD(ZDMA_CH_DST_DSCR_WORD1, MSB, 17, 0)
+DEP_REG32(ZDMA_CH_DST_DSCR_WORD2, 0x140)
+    DEP_FIELD(ZDMA_CH_DST_DSCR_WORD2, SIZE, 30, 0)
+DEP_REG32(ZDMA_CH_DST_DSCR_WORD3, 0x144)
+    DEP_FIELD(ZDMA_CH_DST_DSCR_WORD3, INTR, 1, 2)
+    DEP_FIELD(ZDMA_CH_DST_DSCR_WORD3, TYPE, 1, 1)
+    DEP_FIELD(ZDMA_CH_DST_DSCR_WORD3, COHRNT, 1, 0)
+DEP_REG32(ZDMA_CH_WR_ONLY_WORD0, 0x148)
+DEP_REG32(ZDMA_CH_WR_ONLY_WORD1, 0x14c)
+DEP_REG32(ZDMA_CH_WR_ONLY_WORD2, 0x150)
+DEP_REG32(ZDMA_CH_WR_ONLY_WORD3, 0x154)
+DEP_REG32(ZDMA_CH_SRC_START_LSB, 0x158)
+DEP_REG32(ZDMA_CH_SRC_START_MSB, 0x15c)
+    DEP_FIELD(ZDMA_CH_SRC_START_MSB, ADDR, 17, 0)
+DEP_REG32(ZDMA_CH_DST_START_LSB, 0x160)
+DEP_REG32(ZDMA_CH_DST_START_MSB, 0x164)
+    DEP_FIELD(ZDMA_CH_DST_START_MSB, ADDR, 17, 0)
+DEP_REG32(ZDMA_CH_SRC_CUR_PYLD_LSB, 0x168)
+DEP_REG32(ZDMA_CH_SRC_CUR_PYLD_MSB, 0x16c)
+    DEP_FIELD(ZDMA_CH_SRC_CUR_PYLD_MSB, ADDR, 17, 0)
+DEP_REG32(ZDMA_CH_DST_CUR_PYLD_LSB, 0x170)
+DEP_REG32(ZDMA_CH_DST_CUR_PYLD_MSB, 0x174)
+    DEP_FIELD(ZDMA_CH_DST_CUR_PYLD_MSB, ADDR, 17, 0)
+DEP_REG32(ZDMA_CH_SRC_CUR_DSCR_LSB, 0x178)
+DEP_REG32(ZDMA_CH_SRC_CUR_DSCR_MSB, 0x17c)
+    DEP_FIELD(ZDMA_CH_SRC_CUR_DSCR_MSB, ADDR, 17, 0)
+DEP_REG32(ZDMA_CH_DST_CUR_DSCR_LSB, 0x180)
+DEP_REG32(ZDMA_CH_DST_CUR_DSCR_MSB, 0x184)
+    DEP_FIELD(ZDMA_CH_DST_CUR_DSCR_MSB, ADDR, 17, 0)
+DEP_REG32(ZDMA_CH_TOTAL_BYTE, 0x188)
+DEP_REG32(ZDMA_CH_RATE_CNTL, 0x18c)
+    DEP_FIELD(ZDMA_CH_RATE_CNTL, CNT, 12, 0)
+DEP_REG32(ZDMA_CH_IRQ_SRC_ACCT, 0x190)
+    DEP_FIELD(ZDMA_CH_IRQ_SRC_ACCT, CNT, 8, 0)
+DEP_REG32(ZDMA_CH_IRQ_DST_ACCT, 0x194)
+    DEP_FIELD(ZDMA_CH_IRQ_DST_ACCT, CNT, 8, 0)
+DEP_REG32(ZDMA_CH_DBG0, 0x198)
+    DEP_FIELD(ZDMA_CH_DBG0, CMN_BUF_FREE, 9, 0)
+DEP_REG32(ZDMA_CH_DBG1, 0x19c)
+    DEP_FIELD(ZDMA_CH_DBG1, CMN_BUF_OCC, 9, 0)
+DEP_REG32(ZDMA_CH_CTRL2, 0x200)
+    DEP_FIELD(ZDMA_CH_CTRL2, EN, 1, 0)
 
 #define R_MAX (R_ZDMA_CH_CTRL2 + 1)
 
@@ -213,7 +213,7 @@ typedef struct ZDMA {
     ZDMADescr dsc_dst;
 
     uint32_t regs[R_MAX];
-    RegisterInfo regs_info[R_MAX];
+    DepRegisterInfo regs_info[R_MAX];
 
     /* We don't model the common bufs. Must be at least 16 bytes
        to model write only mode.  */
@@ -229,13 +229,13 @@ static void zdma_ch_update_irq(ZDMA *s)
     qemu_set_irq(s->irq_zdma_ch0, pending);
 }
 
-static void zdma_ch_isr_postw(RegisterInfo *reg, uint64_t val64)
+static void zdma_ch_isr_postw(DepRegisterInfo *reg, uint64_t val64)
 {
     ZDMA *s = XILINX_ZDMA(reg->opaque);
     zdma_ch_update_irq(s);
 }
 
-static uint64_t zdma_ch_ien_prew(RegisterInfo *reg, uint64_t val64)
+static uint64_t zdma_ch_ien_prew(DepRegisterInfo *reg, uint64_t val64)
 {
     ZDMA *s = XILINX_ZDMA(reg->opaque);
     uint32_t val = val64;
@@ -245,7 +245,7 @@ static uint64_t zdma_ch_ien_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
-static uint64_t zdma_ch_ids_prew(RegisterInfo *reg, uint64_t val64)
+static uint64_t zdma_ch_ids_prew(DepRegisterInfo *reg, uint64_t val64)
 {
     ZDMA *s = XILINX_ZDMA(reg->opaque);
     uint32_t val = val64;
@@ -258,11 +258,11 @@ static uint64_t zdma_ch_ids_prew(RegisterInfo *reg, uint64_t val64)
 static void zdma_set_state(ZDMA *s, ZDMAState state)
 {
     s->state = state;
-    AF_DP32(s->regs, ZDMA_CH_STATUS, STATE, state);
+    DEP_AF_DP32(s->regs, ZDMA_CH_STATUS, STATE, state);
 
     /* Signal error if we have an error condition.  */
     if (s->error) {
-        AF_DP32(s->regs, ZDMA_CH_STATUS, STATE, 3);
+        DEP_AF_DP32(s->regs, ZDMA_CH_STATUS, STATE, 3);
     }
 }
 
@@ -270,14 +270,14 @@ static void zdma_set_state(ZDMA *s, ZDMAState state)
 static void zdma_src_done(ZDMA *s)
 {
     unsigned int cnt;
-    cnt = AF_EX32(s->regs, ZDMA_CH_IRQ_SRC_ACCT, CNT);
+    cnt = DEP_AF_EX32(s->regs, ZDMA_CH_IRQ_SRC_ACCT, CNT);
     cnt++;
-    AF_DP32(s->regs, ZDMA_CH_IRQ_SRC_ACCT, CNT, cnt);
-    AF_DP32(s->regs, ZDMA_CH_ISR, SRC_DSCR_DONE, true);
+    DEP_AF_DP32(s->regs, ZDMA_CH_IRQ_SRC_ACCT, CNT, cnt);
+    DEP_AF_DP32(s->regs, ZDMA_CH_ISR, SRC_DSCR_DONE, true);
 
     /* Did we overflow?  */
-    if (cnt != AF_EX32(s->regs, ZDMA_CH_IRQ_SRC_ACCT, CNT)) {
-        AF_DP32(s->regs, ZDMA_CH_ISR, IRQ_SRC_ACCT_ERR, true);
+    if (cnt != DEP_AF_EX32(s->regs, ZDMA_CH_IRQ_SRC_ACCT, CNT)) {
+        DEP_AF_DP32(s->regs, ZDMA_CH_ISR, IRQ_SRC_ACCT_ERR, true);
     }
     zdma_ch_update_irq(s);
 }
@@ -285,14 +285,14 @@ static void zdma_src_done(ZDMA *s)
 static void zdma_dst_done(ZDMA *s)
 {
     unsigned int cnt;
-    cnt = AF_EX32(s->regs, ZDMA_CH_IRQ_DST_ACCT, CNT);
+    cnt = DEP_AF_EX32(s->regs, ZDMA_CH_IRQ_DST_ACCT, CNT);
     cnt++;
-    AF_DP32(s->regs, ZDMA_CH_IRQ_DST_ACCT, CNT, cnt);
-    AF_DP32(s->regs, ZDMA_CH_ISR, DST_DSCR_DONE, true);
+    DEP_AF_DP32(s->regs, ZDMA_CH_IRQ_DST_ACCT, CNT, cnt);
+    DEP_AF_DP32(s->regs, ZDMA_CH_ISR, DST_DSCR_DONE, true);
 
     /* Did we overflow?  */
-    if (cnt != AF_EX32(s->regs, ZDMA_CH_IRQ_DST_ACCT, CNT)) {
-        AF_DP32(s->regs, ZDMA_CH_ISR, IRQ_DST_ACCT_ERR, true);
+    if (cnt != DEP_AF_EX32(s->regs, ZDMA_CH_IRQ_DST_ACCT, CNT)) {
+        DEP_AF_DP32(s->regs, ZDMA_CH_ISR, IRQ_DST_ACCT_ERR, true);
     }
     zdma_ch_update_irq(s);
 }
@@ -334,7 +334,7 @@ static bool zdma_load_descriptor(ZDMA *s, uint64_t addr, void *buf)
 static void zdma_load_src_descriptor(ZDMA *s)
 {
     uint64_t src_addr;
-    unsigned int ptype = AF_EX32(s->regs, ZDMA_CH_CTRL0, POINT_TYPE);
+    unsigned int ptype = DEP_AF_EX32(s->regs, ZDMA_CH_CTRL0, POINT_TYPE);
 
     if (ptype == PT_REG) {
         memcpy(&s->dsc_src, &s->regs[R_ZDMA_CH_SRC_DSCR_WORD0],
@@ -345,14 +345,14 @@ static void zdma_load_src_descriptor(ZDMA *s)
     src_addr = zdma_get_regaddr64(s, R_ZDMA_CH_SRC_CUR_DSCR_LSB);
 
     if (!zdma_load_descriptor(s, src_addr, &s->dsc_src)) {
-        AF_DP32(s->regs, ZDMA_CH_ISR, AXI_RD_SRC_DSCR, true);
+        DEP_AF_DP32(s->regs, ZDMA_CH_ISR, AXI_RD_SRC_DSCR, true);
     }
 }
 
 static void zdma_load_dst_descriptor(ZDMA *s)
 {
     uint64_t dst_addr;
-    unsigned int ptype = AF_EX32(s->regs, ZDMA_CH_CTRL0, POINT_TYPE);
+    unsigned int ptype = DEP_AF_EX32(s->regs, ZDMA_CH_CTRL0, POINT_TYPE);
 
     if (ptype == PT_REG) {
         memcpy(&s->dsc_dst, &s->regs[R_ZDMA_CH_DST_DSCR_WORD0],
@@ -363,7 +363,7 @@ static void zdma_load_dst_descriptor(ZDMA *s)
     dst_addr = zdma_get_regaddr64(s, R_ZDMA_CH_DST_CUR_DSCR_LSB);
 
     if (!zdma_load_descriptor(s, dst_addr, &s->dsc_dst)) {
-        AF_DP32(s->regs, ZDMA_CH_ISR, AXI_RD_DST_DSCR, true);
+        DEP_AF_DP32(s->regs, ZDMA_CH_ISR, AXI_RD_DST_DSCR, true);
     }
 }
 
@@ -388,9 +388,9 @@ static void zdma_write_dst(ZDMA *s, uint8_t *buf, uint32_t len)
 {
     uint32_t dst_size, dlen;
     bool dst_intr, dst_type;
-    unsigned int ptype = AF_EX32(s->regs, ZDMA_CH_CTRL0, POINT_TYPE);
-    unsigned int rw_mode = AF_EX32(s->regs, ZDMA_CH_CTRL0, MODE);
-    unsigned int burst_type = AF_EX32(s->regs, ZDMA_CH_DATA_ATTR, AWBURST);
+    unsigned int ptype = DEP_AF_EX32(s->regs, ZDMA_CH_CTRL0, POINT_TYPE);
+    unsigned int rw_mode = DEP_AF_EX32(s->regs, ZDMA_CH_CTRL0, MODE);
+    unsigned int burst_type = DEP_AF_EX32(s->regs, ZDMA_CH_DATA_ATTR, AWBURST);
 
     /* FIXED burst types are only supported in simple dma mode.  */
     if (ptype != PT_REG) {
@@ -398,14 +398,14 @@ static void zdma_write_dst(ZDMA *s, uint8_t *buf, uint32_t len)
     }
 
     while (len) {
-        dst_size = F_EX32(s->dsc_dst.words[2], ZDMA_CH_DST_DSCR_WORD2, SIZE);
-        dst_type = F_EX32(s->dsc_dst.words[3], ZDMA_CH_DST_DSCR_WORD3, TYPE);
+        dst_size = DEP_F_EX32(s->dsc_dst.words[2], ZDMA_CH_DST_DSCR_WORD2, SIZE);
+        dst_type = DEP_F_EX32(s->dsc_dst.words[3], ZDMA_CH_DST_DSCR_WORD3, TYPE);
         if (dst_size == 0 && ptype == PT_MEM) {
             uint64_t next;
             next = zdma_update_descr_addr(s, dst_type, R_ZDMA_CH_DST_CUR_DSCR_LSB);
             zdma_load_descriptor(s, next, &s->dsc_dst);
-            dst_size = F_EX32(s->dsc_dst.words[2], ZDMA_CH_DST_DSCR_WORD2, SIZE);
-            dst_type = F_EX32(s->dsc_dst.words[3], ZDMA_CH_DST_DSCR_WORD3, TYPE);
+            dst_size = DEP_F_EX32(s->dsc_dst.words[2], ZDMA_CH_DST_DSCR_WORD2, SIZE);
+            dst_type = DEP_F_EX32(s->dsc_dst.words[3], ZDMA_CH_DST_DSCR_WORD3, TYPE);
         }
 
         /* Match what hardware does by ignoring the dst_size and only using
@@ -417,7 +417,7 @@ static void zdma_write_dst(ZDMA *s, uint8_t *buf, uint32_t len)
         if (dst_size == 0) {
             qemu_log("Can't write to dst\n");
         }
-        dst_intr = F_EX32(s->dsc_dst.words[3], ZDMA_CH_DST_DSCR_WORD3, INTR);
+        dst_intr = DEP_F_EX32(s->dsc_dst.words[3], ZDMA_CH_DST_DSCR_WORD3, INTR);
 
         dlen = len > dst_size ? dst_size : len;
         if (burst_type == AXI_BURST_FIXED) {
@@ -440,7 +440,7 @@ static void zdma_write_dst(ZDMA *s, uint8_t *buf, uint32_t len)
         }
 
         /* Write back to buffered descriptor.  */
-        s->dsc_dst.words[2] = F_DP32(s->dsc_dst.words[2], ZDMA_CH_DST_DSCR_WORD2, SIZE, dst_size);
+        s->dsc_dst.words[2] = DEP_F_DP32(s->dsc_dst.words[2], ZDMA_CH_DST_DSCR_WORD2, SIZE, dst_size);
     }
 }
 
@@ -450,15 +450,15 @@ static void zdma_process_descr(ZDMA *s)
     uint32_t src_size, len;
     unsigned int src_cmd;
     bool src_intr, src_type;
-    unsigned int ptype = AF_EX32(s->regs, ZDMA_CH_CTRL0, POINT_TYPE);
-    unsigned int rw_mode = AF_EX32(s->regs, ZDMA_CH_CTRL0, MODE);
-    unsigned int burst_type = AF_EX32(s->regs, ZDMA_CH_DATA_ATTR, ARBURST);
+    unsigned int ptype = DEP_AF_EX32(s->regs, ZDMA_CH_CTRL0, POINT_TYPE);
+    unsigned int rw_mode = DEP_AF_EX32(s->regs, ZDMA_CH_CTRL0, MODE);
+    unsigned int burst_type = DEP_AF_EX32(s->regs, ZDMA_CH_DATA_ATTR, ARBURST);
 
     src_addr = s->dsc_src.addr;
-    src_size = F_EX32(s->dsc_src.words[2], ZDMA_CH_SRC_DSCR_WORD2, SIZE);
-    src_cmd = F_EX32(s->dsc_src.words[3], ZDMA_CH_SRC_DSCR_WORD3, CMD);
-    src_type = F_EX32(s->dsc_src.words[3], ZDMA_CH_SRC_DSCR_WORD3, TYPE);
-    src_intr = F_EX32(s->dsc_src.words[3], ZDMA_CH_SRC_DSCR_WORD3, INTR);
+    src_size = DEP_F_EX32(s->dsc_src.words[2], ZDMA_CH_SRC_DSCR_WORD2, SIZE);
+    src_cmd = DEP_F_EX32(s->dsc_src.words[3], ZDMA_CH_SRC_DSCR_WORD3, CMD);
+    src_type = DEP_F_EX32(s->dsc_src.words[3], ZDMA_CH_SRC_DSCR_WORD3, TYPE);
+    src_intr = DEP_F_EX32(s->dsc_src.words[3], ZDMA_CH_SRC_DSCR_WORD3, INTR);
 
     /* FIXED burst types and non-rw modes are only supported in
      * simple dma mode.
@@ -481,7 +481,7 @@ static void zdma_process_descr(ZDMA *s)
     if (rw_mode == RW_MODE_WO) {
         /* In Simple DMA Write-Only, we need to push DST size bytes
          * regardless of what SRC size is set to.  */
-        src_size = F_EX32(s->dsc_dst.words[2], ZDMA_CH_DST_DSCR_WORD2, SIZE);
+        src_size = DEP_F_EX32(s->dsc_dst.words[2], ZDMA_CH_DST_DSCR_WORD2, SIZE);
         memcpy(s->buf, &s->regs[R_ZDMA_CH_WR_ONLY_WORD0], s->cfg.bus_width / 8);
     }
 
@@ -513,7 +513,7 @@ static void zdma_process_descr(ZDMA *s)
         src_size -= len;
 
         if (src_size == 0) {
-            AF_DP32(s->regs, ZDMA_CH_ISR, DMA_DONE, true);
+            DEP_AF_DP32(s->regs, ZDMA_CH_ISR, DMA_DONE, true);
         }
 
     }
@@ -524,14 +524,14 @@ static void zdma_process_descr(ZDMA *s)
 
     /* Load next descriptor.  */
     if (ptype == PT_REG || src_cmd == CMD_STOP) {
-        AF_DP32(s->regs, ZDMA_CH_CTRL2, EN, 0);
+        DEP_AF_DP32(s->regs, ZDMA_CH_CTRL2, EN, 0);
         zdma_set_state(s, DISABLED);
         return;
     }
 
     if (src_cmd == CMD_HALT) {
         zdma_set_state(s, PAUSED);
-        AF_DP32(s->regs, ZDMA_CH_ISR, DMA_PAUSE, 1);
+        DEP_AF_DP32(s->regs, ZDMA_CH_ISR, DMA_PAUSE, 1);
         zdma_ch_update_irq(s);
         return;
     }
@@ -565,20 +565,20 @@ static void zdma_update_descr_addr_from_start(ZDMA *s)
     zdma_load_dst_descriptor(s);
 }
 
-static void zdma_ch_ctrlx_postw(RegisterInfo *reg, uint64_t val64)
+static void zdma_ch_ctrlx_postw(DepRegisterInfo *reg, uint64_t val64)
 {
     ZDMA *s = XILINX_ZDMA(reg->opaque);
 
-    if (AF_EX32(s->regs, ZDMA_CH_CTRL2, EN)) {
+    if (DEP_AF_EX32(s->regs, ZDMA_CH_CTRL2, EN)) {
         s->error = false;
 
-        if (s->state == PAUSED && AF_EX32(s->regs, ZDMA_CH_CTRL0, CONT)) {
-            if (AF_EX32(s->regs, ZDMA_CH_CTRL0, CONT_ADDR) == 1) {
+        if (s->state == PAUSED && DEP_AF_EX32(s->regs, ZDMA_CH_CTRL0, CONT)) {
+            if (DEP_AF_EX32(s->regs, ZDMA_CH_CTRL0, CONT_ADDR) == 1) {
                 zdma_update_descr_addr_from_start(s);
             } else {
                 /* FIXME: Not sure if this is right. With asymetric descriptor
                    setups, we rely on reusing the DST descriptor buffer.  */
-                bool src_type = F_EX32(s->dsc_src.words[3],
+                bool src_type = DEP_F_EX32(s->dsc_src.words[3],
                                        ZDMA_CH_SRC_DSCR_WORD3, TYPE);
                 zdma_update_descr_addr(s, src_type,
                                           R_ZDMA_CH_SRC_CUR_DSCR_LSB);
@@ -589,7 +589,7 @@ static void zdma_ch_ctrlx_postw(RegisterInfo *reg, uint64_t val64)
         zdma_set_state(s, ENABLED);
     } else {
         /* Leave Paused state?  */
-        if (s->state == PAUSED && AF_EX32(s->regs, ZDMA_CH_CTRL0, CONT)) {
+        if (s->state == PAUSED && DEP_AF_EX32(s->regs, ZDMA_CH_CTRL0, CONT)) {
             zdma_set_state(s, DISABLED);
         }
     }
@@ -597,7 +597,7 @@ static void zdma_ch_ctrlx_postw(RegisterInfo *reg, uint64_t val64)
     zdma_run(s);
 }
 
-static RegisterAccessInfo zdma_regs_info[] = {
+static DepRegisterAccessInfo zdma_regs_info[] = {
     {   .name = "ZDMA_ERR_CTRL",  .decode.addr = A_ZDMA_ERR_CTRL,
         .rsvd = 0xfffffffe,
     },{ .name = "ZDMA_CH_ECO",  .decode.addr = A_ZDMA_CH_ECO,
@@ -706,7 +706,7 @@ static void zdma_reset(DeviceState *dev)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        register_reset(&s->regs_info[i]);
+        dep_register_reset(&s->regs_info[i]);
     }
 
     zdma_ch_update_irq(s);
@@ -715,34 +715,34 @@ static void zdma_reset(DeviceState *dev)
 static uint64_t zdma_read(void *opaque, hwaddr addr, unsigned size)
 {
     ZDMA *s = XILINX_ZDMA(opaque);
-    RegisterInfo *r = &s->regs_info[addr / 4];
+    DepRegisterInfo *r = &s->regs_info[addr / 4];
 
     if (!r->data) {
         qemu_log("%s: Decode error: read from %" HWADDR_PRIx "\n",
                  object_get_canonical_path(OBJECT(s)),
                  addr);
-        AF_DP32(s->regs, ZDMA_CH_ISR, INV_APB, true);
+        DEP_AF_DP32(s->regs, ZDMA_CH_ISR, INV_APB, true);
         zdma_ch_update_irq(s);
         return 0;
     }
-    return register_read(r);
+    return dep_register_read(r);
 }
 
 static void zdma_write(void *opaque, hwaddr addr, uint64_t value,
                       unsigned size)
 {
     ZDMA *s = XILINX_ZDMA(opaque);
-    RegisterInfo *r = &s->regs_info[addr / 4];
+    DepRegisterInfo *r = &s->regs_info[addr / 4];
 
     if (!r->data) {
         qemu_log("%s: Decode error: write to %" HWADDR_PRIx "=%" PRIx64 "\n",
                  object_get_canonical_path(OBJECT(s)),
                  addr, value);
-        AF_DP32(s->regs, ZDMA_CH_ISR, INV_APB, true);
+        DEP_AF_DP32(s->regs, ZDMA_CH_ISR, INV_APB, true);
         zdma_ch_update_irq(s);
         return;
     }
-    register_write(r, value, ~0);
+    dep_register_write(r, value, ~0);
 }
 
 static const MemoryRegionOps zdma_ops = {
@@ -762,9 +762,9 @@ static void zdma_realize(DeviceState *dev, Error **errp)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(zdma_regs_info); ++i) {
-        RegisterInfo *r = &s->regs_info[zdma_regs_info[i].decode.addr/4];
+        DepRegisterInfo *r = &s->regs_info[zdma_regs_info[i].decode.addr/4];
 
-        *r = (RegisterInfo) {
+        *r = (DepRegisterInfo) {
             .data = (uint8_t *)&s->regs[
                     zdma_regs_info[i].decode.addr/4],
             .data_size = sizeof(uint32_t),

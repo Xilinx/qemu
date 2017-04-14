@@ -27,7 +27,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
-#include "hw/register.h"
+#include "hw/register-dep.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
 
@@ -50,78 +50,78 @@
 
 #define DB_PRINT(fmt, args...) DB_PRINT_L(1, fmt, ## args)
 
-REG32(IPI_TRIG, 0x0)
-    FIELD(IPI_TRIG, PL_3, 1, 27)
-    FIELD(IPI_TRIG, PL_2, 1, 26)
-    FIELD(IPI_TRIG, PL_1, 1, 25)
-    FIELD(IPI_TRIG, PL_0, 1, 24)
-    FIELD(IPI_TRIG, PMU_3, 1, 19)
-    FIELD(IPI_TRIG, PMU_2, 1, 18)
-    FIELD(IPI_TRIG, PMU_1, 1, 17)
-    FIELD(IPI_TRIG, PMU_0, 1, 16)
-    FIELD(IPI_TRIG, RPU_1, 1, 9)
-    FIELD(IPI_TRIG, RPU_0, 1, 8)
-    FIELD(IPI_TRIG, APU, 1, 0)
-REG32(IPI_OBS, 0x4)
-    FIELD(IPI_OBS, PL_3, 1, 27)
-    FIELD(IPI_OBS, PL_2, 1, 26)
-    FIELD(IPI_OBS, PL_1, 1, 25)
-    FIELD(IPI_OBS, PL_0, 1, 24)
-    FIELD(IPI_OBS, PMU_3, 1, 19)
-    FIELD(IPI_OBS, PMU_2, 1, 18)
-    FIELD(IPI_OBS, PMU_1, 1, 17)
-    FIELD(IPI_OBS, PMU_0, 1, 16)
-    FIELD(IPI_OBS, RPU_1, 1, 9)
-    FIELD(IPI_OBS, RPU_0, 1, 8)
-    FIELD(IPI_OBS, APU, 1, 0)
-REG32(IPI_ISR, 0x10)
-    FIELD(IPI_ISR, PL_3, 1, 27)
-    FIELD(IPI_ISR, PL_2, 1, 26)
-    FIELD(IPI_ISR, PL_1, 1, 25)
-    FIELD(IPI_ISR, PL_0, 1, 24)
-    FIELD(IPI_ISR, PMU_3, 1, 19)
-    FIELD(IPI_ISR, PMU_2, 1, 18)
-    FIELD(IPI_ISR, PMU_1, 1, 17)
-    FIELD(IPI_ISR, PMU_0, 1, 16)
-    FIELD(IPI_ISR, RPU_1, 1, 9)
-    FIELD(IPI_ISR, RPU_0, 1, 8)
-    FIELD(IPI_ISR, APU, 1, 0)
-REG32(IPI_IMR, 0x14)
-    FIELD(IPI_IMR, PL_3, 1, 27)
-    FIELD(IPI_IMR, PL_2, 1, 26)
-    FIELD(IPI_IMR, PL_1, 1, 25)
-    FIELD(IPI_IMR, PL_0, 1, 24)
-    FIELD(IPI_IMR, PMU_3, 1, 19)
-    FIELD(IPI_IMR, PMU_2, 1, 18)
-    FIELD(IPI_IMR, PMU_1, 1, 17)
-    FIELD(IPI_IMR, PMU_0, 1, 16)
-    FIELD(IPI_IMR, RPU_1, 1, 9)
-    FIELD(IPI_IMR, RPU_0, 1, 8)
-    FIELD(IPI_IMR, APU, 1, 0)
-REG32(IPI_IER, 0x18)
-    FIELD(IPI_IER, PL_3, 1, 27)
-    FIELD(IPI_IER, PL_2, 1, 26)
-    FIELD(IPI_IER, PL_1, 1, 25)
-    FIELD(IPI_IER, PL_0, 1, 24)
-    FIELD(IPI_IER, PMU_3, 1, 19)
-    FIELD(IPI_IER, PMU_2, 1, 18)
-    FIELD(IPI_IER, PMU_1, 1, 17)
-    FIELD(IPI_IER, PMU_0, 1, 16)
-    FIELD(IPI_IER, RPU_1, 1, 9)
-    FIELD(IPI_IER, RPU_0, 1, 8)
-    FIELD(IPI_IER, APU, 1, 0)
-REG32(IPI_IDR, 0x1c)
-    FIELD(IPI_IDR, PL_3, 1, 27)
-    FIELD(IPI_IDR, PL_2, 1, 26)
-    FIELD(IPI_IDR, PL_1, 1, 25)
-    FIELD(IPI_IDR, PL_0, 1, 24)
-    FIELD(IPI_IDR, PMU_3, 1, 19)
-    FIELD(IPI_IDR, PMU_2, 1, 18)
-    FIELD(IPI_IDR, PMU_1, 1, 17)
-    FIELD(IPI_IDR, PMU_0, 1, 16)
-    FIELD(IPI_IDR, RPU_1, 1, 9)
-    FIELD(IPI_IDR, RPU_0, 1, 8)
-    FIELD(IPI_IDR, APU, 1, 0)
+DEP_REG32(IPI_TRIG, 0x0)
+    DEP_FIELD(IPI_TRIG, PL_3, 1, 27)
+    DEP_FIELD(IPI_TRIG, PL_2, 1, 26)
+    DEP_FIELD(IPI_TRIG, PL_1, 1, 25)
+    DEP_FIELD(IPI_TRIG, PL_0, 1, 24)
+    DEP_FIELD(IPI_TRIG, PMU_3, 1, 19)
+    DEP_FIELD(IPI_TRIG, PMU_2, 1, 18)
+    DEP_FIELD(IPI_TRIG, PMU_1, 1, 17)
+    DEP_FIELD(IPI_TRIG, PMU_0, 1, 16)
+    DEP_FIELD(IPI_TRIG, RPU_1, 1, 9)
+    DEP_FIELD(IPI_TRIG, RPU_0, 1, 8)
+    DEP_FIELD(IPI_TRIG, APU, 1, 0)
+DEP_REG32(IPI_OBS, 0x4)
+    DEP_FIELD(IPI_OBS, PL_3, 1, 27)
+    DEP_FIELD(IPI_OBS, PL_2, 1, 26)
+    DEP_FIELD(IPI_OBS, PL_1, 1, 25)
+    DEP_FIELD(IPI_OBS, PL_0, 1, 24)
+    DEP_FIELD(IPI_OBS, PMU_3, 1, 19)
+    DEP_FIELD(IPI_OBS, PMU_2, 1, 18)
+    DEP_FIELD(IPI_OBS, PMU_1, 1, 17)
+    DEP_FIELD(IPI_OBS, PMU_0, 1, 16)
+    DEP_FIELD(IPI_OBS, RPU_1, 1, 9)
+    DEP_FIELD(IPI_OBS, RPU_0, 1, 8)
+    DEP_FIELD(IPI_OBS, APU, 1, 0)
+DEP_REG32(IPI_ISR, 0x10)
+    DEP_FIELD(IPI_ISR, PL_3, 1, 27)
+    DEP_FIELD(IPI_ISR, PL_2, 1, 26)
+    DEP_FIELD(IPI_ISR, PL_1, 1, 25)
+    DEP_FIELD(IPI_ISR, PL_0, 1, 24)
+    DEP_FIELD(IPI_ISR, PMU_3, 1, 19)
+    DEP_FIELD(IPI_ISR, PMU_2, 1, 18)
+    DEP_FIELD(IPI_ISR, PMU_1, 1, 17)
+    DEP_FIELD(IPI_ISR, PMU_0, 1, 16)
+    DEP_FIELD(IPI_ISR, RPU_1, 1, 9)
+    DEP_FIELD(IPI_ISR, RPU_0, 1, 8)
+    DEP_FIELD(IPI_ISR, APU, 1, 0)
+DEP_REG32(IPI_IMR, 0x14)
+    DEP_FIELD(IPI_IMR, PL_3, 1, 27)
+    DEP_FIELD(IPI_IMR, PL_2, 1, 26)
+    DEP_FIELD(IPI_IMR, PL_1, 1, 25)
+    DEP_FIELD(IPI_IMR, PL_0, 1, 24)
+    DEP_FIELD(IPI_IMR, PMU_3, 1, 19)
+    DEP_FIELD(IPI_IMR, PMU_2, 1, 18)
+    DEP_FIELD(IPI_IMR, PMU_1, 1, 17)
+    DEP_FIELD(IPI_IMR, PMU_0, 1, 16)
+    DEP_FIELD(IPI_IMR, RPU_1, 1, 9)
+    DEP_FIELD(IPI_IMR, RPU_0, 1, 8)
+    DEP_FIELD(IPI_IMR, APU, 1, 0)
+DEP_REG32(IPI_IER, 0x18)
+    DEP_FIELD(IPI_IER, PL_3, 1, 27)
+    DEP_FIELD(IPI_IER, PL_2, 1, 26)
+    DEP_FIELD(IPI_IER, PL_1, 1, 25)
+    DEP_FIELD(IPI_IER, PL_0, 1, 24)
+    DEP_FIELD(IPI_IER, PMU_3, 1, 19)
+    DEP_FIELD(IPI_IER, PMU_2, 1, 18)
+    DEP_FIELD(IPI_IER, PMU_1, 1, 17)
+    DEP_FIELD(IPI_IER, PMU_0, 1, 16)
+    DEP_FIELD(IPI_IER, RPU_1, 1, 9)
+    DEP_FIELD(IPI_IER, RPU_0, 1, 8)
+    DEP_FIELD(IPI_IER, APU, 1, 0)
+DEP_REG32(IPI_IDR, 0x1c)
+    DEP_FIELD(IPI_IDR, PL_3, 1, 27)
+    DEP_FIELD(IPI_IDR, PL_2, 1, 26)
+    DEP_FIELD(IPI_IDR, PL_1, 1, 25)
+    DEP_FIELD(IPI_IDR, PL_0, 1, 24)
+    DEP_FIELD(IPI_IDR, PMU_3, 1, 19)
+    DEP_FIELD(IPI_IDR, PMU_2, 1, 18)
+    DEP_FIELD(IPI_IDR, PMU_1, 1, 17)
+    DEP_FIELD(IPI_IDR, PMU_0, 1, 16)
+    DEP_FIELD(IPI_IDR, RPU_1, 1, 9)
+    DEP_FIELD(IPI_IDR, RPU_0, 1, 8)
+    DEP_FIELD(IPI_IDR, APU, 1, 0)
 
 #define R_MAX (R_IPI_IDR + 1)
 
@@ -131,7 +131,7 @@ typedef struct IPI {
     qemu_irq irq;
 
     uint32_t regs[R_MAX];
-    RegisterInfo regs_info[R_MAX];
+    DepRegisterInfo regs_info[R_MAX];
 } IPI;
 
 static void ipi_update_irq(IPI *s)
@@ -143,13 +143,13 @@ static void ipi_update_irq(IPI *s)
     qemu_set_irq(s->irq, pending);
 }
 
-static void ipi_isr_postw(RegisterInfo *reg, uint64_t val64)
+static void ipi_isr_postw(DepRegisterInfo *reg, uint64_t val64)
 {
     IPI *s = XILINX_IPI(reg->opaque);
     ipi_update_irq(s);
 }
 
-static uint64_t ipi_ier_prew(RegisterInfo *reg, uint64_t val64)
+static uint64_t ipi_ier_prew(DepRegisterInfo *reg, uint64_t val64)
 {
     IPI *s = XILINX_IPI(reg->opaque);
     uint32_t val = val64;
@@ -159,7 +159,7 @@ static uint64_t ipi_ier_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
-static uint64_t ipi_idr_prew(RegisterInfo *reg, uint64_t val64)
+static uint64_t ipi_idr_prew(DepRegisterInfo *reg, uint64_t val64)
 {
     IPI *s = XILINX_IPI(reg->opaque);
     uint32_t val = val64;
@@ -169,14 +169,14 @@ static uint64_t ipi_idr_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
-static void ipi_trig_postw(RegisterInfo *reg, uint64_t val64) {
+static void ipi_trig_postw(DepRegisterInfo *reg, uint64_t val64) {
     IPI *s = XILINX_IPI(reg->opaque);
     uint64_t old_value = s->regs[R_IPI_TRIG];
 
     /* TRIG generates a pulse on the outbound signals. We use the
      * post-write callback to bring the signal back-down.  */
     s->regs[R_IPI_TRIG] = 0;
-    register_refresh_gpios(reg, old_value);
+    dep_register_refresh_gpios(reg, old_value);
 }
 
 #define GPIO_TRIG_OUT(x) \
@@ -185,12 +185,12 @@ static void ipi_trig_postw(RegisterInfo *reg, uint64_t val64) {
 #define GPIO_OBS_OUT(x) \
     { .name = "OBS_" stringify(x), .bit_pos = R_IPI_ISR_ ## x ## _SHIFT, .width = 1 }
 
-static RegisterAccessInfo ipi_regs_info[] = {
+static DepRegisterAccessInfo ipi_regs_info[] = {
     {   .name = "IPI_TRIG",  .decode.addr = A_IPI_TRIG,
         .rsvd = 0xf0f0fcfe,
         .ro = 0xf0f0fcfe,
         .post_write = ipi_trig_postw,
-        .gpios = (RegisterGPIOMapping[]) {
+        .gpios = (DepRegisterGPIOMapping[]) {
             GPIO_TRIG_OUT(APU),
             GPIO_TRIG_OUT(RPU_0),
             GPIO_TRIG_OUT(RPU_1),
@@ -212,7 +212,7 @@ static RegisterAccessInfo ipi_regs_info[] = {
         .ro = 0xf0f0fcfe,
         .w1c = 0xf0f0301,
         .post_write = ipi_isr_postw,
-        .gpios = (RegisterGPIOMapping[]) {
+        .gpios = (DepRegisterGPIOMapping[]) {
             GPIO_OBS_OUT(APU),
             GPIO_OBS_OUT(RPU_0),
             GPIO_OBS_OUT(RPU_1),
@@ -247,7 +247,7 @@ static void ipi_reset(DeviceState *dev)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        register_reset(&s->regs_info[i]);
+        dep_register_reset(&s->regs_info[i]);
     }
 
     ipi_update_irq(s);
@@ -256,7 +256,7 @@ static void ipi_reset(DeviceState *dev)
 static void ipi_handler(void *opaque, int n, int level)
 {
     IPI *s = XILINX_IPI(opaque);
-    RegisterInfo *r_isr = &s->regs_info[A_IPI_ISR / 4];
+    DepRegisterInfo *r_isr = &s->regs_info[A_IPI_ISR / 4];
     uint32_t val = (!!level) << n;
     uint64_t old_value = s->regs[R_IPI_ISR];
 
@@ -265,7 +265,7 @@ static void ipi_handler(void *opaque, int n, int level)
 
     s->regs[R_IPI_ISR] |= val;
     ipi_update_irq(s);
-    register_refresh_gpios(r_isr, old_value);
+    dep_register_refresh_gpios(r_isr, old_value);
 }
 
 static void obs_handler(void *opaque, int n, int level)
@@ -279,7 +279,7 @@ static void obs_handler(void *opaque, int n, int level)
 static uint64_t ipi_read(void *opaque, hwaddr addr, unsigned size)
 {
     IPI *s = XILINX_IPI(opaque);
-    RegisterInfo *r = &s->regs_info[addr / 4];
+    DepRegisterInfo *r = &s->regs_info[addr / 4];
 
     if (!r->data) {
         qemu_log_mask(LOG_GUEST_ERROR,
@@ -287,14 +287,14 @@ static uint64_t ipi_read(void *opaque, hwaddr addr, unsigned size)
                       object_get_canonical_path(OBJECT(s)), addr);
         return 0;
     }
-    return register_read(r);
+    return dep_register_read(r);
 }
 
 static void ipi_write(void *opaque, hwaddr addr, uint64_t value,
                       unsigned size)
 {
     IPI *s = XILINX_IPI(opaque);
-    RegisterInfo *r = &s->regs_info[addr / 4];
+    DepRegisterInfo *r = &s->regs_info[addr / 4];
 
     if (!r->data) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: Decode error: write to"
@@ -302,7 +302,7 @@ static void ipi_write(void *opaque, hwaddr addr, uint64_t value,
                       object_get_canonical_path(OBJECT(s)), addr, value);
         return;
     }
-    register_write(r, value, ~0);
+    dep_register_write(r, value, ~0);
 }
 
 static const MemoryRegionOps ipi_ops = {
@@ -322,9 +322,9 @@ static void ipi_realize(DeviceState *dev, Error **errp)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(ipi_regs_info); ++i) {
-        RegisterInfo *r = &s->regs_info[ipi_regs_info[i].decode.addr/4];
+        DepRegisterInfo *r = &s->regs_info[ipi_regs_info[i].decode.addr/4];
 
-        *r = (RegisterInfo) {
+        *r = (DepRegisterInfo) {
             .data = (uint8_t *)&s->regs[
                     ipi_regs_info[i].decode.addr/4],
             .data_size = sizeof(uint32_t),
@@ -333,7 +333,7 @@ static void ipi_realize(DeviceState *dev, Error **errp)
             .prefix = prefix,
             .opaque = s,
         };
-        register_init(r);
+        dep_register_init(r);
         qdev_pass_all_gpios(DEVICE(r), dev);
     }
 
