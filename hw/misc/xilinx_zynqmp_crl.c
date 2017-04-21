@@ -652,7 +652,7 @@ static uint64_t mon_ir_trigger_prew(DepRegisterInfo *reg, uint64_t val64)
     CRL_APB *s = XILINX_CRL_APB(reg->opaque);
     uint32_t val = val64;
 
-    s->regs[R_CLKMON_STATUS] |= (~s->regs[R_CLKMON_MASK]) & val;
+    s->regs[R_CLKMON_STATUS] = s->regs[R_CLKMON_STATUS] | val;
     mon_ir_update_irq(s);
     return 0;
 }
