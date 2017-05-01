@@ -881,6 +881,7 @@ static void decode_qio_read_cmd(Flash *s)
         }
         break;
     default:
+        s->needed_bytes += 5;
         break;
     }
     s->pos = 0;
