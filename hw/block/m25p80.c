@@ -953,6 +953,7 @@ static void decode_new_cmd(Flash *s, uint32_t value)
     case QIOR4:
     case OIOR4:
         s->needed_bytes += 1;
+    case OIOR:
     case QIOR:
         decode_qio_read_cmd(s);
         break;
