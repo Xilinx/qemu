@@ -53,11 +53,6 @@
 #include "qemu/cutils.h"
 #include "qemu/help_option.h"
 
-/* Xilinx: Make this global so blockdev and FDT generic can
- * access it
- */
-int next_block_unit[IF_COUNT];
-
 static QTAILQ_HEAD(, BlockDriverState) monitor_bdrv_states =
     QTAILQ_HEAD_INITIALIZER(monitor_bdrv_states);
 
@@ -283,9 +278,7 @@ int drive_get_max_bus(BlockInterfaceType type)
    appropriate bus.  */
 DriveInfo *drive_get_next(BlockInterfaceType type)
 {
-    /* Xilinx: Make this global instead of local
-     * static int next_block_unit[IF_COUNT];
-     */
+    static int next_block_unit[IF_COUNT];
 
     return drive_get(type, 0, next_block_unit[type]++);
 }
