@@ -264,7 +264,9 @@ static void boot_sequence(void *opaque)
         break;
 
     case STATE_RELEASE_CPU:
-        release_cpu(s);
+        if (s->cfg.cpu_num != CPU_NONE) {
+            release_cpu(s);
+        }
         s->state = STATE_DONE;
         break;
 
