@@ -641,7 +641,7 @@ static void rp_realize(DeviceState *dev, Error **errp)
     qemu_mutex_init(&s->rsp_mutex);
     qemu_cond_init(&s->progress_cond);
 
-    if (!s->chr.chr) {
+    if (!qemu_chr_fe_get_driver(&s->chr)) {
         char *name;
         CharDriverState *chr = NULL;
         static int nr = 0;
@@ -667,13 +667,15 @@ static void rp_realize(DeviceState *dev, Error **errp)
             }
             chr = rp_autocreate_chardev(s, name);
         }
-        s->chr.chr = chr;
+
         free(name);
-        if (!s->chr.chr) {
+        if (!chr) {
             error_report("%s: Unable to create remort-port channel %s\n",
                          s->prefix, s->chardesc);
             exit(EXIT_FAILURE);
         }
+
+        qdev_prop_set_chr(dev, "chardev", chr);
     }
 
 #ifdef _WIN32
