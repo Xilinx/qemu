@@ -182,7 +182,7 @@ static void release_cpu(ZynqMPBoot *s)
         /* Release the APU.  */
         r = boot_load32(s, 0xfd1a0104);
         r &= ~(1 << s->cfg.cpu_num);
-        boot_store32(s, 0xfd1a0104, 0x8000000e);
+        boot_store32(s, 0xfd1a0104, 0x80000000 | r);
     } else {
         /* FIXME: Not implemented yet.  */
     }
