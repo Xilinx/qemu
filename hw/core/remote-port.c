@@ -704,6 +704,7 @@ static void rp_realize(DeviceState *dev, Error **errp)
             port = htons(saddr.sin_port);
         }
 
+        qemu_set_nonblock(s->event.pipe.read);
         qemu_set_fd_handler(s->event.pipe.read, rp_event_read, NULL, s);
         name = g_strdup_printf("127.0.0.1:%d", port);
         s->event.pipe.write = inet_connect(name, &error_abort);
