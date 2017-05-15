@@ -1084,12 +1084,13 @@ int rom_check_and_register_reset(void)
             continue;
         }
         if ((addr > rom->addr) && (as == rom->as)) {
-            fprintf(stderr, "rom: requested regions overlap "
-                    "(rom %s. free=0x" TARGET_FMT_plx
-                    ", addr=0x" TARGET_FMT_plx ")\n",
-                    rom->name, addr, rom->addr);
 /*
- * Xilinx: Treat overlaps as warnings.
+ * Xilinx: Ignore overlaps as we are incorrectly detecting them.
+ *           fprintf(stderr, "rom: requested regions overlap "
+ *                   "(rom %s. free=0x" TARGET_FMT_plx
+ *                   ", addr=0x" TARGET_FMT_plx ")\n",
+ *                   rom->name, addr, rom->addr);
+ *
  *           return -1;
  */
         }
