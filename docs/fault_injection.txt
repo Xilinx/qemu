@@ -65,7 +65,7 @@ def write_mem_callback():
     print 'write_mem_callback()'
     framework.write(0x0, 0xDEADBEEF, 4, 0)
     val = framework.read(0x0, 4, 0)
-    print 'value read: 0x%8.8X' %val
+    print('value read: 0x' + str(val['value']))
 
 Then we can notify it in the main function before framework.run():
 `framework.notify(1000000000, write_mem_callback)`
