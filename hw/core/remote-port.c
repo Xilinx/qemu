@@ -459,7 +459,11 @@ static void rp_event_read(void *opaque)
 
     /* We don't care about the data. Just read it out to clear the event.  */
     do {
+#ifdef _WIN32
+        r = qemu_recv_wrap(s->event.pipe.read, buf, sizeof buf, 0);
+#else
         r = read(s->event.pipe.read, buf, sizeof buf);
+#endif
         if (r == 0) {
             hw_error("%s: pipe closed?\n", s->prefix);
         }
@@ -686,9 +690,10 @@ static void rp_realize(DeviceState *dev, Error **errp)
         char *name;
         SocketAddress *sock;
         int port;
+        int listen_sk;
 
         sock = socket_parse("127.0.0.1:0", &error_abort);
-        s->event.pipe.read = socket_listen(sock, &error_abort);
+        listen_sk = socket_listen(sock, &error_abort);
 
         if (s->event.pipe.read < 0) {
             perror("socket read");
@@ -700,7 +705,7 @@ static void rp_realize(DeviceState *dev, Error **errp)
             socklen_t slen = sizeof saddr;
             int r;
 
-            r = getsockname(s->event.pipe.read, (struct sockaddr *) &saddr, &slen);
+            r = getsockname(listen_sk, (struct sockaddr *) &saddr, &slen);
             if (r < 0) {
                 perror("getsockname");
                 exit(EXIT_FAILURE);
@@ -708,8 +713,6 @@ static void rp_realize(DeviceState *dev, Error **errp)
             port = htons(saddr.sin_port);
         }
 
-        qemu_set_nonblock(s->event.pipe.read);
-        qemu_set_fd_handler(s->event.pipe.read, rp_event_read, NULL, s);
         name = g_strdup_printf("127.0.0.1:%d", port);
         s->event.pipe.write = inet_connect(name, &error_abort);
         g_free(name);
@@ -717,6 +720,24 @@ static void rp_realize(DeviceState *dev, Error **errp)
             perror("socket write");
             exit(EXIT_FAILURE);
         }
+
+        for (;;) {
+            struct sockaddr_in saddr;
+            socklen_t slen = sizeof saddr;
+            int fd;
+
+            slen = sizeof(saddr);
+            fd = qemu_accept(listen_sk, (struct sockaddr *)&saddr, &slen);
+            if (fd < 0 && errno != EINTR) {
+                return;
+            } else if (fd >= 0) {
+                s->event.pipe.read = fd;
+                break;
+            }
+        }
+
+        qemu_set_nonblock(s->event.pipe.read);
+        qemu_set_fd_handler(s->event.pipe.read, rp_event_read, NULL, s);
     }
 #else
     r = qemu_pipe(s->event.pipes);
