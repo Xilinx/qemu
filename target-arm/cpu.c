@@ -467,6 +467,7 @@ static void arm_cpu_set_ncpuhalt(void *opaque, int irq, int level)
 {
     CPUState *cs = opaque;
     ARMCPU *cpu = ARM_CPU(cs);
+    int old_value = cs->arch_halt_pin;
 
     /* FIXME: This code should be active in order to implement the semantic
      * where an already running CPU cannot be halted. This doesn't work though,
@@ -485,6 +486,10 @@ static void arm_cpu_set_ncpuhalt(void *opaque, int irq, int level)
      */
     cpu->powered_off = level;
     cpu_halt_update(cs);
+
+    if (cs->arch_halt_pin != old_value && !cs->arch_halt_pin) {
+        cpu_interrupt(cs, CPU_INTERRUPT_EXITTB);
+    }
 }
 
 static void arm_cpu_set_vinithi(void *opaque, int irq, int level)
