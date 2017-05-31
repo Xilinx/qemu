@@ -426,7 +426,7 @@ static void rp_process(RemotePort *s)
         rpos &= ARRAY_SIZE(s->rx_queue.pkt) - 1;
 
         pkt = s->rx_queue.pkt[rpos].pkt;
-        D(printf("%s: io-thread rpos=%d wpos=%d cmd=%d\n", s->prefix,
+        D(qemu_log("%s: io-thread rpos=%d wpos=%d cmd=%d\n", s->prefix,
                  s->rx_queue.rpos, s->rx_queue.wpos, pkt->hdr.cmd));
 
         dev = s->devs[pkt->hdr.dev];
@@ -542,7 +542,7 @@ static void rp_pt_process_pkt(RemotePort *s, RemotePortDynPkt *dpkt)
 {
     struct rp_pkt *pkt = dpkt->pkt;
 
-    D(printf("%s: cmd=%x rsp=%d\n", __func__, pkt->hdr.cmd,
+    D(qemu_log("%s: cmd=%x rsp=%d\n", __func__, pkt->hdr.cmd,
              pkt->hdr.flags & RP_PKT_FLAGS_response));
 
     if (pkt->hdr.dev >= ARRAY_SIZE(s->devs)) {
