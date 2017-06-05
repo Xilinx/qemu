@@ -56,21 +56,14 @@ typedef struct ZynqMPSDHCIState {
 
     /*< public >*/
     SDState *card;
-    SDState *sd_card;
-    SDState *mmc_card;
     uint8_t drive_index;
 } ZynqMPSDHCIState;
 
 static void zynqmp_sdhci_slottype_handler(void *opaque, int n, int level)
 {
-    SDHCIState *ss = SYSBUS_SDHCI(opaque);
-    ZynqMPSDHCIState *s = ZYNQMP_SDHCI(opaque);
-
-    assert(n == 0);
-
-    ss->capareg = deposit64(ss->capareg, 30, 2, level);
-    s->card = extract64(ss->capareg, 30, 2) ? s->mmc_card : s->sd_card;
-    sd_set_cb(s->card, ss->ro_cb, ss->eject_cb);
+    /* FIXME: Print guest errors if the inserted card is different compared to
+     *        slot configuration
+     */
 }
 
 static void zynqmp_sdhci_reset(DeviceState *dev)
@@ -81,7 +74,6 @@ static void zynqmp_sdhci_reset(DeviceState *dev)
 
     dc_parent->reset(dev);
 
-    s->card = s->sd_card;
     sd_set_cb(s->card, ss->ro_cb, ss->eject_cb);
 }
 
@@ -90,7 +82,6 @@ static void zynqmp_sdhci_realize(DeviceState *dev, Error **errp)
     DeviceClass *dc_parent = DEVICE_CLASS(ZYNQMP_SDHCI_PARENT_CLASS);
     ZynqMPSDHCIState *s = ZYNQMP_SDHCI(dev);
     DriveInfo *di_sd, *di_mmc;
-    BlockBackend *blk_sd;
     DeviceState *carddev_sd;
     static int index_offset = 0;
 
@@ -105,24 +96,47 @@ static void zynqmp_sdhci_realize(DeviceState *dev, Error **errp)
         index_offset++;
     }
 
-    di_sd = drive_get_by_index(IF_SD , s->drive_index);
-    blk_sd = di_sd ? blk_by_legacy_dinfo(di_sd) : NULL;
-
-    carddev_sd = qdev_create(qdev_get_child_bus(DEVICE(dev), "sd-bus"), TYPE_SD_CARD);
-
-    qdev_prop_set_drive(carddev_sd, "drive", blk_sd, &error_fatal);
+    carddev_sd = qdev_create(qdev_get_child_bus(DEVICE(dev), "sd-bus"),
+                             TYPE_SD_CARD);
     object_property_set_bool(OBJECT(carddev_sd), false, "spi", &error_fatal);
-    object_property_set_bool(OBJECT(carddev_sd), false, "mmc", &error_fatal);
-    object_property_set_bool(OBJECT(carddev_sd), true, "realized", &error_fatal);
 
-    s->sd_card = SD_CARD(carddev_sd);
+    /*
+     * drive_index is used to attach a card in SD mode.
+     * drive_index + 2 is used to attach a card in MMC mode.
+     *
+     * If the user attaches a card to both slots, we bail out.
+     */
 
+    di_sd = drive_get_by_index(IF_SD , s->drive_index);
     di_mmc = drive_get_by_index(IF_SD, (s->drive_index + 2));
-    s->mmc_card = mmc_init(di_mmc ? blk_by_legacy_dinfo(di_mmc) : NULL);
 
-    dc_parent->realize(dev, errp);
+    if (di_sd && di_mmc) {
+        if (!di_sd->is_default && !di_mmc->is_default) {
+            error_setg(&error_fatal, "Cannot attach both an MMC"
+                                     " and an SD card into the same slot");
+        }
+    }
+
+    if (di_sd) {
+        qdev_prop_set_drive(carddev_sd, "drive", blk_by_legacy_dinfo(di_sd),
+                            &error_fatal);
+        object_property_set_bool(OBJECT(carddev_sd), false, "mmc",
+                                 &error_fatal);
+    }
+
+    if (di_mmc) {
+        qdev_prop_set_drive(carddev_sd, "drive", blk_by_legacy_dinfo(di_mmc),
+                            &error_fatal);
+        object_property_set_bool(OBJECT(carddev_sd), true, "mmc", &error_fatal);
+    }
+
+    object_property_set_bool(OBJECT(carddev_sd), true, "realized",
+                             &error_fatal);
 
     qdev_init_gpio_in_named(dev, zynqmp_sdhci_slottype_handler, "SLOTTYPE", 1);
+    s->card = SD_CARD(carddev_sd);
+
+    dc_parent->realize(dev, errp);
 }
 
 static Property zynqmp_sdhci_properties[] = {
