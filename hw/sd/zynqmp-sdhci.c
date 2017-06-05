@@ -57,13 +57,26 @@ typedef struct ZynqMPSDHCIState {
     /*< public >*/
     SDState *card;
     uint8_t drive_index;
+    bool is_mmc;
 } ZynqMPSDHCIState;
 
 static void zynqmp_sdhci_slottype_handler(void *opaque, int n, int level)
 {
-    /* FIXME: Print guest errors if the inserted card is different compared to
-     *        slot configuration
-     */
+    ZynqMPSDHCIState *s = ZYNQMP_SDHCI(opaque);
+
+    assert(n == 0);
+
+    if (!s->card) {
+        /* Card Not Connected */
+        return;
+    }
+
+    if (level != s->is_mmc) {
+        qemu_log_mask(LOG_GUEST_ERROR, "WARNING: Inserted %s Card but"
+                      " Slot configured as %s\n",
+                      s->is_mmc ? "MMC" : "SD",
+                      level ? "MMC" : "SD");
+    }
 }
 
 static void zynqmp_sdhci_reset(DeviceState *dev)
@@ -128,6 +141,7 @@ static void zynqmp_sdhci_realize(DeviceState *dev, Error **errp)
         qdev_prop_set_drive(carddev_sd, "drive", blk_by_legacy_dinfo(di_mmc),
                             &error_fatal);
         object_property_set_bool(OBJECT(carddev_sd), true, "mmc", &error_fatal);
+        s->is_mmc = true;
     }
 
     object_property_set_bool(OBJECT(carddev_sd), true, "realized",
