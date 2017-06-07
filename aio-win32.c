@@ -67,6 +67,7 @@ void aio_set_fd_handler(AioContext *ctx,
         }
     } else {
         HANDLE event;
+        long bitmask = 0;
 
         if (node == NULL) {
             /* Alloc and insert if it's not already there */
@@ -91,10 +92,16 @@ void aio_set_fd_handler(AioContext *ctx,
         node->io_write = io_write;
         node->is_external = is_external;
 
+        if (io_read) {
+            bitmask |= FD_READ;
+        }
+
+        if (io_write) {
+            bitmask |= FD_WRITE;
+        }
+
         event = event_notifier_get_handle(&ctx->notifier);
-        WSAEventSelect(node->pfd.fd, event,
-                       FD_READ | FD_ACCEPT | FD_CLOSE |
-                       FD_CONNECT | FD_WRITE | FD_OOB);
+        WSAEventSelect(node->pfd.fd, event, bitmask);
     }
 
     aio_notify(ctx);
