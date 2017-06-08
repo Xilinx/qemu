@@ -413,7 +413,7 @@ static int poll_rest(gboolean poll_msgs, HANDLE *handles, gint nhandles,
         /* If we have a timeout, or no handles to poll, be satisfied
          * with just noticing we have messages waiting.
          */
-        if (timeout != 0 || nhandles == 0) {
+        if (timeout != 0) {
             return 1;
         }
 
