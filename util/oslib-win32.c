@@ -431,10 +431,10 @@ static int poll_rest(gboolean poll_msgs, HANDLE *handles, gint nhandles,
             }
         }
 
-        /* If no timeout and polling several handles, recurse to poll
-         * the rest of them.
+        /* We only found one and we are waiting on more then one. Let's try
+         * again.
          */
-        if (timeout == 0 && nhandles > 1) {
+        if (nhandles > 1) {
             /* Remove the handle that fired */
             int i;
             if ((ready - WAIT_OBJECT_0) < nhandles - 1) {
@@ -443,7 +443,20 @@ static int poll_rest(gboolean poll_msgs, HANDLE *handles, gint nhandles,
                 }
             }
             nhandles--;
-            recursed_result = poll_rest(FALSE, handles, nhandles, fds, nfds, 0);
+
+            /* If we just had a very small timeout let's increase it when we
+             * recurse to ensure we don't just busy wait. This ensures we let
+             * the Windows threads block at least a little. If we previously
+             * had some wait let's set it to zero to avoid blocking for too
+             * long.
+             */
+            if (timeout < 10) {
+                timeout = timeout + 1;
+            } else {
+                timeout = 0;
+            }
+            recursed_result = poll_rest(FALSE, handles, nhandles, fds,
+                                        nfds, timeout);
             return (recursed_result == -1) ? -1 : 1 + recursed_result;
         }
         return 1;
