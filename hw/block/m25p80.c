@@ -190,6 +190,9 @@ static const FlashPartInfo known_devices[] = {
     { INFO("mx25l25635e", 0xc22019,      0, 0x00, 0x00,  64 << 10, 512, 0) },
     { INFO("mx25l25655e", 0xc22619,      0, 0x00, 0x00,  64 << 10, 512, 0) },
     { INFO("mx66l1g55g",  0xc2261b,      0, 0x00, 0x00,  64 << 10, 2048, ER_4K) },
+    { INFO("mx66u51235f", 0xc2253a,      0, 0x00, 0x00,  64 << 10, 1024, ER_4K | ER_32K) },
+    { INFO("mx66u1g45g",  0xc2253b,      0, 0x00, 0x00,  64 << 10, 2048, ER_4K | ER_32K) },
+    { INFO("mx66l1g45g",  0xc2201b,      0, 0x00, 0x00,  64 << 10, 2048, ER_4K | ER_32K) },
 
     /* Micron */
     { INFO("n25q032a11",  0x20bb16,      0, 0x00, 0x00,  64 << 10,  64, ER_4K) },
@@ -204,6 +207,9 @@ static const FlashPartInfo known_devices[] = {
     { INFO("n25q512a13",  0x20ba20,      0, 0x00, 0x00,  64 << 10, 1024, ER_4K) },
     { INFO("m25qu02gcbb", 0x22bb20,      0, 0x00, 0x00,  64 << 10, 4096, ER_4K) },
     { INFO("mt35xu01gbba", 0x2c5b1b,   0, 0x00, 0x00, 128 << 10, 1024, ER_4K) },
+    { INFO("n25q128",     0x20ba18,      0, 0x00, 0x00,  64 << 10, 256, 0) },
+    { INFO("n25q256a",    0x20ba19,      0, 0x00, 0x00,  64 << 10, 512, ER_4K) },
+    { INFO("n25q512a",    0x20ba20,      0, 0x00, 0x00,  64 << 10, 1024, ER_4K) },
 
     /* Spansion -- single (large) sector size only, at least
      * for the chips listed here (without boot sectors).
@@ -276,9 +282,6 @@ static const FlashPartInfo known_devices[] = {
     { INFO("w25q80",      0xef5014,      0, 0x00, 0x00,  64 << 10,  16, ER_4K) },
     { INFO("w25q80bl",    0xef4014,      0, 0x00, 0x00,  64 << 10,  16, ER_4K) },
     { INFO("w25q256",     0xef4019,      0, 0x00, 0x00,  64 << 10, 512, ER_4K) },
-
-    /* Numonyx -- n25q128 */
-    { INFO("n25q128",      0x20ba18,      0, 0x00, 0x00,  64 << 10, 256, 0) },
 };
 
 typedef enum {
