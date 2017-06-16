@@ -21,6 +21,7 @@
 #include "hw/block/flash.h"
 #include "qemu/error-report.h"
 #include "qemu/log.h"
+#include "sysemu/qtest.h"
 #include "hw/arm/xlnx-zynqmp.h"
 
 #include <libfdt.h>
@@ -46,6 +47,8 @@
 #define GENERAL_MACHINE_NAME "arm-generic-fdt"
 #define ZYNQ7000_MACHINE_NAME "arm-generic-fdt-7series"
 #define DEP_GENERAL_MACHINE_NAME "arm-generic-fdt-plnx"
+
+#define QTEST_RUNNING (qtest_enabled() && qtest_driver())
 
 #define MAX_CPUS 4
 
@@ -435,17 +438,25 @@ static void arm_generic_fdt_init(MachineState *machine)
         zynq_7000 = true;
     } else if (!strcmp(MACHINE_GET_CLASS(machine)->name,
                        DEP_GENERAL_MACHINE_NAME)) {
-        fprintf(stderr, "The '" DEP_GENERAL_MACHINE_NAME "' machine has been" \
-                " deprecated. Please use '" ZYNQ7000_MACHINE_NAME \
-                "' instead.\n");
+        if (!QTEST_RUNNING) {
+            /* Don't print this error if running qtest */
+            fprintf(stderr, "The '" DEP_GENERAL_MACHINE_NAME "' machine has " \
+                    "been deprecated. Please use '" ZYNQ7000_MACHINE_NAME \
+                    "' instead.\n");
+        }
         zynq_7000 = true;
     }
 
     dtb_arg = qemu_opt_get(qemu_get_machine_opts(), "dtb");
     hw_dtb_arg = qemu_opt_get(qemu_get_machine_opts(), "hw-dtb");
     if (!dtb_arg && !hw_dtb_arg) {
-        hw_error("DTB must be specified for %s machine model\n",
-                 MACHINE_GET_CLASS(machine)->name);
+        if (!QTEST_RUNNING) {
+            /* Just return without error if running qtest, as we never have a
+             * device tree
+             */
+            hw_error("DTB must be specified for %s machine model\n",
+                     MACHINE_GET_CLASS(machine)->name);
+        }
         return;
     }
 
