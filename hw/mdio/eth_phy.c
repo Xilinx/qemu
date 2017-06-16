@@ -177,6 +177,8 @@ static const TypeInfo eth_phy_info = {
     .class_size = sizeof(EthPhyClass),
     .instance_init = eth_phy_init,
     .class_init = eth_phy_class_init,
+    /* This cannot be directly initiated as it requires a MDIO slave */
+    .abstract = true,
 };
 
 static void eth_phy_register_types(void)
