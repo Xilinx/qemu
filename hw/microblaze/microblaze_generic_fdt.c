@@ -38,6 +38,7 @@
 #include "exec/address-spaces.h"
 #include "qemu/error-report.h"
 #include "qapi/error.h"
+#include "sysemu/qtest.h"
 #include "qemu/config-file.h"
 
 #include "hw/fdt_generic_util.h"
@@ -49,6 +50,8 @@
 
 #define IS_PETALINUX_MACHINE \
     (!strcmp(MACHINE_GET_CLASS(machine)->name, MACHINE_NAME "-plnx"))
+
+#define QTEST_RUNNING (qtest_enabled() && qtest_driver())
 
 /* FIXME: delete */
 static void *fdt_g;
@@ -399,7 +402,9 @@ microblaze_generic_fdt_init(MachineState *machine)
 
     return;
 no_dtb_arg:
-    hw_error("DTB must be specified for %s machine model\n", MACHINE_NAME);
+    if (!QTEST_RUNNING) {
+        hw_error("DTB must be specified for %s machine model\n", MACHINE_NAME);
+    }
     return;
 }
 
