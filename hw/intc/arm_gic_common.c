@@ -221,6 +221,8 @@ static Property arm_gic_common_properties[] = {
     DEFINE_PROP_UINT32("map-stride", GICState, map_stride, 0x1000),
     /* We set this later if it isn't set */
     DEFINE_PROP_UINT32("int-id", GICState, c_iidr, 0),
+    /* Xilinx: This is here for compatibility, but we never actually use it */
+    DEFINE_PROP_BOOL("has-security-extensions", GICState, security_extn, 0),
     DEFINE_PROP_END_OF_LIST(),
 };
 
