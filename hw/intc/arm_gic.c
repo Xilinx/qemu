@@ -1515,8 +1515,8 @@ void gic_init_irqs_and_distributor(GICState *s)
      */
     if (s->revision != REV_NVIC) {
         i += (GIC_INTERNAL * s->num_cpu);
+        qdev_init_gpio_in(DEVICE(s), gic_set_irq_cb, i);
     }
-    qdev_init_gpio_in(DEVICE(s), gic_set_irq_cb, i);
     for (i = 0; i < GIC_N_REALCPU; i++) {
         sysbus_init_irq(sbd, &s->parent_irq[i]);
     }
