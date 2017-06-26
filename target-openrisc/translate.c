@@ -78,6 +78,7 @@ void openrisc_translate_init(void)
     int i;
 
     cpu_env = tcg_global_reg_new_ptr(TCG_AREG0, "env");
+    tcg_ctx.tcg_env = cpu_env;
     cpu_sr = tcg_global_mem_new(cpu_env,
                                 offsetof(CPUOpenRISCState, sr), "sr");
     env_flags = tcg_global_mem_new_i32(cpu_env,
@@ -190,15 +191,25 @@ static void check_ov64s(DisasContext *dc)
 }
 #endif*/
 
+static inline bool use_goto_tb(DisasContext *dc, target_ulong dest)
+{
+    if (unlikely(dc->singlestep_enabled)) {
+        return false;
+    }
+
+#ifndef CONFIG_USER_ONLY
+    return (dc->tb->pc & TARGET_PAGE_MASK) == (dest & TARGET_PAGE_MASK);
+#else
+    return true;
+#endif
+}
+
 static void gen_goto_tb(DisasContext *dc, int n, target_ulong dest)
 {
-    TranslationBlock *tb;
-    tb = dc->tb;
-    if ((tb->pc & TARGET_PAGE_MASK) == (dest & TARGET_PAGE_MASK) &&
-                                       likely(!dc->singlestep_enabled)) {
+    if (use_goto_tb(dc, dest)) {
         tcg_gen_movi_tl(cpu_pc, dest);
         tcg_gen_goto_tb(n);
-        tcg_gen_exit_tb((uintptr_t)tb + n);
+        tcg_gen_exit_tb((uintptr_t)dc->tb + n);
     } else {
         tcg_gen_movi_tl(cpu_pc, dest);
         if (dc->singlestep_enabled) {
@@ -1640,10 +1651,6 @@ void gen_intermediate_code(CPUOpenRISCState *env, struct TranslationBlock *tb)
     dc->synced_flags = dc->tb_flags = tb->flags;
     dc->delayed_branch = !!(dc->tb_flags & D_FLAG);
     dc->singlestep_enabled = cs->singlestep_enabled;
-    if (qemu_loglevel_mask(CPU_LOG_TB_IN_ASM)) {
-        qemu_log("-----------------------------------------\n");
-        log_cpu_state(CPU(cpu), 0);
-    }
 
     next_page_start = (pc_start & TARGET_PAGE_MASK) + TARGET_PAGE_SIZE;
     num_insns = 0;
@@ -1741,11 +1748,15 @@ void gen_intermediate_code(CPUOpenRISCState *env, struct TranslationBlock *tb)
     tb->icount = num_insns;
 
 #ifdef DEBUG_DISAS
-    if (qemu_loglevel_mask(CPU_LOG_TB_IN_ASM)) {
-        qemu_log("\n");
+    if (qemu_loglevel_mask(CPU_LOG_TB_IN_ASM)
+        && qemu_log_in_addr_range(pc_start)) {
+        qemu_log_lock();
+        qemu_log("----------------\n");
+        qemu_log("IN: %s\n", lookup_symbol(pc_start));
         log_target_disas(cs, pc_start, dc->pc - pc_start, 0);
         qemu_log("\nisize=%d osize=%d\n",
                  dc->pc - pc_start, tcg_op_buf_count());
+        qemu_log_unlock();
     }
 #endif
 }

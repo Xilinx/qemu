@@ -20,6 +20,7 @@ extern PropertyInfo qdev_prop_ptr;
 extern PropertyInfo qdev_prop_macaddr;
 extern PropertyInfo qdev_prop_on_off_auto;
 extern PropertyInfo qdev_prop_losttickpolicy;
+extern PropertyInfo qdev_prop_blockdev_on_error;
 extern PropertyInfo qdev_prop_bios_chs_trans;
 extern PropertyInfo qdev_prop_fdc_drive_type;
 extern PropertyInfo qdev_prop_drive;
@@ -145,7 +146,7 @@ extern PropertyInfo qdev_prop_arraylen;
     DEFINE_PROP(_n, _s, _f, qdev_prop_ptr, void*)
 
 #define DEFINE_PROP_CHR(_n, _s, _f)             \
-    DEFINE_PROP(_n, _s, _f, qdev_prop_chr, CharDriverState*)
+    DEFINE_PROP(_n, _s, _f, qdev_prop_chr, CharBackend)
 #define DEFINE_PROP_STRING(_n, _s, _f)             \
     DEFINE_PROP(_n, _s, _f, qdev_prop_string, char*)
 #define DEFINE_PROP_NETDEV(_n, _s, _f)             \
@@ -161,6 +162,9 @@ extern PropertyInfo qdev_prop_arraylen;
 #define DEFINE_PROP_LOSTTICKPOLICY(_n, _s, _f, _d) \
     DEFINE_PROP_DEFAULT(_n, _s, _f, _d, qdev_prop_losttickpolicy, \
                         LostTickPolicy)
+#define DEFINE_PROP_BLOCKDEV_ON_ERROR(_n, _s, _f, _d) \
+    DEFINE_PROP_DEFAULT(_n, _s, _f, _d, qdev_prop_blockdev_on_error, \
+                        BlockdevOnError)
 #define DEFINE_PROP_BIOS_CHS_TRANS(_n, _s, _f, _d) \
     DEFINE_PROP_DEFAULT(_n, _s, _f, _d, qdev_prop_bios_chs_trans, int)
 #define DEFINE_PROP_BLOCKSIZE(_n, _s, _f) \
@@ -197,8 +201,14 @@ void error_set_from_qdev_prop_error(Error **errp, int ret, DeviceState *dev,
                                     Property *prop, const char *value);
 
 /**
- * @qdev_property_add_static - add a @Property to a device referencing a
- * field in a struct.
+ * qdev_property_add_static:
+ * @dev: Device to add the property to.
+ * @prop: The qdev property definition.
+ * @errp: location to store error information.
+ *
+ * Add a static QOM property to @dev for qdev property @prop.
+ * On error, store error in @errp.  Static properties access data in a struct.
+ * The type of the QOM property is derived from prop->info.
  */
 void qdev_property_add_static(DeviceState *dev, Property *prop, Error **errp);
 

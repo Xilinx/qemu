@@ -185,6 +185,13 @@ restart:
             qemu_bh_schedule(pool->completion_bh);
 
             elem->common.cb(elem->common.opaque, elem->ret);
+
+            /* We can safely cancel the completion_bh here regardless of someone
+             * else having scheduled it meanwhile because we reenter the
+             * completion function anyway (goto restart).
+             */
+            qemu_bh_cancel(pool->completion_bh);
+
             qemu_aio_unref(elem);
             goto restart;
         } else {
@@ -267,7 +274,7 @@ static void thread_pool_co_cb(void *opaque, int ret)
     ThreadPoolCo *co = opaque;
 
     co->ret = ret;
-    qemu_coroutine_enter(co->co, NULL);
+    qemu_coroutine_enter(co->co);
 }
 
 int coroutine_fn thread_pool_submit_co(ThreadPool *pool, ThreadPoolFunc *func,

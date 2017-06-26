@@ -24,6 +24,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/timer/stm32f2xx_timer.h"
+#include "qemu/log.h"
 
 #ifndef STM_TIMER_ERR_DEBUG
 #define STM_TIMER_ERR_DEBUG 0
@@ -49,6 +50,15 @@ static void stm32f2xx_timer_interrupt(void *opaque)
         s->tim_sr |= 1;
         qemu_irq_pulse(s->irq);
         stm32f2xx_timer_set_alarm(s, s->hit_time);
+    }
+
+    if (s->tim_ccmr1 & (TIM_CCMR1_OC2M2 | TIM_CCMR1_OC2M1) &&
+        !(s->tim_ccmr1 & TIM_CCMR1_OC2M0) &&
+        s->tim_ccmr1 & TIM_CCMR1_OC2PE &&
+        s->tim_ccer & TIM_CCER_CC2E) {
+        /* PWM 2 - Mode 1 */
+        DB_PRINT("PWM2 Duty Cycle: %d%%\n",
+                s->tim_ccr2 / (100 * (s->tim_psc + 1)));
     }
 }
 
@@ -207,7 +217,7 @@ static void stm32f2xx_timer_write(void *opaque, hwaddr offset,
         return;
     case TIM_PSC:
         timer_val = stm32f2xx_ns_to_ticks(s, now) - s->tick_offset;
-        s->tim_psc = value;
+        s->tim_psc = value & 0xFFFF;
         value = timer_val;
         break;
     case TIM_CNT:

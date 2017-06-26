@@ -30,20 +30,6 @@
 #include "gic_internal.h"
 #include "vgic_common.h"
 
-//#define DEBUG_GIC_KVM
-
-#ifdef DEBUG_GIC_KVM
-static const int debug_gic_kvm = 1;
-#else
-static const int debug_gic_kvm = 0;
-#endif
-
-#define DPRINTF(fmt, ...) do { \
-        if (debug_gic_kvm) { \
-            printf("arm_gic: " fmt , ## __VA_ARGS__); \
-        } \
-    } while (0)
-
 #define TYPE_KVM_ARM_GIC "kvm-arm-gic"
 #define KVM_ARM_GIC(obj) \
      OBJECT_CHECK(GICState, (obj), TYPE_KVM_ARM_GIC)
@@ -576,6 +562,18 @@ static void kvm_arm_gic_realize(DeviceState *dev, Error **errp)
         error_setg(&s->migration_blocker, "This operating system kernel does "
                                           "not support vGICv2 migration");
         migrate_add_blocker(s->migration_blocker);
+    }
+
+    if (kvm_has_gsi_routing()) {
+        /* set up irq routing */
+        kvm_init_irq_routing(kvm_state);
+        for (i = 0; i < s->num_irq - GIC_INTERNAL; ++i) {
+            kvm_irqchip_add_irq_route(kvm_state, i, 0, i);
+        }
+
+        kvm_gsi_routing_allowed = true;
+
+        kvm_irqchip_commit_routes(kvm_state);
     }
 }
 

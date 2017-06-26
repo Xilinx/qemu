@@ -38,15 +38,12 @@ typedef struct MirrorState {
     NetFilterState parent_obj;
     char *indev;
     char *outdev;
-    CharDriverState *chr_in;
-    CharDriverState *chr_out;
-    int state; /* 0 = getting length, 1 = getting data */
-    unsigned int index;
-    unsigned int packet_len;
-    uint8_t buf[REDIRECTOR_MAX_LEN];
+    CharBackend chr_in;
+    CharBackend chr_out;
+    SocketReadState rs;
 } MirrorState;
 
-static int filter_mirror_send(CharDriverState *chr_out,
+static int filter_mirror_send(CharBackend *chr_out,
                               const struct iovec *iov,
                               int iovcnt)
 {
@@ -108,51 +105,13 @@ static void redirector_chr_read(void *opaque, const uint8_t *buf, int size)
 {
     NetFilterState *nf = opaque;
     MirrorState *s = FILTER_REDIRECTOR(nf);
-    unsigned int l;
+    int ret;
 
-    while (size > 0) {
-        /* reassemble a packet from the network */
-        switch (s->state) { /* 0 = getting length, 1 = getting data */
-        case 0:
-            l = 4 - s->index;
-            if (l > size) {
-                l = size;
-            }
-            memcpy(s->buf + s->index, buf, l);
-            buf += l;
-            size -= l;
-            s->index += l;
-            if (s->index == 4) {
-                /* got length */
-                s->packet_len = ntohl(*(uint32_t *)s->buf);
-                s->index = 0;
-                s->state = 1;
-            }
-            break;
-        case 1:
-            l = s->packet_len - s->index;
-            if (l > size) {
-                l = size;
-            }
-            if (s->index + l <= sizeof(s->buf)) {
-                memcpy(s->buf + s->index, buf, l);
-            } else {
-                error_report("serious error: oversized packet received.");
-                s->index = s->state = 0;
-                qemu_chr_add_handlers(s->chr_in, NULL, NULL, NULL, NULL);
-                return;
-            }
+    ret = net_fill_rstate(&s->rs, buf, size);
 
-            s->index += l;
-            buf += l;
-            size -= l;
-            if (s->index >= s->packet_len) {
-                s->index = 0;
-                s->state = 0;
-                redirector_to_filter(nf, s->buf, s->packet_len);
-            }
-            break;
-        }
+    if (ret == -1) {
+        qemu_chr_fe_set_handlers(&s->chr_in, NULL, NULL, NULL,
+                                 NULL, NULL, true);
     }
 }
 
@@ -163,7 +122,8 @@ static void redirector_chr_event(void *opaque, int event)
 
     switch (event) {
     case CHR_EVENT_CLOSED:
-        qemu_chr_add_handlers(s->chr_in, NULL, NULL, NULL, NULL);
+        qemu_chr_fe_set_handlers(&s->chr_in, NULL, NULL, NULL,
+                                 NULL, NULL, true);
         break;
     default:
         break;
@@ -180,7 +140,7 @@ static ssize_t filter_mirror_receive_iov(NetFilterState *nf,
     MirrorState *s = FILTER_MIRROR(nf);
     int ret;
 
-    ret = filter_mirror_send(s->chr_out, iov, iovcnt);
+    ret = filter_mirror_send(&s->chr_out, iov, iovcnt);
     if (ret) {
         error_report("filter_mirror_send failed(%s)", strerror(-ret));
     }
@@ -202,8 +162,8 @@ static ssize_t filter_redirector_receive_iov(NetFilterState *nf,
     MirrorState *s = FILTER_REDIRECTOR(nf);
     int ret;
 
-    if (s->chr_out) {
-        ret = filter_mirror_send(s->chr_out, iov, iovcnt);
+    if (qemu_chr_fe_get_driver(&s->chr_out)) {
+        ret = filter_mirror_send(&s->chr_out, iov, iovcnt);
         if (ret) {
             error_report("filter_mirror_send failed(%s)", strerror(-ret));
         }
@@ -217,50 +177,50 @@ static void filter_mirror_cleanup(NetFilterState *nf)
 {
     MirrorState *s = FILTER_MIRROR(nf);
 
-    if (s->chr_out) {
-        qemu_chr_fe_release(s->chr_out);
-    }
+    qemu_chr_fe_deinit(&s->chr_out);
 }
 
 static void filter_redirector_cleanup(NetFilterState *nf)
 {
     MirrorState *s = FILTER_REDIRECTOR(nf);
 
-    if (s->chr_in) {
-        qemu_chr_add_handlers(s->chr_in, NULL, NULL, NULL, NULL);
-        qemu_chr_fe_release(s->chr_in);
-    }
-    if (s->chr_out) {
-        qemu_chr_fe_release(s->chr_out);
-    }
+    qemu_chr_fe_deinit(&s->chr_in);
+    qemu_chr_fe_deinit(&s->chr_out);
 }
 
 static void filter_mirror_setup(NetFilterState *nf, Error **errp)
 {
     MirrorState *s = FILTER_MIRROR(nf);
+    CharDriverState *chr;
 
     if (!s->outdev) {
-        error_setg(errp, "filter filter mirror needs 'outdev' "
+        error_setg(errp, "filter mirror needs 'outdev' "
                    "property set");
         return;
     }
 
-    s->chr_out = qemu_chr_find(s->outdev);
-    if (s->chr_out == NULL) {
+    chr = qemu_chr_find(s->outdev);
+    if (chr == NULL) {
         error_set(errp, ERROR_CLASS_DEVICE_NOT_FOUND,
                   "Device '%s' not found", s->outdev);
         return;
     }
 
-    if (qemu_chr_fe_claim(s->chr_out) != 0) {
-        error_setg(errp, QERR_DEVICE_IN_USE, s->outdev);
-        return;
-    }
+    qemu_chr_fe_init(&s->chr_out, chr, errp);
+}
+
+static void redirector_rs_finalize(SocketReadState *rs)
+{
+    MirrorState *s = container_of(rs, MirrorState, rs);
+    NetFilterState *nf = NETFILTER(s);
+
+    redirector_to_filter(nf, rs->buf, rs->packet_len);
 }
 
 static void filter_redirector_setup(NetFilterState *nf, Error **errp)
 {
     MirrorState *s = FILTER_REDIRECTOR(nf);
+    CharDriverState *chr;
 
     if (!s->indev && !s->outdev) {
         error_setg(errp, "filter redirector needs 'indev' or "
@@ -274,29 +234,35 @@ static void filter_redirector_setup(NetFilterState *nf, Error **errp)
         }
     }
 
-    s->state = s->index = 0;
+    net_socket_rs_init(&s->rs, redirector_rs_finalize);
 
     if (s->indev) {
-        s->chr_in = qemu_chr_find(s->indev);
-        if (s->chr_in == NULL) {
+        chr = qemu_chr_find(s->indev);
+        if (chr == NULL) {
             error_set(errp, ERROR_CLASS_DEVICE_NOT_FOUND,
                       "IN Device '%s' not found", s->indev);
             return;
         }
 
-        qemu_chr_fe_claim_no_fail(s->chr_in);
-        qemu_chr_add_handlers(s->chr_in, redirector_chr_can_read,
-                              redirector_chr_read, redirector_chr_event, nf);
+        if (!qemu_chr_fe_init(&s->chr_in, chr, errp)) {
+            return;
+        }
+
+        qemu_chr_fe_set_handlers(&s->chr_in, redirector_chr_can_read,
+                                 redirector_chr_read, redirector_chr_event,
+                                 nf, NULL, true);
     }
 
     if (s->outdev) {
-        s->chr_out = qemu_chr_find(s->outdev);
-        if (s->chr_out == NULL) {
+        chr = qemu_chr_find(s->outdev);
+        if (chr == NULL) {
             error_set(errp, ERROR_CLASS_DEVICE_NOT_FOUND,
                       "OUT Device '%s' not found", s->outdev);
             return;
         }
-        qemu_chr_fe_claim_no_fail(s->chr_out);
+        if (!qemu_chr_fe_init(&s->chr_out, chr, errp)) {
+            return;
+        }
     }
 }
 
@@ -349,7 +315,7 @@ filter_mirror_set_outdev(Object *obj, const char *value, Error **errp)
     g_free(s->outdev);
     s->outdev = g_strdup(value);
     if (!s->outdev) {
-        error_setg(errp, "filter filter mirror needs 'outdev' "
+        error_setg(errp, "filter mirror needs 'outdev' "
                    "property set");
         return;
     }

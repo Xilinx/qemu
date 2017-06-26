@@ -19,11 +19,14 @@
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "hw/intc/arm_gicv3_common.h"
 #include "hw/sysbus.h"
 #include "sysemu/kvm.h"
 #include "kvm_arm.h"
 #include "vgic_common.h"
+#include "migration/migration.h"
 
 #ifdef DEBUG_GICV3_KVM
 #define DPRINTF(fmt, ...) \
@@ -82,6 +85,7 @@ static void kvm_arm_gicv3_realize(DeviceState *dev, Error **errp)
     GICv3State *s = KVM_ARM_GICV3(dev);
     KVMARMGICv3Class *kgc = KVM_ARM_GICV3_GET_CLASS(s);
     Error *local_err = NULL;
+    int i;
 
     DPRINTF("kvm_arm_gicv3_realize\n");
 
@@ -117,6 +121,25 @@ static void kvm_arm_gicv3_realize(DeviceState *dev, Error **errp)
                             KVM_VGIC_V3_ADDR_TYPE_DIST, s->dev_fd);
     kvm_arm_register_device(&s->iomem_redist, -1, KVM_DEV_ARM_VGIC_GRP_ADDR,
                             KVM_VGIC_V3_ADDR_TYPE_REDIST, s->dev_fd);
+
+    /* Block migration of a KVM GICv3 device: the API for saving and restoring
+     * the state in the kernel is not yet finalised in the kernel or
+     * implemented in QEMU.
+     */
+    error_setg(&s->migration_blocker, "vGICv3 migration is not implemented");
+    migrate_add_blocker(s->migration_blocker);
+
+    if (kvm_has_gsi_routing()) {
+        /* set up irq routing */
+        kvm_init_irq_routing(kvm_state);
+        for (i = 0; i < s->num_irq - GIC_INTERNAL; ++i) {
+            kvm_irqchip_add_irq_route(kvm_state, i, 0, i);
+        }
+
+        kvm_gsi_routing_allowed = true;
+
+        kvm_irqchip_commit_routes(kvm_state);
+    }
 }
 
 static void kvm_arm_gicv3_class_init(ObjectClass *klass, void *data)

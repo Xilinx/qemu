@@ -23,7 +23,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qapi/error.h"
 #include "qemu/log.h"
 #include "hw/display/xlnx_dp.h"
 
@@ -290,10 +289,10 @@ static void xlnx_dp_audio_write(void *opaque, hwaddr offset, uint64_t value,
     switch (offset) {
     case AUDIO_MIXER_META_DATA:
         s->audio_registers[offset] = value & 0x00000001;
-    break;
+        break;
     default:
         s->audio_registers[offset] = value;
-    break;
+        break;
     }
 }
 
@@ -463,16 +462,6 @@ static uint32_t xlnx_dp_aux_get_address(XlnxDPState *s)
     return s->core_registers[DP_AUX_ADDRESS];
 }
 
-static uint8_t xlnx_dp_aux_get_data(XlnxDPState *s)
-{
-    return xlnx_dp_aux_pop_rx_fifo(s);
-}
-
-static void xlnx_dp_aux_set_data(XlnxDPState *s, uint8_t value)
-{
-    xlnx_dp_aux_push_tx_fifo(s, &value, 1);
-}
-
 /*
  * Get command from the register.
  */
@@ -504,7 +493,7 @@ static void xlnx_dp_aux_set_command(XlnxDPState *s, uint32_t value)
         if (s->core_registers[DP_AUX_REPLY_CODE] == AUX_I2C_ACK) {
             xlnx_dp_aux_push_rx_fifo(s, buf, nbytes);
         }
-    break;
+        break;
     case WRITE_AUX:
     case WRITE_I2C:
     case WRITE_I2C_MOT:
@@ -515,10 +504,10 @@ static void xlnx_dp_aux_set_command(XlnxDPState *s, uint32_t value)
                                                xlnx_dp_aux_get_address(s),
                                                nbytes, buf);
         xlnx_dp_aux_clear_tx_fifo(s);
-    break;
+        break;
     case WRITE_I2C_STATUS:
         qemu_log_mask(LOG_UNIMP, "xlnx_dp: Write i2c status not implemented\n");
-    break;
+        break;
     default:
         abort();
     }
@@ -577,7 +566,6 @@ static void xlnx_dp_recreate_surface(XlnxDPState *s)
         }
         if (s->g_plane.surface != current_console_surface) {
             qemu_free_displaysurface(s->g_plane.surface);
-
         }
 
         s->g_plane.surface
@@ -672,10 +660,10 @@ static uint64_t xlnx_dp_read(void *opaque, hwaddr offset, unsigned size)
         /* This register is cleared after a read */
         ret = s->core_registers[DP_TX_USER_FIFO_OVERFLOW];
         s->core_registers[DP_TX_USER_FIFO_OVERFLOW] = 0;
-    break;
+        break;
     case DP_AUX_REPLY_DATA:
-        ret = xlnx_dp_aux_get_data(s);
-    break;
+        ret = xlnx_dp_aux_pop_rx_fifo(s);
+        break;
     case DP_INTERRUPT_SIGNAL_STATE:
         /*
          * XXX: Not sure it is the right thing to do actually.
@@ -684,7 +672,7 @@ static uint64_t xlnx_dp_read(void *opaque, hwaddr offset, unsigned size)
          */
         ret = s->core_registers[DP_INTERRUPT_SIGNAL_STATE];
         s->core_registers[DP_INTERRUPT_SIGNAL_STATE] &= ~0x04;
-    break;
+        break;
     case DP_AUX_WRITE_FIFO:
     case DP_TX_AUDIO_INFO_DATA(0):
     case DP_TX_AUDIO_INFO_DATA(1):
@@ -705,14 +693,14 @@ static uint64_t xlnx_dp_read(void *opaque, hwaddr offset, unsigned size)
     case DP_TX_AUDIO_EXT_DATA(8):
         /* write only registers */
         ret = 0;
-    break;
+        break;
     default:
         assert(offset <= (0x3AC >> 2));
         ret = s->core_registers[offset];
-    break;
+        break;
     }
 
-    DPRINTF("core read @%" PRIx64 " = 0x%8.8lX\n", offset << 2, ret);
+    DPRINTF("core read @%" PRIx64 " = 0x%8.8" PRIX64 "\n", offset << 2, ret);
     return ret;
 }
 
@@ -721,7 +709,7 @@ static void xlnx_dp_write(void *opaque, hwaddr offset, uint64_t value,
 {
     XlnxDPState *s = XLNX_DP(opaque);
 
-    DPRINTF("core write @%" PRIx64 " = 0x%8.8lX\n", offset, value);
+    DPRINTF("core write @%" PRIx64 " = 0x%8.8" PRIX64 "\n", offset, value);
 
     offset = offset >> 2;
 
@@ -731,28 +719,28 @@ static void xlnx_dp_write(void *opaque, hwaddr offset, uint64_t value,
      */
     case DP_LINK_BW_SET:
         s->core_registers[offset] = value & 0x000000FF;
-    break;
+        break;
     case DP_LANE_COUNT_SET:
     case DP_MAIN_STREAM_MISC0:
         s->core_registers[offset] = value & 0x0000000F;
-    break;
+        break;
     case DP_TRAINING_PATTERN_SET:
     case DP_LINK_QUAL_PATTERN_SET:
     case DP_MAIN_STREAM_POLARITY:
     case DP_PHY_VOLTAGE_DIFF_LANE_0:
     case DP_PHY_VOLTAGE_DIFF_LANE_1:
         s->core_registers[offset] = value & 0x00000003;
-    break;
+        break;
     case DP_ENHANCED_FRAME_EN:
     case DP_SCRAMBLING_DISABLE:
     case DP_DOWNSPREAD_CTRL:
     case DP_MAIN_STREAM_ENABLE:
     case DP_TRANSMIT_PRBS7:
         s->core_registers[offset] = value & 0x00000001;
-    break;
+        break;
     case DP_PHY_CLOCK_SELECT:
         s->core_registers[offset] = value & 0x00000007;
-    break;
+        break;
     case DP_SOFTWARE_RESET:
         /*
          * No need to update this bit as it's read '0'.
@@ -760,10 +748,10 @@ static void xlnx_dp_write(void *opaque, hwaddr offset, uint64_t value,
         /*
          * TODO: reset IP.
          */
-    break;
+        break;
     case DP_TRANSMITTER_ENABLE:
         s->core_registers[offset] = value & 0x01;
-    break;
+        break;
     case DP_FORCE_SCRAMBLER_RESET:
         /*
          * No need to update this bit as it's read '0'.
@@ -771,70 +759,72 @@ static void xlnx_dp_write(void *opaque, hwaddr offset, uint64_t value,
         /*
          * TODO: force a scrambler reset??
          */
-    break;
+        break;
     case DP_AUX_COMMAND_REGISTER:
         s->core_registers[offset] = value & 0x00001F0F;
         xlnx_dp_aux_set_command(s, s->core_registers[offset]);
-    break;
+        break;
     case DP_MAIN_STREAM_HTOTAL:
     case DP_MAIN_STREAM_VTOTAL:
     case DP_MAIN_STREAM_HSTART:
     case DP_MAIN_STREAM_VSTART:
         s->core_registers[offset] = value & 0x0000FFFF;
-    break;
+        break;
     case DP_MAIN_STREAM_HRES:
     case DP_MAIN_STREAM_VRES:
         s->core_registers[offset] = value & 0x0000FFFF;
         xlnx_dp_recreate_surface(s);
-    break;
+        break;
     case DP_MAIN_STREAM_HSWIDTH:
     case DP_MAIN_STREAM_VSWIDTH:
         s->core_registers[offset] = value & 0x00007FFF;
-    break;
+        break;
     case DP_MAIN_STREAM_MISC1:
         s->core_registers[offset] = value & 0x00000086;
-    break;
+        break;
     case DP_MAIN_STREAM_M_VID:
     case DP_MAIN_STREAM_N_VID:
         s->core_registers[offset] = value & 0x00FFFFFF;
-    break;
+        break;
     case DP_MSA_TRANSFER_UNIT_SIZE:
     case DP_MIN_BYTES_PER_TU:
     case DP_INIT_WAIT:
         s->core_registers[offset] = value & 0x00000007;
-    break;
+        break;
     case DP_USER_DATA_COUNT_PER_LANE:
         s->core_registers[offset] = value & 0x0003FFFF;
-    break;
+        break;
     case DP_FRAC_BYTES_PER_TU:
         s->core_registers[offset] = value & 0x000003FF;
-    break;
+        break;
     case DP_PHY_RESET:
         s->core_registers[offset] = value & 0x00010003;
         /*
          * TODO: Reset something?
          */
-    break;
+        break;
     case DP_TX_PHY_POWER_DOWN:
         s->core_registers[offset] = value & 0x0000000F;
         /*
          * TODO: Power down things?
          */
-    break;
-    case DP_AUX_WRITE_FIFO:
-        xlnx_dp_aux_set_data(s, value & 0x0000000F);
-    break;
+        break;
+    case DP_AUX_WRITE_FIFO: {
+        uint8_t c = value;
+        xlnx_dp_aux_push_tx_fifo(s, &c, 1);
+        break;
+    }
     case DP_AUX_CLOCK_DIVIDER:
-    break;
+        break;
     case DP_AUX_REPLY_COUNT:
         /*
          * Writing to this register clear the counter.
          */
         s->core_registers[offset] = 0x00000000;
-    break;
+        break;
     case DP_AUX_ADDRESS:
         s->core_registers[offset] = value & 0x000FFFFF;
-    break;
+        break;
     case DP_VERSION_REGISTER:
     case DP_CORE_ID:
     case DP_TX_USER_FIFO_OVERFLOW:
@@ -846,31 +836,31 @@ static void xlnx_dp_write(void *opaque, hwaddr offset, uint64_t value,
         /*
          * Write to read only location..
          */
-    break;
+        break;
     case DP_TX_AUDIO_CONTROL:
         s->core_registers[offset] = value & 0x00000001;
         xlnx_dp_audio_activate(s);
-    break;
+        break;
     case DP_TX_AUDIO_CHANNELS:
         s->core_registers[offset] = value & 0x00000007;
         xlnx_dp_audio_activate(s);
-    break;
+        break;
     case DP_INT_STATUS:
         s->core_registers[DP_INT_STATUS] &= ~value;
         xlnx_dp_update_irq(s);
-    break;
+        break;
     case DP_INT_EN:
         s->core_registers[DP_INT_MASK] &= ~value;
         xlnx_dp_update_irq(s);
-    break;
+        break;
     case DP_INT_DS:
         s->core_registers[DP_INT_MASK] |= ~value;
         xlnx_dp_update_irq(s);
-    break;
+        break;
     default:
         assert(offset <= (0x504C >> 2));
         s->core_registers[offset] = value;
-    break;
+        break;
     }
 }
 
@@ -906,7 +896,7 @@ static void xlnx_dp_vblend_write(void *opaque, hwaddr offset,
     case V_BLEND_BG_CLR_1:
     case V_BLEND_BG_CLR_2:
         s->vblend_registers[offset] = value & 0x00000FFF;
-    break;
+        break;
     case V_BLEND_SET_GLOBAL_ALPHA_REG:
         /*
          * A write to this register can enable or disable blending. Thus we need
@@ -917,14 +907,14 @@ static void xlnx_dp_vblend_write(void *opaque, hwaddr offset,
         if (xlnx_dp_global_alpha_enabled(s) != alpha_was_enabled) {
             xlnx_dp_recreate_surface(s);
         }
-    break;
+        break;
     case V_BLEND_OUTPUT_VID_FORMAT:
         s->vblend_registers[offset] = value & 0x00000017;
-    break;
+        break;
     case V_BLEND_LAYER0_CONTROL:
     case V_BLEND_LAYER1_CONTROL:
         s->vblend_registers[offset] = value & 0x00000103;
-    break;
+        break;
     case V_BLEND_RGB2YCBCR_COEFF(0):
     case V_BLEND_RGB2YCBCR_COEFF(1):
     case V_BLEND_RGB2YCBCR_COEFF(2):
@@ -953,7 +943,7 @@ static void xlnx_dp_vblend_write(void *opaque, hwaddr offset,
     case V_BLEND_IN2CSC_COEFF(7):
     case V_BLEND_IN2CSC_COEFF(8):
         s->vblend_registers[offset] = value & 0x0000FFFF;
-    break;
+        break;
     case V_BLEND_LUMA_IN1CSC_OFFSET:
     case V_BLEND_CR_IN1CSC_OFFSET:
     case V_BLEND_CB_IN1CSC_OFFSET:
@@ -964,18 +954,18 @@ static void xlnx_dp_vblend_write(void *opaque, hwaddr offset,
     case V_BLEND_CR_OUTCSC_OFFSET:
     case V_BLEND_CB_OUTCSC_OFFSET:
         s->vblend_registers[offset] = value & 0x3FFF7FFF;
-    break;
+        break;
     case V_BLEND_CHROMA_KEY_ENABLE:
         s->vblend_registers[offset] = value & 0x00000003;
-    break;
+        break;
     case V_BLEND_CHROMA_KEY_COMP1:
     case V_BLEND_CHROMA_KEY_COMP2:
     case V_BLEND_CHROMA_KEY_COMP3:
         s->vblend_registers[offset] = value & 0x0FFF0FFF;
-    break;
+        break;
     default:
         s->vblend_registers[offset] = value;
-    break;
+        break;
     }
 }
 
@@ -1019,7 +1009,7 @@ static void xlnx_dp_avbufm_write(void *opaque, hwaddr offset, uint64_t value,
     case AV_BUF_FORMAT:
         s->avbufm_registers[offset] = value & 0x00000FFF;
         xlnx_dp_change_graphic_fmt(s);
-    break;
+        break;
     case AV_CHBUF0:
     case AV_CHBUF1:
     case AV_CHBUF2:
@@ -1027,29 +1017,29 @@ static void xlnx_dp_avbufm_write(void *opaque, hwaddr offset, uint64_t value,
     case AV_CHBUF4:
     case AV_CHBUF5:
         s->avbufm_registers[offset] = value & 0x0000007F;
-    break;
+        break;
     case AV_BUF_OUTPUT_AUDIO_VIDEO_SELECT:
         s->avbufm_registers[offset] = value & 0x0000007F;
-    break;
+        break;
     case AV_BUF_DITHER_CONFIG:
         s->avbufm_registers[offset] = value & 0x000007FF;
-    break;
+        break;
     case AV_BUF_DITHER_CONFIG_MAX:
     case AV_BUF_DITHER_CONFIG_MIN:
         s->avbufm_registers[offset] = value & 0x00000FFF;
-    break;
+        break;
     case AV_BUF_PATTERN_GEN_SELECT:
         s->avbufm_registers[offset] = value & 0xFFFFFF03;
-    break;
+        break;
     case AV_BUF_AUD_VID_CLK_SOURCE:
         s->avbufm_registers[offset] = value & 0x00000007;
-    break;
+        break;
     case AV_BUF_SRST_REG:
         s->avbufm_registers[offset] = value & 0x00000002;
-    break;
+        break;
     case AV_BUF_AUDIO_CH_CONFIG:
         s->avbufm_registers[offset] = value & 0x00000003;
-    break;
+        break;
     case AV_BUF_GRAPHICS_COMP_SCALE_FACTOR(0):
     case AV_BUF_GRAPHICS_COMP_SCALE_FACTOR(1):
     case AV_BUF_GRAPHICS_COMP_SCALE_FACTOR(2):
@@ -1057,7 +1047,7 @@ static void xlnx_dp_avbufm_write(void *opaque, hwaddr offset, uint64_t value,
     case AV_BUF_VIDEO_COMP_SCALE_FACTOR(1):
     case AV_BUF_VIDEO_COMP_SCALE_FACTOR(2):
         s->avbufm_registers[offset] = value & 0x0000FFFF;
-    break;
+        break;
     case AV_BUF_LIVE_VIDEO_COMP_SF(0):
     case AV_BUF_LIVE_VIDEO_COMP_SF(1):
     case AV_BUF_LIVE_VIDEO_COMP_SF(2):
@@ -1084,10 +1074,10 @@ static void xlnx_dp_avbufm_write(void *opaque, hwaddr offset, uint64_t value,
     case AV_BUF_HCOUNT_VCOUNT_INT0:
     case AV_BUF_HCOUNT_VCOUNT_INT1:
         qemu_log_mask(LOG_UNIMP, "avbufm: unimplmented");
-    break;
+        break;
     default:
         s->avbufm_registers[offset] = value;
-    break;
+        break;
     }
 }
 
@@ -1159,25 +1149,6 @@ static void xlnx_dp_update_display(void *opaque)
 {
     XlnxDPState *s = XLNX_DP(opaque);
 
-    if (DEBUG_DP) {
-        int64_t last_time = 0;
-        int64_t frame = 0;
-        int64_t time = get_clock();
-        int64_t fps;
-
-        if (last_time == 0) {
-            last_time = get_clock();
-        }
-        frame++;
-        if (last_time + 1000000000 < time) {
-            fps = (1000000000.0 * frame) / (time - last_time);
-            last_time = time;
-            frame = 0;
-            DPRINTF("xlnx_dp: %ldfps\n", fps);
-        }
-    }
-
-
     if ((s->core_registers[DP_TRANSMITTER_ENABLE] & 0x01) == 0) {
         return;
     }
@@ -1238,11 +1209,12 @@ static void xlnx_dp_init(Object *obj)
     memory_region_init_io(&s->avbufm_iomem, obj, &avbufm_ops, s, TYPE_XLNX_DP
                           ".av_buffer_manager", 0x238);
     memory_region_add_subregion(&s->container, 0xB000, &s->avbufm_iomem);
+
     memory_region_init_io(&s->audio_iomem, obj, &audio_ops, s, TYPE_XLNX_DP
                           ".audio", sizeof(s->audio_registers));
     memory_region_add_subregion(&s->container, 0xC000, &s->audio_iomem);
-    sysbus_init_mmio(sbd, &s->container);
 
+    sysbus_init_mmio(sbd, &s->container);
     sysbus_init_irq(sbd, &s->irq);
 
     object_property_add_link(obj, "dpdma", TYPE_XLNX_DPDMA,

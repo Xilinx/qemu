@@ -23,6 +23,7 @@
 #include "hw/boards.h"
 #include "qemu/error-report.h"
 #include "exec/address-spaces.h"
+#include "qemu/log.h"
 
 typedef struct XlnxEP108 {
     XlnxZynqMPState soc;
@@ -87,12 +88,19 @@ static void xlnx_ep108_init(MachineState *machine)
         SSIBus *spi_bus;
         DeviceState *flash_dev;
         qemu_irq cs_line;
+        DriveInfo *dinfo = drive_get_next(IF_MTD);
         gchar *bus_name = g_strdup_printf("spi%d", i);
 
         spi_bus = (SSIBus *)qdev_get_child_bus(DEVICE(&s->soc), bus_name);
         g_free(bus_name);
 
-        flash_dev = ssi_create_slave(spi_bus, "sst25wf080");
+        flash_dev = ssi_create_slave_no_init(spi_bus, "sst25wf080");
+        if (dinfo) {
+            qdev_prop_set_drive(flash_dev, "drive", blk_by_legacy_dinfo(dinfo),
+                                &error_fatal);
+        }
+        qdev_init_nofail(flash_dev);
+
         cs_line = qdev_get_gpio_in_named(flash_dev, SSI_GPIO_CS, 0);
 
         sysbus_connect_irq(SYS_BUS_DEVICE(&s->soc.spi[i]), 1, cs_line);
@@ -113,3 +121,11 @@ static void xlnx_ep108_machine_init(MachineClass *mc)
 }
 
 DEFINE_MACHINE("xlnx-ep108", xlnx_ep108_machine_init)
+
+static void xlnx_zcu102_machine_init(MachineClass *mc)
+{
+    mc->desc = "Xilinx ZynqMP ZCU102 board";
+    mc->init = xlnx_ep108_init;
+}
+
+DEFINE_MACHINE("xlnx-zcu102", xlnx_zcu102_machine_init)

@@ -20,6 +20,7 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
+#include "qemu/bswap.h"
 
 #include "crypto/block-luks.h"
 
@@ -28,10 +29,7 @@
 #include "crypto/pbkdf.h"
 #include "crypto/secret.h"
 #include "crypto/random.h"
-
-#ifdef CONFIG_UUID
-#include <uuid/uuid.h>
-#endif
+#include "qemu/uuid.h"
 
 #include "qemu/coroutine.h"
 
@@ -200,6 +198,15 @@ QEMU_BUILD_BUG_ON(sizeof(struct QCryptoBlockLUKSHeader) != 592);
 
 struct QCryptoBlockLUKS {
     QCryptoBlockLUKSHeader header;
+
+    /* Cache parsed versions of what's in header fields,
+     * as we can't rely on QCryptoBlock.cipher being
+     * non-NULL */
+    QCryptoCipherAlgorithm cipher_alg;
+    QCryptoCipherMode cipher_mode;
+    QCryptoIVGenAlgorithm ivgen_alg;
+    QCryptoHashAlgorithm ivgen_hash_alg;
+    QCryptoHashAlgorithm hash_alg;
 };
 
 
@@ -775,6 +782,11 @@ qcrypto_block_luks_open(QCryptoBlock *block,
     }
 
     if (ivalg == QCRYPTO_IVGEN_ALG_ESSIV) {
+        if (!ivhash_name) {
+            ret = -EINVAL;
+            error_setg(errp, "Missing IV generator hash specification");
+            goto fail;
+        }
         ivcipheralg = qcrypto_block_luks_essiv_cipher(cipheralg,
                                                       ivhash,
                                                       &local_err);
@@ -784,6 +796,13 @@ qcrypto_block_luks_open(QCryptoBlock *block,
             goto fail;
         }
     } else {
+        /* Note we parsed the ivhash_name earlier in the cipher_mode
+         * spec string even with plain/plain64 ivgens, but we
+         * will ignore it, since it is irrelevant for these ivgens.
+         * This is for compat with dm-crypt which will silently
+         * ignore hash names with these ivgens rather than report
+         * an error about the invalid usage
+         */
         ivcipheralg = cipheralg;
     }
 
@@ -834,6 +853,12 @@ qcrypto_block_luks_open(QCryptoBlock *block,
     block->payload_offset = luks->header.payload_offset *
         QCRYPTO_BLOCK_LUKS_SECTOR_SIZE;
 
+    luks->cipher_alg = cipheralg;
+    luks->cipher_mode = ciphermode;
+    luks->ivgen_alg = ivalg;
+    luks->ivgen_hash_alg = ivhash;
+    luks->hash_alg = hash;
+
     g_free(masterkey);
     g_free(password);
 
@@ -849,18 +874,12 @@ qcrypto_block_luks_open(QCryptoBlock *block,
 }
 
 
-static int
-qcrypto_block_luks_uuid_gen(uint8_t *uuidstr, Error **errp)
+static void
+qcrypto_block_luks_uuid_gen(uint8_t *uuidstr)
 {
-#ifdef CONFIG_UUID
-    uuid_t uuid;
-    uuid_generate(uuid);
-    uuid_unparse(uuid, (char *)uuidstr);
-    return 0;
-#else
-    error_setg(errp, "Unable to generate uuids on this platform");
-    return -1;
-#endif
+    QemuUUID uuid;
+    qemu_uuid_generate(&uuid);
+    qemu_uuid_unparse(&uuid, (char *)uuidstr);
 }
 
 static int
@@ -889,8 +908,12 @@ qcrypto_block_luks_create(QCryptoBlock *block,
     const char *hash_alg;
     char *cipher_mode_spec = NULL;
     QCryptoCipherAlgorithm ivcipheralg = 0;
+    uint64_t iters;
 
     memcpy(&luks_opts, &options->u.luks, sizeof(luks_opts));
+    if (!luks_opts.has_iter_time) {
+        luks_opts.iter_time = 2000;
+    }
     if (!luks_opts.has_cipher_alg) {
         luks_opts.cipher_alg = QCRYPTO_CIPHER_ALG_AES_256;
     }
@@ -903,6 +926,15 @@ qcrypto_block_luks_create(QCryptoBlock *block,
     if (!luks_opts.has_hash_alg) {
         luks_opts.hash_alg = QCRYPTO_HASH_ALG_SHA256;
     }
+    if (luks_opts.ivgen_alg == QCRYPTO_IVGEN_ALG_ESSIV) {
+        if (!luks_opts.has_ivgen_hash_alg) {
+            luks_opts.ivgen_hash_alg = QCRYPTO_HASH_ALG_SHA256;
+            luks_opts.has_ivgen_hash_alg = true;
+        }
+    }
+    /* Note we're allowing ivgen_hash_alg to be set even for
+     * non-essiv iv generators that don't need a hash. It will
+     * be silently ignored, for compatibility with dm-crypt */
 
     if (!options->u.luks.key_secret) {
         error_setg(errp, "Parameter 'key-secret' is required for cipher");
@@ -924,10 +956,7 @@ qcrypto_block_luks_create(QCryptoBlock *block,
      * it out to disk
      */
     luks->header.version = QCRYPTO_BLOCK_LUKS_VERSION;
-    if (qcrypto_block_luks_uuid_gen(luks->header.uuid,
-                                    errp) < 0) {
-        goto error;
-    }
+    qcrypto_block_luks_uuid_gen(luks->header.uuid);
 
     cipher_alg = qcrypto_block_luks_cipher_alg_lookup(luks_opts.cipher_alg,
                                                       errp);
@@ -1027,26 +1056,40 @@ qcrypto_block_luks_create(QCryptoBlock *block,
     /* Determine how many iterations we need to hash the master
      * key, in order to have 1 second of compute time used
      */
-    luks->header.master_key_iterations =
-        qcrypto_pbkdf2_count_iters(luks_opts.hash_alg,
-                                   masterkey, luks->header.key_bytes,
-                                   luks->header.master_key_salt,
-                                   QCRYPTO_BLOCK_LUKS_SALT_LEN,
-                                   &local_err);
+    iters = qcrypto_pbkdf2_count_iters(luks_opts.hash_alg,
+                                       masterkey, luks->header.key_bytes,
+                                       luks->header.master_key_salt,
+                                       QCRYPTO_BLOCK_LUKS_SALT_LEN,
+                                       QCRYPTO_BLOCK_LUKS_DIGEST_LEN,
+                                       &local_err);
     if (local_err) {
         error_propagate(errp, local_err);
         goto error;
     }
 
+    if (iters > (ULLONG_MAX / luks_opts.iter_time)) {
+        error_setg_errno(errp, ERANGE,
+                         "PBKDF iterations %llu too large to scale",
+                         (unsigned long long)iters);
+        goto error;
+    }
+
+    /* iter_time was in millis, but count_iters reported for secs */
+    iters = iters * luks_opts.iter_time / 1000;
+
     /* Why /= 8 ?  That matches cryptsetup, but there's no
      * explanation why they chose /= 8... Probably so that
      * if all 8 keyslots are active we only spend 1 second
      * in total time to check all keys */
-    luks->header.master_key_iterations /= 8;
-    luks->header.master_key_iterations = MAX(
-        luks->header.master_key_iterations,
-        QCRYPTO_BLOCK_LUKS_MIN_MASTER_KEY_ITERS);
-
+    iters /= 8;
+    if (iters > UINT32_MAX) {
+        error_setg_errno(errp, ERANGE,
+                         "PBKDF iterations %llu larger than %u",
+                         (unsigned long long)iters, UINT32_MAX);
+        goto error;
+    }
+    iters = MAX(iters, QCRYPTO_BLOCK_LUKS_MIN_MASTER_KEY_ITERS);
+    luks->header.master_key_iterations = iters;
 
     /* Hash the master key, saving the result in the LUKS
      * header. This hash is used when opening the encrypted
@@ -1080,8 +1123,7 @@ qcrypto_block_luks_create(QCryptoBlock *block,
         luks->header.key_slots[i].key_offset =
             (QCRYPTO_BLOCK_LUKS_KEY_SLOT_OFFSET /
              QCRYPTO_BLOCK_LUKS_SECTOR_SIZE) +
-            (ROUND_UP(((splitkeylen + (QCRYPTO_BLOCK_LUKS_SECTOR_SIZE - 1)) /
-                       QCRYPTO_BLOCK_LUKS_SECTOR_SIZE),
+            (ROUND_UP(DIV_ROUND_UP(splitkeylen, QCRYPTO_BLOCK_LUKS_SECTOR_SIZE),
                       (QCRYPTO_BLOCK_LUKS_KEY_SLOT_OFFSET /
                        QCRYPTO_BLOCK_LUKS_SECTOR_SIZE)) * i);
     }
@@ -1095,22 +1137,36 @@ qcrypto_block_luks_create(QCryptoBlock *block,
     /* Again we determine how many iterations are required to
      * hash the user password while consuming 1 second of compute
      * time */
-    luks->header.key_slots[0].iterations =
-        qcrypto_pbkdf2_count_iters(luks_opts.hash_alg,
-                                   (uint8_t *)password, strlen(password),
-                                   luks->header.key_slots[0].salt,
-                                   QCRYPTO_BLOCK_LUKS_SALT_LEN,
-                                   &local_err);
+    iters = qcrypto_pbkdf2_count_iters(luks_opts.hash_alg,
+                                       (uint8_t *)password, strlen(password),
+                                       luks->header.key_slots[0].salt,
+                                       QCRYPTO_BLOCK_LUKS_SALT_LEN,
+                                       luks->header.key_bytes,
+                                       &local_err);
     if (local_err) {
         error_propagate(errp, local_err);
         goto error;
     }
-    /* Why /= 2 ?  That matches cryptsetup, but there's no
-     * explanation why they chose /= 2... */
-    luks->header.key_slots[0].iterations /= 2;
-    luks->header.key_slots[0].iterations = MAX(
-        luks->header.key_slots[0].iterations,
-        QCRYPTO_BLOCK_LUKS_MIN_SLOT_KEY_ITERS);
+
+    if (iters > (ULLONG_MAX / luks_opts.iter_time)) {
+        error_setg_errno(errp, ERANGE,
+                         "PBKDF iterations %llu too large to scale",
+                         (unsigned long long)iters);
+        goto error;
+    }
+
+    /* iter_time was in millis, but count_iters reported for secs */
+    iters = iters * luks_opts.iter_time / 1000;
+
+    if (iters > UINT32_MAX) {
+        error_setg_errno(errp, ERANGE,
+                         "PBKDF iterations %llu larger than %u",
+                         (unsigned long long)iters, UINT32_MAX);
+        goto error;
+    }
+
+    luks->header.key_slots[0].iterations =
+        MAX(iters, QCRYPTO_BLOCK_LUKS_MIN_SLOT_KEY_ITERS);
 
 
     /* Generate a key that we'll use to encrypt the master
@@ -1181,8 +1237,7 @@ qcrypto_block_luks_create(QCryptoBlock *block,
     luks->header.payload_offset =
         (QCRYPTO_BLOCK_LUKS_KEY_SLOT_OFFSET /
          QCRYPTO_BLOCK_LUKS_SECTOR_SIZE) +
-        (ROUND_UP(((splitkeylen + (QCRYPTO_BLOCK_LUKS_SECTOR_SIZE - 1)) /
-                   QCRYPTO_BLOCK_LUKS_SECTOR_SIZE),
+        (ROUND_UP(DIV_ROUND_UP(splitkeylen, QCRYPTO_BLOCK_LUKS_SECTOR_SIZE),
                   (QCRYPTO_BLOCK_LUKS_KEY_SLOT_OFFSET /
                    QCRYPTO_BLOCK_LUKS_SECTOR_SIZE)) *
          QCRYPTO_BLOCK_LUKS_NUM_KEY_SLOTS);
@@ -1251,6 +1306,12 @@ qcrypto_block_luks_create(QCryptoBlock *block,
         goto error;
     }
 
+    luks->cipher_alg = luks_opts.cipher_alg;
+    luks->cipher_mode = luks_opts.cipher_mode;
+    luks->ivgen_alg = luks_opts.ivgen_alg;
+    luks->ivgen_hash_alg = luks_opts.ivgen_hash_alg;
+    luks->hash_alg = luks_opts.hash_alg;
+
     memset(masterkey, 0, luks->header.key_bytes);
     g_free(masterkey);
     memset(slotkey, 0, luks->header.key_bytes);
@@ -1282,6 +1343,51 @@ qcrypto_block_luks_create(QCryptoBlock *block,
 
     g_free(luks);
     return -1;
+}
+
+
+static int qcrypto_block_luks_get_info(QCryptoBlock *block,
+                                       QCryptoBlockInfo *info,
+                                       Error **errp)
+{
+    QCryptoBlockLUKS *luks = block->opaque;
+    QCryptoBlockInfoLUKSSlot *slot;
+    QCryptoBlockInfoLUKSSlotList *slots = NULL, **prev = &info->u.luks.slots;
+    size_t i;
+
+    info->u.luks.cipher_alg = luks->cipher_alg;
+    info->u.luks.cipher_mode = luks->cipher_mode;
+    info->u.luks.ivgen_alg = luks->ivgen_alg;
+    if (info->u.luks.ivgen_alg == QCRYPTO_IVGEN_ALG_ESSIV) {
+        info->u.luks.has_ivgen_hash_alg = true;
+        info->u.luks.ivgen_hash_alg = luks->ivgen_hash_alg;
+    }
+    info->u.luks.hash_alg = luks->hash_alg;
+    info->u.luks.payload_offset = block->payload_offset;
+    info->u.luks.master_key_iters = luks->header.master_key_iterations;
+    info->u.luks.uuid = g_strndup((const char *)luks->header.uuid,
+                                  sizeof(luks->header.uuid));
+
+    for (i = 0; i < QCRYPTO_BLOCK_LUKS_NUM_KEY_SLOTS; i++) {
+        slots = g_new0(QCryptoBlockInfoLUKSSlotList, 1);
+        *prev = slots;
+
+        slots->value = slot = g_new0(QCryptoBlockInfoLUKSSlot, 1);
+        slot->active = luks->header.key_slots[i].active ==
+            QCRYPTO_BLOCK_LUKS_KEY_SLOT_ENABLED;
+        slot->key_offset = luks->header.key_slots[i].key_offset
+             * QCRYPTO_BLOCK_LUKS_SECTOR_SIZE;
+        if (slot->active) {
+            slot->has_iters = true;
+            slot->iters = luks->header.key_slots[i].iterations;
+            slot->has_stripes = true;
+            slot->stripes = luks->header.key_slots[i].stripes;
+        }
+
+        prev = &slots->next;
+    }
+
+    return 0;
 }
 
 
@@ -1322,6 +1428,7 @@ qcrypto_block_luks_encrypt(QCryptoBlock *block,
 const QCryptoBlockDriver qcrypto_block_driver_luks = {
     .open = qcrypto_block_luks_open,
     .create = qcrypto_block_luks_create,
+    .get_info = qcrypto_block_luks_get_info,
     .cleanup = qcrypto_block_luks_cleanup,
     .decrypt = qcrypto_block_luks_decrypt,
     .encrypt = qcrypto_block_luks_encrypt,

@@ -26,6 +26,7 @@
 #include "cpu.h"
 #include "qemu-common.h"
 #include "mmu.h"
+#include "exec/exec-all.h"
 
 
 static void cris_cpu_set_pc(CPUState *cs, vaddr value)
@@ -141,6 +142,13 @@ static void cris_cpu_realizefn(DeviceState *dev, Error **errp)
 {
     CPUState *cs = CPU(dev);
     CRISCPUClass *ccc = CRIS_CPU_GET_CLASS(dev);
+    Error *local_err = NULL;
+
+    cpu_exec_realizefn(cs, &local_err);
+    if (local_err != NULL) {
+        error_propagate(errp, local_err);
+        return;
+    }
 
     cpu_reset(cs);
     qemu_init_vcpu(cs);
@@ -186,7 +194,6 @@ static void cris_cpu_initfn(Object *obj)
     static bool tcg_initialized;
 
     cs->env_ptr = env;
-    cpu_exec_init(cs, &error_abort);
 
     env->pregs[PR_VR] = ccc->vr;
 
@@ -245,6 +252,16 @@ static void crisv11_cpu_class_init(ObjectClass *oc, void *data)
     cc->gdb_read_register = crisv10_cpu_gdb_read_register;
 }
 
+static void crisv17_cpu_class_init(ObjectClass *oc, void *data)
+{
+    CPUClass *cc = CPU_CLASS(oc);
+    CRISCPUClass *ccc = CRIS_CPU_CLASS(oc);
+
+    ccc->vr = 17;
+    cc->do_interrupt = crisv10_cpu_do_interrupt;
+    cc->gdb_read_register = crisv10_cpu_gdb_read_register;
+}
+
 static void crisv32_cpu_class_init(ObjectClass *oc, void *data)
 {
     CRISCPUClass *ccc = CRIS_CPU_CLASS(oc);
@@ -271,6 +288,10 @@ static const TypeInfo cris_cpu_model_type_infos[] = {
         .name = TYPE("crisv11"),
         .parent = TYPE_CRIS_CPU,
         .class_init = crisv11_cpu_class_init,
+    }, {
+        .name = TYPE("crisv17"),
+        .parent = TYPE_CRIS_CPU,
+        .class_init = crisv17_cpu_class_init,
     }, {
         .name = TYPE("crisv32"),
         .parent = TYPE_CRIS_CPU,
@@ -311,13 +332,6 @@ static void cris_cpu_class_init(ObjectClass *oc, void *data)
     cc->gdb_stop_before_watchpoint = true;
 
     cc->disas_set_info = cris_disas_set_info;
-
-    /*
-     * Reason: cris_cpu_initfn() calls cpu_exec_init(), which saves
-     * the object in cpus -> dangling pointer after final
-     * object_unref().
-     */
-    dc->cannot_destroy_with_object_finalize_yet = true;
 }
 
 static const TypeInfo cris_cpu_type_info = {

@@ -45,7 +45,6 @@ void pci_bridge_update_mappings(PCIBridge *br);
 void pci_bridge_write_config(PCIDevice *d,
                              uint32_t address, uint32_t val, int len);
 void pci_bridge_disable_base_limit(PCIDevice *dev);
-void pci_bridge_reset_reg(PCIDevice *dev);
 void pci_bridge_reset(DeviceState *qdev);
 
 void pci_bridge_initfn(PCIDevice *pci_dev, const char *typename);
@@ -67,4 +66,4 @@ void pci_bridge_map_irq(PCIBridge *br, const char* bus_name,
 #define  PCI_BRIDGE_CTL_DISCARD_STATUS	0x400	/* Discard timer status */
 #define  PCI_BRIDGE_CTL_DISCARD_SERR	0x800	/* Discard timer SERR# enable */
 
-#endif  /* QEMU_PCI_BRIDGE_H */
+#endif /* QEMU_PCI_BRIDGE_H */

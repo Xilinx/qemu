@@ -18,6 +18,7 @@
 #include "qemu/option.h"
 #include "qemu/config-file.h"
 #include "qemu/readline.h"
+#include "qemu/log.h"
 #include "qapi/qmp/qstring.h"
 #include "qom/object_interfaces.h"
 #include "sysemu/block-backend.h"
@@ -101,12 +102,15 @@ static void open_help(void)
 " opens a new file in the requested mode\n"
 "\n"
 " Example:\n"
-" 'open -Cn /tmp/data' - creates/opens data file read-write and uncached\n"
+" 'open -n -o driver=raw /tmp/data' - opens raw data file read-write, uncached\n"
 "\n"
 " Opens a file for subsequent use by all of the other qemu-io commands.\n"
 " -r, -- open file read-only\n"
 " -s, -- use snapshot file\n"
-" -n, -- disable host cache\n"
+" -n, -- disable host cache, short for -t none\n"
+" -k, -- use kernel AIO implementation (on Linux only)\n"
+" -t, -- use the given cache mode for the image\n"
+" -d, -- use the given discard mode for the image\n"
 " -o, -- options to be given to the block driver"
 "\n");
 }
@@ -120,7 +124,7 @@ static const cmdinfo_t open_cmd = {
     .argmin     = 1,
     .argmax     = -1,
     .flags      = CMD_NOFILE_OK,
-    .args       = "[-Crsn] [-o options] [path]",
+    .args       = "[-rsnk] [-t cache] [-d discard] [-o options] [path]",
     .oneline    = "open the file specified by path",
     .help       = open_help,
 };
@@ -137,14 +141,14 @@ static QemuOptsList empty_opts = {
 
 static int open_f(BlockBackend *blk, int argc, char **argv)
 {
-    int flags = 0;
+    int flags = BDRV_O_UNMAP;
     int readonly = 0;
     bool writethrough = true;
     int c;
     QemuOpts *qopts;
     QDict *opts;
 
-    while ((c = getopt(argc, argv, "snrgo:")) != -1) {
+    while ((c = getopt(argc, argv, "snro:kt:d:")) != -1) {
         switch (c) {
         case 's':
             flags |= BDRV_O_SNAPSHOT;
@@ -156,9 +160,27 @@ static int open_f(BlockBackend *blk, int argc, char **argv)
         case 'r':
             readonly = 1;
             break;
+        case 'k':
+            flags |= BDRV_O_NATIVE_AIO;
+            break;
+        case 't':
+            if (bdrv_parse_cache_mode(optarg, &flags, &writethrough) < 0) {
+                error_report("Invalid cache option: %s", optarg);
+                qemu_opts_reset(&empty_opts);
+                return 0;
+            }
+            break;
+        case 'd':
+            if (bdrv_parse_discard_flags(optarg, &flags) < 0) {
+                error_report("Invalid discard option: %s", optarg);
+                qemu_opts_reset(&empty_opts);
+                return 0;
+            }
+            break;
         case 'o':
             if (imageOpts) {
                 printf("--image-opts and 'open -o' are mutually exclusive\n");
+                qemu_opts_reset(&empty_opts);
                 return 0;
             }
             if (!qemu_opts_parse_noisily(&empty_opts, optarg, false)) {
@@ -216,21 +238,25 @@ static const cmdinfo_t quit_cmd = {
 static void usage(const char *name)
 {
     printf(
-"Usage: %s [-h] [-V] [-rsnm] [-f FMT] [-c STRING] ... [file]\n"
+"Usage: %s [OPTIONS]... [-c STRING]... [file]\n"
 "QEMU Disk exerciser\n"
 "\n"
 "  --object OBJECTDEF   define an object such as 'secret' for\n"
 "                       passwords and/or encryption keys\n"
+"  --image-opts         treat file as option string\n"
 "  -c, --cmd STRING     execute command with its arguments\n"
 "                       from the given string\n"
 "  -f, --format FMT     specifies the block driver to use\n"
 "  -r, --read-only      export read-only\n"
 "  -s, --snapshot       use snapshot file\n"
-"  -n, --nocache        disable host cache\n"
+"  -n, --nocache        disable host cache, short for -t none\n"
 "  -m, --misalign       misalign allocations for O_DIRECT\n"
 "  -k, --native-aio     use kernel AIO implementation (on Linux only)\n"
 "  -t, --cache=MODE     use the given cache mode for the image\n"
-"  -T, --trace FILE     enable trace events listed in the given file\n"
+"  -d, --discard=MODE   use the given discard mode for the image\n"
+"  -T, --trace [[enable=]<pattern>][,events=<file>][,file=<file>]\n"
+"                       specify tracing options\n"
+"                       see qemu-img(1) man page for full description\n"
 "  -h, --help           display this help and exit\n"
 "  -V, --version        output version information and exit\n"
 "\n"
@@ -410,11 +436,10 @@ static QemuOptsList file_opts = {
 int main(int argc, char **argv)
 {
     int readonly = 0;
-    const char *sopt = "hVc:d:f:rsnmgkt:T:";
+    const char *sopt = "hVc:d:f:rsnmkt:T:";
     const struct option lopt[] = {
         { "help", no_argument, NULL, 'h' },
         { "version", no_argument, NULL, 'V' },
-        { "offset", required_argument, NULL, 'o' },
         { "cmd", required_argument, NULL, 'c' },
         { "format", required_argument, NULL, 'f' },
         { "read-only", no_argument, NULL, 'r' },
@@ -436,21 +461,21 @@ int main(int argc, char **argv)
     Error *local_error = NULL;
     QDict *opts = NULL;
     const char *format = NULL;
+    char *trace_file = NULL;
 
 #ifdef CONFIG_POSIX
     signal(SIGPIPE, SIG_IGN);
 #endif
 
+    module_call_init(MODULE_INIT_TRACE);
     progname = basename(argv[0]);
     qemu_init_exec_dir(argv[0]);
 
-    if (qcrypto_init(&local_error) < 0) {
-        error_reportf_err(local_error, "cannot initialize crypto: ");
-        exit(1);
-    }
+    qcrypto_init(&error_fatal);
 
     module_call_init(MODULE_INIT_QOM);
     qemu_add_opts(&qemu_object_opts);
+    qemu_add_opts(&qemu_trace_opts);
     bdrv_init();
 
     while ((c = getopt_long(argc, argv, sopt, lopt, &opt_index)) != -1) {
@@ -490,9 +515,8 @@ int main(int argc, char **argv)
             }
             break;
         case 'T':
-            if (!trace_init_backends()) {
-                exit(1); /* error message will have been printed */
-            }
+            g_free(trace_file);
+            trace_file = trace_opt_parse(optarg);
             break;
         case 'V':
             printf("%s version %s\n", progname, QEMU_VERSION);
@@ -537,6 +561,12 @@ int main(int argc, char **argv)
                           NULL, NULL)) {
         exit(1);
     }
+
+    if (!trace_init_backends()) {
+        exit(1);
+    }
+    trace_init_file(trace_file);
+    qemu_set_log(LOG_TRACE);
 
     /* initialize commands */
     qemuio_add_command(&quit_cmd);

@@ -2,7 +2,6 @@
 #include "qemu/osdep.h"
 #include <sys/param.h>
 
-#include <sys/mman.h>
 #include <sys/resource.h>
 
 #include "qemu.h"
@@ -274,19 +273,20 @@ static inline void init_thread(struct target_pt_regs *regs,
     abi_long stack = infop->start_stack;
     memset(regs, 0, sizeof(*regs));
 
-    regs->ARM_cpsr = 0x10;
-    if (infop->entry & 1)
-        regs->ARM_cpsr |= CPSR_T;
-    regs->ARM_pc = infop->entry & 0xfffffffe;
-    regs->ARM_sp = infop->start_stack;
+    regs->uregs[16] = ARM_CPU_MODE_USR;
+    if (infop->entry & 1) {
+        regs->uregs[16] |= CPSR_T;
+    }
+    regs->uregs[15] = infop->entry & 0xfffffffe;
+    regs->uregs[13] = infop->start_stack;
     /* FIXME - what to for failure of get_user()? */
-    get_user_ual(regs->ARM_r2, stack + 8); /* envp */
-    get_user_ual(regs->ARM_r1, stack + 4); /* envp */
+    get_user_ual(regs->uregs[2], stack + 8); /* envp */
+    get_user_ual(regs->uregs[1], stack + 4); /* envp */
     /* XXX: it seems that r0 is zeroed after ! */
-    regs->ARM_r0 = 0;
+    regs->uregs[0] = 0;
     /* For uClinux PIC binaries.  */
     /* XXX: Linux does this only on ARM with no MMU (do we care ?) */
-    regs->ARM_r10 = infop->start_data;
+    regs->uregs[10] = infop->start_data;
 }
 
 #define ELF_NREG    18
@@ -741,8 +741,12 @@ static uint32_t get_elf_hwcap(void)
        Altivec/FP/SPE support.  Anything else is just a bonus.  */
 #define GET_FEATURE(flag, feature)                                      \
     do { if (cpu->env.insns_flags & flag) { features |= feature; } } while (0)
-#define GET_FEATURE2(flag, feature)                                      \
-    do { if (cpu->env.insns_flags2 & flag) { features |= feature; } } while (0)
+#define GET_FEATURE2(flags, feature) \
+    do { \
+        if ((cpu->env.insns_flags2 & flags) == flags) { \
+            features |= feature; \
+        } \
+    } while (0)
     GET_FEATURE(PPC_64B, QEMU_PPC_FEATURE_64);
     GET_FEATURE(PPC_FLOAT, QEMU_PPC_FEATURE_HAS_FPU);
     GET_FEATURE(PPC_ALTIVEC, QEMU_PPC_FEATURE_HAS_ALTIVEC);
@@ -1838,6 +1842,8 @@ static void load_elf_image(const char *image_name, int image_fd,
     info->pt_dynamic_addr = 0;
 #endif
 
+    mmap_lock();
+
     /* Find the maximum size of the image and allocate an appropriate
        amount of memory to handle that.  */
     loaddr = -1, hiaddr = 0;
@@ -1998,6 +2004,8 @@ static void load_elf_image(const char *image_name, int image_fd,
         load_symbols(ehdr, image_fd, load_bias);
     }
 
+    mmap_unlock();
+
     close(image_fd);
     return;
 
@@ -2111,19 +2119,19 @@ static void load_symbols(struct elfhdr *hdr, int fd, abi_ulong load_bias)
 
  found:
     /* Now know where the strtab and symtab are.  Snarf them.  */
-    s = malloc(sizeof(*s));
+    s = g_try_new(struct syminfo, 1);
     if (!s) {
         goto give_up;
     }
 
     i = shdr[str_idx].sh_size;
-    s->disas_strtab = strings = malloc(i);
+    s->disas_strtab = strings = g_try_malloc(i);
     if (!strings || pread(fd, strings, i, shdr[str_idx].sh_offset) != i) {
         goto give_up;
     }
 
     i = shdr[sym_idx].sh_size;
-    syms = malloc(i);
+    syms = g_try_malloc(i);
     if (!syms || pread(fd, syms, i, shdr[sym_idx].sh_offset) != i) {
         goto give_up;
     }
@@ -2157,7 +2165,7 @@ static void load_symbols(struct elfhdr *hdr, int fd, abi_ulong load_bias)
        that we threw away.  Whether or not this has any effect on the
        memory allocation depends on the malloc implementation and how
        many symbols we managed to discard.  */
-    new_syms = realloc(syms, nsyms * sizeof(*syms));
+    new_syms = g_try_renew(struct elf_sym, syms, nsyms);
     if (new_syms == NULL) {
         goto give_up;
     }
@@ -2178,9 +2186,9 @@ static void load_symbols(struct elfhdr *hdr, int fd, abi_ulong load_bias)
     return;
 
 give_up:
-    free(s);
-    free(strings);
-    free(syms);
+    g_free(s);
+    g_free(strings);
+    g_free(syms);
 }
 
 int load_elf_binary(struct linux_binprm *bprm, struct image_info *info)
@@ -2233,7 +2241,7 @@ int load_elf_binary(struct linux_binprm *bprm, struct image_info *info)
                we do not have the power to recompile these, we emulate
                the SVr4 behavior.  Sigh.  */
             target_mmap(0, qemu_host_page_size, PROT_READ | PROT_EXEC,
-                        MAP_FIXED | MAP_PRIVATE, -1, 0);
+                        MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
         }
     }
 
@@ -2718,7 +2726,6 @@ static int core_dump_filename(const TaskState *ts, char *buf,
                               size_t bufsize)
 {
     char timestamp[64];
-    char *filename = NULL;
     char *base_filename = NULL;
     struct timeval tv;
     struct tm tm;
@@ -2731,14 +2738,12 @@ static int core_dump_filename(const TaskState *ts, char *buf,
         return (-1);
     }
 
-    filename = strdup(ts->bprm->filename);
-    base_filename = strdup(basename(filename));
+    base_filename = g_path_get_basename(ts->bprm->filename);
     (void) strftime(timestamp, sizeof (timestamp), "%Y%m%d-%H%M%S",
                     localtime_r(&tv.tv_sec, &tm));
     (void) snprintf(buf, bufsize, "qemu_%s_%s_%d.core",
                     base_filename, timestamp, (int)getpid());
-    free(base_filename);
-    free(filename);
+    g_free(base_filename);
 
     return (0);
 }
@@ -3053,7 +3058,9 @@ static int elf_core_dump(int signr, const CPUArchState *env)
         phdr.p_align = ELF_EXEC_PAGESIZE;
 
         bswap_phdr(&phdr, 1);
-        dump_write(fd, &phdr, sizeof (phdr));
+        if (dump_write(fd, &phdr, sizeof(phdr)) != 0) {
+            goto out;
+        }
     }
 
     /*

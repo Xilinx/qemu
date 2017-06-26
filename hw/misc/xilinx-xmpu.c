@@ -797,7 +797,8 @@ static void xmpu_access(MemoryTransaction *tr)
     locked = DEP_AF_EX32(s->regs, LOCK, REGWRDIS);
     if (locked && (addr < A_ISR || addr >= A_LOCK)) {
         /* Locked access.  */
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: accessing locked register %lx\n",
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: accessing locked register "\
+                      "0x%"HWADDR_PRIx"\n",
                       object_get_canonical_path(OBJECT(s)), addr);
         tr->data.u64 = 0;
         return;

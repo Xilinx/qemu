@@ -17,24 +17,24 @@
 
 #define MAX_NBD_REQUESTS    16
 
-typedef struct NbdClientSession {
+typedef struct NBDClientSession {
     QIOChannelSocket *sioc; /* The master data channel */
     QIOChannel *ioc; /* The current I/O channel which may differ (eg TLS) */
-    uint32_t nbdflags;
+    uint16_t nbdflags;
     off_t size;
 
     CoMutex send_mutex;
-    CoMutex free_sema;
+    CoQueue free_sema;
     Coroutine *send_coroutine;
     int in_flight;
 
     Coroutine *recv_coroutine[MAX_NBD_REQUESTS];
-    struct nbd_reply reply;
+    NBDReply reply;
 
     bool is_unix;
-} NbdClientSession;
+} NBDClientSession;
 
-NbdClientSession *nbd_get_client_session(BlockDriverState *bs);
+NBDClientSession *nbd_get_client_session(BlockDriverState *bs);
 
 int nbd_client_init(BlockDriverState *bs,
                     QIOChannelSocket *sock,
@@ -44,13 +44,14 @@ int nbd_client_init(BlockDriverState *bs,
                     Error **errp);
 void nbd_client_close(BlockDriverState *bs);
 
-int nbd_client_co_discard(BlockDriverState *bs, int64_t sector_num,
-                          int nb_sectors);
+int nbd_client_co_pdiscard(BlockDriverState *bs, int64_t offset, int count);
 int nbd_client_co_flush(BlockDriverState *bs);
-int nbd_client_co_writev(BlockDriverState *bs, int64_t sector_num,
-                         int nb_sectors, QEMUIOVector *qiov, int *flags);
-int nbd_client_co_readv(BlockDriverState *bs, int64_t sector_num,
-                        int nb_sectors, QEMUIOVector *qiov);
+int nbd_client_co_pwritev(BlockDriverState *bs, uint64_t offset,
+                          uint64_t bytes, QEMUIOVector *qiov, int flags);
+int nbd_client_co_pwrite_zeroes(BlockDriverState *bs, int64_t offset,
+                                int count, BdrvRequestFlags flags);
+int nbd_client_co_preadv(BlockDriverState *bs, uint64_t offset,
+                         uint64_t bytes, QEMUIOVector *qiov, int flags);
 
 void nbd_client_detach_aio_context(BlockDriverState *bs);
 void nbd_client_attach_aio_context(BlockDriverState *bs,

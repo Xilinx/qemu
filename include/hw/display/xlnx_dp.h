@@ -24,7 +24,7 @@
 
 #include "hw/sysbus.h"
 #include "ui/console.h"
-#include "hw/misc/aux.h"
+#include "hw/misc/auxbus.h"
 #include "hw/i2c/i2c.h"
 #include "hw/display/dpcd.h"
 #include "hw/i2c/i2c-ddc.h"
@@ -48,9 +48,10 @@ struct PixmanPlane {
     DisplaySurface *surface;
 };
 
-struct XlnxDPState {
+typedef struct XlnxDPState {
     /*< private >*/
     SysBusDevice parent_obj;
+
     /* < public >*/
     MemoryRegion container;
 
@@ -100,9 +101,7 @@ struct XlnxDPState {
      */
     DPCDState *dpcd;
     I2CDDCState *edid;
-};
-
-typedef struct XlnxDPState XlnxDPState;
+} XlnxDPState;
 
 #define TYPE_XLNX_DP "xlnx.v-dp"
 #define XLNX_DP(obj) OBJECT_CHECK(XlnxDPState, (obj), TYPE_XLNX_DP)

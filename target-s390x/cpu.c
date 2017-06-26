@@ -30,10 +30,12 @@
 #include "qemu/cutils.h"
 #include "qemu/timer.h"
 #include "qemu/error-report.h"
-#include "hw/hw.h"
 #include "trace.h"
 #include "qapi/visitor.h"
+#include "migration/vmstate.h"
+#include "exec/exec-all.h"
 #ifndef CONFIG_USER_ONLY
+#include "hw/hw.h"
 #include "sysemu/arch_init.h"
 #include "sysemu/sysemu.h"
 #include "hw/s390x/sclp.h"
@@ -41,30 +43,6 @@
 
 #define CR0_RESET       0xE0UL
 #define CR14_RESET      0xC2000000UL;
-
-/* generate CPU information for cpu -? */
-void s390_cpu_list(FILE *f, fprintf_function cpu_fprintf)
-{
-#ifdef CONFIG_KVM
-    (*cpu_fprintf)(f, "s390 %16s\n", "host");
-#endif
-}
-
-#ifndef CONFIG_USER_ONLY
-CpuDefinitionInfoList *arch_query_cpu_definitions(Error **errp)
-{
-    CpuDefinitionInfoList *entry;
-    CpuDefinitionInfo *info;
-
-    info = g_malloc0(sizeof(*info));
-    info->name = g_strdup("host");
-
-    entry = g_malloc0(sizeof(*entry));
-    entry->value = info;
-
-    return entry;
-}
-#endif
 
 static void s390_cpu_set_pc(CPUState *cs, vaddr value)
 {
@@ -186,7 +164,7 @@ static void s390_cpu_machine_reset_cb(void *opaque)
 {
     S390CPU *cpu = opaque;
 
-    run_on_cpu(CPU(cpu), s390_do_cpu_full_reset, CPU(cpu));
+    run_on_cpu(CPU(cpu), s390_do_cpu_full_reset, RUN_ON_CPU_NULL);
 }
 #endif
 
@@ -203,6 +181,12 @@ static void s390_cpu_realizefn(DeviceState *dev, Error **errp)
     S390CPU *cpu = S390_CPU(dev);
     CPUS390XState *env = &cpu->env;
     Error *err = NULL;
+
+    /* the model has to be realized before qemu_init_vcpu() due to kvm */
+    s390_realize_cpu_model(cs, &err);
+    if (err) {
+        goto out;
+    }
 
 #if !defined(CONFIG_USER_ONLY)
     if (cpu->id >= max_cpus) {
@@ -223,7 +207,7 @@ static void s390_cpu_realizefn(DeviceState *dev, Error **errp)
         goto out;
     }
 
-    cpu_exec_init(cs, &err);
+    cpu_exec_realizefn(cs, &err);
     if (err != NULL) {
         goto out;
     }
@@ -236,7 +220,7 @@ static void s390_cpu_realizefn(DeviceState *dev, Error **errp)
     s390_cpu_gdb_init(cs);
     qemu_init_vcpu(cs);
 #if !defined(CONFIG_USER_ONLY)
-    run_on_cpu(cs, s390_do_cpu_full_reset, cs);
+    run_on_cpu(cs, s390_do_cpu_full_reset, RUN_ON_CPU_NULL);
 #else
     cpu_reset(cs);
 #endif
@@ -307,6 +291,7 @@ static void s390_cpu_initfn(Object *obj)
     cs->exception_index = EXCP_HLT;
     object_property_add(OBJECT(cpu), "id", "int64_t", s390x_cpu_get_id,
                         s390x_cpu_set_id, NULL, NULL, NULL);
+    s390_cpu_model_register_props(obj);
 #if !defined(CONFIG_USER_ONLY)
     qemu_get_timedate(&tm, 0);
     env->tod_offset = TOD_UNIX_EPOCH +
@@ -433,6 +418,7 @@ static void s390_cpu_class_init(ObjectClass *oc, void *data)
     scc->cpu_reset = s390_cpu_reset;
     scc->initial_cpu_reset = s390_cpu_initial_reset;
     cc->reset = s390_cpu_full_reset;
+    cc->class_by_name = s390_cpu_class_by_name,
     cc->has_work = s390_cpu_has_work;
     cc->do_interrupt = s390_cpu_do_interrupt;
     cc->dump_state = s390_cpu_dump_state;
@@ -454,12 +440,7 @@ static void s390_cpu_class_init(ObjectClass *oc, void *data)
     cc->gdb_core_xml_file = "s390x-core64.xml";
     cc->gdb_arch_name = s390_gdb_arch_name;
 
-    /*
-     * Reason: s390_cpu_realizefn() calls cpu_exec_init(), which saves
-     * the object in cpus -> dangling pointer after final
-     * object_unref().
-     */
-    dc->cannot_destroy_with_object_finalize_yet = true;
+    s390_cpu_model_class_register_props(oc);
 }
 
 static const TypeInfo s390_cpu_type_info = {
@@ -468,7 +449,7 @@ static const TypeInfo s390_cpu_type_info = {
     .instance_size = sizeof(S390CPU),
     .instance_init = s390_cpu_initfn,
     .instance_finalize = s390_cpu_finalize,
-    .abstract = false,
+    .abstract = true,
     .class_size = sizeof(S390CPUClass),
     .class_init = s390_cpu_class_init,
 };

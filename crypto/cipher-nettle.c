@@ -28,6 +28,7 @@
 #include <nettle/cast128.h>
 #include <nettle/serpent.h>
 #include <nettle/twofish.h>
+#include <nettle/ctr.h>
 
 typedef void (*QCryptoCipherNettleFuncWrapper)(const void *ctx,
                                                size_t length,
@@ -186,12 +187,13 @@ struct QCryptoCipherNettle {
     QCryptoCipherNettleFuncNative alg_decrypt_native;
     QCryptoCipherNettleFuncWrapper alg_encrypt_wrapper;
     QCryptoCipherNettleFuncWrapper alg_decrypt_wrapper;
-
+    /* Initialization vector or Counter */
     uint8_t *iv;
     size_t blocksize;
 };
 
-bool qcrypto_cipher_supports(QCryptoCipherAlgorithm alg)
+bool qcrypto_cipher_supports(QCryptoCipherAlgorithm alg,
+                             QCryptoCipherMode mode)
 {
     switch (alg) {
     case QCRYPTO_CIPHER_ALG_DES_RFB:
@@ -205,6 +207,16 @@ bool qcrypto_cipher_supports(QCryptoCipherAlgorithm alg)
     case QCRYPTO_CIPHER_ALG_TWOFISH_128:
     case QCRYPTO_CIPHER_ALG_TWOFISH_192:
     case QCRYPTO_CIPHER_ALG_TWOFISH_256:
+        break;
+    default:
+        return false;
+    }
+
+    switch (mode) {
+    case QCRYPTO_CIPHER_MODE_ECB:
+    case QCRYPTO_CIPHER_MODE_CBC:
+    case QCRYPTO_CIPHER_MODE_XTS:
+    case QCRYPTO_CIPHER_MODE_CTR:
         return true;
     default:
         return false;
@@ -225,9 +237,11 @@ QCryptoCipher *qcrypto_cipher_new(QCryptoCipherAlgorithm alg,
     case QCRYPTO_CIPHER_MODE_ECB:
     case QCRYPTO_CIPHER_MODE_CBC:
     case QCRYPTO_CIPHER_MODE_XTS:
+    case QCRYPTO_CIPHER_MODE_CTR:
         break;
     default:
-        error_setg(errp, "Unsupported cipher mode %d", mode);
+        error_setg(errp, "Unsupported cipher mode %s",
+                   QCryptoCipherMode_lookup[mode]);
         return NULL;
     }
 
@@ -357,7 +371,15 @@ QCryptoCipher *qcrypto_cipher_new(QCryptoCipherAlgorithm alg,
         break;
 
     default:
-        error_setg(errp, "Unsupported cipher algorithm %d", alg);
+        error_setg(errp, "Unsupported cipher algorithm %s",
+                   QCryptoCipherAlgorithm_lookup[alg]);
+        goto error;
+    }
+
+    if (mode == QCRYPTO_CIPHER_MODE_XTS &&
+        ctx->blocksize != XTS_BLOCK_SIZE) {
+        error_setg(errp, "Cipher block size %zu must equal XTS block size %d",
+                   ctx->blocksize, XTS_BLOCK_SIZE);
         goto error;
     }
 
@@ -421,9 +443,15 @@ int qcrypto_cipher_encrypt(QCryptoCipher *cipher,
                     ctx->iv, len, out, in);
         break;
 
+    case QCRYPTO_CIPHER_MODE_CTR:
+        ctr_crypt(ctx->ctx, ctx->alg_encrypt_native,
+                    ctx->blocksize, ctx->iv,
+                    len, out, in);
+        break;
+
     default:
-        error_setg(errp, "Unsupported cipher algorithm %d",
-                   cipher->alg);
+        error_setg(errp, "Unsupported cipher mode %s",
+                   QCryptoCipherMode_lookup[cipher->mode]);
         return -1;
     }
     return 0;
@@ -456,19 +484,19 @@ int qcrypto_cipher_decrypt(QCryptoCipher *cipher,
         break;
 
     case QCRYPTO_CIPHER_MODE_XTS:
-        if (ctx->blocksize != XTS_BLOCK_SIZE) {
-            error_setg(errp, "Block size must be %d not %zu",
-                       XTS_BLOCK_SIZE, ctx->blocksize);
-            return -1;
-        }
         xts_decrypt(ctx->ctx, ctx->ctx_tweak,
                     ctx->alg_encrypt_wrapper, ctx->alg_decrypt_wrapper,
                     ctx->iv, len, out, in);
         break;
+    case QCRYPTO_CIPHER_MODE_CTR:
+        ctr_crypt(ctx->ctx, ctx->alg_encrypt_native,
+                    ctx->blocksize, ctx->iv,
+                    len, out, in);
+        break;
 
     default:
-        error_setg(errp, "Unsupported cipher algorithm %d",
-                   cipher->alg);
+        error_setg(errp, "Unsupported cipher mode %s",
+                   QCryptoCipherMode_lookup[cipher->mode]);
         return -1;
     }
     return 0;

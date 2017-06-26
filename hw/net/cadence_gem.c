@@ -26,16 +26,15 @@
 #include <zlib.h> /* For crc32 */
 
 #include "hw/net/cadence_gem.h"
-#include "net/checksum.h"
-#include "sysemu/dma.h"
-#include "qemu/log.h"
 #include "qapi/error.h"
-#include "hw/net/cadence_gem.h"
+#include "qemu/log.h"
+#include "net/checksum.h"
+#include "exec/address-spaces.h"
 
 #ifdef CADENCE_GEM_ERR_DEBUG
 #define DB_PRINT(...) do { \
-    qemu_log_mask(DEV_LOG_NET_DEV, ": %s: ", __func__); \
-    qemu_log_mask(DEV_LOG_NET_DEV, ## __VA_ARGS__); \
+    fprintf(stderr,  ": %s: ", __func__); \
+    fprintf(stderr, ## __VA_ARGS__); \
     } while (0);
 #else
     #define DB_PRINT(...)
@@ -76,7 +75,7 @@
 #define GEM_WOLAN         (0x000000B8/4) /* Wake on LAN reg */
 #define GEM_IPGSTRETCH    (0x000000BC/4) /* IPG Stretch reg */
 #define GEM_SVLAN         (0x000000C0/4) /* Stacked VLAN reg */
-#define GEM_REVISION      (0x000000FC/4) /* Revision reg */
+#define GEM_MODID         (0x000000FC/4) /* Module ID reg */
 #define GEM_OCTTXLO       (0x00000100/4) /* Octects transmitted Low reg */
 #define GEM_OCTTXHI       (0x00000104/4) /* Octects transmitted High reg */
 #define GEM_TXCNT         (0x00000108/4) /* Error-free Frames transmitted */
@@ -145,18 +144,25 @@
 #define GEM_DESCONF6      (0x00000294/4)
 #define GEM_DESCONF7      (0x00000298/4)
 
-#define GEM_INT_Q1_STATUS               (0x00000400/4)
-#define GEM_TRANSMIT_Q1_PTR             (0x00000440/4)
-#define GEM_TRANSMIT_Q15_PTR            (GEM_TRANSMIT_Q1_PTR + 14)
-#define GEM_RECEIVE_Q1_PTR              (0x00000480/4)
-#define GEM_RECEIVE_Q15_PTR             (GEM_RECEIVE_Q1_PTR + 14)
-#define GEM_DMA_RXBUF_SIZE_Q1           (0x000004a0/4)
-#define GEM_CBS_CONTROL                 (0x000004bc/4)
-#define GEM_CBS_IDLESLOPE_Q_A           (0x000004c0/4)
-#define GEM_CBS_IDLESLOPE_Q_B           (0x000004c4/4)
-#define GEM_MSB_BUFF_Q_BASE_ADDR        (0x000004c8/4)
+#define GEM_INT_Q1_STATUS               (0x00000400 / 4)
+#define GEM_INT_Q1_MASK                 (0x00000640 / 4)
 
-#define GEM_SCREENING_TYPE1_REGISTER_0  (0x00000500/4)
+#define GEM_TRANSMIT_Q1_PTR             (0x00000440 / 4)
+#define GEM_TRANSMIT_Q7_PTR             (GEM_TRANSMIT_Q1_PTR + 6)
+
+#define GEM_RECEIVE_Q1_PTR              (0x00000480 / 4)
+#define GEM_RECEIVE_Q7_PTR              (GEM_RECEIVE_Q1_PTR + 6)
+
+#define GEM_INT_Q1_ENABLE               (0x00000600 / 4)
+#define GEM_INT_Q7_ENABLE               (GEM_INT_Q1_ENABLE + 6)
+
+#define GEM_INT_Q1_DISABLE              (0x00000620 / 4)
+#define GEM_INT_Q7_DISABLE              (GEM_INT_Q1_DISABLE + 6)
+
+#define GEM_INT_Q1_MASK                 (0x00000640 / 4)
+#define GEM_INT_Q7_MASK                 (GEM_INT_Q1_MASK + 6)
+
+#define GEM_SCREENING_TYPE1_REGISTER_0  (0x00000500 / 4)
 
 #define GEM_ST1R_UDP_PORT_MATCH_ENABLE  (1 << 29)
 #define GEM_ST1R_DSTC_ENABLE            (1 << 28)
@@ -167,56 +173,20 @@
 #define GEM_ST1R_QUEUE_SHIFT            (0)
 #define GEM_ST1R_QUEUE_WIDTH            (3 - GEM_ST1R_QUEUE_SHIFT + 1)
 
-#define GEM_SCREENING_TYPE2_REGISTER_0  (0x00000540/4)
+#define GEM_SCREENING_TYPE2_REGISTER_0  (0x00000540 / 4)
 
 #define GEM_ST2R_COMPARE_A_ENABLE       (1 << 18)
 #define GEM_ST2R_COMPARE_A_SHIFT        (13)
 #define GEM_ST2R_COMPARE_WIDTH          (17 - GEM_ST2R_COMPARE_A_SHIFT + 1)
-#define GEM_ST2R_COMPARE_END            (31)
 #define GEM_ST2R_ETHERTYPE_ENABLE       (1 << 12)
 #define GEM_ST2R_ETHERTYPE_INDEX_SHIFT  (9)
 #define GEM_ST2R_ETHERTYPE_INDEX_WIDTH  (11 - GEM_ST2R_ETHERTYPE_INDEX_SHIFT \
-                                         + 1)
+                                            + 1)
 #define GEM_ST2R_QUEUE_SHIFT            (0)
 #define GEM_ST2R_QUEUE_WIDTH            (3 - GEM_ST2R_QUEUE_SHIFT + 1)
-/* No VLAN support yet */
 
-#define GEM_RECIEVE_Q8_PTR              (0x000005c0/4)
-#define GEM_DMA_RXBUF_SIZE_Q8           (0x000005e0/4)
-
-#define GEM_INT_Q1_ENABLE               (0x00000600/4)
-#define GEM_INT_Q7_ENABLE               (GEM_INT_Q1_ENABLE + 6)
-#define GEM_INT_Q1_DISABLE              (0x00000620/4)
-#define GEM_INT_Q7_DISABLE              (GEM_INT_Q1_DISABLE + 6)
-#define GEM_INT_Q1_MASK                 (0x00000640/4)
-#define GEM_INT_Q7_MASK                 (GEM_INT_Q1_MASK + 6)
-#define GEM_INT_Q8_ENABLE               (0x00000660/4)
-#define GEM_INT_Q15_ENABLE              (GEM_INT_Q8_ENABLE + 7)
-#define GEM_INT_Q8_DISABLE              (0x00000680/4)
-#define GEM_INT_Q15_DISABLE             (GEM_INT_Q8_DISABLE + 7)
-#define GEM_INT_Q8_MASK                 (0x000006A0/4)
-#define GEM_INT_Q15_MASK                (GEM_INT_Q8_MASK + 7)
-
-#define GEM_SCREENING_TYPE2_ETHERTYPE_REG_0     (0x000006e0/4)
-#define GEM_TYPE2_COMPARE_0_WORD_0              (0x00000700/4)
-#define GEM_TYPE2_COMPARE_0_WORD_1              (0x00000704/4)
-
-#define gem_sr(queue, ...)                                                  \
-    ({                                                                      \
-        uint32_t array_args[] = { __VA_ARGS__ };                            \
-        int __gem_sr_i__;                                                   \
-        uint32_t ret = 0;                                                   \
-                                                                            \
-        for (__gem_sr_i__ = 0; __gem_sr_i__ < ARRAY_SIZE(array_args);       \
-             __gem_sr_i__ += 2) {                                           \
-            if (queue >= array_args[__gem_sr_i__]) {                        \
-                ret = queue - array_args[__gem_sr_i__] +                    \
-                      array_args[__gem_sr_i__ + 1];                         \
-            }                                                               \
-        }                                                                   \
-        assert(ret);                                                        \
-        ret;                                                                \
-    })
+#define GEM_SCREENING_TYPE2_ETHERTYPE_REG_0     (0x000006e0 / 4)
+#define GEM_TYPE2_COMPARE_0_WORD_0              (0x00000700 / 4)
 
 #define GEM_T2CW1_COMPARE_OFFSET_SHIFT  (7)
 #define GEM_T2CW1_COMPARE_OFFSET_WIDTH  (8 - GEM_T2CW1_COMPARE_OFFSET_SHIFT + 1)
@@ -257,8 +227,6 @@
 #define GEM_INT_TXUSED         0x00000008
 #define GEM_INT_RXUSED         0x00000004
 #define GEM_INT_RXCMPL        0x00000002
-#define GEM_INT_LINK_CHNG      0x00000200
-#define GEM_INT_AUTONEG        0x00010000
 
 #define GEM_PHYMNTNC_OP_R      0x20000000 /* read operation */
 #define GEM_PHYMNTNC_OP_W      0x10000000 /* write operation */
@@ -336,7 +304,17 @@
 #define DESC_1_RX_SOF 0x00004000
 #define DESC_1_RX_EOF 0x00008000
 
-#define GEM_REVISION_VALUE 0x00020118
+#define GEM_MODID_VALUE 0x00020118
+
+static inline uint64_t tx_desc_get_buffer(CadenceGEMState *s, unsigned *desc)
+{
+    uint64_t ret = desc[0];
+
+    if (s->regs[GEM_DMACFG] & GEM_DMACFG_TX_BD_EXT) {
+        ret |= (uint64_t)desc[2] << 32;
+    }
+    return ret;
+}
 
 static inline unsigned tx_desc_get_used(unsigned *desc)
 {
@@ -358,6 +336,11 @@ static inline unsigned tx_desc_get_last(unsigned *desc)
     return (desc[1] & DESC_1_TX_LAST) ? 1 : 0;
 }
 
+static inline void tx_desc_set_last(unsigned *desc)
+{
+    desc[1] |= DESC_1_TX_LAST;
+}
+
 static inline unsigned tx_desc_get_length(unsigned *desc)
 {
     return desc[1] & DESC_1_LENGTH;
@@ -371,6 +354,30 @@ static inline void print_gem_tx_desc(unsigned *desc, uint8_t queue)
     DB_PRINT("wrap:    %d\n", tx_desc_get_wrap(desc));
     DB_PRINT("last:    %d\n", tx_desc_get_last(desc));
     DB_PRINT("length:  %d\n", tx_desc_get_length(desc));
+}
+
+static inline uint64_t rx_desc_get_buffer(CadenceGEMState * s, unsigned *desc)
+{
+    uint64_t ret = desc[0] & ~0x3UL;
+
+    if (s->regs[GEM_DMACFG] & GEM_DMACFG_RX_BD_EXT) {
+        ret |= (uint64_t)desc[2] << 32;
+    }
+    return ret;
+}
+
+static inline int gem_get_desc_len(CadenceGEMState *s, bool rx_n_tx)
+{
+    int ret = 2;
+
+    if (s->regs[GEM_DMACFG] & GEM_DMACFG_ADDR_BUS_WIDTH_M) {
+        ret += 2;
+    }
+    if (s->regs[GEM_DMACFG] & (rx_n_tx ? GEM_DMACFG_RX_BD_EXT
+                                       : GEM_DMACFG_TX_BD_EXT)) {
+        ret += 2;
+    }
+    return ret;
 }
 
 static inline unsigned rx_desc_get_wrap(unsigned *desc)
@@ -426,50 +433,6 @@ static inline void rx_desc_set_sar(unsigned *desc, int sar_idx)
     desc[1] |= R_DESC_1_RX_SAR_MATCH;
 }
 
-#define GEM_MAX_PACKET_LEN (16 * 1024)
-#define GEM_MAX_DESC_LEN 4
-
-static inline uint64_t tx_desc_get_buffer(CadenceGEMState *s, unsigned *desc)
-{
-    uint64_t ret = desc[0];
-
-    if (s->regs[GEM_DMACFG] & GEM_DMACFG_TX_BD_EXT) {
-        ret |= (uint64_t)desc[2] << 32;
-    }
-    return ret;
-}
-
-static inline uint64_t rx_desc_get_buffer(CadenceGEMState * s, unsigned *desc)
-{
-    uint64_t ret = desc[0] & ~0x3UL;
-
-    if (s->regs[GEM_DMACFG] & GEM_DMACFG_RX_BD_EXT) {
-        ret |= (uint64_t)desc[2] << 32;
-    }
-    return ret;
-}
-
-static inline int gem_get_desc_len(CadenceGEMState *s, bool rx_n_tx)
-{
-    int ret = 2;
-
-    if (s->regs[GEM_DMACFG] & GEM_DMACFG_ADDR_BUS_WIDTH_M) {
-        ret += 2;
-    }
-    if (s->regs[GEM_DMACFG] & (rx_n_tx ? GEM_DMACFG_RX_BD_EXT
-                                       : GEM_DMACFG_TX_BD_EXT)) {
-        ret += 2;
-    }
-    return ret;
-}
-
-static inline void gem_set_isr_bit(CadenceGEMState *s, int q, uint32_t bit)
-{
-    s->regs[gem_sr(q, 0, GEM_ISR, 1, GEM_INT_Q1_STATUS)] |=
-        bit & ~(s->regs[gem_sr(q, 0, GEM_IMR, 1, GEM_INT_Q1_MASK,
-                                              8, GEM_INT_Q8_MASK)]);
-}
-
 /* The broadcast MAC address: 0xFFFFFFFFFFFF */
 static const uint8_t broadcast_addr[] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 
@@ -480,7 +443,6 @@ static const uint8_t broadcast_addr[] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
  */
 static void gem_init_register_masks(CadenceGEMState *s)
 {
-    int i;
     /* Mask of register bits which are read only */
     memset(&s->regs_ro[0], 0, sizeof(s->regs_ro));
     s->regs_ro[GEM_NWCTRL]   = 0xFFF80000;
@@ -490,10 +452,13 @@ static void gem_init_register_masks(CadenceGEMState *s)
     s->regs_ro[GEM_RXQBASE]  = 0x00000003;
     s->regs_ro[GEM_TXQBASE]  = 0x00000003;
     s->regs_ro[GEM_RXSTATUS] = 0xFFFFFFF0;
-    s->regs_ro[GEM_REVISION] = 0xFFFFFFFF;
+    s->regs_ro[GEM_ISR]      = 0xFFFFFFFF;
+    s->regs_ro[GEM_IMR]      = 0xFFFFFFFF;
+    s->regs_ro[GEM_MODID]    = 0xFFFFFFFF;
 
     /* Mask of register bits which are clear on read */
     memset(&s->regs_rtc[0], 0, sizeof(s->regs_rtc));
+    s->regs_rtc[GEM_ISR]      = 0xFFFFFFFF;
 
     /* Mask of register bits which are write 1 to clear */
     memset(&s->regs_w1c[0], 0, sizeof(s->regs_w1c));
@@ -503,18 +468,8 @@ static void gem_init_register_masks(CadenceGEMState *s)
     /* Mask of register bits which are write only */
     memset(&s->regs_wo[0], 0, sizeof(s->regs_wo));
     s->regs_wo[GEM_NWCTRL]   = 0x00073E60;
-
-    /* Per priority queue settings */
-    for (i = 0; i < MAX_PRIORITY_QUEUES; ++i) {
-        s->regs_rtc[gem_sr(i, 0, GEM_ISR, 1, GEM_INT_Q1_STATUS)] = 0xFFFFFFFF;
-        s->regs_ro[gem_sr(i, 0, GEM_ISR, 1, GEM_INT_Q1_STATUS)]  = 0xFFFFFFFF;
-        s->regs_wo[gem_sr(i, 0, GEM_IER, 1, GEM_INT_Q1_ENABLE,
-                                         8, GEM_INT_Q8_ENABLE)]  = 0x07FFFFFF;
-        s->regs_wo[gem_sr(i, 0, GEM_IDR, 1, GEM_INT_Q1_DISABLE,
-                                         8, GEM_INT_Q8_DISABLE)] = 0x07FFFFFF;
-        s->regs_ro[gem_sr(i, 0, GEM_IMR, 1, GEM_INT_Q1_MASK,
-                                         8, GEM_INT_Q8_MASK)]    = 0x07FFFFFF;
-    }
+    s->regs_wo[GEM_IER]      = 0x07FFFFFF;
+    s->regs_wo[GEM_IDR]      = 0x07FFFFFF;
 }
 
 /*
@@ -526,16 +481,23 @@ static void phy_update_link(CadenceGEMState *s)
     DB_PRINT("down %d\n", qemu_get_queue(s->nic)->link_down);
 
     /* Autonegotiation status mirrors link status.  */
-    if (!qemu_get_queue(s->nic)->link_down) {
-        s->regs[GEM_ISR] |= GEM_INT_AUTONEG & ~(s->regs[GEM_IMR]);
+    if (qemu_get_queue(s->nic)->link_down) {
+        s->phy_regs[PHY_REG_STATUS] &= ~(PHY_REG_STATUS_ANEGCMPL |
+                                         PHY_REG_STATUS_LINK);
+        s->phy_regs[PHY_REG_INT_ST] |= PHY_REG_INT_ST_LINKC;
+    } else {
+        s->phy_regs[PHY_REG_STATUS] |= (PHY_REG_STATUS_ANEGCMPL |
+                                         PHY_REG_STATUS_LINK);
+        s->phy_regs[PHY_REG_INT_ST] |= (PHY_REG_INT_ST_LINKC |
+                                        PHY_REG_INT_ST_ANEGCMPL |
+                                        PHY_REG_INT_ST_ENERGY);
     }
-    s->regs[GEM_ISR] |= GEM_INT_LINK_CHNG & ~(s->regs[GEM_IMR]);
 }
 
 static int gem_can_receive(NetClientState *nc)
 {
-    int i;
     CadenceGEMState *s;
+    int i;
 
     s = qemu_get_nic_opaque(nc);
 
@@ -548,15 +510,16 @@ static int gem_can_receive(NetClientState *nc)
         return 0;
     }
 
-    for (i = 0; i < s->num_priority_queues &&
-                rx_desc_get_ownership(s->rx_desc[i]) == 1; ++i) {};
+    for (i = 0; i < s->num_priority_queues; i++) {
+        if (rx_desc_get_ownership(s->rx_desc[i]) != 1) {
+            break;
+        }
+    };
+
     if (i == s->num_priority_queues) {
         if (s->can_rx_state != 2) {
             s->can_rx_state = 2;
-            for (i = 0; i < s->num_priority_queues; ++i) {
-                DB_PRINT("can't receive - busy buffer descriptor (q%d) 0x%x\n",
-                         i, s->rx_desc_addr[i]);
-            }
+            DB_PRINT("can't receive - all the buffer descriptors are busy\n");
         }
         return 0;
     }
@@ -576,12 +539,29 @@ static void gem_update_int_status(CadenceGEMState *s)
 {
     int i;
 
-    for (i = 0; i < s->num_priority_queues; ++i) {
-        uint32_t isr = s->regs[gem_sr(i, 0, GEM_ISR, 1, GEM_INT_Q1_STATUS)];
-        if (isr) {
-            DB_PRINT("asserting int. (q=%d, 0x%08x)\n", i, isr);
+    if (!s->regs[GEM_ISR]) {
+        /* ISR isn't set, clear all the interrupts */
+        for (i = 0; i < s->num_priority_queues; ++i) {
+            qemu_set_irq(s->irq[i], 0);
         }
-        qemu_set_irq(s->irq[i], !!isr);
+        return;
+    }
+
+    /* If we get here we know s->regs[GEM_ISR] is set, so we don't need to
+     * check it again.
+     */
+    if (s->num_priority_queues == 1) {
+        /* No priority queues, just trigger the interrupt */
+        DB_PRINT("asserting int.\n");
+        qemu_set_irq(s->irq[0], 1);
+        return;
+    }
+
+    for (i = 0; i < s->num_priority_queues; ++i) {
+        if (s->regs[GEM_INT_Q1_STATUS + i]) {
+            DB_PRINT("asserting int. (q=%d)\n", i);
+            qemu_set_irq(s->irq[i], 1);
+        }
     }
 }
 
@@ -730,6 +710,126 @@ static int gem_mac_address_filter(CadenceGEMState *s, const uint8_t *packet)
     return GEM_RX_REJECT;
 }
 
+/* Figure out which queue the received data should be sent to */
+static int get_queue_from_screen(CadenceGEMState *s, uint8_t *rxbuf_ptr,
+                                 unsigned rxbufsize)
+{
+    uint32_t reg;
+    bool matched, mismatched;
+    int i, j;
+
+    for (i = 0; i < s->num_type1_screeners; i++) {
+        reg = s->regs[GEM_SCREENING_TYPE1_REGISTER_0 + i];
+        matched = false;
+        mismatched = false;
+
+        /* Screening is based on UDP Port */
+        if (reg & GEM_ST1R_UDP_PORT_MATCH_ENABLE) {
+            uint16_t udp_port = rxbuf_ptr[14 + 22] << 8 | rxbuf_ptr[14 + 23];
+            if (udp_port == extract32(reg, GEM_ST1R_UDP_PORT_MATCH_SHIFT,
+                                           GEM_ST1R_UDP_PORT_MATCH_WIDTH)) {
+                matched = true;
+            } else {
+                mismatched = true;
+            }
+        }
+
+        /* Screening is based on DS/TC */
+        if (reg & GEM_ST1R_DSTC_ENABLE) {
+            uint8_t dscp = rxbuf_ptr[14 + 1];
+            if (dscp == extract32(reg, GEM_ST1R_DSTC_MATCH_SHIFT,
+                                       GEM_ST1R_DSTC_MATCH_WIDTH)) {
+                matched = true;
+            } else {
+                mismatched = true;
+            }
+        }
+
+        if (matched && !mismatched) {
+            return extract32(reg, GEM_ST1R_QUEUE_SHIFT, GEM_ST1R_QUEUE_WIDTH);
+        }
+    }
+
+    for (i = 0; i < s->num_type2_screeners; i++) {
+        reg = s->regs[GEM_SCREENING_TYPE2_REGISTER_0 + i];
+        matched = false;
+        mismatched = false;
+
+        if (reg & GEM_ST2R_ETHERTYPE_ENABLE) {
+            uint16_t type = rxbuf_ptr[12] << 8 | rxbuf_ptr[13];
+            int et_idx = extract32(reg, GEM_ST2R_ETHERTYPE_INDEX_SHIFT,
+                                        GEM_ST2R_ETHERTYPE_INDEX_WIDTH);
+
+            if (et_idx > s->num_type2_screeners) {
+                qemu_log_mask(LOG_GUEST_ERROR, "Out of range ethertype "
+                              "register index: %d\n", et_idx);
+            }
+            if (type == s->regs[GEM_SCREENING_TYPE2_ETHERTYPE_REG_0 +
+                                et_idx]) {
+                matched = true;
+            } else {
+                mismatched = true;
+            }
+        }
+
+        /* Compare A, B, C */
+        for (j = 0; j < 3; j++) {
+            uint32_t cr0, cr1, mask;
+            uint16_t rx_cmp;
+            int offset;
+            int cr_idx = extract32(reg, GEM_ST2R_COMPARE_A_SHIFT + j * 6,
+                                        GEM_ST2R_COMPARE_WIDTH);
+
+            if (!(reg & (GEM_ST2R_COMPARE_A_ENABLE << (j * 6)))) {
+                continue;
+            }
+            if (cr_idx > s->num_type2_screeners) {
+                qemu_log_mask(LOG_GUEST_ERROR, "Out of range compare "
+                              "register index: %d\n", cr_idx);
+            }
+
+            cr0 = s->regs[GEM_TYPE2_COMPARE_0_WORD_0 + cr_idx * 2];
+            cr1 = s->regs[GEM_TYPE2_COMPARE_0_WORD_0 + cr_idx * 2 + 1];
+            offset = extract32(cr1, GEM_T2CW1_OFFSET_VALUE_SHIFT,
+                                    GEM_T2CW1_OFFSET_VALUE_WIDTH);
+
+            switch (extract32(cr1, GEM_T2CW1_COMPARE_OFFSET_SHIFT,
+                                   GEM_T2CW1_COMPARE_OFFSET_WIDTH)) {
+            case 3: /* Skip UDP header */
+                qemu_log_mask(LOG_UNIMP, "TCP compare offsets"
+                              "unimplemented - assuming UDP\n");
+                offset += 8;
+                /* Fallthrough */
+            case 2: /* skip the IP header */
+                offset += 20;
+                /* Fallthrough */
+            case 1: /* Count from after the ethertype */
+                offset += 14;
+                break;
+            case 0:
+                /* Offset from start of frame */
+                break;
+            }
+
+            rx_cmp = rxbuf_ptr[offset] << 8 | rxbuf_ptr[offset];
+            mask = extract32(cr0, 0, 16);
+
+            if ((rx_cmp & mask) == (extract32(cr0, 16, 16) & mask)) {
+                matched = true;
+            } else {
+                mismatched = true;
+            }
+        }
+
+        if (matched && !mismatched) {
+            return extract32(reg, GEM_ST2R_QUEUE_SHIFT, GEM_ST2R_QUEUE_WIDTH);
+        }
+    }
+
+    /* We made it here, assume it's queue 0 */
+    return 0;
+}
+
 static void gem_get_rx_desc(CadenceGEMState *s, int q)
 {
     DB_PRINT("read descriptor 0x%x\n", (unsigned)s->rx_desc_addr[q]);
@@ -739,12 +839,11 @@ static void gem_get_rx_desc(CadenceGEMState *s, int q)
                      sizeof(uint32_t) * gem_get_desc_len(s, true), false);
 
     /* Descriptor owned by software ? */
-    if (rx_desc_get_ownership(s->rx_desc[q]) == 1 &&
-            s->num_priority_queues == 1) {
+    if (rx_desc_get_ownership(s->rx_desc[q]) == 1) {
         DB_PRINT("descriptor 0x%x owned by sw.\n",
                  (unsigned)s->rx_desc_addr[q]);
         s->regs[GEM_RXSTATUS] |= GEM_RXSTATUS_NOBUF;
-        gem_set_isr_bit(s, q, GEM_INT_RXUSED);
+        s->regs[GEM_ISR] |= GEM_INT_RXUSED & ~(s->regs[GEM_IMR]);
         /* Handle interrupt consequences */
         gem_update_int_status(s);
     }
@@ -759,10 +858,10 @@ static ssize_t gem_receive(NetClientState *nc, const uint8_t *buf, size_t size)
     CadenceGEMState *s;
     unsigned   rxbufsize, bytes_to_copy;
     unsigned   rxbuf_offset;
+    uint8_t    rxbuf[2048];
     uint8_t   *rxbuf_ptr;
     bool first_desc = true;
     int maf;
-    int st1, st2;
     int q = 0;
 
     s = qemu_get_nic_opaque(nc);
@@ -801,6 +900,13 @@ static ssize_t gem_receive(NetClientState *nc, const uint8_t *buf, size_t size)
                  GEM_DMACFG_RBUFSZ_S) * GEM_DMACFG_RBUFSZ_MUL;
     bytes_to_copy = size;
 
+    /* Hardware allows a zero value here but warns against it. To avoid QEMU
+     * indefinite loops we enforce a minimum value here
+     */
+    if (rxbufsize < GEM_DMACFG_RBUFSZ_MUL) {
+        rxbufsize = GEM_DMACFG_RBUFSZ_MUL;
+    }
+
     /* Pad to minimum length. Assume FCS field is stripped, logic
      * below will increment it to the real minimum of 64 when
      * not FCS stripping
@@ -815,138 +921,33 @@ static ssize_t gem_receive(NetClientState *nc, const uint8_t *buf, size_t size)
     } else {
         unsigned crc_val;
 
+        if (size > sizeof(rxbuf) - sizeof(crc_val)) {
+            size = sizeof(rxbuf) - sizeof(crc_val);
+        }
+        bytes_to_copy = size;
         /* The application wants the FCS field, which QEMU does not provide.
          * We must try and calculate one.
          */
 
-        rxbuf_ptr = s->packet;
-        memcpy(rxbuf_ptr, buf, size);
-        memset(rxbuf_ptr + size, 0, sizeof(s->packet) - size);
-        crc_val = cpu_to_le32(crc32(0, rxbuf_ptr, MAX(size, 60)));
-        memcpy(rxbuf_ptr + size, &crc_val, sizeof(crc_val));
+        memcpy(rxbuf, buf, size);
+        memset(rxbuf + size, 0, sizeof(rxbuf) - size);
+        rxbuf_ptr = rxbuf;
+        crc_val = cpu_to_le32(crc32(0, rxbuf, MAX(size, 60)));
+        memcpy(rxbuf + size, &crc_val, sizeof(crc_val));
 
         bytes_to_copy += 4;
         size += 4;
     }
 
-    for (st1 = 0; st1 < s->num_type1_screeners; st1++) {
-        uint32_t reg = s->regs[GEM_SCREENING_TYPE1_REGISTER_0 + st1];
-        bool matched = false;
-        bool mismatched = false;
-
-        if (reg & GEM_ST1R_UDP_PORT_MATCH_ENABLE) {
-            uint16_t udp_port = (uint16_t)rxbuf_ptr[14 + 20 + 2] << 8
-                              | rxbuf_ptr[14 + 20 + 3];
-            if (udp_port == extract32(reg, GEM_ST1R_UDP_PORT_MATCH_SHIFT,
-                                           GEM_ST1R_UDP_PORT_MATCH_WIDTH)) {
-                matched = true;
-            } else {
-                mismatched = true;
-            }
-        }
-
-        if (reg & GEM_ST1R_DSTC_ENABLE) {
-            uint16_t dscp = rxbuf_ptr[14 + 1];
-            if (dscp == extract32(reg, GEM_ST1R_DSTC_MATCH_SHIFT,
-                                       GEM_ST1R_DSTC_MATCH_WIDTH)) {
-                matched = true;
-            } else {
-                mismatched = false;
-            }
-        }
-
-        if (matched && !mismatched) {
-            q = extract32(reg, GEM_ST1R_QUEUE_SHIFT, GEM_ST1R_QUEUE_WIDTH);
-            goto found_q;
-        }
-    }
-
-    for (st2 = 0; st2 < s->num_type2_screeners; st2++) {
-        uint32_t reg = s->regs[GEM_SCREENING_TYPE2_REGISTER_0 + st2];
-        bool matched = false;
-        bool mismatched = false;
-        int i;
-
-        if (reg & GEM_ST2R_ETHERTYPE_ENABLE) {
-            uint16_t type = (uint16_t)rxbuf_ptr[12] << 8 | rxbuf_ptr[13];
-            int et_idx = extract32(reg, GEM_ST2R_ETHERTYPE_INDEX_SHIFT,
-                                   GEM_ST2R_ETHERTYPE_INDEX_WIDTH);
-            if (et_idx > s->num_type2_screeners_ethtype) {
-                qemu_log_mask(LOG_GUEST_ERROR, "out of range ethertype "
-                              "register index: %d\n", et_idx);
-            }
-            if (type == s->regs[GEM_SCREENING_TYPE2_ETHERTYPE_REG_0 + et_idx]) {
-                matched = true;
-            } else {
-                mismatched = true;
-            }
-        }
-
-        for (i = 0; i < 3; i++) { /* Compare A, B, C */
-            if (!(reg & (GEM_ST2R_COMPARE_A_ENABLE << (i * 6)))) {
-                continue;
-            }
-            uint32_t cr0, cr1;
-            int offset;
-            int cr_idx = extract32(reg, GEM_ST2R_COMPARE_A_SHIFT + i * 6,
-                                        GEM_ST2R_COMPARE_WIDTH);
-
-            if (cr_idx > s->num_type2_screeners_compare) {
-                qemu_log_mask(LOG_GUEST_ERROR, "out of range compare "
-                              "register index: %d\n", cr_idx);
-            }
-            cr0 = s->regs[GEM_TYPE2_COMPARE_0_WORD_0 + cr_idx * 2];
-            cr1 = s->regs[GEM_TYPE2_COMPARE_0_WORD_0 + cr_idx * 2 + 1];
-            offset = extract32(cr1, GEM_T2CW1_OFFSET_VALUE_SHIFT,
-                                    GEM_T2CW1_OFFSET_VALUE_WIDTH);
-            switch (extract32(cr1, GEM_T2CW1_COMPARE_OFFSET_SHIFT,
-                                   GEM_T2CW1_COMPARE_OFFSET_WIDTH)) {
-            case (3): /* Skip UDP header */
-                qemu_log_mask(LOG_UNIMP, "TCP compare offsets"
-                              "unimplemented - assuming UDP\n");
-                offset += 8;
-                /* fallthrough */
-            case (2): /* skip the IP header */
-                offset += 20;
-                /* fallthrough */
-            case (1): /* count from after ethertype */
-                offset += 14;
-            }
-
-            uint16_t rx_cmp = rxbuf_ptr[offset] |
-                              (uint16_t)rxbuf_ptr[offset] << 8;
-            /* FIXME: Macroify */
-            uint16_t mask = extract32(cr0, 0, 16);
-            if ((rx_cmp & mask) == (extract32(cr0, 16, 16) & mask)) {
-                matched = true;
-            } else {
-                mismatched = true;
-            }
-        }
-        if (matched && !mismatched) {
-            q = extract32(reg, GEM_ST2R_QUEUE_SHIFT, GEM_ST2R_QUEUE_WIDTH);
-            goto found_q;
-        }
-    }
-
-found_q:
     DB_PRINT("config bufsize: %d packet size: %ld\n", rxbufsize, size);
+
+    /* Find which queue we are targeting */
+    q = get_queue_from_screen(s, rxbuf_ptr, rxbufsize);
 
     while (bytes_to_copy) {
         /* Do nothing if receive is not enabled. */
         if (!gem_can_receive(nc)) {
-            qemu_log("%s:%d cannot receive? first_dest=%d\n",
-                     __FILE__, __LINE__, first_desc);
-            break;
-        }
-
-        if (rx_desc_get_ownership(s->rx_desc[q]) == 1) {
-            DB_PRINT("descriptor 0x%x owned by sw.\n",
-                     (unsigned)s->rx_desc_addr[q]);
-            s->regs[GEM_RXSTATUS] |= GEM_RXSTATUS_NOBUF;
-            gem_set_isr_bit(s, q, GEM_INT_RXUSED);
-            /* Handle interrupt consequences */
-            gem_update_int_status(s);
+            assert(!first_desc);
             return -1;
         }
 
@@ -956,8 +957,9 @@ found_q:
 
         /* Copy packet data to emulated DMA buffer */
         address_space_rw(s->dma_as, rx_desc_get_buffer(s, s->rx_desc[q]) +
-                                    rxbuf_offset, *s->attr,
-                              rxbuf_ptr, MIN(bytes_to_copy, rxbufsize), true);
+                                    rxbuf_offset,
+                         *s->attr, rxbuf_ptr,
+                         MIN(bytes_to_copy, rxbufsize), true);
         rxbuf_ptr += MIN(bytes_to_copy, rxbufsize);
         bytes_to_copy -= MIN(bytes_to_copy, rxbufsize);
 
@@ -998,8 +1000,7 @@ found_q:
         /* Next descriptor */
         if (rx_desc_get_wrap(s->rx_desc[q])) {
             DB_PRINT("wrapping RX descriptor list\n");
-            s->rx_desc_addr[q] = s->regs[gem_sr(q, 0, GEM_RXQBASE,
-                                                   1, GEM_RECEIVE_Q1_PTR)];
+            s->rx_desc_addr[q] = s->regs[GEM_RXQBASE];
         } else {
             DB_PRINT("incrementing RX descriptor list\n");
             s->rx_desc_addr[q] += 4 * gem_get_desc_len(s, true);
@@ -1012,7 +1013,7 @@ found_q:
     gem_receive_updatestats(s, buf, size);
 
     s->regs[GEM_RXSTATUS] |= GEM_RXSTATUS_FRMRCVD;
-    gem_set_isr_bit(s, q, GEM_INT_RXCMPL);
+    s->regs[GEM_ISR] |= GEM_INT_RXCMPL & ~(s->regs[GEM_IMR]);
 
     /* Handle interrupt consequences */
     gem_update_int_status(s);
@@ -1072,12 +1073,12 @@ static void gem_transmit_updatestats(CadenceGEMState *s, const uint8_t *packet,
  */
 static void gem_transmit(CadenceGEMState *s)
 {
-    unsigned    desc[GEM_MAX_DESC_LEN];
+    unsigned    desc[4];
     hwaddr packet_desc_addr;
+    uint8_t     tx_packet[2048];
     uint8_t     *p;
     unsigned    total_bytes;
-    int8_t q = s->num_priority_queues - 1;
-    static bool first_run = true;
+    int q = 0;
 
     /* Do nothing if transmit is not enabled. */
     if (!(s->regs[GEM_NWCTRL] & GEM_NWCTRL_TXENA)) {
@@ -1090,30 +1091,16 @@ static void gem_transmit(CadenceGEMState *s)
      * Packets scattered across multiple descriptors are gathered to this
      * one contiguous buffer first.
      */
-    p = s->packet;
+    p = tx_packet;
     total_bytes = 0;
 
-    for (;;) {
-        if (!s->tx_desc_addr[q] && !s->rx_desc_addr[q]) {
-            /* Only print the error message for all of the GEMs on the first
-             * occurance.
-             */
-            if (first_run) {
-                qemu_log_mask(LOG_GUEST_ERROR, "Cadence Gem: The TX and RX "
-                              "address for channel %d are both set to zero. "
-                              "The transmission on this channel has been "
-                              "disabled.\n", q);
-            }
-            q--;
-            continue;
-        }
-
+    for (q = s->num_priority_queues - 1; q >= 0; q--) {
         /* read current descriptor */
         packet_desc_addr = s->tx_desc_addr[q];
 
         DB_PRINT("read descriptor 0x%" HWADDR_PRIx "\n", packet_desc_addr);
         address_space_rw(s->dma_as, packet_desc_addr, *s->attr,
-                         (uint8_t *)desc, 
+                         (uint8_t *)desc,
                          sizeof(uint32_t) * gem_get_desc_len(s, false),
                          false);
         /* Handle all descriptors owned by hardware */
@@ -1129,10 +1116,18 @@ static void gem_transmit(CadenceGEMState *s)
              * For QEMU let's lend a helping hand.
              */
             if ((tx_desc_get_buffer(s, desc) == 0) ||
-                (tx_desc_get_length(desc) == 0) ||
-                (tx_desc_get_length(desc) > GEM_MAX_PACKET_LEN)) {
+                (tx_desc_get_length(desc) == 0)) {
                 DB_PRINT("Invalid TX descriptor @ 0x%x\n",
                          (unsigned)packet_desc_addr);
+                break;
+            }
+
+            if (tx_desc_get_length(desc) > sizeof(tx_packet) -
+                                               (p - tx_packet)) {
+                DB_PRINT("TX descriptor @ 0x%x too large: size 0x%x space " \
+                         "0x%lx\n", (unsigned)packet_desc_addr,
+                         (unsigned)tx_desc_get_length(desc),
+                         sizeof(tx_packet) - (p - tx_packet));
                 break;
             }
 
@@ -1160,76 +1155,75 @@ static void gem_transmit(CadenceGEMState *s)
                                  true);
                 /* Advance the hardware current descriptor past this packet */
                 if (tx_desc_get_wrap(desc)) {
-                    s->tx_desc_addr[q] = s->regs[gem_sr(q, 0, GEM_TXQBASE, 1,
-                                                        GEM_TRANSMIT_Q1_PTR)];
+                    s->tx_desc_addr[q] = s->regs[GEM_TXQBASE];
                 } else {
                     s->tx_desc_addr[q] = packet_desc_addr +
                                          4 * gem_get_desc_len(s, false);
                 }
-                DB_PRINT("TX descriptor next: 0x%" PRIx32 "\n",
-                         s->tx_desc_addr[q]);
+                DB_PRINT("TX descriptor next: 0x%08x\n", s->tx_desc_addr[q]);
 
                 s->regs[GEM_TXSTATUS] |= GEM_TXSTATUS_TXCMPL;
-                gem_set_isr_bit(s, q, GEM_INT_TXCMPL);
+                s->regs[GEM_ISR] |= GEM_INT_TXCMPL & ~(s->regs[GEM_IMR]);
+
+                /* Update queue interrupt status */
+                if (s->num_priority_queues > 1) {
+                    s->regs[GEM_INT_Q1_STATUS + q] |=
+                            GEM_INT_TXCMPL & ~(s->regs[GEM_INT_Q1_MASK + q]);
+                }
 
                 /* Handle interrupt consequences */
                 gem_update_int_status(s);
 
                 /* Is checksum offload enabled? */
                 if (s->regs[GEM_DMACFG] & GEM_DMACFG_TXCSUM_OFFL) {
-                    net_checksum_calculate(s->packet, total_bytes);
+                    net_checksum_calculate(tx_packet, total_bytes);
                 }
 
                 /* Update MAC statistics */
-                gem_transmit_updatestats(s, s->packet, total_bytes);
+                gem_transmit_updatestats(s, tx_packet, total_bytes);
 
                 /* Send the packet somewhere */
                 if (s->phy_loop || (s->regs[GEM_NWCTRL] &
                                     GEM_NWCTRL_LOCALLOOP)) {
-                    gem_receive(qemu_get_queue(s->nic), s->packet,
+                    gem_receive(qemu_get_queue(s->nic), tx_packet,
                                 total_bytes);
                 } else {
-                    qemu_send_packet(qemu_get_queue(s->nic), s->packet,
+                    qemu_send_packet(qemu_get_queue(s->nic), tx_packet,
                                      total_bytes);
                 }
 
                 /* Prepare for next packet */
-                p = s->packet;
+                p = tx_packet;
                 total_bytes = 0;
             }
 
             /* read next descriptor */
             if (tx_desc_get_wrap(desc)) {
-                packet_desc_addr = s->regs[gem_sr(q, 0, GEM_TXQBASE,
-                                                     1, GEM_TRANSMIT_Q1_PTR)];
+                tx_desc_set_last(desc);
+                packet_desc_addr = s->regs[GEM_TXQBASE];
             } else {
                 packet_desc_addr += 4 * gem_get_desc_len(s, false);
             }
             DB_PRINT("read descriptor 0x%" HWADDR_PRIx "\n", packet_desc_addr);
             address_space_rw(s->dma_as, packet_desc_addr, *s->attr,
-                             (uint8_t *)desc, 
+                             (uint8_t *)desc,
                              sizeof(uint32_t) * gem_get_desc_len(s, false),
                              false);
         }
 
-        if (tx_desc_get_used(desc) && !q) {
+        if (tx_desc_get_used(desc)) {
             s->regs[GEM_TXSTATUS] |= GEM_TXSTATUS_USED;
-            gem_set_isr_bit(s, q, GEM_INT_TXUSED);
+            s->regs[GEM_ISR] |= GEM_INT_TXUSED & ~(s->regs[GEM_IMR]);
             gem_update_int_status(s);
         }
-
-        if (q < 1) {
-            first_run = false;
-            break;
-        }
-        q--;
     }
+
+    phy_update_link(s);
 }
 
 static void gem_reset(DeviceState *d)
 {
     int i;
-    uint32_t qmask;
     CadenceGEMState *s = CADENCE_GEM(d);
     const uint8_t *a;
 
@@ -1244,7 +1238,7 @@ static void gem_reset(DeviceState *d)
     s->regs[GEM_TXPAUSE] = 0x0000ffff;
     s->regs[GEM_TXPARTIALSF] = 0x000003ff;
     s->regs[GEM_RXPARTIALSF] = 0x000003ff;
-    s->regs[GEM_REVISION] = s->revision;
+    s->regs[GEM_MODID] = s->revision;
     s->regs[GEM_DESCONF] = 0x02500111;
     s->regs[GEM_DESCONF2] = 0x2ab13fff;
     s->regs[GEM_DESCONF5] = 0x002f2145;
@@ -1254,13 +1248,6 @@ static void gem_reset(DeviceState *d)
     a = &s->conf.macaddr.a[0];
     s->regs[GEM_SPADDR1LO] = a[0] | (a[1] << 8) | (a[2] << 16) | (a[3] << 24);
     s->regs[GEM_SPADDR1HI] = a[4] | (a[5] << 8);
-
-    /* Set the DMA priority queue enabled Design Conf bits.  */
-    assert(s->num_priority_queues <= 8);
-    qmask = (1 << s->num_priority_queues) - 1;
-    /* Bit zero is reserved, tied to zero.  */
-    qmask &= ~1;
-    s->regs[GEM_DESCONF6] |= qmask;
 
     for (i = 0; i < 4; i++) {
         s->sar_active[i] = false;
@@ -1297,7 +1284,6 @@ static uint64_t gem_read(void *opaque, hwaddr offset, unsigned size)
 {
     CadenceGEMState *s;
     uint32_t retval;
-
     s = (CadenceGEMState *)opaque;
 
     offset >>= 2;
@@ -1306,6 +1292,10 @@ static uint64_t gem_read(void *opaque, hwaddr offset, unsigned size)
     DB_PRINT("offset: 0x%04x read: 0x%08x\n", (unsigned)offset*4, retval);
 
     switch (offset) {
+    case GEM_ISR:
+        DB_PRINT("lowering irqs on ISR read\n");
+        gem_update_int_status(s);
+        break;
     case GEM_PHYMNTNC:
         if (retval & GEM_PHYMNTNC_OP_R) {
             uint32_t phy_addr, reg_num;
@@ -1340,6 +1330,7 @@ static void gem_write(void *opaque, hwaddr offset, uint64_t val,
 {
     CadenceGEMState *s = (CadenceGEMState *)opaque;
     uint32_t readonly;
+    int i;
 
     DB_PRINT("offset: 0x%04x write: 0x%08x ", (unsigned)offset, (unsigned)val);
     offset >>= 2;
@@ -1359,8 +1350,6 @@ static void gem_write(void *opaque, hwaddr offset, uint64_t val,
     switch (offset) {
     case GEM_NWCTRL:
         if (val & GEM_NWCTRL_RXENA) {
-            int i;
-
             for (i = 0; i < s->num_priority_queues; ++i) {
                 gem_get_rx_desc(s, i);
             }
@@ -1369,12 +1358,9 @@ static void gem_write(void *opaque, hwaddr offset, uint64_t val,
             gem_transmit(s);
         }
         if (!(val & GEM_NWCTRL_TXENA)) {
-            int i;
-
             /* Reset to start of Q when transmit disabled. */
             for (i = 0; i < s->num_priority_queues; i++) {
-                s->tx_desc_addr[i] = s->regs[gem_sr(i, 0, GEM_TXQBASE,
-                                                       1, GEM_TRANSMIT_Q1_PTR)];
+                s->tx_desc_addr[i] = s->regs[GEM_TXQBASE];
             }
         }
         if (gem_can_receive(qemu_get_queue(s->nic))) {
@@ -1388,13 +1374,13 @@ static void gem_write(void *opaque, hwaddr offset, uint64_t val,
     case GEM_RXQBASE:
         s->rx_desc_addr[0] = val;
         break;
-    case GEM_RECEIVE_Q1_PTR ... GEM_RECEIVE_Q15_PTR:
+    case GEM_RECEIVE_Q1_PTR ... GEM_RECEIVE_Q7_PTR:
         s->rx_desc_addr[offset - GEM_RECEIVE_Q1_PTR + 1] = val;
         break;
     case GEM_TXQBASE:
         s->tx_desc_addr[0] = val;
         break;
-    case GEM_TRANSMIT_Q1_PTR ... GEM_TRANSMIT_Q15_PTR:
+    case GEM_TRANSMIT_Q1_PTR ... GEM_TRANSMIT_Q7_PTR:
         s->tx_desc_addr[offset - GEM_TRANSMIT_Q1_PTR + 1] = val;
         break;
     case GEM_RXSTATUS:
@@ -1408,20 +1394,12 @@ static void gem_write(void *opaque, hwaddr offset, uint64_t val,
         s->regs[GEM_INT_Q1_MASK + offset - GEM_INT_Q1_ENABLE] &= ~val;
         gem_update_int_status(s);
         break;
-    case GEM_INT_Q8_ENABLE ... GEM_INT_Q15_ENABLE:
-        s->regs[GEM_INT_Q8_MASK + offset - GEM_INT_Q8_ENABLE] &= ~val;
-        gem_update_int_status(s);
-        break;
     case GEM_IDR:
         s->regs[GEM_IMR] |= val;
         gem_update_int_status(s);
         break;
     case GEM_INT_Q1_DISABLE ... GEM_INT_Q7_DISABLE:
         s->regs[GEM_INT_Q1_MASK + offset - GEM_INT_Q1_DISABLE] |= val;
-        gem_update_int_status(s);
-        break;
-    case GEM_INT_Q8_DISABLE ... GEM_INT_Q15_DISABLE:
-        s->regs[GEM_INT_Q8_MASK + offset - GEM_INT_Q8_DISABLE] |= val;
         gem_update_int_status(s);
         break;
     case GEM_SPADDR1LO:
@@ -1459,14 +1437,6 @@ static const MemoryRegionOps gem_ops = {
     .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
-static void gem_cleanup(NetClientState *nc)
-{
-    CadenceGEMState *s = qemu_get_nic_opaque(nc);
-
-    DB_PRINT("\n");
-    s->nic = NULL;
-}
-
 static void gem_set_link(NetClientState *nc)
 {
     CadenceGEMState *s = qemu_get_nic_opaque(nc);
@@ -1477,61 +1447,63 @@ static void gem_set_link(NetClientState *nc)
 }
 
 static NetClientInfo net_gem_info = {
-    .type = NET_CLIENT_OPTIONS_KIND_NIC,
+    .type = NET_CLIENT_DRIVER_NIC,
     .size = sizeof(NICState),
     .can_receive = gem_can_receive,
     .receive = gem_receive,
-    .cleanup = gem_cleanup,
     .link_status_changed = gem_set_link,
 };
 
 static void gem_realize(DeviceState *dev, Error **errp)
 {
     CadenceGEMState *s = CADENCE_GEM(dev);
+    int i;
 
-    qemu_macaddr_default_if_unset(&s->conf.macaddr);
-
-    s->nic = qemu_new_nic(&net_gem_info, &s->conf,
-            object_get_typename(OBJECT(dev)), dev->id, s);
     s->dma_as = s->dma_mr ? address_space_init_shareable(s->dma_mr, NULL)
                           : &address_space_memory;
 
     if (s->num_priority_queues == 0 ||
-            s->num_priority_queues > MAX_PRIORITY_QUEUES) {
+        s->num_priority_queues > MAX_PRIORITY_QUEUES) {
         error_setg(errp, "Invalid num-priority-queues value: %" PRIx8,
                    s->num_priority_queues);
+        return;
     } else if (s->num_type1_screeners > MAX_TYPE1_SCREENERS) {
-        error_setg(errp, "Invalid num-num-type1-screeners value: %" PRIx8,
+        error_setg(errp, "Invalid num-type1-screeners value: %" PRIx8,
                    s->num_type1_screeners);
+        return;
     } else if (s->num_type2_screeners > MAX_TYPE2_SCREENERS) {
-        error_setg(errp, "Invalid num-num-type2-screeners value: %" PRIx8,
+        error_setg(errp, "Invalid num-type2-screeners value: %" PRIx8,
                    s->num_type2_screeners);
-    } else if (s->num_type2_screeners_ethtype > MAX_TYPE2_SCREENERS_ETHTYPE) {
-        error_setg(errp, "Invalid num-num-type1-screeners-ethtype value: %"
-                   PRIx8, s->num_type2_screeners_ethtype);
-    } else if (s->num_type2_screeners_compare > MAX_TYPE2_SCREENERS_COMPARE) {
-        error_setg(errp, "Invalid num-num-type1-screeners-compare value: %"
-                   PRIx8, s->num_type2_screeners_compare);
-    } else { /* FIXME: this is dodgy flow control */
-        int i;
-        for (i = 0; i < s->num_priority_queues; ++i) {
-            sysbus_init_irq(SYS_BUS_DEVICE(dev), &s->irq[i]);
-        }
+        return;
+    }
+
+    for (i = 0; i < s->num_priority_queues; ++i) {
+        sysbus_init_irq(SYS_BUS_DEVICE(dev), &s->irq[i]);
     }
 
     if (!s->attr) {
         s->attr = MEMORY_TRANSACTION_ATTR(
                       object_new(TYPE_MEMORY_TRANSACTION_ATTR));
     }
+
+    qemu_macaddr_default_if_unset(&s->conf.macaddr);
+
+    s->nic = qemu_new_nic(&net_gem_info, &s->conf,
+                          object_get_typename(OBJECT(dev)), dev->id, s);
 }
 
 static void gem_init(Object *obj)
 {
     CadenceGEMState *s = CADENCE_GEM(obj);
+    DeviceState *dev = DEVICE(obj);
+
+    DB_PRINT("\n");
 
     gem_init_register_masks(s);
-    memory_region_init_io(&s->iomem, obj, &gem_ops, s, "enet", sizeof(s->regs));
-    sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->iomem);
+    memory_region_init_io(&s->iomem, OBJECT(s), &gem_ops, s,
+                          "enet", sizeof(s->regs));
+
+    sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->iomem);
 
     object_property_add_link(obj, "dma", TYPE_MEMORY_REGION,
                              (Object **)&s->dma_mr,
@@ -1551,8 +1523,8 @@ static void gem_init(Object *obj)
 
 static const VMStateDescription vmstate_cadence_gem = {
     .name = "cadence_gem",
-    .version_id = 3,
-    .minimum_version_id = 3,
+    .version_id = 4,
+    .minimum_version_id = 4,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, CadenceGEMState, CADENCE_GEM_MAXREG),
         VMSTATE_UINT8(phy_loop, CadenceGEMState),
@@ -1568,17 +1540,13 @@ static const VMStateDescription vmstate_cadence_gem = {
 static Property gem_properties[] = {
     DEFINE_NIC_PROPERTIES(CadenceGEMState, conf),
     DEFINE_PROP_UINT32("revision", CadenceGEMState, revision,
-                       GEM_REVISION_VALUE),
+                       GEM_MODID_VALUE),
     DEFINE_PROP_UINT8("num-priority-queues", CadenceGEMState,
                       num_priority_queues, 1),
-    DEFINE_PROP_UINT8("num-type-1-screeners", CadenceGEMState,
+    DEFINE_PROP_UINT8("num-type1-screeners", CadenceGEMState,
                       num_type1_screeners, 4),
-    DEFINE_PROP_UINT8("num-type-2-screeners", CadenceGEMState,
+    DEFINE_PROP_UINT8("num-type2-screeners", CadenceGEMState,
                       num_type2_screeners, 4),
-    DEFINE_PROP_UINT8("num-type-2-screeners-ethtype", CadenceGEMState,
-                      num_type2_screeners_ethtype, 4),
-    DEFINE_PROP_UINT8("num-type-2-screeners-compare", CadenceGEMState,
-                      num_type2_screeners_compare, 4),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -1596,10 +1564,9 @@ static const TypeInfo gem_info = {
     .name  = TYPE_CADENCE_GEM,
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size  = sizeof(CadenceGEMState),
-    .instance_init  = gem_init,
+    .instance_init = gem_init,
     .class_init = gem_class_init,
 };
-
 
 static void gem_register_types(void)
 {

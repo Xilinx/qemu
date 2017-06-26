@@ -36,6 +36,7 @@ struct RAMBlock {
     /* RCU-enabled, writes protected by the ramlist lock */
     QLIST_ENTRY(RAMBlock) next;
     int fd;
+    size_t page_size;
 };
 
 static inline bool offset_in_ramblock(RAMBlock *b, ram_addr_t offset)
@@ -105,12 +106,9 @@ RAMBlock *qemu_ram_alloc_resizeable(ram_addr_t size, ram_addr_t max_size,
                                                     uint64_t length,
                                                     void *host),
                                     MemoryRegion *mr, Error **errp);
-int qemu_get_ram_fd(ram_addr_t addr);
-void qemu_set_ram_fd(ram_addr_t addr, int fd);
-void *qemu_get_ram_block_host_ptr(ram_addr_t addr);
 void qemu_ram_free(RAMBlock *block);
 
-int qemu_ram_resize(ram_addr_t base, ram_addr_t newsize, Error **errp);
+int qemu_ram_resize(RAMBlock *block, ram_addr_t newsize, Error **errp);
 
 #define DIRTY_CLIENTS_ALL     ((1 << DIRTY_MEMORY_NUM) - 1)
 #define DIRTY_CLIENTS_NOCODE  (DIRTY_CLIENTS_ALL & ~(1 << DIRTY_MEMORY_CODE))

@@ -31,7 +31,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "cpu.h"
 #include "qom/cpu.h"
 #include "hw/sysbus.h"
 #include "sysemu/dma.h"

@@ -23,6 +23,7 @@ do { printf("mcf_fec: " fmt , ## __VA_ARGS__); } while (0)
 #define DPRINTF(fmt, ...) do {} while(0)
 #endif
 
+#define FEC_MAX_DESC 1024
 #define FEC_MAX_FRAME_SIZE 2032
 
 typedef struct {
@@ -149,7 +150,7 @@ static void mcf_fec_do_tx(mcf_fec_state *s)
     uint32_t addr;
     mcf_fec_bd bd;
     int frame_size;
-    int len;
+    int len, descnt = 0;
     uint8_t frame[FEC_MAX_FRAME_SIZE];
     uint8_t *ptr;
 
@@ -157,7 +158,7 @@ static void mcf_fec_do_tx(mcf_fec_state *s)
     ptr = frame;
     frame_size = 0;
     addr = s->tx_descriptor;
-    while (1) {
+    while (descnt++ < FEC_MAX_DESC) {
         mcf_fec_read_bd(&bd, addr);
         DPRINTF("tx_bd %x flags %04x len %d data %08x\n",
                 addr, bd.flags, bd.length, bd.data);
@@ -176,7 +177,7 @@ static void mcf_fec_do_tx(mcf_fec_state *s)
         if (bd.flags & FEC_BD_L) {
             /* Last buffer in frame.  */
             DPRINTF("Sending packet\n");
-            qemu_send_packet(qemu_get_queue(s->nic), frame, len);
+            qemu_send_packet(qemu_get_queue(s->nic), frame, frame_size);
             ptr = frame;
             frame_size = 0;
             s->eir |= FEC_INT_TXF;
@@ -392,7 +393,7 @@ static void mcf_fec_write(void *opaque, hwaddr addr,
         s->tx_descriptor = s->etdsr;
         break;
     case 0x188:
-        s->emrbr = value & 0x7f0;
+        s->emrbr = value > 0 ? value & 0x7F0 : 0x7F0;
         break;
     default:
         hw_error("mcf_fec_write Bad address 0x%x\n", (int)addr);
@@ -507,7 +508,7 @@ static const MemoryRegionOps mcf_fec_ops = {
 };
 
 static NetClientInfo net_mcf_fec_info = {
-    .type = NET_CLIENT_OPTIONS_KIND_NIC,
+    .type = NET_CLIENT_DRIVER_NIC,
     .size = sizeof(NICState),
     .receive = mcf_fec_receive,
 };

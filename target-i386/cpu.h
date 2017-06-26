@@ -16,10 +16,12 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef CPU_I386_H
-#define CPU_I386_H
+
+#ifndef I386_CPU_H
+#define I386_CPU_H
 
 #include "qemu-common.h"
+#include "cpu-qom.h"
 #include "standard-headers/asm-x86/hyperv.h"
 
 #ifdef TARGET_X86_64
@@ -128,8 +130,6 @@
    positions to ease oring with eflags. */
 /* current cpl */
 #define HF_CPL_SHIFT         0
-/* true if soft mmu is being used */
-#define HF_SOFTMMU_SHIFT     2
 /* true if hardware interrupts must be disabled for next instruction */
 #define HF_INHIBIT_IRQ_SHIFT 3
 /* 16 or 32 segments */
@@ -159,7 +159,6 @@
 #define HF_MPX_IU_SHIFT     26 /* BND registers in-use */
 
 #define HF_CPL_MASK          (3 << HF_CPL_SHIFT)
-#define HF_SOFTMMU_MASK      (1 << HF_SOFTMMU_SHIFT)
 #define HF_INHIBIT_IRQ_MASK  (1 << HF_INHIBIT_IRQ_SHIFT)
 #define HF_CS32_MASK         (1 << HF_CS32_SHIFT)
 #define HF_SS32_MASK         (1 << HF_SS32_SHIFT)
@@ -291,6 +290,7 @@
 
 #define MCG_CTL_P       (1ULL<<8)   /* MCG_CAP register available */
 #define MCG_SER_P       (1ULL<<24) /* MCA recovery/new status bits */
+#define MCG_LMCE_P      (1ULL<<27) /* Local Machine Check Supported */
 
 #define MCE_CAP_DEF     (MCG_CTL_P|MCG_SER_P)
 #define MCE_BANKS_DEF   10
@@ -300,6 +300,9 @@
 #define MCG_STATUS_RIPV (1ULL<<0)   /* restart ip valid */
 #define MCG_STATUS_EIPV (1ULL<<1)   /* ip points to correct instruction */
 #define MCG_STATUS_MCIP (1ULL<<2)   /* machine check in progress */
+#define MCG_STATUS_LMCE (1ULL<<3)   /* Local MCE signaled */
+
+#define MCG_EXT_CTL_LMCE_EN (1ULL<<0) /* Local MCE enabled */
 
 #define MCI_STATUS_VAL   (1ULL<<63)  /* valid error */
 #define MCI_STATUS_OVER  (1ULL<<62)  /* previous errors lost */
@@ -322,10 +325,15 @@
 #define MSR_IA32_APICBASE               0x1b
 #define MSR_IA32_APICBASE_BSP           (1<<8)
 #define MSR_IA32_APICBASE_ENABLE        (1<<11)
+#define MSR_IA32_APICBASE_EXTD          (1 << 10)
 #define MSR_IA32_APICBASE_BASE          (0xfffffU<<12)
 #define MSR_IA32_FEATURE_CONTROL        0x0000003a
 #define MSR_TSC_ADJUST                  0x0000003b
 #define MSR_IA32_TSCDEADLINE            0x6e0
+
+#define FEATURE_CONTROL_LOCKED                    (1<<0)
+#define FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX (1<<2)
+#define FEATURE_CONTROL_LMCE                      (1<<20)
 
 #define MSR_P6_PERFCTR0                 0xc1
 
@@ -342,6 +350,7 @@
 #define MSR_MCG_CAP                     0x179
 #define MSR_MCG_STATUS                  0x17a
 #define MSR_MCG_CTL                     0x17b
+#define MSR_MCG_EXT_CTL                 0x4d0
 
 #define MSR_P6_EVNTSEL0                 0x186
 
@@ -434,14 +443,20 @@ typedef enum FeatureWord {
     FEAT_1_ECX,         /* CPUID[1].ECX */
     FEAT_7_0_EBX,       /* CPUID[EAX=7,ECX=0].EBX */
     FEAT_7_0_ECX,       /* CPUID[EAX=7,ECX=0].ECX */
+    FEAT_7_0_EDX,       /* CPUID[EAX=7,ECX=0].EDX */
     FEAT_8000_0001_EDX, /* CPUID[8000_0001].EDX */
     FEAT_8000_0001_ECX, /* CPUID[8000_0001].ECX */
     FEAT_8000_0007_EDX, /* CPUID[8000_0007].EDX */
     FEAT_C000_0001_EDX, /* CPUID[C000_0001].EDX */
     FEAT_KVM,           /* CPUID[4000_0001].EAX (KVM_CPUID_FEATURES) */
+    FEAT_HYPERV_EAX,    /* CPUID[4000_0003].EAX */
+    FEAT_HYPERV_EBX,    /* CPUID[4000_0003].EBX */
+    FEAT_HYPERV_EDX,    /* CPUID[4000_0003].EDX */
     FEAT_SVM,           /* CPUID[8000_000A].EDX */
     FEAT_XSAVE,         /* CPUID[EAX=0xd,ECX=1].EAX */
     FEAT_6_EAX,         /* CPUID[6].EAX */
+    FEAT_XSAVE_COMP_LO, /* CPUID[EAX=0xd,ECX=0].EAX */
+    FEAT_XSAVE_COMP_HI, /* CPUID[EAX=0xd,ECX=0].EDX */
     FEATURE_WORDS,
 } FeatureWord;
 
@@ -595,18 +610,28 @@ typedef uint32_t FeatureWordArray[FEATURE_WORDS];
 #define CPUID_7_0_EBX_RTM      (1U << 11)
 #define CPUID_7_0_EBX_MPX      (1U << 14)
 #define CPUID_7_0_EBX_AVX512F  (1U << 16) /* AVX-512 Foundation */
+#define CPUID_7_0_EBX_AVX512DQ (1U << 17) /* AVX-512 Doubleword & Quadword Instrs */
 #define CPUID_7_0_EBX_RDSEED   (1U << 18)
 #define CPUID_7_0_EBX_ADX      (1U << 19)
 #define CPUID_7_0_EBX_SMAP     (1U << 20)
+#define CPUID_7_0_EBX_AVX512IFMA (1U << 21) /* AVX-512 Integer Fused Multiply Add */
 #define CPUID_7_0_EBX_PCOMMIT  (1U << 22) /* Persistent Commit */
 #define CPUID_7_0_EBX_CLFLUSHOPT (1U << 23) /* Flush a Cache Line Optimized */
 #define CPUID_7_0_EBX_CLWB     (1U << 24) /* Cache Line Write Back */
 #define CPUID_7_0_EBX_AVX512PF (1U << 26) /* AVX-512 Prefetch */
 #define CPUID_7_0_EBX_AVX512ER (1U << 27) /* AVX-512 Exponential and Reciprocal */
 #define CPUID_7_0_EBX_AVX512CD (1U << 28) /* AVX-512 Conflict Detection */
+#define CPUID_7_0_EBX_AVX512BW (1U << 30) /* AVX-512 Byte and Word Instructions */
+#define CPUID_7_0_EBX_AVX512VL (1U << 31) /* AVX-512 Vector Length Extensions */
 
+#define CPUID_7_0_ECX_VBMI     (1U << 1)  /* AVX-512 Vector Byte Manipulation Instrs */
+#define CPUID_7_0_ECX_UMIP     (1U << 2)
 #define CPUID_7_0_ECX_PKU      (1U << 3)
 #define CPUID_7_0_ECX_OSPKE    (1U << 4)
+#define CPUID_7_0_ECX_RDPID    (1U << 22)
+
+#define CPUID_7_0_EDX_AVX512_4VNNIW (1U << 2) /* AVX512 Neural Network Instructions */
+#define CPUID_7_0_EDX_AVX512_4FMAPS (1U << 3) /* AVX512 Multiply Accumulation Single Precision */
 
 #define CPUID_XSAVE_XSAVEOPT   (1U << 0)
 #define CPUID_XSAVE_XSAVEC     (1U << 1)
@@ -634,6 +659,11 @@ typedef uint32_t FeatureWordArray[FEATURE_WORDS];
 
 #define CPUID_MWAIT_IBE     (1U << 1) /* Interrupts can exit capability */
 #define CPUID_MWAIT_EMX     (1U << 0) /* enumeration supported */
+
+/* CPUID[0xB].ECX level types */
+#define CPUID_TOPOLOGY_LEVEL_INVALID  (0U << 8)
+#define CPUID_TOPOLOGY_LEVEL_SMT      (1U << 8)
+#define CPUID_TOPOLOGY_LEVEL_CORE     (2U << 8)
 
 #ifndef HYPERV_SPINLOCK_NEVER_RETRY
 #define HYPERV_SPINLOCK_NEVER_RETRY             0xFFFFFFFF
@@ -673,6 +703,13 @@ typedef uint32_t FeatureWordArray[FEATURE_WORDS];
 /* Use a clearer name for this.  */
 #define CPU_INTERRUPT_INIT      CPU_INTERRUPT_RESET
 
+/* Instead of computing the condition codes after each x86 instruction,
+ * QEMU just stores one operand (called CC_SRC), the result
+ * (called CC_DST) and the type of operation (called CC_OP). When the
+ * condition codes are needed, the condition codes can be calculated
+ * using this information. Condition codes are not generated if they
+ * are only needed for conditional branches.
+ */
 typedef enum {
     CC_OP_DYNAMIC, /* must use dynamic code to get cc_op */
     CC_OP_EFLAGS,  /* all cc are explicitly computed, CC_SRC = flags */
@@ -829,6 +866,107 @@ typedef struct {
 
 #define NB_OPMASK_REGS 8
 
+/* CPU can't have 0xFFFFFFFF APIC ID, use that value to distinguish
+ * that APIC ID hasn't been set yet
+ */
+#define UNASSIGNED_APIC_ID 0xFFFFFFFF
+
+typedef union X86LegacyXSaveArea {
+    struct {
+        uint16_t fcw;
+        uint16_t fsw;
+        uint8_t ftw;
+        uint8_t reserved;
+        uint16_t fpop;
+        uint64_t fpip;
+        uint64_t fpdp;
+        uint32_t mxcsr;
+        uint32_t mxcsr_mask;
+        FPReg fpregs[8];
+        uint8_t xmm_regs[16][16];
+    };
+    uint8_t data[512];
+} X86LegacyXSaveArea;
+
+typedef struct X86XSaveHeader {
+    uint64_t xstate_bv;
+    uint64_t xcomp_bv;
+    uint64_t reserve0;
+    uint8_t reserved[40];
+} X86XSaveHeader;
+
+/* Ext. save area 2: AVX State */
+typedef struct XSaveAVX {
+    uint8_t ymmh[16][16];
+} XSaveAVX;
+
+/* Ext. save area 3: BNDREG */
+typedef struct XSaveBNDREG {
+    BNDReg bnd_regs[4];
+} XSaveBNDREG;
+
+/* Ext. save area 4: BNDCSR */
+typedef union XSaveBNDCSR {
+    BNDCSReg bndcsr;
+    uint8_t data[64];
+} XSaveBNDCSR;
+
+/* Ext. save area 5: Opmask */
+typedef struct XSaveOpmask {
+    uint64_t opmask_regs[NB_OPMASK_REGS];
+} XSaveOpmask;
+
+/* Ext. save area 6: ZMM_Hi256 */
+typedef struct XSaveZMM_Hi256 {
+    uint8_t zmm_hi256[16][32];
+} XSaveZMM_Hi256;
+
+/* Ext. save area 7: Hi16_ZMM */
+typedef struct XSaveHi16_ZMM {
+    uint8_t hi16_zmm[16][64];
+} XSaveHi16_ZMM;
+
+/* Ext. save area 9: PKRU state */
+typedef struct XSavePKRU {
+    uint32_t pkru;
+    uint32_t padding;
+} XSavePKRU;
+
+typedef struct X86XSaveArea {
+    X86LegacyXSaveArea legacy;
+    X86XSaveHeader header;
+
+    /* Extended save areas: */
+
+    /* AVX State: */
+    XSaveAVX avx_state;
+    uint8_t padding[960 - 576 - sizeof(XSaveAVX)];
+    /* MPX State: */
+    XSaveBNDREG bndreg_state;
+    XSaveBNDCSR bndcsr_state;
+    /* AVX-512 State: */
+    XSaveOpmask opmask_state;
+    XSaveZMM_Hi256 zmm_hi256_state;
+    XSaveHi16_ZMM hi16_zmm_state;
+    /* PKRU State: */
+    XSavePKRU pkru_state;
+} X86XSaveArea;
+
+QEMU_BUILD_BUG_ON(offsetof(X86XSaveArea, avx_state) != 0x240);
+QEMU_BUILD_BUG_ON(sizeof(XSaveAVX) != 0x100);
+QEMU_BUILD_BUG_ON(offsetof(X86XSaveArea, bndreg_state) != 0x3c0);
+QEMU_BUILD_BUG_ON(sizeof(XSaveBNDREG) != 0x40);
+QEMU_BUILD_BUG_ON(offsetof(X86XSaveArea, bndcsr_state) != 0x400);
+QEMU_BUILD_BUG_ON(sizeof(XSaveBNDCSR) != 0x40);
+QEMU_BUILD_BUG_ON(offsetof(X86XSaveArea, opmask_state) != 0x440);
+QEMU_BUILD_BUG_ON(sizeof(XSaveOpmask) != 0x40);
+QEMU_BUILD_BUG_ON(offsetof(X86XSaveArea, zmm_hi256_state) != 0x480);
+QEMU_BUILD_BUG_ON(sizeof(XSaveZMM_Hi256) != 0x200);
+QEMU_BUILD_BUG_ON(offsetof(X86XSaveArea, hi16_zmm_state) != 0x680);
+QEMU_BUILD_BUG_ON(sizeof(XSaveHi16_ZMM) != 0x400);
+QEMU_BUILD_BUG_ON(offsetof(X86XSaveArea, pkru_state) != 0xA80);
+QEMU_BUILD_BUG_ON(sizeof(XSavePKRU) != 0x8);
+
 typedef enum TPRAccess {
     TPR_ACCESS_READ,
     TPR_ACCESS_WRITE,
@@ -912,6 +1050,9 @@ typedef struct CPUX86State {
     uint64_t tsc;
     uint64_t tsc_adjust;
     uint64_t tsc_deadline;
+    uint64_t tsc_aux;
+
+    uint64_t xcr0;
 
     uint64_t mcg_status;
     uint64_t msr_ia32_misc_enable;
@@ -927,6 +1068,8 @@ typedef struct CPUX86State {
 
     uint64_t pat;
     uint32_t smbase;
+
+    uint32_t pkru;
 
     /* End of state preserved by INIT (dummy marker).  */
     struct {} end_init_save;
@@ -979,11 +1122,15 @@ typedef struct CPUX86State {
     CPU_COMMON
 
     /* Fields from here on are preserved across CPU reset. */
+    struct {} end_reset_fields;
 
     /* processor features (e.g. for CPUID insn) */
-    uint32_t cpuid_level;
-    uint32_t cpuid_xlevel;
-    uint32_t cpuid_xlevel2;
+    /* Minimum level/xlevel/xlevel2, based on CPU model + features */
+    uint32_t cpuid_min_level, cpuid_min_xlevel, cpuid_min_xlevel2;
+    /* Maximum level/xlevel/xlevel2 value for auto-assignment: */
+    uint32_t cpuid_max_level, cpuid_max_xlevel, cpuid_max_xlevel2;
+    /* Actual level/xlevel/xlevel2 value: */
+    uint32_t cpuid_level, cpuid_xlevel, cpuid_xlevel2;
     uint32_t cpuid_vendor1;
     uint32_t cpuid_vendor2;
     uint32_t cpuid_vendor3;
@@ -1010,31 +1157,154 @@ typedef struct CPUX86State {
 
     uint64_t mcg_cap;
     uint64_t mcg_ctl;
+    uint64_t mcg_ext_ctl;
     uint64_t mce_banks[MCE_BANKS_DEF*4];
-
-    uint64_t tsc_aux;
+    uint64_t xstate_bv;
 
     /* vmstate */
     uint16_t fpus_vmstate;
     uint16_t fptag_vmstate;
     uint16_t fpregs_format_vmstate;
-    uint64_t xstate_bv;
 
-    uint64_t xcr0;
     uint64_t xss;
-
-    uint32_t pkru;
 
     TPRAccess tpr_access_type;
 } CPUX86State;
 
-#include "cpu-qom.h"
+struct kvm_msrs;
+
+/**
+ * X86CPU:
+ * @env: #CPUX86State
+ * @migratable: If set, only migratable flags will be accepted when "enforce"
+ * mode is used, and only migratable flags will be included in the "host"
+ * CPU model.
+ *
+ * An x86 CPU.
+ */
+struct X86CPU {
+    /*< private >*/
+    CPUState parent_obj;
+    /*< public >*/
+
+    CPUX86State env;
+
+    bool hyperv_vapic;
+    bool hyperv_relaxed_timing;
+    int hyperv_spinlock_attempts;
+    char *hyperv_vendor_id;
+    bool hyperv_time;
+    bool hyperv_crash;
+    bool hyperv_reset;
+    bool hyperv_vpindex;
+    bool hyperv_runtime;
+    bool hyperv_synic;
+    bool hyperv_stimer;
+    bool check_cpuid;
+    bool enforce_cpuid;
+    bool expose_kvm;
+    bool migratable;
+    bool host_features;
+    uint32_t apic_id;
+
+    /* if true the CPUID code directly forward host cache leaves to the guest */
+    bool cache_info_passthrough;
+
+    /* Features that were filtered out because of missing host capabilities */
+    uint32_t filtered_features[FEATURE_WORDS];
+
+    /* Enable PMU CPUID bits. This can't be enabled by default yet because
+     * it doesn't have ABI stability guarantees, as it passes all PMU CPUID
+     * bits returned by GET_SUPPORTED_CPUID (that depend on host CPU and kernel
+     * capabilities) directly to the guest.
+     */
+    bool enable_pmu;
+
+    /* LMCE support can be enabled/disabled via cpu option 'lmce=on/off'. It is
+     * disabled by default to avoid breaking migration between QEMU with
+     * different LMCE configurations.
+     */
+    bool enable_lmce;
+
+    /* Compatibility bits for old machine types.
+     * If true present virtual l3 cache for VM, the vcpus in the same virtual
+     * socket share an virtual l3 cache.
+     */
+    bool enable_l3_cache;
+
+    /* Compatibility bits for old machine types: */
+    bool enable_cpuid_0xb;
+
+    /* Enable auto level-increase for all CPUID leaves */
+    bool full_cpuid_auto_level;
+
+    /* if true fill the top bits of the MTRR_PHYSMASKn variable range */
+    bool fill_mtrr_mask;
+
+    /* if true override the phys_bits value with a value read from the host */
+    bool host_phys_bits;
+
+    /* Number of physical address bits supported */
+    uint32_t phys_bits;
+
+    /* in order to simplify APIC support, we leave this pointer to the
+       user */
+    struct DeviceState *apic_state;
+    struct MemoryRegion *cpu_as_root, *cpu_as_mem, *smram;
+    Notifier machine_done;
+
+    struct kvm_msrs *kvm_msr_buf;
+
+    int32_t socket_id;
+    int32_t core_id;
+    int32_t thread_id;
+};
+
+static inline X86CPU *x86_env_get_cpu(CPUX86State *env)
+{
+    return container_of(env, X86CPU, env);
+}
+
+#define ENV_GET_CPU(e) CPU(x86_env_get_cpu(e))
+
+#define ENV_OFFSET offsetof(X86CPU, env)
+
+#ifndef CONFIG_USER_ONLY
+extern struct VMStateDescription vmstate_x86_cpu;
+#endif
+
+/**
+ * x86_cpu_do_interrupt:
+ * @cpu: vCPU the interrupt is to be handled by.
+ */
+void x86_cpu_do_interrupt(CPUState *cpu);
+bool x86_cpu_exec_interrupt(CPUState *cpu, int int_req);
+
+int x86_cpu_write_elf64_note(WriteCoreDumpFunction f, CPUState *cpu,
+                             int cpuid, void *opaque);
+int x86_cpu_write_elf32_note(WriteCoreDumpFunction f, CPUState *cpu,
+                             int cpuid, void *opaque);
+int x86_cpu_write_elf64_qemunote(WriteCoreDumpFunction f, CPUState *cpu,
+                                 void *opaque);
+int x86_cpu_write_elf32_qemunote(WriteCoreDumpFunction f, CPUState *cpu,
+                                 void *opaque);
+
+void x86_cpu_get_memory_mapping(CPUState *cpu, MemoryMappingList *list,
+                                Error **errp);
+
+void x86_cpu_dump_state(CPUState *cs, FILE *f, fprintf_function cpu_fprintf,
+                        int flags);
+
+hwaddr x86_cpu_get_phys_page_debug(CPUState *cpu, vaddr addr);
+
+int x86_cpu_gdb_read_register(CPUState *cpu, uint8_t *buf, int reg);
+int x86_cpu_gdb_write_register(CPUState *cpu, uint8_t *buf, int reg);
+
+void x86_cpu_exec_enter(CPUState *cpu);
+void x86_cpu_exec_exit(CPUState *cpu);
 
 X86CPU *cpu_x86_init(const char *cpu_model);
-X86CPU *cpu_x86_create(const char *cpu_model, Error **errp);
-int cpu_x86_exec(CPUState *cpu);
 void x86_cpu_list(FILE *f, fprintf_function cpu_fprintf);
-void x86_cpudef_setup(void);
 int cpu_x86_support_mca_broadcast(CPUX86State *env);
 
 int cpu_get_pic_interrupt(CPUX86State *s);
@@ -1144,13 +1414,6 @@ int cpu_x86_signal_handler(int host_signum, void *pinfo,
                            void *puc);
 
 /* cpu.c */
-typedef struct ExtSaveArea {
-    uint32_t feature, bits;
-    uint32_t offset, size;
-} ExtSaveArea;
-
-extern const ExtSaveArea x86_ext_save_areas[];
-
 void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
                    uint32_t *eax, uint32_t *ebx,
                    uint32_t *ecx, uint32_t *edx);
@@ -1202,17 +1465,17 @@ uint64_t cpu_get_tsc(CPUX86State *env);
 /* XXX: This value should match the one returned by CPUID
  * and in exec.c */
 # if defined(TARGET_X86_64)
-# define PHYS_ADDR_MASK 0xffffffffffLL
+# define TCG_PHYS_ADDR_BITS 40
 # else
-# define PHYS_ADDR_MASK 0xfffffffffLL
+# define TCG_PHYS_ADDR_BITS 36
 # endif
+
+#define PHYS_ADDR_MASK MAKE_64BIT_MASK(0, TCG_PHYS_ADDR_BITS)
 
 #define cpu_init(cpu_model) CPU(cpu_x86_init(cpu_model))
 
-#define cpu_exec cpu_x86_exec
 #define cpu_signal_handler cpu_x86_signal_handler
 #define cpu_list x86_cpu_list
-#define cpudef_setup x86_cpudef_setup
 
 /* MMU modes definitions */
 #define MMU_MODE0_SUFFIX _ksmap
@@ -1266,10 +1529,8 @@ void tcg_x86_init(void);
 #include "hw/i386/apic.h"
 #endif
 
-#include "exec/exec-all.h"
-
 static inline void cpu_get_tb_cpu_state(CPUX86State *env, target_ulong *pc,
-                                        target_ulong *cs_base, int *flags)
+                                        target_ulong *cs_base, uint32_t *flags)
 {
     *cs_base = env->segs[R_CS].base;
     *pc = *cs_base + env->eip;
@@ -1349,8 +1610,9 @@ void helper_lock_init(void);
 
 /* svm_helper.c */
 void cpu_svm_check_intercept_param(CPUX86State *env1, uint32_t type,
-                                   uint64_t param);
-void cpu_vmexit(CPUX86State *nenv, uint32_t exit_code, uint64_t exit_info_1);
+                                   uint64_t param, uintptr_t retaddr);
+void cpu_vmexit(CPUX86State *nenv, uint32_t exit_code, uint64_t exit_info_1,
+                uintptr_t retaddr);
 
 /* seg_helper.c */
 void do_interrupt_x86_hardirq(CPUX86State *env, int intno, int is_hw);
@@ -1359,14 +1621,18 @@ void do_interrupt_x86_hardirq(CPUX86State *env, int intno, int is_hw);
 void do_smm_enter(X86CPU *cpu);
 void cpu_smm_update(X86CPU *cpu);
 
+/* apic.c */
 void cpu_report_tpr_access(CPUX86State *env, TPRAccess access);
+void apic_handle_tpr_access_report(DeviceState *d, target_ulong ip,
+                                   TPRAccess access);
+
 
 /* Change the value of a KVM-specific default
  *
  * If value is NULL, no default will be set and the original
  * value from the CPU model table will be kept.
  *
- * It is valid to call this funciton only for properties that
+ * It is valid to call this function only for properties that
  * are already present in the kvm_default_props table.
  */
 void x86_cpu_change_kvm_default(const char *prop, const char *value);
@@ -1385,4 +1651,7 @@ void enable_compat_apic_id_mode(void);
 void x86_cpu_dump_local_apic_state(CPUState *cs, FILE *f,
                                    fprintf_function cpu_fprintf, int flags);
 
-#endif /* CPU_I386_H */
+/* cpu.c */
+bool cpu_is_bsp(X86CPU *cpu);
+
+#endif /* I386_CPU_H */

@@ -20,16 +20,14 @@
 #include "qemu/osdep.h"
 #include "cpu.h"
 #include "sysemu/cpus.h"
+#include "exec/exec-all.h"
 #include "exec/memory-internal.h"
 
 bool exit_request;
 CPUState *tcg_current_cpu;
 
-/* exit the current TB from a signal handler. The host registers are
-   restored in a state compatible with the CPU emulator
- */
-#if defined(CONFIG_SOFTMMU)
-void cpu_resume_from_signal(CPUState *cpu, void *puc)
+/* exit the current TB, but without causing any exception to be raised */
+void cpu_loop_exit_noexc(CPUState *cpu)
 {
     /* XXX: restore cpu registers saved in host registers */
 
@@ -37,6 +35,7 @@ void cpu_resume_from_signal(CPUState *cpu, void *puc)
     siglongjmp(cpu->jmp_env, 1);
 }
 
+#if defined(CONFIG_SOFTMMU)
 void cpu_reloading_memory_map(void)
 {
     if (qemu_in_vcpu_thread()) {
@@ -77,8 +76,6 @@ void cpu_loop_exit(CPUState *cpu)
                          dev_name, "sleep", 1, 0);
     }
 
-
-    cpu->current_tb = NULL;
     siglongjmp(cpu->jmp_env, 1);
 }
 
@@ -87,6 +84,11 @@ void cpu_loop_exit_restore(CPUState *cpu, uintptr_t pc)
     if (pc) {
         cpu_restore_state(cpu, pc);
     }
-    cpu->current_tb = NULL;
     siglongjmp(cpu->jmp_env, 1);
+}
+
+void cpu_loop_exit_atomic(CPUState *cpu, uintptr_t pc)
+{
+    cpu->exception_index = EXCP_ATOMIC;
+    cpu_loop_exit_restore(cpu, pc);
 }

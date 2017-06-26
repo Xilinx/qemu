@@ -11,6 +11,9 @@
 #include "sysemu/device_tree.h"
 #include "qemu/coroutine.h"
 
+/* This is the number of serial ports we have connected */
+extern int fdt_serial_ports;
+
 typedef struct FDTDevOpaque {
     char *node_path;
     void *opaque;

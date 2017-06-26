@@ -1,5 +1,5 @@
-#ifndef TARGET_SYSCALL_H
-#define TARGET_SYSCALL_H
+#ifndef MIPS_TARGET_SYSCALL_H
+#define MIPS_TARGET_SYSCALL_H
 
 /* this struct defines the way the registers are stored on the
    stack during a system call. */
@@ -221,10 +221,8 @@ struct target_pt_regs {
 #undef TARGET_ENOTRECOVERABLE
 #define TARGET_ENOTRECOVERABLE 166     /* State not recoverable */
 
-
-
-/* Nasty hack: define a fake errno value for use by sigreturn.  */
-#define TARGET_QEMU_ESIGRETURN 255
+#undef TARGET_EDQUOT
+#define TARGET_EDQUOT          1133    /* Quota exceeded */
 
 #define UNAME_MACHINE "mips"
 #define UNAME_MINIMUM_RELEASE "2.6.32"
@@ -234,4 +232,11 @@ struct target_pt_regs {
 #define TARGET_MLOCKALL_MCL_CURRENT 1
 #define TARGET_MLOCKALL_MCL_FUTURE  2
 
-#endif  /* TARGET_SYSCALL_H */
+#define TARGET_FORCE_SHMLBA
+
+static inline abi_ulong target_shmlba(CPUMIPSState *env)
+{
+    return 0x40000;
+}
+
+#endif /* MIPS_TARGET_SYSCALL_H */

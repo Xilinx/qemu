@@ -21,6 +21,7 @@
 #include "qemu/osdep.h"
 #include "cpu.h"
 #include "disas/disas.h"
+#include "exec/exec-all.h"
 #include "tcg-op.h"
 #include "exec/cpu_ldst.h"
 
@@ -2858,7 +2859,7 @@ static void gen_shaci(TCGv ret, TCGv r1, int32_t shift_count)
     } else if (shift_count == -32) {
         /* set PSW.C */
         tcg_gen_mov_tl(cpu_PSW_C, r1);
-        /* fill ret completly with sign bit */
+        /* fill ret completely with sign bit */
         tcg_gen_sari_tl(ret, r1, 31);
         /* clear PSW.V */
         tcg_gen_movi_tl(cpu_PSW_V, 0);
@@ -3236,15 +3237,25 @@ static inline void gen_save_pc(target_ulong pc)
     tcg_gen_movi_tl(cpu_PC, pc);
 }
 
+static inline bool use_goto_tb(DisasContext *ctx, target_ulong dest)
+{
+    if (unlikely(ctx->singlestep_enabled)) {
+        return false;
+    }
+
+#ifndef CONFIG_USER_ONLY
+    return (ctx->tb->pc & TARGET_PAGE_MASK) == (dest & TARGET_PAGE_MASK);
+#else
+    return true;
+#endif
+}
+
 static inline void gen_goto_tb(DisasContext *ctx, int n, target_ulong dest)
 {
-    TranslationBlock *tb;
-    tb = ctx->tb;
-    if ((tb->pc & TARGET_PAGE_MASK) == (dest & TARGET_PAGE_MASK) &&
-        likely(!ctx->singlestep_enabled)) {
+    if (use_goto_tb(ctx, dest)) {
         tcg_gen_goto_tb(n);
         gen_save_pc(dest);
-        tcg_gen_exit_tb((uintptr_t)tb + n);
+        tcg_gen_exit_tb((uintptr_t)ctx->tb + n);
     } else {
         gen_save_pc(dest);
         if (ctx->singlestep_enabled) {
@@ -8776,10 +8787,13 @@ void gen_intermediate_code(CPUTriCoreState *env, struct TranslationBlock *tb)
     }
 
 #ifdef DEBUG_DISAS
-    if (qemu_loglevel_mask(CPU_LOG_TB_IN_ASM)) {
+    if (qemu_loglevel_mask(CPU_LOG_TB_IN_ASM)
+        && qemu_log_in_addr_range(pc_start)) {
+        qemu_log_lock();
         qemu_log("IN: %s\n", lookup_symbol(pc_start));
         log_target_disas(cs, pc_start, ctx.pc - pc_start, 0);
         qemu_log("\n");
+        qemu_log_unlock();
     }
 #endif
 }
@@ -8823,6 +8837,7 @@ void tricore_tcg_init(void)
         return;
     }
     cpu_env = tcg_global_reg_new_ptr(TCG_AREG0, "env");
+    tcg_ctx.tcg_env = cpu_env;
     /* reg init */
     for (i = 0 ; i < 16 ; i++) {
         cpu_gpr_a[i] = tcg_global_mem_new(cpu_env,

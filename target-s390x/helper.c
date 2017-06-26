@@ -23,7 +23,9 @@
 #include "cpu.h"
 #include "exec/gdbstub.h"
 #include "qemu/timer.h"
+#include "exec/exec-all.h"
 #include "exec/cpu_ldst.h"
+#include "hw/s390x/ioinst.h"
 #ifndef CONFIG_USER_ONLY
 #include "sysemu/sysemu.h"
 #endif
@@ -68,11 +70,38 @@ void s390x_cpu_timer(void *opaque)
 
 S390CPU *cpu_s390x_create(const char *cpu_model, Error **errp)
 {
-    S390CPU *cpu;
+    static bool features_parsed;
+    char *name, *features;
+    const char *typename;
+    ObjectClass *oc;
+    CPUClass *cc;
 
-    cpu = S390_CPU(object_new(TYPE_S390_CPU));
+    name = g_strdup(cpu_model);
+    features = strchr(name, ',');
+    if (features) {
+        features[0] = 0;
+        features++;
+    }
 
-    return cpu;
+    oc = cpu_class_by_name(TYPE_S390_CPU, name);
+    if (!oc) {
+        error_setg(errp, "Unknown CPU definition \'%s\'", name);
+        g_free(name);
+        return NULL;
+    }
+    typename = object_class_get_name(oc);
+
+    if (!features_parsed) {
+        features_parsed = true;
+        cc = CPU_CLASS(oc);
+        cc->parse_features(typename, features, errp);
+    }
+    g_free(name);
+
+    if (*errp) {
+        return NULL;
+    }
+    return S390_CPU(CPU(object_new(typename)));
 }
 
 S390CPU *s390x_new_cpu(const char *cpu_model, int64_t id, Error **errp)
@@ -686,7 +715,7 @@ void s390x_cpu_debug_excp_handler(CPUState *cs)
            will be triggered, it will call load_psw which will recompute
            the watchpoints.  */
         cpu_watchpoint_remove_all(cs, BP_CPU);
-        cpu_resume_from_signal(cs, NULL);
+        cpu_loop_exit_noexc(cs);
     }
 }
 #endif /* CONFIG_USER_ONLY */

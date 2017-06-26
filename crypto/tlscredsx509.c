@@ -392,11 +392,14 @@ qcrypto_tls_creds_load_cert(QCryptoTLSCredsX509 *creds,
     gsize buflen;
     GError *gerr;
     int ret = -1;
+    int err;
 
     trace_qcrypto_tls_creds_x509_load_cert(creds, isServer, certFile);
 
-    if (gnutls_x509_crt_init(&cert) < 0) {
-        error_setg(errp, "Unable to initialize certificate");
+    err = gnutls_x509_crt_init(&cert);
+    if (err < 0) {
+        error_setg(errp, "Unable to initialize certificate: %s",
+                   gnutls_strerror(err));
         goto cleanup;
     }
 
@@ -410,11 +413,13 @@ qcrypto_tls_creds_load_cert(QCryptoTLSCredsX509 *creds,
     data.data = (unsigned char *)buf;
     data.size = strlen(buf);
 
-    if (gnutls_x509_crt_import(cert, &data, GNUTLS_X509_FMT_PEM) < 0) {
+    err = gnutls_x509_crt_import(cert, &data, GNUTLS_X509_FMT_PEM);
+    if (err < 0) {
         error_setg(errp, isServer ?
-                   "Unable to import server certificate %s" :
-                   "Unable to import client certificate %s",
-                   certFile);
+                   "Unable to import server certificate %s: %s" :
+                   "Unable to import client certificate %s: %s",
+                   certFile,
+                   gnutls_strerror(err));
         goto cleanup;
     }
 
@@ -610,7 +615,7 @@ qcrypto_tls_creds_x509_load(QCryptoTLSCredsX509 *creds,
     }
 
     if (cert != NULL && key != NULL) {
-#if GNUTLS_VERSION_NUMBER >= 0x030111
+#if LIBGNUTLS_VERSION_NUMBER >= 0x030111
         char *password = NULL;
         if (creds->passwordid) {
             password = qcrypto_secret_lookup_as_utf8(creds->passwordid,
@@ -625,7 +630,7 @@ qcrypto_tls_creds_x509_load(QCryptoTLSCredsX509 *creds,
                                                     password,
                                                     0);
         g_free(password);
-#else /* GNUTLS_VERSION_NUMBER < 0x030111 */
+#else /* LIBGNUTLS_VERSION_NUMBER < 0x030111 */
         if (creds->passwordid) {
             error_setg(errp, "PKCS8 decryption requires GNUTLS >= 3.1.11");
             goto cleanup;
@@ -633,7 +638,7 @@ qcrypto_tls_creds_x509_load(QCryptoTLSCredsX509 *creds,
         ret = gnutls_certificate_set_x509_key_file(creds->data,
                                                    cert, key,
                                                    GNUTLS_X509_FMT_PEM);
-#endif /* GNUTLS_VERSION_NUMBER < 0x030111 */
+#endif
         if (ret < 0) {
             error_setg(errp, "Cannot load certificate '%s' & key '%s': %s",
                        cert, key, gnutls_strerror(ret));

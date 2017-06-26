@@ -334,8 +334,8 @@ static void mips_fulong2e_init(MachineState *machine)
     }
 
     /* Init internal devices */
-    cpu_mips_irq_init_cpu(env);
-    cpu_mips_clock_init(env);
+    cpu_mips_irq_init_cpu(cpu);
+    cpu_mips_clock_init(cpu);
 
     /* North bridge, Bonito --> IP2 */
     pci_bus = bonito_init((qemu_irq *)&(env->irq[2]));
@@ -374,7 +374,7 @@ static void mips_fulong2e_init(MachineState *machine)
 
     rtc_init(isa_bus, 2000, NULL);
 
-    serial_hds_isa_init(isa_bus, MAX_SERIAL_PORTS);
+    serial_hds_isa_init(isa_bus, 0, MAX_SERIAL_PORTS);
     parallel_hds_isa_init(isa_bus, 1);
 
     /* Sound card */

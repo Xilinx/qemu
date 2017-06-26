@@ -26,6 +26,7 @@
 #include "qemu/osdep.h"
 #include "cpu.h"
 #include "disas/disas.h"
+#include "exec/exec-all.h"
 #include "tcg-op.h"
 #include "exec/helper-proto.h"
 #include "mmu.h"
@@ -139,14 +140,14 @@ static void gen_BUG(DisasContext *dc, const char *file, int line)
     cpu_abort(CPU(dc->cpu), "%s:%d\n", file, line);
 }
 
-static const char *regnames[] =
+static const char *regnames_v32[] =
 {
     "$r0", "$r1", "$r2", "$r3",
     "$r4", "$r5", "$r6", "$r7",
     "$r8", "$r9", "$r10", "$r11",
     "$r12", "$r13", "$sp", "$acr",
 };
-static const char *pregnames[] =
+static const char *pregnames_v32[] =
 {
     "$bz", "$vr", "$pid", "$srs",
     "$wz", "$exs", "$eda", "$mof",
@@ -520,14 +521,22 @@ static void t_gen_cc_jmp(TCGv pc_true, TCGv pc_false)
     gen_set_label(l1);
 }
 
+static inline bool use_goto_tb(DisasContext *dc, target_ulong dest)
+{
+#ifndef CONFIG_USER_ONLY
+    return (dc->tb->pc & TARGET_PAGE_MASK) == (dest & TARGET_PAGE_MASK) ||
+           (dc->ppc & TARGET_PAGE_MASK) == (dest & TARGET_PAGE_MASK);
+#else
+    return true;
+#endif
+}
+
 static void gen_goto_tb(DisasContext *dc, int n, target_ulong dest)
 {
-    TranslationBlock *tb;
-    tb = dc->tb;
-    if ((tb->pc & TARGET_PAGE_MASK) == (dest & TARGET_PAGE_MASK)) {
+    if (use_goto_tb(dc, dest)) {
         tcg_gen_goto_tb(n);
         tcg_gen_movi_tl(env_pc, dest);
-                tcg_gen_exit_tb((uintptr_t)tb + n);
+                tcg_gen_exit_tb((uintptr_t)dc->tb + n);
     } else {
         tcg_gen_movi_tl(env_pc, dest);
         tcg_gen_exit_tb(0);
@@ -3049,7 +3058,7 @@ static unsigned int crisv32_decoder(CPUCRISState *env, DisasContext *dc)
  *
  * When the software returns from an exception, the branch will re-execute.
  * On QEMU care needs to be taken when a branch+delayslot sequence is broken
- * and the branch and delayslot dont share pages.
+ * and the branch and delayslot don't share pages.
  *
  * The TB contaning the branch insn will set up env->btarget and evaluate 
  * env->btaken. When the translation loop exits we will note that the branch 
@@ -3125,29 +3134,6 @@ void gen_intermediate_code(CPUCRISState *env, struct TranslationBlock *tb)
     }
 
     dc->cpustate_changed = 0;
-
-    if (qemu_loglevel_mask(CPU_LOG_TB_IN_ASM)) {
-        qemu_log(
-                "pc=%x %x flg=%" PRIx64 " bt=%x ds=%u ccs=%x\n"
-                "pid=%x usp=%x\n"
-                "%x.%x.%x.%x\n"
-                "%x.%x.%x.%x\n"
-                "%x.%x.%x.%x\n"
-                "%x.%x.%x.%x\n",
-                dc->pc, dc->ppc,
-                (uint64_t)tb->flags,
-                env->btarget, (unsigned)tb->flags & 7,
-                env->pregs[PR_CCS],
-                env->pregs[PR_PID], env->pregs[PR_USP],
-                env->regs[0], env->regs[1], env->regs[2], env->regs[3],
-                env->regs[4], env->regs[5], env->regs[6], env->regs[7],
-                env->regs[8], env->regs[9],
-                env->regs[10], env->regs[11],
-                env->regs[12], env->regs[13],
-                env->regs[14], env->regs[15]);
-        qemu_log("--------------\n");
-        qemu_log("IN: %s\n", lookup_symbol(pc_start));
-    }
 
     next_page_start = (pc_start & TARGET_PAGE_MASK) + TARGET_PAGE_SIZE;
     num_insns = 0;
@@ -3238,7 +3224,7 @@ void gen_intermediate_code(CPUCRISState *env, struct TranslationBlock *tb)
         }
 
         /* If we are rexecuting a branch due to exceptions on
-           delay slots dont break.  */
+           delay slots don't break.  */
         if (!(tb->pc & 1) && cs->singlestep_enabled) {
             break;
         }
@@ -3302,11 +3288,16 @@ void gen_intermediate_code(CPUCRISState *env, struct TranslationBlock *tb)
 
 #ifdef DEBUG_DISAS
 #if !DISAS_CRIS
-    if (qemu_loglevel_mask(CPU_LOG_TB_IN_ASM)) {
+    if (qemu_loglevel_mask(CPU_LOG_TB_IN_ASM)
+        && qemu_log_in_addr_range(pc_start)) {
+        qemu_log_lock();
+        qemu_log("--------------\n");
+        qemu_log("IN: %s\n", lookup_symbol(pc_start));
         log_target_disas(cs, pc_start, dc->pc - pc_start,
                          env->pregs[PR_VR]);
         qemu_log("\nisize=%d osize=%d\n",
                  dc->pc - pc_start, tcg_op_buf_count());
+        qemu_log_unlock();
     }
 #endif
 #endif
@@ -3317,11 +3308,19 @@ void cris_cpu_dump_state(CPUState *cs, FILE *f, fprintf_function cpu_fprintf,
 {
     CRISCPU *cpu = CRIS_CPU(cs);
     CPUCRISState *env = &cpu->env;
+    const char **regnames;
+    const char **pregnames;
     int i;
-    uint32_t srs;
 
     if (!env || !f) {
         return;
+    }
+    if (env->pregs[PR_VR] < 32) {
+        pregnames = pregnames_v10;
+        regnames = regnames_v10;
+    } else {
+        pregnames = pregnames_v32;
+        regnames = regnames_v32;
     }
 
     cpu_fprintf(f, "PC=%x CCS=%x btaken=%d btarget=%x\n"
@@ -3344,14 +3343,16 @@ void cris_cpu_dump_state(CPUState *cs, FILE *f, fprintf_function cpu_fprintf,
             cpu_fprintf(f, "\n");
         }
     }
-    srs = env->pregs[PR_SRS];
-    cpu_fprintf(f, "\nsupport function regs bank %x:\n", srs);
-    if (srs < ARRAY_SIZE(env->sregs)) {
-        for (i = 0; i < 16; i++) {
-            cpu_fprintf(f, "s%2.2d=%8.8x ",
-                    i, env->sregs[srs][i]);
-            if ((i + 1) % 4 == 0) {
-                cpu_fprintf(f, "\n");
+    if (env->pregs[PR_VR] >= 32) {
+        uint32_t srs = env->pregs[PR_SRS];
+        cpu_fprintf(f, "\nsupport function regs bank %x:\n", srs);
+        if (srs < ARRAY_SIZE(env->sregs)) {
+            for (i = 0; i < 16; i++) {
+                cpu_fprintf(f, "s%2.2d=%8.8x ",
+                        i, env->sregs[srs][i]);
+                if ((i + 1) % 4 == 0) {
+                    cpu_fprintf(f, "\n");
+                }
             }
         }
     }
@@ -3364,6 +3365,7 @@ void cris_initialize_tcg(void)
     int i;
 
     cpu_env = tcg_global_reg_new_ptr(TCG_AREG0, "env");
+    tcg_ctx.tcg_env = cpu_env;
     cc_x = tcg_global_mem_new(cpu_env,
                               offsetof(CPUCRISState, cc_x), "cc_x");
     cc_src = tcg_global_mem_new(cpu_env,
@@ -3395,12 +3397,12 @@ void cris_initialize_tcg(void)
     for (i = 0; i < 16; i++) {
         cpu_R[i] = tcg_global_mem_new(cpu_env,
                                       offsetof(CPUCRISState, regs[i]),
-                                      regnames[i]);
+                                      regnames_v32[i]);
     }
     for (i = 0; i < 16; i++) {
         cpu_PR[i] = tcg_global_mem_new(cpu_env,
                                        offsetof(CPUCRISState, pregs[i]),
-                                       pregnames[i]);
+                                       pregnames_v32[i]);
     }
 }
 

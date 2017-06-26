@@ -22,6 +22,7 @@
 #include "cpu.h"
 #include "qemu/log.h"
 #include "exec/helper-proto.h"
+#include "exec/exec-all.h"
 #include "exec/cpu_ldst.h"
 #include "exec/log.h"
 
@@ -1128,29 +1129,35 @@ static void do_interrupt_real(CPUX86State *env, int intno, int is_int,
 }
 
 #if defined(CONFIG_USER_ONLY)
-/* fake user mode interrupt */
+/* fake user mode interrupt. is_int is TRUE if coming from the int
+ * instruction. next_eip is the env->eip value AFTER the interrupt
+ * instruction. It is only relevant if is_int is TRUE or if intno
+ * is EXCP_SYSCALL.
+ */
 static void do_interrupt_user(CPUX86State *env, int intno, int is_int,
                               int error_code, target_ulong next_eip)
 {
-    SegmentCache *dt;
-    target_ulong ptr;
-    int dpl, cpl, shift;
-    uint32_t e2;
+    if (is_int) {
+        SegmentCache *dt;
+        target_ulong ptr;
+        int dpl, cpl, shift;
+        uint32_t e2;
 
-    dt = &env->idt;
-    if (env->hflags & HF_LMA_MASK) {
-        shift = 4;
-    } else {
-        shift = 3;
-    }
-    ptr = dt->base + (intno << shift);
-    e2 = cpu_ldl_kernel(env, ptr + 4);
+        dt = &env->idt;
+        if (env->hflags & HF_LMA_MASK) {
+            shift = 4;
+        } else {
+            shift = 3;
+        }
+        ptr = dt->base + (intno << shift);
+        e2 = cpu_ldl_kernel(env, ptr + 4);
 
-    dpl = (e2 >> DESC_DPL_SHIFT) & 3;
-    cpl = env->hflags & HF_CPL_MASK;
-    /* check privilege if software int */
-    if (is_int && dpl < cpl) {
-        raise_exception_err(env, EXCP0D_GPF, (intno << shift) + 2);
+        dpl = (e2 >> DESC_DPL_SHIFT) & 3;
+        cpl = env->hflags & HF_CPL_MASK;
+        /* check privilege if software int */
+        if (dpl < cpl) {
+            raise_exception_err(env, EXCP0D_GPF, (intno << shift) + 2);
+        }
     }
 
     /* Since we emulate only user space, we cannot do more than
@@ -1327,7 +1334,7 @@ bool x86_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
     } else if (env->hflags2 & HF2_GIF_MASK) {
         if ((interrupt_request & CPU_INTERRUPT_SMI) &&
             !(env->hflags & HF_SMM_MASK)) {
-            cpu_svm_check_intercept_param(env, SVM_EXIT_SMI, 0);
+            cpu_svm_check_intercept_param(env, SVM_EXIT_SMI, 0, 0);
             cs->interrupt_request &= ~CPU_INTERRUPT_SMI;
             do_smm_enter(cpu);
             ret = true;
@@ -1348,7 +1355,7 @@ bool x86_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
                      (env->eflags & IF_MASK &&
                       !(env->hflags & HF_INHIBIT_IRQ_MASK))))) {
             int intno;
-            cpu_svm_check_intercept_param(env, SVM_EXIT_INTR, 0);
+            cpu_svm_check_intercept_param(env, SVM_EXIT_INTR, 0, 0);
             cs->interrupt_request &= ~(CPU_INTERRUPT_HARD |
                                        CPU_INTERRUPT_VIRQ);
             intno = cpu_get_pic_interrupt(env);
@@ -1364,7 +1371,7 @@ bool x86_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
                    !(env->hflags & HF_INHIBIT_IRQ_MASK)) {
             int intno;
             /* FIXME: this should respect TPR */
-            cpu_svm_check_intercept_param(env, SVM_EXIT_VINTR, 0);
+            cpu_svm_check_intercept_param(env, SVM_EXIT_VINTR, 0, 0);
             intno = x86_ldl_phys(cs, env->vm_vmcb
                              + offsetof(struct vmcb, control.int_vector));
             qemu_log_mask(CPU_LOG_TB_IN_ASM,

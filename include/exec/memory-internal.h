@@ -29,7 +29,7 @@ void address_space_destroy_dispatch(AddressSpace *as);
 extern const MemoryRegionOps unassigned_mem_ops;
 
 bool memory_region_access_valid(MemoryRegion *mr, hwaddr addr,
-                                unsigned size, bool is_write,
-                                MemTxAttrs attr);
+                                unsigned size, bool is_write);
+
 #endif
 #endif

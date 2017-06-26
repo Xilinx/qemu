@@ -10,9 +10,12 @@
  * See the COPYING file in the top-level directory.
  */
 #include "qemu/osdep.h"
+#include "qemu-common.h"
+#include "cpu.h"
 #include "hw/i386/apic_internal.h"
 #include "hw/pci/msi.h"
 #include "sysemu/kvm.h"
+#include "target-i386/kvm_i386.h"
 
 static inline void kvm_apic_set_reg(struct kvm_lapic_state *kapic,
                                     int reg_id, uint32_t val)
@@ -26,13 +29,16 @@ static inline uint32_t kvm_apic_get_reg(struct kvm_lapic_state *kapic,
     return *((uint32_t *)(kapic->regs + (reg_id << 4)));
 }
 
-void kvm_put_apic_state(DeviceState *dev, struct kvm_lapic_state *kapic)
+static void kvm_put_apic_state(APICCommonState *s, struct kvm_lapic_state *kapic)
 {
-    APICCommonState *s = APIC_COMMON(dev);
     int i;
 
     memset(kapic, 0, sizeof(*kapic));
-    kvm_apic_set_reg(kapic, 0x2, s->id << 24);
+    if (kvm_has_x2apic_api() && s->apicbase & MSR_IA32_APICBASE_EXTD) {
+        kvm_apic_set_reg(kapic, 0x2, s->initial_apic_id);
+    } else {
+        kvm_apic_set_reg(kapic, 0x2, s->id << 24);
+    }
     kvm_apic_set_reg(kapic, 0x8, s->tpr);
     kvm_apic_set_reg(kapic, 0xd, s->log_dest << 24);
     kvm_apic_set_reg(kapic, 0xe, s->dest_mode << 28 | 0x0fffffff);
@@ -57,7 +63,11 @@ void kvm_get_apic_state(DeviceState *dev, struct kvm_lapic_state *kapic)
     APICCommonState *s = APIC_COMMON(dev);
     int i, v;
 
-    s->id = kvm_apic_get_reg(kapic, 0x2) >> 24;
+    if (kvm_has_x2apic_api() && s->apicbase & MSR_IA32_APICBASE_EXTD) {
+        assert(kvm_apic_get_reg(kapic, 0x2) == s->initial_apic_id);
+    } else {
+        s->id = kvm_apic_get_reg(kapic, 0x2) >> 24;
+    }
     s->tpr = kvm_apic_get_reg(kapic, 0x8);
     s->arb_id = kvm_apic_get_reg(kapic, 0x9);
     s->log_dest = kvm_apic_get_reg(kapic, 0xd) >> 24;
@@ -123,10 +133,30 @@ static void kvm_apic_vapic_base_update(APICCommonState *s)
     }
 }
 
-static void do_inject_external_nmi(void *data)
+static void kvm_apic_put(CPUState *cs, run_on_cpu_data data)
 {
-    APICCommonState *s = data;
-    CPUState *cpu = CPU(s->cpu);
+    APICCommonState *s = data.host_ptr;
+    struct kvm_lapic_state kapic;
+    int ret;
+
+    kvm_put_apicbase(s->cpu, s->apicbase);
+    kvm_put_apic_state(s, &kapic);
+
+    ret = kvm_vcpu_ioctl(CPU(s->cpu), KVM_SET_LAPIC, &kapic);
+    if (ret < 0) {
+        fprintf(stderr, "KVM_SET_LAPIC failed: %s\n", strerror(ret));
+        abort();
+    }
+}
+
+static void kvm_apic_post_load(APICCommonState *s)
+{
+    run_on_cpu(CPU(s->cpu), kvm_apic_put, RUN_ON_CPU_HOST_PTR(s));
+}
+
+static void do_inject_external_nmi(CPUState *cpu, run_on_cpu_data data)
+{
+    APICCommonState *s = data.host_ptr;
     uint32_t lvt;
     int ret;
 
@@ -144,7 +174,18 @@ static void do_inject_external_nmi(void *data)
 
 static void kvm_apic_external_nmi(APICCommonState *s)
 {
-    run_on_cpu(CPU(s->cpu), do_inject_external_nmi, s);
+    run_on_cpu(CPU(s->cpu), do_inject_external_nmi, RUN_ON_CPU_HOST_PTR(s));
+}
+
+static void kvm_send_msi(MSIMessage *msg)
+{
+    int ret;
+
+    ret = kvm_irqchip_send_msi(kvm_state, *msg);
+    if (ret < 0) {
+        fprintf(stderr, "KVM: injection failed, MSI lost (%s)\n",
+                strerror(-ret));
+    }
 }
 
 static uint64_t kvm_apic_mem_read(void *opaque, hwaddr addr,
@@ -157,13 +198,8 @@ static void kvm_apic_mem_write(void *opaque, hwaddr addr,
                                uint64_t data, unsigned size)
 {
     MSIMessage msg = { .address = addr, .data = data };
-    int ret;
 
-    ret = kvm_irqchip_send_msi(kvm_state, msg);
-    if (ret < 0) {
-        fprintf(stderr, "KVM: injection failed, MSI lost (%s)\n",
-                strerror(-ret));
-    }
+    kvm_send_msi(&msg);
 }
 
 static const MemoryRegionOps kvm_apic_io_ops = {
@@ -176,18 +212,24 @@ static void kvm_apic_reset(APICCommonState *s)
 {
     /* Not used by KVM, which uses the CPU mp_state instead.  */
     s->wait_for_sipi = 0;
+
+    run_on_cpu(CPU(s->cpu), kvm_apic_put, RUN_ON_CPU_HOST_PTR(s));
 }
 
 static void kvm_apic_realize(DeviceState *dev, Error **errp)
 {
     APICCommonState *s = APIC_COMMON(dev);
 
-    memory_region_init_io(&s->io_memory, NULL, &kvm_apic_io_ops, s, "kvm-apic-msi",
-                          APIC_SPACE_SIZE);
+    memory_region_init_io(&s->io_memory, OBJECT(s), &kvm_apic_io_ops, s,
+                          "kvm-apic-msi", APIC_SPACE_SIZE);
 
     if (kvm_has_gsi_routing()) {
         msi_nonbroken = true;
     }
+}
+
+static void kvm_apic_unrealize(DeviceState *dev, Error **errp)
+{
 }
 
 static void kvm_apic_class_init(ObjectClass *klass, void *data)
@@ -195,13 +237,16 @@ static void kvm_apic_class_init(ObjectClass *klass, void *data)
     APICCommonClass *k = APIC_COMMON_CLASS(klass);
 
     k->realize = kvm_apic_realize;
+    k->unrealize = kvm_apic_unrealize;
     k->reset = kvm_apic_reset;
     k->set_base = kvm_apic_set_base;
     k->set_tpr = kvm_apic_set_tpr;
     k->get_tpr = kvm_apic_get_tpr;
+    k->post_load = kvm_apic_post_load;
     k->enable_tpr_reporting = kvm_apic_enable_tpr_reporting;
     k->vapic_base_update = kvm_apic_vapic_base_update;
     k->external_nmi = kvm_apic_external_nmi;
+    k->send_msi = kvm_send_msi;
 }
 
 static const TypeInfo kvm_apic_info = {

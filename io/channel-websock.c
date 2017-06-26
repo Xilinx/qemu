@@ -20,6 +20,7 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
+#include "qemu/bswap.h"
 #include "io/channel-websock.h"
 #include "crypto/hash.h"
 #include "trace.h"
@@ -316,14 +317,13 @@ static gboolean qio_channel_websock_handshake_io(QIOChannel *ioc,
         return TRUE;
     }
 
-    object_ref(OBJECT(task));
     trace_qio_channel_websock_handshake_reply(ioc);
     qio_channel_add_watch(
         wioc->master,
         G_IO_OUT,
         qio_channel_websock_handshake_send,
         task,
-        (GDestroyNotify)object_unref);
+        NULL);
     return FALSE;
 }
 
@@ -497,8 +497,8 @@ qio_channel_websock_new_server(QIOChannel *master)
     ioc = QIO_CHANNEL(wioc);
 
     wioc->master = master;
-    if (master->features & (1 << QIO_CHANNEL_FEATURE_SHUTDOWN)) {
-        ioc->features |= (1 << QIO_CHANNEL_FEATURE_SHUTDOWN);
+    if (qio_channel_has_feature(master, QIO_CHANNEL_FEATURE_SHUTDOWN)) {
+        qio_channel_set_feature(ioc, QIO_CHANNEL_FEATURE_SHUTDOWN);
     }
     object_ref(OBJECT(master));
 

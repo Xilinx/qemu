@@ -22,7 +22,6 @@ typedef struct {
 typedef struct BlkverifyAIOCB BlkverifyAIOCB;
 struct BlkverifyAIOCB {
     BlockAIOCB common;
-    QEMUBH *bh;
 
     /* Request metadata */
     bool is_write;
@@ -175,7 +174,6 @@ static BlkverifyAIOCB *blkverify_aio_get(BlockDriverState *bs, bool is_write,
 {
     BlkverifyAIOCB *acb = qemu_aio_get(&blkverify_aiocb_info, bs, cb, opaque);
 
-    acb->bh = NULL;
     acb->is_write = is_write;
     acb->sector_num = sector_num;
     acb->nb_sectors = nb_sectors;
@@ -191,7 +189,6 @@ static void blkverify_aio_bh(void *opaque)
 {
     BlkverifyAIOCB *acb = opaque;
 
-    qemu_bh_delete(acb->bh);
     if (acb->buf) {
         qemu_iovec_destroy(&acb->raw_qiov);
         qemu_vfree(acb->buf);
@@ -218,9 +215,8 @@ static void blkverify_aio_cb(void *opaque, int ret)
             acb->verify(acb);
         }
 
-        acb->bh = aio_bh_new(bdrv_get_aio_context(acb->common.bs),
-                             blkverify_aio_bh, acb);
-        qemu_bh_schedule(acb->bh);
+        aio_bh_schedule_oneshot(bdrv_get_aio_context(acb->common.bs),
+                                blkverify_aio_bh, acb);
         break;
     }
 }
@@ -247,9 +243,9 @@ static BlockAIOCB *blkverify_aio_readv(BlockDriverState *bs,
     qemu_iovec_init(&acb->raw_qiov, acb->qiov->niov);
     qemu_iovec_clone(&acb->raw_qiov, qiov, acb->buf);
 
-    bdrv_aio_readv(s->test_file->bs, sector_num, qiov, nb_sectors,
+    bdrv_aio_readv(s->test_file, sector_num, qiov, nb_sectors,
                    blkverify_aio_cb, acb);
-    bdrv_aio_readv(bs->file->bs, sector_num, &acb->raw_qiov, nb_sectors,
+    bdrv_aio_readv(bs->file, sector_num, &acb->raw_qiov, nb_sectors,
                    blkverify_aio_cb, acb);
     return &acb->common;
 }
@@ -262,9 +258,9 @@ static BlockAIOCB *blkverify_aio_writev(BlockDriverState *bs,
     BlkverifyAIOCB *acb = blkverify_aio_get(bs, true, sector_num, qiov,
                                             nb_sectors, cb, opaque);
 
-    bdrv_aio_writev(s->test_file->bs, sector_num, qiov, nb_sectors,
+    bdrv_aio_writev(s->test_file, sector_num, qiov, nb_sectors,
                     blkverify_aio_cb, acb);
-    bdrv_aio_writev(bs->file->bs, sector_num, qiov, nb_sectors,
+    bdrv_aio_writev(bs->file, sector_num, qiov, nb_sectors,
                     blkverify_aio_cb, acb);
     return &acb->common;
 }
@@ -291,22 +287,6 @@ static bool blkverify_recurse_is_first_non_filter(BlockDriverState *bs,
     }
 
     return bdrv_recurse_is_first_non_filter(s->test_file->bs, candidate);
-}
-
-/* Propagate AioContext changes to ->test_file */
-static void blkverify_detach_aio_context(BlockDriverState *bs)
-{
-    BDRVBlkverifyState *s = bs->opaque;
-
-    bdrv_detach_aio_context(s->test_file->bs);
-}
-
-static void blkverify_attach_aio_context(BlockDriverState *bs,
-                                         AioContext *new_context)
-{
-    BDRVBlkverifyState *s = bs->opaque;
-
-    bdrv_attach_aio_context(s->test_file->bs, new_context);
 }
 
 static void blkverify_refresh_filename(BlockDriverState *bs, QDict *options)
@@ -355,9 +335,6 @@ static BlockDriver bdrv_blkverify = {
     .bdrv_aio_readv                   = blkverify_aio_readv,
     .bdrv_aio_writev                  = blkverify_aio_writev,
     .bdrv_aio_flush                   = blkverify_aio_flush,
-
-    .bdrv_attach_aio_context          = blkverify_attach_aio_context,
-    .bdrv_detach_aio_context          = blkverify_detach_aio_context,
 
     .is_filter                        = true,
     .bdrv_recurse_is_first_non_filter = blkverify_recurse_is_first_non_filter,

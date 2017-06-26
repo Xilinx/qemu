@@ -130,14 +130,25 @@ int bitbang_i2c_set(bitbang_i2c_interface *i2c, int line, int level)
         return bitbang_i2c_ret(i2c, 1);
 
     case WAITING_FOR_ACK:
+    {
+        int ret;
+
         if (i2c->current_addr < 0) {
             i2c->current_addr = i2c->buffer;
             DPRINTF("Address 0x%02x\n", i2c->current_addr);
-            i2c_start_transfer(i2c->bus, i2c->current_addr >> 1,
-                               i2c->current_addr & 1);
+            ret = i2c_start_transfer(i2c->bus, i2c->current_addr >> 1,
+                                     i2c->current_addr & 1);
         } else {
             DPRINTF("Sent 0x%02x\n", i2c->buffer);
-            i2c_send(i2c->bus, i2c->buffer);
+            ret = i2c_send(i2c->bus, i2c->buffer);
+        }
+        if (ret) {
+            /* NACK (either addressing a nonexistent device, or the
+             * device we were sending to decided to NACK us).
+             */
+            DPRINTF("Got NACK\n");
+            bitbang_i2c_enter_stop(i2c);
+            return bitbang_i2c_ret(i2c, 1);
         }
         if (i2c->current_addr & 1) {
             i2c->state = RECEIVING_BIT7;
@@ -145,7 +156,7 @@ int bitbang_i2c_set(bitbang_i2c_interface *i2c, int line, int level)
             i2c->state = SENDING_BIT7;
         }
         return bitbang_i2c_ret(i2c, 0);
-
+    }
     case RECEIVING_BIT7:
         i2c->buffer = i2c_recv(i2c->bus);
         DPRINTF("RX byte 0x%02x\n", i2c->buffer);
@@ -210,13 +221,14 @@ static void bitbang_i2c_gpio_set(void *opaque, int irq, int level)
     }
 }
 
-static int gpio_i2c_init(SysBusDevice *sbd)
+static void gpio_i2c_init(Object *obj)
 {
-    DeviceState *dev = DEVICE(sbd);
-    GPIOI2CState *s = GPIO_I2C(dev);
+    DeviceState *dev = DEVICE(obj);
+    GPIOI2CState *s = GPIO_I2C(obj);
+    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
     I2CBus *bus;
 
-    memory_region_init(&s->dummy_iomem, OBJECT(s), "gpio_i2c", 0);
+    memory_region_init(&s->dummy_iomem, obj, "gpio_i2c", 0);
     sysbus_init_mmio(sbd, &s->dummy_iomem);
 
     bus = i2c_init_bus(dev, "i2c");
@@ -224,16 +236,12 @@ static int gpio_i2c_init(SysBusDevice *sbd)
 
     qdev_init_gpio_in(dev, bitbang_i2c_gpio_set, 2);
     qdev_init_gpio_out(dev, &s->out, 1);
-
-    return 0;
 }
 
 static void gpio_i2c_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-    SysBusDeviceClass *k = SYS_BUS_DEVICE_CLASS(klass);
 
-    k->init = gpio_i2c_init;
     set_bit(DEVICE_CATEGORY_BRIDGE, dc->categories);
     dc->desc = "Virtual GPIO to I2C bridge";
 }
@@ -242,6 +250,7 @@ static const TypeInfo gpio_i2c_info = {
     .name          = TYPE_GPIO_I2C,
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(GPIOI2CState),
+    .instance_init = gpio_i2c_init,
     .class_init    = gpio_i2c_class_init,
 };
 

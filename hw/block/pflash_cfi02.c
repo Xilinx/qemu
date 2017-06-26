@@ -57,7 +57,6 @@ do {                                                       \
 
 #define PFLASH_LAZY_ROMD_THRESHOLD 42
 
-#define TYPE_CFI_PFLASH02 "cfi.pflash02"
 #define CFI_PFLASH02(obj) OBJECT_CHECK(pflash_t, (obj), TYPE_CFI_PFLASH02)
 
 struct pflash_t {
@@ -257,7 +256,7 @@ static void pflash_update(pflash_t *pfl, int offset,
         offset = QEMU_ALIGN_DOWN(offset, BDRV_SECTOR_SIZE);
         offset_end = QEMU_ALIGN_UP(offset_end, BDRV_SECTOR_SIZE);
         blk_pwrite(pfl->blk, offset, pfl->storage + offset,
-                   offset_end - offset);
+                   offset_end - offset, 0);
     }
 }
 

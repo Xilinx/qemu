@@ -13,7 +13,6 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include <glib.h>
 
 #include "qemu-common.h"
 #include "cpu.h"
@@ -207,7 +206,7 @@ static void guest_phys_blocks_region_add(MemoryListener *listener,
 
     /* we only care about RAM */
     if (!memory_region_is_ram(section->mr) ||
-        memory_region_is_skip_dump(section->mr)) {
+        memory_region_is_ram_device(section->mr)) {
         return;
     }
 

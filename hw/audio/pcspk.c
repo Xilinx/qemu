@@ -31,11 +31,12 @@
 #include "qemu/timer.h"
 #include "hw/timer/i8254.h"
 #include "hw/audio/pcspk.h"
+#include "qapi/error.h"
 
 #define PCSPK_BUF_LEN 1792
 #define PCSPK_SAMPLE_RATE 32000
 #define PCSPK_MAX_FREQ (PCSPK_SAMPLE_RATE >> 1)
-#define PCSPK_MIN_COUNT ((PIT_FREQ + PCSPK_MAX_FREQ - 1) / PCSPK_MAX_FREQ)
+#define PCSPK_MIN_COUNT DIV_ROUND_UP(PIT_FREQ, PCSPK_MAX_FREQ)
 
 #define PC_SPEAKER(obj) OBJECT_CHECK(PCSpkState, (obj), TYPE_PC_SPEAKER)
 
@@ -51,8 +52,9 @@ typedef struct {
     unsigned int pit_count;
     unsigned int samples;
     unsigned int play_pos;
-    int data_on;
-    int dummy_refresh_clock;
+    uint8_t data_on;
+    uint8_t dummy_refresh_clock;
+    bool migrate;
 } PCSpkState;
 
 static const char *s_spk = "pcspk";
@@ -169,6 +171,11 @@ static void pcspk_initfn(Object *obj)
     PCSpkState *s = PC_SPEAKER(obj);
 
     memory_region_init_io(&s->ioport, OBJECT(s), &pcspk_io_ops, s, "pcspk", 1);
+
+    object_property_add_link(obj, "pit", TYPE_PIT_COMMON,
+                             (Object **)&s->pit,
+                             qdev_prop_allow_set_link_before_realize,
+                             0, &error_abort);
 }
 
 static void pcspk_realizefn(DeviceState *dev, Error **errp)
@@ -181,9 +188,29 @@ static void pcspk_realizefn(DeviceState *dev, Error **errp)
     pcspk_state = s;
 }
 
+static bool migrate_needed(void *opaque)
+{
+    PCSpkState *s = opaque;
+
+    return s->migrate;
+}
+
+static const VMStateDescription vmstate_spk = {
+    .name = "pcspk",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .minimum_version_id_old = 1,
+    .needed = migrate_needed,
+    .fields      = (VMStateField[]) {
+        VMSTATE_UINT8(data_on, PCSpkState),
+        VMSTATE_UINT8(dummy_refresh_clock, PCSpkState),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static Property pcspk_properties[] = {
     DEFINE_PROP_UINT32("iobase", PCSpkState, iobase,  -1),
-    DEFINE_PROP_PTR("pit", PCSpkState, pit),
+    DEFINE_PROP_BOOL("migrate", PCSpkState, migrate,  true),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -193,8 +220,9 @@ static void pcspk_class_initfn(ObjectClass *klass, void *data)
 
     dc->realize = pcspk_realizefn;
     set_bit(DEVICE_CATEGORY_SOUND, dc->categories);
+    dc->vmsd = &vmstate_spk;
     dc->props = pcspk_properties;
-    /* Reason: pointer property "pit", realize sets global pcspk_state */
+    /* Reason: realize sets global pcspk_state */
     dc->cannot_instantiate_with_device_add_yet = true;
 }
 

@@ -5,8 +5,8 @@
  * terms and conditions of the copyright.
  */
 
-#ifndef _SLIRP_SOCKET_H_
-#define _SLIRP_SOCKET_H_
+#ifndef SLIRP_SOCKET_H
+#define SLIRP_SOCKET_H
 
 #define SO_EXPIRE 240000
 #define SO_EXPIREFAST 10000
@@ -122,6 +122,18 @@ static inline int sockaddr_equal(struct sockaddr_storage *a,
     return 0;
 }
 
+static inline socklen_t sockaddr_size(struct sockaddr_storage *a)
+{
+    switch (a->ss_family) {
+    case AF_INET:
+        return sizeof(struct sockaddr_in);
+    case AF_INET6:
+        return sizeof(struct sockaddr_in6);
+    default:
+        g_assert_not_reached();
+    }
+}
+
 struct socket *solookup(struct socket **, struct socket *,
         struct sockaddr_storage *, struct sockaddr_storage *);
 struct socket *socreate(Slirp *);
@@ -146,4 +158,4 @@ void sotranslate_in(struct socket *, struct sockaddr_storage *);
 void sotranslate_accept(struct socket *);
 
 
-#endif /* _SOCKET_H_ */
+#endif /* SLIRP_SOCKET_H */

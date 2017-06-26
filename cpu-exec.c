@@ -20,6 +20,7 @@
 #include "cpu.h"
 #include "trace.h"
 #include "disas/disas.h"
+#include "exec/exec-all.h"
 #include "tcg.h"
 #include "qemu/atomic.h"
 #include "sysemu/qtest.h"
@@ -137,13 +138,16 @@ static void init_delay_params(SyncClocks *sc, const CPUState *cpu)
 static inline tcg_target_ulong cpu_tb_exec(CPUState *cpu, TranslationBlock *itb)
 {
     CPUArchState *env = cpu->env_ptr;
-    uintptr_t next_tb;
+    uintptr_t ret;
+    TranslationBlock *last_tb;
+    int tb_exit;
     uint8_t *tb_ptr = itb->tc_ptr;
 
     qemu_log_mask_and_addr(CPU_LOG_EXEC, itb->pc,
-                           "CPU%d Trace %p [" TARGET_FMT_lx "] %s\n",
-                            cpu->cpu_index,
-                           itb->tc_ptr, itb->pc, lookup_symbol(itb->pc));
+                           "CPU%d Trace %p [%d: " TARGET_FMT_lx "] %s\n",
+                           cpu->cpu_index,
+                           itb->tc_ptr, cpu->cpu_index, itb->pc,
+                           lookup_symbol(itb->pc));
 
     if (qemu_etrace_mask(ETRACE_F_CPU)) {
         /* FIXME: Create a binary representation.
@@ -159,54 +163,53 @@ static inline tcg_target_ulong cpu_tb_exec(CPUState *cpu, TranslationBlock *itb)
 
 
 #if defined(DEBUG_DISAS)
-    if (qemu_loglevel_mask(CPU_LOG_TB_CPU)) {
+    if (qemu_loglevel_mask(CPU_LOG_TB_CPU)
+        && qemu_log_in_addr_range(itb->pc)) {
+        qemu_log_lock();
 #if defined(TARGET_I386)
         log_cpu_state(cpu, CPU_DUMP_CCOP);
-#elif defined(TARGET_M68K)
-        /* ??? Should not modify env state for dumping.  */
-        cpu_m68k_flush_flags(env, env->cc_op);
-        env->cc_op = CC_OP_FLAGS;
-        env->sr = (env->sr & 0xffe0) | env->cc_dest | (env->cc_x << 4);
-        log_cpu_state(cpu, 0);
 #else
         log_cpu_state(cpu, 0);
 #endif
+        qemu_log_unlock();
     }
 #endif /* DEBUG_DISAS */
 
     cpu->can_do_io = !use_icount;
-    next_tb = tcg_qemu_tb_exec(env, tb_ptr);
+    ret = tcg_qemu_tb_exec(env, tb_ptr);
     cpu->can_do_io = 1;
-    trace_exec_tb_exit((void *) (next_tb & ~TB_EXIT_MASK),
-                       next_tb & TB_EXIT_MASK);
+    last_tb = (TranslationBlock *)(ret & ~TB_EXIT_MASK);
+    tb_exit = ret & TB_EXIT_MASK;
+    trace_exec_tb_exit(last_tb, tb_exit);
 
-    if ((next_tb & TB_EXIT_MASK) > TB_EXIT_IDX1) {
+    if (tb_exit > TB_EXIT_IDX1) {
         /* We didn't start executing this TB (eg because the instruction
          * counter hit zero); we must restore the guest PC to the address
          * of the start of the TB.
          */
         CPUClass *cc = CPU_GET_CLASS(cpu);
-        TranslationBlock *tb = (TranslationBlock *)(next_tb & ~TB_EXIT_MASK);
-        qemu_log_mask_and_addr(CPU_LOG_EXEC, itb->pc,
+        qemu_log_mask_and_addr(CPU_LOG_EXEC, last_tb->pc,
                                "Stopped execution of TB chain before %p ["
                                TARGET_FMT_lx "] %s\n",
-                               itb->tc_ptr, itb->pc, lookup_symbol(itb->pc));
+                               last_tb->tc_ptr, last_tb->pc,
+                               lookup_symbol(last_tb->pc));
         if (cc->synchronize_from_tb) {
-            cc->synchronize_from_tb(cpu, tb);
+            cc->synchronize_from_tb(cpu, last_tb);
         } else {
             assert(cc->set_pc);
-            cc->set_pc(cpu, tb->pc);
+            cc->set_pc(cpu, last_tb->pc);
         }
     }
-    if ((next_tb & TB_EXIT_MASK) == TB_EXIT_REQUESTED) {
+    if (tb_exit == TB_EXIT_REQUESTED) {
         /* We were asked to stop executing TBs (probably a pending
          * interrupt. We've now stopped, so clear the flag.
          */
-        cpu->tcg_exit_req = 0;
+        atomic_set(&cpu->tcg_exit_req, 0);
     }
-    return next_tb;
+    return ret;
 }
 
+#ifndef CONFIG_USER_ONLY
 /* Execute the code without caching the generated code. An interpreter
    could be used if available. */
 static void cpu_exec_nocache(CPUState *cpu, int max_cycles,
@@ -219,131 +222,207 @@ static void cpu_exec_nocache(CPUState *cpu, int max_cycles,
     if (max_cycles > CF_COUNT_MASK)
         max_cycles = CF_COUNT_MASK;
 
+    tb_lock();
     tb = tb_gen_code(cpu, orig_tb->pc, orig_tb->cs_base, orig_tb->flags,
                      max_cycles | CF_NOCACHE
                          | (ignore_icount ? CF_IGNORE_ICOUNT : 0));
-    tb->orig_tb = tcg_ctx.tb_ctx.tb_invalidated_flag ? NULL : orig_tb;
-    cpu->current_tb = tb;
+    tb->orig_tb = orig_tb;
+    tb_unlock();
+
     /* execute the generated code */
     trace_exec_tb_nocache(tb, tb->pc);
     cpu_tb_exec(cpu, tb);
-    cpu->current_tb = NULL;
+
+    tb_lock();
     tb_phys_invalidate(tb, -1);
     tb_free(tb);
-}
-
-static TranslationBlock *tb_find_physical(CPUState *cpu,
-                                          target_ulong pc,
-                                          target_ulong cs_base,
-                                          uint64_t flags)
-{
-    CPUArchState *env = (CPUArchState *)cpu->env_ptr;
-    TranslationBlock *tb, **ptb1;
-    unsigned int h;
-    tb_page_addr_t phys_pc, phys_page1;
-    target_ulong virt_page2;
-
-    tcg_ctx.tb_ctx.tb_invalidated_flag = 0;
-
-    /* find translated block using physical mappings */
-    phys_pc = get_page_addr_code(env, pc);
-    phys_page1 = phys_pc & TARGET_PAGE_MASK;
-    h = tb_phys_hash_func(phys_pc);
-    ptb1 = &tcg_ctx.tb_ctx.tb_phys_hash[h];
-    for(;;) {
-        tb = *ptb1;
-        if (!tb) {
-            return NULL;
-        }
-        if (tb->pc == pc &&
-            tb->page_addr[0] == phys_page1 &&
-            tb->cs_base == cs_base &&
-            tb->flags == flags) {
-            /* check next page if needed */
-            if (tb->page_addr[1] != -1) {
-                tb_page_addr_t phys_page2;
-
-                virt_page2 = (pc & TARGET_PAGE_MASK) +
-                    TARGET_PAGE_SIZE;
-                phys_page2 = get_page_addr_code(env, virt_page2);
-                if (tb->page_addr[1] == phys_page2) {
-                    break;
-                }
-            } else {
-                break;
-            }
-        }
-        ptb1 = &tb->phys_hash_next;
-    }
-
-    /* Move the TB to the head of the list */
-    *ptb1 = tb->phys_hash_next;
-    tb->phys_hash_next = tcg_ctx.tb_ctx.tb_phys_hash[h];
-    tcg_ctx.tb_ctx.tb_phys_hash[h] = tb;
-    return tb;
-}
-
-static TranslationBlock *tb_find_slow(CPUState *cpu,
-                                      target_ulong pc,
-                                      target_ulong cs_base,
-                                      uint64_t flags)
-{
-    TranslationBlock *tb;
-
-    tb = tb_find_physical(cpu, pc, cs_base, flags);
-    if (tb) {
-        goto found;
-    }
-
-#ifdef CONFIG_USER_ONLY
-    /* mmap_lock is needed by tb_gen_code, and mmap_lock must be
-     * taken outside tb_lock.  Since we're momentarily dropping
-     * tb_lock, there's a chance that our desired tb has been
-     * translated.
-     */
     tb_unlock();
-    mmap_lock();
-    tb_lock();
-    tb = tb_find_physical(cpu, pc, cs_base, flags);
-    if (tb) {
-        mmap_unlock();
-        goto found;
-    }
-#endif
-
-    /* if no translated code available, then translate it now */
-    tb = tb_gen_code(cpu, pc, cs_base, flags, 0);
-
-#ifdef CONFIG_USER_ONLY
-    mmap_unlock();
-#endif
-
-found:
-    /* we add the TB in the virtual pc hash table */
-    cpu->tb_jmp_cache[tb_jmp_cache_hash_func(pc)] = tb;
-    return tb;
 }
+#endif
 
-static inline TranslationBlock *tb_find_fast(CPUState *cpu)
+static void cpu_exec_step(CPUState *cpu)
 {
     CPUArchState *env = (CPUArchState *)cpu->env_ptr;
     TranslationBlock *tb;
     target_ulong cs_base, pc;
-    int flags;
+    uint32_t flags;
+
+    cpu_get_tb_cpu_state(env, &pc, &cs_base, &flags);
+    tb = tb_gen_code(cpu, pc, cs_base, flags,
+                     1 | CF_NOCACHE | CF_IGNORE_ICOUNT);
+    tb->orig_tb = NULL;
+    /* execute the generated code */
+    trace_exec_tb_nocache(tb, pc);
+    cpu_tb_exec(cpu, tb);
+    tb_phys_invalidate(tb, -1);
+    tb_free(tb);
+}
+
+void cpu_exec_step_atomic(CPUState *cpu)
+{
+    start_exclusive();
+
+    /* Since we got here, we know that parallel_cpus must be true.  */
+    parallel_cpus = false;
+    cpu_exec_step(cpu);
+    parallel_cpus = true;
+
+    end_exclusive();
+}
+
+struct tb_desc {
+    target_ulong pc;
+    target_ulong cs_base;
+    CPUArchState *env;
+    tb_page_addr_t phys_page1;
+    uint32_t flags;
+};
+
+static bool tb_cmp(const void *p, const void *d)
+{
+    const TranslationBlock *tb = p;
+    const struct tb_desc *desc = d;
+
+    if (tb->pc == desc->pc &&
+        tb->page_addr[0] == desc->phys_page1 &&
+        tb->cs_base == desc->cs_base &&
+        tb->flags == desc->flags &&
+        !atomic_read(&tb->invalid)) {
+        /* check next page if needed */
+        if (tb->page_addr[1] == -1) {
+            return true;
+        } else {
+            tb_page_addr_t phys_page2;
+            target_ulong virt_page2;
+
+            virt_page2 = (desc->pc & TARGET_PAGE_MASK) + TARGET_PAGE_SIZE;
+            phys_page2 = get_page_addr_code(desc->env, virt_page2);
+            if (tb->page_addr[1] == phys_page2) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static TranslationBlock *tb_htable_lookup(CPUState *cpu,
+                                          target_ulong pc,
+                                          target_ulong cs_base,
+                                          uint32_t flags)
+{
+    tb_page_addr_t phys_pc;
+    struct tb_desc desc;
+    uint32_t h;
+
+    desc.env = (CPUArchState *)cpu->env_ptr;
+    desc.cs_base = cs_base;
+    desc.flags = flags;
+    desc.pc = pc;
+    phys_pc = get_page_addr_code(desc.env, pc);
+    desc.phys_page1 = phys_pc & TARGET_PAGE_MASK;
+    h = tb_hash_func(phys_pc, pc, flags);
+    return qht_lookup(&tcg_ctx.tb_ctx.htable, tb_cmp, &desc, h);
+}
+
+static inline TranslationBlock *tb_find(CPUState *cpu,
+                                        TranslationBlock *last_tb,
+                                        int tb_exit)
+{
+    CPUArchState *env = (CPUArchState *)cpu->env_ptr;
+    TranslationBlock *tb;
+    target_ulong cs_base, pc;
+    uint32_t flags;
+    bool have_tb_lock = false;
 
     /* we record a subset of the CPU state. It will
        always be the same before a given translated block
        is executed. */
     cpu_get_tb_cpu_state(env, &pc, &cs_base, &flags);
-    tb = cpu->tb_jmp_cache[tb_jmp_cache_hash_func(pc)];
+    tb = atomic_rcu_read(&cpu->tb_jmp_cache[tb_jmp_cache_hash_func(pc)]);
     if (unlikely(!tb || tb->pc != pc || tb->cs_base != cs_base ||
                  tb->flags != flags)) {
-        tb = tb_find_slow(cpu, pc, cs_base, flags);
+        tb = tb_htable_lookup(cpu, pc, cs_base, flags);
+        if (!tb) {
+
+            /* mmap_lock is needed by tb_gen_code, and mmap_lock must be
+             * taken outside tb_lock. As system emulation is currently
+             * single threaded the locks are NOPs.
+             */
+            mmap_lock();
+            tb_lock();
+            have_tb_lock = true;
+
+            /* There's a chance that our desired tb has been translated while
+             * taking the locks so we check again inside the lock.
+             */
+            tb = tb_htable_lookup(cpu, pc, cs_base, flags);
+            if (!tb) {
+                /* if no translated code available, then translate it now */
+                tb = tb_gen_code(cpu, pc, cs_base, flags, 0);
+            }
+
+            mmap_unlock();
+        }
+
+        /* We add the TB in the virtual pc hash table for the fast lookup */
+        atomic_set(&cpu->tb_jmp_cache[tb_jmp_cache_hash_func(pc)], tb);
+    }
+#ifndef CONFIG_USER_ONLY
+    /* We don't take care of direct jumps when address mapping changes in
+     * system emulation. So it's not safe to make a direct jump to a TB
+     * spanning two pages because the mapping for the second page can change.
+     */
+    if (tb->page_addr[1] != -1) {
+        last_tb = NULL;
+    }
+#endif
+    /* See if we can patch the calling TB. */
+    if (last_tb && !qemu_loglevel_mask(CPU_LOG_TB_NOCHAIN)) {
+        if (!have_tb_lock) {
+            tb_lock();
+            have_tb_lock = true;
+        }
+        if (!tb->invalid) {
+            tb_add_jump(last_tb, tb_exit, tb);
+        }
+    }
+    if (have_tb_lock) {
+        tb_unlock();
     }
     return tb;
 }
 
-static void cpu_handle_debug_exception(CPUState *cpu)
+static inline bool cpu_handle_halt(CPUState *cpu)
+{
+    if (cpu->halted) {
+#if defined(TARGET_I386) && !defined(CONFIG_USER_ONLY)
+        if ((cpu->interrupt_request & CPU_INTERRUPT_POLL)
+            && replay_interrupt()) {
+            X86CPU *x86_cpu = X86_CPU(cpu);
+            apic_poll_irq(x86_cpu->apic_state);
+            cpu_reset_interrupt(cpu, CPU_INTERRUPT_POLL);
+        }
+#endif
+
+        if (qemu_etrace_mask(ETRACE_F_EXEC)) {
+            const char *dev_name = object_get_canonical_path(OBJECT(cpu));
+            etrace_event_u64(&qemu_etracer, cpu->cpu_index,
+                             ETRACE_EVU64_F_PREV_VAL,
+                             dev_name, "sleep", 0, 1);
+        }
+
+        if (!cpu_has_work(cpu)) {
+            current_cpu = NULL;
+            return true;
+        }
+
+        cpu->halted = 0;
+    }
+
+    return false;
+}
+
+static inline void cpu_handle_debug_exception(CPUState *cpu)
 {
     CPUClass *cc = CPU_GET_CLASS(cpu);
     CPUWatchpoint *wp;
@@ -357,46 +436,216 @@ static void cpu_handle_debug_exception(CPUState *cpu)
     cc->debug_excp_handler(cpu);
 }
 
+static inline bool cpu_handle_exception(CPUState *cpu, int *ret)
+{
+    if (cpu->exception_index >= 0) {
+        if (cpu->exception_index >= EXCP_INTERRUPT) {
+            /* exit request from the cpu execution loop */
+            *ret = cpu->exception_index;
+            if (*ret == EXCP_DEBUG) {
+                cpu_handle_debug_exception(cpu);
+            }
+            cpu->exception_index = -1;
+            return true;
+        } else {
+#if defined(CONFIG_USER_ONLY)
+            /* if user mode only, we simulate a fake exception
+               which will be handled outside the cpu execution
+               loop */
+#if defined(TARGET_I386)
+            CPUClass *cc = CPU_GET_CLASS(cpu);
+            cc->do_interrupt(cpu);
+#endif
+            *ret = cpu->exception_index;
+            cpu->exception_index = -1;
+            return true;
+#else
+            if (replay_exception()) {
+                CPUClass *cc = CPU_GET_CLASS(cpu);
+                cc->do_interrupt(cpu);
+                cpu->exception_index = -1;
+            } else if (!replay_has_interrupt()) {
+                /* give a chance to iothread in replay mode */
+                *ret = EXCP_INTERRUPT;
+                return true;
+            }
+#endif
+        }
+#ifndef CONFIG_USER_ONLY
+    } else if (replay_has_exception()
+               && cpu->icount_decr.u16.low + cpu->icount_extra == 0) {
+        /* try to cause an exception pending in the log */
+        cpu_exec_nocache(cpu, 1, tb_find(cpu, NULL, 0), true);
+        *ret = -1;
+        return true;
+#endif
+    }
+
+    return false;
+}
+
+static inline void cpu_handle_interrupt(CPUState *cpu,
+                                        TranslationBlock **last_tb)
+{
+    CPUClass *cc = CPU_GET_CLASS(cpu);
+    int interrupt_request = cpu->interrupt_request;
+
+    if (unlikely(interrupt_request)) {
+        if (unlikely(cpu->singlestep_enabled & SSTEP_NOIRQ)) {
+            /* Mask out external interrupts for this step. */
+            interrupt_request &= ~CPU_INTERRUPT_SSTEP_MASK;
+        }
+        if (interrupt_request & CPU_INTERRUPT_DEBUG) {
+            cpu->interrupt_request &= ~CPU_INTERRUPT_DEBUG;
+            cpu->exception_index = EXCP_DEBUG;
+            cpu_loop_exit(cpu);
+        }
+        if (replay_mode == REPLAY_MODE_PLAY && !replay_has_interrupt()) {
+            /* Do nothing */
+        } else if (interrupt_request & CPU_INTERRUPT_HALT) {
+            replay_interrupt();
+            cpu->interrupt_request &= ~CPU_INTERRUPT_HALT;
+            cpu->halted = 1;
+            cpu->exception_index = EXCP_HLT;
+            cpu_loop_exit(cpu);
+        }
+#if defined(TARGET_I386)
+        else if (interrupt_request & CPU_INTERRUPT_INIT) {
+            X86CPU *x86_cpu = X86_CPU(cpu);
+            CPUArchState *env = &x86_cpu->env;
+            replay_interrupt();
+            cpu_svm_check_intercept_param(env, SVM_EXIT_INIT, 0, 0);
+            do_cpu_init(x86_cpu);
+            cpu->exception_index = EXCP_HALTED;
+            cpu_loop_exit(cpu);
+        }
+#else
+        else if (interrupt_request & CPU_INTERRUPT_RESET) {
+            replay_interrupt();
+            cpu_reset(cpu);
+            cpu_loop_exit(cpu);
+        }
+#endif
+        /* The target hook has 3 exit conditions:
+           False when the interrupt isn't processed,
+           True when it is, and we should restart on a new TB,
+           and via longjmp via cpu_loop_exit.  */
+        else {
+            replay_interrupt();
+            if (cc->cpu_exec_interrupt(cpu, interrupt_request)) {
+                *last_tb = NULL;
+            }
+            /* The target hook may have updated the 'cpu->interrupt_request';
+             * reload the 'interrupt_request' value */
+            interrupt_request = cpu->interrupt_request;
+        }
+        if (interrupt_request & CPU_INTERRUPT_EXITTB) {
+            cpu->interrupt_request &= ~CPU_INTERRUPT_EXITTB;
+            /* ensure that no TB jump will be modified as
+               the program flow was changed */
+            *last_tb = NULL;
+        }
+    }
+    if (unlikely(atomic_read(&cpu->exit_request) || replay_has_interrupt())) {
+        atomic_set(&cpu->exit_request, 0);
+        cpu->exception_index = EXCP_INTERRUPT;
+        cpu_loop_exit(cpu);
+    }
+}
+
+static inline void cpu_loop_exec_tb(CPUState *cpu, TranslationBlock *tb,
+                                    TranslationBlock **last_tb, int *tb_exit,
+                                    SyncClocks *sc)
+{
+    CPUArchState *env = (CPUArchState *)cpu->env_ptr;
+    uintptr_t ret;
+
+    if (unlikely(atomic_read(&cpu->exit_request))) {
+        return;
+    }
+
+    trace_exec_tb(tb, tb->pc);
+    ret = cpu_tb_exec(cpu, tb);
+    tb = (TranslationBlock *)(ret & ~TB_EXIT_MASK);
+    *tb_exit = ret & TB_EXIT_MASK;
+    switch (*tb_exit) {
+    case TB_EXIT_REQUESTED:
+        /* Something asked us to stop executing
+         * chained TBs; just continue round the main
+         * loop. Whatever requested the exit will also
+         * have set something else (eg exit_request or
+         * interrupt_request) which we will handle
+         * next time around the loop.  But we need to
+         * ensure the tcg_exit_req read in generated code
+         * comes before the next read of cpu->exit_request
+         * or cpu->interrupt_request.
+         */
+        smp_rmb();
+        *last_tb = NULL;
+        break;
+    case TB_EXIT_ICOUNT_EXPIRED:
+    {
+        /* Instruction counter expired.  */
+#ifdef CONFIG_USER_ONLY
+        abort();
+#else
+        int insns_left = cpu->icount_decr.u32;
+        *last_tb = NULL;
+        if (cpu->icount_extra && insns_left >= 0) {
+            /* Refill decrementer and continue execution.  */
+            cpu->icount_extra += insns_left;
+            insns_left = MIN(0xffff, cpu->icount_extra);
+            cpu->icount_extra -= insns_left;
+            cpu->icount_decr.u16.low = insns_left;
+        } else {
+            if (insns_left > 0) {
+                /* Execute remaining instructions.  */
+                cpu_exec_nocache(cpu, insns_left, tb, false);
+                align_clocks(sc, cpu);
+            }
+            cpu->exception_index = EXCP_INTERRUPT;
+            cpu_loop_exit(cpu);
+        }
+        break;
+#endif
+    }
+    default:
+        *last_tb = tb;
+        break;
+    }
+
+    if (qemu_etrace_mask(ETRACE_F_EXEC)) {
+        target_ulong cs_base, pc;
+        uint32_t flags;
+
+        if (tb_exit) {
+            /* TB early exit, ask for CPU state.  */
+            cpu_get_tb_cpu_state(env, &pc, &cs_base, &flags);
+        } else {
+            /* TB didn't exit, assume we ran all of it.  */
+            pc = tb->pc + tb->size;
+        }
+        etrace_dump_exec_end(&qemu_etracer,
+                             cpu->cpu_index, pc);
+    }
+
+    qemu_etracer.exec_start_valid = false;
+}
+
 /* main execution loop */
 
 int cpu_exec(CPUState *cpu)
 {
     CPUClass *cc = CPU_GET_CLASS(cpu);
-#ifdef TARGET_I386
-    X86CPU *x86_cpu = X86_CPU(cpu);
-    CPUArchState *env = &x86_cpu->env;
-#else
+    int ret;
     CPUArchState *env = (CPUArchState *)cpu->env_ptr;
-#endif
-    int ret, interrupt_request;
-    TranslationBlock *tb;
-    uintptr_t next_tb;
     SyncClocks sc;
 
     /* replay_interrupt may need current_cpu */
     current_cpu = cpu;
 
-    if (cpu->halted) {
-#if defined(TARGET_I386) && !defined(CONFIG_USER_ONLY)
-        if ((cpu->interrupt_request & CPU_INTERRUPT_POLL)
-            && replay_interrupt()) {
-            apic_poll_irq(x86_cpu->apic_state);
-            cpu_reset_interrupt(cpu, CPU_INTERRUPT_POLL);
-        }
-#endif
-        if (qemu_etrace_mask(ETRACE_F_EXEC)) {
-            const char *dev_name = object_get_canonical_path(OBJECT(cpu));
-            etrace_event_u64(&qemu_etracer, cpu->cpu_index,
-                             ETRACE_EVU64_F_PREV_VAL,
-                             dev_name, "sleep", 0, 1);
-        }
-
-        if (!cpu_has_work(cpu)) {
-            current_cpu = NULL;
-            return EXCP_HALTED;
-        }
-
-        cpu->halted = 0;
+    if (cpu_handle_halt(cpu)) {
+        return EXCP_HALTED;
     }
 
     atomic_mb_set(&tcg_current_cpu, cpu);
@@ -415,204 +664,24 @@ int cpu_exec(CPUState *cpu)
      */
     init_delay_params(&sc, cpu);
 
-    /* prepare setjmp context for exception handling */
     for(;;) {
+        /* prepare setjmp context for exception handling */
         if (sigsetjmp(cpu->jmp_env, 0) == 0) {
+            TranslationBlock *tb, *last_tb = NULL;
+            int tb_exit = 0;
+
             /* if an exception is pending, we execute it here */
-            if (cpu->exception_index >= 0) {
-                if (cpu->exception_index >= EXCP_INTERRUPT) {
-                    /* exit request from the cpu execution loop */
-                    ret = cpu->exception_index;
-                    if (ret == EXCP_DEBUG) {
-                        cpu_handle_debug_exception(cpu);
-                    }
-                    cpu->exception_index = -1;
-                    break;
-                } else {
-#if defined(CONFIG_USER_ONLY)
-                    /* if user mode only, we simulate a fake exception
-                       which will be handled outside the cpu execution
-                       loop */
-#if defined(TARGET_I386)
-                    cc->do_interrupt(cpu);
-#endif
-                    ret = cpu->exception_index;
-                    cpu->exception_index = -1;
-                    break;
-#else
-                    if (replay_exception()) {
-                        cc->do_interrupt(cpu);
-                        cpu->exception_index = -1;
-                    } else if (!replay_has_interrupt()) {
-                        /* give a chance to iothread in replay mode */
-                        ret = EXCP_INTERRUPT;
-                        break;
-                    }
-#endif
-                }
-            } else if (replay_has_exception()
-                       && cpu->icount_decr.u16.low + cpu->icount_extra == 0) {
-                /* try to cause an exception pending in the log */
-                cpu_exec_nocache(cpu, 1, tb_find_fast(cpu), true);
-                ret = -1;
+            if (cpu_handle_exception(cpu, &ret)) {
                 break;
             }
 
-            next_tb = 0; /* force lookup of first TB */
             for(;;) {
-                interrupt_request = cpu->interrupt_request;
-                if (unlikely(interrupt_request)) {
-                    if (unlikely(cpu->singlestep_enabled & SSTEP_NOIRQ)) {
-                        /* Mask out external interrupts for this step. */
-                        interrupt_request &= ~CPU_INTERRUPT_SSTEP_MASK;
-                    }
-                    if (interrupt_request & CPU_INTERRUPT_DEBUG) {
-                        cpu->interrupt_request &= ~CPU_INTERRUPT_DEBUG;
-                        cpu->exception_index = EXCP_DEBUG;
-                        cpu_loop_exit(cpu);
-                    }
-                    if (replay_mode == REPLAY_MODE_PLAY
-                        && !replay_has_interrupt()) {
-                        /* Do nothing */
-                    } else if (interrupt_request & CPU_INTERRUPT_HALT) {
-                        replay_interrupt();
-                        cpu->interrupt_request &= ~CPU_INTERRUPT_HALT;
-                        cpu->halted = 1;
-                        cpu->exception_index = EXCP_HLT;
-                        cpu_loop_exit(cpu);
-                    }
-#if defined(TARGET_I386)
-                    else if (interrupt_request & CPU_INTERRUPT_INIT) {
-                        replay_interrupt();
-                        cpu_svm_check_intercept_param(env, SVM_EXIT_INIT, 0);
-                        do_cpu_init(x86_cpu);
-                        cpu->exception_index = EXCP_HALTED;
-                        cpu_loop_exit(cpu);
-                    }
-#else
-                    else if (interrupt_request & CPU_INTERRUPT_RESET) {
-                        replay_interrupt();
-                        cpu_reset(cpu);
-                        cpu_loop_exit(cpu);
-                    }
-#endif
-                    /* The target hook has 3 exit conditions:
-                       False when the interrupt isn't processed,
-                       True when it is, and we should restart on a new TB,
-                       and via longjmp via cpu_loop_exit.  */
-                    else {
-                        replay_interrupt();
-                        if (cc->cpu_exec_interrupt(cpu, interrupt_request)) {
-                            next_tb = 0;
-                        }
-                    }
-                    /* Don't use the cached interrupt_request value,
-                       do_interrupt may have updated the EXITTB flag. */
-                    if (cpu->interrupt_request & CPU_INTERRUPT_EXITTB) {
-                        cpu->interrupt_request &= ~CPU_INTERRUPT_EXITTB;
-                        /* ensure that no TB jump will be modified as
-                           the program flow was changed */
-                        next_tb = 0;
-                    }
-                }
-                if (unlikely(cpu->exit_request
-                             || replay_has_interrupt())) {
-                    cpu->exit_request = 0;
-                    cpu->exception_index = EXCP_INTERRUPT;
-                    cpu_loop_exit(cpu);
-                }
-                tb_lock();
-                tb = tb_find_fast(cpu);
-                /* Note: we do it here to avoid a gcc bug on Mac OS X when
-                   doing it in tb_find_slow */
-                if (tcg_ctx.tb_ctx.tb_invalidated_flag) {
-                    /* as some TB could have been invalidated because
-                       of memory exceptions while generating the code, we
-                       must recompute the hash index here */
-                    next_tb = 0;
-                    tcg_ctx.tb_ctx.tb_invalidated_flag = 0;
-                }
-                /* see if we can patch the calling TB. When the TB
-                   spans two pages, we cannot safely do a direct
-                   jump. */
-                if (next_tb != 0 && tb->page_addr[1] == -1
-                    && !qemu_loglevel_mask(CPU_LOG_TB_NOCHAIN)) {
-                    tb_add_jump((TranslationBlock *)(next_tb & ~TB_EXIT_MASK),
-                                next_tb & TB_EXIT_MASK, tb);
-                }
-                tb_unlock();
-                if (likely(!cpu->exit_request)) {
-                    bool tb_exit = false;
-                    trace_exec_tb(tb, tb->pc);
-                    /* execute the generated code */
-                    cpu->current_tb = tb;
-                    next_tb = cpu_tb_exec(cpu, tb);
-                    cpu->current_tb = NULL;
-                    switch (next_tb & TB_EXIT_MASK) {
-                    case TB_EXIT_REQUESTED:
-                        /* Something asked us to stop executing
-                         * chained TBs; just continue round the main
-                         * loop. Whatever requested the exit will also
-                         * have set something else (eg exit_request or
-                         * interrupt_request) which we will handle
-                         * next time around the loop.  But we need to
-                         * ensure the tcg_exit_req read in generated code
-                         * comes before the next read of cpu->exit_request
-                         * or cpu->interrupt_request.
-                         */
-                        smp_rmb();
-                        next_tb = 0;
-                        tb_exit = true;
-                        break;
-                    case TB_EXIT_ICOUNT_EXPIRED:
-                    {
-                        /* Instruction counter expired.  */
-                        int insns_left = cpu->icount_decr.u32;
-                        if (cpu->icount_extra && insns_left >= 0) {
-                            /* Refill decrementer and continue execution.  */
-                            cpu->icount_extra += insns_left;
-                            insns_left = MIN(0xffff, cpu->icount_extra);
-                            cpu->icount_extra -= insns_left;
-                            cpu->icount_decr.u16.low = insns_left;
-                        } else {
-                            if (insns_left > 0) {
-                                /* Execute remaining instructions.  */
-                                tb = (TranslationBlock *)(next_tb & ~TB_EXIT_MASK);
-                                cpu_exec_nocache(cpu, insns_left, tb, false);
-                                align_clocks(&sc, cpu);
-                            }
-                            cpu->exception_index = EXCP_INTERRUPT;
-                            next_tb = 0;
-                            cpu_loop_exit(cpu);
-                        }
-                        tb_exit = true;
-                        break;
-                    }
-                    default:
-                        tb_exit = false;
-                        break;
-                    }
-                    if (qemu_etrace_mask(ETRACE_F_EXEC)) {
-                        target_ulong cs_base, pc;
-                        int flags;
-
-                        if (tb_exit) {
-                            /* TB early exit, ask for CPU state.  */
-                            cpu_get_tb_cpu_state(env, &pc, &cs_base, &flags);
-                        } else {
-                            /* TB didn't exit, assume we ran all of it.  */
-                            pc = tb->pc + tb->size;
-                        }
-                        etrace_dump_exec_end(&qemu_etracer,
-                                             cpu->cpu_index, pc);
-                    }
-                }
-                qemu_etracer.exec_start_valid = false;
+                cpu_handle_interrupt(cpu, &last_tb);
+                tb = tb_find(cpu, last_tb, tb_exit);
+                cpu_loop_exec_tb(cpu, tb, &last_tb, &tb_exit, &sc);
                 /* Try to align the host and virtual clocks
                    if the guest is in advance */
                 align_clocks(&sc, cpu);
-                /* reset soft MMU for next block (it can currently
-                   only be set by a memory fault) */
             } /* for(;;) */
         } else {
 #if defined(__clang__) || !QEMU_GNUC_PREREQ(4, 6)
@@ -622,23 +691,15 @@ int cpu_exec(CPUState *cpu)
              * Newer versions of gcc would complain about this code (-Wclobbered). */
             cpu = current_cpu;
             cc = CPU_GET_CLASS(cpu);
-#ifdef TARGET_I386
-            x86_cpu = X86_CPU(cpu);
-            env = &x86_cpu->env;
-#endif
 #else /* buggy compiler */
             /* Assert that the compiler does not smash local variables. */
             g_assert(cpu == current_cpu);
             g_assert(cc == CPU_GET_CLASS(cpu));
-#ifdef TARGET_I386
-            g_assert(x86_cpu == X86_CPU(cpu));
-            g_assert(env == &x86_cpu->env);
-#endif
 #endif /* buggy compiler */
             if (qemu_etrace_mask(ETRACE_F_EXEC)
                 && qemu_etracer.exec_start_valid) {
                 target_ulong cs_base, pc;
-                int flags;
+                uint32_t flags;
 
                 cpu_get_tb_cpu_state(env, &pc, &cs_base, &flags);
                 etrace_dump_exec_end(&qemu_etracer, cpu->cpu_index, pc);

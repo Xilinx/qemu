@@ -17,7 +17,6 @@
  *  along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 #include "qemu/osdep.h"
-#include <sys/mman.h>
 
 #include "qemu.h"
 #include "qemu-common.h"
@@ -41,6 +40,11 @@ void mmap_unlock(void)
     if (--mmap_lock_count == 0) {
         pthread_mutex_unlock(&mmap_mutex);
     }
+}
+
+bool have_mmap_lock(void)
+{
+    return mmap_lock_count > 0 ? true : false;
 }
 
 /* Grab lock to make sure things are in a consistent state after fork().  */

@@ -17,7 +17,6 @@
 #include "qemu/osdep.h"
 #include "libqtest.h"
 
-#include <glib.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
 #include <sys/un.h>
@@ -27,7 +26,7 @@
 #include "qapi/qmp/qjson.h"
 
 #define MAX_IRQ 256
-#define SOCKET_TIMEOUT 5
+#define SOCKET_TIMEOUT 50
 
 QTestState *global_qtest;
 
@@ -38,6 +37,7 @@ struct QTestState
     bool irq_level[MAX_IRQ];
     GString *rx;
     pid_t qemu_pid;  /* our child QEMU process */
+    bool big_endian;
 };
 
 static GHookList abrt_hooks;
@@ -47,6 +47,8 @@ static struct sigaction sigact_old;
 #define g_assert_no_errno(ret) do { \
     g_assert_cmpint(ret, !=, -1); \
 } while (0)
+
+static int qtest_query_target_endianness(QTestState *s);
 
 static int init_socket(const char *socket_path)
 {
@@ -210,6 +212,10 @@ QTestState *qtest_init(const char *extra_args)
         kill(s->qemu_pid, SIGSTOP);
     }
 
+    /* ask endianness of the target */
+
+    s->big_endian = qtest_query_target_endianness(s);
+
     return s;
 }
 
@@ -341,6 +347,20 @@ redo:
     }
 
     return words;
+}
+
+static int qtest_query_target_endianness(QTestState *s)
+{
+    gchar **args;
+    int big_endian;
+
+    qtest_sendf(s, "endianness\n");
+    args = qtest_rsp(s, 1);
+    g_assert(strcmp(args[1], "big") == 0 || strcmp(args[1], "little") == 0);
+    big_endian = strcmp(args[1], "big") == 0;
+    g_strfreev(args);
+
+    return big_endian;
 }
 
 typedef struct {
@@ -513,7 +533,7 @@ void qtest_qmp_discard_response(QTestState *s, const char *fmt, ...)
     QDECREF(response);
 }
 
-void qtest_qmp_eventwait(QTestState *s, const char *event)
+QDict *qtest_qmp_eventwait_ref(QTestState *s, const char *event)
 {
     QDict *response;
 
@@ -521,11 +541,18 @@ void qtest_qmp_eventwait(QTestState *s, const char *event)
         response = qtest_qmp_receive(s);
         if ((qdict_haskey(response, "event")) &&
             (strcmp(qdict_get_str(response, "event"), event) == 0)) {
-            QDECREF(response);
-            break;
+            return response;
         }
         QDECREF(response);
     }
+}
+
+void qtest_qmp_eventwait(QTestState *s, const char *event)
+{
+    QDict *response;
+
+    response = qtest_qmp_eventwait_ref(s, event);
+    QDECREF(response);
 }
 
 char *qtest_hmpv(QTestState *s, const char *fmt, va_list ap)
@@ -752,10 +779,39 @@ void qtest_memread(QTestState *s, uint64_t addr, void *data, size_t size)
     g_strfreev(args);
 }
 
+uint64_t qtest_rtas_call(QTestState *s, const char *name,
+                         uint32_t nargs, uint64_t args,
+                         uint32_t nret, uint64_t ret)
+{
+    qtest_sendf(s, "rtas %s %u 0x%"PRIx64" %u 0x%"PRIx64"\n",
+                name, nargs, args, nret, ret);
+    qtest_rsp(s, 0);
+    return 0;
+}
+
 void qtest_add_func(const char *str, void (*fn)(void))
 {
     gchar *path = g_strdup_printf("/%s/%s", qtest_get_arch(), str);
     g_test_add_func(path, fn);
+    g_free(path);
+}
+
+void qtest_add_data_func_full(const char *str, void *data,
+                              void (*fn)(const void *),
+                              GDestroyNotify data_free_func)
+{
+    gchar *path = g_strdup_printf("/%s/%s", qtest_get_arch(), str);
+#if GLIB_CHECK_VERSION(2, 34, 0)
+    g_test_add_data_func_full(path, data, fn, data_free_func);
+#elif GLIB_CHECK_VERSION(2, 26, 0)
+    /* back-compat casts, remove this once we can require new-enough glib */
+    g_test_add_vtable(path, 0, data, NULL,
+                      (GTestFixtureFunc)fn, (GTestFixtureFunc) data_free_func);
+#else
+    /* back-compat casts, remove this once we can require new-enough glib */
+    g_test_add_vtable(path, 0, data, NULL,
+                      (void (*)(void)) fn, (void (*)(void)) data_free_func);
+#endif
     g_free(path);
 }
 
@@ -858,50 +914,7 @@ char *hmp(const char *fmt, ...)
     return ret;
 }
 
-bool qtest_big_endian(void)
+bool qtest_big_endian(QTestState *s)
 {
-    const char *arch = qtest_get_arch();
-    int i;
-
-    static const struct {
-        const char *arch;
-        bool big_endian;
-    } endianness[] = {
-        { "aarch64", false },
-        { "alpha", false },
-        { "arm", false },
-        { "cris", false },
-        { "i386", false },
-        { "lm32", true },
-        { "m68k", true },
-        { "microblaze", true },
-        { "microblazeel", false },
-        { "mips", true },
-        { "mips64", true },
-        { "mips64el", false },
-        { "mipsel", false },
-        { "moxie", true },
-        { "or32", true },
-        { "ppc", true },
-        { "ppc64", true },
-        { "ppcemb", true },
-        { "s390x", true },
-        { "sh4", false },
-        { "sh4eb", true },
-        { "sparc", true },
-        { "sparc64", true },
-        { "unicore32", false },
-        { "x86_64", false },
-        { "xtensa", false },
-        { "xtensaeb", true },
-        {},
-    };
-
-    for (i = 0; endianness[i].arch; i++) {
-        if (strcmp(endianness[i].arch, arch) == 0) {
-            return endianness[i].big_endian;
-        }
-    }
-
-    return false;
+    return s->big_endian;
 }

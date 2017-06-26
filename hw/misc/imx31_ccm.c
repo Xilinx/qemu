@@ -13,6 +13,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/misc/imx31_ccm.h"
+#include "qemu/log.h"
 
 #define CKIH_FREQ 26000000 /* 26MHz crystal input */
 
@@ -28,7 +29,7 @@
         } \
     } while (0)
 
-static char const *imx31_ccm_reg_name(uint32_t reg)
+static const char *imx31_ccm_reg_name(uint32_t reg)
 {
     static char unknown[20];
 

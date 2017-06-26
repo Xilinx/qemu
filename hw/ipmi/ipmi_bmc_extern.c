@@ -54,7 +54,8 @@
 #define   VM_CAPABILITIES_IRQ      0x04
 #define   VM_CAPABILITIES_NMI      0x08
 #define   VM_CAPABILITIES_ATTN     0x10
-#define VM_CMD_FORCEOFF            0x09
+#define   VM_CAPABILITIES_GRACEFUL_SHUTDOWN 0x20
+#define VM_CMD_GRACEFUL_SHUTDOWN   0x09
 
 #define TYPE_IPMI_BMC_EXTERN "ipmi-bmc-extern"
 #define IPMI_BMC_EXTERN(obj) OBJECT_CHECK(IPMIBmcExtern, (obj), \
@@ -62,7 +63,7 @@
 typedef struct IPMIBmcExtern {
     IPMIBmc parent;
 
-    CharDriverState *chr;
+    CharBackend chr;
 
     bool connected;
 
@@ -100,12 +101,16 @@ ipmb_checksum(const unsigned char *data, int size, unsigned char start)
 
 static void continue_send(IPMIBmcExtern *ibe)
 {
+    int ret;
     if (ibe->outlen == 0) {
         goto check_reset;
     }
  send:
-    ibe->outpos += qemu_chr_fe_write(ibe->chr, ibe->outbuf + ibe->outpos,
-                                     ibe->outlen - ibe->outpos);
+    ret = qemu_chr_fe_write(&ibe->chr, ibe->outbuf + ibe->outpos,
+                            ibe->outlen - ibe->outpos);
+    if (ret > 0) {
+        ibe->outpos += ret;
+    }
     if (ibe->outpos < ibe->outlen) {
         /* Not fully transmitted, try again in a 10ms */
         timer_mod_ns(ibe->extern_timer,
@@ -190,7 +195,7 @@ static void ipmi_bmc_extern_handle_command(IPMIBmc *b,
     if (ibe->outlen) {
         /* We already have a command queued.  Shouldn't ever happen. */
         fprintf(stderr, "IPMI KCS: Got command when not finished with the"
-                " previous commmand\n");
+                " previous command\n");
         abort();
     }
 
@@ -272,8 +277,8 @@ static void handle_hw_op(IPMIBmcExtern *ibe, unsigned char hw_op)
         k->do_hw_op(s, IPMI_SEND_NMI, 0);
         break;
 
-    case VM_CMD_FORCEOFF:
-        qemu_system_shutdown_request();
+    case VM_CMD_GRACEFUL_SHUTDOWN:
+        k->do_hw_op(s, IPMI_SHUTDOWN_VIA_ACPI_OVERTEMP, 0);
         break;
     }
 }
@@ -397,6 +402,10 @@ static void chr_event(void *opaque, int event)
         if (k->do_hw_op(ibe->parent.intf, IPMI_POWEROFF_CHASSIS, 1) == 0) {
             v |= VM_CAPABILITIES_POWER;
         }
+        if (k->do_hw_op(ibe->parent.intf, IPMI_SHUTDOWN_VIA_ACPI_OVERTEMP, 1)
+            == 0) {
+            v |= VM_CAPABILITIES_GRACEFUL_SHUTDOWN;
+        }
         if (k->do_hw_op(ibe->parent.intf, IPMI_RESET_CHASSIS, 1) == 0) {
             v |= VM_CAPABILITIES_RESET;
         }
@@ -438,12 +447,13 @@ static void ipmi_bmc_extern_realize(DeviceState *dev, Error **errp)
 {
     IPMIBmcExtern *ibe = IPMI_BMC_EXTERN(dev);
 
-    if (!ibe->chr) {
+    if (!qemu_chr_fe_get_driver(&ibe->chr)) {
         error_setg(errp, "IPMI external bmc requires chardev attribute");
         return;
     }
 
-    qemu_chr_add_handlers(ibe->chr, can_receive, receive, chr_event, ibe);
+    qemu_chr_fe_set_handlers(&ibe->chr, can_receive, receive,
+                             chr_event, ibe, NULL, true);
 }
 
 static int ipmi_bmc_extern_post_migrate(void *opaque, int version_id)
@@ -487,6 +497,14 @@ static void ipmi_bmc_extern_init(Object *obj)
     vmstate_register(NULL, 0, &vmstate_ipmi_bmc_extern, ibe);
 }
 
+static void ipmi_bmc_extern_finalize(Object *obj)
+{
+    IPMIBmcExtern *ibe = IPMI_BMC_EXTERN(obj);
+
+    timer_del(ibe->extern_timer);
+    timer_free(ibe->extern_timer);
+}
+
 static Property ipmi_bmc_extern_properties[] = {
     DEFINE_PROP_CHR("chardev", IPMIBmcExtern, chr),
     DEFINE_PROP_END_OF_LIST(),
@@ -499,6 +517,7 @@ static void ipmi_bmc_extern_class_init(ObjectClass *oc, void *data)
 
     bk->handle_command = ipmi_bmc_extern_handle_command;
     bk->handle_reset = ipmi_bmc_extern_handle_reset;
+    dc->hotpluggable = false;
     dc->realize = ipmi_bmc_extern_realize;
     dc->props = ipmi_bmc_extern_properties;
 }
@@ -508,6 +527,7 @@ static const TypeInfo ipmi_bmc_extern_type = {
     .parent        = TYPE_IPMI_BMC,
     .instance_size = sizeof(IPMIBmcExtern),
     .instance_init = ipmi_bmc_extern_init,
+    .instance_finalize = ipmi_bmc_extern_finalize,
     .class_init    = ipmi_bmc_extern_class_init,
  };
 

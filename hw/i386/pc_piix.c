@@ -23,7 +23,6 @@
  */
 
 #include "qemu/osdep.h"
-#include <glib.h>
 
 #include "hw/hw.h"
 #include "hw/loader.h"
@@ -75,7 +74,6 @@ static void pc_init1(MachineState *machine,
     ISABus *isa_bus;
     PCII440FXState *i440fx_state;
     int piix3_devfn = -1;
-    qemu_irq *gsi;
     qemu_irq *i8259;
     qemu_irq smi_irq;
     GSIState *gsi_state;
@@ -87,42 +85,65 @@ static void pc_init1(MachineState *machine,
     MemoryRegion *rom_memory;
     ram_addr_t lowmem;
 
-    /* Check whether RAM fits below 4G (leaving 1/2 GByte for IO memory).
-     * If it doesn't, we need to split it in chunks below and above 4G.
-     * In any case, try to make sure that guest addresses aligned at
-     * 1G boundaries get mapped to host addresses aligned at 1G boundaries.
-     * For old machine types, use whatever split we used historically to avoid
-     * breaking migration.
+    /*
+     * Calculate ram split, for memory below and above 4G.  It's a bit
+     * complicated for backward compatibility reasons ...
+     *
+     *  - Traditional split is 3.5G (lowmem = 0xe0000000).  This is the
+     *    default value for max_ram_below_4g now.
+     *
+     *  - Then, to gigabyte align the memory, we move the split to 3G
+     *    (lowmem = 0xc0000000).  But only in case we have to split in
+     *    the first place, i.e. ram_size is larger than (traditional)
+     *    lowmem.  And for new machine types (gigabyte_align = true)
+     *    only, for live migration compatibility reasons.
+     *
+     *  - Next the max-ram-below-4g option was added, which allowed to
+     *    reduce lowmem to a smaller value, to allow a larger PCI I/O
+     *    window below 4G.  qemu doesn't enforce gigabyte alignment here,
+     *    but prints a warning.
+     *
+     *  - Finally max-ram-below-4g got updated to also allow raising lowmem,
+     *    so legacy non-PAE guests can get as much memory as possible in
+     *    the 32bit address space below 4G.
+     *
+     *  - Note that Xen has its own ram setp code in xen_ram_init(),
+     *    called via xen_hvm_init().
+     *
+     * Examples:
+     *    qemu -M pc-1.7 -m 4G    (old default)    -> 3584M low,  512M high
+     *    qemu -M pc -m 4G        (new default)    -> 3072M low, 1024M high
+     *    qemu -M pc,max-ram-below-4g=2G -m 4G     -> 2048M low, 2048M high
+     *    qemu -M pc,max-ram-below-4g=4G -m 3968M  -> 3968M low (=4G-128M)
      */
-    if (machine->ram_size >= 0xe0000000) {
-        lowmem = pcmc->gigabyte_align ? 0xc0000000 : 0xe0000000;
-    } else {
-        lowmem = 0xe0000000;
-    }
-
-    /* Handle the machine opt max-ram-below-4g.  It is basically doing
-     * min(qemu limit, user limit).
-     */
-    if (lowmem > pcms->max_ram_below_4g) {
-        lowmem = pcms->max_ram_below_4g;
-        if (machine->ram_size - lowmem > lowmem &&
-            lowmem & ((1ULL << 30) - 1)) {
-            error_report("Warning: Large machine and max_ram_below_4g(%"PRIu64
-                         ") not a multiple of 1G; possible bad performance.",
-                         pcms->max_ram_below_4g);
-        }
-    }
-
-    if (machine->ram_size >= lowmem) {
-        pcms->above_4g_mem_size = machine->ram_size - lowmem;
-        pcms->below_4g_mem_size = lowmem;
-    } else {
-        pcms->above_4g_mem_size = 0;
-        pcms->below_4g_mem_size = machine->ram_size;
-    }
-
     if (xen_enabled()) {
         xen_hvm_init(pcms, &ram_memory);
+    } else {
+        if (!pcms->max_ram_below_4g) {
+            pcms->max_ram_below_4g = 0xe0000000; /* default: 3.5G */
+        }
+        lowmem = pcms->max_ram_below_4g;
+        if (machine->ram_size >= pcms->max_ram_below_4g) {
+            if (pcmc->gigabyte_align) {
+                if (lowmem > 0xc0000000) {
+                    lowmem = 0xc0000000;
+                }
+                if (lowmem & ((1ULL << 30) - 1)) {
+                    error_report("Warning: Large machine and max_ram_below_4g "
+                                 "(%" PRIu64 ") not a multiple of 1G; "
+                                 "possible bad performance.",
+                                 pcms->max_ram_below_4g);
+                }
+            }
+        }
+
+        if (machine->ram_size >= lowmem) {
+            pcms->above_4g_mem_size = machine->ram_size - lowmem;
+            pcms->below_4g_mem_size = lowmem;
+        } else {
+            pcms->above_4g_mem_size = 0;
+            pcms->below_4g_mem_size = machine->ram_size;
+        }
     }
 
     pc_cpus_init(pcms);
@@ -163,16 +184,16 @@ static void pc_init1(MachineState *machine,
     gsi_state = g_malloc0(sizeof(*gsi_state));
     if (kvm_ioapic_in_kernel()) {
         kvm_pc_setup_irq_routing(pcmc->pci_enabled);
-        gsi = qemu_allocate_irqs(kvm_pc_gsi_handler, gsi_state,
-                                 GSI_NUM_PINS);
+        pcms->gsi = qemu_allocate_irqs(kvm_pc_gsi_handler, gsi_state,
+                                       GSI_NUM_PINS);
     } else {
-        gsi = qemu_allocate_irqs(gsi_handler, gsi_state, GSI_NUM_PINS);
+        pcms->gsi = qemu_allocate_irqs(gsi_handler, gsi_state, GSI_NUM_PINS);
     }
 
     if (pcmc->pci_enabled) {
         pci_bus = i440fx_init(host_type,
                               pci_type,
-                              &i440fx_state, &piix3_devfn, &isa_bus, gsi,
+                              &i440fx_state, &piix3_devfn, &isa_bus, pcms->gsi,
                               system_memory, system_io, machine->ram_size,
                               pcms->below_4g_mem_size,
                               pcms->above_4g_mem_size,
@@ -185,7 +206,7 @@ static void pc_init1(MachineState *machine,
                               &error_abort);
         no_hpet = 1;
     }
-    isa_bus_irqs(isa_bus, gsi);
+    isa_bus_irqs(isa_bus, pcms->gsi);
 
     if (kvm_pic_in_kernel()) {
         i8259 = kvm_i8259_init(isa_bus);
@@ -203,7 +224,7 @@ static void pc_init1(MachineState *machine,
         ioapic_init_gsi(gsi_state, "i440fx");
     }
 
-    pc_register_ferr_irq(gsi[13]);
+    pc_register_ferr_irq(pcms->gsi[13]);
 
     pc_vga_init(isa_bus, pcmc->pci_enabled ? pci_bus : NULL);
 
@@ -213,7 +234,7 @@ static void pc_init1(MachineState *machine,
     }
 
     /* init basic PC hardware */
-    pc_basic_device_init(isa_bus, gsi, &rtc_state, true,
+    pc_basic_device_init(isa_bus, pcms->gsi, &rtc_state, true,
                          (pcms->vmport != ON_OFF_AUTO_ON), 0x4);
 
     pc_nic_init(isa_bus, pci_bus);
@@ -246,7 +267,7 @@ static void pc_init1(MachineState *machine,
 
     pc_cmos_init(pcms, idebus[0], idebus[1], rtc_state);
 
-    if (pcmc->pci_enabled && usb_enabled()) {
+    if (pcmc->pci_enabled && machine_usb(machine)) {
         pci_create_simple(pci_bus, piix3_devfn + 2, "piix3-usb-uhci");
     }
 
@@ -257,7 +278,7 @@ static void pc_init1(MachineState *machine,
         smi_irq = qemu_allocate_irq(pc_acpi_smi_interrupt, first_cpu, 0);
         /* TODO: Populate SPD eeprom data.  */
         smbus = piix4_pm_init(pci_bus, piix3_devfn + 3, 0xb100,
-                              gsi[9], smi_irq,
+                              pcms->gsi[9], smi_irq,
                               pc_machine_is_smm_enabled(pcms),
                               &piix4_pm);
         smbus_eeprom_init(smbus, 8, NULL, 0);
@@ -416,11 +437,35 @@ static void pc_i440fx_machine_options(MachineClass *m)
     m->default_display = "std";
 }
 
-static void pc_i440fx_2_6_machine_options(MachineClass *m)
+static void pc_i440fx_2_8_machine_options(MachineClass *m)
 {
     pc_i440fx_machine_options(m);
     m->alias = "pc";
     m->is_default = 1;
+}
+
+DEFINE_I440FX_MACHINE(v2_8, "pc-i440fx-2.8", NULL,
+                      pc_i440fx_2_8_machine_options);
+
+
+static void pc_i440fx_2_7_machine_options(MachineClass *m)
+{
+    pc_i440fx_2_8_machine_options(m);
+    m->is_default = 0;
+    m->alias = NULL;
+    SET_MACHINE_COMPAT(m, PC_COMPAT_2_7);
+}
+
+DEFINE_I440FX_MACHINE(v2_7, "pc-i440fx-2.7", NULL,
+                      pc_i440fx_2_7_machine_options);
+
+
+static void pc_i440fx_2_6_machine_options(MachineClass *m)
+{
+    PCMachineClass *pcmc = PC_MACHINE_CLASS(m);
+    pc_i440fx_2_7_machine_options(m);
+    pcmc->legacy_cpu_hotplug = true;
+    SET_MACHINE_COMPAT(m, PC_COMPAT_2_6);
 }
 
 DEFINE_I440FX_MACHINE(v2_6, "pc-i440fx-2.6", NULL,
@@ -431,8 +476,6 @@ static void pc_i440fx_2_5_machine_options(MachineClass *m)
 {
     PCMachineClass *pcmc = PC_MACHINE_CLASS(m);
     pc_i440fx_2_6_machine_options(m);
-    m->alias = NULL;
-    m->is_default = 0;
     pcmc->save_tsc_khz = false;
     m->legacy_fw_cfg_order = 1;
     SET_MACHINE_COMPAT(m, PC_COMPAT_2_5);
@@ -582,7 +625,7 @@ DEFINE_I440FX_MACHINE(v1_4, "pc-i440fx-1.4", pc_compat_1_4,
 
 
 #define PC_COMPAT_1_3 \
-        PC_COMPAT_1_4 \
+        PC_CPU_MODEL_IDS("1.3.0") \
         {\
             .driver   = "usb-tablet",\
             .property = "usb_version",\
@@ -614,7 +657,7 @@ DEFINE_I440FX_MACHINE(v1_3, "pc-1.3", pc_compat_1_3,
 
 
 #define PC_COMPAT_1_2 \
-        PC_COMPAT_1_3 \
+        PC_CPU_MODEL_IDS("1.2.0") \
         {\
             .driver   = "nec-usb-xhci",\
             .property = "msi",\
@@ -653,7 +696,7 @@ DEFINE_I440FX_MACHINE(v1_2, "pc-1.2", pc_compat_1_2,
 
 
 #define PC_COMPAT_1_1 \
-        PC_COMPAT_1_2 \
+        PC_CPU_MODEL_IDS("1.1.0") \
         {\
             .driver   = "virtio-scsi-pci",\
             .property = "hotplug",\
@@ -696,7 +739,7 @@ DEFINE_I440FX_MACHINE(v1_1, "pc-1.1", pc_compat_1_2,
 
 
 #define PC_COMPAT_1_0 \
-        PC_COMPAT_1_1 \
+        PC_CPU_MODEL_IDS("1.0") \
         {\
             .driver   = TYPE_ISA_FDC,\
             .property = "check_media_rate",\
@@ -727,7 +770,7 @@ DEFINE_I440FX_MACHINE(v1_0, "pc-1.0", pc_compat_1_2,
 
 
 #define PC_COMPAT_0_15 \
-        PC_COMPAT_1_0
+        PC_CPU_MODEL_IDS("0.15")
 
 static void pc_i440fx_0_15_machine_options(MachineClass *m)
 {
@@ -741,7 +784,7 @@ DEFINE_I440FX_MACHINE(v0_15, "pc-0.15", pc_compat_1_2,
 
 
 #define PC_COMPAT_0_14 \
-        PC_COMPAT_0_15 \
+        PC_CPU_MODEL_IDS("0.14") \
         {\
             .driver   = "virtio-blk-pci",\
             .property = "event_idx",\
@@ -780,7 +823,7 @@ DEFINE_I440FX_MACHINE(v0_14, "pc-0.14", pc_compat_1_2,
 
 
 #define PC_COMPAT_0_13 \
-        PC_COMPAT_0_14 \
+        PC_CPU_MODEL_IDS("0.13") \
         {\
             .driver   = TYPE_PCI_DEVICE,\
             .property = "command_serr_enable",\
@@ -817,7 +860,7 @@ DEFINE_I440FX_MACHINE(v0_13, "pc-0.13", pc_compat_0_13,
 
 
 #define PC_COMPAT_0_12 \
-        PC_COMPAT_0_13 \
+        PC_CPU_MODEL_IDS("0.12") \
         {\
             .driver   = "virtio-serial-pci",\
             .property = "max_ports",\
@@ -852,7 +895,7 @@ DEFINE_I440FX_MACHINE(v0_12, "pc-0.12", pc_compat_0_13,
 
 
 #define PC_COMPAT_0_11 \
-        PC_COMPAT_0_12 \
+        PC_CPU_MODEL_IDS("0.11") \
         {\
             .driver   = "virtio-blk-pci",\
             .property = "vectors",\
@@ -883,7 +926,7 @@ DEFINE_I440FX_MACHINE(v0_11, "pc-0.11", pc_compat_0_13,
 
 
 #define PC_COMPAT_0_10 \
-    PC_COMPAT_0_11 \
+    PC_CPU_MODEL_IDS("0.10") \
     {\
         .driver   = "virtio-blk-pci",\
         .property = "class",\

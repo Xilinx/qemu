@@ -17,11 +17,11 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 #include "qemu/osdep.h"
-#include <hw/hw.h>
+#include "hw/hw.h"
 #include "sysemu/dma.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
-#include <hw/ide/internal.h>
+#include "hw/ide/internal.h"
 #include "sysemu/block-backend.h"
 #include "sysemu/blockdev.h"
 #include "hw/block/block.h"
@@ -31,6 +31,7 @@
 /* --------------------------------- */
 
 static char *idebus_get_fw_dev_path(DeviceState *dev);
+static void idebus_unrealize(DeviceState *qdev, Error **errp);
 
 static Property ide_props[] = {
     DEFINE_PROP_UINT32("unit", IDEDevice, unit, -1),
@@ -42,6 +43,15 @@ static void ide_bus_class_init(ObjectClass *klass, void *data)
     BusClass *k = BUS_CLASS(klass);
 
     k->get_fw_dev_path = idebus_get_fw_dev_path;
+}
+
+static void idebus_unrealize(DeviceState *qdev, Error **errp)
+{
+    IDEBus *bus = DO_UPCAST(IDEBus, qbus, qdev->parent_bus);
+
+    if (bus->vmstate) {
+        qemu_del_vm_change_state_handler(bus->vmstate);
+    }
 }
 
 static const TypeInfo ide_bus_info = {
@@ -75,10 +85,6 @@ static int ide_qdev_init(DeviceState *qdev)
     IDEDeviceClass *dc = IDE_DEVICE_GET_CLASS(dev);
     IDEBus *bus = DO_UPCAST(IDEBus, qbus, qdev->parent_bus);
 
-    if (!dev->conf.blk) {
-        error_report("No drive specified");
-        goto err;
-    }
     if (dev->unit == -1) {
         dev->unit = bus->master ? 1 : 0;
     }
@@ -158,6 +164,16 @@ static int ide_dev_initfn(IDEDevice *dev, IDEDriveKind kind)
     IDEState *s = bus->ifs + dev->unit;
     Error *err = NULL;
 
+    if (!dev->conf.blk) {
+        if (kind != IDE_CD) {
+            error_report("No drive specified");
+            return -1;
+        } else {
+            /* Anonymous BlockBackend for an empty drive */
+            dev->conf.blk = blk_new();
+        }
+    }
+
     if (dev->conf.discard_granularity == -1) {
         dev->conf.discard_granularity = 512;
     } else if (dev->conf.discard_granularity &&
@@ -180,6 +196,7 @@ static int ide_dev_initfn(IDEDevice *dev, IDEDriveKind kind)
             return -1;
         }
     }
+    blkconf_apply_backend_options(&dev->conf);
 
     if (ide_init_drive(s, dev->conf.blk, kind,
                        dev->version, dev->serial, dev->model, dev->wwn,
@@ -233,9 +250,7 @@ static void ide_dev_set_bootindex(Object *obj, Visitor *v, const char *name,
                              d->unit ? "/disk@1" : "/disk@0");
     }
 out:
-    if (local_err) {
-        error_propagate(errp, local_err);
-    }
+    error_propagate(errp, local_err);
 }
 
 static void ide_dev_instance_init(Object *obj)
@@ -258,13 +273,18 @@ static int ide_cd_initfn(IDEDevice *dev)
 
 static int ide_drive_initfn(IDEDevice *dev)
 {
-    DriveInfo *dinfo = blk_legacy_dinfo(dev->conf.blk);
+    DriveInfo *dinfo = NULL;
+
+    if (dev->conf.blk) {
+        dinfo = blk_legacy_dinfo(dev->conf.blk);
+    }
 
     return ide_dev_initfn(dev, dinfo && dinfo->media_cd ? IDE_CD : IDE_HD);
 }
 
 #define DEFINE_IDE_DEV_PROPERTIES()                     \
     DEFINE_BLOCK_PROPERTIES(IDEDrive, dev.conf),        \
+    DEFINE_BLOCK_ERROR_PROPERTIES(IDEDrive, dev.conf),  \
     DEFINE_PROP_STRING("ver",  IDEDrive, dev.version),  \
     DEFINE_PROP_UINT64("wwn",  IDEDrive, dev.wwn, 0),    \
     DEFINE_PROP_STRING("serial",  IDEDrive, dev.serial),\
@@ -345,6 +365,7 @@ static void ide_device_class_init(ObjectClass *klass, void *data)
     k->init = ide_qdev_init;
     set_bit(DEVICE_CATEGORY_STORAGE, k->categories);
     k->bus_type = TYPE_IDE_BUS;
+    k->unrealize = idebus_unrealize;
     k->props = ide_props;
 }
 

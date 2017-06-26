@@ -33,9 +33,9 @@
 #define GIC_N_REALCPU 8
 #define GIC_NCPU (GIC_N_REALCPU * 2)
 
-#define MAX_NR_GROUP_PRIO 128
+#define MAX_NR_GROUP_PRIO 256
 #define GIC_NR_APRS (MAX_NR_GROUP_PRIO / 32)
-#define GICV_NR_LR 8
+#define GICV_NR_LR 4
 
 typedef struct gic_irq_state {
     /* The enable bits are only banked for per-cpu interrupts.  */
@@ -73,7 +73,6 @@ typedef struct GICState {
     uint8_t irq_target[GIC_MAXIRQ];
     uint8_t priority1[GIC_INTERNAL][GIC_NCPU];
     uint8_t priority2[GIC_MAXIRQ - GIC_INTERNAL];
-    bool eoir[GIC_NCPU][GIC_MAXIRQ];
     uint16_t last_active[GIC_MAXIRQ][GIC_NCPU];
     /* For each SGI on the target CPU, we store 8 bits
      * indicating which source CPUs have made this SGI
@@ -114,7 +113,9 @@ typedef struct GICState {
      * do power management involving powering down and restarting
      * the GIC.
      */
+    /* We don't use all of this space but we allocate all of it.  */
     uint32_t apr[GIC_NR_APRS][GIC_NCPU];
+    uint32_t apr_guard[32];
 
     struct {
         uint32_t hcr[GIC_N_REALCPU];

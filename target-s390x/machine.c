@@ -76,6 +76,11 @@ static const VMStateDescription vmstate_fpu = {
     }
 };
 
+static bool vregs_needed(void *opaque)
+{
+    return s390_has_feat(S390_FEAT_VECTOR);
+}
+
 static const VMStateDescription vmstate_vregs = {
     .name = "cpu/vregs",
     .version_id = 1,
@@ -135,6 +140,22 @@ static const VMStateDescription vmstate_vregs = {
     }
 };
 
+static bool riccb_needed(void *opaque)
+{
+    return s390_has_feat(S390_FEAT_RUNTIME_INSTRUMENTATION);
+}
+
+const VMStateDescription vmstate_riccb = {
+    .name = "cpu/riccb",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = riccb_needed,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT8_ARRAY(env.riccb, S390CPU, 64),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 const VMStateDescription vmstate_s390_cpu = {
     .name = "cpu",
     .post_load = cpu_post_load,
@@ -166,6 +187,7 @@ const VMStateDescription vmstate_s390_cpu = {
     .subsections = (const VMStateDescription*[]) {
         &vmstate_fpu,
         &vmstate_vregs,
+        &vmstate_riccb,
         NULL
     },
 };

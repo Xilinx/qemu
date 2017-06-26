@@ -15,8 +15,8 @@
  *
  */
 
-#ifndef _QEMU_VMXNET_DEBUG_H
-#define _QEMU_VMXNET_DEBUG_H
+#ifndef QEMU_VMXNET_DEBUG_H
+#define QEMU_VMXNET_DEBUG_H
 
 #define VMXNET_DEVICE_NAME "vmxnet3"
 
@@ -142,7 +142,4 @@
         }                                                                     \
     } while (0)
 
-#define VMXNET_MF       "%02X:%02X:%02X:%02X:%02X:%02X"
-#define VMXNET_MA(a)    (a)[0], (a)[1], (a)[2], (a)[3], (a)[4], (a)[5]
-
-#endif /* _QEMU_VMXNET3_DEBUG_H  */
+#endif /* QEMU_VMXNET_DEBUG_H */

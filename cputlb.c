@@ -23,13 +23,15 @@
 #include "exec/memory.h"
 #include "exec/address-spaces.h"
 #include "exec/cpu_ldst.h"
-
 #include "exec/cputlb.h"
-
 #include "exec/memory-internal.h"
 #include "exec/ram_addr.h"
-#include "exec/exec-all.h"
 #include "tcg/tcg.h"
+#include "qemu/error-report.h"
+#include "exec/log.h"
+#include "exec/helper-proto.h"
+#include "qemu/atomic.h"
+#include "qemu/etrace.h"
 
 /* DEBUG defines, enable DEBUG_TLB_LOG to log to the CPU_LOG_MMU target */
 /* #define DEBUG_TLB */
@@ -77,10 +79,6 @@ void tlb_flush(CPUState *cpu, int flush_global)
 
     tlb_debug("(%d)\n", flush_global);
 
-    /* must reset current TB so that interrupts cannot modify the
-       links while we are modifying them */
-    cpu->current_tb = NULL;
-
     memset(env->tlb_table, -1, sizeof(env->tlb_table));
     memset(env->tlb_v_table, -1, sizeof(env->tlb_v_table));
     memset(cpu->tb_jmp_cache, 0, sizeof(cpu->tb_jmp_cache));
@@ -96,10 +94,6 @@ static inline void v_tlb_flush_by_mmuidx(CPUState *cpu, va_list argp)
     CPUArchState *env = cpu->env_ptr;
 
     tlb_debug("start\n");
-
-    /* must reset current TB so that interrupts cannot modify the
-       links while we are modifying them */
-    cpu->current_tb = NULL;
 
     for (;;) {
         int mmu_idx = va_arg(argp, int);
@@ -192,9 +186,6 @@ void tlb_flush_page_by_mmuidx(CPUState *cpu, target_ulong addr, ...)
         va_end(argp);
         return;
     }
-    /* must reset current TB so that interrupts cannot modify the
-       links while we are modifying them */
-    cpu->current_tb = NULL;
 
     addr &= TARGET_PAGE_MASK;
     i = (addr >> TARGET_PAGE_BITS) & (CPU_TLB_SIZE - 1);
@@ -257,7 +248,8 @@ static inline ram_addr_t qemu_ram_addr_from_host_nofail(void *ptr)
 {
     ram_addr_t ram_addr;
 
-    if (qemu_ram_addr_from_host(ptr, &ram_addr) == NULL) {
+    ram_addr = qemu_ram_addr_from_host(ptr);
+    if (ram_addr == RAM_ADDR_INVALID) {
         fprintf(stderr, "Bad ram pointer %p\n", ptr);
         abort();
     }
@@ -359,6 +351,9 @@ void tlb_set_page_with_attrs(CPUState *cpu, target_ulong vaddr,
     hwaddr iotlb, xlat, sz;
     unsigned vidx = env->vtlb_index++ % CPU_VTLB_SIZE;
     int asidx = cpu_asidx_from_attrs(cpu, attrs);
+    /* Xiilnx: Make sure we use this for the attr instead of what
+     * mainline uses. Otherwise the XPPU and XMPU don't work.
+     */
     CPUIOTLBEntry *attr = &env->memattr[attrs.secure];
 
     assert(size >= TARGET_PAGE_SIZE);
@@ -369,7 +364,6 @@ void tlb_set_page_with_attrs(CPUState *cpu, target_ulong vaddr,
     sz = size;
     section = address_space_translate_for_iotlb(cpu, asidx, paddr, &xlat, &sz,
                                                 &prot, &attr->attrs);
-
     assert(sz >= TARGET_PAGE_SIZE);
 
     tlb_debug("vaddr=" TARGET_FMT_lx " paddr=0x" TARGET_FMT_plx
@@ -440,6 +434,39 @@ void tlb_set_page(CPUState *cpu, target_ulong vaddr,
                             prot, mmu_idx, size);
 }
 
+static void report_bad_exec(CPUState *cpu, target_ulong addr)
+{
+    /* Accidentally executing outside RAM or ROM is quite common for
+     * several user-error situations, so report it in a way that
+     * makes it clear that this isn't a QEMU bug and provide suggestions
+     * about what a user could do to fix things.
+     */
+    error_report("Trying to execute code outside RAM or ROM at 0x"
+                 TARGET_FMT_lx, addr);
+    error_printf("This usually means one of the following happened:\n\n"
+                 "(1) You told QEMU to execute a kernel for the wrong machine "
+                 "type, and it crashed on startup (eg trying to run a "
+                 "raspberry pi kernel on a versatilepb QEMU machine)\n"
+                 "(2) You didn't give QEMU a kernel or BIOS filename at all, "
+                 "and QEMU executed a ROM full of no-op instructions until "
+                 "it fell off the end\n"
+                 "(3) Your guest kernel has a bug and crashed by jumping "
+                 "off into nowhere\n\n"
+                 "This is almost always one of the first two, so check your "
+                 "command line and that you are using the right type of kernel "
+                 "for this machine.\n"
+                 "If you think option (3) is likely then you can try debugging "
+                 "your guest with the -d debug options; in particular "
+                 "-d guest_errors will cause the log to include a dump of the "
+                 "guest register state at this point.\n\n"
+                 "Execution cannot continue; stopping here.\n\n");
+
+    /* Report also to the logs, with more detail including register dump */
+    qemu_log_mask(LOG_GUEST_ERROR, "qemu: fatal: Trying to execute code "
+                  "outside RAM or ROM at 0x" TARGET_FMT_lx "\n", addr);
+    log_cpu_state_mask(LOG_GUEST_ERROR, cpu, CPU_DUMP_FPU | CPU_DUMP_CCOP);
+}
+
 /* NOTE: this function can trigger an exception */
 /* NOTE2: the returned address is not exactly the physical address: it
  * is actually a ram_addr_t (in system mode; the user mode emulation
@@ -468,44 +495,282 @@ tb_page_addr_t get_page_addr_code(CPUArchState *env1, target_ulong addr)
         if (cc->do_unassigned_access) {
             cc->do_unassigned_access(cpu, addr, false, true, 0, 4);
         } else {
-            cpu_abort(cpu, "Trying to execute code outside RAM or ROM at 0x"
-                      TARGET_FMT_lx "\n", addr);
+            report_bad_exec(cpu, addr);
+            exit(1);
         }
     }
     p = (void *)((uintptr_t)addr + env1->tlb_table[mmu_idx][page_index].addend);
     return qemu_ram_addr_from_host_nofail(p);
 }
 
+static uint64_t io_readx(CPUArchState *env, CPUIOTLBEntry *iotlbentry,
+                         target_ulong addr, uintptr_t retaddr, int size)
+{
+    CPUState *cpu = ENV_GET_CPU(env);
+    hwaddr physaddr = iotlbentry->addr;
+    MemoryRegion *mr = iotlb_to_region(cpu, physaddr, iotlbentry->attrs);
+    uint64_t val;
+
+    physaddr = (physaddr & TARGET_PAGE_MASK) + addr;
+    cpu->mem_io_pc = retaddr;
+    if (mr != &io_mem_rom && mr != &io_mem_notdirty && !cpu->can_do_io) {
+        cpu_io_recompile(cpu, retaddr);
+    }
+
+    cpu->mem_io_vaddr = addr;
+    /* Xilinx: Make sure we first check if iommu_ops is avaliable. This is
+     * required to make sure the XMPU works as expected.
+     */
+    if (mr->iommu_ops) {
+        address_space_rw(cpu->as, physaddr, iotlbentry->attrs, (void *) &val,
+                         size, false);
+    } else {
+        memory_region_dispatch_read(mr, physaddr, &val, size,
+                                    iotlbentry->attrs);
+    }
+
+    if (qemu_etrace_mask(ETRACE_F_MEM)) {
+        etrace_mem_access(&qemu_etracer, 0, 0,
+                          addr, size, MEM_READ, val);
+    }
+
+    return val;
+}
+
+static void io_writex(CPUArchState *env, CPUIOTLBEntry *iotlbentry,
+                      uint64_t val, target_ulong addr,
+                      uintptr_t retaddr, int size)
+{
+    CPUState *cpu = ENV_GET_CPU(env);
+    hwaddr physaddr = iotlbentry->addr;
+    MemoryRegion *mr = iotlb_to_region(cpu, physaddr, iotlbentry->attrs);
+
+    physaddr = (physaddr & TARGET_PAGE_MASK) + addr;
+    if (mr != &io_mem_rom && mr != &io_mem_notdirty && !cpu->can_do_io) {
+        cpu_io_recompile(cpu, retaddr);
+    }
+
+    cpu->mem_io_vaddr = addr;
+    cpu->mem_io_pc = retaddr;
+
+    /* Xilinx: Make sure we first check if iommu_ops is avaliable. This is
+     * required to make sure the XMPU works as expected.
+     */
+    if (mr->iommu_ops) {
+        address_space_rw(cpu->as, physaddr, iotlbentry->attrs, (void *) &val,
+                         size, true);
+    } else {
+        memory_region_dispatch_write(mr, physaddr, val, size,
+                                     iotlbentry->attrs);
+    }
+
+    if (qemu_etrace_mask(ETRACE_F_MEM)) {
+        etrace_mem_access(&qemu_etracer, 0, 0,
+                          addr, size, MEM_WRITE, val);
+    }
+}
+
+/* Return true if ADDR is present in the victim tlb, and has been copied
+   back to the main tlb.  */
+static bool victim_tlb_hit(CPUArchState *env, size_t mmu_idx, size_t index,
+                           size_t elt_ofs, target_ulong page)
+{
+    size_t vidx;
+    for (vidx = 0; vidx < CPU_VTLB_SIZE; ++vidx) {
+        CPUTLBEntry *vtlb = &env->tlb_v_table[mmu_idx][vidx];
+        target_ulong cmp = *(target_ulong *)((uintptr_t)vtlb + elt_ofs);
+
+        if (cmp == page) {
+            /* Found entry in victim tlb, swap tlb and iotlb.  */
+            CPUTLBEntry tmptlb, *tlb = &env->tlb_table[mmu_idx][index];
+            CPUIOTLBEntry tmpio, *io = &env->iotlb[mmu_idx][index];
+            CPUIOTLBEntry *vio = &env->iotlb_v[mmu_idx][vidx];
+
+            tmptlb = *tlb; *tlb = *vtlb; *vtlb = tmptlb;
+            tmpio = *io; *io = *vio; *vio = tmpio;
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Macro to call the above, with local variables from the use context.  */
+#define VICTIM_TLB_HIT(TY, ADDR) \
+  victim_tlb_hit(env, mmu_idx, index, offsetof(CPUTLBEntry, TY), \
+                 (ADDR) & TARGET_PAGE_MASK)
+
+/* Probe for whether the specified guest write access is permitted.
+ * If it is not permitted then an exception will be taken in the same
+ * way as if this were a real write access (and we will not return).
+ * Otherwise the function will return, and there will be a valid
+ * entry in the TLB for this access.
+ */
+void probe_write(CPUArchState *env, target_ulong addr, int mmu_idx,
+                 uintptr_t retaddr)
+{
+    int index = (addr >> TARGET_PAGE_BITS) & (CPU_TLB_SIZE - 1);
+    target_ulong tlb_addr = env->tlb_table[mmu_idx][index].addr_write;
+
+    if ((addr & TARGET_PAGE_MASK)
+        != (tlb_addr & (TARGET_PAGE_MASK | TLB_INVALID_MASK))) {
+        /* TLB entry is for a different page */
+        if (!VICTIM_TLB_HIT(addr_write, addr)) {
+            tlb_fill(ENV_GET_CPU(env), addr, MMU_DATA_STORE, mmu_idx, retaddr);
+        }
+    }
+}
+
+/* Probe for a read-modify-write atomic operation.  Do not allow unaligned
+ * operations, or io operations to proceed.  Return the host address.  */
+static void *atomic_mmu_lookup(CPUArchState *env, target_ulong addr,
+                               TCGMemOpIdx oi, uintptr_t retaddr)
+{
+    size_t mmu_idx = get_mmuidx(oi);
+    size_t index = (addr >> TARGET_PAGE_BITS) & (CPU_TLB_SIZE - 1);
+    CPUTLBEntry *tlbe = &env->tlb_table[mmu_idx][index];
+    target_ulong tlb_addr = tlbe->addr_write;
+    TCGMemOp mop = get_memop(oi);
+    int a_bits = get_alignment_bits(mop);
+    int s_bits = mop & MO_SIZE;
+
+    /* Adjust the given return address.  */
+    retaddr -= GETPC_ADJ;
+
+    /* Enforce guest required alignment.  */
+    if (unlikely(a_bits > 0 && (addr & ((1 << a_bits) - 1)))) {
+        /* ??? Maybe indicate atomic op to cpu_unaligned_access */
+        cpu_unaligned_access(ENV_GET_CPU(env), addr, MMU_DATA_STORE,
+                             mmu_idx, retaddr);
+    }
+
+    /* Enforce qemu required alignment.  */
+    if (unlikely(addr & ((1 << s_bits) - 1))) {
+        /* We get here if guest alignment was not requested,
+           or was not enforced by cpu_unaligned_access above.
+           We might widen the access and emulate, but for now
+           mark an exception and exit the cpu loop.  */
+        goto stop_the_world;
+    }
+
+    /* Check TLB entry and enforce page permissions.  */
+    if ((addr & TARGET_PAGE_MASK)
+        != (tlb_addr & (TARGET_PAGE_MASK | TLB_INVALID_MASK))) {
+        if (!VICTIM_TLB_HIT(addr_write, addr)) {
+            tlb_fill(ENV_GET_CPU(env), addr, MMU_DATA_STORE, mmu_idx, retaddr);
+        }
+        tlb_addr = tlbe->addr_write;
+    }
+
+    /* Notice an IO access, or a notdirty page.  */
+    if (unlikely(tlb_addr & ~TARGET_PAGE_MASK)) {
+        /* There's really nothing that can be done to
+           support this apart from stop-the-world.  */
+        goto stop_the_world;
+    }
+
+    /* Let the guest notice RMW on a write-only page.  */
+    if (unlikely(tlbe->addr_read != tlb_addr)) {
+        tlb_fill(ENV_GET_CPU(env), addr, MMU_DATA_LOAD, mmu_idx, retaddr);
+        /* Since we don't support reads and writes to different addresses,
+           and we do have the proper page loaded for write, this shouldn't
+           ever return.  But just in case, handle via stop-the-world.  */
+        goto stop_the_world;
+    }
+
+    return (void *)((uintptr_t)addr + tlbe->addend);
+
+ stop_the_world:
+    cpu_loop_exit_atomic(ENV_GET_CPU(env), retaddr);
+}
+
+#ifdef TARGET_WORDS_BIGENDIAN
+# define TGT_BE(X)  (X)
+# define TGT_LE(X)  BSWAP(X)
+#else
+# define TGT_BE(X)  BSWAP(X)
+# define TGT_LE(X)  (X)
+#endif
+
 #define MMUSUFFIX _mmu
 
-#define SHIFT 0
+#define DATA_SIZE 1
 #include "softmmu_template.h"
 
-#define SHIFT 1
+#define DATA_SIZE 2
 #include "softmmu_template.h"
 
-#define SHIFT 2
+#define DATA_SIZE 4
 #include "softmmu_template.h"
 
-#define SHIFT 3
+#define DATA_SIZE 8
 #include "softmmu_template.h"
+
+/* First set of helpers allows passing in of OI and RETADDR.  This makes
+   them callable from other helpers.  */
+
+#define EXTRA_ARGS     , TCGMemOpIdx oi, uintptr_t retaddr
+#define ATOMIC_NAME(X) \
+    HELPER(glue(glue(glue(atomic_ ## X, SUFFIX), END), _mmu))
+#define ATOMIC_MMU_LOOKUP  atomic_mmu_lookup(env, addr, oi, retaddr)
+
+#define DATA_SIZE 1
+#include "atomic_template.h"
+
+#define DATA_SIZE 2
+#include "atomic_template.h"
+
+#define DATA_SIZE 4
+#include "atomic_template.h"
+
+#ifdef CONFIG_ATOMIC64
+#define DATA_SIZE 8
+#include "atomic_template.h"
+#endif
+
+#ifdef CONFIG_ATOMIC128
+#define DATA_SIZE 16
+#include "atomic_template.h"
+#endif
+
+/* Second set of helpers are directly callable from TCG as helpers.  */
+
+#undef EXTRA_ARGS
+#undef ATOMIC_NAME
+#undef ATOMIC_MMU_LOOKUP
+#define EXTRA_ARGS         , TCGMemOpIdx oi
+#define ATOMIC_NAME(X)     HELPER(glue(glue(atomic_ ## X, SUFFIX), END))
+#define ATOMIC_MMU_LOOKUP  atomic_mmu_lookup(env, addr, oi, GETPC())
+
+#define DATA_SIZE 1
+#include "atomic_template.h"
+
+#define DATA_SIZE 2
+#include "atomic_template.h"
+
+#define DATA_SIZE 4
+#include "atomic_template.h"
+
+#ifdef CONFIG_ATOMIC64
+#define DATA_SIZE 8
+#include "atomic_template.h"
+#endif
+
+/* Code access functions.  */
+
 #undef MMUSUFFIX
-
 #define MMUSUFFIX _cmmu
-#undef GETPC_ADJ
-#define GETPC_ADJ 0
-#undef GETRA
-#define GETRA() ((uintptr_t)0)
+#undef GETPC
+#define GETPC() ((uintptr_t)0)
 #define SOFTMMU_CODE_ACCESS
 
-#define SHIFT 0
+#define DATA_SIZE 1
 #include "softmmu_template.h"
 
-#define SHIFT 1
+#define DATA_SIZE 2
 #include "softmmu_template.h"
 
-#define SHIFT 2
+#define DATA_SIZE 4
 #include "softmmu_template.h"
 
-#define SHIFT 3
+#define DATA_SIZE 8
 #include "softmmu_template.h"

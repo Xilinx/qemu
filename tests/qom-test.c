@@ -8,7 +8,6 @@
  */
 
 #include "qemu/osdep.h"
-#include <glib.h>
 
 #include "qemu-common.h"
 #include "qemu/cutils.h"
@@ -116,7 +115,7 @@ static void add_machine_test_cases(void)
     const QListEntry *p;
     QObject *qobj;
     QString *qstr;
-    const char *mname, *path;
+    const char *mname;
 
     qtest_start("-machine none");
     response = qmp("{ 'execute': 'query-machines' }");
@@ -133,8 +132,9 @@ static void add_machine_test_cases(void)
         g_assert(qstr);
         mname = qstring_get_str(qstr);
         if (!is_blacklisted(arch, mname)) {
-            path = g_strdup_printf("qom/%s", mname);
+            char *path = g_strdup_printf("qom/%s", mname);
             qtest_add_data_func(path, g_strdup(mname), test_machine);
+            g_free(path);
         }
     }
 

@@ -4,6 +4,7 @@
 #include "ui/console.h"
 #include "vga_int.h"
 #include "hw/virtio/virtio-pci.h"
+#include "qapi/error.h"
 
 /*
  * virtio-vga: This extends VirtioPCIProxy.
@@ -83,12 +84,24 @@ static const GraphicHwOps virtio_vga_ops = {
     .gl_block = virtio_vga_gl_block,
 };
 
+static const VMStateDescription vmstate_virtio_vga = {
+    .name = "virtio-vga",
+    .version_id = 2,
+    .minimum_version_id = 2,
+    .fields = (VMStateField[]) {
+        /* no pci stuff here, saving the virtio device will handle that */
+        VMSTATE_STRUCT(vga, VirtIOVGA, 0, vmstate_vga_common, VGACommonState),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 /* VGA device wrapper around PCI device around virtio GPU */
 static void virtio_vga_realize(VirtIOPCIProxy *vpci_dev, Error **errp)
 {
     VirtIOVGA *vvga = VIRTIO_VGA(vpci_dev);
     VirtIOGPU *g = &vvga->vdev;
     VGACommonState *vga = &vvga->vga;
+    Error *err = NULL;
     uint32_t offset;
     int i;
 
@@ -107,8 +120,19 @@ static void virtio_vga_realize(VirtIOPCIProxy *vpci_dev, Error **errp)
      * virtio regions are moved to the end of bar #2, to make room for
      * the stdvga mmio registers at the start of bar #2.
      */
-    vpci_dev->modern_mem_bar = 2;
-    vpci_dev->msix_bar = 4;
+    vpci_dev->modern_mem_bar_idx = 2;
+    vpci_dev->msix_bar_idx = 4;
+
+    if (!(vpci_dev->flags & VIRTIO_PCI_FLAG_PAGE_PER_VQ)) {
+        /*
+         * with page-per-vq=off there is no padding space we can use
+         * for the stdvga registers.  Make the common and isr regions
+         * smaller then.
+         */
+        vpci_dev->common.size /= 2;
+        vpci_dev->isr.size /= 2;
+    }
+
     offset = memory_region_size(&vpci_dev->modern_bar);
     offset -= vpci_dev->notify.size;
     vpci_dev->notify.offset = offset;
@@ -121,10 +145,12 @@ static void virtio_vga_realize(VirtIOPCIProxy *vpci_dev, Error **errp)
 
     /* init virtio bits */
     qdev_set_parent_bus(DEVICE(g), BUS(&vpci_dev->bus));
-    /* force virtio-1.0 */
-    vpci_dev->flags &= ~VIRTIO_PCI_FLAG_DISABLE_MODERN;
-    vpci_dev->flags |= VIRTIO_PCI_FLAG_DISABLE_LEGACY;
-    object_property_set_bool(OBJECT(g), true, "realized", errp);
+    virtio_pci_force_virtio_1(vpci_dev);
+    object_property_set_bool(OBJECT(g), true, "realized", &err);
+    if (err) {
+        error_propagate(errp, err);
+        return;
+    }
 
     /* add stdvga mmio regions */
     pci_std_vga_mmio_region_init(vga, &vpci_dev->modern_bar,
@@ -162,6 +188,7 @@ static void virtio_vga_class_init(ObjectClass *klass, void *data)
     set_bit(DEVICE_CATEGORY_DISPLAY, dc->categories);
     dc->props = virtio_vga_properties;
     dc->reset = virtio_vga_reset;
+    dc->vmsd = &vmstate_virtio_vga;
     dc->hotpluggable = false;
 
     k->realize = virtio_vga_realize;

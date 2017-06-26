@@ -13,7 +13,6 @@
  */
 
 #include "qemu/osdep.h"
-#include <glib.h>
 #include "qapi/qmp/dispatch.h"
 
 static QTAILQ_HEAD(QmpCommandList, QmpCommand) qmp_commands =
@@ -29,6 +28,14 @@ void qmp_register_command(const char *name, QmpCommandFunc *fn,
     cmd->enabled = true;
     cmd->options = options;
     QTAILQ_INSERT_TAIL(&qmp_commands, cmd, node);
+}
+
+void qmp_unregister_command(const char *name)
+{
+    QmpCommand *cmd = qmp_find_command(name);
+
+    QTAILQ_REMOVE(&qmp_commands, cmd, node);
+    g_free(cmd);
 }
 
 QmpCommand *qmp_find_command(const char *name)

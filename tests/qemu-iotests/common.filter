@@ -44,6 +44,15 @@ _filter_imgfmt()
     sed -e "s#$IMGFMT#IMGFMT#g"
 }
 
+# Replace error message when the format is not supported and delete
+# the output lines after the first one
+_filter_qemu_img_check()
+{
+    sed -e '/allocated.*fragmented.*compressed clusters/d' \
+        -e 's/qemu-img: This image format does not support checks/No errors were found on the image./' \
+        -e '/Image end offset: [0-9]\+/d'
+}
+
 # Removes \r from messages
 _filter_win32()
 {
@@ -77,6 +86,12 @@ _filter_qmp()
         -e '    QMP_VERSION'
 }
 
+# replace block job offset
+_filter_block_job_offset()
+{
+    sed -e 's/, "offset": [0-9]\+,/, "offset": OFFSET,/'
+}
+
 # replace driver-specific options in the "Formatting..." line
 _filter_img_create()
 {
@@ -92,12 +107,14 @@ _filter_img_create()
         -e "s# zeroed_grain=\\(on\\|off\\)##g" \
         -e "s# subformat='[^']*'##g" \
         -e "s# adapter_type='[^']*'##g" \
+        -e "s# hwversion=[^ ]*##g" \
         -e "s# lazy_refcounts=\\(on\\|off\\)##g" \
         -e "s# block_size=[0-9]\\+##g" \
         -e "s# block_state_zero=\\(on\\|off\\)##g" \
         -e "s# log_size=[0-9]\\+##g" \
         -e "s/archipelago:a/TEST_DIR\//g" \
-        -e "s# refcount_bits=[0-9]\\+##g"
+        -e "s# refcount_bits=[0-9]\\+##g" \
+        -e "s# key-secret=[a-zA-Z0-9]\\+##g"
 }
 
 _filter_img_info()
@@ -115,6 +132,7 @@ _filter_img_info()
         -e "/zeroed_grain: \\(on\\|off\\)/d" \
         -e "/subformat: '[^']*'/d" \
         -e "/adapter_type: '[^']*'/d" \
+        -e "/hwversion: '[^']*'/d" \
         -e "/lazy_refcounts: \\(on\\|off\\)/d" \
         -e "/block_size: [0-9]\\+/d" \
         -e "/block_state_zero: \\(on\\|off\\)/d" \

@@ -9,11 +9,15 @@
  * top-level directory.
  */
 #include "qemu/osdep.h"
+#include "qemu-common.h"
+#include "cpu.h"
+#include "exec/exec-all.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/cpus.h"
 #include "sysemu/kvm.h"
 #include "hw/i386/apic_internal.h"
 #include "hw/sysbus.h"
+#include "tcg/tcg.h"
 
 #define VAPIC_IO_PORT           0x7e
 
@@ -394,10 +398,10 @@ static void patch_instruction(VAPICROMState *s, X86CPU *cpu, target_ulong ip)
     CPUX86State *env = &cpu->env;
     VAPICHandlers *handlers;
     uint8_t opcode[2];
-    uint32_t imm32;
+    uint32_t imm32 = 0;
     target_ulong current_pc = 0;
     target_ulong current_cs_base = 0;
-    int current_flags = 0;
+    uint32_t current_flags = 0;
 
     if (smp_cpus == 1) {
         handlers = &s->rom_state.up;
@@ -446,9 +450,11 @@ static void patch_instruction(VAPICROMState *s, X86CPU *cpu, target_ulong ip)
     resume_all_vcpus();
 
     if (!kvm_enabled()) {
-        cs->current_tb = NULL;
+        /* tb_lock will be reset when cpu_loop_exit_noexc longjmps
+         * back into the cpu_exec loop. */
+        tb_lock();
         tb_gen_code(cs, current_pc, current_cs_base, current_flags, 1);
-        cpu_resume_from_signal(cs, NULL);
+        cpu_loop_exit_noexc(cs);
     }
 }
 
@@ -481,10 +487,9 @@ typedef struct VAPICEnableTPRReporting {
     bool enable;
 } VAPICEnableTPRReporting;
 
-static void vapic_do_enable_tpr_reporting(void *data)
+static void vapic_do_enable_tpr_reporting(CPUState *cpu, run_on_cpu_data data)
 {
-    VAPICEnableTPRReporting *info = data;
-
+    VAPICEnableTPRReporting *info = data.host_ptr;
     apic_enable_tpr_access_reporting(info->apic, info->enable);
 }
 
@@ -499,7 +504,7 @@ static void vapic_enable_tpr_reporting(bool enable)
     CPU_FOREACH(cs) {
         cpu = X86_CPU(cs);
         info.apic = cpu->apic_state;
-        run_on_cpu(cs, vapic_do_enable_tpr_reporting, &info);
+        run_on_cpu(cs, vapic_do_enable_tpr_reporting, RUN_ON_CPU_HOST_PTR(&info));
     }
 }
 
@@ -732,10 +737,10 @@ static void vapic_realize(DeviceState *dev, Error **errp)
     nb_option_roms++;
 }
 
-static void do_vapic_enable(void *data)
+static void do_vapic_enable(CPUState *cs, run_on_cpu_data data)
 {
-    VAPICROMState *s = data;
-    X86CPU *cpu = X86_CPU(first_cpu);
+    VAPICROMState *s = data.host_ptr;
+    X86CPU *cpu = X86_CPU(cs);
 
     static const uint8_t enabled = 1;
     cpu_physical_memory_write(s->vapic_paddr + offsetof(VAPICState, enabled),
@@ -756,7 +761,7 @@ static void kvmvapic_vm_state_change(void *opaque, int running,
 
     if (s->state == VAPIC_ACTIVE) {
         if (smp_cpus == 1) {
-            run_on_cpu(first_cpu, do_vapic_enable, s);
+            run_on_cpu(first_cpu, do_vapic_enable, RUN_ON_CPU_HOST_PTR(s));
         } else {
             zero = g_malloc0(s->rom_state.vapic_size);
             cpu_physical_memory_write(s->vapic_paddr, zero,
@@ -766,6 +771,7 @@ static void kvmvapic_vm_state_change(void *opaque, int running,
     }
 
     qemu_del_vm_change_state_handler(s->vmsentry);
+    s->vmsentry = NULL;
 }
 
 static int vapic_post_load(void *opaque, int version_id)

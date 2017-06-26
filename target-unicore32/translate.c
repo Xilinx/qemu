@@ -12,6 +12,7 @@
 
 #include "cpu.h"
 #include "disas/disas.h"
+#include "exec/exec-all.h"
 #include "tcg-op.h"
 #include "qemu/log.h"
 #include "exec/cpu_ldst.h"
@@ -69,6 +70,7 @@ void uc32_translate_init(void)
     int i;
 
     cpu_env = tcg_global_reg_new_ptr(TCG_AREG0, "env");
+    tcg_ctx.tcg_env = cpu_env;
 
     for (i = 0; i < 32; i++) {
         cpu_R[i] = tcg_global_mem_new_i32(cpu_env,
@@ -1089,15 +1091,21 @@ static void disas_ucf64_insn(CPUUniCore32State *env, DisasContext *s, uint32_t i
     }
 }
 
+static inline bool use_goto_tb(DisasContext *s, uint32_t dest)
+{
+#ifndef CONFIG_USER_ONLY
+    return (s->tb->pc & TARGET_PAGE_MASK) == (dest & TARGET_PAGE_MASK);
+#else
+    return true;
+#endif
+}
+
 static inline void gen_goto_tb(DisasContext *s, int n, uint32_t dest)
 {
-    TranslationBlock *tb;
-
-    tb = s->tb;
-    if ((tb->pc & TARGET_PAGE_MASK) == (dest & TARGET_PAGE_MASK)) {
+    if (use_goto_tb(s, dest)) {
         tcg_gen_goto_tb(n);
         gen_set_pc_im(dest);
-        tcg_gen_exit_tb((uintptr_t)tb + n);
+        tcg_gen_exit_tb((uintptr_t)s->tb + n);
     } else {
         gen_set_pc_im(dest);
         tcg_gen_exit_tb(0);
@@ -2014,11 +2022,14 @@ done_generating:
     gen_tb_end(tb, num_insns);
 
 #ifdef DEBUG_DISAS
-    if (qemu_loglevel_mask(CPU_LOG_TB_IN_ASM)) {
+    if (qemu_loglevel_mask(CPU_LOG_TB_IN_ASM)
+        && qemu_log_in_addr_range(pc_start)) {
+        qemu_log_lock();
         qemu_log("----------------\n");
         qemu_log("IN: %s\n", lookup_symbol(pc_start));
         log_target_disas(cs, pc_start, dc->pc - pc_start, 0);
         qemu_log("\n");
+        qemu_log_unlock();
     }
 #endif
     tb->size = dc->pc - pc_start;

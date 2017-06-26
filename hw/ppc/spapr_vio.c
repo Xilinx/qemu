@@ -20,6 +20,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/error-report.h"
 #include "qapi/error.h"
 #include "hw/hw.h"
 #include "qemu/log.h"
@@ -35,18 +36,10 @@
 #include "hw/ppc/spapr.h"
 #include "hw/ppc/spapr_vio.h"
 #include "hw/ppc/xics.h"
+#include "hw/ppc/fdt.h"
+#include "trace.h"
 
 #include <libfdt.h>
-
-/* #define DEBUG_SPAPR */
-
-#ifdef DEBUG_SPAPR
-#define DPRINTF(fmt, ...) \
-    do { fprintf(stderr, fmt, ## __VA_ARGS__); } while (0)
-#else
-#define DPRINTF(fmt, ...) \
-    do { } while (0)
-#endif
 
 static Property spapr_vio_props[] = {
     DEFINE_PROP_UINT32("irq", VIOsPAPRDevice, irq, 0), \
@@ -57,12 +50,9 @@ static char *spapr_vio_get_dev_name(DeviceState *qdev)
 {
     VIOsPAPRDevice *dev = VIO_SPAPR_DEVICE(qdev);
     VIOsPAPRDeviceClass *pc = VIO_SPAPR_DEVICE_GET_CLASS(dev);
-    char *name;
 
     /* Device tree style name device@reg */
-    name = g_strdup_printf("%s@%x", pc->dt_name, dev->reg);
-
-    return name;
+    return g_strdup_printf("%s@%x", pc->dt_name, dev->reg);
 }
 
 static void spapr_vio_bus_class_init(ObjectClass *klass, void *data)
@@ -204,9 +194,7 @@ static target_ulong h_reg_crq(PowerPCCPU *cpu, sPAPRMachineState *spapr,
     dev->crq.qsize = queue_len;
     dev->crq.qnext = 0;
 
-    DPRINTF("CRQ for dev 0x" TARGET_FMT_lx " registered at 0x"
-            TARGET_FMT_lx "/0x" TARGET_FMT_lx "\n",
-            reg, queue_addr, queue_len);
+    trace_spapr_vio_h_reg_crq(reg, queue_addr, queue_len);
     return H_SUCCESS;
 }
 
@@ -216,7 +204,7 @@ static target_ulong free_crq(VIOsPAPRDevice *dev)
     dev->crq.qsize = 0;
     dev->crq.qnext = 0;
 
-    DPRINTF("CRQ for dev 0x%" PRIx32 " freed\n", dev->reg);
+    trace_spapr_vio_free_crq(dev->reg);
 
     return H_SUCCESS;
 }
@@ -279,7 +267,7 @@ int spapr_vio_send_crq(VIOsPAPRDevice *dev, uint8_t *crq)
     uint8_t byte;
 
     if (!dev->crq.qsize) {
-        fprintf(stderr, "spapr_vio_send_creq on uninitialized queue\n");
+        error_report("spapr_vio_send_creq on uninitialized queue");
         return -1;
     }
 
@@ -466,7 +454,7 @@ static void spapr_vio_busdev_realize(DeviceState *qdev, Error **errp)
         dev->qdev.id = id;
     }
 
-    dev->irq = xics_alloc(spapr->icp, 0, dev->irq, false, &local_err);
+    dev->irq = xics_spapr_alloc(spapr->xics, dev->irq, false, &local_err);
     if (local_err) {
         error_propagate(errp, local_err);
         return;
@@ -483,11 +471,9 @@ static void spapr_vio_busdev_realize(DeviceState *qdev, Error **errp)
         memory_region_add_subregion_overlap(&dev->mrroot, 0, &dev->mrbypass, 1);
         address_space_init(&dev->as, &dev->mrroot, qdev->id);
 
-        dev->tcet = spapr_tce_new_table(qdev, liobn,
-                                        0,
-                                        SPAPR_TCE_PAGE_SHIFT,
-                                        pc->rtce_window_size >>
-                                        SPAPR_TCE_PAGE_SHIFT, false);
+        dev->tcet = spapr_tce_new_table(qdev, liobn);
+        spapr_tce_table_enable(dev->tcet, SPAPR_TCE_PAGE_SHIFT, 0,
+                               pc->rtce_window_size >> SPAPR_TCE_PAGE_SHIFT);
         dev->tcet->vdev = dev;
         memory_region_add_subregion_overlap(&dev->mrroot, 0,
                                             spapr_tce_get_iommu(dev->tcet), 2);
@@ -639,11 +625,21 @@ static int compare_reg(const void *p1, const void *p2)
     return 1;
 }
 
-int spapr_populate_vdevice(VIOsPAPRBus *bus, void *fdt)
+void spapr_dt_vdevice(VIOsPAPRBus *bus, void *fdt)
 {
     DeviceState *qdev, **qdevs;
     BusChild *kid;
     int i, num, ret = 0;
+    int node;
+
+    _FDT(node = fdt_add_subnode(fdt, 0, "vdevice"));
+
+    _FDT(fdt_setprop_string(fdt, node, "device_type", "vdevice"));
+    _FDT(fdt_setprop_string(fdt, node, "compatible", "IBM,vdevice"));
+    _FDT(fdt_setprop_cell(fdt, node, "#address-cells", 1));
+    _FDT(fdt_setprop_cell(fdt, node, "#size-cells", 0));
+    _FDT(fdt_setprop_cell(fdt, node, "#interrupt-cells", 2));
+    _FDT(fdt_setprop(fdt, node, "interrupt-controller", NULL, 0));
 
     /* Count qdevs on the bus list */
     num = 0;
@@ -665,43 +661,32 @@ int spapr_populate_vdevice(VIOsPAPRBus *bus, void *fdt)
      * to know that will mean they are in forward order in the tree. */
     for (i = num - 1; i >= 0; i--) {
         VIOsPAPRDevice *dev = (VIOsPAPRDevice *)(qdevs[i]);
+        VIOsPAPRDeviceClass *vdc = VIO_SPAPR_DEVICE_GET_CLASS(dev);
 
         ret = vio_make_devnode(dev, fdt);
-
         if (ret < 0) {
-            goto out;
+            error_report("Couldn't create device node /vdevice/%s@%"PRIx32,
+                         vdc->dt_name, dev->reg);
+            exit(1);
         }
     }
 
-    ret = 0;
-out:
     g_free(qdevs);
-
-    return ret;
 }
 
-int spapr_populate_chosen_stdout(void *fdt, VIOsPAPRBus *bus)
+gchar *spapr_vio_stdout_path(VIOsPAPRBus *bus)
 {
     VIOsPAPRDevice *dev;
     char *name, *path;
-    int ret, offset;
 
     dev = spapr_vty_get_default(bus);
-    if (!dev)
-        return 0;
-
-    offset = fdt_path_offset(fdt, "/chosen");
-    if (offset < 0) {
-        return offset;
+    if (!dev) {
+        return NULL;
     }
 
     name = spapr_vio_get_dev_name(DEVICE(dev));
     path = g_strdup_printf("/vdevice/%s", name);
 
-    ret = fdt_setprop_string(fdt, offset, "linux,stdout-path", path);
-
     g_free(name);
-    g_free(path);
-
-    return ret;
+    return path;
 }

@@ -29,8 +29,9 @@
 #include "sysemu/dma.h"
 #include "qemu/timer.h"
 #include "qemu/bitops.h"
-#include "qapi/error.h"
 #include "sdhci-internal.h"
+#include "qapi/error.h"
+#include "qemu/log.h"
 
 /* host controller debug messages */
 #ifndef SDHC_DEBUG
@@ -545,7 +546,7 @@ static void sdhci_sdma_transfer_multi_blocks(SDHCIState *s)
                 boundary_count -= block_size - begin;
             }
             dma_memory_read(s->dma_as, s->sdmasysad,
-                            &s->fifo_buffer[begin], s->data_count);
+                            &s->fifo_buffer[begin], s->data_count - begin);
             s->sdmasysad += s->data_count - begin;
             if (s->data_count == block_size) {
                 for (n = 0; n < block_size; n++) {
@@ -791,7 +792,7 @@ static void sdhci_do_adma(SDHCIState *s)
 
     /* we have unfinished business - reschedule to continue ADMA */
     timer_mod(s->transfer_timer,
-                   qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + SDHC_TRANSFER_DELAY / 16);
+                   qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + SDHC_TRANSFER_DELAY);
 }
 
 /* Perform data transfer according to controller configuration */
@@ -917,7 +918,6 @@ static uint64_t sdhci_read(void *opaque, hwaddr offset, unsigned size)
         ret = deposit32(ret, SDHC_DAT_LVL_SHIFT, SDHC_DAT_LVL_LENGTH,
                         sdbus_get_dat_lines(&s->sdbus));
         ret = deposit32(ret, SDHC_CMD_LVL_SHIFT, 1, sdbus_get_cmd_line(&s->sdbus));
-        // fprintf(stderr, "ret is: 0x%x\n", ret);
         break;
     case SDHC_HOSTCTL:
         ret = s->hostctl | (s->pwrcon << 8) | (s->blkgap << 16) |
@@ -1085,6 +1085,10 @@ sdhci_write(void *opaque, hwaddr offset, uint64_t val, unsigned size)
         MASKED_WRITE(s->hostctl, mask, value);
         MASKED_WRITE(s->pwrcon, mask >> 8, value >> 8);
         MASKED_WRITE(s->wakcon, mask >> 24, value >> 24);
+        if (!(s->prnsts & SDHC_CARD_PRESENT) || ((s->pwrcon >> 1) & 0x7) < 5 ||
+                !(s->capareg & (1 << (31 - ((s->pwrcon >> 1) & 0x7))))) {
+            s->pwrcon &= ~SDHC_POWER_ON;
+        }
         break;
     case SDHC_ACMD12ERRSTS:
         /* This implements a very simplified view.  */

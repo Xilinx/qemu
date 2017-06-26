@@ -6,9 +6,8 @@
  */
 
 #include "qemu/osdep.h"
-#include <slirp.h>
-#include <libslirp.h>
-
+#include "slirp.h"
+#include "libslirp.h"
 #include "monitor/monitor.h"
 #include "qemu/error-report.h"
 #include "qemu/main-loop.h"
@@ -59,27 +58,6 @@ int add_exec(struct ex_list **ex_ptr, int do_pty, char *exec,
 	(*ex_ptr)->ex_next = tmp_ptr;
 	return 0;
 }
-
-#ifndef HAVE_STRERROR
-
-/*
- * For systems with no strerror
- */
-
-extern int sys_nerr;
-extern char *sys_errlist[];
-
-char *
-strerror(error)
-	int error;
-{
-	if (error < sys_nerr)
-	   return sys_errlist[error];
-	else
-	   return "Unknown error.";
-}
-
-#endif
 
 
 #ifdef _WIN32

@@ -129,7 +129,7 @@ static ssize_t rp_recv(RemotePort *s, void *buf, size_t count)
 {
     ssize_t r;
 
-    r = qemu_chr_fe_read_all(s->chr, buf, count);
+    r = qemu_chr_fe_read_all(&s->chr, buf, count);
     if (r <= 0) {
         rp_fatal_error(s, "Disconnected");
     }
@@ -147,7 +147,7 @@ ssize_t rp_write(RemotePort *s, const void *buf, size_t count)
     ssize_t r;
 
     qemu_mutex_lock(&s->write_mutex);
-    r = qemu_chr_fe_write(s->chr, buf, count);
+    r = qemu_chr_fe_write(&s->chr, buf, count);
     qemu_mutex_unlock(&s->write_mutex);
     if (r <= 0) {
         error_report("%s: Disconnected r=%zd buf=%p count=%zd\n",
@@ -181,19 +181,19 @@ static int64_t rp_time_warp(RemotePort *s, int64_t diff)
     return future - clk;
 }
 
-static void rp_idle(void *opaque)
+static void rp_idle(CPUState *cpu, run_on_cpu_data data)
 {
     int64_t deadline = qemu_clock_deadline_ns_all(QEMU_CLOCK_VIRTUAL);
     if (deadline == INT32_MAX) {
             return;
     }
-    rp_time_warp(opaque, deadline);
+    rp_time_warp((void *) data.target_ptr, deadline);
 }
 
 void rp_leave_iothread(RemotePort *s)
 {
     if (use_icount && all_cpu_threads_idle() && time_warp_enable) {
-        async_run_on_cpu(first_cpu, rp_idle, s);
+        async_run_on_cpu(first_cpu, rp_idle, RUN_ON_CPU_TARGET_PTR((vaddr) s));
     }
 }
 
@@ -397,12 +397,12 @@ static CharDriverState *rp_autocreate_chardev(RemotePort *s, char *name)
     char *chardesc;
 
     chardesc = rp_autocreate_chardesc(s, false);
-    chr = qemu_chr_new(name, chardesc, NULL);
+    chr = qemu_chr_new_noreplay(name, chardesc);
     free(chardesc);
 
     if (!chr) {
         chardesc = rp_autocreate_chardesc(s, true);
-        chr = qemu_chr_new(name, chardesc, NULL);
+        chr = qemu_chr_new_noreplay(name, chardesc);
         free(chardesc);
     }
     return chr;
@@ -641,23 +641,23 @@ static void rp_realize(DeviceState *dev, Error **errp)
     qemu_mutex_init(&s->rsp_mutex);
     qemu_cond_init(&s->progress_cond);
 
-    if (!s->chr) {
+    if (!s->chr.chr) {
         char *name;
+        CharDriverState *chr = NULL;
         static int nr = 0;
-        int r;
 
         r = asprintf(&name, "rport%d", nr);
         nr++;
         assert(r > 0);
 
         if (s->chrdev_id) {
-            s->chr = qemu_chr_find(s->chrdev_id);
+            chr = qemu_chr_find(s->chrdev_id);
         }
 
-        if (s->chr) {
+        if (chr) {
             /* Found the chardev via commandline */
         } else if (s->chardesc) {
-            s->chr = qemu_chr_new(name, s->chardesc, NULL);
+            chr = qemu_chr_new(name, s->chardesc);
         } else {
             if (!machine_path) {
                 error_report("%s: Missing chardesc prop."
@@ -665,16 +665,16 @@ static void rp_realize(DeviceState *dev, Error **errp)
                              s->prefix);
                 exit(EXIT_FAILURE);
             }
-            s->chr = rp_autocreate_chardev(s, name);
+            chr = rp_autocreate_chardev(s, name);
         }
+        s->chr.chr = chr;
         free(name);
-        if (!s->chr) {
+        if (!s->chr.chr) {
             error_report("%s: Unable to create remort-port channel %s\n",
                          s->prefix, s->chardesc);
             exit(EXIT_FAILURE);
         }
     }
-
 
 #ifdef _WIN32
     /* Create a socket connection between two sockets. We auto-bind
@@ -682,10 +682,12 @@ static void rp_realize(DeviceState *dev, Error **errp)
      */
     {
         char *name;
+        SocketAddress *sock;
         int port;
 
-        s->event.pipe.read = inet_listen("127.0.0.1:0", NULL,
-                                         256, SOCK_STREAM, 0, &error_abort);
+        sock = socket_parse("127.0.0.1:0", &error_abort);
+        s->event.pipe.read = socket_listen(sock, &error_abort);
+
         if (s->event.pipe.read < 0) {
             perror("socket read");
             exit(EXIT_FAILURE);
@@ -696,7 +698,7 @@ static void rp_realize(DeviceState *dev, Error **errp)
             socklen_t slen = sizeof saddr;
             int r;
 
-            r = getsockname(s->event.pipe.read, &saddr, &slen);
+            r = getsockname(s->event.pipe.read, (struct sockaddr *) &saddr, &slen);
             if (r < 0) {
                 perror("getsockname");
                 exit(EXIT_FAILURE);
@@ -733,8 +735,8 @@ static void rp_realize(DeviceState *dev, Error **errp)
 
     s->sync.bh = qemu_bh_new(sync_timer_hit, s);
     s->sync.bh_resp = qemu_bh_new(syncresp_timer_hit, s);
-    s->sync.ptimer = ptimer_init(s->sync.bh);
-    s->sync.ptimer_resp = ptimer_init(s->sync.bh_resp);
+    s->sync.ptimer = ptimer_init(s->sync.bh, PTIMER_POLICY_DEFAULT);
+    s->sync.ptimer_resp = ptimer_init(s->sync.bh_resp, PTIMER_POLICY_DEFAULT);
 
     /* The Sync-quantum is expressed in nano-seconds.  */
     ptimer_set_freq(s->sync.ptimer, 1000 * 1000 * 1000);

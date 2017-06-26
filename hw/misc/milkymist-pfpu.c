@@ -18,7 +18,7 @@
  *
  *
  * Specification available at:
- *   http://www.milkymist.org/socdoc/pfpu.pdf
+ *   http://milkymist.walle.cc/socdoc/pfpu.pdf
  *
  */
 
@@ -137,7 +137,7 @@ struct MilkymistPFPUState {
 };
 typedef struct MilkymistPFPUState MilkymistPFPUState;
 
-static inline hwaddr
+static inline uint32_t
 get_dma_address(uint32_t base, uint32_t x, uint32_t y)
 {
     return base + 8 * (128 * y + x);

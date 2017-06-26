@@ -23,6 +23,7 @@
 #include "sysemu/block-backend.h"
 #include "exec/address-spaces.h"
 #include "qemu/error-report.h"
+#include "hw/char/pl011.h"
 
 #define SMP_BOOT_ADDR 0xe0000000
 #define SMP_BOOTREG_ADDR 0x10000030
@@ -202,10 +203,10 @@ static void realview_init(MachineState *machine,
     sysbus_create_simple("pl050_keyboard", 0x10006000, pic[20]);
     sysbus_create_simple("pl050_mouse", 0x10007000, pic[21]);
 
-    sysbus_create_simple("pl011", 0x10009000, pic[12]);
-    sysbus_create_simple("pl011", 0x1000a000, pic[13]);
-    sysbus_create_simple("pl011", 0x1000b000, pic[14]);
-    sysbus_create_simple("pl011", 0x1000c000, pic[15]);
+    pl011_create(0x10009000, pic[12], serial_hds[0]);
+    pl011_create(0x1000a000, pic[13], serial_hds[1]);
+    pl011_create(0x1000b000, pic[14], serial_hds[2]);
+    pl011_create(0x1000c000, pic[15], serial_hds[3]);
 
     /* DMA controller is optional, apparently.  */
     sysbus_create_simple("pl081", 0x10030000, pic[24]);
@@ -253,7 +254,7 @@ static void realview_init(MachineState *machine,
         sysbus_connect_irq(busdev, 2, pic[50]);
         sysbus_connect_irq(busdev, 3, pic[51]);
         pci_bus = (PCIBus *)qdev_get_child_bus(dev, "pci");
-        if (usb_enabled()) {
+        if (machine_usb(machine)) {
             pci_create_simple(pci_bus, -1, "pci-ohci");
         }
         n = drive_get_max_bus(IF_SCSI);

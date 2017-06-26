@@ -10,7 +10,6 @@
  * See the COPYING file in the top-level directory.
  */
 #include "qemu/osdep.h"
-#include <glib.h>
 #include "qga/guest-agent-core.h"
 
 struct GACommandState {
@@ -71,4 +70,10 @@ GACommandState *ga_command_state_new(void)
     GACommandState *cs = g_new0(GACommandState, 1);
     cs->groups = NULL;
     return cs;
+}
+
+void ga_command_state_free(GACommandState *cs)
+{
+    g_slist_free_full(cs->groups, g_free);
+    g_free(cs);
 }

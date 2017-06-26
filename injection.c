@@ -40,7 +40,7 @@ static QEMUTimer *timer;
 void qmp_write_mem(int64_t addr, int64_t val, int64_t size, bool has_cpu,
                    int64_t cpu, bool has_qom, const char *qom, Error **errp)
 {
-    int64_t cpu_id = 0;
+    int cpu_id = 0;
     Object *obj;
     CPUState *s;
 
@@ -50,8 +50,8 @@ void qmp_write_mem(int64_t addr, int64_t val, int64_t size, bool has_cpu,
         if (s) {
             cpu_id = s->cpu_index;
             DPRINTF("write memory addr=0x%" PRIx64 " val=0x%" PRIx64
-                    " ld size=%ld cpu_path=%s (cpu=%ld)\n", addr, val, size,
-                    qom, cpu_id);
+                    " ld size=%"PRId64" cpu_path=%s (cpu=%d)\n", addr, val,
+                    size, qom, cpu_id);
         } else {
             error_set(errp, ERROR_CLASS_DEVICE_NOT_FOUND,
                             "'%s' is not a CPU or doesn't exists", qom);
@@ -62,8 +62,8 @@ void qmp_write_mem(int64_t addr, int64_t val, int64_t size, bool has_cpu,
         if (has_cpu) {
             cpu_id = cpu;
         }
-        DPRINTF("write memory addr=0x%" PRIx64 "val=0x%" PRIx64 " size=%ld"
-                " cpu=%ld\n", addr, val, size, cpu_id);
+        DPRINTF("write memory addr=0x%" PRIx64 "val=0x%" PRIx64 " "
+                "size=%"PRId64" cpu=%d\n", addr, val, size, cpu_id);
     }
 
     if (address_space_write(cpu_get_address_space(qemu_get_cpu(cpu_id), 0),
@@ -78,7 +78,7 @@ ReadValue *qmp_read_mem(int64_t addr, int64_t size, bool has_cpu, int64_t cpu,
                      bool has_qom, const char *qom, Error **errp)
 {
     ReadValue *ret = g_new0(ReadValue, 1);
-    int64_t cpu_id = 0;
+    int cpu_id = 0;
     Object *obj;
     CPUState *s;
 
@@ -89,8 +89,8 @@ ReadValue *qmp_read_mem(int64_t addr, int64_t size, bool has_cpu, int64_t cpu,
         s = (CPUState *)object_dynamic_cast(obj, TYPE_CPU);
         if (s) {
             cpu_id = s->cpu_index;
-            DPRINTF("read memory addr=0x%" PRIx64 " size=%ld cpu_path=%s"
-                    " (cpu=%ld)\n", addr, size, qom, cpu_id);
+            DPRINTF("read memory addr=0x%" PRIx64 " size=%"PRId64" cpu_path=%s"
+                    " (cpu=%d)\n", addr, size, qom, cpu_id);
         } else {
             error_set(errp, ERROR_CLASS_DEVICE_NOT_FOUND,
                             "'%s' is not a CPU or doesn't exists", qom);
@@ -101,8 +101,8 @@ ReadValue *qmp_read_mem(int64_t addr, int64_t size, bool has_cpu, int64_t cpu,
         if (has_cpu) {
             cpu_id = cpu;
         }
-        DPRINTF("read memory addr=0x%" PRIx64 " size=%ld (cpu=%ld)\n", addr,
-                size, cpu_id);
+        DPRINTF("read memory addr=0x%" PRIx64 " size=%"PRId64" (cpu=%d)\n",
+                addr, size, cpu_id);
     }
 
     if (address_space_read(cpu_get_address_space(qemu_get_cpu(cpu_id), 0), addr,
@@ -149,7 +149,7 @@ static void do_fault(void *opaque)
 
     QLIST_FOREACH_SAFE(entry, &events, node, next) {
         if (entry->time_ns < current_time) {
-            DPRINTF("fault %ld happened @%ld!\n", entry->val,
+            DPRINTF("fault %"PRId64" happened @%"PRId64"!\n", entry->val,
                     qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
             qapi_event_send_fault_event(entry->val, current_time, &error_abort);
             QLIST_REMOVE(entry, node);
@@ -165,7 +165,7 @@ void qmp_trigger_event(int64_t time_ns, int64_t event_id, Error **errp)
 {
     FaultEventEntry *entry;
 
-    DPRINTF("trigger_event(%ld, %ld)\n", time_ns, event_id);
+    DPRINTF("trigger_event(%"PRId64", %"PRId64")\n", time_ns, event_id);
 
     entry = g_new0(FaultEventEntry, 1);
     entry->time_ns = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + time_ns;

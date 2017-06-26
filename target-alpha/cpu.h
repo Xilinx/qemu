@@ -17,10 +17,11 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#if !defined (__CPU_ALPHA_H__)
-#define __CPU_ALPHA_H__
+#ifndef ALPHA_CPU_H
+#define ALPHA_CPU_H
 
 #include "qemu-common.h"
+#include "cpu-qom.h"
 
 #define TARGET_LONG_BITS 64
 #define ALIGNED_ONLY
@@ -200,7 +201,7 @@ enum {
 
 /* MMU modes definitions */
 
-/* Alpha has 5 MMU modes: PALcode, kernel, executive, supervisor, and user.
+/* Alpha has 5 MMU modes: PALcode, Kernel, Executive, Supervisor, and User.
    The Unix PALcode only exposes the kernel and user modes; presumably
    executive and supervisor are used by VMS.
 
@@ -208,22 +209,18 @@ enum {
    there are PALmode instructions that can access data via physical mode
    or via an os-installed "alternate mode", which is one of the 4 above.
 
-   QEMU does not currently properly distinguish between code/data when
-   looking up addresses.  To avoid having to address this issue, our
-   emulated PALcode will cheat and use the KSEG mapping for its code+data
-   rather than physical addresses.
+   That said, we're only emulating Unix PALcode, and not attempting VMS,
+   so we don't need to implement Executive and Supervisor.  QEMU's own
+   PALcode cheats and usees the KSEG mapping for its code+data rather than
+   physical addresses.  */
 
-   Moreover, we're only emulating Unix PALcode, and not attempting VMS.
-
-   All of which allows us to drop all but kernel and user modes.
-   Elide the unused MMU modes to save space.  */
-
-#define NB_MMU_MODES 2
+#define NB_MMU_MODES 3
 
 #define MMU_MODE0_SUFFIX _kernel
 #define MMU_MODE1_SUFFIX _user
 #define MMU_KERNEL_IDX   0
 #define MMU_USER_IDX     1
+#define MMU_PHYS_IDX     2
 
 typedef struct CPUAlphaState CPUAlphaState;
 
@@ -233,7 +230,6 @@ struct CPUAlphaState {
     uint64_t pc;
     uint64_t unique;
     uint64_t lock_addr;
-    uint64_t lock_st_addr;
     uint64_t lock_value;
 
     /* The FPCR, and disassembled portions thereof.  */
@@ -284,12 +280,51 @@ struct CPUAlphaState {
     int implver;
 };
 
+/**
+ * AlphaCPU:
+ * @env: #CPUAlphaState
+ *
+ * An Alpha CPU.
+ */
+struct AlphaCPU {
+    /*< private >*/
+    CPUState parent_obj;
+    /*< public >*/
+
+    CPUAlphaState env;
+
+    /* This alarm doesn't exist in real hardware; we wish it did.  */
+    QEMUTimer *alarm_timer;
+};
+
+static inline AlphaCPU *alpha_env_get_cpu(CPUAlphaState *env)
+{
+    return container_of(env, AlphaCPU, env);
+}
+
+#define ENV_GET_CPU(e) CPU(alpha_env_get_cpu(e))
+
+#define ENV_OFFSET offsetof(AlphaCPU, env)
+
+#ifndef CONFIG_USER_ONLY
+extern const struct VMStateDescription vmstate_alpha_cpu;
+#endif
+
+void alpha_cpu_do_interrupt(CPUState *cpu);
+bool alpha_cpu_exec_interrupt(CPUState *cpu, int int_req);
+void alpha_cpu_dump_state(CPUState *cs, FILE *f, fprintf_function cpu_fprintf,
+                          int flags);
+hwaddr alpha_cpu_get_phys_page_debug(CPUState *cpu, vaddr addr);
+int alpha_cpu_gdb_read_register(CPUState *cpu, uint8_t *buf, int reg);
+int alpha_cpu_gdb_write_register(CPUState *cpu, uint8_t *buf, int reg);
+void alpha_cpu_do_unaligned_access(CPUState *cpu, vaddr addr,
+                                   MMUAccessType access_type,
+                                   int mmu_idx, uintptr_t retaddr);
+
 #define cpu_list alpha_cpu_list
-#define cpu_exec cpu_alpha_exec
 #define cpu_signal_handler cpu_alpha_signal_handler
 
 #include "exec/cpu-all.h"
-#include "cpu-qom.h"
 
 enum {
     FEATURE_ASN    = 0x00000001,
@@ -310,9 +345,6 @@ enum {
     EXCP_ARITH,
     EXCP_FEN,
     EXCP_CALL_PAL,
-    /* For Usermode emulation.  */
-    EXCP_STL_C,
-    EXCP_STQ_C,
 };
 
 /* Alpha-specific interrupt pending bits.  */
@@ -427,7 +459,6 @@ AlphaCPU *cpu_alpha_init(const char *cpu_model);
 #define cpu_init(cpu_model) CPU(cpu_alpha_init(cpu_model))
 
 void alpha_cpu_list(FILE *f, fprintf_function cpu_fprintf);
-int cpu_alpha_exec(CPUState *cpu);
 /* you can call this signal handler from your SIGBUS and SIGSEGV
    signal handlers to inform the virtual CPU of exceptions. non zero
    is returned if the signal was handled by the virtual CPU.  */
@@ -435,7 +466,6 @@ int cpu_alpha_signal_handler(int host_signum, void *pinfo,
                              void *puc);
 int alpha_cpu_handle_mmu_fault(CPUState *cpu, vaddr address, int rw,
                                int mmu_idx);
-void do_restore_state(CPUAlphaState *, uintptr_t retaddr);
 void QEMU_NORETURN dynamic_excp(CPUAlphaState *, uintptr_t, int, int);
 void QEMU_NORETURN arith_excp(CPUAlphaState *, uintptr_t, int, uint64_t);
 
@@ -465,7 +495,7 @@ enum {
 };
 
 static inline void cpu_get_tb_cpu_state(CPUAlphaState *env, target_ulong *pc,
-                                        target_ulong *cs_base, int *pflags)
+                                        target_ulong *cs_base, uint32_t *pflags)
 {
     int flags = 0;
 
@@ -485,6 +515,4 @@ static inline void cpu_get_tb_cpu_state(CPUAlphaState *env, target_ulong *pc,
     *pflags = flags;
 }
 
-#include "exec/exec-all.h"
-
-#endif /* !defined (__CPU_ALPHA_H__) */
+#endif /* ALPHA_CPU_H */

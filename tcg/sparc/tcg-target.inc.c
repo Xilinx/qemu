@@ -24,7 +24,7 @@
 
 #include "tcg-be-null.h"
 
-#ifndef NDEBUG
+#ifdef CONFIG_DEBUG_TCG
 static const char * const tcg_target_reg_names[TCG_TARGET_NB_REGS] = {
     "%g0",
     "%g1",
@@ -249,6 +249,8 @@ static const int tcg_target_call_oarg_regs[] = {
 #define STWA       (INSN_OP(3) | INSN_OP3(0x14))
 #define STXA       (INSN_OP(3) | INSN_OP3(0x1e))
 
+#define MEMBAR     (INSN_OP(2) | INSN_OP3(0x28) | INSN_RS1(15) | (1 << 13))
+
 #ifndef ASI_PRIMARY_LITTLE
 #define ASI_PRIMARY_LITTLE 0x88
 #endif
@@ -289,7 +291,7 @@ static void patch_reloc(tcg_insn_unit *code_ptr, int type,
 {
     uint32_t insn;
 
-    assert(addend == 0);
+    tcg_debug_assert(addend == 0);
     value = tcg_ptr_byte_diff((tcg_insn_unit *)value, code_ptr);
 
     switch (type) {
@@ -502,6 +504,16 @@ static inline void tcg_out_st(TCGContext *s, TCGType type, TCGReg arg,
                               TCGReg arg1, intptr_t arg2)
 {
     tcg_out_ldst(s, arg, arg1, arg2, (type == TCG_TYPE_I32 ? STW : STX));
+}
+
+static inline bool tcg_out_sti(TCGContext *s, TCGType type, TCGArg val,
+                               TCGReg base, intptr_t ofs)
+{
+    if (val == 0) {
+        tcg_out_st(s, type, TCG_REG_G0, base, ofs);
+        return true;
+    }
+    return false;
 }
 
 static void tcg_out_ld_ptr(TCGContext *s, TCGReg ret, uintptr_t arg)
@@ -825,6 +837,12 @@ static void tcg_out_call(TCGContext *s, tcg_insn_unit *dest)
     tcg_out_nop(s);
 }
 
+static void tcg_out_mb(TCGContext *s, TCGArg a0)
+{
+    /* Note that the TCG memory order constants mirror the Sparc MEMBAR.  */
+    tcg_out32(s, MEMBAR | (a0 & TCG_MO_ALL));
+}
+
 #ifdef CONFIG_SOFTMMU
 static tcg_insn_unit *qemu_ld_trampoline[16];
 static tcg_insn_unit *qemu_st_trampoline[16];
@@ -986,19 +1004,25 @@ static void tcg_target_qemu_prologue(TCGContext *s)
    is in the returned register, maybe %o0.  The TLB addend is in %o1.  */
 
 static TCGReg tcg_out_tlb_load(TCGContext *s, TCGReg addr, int mem_index,
-                               TCGMemOp s_bits, int which)
+                               TCGMemOp opc, int which)
 {
     const TCGReg r0 = TCG_REG_O0;
     const TCGReg r1 = TCG_REG_O1;
     const TCGReg r2 = TCG_REG_O2;
+    unsigned s_bits = opc & MO_SIZE;
+    unsigned a_bits = get_alignment_bits(opc);
     int tlb_ofs;
 
     /* Shift the page number down.  */
     tcg_out_arithi(s, r1, addr, TARGET_PAGE_BITS, SHIFT_SRL);
 
-    /* Mask out the page offset, except for the required alignment.  */
+    /* Mask out the page offset, except for the required alignment.
+       We don't support unaligned accesses.  */
+    if (a_bits < s_bits) {
+        a_bits = s_bits;
+    }
     tcg_out_movi(s, TCG_TYPE_TL, TCG_REG_T1,
-                 TARGET_PAGE_MASK | ((1 << s_bits) - 1));
+                 TARGET_PAGE_MASK | ((1 << a_bits) - 1));
 
     /* Mask the tlb index.  */
     tcg_out_arithi(s, r1, r1, CPU_TLB_SIZE - 1, ARITH_AND);
@@ -1077,7 +1101,7 @@ static void tcg_out_qemu_ld(TCGContext *s, TCGReg data, TCGReg addr,
     tcg_insn_unit *func;
     tcg_insn_unit *label_ptr;
 
-    addrz = tcg_out_tlb_load(s, addr, memi, memop & MO_SIZE,
+    addrz = tcg_out_tlb_load(s, addr, memi, memop,
                              offsetof(CPUTLBEntry, addr_read));
 
     /* The fast path is exactly one insn.  Thus we can perform the
@@ -1108,7 +1132,7 @@ static void tcg_out_qemu_ld(TCGContext *s, TCGReg data, TCGReg addr,
     } else {
         func = qemu_ld_trampoline[memop & (MO_BSWAP | MO_SSIZE)];
     }
-    assert(func != NULL);
+    tcg_debug_assert(func != NULL);
     tcg_out_call_nodelay(s, func);
     /* delay slot */
     tcg_out_movi(s, TCG_TYPE_I32, param, oi);
@@ -1159,7 +1183,7 @@ static void tcg_out_qemu_st(TCGContext *s, TCGReg data, TCGReg addr,
     tcg_insn_unit *func;
     tcg_insn_unit *label_ptr;
 
-    addrz = tcg_out_tlb_load(s, addr, memi, memop & MO_SIZE,
+    addrz = tcg_out_tlb_load(s, addr, memi, memop,
                              offsetof(CPUTLBEntry, addr_write));
 
     /* The fast path is exactly one insn.  Thus we can perform the entire
@@ -1187,7 +1211,7 @@ static void tcg_out_qemu_st(TCGContext *s, TCGReg data, TCGReg addr,
     tcg_out_mov(s, TCG_TYPE_REG, param++, data);
 
     func = qemu_st_trampoline[memop & (MO_BSWAP | MO_SIZE)];
-    assert(func != NULL);
+    tcg_debug_assert(func != NULL);
     tcg_out_call_nodelay(s, func);
     /* delay slot */
     tcg_out_movi(s, TCG_TYPE_I32, param, oi);
@@ -1229,18 +1253,19 @@ static void tcg_out_op(TCGContext *s, TCGOpcode opc,
         }
         break;
     case INDEX_op_goto_tb:
-        if (s->tb_jmp_offset) {
+        if (s->tb_jmp_insn_offset) {
             /* direct jump method */
-            s->tb_jmp_offset[a0] = tcg_current_code_size(s);
+            s->tb_jmp_insn_offset[a0] = tcg_current_code_size(s);
             /* Make sure to preserve links during retranslation.  */
             tcg_out32(s, CALL | (*s->code_ptr & ~INSN_OP(-1)));
         } else {
             /* indirect jump method */
-            tcg_out_ld_ptr(s, TCG_REG_T1, (uintptr_t)(s->tb_next + a0));
+            tcg_out_ld_ptr(s, TCG_REG_T1,
+                           (uintptr_t)(s->tb_jmp_target_addr + a0));
             tcg_out_arithi(s, TCG_REG_G0, TCG_REG_T1, 0, JMPL);
         }
         tcg_out_nop(s);
-        s->tb_next_offset[a0] = tcg_current_code_size(s);
+        s->tb_jmp_reset_offset[a0] = tcg_current_code_size(s);
         break;
     case INDEX_op_br:
         tcg_out_bpcc(s, COND_A, BPCC_PT, arg_label(a0));
@@ -1449,6 +1474,10 @@ static void tcg_out_op(TCGContext *s, TCGOpcode opc,
 	tcg_out_arithc(s, a0, TCG_REG_G0, a1, const_args[1], c);
 	break;
 
+    case INDEX_op_mb:
+        tcg_out_mb(s, a0);
+        break;
+
     case INDEX_op_mov_i32:  /* Always emitted via tcg_out_mov.  */
     case INDEX_op_mov_i64:
     case INDEX_op_movi_i32: /* Always emitted via tcg_out_movi.  */
@@ -1550,6 +1579,7 @@ static const TCGTargetOpDef sparc_op_defs[] = {
     { INDEX_op_qemu_st_i32, { "sZ", "A" } },
     { INDEX_op_qemu_st_i64, { "SZ", "A" } },
 
+    { INDEX_op_mb, { } },
     { -1 },
 };
 
@@ -1645,8 +1675,8 @@ void tb_set_jmp_target1(uintptr_t jmp_addr, uintptr_t addr)
 
     /* We can reach the entire address space for 32-bit.  For 64-bit
        the code_gen_buffer can't be larger than 2GB.  */
-    assert(disp == (int32_t)disp);
+    tcg_debug_assert(disp == (int32_t)disp);
 
-    *ptr = CALL | (uint32_t)disp >> 2;
+    atomic_set(ptr, deposit32(CALL, 0, 30, disp >> 2));
     flush_icache_range(jmp_addr, jmp_addr + 4);
 }

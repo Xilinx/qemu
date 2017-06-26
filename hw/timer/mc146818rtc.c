@@ -22,7 +22,6 @@
  * THE SOFTWARE.
  */
 #include "qemu/osdep.h"
-#include "config-target.h"
 #include "qemu/cutils.h"
 #include "qemu/bcd.h"
 #include "hw/hw.h"
@@ -106,12 +105,10 @@ static inline bool rtc_running(RTCState *s)
 
 static uint64_t get_guest_rtc_ns(RTCState *s)
 {
-    uint64_t guest_rtc;
     uint64_t guest_clock = qemu_clock_get_ns(rtc_clock);
 
-    guest_rtc = s->base_rtc * NANOSECONDS_PER_SECOND +
+    return s->base_rtc * NANOSECONDS_PER_SECOND +
         guest_clock - s->last_update + s->offset;
-    return guest_rtc;
 }
 
 #ifdef TARGET_I386
@@ -720,11 +717,18 @@ static void rtc_set_date_from_host(ISADevice *dev)
     rtc_set_cmos(s, &tm);
 }
 
+static void rtc_pre_save(void *opaque)
+{
+    RTCState *s = opaque;
+
+    rtc_update_time(s);
+}
+
 static int rtc_post_load(void *opaque, int version_id)
 {
     RTCState *s = opaque;
 
-    if (version_id <= 2) {
+    if (version_id <= 2 || rtc_clock == QEMU_CLOCK_REALTIME) {
         rtc_set_time(s);
         s->offset = 0;
         check_update_timer(s);
@@ -767,6 +771,7 @@ static const VMStateDescription vmstate_rtc = {
     .name = "mc146818rtc",
     .version_id = 3,
     .minimum_version_id = 1,
+    .pre_save = rtc_pre_save,
     .post_load = rtc_post_load,
     .fields = (VMStateField[]) {
         VMSTATE_BUFFER(cmos_data, RTCState),
@@ -909,6 +914,8 @@ static void rtc_realizefn(DeviceState *dev, Error **errp)
 
     object_property_add_alias(qdev_get_machine(), "rtc-time",
                               OBJECT(s), "date", NULL);
+
+    qdev_init_gpio_out(dev, &s->irq, 1);
 }
 
 ISADevice *rtc_init(ISABus *bus, int base_year, qemu_irq intercept_irq)
@@ -923,9 +930,9 @@ ISADevice *rtc_init(ISABus *bus, int base_year, qemu_irq intercept_irq)
     qdev_prop_set_int32(dev, "base_year", base_year);
     qdev_init_nofail(dev);
     if (intercept_irq) {
-        s->irq = intercept_irq;
+        qdev_connect_gpio_out(dev, 0, intercept_irq);
     } else {
-        isa_init_irq(isadev, &s->irq, RTC_ISA_IRQ);
+        isa_connect_gpio_out(isadev, 0, RTC_ISA_IRQ);
     }
     QLIST_INSERT_HEAD(&rtc_devices, s, link);
 

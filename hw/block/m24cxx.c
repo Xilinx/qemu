@@ -63,17 +63,19 @@ static void m24cxx_sync(I2CSlave *i2c)
 {
     M24CXXState *s = M24CXX(i2c);
     int64_t nb_sectors;
-    QEMUIOVector iov;
+    QEMUIOVector *iov;
 
     if (!s->blk) {
         return;
     }
 
-    /* the device is so small, just sync the whole thing */
+    iov = g_new(QEMUIOVector, 1);
     nb_sectors = DIV_ROUND_UP(s->size, BDRV_SECTOR_SIZE);
-    qemu_iovec_init(&iov, 1);
-    qemu_iovec_add(&iov, s->storage, nb_sectors * BDRV_SECTOR_SIZE);
-    blk_aio_writev(s->blk, 0, &iov, nb_sectors, m24cxx_sync_complete, NULL);
+
+    /* the device is so small, just sync the whole thing */
+    qemu_iovec_init(iov, 1);
+    qemu_iovec_add(iov, s->storage, nb_sectors * BDRV_SECTOR_SIZE);
+    blk_aio_pwritev(s->blk, nb_sectors * BDRV_SECTOR_SIZE, iov, 0, m24cxx_sync_complete, iov);
 }
 
 static void m24cxx_reset(DeviceState *dev)
@@ -180,8 +182,8 @@ static void m24cxx_realize(DeviceState *dev, Error **errp)
     if (dinfo) {
         s->blk = dinfo ? blk_by_legacy_dinfo(dinfo) : NULL;
         /* FIXME: Move to late init */
-        if (blk_read(s->blk, 0, s->storage,
-                     DIV_ROUND_UP(s->size, BDRV_SECTOR_SIZE))) {
+        if (blk_pread(s->blk, 0, s->storage,
+                      DIV_ROUND_UP(s->size, BDRV_SECTOR_SIZE)) < 0) {
             error_setg(errp, "Failed to initialize I2C EEPROM!\n");
             return;
         }

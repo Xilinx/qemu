@@ -29,7 +29,7 @@
 #include "qemu/error-report.h"
 #include "sysemu/sysemu.h"
 #include "hw/qdev-properties.h"
-
+#include "trace.h"
 
 bool cpu_exists(int64_t id)
 {
@@ -48,7 +48,7 @@ bool cpu_exists(int64_t id)
 CPUState *cpu_generic_init(const char *typename, const char *cpu_model)
 {
     char *str, *name, *featurestr;
-    CPUState *cpu;
+    CPUState *cpu = NULL;
     ObjectClass *oc;
     CPUClass *cc;
     Error *err = NULL;
@@ -62,16 +62,18 @@ CPUState *cpu_generic_init(const char *typename, const char *cpu_model)
         return NULL;
     }
 
-    cpu = CPU(object_new(object_class_get_name(oc)));
-    cc = CPU_GET_CLASS(cpu);
-
+    cc = CPU_CLASS(oc);
     featurestr = strtok(NULL, ",");
-    cc->parse_features(cpu, featurestr, &err);
+    /* TODO: all callers of cpu_generic_init() need to be converted to
+     * call parse_features() only once, before calling cpu_generic_init().
+     */
+    cc->parse_features(object_class_get_name(oc), featurestr, &err);
     g_free(str);
     if (err != NULL) {
         goto out;
     }
 
+    cpu = CPU(object_new(object_class_get_name(oc)));
     object_property_set_bool(OBJECT(cpu), true, "realized", &err);
 
 out:
@@ -118,10 +120,10 @@ void cpu_reset_interrupt(CPUState *cpu, int mask)
 
 void cpu_exit(CPUState *cpu)
 {
-    cpu->exit_request = 1;
+    atomic_set(&cpu->exit_request, 1);
     /* Ensure cpu_exec will see the exit request after TCG has exited.  */
     smp_wmb();
-    cpu->tcg_exit_req = 1;
+    atomic_set(&cpu->tcg_exit_req, 1);
 }
 
 int cpu_write_elf32_qemunote(WriteCoreDumpFunction f, CPUState *cpu,
@@ -244,6 +246,8 @@ void cpu_reset(CPUState *cpu)
     if (klass->reset != NULL) {
         (*klass->reset)(cpu);
     }
+
+    trace_guest_cpu_reset(cpu);
 }
 
 static void cpu_common_reset(CPUState *cpu)
@@ -251,6 +255,7 @@ static void cpu_common_reset(CPUState *cpu)
     CPUClass *cc = CPU_GET_CLASS(cpu);
     bool old_halt = cpu->halt_pin;
     bool old_reset = cpu->reset_pin;
+    int i;
 
     if (qemu_loglevel_mask(CPU_LOG_RESET)) {
         qemu_log("CPU Reset (CPU %d)\n", cpu->cpu_index);
@@ -269,6 +274,10 @@ static void cpu_common_reset(CPUState *cpu)
     memset(cpu->tb_jmp_cache, 0, TB_JMP_CACHE_SIZE * sizeof(void *));
     cpu_halt_gpio(cpu, 0, old_halt);
     cpu_reset_gpio(cpu, 0, old_reset);
+
+    for (i = 0; i < TB_JMP_CACHE_SIZE; ++i) {
+        atomic_set(&cpu->tb_jmp_cache[i], NULL);
+    }
 }
 
 static bool cpu_common_has_work(CPUState *cs)
@@ -307,25 +316,37 @@ static ObjectClass *cpu_common_class_by_name(const char *cpu_model)
     return NULL;
 }
 
-static void cpu_common_parse_features(CPUState *cpu, char *features,
+static void cpu_common_parse_features(const char *typename, char *features,
                                       Error **errp)
 {
     char *featurestr; /* Single "key=value" string being parsed */
     char *val;
-    Error *err = NULL;
+    static bool cpu_globals_initialized;
+
+    /* TODO: all callers of ->parse_features() need to be changed to
+     * call it only once, so we can remove this check (or change it
+     * to assert(!cpu_globals_initialized).
+     * Current callers of ->parse_features() are:
+     * - cpu_generic_init()
+     */
+    if (cpu_globals_initialized) {
+        return;
+    }
+    cpu_globals_initialized = true;
 
     featurestr = features ? strtok(features, ",") : NULL;
 
     while (featurestr) {
         val = strchr(featurestr, '=');
         if (val) {
+            GlobalProperty *prop = g_new0(typeof(*prop), 1);
             *val = 0;
             val++;
-            object_property_parse(OBJECT(cpu), val, featurestr, &err);
-            if (err) {
-                error_propagate(errp, err);
-                return;
-            }
+            prop->driver = typename;
+            prop->property = g_strdup(featurestr);
+            prop->value = g_strdup(val);
+            prop->errp = &error_fatal;
+            qdev_prop_register_global(prop);
         } else {
             error_setg(errp, "Expected key=value format, found %s.",
                        featurestr);
@@ -343,6 +364,15 @@ static void cpu_common_realizefn(DeviceState *dev, Error **errp)
         cpu_synchronize_post_init(cpu);
         cpu_resume(cpu);
     }
+
+    /* NOTE: latest generic point where the cpu is fully realized */
+    trace_init_vcpu(cpu);
+}
+
+static void cpu_common_unrealizefn(DeviceState *dev, Error **errp)
+{
+    CPUState *cpu = CPU(dev);
+    cpu_exec_unrealizefn(cpu);
 }
 
 static void cpu_common_initfn(Object *obj)
@@ -350,20 +380,30 @@ static void cpu_common_initfn(Object *obj)
     CPUState *cpu = CPU(obj);
     CPUClass *cc = CPU_GET_CLASS(obj);
 
-    cpu->cpu_index = -1;
+    cpu->cpu_index = UNASSIGNED_CPU_INDEX;
     cpu->gdb_num_regs = cpu->gdb_num_g_regs = cc->gdb_num_core_regs;
-
-    qdev_init_gpio_in_named(DEVICE(obj), cpu_reset_gpio, "reset",1);
-    qdev_init_gpio_in_named(DEVICE(obj), cpu_halt_gpio, "halt", 1);
+    /* *-user doesn't have configurable SMP topology */
+    /* the default value is changed by qemu_init_vcpu() for softmmu */
+    cpu->nr_cores = 1;
+    cpu->nr_threads = 1;
 
     qemu_mutex_init(&cpu->work_mutex);
     QTAILQ_INIT(&cpu->breakpoints);
     QTAILQ_INIT(&cpu->watchpoints);
+
+    /* Xilinx: The GPIO lines we use */
+    qdev_init_gpio_in_named(DEVICE(obj), cpu_reset_gpio, "reset", 1);
+    qdev_init_gpio_in_named(DEVICE(obj), cpu_halt_gpio, "halt", 1);
+
+    cpu->trace_dstate = bitmap_new(trace_get_vcpu_event_count());
+
+    cpu_exec_initfn(cpu);
 }
 
 static void cpu_common_finalize(Object *obj)
 {
-    cpu_exec_exit(CPU(obj));
+    CPUState *cpu = CPU(obj);
+    g_free(cpu->trace_dstate);
 }
 
 static int64_t cpu_common_get_arch_id(CPUState *cpu)
@@ -405,6 +445,7 @@ static void cpu_class_init(ObjectClass *klass, void *data)
     dc->unhalt = cpu_common_unhalt;
     dc->realize = cpu_common_realizefn;
     dc->props = cpu_common_properties;
+    dc->unrealize = cpu_common_unrealizefn;
     /*
      * Reason: CPUs still need special care by board code: wiring up
      * IRQs, adding reset handlers, halting non-first CPUs, ...

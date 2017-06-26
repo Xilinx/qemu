@@ -5,31 +5,32 @@
    necessary */
 
 #ifndef SYSCALL_DEFS_H
-#define SYSCALL_DEFS_H 1
-
+#define SYSCALL_DEFS_H
 
 #include "syscall_nr.h"
 
-#define SOCKOP_socket           1
-#define SOCKOP_bind             2
-#define SOCKOP_connect          3
-#define SOCKOP_listen           4
-#define SOCKOP_accept           5
-#define SOCKOP_getsockname      6
-#define SOCKOP_getpeername      7
-#define SOCKOP_socketpair       8
-#define SOCKOP_send             9
-#define SOCKOP_recv             10
-#define SOCKOP_sendto           11
-#define SOCKOP_recvfrom         12
-#define SOCKOP_shutdown         13
-#define SOCKOP_setsockopt       14
-#define SOCKOP_getsockopt       15
-#define SOCKOP_sendmsg          16
-#define SOCKOP_recvmsg          17
-#define SOCKOP_accept4          18
-#define SOCKOP_recvmmsg         19
-#define SOCKOP_sendmmsg         20
+
+/* socket operations for socketcall() */
+#define TARGET_SYS_SOCKET       1         /* socket()              */
+#define TARGET_SYS_BIND         2         /* bind()                */
+#define TARGET_SYS_CONNECT      3         /* connect()             */
+#define TARGET_SYS_LISTEN       4         /* listen()              */
+#define TARGET_SYS_ACCEPT       5         /* accept()              */
+#define TARGET_SYS_GETSOCKNAME  6         /* getsockname()         */
+#define TARGET_SYS_GETPEERNAME  7         /* getpeername()         */
+#define TARGET_SYS_SOCKETPAIR   8         /* socketpair()          */
+#define TARGET_SYS_SEND         9         /* send()                */
+#define TARGET_SYS_RECV         10        /* recv()                */
+#define TARGET_SYS_SENDTO       11        /* sendto()              */
+#define TARGET_SYS_RECVFROM     12        /* recvfrom()            */
+#define TARGET_SYS_SHUTDOWN     13        /* shutdown()            */
+#define TARGET_SYS_SETSOCKOPT   14        /* setsockopt()          */
+#define TARGET_SYS_GETSOCKOPT   15        /* getsockopt()          */
+#define TARGET_SYS_SENDMSG      16        /* sendmsg()             */
+#define TARGET_SYS_RECVMSG      17        /* recvmsg()             */
+#define TARGET_SYS_ACCEPT4      18        /* accept4()             */
+#define TARGET_SYS_RECVMMSG     19        /* recvmmsg()            */
+#define TARGET_SYS_SENDMMSG     20        /* sendmmsg()            */
 
 #define IPCOP_semop		1
 #define IPCOP_semget		2
@@ -55,7 +56,8 @@
 #define TARGET_IOC_NRBITS	8
 #define TARGET_IOC_TYPEBITS	8
 
-#if defined(TARGET_I386) || (defined(TARGET_ARM) && defined(TARGET_ABI32)) \
+#if (defined(TARGET_I386) && defined(TARGET_ABI32)) \
+    || (defined(TARGET_ARM) && defined(TARGET_ABI32)) \
     || defined(TARGET_SPARC) \
     || defined(TARGET_M68K) || defined(TARGET_SH4) || defined(TARGET_CRIS)
     /* 16 bit uid wrappers emulation */
@@ -134,6 +136,24 @@ struct target_sockaddr_ll {
     uint8_t  sll_addr[8];  /* Physical layer address */
 };
 
+struct target_sockaddr_un {
+    uint16_t su_family;
+    uint8_t sun_path[108];
+};
+
+struct target_in_addr {
+    uint32_t s_addr; /* big endian */
+};
+
+struct target_sockaddr_in {
+  uint16_t sin_family;
+  int16_t sin_port; /* big endian */
+  struct target_in_addr sin_addr;
+  uint8_t __pad[sizeof(struct target_sockaddr) -
+                sizeof(uint16_t) - sizeof(int16_t) -
+                sizeof(struct target_in_addr)];
+};
+
 struct target_sock_filter {
     abi_ushort code;
     uint8_t jt;
@@ -144,10 +164,6 @@ struct target_sock_filter {
 struct target_sock_fprog {
     abi_ushort len;
     abi_ulong filter;
-};
-
-struct target_in_addr {
-    uint32_t s_addr; /* big endian */
 };
 
 struct target_ip_mreq {
@@ -191,6 +207,34 @@ struct target_itimerval {
 struct target_itimerspec {
     struct target_timespec it_interval;
     struct target_timespec it_value;
+};
+
+struct target_timex {
+    abi_uint modes;              /* Mode selector */
+    abi_long offset;             /* Time offset */
+    abi_long freq;               /* Frequency offset */
+    abi_long maxerror;           /* Maximum error (microseconds) */
+    abi_long esterror;           /* Estimated error (microseconds) */
+    abi_int status;              /* Clock command/status */
+    abi_long constant;           /* PLL (phase-locked loop) time constant */
+    abi_long precision;          /* Clock precision (microseconds, ro) */
+    abi_long tolerance;          /* Clock freq. tolerance (ppm, ro) */
+    struct target_timeval time;  /* Current time */
+    abi_long tick;               /* Microseconds between clock ticks */
+    abi_long ppsfreq;            /* PPS (pulse per second) frequency */
+    abi_long jitter;             /* PPS jitter (ro); nanoseconds */
+    abi_int shift;               /* PPS interval duration (seconds) */
+    abi_long stabil;             /* PPS stability */
+    abi_long jitcnt;             /* PPS jitter limit exceeded (ro) */
+    abi_long calcnt;             /* PPS calibration intervals */
+    abi_long errcnt;             /* PPS calibration errors */
+    abi_long stbcnt;             /* PPS stability limit exceeded */
+    abi_int tai;                 /* TAI offset */
+
+    /* Further padding bytes to allow for future expansion */
+    abi_int:32; abi_int:32; abi_int:32; abi_int:32;
+    abi_int:32; abi_int:32; abi_int:32; abi_int:32;
+    abi_int:32; abi_int:32; abi_int:32;
 };
 
 typedef abi_long target_clock_t;
@@ -672,6 +716,21 @@ typedef struct {
 
 #define TARGET_SI_PAD_SIZE ((TARGET_SI_MAX_SIZE - TARGET_SI_PREAMBLE_SIZE) / sizeof(int))
 
+/* Within QEMU the top 16 bits of si_code indicate which of the parts of
+ * the union in target_siginfo is valid. This only applies between
+ * host_to_target_siginfo_noswap() and tswap_siginfo(); it does not
+ * appear either within host siginfo_t or in target_siginfo structures
+ * which we get from the guest userspace program. (The Linux kernel
+ * does a similar thing with using the top bits for its own internal
+ * purposes but not letting them be visible to userspace.)
+ */
+#define QEMU_SI_KILL 0
+#define QEMU_SI_TIMER 1
+#define QEMU_SI_POLL 2
+#define QEMU_SI_FAULT 3
+#define QEMU_SI_CHLD 4
+#define QEMU_SI_RT 5
+
 typedef struct target_siginfo {
 #ifdef TARGET_MIPS
 	int si_signo;
@@ -869,7 +928,11 @@ struct target_pollfd {
 #define TARGET_KDSETLED        0x4B32	/* set led state [lights, not flags] */
 #define TARGET_KDSIGACCEPT     0x4B4E
 
+#if defined(TARGET_ALPHA) || defined(TARGET_MIPS) || defined(TARGET_SH4)
+#define TARGET_SIOCATMARK      TARGET_IOR('s', 7, int)
+#else
 #define TARGET_SIOCATMARK      0x8905
+#endif
 
 /* Networking ioctls */
 #define TARGET_SIOCADDRT       0x890B          /* add routing table entry */
@@ -956,8 +1019,25 @@ struct target_pollfd {
 #define TARGET_BLKGETSIZE64 TARGET_IOR(0x12,114,abi_ulong)
                                              /* return device size in bytes
                                                 (u64 *arg) */
+
+#define TARGET_BLKDISCARD TARGET_IO(0x12, 119)
+#define TARGET_BLKIOMIN TARGET_IO(0x12, 120)
+#define TARGET_BLKIOOPT TARGET_IO(0x12, 121)
+#define TARGET_BLKALIGNOFF TARGET_IO(0x12, 122)
+#define TARGET_BLKPBSZGET TARGET_IO(0x12, 123)
+#define TARGET_BLKDISCARDZEROES TARGET_IO(0x12, 124)
+#define TARGET_BLKSECDISCARD TARGET_IO(0x12, 125)
+#define TARGET_BLKROTATIONAL TARGET_IO(0x12, 126)
+#define TARGET_BLKZEROOUT TARGET_IO(0x12, 127)
+
 #define TARGET_FIBMAP     TARGET_IO(0x00,1)  /* bmap access */
 #define TARGET_FIGETBSZ   TARGET_IO(0x00,2)  /* get the block size used for bmap */
+/* Note that the ioctl numbers claim type "long" but the actual type
+ * used by the kernel is "int".
+ */
+#define TARGET_FS_IOC_GETFLAGS TARGET_IOR('f', 1, long)
+#define TARGET_FS_IOC_SETFLAGS TARGET_IOW('f', 2, long)
+
 #define TARGET_FS_IOC_FIEMAP TARGET_IOWR('f',11,struct fiemap)
 
 /* cdrom commands */
@@ -1087,6 +1167,10 @@ struct target_pollfd {
 #define TARGET_LOOP_SET_STATUS64      0x4C04
 #define TARGET_LOOP_GET_STATUS64      0x4C05
 #define TARGET_LOOP_CHANGE_FD         0x4C06
+
+#define TARGET_LOOP_CTL_ADD           0x4C80
+#define TARGET_LOOP_CTL_REMOVE        0x4C81
+#define TARGET_LOOP_CTL_GET_FREE      0x4C82
 
 /* fb ioctls */
 #define TARGET_FBIOGET_VSCREENINFO    0x4600
@@ -2110,7 +2194,7 @@ struct target_statfs64 {
 #define TARGET_F_SETLK         6
 #define TARGET_F_SETLKW        7
 #define TARGET_F_SETOWN        24       /*  for sockets. */
-#define TARGET_F_GETOWN        25       /*  for sockets. */
+#define TARGET_F_GETOWN        23       /*  for sockets. */
 #else
 #define TARGET_F_GETLK         5
 #define TARGET_F_SETLK         6
@@ -2150,6 +2234,8 @@ struct target_statfs64 {
 #define TARGET_F_SETLEASE (TARGET_F_LINUX_SPECIFIC_BASE + 0)
 #define TARGET_F_GETLEASE (TARGET_F_LINUX_SPECIFIC_BASE + 1)
 #define TARGET_F_DUPFD_CLOEXEC (TARGET_F_LINUX_SPECIFIC_BASE + 6)
+#define TARGET_F_SETPIPE_SZ (TARGET_F_LINUX_SPECIFIC_BASE + 7)
+#define TARGET_F_GETPIPE_SZ (TARGET_F_LINUX_SPECIFIC_BASE + 8)
 #define TARGET_F_NOTIFY  (TARGET_F_LINUX_SPECIFIC_BASE+2)
 
 #if defined(TARGET_ALPHA)
@@ -2273,34 +2359,40 @@ struct target_statfs64 {
 #endif
 
 struct target_flock {
-	short l_type;
-	short l_whence;
-	abi_ulong l_start;
-	abi_ulong l_len;
-	int l_pid;
+    short l_type;
+    short l_whence;
+    abi_long l_start;
+    abi_long l_len;
+#if defined(TARGET_MIPS)
+    abi_long l_sysid;
+#endif
+    int l_pid;
+#if defined(TARGET_MIPS)
+    abi_long pad[4];
+#endif
 };
 
 struct target_flock64 {
-	short  l_type;
-	short  l_whence;
-#if defined(TARGET_PPC) || defined(TARGET_X86_64) || defined(TARGET_MIPS) \
-    || defined(TARGET_SPARC) || defined(TARGET_HPPA) \
+    short  l_type;
+    short  l_whence;
+#if defined(TARGET_PPC) || defined(TARGET_X86_64) \
+    || defined(TARGET_MIPS) || defined(TARGET_SPARC) \
     || defined(TARGET_MICROBLAZE) || defined(TARGET_TILEGX)
-        int __pad;
+    int __pad;
 #endif
-	unsigned long long l_start;
-	unsigned long long l_len;
-	int  l_pid;
+    abi_llong l_start;
+    abi_llong l_len;
+    int  l_pid;
 } QEMU_PACKED;
 
 #ifdef TARGET_ARM
 struct target_eabi_flock64 {
-	short  l_type;
-	short  l_whence;
-        int __pad;
-	unsigned long long l_start;
-	unsigned long long l_len;
-	int  l_pid;
+    short  l_type;
+    short  l_whence;
+    int __pad;
+    abi_llong l_start;
+    abi_llong l_len;
+    int  l_pid;
 } QEMU_PACKED;
 #endif
 
@@ -2533,6 +2625,9 @@ struct target_epoll_event {
     abi_uint events;
     target_epoll_data_t data;
 } TARGET_EPOLL_PACKED;
+
+#define TARGET_EP_MAX_EVENTS (INT_MAX / sizeof(struct target_epoll_event))
+
 #endif
 struct target_rlimit64 {
     uint64_t rlim_cur;
@@ -2544,8 +2639,6 @@ struct target_ucred {
     uint32_t uid;
     uint32_t gid;
 };
-
-#endif
 
 typedef int32_t target_timer_t;
 
@@ -2565,15 +2658,19 @@ typedef int32_t target_timer_t;
 
 struct target_sigevent {
     target_sigval_t sigev_value;
-    int32_t sigev_signo;
-    int32_t sigev_notify;
+    abi_int sigev_signo;
+    abi_int sigev_notify;
     union {
-        int32_t _pad[TARGET_SIGEV_PAD_SIZE];
-        int32_t _tid;
+        abi_int _pad[TARGET_SIGEV_PAD_SIZE];
+        abi_int _tid;
 
+        /* The kernel (and thus QEMU) never looks at these;
+         * they're only used as part of the ABI between a
+         * userspace program and libc.
+         */
         struct {
-            void (*_function)(sigval_t);
-            void *_attribute;
+            abi_ulong _function;
+            abi_ulong _attribute;
         } _sigev_thread;
     } _sigev_un;
 };
@@ -2588,3 +2685,30 @@ struct target_user_cap_data {
     uint32_t permitted;
     uint32_t inheritable;
 };
+
+/* from kernel's include/linux/syslog.h */
+
+/* Close the log.  Currently a NOP. */
+#define TARGET_SYSLOG_ACTION_CLOSE          0
+/* Open the log. Currently a NOP. */
+#define TARGET_SYSLOG_ACTION_OPEN           1
+/* Read from the log. */
+#define TARGET_SYSLOG_ACTION_READ           2
+/* Read all messages remaining in the ring buffer. */
+#define TARGET_SYSLOG_ACTION_READ_ALL       3
+/* Read and clear all messages remaining in the ring buffer */
+#define TARGET_SYSLOG_ACTION_READ_CLEAR     4
+/* Clear ring buffer. */
+#define TARGET_SYSLOG_ACTION_CLEAR          5
+/* Disable printk's to console */
+#define TARGET_SYSLOG_ACTION_CONSOLE_OFF    6
+/* Enable printk's to console */
+#define TARGET_SYSLOG_ACTION_CONSOLE_ON     7
+/* Set level of messages printed to console */
+#define TARGET_SYSLOG_ACTION_CONSOLE_LEVEL  8
+/* Return number of unread characters in the log buffer */
+#define TARGET_SYSLOG_ACTION_SIZE_UNREAD    9
+/* Return size of the log buffer */
+#define TARGET_SYSLOG_ACTION_SIZE_BUFFER   10
+
+#endif

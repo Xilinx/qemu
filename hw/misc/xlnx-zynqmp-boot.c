@@ -303,7 +303,7 @@ static void zynqmp_boot_realize(DeviceState *dev, Error **errp)
                           : &address_space_memory;
 
     s->bh = qemu_bh_new(boot_sequence, s);
-    s->ptimer = ptimer_init(s->bh);
+    s->ptimer = ptimer_init(s->bh, PTIMER_POLICY_DEFAULT);
     ptimer_set_freq(s->ptimer, 1000000);
 }
 

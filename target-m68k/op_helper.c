@@ -19,6 +19,7 @@
 #include "qemu/osdep.h"
 #include "cpu.h"
 #include "exec/helper-proto.h"
+#include "exec/exec-all.h"
 #include "exec/cpu_ldst.h"
 #include "exec/semihost.h"
 
@@ -38,12 +39,12 @@ static inline void do_interrupt_m68k_hardirq(CPUM68KState *env)
 /* Try to fill the TLB and return an exception if error. If retaddr is
    NULL, it means that the function was called in C code (i.e. not
    from generated code or from helper.c) */
-void tlb_fill(CPUState *cs, target_ulong addr, int is_write, int mmu_idx,
-              uintptr_t retaddr)
+void tlb_fill(CPUState *cs, target_ulong addr, MMUAccessType access_type,
+              int mmu_idx, uintptr_t retaddr)
 {
     int ret;
 
-    ret = m68k_cpu_handle_mmu_fault(cs, addr, is_write, mmu_idx);
+    ret = m68k_cpu_handle_mmu_fault(cs, addr, access_type, mmu_idx);
     if (unlikely(ret)) {
         if (retaddr) {
             /* now we have a real cpu fault */
@@ -62,9 +63,9 @@ static void do_rte(CPUM68KState *env)
     fmt = cpu_ldl_kernel(env, sp);
     env->pc = cpu_ldl_kernel(env, sp + 4);
     sp |= (fmt >> 28) & 3;
-    env->sr = fmt & 0xffff;
     env->aregs[7] = sp + 8;
-    m68k_switch_sp(env);
+
+    helper_set_sr(env, fmt);
 }
 
 static void do_interrupt_all(CPUM68KState *env, int is_hw)
@@ -111,6 +112,7 @@ static void do_interrupt_all(CPUM68KState *env, int is_hw)
     fmt |= 0x40000000;
     fmt |= vector << 16;
     fmt |= env->sr;
+    fmt |= cpu_m68k_get_ccr(env);
 
     env->sr |= SR_S;
     if (is_hw) {
@@ -183,7 +185,6 @@ void HELPER(divu)(CPUM68KState *env, uint32_t word)
     uint32_t den;
     uint32_t quot;
     uint32_t rem;
-    uint32_t flags;
 
     num = env->div1;
     den = env->div2;
@@ -193,16 +194,14 @@ void HELPER(divu)(CPUM68KState *env, uint32_t word)
     }
     quot = num / den;
     rem = num % den;
-    flags = 0;
-    if (word && quot > 0xffff)
-        flags |= CCF_V;
-    if (quot == 0)
-        flags |= CCF_Z;
-    else if ((int32_t)quot < 0)
-        flags |= CCF_N;
+
+    env->cc_v = (word && quot > 0xffff ? -1 : 0);
+    env->cc_z = quot;
+    env->cc_n = quot;
+    env->cc_c = 0;
+
     env->div1 = quot;
     env->div2 = rem;
-    env->cc_dest = flags;
 }
 
 void HELPER(divs)(CPUM68KState *env, uint32_t word)
@@ -211,7 +210,6 @@ void HELPER(divs)(CPUM68KState *env, uint32_t word)
     int32_t den;
     int32_t quot;
     int32_t rem;
-    int32_t flags;
 
     num = env->div1;
     den = env->div2;
@@ -220,14 +218,12 @@ void HELPER(divs)(CPUM68KState *env, uint32_t word)
     }
     quot = num / den;
     rem = num % den;
-    flags = 0;
-    if (word && quot != (int16_t)quot)
-        flags |= CCF_V;
-    if (quot == 0)
-        flags |= CCF_Z;
-    else if (quot < 0)
-        flags |= CCF_N;
+
+    env->cc_v = (word && quot != (int16_t)quot ? -1 : 0);
+    env->cc_z = quot;
+    env->cc_n = quot;
+    env->cc_c = 0;
+
     env->div1 = quot;
     env->div2 = rem;
-    env->cc_dest = flags;
 }

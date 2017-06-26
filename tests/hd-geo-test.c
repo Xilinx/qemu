@@ -16,7 +16,6 @@
  */
 
 #include "qemu/osdep.h"
-#include <glib.h>
 #include "qemu-common.h"
 #include "libqtest.h"
 
@@ -417,7 +416,9 @@ int main(int argc, char **argv)
     ret = g_test_run();
 
     for (i = 0; i < backend_last; i++) {
-        unlink(img_file_name[i]);
+        if (img_file_name[i]) {
+            unlink(img_file_name[i]);
+        }
     }
 
     return ret;

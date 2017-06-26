@@ -130,7 +130,7 @@ static void cris_set_prefix(DisasContext *dc)
     dc->tb_flags |= PFIX_FLAG;
     tcg_gen_ori_tl(cpu_PR[PR_CCS], cpu_PR[PR_CCS], PFIX_FLAG);
 
-    /* prefix insns dont clear the x flag.  */
+    /* prefix insns don't clear the x flag.  */
     dc->clear_x = 0;
     cris_lock_irq(dc);
 }
@@ -1094,6 +1094,29 @@ static unsigned int dec10_ind(CPUCRISState *env, DisasContext *dc)
                 insn_len = dec10_bdap_m(env, dc, size);
                 break;
             default:
+            /*
+             * ADDC for v17:
+             *
+             * Instruction format: ADDC [Rs],Rd
+             *
+             *  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+-+
+             *  |Destination(Rd)| 1   0   0   1   1   0   1   0 |   Source(Rs)|
+             *  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+--+--+
+             *
+             * Instruction format: ADDC [Rs+],Rd
+             *
+             *  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+-+
+             *  |Destination(Rd)| 1   1   0   1   1   0   1   0 |   Source(Rs)|
+             *  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+-+
+             */
+                if (dc->opcode == CRISV17_IND_ADDC && dc->size == 2 &&
+                    env->pregs[PR_VR] == 17) {
+                    LOG_DIS("addc op=%d %d\n",  dc->src, dc->dst);
+                    cris_cc_mask(dc, CC_MASK_NZVC);
+                    insn_len += dec10_ind_alu(env, dc, CC_OP_ADDC, size);
+                    break;
+                }
+
                 LOG_DIS("pc=%x var-ind.%d %d r%d r%d\n",
                           dc->pc, size, dc->opcode, dc->src, dc->dst);
                 cpu_abort(CPU(dc->cpu), "Unhandled opcode");
@@ -1250,6 +1273,7 @@ void cris_initialize_crisv10_tcg(void)
     int i;
 
     cpu_env = tcg_global_reg_new_ptr(TCG_AREG0, "env");
+    tcg_ctx.tcg_env = cpu_env;
     cc_x = tcg_global_mem_new(cpu_env,
                               offsetof(CPUCRISState, cc_x), "cc_x");
     cc_src = tcg_global_mem_new(cpu_env,

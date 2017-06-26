@@ -23,13 +23,14 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+
 #ifndef QEMU_VMSTATE_H
-#define QEMU_VMSTATE_H 1
+#define QEMU_VMSTATE_H
 
 #ifndef CONFIG_USER_ONLY
-#include <migration/qemu-file.h>
+#include "migration/qemu-file.h"
 #endif
-#include <qjson.h>
+#include "migration/qjson.h"
 
 typedef void SaveStateHandler(QEMUFile *f, void *opaque);
 typedef int LoadStateHandler(QEMUFile *f, void *opaque, int version_id);
@@ -383,6 +384,16 @@ extern const VMStateInfo vmstate_info_bitmap;
     .info       = &(_info),                                          \
     .size       = sizeof(_type),                                     \
     .flags      = VMS_VARRAY_UINT32|VMS_POINTER,                     \
+    .offset     = vmstate_offset_pointer(_state, _field, _type),     \
+}
+
+#define VMSTATE_VARRAY_UINT32_ALLOC(_field, _state, _field_num, _version, _info, _type) {\
+    .name       = (stringify(_field)),                               \
+    .version_id = (_version),                                        \
+    .num_offset = vmstate_offset_value(_state, _field_num, uint32_t),\
+    .info       = &(_info),                                          \
+    .size       = sizeof(_type),                                     \
+    .flags      = VMS_VARRAY_UINT32|VMS_POINTER|VMS_ALLOC,           \
     .offset     = vmstate_offset_pointer(_state, _field, _type),     \
 }
 
@@ -846,6 +857,12 @@ extern const VMStateInfo vmstate_info_bitmap;
 #define VMSTATE_UINT64_ARRAY(_f, _s, _n)                              \
     VMSTATE_UINT64_ARRAY_V(_f, _s, _n, 0)
 
+#define VMSTATE_UINT64_2DARRAY(_f, _s, _n1, _n2)                      \
+    VMSTATE_UINT64_2DARRAY_V(_f, _s, _n1, _n2, 0)
+
+#define VMSTATE_UINT64_2DARRAY_V(_f, _s, _n1, _n2, _v)                 \
+    VMSTATE_2DARRAY(_f, _s, _n1, _n2, _v, vmstate_info_uint64, uint64_t)
+
 #define VMSTATE_INT16_ARRAY_V(_f, _s, _n, _v)                         \
     VMSTATE_ARRAY(_f, _s, _n, _v, vmstate_info_int16, int16_t)
 
@@ -888,8 +905,11 @@ extern const VMStateInfo vmstate_info_bitmap;
 #define VMSTATE_PARTIAL_BUFFER(_f, _s, _size)                         \
     VMSTATE_STATIC_BUFFER(_f, _s, 0, NULL, 0, _size)
 
+#define VMSTATE_BUFFER_START_MIDDLE_V(_f, _s, _start, _v) \
+    VMSTATE_STATIC_BUFFER(_f, _s, _v, NULL, _start, sizeof(typeof_field(_s, _f)))
+
 #define VMSTATE_BUFFER_START_MIDDLE(_f, _s, _start) \
-    VMSTATE_STATIC_BUFFER(_f, _s, 0, NULL, _start, sizeof(typeof_field(_s, _f)))
+    VMSTATE_BUFFER_START_MIDDLE_V(_f, _s, _start, 0)
 
 #define VMSTATE_PARTIAL_VBUFFER(_f, _s, _size)                        \
     VMSTATE_VBUFFER(_f, _s, 0, NULL, 0, _size)

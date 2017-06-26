@@ -16,8 +16,8 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef TARGET_STRUCTS_H
-#define TARGET_STRUCTS_H
+#ifndef MIPS_TARGET_STRUCTS_H
+#define MIPS_TARGET_STRUCTS_H
 
 struct target_ipc_perm {
     abi_int __key;                      /* Key.  */
@@ -41,6 +41,22 @@ struct target_shmid_ds {
     abi_int shm_cpid;                   /* pid of creator */
     abi_int shm_lpid;                   /* pid of last shmop */
     abi_ulong shm_nattch;               /* number of current attaches */
+    abi_ulong __unused1;
+    abi_ulong __unused2;
+};
+
+#define TARGET_SEMID64_DS
+
+/*
+ * The semid64_ds structure for the MIPS architecture.
+ * Note extra padding because this structure is passed back and forth
+ * between kernel and user space.
+ */
+struct target_semid64_ds {
+    struct target_ipc_perm sem_perm;
+    abi_ulong sem_otime;
+    abi_ulong sem_ctime;
+    abi_ulong sem_nsems;
     abi_ulong __unused1;
     abi_ulong __unused2;
 };

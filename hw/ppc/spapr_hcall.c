@@ -11,21 +11,21 @@
 #include "trace.h"
 #include "sysemu/kvm.h"
 #include "kvm_ppc.h"
+#include "hw/ppc/spapr_ovec.h"
 
 struct SPRSyncState {
-    CPUState *cs;
     int spr;
     target_ulong value;
     target_ulong mask;
 };
 
-static void do_spr_sync(void *arg)
+static void do_spr_sync(CPUState *cs, run_on_cpu_data arg)
 {
-    struct SPRSyncState *s = arg;
-    PowerPCCPU *cpu = POWERPC_CPU(s->cs);
+    struct SPRSyncState *s = arg.host_ptr;
+    PowerPCCPU *cpu = POWERPC_CPU(cs);
     CPUPPCState *env = &cpu->env;
 
-    cpu_synchronize_state(s->cs);
+    cpu_synchronize_state(cs);
     env->spr[s->spr] &= ~s->mask;
     env->spr[s->spr] |= s->value;
 }
@@ -34,12 +34,11 @@ static void set_spr(CPUState *cs, int spr, target_ulong value,
                     target_ulong mask)
 {
     struct SPRSyncState s = {
-        .cs = cs,
         .spr = spr,
         .value = value,
         .mask = mask
     };
-    run_on_cpu(cs, do_spr_sync, &s);
+    run_on_cpu(cs, do_spr_sync, RUN_ON_CPU_HOST_PTR(&s));
 }
 
 static bool has_spr(PowerPCCPU *cpu, int spr)
@@ -83,12 +82,12 @@ static target_ulong h_enter(PowerPCCPU *cpu, sPAPRMachineState *spapr,
     target_ulong pte_index = args[1];
     target_ulong pteh = args[2];
     target_ulong ptel = args[3];
-    unsigned apshift, spshift;
+    unsigned apshift;
     target_ulong raddr;
     target_ulong index;
     uint64_t token;
 
-    apshift = ppc_hash64_hpte_page_shift_noslb(cpu, pteh, ptel, &spshift);
+    apshift = ppc_hash64_hpte_page_shift_noslb(cpu, pteh, ptel);
     if (!apshift) {
         /* Bad page size encoding */
         return H_PARAMETER;
@@ -102,11 +101,15 @@ static target_ulong h_enter(PowerPCCPU *cpu, sPAPRMachineState *spapr,
             return H_PARAMETER;
         }
     } else {
+        target_ulong wimg_flags;
         /* Looks like an IO address */
         /* FIXME: What WIMG combinations could be sensible for IO?
          * For now we allow WIMG=010x, but are there others? */
         /* FIXME: Should we check against registered IO addresses? */
-        if ((ptel & (HPTE64_R_W | HPTE64_R_I | HPTE64_R_M)) != HPTE64_R_I) {
+        wimg_flags = (ptel & (HPTE64_R_W | HPTE64_R_I | HPTE64_R_M));
+
+        if (wimg_flags != HPTE64_R_I &&
+            wimg_flags != (HPTE64_R_I | HPTE64_R_M)) {
             return H_PARAMETER;
         }
     }
@@ -186,6 +189,7 @@ static RemoveResult remove_hpte(PowerPCCPU *cpu, target_ulong ptex,
 static target_ulong h_remove(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                              target_ulong opcode, target_ulong *args)
 {
+    CPUPPCState *env = &cpu->env;
     target_ulong flags = args[0];
     target_ulong pte_index = args[1];
     target_ulong avpn = args[2];
@@ -196,6 +200,7 @@ static target_ulong h_remove(PowerPCCPU *cpu, sPAPRMachineState *spapr,
 
     switch (ret) {
     case REMOVE_SUCCESS:
+        check_tlb_flush(env, true);
         return H_SUCCESS;
 
     case REMOVE_NOT_FOUND:
@@ -232,7 +237,9 @@ static target_ulong h_remove(PowerPCCPU *cpu, sPAPRMachineState *spapr,
 static target_ulong h_bulk_remove(PowerPCCPU *cpu, sPAPRMachineState *spapr,
                                   target_ulong opcode, target_ulong *args)
 {
+    CPUPPCState *env = &cpu->env;
     int i;
+    target_ulong rc = H_SUCCESS;
 
     for (i = 0; i < H_BULK_REMOVE_MAX_BATCH; i++) {
         target_ulong *tsh = &args[i*2];
@@ -265,14 +272,18 @@ static target_ulong h_bulk_remove(PowerPCCPU *cpu, sPAPRMachineState *spapr,
             break;
 
         case REMOVE_PARM:
-            return H_PARAMETER;
+            rc = H_PARAMETER;
+            goto exit;
 
         case REMOVE_HW:
-            return H_HARDWARE;
+            rc = H_HARDWARE;
+            goto exit;
         }
     }
+ exit:
+    check_tlb_flush(env, true);
 
-    return H_SUCCESS;
+    return rc;
 }
 
 static target_ulong h_protect(PowerPCCPU *cpu, sPAPRMachineState *spapr,
@@ -307,6 +318,8 @@ static target_ulong h_protect(PowerPCCPU *cpu, sPAPRMachineState *spapr,
     ppc_hash64_store_hpte(cpu, pte_index,
                           (v & ~HPTE64_V_VALID) | HPTE64_V_HPTE_DIRTY, 0);
     ppc_hash64_tlb_flush_hpte(cpu, pte_index, v, r);
+    /* Flush the tlb */
+    check_tlb_flush(env, true);
     /* Don't need a memory barrier, due to qemu's global lock */
     ppc_hash64_store_hpte(cpu, pte_index, v | HPTE64_V_HPTE_DIRTY, r);
     return H_SUCCESS;
@@ -868,44 +881,18 @@ static target_ulong h_set_mode(PowerPCCPU *cpu, sPAPRMachineState *spapr,
     return ret;
 }
 
-/*
- * Return the offset to the requested option vector @vector in the
- * option vector table @table.
- */
-static target_ulong cas_get_option_vector(int vector, target_ulong table)
-{
-    int i;
-    char nr_vectors, nr_entries;
-
-    if (!table) {
-        return 0;
-    }
-
-    nr_vectors = (ldl_phys(&address_space_memory, table) >> 24) + 1;
-    if (!vector || vector > nr_vectors) {
-        return 0;
-    }
-    table++; /* skip nr option vectors */
-
-    for (i = 0; i < vector - 1; i++) {
-        nr_entries = ldl_phys(&address_space_memory, table) >> 24;
-        table += nr_entries + 2;
-    }
-    return table;
-}
-
 typedef struct {
-    PowerPCCPU *cpu;
     uint32_t cpu_version;
     Error *err;
 } SetCompatState;
 
-static void do_set_compat(void *arg)
+static void do_set_compat(CPUState *cs, run_on_cpu_data arg)
 {
-    SetCompatState *s = arg;
+    PowerPCCPU *cpu = POWERPC_CPU(cs);
+    SetCompatState *s = arg.host_ptr;
 
-    cpu_synchronize_state(CPU(s->cpu));
-    ppc_set_compat(s->cpu, s->cpu_version, &s->err);
+    cpu_synchronize_state(cs);
+    ppc_set_compat(cpu, s->cpu_version, &s->err);
 }
 
 #define get_compat_level(cpuver) ( \
@@ -914,7 +901,40 @@ static void do_set_compat(void *arg)
     ((cpuver) == CPU_POWERPC_LOGICAL_2_06_PLUS) ? 2061 : \
     ((cpuver) == CPU_POWERPC_LOGICAL_2_07) ? 2070 : 0)
 
-#define OV5_DRCONF_MEMORY 0x20
+static void cas_handle_compat_cpu(PowerPCCPUClass *pcc, uint32_t pvr,
+                                  unsigned max_lvl, unsigned *compat_lvl,
+                                  unsigned *cpu_version)
+{
+    unsigned lvl = get_compat_level(pvr);
+    bool is205, is206, is207;
+
+    if (!lvl) {
+        return;
+    }
+
+    /* If it is a logical PVR, try to determine the highest level */
+    is205 = (pcc->pcr_supported & PCR_COMPAT_2_05) &&
+            (lvl == get_compat_level(CPU_POWERPC_LOGICAL_2_05));
+    is206 = (pcc->pcr_supported & PCR_COMPAT_2_06) &&
+            ((lvl == get_compat_level(CPU_POWERPC_LOGICAL_2_06)) ||
+             (lvl == get_compat_level(CPU_POWERPC_LOGICAL_2_06_PLUS)));
+    is207 = (pcc->pcr_supported & PCR_COMPAT_2_07) &&
+            (lvl == get_compat_level(CPU_POWERPC_LOGICAL_2_07));
+
+    if (is205 || is206 || is207) {
+        if (!max_lvl) {
+            /* User did not set the level, choose the highest */
+            if (*compat_lvl <= lvl) {
+                *compat_lvl = lvl;
+                *cpu_version = pvr;
+            }
+        } else if (max_lvl >= lvl) {
+            /* User chose the level, don't set higher than this */
+            *compat_lvl = lvl;
+            *cpu_version = pvr;
+        }
+    }
+}
 
 static target_ulong h_client_architecture_support(PowerPCCPU *cpu_,
                                                   sPAPRMachineState *spapr,
@@ -922,15 +942,15 @@ static target_ulong h_client_architecture_support(PowerPCCPU *cpu_,
                                                   target_ulong *args)
 {
     target_ulong list = ppc64_phys_to_real(args[0]);
-    target_ulong ov_table, ov5;
-    PowerPCCPUClass *pcc_ = POWERPC_CPU_GET_CLASS(cpu_);
+    target_ulong ov_table;
+    PowerPCCPUClass *pcc = POWERPC_CPU_GET_CLASS(cpu_);
     CPUState *cs;
-    bool cpu_match = false, cpu_update = true, memory_update = false;
+    bool cpu_match = false, cpu_update = true;
     unsigned old_cpu_version = cpu_->cpu_version;
     unsigned compat_lvl = 0, cpu_version = 0;
     unsigned max_lvl = get_compat_level(cpu_->max_compat);
     int counter;
-    char ov5_byte2;
+    sPAPROptionVector *ov5_guest, *ov5_cas_old, *ov5_updates;
 
     /* Parse PVR list */
     for (counter = 0; counter < 512; ++counter) {
@@ -950,29 +970,7 @@ static target_ulong h_client_architecture_support(PowerPCCPU *cpu_,
             cpu_match = true;
             cpu_version = cpu_->cpu_version;
         } else if (!cpu_match) {
-            /* If it is a logical PVR, try to determine the highest level */
-            unsigned lvl = get_compat_level(pvr);
-            if (lvl) {
-                bool is205 = (pcc_->pcr_mask & PCR_COMPAT_2_05) &&
-                     (lvl == get_compat_level(CPU_POWERPC_LOGICAL_2_05));
-                bool is206 = (pcc_->pcr_mask & PCR_COMPAT_2_06) &&
-                    ((lvl == get_compat_level(CPU_POWERPC_LOGICAL_2_06)) ||
-                    (lvl == get_compat_level(CPU_POWERPC_LOGICAL_2_06_PLUS)));
-
-                if (is205 || is206) {
-                    if (!max_lvl) {
-                        /* User did not set the level, choose the highest */
-                        if (compat_lvl <= lvl) {
-                            compat_lvl = lvl;
-                            cpu_version = pvr;
-                        }
-                    } else if (max_lvl >= lvl) {
-                        /* User chose the level, don't set higher than this */
-                        compat_lvl = lvl;
-                        cpu_version = pvr;
-                    }
-                }
-            }
+            cas_handle_compat_cpu(pcc, pvr, max_lvl, &compat_lvl, &cpu_version);
         }
         /* Terminator record */
         if (~pvr_mask & pvr) {
@@ -982,18 +980,17 @@ static target_ulong h_client_architecture_support(PowerPCCPU *cpu_,
 
     /* Parsing finished */
     trace_spapr_cas_pvr(cpu_->cpu_version, cpu_match,
-                        cpu_version, pcc_->pcr_mask);
+                        cpu_version, pcc->pcr_mask);
 
     /* Update CPUs */
     if (old_cpu_version != cpu_version) {
         CPU_FOREACH(cs) {
             SetCompatState s = {
-                .cpu = POWERPC_CPU(cs),
                 .cpu_version = cpu_version,
                 .err = NULL,
             };
 
-            run_on_cpu(cs, do_set_compat, &s);
+            run_on_cpu(cs, do_set_compat, RUN_ON_CPU_HOST_PTR(&s));
 
             if (s.err) {
                 error_report_err(s.err);
@@ -1009,19 +1006,34 @@ static target_ulong h_client_architecture_support(PowerPCCPU *cpu_,
     /* For the future use: here @ov_table points to the first option vector */
     ov_table = list;
 
-    ov5 = cas_get_option_vector(5, ov_table);
-    if (!ov5) {
-        return H_SUCCESS;
-    }
+    ov5_guest = spapr_ovec_parse_vector(ov_table, 5);
 
-    /* @list now points to OV 5 */
-    ov5_byte2 = ldub_phys(&address_space_memory, ov5 + 2);
-    if (ov5_byte2 & OV5_DRCONF_MEMORY) {
-        memory_update = true;
-    }
+    /* NOTE: there are actually a number of ov5 bits where input from the
+     * guest is always zero, and the platform/QEMU enables them independently
+     * of guest input. To model these properly we'd want some sort of mask,
+     * but since they only currently apply to memory migration as defined
+     * by LoPAPR 1.1, 14.5.4.8, which QEMU doesn't implement, we don't need
+     * to worry about this for now.
+     */
+    ov5_cas_old = spapr_ovec_clone(spapr->ov5_cas);
+    /* full range of negotiated ov5 capabilities */
+    spapr_ovec_intersect(spapr->ov5_cas, spapr->ov5, ov5_guest);
+    spapr_ovec_cleanup(ov5_guest);
+    /* capabilities that have been added since CAS-generated guest reset.
+     * if capabilities have since been removed, generate another reset
+     */
+    ov5_updates = spapr_ovec_new();
+    spapr->cas_reboot = spapr_ovec_diff(ov5_updates,
+                                        ov5_cas_old, spapr->ov5_cas);
 
-    if (spapr_h_cas_compose_response(spapr, args[1], args[2],
-                                     cpu_update, memory_update)) {
+    if (!spapr->cas_reboot) {
+        spapr->cas_reboot =
+            (spapr_h_cas_compose_response(spapr, args[1], args[2], cpu_update,
+                                          ov5_updates) != 0);
+    }
+    spapr_ovec_cleanup(ov5_updates);
+
+    if (spapr->cas_reboot) {
         qemu_system_reset_request();
     }
 

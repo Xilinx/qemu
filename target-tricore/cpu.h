@@ -16,11 +16,13 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
-#if !defined(__TRICORE_CPU_H__)
-#define __TRICORE_CPU_H__
+
+#ifndef TRICORE_CPU_H
+#define TRICORE_CPU_H
 
 #include "tricore-defs.h"
 #include "qemu-common.h"
+#include "cpu-qom.h"
 #include "exec/cpu-defs.h"
 #include "fpu/softfloat.h"
 
@@ -198,6 +200,34 @@ struct CPUTriCoreState {
     struct QEMUTimer *timer; /* Internal timer */
 };
 
+/**
+ * TriCoreCPU:
+ * @env: #CPUTriCoreState
+ *
+ * A TriCore CPU.
+ */
+struct TriCoreCPU {
+    /*< private >*/
+    CPUState parent_obj;
+    /*< public >*/
+
+    CPUTriCoreState env;
+};
+
+static inline TriCoreCPU *tricore_env_get_cpu(CPUTriCoreState *env)
+{
+    return TRICORE_CPU(container_of(env, TriCoreCPU, env));
+}
+
+#define ENV_GET_CPU(e) CPU(tricore_env_get_cpu(e))
+
+#define ENV_OFFSET offsetof(TriCoreCPU, env)
+
+hwaddr tricore_cpu_get_phys_page_debug(CPUState *cpu, vaddr addr);
+void tricore_cpu_dump_state(CPUState *cpu, FILE *f,
+                            fprintf_function cpu_fprintf, int flags);
+
+
 #define MASK_PCXI_PCPN 0xff000000
 #define MASK_PCXI_PIE  0x00800000
 #define MASK_PCXI_UL   0x00400000
@@ -341,12 +371,10 @@ void psw_write(CPUTriCoreState *env, uint32_t val);
 
 void fpu_set_state(CPUTriCoreState *env);
 
-#include "cpu-qom.h"
 #define MMU_USER_IDX 2
 
 void tricore_cpu_list(FILE *f, fprintf_function cpu_fprintf);
 
-#define cpu_exec cpu_tricore_exec
 #define cpu_signal_handler cpu_tricore_signal_handler
 #define cpu_list tricore_cpu_list
 
@@ -372,12 +400,11 @@ enum {
 };
 
 void cpu_state_reset(CPUTriCoreState *s);
-int cpu_tricore_exec(CPUState *cpu);
 void tricore_tcg_init(void);
 int cpu_tricore_signal_handler(int host_signum, void *pinfo, void *puc);
 
 static inline void cpu_get_tb_cpu_state(CPUTriCoreState *env, target_ulong *pc,
-                                        target_ulong *cs_base, int *flags)
+                                        target_ulong *cs_base, uint32_t *flags)
 {
     *pc = env->PC;
     *cs_base = 0;
@@ -394,6 +421,4 @@ int cpu_tricore_handle_mmu_fault(CPUState *cpu, target_ulong address,
                                  int rw, int mmu_idx);
 #define cpu_handle_mmu_fault cpu_tricore_handle_mmu_fault
 
-#include "exec/exec-all.h"
-
-#endif /*__TRICORE_CPU_H__ */
+#endif /* TRICORE_CPU_H */

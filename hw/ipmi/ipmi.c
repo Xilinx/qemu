@@ -30,6 +30,13 @@
 #include "qom/object_interfaces.h"
 #include "qapi/visitor.h"
 
+static uint32_t ipmi_current_uuid = 1;
+
+uint32_t ipmi_next_uuid(void)
+{
+    return ipmi_current_uuid++;
+}
+
 static int ipmi_do_hw_op(IPMIInterface *s, enum ipmi_op op, int checkonly)
 {
     switch (op) {
@@ -44,7 +51,7 @@ static int ipmi_do_hw_op(IPMIInterface *s, enum ipmi_op op, int checkonly)
         if (checkonly) {
             return 0;
         }
-        qemu_system_powerdown_request();
+        qemu_system_shutdown_request();
         return 0;
 
     case IPMI_SEND_NMI:
@@ -54,9 +61,15 @@ static int ipmi_do_hw_op(IPMIInterface *s, enum ipmi_op op, int checkonly)
         qmp_inject_nmi(NULL);
         return 0;
 
+    case IPMI_SHUTDOWN_VIA_ACPI_OVERTEMP:
+        if (checkonly) {
+            return 0;
+        }
+        qemu_system_powerdown_request();
+        return 0;
+
     case IPMI_POWERCYCLE_CHASSIS:
     case IPMI_PULSE_DIAG_IRQ:
-    case IPMI_SHUTDOWN_VIA_ACPI_OVERTEMP:
     case IPMI_POWERON_CHASSIS:
     default:
         return IPMI_CC_COMMAND_NOT_SUPPORTED;
@@ -122,30 +135,3 @@ static void ipmi_register_types(void)
 }
 
 type_init(ipmi_register_types)
-
-static IPMIFwInfo *ipmi_fw_info;
-static unsigned int ipmi_fw_info_len;
-
-static uint32_t current_uuid = 1;
-
-void ipmi_add_fwinfo(IPMIFwInfo *info, Error **errp)
-{
-    info->uuid = current_uuid++;
-    ipmi_fw_info = g_realloc(ipmi_fw_info,
-                             sizeof(*ipmi_fw_info) * (ipmi_fw_info_len + 1));
-    ipmi_fw_info[ipmi_fw_info_len] = *info;
-}
-
-IPMIFwInfo *ipmi_first_fwinfo(void)
-{
-    return ipmi_fw_info;
-}
-
-IPMIFwInfo *ipmi_next_fwinfo(IPMIFwInfo *current)
-{
-    current++;
-    if (current >= &ipmi_fw_info[ipmi_fw_info_len]) {
-        return NULL;
-    }
-    return current;
-}

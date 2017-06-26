@@ -23,6 +23,7 @@
 #include "io/channel-socket.h"
 #include "io/channel-watch.h"
 #include "trace.h"
+#include "qapi/clone-visitor.h"
 
 #define SOCKET_MAX_FDS 16
 
@@ -54,7 +55,7 @@ qio_channel_socket_new(void)
     sioc->fd = -1;
 
     ioc = QIO_CHANNEL(sioc);
-    ioc->features |= (1 << QIO_CHANNEL_FEATURE_SHUTDOWN);
+    qio_channel_set_feature(ioc, QIO_CHANNEL_FEATURE_SHUTDOWN);
 
 #ifdef WIN32
     ioc->event = CreateEvent(NULL, FALSE, FALSE, NULL);
@@ -103,7 +104,7 @@ qio_channel_socket_set_fd(QIOChannelSocket *sioc,
 #ifndef WIN32
     if (sioc->localAddr.ss_family == AF_UNIX) {
         QIOChannel *ioc = QIO_CHANNEL(sioc);
-        ioc->features |= (1 << QIO_CHANNEL_FEATURE_FD_PASS);
+        qio_channel_set_feature(ioc, QIO_CHANNEL_FEATURE_FD_PASS);
     }
 #endif /* WIN32 */
 
@@ -182,7 +183,7 @@ void qio_channel_socket_connect_async(QIOChannelSocket *ioc,
         OBJECT(ioc), callback, opaque, destroy);
     SocketAddress *addrCopy;
 
-    qapi_copy_SocketAddress(&addrCopy, addr);
+    addrCopy = QAPI_CLONE(SocketAddress, addr);
 
     /* socket_connect() does a non-blocking connect(), but it
      * still blocks in DNS lookups, so we must use a thread */
@@ -212,6 +213,7 @@ int qio_channel_socket_listen_sync(QIOChannelSocket *ioc,
         close(fd);
         return -1;
     }
+    qio_channel_set_feature(QIO_CHANNEL(ioc), QIO_CHANNEL_FEATURE_LISTEN);
 
     return 0;
 }
@@ -244,7 +246,7 @@ void qio_channel_socket_listen_async(QIOChannelSocket *ioc,
         OBJECT(ioc), callback, opaque, destroy);
     SocketAddress *addrCopy;
 
-    qapi_copy_SocketAddress(&addrCopy, addr);
+    addrCopy = QAPI_CLONE(SocketAddress, addr);
 
     /* socket_listen() blocks in DNS lookups, so we must use a thread */
     trace_qio_channel_socket_listen_async(ioc, addr);
@@ -324,8 +326,8 @@ void qio_channel_socket_dgram_async(QIOChannelSocket *ioc,
     struct QIOChannelSocketDGramWorkerData *data = g_new0(
         struct QIOChannelSocketDGramWorkerData, 1);
 
-    qapi_copy_SocketAddress(&data->localAddr, localAddr);
-    qapi_copy_SocketAddress(&data->remoteAddr, remoteAddr);
+    data->localAddr = QAPI_CLONE(SocketAddress, localAddr);
+    data->remoteAddr = QAPI_CLONE(SocketAddress, remoteAddr);
 
     trace_qio_channel_socket_dgram_async(ioc, localAddr, remoteAddr);
     qio_task_run_in_thread(task,
@@ -372,7 +374,8 @@ qio_channel_socket_accept(QIOChannelSocket *ioc,
 
 #ifndef WIN32
     if (cioc->localAddr.ss_family == AF_UNIX) {
-        QIO_CHANNEL(cioc)->features |= (1 << QIO_CHANNEL_FEATURE_FD_PASS);
+        QIOChannel *ioc_local = QIO_CHANNEL(cioc);
+        qio_channel_set_feature(ioc_local, QIO_CHANNEL_FEATURE_FD_PASS);
     }
 #endif /* WIN32 */
 
@@ -393,7 +396,18 @@ static void qio_channel_socket_init(Object *obj)
 static void qio_channel_socket_finalize(Object *obj)
 {
     QIOChannelSocket *ioc = QIO_CHANNEL_SOCKET(obj);
+
     if (ioc->fd != -1) {
+        QIOChannel *ioc_local = QIO_CHANNEL(ioc);
+        if (qio_channel_has_feature(ioc_local, QIO_CHANNEL_FEATURE_LISTEN)) {
+            Error *err = NULL;
+
+            socket_listen_cleanup(ioc->fd, &err);
+            if (err) {
+                error_report_err(err);
+                err = NULL;
+            }
+        }
 #ifdef WIN32
         WSAEventSelect(ioc->fd, NULL, 0);
 #endif

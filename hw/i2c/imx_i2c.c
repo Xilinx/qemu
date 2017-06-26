@@ -21,6 +21,7 @@
 #include "qemu/osdep.h"
 #include "hw/i2c/imx_i2c.h"
 #include "hw/i2c/i2c.h"
+#include "qemu/log.h"
 
 #ifndef DEBUG_IMX_I2C
 #define DEBUG_IMX_I2C 0
@@ -247,7 +248,7 @@ static void imx_i2c_write(void *opaque, hwaddr offset,
             if (s->address == ADDR_RESET) {
                 if (i2c_start_transfer(s->bus, extract32(s->i2dr_write, 1, 7),
                                        extract32(s->i2dr_write, 0, 1))) {
-                    /* if non zero is returned, the adress is not valid */
+                    /* if non zero is returned, the address is not valid */
                     s->i2sr |= I2SR_RXAK;
                 } else {
                     s->address = s->i2dr_write;

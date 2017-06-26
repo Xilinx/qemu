@@ -28,6 +28,7 @@
 #include "qemu/config-file.h"
 #include "qemu/error-report.h"
 #include "qemu/help_option.h"
+#include "sysemu/block-backend.h"
 
 #include "hw/remote-port.h"
 #include "qemu/cutils.h"
@@ -544,10 +545,28 @@ static BusState *qbus_find(const char *path, Error **errp)
     return bus;
 }
 
+void qdev_set_id(DeviceState *dev, const char *id)
+{
+    if (id) {
+        dev->id = (char *) id;
+    }
+
+    if (dev->id) {
+        object_property_add_child(qdev_get_peripheral(), dev->id,
+                                  OBJECT(dev), NULL);
+    } else {
+        static int anon_count;
+        gchar *name = g_strdup_printf("device[%d]", anon_count++);
+        object_property_add_child(qdev_get_peripheral_anon(), name,
+                                  OBJECT(dev), NULL);
+        g_free(name);
+    }
+}
+
 DeviceState *qdev_device_add(QemuOpts *opts, Error **errp)
 {
     DeviceClass *dc;
-    const char *driver, *path, *id;
+    const char *driver, *path;
     DeviceState *dev;
     BusState *bus = NULL;
     Error *err = NULL;
@@ -600,21 +619,7 @@ DeviceState *qdev_device_add(QemuOpts *opts, Error **errp)
         }
     }
 
-    id = qemu_opts_id(opts);
-    if (id) {
-        dev->id = (char *) id;
-    }
-
-    if (dev->id) {
-        object_property_add_child(qdev_get_peripheral(), dev->id,
-                                  OBJECT(dev), NULL);
-    } else {
-        static int anon_count;
-        gchar *name = g_strdup_printf("device[%d]", anon_count++);
-        object_property_add_child(qdev_get_peripheral_anon(), name,
-                                  OBJECT(dev), NULL);
-        g_free(name);
-    }
+    qdev_set_id(dev, qemu_opts_id(opts));
 
     rp_device_add(opts, dev, &err);
     if (err != NULL) {
@@ -819,7 +824,7 @@ void qmp_device_add(QDict *qdict, QObject **ret_data, Error **errp)
     object_unref(OBJECT(dev));
 }
 
-void qmp_device_del(const char *id, Error **errp)
+static DeviceState *find_device_state(const char *id, Error **errp)
 {
     Object *obj;
 
@@ -837,15 +842,40 @@ void qmp_device_del(const char *id, Error **errp)
     if (!obj) {
         error_set(errp, ERROR_CLASS_DEVICE_NOT_FOUND,
                   "Device '%s' not found", id);
-        return;
+        return NULL;
     }
 
     if (!object_dynamic_cast(obj, TYPE_DEVICE)) {
         error_setg(errp, "%s is not a hotpluggable device", id);
-        return;
+        return NULL;
     }
 
-    qdev_unplug(DEVICE(obj), errp);
+    return DEVICE(obj);
+}
+
+void qmp_device_del(const char *id, Error **errp)
+{
+    DeviceState *dev = find_device_state(id, errp);
+    if (dev != NULL) {
+        qdev_unplug(dev, errp);
+    }
+}
+
+BlockBackend *blk_by_qdev_id(const char *id, Error **errp)
+{
+    DeviceState *dev;
+    BlockBackend *blk;
+
+    dev = find_device_state(id, errp);
+    if (dev == NULL) {
+        return NULL;
+    }
+
+    blk = blk_by_dev(dev);
+    if (!blk) {
+        error_setg(errp, "Device does not have a block device backend");
+    }
+    return blk;
 }
 
 void qdev_machine_init(void)

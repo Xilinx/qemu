@@ -87,7 +87,6 @@ typedef enum {
 
 typedef struct ArchipelagoAIOCB {
     BlockAIOCB common;
-    QEMUBH *bh;
     struct BDRVArchipelagoState *s;
     QEMUIOVector *qiov;
     ARCHIPCmd cmd;
@@ -154,11 +153,10 @@ static void archipelago_finish_aiocb(AIORequestData *reqdata)
     } else if (reqdata->aio_cb->ret == reqdata->segreq->total) {
         reqdata->aio_cb->ret = 0;
     }
-    reqdata->aio_cb->bh = aio_bh_new(
+    aio_bh_schedule_oneshot(
                         bdrv_get_aio_context(reqdata->aio_cb->common.bs),
                         qemu_archipelago_complete_aio, reqdata
                         );
-    qemu_bh_schedule(reqdata->aio_cb->bh);
 }
 
 static int wait_reply(struct xseg *xseg, xport srcport, struct xseg_port *port,
@@ -313,7 +311,6 @@ static void qemu_archipelago_complete_aio(void *opaque)
     AIORequestData *reqdata = (AIORequestData *) opaque;
     ArchipelagoAIOCB *aio_cb = (ArchipelagoAIOCB *) reqdata->aio_cb;
 
-    qemu_bh_delete(aio_cb->bh);
     aio_cb->common.cb(aio_cb->common.opaque, aio_cb->ret);
     aio_cb->status = 0;
 
@@ -974,11 +971,9 @@ err_exit2:
 
 static int64_t qemu_archipelago_getlength(BlockDriverState *bs)
 {
-    int64_t ret;
     BDRVArchipelagoState *s = bs->opaque;
 
-    ret = archipelago_volume_info(s);
-    return ret;
+    return archipelago_volume_info(s);
 }
 
 static int qemu_archipelago_truncate(BlockDriverState *bs, int64_t offset)

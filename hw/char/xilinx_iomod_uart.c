@@ -29,6 +29,7 @@
 #include "sysemu/char.h"
 #include "hw/register-dep.h"
 #include "qemu/log.h"
+#include "sysemu/sysemu.h"
 
 #ifndef XILINX_IO_MODULE_UART_ERR_DEBUG
 #define XILINX_IO_MODULE_UART_ERR_DEBUG 0
@@ -66,7 +67,7 @@ typedef struct XilinxUART {
         bool tx_interrupt;
         bool err_interrupt;
     } cfg;
-    CharDriverState *chr;
+    CharBackend chr;
     uint32_t regs[R_MAX_0];
     uint32_t baud;
     DepRegisterInfo regs_info0[R_MAX_0];
@@ -81,6 +82,7 @@ static Property xlx_iom_properties[] = {
     DEFINE_PROP_BOOL("uart-rx-interrupt", XilinxUART, cfg.rx_interrupt, 0),
     DEFINE_PROP_BOOL("uart-tx-interrupt", XilinxUART, cfg.tx_interrupt, 0),
     DEFINE_PROP_BOOL("uart-error-interrupt", XilinxUART, cfg.err_interrupt, 0),
+    DEFINE_PROP_CHR("chardev", XilinxUART, chr),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -135,9 +137,9 @@ static uint64_t uart_sts_pr(DepRegisterInfo *reg, uint64_t val)
 static void uart_tx_pw(DepRegisterInfo *reg, uint64_t value)
 {
     XilinxUART *s = XILINX_IO_MODULE_UART(reg->opaque);
-    if (s->cfg.use_tx && s->chr) {
+    if (s->cfg.use_tx) {
         unsigned char ch = value;
-        qemu_chr_fe_write(s->chr, &ch, 1);
+        qemu_chr_fe_write(&s->chr, &ch, 1);
         if (s->cfg.tx_interrupt) {
             qemu_irq_pulse(s->irq_tx);
         }
@@ -212,11 +214,8 @@ static void xlx_iom_realize(DeviceState *dev, Error **errp)
     }
 
     if (s->cfg.use_rx || s->cfg.use_tx) {
-        s->chr = qemu_char_get_next_serial();
-        if (s->chr) {
-            qemu_chr_add_handlers(s->chr, uart_can_rx, uart_rx,
-                                  uart_event, s);
-        }
+        qemu_chr_fe_set_handlers(&s->chr, uart_can_rx, uart_rx, uart_event,
+                                 s, NULL, true);
     }
 }
 

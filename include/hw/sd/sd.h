@@ -26,8 +26,9 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef __hw_sd_h
-#define __hw_sd_h		1
+
+#ifndef HW_SD_H
+#define HW_SD_H
 
 #include "hw/qdev.h"
 
@@ -50,7 +51,7 @@
 #define ERASE_RESET		(1 << 13)
 #define CURRENT_STATE		(7 << 9)
 #define READY_FOR_DATA		(1 << 8)
-#define SWTICH_ERROR		(1 << 7)
+#define SWTICH_ERROR        (1 << 7)
 #define APP_CMD			(1 << 5)
 #define AKE_SEQ_ERROR		(1 << 3)
 #define OCR_CCS_BITN        30
@@ -166,4 +167,4 @@ bool sdbus_get_readonly(SDBus *sd);
 void sdbus_set_inserted(SDBus *sd, bool inserted);
 void sdbus_set_readonly(SDBus *sd, bool inserted);
 
-#endif	/* __hw_sd_h */
+#endif /* HW_SD_H */

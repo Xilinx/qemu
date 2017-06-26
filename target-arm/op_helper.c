@@ -20,7 +20,9 @@
 #include "cpu.h"
 #include "exec/helper-proto.h"
 #include "internals.h"
+#include "exec/exec-all.h"
 #include "exec/cpu_ldst.h"
+#include "sysemu/cpus.h"
 
 #define SIGNBIT (uint32_t)0x80000000
 #define SIGNBIT64 ((uint64_t)1 << 63)
@@ -80,7 +82,7 @@ uint32_t HELPER(neon_tbl)(CPUARMState *env, uint32_t ireg, uint32_t def,
 static inline uint32_t merge_syn_data_abort(uint32_t template_syn,
                                             unsigned int target_el,
                                             bool same_el,
-                                            bool s1ptw, int is_write,
+                                            bool s1ptw, bool is_write,
                                             int fsc)
 {
     uint32_t syn;
@@ -98,7 +100,7 @@ static inline uint32_t merge_syn_data_abort(uint32_t template_syn,
      */
     if (!(template_syn & ARM_EL_ISV) || target_el != 2 || s1ptw) {
         syn = syn_data_abort_no_iss(same_el,
-                                    0, 0, s1ptw, is_write == 1, fsc);
+                                    0, 0, s1ptw, is_write, fsc);
     } else {
         /* Fields: IL, ISV, SAS, SSE, SRT, SF and AR come from the template
          * syndrome created at translation time.
@@ -106,7 +108,7 @@ static inline uint32_t merge_syn_data_abort(uint32_t template_syn,
          */
         syn = syn_data_abort_with_iss(same_el,
                                       0, 0, 0, 0, 0,
-                                      0, 0, s1ptw, is_write == 1, fsc,
+                                      0, 0, s1ptw, is_write, fsc,
                                       false);
         /* Merge the runtime syndrome with the template syndrome.  */
         syn |= template_syn;
@@ -118,14 +120,14 @@ static inline uint32_t merge_syn_data_abort(uint32_t template_syn,
  * NULL, it means that the function was called in C code (i.e. not
  * from generated code or from helper.c)
  */
-void tlb_fill(CPUState *cs, target_ulong addr, int is_write, int mmu_idx,
-              uintptr_t retaddr)
+void tlb_fill(CPUState *cs, target_ulong addr, MMUAccessType access_type,
+              int mmu_idx, uintptr_t retaddr)
 {
     bool ret;
     uint32_t fsr = 0;
     ARMMMUFaultInfo fi = {};
 
-    ret = arm_tlb_fill(cs, addr, is_write, mmu_idx, &fsr, &fi);
+    ret = arm_tlb_fill(cs, addr, access_type, mmu_idx, &fsr, &fi);
     if (unlikely(ret)) {
         ARMCPU *cpu = ARM_CPU(cs);
         CPUARMState *env = &cpu->env;
@@ -150,13 +152,15 @@ void tlb_fill(CPUState *cs, target_ulong addr, int is_write, int mmu_idx,
         /* For insn and data aborts we assume there is no instruction syndrome
          * information; this is always true for exceptions reported to EL1.
          */
-        if (is_write == 2) {
+        if (access_type == MMU_INST_FETCH) {
             syn = syn_insn_abort(same_el, 0, fi.s1ptw, syn);
             exc = EXCP_PREFETCH_ABORT;
         } else {
             syn = merge_syn_data_abort(env->exception.syndrome, target_el,
-                                       same_el, fi.s1ptw, is_write, syn);
-            if (is_write == 1 && arm_feature(env, ARM_FEATURE_V6)) {
+                                       same_el, fi.s1ptw,
+                                       access_type == MMU_DATA_STORE, syn);
+            if (access_type == MMU_DATA_STORE
+                && arm_feature(env, ARM_FEATURE_V6)) {
                 fsr |= (1 << 11);
             }
             exc = EXCP_DATA_ABORT;
@@ -169,8 +173,9 @@ void tlb_fill(CPUState *cs, target_ulong addr, int is_write, int mmu_idx,
 }
 
 /* Raise a data fault alignment exception for the specified virtual address */
-void arm_cpu_do_unaligned_access(CPUState *cs, vaddr vaddr, int is_write,
-                                 int is_user, uintptr_t retaddr)
+void arm_cpu_do_unaligned_access(CPUState *cs, vaddr vaddr,
+                                 MMUAccessType access_type,
+                                 int mmu_idx, uintptr_t retaddr)
 {
     ARMCPU *cpu = ARM_CPU(cs);
     CPUARMState *env = &cpu->env;
@@ -192,17 +197,18 @@ void arm_cpu_do_unaligned_access(CPUState *cs, vaddr vaddr, int is_write,
      * the LPAE long descriptor format, or the short descriptor format
      */
     if (arm_s1_regime_using_lpae_format(env, cpu_mmu_index(env, false))) {
-        env->exception.fsr = 0x21;
+        env->exception.fsr = (1 << 9) | 0x21;
     } else {
         env->exception.fsr = 0x1;
     }
 
-    if (is_write == 1 && arm_feature(env, ARM_FEATURE_V6)) {
+    if (access_type == MMU_DATA_STORE && arm_feature(env, ARM_FEATURE_V6)) {
         env->exception.fsr |= (1 << 11);
     }
 
     syn = merge_syn_data_abort(env->exception.syndrome, target_el,
-                               same_el, 0, is_write, 0x21);
+                               same_el, 0, access_type == MMU_DATA_STORE,
+                               0x21);
     raise_exception(env, EXCP_DATA_ABORT, syn, target_el);
 }
 
@@ -513,6 +519,15 @@ void HELPER(cpsr_write)(CPUARMState *env, uint32_t val, uint32_t mask)
 void HELPER(cpsr_write_eret)(CPUARMState *env, uint32_t val)
 {
     cpsr_write(env, val, CPSR_ERET_MASK, CPSRWriteExceptionReturn);
+
+    /* Generated code has already stored the new PC value, but
+     * without masking out its low bits, because which bits need
+     * masking depends on whether we're returning to Thumb or ARM
+     * state. Do the masking now.
+     */
+    env->regs[15] &= (env->thumb ? ~1 : ~3);
+
+    arm_call_el_change_hook(arm_env_get_cpu(env));
 }
 
 /* Access to user mode registers from privileged modes.  */
@@ -1007,6 +1022,8 @@ void HELPER(exception_return)(CPUARMState *env)
         aarch64_restore_sp(env, new_el);
         env->pc = env->elr_el[cur_el];
     }
+
+    arm_call_el_change_hook(arm_env_get_cpu(env));
 
     return;
 

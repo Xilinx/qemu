@@ -24,8 +24,6 @@ import string
 import unittest
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'scripts'))
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'scripts', 'qmp'))
-import qmp
 import qtest
 import struct
 import json
@@ -41,18 +39,22 @@ qemu_io_args = [os.environ.get('QEMU_IO_PROG', 'qemu-io')]
 if os.environ.get('QEMU_IO_OPTIONS'):
     qemu_io_args += os.environ['QEMU_IO_OPTIONS'].strip().split(' ')
 
-qemu_args = [os.environ.get('QEMU_PROG', 'qemu')]
-if os.environ.get('QEMU_OPTIONS'):
-    qemu_args += os.environ['QEMU_OPTIONS'].strip().split(' ')
+qemu_nbd_args = [os.environ.get('QEMU_NBD_PROG', 'qemu-nbd')]
+if os.environ.get('QEMU_NBD_OPTIONS'):
+    qemu_nbd_args += os.environ['QEMU_NBD_OPTIONS'].strip().split(' ')
+
+qemu_prog = os.environ.get('QEMU_PROG', 'qemu')
+qemu_opts = os.environ.get('QEMU_OPTIONS', '').strip().split(' ')
 
 imgfmt = os.environ.get('IMGFMT', 'raw')
 imgproto = os.environ.get('IMGPROTO', 'file')
-test_dir = os.environ.get('TEST_DIR', '/var/tmp')
+test_dir = os.environ.get('TEST_DIR')
 output_dir = os.environ.get('OUTPUT_DIR', '.')
 cachemode = os.environ.get('CACHEMODE')
 qemu_default_machine = os.environ.get('QEMU_DEFAULT_MACHINE')
 
 socket_scm_helper = os.environ.get('SOCKET_SCM_HELPER', 'socket_scm_helper')
+debug = False
 
 def qemu_img(*args):
     '''Run qemu-img and return the exit code'''
@@ -89,10 +91,14 @@ def qemu_io(*args):
         sys.stderr.write('qemu-io received signal %i: %s\n' % (-exitcode, ' '.join(args)))
     return subp.communicate()[0]
 
-def compare_images(img1, img2):
+def qemu_nbd(*args):
+    '''Run qemu-nbd in daemon mode and return the parent's exit code'''
+    return subprocess.call(qemu_nbd_args + ['--fork'] + list(args))
+
+def compare_images(img1, img2, fmt1=imgfmt, fmt2=imgfmt):
     '''Return True if two image files are identical'''
-    return qemu_img('compare', '-f', imgfmt,
-                    '-F', imgfmt, img1, img2) == 0
+    return qemu_img('compare', '-f', fmt1,
+                    '-F', fmt2, img1, img2) == 0
 
 def create_image(name, size):
     '''Create a fully-allocated raw image with sector markers'''
@@ -131,58 +137,36 @@ def log(msg, filters=[]):
         msg = flt(msg)
     print msg
 
-# Test if 'match' is a recursive subset of 'event'
-def event_match(event, match=None):
-    if match is None:
-        return True
-
-    for key in match:
-        if key in event:
-            if isinstance(event[key], dict):
-                if not event_match(event[key], match[key]):
-                    return False
-            elif event[key] != match[key]:
-                return False
-        else:
-            return False
-
-    return True
-
-class VM(object):
+class VM(qtest.QEMUQtestMachine):
     '''A QEMU VM'''
 
-    def __init__(self):
-        self._monitor_path = os.path.join(test_dir, 'qemu-mon.%d' % os.getpid())
-        self._qemu_log_path = os.path.join(test_dir, 'qemu-log.%d' % os.getpid())
-        self._qtest_path = os.path.join(test_dir, 'qemu-qtest.%d' % os.getpid())
-        self._args = qemu_args + ['-chardev',
-                     'socket,id=mon,path=' + self._monitor_path,
-                     '-mon', 'chardev=mon,mode=control',
-                     '-qtest', 'unix:path=' + self._qtest_path,
-                     '-machine', 'accel=qtest',
-                     '-display', 'none', '-vga', 'none']
+    def __init__(self, path_suffix=''):
+        name = "qemu%s-%d" % (path_suffix, os.getpid())
+        super(VM, self).__init__(qemu_prog, qemu_opts, name=name,
+                                 test_dir=test_dir,
+                                 socket_scm_helper=socket_scm_helper)
+        if debug:
+            self._debug = True
         self._num_drives = 0
-        self._events = []
 
-    # This can be used to add an unused monitor instance.
-    def add_monitor_telnet(self, ip, port):
-        args = 'tcp:%s:%d,server,nowait,telnet' % (ip, port)
-        self._args.append('-monitor')
-        self._args.append(args)
+    def add_device(self, opts):
+        self._args.append('-device')
+        self._args.append(opts)
+        return self
 
     def add_drive_raw(self, opts):
         self._args.append('-drive')
         self._args.append(opts)
         return self
 
-    def add_drive(self, path, opts='', interface='virtio'):
+    def add_drive(self, path, opts='', interface='virtio', format=imgfmt):
         '''Add a virtio-blk drive to the VM'''
         options = ['if=%s' % interface,
                    'id=drive%d' % self._num_drives]
 
         if path is not None:
             options.append('file=%s' % path)
-            options.append('format=%s' % imgfmt)
+            options.append('format=%s' % format)
             options.append('cache=%s' % cachemode)
 
         if opts:
@@ -211,106 +195,6 @@ class VM(object):
         return self.qmp('human-monitor-command',
                         command_line='qemu-io %s "%s"' % (drive, cmd))
 
-    def add_fd(self, fd, fdset, opaque, opts=''):
-        '''Pass a file descriptor to the VM'''
-        options = ['fd=%d' % fd,
-                   'set=%d' % fdset,
-                   'opaque=%s' % opaque]
-        if opts:
-            options.append(opts)
-
-        self._args.append('-add-fd')
-        self._args.append(','.join(options))
-        return self
-
-    def send_fd_scm(self, fd_file_path):
-        # In iotest.py, the qmp should always use unix socket.
-        assert self._qmp.is_scm_available()
-        bin = socket_scm_helper
-        if os.path.exists(bin) == False:
-            print "Scm help program does not present, path '%s'." % bin
-            return -1
-        fd_param = ["%s" % bin,
-                    "%d" % self._qmp.get_sock_fd(),
-                    "%s" % fd_file_path]
-        devnull = open('/dev/null', 'rb')
-        p = subprocess.Popen(fd_param, stdin=devnull, stdout=sys.stdout,
-                             stderr=sys.stderr)
-        return p.wait()
-
-    def launch(self):
-        '''Launch the VM and establish a QMP connection'''
-        devnull = open('/dev/null', 'rb')
-        qemulog = open(self._qemu_log_path, 'wb')
-        try:
-            self._qmp = qmp.QEMUMonitorProtocol(self._monitor_path, server=True)
-            self._qtest = qtest.QEMUQtestProtocol(self._qtest_path, server=True)
-            self._popen = subprocess.Popen(self._args, stdin=devnull, stdout=qemulog,
-                                           stderr=subprocess.STDOUT)
-            self._qmp.accept()
-            self._qtest.accept()
-        except:
-            _remove_if_exists(self._monitor_path)
-            _remove_if_exists(self._qtest_path)
-            raise
-
-    def shutdown(self):
-        '''Terminate the VM and clean up'''
-        if not self._popen is None:
-            self._qmp.cmd('quit')
-            exitcode = self._popen.wait()
-            if exitcode < 0:
-                sys.stderr.write('qemu received signal %i: %s\n' % (-exitcode, ' '.join(self._args)))
-            os.remove(self._monitor_path)
-            os.remove(self._qtest_path)
-            os.remove(self._qemu_log_path)
-            self._popen = None
-
-    underscore_to_dash = string.maketrans('_', '-')
-    def qmp(self, cmd, conv_keys=True, **args):
-        '''Invoke a QMP command and return the result dict'''
-        qmp_args = dict()
-        for k in args.keys():
-            if conv_keys:
-                qmp_args[k.translate(self.underscore_to_dash)] = args[k]
-            else:
-                qmp_args[k] = args[k]
-
-        return self._qmp.cmd(cmd, args=qmp_args)
-
-    def qtest(self, cmd):
-        '''Send a qtest command to guest'''
-        return self._qtest.cmd(cmd)
-
-    def get_qmp_event(self, wait=False):
-        '''Poll for one queued QMP events and return it'''
-        if len(self._events) > 0:
-            return self._events.pop(0)
-        return self._qmp.pull_event(wait=wait)
-
-    def get_qmp_events(self, wait=False):
-        '''Poll for queued QMP events and return a list of dicts'''
-        events = self._qmp.get_events(wait=wait)
-        events.extend(self._events)
-        del self._events[:]
-        self._qmp.clear_events()
-        return events
-
-    def event_wait(self, name='BLOCK_JOB_COMPLETED', timeout=60.0, match=None):
-        # Search cached events
-        for event in self._events:
-            if (event['event'] == name) and event_match(event, match):
-                self._events.remove(event)
-                return event
-
-        # Poll for new events
-        while True:
-            event = self._qmp.pull_event(wait=timeout)
-            if (event['event'] == name) and event_match(event, match):
-                return event
-            self._events.append(event)
-
-        return None
 
 index_re = re.compile(r'([^\[]+)\[([^\]]+)\]')
 
@@ -337,6 +221,19 @@ class QMPTestCase(unittest.TestCase):
                 except IndexError:
                     self.fail('invalid index "%s" in path "%s" in "%s"' % (idx, path, str(d)))
         return d
+
+    def flatten_qmp_object(self, obj, output=None, basestr=''):
+        if output is None:
+            output = dict()
+        if isinstance(obj, list):
+            for i in range(len(obj)):
+                self.flatten_qmp_object(obj[i], output, basestr + str(i) + '.')
+        elif isinstance(obj, dict):
+            for key in obj:
+                self.flatten_qmp_object(obj[key], output, basestr + key + '.')
+        else:
+            output[basestr[:-1]] = obj # Strip trailing '.'
+        return output
 
     def assert_qmp_absent(self, d, path):
         try:
@@ -367,6 +264,13 @@ class QMPTestCase(unittest.TestCase):
                 return
         self.assertTrue(False, "Cannot find %s %s in result:\n%s" % \
                 (node_name, file_name, result))
+
+    def assert_json_filename_equal(self, json_filename, reference):
+        '''Asserts that the given filename is a json: filename and that its
+           content is equal to the given reference object'''
+        self.assertEqual(json_filename[:5], 'json:')
+        self.assertEqual(self.flatten_qmp_object(json.loads(json_filename[5:])),
+                         self.flatten_qmp_object(reference))
 
     def cancel_and_wait(self, drive='drive0', force=False, resume=False):
         '''Cancel a block job and wait for it to finish, returning the event'''
@@ -427,15 +331,6 @@ class QMPTestCase(unittest.TestCase):
         event = self.wait_until_completed(drive=drive)
         self.assert_qmp(event, 'data/type', 'mirror')
 
-def _remove_if_exists(path):
-    '''Remove file object at path if it exists'''
-    try:
-        os.remove(path)
-    except OSError as exception:
-        if exception.errno == errno.ENOENT:
-           return
-        raise
-
 def notrun(reason):
     '''Skip this test suite'''
     # Each test in qemu-iotests has a number ("seq")
@@ -453,13 +348,26 @@ def verify_platform(supported_oses=['linux']):
     if True not in [sys.platform.startswith(x) for x in supported_oses]:
         notrun('not suitable for this OS: %s' % sys.platform)
 
+def supports_quorum():
+    return 'quorum' in qemu_img_pipe('--help')
+
 def verify_quorum():
     '''Skip test suite if quorum support is not available'''
-    if 'quorum' not in qemu_img_pipe('--help'):
+    if not supports_quorum():
         notrun('quorum support missing')
 
 def main(supported_fmts=[], supported_oses=['linux']):
     '''Run tests'''
+
+    global debug
+
+    # We are using TEST_DIR and QEMU_DEFAULT_MACHINE as proxies to
+    # indicate that we're not being run via "check". There may be
+    # other things set up by "check" that individual test cases rely
+    # on.
+    if test_dir is None or qemu_default_machine is None:
+        sys.stderr.write('Please run this test via the "check" script\n')
+        sys.exit(os.EX_USAGE)
 
     debug = '-d' in sys.argv
     verbosity = 1

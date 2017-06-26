@@ -8,9 +8,10 @@
 
 #define MAX_SCSI_DEVS	255
 
-#define SCSI_CMD_BUF_SIZE     16
-#define SCSI_SENSE_LEN      18
-#define SCSI_INQUIRY_LEN    36
+#define SCSI_CMD_BUF_SIZE      16
+#define SCSI_SENSE_LEN         18
+#define SCSI_SENSE_LEN_SCANNER 32
+#define SCSI_INQUIRY_LEN       36
 
 typedef struct SCSIBus SCSIBus;
 typedef struct SCSIBusInfo SCSIBusInfo;
@@ -242,7 +243,6 @@ extern const struct SCSISense sense_code_SPACE_ALLOC_FAILED;
 uint32_t scsi_data_cdb_xfer(uint8_t *buf);
 uint32_t scsi_cdb_xfer(uint8_t *buf);
 int scsi_cdb_length(uint8_t *buf);
-int scsi_sense_valid(SCSISense sense);
 int scsi_build_sense(uint8_t *in_buf, int in_len,
                      uint8_t *buf, int len, bool fixed);
 

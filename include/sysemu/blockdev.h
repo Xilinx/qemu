@@ -42,6 +42,11 @@ struct DriveInfo {
     QTAILQ_ENTRY(DriveInfo) next;
 };
 
+/* Xilinx: Make this global so blockdev and FDT generic can
+ * access it
+ */
+extern int next_block_unit[IF_COUNT];
+
 DriveInfo *blk_legacy_dinfo(BlockBackend *blk);
 DriveInfo *blk_set_legacy_dinfo(BlockBackend *blk, DriveInfo *dinfo);
 BlockBackend *blk_by_legacy_dinfo(DriveInfo *dinfo);

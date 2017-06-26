@@ -239,11 +239,11 @@ void acpi_table_add(const QemuOpts *opts, Error **errp)
     char unsigned *blob = NULL;
 
     {
-        OptsVisitor *ov;
+        Visitor *v;
 
-        ov = opts_visitor_new(opts);
-        visit_type_AcpiTableOptions(opts_get_visitor(ov), NULL, &hdrs, &err);
-        opts_visitor_cleanup(ov);
+        v = opts_visitor_new(opts);
+        visit_type_AcpiTableOptions(v, NULL, &hdrs, &err);
+        visit_free(v);
     }
 
     if (err) {
@@ -491,6 +491,12 @@ void acpi_pm_tmr_update(ACPIREGS *ar, bool enable)
     }
 }
 
+static inline int64_t acpi_pm_tmr_get_clock(void)
+{
+    return muldiv64(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL), PM_TIMER_FREQUENCY,
+                    NANOSECONDS_PER_SECOND);
+}
+
 void acpi_pm_tmr_calc_overflow_time(ACPIREGS *ar)
 {
     int64_t d = acpi_pm_tmr_get_clock();
@@ -536,7 +542,6 @@ void acpi_pm_tmr_init(ACPIREGS *ar, acpi_update_sci_fn update_sci,
     ar->tmr.timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, acpi_pm_tmr_timer, ar);
     memory_region_init_io(&ar->tmr.io, memory_region_owner(parent),
                           &acpi_pm_tmr_ops, ar, "acpi-tmr", 4);
-    memory_region_clear_global_locking(&ar->tmr.io);
     memory_region_add_subregion(parent, 8, &ar->tmr.io);
 }
 
@@ -693,7 +698,7 @@ uint32_t acpi_gpe_ioport_readb(ACPIREGS *ar, uint32_t addr)
 }
 
 void acpi_send_gpe_event(ACPIREGS *ar, qemu_irq irq,
-                         AcpiGPEStatusBits status)
+                         AcpiEventStatusBits status)
 {
     ar->gpe.sts[0] |= status;
     acpi_update_sci(ar, irq);

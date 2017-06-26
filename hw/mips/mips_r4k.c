@@ -267,8 +267,16 @@ void mips_r4k_init(MachineState *machine)
     }
 
     /* Init CPU internal devices */
-    cpu_mips_irq_init_cpu(env);
-    cpu_mips_clock_init(env);
+    cpu_mips_irq_init_cpu(cpu);
+    cpu_mips_clock_init(cpu);
+
+    /* ISA bus: IO space at 0x14000000, mem space at 0x10000000 */
+    memory_region_init_alias(isa_io, NULL, "isa-io",
+                             get_system_io(), 0, 0x00010000);
+    memory_region_init(isa_mem, NULL, "isa-mem", 0x01000000);
+    memory_region_add_subregion(get_system_memory(), 0x14000000, isa_io);
+    memory_region_add_subregion(get_system_memory(), 0x10000000, isa_mem);
+    isa_bus = isa_bus_new(NULL, isa_mem, get_system_io(), &error_abort);
 
     /* ISA bus: IO space at 0x14000000, mem space at 0x10000000 */
     memory_region_init_alias(isa_io, NULL, "isa-io",
@@ -286,7 +294,7 @@ void mips_r4k_init(MachineState *machine)
 
     pit = pit_init(isa_bus, 0x40, 0, NULL);
 
-    serial_hds_isa_init(isa_bus, MAX_SERIAL_PORTS);
+    serial_hds_isa_init(isa_bus, 0, MAX_SERIAL_PORTS);
 
     isa_vga_init(isa_bus);
 

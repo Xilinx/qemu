@@ -5,7 +5,9 @@
 #include <sys/shm.h>
 #include <sys/select.h>
 #include <sys/mount.h>
-#include <sys/mman.h>
+#include <arpa/inet.h>
+#include <netinet/tcp.h>
+#include <linux/if_packet.h>
 #include <sched.h>
 #include "qemu.h"
 
@@ -58,10 +60,15 @@ UNUSED static void print_open_flags(abi_long, int);
 UNUSED static void print_syscall_prologue(const struct syscallname *);
 UNUSED static void print_syscall_epilogue(const struct syscallname *);
 UNUSED static void print_string(abi_long, int);
+UNUSED static void print_buf(abi_long addr, abi_long len, int last);
 UNUSED static void print_raw_param(const char *, abi_long, int);
 UNUSED static void print_timeval(abi_ulong, int);
 UNUSED static void print_number(abi_long, int);
 UNUSED static void print_signal(abi_ulong, int);
+UNUSED static void print_sockaddr(abi_ulong addr, abi_long addrlen);
+UNUSED static void print_socket_domain(int domain);
+UNUSED static void print_socket_type(int type);
+UNUSED static void print_socket_protocol(int domain, int type, int protocol);
 
 /*
  * Utility functions
@@ -147,6 +154,259 @@ print_signal(abi_ulong arg, int last)
     gemu_log("%s%s", signal_name, get_comma(last));
 }
 
+static void print_si_code(int arg)
+{
+    const char *codename = NULL;
+
+    switch (arg) {
+    case SI_USER:
+        codename = "SI_USER";
+        break;
+    case SI_KERNEL:
+        codename = "SI_KERNEL";
+        break;
+    case SI_QUEUE:
+        codename = "SI_QUEUE";
+        break;
+    case SI_TIMER:
+        codename = "SI_TIMER";
+        break;
+    case SI_MESGQ:
+        codename = "SI_MESGQ";
+        break;
+    case SI_ASYNCIO:
+        codename = "SI_ASYNCIO";
+        break;
+    case SI_SIGIO:
+        codename = "SI_SIGIO";
+        break;
+    case SI_TKILL:
+        codename = "SI_TKILL";
+        break;
+    default:
+        gemu_log("%d", arg);
+        return;
+    }
+    gemu_log("%s", codename);
+}
+
+static void print_siginfo(const target_siginfo_t *tinfo)
+{
+    /* Print a target_siginfo_t in the format desired for printing
+     * signals being taken. We assume the target_siginfo_t is in the
+     * internal form where the top 16 bits of si_code indicate which
+     * part of the union is valid, rather than in the guest-visible
+     * form where the bottom 16 bits are sign-extended into the top 16.
+     */
+    int si_type = extract32(tinfo->si_code, 16, 16);
+    int si_code = sextract32(tinfo->si_code, 0, 16);
+
+    gemu_log("{si_signo=");
+    print_signal(tinfo->si_signo, 1);
+    gemu_log(", si_code=");
+    print_si_code(si_code);
+
+    switch (si_type) {
+    case QEMU_SI_KILL:
+        gemu_log(", si_pid = %u, si_uid = %u",
+                 (unsigned int)tinfo->_sifields._kill._pid,
+                 (unsigned int)tinfo->_sifields._kill._uid);
+        break;
+    case QEMU_SI_TIMER:
+        gemu_log(", si_timer1 = %u, si_timer2 = %u",
+                 tinfo->_sifields._timer._timer1,
+                 tinfo->_sifields._timer._timer2);
+        break;
+    case QEMU_SI_POLL:
+        gemu_log(", si_band = %d, si_fd = %d",
+                 tinfo->_sifields._sigpoll._band,
+                 tinfo->_sifields._sigpoll._fd);
+        break;
+    case QEMU_SI_FAULT:
+        gemu_log(", si_addr = ");
+        print_pointer(tinfo->_sifields._sigfault._addr, 1);
+        break;
+    case QEMU_SI_CHLD:
+        gemu_log(", si_pid = %u, si_uid = %u, si_status = %d"
+                 ", si_utime=" TARGET_ABI_FMT_ld
+                 ", si_stime=" TARGET_ABI_FMT_ld,
+                 (unsigned int)(tinfo->_sifields._sigchld._pid),
+                 (unsigned int)(tinfo->_sifields._sigchld._uid),
+                 tinfo->_sifields._sigchld._status,
+                 tinfo->_sifields._sigchld._utime,
+                 tinfo->_sifields._sigchld._stime);
+        break;
+    case QEMU_SI_RT:
+        gemu_log(", si_pid = %u, si_uid = %u, si_sigval = " TARGET_ABI_FMT_ld,
+                 (unsigned int)tinfo->_sifields._rt._pid,
+                 (unsigned int)tinfo->_sifields._rt._uid,
+                 tinfo->_sifields._rt._sigval.sival_ptr);
+        break;
+    default:
+        g_assert_not_reached();
+    }
+    gemu_log("}");
+}
+
+static void
+print_sockaddr(abi_ulong addr, abi_long addrlen)
+{
+    struct target_sockaddr *sa;
+    int i;
+    int sa_family;
+
+    sa = lock_user(VERIFY_READ, addr, addrlen, 1);
+    if (sa) {
+        sa_family = tswap16(sa->sa_family);
+        switch (sa_family) {
+        case AF_UNIX: {
+            struct target_sockaddr_un *un = (struct target_sockaddr_un *)sa;
+            int i;
+            gemu_log("{sun_family=AF_UNIX,sun_path=\"");
+            for (i = 0; i < addrlen -
+                            offsetof(struct target_sockaddr_un, sun_path) &&
+                 un->sun_path[i]; i++) {
+                gemu_log("%c", un->sun_path[i]);
+            }
+            gemu_log("\"}");
+            break;
+        }
+        case AF_INET: {
+            struct target_sockaddr_in *in = (struct target_sockaddr_in *)sa;
+            uint8_t *c = (uint8_t *)&in->sin_addr.s_addr;
+            gemu_log("{sin_family=AF_INET,sin_port=htons(%d),",
+                     ntohs(in->sin_port));
+            gemu_log("sin_addr=inet_addr(\"%d.%d.%d.%d\")",
+                     c[0], c[1], c[2], c[3]);
+            gemu_log("}");
+            break;
+        }
+        case AF_PACKET: {
+            struct target_sockaddr_ll *ll = (struct target_sockaddr_ll *)sa;
+            uint8_t *c = (uint8_t *)&ll->sll_addr;
+            gemu_log("{sll_family=AF_PACKET,"
+                     "sll_protocol=htons(0x%04x),if%d,pkttype=",
+                     ntohs(ll->sll_protocol), ll->sll_ifindex);
+            switch (ll->sll_pkttype) {
+            case PACKET_HOST:
+                gemu_log("PACKET_HOST");
+                break;
+            case PACKET_BROADCAST:
+                gemu_log("PACKET_BROADCAST");
+                break;
+            case PACKET_MULTICAST:
+                gemu_log("PACKET_MULTICAST");
+                break;
+            case PACKET_OTHERHOST:
+                gemu_log("PACKET_OTHERHOST");
+                break;
+            case PACKET_OUTGOING:
+                gemu_log("PACKET_OUTGOING");
+                break;
+            default:
+                gemu_log("%d", ll->sll_pkttype);
+                break;
+            }
+            gemu_log(",sll_addr=%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x",
+                     c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]);
+            gemu_log("}");
+            break;
+        }
+        default:
+            gemu_log("{sa_family=%d, sa_data={", sa->sa_family);
+            for (i = 0; i < 13; i++) {
+                gemu_log("%02x, ", sa->sa_data[i]);
+            }
+            gemu_log("%02x}", sa->sa_data[i]);
+            gemu_log("}");
+            break;
+        }
+        unlock_user(sa, addr, 0);
+    } else {
+        print_raw_param("0x"TARGET_ABI_FMT_lx, addr, 0);
+    }
+    gemu_log(", "TARGET_ABI_FMT_ld, addrlen);
+}
+
+static void
+print_socket_domain(int domain)
+{
+    switch (domain) {
+    case PF_UNIX:
+        gemu_log("PF_UNIX");
+        break;
+    case PF_INET:
+        gemu_log("PF_INET");
+        break;
+    case PF_PACKET:
+        gemu_log("PF_PACKET");
+        break;
+    default:
+        gemu_log("%d", domain);
+        break;
+    }
+}
+
+static void
+print_socket_type(int type)
+{
+    switch (type) {
+    case TARGET_SOCK_DGRAM:
+        gemu_log("SOCK_DGRAM");
+        break;
+    case TARGET_SOCK_STREAM:
+        gemu_log("SOCK_STREAM");
+        break;
+    case TARGET_SOCK_RAW:
+        gemu_log("SOCK_RAW");
+        break;
+    case TARGET_SOCK_RDM:
+        gemu_log("SOCK_RDM");
+        break;
+    case TARGET_SOCK_SEQPACKET:
+        gemu_log("SOCK_SEQPACKET");
+        break;
+    case TARGET_SOCK_PACKET:
+        gemu_log("SOCK_PACKET");
+        break;
+    }
+}
+
+static void
+print_socket_protocol(int domain, int type, int protocol)
+{
+    if (domain == AF_PACKET ||
+        (domain == AF_INET && type == TARGET_SOCK_PACKET)) {
+        switch (protocol) {
+        case 0x0003:
+            gemu_log("ETH_P_ALL");
+            break;
+        default:
+            gemu_log("%d", protocol);
+        }
+        return;
+    }
+
+    switch (protocol) {
+    case IPPROTO_IP:
+        gemu_log("IPPROTO_IP");
+        break;
+    case IPPROTO_TCP:
+        gemu_log("IPPROTO_TCP");
+        break;
+    case IPPROTO_UDP:
+        gemu_log("IPPROTO_UDP");
+        break;
+    case IPPROTO_RAW:
+        gemu_log("IPPROTO_RAW");
+        break;
+    default:
+        gemu_log("%d", protocol);
+        break;
+    }
+}
+
+
 #ifdef TARGET_NR__newselect
 static void
 print_fdset(int n, abi_ulong target_fds_addr)
@@ -172,6 +432,69 @@ print_fdset(int n, abi_ulong target_fds_addr)
         unlock_user(target_fds, target_fds_addr, 0);
     }
     gemu_log("]");
+}
+#endif
+
+#ifdef TARGET_NR_clock_adjtime
+/* IDs of the various system clocks */
+#define TARGET_CLOCK_REALTIME              0
+#define TARGET_CLOCK_MONOTONIC             1
+#define TARGET_CLOCK_PROCESS_CPUTIME_ID    2
+#define TARGET_CLOCK_THREAD_CPUTIME_ID     3
+#define TARGET_CLOCK_MONOTONIC_RAW         4
+#define TARGET_CLOCK_REALTIME_COARSE       5
+#define TARGET_CLOCK_MONOTONIC_COARSE      6
+#define TARGET_CLOCK_BOOTTIME              7
+#define TARGET_CLOCK_REALTIME_ALARM        8
+#define TARGET_CLOCK_BOOTTIME_ALARM        9
+#define TARGET_CLOCK_SGI_CYCLE             10
+#define TARGET_CLOCK_TAI                   11
+
+static void
+print_clockid(int clockid, int last)
+{
+    switch (clockid) {
+    case TARGET_CLOCK_REALTIME:
+        gemu_log("CLOCK_REALTIME");
+        break;
+    case TARGET_CLOCK_MONOTONIC:
+        gemu_log("CLOCK_MONOTONIC");
+        break;
+    case TARGET_CLOCK_PROCESS_CPUTIME_ID:
+        gemu_log("CLOCK_PROCESS_CPUTIME_ID");
+        break;
+    case TARGET_CLOCK_THREAD_CPUTIME_ID:
+        gemu_log("CLOCK_THREAD_CPUTIME_ID");
+        break;
+    case TARGET_CLOCK_MONOTONIC_RAW:
+        gemu_log("CLOCK_MONOTONIC_RAW");
+        break;
+    case TARGET_CLOCK_REALTIME_COARSE:
+        gemu_log("CLOCK_REALTIME_COARSE");
+        break;
+    case TARGET_CLOCK_MONOTONIC_COARSE:
+        gemu_log("CLOCK_MONOTONIC_COARSE");
+        break;
+    case TARGET_CLOCK_BOOTTIME:
+        gemu_log("CLOCK_BOOTTIME");
+        break;
+    case TARGET_CLOCK_REALTIME_ALARM:
+        gemu_log("CLOCK_REALTIME_ALARM");
+        break;
+    case TARGET_CLOCK_BOOTTIME_ALARM:
+        gemu_log("CLOCK_BOOTTIME_ALARM");
+        break;
+    case TARGET_CLOCK_SGI_CYCLE:
+        gemu_log("CLOCK_SGI_CYCLE");
+        break;
+    case TARGET_CLOCK_TAI:
+        gemu_log("CLOCK_TAI");
+        break;
+    default:
+        gemu_log("%d", clockid);
+        break;
+    }
+    gemu_log("%s", get_comma(last));
 }
 #endif
 
@@ -281,7 +604,7 @@ print_ipc(const struct syscallname *name,
 static void
 print_syscall_ret_addr(const struct syscallname *name, abi_long ret)
 {
-    char *errstr = NULL;
+    const char *errstr = NULL;
 
     if (ret < 0) {
         errstr = target_strerror(-ret);
@@ -316,6 +639,52 @@ print_syscall_ret_newselect(const struct syscallname *name, abi_long ret)
     gemu_log(")\n");
 }
 #endif
+
+/* special meanings of adjtimex()' non-negative return values */
+#define TARGET_TIME_OK       0   /* clock synchronized, no leap second */
+#define TARGET_TIME_INS      1   /* insert leap second */
+#define TARGET_TIME_DEL      2   /* delete leap second */
+#define TARGET_TIME_OOP      3   /* leap second in progress */
+#define TARGET_TIME_WAIT     4   /* leap second has occurred */
+#define TARGET_TIME_ERROR    5   /* clock not synchronized */
+static void
+print_syscall_ret_adjtimex(const struct syscallname *name, abi_long ret)
+{
+    const char *errstr = NULL;
+
+    gemu_log(" = ");
+    if (ret < 0) {
+        gemu_log("-1 errno=%d", errno);
+        errstr = target_strerror(-ret);
+        if (errstr) {
+            gemu_log(" (%s)", errstr);
+        }
+    } else {
+        gemu_log(TARGET_ABI_FMT_ld, ret);
+        switch (ret) {
+        case TARGET_TIME_OK:
+            gemu_log(" TIME_OK (clock synchronized, no leap second)");
+            break;
+        case TARGET_TIME_INS:
+            gemu_log(" TIME_INS (insert leap second)");
+            break;
+        case TARGET_TIME_DEL:
+            gemu_log(" TIME_DEL (delete leap second)");
+            break;
+        case TARGET_TIME_OOP:
+            gemu_log(" TIME_OOP (leap second in progress)");
+            break;
+        case TARGET_TIME_WAIT:
+            gemu_log(" TIME_WAIT (leap second has occurred)");
+            break;
+        case TARGET_TIME_ERROR:
+            gemu_log(" TIME_ERROR (clock not synchronized)");
+            break;
+        }
+    }
+
+    gemu_log("\n");
+}
 
 UNUSED static struct flags access_flags[] = {
     FLAG_GENERIC(F_OK),
@@ -498,6 +867,26 @@ UNUSED static struct flags clone_flags[] = {
     FLAG_END,
 };
 
+UNUSED static struct flags msg_flags[] = {
+    /* send */
+    FLAG_GENERIC(MSG_CONFIRM),
+    FLAG_GENERIC(MSG_DONTROUTE),
+    FLAG_GENERIC(MSG_DONTWAIT),
+    FLAG_GENERIC(MSG_EOR),
+    FLAG_GENERIC(MSG_MORE),
+    FLAG_GENERIC(MSG_NOSIGNAL),
+    FLAG_GENERIC(MSG_OOB),
+    /* recv */
+    FLAG_GENERIC(MSG_CMSG_CLOEXEC),
+    FLAG_GENERIC(MSG_ERRQUEUE),
+    FLAG_GENERIC(MSG_PEEK),
+    FLAG_GENERIC(MSG_TRUNC),
+    FLAG_GENERIC(MSG_WAITALL),
+    /* recvmsg */
+    FLAG_GENERIC(MSG_CTRUNC),
+    FLAG_END,
+};
+
 /*
  * print_xxx utility functions.  These are used to print syscall
  * parameters in certain format.  All of these have parameter
@@ -615,6 +1004,36 @@ print_string(abi_long addr, int last)
         unlock_user(s, addr, 0);
     } else {
         /* can't get string out of it, so print it as pointer */
+        print_pointer(addr, last);
+    }
+}
+
+#define MAX_PRINT_BUF 40
+static void
+print_buf(abi_long addr, abi_long len, int last)
+{
+    uint8_t *s;
+    int i;
+
+    s = lock_user(VERIFY_READ, addr, len, 1);
+    if (s) {
+        gemu_log("\"");
+        for (i = 0; i < MAX_PRINT_BUF && i < len; i++) {
+            if (isprint(s[i])) {
+                gemu_log("%c", s[i]);
+            } else {
+                gemu_log("\\%o", s[i]);
+            }
+        }
+        gemu_log("\"");
+        if (i != len) {
+            gemu_log("...");
+        }
+        if (!last) {
+            gemu_log(",");
+        }
+        unlock_user(s, addr, 0);
+    } else {
         print_pointer(addr, last);
     }
 }
@@ -740,34 +1159,45 @@ print_chmod(const struct syscallname *name,
 }
 #endif
 
-#ifdef TARGET_NR_clone
+#ifdef TARGET_NR_clock_adjtime
 static void
-print_clone(const struct syscallname *name,
+print_clock_adjtime(const struct syscallname *name,
     abi_long arg0, abi_long arg1, abi_long arg2,
     abi_long arg3, abi_long arg4, abi_long arg5)
 {
     print_syscall_prologue(name);
-#if defined(TARGET_M68K)
-    print_flags(clone_flags, arg0, 0);
-    print_raw_param("newsp=0x" TARGET_ABI_FMT_lx, arg1, 1);
-#elif defined(TARGET_SH4) || defined(TARGET_ALPHA)
-    print_flags(clone_flags, arg0, 0);
-    print_raw_param("child_stack=0x" TARGET_ABI_FMT_lx, arg1, 0);
-    print_raw_param("parent_tidptr=0x" TARGET_ABI_FMT_lx, arg2, 0);
-    print_raw_param("child_tidptr=0x" TARGET_ABI_FMT_lx, arg3, 0);
-    print_raw_param("tls=0x" TARGET_ABI_FMT_lx, arg4, 1);
-#elif defined(TARGET_CRIS)
-    print_raw_param("child_stack=0x" TARGET_ABI_FMT_lx, arg0, 0);
-    print_flags(clone_flags, arg1, 0);
-    print_raw_param("parent_tidptr=0x" TARGET_ABI_FMT_lx, arg2, 0);
-    print_raw_param("tls=0x" TARGET_ABI_FMT_lx, arg3, 0);
-    print_raw_param("child_tidptr=0x" TARGET_ABI_FMT_lx, arg4, 1);
+    print_clockid(arg0, 0);
+    print_pointer(arg1, 1);
+    print_syscall_epilogue(name);
+}
+#endif
+
+#ifdef TARGET_NR_clone
+static void do_print_clone(unsigned int flags, abi_ulong newsp,
+                           abi_ulong parent_tidptr, target_ulong newtls,
+                           abi_ulong child_tidptr)
+{
+    print_flags(clone_flags, flags, 0);
+    print_raw_param("child_stack=0x" TARGET_ABI_FMT_lx, newsp, 0);
+    print_raw_param("parent_tidptr=0x" TARGET_ABI_FMT_lx, parent_tidptr, 0);
+    print_raw_param("tls=0x" TARGET_ABI_FMT_lx, newtls, 0);
+    print_raw_param("child_tidptr=0x" TARGET_ABI_FMT_lx, child_tidptr, 1);
+}
+
+static void
+print_clone(const struct syscallname *name,
+    abi_long arg1, abi_long arg2, abi_long arg3,
+    abi_long arg4, abi_long arg5, abi_long arg6)
+{
+    print_syscall_prologue(name);
+#if defined(TARGET_MICROBLAZE)
+    do_print_clone(arg1, arg2, arg4, arg6, arg5);
+#elif defined(TARGET_CLONE_BACKWARDS)
+    do_print_clone(arg1, arg2, arg3, arg4, arg5);
+#elif defined(TARGET_CLONE_BACKWARDS2)
+    do_print_clone(arg2, arg1, arg3, arg5, arg4);
 #else
-    print_flags(clone_flags, arg0, 0);
-    print_raw_param("child_stack=0x" TARGET_ABI_FMT_lx, arg1, 0);
-    print_raw_param("parent_tidptr=0x" TARGET_ABI_FMT_lx, arg2, 0);
-    print_raw_param("tls=0x" TARGET_ABI_FMT_lx, arg3, 0);
-    print_raw_param("child_tidptr=0x" TARGET_ABI_FMT_lx, arg4, 1);
+    do_print_clone(arg1, arg2, arg3, arg5, arg4);
 #endif
     print_syscall_epilogue(name);
 }
@@ -919,6 +1349,13 @@ print_fcntl(const struct syscallname *name,
     case TARGET_F_GETLEASE:
         gemu_log("F_GETLEASE");
         break;
+    case TARGET_F_SETPIPE_SZ:
+        gemu_log("F_SETPIPE_SZ,");
+        print_raw_param(TARGET_ABI_FMT_ld, arg2, 1);
+        break;
+    case TARGET_F_GETPIPE_SZ:
+        gemu_log("F_GETPIPE_SZ");
+        break;
     case TARGET_F_DUPFD_CLOEXEC:
         gemu_log("F_DUPFD_CLOEXEC,");
         print_raw_param(TARGET_ABI_FMT_ld, arg2, 1);
@@ -1000,6 +1437,364 @@ print__llseek(const struct syscallname *name,
     case SEEK_END: whence = "SEEK_END"; break;
     }
     gemu_log("%s",whence);
+    print_syscall_epilogue(name);
+}
+#endif
+
+#if defined(TARGET_NR_socket)
+static void
+print_socket(const struct syscallname *name,
+             abi_long arg0, abi_long arg1, abi_long arg2,
+             abi_long arg3, abi_long arg4, abi_long arg5)
+{
+    abi_ulong domain = arg0, type = arg1, protocol = arg2;
+
+    print_syscall_prologue(name);
+    print_socket_domain(domain);
+    gemu_log(",");
+    print_socket_type(type);
+    gemu_log(",");
+    if (domain == AF_PACKET ||
+        (domain == AF_INET && type == TARGET_SOCK_PACKET)) {
+        protocol = tswap16(protocol);
+    }
+    print_socket_protocol(domain, type, protocol);
+    print_syscall_epilogue(name);
+}
+
+#endif
+
+#if defined(TARGET_NR_socketcall)
+
+#define get_user_ualx(x, gaddr, idx) \
+        get_user_ual(x, (gaddr) + (idx) * sizeof(abi_long))
+
+static void do_print_socket(const char *name, abi_long arg1)
+{
+    abi_ulong domain, type, protocol;
+
+    get_user_ualx(domain, arg1, 0);
+    get_user_ualx(type, arg1, 1);
+    get_user_ualx(protocol, arg1, 2);
+    gemu_log("%s(", name);
+    print_socket_domain(domain);
+    gemu_log(",");
+    print_socket_type(type);
+    gemu_log(",");
+    if (domain == AF_PACKET ||
+        (domain == AF_INET && type == TARGET_SOCK_PACKET)) {
+        protocol = tswap16(protocol);
+    }
+    print_socket_protocol(domain, type, protocol);
+    gemu_log(")");
+}
+
+static void do_print_sockaddr(const char *name, abi_long arg1)
+{
+    abi_ulong sockfd, addr, addrlen;
+
+    get_user_ualx(sockfd, arg1, 0);
+    get_user_ualx(addr, arg1, 1);
+    get_user_ualx(addrlen, arg1, 2);
+
+    gemu_log("%s(", name);
+    print_raw_param(TARGET_ABI_FMT_ld, sockfd, 0);
+    print_sockaddr(addr, addrlen);
+    gemu_log(")");
+}
+
+static void do_print_listen(const char *name, abi_long arg1)
+{
+    abi_ulong sockfd, backlog;
+
+    get_user_ualx(sockfd, arg1, 0);
+    get_user_ualx(backlog, arg1, 1);
+
+    gemu_log("%s(", name);
+    print_raw_param(TARGET_ABI_FMT_ld, sockfd, 0);
+    print_raw_param(TARGET_ABI_FMT_ld, backlog, 1);
+    gemu_log(")");
+}
+
+static void do_print_socketpair(const char *name, abi_long arg1)
+{
+    abi_ulong domain, type, protocol, tab;
+
+    get_user_ualx(domain, arg1, 0);
+    get_user_ualx(type, arg1, 1);
+    get_user_ualx(protocol, arg1, 2);
+    get_user_ualx(tab, arg1, 3);
+
+    gemu_log("%s(", name);
+    print_socket_domain(domain);
+    gemu_log(",");
+    print_socket_type(type);
+    gemu_log(",");
+    print_socket_protocol(domain, type, protocol);
+    gemu_log(",");
+    print_raw_param(TARGET_ABI_FMT_lx, tab, 1);
+    gemu_log(")");
+}
+
+static void do_print_sendrecv(const char *name, abi_long arg1)
+{
+    abi_ulong sockfd, msg, len, flags;
+
+    get_user_ualx(sockfd, arg1, 0);
+    get_user_ualx(msg, arg1, 1);
+    get_user_ualx(len, arg1, 2);
+    get_user_ualx(flags, arg1, 3);
+
+    gemu_log("%s(", name);
+    print_raw_param(TARGET_ABI_FMT_ld, sockfd, 0);
+    print_buf(msg, len, 0);
+    print_raw_param(TARGET_ABI_FMT_ld, len, 0);
+    print_flags(msg_flags, flags, 1);
+    gemu_log(")");
+}
+
+static void do_print_msgaddr(const char *name, abi_long arg1)
+{
+    abi_ulong sockfd, msg, len, flags, addr, addrlen;
+
+    get_user_ualx(sockfd, arg1, 0);
+    get_user_ualx(msg, arg1, 1);
+    get_user_ualx(len, arg1, 2);
+    get_user_ualx(flags, arg1, 3);
+    get_user_ualx(addr, arg1, 4);
+    get_user_ualx(addrlen, arg1, 5);
+
+    gemu_log("%s(", name);
+    print_raw_param(TARGET_ABI_FMT_ld, sockfd, 0);
+    print_buf(msg, len, 0);
+    print_raw_param(TARGET_ABI_FMT_ld, len, 0);
+    print_flags(msg_flags, flags, 0);
+    print_sockaddr(addr, addrlen);
+    gemu_log(")");
+}
+
+static void do_print_shutdown(const char *name, abi_long arg1)
+{
+    abi_ulong sockfd, how;
+
+    get_user_ualx(sockfd, arg1, 0);
+    get_user_ualx(how, arg1, 1);
+
+    gemu_log("shutdown(");
+    print_raw_param(TARGET_ABI_FMT_ld, sockfd, 0);
+    switch (how) {
+    case SHUT_RD:
+        gemu_log("SHUT_RD");
+        break;
+    case SHUT_WR:
+        gemu_log("SHUT_WR");
+        break;
+    case SHUT_RDWR:
+        gemu_log("SHUT_RDWR");
+        break;
+    default:
+        print_raw_param(TARGET_ABI_FMT_ld, how, 1);
+        break;
+    }
+    gemu_log(")");
+}
+
+static void do_print_msg(const char *name, abi_long arg1)
+{
+    abi_ulong sockfd, msg, flags;
+
+    get_user_ualx(sockfd, arg1, 0);
+    get_user_ualx(msg, arg1, 1);
+    get_user_ualx(flags, arg1, 2);
+
+    gemu_log("%s(", name);
+    print_raw_param(TARGET_ABI_FMT_ld, sockfd, 0);
+    print_pointer(msg, 0);
+    print_flags(msg_flags, flags, 1);
+    gemu_log(")");
+}
+
+static void do_print_sockopt(const char *name, abi_long arg1)
+{
+    abi_ulong sockfd, level, optname, optval, optlen;
+
+    get_user_ualx(sockfd, arg1, 0);
+    get_user_ualx(level, arg1, 1);
+    get_user_ualx(optname, arg1, 2);
+    get_user_ualx(optval, arg1, 3);
+    get_user_ualx(optlen, arg1, 4);
+
+    gemu_log("%s(", name);
+    print_raw_param(TARGET_ABI_FMT_ld, sockfd, 0);
+    switch (level) {
+    case SOL_TCP:
+        gemu_log("SOL_TCP,");
+        print_raw_param(TARGET_ABI_FMT_ld, optname, 0);
+        print_pointer(optval, 0);
+        break;
+    case SOL_IP:
+        gemu_log("SOL_IP,");
+        print_raw_param(TARGET_ABI_FMT_ld, optname, 0);
+        print_pointer(optval, 0);
+        break;
+    case SOL_RAW:
+        gemu_log("SOL_RAW,");
+        print_raw_param(TARGET_ABI_FMT_ld, optname, 0);
+        print_pointer(optval, 0);
+        break;
+    case TARGET_SOL_SOCKET:
+        gemu_log("SOL_SOCKET,");
+        switch (optname) {
+        case TARGET_SO_DEBUG:
+            gemu_log("SO_DEBUG,");
+print_optint:
+            print_number(optval, 0);
+            break;
+        case TARGET_SO_REUSEADDR:
+            gemu_log("SO_REUSEADDR,");
+            goto print_optint;
+        case TARGET_SO_TYPE:
+            gemu_log("SO_TYPE,");
+            goto print_optint;
+        case TARGET_SO_ERROR:
+            gemu_log("SO_ERROR,");
+            goto print_optint;
+        case TARGET_SO_DONTROUTE:
+            gemu_log("SO_DONTROUTE,");
+            goto print_optint;
+        case TARGET_SO_BROADCAST:
+            gemu_log("SO_BROADCAST,");
+            goto print_optint;
+        case TARGET_SO_SNDBUF:
+            gemu_log("SO_SNDBUF,");
+            goto print_optint;
+        case TARGET_SO_RCVBUF:
+            gemu_log("SO_RCVBUF,");
+            goto print_optint;
+        case TARGET_SO_KEEPALIVE:
+            gemu_log("SO_KEEPALIVE,");
+            goto print_optint;
+        case TARGET_SO_OOBINLINE:
+            gemu_log("SO_OOBINLINE,");
+            goto print_optint;
+        case TARGET_SO_NO_CHECK:
+            gemu_log("SO_NO_CHECK,");
+            goto print_optint;
+        case TARGET_SO_PRIORITY:
+            gemu_log("SO_PRIORITY,");
+            goto print_optint;
+        case TARGET_SO_BSDCOMPAT:
+            gemu_log("SO_BSDCOMPAT,");
+            goto print_optint;
+        case TARGET_SO_PASSCRED:
+            gemu_log("SO_PASSCRED,");
+            goto print_optint;
+        case TARGET_SO_TIMESTAMP:
+            gemu_log("SO_TIMESTAMP,");
+            goto print_optint;
+        case TARGET_SO_RCVLOWAT:
+            gemu_log("SO_RCVLOWAT,");
+            goto print_optint;
+        case TARGET_SO_RCVTIMEO:
+            gemu_log("SO_RCVTIMEO,");
+            print_timeval(optval, 0);
+            break;
+        case TARGET_SO_SNDTIMEO:
+            gemu_log("SO_SNDTIMEO,");
+            print_timeval(optval, 0);
+            break;
+        case TARGET_SO_ATTACH_FILTER: {
+            struct target_sock_fprog *fprog;
+
+            gemu_log("SO_ATTACH_FILTER,");
+
+            if (lock_user_struct(VERIFY_READ, fprog, optval,  0)) {
+                struct target_sock_filter *filter;
+                gemu_log("{");
+                if (lock_user_struct(VERIFY_READ, filter,
+                                     tswapal(fprog->filter),  0)) {
+                    int i;
+                    for (i = 0; i < tswap16(fprog->len) - 1; i++) {
+                        gemu_log("[%d]{0x%x,%d,%d,0x%x},",
+                                 i, tswap16(filter[i].code),
+                                 filter[i].jt, filter[i].jf,
+                                 tswap32(filter[i].k));
+                    }
+                    gemu_log("[%d]{0x%x,%d,%d,0x%x}",
+                             i, tswap16(filter[i].code),
+                             filter[i].jt, filter[i].jf,
+                             tswap32(filter[i].k));
+                } else {
+                    gemu_log(TARGET_ABI_FMT_lx, tswapal(fprog->filter));
+                }
+                gemu_log(",%d},", tswap16(fprog->len));
+                unlock_user(fprog, optval, 0);
+            } else {
+                print_pointer(optval, 0);
+            }
+            break;
+        }
+        default:
+            print_raw_param(TARGET_ABI_FMT_ld, optname, 0);
+            print_pointer(optval, 0);
+            break;
+        }
+        break;
+    default:
+        print_raw_param(TARGET_ABI_FMT_ld, level, 0);
+        print_raw_param(TARGET_ABI_FMT_ld, optname, 0);
+        print_pointer(optval, 0);
+        break;
+    }
+    print_raw_param(TARGET_ABI_FMT_ld, optlen, 1);
+    gemu_log(")");
+}
+
+#define PRINT_SOCKOP(name, func) \
+    [TARGET_SYS_##name] = { #name, func }
+
+static struct {
+    const char *name;
+    void (*print)(const char *, abi_long);
+} scall[] = {
+    PRINT_SOCKOP(SOCKET, do_print_socket),
+    PRINT_SOCKOP(BIND, do_print_sockaddr),
+    PRINT_SOCKOP(CONNECT, do_print_sockaddr),
+    PRINT_SOCKOP(LISTEN, do_print_listen),
+    PRINT_SOCKOP(ACCEPT, do_print_sockaddr),
+    PRINT_SOCKOP(GETSOCKNAME, do_print_sockaddr),
+    PRINT_SOCKOP(GETPEERNAME, do_print_sockaddr),
+    PRINT_SOCKOP(SOCKETPAIR, do_print_socketpair),
+    PRINT_SOCKOP(SEND, do_print_sendrecv),
+    PRINT_SOCKOP(RECV, do_print_sendrecv),
+    PRINT_SOCKOP(SENDTO, do_print_msgaddr),
+    PRINT_SOCKOP(RECVFROM, do_print_msgaddr),
+    PRINT_SOCKOP(SHUTDOWN, do_print_shutdown),
+    PRINT_SOCKOP(SETSOCKOPT, do_print_sockopt),
+    PRINT_SOCKOP(GETSOCKOPT, do_print_sockopt),
+    PRINT_SOCKOP(SENDMSG, do_print_msg),
+    PRINT_SOCKOP(RECVMSG, do_print_msg),
+    PRINT_SOCKOP(ACCEPT4, NULL),
+    PRINT_SOCKOP(RECVMMSG, NULL),
+    PRINT_SOCKOP(SENDMMSG, NULL),
+};
+
+static void
+print_socketcall(const struct syscallname *name,
+                 abi_long arg0, abi_long arg1, abi_long arg2,
+                 abi_long arg3, abi_long arg4, abi_long arg5)
+{
+    if (arg0 >= 0 && arg0 < ARRAY_SIZE(scall) && scall[arg0].print) {
+        scall[arg0].print(scall[arg0].name, arg1);
+        return;
+    }
+    print_syscall_prologue(name);
+    print_raw_param(TARGET_ABI_FMT_ld, arg0, 0);
+    print_raw_param(TARGET_ABI_FMT_ld, arg1, 0);
+    print_raw_param(TARGET_ABI_FMT_ld, arg2, 0);
+    print_raw_param(TARGET_ABI_FMT_ld, arg3, 0);
+    print_raw_param(TARGET_ABI_FMT_ld, arg4, 0);
+    print_raw_param(TARGET_ABI_FMT_ld, arg5, 0);
     print_syscall_epilogue(name);
 }
 #endif
@@ -1104,6 +1899,78 @@ print_rt_sigprocmask(const struct syscallname *name,
     gemu_log("%s,",how);
     print_pointer(arg1, 0);
     print_pointer(arg2, 1);
+    print_syscall_epilogue(name);
+}
+#endif
+
+#ifdef TARGET_NR_syslog
+static void
+print_syslog_action(abi_ulong arg, int last)
+{
+    const char *type;
+
+    switch (arg) {
+        case TARGET_SYSLOG_ACTION_CLOSE: {
+            type = "SYSLOG_ACTION_CLOSE";
+            break;
+        }
+        case TARGET_SYSLOG_ACTION_OPEN: {
+            type = "SYSLOG_ACTION_OPEN";
+            break;
+        }
+        case TARGET_SYSLOG_ACTION_READ: {
+            type = "SYSLOG_ACTION_READ";
+            break;
+        }
+        case TARGET_SYSLOG_ACTION_READ_ALL: {
+            type = "SYSLOG_ACTION_READ_ALL";
+            break;
+        }
+        case TARGET_SYSLOG_ACTION_READ_CLEAR: {
+            type = "SYSLOG_ACTION_READ_CLEAR";
+            break;
+        }
+        case TARGET_SYSLOG_ACTION_CLEAR: {
+            type = "SYSLOG_ACTION_CLEAR";
+            break;
+        }
+        case TARGET_SYSLOG_ACTION_CONSOLE_OFF: {
+            type = "SYSLOG_ACTION_CONSOLE_OFF";
+            break;
+        }
+        case TARGET_SYSLOG_ACTION_CONSOLE_ON: {
+            type = "SYSLOG_ACTION_CONSOLE_ON";
+            break;
+        }
+        case TARGET_SYSLOG_ACTION_CONSOLE_LEVEL: {
+            type = "SYSLOG_ACTION_CONSOLE_LEVEL";
+            break;
+        }
+        case TARGET_SYSLOG_ACTION_SIZE_UNREAD: {
+            type = "SYSLOG_ACTION_SIZE_UNREAD";
+            break;
+        }
+        case TARGET_SYSLOG_ACTION_SIZE_BUFFER: {
+            type = "SYSLOG_ACTION_SIZE_BUFFER";
+            break;
+        }
+        default: {
+            print_raw_param("%ld", arg, last);
+            return;
+        }
+    }
+    gemu_log("%s%s", type, get_comma(last));
+}
+
+static void
+print_syslog(const struct syscallname *name,
+    abi_long arg0, abi_long arg1, abi_long arg2,
+    abi_long arg3, abi_long arg4, abi_long arg5)
+{
+    print_syscall_prologue(name);
+    print_syslog_action(arg0, 0);
+    print_pointer(arg1, 0);
+    print_raw_param("%d", arg2, 1);
     print_syscall_epilogue(name);
 }
 #endif
@@ -1594,7 +2461,7 @@ void
 print_syscall_ret(int num, abi_long ret)
 {
     int i;
-    char *errstr = NULL;
+    const char *errstr = NULL;
 
     for(i=0;i<nsyscalls;i++)
         if( scnames[i].nr == num ) {
@@ -1613,4 +2480,16 @@ print_syscall_ret(int num, abi_long ret)
             }
             break;
         }
+}
+
+void print_taken_signal(int target_signum, const target_siginfo_t *tinfo)
+{
+    /* Print the strace output for a signal being taken:
+     * --- SIGSEGV {si_signo=SIGSEGV, si_code=SI_KERNEL, si_addr=0} ---
+     */
+    gemu_log("--- ");
+    print_signal(target_signum, 1);
+    gemu_log(" ");
+    print_siginfo(tinfo);
+    gemu_log(" ---\n");
 }

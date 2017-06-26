@@ -33,6 +33,7 @@
 #include "qemu/rcu.h"
 
 extern const char *machine_path;
+#define RAM_ADDR_INVALID (~(ram_addr_t)0)
 
 #define MAX_PHYS_ADDR_SPACE_BITS 62
 #define MAX_PHYS_ADDR            (((hwaddr)1 << MAX_PHYS_ADDR_SPACE_BITS) - 1)
@@ -93,6 +94,27 @@ struct IOMMUTLBEntry {
     IOMMUAccessFlags perm;
 };
 
+/*
+ * Bitmap for different IOMMUNotifier capabilities. Each notifier can
+ * register with one or multiple IOMMU Notifier capability bit(s).
+ */
+typedef enum {
+    IOMMU_NOTIFIER_NONE = 0,
+    /* Notify cache invalidations */
+    IOMMU_NOTIFIER_UNMAP = 0x1,
+    /* Notify entry changes (newly created entries) */
+    IOMMU_NOTIFIER_MAP = 0x2,
+} IOMMUNotifierFlag;
+
+#define IOMMU_NOTIFIER_ALL (IOMMU_NOTIFIER_MAP | IOMMU_NOTIFIER_UNMAP)
+
+struct IOMMUNotifier {
+    void (*notify)(struct IOMMUNotifier *notifier, IOMMUTLBEntry *data);
+    IOMMUNotifierFlag notifier_flags;
+    QLIST_ENTRY(IOMMUNotifier) node;
+};
+typedef struct IOMMUNotifier IOMMUNotifier;
+
 /* New-style MMIO accessors can indicate that the transaction failed.
  * A zero (MEMTX_OK) response means success; anything else is a failure
  * of some kind. The memory subsystem will bitwise-OR together results
@@ -152,9 +174,6 @@ struct MemoryRegionOps {
          */
         bool (*accepts)(void *opaque, hwaddr addr,
                         unsigned size, bool is_write);
-
-        /* The same function as accepts except is passed a MemoryTransaction */
-        bool (*accepts_tr)(MemoryTransaction *tr);
     } valid;
     /* Internal implementation constraints: */
     struct {
@@ -185,6 +204,12 @@ struct MemoryRegionIOMMUOps {
     IOMMUTLBEntry (*translate)(MemoryRegion *iommu, hwaddr addr, bool is_write);
     IOMMUTLBEntry (*translate_attr)(MemoryRegion *iommu, hwaddr addr,
                                     bool is_write, MemTxAttrs *attr);
+    /* Returns minimum supported page size */
+    uint64_t (*get_min_page_size)(MemoryRegion *iommu);
+    /* Called when IOMMU Notifier flag changed */
+    void (*notify_flag_changed)(MemoryRegion *iommu,
+                                IOMMUNotifierFlag old_flags,
+                                IOMMUNotifierFlag new_flags);
 };
 
 typedef struct CoalescedMemoryRange CoalescedMemoryRange;
@@ -216,7 +241,7 @@ struct MemoryRegion {
     void (*destructor)(MemoryRegion *mr);
     uint64_t align;
     bool terminates;
-    bool skip_dump;
+    bool ram_device;
     bool enabled;
     bool warning_printed; /* For reservations */
     uint8_t vga_logging_count;
@@ -230,7 +255,8 @@ struct MemoryRegion {
     const char *name;
     unsigned ioeventfd_nb;
     MemoryRegionIoeventfd *ioeventfds;
-    NotifierList iommu_notify;
+    QLIST_HEAD(, IOMMUNotifier) iommu_notify;
+    IOMMUNotifierFlag iommu_notify_flags;
 };
 
 /**
@@ -262,8 +288,9 @@ struct MemoryListener {
                                hwaddr addr, hwaddr len);
     /* Lower = earlier (during add), later (during del) */
     unsigned priority;
-    AddressSpace *address_space_filter;
+    AddressSpace *address_space;
     QTAILQ_ENTRY(MemoryListener) link;
+    QTAILQ_ENTRY(MemoryListener) link_as;
 };
 
 /**
@@ -285,7 +312,7 @@ struct AddressSpace {
     struct AddressSpaceDispatch *dispatch;
     struct AddressSpaceDispatch *next_dispatch;
     MemoryListener dispatch_listener;
-
+    QTAILQ_HEAD(memory_listeners_as, MemoryListener) listeners;
     QTAILQ_ENTRY(AddressSpace) address_spaces_link;
 };
 
@@ -455,6 +482,30 @@ void memory_region_init_ram_ptr(MemoryRegion *mr,
                                 void *ptr);
 
 /**
+ * memory_region_init_ram_device_ptr:  Initialize RAM device memory region from
+ *                                     a user-provided pointer.
+ *
+ * A RAM device represents a mapping to a physical device, such as to a PCI
+ * MMIO BAR of an vfio-pci assigned device.  The memory region may be mapped
+ * into the VM address space and access to the region will modify memory
+ * directly.  However, the memory region should not be included in a memory
+ * dump (device may not be enabled/mapped at the time of the dump), and
+ * operations incompatible with manipulating MMIO should be avoided.  Replaces
+ * skip_dump flag.
+ *
+ * @mr: the #MemoryRegion to be initialized.
+ * @owner: the object that tracks the region's reference count
+ * @name: the name of the region.
+ * @size: size of the region.
+ * @ptr: memory to be mapped; must contain at least @size bytes.
+ */
+void memory_region_init_ram_device_ptr(MemoryRegion *mr,
+                                       struct Object *owner,
+                                       const char *name,
+                                       uint64_t size,
+                                       void *ptr);
+
+/**
  * memory_region_init_alias: Initialize a memory region that aliases all or a
  *                           part of another memory region.
  *
@@ -474,15 +525,31 @@ void memory_region_init_alias(MemoryRegion *mr,
                               uint64_t size);
 
 /**
- * memory_region_init_rom_device:  Initialize a ROM memory region.  Writes are
- *                                 handled via callbacks.
+ * memory_region_init_rom: Initialize a ROM memory region.
  *
- * If NULL callbacks pointer is given, then I/O space is not supposed to be
- * handled by QEMU itself. Any access via the memory API will cause an abort().
+ * This has the same effect as calling memory_region_init_ram()
+ * and then marking the resulting region read-only with
+ * memory_region_set_readonly().
  *
  * @mr: the #MemoryRegion to be initialized.
  * @owner: the object that tracks the region's reference count
- * @ops: callbacks for write access handling.
+ * @name: the name of the region.
+ * @size: size of the region.
+ * @errp: pointer to Error*, to store an error if it happens.
+ */
+void memory_region_init_rom(MemoryRegion *mr,
+                            struct Object *owner,
+                            const char *name,
+                            uint64_t size,
+                            Error **errp);
+
+/**
+ * memory_region_init_rom_device:  Initialize a ROM memory region.  Writes are
+ *                                 handled via callbacks.
+ *
+ * @mr: the #MemoryRegion to be initialized.
+ * @owner: the object that tracks the region's reference count
+ * @ops: callbacks for write access handling (must not be NULL).
  * @name: the name of the region.
  * @size: size of the region.
  * @errp: pointer to Error*, to store an error if it happens.
@@ -564,22 +631,13 @@ static inline bool memory_region_is_ram(MemoryRegion *mr)
 }
 
 /**
- * memory_region_is_skip_dump: check whether a memory region should not be
- *                             dumped
+ * memory_region_is_ram_device: check whether a memory region is a ram device
  *
- * Returns %true is a memory region should not be dumped(e.g. VFIO BAR MMAP).
- *
- * @mr: the memory region being queried
- */
-bool memory_region_is_skip_dump(MemoryRegion *mr);
-
-/**
- * memory_region_set_skip_dump: Set skip_dump flag, dump will ignore this memory
- *                              region
+ * Returns %true is a memory region is a device backed ram region
  *
  * @mr: the memory region being queried
  */
-void memory_region_set_skip_dump(MemoryRegion *mr);
+bool memory_region_is_ram_device(MemoryRegion *mr);
 
 /**
  * memory_region_is_romd: check whether a memory region is in ROMD mode
@@ -608,7 +666,26 @@ static inline bool memory_region_is_iommu(MemoryRegion *mr)
 
 
 /**
+ * memory_region_iommu_get_min_page_size: get minimum supported page size
+ * for an iommu
+ *
+ * Returns minimum supported page size for an iommu.
+ *
+ * @mr: the memory region being queried
+ */
+uint64_t memory_region_iommu_get_min_page_size(MemoryRegion *mr);
+
+/**
  * memory_region_notify_iommu: notify a change in an IOMMU translation entry.
+ *
+ * The notification type will be decided by entry.perm bits:
+ *
+ * - For UNMAP (cache invalidation) notifies: set entry.perm to IOMMU_NONE.
+ * - For MAP (newly added entry) notifies: set entry.perm to the
+ *   permission of the page (which is definitely !IOMMU_NONE).
+ *
+ * Note: for any IOMMU implementation, an in-place mapping change
+ * should be notified with an UNMAP followed by a MAP.
  *
  * @mr: the memory region that was changed
  * @entry: the new entry in the IOMMU translation table.  The entry
@@ -623,32 +700,36 @@ void memory_region_notify_iommu(MemoryRegion *mr,
  * IOMMU translation entries.
  *
  * @mr: the memory region to observe
- * @n: the notifier to be added; the notifier receives a pointer to an
- *     #IOMMUTLBEntry as the opaque value; the pointer ceases to be
- *     valid on exit from the notifier.
+ * @n: the IOMMUNotifier to be added; the notify callback receives a
+ *     pointer to an #IOMMUTLBEntry as the opaque value; the pointer
+ *     ceases to be valid on exit from the notifier.
  */
-void memory_region_register_iommu_notifier(MemoryRegion *mr, Notifier *n);
+void memory_region_register_iommu_notifier(MemoryRegion *mr,
+                                           IOMMUNotifier *n);
 
 /**
  * memory_region_iommu_replay: replay existing IOMMU translations to
- * a notifier
+ * a notifier with the minimum page granularity returned by
+ * mr->iommu_ops->get_page_size().
  *
  * @mr: the memory region to observe
  * @n: the notifier to which to replay iommu mappings
- * @granularity: Minimum page granularity to replay notifications for
  * @is_write: Whether to treat the replay as a translate "write"
  *     through the iommu
  */
-void memory_region_iommu_replay(MemoryRegion *mr, Notifier *n,
-                                hwaddr granularity, bool is_write);
+void memory_region_iommu_replay(MemoryRegion *mr, IOMMUNotifier *n,
+                                bool is_write);
 
 /**
  * memory_region_unregister_iommu_notifier: unregister a notifier for
  * changes to IOMMU translation entries.
  *
+ * @mr: the memory region which was observed and for which notity_stopped()
+ *      needs to be called
  * @n: the notifier to be removed.
  */
-void memory_region_unregister_iommu_notifier(Notifier *n);
+void memory_region_unregister_iommu_notifier(MemoryRegion *mr,
+                                             IOMMUNotifier *n);
 
 /**
  * memory_region_name: get a memory region's name
@@ -702,6 +783,35 @@ static inline bool memory_region_is_rom(MemoryRegion *mr)
  * @mr: the RAM or alias memory region being queried.
  */
 int memory_region_get_fd(MemoryRegion *mr);
+
+/**
+ * memory_region_set_fd: Mark a RAM memory region as backed by a
+ * file descriptor.
+ *
+ * This function is typically used after memory_region_init_ram_ptr().
+ *
+ * @mr: the memory region being queried.
+ * @fd: the file descriptor that backs @mr.
+ */
+void memory_region_set_fd(MemoryRegion *mr, int fd);
+
+/**
+ * memory_region_from_host: Convert a pointer into a RAM memory region
+ * and an offset within it.
+ *
+ * Given a host pointer inside a RAM memory region (created with
+ * memory_region_init_ram() or memory_region_init_ram_ptr()), return
+ * the MemoryRegion and the offset within it.
+ *
+ * Use with care; by the time this function returns, the returned pointer is
+ * not protected by RCU anymore.  If the caller is not within an RCU critical
+ * section and does not hold the iothread lock, it must have other means of
+ * protecting the pointer, such as a reference to the region that includes
+ * the incoming ram_addr_t.
+ *
+ * @mr: the memory region being queried.
+ */
+MemoryRegion *memory_region_from_host(void *ptr, ram_addr_t *offset);
 
 /**
  * memory_region_get_ram_ptr: Get a pointer into a RAM memory region.
@@ -1127,12 +1237,11 @@ MemoryRegionSection memory_region_find(MemoryRegion *mr,
                                        hwaddr addr, uint64_t size);
 
 /**
- * address_space_sync_dirty_bitmap: synchronize the dirty log for all memory
+ * memory_global_dirty_log_sync: synchronize the dirty log for all memory
  *
- * Synchronizes the dirty page log for an entire address space.
- * @as: the address space that contains the memory being synchronized
+ * Synchronizes the dirty page log for all address spaces.
  */
-void address_space_sync_dirty_bitmap(AddressSpace *as);
+void memory_global_dirty_log_sync(void);
 
 /**
  * memory_region_transaction_begin: Start a transaction.
@@ -1328,23 +1437,6 @@ void address_space_stq_le(AddressSpace *as, hwaddr addr, uint64_t val,
 void address_space_stq_be(AddressSpace *as, hwaddr addr, uint64_t val,
                             MemTxAttrs attrs, MemTxResult *result);
 
-#ifdef NEED_CPU_H
-uint32_t address_space_lduw(AddressSpace *as, hwaddr addr,
-                            MemTxAttrs attrs, MemTxResult *result);
-uint32_t address_space_ldl(AddressSpace *as, hwaddr addr,
-                            MemTxAttrs attrs, MemTxResult *result);
-uint64_t address_space_ldq(AddressSpace *as, hwaddr addr,
-                            MemTxAttrs attrs, MemTxResult *result);
-void address_space_stl_notdirty(AddressSpace *as, hwaddr addr, uint32_t val,
-                            MemTxAttrs attrs, MemTxResult *result);
-void address_space_stw(AddressSpace *as, hwaddr addr, uint32_t val,
-                            MemTxAttrs attrs, MemTxResult *result);
-void address_space_stl(AddressSpace *as, hwaddr addr, uint32_t val,
-                            MemTxAttrs attrs, MemTxResult *result);
-void address_space_stq(AddressSpace *as, hwaddr addr, uint64_t val,
-                            MemTxAttrs attrs, MemTxResult *result);
-#endif
-
 /* address_space_translate: translate an address range into an address space
  * into a MemoryRegion and an address range into that section.  Should be
  * called from an RCU critical section, to avoid that the last reference
@@ -1379,11 +1471,8 @@ MemoryRegion *address_space_translate_attr(AddressSpace *as, hwaddr addr,
  * @addr: address within that address space
  * @len: length of the area to be checked
  * @is_write: indicates the transfer direction
- * @attr: Passes down specific memory transaction attributes
- *        (such as secure/nonsecure)
  */
-bool address_space_access_valid(AddressSpace *as, hwaddr addr, int len,
-                                bool is_write, MemTxAttrs attr);
+bool address_space_access_valid(AddressSpace *as, hwaddr addr, int len, bool is_write);
 
 /* address_space_map: map a physical memory region into a host virtual address
  *
@@ -1423,14 +1512,16 @@ MemTxResult address_space_read_continue(AddressSpace *as, hwaddr addr,
 					MemoryRegion *mr);
 MemTxResult address_space_read_full(AddressSpace *as, hwaddr addr,
                                     MemTxAttrs attrs, uint8_t *buf, int len);
-void *qemu_get_ram_ptr(RAMBlock *ram_block, ram_addr_t addr);
+void *qemu_map_ram_ptr(RAMBlock *ram_block, ram_addr_t addr);
 
 static inline bool memory_access_is_direct(MemoryRegion *mr, bool is_write)
 {
     if (is_write) {
-        return memory_region_is_ram(mr) && !mr->readonly;
+        return memory_region_is_ram(mr) &&
+               !mr->readonly && !memory_region_is_ram_device(mr);
     } else {
-        return memory_region_is_ram(mr) || memory_region_is_romd(mr);
+        return (memory_region_is_ram(mr) && !memory_region_is_ram_device(mr)) ||
+               memory_region_is_romd(mr);
     }
 }
 
@@ -1462,8 +1553,7 @@ MemTxResult address_space_read(AddressSpace *as, hwaddr addr, MemTxAttrs attrs,
             mr = address_space_translate_attr(as, addr, &addr1, &l, false,
                                               &attrs);
             if (len == l && memory_access_is_direct(mr, false)) {
-                addr1 += memory_region_get_ram_addr(mr);
-                ptr = qemu_get_ram_ptr(mr->ram_block, addr1);
+                ptr = qemu_map_ram_ptr(mr->ram_block, addr1);
                 memcpy(buf, ptr, len);
             } else {
                 result = address_space_read_continue(as, addr, attrs, buf, len,

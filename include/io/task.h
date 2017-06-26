@@ -18,8 +18,8 @@
  *
  */
 
-#ifndef QIO_TASK_H__
-#define QIO_TASK_H__
+#ifndef QIO_TASK_H
+#define QIO_TASK_H
 
 #include "qemu-common.h"
 #include "qom/object.h"
@@ -159,7 +159,7 @@ typedef int (*QIOTaskWorker)(QIOTask *task,
  *      QIOTask *task;
  *      SocketAddress *addrCopy;
  *
- *      qapi_copy_SocketAddress(&addrCopy, addr);
+ *      addrCopy = QAPI_CLONE(SocketAddress, addr);
  *      task = qio_task_new(OBJECT(obj), func, opaque, notify);
  *
  *      qio_task_run_in_thread(task, myobject_listen_worker,
@@ -219,7 +219,7 @@ void qio_task_run_in_thread(QIOTask *task,
  * qio_task_complete:
  * @task: the task struct
  *
- * Mark the operation as succesfully completed
+ * Mark the operation as successfully completed
  * and free the memory for @task.
  */
 void qio_task_complete(QIOTask *task);
@@ -252,4 +252,4 @@ void qio_task_abort(QIOTask *task,
  */
 Object *qio_task_get_source(QIOTask *task);
 
-#endif /* QIO_TASK_H__ */
+#endif /* QIO_TASK_H */

@@ -302,8 +302,8 @@ typedef struct Qcow2COWRegion {
      */
     uint64_t    offset;
 
-    /** Number of sectors to copy */
-    int         nb_sectors;
+    /** Number of bytes to copy */
+    int         nb_bytes;
 } Qcow2COWRegion;
 
 /**
@@ -317,12 +317,6 @@ typedef struct QCowL2Meta
 
     /** Host offset of the first newly allocated cluster */
     uint64_t alloc_offset;
-
-    /**
-     * Number of sectors from the start of the first allocated cluster to
-     * the end of the (possibly shortened) request
-     */
-    int nb_available;
 
     /** Number of newly allocated clusters */
     int nb_clusters;
@@ -471,16 +465,13 @@ static inline uint64_t l2meta_cow_start(QCowL2Meta *m)
 
 static inline uint64_t l2meta_cow_end(QCowL2Meta *m)
 {
-    return m->offset + m->cow_end.offset
-        + (m->cow_end.nb_sectors << BDRV_SECTOR_BITS);
+    return m->offset + m->cow_end.offset + m->cow_end.nb_bytes;
 }
 
 static inline uint64_t refcount_diff(uint64_t r1, uint64_t r2)
 {
     return r1 > r2 ? r1 - r2 : r2 - r1;
 }
-
-// FIXME Need qcow2_ prefix to global functions
 
 /* qcow2.c functions */
 int qcow2_backing_read1(BlockDriverState *bs, QEMUIOVector *qiov,
@@ -537,16 +528,16 @@ int qcow2_change_refcount_order(BlockDriverState *bs, int refcount_order,
 int qcow2_grow_l1_table(BlockDriverState *bs, uint64_t min_size,
                         bool exact_size);
 int qcow2_write_l1_entry(BlockDriverState *bs, int l1_index);
-void qcow2_l2_cache_reset(BlockDriverState *bs);
 int qcow2_decompress_cluster(BlockDriverState *bs, uint64_t cluster_offset);
 int qcow2_encrypt_sectors(BDRVQcow2State *s, int64_t sector_num,
                           uint8_t *out_buf, const uint8_t *in_buf,
                           int nb_sectors, bool enc, Error **errp);
 
 int qcow2_get_cluster_offset(BlockDriverState *bs, uint64_t offset,
-    int *num, uint64_t *cluster_offset);
+                             unsigned int *bytes, uint64_t *cluster_offset);
 int qcow2_alloc_cluster_offset(BlockDriverState *bs, uint64_t offset,
-    int *num, uint64_t *host_offset, QCowL2Meta **m);
+                               unsigned int *bytes, uint64_t *host_offset,
+                               QCowL2Meta **m);
 uint64_t qcow2_alloc_compressed_cluster_offset(BlockDriverState *bs,
                                          uint64_t offset,
                                          int compressed_size);
@@ -554,7 +545,8 @@ uint64_t qcow2_alloc_compressed_cluster_offset(BlockDriverState *bs,
 int qcow2_alloc_cluster_link_l2(BlockDriverState *bs, QCowL2Meta *m);
 int qcow2_discard_clusters(BlockDriverState *bs, uint64_t offset,
     int nb_sectors, enum qcow2_discard_type type, bool full_discard);
-int qcow2_zero_clusters(BlockDriverState *bs, uint64_t offset, int nb_sectors);
+int qcow2_zero_clusters(BlockDriverState *bs, uint64_t offset, int nb_sectors,
+                        int flags);
 
 int qcow2_expand_zero_clusters(BlockDriverState *bs,
                                BlockDriverAmendStatusCB *status_cb,
@@ -583,6 +575,7 @@ int qcow2_cache_destroy(BlockDriverState* bs, Qcow2Cache *c);
 void qcow2_cache_entry_mark_dirty(BlockDriverState *bs, Qcow2Cache *c,
      void *table);
 int qcow2_cache_flush(BlockDriverState *bs, Qcow2Cache *c);
+int qcow2_cache_write(BlockDriverState *bs, Qcow2Cache *c);
 int qcow2_cache_set_dependency(BlockDriverState *bs, Qcow2Cache *c,
     Qcow2Cache *dependency);
 void qcow2_cache_depends_on_flush(Qcow2Cache *c);

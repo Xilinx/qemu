@@ -30,11 +30,19 @@ extern const uint32_t arch_type;
 void select_soundhw(const char *optarg);
 void do_acpitable_option(const QemuOpts *opts);
 void do_smbios_option(QemuOpts *opts);
-void cpudef_init(void);
 void audio_init(void);
 int kvm_available(void);
 int xen_available(void);
 
 CpuDefinitionInfoList *arch_query_cpu_definitions(Error **errp);
+CpuModelExpansionInfo *arch_query_cpu_model_expansion(CpuModelExpansionType type,
+                                                      CpuModelInfo *mode,
+                                                      Error **errp);
+CpuModelCompareInfo *arch_query_cpu_model_comparison(CpuModelInfo *modela,
+                                                     CpuModelInfo *modelb,
+                                                     Error **errp);
+CpuModelBaselineInfo *arch_query_cpu_model_baseline(CpuModelInfo *modela,
+                                                    CpuModelInfo *modelb,
+                                                    Error **errp);
 
 #endif

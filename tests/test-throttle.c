@@ -13,13 +13,13 @@
  */
 
 #include "qemu/osdep.h"
-#include <glib.h>
 #include <math.h>
 #include "block/aio.h"
 #include "qapi/error.h"
 #include "qemu/throttle.h"
 #include "qemu/error-report.h"
 #include "block/throttle-groups.h"
+#include "sysemu/block-backend.h"
 
 static AioContext     *ctx;
 static LeakyBucket    bkt;
@@ -394,7 +394,23 @@ static void test_max_is_missing_limit(void)
         cfg.buckets[i].max = 0;
         cfg.buckets[i].avg = 100;
         g_assert(throttle_is_valid(&cfg, NULL));
+
+        cfg.buckets[i].max = 30;
+        cfg.buckets[i].avg = 100;
+        g_assert(!throttle_is_valid(&cfg, NULL));
+
+        cfg.buckets[i].max = 100;
+        cfg.buckets[i].avg = 100;
+        g_assert(throttle_is_valid(&cfg, NULL));
     }
+}
+
+static void test_iops_size_is_missing_limit(void)
+{
+    /* A total/read/write iops limit is required */
+    throttle_config_init(&cfg);
+    cfg.op_size = 4096;
+    g_assert(!throttle_is_valid(&cfg, NULL));
 }
 
 static void test_have_timer(void)
@@ -574,27 +590,32 @@ static void test_accounting(void)
 static void test_groups(void)
 {
     ThrottleConfig cfg1, cfg2;
-    BlockDriverState *bdrv1, *bdrv2, *bdrv3;
+    BlockBackend *blk1, *blk2, *blk3;
+    BlockBackendPublic *blkp1, *blkp2, *blkp3;
 
-    bdrv1 = bdrv_new();
-    bdrv2 = bdrv_new();
-    bdrv3 = bdrv_new();
+    blk1 = blk_new();
+    blk2 = blk_new();
+    blk3 = blk_new();
 
-    g_assert(bdrv1->throttle_state == NULL);
-    g_assert(bdrv2->throttle_state == NULL);
-    g_assert(bdrv3->throttle_state == NULL);
+    blkp1 = blk_get_public(blk1);
+    blkp2 = blk_get_public(blk2);
+    blkp3 = blk_get_public(blk3);
 
-    throttle_group_register_bs(bdrv1, "bar");
-    throttle_group_register_bs(bdrv2, "foo");
-    throttle_group_register_bs(bdrv3, "bar");
+    g_assert(blkp1->throttle_state == NULL);
+    g_assert(blkp2->throttle_state == NULL);
+    g_assert(blkp3->throttle_state == NULL);
 
-    g_assert(bdrv1->throttle_state != NULL);
-    g_assert(bdrv2->throttle_state != NULL);
-    g_assert(bdrv3->throttle_state != NULL);
+    throttle_group_register_blk(blk1, "bar");
+    throttle_group_register_blk(blk2, "foo");
+    throttle_group_register_blk(blk3, "bar");
 
-    g_assert(!strcmp(throttle_group_get_name(bdrv1), "bar"));
-    g_assert(!strcmp(throttle_group_get_name(bdrv2), "foo"));
-    g_assert(bdrv1->throttle_state == bdrv3->throttle_state);
+    g_assert(blkp1->throttle_state != NULL);
+    g_assert(blkp2->throttle_state != NULL);
+    g_assert(blkp3->throttle_state != NULL);
+
+    g_assert(!strcmp(throttle_group_get_name(blk1), "bar"));
+    g_assert(!strcmp(throttle_group_get_name(blk2), "foo"));
+    g_assert(blkp1->throttle_state == blkp3->throttle_state);
 
     /* Setting the config of a group member affects the whole group */
     throttle_config_init(&cfg1);
@@ -602,29 +623,29 @@ static void test_groups(void)
     cfg1.buckets[THROTTLE_BPS_WRITE].avg = 285000;
     cfg1.buckets[THROTTLE_OPS_READ].avg  = 20000;
     cfg1.buckets[THROTTLE_OPS_WRITE].avg = 12000;
-    throttle_group_config(bdrv1, &cfg1);
+    throttle_group_config(blk1, &cfg1);
 
-    throttle_group_get_config(bdrv1, &cfg1);
-    throttle_group_get_config(bdrv3, &cfg2);
+    throttle_group_get_config(blk1, &cfg1);
+    throttle_group_get_config(blk3, &cfg2);
     g_assert(!memcmp(&cfg1, &cfg2, sizeof(cfg1)));
 
     cfg2.buckets[THROTTLE_BPS_READ].avg  = 4547;
     cfg2.buckets[THROTTLE_BPS_WRITE].avg = 1349;
     cfg2.buckets[THROTTLE_OPS_READ].avg  = 123;
     cfg2.buckets[THROTTLE_OPS_WRITE].avg = 86;
-    throttle_group_config(bdrv3, &cfg1);
+    throttle_group_config(blk3, &cfg1);
 
-    throttle_group_get_config(bdrv1, &cfg1);
-    throttle_group_get_config(bdrv3, &cfg2);
+    throttle_group_get_config(blk1, &cfg1);
+    throttle_group_get_config(blk3, &cfg2);
     g_assert(!memcmp(&cfg1, &cfg2, sizeof(cfg1)));
 
-    throttle_group_unregister_bs(bdrv1);
-    throttle_group_unregister_bs(bdrv2);
-    throttle_group_unregister_bs(bdrv3);
+    throttle_group_unregister_blk(blk1);
+    throttle_group_unregister_blk(blk2);
+    throttle_group_unregister_blk(blk3);
 
-    g_assert(bdrv1->throttle_state == NULL);
-    g_assert(bdrv2->throttle_state == NULL);
-    g_assert(bdrv3->throttle_state == NULL);
+    g_assert(blkp1->throttle_state == NULL);
+    g_assert(blkp2->throttle_state == NULL);
+    g_assert(blkp3->throttle_state == NULL);
 }
 
 int main(int argc, char **argv)
@@ -647,6 +668,8 @@ int main(int argc, char **argv)
     g_test_add_func("/throttle/config/conflicting", test_conflicting_config);
     g_test_add_func("/throttle/config/is_valid",    test_is_valid);
     g_test_add_func("/throttle/config/max",         test_max_is_missing_limit);
+    g_test_add_func("/throttle/config/iops_size",
+                    test_iops_size_is_missing_limit);
     g_test_add_func("/throttle/config_functions",   test_config_functions);
     g_test_add_func("/throttle/accounting",         test_accounting);
     g_test_add_func("/throttle/groups",             test_groups);

@@ -21,13 +21,11 @@
 #include "hw/fdt_generic_devices.h"
 #include "sysemu/sysemu.h"
 #include "qom/cpu.h"
-#include "qemu/error-report.h"
 #include "qapi/error.h"
 #include "qemu/log.h"
 
 #ifdef CONFIG_FDT
 #include "qemu/config-file.h"
-#include "sysemu/device_tree.h"
 #endif
 
 #ifndef ZYNQ_SLCR_ERR_DEBUG

@@ -18,7 +18,6 @@
 #include "qemu/queue.h"
 #include "qemu/event_notifier.h"
 #include "qemu/thread.h"
-#include "qemu/rfifolock.h"
 #include "qemu/timer.h"
 
 typedef struct BlockAIOCB BlockAIOCB;
@@ -47,11 +46,14 @@ typedef struct AioHandler AioHandler;
 typedef void QEMUBHFunc(void *opaque);
 typedef void IOHandler(void *opaque);
 
+struct ThreadPool;
+struct LinuxAioState;
+
 struct AioContext {
     GSource source;
 
     /* Protects all fields from multi-threaded access */
-    RFifoLock lock;
+    QemuRecMutex lock;
 
     /* The list of registered AIO handlers */
     QLIST_HEAD(, AioHandler) aio_handlers;
@@ -71,7 +73,7 @@ struct AioContext {
      * event_notifier_set necessary.
      *
      * Bit 0 is reserved for GSource usage of the AioContext, and is 1
-     * between a call to aio_ctx_check and the next call to aio_ctx_dispatch.
+     * between a call to aio_ctx_prepare and the next call to aio_ctx_check.
      * Bits 1-31 simply count the number of active calls to aio_poll
      * that are in the prepare or poll phase.
      *
@@ -113,11 +115,15 @@ struct AioContext {
     bool notified;
     EventNotifier notifier;
 
-    /* Scheduling this BH forces the event loop it iterate */
-    QEMUBH *notify_dummy_bh;
-
     /* Thread pool for performing work and receiving completion callbacks */
     struct ThreadPool *thread_pool;
+
+#ifdef CONFIG_LINUX_AIO
+    /* State for native Linux AIO.  Uses aio_context_acquire/release for
+     * locking.
+     */
+    struct LinuxAioState *linux_aio;
+#endif
 
     /* TimerLists for calling timers - one per clock type */
     QEMUTimerListGroup tlg;
@@ -169,6 +175,12 @@ void aio_context_acquire(AioContext *ctx);
 
 /* Relinquish ownership of the AioContext. */
 void aio_context_release(AioContext *ctx);
+
+/**
+ * aio_bh_schedule_oneshot: Allocate a new bottom half structure that will run
+ * only once and as soon as possible.
+ */
+void aio_bh_schedule_oneshot(AioContext *ctx, QEMUBHFunc *cb, void *opaque);
 
 /**
  * aio_bh_new: Allocate a new bottom half structure.
@@ -335,6 +347,9 @@ GSource *aio_get_g_source(AioContext *ctx);
 /* Return the ThreadPool bound to this AioContext */
 struct ThreadPool *aio_get_thread_pool(AioContext *ctx);
 
+/* Return the LinuxAioState bound to this AioContext */
+struct LinuxAioState *aio_get_linux_aio(AioContext *ctx);
+
 /**
  * aio_timer_new:
  * @ctx: the aio context
@@ -434,11 +449,29 @@ static inline bool aio_node_check(AioContext *ctx, bool is_external)
 }
 
 /**
+ * Return the AioContext whose event loop runs in the current thread.
+ *
+ * If called from an IOThread this will be the IOThread's AioContext.  If
+ * called from another thread it will be the main loop AioContext.
+ */
+AioContext *qemu_get_current_aio_context(void);
+
+/**
+ * @ctx: the aio context
+ *
+ * Return whether we are running in the I/O thread that manages @ctx.
+ */
+static inline bool aio_context_in_iothread(AioContext *ctx)
+{
+    return ctx == qemu_get_current_aio_context();
+}
+
+/**
  * aio_context_setup:
  * @ctx: the aio context
  *
  * Initialize the aio context.
  */
-void aio_context_setup(AioContext *ctx, Error **errp);
+void aio_context_setup(AioContext *ctx);
 
 #endif

@@ -1,6 +1,7 @@
-#ifndef __COMMON_H__
-#define __COMMON_H__
+#ifndef SLIRP_H
+#define SLIRP_H
 
+#include "qemu/host-utils.h"
 #include "slirp_config.h"
 
 #ifdef _WIN32
@@ -23,11 +24,6 @@ typedef char *caddr_t;
 # include <sys/bitypes.h>
 #endif
 
-
-#ifndef HAVE_MEMMOVE
-#define memmove(x, y, z) bcopy(y, x, z)
-#endif
-
 #ifndef _WIN32
 #include <sys/uio.h>
 #endif
@@ -35,17 +31,6 @@ typedef char *caddr_t;
 #ifndef _WIN32
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#endif
-
-/* Systems lacking strdup() definition in <string.h>. */
-#if defined(ultrix)
-char *strdup(const char *);
-#endif
-
-/* Systems lacking malloc() definition in <stdlib.h>. */
-#if defined(ultrix) || defined(hcx)
-void *malloc(size_t arg);
-void free(void *ptr);
 #endif
 
 #ifndef NO_UNIX_SOCKETS
@@ -74,10 +59,6 @@ void free(void *ptr);
 # include <sys/filio.h>
 #endif
 
-#ifdef USE_PPP
-#include <ppp/slirppp.h>
-#endif
-
 /* Avoid conflicting with the libc insque() and remque(), which
    have different prototypes. */
 #define insque slirp_insque
@@ -88,7 +69,6 @@ void free(void *ptr);
 #include <sys/stropts.h>
 #endif
 
-#include <glib.h>
 
 #include "debug.h"
 
@@ -112,10 +92,6 @@ void free(void *ptr);
 #include "if.h"
 #include "main.h"
 #include "misc.h"
-#ifdef USE_PPP
-#include "ppp/pppd.h"
-#include "ppp/ppp.h"
-#endif
 
 #include "bootp.h"
 #include "tftp.h"
@@ -129,7 +105,7 @@ struct ethhdr {
     unsigned short h_proto;            /* packet type ID field */
 };
 
-struct arphdr {
+struct slirp_arphdr {
     unsigned short ar_hrd;      /* format of hardware address */
     unsigned short ar_pro;      /* format of protocol address */
     unsigned char  ar_hln;      /* length of hardware address */
@@ -148,7 +124,7 @@ struct arphdr {
 #define ARP_TABLE_SIZE 16
 
 typedef struct ArpTable {
-    struct arphdr table[ARP_TABLE_SIZE];
+    struct slirp_arphdr table[ARP_TABLE_SIZE];
     int next_victim;
 } ArpTable;
 
@@ -253,29 +229,11 @@ extern Slirp *slirp_instance;
 #define NULL (void *)0
 #endif
 
-#ifndef FULL_BOLT
 void if_start(Slirp *);
-#else
-void if_start(struct ttys *);
-#endif
-
-#ifndef HAVE_STRERROR
- char *strerror(int error);
-#endif
-
-#ifndef HAVE_INDEX
- char *index(const char *, int);
-#endif
-
-#ifndef HAVE_GETHOSTID
- long gethostid(void);
-#endif
 
 #ifndef _WIN32
 #include <netdb.h>
 #endif
-
-#define DEFAULT_BAUD 115200
 
 #define SO_OPTIONS DO_KEEPALIVE
 #define TCP_MAXIDLE (TCPTV_KEEPCNT * TCPTV_KEEPINTVL)
@@ -334,22 +292,9 @@ int tcp_emu(struct socket *, struct mbuf *);
 int tcp_ctl(struct socket *);
 struct tcpcb *tcp_drop(struct tcpcb *tp, int err);
 
-#ifdef USE_PPP
-#define MIN_MRU MINMRU
-#define MAX_MRU MAXMRU
-#else
-#define MIN_MRU 128
-#define MAX_MRU 16384
-#endif
-
 #ifndef _WIN32
 #define min(x,y) ((x) < (y) ? (x) : (y))
 #define max(x,y) ((x) > (y) ? (x) : (y))
-#endif
-
-#ifdef _WIN32
-#undef errno
-#define errno (WSAGetLastError())
 #endif
 
 #endif

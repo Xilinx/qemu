@@ -15,6 +15,8 @@
 #include "exec/memory.h"
 #include "hw/irq.h"
 
+#define ONES(num) ((num) == 64 ? ~0ull : (1ull << (num)) - 1)
+
 typedef struct DepRegisterInfo DepRegisterInfo;
 typedef struct DepRegisterAccessInfo DepRegisterAccessInfo;
 typedef struct DepRegisterDecodeInfo DepRegisterDecodeInfo;

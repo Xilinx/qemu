@@ -97,7 +97,7 @@ struct LM32UartState {
     SysBusDevice parent_obj;
 
     MemoryRegion iomem;
-    CharDriverState *chr;
+    CharBackend chr;
     qemu_irq irq;
 
     uint32_t regs[R_MAX];
@@ -142,7 +142,7 @@ static uint64_t uart_read(void *opaque, hwaddr addr,
         r = s->regs[R_RXTX];
         s->regs[R_LSR] &= ~LSR_DR;
         uart_update_irq(s);
-        qemu_chr_accept_input(s->chr);
+        qemu_chr_fe_accept_input(&s->chr);
         break;
     case R_IIR:
     case R_LSR:
@@ -177,9 +177,9 @@ static void uart_write(void *opaque, hwaddr addr,
     addr >>= 2;
     switch (addr) {
     case R_RXTX:
-        if (s->chr) {
-            qemu_chr_fe_write_all(s->chr, &ch, 1);
-        }
+        /* XXX this blocks entire thread. Rewrite to use
+         * qemu_chr_fe_write and background I/O callbacks */
+        qemu_chr_fe_write_all(&s->chr, &ch, 1);
         break;
     case R_IER:
     case R_LCR:
@@ -249,23 +249,24 @@ static void uart_reset(DeviceState *d)
     s->regs[R_LSR] = LSR_THRE | LSR_TEMT;
 }
 
-static int lm32_uart_init(SysBusDevice *dev)
+static void lm32_uart_init(Object *obj)
 {
-    LM32UartState *s = LM32_UART(dev);
+    LM32UartState *s = LM32_UART(obj);
+    SysBusDevice *dev = SYS_BUS_DEVICE(obj);
 
     sysbus_init_irq(dev, &s->irq);
 
-    memory_region_init_io(&s->iomem, OBJECT(s), &uart_ops, s,
+    memory_region_init_io(&s->iomem, obj, &uart_ops, s,
                           "uart", R_MAX * 4);
     sysbus_init_mmio(dev, &s->iomem);
+}
 
-    /* FIXME use a qdev chardev prop instead of qemu_char_get_next_serial() */
-    s->chr = qemu_char_get_next_serial();
-    if (s->chr) {
-        qemu_chr_add_handlers(s->chr, uart_can_rx, uart_rx, uart_event, s);
-    }
+static void lm32_uart_realize(DeviceState *dev, Error **errp)
+{
+    LM32UartState *s = LM32_UART(dev);
 
-    return 0;
+    qemu_chr_fe_set_handlers(&s->chr, uart_can_rx, uart_rx,
+                             uart_event, s, NULL, true);
 }
 
 static const VMStateDescription vmstate_lm32_uart = {
@@ -278,22 +279,26 @@ static const VMStateDescription vmstate_lm32_uart = {
     }
 };
 
+static Property lm32_uart_properties[] = {
+    DEFINE_PROP_CHR("chardev", LM32UartState, chr),
+    DEFINE_PROP_END_OF_LIST(),
+};
+
 static void lm32_uart_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-    SysBusDeviceClass *k = SYS_BUS_DEVICE_CLASS(klass);
 
-    k->init = lm32_uart_init;
     dc->reset = uart_reset;
     dc->vmsd = &vmstate_lm32_uart;
-    /* Reason: init() method uses qemu_char_get_next_serial() */
-    dc->cannot_instantiate_with_device_add_yet = true;
+    dc->props = lm32_uart_properties;
+    dc->realize = lm32_uart_realize;
 }
 
 static const TypeInfo lm32_uart_info = {
     .name          = TYPE_LM32_UART,
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(LM32UartState),
+    .instance_init = lm32_uart_init,
     .class_init    = lm32_uart_class_init,
 };
 

@@ -1,7 +1,7 @@
 /*
  * Interface for configuring and controlling the state of tracing events.
  *
- * Copyright (C) 2011-2014 Lluís Vilanova <vilanova@ac.upc.edu>
+ * Copyright (C) 2011-2016 Lluís Vilanova <vilanova@ac.upc.edu>
  *
  * This work is licensed under the terms of the GNU GPL, version 2 or later.
  * See the COPYING file in the top-level directory.
@@ -19,19 +19,69 @@
 #ifdef CONFIG_TRACE_LOG
 #include "qemu/log.h"
 #endif
+#ifdef CONFIG_TRACE_SYSLOG
+#include <syslog.h>
+#endif
+#include "qapi/error.h"
 #include "qemu/error-report.h"
+#include "qemu/config-file.h"
 #include "monitor/monitor.h"
 
 int trace_events_enabled_count;
-bool trace_events_dstate[TRACE_EVENT_COUNT];
+
+typedef struct TraceEventGroup {
+    TraceEvent **events;
+} TraceEventGroup;
+
+static TraceEventGroup *event_groups;
+static size_t nevent_groups;
+static uint32_t next_id;
+static uint32_t next_vcpu_id;
+
+QemuOptsList qemu_trace_opts = {
+    .name = "trace",
+    .implied_opt_name = "enable",
+    .head = QTAILQ_HEAD_INITIALIZER(qemu_trace_opts.head),
+    .desc = {
+        {
+            .name = "enable",
+            .type = QEMU_OPT_STRING,
+        },
+        {
+            .name = "events",
+            .type = QEMU_OPT_STRING,
+        },{
+            .name = "file",
+            .type = QEMU_OPT_STRING,
+        },
+        { /* end of list */ }
+    },
+};
+
+
+void trace_event_register_group(TraceEvent **events)
+{
+    size_t i;
+    for (i = 0; events[i] != NULL; i++) {
+        events[i]->id = next_id++;
+        if (events[i]->vcpu_id != TRACE_VCPU_EVENT_NONE) {
+            events[i]->vcpu_id = next_vcpu_id++;
+        }
+    }
+    event_groups = g_renew(TraceEventGroup, event_groups, nevent_groups + 1);
+    event_groups[nevent_groups].events = events;
+    nevent_groups++;
+}
+
 
 TraceEvent *trace_event_name(const char *name)
 {
     assert(name != NULL);
 
-    TraceEventID i;
-    for (i = 0; i < trace_event_count(); i++) {
-        TraceEvent *ev = trace_event_id(i);
+    TraceEventIter iter;
+    TraceEvent *ev;
+    trace_event_iter_init(&iter, NULL);
+    while ((ev = trace_event_iter_next(&iter)) != NULL) {
         if (strcmp(trace_event_get_name(ev), name) == 0) {
             return ev;
         }
@@ -70,25 +120,29 @@ static bool pattern_glob(const char *pat, const char *ev)
     }
 }
 
-TraceEvent *trace_event_pattern(const char *pat, TraceEvent *ev)
+
+void trace_event_iter_init(TraceEventIter *iter, const char *pattern)
 {
-    assert(pat != NULL);
+    iter->event = 0;
+    iter->group = 0;
+    iter->pattern = pattern;
+}
 
-    TraceEventID i;
-
-    if (ev == NULL) {
-        i = -1;
-    } else {
-        i = trace_event_get_id(ev);
-    }
-    i++;
-
-    while (i < trace_event_count()) {
-        TraceEvent *res = trace_event_id(i);
-        if (pattern_glob(pat, trace_event_get_name(res))) {
-            return res;
+TraceEvent *trace_event_iter_next(TraceEventIter *iter)
+{
+    while (iter->group < nevent_groups &&
+           event_groups[iter->group].events[iter->event] != NULL) {
+        TraceEvent *ev = event_groups[iter->group].events[iter->event];
+        iter->event++;
+        if (event_groups[iter->group].events[iter->event] == NULL) {
+            iter->event = 0;
+            iter->group++;
         }
-        i++;
+        if (!iter->pattern ||
+            pattern_glob(iter->pattern,
+                         trace_event_get_name(ev))) {
+            return ev;
+        }
     }
 
     return NULL;
@@ -96,10 +150,11 @@ TraceEvent *trace_event_pattern(const char *pat, TraceEvent *ev)
 
 void trace_list_events(void)
 {
-    int i;
-    for (i = 0; i < trace_event_count(); i++) {
-        TraceEvent *res = trace_event_id(i);
-        fprintf(stderr, "%s\n", trace_event_get_name(res));
+    TraceEventIter iter;
+    TraceEvent *ev;
+    trace_event_iter_init(&iter, NULL);
+    while ((ev = trace_event_iter_next(&iter)) != NULL) {
+        fprintf(stderr, "%s\n", trace_event_get_name(ev));
     }
 }
 
@@ -107,25 +162,31 @@ static void do_trace_enable_events(const char *line_buf)
 {
     const bool enable = ('-' != line_buf[0]);
     const char *line_ptr = enable ? line_buf : line_buf + 1;
+    TraceEventIter iter;
+    TraceEvent *ev;
+    bool is_pattern = trace_event_is_pattern(line_ptr);
 
-    if (trace_event_is_pattern(line_ptr)) {
-        TraceEvent *ev = NULL;
-        while ((ev = trace_event_pattern(line_ptr, ev)) != NULL) {
-            if (trace_event_get_state_static(ev)) {
-                trace_event_set_state_dynamic(ev, enable);
+    trace_event_iter_init(&iter, line_ptr);
+    while ((ev = trace_event_iter_next(&iter)) != NULL) {
+        if (!trace_event_get_state_static(ev)) {
+            if (!is_pattern) {
+                error_report("WARNING: trace event '%s' is not traceable",
+                             line_ptr);
+                return;
             }
+            continue;
         }
-    } else {
-        TraceEvent *ev = trace_event_name(line_ptr);
-        if (ev == NULL) {
-            error_report("WARNING: trace event '%s' does not exist",
-                         line_ptr);
-        } else if (!trace_event_get_state_static(ev)) {
-            error_report("WARNING: trace event '%s' is not traceable",
-                         line_ptr);
-        } else {
-            trace_event_set_state_dynamic(ev, enable);
+
+        /* start tracing */
+        trace_event_set_state_dynamic(ev, enable);
+        if (!is_pattern) {
+            return;
         }
+    }
+
+    if (!is_pattern) {
+        error_report("WARNING: trace event '%s' does not exist",
+                     line_ptr);
     }
 }
 
@@ -141,7 +202,7 @@ void trace_enable_events(const char *line_buf)
     }
 }
 
-void trace_init_events(const char *fname)
+static void trace_init_events(const char *fname)
 {
     Location loc;
     FILE *fp;
@@ -187,7 +248,7 @@ void trace_init_file(const char *file)
      * only applies to the simple backend; use "-D" for the log backend.
      */
     if (file) {
-        qemu_set_log_filename(file);
+        qemu_set_log_filename(file, &error_fatal);
     }
 #else
     if (file) {
@@ -214,5 +275,32 @@ bool trace_init_backends(void)
     }
 #endif
 
+#ifdef CONFIG_TRACE_SYSLOG
+    openlog(NULL, LOG_PID, LOG_DAEMON);
+#endif
+
     return true;
+}
+
+char *trace_opt_parse(const char *optarg)
+{
+    char *trace_file;
+    QemuOpts *opts = qemu_opts_parse_noisily(qemu_find_opts("trace"),
+                                             optarg, true);
+    if (!opts) {
+        exit(1);
+    }
+    if (qemu_opt_get(opts, "enable")) {
+        trace_enable_events(qemu_opt_get(opts, "enable"));
+    }
+    trace_init_events(qemu_opt_get(opts, "events"));
+    trace_file = g_strdup(qemu_opt_get(opts, "file"));
+    qemu_opts_del(opts);
+
+    return trace_file;
+}
+
+uint32_t trace_get_vcpu_event_count(void)
+{
+    return next_vcpu_id;
 }

@@ -25,10 +25,10 @@
 #include "hw/hw.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/dma.h"
+#include "hw/boards.h"
 #include "hw/isa/isa.h"
 #include "hw/nvram/fw_cfg.h"
 #include "hw/sysbus.h"
-#include "hw/boards.h"
 #include "trace.h"
 #include "qemu/error-report.h"
 #include "qemu/config-file.h"
@@ -179,7 +179,7 @@ static void fw_cfg_bootsplash(FWCfgState *s)
         temp = qemu_opt_get(opts, "splash-time");
         if (temp != NULL) {
             p = (char *)temp;
-            boot_splash_time = strtol(p, (char **)&p, 10);
+            boot_splash_time = strtol(p, &p, 10);
         }
     }
 
@@ -239,7 +239,7 @@ static void fw_cfg_reboot(FWCfgState *s)
         temp = qemu_opt_get(opts, "reboot-timeout");
         if (temp != NULL) {
             p = (char *)temp;
-            reboot_timeout = strtol(p, (char **)&p, 10);
+            reboot_timeout = strtol(p, &p, 10);
         }
     }
     /* validate the input */
@@ -551,7 +551,7 @@ static bool is_version_1(void *opaque, int version_id)
     return version_id == 1;
 }
 
-static bool fw_cfg_dma_enabled(void *opaque)
+bool fw_cfg_dma_enabled(void *opaque)
 {
     FWCfgState *s = opaque;
 
@@ -728,17 +728,22 @@ static int get_fw_cfg_order(FWCfgState *s, const char *name)
 {
     int i;
 
-    if (s->fw_cfg_order_override > 0)
-	return s->fw_cfg_order_override;
+    if (s->fw_cfg_order_override > 0) {
+        return s->fw_cfg_order_override;
+    }
 
     for (i = 0; i < ARRAY_SIZE(fw_cfg_order); i++) {
-	if (fw_cfg_order[i].name == NULL)
-	    continue;
-	if (strcmp(name, fw_cfg_order[i].name) == 0)
-	    return fw_cfg_order[i].order;
+        if (fw_cfg_order[i].name == NULL) {
+            continue;
+        }
+
+        if (strcmp(name, fw_cfg_order[i].name) == 0) {
+            return fw_cfg_order[i].order;
+        }
     }
+
     /* Stick unknown stuff at the end. */
-    error_report("warning: Unknown firmware file in legacy mode: %s\n", name);
+    error_report("warning: Unknown firmware file in legacy mode: %s", name);
     return FW_CFG_ORDER_OVERRIDE_LAST;
 }
 
@@ -868,17 +873,17 @@ static void fw_cfg_machine_ready(struct Notifier *n, void *data)
 static void fw_cfg_init1(DeviceState *dev)
 {
     FWCfgState *s = FW_CFG(dev);
+    MachineState *machine = MACHINE(qdev_get_machine());
 
     assert(!object_resolve_path(FW_CFG_PATH, NULL));
 
-    object_property_add_child(qdev_get_machine(), FW_CFG_NAME, OBJECT(s), NULL);
+    object_property_add_child(OBJECT(machine), FW_CFG_NAME, OBJECT(s), NULL);
 
     qdev_init_nofail(dev);
 
     fw_cfg_add_bytes(s, FW_CFG_SIGNATURE, (char *)"QEMU", 4);
-    fw_cfg_add_bytes(s, FW_CFG_UUID, qemu_uuid, 16);
-    fw_cfg_add_i16(s, FW_CFG_NOGRAPHIC, (uint16_t)(display_type == DT_NOGRAPHIC));
-    fw_cfg_add_i16(s, FW_CFG_NB_CPUS, (uint16_t)smp_cpus);
+    fw_cfg_add_bytes(s, FW_CFG_UUID, &qemu_uuid, 16);
+    fw_cfg_add_i16(s, FW_CFG_NOGRAPHIC, (uint16_t)!machine->enable_graphics);
     fw_cfg_add_i16(s, FW_CFG_BOOT_MENU, (uint16_t)boot_menu);
     fw_cfg_bootsplash(s);
     fw_cfg_reboot(s);
@@ -983,6 +988,7 @@ static void fw_cfg_class_init(ObjectClass *klass, void *data)
 static const TypeInfo fw_cfg_info = {
     .name          = TYPE_FW_CFG,
     .parent        = TYPE_SYS_BUS_DEVICE,
+    .abstract      = true,
     .instance_size = sizeof(FWCfgState),
     .class_init    = fw_cfg_class_init,
 };

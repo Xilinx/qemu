@@ -4,14 +4,13 @@
  * Copyright (C) 2012 Red Hat Inc.
  *
  * Authors:
- *  Paolo Bonzini <pbonzini@redhat.com> (based on test-qmp-input-visitor)
+ *  Paolo Bonzini <pbonzini@redhat.com> (based on test-qobject-input-visitor)
  *
  * This work is licensed under the terms of the GNU GPL, version 2 or later.
  * See the COPYING file in the top-level directory.
  */
 
 #include "qemu/osdep.h"
-#include <glib.h>
 
 #include "qemu-common.h"
 #include "qapi/error.h"
@@ -21,15 +20,15 @@
 #include "qapi/qmp/types.h"
 
 typedef struct TestInputVisitorData {
-    StringInputVisitor *siv;
+    Visitor *v;
 } TestInputVisitorData;
 
 static void visitor_input_teardown(TestInputVisitorData *data,
                                    const void *unused)
 {
-    if (data->siv) {
-        string_input_visitor_cleanup(data->siv);
-        data->siv = NULL;
+    if (data->v) {
+        visit_free(data->v);
+        data->v = NULL;
     }
 }
 
@@ -40,15 +39,9 @@ static
 Visitor *visitor_input_test_init(TestInputVisitorData *data,
                                  const char *string)
 {
-    Visitor *v;
-
-    data->siv = string_input_visitor_new(string);
-    g_assert(data->siv != NULL);
-
-    v = string_input_get_visitor(data->siv);
-    g_assert(v != NULL);
-
-    return v;
+    data->v = string_input_visitor_new(string);
+    g_assert(data->v);
+    return data->v;
 }
 
 static void test_visitor_in_int(TestInputVisitorData *data,
@@ -63,6 +56,13 @@ static void test_visitor_in_int(TestInputVisitorData *data,
     visit_type_int(v, NULL, &res, &err);
     g_assert(!err);
     g_assert_cmpint(res, ==, value);
+
+    visitor_input_teardown(data, unused);
+
+    v = visitor_input_test_init(data, "not an int");
+
+    visit_type_int(v, NULL, &res, &err);
+    error_free_or_abort(&err);
 }
 
 static void test_visitor_in_intList(TestInputVisitorData *data,
@@ -70,6 +70,7 @@ static void test_visitor_in_intList(TestInputVisitorData *data,
 {
     int64_t value[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 20};
     int16List *res = NULL, *tmp;
+    Error *err = NULL;
     Visitor *v;
     int i = 0;
 
@@ -84,12 +85,15 @@ static void test_visitor_in_intList(TestInputVisitorData *data,
     }
     g_assert(!tmp);
 
-    tmp = res;
-    while (tmp) {
-        res = res->next;
-        g_free(tmp);
-        tmp = res;
-    }
+    qapi_free_int16List(res);
+
+    visitor_input_teardown(data, unused);
+
+    v = visitor_input_test_init(data, "not an int list");
+
+    visit_type_int16List(v, NULL, &res, &err);
+    error_free_or_abort(&err);
+    g_assert(!res);
 }
 
 static void test_visitor_in_bool(TestInputVisitorData *data,
@@ -189,8 +193,6 @@ static void test_visitor_in_enum(TestInputVisitorData *data,
 
         visitor_input_teardown(data, NULL);
     }
-
-    data->siv = NULL;
 }
 
 /* Try to crash the visitors */
@@ -226,6 +228,7 @@ static void test_visitor_in_fuzz(TestInputVisitorData *data,
 
         v = visitor_input_test_init(data, buf);
         visit_type_intList(v, NULL, &ilres, NULL);
+        qapi_free_intList(ilres);
         visitor_input_teardown(data, NULL);
 
         v = visitor_input_test_init(data, buf);

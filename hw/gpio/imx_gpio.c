@@ -19,6 +19,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/gpio/imx_gpio.h"
+#include "qemu/log.h"
 
 #ifndef DEBUG_IMX_GPIO
 #define DEBUG_IMX_GPIO 0
@@ -236,7 +237,7 @@ static void imx_gpio_write(void *opaque, hwaddr offset, uint64_t value,
         break;
 
     case ISR_ADDR:
-        s->isr |= ~value;
+        s->isr &= ~value;
         imx_gpio_set_all_int_lines(s);
         break;
 

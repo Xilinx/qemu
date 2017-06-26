@@ -32,6 +32,7 @@
 
 #include "qemu/osdep.h"
 #include "sysemu/block-backend.h"
+#include "qemu/bswap.h"
 #include "hw/block/block.h"
 #include "trace.h"
 
@@ -66,7 +67,7 @@ static int guess_disk_lchs(BlockBackend *blk,
      * but also in async I/O mode. So the I/O throttling function has to
      * be disabled temporarily here, not permanently.
      */
-    if (blk_read_unthrottled(blk, 0, buf, 1) < 0) {
+    if (blk_pread_unthrottled(blk, 0, buf, BDRV_SECTOR_SIZE) < 0) {
         return -1;
     }
     /* test msdos magic */

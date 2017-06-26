@@ -294,8 +294,7 @@ static int v9fs_receive_status(V9fsProxy *proxy,
  * This request read by proxy helper process
  * returns 0 on success and -errno on error
  */
-static int v9fs_request(V9fsProxy *proxy, int type,
-                        void *response, const char *fmt, ...)
+static int v9fs_request(V9fsProxy *proxy, int type, void *response, ...)
 {
     dev_t rdev;
     va_list ap;
@@ -317,7 +316,7 @@ static int v9fs_request(V9fsProxy *proxy, int type,
     }
     iovec = &proxy->out_iovec;
     reply = &proxy->in_iovec;
-    va_start(ap, fmt);
+    va_start(ap, response);
     switch (type) {
     case T_OPEN:
         path = va_arg(ap, V9fsString *);
@@ -605,7 +604,7 @@ close_error:
 static int proxy_lstat(FsContext *fs_ctx, V9fsPath *fs_path, struct stat *stbuf)
 {
     int retval;
-    retval = v9fs_request(fs_ctx->private, T_LSTAT, stbuf, "s", fs_path);
+    retval = v9fs_request(fs_ctx->private, T_LSTAT, stbuf, fs_path);
     if (retval < 0) {
         errno = -retval;
         return -1;
@@ -617,8 +616,7 @@ static ssize_t proxy_readlink(FsContext *fs_ctx, V9fsPath *fs_path,
                               char *buf, size_t bufsz)
 {
     int retval;
-    retval = v9fs_request(fs_ctx->private, T_READLINK, buf, "sd",
-                          fs_path, bufsz);
+    retval = v9fs_request(fs_ctx->private, T_READLINK, buf, fs_path, bufsz);
     if (retval < 0) {
         errno = -retval;
         return -1;
@@ -633,13 +631,13 @@ static int proxy_close(FsContext *ctx, V9fsFidOpenState *fs)
 
 static int proxy_closedir(FsContext *ctx, V9fsFidOpenState *fs)
 {
-    return closedir(fs->dir);
+    return closedir(fs->dir.stream);
 }
 
 static int proxy_open(FsContext *ctx, V9fsPath *fs_path,
                       int flags, V9fsFidOpenState *fs)
 {
-    fs->fd = v9fs_request(ctx->private, T_OPEN, NULL, "sd", fs_path, flags);
+    fs->fd = v9fs_request(ctx->private, T_OPEN, NULL, fs_path, flags);
     if (fs->fd < 0) {
         errno = -fs->fd;
         fs->fd = -1;
@@ -652,14 +650,14 @@ static int proxy_opendir(FsContext *ctx,
 {
     int serrno, fd;
 
-    fs->dir = NULL;
-    fd = v9fs_request(ctx->private, T_OPEN, NULL, "sd", fs_path, O_DIRECTORY);
+    fs->dir.stream = NULL;
+    fd = v9fs_request(ctx->private, T_OPEN, NULL, fs_path, O_DIRECTORY);
     if (fd < 0) {
         errno = -fd;
         return -1;
     }
-    fs->dir = fdopendir(fd);
-    if (!fs->dir) {
+    fs->dir.stream = fdopendir(fd);
+    if (!fs->dir.stream) {
         serrno = errno;
         close(fd);
         errno = serrno;
@@ -670,24 +668,22 @@ static int proxy_opendir(FsContext *ctx,
 
 static void proxy_rewinddir(FsContext *ctx, V9fsFidOpenState *fs)
 {
-    rewinddir(fs->dir);
+    rewinddir(fs->dir.stream);
 }
 
 static off_t proxy_telldir(FsContext *ctx, V9fsFidOpenState *fs)
 {
-    return telldir(fs->dir);
+    return telldir(fs->dir.stream);
 }
 
-static int proxy_readdir_r(FsContext *ctx, V9fsFidOpenState *fs,
-                           struct dirent *entry,
-                           struct dirent **result)
+static struct dirent *proxy_readdir(FsContext *ctx, V9fsFidOpenState *fs)
 {
-    return readdir_r(fs->dir, entry, result);
+    return readdir(fs->dir.stream);
 }
 
 static void proxy_seekdir(FsContext *ctx, V9fsFidOpenState *fs, off_t off)
 {
-    seekdir(fs->dir, off);
+    seekdir(fs->dir.stream, off);
 }
 
 static ssize_t proxy_preadv(FsContext *ctx, V9fsFidOpenState *fs,
@@ -737,8 +733,8 @@ static ssize_t proxy_pwritev(FsContext *ctx, V9fsFidOpenState *fs,
 static int proxy_chmod(FsContext *fs_ctx, V9fsPath *fs_path, FsCred *credp)
 {
     int retval;
-    retval = v9fs_request(fs_ctx->private, T_CHMOD, NULL, "sd",
-                          fs_path, credp->fc_mode);
+    retval = v9fs_request(fs_ctx->private, T_CHMOD, NULL, fs_path,
+                          credp->fc_mode);
     if (retval < 0) {
         errno = -retval;
     }
@@ -754,8 +750,8 @@ static int proxy_mknod(FsContext *fs_ctx, V9fsPath *dir_path,
     v9fs_string_init(&fullname);
     v9fs_string_sprintf(&fullname, "%s/%s", dir_path->data, name);
 
-    retval = v9fs_request(fs_ctx->private, T_MKNOD, NULL, "sdqdd",
-                          &fullname, credp->fc_mode, credp->fc_rdev,
+    retval = v9fs_request(fs_ctx->private, T_MKNOD, NULL, &fullname,
+                          credp->fc_mode, credp->fc_rdev,
                           credp->fc_uid, credp->fc_gid);
     v9fs_string_free(&fullname);
     if (retval < 0) {
@@ -774,14 +770,13 @@ static int proxy_mkdir(FsContext *fs_ctx, V9fsPath *dir_path,
     v9fs_string_init(&fullname);
     v9fs_string_sprintf(&fullname, "%s/%s", dir_path->data, name);
 
-    retval = v9fs_request(fs_ctx->private, T_MKDIR, NULL, "sddd", &fullname,
+    retval = v9fs_request(fs_ctx->private, T_MKDIR, NULL, &fullname,
                           credp->fc_mode, credp->fc_uid, credp->fc_gid);
     v9fs_string_free(&fullname);
     if (retval < 0) {
         errno = -retval;
         retval = -1;
     }
-    v9fs_string_free(&fullname);
     return retval;
 }
 
@@ -791,7 +786,7 @@ static int proxy_fstat(FsContext *fs_ctx, int fid_type,
     int fd;
 
     if (fid_type == P9_FID_DIR) {
-        fd = dirfd(fs->dir);
+        fd = dirfd(fs->dir.stream);
     } else {
         fd = fs->fd;
     }
@@ -806,9 +801,8 @@ static int proxy_open2(FsContext *fs_ctx, V9fsPath *dir_path, const char *name,
     v9fs_string_init(&fullname);
     v9fs_string_sprintf(&fullname, "%s/%s", dir_path->data, name);
 
-    fs->fd = v9fs_request(fs_ctx->private, T_CREATE, NULL, "sdddd",
-                          &fullname, flags, credp->fc_mode,
-                          credp->fc_uid, credp->fc_gid);
+    fs->fd = v9fs_request(fs_ctx->private, T_CREATE, NULL, &fullname, flags,
+                          credp->fc_mode, credp->fc_uid, credp->fc_gid);
     v9fs_string_free(&fullname);
     if (fs->fd < 0) {
         errno = -fs->fd;
@@ -829,8 +823,8 @@ static int proxy_symlink(FsContext *fs_ctx, const char *oldpath,
     v9fs_string_sprintf(&fullname, "%s/%s", dir_path->data, name);
     v9fs_string_sprintf(&target, "%s", oldpath);
 
-    retval = v9fs_request(fs_ctx->private, T_SYMLINK, NULL, "ssdd",
-                          &target, &fullname, credp->fc_uid, credp->fc_gid);
+    retval = v9fs_request(fs_ctx->private, T_SYMLINK, NULL, &target, &fullname,
+                          credp->fc_uid, credp->fc_gid);
     v9fs_string_free(&fullname);
     v9fs_string_free(&target);
     if (retval < 0) {
@@ -849,7 +843,7 @@ static int proxy_link(FsContext *ctx, V9fsPath *oldpath,
     v9fs_string_init(&newpath);
     v9fs_string_sprintf(&newpath, "%s/%s", dirpath->data, name);
 
-    retval = v9fs_request(ctx->private, T_LINK, NULL, "ss", oldpath, &newpath);
+    retval = v9fs_request(ctx->private, T_LINK, NULL, oldpath, &newpath);
     v9fs_string_free(&newpath);
     if (retval < 0) {
         errno = -retval;
@@ -862,7 +856,7 @@ static int proxy_truncate(FsContext *ctx, V9fsPath *fs_path, off_t size)
 {
     int retval;
 
-    retval = v9fs_request(ctx->private, T_TRUNCATE, NULL, "sq", fs_path, size);
+    retval = v9fs_request(ctx->private, T_TRUNCATE, NULL, fs_path, size);
     if (retval < 0) {
         errno = -retval;
         return -1;
@@ -881,8 +875,7 @@ static int proxy_rename(FsContext *ctx, const char *oldpath,
 
     v9fs_string_sprintf(&oldname, "%s", oldpath);
     v9fs_string_sprintf(&newname, "%s", newpath);
-    retval = v9fs_request(ctx->private, T_RENAME, NULL, "ss",
-                          &oldname, &newname);
+    retval = v9fs_request(ctx->private, T_RENAME, NULL, &oldname, &newname);
     v9fs_string_free(&oldname);
     v9fs_string_free(&newname);
     if (retval < 0) {
@@ -894,8 +887,8 @@ static int proxy_rename(FsContext *ctx, const char *oldpath,
 static int proxy_chown(FsContext *fs_ctx, V9fsPath *fs_path, FsCred *credp)
 {
     int retval;
-    retval = v9fs_request(fs_ctx->private, T_CHOWN, NULL, "sdd",
-                          fs_path, credp->fc_uid, credp->fc_gid);
+    retval = v9fs_request(fs_ctx->private, T_CHOWN, NULL, fs_path,
+                          credp->fc_uid, credp->fc_gid);
     if (retval < 0) {
         errno = -retval;
     }
@@ -906,8 +899,7 @@ static int proxy_utimensat(FsContext *s, V9fsPath *fs_path,
                            const struct timespec *buf)
 {
     int retval;
-    retval = v9fs_request(s->private, T_UTIME, NULL, "sqqqq",
-                          fs_path,
+    retval = v9fs_request(s->private, T_UTIME, NULL, fs_path,
                           buf[0].tv_sec, buf[0].tv_nsec,
                           buf[1].tv_sec, buf[1].tv_nsec);
     if (retval < 0) {
@@ -922,7 +914,7 @@ static int proxy_remove(FsContext *ctx, const char *path)
     V9fsString name;
     v9fs_string_init(&name);
     v9fs_string_sprintf(&name, "%s", path);
-    retval = v9fs_request(ctx->private, T_REMOVE, NULL, "s", &name);
+    retval = v9fs_request(ctx->private, T_REMOVE, NULL, &name);
     v9fs_string_free(&name);
     if (retval < 0) {
         errno = -retval;
@@ -936,7 +928,7 @@ static int proxy_fsync(FsContext *ctx, int fid_type,
     int fd;
 
     if (fid_type == P9_FID_DIR) {
-        fd = dirfd(fs->dir);
+        fd = dirfd(fs->dir.stream);
     } else {
         fd = fs->fd;
     }
@@ -951,7 +943,7 @@ static int proxy_fsync(FsContext *ctx, int fid_type,
 static int proxy_statfs(FsContext *s, V9fsPath *fs_path, struct statfs *stbuf)
 {
     int retval;
-    retval = v9fs_request(s->private, T_STATFS, stbuf, "s", fs_path);
+    retval = v9fs_request(s->private, T_STATFS, stbuf, fs_path);
     if (retval < 0) {
         errno = -retval;
         return -1;
@@ -967,8 +959,8 @@ static ssize_t proxy_lgetxattr(FsContext *ctx, V9fsPath *fs_path,
 
     v9fs_string_init(&xname);
     v9fs_string_sprintf(&xname, "%s", name);
-    retval = v9fs_request(ctx->private, T_LGETXATTR, value, "dss", size,
-                          fs_path, &xname);
+    retval = v9fs_request(ctx->private, T_LGETXATTR, value, size, fs_path,
+                          &xname);
     v9fs_string_free(&xname);
     if (retval < 0) {
         errno = -retval;
@@ -980,8 +972,7 @@ static ssize_t proxy_llistxattr(FsContext *ctx, V9fsPath *fs_path,
                                 void *value, size_t size)
 {
     int retval;
-    retval = v9fs_request(ctx->private, T_LLISTXATTR, value, "ds", size,
-                        fs_path);
+    retval = v9fs_request(ctx->private, T_LLISTXATTR, value, size, fs_path);
     if (retval < 0) {
         errno = -retval;
     }
@@ -1002,8 +993,8 @@ static int proxy_lsetxattr(FsContext *ctx, V9fsPath *fs_path, const char *name,
     xvalue.data = g_malloc(size);
     memcpy(xvalue.data, value, size);
 
-    retval = v9fs_request(ctx->private, T_LSETXATTR, value, "sssdd",
-                          fs_path, &xname, &xvalue, size, flags);
+    retval = v9fs_request(ctx->private, T_LSETXATTR, value, fs_path, &xname,
+                          &xvalue, size, flags);
     v9fs_string_free(&xname);
     v9fs_string_free(&xvalue);
     if (retval < 0) {
@@ -1020,8 +1011,7 @@ static int proxy_lremovexattr(FsContext *ctx, V9fsPath *fs_path,
 
     v9fs_string_init(&xname);
     v9fs_string_sprintf(&xname, "%s", name);
-    retval = v9fs_request(ctx->private, T_LREMOVEXATTR, NULL, "ss",
-                          fs_path, &xname);
+    retval = v9fs_request(ctx->private, T_LREMOVEXATTR, NULL, fs_path, &xname);
     v9fs_string_free(&xname);
     if (retval < 0) {
         errno = -retval;
@@ -1033,13 +1023,10 @@ static int proxy_name_to_path(FsContext *ctx, V9fsPath *dir_path,
                               const char *name, V9fsPath *target)
 {
     if (dir_path) {
-        v9fs_string_sprintf((V9fsString *)target, "%s/%s",
-                            dir_path->data, name);
+        v9fs_path_sprintf(target, "%s/%s", dir_path->data, name);
     } else {
-        v9fs_string_sprintf((V9fsString *)target, "%s", name);
+        v9fs_path_sprintf(target, "%s", name);
     }
-    /* Bump the size for including terminating NULL */
-    target->size++;
     return 0;
 }
 
@@ -1088,7 +1075,7 @@ static int proxy_ioc_getversion(FsContext *fs_ctx, V9fsPath *path,
         errno = ENOTTY;
         return -1;
     }
-    err = v9fs_request(fs_ctx->private, T_GETVERSION, st_gen, "s", path);
+    err = v9fs_request(fs_ctx->private, T_GETVERSION, st_gen, path);
     if (err < 0) {
         errno = -err;
         err = -1;
@@ -1181,9 +1168,22 @@ static int proxy_init(FsContext *ctx)
     return 0;
 }
 
+static void proxy_cleanup(FsContext *ctx)
+{
+    V9fsProxy *proxy = ctx->private;
+
+    g_free(proxy->out_iovec.iov_base);
+    g_free(proxy->in_iovec.iov_base);
+    if (ctx->export_flags & V9FS_PROXY_SOCK_NAME) {
+        close(proxy->sockfd);
+    }
+    g_free(proxy);
+}
+
 FileOperations proxy_ops = {
     .parse_opts   = proxy_parse_opts,
     .init         = proxy_init,
+    .cleanup      = proxy_cleanup,
     .lstat        = proxy_lstat,
     .readlink     = proxy_readlink,
     .close        = proxy_close,
@@ -1192,7 +1192,7 @@ FileOperations proxy_ops = {
     .opendir      = proxy_opendir,
     .rewinddir    = proxy_rewinddir,
     .telldir      = proxy_telldir,
-    .readdir_r    = proxy_readdir_r,
+    .readdir      = proxy_readdir,
     .seekdir      = proxy_seekdir,
     .preadv       = proxy_preadv,
     .pwritev      = proxy_pwritev,

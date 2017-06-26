@@ -496,21 +496,7 @@ static uint64_t etrace_time(void)
 #if defined(CONFIG_USER_ONLY)
     return 0;
 #else
-    uint64_t t;
-    CPUState *cpu = current_cpu;
-
-    if (cpu) {
-        void *tb = cpu->current_tb;
-
-       /* FIXME: We are not executing any tb at this stage.
-           set current_tb to NULL to allow icount reads.  */
-        cpu->current_tb = NULL;
-        t = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-        cpu->current_tb = tb;
-    } else {
-        t = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-    }
-    return t;
+    return qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);;
 #endif
 }
 

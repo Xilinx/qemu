@@ -6153,6 +6153,12 @@ static void smmu_fault(SMMU *s, unsigned int cb, TransReq *req, uint64_t syn)
     s->regs[R_SMMU_CB0_FSR + cb_offset] |= 1 << 1;
 
     req->err = true;
+    s->regs[R_SMMU_CB0_IPAFAR_LOW + cb_offset] = req->va;
+    s->regs[R_SMMU_CB0_IPAFAR_HIGH + cb_offset] = req->va >> 32;
+    if (req->stage == 2) {
+        s->regs[R_SMMU_CB0_FAR_LOW + cb_offset] = req->va;
+        s->regs[R_SMMU_CB0_FAR_HIGH + cb_offset] = req->va >> 32;
+    }
     smmu_update_ctx_irq(s, cb);
 }
 
@@ -6415,14 +6421,20 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
             s2req.stage = 2;
             s2req.va = descaddr;
             smmu_ptw64(s, s2req.s2_cb, &s2req);
+            if (req->err) {
+                s->regs[R_SMMU_CB0_IPAFAR_LOW] = descaddr;
+                s->regs[R_SMMU_CB0_IPAFAR_HIGH] = descaddr >> 32;
+                goto do_fault;
+            }
             descaddr = s2req.pa;
         }
         dma_memory_read(s->dma_as, descaddr, &desc, sizeof(desc));
         type = desc & 3;
 
-        D_PTW("smmu: S%d L%d va=%lx gz=%d descaddr=%lx desc=%lx "
-              "asb=%d index=%lx osize=%d\n", req->stage, level, req->va,
-              grainsize, descaddr, desc, addrselectbottom, index, outputsize);
+        D_PTW("smmu: S%d L%d va=0x%"PRIx64" gz=%d descaddr=0x%"PRIx64" "
+              "desc=0x%"PRIx64" asb=%d index=0x%"PRIx64" osize=%d\n",
+              req->stage, level, req->va, grainsize, descaddr, desc,
+              addrselectbottom, index, outputsize);
         ttbr = extract64(desc, 0, 48);
         ttbr &= ~descmask;
 
@@ -6529,7 +6541,7 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
     }
 
     req->pa = ttbr;
-    D("SMMU: %lx -> %lx\n", req->va, req->pa);
+    D("SMMU: 0x%"PRIx64" -> 0x%"PRIx64"\n", req->va, req->pa);
     return;
 
 do_fault:
@@ -6628,7 +6640,7 @@ static void smmu500_gat(SMMU *s, uint64_t v, bool wr, bool s2)
     int prot;
     bool err;
 
-    D("ATS: va=%lx cb=%d wr=%d s2=%d\n", va, cb, wr, s2);
+    D("ATS: va=0x%"PRIx64" cb=%d wr=%d s2=%d\n", va, cb, wr, s2);
     err = smmu500_at(s, cb, va, wr, s2, &pa, &prot);
 
     s->regs[R_SMMU_GPAR] = pa | err;
@@ -6709,6 +6721,7 @@ static IOMMUTLBEntry smmu_translate(MemoryRegion *mr, hwaddr addr,
     if (cb >= 0) {
         err = smmu500_at(s, cb, va, false, true, &pa, &prot);
         ret.translated_addr = pa;
+        ret.perm = prot;
         if (err) {
             memset(&ret, 0, sizeof ret);
             ret.perm = IOMMU_NONE;

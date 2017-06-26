@@ -19,7 +19,6 @@
 
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
-#include "qapi/error.h"
 #include "monitor/monitor.h"
 #include "exec/address-spaces.h"
 
@@ -131,20 +130,28 @@ bool sysbus_has_mmio(SysBusDevice *dev, unsigned int n)
 static void sysbus_mmio_map_common(SysBusDevice *dev, int n, hwaddr addr,
                                    bool may_overlap, int priority)
 {
-    MemoryRegion *mr;
-    assert(n >= 0);
+    assert(n >= 0 && n < dev->num_mmio);
 
-    mr = sysbus_mmio_get_region(dev, n);
-    assert(mr);
-
-    object_property_set_link(OBJECT(mr), OBJECT(get_system_memory()),
-                             "container", &error_abort);
-    if (may_overlap) {
-        object_property_set_bool(OBJECT(mr), may_overlap, "may-overlap",
-                                 &error_abort);
+    if (dev->mmio[n].addr == addr) {
+        /* ??? region already mapped here.  */
+        return;
     }
-    object_property_set_int(OBJECT(mr), priority, "priority", &error_abort);
-    object_property_set_int(OBJECT(mr), addr, "addr", &error_abort);
+    if (dev->mmio[n].addr != (hwaddr)-1) {
+        /* Unregister previous mapping.  */
+        memory_region_del_subregion(get_system_memory(), dev->mmio[n].memory);
+    }
+    dev->mmio[n].addr = addr;
+    if (may_overlap) {
+        memory_region_add_subregion_overlap(get_system_memory(),
+                                            addr,
+                                            dev->mmio[n].memory,
+                                            priority);
+    }
+    else {
+        memory_region_add_subregion(get_system_memory(),
+                                    addr,
+                                    dev->mmio[n].memory);
+    }
 }
 
 void sysbus_mmio_map(SysBusDevice *dev, int n, hwaddr addr)
@@ -170,55 +177,19 @@ void sysbus_pass_irq(SysBusDevice *dev, SysBusDevice *target)
     qdev_pass_gpios(DEVICE(target), DEVICE(dev), SYSBUS_DEVICE_GPIO_IRQ);
 }
 
-void sysbus_init_mmio_n(SysBusDevice *dev, MemoryRegion *memory, int n)
-{
-    char *propname = g_strdup_printf("sysbus-mr-%d", n);
-    MemoryRegion **mem_ptr = g_malloc0(sizeof(*mem_ptr));
-
-    object_property_add_link(OBJECT(dev), propname, TYPE_MEMORY_REGION,
-                             (Object **)mem_ptr,
-                             object_property_allow_set_link,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
-                             &error_abort);
-    /* In an ideal world, we use object_property_set_link. But things
-     * might not have canonical paths yet.
-     */
-#if 0
-    object_property_set_link(OBJECT(dev), OBJECT(memory), propname,
-                             &error_abort);
-#endif
-    *mem_ptr = memory;
-    g_free(propname);
-}
-
 void sysbus_init_mmio(SysBusDevice *dev, MemoryRegion *memory)
 {
-    int i;
+    int n;
 
-    for (i = 0; sysbus_mmio_get_region(dev, i); ++i);
-    sysbus_init_mmio_n(dev, memory, i);
+    assert(dev->num_mmio < QDEV_MAX_MMIO);
+    n = dev->num_mmio++;
+    dev->mmio[n].addr = -1;
+    dev->mmio[n].memory = memory;
 }
 
 MemoryRegion *sysbus_mmio_get_region(SysBusDevice *dev, int n)
 {
-    MemoryRegion *ret;
-    char *propname = g_strdup_printf("sysbus-mr-%d", n);
-    bool early = false;
-    Object *dev_obj = OBJECT(dev);
-
-    /* Maybe be used early */
-    if (!dev_obj->parent) {
-        early = true;
-        object_property_add_child(qdev_get_machine(), "__dummy__",
-                                  dev_obj, &error_abort);
-    }
-    ret = MEMORY_REGION(object_property_get_link(OBJECT(dev), propname,
-                        NULL));
-    if (early) {
-        object_unparent(dev_obj);
-    }
-    g_free(propname);
-    return ret;
+    return dev->mmio[n].memory;
 }
 
 void sysbus_init_ioports(SysBusDevice *dev, uint32_t ioport, uint32_t size)
@@ -309,16 +280,10 @@ static void sysbus_dev_print(Monitor *mon, DeviceState *dev, int indent)
     hwaddr size;
     int i;
 
-    for (i = 0;; i++) {
-        MemoryRegion *mr = sysbus_mmio_get_region(s, i);
-        /* FIXME: allow for gaps in mrs for printage */
-        if (!mr) {
-            break;
-        }
-        hwaddr addr = object_property_get_int(OBJECT(mr), "addr", &error_abort);
-        size = memory_region_size(mr);
+    for (i = 0; i < s->num_mmio; i++) {
+        size = memory_region_size(s->mmio[i].memory);
         monitor_printf(mon, "%*smmio " TARGET_FMT_plx "/" TARGET_FMT_plx "\n",
-                       indent, "", addr, size);
+                       indent, "", s->mmio[i].addr, size);
     }
 }
 

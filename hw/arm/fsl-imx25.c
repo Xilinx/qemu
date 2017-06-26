@@ -51,7 +51,7 @@ static void fsl_imx25_init(Object *obj)
     }
 
     for (i = 0; i < FSL_IMX25_NUM_GPTS; i++) {
-        object_initialize(&s->gpt[i], sizeof(s->gpt[i]), TYPE_IMX_GPT);
+        object_initialize(&s->gpt[i], sizeof(s->gpt[i]), TYPE_IMX25_GPT);
         qdev_set_parent_bus(DEVICE(&s->gpt[i]), sysbus_get_default());
     }
 
@@ -125,7 +125,7 @@ static void fsl_imx25_realize(DeviceState *dev, Error **errp)
             if (!chr) {
                 char label[20];
                 snprintf(label, sizeof(label), "imx31.uart%d", i);
-                chr = qemu_chr_new(label, "null", NULL);
+                chr = qemu_chr_new(label, "null");
             }
 
             qdev_prop_set_chr(DEVICE(&s->uart[i]), "chardev", chr);
@@ -191,6 +191,7 @@ static void fsl_imx25_realize(DeviceState *dev, Error **errp)
     }
 
     qdev_set_nic_properties(DEVICE(&s->fec), &nd_table[0]);
+
     object_property_set_bool(OBJECT(&s->fec), true, "realized", &err);
     if (err) {
         error_propagate(errp, err);
@@ -248,16 +249,16 @@ static void fsl_imx25_realize(DeviceState *dev, Error **errp)
     }
 
     /* initialize 2 x 16 KB ROM */
-    memory_region_init_rom_device(&s->rom[0], NULL, NULL, NULL,
-                                  "imx25.rom0", FSL_IMX25_ROM0_SIZE, &err);
+    memory_region_init_rom(&s->rom[0], NULL,
+                           "imx25.rom0", FSL_IMX25_ROM0_SIZE, &err);
     if (err) {
         error_propagate(errp, err);
         return;
     }
     memory_region_add_subregion(get_system_memory(), FSL_IMX25_ROM0_ADDR,
                                 &s->rom[0]);
-    memory_region_init_rom_device(&s->rom[1], NULL, NULL, NULL,
-                                  "imx25.rom1", FSL_IMX25_ROM1_SIZE, &err);
+    memory_region_init_rom(&s->rom[1], NULL,
+                           "imx25.rom1", FSL_IMX25_ROM1_SIZE, &err);
     if (err) {
         error_propagate(errp, err);
         return;

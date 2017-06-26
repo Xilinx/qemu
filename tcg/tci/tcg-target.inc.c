@@ -255,6 +255,7 @@ static const TCGTargetOpDef tcg_target_op_defs[] = {
     { INDEX_op_bswap32_i32, { R, R } },
 #endif
 
+    { INDEX_op_mb, { } },
     { -1 },
 };
 
@@ -315,7 +316,7 @@ static const int tcg_target_call_oarg_regs[] = {
 #endif
 };
 
-#ifndef NDEBUG
+#ifdef CONFIG_DEBUG_TCG
 static const char *const tcg_target_reg_names[TCG_TARGET_NB_REGS] = {
     "r00",
     "r01",
@@ -360,9 +361,9 @@ static void patch_reloc(tcg_insn_unit *code_ptr, int type,
                         intptr_t value, intptr_t addend)
 {
     /* tcg_out_reloc always uses the same type, addend. */
-    assert(type == sizeof(tcg_target_long));
-    assert(addend == 0);
-    assert(value != 0);
+    tcg_debug_assert(type == sizeof(tcg_target_long));
+    tcg_debug_assert(addend == 0);
+    tcg_debug_assert(value != 0);
     if (TCG_TARGET_REG_BITS == 32) {
         tcg_patch32(code_ptr, value);
     } else {
@@ -419,7 +420,7 @@ static void tcg_out_op_t(TCGContext *s, TCGOpcode op)
 /* Write register. */
 static void tcg_out_r(TCGContext *s, TCGArg t0)
 {
-    assert(t0 < TCG_TARGET_NB_REGS);
+    tcg_debug_assert(t0 < TCG_TARGET_NB_REGS);
     tcg_out8(s, t0);
 }
 
@@ -427,7 +428,7 @@ static void tcg_out_r(TCGContext *s, TCGArg t0)
 static void tcg_out_ri(TCGContext *s, int const_arg, TCGArg arg)
 {
     if (const_arg) {
-        assert(const_arg == 1);
+        tcg_debug_assert(const_arg == 1);
         tcg_out8(s, TCG_CONST);
         tcg_out_i(s, arg);
     } else {
@@ -439,7 +440,7 @@ static void tcg_out_ri(TCGContext *s, int const_arg, TCGArg arg)
 static void tcg_out_ri32(TCGContext *s, int const_arg, TCGArg arg)
 {
     if (const_arg) {
-        assert(const_arg == 1);
+        tcg_debug_assert(const_arg == 1);
         tcg_out8(s, TCG_CONST);
         tcg_out32(s, arg);
     } else {
@@ -452,7 +453,7 @@ static void tcg_out_ri32(TCGContext *s, int const_arg, TCGArg arg)
 static void tcg_out_ri64(TCGContext *s, int const_arg, TCGArg arg)
 {
     if (const_arg) {
-        assert(const_arg == 1);
+        tcg_debug_assert(const_arg == 1);
         tcg_out8(s, TCG_CONST);
         tcg_out64(s, arg);
     } else {
@@ -466,7 +467,7 @@ static void tci_out_label(TCGContext *s, TCGLabel *label)
 {
     if (label->has_value) {
         tcg_out_i(s, label->u.value);
-        assert(label->u.value);
+        tcg_debug_assert(label->u.value);
     } else {
         tcg_out_reloc(s, s->code_ptr, sizeof(tcg_target_ulong), label, 0);
         s->code_ptr += sizeof(tcg_target_ulong);
@@ -483,12 +484,12 @@ static void tcg_out_ld(TCGContext *s, TCGType type, TCGReg ret, TCGReg arg1,
         tcg_out_r(s, arg1);
         tcg_out32(s, arg2);
     } else {
-        assert(type == TCG_TYPE_I64);
+        tcg_debug_assert(type == TCG_TYPE_I64);
 #if TCG_TARGET_REG_BITS == 64
         tcg_out_op_t(s, INDEX_op_ld_i64);
         tcg_out_r(s, ret);
         tcg_out_r(s, arg1);
-        assert(arg2 == (int32_t)arg2);
+        tcg_debug_assert(arg2 == (int32_t)arg2);
         tcg_out32(s, arg2);
 #else
         TODO();
@@ -500,7 +501,7 @@ static void tcg_out_ld(TCGContext *s, TCGType type, TCGReg ret, TCGReg arg1,
 static void tcg_out_mov(TCGContext *s, TCGType type, TCGReg ret, TCGReg arg)
 {
     uint8_t *old_code_ptr = s->code_ptr;
-    assert(ret != arg);
+    tcg_debug_assert(ret != arg);
 #if TCG_TARGET_REG_BITS == 32
     tcg_out_op_t(s, INDEX_op_mov_i32);
 #else
@@ -521,7 +522,7 @@ static void tcg_out_movi(TCGContext *s, TCGType type,
         tcg_out_r(s, t0);
         tcg_out32(s, arg32);
     } else {
-        assert(type == TCG_TYPE_I64);
+        tcg_debug_assert(type == TCG_TYPE_I64);
 #if TCG_TARGET_REG_BITS == 64
         tcg_out_op_t(s, INDEX_op_movi_i64);
         tcg_out_r(s, t0);
@@ -553,17 +554,19 @@ static void tcg_out_op(TCGContext *s, TCGOpcode opc, const TCGArg *args,
         tcg_out64(s, args[0]);
         break;
     case INDEX_op_goto_tb:
-        if (s->tb_jmp_offset) {
+        if (s->tb_jmp_insn_offset) {
             /* Direct jump method. */
-            assert(args[0] < ARRAY_SIZE(s->tb_jmp_offset));
-            s->tb_jmp_offset[args[0]] = tcg_current_code_size(s);
+            tcg_debug_assert(args[0] < ARRAY_SIZE(s->tb_jmp_insn_offset));
+            /* Align for atomic patching and thread safety */
+            s->code_ptr = QEMU_ALIGN_PTR_UP(s->code_ptr, 4);
+            s->tb_jmp_insn_offset[args[0]] = tcg_current_code_size(s);
             tcg_out32(s, 0);
         } else {
             /* Indirect jump method. */
             TODO();
         }
-        assert(args[0] < ARRAY_SIZE(s->tb_next_offset));
-        s->tb_next_offset[args[0]] = tcg_current_code_size(s);
+        tcg_debug_assert(args[0] < ARRAY_SIZE(s->tb_jmp_reset_offset));
+        s->tb_jmp_reset_offset[args[0]] = tcg_current_code_size(s);
         break;
     case INDEX_op_br:
         tci_out_label(s, arg_label(args[0]));
@@ -613,7 +616,7 @@ static void tcg_out_op(TCGContext *s, TCGOpcode opc, const TCGArg *args,
     case INDEX_op_st_i64:
         tcg_out_r(s, args[0]);
         tcg_out_r(s, args[1]);
-        assert(args[2] == (int32_t)args[2]);
+        tcg_debug_assert(args[2] == (int32_t)args[2]);
         tcg_out32(s, args[2]);
         break;
     case INDEX_op_add_i32:
@@ -640,9 +643,9 @@ static void tcg_out_op(TCGContext *s, TCGOpcode opc, const TCGArg *args,
         tcg_out_r(s, args[0]);
         tcg_out_r(s, args[1]);
         tcg_out_r(s, args[2]);
-        assert(args[3] <= UINT8_MAX);
+        tcg_debug_assert(args[3] <= UINT8_MAX);
         tcg_out8(s, args[3]);
-        assert(args[4] <= UINT8_MAX);
+        tcg_debug_assert(args[4] <= UINT8_MAX);
         tcg_out8(s, args[4]);
         break;
 
@@ -671,9 +674,9 @@ static void tcg_out_op(TCGContext *s, TCGOpcode opc, const TCGArg *args,
         tcg_out_r(s, args[0]);
         tcg_out_r(s, args[1]);
         tcg_out_r(s, args[2]);
-        assert(args[3] <= UINT8_MAX);
+        tcg_debug_assert(args[3] <= UINT8_MAX);
         tcg_out8(s, args[3]);
-        assert(args[4] <= UINT8_MAX);
+        tcg_debug_assert(args[4] <= UINT8_MAX);
         tcg_out8(s, args[4]);
         break;
     case INDEX_op_div_i64:      /* Optional (TCG_TARGET_HAS_div_i64). */
@@ -798,6 +801,8 @@ static void tcg_out_op(TCGContext *s, TCGOpcode opc, const TCGArg *args,
         }
         tcg_out_i(s, *args++);
         break;
+    case INDEX_op_mb:
+        break;
     case INDEX_op_mov_i32:  /* Always emitted via tcg_out_mov.  */
     case INDEX_op_mov_i64:
     case INDEX_op_movi_i32: /* Always emitted via tcg_out_movi.  */
@@ -819,7 +824,7 @@ static void tcg_out_st(TCGContext *s, TCGType type, TCGReg arg, TCGReg arg1,
         tcg_out_r(s, arg1);
         tcg_out32(s, arg2);
     } else {
-        assert(type == TCG_TYPE_I64);
+        tcg_debug_assert(type == TCG_TYPE_I64);
 #if TCG_TARGET_REG_BITS == 64
         tcg_out_op_t(s, INDEX_op_st_i64);
         tcg_out_r(s, arg);
@@ -830,6 +835,12 @@ static void tcg_out_st(TCGContext *s, TCGType type, TCGReg arg, TCGReg arg1,
 #endif
     }
     old_code_ptr[1] = s->code_ptr - old_code_ptr;
+}
+
+static inline bool tcg_out_sti(TCGContext *s, TCGType type, TCGArg val,
+                               TCGReg base, intptr_t ofs)
+{
+    return false;
 }
 
 /* Test if a constant matches the constraint. */
@@ -850,7 +861,7 @@ static void tcg_target_init(TCGContext *s)
 #endif
 
     /* The current code uses uint8_t for tcg operations. */
-    assert(tcg_op_defs_max <= UINT8_MAX);
+    tcg_debug_assert(tcg_op_defs_max <= UINT8_MAX);
 
     /* Registers available for 32 bit operations. */
     tcg_regset_set32(tcg_target_available_regs[TCG_TYPE_I32], 0,

@@ -29,6 +29,7 @@
 #include "qemu/log.h"
 
 #include "hw/stream.h"
+#include "hw/dma-ctrl.h"
 #include "hw/ptimer.h"
 #include "qemu/bitops.h"
 #include "sysemu/dma.h"
@@ -49,7 +50,7 @@
 
 #define DB_PRINT_L(lvl, fmt, args...) do {\
     if (ZYNQMP_CSU_DMA_ERR_DEBUG > lvl) {\
-        fprintf(stderr, TYPE_ZYNQMP_CSU_DMA ": %s:" fmt, __func__, ## args);\
+        qemu_log(TYPE_ZYNQMP_CSU_DMA ": %s:" fmt, __func__, ## args);\
     } \
 } while (0);
 
@@ -66,8 +67,9 @@ enum {
     R_INT_DISABLE  = 0x1c / 4,
     R_INT_MASK     = 0x20 / 4,
     R_CTRL2        = 0x24 / 4,
+    R_ADDR_MSB     = 0x28 / 4,
 
-    R_MAX          = R_CTRL2 + 1
+    R_MAX          = R_ADDR_MSB + 1
 };
 
 enum {
@@ -125,6 +127,7 @@ typedef struct ZynqMPCSUDMA {
     ptimer_state *src_timer;
 
     bool is_dst;
+    uint16_t width;
 
     StreamCanPushNotifyFn notify;
     void *notify_opaque;
@@ -132,20 +135,6 @@ typedef struct ZynqMPCSUDMA {
     uint32_t regs[R_MAX];
     DepRegisterInfo regs_info[R_MAX];
 } ZynqMPCSUDMA;
-
-/* This is a zynqmp specific CSU hack.  */
-static int dmach_validate_addr(ZynqMPCSUDMA *s)
-{
-    /* priv ROM access?  */
-    if (s->regs[R_ADDR] >= 0xffc00000 && s->regs[R_ADDR] < 0xffc20000) {
-        return 1;
-    }
-    /* priv RAM access?  */
-    if (s->regs[R_ADDR] >= 0xffc40000 && s->regs[R_ADDR] < 0xffc48000) {
-        return 1;
-    }
-    return 0;
-}
 
 static bool dmach_is_paused(ZynqMPCSUDMA *s)
 {
@@ -263,54 +252,46 @@ static void dmach_data_process(ZynqMPCSUDMA *s, uint8_t *buf, unsigned int len)
     }
 }
 
+static inline uint64_t dmach_addr(ZynqMPCSUDMA *s)
+{
+    return s->regs[R_ADDR];
+}
+
 /* len is in bytes.  */
 static void dmach_write(ZynqMPCSUDMA *s, uint8_t *buf, unsigned int len)
 {
-    int err = dmach_validate_addr(s);
-
-    if (err) {
-        return;
-    }
+    uint64_t addr = dmach_addr(s);
 
     dmach_data_process(s, buf, len);
     if (dmach_burst_is_fixed(s)) {
         unsigned int i;
 
-        for (i = 0; i < len; i += 4) {
-            address_space_rw(s->dma_as, s->regs[R_ADDR], *s->attr, buf, 4,
-                                  true);
-            buf += 4;
+        for (i = 0; i < len; i += s->width) {
+            unsigned int wlen = MIN(len - i, s->width);
+
+            address_space_rw(s->dma_as, addr, *s->attr, buf, wlen, true);
+            buf += wlen;
         }
     } else {
-        address_space_rw(s->dma_as, s->regs[R_ADDR], *s->attr, buf, len,
-                              true);
+        address_space_rw(s->dma_as, addr, *s->attr, buf, len, true);
     }
 }
 
 /* len is in bytes.  */
 static inline void dmach_read(ZynqMPCSUDMA *s, uint8_t *buf, unsigned int len)
 {
-    int raz = dmach_validate_addr(s);
-
-    if (raz) {
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "csu-dma: Reading from unaccessible memory addr=%x\n",
-                      s->regs[R_ADDR]);
-        /* This maybe raises an exception instead... */
-        memset(buf, 0, len);
-        return;
-    }
+    uint64_t addr = dmach_addr(s);
 
     if (dmach_burst_is_fixed(s)) {
         unsigned int i;
 
-        for (i = 0; i < len; i += 4) {
-            address_space_rw(s->dma_as, s->regs[R_ADDR], *s->attr, buf + i, 4,
-                             false);
+        for (i = 0; i < len; i += s->width) {
+            unsigned int rlen = MIN(len - i, s->width);
+
+            address_space_rw(s->dma_as, addr, *s->attr, buf + i, rlen, false);
         }
     } else {
-        address_space_rw(s->dma_as, s->regs[R_ADDR], *s->attr, buf, len,
-                              false);
+        address_space_rw(s->dma_as, addr, *s->attr, buf, len, false);
     }
     dmach_data_process(s, buf, len);
 }
@@ -506,6 +487,17 @@ static void src_timeout_hit(void *opaque)
     ronaldu_csu_dma_update_irq(s);
 }
 
+static void
+zynqmp_csu_dma_dma_ctrl_read(DmaCtrl *dma_ctrl, hwaddr addr, uint32_t len)
+{
+    ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(dma_ctrl);
+    DepRegisterInfo *r = &s->regs_info[R_SIZE];
+
+    s->regs[R_ADDR] = addr;
+    s->regs[R_ADDR_MSB] = (uint64_t)addr >> 32;
+    dep_register_write(r, len, ~0);
+}
+
 static const DepRegisterAccessInfo *zynqmp_csu_dma_regs_info[] = {
 #define DMACH_REGINFO(NAME, snd)                                              \
 (const DepRegisterAccessInfo []) {                                               \
@@ -557,7 +549,8 @@ static const DepRegisterAccessInfo *zynqmp_csu_dma_regs_info[] = {
             { .mask = 0x00F60000, .reason = "reserved - do not modify" },     \
             {}                                                                \
         }                                                                     \
-    }                                                                         \
+    },                                                                        \
+    [R_ADDR_MSB] = { .name =  #NAME "_ADDR_MSB" }                             \
 }
     DMACH_REGINFO(DMA_SRC, true),
     DMACH_REGINFO(DMA_DST, false)
@@ -607,7 +600,7 @@ static void zynqmp_csu_dma_realize(DeviceState *dev, Error **errp)
     map_dma_channel(prefix, s);
 
     s->bh = qemu_bh_new(src_timeout_hit, s);
-    s->src_timer = ptimer_init(s->bh);
+    s->src_timer = ptimer_init(s->bh, PTIMER_POLICY_DEFAULT);
 
     s->dma_as = s->dma_mr ? address_space_init_shareable(s->dma_mr, NULL)
                           : &address_space_memory;
@@ -657,6 +650,7 @@ static const VMStateDescription vmstate_zynqmp_csu_dma = {
 
 static Property zynqmp_csu_dma_properties [] = {
     DEFINE_PROP_BOOL("is-dst", ZynqMPCSUDMA, is_dst, false),
+    DEFINE_PROP_UINT16("dma-width", ZynqMPCSUDMA, width, 4),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -664,6 +658,7 @@ static void zynqmp_csu_dma_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     StreamSlaveClass *ssc = STREAM_SLAVE_CLASS(klass);
+    DmaCtrlClass *dcc = DMA_CTRL_CLASS(klass);
 
     dc->reset = zynqmp_csu_dma_reset;
     dc->realize = zynqmp_csu_dma_realize;
@@ -672,6 +667,7 @@ static void zynqmp_csu_dma_class_init(ObjectClass *klass, void *data)
 
     ssc->push = zynqmp_csu_dma_stream_push;
     ssc->can_push = zynqmp_csu_dma_stream_can_push;
+    dcc->read = zynqmp_csu_dma_dma_ctrl_read;
 }
 
 static const TypeInfo zynqmp_csu_dma_info = {
@@ -682,6 +678,7 @@ static const TypeInfo zynqmp_csu_dma_info = {
     .instance_init = zynqmp_csu_dma_init,
     .interfaces = (InterfaceInfo[]) {
         { TYPE_STREAM_SLAVE },
+        { TYPE_DMA_CTRL },
         { }
     }
 };

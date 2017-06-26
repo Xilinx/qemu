@@ -19,58 +19,18 @@
 #include "qapi/qmp/types.h"
 #include "qapi/visitor-impl.h"
 
-typedef struct StackEntry
-{
-    void *value;
-    bool is_list_head;
-    QTAILQ_ENTRY(StackEntry) node;
-} StackEntry;
-
 struct QapiDeallocVisitor
 {
     Visitor visitor;
-    QTAILQ_HEAD(, StackEntry) stack;
 };
-
-static QapiDeallocVisitor *to_qov(Visitor *v)
-{
-    return container_of(v, QapiDeallocVisitor, visitor);
-}
-
-static void qapi_dealloc_push(QapiDeallocVisitor *qov, void *value)
-{
-    StackEntry *e = g_malloc0(sizeof(*e));
-
-    e->value = value;
-
-    /* see if we're just pushing a list head tracker */
-    if (value == NULL) {
-        e->is_list_head = true;
-    }
-    QTAILQ_INSERT_HEAD(&qov->stack, e, node);
-}
-
-static void *qapi_dealloc_pop(QapiDeallocVisitor *qov)
-{
-    StackEntry *e = QTAILQ_FIRST(&qov->stack);
-    QObject *value;
-    QTAILQ_REMOVE(&qov->stack, e, node);
-    value = e->value;
-    g_free(e);
-    return value;
-}
 
 static void qapi_dealloc_start_struct(Visitor *v, const char *name, void **obj,
                                       size_t unused, Error **errp)
 {
-    QapiDeallocVisitor *qov = to_qov(v);
-    qapi_dealloc_push(qov, obj);
 }
 
-static void qapi_dealloc_end_struct(Visitor *v, Error **errp)
+static void qapi_dealloc_end_struct(Visitor *v, void **obj)
 {
-    QapiDeallocVisitor *qov = to_qov(v);
-    void **obj = qapi_dealloc_pop(qov);
     if (obj) {
         g_free(*obj);
     }
@@ -80,51 +40,31 @@ static void qapi_dealloc_start_alternate(Visitor *v, const char *name,
                                          GenericAlternate **obj, size_t size,
                                          bool promote_int, Error **errp)
 {
-    QapiDeallocVisitor *qov = to_qov(v);
-    qapi_dealloc_push(qov, obj);
 }
 
-static void qapi_dealloc_end_alternate(Visitor *v)
+static void qapi_dealloc_end_alternate(Visitor *v, void **obj)
 {
-    QapiDeallocVisitor *qov = to_qov(v);
-    void **obj = qapi_dealloc_pop(qov);
     if (obj) {
         g_free(*obj);
     }
 }
 
-static void qapi_dealloc_start_list(Visitor *v, const char *name, Error **errp)
+static void qapi_dealloc_start_list(Visitor *v, const char *name,
+                                    GenericList **list, size_t size,
+                                    Error **errp)
 {
-    QapiDeallocVisitor *qov = to_qov(v);
-    qapi_dealloc_push(qov, NULL);
 }
 
-static GenericList *qapi_dealloc_next_list(Visitor *v, GenericList **listp,
+static GenericList *qapi_dealloc_next_list(Visitor *v, GenericList *tail,
                                            size_t size)
 {
-    GenericList *list = *listp;
-    QapiDeallocVisitor *qov = to_qov(v);
-    StackEntry *e = QTAILQ_FIRST(&qov->stack);
-
-    if (e && e->is_list_head) {
-        e->is_list_head = false;
-        return list;
-    }
-
-    if (list) {
-        list = list->next;
-        g_free(*listp);
-        return list;
-    }
-
-    return NULL;
+    GenericList *next = tail->next;
+    g_free(tail);
+    return next;
 }
 
-static void qapi_dealloc_end_list(Visitor *v)
+static void qapi_dealloc_end_list(Visitor *v, void **obj)
 {
-    QapiDeallocVisitor *qov = to_qov(v);
-    void *obj = qapi_dealloc_pop(qov);
-    assert(obj == NULL); /* should've been list head tracker with no payload */
 }
 
 static void qapi_dealloc_type_str(Visitor *v, const char *name, char **obj,
@@ -163,27 +103,22 @@ static void qapi_dealloc_type_anything(Visitor *v, const char *name,
     }
 }
 
-static void qapi_dealloc_type_enum(Visitor *v, const char *name, int *obj,
-                                   const char * const strings[], Error **errp)
+static void qapi_dealloc_type_null(Visitor *v, const char *name, Error **errp)
 {
 }
 
-Visitor *qapi_dealloc_get_visitor(QapiDeallocVisitor *v)
+static void qapi_dealloc_free(Visitor *v)
 {
-    return &v->visitor;
+    g_free(container_of(v, QapiDeallocVisitor, visitor));
 }
 
-void qapi_dealloc_visitor_cleanup(QapiDeallocVisitor *v)
-{
-    g_free(v);
-}
-
-QapiDeallocVisitor *qapi_dealloc_visitor_new(void)
+Visitor *qapi_dealloc_visitor_new(void)
 {
     QapiDeallocVisitor *v;
 
     v = g_malloc0(sizeof(*v));
 
+    v->visitor.type = VISITOR_DEALLOC;
     v->visitor.start_struct = qapi_dealloc_start_struct;
     v->visitor.end_struct = qapi_dealloc_end_struct;
     v->visitor.start_alternate = qapi_dealloc_start_alternate;
@@ -191,15 +126,14 @@ QapiDeallocVisitor *qapi_dealloc_visitor_new(void)
     v->visitor.start_list = qapi_dealloc_start_list;
     v->visitor.next_list = qapi_dealloc_next_list;
     v->visitor.end_list = qapi_dealloc_end_list;
-    v->visitor.type_enum = qapi_dealloc_type_enum;
     v->visitor.type_int64 = qapi_dealloc_type_int64;
     v->visitor.type_uint64 = qapi_dealloc_type_uint64;
     v->visitor.type_bool = qapi_dealloc_type_bool;
     v->visitor.type_str = qapi_dealloc_type_str;
     v->visitor.type_number = qapi_dealloc_type_number;
     v->visitor.type_any = qapi_dealloc_type_anything;
+    v->visitor.type_null = qapi_dealloc_type_null;
+    v->visitor.free = qapi_dealloc_free;
 
-    QTAILQ_INIT(&v->stack);
-
-    return v;
+    return &v->visitor;
 }

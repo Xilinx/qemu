@@ -116,6 +116,8 @@ struct Stream {
     MemoryRegion *data_mr;
     AddressSpace *data_as;
     AddressSpace *sg_as;
+
+    unsigned char txbuf[16 * 1024];
 };
 
 struct XilinxAXIDMAStreamSlave {
@@ -264,7 +266,6 @@ static void stream_process_mem2s(struct Stream *s, StreamSlave *tx_data_dev,
                                  StreamSlave *tx_control_dev)
 {
     uint32_t prev_d;
-    unsigned char txbuf[16 * 1024];
     unsigned int txlen;
 
     if (!stream_running(s) || stream_idle(s)) {
@@ -286,17 +287,17 @@ static void stream_process_mem2s(struct Stream *s, StreamSlave *tx_data_dev,
         }
 
         txlen = s->desc.control & SDESC_CTRL_LEN_MASK;
-        if ((txlen + s->pos) > sizeof txbuf) {
+        if ((txlen + s->pos) > sizeof s->txbuf) {
             hw_error("%s: too small internal txbuf! %d\n", __func__,
                      txlen + s->pos);
         }
 
         dma_memory_read(s->data_as, s->desc.buffer_address,
-                        txbuf + s->pos, txlen);
+                        s->txbuf + s->pos, txlen);
         s->pos += txlen;
 
         if (stream_desc_eof(&s->desc)) {
-            stream_push(tx_data_dev, txbuf, s->pos, STREAM_ATTR_EOP);
+            stream_push(tx_data_dev, s->txbuf, s->pos, STREAM_ATTR_EOP);
             s->pos = 0;
             stream_complete(s);
         }
@@ -561,7 +562,7 @@ static void xilinx_axidma_realize(DeviceState *dev, Error **errp)
 
         st->nr = i;
         st->bh = qemu_bh_new(timer_hit, st);
-        st->ptimer = ptimer_init(st->bh);
+        st->ptimer = ptimer_init(st->bh, PTIMER_POLICY_DEFAULT);
         ptimer_set_freq(st->ptimer, s->freqhz);
         st->data_as = address_space_init_shareable(st->data_mr, NULL);
         st->sg_as = sg_as;

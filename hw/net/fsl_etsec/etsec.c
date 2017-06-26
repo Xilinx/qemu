@@ -348,8 +348,8 @@ static ssize_t etsec_receive(NetClientState *nc,
     eTSEC *etsec = qemu_get_nic_opaque(nc);
 
 #if defined(HEX_DUMP)
-    fprintf(stderr, "%s receive size:%d\n", etsec->nic->nc.name, size);
-    qemu_hexdump(buf, stderr, "", size);
+    fprintf(stderr, "%s receive size:%zd\n", nc->name, size);
+    qemu_hexdump((void *)buf, stderr, "", size);
 #endif
     /* Flush is unnecessary as are already in receiving path */
     etsec->need_flush = false;
@@ -371,7 +371,7 @@ static void etsec_set_link_status(NetClientState *nc)
 }
 
 static NetClientInfo net_etsec_info = {
-    .type = NET_CLIENT_OPTIONS_KIND_NIC,
+    .type = NET_CLIENT_DRIVER_NIC,
     .size = sizeof(NICState),
     .receive = etsec_receive,
     .link_status_changed = etsec_set_link_status,
@@ -387,7 +387,7 @@ static void etsec_realize(DeviceState *dev, Error **errp)
 
 
     etsec->bh     = qemu_bh_new(etsec_timer_hit, etsec);
-    etsec->ptimer = ptimer_init(etsec->bh);
+    etsec->ptimer = ptimer_init(etsec->bh, PTIMER_POLICY_DEFAULT);
     ptimer_set_freq(etsec->ptimer, 100);
 }
 

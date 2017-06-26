@@ -19,6 +19,7 @@
 
 #include "qemu/osdep.h"
 #include "cpu.h"
+#include "exec/exec-all.h"
 #include "exec/helper-proto.h"
 
 
@@ -217,7 +218,7 @@ void breakpoint_handler(CPUState *cs)
             if (check_hw_breakpoints(env, false)) {
                 raise_exception(env, EXCP01_DB);
             } else {
-                cpu_resume_from_signal(cs, NULL);
+                cpu_loop_exit_noexc(cs);
             }
         }
     } else {

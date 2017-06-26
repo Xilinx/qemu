@@ -30,14 +30,14 @@
 #include "vmxnet3.h"
 #include "vmxnet_debug.h"
 #include "vmware_utils.h"
-#include "vmxnet_tx_pkt.h"
-#include "vmxnet_rx_pkt.h"
+#include "net_tx_pkt.h"
+#include "net_rx_pkt.h"
 
 #define PCI_DEVICE_ID_VMWARE_VMXNET3_REVISION 0x1
 #define VMXNET3_MSIX_BAR_SIZE 0x2000
 #define MIN_BUF_SIZE 60
 
-/* Compatability flags for migration */
+/* Compatibility flags for migration */
 #define VMXNET3_COMPAT_FLAG_OLD_MSI_OFFSETS_BIT 0
 #define VMXNET3_COMPAT_FLAG_OLD_MSI_OFFSETS \
     (1 << VMXNET3_COMPAT_FLAG_OLD_MSI_OFFSETS_BIT)
@@ -74,54 +74,54 @@
 #define VMXNET3_MAX_NMSIX_INTRS   (1)
 
 /* Macros for rings descriptors access */
-#define VMXNET3_READ_TX_QUEUE_DESCR8(dpa, field) \
-    (vmw_shmem_ld8(dpa + offsetof(struct Vmxnet3_TxQueueDesc, field)))
+#define VMXNET3_READ_TX_QUEUE_DESCR8(_d, dpa, field) \
+    (vmw_shmem_ld8(_d, dpa + offsetof(struct Vmxnet3_TxQueueDesc, field)))
 
-#define VMXNET3_WRITE_TX_QUEUE_DESCR8(dpa, field, value) \
-    (vmw_shmem_st8(dpa + offsetof(struct Vmxnet3_TxQueueDesc, field, value)))
+#define VMXNET3_WRITE_TX_QUEUE_DESCR8(_d, dpa, field, value) \
+    (vmw_shmem_st8(_d, dpa + offsetof(struct Vmxnet3_TxQueueDesc, field, value)))
 
-#define VMXNET3_READ_TX_QUEUE_DESCR32(dpa, field) \
-    (vmw_shmem_ld32(dpa + offsetof(struct Vmxnet3_TxQueueDesc, field)))
+#define VMXNET3_READ_TX_QUEUE_DESCR32(_d, dpa, field) \
+    (vmw_shmem_ld32(_d, dpa + offsetof(struct Vmxnet3_TxQueueDesc, field)))
 
-#define VMXNET3_WRITE_TX_QUEUE_DESCR32(dpa, field, value) \
-    (vmw_shmem_st32(dpa + offsetof(struct Vmxnet3_TxQueueDesc, field), value))
+#define VMXNET3_WRITE_TX_QUEUE_DESCR32(_d, dpa, field, value) \
+    (vmw_shmem_st32(_d, dpa + offsetof(struct Vmxnet3_TxQueueDesc, field), value))
 
-#define VMXNET3_READ_TX_QUEUE_DESCR64(dpa, field) \
-    (vmw_shmem_ld64(dpa + offsetof(struct Vmxnet3_TxQueueDesc, field)))
+#define VMXNET3_READ_TX_QUEUE_DESCR64(_d, dpa, field) \
+    (vmw_shmem_ld64(_d, dpa + offsetof(struct Vmxnet3_TxQueueDesc, field)))
 
-#define VMXNET3_WRITE_TX_QUEUE_DESCR64(dpa, field, value) \
-    (vmw_shmem_st64(dpa + offsetof(struct Vmxnet3_TxQueueDesc, field), value))
+#define VMXNET3_WRITE_TX_QUEUE_DESCR64(_d, dpa, field, value) \
+    (vmw_shmem_st64(_d, dpa + offsetof(struct Vmxnet3_TxQueueDesc, field), value))
 
-#define VMXNET3_READ_RX_QUEUE_DESCR64(dpa, field) \
-    (vmw_shmem_ld64(dpa + offsetof(struct Vmxnet3_RxQueueDesc, field)))
+#define VMXNET3_READ_RX_QUEUE_DESCR64(_d, dpa, field) \
+    (vmw_shmem_ld64(_d, dpa + offsetof(struct Vmxnet3_RxQueueDesc, field)))
 
-#define VMXNET3_READ_RX_QUEUE_DESCR32(dpa, field) \
-    (vmw_shmem_ld32(dpa + offsetof(struct Vmxnet3_RxQueueDesc, field)))
+#define VMXNET3_READ_RX_QUEUE_DESCR32(_d, dpa, field) \
+    (vmw_shmem_ld32(_d, dpa + offsetof(struct Vmxnet3_RxQueueDesc, field)))
 
-#define VMXNET3_WRITE_RX_QUEUE_DESCR64(dpa, field, value) \
-    (vmw_shmem_st64(dpa + offsetof(struct Vmxnet3_RxQueueDesc, field), value))
+#define VMXNET3_WRITE_RX_QUEUE_DESCR64(_d, dpa, field, value) \
+    (vmw_shmem_st64(_d, dpa + offsetof(struct Vmxnet3_RxQueueDesc, field), value))
 
-#define VMXNET3_WRITE_RX_QUEUE_DESCR8(dpa, field, value) \
-    (vmw_shmem_st8(dpa + offsetof(struct Vmxnet3_RxQueueDesc, field), value))
+#define VMXNET3_WRITE_RX_QUEUE_DESCR8(_d, dpa, field, value) \
+    (vmw_shmem_st8(_d, dpa + offsetof(struct Vmxnet3_RxQueueDesc, field), value))
 
 /* Macros for guest driver shared area access */
-#define VMXNET3_READ_DRV_SHARED64(shpa, field) \
-    (vmw_shmem_ld64(shpa + offsetof(struct Vmxnet3_DriverShared, field)))
+#define VMXNET3_READ_DRV_SHARED64(_d, shpa, field) \
+    (vmw_shmem_ld64(_d, shpa + offsetof(struct Vmxnet3_DriverShared, field)))
 
-#define VMXNET3_READ_DRV_SHARED32(shpa, field) \
-    (vmw_shmem_ld32(shpa + offsetof(struct Vmxnet3_DriverShared, field)))
+#define VMXNET3_READ_DRV_SHARED32(_d, shpa, field) \
+    (vmw_shmem_ld32(_d, shpa + offsetof(struct Vmxnet3_DriverShared, field)))
 
-#define VMXNET3_WRITE_DRV_SHARED32(shpa, field, val) \
-    (vmw_shmem_st32(shpa + offsetof(struct Vmxnet3_DriverShared, field), val))
+#define VMXNET3_WRITE_DRV_SHARED32(_d, shpa, field, val) \
+    (vmw_shmem_st32(_d, shpa + offsetof(struct Vmxnet3_DriverShared, field), val))
 
-#define VMXNET3_READ_DRV_SHARED16(shpa, field) \
-    (vmw_shmem_ld16(shpa + offsetof(struct Vmxnet3_DriverShared, field)))
+#define VMXNET3_READ_DRV_SHARED16(_d, shpa, field) \
+    (vmw_shmem_ld16(_d, shpa + offsetof(struct Vmxnet3_DriverShared, field)))
 
-#define VMXNET3_READ_DRV_SHARED8(shpa, field) \
-    (vmw_shmem_ld8(shpa + offsetof(struct Vmxnet3_DriverShared, field)))
+#define VMXNET3_READ_DRV_SHARED8(_d, shpa, field) \
+    (vmw_shmem_ld8(_d, shpa + offsetof(struct Vmxnet3_DriverShared, field)))
 
-#define VMXNET3_READ_DRV_SHARED(shpa, field, b, l) \
-    (vmw_shmem_read(shpa + offsetof(struct Vmxnet3_DriverShared, field), b, l))
+#define VMXNET3_READ_DRV_SHARED(_d, shpa, field, b, l) \
+    (vmw_shmem_read(_d, shpa + offsetof(struct Vmxnet3_DriverShared, field), b, l))
 
 #define VMXNET_FLAG_IS_SET(field, flag) (((field) & (flag)) == (flag))
 
@@ -147,7 +147,8 @@ typedef struct {
     uint8_t gen;
 } Vmxnet3Ring;
 
-static inline void vmxnet3_ring_init(Vmxnet3Ring *ring,
+static inline void vmxnet3_ring_init(PCIDevice *d,
+				     Vmxnet3Ring *ring,
                                      hwaddr pa,
                                      size_t size,
                                      size_t cell_size,
@@ -160,7 +161,7 @@ static inline void vmxnet3_ring_init(Vmxnet3Ring *ring,
     ring->next = 0;
 
     if (zero_region) {
-        vmw_shmem_set(pa, 0, size * cell_size);
+        vmw_shmem_set(d, pa, 0, size * cell_size);
     }
 }
 
@@ -190,14 +191,16 @@ static inline hwaddr vmxnet3_ring_curr_cell_pa(Vmxnet3Ring *ring)
     return ring->pa + ring->next * ring->cell_size;
 }
 
-static inline void vmxnet3_ring_read_curr_cell(Vmxnet3Ring *ring, void *buff)
+static inline void vmxnet3_ring_read_curr_cell(PCIDevice *d, Vmxnet3Ring *ring,
+					       void *buff)
 {
-    vmw_shmem_read(vmxnet3_ring_curr_cell_pa(ring), buff, ring->cell_size);
+    vmw_shmem_read(d, vmxnet3_ring_curr_cell_pa(ring), buff, ring->cell_size);
 }
 
-static inline void vmxnet3_ring_write_curr_cell(Vmxnet3Ring *ring, void *buff)
+static inline void vmxnet3_ring_write_curr_cell(PCIDevice *d, Vmxnet3Ring *ring,
+						void *buff)
 {
-    vmw_shmem_write(vmxnet3_ring_curr_cell_pa(ring), buff, ring->cell_size);
+    vmw_shmem_write(d, vmxnet3_ring_curr_cell_pa(ring), buff, ring->cell_size);
 }
 
 static inline size_t vmxnet3_ring_curr_cell_idx(Vmxnet3Ring *ring)
@@ -280,8 +283,6 @@ typedef struct {
 
         /* Whether MSI-X support was installed successfully */
         bool msix_used;
-        /* Whether MSI support was installed successfully */
-        bool msi_used;
         hwaddr drv_shmem;
         hwaddr temp_shared_guest_driver_memory;
 
@@ -314,13 +315,13 @@ typedef struct {
         bool peer_has_vhdr;
 
         /* TX packets to QEMU interface */
-        struct VmxnetTxPkt *tx_pkt;
+        struct NetTxPkt *tx_pkt;
         uint32_t offload_mode;
         uint32_t cso_or_gso_size;
         uint16_t tci;
         bool needs_vlan;
 
-        struct VmxnetRxPkt *rx_pkt;
+        struct NetRxPkt *rx_pkt;
 
         bool tx_sop;
         bool skip_current_tx_pkt;
@@ -341,14 +342,14 @@ typedef struct {
         uint32_t mcast_list_len;
         uint32_t mcast_list_buff_size; /* needed for live migration. */
 
-        /* Compatability flags for migration */
+        /* Compatibility flags for migration */
         uint32_t compat_flags;
 } VMXNET3State;
 
 /* Interrupt management */
 
 /*
- *This function returns sign whether interrupt line is in asserted state
+ * This function returns sign whether interrupt line is in asserted state
  * This depends on the type of interrupt used. For INTX interrupt line will
  * be asserted until explicit deassertion, for MSI(X) interrupt line will
  * be deasserted automatically due to notification semantics of the MSI(X)
@@ -363,7 +364,7 @@ static bool _vmxnet3_assert_interrupt_line(VMXNET3State *s, uint32_t int_idx)
         msix_notify(d, int_idx);
         return false;
     }
-    if (s->msi_used && msi_enabled(d)) {
+    if (msi_enabled(d)) {
         VMW_IRPRN("Sending MSI notification for vector %u", int_idx);
         msi_notify(d, int_idx);
         return false;
@@ -387,7 +388,7 @@ static void _vmxnet3_deassert_interrupt_line(VMXNET3State *s, int lidx)
      * This function should never be called for MSI(X) interrupts
      * because deassertion never required for message interrupts
      */
-    assert(!s->msi_used || !msi_enabled(d));
+    assert(!msi_enabled(d));
 
     VMW_IRPRN("Deasserting line for interrupt %u", lidx);
     pci_irq_deassert(d);
@@ -424,7 +425,7 @@ static void vmxnet3_trigger_interrupt(VMXNET3State *s, int lidx)
         goto do_automask;
     }
 
-    if (s->msi_used && msi_enabled(d) && s->auto_int_masking) {
+    if (msi_enabled(d) && s->auto_int_masking) {
         goto do_automask;
     }
 
@@ -456,9 +457,9 @@ vmxnet3_on_interrupt_mask_changed(VMXNET3State *s, int lidx, bool is_masked)
     vmxnet3_update_interrupt_line_state(s, lidx);
 }
 
-static bool vmxnet3_verify_driver_magic(hwaddr dshmem)
+static bool vmxnet3_verify_driver_magic(PCIDevice *d, hwaddr dshmem)
 {
-    return (VMXNET3_READ_DRV_SHARED32(dshmem, magic) == VMXNET3_REV1_MAGIC);
+    return (VMXNET3_READ_DRV_SHARED32(d, dshmem, magic) == VMXNET3_REV1_MAGIC);
 }
 
 #define VMXNET3_GET_BYTE(x, byte_num) (((x) >> (byte_num)*8) & 0xFF)
@@ -474,7 +475,7 @@ static void vmxnet3_set_variable_mac(VMXNET3State *s, uint32_t h, uint32_t l)
     s->conf.macaddr.a[4] = VMXNET3_GET_BYTE(h, 0);
     s->conf.macaddr.a[5] = VMXNET3_GET_BYTE(h, 1);
 
-    VMW_CFPRN("Variable MAC: " VMXNET_MF, VMXNET_MA(s->conf.macaddr.a));
+    VMW_CFPRN("Variable MAC: " MAC_FMT, MAC_ARG(s->conf.macaddr.a));
 
     qemu_format_nic_info_str(qemu_get_queue(s->nic), s->conf.macaddr.a);
 }
@@ -526,13 +527,15 @@ vmxnet3_dec_rx_completion_counter(VMXNET3State *s, int qidx)
 static void vmxnet3_complete_packet(VMXNET3State *s, int qidx, uint32_t tx_ridx)
 {
     struct Vmxnet3_TxCompDesc txcq_descr;
+    PCIDevice *d = PCI_DEVICE(s);
 
     VMXNET3_RING_DUMP(VMW_RIPRN, "TXC", qidx, &s->txq_descr[qidx].comp_ring);
 
+    memset(&txcq_descr, 0, sizeof(txcq_descr));
     txcq_descr.txdIdx = tx_ridx;
     txcq_descr.gen = vmxnet3_ring_curr_gen(&s->txq_descr[qidx].comp_ring);
 
-    vmxnet3_ring_write_curr_cell(&s->txq_descr[qidx].comp_ring, &txcq_descr);
+    vmxnet3_ring_write_curr_cell(d, &s->txq_descr[qidx].comp_ring, &txcq_descr);
 
     /* Flush changes in TX descriptor before changing the counter value */
     smp_wmb();
@@ -546,18 +549,18 @@ vmxnet3_setup_tx_offloads(VMXNET3State *s)
 {
     switch (s->offload_mode) {
     case VMXNET3_OM_NONE:
-        vmxnet_tx_pkt_build_vheader(s->tx_pkt, false, false, 0);
+        net_tx_pkt_build_vheader(s->tx_pkt, false, false, 0);
         break;
 
     case VMXNET3_OM_CSUM:
-        vmxnet_tx_pkt_build_vheader(s->tx_pkt, false, true, 0);
+        net_tx_pkt_build_vheader(s->tx_pkt, false, true, 0);
         VMW_PKPRN("L4 CSO requested\n");
         break;
 
     case VMXNET3_OM_TSO:
-        vmxnet_tx_pkt_build_vheader(s->tx_pkt, true, true,
+        net_tx_pkt_build_vheader(s->tx_pkt, true, true,
             s->cso_or_gso_size);
-        vmxnet_tx_pkt_update_ip_checksums(s->tx_pkt);
+        net_tx_pkt_update_ip_checksums(s->tx_pkt);
         VMW_PKPRN("GSO offload requested.");
         break;
 
@@ -590,12 +593,12 @@ static void
 vmxnet3_on_tx_done_update_stats(VMXNET3State *s, int qidx,
     Vmxnet3PktStatus status)
 {
-    size_t tot_len = vmxnet_tx_pkt_get_total_len(s->tx_pkt);
+    size_t tot_len = net_tx_pkt_get_total_len(s->tx_pkt);
     struct UPT1_TxStats *stats = &s->txq_descr[qidx].txq_stats;
 
     switch (status) {
     case VMXNET3_PKT_STATUS_OK:
-        switch (vmxnet_tx_pkt_get_packet_type(s->tx_pkt)) {
+        switch (net_tx_pkt_get_packet_type(s->tx_pkt)) {
         case ETH_PKT_BCAST:
             stats->bcastPktsTxOK++;
             stats->bcastBytesTxOK += tot_len;
@@ -643,7 +646,7 @@ vmxnet3_on_rx_done_update_stats(VMXNET3State *s,
                                 Vmxnet3PktStatus status)
 {
     struct UPT1_RxStats *stats = &s->rxq_descr[qidx].rxq_stats;
-    size_t tot_len = vmxnet_rx_pkt_get_total_len(s->rx_pkt);
+    size_t tot_len = net_rx_pkt_get_total_len(s->rx_pkt);
 
     switch (status) {
     case VMXNET3_PKT_STATUS_OUT_OF_BUF:
@@ -654,7 +657,7 @@ vmxnet3_on_rx_done_update_stats(VMXNET3State *s,
         stats->pktsRxError++;
         break;
     case VMXNET3_PKT_STATUS_OK:
-        switch (vmxnet_rx_pkt_get_packet_type(s->rx_pkt)) {
+        switch (net_rx_pkt_get_packet_type(s->rx_pkt)) {
         case ETH_PKT_BCAST:
             stats->bcastPktsRxOK++;
             stats->bcastBytesRxOK += tot_len;
@@ -688,13 +691,14 @@ vmxnet3_pop_next_tx_descr(VMXNET3State *s,
                           uint32_t *descr_idx)
 {
     Vmxnet3Ring *ring = &s->txq_descr[qidx].tx_ring;
+    PCIDevice *d = PCI_DEVICE(s);
 
-    vmxnet3_ring_read_curr_cell(ring, txd);
+    vmxnet3_ring_read_curr_cell(d, ring, txd);
     if (txd->gen == vmxnet3_ring_curr_gen(ring)) {
         /* Only read after generation field verification */
         smp_rmb();
         /* Re-read to be sure we got the latest version */
-        vmxnet3_ring_read_curr_cell(ring, txd);
+        vmxnet3_ring_read_curr_cell(d, ring, txd);
         VMXNET3_RING_DUMP(VMW_RIPRN, "TX", qidx, ring);
         *descr_idx = vmxnet3_ring_curr_cell_idx(ring);
         vmxnet3_inc_tx_consumption_counter(s, qidx);
@@ -715,10 +719,10 @@ vmxnet3_send_packet(VMXNET3State *s, uint32_t qidx)
     }
 
     /* debug prints */
-    vmxnet3_dump_virt_hdr(vmxnet_tx_pkt_get_vhdr(s->tx_pkt));
-    vmxnet_tx_pkt_dump(s->tx_pkt);
+    vmxnet3_dump_virt_hdr(net_tx_pkt_get_vhdr(s->tx_pkt));
+    net_tx_pkt_dump(s->tx_pkt);
 
-    if (!vmxnet_tx_pkt_send(s->tx_pkt, qemu_get_queue(s->nic))) {
+    if (!net_tx_pkt_send(s->tx_pkt, qemu_get_queue(s->nic))) {
         status = VMXNET3_PKT_STATUS_DISCARD;
         goto func_exit;
     }
@@ -746,7 +750,7 @@ static void vmxnet3_process_tx_queue(VMXNET3State *s, int qidx)
             data_len = (txd.len > 0) ? txd.len : VMXNET3_MAX_TX_BUF_SIZE;
             data_pa = le64_to_cpu(txd.addr);
 
-            if (!vmxnet_tx_pkt_add_raw_fragment(s->tx_pkt,
+            if (!net_tx_pkt_add_raw_fragment(s->tx_pkt,
                                                 data_pa,
                                                 data_len)) {
                 s->skip_current_tx_pkt = true;
@@ -759,9 +763,9 @@ static void vmxnet3_process_tx_queue(VMXNET3State *s, int qidx)
         }
 
         if (txd.eop) {
-            if (!s->skip_current_tx_pkt && vmxnet_tx_pkt_parse(s->tx_pkt)) {
+            if (!s->skip_current_tx_pkt && net_tx_pkt_parse(s->tx_pkt)) {
                 if (s->needs_vlan) {
-                    vmxnet_tx_pkt_setup_vlan_header(s->tx_pkt, s->tci);
+                    net_tx_pkt_setup_vlan_header(s->tx_pkt, s->tci);
                 }
 
                 vmxnet3_send_packet(s, qidx);
@@ -773,7 +777,7 @@ static void vmxnet3_process_tx_queue(VMXNET3State *s, int qidx)
             vmxnet3_complete_packet(s, qidx, txd_idx);
             s->tx_sop = true;
             s->skip_current_tx_pkt = false;
-            vmxnet_tx_pkt_reset(s->tx_pkt);
+            net_tx_pkt_reset(s->tx_pkt);
         }
     }
 }
@@ -782,9 +786,11 @@ static inline void
 vmxnet3_read_next_rx_descr(VMXNET3State *s, int qidx, int ridx,
                            struct Vmxnet3_RxDesc *dbuf, uint32_t *didx)
 {
+    PCIDevice *d = PCI_DEVICE(s);
+
     Vmxnet3Ring *ring = &s->rxq_descr[qidx].rx_ring[ridx];
     *didx = vmxnet3_ring_curr_cell_idx(ring);
-    vmxnet3_ring_read_curr_cell(ring, dbuf);
+    vmxnet3_ring_read_curr_cell(d, ring, dbuf);
 }
 
 static inline uint8_t
@@ -802,7 +808,8 @@ vmxnet3_pop_rxc_descr(VMXNET3State *s, int qidx, uint32_t *descr_gen)
     hwaddr daddr =
         vmxnet3_ring_curr_cell_pa(&s->rxq_descr[qidx].comp_ring);
 
-    cpu_physical_memory_read(daddr, &rxcd, sizeof(struct Vmxnet3_RxCompDesc));
+    pci_dma_read(PCI_DEVICE(s),
+                 daddr, &rxcd, sizeof(struct Vmxnet3_RxCompDesc));
     ring_gen = vmxnet3_ring_curr_gen(&s->rxq_descr[qidx].comp_ring);
 
     if (rxcd.gen != ring_gen) {
@@ -928,7 +935,7 @@ vmxnet3_get_next_rx_descr(VMXNET3State *s, bool is_head,
  * in the case the host OS performs forwarding, it will forward an
  * incorrectly checksummed packet.
  */
-static void vmxnet3_rx_need_csum_calculate(struct VmxnetRxPkt *pkt,
+static void vmxnet3_rx_need_csum_calculate(struct NetRxPkt *pkt,
                                            const void *pkt_data,
                                            size_t pkt_len)
 {
@@ -937,16 +944,16 @@ static void vmxnet3_rx_need_csum_calculate(struct VmxnetRxPkt *pkt,
     uint8_t *data;
     int len;
 
-    if (!vmxnet_rx_pkt_has_virt_hdr(pkt)) {
+    if (!net_rx_pkt_has_virt_hdr(pkt)) {
         return;
     }
 
-    vhdr = vmxnet_rx_pkt_get_vhdr(pkt);
+    vhdr = net_rx_pkt_get_vhdr(pkt);
     if (!VMXNET_FLAG_IS_SET(vhdr->flags, VIRTIO_NET_HDR_F_NEEDS_CSUM)) {
         return;
     }
 
-    vmxnet_rx_pkt_get_protocols(pkt, &isip4, &isip6, &isudp, &istcp);
+    net_rx_pkt_get_protocols(pkt, &isip4, &isip6, &isudp, &istcp);
     if (!(isip4 || isip6) || !(istcp || isudp)) {
         return;
     }
@@ -970,7 +977,7 @@ static void vmxnet3_rx_need_csum_calculate(struct VmxnetRxPkt *pkt,
     vhdr->flags |= VIRTIO_NET_HDR_F_DATA_VALID;
 }
 
-static void vmxnet3_rx_update_descr(struct VmxnetRxPkt *pkt,
+static void vmxnet3_rx_update_descr(struct NetRxPkt *pkt,
     struct Vmxnet3_RxCompDesc *rxcd)
 {
     int csum_ok, is_gso;
@@ -978,16 +985,16 @@ static void vmxnet3_rx_update_descr(struct VmxnetRxPkt *pkt,
     struct virtio_net_hdr *vhdr;
     uint8_t offload_type;
 
-    if (vmxnet_rx_pkt_is_vlan_stripped(pkt)) {
+    if (net_rx_pkt_is_vlan_stripped(pkt)) {
         rxcd->ts = 1;
-        rxcd->tci = vmxnet_rx_pkt_get_vlan_tag(pkt);
+        rxcd->tci = net_rx_pkt_get_vlan_tag(pkt);
     }
 
-    if (!vmxnet_rx_pkt_has_virt_hdr(pkt)) {
+    if (!net_rx_pkt_has_virt_hdr(pkt)) {
         goto nocsum;
     }
 
-    vhdr = vmxnet_rx_pkt_get_vhdr(pkt);
+    vhdr = net_rx_pkt_get_vhdr(pkt);
     /*
      * Checksum is valid when lower level tell so or when lower level
      * requires checksum offload telling that packet produced/bridged
@@ -1004,7 +1011,7 @@ static void vmxnet3_rx_update_descr(struct VmxnetRxPkt *pkt,
         goto nocsum;
     }
 
-    vmxnet_rx_pkt_get_protocols(pkt, &isip4, &isip6, &isudp, &istcp);
+    net_rx_pkt_get_protocols(pkt, &isip4, &isip6, &isudp, &istcp);
     if ((!istcp && !isudp) || (!isip4 && !isip6)) {
         goto nocsum;
     }
@@ -1023,10 +1030,11 @@ nocsum:
 }
 
 static void
-vmxnet3_physical_memory_writev(const struct iovec *iov,
-                               size_t start_iov_off,
-                               hwaddr target_addr,
-                               size_t bytes_to_copy)
+vmxnet3_pci_dma_writev(PCIDevice *pci_dev,
+                       const struct iovec *iov,
+                       size_t start_iov_off,
+                       hwaddr target_addr,
+                       size_t bytes_to_copy)
 {
     size_t curr_off = 0;
     size_t copied = 0;
@@ -1036,9 +1044,9 @@ vmxnet3_physical_memory_writev(const struct iovec *iov,
             size_t chunk_len =
                 MIN((curr_off + iov->iov_len) - start_iov_off, bytes_to_copy);
 
-            cpu_physical_memory_write(target_addr + copied,
-                                      iov->iov_base + start_iov_off - curr_off,
-                                      chunk_len);
+            pci_dma_write(pci_dev, target_addr + copied,
+                          iov->iov_base + start_iov_off - curr_off,
+                          chunk_len);
 
             copied += chunk_len;
             start_iov_off += chunk_len;
@@ -1055,6 +1063,7 @@ static bool
 vmxnet3_indicate_packet(VMXNET3State *s)
 {
     struct Vmxnet3_RxDesc rxd;
+    PCIDevice *d = PCI_DEVICE(s);
     bool is_head = true;
     uint32_t rxd_idx;
     uint32_t rx_ridx = 0;
@@ -1063,13 +1072,13 @@ vmxnet3_indicate_packet(VMXNET3State *s)
     uint32_t new_rxcd_gen = VMXNET3_INIT_GEN;
     hwaddr new_rxcd_pa = 0;
     hwaddr ready_rxcd_pa = 0;
-    struct iovec *data = vmxnet_rx_pkt_get_iovec(s->rx_pkt);
+    struct iovec *data = net_rx_pkt_get_iovec(s->rx_pkt);
     size_t bytes_copied = 0;
-    size_t bytes_left = vmxnet_rx_pkt_get_total_len(s->rx_pkt);
+    size_t bytes_left = net_rx_pkt_get_total_len(s->rx_pkt);
     uint16_t num_frags = 0;
     size_t chunk_size;
 
-    vmxnet_rx_pkt_dump(s->rx_pkt);
+    net_rx_pkt_dump(s->rx_pkt);
 
     while (bytes_left > 0) {
 
@@ -1088,15 +1097,15 @@ vmxnet3_indicate_packet(VMXNET3State *s)
         }
 
         chunk_size = MIN(bytes_left, rxd.len);
-        vmxnet3_physical_memory_writev(data, bytes_copied,
-                                       le64_to_cpu(rxd.addr), chunk_size);
+        vmxnet3_pci_dma_writev(d, data, bytes_copied,
+                               le64_to_cpu(rxd.addr), chunk_size);
         bytes_copied += chunk_size;
         bytes_left -= chunk_size;
 
         vmxnet3_dump_rx_descr(&rxd);
 
         if (ready_rxcd_pa != 0) {
-            cpu_physical_memory_write(ready_rxcd_pa, &rxcd, sizeof(rxcd));
+            pci_dma_write(d, ready_rxcd_pa, &rxcd, sizeof(rxcd));
         }
 
         memset(&rxcd, 0, sizeof(struct Vmxnet3_RxCompDesc));
@@ -1127,7 +1136,8 @@ vmxnet3_indicate_packet(VMXNET3State *s)
     if (ready_rxcd_pa != 0) {
         rxcd.eop = 1;
         rxcd.err = (bytes_left != 0);
-        cpu_physical_memory_write(ready_rxcd_pa, &rxcd, sizeof(rxcd));
+
+        pci_dma_write(d, ready_rxcd_pa, &rxcd, sizeof(rxcd));
 
         /* Flush RX descriptor changes */
         smp_wmb();
@@ -1157,6 +1167,10 @@ vmxnet3_io_bar0_write(void *opaque, hwaddr addr,
                       uint64_t val, unsigned size)
 {
     VMXNET3State *s = opaque;
+
+    if (!s->device_active) {
+        return;
+    }
 
     if (VMW_IS_MULTIREG_ADDR(addr, VMXNET3_REG_TXPROD,
                         VMXNET3_DEVICE_MAX_TX_QUEUES, VMXNET3_REG_ALIGN)) {
@@ -1219,16 +1233,16 @@ static void vmxnet3_reset_interrupt_states(VMXNET3State *s)
 static void vmxnet3_reset_mac(VMXNET3State *s)
 {
     memcpy(&s->conf.macaddr.a, &s->perm_mac.a, sizeof(s->perm_mac.a));
-    VMW_CFPRN("MAC address set to: " VMXNET_MF, VMXNET_MA(s->conf.macaddr.a));
+    VMW_CFPRN("MAC address set to: " MAC_FMT, MAC_ARG(s->conf.macaddr.a));
 }
 
 static void vmxnet3_deactivate_device(VMXNET3State *s)
 {
     if (s->device_active) {
         VMW_CBPRN("Deactivating vmxnet3...");
-        vmxnet_tx_pkt_reset(s->tx_pkt);
-        vmxnet_tx_pkt_uninit(s->tx_pkt);
-        vmxnet_rx_pkt_uninit(s->rx_pkt);
+        net_tx_pkt_reset(s->tx_pkt);
+        net_tx_pkt_uninit(s->tx_pkt);
+        net_rx_pkt_uninit(s->rx_pkt);
         s->device_active = false;
     }
 }
@@ -1246,7 +1260,9 @@ static void vmxnet3_reset(VMXNET3State *s)
 
 static void vmxnet3_update_rx_mode(VMXNET3State *s)
 {
-    s->rx_mode = VMXNET3_READ_DRV_SHARED32(s->drv_shmem,
+    PCIDevice *d = PCI_DEVICE(s);
+
+    s->rx_mode = VMXNET3_READ_DRV_SHARED32(d, s->drv_shmem,
                                            devRead.rxFilterConf.rxMode);
     VMW_CFPRN("RX mode: 0x%08X", s->rx_mode);
 }
@@ -1254,9 +1270,10 @@ static void vmxnet3_update_rx_mode(VMXNET3State *s)
 static void vmxnet3_update_vlan_filters(VMXNET3State *s)
 {
     int i;
+    PCIDevice *d = PCI_DEVICE(s);
 
     /* Copy configuration from shared memory */
-    VMXNET3_READ_DRV_SHARED(s->drv_shmem,
+    VMXNET3_READ_DRV_SHARED(d, s->drv_shmem,
                             devRead.rxFilterConf.vfTable,
                             s->vlan_table,
                             sizeof(s->vlan_table));
@@ -1277,8 +1294,10 @@ static void vmxnet3_update_vlan_filters(VMXNET3State *s)
 
 static void vmxnet3_update_mcast_filters(VMXNET3State *s)
 {
+    PCIDevice *d = PCI_DEVICE(s);
+
     uint16_t list_bytes =
-        VMXNET3_READ_DRV_SHARED16(s->drv_shmem,
+        VMXNET3_READ_DRV_SHARED16(d, s->drv_shmem,
                                   devRead.rxFilterConf.mfTableLen);
 
     s->mcast_list_len = list_bytes / sizeof(s->mcast_list[0]);
@@ -1295,13 +1314,14 @@ static void vmxnet3_update_mcast_filters(VMXNET3State *s)
     } else {
         int i;
         hwaddr mcast_list_pa =
-            VMXNET3_READ_DRV_SHARED64(s->drv_shmem,
+            VMXNET3_READ_DRV_SHARED64(d, s->drv_shmem,
                                       devRead.rxFilterConf.mfTablePA);
 
-        cpu_physical_memory_read(mcast_list_pa, s->mcast_list, list_bytes);
+        pci_dma_read(d, mcast_list_pa, s->mcast_list, list_bytes);
+
         VMW_CFPRN("Current multicast list len is %d:", s->mcast_list_len);
         for (i = 0; i < s->mcast_list_len; i++) {
-            VMW_CFPRN("\t" VMXNET_MF, VMXNET_MA(s->mcast_list[i].a));
+            VMW_CFPRN("\t" MAC_FMT, MAC_ARG(s->mcast_list[i].a));
         }
     }
 }
@@ -1323,28 +1343,32 @@ static uint32_t vmxnet3_get_interrupt_config(VMXNET3State *s)
 static void vmxnet3_fill_stats(VMXNET3State *s)
 {
     int i;
+    PCIDevice *d = PCI_DEVICE(s);
 
     if (!s->device_active)
         return;
 
     for (i = 0; i < s->txq_num; i++) {
-        cpu_physical_memory_write(s->txq_descr[i].tx_stats_pa,
-                                  &s->txq_descr[i].txq_stats,
-                                  sizeof(s->txq_descr[i].txq_stats));
+        pci_dma_write(d,
+                      s->txq_descr[i].tx_stats_pa,
+                      &s->txq_descr[i].txq_stats,
+                      sizeof(s->txq_descr[i].txq_stats));
     }
 
     for (i = 0; i < s->rxq_num; i++) {
-        cpu_physical_memory_write(s->rxq_descr[i].rx_stats_pa,
-                                  &s->rxq_descr[i].rxq_stats,
-                                  sizeof(s->rxq_descr[i].rxq_stats));
+        pci_dma_write(d,
+                      s->rxq_descr[i].rx_stats_pa,
+                      &s->rxq_descr[i].rxq_stats,
+                      sizeof(s->rxq_descr[i].rxq_stats));
     }
 }
 
 static void vmxnet3_adjust_by_guest_type(VMXNET3State *s)
 {
     struct Vmxnet3_GOSInfo gos;
+    PCIDevice *d = PCI_DEVICE(s);
 
-    VMXNET3_READ_DRV_SHARED(s->drv_shmem, devRead.misc.driverInfo.gos,
+    VMXNET3_READ_DRV_SHARED(d, s->drv_shmem, devRead.misc.driverInfo.gos,
                             &gos, sizeof(gos));
     s->rx_packets_compound =
         (gos.gosType == VMXNET3_GOS_TYPE_WIN) ? false : true;
@@ -1364,13 +1388,14 @@ vmxnet3_dump_conf_descr(const char *name,
 static void vmxnet3_update_pm_state(VMXNET3State *s)
 {
     struct Vmxnet3_VariableLenConfDesc pm_descr;
+    PCIDevice *d = PCI_DEVICE(s);
 
     pm_descr.confLen =
-        VMXNET3_READ_DRV_SHARED32(s->drv_shmem, devRead.pmConfDesc.confLen);
+        VMXNET3_READ_DRV_SHARED32(d, s->drv_shmem, devRead.pmConfDesc.confLen);
     pm_descr.confVer =
-        VMXNET3_READ_DRV_SHARED32(s->drv_shmem, devRead.pmConfDesc.confVer);
+        VMXNET3_READ_DRV_SHARED32(d, s->drv_shmem, devRead.pmConfDesc.confVer);
     pm_descr.confPA =
-        VMXNET3_READ_DRV_SHARED64(s->drv_shmem, devRead.pmConfDesc.confPA);
+        VMXNET3_READ_DRV_SHARED64(d, s->drv_shmem, devRead.pmConfDesc.confPA);
 
     vmxnet3_dump_conf_descr("PM State", &pm_descr);
 }
@@ -1379,8 +1404,9 @@ static void vmxnet3_update_features(VMXNET3State *s)
 {
     uint32_t guest_features;
     int rxcso_supported;
+    PCIDevice *d = PCI_DEVICE(s);
 
-    guest_features = VMXNET3_READ_DRV_SHARED32(s->drv_shmem,
+    guest_features = VMXNET3_READ_DRV_SHARED32(d, s->drv_shmem,
                                                devRead.misc.uptFeatures);
 
     rxcso_supported = VMXNET_FLAG_IS_SET(guest_features, UPT1_F_RXCSUM);
@@ -1402,8 +1428,8 @@ static void vmxnet3_update_features(VMXNET3State *s)
 
 static bool vmxnet3_verify_intx(VMXNET3State *s, int intx)
 {
-    return s->msix_used || s->msi_used || (intx ==
-           (pci_get_byte(s->parent_obj.config + PCI_INTERRUPT_PIN) - 1));
+    return s->msix_used || msi_enabled(PCI_DEVICE(s))
+        || intx == pci_get_byte(s->parent_obj.config + PCI_INTERRUPT_PIN) - 1;
 }
 
 static void vmxnet3_validate_interrupt_idx(bool is_msix, int idx)
@@ -1455,12 +1481,13 @@ static void vmxnet3_activate_device(VMXNET3State *s)
 {
     int i;
     static const uint32_t VMXNET3_DEF_TX_THRESHOLD = 1;
+    PCIDevice *d = PCI_DEVICE(s);
     hwaddr qdescr_table_pa;
     uint64_t pa;
     uint32_t size;
 
     /* Verify configuration consistency */
-    if (!vmxnet3_verify_driver_magic(s->drv_shmem)) {
+    if (!vmxnet3_verify_driver_magic(d, s->drv_shmem)) {
         VMW_ERPRN("Device configuration received from driver is invalid");
         return;
     }
@@ -1476,11 +1503,11 @@ static void vmxnet3_activate_device(VMXNET3State *s)
     vmxnet3_update_pm_state(s);
     vmxnet3_setup_rx_filtering(s);
     /* Cache fields from shared memory */
-    s->mtu = VMXNET3_READ_DRV_SHARED32(s->drv_shmem, devRead.misc.mtu);
+    s->mtu = VMXNET3_READ_DRV_SHARED32(d, s->drv_shmem, devRead.misc.mtu);
     VMW_CFPRN("MTU is %u", s->mtu);
 
     s->max_rx_frags =
-        VMXNET3_READ_DRV_SHARED16(s->drv_shmem, devRead.misc.maxNumRxSG);
+        VMXNET3_READ_DRV_SHARED16(d, s->drv_shmem, devRead.misc.maxNumRxSG);
 
     if (s->max_rx_frags == 0) {
         s->max_rx_frags = 1;
@@ -1489,24 +1516,24 @@ static void vmxnet3_activate_device(VMXNET3State *s)
     VMW_CFPRN("Max RX fragments is %u", s->max_rx_frags);
 
     s->event_int_idx =
-        VMXNET3_READ_DRV_SHARED8(s->drv_shmem, devRead.intrConf.eventIntrIdx);
+        VMXNET3_READ_DRV_SHARED8(d, s->drv_shmem, devRead.intrConf.eventIntrIdx);
     assert(vmxnet3_verify_intx(s, s->event_int_idx));
     VMW_CFPRN("Events interrupt line is %u", s->event_int_idx);
 
     s->auto_int_masking =
-        VMXNET3_READ_DRV_SHARED8(s->drv_shmem, devRead.intrConf.autoMask);
+        VMXNET3_READ_DRV_SHARED8(d, s->drv_shmem, devRead.intrConf.autoMask);
     VMW_CFPRN("Automatic interrupt masking is %d", (int)s->auto_int_masking);
 
     s->txq_num =
-        VMXNET3_READ_DRV_SHARED8(s->drv_shmem, devRead.misc.numTxQueues);
+        VMXNET3_READ_DRV_SHARED8(d, s->drv_shmem, devRead.misc.numTxQueues);
     s->rxq_num =
-        VMXNET3_READ_DRV_SHARED8(s->drv_shmem, devRead.misc.numRxQueues);
+        VMXNET3_READ_DRV_SHARED8(d, s->drv_shmem, devRead.misc.numRxQueues);
 
     VMW_CFPRN("Number of TX/RX queues %u/%u", s->txq_num, s->rxq_num);
     vmxnet3_validate_queues(s);
 
     qdescr_table_pa =
-        VMXNET3_READ_DRV_SHARED64(s->drv_shmem, devRead.misc.queueDescPA);
+        VMXNET3_READ_DRV_SHARED64(d, s->drv_shmem, devRead.misc.queueDescPA);
     VMW_CFPRN("TX queues descriptors table is at 0x%" PRIx64, qdescr_table_pa);
 
     /*
@@ -1522,25 +1549,25 @@ static void vmxnet3_activate_device(VMXNET3State *s)
 
         /* Read interrupt number for this TX queue */
         s->txq_descr[i].intr_idx =
-            VMXNET3_READ_TX_QUEUE_DESCR8(qdescr_pa, conf.intrIdx);
+            VMXNET3_READ_TX_QUEUE_DESCR8(d, qdescr_pa, conf.intrIdx);
         assert(vmxnet3_verify_intx(s, s->txq_descr[i].intr_idx));
 
         VMW_CFPRN("TX Queue %d interrupt: %d", i, s->txq_descr[i].intr_idx);
 
         /* Read rings memory locations for TX queues */
-        pa = VMXNET3_READ_TX_QUEUE_DESCR64(qdescr_pa, conf.txRingBasePA);
-        size = VMXNET3_READ_TX_QUEUE_DESCR32(qdescr_pa, conf.txRingSize);
+        pa = VMXNET3_READ_TX_QUEUE_DESCR64(d, qdescr_pa, conf.txRingBasePA);
+        size = VMXNET3_READ_TX_QUEUE_DESCR32(d, qdescr_pa, conf.txRingSize);
 
-        vmxnet3_ring_init(&s->txq_descr[i].tx_ring, pa, size,
+        vmxnet3_ring_init(d, &s->txq_descr[i].tx_ring, pa, size,
                           sizeof(struct Vmxnet3_TxDesc), false);
         VMXNET3_RING_DUMP(VMW_CFPRN, "TX", i, &s->txq_descr[i].tx_ring);
 
         s->max_tx_frags += size;
 
         /* TXC ring */
-        pa = VMXNET3_READ_TX_QUEUE_DESCR64(qdescr_pa, conf.compRingBasePA);
-        size = VMXNET3_READ_TX_QUEUE_DESCR32(qdescr_pa, conf.compRingSize);
-        vmxnet3_ring_init(&s->txq_descr[i].comp_ring, pa, size,
+        pa = VMXNET3_READ_TX_QUEUE_DESCR64(d, qdescr_pa, conf.compRingBasePA);
+        size = VMXNET3_READ_TX_QUEUE_DESCR32(d, qdescr_pa, conf.compRingSize);
+        vmxnet3_ring_init(d, &s->txq_descr[i].comp_ring, pa, size,
                           sizeof(struct Vmxnet3_TxCompDesc), true);
         VMXNET3_RING_DUMP(VMW_CFPRN, "TXC", i, &s->txq_descr[i].comp_ring);
 
@@ -1551,15 +1578,16 @@ static void vmxnet3_activate_device(VMXNET3State *s)
                sizeof(s->txq_descr[i].txq_stats));
 
         /* Fill device-managed parameters for queues */
-        VMXNET3_WRITE_TX_QUEUE_DESCR32(qdescr_pa,
+        VMXNET3_WRITE_TX_QUEUE_DESCR32(d, qdescr_pa,
                                        ctrl.txThreshold,
                                        VMXNET3_DEF_TX_THRESHOLD);
     }
 
     /* Preallocate TX packet wrapper */
     VMW_CFPRN("Max TX fragments is %u", s->max_tx_frags);
-    vmxnet_tx_pkt_init(&s->tx_pkt, s->max_tx_frags, s->peer_has_vhdr);
-    vmxnet_rx_pkt_init(&s->rx_pkt, s->peer_has_vhdr);
+    net_tx_pkt_init(&s->tx_pkt, PCI_DEVICE(s),
+                    s->max_tx_frags, s->peer_has_vhdr);
+    net_rx_pkt_init(&s->rx_pkt, s->peer_has_vhdr);
 
     /* Read rings memory locations for RX queues */
     for (i = 0; i < s->rxq_num; i++) {
@@ -1570,7 +1598,7 @@ static void vmxnet3_activate_device(VMXNET3State *s)
 
         /* Read interrupt number for this RX queue */
         s->rxq_descr[i].intr_idx =
-            VMXNET3_READ_TX_QUEUE_DESCR8(qd_pa, conf.intrIdx);
+            VMXNET3_READ_TX_QUEUE_DESCR8(d, qd_pa, conf.intrIdx);
         assert(vmxnet3_verify_intx(s, s->rxq_descr[i].intr_idx));
 
         VMW_CFPRN("RX Queue %d interrupt: %d", i, s->rxq_descr[i].intr_idx);
@@ -1578,18 +1606,18 @@ static void vmxnet3_activate_device(VMXNET3State *s)
         /* Read rings memory locations */
         for (j = 0; j < VMXNET3_RX_RINGS_PER_QUEUE; j++) {
             /* RX rings */
-            pa = VMXNET3_READ_RX_QUEUE_DESCR64(qd_pa, conf.rxRingBasePA[j]);
-            size = VMXNET3_READ_RX_QUEUE_DESCR32(qd_pa, conf.rxRingSize[j]);
-            vmxnet3_ring_init(&s->rxq_descr[i].rx_ring[j], pa, size,
+            pa = VMXNET3_READ_RX_QUEUE_DESCR64(d, qd_pa, conf.rxRingBasePA[j]);
+            size = VMXNET3_READ_RX_QUEUE_DESCR32(d, qd_pa, conf.rxRingSize[j]);
+            vmxnet3_ring_init(d, &s->rxq_descr[i].rx_ring[j], pa, size,
                               sizeof(struct Vmxnet3_RxDesc), false);
             VMW_CFPRN("RX queue %d:%d: Base: %" PRIx64 ", Size: %d",
                       i, j, pa, size);
         }
 
         /* RXC ring */
-        pa = VMXNET3_READ_RX_QUEUE_DESCR64(qd_pa, conf.compRingBasePA);
-        size = VMXNET3_READ_RX_QUEUE_DESCR32(qd_pa, conf.compRingSize);
-        vmxnet3_ring_init(&s->rxq_descr[i].comp_ring, pa, size,
+        pa = VMXNET3_READ_RX_QUEUE_DESCR64(d, qd_pa, conf.compRingBasePA);
+        size = VMXNET3_READ_RX_QUEUE_DESCR32(d, qd_pa, conf.compRingSize);
+        vmxnet3_ring_init(d, &s->rxq_descr[i].comp_ring, pa, size,
                           sizeof(struct Vmxnet3_RxCompDesc), true);
         VMW_CFPRN("RXC queue %d: Base: %" PRIx64 ", Size: %d", i, pa, size);
 
@@ -1756,19 +1784,21 @@ static uint64_t vmxnet3_get_command_status(VMXNET3State *s)
 static void vmxnet3_set_events(VMXNET3State *s, uint32_t val)
 {
     uint32_t events;
+    PCIDevice *d = PCI_DEVICE(s);
 
     VMW_CBPRN("Setting events: 0x%x", val);
-    events = VMXNET3_READ_DRV_SHARED32(s->drv_shmem, ecr) | val;
-    VMXNET3_WRITE_DRV_SHARED32(s->drv_shmem, ecr, events);
+    events = VMXNET3_READ_DRV_SHARED32(d, s->drv_shmem, ecr) | val;
+    VMXNET3_WRITE_DRV_SHARED32(d, s->drv_shmem, ecr, events);
 }
 
 static void vmxnet3_ack_events(VMXNET3State *s, uint32_t val)
 {
+    PCIDevice *d = PCI_DEVICE(s);
     uint32_t events;
 
     VMW_CBPRN("Clearing events: 0x%x", val);
-    events = VMXNET3_READ_DRV_SHARED32(s->drv_shmem, ecr) & ~val;
-    VMXNET3_WRITE_DRV_SHARED32(s->drv_shmem, ecr, events);
+    events = VMXNET3_READ_DRV_SHARED32(d, s->drv_shmem, ecr) & ~val;
+    VMXNET3_WRITE_DRV_SHARED32(d, s->drv_shmem, ecr, events);
 }
 
 static void
@@ -1965,7 +1995,7 @@ vmxnet3_rx_filter_may_indicate(VMXNET3State *s, const void *data,
         return false;
     }
 
-    switch (vmxnet_rx_pkt_get_packet_type(s->rx_pkt)) {
+    switch (net_rx_pkt_get_packet_type(s->rx_pkt)) {
     case ETH_PKT_UCAST:
         if (!VMXNET_FLAG_IS_SET(s->rx_mode, VMXNET3_RXM_UCAST)) {
             return false;
@@ -2013,7 +2043,7 @@ vmxnet3_receive(NetClientState *nc, const uint8_t *buf, size_t size)
     }
 
     if (s->peer_has_vhdr) {
-        vmxnet_rx_pkt_set_vhdr(s->rx_pkt, (struct virtio_net_hdr *)buf);
+        net_rx_pkt_set_vhdr(s->rx_pkt, (struct virtio_net_hdr *)buf);
         buf += sizeof(struct virtio_net_hdr);
         size -= sizeof(struct virtio_net_hdr);
     }
@@ -2026,13 +2056,13 @@ vmxnet3_receive(NetClientState *nc, const uint8_t *buf, size_t size)
         size = sizeof(min_buf);
     }
 
-    vmxnet_rx_pkt_set_packet_type(s->rx_pkt,
+    net_rx_pkt_set_packet_type(s->rx_pkt,
         get_eth_packet_type(PKT_GET_ETH_HDR(buf)));
 
     if (vmxnet3_rx_filter_may_indicate(s, buf, size)) {
-        vmxnet_rx_pkt_set_protocols(s->rx_pkt, buf, size);
+        net_rx_pkt_set_protocols(s->rx_pkt, buf, size);
         vmxnet3_rx_need_csum_calculate(s->rx_pkt, buf, size);
-        vmxnet_rx_pkt_attach_data(s->rx_pkt, buf, size, s->rx_vlan_stripping);
+        net_rx_pkt_attach_data(s->rx_pkt, buf, size, s->rx_vlan_stripping);
         bytes_indicated = vmxnet3_indicate_packet(s) ? size : -1;
         if (bytes_indicated < size) {
             VMW_PKPRN("RX: %zu of %zu bytes indicated", bytes_indicated, size);
@@ -2062,7 +2092,7 @@ static void vmxnet3_set_link_status(NetClientState *nc)
 }
 
 static NetClientInfo net_vmxnet3_info = {
-        .type = NET_CLIENT_OPTIONS_KIND_NIC,
+        .type = NET_CLIENT_DRIVER_NIC,
         .size = sizeof(NICState),
         .receive = vmxnet3_receive,
         .link_status_changed = vmxnet3_set_link_status,
@@ -2102,7 +2132,7 @@ static void vmxnet3_net_init(VMXNET3State *s)
 
     s->link_status_and_speed = VMXNET3_LINK_SPEED | VMXNET3_LINK_STATUS_UP;
 
-    VMW_CFPRN("Permanent MAC: " VMXNET_MF, VMXNET_MA(s->perm_mac.a));
+    VMW_CFPRN("Permanent MAC: " MAC_FMT, MAC_ARG(s->perm_mac.a));
 
     s->nic = qemu_new_nic(&net_vmxnet3_info, &s->conf,
                           object_get_typename(OBJECT(s)),
@@ -2189,35 +2219,12 @@ vmxnet3_cleanup_msix(VMXNET3State *s)
     }
 }
 
-#define VMXNET3_USE_64BIT         (true)
-#define VMXNET3_PER_VECTOR_MASK   (false)
-
-static bool
-vmxnet3_init_msi(VMXNET3State *s)
-{
-    PCIDevice *d = PCI_DEVICE(s);
-    int res;
-
-    res = msi_init(d, VMXNET3_MSI_OFFSET(s), VMXNET3_MAX_NMSIX_INTRS,
-                   VMXNET3_USE_64BIT, VMXNET3_PER_VECTOR_MASK);
-    if (0 > res) {
-        VMW_WRPRN("Failed to initialize MSI, error %d", res);
-        s->msi_used = false;
-    } else {
-        s->msi_used = true;
-    }
-
-    return s->msi_used;
-}
-
 static void
 vmxnet3_cleanup_msi(VMXNET3State *s)
 {
     PCIDevice *d = PCI_DEVICE(s);
 
-    if (s->msi_used) {
-        msi_uninit(d);
-    }
+    msi_uninit(d);
 }
 
 static void
@@ -2255,9 +2262,9 @@ static const MemoryRegionOps b1_ops = {
     },
 };
 
-static uint8_t *vmxnet3_device_serial_num(VMXNET3State *s)
+static uint64_t vmxnet3_device_serial_num(VMXNET3State *s)
 {
-    static uint64_t dsn_payload;
+    uint64_t dsn_payload;
     uint8_t *dsnp = (uint8_t *)&dsn_payload;
 
     dsnp[0] = 0xfe;
@@ -2268,13 +2275,18 @@ static uint8_t *vmxnet3_device_serial_num(VMXNET3State *s)
     dsnp[5] = s->conf.macaddr.a[1];
     dsnp[6] = s->conf.macaddr.a[2];
     dsnp[7] = 0xff;
-    return dsnp;
+    return dsn_payload;
 }
+
+
+#define VMXNET3_USE_64BIT         (true)
+#define VMXNET3_PER_VECTOR_MASK   (false)
 
 static void vmxnet3_pci_realize(PCIDevice *pci_dev, Error **errp)
 {
     DeviceState *dev = DEVICE(pci_dev);
     VMXNET3State *s = VMXNET3(pci_dev);
+    int ret;
 
     VMW_CBPRN("Starting init...");
 
@@ -2298,12 +2310,14 @@ static void vmxnet3_pci_realize(PCIDevice *pci_dev, Error **errp)
     /* Interrupt pin A */
     pci_dev->config[PCI_INTERRUPT_PIN] = 0x01;
 
+    ret = msi_init(pci_dev, VMXNET3_MSI_OFFSET(s), VMXNET3_MAX_NMSIX_INTRS,
+                   VMXNET3_USE_64BIT, VMXNET3_PER_VECTOR_MASK, NULL);
+    /* Any error other than -ENOTSUP(board's MSI support is broken)
+     * is a programming error. Fall back to INTx silently on -ENOTSUP */
+    assert(!ret || ret == -ENOTSUP);
+
     if (!vmxnet3_init_msix(s)) {
         VMW_WRPRN("Failed to initialize MSI-X, configuration is inconsistent.");
-    }
-
-    if (!vmxnet3_init_msi(s)) {
-        VMW_WRPRN("Failed to initialize MSI, configuration is inconsistent.");
     }
 
     vmxnet3_net_init(s);
@@ -2313,10 +2327,8 @@ static void vmxnet3_pci_realize(PCIDevice *pci_dev, Error **errp)
             pcie_endpoint_cap_init(pci_dev, VMXNET3_EXP_EP_OFFSET);
         }
 
-        pcie_add_capability(pci_dev, PCI_EXT_CAP_ID_DSN, 0x1,
-                            VMXNET3_DSN_OFFSET, PCI_EXT_CAP_DSN_SIZEOF);
-        memcpy(pci_dev->config + VMXNET3_DSN_OFFSET + 4,
-               vmxnet3_device_serial_num(s), sizeof(uint64_t));
+        pcie_dev_ser_num_init(pci_dev, VMXNET3_DSN_OFFSET,
+                              vmxnet3_device_serial_num(s));
     }
 
     register_savevm(dev, "vmxnet3-msix", -1, 1,
@@ -2538,8 +2550,9 @@ static int vmxnet3_post_load(void *opaque, int version_id)
     VMXNET3State *s = opaque;
     PCIDevice *d = PCI_DEVICE(s);
 
-    vmxnet_tx_pkt_init(&s->tx_pkt, s->max_tx_frags, s->peer_has_vhdr);
-    vmxnet_rx_pkt_init(&s->rx_pkt, s->peer_has_vhdr);
+    net_tx_pkt_init(&s->tx_pkt, PCI_DEVICE(s),
+                    s->max_tx_frags, s->peer_has_vhdr);
+    net_rx_pkt_init(&s->rx_pkt, s->peer_has_vhdr);
 
     if (s->msix_used) {
         if  (!vmxnet3_use_msix_vectors(s, VMXNET3_MAX_INTRS)) {
@@ -2693,6 +2706,7 @@ static void vmxnet3_class_init(ObjectClass *class, void *data)
     c->vendor_id = PCI_VENDOR_ID_VMWARE;
     c->device_id = PCI_DEVICE_ID_VMWARE_VMXNET3;
     c->revision = PCI_DEVICE_ID_VMWARE_VMXNET3_REVISION;
+    c->romfile = "efi-vmxnet3.rom";
     c->class_id = PCI_CLASS_NETWORK_ETHERNET;
     c->subsystem_vendor_id = PCI_VENDOR_ID_VMWARE;
     c->subsystem_id = PCI_DEVICE_ID_VMWARE_VMXNET3;

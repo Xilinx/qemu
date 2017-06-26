@@ -584,7 +584,7 @@ static IOMMUTLBEntry cci_translate(MemoryRegion *mr, hwaddr addr,
     /* Is there anything backing this address on M1 or M2?  */
     for (i = 1; i < ARRAY_SIZE(s->as); i++) {
         bool t;
-        t = address_space_access_valid(s->as[i], addr, 4, false, *attr);
+        t = address_space_access_valid(s->as[i], addr, 4, false);
         if (i > 1) {
             assert(valid == t);
         }

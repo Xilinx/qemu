@@ -12,11 +12,9 @@
  */
 
 #include "qemu/osdep.h"
-#include <glib.h>
 #include <glib/gprintf.h>
 #include <dirent.h>
 #include <utime.h>
-#include <sys/uio.h>
 
 #include "9p-marshal.h"
 
@@ -25,11 +23,6 @@ void v9fs_string_free(V9fsString *str)
     g_free(str->data);
     str->data = NULL;
     str->size = 0;
-}
-
-void v9fs_string_null(V9fsString *str)
-{
-    v9fs_string_free(str);
 }
 
 void GCC_FMT_ATTR(2, 3)

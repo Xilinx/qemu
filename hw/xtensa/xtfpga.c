@@ -165,7 +165,7 @@ static pflash_t *xtfpga_flash_init(MemoryRegion *address_space,
     qdev_prop_set_uint32(dev, "num-blocks",
                          board->flash_size / board->flash_sector_size);
     qdev_prop_set_uint64(dev, "sector-length", board->flash_sector_size);
-    qdev_prop_set_uint8(dev, "width", 4);
+    qdev_prop_set_uint8(dev, "width", 2);
     qdev_prop_set_bit(dev, "big-endian", be);
     qdev_prop_set_string(dev, "name", "lx60.io.flash");
     qdev_init_nofail(dev);
@@ -265,7 +265,7 @@ static void lx_init(const LxBoardDesc *board, MachineState *machine)
     }
 
     if (!serial_hds[0]) {
-        serial_hds[0] = qemu_chr_new("serial0", "null", NULL);
+        serial_hds[0] = qemu_chr_new("serial0", "null");
     }
 
     serial_mm_init(system_io, 0x0d050020, 2, xtensa_get_extint(env, 0),

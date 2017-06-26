@@ -29,10 +29,11 @@
 #ifdef CONFIG_KVM
 #include <linux/kvm.h>
 #endif
+#include "exec/exec-all.h"
 #include "exec/cpu_ldst.h"
-#include "hw/watchdog/wdt_diag288.h"
 
 #if !defined(CONFIG_USER_ONLY)
+#include "hw/watchdog/wdt_diag288.h"
 #include "sysemu/cpus.h"
 #include "sysemu/sysemu.h"
 #include "hw/s390x/ebcdic.h"
@@ -125,7 +126,7 @@ static int modified_clear_reset(S390CPU *cpu)
     pause_all_vcpus();
     cpu_synchronize_all_states();
     CPU_FOREACH(t) {
-        run_on_cpu(t, s390_do_cpu_full_reset, t);
+        run_on_cpu(t, s390_do_cpu_full_reset, RUN_ON_CPU_NULL);
     }
     s390_cmma_reset();
     subsystem_reset();
@@ -144,7 +145,7 @@ static int load_normal_reset(S390CPU *cpu)
     pause_all_vcpus();
     cpu_synchronize_all_states();
     CPU_FOREACH(t) {
-        run_on_cpu(t, s390_do_cpu_reset, t);
+        run_on_cpu(t, s390_do_cpu_reset, RUN_ON_CPU_NULL);
     }
     s390_cmma_reset();
     subsystem_reset();
@@ -228,15 +229,27 @@ void handle_diag_308(CPUS390XState *env, uint64_t r1, uint64_t r3)
             return;
         }
         if (!address_space_access_valid(&address_space_memory, addr,
-                                        sizeof(IplParameterBlock), false,
-                                        MEMTXATTRS_UNSPECIFIED)) {
+                                        sizeof(IplParameterBlock), false)) {
             program_interrupt(env, PGM_ADDRESSING, ILEN_LATER_INC);
             return;
         }
-        iplb = g_malloc0(sizeof(struct IplParameterBlock));
-        cpu_physical_memory_read(addr, iplb, sizeof(struct IplParameterBlock));
+        iplb = g_malloc0(sizeof(IplParameterBlock));
+        cpu_physical_memory_read(addr, iplb, sizeof(iplb->len));
+        if (!iplb_valid_len(iplb)) {
+            env->regs[r1 + 1] = DIAG_308_RC_INVALID;
+            goto out;
+        }
+
+        cpu_physical_memory_read(addr, iplb, be32_to_cpu(iplb->len));
+
+        if (!iplb_valid_ccw(iplb) && !iplb_valid_fcp(iplb)) {
+            env->regs[r1 + 1] = DIAG_308_RC_INVALID;
+            goto out;
+        }
+
         s390_ipl_update_diag308(iplb);
         env->regs[r1 + 1] = DIAG_308_RC_OK;
+out:
         g_free(iplb);
         return;
     case 6:
@@ -245,15 +258,13 @@ void handle_diag_308(CPUS390XState *env, uint64_t r1, uint64_t r3)
             return;
         }
         if (!address_space_access_valid(&address_space_memory, addr,
-                                        sizeof(IplParameterBlock), true,
-                                        MEMTXATTRS_UNSPECIFIED)) {
+                                        sizeof(IplParameterBlock), true)) {
             program_interrupt(env, PGM_ADDRESSING, ILEN_LATER_INC);
             return;
         }
         iplb = s390_ipl_get_iplb();
         if (iplb) {
-            cpu_physical_memory_write(addr, iplb,
-                                      sizeof(struct IplParameterBlock));
+            cpu_physical_memory_write(addr, iplb, be32_to_cpu(iplb->len));
             env->regs[r1 + 1] = DIAG_308_RC_OK;
         } else {
             env->regs[r1 + 1] = DIAG_308_RC_NO_CONF;

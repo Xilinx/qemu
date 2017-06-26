@@ -24,8 +24,8 @@
  * THE SOFTWARE.
  */
 
-#ifndef __QEMU_VNC_H
-#define __QEMU_VNC_H
+#ifndef QEMU_VNC_H
+#define QEMU_VNC_H
 
 #include "qemu-common.h"
 #include "qemu/queue.h"
@@ -150,11 +150,11 @@ struct VncDisplay
     guint lsock_tag;
     QIOChannelSocket *lwebsock;
     guint lwebsock_tag;
-    bool ws_enabled;
     DisplaySurface *ds;
     DisplayChangeListener dcl;
     kbd_layout_t *kbd_layout;
     int lock_key_sync;
+    int key_delay_ms;
     QemuMutex mutex;
 
     QEMUCursor *cursor;
@@ -166,14 +166,13 @@ struct VncDisplay
 
     const char *id;
     QTAILQ_ENTRY(VncDisplay) next;
-    bool enabled;
     bool is_unix;
     char *password;
     time_t expires;
     int auth;
     int subauth; /* Used by VeNCrypt */
     int ws_auth; /* Used by websockets */
-    bool ws_tls; /* Used by websockets */
+    int ws_subauth; /* Used by websockets */
     bool lossy;
     bool non_adaptive;
     QCryptoTLSCreds *tlscreds;
@@ -308,7 +307,6 @@ struct VncState
     QEMUPutLEDEntry *led;
 
     bool abort;
-    bool initialized;
     QemuMutex output_mutex;
     QEMUBH *bh;
     Buffer jobs_buffer;
@@ -517,7 +515,7 @@ void vnc_write_u8(VncState *vs, uint8_t value);
 void vnc_flush(VncState *vs);
 void vnc_read_when(VncState *vs, VncReadEvent *func, size_t expecting);
 void vnc_disconnect_finish(VncState *vs);
-void vnc_init_state(VncState *vs);
+void vnc_start_protocol(VncState *vs);
 
 
 /* Buffer I/O functions */
@@ -576,4 +574,4 @@ int vnc_zrle_send_framebuffer_update(VncState *vs, int x, int y, int w, int h);
 int vnc_zywrle_send_framebuffer_update(VncState *vs, int x, int y, int w, int h);
 void vnc_zrle_clear(VncState *vs);
 
-#endif /* __QEMU_VNC_H */
+#endif /* QEMU_VNC_H */

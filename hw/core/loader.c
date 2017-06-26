@@ -425,7 +425,7 @@ int load_elf(const char *filename, uint64_t (*translate_fn)(void *, uint64_t),
 {
     return load_elf_as(filename, translate_fn, translate_opaque, pentry,
                        lowaddr, highaddr, big_endian, elf_machine, clear_lsb,
-                       data_swab, first_cpu->as);
+                       data_swab, NULL);
 }
 
 /* return < 0 if error, otherwise the number of bytes loaded in memory */
@@ -816,6 +816,12 @@ struct Rom {
 static FWCfgState *fw_cfg;
 static QTAILQ_HEAD(, Rom) roms = QTAILQ_HEAD_INITIALIZER(roms);
 
+static inline bool rom_order_compare(Rom *rom, Rom *item)
+{
+    return ((uintptr_t)(void *)rom->as > (uintptr_t)(void *)item->as) ||
+           (rom->as == item->as && rom->addr >= item->addr);
+}
+
 static void rom_insert(Rom *rom)
 {
     Rom *item;
@@ -828,15 +834,21 @@ static void rom_insert(Rom *rom)
      }
      */
 
+    /* The user didn't specify an address space, this is the default */
+    if (!rom->as) {
+        /* Xilinx: Use the first CPU address space instead of the
+         * &address_space_memory variable.
+         */
+        rom->as = first_cpu->as;
+    }
+
     /* List is ordered by load address in the same address space */
     QTAILQ_FOREACH(item, &roms, next) {
-        if (rom->addr >= item->addr && rom->as == item->as) {
-            QTAILQ_INSERT_AFTER(&roms, item, rom, next);
-            return;
-        } else if (rom->addr <= item->addr && rom->as == item->as) {
-            QTAILQ_INSERT_BEFORE(item, rom, next);
-            return;
+        if (rom_order_compare(rom, item)) {
+            continue;
         }
+        QTAILQ_INSERT_BEFORE(item, rom, next);
+        return;
     }
     QTAILQ_INSERT_TAIL(&roms, rom, next);
 }
@@ -973,7 +985,8 @@ err:
 
 MemoryRegion *rom_add_blob(const char *name, const void *blob, size_t len,
                    size_t max_len, hwaddr addr, const char *fw_file_name,
-                   FWCfgReadCallback fw_callback, void *callback_opaque)
+                   FWCfgReadCallback fw_callback, void *callback_opaque,
+                   AddressSpace *as)
 {
     MachineClass *mc = MACHINE_GET_CLASS(qdev_get_machine());
     Rom *rom;
@@ -981,6 +994,7 @@ MemoryRegion *rom_add_blob(const char *name, const void *blob, size_t len,
 
     rom           = g_malloc0(sizeof(*rom));
     rom->name     = g_strdup(name);
+    rom->as       = as;
     rom->addr     = addr;
     rom->romsize  = max_len ? max_len : len;
     rom->datasize = len;
@@ -1053,9 +1067,8 @@ static void rom_reset(void *unused)
             void *host = memory_region_get_ram_ptr(rom->mr);
             memcpy(host, rom->data, rom->datasize);
         } else {
-            cpu_physical_memory_write_rom(rom->as ? rom->as :
-                                                    &address_space_memory,
-                                          rom->addr, rom->data, rom->datasize);
+            cpu_physical_memory_write_rom(rom->as, rom->addr, rom->data,
+                                          rom->datasize);
         }
         if (rom->isrom) {
             /* rom needs to be written only once */
@@ -1084,15 +1097,11 @@ int rom_check_and_register_reset(void)
             continue;
         }
         if ((addr > rom->addr) && (as == rom->as)) {
-/*
- * Xilinx: Ignore overlaps as we are incorrectly detecting them.
- *           fprintf(stderr, "rom: requested regions overlap "
- *                   "(rom %s. free=0x" TARGET_FMT_plx
- *                   ", addr=0x" TARGET_FMT_plx ")\n",
- *                   rom->name, addr, rom->addr);
- *
- *           return -1;
- */
+            fprintf(stderr, "rom: requested regions overlap "
+                    "(rom %s. free=0x" TARGET_FMT_plx
+                    ", addr=0x" TARGET_FMT_plx ")\n",
+                    rom->name, addr, rom->addr);
+            /* Xilinx: Don't abort if they overlap */
         }
         addr  = rom->addr;
         addr += rom->romsize;

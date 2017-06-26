@@ -129,7 +129,7 @@ static void qemu_clock_init(QEMUClockType type)
     assert(main_loop_tlg.tl[type] == NULL);
 
     clock->type = type;
-    clock->enabled = true;
+    clock->enabled = (type == QEMU_CLOCK_VIRTUAL ? false : true);
     clock->last = INT64_MIN;
     QLIST_INIT(&clock->timerlists);
     notifier_list_init(&clock->reset_notifiers);
@@ -292,7 +292,7 @@ int qemu_timeout_ns_to_ms(int64_t ns)
     /* Always round up, because it's better to wait too long than to wait too
      * little and effectively busy-wait
      */
-    ms = (ns + SCALE_MS - 1) / SCALE_MS;
+    ms = DIV_ROUND_UP(ns, SCALE_MS);
 
     /* To avoid overflow problems, limit this to 2^31, i.e. approx 25 days */
     if (ms > (int64_t) INT32_MAX) {

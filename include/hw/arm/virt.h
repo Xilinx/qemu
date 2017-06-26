@@ -31,6 +31,7 @@
 #define QEMU_ARM_VIRT_H
 
 #include "qemu-common.h"
+#include "exec/hwaddr.h"
 
 #define NUM_GICV2M_SPIS       64
 #define NUM_VIRTIO_TRANSPORTS 32
@@ -39,6 +40,10 @@
 #define ARCH_TIMER_S_EL1_IRQ  13
 #define ARCH_TIMER_NS_EL1_IRQ 14
 #define ARCH_TIMER_NS_EL2_IRQ 10
+
+#define VIRTUAL_PMU_IRQ 7
+
+#define PPI(irq) ((irq) + 16)
 
 enum {
     VIRT_FLASH,

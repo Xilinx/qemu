@@ -23,14 +23,14 @@
  * THE SOFTWARE.
  */
 #include "qemu/osdep.h"
-#include <hw/hw.h>
-#include <hw/i386/pc.h>
-#include <hw/pci/pci.h>
-#include <hw/isa/isa.h>
+#include "hw/hw.h"
+#include "hw/i386/pc.h"
+#include "hw/pci/pci.h"
+#include "hw/isa/isa.h"
 #include "sysemu/block-backend.h"
 #include "sysemu/dma.h"
 #include "qemu/error-report.h"
-#include <hw/ide/pci.h>
+#include "hw/ide/pci.h"
 
 #define BMDMA_PAGE_SIZE 4096
 
@@ -308,6 +308,10 @@ static void ide_bmdma_pre_save(void *opaque)
     BMDMAState *bm = opaque;
     uint8_t abused_bits = BM_MIGRATION_COMPAT_STATUS_BITS;
 
+    if (!(bm->status & BM_STATUS_DMAING) && bm->dma_cb) {
+        bm->bus->error_status =
+            ide_dma_cmd_to_retry(bmdma_active_if(bm)->dma_cmd);
+    }
     bm->migration_retry_unit = bm->bus->retry_unit;
     bm->migration_retry_sector_num = bm->bus->retry_sector_num;
     bm->migration_retry_nsector = bm->bus->retry_nsector;

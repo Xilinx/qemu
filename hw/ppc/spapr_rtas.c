@@ -26,30 +26,27 @@
  */
 #include "qemu/osdep.h"
 #include "cpu.h"
+#include "qemu/log.h"
+#include "qemu/error-report.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/char.h"
 #include "hw/qdev.h"
 #include "sysemu/device_tree.h"
 #include "sysemu/cpus.h"
+#include "sysemu/kvm.h"
 
 #include "hw/ppc/spapr.h"
 #include "hw/ppc/spapr_vio.h"
+#include "hw/ppc/spapr_rtas.h"
+#include "hw/ppc/ppc.h"
 #include "qapi-event.h"
 #include "hw/boards.h"
 
 #include <libfdt.h>
 #include "hw/ppc/spapr_drc.h"
 #include "qemu/cutils.h"
-
-/* #define DEBUG_SPAPR */
-
-#ifdef DEBUG_SPAPR
-#define DPRINTF(fmt, ...) \
-    do { fprintf(stderr, fmt, ## __VA_ARGS__); } while (0)
-#else
-#define DPRINTF(fmt, ...) \
-    do { } while (0)
-#endif
+#include "trace.h"
+#include "hw/ppc/fdt.h"
 
 static sPAPRConfigureConnectorState *spapr_ccs_find(sPAPRMachineState *spapr,
                                                     uint32_t drc_index)
@@ -162,6 +159,27 @@ static void rtas_query_cpu_stopped_state(PowerPCCPU *cpu_,
     rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
 }
 
+/*
+ * Set the timebase offset of the CPU to that of first CPU.
+ * This helps hotplugged CPU to have the correct timebase offset.
+ */
+static void spapr_cpu_update_tb_offset(PowerPCCPU *cpu)
+{
+    PowerPCCPU *fcpu = POWERPC_CPU(first_cpu);
+
+    cpu->env.tb_env->tb_offset = fcpu->env.tb_env->tb_offset;
+}
+
+static void spapr_cpu_set_endianness(PowerPCCPU *cpu)
+{
+    PowerPCCPU *fcpu = POWERPC_CPU(first_cpu);
+    PowerPCCPUClass *pcc = POWERPC_CPU_GET_CLASS(fcpu);
+
+    if (!pcc->interrupts_big_endian(fcpu)) {
+        cpu->env.spr[SPR_LPCR] |= LPCR_ILE;
+    }
+}
+
 static void rtas_start_cpu(PowerPCCPU *cpu_, sPAPRMachineState *spapr,
                            uint32_t token, uint32_t nargs,
                            target_ulong args,
@@ -198,6 +216,8 @@ static void rtas_start_cpu(PowerPCCPU *cpu_, sPAPRMachineState *spapr,
         env->nip = start;
         env->gpr[3] = r3;
         cs->halted = 0;
+        spapr_cpu_set_endianness(cpu);
+        spapr_cpu_update_tb_offset(cpu);
 
         qemu_cpu_kick(cs);
 
@@ -276,7 +296,8 @@ static void rtas_ibm_get_system_parameter(PowerPCCPU *cpu,
         break;
     }
     case RTAS_SYSPARM_UUID:
-        ret = sysparm_st(buffer, length, qemu_uuid, (qemu_uuid_set ? 16 : 0));
+        ret = sysparm_st(buffer, length, (unsigned char *)&qemu_uuid,
+                         (qemu_uuid_set ? 16 : 0));
         break;
     default:
         ret = RTAS_OUT_NOT_SUPPORTED;
@@ -408,8 +429,7 @@ static void rtas_set_indicator(PowerPCCPU *cpu, sPAPRMachineState *spapr,
     /* if this is a DR sensor we can assume sensor_index == drc_index */
     drc = spapr_dr_connector_by_index(sensor_index);
     if (!drc) {
-        DPRINTF("rtas_set_indicator: invalid sensor/DRC index: %xh\n",
-                sensor_index);
+        trace_spapr_rtas_set_indicator_invalid(sensor_index);
         ret = RTAS_OUT_PARAM_ERROR;
         goto out;
     }
@@ -448,8 +468,7 @@ out:
 
 out_unimplemented:
     /* currently only DR-related sensors are implemented */
-    DPRINTF("rtas_set_indicator: sensor/indicator not implemented: %d\n",
-            sensor_type);
+    trace_spapr_rtas_set_indicator_not_supported(sensor_index, sensor_type);
     rtas_st(rets, 0, RTAS_OUT_NOT_SUPPORTED);
 }
 
@@ -475,16 +494,15 @@ static void rtas_get_sensor_state(PowerPCCPU *cpu, sPAPRMachineState *spapr,
 
     if (sensor_type != RTAS_SENSOR_TYPE_ENTITY_SENSE) {
         /* currently only DR-related sensors are implemented */
-        DPRINTF("rtas_get_sensor_state: sensor/indicator not implemented: %d\n",
-                sensor_type);
+        trace_spapr_rtas_get_sensor_state_not_supported(sensor_index,
+                                                        sensor_type);
         ret = RTAS_OUT_NOT_SUPPORTED;
         goto out;
     }
 
     drc = spapr_dr_connector_by_index(sensor_index);
     if (!drc) {
-        DPRINTF("rtas_get_sensor_state: invalid sensor/DRC index: %xh\n",
-                sensor_index);
+        trace_spapr_rtas_get_sensor_state_invalid(sensor_index);
         ret = RTAS_OUT_PARAM_ERROR;
         goto out;
     }
@@ -541,8 +559,7 @@ static void rtas_ibm_configure_connector(PowerPCCPU *cpu,
     drc_index = rtas_ld(wa_addr, 0);
     drc = spapr_dr_connector_by_index(drc_index);
     if (!drc) {
-        DPRINTF("rtas_ibm_configure_connector: invalid DRC index: %xh\n",
-                drc_index);
+        trace_spapr_rtas_ibm_configure_connector_invalid(drc_index);
         rc = RTAS_OUT_PARAM_ERROR;
         goto out;
     }
@@ -550,8 +567,7 @@ static void rtas_ibm_configure_connector(PowerPCCPU *cpu,
     drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
     fdt = drck->get_fdt(drc, NULL);
     if (!fdt) {
-        DPRINTF("rtas_ibm_configure_connector: Missing FDT for DRC index: %xh\n",
-                drc_index);
+        trace_spapr_rtas_ibm_configure_connector_missing_fdt(drc_index);
         rc = SPAPR_DR_CC_RESPONSE_NOT_CONFIGURABLE;
         goto out;
     }
@@ -665,6 +681,24 @@ target_ulong spapr_rtas_call(PowerPCCPU *cpu, sPAPRMachineState *spapr,
     return H_PARAMETER;
 }
 
+uint64_t qtest_rtas_call(char *cmd, uint32_t nargs, uint64_t args,
+                         uint32_t nret, uint64_t rets)
+{
+    int token;
+
+    for (token = 0; token < RTAS_TOKEN_MAX - RTAS_TOKEN_BASE; token++) {
+        if (strcmp(cmd, rtas_table[token].name) == 0) {
+            sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
+            PowerPCCPU *cpu = POWERPC_CPU(first_cpu);
+
+            rtas_table[token].fn(cpu, spapr, token + RTAS_TOKEN_BASE,
+                                 nargs, args, nret, rets);
+            return H_SUCCESS;
+        }
+    }
+    return H_PARAMETER;
+}
+
 void spapr_rtas_register(int token, const char *name, spapr_rtas_fn fn)
 {
     assert((token >= RTAS_TOKEN_BASE) && (token < RTAS_TOKEN_MAX));
@@ -677,47 +711,9 @@ void spapr_rtas_register(int token, const char *name, spapr_rtas_fn fn)
     rtas_table[token].fn = fn;
 }
 
-int spapr_rtas_device_tree_setup(void *fdt, hwaddr rtas_addr,
-                                 hwaddr rtas_size)
+void spapr_dt_rtas_tokens(void *fdt, int rtas)
 {
-    int ret;
     int i;
-    uint32_t lrdr_capacity[5];
-    MachineState *machine = MACHINE(qdev_get_machine());
-    sPAPRMachineState *spapr = SPAPR_MACHINE(machine);
-    uint64_t max_hotplug_addr = spapr->hotplug_memory.base +
-                                memory_region_size(&spapr->hotplug_memory.mr);
-
-    ret = fdt_add_mem_rsv(fdt, rtas_addr, rtas_size);
-    if (ret < 0) {
-        fprintf(stderr, "Couldn't add RTAS reserve entry: %s\n",
-                fdt_strerror(ret));
-        return ret;
-    }
-
-    ret = qemu_fdt_setprop_cell(fdt, "/rtas", "linux,rtas-base",
-                                rtas_addr);
-    if (ret < 0) {
-        fprintf(stderr, "Couldn't add linux,rtas-base property: %s\n",
-                fdt_strerror(ret));
-        return ret;
-    }
-
-    ret = qemu_fdt_setprop_cell(fdt, "/rtas", "linux,rtas-entry",
-                                rtas_addr);
-    if (ret < 0) {
-        fprintf(stderr, "Couldn't add linux,rtas-entry property: %s\n",
-                fdt_strerror(ret));
-        return ret;
-    }
-
-    ret = qemu_fdt_setprop_cell(fdt, "/rtas", "rtas-size",
-                                rtas_size);
-    if (ret < 0) {
-        fprintf(stderr, "Couldn't add rtas-size property: %s\n",
-                fdt_strerror(ret));
-        return ret;
-    }
 
     for (i = 0; i < RTAS_TOKEN_MAX - RTAS_TOKEN_BASE; i++) {
         struct rtas_call *call = &rtas_table[i];
@@ -726,29 +722,49 @@ int spapr_rtas_device_tree_setup(void *fdt, hwaddr rtas_addr,
             continue;
         }
 
-        ret = qemu_fdt_setprop_cell(fdt, "/rtas", call->name,
-                                    i + RTAS_TOKEN_BASE);
-        if (ret < 0) {
-            fprintf(stderr, "Couldn't add rtas token for %s: %s\n",
-                    call->name, fdt_strerror(ret));
-            return ret;
-        }
-
+        _FDT(fdt_setprop_cell(fdt, rtas, call->name, i + RTAS_TOKEN_BASE));
     }
+}
 
-    lrdr_capacity[0] = cpu_to_be32(max_hotplug_addr >> 32);
-    lrdr_capacity[1] = cpu_to_be32(max_hotplug_addr & 0xffffffff);
-    lrdr_capacity[2] = 0;
-    lrdr_capacity[3] = cpu_to_be32(SPAPR_MEMORY_BLOCK_SIZE);
-    lrdr_capacity[4] = cpu_to_be32(max_cpus/smp_threads);
-    ret = qemu_fdt_setprop(fdt, "/rtas", "ibm,lrdr-capacity", lrdr_capacity,
-                     sizeof(lrdr_capacity));
+void spapr_load_rtas(sPAPRMachineState *spapr, void *fdt, hwaddr addr)
+{
+    int rtas_node;
+    int ret;
+
+    /* Copy RTAS blob into guest RAM */
+    cpu_physical_memory_write(addr, spapr->rtas_blob, spapr->rtas_size);
+
+    ret = fdt_add_mem_rsv(fdt, addr, spapr->rtas_size);
     if (ret < 0) {
-        fprintf(stderr, "Couldn't add ibm,lrdr-capacity rtas property\n");
-        return ret;
+        error_report("Couldn't add RTAS reserve entry: %s",
+                     fdt_strerror(ret));
+        exit(1);
     }
 
-    return 0;
+    /* Update the device tree with the blob's location */
+    rtas_node = fdt_path_offset(fdt, "/rtas");
+    assert(rtas_node >= 0);
+
+    ret = fdt_setprop_cell(fdt, rtas_node, "linux,rtas-base", addr);
+    if (ret < 0) {
+        error_report("Couldn't add linux,rtas-base property: %s",
+                     fdt_strerror(ret));
+        exit(1);
+    }
+
+    ret = fdt_setprop_cell(fdt, rtas_node, "linux,rtas-entry", addr);
+    if (ret < 0) {
+        error_report("Couldn't add linux,rtas-entry property: %s",
+                     fdt_strerror(ret));
+        exit(1);
+    }
+
+    ret = fdt_setprop_cell(fdt, rtas_node, "rtas-size", spapr->rtas_size);
+    if (ret < 0) {
+        error_report("Couldn't add rtas-size property: %s",
+                     fdt_strerror(ret));
+        exit(1);
+    }
 }
 
 static void core_rtas_register_types(void)

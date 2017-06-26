@@ -1,5 +1,5 @@
 #ifndef HW_SYSBUS_H
-#define HW_SYSBUS_H 1
+#define HW_SYSBUS_H
 
 /* Devices attached directly to the main system bus.  */
 
@@ -77,7 +77,7 @@ struct SysBusDevice {
     uint32_t pio[QDEV_MAX_PIO];
 };
 
-typedef int FindSysbusDeviceFunc(SysBusDevice *sbdev, void *opaque);
+typedef void FindSysbusDeviceFunc(SysBusDevice *sbdev, void *opaque);
 
 void sysbus_init_mmio(SysBusDevice *dev, MemoryRegion *memory);
 void sysbus_init_mmio_n(SysBusDevice *dev, MemoryRegion *memory, int n);
@@ -121,4 +121,4 @@ static inline DeviceState *sysbus_try_create_simple(const char *name,
     return sysbus_try_create_varargs(name, addr, irq, NULL);
 }
 
-#endif /* !HW_SYSBUS_H */
+#endif /* HW_SYSBUS_H */

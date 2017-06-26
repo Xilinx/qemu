@@ -18,14 +18,14 @@
    makes things much cleaner.  */
 QEMU_BUILD_BUG_ON(TCG_TYPE_I32 != 0 || TCG_TYPE_I64 != 1);
 
-#ifndef NDEBUG
+#ifdef CONFIG_DEBUG_TCG
 static const char * const tcg_target_reg_names[TCG_TARGET_NB_REGS] = {
     "%x0", "%x1", "%x2", "%x3", "%x4", "%x5", "%x6", "%x7",
     "%x8", "%x9", "%x10", "%x11", "%x12", "%x13", "%x14", "%x15",
     "%x16", "%x17", "%x18", "%x19", "%x20", "%x21", "%x22", "%x23",
     "%x24", "%x25", "%x26", "%x27", "%x28", "%fp", "%x30", "%sp",
 };
-#endif /* NDEBUG */
+#endif /* CONFIG_DEBUG_TCG */
 
 static const int tcg_target_reg_alloc_order[] = {
     TCG_REG_X20, TCG_REG_X21, TCG_REG_X22, TCG_REG_X23,
@@ -67,23 +67,35 @@ static const int tcg_target_call_oarg_regs[1] = {
 static inline void reloc_pc26(tcg_insn_unit *code_ptr, tcg_insn_unit *target)
 {
     ptrdiff_t offset = target - code_ptr;
-    assert(offset == sextract64(offset, 0, 26));
+    tcg_debug_assert(offset == sextract64(offset, 0, 26));
     /* read instruction, mask away previous PC_REL26 parameter contents,
        set the proper offset, then write back the instruction. */
     *code_ptr = deposit32(*code_ptr, 0, 26, offset);
 }
 
+static inline void reloc_pc26_atomic(tcg_insn_unit *code_ptr,
+                                     tcg_insn_unit *target)
+{
+    ptrdiff_t offset = target - code_ptr;
+    tcg_insn_unit insn;
+    tcg_debug_assert(offset == sextract64(offset, 0, 26));
+    /* read instruction, mask away previous PC_REL26 parameter contents,
+       set the proper offset, then write back the instruction. */
+    insn = atomic_read(code_ptr);
+    atomic_set(code_ptr, deposit32(insn, 0, 26, offset));
+}
+
 static inline void reloc_pc19(tcg_insn_unit *code_ptr, tcg_insn_unit *target)
 {
     ptrdiff_t offset = target - code_ptr;
-    assert(offset == sextract64(offset, 0, 19));
+    tcg_debug_assert(offset == sextract64(offset, 0, 19));
     *code_ptr = deposit32(*code_ptr, 5, 19, offset);
 }
 
 static inline void patch_reloc(tcg_insn_unit *code_ptr, int type,
                                intptr_t value, intptr_t addend)
 {
-    assert(addend == 0);
+    tcg_debug_assert(addend == 0);
     switch (type) {
     case R_AARCH64_JUMP26:
     case R_AARCH64_CALL26:
@@ -360,6 +372,11 @@ typedef enum {
     I3510_EOR       = 0x4a000000,
     I3510_EON       = 0x4a200000,
     I3510_ANDS      = 0x6a000000,
+
+    /* System instructions.  */
+    DMB_ISH         = 0xd50338bf,
+    DMB_LD          = 0x00000100,
+    DMB_ST          = 0x00000200,
 } AArch64Insn;
 
 static inline uint32_t tcg_in32(TCGContext *s)
@@ -402,7 +419,7 @@ static void tcg_out_insn_3314(TCGContext *s, AArch64Insn insn,
     insn |= pre << 24;
     insn |= w << 23;
 
-    assert(ofs >= -0x200 && ofs < 0x200 && (ofs & 7) == 0);
+    tcg_debug_assert(ofs >= -0x200 && ofs < 0x200 && (ofs & 7) == 0);
     insn |= (ofs & (0x7f << 3)) << (15 - 3);
 
     tcg_out32(s, insn | r2 << 10 | rn << 5 | r1);
@@ -412,9 +429,9 @@ static void tcg_out_insn_3401(TCGContext *s, AArch64Insn insn, TCGType ext,
                               TCGReg rd, TCGReg rn, uint64_t aimm)
 {
     if (aimm > 0xfff) {
-        assert((aimm & 0xfff) == 0);
+        tcg_debug_assert((aimm & 0xfff) == 0);
         aimm >>= 12;
-        assert(aimm <= 0xfff);
+        tcg_debug_assert(aimm <= 0xfff);
         aimm |= 1 << 12;  /* apply LSL 12 */
     }
     tcg_out32(s, insn | ext << 31 | aimm << 10 | rn << 5 | rd);
@@ -444,7 +461,7 @@ static void tcg_out_insn_3403(TCGContext *s, AArch64Insn insn, TCGType ext,
 static void tcg_out_insn_3405(TCGContext *s, AArch64Insn insn, TCGType ext,
                               TCGReg rd, uint16_t half, unsigned shift)
 {
-    assert((shift & ~0x30) == 0);
+    tcg_debug_assert((shift & ~0x30) == 0);
     tcg_out32(s, insn | ext << 31 | shift << (21 - 4) | half << 5 | rd);
 }
 
@@ -538,7 +555,7 @@ static void tcg_out_logicali(TCGContext *s, AArch64Insn insn, TCGType ext,
 {
     unsigned h, l, r, c;
 
-    assert(is_limm(limm));
+    tcg_debug_assert(is_limm(limm));
 
     h = clz64(limm);
     l = ctz64(limm);
@@ -564,11 +581,9 @@ static void tcg_out_logicali(TCGContext *s, AArch64Insn insn, TCGType ext,
 static void tcg_out_movi(TCGContext *s, TCGType type, TCGReg rd,
                          tcg_target_long value)
 {
-    AArch64Insn insn;
     int i, wantinv, shift;
     tcg_target_long svalue = value;
     tcg_target_long ivalue = ~value;
-    tcg_target_long imask;
 
     /* For 32-bit values, discard potential garbage in value.  For 64-bit
        values within [2**31, 2**32-1], we can create smaller sequences by
@@ -614,42 +629,35 @@ static void tcg_out_movi(TCGContext *s, TCGType type, TCGReg rd,
 
     /* Would it take fewer insns to begin with MOVN?  For the value and its
        inverse, count the number of 16-bit lanes that are 0.  */
-    for (i = wantinv = imask = 0; i < 64; i += 16) {
+    for (i = wantinv = 0; i < 64; i += 16) {
         tcg_target_long mask = 0xffffull << i;
-        if ((value & mask) == 0) {
-            wantinv -= 1;
-        }
-        if ((ivalue & mask) == 0) {
-            wantinv += 1;
-            imask |= mask;
-        }
+        wantinv -= ((value & mask) == 0);
+        wantinv += ((ivalue & mask) == 0);
     }
 
-    /* If we had more 0xffff than 0x0000, invert VALUE and use MOVN.  */
-    insn = I3405_MOVZ;
-    if (wantinv > 0) {
-        value = ivalue;
-        insn = I3405_MOVN;
-    }
-
-    /* Find the lowest lane that is not 0x0000.  */
-    shift = ctz64(value) & (63 & -16);
-    tcg_out_insn_3405(s, insn, type, rd, value >> shift, shift);
-
-    if (wantinv > 0) {
-        /* Re-invert the value, so MOVK sees non-inverted bits.  */
-        value = ~value;
-        /* Clear out all the 0xffff lanes.  */
-        value ^= imask;
-    }
-    /* Clear out the lane that we just set.  */
-    value &= ~(0xffffUL << shift);
-
-    /* Iterate until all lanes have been set, and thus cleared from VALUE.  */
-    while (value) {
+    if (wantinv <= 0) {
+        /* Find the lowest lane that is not 0x0000.  */
         shift = ctz64(value) & (63 & -16);
-        tcg_out_insn(s, 3405, MOVK, type, rd, value >> shift, shift);
+        tcg_out_insn(s, 3405, MOVZ, type, rd, value >> shift, shift);
+        /* Clear out the lane that we just set.  */
         value &= ~(0xffffUL << shift);
+        /* Iterate until all non-zero lanes have been processed.  */
+        while (value) {
+            shift = ctz64(value) & (63 & -16);
+            tcg_out_insn(s, 3405, MOVK, type, rd, value >> shift, shift);
+            value &= ~(0xffffUL << shift);
+        }
+    } else {
+        /* Like above, but with the inverted value and MOVN to start.  */
+        shift = ctz64(ivalue) & (63 & -16);
+        tcg_out_insn(s, 3405, MOVN, type, rd, ivalue >> shift, shift);
+        ivalue &= ~(0xffffUL << shift);
+        while (ivalue) {
+            shift = ctz64(ivalue) & (63 & -16);
+            /* Provide MOVK with the non-inverted value.  */
+            tcg_out_insn(s, 3405, MOVK, type, rd, ~(ivalue >> shift), shift);
+            ivalue &= ~(0xffffUL << shift);
+        }
     }
 }
 
@@ -702,6 +710,16 @@ static inline void tcg_out_st(TCGContext *s, TCGType type, TCGReg arg,
 {
     tcg_out_ldst(s, type == TCG_TYPE_I32 ? I3312_STRW : I3312_STRX,
                  arg, arg1, arg2);
+}
+
+static inline bool tcg_out_sti(TCGContext *s, TCGType type, TCGArg val,
+                               TCGReg base, intptr_t ofs)
+{
+    if (val == 0) {
+        tcg_out_st(s, type, TCG_REG_XZR, base, ofs);
+        return true;
+    }
+    return false;
 }
 
 static inline void tcg_out_bfm(TCGContext *s, TCGType ext, TCGReg rd,
@@ -793,7 +811,7 @@ static void tcg_out_cmp(TCGContext *s, TCGType ext, TCGReg a,
 static inline void tcg_out_goto(TCGContext *s, tcg_insn_unit *target)
 {
     ptrdiff_t offset = target - s->code_ptr;
-    assert(offset == sextract64(offset, 0, 26));
+    tcg_debug_assert(offset == sextract64(offset, 0, 26));
     tcg_out_insn(s, 3206, B, offset);
 }
 
@@ -835,7 +853,7 @@ void aarch64_tb_set_jmp_target(uintptr_t jmp_addr, uintptr_t addr)
     tcg_insn_unit *code_ptr = (tcg_insn_unit *)jmp_addr;
     tcg_insn_unit *target = (tcg_insn_unit *)addr;
 
-    reloc_pc26(code_ptr, target);
+    reloc_pc26_atomic(code_ptr, target);
     flush_icache_range(jmp_addr, jmp_addr + 4);
 }
 
@@ -867,7 +885,7 @@ static void tcg_out_brcond(TCGContext *s, TCGMemOp ext, TCGCond c, TCGArg a,
         offset = tcg_in32(s) >> 5;
     } else {
         offset = l->u.value_ptr - s->code_ptr;
-        assert(offset == sextract64(offset, 0, 19));
+        tcg_debug_assert(offset == sextract64(offset, 0, 19));
     }
 
     if (need_cmp) {
@@ -938,6 +956,15 @@ static inline void tcg_out_addsub2(TCGContext *s, int ext, TCGReg rl,
             insn = I3401_SUBSI;
             bl = -bl;
         }
+        if (unlikely(al == TCG_REG_XZR)) {
+            /* ??? We want to allow al to be zero for the benefit of
+               negation via subtraction.  However, that leaves open the
+               possibility of adding 0+const in the low part, and the
+               immediate add instructions encode XSP not XZR.  Don't try
+               anything more elaborate here than loading another zero.  */
+            al = TCG_REG_TMP;
+            tcg_out_movi(s, ext, al, 0);
+        }
         tcg_out_insn_3401(s, insn, ext, rl, al, bl);
     } else {
         tcg_out_insn_3502(s, sub ? I3502_SUBS : I3502_ADDS, ext, rl, al, bl);
@@ -957,6 +984,18 @@ static inline void tcg_out_addsub2(TCGContext *s, int ext, TCGReg rl,
     tcg_out_insn_3503(s, insn, ext, rh, ah, bh);
 
     tcg_out_mov(s, ext, orig_rl, rl);
+}
+
+static inline void tcg_out_mb(TCGContext *s, TCGArg a0)
+{
+    static const uint32_t sync[] = {
+        [0 ... TCG_MO_ALL]            = DMB_ISH | DMB_LD | DMB_ST,
+        [TCG_MO_ST_ST]                = DMB_ISH | DMB_ST,
+        [TCG_MO_LD_LD]                = DMB_ISH | DMB_LD,
+        [TCG_MO_LD_ST]                = DMB_ISH | DMB_LD,
+        [TCG_MO_LD_ST | TCG_MO_LD_LD] = DMB_ISH | DMB_LD,
+    };
+    tcg_out32(s, sync[a0 & TCG_MO_ALL]);
 }
 
 #ifdef CONFIG_SOFTMMU
@@ -990,7 +1029,7 @@ static void * const qemu_st_helpers[16] = {
 static inline void tcg_out_adr(TCGContext *s, TCGReg rd, void *target)
 {
     ptrdiff_t offset = tcg_pcrel_diff(s, target);
-    assert(offset == sextract64(offset, 0, 21));
+    tcg_debug_assert(offset == sextract64(offset, 0, 21));
     tcg_out_insn(s, 3406, ADR, rd, offset);
 }
 
@@ -1059,22 +1098,24 @@ static void tcg_out_tlb_read(TCGContext *s, TCGReg addr_reg, TCGMemOp opc,
     int tlb_offset = is_read ?
         offsetof(CPUArchState, tlb_table[mem_index][0].addr_read)
         : offsetof(CPUArchState, tlb_table[mem_index][0].addr_write);
-    int s_mask = (1 << (opc & MO_SIZE)) - 1;
+    unsigned a_bits = get_alignment_bits(opc);
+    unsigned s_bits = opc & MO_SIZE;
+    unsigned a_mask = (1u << a_bits) - 1;
+    unsigned s_mask = (1u << s_bits) - 1;
     TCGReg base = TCG_AREG0, x3;
     uint64_t tlb_mask;
 
     /* For aligned accesses, we check the first byte and include the alignment
        bits within the address.  For unaligned access, we check that we don't
        cross pages using the address of the last byte of the access.  */
-    if ((opc & MO_AMASK) == MO_ALIGN || s_mask == 0) {
-        tlb_mask = TARGET_PAGE_MASK | s_mask;
+    if (a_bits >= s_bits) {
         x3 = addr_reg;
     } else {
         tcg_out_insn(s, 3401, ADDI, TARGET_LONG_BITS == 64,
-                     TCG_REG_X3, addr_reg, s_mask);
-        tlb_mask = TARGET_PAGE_MASK;
+                     TCG_REG_X3, addr_reg, s_mask - a_mask);
         x3 = TCG_REG_X3;
     }
+    tlb_mask = (uint64_t)TARGET_PAGE_MASK | a_mask;
 
     /* Extract the TLB index from the address into X0.
        X0<CPU_TLB_BITS:0> =
@@ -1294,12 +1335,13 @@ static void tcg_out_op(TCGContext *s, TCGOpcode opc,
 #ifndef USE_DIRECT_JUMP
 #error "USE_DIRECT_JUMP required for aarch64"
 #endif
-        assert(s->tb_jmp_offset != NULL); /* consistency for USE_DIRECT_JUMP */
-        s->tb_jmp_offset[a0] = tcg_current_code_size(s);
+        /* consistency for USE_DIRECT_JUMP */
+        tcg_debug_assert(s->tb_jmp_insn_offset != NULL);
+        s->tb_jmp_insn_offset[a0] = tcg_current_code_size(s);
         /* actual branch destination will be patched by
            aarch64_tb_set_jmp_target later, beware retranslation. */
         tcg_out_goto_noaddr(s);
-        s->tb_next_offset[a0] = tcg_current_code_size(s);
+        s->tb_jmp_reset_offset[a0] = tcg_current_code_size(s);
         break;
 
     case INDEX_op_br:
@@ -1624,6 +1666,10 @@ static void tcg_out_op(TCGContext *s, TCGOpcode opc,
         tcg_out_insn(s, 3508, SMULH, TCG_TYPE_I64, a0, a1, a2);
         break;
 
+    case INDEX_op_mb:
+        tcg_out_mb(s, a0);
+        break;
+
     case INDEX_op_mov_i32:  /* Always emitted via tcg_out_mov.  */
     case INDEX_op_mov_i64:
     case INDEX_op_movi_i32: /* Always emitted via tcg_out_movi.  */
@@ -1748,6 +1794,7 @@ static const TCGTargetOpDef aarch64_op_defs[] = {
     { INDEX_op_muluh_i64, { "r", "r", "r" } },
     { INDEX_op_mulsh_i64, { "r", "r", "r" } },
 
+    { INDEX_op_mb, { } },
     { -1 },
 };
 

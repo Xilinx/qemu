@@ -21,6 +21,7 @@
 #include "qapi/error.h"
 #include "cpu.h"
 #include "qemu/error-report.h"
+#include "exec/exec-all.h"
 
 //#define DEBUG_FEATURES
 
@@ -100,9 +101,11 @@ static void cpu_sparc_disas_set_info(CPUState *cpu, disassemble_info *info)
 #endif
 }
 
+static void sparc_cpu_parse_features(CPUState *cs, char *features,
+                                     Error **errp);
+
 static int cpu_sparc_register(SPARCCPU *cpu, const char *cpu_model)
 {
-    CPUClass *cc = CPU_GET_CLASS(cpu);
     CPUSPARCState *env = &cpu->env;
     char *s = g_strdup(cpu_model);
     char *featurestr, *name = strtok(s, ",");
@@ -114,11 +117,10 @@ static int cpu_sparc_register(SPARCCPU *cpu, const char *cpu_model)
         return -1;
     }
 
-    env->def = g_new0(sparc_def_t, 1);
-    memcpy(env->def, def, sizeof(*def));
+    env->def = g_memdup(def, sizeof(*def));
 
     featurestr = strtok(NULL, ",");
-    cc->parse_features(CPU(cpu), featurestr, &err);
+    sparc_cpu_parse_features(CPU(cpu), featurestr, &err);
     g_free(s);
     if (err) {
         error_report_err(err);
@@ -790,7 +792,9 @@ static bool sparc_cpu_has_work(CPUState *cs)
 
 static void sparc_cpu_realizefn(DeviceState *dev, Error **errp)
 {
+    CPUState *cs = CPU(dev);
     SPARCCPUClass *scc = SPARC_CPU_GET_CLASS(dev);
+    Error *local_err = NULL;
 #if defined(CONFIG_USER_ONLY)
     SPARCCPU *cpu = SPARC_CPU(dev);
     CPUSPARCState *env = &cpu->env;
@@ -800,7 +804,13 @@ static void sparc_cpu_realizefn(DeviceState *dev, Error **errp)
     }
 #endif
 
-    qemu_init_vcpu(CPU(dev));
+    cpu_exec_realizefn(cs, &local_err);
+    if (local_err != NULL) {
+        error_propagate(errp, local_err);
+        return;
+    }
+
+    qemu_init_vcpu(cs);
 
     scc->parent_realize(dev, errp);
 }
@@ -812,7 +822,6 @@ static void sparc_cpu_initfn(Object *obj)
     CPUSPARCState *env = &cpu->env;
 
     cs->env_ptr = env;
-    cpu_exec_init(cs, &error_abort);
 
     if (tcg_enabled()) {
         gen_intermediate_code_init(env);
@@ -839,7 +848,6 @@ static void sparc_cpu_class_init(ObjectClass *oc, void *data)
     scc->parent_reset = cc->reset;
     cc->reset = sparc_cpu_reset;
 
-    cc->parse_features = sparc_cpu_parse_features;
     cc->has_work = sparc_cpu_has_work;
     cc->do_interrupt = sparc_cpu_do_interrupt;
     cc->cpu_exec_interrupt = sparc_cpu_exec_interrupt;
@@ -866,13 +874,6 @@ static void sparc_cpu_class_init(ObjectClass *oc, void *data)
 #else
     cc->gdb_num_core_regs = 72;
 #endif
-
-    /*
-     * Reason: sparc_cpu_initfn() calls cpu_exec_init(), which saves
-     * the object in cpus -> dangling pointer after final
-     * object_unref().
-     */
-    dc->cannot_destroy_with_object_finalize_yet = true;
 }
 
 static const TypeInfo sparc_cpu_type_info = {

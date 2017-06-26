@@ -18,7 +18,11 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>
  */
 #include "qemu/osdep.h"
+#include "qemu/error-report.h"
 #include "qapi/error.h"
+#include "qemu-common.h"
+#include "cpu.h"
+#include "qapi/visitor.h"
 #include "hw/i386/apic.h"
 #include "hw/i386/apic_internal.h"
 #include "trace.h"
@@ -36,6 +40,11 @@ void cpu_set_apic_base(DeviceState *dev, uint64_t val)
     if (dev) {
         APICCommonState *s = APIC_COMMON(dev);
         APICCommonClass *info = APIC_COMMON_GET_CLASS(s);
+        /* switching to x2APIC, reset possibly modified xAPIC ID */
+        if (!(s->apicbase & MSR_IA32_APICBASE_EXTD) &&
+            (val & MSR_IA32_APICBASE_EXTD)) {
+            s->id = s->initial_apic_id;
+        }
         info->set_base(s, val);
     }
 }
@@ -239,6 +248,9 @@ static void apic_reset_common(DeviceState *dev)
 
     bsp = s->apicbase & MSR_IA32_APICBASE_BSP;
     s->apicbase = APIC_DEFAULT_ADDRESS | bsp | MSR_IA32_APICBASE_ENABLE;
+    s->id = s->initial_apic_id;
+
+    apic_reset_irq_delivered();
 
     s->vapic_paddr = 0;
     info->vapic_base_update(s);
@@ -292,19 +304,14 @@ static int apic_load_old(QEMUFile *f, void *opaque, int version_id)
     return 0;
 }
 
+static const VMStateDescription vmstate_apic_common;
+
 static void apic_common_realize(DeviceState *dev, Error **errp)
 {
     APICCommonState *s = APIC_COMMON(dev);
     APICCommonClass *info;
     static DeviceState *vapic;
-    static int apic_no;
-
-    if (apic_no >= MAX_APICS) {
-        error_setg(errp, "%s initialization failed.",
-                   object_get_typename(OBJECT(dev)));
-        return;
-    }
-    s->idx = apic_no++;
+    int instance_id = s->id;
 
     info = APIC_COMMON_GET_CLASS(s);
     info->realize(dev, errp);
@@ -319,6 +326,24 @@ static void apic_common_realize(DeviceState *dev, Error **errp)
         info->enable_tpr_reporting(s, true);
     }
 
+    if (s->legacy_instance_id) {
+        instance_id = -1;
+    }
+    vmstate_register_with_alias_id(NULL, instance_id, &vmstate_apic_common,
+                                   s, -1, 0);
+}
+
+static void apic_common_unrealize(DeviceState *dev, Error **errp)
+{
+    APICCommonState *s = APIC_COMMON(dev);
+    APICCommonClass *info = APIC_COMMON_GET_CLASS(s);
+
+    vmstate_unregister(NULL, &vmstate_apic_common, s);
+    info->unrealize(dev, errp);
+
+    if (apic_report_tpr_access && info->enable_tpr_reporting) {
+        info->enable_tpr_reporting(s, false);
+    }
 }
 
 static int apic_pre_load(void *opaque)
@@ -412,21 +437,65 @@ static const VMStateDescription vmstate_apic_common = {
 };
 
 static Property apic_properties_common[] = {
-    DEFINE_PROP_UINT8("id", APICCommonState, id, -1),
     DEFINE_PROP_UINT8("version", APICCommonState, version, 0x14),
     DEFINE_PROP_BIT("vapic", APICCommonState, vapic_control, VAPIC_ENABLE_BIT,
                     true),
+    DEFINE_PROP_BOOL("legacy-instance-id", APICCommonState, legacy_instance_id,
+                     false),
     DEFINE_PROP_END_OF_LIST(),
 };
+
+static void apic_common_get_id(Object *obj, Visitor *v, const char *name,
+                               void *opaque, Error **errp)
+{
+    APICCommonState *s = APIC_COMMON(obj);
+    int64_t value;
+
+    value = s->apicbase & MSR_IA32_APICBASE_EXTD ? s->initial_apic_id : s->id;
+    visit_type_int(v, name, &value, errp);
+}
+
+static void apic_common_set_id(Object *obj, Visitor *v, const char *name,
+                               void *opaque, Error **errp)
+{
+    APICCommonState *s = APIC_COMMON(obj);
+    DeviceState *dev = DEVICE(obj);
+    Error *local_err = NULL;
+    int64_t value;
+
+    if (dev->realized) {
+        qdev_prop_set_after_realize(dev, name, errp);
+        return;
+    }
+
+    visit_type_int(v, name, &value, &local_err);
+    if (local_err) {
+        error_propagate(errp, local_err);
+        return;
+    }
+
+    s->initial_apic_id = value;
+    s->id = (uint8_t)value;
+}
+
+static void apic_common_initfn(Object *obj)
+{
+    APICCommonState *s = APIC_COMMON(obj);
+
+    s->id = s->initial_apic_id = -1;
+    object_property_add(obj, "id", "int",
+                        apic_common_get_id,
+                        apic_common_set_id, NULL, NULL, NULL);
+}
 
 static void apic_common_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->vmsd = &vmstate_apic_common;
     dc->reset = apic_reset_common;
     dc->props = apic_properties_common;
     dc->realize = apic_common_realize;
+    dc->unrealize = apic_common_unrealize;
     /*
      * Reason: APIC and CPU need to be wired up by
      * x86_cpu_apic_create()
@@ -438,6 +507,7 @@ static const TypeInfo apic_common_type = {
     .name = TYPE_APIC_COMMON,
     .parent = TYPE_DEVICE,
     .instance_size = sizeof(APICCommonState),
+    .instance_init = apic_common_initfn,
     .class_size = sizeof(APICCommonClass),
     .class_init = apic_common_class_init,
     .abstract = true,

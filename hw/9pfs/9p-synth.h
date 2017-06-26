@@ -10,9 +10,9 @@
  * the COPYING file in the top-level directory.
  *
  */
-#ifndef HW_9PFS_SYNTH_H
-#define HW_9PFS_SYNTH_H 1
 
+#ifndef QEMU_9P_SYNTH_H
+#define QEMU_9P_SYNTH_H
 
 typedef struct V9fsSynthNode V9fsSynthNode;
 typedef ssize_t (*v9fs_synth_read)(void *buf, int len, off_t offset,
@@ -40,12 +40,13 @@ struct V9fsSynthNode {
 typedef struct V9fsSynthOpenState {
     off_t offset;
     V9fsSynthNode *node;
+    struct dirent dent;
 } V9fsSynthOpenState;
 
-extern int qemu_v9fs_synth_mkdir(V9fsSynthNode *parent, int mode,
-                                 const char *name, V9fsSynthNode **result);
-extern int qemu_v9fs_synth_add_file(V9fsSynthNode *parent, int mode,
-                                    const char *name, v9fs_synth_read read,
-                                    v9fs_synth_write write, void *arg);
+int qemu_v9fs_synth_mkdir(V9fsSynthNode *parent, int mode,
+                          const char *name, V9fsSynthNode **result);
+int qemu_v9fs_synth_add_file(V9fsSynthNode *parent, int mode,
+                             const char *name, v9fs_synth_read read,
+                             v9fs_synth_write write, void *arg);
 
 #endif

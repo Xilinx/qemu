@@ -3,7 +3,7 @@
 # QAPI crypto definitions
 
 ##
-# QCryptoTLSCredsEndpoint:
+# @QCryptoTLSCredsEndpoint:
 #
 # The type of network endpoint that will be using the credentials.
 # Most types of credential require different setup / structures
@@ -22,7 +22,7 @@
 
 
 ##
-# QCryptoSecretFormat:
+# @QCryptoSecretFormat:
 #
 # The data format that the secret is provided in
 #
@@ -36,22 +36,26 @@
 
 
 ##
-# QCryptoHashAlgorithm:
+# @QCryptoHashAlgorithm:
 #
 # The supported algorithms for computing content digests
 #
 # @md5: MD5. Should not be used in any new code, legacy compat only
 # @sha1: SHA-1. Should not be used in any new code, legacy compat only
+# @sha224: SHA-224. (since 2.7)
 # @sha256: SHA-256. Current recommended strong hash.
+# @sha384: SHA-384. (since 2.7)
+# @sha512: SHA-512. (since 2.7)
+# @ripemd160: RIPEMD-160. (since 2.7)
 # Since: 2.6
 ##
 { 'enum': 'QCryptoHashAlgorithm',
   'prefix': 'QCRYPTO_HASH_ALG',
-  'data': ['md5', 'sha1', 'sha256']}
+  'data': ['md5', 'sha1', 'sha224', 'sha256', 'sha384', 'sha512', 'ripemd160']}
 
 
 ##
-# QCryptoCipherAlgorithm:
+# @QCryptoCipherAlgorithm:
 #
 # The supported algorithms for content encryption ciphers
 #
@@ -78,22 +82,23 @@
 
 
 ##
-# QCryptoCipherMode:
+# @QCryptoCipherMode:
 #
 # The supported modes for content encryption ciphers
 #
 # @ecb: Electronic Code Book
 # @cbc: Cipher Block Chaining
 # @xts: XEX with tweaked code book and ciphertext stealing
+# @ctr: Counter (Since 2.8)
 # Since: 2.6
 ##
 { 'enum': 'QCryptoCipherMode',
   'prefix': 'QCRYPTO_CIPHER_MODE',
-  'data': ['ecb', 'cbc', 'xts']}
+  'data': ['ecb', 'cbc', 'xts', 'ctr']}
 
 
 ##
-# QCryptoIVGenAlgorithm:
+# @QCryptoIVGenAlgorithm:
 #
 # The supported algorithms for generating initialization
 # vectors for full disk encryption. The 'plain' generator
@@ -111,7 +116,7 @@
   'data': ['plain', 'plain64', 'essiv']}
 
 ##
-# QCryptoBlockFormat:
+# @QCryptoBlockFormat:
 #
 # The supported full disk encryption formats
 #
@@ -126,7 +131,7 @@
   'data': ['qcow', 'luks']}
 
 ##
-# QCryptoBlockOptionsBase:
+# @QCryptoBlockOptionsBase:
 #
 # The common options that apply to all full disk
 # encryption formats
@@ -139,7 +144,7 @@
   'data': { 'format': 'QCryptoBlockFormat' }}
 
 ##
-# QCryptoBlockOptionsQCow:
+# @QCryptoBlockOptionsQCow:
 #
 # The options that apply to QCow/QCow2 AES-CBC encryption format
 #
@@ -153,7 +158,7 @@
   'data': { '*key-secret': 'str' }}
 
 ##
-# QCryptoBlockOptionsLUKS:
+# @QCryptoBlockOptionsLUKS:
 #
 # The options that apply to LUKS encryption format
 #
@@ -167,7 +172,7 @@
 
 
 ##
-# QCryptoBlockCreateOptionsLUKS:
+# @QCryptoBlockCreateOptionsLUKS:
 #
 # The options that apply to LUKS encryption format initialization
 #
@@ -181,6 +186,9 @@
 #                  Currently defaults to 'sha256'
 # @hash-alg: #optional the master key hash algorithm
 #            Currently defaults to 'sha256'
+# @iter-time: #optional number of milliseconds to spend in
+#             PBKDF passphrase processing. Currently defaults
+#             to 2000. (since 2.8)
 # Since: 2.6
 ##
 { 'struct': 'QCryptoBlockCreateOptionsLUKS',
@@ -189,11 +197,12 @@
             '*cipher-mode': 'QCryptoCipherMode',
             '*ivgen-alg': 'QCryptoIVGenAlgorithm',
             '*ivgen-hash-alg': 'QCryptoHashAlgorithm',
-            '*hash-alg': 'QCryptoHashAlgorithm'}}
+            '*hash-alg': 'QCryptoHashAlgorithm',
+            '*iter-time': 'int'}}
 
 
 ##
-# QCryptoBlockOpenOptions:
+# @QCryptoBlockOpenOptions:
 #
 # The options that are available for all encryption formats
 # when opening an existing volume
@@ -208,7 +217,7 @@
 
 
 ##
-# QCryptoBlockCreateOptions:
+# @QCryptoBlockCreateOptions:
 #
 # The options that are available for all encryption formats
 # when initializing a new volume
@@ -220,3 +229,90 @@
   'discriminator': 'format',
   'data': { 'qcow': 'QCryptoBlockOptionsQCow',
             'luks': 'QCryptoBlockCreateOptionsLUKS' } }
+
+
+##
+# @QCryptoBlockInfoBase:
+#
+# The common information that applies to all full disk
+# encryption formats
+#
+# @format: the encryption format
+#
+# Since: 2.7
+##
+{ 'struct': 'QCryptoBlockInfoBase',
+  'data': { 'format': 'QCryptoBlockFormat' }}
+
+
+##
+# @QCryptoBlockInfoLUKSSlot:
+#
+# Information about the LUKS block encryption key
+# slot options
+#
+# @active: whether the key slot is currently in use
+# @key-offset: offset to the key material in bytes
+# @iters: #optional number of PBKDF2 iterations for key material
+# @stripes: #optional number of stripes for splitting key material
+#
+# Since: 2.7
+##
+{ 'struct': 'QCryptoBlockInfoLUKSSlot',
+  'data': {'active': 'bool',
+           '*iters': 'int',
+           '*stripes': 'int',
+           'key-offset': 'int' } }
+
+
+##
+# @QCryptoBlockInfoLUKS:
+#
+# Information about the LUKS block encryption options
+#
+# @cipher-alg: the cipher algorithm for data encryption
+# @cipher-mode: the cipher mode for data encryption
+# @ivgen-alg: the initialization vector generator
+# @ivgen-hash-alg: #optional the initialization vector generator hash
+# @hash-alg: the master key hash algorithm
+# @payload-offset: offset to the payload data in bytes
+# @master-key-iters: number of PBKDF2 iterations for key material
+# @uuid: unique identifier for the volume
+# @slots: information about each key slot
+#
+# Since: 2.7
+##
+{ 'struct': 'QCryptoBlockInfoLUKS',
+  'data': {'cipher-alg': 'QCryptoCipherAlgorithm',
+           'cipher-mode': 'QCryptoCipherMode',
+           'ivgen-alg': 'QCryptoIVGenAlgorithm',
+           '*ivgen-hash-alg': 'QCryptoHashAlgorithm',
+           'hash-alg': 'QCryptoHashAlgorithm',
+           'payload-offset': 'int',
+           'master-key-iters': 'int',
+           'uuid': 'str',
+           'slots': [ 'QCryptoBlockInfoLUKSSlot' ] }}
+
+##
+# @QCryptoBlockInfoQCow:
+#
+# Information about the QCow block encryption options
+#
+# Since: 2.7
+##
+{ 'struct': 'QCryptoBlockInfoQCow',
+  'data': { }}
+
+
+##
+# @QCryptoBlockInfo:
+#
+# Information about the block encryption options
+#
+# Since: 2.7
+##
+{ 'union': 'QCryptoBlockInfo',
+  'base': 'QCryptoBlockInfoBase',
+  'discriminator': 'format',
+  'data': { 'qcow': 'QCryptoBlockInfoQCow',
+            'luks': 'QCryptoBlockInfoLUKS' } }

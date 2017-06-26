@@ -88,7 +88,7 @@ typedef struct ChannelState {
     uint32_t reg;
     uint8_t wregs[SERIAL_REGS], rregs[SERIAL_REGS];
     SERIOQueue queue;
-    CharDriverState *chr;
+    CharBackend chr;
     int e0_mode, led_mode, caps_lock_mode, num_lock_mode;
     int disabled;
     int clock;
@@ -416,7 +416,7 @@ static void escc_update_parameters(ChannelState *s)
     int speed, parity, data_bits, stop_bits;
     QEMUSerialSetParams ssp;
 
-    if (!s->chr || s->type != ser)
+    if (!qemu_chr_fe_get_driver(&s->chr) || s->type != ser)
         return;
 
     if (s->wregs[W_TXCTRL1] & TXCTRL1_PAREN) {
@@ -466,7 +466,7 @@ static void escc_update_parameters(ChannelState *s)
     ssp.data_bits = data_bits;
     ssp.stop_bits = stop_bits;
     trace_escc_update_parameters(CHN_C(s), speed, parity, data_bits, stop_bits);
-    qemu_chr_fe_ioctl(s->chr, CHR_IOCTL_SERIAL_SET_PARAMS, &ssp);
+    qemu_chr_fe_ioctl(&s->chr, CHR_IOCTL_SERIAL_SET_PARAMS, &ssp);
 }
 
 static void escc_mem_write(void *opaque, hwaddr addr,
@@ -556,9 +556,11 @@ static void escc_mem_write(void *opaque, hwaddr addr,
         trace_escc_mem_writeb_data(CHN_C(s), val);
         s->tx = val;
         if (s->wregs[W_TXCTRL2] & TXCTRL2_TXEN) { // tx enabled
-            if (s->chr)
-                qemu_chr_fe_write(s->chr, &s->tx, 1);
-            else if (s->type == kbd && !s->disabled) {
+            if (qemu_chr_fe_get_driver(&s->chr)) {
+                /* XXX this blocks entire thread. Rewrite to use
+                 * qemu_chr_fe_write and background I/O callbacks */
+                qemu_chr_fe_write_all(&s->chr, &s->tx, 1);
+            } else if (s->type == kbd && !s->disabled) {
                 handle_kbd_command(s, val);
             }
         }
@@ -597,8 +599,7 @@ static uint64_t escc_mem_read(void *opaque, hwaddr addr,
         else
             ret = s->rx;
         trace_escc_mem_readb_data(CHN_C(s), ret);
-        if (s->chr)
-            qemu_chr_accept_input(s->chr);
+        qemu_chr_fe_accept_input(&s->chr);
         return ret;
     default:
         break;
@@ -983,28 +984,41 @@ void slavio_serial_ms_kbd_init(hwaddr base, qemu_irq irq,
     sysbus_mmio_map(s, 0, base);
 }
 
-static int escc_init1(SysBusDevice *dev)
+static void escc_init1(Object *obj)
+{
+    ESCCState *s = ESCC(obj);
+    SysBusDevice *dev = SYS_BUS_DEVICE(obj);
+    unsigned int i;
+
+    for (i = 0; i < 2; i++) {
+        sysbus_init_irq(dev, &s->chn[i].irq);
+        s->chn[i].chn = 1 - i;
+    }
+    s->chn[0].otherchn = &s->chn[1];
+    s->chn[1].otherchn = &s->chn[0];
+
+    sysbus_init_mmio(dev, &s->mmio);
+}
+
+static void escc_realize(DeviceState *dev, Error **errp)
 {
     ESCCState *s = ESCC(dev);
     unsigned int i;
 
     s->chn[0].disabled = s->disabled;
     s->chn[1].disabled = s->disabled;
+
+    memory_region_init_io(&s->mmio, OBJECT(dev), &escc_mem_ops, s, "escc",
+                          ESCC_SIZE << s->it_shift);
+
     for (i = 0; i < 2; i++) {
-        sysbus_init_irq(dev, &s->chn[i].irq);
-        s->chn[i].chn = 1 - i;
-        s->chn[i].clock = s->frequency / 2;
-        if (s->chn[i].chr) {
-            qemu_chr_add_handlers(s->chn[i].chr, serial_can_receive,
-                                  serial_receive1, serial_event, &s->chn[i]);
+        if (qemu_chr_fe_get_driver(&s->chn[i].chr)) {
+            s->chn[i].clock = s->frequency / 2;
+            qemu_chr_fe_set_handlers(&s->chn[i].chr, serial_can_receive,
+                                     serial_receive1, serial_event,
+                                     &s->chn[i], NULL, true);
         }
     }
-    s->chn[0].otherchn = &s->chn[1];
-    s->chn[1].otherchn = &s->chn[0];
-
-    memory_region_init_io(&s->mmio, OBJECT(s), &escc_mem_ops, s, "escc",
-                          ESCC_SIZE << s->it_shift);
-    sysbus_init_mmio(dev, &s->mmio);
 
     if (s->chn[0].type == mouse) {
         qemu_add_mouse_event_handler(sunmouse_event, &s->chn[0], 0,
@@ -1014,8 +1028,6 @@ static int escc_init1(SysBusDevice *dev)
         s->chn[1].hs = qemu_input_handler_register((DeviceState *)(&s->chn[1]),
                                                    &sunkbd_handler);
     }
-
-    return 0;
 }
 
 static Property escc_properties[] = {
@@ -1032,10 +1044,9 @@ static Property escc_properties[] = {
 static void escc_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-    SysBusDeviceClass *k = SYS_BUS_DEVICE_CLASS(klass);
 
-    k->init = escc_init1;
     dc->reset = escc_reset;
+    dc->realize = escc_realize;
     dc->vmsd = &vmstate_escc;
     dc->props = escc_properties;
     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
@@ -1045,6 +1056,7 @@ static const TypeInfo escc_info = {
     .name          = TYPE_ESCC,
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(ESCCState),
+    .instance_init = escc_init1,
     .class_init    = escc_class_init,
 };
 

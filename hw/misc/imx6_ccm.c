@@ -12,6 +12,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/misc/imx6_ccm.h"
+#include "qemu/log.h"
 
 #ifndef DEBUG_IMX6_CCM
 #define DEBUG_IMX6_CCM 0
@@ -25,7 +26,7 @@
         } \
     } while (0)
 
-static char const *imx6_ccm_reg_name(uint32_t reg)
+static const char *imx6_ccm_reg_name(uint32_t reg)
 {
     static char unknown[20];
 
@@ -98,7 +99,7 @@ static char const *imx6_ccm_reg_name(uint32_t reg)
     }
 }
 
-static char const *imx6_analog_reg_name(uint32_t reg)
+static const char *imx6_analog_reg_name(uint32_t reg)
 {
     static char unknown[20];
 
@@ -369,6 +370,12 @@ static uint32_t imx6_ccm_get_clock_frequency(IMXCCMState *dev, IMXClk clock)
         break;
     case CLK_32k:
         freq = CKIL_FREQ;
+        break;
+    case CLK_HIGH:
+        freq = 24000000;
+        break;
+    case CLK_HIGH_DIV:
+        freq = 24000000 / 8;
         break;
     default:
         qemu_log_mask(LOG_GUEST_ERROR, "[%s]%s: unsupported clock %d\n",

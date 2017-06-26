@@ -1,6 +1,9 @@
 #include "qemu/osdep.h"
+#include "qemu-common.h"
+#include "cpu.h"
 #include "hw/hw.h"
 #include "hw/boards.h"
+#include "migration/cpu.h"
 
 static int get_fpcr(QEMUFile *f, void *opaque, size_t size)
 {
@@ -42,8 +45,6 @@ static VMStateField vmstate_env_fields[] = {
     VMSTATE_UINTTL(unique, CPUAlphaState),
     VMSTATE_UINTTL(lock_addr, CPUAlphaState),
     VMSTATE_UINTTL(lock_value, CPUAlphaState),
-    /* Note that lock_st_addr is not saved; it is a temporary
-       used during the execution of the st[lq]_c insns.  */
 
     VMSTATE_UINT8(ps, CPUAlphaState),
     VMSTATE_UINT8(intr_flag, CPUAlphaState),

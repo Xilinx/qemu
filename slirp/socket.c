@@ -7,7 +7,7 @@
 
 #include "qemu/osdep.h"
 #include "qemu-common.h"
-#include <slirp.h>
+#include "slirp.h"
 #include "ip_icmp.h"
 #ifdef __sun__
 #include <sys/filio.h>
@@ -66,6 +66,23 @@ void
 sofree(struct socket *so)
 {
   Slirp *slirp = so->slirp;
+  struct mbuf *ifm;
+
+  for (ifm = (struct mbuf *) slirp->if_fastq.qh_link;
+       (struct quehead *) ifm != &slirp->if_fastq;
+       ifm = ifm->ifq_next) {
+    if (ifm->ifq_so == so) {
+      ifm->ifq_so = NULL;
+    }
+  }
+
+  for (ifm = (struct mbuf *) slirp->if_batchq.qh_link;
+       (struct quehead *) ifm != &slirp->if_batchq;
+       ifm = ifm->ifq_next) {
+    if (ifm->ifq_so == so) {
+      ifm->ifq_so = NULL;
+    }
+  }
 
   if (so->so_emu==EMU_RSH && so->extra) {
 	sofree(so->extra);
@@ -206,7 +223,7 @@ soread(struct socket *so)
 	 * We don't test for <= 0 this time, because there legitimately
 	 * might not be any more data (since the socket is non-blocking),
 	 * a close will be detected on next iteration.
-	 * A return of -1 wont (shouldn't) happen, since it didn't happen above
+	 * A return of -1 won't (shouldn't) happen, since it didn't happen above
 	 */
 	if (n == 2 && nn == iov[0].iov_len) {
             int ret;
@@ -627,7 +644,7 @@ sosendto(struct socket *so, struct mbuf *m)
 
 	/* Don't care what port we get */
 	ret = sendto(so->s, m->m_data, m->m_len, 0,
-		     (struct sockaddr *)&addr, sizeof(addr));
+		     (struct sockaddr *)&addr, sockaddr_size(&addr));
 	if (ret < 0)
 		return -1;
 
@@ -816,9 +833,12 @@ void sotranslate_out(struct socket *so, struct sockaddr_storage *addr)
         if (in6_equal_net(&so->so_faddr6, &slirp->vprefix_addr6,
                     slirp->vprefix_len)) {
             if (in6_equal(&so->so_faddr6, &slirp->vnameserver_addr6)) {
-                /*if (get_dns_addr(&addr) < 0) {*/ /* TODO */
+                uint32_t scope_id;
+                if (get_dns6_addr(&sin6->sin6_addr, &scope_id) >= 0) {
+                    sin6->sin6_scope_id = scope_id;
+                } else {
                     sin6->sin6_addr = in6addr_loopback;
-                /*}*/
+                }
             } else {
                 sin6->sin6_addr = in6addr_loopback;
             }

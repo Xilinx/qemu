@@ -29,6 +29,7 @@
 #include "sysemu/block-backend.h"
 #include "hw/sysbus.h"
 #include "exec/address-spaces.h"
+#include "sysemu/sysemu.h"
 
 #undef REG_FMT
 #define REG_FMT			"0x%02lx"
@@ -598,15 +599,13 @@ static uint32_t spitz_lcdtg_transfer(SSISlave *dev, uint32_t value)
     return 0;
 }
 
-static int spitz_lcdtg_init(SSISlave *dev)
+static void spitz_lcdtg_realize(SSISlave *dev, Error **errp)
 {
     SpitzLCDTG *s = FROM_SSI_SLAVE(SpitzLCDTG, dev);
 
     spitz_lcdtg = s;
     s->bl_power = 0;
     s->bl_intensity = 0x20;
-
-    return 0;
 }
 
 /* SSP devices */
@@ -666,7 +665,7 @@ static void spitz_adc_temp_on(void *opaque, int line, int level)
         max111x_set_input(max1111, MAX1111_BATT_TEMP, 0);
 }
 
-static int corgi_ssp_init(SSISlave *d)
+static void corgi_ssp_realize(SSISlave *d, Error **errp)
 {
     DeviceState *dev = DEVICE(d);
     CorgiSSPState *s = FROM_SSI_SLAVE(CorgiSSPState, d);
@@ -675,8 +674,6 @@ static int corgi_ssp_init(SSISlave *d)
     s->bus[0] = ssi_create_bus(dev, "ssi0");
     s->bus[1] = ssi_create_bus(dev, "ssi1");
     s->bus[2] = ssi_create_bus(dev, "ssi2");
-
-    return 0;
 }
 
 static void spitz_ssp_attach(PXA2xxState *cpu)
@@ -848,9 +845,18 @@ static void spitz_lcd_hsync_handler(void *opaque, int line, int level)
     spitz_hsync ^= 1;
 }
 
+static void spitz_reset(void *opaque, int line, int level)
+{
+    if (level) {
+        qemu_system_reset_request();
+    }
+}
+
 static void spitz_gpio_setup(PXA2xxState *cpu, int slots)
 {
     qemu_irq lcd_hsync;
+    qemu_irq reset;
+
     /*
      * Bad hack: We toggle the LCD hsync GPIO on every GPIO status
      * read to satisfy broken guests that poll-wait for hsync.
@@ -871,7 +877,8 @@ static void spitz_gpio_setup(PXA2xxState *cpu, int slots)
     qemu_irq_raise(qdev_get_gpio_in(cpu->gpio, SPITZ_GPIO_BAT_COVER));
 
     /* Handle reset */
-    qdev_connect_gpio_out(cpu->gpio, SPITZ_GPIO_ON_RESET, cpu->reset);
+    reset = qemu_allocate_irq(spitz_reset, cpu, 0);
+    qdev_connect_gpio_out(cpu->gpio, SPITZ_GPIO_ON_RESET, reset);
 
     /* PCMCIA signals: card's IRQ and Card-Detect */
     if (slots >= 1)
@@ -1121,7 +1128,7 @@ static void corgi_ssp_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     SSISlaveClass *k = SSI_SLAVE_CLASS(klass);
 
-    k->init = corgi_ssp_init;
+    k->realize = corgi_ssp_realize;
     k->transfer = corgi_ssp_transfer;
     dc->vmsd = &vmstate_corgi_ssp_regs;
 }
@@ -1150,7 +1157,7 @@ static void spitz_lcdtg_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     SSISlaveClass *k = SSI_SLAVE_CLASS(klass);
 
-    k->init = spitz_lcdtg_init;
+    k->realize = spitz_lcdtg_realize;
     k->transfer = spitz_lcdtg_transfer;
     dc->vmsd = &vmstate_spitz_lcdtg_regs;
 }

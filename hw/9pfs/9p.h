@@ -1,12 +1,9 @@
-#ifndef _QEMU_9P_H
-#define _QEMU_9P_H
+#ifndef QEMU_9P_H
+#define QEMU_9P_H
 
 #include <dirent.h>
 #include <utime.h>
 #include <sys/resource.h>
-#include <glib.h>
-#include "standard-headers/linux/virtio_9p.h"
-#include "hw/virtio/virtio.h"
 #include "fsdev/file-op-9p.h"
 #include "fsdev/9p-iov-marshal.h"
 #include "qemu/thread.h"
@@ -162,12 +159,33 @@ typedef struct V9fsConf
 
 typedef struct V9fsXattr
 {
-    int64_t copied_len;
-    int64_t len;
+    uint64_t copied_len;
+    uint64_t len;
     void *value;
     V9fsString name;
     int flags;
+    bool xattrwalk_fid;
 } V9fsXattr;
+
+typedef struct V9fsDir {
+    DIR *stream;
+    QemuMutex readdir_mutex;
+} V9fsDir;
+
+static inline void v9fs_readdir_lock(V9fsDir *dir)
+{
+    qemu_mutex_lock(&dir->readdir_mutex);
+}
+
+static inline void v9fs_readdir_unlock(V9fsDir *dir)
+{
+    qemu_mutex_unlock(&dir->readdir_mutex);
+}
+
+static inline void v9fs_readdir_init(V9fsDir *dir)
+{
+    qemu_mutex_init(&dir->readdir_mutex);
+}
 
 /*
  * Filled by fs driver on open and other
@@ -175,7 +193,7 @@ typedef struct V9fsXattr
  */
 union V9fsFidOpenState {
     int fd;
-    DIR *dir;
+    V9fsDir dir;
     V9fsXattr xattr;
     /*
      * private pointer for fs drivers, that
@@ -219,6 +237,7 @@ typedef struct V9fsState
     int32_t root_fid;
     Error *migration_blocker;
     V9fsConf fsconf;
+    V9fsQID root_qid;
 } V9fsState;
 
 /* 9p2000.L open flags */
@@ -306,19 +325,21 @@ static inline uint8_t v9fs_request_cancelled(V9fsPDU *pdu)
     return pdu->cancelled;
 }
 
-extern void v9fs_reclaim_fd(V9fsPDU *pdu);
-extern void v9fs_path_init(V9fsPath *path);
-extern void v9fs_path_free(V9fsPath *path);
-extern void v9fs_path_copy(V9fsPath *lhs, V9fsPath *rhs);
-extern int v9fs_name_to_path(V9fsState *s, V9fsPath *dirpath,
-                             const char *name, V9fsPath *path);
-extern int v9fs_device_realize_common(V9fsState *s, Error **errp);
-extern void v9fs_device_unrealize_common(V9fsState *s, Error **errp);
+void coroutine_fn v9fs_reclaim_fd(V9fsPDU *pdu);
+void v9fs_path_init(V9fsPath *path);
+void v9fs_path_free(V9fsPath *path);
+void v9fs_path_sprintf(V9fsPath *path, const char *fmt, ...);
+void v9fs_path_copy(V9fsPath *lhs, V9fsPath *rhs);
+int v9fs_name_to_path(V9fsState *s, V9fsPath *dirpath,
+                      const char *name, V9fsPath *path);
+int v9fs_device_realize_common(V9fsState *s, Error **errp);
+void v9fs_device_unrealize_common(V9fsState *s, Error **errp);
 
 ssize_t pdu_marshal(V9fsPDU *pdu, size_t offset, const char *fmt, ...);
 ssize_t pdu_unmarshal(V9fsPDU *pdu, size_t offset, const char *fmt, ...);
 V9fsPDU *pdu_alloc(V9fsState *s);
 void pdu_free(V9fsPDU *pdu);
 void pdu_submit(V9fsPDU *pdu);
+void v9fs_reset(V9fsState *s);
 
 #endif

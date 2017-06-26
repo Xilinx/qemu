@@ -1,5 +1,5 @@
-#ifndef TARGET_SYSCALL_H
-#define TARGET_SYSCALL_H
+#ifndef I386_TARGET_SYSCALL_H
+#define I386_TARGET_SYSCALL_H
 
 /* default linux values for the selectors */
 #define __USER_CS	(0x23)
@@ -153,5 +153,6 @@ struct target_vm86plus_struct {
 #define TARGET_MINSIGSTKSZ 2048
 #define TARGET_MLOCKALL_MCL_CURRENT 1
 #define TARGET_MLOCKALL_MCL_FUTURE  2
+#define TARGET_WANT_OLD_SYS_SELECT
 
-#endif  /* TARGET_SYSCALL_H */
+#endif /* I386_TARGET_SYSCALL_H */

@@ -32,7 +32,7 @@
 #include "hw/scsi/scsi.h"
 #include "block/scsi.h"
 #include "trace.h"
-
+#include "qapi/error.h"
 #include "mptsas.h"
 #include "mpi.h"
 
@@ -63,7 +63,7 @@ static void mptsas_update_interrupt(MPTSASState *s)
     PCIDevice *pci = (PCIDevice *) s;
     uint32_t state = s->intr_status & ~(s->intr_mask | MPI_HIS_IOP_DOORBELL_STATUS);
 
-    if (s->msi_in_use && msi_enabled(pci)) {
+    if (msi_enabled(pci)) {
         if (state) {
             trace_mptsas_irq_msi(s);
             msi_notify(pci, 0);
@@ -304,7 +304,7 @@ static int mptsas_process_scsi_io_request(MPTSASState *s,
         goto bad;
     }
 
-    req = g_new(MPTSASRequest, 1);
+    req = g_new0(MPTSASRequest, 1);
     QTAILQ_INSERT_TAIL(&s->pending, req, next);
     req->scsi_io = *scsi_io;
     req->dev = s;
@@ -754,14 +754,9 @@ static void mptsas_fetch_request(MPTSASState *s)
     hwaddr addr;
     int size;
 
-    if (s->state != MPI_IOC_STATE_OPERATIONAL) {
-        mptsas_set_fault(s, MPI_IOCSTATUS_INVALID_STATE);
-        return;
-    }
-
     /* Read the message header from the guest first. */
     addr = s->host_mfa_high_addr | MPTSAS_FIFO_GET(s, request_post);
-    pci_dma_read(pci, addr, req, sizeof(hdr));
+    pci_dma_read(pci, addr, req, sizeof(*hdr));
 
     if (hdr->Function < ARRAY_SIZE(mpi_request_sizes) &&
         mpi_request_sizes[hdr->Function]) {
@@ -771,8 +766,8 @@ static void mptsas_fetch_request(MPTSASState *s)
          */
         size = mpi_request_sizes[hdr->Function];
         assert(size <= MPTSAS_MAX_REQUEST_SIZE);
-        pci_dma_read(pci, addr + sizeof(hdr), &req[sizeof(hdr)],
-                     size - sizeof(hdr));
+        pci_dma_read(pci, addr + sizeof(*hdr), &req[sizeof(*hdr)],
+                     size - sizeof(*hdr));
     }
 
     if (hdr->Function == MPI_FUNCTION_SCSI_IO_REQUEST) {
@@ -789,6 +784,10 @@ static void mptsas_fetch_requests(void *opaque)
 {
     MPTSASState *s = opaque;
 
+    if (s->state != MPI_IOC_STATE_OPERATIONAL) {
+        mptsas_set_fault(s, MPI_IOCSTATUS_INVALID_STATE);
+        return;
+    }
     while (!MPTSAS_FIFO_EMPTY(s, request_post)) {
         mptsas_fetch_request(s);
     }
@@ -1270,13 +1269,35 @@ static const struct SCSIBusInfo mptsas_scsi_info = {
     .load_request = mptsas_load_request,
 };
 
-static void mptsas_scsi_init(PCIDevice *dev, Error **errp)
+static void mptsas_scsi_realize(PCIDevice *dev, Error **errp)
 {
     DeviceState *d = DEVICE(dev);
     MPTSASState *s = MPT_SAS(dev);
+    Error *err = NULL;
+    int ret;
 
     dev->config[PCI_LATENCY_TIMER] = 0;
     dev->config[PCI_INTERRUPT_PIN] = 0x01;
+
+    if (s->msi != ON_OFF_AUTO_OFF) {
+        ret = msi_init(dev, 0, 1, true, false, &err);
+        /* Any error other than -ENOTSUP(board's MSI support is broken)
+         * is a programming error */
+        assert(!ret || ret == -ENOTSUP);
+        if (ret && s->msi == ON_OFF_AUTO_ON) {
+            /* Can't satisfy user's explicit msi=on request, fail */
+            error_append_hint(&err, "You have to use msi=auto (default) or "
+                    "msi=off with this machine type.\n");
+            error_propagate(errp, err);
+            return;
+        }
+        assert(!err || s->msi == ON_OFF_AUTO_AUTO);
+        /* With msi=auto, we fall back to MSI off silently */
+        error_free(err);
+
+        /* Only used for migration.  */
+        s->msi_in_use = (ret == 0);
+    }
 
     memory_region_init_io(&s->mmio_io, OBJECT(s), &mptsas_mmio_ops, s,
                           "mptsas-mmio", 0x4000);
@@ -1284,11 +1305,6 @@ static void mptsas_scsi_init(PCIDevice *dev, Error **errp)
                           "mptsas-io", 256);
     memory_region_init_io(&s->diag_io, OBJECT(s), &mptsas_diag_ops, s,
                           "mptsas-diag", 0x10000);
-
-    if (s->msi_available &&
-        msi_init(dev, 0, 1, true, false) >= 0) {
-        s->msi_in_use = true;
-    }
 
     pci_register_bar(dev, 0, PCI_BASE_ADDRESS_SPACE_IO, &s->port_io);
     pci_register_bar(dev, 1, PCI_BASE_ADDRESS_SPACE_MEMORY |
@@ -1320,9 +1336,7 @@ static void mptsas_scsi_uninit(PCIDevice *dev)
     MPTSASState *s = MPT_SAS(dev);
 
     qemu_bh_delete(s->request_bh);
-    if (s->msi_in_use) {
-        msi_uninit(dev);
-    }
+    msi_uninit(dev);
 }
 
 static void mptsas_reset(DeviceState *dev)
@@ -1359,7 +1373,6 @@ static const VMStateDescription vmstate_mptsas = {
     .fields      = (VMStateField[]) {
         VMSTATE_PCI_DEVICE(dev, MPTSASState),
         VMSTATE_BOOL(msi_in_use, MPTSASState),
-
         VMSTATE_UINT32(state, MPTSASState),
         VMSTATE_UINT8(who_init, MPTSASState),
         VMSTATE_UINT8(doorbell_state, MPTSASState),
@@ -1404,7 +1417,7 @@ static const VMStateDescription vmstate_mptsas = {
 static Property mptsas_properties[] = {
     DEFINE_PROP_UINT64("sas_address", MPTSASState, sas_addr, 0),
     /* TODO: test MSI support under Windows */
-    DEFINE_PROP_BIT("msi", MPTSASState, msi_available, 0, true),
+    DEFINE_PROP_ON_OFF_AUTO("msi", MPTSASState, msi, ON_OFF_AUTO_AUTO),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -1413,7 +1426,7 @@ static void mptsas1068_class_init(ObjectClass *oc, void *data)
     DeviceClass *dc = DEVICE_CLASS(oc);
     PCIDeviceClass *pc = PCI_DEVICE_CLASS(oc);
 
-    pc->realize = mptsas_scsi_init;
+    pc->realize = mptsas_scsi_realize;
     pc->exit = mptsas_scsi_uninit;
     pc->romfile = 0;
     pc->vendor_id = PCI_VENDOR_ID_LSI_LOGIC;

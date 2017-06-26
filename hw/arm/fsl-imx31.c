@@ -47,7 +47,7 @@ static void fsl_imx31_init(Object *obj)
         qdev_set_parent_bus(DEVICE(&s->uart[i]), sysbus_get_default());
     }
 
-    object_initialize(&s->gpt, sizeof(s->gpt), TYPE_IMX_GPT);
+    object_initialize(&s->gpt, sizeof(s->gpt), TYPE_IMX31_GPT);
     qdev_set_parent_bus(DEVICE(&s->gpt), sysbus_get_default());
 
     for (i = 0; i < FSL_IMX31_NUM_EPITS; i++) {
@@ -114,7 +114,7 @@ static void fsl_imx31_realize(DeviceState *dev, Error **errp)
             if (!chr) {
                 char label[20];
                 snprintf(label, sizeof(label), "imx31.uart%d", i);
-                chr = qemu_chr_new(label, "null", NULL);
+                chr = qemu_chr_new(label, "null");
             }
 
             qdev_prop_set_chr(DEVICE(&s->uart[i]), "chardev", chr);
@@ -219,9 +219,8 @@ static void fsl_imx31_realize(DeviceState *dev, Error **errp)
     }
 
     /* On a real system, the first 16k is a `secure boot rom' */
-    memory_region_init_rom_device(&s->secure_rom, NULL, NULL, NULL,
-                                  "imx31.secure_rom",
-                                  FSL_IMX31_SECURE_ROM_SIZE, &err);
+    memory_region_init_rom(&s->secure_rom, NULL, "imx31.secure_rom",
+                           FSL_IMX31_SECURE_ROM_SIZE, &err);
     if (err) {
         error_propagate(errp, err);
         return;
@@ -230,8 +229,8 @@ static void fsl_imx31_realize(DeviceState *dev, Error **errp)
                                 &s->secure_rom);
 
     /* There is also a 16k ROM */
-    memory_region_init_rom_device(&s->rom, NULL, NULL, NULL, "imx31.rom",
-                                  FSL_IMX31_ROM_SIZE, &err);
+    memory_region_init_rom(&s->rom, NULL, "imx31.rom",
+                           FSL_IMX31_ROM_SIZE, &err);
     if (err) {
         error_propagate(errp, err);
         return;

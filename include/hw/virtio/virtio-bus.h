@@ -52,24 +52,36 @@ typedef struct VirtioBusClass {
     bool (*has_extra_state)(DeviceState *d);
     bool (*query_guest_notifiers)(DeviceState *d);
     int (*set_guest_notifiers)(DeviceState *d, int nvqs, bool assign);
-    int (*set_host_notifier)(DeviceState *d, int n, bool assigned);
     void (*vmstate_change)(DeviceState *d, bool running);
+    /*
+     * Expose the features the transport layer supports before
+     * the negotiation takes place.
+     */
+    void (*pre_plugged)(DeviceState *d, Error **errp);
     /*
      * transport independent init function.
      * This is called by virtio-bus just after the device is plugged.
      */
     void (*device_plugged)(DeviceState *d, Error **errp);
     /*
-     * Re-evaluate setup after feature bits have been validated
-     * by the device backend.
-     */
-    void (*post_plugged)(DeviceState *d, Error **errp);
-    /*
      * transport independent exit function.
      * This is called by virtio-bus just before the device is unplugged.
      */
     void (*device_unplugged)(DeviceState *d);
     int (*query_nvectors)(DeviceState *d);
+    /*
+     * ioeventfd handling: if the transport implements ioeventfd_assign,
+     * it must implement ioeventfd_enabled as well.
+     */
+    /* Returns true if the ioeventfd is enabled for the device. */
+    bool (*ioeventfd_enabled)(DeviceState *d);
+    /*
+     * Assigns/deassigns the ioeventfd backing for the transport on
+     * the device for queue number n. Returns an error value on
+     * failure.
+     */
+    int (*ioeventfd_assign)(DeviceState *d, EventNotifier *notifier,
+                            int n, bool assign);
     /*
      * Does the transport have variable vring alignment?
      * (ie can it ever call virtio_queue_set_align()?)
@@ -80,6 +92,21 @@ typedef struct VirtioBusClass {
 
 struct VirtioBusState {
     BusState parent_obj;
+
+    /*
+     * Set if ioeventfd has been started.
+     */
+    bool ioeventfd_started;
+
+    /*
+     * Set if ioeventfd has been grabbed by vhost.  When ioeventfd
+     * is grabbed by vhost, we track its started/stopped state (which
+     * depends in turn on the virtio status register), but do not
+     * register a handler for the ioeventfd.  When ioeventfd is
+     * released, if ioeventfd_started is true we finally register
+     * the handler so that QEMU's device model can use ioeventfd.
+     */
+    int ioeventfd_grabbed;
 };
 
 void virtio_bus_device_plugged(VirtIODevice *vdev, Error **errp);
@@ -89,9 +116,6 @@ void virtio_bus_device_unplugged(VirtIODevice *bus);
 uint16_t virtio_bus_get_vdev_id(VirtioBusState *bus);
 /* Get the config_len field of the plugged device. */
 size_t virtio_bus_get_vdev_config_len(VirtioBusState *bus);
-/* Get the features of the plugged device. */
-uint32_t virtio_bus_get_vdev_features(VirtioBusState *bus,
-                                    uint32_t requested_features);
 /* Get bad features of the plugged device. */
 uint32_t virtio_bus_get_vdev_bad_features(VirtioBusState *bus);
 /* Get config of the plugged device. */
@@ -110,5 +134,18 @@ static inline VirtIODevice *virtio_bus_get_device(VirtioBusState *bus)
      */
     return (VirtIODevice *)qdev;
 }
+
+/* Return whether the proxy allows ioeventfd.  */
+bool virtio_bus_ioeventfd_enabled(VirtioBusState *bus);
+/* Start the ioeventfd. */
+int virtio_bus_start_ioeventfd(VirtioBusState *bus);
+/* Stop the ioeventfd. */
+void virtio_bus_stop_ioeventfd(VirtioBusState *bus);
+/* Tell the bus that vhost is grabbing the ioeventfd. */
+int virtio_bus_grab_ioeventfd(VirtioBusState *bus);
+/* bus that vhost is not using the ioeventfd anymore. */
+void virtio_bus_release_ioeventfd(VirtioBusState *bus);
+/* Switch from/to the generic ioeventfd handler */
+int virtio_bus_set_host_notifier(VirtioBusState *bus, int n, bool assign);
 
 #endif /* VIRTIO_BUS_H */

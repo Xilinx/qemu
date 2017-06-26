@@ -23,7 +23,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qapi/error.h"
 #include "qemu/log.h"
 #include "hw/dma/xlnx_dpdma.h"
 
@@ -303,14 +302,6 @@ static uint64_t xlnx_dpdma_descriptor_next_address(XlnxDPDMAState *s,
 {
     return ((uint64_t)s->registers[DPDMA_DSCR_NEXT_ADDRE_CH(channel)] << 32)
            + s->registers[DPDMA_DSCR_NEXT_ADDR_CH(channel)];
-}
-
-static inline void xlnx_dpdma_set_desc_next_address(XlnxDPDMAState *s,
-                                                      uint8_t channel,
-                                                      uint64_t addr)
-{
-    s->registers[DPDMA_DSCR_NEXT_ADDRE_CH(channel)] = extract64(addr, 32, 32);
-    s->registers[DPDMA_DSCR_NEXT_ADDR_CH(channel)] = extract64(addr, 0, 32);
 }
 
 static bool xlnx_dpdma_is_channel_enabled(XlnxDPDMAState *s,

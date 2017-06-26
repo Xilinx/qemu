@@ -1,6 +1,5 @@
-
 /*
- * Virtio 9p backend
+ * 9p backend
  *
  * Copyright IBM, Corp. 2011
  *
@@ -18,8 +17,8 @@
 #include "qemu/coroutine.h"
 #include "coth.h"
 
-int v9fs_co_readdir_r(V9fsPDU *pdu, V9fsFidState *fidp, struct dirent *dent,
-                      struct dirent **result)
+int coroutine_fn v9fs_co_readdir(V9fsPDU *pdu, V9fsFidState *fidp,
+                                 struct dirent **dent)
 {
     int err;
     V9fsState *s = pdu->s;
@@ -29,11 +28,14 @@ int v9fs_co_readdir_r(V9fsPDU *pdu, V9fsFidState *fidp, struct dirent *dent,
     }
     v9fs_co_run_in_worker(
         {
+            struct dirent *entry;
+
             errno = 0;
-            err = s->ops->readdir_r(&s->ctx, &fidp->fs, dent, result);
-            if (!*result && errno) {
+            entry = s->ops->readdir(&s->ctx, &fidp->fs);
+            if (!entry && errno) {
                 err = -errno;
             } else {
+                *dent = entry;
                 err = 0;
             }
         });
@@ -58,7 +60,8 @@ off_t v9fs_co_telldir(V9fsPDU *pdu, V9fsFidState *fidp)
     return err;
 }
 
-void v9fs_co_seekdir(V9fsPDU *pdu, V9fsFidState *fidp, off_t offset)
+void coroutine_fn v9fs_co_seekdir(V9fsPDU *pdu, V9fsFidState *fidp,
+                                  off_t offset)
 {
     V9fsState *s = pdu->s;
     if (v9fs_request_cancelled(pdu)) {
@@ -70,7 +73,7 @@ void v9fs_co_seekdir(V9fsPDU *pdu, V9fsFidState *fidp, off_t offset)
         });
 }
 
-void v9fs_co_rewinddir(V9fsPDU *pdu, V9fsFidState *fidp)
+void coroutine_fn v9fs_co_rewinddir(V9fsPDU *pdu, V9fsFidState *fidp)
 {
     V9fsState *s = pdu->s;
     if (v9fs_request_cancelled(pdu)) {
@@ -82,8 +85,9 @@ void v9fs_co_rewinddir(V9fsPDU *pdu, V9fsFidState *fidp)
         });
 }
 
-int v9fs_co_mkdir(V9fsPDU *pdu, V9fsFidState *fidp, V9fsString *name,
-                  mode_t mode, uid_t uid, gid_t gid, struct stat *stbuf)
+int coroutine_fn v9fs_co_mkdir(V9fsPDU *pdu, V9fsFidState *fidp,
+                               V9fsString *name, mode_t mode, uid_t uid,
+                               gid_t gid, struct stat *stbuf)
 {
     int err;
     FsCred cred;
@@ -119,7 +123,7 @@ int v9fs_co_mkdir(V9fsPDU *pdu, V9fsFidState *fidp, V9fsString *name,
     return err;
 }
 
-int v9fs_co_opendir(V9fsPDU *pdu, V9fsFidState *fidp)
+int coroutine_fn v9fs_co_opendir(V9fsPDU *pdu, V9fsFidState *fidp)
 {
     int err;
     V9fsState *s = pdu->s;
@@ -147,7 +151,7 @@ int v9fs_co_opendir(V9fsPDU *pdu, V9fsFidState *fidp)
     return err;
 }
 
-int v9fs_co_closedir(V9fsPDU *pdu, V9fsFidOpenState *fs)
+int coroutine_fn v9fs_co_closedir(V9fsPDU *pdu, V9fsFidOpenState *fs)
 {
     int err;
     V9fsState *s = pdu->s;

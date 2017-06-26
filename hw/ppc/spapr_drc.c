@@ -20,20 +20,7 @@
 #include "qapi/visitor.h"
 #include "qemu/error-report.h"
 #include "hw/ppc/spapr.h" /* for RTAS return codes */
-
-/* #define DEBUG_SPAPR_DRC */
-
-#ifdef DEBUG_SPAPR_DRC
-#define DPRINTF(fmt, ...) \
-    do { fprintf(stderr, fmt, ## __VA_ARGS__); } while (0)
-#define DPRINTFN(fmt, ...) \
-    do { DPRINTF(fmt, ## __VA_ARGS__); fprintf(stderr, "\n"); } while (0)
-#else
-#define DPRINTF(fmt, ...) \
-    do { } while (0)
-#define DPRINTFN(fmt, ...) \
-    do { } while (0)
-#endif
+#include "trace.h"
 
 #define DRC_CONTAINER_PATH "/dr-connector"
 #define DRC_INDEX_TYPE_SHIFT 28
@@ -69,7 +56,7 @@ static uint32_t set_isolation_state(sPAPRDRConnector *drc,
 {
     sPAPRDRConnectorClass *drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
 
-    DPRINTFN("drc: %x, set_isolation_state: %x", get_index(drc), state);
+    trace_spapr_drc_set_isolation_state(get_index(drc), state);
 
     if (state == SPAPR_DR_ISOLATION_STATE_UNISOLATED) {
         /* cannot unisolate a non-existant resource, and, or resources
@@ -78,6 +65,23 @@ static uint32_t set_isolation_state(sPAPRDRConnector *drc,
         if (!drc->dev ||
             drc->allocation_state == SPAPR_DR_ALLOCATION_STATE_UNUSABLE) {
             return RTAS_OUT_NO_SUCH_INDICATOR;
+        }
+    }
+
+    /*
+     * Fail any requests to ISOLATE the LMB DRC if this LMB doesn't
+     * belong to a DIMM device that is marked for removal.
+     *
+     * Currently the guest userspace tool drmgr that drives the memory
+     * hotplug/unplug will just try to remove a set of 'removable' LMBs
+     * in response to a hot unplug request that is based on drc-count.
+     * If the LMB being removed doesn't belong to a DIMM device that is
+     * actually being unplugged, fail the isolation request here.
+     */
+    if (drc->type == SPAPR_DR_CONNECTOR_TYPE_LMB) {
+        if ((state == SPAPR_DR_ISOLATION_STATE_ISOLATED) &&
+             !drc->awaiting_release) {
+            return RTAS_OUT_HW_ERROR;
         }
     }
 
@@ -94,11 +98,11 @@ static uint32_t set_isolation_state(sPAPRDRConnector *drc,
          */
         if (drc->awaiting_release) {
             if (drc->configured) {
-                DPRINTFN("finalizing device removal");
+                trace_spapr_drc_set_isolation_state_finalizing(get_index(drc));
                 drck->detach(drc, DEVICE(drc->dev), drc->detach_cb,
                              drc->detach_cb_opaque, NULL);
             } else {
-                DPRINTFN("deferring device removal on unconfigured device\n");
+                trace_spapr_drc_set_isolation_state_deferring(get_index(drc));
             }
         }
         drc->configured = false;
@@ -110,7 +114,7 @@ static uint32_t set_isolation_state(sPAPRDRConnector *drc,
 static uint32_t set_indicator_state(sPAPRDRConnector *drc,
                                     sPAPRDRIndicatorState state)
 {
-    DPRINTFN("drc: %x, set_indicator_state: %x", get_index(drc), state);
+    trace_spapr_drc_set_indicator_state(get_index(drc), state);
     drc->indicator_state = state;
     return RTAS_OUT_SUCCESS;
 }
@@ -120,7 +124,7 @@ static uint32_t set_allocation_state(sPAPRDRConnector *drc,
 {
     sPAPRDRConnectorClass *drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
 
-    DPRINTFN("drc: %x, set_allocation_state: %x", get_index(drc), state);
+    trace_spapr_drc_set_allocation_state(get_index(drc), state);
 
     if (state == SPAPR_DR_ALLOCATION_STATE_USABLE) {
         /* if there's no resource/device associated with the DRC, there's
@@ -137,9 +141,11 @@ static uint32_t set_allocation_state(sPAPRDRConnector *drc,
         drc->allocation_state = state;
         if (drc->awaiting_release &&
             drc->allocation_state == SPAPR_DR_ALLOCATION_STATE_UNUSABLE) {
-            DPRINTFN("finalizing device removal");
+            trace_spapr_drc_set_allocation_state_finalizing(get_index(drc));
             drck->detach(drc, DEVICE(drc->dev), drc->detach_cb,
                          drc->detach_cb_opaque, NULL);
+        } else if (drc->allocation_state == SPAPR_DR_ALLOCATION_STATE_USABLE) {
+            drc->awaiting_allocation = false;
         }
     }
     return RTAS_OUT_SUCCESS;
@@ -165,12 +171,11 @@ static const void *get_fdt(sPAPRDRConnector *drc, int *fdt_start_offset)
 
 static void set_configured(sPAPRDRConnector *drc)
 {
-    DPRINTFN("drc: %x, set_configured", get_index(drc));
+    trace_spapr_drc_set_configured(get_index(drc));
 
     if (drc->isolation_state != SPAPR_DR_ISOLATION_STATE_UNISOLATED) {
         /* guest should be not configuring an isolated device */
-        DPRINTFN("drc: %x, set_configured: skipping isolated device",
-                 get_index(drc));
+        trace_spapr_drc_set_configured_skipping(get_index(drc));
         return;
     }
     drc->configured = true;
@@ -220,7 +225,7 @@ static uint32_t entity_sense(sPAPRDRConnector *drc, sPAPRDREntitySense *state)
         }
     }
 
-    DPRINTFN("drc: %x, entity_sense: %x", get_index(drc), state);
+    trace_spapr_drc_entity_sense(get_index(drc), *state);
     return RTAS_OUT_SUCCESS;
 }
 
@@ -269,11 +274,7 @@ static void prop_get_fdt(Object *obj, Visitor *v, const char *name,
     void *fdt;
 
     if (!drc->fdt) {
-        visit_start_struct(v, name, NULL, 0, &err);
-        if (!err) {
-            visit_end_struct(v, &err);
-        }
-        error_propagate(errp, err);
+        visit_type_null(v, NULL, errp);
         return;
     }
 
@@ -301,7 +302,8 @@ static void prop_get_fdt(Object *obj, Visitor *v, const char *name,
         case FDT_END_NODE:
             /* shouldn't ever see an FDT_END_NODE before FDT_BEGIN_NODE */
             g_assert(fdt_depth > 0);
-            visit_end_struct(v, &err);
+            visit_check_struct(v, &err);
+            visit_end_struct(v, NULL);
             if (err) {
                 error_propagate(errp, err);
                 return;
@@ -312,7 +314,7 @@ static void prop_get_fdt(Object *obj, Visitor *v, const char *name,
             int i;
             prop = fdt_get_property_by_offset(fdt, fdt_offset, &prop_len);
             name = fdt_string(fdt, fdt32_to_cpu(prop->nameoff));
-            visit_start_list(v, name, &err);
+            visit_start_list(v, name, NULL, 0, &err);
             if (err) {
                 error_propagate(errp, err);
                 return;
@@ -324,7 +326,7 @@ static void prop_get_fdt(Object *obj, Visitor *v, const char *name,
                     return;
                 }
             }
-            visit_end_list(v);
+            visit_end_list(v, NULL);
             break;
         }
         default:
@@ -337,7 +339,7 @@ static void prop_get_fdt(Object *obj, Visitor *v, const char *name,
 static void attach(sPAPRDRConnector *drc, DeviceState *d, void *fdt,
                    int fdt_start_offset, bool coldplug, Error **errp)
 {
-    DPRINTFN("drc: %x, attach", get_index(drc));
+    trace_spapr_drc_attach(get_index(drc));
 
     if (drc->isolation_state != SPAPR_DR_ISOLATION_STATE_ISOLATED) {
         error_setg(errp, "an attached device is still awaiting release");
@@ -376,6 +378,10 @@ static void attach(sPAPRDRConnector *drc, DeviceState *d, void *fdt,
     drc->signalled = (drc->type != SPAPR_DR_CONNECTOR_TYPE_PCI)
                      ? true : coldplug;
 
+    if (drc->type != SPAPR_DR_CONNECTOR_TYPE_PCI) {
+        drc->awaiting_allocation = true;
+    }
+
     object_property_add_link(OBJECT(drc), "device",
                              object_get_typename(OBJECT(drc->dev)),
                              (Object **)(&drc->dev),
@@ -386,7 +392,7 @@ static void detach(sPAPRDRConnector *drc, DeviceState *d,
                    spapr_drc_detach_cb *detach_cb,
                    void *detach_cb_opaque, Error **errp)
 {
-    DPRINTFN("drc: %x, detach", get_index(drc));
+    trace_spapr_drc_detach(get_index(drc));
 
     drc->detach_cb = detach_cb;
     drc->detach_cb_opaque = detach_cb_opaque;
@@ -412,15 +418,21 @@ static void detach(sPAPRDRConnector *drc, DeviceState *d,
     }
 
     if (drc->isolation_state != SPAPR_DR_ISOLATION_STATE_ISOLATED) {
-        DPRINTFN("awaiting transition to isolated state before removal");
+        trace_spapr_drc_awaiting_isolated(get_index(drc));
         drc->awaiting_release = true;
         return;
     }
 
     if (drc->type != SPAPR_DR_CONNECTOR_TYPE_PCI &&
         drc->allocation_state != SPAPR_DR_ALLOCATION_STATE_UNUSABLE) {
-        DPRINTFN("awaiting transition to unusable state before removal");
+        trace_spapr_drc_awaiting_unusable(get_index(drc));
         drc->awaiting_release = true;
+        return;
+    }
+
+    if (drc->awaiting_allocation) {
+        drc->awaiting_release = true;
+        trace_spapr_drc_awaiting_allocation(get_index(drc));
         return;
     }
 
@@ -451,7 +463,7 @@ static void reset(DeviceState *d)
     sPAPRDRConnectorClass *drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
     sPAPRDREntitySense state;
 
-    DPRINTFN("drc reset: %x", drck->get_index(drc));
+    trace_spapr_drc_reset(drck->get_index(drc));
     /* immediately upon reset we can safely assume DRCs whose devices
      * are pending removal can be safely removed, and that they will
      * subsequently be left in an ISOLATED state. move the DRC to this
@@ -493,7 +505,7 @@ static void realize(DeviceState *d, Error **errp)
     gchar *child_name;
     Error *err = NULL;
 
-    DPRINTFN("drc realize: %x", drck->get_index(drc));
+    trace_spapr_drc_realize(drck->get_index(drc));
     /* NOTE: we do this as part of realize/unrealize due to the fact
      * that the guest will communicate with the DRC via RTAS calls
      * referencing the global DRC index. By unlinking the DRC
@@ -504,7 +516,7 @@ static void realize(DeviceState *d, Error **errp)
     root_container = container_get(object_get_root(), DRC_CONTAINER_PATH);
     snprintf(link_name, sizeof(link_name), "%x", drck->get_index(drc));
     child_name = object_get_canonical_path_component(OBJECT(drc));
-    DPRINTFN("drc child name: %s", child_name);
+    trace_spapr_drc_realize_child(drck->get_index(drc), child_name);
     object_property_add_alias(root_container, link_name,
                               drc->owner, child_name, &err);
     if (err) {
@@ -512,7 +524,7 @@ static void realize(DeviceState *d, Error **errp)
         object_unref(OBJECT(drc));
     }
     g_free(child_name);
-    DPRINTFN("drc realize complete");
+    trace_spapr_drc_realize_complete(drck->get_index(drc));
 }
 
 static void unrealize(DeviceState *d, Error **errp)
@@ -523,7 +535,7 @@ static void unrealize(DeviceState *d, Error **errp)
     char name[256];
     Error *err = NULL;
 
-    DPRINTFN("drc unrealize: %x", drck->get_index(drc));
+    trace_spapr_drc_unrealize(drck->get_index(drc));
     root_container = container_get(object_get_root(), DRC_CONTAINER_PATH);
     snprintf(name, sizeof(name), "%x", drck->get_index(drc));
     object_property_del(root_container, name, &err);
@@ -807,7 +819,7 @@ int spapr_drc_populate_dt(void *fdt, int fdt_offset, Object *owner,
                       drc_indexes->data,
                       drc_indexes->len * sizeof(uint32_t));
     if (ret) {
-        fprintf(stderr, "Couldn't create ibm,drc-indexes property\n");
+        error_report("Couldn't create ibm,drc-indexes property");
         goto out;
     }
 
@@ -815,21 +827,21 @@ int spapr_drc_populate_dt(void *fdt, int fdt_offset, Object *owner,
                       drc_power_domains->data,
                       drc_power_domains->len * sizeof(uint32_t));
     if (ret) {
-        fprintf(stderr, "Couldn't finalize ibm,drc-power-domains property\n");
+        error_report("Couldn't finalize ibm,drc-power-domains property");
         goto out;
     }
 
     ret = fdt_setprop(fdt, fdt_offset, "ibm,drc-names",
                       drc_names->str, drc_names->len);
     if (ret) {
-        fprintf(stderr, "Couldn't finalize ibm,drc-names property\n");
+        error_report("Couldn't finalize ibm,drc-names property");
         goto out;
     }
 
     ret = fdt_setprop(fdt, fdt_offset, "ibm,drc-types",
                       drc_types->str, drc_types->len);
     if (ret) {
-        fprintf(stderr, "Couldn't finalize ibm,drc-types property\n");
+        error_report("Couldn't finalize ibm,drc-types property");
         goto out;
     }
 

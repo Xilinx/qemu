@@ -19,6 +19,7 @@
 
 #include "qemu/osdep.h"
 #include "cpu.h"
+#include "exec/exec-all.h"
 #include "qemu/host-utils.h"
 #include "sysemu/sysemu.h"
 #include "exec/semihost.h"
@@ -140,7 +141,7 @@ void lm32_debug_excp_handler(CPUState *cs)
             if (check_watchpoints(env)) {
                 raise_exception(env, EXCP_WATCHPOINT);
             } else {
-                cpu_resume_from_signal(cs, NULL);
+                cpu_loop_exit_noexc(cs);
             }
         }
     } else {

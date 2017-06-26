@@ -28,6 +28,9 @@
 #include "hw/scsi/scsi.h"
 #include "sysemu/block-backend.h"
 
+#define ATAPI_SECTOR_BITS (2 + BDRV_SECTOR_BITS)
+#define ATAPI_SECTOR_SIZE (1 << ATAPI_SECTOR_BITS)
+
 static void ide_atapi_cmd_read_dma_cb(void *opaque, int ret);
 
 static void padstr8(uint8_t *buf, int buf_size, const char *src)
@@ -111,7 +114,7 @@ cd_read_sector_sync(IDEState *s)
 {
     int ret;
     block_acct_start(blk_get_stats(s->blk), &s->acct,
-                     4 * BDRV_SECTOR_SIZE, BLOCK_ACCT_READ);
+                     ATAPI_SECTOR_SIZE, BLOCK_ACCT_READ);
 
 #ifdef DEBUG_IDE_ATAPI
     printf("cd_read_sector_sync: lba=%d\n", s->lba);
@@ -119,12 +122,12 @@ cd_read_sector_sync(IDEState *s)
 
     switch (s->cd_sector_size) {
     case 2048:
-        ret = blk_read(s->blk, (int64_t)s->lba << 2,
-                       s->io_buffer, 4);
+        ret = blk_pread(s->blk, (int64_t)s->lba << ATAPI_SECTOR_BITS,
+                        s->io_buffer, ATAPI_SECTOR_SIZE);
         break;
     case 2352:
-        ret = blk_read(s->blk, (int64_t)s->lba << 2,
-                       s->io_buffer + 16, 4);
+        ret = blk_pread(s->blk, (int64_t)s->lba << ATAPI_SECTOR_BITS,
+                        s->io_buffer + 16, ATAPI_SECTOR_SIZE);
         if (ret >= 0) {
             cd_data_to_raw(s->io_buffer, s->lba);
         }
@@ -182,7 +185,7 @@ static int cd_read_sector(IDEState *s)
     s->iov.iov_base = (s->cd_sector_size == 2352) ?
                       s->io_buffer + 16 : s->io_buffer;
 
-    s->iov.iov_len = 4 * BDRV_SECTOR_SIZE;
+    s->iov.iov_len = ATAPI_SECTOR_SIZE;
     qemu_iovec_init_external(&s->qiov, &s->iov, 1);
 
 #ifdef DEBUG_IDE_ATAPI
@@ -190,7 +193,7 @@ static int cd_read_sector(IDEState *s)
 #endif
 
     block_acct_start(blk_get_stats(s->blk), &s->acct,
-                     4 * BDRV_SECTOR_SIZE, BLOCK_ACCT_READ);
+                     ATAPI_SECTOR_SIZE, BLOCK_ACCT_READ);
 
     ide_buffered_readv(s, (int64_t)s->lba << 2, &s->qiov, 4,
                        cd_read_sector_cb, s);
@@ -375,15 +378,19 @@ static void ide_atapi_cmd_check_status(IDEState *s)
 }
 /* ATAPI DMA support */
 
-/* XXX: handle read errors */
 static void ide_atapi_cmd_read_dma_cb(void *opaque, int ret)
 {
     IDEState *s = opaque;
     int data_offset, n;
 
     if (ret < 0) {
-        ide_atapi_io_error(s, ret);
-        goto eot;
+        if (ide_handle_rw_error(s, -ret, ide_dma_cmd_to_retry(s->dma_cmd))) {
+            if (s->bus->error_status) {
+                s->bus->dma->aiocb = NULL;
+                return;
+            }
+            goto eot;
+        }
     }
 
     if (s->io_buffer_size > 0) {
@@ -432,7 +439,7 @@ static void ide_atapi_cmd_read_dma_cb(void *opaque, int ret)
 #endif
 
     s->bus->dma->iov.iov_base = (void *)(s->io_buffer + data_offset);
-    s->bus->dma->iov.iov_len = n * 4 * 512;
+    s->bus->dma->iov.iov_len = n * ATAPI_SECTOR_SIZE;
     qemu_iovec_init_external(&s->bus->dma->qiov, &s->bus->dma->iov, 1);
 
     s->bus->dma->aiocb = ide_buffered_readv(s, (int64_t)s->lba << 2,
@@ -481,21 +488,16 @@ static void ide_atapi_cmd_read(IDEState *s, int lba, int nb_sectors,
     }
 }
 
-
-/* Called by *_restart_bh when the transfer function points
- * to ide_atapi_cmd
- */
 void ide_atapi_dma_restart(IDEState *s)
 {
     /*
-     * I'm not sure we have enough stored to restart the command
-     * safely, so give the guest an error it should recover from.
-     * I'm assuming most guests will try to recover from something
-     * listed as a medium error on a CD; it seems to work on Linux.
-     * This would be more of a problem if we did any other type of
-     * DMA operation.
+     * At this point we can just re-evaluate the packet command and start over.
+     * The presence of ->dma_cb callback in the pre_save ensures that the packet
+     * command has been completely sent and we can safely restart command.
      */
-    ide_atapi_cmd_error(s, MEDIUM_ERROR, ASC_NO_SEEK_COMPLETE);
+    s->unit = s->bus->retry_unit;
+    s->bus->dma->ops->restart_dma(s->bus->dma);
+    ide_atapi_cmd(s);
 }
 
 static inline uint8_t ide_atapi_set_profile(uint8_t *buf, uint8_t *index,
@@ -633,6 +635,23 @@ static unsigned int event_status_media(IDEState *s,
     buf[7] = 0;
 
     return 8; /* We wrote to 4 extra bytes from the header */
+}
+
+/*
+ * Before transferring data or otherwise signalling acceptance of a command
+ * marked CONDDATA, we must check the validity of the byte_count_limit.
+ */
+static bool validate_bcl(IDEState *s)
+{
+    /* TODO: Check IDENTIFY data word 125 for defacult BCL (currently 0) */
+    if (s->atapi_dma || atapi_byte_count_limit(s)) {
+        return true;
+    }
+
+    /* TODO: Move abort back into core.c and introduce proper error flow between
+     *       ATAPI layer and IDE core layer */
+    ide_abort_command(s);
+    return false;
 }
 
 static void cmd_get_event_status_notification(IDEState *s,
@@ -1026,12 +1045,19 @@ static void cmd_read_cd(IDEState *s, uint8_t* buf)
         return;
     }
 
-    transfer_request = buf[9];
-    switch(transfer_request & 0xf8) {
-    case 0x00:
+    transfer_request = buf[9] & 0xf8;
+    if (transfer_request == 0x00) {
         /* nothing */
         ide_atapi_cmd_ok(s);
-        break;
+        return;
+    }
+
+    /* Check validity of BCL before transferring data */
+    if (!validate_bcl(s)) {
+        return;
+    }
+
+    switch (transfer_request) {
     case 0x10:
         /* normal read */
         ide_atapi_cmd_read(s, lba, nb_sectors, 2048);
@@ -1264,6 +1290,14 @@ enum {
      * See ATA8-ACS3 "7.21.5 Byte Count Limit"
      */
     NONDATA = 0x04,
+
+    /*
+     * CONDDATA implies a command that transfers data only conditionally based
+     * on the presence of suboptions. It should be exempt from the BCL check at
+     * command validation time, but it needs to be checked at the command
+     * handler level instead.
+     */
+    CONDDATA = 0x08,
 };
 
 static const struct AtapiCmd {
@@ -1287,7 +1321,7 @@ static const struct AtapiCmd {
     [ 0xad ] = { cmd_read_dvd_structure,            CHECK_READY },
     [ 0xbb ] = { cmd_set_speed,                     NONDATA },
     [ 0xbd ] = { cmd_mechanism_status,              0 },
-    [ 0xbe ] = { cmd_read_cd,                       CHECK_READY },
+    [ 0xbe ] = { cmd_read_cd,                       CHECK_READY | CONDDATA },
     /* [1] handler detects and reports not ready condition itself */
 };
 
@@ -1346,15 +1380,12 @@ void ide_atapi_cmd(IDEState *s)
         return;
     }
 
-    /* Nondata commands permit the byte_count_limit to be 0.
+    /* Commands that don't transfer DATA permit the byte_count_limit to be 0.
      * If this is a data-transferring PIO command and BCL is 0,
      * we abort at the /ATA/ level, not the ATAPI level.
      * See ATA8 ACS3 section 7.17.6.49 and 7.21.5 */
-    if (cmd->handler && !(cmd->flags & NONDATA)) {
-        /* TODO: Check IDENTIFY data word 125 for default BCL (currently 0) */
-        if (!(atapi_byte_count_limit(s) || s->atapi_dma)) {
-            /* TODO: Move abort back into core.c and make static inline again */
-            ide_abort_command(s);
+    if (cmd->handler && !(cmd->flags & (NONDATA | CONDDATA))) {
+        if (!validate_bcl(s)) {
             return;
         }
     }

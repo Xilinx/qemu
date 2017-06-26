@@ -101,7 +101,11 @@ void s390_init_cpus(MachineState *machine)
     gchar *name;
 
     if (machine->cpu_model == NULL) {
-        machine->cpu_model = "host";
+        if (kvm_enabled()) {
+            machine->cpu_model = "host";
+        } else {
+            machine->cpu_model = "qemu";
+        }
     }
 
     cpu_states = g_new0(S390CPU *, max_cpus);
@@ -200,8 +204,8 @@ void s390_machine_reset(void)
 {
     S390CPU *ipl_cpu = S390_CPU(qemu_get_cpu(0));
 
-    qemu_devices_reset();
     s390_cmma_reset();
+    qemu_devices_reset();
     s390_crypto_reset();
 
     /* all cpus are stopped - configure and start the ipl cpu only */

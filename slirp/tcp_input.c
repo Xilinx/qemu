@@ -39,7 +39,7 @@
  */
 
 #include "qemu/osdep.h"
-#include <slirp.h>
+#include "slirp.h"
 #include "ip_icmp.h"
 
 #define	TCPREXMTTHRESH 3
@@ -659,6 +659,7 @@ findso:
 	  }
 
 	  if ((tcp_fconnect(so, so->so_ffamily) == -1) &&
+              (errno != EAGAIN) &&
               (errno != EINPROGRESS) && (errno != EWOULDBLOCK)
           ) {
 	    uint8_t code;

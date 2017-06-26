@@ -27,10 +27,7 @@
 
 #include "qemu/osdep.h"
 
-#include <glib.h>
 #include <glib/gprintf.h>
-
-#include <sys/mman.h>
 
 #include "qemu/memfd.h"
 

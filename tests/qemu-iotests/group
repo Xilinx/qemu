@@ -106,7 +106,7 @@
 097 rw auto backing
 098 rw auto backing quick
 099 rw auto quick
-100 rw auto quick
+# 100 was removed, do not reuse
 101 rw auto quick
 102 rw auto quick
 103 rw auto quick
@@ -149,7 +149,19 @@
 144 rw auto quick
 145 auto quick
 146 auto quick
+147 auto
 148 rw auto quick
 149 rw auto sudo
 150 rw auto quick
 152 rw auto quick
+154 rw auto backing quick
+155 rw auto
+156 rw auto quick
+157 auto
+158 rw auto quick
+159 rw auto quick
+160 rw auto quick
+162 auto quick
+170 rw auto quick
+171 rw auto quick
+172 auto

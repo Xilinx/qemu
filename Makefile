@@ -6,7 +6,7 @@ BUILD_DIR=$(CURDIR)
 # Before including a proper config-host.mak, assume we are in the source tree
 SRC_PATH=.
 
-UNCHECKED_GOALS := %clean TAGS cscope ctags
+UNCHECKED_GOALS := %clean TAGS cscope ctags docker docker-%
 
 # All following code might depend on configuration variables
 ifneq ($(wildcard config-host.mak),)
@@ -30,8 +30,7 @@ CONFIG_ALL=y
 -include config-all-devices.mak
 -include config-all-disas.mak
 
-include $(SRC_PATH)/rules.mak
-config-host.mak: $(SRC_PATH)/configure
+config-host.mak: $(SRC_PATH)/configure $(SRC_PATH)/pc-bios
 	@echo $@ is out-of-date, running configure
 	@# TODO: The next lines include code which supports a smooth
 	@# transition from old configurations without config.status.
@@ -49,14 +48,13 @@ ifneq ($(filter-out $(UNCHECKED_GOALS),$(MAKECMDGOALS)),$(if $(MAKECMDGOALS),,fa
 endif
 endif
 
-GENERATED_HEADERS = config-host.h qemu-options.def
+include $(SRC_PATH)/rules.mak
+
+GENERATED_HEADERS = qemu-version.h config-host.h qemu-options.def
 GENERATED_HEADERS += qmp-commands.h qapi-types.h qapi-visit.h qapi-event.h
 GENERATED_SOURCES += qmp-marshal.c qapi-types.c qapi-visit.c qapi-event.c
 GENERATED_HEADERS += qmp-introspect.h
 GENERATED_SOURCES += qmp-introspect.c
-
-GENERATED_HEADERS += trace/generated-events.h
-GENERATED_SOURCES += trace/generated-events.c
 
 GENERATED_HEADERS += trace/generated-tracers.h
 ifeq ($(findstring dtrace,$(TRACE_BACKENDS)),dtrace)
@@ -75,13 +73,15 @@ GENERATED_HEADERS += trace/generated-ust-provider.h
 GENERATED_SOURCES += trace/generated-ust.c
 endif
 
+GENERATED_HEADERS += module_block.h
+
 # Don't try to regenerate Makefile or configure
 # We don't generate any of them
 Makefile: ;
 configure: ;
 
 .PHONY: all clean cscope distclean dvi html info install install-doc \
-	pdf recurse-all speed test dist msi
+	pdf recurse-all speed test dist msi FORCE
 
 $(call set-vpath, $(SRC_PATH))
 
@@ -90,11 +90,7 @@ LIBS+=-lz $(LIBS_TOOLS)
 HELPERS-$(CONFIG_LINUX) = qemu-bridge-helper$(EXESUF)
 
 ifdef BUILD_DOCS
-DOCS=qemu-doc.html qemu-tech.html qemu.1 qemu-img.1 qemu-nbd.8 qemu-ga.8
-DOCS+=qmp-commands.txt
-ifdef CONFIG_LINUX
-DOCS+=kvm_stat.1
-endif
+DOCS=qemu-doc.html qemu.1 qemu-img.1 qemu-nbd.8 qemu-ga.8
 ifdef CONFIG_VIRTFS
 DOCS+=fsdev/virtfs-proxy-helper.1
 endif
@@ -108,20 +104,20 @@ SUBDIR_DEVICES_MAK_DEP=$(patsubst %, %-config-devices.mak.d, $(TARGET_DIRS))
 
 ifeq ($(SUBDIR_DEVICES_MAK),)
 config-all-devices.mak:
-	$(call quiet-command,echo '# no devices' > $@,"  GEN   $@")
+	$(call quiet-command,echo '# no devices' > $@,"GEN","$@")
 else
 config-all-devices.mak: $(SUBDIR_DEVICES_MAK)
 	$(call quiet-command, sed -n \
              's|^\([^=]*\)=\(.*\)$$|\1:=$$(findstring y,$$(\1)\2)|p' \
              $(SUBDIR_DEVICES_MAK) | sort -u > $@, \
-             "  GEN   $@")
+             "GEN","$@")
 endif
 
 -include $(SUBDIR_DEVICES_MAK_DEP)
 
-%/config-devices.mak: default-configs/%.mak
+%/config-devices.mak: default-configs/%.mak $(SRC_PATH)/scripts/make_device_config.sh
 	$(call quiet-command, \
-            $(SHELL) $(SRC_PATH)/scripts/make_device_config.sh $< $*-config-devices.mak.d $@ > $@.tmp, "  GEN   $@.tmp")
+            $(SHELL) $(SRC_PATH)/scripts/make_device_config.sh $< $*-config-devices.mak.d $@ > $@.tmp,"GEN","$@.tmp")
 	$(call quiet-command, if test -f $@; then \
 	  if cmp -s $@.old $@; then \
 	    mv $@.tmp $@; \
@@ -138,7 +134,7 @@ endif
 	 else \
 	  mv $@.tmp $@; \
 	  cp -p $@ $@.old; \
-	 fi, "  GEN   $@");
+	 fi,"GEN","$@");
 
 defconfig:
 	rm -f config-all-devices.mak $(SUBDIR_DEVICES_MAK)
@@ -164,15 +160,35 @@ dummy := $(call unnest-vars,, \
                 common-obj-m)
 
 ifneq ($(wildcard config-host.mak),)
-include $(SRC_PATH)/tests/Makefile
+include $(SRC_PATH)/tests/Makefile.include
 endif
 
 all: $(DOCS) $(TOOLS) $(HELPERS-y) recurse-all modules
 
+qemu-version.h: FORCE
+	$(call quiet-command, \
+		(cd $(SRC_PATH); \
+		printf '#define QEMU_PKGVERSION '; \
+		if test -n "$(PKGVERSION)"; then \
+			printf '"$(PKGVERSION)"\n'; \
+		else \
+			if test -d .git; then \
+				printf '" ('; \
+				git describe --match 'v*' 2>/dev/null | tr -d '\n'; \
+				if ! git diff-index --quiet HEAD &>/dev/null; then \
+					printf -- '-dirty'; \
+				fi; \
+				printf ')"\n'; \
+			else \
+				printf '""\n'; \
+			fi; \
+		fi) > $@.tmp)
+	$(call quiet-command, cmp -s $@ $@.tmp || mv $@.tmp $@)
+
 config-host.h: config-host.h-timestamp
 config-host.h-timestamp: config-host.mak
-qemu-options.def: $(SRC_PATH)/qemu-options.hx
-	$(call quiet-command,sh $(SRC_PATH)/scripts/hxtool -h < $< > $@,"  GEN   $@")
+qemu-options.def: $(SRC_PATH)/qemu-options.hx $(SRC_PATH)/scripts/hxtool
+	$(call quiet-command,sh $(SRC_PATH)/scripts/hxtool -h < $< > $@,"GEN","$@")
 
 SUBDIR_RULES=$(patsubst %,subdir-%, $(TARGET_DIRS))
 SOFTMMU_SUBDIR_RULES=$(filter %-softmmu,$(SUBDIR_RULES))
@@ -207,17 +223,18 @@ dtc/%:
 $(SUBDIR_RULES): libqemuutil.a libqemustub.a $(common-obj-y) $(qom-obj-y) $(crypto-aes-obj-$(CONFIG_USER_ONLY))
 
 ROMSUBDIR_RULES=$(patsubst %,romsubdir-%, $(ROMS))
+# Only keep -O and -g cflags
 romsubdir-%:
-	$(call quiet-command,$(MAKE) $(SUBDIR_MAKEFLAGS) -C pc-bios/$* V="$(V)" TARGET_DIR="$*/",)
+	$(call quiet-command,$(MAKE) $(SUBDIR_MAKEFLAGS) -C pc-bios/$* V="$(V)" TARGET_DIR="$*/" CFLAGS="$(filter -O% -g%,$(CFLAGS))",)
 
 ALL_SUBDIRS=$(TARGET_DIRS) $(patsubst %,pc-bios/%, $(ROMS))
 
 recurse-all: $(SUBDIR_RULES) $(ROMSUBDIR_RULES)
 
 $(BUILD_DIR)/version.o: $(SRC_PATH)/version.rc config-host.h | $(BUILD_DIR)/version.lo
-	$(call quiet-command,$(WINDRES) -I$(BUILD_DIR) -o $@ $<,"  RC    version.o")
+	$(call quiet-command,$(WINDRES) -I$(BUILD_DIR) -o $@ $<,"RC","version.o")
 $(BUILD_DIR)/version.lo: $(SRC_PATH)/version.rc config-host.h
-	$(call quiet-command,$(WINDRES) -I$(BUILD_DIR) -o $@ $<,"  RC    version.lo")
+	$(call quiet-command,$(WINDRES) -I$(BUILD_DIR) -o $@ $<,"RC","version.lo")
 
 Makefile: $(version-obj-y) $(version-lobj-y)
 
@@ -226,9 +243,6 @@ Makefile: $(version-obj-y) $(version-lobj-y)
 
 libqemustub.a: $(stub-obj-y)
 libqemuutil.a: $(util-obj-y)
-
-block-modules = $(foreach o,$(block-obj-m),"$(basename $(subst /,-,$o))",) NULL
-util/module.o-cflags = -D'CONFIG_BLOCK_MODULES=$(block-modules)'
 
 ######################################################################
 
@@ -243,8 +257,8 @@ qemu-bridge-helper$(EXESUF): qemu-bridge-helper.o libqemuutil.a libqemustub.a
 fsdev/virtfs-proxy-helper$(EXESUF): fsdev/virtfs-proxy-helper.o fsdev/9p-marshal.o fsdev/9p-iov-marshal.o libqemuutil.a libqemustub.a
 fsdev/virtfs-proxy-helper$(EXESUF): LIBS += -lcap
 
-qemu-img-cmds.h: $(SRC_PATH)/qemu-img-cmds.hx
-	$(call quiet-command,sh $(SRC_PATH)/scripts/hxtool -h < $< > $@,"  GEN   $@")
+qemu-img-cmds.h: $(SRC_PATH)/qemu-img-cmds.hx $(SRC_PATH)/scripts/hxtool
+	$(call quiet-command,sh $(SRC_PATH)/scripts/hxtool -h < $< > $@,"GEN","$@")
 
 qemu-ga$(EXESUF): LIBS = $(LIBS_QGA)
 qemu-ga$(EXESUF): QEMU_CFLAGS += -I qga/qapi-generated
@@ -257,17 +271,17 @@ qga/qapi-generated/qga-qapi-types.c qga/qapi-generated/qga-qapi-types.h :\
 $(SRC_PATH)/qga/qapi-schema.json $(SRC_PATH)/scripts/qapi-types.py $(qapi-py)
 	$(call quiet-command,$(PYTHON) $(SRC_PATH)/scripts/qapi-types.py \
 		$(gen-out-type) -o qga/qapi-generated -p "qga-" $<, \
-		"  GEN   $@")
+		"GEN","$@")
 qga/qapi-generated/qga-qapi-visit.c qga/qapi-generated/qga-qapi-visit.h :\
 $(SRC_PATH)/qga/qapi-schema.json $(SRC_PATH)/scripts/qapi-visit.py $(qapi-py)
 	$(call quiet-command,$(PYTHON) $(SRC_PATH)/scripts/qapi-visit.py \
 		$(gen-out-type) -o qga/qapi-generated -p "qga-" $<, \
-		"  GEN   $@")
+		"GEN","$@")
 qga/qapi-generated/qga-qmp-commands.h qga/qapi-generated/qga-qmp-marshal.c :\
 $(SRC_PATH)/qga/qapi-schema.json $(SRC_PATH)/scripts/qapi-commands.py $(qapi-py)
 	$(call quiet-command,$(PYTHON) $(SRC_PATH)/scripts/qapi-commands.py \
 		$(gen-out-type) -o qga/qapi-generated -p "qga-" $<, \
-		"  GEN   $@")
+		"GEN","$@")
 
 qapi-modules = $(SRC_PATH)/qapi-schema.json $(SRC_PATH)/qapi/common.json \
                $(SRC_PATH)/qapi/block.json $(SRC_PATH)/qapi/block-core.json \
@@ -279,27 +293,27 @@ qapi-types.c qapi-types.h :\
 $(qapi-modules) $(SRC_PATH)/scripts/qapi-types.py $(qapi-py)
 	$(call quiet-command,$(PYTHON) $(SRC_PATH)/scripts/qapi-types.py \
 		$(gen-out-type) -o "." -b $<, \
-		"  GEN   $@")
+		"GEN","$@")
 qapi-visit.c qapi-visit.h :\
 $(qapi-modules) $(SRC_PATH)/scripts/qapi-visit.py $(qapi-py)
 	$(call quiet-command,$(PYTHON) $(SRC_PATH)/scripts/qapi-visit.py \
 		$(gen-out-type) -o "." -b $<, \
-		"  GEN   $@")
+		"GEN","$@")
 qapi-event.c qapi-event.h :\
 $(qapi-modules) $(SRC_PATH)/scripts/qapi-event.py $(qapi-py)
 	$(call quiet-command,$(PYTHON) $(SRC_PATH)/scripts/qapi-event.py \
 		$(gen-out-type) -o "." $<, \
-		"  GEN   $@")
+		"GEN","$@")
 qmp-commands.h qmp-marshal.c :\
 $(qapi-modules) $(SRC_PATH)/scripts/qapi-commands.py $(qapi-py)
 	$(call quiet-command,$(PYTHON) $(SRC_PATH)/scripts/qapi-commands.py \
-		$(gen-out-type) -o "." -m $<, \
-		"  GEN   $@")
+		$(gen-out-type) -o "." $<, \
+		"GEN","$@")
 qmp-introspect.h qmp-introspect.c :\
 $(qapi-modules) $(SRC_PATH)/scripts/qapi-introspect.py $(qapi-py)
 	$(call quiet-command,$(PYTHON) $(SRC_PATH)/scripts/qapi-introspect.py \
 		$(gen-out-type) -o "." $<, \
-		"  GEN   $@")
+		"GEN","$@")
 
 QGALIB_GEN=$(addprefix qga/qapi-generated/, qga-qapi-types.h qga-qapi-visit.h qga-qmp-commands.h)
 $(qga-obj-y) qemu-ga.o: $(QGALIB_GEN)
@@ -318,7 +332,7 @@ $(QEMU_GA_MSI): config-host.mak
 
 $(QEMU_GA_MSI):  $(SRC_PATH)/qga/installer/qemu-ga.wxs
 	$(call quiet-command,QEMU_GA_VERSION="$(QEMU_GA_VERSION)" QEMU_GA_MANUFACTURER="$(QEMU_GA_MANUFACTURER)" QEMU_GA_DISTRO="$(QEMU_GA_DISTRO)" BUILD_DIR="$(BUILD_DIR)" \
-	wixl -o $@ $(QEMU_GA_MSI_ARCH) $(QEMU_GA_MSI_WITH_VSS) $(QEMU_GA_MSI_MINGW_DLL_PATH) $<, "  WIXL  $@")
+	wixl -o $@ $(QEMU_GA_MSI_ARCH) $(QEMU_GA_MSI_WITH_VSS) $(QEMU_GA_MSI_MINGW_DLL_PATH) $<,"WIXL","$@")
 else
 msi:
 	@echo "MSI build not configured or dependency resolution failed (reconfigure with --enable-guest-agent-msi option)"
@@ -333,6 +347,11 @@ ivshmem-client$(EXESUF): $(ivshmem-client-obj-y) libqemuutil.a libqemustub.a
 	$(call LINK, $^)
 ivshmem-server$(EXESUF): $(ivshmem-server-obj-y) libqemuutil.a libqemustub.a
 	$(call LINK, $^)
+
+module_block.h: $(SRC_PATH)/scripts/modules/module_block.py config-host.mak
+	$(call quiet-command,$(PYTHON) $< $@ \
+	$(addprefix $(SRC_PATH)/,$(patsubst %.mo,%.c,$(block-obj-m))), \
+	"GEN","$@")
 
 clean:
 # avoid old build problems by removing potentially incorrect old files
@@ -376,7 +395,6 @@ distclean: clean
 	rm -f qemu-doc.vr
 	rm -f config.log
 	rm -f linux-headers/asm
-	rm -f qemu-tech.info qemu-tech.aux qemu-tech.cp qemu-tech.dvi qemu-tech.fn qemu-tech.info qemu-tech.ky qemu-tech.log qemu-tech.pdf qemu-tech.pg qemu-tech.toc qemu-tech.tp qemu-tech.vr
 	for d in $(TARGET_DIRS); do \
 	rm -rf $$d || exit 1 ; \
         done
@@ -398,11 +416,12 @@ pxe-e1000.rom pxe-eepro100.rom pxe-ne2k_pci.rom \
 pxe-pcnet.rom pxe-rtl8139.rom pxe-virtio.rom \
 efi-e1000.rom efi-eepro100.rom efi-ne2k_pci.rom \
 efi-pcnet.rom efi-rtl8139.rom efi-virtio.rom \
+efi-e1000e.rom efi-vmxnet3.rom \
 qemu-icon.bmp qemu_logo_no_text.svg \
 bamboo.dtb petalogix-s3adsp1800.dtb petalogix-ml605.dtb \
-multiboot.bin linuxboot.bin kvmvapic.bin \
+multiboot.bin linuxboot.bin linuxboot_dma.bin kvmvapic.bin \
 s390-ccw.img \
-spapr-rtas.bin slof.bin \
+spapr-rtas.bin slof.bin skiboot.lid \
 palcode-clipper \
 u-boot.e500
 else
@@ -411,8 +430,8 @@ endif
 
 install-doc: $(DOCS)
 	$(INSTALL_DIR) "$(DESTDIR)$(qemu_docdir)"
-	$(INSTALL_DATA) qemu-doc.html  qemu-tech.html "$(DESTDIR)$(qemu_docdir)"
-	$(INSTALL_DATA) qmp-commands.txt "$(DESTDIR)$(qemu_docdir)"
+	$(INSTALL_DATA) qemu-doc.html "$(DESTDIR)$(qemu_docdir)"
+	$(INSTALL_DATA) $(SRC_PATH)/docs/qmp-commands.txt "$(DESTDIR)$(qemu_docdir)"
 ifdef CONFIG_POSIX
 	$(INSTALL_DIR) "$(DESTDIR)$(mandir)/man1"
 	$(INSTALL_DATA) qemu.1 "$(DESTDIR)$(mandir)/man1"
@@ -469,7 +488,7 @@ endif
 	set -e; for x in $(KEYMAPS); do \
 		$(INSTALL_DATA) $(SRC_PATH)/pc-bios/keymaps/$$x "$(DESTDIR)$(qemu_datadir)/keymaps"; \
 	done
-	$(INSTALL_DATA) $(SRC_PATH)/trace-events "$(DESTDIR)$(qemu_datadir)/trace-events"
+	$(INSTALL_DATA) $(BUILD_DIR)/trace-events-all "$(DESTDIR)$(qemu_datadir)/trace-events-all"
 	for d in $(TARGET_DIRS); do \
 	$(MAKE) $(SUBDIR_MAKEFLAGS) TARGET_DIR=$$d/ -C $$d $@ || exit 1 ; \
         done
@@ -480,12 +499,12 @@ test speed: all
 
 .PHONY: ctags
 ctags:
-	rm -f $@
+	rm -f tags
 	find "$(SRC_PATH)" -name '*.[hc]' -exec ctags --append {} +
 
 .PHONY: TAGS
 TAGS:
-	rm -f $@
+	rm -f TAGS
 	find "$(SRC_PATH)" -name '*.[hc]' -exec etags --append {} +
 
 cscope:
@@ -498,13 +517,13 @@ ui/shader/%-vert.h: $(SRC_PATH)/ui/shader/%.vert $(SRC_PATH)/scripts/shaderinclu
 	@mkdir -p $(dir $@)
 	$(call quiet-command,\
 		perl $(SRC_PATH)/scripts/shaderinclude.pl $< > $@,\
-		"  VERT  $@")
+		"VERT","$@")
 
 ui/shader/%-frag.h: $(SRC_PATH)/ui/shader/%.frag $(SRC_PATH)/scripts/shaderinclude.pl
 	@mkdir -p $(dir $@)
 	$(call quiet-command,\
 		perl $(SRC_PATH)/scripts/shaderinclude.pl $< > $@,\
-		"  FRAG  $@")
+		"FRAG","$@")
 
 ui/console-gl.o: $(SRC_PATH)/ui/console-gl.c \
 	ui/shader/texture-blit-vert.h ui/shader/texture-blit-frag.h
@@ -514,76 +533,68 @@ MAKEINFO=makeinfo
 MAKEINFOFLAGS=--no-headers --no-split --number-sections
 TEXIFLAG=$(if $(V),,--quiet)
 %.dvi: %.texi
-	$(call quiet-command,texi2dvi $(TEXIFLAG) -I . $<,"  GEN   $@")
+	$(call quiet-command,texi2dvi $(TEXIFLAG) -I . $<,"GEN","$@")
 
 %.html: %.texi
 	$(call quiet-command,LC_ALL=C $(MAKEINFO) $(MAKEINFOFLAGS) --html $< -o $@, \
-	"  GEN   $@")
+	"GEN","$@")
 
 %.info: %.texi
-	$(call quiet-command,$(MAKEINFO) $< -o $@,"  GEN   $@")
+	$(call quiet-command,$(MAKEINFO) $< -o $@,"GEN","$@")
 
 %.pdf: %.texi
-	$(call quiet-command,texi2pdf $(TEXIFLAG) -I . $<,"  GEN   $@")
+	$(call quiet-command,texi2pdf $(TEXIFLAG) -I . $<,"GEN","$@")
 
-qemu-options.texi: $(SRC_PATH)/qemu-options.hx
-	$(call quiet-command,sh $(SRC_PATH)/scripts/hxtool -t < $< > $@,"  GEN   $@")
+qemu-options.texi: $(SRC_PATH)/qemu-options.hx $(SRC_PATH)/scripts/hxtool
+	$(call quiet-command,sh $(SRC_PATH)/scripts/hxtool -t < $< > $@,"GEN","$@")
 
-qemu-monitor.texi: $(SRC_PATH)/hmp-commands.hx
-	$(call quiet-command,sh $(SRC_PATH)/scripts/hxtool -t < $< > $@,"  GEN   $@")
+qemu-monitor.texi: $(SRC_PATH)/hmp-commands.hx $(SRC_PATH)/scripts/hxtool
+	$(call quiet-command,sh $(SRC_PATH)/scripts/hxtool -t < $< > $@,"GEN","$@")
 
-qemu-monitor-info.texi: $(SRC_PATH)/hmp-commands-info.hx
-	$(call quiet-command,sh $(SRC_PATH)/scripts/hxtool -t < $< > $@,"  GEN   $@")
+qemu-monitor-info.texi: $(SRC_PATH)/hmp-commands-info.hx $(SRC_PATH)/scripts/hxtool
+	$(call quiet-command,sh $(SRC_PATH)/scripts/hxtool -t < $< > $@,"GEN","$@")
 
-qmp-commands.txt: $(SRC_PATH)/qmp-commands.hx
-	$(call quiet-command,sh $(SRC_PATH)/scripts/hxtool -q < $< > $@,"  GEN   $@")
-
-qemu-img-cmds.texi: $(SRC_PATH)/qemu-img-cmds.hx
-	$(call quiet-command,sh $(SRC_PATH)/scripts/hxtool -t < $< > $@,"  GEN   $@")
+qemu-img-cmds.texi: $(SRC_PATH)/qemu-img-cmds.hx $(SRC_PATH)/scripts/hxtool
+	$(call quiet-command,sh $(SRC_PATH)/scripts/hxtool -t < $< > $@,"GEN","$@")
 
 qemu.1: qemu-doc.texi qemu-options.texi qemu-monitor.texi qemu-monitor-info.texi
 	$(call quiet-command, \
 	  perl -Ww -- $(SRC_PATH)/scripts/texi2pod.pl $< qemu.pod && \
 	  $(POD2MAN) --section=1 --center=" " --release=" " qemu.pod > $@, \
-	  "  GEN   $@")
+	  "GEN","$@")
+qemu.1: qemu-option-trace.texi
 
-qemu-img.1: qemu-img.texi qemu-img-cmds.texi
+qemu-img.1: qemu-img.texi qemu-option-trace.texi qemu-img-cmds.texi
 	$(call quiet-command, \
 	  perl -Ww -- $(SRC_PATH)/scripts/texi2pod.pl $< qemu-img.pod && \
 	  $(POD2MAN) --section=1 --center=" " --release=" " qemu-img.pod > $@, \
-	  "  GEN   $@")
+	  "GEN","$@")
 
 fsdev/virtfs-proxy-helper.1: fsdev/virtfs-proxy-helper.texi
 	$(call quiet-command, \
 	  perl -Ww -- $(SRC_PATH)/scripts/texi2pod.pl $< fsdev/virtfs-proxy-helper.pod && \
 	  $(POD2MAN) --section=1 --center=" " --release=" " fsdev/virtfs-proxy-helper.pod > $@, \
-	  "  GEN   $@")
+	  "GEN","$@")
 
-qemu-nbd.8: qemu-nbd.texi
+qemu-nbd.8: qemu-nbd.texi qemu-option-trace.texi
 	$(call quiet-command, \
 	  perl -Ww -- $(SRC_PATH)/scripts/texi2pod.pl $< qemu-nbd.pod && \
 	  $(POD2MAN) --section=8 --center=" " --release=" " qemu-nbd.pod > $@, \
-	  "  GEN   $@")
+	  "GEN","$@")
 
 qemu-ga.8: qemu-ga.texi
 	$(call quiet-command, \
 	  perl -Ww -- $(SRC_PATH)/scripts/texi2pod.pl $< qemu-ga.pod && \
 	  $(POD2MAN) --section=8 --center=" " --release=" " qemu-ga.pod > $@, \
-	  "  GEN   $@")
+	  "GEN","$@")
 
-kvm_stat.1: scripts/kvm/kvm_stat.texi
-	$(call quiet-command, \
-	  perl -Ww -- $(SRC_PATH)/scripts/texi2pod.pl $< kvm_stat.pod && \
-	  $(POD2MAN) --section=1 --center=" " --release=" " kvm_stat.pod > $@, \
-	  "  GEN   $@")
-
-dvi: qemu-doc.dvi qemu-tech.dvi
-html: qemu-doc.html qemu-tech.html
-info: qemu-doc.info qemu-tech.info
-pdf: qemu-doc.pdf qemu-tech.pdf
+dvi: qemu-doc.dvi
+html: qemu-doc.html
+info: qemu-doc.info
+pdf: qemu-doc.pdf
 
 qemu-doc.dvi qemu-doc.html qemu-doc.info qemu-doc.pdf: \
-	qemu-img.texi qemu-nbd.texi qemu-options.texi \
+	qemu-img.texi qemu-nbd.texi qemu-options.texi qemu-option-trace.texi \
 	qemu-monitor.texi qemu-img-cmds.texi qemu-ga.texi \
 	qemu-monitor-info.texi
 
@@ -652,3 +663,42 @@ endif
 # Include automatically generated dependency files
 # Dependencies in Makefile.objs files come from our recursive subdir rules
 -include $(wildcard *.d tests/*.d)
+
+include $(SRC_PATH)/tests/docker/Makefile.include
+
+.PHONY: help
+help:
+	@echo  'Generic targets:'
+	@echo  '  all             - Build all'
+	@echo  '  dir/file.o      - Build specified target only'
+	@echo  '  install         - Install QEMU, documentation and tools'
+	@echo  '  ctags/TAGS      - Generate tags file for editors'
+	@echo  '  cscope          - Generate cscope index'
+	@echo  ''
+	@$(if $(TARGET_DIRS), \
+		echo 'Architecture specific targets:'; \
+		$(foreach t, $(TARGET_DIRS), \
+		printf "  %-30s - Build for %s\\n" $(patsubst %,subdir-%,$(t)) $(t);) \
+		echo '')
+	@echo  'Cleaning targets:'
+	@echo  '  clean           - Remove most generated files but keep the config'
+	@echo  '  distclean       - Remove all generated files'
+	@echo  '  dist            - Build a distributable tarball'
+	@echo  ''
+	@echo  'Test targets:'
+	@echo  '  check           - Run all tests (check-help for details)'
+	@echo  '  docker          - Help about targets running tests inside Docker containers'
+	@echo  ''
+	@echo  'Documentation targets:'
+	@echo  '  dvi html info pdf'
+	@echo  '                  - Build documentation in specified format'
+	@echo  ''
+ifdef CONFIG_WIN32
+	@echo  'Windows targets:'
+	@echo  '  installer       - Build NSIS-based installer for QEMU'
+ifdef QEMU_GA_MSI_ENABLED
+	@echo  '  msi             - Build MSI-based installer for qemu-ga'
+endif
+	@echo  ''
+endif
+	@echo  '  make V=0|1 [targets] 0 => quiet build (default), 1 => verbose build'

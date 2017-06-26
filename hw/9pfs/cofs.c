@@ -1,6 +1,5 @@
-
 /*
- * Virtio 9p backend
+ * 9p backend
  *
  * Copyright IBM, Corp. 2011
  *
@@ -50,7 +49,7 @@ static ssize_t __readlink(V9fsState *s, V9fsPath *path, V9fsString *buf)
     return len;
 }
 
-int v9fs_co_readlink(V9fsPDU *pdu, V9fsPath *path, V9fsString *buf)
+int coroutine_fn v9fs_co_readlink(V9fsPDU *pdu, V9fsPath *path, V9fsString *buf)
 {
     int err;
     V9fsState *s = pdu->s;
@@ -70,7 +69,8 @@ int v9fs_co_readlink(V9fsPDU *pdu, V9fsPath *path, V9fsString *buf)
     return err;
 }
 
-int v9fs_co_statfs(V9fsPDU *pdu, V9fsPath *path, struct statfs *stbuf)
+int coroutine_fn v9fs_co_statfs(V9fsPDU *pdu, V9fsPath *path,
+                                struct statfs *stbuf)
 {
     int err;
     V9fsState *s = pdu->s;
@@ -90,7 +90,7 @@ int v9fs_co_statfs(V9fsPDU *pdu, V9fsPath *path, struct statfs *stbuf)
     return err;
 }
 
-int v9fs_co_chmod(V9fsPDU *pdu, V9fsPath *path, mode_t mode)
+int coroutine_fn v9fs_co_chmod(V9fsPDU *pdu, V9fsPath *path, mode_t mode)
 {
     int err;
     FsCred cred;
@@ -113,8 +113,8 @@ int v9fs_co_chmod(V9fsPDU *pdu, V9fsPath *path, mode_t mode)
     return err;
 }
 
-int v9fs_co_utimensat(V9fsPDU *pdu, V9fsPath *path,
-                      struct timespec times[2])
+int coroutine_fn v9fs_co_utimensat(V9fsPDU *pdu, V9fsPath *path,
+                                   struct timespec times[2])
 {
     int err;
     V9fsState *s = pdu->s;
@@ -134,7 +134,8 @@ int v9fs_co_utimensat(V9fsPDU *pdu, V9fsPath *path,
     return err;
 }
 
-int v9fs_co_chown(V9fsPDU *pdu, V9fsPath *path, uid_t uid, gid_t gid)
+int coroutine_fn v9fs_co_chown(V9fsPDU *pdu, V9fsPath *path, uid_t uid,
+                               gid_t gid)
 {
     int err;
     FsCred cred;
@@ -158,7 +159,7 @@ int v9fs_co_chown(V9fsPDU *pdu, V9fsPath *path, uid_t uid, gid_t gid)
     return err;
 }
 
-int v9fs_co_truncate(V9fsPDU *pdu, V9fsPath *path, off_t size)
+int coroutine_fn v9fs_co_truncate(V9fsPDU *pdu, V9fsPath *path, off_t size)
 {
     int err;
     V9fsState *s = pdu->s;
@@ -178,8 +179,9 @@ int v9fs_co_truncate(V9fsPDU *pdu, V9fsPath *path, off_t size)
     return err;
 }
 
-int v9fs_co_mknod(V9fsPDU *pdu, V9fsFidState *fidp, V9fsString *name, uid_t uid,
-                  gid_t gid, dev_t dev, mode_t mode, struct stat *stbuf)
+int coroutine_fn v9fs_co_mknod(V9fsPDU *pdu, V9fsFidState *fidp,
+                               V9fsString *name, uid_t uid, gid_t gid,
+                               dev_t dev, mode_t mode, struct stat *stbuf)
 {
     int err;
     V9fsPath path;
@@ -217,7 +219,7 @@ int v9fs_co_mknod(V9fsPDU *pdu, V9fsFidState *fidp, V9fsString *name, uid_t uid,
 }
 
 /* Only works with path name based fid */
-int v9fs_co_remove(V9fsPDU *pdu, V9fsPath *path)
+int coroutine_fn v9fs_co_remove(V9fsPDU *pdu, V9fsPath *path)
 {
     int err;
     V9fsState *s = pdu->s;
@@ -237,7 +239,8 @@ int v9fs_co_remove(V9fsPDU *pdu, V9fsPath *path)
     return err;
 }
 
-int v9fs_co_unlinkat(V9fsPDU *pdu, V9fsPath *path, V9fsString *name, int flags)
+int coroutine_fn v9fs_co_unlinkat(V9fsPDU *pdu, V9fsPath *path,
+                                  V9fsString *name, int flags)
 {
     int err;
     V9fsState *s = pdu->s;
@@ -258,7 +261,8 @@ int v9fs_co_unlinkat(V9fsPDU *pdu, V9fsPath *path, V9fsString *name, int flags)
 }
 
 /* Only work with path name based fid */
-int v9fs_co_rename(V9fsPDU *pdu, V9fsPath *oldpath, V9fsPath *newpath)
+int coroutine_fn v9fs_co_rename(V9fsPDU *pdu, V9fsPath *oldpath,
+                                V9fsPath *newpath)
 {
     int err;
     V9fsState *s = pdu->s;
@@ -276,8 +280,9 @@ int v9fs_co_rename(V9fsPDU *pdu, V9fsPath *oldpath, V9fsPath *newpath)
     return err;
 }
 
-int v9fs_co_renameat(V9fsPDU *pdu, V9fsPath *olddirpath, V9fsString *oldname,
-                     V9fsPath *newdirpath, V9fsString *newname)
+int coroutine_fn v9fs_co_renameat(V9fsPDU *pdu, V9fsPath *olddirpath,
+                                  V9fsString *oldname, V9fsPath *newdirpath,
+                                  V9fsString *newname)
 {
     int err;
     V9fsState *s = pdu->s;
@@ -296,8 +301,9 @@ int v9fs_co_renameat(V9fsPDU *pdu, V9fsPath *olddirpath, V9fsString *oldname,
     return err;
 }
 
-int v9fs_co_symlink(V9fsPDU *pdu, V9fsFidState *dfidp, V9fsString *name,
-                    const char *oldpath, gid_t gid, struct stat *stbuf)
+int coroutine_fn v9fs_co_symlink(V9fsPDU *pdu, V9fsFidState *dfidp,
+                                 V9fsString *name, const char *oldpath,
+                                 gid_t gid, struct stat *stbuf)
 {
     int err;
     FsCred cred;
@@ -338,8 +344,8 @@ int v9fs_co_symlink(V9fsPDU *pdu, V9fsFidState *dfidp, V9fsString *name,
  * For path name based fid we don't block. So we can
  * directly call the fs driver ops.
  */
-int v9fs_co_name_to_path(V9fsPDU *pdu, V9fsPath *dirpath,
-                         const char *name, V9fsPath *path)
+int coroutine_fn v9fs_co_name_to_path(V9fsPDU *pdu, V9fsPath *dirpath,
+                                      const char *name, V9fsPath *path)
 {
     int err;
     V9fsState *s = pdu->s;

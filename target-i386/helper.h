@@ -1,8 +1,6 @@
 DEF_HELPER_FLAGS_4(cc_compute_all, TCG_CALL_NO_RWG_SE, tl, tl, tl, tl, int)
 DEF_HELPER_FLAGS_4(cc_compute_c, TCG_CALL_NO_RWG_SE, tl, tl, tl, tl, int)
 
-DEF_HELPER_0(lock, void)
-DEF_HELPER_0(unlock, void)
 DEF_HELPER_3(write_eflags, void, env, tl, i32)
 DEF_HELPER_1(read_eflags, tl, env)
 DEF_HELPER_2(divb_AL, void, env, tl)
@@ -74,8 +72,10 @@ DEF_HELPER_3(boundw, void, env, tl, int)
 DEF_HELPER_3(boundl, void, env, tl, int)
 DEF_HELPER_1(rsm, void, env)
 DEF_HELPER_2(into, void, env, int)
+DEF_HELPER_2(cmpxchg8b_unlocked, void, env, tl)
 DEF_HELPER_2(cmpxchg8b, void, env, tl)
 #ifdef TARGET_X86_64
+DEF_HELPER_2(cmpxchg16b_unlocked, void, env, tl)
 DEF_HELPER_2(cmpxchg16b, void, env, tl)
 #endif
 DEF_HELPER_1(single_step, void, env)
@@ -98,7 +98,6 @@ DEF_HELPER_2(inl, tl, env, i32)
 DEF_HELPER_FLAGS_4(bpt_io, TCG_CALL_NO_WG, void, env, i32, i32, tl)
 
 DEF_HELPER_3(svm_check_intercept_param, void, env, i32, i64)
-DEF_HELPER_3(vmexit, void, env, i32, i64)
 DEF_HELPER_4(svm_check_io, void, env, i32, i32, i32)
 DEF_HELPER_3(vmrun, void, env, int, int)
 DEF_HELPER_1(vmmcall, void, env)

@@ -6,7 +6,7 @@ DTrace/SystemTAP backend.
 """
 
 __author__     = "Lluís Vilanova <vilanova@ac.upc.edu>"
-__copyright__  = "Copyright 2012-2014, Lluís Vilanova <vilanova@ac.upc.edu>"
+__copyright__  = "Copyright 2012-2016, Lluís Vilanova <vilanova@ac.upc.edu>"
 __license__    = "GPL version 2 or (at your option) any later version"
 
 __maintainer__ = "Stefan Hajnoczi"
@@ -35,12 +35,12 @@ def binary():
     return BINARY
 
 
-def generate_h_begin(events):
+def generate_h_begin(events, group):
     out('#include "trace/generated-tracers-dtrace.h"',
         '')
 
 
-def generate_h(event):
-    out('    QEMU_%(uppername)s(%(argnames)s);',
+def generate_h(event, group):
+    out('        QEMU_%(uppername)s(%(argnames)s);',
         uppername=event.name.upper(),
         argnames=", ".join(event.args.names()))

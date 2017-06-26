@@ -1,8 +1,15 @@
-/* public domain */
+/* compiler.h: macros to abstract away compiler specifics
+ *
+ * This work is licensed under the terms of the GNU GPL, version 2 or later.
+ * See the COPYING file in the top-level directory.
+ */
 
 #ifndef COMPILER_H
 #define COMPILER_H
 
+#if defined __clang_analyzer__ || defined __COVERITY__
+#define QEMU_STATIC_ANALYSIS 1
+#endif
 
 /*----------------------------------------------------------------------------
 | The macro QEMU_GNUC_PREREQ tests for minimum version of the GNU C compiler.
@@ -40,6 +47,8 @@
 #else
 # define QEMU_PACKED __attribute__((packed))
 #endif
+
+#define QEMU_ALIGNED(X) __attribute__((aligned(X)))
 
 #ifndef glue
 #define xglue(x, y) x ## y

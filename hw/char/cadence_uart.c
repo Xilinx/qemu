@@ -1,6 +1,11 @@
 /*
  * Device model for Cadence UART
  *
+ * Reference: Xilinx Zynq 7000 reference manual
+ *   - http://www.xilinx.com/support/documentation/user_guides/ug585-Zynq-7000-TRM.pdf
+ *   - Chapter 19 UART Controller
+ *   - Appendix B for Register details
+ *
  * Copyright (c) 2010 Xilinx Inc.
  * Copyright (c) 2012 Peter A.G. Crosthwaite (peter.crosthwaite@petalogix.com)
  * Copyright (c) 2012 PetaLogix Pty Ltd.
@@ -17,6 +22,10 @@
  */
 
 #include "qemu/osdep.h"
+#include "hw/sysbus.h"
+#include "sysemu/char.h"
+#include "qemu/timer.h"
+#include "qemu/log.h"
 #include "hw/char/cadence_uart.h"
 
 #ifdef CADENCE_UART_ERR_DEBUG
@@ -138,9 +147,7 @@ static void uart_rx_reset(CadenceUARTState *s)
 {
     s->rx_wpos = 0;
     s->rx_count = 0;
-    if (s->chr) {
-        qemu_chr_accept_input(s->chr);
-    }
+    qemu_chr_fe_accept_input(&s->chr);
 }
 
 static void uart_tx_reset(CadenceUARTState *s)
@@ -152,10 +159,8 @@ static void uart_send_breaks(CadenceUARTState *s)
 {
     int break_enabled = 1;
 
-    if (s->chr) {
-        qemu_chr_fe_ioctl(s->chr, CHR_IOCTL_SERIAL_SET_BREAK,
-                                   &break_enabled);
-    }
+    qemu_chr_fe_ioctl(&s->chr, CHR_IOCTL_SERIAL_SET_BREAK,
+                      &break_enabled);
 }
 
 static void uart_parameters_setup(CadenceUARTState *s)
@@ -206,9 +211,7 @@ static void uart_parameters_setup(CadenceUARTState *s)
 
     packet_size += ssp.data_bits + ssp.stop_bits;
     s->char_tx_time = (NANOSECONDS_PER_SECOND / ssp.speed) * packet_size;
-    if (s->chr) {
-        qemu_chr_fe_ioctl(s->chr, CHR_IOCTL_SERIAL_SET_PARAMS, &ssp);
-    }
+    qemu_chr_fe_ioctl(&s->chr, CHR_IOCTL_SERIAL_SET_PARAMS, &ssp);
 }
 
 static int uart_can_receive(void *opaque)
@@ -274,7 +277,7 @@ static gboolean cadence_uart_xmit(GIOChannel *chan, GIOCondition cond,
     int ret;
 
     /* instant drain the fifo when there's no back-end */
-    if (!s->chr) {
+    if (!qemu_chr_fe_get_driver(&s->chr)) {
         s->tx_count = 0;
         return FALSE;
     }
@@ -283,14 +286,20 @@ static gboolean cadence_uart_xmit(GIOChannel *chan, GIOCondition cond,
         return FALSE;
     }
 
-    ret = qemu_chr_fe_write(s->chr, s->tx_fifo, s->tx_count);
-    s->tx_count -= ret;
-    memmove(s->tx_fifo, s->tx_fifo + ret, s->tx_count);
+    ret = qemu_chr_fe_write(&s->chr, s->tx_fifo, s->tx_count);
+
+    if (ret >= 0) {
+        s->tx_count -= ret;
+        memmove(s->tx_fifo, s->tx_fifo + ret, s->tx_count);
+    }
 
     if (s->tx_count) {
-        int r = qemu_chr_fe_add_watch(s->chr, G_IO_OUT|G_IO_HUP,
-                                      cadence_uart_xmit, s);
-        assert(r);
+        guint r = qemu_chr_fe_add_watch(&s->chr, G_IO_OUT | G_IO_HUP,
+                                        cadence_uart_xmit, s);
+        if (!r) {
+            s->tx_count = 0;
+            return FALSE;
+        }
     }
 
     uart_update_status(s);
@@ -358,9 +367,7 @@ static void uart_read_rx_fifo(CadenceUARTState *s, uint32_t *c)
         *c = s->rx_fifo[rx_rpos];
         s->rx_count--;
 
-        if (s->chr) {
-            qemu_chr_accept_input(s->chr);
-        }
+        qemu_chr_fe_accept_input(&s->chr);
     } else {
         *c = 0;
     }
@@ -475,13 +482,8 @@ static void cadence_uart_realize(DeviceState *dev, Error **errp)
     s->fifo_trigger_handle = timer_new_ns(QEMU_CLOCK_VIRTUAL,
                                           fifo_trigger_update, s);
 
-    /* FIXME use a qdev chardev prop instead of qemu_char_get_next_serial() */
-    s->chr = qemu_char_get_next_serial();
-
-    if (s->chr) {
-        qemu_chr_add_handlers(s->chr, uart_can_receive, uart_receive,
-                              uart_event, s);
-    }
+    qemu_chr_fe_set_handlers(&s->chr, uart_can_receive, uart_receive,
+                             uart_event, s, NULL, true);
 }
 
 static void cadence_uart_init(Object *obj)
@@ -524,6 +526,11 @@ static const VMStateDescription vmstate_cadence_uart = {
     }
 };
 
+static Property cadence_uart_properties[] = {
+    DEFINE_PROP_CHR("chardev", CadenceUARTState, chr),
+    DEFINE_PROP_END_OF_LIST(),
+};
+
 static void cadence_uart_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -531,8 +538,7 @@ static void cadence_uart_class_init(ObjectClass *klass, void *data)
     dc->realize = cadence_uart_realize;
     dc->vmsd = &vmstate_cadence_uart;
     dc->reset = cadence_uart_reset;
-    /* Reason: realize() method uses qemu_char_get_next_serial() */
-    dc->cannot_instantiate_with_device_add_yet = true;
+    dc->props = cadence_uart_properties;
 }
 
 static const TypeInfo cadence_uart_info = {

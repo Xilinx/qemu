@@ -120,25 +120,9 @@ static uint64_t get_features(VirtIODevice *vdev, uint64_t f, Error **errp)
     return f;
 }
 
-static void virtio_rng_save(QEMUFile *f, void *opaque)
-{
-    VirtIODevice *vdev = opaque;
-
-    virtio_save(vdev, f);
-}
-
-static int virtio_rng_load(QEMUFile *f, void *opaque, int version_id)
+static int virtio_rng_post_load(void *opaque, int version_id)
 {
     VirtIORNG *vrng = opaque;
-    int ret;
-
-    if (version_id != 1) {
-        return -EINVAL;
-    }
-    ret = virtio_load(VIRTIO_DEVICE(vrng), f, version_id);
-    if (ret != 0) {
-        return ret;
-    }
 
     /* We may have an element ready but couldn't process it due to a quota
      * limit.  Make sure to try again after live migration when the quota may
@@ -214,8 +198,6 @@ static void virtio_rng_device_realize(DeviceState *dev, Error **errp)
     vrng->rate_limit_timer = timer_new_ms(QEMU_CLOCK_VIRTUAL,
                                                check_rate_limit, vrng);
     vrng->activate_timer = true;
-    register_savevm(dev, "virtio-rng", -1, 1, virtio_rng_save,
-                    virtio_rng_load, vrng);
 }
 
 static void virtio_rng_device_unrealize(DeviceState *dev, Error **errp)
@@ -225,9 +207,19 @@ static void virtio_rng_device_unrealize(DeviceState *dev, Error **errp)
 
     timer_del(vrng->rate_limit_timer);
     timer_free(vrng->rate_limit_timer);
-    unregister_savevm(dev, "virtio-rng", vrng);
     virtio_cleanup(vdev);
 }
+
+static const VMStateDescription vmstate_virtio_rng = {
+    .name = "virtio-rng",
+    .minimum_version_id = 1,
+    .version_id = 1,
+    .fields = (VMStateField[]) {
+        VMSTATE_VIRTIO_DEVICE,
+        VMSTATE_END_OF_LIST()
+    },
+    .post_load =  virtio_rng_post_load,
+};
 
 static Property virtio_rng_properties[] = {
     /* Set a default rate limit of 2^47 bytes per minute or roughly 2TB/s.  If
@@ -246,6 +238,7 @@ static void virtio_rng_class_init(ObjectClass *klass, void *data)
     VirtioDeviceClass *vdc = VIRTIO_DEVICE_CLASS(klass);
 
     dc->props = virtio_rng_properties;
+    dc->vmsd = &vmstate_virtio_rng;
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
     vdc->realize = virtio_rng_device_realize;
     vdc->unrealize = virtio_rng_device_unrealize;

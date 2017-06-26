@@ -6,6 +6,9 @@
 #ifdef TARGET_NR_accept
 { TARGET_NR_accept, "accept" , NULL, print_accept, NULL },
 #endif
+#ifdef TARGET_NR_accept4
+{ TARGET_NR_accept4, "accept4" , NULL, NULL, NULL },
+#endif
 #ifdef TARGET_NR_access
 { TARGET_NR_access, "access" , NULL, print_access, NULL },
 #endif
@@ -16,7 +19,8 @@
 { TARGET_NR_add_key, "add_key" , NULL, NULL, NULL },
 #endif
 #ifdef TARGET_NR_adjtimex
-{ TARGET_NR_adjtimex, "adjtimex" , NULL, NULL, NULL },
+{ TARGET_NR_adjtimex, "adjtimex" , "%s(%p)", NULL,
+                      print_syscall_ret_adjtimex },
 #endif
 #ifdef TARGET_NR_afs_syscall
 { TARGET_NR_afs_syscall, "afs_syscall" , NULL, NULL, NULL },
@@ -38,6 +42,9 @@
 #endif
 #ifdef TARGET_NR_bind
 { TARGET_NR_bind, "bind" , NULL, NULL, NULL },
+#endif
+#ifdef TARGET_NR_bpf
+{ TARGET_NR_bpf, "bpf" , NULL, NULL, NULL },
 #endif
 #ifdef TARGET_NR_break
 { TARGET_NR_break, "break" , NULL, NULL, NULL },
@@ -71,6 +78,9 @@
 #endif
 #ifdef TARGET_NR_chroot
 { TARGET_NR_chroot, "chroot" , NULL, NULL, NULL },
+#endif
+#ifdef TARGET_NR_clock_adjtime
+{ TARGET_NR_clock_adjtime, "clock_adjtime" , NULL, print_clock_adjtime, NULL },
 #endif
 #ifdef TARGET_NR_clock_getres
 { TARGET_NR_clock_getres, "clock_getres" , NULL, NULL, NULL },
@@ -123,17 +133,29 @@
 #ifdef TARGET_NR_epoll_ctl_old
 { TARGET_NR_epoll_ctl_old, "epoll_ctl_old" , NULL, NULL, NULL },
 #endif
+#ifdef TARGET_NR_epoll_pwait
+{ TARGET_NR_epoll_pwait, "epoll_pwait" , NULL, NULL, NULL },
+#endif
 #ifdef TARGET_NR_epoll_wait
 { TARGET_NR_epoll_wait, "epoll_wait" , NULL, NULL, NULL },
 #endif
 #ifdef TARGET_NR_epoll_wait_old
 { TARGET_NR_epoll_wait_old, "epoll_wait_old" , NULL, NULL, NULL },
 #endif
+#ifdef TARGET_NR_eventfd
+{ TARGET_NR_eventfd, "eventfd" , NULL, NULL, NULL },
+#endif
+#ifdef TARGET_NR_eventfd2
+{ TARGET_NR_eventfd2, "eventfd2" , NULL, NULL, NULL },
+#endif
 #ifdef TARGET_NR_execv
 { TARGET_NR_execv, "execv" , NULL, print_execv, NULL },
 #endif
 #ifdef TARGET_NR_execve
 { TARGET_NR_execve, "execve" , NULL, print_execve, NULL },
+#endif
+#ifdef TARGET_NR_execveat
+{ TARGET_NR_execveat, "execveat" , NULL, NULL, NULL },
 #endif
 #ifdef TARGET_NR_exec_with_loader
 { TARGET_NR_exec_with_loader, "exec_with_loader" , NULL, NULL, NULL },
@@ -155,6 +177,15 @@
 #endif
 #ifdef TARGET_NR_fadvise64_64
 { TARGET_NR_fadvise64_64, "fadvise64_64" , NULL, NULL, NULL },
+#endif
+#ifdef TARGET_NR_fallocate
+{ TARGET_NR_fallocate, "fallocate" , NULL, NULL, NULL },
+#endif
+#ifdef TARGET_NR_fanotify_init
+{ TARGET_NR_fanotify_init, "fanotify_init" , NULL, NULL, NULL },
+#endif
+#ifdef TARGET_NR_fanotify_mark
+{ TARGET_NR_fanotify_mark, "fanotify_mark" , NULL, NULL, NULL },
 #endif
 #ifdef TARGET_NR_fchdir
 { TARGET_NR_fchdir, "fchdir" , NULL, NULL, NULL },
@@ -185,6 +216,9 @@
 #endif
 #ifdef TARGET_NR_fgetxattr
 { TARGET_NR_fgetxattr, "fgetxattr" , NULL, NULL, NULL },
+#endif
+#ifdef TARGET_NR_finit_module
+{ TARGET_NR_finit_module, "finit_module" , NULL, NULL, NULL },
 #endif
 #ifdef TARGET_NR_flistxattr
 { TARGET_NR_flistxattr, "flistxattr" , NULL, NULL, NULL },
@@ -230,6 +264,9 @@
 #endif
 #ifdef TARGET_NR_futimesat
 { TARGET_NR_futimesat, "futimesat" , NULL, print_futimesat, NULL },
+#endif
+#ifdef TARGET_NR_getcpu
+{ TARGET_NR_getcpu, "getcpu" , "%s(%p,%d)", NULL, NULL },
 #endif
 #ifdef TARGET_NR_getcwd
 { TARGET_NR_getcwd, "getcwd" , "%s(%p,%d)", NULL, NULL },
@@ -306,6 +343,9 @@
 #ifdef TARGET_NR_getpriority
 { TARGET_NR_getpriority, "getpriority", "%s(%#x,%#x)", NULL, NULL },
 #endif
+#ifdef TARGET_NR_getrandom
+{ TARGET_NR_getrandom, "getrandom", NULL, NULL, NULL },
+#endif
 #ifdef TARGET_NR_getresgid
 { TARGET_NR_getresgid, "getresgid" , NULL, NULL, NULL },
 #endif
@@ -337,7 +377,8 @@
 { TARGET_NR_getsockopt, "getsockopt" , NULL, NULL, NULL },
 #endif
 #ifdef TARGET_NR_get_thread_area
-{ TARGET_NR_get_thread_area, "get_thread_area" , NULL, NULL, NULL },
+{ TARGET_NR_get_thread_area, "get_thread_area", "%s(0x"TARGET_ABI_FMT_lx")",
+  NULL, NULL },
 #endif
 #ifdef TARGET_NR_gettid
 { TARGET_NR_gettid, "gettid" , NULL, NULL, NULL },
@@ -378,6 +419,9 @@
 #ifdef TARGET_NR_inotify_init
 { TARGET_NR_inotify_init, "inotify_init" , NULL, NULL, NULL },
 #endif
+#ifdef TARGET_NR_inotify_init1
+{ TARGET_NR_inotify_init1, "inotify_init1" , NULL, NULL, NULL },
+#endif
 #ifdef TARGET_NR_inotify_rm_watch
 { TARGET_NR_inotify_rm_watch, "inotify_rm_watch" , NULL, NULL, NULL },
 #endif
@@ -413,6 +457,9 @@
 #endif
 #ifdef TARGET_NR_ipc
 { TARGET_NR_ipc, "ipc" , NULL, print_ipc, NULL },
+#endif
+#ifdef TARGET_NR_kcmp
+{ TARGET_NR_kcmp, "kcmp" , NULL, NULL, NULL },
 #endif
 #ifdef TARGET_NR_kexec_load
 { TARGET_NR_kexec_load, "kexec_load" , NULL, NULL, NULL },
@@ -483,6 +530,12 @@
 #ifdef TARGET_NR_mbind
 { TARGET_NR_mbind, "mbind" , NULL, NULL, NULL },
 #endif
+#ifdef TARGET_NR_membarrier
+{ TARGET_NR_membarrier, "membarrier" , NULL, NULL, NULL },
+#endif
+#ifdef TARGET_NR_memfd_create
+{ TARGET_NR_memfd_create, "memfd_create" , NULL, NULL, NULL },
+#endif
 #ifdef TARGET_NR_memory_ordering
 { TARGET_NR_memory_ordering, "memory_ordering" , NULL, NULL, NULL },
 #endif
@@ -509,6 +562,9 @@
 #endif
 #ifdef TARGET_NR_mlock
 { TARGET_NR_mlock, "mlock" , NULL, NULL, NULL },
+#endif
+#ifdef TARGET_NR_mlock2
+{ TARGET_NR_mlock2, "mlock2" , NULL, NULL, NULL },
 #endif
 #ifdef TARGET_NR_mlockall
 { TARGET_NR_mlockall, "mlockall" , NULL, NULL, NULL },
@@ -581,6 +637,9 @@
 #endif
 #ifdef TARGET_NR_munmap
 { TARGET_NR_munmap, "munmap" , NULL, print_munmap, NULL },
+#endif
+#ifdef TARGET_NR_name_to_handle_at
+{ TARGET_NR_name_to_handle_at, "name_to_handle_at" , NULL, NULL, NULL },
 #endif
 #ifdef TARGET_NR_nanosleep
 { TARGET_NR_nanosleep, "nanosleep" , NULL, NULL, NULL },
@@ -951,6 +1010,9 @@
 #ifdef TARGET_NR_pciconfig_write
 { TARGET_NR_pciconfig_write, "pciconfig_write" , NULL, NULL, NULL },
 #endif
+#ifdef TARGET_NR_perf_event_open
+{ TARGET_NR_perf_event_open, "perf_event_open" , NULL, NULL, NULL },
+#endif
 #ifdef TARGET_NR_perfctr
 { TARGET_NR_perfctr, "perfctr" , NULL, NULL, NULL },
 #endif
@@ -975,6 +1037,18 @@
 #ifdef TARGET_NR_pread64
 { TARGET_NR_pread64, "pread64" , NULL, NULL, NULL },
 #endif
+#ifdef TARGET_NR_preadv
+{ TARGET_NR_preadv, "preadv" , NULL, NULL, NULL },
+#endif
+#ifdef TARGET_NR_prlimit64
+{ TARGET_NR_prlimit64, "prlimit64" , NULL, NULL, NULL },
+#endif
+#ifdef TARGET_NR_process_vm_readv
+{ TARGET_NR_process_vm_readv, "process_vm_readv" , NULL, NULL, NULL },
+#endif
+#ifdef TARGET_NR_process_vm_writev
+{ TARGET_NR_process_vm_writev, "process_vm_writev" , NULL, NULL, NULL },
+#endif
 #ifdef TARGET_NR_prof
 { TARGET_NR_prof, "prof" , NULL, NULL, NULL },
 #endif
@@ -992,6 +1066,9 @@
 #endif
 #ifdef TARGET_NR_pwrite64
 { TARGET_NR_pwrite64, "pwrite64" , NULL, NULL, NULL },
+#endif
+#ifdef TARGET_NR_pwritev
+{ TARGET_NR_pwritev, "pwritev" , NULL, NULL, NULL },
 #endif
 #ifdef TARGET_NR_query_module
 { TARGET_NR_query_module, "query_module" , NULL, NULL, NULL },
@@ -1026,6 +1103,9 @@
 #ifdef TARGET_NR_recvfrom
 { TARGET_NR_recvfrom, "recvfrom" , NULL, NULL, NULL },
 #endif
+#ifdef TARGET_NR_recvmmsg
+{ TARGET_NR_recvmmsg, "recvmmsg" , NULL, NULL, NULL },
+#endif
 #ifdef TARGET_NR_recvmsg
 { TARGET_NR_recvmsg, "recvmsg" , NULL, NULL, NULL },
 #endif
@@ -1041,8 +1121,17 @@
 #ifdef TARGET_NR_renameat
 { TARGET_NR_renameat, "renameat" , NULL, print_renameat, NULL },
 #endif
+#ifdef TARGET_NR_renameat2
+{ TARGET_NR_renameat2, "renameat2" , NULL, NULL, NULL },
+#endif
 #ifdef TARGET_NR_request_key
 { TARGET_NR_request_key, "request_key" , NULL, NULL, NULL },
+#endif
+#ifdef TARGET_NR_reserved177
+{ TARGET_NR_reserved177, "reserved177" , NULL, NULL, NULL },
+#endif
+#ifdef TARGET_NR_reserved193
+{ TARGET_NR_reserved193, "reserved193" , NULL, NULL, NULL },
 #endif
 #ifdef TARGET_NR_reserved221
 { TARGET_NR_reserved221, "reserved221" , NULL, NULL, NULL },
@@ -1077,11 +1166,17 @@
 #ifdef TARGET_NR_rt_sigtimedwait
 { TARGET_NR_rt_sigtimedwait, "rt_sigtimedwait" , NULL, NULL, NULL },
 #endif
+#ifdef TARGET_NR_rt_tgsigqueueinfo
+{ TARGET_NR_rt_tgsigqueueinfo, "rt_tgsigqueueinfo" , NULL, NULL, NULL },
+#endif
 #ifdef TARGET_NR_sched_getaffinity
 { TARGET_NR_sched_getaffinity, "sched_getaffinity" , NULL, NULL, NULL },
 #endif
 #ifdef TARGET_NR_sched_get_affinity
 { TARGET_NR_sched_get_affinity, "sched_get_affinity" , NULL, NULL, NULL },
+#endif
+#ifdef TARGET_NR_sched_getattr
+{ TARGET_NR_sched_getattr, "sched_getattr" , NULL, NULL, NULL },
 #endif
 #ifdef TARGET_NR_sched_getparam
 { TARGET_NR_sched_getparam, "sched_getparam" , NULL, NULL, NULL },
@@ -1101,6 +1196,9 @@
 #ifdef TARGET_NR_sched_setaffinity
 { TARGET_NR_sched_setaffinity, "sched_setaffinity" , NULL, NULL, NULL },
 #endif
+#ifdef TARGET_NR_sched_setatt
+{ TARGET_NR_sched_setatt, "sched_setatt" , NULL, NULL, NULL },
+#endif
 #ifdef TARGET_NR_sched_set_affinity
 { TARGET_NR_sched_set_affinity, "sched_set_affinity" , NULL, NULL, NULL },
 #endif
@@ -1112,6 +1210,9 @@
 #endif
 #ifdef TARGET_NR_sched_yield
 { TARGET_NR_sched_yield, "sched_yield" , NULL, NULL, NULL },
+#endif
+#ifdef TARGET_NR_seccomp
+{ TARGET_NR_seccomp, "seccomp" , NULL, NULL, NULL },
 #endif
 #ifdef TARGET_NR_security
 { TARGET_NR_security, "security" , NULL, NULL, NULL },
@@ -1139,6 +1240,9 @@
 #endif
 #ifdef TARGET_NR_sendfile64
 { TARGET_NR_sendfile64, "sendfile64" , NULL, NULL, NULL },
+#endif
+#ifdef TARGET_NR_sendmmsg
+{ TARGET_NR_sendmmsg, "sendmmsg" , NULL, NULL, NULL },
 #endif
 #ifdef TARGET_NR_sendmsg
 { TARGET_NR_sendmsg, "sendmsg" , NULL, NULL, NULL },
@@ -1234,7 +1338,8 @@
 { TARGET_NR_setsockopt, "setsockopt" , NULL, NULL, NULL },
 #endif
 #ifdef TARGET_NR_set_thread_area
-{ TARGET_NR_set_thread_area, "set_thread_area" , NULL, NULL, NULL },
+{ TARGET_NR_set_thread_area, "set_thread_area", "%s(0x"TARGET_ABI_FMT_lx")",
+  NULL, NULL },
 #endif
 #ifdef TARGET_NR_set_tid_address
 { TARGET_NR_set_tid_address, "set_tid_address" , NULL, NULL, NULL },
@@ -1278,6 +1383,12 @@
 #ifdef TARGET_NR_signal
 { TARGET_NR_signal, "signal" , NULL, NULL, NULL },
 #endif
+#ifdef TARGET_NR_signalfd
+{ TARGET_NR_signalfd, "signalfd" , NULL, NULL, NULL },
+#endif
+#ifdef TARGET_NR_signalfd4
+{ TARGET_NR_signalfd4, "signalfd4" , NULL, NULL, NULL },
+#endif
 #ifdef TARGET_NR_sigpending
 { TARGET_NR_sigpending, "sigpending" , NULL, NULL, NULL },
 #endif
@@ -1291,10 +1402,10 @@
 { TARGET_NR_sigsuspend, "sigsuspend" , NULL, NULL, NULL },
 #endif
 #ifdef TARGET_NR_socket
-{ TARGET_NR_socket, "socket" , NULL, NULL, NULL },
+{ TARGET_NR_socket, "socket" , NULL, print_socket, NULL },
 #endif
 #ifdef TARGET_NR_socketcall
-{ TARGET_NR_socketcall, "socketcall" , NULL, NULL, NULL },
+{ TARGET_NR_socketcall, "socketcall" , NULL, print_socketcall, NULL },
 #endif
 #ifdef TARGET_NR_socketpair
 { TARGET_NR_socketpair, "socketpair" , NULL, NULL, NULL },
@@ -1347,8 +1458,8 @@
 #ifdef TARGET_NR_sync
 { TARGET_NR_sync, "sync" , NULL, NULL, NULL },
 #endif
-#ifdef TARGET_NR_sync_file_range
-{ TARGET_NR_sync_file_range, "sync_file_range" , NULL, NULL, NULL },
+#ifdef TARGET_NR_syncfs
+{ TARGET_NR_syncfs, "syncfs" , "%s(%d)", NULL, NULL },
 #endif
 #ifdef TARGET_NR_syscall
 { TARGET_NR_syscall, "syscall" , NULL, NULL, NULL },
@@ -1375,7 +1486,7 @@
 { TARGET_NR_sys_kexec_load, "sys_kexec_load" , NULL, NULL, NULL },
 #endif
 #ifdef TARGET_NR_syslog
-{ TARGET_NR_syslog, "syslog" , NULL, NULL, NULL },
+{ TARGET_NR_syslog, "syslog" , NULL, print_syslog, NULL },
 #endif
 #ifdef TARGET_NR_sysmips
 { TARGET_NR_sysmips, "sysmips" , NULL, NULL, NULL },
@@ -1406,6 +1517,9 @@
 #endif
 #ifdef TARGET_NR_timer_settime
 { TARGET_NR_timer_settime, "timer_settime" , NULL, NULL, NULL },
+#endif
+#ifdef TARGET_NR_timerfd
+{ TARGET_NR_timerfd, "timerfd" , NULL, NULL, NULL },
 #endif
 #ifdef TARGET_NR_timerfd_create
 { TARGET_NR_timerfd_create, "timerfd_create" , NULL, NULL, NULL },
@@ -1457,6 +1571,9 @@
 #endif
 #ifdef TARGET_NR_unshare
 { TARGET_NR_unshare, "unshare" , NULL, NULL, NULL },
+#endif
+#ifdef TARGET_NR_userfaultfd
+{ TARGET_NR_userfaultfd, "userfaultfd" , NULL, NULL, NULL },
 #endif
 #ifdef TARGET_NR_unused109
 { TARGET_NR_unused109, "unused109" , NULL, NULL, NULL },

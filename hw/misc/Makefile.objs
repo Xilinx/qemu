@@ -37,6 +37,8 @@ common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx-serdes.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += reset-dev.o
 common-obj-$(CONFIG_SI57X) += si57x.o
 
+common-obj-$(CONFIG_SOFTMMU) += gpio-mr-mux.o
+
 common-obj-$(CONFIG_XILINX_AXI) += stream-fifo.o
 
 obj-$(CONFIG_VMPORT) += vmport.o
@@ -62,6 +64,7 @@ obj-$(CONFIG_IMX) += imx_ccm.o
 obj-$(CONFIG_IMX) += imx31_ccm.o
 obj-$(CONFIG_IMX) += imx25_ccm.o
 obj-$(CONFIG_IMX) += imx6_ccm.o
+obj-$(CONFIG_IMX) += imx6_src.o
 obj-$(CONFIG_MILKYMIST) += milkymist-hpdmc.o
 obj-$(CONFIG_MILKYMIST) += milkymist-pfpu.o
 obj-$(CONFIG_MAINSTONE) += mst_fpga.o
@@ -81,7 +84,7 @@ obj-$(CONFIG_MIPS_CPS) += mips_cpc.o
 obj-$(CONFIG_MIPS_ITU) += mips_itu.o
 
 obj-$(CONFIG_PVPANIC) += pvpanic.o
-
-obj-y += aux.o
 obj-$(CONFIG_EDU) += edu.o
 obj-$(CONFIG_HYPERV_TESTDEV) += hyperv_testdev.o
+obj-$(CONFIG_AUX) += auxbus.o
+obj-$(CONFIG_ASPEED_SOC) += aspeed_scu.o aspeed_sdmc.o

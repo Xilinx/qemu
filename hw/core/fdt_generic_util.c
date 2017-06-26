@@ -34,6 +34,8 @@
 #include "hw/sysbus.h"
 #include "qapi/error.h"
 #include "sysemu/sysemu.h"
+#include "sysemu/blockdev.h"
+#include "sysemu/char.h"
 #include "qemu/log.h"
 #include "qom/cpu.h"
 
@@ -55,11 +57,14 @@
 } while (0);
 
 #include "hw/remote-port-device.h"
+#include "hw/remote-port.h"
 
 /* FIXME: wrap direct calls into libfdt */
 
 #include <libfdt.h>
 #include <stdlib.h>
+
+int fdt_serial_ports;
 
 static int simple_bus_fdt_init(char *bus_node_path, FDTMachineInfo *fdti);
 
@@ -167,6 +172,8 @@ FDTMachineInfo *fdt_generic_create_machine(void *fdt, qemu_irq *cpu_irq)
 
     fdti->irq_base = cpu_irq;
 
+    fdt_serial_ports = 0;
+
     /* parse the device tree */
     if (!qemu_devtree_get_root_node(fdt, node_path)) {
         memory_region_transaction_begin();
@@ -235,7 +242,7 @@ static void fdt_init_node(void *args)
         if (!fdt_init_qdev(node_path, fdti, compat)) {
             goto exit;
         }
-        next_compat = rawmemchr(compat, '\0');
+        next_compat = memchr(compat, '\0', DT_PATH_LENGTH);
         compat_len -= (next_compat + 1 - compat);
         if (compat_len > 0) {
             *next_compat = ' ';
@@ -289,7 +296,7 @@ static int simple_bus_fdt_init(char *node_path, FDTMachineInfo *fdti)
         struct FDTInitNodeArgs *init_args = g_malloc0(sizeof(*init_args));
         init_args->node_path = children[i];
         init_args->fdti = fdti;
-        qemu_coroutine_enter(qemu_coroutine_create(fdt_init_node), init_args);
+        qemu_coroutine_enter(qemu_coroutine_create(fdt_init_node, init_args));
     }
 
     g_free(children);
@@ -1088,6 +1095,42 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
         if (nd_table[nics].instantiated) {
             DB_PRINT_NP(0, "NIC instantiated: %s\n", dev_type);
             nics++;
+        }
+
+        /* We don't want to connect remote port chardev's to the user facing
+         * serial devices.
+         */
+        if (!object_dynamic_cast(dev, TYPE_REMOTE_PORT)) {
+            /* Connect chardev if we can */
+            if (fdt_serial_ports < MAX_SERIAL_PORTS && serial_hds[fdt_serial_ports]) {
+                CharDriverState *value = (CharDriverState*) serial_hds[fdt_serial_ports];
+
+                object_property_set_str(dev, value->label, "chardev", &errp);
+                if (!errp) {
+                    /* It worked, the device is a charecter device */
+                    fdt_serial_ports++;
+                }
+
+                errp = NULL;
+            }
+        }
+
+        /* We also need to externally connect drives. Let's try to do that
+         * here. Don't use drive_get_next() as it always increments the
+         * next_block_unit variable.
+         */
+        DriveInfo *dinfo = drive_get(IF_MTD, 0, next_block_unit[IF_MTD]);
+        if (dinfo) {
+            qdev_prop_set_drive(DEVICE(dev), "drive",
+                                blk_by_legacy_dinfo(dinfo), &errp);
+            if (!errp) {
+                /* If the connection worked we increment the number of blocks
+                 * connected.
+                 */
+                next_block_unit[IF_MTD]++;
+            }
+
+            errp = NULL;
         }
 
         /* Regular TYPE_DEVICE houskeeping */

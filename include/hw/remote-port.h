@@ -12,6 +12,7 @@
 #include <stdbool.h>
 #include "hw/remote-port-proto.h"
 #include "hw/remote-port-device.h"
+#include "sysemu/char.h"
 #include "hw/ptimer.h"
 
 #define TYPE_REMOTE_PORT "remote-port"
@@ -28,7 +29,7 @@ struct RemotePort {
            int write;
        } pipe;
     } event;
-    CharDriverState *chr;
+    CharBackend chr;
     bool do_sync;
     /* To serialize writes to fd.  */
     QemuMutex write_mutex;

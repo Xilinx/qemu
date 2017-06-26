@@ -29,7 +29,7 @@
 #include "block/write-threshold.h"
 #include "qmp-commands.h"
 #include "qapi-visit.h"
-#include "qapi/qmp-output-visitor.h"
+#include "qapi/qobject-output-visitor.h"
 #include "qapi/qmp/types.h"
 #include "sysemu/block-backend.h"
 #include "qemu/cutils.h"
@@ -67,10 +67,10 @@ BlockDeviceInfo *bdrv_block_device_info(BlockBackend *blk,
     info->backing_file_depth = bdrv_get_backing_file_depth(bs);
     info->detect_zeroes = bs->detect_zeroes;
 
-    if (bs->throttle_state) {
+    if (blk && blk_get_public(blk)->throttle_state) {
         ThrottleConfig cfg;
 
-        throttle_group_get_config(bs, &cfg);
+        throttle_group_get_config(blk, &cfg);
 
         info->bps     = cfg.buckets[THROTTLE_BPS_TOTAL].avg;
         info->bps_rd  = cfg.buckets[THROTTLE_BPS_READ].avg;
@@ -118,7 +118,7 @@ BlockDeviceInfo *bdrv_block_device_info(BlockBackend *blk,
         info->iops_size = cfg.op_size;
 
         info->has_group = true;
-        info->group = g_strdup(throttle_group_get_name(bs));
+        info->group = g_strdup(throttle_group_get_name(blk));
     }
 
     info->write_threshold = bdrv_write_threshold_get(bs);
@@ -690,16 +690,16 @@ static void dump_qdict(fprintf_function func_fprintf, void *f, int indentation,
 void bdrv_image_info_specific_dump(fprintf_function func_fprintf, void *f,
                                    ImageInfoSpecific *info_spec)
 {
-    QmpOutputVisitor *ov = qmp_output_visitor_new();
     QObject *obj, *data;
+    Visitor *v = qobject_output_visitor_new(&obj);
 
-    visit_type_ImageInfoSpecific(qmp_output_get_visitor(ov), NULL, &info_spec,
-                                 &error_abort);
-    obj = qmp_output_get_qobject(ov);
+    visit_type_ImageInfoSpecific(v, NULL, &info_spec, &error_abort);
+    visit_complete(v, &obj);
     assert(qobject_type(obj) == QTYPE_QDICT);
     data = qdict_get(qobject_to_qdict(obj), "data");
     dump_qobject(func_fprintf, f, 1, data);
-    qmp_output_visitor_cleanup(ov);
+    qobject_decref(obj);
+    visit_free(v);
 }
 
 void bdrv_image_info_dump(fprintf_function func_fprintf, void *f,

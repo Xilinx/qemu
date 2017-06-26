@@ -28,6 +28,7 @@
 #include "qapi/visitor.h"
 #include "qemu/error-report.h"
 #include "hw/hw.h"
+#include "hw/qdev-core.h"
 
 typedef struct FWBootEntry FWBootEntry;
 
@@ -301,9 +302,7 @@ static void device_set_bootindex(Object *obj, Visitor *v, const char *name,
     add_boot_device_path(*prop->bootindex, prop->dev, prop->suffix);
 
 out:
-    if (local_err) {
-        error_propagate(errp, local_err);
-    }
+    error_propagate(errp, local_err);
 }
 
 static void property_release_bootindex(Object *obj, const char *name,

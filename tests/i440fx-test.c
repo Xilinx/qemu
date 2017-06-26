@@ -13,8 +13,6 @@
  */
 
 #include "qemu/osdep.h"
-#include <glib.h>
-#include <sys/mman.h>
 
 #include "libqtest.h"
 #include "libqos/pci.h"
@@ -40,7 +38,7 @@ static QPCIBus *test_start_get_bus(const TestData *s)
     cmdline = g_strdup_printf("-smp %d", s->num_cpus);
     qtest_start(cmdline);
     g_free(cmdline);
-    return qpci_init_pc();
+    return qpci_init_pc(NULL);
 }
 
 static void test_i440fx_defaults(gconstpointer opaque)
@@ -396,7 +394,6 @@ static void request_pflash(FirmwareTestFixture *fixture,
 int main(int argc, char **argv)
 {
     TestData data;
-    int ret;
 
     g_test_init(&argc, &argv, NULL);
 
@@ -407,6 +404,5 @@ int main(int argc, char **argv)
     add_firmware_test("i440fx/firmware/bios", request_bios);
     add_firmware_test("i440fx/firmware/pflash", request_pflash);
 
-    ret = g_test_run();
-    return ret;
+    return g_test_run();
 }

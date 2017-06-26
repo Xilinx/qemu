@@ -19,6 +19,8 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
+#include "cpu.h"
+#include "qemu/log.h"
 #include "hw/sysbus.h"
 
 #include "hw/misc/mips_cpc.h"
@@ -35,7 +37,7 @@ static void cpc_run_vp(MIPSCPCState *cpc, uint64_t vp_run)
     CPU_FOREACH(cs) {
         uint64_t i = 1ULL << cs->cpu_index;
         if (i & vp_run & ~cpc->vp_running) {
-            cpu_interrupt(cs, CPU_INTERRUPT_WAKE);
+            cpu_reset(cs);
             cpc->vp_running |= i;
         }
     }
@@ -48,8 +50,7 @@ static void cpc_stop_vp(MIPSCPCState *cpc, uint64_t vp_stop)
     CPU_FOREACH(cs) {
         uint64_t i = 1ULL << cs->cpu_index;
         if (i & vp_stop & cpc->vp_running) {
-            cs->halted = 1;
-            cpu_reset_interrupt(cs, CPU_INTERRUPT_WAKE);
+            cpu_interrupt(cs, CPU_INTERRUPT_HALT);
             cpc->vp_running &= ~i;
         }
     }

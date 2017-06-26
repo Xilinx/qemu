@@ -105,7 +105,7 @@ static int uart16550_fdt_init(char *node_path, FDTMachineInfo *fdti,
 
     /* it_shift = 2, reg-shift in DTS - for Xilnx IP is hardcoded */
     serial_mm_init(address_space_mem, base, 2, irqline, baudrate,
-                   qemu_char_get_next_serial(), DEVICE_LITTLE_ENDIAN);
+                   serial_hds[fdt_serial_ports], DEVICE_LITTLE_ENDIAN);
     return 0;
 }
 
@@ -219,6 +219,7 @@ static const TypeInfo fdt_qom_aliases [] = {
     {   .name = "arasan,sdhci-8.9a",        .parent = "xilinx.zynqmp-sdhci" },
     {   .name = "cdns.spi-r1p6",            .parent = "xlnx.ps7-spi"        },
     {   .name = "xlnx,eth-dma",             .parent = "xlnx.axi-dma"        },
+    {   .name = "xilinx_spi",               .parent = "m25p80"        },
 };
 
 static void fdt_generic_register_types(void)

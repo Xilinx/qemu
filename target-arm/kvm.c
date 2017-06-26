@@ -10,7 +10,6 @@
 
 #include "qemu/osdep.h"
 #include <sys/ioctl.h>
-#include <sys/mman.h>
 
 #include <linux/kvm.h>
 
@@ -24,7 +23,9 @@
 #include "internals.h"
 #include "hw/arm/arm.h"
 #include "exec/memattrs.h"
+#include "exec/address-spaces.h"
 #include "hw/boards.h"
+#include "qemu/log.h"
 
 const KVMCapabilityInfo kvm_arch_required_capabilities[] = {
     KVM_CAP_LAST_INFO
@@ -283,7 +284,7 @@ void kvm_arm_register_device(MemoryRegion *mr, uint64_t devid, uint64_t group,
     }
 
     if (QSLIST_EMPTY(&kvm_devices_head)) {
-        memory_listener_register(&devlistener, NULL);
+        memory_listener_register(&devlistener, &address_space_memory);
         qemu_add_machine_init_done_notifier(&notify);
     }
     kd = g_new0(KVMDevice, 1);
@@ -618,6 +619,17 @@ int kvm_arm_vgic_probe(void)
 
 int kvm_arch_fixup_msi_route(struct kvm_irq_routing_entry *route,
                              uint64_t address, uint32_t data, PCIDevice *dev)
+{
+    return 0;
+}
+
+int kvm_arch_add_msi_route_post(struct kvm_irq_routing_entry *route,
+                                int vector, PCIDevice *dev)
+{
+    return 0;
+}
+
+int kvm_arch_release_virq_post(int virq)
 {
     return 0;
 }

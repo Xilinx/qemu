@@ -51,7 +51,6 @@
  */
 
 #include "qemu/osdep.h"
-#include <glib.h>
 #include "libqtest.h"
 #include "qemu/iov.h"
 #include "qemu/sockets.h"
@@ -210,12 +209,8 @@ static void test_redirector_rx(void)
 
 int main(int argc, char **argv)
 {
-    int ret;
-
     g_test_init(&argc, &argv, NULL);
     qtest_add_func("/netfilter/redirector_tx", test_redirector_tx);
     qtest_add_func("/netfilter/redirector_rx", test_redirector_rx);
-    ret = g_test_run();
-
-    return ret;
+    return g_test_run();
 }

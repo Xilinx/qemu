@@ -13,6 +13,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/misc/imx25_ccm.h"
+#include "qemu/log.h"
 
 #ifndef DEBUG_IMX25_CCM
 #define DEBUG_IMX25_CCM 0
@@ -26,7 +27,7 @@
         } \
     } while (0)
 
-static char const *imx25_ccm_reg_name(uint32_t reg)
+static const char *imx25_ccm_reg_name(uint32_t reg)
 {
     static char unknown[20];
 

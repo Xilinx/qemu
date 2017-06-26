@@ -25,10 +25,6 @@
 
 /* Needed early for CONFIG_BSD etc. */
 
-#if defined(CONFIG_MADVISE) || defined(CONFIG_POSIX_MADVISE)
-#include <sys/mman.h>
-#endif
-
 #ifdef CONFIG_SOLARIS
 #include <sys/statvfs.h>
 /* See MySQL bug #7156 (http://bugs.mysql.com/bug.php?id=7156) for
@@ -44,14 +40,7 @@ extern int madvise(caddr_t, size_t, int);
 
 static bool fips_enabled = false;
 
-/* Starting on QEMU 2.5, qemu_hw_version() returns "2.5+" by default
- * instead of QEMU_VERSION, so setting hw_version on MachineClass
- * is no longer mandatory.
- *
- * Do NOT change this string, or it will break compatibility on all
- * machine classes that don't set hw_version.
- */
-static const char *hw_version = "2.5+";
+static const char *hw_version = QEMU_HW_VERSION;
 
 int socket_set_cork(int fd, int v)
 {
@@ -94,14 +83,7 @@ static int qemu_dup_flags(int fd, int flags)
     int serrno;
     int dup_flags;
 
-#ifdef F_DUPFD_CLOEXEC
-    ret = fcntl(fd, F_DUPFD_CLOEXEC, 0);
-#else
-    ret = dup(fd);
-    if (ret != -1) {
-        qemu_set_cloexec(ret);
-    }
-#endif
+    ret = qemu_dup(fd);
     if (ret == -1) {
         goto fail;
     }
@@ -138,6 +120,20 @@ fail:
     }
     errno = serrno;
     return -1;
+}
+
+int qemu_dup(int fd)
+{
+    int ret;
+#ifdef F_DUPFD_CLOEXEC
+    ret = fcntl(fd, F_DUPFD_CLOEXEC, 0);
+#else
+    ret = dup(fd);
+    if (ret != -1) {
+        qemu_set_cloexec(ret);
+    }
+#endif
+    return ret;
 }
 
 static int qemu_parse_fdset(const char *param)

@@ -6,7 +6,7 @@ LTTng User Space Tracing backend.
 """
 
 __author__     = "Lluís Vilanova <vilanova@ac.upc.edu>"
-__copyright__  = "Copyright 2012-2014, Lluís Vilanova <vilanova@ac.upc.edu>"
+__copyright__  = "Copyright 2012-2016, Lluís Vilanova <vilanova@ac.upc.edu>"
 __license__    = "GPL version 2 or (at your option) any later version"
 
 __maintainer__ = "Stefan Hajnoczi"
@@ -19,17 +19,17 @@ from tracetool import out
 PUBLIC = True
 
 
-def generate_h_begin(events):
+def generate_h_begin(events, group):
     out('#include <lttng/tracepoint.h>',
         '#include "trace/generated-ust-provider.h"',
         '')
 
 
-def generate_h(event):
+def generate_h(event, group):
     argnames = ", ".join(event.args.names())
     if len(event.args) > 0:
         argnames = ", " + argnames
 
-    out('    tracepoint(qemu, %(name)s%(tp_args)s);',
+    out('        tracepoint(qemu, %(name)s%(tp_args)s);',
         name=event.name,
         tp_args=argnames)

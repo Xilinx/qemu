@@ -22,13 +22,16 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+
 #ifndef HW_SERIAL_H
-#define HW_SERIAL_H 1
+#define HW_SERIAL_H
 
 #include "hw/hw.h"
 #include "sysemu/sysemu.h"
+#include "sysemu/char.h"
 #include "exec/memory.h"
 #include "qemu/fifo8.h"
+#include "sysemu/char.h"
 
 #define UART_FIFO_LENGTH    16      /* 16550A Fifo Length */
 
@@ -51,11 +54,12 @@ struct SerialState {
        it can be reset while reading iir */
     int thr_ipending;
     qemu_irq irq;
-    CharDriverState *chr;
+    CharBackend chr;
     int last_break_enable;
     int it_shift;
     int baudbase;
-    int tsr_retry;
+    uint32_t tsr_retry;
+    guint watch_tag;
     uint32_t wakeup;
 
     /* Time when the last byte was successfully sent out of the tsr */
@@ -92,6 +96,6 @@ SerialState *serial_mm_init(MemoryRegion *address_space,
 
 /* serial-isa.c */
 #define TYPE_ISA_SERIAL "isa-serial"
-void serial_hds_isa_init(ISABus *bus, int n);
+void serial_hds_isa_init(ISABus *bus, int from, int to);
 
 #endif

@@ -10,7 +10,6 @@
  * See the COPYING.LIB file in the top-level directory.
  */
 #include "qemu/osdep.h"
-#include <glib.h>
 
 #include "qom/object.h"
 #include "qemu/module.h"
@@ -77,6 +76,7 @@ static void test_interface_impl(const char *type)
 
     g_assert(iobj);
     g_assert(ioc->test == PATTERN);
+    object_unref(obj);
 }
 
 static void interface_direct_test(void)

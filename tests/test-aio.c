@@ -11,7 +11,6 @@
  */
 
 #include "qemu/osdep.h"
-#include <glib.h>
 #include "block/aio.h"
 #include "qapi/error.h"
 #include "qemu/timer.h"
@@ -101,6 +100,7 @@ static void event_ready_cb(EventNotifier *e)
 
 typedef struct {
     QemuMutex start_lock;
+    EventNotifier notifier;
     bool thread_acquired;
 } AcquireTestData;
 
@@ -112,6 +112,11 @@ static void *test_acquire_thread(void *opaque)
     qemu_mutex_lock(&data->start_lock);
     qemu_mutex_unlock(&data->start_lock);
 
+    /* event_notifier_set might be called either before or after
+     * the main thread's call to poll().  The test case's outcome
+     * should be the same in either case.
+     */
+    event_notifier_set(&data->notifier);
     aio_context_acquire(ctx);
     aio_context_release(ctx);
 
@@ -126,20 +131,19 @@ static void set_event_notifier(AioContext *ctx, EventNotifier *notifier,
     aio_set_event_notifier(ctx, notifier, false, handler);
 }
 
-static void dummy_notifier_read(EventNotifier *unused)
+static void dummy_notifier_read(EventNotifier *n)
 {
-    g_assert(false); /* should never be invoked */
+    event_notifier_test_and_clear(n);
 }
 
 static void test_acquire(void)
 {
     QemuThread thread;
-    EventNotifier notifier;
     AcquireTestData data;
 
     /* Dummy event notifier ensures aio_poll() will block */
-    event_notifier_init(&notifier, false);
-    set_event_notifier(ctx, &notifier, dummy_notifier_read);
+    event_notifier_init(&data.notifier, false);
+    set_event_notifier(ctx, &data.notifier, dummy_notifier_read);
     g_assert(!aio_poll(ctx, false)); /* consume aio_notify() */
 
     qemu_mutex_init(&data.start_lock);
@@ -153,12 +157,13 @@ static void test_acquire(void)
     /* Block in aio_poll(), let other thread kick us and acquire context */
     aio_context_acquire(ctx);
     qemu_mutex_unlock(&data.start_lock); /* let the thread run */
-    g_assert(!aio_poll(ctx, true));
+    g_assert(aio_poll(ctx, true));
+    g_assert(!data.thread_acquired);
     aio_context_release(ctx);
 
     qemu_thread_join(&thread);
-    set_event_notifier(ctx, &notifier, NULL);
-    event_notifier_cleanup(&notifier);
+    set_event_notifier(ctx, &data.notifier, NULL);
+    event_notifier_cleanup(&data.notifier);
 
     g_assert(data.thread_acquired);
 }
@@ -453,7 +458,7 @@ static void test_timer_schedule(void)
 {
     TimerTestData data = { .n = 0, .ctx = ctx, .ns = SCALE_MS * 750LL,
                            .max = 2,
-                           .clock_type = QEMU_CLOCK_VIRTUAL };
+                           .clock_type = QEMU_CLOCK_REALTIME };
     EventNotifier e;
 
     /* aio_poll will not block to wait for timers to complete unless it has
@@ -783,7 +788,7 @@ static void test_source_timer_schedule(void)
 {
     TimerTestData data = { .n = 0, .ctx = ctx, .ns = SCALE_MS * 750LL,
                            .max = 2,
-                           .clock_type = QEMU_CLOCK_VIRTUAL };
+                           .clock_type = QEMU_CLOCK_REALTIME };
     EventNotifier e;
     int64_t expiry;
 

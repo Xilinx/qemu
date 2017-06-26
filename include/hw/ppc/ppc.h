@@ -1,5 +1,7 @@
 #ifndef HW_PPC_H
-#define HW_PPC_H 1
+#define HW_PPC_H
+
+#include "target-ppc/cpu-qom.h"
 
 #include "target-ppc/cpu-qom.h"
 
@@ -106,4 +108,5 @@ enum {
 /* ppc_booke.c */
 void ppc_booke_timers_init(PowerPCCPU *cpu, uint32_t freq, uint32_t flags);
 
+void ppc_cpu_parse_features(const char *cpu_model);
 #endif

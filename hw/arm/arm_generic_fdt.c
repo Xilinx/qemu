@@ -20,6 +20,7 @@
 #include "qapi/error.h"
 #include "hw/block/flash.h"
 #include "qemu/error-report.h"
+#include "qemu/log.h"
 #include "hw/arm/xlnx-zynqmp.h"
 
 #include <libfdt.h>

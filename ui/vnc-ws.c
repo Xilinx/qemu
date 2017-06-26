@@ -22,6 +22,7 @@
 #include "qapi/error.h"
 #include "vnc.h"
 #include "io/channel-websock.h"
+#include "qemu/bswap.h"
 
 static void vncws_tls_handshake_done(Object *source,
                                      Error *err,
@@ -66,6 +67,8 @@ gboolean vncws_tls_handshake_io(QIOChannel *ioc G_GNUC_UNUSED,
         return TRUE;
     }
 
+    qio_channel_set_name(QIO_CHANNEL(tls), "vnc-ws-server-tls");
+
     VNC_DEBUG("Start TLS WS handshake process\n");
     object_unref(OBJECT(vs->ioc));
     vs->ioc = QIO_CHANNEL(tls);
@@ -91,7 +94,7 @@ static void vncws_handshake_done(Object *source,
         vnc_client_error(vs);
     } else {
         VNC_DEBUG("Websock handshake complete, starting VNC protocol\n");
-        vnc_init_state(vs);
+        vnc_start_protocol(vs);
         vs->ioc_tag = qio_channel_add_watch(
             vs->ioc, G_IO_IN, vnc_client_io, vs, NULL);
     }
@@ -112,6 +115,7 @@ gboolean vncws_handshake_io(QIOChannel *ioc G_GNUC_UNUSED,
     }
 
     wioc = qio_channel_websock_new_server(vs->ioc);
+    qio_channel_set_name(QIO_CHANNEL(wioc), "vnc-ws-server-websock");
 
     object_unref(OBJECT(vs->ioc));
     vs->ioc = QIO_CHANNEL(wioc);

@@ -1,5 +1,5 @@
-#ifndef TARGET_SYSCALL_H
-#define TARGET_SYSCALL_H
+#ifndef SPARC_TARGET_SYSCALL_H
+#define SPARC_TARGET_SYSCALL_H
 
 struct target_pt_regs {
 	abi_ulong psr;
@@ -22,4 +22,20 @@ struct target_pt_regs {
 #define TARGET_MLOCKALL_MCL_CURRENT 0x2000
 #define TARGET_MLOCKALL_MCL_FUTURE  0x4000
 
-#endif  /* TARGET_SYSCALL_H */
+/* For SPARC SHMLBA is determined at runtime in the kernel, and
+ * libc has to runtime-detect it using the hwcaps (see glibc
+ * sysdeps/unix/sysv/linux/sparc/getshmlba; we follow the same
+ * logic here, though we know we're not the sparc v9 64-bit case).
+ */
+#define TARGET_FORCE_SHMLBA
+
+static inline abi_ulong target_shmlba(CPUSPARCState *env)
+{
+    if (!(env->def->features & CPU_FEATURE_FLUSH)) {
+        return 64 * 1024;
+    } else {
+        return 256 * 1024;
+    }
+}
+
+#endif /* SPARC_TARGET_SYSCALL_H */

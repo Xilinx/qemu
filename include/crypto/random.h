@@ -18,8 +18,8 @@
  *
  */
 
-#ifndef QCRYPTO_RANDOM_H__
-#define QCRYPTO_RANDOM_H__
+#ifndef QCRYPTO_RANDOM_H
+#define QCRYPTO_RANDOM_H
 
 #include "qemu-common.h"
 #include "qapi/error.h"
@@ -34,11 +34,11 @@
  * Fill @buf with @buflen bytes of cryptographically strong
  * random data
  *
- * Returns 0 on sucess, -1 on error
+ * Returns 0 on success, -1 on error
  */
 int qcrypto_random_bytes(uint8_t *buf,
                          size_t buflen,
                          Error **errp);
 
 
-#endif /* QCRYPTO_RANDOM_H__ */
+#endif /* QCRYPTO_RANDOM_H */

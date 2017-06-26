@@ -13,10 +13,10 @@
 #include "qemu/bitmap.h"
 #include "sysemu/sysemu.h"
 #include "hw/pci/pci.h"
-#include "hw/boards.h"
 #include "hw/compat.h"
 #include "hw/mem/pc-dimm.h"
 #include "hw/mem/nvdimm.h"
+#include "hw/acpi/acpi_dev_interface.h"
 
 #define HPET_INTCAP "hpet-intcap"
 
@@ -36,6 +36,7 @@
 /**
  * PCMachineState:
  * @acpi_dev: link to ACPI PM device that performs ACPI hotplug handling
+ * @boot_cpus: number of present VCPUs
  */
 struct PCMachineState {
     /*< private >*/
@@ -52,6 +53,7 @@ struct PCMachineState {
     ISADevice *rtc;
     PCIBus *bus;
     FWCfgState *fw_cfg;
+    qemu_irq *gsi;
 
     /* Configuration options: */
     uint64_t max_ram_below_4g;
@@ -60,6 +62,8 @@ struct PCMachineState {
 
     AcpiNVDIMMState acpi_nvdimm_state;
 
+    bool acpi_build_enabled;
+
     /* RAM information (sizes, addresses, configuration): */
     ram_addr_t below_4g_mem_size, above_4g_mem_size;
 
@@ -67,11 +71,15 @@ struct PCMachineState {
     bool apic_xrupt_override;
     unsigned apic_id_limit;
     CPUArchIdList *possible_cpus;
+    uint16_t boot_cpus;
 
     /* NUMA information: */
     uint64_t numa_nodes;
     uint64_t *node_mem;
-    uint64_t *node_cpu;
+
+    /* Address space used by IOAPIC device. All IOAPIC interrupts
+     * will be translated to MSI messages in the address space. */
+    AddressSpace *ioapic_as;
 };
 
 #define PC_MACHINE_ACPI_DEVICE_PROP "acpi-device"
@@ -136,6 +144,8 @@ struct PCMachineClass {
 
     /* TSC rate migration: */
     bool save_tsc_khz;
+    /* generate legacy CPU hotplug AML */
+    bool legacy_cpu_hotplug;
 };
 
 #define TYPE_PC_MACHINE "generic-pc-machine"
@@ -147,11 +157,6 @@ struct PCMachineClass {
     OBJECT_CLASS_CHECK(PCMachineClass, (klass), TYPE_PC_MACHINE)
 
 /* PC-style peripherals (also used by other machines).  */
-
-typedef struct PcPciInfo {
-    Range w32;
-    Range w64;
-} PcPciInfo;
 
 #define ACPI_PM_PROP_S3_DISABLED "disable_s3"
 #define ACPI_PM_PROP_S4_DISABLED "disable_s4"
@@ -179,8 +184,6 @@ qemu_irq *i8259_init(ISABus *bus, qemu_irq parent_irq);
 qemu_irq *kvm_i8259_init(ISABus *bus);
 int pic_read_irq(DeviceState *d);
 int pic_get_output(DeviceState *d);
-void hmp_info_pic(Monitor *mon, const QDict *qdict);
-void hmp_info_irq(Monitor *mon, const QDict *qdict);
 
 /* ioapic.c */
 
@@ -199,11 +202,12 @@ typedef struct GSIState {
 void gsi_handler(void *opaque, int n, int level);
 
 /* vmport.c */
+#define TYPE_VMPORT "vmport"
 typedef uint32_t (VMPortReadFunc)(void *opaque, uint32_t address);
 
 static inline void vmport_init(ISABus *bus)
 {
-    isa_create_simple(bus, "vmport");
+    isa_create_simple(bus, TYPE_VMPORT);
 }
 
 void vmport_register(unsigned char command, VMPortReadFunc *func, void *opaque);
@@ -211,13 +215,13 @@ void vmmouse_get_data(uint32_t *data);
 void vmmouse_set_data(const uint32_t *data);
 
 /* pckbd.c */
+#define I8042_A20_LINE "a20"
 
-void i8042_init(qemu_irq kbd_irq, qemu_irq mouse_irq, uint32_t io_base);
 void i8042_mm_init(qemu_irq kbd_irq, qemu_irq mouse_irq,
                    MemoryRegion *region, ram_addr_t size,
                    hwaddr mask);
 void i8042_isa_mouse_fake_event(void *opaque);
-void i8042_setup_a20_line(ISADevice *dev, qemu_irq *a20_out);
+void i8042_setup_a20_line(ISADevice *dev, qemu_irq a20_out);
 
 /* pc.c */
 extern int fd_bootchk;
@@ -237,6 +241,8 @@ void pc_guest_info_init(PCMachineState *pcms);
 #define PCI_HOST_PROP_PCI_HOLE64_START "pci-hole64-start"
 #define PCI_HOST_PROP_PCI_HOLE64_END   "pci-hole64-end"
 #define PCI_HOST_PROP_PCI_HOLE64_SIZE  "pci-hole64-size"
+#define PCI_HOST_BELOW_4G_MEM_SIZE     "below-4g-mem-size"
+#define PCI_HOST_ABOVE_4G_MEM_SIZE     "above-4g-mem-size"
 #define DEFAULT_PCI_HOLE64_SIZE (~0x0ULL)
 
 
@@ -271,12 +277,13 @@ int cmos_get_fd_drive_type(FloppyDriveType fd0);
 
 #define FW_CFG_IO_BASE     0x510
 
+#define PORT92_A20_LINE "a20"
+
 /* acpi_piix.c */
 
 I2CBus *piix4_pm_init(PCIBus *bus, int devfn, uint32_t smb_io_base,
                       qemu_irq sci_irq, qemu_irq smi_irq,
                       int smm_enabled, DeviceState **piix4_pm);
-void piix4_smbus_register_device(SMBusDevice *dev, uint8_t addr);
 
 /* hpet.c */
 extern int no_hpet;
@@ -345,6 +352,10 @@ void pc_system_firmware_init(MemoryRegion *rom_memory,
 /* pvpanic.c */
 uint16_t pvpanic_port(void);
 
+/* acpi-build.c */
+void pc_madt_cpu_entry(AcpiDeviceIf *adev, int uid,
+                       CPUArchIdList *apic_ids, GArray *entry);
+
 /* e820 types */
 #define E820_RAM        1
 #define E820_RESERVED   2
@@ -356,12 +367,93 @@ int e820_add_entry(uint64_t, uint64_t, uint32_t);
 int e820_get_num_entries(void);
 bool e820_get_entry(int, uint32_t, uint64_t *, uint64_t *);
 
+#define PC_COMPAT_2_8 \
+
+#define PC_COMPAT_2_7 \
+    HW_COMPAT_2_7 \
+    {\
+        .driver   = TYPE_X86_CPU,\
+        .property = "l3-cache",\
+        .value    = "off",\
+    },\
+    {\
+        .driver   = TYPE_X86_CPU,\
+        .property = "full-cpuid-auto-level",\
+        .value    = "off",\
+    },\
+    {\
+        .driver   = "Opteron_G3" "-" TYPE_X86_CPU,\
+        .property = "family",\
+        .value    = "15",\
+    },\
+    {\
+        .driver   = "Opteron_G3" "-" TYPE_X86_CPU,\
+        .property = "model",\
+        .value    = "6",\
+    },\
+    {\
+        .driver   = "Opteron_G3" "-" TYPE_X86_CPU,\
+        .property = "stepping",\
+        .value    = "1",\
+    },\
+    {\
+        .driver   = "isa-pcspk",\
+        .property = "migrate",\
+        .value    = "off",\
+    },
+
+#define PC_COMPAT_2_6 \
+    HW_COMPAT_2_6 \
+    {\
+        .driver   = "fw_cfg_io",\
+        .property = "dma_enabled",\
+        .value    = "off",\
+    },{\
+        .driver   = TYPE_X86_CPU,\
+        .property = "cpuid-0xb",\
+        .value    = "off",\
+    },{\
+        .driver   = "vmxnet3",\
+        .property = "romfile",\
+        .value    = "",\
+    },\
+    {\
+        .driver = TYPE_X86_CPU,\
+        .property = "fill-mtrr-mask",\
+        .value = "off",\
+    },\
+    {\
+        .driver   = "apic-common",\
+        .property = "legacy-instance-id",\
+        .value    = "on",\
+    },
+
 #define PC_COMPAT_2_5 \
     HW_COMPAT_2_5
 
+/* Helper for setting model-id for CPU models that changed model-id
+ * depending on QEMU versions up to QEMU 2.4.
+ */
+#define PC_CPU_MODEL_IDS(v) \
+    {\
+        .driver   = "qemu32-" TYPE_X86_CPU,\
+        .property = "model-id",\
+        .value    = "QEMU Virtual CPU version " v,\
+    },\
+    {\
+        .driver   = "qemu64-" TYPE_X86_CPU,\
+        .property = "model-id",\
+        .value    = "QEMU Virtual CPU version " v,\
+    },\
+    {\
+        .driver   = "athlon-" TYPE_X86_CPU,\
+        .property = "model-id",\
+        .value    = "QEMU Virtual CPU version " v,\
+    },
+
 #define PC_COMPAT_2_4 \
-    PC_COMPAT_2_5 \
     HW_COMPAT_2_4 \
+    PC_CPU_MODEL_IDS("2.4.0") \
     {\
         .driver   = "Haswell-" TYPE_X86_CPU,\
         .property = "abm",\
@@ -431,8 +523,8 @@ bool e820_get_entry(int, uint32_t, uint64_t *, uint64_t *);
 
 
 #define PC_COMPAT_2_3 \
-    PC_COMPAT_2_4 \
     HW_COMPAT_2_3 \
+    PC_CPU_MODEL_IDS("2.3.0") \
     {\
         .driver   = TYPE_X86_CPU,\
         .property = "arat",\
@@ -512,8 +604,8 @@ bool e820_get_entry(int, uint32_t, uint64_t *, uint64_t *);
     },
 
 #define PC_COMPAT_2_2 \
-    PC_COMPAT_2_3 \
     HW_COMPAT_2_2 \
+    PC_CPU_MODEL_IDS("2.3.0") \
     {\
         .driver = "kvm64" "-" TYPE_X86_CPU,\
         .property = "vme",\
@@ -606,8 +698,8 @@ bool e820_get_entry(int, uint32_t, uint64_t *, uint64_t *);
     },
 
 #define PC_COMPAT_2_1 \
-    PC_COMPAT_2_2 \
     HW_COMPAT_2_1 \
+    PC_CPU_MODEL_IDS("2.1.0") \
     {\
         .driver = "coreduo" "-" TYPE_X86_CPU,\
         .property = "vmx",\
@@ -620,7 +712,7 @@ bool e820_get_entry(int, uint32_t, uint64_t *, uint64_t *);
     },
 
 #define PC_COMPAT_2_0 \
-    PC_COMPAT_2_1 \
+    PC_CPU_MODEL_IDS("2.0.0") \
     {\
         .driver   = "virtio-scsi-pci",\
         .property = "any_layout",\
@@ -680,7 +772,7 @@ bool e820_get_entry(int, uint32_t, uint64_t *, uint64_t *);
     },
 
 #define PC_COMPAT_1_7 \
-    PC_COMPAT_2_0 \
+    PC_CPU_MODEL_IDS("1.7.0") \
     {\
         .driver   = TYPE_USB_DEVICE,\
         .property = "msos-desc",\
@@ -698,7 +790,7 @@ bool e820_get_entry(int, uint32_t, uint64_t *, uint64_t *);
     },
 
 #define PC_COMPAT_1_6 \
-    PC_COMPAT_1_7 \
+    PC_CPU_MODEL_IDS("1.6.0") \
     {\
         .driver   = "e1000",\
         .property = "mitigation",\
@@ -722,7 +814,7 @@ bool e820_get_entry(int, uint32_t, uint64_t *, uint64_t *);
     },
 
 #define PC_COMPAT_1_5 \
-    PC_COMPAT_1_6 \
+    PC_CPU_MODEL_IDS("1.5.0") \
     {\
         .driver   = "Conroe-" TYPE_X86_CPU,\
         .property = "model",\
@@ -766,7 +858,7 @@ bool e820_get_entry(int, uint32_t, uint64_t *, uint64_t *);
     },
 
 #define PC_COMPAT_1_4 \
-    PC_COMPAT_1_5 \
+    PC_CPU_MODEL_IDS("1.4.0") \
     {\
         .driver   = "scsi-hd",\
         .property = "discard_granularity",\
@@ -845,7 +937,6 @@ bool e820_get_entry(int, uint32_t, uint64_t *, uint64_t *);
     { \
         MachineClass *mc = MACHINE_CLASS(oc); \
         optsfn(mc); \
-        mc->name = namestr; \
         mc->init = initfn; \
     } \
     static const TypeInfo pc_machine_type_##suffix = { \

@@ -44,7 +44,7 @@ enum {
 struct LM32JuartState {
     SysBusDevice parent_obj;
 
-    CharDriverState *chr;
+    CharBackend chr;
 
     uint32_t jtx;
     uint32_t jrx;
@@ -75,9 +75,9 @@ void lm32_juart_set_jtx(DeviceState *d, uint32_t jtx)
     trace_lm32_juart_set_jtx(s->jtx);
 
     s->jtx = jtx;
-    if (s->chr) {
-        qemu_chr_fe_write_all(s->chr, &ch, 1);
-    }
+    /* XXX this blocks entire thread. Rewrite to use
+     * qemu_chr_fe_write and background I/O callbacks */
+    qemu_chr_fe_write_all(&s->chr, &ch, 1);
 }
 
 void lm32_juart_set_jrx(DeviceState *d, uint32_t jtx)
@@ -114,17 +114,12 @@ static void juart_reset(DeviceState *d)
     s->jrx = 0;
 }
 
-static int lm32_juart_init(SysBusDevice *dev)
+static void lm32_juart_realize(DeviceState *dev, Error **errp)
 {
     LM32JuartState *s = LM32_JUART(dev);
 
-    /* FIXME use a qdev chardev prop instead of qemu_char_get_next_serial() */
-    s->chr = qemu_char_get_next_serial();
-    if (s->chr) {
-        qemu_chr_add_handlers(s->chr, juart_can_rx, juart_rx, juart_event, s);
-    }
-
-    return 0;
+    qemu_chr_fe_set_handlers(&s->chr, juart_can_rx, juart_rx,
+                             juart_event, s, NULL, true);
 }
 
 static const VMStateDescription vmstate_lm32_juart = {
@@ -138,16 +133,19 @@ static const VMStateDescription vmstate_lm32_juart = {
     }
 };
 
+static Property lm32_juart_properties[] = {
+    DEFINE_PROP_CHR("chardev", LM32JuartState, chr),
+    DEFINE_PROP_END_OF_LIST(),
+};
+
 static void lm32_juart_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-    SysBusDeviceClass *k = SYS_BUS_DEVICE_CLASS(klass);
 
-    k->init = lm32_juart_init;
     dc->reset = juart_reset;
     dc->vmsd = &vmstate_lm32_juart;
-    /* Reason: init() method uses qemu_char_get_next_serial() */
-    dc->cannot_instantiate_with_device_add_yet = true;
+    dc->props = lm32_juart_properties;
+    dc->realize = lm32_juart_realize;
 }
 
 static const TypeInfo lm32_juart_info = {

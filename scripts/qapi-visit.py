@@ -47,9 +47,11 @@ void visit_type_%(c_name)s_members(Visitor *v, %(c_name)s *obj, Error **errp)
     if base:
         ret += mcgen('''
     visit_type_%(c_type)s_members(v, (%(c_type)s *)obj, &err);
+    if (err) {
+        goto out;
+    }
 ''',
                      c_type=base.c_name())
-        ret += gen_err_check()
 
     for memb in members:
         if memb.optional:
@@ -60,10 +62,12 @@ void visit_type_%(c_name)s_members(Visitor *v, %(c_name)s *obj, Error **errp)
             push_indent()
         ret += mcgen('''
     visit_type_%(c_type)s(v, "%(name)s", &obj->%(c_name)s, &err);
+    if (err) {
+        goto out;
+    }
 ''',
                      c_type=memb.type.c_name(), name=memb.name,
                      c_name=c_name(memb.name))
-        ret += gen_err_check()
         if memb.optional:
             pop_indent()
             ret += mcgen('''
@@ -108,30 +112,32 @@ out:
 
 
 def gen_visit_list(name, element_type):
-    # FIXME: if *obj is NULL on entry, and the first visit_next_list()
-    # assigns to *obj, while a later one fails, we should clean up *obj
-    # rather than leaving it non-NULL. As currently written, the caller must
-    # call qapi_free_FOOList() to avoid a memory leak of the partial FOOList.
     return mcgen('''
 
 void visit_type_%(c_name)s(Visitor *v, const char *name, %(c_name)s **obj, Error **errp)
 {
     Error *err = NULL;
-    GenericList *i, **prev;
+    %(c_name)s *tail;
+    size_t size = sizeof(**obj);
 
-    visit_start_list(v, name, &err);
+    visit_start_list(v, name, (GenericList **)obj, size, &err);
     if (err) {
         goto out;
     }
 
-    for (prev = (GenericList **)obj;
-         !err && (i = visit_next_list(v, prev, sizeof(**obj))) != NULL;
-         prev = &i) {
-        %(c_name)s *native_i = (%(c_name)s *)i;
-        visit_type_%(c_elt_type)s(v, NULL, &native_i->value, &err);
+    for (tail = *obj; tail;
+         tail = (%(c_name)s *)visit_next_list(v, (GenericList *)tail, size)) {
+        visit_type_%(c_elt_type)s(v, NULL, &tail->value, &err);
+        if (err) {
+            break;
+        }
     }
 
-    visit_end_list(v);
+    visit_end_list(v, (void **)obj);
+    if (err && visit_is_input(v)) {
+        qapi_free_%(c_name)s(*obj);
+        *obj = NULL;
+    }
 out:
     error_propagate(errp, err);
 }
@@ -170,6 +176,9 @@ void visit_type_%(c_name)s(Visitor *v, const char *name, %(c_name)s **obj, Error
     if (err) {
         goto out;
     }
+    if (!*obj) {
+        goto out_obj;
+    }
     switch ((*obj)->type) {
 ''',
                  c_name=c_name(name), promote_int=promote_int)
@@ -186,9 +195,10 @@ void visit_type_%(c_name)s(Visitor *v, const char *name, %(c_name)s **obj, Error
             break;
         }
         visit_type_%(c_type)s_members(v, &(*obj)->u.%(c_name)s, &err);
-        error_propagate(errp, err);
-        err = NULL;
-        visit_end_struct(v, &err);
+        if (!err) {
+            visit_check_struct(v, &err);
+        }
+        visit_end_struct(v, NULL);
 ''',
                          c_type=var.type.c_name(),
                          c_name=c_name(var.name))
@@ -203,25 +213,28 @@ void visit_type_%(c_name)s(Visitor *v, const char *name, %(c_name)s **obj, Error
 ''')
 
     ret += mcgen('''
+    case QTYPE_NONE:
+        abort();
     default:
         error_setg(&err, QERR_INVALID_PARAMETER_TYPE, name ? name : "null",
                    "%(name)s");
     }
-    visit_end_alternate(v);
+out_obj:
+    visit_end_alternate(v, (void **)obj);
+    if (err && visit_is_input(v)) {
+        qapi_free_%(c_name)s(*obj);
+        *obj = NULL;
+    }
 out:
     error_propagate(errp, err);
 }
 ''',
-                 name=name)
+                 name=name, c_name=c_name(name))
 
     return ret
 
 
 def gen_visit_object(name, base, members, variants):
-    # FIXME: if *obj is NULL on entry, and visit_start_struct() assigns to
-    # *obj, but then visit_type_FOO_members() fails, we should clean up *obj
-    # rather than leaving it non-NULL. As currently written, the caller must
-    # call qapi_free_FOO() to avoid a memory leak of the partial FOO.
     return mcgen('''
 
 void visit_type_%(c_name)s(Visitor *v, const char *name, %(c_name)s **obj, Error **errp)
@@ -236,10 +249,16 @@ void visit_type_%(c_name)s(Visitor *v, const char *name, %(c_name)s **obj, Error
         goto out_obj;
     }
     visit_type_%(c_name)s_members(v, *obj, &err);
-    error_propagate(errp, err);
-    err = NULL;
+    if (err) {
+        goto out_obj;
+    }
+    visit_check_struct(v, &err);
 out_obj:
-    visit_end_struct(v, &err);
+    visit_end_struct(v, (void **)obj);
+    if (err && visit_is_input(v)) {
+        qapi_free_%(c_name)s(*obj);
+        *obj = NULL;
+    }
 out:
     error_propagate(errp, err);
 }

@@ -22,13 +22,7 @@
  * THE SOFTWARE.
  */
 
-/* Needed for CONFIG_MADVISE */
 #include "qemu/osdep.h"
-
-#if defined(CONFIG_MADVISE) || defined(CONFIG_POSIX_MADVISE)
-#include <sys/mman.h>
-#endif
-
 #include "block/block_int.h"
 #include "qemu-common.h"
 #include "qcow2.h"
@@ -71,7 +65,8 @@ static inline int qcow2_cache_get_table_idx(BlockDriverState *bs,
 static void qcow2_cache_table_release(BlockDriverState *bs, Qcow2Cache *c,
                                       int i, int num_tables)
 {
-#if QEMU_MADV_DONTNEED != QEMU_MADV_INVALID
+/* Using MADV_DONTNEED to discard memory is a Linux-specific feature */
+#ifdef CONFIG_LINUX
     BDRVQcow2State *s = bs->opaque;
     void *t = qcow2_cache_get_table_addr(bs, c, i);
     int align = getpagesize();
@@ -79,7 +74,7 @@ static void qcow2_cache_table_release(BlockDriverState *bs, Qcow2Cache *c,
     size_t offset = QEMU_ALIGN_UP((uintptr_t) t, align) - (uintptr_t) t;
     size_t length = QEMU_ALIGN_DOWN(mem_size - offset, align);
     if (length > 0) {
-        qemu_madvise((uint8_t *) t + offset, length, QEMU_MADV_DONTNEED);
+        madvise((uint8_t *) t + offset, length, MADV_DONTNEED);
     }
 #endif
 }
@@ -215,7 +210,7 @@ static int qcow2_cache_entry_flush(BlockDriverState *bs, Qcow2Cache *c, int i)
         BLKDBG_EVENT(bs->file, BLKDBG_L2_UPDATE);
     }
 
-    ret = bdrv_pwrite(bs->file->bs, c->entries[i].offset,
+    ret = bdrv_pwrite(bs->file, c->entries[i].offset,
                       qcow2_cache_get_table_addr(bs, c, i), s->cluster_size);
     if (ret < 0) {
         return ret;
@@ -226,7 +221,7 @@ static int qcow2_cache_entry_flush(BlockDriverState *bs, Qcow2Cache *c, int i)
     return 0;
 }
 
-int qcow2_cache_flush(BlockDriverState *bs, Qcow2Cache *c)
+int qcow2_cache_write(BlockDriverState *bs, Qcow2Cache *c)
 {
     BDRVQcow2State *s = bs->opaque;
     int result = 0;
@@ -242,8 +237,15 @@ int qcow2_cache_flush(BlockDriverState *bs, Qcow2Cache *c)
         }
     }
 
+    return result;
+}
+
+int qcow2_cache_flush(BlockDriverState *bs, Qcow2Cache *c)
+{
+    int result = qcow2_cache_write(bs, c);
+
     if (result == 0) {
-        ret = bdrv_flush(bs->file->bs);
+        int ret = bdrv_flush(bs->file->bs);
         if (ret < 0) {
             result = ret;
         }
@@ -355,7 +357,7 @@ static int qcow2_cache_do_get(BlockDriverState *bs, Qcow2Cache *c,
             BLKDBG_EVENT(bs->file, BLKDBG_L2_LOAD);
         }
 
-        ret = bdrv_pread(bs->file->bs, offset,
+        ret = bdrv_pread(bs->file, offset,
                          qcow2_cache_get_table_addr(bs, c, i),
                          s->cluster_size);
         if (ret < 0) {

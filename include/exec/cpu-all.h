@@ -31,16 +31,12 @@
 #define EXCP_DEBUG      0x10002 /* cpu stopped after a breakpoint or singlestep */
 #define EXCP_HALTED     0x10003 /* cpu is halted (waiting for external event) */
 #define EXCP_YIELD      0x10004 /* cpu wants to yield timeslice to another */
+#define EXCP_ATOMIC     0x10005 /* stop-the-world and emulate atomic */
 
 /* some important defines:
  *
- * WORDS_ALIGNED : if defined, the host cpu can only make word aligned
- * memory accesses.
- *
  * HOST_WORDS_BIGENDIAN : if defined, the host cpu is big endian and
  * otherwise little endian.
- *
- * (TARGET_WORDS_ALIGNED : same for target cpu (not supported yet))
  *
  * TARGET_WORDS_BIGENDIAN : same for target cpu
  */
@@ -165,9 +161,43 @@ extern unsigned long reserved_va;
 
 #define GUEST_ADDR_MAX (reserved_va ? reserved_va : \
                                     (1ul << TARGET_VIRT_ADDR_SPACE_BITS) - 1)
+#else
+
+#include "exec/hwaddr.h"
+uint32_t lduw_phys(AddressSpace *as, hwaddr addr);
+uint32_t ldl_phys(AddressSpace *as, hwaddr addr);
+uint64_t ldq_phys(AddressSpace *as, hwaddr addr);
+void stl_phys_notdirty(AddressSpace *as, hwaddr addr, uint32_t val);
+void stw_phys(AddressSpace *as, hwaddr addr, uint32_t val);
+void stl_phys(AddressSpace *as, hwaddr addr, uint32_t val);
+void stq_phys(AddressSpace *as, hwaddr addr, uint64_t val);
+
+uint32_t address_space_lduw(AddressSpace *as, hwaddr addr,
+                            MemTxAttrs attrs, MemTxResult *result);
+uint32_t address_space_ldl(AddressSpace *as, hwaddr addr,
+                            MemTxAttrs attrs, MemTxResult *result);
+uint64_t address_space_ldq(AddressSpace *as, hwaddr addr,
+                            MemTxAttrs attrs, MemTxResult *result);
+void address_space_stl_notdirty(AddressSpace *as, hwaddr addr, uint32_t val,
+                            MemTxAttrs attrs, MemTxResult *result);
+void address_space_stw(AddressSpace *as, hwaddr addr, uint32_t val,
+                            MemTxAttrs attrs, MemTxResult *result);
+void address_space_stl(AddressSpace *as, hwaddr addr, uint32_t val,
+                            MemTxAttrs attrs, MemTxResult *result);
+void address_space_stq(AddressSpace *as, hwaddr addr, uint64_t val,
+                            MemTxAttrs attrs, MemTxResult *result);
 #endif
 
 /* page related stuff */
+
+#ifdef TARGET_PAGE_BITS_VARY
+extern bool target_page_bits_decided;
+extern int target_page_bits;
+#define TARGET_PAGE_BITS ({ assert(target_page_bits_decided); \
+                            target_page_bits; })
+#else
+#define TARGET_PAGE_BITS_MIN TARGET_PAGE_BITS
+#endif
 
 #define TARGET_PAGE_SIZE (1 << TARGET_PAGE_BITS)
 #define TARGET_PAGE_MASK ~(TARGET_PAGE_SIZE - 1)
@@ -268,14 +298,22 @@ CPUArchState *cpu_copy(CPUArchState *env);
 #if !defined(CONFIG_USER_ONLY)
 
 /* Flags stored in the low bits of the TLB virtual address.  These are
-   defined so that fast path ram access is all zeros.  */
+ * defined so that fast path ram access is all zeros.
+ * The flags all must be between TARGET_PAGE_BITS and
+ * maximum address alignment bit.
+ */
 /* Zero if TLB entry is valid.  */
-#define TLB_INVALID_MASK   (1 << 3)
+#define TLB_INVALID_MASK    (1 << (TARGET_PAGE_BITS - 1))
 /* Set if TLB entry references a clean RAM page.  The iotlb entry will
    contain the page physical address.  */
-#define TLB_NOTDIRTY    (1 << 4)
+#define TLB_NOTDIRTY        (1 << (TARGET_PAGE_BITS - 2))
 /* Set if TLB entry is an IO callback.  */
-#define TLB_MMIO        (1 << 5)
+#define TLB_MMIO            (1 << (TARGET_PAGE_BITS - 3))
+
+/* Use this mask to check interception with an alignment mask
+ * in a TCG backend.
+ */
+#define TLB_FLAGS_MASK  (TLB_INVALID_MASK | TLB_NOTDIRTY | TLB_MMIO)
 
 void dump_exec_info(FILE *f, fprintf_function cpu_fprintf);
 void dump_opcount_info(FILE *f, fprintf_function cpu_fprintf);
@@ -283,5 +321,7 @@ void dump_opcount_info(FILE *f, fprintf_function cpu_fprintf);
 
 int cpu_memory_rw_debug(CPUState *cpu, target_ulong addr,
                         uint8_t *buf, int len, int is_write);
+
+int cpu_exec(CPUState *cpu);
 
 #endif /* CPU_ALL_H */

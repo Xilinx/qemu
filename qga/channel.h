@@ -12,7 +12,6 @@
 #ifndef QGA_CHANNEL_H
 #define QGA_CHANNEL_H
 
-#include <glib.h>
 
 typedef struct GAChannel GAChannel;
 
@@ -20,6 +19,7 @@ typedef enum {
     GA_CHANNEL_VIRTIO_SERIAL,
     GA_CHANNEL_ISA_SERIAL,
     GA_CHANNEL_UNIX_LISTEN,
+    GA_CHANNEL_VSOCK_LISTEN,
 } GAChannelMethod;
 
 typedef gboolean (*GAChannelCallback)(GIOCondition condition, gpointer opaque);

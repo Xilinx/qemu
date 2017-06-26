@@ -1,7 +1,7 @@
 /*
  * dpcd.c
  *
- *  Copyright (C)2015 : GreenSocs Ltd
+ *  Copyright (C) 2015 : GreenSocs Ltd
  *      http://www.greensocs.com/ , email: info@greensocs.com
  *
  *  Developed by :
@@ -23,118 +23,151 @@
  */
 
 /*
- * This is a simple AUX slave which emulate a screen connected.
+ * This is a simple AUX slave which emulates a connected screen.
  */
 
 #include "qemu/osdep.h"
-#include "hw/misc/aux.h"
-#include "dpcd.h"
+#include "qemu/log.h"
+#include "hw/misc/auxbus.h"
+#include "hw/display/dpcd.h"
 
-/* #define DEBUG_DPCD */
-#ifdef DEBUG_DPCD
-#define DPRINTF(fmt, ...) do { printf("dpcd: "fmt , ## __VA_ARGS__); } while (0)
-#else
-#define DPRINTF(fmt, ...) do {} while (0)
+#ifndef DEBUG_DPCD
+#define DEBUG_DPCD 0
 #endif
 
+#define DPRINTF(fmt, ...) do {                                                 \
+    if (DEBUG_DPCD) {                                                          \
+        qemu_log("dpcd: " fmt, ## __VA_ARGS__);                                \
+    }                                                                          \
+} while (0);
+
+#define DPCD_READABLE_AREA                      0x600
+
 struct DPCDState {
+    /*< private >*/
     AUXSlave parent_obj;
 
-    size_t current_reg;
+    /*< public >*/
     /*
-     * The DCPD is 0x7FFFF length but read as 0 after offset 0x600.
+     * The DCPD is 0x7FFFF length but read as 0 after offset 0x5FF.
      */
-    uint8_t dpcd_info[0x600];
+    uint8_t dpcd_info[DPCD_READABLE_AREA];
 
     MemoryRegion iomem;
 };
 
-static void dpcd_realize(DeviceState *dev, Error **errp)
+static uint64_t dpcd_read(void *opaque, hwaddr offset, unsigned size)
 {
-
-}
-
-static uint64_t aux_read(void *opaque, hwaddr offset, unsigned size)
-{
-    uint64_t ret;
+    uint8_t ret;
     DPCDState *e = DPCD(opaque);
-    assert(size == 1);
 
-    if (offset <= 0x600) {
+    if (offset < DPCD_READABLE_AREA) {
         ret = e->dpcd_info[offset];
     } else {
+        qemu_log_mask(LOG_GUEST_ERROR, "dpcd: Bad offset 0x%" HWADDR_PRIX "\n",
+                                       offset);
         ret = 0;
     }
 
-    DPRINTF("read %u @0x%8.8lX\n", (uint8_t)ret, offset);
+    DPRINTF("read 0x%" PRIX8 " @0x%" HWADDR_PRIX "\n", ret, offset);
     return ret;
 }
 
-static void aux_write(void *opaque, hwaddr offset, uint64_t value,
-                      unsigned size)
+static void dpcd_write(void *opaque, hwaddr offset, uint64_t value,
+                       unsigned size)
 {
     DPCDState *e = DPCD(opaque);
-    assert(size == 1);
 
-    DPRINTF("write %u @0x%8.8lX\n", (uint8_t)value, offset);
+    DPRINTF("write 0x%" PRIX8 " @0x%" HWADDR_PRIX "\n", (uint8_t)value, offset);
 
-    if (offset <= 0x600) {
+    if (offset < DPCD_READABLE_AREA) {
         e->dpcd_info[offset] = value;
+    } else {
+        qemu_log_mask(LOG_GUEST_ERROR, "dpcd: Bad offset 0x%" HWADDR_PRIX "\n",
+                                       offset);
     }
 }
 
 static const MemoryRegionOps aux_ops = {
-    .read = aux_read,
-    .write = aux_write
+    .read = dpcd_read,
+    .write = dpcd_write,
+    .valid = {
+        .min_access_size = 1,
+        .max_access_size = 1,
+    },
+    .impl = {
+        .min_access_size = 1,
+        .max_access_size = 1,
+    },
 };
 
-static void aux_edid_init(Object *obj)
+static void dpcd_reset(DeviceState *dev)
 {
-    /*
-     * Create a default DPCD..
-     */
-    DPCDState *s = DPCD(obj);
+    DPCDState *s = DPCD(dev);
 
     memset(&(s->dpcd_info), 0, sizeof(s->dpcd_info));
 
-    s->current_reg = 0;
+    s->dpcd_info[DPCD_REVISION] = DPCD_REV_1_0;
+    s->dpcd_info[DPCD_MAX_LINK_RATE] = DPCD_5_4GBPS;
+    s->dpcd_info[DPCD_MAX_LANE_COUNT] = DPCD_FOUR_LANES;
+    s->dpcd_info[DPCD_RECEIVE_PORT0_CAP_0] = DPCD_EDID_PRESENT;
+    /* buffer size */
+    s->dpcd_info[DPCD_RECEIVE_PORT0_CAP_1] = 0xFF;
 
-    s->dpcd_info[0x00] = DPCD_REV_1_0;
-    s->dpcd_info[0x01] = DPCD_2_7GBPS;
-    s->dpcd_info[0x02] = 0x1;
-    s->dpcd_info[0x08] = DPCD_EDID_PRESENT;
-    s->dpcd_info[0x09] = 0xFF;
+    s->dpcd_info[DPCD_LANE0_1_STATUS] = DPCD_LANE0_CR_DONE
+                                      | DPCD_LANE0_CHANNEL_EQ_DONE
+                                      | DPCD_LANE0_SYMBOL_LOCKED
+                                      | DPCD_LANE1_CR_DONE
+                                      | DPCD_LANE1_CHANNEL_EQ_DONE
+                                      | DPCD_LANE1_SYMBOL_LOCKED;
+    s->dpcd_info[DPCD_LANE2_3_STATUS] = DPCD_LANE2_CR_DONE
+                                      | DPCD_LANE2_CHANNEL_EQ_DONE
+                                      | DPCD_LANE2_SYMBOL_LOCKED
+                                      | DPCD_LANE3_CR_DONE
+                                      | DPCD_LANE3_CHANNEL_EQ_DONE
+                                      | DPCD_LANE3_SYMBOL_LOCKED;
 
-    /* CR DONE, CE DONE, SYMBOL LOCKED.. */
-    s->dpcd_info[0x202] = 0x07;
-    /* INTERLANE_ALIGN_DONE.. */
-    s->dpcd_info[0x204] = 0x01;
-    s->dpcd_info[0x205] = 0x01;
+    s->dpcd_info[DPCD_LANE_ALIGN_STATUS_UPDATED] = DPCD_INTERLANE_ALIGN_DONE;
+    s->dpcd_info[DPCD_SINK_STATUS] = DPCD_RECEIVE_PORT_0_STATUS;
+}
 
-    /*
-     * Create the address-map.
-     */
+static void dpcd_init(Object *obj)
+{
+    DPCDState *s = DPCD(obj);
+
     memory_region_init_io(&s->iomem, obj, &aux_ops, s, TYPE_DPCD, 0x7FFFF);
     aux_init_mmio(AUX_SLAVE(obj), &s->iomem);
 }
 
-static void aux_edid_class_init(ObjectClass *oc, void *data)
+static const VMStateDescription vmstate_dpcd = {
+    .name = TYPE_DPCD,
+    .version_id = 0,
+    .minimum_version_id = 0,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT8_ARRAY_V(dpcd_info, DPCDState, DPCD_READABLE_AREA, 0),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static void dpcd_class_init(ObjectClass *oc, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
-    dc->realize = dpcd_realize;
+
+    dc->reset = dpcd_reset;
+    dc->vmsd = &vmstate_dpcd;
 }
 
-static const TypeInfo aux_edid_info = {
+static const TypeInfo dpcd_info = {
     .name          = TYPE_DPCD,
     .parent        = TYPE_AUX_SLAVE,
     .instance_size = sizeof(DPCDState),
-    .instance_init = aux_edid_init,
-    .class_init    = aux_edid_class_init,
+    .class_init    = dpcd_class_init,
+    .instance_init = dpcd_init,
 };
 
-static void aux_edid_register_types(void)
+static void dpcd_register_types(void)
 {
-    type_register_static(&aux_edid_info);
+    type_register_static(&dpcd_info);
 }
 
-type_init(aux_edid_register_types)
+type_init(dpcd_register_types)

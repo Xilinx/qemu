@@ -11,6 +11,7 @@
  */
 #include "qemu/osdep.h"
 #include "qemu-common.h"
+#include "cpu.h"
 #include "kvm_i386.h"
 
 bool kvm_allows_irq0_override(void)
@@ -22,6 +23,11 @@ bool kvm_allows_irq0_override(void)
 bool kvm_has_smm(void)
 {
     return 1;
+}
+
+bool kvm_enable_x2apic(void)
+{
+    return false;
 }
 
 /* This function is only called inside conditionals which we

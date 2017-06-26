@@ -59,12 +59,83 @@ static const uint8_t gic_id_gicv2[] = {
 #define GICH_LRN_STATE_PENDING   1
 #define GICH_LRN_STATE_ACTIVE    2
 
+static inline void gic_dump_lrs(GICState *s, const char *prefix)
+{
+    unsigned int i;
+    unsigned int lr;
+    unsigned int apr;
+    uint32_t lr_comb_state = 0;
+
+    for (i = 0; i < s->num_cpu; i++) {
+        qemu_log("%s: CPU%d HCR=%x ", prefix, i, s->gich.hcr[i]);
+        for (lr = 0; lr < GICV_NR_LR; lr++) {
+            int state = extract32(s->gich.lr[i][lr], 28, 2);
+            lr_comb_state |= s->gich.lr[i][lr];
+            qemu_log("LR[%d]=%x %c%c ", lr, s->gich.lr[i][lr],
+                     state & GICH_LRN_STATE_PENDING ? 'P' : '.',
+                     state & GICH_LRN_STATE_ACTIVE ? 'A' : '.');
+        }
+        for (apr = 0; apr < GIC_NR_APRS; apr++) {
+            qemu_log("APR[%d]=%x ", apr, s->apr[apr][i]);
+        }
+        qemu_log("GICH.APR=%x\n", s->gich.apr[i]);
+        if (extract32(lr_comb_state, 28, 2) == 0 && s->gich.apr[i]) {
+            qemu_log("BAD! no active LR but GICH.APR!\n");
+        }
+    }
+}
+
 static inline int gic_get_current_cpu(GICState *s)
 {
     if (s->num_cpu > 1) {
         return current_cpu->cpu_index % 4;
     }
     return 0;
+}
+
+static bool is_apr(GICState *s, unsigned int cpu, unsigned int prio)
+{
+    int regnum = prio / 32;
+    int regbit = prio % 32;
+
+    if (regnum >= ARRAY_SIZE(s->apr)) printf("prio=%d\n", prio);
+    assert(regnum < ARRAY_SIZE(s->apr));
+    return s->apr[regnum][cpu] & (1 << regbit);
+}
+
+static void set_apr(GICState *s, unsigned int cpu, unsigned int prio)
+{
+    int regnum = prio / 32;
+    int regbit = prio % 32;
+
+    if (regnum >= ARRAY_SIZE(s->apr)) printf("prio=%d\n", prio);
+    assert(regnum < ARRAY_SIZE(s->apr));
+    assert(!is_apr(s, cpu, prio));
+    s->apr[regnum][cpu] |= 1 << regbit;
+}
+
+static void clear_apr(GICState *s, unsigned int cpu, unsigned int prio)
+{
+    int regnum = prio / 32;
+    int regbit = prio % 32;
+
+    if (regnum >= ARRAY_SIZE(s->apr)) printf("prio=%d\n", prio);
+    assert(regnum < ARRAY_SIZE(s->apr));
+    assert(is_apr(s, cpu, prio));
+    if (s->apr[regnum][cpu] & ((1 << regbit) - 1)) {
+        qemu_log("cpu=%d completed APR not lowest! prio=%d\n", cpu, prio);
+        gic_dump_lrs(s, "BAD");
+    } else {
+        int i;
+        i = regnum;
+        while (--i > 0) {
+		if (s->apr[i][cpu]) {
+		    qemu_log("cpu=%d completed APR not lowest! %d\n", cpu, prio);
+                    gic_dump_lrs(s, "BAD");
+		}
+	}
+    }
+    s->apr[regnum][cpu] &= ~(1 << regbit);
 }
 
 #define GICH_LRN_STATE_INVALID   0
@@ -78,8 +149,13 @@ static void gicv_update_cpu(GICState *s, int vcpu)
     unsigned int best_irq = 1023;
     unsigned int best_lrn = 0;
     unsigned int allstate = 0;
-    int level = 0;
-    bool maint_irq;
+    int nr_valid = 0;
+    bool level = 0;
+    bool maint_irq = 0;
+
+    if (!(s->gich.hcr[vcpu] & 1)) {
+        goto done;
+    }
 
     s->current_pending[cpu] = 1023;
     s->gich.pending_prio[vcpu] = 0x100;
@@ -110,10 +186,19 @@ static void gicv_update_cpu(GICState *s, int vcpu)
 
         allstate |= state;
 
-        if (!(state & GICH_LRN_STATE_PENDING)) {
+        if (state) {
+            nr_valid++;
+        }
+
+        if (state != GICH_LRN_STATE_PENDING) {
             continue;
         }
 
+#if 0
+        if (s->gich.apr[vcpu] & (1 << (prio >> 3))) {
+            continue;
+        }
+#endif
         if (prio < best_prio) {
             best_prio = prio;
             best_irq = vid;
@@ -132,21 +217,17 @@ static void gicv_update_cpu(GICState *s, int vcpu)
     }
 
     s->gich.misr[vcpu] |= s->gich.eisr[vcpu] != 0;
-    s->gich.misr[vcpu] |= (allstate ? 0 : 1 << 1) & s->gich.hcr[vcpu];
+    s->gich.misr[vcpu] |= (nr_valid > 1 ? 0 : 1 << 1) & s->gich.hcr[vcpu];
     s->gich.misr[vcpu] |= ((allstate & 1) << 3) & s->gich.hcr[vcpu];
 
     level &= s->gich.hcr[vcpu] & 1;
     assert(!(level && !(s->gicc_ctrl[cpu].enable_grp[1])));
-    qemu_set_irq(s->parent_irq[cpu], level);
 
-    /* Disable until we can connect it properly.  */
     maint_irq = s->gich.misr[vcpu] && (s->gich.hcr[vcpu] & 1);
-    if (maint_irq) {
-        qemu_log("gic maint-irq: VCPU=%d MISR=%x\n", vcpu, s->gich.misr[vcpu]);
-    }
-#if 0
+done:
+//    qemu_log("CPU%d virq=%d\n", cpu, level);
+    qemu_set_irq(s->parent_irq[cpu], level);
     qemu_set_irq(s->maint[vcpu], maint_irq);
-#endif
 }
 
 static void gicv_update(GICState *s)
@@ -182,7 +263,7 @@ void gic_update(GICState *s)
             if (GIC_TEST_ENABLED(irq, cm) && gic_test_pending(s, irq, cm) &&
                 (irq < GIC_INTERNAL || GIC_TARGET(irq) & cm)) {
                 if (GIC_GET_PRIORITY(irq, cpu) < best_prio &&
-                    !s->eoir[cpu][irq]) {
+                    !is_apr(s, cpu, GIC_GET_PRIORITY(irq, cpu))) {
                     best_prio = GIC_GET_PRIORITY(irq, cpu);
                     best_irq = irq;
                 }
@@ -243,6 +324,17 @@ static void gic_set_irq_11mpcore(GICState *s, int irq, int level,
     }
 }
 
+static void gic_set_irq_nvic(GICState *s, int irq, int level,
+                                 int cm, int target)
+{
+    if (level) {
+        GIC_SET_LEVEL(irq, cm);
+        GIC_SET_PENDING(irq, target);
+    } else {
+        GIC_CLEAR_LEVEL(irq, cm);
+    }
+}
+
 static void gic_set_irq_generic(GICState *s, int irq, int level,
                                 int cm, int target)
 {
@@ -288,8 +380,10 @@ static void gic_set_irq(void *opaque, int irq, int level)
         return;
     }
 
-    if (s->revision == REV_11MPCORE || s->revision == REV_NVIC) {
+    if (s->revision == REV_11MPCORE) {
         gic_set_irq_11mpcore(s, irq, level, cm, target);
+    } else if (s->revision == REV_NVIC) {
+        gic_set_irq_nvic(s, irq, level, cm, target);
     } else {
         gic_set_irq_generic(s, irq, level, cm, target);
     }
@@ -317,8 +411,9 @@ static void gic_set_running_irq(GICState *s, int cpu, int irq)
 
 static uint32_t gic_acknowledge_virq(GICState *s, int cpu)
 {
-    uint32_t t, cpuid;
+    uint32_t t, cpuid = 0;
     int vcpu = cpu - GIC_N_REALCPU;
+    bool hw;
 
     if (s->gich.pending_prio[vcpu] == 0x100) {
         return 1023;
@@ -328,11 +423,21 @@ static uint32_t gic_acknowledge_virq(GICState *s, int cpu)
     /* Clear the pending bit.  */
     t = s->gich.lr[vcpu][s->gich.pending_lrn[vcpu]];
     s->gich.lr[vcpu][s->gich.pending_lrn[vcpu]] = deposit32(t, 28, 2, 2);
-    cpuid = extract32(t, 10, 3);
+
+    hw = extract32(t, 31, 1);
+    if (!hw) {
+        cpuid = extract32(t, 10, 3);
+    }
 
     gicv_update(s);
 
-    s->gich.apr[vcpu] |= 1 << s->running_priority[cpu];
+    s->gich.apr[vcpu] |= 1 << (s->running_priority[cpu] >> 3);
+#if 0
+    if (s->running_irq[cpu] == 27) {
+    qemu_log("Vack CPU%d %d\n", cpu, s->running_irq[cpu]);
+    gic_dump_lrs(s, "Vack");
+    }
+#endif
     return s->running_irq[cpu] | (cpuid << 10);
 }
 
@@ -393,7 +498,14 @@ uint32_t gic_acknowledge_irq(GICState *s, int cpu, bool secure)
     }
 
     gic_set_running_irq(s, cpu, irq);
+    set_apr(s, cpu, s->running_priority[cpu]);
+#if 0
+    if (irq == 27) {
+    qemu_log("ack CPU%d %d\n", cpu, irq);
+//    gic_dump_lrs(s, "ack");
+    }
     DPRINTF("ACK %d\n", irq);
+#endif
     return ret;
 }
 
@@ -417,7 +529,6 @@ static void gic_complete_irq_force(GICState *s, int cpu, int irq, bool force, bo
     }
 
     if (force) {
-        s->eoir[cpu][irq] = false;
         eoirmode = false;
     }
 
@@ -432,17 +543,20 @@ static void gic_complete_irq_force(GICState *s, int cpu, int irq, bool force, bo
          */
         return;
     }
-    if (s->running_irq[cpu] == 1023)
+    if (s->running_irq[cpu] == 1023) {
+        int i;
+        for (i = 0; i < GIC_NR_APRS; i++) {
+            assert(s->apr[i][cpu] == 0);
+        }
         return; /* No active IRQ.  */
+    }
 
     if (eoirmode) {
-        s->eoir[cpu][irq] = true;
-        gic_set_running_irq(s, cpu, 1023);
         gic_update(s);
         return;
     }
 
-    if (s->revision == REV_11MPCORE || s->revision == REV_NVIC) {
+    if (s->revision == REV_11MPCORE) {
         /* Mark level triggered interrupts as pending if they are still
            raised.  */
         if (!GIC_TEST_EDGE_TRIGGER(irq) && GIC_TEST_ENABLED(irq, cm)
@@ -451,13 +565,29 @@ static void gic_complete_irq_force(GICState *s, int cpu, int irq, bool force, bo
             GIC_SET_PENDING(irq, cm);
             update = 1;
         }
+    } else if (s->revision == REV_NVIC) {
+        if (GIC_TEST_LEVEL(irq, cm)) {
+            DPRINTF("Set nvic %d pending mask %x\n", irq, cm);
+            GIC_SET_PENDING(irq, cm);
+        }
     }
+
+#if 0
+    if (irq == 27) {
+        qemu_log("HW DIR irq=%d\n", irq);
+    }
+#endif
 
     if (irq != s->running_irq[cpu]) {
         /* Complete an IRQ that is not currently running.  */
         int tmp = s->running_irq[cpu];
+        if (irq == 27)
+        qemu_log("compl not running irq=%d running=%d %x %x %x\n", irq, s->running_irq[cpu],
+		s->apr[0][cpu], s->apr[1][cpu], s->apr[2][cpu]);
         while (s->last_active[tmp][cpu] != 1023) {
             if (s->last_active[tmp][cpu] == irq) {
+                if (is_apr(s, cpu, GIC_GET_PRIORITY(s->last_active[tmp][cpu], cpu)))
+	            clear_apr(s, cpu, GIC_GET_PRIORITY(s->last_active[tmp][cpu], cpu));
                 s->last_active[tmp][cpu] = s->last_active[irq][cpu];
                 break;
             }
@@ -468,13 +598,23 @@ static void gic_complete_irq_force(GICState *s, int cpu, int irq, bool force, bo
         }
     } else {
         /* Complete the current running IRQ.  */
+        clear_apr(s, cpu, s->running_priority[cpu]);
         gic_set_running_irq(s, cpu, s->last_active[s->running_irq[cpu]][cpu]);
+    }
+    if (irq == 27 && s->running_irq[cpu] == 27) {
+        qemu_log("BAD: DIR irq=%d running IRQ=%d\n", irq, s->running_irq[cpu]);
     }
 }
 
 void gic_complete_irq(GICState *s, int cpu, int irq, bool secure)
 {
     gic_complete_irq_force(s, cpu, irq, false, secure);
+#if 0
+    if (irq == 27) {
+    qemu_log("complete CPU%d %d\n", cpu, irq);
+//    gic_dump_lrs(s, "complete");
+    }
+#endif
 }
 
 static void gic_complete_virq(GICState *s, int cpu, int irq)
@@ -485,7 +625,8 @@ static void gic_complete_virq(GICState *s, int cpu, int irq)
     unsigned int state;
     unsigned int vid;
     unsigned int pid;
-    unsigned int hw;
+    bool hw;
+    bool eoi;
 
     for (i = 0; i < ARRAY_SIZE(s->gich.lr[vcpu]); i++) {
         state = extract32(s->gich.lr[vcpu][i], 28, 2);
@@ -495,6 +636,7 @@ static void gic_complete_virq(GICState *s, int cpu, int irq)
 
         vid = extract32(s->gich.lr[vcpu][i], 0, 10);
         pid = extract32(s->gich.lr[vcpu][i], 10, 10);
+        eoi = extract32(s->gich.lr[vcpu][i], 19, 1);
         hw = extract32(s->gich.lr[vcpu][i], 31, 1);
         if (vid == irq) {
             break;
@@ -502,9 +644,13 @@ static void gic_complete_virq(GICState *s, int cpu, int irq)
     }
 
     if (i == ARRAY_SIZE(s->gich.lr[vcpu])) {
-        s->running_priority[cpu] = 0x100;
-        s->running_irq[cpu] = 1023;
+        qemu_log("%s:%d BAD?\n", __func__, __LINE__);
         return;
+    }
+
+    if (!hw && eoi) {
+        qemu_log("EOI! maint! %d\n", irq);
+        s->gich.eisr[vcpu] |= 1ULL << irq;
     }
 
     if (eoirmode == 0) {
@@ -517,9 +663,15 @@ static void gic_complete_virq(GICState *s, int cpu, int irq)
     } else {
         qemu_log_mask(LOG_UNIMP, "gic: unimplemted CTLR.EOIRMODE = 1\n");
     }
-    s->gich.apr[vcpu] &= ~(1 << s->running_priority[cpu]);
+    s->gich.apr[vcpu] &= ~(1 << (s->running_priority[cpu] >> 3));
     s->running_priority[cpu] = 0x100;
     s->running_irq[cpu] = 1023;
+#if 0
+    if (irq == 27) {
+    qemu_log("Vcomplete CPU%d %d\n", cpu, irq);
+    gic_dump_lrs(s, "Vcomplete");
+    }
+#endif
 }
 
 static uint32_t gic_dist_readb(void *opaque, hwaddr offset, bool secure)
@@ -1098,6 +1250,7 @@ static void gic_cpu_write(GICState *s, int cpu, int offset, uint32_t value, bool
         }
         break;
     case 0xd0: case 0xd4: case 0xd8: case 0xdc:
+        s->apr[(offset - 0xd0) / 4][cpu] = value;
         qemu_log_mask(LOG_UNIMP, "Writing APR not implemented\n");
         break;
     case 0x1000:
@@ -1129,9 +1282,6 @@ static void thiscpu_access(MemoryTransaction *tr)
     } else {
         tr->data.u32 = gic_cpu_read(s, gic_get_current_cpu(s), tr->addr, sec);
     }
-#ifdef DEBUG_GIC
-    dump_memory_transaction(tr, stderr, __FILE__ ":");
-#endif
 }
 
 static uint32_t gic_hyp_vmcr_read(GICState *s, int vcpu)
@@ -1183,21 +1333,31 @@ static uint32_t gic_hyp_read(GICState *s, int vcpu, int offset)
         break;
     case 0x20: /* EISR0 */
         r = s->gich.eisr[vcpu] & 0xffffffff;
+        qemu_log("eisr0=%x\n", r);
         break;
     case 0x24: /* EISR1 */
         r = s->gich.eisr[vcpu] >> 32;
+        qemu_log("eisr1=%x\n", r);
         break;
     case 0x30: /* ELRSR0 */
         r = s->gich.elrsr[vcpu] & 0xffffffff;
+        qemu_log("elrsr0=%x\n", r);
         break;
     case 0x34: /* ELRSR1 */
         r = s->gich.elrsr[vcpu] >> 32;
+        qemu_log("elrsr1=%x\n", r);
         break;
     case 0xf0: /* apr */
         r = s->gich.apr[vcpu];
         break;
     case 0x100 ... 0x1fc: /* LRn */
         r = s->gich.lr[vcpu][(offset - 0x100) / 4];
+#if 0
+        if (r && (r & 0x1ff) == 27) {
+            qemu_log("READ VCPU%d LR[%d]=%x\n",
+                   vcpu, (offset - 0x100) / 4, r);
+        }
+#endif
         break;
     default:
         qemu_log_mask(LOG_GUEST_ERROR,
@@ -1219,10 +1379,26 @@ static void gic_hyp_write(GICState *s, int vcpu, int offset, uint32_t value)
         break;
     case 0xf0: /* apr */
         s->gich.apr[vcpu] = value;
+        gicv_update(s);
         break;
     case 0x100 ... 0x1fc: /* LRn */
         if (s->gich.lr[vcpu][(offset - 0x100) / 4] != value) {
+#if 0
+            unsigned int state = extract32(s->gich.lr[vcpu][(offset - 0x100) / 4], 28, 2);
+	    if (state) {
+                qemu_log("BAD: OVERWRITE ACTIVE LR%d! vCPU%d %x -> %x\n",
+                        (offset - 0x100) / 4, vcpu,
+			s->gich.lr[vcpu][(offset - 0x100) / 4], value);
+			gic_dump_lrs(s, "BAD");
+            }
+#endif
             s->gich.lr[vcpu][(offset - 0x100) / 4] = value;
+#if 0
+            if (value && (value & 0x1ff) == 27) {
+                qemu_log("WRITE VCPU%d LR[%d]=%x\n",
+                       vcpu, (offset - 0x100) / 4, value);
+            }
+#endif
             gicv_update(s);
         }
         break;

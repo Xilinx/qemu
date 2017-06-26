@@ -33,6 +33,7 @@
 #include "cpu.h"
 #include "qemu-common.h"
 #include "migration/vmstate.h"
+#include "exec/exec-all.h"
 
 
 static void xtensa_cpu_set_pc(CPUState *cs, vaddr value)
@@ -98,6 +99,13 @@ static void xtensa_cpu_realizefn(DeviceState *dev, Error **errp)
 {
     CPUState *cs = CPU(dev);
     XtensaCPUClass *xcc = XTENSA_CPU_GET_CLASS(dev);
+    Error *local_err = NULL;
+
+    cpu_exec_realizefn(cs, &local_err);
+    if (local_err != NULL) {
+        error_propagate(errp, local_err);
+        return;
+    }
 
     cs->gdb_num_regs = xcc->config->gdb_regmap.num_regs;
 
@@ -116,7 +124,6 @@ static void xtensa_cpu_initfn(Object *obj)
 
     cs->env_ptr = env;
     env->config = xcc->config;
-    cpu_exec_init(cs, &error_abort);
 
     if (tcg_enabled() && !tcg_inited) {
         tcg_inited = true;
@@ -157,13 +164,6 @@ static void xtensa_cpu_class_init(ObjectClass *oc, void *data)
 #endif
     cc->debug_excp_handler = xtensa_breakpoint_handler;
     dc->vmsd = &vmstate_xtensa_cpu;
-
-    /*
-     * Reason: xtensa_cpu_initfn() calls cpu_exec_init(), which saves
-     * the object in cpus -> dangling pointer after final
-     * object_unref().
-     */
-    dc->cannot_destroy_with_object_finalize_yet = true;
 }
 
 static const TypeInfo xtensa_cpu_type_info = {

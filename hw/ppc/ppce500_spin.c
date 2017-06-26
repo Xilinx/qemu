@@ -32,6 +32,7 @@
 #include "sysemu/sysemu.h"
 #include "hw/sysbus.h"
 #include "sysemu/kvm.h"
+#include "e500.h"
 
 #define MAX_CPUS 32
 
@@ -53,11 +54,6 @@ typedef struct SpinState {
     SpinInfo spin[MAX_CPUS];
 } SpinState;
 
-typedef struct spin_kick {
-    PowerPCCPU *cpu;
-    SpinInfo *spin;
-} SpinKick;
-
 static void spin_reset(void *opaque)
 {
     SpinState *s = opaque;
@@ -70,12 +66,6 @@ static void spin_reset(void *opaque)
         stq_p(&info->r3, i);
         stq_p(&info->addr, 1);
     }
-}
-
-/* Create -kernel TLB entries for BookE, linearly spanning 256MB.  */
-static inline hwaddr booke206_page_size_to_tlb(uint64_t size)
-{
-    return ctz32(size >> 10) >> 1;
 }
 
 static void mmubooke_create_initial_mapping(CPUPPCState *env,
@@ -94,17 +84,16 @@ static void mmubooke_create_initial_mapping(CPUPPCState *env,
     env->tlb_dirty = true;
 }
 
-static void spin_kick(void *data)
+static void spin_kick(CPUState *cs, run_on_cpu_data data)
 {
-    SpinKick *kick = data;
-    CPUState *cpu = CPU(kick->cpu);
-    CPUPPCState *env = &kick->cpu->env;
-    SpinInfo *curspin = kick->spin;
+    PowerPCCPU *cpu = POWERPC_CPU(cs);
+    CPUPPCState *env = &cpu->env;
+    SpinInfo *curspin = data.host_ptr;
     hwaddr map_size = 64 * 1024 * 1024;
     hwaddr map_start;
 
-    cpu_synchronize_state(cpu);
-    stl_p(&curspin->pir, env->spr[SPR_PIR]);
+    cpu_synchronize_state(cs);
+    stl_p(&curspin->pir, env->spr[SPR_BOOKE_PIR]);
     env->nip = ldq_p(&curspin->addr) & (map_size - 1);
     env->gpr[3] = ldq_p(&curspin->r3);
     env->gpr[4] = 0;
@@ -117,10 +106,10 @@ static void spin_kick(void *data)
     map_start = ldq_p(&curspin->addr) & ~(map_size - 1);
     mmubooke_create_initial_mapping(env, 0, map_start, map_size);
 
-    cpu->halted = 0;
-    cpu->exception_index = -1;
-    cpu->stopped = false;
-    qemu_cpu_kick(cpu);
+    cs->halted = 0;
+    cs->exception_index = -1;
+    cs->stopped = false;
+    qemu_cpu_kick(cs);
 }
 
 static void spin_write(void *opaque, hwaddr addr, uint64_t value,
@@ -158,12 +147,7 @@ static void spin_write(void *opaque, hwaddr addr, uint64_t value,
 
     if (!(ldq_p(&curspin->addr) & 1)) {
         /* run CPU */
-        SpinKick kick = {
-            .cpu = POWERPC_CPU(cpu),
-            .spin = curspin,
-        };
-
-        run_on_cpu(cpu, spin_kick, &kick);
+        run_on_cpu(cpu, spin_kick, RUN_ON_CPU_HOST_PTR(curspin));
     }
 }
 

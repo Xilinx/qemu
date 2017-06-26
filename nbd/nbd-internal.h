@@ -27,6 +27,7 @@
 #include <linux/fs.h>
 #endif
 
+#include "qemu/bswap.h"
 #include "qemu/queue.h"
 #include "qemu/main-loop.h"
 
@@ -52,16 +53,16 @@
 /* This is all part of the "official" NBD API.
  *
  * The most up-to-date documentation is available at:
- * https://github.com/yoe/nbd/blob/master/doc/proto.txt
+ * https://github.com/yoe/nbd/blob/master/doc/proto.md
  */
 
-#define NBD_REQUEST_SIZE        (4 + 4 + 8 + 8 + 4)
+#define NBD_REQUEST_SIZE        (4 + 2 + 2 + 8 + 8 + 4)
 #define NBD_REPLY_SIZE          (4 + 4 + 8)
 #define NBD_REQUEST_MAGIC       0x25609513
 #define NBD_REPLY_MAGIC         0x67446698
 #define NBD_OPTS_MAGIC          0x49484156454F5054LL
 #define NBD_CLIENT_MAGIC        0x0000420281861253LL
-#define NBD_REP_MAGIC           0x3e889045565a9LL
+#define NBD_REP_MAGIC           0x0003e889045565a9LL
 
 #define NBD_SET_SOCK            _IO(0xab, 0)
 #define NBD_SET_BLKSIZE         _IO(0xab, 1)
@@ -91,6 +92,7 @@
 #define NBD_ENOMEM     12
 #define NBD_EINVAL     22
 #define NBD_ENOSPC     28
+#define NBD_ESHUTDOWN  108
 
 static inline ssize_t read_sync(QIOChannel *ioc, void *buffer, size_t size)
 {
@@ -100,14 +102,15 @@ static inline ssize_t read_sync(QIOChannel *ioc, void *buffer, size_t size)
      * our request/reply.  Synchronization is done with recv_coroutine, so
      * that this is coroutine-safe.
      */
-    return nbd_wr_syncv(ioc, &iov, 1, 0, size, true);
+    return nbd_wr_syncv(ioc, &iov, 1, size, true);
 }
 
-static inline ssize_t write_sync(QIOChannel *ioc, void *buffer, size_t size)
+static inline ssize_t write_sync(QIOChannel *ioc, const void *buffer,
+                                 size_t size)
 {
-    struct iovec iov = { .iov_base = buffer, .iov_len = size };
+    struct iovec iov = { .iov_base = (void *) buffer, .iov_len = size };
 
-    return nbd_wr_syncv(ioc, &iov, 1, 0, size, false);
+    return nbd_wr_syncv(ioc, &iov, 1, size, false);
 }
 
 struct NBDTLSHandshakeData {

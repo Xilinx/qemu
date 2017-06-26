@@ -11,8 +11,8 @@
  *
  */
 
-#ifndef __DEVICE_TREE_H__
-#define __DEVICE_TREE_H__
+#ifndef DEVICE_TREE_H
+#define DEVICE_TREE_H
 
 void *create_device_tree(int *sizep);
 void *load_device_tree(const char *filename_path, int *sizep);
@@ -54,18 +54,39 @@ int qemu_fdt_setprop_string(void *fdt, const char *node_path,
 int qemu_fdt_setprop_phandle(void *fdt, const char *node_path,
                              const char *property,
                              const char *target_node_path);
-void *qemu_fdt_getprop(void *fdt, const char *node_path,
-                             const char *property, int *lenp,
-                             bool inherit, Error **errp);
-uint32_t qemu_fdt_getprop_cell(void *fdt, const char *node_path,
-                               const char *property, int offset,
-                               bool inherit, Error **errp);
 uint64_t qemu_fdt_getprop_sized_cell(void *fdt, const char *node_path,
                                      const char *property, int offset,
                                      int size, Error **errp);
 char *qemu_fdt_getprop_string(void *fdt, const char*node_path,
                               const char *property, int cell,
                               bool inherit, Error **errp);
+/**
+ * qemu_fdt_getprop: retrieve the value of a given property
+ * @fdt: pointer to the device tree blob
+ * @node_path: node path
+ * @property: name of the property to find
+ * @lenp: fdt error if any or length of the property on success
+ * @errp: handle to an error object
+ *
+ * returns a pointer to the property on success and NULL on failure
+ */
+void *qemu_fdt_getprop(void *fdt, const char *node_path,
+                             const char *property, int *lenp,
+                             bool inherit, Error **errp);
+/**
+ * qemu_fdt_getprop_cell: retrieve the value of a given 4 byte property
+ * @fdt: pointer to the device tree blob
+ * @node_path: node path
+ * @property: name of the property to find
+ * @lenp: fdt error if any or -EINVAL if the property size is different from
+ *        4 bytes, or 4 (expected length of the property) upon success.
+ * @errp: handle to an error object
+ *
+ * returns the property value on success
+ */
+uint32_t qemu_fdt_getprop_cell(void *fdt, const char *node_path,
+                               const char *property, int offset,
+                               bool inherit, Error **errp);
 uint32_t qemu_fdt_get_phandle(void *fdt, const char *path);
 uint32_t qemu_fdt_check_phandle(void *fdt, const char *path);
 uint32_t qemu_fdt_alloc_phandle(void *fdt);
@@ -216,4 +237,4 @@ void devtree_info_dump(void *fdt);
 #define FDT_PCI_RANGE_IOPORT               0x01000000
 #define FDT_PCI_RANGE_CONFIG               0x00000000
 
-#endif /* __DEVICE_TREE_H__ */
+#endif /* DEVICE_TREE_H */

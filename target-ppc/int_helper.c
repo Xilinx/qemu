@@ -18,6 +18,8 @@
  */
 #include "qemu/osdep.h"
 #include "cpu.h"
+#include "internal.h"
+#include "exec/exec-all.h"
 #include "qemu/host-utils.h"
 #include "exec/helper-proto.h"
 #include "crypto/aes.h"
@@ -144,11 +146,59 @@ target_ulong helper_cntlzw(target_ulong t)
     return clz32(t);
 }
 
+target_ulong helper_cnttzw(target_ulong t)
+{
+    return ctz32(t);
+}
+
 #if defined(TARGET_PPC64)
+/* if x = 0xab, returns 0xababababababababa */
+#define pattern(x) (((x) & 0xff) * (~(target_ulong)0 / 0xff))
+
+/* substract 1 from each byte, and with inverse, check if MSB is set at each
+ * byte.
+ * i.e. ((0x00 - 0x01) & ~(0x00)) & 0x80
+ *      (0xFF & 0xFF) & 0x80 = 0x80 (zero found)
+ */
+#define haszero(v) (((v) - pattern(0x01)) & ~(v) & pattern(0x80))
+
+/* When you XOR the pattern and there is a match, that byte will be zero */
+#define hasvalue(x, n)  (haszero((x) ^ pattern(n)))
+
+uint32_t helper_cmpeqb(target_ulong ra, target_ulong rb)
+{
+    return hasvalue(rb, ra) ? 1 << CRF_GT : 0;
+}
+
+#undef pattern
+#undef haszero
+#undef hasvalue
+
 target_ulong helper_cntlzd(target_ulong t)
 {
     return clz64(t);
 }
+
+target_ulong helper_cnttzd(target_ulong t)
+{
+    return ctz64(t);
+}
+
+/* Return invalid random number.
+ *
+ * FIXME: Add rng backend or other mechanism to get cryptographically suitable
+ * random number
+ */
+target_ulong helper_darn32(void)
+{
+    return -1;
+}
+
+target_ulong helper_darn64(void)
+{
+    return -1;
+}
+
 #endif
 
 #if defined(TARGET_PPC64)
@@ -478,6 +528,40 @@ void helper_vaddcuw(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)
     }
 }
 
+/* vprtybw */
+void helper_vprtybw(ppc_avr_t *r, ppc_avr_t *b)
+{
+    int i;
+    for (i = 0; i < ARRAY_SIZE(r->u32); i++) {
+        uint64_t res = b->u32[i] ^ (b->u32[i] >> 16);
+        res ^= res >> 8;
+        r->u32[i] = res & 1;
+    }
+}
+
+/* vprtybd */
+void helper_vprtybd(ppc_avr_t *r, ppc_avr_t *b)
+{
+    int i;
+    for (i = 0; i < ARRAY_SIZE(r->u64); i++) {
+        uint64_t res = b->u64[i] ^ (b->u64[i] >> 32);
+        res ^= res >> 16;
+        res ^= res >> 8;
+        r->u64[i] = res & 1;
+    }
+}
+
+/* vprtybq */
+void helper_vprtybq(ppc_avr_t *r, ppc_avr_t *b)
+{
+    uint64_t res = b->u64[0] ^ b->u64[1];
+    res ^= res >> 32;
+    res ^= res >> 16;
+    res ^= res >> 8;
+    r->u64[LO_IDX] = res & 1;
+    r->u64[HI_IDX] = 0;
+}
+
 #define VARITH_DO(name, op, element)                                    \
     void helper_v##name(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)       \
     {                                                                   \
@@ -596,6 +680,30 @@ VAVG(w, s32, int64_t, u32, uint64_t)
 #undef VAVG_DO
 #undef VAVG
 
+#define VABSDU_DO(name, element)                                        \
+void helper_v##name(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)           \
+{                                                                       \
+    int i;                                                              \
+                                                                        \
+    for (i = 0; i < ARRAY_SIZE(r->element); i++) {                      \
+        r->element[i] = (a->element[i] > b->element[i]) ?               \
+            (a->element[i] - b->element[i]) :                           \
+            (b->element[i] - a->element[i]);                            \
+    }                                                                   \
+}
+
+/* VABSDU - Vector absolute difference unsigned
+ *   name    - instruction mnemonic suffix (b: byte, h: halfword, w: word)
+ *   element - element type to access from vector
+ */
+#define VABSDU(type, element)                   \
+    VABSDU_DO(absdu##type, element)
+VABSDU(b, u8)
+VABSDU(h, u16)
+VABSDU(w, u32)
+#undef VABSDU_DO
+#undef VABSDU
+
 #define VCF(suffix, cvt, element)                                       \
     void helper_vcf##suffix(CPUPPCState *env, ppc_avr_t *r,             \
                             ppc_avr_t *b, uint32_t uim)                 \
@@ -661,6 +769,49 @@ VCMP(gtsw, >, s32)
 VCMP(gtsd, >, s64)
 #undef VCMP_DO
 #undef VCMP
+
+#define VCMPNE_DO(suffix, element, etype, cmpzero, record)              \
+void helper_vcmpne##suffix(CPUPPCState *env, ppc_avr_t *r,              \
+                            ppc_avr_t *a, ppc_avr_t *b)                 \
+{                                                                       \
+    etype ones = (etype)-1;                                             \
+    etype all = ones;                                                   \
+    etype result, none = 0;                                             \
+    int i;                                                              \
+                                                                        \
+    for (i = 0; i < ARRAY_SIZE(r->element); i++) {                      \
+        if (cmpzero) {                                                  \
+            result = ((a->element[i] == 0)                              \
+                           || (b->element[i] == 0)                      \
+                           || (a->element[i] != b->element[i]) ?        \
+                           ones : 0x0);                                 \
+        } else {                                                        \
+            result = (a->element[i] != b->element[i]) ? ones : 0x0;     \
+        }                                                               \
+        r->element[i] = result;                                         \
+        all &= result;                                                  \
+        none |= result;                                                 \
+    }                                                                   \
+    if (record) {                                                       \
+        env->crf[6] = ((all != 0) << 3) | ((none == 0) << 1);           \
+    }                                                                   \
+}
+
+/* VCMPNEZ - Vector compare not equal to zero
+ *   suffix  - instruction mnemonic suffix (b: byte, h: halfword, w: word)
+ *   element - element type to access from vector
+ */
+#define VCMPNE(suffix, element, etype, cmpzero)         \
+    VCMPNE_DO(suffix, element, etype, cmpzero, 0)       \
+    VCMPNE_DO(suffix##_dot, element, etype, cmpzero, 1)
+VCMPNE(zb, u8, uint8_t, 1)
+VCMPNE(zh, u16, uint16_t, 1)
+VCMPNE(zw, u32, uint32_t, 1)
+VCMPNE(b, u8, uint8_t, 0)
+VCMPNE(h, u16, uint16_t, 0)
+VCMPNE(w, u32, uint32_t, 0)
+#undef VCMPNE_DO
+#undef VCMPNE
 
 #define VCMPFP_DO(suffix, compare, order, record)                       \
     void helper_vcmp##suffix(CPUPPCState *env, ppc_avr_t *r,            \
@@ -764,6 +915,36 @@ void helper_vcmpbfp_dot(CPUPPCState *env, ppc_avr_t *r, ppc_avr_t *a,
 VCT(uxs, cvtsduw, u32)
 VCT(sxs, cvtsdsw, s32)
 #undef VCT
+
+target_ulong helper_vclzlsbb(ppc_avr_t *r)
+{
+    target_ulong count = 0;
+    int i;
+    VECTOR_FOR_INORDER_I(i, u8) {
+        if (r->u8[i] & 0x01) {
+            break;
+        }
+        count++;
+    }
+    return count;
+}
+
+target_ulong helper_vctzlsbb(ppc_avr_t *r)
+{
+    target_ulong count = 0;
+    int i;
+#if defined(HOST_WORDS_BIGENDIAN)
+    for (i = ARRAY_SIZE(r->u8) - 1; i >= 0; i--) {
+#else
+    for (i = 0; i < ARRAY_SIZE(r->u8); i++) {
+#endif
+        if (r->u8[i] & 0x01) {
+            break;
+        }
+        count++;
+    }
+    return count;
+}
 
 void helper_vmhaddshs(CPUPPCState *env, ppc_avr_t *r, ppc_avr_t *a,
                       ppc_avr_t *b, ppc_avr_t *c)
@@ -1033,13 +1214,56 @@ void helper_vperm(CPUPPCState *env, ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b,
     *r = result;
 }
 
+void helper_vpermr(CPUPPCState *env, ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b,
+                  ppc_avr_t *c)
+{
+    ppc_avr_t result;
+    int i;
+
+    VECTOR_FOR_INORDER_I(i, u8) {
+        int s = c->u8[i] & 0x1f;
+#if defined(HOST_WORDS_BIGENDIAN)
+        int index = 15 - (s & 0xf);
+#else
+        int index = s & 0xf;
+#endif
+
+        if (s & 0x10) {
+            result.u8[i] = a->u8[index];
+        } else {
+            result.u8[i] = b->u8[index];
+        }
+    }
+    *r = result;
+}
+
 #if defined(HOST_WORDS_BIGENDIAN)
 #define VBPERMQ_INDEX(avr, i) ((avr)->u8[(i)])
+#define VBPERMD_INDEX(i) (i)
 #define VBPERMQ_DW(index) (((index) & 0x40) != 0)
+#define EXTRACT_BIT(avr, i, index) (extract64((avr)->u64[i], index, 1))
 #else
 #define VBPERMQ_INDEX(avr, i) ((avr)->u8[15-(i)])
+#define VBPERMD_INDEX(i) (1 - i)
 #define VBPERMQ_DW(index) (((index) & 0x40) == 0)
+#define EXTRACT_BIT(avr, i, index) \
+        (extract64((avr)->u64[1 - i], 63 - index, 1))
 #endif
+
+void helper_vbpermd(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)
+{
+    int i, j;
+    ppc_avr_t result = { .u64 = { 0, 0 } };
+    VECTOR_FOR_INORDER_I(i, u64) {
+        for (j = 0; j < 8; j++) {
+            int index = VBPERMQ_INDEX(b, (i * 8) + j);
+            if (index < 64 && EXTRACT_BIT(a, i, index)) {
+                result.u64[VBPERMD_INDEX(i)] |= (0x80 >> j);
+            }
+        }
+    }
+    *r = result;
+}
 
 void helper_vbpermq(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)
 {
@@ -1528,6 +1752,34 @@ void helper_vrsqrtefp(CPUPPCState *env, ppc_avr_t *r, ppc_avr_t *b)
     }
 }
 
+#define VRLMI(name, size, element, insert)                            \
+void helper_##name(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)          \
+{                                                                     \
+    int i;                                                            \
+    for (i = 0; i < ARRAY_SIZE(r->element); i++) {                    \
+        uint##size##_t src1 = a->element[i];                          \
+        uint##size##_t src2 = b->element[i];                          \
+        uint##size##_t src3 = r->element[i];                          \
+        uint##size##_t begin, end, shift, mask, rot_val;              \
+                                                                      \
+        shift = extract##size(src2, 0, 6);                            \
+        end   = extract##size(src2, 8, 6);                            \
+        begin = extract##size(src2, 16, 6);                           \
+        rot_val = rol##size(src1, shift);                             \
+        mask = mask_u##size(begin, end);                              \
+        if (insert) {                                                 \
+            r->element[i] = (rot_val & mask) | (src3 & ~mask);        \
+        } else {                                                      \
+            r->element[i] = (rot_val & mask);                         \
+        }                                                             \
+    }                                                                 \
+}
+
+VRLMI(vrldmi, 64, u64, 1);
+VRLMI(vrlwmi, 32, u32, 1);
+VRLMI(vrldnm, 64, u64, 0);
+VRLMI(vrlwnm, 32, u32, 0);
+
 void helper_vsel(CPUPPCState *env, ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b,
                  ppc_avr_t *c)
 {
@@ -1603,6 +1855,37 @@ VSL(w, u32, 0x1F)
 VSL(d, u64, 0x3F)
 #undef VSL
 
+void helper_vslv(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)
+{
+    int i;
+    unsigned int shift, bytes, size;
+
+    size = ARRAY_SIZE(r->u8);
+    for (i = 0; i < size; i++) {
+        shift = b->u8[i] & 0x7;             /* extract shift value */
+        bytes = (a->u8[i] << 8) +             /* extract adjacent bytes */
+            (((i + 1) < size) ? a->u8[i + 1] : 0);
+        r->u8[i] = (bytes << shift) >> 8;   /* shift and store result */
+    }
+}
+
+void helper_vsrv(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)
+{
+    int i;
+    unsigned int shift, bytes;
+
+    /* Use reverse order, as destination and source register can be same. Its
+     * being modified in place saving temporary, reverse order will guarantee
+     * that computed result is not fed back.
+     */
+    for (i = ARRAY_SIZE(r->u8) - 1; i >= 0; i--) {
+        shift = b->u8[i] & 0x7;                 /* extract shift value */
+        bytes = ((i ? a->u8[i - 1] : 0) << 8) + a->u8[i];
+                                                /* extract adjacent bytes */
+        r->u8[i] = (bytes >> shift) & 0xFF;     /* shift and store result */
+    }
+}
+
 void helper_vsldoi(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b, uint32_t shift)
 {
     int sh = shift & 0xf;
@@ -1668,6 +1951,78 @@ VSPLT(w, u32)
 #undef VSPLT
 #undef SPLAT_ELEMENT
 #undef _SPLAT_MASKED
+#if defined(HOST_WORDS_BIGENDIAN)
+#define VINSERT(suffix, element)                                            \
+    void helper_vinsert##suffix(ppc_avr_t *r, ppc_avr_t *b, uint32_t index) \
+    {                                                                       \
+        memmove(&r->u8[index], &b->u8[8 - sizeof(r->element)],              \
+               sizeof(r->element[0]));                                      \
+    }
+#else
+#define VINSERT(suffix, element)                                            \
+    void helper_vinsert##suffix(ppc_avr_t *r, ppc_avr_t *b, uint32_t index) \
+    {                                                                       \
+        uint32_t d = (16 - index) - sizeof(r->element[0]);                  \
+        memmove(&r->u8[d], &b->u8[8], sizeof(r->element[0]));               \
+    }
+#endif
+VINSERT(b, u8)
+VINSERT(h, u16)
+VINSERT(w, u32)
+VINSERT(d, u64)
+#undef VINSERT
+#if defined(HOST_WORDS_BIGENDIAN)
+#define VEXTRACT(suffix, element)                                            \
+    void helper_vextract##suffix(ppc_avr_t *r, ppc_avr_t *b, uint32_t index) \
+    {                                                                        \
+        uint32_t es = sizeof(r->element[0]);                                 \
+        memmove(&r->u8[8 - es], &b->u8[index], es);                          \
+        memset(&r->u8[8], 0, 8);                                             \
+        memset(&r->u8[0], 0, 8 - es);                                        \
+    }
+#else
+#define VEXTRACT(suffix, element)                                            \
+    void helper_vextract##suffix(ppc_avr_t *r, ppc_avr_t *b, uint32_t index) \
+    {                                                                        \
+        uint32_t es = sizeof(r->element[0]);                                 \
+        uint32_t s = (16 - index) - es;                                      \
+        memmove(&r->u8[8], &b->u8[s], es);                                   \
+        memset(&r->u8[0], 0, 8);                                             \
+        memset(&r->u8[8 + es], 0, 8 - es);                                   \
+    }
+#endif
+VEXTRACT(ub, u8)
+VEXTRACT(uh, u16)
+VEXTRACT(uw, u32)
+VEXTRACT(d, u64)
+#undef VEXTRACT
+
+#define VEXT_SIGNED(name, element, mask, cast, recast)              \
+void helper_##name(ppc_avr_t *r, ppc_avr_t *b)                      \
+{                                                                   \
+    int i;                                                          \
+    VECTOR_FOR_INORDER_I(i, element) {                              \
+        r->element[i] = (recast)((cast)(b->element[i] & mask));     \
+    }                                                               \
+}
+VEXT_SIGNED(vextsb2w, s32, UINT8_MAX, int8_t, int32_t)
+VEXT_SIGNED(vextsb2d, s64, UINT8_MAX, int8_t, int64_t)
+VEXT_SIGNED(vextsh2w, s32, UINT16_MAX, int16_t, int32_t)
+VEXT_SIGNED(vextsh2d, s64, UINT16_MAX, int16_t, int64_t)
+VEXT_SIGNED(vextsw2d, s64, UINT32_MAX, int32_t, int64_t)
+#undef VEXT_SIGNED
+
+#define VNEG(name, element)                                         \
+void helper_##name(ppc_avr_t *r, ppc_avr_t *b)                      \
+{                                                                   \
+    int i;                                                          \
+    VECTOR_FOR_INORDER_I(i, element) {                              \
+        r->element[i] = -b->element[i];                             \
+    }                                                               \
+}
+VNEG(vnegw, s32)
+VNEG(vnegd, s64)
+#undef VNEG
 
 #define VSPLTI(suffix, element, splat_type)                     \
     void helper_vspltis##suffix(ppc_avr_t *r, uint32_t splat)   \
@@ -1914,6 +2269,21 @@ VGENERIC_DO(clzd, u64)
 #undef clzw
 #undef clzd
 
+#define ctzb(v) ((v) ? ctz32(v) : 8)
+#define ctzh(v) ((v) ? ctz32(v) : 16)
+#define ctzw(v) ctz32((v))
+#define ctzd(v) ctz64((v))
+
+VGENERIC_DO(ctzb, u8)
+VGENERIC_DO(ctzh, u16)
+VGENERIC_DO(ctzw, u32)
+VGENERIC_DO(ctzd, u64)
+
+#undef ctzb
+#undef ctzh
+#undef ctzw
+#undef ctzd
+
 #define popcntb(v) ctpop8(v)
 #define popcnth(v) ctpop16(v)
 #define popcntw(v) ctpop32(v)
@@ -2122,6 +2492,8 @@ void helper_vsubecuq(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b, ppc_avr_t *c)
 #define BCD_NEG_PREF    0xD
 #define BCD_NEG_ALT     0xB
 #define BCD_PLUS_ALT_2  0xE
+#define NATIONAL_PLUS   0x2B
+#define NATIONAL_NEG    0x2D
 
 #if defined(HOST_WORDS_BIGENDIAN)
 #define BCD_DIG_BYTE(n) (15 - (n/2))
@@ -2186,6 +2558,33 @@ static void bcd_put_digit(ppc_avr_t *bcd, uint8_t digit, int n)
         bcd->u8[BCD_DIG_BYTE(n)] &= 0xF0;
         bcd->u8[BCD_DIG_BYTE(n)] |= digit;
     }
+}
+
+static int bcd_cmp_zero(ppc_avr_t *bcd)
+{
+    if (bcd->u64[HI_IDX] == 0 && (bcd->u64[LO_IDX] >> 4) == 0) {
+        return 1 << CRF_EQ;
+    } else {
+        return (bcd_get_sgn(bcd) == 1) ? 1 << CRF_GT : 1 << CRF_LT;
+    }
+}
+
+static uint16_t get_national_digit(ppc_avr_t *reg, int n)
+{
+#if defined(HOST_WORDS_BIGENDIAN)
+    return reg->u16[7 - n];
+#else
+    return reg->u16[n];
+#endif
+}
+
+static void set_national_digit(ppc_avr_t *reg, uint8_t val, int n)
+{
+#if defined(HOST_WORDS_BIGENDIAN)
+    reg->u16[7 - n] = val;
+#else
+    reg->u16[n] = val;
+#endif
 }
 
 static int bcd_cmp_mag(ppc_avr_t *a, ppc_avr_t *b)
@@ -2316,6 +2715,163 @@ uint32_t helper_bcdsub(ppc_avr_t *r,  ppc_avr_t *a, ppc_avr_t *b, uint32_t ps)
     /* else invalid ... defer to bcdadd code for proper handling */
 
     return helper_bcdadd(r, a, &bcopy, ps);
+}
+
+uint32_t helper_bcdcfn(ppc_avr_t *r, ppc_avr_t *b, uint32_t ps)
+{
+    int i;
+    int cr = 0;
+    uint16_t national = 0;
+    uint16_t sgnb = get_national_digit(b, 0);
+    ppc_avr_t ret = { .u64 = { 0, 0 } };
+    int invalid = (sgnb != NATIONAL_PLUS && sgnb != NATIONAL_NEG);
+
+    for (i = 1; i < 8; i++) {
+        national = get_national_digit(b, i);
+        if (unlikely(national < 0x30 || national > 0x39)) {
+            invalid = 1;
+            break;
+        }
+
+        bcd_put_digit(&ret, national & 0xf, i);
+    }
+
+    if (sgnb == NATIONAL_PLUS) {
+        bcd_put_digit(&ret, (ps == 0) ? BCD_PLUS_PREF_1 : BCD_PLUS_PREF_2, 0);
+    } else {
+        bcd_put_digit(&ret, BCD_NEG_PREF, 0);
+    }
+
+    cr = bcd_cmp_zero(&ret);
+
+    if (unlikely(invalid)) {
+        cr = 1 << CRF_SO;
+    }
+
+    *r = ret;
+
+    return cr;
+}
+
+uint32_t helper_bcdctn(ppc_avr_t *r, ppc_avr_t *b, uint32_t ps)
+{
+    int i;
+    int cr = 0;
+    int sgnb = bcd_get_sgn(b);
+    int invalid = (sgnb == 0);
+    ppc_avr_t ret = { .u64 = { 0, 0 } };
+
+    int ox_flag = (b->u64[HI_IDX] != 0) || ((b->u64[LO_IDX] >> 32) != 0);
+
+    for (i = 1; i < 8; i++) {
+        set_national_digit(&ret, 0x30 + bcd_get_digit(b, i, &invalid), i);
+
+        if (unlikely(invalid)) {
+            break;
+        }
+    }
+    set_national_digit(&ret, (sgnb == -1) ? NATIONAL_NEG : NATIONAL_PLUS, 0);
+
+    cr = bcd_cmp_zero(b);
+
+    if (ox_flag) {
+        cr |= 1 << CRF_SO;
+    }
+
+    if (unlikely(invalid)) {
+        cr = 1 << CRF_SO;
+    }
+
+    *r = ret;
+
+    return cr;
+}
+
+uint32_t helper_bcdcfz(ppc_avr_t *r, ppc_avr_t *b, uint32_t ps)
+{
+    int i;
+    int cr = 0;
+    int invalid = 0;
+    int zone_digit = 0;
+    int zone_lead = ps ? 0xF : 0x3;
+    int digit = 0;
+    ppc_avr_t ret = { .u64 = { 0, 0 } };
+    int sgnb = b->u8[BCD_DIG_BYTE(0)] >> 4;
+
+    if (unlikely((sgnb < 0xA) && ps)) {
+        invalid = 1;
+    }
+
+    for (i = 0; i < 16; i++) {
+        zone_digit = (i * 2) ? b->u8[BCD_DIG_BYTE(i * 2)] >> 4 : zone_lead;
+        digit = b->u8[BCD_DIG_BYTE(i * 2)] & 0xF;
+        if (unlikely(zone_digit != zone_lead || digit > 0x9)) {
+            invalid = 1;
+            break;
+        }
+
+        bcd_put_digit(&ret, digit, i + 1);
+    }
+
+    if ((ps && (sgnb == 0xB || sgnb == 0xD)) ||
+            (!ps && (sgnb & 0x4))) {
+        bcd_put_digit(&ret, BCD_NEG_PREF, 0);
+    } else {
+        bcd_put_digit(&ret, BCD_PLUS_PREF_1, 0);
+    }
+
+    cr = bcd_cmp_zero(&ret);
+
+    if (unlikely(invalid)) {
+        cr = 1 << CRF_SO;
+    }
+
+    *r = ret;
+
+    return cr;
+}
+
+uint32_t helper_bcdctz(ppc_avr_t *r, ppc_avr_t *b, uint32_t ps)
+{
+    int i;
+    int cr = 0;
+    uint8_t digit = 0;
+    int sgnb = bcd_get_sgn(b);
+    int zone_lead = (ps) ? 0xF0 : 0x30;
+    int invalid = (sgnb == 0);
+    ppc_avr_t ret = { .u64 = { 0, 0 } };
+
+    int ox_flag = ((b->u64[HI_IDX] >> 4) != 0);
+
+    for (i = 0; i < 16; i++) {
+        digit = bcd_get_digit(b, i + 1, &invalid);
+
+        if (unlikely(invalid)) {
+            break;
+        }
+
+        ret.u8[BCD_DIG_BYTE(i * 2)] = zone_lead + digit;
+    }
+
+    if (ps) {
+        bcd_put_digit(&ret, (sgnb == 1) ? 0xC : 0xD, 1);
+    } else {
+        bcd_put_digit(&ret, (sgnb == 1) ? 0x3 : 0x7, 1);
+    }
+
+    cr = bcd_cmp_zero(b);
+
+    if (ox_flag) {
+        cr |= 1 << CRF_SO;
+    }
+
+    if (unlikely(invalid)) {
+        cr = 1 << CRF_SO;
+    }
+
+    *r = ret;
+
+    return cr;
 }
 
 void helper_vsbox(ppc_avr_t *r, ppc_avr_t *a)
