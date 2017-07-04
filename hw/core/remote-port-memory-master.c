@@ -62,7 +62,7 @@ struct RemotePortMemoryMaster {
     struct rp_peer_state *peer;
 };
 
-#define RP_MAX_ACCESS_SIZE 8
+#define RP_MAX_ACCESS_SIZE 128
 
 static void rp_io_access(MemoryTransaction *tr)
 {
