@@ -1952,6 +1952,8 @@ static void gen_store_exclusive(DisasContext *s, int rd, int rt, int rt2,
     tcg_gen_movi_i64(cpu_reg(s, rd), 1);
     gen_set_label(done_label);
     tcg_gen_movi_i64(cpu_exclusive_addr, -1);
+
+    gen_helper_sev(cpu_env);
 }
 
 /* Update the Sixty-Four bit (SF) registersize. This logic is derived
