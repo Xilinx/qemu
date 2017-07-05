@@ -160,7 +160,7 @@ static int zynq7000_mdio_phy_create(char *node_path, FDTMachineInfo *fdti,
         fdt_init_yield(fdti);
     }
 
-    dev = qdev_create(NULL, "88e1116r");
+    dev = DEVICE(object_new("88e1116r"));
     qdev_set_parent_bus(dev, qdev_get_child_bus(Opaque, "mdio-bus"));
     reg = qemu_fdt_getprop_cell(fdti->fdt, node_path, "reg", 0, false,
                                 NULL);
