@@ -143,7 +143,9 @@ typedef struct ZynqMPCSUDMA {
     MemoryRegion *dma_mr;
     AddressSpace *dma_as;
     qemu_irq irq;
-    StreamSlave *tx_dev;
+    StreamSlave *tx_dev;  /* Used as generic StreamSlave */
+    StreamSlave *tx_dev0; /* Used for pmc dma0 */
+    StreamSlave *tx_dev1; /* Used for pmc dma1 */
     QEMUBH *bh;
     ptimer_state *src_timer;
 
@@ -599,6 +601,14 @@ static void zynqmp_csu_dma_realize(DeviceState *dev, Error **errp)
                                 &reg_array->mem);
     sysbus_init_mmio(sbd, &s->iomem);
 
+    if (!s->tx_dev) {
+        if (s->tx_dev0 && s->tx_dev1) {
+            error_setg(&error_fatal, "zynqmp.csu-dma: Both tx_dev0 & tx_dev1"
+                             " StreamSlaves are defined");
+        }
+        s->tx_dev = s->tx_dev0 ? s->tx_dev0 :
+                                 s->tx_dev1 ? s->tx_dev1 : 0;
+    }
     s->bh = qemu_bh_new(src_timeout_hit, s);
     s->src_timer = ptimer_init(s->bh, PTIMER_POLICY_DEFAULT);
 
@@ -627,6 +637,16 @@ static void zynqmp_csu_dma_init(Object *obj)
 
     object_property_add_link(obj, "stream-connected-dma", TYPE_STREAM_SLAVE,
                              (Object **) &s->tx_dev,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             NULL);
+    object_property_add_link(obj, "stream-connected-dma0", TYPE_STREAM_SLAVE,
+                             (Object **) &s->tx_dev0,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             NULL);
+    object_property_add_link(obj, "stream-connected-dma1", TYPE_STREAM_SLAVE,
+                             (Object **) &s->tx_dev1,
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_UNREF_ON_RELEASE,
                              NULL);
