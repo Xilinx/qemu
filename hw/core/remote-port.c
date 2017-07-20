@@ -682,6 +682,11 @@ static void rp_realize(DeviceState *dev, Error **errp)
         qdev_prop_set_chr(dev, "chardev", chr);
     }
 
+    /* Force RP sockets into blocking mode since our RP-thread will deal
+     * with the IO and bypassing QEMUs main-loop.
+     */
+    qemu_chr_fe_set_blocking(&s->chr, true);
+
 #ifdef _WIN32
     /* Create a socket connection between two sockets. We auto-bind
      * and read out the port selected by the kernel.
