@@ -729,8 +729,10 @@ static void rp_realize(DeviceState *dev, Error **errp)
             slen = sizeof(saddr);
             fd = qemu_accept(listen_sk, (struct sockaddr *)&saddr, &slen);
             if (fd < 0 && errno != EINTR) {
+                close(listen_sk);
                 return;
             } else if (fd >= 0) {
+                close(listen_sk);
                 s->event.pipe.read = fd;
                 break;
             }
