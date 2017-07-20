@@ -2962,6 +2962,12 @@ static void tcp_chr_process_IAC_bytes(CharDriverState *chr,
     *size = j;
 }
 
+static void tcp_chr_set_blocking(CharDriverState *chr, bool blocking)
+{
+    TCPCharDriver *s = chr->opaque;
+    qio_channel_set_blocking(s->ioc, blocking, NULL);
+}
+
 static int tcp_get_msgfds(CharDriverState *chr, int *fds, int num)
 {
     TCPCharDriver *s = chr->opaque;
@@ -4738,6 +4744,7 @@ static CharDriverState *qmp_chardev_open_socket(const char *id,
     chr->chr_add_client = tcp_chr_add_client;
     chr->chr_add_watch = tcp_chr_add_watch;
     chr->chr_update_read_handler = tcp_chr_update_read_handler;
+    chr->chr_set_blocking = tcp_chr_set_blocking;
     /* be isn't opened until we get a connection */
     *be_opened = false;
 
