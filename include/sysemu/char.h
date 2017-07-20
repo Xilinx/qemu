@@ -103,6 +103,7 @@ struct CharDriverState {
     void (*chr_accept_input)(struct CharDriverState *chr);
     void (*chr_set_echo)(struct CharDriverState *chr, bool echo);
     void (*chr_set_fe_open)(struct CharDriverState *chr, int fe_open);
+    void (*chr_set_blocking)(struct CharDriverState *chr, bool blocking);
     CharBackend *be;
     void *opaque;
     char *label;
@@ -213,6 +214,16 @@ void qemu_chr_delete(CharDriverState *chr);
  * Destroy a character backend.
  */
 void qemu_chr_free(CharDriverState *chr);
+
+/**
+ * @qemu_chr_fe_set_blocking:
+ *
+ * Ask the backend to override its normal blocking setting.  This only really
+ * applies to socket IO not handled by QEMU's main-loop.
+ *
+ * @blocking true to enable blocking, false to disable blocking mode
+ */
+void qemu_chr_fe_set_blocking(CharBackend *be, bool blocking);
 
 /**
  * @qemu_chr_fe_set_echo:

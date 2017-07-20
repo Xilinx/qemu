@@ -4270,6 +4270,15 @@ void qemu_chr_fe_set_echo(CharBackend *be, bool echo)
     }
 }
 
+void qemu_chr_fe_set_blocking(CharBackend *be, bool blocking)
+{
+    CharDriverState *chr = be->chr;
+
+    if (chr && chr->chr_set_blocking) {
+        chr->chr_set_blocking(chr, blocking);
+    }
+}
+
 void qemu_chr_fe_set_open(CharBackend *be, int fe_open)
 {
     CharDriverState *chr = be->chr;
