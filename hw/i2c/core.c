@@ -115,7 +115,9 @@ int i2c_start_transfer(I2CBus *bus, uint8_t address, int recv)
         QTAILQ_FOREACH(kid, &bus->qbus.children, sibling) {
             DeviceState *qdev = kid->child;
             I2CSlave *candidate = I2C_SLAVE(qdev);
-            if ((candidate->address == address) || (bus->broadcast)) {
+            if ((candidate->address <= address &&
+                 address < candidate->address + candidate->address_range) ||
+                (bus->broadcast)) {
                 node = g_malloc(sizeof(struct I2CNode));
                 node->elt = candidate;
                 QLIST_INSERT_HEAD(&bus->current_devs, node, next);
