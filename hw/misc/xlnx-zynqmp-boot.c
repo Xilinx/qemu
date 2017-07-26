@@ -109,6 +109,7 @@ typedef struct ZynqMPBoot {
     struct {
         uint32_t cpu_num;
         bool use_pmufw;
+        bool load_pmufw_cfg;
     } cfg;
 
     unsigned char *buf;
@@ -224,7 +225,11 @@ static void boot_sequence(void *opaque)
             return;
         }
 
-        s->state = STATE_PMUFW_SETCFG;
+        if (s->cfg.load_pmufw_cfg) {
+            s->state = STATE_PMUFW_SETCFG;
+        } else {
+            s->state = STATE_RELEASE_CPU;
+        }
         boot_sequence(s);
         break;
 
@@ -322,6 +327,7 @@ static void zynqmp_boot_init(Object *obj)
 static Property zynqmp_boot_props[] = {
     DEFINE_PROP_UINT32("cpu-num", ZynqMPBoot, cfg.cpu_num, CPU_NONE),
     DEFINE_PROP_BOOL("use-pmufw", ZynqMPBoot, cfg.use_pmufw, false),
+    DEFINE_PROP_BOOL("load-pmufw-cfg", ZynqMPBoot, cfg.load_pmufw_cfg, true),
     DEFINE_PROP_END_OF_LIST(),
 };
 
