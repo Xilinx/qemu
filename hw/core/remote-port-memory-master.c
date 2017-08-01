@@ -54,10 +54,12 @@ struct RemotePortMemoryMaster {
     SysBusDevice parent;
 
     RemotePortMap *mmaps;
+    MemoryRegionOps *rp_ops;
 
     /* public */
     uint32_t rp_dev;
     bool relative;
+    uint32_t max_access_size;
     struct RemotePort *rp;
     struct rp_peer_state *peer;
 };
@@ -138,7 +140,7 @@ static void rp_io_access(MemoryTransaction *tr)
     DB_PRINT_L(1, "\n");
 }
 
-static const MemoryRegionOps rp_ops = {
+static const MemoryRegionOps rp_ops_template = {
     .access = rp_io_access,
     .valid.max_access_size = RP_MAX_ACCESS_SIZE,
     .impl.unaligned = false,
@@ -148,6 +150,20 @@ static const MemoryRegionOps rp_ops = {
 static void rp_memory_master_realize(DeviceState *dev, Error **errp)
 {
     RemotePortMemoryMaster *s = REMOTE_PORT_MEMORY_MASTER(dev);
+
+    /* Sanity check max access size.  */
+    if (s->max_access_size > RP_MAX_ACCESS_SIZE) {
+        error_setg(errp, "%s: max-access-size %d too large! MAX is %d",
+                   TYPE_REMOTE_PORT_MEMORY_MASTER, s->max_access_size,
+                   RP_MAX_ACCESS_SIZE);
+        return;
+    }
+
+    if (s->max_access_size < 4) {
+        error_setg(errp, "%s: max-access-size %d too small! MIN is 4",
+                   TYPE_REMOTE_PORT_MEMORY_MASTER, s->max_access_size);
+        return;
+    }
 
     assert(s->rp);
     s->peer = rp_get_peer(s->rp);
@@ -167,16 +183,21 @@ static bool rp_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
                          Error **errp)
 {
     RemotePortMemoryMaster *s = REMOTE_PORT_MEMORY_MASTER(obj);
-    FDTGenericMMapClass *parent_fmc = 
+    FDTGenericMMapClass *parent_fmc =
         FDT_GENERIC_MMAP_CLASS(REMOTE_PORT_MEMORY_MASTER_PARENT_CLASS);
     int i;
+
+    /* Initialize rp_ops from template.  */
+    s->rp_ops = g_malloc(sizeof *s->rp_ops);
+    memcpy(s->rp_ops, &rp_ops_template, sizeof *s->rp_ops);
+    s->rp_ops->valid.max_access_size = s->max_access_size;
 
     s->mmaps = g_new0(typeof(*s->mmaps), reg.n);
     for (i = 0; i < reg.n; ++i) {
         char *name = g_strdup_printf("rp-%d", i);
 
         s->mmaps[i].offset = reg.a[i];
-        memory_region_init_io(&s->mmaps[i].iomem, OBJECT(obj), &rp_ops,
+        memory_region_init_io(&s->mmaps[i].iomem, OBJECT(obj), s->rp_ops,
                               &s->mmaps[i], name, reg.s[i]);
         sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->mmaps[i].iomem);
         s->mmaps[i].parent = s;
@@ -189,6 +210,8 @@ static bool rp_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
 static Property rp_properties[] = {
     DEFINE_PROP_UINT32("rp-chan0", RemotePortMemoryMaster, rp_dev, 0),
     DEFINE_PROP_BOOL("relative", RemotePortMemoryMaster, relative, false),
+    DEFINE_PROP_UINT32("max-access-size", RemotePortMemoryMaster,
+                       max_access_size, RP_MAX_ACCESS_SIZE),
     DEFINE_PROP_END_OF_LIST()
 };
 
