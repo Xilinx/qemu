@@ -31,6 +31,75 @@
 #include "hw/sysbus.h"
 #include "hw/sd/sd.h"
 
+/* Default SD/MMC host controller features information, which will be
+ * presented in CAPABILITIES register of generic SD host controller at reset.
+ * If not stated otherwise:
+ * 0 - not supported, 1 - supported, other - prohibited.
+ */
+#define SDHC_CAPAB_DRIVER_D       1ull       /* Driver type D support */
+#define SDHC_CAPAB_DRIVER_C       1ull       /* Driver type C support */
+#define SDHC_CAPAB_DRIVER_A       1ull       /* Driver type A support */
+#define SDHC_CAPAB_DDR50          1ull       /* DDR50 support */
+#define SDHC_CAPAB_SDR104         1ull       /* SDR104 support */
+#define SDHC_CAPAB_SDR50          1ull       /* SDR50 support */
+#define SDHC_CAPAB_64BITBUS       0ul        /* 64-bit System Bus Support */
+#define SDHC_CAPAB_18V            1ul        /* Voltage support 1.8v */
+#define SDHC_CAPAB_30V            0ul        /* Voltage support 3.0v */
+#define SDHC_CAPAB_33V            1ul        /* Voltage support 3.3v */
+#define SDHC_CAPAB_SUSPRESUME     0ul        /* Suspend/resume support */
+#define SDHC_CAPAB_SDMA           1ul        /* SDMA support */
+#define SDHC_CAPAB_HIGHSPEED      1ul        /* High speed support */
+#define SDHC_CAPAB_ADMA1          1ul        /* ADMA1 support */
+#define SDHC_CAPAB_ADMA2          1ul        /* ADMA2 support */
+/* Maximum host controller R/W buffers size
+ * Possible values: 512, 1024, 2048 bytes */
+#define SDHC_CAPAB_MAXBLOCKLENGTH 512ul
+/* Maximum clock frequency for SDclock in MHz
+ * value in range 10-63 MHz, 0 - not defined */
+#define SDHC_CAPAB_BASECLKFREQ    52ul
+#define SDHC_CAPAB_TOUNIT         1ul  /* Timeout clock unit 0 - kHz, 1 - MHz */
+/* Timeout clock frequency 1-63, 0 - not defined */
+#define SDHC_CAPAB_TOCLKFREQ      52ul
+
+/* Now check all parameters and calculate CAPABILITIES REGISTER value */
+#if SDHC_CAPAB_64BITBUS > 1 || SDHC_CAPAB_18V > 1 || SDHC_CAPAB_30V > 1 ||     \
+    SDHC_CAPAB_33V > 1 || SDHC_CAPAB_SUSPRESUME > 1 || SDHC_CAPAB_SDMA > 1 ||  \
+    SDHC_CAPAB_HIGHSPEED > 1 || SDHC_CAPAB_ADMA2 > 1 || SDHC_CAPAB_ADMA1 > 1 ||\
+    SDHC_CAPAB_TOUNIT > 1
+#error Capabilities features can have value 0 or 1 only!
+#endif
+
+#if SDHC_CAPAB_MAXBLOCKLENGTH == 512
+#define MAX_BLOCK_LENGTH 0ul
+#elif SDHC_CAPAB_MAXBLOCKLENGTH == 1024
+#define MAX_BLOCK_LENGTH 1ul
+#elif SDHC_CAPAB_MAXBLOCKLENGTH == 2048
+#define MAX_BLOCK_LENGTH 2ul
+#else
+#error Max host controller block size can have value 512, 1024 or 2048 only!
+#endif
+
+#if (SDHC_CAPAB_BASECLKFREQ > 0 && SDHC_CAPAB_BASECLKFREQ < 10) || \
+    SDHC_CAPAB_BASECLKFREQ > 63
+#error SDclock frequency can have value in range 0, 10-63 only!
+#endif
+
+#if SDHC_CAPAB_TOCLKFREQ > 63
+#error Timeout clock frequency can have value in range 0-63 only!
+#endif
+
+#define SDHC_CAPAB_REG_DEFAULT                                 \
+   ((SDHC_CAPAB_DRIVER_D << 38) | (SDHC_CAPAB_DRIVER_C << 37) |\
+    (SDHC_CAPAB_DRIVER_A << 36) | (SDHC_CAPAB_DDR50 << 34) |   \
+    (SDHC_CAPAB_SDR104 << 33) | (SDHC_CAPAB_SDR50 << 32) |     \
+    (SDHC_CAPAB_64BITBUS << 28) | (SDHC_CAPAB_18V << 26) |     \
+    (SDHC_CAPAB_30V << 25) | (SDHC_CAPAB_33V << 24) |          \
+    (SDHC_CAPAB_SUSPRESUME << 23) | (SDHC_CAPAB_SDMA << 22) |  \
+    (SDHC_CAPAB_HIGHSPEED << 21) | (SDHC_CAPAB_ADMA1 << 20) |  \
+    (SDHC_CAPAB_ADMA2 << 19) | (MAX_BLOCK_LENGTH << 16) |      \
+    (SDHC_CAPAB_BASECLKFREQ << 8) | (SDHC_CAPAB_TOUNIT << 7) | \
+    (SDHC_CAPAB_TOCLKFREQ))
+
 /* SD/MMC host controller state */
 typedef struct SDHCIState {
     union {
