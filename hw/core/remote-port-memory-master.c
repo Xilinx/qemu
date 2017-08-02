@@ -53,8 +53,8 @@ struct RemotePortMemoryMaster {
     /* private */
     SysBusDevice parent;
 
-    RemotePortMap *mmaps;
     MemoryRegionOps *rp_ops;
+    RemotePortMap *mmaps;
 
     /* public */
     uint32_t rp_dev;
