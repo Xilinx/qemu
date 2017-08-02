@@ -451,13 +451,12 @@ static void sdhci_read_block_from_card(SDHCIState *s)
         return;
     }
 
-    if (!FIELD_EX32(s->hostctl2, SDHC_HOSTCTL2, EXECUTE_TUNING)) {
-        /* Device is not in tuning */
-        sdbus_read_data(&s->sdbus, s->fifo_buffer, blk_size);
-    }
+    sdbus_read_data(&s->sdbus, s->fifo_buffer, blk_size);
 
     /* New data now available for READ through Buffer Port Register */
-    s->prnsts |= SDHC_DATA_AVAILABLE;
+    if (!FIELD_EX32(s->hostctl2, SDHC_HOSTCTL2, EXECUTE_TUNING)) {
+        s->prnsts |= SDHC_DATA_AVAILABLE;
+    }
     if (s->norintstsen & SDHC_NISEN_RBUFRDY) {
         s->norintsts |= SDHC_NIS_RBUFRDY;
     }
