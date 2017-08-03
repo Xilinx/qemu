@@ -128,6 +128,19 @@ int i2c_start_transfer(I2CBus *bus, uint8_t address, int recv)
             if ((candidate->address <= address &&
                  address < candidate->address + candidate->address_range) ||
                 (bus->broadcast)) {
+                /* If the device is mux/switch, probe for required slave.
+                 * decode_address probes the requested slave and returns 1
+                 * on failure, and returns 0 if a slave is found (or)
+                 * address mached itself.
+                 */
+                if (candidate->address == 0 && !bus->broadcast) {
+                    sc = I2C_SLAVE_GET_CLASS(candidate);
+                    if (sc->decode_address) {
+                        if (sc->decode_address(candidate, address)) {
+                            continue;
+                        }
+                    }
+                }
                 node = g_malloc(sizeof(struct I2CNode));
                 node->elt = candidate;
                 QLIST_INSERT_HEAD(&bus->current_devs, node, next);
