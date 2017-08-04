@@ -124,9 +124,11 @@ static void zynqmp_apu_rvbar_post_write(DepRegisterInfo *reg, uint64_t val)
     for (i = 0; i < NUM_CPUS; ++i) {
         uint64_t rvbar = s->regs[R_RVBARADDR0L + 2 * i] +
                          ((uint64_t)s->regs[R_RVBARADDR0H + 2 * i] << 32);
-        object_property_set_int(OBJECT(s->cpus[i]), rvbar, "rvbar",
-                                &error_abort);
-        DB_PRINT("Set RVBAR %d to %" PRIx64 "\n", i, rvbar);
+        if (s->cpus[i]) {
+            object_property_set_int(OBJECT(s->cpus[i]), rvbar, "rvbar",
+                                    &error_abort);
+            DB_PRINT("Set RVBAR %d to %" PRIx64 "\n", i, rvbar);
+        }
     }
 }
 
