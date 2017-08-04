@@ -8,7 +8,8 @@ common-obj-$(CONFIG_SGA) += sga.o
 common-obj-$(CONFIG_ISA_TESTDEV) += pc-testdev.o
 common-obj-$(CONFIG_PCI_TESTDEV) += pci-testdev.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += csu_core.o
-common-obj-$(CONFIG_XLNX_ZYNQMP) += csu_stream_switch.o
+common-obj-$(CONFIG_XLNX_ZYNQMP) += sss.o
+common-obj-$(CONFIG_XLNX_ZYNQMP) += sss-csu.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += csu_pcap.o
 
 obj-$(CONFIG_XLNX_ZYNQMP_ARM) += xilinx-lpd-slcr.o
