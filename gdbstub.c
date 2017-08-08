@@ -1636,7 +1636,8 @@ static void gdb_vm_state_change(void *opaque, int running, RunState state)
         break;
     }
     gdb_set_stop_cpu(cpu);
-    snprintf(buf, sizeof(buf), "T%02xthread:%02x;", ret, cpu_index(cpu));
+    snprintf(buf, sizeof(buf), "T%02xthread:%s;", ret,
+             gdb_gen_thread_id(s, s->cur_cluster + 1, cpu_index(cpu)));
 
 send_packet:
     put_packet(s, buf);
