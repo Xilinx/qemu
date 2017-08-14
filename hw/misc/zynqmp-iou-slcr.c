@@ -43,7 +43,49 @@
 
 DEP_REG32(MIO, 0x0)
     #define R_MIO_RSVD               0xffffff01
-
+DEP_REG32(BANK0_CTRL0, 0x138)
+    DEP_FIELD(BANK0_CTRL0, DRIVE0, 26, 0)
+DEP_REG32(BANK0_CTRL1, 0x13c)
+    DEP_FIELD(BANK0_CTRL1, DRIVE1, 26, 0)
+DEP_REG32(BANK0_CTRL3, 0x140)
+    DEP_FIELD(BANK0_CTRL3, SCHMITT_CMOS_N, 26, 0)
+DEP_REG32(BANK0_CTRL4, 0x144)
+    DEP_FIELD(BANK0_CTRL4, PULL_HIGH_LOW_N, 26, 0)
+DEP_REG32(BANK0_CTRL5, 0x148)
+    DEP_FIELD(BANK0_CTRL5, PULL_ENABLE, 26, 0)
+DEP_REG32(BANK0_CTRL6, 0x14c)
+    DEP_FIELD(BANK0_CTRL6, SLOW_FAST_SLEW_N, 26, 0)
+DEP_REG32(BANK0_STATUS, 0x150)
+    DEP_FIELD(BANK0_STATUS, VOLTAGE_MODE, 1, 0)
+DEP_REG32(BANK1_CTRL0, 0x154)
+    DEP_FIELD(BANK1_CTRL0, DRIVE0, 26, 0)
+DEP_REG32(BANK1_CTRL1, 0x158)
+    DEP_FIELD(BANK1_CTRL1, DRIVE1, 26, 0)
+DEP_REG32(BANK1_CTRL3, 0x15c)
+    DEP_FIELD(BANK1_CTRL3, SCHMITT_CMOS_N, 26, 0)
+DEP_REG32(BANK1_CTRL4, 0x160)
+    DEP_FIELD(BANK1_CTRL4, PULL_HIGH_LOW_N, 26, 0)
+DEP_REG32(BANK1_CTRL5, 0x164)
+    DEP_FIELD(BANK1_CTRL5, PULL_ENABLE_13_TO_0, 14, 12)
+    DEP_FIELD(BANK1_CTRL5, PULL_ENABLE_25_TO_14, 12, 0)
+DEP_REG32(BANK1_CTRL6, 0x168)
+    DEP_FIELD(BANK1_CTRL6, SLOW_FAST_SLEW_N, 26, 0)
+DEP_REG32(BANK1_STATUS, 0x16c)
+    DEP_FIELD(BANK1_STATUS, VOLTAGE_MODE, 1, 0)
+DEP_REG32(BANK2_CTRL0, 0x170)
+    DEP_FIELD(BANK2_CTRL0, DRIVE0, 26, 0)
+DEP_REG32(BANK2_CTRL1, 0x174)
+    DEP_FIELD(BANK2_CTRL1, DRIVE1, 26, 0)
+DEP_REG32(BANK2_CTRL3, 0x178)
+    DEP_FIELD(BANK2_CTRL3, SCHMITT_CMOS_N, 26, 0)
+DEP_REG32(BANK2_CTRL4, 0x17c)
+    DEP_FIELD(BANK2_CTRL4, PULL_HIGH_LOW_N, 26, 0)
+DEP_REG32(BANK2_CTRL5, 0x180)
+    DEP_FIELD(BANK2_CTRL5, PULL_ENABLE, 26, 0)
+DEP_REG32(BANK2_CTRL6, 0x184)
+    DEP_FIELD(BANK2_CTRL6, SLOW_FAST_SLEW_N, 26, 0)
+DEP_REG32(BANK2_STATUS, 0x188)
+    DEP_FIELD(BANK2_STATUS, VOLTAGE_MODE, 1, 0)
 DEP_REG32(SD_SLOTTYPE, 0x310)
     #define R_SD_SLOTTYPE_RSVD       0xffffff9c
 
@@ -55,6 +97,9 @@ struct ZynqMPIOUSLCR {
     SysBusDevice busdev;
     MemoryRegion iomem;
 
+    bool mio_bank0v;
+    bool mio_bank1v;
+    bool mio_bank2v;
     uint32_t regs[R_MAX];
     DepRegisterInfo regs_info[R_MAX];
 };
@@ -73,6 +118,40 @@ static const DepRegisterAccessInfo zynqmp_iou_slcr_regs_info[] = {
     M(60) M(61) M(62) M(63) M(64) M(65) M(66) M(67) M(78) M(69)
     M(70) M(71) M(72) M(73) M(74) M(75) M(76) M(77)
 #undef M
+    { .name = "BANK0_CTRL0",  .decode.addr = A_BANK0_CTRL0,
+        .reset = 0x3ffffff,
+    },{ .name = "BANK0_CTRL1",  .decode.addr = A_BANK0_CTRL1,
+    },{ .name = "BANK0_CTRL3",  .decode.addr = A_BANK0_CTRL3,
+    },{ .name = "BANK0_CTRL4",  .decode.addr = A_BANK0_CTRL4,
+        .reset = 0x3ffffff,
+    },{ .name = "BANK0_CTRL5",  .decode.addr = A_BANK0_CTRL5,
+        .reset = 0x3ffffff,
+    },{ .name = "BANK0_CTRL6",  .decode.addr = A_BANK0_CTRL6,
+    },{ .name = "BANK0_STATUS",  .decode.addr = A_BANK0_STATUS,
+        .ro = 0x1,
+    },{ .name = "BANK1_CTRL0",  .decode.addr = A_BANK1_CTRL0,
+        .reset = 0x3ffffff,
+    },{ .name = "BANK1_CTRL1",  .decode.addr = A_BANK1_CTRL1,
+    },{ .name = "BANK1_CTRL3",  .decode.addr = A_BANK1_CTRL3,
+    },{ .name = "BANK1_CTRL4",  .decode.addr = A_BANK1_CTRL4,
+        .reset = 0x3ffffff,
+    },{ .name = "BANK1_CTRL5",  .decode.addr = A_BANK1_CTRL5,
+        .reset = 0x3ffffff,
+    },{ .name = "BANK1_CTRL6",  .decode.addr = A_BANK1_CTRL6,
+    },{ .name = "BANK1_STATUS",  .decode.addr = A_BANK1_STATUS,
+        .ro = 0x1,
+    },{ .name = "BANK2_CTRL0",  .decode.addr = A_BANK2_CTRL0,
+        .reset = 0x3ffffff,
+    },{ .name = "BANK2_CTRL1",  .decode.addr = A_BANK2_CTRL1,
+    },{ .name = "BANK2_CTRL3",  .decode.addr = A_BANK2_CTRL3,
+    },{ .name = "BANK2_CTRL4",  .decode.addr = A_BANK2_CTRL4,
+        .reset = 0x3ffffff,
+    },{ .name = "BANK2_CTRL5",  .decode.addr = A_BANK2_CTRL5,
+        .reset = 0x3ffffff,
+    },{ .name = "BANK2_CTRL6",  .decode.addr = A_BANK2_CTRL6,
+    },{ .name = "BANK2_STATUS",  .decode.addr = A_BANK2_STATUS,
+        .ro = 0x1,
+    },
     {   .name = "SD Slot TYPE",             .decode.addr = A_SD_SLOTTYPE,
             .rsvd = R_SD_SLOTTYPE_RSVD,
             .gpios = (DepRegisterGPIOMapping []) {
@@ -91,6 +170,9 @@ static void zynqmp_iou_slcr_reset(DeviceState *dev)
     for (i = 0; i < R_MAX; ++i) {
         dep_register_reset(&s->regs_info[i]);
     }
+    DEP_AF_DP32(s->regs, BANK0_STATUS, VOLTAGE_MODE, s->mio_bank0v);
+    DEP_AF_DP32(s->regs, BANK1_STATUS, VOLTAGE_MODE, s->mio_bank1v);
+    DEP_AF_DP32(s->regs, BANK2_STATUS, VOLTAGE_MODE, s->mio_bank2v);
 }
 
 static const MemoryRegionOps zynqmp_iou_slcr_ops = {
@@ -163,6 +245,13 @@ static const FDTGenericGPIOSet zynqmp_iou_slcr_controller_gpios [] = {
     { },
 };
 
+static Property zynqmp_iou_slcr_props[] = {
+    DEFINE_PROP_BOOL("mio-bank0-1.8v", ZynqMPIOUSLCR, mio_bank0v, false),
+    DEFINE_PROP_BOOL("mio-bank1-1.8v", ZynqMPIOUSLCR, mio_bank1v, false),
+    DEFINE_PROP_BOOL("mio-bank2-1.8v", ZynqMPIOUSLCR, mio_bank2v, false),
+    DEFINE_PROP_END_OF_LIST(),
+};
+
 static void zynqmp_iou_slcr_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -171,6 +260,7 @@ static void zynqmp_iou_slcr_class_init(ObjectClass *klass, void *data)
     dc->reset = zynqmp_iou_slcr_reset;
     dc->realize = zynqmp_iou_slcr_realize;
     dc->vmsd = &vmstate_zynqmp_iou_slcr;
+    dc->props = zynqmp_iou_slcr_props;
 
     fggc->controller_gpios = zynqmp_iou_slcr_controller_gpios;
 }
