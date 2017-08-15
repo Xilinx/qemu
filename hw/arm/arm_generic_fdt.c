@@ -441,7 +441,8 @@ static void arm_generic_fdt_init(MachineState *machine)
         if (!QTEST_RUNNING) {
             /* Don't print this error if running qtest */
             fprintf(stderr, "The '" DEP_GENERAL_MACHINE_NAME "' machine has " \
-                    "been deprecated. Please use '" ZYNQ7000_MACHINE_NAME \
+                    "been deprecated and will be removed after the 2017.4 " \
+                    "release.Please use '" ZYNQ7000_MACHINE_NAME \
                     "' instead.\n");
         }
         zynq_7000 = true;

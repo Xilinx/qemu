@@ -68,13 +68,13 @@ static void generic_loader_realize(DeviceState *dev, Error **errp)
     s->set_pc = false;
 
     /* Xilinx: This is the old deprecated command line argument.
-     * This will be removed in the future, print a warning to tell
-     * users.
+     * Print a warning to tell users that it will be removed.
      */
     if (s->cpu_num_dep != CPU_NONE) {
         fprintf(stderr, "The 'cpu=' command line option has been deprecated " \
-            "and replaced with 'cpu-num='. Please update your command line " \
-            "to use 'cpu-num=' as 'cpu=' will be removed after 2017.2.\n");
+                "and replaced with 'cpu-num='. Please update your command " \
+                "line to use 'cpu-num=' as 'cpu=' will be removed after the " \
+                "2017.4 release.\n");
         if (s->cpu_num == CPU_NONE) {
             s->cpu_num = s->cpu_num_dep;
         }
