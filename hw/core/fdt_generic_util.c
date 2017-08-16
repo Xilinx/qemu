@@ -167,7 +167,7 @@ static void fdt_init_all_irqs(FDTMachineInfo *fdti)
 FDTMachineInfo *fdt_generic_create_machine(void *fdt, qemu_irq *cpu_irq)
 {
     char node_path[DT_PATH_LENGTH];
-
+    QemuOpts *opts = qemu_opts_find(qemu_find_opts("smp-opts"), NULL);
     FDTMachineInfo *fdti = fdt_init_new_fdti(fdt);
 
     fdti->irq_base = cpu_irq;
@@ -188,6 +188,14 @@ FDTMachineInfo *fdt_generic_create_machine(void *fdt, qemu_irq *cpu_irq)
     }
 
     DB_PRINT(0, "FDT: Device tree scan complete\n");
+
+    /* Set the number of CPUs */
+    if (!qemu_opt_get_number(opts, "cpus", 0)) {
+        smp_cpus = fdt_generic_num_cpus;
+    }
+
+    DB_PRINT(0, "The value of smp_cpus is: %d\n", smp_cpus);
+
     FDTMachineInfo *ret = g_malloc0(sizeof(*ret));
     return fdti;
 }
