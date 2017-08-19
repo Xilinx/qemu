@@ -9,6 +9,6 @@ common-obj-$(CONFIG_IMX_I2C) += imx_i2c.o
 common-obj-$(CONFIG_ASPEED_SOC) += aspeed_i2c.o
 obj-$(CONFIG_OMAP) += omap_i2c.o
 common-obj-$(CONFIG_CADENCE) += cadence_i2c.o
-common-obj-$(CONFIG_CADENCE) += pca9548.o
+common-obj-$(CONFIG_CADENCE) += pca954x.o
 obj-$(CONFIG_PPC4XX) += ppc4xx_i2c.o
 common-obj-$(CONFIG_CADENCE) += tca6416.o
