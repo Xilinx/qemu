@@ -1,5 +1,5 @@
 /*
- * PCA9548 I2C Switch Dummy model
+ * PCA954X I2C Switch Dummy model
  *
  * Copyright (c) 2012 Xilinx Inc.
  * Copyright (c) 2012 Peter Crosthwaite <peter.crosthwaite@xilinx.com>
@@ -25,19 +25,19 @@
 #include "hw/i2c/pca954x.h"
 #include "qemu/log.h"
 
-#ifndef PCA9548_DEBUG
-#define PCA9548_DEBUG 0
+#ifndef PCA954X_DEBUG
+#define PCA954X_DEBUG 0
 #endif
 
 #define DB_PRINT(fmt, args...) do { \
-    if (PCA9548_DEBUG) { \
-        qemu_log("PCA9548: "fmt, ## args); \
+    if (PCA954X_DEBUG) { \
+        qemu_log("PCA954X: "fmt, ## args); \
     } \
 } while (0);
 
-static void pca9548_reset(DeviceState *dev)
+static void pca954x_reset(DeviceState *dev)
 {
-    PCA9548State *s = PCA9548(dev);
+    PCA954XState *s = PCA954X(dev);
     I2CSlave *i2cs =  I2C_SLAVE(dev);
 
     /* Switch decodes the enitre address range, trample any previously set
@@ -49,9 +49,9 @@ static void pca9548_reset(DeviceState *dev)
     s->control_reg = 0;
 }
 
-static int pca9548_recv(I2CSlave *i2c)
+static int pca954x_recv(I2CSlave *i2c)
 {
-    PCA9548State *s = PCA9548(i2c);
+    PCA954XState *s = PCA954X(i2c);
     int i;
     int ret = 0;
 
@@ -70,9 +70,9 @@ static int pca9548_recv(I2CSlave *i2c)
     return ret;
 }
 
-static int pca9548_send(I2CSlave *i2c, uint8_t data)
+static int pca954x_send(I2CSlave *i2c, uint8_t data)
 {
-    PCA9548State *s = PCA9548(i2c);
+    PCA954XState *s = PCA954X(i2c);
     int i;
     int ret = -1;
 
@@ -92,9 +92,9 @@ static int pca9548_send(I2CSlave *i2c, uint8_t data)
     return ret;
 }
 
-static int pca9548_event(I2CSlave *i2c, enum i2c_event event)
+static int pca954x_event(I2CSlave *i2c, enum i2c_event event)
 {
-    PCA9548State *s = PCA9548(i2c);
+    PCA954XState *s = PCA954X(i2c);
     int i;
 
     s->event = event;
@@ -125,14 +125,14 @@ static int pca9548_event(I2CSlave *i2c, enum i2c_event event)
     return 0;
 }
 
-static int pca9548_decode_address(I2CSlave *i2c, uint8_t address)
+static int pca954x_decode_address(I2CSlave *i2c, uint8_t address)
 {
-    PCA9548State *s = PCA9548(i2c);
+    PCA954XState *s = PCA954X(i2c);
     int i;
     uint8_t channel_status = 0;
 
     s->control_decoded = address ==
-                    (PCA9548_CONTROL_ADDR | (s->chip_enable & 0x7));
+                    (PCA954X_CONTROL_ADDR | (s->chip_enable & 0x7));
 
     if (s->control_decoded) {
         return 0;
@@ -154,9 +154,9 @@ static int pca9548_decode_address(I2CSlave *i2c, uint8_t address)
     return 0;
 }
 
-static void pca9548_init(Object *obj)
+static void pca954x_init(Object *obj)
 {
-    PCA9548State *s = PCA9548(obj);
+    PCA954XState *s = PCA954X(obj);
     int i;
 
     for (i = 0; i < NUM_BUSSES; ++i) {
@@ -167,57 +167,57 @@ static void pca9548_init(Object *obj)
     }
 }
 
-static void pca9548_realize(DeviceState *dev, Error **errp)
+static void pca954x_realize(DeviceState *dev, Error **errp)
 {
     /* Dummy */
 }
 
-static const VMStateDescription vmstate_PCA9548 = {
-    .name = "pca9548",
+static const VMStateDescription vmstate_PCA954X = {
+    .name = "pca954x",
     .version_id = 1,
     .fields = (VMStateField[]) {
-        VMSTATE_I2C_SLAVE(i2c, PCA9548State),
-        VMSTATE_UINT8(control_reg, PCA9548State),
-        VMSTATE_BOOL(control_decoded, PCA9548State),
+        VMSTATE_I2C_SLAVE(i2c, PCA954XState),
+        VMSTATE_UINT8(control_reg, PCA954XState),
+        VMSTATE_BOOL(control_decoded, PCA954XState),
         VMSTATE_END_OF_LIST()
     }
 };
 
-static Property pca9548_properties[] = {
+static Property pca954x_properties[] = {
     /* These could be GPIOs, but the application is rare, just let machine model
      * tie them with props
      */
-    DEFINE_PROP_UINT8("chip-enable", PCA9548State, chip_enable, 0),
+    DEFINE_PROP_UINT8("chip-enable", PCA954XState, chip_enable, 0),
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static void pca9548_class_init(ObjectClass *klass, void *data)
+static void pca954x_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     I2CSlaveClass *k = I2C_SLAVE_CLASS(klass);
 
-    k->event = pca9548_event;
-    k->recv = pca9548_recv;
-    k->send = pca9548_send;
-    k->decode_address = pca9548_decode_address;
+    k->event = pca954x_event;
+    k->recv = pca954x_recv;
+    k->send = pca954x_send;
+    k->decode_address = pca954x_decode_address;
 
-    dc->realize = pca9548_realize;
-    dc->reset = pca9548_reset;
-    dc->vmsd = &vmstate_PCA9548;
-    dc->props = pca9548_properties;
+    dc->realize = pca954x_realize;
+    dc->reset = pca954x_reset;
+    dc->vmsd = &vmstate_PCA954X;
+    dc->props = pca954x_properties;
 }
 
-static TypeInfo pca9548_info = {
-    .name          = TYPE_PCA9548,
+static TypeInfo pca954x_info = {
+    .name          = TYPE_PCA954X,
     .parent        = TYPE_I2C_SLAVE,
-    .instance_size = sizeof(PCA9548State),
-    .instance_init = pca9548_init,
-    .class_init    = pca9548_class_init,
+    .instance_size = sizeof(PCA954XState),
+    .instance_init = pca954x_init,
+    .class_init    = pca954x_class_init,
 };
 
-static void pca9548_register_types(void)
+static void pca954x_register_types(void)
 {
-    type_register_static(&pca9548_info);
+    type_register_static(&pca954x_info);
 }
 
-type_init(pca9548_register_types)
+type_init(pca954x_register_types)

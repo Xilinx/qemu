@@ -1,8 +1,8 @@
-#ifndef PCA9548__H
-#define PCA9548__H
+#ifndef PCA954X__H
+#define PCA954X__H
 
 #define NUM_BUSSES 8
-#define PCA9548_CONTROL_ADDR 0x74
+#define PCA954X_CONTROL_ADDR 0x74
 
 typedef struct {
     I2CSlave i2c;
@@ -14,11 +14,11 @@ typedef struct {
     bool control_decoded;
 
     uint8_t chip_enable; /*property */
-} PCA9548State;
+} PCA954XState;
 
-#define TYPE_PCA9548 "pca9548"
+#define TYPE_PCA954X "pca954x"
 
-#define PCA9548(obj) \
-     OBJECT_CHECK(PCA9548State, (obj), TYPE_PCA9548)
+#define PCA954X(obj) \
+     OBJECT_CHECK(PCA954XState, (obj), TYPE_PCA954X)
 
 #endif
