@@ -11411,6 +11411,7 @@ static DepRegisterAccessInfo serdes_regs_info[] = {
         .ro = 0xffffffff,
     },{ .name = "L0_SUPPLY_POWER_GOOD_STATUS",  .decode.addr = A_L0_SUPPLY_POWER_GOOD_STATUS,
         .ro = 0xffffffff,
+        .reset = 0x000000ff,
     },{ .name = "L0_BG_ISO_CTRL",  .decode.addr = A_L0_BG_ISO_CTRL,
         .ro = 0xfffffffc,
     },{ .name = "L0_UPHY_GLOBAL_CTRL",  .decode.addr = A_L0_UPHY_GLOBAL_CTRL,
