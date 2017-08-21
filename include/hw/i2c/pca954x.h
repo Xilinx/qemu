@@ -5,8 +5,16 @@
 #define NUM_BUSSES 8
 #define PCA954X_CONTROL_ADDR 0x74
 
+typedef struct pca954x_type {
+    const char *name;
+    uint8_t lanes;   /* Number of i2c out buses */
+    bool mux;        /* mux or switch */
+} pca954x_type;
+
 typedef struct PCA954X_class {
     I2CSlaveClass parent_class;
+
+    pca954x_type *device;
 } PCA954XClass;
 
 typedef struct {
