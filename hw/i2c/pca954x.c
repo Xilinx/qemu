@@ -47,6 +47,7 @@ static void pca954x_reset(DeviceState *dev)
     i2cs->address_range = 0x80;
 
     s->control_reg = 0;
+    s->active_lanes = 0;
 }
 
 static int pca954x_recv(I2CSlave *i2c)
@@ -60,7 +61,7 @@ static int pca954x_recv(I2CSlave *i2c)
         DB_PRINT("returning control register: %x\n", ret);
     } else {
         for (i = 0; i < NUM_BUSSES; ++i) {
-            if (s->control_reg & (1 << i)) {
+            if (s->active_lanes & (1 << i)) {
                 ret |= i2c_recv(s->busses[i]);
                 DB_PRINT("recieving from active bus %d:%x\n", i, ret);
             }
@@ -68,6 +69,11 @@ static int pca954x_recv(I2CSlave *i2c)
     }
 
     return ret;
+}
+
+static void pca954x_decode_lane(PCA954XState *s)
+{
+        s->active_lanes = s->control_reg;
 }
 
 static int pca954x_send(I2CSlave *i2c, uint8_t data)
@@ -79,10 +85,11 @@ static int pca954x_send(I2CSlave *i2c, uint8_t data)
     if (s->control_decoded) {
         DB_PRINT("setting control register: %x\n", data);
         s->control_reg = data;
+        pca954x_decode_lane(s);
         ret = 0;
     } else {
         for (i = 0; i < NUM_BUSSES; ++i) {
-            if (s->control_reg & (1 << i)) {
+            if (s->active_lanes & (1 << i)) {
                 DB_PRINT("sending to active bus %d:%x\n", i, data);
                 ret &= i2c_send(s->busses[i], data);
             }
@@ -99,7 +106,7 @@ static int pca954x_event(I2CSlave *i2c, enum i2c_event event)
 
     s->event = event;
     for (i = 0; i < NUM_BUSSES; ++i) {
-        if (s->control_reg & (1 << i)) {
+        if (s->active_lanes & (1 << i)) {
             switch (event) {
             /* defer START conditions until we have an address */
             case I2C_START_SEND:
@@ -139,7 +146,7 @@ static int pca954x_decode_address(I2CSlave *i2c, uint8_t address)
     }
 
     for (i = 0; i < NUM_BUSSES; ++i) {
-        if (s->control_reg & (1 << i)) {
+        if (s->active_lanes & (1 << i)) {
             DB_PRINT("starting active bus %d addr:%02x rnw:%d\n", i, address,
                     s->event == I2C_START_RECV);
             channel_status |= (i2c_start_transfer(s->busses[i], address,
@@ -147,7 +154,7 @@ static int pca954x_decode_address(I2CSlave *i2c, uint8_t address)
         }
     }
 
-    if (s->control_reg == channel_status) {
+    if (s->active_lanes == channel_status) {
         return 1;
     }
 
@@ -179,6 +186,7 @@ static const VMStateDescription vmstate_PCA954X = {
         VMSTATE_I2C_SLAVE(i2c, PCA954XState),
         VMSTATE_UINT8(control_reg, PCA954XState),
         VMSTATE_BOOL(control_decoded, PCA954XState),
+        VMSTATE_UINT8(active_lanes, PCA954XState),
         VMSTATE_END_OF_LIST()
     }
 };

@@ -12,6 +12,7 @@ typedef struct {
     uint8_t control_reg;
     enum i2c_event event;
     bool control_decoded;
+    uint8_t active_lanes;
 
     uint8_t chip_enable; /*property */
 } PCA954XState;
