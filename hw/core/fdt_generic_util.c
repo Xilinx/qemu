@@ -196,7 +196,6 @@ FDTMachineInfo *fdt_generic_create_machine(void *fdt, qemu_irq *cpu_irq)
 
     DB_PRINT(0, "The value of smp_cpus is: %d\n", smp_cpus);
 
-    FDTMachineInfo *ret = g_malloc0(sizeof(*ret));
     return fdti;
 }
 
