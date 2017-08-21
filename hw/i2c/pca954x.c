@@ -19,7 +19,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "hw/i2c/i2c.h"
 #include "hw/hw.h"
 #include "sysemu/blockdev.h"
 #include "hw/i2c/pca954x.h"
