@@ -2,7 +2,7 @@
 #define PCA954X__H
 
 #include "hw/i2c/i2c.h"
-#define NUM_BUSSES 8
+#define MAX_I2C_BUSES 8
 #define PCA954X_CONTROL_ADDR 0x74
 
 typedef struct pca954x_type {
@@ -19,7 +19,7 @@ typedef struct PCA954X_class {
 
 typedef struct {
     I2CSlave i2c;
-    I2CBus *busses[NUM_BUSSES];
+    I2CBus *busses[MAX_I2C_BUSES];
 
     /*state */
     uint8_t control_reg;
@@ -27,6 +27,8 @@ typedef struct {
     bool control_decoded;
     uint8_t active_lanes;
 
+    bool mux;
+    uint8_t lanes;
     uint8_t chip_enable; /*property */
 } PCA954XState;
 
