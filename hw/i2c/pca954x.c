@@ -85,7 +85,11 @@ static int pca954x_recv(I2CSlave *i2c)
 
 static void pca954x_decode_lane(PCA954XState *s)
 {
+    if (s->mux) {
+        s->active_lanes = (1 << (s->control_reg & (s->lanes - 1)));
+    } else {
         s->active_lanes = s->control_reg;
+    }
 }
 
 static int pca954x_send(I2CSlave *i2c, uint8_t data)
