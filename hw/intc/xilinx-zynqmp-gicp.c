@@ -146,7 +146,7 @@ static void gicp_trigger_postw(DepRegisterInfo *reg, uint64_t val64)
 static void gicpn_status_postw(DepRegisterInfo *reg, uint64_t val64)
 {
     GICProxy *s = XILINX_GIC_PROXY(reg->opaque);
-    uint64_t nr = (uint64_t)reg->access->opaque;
+    uint64_t nr = (uintptr_t)reg->access->opaque;
 
     gicp_update(s, nr);
 }
@@ -155,7 +155,7 @@ static void gicpn_enable_postw(DepRegisterInfo *reg, uint64_t val64)
 {
     GICProxy *s = XILINX_GIC_PROXY(reg->opaque);
     uint32_t val = val64;
-    uint64_t nr = (uint64_t)reg->access->opaque;
+    uint64_t nr = (uintptr_t)reg->access->opaque;
 
     s->regs[GICPN_MASK_REG(nr)] &= ~val;
     gicp_update(s, nr);
@@ -165,7 +165,7 @@ static void gicpn_disable_postw(DepRegisterInfo *reg, uint64_t val64)
 {
     GICProxy *s = XILINX_GIC_PROXY(reg->opaque);
     uint32_t val = val64;
-    uint64_t nr = (uint64_t)reg->access->opaque;
+    uint64_t nr = (uintptr_t)reg->access->opaque;
 
     s->regs[GICPN_MASK_REG(nr)] |= val;
     gicp_update(s, nr);
@@ -175,7 +175,7 @@ static void gicpn_trigger_postw(DepRegisterInfo *reg, uint64_t val64)
 {
     GICProxy *s = XILINX_GIC_PROXY(reg->opaque);
     uint32_t val = val64;
-    uint64_t nr = (uint64_t)reg->access->opaque;
+    uint64_t nr = (uintptr_t)reg->access->opaque;
 
     s->regs[GICPN_STATUS_REG(nr)] |= val;
     gicp_update(s, nr);

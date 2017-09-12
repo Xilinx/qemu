@@ -333,7 +333,7 @@ static memory_info init_memory(void *fdt, ram_addr_t ram_size, bool zynq_7000)
         } while (mem_offset > 0);
 
         DB_PRINT(0, "Highest memory address from DTS is: " \
-                 "0x%" PRIx64 "/0x%" PRIx64 "\n", mem_created, ram_size);
+                 "0x%" PRIx64 "/0x" RAM_ADDR_FMT "\n", mem_created, ram_size);
 
         /* We now have the maximum amount of DDR that has been created. */
         if (mem_created == 0) {
