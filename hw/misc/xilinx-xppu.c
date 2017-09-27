@@ -677,7 +677,7 @@ static uint64_t xppu_read(void *opaque, hwaddr addr, unsigned size,
                           MemTxAttrs attr)
 {
     XPPU *s = XILINX_XPPU(opaque);
-    DepRegisterInfo *r = &s->regs_info[addr / 4];
+    DepRegisterInfo *r;
 
     if (!attr.secure) {
         /* Non secure, return zero */
@@ -689,6 +689,19 @@ static uint64_t xppu_read(void *opaque, hwaddr addr, unsigned size,
         assert(i < ARRAY_SIZE(s->perm_ram));
         return s->perm_ram[i];
     }
+
+    /* We are reading off the end of the defined registers, but still in the
+     * XPPU memory space.
+     */
+    if ((addr / 4) > R_MAX) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Decode error: "
+                      "read from %" HWADDR_PRIx "\n",
+                      object_get_canonical_path(OBJECT(s)),
+                      addr);
+        return 0;
+    }
+
+    r = &s->regs_info[addr / 4];
 
     if (!r->data) {
         qemu_log("%s: Decode error: read from %" HWADDR_PRIx "\n",
@@ -705,7 +718,7 @@ static void xppu_write(void *opaque, hwaddr addr, uint64_t value,
                        unsigned size, MemTxAttrs attr)
 {
     XPPU *s = XILINX_XPPU(opaque);
-    DepRegisterInfo *r = &s->regs_info[addr / 4];
+    DepRegisterInfo *r;
 
     if (!attr.secure) {
         return;
@@ -717,6 +730,19 @@ static void xppu_write(void *opaque, hwaddr addr, uint64_t value,
         s->perm_ram[i] = value;
         return;
     }
+
+    /* We are writing off the end of the defined registers, but still in the
+     * XPPU memory space.
+     */
+    if ((addr / 4) > R_MAX) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Decode error: "
+                      "write to %" HWADDR_PRIx "=%" PRIx64 "\n",
+                      object_get_canonical_path(OBJECT(s)),
+                      addr, value);
+        return;
+    }
+
+    r = &s->regs_info[addr / 4];
 
     if (!r->data) {
         qemu_log("%s: Decode error: write to %" HWADDR_PRIx "=%" PRIx64 "\n",
