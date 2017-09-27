@@ -1209,8 +1209,8 @@ static uint32_t gic_cpu_read(GICState *s, int cpu, int offset, bool secure)
     case 0x1c: /* Aliased Binary Point */
         return s->abpr[cpu];
     case 0x20: /* AIAR */
-        hw_error("unsupported AIAR\n");
-        break;
+        qemu_log_mask(LOG_UNIMP, "unsupported AIAR\n");
+        return 0;
     case 0xd0: case 0xd4: case 0xd8: case 0xdc:
         return s->apr[(offset - 0xd0) / 4][cpu];
     case 0xFC:
