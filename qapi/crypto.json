@@ -1,6 +1,9 @@
 # -*- Mode: Python -*-
 #
-# QAPI crypto definitions
+
+##
+# = QAPI crypto definitions
+##
 
 ##
 # @QCryptoTLSCredsEndpoint:
@@ -63,6 +66,7 @@
 # @aes-192: AES with 192 bit / 24 byte keys
 # @aes-256: AES with 256 bit / 32 byte keys
 # @des-rfb: RFB specific variant of single DES. Do not use except in VNC.
+# @3des: 3DES(EDE) with 192 bit / 24 byte keys (since 2.9)
 # @cast5-128: Cast5 with 128 bit / 16 byte keys
 # @serpent-128: Serpent with 128 bit / 16 byte keys
 # @serpent-192: Serpent with 192 bit / 24 byte keys
@@ -75,7 +79,7 @@
 { 'enum': 'QCryptoCipherAlgorithm',
   'prefix': 'QCRYPTO_CIPHER_ALG',
   'data': ['aes-128', 'aes-192', 'aes-256',
-           'des-rfb',
+           'des-rfb', '3des',
            'cast5-128',
            'serpent-128', 'serpent-192', 'serpent-256',
            'twofish-128', 'twofish-192', 'twofish-256']}
@@ -148,7 +152,7 @@
 #
 # The options that apply to QCow/QCow2 AES-CBC encryption format
 #
-# @key-secret: #optional the ID of a QCryptoSecret object providing the
+# @key-secret: the ID of a QCryptoSecret object providing the
 #              decryption key. Mandatory except when probing image for
 #              metadata only.
 #
@@ -162,7 +166,7 @@
 #
 # The options that apply to LUKS encryption format
 #
-# @key-secret: #optional the ID of a QCryptoSecret object providing the
+# @key-secret: the ID of a QCryptoSecret object providing the
 #              decryption key. Mandatory except when probing image for
 #              metadata only.
 # Since: 2.6
@@ -176,17 +180,17 @@
 #
 # The options that apply to LUKS encryption format initialization
 #
-# @cipher-alg: #optional the cipher algorithm for data encryption
+# @cipher-alg: the cipher algorithm for data encryption
 #              Currently defaults to 'aes'.
-# @cipher-mode: #optional the cipher mode for data encryption
+# @cipher-mode: the cipher mode for data encryption
 #               Currently defaults to 'cbc'
-# @ivgen-alg: #optional the initialization vector generator
+# @ivgen-alg: the initialization vector generator
 #             Currently defaults to 'essiv'
-# @ivgen-hash-alg: #optional the initialization vector generator hash
+# @ivgen-hash-alg: the initialization vector generator hash
 #                  Currently defaults to 'sha256'
-# @hash-alg: #optional the master key hash algorithm
+# @hash-alg: the master key hash algorithm
 #            Currently defaults to 'sha256'
-# @iter-time: #optional number of milliseconds to spend in
+# @iter-time: number of milliseconds to spend in
 #             PBKDF passphrase processing. Currently defaults
 #             to 2000. (since 2.8)
 # Since: 2.6
@@ -253,8 +257,8 @@
 #
 # @active: whether the key slot is currently in use
 # @key-offset: offset to the key material in bytes
-# @iters: #optional number of PBKDF2 iterations for key material
-# @stripes: #optional number of stripes for splitting key material
+# @iters: number of PBKDF2 iterations for key material
+# @stripes: number of stripes for splitting key material
 #
 # Since: 2.7
 ##
@@ -273,7 +277,7 @@
 # @cipher-alg: the cipher algorithm for data encryption
 # @cipher-mode: the cipher mode for data encryption
 # @ivgen-alg: the initialization vector generator
-# @ivgen-hash-alg: #optional the initialization vector generator hash
+# @ivgen-hash-alg: the initialization vector generator hash
 # @hash-alg: the master key hash algorithm
 # @payload-offset: offset to the payload data in bytes
 # @master-key-iters: number of PBKDF2 iterations for key material

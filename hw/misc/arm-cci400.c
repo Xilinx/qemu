@@ -38,6 +38,7 @@
 #endif
 
 #define TYPE_ARM_CCI400 "arm,cci-400"
+#define TYPE_ARM_CCI400_IOMMU_MEMORY_REGION "arm,cci-400-iommu-memory-region"
 
 #define ARM_CCI400(obj) \
      OBJECT_CHECK(CCI, (obj), TYPE_ARM_CCI400)
@@ -316,7 +317,7 @@ DEP_REG32(EVENT_COUNTER3_OVERFLOW, 0xd00c)
 typedef struct CCI {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
-    MemoryRegion iommu;
+    IOMMUMemoryRegion iommu;
 
     struct {
         uint64_t stripe_granule_sz;
@@ -568,7 +569,7 @@ static const MemoryRegionOps cci400_ops = {
     },
 };
 
-static IOMMUTLBEntry cci_translate(MemoryRegion *mr, hwaddr addr,
+static IOMMUTLBEntry cci_translate(IOMMUMemoryRegion *mr, hwaddr addr,
                                    bool is_write, MemTxAttrs *attr)
 {
     CCI *s = container_of(mr, CCI, iommu);;
@@ -599,10 +600,6 @@ static IOMMUTLBEntry cci_translate(MemoryRegion *mr, hwaddr addr,
     ret.target_as = s->as[mi];
     return ret;
 }
-
-static MemoryRegionIOMMUOps cci_iommu_ops = {
-    .translate_attr = cci_translate,
-};
 
 static void cci400_realize(DeviceState *dev, Error **errp)
 {
@@ -637,7 +634,7 @@ static void sig_handler(void *opaque, int n, int level)
 
     s->enable_mask &= ~(1ULL << n);
     s->enable_mask |= level64 << n;
-    memory_region_set_enabled(&s->iommu, !!s->enable_mask);
+    memory_region_set_enabled(MEMORY_REGION(&s->iommu), !!s->enable_mask);
 }
 
 static void cci400_init(Object *obj)
@@ -650,9 +647,11 @@ static void cci400_init(Object *obj)
                           TYPE_ARM_CCI400, R_MAX * 4);
     sysbus_init_mmio(sbd, &s->iomem);
 
-    memory_region_init_iommu(&s->iommu, OBJECT(s), &cci_iommu_ops,
+    memory_region_init_iommu(&s->iommu, sizeof(s->iommu),
+                             TYPE_ARM_CCI400_IOMMU_MEMORY_REGION,
+                             OBJECT(s),
                              "cci-iommu", UINT64_MAX);
-    sysbus_init_mmio(sbd, &s->iommu);
+    sysbus_init_mmio(sbd, MEMORY_REGION(&s->iommu));
 
     for (i = 0; i < ARRAY_SIZE(s->M); i++) {
         char *name = g_strdup_printf("M%d", i);
@@ -703,6 +702,14 @@ static void cci400_class_init(ObjectClass *klass, void *data)
     fggc->controller_gpios = gpio_sets;
 }
 
+static void cci400_iommu_memory_region_class_init(ObjectClass *klass,
+                                                   void *data)
+{
+    IOMMUMemoryRegionClass *imrc = IOMMU_MEMORY_REGION_CLASS(klass);
+
+    imrc->translate_attr = cci_translate;
+}
+
 static const TypeInfo cci400_info = {
     .name          = TYPE_ARM_CCI400,
     .parent        = TYPE_SYS_BUS_DEVICE,
@@ -715,9 +722,16 @@ static const TypeInfo cci400_info = {
     },
 };
 
+static const TypeInfo cci400_iommu_memory_region_info = {
+    .name = TYPE_ARM_CCI400_IOMMU_MEMORY_REGION,
+    .parent = TYPE_IOMMU_MEMORY_REGION,
+    .class_init = cci400_iommu_memory_region_class_init,
+};
+
 static void cci400_register_types(void)
 {
     type_register_static(&cci400_info);
+    type_register_static(&cci400_iommu_memory_region_info);
 }
 
 type_init(cci400_register_types)

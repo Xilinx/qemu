@@ -12,7 +12,7 @@ read 512/512 bytes at offset 229376
 512 bytes, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
 wrote 512/512 bytes at offset 0
 512 bytes, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
-blkverify: read sector_num=0 nb_sectors=1 contents mismatch in sector 0
+blkverify: read offset=0 bytes=512 contents mismatch at offset 0
 
 === Testing blkverify through file blockref ===
 
@@ -26,7 +26,7 @@ read 512/512 bytes at offset 229376
 512 bytes, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
 wrote 512/512 bytes at offset 0
 512 bytes, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
-blkverify: read sector_num=0 nb_sectors=1 contents mismatch in sector 0
+blkverify: read offset=0 bytes=512 contents mismatch at offset 0
 
 === Testing blkdebug through filename ===
 
@@ -46,7 +46,7 @@ QMP_VERSION
 read failed: Input/output error
 {"return": ""}
 {"return": {}}
-{"timestamp": {"seconds":  TIMESTAMP, "microseconds":  TIMESTAMP}, "event": "SHUTDOWN"}
+{"timestamp": {"seconds":  TIMESTAMP, "microseconds":  TIMESTAMP}, "event": "SHUTDOWN", "data": {"guest": false}}
 
 
 === Testing blkverify on existing block device ===
@@ -56,7 +56,7 @@ QMP_VERSION
 {"return": {}}
 {"return": {}}
 {"return": {}}
-blkverify: read sector_num=0 nb_sectors=1 contents mismatch in sector 0
+blkverify: read offset=0 bytes=512 contents mismatch at offset 0
 
 
 === Testing blkverify on existing raw block device ===
@@ -66,7 +66,7 @@ QMP_VERSION
 {"return": {}}
 {"return": {}}
 {"return": {}}
-blkverify: read sector_num=0 nb_sectors=1 contents mismatch in sector 0
+blkverify: read offset=0 bytes=512 contents mismatch at offset 0
 
 
 === Testing blkdebug's set-state through QMP ===
@@ -85,7 +85,7 @@ wrote 512/512 bytes at offset 0
 read failed: Input/output error
 {"return": ""}
 {"return": {}}
-{"timestamp": {"seconds":  TIMESTAMP, "microseconds":  TIMESTAMP}, "event": "SHUTDOWN"}
+{"timestamp": {"seconds":  TIMESTAMP, "microseconds":  TIMESTAMP}, "event": "SHUTDOWN", "data": {"guest": false}}
 QEMU_PROG: Failed to flush the L2 table cache: Input/output error
 QEMU_PROG: Failed to flush the refcount block cache: Input/output error
 

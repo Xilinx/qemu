@@ -3,6 +3,13 @@
 # This file is a stress test of supported qapi constructs that must
 # parse and compile correctly.
 
+# Whitelists to permit QAPI rule violations
+{ 'pragma': {
+    # Commands allowed to return a non-dictionary:
+    'returns-whitelist': [
+        'guest-get-time',
+        'guest-sync' ] } }
+
 { 'struct': 'TestStruct',
   'data': { 'integer': 'int', 'boolean': 'bool', 'string': 'str' } }
 
@@ -86,18 +93,20 @@
 { 'struct': 'WrapAlternate',
   'data': { 'alt': 'UserDefAlternate' } }
 { 'alternate': 'UserDefAlternate',
-  'data': { 'udfu': 'UserDefFlatUnion', 's': 'str', 'i': 'int' } }
+  'data': { 'udfu': 'UserDefFlatUnion', 'e': 'EnumOne', 'i': 'int',
+            'n': 'null' } }
 
 { 'struct': 'UserDefC',
   'data': { 'string1': 'str', 'string2': 'str' } }
 
 # for testing use of 'number' within alternates
-{ 'alternate': 'AltStrBool', 'data': { 's': 'str', 'b': 'bool' } }
-{ 'alternate': 'AltStrNum', 'data': { 's': 'str', 'n': 'number' } }
-{ 'alternate': 'AltNumStr', 'data': { 'n': 'number', 's': 'str' } }
-{ 'alternate': 'AltStrInt', 'data': { 's': 'str', 'i': 'int' } }
-{ 'alternate': 'AltIntNum', 'data': { 'i': 'int', 'n': 'number' } }
-{ 'alternate': 'AltNumInt', 'data': { 'n': 'number', 'i': 'int' } }
+{ 'alternate': 'AltEnumBool', 'data': { 'e': 'EnumOne', 'b': 'bool' } }
+{ 'alternate': 'AltEnumNum', 'data': { 'e': 'EnumOne', 'n': 'number' } }
+{ 'alternate': 'AltNumEnum', 'data': { 'n': 'number', 'e': 'EnumOne' } }
+{ 'alternate': 'AltEnumInt', 'data': { 'e': 'EnumOne', 'i': 'int' } }
+
+# for testing use of 'str' within alternates
+{ 'alternate': 'AltStrObj', 'data': { 's': 'str', 'o': 'TestStruct' } }
 
 # for testing native lists
 { 'union': 'UserDefNativeListUnion',

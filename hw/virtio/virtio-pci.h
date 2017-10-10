@@ -26,6 +26,7 @@
 #include "hw/virtio/virtio-input.h"
 #include "hw/virtio/virtio-gpu.h"
 #include "hw/virtio/virtio-crypto.h"
+#include "hw/virtio/vhost-user-scsi.h"
 
 #ifdef CONFIG_VIRTFS
 #include "hw/9pfs/virtio-9p.h"
@@ -44,6 +45,7 @@ typedef struct VirtIOBalloonPCI VirtIOBalloonPCI;
 typedef struct VirtIOSerialPCI VirtIOSerialPCI;
 typedef struct VirtIONetPCI VirtIONetPCI;
 typedef struct VHostSCSIPCI VHostSCSIPCI;
+typedef struct VHostUserSCSIPCI VHostUserSCSIPCI;
 typedef struct VirtIORngPCI VirtIORngPCI;
 typedef struct VirtIOInputPCI VirtIOInputPCI;
 typedef struct VirtIOInputHIDPCI VirtIOInputHIDPCI;
@@ -72,6 +74,10 @@ enum {
     VIRTIO_PCI_FLAG_MODERN_PIO_NOTIFY_BIT,
     VIRTIO_PCI_FLAG_DISABLE_PCIE_BIT,
     VIRTIO_PCI_FLAG_PAGE_PER_VQ_BIT,
+    VIRTIO_PCI_FLAG_ATS_BIT,
+    VIRTIO_PCI_FLAG_INIT_DEVERR_BIT,
+    VIRTIO_PCI_FLAG_INIT_LNKCTL_BIT,
+    VIRTIO_PCI_FLAG_INIT_PM_BIT,
 };
 
 /* Need to activate work-arounds for buggy guests at vmstate load. */
@@ -95,6 +101,18 @@ enum {
 /* page per vq flag to be used by split drivers within guests */
 #define VIRTIO_PCI_FLAG_PAGE_PER_VQ \
     (1 << VIRTIO_PCI_FLAG_PAGE_PER_VQ_BIT)
+
+/* address space translation service */
+#define VIRTIO_PCI_FLAG_ATS (1 << VIRTIO_PCI_FLAG_ATS_BIT)
+
+/* Init error enabling flags */
+#define VIRTIO_PCI_FLAG_INIT_DEVERR (1 << VIRTIO_PCI_FLAG_INIT_DEVERR_BIT)
+
+/* Init Link Control register */
+#define VIRTIO_PCI_FLAG_INIT_LNKCTL (1 << VIRTIO_PCI_FLAG_INIT_LNKCTL_BIT)
+
+/* Init Power Management */
+#define VIRTIO_PCI_FLAG_INIT_PM (1 << VIRTIO_PCI_FLAG_INIT_PM_BIT)
 
 typedef struct {
     MSIMessage msg;
@@ -213,6 +231,15 @@ struct VHostSCSIPCI {
     VHostSCSI vdev;
 };
 #endif
+
+#define TYPE_VHOST_USER_SCSI_PCI "vhost-user-scsi-pci"
+#define VHOST_USER_SCSI_PCI(obj) \
+        OBJECT_CHECK(VHostUserSCSIPCI, (obj), TYPE_VHOST_USER_SCSI_PCI)
+
+struct VHostUserSCSIPCI {
+    VirtIOPCIProxy parent_obj;
+    VHostUserSCSI vdev;
+};
 
 /*
  * virtio-blk-pci: This extends VirtioPCIProxy.

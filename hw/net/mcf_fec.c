@@ -9,7 +9,9 @@
 #include "hw/hw.h"
 #include "net/net.h"
 #include "hw/m68k/mcf.h"
+#include "hw/m68k/mcf_fec.h"
 #include "hw/net/mii.h"
+#include "hw/sysbus.h"
 /* For crc32 */
 #include <zlib.h>
 #include "exec/address-spaces.h"
@@ -25,11 +27,13 @@ do { printf("mcf_fec: " fmt , ## __VA_ARGS__); } while (0)
 
 #define FEC_MAX_DESC 1024
 #define FEC_MAX_FRAME_SIZE 2032
+#define FEC_MIB_SIZE 64
 
 typedef struct {
-    MemoryRegion *sysmem;
+    SysBusDevice parent_obj;
+
     MemoryRegion iomem;
-    qemu_irq *irq;
+    qemu_irq irq[FEC_NUM_IRQ];
     NICState *nic;
     NICConf conf;
     uint32_t irq_state;
@@ -48,6 +52,7 @@ typedef struct {
     uint32_t erdsr;
     uint32_t etdsr;
     uint32_t emrbr;
+    uint32_t mib[FEC_MIB_SIZE];
 } mcf_fec_state;
 
 #define FEC_INT_HB   0x80000000
@@ -68,7 +73,6 @@ typedef struct {
 #define FEC_RESET   1
 
 /* Map interrupt flags onto IRQ lines.  */
-#define FEC_NUM_IRQ 13
 static const uint32_t mcf_fec_irq_map[FEC_NUM_IRQ] = {
     FEC_INT_TXF,
     FEC_INT_TXB,
@@ -109,6 +113,63 @@ typedef struct {
 #define FEC_BD_OV   0x0002
 #define FEC_BD_TR   0x0001
 
+#define MIB_RMON_T_DROP         0
+#define MIB_RMON_T_PACKETS      1
+#define MIB_RMON_T_BC_PKT       2
+#define MIB_RMON_T_MC_PKT       3
+#define MIB_RMON_T_CRC_ALIGN    4
+#define MIB_RMON_T_UNDERSIZE    5
+#define MIB_RMON_T_OVERSIZE     6
+#define MIB_RMON_T_FRAG         7
+#define MIB_RMON_T_JAB          8
+#define MIB_RMON_T_COL          9
+#define MIB_RMON_T_P64          10
+#define MIB_RMON_T_P65TO127     11
+#define MIB_RMON_T_P128TO255    12
+#define MIB_RMON_T_P256TO511    13
+#define MIB_RMON_T_P512TO1023   14
+#define MIB_RMON_T_P1024TO2047  15
+#define MIB_RMON_T_P_GTE2048    16
+#define MIB_RMON_T_OCTETS       17
+#define MIB_IEEE_T_DROP         18
+#define MIB_IEEE_T_FRAME_OK     19
+#define MIB_IEEE_T_1COL         20
+#define MIB_IEEE_T_MCOL         21
+#define MIB_IEEE_T_DEF          22
+#define MIB_IEEE_T_LCOL         23
+#define MIB_IEEE_T_EXCOL        24
+#define MIB_IEEE_T_MACERR       25
+#define MIB_IEEE_T_CSERR        26
+#define MIB_IEEE_T_SQE          27
+#define MIB_IEEE_T_FDXFC        28
+#define MIB_IEEE_T_OCTETS_OK    29
+
+#define MIB_RMON_R_DROP         32
+#define MIB_RMON_R_PACKETS      33
+#define MIB_RMON_R_BC_PKT       34
+#define MIB_RMON_R_MC_PKT       35
+#define MIB_RMON_R_CRC_ALIGN    36
+#define MIB_RMON_R_UNDERSIZE    37
+#define MIB_RMON_R_OVERSIZE     38
+#define MIB_RMON_R_FRAG         39
+#define MIB_RMON_R_JAB          40
+#define MIB_RMON_R_RESVD_0      41
+#define MIB_RMON_R_P64          42
+#define MIB_RMON_R_P65TO127     43
+#define MIB_RMON_R_P128TO255    44
+#define MIB_RMON_R_P256TO511    45
+#define MIB_RMON_R_P512TO1023   46
+#define MIB_RMON_R_P1024TO2047  47
+#define MIB_RMON_R_P_GTE2048    48
+#define MIB_RMON_R_OCTETS       49
+#define MIB_IEEE_R_DROP         50
+#define MIB_IEEE_R_FRAME_OK     51
+#define MIB_IEEE_R_CRC          52
+#define MIB_IEEE_R_ALIGN        53
+#define MIB_IEEE_R_MACERR       54
+#define MIB_IEEE_R_FDXFC        55
+#define MIB_IEEE_R_OCTETS_OK    56
+
 static void mcf_fec_read_bd(mcf_fec_bd *bd, uint32_t addr)
 {
     cpu_physical_memory_read(addr, bd, sizeof(*bd));
@@ -145,6 +206,31 @@ static void mcf_fec_update(mcf_fec_state *s)
     s->irq_state = active;
 }
 
+static void mcf_fec_tx_stats(mcf_fec_state *s, int size)
+{
+    s->mib[MIB_RMON_T_PACKETS]++;
+    s->mib[MIB_RMON_T_OCTETS] += size;
+    if (size < 64) {
+        s->mib[MIB_RMON_T_FRAG]++;
+    } else if (size == 64) {
+        s->mib[MIB_RMON_T_P64]++;
+    } else if (size < 128) {
+        s->mib[MIB_RMON_T_P65TO127]++;
+    } else if (size < 256) {
+        s->mib[MIB_RMON_T_P128TO255]++;
+    } else if (size < 512) {
+        s->mib[MIB_RMON_T_P256TO511]++;
+    } else if (size < 1024) {
+        s->mib[MIB_RMON_T_P512TO1023]++;
+    } else if (size < 2048) {
+        s->mib[MIB_RMON_T_P1024TO2047]++;
+    } else {
+        s->mib[MIB_RMON_T_P_GTE2048]++;
+    }
+    s->mib[MIB_IEEE_T_FRAME_OK]++;
+    s->mib[MIB_IEEE_T_OCTETS_OK] += size;
+}
+
 static void mcf_fec_do_tx(mcf_fec_state *s)
 {
     uint32_t addr;
@@ -178,6 +264,7 @@ static void mcf_fec_do_tx(mcf_fec_state *s)
             /* Last buffer in frame.  */
             DPRINTF("Sending packet\n");
             qemu_send_packet(qemu_get_queue(s->nic), frame, frame_size);
+            mcf_fec_tx_stats(s, frame_size);
             ptr = frame;
             frame_size = 0;
             s->eir |= FEC_INT_TXF;
@@ -208,8 +295,10 @@ static void mcf_fec_enable_rx(mcf_fec_state *s)
     }
 }
 
-static void mcf_fec_reset(mcf_fec_state *s)
+static void mcf_fec_reset(DeviceState *dev)
 {
+    mcf_fec_state *s = MCF_FEC_NET(dev);
+
     s->eir = 0;
     s->eimr = 0;
     s->rx_enabled = 0;
@@ -298,6 +387,7 @@ static uint64_t mcf_fec_read(void *opaque, hwaddr addr,
     case 0x180: return s->erdsr;
     case 0x184: return s->etdsr;
     case 0x188: return s->emrbr;
+    case 0x200 ... 0x2e0: return s->mib[(addr & 0x1ff) / 4];
     default:
         hw_error("mcf_fec_read: Bad address 0x%x\n", (int)addr);
         return 0;
@@ -330,7 +420,7 @@ static void mcf_fec_write(void *opaque, hwaddr addr,
         s->ecr = value;
         if (value & FEC_RESET) {
             DPRINTF("Reset\n");
-            mcf_fec_reset(s);
+            mcf_fec_reset(opaque);
         }
         if ((s->ecr & FEC_EN) == 0) {
             s->rx_enabled = 0;
@@ -395,10 +485,38 @@ static void mcf_fec_write(void *opaque, hwaddr addr,
     case 0x188:
         s->emrbr = value > 0 ? value & 0x7F0 : 0x7F0;
         break;
+    case 0x200 ... 0x2e0:
+        s->mib[(addr & 0x1ff) / 4] = value;
+        break;
     default:
         hw_error("mcf_fec_write Bad address 0x%x\n", (int)addr);
     }
     mcf_fec_update(s);
+}
+
+static void mcf_fec_rx_stats(mcf_fec_state *s, int size)
+{
+    s->mib[MIB_RMON_R_PACKETS]++;
+    s->mib[MIB_RMON_R_OCTETS] += size;
+    if (size < 64) {
+        s->mib[MIB_RMON_R_FRAG]++;
+    } else if (size == 64) {
+        s->mib[MIB_RMON_R_P64]++;
+    } else if (size < 128) {
+        s->mib[MIB_RMON_R_P65TO127]++;
+    } else if (size < 256) {
+        s->mib[MIB_RMON_R_P128TO255]++;
+    } else if (size < 512) {
+        s->mib[MIB_RMON_R_P256TO511]++;
+    } else if (size < 1024) {
+        s->mib[MIB_RMON_R_P512TO1023]++;
+    } else if (size < 2048) {
+        s->mib[MIB_RMON_R_P1024TO2047]++;
+    } else {
+        s->mib[MIB_RMON_R_P_GTE2048]++;
+    }
+    s->mib[MIB_IEEE_R_FRAME_OK]++;
+    s->mib[MIB_IEEE_R_OCTETS_OK] += size;
 }
 
 static int mcf_fec_have_receive_space(mcf_fec_state *s, size_t want)
@@ -496,6 +614,7 @@ static ssize_t mcf_fec_receive(NetClientState *nc, const uint8_t *buf, size_t si
         }
     }
     s->rx_descriptor = addr;
+    mcf_fec_rx_stats(s, retsize);
     mcf_fec_enable_rx(s);
     mcf_fec_update(s);
     return retsize;
@@ -513,24 +632,55 @@ static NetClientInfo net_mcf_fec_info = {
     .receive = mcf_fec_receive,
 };
 
-void mcf_fec_init(MemoryRegion *sysmem, NICInfo *nd,
-                  hwaddr base, qemu_irq *irq)
+static void mcf_fec_realize(DeviceState *dev, Error **errp)
 {
-    mcf_fec_state *s;
+    mcf_fec_state *s = MCF_FEC_NET(dev);
 
-    qemu_check_nic_model(nd, "mcf_fec");
-
-    s = (mcf_fec_state *)g_malloc0(sizeof(mcf_fec_state));
-    s->sysmem = sysmem;
-    s->irq = irq;
-
-    memory_region_init_io(&s->iomem, NULL, &mcf_fec_ops, s, "fec", 0x400);
-    memory_region_add_subregion(sysmem, base, &s->iomem);
-
-    s->conf.macaddr = nd->macaddr;
-    s->conf.peers.ncs[0] = nd->netdev;
-
-    s->nic = qemu_new_nic(&net_mcf_fec_info, &s->conf, nd->model, nd->name, s);
-
+    s->nic = qemu_new_nic(&net_mcf_fec_info, &s->conf,
+                          object_get_typename(OBJECT(dev)), dev->id, s);
     qemu_format_nic_info_str(qemu_get_queue(s->nic), s->conf.macaddr.a);
 }
+
+static void mcf_fec_instance_init(Object *obj)
+{
+    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+    mcf_fec_state *s = MCF_FEC_NET(obj);
+    int i;
+
+    memory_region_init_io(&s->iomem, obj, &mcf_fec_ops, s, "fec", 0x400);
+    sysbus_init_mmio(sbd, &s->iomem);
+    for (i = 0; i < FEC_NUM_IRQ; i++) {
+        sysbus_init_irq(sbd, &s->irq[i]);
+    }
+}
+
+static Property mcf_fec_properties[] = {
+    DEFINE_NIC_PROPERTIES(mcf_fec_state, conf),
+    DEFINE_PROP_END_OF_LIST(),
+};
+
+static void mcf_fec_class_init(ObjectClass *oc, void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(oc);
+
+    set_bit(DEVICE_CATEGORY_NETWORK, dc->categories);
+    dc->realize = mcf_fec_realize;
+    dc->desc = "MCF Fast Ethernet Controller network device";
+    dc->reset = mcf_fec_reset;
+    dc->props = mcf_fec_properties;
+}
+
+static const TypeInfo mcf_fec_info = {
+    .name          = TYPE_MCF_FEC_NET,
+    .parent        = TYPE_SYS_BUS_DEVICE,
+    .instance_size = sizeof(mcf_fec_state),
+    .instance_init = mcf_fec_instance_init,
+    .class_init    = mcf_fec_class_init,
+};
+
+static void mcf_fec_register_types(void)
+{
+    type_register_static(&mcf_fec_info);
+}
+
+type_init(mcf_fec_register_types)

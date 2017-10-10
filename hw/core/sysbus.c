@@ -381,6 +381,17 @@ static void sysbus_device_class_init(ObjectClass *klass, void *data)
     k->pwr_cntrl = sysbus_device_pwr_cntrl;
     k->hlt_cntrl = sysbus_device_hlt_cntrl;
     fmc->parse_reg = sysbus_parse_reg;
+    /*
+     * device_add plugs devices into a suitable bus.  For "real" buses,
+     * that actually connects the device.  For sysbus, the connections
+     * need to be made separately, and device_add can't do that.  The
+     * device would be left unconnected, and will probably not work
+     *
+     * However, a few machines can handle device_add/-device with
+     * a few specific sysbus devices. In those cases, the device
+     * subclass needs to override it and set user_creatable=true.
+     */
+    k->user_creatable = false;
 }
 
 static const TypeInfo sysbus_device_type_info = {

@@ -34,6 +34,10 @@
 #include <netdb.h>
 #include <sys/un.h>
 
+#ifdef CONFIG_SYSMACROS
+#include <sys/sysmacros.h>
+#endif
+
 void os_set_line_buffering(void);
 void os_set_proc_name(const char *s);
 void os_setup_signal_handling(void);
@@ -46,17 +50,6 @@ int os_mlock(void);
 
 typedef struct timeval qemu_timeval;
 #define qemu_gettimeofday(tp) gettimeofday(tp, NULL)
-
-#ifndef CONFIG_UTIMENSAT
-#ifndef UTIME_NOW
-# define UTIME_NOW     ((1l << 30) - 1l)
-#endif
-#ifndef UTIME_OMIT
-# define UTIME_OMIT    ((1l << 30) - 2l)
-#endif
-#endif
-typedef struct timespec qemu_timespec;
-int qemu_utimens(const char *path, const qemu_timespec *times);
 
 bool is_daemonized(void);
 

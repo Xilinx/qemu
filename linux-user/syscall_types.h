@@ -14,6 +14,12 @@ STRUCT(serial_icounter_struct,
 STRUCT(sockaddr,
        TYPE_SHORT, MK_ARRAY(TYPE_CHAR, 14))
 
+STRUCT(timeval,
+       MK_ARRAY(TYPE_LONG, 2))
+
+STRUCT(timespec,
+       MK_ARRAY(TYPE_LONG, 2))
+
 STRUCT(rtentry,
        TYPE_ULONG, MK_STRUCT(STRUCT_sockaddr), MK_STRUCT(STRUCT_sockaddr), MK_STRUCT(STRUCT_sockaddr),
        TYPE_SHORT, TYPE_SHORT, TYPE_ULONG, TYPE_PTRVOID, TYPE_SHORT, TYPE_PTRVOID,
@@ -225,6 +231,12 @@ STRUCT(dm_target_versions,
 
 STRUCT(dm_target_msg,
        TYPE_ULONGLONG) /* sector */
+
+STRUCT(file_clone_range,
+       TYPE_LONGLONG, /* src_fd */
+       TYPE_ULONGLONG, /* src_offset */
+       TYPE_ULONGLONG, /* src_length */
+       TYPE_ULONGLONG) /* dest_offset */
 
 STRUCT(fiemap_extent,
        TYPE_ULONGLONG, /* fe_logical */

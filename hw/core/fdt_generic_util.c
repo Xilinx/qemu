@@ -35,8 +35,9 @@
 #include "qapi/error.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/blockdev.h"
-#include "sysemu/char.h"
+#include "chardev/char.h"
 #include "qemu/log.h"
+#include "qemu/config-file.h"
 #include "qom/cpu.h"
 
 #ifndef FDT_GENERIC_UTIL_ERR_DEBUG
@@ -67,6 +68,12 @@
 int fdt_serial_ports;
 
 static int simple_bus_fdt_init(char *bus_node_path, FDTMachineInfo *fdti);
+
+static void fdt_get_irq_info_from_intc(FDTMachineInfo *fdti, qemu_irq *ret,
+                                       char *intc_node_path,
+                                       uint32_t *cells, uint32_t num_cells,
+                                       uint32_t max, Error **errp);
+
 
 typedef struct QEMUIRQSharedState {
     qemu_irq sink;
@@ -441,10 +448,34 @@ static qemu_irq fdt_get_gpio(FDTMachineInfo *fdti, char *node_path,
             };
             fdti->irqs = irq;
         }
-        ret = qdev_get_gpio_in_named(parent, gpio_name, idx);
+
+        if (!strcmp(propname, "interrupts-extended") &&
+            object_dynamic_cast(OBJECT(parent), TYPE_FDT_GENERIC_INTC) &&
+            parent_cells > 1) {
+            qemu_irq *irqs = g_new0(qemu_irq, fdt_generic_num_cpus);
+            int i;
+
+            fdt_get_irq_info_from_intc(fdti, irqs, parent_node_path, cells,
+                                    parent_cells, fdt_generic_num_cpus, &errp);
+            if (errp) {
+                reason = "failed to create gpio connection";
+                goto fail;
+            }
+
+            ret = NULL;
+            for (i = 0; i < fdt_generic_num_cpus; i++) {
+                if (irqs[i]) {
+                    ret = irqs[i];
+                    break;
+                }
+            }
+            g_free(irqs);
+        } else {
+            ret = qdev_get_gpio_in_named(parent, gpio_name, idx);
+        }
 
         if (ret) {
-            DB_PRINT_NP(1, "wiring GPIO input %s on %s ... \n",
+            DB_PRINT_NP(1, "wiring GPIO input %s on %s ...\n",
                         fgg_con ? fgg_con->name : "unnamed", parent_node_path);
         }
         return ret;
@@ -1110,7 +1141,7 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
         if (!object_dynamic_cast(dev, TYPE_REMOTE_PORT)) {
             /* Connect chardev if we can */
             if (fdt_serial_ports < MAX_SERIAL_PORTS && serial_hds[fdt_serial_ports]) {
-                CharDriverState *value = (CharDriverState*) serial_hds[fdt_serial_ports];
+                Chardev *value = (Chardev*) serial_hds[fdt_serial_ports];
 
                 object_property_set_str(dev, value->label, "chardev", &errp);
                 if (!errp) {

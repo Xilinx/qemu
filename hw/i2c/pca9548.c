@@ -92,7 +92,7 @@ static int pca9548_send(I2CSlave *i2c, uint8_t data)
     return ret;
 }
 
-static void pca9548_event(I2CSlave *i2c, enum i2c_event event)
+static int pca9548_event(I2CSlave *i2c, enum i2c_event event)
 {
     PCA9548State *s = PCA9548(i2c);
     int i;
@@ -121,6 +121,8 @@ static void pca9548_event(I2CSlave *i2c, enum i2c_event event)
             }
         }
     }
+
+    return 0;
 }
 
 static int pca9548_decode_address(I2CSlave *i2c, uint8_t address)

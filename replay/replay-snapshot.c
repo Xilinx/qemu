@@ -19,6 +19,7 @@
 #include "qapi/qmp/qstring.h"
 #include "qemu/error-report.h"
 #include "migration/vmstate.h"
+#include "migration/snapshot.h"
 
 static void replay_pre_save(void *opaque)
 {
@@ -58,4 +59,25 @@ static const VMStateDescription vmstate_replay = {
 void replay_vmstate_register(void)
 {
     vmstate_register(NULL, 0, &vmstate_replay, &replay_state);
+}
+
+void replay_vmstate_init(void)
+{
+    Error *err = NULL;
+
+    if (replay_snapshot) {
+        if (replay_mode == REPLAY_MODE_RECORD) {
+            if (save_snapshot(replay_snapshot, &err) != 0) {
+                error_report_err(err);
+                error_report("Could not create snapshot for icount record");
+                exit(1);
+            }
+        } else if (replay_mode == REPLAY_MODE_PLAY) {
+            if (load_snapshot(replay_snapshot, &err) != 0) {
+                error_report_err(err);
+                error_report("Could not load snapshot for icount replay");
+                exit(1);
+            }
+        }
+    }
 }

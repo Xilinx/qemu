@@ -17,6 +17,10 @@
  */
 
 #include "qemu/osdep.h"
+#include <getopt.h>
+#include <libgen.h>
+#include <pthread.h>
+
 #include "qapi/error.h"
 #include "qemu-common.h"
 #include "qemu/cutils.h"
@@ -28,6 +32,7 @@
 #include "qemu/config-file.h"
 #include "qemu/bswap.h"
 #include "qemu/log.h"
+#include "qemu/systemd.h"
 #include "block/snapshot.h"
 #include "qapi/util.h"
 #include "qapi/qmp/qstring.h"
@@ -35,10 +40,7 @@
 #include "io/channel-socket.h"
 #include "crypto/init.h"
 #include "trace/control.h"
-
-#include <getopt.h>
-#include <libgen.h>
-#include <pthread.h>
+#include "qemu-version.h"
 
 #define SOCKET_PATH                "/var/lock/qemu-nbd-%s"
 #define QEMU_NBD_OPT_CACHE         256
@@ -121,17 +123,17 @@ static void usage(const char *name)
 "      --detect-zeroes=MODE  set detect-zeroes mode (off, on, unmap)\n"
 "      --image-opts          treat FILE as a full set of image options\n"
 "\n"
-"Report bugs to <qemu-devel@nongnu.org>\n"
+QEMU_HELP_BOTTOM "\n"
     , name, NBD_DEFAULT_PORT, "DEVICE");
 }
 
 static void version(const char *name)
 {
     printf(
-"%s version 0.0.1\n"
+"%s " QEMU_VERSION QEMU_PKGVERSION "\n"
 "Written by Anthony Liguori.\n"
 "\n"
-"Copyright (C) 2006 Anthony Liguori <anthony@codemonkey.ws>.\n"
+QEMU_COPYRIGHT "\n"
 "This is free software; see the source for copying conditions.  There is NO\n"
 "warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n"
     , name);
@@ -254,8 +256,7 @@ static void *show_parts(void *arg)
 static void *nbd_client_thread(void *arg)
 {
     char *device = arg;
-    off_t size;
-    uint16_t nbdflags;
+    NBDExportInfo info = { .request_sizes = false, };
     QIOChannelSocket *sioc;
     int fd;
     int ret;
@@ -270,9 +271,8 @@ static void *nbd_client_thread(void *arg)
         goto out;
     }
 
-    ret = nbd_receive_negotiate(QIO_CHANNEL(sioc), NULL, &nbdflags,
-                                NULL, NULL, NULL,
-                                &size, &local_error);
+    ret = nbd_receive_negotiate(QIO_CHANNEL(sioc), NULL,
+                                NULL, NULL, NULL, &info, &local_error);
     if (ret < 0) {
         if (local_error) {
             error_report_err(local_error);
@@ -287,8 +287,9 @@ static void *nbd_client_thread(void *arg)
         goto out_socket;
     }
 
-    ret = nbd_init(fd, sioc, nbdflags, size);
+    ret = nbd_init(fd, sioc, &info, &local_error);
     if (ret < 0) {
+        error_report_err(local_error);
         goto out_fd;
     }
 
@@ -323,7 +324,7 @@ out:
 
 static int nbd_can_accept(void)
 {
-    return nb_fds < shared;
+    return state == RUNNING && nb_fds < shared;
 }
 
 static void nbd_export_closed(NBDExport *exp)
@@ -334,10 +335,10 @@ static void nbd_export_closed(NBDExport *exp)
 
 static void nbd_update_server_watch(void);
 
-static void nbd_client_closed(NBDClient *client)
+static void nbd_client_closed(NBDClient *client, bool negotiated)
 {
     nb_fds--;
-    if (nb_fds == 0 && !persistent && state == RUNNING) {
+    if (negotiated && nb_fds == 0 && !persistent && state == RUNNING) {
         state = TERMINATE;
     }
     nbd_update_server_watch();
@@ -394,13 +395,12 @@ static SocketAddress *nbd_build_socket_address(const char *sockpath,
 
     saddr = g_new0(SocketAddress, 1);
     if (sockpath) {
-        saddr->type = SOCKET_ADDRESS_KIND_UNIX;
-        saddr->u.q_unix.data = g_new0(UnixSocketAddress, 1);
-        saddr->u.q_unix.data->path = g_strdup(sockpath);
+        saddr->type = SOCKET_ADDRESS_TYPE_UNIX;
+        saddr->u.q_unix.path = g_strdup(sockpath);
     } else {
         InetSocketAddress *inet;
-        saddr->type = SOCKET_ADDRESS_KIND_INET;
-        inet = saddr->u.inet.data = g_new0(InetSocketAddress, 1);
+        saddr->type = SOCKET_ADDRESS_TYPE_INET;
+        inet = &saddr->u.inet;
         inet->host = g_strdup(bindto);
         if (port) {
             inet->port = g_strdup(port);
@@ -463,6 +463,43 @@ static QCryptoTLSCreds *nbd_get_tls_creds(const char *id, Error **errp)
     return creds;
 }
 
+static void setup_address_and_port(const char **address, const char **port)
+{
+    if (*address == NULL) {
+        *address = "0.0.0.0";
+    }
+
+    if (*port == NULL) {
+        *port = stringify(NBD_DEFAULT_PORT);
+    }
+}
+
+/*
+ * Check socket parameters compatibility when socket activation is used.
+ */
+static const char *socket_activation_validate_opts(const char *device,
+                                                   const char *sockpath,
+                                                   const char *address,
+                                                   const char *port)
+{
+    if (device != NULL) {
+        return "NBD device can't be set when using socket activation";
+    }
+
+    if (sockpath != NULL) {
+        return "Unix socket can't be set when using socket activation";
+    }
+
+    if (address != NULL) {
+        return "The interface can't be set when using socket activation";
+    }
+
+    if (port != NULL) {
+        return "TCP port number can't be set when using socket activation";
+    }
+
+    return NULL;
+}
 
 int main(int argc, char **argv)
 {
@@ -471,7 +508,7 @@ int main(int argc, char **argv)
     off_t dev_offset = 0;
     uint16_t nbdflags = 0;
     bool disconnect = false;
-    const char *bindto = "0.0.0.0";
+    const char *bindto = NULL;
     const char *port = NULL;
     char *sockpath = NULL;
     char *device = NULL;
@@ -533,6 +570,7 @@ int main(int argc, char **argv)
     char *trace_file = NULL;
     bool fork_process = false;
     int old_stderr = -1;
+    unsigned socket_activation;
 
     /* The client thread uses SIGTERM to interrupt the server.  A signal
      * handler ensures that "qemu-nbd -v -c" exits with a nice status code.
@@ -541,6 +579,10 @@ int main(int argc, char **argv)
     memset(&sa_sigterm, 0, sizeof(sa_sigterm));
     sa_sigterm.sa_handler = termsig_handler;
     sigaction(SIGTERM, &sa_sigterm, NULL);
+
+#ifdef CONFIG_POSIX
+    signal(SIGPIPE, SIG_IGN);
+#endif
 
     module_call_init(MODULE_INIT_TRACE);
     qcrypto_init(&error_fatal);
@@ -751,6 +793,26 @@ int main(int argc, char **argv)
     trace_init_file(trace_file);
     qemu_set_log(LOG_TRACE);
 
+    socket_activation = check_socket_activation();
+    if (socket_activation == 0) {
+        setup_address_and_port(&bindto, &port);
+    } else {
+        /* Using socket activation - check user didn't use -p etc. */
+        const char *err_msg = socket_activation_validate_opts(device, sockpath,
+                                                              bindto, port);
+        if (err_msg != NULL) {
+            error_report("%s", err_msg);
+            exit(EXIT_FAILURE);
+        }
+
+        /* qemu-nbd can only listen on a single socket.  */
+        if (socket_activation > 1) {
+            error_report("qemu-nbd does not support socket activation with %s > 1",
+                         "LISTEN_FDS");
+            exit(EXIT_FAILURE);
+        }
+    }
+
     if (tlscredsid) {
         if (sockpath) {
             error_report("TLS is only supported with IPv4/IPv6");
@@ -855,7 +917,25 @@ int main(int argc, char **argv)
         snprintf(sockpath, 128, SOCKET_PATH, basename(device));
     }
 
-    saddr = nbd_build_socket_address(sockpath, bindto, port);
+    if (socket_activation == 0) {
+        server_ioc = qio_channel_socket_new();
+        saddr = nbd_build_socket_address(sockpath, bindto, port);
+        if (qio_channel_socket_listen_sync(server_ioc, saddr, &local_err) < 0) {
+            object_unref(OBJECT(server_ioc));
+            error_report_err(local_err);
+            return 1;
+        }
+    } else {
+        /* See comment in check_socket_activation above. */
+        assert(socket_activation == 1);
+        server_ioc = qio_channel_socket_new_fd(FIRST_SOCKET_ACTIVATION_FD,
+                                               &local_err);
+        if (server_ioc == NULL) {
+            error_report("Failed to use socket activation: %s",
+                         error_get_pretty(local_err));
+            exit(EXIT_FAILURE);
+        }
+    }
 
     if (qemu_init_main_loop(&local_err)) {
         error_report_err(local_err);
@@ -882,7 +962,7 @@ int main(int argc, char **argv)
     } else {
         if (fmt) {
             options = qdict_new();
-            qdict_put(options, "driver", qstring_from_str(fmt));
+            qdict_put_str(options, "driver", fmt);
         }
         blk = blk_new_open(srcpath, NULL, options, flags, &local_err);
     }
@@ -948,13 +1028,6 @@ int main(int argc, char **argv)
     } else if (export_description) {
         error_report("Export description requires an export name");
         exit(EXIT_FAILURE);
-    }
-
-    server_ioc = qio_channel_socket_new();
-    if (qio_channel_socket_listen_sync(server_ioc, saddr, &local_err) < 0) {
-        object_unref(OBJECT(server_ioc));
-        error_report_err(local_err);
-        return 1;
     }
 
     if (device) {

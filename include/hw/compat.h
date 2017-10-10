@@ -1,6 +1,68 @@
 #ifndef HW_COMPAT_H
 #define HW_COMPAT_H
 
+#define HW_COMPAT_2_9 \
+    {\
+        .driver   = "pci-bridge",\
+        .property = "shpc",\
+        .value    = "off",\
+    },{\
+        .driver   = "intel-iommu",\
+        .property = "pt",\
+        .value    = "off",\
+    },{\
+        .driver   = "virtio-net-device",\
+        .property = "x-mtu-bypass-backend",\
+        .value    = "off",\
+    },{\
+        .driver   = "pcie-root-port",\
+        .property = "x-migrate-msix",\
+        .value    = "false",\
+    },
+
+#define HW_COMPAT_2_8 \
+    {\
+        .driver   = "fw_cfg_mem",\
+        .property = "x-file-slots",\
+        .value    = stringify(0x10),\
+    },{\
+        .driver   = "fw_cfg_io",\
+        .property = "x-file-slots",\
+        .value    = stringify(0x10),\
+    },{\
+        .driver   = "pflash_cfi01",\
+        .property = "old-multiple-chip-handling",\
+        .value    = "on",\
+    },{\
+        .driver   = "pci-bridge",\
+        .property = "shpc",\
+        .value    = "on",\
+    },{\
+        .driver   = TYPE_PCI_DEVICE,\
+        .property = "x-pcie-extcap-init",\
+        .value    = "off",\
+    },{\
+        .driver   = "virtio-pci",\
+        .property = "x-pcie-deverr-init",\
+        .value    = "off",\
+    },{\
+        .driver   = "virtio-pci",\
+        .property = "x-pcie-lnkctl-init",\
+        .value    = "off",\
+    },{\
+        .driver   = "virtio-pci",\
+        .property = "x-pcie-pm-init",\
+        .value    = "off",\
+    },{\
+        .driver   = "cirrus-vga",\
+        .property = "vgamem_mb",\
+        .value    = "8",\
+    },{\
+        .driver   = "isa-cirrus-vga",\
+        .property = "vgamem_mb",\
+        .value    = "8",\
+    },
+
 #define HW_COMPAT_2_7 \
     {\
         .driver   = "virtio-pci",\
@@ -88,6 +150,10 @@
         .driver   = "fw_cfg_io",\
         .property = "dma_enabled",\
         .value    = "off",\
+    },{\
+        .driver   = "vmgenid",\
+        .property = "x-write-pointer-available",\
+        .value    = "off",\
     },
 
 #define HW_COMPAT_2_3 \
@@ -114,6 +180,18 @@
     },{\
         .driver   = TYPE_PCI_DEVICE,\
         .property = "x-pcie-lnksta-dllla",\
+        .value    = "off",\
+    },{\
+        .driver   = "migration",\
+        .property = "send-configuration",\
+        .value    = "off",\
+    },{\
+        .driver   = "migration",\
+        .property = "send-section-footer",\
+        .value    = "off",\
+    },{\
+        .driver   = "migration",\
+        .property = "store-global-state",\
         .value    = "off",\
     },
 

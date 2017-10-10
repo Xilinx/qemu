@@ -7,7 +7,7 @@
 #include "exec/address-spaces.h"
 #include "qemu/log.h"
 #include "qapi/error.h"
-#include "sysemu/char.h"
+#include "chardev/char.h"
 #include "qemu/coroutine.h"
 #include "qapi-types.h"
 

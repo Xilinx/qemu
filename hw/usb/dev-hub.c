@@ -208,6 +208,7 @@ static void usb_hub_wakeup(USBPort *port1)
     USBHubPort *port = &s->ports[port1->index];
 
     if (port->wPortStatus & PORT_STAT_SUSPEND) {
+        port->wPortStatus &= ~PORT_STAT_SUSPEND;
         port->wPortChange |= PORT_STAT_C_SUSPEND;
         usb_wakeup(s->intr, 0);
     }
@@ -401,7 +402,20 @@ static void usb_hub_handle_control(USBDevice *dev, USBPacket *p,
                 port->wPortChange &= ~PORT_STAT_C_ENABLE;
                 break;
             case PORT_SUSPEND:
-                port->wPortStatus &= ~PORT_STAT_SUSPEND;
+                if (port->wPortStatus & PORT_STAT_SUSPEND) {
+                    port->wPortStatus &= ~PORT_STAT_SUSPEND;
+
+                    /*
+                     * USB Spec rev2.0 11.24.2.7.2.3 C_PORT_SUSPEND
+                     * "This bit is set on the following transitions:
+                     *  - On transition from the Resuming state to the
+                     *    SendEOP [sic] state"
+                     *
+                     * Note that this includes both remote wake-up and
+                     * explicit ClearPortFeature(PORT_SUSPEND).
+                     */
+                    port->wPortChange |= PORT_STAT_C_SUSPEND;
+                }
                 break;
             case PORT_C_SUSPEND:
                 port->wPortChange &= ~PORT_STAT_C_SUSPEND;
@@ -497,7 +511,7 @@ static void usb_hub_handle_data(USBDevice *dev, USBPacket *p)
     }
 }
 
-static void usb_hub_handle_destroy(USBDevice *dev)
+static void usb_hub_unrealize(USBDevice *dev, Error **errp)
 {
     USBHubState *s = (USBHubState *)dev;
     int i;
@@ -575,7 +589,7 @@ static void usb_hub_class_initfn(ObjectClass *klass, void *data)
     uc->handle_reset   = usb_hub_handle_reset;
     uc->handle_control = usb_hub_handle_control;
     uc->handle_data    = usb_hub_handle_data;
-    uc->handle_destroy = usb_hub_handle_destroy;
+    uc->unrealize      = usb_hub_unrealize;
     set_bit(DEVICE_CATEGORY_BRIDGE, dc->categories);
     dc->fw_name = "hub";
     dc->vmsd = &vmstate_usb_hub;

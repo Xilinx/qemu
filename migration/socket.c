@@ -19,24 +19,25 @@
 #include "qemu-common.h"
 #include "qemu/error-report.h"
 #include "qapi/error.h"
-#include "migration/migration.h"
-#include "migration/qemu-file.h"
+#include "channel.h"
+#include "socket.h"
+#include "migration.h"
+#include "qemu-file.h"
 #include "io/channel-socket.h"
 #include "trace.h"
 
 
 static SocketAddress *tcp_build_address(const char *host_port, Error **errp)
 {
-    InetSocketAddress *iaddr = inet_parse(host_port, errp);
     SocketAddress *saddr;
 
-    if (!iaddr) {
+    saddr = g_new0(SocketAddress, 1);
+    saddr->type = SOCKET_ADDRESS_TYPE_INET;
+
+    if (inet_parse(&saddr->u.inet, host_port, errp)) {
+        qapi_free_SocketAddress(saddr);
         return NULL;
     }
-
-    saddr = g_new0(SocketAddress, 1);
-    saddr->type = SOCKET_ADDRESS_KIND_INET;
-    saddr->u.inet.data = iaddr;
 
     return saddr;
 }
@@ -47,9 +48,8 @@ static SocketAddress *unix_build_address(const char *path)
     SocketAddress *saddr;
 
     saddr = g_new0(SocketAddress, 1);
-    saddr->type = SOCKET_ADDRESS_KIND_UNIX;
-    saddr->u.q_unix.data = g_new0(UnixSocketAddress, 1);
-    saddr->u.q_unix.data->path = g_strdup(path);
+    saddr->type = SOCKET_ADDRESS_TYPE_UNIX;
+    saddr->u.q_unix.path = g_strdup(path);
 
     return saddr;
 }
@@ -70,22 +70,22 @@ static void socket_connect_data_free(void *opaque)
     g_free(data);
 }
 
-static void socket_outgoing_migration(Object *src,
-                                      Error *err,
+static void socket_outgoing_migration(QIOTask *task,
                                       gpointer opaque)
 {
     struct SocketConnectData *data = opaque;
-    QIOChannel *sioc = QIO_CHANNEL(src);
+    QIOChannel *sioc = QIO_CHANNEL(qio_task_get_source(task));
+    Error *err = NULL;
 
-    if (err) {
+    if (qio_task_propagate_error(task, &err)) {
         trace_migration_socket_outgoing_error(error_get_pretty(err));
-        data->s->to_dst_file = NULL;
         migrate_fd_error(data->s, err);
+        error_free(err);
     } else {
         trace_migration_socket_outgoing_connected(data->hostname);
         migration_channel_connect(data->s, sioc, data->hostname);
     }
-    object_unref(src);
+    object_unref(OBJECT(sioc));
 }
 
 static void socket_start_outgoing_migration(MigrationState *s,
@@ -96,8 +96,8 @@ static void socket_start_outgoing_migration(MigrationState *s,
     struct SocketConnectData *data = g_new0(struct SocketConnectData, 1);
 
     data->s = s;
-    if (saddr->type == SOCKET_ADDRESS_KIND_INET) {
-        data->hostname = g_strdup(saddr->u.inet.data->host);
+    if (saddr->type == SOCKET_ADDRESS_TYPE_INET) {
+        data->hostname = g_strdup(saddr->u.inet.host);
     }
 
     qio_channel_set_name(QIO_CHANNEL(sioc), "migration-socket-outgoing");
@@ -148,8 +148,7 @@ static gboolean socket_accept_incoming_migration(QIOChannel *ioc,
     trace_migration_socket_incoming_accepted();
 
     qio_channel_set_name(QIO_CHANNEL(sioc), "migration-socket-incoming");
-    migration_channel_process_incoming(migrate_get_current(),
-                                       QIO_CHANNEL(sioc));
+    migration_channel_process_incoming(QIO_CHANNEL(sioc));
     object_unref(OBJECT(sioc));
 
 out:

@@ -80,9 +80,9 @@ static void imx25_pdk_init(MachineState *machine)
 
     /* We need to initialize our memory */
     if (machine->ram_size > (FSL_IMX25_SDRAM0_SIZE + FSL_IMX25_SDRAM1_SIZE)) {
-        error_report("WARNING: RAM size " RAM_ADDR_FMT " above max supported, "
-                     "reduced to %x", machine->ram_size,
-                     FSL_IMX25_SDRAM0_SIZE + FSL_IMX25_SDRAM1_SIZE);
+        warn_report("RAM size " RAM_ADDR_FMT " above max supported, "
+                    "reduced to %x", machine->ram_size,
+                    FSL_IMX25_SDRAM0_SIZE + FSL_IMX25_SDRAM1_SIZE);
         machine->ram_size = FSL_IMX25_SDRAM0_SIZE + FSL_IMX25_SDRAM1_SIZE;
     }
 
@@ -139,7 +139,7 @@ static void imx25_pdk_init(MachineState *machine)
          * of simple qtest. See "make check" for details.
          */
         i2c_create_slave((I2CBus *)qdev_get_child_bus(DEVICE(&s->soc.i2c[0]),
-                                                      "i2c"),
+                                                      "i2c-bus.0"),
                          "ds1338", 0x68);
     }
 }

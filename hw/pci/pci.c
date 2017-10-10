@@ -64,6 +64,8 @@ static Property pci_props[] = {
                     QEMU_PCI_CAP_SERR_BITNR, true),
     DEFINE_PROP_BIT("x-pcie-lnksta-dllla", PCIDevice, cap_present,
                     QEMU_PCIE_LNKSTA_DLLLA_BITNR, true),
+    DEFINE_PROP_BIT("x-pcie-extcap-init", PCIDevice, cap_present,
+                    QEMU_PCIE_EXTCAP_INIT_BITNR, true),
     DEFINE_PROP_END_OF_LIST()
 };
 
@@ -72,7 +74,7 @@ static const VMStateDescription vmstate_pcibus = {
     .version_id = 1,
     .minimum_version_id = 1,
     .fields = (VMStateField[]) {
-        VMSTATE_INT32_EQUAL(nirq, PCIBus),
+        VMSTATE_INT32_EQUAL(nirq, PCIBus, NULL),
         VMSTATE_VARRAY_INT32(irq_count, PCIBus,
                              nirq, 0, vmstate_info_int32,
                              int32_t),
@@ -88,8 +90,8 @@ static void pci_init_bus_master(PCIDevice *pci_dev)
                              OBJECT(pci_dev), "bus master",
                              dma_as->root, 0, memory_region_size(dma_as->root));
     memory_region_set_enabled(&pci_dev->bus_master_enable_region, false);
-    address_space_init(&pci_dev->bus_master_as,
-                       &pci_dev->bus_master_enable_region, pci_dev->name);
+    memory_region_add_subregion(&pci_dev->bus_master_container_region, 0,
+                                &pci_dev->bus_master_enable_region);
 }
 
 static void pcibus_machine_done(Notifier *notifier, void *data)
@@ -445,7 +447,8 @@ int pci_bus_numa_node(PCIBus *bus)
     return PCI_BUS_GET_CLASS(bus)->numa_node(bus);
 }
 
-static int get_pci_config_device(QEMUFile *f, void *pv, size_t size)
+static int get_pci_config_device(QEMUFile *f, void *pv, size_t size,
+                                 VMStateField *field)
 {
     PCIDevice *s = container_of(pv, PCIDevice, config);
     PCIDeviceClass *pc = PCI_DEVICE_GET_CLASS(s);
@@ -484,11 +487,14 @@ static int get_pci_config_device(QEMUFile *f, void *pv, size_t size)
 }
 
 /* just put buffer */
-static void put_pci_config_device(QEMUFile *f, void *pv, size_t size)
+static int put_pci_config_device(QEMUFile *f, void *pv, size_t size,
+                                 VMStateField *field, QJSON *vmdesc)
 {
     const uint8_t **v = pv;
     assert(size == pci_config_size(container_of(pv, PCIDevice, config)));
     qemu_put_buffer(f, *v, size);
+
+    return 0;
 }
 
 static VMStateInfo vmstate_info_pci_config = {
@@ -497,7 +503,8 @@ static VMStateInfo vmstate_info_pci_config = {
     .put  = put_pci_config_device,
 };
 
-static int get_pci_irq_state(QEMUFile *f, void *pv, size_t size)
+static int get_pci_irq_state(QEMUFile *f, void *pv, size_t size,
+                             VMStateField *field)
 {
     PCIDevice *s = container_of(pv, PCIDevice, irq_state);
     uint32_t irq_state[PCI_NUM_PINS];
@@ -518,7 +525,8 @@ static int get_pci_irq_state(QEMUFile *f, void *pv, size_t size)
     return 0;
 }
 
-static void put_pci_irq_state(QEMUFile *f, void *pv, size_t size)
+static int put_pci_irq_state(QEMUFile *f, void *pv, size_t size,
+                             VMStateField *field, QJSON *vmdesc)
 {
     int i;
     PCIDevice *s = container_of(pv, PCIDevice, irq_state);
@@ -526,6 +534,8 @@ static void put_pci_irq_state(QEMUFile *f, void *pv, size_t size)
     for (i = 0; i < PCI_NUM_PINS; ++i) {
         qemu_put_be32(f, pci_irq_state(s, i));
     }
+
+    return 0;
 }
 
 static VMStateInfo vmstate_info_pci_irq_state = {
@@ -534,30 +544,29 @@ static VMStateInfo vmstate_info_pci_irq_state = {
     .put  = put_pci_irq_state,
 };
 
+static bool migrate_is_pcie(void *opaque, int version_id)
+{
+    return pci_is_express((PCIDevice *)opaque);
+}
+
+static bool migrate_is_not_pcie(void *opaque, int version_id)
+{
+    return !pci_is_express((PCIDevice *)opaque);
+}
+
 const VMStateDescription vmstate_pci_device = {
     .name = "PCIDevice",
     .version_id = 2,
     .minimum_version_id = 1,
     .fields = (VMStateField[]) {
         VMSTATE_INT32_POSITIVE_LE(version_id, PCIDevice),
-        VMSTATE_BUFFER_UNSAFE_INFO(config, PCIDevice, 0,
-                                   vmstate_info_pci_config,
+        VMSTATE_BUFFER_UNSAFE_INFO_TEST(config, PCIDevice,
+                                   migrate_is_not_pcie,
+                                   0, vmstate_info_pci_config,
                                    PCI_CONFIG_SPACE_SIZE),
-        VMSTATE_BUFFER_UNSAFE_INFO(irq_state, PCIDevice, 2,
-				   vmstate_info_pci_irq_state,
-				   PCI_NUM_PINS * sizeof(int32_t)),
-        VMSTATE_END_OF_LIST()
-    }
-};
-
-const VMStateDescription vmstate_pcie_device = {
-    .name = "PCIEDevice",
-    .version_id = 2,
-    .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
-        VMSTATE_INT32_POSITIVE_LE(version_id, PCIDevice),
-        VMSTATE_BUFFER_UNSAFE_INFO(config, PCIDevice, 0,
-                                   vmstate_info_pci_config,
+        VMSTATE_BUFFER_UNSAFE_INFO_TEST(config, PCIDevice,
+                                   migrate_is_pcie,
+                                   0, vmstate_info_pci_config,
                                    PCIE_CONFIG_SPACE_SIZE),
         VMSTATE_BUFFER_UNSAFE_INFO(irq_state, PCIDevice, 2,
 				   vmstate_info_pci_irq_state,
@@ -566,10 +575,6 @@ const VMStateDescription vmstate_pcie_device = {
     }
 };
 
-static inline const VMStateDescription *pci_get_vmstate(PCIDevice *s)
-{
-    return pci_is_express(s) ? &vmstate_pcie_device : &vmstate_pci_device;
-}
 
 void pci_device_save(PCIDevice *s, QEMUFile *f)
 {
@@ -578,7 +583,7 @@ void pci_device_save(PCIDevice *s, QEMUFile *f)
      * This makes us compatible with old devices
      * which never set or clear this bit. */
     s->config[PCI_STATUS] &= ~PCI_STATUS_INTERRUPT;
-    vmstate_save_state(f, pci_get_vmstate(s), s, NULL);
+    vmstate_save_state(f, &vmstate_pci_device, s, NULL);
     /* Restore the interrupt status bit. */
     pci_update_irq_status(s);
 }
@@ -586,7 +591,7 @@ void pci_device_save(PCIDevice *s, QEMUFile *f)
 int pci_device_load(PCIDevice *s, QEMUFile *f)
 {
     int ret;
-    ret = vmstate_load_state(f, pci_get_vmstate(s), s, s->version_id);
+    ret = vmstate_load_state(f, &vmstate_pci_device, s, s->version_id);
     /* Restore the interrupt status bit. */
     pci_update_irq_status(s);
     return ret;
@@ -864,6 +869,10 @@ static void do_pci_unregister_device(PCIDevice *pci_dev)
     pci_dev->bus->devices[pci_dev->devfn] = NULL;
     pci_config_free(pci_dev);
 
+    if (memory_region_is_mapped(&pci_dev->bus_master_enable_region)) {
+        memory_region_del_subregion(&pci_dev->bus_master_container_region,
+                                    &pci_dev->bus_master_enable_region);
+    }
     address_space_destroy(&pci_dev->bus_master_as);
 }
 
@@ -992,6 +1001,11 @@ static PCIDevice *do_pci_register_device(PCIDevice *pci_dev, PCIBus *bus,
     pci_dev->devfn = devfn;
     pci_dev->requester_id_cache = pci_req_id_cache_get(pci_dev);
 
+    memory_region_init(&pci_dev->bus_master_container_region, OBJECT(pci_dev),
+                       "bus master container", UINT64_MAX);
+    address_space_init(&pci_dev->bus_master_as,
+                       &pci_dev->bus_master_container_region, pci_dev->name);
+
     if (qdev_hotplug) {
         pci_init_bus_master(pci_dev);
     }
@@ -1069,6 +1083,7 @@ static void pci_qdev_unrealize(DeviceState *dev, Error **errp)
         pc->exit(pci_dev);
     }
 
+    pci_device_deassert_intx(pci_dev);
     do_pci_unregister_device(pci_dev);
 }
 
@@ -1527,6 +1542,34 @@ static const pci_class_desc pci_class_descriptions[] =
     { 0, NULL}
 };
 
+static void pci_for_each_device_under_bus_reverse(PCIBus *bus,
+                                                  void (*fn)(PCIBus *b,
+                                                             PCIDevice *d,
+                                                             void *opaque),
+                                                  void *opaque)
+{
+    PCIDevice *d;
+    int devfn;
+
+    for (devfn = 0; devfn < ARRAY_SIZE(bus->devices); devfn++) {
+        d = bus->devices[ARRAY_SIZE(bus->devices) - 1 - devfn];
+        if (d) {
+            fn(bus, d, opaque);
+        }
+    }
+}
+
+void pci_for_each_device_reverse(PCIBus *bus, int bus_num,
+                         void (*fn)(PCIBus *b, PCIDevice *d, void *opaque),
+                         void *opaque)
+{
+    bus = pci_find_bus_nr(bus, bus_num);
+
+    if (bus) {
+        pci_for_each_device_under_bus_reverse(bus, fn, opaque);
+    }
+}
+
 static void pci_for_each_device_under_bus(PCIBus *bus,
                                           void (*fn)(PCIBus *b, PCIDevice *d,
                                                      void *opaque),
@@ -1779,7 +1822,6 @@ PCIDevice *pci_nic_init_nofail(NICInfo *nd, PCIBus *rootbus,
                                const char *default_devaddr)
 {
     const char *devaddr = nd->devaddr ? nd->devaddr : default_devaddr;
-    Error *err = NULL;
     PCIBus *bus;
     PCIDevice *pci_dev;
     DeviceState *dev;
@@ -1805,13 +1847,7 @@ PCIDevice *pci_nic_init_nofail(NICInfo *nd, PCIBus *rootbus,
     pci_dev = pci_create(bus, devfn, pci_nic_names[i]);
     dev = &pci_dev->qdev;
     qdev_set_nic_properties(dev, nd);
-
-    object_property_set_bool(OBJECT(dev), true, "realized", &err);
-    if (err) {
-        error_report_err(err);
-        object_unparent(OBJECT(dev));
-        exit(1);
-    }
+    qdev_init_nofail(dev);
 
     return pci_dev;
 }
@@ -2199,8 +2235,7 @@ static void pci_add_option_rom(PCIDevice *pdev, bool is_default_rom,
         snprintf(name, sizeof(name), "%s.rom", object_get_typename(OBJECT(pdev)));
     }
     pdev->has_rom = true;
-    memory_region_init_ram(&pdev->rom, OBJECT(pdev), name, size, &error_fatal);
-    vmstate_register_ram(&pdev->rom, &pdev->qdev);
+    memory_region_init_rom(&pdev->rom, OBJECT(pdev), name, size, &error_fatal);
     ptr = memory_region_get_ram_ptr(&pdev->rom);
     load_image(path, ptr);
     g_free(path);
@@ -2223,28 +2258,12 @@ static void pci_del_option_rom(PCIDevice *pdev)
 }
 
 /*
- * if offset = 0,
- * Find and reserve space and add capability to the linked list
- * in pci config space
+ * On success, pci_add_capability() returns a positive value
+ * that the offset of the pci capability.
+ * On failure, it sets an error and returns a negative error
+ * code.
  */
 int pci_add_capability(PCIDevice *pdev, uint8_t cap_id,
-                       uint8_t offset, uint8_t size)
-{
-    int ret;
-    Error *local_err = NULL;
-
-    ret = pci_add_capability2(pdev, cap_id, offset, size, &local_err);
-    if (local_err) {
-        assert(ret < 0);
-        error_report_err(local_err);
-    } else {
-        /* success implies a positive offset in config space */
-        assert(ret > 0);
-    }
-    return ret;
-}
-
-int pci_add_capability2(PCIDevice *pdev, uint8_t cap_id,
                        uint8_t offset, uint8_t size,
                        Error **errp)
 {

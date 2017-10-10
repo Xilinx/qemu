@@ -145,13 +145,11 @@ static void realview_init(MachineState *machine,
         ram_size = 0x20000000;
         memory_region_init_ram(ram_lo, NULL, "realview.lowmem", low_ram_size,
                                &error_fatal);
-        vmstate_register_ram_global(ram_lo);
         memory_region_add_subregion(sysmem, 0x20000000, ram_lo);
     }
 
     memory_region_init_ram(ram_hi, NULL, "realview.highmem", ram_size,
                            &error_fatal);
-    vmstate_register_ram_global(ram_hi);
     low_ram_size = ram_size;
     if (low_ram_size > 0x10000000)
       low_ram_size = 0x10000000;
@@ -259,7 +257,7 @@ static void realview_init(MachineState *machine,
         }
         n = drive_get_max_bus(IF_SCSI);
         while (n >= 0) {
-            pci_create_simple(pci_bus, -1, "lsi53c895a");
+            lsi53c895a_create(pci_bus);
             n--;
         }
     }
@@ -347,7 +345,6 @@ static void realview_init(MachineState *machine,
        until after Linux boots the secondary CPUs.  */
     memory_region_init_ram(ram_hack, NULL, "realview.hack", 0x1000,
                            &error_fatal);
-    vmstate_register_ram_global(ram_hack);
     memory_region_add_subregion(sysmem, SMP_BOOT_ADDR, ram_hack);
 
     realview_binfo.ram_size = ram_size;
@@ -443,7 +440,6 @@ static void realview_pbx_a9_class_init(ObjectClass *oc, void *data)
 
     mc->desc = "ARM RealView Platform Baseboard Explore for Cortex-A9";
     mc->init = realview_pbx_a9_init;
-    mc->block_default_type = IF_SCSI;
     mc->max_cpus = 4;
 }
 

@@ -43,6 +43,7 @@
 #endif
 
 #define TYPE_XILINX_XMPU "xlnx.xmpu"
+#define TYPE_XILINX_XMPU_IOMMU_MEMORY_REGION "xlnx.xmpu-iommu-memory-region"
 
 #define XILINX_XMPU(obj) \
      OBJECT_CHECK(XMPU, (obj), TYPE_XILINX_XMPU)
@@ -306,7 +307,7 @@ typedef struct XMPUMaster {
     uint64_t size;
 
     MemoryRegion mr;
-    MemoryRegion iommu;
+    IOMMUMemoryRegion iommu;
 
     struct {
         struct {
@@ -465,9 +466,9 @@ static void xmpu_flush(XMPU *s)
         memory_region_notify_iommu(&s->masters[i].iommu, entry);
         /* Temporary hack.  */
         memory_region_transaction_begin();
-        memory_region_set_readonly(&s->masters[i].iommu, false);
-        memory_region_set_readonly(&s->masters[i].iommu, true);
-        memory_region_set_enabled(&s->masters[i].iommu, s->enabled);
+        memory_region_set_readonly(MEMORY_REGION(&s->masters[i].iommu), false);
+        memory_region_set_readonly(MEMORY_REGION(&s->masters[i].iommu), true);
+        memory_region_set_enabled(MEMORY_REGION(&s->masters[i].iommu), s->enabled);
         memory_region_transaction_commit();
     }
 }
@@ -1030,7 +1031,7 @@ static const MemoryRegionOps zero_ops = {
     },
 };
 
-static IOMMUTLBEntry xmpu_translate(MemoryRegion *mr, hwaddr addr,
+static IOMMUTLBEntry xmpu_translate(IOMMUMemoryRegion *mr, hwaddr addr,
                                     bool is_write, MemTxAttrs *attr)
 {
     XMPUMaster *xm;
@@ -1047,10 +1048,6 @@ static IOMMUTLBEntry xmpu_translate(MemoryRegion *mr, hwaddr addr,
     ret.perm = IOMMU_RW;
     return ret;
 }
-
-static MemoryRegionIOMMUOps xmpu_iommu_ops = {
-    .translate_attr = xmpu_translate,
-};
 
 #define MASK_4K  (0xfff)
 #define MASK_1M  (0xfffff)
@@ -1154,7 +1151,9 @@ static bool xmpu_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
                                             NULL);
 
         memory_region_init_iommu(&s->masters[mid].iommu,
-                                 OBJECT(s), &xmpu_iommu_ops,
+                                 sizeof(s->masters[mid].iommu),
+                                 TYPE_XILINX_XMPU_IOMMU_MEMORY_REGION,
+                                 OBJECT(s),
                                  name, reg.s[i + 1]);
         g_free(name);
 
@@ -1164,8 +1163,10 @@ static bool xmpu_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
         memory_region_add_subregion_overlap(&s->masters[mid].mr,
                                             0, &s->masters[mid].down.rw.mr, 0);
         memory_region_add_subregion_overlap(&s->masters[mid].mr,
-                                            0, &s->masters[mid].iommu, 1);
-        memory_region_set_enabled(&s->masters[mid].iommu, false);
+                                        0,
+                                        MEMORY_REGION(&s->masters[mid].iommu),
+                                        1);
+        memory_region_set_enabled(MEMORY_REGION(&s->masters[mid].iommu), false);
         sysbus_init_mmio(sbd, &s->masters[mid].mr);
         g_free(name);
     }
@@ -1204,6 +1205,14 @@ static void xmpu_class_init(ObjectClass *klass, void *data)
     fmc->parse_reg = xmpu_parse_reg;
 }
 
+static void xmpu_iommu_memory_region_class_init(ObjectClass *klass,
+                                                void *data)
+{
+    IOMMUMemoryRegionClass *imrc = IOMMU_MEMORY_REGION_CLASS(klass);
+
+    imrc->translate_attr = xmpu_translate;
+}
+
 static const TypeInfo xmpu_info = {
     .name          = TYPE_XILINX_XMPU,
     .parent        = TYPE_SYS_BUS_DEVICE,
@@ -1216,9 +1225,16 @@ static const TypeInfo xmpu_info = {
     },
 };
 
+static const TypeInfo xmpu_iommu_memory_region_info = {
+    .name = TYPE_XILINX_XMPU_IOMMU_MEMORY_REGION,
+    .parent = TYPE_IOMMU_MEMORY_REGION,
+    .class_init = xmpu_iommu_memory_region_class_init,
+};
+
 static void xmpu_register_types(void)
 {
     type_register_static(&xmpu_info);
+    type_register_static(&xmpu_iommu_memory_region_info);
 }
 
 type_init(xmpu_register_types)

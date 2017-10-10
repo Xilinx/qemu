@@ -16,7 +16,8 @@
 #include "cpu.h"
 
 struct IplBlockCcw {
-    uint8_t  reserved0[85];
+    uint64_t netboot_start_addr;
+    uint8_t  reserved0[77];
     uint8_t  ssid;
     uint16_t devno;
     uint8_t  vm_flags;
@@ -56,6 +57,8 @@ struct IplBlockQemuScsi {
 } QEMU_PACKED;
 typedef struct IplBlockQemuScsi IplBlockQemuScsi;
 
+#define DIAG308_FLAGS_LP_VALID 0x80
+
 union IplParameterBlock {
     struct {
         uint32_t len;
@@ -81,6 +84,7 @@ union IplParameterBlock {
 } QEMU_PACKED;
 typedef union IplParameterBlock IplParameterBlock;
 
+int s390_ipl_set_loadparm(uint8_t *loadparm);
 void s390_ipl_update_diag308(IplParameterBlock *iplb);
 void s390_ipl_prepare_cpu(S390CPU *cpu);
 IplParameterBlock *s390_ipl_get_iplb(void);
@@ -100,12 +104,14 @@ struct S390IPLState {
     IplParameterBlock iplb;
     bool iplb_valid;
     bool reipl_requested;
+    bool netboot;
 
     /*< public >*/
     char *kernel;
     char *initrd;
     char *cmdline;
     char *firmware;
+    char *netboot_fw;
     uint8_t cssid;
     uint8_t ssid;
     uint16_t devno;

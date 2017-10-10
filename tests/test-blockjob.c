@@ -30,8 +30,9 @@ static BlockJob *do_test_id(BlockBackend *blk, const char *id,
     BlockJob *job;
     Error *errp = NULL;
 
-    job = block_job_create(id, &test_block_job_driver, blk_bs(blk), 0,
-                           BLOCK_JOB_DEFAULT, block_job_cb, NULL, &errp);
+    job = block_job_create(id, &test_block_job_driver, blk_bs(blk),
+                           0, BLK_PERM_ALL, 0, BLOCK_JOB_DEFAULT, block_job_cb,
+                           NULL, &errp);
     if (should_succeed) {
         g_assert_null(errp);
         g_assert_nonnull(job);
@@ -53,10 +54,14 @@ static BlockJob *do_test_id(BlockBackend *blk, const char *id,
  * BlockDriverState inserted. */
 static BlockBackend *create_blk(const char *name)
 {
-    BlockBackend *blk = blk_new();
-    BlockDriverState *bs = bdrv_new();
+    /* No I/O is performed on this device */
+    BlockBackend *blk = blk_new(0, BLK_PERM_ALL);
+    BlockDriverState *bs;
 
-    blk_insert_bs(blk, bs);
+    bs = bdrv_open("null-co://", NULL, NULL, 0, &error_abort);
+    g_assert_nonnull(bs);
+
+    blk_insert_bs(blk, bs, &error_abort);
     bdrv_unref(bs);
 
     if (name) {
@@ -111,11 +116,11 @@ static void test_job_ids(void)
     job[1] = do_test_id(blk[1], "id0", false);
 
     /* But once job[0] finishes we can reuse its ID */
-    block_job_unref(job[0]);
+    block_job_early_fail(job[0]);
     job[1] = do_test_id(blk[1], "id0", true);
 
     /* No job ID specified, defaults to the backend name ('drive1') */
-    block_job_unref(job[1]);
+    block_job_early_fail(job[1]);
     job[1] = do_test_id(blk[1], NULL, true);
 
     /* Duplicate job ID */
@@ -128,9 +133,9 @@ static void test_job_ids(void)
     /* This one is valid */
     job[2] = do_test_id(blk[2], "id_2", true);
 
-    block_job_unref(job[0]);
-    block_job_unref(job[1]);
-    block_job_unref(job[2]);
+    block_job_early_fail(job[0]);
+    block_job_early_fail(job[1]);
+    block_job_early_fail(job[2]);
 
     destroy_blk(blk[0]);
     destroy_blk(blk[1]);
@@ -140,6 +145,7 @@ static void test_job_ids(void)
 int main(int argc, char **argv)
 {
     qemu_init_main_loop(&error_abort);
+    bdrv_init();
 
     g_test_init(&argc, &argv, NULL);
     g_test_add_func("/blockjob/ids", test_job_ids);

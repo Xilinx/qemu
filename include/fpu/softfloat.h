@@ -82,11 +82,6 @@ this code that are retained.
 #ifndef SOFTFLOAT_H
 #define SOFTFLOAT_H
 
-#if defined(CONFIG_SOLARIS) && defined(CONFIG_NEEDS_LIBSUNMATH)
-#include <sunmath.h>
-#endif
-
-
 /* This 'flag' type must be able to hold at least 0 and 1. It should
  * probably be replaced with 'bool' but the uses would need to be audited
  * to check that they weren't accidentally relying on it being a larger type.
@@ -180,6 +175,8 @@ enum {
     float_round_up           = 2,
     float_round_to_zero      = 3,
     float_round_ties_away    = 4,
+    /* Not an IEEE rounding mode: round to the closest odd mantissa value */
+    float_round_to_odd       = 5,
 };
 
 /*----------------------------------------------------------------------------
@@ -354,6 +351,26 @@ float16 float16_maybe_silence_nan(float16, float_status *status);
 static inline int float16_is_any_nan(float16 a)
 {
     return ((float16_val(a) & ~0x8000) > 0x7c00);
+}
+
+static inline int float16_is_neg(float16 a)
+{
+    return float16_val(a) >> 15;
+}
+
+static inline int float16_is_infinity(float16 a)
+{
+    return (float16_val(a) & 0x7fff) == 0x7c00;
+}
+
+static inline int float16_is_zero(float16 a)
+{
+    return (float16_val(a) & 0x7fff) == 0;
+}
+
+static inline int float16_is_zero_or_denormal(float16 a)
+{
+    return (float16_val(a) & 0x7c00) == 0;
 }
 
 /*----------------------------------------------------------------------------
@@ -599,6 +616,7 @@ float128 floatx80_to_float128(floatx80, float_status *status);
 /*----------------------------------------------------------------------------
 | Software IEC/IEEE extended double-precision operations.
 *----------------------------------------------------------------------------*/
+floatx80 floatx80_round(floatx80 a, float_status *status);
 floatx80 floatx80_round_to_int(floatx80, float_status *status);
 floatx80 floatx80_add(floatx80, floatx80, float_status *status);
 floatx80 floatx80_sub(floatx80, floatx80, float_status *status);
@@ -692,6 +710,9 @@ int32_t float128_to_int32(float128, float_status *status);
 int32_t float128_to_int32_round_to_zero(float128, float_status *status);
 int64_t float128_to_int64(float128, float_status *status);
 int64_t float128_to_int64_round_to_zero(float128, float_status *status);
+uint64_t float128_to_uint64(float128, float_status *status);
+uint64_t float128_to_uint64_round_to_zero(float128, float_status *status);
+uint32_t float128_to_uint32_round_to_zero(float128, float_status *status);
 float32 float128_to_float32(float128, float_status *status);
 float64 float128_to_float64(float128, float_status *status);
 floatx80 float128_to_floatx80(float128, float_status *status);

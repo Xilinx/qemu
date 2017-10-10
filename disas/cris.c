@@ -21,9 +21,7 @@
 #include "qemu/osdep.h"
 #include "qemu-common.h"
 #include "disas/bfd.h"
-//#include "sysdep.h"
-#include "target-cris/opcode-cris.h"
-//#include "libiberty.h"
+#include "target/cris/opcode-cris.h"
 
 #define CONST_STRNEQ(STR1,STR2) (strncmp ((STR1), (STR2), sizeof (STR2) - 1) == 0)
 
@@ -2011,7 +2009,7 @@ print_with_operands (const struct cris_opcode *opcodep,
       case 'n':
 	{
 	  /* Like N but pc-relative to the start of the insn.  */
-	  unsigned long number
+	  uint32_t number
 	    = (buffer[2] + buffer[3] * 256 + buffer[4] * 65536
 	       + buffer[5] * 0x1000000 + addr);
 
@@ -2050,7 +2048,7 @@ print_with_operands (const struct cris_opcode *opcodep,
 	  {
 	    /* We're looking at [pc+], i.e. we need to output an immediate
 	       number, where the size can depend on different things.  */
-	    long number;
+	    int32_t number;
 	    int signedp
 	      = ((*cs == 'z' && (insn & 0x20))
 		 || opcodep->match == BDAP_QUICK_OPCODE);
@@ -2203,7 +2201,7 @@ print_with_operands (const struct cris_opcode *opcodep,
 		      {
 			/* It's [pc+].  This cannot possibly be anything
 			   but an address.  */
-			unsigned long number
+			uint32_t number
 			  = prefix_buffer[2] + prefix_buffer[3] * 256
 			  + prefix_buffer[4] * 65536
 			  + prefix_buffer[5] * 0x1000000;
@@ -2292,7 +2290,7 @@ print_with_operands (const struct cris_opcode *opcodep,
 
 		    if ((prefix_insn & 0x400) && (prefix_insn & 15) == 15)
 		      {
-			long number;
+			int32_t number;
 			unsigned int nbytes;
 
 			/* It's a value.  Get its size.  */
@@ -2492,7 +2490,7 @@ print_with_operands (const struct cris_opcode *opcodep,
 	const struct cris_spec_reg *sregp
 	  = spec_reg_info ((insn >> 12) & 15, disdata->distype);
 
-	if (sregp->name == NULL)
+	if (sregp == NULL || sregp->name == NULL)
 	  /* Should have been caught as a non-match earlier.  */
 	  *tp++ = '?';
 	else

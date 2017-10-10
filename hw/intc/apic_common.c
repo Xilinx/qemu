@@ -26,6 +26,7 @@
 #include "hw/i386/apic.h"
 #include "hw/i386/apic_internal.h"
 #include "trace.h"
+#include "sysemu/hax.h"
 #include "sysemu/kvm.h"
 #include "hw/qdev.h"
 #include "hw/sysbus.h"
@@ -318,7 +319,7 @@ static void apic_common_realize(DeviceState *dev, Error **errp)
 
     /* Note: We need at least 1M to map the VAPIC option ROM */
     if (!vapic && s->vapic_control & VAPIC_ENABLE_MASK &&
-        ram_size >= 1024 * 1024) {
+        !hax_enabled() && ram_size >= 1024 * 1024) {
         vapic = sysbus_create_simple("kvmvapic", -1, NULL);
     }
     s->vapic = vapic;
@@ -330,7 +331,7 @@ static void apic_common_realize(DeviceState *dev, Error **errp)
         instance_id = -1;
     }
     vmstate_register_with_alias_id(NULL, instance_id, &vmstate_apic_common,
-                                   s, -1, 0);
+                                   s, -1, 0, NULL);
 }
 
 static void apic_common_unrealize(DeviceState *dev, Error **errp)
@@ -449,10 +450,10 @@ static void apic_common_get_id(Object *obj, Visitor *v, const char *name,
                                void *opaque, Error **errp)
 {
     APICCommonState *s = APIC_COMMON(obj);
-    int64_t value;
+    uint32_t value;
 
     value = s->apicbase & MSR_IA32_APICBASE_EXTD ? s->initial_apic_id : s->id;
-    visit_type_int(v, name, &value, errp);
+    visit_type_uint32(v, name, &value, errp);
 }
 
 static void apic_common_set_id(Object *obj, Visitor *v, const char *name,
@@ -461,14 +462,14 @@ static void apic_common_set_id(Object *obj, Visitor *v, const char *name,
     APICCommonState *s = APIC_COMMON(obj);
     DeviceState *dev = DEVICE(obj);
     Error *local_err = NULL;
-    int64_t value;
+    uint32_t value;
 
     if (dev->realized) {
         qdev_prop_set_after_realize(dev, name, errp);
         return;
     }
 
-    visit_type_int(v, name, &value, &local_err);
+    visit_type_uint32(v, name, &value, &local_err);
     if (local_err) {
         error_propagate(errp, local_err);
         return;
@@ -483,7 +484,7 @@ static void apic_common_initfn(Object *obj)
     APICCommonState *s = APIC_COMMON(obj);
 
     s->id = s->initial_apic_id = -1;
-    object_property_add(obj, "id", "int",
+    object_property_add(obj, "id", "uint32",
                         apic_common_get_id,
                         apic_common_set_id, NULL, NULL, NULL);
 }
@@ -500,7 +501,7 @@ static void apic_common_class_init(ObjectClass *klass, void *data)
      * Reason: APIC and CPU need to be wired up by
      * x86_cpu_apic_create()
      */
-    dc->cannot_instantiate_with_device_add_yet = true;
+    dc->user_creatable = false;
 }
 
 static const TypeInfo apic_common_type = {

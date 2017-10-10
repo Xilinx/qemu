@@ -25,7 +25,7 @@
 #include "qom/object.h"
 #include "qemu/typedefs.h"
 #include "net/queue.h"
-#include "sysemu/char.h"
+#include "chardev/char-fe.h"
 #include "qemu/sockets.h"
 #include "qapi-visit.h"
 #include "net/colo.h"
@@ -73,6 +73,7 @@ typedef struct CompareState {
     CharBackend chr_out;
     SocketReadState pri_rs;
     SocketReadState sec_rs;
+    bool vnet_hdr;
 
     /* connection list: the connections belonged to this NIC could be found
      * in this list.
@@ -83,9 +84,9 @@ typedef struct CompareState {
     GHashTable *connection_track_table;
     /* compare thread, a thread for each NIC */
     QemuThread thread;
-    /* Timer used on the primary to find packets that are never matched */
-    QEMUTimer *timer;
-    QemuMutex timer_check_lock;
+
+    GMainContext *worker_context;
+    GMainLoop *compare_loop;
 } CompareState;
 
 typedef struct CompareClass {
@@ -97,9 +98,19 @@ enum {
     SECONDARY_IN,
 };
 
-static int compare_chr_send(CharBackend *out,
+static int compare_chr_send(CompareState *s,
                             const uint8_t *buf,
-                            uint32_t size);
+                            uint32_t size,
+                            uint32_t vnet_hdr_len);
+
+static gint seq_sorter(Packet *a, Packet *b, gpointer data)
+{
+    struct tcphdr *atcp, *btcp;
+
+    atcp = (struct tcphdr *)(a->transport_header);
+    btcp = (struct tcphdr *)(b->transport_header);
+    return ntohl(atcp->th_seq) - ntohl(btcp->th_seq);
+}
 
 /*
  * Return 0 on success, if return -1 means the pkt
@@ -112,9 +123,13 @@ static int packet_enqueue(CompareState *s, int mode)
     Connection *conn;
 
     if (mode == PRIMARY_IN) {
-        pkt = packet_new(s->pri_rs.buf, s->pri_rs.packet_len);
+        pkt = packet_new(s->pri_rs.buf,
+                         s->pri_rs.packet_len,
+                         s->pri_rs.vnet_hdr_len);
     } else {
-        pkt = packet_new(s->sec_rs.buf, s->sec_rs.packet_len);
+        pkt = packet_new(s->sec_rs.buf,
+                         s->sec_rs.packet_len,
+                         s->sec_rs.vnet_hdr_len);
     }
 
     if (parse_packet_early(pkt)) {
@@ -137,6 +152,11 @@ static int packet_enqueue(CompareState *s, int mode)
         if (g_queue_get_length(&conn->primary_list) <=
                                MAX_QUEUE_SIZE) {
             g_queue_push_tail(&conn->primary_list, pkt);
+            if (conn->ip_proto == IPPROTO_TCP) {
+                g_queue_sort(&conn->primary_list,
+                             (GCompareDataFunc)seq_sorter,
+                             NULL);
+            }
         } else {
             error_report("colo compare primary queue size too big,"
                          "drop packet");
@@ -145,6 +165,11 @@ static int packet_enqueue(CompareState *s, int mode)
         if (g_queue_get_length(&conn->secondary_list) <=
                                MAX_QUEUE_SIZE) {
             g_queue_push_tail(&conn->secondary_list, pkt);
+            if (conn->ip_proto == IPPROTO_TCP) {
+                g_queue_sort(&conn->secondary_list,
+                             (GCompareDataFunc)seq_sorter,
+                             NULL);
+            }
         } else {
             error_report("colo compare secondary queue size too big,"
                          "drop packet");
@@ -161,16 +186,29 @@ static int packet_enqueue(CompareState *s, int mode)
  * return:    0  means packet same
  *            > 0 || < 0 means packet different
  */
-static int colo_packet_compare(Packet *ppkt, Packet *spkt)
+static int colo_packet_compare_common(Packet *ppkt, Packet *spkt, int offset)
 {
-    trace_colo_compare_ip_info(ppkt->size, inet_ntoa(ppkt->ip->ip_src),
-                               inet_ntoa(ppkt->ip->ip_dst), spkt->size,
-                               inet_ntoa(spkt->ip->ip_src),
-                               inet_ntoa(spkt->ip->ip_dst));
+    if (trace_event_get_state_backends(TRACE_COLO_COMPARE_MISCOMPARE)) {
+        char pri_ip_src[20], pri_ip_dst[20], sec_ip_src[20], sec_ip_dst[20];
+
+        strcpy(pri_ip_src, inet_ntoa(ppkt->ip->ip_src));
+        strcpy(pri_ip_dst, inet_ntoa(ppkt->ip->ip_dst));
+        strcpy(sec_ip_src, inet_ntoa(spkt->ip->ip_src));
+        strcpy(sec_ip_dst, inet_ntoa(spkt->ip->ip_dst));
+
+        trace_colo_compare_ip_info(ppkt->size, pri_ip_src,
+                                   pri_ip_dst, spkt->size,
+                                   sec_ip_src, sec_ip_dst);
+    }
+
+    offset = ppkt->vnet_hdr_len + offset;
 
     if (ppkt->size == spkt->size) {
-        return memcmp(ppkt->data, spkt->data, spkt->size);
+        return memcmp(ppkt->data + offset,
+                      spkt->data + offset,
+                      spkt->size - offset);
     } else {
+        trace_colo_compare_main("Net packet size are not the same");
         return -1;
     }
 }
@@ -186,12 +224,6 @@ static int colo_packet_compare_tcp(Packet *spkt, Packet *ppkt)
     int res;
 
     trace_colo_compare_main("compare tcp");
-    if (ppkt->size != spkt->size) {
-        if (trace_event_get_state(TRACE_COLO_COMPARE_MISCOMPARE)) {
-            trace_colo_compare_main("pkt size not same");
-        }
-        return -1;
-    }
 
     ptcp = (struct tcphdr *)ppkt->transport_header;
     stcp = (struct tcphdr *)spkt->transport_header;
@@ -210,21 +242,62 @@ static int colo_packet_compare_tcp(Packet *spkt, Packet *ppkt)
         spkt->ip->ip_sum = ppkt->ip->ip_sum;
     }
 
-    res = memcmp(ppkt->data + ETH_HLEN, spkt->data + ETH_HLEN,
-                (spkt->size - ETH_HLEN));
+    /*
+     * Check tcp header length for tcp option field.
+     * th_off > 5 means this tcp packet have options field.
+     * The tcp options maybe always different.
+     * for example:
+     * From RFC 7323.
+     * TCP Timestamps option (TSopt):
+     * Kind: 8
+     *
+     * Length: 10 bytes
+     *
+     *    +-------+-------+---------------------+---------------------+
+     *    |Kind=8 |  10   |   TS Value (TSval)  |TS Echo Reply (TSecr)|
+     *    +-------+-------+---------------------+---------------------+
+     *       1       1              4                     4
+     *
+     * In this case the primary guest's timestamp always different with
+     * the secondary guest's timestamp. COLO just focus on payload,
+     * so we just need skip this field.
+     */
+    if (ptcp->th_off > 5) {
+        ptrdiff_t tcp_offset;
 
-    if (res != 0 && trace_event_get_state(TRACE_COLO_COMPARE_MISCOMPARE)) {
-        trace_colo_compare_pkt_info_src(inet_ntoa(ppkt->ip->ip_src),
-                                        ntohl(stcp->th_seq),
-                                        ntohl(stcp->th_ack),
-                                        res, stcp->th_flags,
-                                        spkt->size);
+        tcp_offset = ppkt->transport_header - (uint8_t *)ppkt->data
+                     + (ptcp->th_off * 4) - ppkt->vnet_hdr_len;
+        res = colo_packet_compare_common(ppkt, spkt, tcp_offset);
+    } else if (ptcp->th_sum == stcp->th_sum) {
+        res = colo_packet_compare_common(ppkt, spkt, ETH_HLEN);
+    } else {
+        res = -1;
+    }
 
-        trace_colo_compare_pkt_info_dst(inet_ntoa(ppkt->ip->ip_dst),
-                                        ntohl(ptcp->th_seq),
-                                        ntohl(ptcp->th_ack),
-                                        res, ptcp->th_flags,
-                                        ppkt->size);
+    if (res != 0 &&
+        trace_event_get_state_backends(TRACE_COLO_COMPARE_MISCOMPARE)) {
+        char pri_ip_src[20], pri_ip_dst[20], sec_ip_src[20], sec_ip_dst[20];
+
+        strcpy(pri_ip_src, inet_ntoa(ppkt->ip->ip_src));
+        strcpy(pri_ip_dst, inet_ntoa(ppkt->ip->ip_dst));
+        strcpy(sec_ip_src, inet_ntoa(spkt->ip->ip_src));
+        strcpy(sec_ip_dst, inet_ntoa(spkt->ip->ip_dst));
+
+        trace_colo_compare_ip_info(ppkt->size, pri_ip_src,
+                                   pri_ip_dst, spkt->size,
+                                   sec_ip_src, sec_ip_dst);
+
+        trace_colo_compare_tcp_info("pri tcp packet",
+                                    ntohl(ptcp->th_seq),
+                                    ntohl(ptcp->th_ack),
+                                    res, ptcp->th_flags,
+                                    ppkt->size);
+
+        trace_colo_compare_tcp_info("sec tcp packet",
+                                    ntohl(stcp->th_seq),
+                                    ntohl(stcp->th_ack),
+                                    res, stcp->th_flags,
+                                    spkt->size);
 
         qemu_hexdump((char *)ppkt->data, stderr,
                      "colo-compare ppkt", ppkt->size);
@@ -242,15 +315,32 @@ static int colo_packet_compare_tcp(Packet *spkt, Packet *ppkt)
 static int colo_packet_compare_udp(Packet *spkt, Packet *ppkt)
 {
     int ret;
+    int network_header_length = ppkt->ip->ip_hl * 4;
 
     trace_colo_compare_main("compare udp");
-    ret = colo_packet_compare(ppkt, spkt);
+
+    /*
+     * Because of ppkt and spkt are both in the same connection,
+     * The ppkt's src ip, dst ip, src port, dst port, ip_proto all are
+     * same with spkt. In addition, IP header's Identification is a random
+     * field, we can handle it in IP fragmentation function later.
+     * COLO just concern the response net packet payload from primary guest
+     * and secondary guest are same or not, So we ignored all IP header include
+     * other field like TOS,TTL,IP Checksum. we only need to compare
+     * the ip payload here.
+     */
+    ret = colo_packet_compare_common(ppkt, spkt,
+                                     network_header_length + ETH_HLEN);
 
     if (ret) {
         trace_colo_compare_udp_miscompare("primary pkt size", ppkt->size);
-        qemu_hexdump((char *)ppkt->data, stderr, "colo-compare", ppkt->size);
         trace_colo_compare_udp_miscompare("Secondary pkt size", spkt->size);
-        qemu_hexdump((char *)spkt->data, stderr, "colo-compare", spkt->size);
+        if (trace_event_get_state_backends(TRACE_COLO_COMPARE_MISCOMPARE)) {
+            qemu_hexdump((char *)ppkt->data, stderr, "colo-compare pri pkt",
+                         ppkt->size);
+            qemu_hexdump((char *)spkt->data, stderr, "colo-compare sec pkt",
+                         spkt->size);
+        }
     }
 
     return ret;
@@ -262,24 +352,32 @@ static int colo_packet_compare_udp(Packet *spkt, Packet *ppkt)
  */
 static int colo_packet_compare_icmp(Packet *spkt, Packet *ppkt)
 {
-    int network_length;
+    int network_header_length = ppkt->ip->ip_hl * 4;
 
     trace_colo_compare_main("compare icmp");
-    network_length = ppkt->ip->ip_hl * 4;
-    if (ppkt->size != spkt->size ||
-        ppkt->size < network_length + ETH_HLEN) {
-        return -1;
-    }
 
-    if (colo_packet_compare(ppkt, spkt)) {
+    /*
+     * Because of ppkt and spkt are both in the same connection,
+     * The ppkt's src ip, dst ip, src port, dst port, ip_proto all are
+     * same with spkt. In addition, IP header's Identification is a random
+     * field, we can handle it in IP fragmentation function later.
+     * COLO just concern the response net packet payload from primary guest
+     * and secondary guest are same or not, So we ignored all IP header include
+     * other field like TOS,TTL,IP Checksum. we only need to compare
+     * the ip payload here.
+     */
+    if (colo_packet_compare_common(ppkt, spkt,
+                                   network_header_length + ETH_HLEN)) {
         trace_colo_compare_icmp_miscompare("primary pkt size",
                                            ppkt->size);
-        qemu_hexdump((char *)ppkt->data, stderr, "colo-compare",
-                     ppkt->size);
         trace_colo_compare_icmp_miscompare("Secondary pkt size",
                                            spkt->size);
-        qemu_hexdump((char *)spkt->data, stderr, "colo-compare",
-                     spkt->size);
+        if (trace_event_get_state_backends(TRACE_COLO_COMPARE_MISCOMPARE)) {
+            qemu_hexdump((char *)ppkt->data, stderr, "colo-compare pri pkt",
+                         ppkt->size);
+            qemu_hexdump((char *)spkt->data, stderr, "colo-compare sec pkt",
+                         spkt->size);
+        }
         return -1;
     } else {
         return 0;
@@ -293,11 +391,20 @@ static int colo_packet_compare_icmp(Packet *spkt, Packet *ppkt)
 static int colo_packet_compare_other(Packet *spkt, Packet *ppkt)
 {
     trace_colo_compare_main("compare other");
-    trace_colo_compare_ip_info(ppkt->size, inet_ntoa(ppkt->ip->ip_src),
-                               inet_ntoa(ppkt->ip->ip_dst), spkt->size,
-                               inet_ntoa(spkt->ip->ip_src),
-                               inet_ntoa(spkt->ip->ip_dst));
-    return colo_packet_compare(ppkt, spkt);
+    if (trace_event_get_state_backends(TRACE_COLO_COMPARE_MISCOMPARE)) {
+        char pri_ip_src[20], pri_ip_dst[20], sec_ip_src[20], sec_ip_dst[20];
+
+        strcpy(pri_ip_src, inet_ntoa(ppkt->ip->ip_src));
+        strcpy(pri_ip_dst, inet_ntoa(ppkt->ip->ip_dst));
+        strcpy(sec_ip_src, inet_ntoa(spkt->ip->ip_src));
+        strcpy(sec_ip_dst, inet_ntoa(spkt->ip->ip_dst));
+
+        trace_colo_compare_ip_info(ppkt->size, pri_ip_src,
+                                   pri_ip_dst, spkt->size,
+                                   sec_ip_src, sec_ip_dst);
+    }
+
+    return colo_packet_compare_common(ppkt, spkt, 0);
 }
 
 static int colo_old_packet_check_one(Packet *pkt, int64_t *check_time)
@@ -312,10 +419,9 @@ static int colo_old_packet_check_one(Packet *pkt, int64_t *check_time)
     }
 }
 
-static void colo_old_packet_check_one_conn(void *opaque,
-                                           void *user_data)
+static int colo_old_packet_check_one_conn(Connection *conn,
+                                          void *user_data)
 {
-    Connection *conn = opaque;
     GList *result = NULL;
     int64_t check_time = REGULAR_PACKET_CHECK_MS;
 
@@ -326,7 +432,10 @@ static void colo_old_packet_check_one_conn(void *opaque,
     if (result) {
         /* do checkpoint will flush old packet */
         /* TODO: colo_notify_checkpoint();*/
+        return 0;
     }
+
+    return 1;
 }
 
 /*
@@ -338,7 +447,12 @@ static void colo_old_packet_check(void *opaque)
 {
     CompareState *s = opaque;
 
-    g_queue_foreach(&s->conn_list, colo_old_packet_check_one_conn, NULL);
+    /*
+     * If we find one old packet, stop finding job and notify
+     * COLO frame do checkpoint.
+     */
+    g_queue_find_custom(&s->conn_list, NULL,
+                        (GCompareFunc)colo_old_packet_check_one_conn);
 }
 
 /*
@@ -355,9 +469,7 @@ static void colo_compare_connection(void *opaque, void *user_data)
 
     while (!g_queue_is_empty(&conn->primary_list) &&
            !g_queue_is_empty(&conn->secondary_list)) {
-        qemu_mutex_lock(&s->timer_check_lock);
         pkt = g_queue_pop_tail(&conn->primary_list);
-        qemu_mutex_unlock(&s->timer_check_lock);
         switch (conn->ip_proto) {
         case IPPROTO_TCP:
             result = g_queue_find_custom(&conn->secondary_list,
@@ -378,7 +490,10 @@ static void colo_compare_connection(void *opaque, void *user_data)
         }
 
         if (result) {
-            ret = compare_chr_send(&s->chr_out, pkt->data, pkt->size);
+            ret = compare_chr_send(s,
+                                   pkt->data,
+                                   pkt->size,
+                                   pkt->vnet_hdr_len);
             if (ret < 0) {
                 error_report("colo_send_primary_packet failed");
             }
@@ -392,18 +507,17 @@ static void colo_compare_connection(void *opaque, void *user_data)
              * until next comparison.
              */
             trace_colo_compare_main("packet different");
-            qemu_mutex_lock(&s->timer_check_lock);
             g_queue_push_tail(&conn->primary_list, pkt);
-            qemu_mutex_unlock(&s->timer_check_lock);
             /* TODO: colo_notify_checkpoint();*/
             break;
         }
     }
 }
 
-static int compare_chr_send(CharBackend *out,
+static int compare_chr_send(CompareState *s,
                             const uint8_t *buf,
-                            uint32_t size)
+                            uint32_t size,
+                            uint32_t vnet_hdr_len)
 {
     int ret = 0;
     uint32_t len = htonl(size);
@@ -412,12 +526,24 @@ static int compare_chr_send(CharBackend *out,
         return 0;
     }
 
-    ret = qemu_chr_fe_write_all(out, (uint8_t *)&len, sizeof(len));
+    ret = qemu_chr_fe_write_all(&s->chr_out, (uint8_t *)&len, sizeof(len));
     if (ret != sizeof(len)) {
         goto err;
     }
 
-    ret = qemu_chr_fe_write_all(out, (uint8_t *)buf, size);
+    if (s->vnet_hdr) {
+        /*
+         * We send vnet header len make other module(like filter-redirector)
+         * know how to parse net packet correctly.
+         */
+        len = htonl(vnet_hdr_len);
+        ret = qemu_chr_fe_write_all(&s->chr_out, (uint8_t *)&len, sizeof(len));
+        if (ret != sizeof(len)) {
+            goto err;
+        }
+    }
+
+    ret = qemu_chr_fe_write_all(&s->chr_out, (uint8_t *)buf, size);
     if (ret != size) {
         goto err;
     }
@@ -444,7 +570,7 @@ static void compare_pri_chr_in(void *opaque, const uint8_t *buf, int size)
 
     ret = net_fill_rstate(&s->pri_rs, buf, size);
     if (ret == -1) {
-        qemu_chr_fe_set_handlers(&s->chr_pri_in, NULL, NULL, NULL,
+        qemu_chr_fe_set_handlers(&s->chr_pri_in, NULL, NULL, NULL, NULL,
                                  NULL, NULL, true);
         error_report("colo-compare primary_in error");
     }
@@ -461,31 +587,53 @@ static void compare_sec_chr_in(void *opaque, const uint8_t *buf, int size)
 
     ret = net_fill_rstate(&s->sec_rs, buf, size);
     if (ret == -1) {
-        qemu_chr_fe_set_handlers(&s->chr_sec_in, NULL, NULL, NULL,
+        qemu_chr_fe_set_handlers(&s->chr_sec_in, NULL, NULL, NULL, NULL,
                                  NULL, NULL, true);
         error_report("colo-compare secondary_in error");
     }
 }
 
-static void *colo_compare_thread(void *opaque)
+/*
+ * Check old packet regularly so it can watch for any packets
+ * that the secondary hasn't produced equivalents of.
+ */
+static gboolean check_old_packet_regular(void *opaque)
 {
-    GMainContext *worker_context;
-    GMainLoop *compare_loop;
     CompareState *s = opaque;
 
-    worker_context = g_main_context_new();
+    /* if have old packet we will notify checkpoint */
+    colo_old_packet_check(s);
+
+    return TRUE;
+}
+
+static void *colo_compare_thread(void *opaque)
+{
+    CompareState *s = opaque;
+    GSource *timeout_source;
+
+    s->worker_context = g_main_context_new();
 
     qemu_chr_fe_set_handlers(&s->chr_pri_in, compare_chr_can_read,
-                             compare_pri_chr_in, NULL, s, worker_context, true);
+                             compare_pri_chr_in, NULL, NULL,
+                             s, s->worker_context, true);
     qemu_chr_fe_set_handlers(&s->chr_sec_in, compare_chr_can_read,
-                             compare_sec_chr_in, NULL, s, worker_context, true);
+                             compare_sec_chr_in, NULL, NULL,
+                             s, s->worker_context, true);
 
-    compare_loop = g_main_loop_new(worker_context, FALSE);
+    s->compare_loop = g_main_loop_new(s->worker_context, FALSE);
 
-    g_main_loop_run(compare_loop);
+    /* To kick any packets that the secondary doesn't match */
+    timeout_source = g_timeout_source_new(REGULAR_PACKET_CHECK_MS);
+    g_source_set_callback(timeout_source,
+                          (GSourceFunc)check_old_packet_regular, s, NULL);
+    g_source_attach(timeout_source, s->worker_context);
 
-    g_main_loop_unref(compare_loop);
-    g_main_context_unref(worker_context);
+    g_main_loop_run(s->compare_loop);
+
+    g_source_unref(timeout_source);
+    g_main_loop_unref(s->compare_loop);
+    g_main_context_unref(s->worker_context);
     return NULL;
 }
 
@@ -534,13 +682,32 @@ static void compare_set_outdev(Object *obj, const char *value, Error **errp)
     s->outdev = g_strdup(value);
 }
 
+static bool compare_get_vnet_hdr(Object *obj, Error **errp)
+{
+    CompareState *s = COLO_COMPARE(obj);
+
+    return s->vnet_hdr;
+}
+
+static void compare_set_vnet_hdr(Object *obj,
+                                 bool value,
+                                 Error **errp)
+{
+    CompareState *s = COLO_COMPARE(obj);
+
+    s->vnet_hdr = value;
+}
+
 static void compare_pri_rs_finalize(SocketReadState *pri_rs)
 {
     CompareState *s = container_of(pri_rs, CompareState, pri_rs);
 
     if (packet_enqueue(s, PRIMARY_IN)) {
         trace_colo_compare_main("primary: unsupported packet in");
-        compare_chr_send(&s->chr_out, pri_rs->buf, pri_rs->packet_len);
+        compare_chr_send(s,
+                         pri_rs->buf,
+                         pri_rs->packet_len,
+                         pri_rs->vnet_hdr_len);
     } else {
         /* compare connection */
         g_queue_foreach(&s->conn_list, colo_compare_connection, s);
@@ -564,7 +731,7 @@ static void compare_sec_rs_finalize(SocketReadState *sec_rs)
  * Return 0 is success.
  * Return 1 is failed.
  */
-static int find_and_check_chardev(CharDriverState **chr,
+static int find_and_check_chardev(Chardev **chr,
                                   char *chr_name,
                                   Error **errp)
 {
@@ -585,33 +752,13 @@ static int find_and_check_chardev(CharDriverState **chr,
 }
 
 /*
- * Check old packet regularly so it can watch for any packets
- * that the secondary hasn't produced equivalents of.
- */
-static void check_old_packet_regular(void *opaque)
-{
-    CompareState *s = opaque;
-
-    timer_mod(s->timer, qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) +
-              REGULAR_PACKET_CHECK_MS);
-    /* if have old packet we will notify checkpoint */
-    /*
-     * TODO: Make timer handler run in compare thread
-     * like qemu_chr_add_handlers_full.
-     */
-    qemu_mutex_lock(&s->timer_check_lock);
-    colo_old_packet_check(s);
-    qemu_mutex_unlock(&s->timer_check_lock);
-}
-
-/*
  * Called from the main thread on the primary
  * to setup colo-compare.
  */
 static void colo_compare_complete(UserCreatable *uc, Error **errp)
 {
     CompareState *s = COLO_COMPARE(uc);
-    CharDriverState *chr;
+    Chardev *chr;
     char thread_name[64];
     static int compare_id;
 
@@ -642,11 +789,10 @@ static void colo_compare_complete(UserCreatable *uc, Error **errp)
         return;
     }
 
-    net_socket_rs_init(&s->pri_rs, compare_pri_rs_finalize);
-    net_socket_rs_init(&s->sec_rs, compare_sec_rs_finalize);
+    net_socket_rs_init(&s->pri_rs, compare_pri_rs_finalize, s->vnet_hdr);
+    net_socket_rs_init(&s->sec_rs, compare_sec_rs_finalize, s->vnet_hdr);
 
     g_queue_init(&s->conn_list);
-    qemu_mutex_init(&s->timer_check_lock);
 
     s->connection_track_table = g_hash_table_new_full(connection_key_hash,
                                                       connection_key_equal,
@@ -659,13 +805,27 @@ static void colo_compare_complete(UserCreatable *uc, Error **errp)
                        QEMU_THREAD_JOINABLE);
     compare_id++;
 
-    /* A regular timer to kick any packets that the secondary doesn't match */
-    s->timer = timer_new_ms(QEMU_CLOCK_VIRTUAL, /* Only when guest runs */
-                            check_old_packet_regular, s);
-    timer_mod(s->timer, qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) +
-                        REGULAR_PACKET_CHECK_MS);
-
     return;
+}
+
+static void colo_flush_packets(void *opaque, void *user_data)
+{
+    CompareState *s = user_data;
+    Connection *conn = opaque;
+    Packet *pkt = NULL;
+
+    while (!g_queue_is_empty(&conn->primary_list)) {
+        pkt = g_queue_pop_head(&conn->primary_list);
+        compare_chr_send(s,
+                         pkt->data,
+                         pkt->size,
+                         pkt->vnet_hdr_len);
+        packet_destroy(pkt, NULL);
+    }
+    while (!g_queue_is_empty(&conn->secondary_list)) {
+        pkt = g_queue_pop_head(&conn->secondary_list);
+        packet_destroy(pkt, NULL);
+    }
 }
 
 static void colo_compare_class_init(ObjectClass *oc, void *data)
@@ -677,6 +837,8 @@ static void colo_compare_class_init(ObjectClass *oc, void *data)
 
 static void colo_compare_init(Object *obj)
 {
+    CompareState *s = COLO_COMPARE(obj);
+
     object_property_add_str(obj, "primary_in",
                             compare_get_pri_indev, compare_set_pri_indev,
                             NULL);
@@ -686,30 +848,29 @@ static void colo_compare_init(Object *obj)
     object_property_add_str(obj, "outdev",
                             compare_get_outdev, compare_set_outdev,
                             NULL);
+
+    s->vnet_hdr = false;
+    object_property_add_bool(obj, "vnet_hdr_support", compare_get_vnet_hdr,
+                             compare_set_vnet_hdr, NULL);
 }
 
 static void colo_compare_finalize(Object *obj)
 {
     CompareState *s = COLO_COMPARE(obj);
 
-    qemu_chr_fe_deinit(&s->chr_pri_in);
-    qemu_chr_fe_deinit(&s->chr_sec_in);
-    qemu_chr_fe_deinit(&s->chr_out);
+    qemu_chr_fe_deinit(&s->chr_pri_in, false);
+    qemu_chr_fe_deinit(&s->chr_sec_in, false);
+    qemu_chr_fe_deinit(&s->chr_out, false);
 
-    g_queue_free(&s->conn_list);
+    g_main_loop_quit(s->compare_loop);
+    qemu_thread_join(&s->thread);
 
-    if (qemu_thread_is_self(&s->thread)) {
-        /* compare connection */
-        g_queue_foreach(&s->conn_list, colo_compare_connection, s);
-        qemu_thread_join(&s->thread);
-    }
+    /* Release all unhandled packets after compare thead exited */
+    g_queue_foreach(&s->conn_list, colo_flush_packets, s);
 
-    if (s->timer) {
-        timer_del(s->timer);
-    }
+    g_queue_clear(&s->conn_list);
 
-    qemu_mutex_destroy(&s->timer_check_lock);
-
+    g_hash_table_destroy(s->connection_track_table);
     g_free(s->pri_indev);
     g_free(s->sec_indev);
     g_free(s->outdev);

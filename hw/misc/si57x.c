@@ -252,7 +252,7 @@ static int si57x_rx(I2CSlave *s)
     return slave->regs[slave->ptr];
 }
 
-static void si57x_event(I2CSlave *i2c, enum i2c_event event)
+static int si57x_event(I2CSlave *i2c, enum i2c_event event)
 {
     Si57xState *s = SI57X(i2c);
 
@@ -268,6 +268,8 @@ static void si57x_event(I2CSlave *i2c, enum i2c_event event)
         s->state = IDEAL;
         break;
     }
+
+    return 0;
 }
 
 static int si57x_init(I2CSlave *i2c)

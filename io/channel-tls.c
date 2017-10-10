@@ -153,8 +153,9 @@ static void qio_channel_tls_handshake_task(QIOChannelTLS *ioc,
 
     if (qcrypto_tls_session_handshake(ioc->session, &err) < 0) {
         trace_qio_channel_tls_handshake_fail(ioc);
-        qio_task_abort(task, err);
-        goto cleanup;
+        qio_task_set_error(task, err);
+        qio_task_complete(task);
+        return;
     }
 
     status = qcrypto_tls_session_get_handshake_status(ioc->session);
@@ -163,10 +164,10 @@ static void qio_channel_tls_handshake_task(QIOChannelTLS *ioc,
         if (qcrypto_tls_session_check_credentials(ioc->session,
                                                   &err) < 0) {
             trace_qio_channel_tls_credentials_deny(ioc);
-            qio_task_abort(task, err);
-            goto cleanup;
+            qio_task_set_error(task, err);
+        } else {
+            trace_qio_channel_tls_credentials_allow(ioc);
         }
-        trace_qio_channel_tls_credentials_allow(ioc);
         qio_task_complete(task);
     } else {
         GIOCondition condition;
@@ -183,9 +184,6 @@ static void qio_channel_tls_handshake_task(QIOChannelTLS *ioc,
                               task,
                               NULL);
     }
-
- cleanup:
-    error_free(err);
 }
 
 
@@ -199,8 +197,6 @@ static gboolean qio_channel_tls_handshake_io(QIOChannel *ioc,
 
     qio_channel_tls_handshake_task(
        tioc, task);
-
-    object_unref(OBJECT(tioc));
 
     return FALSE;
 }
@@ -349,6 +345,17 @@ static int qio_channel_tls_close(QIOChannel *ioc,
     return qio_channel_close(tioc->master, errp);
 }
 
+static void qio_channel_tls_set_aio_fd_handler(QIOChannel *ioc,
+                                               AioContext *ctx,
+                                               IOHandler *io_read,
+                                               IOHandler *io_write,
+                                               void *opaque)
+{
+    QIOChannelTLS *tioc = QIO_CHANNEL_TLS(ioc);
+
+    qio_channel_set_aio_fd_handler(tioc->master, ctx, io_read, io_write, opaque);
+}
+
 static GSource *qio_channel_tls_create_watch(QIOChannel *ioc,
                                              GIOCondition condition)
 {
@@ -376,6 +383,7 @@ static void qio_channel_tls_class_init(ObjectClass *klass,
     ioc_klass->io_close = qio_channel_tls_close;
     ioc_klass->io_shutdown = qio_channel_tls_shutdown;
     ioc_klass->io_create_watch = qio_channel_tls_create_watch;
+    ioc_klass->io_set_aio_fd_handler = qio_channel_tls_set_aio_fd_handler;
 }
 
 static const TypeInfo qio_channel_tls_info = {

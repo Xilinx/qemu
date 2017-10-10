@@ -11,6 +11,7 @@
 #include "cpu.h"
 #include "hw/hw.h"
 #include "hw/m68k/mcf.h"
+#include "hw/m68k/mcf_fec.h"
 #include "qemu/timer.h"
 #include "hw/ptimer.h"
 #include "sysemu/sysemu.h"
@@ -18,6 +19,7 @@
 #include "net/net.h"
 #include "hw/boards.h"
 #include "hw/loader.h"
+#include "hw/sysbus.h"
 #include "elf.h"
 #include "exec/address-spaces.h"
 
@@ -192,6 +194,26 @@ static void mcf5208_sys_init(MemoryRegion *address_space, qemu_irq *pic)
     }
 }
 
+static void mcf_fec_init(MemoryRegion *sysmem, NICInfo *nd, hwaddr base,
+                         qemu_irq *irqs)
+{
+    DeviceState *dev;
+    SysBusDevice *s;
+    int i;
+
+    qemu_check_nic_model(nd, TYPE_MCF_FEC_NET);
+    dev = qdev_create(NULL, TYPE_MCF_FEC_NET);
+    qdev_set_nic_properties(dev, nd);
+    qdev_init_nofail(dev);
+
+    s = SYS_BUS_DEVICE(dev);
+    for (i = 0; i < FEC_NUM_IRQ; i++) {
+        sysbus_connect_irq(s, i, irqs[i]);
+    }
+
+    memory_region_add_subregion(sysmem, base, sysbus_mmio_get_region(s, 0));
+}
+
 static void mcf5208evb_init(MachineState *machine)
 {
     ram_addr_t ram_size = machine->ram_size;
@@ -227,15 +249,14 @@ static void mcf5208evb_init(MachineState *machine)
 
     /* Internal SRAM.  */
     memory_region_init_ram(sram, NULL, "mcf5208.sram", 16384, &error_fatal);
-    vmstate_register_ram_global(sram);
     memory_region_add_subregion(address_space_mem, 0x80000000, sram);
 
     /* Internal peripherals.  */
     pic = mcf_intc_init(address_space_mem, 0xfc048000, cpu);
 
-    mcf_uart_mm_init(address_space_mem, 0xfc060000, pic[26], serial_hds[0]);
-    mcf_uart_mm_init(address_space_mem, 0xfc064000, pic[27], serial_hds[1]);
-    mcf_uart_mm_init(address_space_mem, 0xfc068000, pic[28], serial_hds[2]);
+    mcf_uart_mm_init(0xfc060000, pic[26], serial_hds[0]);
+    mcf_uart_mm_init(0xfc064000, pic[27], serial_hds[1]);
+    mcf_uart_mm_init(0xfc068000, pic[28], serial_hds[2]);
 
     mcf5208_sys_init(address_space_mem, pic);
 
@@ -243,9 +264,10 @@ static void mcf5208evb_init(MachineState *machine)
         fprintf(stderr, "Too many NICs\n");
         exit(1);
     }
-    if (nd_table[0].used)
+    if (nd_table[0].used) {
         mcf_fec_init(address_space_mem, &nd_table[0],
                      0xfc030000, pic + 36);
+    }
 
     /*  0xfc000000 SCM.  */
     /*  0xfc004000 XBS.  */

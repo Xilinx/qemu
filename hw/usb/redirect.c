@@ -33,7 +33,7 @@
 #include "qapi/qmp/qerror.h"
 #include "qemu/error-report.h"
 #include "qemu/iov.h"
-#include "sysemu/char.h"
+#include "chardev/char-fe.h"
 
 #include <usbredirparser.h>
 #include <usbredirfilter.h>
@@ -193,7 +193,7 @@ static void usbredir_handle_status(USBRedirDevice *dev, USBPacket *p,
 #define WARNING(...) \
     do { \
         if (dev->debug >= usbredirparser_warning) { \
-            error_report("usb-redir warning: " __VA_ARGS__); \
+            warn_report("" __VA_ARGS__); \
         } \
     } while (0)
 #define INFO(...) \
@@ -229,21 +229,10 @@ static void usbredir_log(void *priv, int level, const char *msg)
 static void usbredir_log_data(USBRedirDevice *dev, const char *desc,
     const uint8_t *data, int len)
 {
-    int i, j, n;
-
     if (dev->debug < usbredirparser_debug_data) {
         return;
     }
-
-    for (i = 0; i < len; i += j) {
-        char buf[128];
-
-        n = sprintf(buf, "%s", desc);
-        for (j = 0; j < 8 && i + j < len; j++) {
-            n += sprintf(buf + n, " %02X", data[i + j]);
-        }
-        error_report("%s", buf);
-    }
+    qemu_hexdump((char *)data, stderr, desc, len);
 }
 
 /*
@@ -284,10 +273,9 @@ static gboolean usbredir_write_unblocked(GIOChannel *chan, GIOCondition cond,
 static int usbredir_write(void *priv, uint8_t *data, int count)
 {
     USBRedirDevice *dev = priv;
-    CharDriverState *chr = qemu_chr_fe_get_driver(&dev->cs);
     int r;
 
-    if (!chr->be_open) {
+    if (!qemu_chr_fe_backend_open(&dev->cs)) {
         return 0;
     }
 
@@ -1377,7 +1365,7 @@ static void usbredir_realize(USBDevice *udev, Error **errp)
     USBRedirDevice *dev = USB_REDIRECT(udev);
     int i;
 
-    if (!qemu_chr_fe_get_driver(&dev->cs)) {
+    if (!qemu_chr_fe_backend_connected(&dev->cs)) {
         error_setg(errp, QERR_MISSING_PARAMETER, "chardev");
         return;
     }
@@ -1410,7 +1398,7 @@ static void usbredir_realize(USBDevice *udev, Error **errp)
     /* Let the backend know we are ready */
     qemu_chr_fe_set_handlers(&dev->cs, usbredir_chardev_can_read,
                              usbredir_chardev_read, usbredir_chardev_event,
-                             dev, NULL, true);
+                             NULL, dev, NULL, true);
 
     dev->vmstate =
         qemu_add_vm_change_state_handler(usbredir_vm_state_change, dev);
@@ -1427,13 +1415,11 @@ static void usbredir_cleanup_device_queues(USBRedirDevice *dev)
     }
 }
 
-static void usbredir_handle_destroy(USBDevice *udev)
+static void usbredir_unrealize(USBDevice *udev, Error **errp)
 {
     USBRedirDevice *dev = USB_REDIRECT(udev);
-    CharDriverState *chr = qemu_chr_fe_get_driver(&dev->cs);
 
-    qemu_chr_fe_deinit(&dev->cs);
-    qemu_chr_delete(chr);
+    qemu_chr_fe_deinit(&dev->cs, true);
 
     /* Note must be done after qemu_chr_close, as that causes a close event */
     qemu_bh_delete(dev->chardev_close_bh);
@@ -2165,7 +2151,8 @@ static int usbredir_post_load(void *priv, int version_id)
 }
 
 /* For usbredirparser migration */
-static void usbredir_put_parser(QEMUFile *f, void *priv, size_t unused)
+static int usbredir_put_parser(QEMUFile *f, void *priv, size_t unused,
+                               VMStateField *field, QJSON *vmdesc)
 {
     USBRedirDevice *dev = priv;
     uint8_t *data;
@@ -2173,7 +2160,7 @@ static void usbredir_put_parser(QEMUFile *f, void *priv, size_t unused)
 
     if (dev->parser == NULL) {
         qemu_put_be32(f, 0);
-        return;
+        return 0;
     }
 
     usbredirparser_serialize(dev->parser, &data, &len);
@@ -2183,9 +2170,12 @@ static void usbredir_put_parser(QEMUFile *f, void *priv, size_t unused)
     qemu_put_buffer(f, data, len);
 
     free(data);
+
+    return 0;
 }
 
-static int usbredir_get_parser(QEMUFile *f, void *priv, size_t unused)
+static int usbredir_get_parser(QEMUFile *f, void *priv, size_t unused,
+                               VMStateField *field)
 {
     USBRedirDevice *dev = priv;
     uint8_t *data;
@@ -2228,7 +2218,8 @@ static const VMStateInfo usbredir_parser_vmstate_info = {
 
 
 /* For buffered packets (iso/irq) queue migration */
-static void usbredir_put_bufpq(QEMUFile *f, void *priv, size_t unused)
+static int usbredir_put_bufpq(QEMUFile *f, void *priv, size_t unused,
+                              VMStateField *field, QJSON *vmdesc)
 {
     struct endp_data *endp = priv;
     USBRedirDevice *dev = endp->dev;
@@ -2246,9 +2237,12 @@ static void usbredir_put_bufpq(QEMUFile *f, void *priv, size_t unused)
         i++;
     }
     assert(i == endp->bufpq_size);
+
+    return 0;
 }
 
-static int usbredir_get_bufpq(QEMUFile *f, void *priv, size_t unused)
+static int usbredir_get_bufpq(QEMUFile *f, void *priv, size_t unused,
+                              VMStateField *field)
 {
     struct endp_data *endp = priv;
     USBRedirDevice *dev = endp->dev;
@@ -2351,7 +2345,8 @@ static const VMStateDescription usbredir_ep_vmstate = {
 
 
 /* For PacketIdQueue migration */
-static void usbredir_put_packet_id_q(QEMUFile *f, void *priv, size_t unused)
+static int usbredir_put_packet_id_q(QEMUFile *f, void *priv, size_t unused,
+                                    VMStateField *field, QJSON *vmdesc)
 {
     struct PacketIdQueue *q = priv;
     USBRedirDevice *dev = q->dev;
@@ -2365,9 +2360,12 @@ static void usbredir_put_packet_id_q(QEMUFile *f, void *priv, size_t unused)
         remain--;
     }
     assert(remain == 0);
+
+    return 0;
 }
 
-static int usbredir_get_packet_id_q(QEMUFile *f, void *priv, size_t unused)
+static int usbredir_get_packet_id_q(QEMUFile *f, void *priv, size_t unused,
+                                    VMStateField *field)
 {
     struct PacketIdQueue *q = priv;
     USBRedirDevice *dev = q->dev;
@@ -2501,7 +2499,7 @@ static void usbredir_class_initfn(ObjectClass *klass, void *data)
 
     uc->realize        = usbredir_realize;
     uc->product_desc   = "USB Redirection Device";
-    uc->handle_destroy = usbredir_handle_destroy;
+    uc->unrealize      = usbredir_unrealize;
     uc->cancel_packet  = usbredir_cancel_packet;
     uc->handle_reset   = usbredir_handle_reset;
     uc->handle_data    = usbredir_handle_data;

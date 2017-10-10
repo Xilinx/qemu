@@ -111,11 +111,13 @@ float16 float16_default_nan(float_status *status)
 *----------------------------------------------------------------------------*/
 float32 float32_default_nan(float_status *status)
 {
-#if defined(TARGET_SPARC)
+#if defined(TARGET_SPARC) || defined(TARGET_M68K)
     return const_float32(0x7FFFFFFF);
 #elif defined(TARGET_PPC) || defined(TARGET_ARM) || defined(TARGET_ALPHA) || \
       defined(TARGET_XTENSA) || defined(TARGET_S390X) || defined(TARGET_TRICORE)
     return const_float32(0x7FC00000);
+#elif defined(TARGET_HPPA)
+    return const_float32(0x7FA00000);
 #else
     if (status->snan_bit_is_one) {
         return const_float32(0x7FBFFFFF);
@@ -134,11 +136,13 @@ float32 float32_default_nan(float_status *status)
 *----------------------------------------------------------------------------*/
 float64 float64_default_nan(float_status *status)
 {
-#if defined(TARGET_SPARC)
+#if defined(TARGET_SPARC) || defined(TARGET_M68K)
     return const_float64(LIT64(0x7FFFFFFFFFFFFFFF));
 #elif defined(TARGET_PPC) || defined(TARGET_ARM) || defined(TARGET_ALPHA) || \
       defined(TARGET_S390X)
     return const_float64(LIT64(0x7FF8000000000000));
+#elif defined(TARGET_HPPA)
+    return const_float64(LIT64(0x7FF4000000000000));
 #else
     if (status->snan_bit_is_one) {
         return const_float64(LIT64(0x7FF7FFFFFFFFFFFF));
@@ -158,7 +162,10 @@ float64 float64_default_nan(float_status *status)
 floatx80 floatx80_default_nan(float_status *status)
 {
     floatx80 r;
-
+#if defined(TARGET_M68K)
+    r.low = LIT64(0xFFFFFFFFFFFFFFFF);
+    r.high = 0x7FFF;
+#else
     if (status->snan_bit_is_one) {
         r.low = LIT64(0xBFFFFFFFFFFFFFFF);
         r.high = 0x7FFF;
@@ -166,6 +173,7 @@ floatx80 floatx80_default_nan(float_status *status)
         r.low = LIT64(0xC000000000000000);
         r.high = 0xFFFF;
     }
+#endif
     return r;
 }
 
@@ -181,7 +189,7 @@ float128 float128_default_nan(float_status *status)
         r.high = LIT64(0x7FFF7FFFFFFFFFFF);
     } else {
         r.low = LIT64(0x0000000000000000);
-#if defined(TARGET_S390X)
+#if defined(TARGET_S390X) || defined(TARGET_PPC)
         r.high = LIT64(0x7FFF800000000000);
 #else
         r.high = LIT64(0xFFFF800000000000);
@@ -361,7 +369,14 @@ float32 float32_maybe_silence_nan(float32 a_, float_status *status)
 {
     if (float32_is_signaling_nan(a_, status)) {
         if (status->snan_bit_is_one) {
+#ifdef TARGET_HPPA
+            uint32_t a = float32_val(a_);
+            a &= ~0x00400000;
+            a |=  0x00200000;
+            return make_float32(a);
+#else
             return float32_default_nan(status);
+#endif
         } else {
             uint32_t a = float32_val(a_);
             a |= (1 << 22);
@@ -449,7 +464,7 @@ static int pickNaN(flag aIsQNaN, flag aIsSNaN, flag bIsQNaN, flag bIsSNaN,
         return 1;
     }
 }
-#elif defined(TARGET_MIPS)
+#elif defined(TARGET_MIPS) || defined(TARGET_HPPA)
 static int pickNaN(flag aIsQNaN, flag aIsSNaN, flag bIsQNaN, flag bIsSNaN,
                     flag aIsLargerSignificand)
 {
@@ -489,6 +504,30 @@ static int pickNaN(flag aIsQNaN, flag aIsSNaN, flag bIsQNaN, flag bIsSNaN,
         return 0;
     } else {
         return 1;
+    }
+}
+#elif defined(TARGET_M68K)
+static int pickNaN(flag aIsQNaN, flag aIsSNaN, flag bIsQNaN, flag bIsSNaN,
+                   flag aIsLargerSignificand)
+{
+    /* M68000 FAMILY PROGRAMMER'S REFERENCE MANUAL
+     * 3.4 FLOATING-POINT INSTRUCTION DETAILS
+     * If either operand, but not both operands, of an operation is a
+     * nonsignaling NaN, then that NaN is returned as the result. If both
+     * operands are nonsignaling NaNs, then the destination operand
+     * nonsignaling NaN is returned as the result.
+     * If either operand to an operation is a signaling NaN (SNaN), then the
+     * SNaN bit is set in the FPSR EXC byte. If the SNaN exception enable bit
+     * is set in the FPCR ENABLE byte, then the exception is taken and the
+     * destination is not modified. If the SNaN exception enable bit is not
+     * set, setting the SNaN bit in the operand to a one converts the SNaN to
+     * a nonsignaling NaN. The operation then continues as described in the
+     * preceding paragraph for nonsignaling NaNs.
+     */
+    if (aIsQNaN || aIsSNaN) { /* a is the destination operand */
+        return 0; /* return the destination operand */
+    } else {
+        return 1; /* return b */
     }
 }
 #else
@@ -794,7 +833,14 @@ float64 float64_maybe_silence_nan(float64 a_, float_status *status)
 {
     if (float64_is_signaling_nan(a_, status)) {
         if (status->snan_bit_is_one) {
+#ifdef TARGET_HPPA
+            uint64_t a = float64_val(a_);
+            a &= ~0x0008000000000000ULL;
+            a |=  0x0004000000000000ULL;
+            return make_float64(a);
+#else
             return float64_default_nan(status);
+#endif
         } else {
             uint64_t a = float64_val(a_);
             a |= LIT64(0x0008000000000000);

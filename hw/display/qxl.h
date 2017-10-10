@@ -40,6 +40,7 @@ typedef struct PCIQXLDevice {
     uint32_t           cmdlog;
 
     uint32_t           guest_bug;
+    Error              *migration_blocker;
 
     enum qxl_mode      mode;
     uint32_t           cmdflags;
@@ -118,6 +119,8 @@ typedef struct PCIQXLDevice {
     uint32_t          vram_size_mb;
     uint32_t          vram32_size_mb;
     uint32_t          vgamem_size_mb;
+    uint32_t          xres;
+    uint32_t          yres;
 
     /* qxl_render_update state */
     int                render_update_cookie_num;

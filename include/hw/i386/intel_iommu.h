@@ -32,6 +32,8 @@
 #define INTEL_IOMMU_DEVICE(obj) \
      OBJECT_CHECK(IntelIOMMUState, (obj), TYPE_INTEL_IOMMU_DEVICE)
 
+#define TYPE_INTEL_IOMMU_MEMORY_REGION "intel-iommu-iommu-memory-region"
+
 /* DMAR Hardware Unit Definition address (IOMMU unit) */
 #define Q35_HOST_BRIDGE_IOMMU_ADDR  0xfed90000ULL
 
@@ -63,6 +65,7 @@ typedef union VTD_IR_TableEntry VTD_IR_TableEntry;
 typedef union VTD_IR_MSIAddress VTD_IR_MSIAddress;
 typedef struct VTDIrq VTDIrq;
 typedef struct VTD_MSIMessage VTD_MSIMessage;
+typedef struct IntelIOMMUNotifierNode IntelIOMMUNotifierNode;
 
 /* Context-Entry */
 struct VTDContextEntry {
@@ -82,7 +85,9 @@ struct VTDAddressSpace {
     PCIBus *bus;
     uint8_t devfn;
     AddressSpace as;
-    MemoryRegion iommu;
+    IOMMUMemoryRegion iommu;
+    MemoryRegion root;
+    MemoryRegion sys_alias;
     MemoryRegion iommu_ir;      /* Interrupt region: 0xfeeXXXXX */
     IntelIOMMUState *iommu_state;
     VTDContextCacheEntry context_cache_entry;
@@ -98,8 +103,7 @@ struct VTDIOTLBEntry {
     uint16_t domain_id;
     uint64_t slpte;
     uint64_t mask;
-    bool read_flags;
-    bool write_flags;
+    uint8_t access_flags;
 };
 
 /* VT-d Source-ID Qualifier types */
@@ -247,6 +251,11 @@ struct VTD_MSIMessage {
 /* When IR is enabled, all MSI/MSI-X data bits should be zero */
 #define VTD_IR_MSI_DATA          (0)
 
+struct IntelIOMMUNotifierNode {
+    VTDAddressSpace *vtd_as;
+    QLIST_ENTRY(IntelIOMMUNotifierNode) next;
+};
+
 /* The iommu (DMAR) device state struct */
 struct IntelIOMMUState {
     X86IOMMUState x86_iommu;
@@ -256,6 +265,8 @@ struct IntelIOMMUState {
     uint8_t w1cmask[DMAR_REG_SIZE]; /* RW1C(Write 1 to Clear) bytes */
     uint8_t womask[DMAR_REG_SIZE];  /* WO (write only - read returns 0) */
     uint32_t version;
+
+    bool caching_mode;          /* RO - is cap CM enabled? */
 
     dma_addr_t root;                /* Current root table pointer */
     bool root_extended;             /* Type of root table (extended or not) */
@@ -279,9 +290,10 @@ struct IntelIOMMUState {
     uint32_t context_cache_gen;     /* Should be in [1,MAX] */
     GHashTable *iotlb;              /* IOTLB */
 
-    MemoryRegionIOMMUOps iommu_ops;
     GHashTable *vtd_as_by_busptr;   /* VTDBus objects indexed by PCIBus* reference */
     VTDBus *vtd_as_by_bus_num[VTD_PCI_BUS_MAX]; /* VTDBus objects indexed by bus number */
+    /* list of registered notifiers */
+    QLIST_HEAD(, IntelIOMMUNotifierNode) notifiers_list;
 
     /* interrupt remapping */
     bool intr_enabled;              /* Whether guest enabled IR */

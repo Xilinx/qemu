@@ -11,8 +11,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "qapi/qmp/qint.h"
-#include "qapi/qmp/qfloat.h"
+#include "qapi/qmp/qnum.h"
 #include "qapi/qmp/qdict.h"
 #include "qapi/qmp/qbool.h"
 #include "qapi/qmp/qstring.h"
@@ -178,53 +177,28 @@ size_t qdict_size(const QDict *qdict)
 }
 
 /**
- * qdict_get_obj(): Get a QObject of a specific type
- */
-static QObject *qdict_get_obj(const QDict *qdict, const char *key, QType type)
-{
-    QObject *obj;
-
-    obj = qdict_get(qdict, key);
-    assert(obj != NULL);
-    assert(qobject_type(obj) == type);
-
-    return obj;
-}
-
-/**
  * qdict_get_double(): Get an number mapped by 'key'
  *
- * This function assumes that 'key' exists and it stores a
- * QFloat or QInt object.
+ * This function assumes that 'key' exists and it stores a QNum.
  *
  * Return number mapped by 'key'.
  */
 double qdict_get_double(const QDict *qdict, const char *key)
 {
-    QObject *obj = qdict_get(qdict, key);
-
-    assert(obj);
-    switch (qobject_type(obj)) {
-    case QTYPE_QFLOAT:
-        return qfloat_get_double(qobject_to_qfloat(obj));
-    case QTYPE_QINT:
-        return qint_get_int(qobject_to_qint(obj));
-    default:
-        abort();
-    }
+    return qnum_get_double(qobject_to_qnum(qdict_get(qdict, key)));
 }
 
 /**
  * qdict_get_int(): Get an integer mapped by 'key'
  *
  * This function assumes that 'key' exists and it stores a
- * QInt object.
+ * QNum representable as int.
  *
  * Return integer mapped by 'key'.
  */
 int64_t qdict_get_int(const QDict *qdict, const char *key)
 {
-    return qint_get_int(qobject_to_qint(qdict_get(qdict, key)));
+    return qnum_get_int(qobject_to_qnum(qdict_get(qdict, key)));
 }
 
 /**
@@ -241,25 +215,15 @@ bool qdict_get_bool(const QDict *qdict, const char *key)
 }
 
 /**
- * qdict_get_qlist(): Get the QList mapped by 'key'
- *
- * This function assumes that 'key' exists and it stores a
- * QList object.
- *
- * Return QList mapped by 'key'.
+ * qdict_get_qlist(): If @qdict maps @key to a QList, return it, else NULL.
  */
 QList *qdict_get_qlist(const QDict *qdict, const char *key)
 {
-    return qobject_to_qlist(qdict_get_obj(qdict, key, QTYPE_QLIST));
+    return qobject_to_qlist(qdict_get(qdict, key));
 }
 
 /**
- * qdict_get_qdict(): Get the QDict mapped by 'key'
- *
- * This function assumes that 'key' exists and it stores a
- * QDict object.
- *
- * Return QDict mapped by 'key'.
+ * qdict_get_qdict(): If @qdict maps @key to a QDict, return it, else NULL.
  */
 QDict *qdict_get_qdict(const QDict *qdict, const char *key)
 {
@@ -283,16 +247,21 @@ const char *qdict_get_str(const QDict *qdict, const char *key)
 /**
  * qdict_get_try_int(): Try to get integer mapped by 'key'
  *
- * Return integer mapped by 'key', if it is not present in
- * the dictionary or if the stored object is not of QInt type
- * 'def_value' will be returned.
+ * Return integer mapped by 'key', if it is not present in the
+ * dictionary or if the stored object is not a QNum representing an
+ * integer, 'def_value' will be returned.
  */
 int64_t qdict_get_try_int(const QDict *qdict, const char *key,
                           int64_t def_value)
 {
-    QInt *qint = qobject_to_qint(qdict_get(qdict, key));
+    QNum *qnum = qobject_to_qnum(qdict_get(qdict, key));
+    int64_t val;
 
-    return qint ? qint_get_int(qint) : def_value;
+    if (!qnum || !qnum_get_try_int(qnum, &val)) {
+        return def_value;
+    }
+
+    return val;
 }
 
 /**
@@ -487,7 +456,7 @@ void qdict_set_default_str(QDict *dst, const char *key, const char *val)
         return;
     }
 
-    qdict_put(dst, key, qstring_from_str(val));
+    qdict_put_str(dst, key, val);
 }
 
 static void qdict_flatten_qdict(QDict *qdict, QDict *target,
@@ -767,7 +736,7 @@ static int qdict_is_list(QDict *maybe_list, Error **errp)
     for (ent = qdict_first(maybe_list); ent != NULL;
          ent = qdict_next(maybe_list, ent)) {
 
-        if (qemu_strtoll(ent->key, NULL, 10, &val) == 0) {
+        if (qemu_strtoi64(ent->key, NULL, 10, &val) == 0) {
             if (is_list == -1) {
                 is_list = 1;
             } else if (!is_list) {

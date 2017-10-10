@@ -1294,7 +1294,7 @@ static uint64_t gem_read(void *opaque, hwaddr offset, unsigned size)
     switch (offset) {
     case GEM_ISR:
         DB_PRINT("lowering irqs on ISR read\n");
-        gem_update_int_status(s);
+        /* The interrupts get updated at the end of the function. */
         break;
     case GEM_PHYMNTNC:
         if (retval & GEM_PHYMNTNC_OP_R) {

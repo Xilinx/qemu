@@ -5,6 +5,9 @@
 # This work is licensed under the terms of the GNU GPL, version 2 or later.
 # See the COPYING file in the top-level directory.
 
+##
+# = Tracing commands
+##
 
 ##
 # @TraceEventState:
@@ -45,7 +48,7 @@
 # Query the state of events.
 #
 # @name: Event name pattern (case-sensitive glob).
-# @vcpu: #optional The vCPU to query (any by default; since 2.7).
+# @vcpu: The vCPU to query (any by default; since 2.7).
 #
 # Returns: a list of @TraceEventInfo for the matching events
 #
@@ -59,6 +62,13 @@
 # an error is returned.
 #
 # Since: 2.2
+#
+# Example:
+#
+# -> { "execute": "trace-event-get-state",
+#      "arguments": { "name": "qemu_memalign" } }
+# <- { "return": [ { "name": "qemu_memalign", "state": "disabled" } ] }
+#
 ##
 { 'command': 'trace-event-get-state',
   'data': {'name': 'str', '*vcpu': 'int'},
@@ -71,8 +81,8 @@
 #
 # @name: Event name pattern (case-sensitive glob).
 # @enable: Whether to enable tracing.
-# @ignore-unavailable: #optional Do not match unavailable events with @name.
-# @vcpu: #optional The vCPU to act upon (all by default; since 2.7).
+# @ignore-unavailable: Do not match unavailable events with @name.
+# @vcpu: The vCPU to act upon (all by default; since 2.7).
 #
 # An event's state is modified if:
 # - its name matches the @name pattern, and
@@ -84,6 +94,13 @@
 # error is returned.
 #
 # Since: 2.2
+#
+# Example:
+#
+# -> { "execute": "trace-event-set-state",
+#      "arguments": { "name": "qemu_memalign", "enable": "true" } }
+# <- { "return": {} }
+#
 ##
 { 'command': 'trace-event-set-state',
   'data': {'name': 'str', 'enable': 'bool', '*ignore-unavailable': 'bool',

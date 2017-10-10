@@ -28,6 +28,7 @@ static void test_port(int port)
     g_assert(port > 0);
     qusb_pci_init_one(qs->pcibus, &uhci, QPCI_DEVFN(0x1d, 0), 4);
     uhci_port_test(&uhci, port - 1, UHCI_PORT_CCS);
+    uhci_deinit(&uhci);
 }
 
 static void test_port_1(void)
@@ -78,7 +79,7 @@ int main(int argc, char **argv)
 {
     const char *arch = qtest_get_arch();
     const char *cmd = "-device piix3-usb-uhci,id=uhci,addr=1d.0"
-                      " -drive id=drive0,if=none,file=/dev/null,format=raw"
+                      " -drive id=drive0,if=none,file=null-co://,format=raw"
                       " -device usb-tablet,bus=uhci.0,port=1";
     int ret;
 

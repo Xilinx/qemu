@@ -120,7 +120,6 @@ static void openrisc_sim_init(MachineState *machine)
 
     ram = g_malloc(sizeof(*ram));
     memory_region_init_ram(ram, NULL, "openrisc.ram", ram_size, &error_fatal);
-    vmstate_register_ram_global(ram);
     memory_region_add_subregion(get_system_memory(), 0, ram);
 
     cpu_openrisc_pic_init(cpu);
@@ -139,10 +138,10 @@ static void openrisc_sim_init(MachineState *machine)
 
 static void openrisc_sim_machine_init(MachineClass *mc)
 {
-    mc->desc = "or32 simulation";
+    mc->desc = "or1k simulation";
     mc->init = openrisc_sim_init;
     mc->max_cpus = 1;
     mc->is_default = 1;
 }
 
-DEFINE_MACHINE("or32-sim", openrisc_sim_machine_init)
+DEFINE_MACHINE("or1k-sim", openrisc_sim_machine_init)

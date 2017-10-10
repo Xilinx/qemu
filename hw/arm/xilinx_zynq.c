@@ -206,7 +206,6 @@ static void zynq_init(MachineState *machine)
     /* 256K of on-chip memory */
     memory_region_init_ram(ocm_ram, NULL, "zynq.ocm_ram", 256 << 10,
                            &error_fatal);
-    vmstate_register_ram_global(ocm_ram);
     memory_region_add_subregion(address_space_mem, 0xFFFC0000, ocm_ram);
 
     DriveInfo *dinfo = drive_get(IF_PFLASH, 0, 0);
@@ -323,7 +322,6 @@ static void zynq_machine_init(MachineClass *mc)
 {
     mc->desc = "Xilinx Zynq Platform Baseboard for Cortex-A9";
     mc->init = zynq_init;
-    mc->block_default_type = IF_SCSI;
     mc->max_cpus = 1;
     mc->no_sdcard = 1;
 }

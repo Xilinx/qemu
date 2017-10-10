@@ -126,6 +126,8 @@ typedef int64_t  Elf64_Sxword;
  */
 #define EM_S390_OLD     0xA390
 
+#define EM_ALTERA_NIOS2 113     /* Altera Nios II soft-core processor */
+
 #define EM_MICROBLAZE      189
 #define EM_MICROBLAZE_OLD  0xBAAB
 
@@ -1474,6 +1476,7 @@ typedef struct elf64_shdr {
 #define NT_TASKSTRUCT	4
 #define NT_AUXV		6
 #define NT_PRXFPREG     0x46e62b7f      /* copied from gdb5.1/include/elf/common.h */
+#define NT_S390_GS_CB   0x30b           /* s390 guarded storage registers */
 #define NT_S390_VXRS_HIGH 0x30a         /* s390 vector registers 16-31 */
 #define NT_S390_VXRS_LOW  0x309         /* s390 vector registers 0-15 (lower half) */
 #define NT_S390_PREFIX  0x305           /* s390 prefix register */

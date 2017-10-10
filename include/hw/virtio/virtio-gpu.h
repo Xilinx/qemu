@@ -38,6 +38,7 @@ struct virtio_gpu_simple_resource {
     unsigned int iov_cnt;
     uint32_t scanout_bitmask;
     pixman_image_t *image;
+    uint64_t hostmem;
     QTAILQ_ENTRY(virtio_gpu_simple_resource) next;
 };
 
@@ -68,8 +69,11 @@ enum virtio_gpu_conf_flags {
     (_cfg.flags & (1 << VIRTIO_GPU_FLAG_STATS_ENABLED))
 
 struct virtio_gpu_conf {
+    uint64_t max_hostmem;
     uint32_t max_outputs;
     uint32_t flags;
+    uint32_t xres;
+    uint32_t yres;
 };
 
 struct virtio_gpu_ctrl_command {
@@ -103,6 +107,7 @@ typedef struct VirtIOGPU {
     struct virtio_gpu_requested_state req_state[VIRTIO_GPU_MAX_SCANOUTS];
 
     struct virtio_gpu_conf conf;
+    uint64_t hostmem;
     int enabled_output_bitmask;
     struct virtio_gpu_config virtio_config;
 
@@ -164,6 +169,7 @@ void virtio_gpu_virgl_process_cmd(VirtIOGPU *g,
                                   struct virtio_gpu_ctrl_command *cmd);
 void virtio_gpu_virgl_fence_poll(VirtIOGPU *g);
 void virtio_gpu_virgl_reset(VirtIOGPU *g);
+void virtio_gpu_gl_block(void *opaque, bool block);
 int virtio_gpu_virgl_init(VirtIOGPU *g);
 
 #endif

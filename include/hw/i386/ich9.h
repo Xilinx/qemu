@@ -21,7 +21,6 @@ void ich9_lpc_pm_init(PCIDevice *pci_lpc, bool smm_enabled);
 I2CBus *ich9_smb_init(PCIBus *bus, int devfn, uint32_t smb_io_base);
 
 void ich9_generate_smi(void);
-void ich9_generate_nmi(void);
 
 #define ICH9_CC_SIZE (16 * 1024) /* 16KB. Chipset configuration registers */
 
@@ -63,6 +62,16 @@ typedef struct ICH9LPCState {
      */
     uint8_t rst_cnt;
     MemoryRegion rst_cnt_mem;
+
+    /* SMI feature negotiation via fw_cfg */
+    uint64_t smi_host_features;       /* guest-invisible, host endian */
+    uint8_t smi_host_features_le[8];  /* guest-visible, read-only, little
+                                       * endian uint64_t */
+    uint8_t smi_guest_features_le[8]; /* guest-visible, read-write, little
+                                       * endian uint64_t */
+    uint8_t smi_features_ok;          /* guest-visible, read-only; selecting it
+                                       * triggers feature lockdown */
+    uint64_t smi_negotiated_features; /* guest-invisible, host endian */
 
     /* isa bus */
     ISABus *isa_bus;
@@ -239,5 +248,8 @@ Object *ich9_lpc_find(void);
 #define ICH9_SMB_HST_D0                         0x05
 #define ICH9_SMB_HST_D1                         0x06
 #define ICH9_SMB_HOST_BLOCK_DB                  0x07
+
+/* bit positions used in fw_cfg SMI feature negotiation */
+#define ICH9_LPC_SMI_F_BROADCAST_BIT            0
 
 #endif /* HW_ICH9_H */

@@ -28,10 +28,10 @@
 
 #include "hw/hw.h"
 #include "sysemu/sysemu.h"
-#include "sysemu/char.h"
+#include "chardev/char-fe.h"
 #include "exec/memory.h"
 #include "qemu/fifo8.h"
-#include "sysemu/char.h"
+#include "chardev/char.h"
 
 #define UART_FIFO_LENGTH    16      /* 16550A Fifo Length */
 
@@ -88,11 +88,11 @@ void serial_set_frequency(SerialState *s, uint32_t frequency);
 
 /* legacy pre qom */
 SerialState *serial_init(int base, qemu_irq irq, int baudbase,
-                         CharDriverState *chr, MemoryRegion *system_io);
+                         Chardev *chr, MemoryRegion *system_io);
 SerialState *serial_mm_init(MemoryRegion *address_space,
                             hwaddr base, int it_shift,
                             qemu_irq irq, int baudbase,
-                            CharDriverState *chr, enum device_endian end);
+                            Chardev *chr, enum device_endian end);
 
 /* serial-isa.c */
 #define TYPE_ISA_SERIAL "isa-serial"

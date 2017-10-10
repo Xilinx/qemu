@@ -244,11 +244,9 @@ static int tx_consume(Rocker *r, DescInfo *info)
             goto err_no_mem;
         }
 
-        if (pci_dma_read(dev, frag_addr, iov[iovcnt].iov_base,
-                     iov[iovcnt].iov_len)) {
-            err = -ROCKER_ENXIO;
-            goto err_bad_io;
-        }
+        pci_dma_read(dev, frag_addr, iov[iovcnt].iov_base,
+                     iov[iovcnt].iov_len);
+
         iovcnt++;
     }
 
@@ -261,7 +259,6 @@ static int tx_consume(Rocker *r, DescInfo *info)
     err = fp_port_eg(r->fp_port[port], iov, iovcnt);
 
 err_too_many_frags:
-err_bad_io:
 err_no_mem:
 err_bad_attr:
     for (i = 0; i < ROCKER_TX_FRAGS_MAX; i++) {
@@ -1256,14 +1253,16 @@ static int rocker_msix_init(Rocker *r)
 {
     PCIDevice *dev = PCI_DEVICE(r);
     int err;
+    Error *local_err = NULL;
 
     err = msix_init(dev, ROCKER_MSIX_VEC_COUNT(r->fp_ports),
                     &r->msix_bar,
                     ROCKER_PCI_MSIX_BAR_IDX, ROCKER_PCI_MSIX_TABLE_OFFSET,
                     &r->msix_bar,
                     ROCKER_PCI_MSIX_BAR_IDX, ROCKER_PCI_MSIX_PBA_OFFSET,
-                    0);
+                    0, &local_err);
     if (err) {
+        error_report_err(local_err);
         return err;
     }
 

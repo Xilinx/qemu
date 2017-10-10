@@ -35,7 +35,7 @@ _filter_generated_node_ids()
 # replace occurrences of the actual TEST_DIR value with TEST_DIR
 _filter_testdir()
 {
-    sed -e "s#$TEST_DIR#TEST_DIR#g"
+    sed -e "s#$TEST_DIR/#TEST_DIR/#g"
 }
 
 # replace occurrences of the actual IMGFMT value with IMGFMT
@@ -86,10 +86,23 @@ _filter_qmp()
         -e '    QMP_VERSION'
 }
 
+# readline makes HMP command strings so long that git complains
+_filter_hmp()
+{
+    sed -e $'s/^\\((qemu) \\)\\?.*\e\\[D/\\1/g' \
+        -e $'s/\e\\[K//g'
+}
+
 # replace block job offset
 _filter_block_job_offset()
 {
     sed -e 's/, "offset": [0-9]\+,/, "offset": OFFSET,/'
+}
+
+# replace block job len
+_filter_block_job_len()
+{
+    sed -e 's/, "len": [0-9]\+,/, "len": LEN,/g'
 }
 
 # replace driver-specific options in the "Formatting..." line
@@ -112,9 +125,9 @@ _filter_img_create()
         -e "s# block_size=[0-9]\\+##g" \
         -e "s# block_state_zero=\\(on\\|off\\)##g" \
         -e "s# log_size=[0-9]\\+##g" \
-        -e "s/archipelago:a/TEST_DIR\//g" \
         -e "s# refcount_bits=[0-9]\\+##g" \
-        -e "s# key-secret=[a-zA-Z0-9]\\+##g"
+        -e "s# key-secret=[a-zA-Z0-9]\\+##g" \
+        -e "s# iter-time=[0-9]\\+##g"
 }
 
 _filter_img_info()
@@ -123,6 +136,7 @@ _filter_img_info()
         -e "s#$TEST_DIR#TEST_DIR#g" \
         -e "s#$IMGFMT#IMGFMT#g" \
         -e 's#nbd://127.0.0.1:10810$#TEST_DIR/t.IMGFMT#g' \
+        -e 's#json.*vdisk-id.*vxhs"}}#TEST_DIR/t.IMGFMT#' \
         -e "/encrypted: yes/d" \
         -e "/cluster_size: [0-9]\\+/d" \
         -e "/table_size: [0-9]\\+/d" \
@@ -136,14 +150,15 @@ _filter_img_info()
         -e "/lazy_refcounts: \\(on\\|off\\)/d" \
         -e "/block_size: [0-9]\\+/d" \
         -e "/block_state_zero: \\(on\\|off\\)/d" \
-        -e "/log_size: [0-9]\\+/d" \
-        -e "s/archipelago:a/TEST_DIR\//g"
+        -e "/log_size: [0-9]\\+/d"
 }
 
-# filter out offsets and file names from qemu-img map
+# filter out offsets and file names from qemu-img map; good for both
+# human and json output
 _filter_qemu_img_map()
 {
     sed -e 's/\([0-9a-fx]* *[0-9a-fx]* *\)[0-9a-fx]* */\1/g' \
+        -e 's/"offset": [0-9]\+/"offset": OFFSET/g' \
         -e 's/Mapped to *//' | _filter_testdir | _filter_imgfmt
 }
 

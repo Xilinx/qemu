@@ -20,7 +20,7 @@
 #include "hw/block/block.h"
 #include "net/hub.h"
 #include "qapi/visitor.h"
-#include "sysemu/char.h"
+#include "chardev/char-fe.h"
 #include "sysemu/iothread.h"
 
 static void get_pointer(Object *obj, Visitor *v, Property *prop,
@@ -73,14 +73,19 @@ static void parse_drive(DeviceState *dev, const char *str, void **ptr,
 {
     BlockBackend *blk;
     bool blk_created = false;
+    int ret;
 
     blk = blk_by_name(str);
     if (!blk) {
         BlockDriverState *bs = bdrv_lookup_bs(NULL, str, NULL);
         if (bs) {
-            blk = blk_new();
-            blk_insert_bs(blk, bs);
+            blk = blk_new(0, BLK_PERM_ALL);
             blk_created = true;
+
+            ret = blk_insert_bs(blk, bs, errp);
+            if (ret < 0) {
+                goto fail;
+            }
         }
     }
     if (!blk) {
@@ -119,8 +124,12 @@ static void release_drive(Object *obj, const char *name, void *opaque)
     BlockBackend **ptr = qdev_get_prop_ptr(dev, prop);
 
     if (*ptr) {
+        AioContext *ctx = blk_get_aio_context(*ptr);
+
+        aio_context_acquire(ctx);
         blockdev_auto_del(*ptr);
         blk_detach_dev(*ptr, dev);
+        aio_context_release(ctx);
     }
 }
 
@@ -150,7 +159,7 @@ static void set_drive(Object *obj, Visitor *v, const char *name, void *opaque,
     set_pointer(obj, v, opaque, parse_drive, name, errp);
 }
 
-PropertyInfo qdev_prop_drive = {
+const PropertyInfo qdev_prop_drive = {
     .name  = "str",
     .description = "Node name or ID of a block device to use as a backend",
     .get   = get_drive,
@@ -179,7 +188,7 @@ static void set_chr(Object *obj, Visitor *v, const char *name, void *opaque,
     Error *local_err = NULL;
     Property *prop = opaque;
     CharBackend *be = qdev_get_prop_ptr(dev, prop);
-    CharDriverState *s;
+    Chardev *s;
     char *str;
 
     if (dev->realized) {
@@ -216,10 +225,10 @@ static void release_chr(Object *obj, const char *name, void *opaque)
     Property *prop = opaque;
     CharBackend *be = qdev_get_prop_ptr(dev, prop);
 
-    qemu_chr_fe_deinit(be);
+    qemu_chr_fe_deinit(be, false);
 }
 
-PropertyInfo qdev_prop_chr = {
+const PropertyInfo qdev_prop_chr = {
     .name  = "str",
     .description = "ID of a chardev to use as a backend",
     .get   = get_chr,
@@ -304,7 +313,7 @@ out:
     g_free(str);
 }
 
-PropertyInfo qdev_prop_netdev = {
+const PropertyInfo qdev_prop_netdev = {
     .name  = "str",
     .description = "ID of a netdev to use as a backend",
     .get   = get_netdev,
@@ -384,7 +393,7 @@ static void set_vlan(Object *obj, Visitor *v, const char *name, void *opaque,
     *ptr = hubport;
 }
 
-PropertyInfo qdev_prop_vlan = {
+const PropertyInfo qdev_prop_vlan = {
     .name  = "int32",
     .description = "Integer VLAN id to connect to",
     .print = print_vlan,
@@ -400,7 +409,7 @@ void qdev_prop_set_drive(DeviceState *dev, const char *name,
     if (value) {
         ref = blk_name(value);
         if (!*ref) {
-            BlockDriverState *bs = blk_bs(value);
+            const BlockDriverState *bs = blk_bs(value);
             if (bs) {
                 ref = bdrv_get_node_name(bs);
             }
@@ -411,7 +420,7 @@ void qdev_prop_set_drive(DeviceState *dev, const char *name,
 }
 
 void qdev_prop_set_chr(DeviceState *dev, const char *name,
-                       CharDriverState *value)
+                       Chardev *value)
 {
     assert(!value || value->label);
     object_property_set_str(OBJECT(dev),

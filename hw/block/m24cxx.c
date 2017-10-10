@@ -134,7 +134,7 @@ static int m24cxx_send(I2CSlave *i2c, uint8_t data)
     }
 }
 
-static void m24cxx_event(I2CSlave *i2c, enum i2c_event event)
+static int m24cxx_event(I2CSlave *i2c, enum i2c_event event)
 {
     M24CXXState *s = M24CXX(i2c);
 
@@ -155,6 +155,8 @@ static void m24cxx_event(I2CSlave *i2c, enum i2c_event event)
     }
 
     DB_PRINT("transitioning to state %s\n", m24cxx_state_names[s->state]);
+
+    return 0;
 }
 
 static int m24cxx_decode_address(I2CSlave *i2c, uint8_t address)

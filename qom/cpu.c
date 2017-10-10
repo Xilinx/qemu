@@ -22,14 +22,17 @@
 #include "qapi/error.h"
 #include "qemu-common.h"
 #include "qom/cpu.h"
-#include "sysemu/kvm.h"
+#include "sysemu/hw_accel.h"
 #include "qemu/notify.h"
 #include "qemu/log.h"
 #include "exec/log.h"
+#include "exec/cpu-common.h"
 #include "qemu/error-report.h"
 #include "sysemu/sysemu.h"
 #include "hw/qdev-properties.h"
-#include "trace.h"
+#include "trace-root.h"
+
+CPUInterruptHandler cpu_interrupt_handler;
 
 bool cpu_exists(int64_t id)
 {
@@ -113,9 +116,19 @@ static void cpu_common_get_memory_mapping(CPUState *cpu,
     error_setg(errp, "Obtaining memory mappings is unsupported on this CPU.");
 }
 
+/* Resetting the IRQ comes from across the code base so we take the
+ * BQL here if we need to.  cpu_interrupt assumes it is held.*/
 void cpu_reset_interrupt(CPUState *cpu, int mask)
 {
+    bool need_lock = !qemu_mutex_iothread_locked();
+
+    if (need_lock) {
+        qemu_mutex_lock_iothread();
+    }
     cpu->interrupt_request &= ~mask;
+    if (need_lock) {
+        qemu_mutex_unlock_iothread();
+    }
 }
 
 void cpu_exit(CPUState *cpu)
@@ -123,7 +136,7 @@ void cpu_exit(CPUState *cpu)
     atomic_set(&cpu->exit_request, 1);
     /* Ensure cpu_exec will see the exit request after TCG has exited.  */
     smp_wmb();
-    atomic_set(&cpu->tcg_exit_req, 1);
+    atomic_set(&cpu->icount_decr.u16.high, -1);
 }
 
 int cpu_write_elf32_qemunote(WriteCoreDumpFunction f, CPUState *cpu,
@@ -218,6 +231,17 @@ static bool cpu_common_exec_interrupt(CPUState *cpu, int int_req)
     return false;
 }
 
+GuestPanicInformation *cpu_get_crash_info(CPUState *cpu)
+{
+    CPUClass *cc = CPU_GET_CLASS(cpu);
+    GuestPanicInformation *res = NULL;
+
+    if (cc->get_crash_info) {
+        res = cc->get_crash_info(cpu);
+    }
+    return res;
+}
+
 void cpu_dump_state(CPUState *cpu, FILE *f, fprintf_function cpu_fprintf,
                     int flags)
 {
@@ -255,7 +279,6 @@ static void cpu_common_reset(CPUState *cpu)
     CPUClass *cc = CPU_GET_CLASS(cpu);
     bool old_halt = cpu->halt_pin;
     bool old_reset = cpu->reset_pin;
-    int i;
 
     if (qemu_loglevel_mask(CPU_LOG_RESET)) {
         qemu_log("CPU Reset (CPU %d)\n", cpu->cpu_index);
@@ -275,8 +298,10 @@ static void cpu_common_reset(CPUState *cpu)
     cpu_halt_gpio(cpu, 0, old_halt);
     cpu_reset_gpio(cpu, 0, old_reset);
 
-    for (i = 0; i < TB_JMP_CACHE_SIZE; ++i) {
-        atomic_set(&cpu->tb_jmp_cache[i], NULL);
+    if (tcg_enabled()) {
+        cpu_tb_jmp_cache_clear(cpu);
+
+        tcg_flush_softmmu_tlb(cpu);
     }
 }
 
@@ -372,6 +397,8 @@ static void cpu_common_realizefn(DeviceState *dev, Error **errp)
 static void cpu_common_unrealizefn(DeviceState *dev, Error **errp)
 {
     CPUState *cpu = CPU(dev);
+    /* NOTE: latest generic point before the cpu is fully unrealized */
+    trace_fini_vcpu(cpu);
     cpu_exec_unrealizefn(cpu);
 }
 
@@ -395,15 +422,11 @@ static void cpu_common_initfn(Object *obj)
     qdev_init_gpio_in_named(DEVICE(obj), cpu_reset_gpio, "reset", 1);
     qdev_init_gpio_in_named(DEVICE(obj), cpu_halt_gpio, "halt", 1);
 
-    cpu->trace_dstate = bitmap_new(trace_get_vcpu_event_count());
-
     cpu_exec_initfn(cpu);
 }
 
 static void cpu_common_finalize(Object *obj)
 {
-    CPUState *cpu = CPU(obj);
-    g_free(cpu->trace_dstate);
 }
 
 static int64_t cpu_common_get_arch_id(CPUState *cpu)
@@ -411,10 +434,21 @@ static int64_t cpu_common_get_arch_id(CPUState *cpu)
     return cpu->cpu_index;
 }
 
-static Property cpu_common_properties[] = {
-    DEFINE_PROP_STRING("gdb-id", CPUState, gdb_id),
-    DEFINE_PROP_END_OF_LIST(),
-};
+static vaddr cpu_adjust_watchpoint_address(CPUState *cpu, vaddr addr, int len)
+{
+    return addr;
+}
+
+static void generic_handle_interrupt(CPUState *cpu, int mask)
+{
+    cpu->interrupt_request |= mask;
+
+    if (!qemu_cpu_is_self(cpu)) {
+        qemu_cpu_kick(cpu);
+    }
+}
+
+CPUInterruptHandler cpu_interrupt_handler = generic_handle_interrupt;
 
 static void cpu_class_init(ObjectClass *klass, void *data)
 {
@@ -443,14 +477,16 @@ static void cpu_class_init(ObjectClass *klass, void *data)
     dc->reset = cpu_device_reset;
     dc->halt = cpu_common_halt;
     dc->unhalt = cpu_common_unhalt;
+    k->adjust_watchpoint_address = cpu_adjust_watchpoint_address;
+    set_bit(DEVICE_CATEGORY_CPU, dc->categories);
     dc->realize = cpu_common_realizefn;
-    dc->props = cpu_common_properties;
     dc->unrealize = cpu_common_unrealizefn;
+    dc->props = cpu_common_props;
     /*
      * Reason: CPUs still need special care by board code: wiring up
      * IRQs, adding reset handlers, halting non-first CPUs, ...
      */
-    dc->cannot_instantiate_with_device_add_yet = true;
+    dc->user_creatable = false;
 }
 
 static const TypeInfo cpu_type_info = {

@@ -18,3 +18,4 @@ common-obj-$(CONFIG_PCI_Q35) += q35.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xlnx-nwl-pcie-main.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xlnx-nwl-pcie-attrib.o
 common-obj-$(CONFIG_PCI_GENERIC) += gpex.o
+common-obj-$(CONFIG_PCI_XILINX) += xilinx-pcie.o

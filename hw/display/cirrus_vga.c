@@ -28,6 +28,7 @@
  */
 #include "qemu/osdep.h"
 #include "qapi/error.h"
+#include "trace.h"
 #include "hw/hw.h"
 #include "hw/pci/pci.h"
 #include "ui/console.h"
@@ -205,6 +206,7 @@ typedef struct CirrusVGAState {
     uint32_t cirrus_bank_base[2];
     uint32_t cirrus_bank_limit[2];
     uint8_t cirrus_hidden_palette[48];
+    bool enable_blitter;
     int cirrus_blt_pixelwidth;
     int cirrus_blt_width;
     int cirrus_blt_height;
@@ -993,6 +995,10 @@ static int cirrus_bitblt_videotovideo(CirrusVGAState * s)
 static void cirrus_bitblt_start(CirrusVGAState * s)
 {
     uint8_t blt_rop;
+
+    if (!s->enable_blitter) {
+        goto bitblt_ignore;
+    }
 
     s->vga.gr[0x31] |= CIRRUS_BLT_BUSY;
 
@@ -1903,12 +1909,14 @@ static uint8_t cirrus_mmio_blt_read(CirrusVGAState * s, unsigned address)
 	break;
     }
 
+    trace_vga_cirrus_write_blt(address, value);
     return (uint8_t) value;
 }
 
 static void cirrus_mmio_blt_write(CirrusVGAState * s, unsigned address,
 				  uint8_t value)
 {
+    trace_vga_cirrus_write_blt(address, value);
     switch (address) {
     case (CIRRUS_MMIO_BLTBGCOLOR + 0):
 	cirrus_vga_write_gr(s, 0x00, value);
@@ -2658,9 +2666,7 @@ static uint64_t cirrus_vga_ioport_read(void *opaque, hwaddr addr,
 	    break;
 	}
     }
-#if defined(DEBUG_VGA)
-    printf("VGA: read addr=0x%04x data=0x%02x\n", addr, val);
-#endif
+    trace_vga_cirrus_read_io(addr, val);
     return val;
 }
 
@@ -2677,9 +2683,7 @@ static void cirrus_vga_ioport_write(void *opaque, hwaddr addr, uint64_t val,
     if (vga_ioport_invalid(s, addr)) {
 	return;
     }
-#ifdef DEBUG_VGA
-    printf("VGA: write addr=0x%04x data=0x%02x\n", addr, val);
-#endif
+    trace_vga_cirrus_write_io(addr, val);
 
     switch (addr) {
     case 0x3c0:
@@ -3059,7 +3063,9 @@ static void isa_cirrus_vga_realizefn(DeviceState *dev, Error **errp)
 
 static Property isa_cirrus_vga_properties[] = {
     DEFINE_PROP_UINT32("vgamem_mb", struct ISACirrusVGAState,
-                       cirrus_vga.vga.vram_size_mb, 8),
+                       cirrus_vga.vga.vram_size_mb, 4),
+    DEFINE_PROP_BOOL("blitter", struct ISACirrusVGAState,
+                       cirrus_vga.enable_blitter, true),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -3128,7 +3134,9 @@ static void pci_cirrus_vga_realize(PCIDevice *dev, Error **errp)
 
 static Property pci_vga_cirrus_properties[] = {
     DEFINE_PROP_UINT32("vgamem_mb", struct PCICirrusVGAState,
-                       cirrus_vga.vga.vram_size_mb, 8),
+                       cirrus_vga.vga.vram_size_mb, 4),
+    DEFINE_PROP_BOOL("blitter", struct PCICirrusVGAState,
+                     cirrus_vga.enable_blitter, true),
     DEFINE_PROP_END_OF_LIST(),
 };
 

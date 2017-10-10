@@ -57,9 +57,22 @@ static void cpu_exit_tb_from_sighandler(CPUState *cpu, sigset_t *old_set)
 static inline int handle_cpu_signal(uintptr_t pc, unsigned long address,
                                     int is_write, sigset_t *old_set)
 {
-    CPUState *cpu;
+    CPUState *cpu = current_cpu;
     CPUClass *cc;
     int ret;
+
+    /* For synchronous signals we expect to be coming from the vCPU
+     * thread (so current_cpu should be valid) and either from running
+     * code or during translation which can fault as we cross pages.
+     *
+     * If neither is true then something has gone wrong and we should
+     * abort rather than try and restart the vCPU execution.
+     */
+    if (!cpu || !cpu->running) {
+        printf("qemu:%s received signal outside vCPU context @ pc=0x%"
+               PRIxPTR "\n",  __func__, pc);
+        abort();
+    }
 
 #if defined(DEBUG_SIGNAL)
     printf("qemu: SIGSEGV pc=0x%08lx address=%08lx w=%d oldset=0x%08lx\n",
@@ -83,7 +96,7 @@ static inline int handle_cpu_signal(uintptr_t pc, unsigned long address,
              * currently executing TB was modified and must be exited
              * immediately.
              */
-            cpu_exit_tb_from_sighandler(current_cpu, old_set);
+            cpu_exit_tb_from_sighandler(cpu, old_set);
             g_assert_not_reached();
         default:
             g_assert_not_reached();
@@ -94,7 +107,6 @@ static inline int handle_cpu_signal(uintptr_t pc, unsigned long address,
        are still valid segv ones */
     address = h2g_nocheck(address);
 
-    cpu = current_cpu;
     cc = CPU_GET_CLASS(cpu);
     /* see if it is an MMU fault */
     g_assert(cc->handle_mmu_fault);
@@ -155,7 +167,7 @@ int cpu_signal_handler(int host_signum, void *pinfo,
 #elif defined(__OpenBSD__)
     struct sigcontext *uc = puc;
 #else
-    struct ucontext *uc = puc;
+    ucontext_t *uc = puc;
 #endif
     unsigned long pc;
     int trapno;
@@ -210,7 +222,7 @@ int cpu_signal_handler(int host_signum, void *pinfo,
 #elif defined(__OpenBSD__)
     struct sigcontext *uc = puc;
 #else
-    struct ucontext *uc = puc;
+    ucontext_t *uc = puc;
 #endif
 
     pc = PC_sig(uc);
@@ -277,7 +289,7 @@ int cpu_signal_handler(int host_signum, void *pinfo,
 #if defined(__FreeBSD__) || defined(__FreeBSD_kernel__)
     ucontext_t *uc = puc;
 #else
-    struct ucontext *uc = puc;
+    ucontext_t *uc = puc;
 #endif
     unsigned long pc;
     int is_write;
@@ -304,7 +316,7 @@ int cpu_signal_handler(int host_signum, void *pinfo,
                            void *puc)
 {
     siginfo_t *info = pinfo;
-    struct ucontext *uc = puc;
+    ucontext_t *uc = puc;
     uint32_t *pc = uc->uc_mcontext.sc_pc;
     uint32_t insn = *pc;
     int is_write = 0;
@@ -402,7 +414,7 @@ int cpu_signal_handler(int host_signum, void *pinfo,
 #if defined(__NetBSD__)
     ucontext_t *uc = puc;
 #else
-    struct ucontext *uc = puc;
+    ucontext_t *uc = puc;
 #endif
     unsigned long pc;
     int is_write;
@@ -429,7 +441,7 @@ int cpu_signal_handler(int host_signum, void *pinfo,
 int cpu_signal_handler(int host_signum, void *pinfo, void *puc)
 {
     siginfo_t *info = pinfo;
-    struct ucontext *uc = puc;
+    ucontext_t *uc = puc;
     uintptr_t pc = uc->uc_mcontext.pc;
     uint32_t insn = *(uint32_t *)pc;
     bool is_write;
@@ -462,7 +474,7 @@ int cpu_signal_handler(int host_signum, void *pinfo, void *puc)
 int cpu_signal_handler(int host_signum, void *pinfo, void *puc)
 {
     siginfo_t *info = pinfo;
-    struct ucontext *uc = puc;
+    ucontext_t *uc = puc;
     unsigned long ip;
     int is_write = 0;
 
@@ -493,7 +505,7 @@ int cpu_signal_handler(int host_signum, void *pinfo,
                        void *puc)
 {
     siginfo_t *info = pinfo;
-    struct ucontext *uc = puc;
+    ucontext_t *uc = puc;
     unsigned long pc;
     uint16_t *pinsn;
     int is_write = 0;
@@ -546,7 +558,7 @@ int cpu_signal_handler(int host_signum, void *pinfo,
                        void *puc)
 {
     siginfo_t *info = pinfo;
-    struct ucontext *uc = puc;
+    ucontext_t *uc = puc;
     greg_t pc = uc->uc_mcontext.pc;
     int is_write;
 

@@ -3,6 +3,7 @@ common-obj-$(CONFIG_CLOCK) += zynq-pll.o
 common-obj-$(CONFIG_APPLESMC) += applesmc.o
 common-obj-$(CONFIG_MAX111X) += max111x.o
 common-obj-$(CONFIG_TMP105) += tmp105.o
+common-obj-$(CONFIG_TMP421) += tmp421.o
 common-obj-$(CONFIG_ISA_DEBUG) += debugexit.o
 common-obj-$(CONFIG_SGA) += sga.o
 common-obj-$(CONFIG_ISA_TESTDEV) += pc-testdev.o
@@ -43,6 +44,10 @@ common-obj-$(CONFIG_SOFTMMU) += gpio-mr-mux.o
 
 common-obj-$(CONFIG_XILINX_AXI) += stream-fifo.o
 
+common-obj-$(CONFIG_EDU) += edu.o
+
+common-obj-y += unimp.o
+
 obj-$(CONFIG_VMPORT) += vmport.o
 
 # ARM devices
@@ -56,12 +61,12 @@ common-obj-$(CONFIG_PUV3) += puv3_pm.o
 
 common-obj-$(CONFIG_MACIO) += macio/
 
-obj-$(CONFIG_IVSHMEM) += ivshmem.o
+obj-$(CONFIG_IVSHMEM_DEVICE) += ivshmem.o
 
 obj-$(CONFIG_REALVIEW) += arm_sysctl.o
 obj-$(CONFIG_NSERIES) += cbus.o
 obj-$(CONFIG_ECCMEMCTL) += eccmemctl.o
-obj-$(CONFIG_EXYNOS4) += exynos4210_pmu.o
+obj-$(CONFIG_EXYNOS4) += exynos4210_pmu.o exynos4210_clk.o exynos4210_rng.o
 obj-$(CONFIG_IMX) += imx_ccm.o
 obj-$(CONFIG_IMX) += imx31_ccm.o
 obj-$(CONFIG_IMX) += imx25_ccm.o
@@ -77,6 +82,7 @@ obj-$(CONFIG_OMAP) += omap_sdrc.o
 obj-$(CONFIG_OMAP) += omap_tap.o
 obj-$(CONFIG_RASPI) += bcm2835_mbox.o
 obj-$(CONFIG_RASPI) += bcm2835_property.o
+obj-$(CONFIG_RASPI) += bcm2835_rng.o
 obj-$(CONFIG_SLAVIO) += slavio_misc.o
 obj-$(CONFIG_ZYNQ) += zynq_slcr.o
 obj-$(CONFIG_ZYNQ) += zynq-xadc.o
@@ -84,9 +90,10 @@ obj-$(CONFIG_STM32F2XX_SYSCFG) += stm32f2xx_syscfg.o
 obj-$(CONFIG_MIPS_CPS) += mips_cmgcr.o
 obj-$(CONFIG_MIPS_CPS) += mips_cpc.o
 obj-$(CONFIG_MIPS_ITU) += mips_itu.o
+obj-$(CONFIG_MPS2_SCC) += mps2-scc.o
 
 obj-$(CONFIG_PVPANIC) += pvpanic.o
-obj-$(CONFIG_EDU) += edu.o
 obj-$(CONFIG_HYPERV_TESTDEV) += hyperv_testdev.o
 obj-$(CONFIG_AUX) += auxbus.o
 obj-$(CONFIG_ASPEED_SOC) += aspeed_scu.o aspeed_sdmc.o
+obj-y += mmio_interface.o

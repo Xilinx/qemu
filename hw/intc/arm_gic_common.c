@@ -97,6 +97,47 @@ static const VMStateDescription vmstate_gic = {
     }
 };
 
+void gic_init_irqs_and_mmio(GICState *s, qemu_irq_handler handler,
+                            const MemoryRegionOps *ops)
+{
+    SysBusDevice *sbd = SYS_BUS_DEVICE(s);
+    int i = s->num_irq - GIC_INTERNAL;
+
+    /* For the GIC, also expose incoming GPIO lines for PPIs for each CPU.
+     * GPIO array layout is thus:
+     *  [0..N-1] SPIs
+     *  [N..N+31] PPIs for CPU 0
+     *  [N+32..N+63] PPIs for CPU 1
+     *   ...
+     */
+    i += (GIC_INTERNAL * s->num_cpu);
+    qdev_init_gpio_in(DEVICE(s), handler, i);
+
+    for (i = 0; i < s->num_cpu; i++) {
+        sysbus_init_irq(sbd, &s->parent_irq[i]);
+    }
+    for (i = 0; i < s->num_cpu; i++) {
+        sysbus_init_irq(sbd, &s->parent_fiq[i]);
+    }
+    for (i = 0; i < s->num_cpu; i++) {
+        sysbus_init_irq(sbd, &s->parent_virq[i]);
+    }
+    for (i = 0; i < s->num_cpu; i++) {
+        sysbus_init_irq(sbd, &s->parent_vfiq[i]);
+    }
+
+    /* Distributor */
+    memory_region_init_io(&s->iomem, OBJECT(s), ops, s, "gic_dist", 0x1000);
+    sysbus_init_mmio(sbd, &s->iomem);
+
+    /* This is the main CPU interface "for this core". It is always
+     * present because it is required by both software emulation and KVM.
+     */
+    memory_region_init_io(&s->cpuiomem[0], OBJECT(s), ops ? &ops[1] : NULL,
+                          s, "gic_cpu", s->revision == 2 ? 0x2000 : 0x100);
+    sysbus_init_mmio(sbd, &s->cpuiomem[0]);
+}
+
 static void arm_gic_common_realize(DeviceState *dev, Error **errp)
 {
     GICState *s = ARM_GIC_COMMON(dev);
@@ -213,7 +254,6 @@ static Property arm_gic_common_properties[] = {
     DEFINE_PROP_UINT32("num-irq", GICState, num_irq, 96),
     /* Revision can be 1 or 2 for GIC architecture specification
      * versions 1 or 2, or 0 to indicate the legacy 11MPCore GIC.
-     * (Internally, 0xffffffff also indicates "not a GIC but an NVIC".)
      */
     DEFINE_PROP_UINT32("revision", GICState, revision, 1),
     DEFINE_PROP_BOOL("disable-linux-gic-init", GICState,

@@ -1,3 +1,9 @@
+# -*- Mode: Python -*-
+
+##
+# = Rocker switch device
+##
+
 ##
 # @RockerSwitch:
 #
@@ -22,6 +28,12 @@
 # Returns: @Rocker information
 #
 # Since: 2.4
+#
+# Example:
+#
+# -> { "execute": "query-rocker", "arguments": { "name": "sw1" } }
+# <- { "return": {"name": "sw1", "ports": 2, "id": 1327446905938}}
+#
 ##
 { 'command': 'query-rocker',
   'data': { 'name': 'str' },
@@ -80,11 +92,21 @@
 ##
 # @query-rocker-ports:
 #
-# Return rocker switch information.
+# Return rocker switch port information.
 #
-# Returns: @Rocker information
+# Returns: a list of @RockerPort information
 #
 # Since: 2.4
+#
+# Example:
+#
+# -> { "execute": "query-rocker-ports", "arguments": { "name": "sw1" } }
+# <- { "return": [ {"duplex": "full", "enabled": true, "name": "sw1.1",
+#                   "autoneg": "off", "link-up": true, "speed": 10000},
+#                  {"duplex": "full", "enabled": true, "name": "sw1.2",
+#                   "autoneg": "off", "link-up": true, "speed": 10000}
+#    ]}
+#
 ##
 { 'command': 'query-rocker-ports',
   'data': { 'name': 'str' },
@@ -99,26 +121,26 @@
 #
 # @tbl-id: flow table ID
 #
-# @in-pport: #optional physical input port
+# @in-pport: physical input port
 #
-# @tunnel-id: #optional tunnel ID
+# @tunnel-id: tunnel ID
 #
-# @vlan-id: #optional VLAN ID
+# @vlan-id: VLAN ID
 #
-# @eth-type: #optional Ethernet header type
+# @eth-type: Ethernet header type
 #
-# @eth-src: #optional Ethernet header source MAC address
+# @eth-src: Ethernet header source MAC address
 #
-# @eth-dst: #optional Ethernet header destination MAC address
+# @eth-dst: Ethernet header destination MAC address
 #
-# @ip-proto: #optional IP Header protocol field
+# @ip-proto: IP Header protocol field
 #
-# @ip-tos: #optional IP header TOS field
+# @ip-tos: IP header TOS field
 #
-# @ip-dst: #optional IP header destination address
+# @ip-dst: IP header destination address
 #
-# Note: fields are marked #optional to indicate that they may or may not
-# appear in the flow key depending if they're relevant to the flow key.
+# Note: optional members may or may not appear in the flow key
+# depending if they're relevant to the flow key.
 #
 # Since: 2.4
 ##
@@ -133,22 +155,22 @@
 #
 # Rocker switch OF-DPA flow mask
 #
-# @in-pport: #optional physical input port
+# @in-pport: physical input port
 #
-# @tunnel-id: #optional tunnel ID
+# @tunnel-id: tunnel ID
 #
-# @vlan-id: #optional VLAN ID
+# @vlan-id: VLAN ID
 #
-# @eth-src: #optional Ethernet header source MAC address
+# @eth-src: Ethernet header source MAC address
 #
-# @eth-dst: #optional Ethernet header destination MAC address
+# @eth-dst: Ethernet header destination MAC address
 #
-# @ip-proto: #optional IP Header protocol field
+# @ip-proto: IP Header protocol field
 #
-# @ip-tos: #optional IP header TOS field
+# @ip-tos: IP header TOS field
 #
-# Note: fields are marked #optional to indicate that they may or may not
-# appear in the flow mask depending if they're relevant to the flow mask.
+# Note: optional members may or may not appear in the flow mask
+# depending if they're relevant to the flow mask.
 #
 # Since: 2.4
 ##
@@ -162,20 +184,20 @@
 #
 # Rocker switch OF-DPA flow action
 #
-# @goto-tbl: #optional next table ID
+# @goto-tbl: next table ID
 #
-# @group-id: #optional group ID
+# @group-id: group ID
 #
-# @tunnel-lport: #optional tunnel logical port ID
+# @tunnel-lport: tunnel logical port ID
 #
-# @vlan-id: #optional VLAN ID
+# @vlan-id: VLAN ID
 #
-# @new-vlan-id: #optional new VLAN ID
+# @new-vlan-id: new VLAN ID
 #
-# @out-pport: #optional physical output port
+# @out-pport: physical output port
 #
-# Note: fields are marked #optional to indicate that they may or may not
-# appear in the flow action depending if they're relevant to the flow action.
+# Note: optional members may or may not appear in the flow action
+# depending if they're relevant to the flow action.
 #
 # Since: 2.4
 ##
@@ -212,12 +234,26 @@
 #
 # @name: switch name
 #
-# @tbl-id: #optional flow table ID.  If tbl-id is not specified, returns
+# @tbl-id: flow table ID.  If tbl-id is not specified, returns
 # flow information for all tables.
 #
-# Returns: @Rocker OF-DPA flow information
+# Returns: rocker OF-DPA flow information
 #
 # Since: 2.4
+#
+# Example:
+#
+# -> { "execute": "query-rocker-of-dpa-flows",
+#      "arguments": { "name": "sw1" } }
+# <- { "return": [ {"key": {"in-pport": 0, "priority": 1, "tbl-id": 0},
+#                   "hits": 138,
+#                   "cookie": 0,
+#                   "action": {"goto-tbl": 10},
+#                   "mask": {"in-pport": 4294901760}
+#                  },
+#                  {...more...},
+#    ]}
+#
 ##
 { 'command': 'query-rocker-of-dpa-flows',
   'data': { 'name': 'str', '*tbl-id': 'uint32' },
@@ -232,30 +268,30 @@
 #
 # @type: group type
 #
-# @vlan-id: #optional VLAN ID
+# @vlan-id: VLAN ID
 #
-# @pport: #optional physical port number
+# @pport: physical port number
 #
-# @index: #optional group index, unique with group type
+# @index: group index, unique with group type
 #
-# @out-pport: #optional output physical port number
+# @out-pport: output physical port number
 #
-# @group-id: #optional next group ID
+# @group-id: next group ID
 #
-# @set-vlan-id: #optional VLAN ID to set
+# @set-vlan-id: VLAN ID to set
 #
-# @pop-vlan: #optional pop VLAN headr from packet
+# @pop-vlan: pop VLAN headr from packet
 #
-# @group-ids: #optional list of next group IDs
+# @group-ids: list of next group IDs
 #
-# @set-eth-src: #optional set source MAC address in Ethernet header
+# @set-eth-src: set source MAC address in Ethernet header
 #
-# @set-eth-dst: #optional set destination MAC address in Ethernet header
+# @set-eth-dst: set destination MAC address in Ethernet header
 #
-# @ttl-check: #optional perform TTL check
+# @ttl-check: perform TTL check
 #
-# Note: fields are marked #optional to indicate that they may or may not
-# appear in the group depending if they're relevant to the group type.
+# Note: optional members may or may not appear in the group depending
+# if they're relevant to the group type.
 #
 # Since: 2.4
 ##
@@ -274,12 +310,31 @@
 #
 # @name: switch name
 #
-# @type: #optional group type.  If type is not specified, returns
+# @type: group type.  If type is not specified, returns
 # group information for all group types.
 #
-# Returns: @Rocker OF-DPA group information
+# Returns: rocker OF-DPA group information
 #
 # Since: 2.4
+#
+# Example:
+#
+# -> { "execute": "query-rocker-of-dpa-groups",
+#      "arguments": { "name": "sw1" } }
+# <- { "return": [ {"type": 0, "out-pport": 2,
+#                   "pport": 2, "vlan-id": 3841,
+#                   "pop-vlan": 1, "id": 251723778},
+#                  {"type": 0, "out-pport": 0,
+#                   "pport": 0, "vlan-id": 3841,
+#                   "pop-vlan": 1, "id": 251723776},
+#                  {"type": 0, "out-pport": 1,
+#                   "pport": 1, "vlan-id": 3840,
+#                   "pop-vlan": 1, "id": 251658241},
+#                  {"type": 0, "out-pport": 0,
+#                   "pport": 0, "vlan-id": 3840,
+#                   "pop-vlan": 1, "id": 251658240}
+#    ]}
+#
 ##
 { 'command': 'query-rocker-of-dpa-groups',
   'data': { 'name': 'str', '*type': 'uint8' },

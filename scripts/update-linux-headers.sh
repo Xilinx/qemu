@@ -51,7 +51,7 @@ cp_portable() {
         -e 's/__be\([0-9][0-9]*\)/uint\1_t/g' \
         -e 's/"\(input-event-codes\.h\)"/"standard-headers\/linux\/\1"/' \
         -e 's/<linux\/\([^>]*\)>/"standard-headers\/linux\/\1"/' \
-        -e 's/__bitwise__//' \
+        -e 's/__bitwise//' \
         -e 's/__attribute__((packed))/QEMU_PACKED/' \
         -e 's/__inline__/inline/' \
         -e '/sys\/ioctl.h/d' \
@@ -75,7 +75,13 @@ for arch in $ARCHLIST; do
         continue
     fi
 
-    make -C "$linux" INSTALL_HDR_PATH="$tmpdir" SRCARCH=$arch headers_install
+    if [ "$arch" = x86 ]; then
+        arch_var=SRCARCH
+    else
+        arch_var=ARCH
+    fi
+
+    make -C "$linux" INSTALL_HDR_PATH="$tmpdir" $arch_var=$arch headers_install
 
     rm -rf "$output/linux-headers/asm-$arch"
     mkdir -p "$output/linux-headers/asm-$arch"
@@ -92,6 +98,11 @@ for arch in $ARCHLIST; do
         cp_portable "$tmpdir/include/asm/kvm_virtio.h" "$output/include/standard-headers/asm-s390/"
         cp_portable "$tmpdir/include/asm/virtio-ccw.h" "$output/include/standard-headers/asm-s390/"
     fi
+    if [ $arch = arm ]; then
+        cp "$tmpdir/include/asm/unistd-eabi.h" "$output/linux-headers/asm-arm/"
+        cp "$tmpdir/include/asm/unistd-oabi.h" "$output/linux-headers/asm-arm/"
+        cp "$tmpdir/include/asm/unistd-common.h" "$output/linux-headers/asm-arm/"
+    fi
     if [ $arch = x86 ]; then
         cp_portable "$tmpdir/include/asm/hyperv.h" "$output/include/standard-headers/asm-x86/"
         cp "$tmpdir/include/asm/unistd_32.h" "$output/linux-headers/asm-x86/"
@@ -102,7 +113,7 @@ done
 
 rm -rf "$output/linux-headers/linux"
 mkdir -p "$output/linux-headers/linux"
-for header in kvm.h kvm_para.h vfio.h vhost.h \
+for header in kvm.h kvm_para.h vfio.h vfio_ccw.h vhost.h \
               psci.h userfaultfd.h; do
     cp "$tmpdir/include/linux/$header" "$output/linux-headers/linux"
 done

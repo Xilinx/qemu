@@ -25,24 +25,17 @@
 #include "qemu/osdep.h"
 
 #include "qemu-common.h"
-#include "migration/migration.h"
+#include "../migration/migration.h"
 #include "migration/vmstate.h"
+#include "migration/qemu-file-types.h"
+#include "../migration/qemu-file.h"
+#include "../migration/qemu-file-channel.h"
+#include "../migration/savevm.h"
 #include "qemu/coroutine.h"
 #include "io/channel-file.h"
 
 static char temp_file[] = "/tmp/vmst.test.XXXXXX";
 static int temp_fd;
-
-/* Fake yield_until_fd_readable() implementation so we don't have to pull the
- * coroutine code as dependency.
- */
-void yield_until_fd_readable(int fd)
-{
-    fd_set fds;
-    FD_ZERO(&fds);
-    FD_SET(fd, &fds);
-    select(fd + 1, &fds, NULL, NULL, NULL);
-}
 
 
 /* Duplicate temp_fd and seek to the beginning of the file */
@@ -90,7 +83,7 @@ static void save_buffer(const uint8_t *buf, size_t buf_size)
     qemu_fclose(fsave);
 }
 
-static void compare_vmstate(uint8_t *wire, size_t size)
+static void compare_vmstate(const uint8_t *wire, size_t size)
 {
     QEMUFile *f = open_test_file(false);
     uint8_t result[size];
@@ -113,7 +106,7 @@ static void compare_vmstate(uint8_t *wire, size_t size)
 }
 
 static int load_vmstate_one(const VMStateDescription *desc, void *obj,
-                            int version, uint8_t *wire, size_t size)
+                            int version, const uint8_t *wire, size_t size)
 {
     QEMUFile *f;
     int ret;
@@ -137,7 +130,7 @@ static int load_vmstate_one(const VMStateDescription *desc, void *obj,
 static int load_vmstate(const VMStateDescription *desc,
                         void *obj, void *obj_clone,
                         void (*obj_copy)(void *, void*),
-                        int version, uint8_t *wire, size_t size)
+                        int version, const uint8_t *wire, size_t size)
 {
     /* We test with zero size */
     obj_copy(obj_clone, obj);
@@ -289,7 +282,6 @@ static void test_simple_primitive(void)
     FIELD_EQUAL(i64_1);
     FIELD_EQUAL(i64_2);
 }
-#undef FIELD_EQUAL
 
 typedef struct TestStruct {
     uint32_t a, b, c, e;
@@ -474,7 +466,6 @@ static void test_load_skip(void)
     qemu_fclose(loading);
 }
 
-
 typedef struct {
     int32_t i;
 } TestStructTriv;
@@ -488,6 +479,8 @@ const VMStateDescription vmsd_tst = {
         VMSTATE_END_OF_LIST()
     }
 };
+
+/* test array migration */
 
 #define AR_SIZE 4
 
@@ -505,20 +498,22 @@ const VMStateDescription vmsd_arps = {
         VMSTATE_END_OF_LIST()
     }
 };
+
+static uint8_t wire_arr_ptr_no0[] = {
+    0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x01,
+    0x00, 0x00, 0x00, 0x02,
+    0x00, 0x00, 0x00, 0x03,
+    QEMU_VM_EOF
+};
+
 static void test_arr_ptr_str_no0_save(void)
 {
     TestStructTriv ar[AR_SIZE] = {{.i = 0}, {.i = 1}, {.i = 2}, {.i = 3} };
     TestArrayOfPtrToStuct sample = {.ar = {&ar[0], &ar[1], &ar[2], &ar[3]} };
-    uint8_t wire_sample[] = {
-        0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x01,
-        0x00, 0x00, 0x00, 0x02,
-        0x00, 0x00, 0x00, 0x03,
-        QEMU_VM_EOF
-    };
 
     save_vmstate(&vmsd_arps, &sample);
-    compare_vmstate(wire_sample, sizeof(wire_sample));
+    compare_vmstate(wire_arr_ptr_no0, sizeof(wire_arr_ptr_no0));
 }
 
 static void test_arr_ptr_str_no0_load(void)
@@ -527,21 +522,330 @@ static void test_arr_ptr_str_no0_load(void)
     TestStructTriv ar[AR_SIZE] = {};
     TestArrayOfPtrToStuct obj = {.ar = {&ar[0], &ar[1], &ar[2], &ar[3]} };
     int idx;
-    uint8_t wire_sample[] = {
-        0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x01,
-        0x00, 0x00, 0x00, 0x02,
-        0x00, 0x00, 0x00, 0x03,
-        QEMU_VM_EOF
-    };
 
-    save_buffer(wire_sample, sizeof(wire_sample));
+    save_buffer(wire_arr_ptr_no0, sizeof(wire_arr_ptr_no0));
     SUCCESS(load_vmstate_one(&vmsd_arps, &obj, 1,
-                          wire_sample, sizeof(wire_sample)));
+                          wire_arr_ptr_no0, sizeof(wire_arr_ptr_no0)));
     for (idx = 0; idx < AR_SIZE; ++idx) {
         /* compare the target array ar with the ground truth array ar_gt */
         g_assert_cmpint(ar_gt[idx].i, ==, ar[idx].i);
     }
+}
+
+static uint8_t wire_arr_ptr_0[] = {
+    0x00, 0x00, 0x00, 0x00,
+    VMS_NULLPTR_MARKER,
+    0x00, 0x00, 0x00, 0x02,
+    0x00, 0x00, 0x00, 0x03,
+    QEMU_VM_EOF
+};
+
+static void test_arr_ptr_str_0_save(void)
+{
+    TestStructTriv ar[AR_SIZE] = {{.i = 0}, {.i = 1}, {.i = 2}, {.i = 3} };
+    TestArrayOfPtrToStuct sample = {.ar = {&ar[0], NULL, &ar[2], &ar[3]} };
+
+    save_vmstate(&vmsd_arps, &sample);
+    compare_vmstate(wire_arr_ptr_0, sizeof(wire_arr_ptr_0));
+}
+
+static void test_arr_ptr_str_0_load(void)
+{
+    TestStructTriv ar_gt[AR_SIZE] = {{.i = 0}, {.i = 0}, {.i = 2}, {.i = 3} };
+    TestStructTriv ar[AR_SIZE] = {};
+    TestArrayOfPtrToStuct obj = {.ar = {&ar[0], NULL, &ar[2], &ar[3]} };
+    int idx;
+
+    save_buffer(wire_arr_ptr_0, sizeof(wire_arr_ptr_0));
+    SUCCESS(load_vmstate_one(&vmsd_arps, &obj, 1,
+                          wire_arr_ptr_0, sizeof(wire_arr_ptr_0)));
+    for (idx = 0; idx < AR_SIZE; ++idx) {
+        /* compare the target array ar with the ground truth array ar_gt */
+        g_assert_cmpint(ar_gt[idx].i, ==, ar[idx].i);
+    }
+    for (idx = 0; idx < AR_SIZE; ++idx) {
+        if (idx == 1) {
+            g_assert_cmpint((uintptr_t)(obj.ar[idx]), ==, 0);
+        } else {
+            g_assert_cmpint((uintptr_t)(obj.ar[idx]), !=, 0);
+        }
+    }
+}
+
+typedef struct TestArrayOfPtrToInt {
+    int32_t *ar[AR_SIZE];
+} TestArrayOfPtrToInt;
+
+const VMStateDescription vmsd_arpp = {
+    .name = "test/arps",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (VMStateField[]) {
+        VMSTATE_ARRAY_OF_POINTER(ar, TestArrayOfPtrToInt,
+                AR_SIZE, 0, vmstate_info_int32, int32_t*),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static void test_arr_ptr_prim_0_save(void)
+{
+    int32_t ar[AR_SIZE] = {0 , 1, 2, 3};
+    TestArrayOfPtrToInt  sample = {.ar = {&ar[0], NULL, &ar[2], &ar[3]} };
+
+    save_vmstate(&vmsd_arpp, &sample);
+    compare_vmstate(wire_arr_ptr_0, sizeof(wire_arr_ptr_0));
+}
+
+static void test_arr_ptr_prim_0_load(void)
+{
+    int32_t ar_gt[AR_SIZE] = {0, 1, 2, 3};
+    int32_t ar[AR_SIZE] = {3 , 42, 1, 0};
+    TestArrayOfPtrToInt obj = {.ar = {&ar[0], NULL, &ar[2], &ar[3]} };
+    int idx;
+
+    save_buffer(wire_arr_ptr_0, sizeof(wire_arr_ptr_0));
+    SUCCESS(load_vmstate_one(&vmsd_arpp, &obj, 1,
+                          wire_arr_ptr_0, sizeof(wire_arr_ptr_0)));
+    for (idx = 0; idx < AR_SIZE; ++idx) {
+        /* compare the target array ar with the ground truth array ar_gt */
+        if (idx == 1) {
+            g_assert_cmpint(42, ==, ar[idx]);
+        } else {
+            g_assert_cmpint(ar_gt[idx], ==, ar[idx]);
+        }
+    }
+}
+
+/* test QTAILQ migration */
+typedef struct TestQtailqElement TestQtailqElement;
+
+struct TestQtailqElement {
+    bool     b;
+    uint8_t  u8;
+    QTAILQ_ENTRY(TestQtailqElement) next;
+};
+
+typedef struct TestQtailq {
+    int16_t  i16;
+    QTAILQ_HEAD(TestQtailqHead, TestQtailqElement) q;
+    int32_t  i32;
+} TestQtailq;
+
+static const VMStateDescription vmstate_q_element = {
+    .name = "test/queue-element",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (VMStateField[]) {
+        VMSTATE_BOOL(b, TestQtailqElement),
+        VMSTATE_UINT8(u8, TestQtailqElement),
+        VMSTATE_END_OF_LIST()
+    },
+};
+
+static const VMStateDescription vmstate_q = {
+    .name = "test/queue",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (VMStateField[]) {
+        VMSTATE_INT16(i16, TestQtailq),
+        VMSTATE_QTAILQ_V(q, TestQtailq, 1, vmstate_q_element, TestQtailqElement,
+                         next),
+        VMSTATE_INT32(i32, TestQtailq),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+uint8_t wire_q[] = {
+    /* i16 */                     0xfe, 0x0,
+    /* start of element 0 of q */ 0x01,
+    /* .b  */                     0x01,
+    /* .u8 */                     0x82,
+    /* start of element 1 of q */ 0x01,
+    /* b */                       0x00,
+    /* u8 */                      0x41,
+    /* end of q */                0x00,
+    /* i32 */                     0x00, 0x01, 0x11, 0x70,
+    QEMU_VM_EOF, /* just to ensure we won't get EOF reported prematurely */
+};
+
+static void test_save_q(void)
+{
+    TestQtailq obj_q = {
+        .i16 = -512,
+        .i32 = 70000,
+    };
+
+    TestQtailqElement obj_qe1 = {
+        .b = true,
+        .u8 = 130,
+    };
+
+    TestQtailqElement obj_qe2 = {
+        .b = false,
+        .u8 = 65,
+    };
+
+    QTAILQ_INIT(&obj_q.q);
+    QTAILQ_INSERT_TAIL(&obj_q.q, &obj_qe1, next);
+    QTAILQ_INSERT_TAIL(&obj_q.q, &obj_qe2, next);
+
+    save_vmstate(&vmstate_q, &obj_q);
+    compare_vmstate(wire_q, sizeof(wire_q));
+}
+
+static void test_load_q(void)
+{
+    TestQtailq obj_q = {
+        .i16 = -512,
+        .i32 = 70000,
+    };
+
+    TestQtailqElement obj_qe1 = {
+        .b = true,
+        .u8 = 130,
+    };
+
+    TestQtailqElement obj_qe2 = {
+        .b = false,
+        .u8 = 65,
+    };
+
+    QTAILQ_INIT(&obj_q.q);
+    QTAILQ_INSERT_TAIL(&obj_q.q, &obj_qe1, next);
+    QTAILQ_INSERT_TAIL(&obj_q.q, &obj_qe2, next);
+
+    QEMUFile *fsave = open_test_file(true);
+
+    qemu_put_buffer(fsave, wire_q, sizeof(wire_q));
+    g_assert(!qemu_file_get_error(fsave));
+    qemu_fclose(fsave);
+
+    QEMUFile *fload = open_test_file(false);
+    TestQtailq tgt;
+
+    QTAILQ_INIT(&tgt.q);
+    vmstate_load_state(fload, &vmstate_q, &tgt, 1);
+    char eof = qemu_get_byte(fload);
+    g_assert(!qemu_file_get_error(fload));
+    g_assert_cmpint(tgt.i16, ==, obj_q.i16);
+    g_assert_cmpint(tgt.i32, ==, obj_q.i32);
+    g_assert_cmpint(eof, ==, QEMU_VM_EOF);
+
+    TestQtailqElement *qele_from = QTAILQ_FIRST(&obj_q.q);
+    TestQtailqElement *qlast_from = QTAILQ_LAST(&obj_q.q, TestQtailqHead);
+    TestQtailqElement *qele_to = QTAILQ_FIRST(&tgt.q);
+    TestQtailqElement *qlast_to = QTAILQ_LAST(&tgt.q, TestQtailqHead);
+
+    while (1) {
+        g_assert_cmpint(qele_to->b, ==, qele_from->b);
+        g_assert_cmpint(qele_to->u8, ==, qele_from->u8);
+        if ((qele_from == qlast_from) || (qele_to == qlast_to)) {
+            break;
+        }
+        qele_from = QTAILQ_NEXT(qele_from, next);
+        qele_to = QTAILQ_NEXT(qele_to, next);
+    }
+
+    g_assert_cmpint((uintptr_t) qele_from, ==, (uintptr_t) qlast_from);
+    g_assert_cmpint((uintptr_t) qele_to, ==, (uintptr_t) qlast_to);
+
+    /* clean up */
+    TestQtailqElement *qele;
+    while (!QTAILQ_EMPTY(&tgt.q)) {
+        qele = QTAILQ_LAST(&tgt.q, TestQtailqHead);
+        QTAILQ_REMOVE(&tgt.q, qele, next);
+        free(qele);
+        qele = NULL;
+    }
+    qemu_fclose(fload);
+}
+
+typedef struct TmpTestStruct {
+    TestStruct *parent;
+    int64_t diff;
+} TmpTestStruct;
+
+static void tmp_child_pre_save(void *opaque)
+{
+    struct TmpTestStruct *tts = opaque;
+
+    tts->diff = tts->parent->b - tts->parent->a;
+}
+
+static int tmp_child_post_load(void *opaque, int version_id)
+{
+    struct TmpTestStruct *tts = opaque;
+
+    tts->parent->b = tts->parent->a + tts->diff;
+
+    return 0;
+}
+
+static const VMStateDescription vmstate_tmp_back_to_parent = {
+    .name = "test/tmp_child_parent",
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT64(f, TestStruct),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static const VMStateDescription vmstate_tmp_child = {
+    .name = "test/tmp_child",
+    .pre_save = tmp_child_pre_save,
+    .post_load = tmp_child_post_load,
+    .fields = (VMStateField[]) {
+        VMSTATE_INT64(diff, TmpTestStruct),
+        VMSTATE_STRUCT_POINTER(parent, TmpTestStruct,
+                               vmstate_tmp_back_to_parent, TestStruct),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static const VMStateDescription vmstate_with_tmp = {
+    .name = "test/with_tmp",
+    .version_id = 1,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT32(a, TestStruct),
+        VMSTATE_UINT64(d, TestStruct),
+        VMSTATE_WITH_TMP(TestStruct, TmpTestStruct, vmstate_tmp_child),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static void obj_tmp_copy(void *target, void *source)
+{
+    memcpy(target, source, sizeof(TestStruct));
+}
+
+static void test_tmp_struct(void)
+{
+    TestStruct obj, obj_clone;
+
+    uint8_t const wire_with_tmp[] = {
+        /* u32 a */ 0x00, 0x00, 0x00, 0x02,
+        /* u64 d */ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+        /* diff  */ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,
+        /* u64 f */ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08,
+        QEMU_VM_EOF, /* just to ensure we won't get EOF reported prematurely */
+    };
+
+    memset(&obj, 0, sizeof(obj));
+    obj.a = 2;
+    obj.b = 4;
+    obj.d = 1;
+    obj.f = 8;
+    save_vmstate(&vmstate_with_tmp, &obj);
+
+    compare_vmstate(wire_with_tmp, sizeof(wire_with_tmp));
+
+    memset(&obj, 0, sizeof(obj));
+    SUCCESS(load_vmstate(&vmstate_with_tmp, &obj, &obj_clone,
+                         obj_tmp_copy, 1, wire_with_tmp,
+                         sizeof(wire_with_tmp)));
+    g_assert_cmpint(obj.a, ==, 2); /* From top level vmsd */
+    g_assert_cmpint(obj.b, ==, 4); /* from the post_load */
+    g_assert_cmpint(obj.d, ==, 1); /* From top level vmsd */
+    g_assert_cmpint(obj.f, ==, 8); /* From the child->parent */
 }
 
 int main(int argc, char **argv)
@@ -562,6 +866,16 @@ int main(int argc, char **argv)
                     test_arr_ptr_str_no0_save);
     g_test_add_func("/vmstate/array/ptr/str/no0/load",
                     test_arr_ptr_str_no0_load);
+    g_test_add_func("/vmstate/array/ptr/str/0/save", test_arr_ptr_str_0_save);
+    g_test_add_func("/vmstate/array/ptr/str/0/load",
+                    test_arr_ptr_str_0_load);
+    g_test_add_func("/vmstate/array/ptr/prim/0/save",
+                    test_arr_ptr_prim_0_save);
+    g_test_add_func("/vmstate/array/ptr/prim/0/load",
+                    test_arr_ptr_prim_0_load);
+    g_test_add_func("/vmstate/qtailq/save/saveq", test_save_q);
+    g_test_add_func("/vmstate/qtailq/load/loadq", test_load_q);
+    g_test_add_func("/vmstate/tmp_struct", test_tmp_struct);
     g_test_run();
 
     close(temp_fd);

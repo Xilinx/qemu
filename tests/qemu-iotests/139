@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Test cases for the QMP 'x-blockdev-del' command
+# Test cases for the QMP 'blockdev-del' command
 #
 # Copyright (C) 2015 Igalia, S.L.
 # Author: Alberto Garcia <berto@igalia.com>
@@ -65,11 +65,11 @@ class TestBlockdevDel(iotests.QMPTestCase):
     # Add a BlockDriverState that will be used as overlay for the base_img BDS
     def addBlockDriverStateOverlay(self, node):
         self.checkBlockDriverState(node, False)
-        iotests.qemu_img('create', '-f', iotests.imgfmt,
+        iotests.qemu_img('create', '-u', '-f', iotests.imgfmt,
                          '-b', base_img, new_img, '1M')
         opts = {'driver': iotests.imgfmt,
                 'node-name': node,
-                'backing': '',
+                'backing': None,
                 'file': {'driver': 'file',
                          'filename': new_img}}
         result = self.vm.qmp('blockdev-add', conv_keys = False, **opts)
@@ -79,7 +79,7 @@ class TestBlockdevDel(iotests.QMPTestCase):
     # Delete a BlockDriverState
     def delBlockDriverState(self, node, expect_error = False):
         self.checkBlockDriverState(node)
-        result = self.vm.qmp('x-blockdev-del', node_name = node)
+        result = self.vm.qmp('blockdev-del', node_name = node)
         if expect_error:
             self.assert_qmp(result, 'error/class', 'GenericError')
         else:
@@ -173,7 +173,7 @@ class TestBlockdevDel(iotests.QMPTestCase):
         self.wait_until_completed(id)
 
     # Add a BlkDebug node
-    # Note that the purpose of this is to test the x-blockdev-del
+    # Note that the purpose of this is to test the blockdev-del
     # sanity checks, not to create a usable blkdebug drive
     def addBlkDebug(self, debug, node):
         self.checkBlockDriverState(node, False)
@@ -191,7 +191,7 @@ class TestBlockdevDel(iotests.QMPTestCase):
         self.checkBlockDriverState(debug)
 
     # Add a BlkVerify node
-    # Note that the purpose of this is to test the x-blockdev-del
+    # Note that the purpose of this is to test the blockdev-del
     # sanity checks, not to create a usable blkverify drive
     def addBlkVerify(self, blkverify, test, raw):
         self.checkBlockDriverState(test, False)

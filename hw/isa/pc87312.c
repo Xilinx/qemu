@@ -30,7 +30,7 @@
 #include "sysemu/block-backend.h"
 #include "sysemu/blockdev.h"
 #include "sysemu/sysemu.h"
-#include "sysemu/char.h"
+#include "chardev/char.h"
 #include "trace.h"
 
 
@@ -268,7 +268,7 @@ static void pc87312_realize(DeviceState *dev, Error **errp)
     DeviceState *d;
     ISADevice *isa;
     ISABus *bus;
-    CharDriverState *chr;
+    Chardev *chr;
     DriveInfo *drive;
     char name[5];
     int i;

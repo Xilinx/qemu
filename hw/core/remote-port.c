@@ -10,7 +10,7 @@
 #include "qemu/osdep.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/dma.h"
-#include "sysemu/char.h"
+#include "chardev/char.h"
 #include "sysemu/cpus.h"
 #include "hw/sysbus.h"
 #include "hw/ptimer.h"
@@ -391,9 +391,9 @@ static char *rp_autocreate_chardesc(RemotePort *s, bool server)
     return chardesc;
 }
 
-static CharDriverState *rp_autocreate_chardev(RemotePort *s, char *name)
+static Chardev *rp_autocreate_chardev(RemotePort *s, char *name)
 {
-    CharDriverState *chr;
+    Chardev *chr;
     char *chardesc;
 
     chardesc = rp_autocreate_chardesc(s, false);
@@ -647,7 +647,7 @@ static void rp_realize(DeviceState *dev, Error **errp)
 
     if (!qemu_chr_fe_get_driver(&s->chr)) {
         char *name;
-        CharDriverState *chr = NULL;
+        Chardev *chr = NULL;
         static int nr = 0;
 
         r = asprintf(&name, "rport%d", nr);

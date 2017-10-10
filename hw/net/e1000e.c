@@ -47,6 +47,7 @@
 #include "e1000e_core.h"
 
 #include "trace.h"
+#include "qapi/error.h"
 
 #define TYPE_E1000E "e1000e"
 #define E1000E(obj) OBJECT_CHECK(E1000EState, (obj), TYPE_E1000E)
@@ -292,7 +293,7 @@ e1000e_init_msix(E1000EState *s)
                         E1000E_MSIX_IDX, E1000E_MSIX_TABLE,
                         &s->msix,
                         E1000E_MSIX_IDX, E1000E_MSIX_PBA,
-                        0xA0);
+                        0xA0, NULL);
 
     if (res < 0) {
         trace_e1000e_msix_init_fail(res);
@@ -372,21 +373,26 @@ e1000e_gen_dsn(uint8_t *mac)
 static int
 e1000e_add_pm_capability(PCIDevice *pdev, uint8_t offset, uint16_t pmc)
 {
-    int ret = pci_add_capability(pdev, PCI_CAP_ID_PM, offset, PCI_PM_SIZEOF);
+    Error *local_err = NULL;
+    int ret = pci_add_capability(pdev, PCI_CAP_ID_PM, offset,
+                                 PCI_PM_SIZEOF, &local_err);
 
-    if (ret >= 0) {
-        pci_set_word(pdev->config + offset + PCI_PM_PMC,
-                     PCI_PM_CAP_VER_1_1 |
-                     pmc);
-
-        pci_set_word(pdev->wmask + offset + PCI_PM_CTRL,
-                     PCI_PM_CTRL_STATE_MASK |
-                     PCI_PM_CTRL_PME_ENABLE |
-                     PCI_PM_CTRL_DATA_SEL_MASK);
-
-        pci_set_word(pdev->w1cmask + offset + PCI_PM_CTRL,
-                     PCI_PM_CTRL_PME_STATUS);
+    if (local_err) {
+        error_report_err(local_err);
+        return ret;
     }
+
+    pci_set_word(pdev->config + offset + PCI_PM_PMC,
+                 PCI_PM_CAP_VER_1_1 |
+                 pmc);
+
+    pci_set_word(pdev->wmask + offset + PCI_PM_CTRL,
+                 PCI_PM_CTRL_STATE_MASK |
+                 PCI_PM_CTRL_PME_ENABLE |
+                 PCI_PM_CTRL_DATA_SEL_MASK);
+
+    pci_set_word(pdev->w1cmask + offset + PCI_PM_CTRL,
+                 PCI_PM_CTRL_PME_STATUS);
 
     return ret;
 }
@@ -472,7 +478,8 @@ static void e1000e_pci_realize(PCIDevice *pci_dev, Error **errp)
         hw_error("Failed to initialize PM capability");
     }
 
-    if (pcie_aer_init(pci_dev, e1000e_aer_offset, PCI_ERR_SIZEOF) < 0) {
+    if (pcie_aer_init(pci_dev, PCI_ERR_VER, e1000e_aer_offset,
+                      PCI_ERR_SIZEOF, NULL) < 0) {
         hw_error("Failed to initialize AER capability");
     }
 
@@ -592,7 +599,7 @@ static const VMStateDescription e1000e_vmstate = {
     .pre_save = e1000e_pre_save,
     .post_load = e1000e_post_load,
     .fields = (VMStateField[]) {
-        VMSTATE_PCIE_DEVICE(parent_obj, E1000EState),
+        VMSTATE_PCI_DEVICE(parent_obj, E1000EState),
         VMSTATE_MSIX(parent_obj, E1000EState),
 
         VMSTATE_UINT32(ioaddr, E1000EState),
@@ -644,12 +651,12 @@ static PropertyInfo e1000e_prop_disable_vnet,
 
 static Property e1000e_properties[] = {
     DEFINE_NIC_PROPERTIES(E1000EState, conf),
-    DEFINE_PROP_DEFAULT("disable_vnet_hdr", E1000EState, disable_vnet, false,
+    DEFINE_PROP_SIGNED("disable_vnet_hdr", E1000EState, disable_vnet, false,
                         e1000e_prop_disable_vnet, bool),
-    DEFINE_PROP_DEFAULT("subsys_ven", E1000EState, subsys_ven,
+    DEFINE_PROP_SIGNED("subsys_ven", E1000EState, subsys_ven,
                         PCI_VENDOR_ID_INTEL,
                         e1000e_prop_subsys_ven, uint16_t),
-    DEFINE_PROP_DEFAULT("subsys", E1000EState, subsys, 0,
+    DEFINE_PROP_SIGNED("subsys", E1000EState, subsys, 0,
                         e1000e_prop_subsys, uint16_t),
     DEFINE_PROP_END_OF_LIST(),
 };

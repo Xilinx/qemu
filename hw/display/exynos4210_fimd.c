@@ -1241,7 +1241,7 @@ static void exynos4210_update_resolution(Exynos4210fimdState *s)
 {
     DisplaySurface *surface = qemu_console_surface(s->console);
 
-    /* LCD resolution is stored in VIDEO TIME CONTROL DEP_REGISTER 2 */
+    /* LCD resolution is stored in VIDEO TIME CONTROL REGISTER 2 */
     uint32_t width = ((s->vidtcon[2] >> FIMD_VIDTCON2_HOR_SHIFT) &
             FIMD_VIDTCON2_SIZE_MASK) + 1;
     uint32_t height = ((s->vidtcon[2] >> FIMD_VIDTCON2_VER_SHIFT) &
@@ -1263,6 +1263,7 @@ static void exynos4210_fimd_update(void *opaque)
     Exynos4210fimdState *s = (Exynos4210fimdState *)opaque;
     DisplaySurface *surface;
     Exynos4210fimdWindow *w;
+    DirtyBitmapSnapshot *snap;
     int i, line;
     hwaddr fb_line_addr, inc_size;
     int scrn_height;
@@ -1291,10 +1292,12 @@ static void exynos4210_fimd_update(void *opaque)
             memory_region_sync_dirty_bitmap(w->mem_section.mr);
             host_fb_addr = w->host_fb_addr;
             fb_line_addr = w->mem_section.offset_within_region;
+            snap = memory_region_snapshot_and_clear_dirty(w->mem_section.mr,
+                    fb_line_addr, inc_size * scrn_height, DIRTY_MEMORY_VGA);
 
             for (line = 0; line < scrn_height; line++) {
-                is_dirty = memory_region_get_dirty(w->mem_section.mr,
-                            fb_line_addr, scrn_width, DIRTY_MEMORY_VGA);
+                is_dirty = memory_region_snapshot_get_dirty(w->mem_section.mr,
+                            snap, fb_line_addr, scrn_width);
 
                 if (s->invalidate || is_dirty) {
                     if (first_line == -1) {
@@ -1309,9 +1312,7 @@ static void exynos4210_fimd_update(void *opaque)
                 fb_line_addr += inc_size;
                 is_dirty = false;
             }
-            memory_region_reset_dirty(w->mem_section.mr,
-                w->mem_section.offset_within_region,
-                w->fb_len, DIRTY_MEMORY_VGA);
+            g_free(snap);
             blend = true;
         }
     }

@@ -13,7 +13,7 @@ Let's assume we have a QEMU machine with two NICs (virtio, e1000) and two
 disks (IDE, virtio):
 
 qemu -drive file=disk1.img,if=none,id=disk1
-     -device ide-drive,drive=disk1,bootindex=4
+     -device ide-hd,drive=disk1,bootindex=4
      -drive file=disk2.img,if=none,id=disk2
      -device virtio-blk-pci,drive=disk2,bootindex=3
      -netdev type=user,id=net0 -device virtio-net-pci,netdev=net0,bootindex=2
@@ -41,3 +41,12 @@ has three bootable devices target1, target3, target5 connected to it,
 the option ROM will have a boot method for each of them, but it is not
 possible to map from boot method back to a specific target.  This is a
 shortcoming of the PC BIOS boot specification.
+
+== Mixing bootindex and boot order parameters ==
+
+Note that it does not make sense to use the bootindex property together
+with the "-boot order=..." (or "-boot once=...") parameter. The guest
+firmware implementations normally either support the one or the other,
+but not both parameters at the same time. Mixing them will result in
+undefined behavior, and thus the guest firmware will likely not boot
+from the expected devices.

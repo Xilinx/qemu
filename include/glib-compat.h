@@ -39,7 +39,7 @@ static inline gint64 qemu_g_get_monotonic_time(void)
 #define g_get_monotonic_time() qemu_g_get_monotonic_time()
 #endif
 
-#ifdef _WIN32
+#if defined(_WIN32) && !GLIB_CHECK_VERSION(2, 50, 0)
 /*
  * g_poll has a problem on Windows when using
  * timeouts < 10ms, so use wrapper.
@@ -217,6 +217,12 @@ static inline void g_hash_table_add(GHashTable *hash_table, gpointer key)
 {
     g_hash_table_replace(hash_table, key, key);
 }
+
+static inline gboolean g_hash_table_contains(GHashTable *hash_table,
+                                             gpointer key)
+{
+    return g_hash_table_lookup_extended(hash_table, key, NULL, NULL);
+}
 #endif
 
 #ifndef g_assert_true
@@ -327,5 +333,26 @@ static inline void g_source_set_name_by_id(guint tag, const char *name)
 #endif
 #define g_test_subprocess() (0)
 #endif
+
+
+#if !GLIB_CHECK_VERSION(2, 34, 0)
+static inline void
+g_test_add_data_func_full(const char *path,
+                          gpointer data,
+                          gpointer fn,
+                          gpointer data_free_func)
+{
+#if GLIB_CHECK_VERSION(2, 26, 0)
+    /* back-compat casts, remove this once we can require new-enough glib */
+    g_test_add_vtable(path, 0, data, NULL,
+                      (GTestFixtureFunc)fn, (GTestFixtureFunc) data_free_func);
+#else
+    /* back-compat casts, remove this once we can require new-enough glib */
+    g_test_add_vtable(path, 0, data, NULL,
+                      (void (*)(void)) fn, (void (*)(void)) data_free_func);
+#endif
+}
+#endif
+
 
 #endif

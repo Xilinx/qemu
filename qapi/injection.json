@@ -6,7 +6,7 @@
 # See the COPYING file in the top-level directory.
 
 ##
-# @ReadValue
+# @ReadValue:
 #
 # The return value from a read command
 #
@@ -44,7 +44,7 @@
 # If both the @qom name or @cpu id are not provided the access is done from cpu
 # 0.
 #
-# @address: The address to write.
+# @addr: The address to write.
 # @val: The value which will be written.
 # @size: The size of the access.
 # @cpu: The optional index of the CPU doing the access.
@@ -59,7 +59,7 @@
            '*qom': 'str'} }
 
 ##
-# @trigger_event
+# @trigger_event:
 #
 # Trigger an event
 #
@@ -74,7 +74,7 @@
   'data': {'time_ns': 'int', 'event_id': 'int'} }
 
 ##
-# @FAULT_EVENT
+# @FAULT_EVENT:
 #
 # Emitted when a fault event is triggered
 #
@@ -86,7 +86,7 @@
   'data': { 'event_id': 'int', 'time_ns': 'int'} }
 
 ##
-# @inject_gpio
+# @inject_gpio:
 #
 # @device_name: Path to the device.
 # @gpio:        Name of the GPIO will be unnamed-gpio if omitted.

@@ -85,12 +85,12 @@ typedef struct {
     int rptr, wptr, count;
 } PS2Queue;
 
-typedef struct {
+struct PS2State {
     PS2Queue queue;
     int32_t write_cmd;
     void (*update_irq)(void *, int);
     void *update_arg;
-} PS2State;
+};
 
 typedef struct {
     PS2State common;
@@ -224,7 +224,6 @@ static const uint16_t qcode_to_keycode_set1[Q_KEY_CODE__MAX] = {
     [Q_KEY_CODE_DOT] = 0x34,
     [Q_KEY_CODE_SLASH] = 0x35,
 
-#if 0
     [Q_KEY_CODE_POWER] = 0x0e5e,
     [Q_KEY_CODE_SLEEP] = 0x0e5f,
     [Q_KEY_CODE_WAKE] = 0x0e63,
@@ -240,18 +239,20 @@ static const uint16_t qcode_to_keycode_set1[Q_KEY_CODE__MAX] = {
     [Q_KEY_CODE_MAIL] = 0xe06c,
     [Q_KEY_CODE_CALCULATOR] = 0xe021,
     [Q_KEY_CODE_COMPUTER] = 0xe06b,
-    [Q_KEY_CODE_AC_SEARCH] = 0xe065,
+    [Q_KEY_CODE_FIND] = 0xe065,
     [Q_KEY_CODE_AC_HOME] = 0xe032,
     [Q_KEY_CODE_AC_BACK] = 0xe06a,
     [Q_KEY_CODE_AC_FORWARD] = 0xe069,
-    [Q_KEY_CODE_AC_STOP] = 0xe068,
+    [Q_KEY_CODE_STOP] = 0xe068,
     [Q_KEY_CODE_AC_REFRESH] = 0xe067,
     [Q_KEY_CODE_AC_BOOKMARKS] = 0xe066,
-#endif
 
     [Q_KEY_CODE_ASTERISK] = 0x37,
     [Q_KEY_CODE_LESS] = 0x56,
     [Q_KEY_CODE_RO] = 0x73,
+    [Q_KEY_CODE_HIRAGANA] = 0x70,
+    [Q_KEY_CODE_HENKAN] = 0x79,
+    [Q_KEY_CODE_YEN] = 0x7d,
     [Q_KEY_CODE_KP_COMMA] = 0x7e,
 };
 
@@ -363,7 +364,6 @@ static const uint16_t qcode_to_keycode_set2[Q_KEY_CODE__MAX] = {
     [Q_KEY_CODE_DOT] = 0x49,
     [Q_KEY_CODE_SLASH] = 0x4a,
 
-#if 0
     [Q_KEY_CODE_POWER] = 0x0e37,
     [Q_KEY_CODE_SLEEP] = 0x0e3f,
     [Q_KEY_CODE_WAKE] = 0x0e5e,
@@ -379,21 +379,21 @@ static const uint16_t qcode_to_keycode_set2[Q_KEY_CODE__MAX] = {
     [Q_KEY_CODE_MAIL] = 0xe048,
     [Q_KEY_CODE_CALCULATOR] = 0xe02b,
     [Q_KEY_CODE_COMPUTER] = 0xe040,
-    [Q_KEY_CODE_AC_SEARCH] = 0xe010,
+    [Q_KEY_CODE_FIND] = 0xe010,
     [Q_KEY_CODE_AC_HOME] = 0xe03a,
     [Q_KEY_CODE_AC_BACK] = 0xe038,
     [Q_KEY_CODE_AC_FORWARD] = 0xe030,
-    [Q_KEY_CODE_AC_STOP] = 0xe028,
+    [Q_KEY_CODE_STOP] = 0xe028,
     [Q_KEY_CODE_AC_REFRESH] = 0xe020,
     [Q_KEY_CODE_AC_BOOKMARKS] = 0xe018,
-#endif
 
-    [Q_KEY_CODE_ALTGR] = 0x08,
-    [Q_KEY_CODE_ALTGR_R] = 0xe008,
     [Q_KEY_CODE_ASTERISK] = 0x7c,
     [Q_KEY_CODE_LESS] = 0x61,
     [Q_KEY_CODE_SYSRQ] = 0x7f,
     [Q_KEY_CODE_RO] = 0x51,
+    [Q_KEY_CODE_HIRAGANA] = 0x13,
+    [Q_KEY_CODE_HENKAN] = 0x64,
+    [Q_KEY_CODE_YEN] = 0x6a,
     [Q_KEY_CODE_KP_COMMA] = 0x6d,
 };
 
@@ -504,6 +504,10 @@ static const uint16_t qcode_to_keycode_set3[Q_KEY_CODE__MAX] = {
     [Q_KEY_CODE_COMMA] = 0x41,
     [Q_KEY_CODE_DOT] = 0x49,
     [Q_KEY_CODE_SLASH] = 0x4a,
+
+    [Q_KEY_CODE_HIRAGANA] = 0x87,
+    [Q_KEY_CODE_HENKAN] = 0x86,
+    [Q_KEY_CODE_YEN] = 0x5d,
 };
 
 static uint8_t translate_table[256] = {
@@ -541,9 +545,17 @@ static uint8_t translate_table[256] = {
     0xf8, 0xf9, 0xfa, 0xfb, 0xfc, 0xfd, 0xfe, 0xff,
 };
 
-void ps2_queue(void *opaque, int b)
+static void ps2_reset_queue(PS2State *s)
 {
-    PS2State *s = (PS2State *)opaque;
+    PS2Queue *q = &s->queue;
+
+    q->rptr = 0;
+    q->wptr = 0;
+    q->count = 0;
+}
+
+void ps2_queue(PS2State *s, int b)
+{
     PS2Queue *q = &s->queue;
 
     if (q->count >= PS2_QUEUE_SIZE - 1)
@@ -682,13 +694,12 @@ static void ps2_keyboard_event(DeviceState *dev, QemuConsole *src,
     }
 }
 
-uint32_t ps2_read_data(void *opaque)
+uint32_t ps2_read_data(PS2State *s)
 {
-    PS2State *s = (PS2State *)opaque;
     PS2Queue *q;
     int val, index;
 
-    trace_ps2_read_data(opaque);
+    trace_ps2_read_data(s);
     q = &s->queue;
     if (q->count == 0) {
         /* NOTE: if no data left, we return the last keyboard one
@@ -723,6 +734,7 @@ static void ps2_reset_keyboard(PS2KbdState *s)
     trace_ps2_reset_keyboard(s);
     s->scan_enabled = 1;
     s->scancode_set = 2;
+    ps2_reset_queue(&s->common);
     ps2_set_ledstate(s, 0);
 }
 
@@ -871,9 +883,11 @@ static void ps2_mouse_event(DeviceState *dev, QemuConsole *src,
                             InputEvent *evt)
 {
     static const int bmap[INPUT_BUTTON__MAX] = {
-        [INPUT_BUTTON_LEFT]   = MOUSE_EVENT_LBUTTON,
-        [INPUT_BUTTON_MIDDLE] = MOUSE_EVENT_MBUTTON,
-        [INPUT_BUTTON_RIGHT]  = MOUSE_EVENT_RBUTTON,
+        [INPUT_BUTTON_LEFT]   = PS2_MOUSE_BUTTON_LEFT,
+        [INPUT_BUTTON_MIDDLE] = PS2_MOUSE_BUTTON_MIDDLE,
+        [INPUT_BUTTON_RIGHT]  = PS2_MOUSE_BUTTON_RIGHT,
+        [INPUT_BUTTON_SIDE]   = PS2_MOUSE_BUTTON_SIDE,
+        [INPUT_BUTTON_EXTRA]  = PS2_MOUSE_BUTTON_EXTRA,
     };
     PS2MouseState *s = (PS2MouseState *)dev;
     InputMoveEvent *move;
@@ -1069,12 +1083,8 @@ void ps2_write_mouse(void *opaque, int val)
 
 static void ps2_common_reset(PS2State *s)
 {
-    PS2Queue *q;
     s->write_cmd = -1;
-    q = &s->queue;
-    q->rptr = 0;
-    q->wptr = 0;
-    q->count = 0;
+    ps2_reset_queue(s);
     s->update_irq(s->update_arg, 0);
 }
 

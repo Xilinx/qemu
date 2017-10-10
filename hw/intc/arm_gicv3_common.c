@@ -28,6 +28,8 @@
 #include "gicv3_internal.h"
 #include "hw/arm/linux-boot-if.h"
 
+#include "hw/fdt_generic_util.h"
+
 static void gicv3_pre_save(void *opaque)
 {
     GICv3State *s = (GICv3State *)opaque;
@@ -48,6 +50,59 @@ static int gicv3_post_load(void *opaque, int version_id)
     }
     return 0;
 }
+
+static bool virt_state_needed(void *opaque)
+{
+    GICv3CPUState *cs = opaque;
+
+    return cs->num_list_regs != 0;
+}
+
+static const VMStateDescription vmstate_gicv3_cpu_virt = {
+    .name = "arm_gicv3_cpu/virt",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = virt_state_needed,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT64_2DARRAY(ich_apr, GICv3CPUState, 3, 4),
+        VMSTATE_UINT64(ich_hcr_el2, GICv3CPUState),
+        VMSTATE_UINT64_ARRAY(ich_lr_el2, GICv3CPUState, GICV3_LR_MAX),
+        VMSTATE_UINT64(ich_vmcr_el2, GICv3CPUState),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static int icc_sre_el1_reg_pre_load(void *opaque)
+{
+    GICv3CPUState *cs = opaque;
+
+   /*
+    * If the sre_el1 subsection is not transferred this
+    * means SRE_EL1 is 0x7 (which might not be the same as
+    * our reset value).
+    */
+    cs->icc_sre_el1 = 0x7;
+    return 0;
+}
+
+static bool icc_sre_el1_reg_needed(void *opaque)
+{
+    GICv3CPUState *cs = opaque;
+
+    return cs->icc_sre_el1 != 7;
+}
+
+const VMStateDescription vmstate_gicv3_cpu_sre_el1 = {
+    .name = "arm_gicv3_cpu/sre_el1",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .pre_load = icc_sre_el1_reg_pre_load,
+    .needed = icc_sre_el1_reg_needed,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT64(icc_sre_el1, GICv3CPUState),
+        VMSTATE_END_OF_LIST()
+    }
+};
 
 static const VMStateDescription vmstate_gicv3_cpu = {
     .name = "arm_gicv3_cpu",
@@ -75,6 +130,14 @@ static const VMStateDescription vmstate_gicv3_cpu = {
         VMSTATE_UINT64_ARRAY(icc_igrpen, GICv3CPUState, 3),
         VMSTATE_UINT64(icc_ctlr_el3, GICv3CPUState),
         VMSTATE_END_OF_LIST()
+    },
+    .subsections = (const VMStateDescription * []) {
+        &vmstate_gicv3_cpu_virt,
+        NULL
+    },
+    .subsections = (const VMStateDescription * []) {
+        &vmstate_gicv3_cpu_sre_el1,
+        NULL
     }
 };
 
@@ -84,6 +147,7 @@ static const VMStateDescription vmstate_gicv3 = {
     .minimum_version_id = 1,
     .pre_save = gicv3_pre_save,
     .post_load = gicv3_post_load,
+    .priority = MIG_PRI_GICV3,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32(gicd_ctlr, GICv3State),
         VMSTATE_UINT32_ARRAY(gicd_statusr, GICv3State, 2),
@@ -122,9 +186,23 @@ void gicv3_init_irqs_and_mmio(GICv3State *s, qemu_irq_handler handler,
 
     for (i = 0; i < s->num_cpu; i++) {
         sysbus_init_irq(sbd, &s->cpu[i].parent_irq);
+        qdev_init_gpio_out_named(DEVICE(s), &s->cpu[i].parent_irq, "irq", 1);
     }
     for (i = 0; i < s->num_cpu; i++) {
         sysbus_init_irq(sbd, &s->cpu[i].parent_fiq);
+        qdev_init_gpio_out_named(DEVICE(s), &s->cpu[i].parent_fiq, "fiq", 1);
+    }
+    for (i = 0; i < s->num_cpu; i++) {
+        sysbus_init_irq(sbd, &s->cpu[i].parent_virq);
+        qdev_init_gpio_out_named(DEVICE(s), &s->cpu[i].parent_virq, "irq", 1);
+    }
+    for (i = 0; i < s->num_cpu; i++) {
+        sysbus_init_irq(sbd, &s->cpu[i].parent_vfiq);
+        qdev_init_gpio_out_named(DEVICE(s), &s->cpu[i].parent_vfiq, "fiq", 1);
+    }
+    for (i = 0; i < s->num_cpu; i++) {
+        qdev_init_gpio_out_named(DEVICE(s),
+                                 &s->cpu[i].maintenance_irq, "maint", 1);
     }
 
     memory_region_init_io(&s->iomem_dist, OBJECT(s), ops, s,
@@ -134,6 +212,51 @@ void gicv3_init_irqs_and_mmio(GICv3State *s, qemu_irq_handler handler,
 
     sysbus_init_mmio(sbd, &s->iomem_dist);
     sysbus_init_mmio(sbd, &s->iomem_redist);
+}
+
+static int arm_gicv3_common_fdt_get_irq(FDTGenericIntc *obj, qemu_irq *irqs,
+                                      uint32_t *cells, int ncells, int max,
+                                      Error **errp)
+{
+    GICv3State *gs = ARM_GICV3_COMMON(obj);
+    int cpu = 0;
+    uint32_t idx;
+
+    if (ncells != 3) {
+        error_setg(errp, "ARM GIC requires 3 interrupt cells, %d cells given",
+                   ncells);
+        return 0;
+    }
+    idx = cells[1];
+
+    switch (cells[0]) {
+    case 0:
+        if (idx >= gs->num_irq) {
+            error_setg(errp, "ARM GIC SPI has maximum index of %" PRId32 ", "
+                       "index %" PRId32 " given", gs->num_irq - 1, idx);
+            return 0;
+        }
+        (*irqs) = qdev_get_gpio_in(DEVICE(obj), cells[1]);
+        return 1;
+    case 1: /* PPI */
+        if (idx >= 16) {
+            error_setg(errp, "ARM GIC PPI has maximum index of 15, "
+                       "index %" PRId32 " given", idx);
+            return 0;
+        }
+        for (cpu = 0; cpu < max && cpu < gs->num_cpu; cpu++) {
+            if (cells[2] & 1 << (cpu + 8)) {
+                *irqs = qdev_get_gpio_in(DEVICE(obj),
+                                         gs->num_irq - 16 + idx + cpu * 32);
+            }
+            irqs++;
+        }
+        return cpu;
+    default:
+        error_setg(errp, "Invalid cell 0 value in interrupt binding: %d",
+                   cells[0]);
+        return 0;
+    }
 }
 
 static void arm_gicv3_common_realize(DeviceState *dev, Error **errp)
@@ -185,6 +308,8 @@ static void arm_gicv3_common_realize(DeviceState *dev, Error **errp)
 
         s->cpu[i].cpu = cpu;
         s->cpu[i].gic = s;
+        /* Store GICv3CPUState in CPUARMState gicv3state pointer */
+        gicv3_set_gicv3state(cpu, &s->cpu[i]);
 
         /* Pre-construct the GICR_TYPER:
          * For our implementation:
@@ -198,13 +323,14 @@ static void arm_gicv3_common_realize(DeviceState *dev, Error **errp)
          *  VLPIS == 0 (virtual LPIs not supported)
          *  PLPIS == 0 (physical LPIs not supported)
          */
-        cpu_affid = object_property_get_int(OBJECT(cpu), "mp-affinity", NULL);
+        cpu_affid = object_property_get_uint(OBJECT(cpu), "mp-affinity", NULL);
         last = (i == s->num_cpu - 1);
 
         /* The CPU mp-affinity property is in MPIDR register format; squash
          * the affinity bytes into 32 bits as the GICR_TYPER has them.
          */
-        cpu_affid = (cpu_affid & 0xFF00000000ULL >> 8) | (cpu_affid & 0xFFFFFF);
+        cpu_affid = ((cpu_affid & 0xFF00000000ULL) >> 8) |
+                     (cpu_affid & 0xFFFFFF);
         s->cpu[i].gicr_typer = (cpu_affid << 32) |
             (1 << 24) |
             (i << 8) |
@@ -322,12 +448,14 @@ static void arm_gicv3_common_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     ARMLinuxBootIfClass *albifc = ARM_LINUX_BOOT_IF_CLASS(klass);
+    FDTGenericIntcClass *fgic = FDT_GENERIC_INTC_CLASS(klass);
 
     dc->reset = arm_gicv3_common_reset;
     dc->realize = arm_gicv3_common_realize;
     dc->props = arm_gicv3_common_properties;
     dc->vmsd = &vmstate_gicv3;
     albifc->arm_linux_init = arm_gic_common_linux_init;
+    fgic->get_irq = arm_gicv3_common_fdt_get_irq;
 }
 
 static const TypeInfo arm_gicv3_common_type = {
@@ -339,6 +467,8 @@ static const TypeInfo arm_gicv3_common_type = {
     .abstract = true,
     .interfaces = (InterfaceInfo []) {
         { TYPE_ARM_LINUX_BOOT_IF },
+        { TYPE_FDT_GENERIC_INTC },
+        { TYPE_FDT_GENERIC_GPIO },
         { },
     },
 };

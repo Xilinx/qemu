@@ -33,6 +33,7 @@ common-obj-y += shader.o
 common-obj-y += console-gl.o
 common-obj-y += egl-helpers.o
 common-obj-y += egl-context.o
+common-obj-$(CONFIG_OPENGL_DMABUF) += egl-headless.o
 ifeq ($(CONFIG_GTK_GL),y)
 common-obj-$(CONFIG_GTK) += gtk-gl-area.o
 else
@@ -41,11 +42,8 @@ endif
 endif
 
 gtk.o-cflags := $(GTK_CFLAGS) $(VTE_CFLAGS)
-gtk-egl.o-cflags := $(GTK_CFLAGS) $(VTE_CFLAGS) $(OPENGL_CFLAGS)
-gtk-gl-area.o-cflags := $(GTK_CFLAGS) $(VTE_CFLAGS) $(OPENGL_CFLAGS)
-shader.o-cflags += $(OPENGL_CFLAGS)
-console-gl.o-cflags += $(OPENGL_CFLAGS)
-egl-helpers.o-cflags += $(OPENGL_CFLAGS)
+gtk-egl.o-cflags := $(GTK_CFLAGS) $(VTE_CFLAGS)
+gtk-gl-area.o-cflags := $(GTK_CFLAGS) $(VTE_CFLAGS)
 
 gtk-egl.o-libs += $(OPENGL_LIBS)
 shader.o-libs += $(OPENGL_LIBS)

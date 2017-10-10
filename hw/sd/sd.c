@@ -531,7 +531,7 @@ static bool sd_get_readonly(SDState *sd)
     return sd->wp_switch;
 }
 
-static void sd_cardchange(void *opaque, bool load)
+static void sd_cardchange(void *opaque, bool load, Error **errp)
 {
     SDState *sd = opaque;
     DeviceState *dev = DEVICE(sd);
@@ -2201,6 +2201,7 @@ static void sd_instance_finalize(Object *obj)
 static void sd_realize(DeviceState *dev, Error **errp)
 {
     SDState *sd = SD_CARD(dev);
+    int ret;
 
     if (sd->blk && blk_is_read_only(sd->blk)) {
         error_setg(errp, "Cannot use read-only drive as SD card");
@@ -2208,6 +2209,11 @@ static void sd_realize(DeviceState *dev, Error **errp)
     }
 
     if (sd->blk) {
+        ret = blk_set_perm(sd->blk, BLK_PERM_CONSISTENT_READ | BLK_PERM_WRITE,
+                           BLK_PERM_ALL, errp);
+        if (ret < 0) {
+            return;
+        }
         blk_set_dev_ops(sd->blk, &sd_block_ops, sd);
     }
 }

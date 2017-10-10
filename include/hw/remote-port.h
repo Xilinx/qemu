@@ -12,7 +12,8 @@
 #include <stdbool.h>
 #include "hw/remote-port-proto.h"
 #include "hw/remote-port-device.h"
-#include "sysemu/char.h"
+#include "chardev/char.h"
+#include "chardev/char-fe.h"
 #include "hw/ptimer.h"
 
 #define TYPE_REMOTE_PORT "remote-port"

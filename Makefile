@@ -26,6 +26,7 @@ endif
 
 CONFIG_SOFTMMU := $(if $(filter %-softmmu,$(TARGET_DIRS)),y)
 CONFIG_USER_ONLY := $(if $(filter %-user,$(TARGET_DIRS)),y)
+CONFIG_XEN := $(CONFIG_XEN_BACKEND)
 CONFIG_ALL=y
 -include config-all-devices.mak
 -include config-all-disas.mak
@@ -50,38 +51,153 @@ endif
 
 include $(SRC_PATH)/rules.mak
 
-GENERATED_HEADERS = qemu-version.h config-host.h qemu-options.def
-GENERATED_HEADERS += qmp-commands.h qapi-types.h qapi-visit.h qapi-event.h
-GENERATED_SOURCES += qmp-marshal.c qapi-types.c qapi-visit.c qapi-event.c
-GENERATED_HEADERS += qmp-introspect.h
-GENERATED_SOURCES += qmp-introspect.c
+GENERATED_FILES = qemu-version.h config-host.h qemu-options.def
+GENERATED_FILES += qmp-commands.h qapi-types.h qapi-visit.h qapi-event.h
+GENERATED_FILES += qmp-marshal.c qapi-types.c qapi-visit.c qapi-event.c
+GENERATED_FILES += qmp-introspect.h
+GENERATED_FILES += qmp-introspect.c
 
-GENERATED_HEADERS += trace/generated-tracers.h
-ifeq ($(findstring dtrace,$(TRACE_BACKENDS)),dtrace)
-GENERATED_HEADERS += trace/generated-tracers-dtrace.h
-endif
-GENERATED_SOURCES += trace/generated-tracers.c
+GENERATED_FILES += trace/generated-tcg-tracers.h
 
-GENERATED_HEADERS += trace/generated-tcg-tracers.h
+GENERATED_FILES += trace/generated-helpers-wrappers.h
+GENERATED_FILES += trace/generated-helpers.h
+GENERATED_FILES += trace/generated-helpers.c
 
-GENERATED_HEADERS += trace/generated-helpers-wrappers.h
-GENERATED_HEADERS += trace/generated-helpers.h
-GENERATED_SOURCES += trace/generated-helpers.c
-
-ifeq ($(findstring ust,$(TRACE_BACKENDS)),ust)
-GENERATED_HEADERS += trace/generated-ust-provider.h
-GENERATED_SOURCES += trace/generated-ust.c
+ifdef CONFIG_TRACE_UST
+GENERATED_FILES += trace-ust-all.h
+GENERATED_FILES += trace-ust-all.c
 endif
 
-GENERATED_HEADERS += module_block.h
+GENERATED_FILES += module_block.h
+
+TRACE_HEADERS = trace-root.h $(trace-events-subdirs:%=%/trace.h)
+TRACE_SOURCES = trace-root.c $(trace-events-subdirs:%=%/trace.c)
+TRACE_DTRACE =
+ifdef CONFIG_TRACE_DTRACE
+TRACE_HEADERS += trace-dtrace-root.h $(trace-events-subdirs:%=%/trace-dtrace.h)
+TRACE_DTRACE += trace-dtrace-root.dtrace $(trace-events-subdirs:%=%/trace-dtrace.dtrace)
+endif
+ifdef CONFIG_TRACE_UST
+TRACE_HEADERS += trace-ust-root.h $(trace-events-subdirs:%=%/trace-ust.h)
+endif
+
+GENERATED_FILES += $(TRACE_HEADERS)
+GENERATED_FILES += $(TRACE_SOURCES)
+GENERATED_FILES += $(BUILD_DIR)/trace-events-all
+
+trace-group-name = $(shell dirname $1 | sed -e 's/[^a-zA-Z0-9]/_/g')
+
+tracetool-y = $(SRC_PATH)/scripts/tracetool.py
+tracetool-y += $(shell find $(SRC_PATH)/scripts/tracetool -name "*.py")
+
+%/trace.h: %/trace.h-timestamp
+	@cmp $< $@ >/dev/null 2>&1 || cp $< $@
+%/trace.h-timestamp: $(SRC_PATH)/%/trace-events $(tracetool-y)
+	$(call quiet-command,$(TRACETOOL) \
+		--group=$(call trace-group-name,$@) \
+		--format=h \
+		--backends=$(TRACE_BACKENDS) \
+		$< > $@,"GEN","$(@:%-timestamp=%)")
+
+%/trace.c: %/trace.c-timestamp
+	@cmp $< $@ >/dev/null 2>&1 || cp $< $@
+%/trace.c-timestamp: $(SRC_PATH)/%/trace-events $(tracetool-y)
+	$(call quiet-command,$(TRACETOOL) \
+		--group=$(call trace-group-name,$@) \
+		--format=c \
+		--backends=$(TRACE_BACKENDS) \
+		$< > $@,"GEN","$(@:%-timestamp=%)")
+
+%/trace-ust.h: %/trace-ust.h-timestamp
+	@cmp $< $@ >/dev/null 2>&1 || cp $< $@
+%/trace-ust.h-timestamp: $(SRC_PATH)/%/trace-events $(tracetool-y)
+	$(call quiet-command,$(TRACETOOL) \
+		--group=$(call trace-group-name,$@) \
+		--format=ust-events-h \
+		--backends=$(TRACE_BACKENDS) \
+		$< > $@,"GEN","$(@:%-timestamp=%)")
+
+%/trace-dtrace.dtrace: %/trace-dtrace.dtrace-timestamp
+	@cmp $< $@ >/dev/null 2>&1 || cp $< $@
+%/trace-dtrace.dtrace-timestamp: $(SRC_PATH)/%/trace-events $(BUILD_DIR)/config-host.mak $(tracetool-y)
+	$(call quiet-command,$(TRACETOOL) \
+		--group=$(call trace-group-name,$@) \
+		--format=d \
+		--backends=$(TRACE_BACKENDS) \
+		$< > $@,"GEN","$(@:%-timestamp=%)")
+
+%/trace-dtrace.h: %/trace-dtrace.dtrace $(tracetool-y)
+	$(call quiet-command,dtrace -o $@ -h -s $<, "GEN","$@")
+
+%/trace-dtrace.o: %/trace-dtrace.dtrace $(tracetool-y)
+
+
+trace-root.h: trace-root.h-timestamp
+	@cmp $< $@ >/dev/null 2>&1 || cp $< $@
+trace-root.h-timestamp: $(SRC_PATH)/trace-events $(tracetool-y)
+	$(call quiet-command,$(TRACETOOL) \
+		--group=root \
+		--format=h \
+		--backends=$(TRACE_BACKENDS) \
+		$< > $@,"GEN","$(@:%-timestamp=%)")
+
+trace-root.c: trace-root.c-timestamp
+	@cmp $< $@ >/dev/null 2>&1 || cp $< $@
+trace-root.c-timestamp: $(SRC_PATH)/trace-events $(tracetool-y)
+	$(call quiet-command,$(TRACETOOL) \
+		--group=root \
+		--format=c \
+		--backends=$(TRACE_BACKENDS) \
+		$< > $@,"GEN","$(@:%-timestamp=%)")
+
+trace-ust-root.h: trace-ust-root.h-timestamp
+	@cmp $< $@ >/dev/null 2>&1 || cp $< $@
+trace-ust-root.h-timestamp: $(SRC_PATH)/trace-events $(tracetool-y)
+	$(call quiet-command,$(TRACETOOL) \
+		--group=root \
+		--format=ust-events-h \
+		--backends=$(TRACE_BACKENDS) \
+		$< > $@,"GEN","$(@:%-timestamp=%)")
+
+trace-ust-all.h: trace-ust-all.h-timestamp
+	@cmp $< $@ >/dev/null 2>&1 || cp $< $@
+trace-ust-all.h-timestamp: $(trace-events-files) $(tracetool-y)
+	$(call quiet-command,$(TRACETOOL) \
+		--group=all \
+		--format=ust-events-h \
+		--backends=$(TRACE_BACKENDS) \
+		$(trace-events-files) > $@,"GEN","$(@:%-timestamp=%)")
+
+trace-ust-all.c: trace-ust-all.c-timestamp
+	@cmp $< $@ >/dev/null 2>&1 || cp $< $@
+trace-ust-all.c-timestamp: $(trace-events-files) $(tracetool-y)
+	$(call quiet-command,$(TRACETOOL) \
+		--group=all \
+		--format=ust-events-c \
+		--backends=$(TRACE_BACKENDS) \
+		$(trace-events-files) > $@,"GEN","$(@:%-timestamp=%)")
+
+trace-dtrace-root.dtrace: trace-dtrace-root.dtrace-timestamp
+	@cmp $< $@ >/dev/null 2>&1 || cp $< $@
+trace-dtrace-root.dtrace-timestamp: $(SRC_PATH)/trace-events $(BUILD_DIR)/config-host.mak $(tracetool-y)
+	$(call quiet-command,$(TRACETOOL) \
+		--group=root \
+		--format=d \
+		--backends=$(TRACE_BACKENDS) \
+		$< > $@,"GEN","$(@:%-timestamp=%)")
+
+trace-dtrace-root.h: trace-dtrace-root.dtrace
+	$(call quiet-command,dtrace -o $@ -h -s $<, "GEN","$@")
+
+trace-dtrace-root.o: trace-dtrace-root.dtrace
 
 # Don't try to regenerate Makefile or configure
 # We don't generate any of them
 Makefile: ;
 configure: ;
 
-.PHONY: all clean cscope distclean dvi html info install install-doc \
-	pdf recurse-all speed test dist msi FORCE
+.PHONY: all clean cscope distclean html info install install-doc \
+	pdf txt recurse-all speed test dist msi FORCE
 
 $(call set-vpath, $(SRC_PATH))
 
@@ -90,7 +206,9 @@ LIBS+=-lz $(LIBS_TOOLS)
 HELPERS-$(CONFIG_LINUX) = qemu-bridge-helper$(EXESUF)
 
 ifdef BUILD_DOCS
-DOCS=qemu-doc.html qemu.1 qemu-img.1 qemu-nbd.8 qemu-ga.8
+DOCS=qemu-doc.html qemu-doc.txt qemu.1 qemu-img.1 qemu-nbd.8 qemu-ga.8
+DOCS+=docs/interop/qemu-qmp-ref.html docs/interop/qemu-qmp-ref.txt docs/interop/qemu-qmp-ref.7
+DOCS+=docs/interop/qemu-ga-ref.html docs/interop/qemu-ga-ref.txt docs/interop/qemu-ga-ref.7
 ifdef CONFIG_VIRTFS
 DOCS+=fsdev/virtfs-proxy-helper.1
 endif
@@ -145,10 +263,13 @@ endif
 
 dummy := $(call unnest-vars,, \
                 stub-obj-y \
+                chardev-obj-y \
                 util-obj-y \
                 qga-obj-y \
                 ivshmem-client-obj-y \
                 ivshmem-server-obj-y \
+                libvhost-user-obj-y \
+                vhost-user-scsi-obj-y \
                 qga-vss-dll-obj-y \
                 block-obj-y \
                 block-obj-m \
@@ -157,11 +278,10 @@ dummy := $(call unnest-vars,, \
                 qom-obj-y \
                 io-obj-y \
                 common-obj-y \
-                common-obj-m)
+                common-obj-m \
+                trace-obj-y)
 
-ifneq ($(wildcard config-host.mak),)
 include $(SRC_PATH)/tests/Makefile.include
-endif
 
 all: $(DOCS) $(TOOLS) $(HELPERS-y) recurse-all modules
 
@@ -183,7 +303,11 @@ qemu-version.h: FORCE
 				printf '""\n'; \
 			fi; \
 		fi) > $@.tmp)
-	$(call quiet-command, cmp -s $@ $@.tmp || mv $@.tmp $@)
+	$(call quiet-command, if ! cmp -s $@ $@.tmp; then \
+	  mv $@.tmp $@; \
+	 else \
+	  rm $@.tmp; \
+	 fi)
 
 config-host.h: config-host.h-timestamp
 config-host.h-timestamp: config-host.mak
@@ -220,7 +344,8 @@ subdir-dtc:dtc/libfdt dtc/tests
 dtc/%:
 	mkdir -p $@
 
-$(SUBDIR_RULES): libqemuutil.a libqemustub.a $(common-obj-y) $(qom-obj-y) $(crypto-aes-obj-$(CONFIG_USER_ONLY))
+$(SUBDIR_RULES): libqemuutil.a libqemustub.a $(common-obj-y) $(chardev-obj-y) \
+	$(qom-obj-y) $(crypto-aes-obj-$(CONFIG_USER_ONLY))
 
 ROMSUBDIR_RULES=$(patsubst %,romsubdir-%, $(ROMS))
 # Only keep -O and -g cflags
@@ -231,30 +356,30 @@ ALL_SUBDIRS=$(TARGET_DIRS) $(patsubst %,pc-bios/%, $(ROMS))
 
 recurse-all: $(SUBDIR_RULES) $(ROMSUBDIR_RULES)
 
-$(BUILD_DIR)/version.o: $(SRC_PATH)/version.rc config-host.h | $(BUILD_DIR)/version.lo
+$(BUILD_DIR)/version.o: $(SRC_PATH)/version.rc config-host.h
 	$(call quiet-command,$(WINDRES) -I$(BUILD_DIR) -o $@ $<,"RC","version.o")
-$(BUILD_DIR)/version.lo: $(SRC_PATH)/version.rc config-host.h
-	$(call quiet-command,$(WINDRES) -I$(BUILD_DIR) -o $@ $<,"RC","version.lo")
 
-Makefile: $(version-obj-y) $(version-lobj-y)
+Makefile: $(version-obj-y)
 
 ######################################################################
 # Build libraries
 
 libqemustub.a: $(stub-obj-y)
-libqemuutil.a: $(util-obj-y)
+libqemuutil.a: $(util-obj-y) $(trace-obj-y)
 
 ######################################################################
 
+COMMON_LDADDS = libqemuutil.a libqemustub.a
+
 qemu-img.o: qemu-img-cmds.h
 
-qemu-img$(EXESUF): qemu-img.o $(block-obj-y) $(crypto-obj-y) $(io-obj-y) $(qom-obj-y) libqemuutil.a libqemustub.a
-qemu-nbd$(EXESUF): qemu-nbd.o $(block-obj-y) $(crypto-obj-y) $(io-obj-y) $(qom-obj-y) libqemuutil.a libqemustub.a
-qemu-io$(EXESUF): qemu-io.o $(block-obj-y) $(crypto-obj-y) $(io-obj-y) $(qom-obj-y) libqemuutil.a libqemustub.a
+qemu-img$(EXESUF): qemu-img.o $(block-obj-y) $(crypto-obj-y) $(io-obj-y) $(qom-obj-y) $(COMMON_LDADDS)
+qemu-nbd$(EXESUF): qemu-nbd.o $(block-obj-y) $(crypto-obj-y) $(io-obj-y) $(qom-obj-y) $(COMMON_LDADDS)
+qemu-io$(EXESUF): qemu-io.o $(block-obj-y) $(crypto-obj-y) $(io-obj-y) $(qom-obj-y) $(COMMON_LDADDS)
 
-qemu-bridge-helper$(EXESUF): qemu-bridge-helper.o libqemuutil.a libqemustub.a
+qemu-bridge-helper$(EXESUF): qemu-bridge-helper.o $(COMMON_LDADDS)
 
-fsdev/virtfs-proxy-helper$(EXESUF): fsdev/virtfs-proxy-helper.o fsdev/9p-marshal.o fsdev/9p-iov-marshal.o libqemuutil.a libqemustub.a
+fsdev/virtfs-proxy-helper$(EXESUF): fsdev/virtfs-proxy-helper.o fsdev/9p-marshal.o fsdev/9p-iov-marshal.o $(COMMON_LDADDS)
 fsdev/virtfs-proxy-helper$(EXESUF): LIBS += -lcap
 
 qemu-img-cmds.h: $(SRC_PATH)/qemu-img-cmds.hx $(SRC_PATH)/scripts/hxtool
@@ -316,9 +441,9 @@ $(qapi-modules) $(SRC_PATH)/scripts/qapi-introspect.py $(qapi-py)
 		"GEN","$@")
 
 QGALIB_GEN=$(addprefix qga/qapi-generated/, qga-qapi-types.h qga-qapi-visit.h qga-qmp-commands.h)
-$(qga-obj-y) qemu-ga.o: $(QGALIB_GEN)
+$(qga-obj-y): $(QGALIB_GEN)
 
-qemu-ga$(EXESUF): $(qga-obj-y) libqemuutil.a libqemustub.a
+qemu-ga$(EXESUF): $(qga-obj-y) $(COMMON_LDADDS)
 	$(call LINK, $^)
 
 ifdef QEMU_GA_MSI_ENABLED
@@ -343,9 +468,13 @@ ifneq ($(EXESUF),)
 qemu-ga: qemu-ga$(EXESUF) $(QGA_VSS_PROVIDER) $(QEMU_GA_MSI)
 endif
 
-ivshmem-client$(EXESUF): $(ivshmem-client-obj-y) libqemuutil.a libqemustub.a
+ifdef CONFIG_IVSHMEM
+ivshmem-client$(EXESUF): $(ivshmem-client-obj-y) $(COMMON_LDADDS)
 	$(call LINK, $^)
-ivshmem-server$(EXESUF): $(ivshmem-server-obj-y) libqemuutil.a libqemustub.a
+ivshmem-server$(EXESUF): $(ivshmem-server-obj-y) $(COMMON_LDADDS)
+	$(call LINK, $^)
+endif
+vhost-user-scsi$(EXESUF): $(vhost-user-scsi-obj-y)
 	$(call LINK, $^)
 
 module_block.h: $(SRC_PATH)/scripts/modules/module_block.py config-host.mak
@@ -358,17 +487,15 @@ clean:
 	rm -f config.mak op-i386.h opc-i386.h gen-op-i386.h op-arm.h opc-arm.h gen-op-arm.h
 	rm -f qemu-options.def
 	rm -f *.msi
-	find . \( -name '*.l[oa]' -o -name '*.so' -o -name '*.dll' -o -name '*.mo' -o -name '*.[oda]' \) -type f -exec rm {} +
+	find . \( -name '*.so' -o -name '*.dll' -o -name '*.mo' -o -name '*.[oda]' \) -type f -exec rm {} +
 	rm -f $(filter-out %.tlb,$(TOOLS)) $(HELPERS-y) qemu-ga TAGS cscope.* *.pod *~ */*~
 	rm -f fsdev/*.pod
-	rm -rf .libs */.libs
 	rm -f qemu-img-cmds.h
 	rm -f ui/shader/*-vert.h ui/shader/*-frag.h
-	@# May not be present in GENERATED_HEADERS
+	@# May not be present in GENERATED_FILES
 	rm -f trace/generated-tracers-dtrace.dtrace*
 	rm -f trace/generated-tracers-dtrace.h*
-	rm -f $(foreach f,$(GENERATED_HEADERS),$(f) $(f)-timestamp)
-	rm -f $(foreach f,$(GENERATED_SOURCES),$(f) $(f)-timestamp)
+	rm -f $(foreach f,$(GENERATED_FILES),$(f) $(f)-timestamp)
 	rm -rf qapi-generated
 	rm -rf qga/qapi-generated
 	for d in $(ALL_SUBDIRS); do \
@@ -389,12 +516,18 @@ distclean: clean
 	rm -f config-all-devices.mak config-all-disas.mak config.status
 	rm -f po/*.mo tests/qemu-iotests/common.env
 	rm -f roms/seabios/config.mak roms/vgabios/config.mak
-	rm -f qemu-doc.info qemu-doc.aux qemu-doc.cp qemu-doc.cps qemu-doc.dvi
+	rm -f qemu-doc.info qemu-doc.aux qemu-doc.cp qemu-doc.cps
 	rm -f qemu-doc.fn qemu-doc.fns qemu-doc.info qemu-doc.ky qemu-doc.kys
 	rm -f qemu-doc.log qemu-doc.pdf qemu-doc.pg qemu-doc.toc qemu-doc.tp
-	rm -f qemu-doc.vr
+	rm -f qemu-doc.vr qemu-doc.txt
 	rm -f config.log
 	rm -f linux-headers/asm
+	rm -f docs/version.texi
+	rm -f docs/interop/qemu-ga-qapi.texi docs/interop/qemu-qmp-qapi.texi
+	rm -f docs/interop/qemu-qmp-ref.7 docs/interop/qemu-ga-ref.7
+	rm -f docs/interop/qemu-qmp-ref.txt docs/interop/qemu-ga-ref.txt
+	rm -f docs/interop/qemu-qmp-ref.pdf docs/interop/qemu-ga-ref.pdf
+	rm -f docs/interop/qemu-qmp-ref.html docs/interop/qemu-ga-ref.html
 	for d in $(TARGET_DIRS); do \
 	rm -rf $$d || exit 1 ; \
         done
@@ -420,10 +553,11 @@ efi-e1000e.rom efi-vmxnet3.rom \
 qemu-icon.bmp qemu_logo_no_text.svg \
 bamboo.dtb petalogix-s3adsp1800.dtb petalogix-ml605.dtb \
 multiboot.bin linuxboot.bin linuxboot_dma.bin kvmvapic.bin \
-s390-ccw.img \
+s390-ccw.img s390-netboot.img \
 spapr-rtas.bin slof.bin skiboot.lid \
 palcode-clipper \
-u-boot.e500
+u-boot.e500 \
+qemu_vga.ndrv
 else
 BLOBS=
 endif
@@ -431,10 +565,14 @@ endif
 install-doc: $(DOCS)
 	$(INSTALL_DIR) "$(DESTDIR)$(qemu_docdir)"
 	$(INSTALL_DATA) qemu-doc.html "$(DESTDIR)$(qemu_docdir)"
-	$(INSTALL_DATA) $(SRC_PATH)/docs/qmp-commands.txt "$(DESTDIR)$(qemu_docdir)"
+	$(INSTALL_DATA) qemu-doc.txt "$(DESTDIR)$(qemu_docdir)"
+	$(INSTALL_DATA) docs/interop/qemu-qmp-ref.html "$(DESTDIR)$(qemu_docdir)"
+	$(INSTALL_DATA) docs/interop/qemu-qmp-ref.txt "$(DESTDIR)$(qemu_docdir)"
 ifdef CONFIG_POSIX
 	$(INSTALL_DIR) "$(DESTDIR)$(mandir)/man1"
 	$(INSTALL_DATA) qemu.1 "$(DESTDIR)$(mandir)/man1"
+	$(INSTALL_DIR) "$(DESTDIR)$(mandir)/man7"
+	$(INSTALL_DATA) docs/interop/qemu-qmp-ref.7 "$(DESTDIR)$(mandir)/man7"
 ifneq ($(TOOLS),)
 	$(INSTALL_DATA) qemu-img.1 "$(DESTDIR)$(mandir)/man1"
 	$(INSTALL_DIR) "$(DESTDIR)$(mandir)/man8"
@@ -442,6 +580,9 @@ ifneq ($(TOOLS),)
 endif
 ifneq (,$(findstring qemu-ga,$(TOOLS)))
 	$(INSTALL_DATA) qemu-ga.8 "$(DESTDIR)$(mandir)/man8"
+	$(INSTALL_DATA) docs/interop/qemu-ga-ref.html "$(DESTDIR)$(qemu_docdir)"
+	$(INSTALL_DATA) docs/interop/qemu-ga-ref.txt "$(DESTDIR)$(qemu_docdir)"
+	$(INSTALL_DATA) docs/interop/qemu-ga-ref.7 "$(DESTDIR)$(mandir)/man7"
 endif
 endif
 ifdef CONFIG_VIRTFS
@@ -460,8 +601,7 @@ endif
 endif
 
 
-install: all $(if $(BUILD_DOCS),install-doc) \
-install-datadir install-localstatedir
+install: all $(if $(BUILD_DOCS),install-doc) install-datadir install-localstatedir
 ifneq ($(TOOLS),)
 	$(call install-prog,$(subst qemu-ga,qemu-ga$(EXESUF),$(TOOLS)),$(DESTDIR)$(bindir))
 endif
@@ -530,20 +670,27 @@ ui/console-gl.o: $(SRC_PATH)/ui/console-gl.c \
 
 # documentation
 MAKEINFO=makeinfo
-MAKEINFOFLAGS=--no-headers --no-split --number-sections
-TEXIFLAG=$(if $(V),,--quiet)
-%.dvi: %.texi
-	$(call quiet-command,texi2dvi $(TEXIFLAG) -I . $<,"GEN","$@")
+MAKEINFOINCLUDES= -I docs -I $(<D) -I $(@D)
+MAKEINFOFLAGS=--no-split --number-sections $(MAKEINFOINCLUDES)
+TEXI2PODFLAGS=$(MAKEINFOINCLUDES) "-DVERSION=$(VERSION)"
+TEXI2PDFFLAGS=$(if $(V),,--quiet) -I $(SRC_PATH) $(MAKEINFOINCLUDES)
 
-%.html: %.texi
-	$(call quiet-command,LC_ALL=C $(MAKEINFO) $(MAKEINFOFLAGS) --html $< -o $@, \
-	"GEN","$@")
+docs/version.texi: $(SRC_PATH)/VERSION
+	$(call quiet-command,echo "@set VERSION $(VERSION)" > $@,"GEN","$@")
 
-%.info: %.texi
-	$(call quiet-command,$(MAKEINFO) $< -o $@,"GEN","$@")
+%.html: %.texi docs/version.texi
+	$(call quiet-command,LC_ALL=C $(MAKEINFO) $(MAKEINFOFLAGS) --no-headers \
+	--html $< -o $@,"GEN","$@")
 
-%.pdf: %.texi
-	$(call quiet-command,texi2pdf $(TEXIFLAG) -I . $<,"GEN","$@")
+%.info: %.texi docs/version.texi
+	$(call quiet-command,$(MAKEINFO) $(MAKEINFOFLAGS) $< -o $@,"GEN","$@")
+
+%.txt: %.texi docs/version.texi
+	$(call quiet-command,LC_ALL=C $(MAKEINFO) $(MAKEINFOFLAGS) --no-headers \
+	--plaintext $< -o $@,"GEN","$@")
+
+%.pdf: %.texi docs/version.texi
+	$(call quiet-command,texi2pdf $(TEXI2PDFFLAGS) $< -o $@,"GEN","$@")
 
 qemu-options.texi: $(SRC_PATH)/qemu-options.hx $(SRC_PATH)/scripts/hxtool
 	$(call quiet-command,sh $(SRC_PATH)/scripts/hxtool -t < $< > $@,"GEN","$@")
@@ -557,46 +704,41 @@ qemu-monitor-info.texi: $(SRC_PATH)/hmp-commands-info.hx $(SRC_PATH)/scripts/hxt
 qemu-img-cmds.texi: $(SRC_PATH)/qemu-img-cmds.hx $(SRC_PATH)/scripts/hxtool
 	$(call quiet-command,sh $(SRC_PATH)/scripts/hxtool -t < $< > $@,"GEN","$@")
 
+docs/interop/qemu-qmp-qapi.texi docs/interop/qemu-ga-qapi.texi: $(SRC_PATH)/scripts/qapi2texi.py $(qapi-py)
+
+docs/interop/qemu-qmp-qapi.texi: $(qapi-modules)
+	$(call quiet-command,$(PYTHON) $(SRC_PATH)/scripts/qapi2texi.py $< > $@,"GEN","$@")
+
+docs/interop/qemu-ga-qapi.texi: $(SRC_PATH)/qga/qapi-schema.json
+	$(call quiet-command,$(PYTHON) $(SRC_PATH)/scripts/qapi2texi.py $< > $@,"GEN","$@")
+
 qemu.1: qemu-doc.texi qemu-options.texi qemu-monitor.texi qemu-monitor-info.texi
-	$(call quiet-command, \
-	  perl -Ww -- $(SRC_PATH)/scripts/texi2pod.pl $< qemu.pod && \
-	  $(POD2MAN) --section=1 --center=" " --release=" " qemu.pod > $@, \
-	  "GEN","$@")
 qemu.1: qemu-option-trace.texi
-
 qemu-img.1: qemu-img.texi qemu-option-trace.texi qemu-img-cmds.texi
-	$(call quiet-command, \
-	  perl -Ww -- $(SRC_PATH)/scripts/texi2pod.pl $< qemu-img.pod && \
-	  $(POD2MAN) --section=1 --center=" " --release=" " qemu-img.pod > $@, \
-	  "GEN","$@")
-
 fsdev/virtfs-proxy-helper.1: fsdev/virtfs-proxy-helper.texi
-	$(call quiet-command, \
-	  perl -Ww -- $(SRC_PATH)/scripts/texi2pod.pl $< fsdev/virtfs-proxy-helper.pod && \
-	  $(POD2MAN) --section=1 --center=" " --release=" " fsdev/virtfs-proxy-helper.pod > $@, \
-	  "GEN","$@")
-
 qemu-nbd.8: qemu-nbd.texi qemu-option-trace.texi
-	$(call quiet-command, \
-	  perl -Ww -- $(SRC_PATH)/scripts/texi2pod.pl $< qemu-nbd.pod && \
-	  $(POD2MAN) --section=8 --center=" " --release=" " qemu-nbd.pod > $@, \
-	  "GEN","$@")
-
 qemu-ga.8: qemu-ga.texi
-	$(call quiet-command, \
-	  perl -Ww -- $(SRC_PATH)/scripts/texi2pod.pl $< qemu-ga.pod && \
-	  $(POD2MAN) --section=8 --center=" " --release=" " qemu-ga.pod > $@, \
-	  "GEN","$@")
 
-dvi: qemu-doc.dvi
-html: qemu-doc.html
-info: qemu-doc.info
-pdf: qemu-doc.pdf
+html: qemu-doc.html docs/interop/qemu-qmp-ref.html docs/interop/qemu-ga-ref.html
+info: qemu-doc.info docs/interop/qemu-qmp-ref.info docs/interop/qemu-ga-ref.info
+pdf: qemu-doc.pdf docs/interop/qemu-qmp-ref.pdf docs/interop/qemu-ga-ref.pdf
+txt: qemu-doc.txt docs/interop/qemu-qmp-ref.txt docs/interop/qemu-ga-ref.txt
 
-qemu-doc.dvi qemu-doc.html qemu-doc.info qemu-doc.pdf: \
+qemu-doc.html qemu-doc.info qemu-doc.pdf qemu-doc.txt: \
 	qemu-img.texi qemu-nbd.texi qemu-options.texi qemu-option-trace.texi \
 	qemu-monitor.texi qemu-img-cmds.texi qemu-ga.texi \
 	qemu-monitor-info.texi
+
+docs/interop/qemu-ga-ref.dvi docs/interop/qemu-ga-ref.html \
+    docs/interop/qemu-ga-ref.info docs/interop/qemu-ga-ref.pdf \
+    docs/interop/qemu-ga-ref.txt docs/interop/qemu-ga-ref.7: \
+	docs/interop/qemu-ga-ref.texi docs/interop/qemu-ga-qapi.texi
+
+docs/interop/qemu-qmp-ref.dvi docs/interop/qemu-qmp-ref.html \
+    docs/interop/qemu-qmp-ref.info docs/interop/qemu-qmp-ref.pdf \
+    docs/interop/qemu-qmp-ref.txt docs/interop/qemu-qmp-ref.7: \
+	docs/interop/qemu-qmp-ref.texi docs/interop/qemu-qmp-qapi.texi
+
 
 ifdef CONFIG_WIN32
 
@@ -656,9 +798,15 @@ endif # CONFIG_WIN
 
 # Add a dependency on the generated files, so that they are always
 # rebuilt before other object files
+ifneq ($(wildcard config-host.mak),)
 ifneq ($(filter-out $(UNCHECKED_GOALS),$(MAKECMDGOALS)),$(if $(MAKECMDGOALS),,fail))
-Makefile: $(GENERATED_HEADERS)
+Makefile: $(GENERATED_FILES)
 endif
+endif
+
+.SECONDARY: $(TRACE_HEADERS) $(TRACE_HEADERS:%=%-timestamp) \
+	$(TRACE_SOURCES) $(TRACE_SOURCES:%=%-timestamp) \
+	$(TRACE_DTRACE) $(TRACE_DTRACE:%=%-timestamp)
 
 # Include automatically generated dependency files
 # Dependencies in Makefile.objs files come from our recursive subdir rules
@@ -690,7 +838,7 @@ help:
 	@echo  '  docker          - Help about targets running tests inside Docker containers'
 	@echo  ''
 	@echo  'Documentation targets:'
-	@echo  '  dvi html info pdf'
+	@echo  '  html info pdf txt'
 	@echo  '                  - Build documentation in specified format'
 	@echo  ''
 ifdef CONFIG_WIN32

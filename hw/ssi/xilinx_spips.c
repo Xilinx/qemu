@@ -32,6 +32,7 @@
 #include "qapi/error.h"
 #include "hw/register-dep.h"
 #include "sysemu/dma.h"
+#include "migration/blocker.h"
 
 #ifndef XILINX_SPIPS_ERR_DEBUG
 #define XILINX_SPIPS_ERR_DEBUG 0
@@ -1038,6 +1039,19 @@ static const MemoryRegionOps spips_ops = {
     .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
+static void xilinx_qspips_invalidate_mmio_ptr(XilinxQSPIPS *q)
+{
+    XilinxSPIPS *s = &q->parent_obj;
+
+    if ((q->mmio_execution_enabled) && (q->lqspi_cached_addr != ~0ULL)) {
+        /* Invalidate the current mapped mmio */
+        memory_region_invalidate_mmio_ptr(&s->mmlqspi, q->lqspi_cached_addr,
+                                          LQSPI_CACHE_SIZE);
+    }
+
+    q->lqspi_cached_addr = ~0ULL;
+}
+
 static void xilinx_qspips_write(void *opaque, hwaddr addr,
                                 uint64_t value, unsigned size)
 {
@@ -1090,33 +1104,22 @@ static const MemoryRegionOps qspips_ops = {
     .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
-static uint64_t
-lqspi_read(void *opaque, hwaddr addr, unsigned int size)
+#define LQSPI_CACHE_SIZE 1024
+
+static void lqspi_load_cache(void *opaque, hwaddr addr)
 {
-    int i;
     XilinxQSPIPS *q = opaque;
     XilinxSPIPS *s = opaque;
-    uint32_t ret;
-    int addr_width;
-    uint8_t inst_code;
+    int i;
+    int flash_addr = ((addr & ~(LQSPI_CACHE_SIZE - 1))
+                   / num_effective_busses(s));
+    int slave = flash_addr >> LQSPI_ADDRESS_BITS;
+    int cache_entry = 0;
+    uint32_t u_page_save = s->regs[R_LQSPI_STS] & ~LQSPI_CFG_U_PAGE;
 
-    addr_width = (s->regs[R_LQSPI_CFG] & LQSPI_CFG_ADDR4 ? 27 : 24) +
-                 (num_effective_busses(s) == 2 ? 1 : 0);
-    addr &= (1ull << addr_width) - 1;
-
-    if (addr >= q->lqspi_cached_addr &&
-            addr <= q->lqspi_cached_addr + LQSPI_CACHE_SIZE - 4) {
-        uint8_t *retp = &q->lqspi_buf[addr - q->lqspi_cached_addr];
-        ret = cpu_to_le32(*(uint32_t *)retp);
-        DB_PRINT_L(1, "addr: %08x, data: %08x\n", (unsigned)addr,
-                   (unsigned)ret);
-        return ret;
-    } else {
-        int flash_addr = (addr / num_effective_busses(s));
-        int slave = flash_addr >> LQSPI_ADDRESS_BITS;
-        int cache_entry = 0;
-        uint32_t u_page_save = s->regs[R_LQSPI_STS] & ~LQSPI_CFG_U_PAGE;
-
+    if (addr < q->lqspi_cached_addr ||
+            addr > q->lqspi_cached_addr + LQSPI_CACHE_SIZE - 4) {
+        xilinx_qspips_invalidate_mmio_ptr(q);
         s->regs[R_LQSPI_STS] &= ~LQSPI_CFG_U_PAGE;
         s->regs[R_LQSPI_STS] |= slave ? LQSPI_CFG_U_PAGE : 0;
 
@@ -1129,8 +1132,7 @@ lqspi_read(void *opaque, hwaddr addr, unsigned int size)
         DB_PRINT_L(0, "pushing read instruction: %02x\n",
                    (unsigned)(uint8_t)(s->regs[R_LQSPI_CFG] &
                                        LQSPI_CFG_INST_CODE));
-        inst_code = s->regs[R_LQSPI_CFG] & LQSPI_CFG_INST_CODE;
-        fifo_push8(&s->tx_fifo, inst_code);
+        fifo_push8(&s->tx_fifo, s->regs[R_LQSPI_CFG] & LQSPI_CFG_INST_CODE);
         /* read address */
         DB_PRINT_L(0, "pushing read address %06x\n", flash_addr);
         if (s->regs[R_LQSPI_CFG] & LQSPI_CFG_ADDR4) {
@@ -1140,15 +1142,14 @@ lqspi_read(void *opaque, hwaddr addr, unsigned int size)
         fifo_push8(&s->tx_fifo, (uint8_t)(flash_addr >> 8));
         fifo_push8(&s->tx_fifo, (uint8_t)flash_addr);
         /* mode bits */
-        i = 0;
         if (s->regs[R_LQSPI_CFG] & LQSPI_CFG_MODE_EN) {
-            i++;
             fifo_push8(&s->tx_fifo, extract32(s->regs[R_LQSPI_CFG],
                                               LQSPI_CFG_MODE_SHIFT,
                                               LQSPI_CFG_MODE_WIDTH));
         }
         /* dummy bytes */
-        for (; i < xilinx_spips_num_dummies(q, inst_code); ++i) {
+        for (i = 0; i < (extract32(s->regs[R_LQSPI_CFG], LQSPI_CFG_DUMMY_SHIFT,
+                                   LQSPI_CFG_DUMMY_WIDTH)); ++i) {
             DB_PRINT_L(0, "pushing dummy byte\n");
             fifo_push8(&s->tx_fifo, 0);
         }
@@ -1164,7 +1165,7 @@ lqspi_read(void *opaque, hwaddr addr, unsigned int size)
             }
             xilinx_spips_flush_txfifo(s);
             for (i = 0; i < 64; ++i) {
-                q->lqspi_buf[cache_entry++] = fifo_pop8(&s->rx_fifo);
+                rx_data_bytes(s, &q->lqspi_buf[cache_entry++], 1);
             }
         }
 
@@ -1173,19 +1174,48 @@ lqspi_read(void *opaque, hwaddr addr, unsigned int size)
         xilinx_spips_update_cs_lines(s);
 
         q->lqspi_cached_addr = flash_addr * num_effective_busses(s);
+    }
+}
+
+static void *lqspi_request_mmio_ptr(void *opaque, hwaddr addr, unsigned *size,
+                                    unsigned *offset)
+{
+    XilinxQSPIPS *q = opaque;
+    hwaddr offset_within_the_region;
+
+    if (!q->mmio_execution_enabled) {
+        return NULL;
+    }
+
+    offset_within_the_region = addr & ~(LQSPI_CACHE_SIZE - 1);
+    lqspi_load_cache(opaque, offset_within_the_region);
+    *size = LQSPI_CACHE_SIZE;
+    *offset = offset_within_the_region;
+    return q->lqspi_buf;
+}
+
+static uint64_t
+lqspi_read(void *opaque, hwaddr addr, unsigned int size)
+{
+    XilinxQSPIPS *q = opaque;
+    uint32_t ret;
+
+    if (addr >= q->lqspi_cached_addr &&
+            addr <= q->lqspi_cached_addr + LQSPI_CACHE_SIZE - 4) {
+        uint8_t *retp = &q->lqspi_buf[addr - q->lqspi_cached_addr];
+        ret = cpu_to_le32(*(uint32_t *)retp);
+        DB_PRINT_L(1, "addr: %08x, data: %08x\n", (unsigned)addr,
+                   (unsigned)ret);
+        return ret;
+    } else {
+        lqspi_load_cache(opaque, addr);
         return lqspi_read(opaque, addr, size);
     }
 }
 
-static void lqspi_write(void *opaque, hwaddr addr,
-                        uint64_t value, unsigned size)
-{
-    qemu_log_mask(LOG_GUEST_ERROR, "Write to QSPI Linear region\n");
-}
-
 static const MemoryRegionOps lqspi_ops = {
     .read = lqspi_read,
-    .write = lqspi_write,
+    .request_ptr = lqspi_request_mmio_ptr,
     .endianness = DEVICE_NATIVE_ENDIAN,
     .valid = {
         .min_access_size = 1,
@@ -1253,6 +1283,15 @@ static void xilinx_qspips_realize(DeviceState *dev, Error **errp)
     sysbus_init_mmio(sbd, &s->mmlqspi);
 
     q->lqspi_cached_addr = ~0ULL;
+
+    /* mmio_execution breaks migration better aborting than having strange
+     * bugs.
+     */
+    if (q->mmio_execution_enabled) {
+        error_setg(&q->migration_blocker,
+                   "enabling mmio_execution breaks migration");
+        migrate_add_blocker(q->migration_blocker, &error_fatal);
+    }
 }
 
 static void zynqmp_qspips_init(Object *obj)
@@ -1298,6 +1337,12 @@ static Property xilinx_qspips_properties[] = {
     DEFINE_PROP_UINT32("lqspi-size", XilinxQSPIPS, lqspi_size, 0),
     DEFINE_PROP_UINT32("lqspi-src", XilinxQSPIPS, lqspi_src, 0),
     DEFINE_PROP_UINT32("lqspi-dst", XilinxQSPIPS, lqspi_dst, 0),
+    /* We had to turn this off for 2.10 as it is not compatible with migration.
+     * It can be enabled but will prevent the device to be migrated.
+     * This will go aways when a fix will be released.
+     */
+    DEFINE_PROP_BOOL("x-mmio-exec", XilinxQSPIPS, mmio_execution_enabled,
+                     false),
     DEFINE_PROP_END_OF_LIST(),
 };
 

@@ -198,8 +198,15 @@ extern int daemon(int, int);
 #define DIV_ROUND_UP(n,d) (((n) + (d) - 1) / (d))
 #endif
 
+/*
+ * &(x)[0] is always a pointer - if it's same type as x then the argument is a
+ * pointer, not an array.
+ */
+#define QEMU_IS_ARRAY(x) (!__builtin_types_compatible_p(typeof(x), \
+                                                        typeof(&(x)[0])))
 #ifndef ARRAY_SIZE
-#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
+#define ARRAY_SIZE(x) ((sizeof(x) / sizeof((x)[0])) + \
+                       QEMU_BUILD_BUG_ON_ZERO(!QEMU_IS_ARRAY(x)))
 #endif
 
 int qemu_daemon(int nochdir, int noclose);
@@ -277,6 +284,28 @@ void qemu_anon_ram_free(void *ptr, size_t size);
 
 #endif
 
+#ifdef _WIN32
+#define HAVE_CHARDEV_SERIAL 1
+#elif defined(__linux__) || defined(__sun__) || defined(__FreeBSD__)    \
+    || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) \
+    || defined(__GLIBC__)
+#define HAVE_CHARDEV_SERIAL 1
+#endif
+
+#if defined(__linux__) || defined(__FreeBSD__) ||               \
+    defined(__FreeBSD_kernel__) || defined(__DragonFly__)
+#define HAVE_CHARDEV_PARPORT 1
+#endif
+
+#if defined(CONFIG_LINUX)
+#ifndef BUS_MCEERR_AR
+#define BUS_MCEERR_AR 4
+#endif
+#ifndef BUS_MCEERR_AO
+#define BUS_MCEERR_AO 5
+#endif
+#endif
+
 #if defined(__linux__) && \
     (defined(__x86_64__) || defined(__arm__) || defined(__aarch64__))
    /* Use 2 MiB alignment so transparent hugepages can be used by KVM.
@@ -290,6 +319,34 @@ void qemu_anon_ram_free(void *ptr, size_t size);
 #  define QEMU_VMALLOC_ALIGN getpagesize()
 #endif
 
+#ifdef CONFIG_POSIX
+struct qemu_signalfd_siginfo {
+    uint32_t ssi_signo;   /* Signal number */
+    int32_t  ssi_errno;   /* Error number (unused) */
+    int32_t  ssi_code;    /* Signal code */
+    uint32_t ssi_pid;     /* PID of sender */
+    uint32_t ssi_uid;     /* Real UID of sender */
+    int32_t  ssi_fd;      /* File descriptor (SIGIO) */
+    uint32_t ssi_tid;     /* Kernel timer ID (POSIX timers) */
+    uint32_t ssi_band;    /* Band event (SIGIO) */
+    uint32_t ssi_overrun; /* POSIX timer overrun count */
+    uint32_t ssi_trapno;  /* Trap number that caused signal */
+    int32_t  ssi_status;  /* Exit status or signal (SIGCHLD) */
+    int32_t  ssi_int;     /* Integer sent by sigqueue(2) */
+    uint64_t ssi_ptr;     /* Pointer sent by sigqueue(2) */
+    uint64_t ssi_utime;   /* User CPU time consumed (SIGCHLD) */
+    uint64_t ssi_stime;   /* System CPU time consumed (SIGCHLD) */
+    uint64_t ssi_addr;    /* Address that generated signal
+                             (for hardware-generated signals) */
+    uint8_t  pad[48];     /* Pad size to 128 bytes (allow for
+                             additional fields in the future) */
+};
+
+int qemu_signalfd(const sigset_t *mask);
+void sigaction_invoke(struct sigaction *action,
+                      struct qemu_signalfd_siginfo *info);
+#endif
+
 int qemu_madvise(void *addr, size_t len, int advice);
 
 int qemu_open(const char *name, int flags, ...);
@@ -297,6 +354,10 @@ int qemu_close(int fd);
 #ifndef _WIN32
 int qemu_dup(int fd);
 #endif
+int qemu_lock_fd(int fd, int64_t start, int64_t len, bool exclusive);
+int qemu_unlock_fd(int fd, int64_t start, int64_t len);
+int qemu_lock_fd_test(int fd, int64_t start, int64_t len, bool exclusive);
+bool qemu_has_ofd_lock(void);
 
 #if defined(__HAIKU__) && defined(__i386__)
 #define FMT_pid "%ld"
@@ -394,9 +455,8 @@ unsigned long qemu_getauxval(unsigned long type);
 
 void qemu_set_tty_echo(int fd, bool echo);
 
-void os_mem_prealloc(int fd, char *area, size_t sz, Error **errp);
-
-int qemu_read_password(char *buf, int buf_size);
+void os_mem_prealloc(int fd, char *area, size_t sz, int smp_cpus,
+                     Error **errp);
 
 /**
  * qemu_get_pid_name:
@@ -421,5 +481,8 @@ char *qemu_get_pid_name(pid_t pid);
  * or -1 on failure.
  */
 pid_t qemu_fork(Error **errp);
+
+extern int qemu_icache_linesize;
+extern int qemu_dcache_linesize;
 
 #endif

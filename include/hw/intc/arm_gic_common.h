@@ -55,6 +55,8 @@ typedef struct GICState {
 
     qemu_irq parent_irq[GIC_NCPU];
     qemu_irq parent_fiq[GIC_NCPU];
+    qemu_irq parent_virq[GIC_NCPU];
+    qemu_irq parent_vfiq[GIC_NCPU];
     qemu_irq maint[GIC_N_REALCPU];
 
     bool enabled;
@@ -67,7 +69,17 @@ typedef struct GICState {
         bool eoirmode;
         bool eoirmode_ns;
     } gicc_ctrl[GIC_NCPU];
+
     uint32_t ctrl[GIC_NCPU];
+
+    /* GICD_CTLR; for a GIC with the security extensions the NS banked version
+     * of this register is just an alias of bit 1 of the S banked version.
+     */
+    uint32_t ctlr;
+    /* GICC_CTLR; again, the NS banked version is just aliases of bits of
+     * the S banked register, so our state only needs to store the S version.
+     */
+    uint32_t cpu_ctlr[GIC_NCPU];
 
     gic_irq_state irq_state[GIC_MAXIRQ];
     uint8_t irq_target[GIC_MAXIRQ];
@@ -164,5 +176,8 @@ typedef struct ARMGICCommonClass {
     void (*pre_save)(GICState *s);
     void (*post_load)(GICState *s);
 } ARMGICCommonClass;
+
+void gic_init_irqs_and_mmio(GICState *s, qemu_irq_handler handler,
+                            const MemoryRegionOps *ops);
 
 #endif

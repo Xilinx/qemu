@@ -107,6 +107,8 @@ typedef struct {
     uint8_t spi_mode;
     uint8_t lqspi_buf[LQSPI_CACHE_SIZE];
     hwaddr lqspi_cached_addr;
+    Error *migration_blocker;
+    bool mmio_execution_enabled;
 } XilinxQSPIPS;
 
 typedef struct {

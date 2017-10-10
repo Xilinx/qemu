@@ -21,7 +21,6 @@
 #include "qemu/osdep.h"
 #include "hw/char/imx_serial.h"
 #include "sysemu/sysemu.h"
-#include "sysemu/char.h"
 #include "qemu/log.h"
 
 #ifndef DEBUG_IMX_UART
@@ -170,7 +169,7 @@ static void imx_serial_write(void *opaque, hwaddr offset,
                              uint64_t value, unsigned size)
 {
     IMXSerialState *s = (IMXSerialState *)opaque;
-    CharDriverState *chr = qemu_chr_fe_get_driver(&s->chr);
+    Chardev *chr = qemu_chr_fe_get_driver(&s->chr);
     unsigned char ch;
 
     DPRINTF("write(offset=0x%" HWADDR_PRIx ", value = 0x%x) to %s\n",
@@ -316,7 +315,7 @@ static void imx_serial_realize(DeviceState *dev, Error **errp)
     DPRINTF("char dev for uart: %p\n", qemu_chr_fe_get_driver(&s->chr));
 
     qemu_chr_fe_set_handlers(&s->chr, imx_can_receive, imx_receive,
-                             imx_event, s, NULL, true);
+                             imx_event, NULL, s, NULL, true);
 }
 
 static void imx_serial_init(Object *obj)

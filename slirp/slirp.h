@@ -231,6 +231,9 @@ extern Slirp *slirp_instance;
 
 void if_start(Slirp *);
 
+/* ncsi.c */
+void ncsi_input(Slirp *slirp, const uint8_t *pkt, int pkt_len);
+
 #ifndef _WIN32
 #include <netdb.h>
 #endif
@@ -291,10 +294,5 @@ uint8_t tcp_tos(struct socket *);
 int tcp_emu(struct socket *, struct mbuf *);
 int tcp_ctl(struct socket *);
 struct tcpcb *tcp_drop(struct tcpcb *tp, int err);
-
-#ifndef _WIN32
-#define min(x,y) ((x) < (y) ? (x) : (y))
-#define max(x,y) ((x) > (y) ? (x) : (y))
-#endif
 
 #endif

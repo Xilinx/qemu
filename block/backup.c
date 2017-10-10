@@ -24,6 +24,7 @@
 #include "qemu/cutils.h"
 #include "sysemu/block-backend.h"
 #include "qemu/bitmap.h"
+#include "qemu/error-report.h"
 
 #define BACKUP_CLUSTER_SIZE_DEFAULT (1 << 16)
 #define SLICE_TIME 100000000ULL /* ns */
@@ -38,19 +39,13 @@ typedef struct BackupBlockJob {
     BlockdevOnError on_source_error;
     BlockdevOnError on_target_error;
     CoRwlock flush_rwlock;
-    uint64_t sectors_read;
+    uint64_t bytes_read;
     unsigned long *done_bitmap;
     int64_t cluster_size;
     bool compress;
     NotifierWithReturn before_write;
     QLIST_HEAD(, CowRequest) inflight_reqs;
 } BackupBlockJob;
-
-/* Size of a cluster in sectors, instead of bytes. */
-static inline int64_t cluster_size_sectors(BackupBlockJob *job)
-{
-  return job->cluster_size / BDRV_SECTOR_SIZE;
-}
 
 /* See if in-flight requests overlap and wait for them to complete */
 static void coroutine_fn wait_for_overlapping_requests(BackupBlockJob *job,
@@ -63,8 +58,8 @@ static void coroutine_fn wait_for_overlapping_requests(BackupBlockJob *job,
     do {
         retry = false;
         QLIST_FOREACH(req, &job->inflight_reqs, list) {
-            if (end > req->start && start < req->end) {
-                qemu_co_queue_wait(&req->wait_queue);
+            if (end > req->start_byte && start < req->end_byte) {
+                qemu_co_queue_wait(&req->wait_queue, NULL);
                 retry = true;
                 break;
             }
@@ -74,10 +69,10 @@ static void coroutine_fn wait_for_overlapping_requests(BackupBlockJob *job,
 
 /* Keep track of an in-flight request */
 static void cow_request_begin(CowRequest *req, BackupBlockJob *job,
-                                     int64_t start, int64_t end)
+                              int64_t start, int64_t end)
 {
-    req->start = start;
-    req->end = end;
+    req->start_byte = start;
+    req->end_byte = end;
     qemu_co_queue_init(&req->wait_queue);
     QLIST_INSERT_HEAD(&job->inflight_reqs, req, list);
 }
@@ -90,7 +85,7 @@ static void cow_request_end(CowRequest *req)
 }
 
 static int coroutine_fn backup_do_cow(BackupBlockJob *job,
-                                      int64_t sector_num, int nb_sectors,
+                                      int64_t offset, uint64_t bytes,
                                       bool *error_is_read,
                                       bool is_write_notifier)
 {
@@ -100,41 +95,37 @@ static int coroutine_fn backup_do_cow(BackupBlockJob *job,
     QEMUIOVector bounce_qiov;
     void *bounce_buffer = NULL;
     int ret = 0;
-    int64_t sectors_per_cluster = cluster_size_sectors(job);
-    int64_t start, end;
-    int n;
+    int64_t start, end; /* bytes */
+    int n; /* bytes */
 
     qemu_co_rwlock_rdlock(&job->flush_rwlock);
 
-    start = sector_num / sectors_per_cluster;
-    end = DIV_ROUND_UP(sector_num + nb_sectors, sectors_per_cluster);
+    start = QEMU_ALIGN_DOWN(offset, job->cluster_size);
+    end = QEMU_ALIGN_UP(bytes + offset, job->cluster_size);
 
-    trace_backup_do_cow_enter(job, start, sector_num, nb_sectors);
+    trace_backup_do_cow_enter(job, start, offset, bytes);
 
     wait_for_overlapping_requests(job, start, end);
     cow_request_begin(&cow_request, job, start, end);
 
-    for (; start < end; start++) {
-        if (test_bit(start, job->done_bitmap)) {
+    for (; start < end; start += job->cluster_size) {
+        if (test_bit(start / job->cluster_size, job->done_bitmap)) {
             trace_backup_do_cow_skip(job, start);
             continue; /* already copied */
         }
 
         trace_backup_do_cow_process(job, start);
 
-        n = MIN(sectors_per_cluster,
-                job->common.len / BDRV_SECTOR_SIZE -
-                start * sectors_per_cluster);
+        n = MIN(job->cluster_size, job->common.len - start);
 
         if (!bounce_buffer) {
             bounce_buffer = blk_blockalign(blk, job->cluster_size);
         }
         iov.iov_base = bounce_buffer;
-        iov.iov_len = n * BDRV_SECTOR_SIZE;
+        iov.iov_len = n;
         qemu_iovec_init_external(&bounce_qiov, &iov, 1);
 
-        ret = blk_co_preadv(blk, start * job->cluster_size,
-                            bounce_qiov.size, &bounce_qiov,
+        ret = blk_co_preadv(blk, start, bounce_qiov.size, &bounce_qiov,
                             is_write_notifier ? BDRV_REQ_NO_SERIALISING : 0);
         if (ret < 0) {
             trace_backup_do_cow_read_fail(job, start, ret);
@@ -145,10 +136,10 @@ static int coroutine_fn backup_do_cow(BackupBlockJob *job,
         }
 
         if (buffer_is_zero(iov.iov_base, iov.iov_len)) {
-            ret = blk_co_pwrite_zeroes(job->target, start * job->cluster_size,
+            ret = blk_co_pwrite_zeroes(job->target, start,
                                        bounce_qiov.size, BDRV_REQ_MAY_UNMAP);
         } else {
-            ret = blk_co_pwritev(job->target, start * job->cluster_size,
+            ret = blk_co_pwritev(job->target, start,
                                  bounce_qiov.size, &bounce_qiov,
                                  job->compress ? BDRV_REQ_WRITE_COMPRESSED : 0);
         }
@@ -160,13 +151,13 @@ static int coroutine_fn backup_do_cow(BackupBlockJob *job,
             goto out;
         }
 
-        set_bit(start, job->done_bitmap);
+        set_bit(start / job->cluster_size, job->done_bitmap);
 
         /* Publish progress, guest I/O counts as progress too.  Note that the
          * offset field is an opaque progress value, it is not a disk offset.
          */
-        job->sectors_read += n;
-        job->common.offset += n * BDRV_SECTOR_SIZE;
+        job->bytes_read += n;
+        job->common.offset += n;
     }
 
 out:
@@ -176,7 +167,7 @@ out:
 
     cow_request_end(&cow_request);
 
-    trace_backup_do_cow_return(job, sector_num, nb_sectors, ret);
+    trace_backup_do_cow_return(job, offset, bytes, ret);
 
     qemu_co_rwlock_unlock(&job->flush_rwlock);
 
@@ -189,14 +180,12 @@ static int coroutine_fn backup_before_write_notify(
 {
     BackupBlockJob *job = container_of(notifier, BackupBlockJob, before_write);
     BdrvTrackedRequest *req = opaque;
-    int64_t sector_num = req->offset >> BDRV_SECTOR_BITS;
-    int nb_sectors = req->bytes >> BDRV_SECTOR_BITS;
 
     assert(req->bs == blk_bs(job->common.blk));
-    assert((req->offset & (BDRV_SECTOR_SIZE - 1)) == 0);
-    assert((req->bytes & (BDRV_SECTOR_SIZE - 1)) == 0);
+    assert(QEMU_IS_ALIGNED(req->offset, BDRV_SECTOR_SIZE));
+    assert(QEMU_IS_ALIGNED(req->bytes, BDRV_SECTOR_SIZE));
 
-    return backup_do_cow(job, sector_num, nb_sectors, NULL, true);
+    return backup_do_cow(job, req->offset, req->bytes, NULL, true);
 }
 
 static void backup_set_speed(BlockJob *job, int64_t speed, Error **errp)
@@ -207,7 +196,7 @@ static void backup_set_speed(BlockJob *job, int64_t speed, Error **errp)
         error_setg(errp, QERR_INVALID_PARAMETER, "speed");
         return;
     }
-    ratelimit_set_speed(&s->limit, speed / BDRV_SECTOR_SIZE, SLICE_TIME);
+    ratelimit_set_speed(&s->limit, speed, SLICE_TIME);
 }
 
 static void backup_cleanup_sync_bitmap(BackupBlockJob *job, int ret)
@@ -274,32 +263,29 @@ void backup_do_checkpoint(BlockJob *job, Error **errp)
     bitmap_zero(backup_job->done_bitmap, len);
 }
 
-void backup_wait_for_overlapping_requests(BlockJob *job, int64_t sector_num,
-                                          int nb_sectors)
+void backup_wait_for_overlapping_requests(BlockJob *job, int64_t offset,
+                                          uint64_t bytes)
 {
     BackupBlockJob *backup_job = container_of(job, BackupBlockJob, common);
-    int64_t sectors_per_cluster = cluster_size_sectors(backup_job);
     int64_t start, end;
 
     assert(job->driver->job_type == BLOCK_JOB_TYPE_BACKUP);
 
-    start = sector_num / sectors_per_cluster;
-    end = DIV_ROUND_UP(sector_num + nb_sectors, sectors_per_cluster);
+    start = QEMU_ALIGN_DOWN(offset, backup_job->cluster_size);
+    end = QEMU_ALIGN_UP(offset + bytes, backup_job->cluster_size);
     wait_for_overlapping_requests(backup_job, start, end);
 }
 
 void backup_cow_request_begin(CowRequest *req, BlockJob *job,
-                              int64_t sector_num,
-                              int nb_sectors)
+                              int64_t offset, uint64_t bytes)
 {
     BackupBlockJob *backup_job = container_of(job, BackupBlockJob, common);
-    int64_t sectors_per_cluster = cluster_size_sectors(backup_job);
     int64_t start, end;
 
     assert(job->driver->job_type == BLOCK_JOB_TYPE_BACKUP);
 
-    start = sector_num / sectors_per_cluster;
-    end = DIV_ROUND_UP(sector_num + nb_sectors, sectors_per_cluster);
+    start = QEMU_ALIGN_DOWN(offset, backup_job->cluster_size);
+    end = QEMU_ALIGN_UP(offset + bytes, backup_job->cluster_size);
     cow_request_begin(req, backup_job, start, end);
 }
 
@@ -358,8 +344,8 @@ static bool coroutine_fn yield_and_check(BackupBlockJob *job)
      */
     if (job->common.speed) {
         uint64_t delay_ns = ratelimit_calculate_delay(&job->limit,
-                                                      job->sectors_read);
-        job->sectors_read = 0;
+                                                      job->bytes_read);
+        job->bytes_read = 0;
         block_job_sleep_ns(&job->common, QEMU_CLOCK_REALTIME, delay_ns);
     } else {
         block_job_sleep_ns(&job->common, QEMU_CLOCK_REALTIME, 0);
@@ -378,11 +364,10 @@ static int coroutine_fn backup_run_incremental(BackupBlockJob *job)
     int ret = 0;
     int clusters_per_iter;
     uint32_t granularity;
-    int64_t sector;
+    int64_t offset;
     int64_t cluster;
     int64_t end;
     int64_t last_cluster = -1;
-    int64_t sectors_per_cluster = cluster_size_sectors(job);
     BdrvDirtyBitmapIter *dbi;
 
     granularity = bdrv_dirty_bitmap_granularity(job->sync_bitmap);
@@ -390,8 +375,8 @@ static int coroutine_fn backup_run_incremental(BackupBlockJob *job)
     dbi = bdrv_dirty_iter_new(job->sync_bitmap, 0);
 
     /* Find the next dirty sector(s) */
-    while ((sector = bdrv_dirty_iter_next(dbi)) != -1) {
-        cluster = sector / sectors_per_cluster;
+    while ((offset = bdrv_dirty_iter_next(dbi) * BDRV_SECTOR_SIZE) >= 0) {
+        cluster = offset / job->cluster_size;
 
         /* Fake progress updates for any clusters we skipped */
         if (cluster != last_cluster + 1) {
@@ -404,8 +389,8 @@ static int coroutine_fn backup_run_incremental(BackupBlockJob *job)
                 if (yield_and_check(job)) {
                     goto out;
                 }
-                ret = backup_do_cow(job, cluster * sectors_per_cluster,
-                                    sectors_per_cluster, &error_is_read,
+                ret = backup_do_cow(job, cluster * job->cluster_size,
+                                    job->cluster_size, &error_is_read,
                                     false);
                 if ((ret < 0) &&
                     backup_error_action(job, error_is_read, -ret) ==
@@ -418,7 +403,8 @@ static int coroutine_fn backup_run_incremental(BackupBlockJob *job)
         /* If the bitmap granularity is smaller than the backup granularity,
          * we need to advance the iterator pointer to the next cluster. */
         if (granularity < job->cluster_size) {
-            bdrv_set_dirty_iter(dbi, cluster * sectors_per_cluster);
+            bdrv_set_dirty_iter(dbi,
+                                cluster * job->cluster_size / BDRV_SECTOR_SIZE);
         }
 
         last_cluster = cluster - 1;
@@ -440,17 +426,14 @@ static void coroutine_fn backup_run(void *opaque)
     BackupBlockJob *job = opaque;
     BackupCompleteData *data;
     BlockDriverState *bs = blk_bs(job->common.blk);
-    int64_t start, end;
-    int64_t sectors_per_cluster = cluster_size_sectors(job);
+    int64_t offset;
     int ret = 0;
 
     QLIST_INIT(&job->inflight_reqs);
     qemu_co_rwlock_init(&job->flush_rwlock);
 
-    start = 0;
-    end = DIV_ROUND_UP(job->common.len, job->cluster_size);
-
-    job->done_bitmap = bitmap_new(end);
+    job->done_bitmap = bitmap_new(DIV_ROUND_UP(job->common.len,
+                                               job->cluster_size));
 
     job->before_write.notify = backup_before_write_notify;
     bdrv_add_before_write_notifier(bs, &job->before_write);
@@ -465,20 +448,23 @@ static void coroutine_fn backup_run(void *opaque)
         ret = backup_run_incremental(job);
     } else {
         /* Both FULL and TOP SYNC_MODE's require copying.. */
-        for (; start < end; start++) {
+        for (offset = 0; offset < job->common.len;
+             offset += job->cluster_size) {
             bool error_is_read;
+            int alloced = 0;
+
             if (yield_and_check(job)) {
                 break;
             }
 
             if (job->sync_mode == MIRROR_SYNC_MODE_TOP) {
-                int i, n;
-                int alloced = 0;
+                int i;
+                int64_t n;
 
                 /* Check to see if these blocks are already in the
                  * backing file. */
 
-                for (i = 0; i < sectors_per_cluster;) {
+                for (i = 0; i < job->cluster_size;) {
                     /* bdrv_is_allocated() only returns true/false based
                      * on the first set of sectors it comes across that
                      * are are all in the same state.
@@ -486,12 +472,11 @@ static void coroutine_fn backup_run(void *opaque)
                      * backup cluster length.  We end up copying more than
                      * needed but at some point that is always the case. */
                     alloced =
-                        bdrv_is_allocated(bs,
-                                start * sectors_per_cluster + i,
-                                sectors_per_cluster - i, &n);
+                        bdrv_is_allocated(bs, offset + i,
+                                          job->cluster_size - i, &n);
                     i += n;
 
-                    if (alloced == 1 || n == 0) {
+                    if (alloced || n == 0) {
                         break;
                     }
                 }
@@ -503,8 +488,12 @@ static void coroutine_fn backup_run(void *opaque)
                 }
             }
             /* FULL sync mode we copy the whole drive. */
-            ret = backup_do_cow(job, start * sectors_per_cluster,
-                                sectors_per_cluster, &error_is_read, false);
+            if (alloced < 0) {
+                ret = alloced;
+            } else {
+                ret = backup_do_cow(job, offset, job->cluster_size,
+                                    &error_is_read, false);
+            }
             if (ret < 0) {
                 /* Depending on error action, fail now or retry cluster */
                 BlockErrorAction action =
@@ -512,7 +501,7 @@ static void coroutine_fn backup_run(void *opaque)
                 if (action == BLOCK_ERROR_ACTION_REPORT) {
                     break;
                 } else {
-                    start--;
+                    offset -= job->cluster_size;
                     continue;
                 }
             }
@@ -618,14 +607,24 @@ BlockJob *backup_job_create(const char *job_id, BlockDriverState *bs,
         goto error;
     }
 
-    job = block_job_create(job_id, &backup_job_driver, bs, speed,
-                           creation_flags, cb, opaque, errp);
+    /* job->common.len is fixed, so we can't allow resize */
+    job = block_job_create(job_id, &backup_job_driver, bs,
+                           BLK_PERM_CONSISTENT_READ,
+                           BLK_PERM_CONSISTENT_READ | BLK_PERM_WRITE |
+                           BLK_PERM_WRITE_UNCHANGED | BLK_PERM_GRAPH_MOD,
+                           speed, creation_flags, cb, opaque, errp);
     if (!job) {
         goto error;
     }
 
-    job->target = blk_new();
-    blk_insert_bs(job->target, target);
+    /* The target must match the source in size, so no resize here either */
+    job->target = blk_new(BLK_PERM_WRITE,
+                          BLK_PERM_CONSISTENT_READ | BLK_PERM_WRITE |
+                          BLK_PERM_WRITE_UNCHANGED | BLK_PERM_GRAPH_MOD);
+    ret = blk_insert_bs(job->target, target, errp);
+    if (ret < 0) {
+        goto error;
+    }
 
     job->on_source_error = on_source_error;
     job->on_target_error = on_target_error;
@@ -638,7 +637,16 @@ BlockJob *backup_job_create(const char *job_id, BlockDriverState *bs,
      * backup cluster size is smaller than the target cluster size. Even for
      * targets with a backing file, try to avoid COW if possible. */
     ret = bdrv_get_info(target, &bdi);
-    if (ret < 0 && !target->backing) {
+    if (ret == -ENOTSUP && !target->backing) {
+        /* Cluster size is not defined */
+        warn_report("The target block device doesn't provide "
+                    "information about the block size and it doesn't have a "
+                    "backing file. The default block size of %u bytes is "
+                    "used. If the actual block size of the target exceeds "
+                    "this default, the backup may be unusable",
+                    BACKUP_CLUSTER_SIZE_DEFAULT);
+        job->cluster_size = BACKUP_CLUSTER_SIZE_DEFAULT;
+    } else if (ret < 0 && !target->backing) {
         error_setg_errno(errp, -ret,
             "Couldn't determine the cluster size of the target image, "
             "which has no backing file");
@@ -652,7 +660,9 @@ BlockJob *backup_job_create(const char *job_id, BlockDriverState *bs,
         job->cluster_size = MAX(BACKUP_CLUSTER_SIZE_DEFAULT, bdi.cluster_size);
     }
 
-    block_job_add_bdrv(&job->common, target);
+    /* Required permissions are already taken with target's blk_new() */
+    block_job_add_bdrv(&job->common, "target", target, 0, BLK_PERM_ALL,
+                       &error_abort);
     job->common.len = len;
     block_job_txn_add_job(txn, &job->common);
 
@@ -664,7 +674,7 @@ BlockJob *backup_job_create(const char *job_id, BlockDriverState *bs,
     }
     if (job) {
         backup_clean(&job->common);
-        block_job_unref(&job->common);
+        block_job_early_fail(&job->common);
     }
 
     return NULL;

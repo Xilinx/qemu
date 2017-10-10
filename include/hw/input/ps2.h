@@ -25,13 +25,19 @@
 #ifndef HW_PS2_H
 #define HW_PS2_H
 
+#define PS2_MOUSE_BUTTON_LEFT   0x01
+#define PS2_MOUSE_BUTTON_RIGHT  0x02
+#define PS2_MOUSE_BUTTON_MIDDLE 0x04
+#define PS2_MOUSE_BUTTON_SIDE   0x08
+#define PS2_MOUSE_BUTTON_EXTRA  0x10
+
 /* ps2.c */
 void *ps2_kbd_init(void (*update_irq)(void *, int), void *update_arg);
 void *ps2_mouse_init(void (*update_irq)(void *, int), void *update_arg);
 void ps2_write_mouse(void *, int val);
 void ps2_write_keyboard(void *, int val);
-uint32_t ps2_read_data(void *);
-void ps2_queue(void *, int b);
+uint32_t ps2_read_data(PS2State *s);
+void ps2_queue(PS2State *s, int b);
 void ps2_keyboard_set_translation(void *opaque, int mode);
 void ps2_mouse_fake_event(void *opaque);
 

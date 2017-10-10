@@ -100,6 +100,8 @@
     (SDHC_CAPAB_BASECLKFREQ << 8) | (SDHC_CAPAB_TOUNIT << 7) | \
     (SDHC_CAPAB_TOCLKFREQ))
 
+#define MASK_TRNMOD     0x0037
+
 /* SD/MMC host controller state */
 typedef struct SDHCIState {
     union {

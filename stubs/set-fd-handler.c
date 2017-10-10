@@ -9,13 +9,3 @@ void qemu_set_fd_handler(int fd,
 {
     abort();
 }
-
-void aio_set_fd_handler(AioContext *ctx,
-                        int fd,
-                        bool is_external,
-                        IOHandler *io_read,
-                        IOHandler *io_write,
-                        void *opaque)
-{
-    abort();
-}

@@ -108,9 +108,9 @@ static void hb_regs_write(void *opaque, hwaddr offset,
 
     if (offset == 0xf00) {
         if (value == 1 || value == 2) {
-            qemu_system_reset_request();
+            qemu_system_reset_request(SHUTDOWN_CAUSE_GUEST_RESET);
         } else if (value == 3) {
-            qemu_system_shutdown_request();
+            qemu_system_shutdown_request(SHUTDOWN_CAUSE_GUEST_SHUTDOWN);
         }
     }
 
@@ -276,7 +276,7 @@ static void calxeda_init(MachineState *machine, enum cxmachines machine_id)
     memory_region_add_subregion(sysmem, 0, dram);
 
     sysram = g_new(MemoryRegion, 1);
-    memory_region_init_ram(sysram, NULL, "highbank.sysram", 0x8000,
+    memory_region_init_ram_nomigrate(sysram, NULL, "highbank.sysram", 0x8000,
                            &error_fatal);
     memory_region_add_subregion(sysmem, 0xfff88000, sysram);
     if (bios_name != NULL) {
@@ -363,6 +363,8 @@ static void calxeda_init(MachineState *machine, enum cxmachines machine_id)
         sysbus_connect_irq(SYS_BUS_DEVICE(dev), 2, pic[82]);
     }
 
+    /* TODO create and connect IDE devices for ide_drive_get() */
+
     highbank_binfo.ram_size = ram_size;
     highbank_binfo.kernel_filename = kernel_filename;
     highbank_binfo.kernel_cmdline = kernel_cmdline;
@@ -381,9 +383,9 @@ static void calxeda_init(MachineState *machine, enum cxmachines machine_id)
         highbank_binfo.write_board_setup = hb_write_board_setup;
         highbank_binfo.secure_board_setup = true;
     } else {
-        error_report("WARNING: cannot load built-in Monitor support "
-                     "if KVM is enabled. Some guests (such as Linux) "
-                     "may not boot.");
+        warn_report("cannot load built-in Monitor support "
+                    "if KVM is enabled. Some guests (such as Linux) "
+                    "may not boot.");
     }
 
     arm_load_kernel(ARM_CPU(first_cpu), &highbank_binfo);
@@ -405,7 +407,8 @@ static void highbank_class_init(ObjectClass *oc, void *data)
 
     mc->desc = "Calxeda Highbank (ECX-1000)";
     mc->init = highbank_init;
-    mc->block_default_type = IF_SCSI;
+    mc->block_default_type = IF_IDE;
+    mc->units_per_default_bus = 1;
     mc->max_cpus = 4;
 }
 
@@ -421,7 +424,8 @@ static void midway_class_init(ObjectClass *oc, void *data)
 
     mc->desc = "Calxeda Midway (ECX-2000)";
     mc->init = midway_init;
-    mc->block_default_type = IF_SCSI;
+    mc->block_default_type = IF_IDE;
+    mc->units_per_default_bus = 1;
     mc->max_cpus = 4;
 }
 

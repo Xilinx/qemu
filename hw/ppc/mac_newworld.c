@@ -72,6 +72,7 @@
 #include "exec/address-spaces.h"
 #include "hw/sysbus.h"
 #include "qemu/cutils.h"
+#include "trace.h"
 
 #define MAX_IDE_BUS 2
 #define CFG_ADDR 0xf0000510
@@ -79,21 +80,13 @@
 #define CLOCKFREQ (266UL * 1000UL * 1000UL)
 #define BUSFREQ (100UL * 1000UL * 1000UL)
 
-/* debug UniNorth */
-//#define DEBUG_UNIN
-
-#ifdef DEBUG_UNIN
-#define UNIN_DPRINTF(fmt, ...)                                  \
-    do { printf("UNIN: " fmt , ## __VA_ARGS__); } while (0)
-#else
-#define UNIN_DPRINTF(fmt, ...)
-#endif
+#define NDRV_VGA_FILENAME "qemu_vga.ndrv"
 
 /* UniN device */
 static void unin_write(void *opaque, hwaddr addr, uint64_t value,
                        unsigned size)
 {
-    UNIN_DPRINTF("write addr " TARGET_FMT_plx " val %"PRIx64"\n", addr, value);
+    trace_mac99_uninorth_write(addr, value);
     if (addr == 0x0) {
         *(int*)opaque = value;
     }
@@ -109,7 +102,7 @@ static uint64_t unin_read(void *opaque, hwaddr addr, unsigned size)
         value = *(int*)opaque;
     }
 
-    UNIN_DPRINTF("readl addr " TARGET_FMT_plx " val %x\n", addr, value);
+    trace_mac99_uninorth_read(addr, value);
 
     return value;
 }
@@ -169,7 +162,8 @@ static void ppc_core99_init(MachineState *machine)
     MACIOIDEState *macio_ide;
     BusState *adb_bus;
     MacIONVRAMState *nvr;
-    int bios_size;
+    int bios_size, ndrv_size;
+    uint8_t *ndrv_file;
     MemoryRegion *pic_mem, *escc_mem;
     MemoryRegion *escc_bar = g_new(MemoryRegion, 1);
     int ppc_boot_device;
@@ -212,7 +206,6 @@ static void ppc_core99_init(MachineState *machine)
     /* allocate and load BIOS */
     memory_region_init_ram(bios, NULL, "ppc_core99.bios", BIOS_SIZE,
                            &error_fatal);
-    vmstate_register_ram_global(bios);
 
     if (bios_name == NULL)
         bios_name = PROM_FILENAME;
@@ -384,8 +377,6 @@ static void ppc_core99_init(MachineState *machine)
 
     machine->usb |= defaults_enabled() && !machine->usb_disabled;
 
-    machine->usb |= defaults_enabled() && !machine->usb_disabled;
-
     /* Timebase Frequency */
     if (kvm_enabled()) {
         tbfreq = kvmppc_get_tbfreq();
@@ -505,6 +496,19 @@ static void ppc_core99_init(MachineState *machine)
     fw_cfg_add_i32(fw_cfg, FW_CFG_PPC_BUSFREQ, BUSFREQ);
     fw_cfg_add_i32(fw_cfg, FW_CFG_PPC_NVRAM_ADDR, nvram_addr);
 
+    /* MacOS NDRV VGA driver */
+    filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, NDRV_VGA_FILENAME);
+    if (filename) {
+        ndrv_size = get_image_size(filename);
+        if (ndrv_size != -1) {
+            ndrv_file = g_malloc(ndrv_size);
+            ndrv_size = load_image(filename, ndrv_file);
+
+            fw_cfg_add_file(fw_cfg, "ndrv/qemu_vga.ndrv", ndrv_file, ndrv_size);
+        }
+        g_free(filename);
+    }
+
     qemu_register_boot_set(fw_cfg_boot_set, fw_cfg);
 }
 
@@ -520,6 +524,7 @@ static void core99_machine_class_init(ObjectClass *oc, void *data)
 
     mc->desc = "Mac99 based PowerMAC";
     mc->init = ppc_core99_init;
+    mc->block_default_type = IF_IDE;
     mc->max_cpus = MAX_CPUS;
     mc->default_boot_order = "cd";
     mc->kvm_type = core99_kvm_type;

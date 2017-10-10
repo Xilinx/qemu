@@ -16,18 +16,12 @@ extern Monitor *cur_mon;
 
 bool monitor_cur_is_qmp(void);
 
-void monitor_init(CharDriverState *chr, int flags);
+void monitor_init_qmp_commands(void);
+void monitor_init(Chardev *chr, int flags);
 void monitor_cleanup(void);
 
 int monitor_suspend(Monitor *mon);
 void monitor_resume(Monitor *mon);
-
-int monitor_read_bdrv_key_start(Monitor *mon, BlockDriverState *bs,
-                                BlockCompletionFunc *completion_cb,
-                                void *opaque);
-int monitor_read_block_device_key(Monitor *mon, const char *device,
-                                  BlockCompletionFunc *completion_cb,
-                                  void *opaque);
 
 int monitor_get_fd(Monitor *mon, const char *fdname, Error **errp);
 int monitor_fd_param(Monitor *mon, const char *fdname, Error **errp);

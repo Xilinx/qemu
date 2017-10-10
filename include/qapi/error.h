@@ -125,7 +125,6 @@
 typedef enum ErrorClass {
     ERROR_CLASS_GENERIC_ERROR = QAPI_ERROR_CLASS_GENERICERROR,
     ERROR_CLASS_COMMAND_NOT_FOUND = QAPI_ERROR_CLASS_COMMANDNOTFOUND,
-    ERROR_CLASS_DEVICE_ENCRYPTED = QAPI_ERROR_CLASS_DEVICEENCRYPTED,
     ERROR_CLASS_DEVICE_NOT_ACTIVE = QAPI_ERROR_CLASS_DEVICENOTACTIVE,
     ERROR_CLASS_DEVICE_NOT_FOUND = QAPI_ERROR_CLASS_DEVICENOTFOUND,
     ERROR_CLASS_KVM_MISSING_CAP = QAPI_ERROR_CLASS_KVMMISSINGCAP,
@@ -170,6 +169,9 @@ void error_setg_internal(Error **errp,
  * Just like error_setg(), with @os_error info added to the message.
  * If @os_error is non-zero, ": " + strerror(os_error) is appended to
  * the human-readable error message.
+ *
+ * The value of errno (which usually can get clobbered by almost any
+ * function call) will be preserved.
  */
 #define error_setg_errno(errp, os_error, fmt, ...)                      \
     error_setg_errno_internal((errp), __FILE__, __LINE__, __func__,     \
@@ -264,9 +266,20 @@ void error_free(Error *err);
 void error_free_or_abort(Error **errp);
 
 /*
+ * Convenience function to warn_report() and free @err.
+ */
+void warn_report_err(Error *err);
+
+/*
  * Convenience function to error_report() and free @err.
  */
 void error_report_err(Error *err);
+
+/*
+ * Convenience function to error_prepend(), warn_report() and free @err.
+ */
+void warn_reportf_err(Error *err, const char *fmt, ...)
+    GCC_FMT_ATTR(2, 3);
 
 /*
  * Convenience function to error_prepend(), error_report() and free @err.

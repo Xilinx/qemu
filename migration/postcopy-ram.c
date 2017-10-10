@@ -17,10 +17,12 @@
  */
 
 #include "qemu/osdep.h"
-
-#include "qemu-common.h"
-#include "migration/migration.h"
-#include "migration/postcopy-ram.h"
+#include "exec/target_page.h"
+#include "migration.h"
+#include "qemu-file.h"
+#include "savevm.h"
+#include "postcopy-ram.h"
+#include "ram.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/balloon.h"
 #include "qemu/error-report.h"
@@ -33,7 +35,6 @@
 
 struct PostcopyDiscardState {
     const char *ramblock_name;
-    uint64_t offset; /* Bitmap entry for the 1st bit of this RAMBlock */
     uint16_t cur_entry;
     /*
      * Start and length of a discard range (bytes)
@@ -81,24 +82,40 @@ static bool ufd_version_check(int ufd)
         return false;
     }
 
+    if (getpagesize() != ram_pagesize_summary()) {
+        bool have_hp = false;
+        /* We've got a huge page */
+#ifdef UFFD_FEATURE_MISSING_HUGETLBFS
+        have_hp = api_struct.features & UFFD_FEATURE_MISSING_HUGETLBFS;
+#endif
+        if (!have_hp) {
+            error_report("Userfault on this host does not support huge pages");
+            return false;
+        }
+    }
     return true;
 }
 
-/*
- * Check for things that postcopy won't support; returns 0 if the block
- * is fine.
+/* Callback from postcopy_ram_supported_by_host block iterator.
  */
-static int check_range(const char *block_name, void *host_addr,
-                      ram_addr_t offset, ram_addr_t length, void *opaque)
+static int test_ramblock_postcopiable(const char *block_name, void *host_addr,
+                             ram_addr_t offset, ram_addr_t length, void *opaque)
 {
     RAMBlock *rb = qemu_ram_block_by_name(block_name);
+    size_t pagesize = qemu_ram_pagesize(rb);
 
-    if (qemu_ram_pagesize(rb) > getpagesize()) {
-        error_report("Postcopy doesn't support large page sizes yet (%s)",
+    if (qemu_ram_is_shared(rb)) {
+        error_report("Postcopy on shared RAM (%s) is not yet supported",
                      block_name);
-        return -E2BIG;
+        return 1;
     }
 
+    if (length % pagesize) {
+        error_report("Postcopy requires RAM blocks to be a page size multiple,"
+                     " block %s is 0x" RAM_ADDR_FMT " bytes with a "
+                     "page size of 0x%zx", block_name, length, pagesize);
+        return 1;
+    }
     return 0;
 }
 
@@ -117,14 +134,8 @@ bool postcopy_ram_supported_by_host(void)
     struct uffdio_range range_struct;
     uint64_t feature_mask;
 
-    if ((1ul << qemu_target_page_bits()) > pagesize) {
+    if (qemu_target_page_size() > pagesize) {
         error_report("Target page size bigger than host page size");
-        goto out;
-    }
-
-    /* Check for anything about the RAMBlocks we don't support */
-    if (qemu_ram_foreach_block(check_range, NULL)) {
-        /* check_range will have printed its own error */
         goto out;
     }
 
@@ -137,6 +148,11 @@ bool postcopy_ram_supported_by_host(void)
 
     /* Version and features check */
     if (!ufd_version_check(ufd)) {
+        goto out;
+    }
+
+    /* We don't support postcopy with shared RAM yet */
+    if (qemu_ram_foreach_block(test_ramblock_postcopiable, NULL)) {
         goto out;
     }
 
@@ -200,27 +216,6 @@ out:
     return ret;
 }
 
-/**
- * postcopy_ram_discard_range: Discard a range of memory.
- * We can assume that if we've been called postcopy_ram_hosttest returned true.
- *
- * @mis: Current incoming migration state.
- * @start, @length: range of memory to discard.
- *
- * returns: 0 on success.
- */
-int postcopy_ram_discard_range(MigrationIncomingState *mis, uint8_t *start,
-                               size_t length)
-{
-    trace_postcopy_ram_discard_range(start, length);
-    if (madvise(start, length, MADV_DONTNEED)) {
-        error_report("%s MADV_DONTNEED: %s", __func__, strerror(errno));
-        return -1;
-    }
-
-    return 0;
-}
-
 /*
  * Setup an area of RAM so that it *can* be used for postcopy later; this
  * must be done right at the start prior to pre-copy.
@@ -229,8 +224,6 @@ int postcopy_ram_discard_range(MigrationIncomingState *mis, uint8_t *start,
 static int init_range(const char *block_name, void *host_addr,
                       ram_addr_t offset, ram_addr_t length, void *opaque)
 {
-    MigrationIncomingState *mis = opaque;
-
     trace_postcopy_init_range(block_name, host_addr, offset, length);
 
     /*
@@ -239,7 +232,7 @@ static int init_range(const char *block_name, void *host_addr,
      * - we're going to get the copy from the source anyway.
      * (Precopy will just overwrite this data, so doesn't need the discard)
      */
-    if (postcopy_ram_discard_range(mis, host_addr, length)) {
+    if (ram_discard_range(block_name, 0, length)) {
         return -1;
     }
 
@@ -287,7 +280,7 @@ static int cleanup_range(const char *block_name, void *host_addr,
  */
 int postcopy_ram_incoming_init(MigrationIncomingState *mis, size_t ram_pages)
 {
-    if (qemu_ram_foreach_block(init_range, mis)) {
+    if (qemu_ram_foreach_block(init_range, NULL)) {
         return -1;
     }
 
@@ -339,11 +332,14 @@ int postcopy_ram_incoming_cleanup(MigrationIncomingState *mis)
     }
 
     postcopy_state_set(POSTCOPY_INCOMING_END);
-    migrate_send_rp_shut(mis, qemu_file_get_error(mis->from_src_file) != 0);
 
     if (mis->postcopy_tmp_page) {
-        munmap(mis->postcopy_tmp_page, getpagesize());
+        munmap(mis->postcopy_tmp_page, mis->largest_page_size);
         mis->postcopy_tmp_page = NULL;
+    }
+    if (mis->postcopy_tmp_zero_page) {
+        munmap(mis->postcopy_tmp_zero_page, mis->largest_page_size);
+        mis->postcopy_tmp_zero_page = NULL;
     }
     trace_postcopy_ram_incoming_cleanup_exit();
     return 0;
@@ -408,6 +404,10 @@ static int ram_block_enable_notify(const char *block_name, void *host_addr,
         error_report("%s userfault register: %s", __func__, strerror(errno));
         return -1;
     }
+    if (!(reg_struct.ioctls & ((__u64)1 << _UFFDIO_COPY))) {
+        error_report("%s userfault: Region doesn't support COPY", __func__);
+        return -1;
+    }
 
     return 0;
 }
@@ -420,7 +420,6 @@ static void *postcopy_ram_fault_thread(void *opaque)
     MigrationIncomingState *mis = opaque;
     struct uffd_msg msg;
     int ret;
-    size_t hostpagesize = getpagesize();
     RAMBlock *rb = NULL;
     RAMBlock *last_rb = NULL; /* last RAMBlock we sent part of */
 
@@ -487,7 +486,7 @@ static void *postcopy_ram_fault_thread(void *opaque)
             break;
         }
 
-        rb_offset &= ~(hostpagesize - 1);
+        rb_offset &= ~(qemu_ram_pagesize(rb) - 1);
         trace_postcopy_ram_fault_thread_request(msg.arg.pagefault.address,
                                                 qemu_ram_get_idstr(rb),
                                                 rb_offset);
@@ -499,11 +498,11 @@ static void *postcopy_ram_fault_thread(void *opaque)
         if (rb != last_rb) {
             last_rb = rb;
             migrate_send_rp_req_pages(mis, qemu_ram_get_idstr(rb),
-                                     rb_offset, hostpagesize);
+                                     rb_offset, qemu_ram_pagesize(rb));
         } else {
             /* Save some space */
             migrate_send_rp_req_pages(mis, NULL,
-                                     rb_offset, hostpagesize);
+                                     rb_offset, qemu_ram_pagesize(rb));
         }
     }
     trace_postcopy_ram_fault_thread_exit();
@@ -564,13 +563,14 @@ int postcopy_ram_enable_notify(MigrationIncomingState *mis)
  * Place a host page (from) at (host) atomically
  * returns 0 on success
  */
-int postcopy_place_page(MigrationIncomingState *mis, void *host, void *from)
+int postcopy_place_page(MigrationIncomingState *mis, void *host, void *from,
+                        size_t pagesize)
 {
     struct uffdio_copy copy_struct;
 
     copy_struct.dst = (uint64_t)(uintptr_t)host;
     copy_struct.src = (uint64_t)(uintptr_t)from;
-    copy_struct.len = getpagesize();
+    copy_struct.len = pagesize;
     copy_struct.mode = 0;
 
     /* copy also acks to the kernel waking the stalled thread up
@@ -580,8 +580,8 @@ int postcopy_place_page(MigrationIncomingState *mis, void *host, void *from)
      */
     if (ioctl(mis->userfault_fd, UFFDIO_COPY, &copy_struct)) {
         int e = errno;
-        error_report("%s: %s copy host: %p from: %p",
-                     __func__, strerror(e), host, from);
+        error_report("%s: %s copy host: %p from: %p (size: %zd)",
+                     __func__, strerror(e), host, from, pagesize);
 
         return -e;
     }
@@ -594,23 +594,44 @@ int postcopy_place_page(MigrationIncomingState *mis, void *host, void *from)
  * Place a zero page at (host) atomically
  * returns 0 on success
  */
-int postcopy_place_page_zero(MigrationIncomingState *mis, void *host)
+int postcopy_place_page_zero(MigrationIncomingState *mis, void *host,
+                             size_t pagesize)
 {
-    struct uffdio_zeropage zero_struct;
+    trace_postcopy_place_page_zero(host);
 
-    zero_struct.range.start = (uint64_t)(uintptr_t)host;
-    zero_struct.range.len = getpagesize();
-    zero_struct.mode = 0;
+    if (pagesize == getpagesize()) {
+        struct uffdio_zeropage zero_struct;
+        zero_struct.range.start = (uint64_t)(uintptr_t)host;
+        zero_struct.range.len = getpagesize();
+        zero_struct.mode = 0;
 
-    if (ioctl(mis->userfault_fd, UFFDIO_ZEROPAGE, &zero_struct)) {
-        int e = errno;
-        error_report("%s: %s zero host: %p",
-                     __func__, strerror(e), host);
+        if (ioctl(mis->userfault_fd, UFFDIO_ZEROPAGE, &zero_struct)) {
+            int e = errno;
+            error_report("%s: %s zero host: %p",
+                         __func__, strerror(e), host);
 
-        return -e;
+            return -e;
+        }
+    } else {
+        /* The kernel can't use UFFDIO_ZEROPAGE for hugepages */
+        if (!mis->postcopy_tmp_zero_page) {
+            mis->postcopy_tmp_zero_page = mmap(NULL, mis->largest_page_size,
+                                               PROT_READ | PROT_WRITE,
+                                               MAP_PRIVATE | MAP_ANONYMOUS,
+                                               -1, 0);
+            if (mis->postcopy_tmp_zero_page == MAP_FAILED) {
+                int e = errno;
+                mis->postcopy_tmp_zero_page = NULL;
+                error_report("%s: %s mapping large zero page",
+                             __func__, strerror(e));
+                return -e;
+            }
+            memset(mis->postcopy_tmp_zero_page, '\0', mis->largest_page_size);
+        }
+        return postcopy_place_page(mis, host, mis->postcopy_tmp_zero_page,
+                                   pagesize);
     }
 
-    trace_postcopy_place_page_zero(host);
     return 0;
 }
 
@@ -625,7 +646,7 @@ int postcopy_place_page_zero(MigrationIncomingState *mis, void *host)
 void *postcopy_get_tmp_page(MigrationIncomingState *mis)
 {
     if (!mis->postcopy_tmp_page) {
-        mis->postcopy_tmp_page = mmap(NULL, getpagesize(),
+        mis->postcopy_tmp_page = mmap(NULL, mis->largest_page_size,
                              PROT_READ | PROT_WRITE, MAP_PRIVATE |
                              MAP_ANONYMOUS, -1, 0);
         if (mis->postcopy_tmp_page == MAP_FAILED) {
@@ -658,13 +679,6 @@ int postcopy_ram_incoming_cleanup(MigrationIncomingState *mis)
     return -1;
 }
 
-int postcopy_ram_discard_range(MigrationIncomingState *mis, uint8_t *start,
-                               size_t length)
-{
-    assert(0);
-    return -1;
-}
-
 int postcopy_ram_prepare_discard(MigrationIncomingState *mis)
 {
     assert(0);
@@ -677,13 +691,15 @@ int postcopy_ram_enable_notify(MigrationIncomingState *mis)
     return -1;
 }
 
-int postcopy_place_page(MigrationIncomingState *mis, void *host, void *from)
+int postcopy_place_page(MigrationIncomingState *mis, void *host, void *from,
+                        size_t pagesize)
 {
     assert(0);
     return -1;
 }
 
-int postcopy_place_page_zero(MigrationIncomingState *mis, void *host)
+int postcopy_place_page_zero(MigrationIncomingState *mis, void *host,
+                        size_t pagesize)
 {
     assert(0);
     return -1;
@@ -711,14 +727,12 @@ void *postcopy_get_tmp_page(MigrationIncomingState *mis)
  * returns: a new PDS.
  */
 PostcopyDiscardState *postcopy_discard_send_init(MigrationState *ms,
-                                                 unsigned long offset,
                                                  const char *name)
 {
     PostcopyDiscardState *res = g_malloc0(sizeof(PostcopyDiscardState));
 
     if (res) {
         res->ramblock_name = name;
-        res->offset = offset;
     }
 
     return res;
@@ -737,10 +751,10 @@ PostcopyDiscardState *postcopy_discard_send_init(MigrationState *ms,
 void postcopy_discard_send_range(MigrationState *ms, PostcopyDiscardState *pds,
                                 unsigned long start, unsigned long length)
 {
-    size_t tp_bits = qemu_target_page_bits();
+    size_t tp_size = qemu_target_page_size();
     /* Convert to byte offsets within the RAM block */
-    pds->start_list[pds->cur_entry] = (start - pds->offset) << tp_bits;
-    pds->length_list[pds->cur_entry] = length << tp_bits;
+    pds->start_list[pds->cur_entry] = start  * tp_size;
+    pds->length_list[pds->cur_entry] = length * tp_size;
     trace_postcopy_discard_send_range(pds->ramblock_name, start, length);
     pds->cur_entry++;
     pds->nsentwords++;
@@ -780,4 +794,22 @@ void postcopy_discard_send_finish(MigrationState *ms, PostcopyDiscardState *pds)
                                        pds->nsentcmds);
 
     g_free(pds);
+}
+
+/*
+ * Current state of incoming postcopy; note this is not part of
+ * MigrationIncomingState since it's state is used during cleanup
+ * at the end as MIS is being freed.
+ */
+static PostcopyState incoming_postcopy_state;
+
+PostcopyState  postcopy_state_get(void)
+{
+    return atomic_mb_read(&incoming_postcopy_state);
+}
+
+/* Set the state and return the old state */
+PostcopyState postcopy_state_set(PostcopyState new_state)
+{
+    return atomic_xchg(&incoming_postcopy_state, new_state);
 }

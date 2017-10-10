@@ -16,21 +16,16 @@
 
 #ifndef CONFIG_USER_ONLY
 
-#define DIRTY_MEMORY_VGA       0
-#define DIRTY_MEMORY_CODE      1
-#define DIRTY_MEMORY_MIGRATION 2
-#define DIRTY_MEMORY_NUM       3        /* num of dirty bits */
-
 #include "exec/cpu-common.h"
-#ifndef CONFIG_USER_ONLY
 #include "exec/hwaddr.h"
-#endif
 #include "exec/memattrs.h"
+#include "exec/ramlist.h"
 #include "qemu/queue.h"
 #include "qemu/int128.h"
 #include "qemu/notify.h"
 #include "qom/object.h"
 #include "qemu/rcu.h"
+#include "hw/qdev-core.h"
 
 extern const char *machine_path;
 #define RAM_ADDR_INVALID (~(ram_addr_t)0)
@@ -45,6 +40,16 @@ extern const char *machine_path;
 #define TYPE_MEMORY_TRANSACTION_ATTR "qemu:memory-transaction-attr"
 #define MEMORY_TRANSACTION_ATTR(obj) \
         OBJECT_CHECK(MemTxAttrs, (obj), TYPE_MEMORY_TRANSACTION_ATTR)
+
+#define TYPE_IOMMU_MEMORY_REGION "qemu:iommu-memory-region"
+#define IOMMU_MEMORY_REGION(obj) \
+        OBJECT_CHECK(IOMMUMemoryRegion, (obj), TYPE_IOMMU_MEMORY_REGION)
+#define IOMMU_MEMORY_REGION_CLASS(klass) \
+        OBJECT_CLASS_CHECK(IOMMUMemoryRegionClass, (klass), \
+                         TYPE_IOMMU_MEMORY_REGION)
+#define IOMMU_MEMORY_REGION_GET_CLASS(obj) \
+        OBJECT_GET_CLASS(IOMMUMemoryRegionClass, (obj), \
+                         TYPE_IOMMU_MEMORY_REGION)
 
 typedef struct MemoryRegionOps MemoryRegionOps;
 typedef struct MemoryRegionMmio MemoryRegionMmio;
@@ -86,6 +91,8 @@ typedef enum {
     IOMMU_RW   = 3,
 } IOMMUAccessFlags;
 
+#define IOMMU_ACCESS_FLAG(r, w) (((r) ? IOMMU_RO : 0) | ((w) ? IOMMU_WO : 0))
+
 struct IOMMUTLBEntry {
     AddressSpace    *target_as;
     hwaddr           iova;
@@ -108,12 +115,29 @@ typedef enum {
 
 #define IOMMU_NOTIFIER_ALL (IOMMU_NOTIFIER_MAP | IOMMU_NOTIFIER_UNMAP)
 
+struct IOMMUNotifier;
+typedef void (*IOMMUNotify)(struct IOMMUNotifier *notifier,
+                            IOMMUTLBEntry *data);
+
 struct IOMMUNotifier {
-    void (*notify)(struct IOMMUNotifier *notifier, IOMMUTLBEntry *data);
+    IOMMUNotify notify;
     IOMMUNotifierFlag notifier_flags;
+    /* Notify for address space range start <= addr <= end */
+    hwaddr start;
+    hwaddr end;
     QLIST_ENTRY(IOMMUNotifier) node;
 };
 typedef struct IOMMUNotifier IOMMUNotifier;
+
+static inline void iommu_notifier_init(IOMMUNotifier *n, IOMMUNotify fn,
+                                       IOMMUNotifierFlag flags,
+                                       hwaddr start, hwaddr end)
+{
+    n->notify = fn;
+    n->notifier_flags = flags;
+    n->start = start;
+    n->end = end;
+}
 
 /* New-style MMIO accessors can indicate that the transaction failed.
  * A zero (MEMTX_OK) response means success; anything else is a failure
@@ -154,6 +178,15 @@ struct MemoryRegionOps {
                                     uint64_t data,
                                     unsigned size,
                                     MemTxAttrs attrs);
+    /* Instruction execution pre-callback:
+     * @addr is the address of the access relative to the @mr.
+     * @size is the size of the area returned by the callback.
+     * @offset is the location of the pointer inside @mr.
+     *
+     * Returns a pointer to a location which contains guest code.
+     */
+    void *(*request_ptr)(void *opaque, hwaddr addr, unsigned *size,
+                         unsigned *offset);
 
     enum device_endian endianness;
     /* Guest-visible constraints: */
@@ -197,20 +230,30 @@ struct MemoryRegionOps {
     const MemoryRegionMmio old_mmio;
 };
 
-typedef struct MemoryRegionIOMMUOps MemoryRegionIOMMUOps;
+typedef struct IOMMUMemoryRegionClass {
+    /* private */
+    struct DeviceClass parent_class;
 
-struct MemoryRegionIOMMUOps {
-    /* Return a TLB entry that contains a given address. */
-    IOMMUTLBEntry (*translate)(MemoryRegion *iommu, hwaddr addr, bool is_write);
-    IOMMUTLBEntry (*translate_attr)(MemoryRegion *iommu, hwaddr addr,
+    /*
+     * Return a TLB entry that contains a given address. Flag should
+     * be the access permission of this translation operation. We can
+     * set flag to IOMMU_NONE to mean that we don't need any
+     * read/write permission checks, like, when for region replay.
+     */
+    IOMMUTLBEntry (*translate)(IOMMUMemoryRegion *iommu, hwaddr addr,
+                               IOMMUAccessFlags flag);
+    IOMMUTLBEntry (*translate_attr)(IOMMUMemoryRegion *iommu, hwaddr addr,
                                     bool is_write, MemTxAttrs *attr);
+
     /* Returns minimum supported page size */
-    uint64_t (*get_min_page_size)(MemoryRegion *iommu);
+    uint64_t (*get_min_page_size)(IOMMUMemoryRegion *iommu);
     /* Called when IOMMU Notifier flag changed */
-    void (*notify_flag_changed)(MemoryRegion *iommu,
+    void (*notify_flag_changed)(IOMMUMemoryRegion *iommu,
                                 IOMMUNotifierFlag old_flags,
                                 IOMMUNotifierFlag new_flags);
-};
+    /* Set this up to provide customized IOMMU replay function */
+    void (*replay)(IOMMUMemoryRegion *iommu, IOMMUNotifier *notifier);
+} IOMMUMemoryRegionClass;
 
 typedef struct CoalescedMemoryRange CoalescedMemoryRange;
 typedef struct MemoryRegionIoeventfd MemoryRegionIoeventfd;
@@ -229,9 +272,9 @@ struct MemoryRegion {
     bool flush_coalesced_mmio;
     bool global_locking;
     uint8_t dirty_log_mask;
+    bool is_iommu;
     RAMBlock *ram_block;
     Object *owner;
-    const MemoryRegionIOMMUOps *iommu_ops;
 
     const MemoryRegionOps *ops;
     void *opaque;
@@ -255,9 +298,17 @@ struct MemoryRegion {
     const char *name;
     unsigned ioeventfd_nb;
     MemoryRegionIoeventfd *ioeventfds;
+};
+
+struct IOMMUMemoryRegion {
+    MemoryRegion parent_obj;
+
     QLIST_HEAD(, IOMMUNotifier) iommu_notify;
     IOMMUNotifierFlag iommu_notify_flags;
 };
+
+#define IOMMU_NOTIFIER_FOREACH(n, mr) \
+    QLIST_FOREACH((n), &(mr)->iommu_notify, node)
 
 /**
  * MemoryListener: callbacks structure for updates to the physical memory map
@@ -403,20 +454,25 @@ void memory_region_init_io(MemoryRegion *mr,
                            uint64_t size);
 
 /**
- * memory_region_init_ram:  Initialize RAM memory region.  Accesses into the
- *                          region will modify memory directly.
+ * memory_region_init_ram_nomigrate:  Initialize RAM memory region.  Accesses
+ *                                    into the region will modify memory
+ *                                    directly.
  *
  * @mr: the #MemoryRegion to be initialized.
  * @owner: the object that tracks the region's reference count
- * @name: the name of the region.
+ * @name: Region name, becomes part of RAMBlock name used in migration stream
+ *        must be unique within any device
  * @size: size of the region.
  * @errp: pointer to Error*, to store an error if it happens.
+ *
+ * Note that this function does not do anything to cause the data in the
+ * RAM memory region to be migrated; that is the responsibility of the caller.
  */
-void memory_region_init_ram(MemoryRegion *mr,
-                            struct Object *owner,
-                            const char *name,
-                            uint64_t size,
-                            Error **errp);
+void memory_region_init_ram_nomigrate(MemoryRegion *mr,
+                                      struct Object *owner,
+                                      const char *name,
+                                      uint64_t size,
+                                      Error **errp);
 
 /**
  * memory_region_init_resizeable_ram:  Initialize memory region with resizeable
@@ -427,11 +483,15 @@ void memory_region_init_ram(MemoryRegion *mr,
  *
  * @mr: the #MemoryRegion to be initialized.
  * @owner: the object that tracks the region's reference count
- * @name: the name of the region.
+ * @name: Region name, becomes part of RAMBlock name used in migration stream
+ *        must be unique within any device
  * @size: used size of the region.
  * @max_size: max size of the region.
  * @resized: callback to notify owner about used size change.
  * @errp: pointer to Error*, to store an error if it happens.
+ *
+ * Note that this function does not do anything to cause the data in the
+ * RAM memory region to be migrated; that is the responsibility of the caller.
  */
 void memory_region_init_resizeable_ram(MemoryRegion *mr,
                                        struct Object *owner,
@@ -449,11 +509,15 @@ void memory_region_init_resizeable_ram(MemoryRegion *mr,
  *
  * @mr: the #MemoryRegion to be initialized.
  * @owner: the object that tracks the region's reference count
- * @name: the name of the region.
+ * @name: Region name, becomes part of RAMBlock name used in migration stream
+ *        must be unique within any device
  * @size: size of the region.
  * @share: %true if memory must be mmaped with the MAP_SHARED flag
  * @path: the path in which to allocate the RAM.
  * @errp: pointer to Error*, to store an error if it happens.
+ *
+ * Note that this function does not do anything to cause the data in the
+ * RAM memory region to be migrated; that is the responsibility of the caller.
  */
 void memory_region_init_ram_from_file(MemoryRegion *mr,
                                       struct Object *owner,
@@ -462,6 +526,29 @@ void memory_region_init_ram_from_file(MemoryRegion *mr,
                                       bool share,
                                       const char *path,
                                       Error **errp);
+
+/**
+ * memory_region_init_ram_from_fd:  Initialize RAM memory region with a
+ *                                  mmap-ed backend.
+ *
+ * @mr: the #MemoryRegion to be initialized.
+ * @owner: the object that tracks the region's reference count
+ * @name: the name of the region.
+ * @size: size of the region.
+ * @share: %true if memory must be mmaped with the MAP_SHARED flag
+ * @fd: the fd to mmap.
+ * @errp: pointer to Error*, to store an error if it happens.
+ *
+ * Note that this function does not do anything to cause the data in the
+ * RAM memory region to be migrated; that is the responsibility of the caller.
+ */
+void memory_region_init_ram_from_fd(MemoryRegion *mr,
+                                    struct Object *owner,
+                                    const char *name,
+                                    uint64_t size,
+                                    bool share,
+                                    int fd,
+                                    Error **errp);
 #endif
 
 /**
@@ -471,9 +558,13 @@ void memory_region_init_ram_from_file(MemoryRegion *mr,
  *
  * @mr: the #MemoryRegion to be initialized.
  * @owner: the object that tracks the region's reference count
- * @name: the name of the region.
+ * @name: Region name, becomes part of RAMBlock name used in migration stream
+ *        must be unique within any device
  * @size: size of the region.
  * @ptr: memory to be mapped; must contain at least @size bytes.
+ *
+ * Note that this function does not do anything to cause the data in the
+ * RAM memory region to be migrated; that is the responsibility of the caller.
  */
 void memory_region_init_ram_ptr(MemoryRegion *mr,
                                 struct Object *owner,
@@ -498,6 +589,10 @@ void memory_region_init_ram_ptr(MemoryRegion *mr,
  * @name: the name of the region.
  * @size: size of the region.
  * @ptr: memory to be mapped; must contain at least @size bytes.
+ *
+ * Note that this function does not do anything to cause the data in the
+ * RAM memory region to be migrated; that is the responsibility of the caller.
+ * (For RAM device memory regions, migrating the contents rarely makes sense.)
  */
 void memory_region_init_ram_device_ptr(MemoryRegion *mr,
                                        struct Object *owner,
@@ -525,42 +620,52 @@ void memory_region_init_alias(MemoryRegion *mr,
                               uint64_t size);
 
 /**
- * memory_region_init_rom: Initialize a ROM memory region.
+ * memory_region_init_rom_nomigrate: Initialize a ROM memory region.
  *
- * This has the same effect as calling memory_region_init_ram()
+ * This has the same effect as calling memory_region_init_ram_nomigrate()
  * and then marking the resulting region read-only with
  * memory_region_set_readonly().
  *
+ * Note that this function does not do anything to cause the data in the
+ * RAM side of the memory region to be migrated; that is the responsibility
+ * of the caller.
+ *
  * @mr: the #MemoryRegion to be initialized.
  * @owner: the object that tracks the region's reference count
- * @name: the name of the region.
+ * @name: Region name, becomes part of RAMBlock name used in migration stream
+ *        must be unique within any device
  * @size: size of the region.
  * @errp: pointer to Error*, to store an error if it happens.
  */
-void memory_region_init_rom(MemoryRegion *mr,
-                            struct Object *owner,
-                            const char *name,
-                            uint64_t size,
-                            Error **errp);
+void memory_region_init_rom_nomigrate(MemoryRegion *mr,
+                                      struct Object *owner,
+                                      const char *name,
+                                      uint64_t size,
+                                      Error **errp);
 
 /**
- * memory_region_init_rom_device:  Initialize a ROM memory region.  Writes are
- *                                 handled via callbacks.
+ * memory_region_init_rom_device_nomigrate:  Initialize a ROM memory region.
+ *                                 Writes are handled via callbacks.
+ *
+ * Note that this function does not do anything to cause the data in the
+ * RAM side of the memory region to be migrated; that is the responsibility
+ * of the caller.
  *
  * @mr: the #MemoryRegion to be initialized.
  * @owner: the object that tracks the region's reference count
  * @ops: callbacks for write access handling (must not be NULL).
- * @name: the name of the region.
+ * @name: Region name, becomes part of RAMBlock name used in migration stream
+ *        must be unique within any device
  * @size: size of the region.
  * @errp: pointer to Error*, to store an error if it happens.
  */
-void memory_region_init_rom_device(MemoryRegion *mr,
-                                   struct Object *owner,
-                                   const MemoryRegionOps *ops,
-                                   void *opaque,
-                                   const char *name,
-                                   uint64_t size,
-                                   Error **errp);
+void memory_region_init_rom_device_nomigrate(MemoryRegion *mr,
+                                             struct Object *owner,
+                                             const MemoryRegionOps *ops,
+                                             void *opaque,
+                                             const char *name,
+                                             uint64_t size,
+                                             Error **errp);
 
 /**
  * memory_region_init_reservation: Initialize a memory region that reserves
@@ -586,23 +691,114 @@ static inline void memory_region_init_reservation(MemoryRegion *mr,
 }
 
 /**
- * memory_region_init_iommu: Initialize a memory region that translates
- * addresses
+ * memory_region_init_iommu: Initialize a memory region of a custom type
+ * that translates addresses
  *
  * An IOMMU region translates addresses and forwards accesses to a target
  * memory region.
  *
- * @mr: the #MemoryRegion to be initialized
+ * @typename: QOM class name
+ * @_iommu_mr: the #IOMMUMemoryRegion to be initialized
+ * @instance_size: the IOMMUMemoryRegion subclass instance size
  * @owner: the object that tracks the region's reference count
  * @ops: a function that translates addresses into the @target region
  * @name: used for debugging; not visible to the user or ABI
  * @size: size of the region.
  */
-void memory_region_init_iommu(MemoryRegion *mr,
-                              struct Object *owner,
-                              const MemoryRegionIOMMUOps *ops,
+void memory_region_init_iommu(void *_iommu_mr,
+                              size_t instance_size,
+                              const char *mrtypename,
+                              Object *owner,
                               const char *name,
                               uint64_t size);
+
+/**
+ * memory_region_init_ram - Initialize RAM memory region.  Accesses into the
+ *                          region will modify memory directly.
+ *
+ * @mr: the #MemoryRegion to be initialized
+ * @owner: the object that tracks the region's reference count (must be
+ *         TYPE_DEVICE or a subclass of TYPE_DEVICE, or NULL)
+ * @name: name of the memory region
+ * @size: size of the region in bytes
+ * @errp: pointer to Error*, to store an error if it happens.
+ *
+ * This function allocates RAM for a board model or device, and
+ * arranges for it to be migrated (by calling vmstate_register_ram()
+ * if @owner is a DeviceState, or vmstate_register_ram_global() if
+ * @owner is NULL).
+ *
+ * TODO: Currently we restrict @owner to being either NULL (for
+ * global RAM regions with no owner) or devices, so that we can
+ * give the RAM block a unique name for migration purposes.
+ * We should lift this restriction and allow arbitrary Objects.
+ * If you pass a non-NULL non-device @owner then we will assert.
+ */
+void memory_region_init_ram(MemoryRegion *mr,
+                            struct Object *owner,
+                            const char *name,
+                            uint64_t size,
+                            Error **errp);
+
+/**
+ * memory_region_init_rom: Initialize a ROM memory region.
+ *
+ * This has the same effect as calling memory_region_init_ram()
+ * and then marking the resulting region read-only with
+ * memory_region_set_readonly(). This includes arranging for the
+ * contents to be migrated.
+ *
+ * TODO: Currently we restrict @owner to being either NULL (for
+ * global RAM regions with no owner) or devices, so that we can
+ * give the RAM block a unique name for migration purposes.
+ * We should lift this restriction and allow arbitrary Objects.
+ * If you pass a non-NULL non-device @owner then we will assert.
+ *
+ * @mr: the #MemoryRegion to be initialized.
+ * @owner: the object that tracks the region's reference count
+ * @name: Region name, becomes part of RAMBlock name used in migration stream
+ *        must be unique within any device
+ * @size: size of the region.
+ * @errp: pointer to Error*, to store an error if it happens.
+ */
+void memory_region_init_rom(MemoryRegion *mr,
+                            struct Object *owner,
+                            const char *name,
+                            uint64_t size,
+                            Error **errp);
+
+/**
+ * memory_region_init_rom_device:  Initialize a ROM memory region.
+ *                                 Writes are handled via callbacks.
+ *
+ * This function initializes a memory region backed by RAM for reads
+ * and callbacks for writes, and arranges for the RAM backing to
+ * be migrated (by calling vmstate_register_ram()
+ * if @owner is a DeviceState, or vmstate_register_ram_global() if
+ * @owner is NULL).
+ *
+ * TODO: Currently we restrict @owner to being either NULL (for
+ * global RAM regions with no owner) or devices, so that we can
+ * give the RAM block a unique name for migration purposes.
+ * We should lift this restriction and allow arbitrary Objects.
+ * If you pass a non-NULL non-device @owner then we will assert.
+ *
+ * @mr: the #MemoryRegion to be initialized.
+ * @owner: the object that tracks the region's reference count
+ * @ops: callbacks for write access handling (must not be NULL).
+ * @name: Region name, becomes part of RAMBlock name used in migration stream
+ *        must be unique within any device
+ * @size: size of the region.
+ * @errp: pointer to Error*, to store an error if it happens.
+ */
+void memory_region_init_rom_device(MemoryRegion *mr,
+                                   struct Object *owner,
+                                   const MemoryRegionOps *ops,
+                                   void *opaque,
+                                   const char *name,
+                                   uint64_t size,
+                                   Error **errp);
+
 
 /**
  * memory_region_owner: get a memory region's owner.
@@ -653,17 +849,40 @@ static inline bool memory_region_is_romd(MemoryRegion *mr)
 }
 
 /**
- * memory_region_is_iommu: check whether a memory region is an iommu
+ * memory_region_get_iommu: check whether a memory region is an iommu
  *
- * Returns %true is a memory region is an iommu.
+ * Returns pointer to IOMMUMemoryRegion if a memory region is an iommu,
+ * otherwise NULL.
  *
  * @mr: the memory region being queried
  */
-static inline bool memory_region_is_iommu(MemoryRegion *mr)
+static inline IOMMUMemoryRegion *memory_region_get_iommu(MemoryRegion *mr)
 {
-    return mr->iommu_ops;
+    if (mr->alias) {
+        return memory_region_get_iommu(mr->alias);
+    }
+    if (mr->is_iommu) {
+        return (IOMMUMemoryRegion *) mr;
+    }
+    return NULL;
 }
 
+/**
+ * memory_region_get_iommu_class_nocheck: returns iommu memory region class
+ *   if an iommu or NULL if not
+ *
+ * Returns pointer to IOMMUMemoryRegioniClass if a memory region is an iommu,
+ * otherwise NULL. This is fast path avoinding QOM checking, use with caution.
+ *
+ * @mr: the memory region being queried
+ */
+static inline IOMMUMemoryRegionClass *memory_region_get_iommu_class_nocheck(
+        IOMMUMemoryRegion *iommu_mr)
+{
+    return (IOMMUMemoryRegionClass *) (((Object *)iommu_mr)->class);
+}
+
+#define memory_region_is_iommu(mr) (memory_region_get_iommu(mr) != NULL)
 
 /**
  * memory_region_iommu_get_min_page_size: get minimum supported page size
@@ -671,9 +890,9 @@ static inline bool memory_region_is_iommu(MemoryRegion *mr)
  *
  * Returns minimum supported page size for an iommu.
  *
- * @mr: the memory region being queried
+ * @iommu_mr: the memory region being queried
  */
-uint64_t memory_region_iommu_get_min_page_size(MemoryRegion *mr);
+uint64_t memory_region_iommu_get_min_page_size(IOMMUMemoryRegion *iommu_mr);
 
 /**
  * memory_region_notify_iommu: notify a change in an IOMMU translation entry.
@@ -687,13 +906,28 @@ uint64_t memory_region_iommu_get_min_page_size(MemoryRegion *mr);
  * Note: for any IOMMU implementation, an in-place mapping change
  * should be notified with an UNMAP followed by a MAP.
  *
- * @mr: the memory region that was changed
+ * @iommu_mr: the memory region that was changed
  * @entry: the new entry in the IOMMU translation table.  The entry
  *         replaces all old entries for the same virtual I/O address range.
  *         Deleted entries have .@perm == 0.
  */
-void memory_region_notify_iommu(MemoryRegion *mr,
+void memory_region_notify_iommu(IOMMUMemoryRegion *iommu_mr,
                                 IOMMUTLBEntry entry);
+
+/**
+ * memory_region_notify_one: notify a change in an IOMMU translation
+ *                           entry to a single notifier
+ *
+ * This works just like memory_region_notify_iommu(), but it only
+ * notifies a specific notifier, not all of them.
+ *
+ * @notifier: the notifier to be notified
+ * @entry: the new entry in the IOMMU translation table.  The entry
+ *         replaces all old entries for the same virtual I/O address range.
+ *         Deleted entries have .@perm == 0.
+ */
+void memory_region_notify_one(IOMMUNotifier *notifier,
+                              IOMMUTLBEntry *entry);
 
 /**
  * memory_region_register_iommu_notifier: register a notifier for changes to
@@ -712,13 +946,18 @@ void memory_region_register_iommu_notifier(MemoryRegion *mr,
  * a notifier with the minimum page granularity returned by
  * mr->iommu_ops->get_page_size().
  *
- * @mr: the memory region to observe
+ * @iommu_mr: the memory region to observe
  * @n: the notifier to which to replay iommu mappings
- * @is_write: Whether to treat the replay as a translate "write"
- *     through the iommu
  */
-void memory_region_iommu_replay(MemoryRegion *mr, IOMMUNotifier *n,
-                                bool is_write);
+void memory_region_iommu_replay(IOMMUMemoryRegion *iommu_mr, IOMMUNotifier *n);
+
+/**
+ * memory_region_iommu_replay_all: replay existing IOMMU translations
+ * to all the notifiers registered.
+ *
+ * @iommu_mr: the memory region to observe
+ */
+void memory_region_iommu_replay_all(IOMMUMemoryRegion *iommu_mr);
 
 /**
  * memory_region_unregister_iommu_notifier: unregister a notifier for
@@ -783,17 +1022,6 @@ static inline bool memory_region_is_rom(MemoryRegion *mr)
  * @mr: the RAM or alias memory region being queried.
  */
 int memory_region_get_fd(MemoryRegion *mr);
-
-/**
- * memory_region_set_fd: Mark a RAM memory region as backed by a
- * file descriptor.
- *
- * This function is typically used after memory_region_init_ram_ptr().
- *
- * @mr: the memory region being queried.
- * @fd: the file descriptor that backs @mr.
- */
-void memory_region_set_fd(MemoryRegion *mr, int fd);
 
 /**
  * memory_region_from_host: Convert a pointer into a RAM memory region
@@ -899,6 +1127,53 @@ void memory_region_set_dirty(MemoryRegion *mr, hwaddr addr,
  */
 bool memory_region_test_and_clear_dirty(MemoryRegion *mr, hwaddr addr,
                                         hwaddr size, unsigned client);
+
+/**
+ * memory_region_snapshot_and_clear_dirty: Get a snapshot of the dirty
+ *                                         bitmap and clear it.
+ *
+ * Creates a snapshot of the dirty bitmap, clears the dirty bitmap and
+ * returns the snapshot.  The snapshot can then be used to query dirty
+ * status, using memory_region_snapshot_get_dirty.  Unlike
+ * memory_region_test_and_clear_dirty this allows to query the same
+ * page multiple times, which is especially useful for display updates
+ * where the scanlines often are not page aligned.
+ *
+ * The dirty bitmap region which gets copyed into the snapshot (and
+ * cleared afterwards) can be larger than requested.  The boundaries
+ * are rounded up/down so complete bitmap longs (covering 64 pages on
+ * 64bit hosts) can be copied over into the bitmap snapshot.  Which
+ * isn't a problem for display updates as the extra pages are outside
+ * the visible area, and in case the visible area changes a full
+ * display redraw is due anyway.  Should other use cases for this
+ * function emerge we might have to revisit this implementation
+ * detail.
+ *
+ * Use g_free to release DirtyBitmapSnapshot.
+ *
+ * @mr: the memory region being queried.
+ * @addr: the address (relative to the start of the region) being queried.
+ * @size: the size of the range being queried.
+ * @client: the user of the logging information; typically %DIRTY_MEMORY_VGA.
+ */
+DirtyBitmapSnapshot *memory_region_snapshot_and_clear_dirty(MemoryRegion *mr,
+                                                            hwaddr addr,
+                                                            hwaddr size,
+                                                            unsigned client);
+
+/**
+ * memory_region_snapshot_get_dirty: Check whether a range of bytes is dirty
+ *                                   in the specified dirty bitmap snapshot.
+ *
+ * @mr: the memory region being queried.
+ * @snap: the dirty bitmap snapshot
+ * @addr: the address (relative to the start of the region) being queried.
+ * @size: the size of the range being queried.
+ */
+bool memory_region_snapshot_get_dirty(MemoryRegion *mr,
+                                      DirtyBitmapSnapshot *snap,
+                                      hwaddr addr, hwaddr size);
+
 /**
  * memory_region_sync_dirty_bitmap: Synchronize a region's dirty bitmap with
  *                                  any external TLBs (e.g. kvm)
@@ -1284,7 +1559,33 @@ void memory_global_dirty_log_start(void);
  */
 void memory_global_dirty_log_stop(void);
 
-void mtree_info(fprintf_function mon_printf, void *f);
+void mtree_info(fprintf_function mon_printf, void *f, bool flatview);
+
+/**
+ * memory_region_request_mmio_ptr: request a pointer to an mmio
+ * MemoryRegion. If it is possible map a RAM MemoryRegion with this pointer.
+ * When the device wants to invalidate the pointer it will call
+ * memory_region_invalidate_mmio_ptr.
+ *
+ * @mr: #MemoryRegion to check
+ * @addr: address within that region
+ *
+ * Returns true on success, false otherwise.
+ */
+bool memory_region_request_mmio_ptr(MemoryRegion *mr, hwaddr addr);
+
+/**
+ * memory_region_invalidate_mmio_ptr: invalidate the pointer to an mmio
+ * previously requested.
+ * In the end that means that if something wants to execute from this area it
+ * will need to request the pointer again.
+ *
+ * @mr: #MemoryRegion associated to the pointer.
+ * @addr: address within that region
+ * @size: size of that area.
+ */
+void memory_region_invalidate_mmio_ptr(MemoryRegion *mr, hwaddr offset,
+                                       unsigned size);
 
 /**
  * memory_region_dispatch_read: perform a read directly to the specified
@@ -1437,6 +1738,145 @@ void address_space_stq_le(AddressSpace *as, hwaddr addr, uint64_t val,
 void address_space_stq_be(AddressSpace *as, hwaddr addr, uint64_t val,
                             MemTxAttrs attrs, MemTxResult *result);
 
+uint32_t ldub_phys(AddressSpace *as, hwaddr addr);
+uint32_t lduw_le_phys(AddressSpace *as, hwaddr addr);
+uint32_t lduw_be_phys(AddressSpace *as, hwaddr addr);
+uint32_t ldl_le_phys(AddressSpace *as, hwaddr addr);
+uint32_t ldl_be_phys(AddressSpace *as, hwaddr addr);
+uint64_t ldq_le_phys(AddressSpace *as, hwaddr addr);
+uint64_t ldq_be_phys(AddressSpace *as, hwaddr addr);
+void stb_phys(AddressSpace *as, hwaddr addr, uint32_t val);
+void stw_le_phys(AddressSpace *as, hwaddr addr, uint32_t val);
+void stw_be_phys(AddressSpace *as, hwaddr addr, uint32_t val);
+void stl_le_phys(AddressSpace *as, hwaddr addr, uint32_t val);
+void stl_be_phys(AddressSpace *as, hwaddr addr, uint32_t val);
+void stq_le_phys(AddressSpace *as, hwaddr addr, uint64_t val);
+void stq_be_phys(AddressSpace *as, hwaddr addr, uint64_t val);
+
+struct MemoryRegionCache {
+    hwaddr xlat;
+    hwaddr len;
+    AddressSpace *as;
+};
+
+#define MEMORY_REGION_CACHE_INVALID ((MemoryRegionCache) { .as = NULL })
+
+/* address_space_cache_init: prepare for repeated access to a physical
+ * memory region
+ *
+ * @cache: #MemoryRegionCache to be filled
+ * @as: #AddressSpace to be accessed
+ * @addr: address within that address space
+ * @len: length of buffer
+ * @is_write: indicates the transfer direction
+ *
+ * Will only work with RAM, and may map a subset of the requested range by
+ * returning a value that is less than @len.  On failure, return a negative
+ * errno value.
+ *
+ * Because it only works with RAM, this function can be used for
+ * read-modify-write operations.  In this case, is_write should be %true.
+ *
+ * Note that addresses passed to the address_space_*_cached functions
+ * are relative to @addr.
+ */
+int64_t address_space_cache_init(MemoryRegionCache *cache,
+                                 AddressSpace *as,
+                                 hwaddr addr,
+                                 hwaddr len,
+                                 bool is_write);
+
+/**
+ * address_space_cache_invalidate: complete a write to a #MemoryRegionCache
+ *
+ * @cache: The #MemoryRegionCache to operate on.
+ * @addr: The first physical address that was written, relative to the
+ * address that was passed to @address_space_cache_init.
+ * @access_len: The number of bytes that were written starting at @addr.
+ */
+void address_space_cache_invalidate(MemoryRegionCache *cache,
+                                    hwaddr addr,
+                                    hwaddr access_len);
+
+/**
+ * address_space_cache_destroy: free a #MemoryRegionCache
+ *
+ * @cache: The #MemoryRegionCache whose memory should be released.
+ */
+void address_space_cache_destroy(MemoryRegionCache *cache);
+
+/* address_space_ld*_cached: load from a cached #MemoryRegion
+ * address_space_st*_cached: store into a cached #MemoryRegion
+ *
+ * These functions perform a load or store of the byte, word,
+ * longword or quad to the specified address.  The address is
+ * a physical address in the AddressSpace, but it must lie within
+ * a #MemoryRegion that was mapped with address_space_cache_init.
+ *
+ * The _le suffixed functions treat the data as little endian;
+ * _be indicates big endian; no suffix indicates "same endianness
+ * as guest CPU".
+ *
+ * The "guest CPU endianness" accessors are deprecated for use outside
+ * target-* code; devices should be CPU-agnostic and use either the LE
+ * or the BE accessors.
+ *
+ * @cache: previously initialized #MemoryRegionCache to be accessed
+ * @addr: address within the address space
+ * @val: data value, for stores
+ * @attrs: memory transaction attributes
+ * @result: location to write the success/failure of the transaction;
+ *   if NULL, this information is discarded
+ */
+uint32_t address_space_ldub_cached(MemoryRegionCache *cache, hwaddr addr,
+                            MemTxAttrs attrs, MemTxResult *result);
+uint32_t address_space_lduw_le_cached(MemoryRegionCache *cache, hwaddr addr,
+                            MemTxAttrs attrs, MemTxResult *result);
+uint32_t address_space_lduw_be_cached(MemoryRegionCache *cache, hwaddr addr,
+                            MemTxAttrs attrs, MemTxResult *result);
+uint32_t address_space_ldl_le_cached(MemoryRegionCache *cache, hwaddr addr,
+                            MemTxAttrs attrs, MemTxResult *result);
+uint32_t address_space_ldl_be_cached(MemoryRegionCache *cache, hwaddr addr,
+                            MemTxAttrs attrs, MemTxResult *result);
+uint64_t address_space_ldq_le_cached(MemoryRegionCache *cache, hwaddr addr,
+                            MemTxAttrs attrs, MemTxResult *result);
+uint64_t address_space_ldq_be_cached(MemoryRegionCache *cache, hwaddr addr,
+                            MemTxAttrs attrs, MemTxResult *result);
+void address_space_stb_cached(MemoryRegionCache *cache, hwaddr addr, uint32_t val,
+                            MemTxAttrs attrs, MemTxResult *result);
+void address_space_stw_le_cached(MemoryRegionCache *cache, hwaddr addr, uint32_t val,
+                            MemTxAttrs attrs, MemTxResult *result);
+void address_space_stw_be_cached(MemoryRegionCache *cache, hwaddr addr, uint32_t val,
+                            MemTxAttrs attrs, MemTxResult *result);
+void address_space_stl_le_cached(MemoryRegionCache *cache, hwaddr addr, uint32_t val,
+                            MemTxAttrs attrs, MemTxResult *result);
+void address_space_stl_be_cached(MemoryRegionCache *cache, hwaddr addr, uint32_t val,
+                            MemTxAttrs attrs, MemTxResult *result);
+void address_space_stq_le_cached(MemoryRegionCache *cache, hwaddr addr, uint64_t val,
+                            MemTxAttrs attrs, MemTxResult *result);
+void address_space_stq_be_cached(MemoryRegionCache *cache, hwaddr addr, uint64_t val,
+                            MemTxAttrs attrs, MemTxResult *result);
+
+uint32_t ldub_phys_cached(MemoryRegionCache *cache, hwaddr addr);
+uint32_t lduw_le_phys_cached(MemoryRegionCache *cache, hwaddr addr);
+uint32_t lduw_be_phys_cached(MemoryRegionCache *cache, hwaddr addr);
+uint32_t ldl_le_phys_cached(MemoryRegionCache *cache, hwaddr addr);
+uint32_t ldl_be_phys_cached(MemoryRegionCache *cache, hwaddr addr);
+uint64_t ldq_le_phys_cached(MemoryRegionCache *cache, hwaddr addr);
+uint64_t ldq_be_phys_cached(MemoryRegionCache *cache, hwaddr addr);
+void stb_phys_cached(MemoryRegionCache *cache, hwaddr addr, uint32_t val);
+void stw_le_phys_cached(MemoryRegionCache *cache, hwaddr addr, uint32_t val);
+void stw_be_phys_cached(MemoryRegionCache *cache, hwaddr addr, uint32_t val);
+void stl_le_phys_cached(MemoryRegionCache *cache, hwaddr addr, uint32_t val);
+void stl_be_phys_cached(MemoryRegionCache *cache, hwaddr addr, uint32_t val);
+void stq_le_phys_cached(MemoryRegionCache *cache, hwaddr addr, uint64_t val);
+void stq_be_phys_cached(MemoryRegionCache *cache, hwaddr addr, uint64_t val);
+/* address_space_get_iotlb_entry: translate an address into an IOTLB
+ * entry. Should be called from an RCU critical section.
+ */
+IOMMUTLBEntry address_space_get_iotlb_entry(AddressSpace *as, hwaddr addr,
+                                            bool is_write);
+
 /* address_space_translate: translate an address range into an address space
  * into a MemoryRegion and an address range into that section.  Should be
  * called from an RCU critical section, to avoid that the last reference
@@ -1565,6 +2005,38 @@ MemTxResult address_space_read(AddressSpace *as, hwaddr addr, MemTxAttrs attrs,
         result = address_space_read_full(as, addr, attrs, buf, len);
     }
     return result;
+}
+
+/**
+ * address_space_read_cached: read from a cached RAM region
+ *
+ * @cache: Cached region to be addressed
+ * @addr: address relative to the base of the RAM region
+ * @buf: buffer with the data transferred
+ * @len: length of the data transferred
+ */
+static inline void
+address_space_read_cached(MemoryRegionCache *cache, hwaddr addr,
+                          void *buf, int len)
+{
+    assert(addr < cache->len && len <= cache->len - addr);
+    address_space_read(cache->as, cache->xlat + addr, MEMTXATTRS_UNSPECIFIED, buf, len);
+}
+
+/**
+ * address_space_write_cached: write to a cached RAM region
+ *
+ * @cache: Cached region to be addressed
+ * @addr: address relative to the base of the RAM region
+ * @buf: buffer with the data transferred
+ * @len: length of the data transferred
+ */
+static inline void
+address_space_write_cached(MemoryRegionCache *cache, hwaddr addr,
+                           void *buf, int len)
+{
+    assert(addr < cache->len && len <= cache->len - addr);
+    address_space_write(cache->as, cache->xlat + addr, MEMTXATTRS_UNSPECIFIED, buf, len);
 }
 
 #endif

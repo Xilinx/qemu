@@ -61,6 +61,9 @@ struct Visitor
     /* Must be set */
     GenericList *(*next_list)(Visitor *v, GenericList *tail, size_t size);
 
+    /* Optional; intended for input visitors */
+    void (*check_list)(Visitor *v, Error **errp);
+
     /* Must be set */
     void (*end_list)(Visitor *v, void **list);
 
@@ -68,7 +71,7 @@ struct Visitor
      * optional for output visitors. */
     void (*start_alternate)(Visitor *v, const char *name,
                             GenericAlternate **obj, size_t size,
-                            bool promote_int, Error **errp);
+                            Error **errp);
 
     /* Optional, needed for dealloc visitor */
     void (*end_alternate)(Visitor *v, void **obj);
@@ -100,10 +103,11 @@ struct Visitor
                      Error **errp);
 
     /* Must be set to visit explicit null values.  */
-    void (*type_null)(Visitor *v, const char *name, Error **errp);
+    void (*type_null)(Visitor *v, const char *name, QNull **obj,
+                      Error **errp);
 
-    /* Must be set for input visitors, optional otherwise.  The core
-     * takes care of the return type in the public interface. */
+    /* Must be set for input visitors to visit structs, optional otherwise.
+       The core takes care of the return type in the public interface. */
     void (*optional)(Visitor *v, const char *name, bool *present);
 
     /* Must be set */

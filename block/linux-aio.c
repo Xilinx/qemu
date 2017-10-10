@@ -54,10 +54,10 @@ struct LinuxAioState {
     io_context_t ctx;
     EventNotifier e;
 
-    /* io queue for submit at batch */
+    /* io queue for submit at batch.  Protected by AioContext lock. */
     LaioQueue io_q;
 
-    /* I/O completion processing */
+    /* I/O completion processing.  Only runs in I/O thread.  */
     QEMUBH *completion_bh;
     int event_idx;
     int event_max;
@@ -100,7 +100,7 @@ static void qemu_laio_process_completion(struct qemu_laiocb *laiocb)
          * that!
          */
         if (!qemu_coroutine_entered(laiocb->co)) {
-            qemu_coroutine_enter(laiocb->co);
+            aio_co_wake(laiocb->co);
         }
     } else {
         laiocb->common.cb(laiocb->common.opaque, ret);
@@ -234,9 +234,12 @@ static void qemu_laio_process_completions(LinuxAioState *s)
 static void qemu_laio_process_completions_and_submit(LinuxAioState *s)
 {
     qemu_laio_process_completions(s);
+
+    aio_context_acquire(s->aio_context);
     if (!s->io_q.plugged && !QSIMPLEQ_EMPTY(&s->io_q.pending)) {
         ioq_submit(s);
     }
+    aio_context_release(s->aio_context);
 }
 
 static void qemu_laio_completion_bh(void *opaque)
@@ -253,6 +256,20 @@ static void qemu_laio_completion_cb(EventNotifier *e)
     if (event_notifier_test_and_clear(&s->e)) {
         qemu_laio_process_completions_and_submit(s);
     }
+}
+
+static bool qemu_laio_poll_cb(void *opaque)
+{
+    EventNotifier *e = opaque;
+    LinuxAioState *s = container_of(e, LinuxAioState, e);
+    struct io_event *events;
+
+    if (!io_getevents_peek(s->ctx, &events)) {
+        return false;
+    }
+
+    qemu_laio_process_completions_and_submit(s);
+    return true;
 }
 
 static void laio_cancel(BlockAIOCB *blockacb)
@@ -439,8 +456,9 @@ BlockAIOCB *laio_submit(BlockDriverState *bs, LinuxAioState *s, int fd,
 
 void laio_detach_aio_context(LinuxAioState *s, AioContext *old_context)
 {
-    aio_set_event_notifier(old_context, &s->e, false, NULL);
+    aio_set_event_notifier(old_context, &s->e, false, NULL, NULL);
     qemu_bh_delete(s->completion_bh);
+    s->aio_context = NULL;
 }
 
 void laio_attach_aio_context(LinuxAioState *s, AioContext *new_context)
@@ -448,7 +466,8 @@ void laio_attach_aio_context(LinuxAioState *s, AioContext *new_context)
     s->aio_context = new_context;
     s->completion_bh = aio_bh_new(new_context, qemu_laio_completion_bh, s);
     aio_set_event_notifier(new_context, &s->e, false,
-                           qemu_laio_completion_cb);
+                           qemu_laio_completion_cb,
+                           qemu_laio_poll_cb);
 }
 
 LinuxAioState *laio_init(void)

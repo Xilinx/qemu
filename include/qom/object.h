@@ -432,7 +432,7 @@ struct Object
  * @class_base_init: This function is called for all base classes after all
  *   parent class initialization has occurred, but before the class itself
  *   is initialized.  This is the function to use to undo the effects of
- *   memcpy from the parent class to the descendents.
+ *   memcpy from the parent class to the descendants.
  * @class_finalize: This function is called during class destruction and is
  *   meant to release and dynamic parameters allocated by @class_init.
  * @class_data: Data to pass to the @class_init, @class_base_init and
@@ -587,18 +587,6 @@ struct InterfaceClass
 Object *object_new(const char *typename);
 
 /**
- * object_new_with_type:
- * @type: The type of the object to instantiate.
- *
- * This function will initialize a new object using heap allocated memory.
- * The returned object has a reference count of 1, and will be freed when
- * the last reference is dropped.
- *
- * Returns: The newly allocated and instantiated object.
- */
-Object *object_new_with_type(Type type);
-
-/**
  * object_new_with_props:
  * @typename:  The name of the type of the object to instantiate.
  * @parent: the parent object
@@ -727,18 +715,6 @@ int object_set_propv(Object *obj,
                      va_list vargs);
 
 /**
- * object_initialize_with_type:
- * @data: A pointer to the memory to be used for the object.
- * @size: The maximum size available at @data for the object.
- * @type: The type of the object to instantiate.
- *
- * This function will initialize an object.  The memory for the object should
- * have already been allocated.  The returned object has a reference count of 1,
- * and will be finalized when the last reference is dropped.
- */
-void object_initialize_with_type(void *data, size_t size, Type type);
-
-/**
  * object_initialize:
  * @obj: A pointer to the memory to be used for the object.
  * @size: The maximum size available at @obj for the object.
@@ -788,7 +764,7 @@ ObjectClass *object_get_class(Object *obj);
  *
  * Returns: The QOM typename of @obj.
  */
-const char *object_get_typename(Object *obj);
+const char *object_get_typename(const Object *obj);
 
 /**
  * type_register_static:
@@ -1118,6 +1094,29 @@ int64_t object_property_get_int(Object *obj, const char *name,
                                 Error **errp);
 
 /**
+ * object_property_set_uint:
+ * @value: the value to be written to the property
+ * @name: the name of the property
+ * @errp: returns an error if this function fails
+ *
+ * Writes an unsigned integer value to a property.
+ */
+void object_property_set_uint(Object *obj, uint64_t value,
+                              const char *name, Error **errp);
+
+/**
+ * object_property_get_uint:
+ * @obj: the object
+ * @name: the name of the property
+ * @errp: returns an error if this function fails
+ *
+ * Returns: the value of the property, converted to an unsigned integer, or 0
+ * an error occurs (including when the property value is not an integer).
+ */
+uint64_t object_property_get_uint(Object *obj, const char *name,
+                                  Error **errp);
+
+/**
  * object_property_get_enum:
  * @obj: the object
  * @name: the name of the property
@@ -1320,7 +1319,7 @@ typedef enum {
  * callback function.  It allows the link property to be set and never returns
  * an error.
  */
-void object_property_allow_set_link(Object *, const char *,
+void object_property_allow_set_link(const Object *, const char *,
                                     Object *, Error **);
 
 /**
@@ -1353,7 +1352,7 @@ void object_property_allow_set_link(Object *, const char *,
  */
 void object_property_add_link(Object *obj, const char *name,
                               const char *type, Object **child,
-                              void (*check)(Object *obj, const char *name,
+                              void (*check)(const Object *obj, const char *name,
                                             Object *val, Error **errp),
                               ObjectPropertyLinkFlags flags,
                               Error **errp);

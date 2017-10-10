@@ -337,7 +337,18 @@ static void virtio_crypto_free_request(VirtIOCryptoReq *req)
 {
     if (req) {
         if (req->flags == CRYPTODEV_BACKEND_ALG_SYM) {
-            g_free(req->u.sym_op_info);
+            size_t max_len;
+            CryptoDevBackendSymOpInfo *op_info = req->u.sym_op_info;
+
+            max_len = op_info->iv_len +
+                      op_info->aad_len +
+                      op_info->src_len +
+                      op_info->dst_len +
+                      op_info->digest_result_len;
+
+            /* Zeroize and free request data structure */
+            memset(op_info, 0, sizeof(*op_info) + max_len);
+            g_free(op_info);
         }
         g_free(req);
     }
@@ -355,7 +366,7 @@ virtio_crypto_sym_input_data_helper(VirtIODevice *vdev,
         return;
     }
 
-    len = sym_op_info->dst_len;
+    len = sym_op_info->src_len;
     /* Save the cipher result */
     s = iov_from_buf(req->in_iov, req->in_num, 0, sym_op_info->dst, len);
     if (s != len) {
@@ -732,7 +743,7 @@ static void virtio_crypto_reset(VirtIODevice *vdev)
     VirtIOCrypto *vcrypto = VIRTIO_CRYPTO(vdev);
     /* multiqueue is disabled by default */
     vcrypto->curr_queues = 1;
-    if (!vcrypto->cryptodev->ready) {
+    if (!cryptodev_backend_is_ready(vcrypto->cryptodev)) {
         vcrypto->status &= ~VIRTIO_CRYPTO_S_HW_READY;
     } else {
         vcrypto->status |= VIRTIO_CRYPTO_S_HW_READY;
@@ -770,12 +781,17 @@ static void virtio_crypto_device_realize(DeviceState *dev, Error **errp)
     if (vcrypto->cryptodev == NULL) {
         error_setg(errp, "'cryptodev' parameter expects a valid object");
         return;
+    } else if (cryptodev_backend_is_used(vcrypto->cryptodev)) {
+        char *path = object_get_canonical_path_component(OBJECT(vcrypto->conf.cryptodev));
+        error_setg(errp, "can't use already used cryptodev backend: %s", path);
+        g_free(path);
+        return;
     }
 
     vcrypto->max_queues = MAX(vcrypto->cryptodev->conf.peers.queues, 1);
     if (vcrypto->max_queues + 1 > VIRTIO_QUEUE_MAX) {
         error_setg(errp, "Invalid number of queues (= %" PRIu32 "), "
-                   "must be a postive integer less than %d.",
+                   "must be a positive integer less than %d.",
                    vcrypto->max_queues, VIRTIO_QUEUE_MAX);
         return;
     }
@@ -792,13 +808,14 @@ static void virtio_crypto_device_realize(DeviceState *dev, Error **errp)
     }
 
     vcrypto->ctrl_vq = virtio_add_queue(vdev, 64, virtio_crypto_handle_ctrl);
-    if (!vcrypto->cryptodev->ready) {
+    if (!cryptodev_backend_is_ready(vcrypto->cryptodev)) {
         vcrypto->status &= ~VIRTIO_CRYPTO_S_HW_READY;
     } else {
         vcrypto->status |= VIRTIO_CRYPTO_S_HW_READY;
     }
 
     virtio_crypto_init_config(vdev);
+    cryptodev_backend_set_used(vcrypto->cryptodev, true);
 }
 
 static void virtio_crypto_device_unrealize(DeviceState *dev, Error **errp)
@@ -818,6 +835,7 @@ static void virtio_crypto_device_unrealize(DeviceState *dev, Error **errp)
     g_free(vcrypto->vqs);
 
     virtio_cleanup(vdev);
+    cryptodev_backend_set_used(vcrypto->cryptodev, false);
 }
 
 static const VMStateDescription vmstate_virtio_crypto = {
@@ -832,6 +850,8 @@ static const VMStateDescription vmstate_virtio_crypto = {
 };
 
 static Property virtio_crypto_properties[] = {
+    DEFINE_PROP_LINK("cryptodev", VirtIOCrypto, conf.cryptodev,
+                     TYPE_CRYPTODEV_BACKEND, CryptoDevBackend *),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -884,12 +904,6 @@ static void virtio_crypto_instance_init(Object *obj)
      * Can be overriden with virtio_crypto_set_config_size.
      */
     vcrypto->config_size = sizeof(struct virtio_crypto_config);
-
-    object_property_add_link(obj, "cryptodev",
-                             TYPE_CRYPTODEV_BACKEND,
-                             (Object **)&vcrypto->conf.cryptodev,
-                             qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE, NULL);
 }
 
 static const TypeInfo virtio_crypto_info = {

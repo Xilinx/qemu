@@ -23,7 +23,8 @@
 
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
-#include "sysemu/char.h"
+#include "chardev/char-fe.h"
+#include "chardev/char-serial.h"
 #include "qemu/timer.h"
 #include "qemu/log.h"
 #include "hw/char/cadence_uart.h"
@@ -138,9 +139,10 @@ static void fifo_trigger_update(void *opaque)
 {
     CadenceUARTState *s = opaque;
 
-    s->r[R_CISR] |= UART_INTR_TIMEOUT;
-
-    uart_update_status(s);
+    if (s->r[R_RTOR]) {
+        s->r[R_CISR] |= UART_INTR_TIMEOUT;
+        uart_update_status(s);
+    }
 }
 
 static void uart_rx_reset(CadenceUARTState *s)
@@ -277,7 +279,7 @@ static gboolean cadence_uart_xmit(GIOChannel *chan, GIOCondition cond,
     int ret;
 
     /* instant drain the fifo when there's no back-end */
-    if (!qemu_chr_fe_get_driver(&s->chr)) {
+    if (!qemu_chr_fe_backend_connected(&s->chr)) {
         s->tx_count = 0;
         return FALSE;
     }
@@ -483,7 +485,7 @@ static void cadence_uart_realize(DeviceState *dev, Error **errp)
                                           fifo_trigger_update, s);
 
     qemu_chr_fe_set_handlers(&s->chr, uart_can_receive, uart_receive,
-                             uart_event, s, NULL, true);
+                             uart_event, NULL, s, NULL, true);
 }
 
 static void cadence_uart_init(Object *obj)
@@ -501,6 +503,13 @@ static void cadence_uart_init(Object *obj)
 static int cadence_uart_post_load(void *opaque, int version_id)
 {
     CadenceUARTState *s = opaque;
+
+    /* Ensure these two aren't invalid numbers */
+    if (s->r[R_BRGR] < 1 || s->r[R_BRGR] & ~0xFFFF ||
+        s->r[R_BDIV] <= 3 || s->r[R_BDIV] & ~0xFF) {
+        /* Value is invalid, abort */
+        return 1;
+    }
 
     uart_parameters_setup(s);
     uart_update_status(s);

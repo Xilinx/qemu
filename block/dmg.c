@@ -413,8 +413,18 @@ static int dmg_open(BlockDriverState *bs, QDict *options, int flags,
     int64_t offset;
     int ret;
 
+    bs->file = bdrv_open_child(NULL, options, "file", bs, &child_file,
+                               false, errp);
+    if (!bs->file) {
+        return -EINVAL;
+    }
+
+    ret = bdrv_set_read_only(bs, true, errp);
+    if (ret < 0) {
+        return ret;
+    }
+
     block_module_load_one("dmg-bz2");
-    bs->read_only = true;
 
     s->n_chunks = 0;
     s->offsets = s->lengths = s->sectors = s->sectorcounts = NULL;
@@ -691,6 +701,7 @@ static BlockDriver bdrv_dmg = {
     .bdrv_probe     = dmg_probe,
     .bdrv_open      = dmg_open,
     .bdrv_refresh_limits = dmg_refresh_limits,
+    .bdrv_child_perm     = bdrv_format_default_perms,
     .bdrv_co_preadv = dmg_co_preadv,
     .bdrv_close     = dmg_close,
 };

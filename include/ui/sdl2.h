@@ -7,6 +7,10 @@
 #include <SDL.h>
 #include <SDL_syswm.h>
 
+#ifdef CONFIG_OPENGL
+# include "ui/egl-helpers.h"
+#endif
+
 struct sdl2_console {
     DisplayChangeListener dcl;
     DisplaySurface *surface;
@@ -23,8 +27,8 @@ struct sdl2_console {
     SDL_GLContext winctx;
 #ifdef CONFIG_OPENGL
     ConsoleGLState *gls;
-    GLuint tex_id;
-    GLuint fbo_id;
+    egl_fb guest_fb;
+    egl_fb win_fb;
     bool y0_top;
     bool scanout_mode;
 #endif
@@ -62,11 +66,14 @@ int sdl2_gl_make_context_current(DisplayChangeListener *dcl,
                                  QEMUGLContext ctx);
 QEMUGLContext sdl2_gl_get_current_context(DisplayChangeListener *dcl);
 
-void sdl2_gl_scanout(DisplayChangeListener *dcl,
-                     uint32_t backing_id, bool backing_y_0_top,
-                     uint32_t backing_width, uint32_t backing_height,
-                     uint32_t x, uint32_t y,
-                     uint32_t w, uint32_t h);
+void sdl2_gl_scanout_disable(DisplayChangeListener *dcl);
+void sdl2_gl_scanout_texture(DisplayChangeListener *dcl,
+                             uint32_t backing_id,
+                             bool backing_y_0_top,
+                             uint32_t backing_width,
+                             uint32_t backing_height,
+                             uint32_t x, uint32_t y,
+                             uint32_t w, uint32_t h);
 void sdl2_gl_scanout_flush(DisplayChangeListener *dcl,
                            uint32_t x, uint32_t y, uint32_t w, uint32_t h);
 

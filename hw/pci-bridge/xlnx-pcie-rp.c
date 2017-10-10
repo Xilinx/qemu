@@ -24,6 +24,7 @@
 #include "hw/pci/msi.h"
 #include "hw/pci/pcie.h"
 #include "hw/pci/pcie_port.h"
+#include "qapi/error.h"
 
 #define PCI_DEVICE_ID_EPORT         0xd022
 #define PCI_DEVICE_ID_REV           0x1
@@ -59,13 +60,16 @@ static int xlnx_initfn(PCIDevice *d)
 {
     PCIEPort *p = PCIE_PORT(d);
     PCIESlot *s = PCIE_SLOT(d);
+    Error *err = NULL;
     int rc;
 
     pci_bridge_initfn(d, TYPE_PCIE_BUS);
     pcie_port_init_reg(d);
 
-    rc = pcie_cap_init(d, EP_EXP_OFFSET, PCI_EXP_TYPE_ROOT_PORT, p->port);
+    rc = pcie_cap_init(d, EP_EXP_OFFSET, PCI_EXP_TYPE_ROOT_PORT, p->port,
+                       &err);
     if (rc < 0) {
+        error_report_err(err);
         goto err_bridge;
     }
 
@@ -78,10 +82,12 @@ static int xlnx_initfn(PCIDevice *d)
         goto err_pcie_cap;
     }
     pcie_cap_root_init(d);
-    rc = pcie_aer_init(d, EP_AER_OFFSET, PCI_ERR_SIZEOF);
+    rc = pcie_aer_init(d, PCI_ERR_VER, EP_AER_OFFSET, PCI_ERR_SIZEOF, &err);
     if (rc < 0) {
+        error_report_err(err);
         goto err;
     }
+
     return 0;
 
 err:
@@ -115,7 +121,7 @@ static const VMStateDescription vmstate_xlnx = {
     .minimum_version_id = 1,
     .post_load = pcie_cap_slot_post_load,
     .fields = (VMStateField[]) {
-        VMSTATE_PCIE_DEVICE(parent_obj.parent_obj.parent_obj, PCIESlot),
+        VMSTATE_PCI_DEVICE(parent_obj.parent_obj.parent_obj, PCIESlot),
         VMSTATE_STRUCT(parent_obj.parent_obj.parent_obj.exp.aer_log,
                        PCIESlot, 0, vmstate_pcie_aer_log, PCIEAERLog),
         VMSTATE_END_OF_LIST()

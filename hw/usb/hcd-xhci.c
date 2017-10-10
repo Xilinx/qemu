@@ -29,6 +29,8 @@
 #include "trace.h"
 #include "qapi/error.h"
 
+#include "hcd-xhci.h"
+
 //#define DEBUG_XHCI
 //#define DEBUG_DATA
 
@@ -40,20 +42,9 @@
 #define FIXME(_msg) do { fprintf(stderr, "FIXME %s:%d %s\n", \
                                  __func__, __LINE__, _msg); abort(); } while (0)
 
-#define MAXPORTS_2 15
-#define MAXPORTS_3 15
-
-#define MAXPORTS (MAXPORTS_2+MAXPORTS_3)
-#define MAXSLOTS 64
-#define MAXINTRS 16
-
-/* Very pessimistic, let's hope it's enough for all cases */
-#define EV_QUEUE (((3 * 24) + 16) * MAXSLOTS)
-/* Do not deliver ER Full events. NEC's driver does some things not bound
- * to the specs when it gets them */
-#define ER_FULL_HACK
-
-#define TRB_LINK_LIMIT  4
+#define TRB_LINK_LIMIT  32
+#define COMMAND_LIMIT   256
+#define TRANSFER_LIMIT  256
 
 #define LEN_CAP         0x40
 #define LEN_OPER        (0x400 + 0x10 * MAXPORTS)
@@ -165,84 +156,7 @@ enum {
     PLS_RESUME          = 15,
 };
 
-typedef enum TRBType {
-    TRB_RESERVED = 0,
-    TR_NORMAL,
-    TR_SETUP,
-    TR_DATA,
-    TR_STATUS,
-    TR_ISOCH,
-    TR_LINK,
-    TR_EVDATA,
-    TR_NOOP,
-    CR_ENABLE_SLOT,
-    CR_DISABLE_SLOT,
-    CR_ADDRESS_DEVICE,
-    CR_CONFIGURE_ENDPOINT,
-    CR_EVALUATE_CONTEXT,
-    CR_RESET_ENDPOINT,
-    CR_STOP_ENDPOINT,
-    CR_SET_TR_DEQUEUE,
-    CR_RESET_DEVICE,
-    CR_FORCE_EVENT,
-    CR_NEGOTIATE_BW,
-    CR_SET_LATENCY_TOLERANCE,
-    CR_GET_PORT_BANDWIDTH,
-    CR_FORCE_HEADER,
-    CR_NOOP,
-    ER_TRANSFER = 32,
-    ER_COMMAND_COMPLETE,
-    ER_PORT_STATUS_CHANGE,
-    ER_BANDWIDTH_REQUEST,
-    ER_DOORBELL,
-    ER_HOST_CONTROLLER,
-    ER_DEVICE_NOTIFICATION,
-    ER_MFINDEX_WRAP,
-    /* vendor specific bits */
-    CR_VENDOR_VIA_CHALLENGE_RESPONSE = 48,
-    CR_VENDOR_NEC_FIRMWARE_REVISION  = 49,
-    CR_VENDOR_NEC_CHALLENGE_RESPONSE = 50,
-} TRBType;
-
 #define CR_LINK TR_LINK
-
-typedef enum TRBCCode {
-    CC_INVALID = 0,
-    CC_SUCCESS,
-    CC_DATA_BUFFER_ERROR,
-    CC_BABBLE_DETECTED,
-    CC_USB_TRANSACTION_ERROR,
-    CC_TRB_ERROR,
-    CC_STALL_ERROR,
-    CC_RESOURCE_ERROR,
-    CC_BANDWIDTH_ERROR,
-    CC_NO_SLOTS_ERROR,
-    CC_INVALID_STREAM_TYPE_ERROR,
-    CC_SLOT_NOT_ENABLED_ERROR,
-    CC_EP_NOT_ENABLED_ERROR,
-    CC_SHORT_PACKET,
-    CC_RING_UNDERRUN,
-    CC_RING_OVERRUN,
-    CC_VF_ER_FULL,
-    CC_PARAMETER_ERROR,
-    CC_BANDWIDTH_OVERRUN,
-    CC_CONTEXT_STATE_ERROR,
-    CC_NO_PING_RESPONSE_ERROR,
-    CC_EVENT_RING_FULL_ERROR,
-    CC_INCOMPATIBLE_DEVICE_ERROR,
-    CC_MISSED_SERVICE_ERROR,
-    CC_COMMAND_RING_STOPPED,
-    CC_COMMAND_ABORTED,
-    CC_STOPPED,
-    CC_STOPPED_LENGTH_INVALID,
-    CC_MAX_EXIT_LATENCY_TOO_LARGE_ERROR = 29,
-    CC_ISOCH_BUFFER_OVERRUN = 31,
-    CC_EVENT_LOST_ERROR,
-    CC_UNDEFINED_ERROR,
-    CC_INVALID_STREAM_ID_ERROR,
-    CC_SECONDARY_BANDWIDTH_ERROR,
-    CC_SPLIT_TRANSACTION_ERROR
-} TRBCCode;
 
 #define TRB_C               (1<<0)
 #define TRB_TYPE_SHIFT          10
@@ -303,10 +217,6 @@ typedef enum TRBCCode {
 #define SLOT_CONTEXT_ENTRIES_MASK 0x1f
 #define SLOT_CONTEXT_ENTRIES_SHIFT 27
 
-typedef struct XHCIState XHCIState;
-typedef struct XHCIStreamContext XHCIStreamContext;
-typedef struct XHCIEPContext XHCIEPContext;
-
 #define get_field(data, field)                  \
     (((data) >> field##_SHIFT) & field##_MASK)
 
@@ -327,21 +237,6 @@ typedef enum EPType {
     ET_BULK_IN,
     ET_INTR_IN,
 } EPType;
-
-typedef struct XHCIRing {
-    dma_addr_t dequeue;
-    bool ccs;
-} XHCIRing;
-
-typedef struct XHCIPort {
-    XHCIState *xhci;
-    uint32_t portsc;
-    uint32_t portnr;
-    USBPort  *uport;
-    uint32_t speedmask;
-    char name[16];
-    MemoryRegion mem;
-} XHCIPort;
 
 typedef struct XHCITransfer {
     XHCIEPContext *epctx;
@@ -390,6 +285,7 @@ struct XHCIEPContext {
     dma_addr_t pctx;
     unsigned int max_psize;
     uint32_t state;
+    uint32_t kick_active;
 
     /* streams */
     unsigned int max_pstreams;
@@ -403,107 +299,12 @@ struct XHCIEPContext {
     QEMUTimer *kick_timer;
 };
 
-typedef struct XHCISlot {
-    bool enabled;
-    bool addressed;
-    dma_addr_t ctx;
-    USBPort *uport;
-    XHCIEPContext * eps[31];
-} XHCISlot;
-
-typedef struct XHCIEvent {
-    TRBType type;
-    TRBCCode ccode;
-    uint64_t ptr;
-    uint32_t length;
-    uint32_t flags;
-    uint8_t slotid;
-    uint8_t epid;
-} XHCIEvent;
-
-typedef struct XHCIInterrupter {
-    uint32_t iman;
-    uint32_t imod;
-    uint32_t erstsz;
-    uint32_t erstba_low;
-    uint32_t erstba_high;
-    uint32_t erdp_low;
-    uint32_t erdp_high;
-
-    bool msix_used, er_pcs, er_full;
-
-    dma_addr_t er_start;
-    uint32_t er_size;
-    unsigned int er_ep_idx;
-
-    XHCIEvent ev_buffer[EV_QUEUE];
-    unsigned int ev_buffer_put;
-    unsigned int ev_buffer_get;
-
-} XHCIInterrupter;
-
-struct XHCIState {
-    /*< private >*/
-    PCIDevice parent_obj;
-    /*< public >*/
-
-    USBBus bus;
-    MemoryRegion mem;
-    MemoryRegion mem_cap;
-    MemoryRegion mem_oper;
-    MemoryRegion mem_runtime;
-    MemoryRegion mem_doorbell;
-
-    /* properties */
-    uint32_t numports_2;
-    uint32_t numports_3;
-    uint32_t numintrs;
-    uint32_t numslots;
-    uint32_t flags;
-    uint32_t max_pstreams_mask;
-    OnOffAuto msi;
-    OnOffAuto msix;
-
-    /* Operational Registers */
-    uint32_t usbcmd;
-    uint32_t usbsts;
-    uint32_t dnctrl;
-    uint32_t crcr_low;
-    uint32_t crcr_high;
-    uint32_t dcbaap_low;
-    uint32_t dcbaap_high;
-    uint32_t config;
-
-    USBPort  uports[MAX(MAXPORTS_2, MAXPORTS_3)];
-    XHCIPort ports[MAXPORTS];
-    XHCISlot slots[MAXSLOTS];
-    uint32_t numports;
-
-    /* Runtime Registers */
-    int64_t mfindex_start;
-    QEMUTimer *mfwrap_timer;
-    XHCIInterrupter intr[MAXINTRS];
-
-    XHCIRing cmd_ring;
-};
-
-#define TYPE_XHCI "nec-usb-xhci"
-
-#define XHCI(obj) \
-    OBJECT_CHECK(XHCIState, (obj), TYPE_XHCI)
-
 typedef struct XHCIEvRingSeg {
     uint32_t addr_low;
     uint32_t addr_high;
     uint32_t size;
     uint32_t rsvd;
 } XHCIEvRingSeg;
-
-enum xhci_flags {
-    XHCI_FLAG_SS_FIRST = 1,
-    XHCI_FLAG_FORCE_PCIE_ENDCAP,
-    XHCI_FLAG_ENABLE_STREAMS,
-};
 
 static void xhci_kick_ep(XHCIState *xhci, unsigned int slotid,
                          unsigned int epid, unsigned int streamid);
@@ -548,7 +349,6 @@ static const char *TRBType_names[] = {
     [ER_HOST_CONTROLLER]               = "ER_HOST_CONTROLLER",
     [ER_DEVICE_NOTIFICATION]           = "ER_DEVICE_NOTIFICATION",
     [ER_MFINDEX_WRAP]                  = "ER_MFINDEX_WRAP",
-    [CR_VENDOR_VIA_CHALLENGE_RESPONSE] = "CR_VENDOR_VIA_CHALLENGE_RESPONSE",
     [CR_VENDOR_NEC_FIRMWARE_REVISION]  = "CR_VENDOR_NEC_FIRMWARE_REVISION",
     [CR_VENDOR_NEC_CHALLENGE_RESPONSE] = "CR_VENDOR_NEC_CHALLENGE_RESPONSE",
 };
@@ -629,6 +429,11 @@ static const char *ep_state_name(uint32_t state)
 static bool xhci_get_flag(XHCIState *xhci, enum xhci_flags bit)
 {
     return xhci->flags & (1 << bit);
+}
+
+static void xhci_set_flag(XHCIState *xhci, enum xhci_flags bit)
+{
+    xhci->flags |= (1 << bit);
 }
 
 static uint64_t xhci_mfindex_get(XHCIState *xhci)
@@ -788,11 +593,15 @@ static void xhci_msix_update(XHCIState *xhci, int v)
 static void xhci_intr_raise(XHCIState *xhci, int v)
 {
     PCIDevice *pci_dev = PCI_DEVICE(xhci);
+    bool pending = (xhci->intr[v].erdp_low & ERDP_EHB);
 
     xhci->intr[v].erdp_low |= ERDP_EHB;
     xhci->intr[v].iman |= IMAN_IP;
     xhci->usbsts |= USBSTS_EINT;
 
+    if (pending) {
+        return;
+    }
     if (!(xhci->intr[v].iman & IMAN_IE)) {
         return;
     }
@@ -821,7 +630,7 @@ static void xhci_intr_raise(XHCIState *xhci, int v)
 
 static inline int xhci_running(XHCIState *xhci)
 {
-    return !(xhci->usbsts & USBSTS_HCH) && !xhci->intr[0].er_full;
+    return !(xhci->usbsts & USBSTS_HCH);
 }
 
 static void xhci_die(XHCIState *xhci)
@@ -860,74 +669,6 @@ static void xhci_write_event(XHCIState *xhci, XHCIEvent *event, int v)
     }
 }
 
-static void xhci_events_update(XHCIState *xhci, int v)
-{
-    XHCIInterrupter *intr = &xhci->intr[v];
-    dma_addr_t erdp;
-    unsigned int dp_idx;
-    bool do_irq = 0;
-
-    if (xhci->usbsts & USBSTS_HCH) {
-        return;
-    }
-
-    erdp = xhci_addr64(intr->erdp_low, intr->erdp_high);
-    if (erdp < intr->er_start ||
-        erdp >= (intr->er_start + TRB_SIZE*intr->er_size)) {
-        DPRINTF("xhci: ERDP out of bounds: "DMA_ADDR_FMT"\n", erdp);
-        DPRINTF("xhci: ER[%d] at "DMA_ADDR_FMT" len %d\n",
-                v, intr->er_start, intr->er_size);
-        xhci_die(xhci);
-        return;
-    }
-    dp_idx = (erdp - intr->er_start) / TRB_SIZE;
-    assert(dp_idx < intr->er_size);
-
-    /* NEC didn't read section 4.9.4 of the spec (v1.0 p139 top Note) and thus
-     * deadlocks when the ER is full. Hack it by holding off events until
-     * the driver decides to free at least half of the ring */
-    if (intr->er_full) {
-        int er_free = dp_idx - intr->er_ep_idx;
-        if (er_free <= 0) {
-            er_free += intr->er_size;
-        }
-        if (er_free < (intr->er_size/2)) {
-            DPRINTF("xhci_events_update(): event ring still "
-                    "more than half full (hack)\n");
-            return;
-        }
-    }
-
-    while (intr->ev_buffer_put != intr->ev_buffer_get) {
-        assert(intr->er_full);
-        if (((intr->er_ep_idx+1) % intr->er_size) == dp_idx) {
-            DPRINTF("xhci_events_update(): event ring full again\n");
-#ifndef ER_FULL_HACK
-            XHCIEvent full = {ER_HOST_CONTROLLER, CC_EVENT_RING_FULL_ERROR};
-            xhci_write_event(xhci, &full, v);
-#endif
-            do_irq = 1;
-            break;
-        }
-        XHCIEvent *event = &intr->ev_buffer[intr->ev_buffer_get];
-        xhci_write_event(xhci, event, v);
-        intr->ev_buffer_get++;
-        do_irq = 1;
-        if (intr->ev_buffer_get == EV_QUEUE) {
-            intr->ev_buffer_get = 0;
-        }
-    }
-
-    if (do_irq) {
-        xhci_intr_raise(xhci, v);
-    }
-
-    if (intr->er_full && intr->ev_buffer_put == intr->ev_buffer_get) {
-        DPRINTF("xhci_events_update(): event ring no longer full\n");
-        intr->er_full = 0;
-    }
-}
-
 static void xhci_event(XHCIState *xhci, XHCIEvent *event, int v)
 {
     XHCIInterrupter *intr;
@@ -940,19 +681,6 @@ static void xhci_event(XHCIState *xhci, XHCIEvent *event, int v)
     }
     intr = &xhci->intr[v];
 
-    if (intr->er_full) {
-        DPRINTF("xhci_event(): ER full, queueing\n");
-        if (((intr->ev_buffer_put+1) % EV_QUEUE) == intr->ev_buffer_get) {
-            DPRINTF("xhci: event queue full, dropping event!\n");
-            return;
-        }
-        intr->ev_buffer[intr->ev_buffer_put++] = *event;
-        if (intr->ev_buffer_put == EV_QUEUE) {
-            intr->ev_buffer_put = 0;
-        }
-        return;
-    }
-
     erdp = xhci_addr64(intr->erdp_low, intr->erdp_high);
     if (erdp < intr->er_start ||
         erdp >= (intr->er_start + TRB_SIZE*intr->er_size)) {
@@ -966,21 +694,12 @@ static void xhci_event(XHCIState *xhci, XHCIEvent *event, int v)
     dp_idx = (erdp - intr->er_start) / TRB_SIZE;
     assert(dp_idx < intr->er_size);
 
-    if ((intr->er_ep_idx+1) % intr->er_size == dp_idx) {
-        DPRINTF("xhci_event(): ER full, queueing\n");
-#ifndef ER_FULL_HACK
+    if ((intr->er_ep_idx + 2) % intr->er_size == dp_idx) {
+        DPRINTF("xhci: ER %d full, send ring full error\n", v);
         XHCIEvent full = {ER_HOST_CONTROLLER, CC_EVENT_RING_FULL_ERROR};
-        xhci_write_event(xhci, &full);
-#endif
-        intr->er_full = 1;
-        if (((intr->ev_buffer_put+1) % EV_QUEUE) == intr->ev_buffer_get) {
-            DPRINTF("xhci: event queue full, dropping event!\n");
-            return;
-        }
-        intr->ev_buffer[intr->ev_buffer_put++] = *event;
-        if (intr->ev_buffer_put == EV_QUEUE) {
-            intr->ev_buffer_put = 0;
-        }
+        xhci_write_event(xhci, &full, v);
+    } else if ((intr->er_ep_idx + 1) % intr->er_size == dp_idx) {
+        DPRINTF("xhci: ER %d full, drop event\n", v);
     } else {
         xhci_write_event(xhci, event, v);
     }
@@ -1027,6 +746,7 @@ static TRBType xhci_ring_fetch(XHCIState *xhci, XHCIRing *ring, XHCITRB *trb,
             return type;
         } else {
             if (++link_cnt > TRB_LINK_LIMIT) {
+                trace_usb_xhci_enforced_limit("trb-link");
                 return 0;
             }
             ring->dequeue = xhci_mask64(trb->parameter);
@@ -1119,7 +839,6 @@ static void xhci_er_reset(XHCIState *xhci, int v)
 
     intr->er_ep_idx = 0;
     intr->er_pcs = 1;
-    intr->er_full = 0;
 
     DPRINTF("xhci: event ring[%d]:" DMA_ADDR_FMT " [%d]\n",
             v, intr->er_start, intr->er_size);
@@ -1867,9 +1586,6 @@ static void xhci_stall_ep(XHCITransfer *xfer)
     }
 }
 
-static int xhci_submit(XHCIState *xhci, XHCITransfer *xfer,
-                       XHCIEPContext *epctx);
-
 static int xhci_setup_packet(XHCITransfer *xfer)
 {
     USBEndpoint *ep;
@@ -1883,7 +1599,7 @@ static int xhci_setup_packet(XHCITransfer *xfer)
         ep = xhci_epid_to_usbep(xfer->epctx);
         if (!ep) {
             DPRINTF("xhci: slot %d has no device\n",
-                    xfer->slotid);
+                    xfer->epctx->slotid);
             return -1;
         }
     }
@@ -1897,7 +1613,7 @@ static int xhci_setup_packet(XHCITransfer *xfer)
     return 0;
 }
 
-static int xhci_complete_packet(XHCITransfer *xfer)
+static int xhci_try_complete_packet(XHCITransfer *xfer)
 {
     if (xfer->packet.status == USB_RET_ASYNC) {
         trace_usb_xhci_xfer_async(xfer);
@@ -2001,11 +1717,7 @@ static int xhci_fire_ctl_transfer(XHCIState *xhci, XHCITransfer *xfer)
     xfer->packet.parameter = trb_setup->parameter;
 
     usb_handle_packet(xfer->packet.ep->dev, &xfer->packet);
-
-    xhci_complete_packet(xfer);
-    if (!xfer->running_async && !xfer->running_retry) {
-        xhci_kick_epctx(xfer->epctx, 0);
-    }
+    xhci_try_complete_packet(xfer);
     return 0;
 }
 
@@ -2061,7 +1773,7 @@ static int xhci_submit(XHCIState *xhci, XHCITransfer *xfer, XHCIEPContext *epctx
 {
     uint64_t mfindex;
 
-    DPRINTF("xhci_submit(slotid=%d,epid=%d)\n", xfer->slotid, xfer->epid);
+    DPRINTF("xhci_submit(slotid=%d,epid=%d)\n", epctx->slotid, epctx->epid);
 
     xfer->in_xfer = epctx->type>>2;
 
@@ -2105,11 +1817,7 @@ static int xhci_submit(XHCIState *xhci, XHCITransfer *xfer, XHCIEPContext *epctx
         return -1;
     }
     usb_handle_packet(xfer->packet.ep->dev, &xfer->packet);
-
-    xhci_complete_packet(xfer);
-    if (!xfer->running_async && !xfer->running_retry) {
-        xhci_kick_epctx(xfer->epctx, xfer->streamid);
-    }
+    xhci_try_complete_packet(xfer);
     return 0;
 }
 
@@ -2139,21 +1847,26 @@ static void xhci_kick_ep(XHCIState *xhci, unsigned int slotid,
         return;
     }
 
+    if (epctx->kick_active) {
+        return;
+    }
     xhci_kick_epctx(epctx, streamid);
 }
 
 static void xhci_kick_epctx(XHCIEPContext *epctx, unsigned int streamid)
 {
     XHCIState *xhci = epctx->xhci;
-    XHCIStreamContext *stctx;
+    XHCIStreamContext *stctx = NULL;
     XHCITransfer *xfer;
     XHCIRing *ring;
     USBEndpoint *ep = NULL;
     uint64_t mfindex;
+    unsigned int count = 0;
     int length;
     int i;
 
     trace_usb_xhci_ep_kick(epctx->slotid, epctx->epid, streamid);
+    assert(!epctx->kick_active);
 
     /* If the device has been detached, but the guest has not noticed this
        yet the 2 above checks will succeed, but we must NOT continue */
@@ -2185,7 +1898,7 @@ static void xhci_kick_epctx(XHCIEPContext *epctx, unsigned int streamid)
             }
             usb_handle_packet(xfer->packet.ep->dev, &xfer->packet);
             assert(xfer->packet.status != USB_RET_NAK);
-            xhci_complete_packet(xfer);
+            xhci_try_complete_packet(xfer);
         } else {
             /* retry nak'ed transfer */
             if (xhci_setup_packet(xfer) < 0) {
@@ -2195,10 +1908,14 @@ static void xhci_kick_epctx(XHCIEPContext *epctx, unsigned int streamid)
             if (xfer->packet.status == USB_RET_NAK) {
                 return;
             }
-            xhci_complete_packet(xfer);
+            xhci_try_complete_packet(xfer);
         }
         assert(!xfer->running_retry);
-        xhci_ep_free_xfer(epctx->retry);
+        if (xfer->complete) {
+            /* update ring dequeue ptr */
+            xhci_set_ep_state(xhci, epctx, stctx, epctx->state);
+            xhci_ep_free_xfer(epctx->retry);
+        }
         epctx->retry = NULL;
     }
 
@@ -2223,6 +1940,7 @@ static void xhci_kick_epctx(XHCIEPContext *epctx, unsigned int streamid)
     }
     assert(ring->dequeue != 0);
 
+    epctx->kick_active++;
     while (1) {
         length = xhci_ring_chain_length(xhci, ring);
         if (length <= 0) {
@@ -2246,6 +1964,8 @@ static void xhci_kick_epctx(XHCIEPContext *epctx, unsigned int streamid)
             xhci_fire_transfer(xhci, xfer, epctx);
         }
         if (xfer->complete) {
+            /* update ring dequeue ptr */
+            xhci_set_ep_state(xhci, epctx, stctx, epctx->state);
             xhci_ep_free_xfer(xfer);
             xfer = NULL;
         }
@@ -2258,7 +1978,12 @@ static void xhci_kick_epctx(XHCIEPContext *epctx, unsigned int streamid)
             epctx->retry = xfer;
             break;
         }
+        if (count++ > TRANSFER_LIMIT) {
+            trace_usb_xhci_enforced_limit("transfers");
+            break;
+        }
     }
+    epctx->kick_active--;
 
     ep = xhci_epid_to_usbep(epctx);
     if (ep) {
@@ -2697,39 +2422,13 @@ static uint32_t xhci_nec_challenge(uint32_t hi, uint32_t lo)
     return ~val;
 }
 
-static void xhci_via_challenge(XHCIState *xhci, uint64_t addr)
-{
-    PCIDevice *pci_dev = PCI_DEVICE(xhci);
-    uint32_t buf[8];
-    uint32_t obuf[8];
-    dma_addr_t paddr = xhci_mask64(addr);
-
-    pci_dma_read(pci_dev, paddr, &buf, 32);
-
-    memcpy(obuf, buf, sizeof(obuf));
-
-    if ((buf[0] & 0xff) == 2) {
-        obuf[0] = 0x49932000 + 0x54dc200 * buf[2] + 0x7429b578 * buf[3];
-        obuf[0] |=  (buf[2] * buf[3]) & 0xff;
-        obuf[1] = 0x0132bb37 + 0xe89 * buf[2] + 0xf09 * buf[3];
-        obuf[2] = 0x0066c2e9 + 0x2091 * buf[2] + 0x19bd * buf[3];
-        obuf[3] = 0xd5281342 + 0x2cc9691 * buf[2] + 0x2367662 * buf[3];
-        obuf[4] = 0x0123c75c + 0x1595 * buf[2] + 0x19ec * buf[3];
-        obuf[5] = 0x00f695de + 0x26fd * buf[2] + 0x3e9 * buf[3];
-        obuf[6] = obuf[2] ^ obuf[3] ^ 0x29472956;
-        obuf[7] = obuf[2] ^ obuf[3] ^ 0x65866593;
-    }
-
-    pci_dma_write(pci_dev, paddr, &obuf, 32);
-}
-
 static void xhci_process_commands(XHCIState *xhci)
 {
     XHCITRB trb;
     TRBType type;
     XHCIEvent event = {ER_COMMAND_COMPLETE, CC_SUCCESS};
     dma_addr_t addr;
-    unsigned int i, slotid = 0;
+    unsigned int i, slotid = 0, count = 0;
 
     DPRINTF("xhci_process_commands()\n");
     if (!xhci_running(xhci)) {
@@ -2818,24 +2517,27 @@ static void xhci_process_commands(XHCIState *xhci)
         case CR_GET_PORT_BANDWIDTH:
             event.ccode = xhci_get_port_bandwidth(xhci, trb.parameter);
             break;
-        case CR_VENDOR_VIA_CHALLENGE_RESPONSE:
-            xhci_via_challenge(xhci, trb.parameter);
-            break;
         case CR_VENDOR_NEC_FIRMWARE_REVISION:
-            event.type = 48; /* NEC reply */
-            event.length = 0x3025;
+            if (xhci->nec_quirks) {
+                event.type = 48; /* NEC reply */
+                event.length = 0x3025;
+            } else {
+                event.ccode = CC_TRB_ERROR;
+            }
             break;
         case CR_VENDOR_NEC_CHALLENGE_RESPONSE:
-        {
-            uint32_t chi = trb.parameter >> 32;
-            uint32_t clo = trb.parameter;
-            uint32_t val = xhci_nec_challenge(chi, clo);
-            event.length = val & 0xFFFF;
-            event.epid = val >> 16;
-            slotid = val >> 24;
-            event.type = 48; /* NEC reply */
-        }
-        break;
+            if (xhci->nec_quirks) {
+                uint32_t chi = trb.parameter >> 32;
+                uint32_t clo = trb.parameter;
+                uint32_t val = xhci_nec_challenge(chi, clo);
+                event.length = val & 0xFFFF;
+                event.epid = val >> 16;
+                slotid = val >> 24;
+                event.type = 48; /* NEC reply */
+            } else {
+                event.ccode = CC_TRB_ERROR;
+            }
+            break;
         default:
             trace_usb_xhci_unimplemented("command", type);
             event.ccode = CC_TRB_ERROR;
@@ -2843,6 +2545,11 @@ static void xhci_process_commands(XHCIState *xhci)
         }
         event.slotid = slotid;
         xhci_event(xhci, &event, 0);
+
+        if (count++ > COMMAND_LIMIT) {
+            trace_usb_xhci_enforced_limit("commands");
+            return;
+        }
     }
 }
 
@@ -2973,7 +2680,6 @@ static void xhci_reset(DeviceState *dev)
 
         xhci->intr[i].er_ep_idx = 0;
         xhci->intr[i].er_pcs = 1;
-        xhci->intr[i].er_full = 0;
         xhci->intr[i].ev_buffer_put = 0;
         xhci->intr[i].ev_buffer_get = 0;
     }
@@ -3338,9 +3044,12 @@ static void xhci_runtime_write(void *ptr, hwaddr reg,
         intr->erstsz = val & 0xffff;
         break;
     case 0x10: /* ERSTBA low */
-        /* XXX NEC driver bug: it doesn't align this to 64 bytes
-        intr->erstba_low = val & 0xffffffc0; */
-        intr->erstba_low = val & 0xfffffff0;
+        if (xhci->nec_quirks) {
+            /* NEC driver bug: it doesn't align this to 64 bytes */
+            intr->erstba_low = val & 0xfffffff0;
+        } else {
+            intr->erstba_low = val & 0xffffffc0;
+        }
         break;
     case 0x14: /* ERSTBA high */
         intr->erstba_high = val;
@@ -3351,10 +3060,18 @@ static void xhci_runtime_write(void *ptr, hwaddr reg,
             intr->erdp_low &= ~ERDP_EHB;
         }
         intr->erdp_low = (val & ~ERDP_EHB) | (intr->erdp_low & ERDP_EHB);
+        if (val & ERDP_EHB) {
+            dma_addr_t erdp = xhci_addr64(intr->erdp_low, intr->erdp_high);
+            unsigned int dp_idx = (erdp - intr->er_start) / TRB_SIZE;
+            if (erdp >= intr->er_start &&
+                erdp < (intr->er_start + TRB_SIZE * intr->er_size) &&
+                dp_idx != intr->er_ep_idx) {
+                xhci_intr_raise(xhci, v);
+            }
+        }
         break;
     case 0x1c: /* ERDP high */
         intr->erdp_high = val;
-        xhci_events_update(xhci, v);
         break;
     default:
         trace_usb_xhci_unimplemented("oper write", reg);
@@ -3490,7 +3207,7 @@ static void xhci_complete(USBPort *port, USBPacket *packet)
         xhci_ep_nuke_one_xfer(xfer, 0);
         return;
     }
-    xhci_complete_packet(xfer);
+    xhci_try_complete_packet(xfer);
     xhci_kick_epctx(xfer->epctx, xfer->streamid);
     if (xfer->complete) {
         xhci_ep_free_xfer(xfer);
@@ -3627,25 +3344,9 @@ static void usb_xhci_realize(struct PCIDevice *dev, Error **errp)
     dev->config[PCI_CACHE_LINE_SIZE] = 0x10;
     dev->config[0x60] = 0x30; /* release number */
 
-    usb_xhci_init(xhci);
-
-    if (xhci->msi != ON_OFF_AUTO_OFF) {
-        ret = msi_init(dev, 0x70, xhci->numintrs, true, false, &err);
-        /* Any error other than -ENOTSUP(board's MSI support is broken)
-         * is a programming error */
-        assert(!ret || ret == -ENOTSUP);
-        if (ret && xhci->msi == ON_OFF_AUTO_ON) {
-            /* Can't satisfy user's explicit msi=on request, fail */
-            error_append_hint(&err, "You have to use msi=auto (default) or "
-                    "msi=off with this machine type.\n");
-            error_propagate(errp, err);
-            return;
-        }
-        assert(!err || xhci->msi == ON_OFF_AUTO_AUTO);
-        /* With msi=auto, we fall back to MSI off silently */
-        error_free(err);
+    if (strcmp(object_get_typename(OBJECT(dev)), TYPE_NEC_XHCI) == 0) {
+        xhci->nec_quirks = true;
     }
-
     if (xhci->numintrs > MAXINTRS) {
         xhci->numintrs = MAXINTRS;
     }
@@ -3667,6 +3368,24 @@ static void usb_xhci_realize(struct PCIDevice *dev, Error **errp)
         xhci->max_pstreams_mask = 0;
     }
 
+    if (xhci->msi != ON_OFF_AUTO_OFF) {
+        ret = msi_init(dev, 0x70, xhci->numintrs, true, false, &err);
+        /* Any error other than -ENOTSUP(board's MSI support is broken)
+         * is a programming error */
+        assert(!ret || ret == -ENOTSUP);
+        if (ret && xhci->msi == ON_OFF_AUTO_ON) {
+            /* Can't satisfy user's explicit msi=on request, fail */
+            error_append_hint(&err, "You have to use msi=auto (default) or "
+                    "msi=off with this machine type.\n");
+            error_propagate(errp, err);
+            return;
+        }
+        assert(!err || xhci->msi == ON_OFF_AUTO_AUTO);
+        /* With msi=auto, we fall back to MSI off silently */
+        error_free(err);
+    }
+
+    usb_xhci_init(xhci);
     xhci->mfwrap_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, xhci_mfwrap_timer, xhci);
 
     memory_region_init(&xhci->mem, OBJECT(xhci), "xhci", LEN_REGS);
@@ -3700,15 +3419,15 @@ static void usb_xhci_realize(struct PCIDevice *dev, Error **errp)
     if (pci_bus_is_express(dev->bus) ||
         xhci_get_flag(xhci, XHCI_FLAG_FORCE_PCIE_ENDCAP)) {
         ret = pcie_endpoint_cap_init(dev, 0xa0);
-        assert(ret >= 0);
+        assert(ret > 0);
     }
 
     if (xhci->msix != ON_OFF_AUTO_OFF) {
-        /* TODO check for errors */
+        /* TODO check for errors, and should fail when msix=on */
         msix_init(dev, xhci->numintrs,
                   &xhci->mem, 0, OFF_MSIX_TABLE,
                   &xhci->mem, 0, OFF_MSIX_PBA,
-                  0x90);
+                  0x90, NULL);
     }
 }
 
@@ -3853,8 +3572,7 @@ static const VMStateDescription vmstate_xhci_event = {
 
 static bool xhci_er_full(void *opaque, int version_id)
 {
-    struct XHCIInterrupter *intr = opaque;
-    return intr->er_full;
+    return false;
 }
 
 static const VMStateDescription vmstate_xhci_intr = {
@@ -3878,7 +3596,7 @@ static const VMStateDescription vmstate_xhci_intr = {
         VMSTATE_UINT32(er_ep_idx,     XHCIInterrupter),
 
         /* event queue (used if ring is full) */
-        VMSTATE_BOOL(er_full,         XHCIInterrupter),
+        VMSTATE_BOOL(er_full_unused,  XHCIInterrupter),
         VMSTATE_UINT32_TEST(ev_buffer_put, XHCIInterrupter, xhci_er_full),
         VMSTATE_UINT32_TEST(ev_buffer_get, XHCIInterrupter, xhci_er_full),
         VMSTATE_STRUCT_ARRAY_TEST(ev_buffer, XHCIInterrupter, EV_QUEUE,
@@ -3894,7 +3612,7 @@ static const VMStateDescription vmstate_xhci = {
     .version_id = 1,
     .post_load = usb_xhci_post_load,
     .fields = (VMStateField[]) {
-        VMSTATE_PCIE_DEVICE(parent_obj, XHCIState),
+        VMSTATE_PCI_DEVICE(parent_obj, XHCIState),
         VMSTATE_MSIX(parent_obj, XHCIState),
 
         VMSTATE_STRUCT_VARRAY_UINT32(ports, XHCIState, numports, 1,
@@ -3924,16 +3642,8 @@ static const VMStateDescription vmstate_xhci = {
 };
 
 static Property xhci_properties[] = {
-    DEFINE_PROP_ON_OFF_AUTO("msi", XHCIState, msi, ON_OFF_AUTO_AUTO),
-    DEFINE_PROP_ON_OFF_AUTO("msix", XHCIState, msix, ON_OFF_AUTO_AUTO),
-    DEFINE_PROP_BIT("superspeed-ports-first",
-                    XHCIState, flags, XHCI_FLAG_SS_FIRST, true),
-    DEFINE_PROP_BIT("force-pcie-endcap", XHCIState, flags,
-                    XHCI_FLAG_FORCE_PCIE_ENDCAP, false),
     DEFINE_PROP_BIT("streams", XHCIState, flags,
                     XHCI_FLAG_ENABLE_STREAMS, true),
-    DEFINE_PROP_UINT32("intrs", XHCIState, numintrs, MAXINTRS),
-    DEFINE_PROP_UINT32("slots", XHCIState, numslots, MAXSLOTS),
     DEFINE_PROP_UINT32("p2",    XHCIState, numports_2, 4),
     DEFINE_PROP_UINT32("p3",    XHCIState, numports_3, 4),
     DEFINE_PROP_END_OF_LIST(),
@@ -3950,10 +3660,7 @@ static void xhci_class_init(ObjectClass *klass, void *data)
     set_bit(DEVICE_CATEGORY_USB, dc->categories);
     k->realize      = usb_xhci_realize;
     k->exit         = usb_xhci_exit;
-    k->vendor_id    = PCI_VENDOR_ID_NEC;
-    k->device_id    = PCI_DEVICE_ID_NEC_UPD720200;
     k->class_id     = PCI_CLASS_SERIAL_USB;
-    k->revision     = 0x03;
     k->is_express   = 1;
 }
 
@@ -3962,11 +3669,40 @@ static const TypeInfo xhci_info = {
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(XHCIState),
     .class_init    = xhci_class_init,
+    .abstract      = true,
+};
+
+static void qemu_xhci_class_init(ObjectClass *klass, void *data)
+{
+    PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
+
+    k->vendor_id    = PCI_VENDOR_ID_REDHAT;
+    k->device_id    = PCI_DEVICE_ID_REDHAT_XHCI;
+    k->revision     = 0x01;
+}
+
+static void qemu_xhci_instance_init(Object *obj)
+{
+    XHCIState *xhci = XHCI(obj);
+
+    xhci->msi      = ON_OFF_AUTO_OFF;
+    xhci->msix     = ON_OFF_AUTO_AUTO;
+    xhci->numintrs = MAXINTRS;
+    xhci->numslots = MAXSLOTS;
+    xhci_set_flag(xhci, XHCI_FLAG_SS_FIRST);
+}
+
+static const TypeInfo qemu_xhci_info = {
+    .name          = TYPE_QEMU_XHCI,
+    .parent        = TYPE_XHCI,
+    .class_init    = qemu_xhci_class_init,
+    .instance_init = qemu_xhci_instance_init,
 };
 
 static void xhci_register_types(void)
 {
     type_register_static(&xhci_info);
+    type_register_static(&qemu_xhci_info);
 }
 
 type_init(xhci_register_types)

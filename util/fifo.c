@@ -157,7 +157,7 @@ const VMStateDescription vmstate_fifo = {
     .version_id = 1,
     .minimum_version_id = 1,
     .fields      = (VMStateField[]) {
-        VMSTATE_VBUFFER_UINT32(data, Fifo, 1, NULL, 0, capacity),
+        VMSTATE_VBUFFER_UINT32(data, Fifo, 1, NULL, capacity),
         VMSTATE_UINT32(head, Fifo),
         VMSTATE_UINT32(num, Fifo),
         VMSTATE_END_OF_LIST()

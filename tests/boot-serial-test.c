@@ -29,7 +29,7 @@ static testdef_t tests[] = {
     { "ppc64", "ppce500", "", "U-Boot" },
     { "ppc64", "prep", "", "Open Hack'Ware BIOS" },
     { "ppc64", "pseries", "", "Open Firmware" },
-    { "ppc64", "powernv", "-cpu POWER9", "SkiBoot" },
+    { "ppc64", "powernv", "-cpu POWER8", "SkiBoot" },
     { "i386", "isapc", "-cpu qemu32 -device sga", "SGABIOS" },
     { "i386", "pc", "-device sga", "SGABIOS" },
     { "i386", "q35", "-device sga", "SGABIOS" },
@@ -78,9 +78,14 @@ static void test_machine(const void *data)
     fd = mkstemp(tmpname);
     g_assert(fd != -1);
 
-    args = g_strdup_printf("-M %s,accel=tcg -chardev file,id=serial0,path=%s"
-                           " -serial chardev:serial0 %s", test->machine,
-                           tmpname, test->extra);
+    /*
+     * Make sure that this test uses tcg if available: It is used as a
+     * fast-enough smoketest for that.
+     */
+    args = g_strdup_printf("-M %s,accel=tcg:kvm "
+                           "-chardev file,id=serial0,path=%s "
+                           "-no-shutdown -serial chardev:serial0 %s",
+                           test->machine, tmpname, test->extra);
 
     qtest_start(args);
     unlink(tmpname);

@@ -45,6 +45,7 @@
 #include "qapi-visit.h"
 #include "qapi/opts-visitor.h"
 #include "sysemu/sysemu.h"
+#include "sysemu/qtest.h"
 #include "net/filter.h"
 #include "qapi/string-output-visitor.h"
 
@@ -491,6 +492,7 @@ void qemu_set_vnet_hdr_len(NetClientState *nc, int len)
         return;
     }
 
+    nc->vnet_hdr_len = len;
     nc->info->set_vnet_hdr_len(nc, len);
 }
 
@@ -970,6 +972,7 @@ static int net_client_init1(const void *object, bool is_netdev, Error **errp)
     const Netdev *netdev;
     const char *name;
     NetClientState *peer = NULL;
+    static bool vlan_warned;
 
     if (is_netdev) {
         netdev = object;
@@ -992,47 +995,47 @@ static int net_client_init1(const void *object, bool is_netdev, Error **errp)
 
         /* Map the old options to the new flat type */
         switch (opts->type) {
-        case NET_LEGACY_OPTIONS_KIND_NONE:
+        case NET_LEGACY_OPTIONS_TYPE_NONE:
             return 0; /* nothing to do */
-        case NET_LEGACY_OPTIONS_KIND_NIC:
+        case NET_LEGACY_OPTIONS_TYPE_NIC:
             legacy.type = NET_CLIENT_DRIVER_NIC;
-            legacy.u.nic = *opts->u.nic.data;
+            legacy.u.nic = opts->u.nic;
             break;
-        case NET_LEGACY_OPTIONS_KIND_USER:
+        case NET_LEGACY_OPTIONS_TYPE_USER:
             legacy.type = NET_CLIENT_DRIVER_USER;
-            legacy.u.user = *opts->u.user.data;
+            legacy.u.user = opts->u.user;
             break;
-        case NET_LEGACY_OPTIONS_KIND_TAP:
+        case NET_LEGACY_OPTIONS_TYPE_TAP:
             legacy.type = NET_CLIENT_DRIVER_TAP;
-            legacy.u.tap = *opts->u.tap.data;
+            legacy.u.tap = opts->u.tap;
             break;
-        case NET_LEGACY_OPTIONS_KIND_L2TPV3:
+        case NET_LEGACY_OPTIONS_TYPE_L2TPV3:
             legacy.type = NET_CLIENT_DRIVER_L2TPV3;
-            legacy.u.l2tpv3 = *opts->u.l2tpv3.data;
+            legacy.u.l2tpv3 = opts->u.l2tpv3;
             break;
-        case NET_LEGACY_OPTIONS_KIND_SOCKET:
+        case NET_LEGACY_OPTIONS_TYPE_SOCKET:
             legacy.type = NET_CLIENT_DRIVER_SOCKET;
-            legacy.u.socket = *opts->u.socket.data;
+            legacy.u.socket = opts->u.socket;
             break;
-        case NET_LEGACY_OPTIONS_KIND_VDE:
+        case NET_LEGACY_OPTIONS_TYPE_VDE:
             legacy.type = NET_CLIENT_DRIVER_VDE;
-            legacy.u.vde = *opts->u.vde.data;
+            legacy.u.vde = opts->u.vde;
             break;
-        case NET_LEGACY_OPTIONS_KIND_DUMP:
+        case NET_LEGACY_OPTIONS_TYPE_DUMP:
             legacy.type = NET_CLIENT_DRIVER_DUMP;
-            legacy.u.dump = *opts->u.dump.data;
+            legacy.u.dump = opts->u.dump;
             break;
-        case NET_LEGACY_OPTIONS_KIND_BRIDGE:
+        case NET_LEGACY_OPTIONS_TYPE_BRIDGE:
             legacy.type = NET_CLIENT_DRIVER_BRIDGE;
-            legacy.u.bridge = *opts->u.bridge.data;
+            legacy.u.bridge = opts->u.bridge;
             break;
-        case NET_LEGACY_OPTIONS_KIND_NETMAP:
+        case NET_LEGACY_OPTIONS_TYPE_NETMAP:
             legacy.type = NET_CLIENT_DRIVER_NETMAP;
-            legacy.u.netmap = *opts->u.netmap.data;
+            legacy.u.netmap = opts->u.netmap;
             break;
-        case NET_LEGACY_OPTIONS_KIND_VHOST_USER:
+        case NET_LEGACY_OPTIONS_TYPE_VHOST_USER:
             legacy.type = NET_CLIENT_DRIVER_VHOST_USER;
-            legacy.u.vhost_user = *opts->u.vhost_user.data;
+            legacy.u.vhost_user = opts->u.vhost_user;
             break;
         default:
             abort();
@@ -1047,8 +1050,13 @@ static int net_client_init1(const void *object, bool is_netdev, Error **errp)
 
         /* Do not add to a vlan if it's a nic with a netdev= parameter. */
         if (netdev->type != NET_CLIENT_DRIVER_NIC ||
-            !opts->u.nic.data->has_netdev) {
+            !opts->u.nic.has_netdev) {
             peer = net_hub_add_port(net->has_vlan ? net->vlan : 0, NULL);
+        }
+
+        if (net->has_vlan && !vlan_warned) {
+            error_report("'vlan' is deprecated. Please use 'netdev' instead.");
+            vlan_warned = true;
         }
     }
 
@@ -1143,6 +1151,12 @@ void hmp_host_net_add(Monitor *mon, const QDict *qdict)
     const char *opts_str = qdict_get_try_str(qdict, "opts");
     Error *local_err = NULL;
     QemuOpts *opts;
+    static bool warned;
+
+    if (!warned && !qtest_enabled()) {
+        error_report("host_net_add is deprecated, use netdev_add instead");
+        warned = true;
+    }
 
     if (!net_host_check_device(device)) {
         monitor_printf(mon, "invalid host network device %s\n", device);
@@ -1169,6 +1183,12 @@ void hmp_host_net_remove(Monitor *mon, const QDict *qdict)
     NetClientState *nc;
     int vlan_id = qdict_get_int(qdict, "vlan_id");
     const char *device = qdict_get_str(qdict, "device");
+    static bool warned;
+
+    if (!warned && !qtest_enabled()) {
+        error_report("host_net_remove is deprecated, use netdev_del instead");
+        warned = true;
+    }
 
     nc = net_hub_find_client_by_name(vlan_id, device);
     if (!nc) {
@@ -1596,11 +1616,14 @@ QemuOptsList qemu_net_opts = {
 };
 
 void net_socket_rs_init(SocketReadState *rs,
-                        SocketReadStateFinalize *finalize)
+                        SocketReadStateFinalize *finalize,
+                        bool vnet_hdr)
 {
     rs->state = 0;
+    rs->vnet_hdr = vnet_hdr;
     rs->index = 0;
     rs->packet_len = 0;
+    rs->vnet_hdr_len = 0;
     memset(rs->buf, 0, sizeof(rs->buf));
     rs->finalize = finalize;
 }
@@ -1615,8 +1638,12 @@ int net_fill_rstate(SocketReadState *rs, const uint8_t *buf, int size)
     unsigned int l;
 
     while (size > 0) {
-        /* reassemble a packet from the network */
-        switch (rs->state) { /* 0 = getting length, 1 = getting data */
+        /* Reassemble a packet from the network.
+         * 0 = getting length.
+         * 1 = getting vnet header length.
+         * 2 = getting data.
+         */
+        switch (rs->state) {
         case 0:
             l = 4 - rs->index;
             if (l > size) {
@@ -1630,10 +1657,31 @@ int net_fill_rstate(SocketReadState *rs, const uint8_t *buf, int size)
                 /* got length */
                 rs->packet_len = ntohl(*(uint32_t *)rs->buf);
                 rs->index = 0;
-                rs->state = 1;
+                if (rs->vnet_hdr) {
+                    rs->state = 1;
+                } else {
+                    rs->state = 2;
+                    rs->vnet_hdr_len = 0;
+                }
             }
             break;
         case 1:
+            l = 4 - rs->index;
+            if (l > size) {
+                l = size;
+            }
+            memcpy(rs->buf + rs->index, buf, l);
+            buf += l;
+            size -= l;
+            rs->index += l;
+            if (rs->index == 4) {
+                /* got vnet header length */
+                rs->vnet_hdr_len = ntohl(*(uint32_t *)rs->buf);
+                rs->index = 0;
+                rs->state = 2;
+            }
+            break;
+        case 2:
             l = rs->packet_len - rs->index;
             if (l > size) {
                 l = size;

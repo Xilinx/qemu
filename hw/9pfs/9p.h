@@ -99,8 +99,8 @@ enum p9_proto_version {
     V9FS_PROTO_2000L = 0x02,
 };
 
-#define P9_NOTAG    (u16)(~0)
-#define P9_NOFID    (u32)(~0)
+#define P9_NOTAG    UINT16_MAX
+#define P9_NOFID    UINT32_MAX
 #define P9_MAXWELEM 16
 
 #define FID_REFERENCED          0x1
@@ -118,6 +118,17 @@ static inline char *rpath(FsContext *ctx, const char *path)
 
 typedef struct V9fsPDU V9fsPDU;
 struct V9fsState;
+
+typedef struct {
+    uint32_t size_le;
+    uint8_t id;
+    uint16_t tag_le;
+} QEMU_PACKED P9MsgHeader;
+/* According to the specification, 9p messages start with a 7-byte header.
+ * Since most of the code uses this header size in literal form, we must be
+ * sure this is indeed the case.
+ */
+QEMU_BUILD_BUG_ON(sizeof(P9MsgHeader) != 7);
 
 struct V9fsPDU
 {
@@ -229,6 +240,8 @@ typedef struct V9fsState
     char *tag;
     enum p9_proto_version proto_version;
     int32_t msize;
+    V9fsPDU pdus[MAX_REQ];
+    const struct V9fsTransport *transport;
     /*
      * lock ensuring atomic path update
      * on rename.
@@ -339,7 +352,27 @@ ssize_t pdu_marshal(V9fsPDU *pdu, size_t offset, const char *fmt, ...);
 ssize_t pdu_unmarshal(V9fsPDU *pdu, size_t offset, const char *fmt, ...);
 V9fsPDU *pdu_alloc(V9fsState *s);
 void pdu_free(V9fsPDU *pdu);
-void pdu_submit(V9fsPDU *pdu);
+void pdu_submit(V9fsPDU *pdu, P9MsgHeader *hdr);
 void v9fs_reset(V9fsState *s);
+
+struct V9fsTransport {
+    ssize_t     (*pdu_vmarshal)(V9fsPDU *pdu, size_t offset, const char *fmt,
+                                va_list ap);
+    ssize_t     (*pdu_vunmarshal)(V9fsPDU *pdu, size_t offset, const char *fmt,
+                                  va_list ap);
+    void        (*init_in_iov_from_pdu)(V9fsPDU *pdu, struct iovec **piov,
+                                        unsigned int *pniov, size_t size);
+    void        (*init_out_iov_from_pdu)(V9fsPDU *pdu, struct iovec **piov,
+                                         unsigned int *pniov, size_t size);
+    void        (*push_and_notify)(V9fsPDU *pdu);
+};
+
+static inline int v9fs_register_transport(V9fsState *s,
+        const struct V9fsTransport *t)
+{
+    assert(!s->transport);
+    s->transport = t;
+    return 0;
+}
 
 #endif

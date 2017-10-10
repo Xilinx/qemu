@@ -298,8 +298,8 @@ static void sdl_send_mouse_event(struct sdl2_console *scon, int dx, int dy,
                 }
             }
         }
-        qemu_input_queue_abs(scon->dcl.con, INPUT_AXIS_X, off_x + x, max_w);
-        qemu_input_queue_abs(scon->dcl.con, INPUT_AXIS_Y, off_y + y, max_h);
+        qemu_input_queue_abs(scon->dcl.con, INPUT_AXIS_X, off_x + x, 0, max_w);
+        qemu_input_queue_abs(scon->dcl.con, INPUT_AXIS_Y, off_y + y, 0, max_h);
     } else {
         if (guest_cursor) {
             x -= guest_x;
@@ -568,7 +568,7 @@ static void handle_windowevent(SDL_Event *ev)
     case SDL_WINDOWEVENT_CLOSE:
         if (!no_quit) {
             no_shutdown = 0;
-            qemu_system_shutdown_request();
+            qemu_system_shutdown_request(SHUTDOWN_CAUSE_HOST_UI);
         }
         break;
     case SDL_WINDOWEVENT_SHOWN:
@@ -611,7 +611,7 @@ void sdl2_poll_events(struct sdl2_console *scon)
         case SDL_QUIT:
             if (!no_quit) {
                 no_shutdown = 0;
-                qemu_system_shutdown_request();
+                qemu_system_shutdown_request(SHUTDOWN_CAUSE_HOST_UI);
             }
             break;
         case SDL_MOUSEMOTION:
@@ -733,7 +733,8 @@ static const DisplayChangeListenerOps dcl_gl_ops = {
     .dpy_gl_ctx_destroy      = sdl2_gl_destroy_context,
     .dpy_gl_ctx_make_current = sdl2_gl_make_context_current,
     .dpy_gl_ctx_get_current  = sdl2_gl_get_current_context,
-    .dpy_gl_scanout          = sdl2_gl_scanout,
+    .dpy_gl_scanout_disable  = sdl2_gl_scanout_disable,
+    .dpy_gl_scanout_texture  = sdl2_gl_scanout_texture,
     .dpy_gl_update           = sdl2_gl_scanout_flush,
 };
 #endif
@@ -761,6 +762,7 @@ void sdl_display_init(DisplayState *ds, int full_screen, int no_frame)
     uint8_t data = 0;
     char *filename;
     int i;
+    SDL_SysWMinfo info;
 
     if (no_frame) {
         gui_noframe = 1;
@@ -786,6 +788,8 @@ void sdl_display_init(DisplayState *ds, int full_screen, int no_frame)
         exit(1);
     }
     SDL_SetHint(SDL_HINT_GRAB_KEYBOARD, "1");
+    memset(&info, 0, sizeof(info));
+    SDL_VERSION(&info.version);
 
     for (i = 0;; i++) {
         QemuConsole *con = qemu_console_lookup_by_index(i);
@@ -800,6 +804,7 @@ void sdl_display_init(DisplayState *ds, int full_screen, int no_frame)
     sdl2_console = g_new0(struct sdl2_console, sdl2_num_outputs);
     for (i = 0; i < sdl2_num_outputs; i++) {
         QemuConsole *con = qemu_console_lookup_by_index(i);
+        assert(con != NULL);
         if (!qemu_console_is_graphic(con)) {
             sdl2_console[i].hidden = true;
         }
@@ -813,6 +818,16 @@ void sdl_display_init(DisplayState *ds, int full_screen, int no_frame)
 #endif
         sdl2_console[i].dcl.con = con;
         register_displaychangelistener(&sdl2_console[i].dcl);
+
+#if defined(SDL_VIDEO_DRIVER_WINDOWS) || defined(SDL_VIDEO_DRIVER_X11)
+        if (SDL_GetWindowWMInfo(sdl2_console[i].real_window, &info)) {
+#if defined(SDL_VIDEO_DRIVER_WINDOWS)
+            qemu_console_set_window_id(con, (uintptr_t)info.info.win.window);
+#elif defined(SDL_VIDEO_DRIVER_X11)
+            qemu_console_set_window_id(con, info.info.x11.window);
+#endif
+        }
+#endif
     }
 
     /* Load a 32x32x4 image. White pixels are transparent. */

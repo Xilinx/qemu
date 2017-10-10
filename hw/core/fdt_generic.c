@@ -34,8 +34,8 @@
 #endif
 #define DB_PRINT(lvl, ...) do { \
     if (FDT_GENERIC_ERR_DEBUG > (lvl)) { \
-        qemu_log_mask(lvl, ": %s: ", __func__); \
-        qemu_log_mask(lvl, ## __VA_ARGS__); \
+        qemu_log_mask(LOG_FDT, ": %s: ", __func__); \
+        qemu_log_mask(LOG_FDT, ## __VA_ARGS__); \
     } \
 } while (0);
 
@@ -138,7 +138,7 @@ void fdt_init_yield(FDTMachineInfo *fdti)
     int this_yield = yield_index++;
 
     DB_PRINT(1, "Yield #%d\n", this_yield);
-    qemu_co_queue_wait(fdti->cq);
+    qemu_co_queue_wait(fdti->cq, NULL);
     DB_PRINT(1, "Unyield #%d\n", this_yield);
 }
 

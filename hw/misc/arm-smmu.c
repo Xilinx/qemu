@@ -40,6 +40,7 @@
 #endif
 
 #define TYPE_XILINX_SMMU500 "arm.mmu-500"
+#define TYPE_XILINX_SMMU500_IOMMU_MEMORY_REGION "arm.mmu-500-iommu-memory-region"
 
 #define XILINX_SMMU500(obj) \
      OBJECT_CHECK(SMMU, (obj), TYPE_XILINX_SMMU500)
@@ -6078,7 +6079,7 @@ DEP_REG32(SMMU_GATSR, 0x188)
 typedef struct SMMU SMMU;
 typedef struct TBU {
     SMMU *smmu;
-    MemoryRegion iommu;
+    IOMMUMemoryRegion iommu;
     AddressSpace *as;
     MemoryRegion *mr;
 } TBU;
@@ -6692,7 +6693,7 @@ static void smmu_nscr0_pw(DepRegisterInfo *reg, uint64_t val)
     s->regs[R_SMMU_NSCR0] = val;
 }
 
-static IOMMUTLBEntry smmu_translate(MemoryRegion *mr, hwaddr addr,
+static IOMMUTLBEntry smmu_translate(IOMMUMemoryRegion *mr, hwaddr addr,
                                     bool is_write,
                                     MemTxAttrs *attr)
 {
@@ -8387,10 +8388,6 @@ static void smmu500_write(void *opaque, hwaddr addr, uint64_t value,
 }
 
 
-static MemoryRegionIOMMUOps smmu_iommu_ops = {
-    .translate_attr = smmu_translate,
-};
-
 static const MemoryRegionOps smmu500_ops = {
     .read = smmu500_read,
     .write = smmu500_write,
@@ -8474,9 +8471,11 @@ static bool smmu_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
 
         assert(s->tbu[i].mr);
         s->tbu[i].as = address_space_init_shareable(s->tbu[i].mr, NULL);
-        memory_region_init_iommu(&s->tbu[i].iommu, OBJECT(sbd), &smmu_iommu_ops,
+        memory_region_init_iommu(&s->tbu[i].iommu, sizeof(s->tbu[i].iommu),
+                                 TYPE_XILINX_SMMU500_IOMMU_MEMORY_REGION,
+                                 OBJECT(sbd),
                                  name, UINT64_MAX);
-        sysbus_init_mmio(sbd, &s->tbu[i].iommu);
+        sysbus_init_mmio(sbd, MEMORY_REGION(&s->tbu[i].iommu));
         g_free(name);
     }
 
@@ -8511,6 +8510,14 @@ static void smmu500_class_init(ObjectClass *klass, void *data)
     fmc->parse_reg = smmu_parse_reg;
 }
 
+static void smmu500_iommu_memory_region_class_init(ObjectClass *klass,
+                                                   void *data)
+{
+    IOMMUMemoryRegionClass *imrc = IOMMU_MEMORY_REGION_CLASS(klass);
+
+    imrc->translate_attr = smmu_translate;
+}
+
 static const TypeInfo smmu500_info = {
     .name          = TYPE_XILINX_SMMU500,
     .parent        = TYPE_SYS_BUS_DEVICE,
@@ -8523,9 +8530,17 @@ static const TypeInfo smmu500_info = {
     },
 };
 
+static const TypeInfo smmu500_iommu_memory_region_info = {
+    .name = TYPE_XILINX_SMMU500_IOMMU_MEMORY_REGION,
+    .parent = TYPE_IOMMU_MEMORY_REGION,
+    .class_init = smmu500_iommu_memory_region_class_init,
+};
+
+
 static void smmu500_register_types(void)
 {
     type_register_static(&smmu500_info);
+    type_register_static(&smmu500_iommu_memory_region_info);
 }
 
 type_init(smmu500_register_types)

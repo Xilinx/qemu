@@ -190,6 +190,7 @@ void target_disas(FILE *out, CPUState *cpu, target_ulong code,
 
     s.cpu = cpu;
     s.info.read_memory_func = target_read_memory;
+    s.info.read_memory_inner_func = NULL;
     s.info.buffer_vma = code;
     s.info.buffer_length = size;
     s.info.print_address_func = generic_print_address;
@@ -310,6 +311,8 @@ void disas(FILE *out, void *code, unsigned long size)
     print_insn = print_insn_m68k;
 #elif defined(__s390__)
     print_insn = print_insn_s390;
+#elif defined(__hppa__)
+    print_insn = print_insn_hppa;
 #elif defined(__ia64__)
     print_insn = print_insn_ia64;
 #endif

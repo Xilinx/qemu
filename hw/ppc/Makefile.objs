@@ -6,7 +6,7 @@ obj-$(CONFIG_PSERIES) += spapr_hcall.o spapr_iommu.o spapr_rtas.o
 obj-$(CONFIG_PSERIES) += spapr_pci.o spapr_rtc.o spapr_drc.o spapr_rng.o
 obj-$(CONFIG_PSERIES) += spapr_cpu_core.o spapr_ovec.o
 # IBM PowerNV
-obj-$(CONFIG_POWERNV) += pnv.o pnv_xscom.o pnv_core.o pnv_lpc.o
+obj-$(CONFIG_POWERNV) += pnv.o pnv_xscom.o pnv_core.o pnv_lpc.o pnv_psi.o pnv_occ.o pnv_bmc.o
 ifeq ($(CONFIG_PCI)$(CONFIG_PSERIES)$(CONFIG_LINUX), yyy)
 obj-y += spapr_pci_vfio.o
 endif
@@ -16,6 +16,8 @@ obj-y += ppc405_boards.o ppc4xx_devs.o ppc405_uc.o ppc440_bamboo.o
 obj-y += ppc4xx_pci.o
 # PReP
 obj-$(CONFIG_PREP) += prep.o
+obj-$(CONFIG_PREP) += prep_systemio.o
+obj-${CONFIG_RS6000_MC} += rs6000_mc.o
 # OldWorld PowerMac
 obj-$(CONFIG_MAC) += mac_oldworld.o
 # NewWorld PowerMac

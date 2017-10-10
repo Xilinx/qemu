@@ -44,9 +44,6 @@ struct BlockJobDriver {
     /** Optional callback for job types that support setting a speed limit */
     void (*set_speed)(BlockJob *job, int64_t speed, Error **errp);
 
-    /** Optional callback for job types that need to forward I/O status reset */
-    void (*iostatus_reset)(BlockJob *job);
-
     /** Mandatory: Entrypoint for the Coroutine. */
     CoroutineEntry *start;
 
@@ -119,6 +116,7 @@ struct BlockJobDriver {
  * generated automatically.
  * @job_type: The class object for the newly-created job.
  * @bs: The block
+ * @perm, @shared_perm: Permissions to request for @bs
  * @speed: The maximum speed, in bytes per second, or 0 for unlimited.
  * @cb: Completion function for the job.
  * @opaque: Opaque pointer value passed to @cb.
@@ -134,7 +132,8 @@ struct BlockJobDriver {
  * called from a wrapper that is specific to the job type.
  */
 void *block_job_create(const char *job_id, const BlockJobDriver *driver,
-                       BlockDriverState *bs, int64_t speed, int flags,
+                       BlockDriverState *bs, uint64_t perm,
+                       uint64_t shared_perm, int64_t speed, int flags,
                        BlockCompletionFunc *cb, void *opaque, Error **errp);
 
 /**
@@ -157,21 +156,26 @@ void block_job_sleep_ns(BlockJob *job, QEMUClockType type, int64_t ns);
 void block_job_yield(BlockJob *job);
 
 /**
- * block_job_ref:
- * @bs: The block device.
+ * block_job_pause_all:
  *
- * Grab a reference to the block job. Should be paired with block_job_unref.
+ * Asynchronously pause all jobs.
  */
-void block_job_ref(BlockJob *job);
+void block_job_pause_all(void);
 
 /**
- * block_job_unref:
+ * block_job_resume_all:
+ *
+ * Resume all block jobs.  Must be paired with a preceding block_job_pause_all.
+ */
+void block_job_resume_all(void);
+
+/**
+ * block_job_early_fail:
  * @bs: The block device.
  *
- * Release reference to the block job and release resources if it is the last
- * reference.
+ * The block job could not be started, free it.
  */
-void block_job_unref(BlockJob *job);
+void block_job_early_fail(BlockJob *job);
 
 /**
  * block_job_completed:
@@ -237,7 +241,8 @@ typedef void BlockJobDeferToMainLoopFn(BlockJob *job, void *opaque);
  * @fn: The function to run in the main loop
  * @opaque: The opaque value that is passed to @fn
  *
- * Execute a given function in the main loop with the BlockDriverState
+ * This function must be called by the main job coroutine just before it
+ * returns.  @fn is executed in the main loop with the BlockDriverState
  * AioContext acquired.  Block jobs must call bdrv_unref(), bdrv_close(), and
  * anything that uses bdrv_drain_all() in the main loop.
  *

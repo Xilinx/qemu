@@ -21,6 +21,7 @@
 #include "hw/block/flash.h"
 #include "qemu/error-report.h"
 #include "qemu/log.h"
+#include "qemu/config-file.h"
 #include "sysemu/qtest.h"
 #include "hw/arm/xlnx-zynqmp.h"
 
@@ -557,7 +558,6 @@ static void arm_generic_fdt_7000_init(MachineState *machine)
     ocm_ram = g_new(MemoryRegion, 1);
     memory_region_init_ram(ocm_ram, NULL, "zynq.ocm_ram", 256 << 10,
                            &error_abort);
-    vmstate_register_ram_global(ocm_ram);
     memory_region_add_subregion(address_space_mem, 0xFFFC0000, ocm_ram);
 
     dev = qdev_create(NULL, "arm.pl35x");

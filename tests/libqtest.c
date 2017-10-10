@@ -21,6 +21,7 @@
 #include <sys/wait.h>
 #include <sys/un.h>
 
+#include "qapi/error.h"
 #include "qapi/qmp/json-parser.h"
 #include "qapi/qmp/json-streamer.h"
 #include "qapi/qmp/qjson.h"
@@ -139,8 +140,8 @@ void qtest_add_abrt_handler(GHookFunc fn, const void *data)
     /* Only install SIGABRT handler once */
     if (!abrt_hooks.is_setup) {
         g_hook_list_init(&abrt_hooks, sizeof(GHook));
-        setup_sigabrt_handler();
     }
+    setup_sigabrt_handler();
 
     hook = g_hook_alloc(&abrt_hooks);
     hook->func = fn;
@@ -149,7 +150,7 @@ void qtest_add_abrt_handler(GHookFunc fn, const void *data)
     g_hook_prepend(&abrt_hooks, hook);
 }
 
-QTestState *qtest_init(const char *extra_args)
+QTestState *qtest_init_without_qmp_handshake(const char *extra_args)
 {
     QTestState *s;
     int sock, qmpsock, i;
@@ -159,12 +160,23 @@ QTestState *qtest_init(const char *extra_args)
     const char *qemu_binary;
 
     qemu_binary = getenv("QTEST_QEMU_BINARY");
-    g_assert(qemu_binary != NULL);
+    if (!qemu_binary) {
+        fprintf(stderr, "Environment variable QTEST_QEMU_BINARY required\n");
+        exit(1);
+    }
 
     s = g_malloc(sizeof(*s));
 
     socket_path = g_strdup_printf("/tmp/qtest-%d.sock", getpid());
     qmp_socket_path = g_strdup_printf("/tmp/qtest-%d.qmp", getpid());
+
+    /* It's possible that if an earlier test run crashed it might
+     * have left a stale unix socket lying around. Delete any
+     * stale old socket to avoid spurious test failures with
+     * tests/libqtest.c:70:init_socket: assertion failed (ret != -1): (-1 != -1)
+     */
+    unlink(socket_path);
+    unlink(qmp_socket_path);
 
     sock = init_socket(socket_path);
     qmpsock = init_socket(qmp_socket_path);
@@ -204,10 +216,6 @@ QTestState *qtest_init(const char *extra_args)
         s->irq_level[i] = false;
     }
 
-    /* Read the QMP greeting and then do the handshake */
-    qtest_qmp_discard_response(s, "");
-    qtest_qmp_discard_response(s, "{ 'execute': 'qmp_capabilities' }");
-
     if (getenv("QTEST_STOP")) {
         kill(s->qemu_pid, SIGSTOP);
     }
@@ -215,6 +223,17 @@ QTestState *qtest_init(const char *extra_args)
     /* ask endianness of the target */
 
     s->big_endian = qtest_query_target_endianness(s);
+
+    return s;
+}
+
+QTestState *qtest_init(const char *extra_args)
+{
+    QTestState *s = qtest_init_without_qmp_handshake(extra_args);
+
+    /* Read the QMP greeting and then do the handshake */
+    qtest_qmp_discard_response(s, "");
+    qtest_qmp_discard_response(s, "{ 'execute': 'qmp_capabilities' }");
 
     return s;
 }
@@ -379,9 +398,9 @@ static void qmp_response(JSONMessageParser *parser, GQueue *tokens)
         exit(1);
     }
 
-    g_assert(qobject_type(obj) == QTYPE_QDICT);
     g_assert(!qmp->response);
-    qmp->response = (QDict *)obj;
+    qmp->response = qobject_to_qdict(obj);
+    g_assert(qmp->response);
 }
 
 QDict *qmp_fd_receive(int fd)
@@ -430,26 +449,40 @@ void qmp_fd_sendv(int fd, const char *fmt, va_list ap)
     va_list ap_copy;
     QObject *qobj;
 
+    /* qobject_from_jsonv() silently eats leading 0xff as invalid
+     * JSON, but we want to test sending them over the wire to force
+     * resyncs */
+    if (*fmt == '\377') {
+        socket_send(fd, fmt, 1);
+        fmt++;
+    }
+
     /* Going through qobject ensures we escape strings properly.
      * This seemingly unnecessary copy is required in case va_list
      * is an array type.
      */
     va_copy(ap_copy, ap);
-    qobj = qobject_from_jsonv(fmt, &ap_copy);
+    qobj = qobject_from_jsonv(fmt, &ap_copy, &error_abort);
     va_end(ap_copy);
 
     /* No need to send anything for an empty QObject.  */
     if (qobj) {
         int log = getenv("QTEST_LOG") != NULL;
         QString *qstr = qobject_to_json(qobj);
-        const char *str = qstring_get_str(qstr);
-        size_t size = qstring_get_length(qstr);
+        const char *str;
+
+        /*
+         * BUG: QMP doesn't react to input until it sees a newline, an
+         * object, or an array.  Work-around: give it a newline.
+         */
+        qstring_append_chr(qstr, '\n');
+        str = qstring_get_str(qstr);
 
         if (log) {
             fprintf(stderr, "%s", str);
         }
         /* Send QMP request */
-        socket_send(fd, str, size);
+        socket_send(fd, str, qstring_get_length(qstr));
 
         QDECREF(qstr);
         qobject_decref(qobj);
@@ -566,6 +599,12 @@ char *qtest_hmpv(QTestState *s, const char *fmt, va_list ap)
                      " 'arguments': {'command-line': %s}}",
                      cmd);
     ret = g_strdup(qdict_get_try_str(resp, "return"));
+    while (ret == NULL && qdict_get_try_str(resp, "event")) {
+        /* Ignore asynchronous QMP events */
+        QDECREF(resp);
+        resp = qtest_qmp_receive(s);
+        ret = g_strdup(qdict_get_try_str(resp, "return"));
+    }
     g_assert(ret);
     QDECREF(resp);
     g_free(cmd);
@@ -768,6 +807,10 @@ void qtest_memread(QTestState *s, uint64_t addr, void *data, size_t size)
     gchar **args;
     size_t i;
 
+    if (!size) {
+        return;
+    }
+
     qtest_sendf(s, "read 0x%" PRIx64 " 0x%zx\n", addr, size);
     args = qtest_rsp(s, 2);
 
@@ -801,17 +844,7 @@ void qtest_add_data_func_full(const char *str, void *data,
                               GDestroyNotify data_free_func)
 {
     gchar *path = g_strdup_printf("/%s/%s", qtest_get_arch(), str);
-#if GLIB_CHECK_VERSION(2, 34, 0)
     g_test_add_data_func_full(path, data, fn, data_free_func);
-#elif GLIB_CHECK_VERSION(2, 26, 0)
-    /* back-compat casts, remove this once we can require new-enough glib */
-    g_test_add_vtable(path, 0, data, NULL,
-                      (GTestFixtureFunc)fn, (GTestFixtureFunc) data_free_func);
-#else
-    /* back-compat casts, remove this once we can require new-enough glib */
-    g_test_add_vtable(path, 0, data, NULL,
-                      (void (*)(void)) fn, (void (*)(void)) data_free_func);
-#endif
     g_free(path);
 }
 
@@ -858,7 +891,13 @@ void qtest_memwrite(QTestState *s, uint64_t addr, const void *data, size_t size)
 {
     const uint8_t *ptr = data;
     size_t i;
-    char *enc = g_malloc(2 * size + 1);
+    char *enc;
+
+    if (!size) {
+        return;
+    }
+
+    enc = g_malloc(2 * size + 1);
 
     for (i = 0; i < size; i++) {
         sprintf(&enc[i * 2], "%02x", ptr[i]);
@@ -917,4 +956,34 @@ char *hmp(const char *fmt, ...)
 bool qtest_big_endian(QTestState *s)
 {
     return s->big_endian;
+}
+
+void qtest_cb_for_every_machine(void (*cb)(const char *machine))
+{
+    QDict *response, *minfo;
+    QList *list;
+    const QListEntry *p;
+    QObject *qobj;
+    QString *qstr;
+    const char *mname;
+
+    qtest_start("-machine none");
+    response = qmp("{ 'execute': 'query-machines' }");
+    g_assert(response);
+    list = qdict_get_qlist(response, "return");
+    g_assert(list);
+
+    for (p = qlist_first(list); p; p = qlist_next(p)) {
+        minfo = qobject_to_qdict(qlist_entry_obj(p));
+        g_assert(minfo);
+        qobj = qdict_get(minfo, "name");
+        g_assert(qobj);
+        qstr = qobject_to_qstring(qobj);
+        g_assert(qstr);
+        mname = qstring_get_str(qstr);
+        cb(mname);
+    }
+
+    qtest_end();
+    QDECREF(response);
 }

@@ -20,7 +20,9 @@
 #include "hw/virtio/virtio-access.h"
 #include "qemu/iov.h"
 
-void virtio_9p_push_and_notify(V9fsPDU *pdu)
+static const struct V9fsTransport virtio_9p_transport;
+
+static void virtio_9p_push_and_notify(V9fsPDU *pdu)
 {
     V9fsState *s = pdu->s;
     V9fsVirtioState *v = container_of(s, V9fsVirtioState, state);
@@ -44,41 +46,30 @@ static void handle_9p_output(VirtIODevice *vdev, VirtQueue *vq)
     VirtQueueElement *elem;
 
     while ((pdu = pdu_alloc(s))) {
-        struct {
-            uint32_t size_le;
-            uint8_t id;
-            uint16_t tag_le;
-        } QEMU_PACKED out;
+        P9MsgHeader out;
 
         elem = virtqueue_pop(vq, sizeof(VirtQueueElement));
         if (!elem) {
             goto out_free_pdu;
         }
 
-        if (elem->in_num == 0) {
+        if (iov_size(elem->in_sg, elem->in_num) < 7) {
             virtio_error(vdev,
                          "The guest sent a VirtFS request without space for "
                          "the reply");
             goto out_free_req;
         }
-        QEMU_BUILD_BUG_ON(sizeof(out) != 7);
 
-        v->elems[pdu->idx] = elem;
-        len = iov_to_buf(elem->out_sg, elem->out_num, 0,
-                         &out, sizeof(out));
-        if (len != sizeof(out)) {
+        len = iov_to_buf(elem->out_sg, elem->out_num, 0, &out, 7);
+        if (len != 7) {
             virtio_error(vdev, "The guest sent a malformed VirtFS request: "
                          "header size is %zd, should be 7", len);
             goto out_free_req;
         }
 
-        pdu->size = le32_to_cpu(out.size_le);
+        v->elems[pdu->idx] = elem;
 
-        pdu->id = out.id;
-        pdu->tag = le16_to_cpu(out.tag_le);
-
-        qemu_co_queue_init(&pdu->complete);
-        pdu_submit(pdu);
+        pdu_submit(pdu, &out);
     }
 
     return;
@@ -126,6 +117,7 @@ static void virtio_9p_device_realize(DeviceState *dev, Error **errp)
     v->config_size = sizeof(struct virtio_9p_config) + strlen(s->fsconf.tag);
     virtio_init(vdev, "virtio-9p", VIRTIO_ID_9P, v->config_size);
     v->vq = virtio_add_queue(vdev, MAX_REQ, handle_9p_output);
+    v9fs_register_transport(s, &virtio_9p_transport);
 
 out:
     return;
@@ -148,41 +140,88 @@ static void virtio_9p_reset(VirtIODevice *vdev)
     v9fs_reset(&v->state);
 }
 
-ssize_t virtio_pdu_vmarshal(V9fsPDU *pdu, size_t offset,
-                            const char *fmt, va_list ap)
+static ssize_t virtio_pdu_vmarshal(V9fsPDU *pdu, size_t offset,
+                                   const char *fmt, va_list ap)
 {
     V9fsState *s = pdu->s;
     V9fsVirtioState *v = container_of(s, V9fsVirtioState, state);
     VirtQueueElement *elem = v->elems[pdu->idx];
+    ssize_t ret;
 
-    return v9fs_iov_vmarshal(elem->in_sg, elem->in_num, offset, 1, fmt, ap);
-}
+    ret = v9fs_iov_vmarshal(elem->in_sg, elem->in_num, offset, 1, fmt, ap);
+    if (ret < 0) {
+        VirtIODevice *vdev = VIRTIO_DEVICE(v);
 
-ssize_t virtio_pdu_vunmarshal(V9fsPDU *pdu, size_t offset,
-                              const char *fmt, va_list ap)
-{
-    V9fsState *s = pdu->s;
-    V9fsVirtioState *v = container_of(s, V9fsVirtioState, state);
-    VirtQueueElement *elem = v->elems[pdu->idx];
-
-    return v9fs_iov_vunmarshal(elem->out_sg, elem->out_num, offset, 1, fmt, ap);
-}
-
-void virtio_init_iov_from_pdu(V9fsPDU *pdu, struct iovec **piov,
-                              unsigned int *pniov, bool is_write)
-{
-    V9fsState *s = pdu->s;
-    V9fsVirtioState *v = container_of(s, V9fsVirtioState, state);
-    VirtQueueElement *elem = v->elems[pdu->idx];
-
-    if (is_write) {
-        *piov = elem->out_sg;
-        *pniov = elem->out_num;
-    } else {
-        *piov = elem->in_sg;
-        *pniov = elem->in_num;
+        virtio_error(vdev, "Failed to encode VirtFS reply type %d",
+                     pdu->id + 1);
     }
+    return ret;
 }
+
+static ssize_t virtio_pdu_vunmarshal(V9fsPDU *pdu, size_t offset,
+                                     const char *fmt, va_list ap)
+{
+    V9fsState *s = pdu->s;
+    V9fsVirtioState *v = container_of(s, V9fsVirtioState, state);
+    VirtQueueElement *elem = v->elems[pdu->idx];
+    ssize_t ret;
+
+    ret = v9fs_iov_vunmarshal(elem->out_sg, elem->out_num, offset, 1, fmt, ap);
+    if (ret < 0) {
+        VirtIODevice *vdev = VIRTIO_DEVICE(v);
+
+        virtio_error(vdev, "Failed to decode VirtFS request type %d", pdu->id);
+    }
+    return ret;
+}
+
+static void virtio_init_in_iov_from_pdu(V9fsPDU *pdu, struct iovec **piov,
+                                        unsigned int *pniov, size_t size)
+{
+    V9fsState *s = pdu->s;
+    V9fsVirtioState *v = container_of(s, V9fsVirtioState, state);
+    VirtQueueElement *elem = v->elems[pdu->idx];
+    size_t buf_size = iov_size(elem->in_sg, elem->in_num);
+
+    if (buf_size < size) {
+        VirtIODevice *vdev = VIRTIO_DEVICE(v);
+
+        virtio_error(vdev,
+                     "VirtFS reply type %d needs %zu bytes, buffer has %zu",
+                     pdu->id + 1, size, buf_size);
+    }
+
+    *piov = elem->in_sg;
+    *pniov = elem->in_num;
+}
+
+static void virtio_init_out_iov_from_pdu(V9fsPDU *pdu, struct iovec **piov,
+                                         unsigned int *pniov, size_t size)
+{
+    V9fsState *s = pdu->s;
+    V9fsVirtioState *v = container_of(s, V9fsVirtioState, state);
+    VirtQueueElement *elem = v->elems[pdu->idx];
+    size_t buf_size = iov_size(elem->out_sg, elem->out_num);
+
+    if (buf_size < size) {
+        VirtIODevice *vdev = VIRTIO_DEVICE(v);
+
+        virtio_error(vdev,
+                     "VirtFS request type %d needs %zu bytes, buffer has %zu",
+                     pdu->id, size, buf_size);
+    }
+
+    *piov = elem->out_sg;
+    *pniov = elem->out_num;
+}
+
+static const struct V9fsTransport virtio_9p_transport = {
+    .pdu_vmarshal = virtio_pdu_vmarshal,
+    .pdu_vunmarshal = virtio_pdu_vunmarshal,
+    .init_in_iov_from_pdu = virtio_init_in_iov_from_pdu,
+    .init_out_iov_from_pdu = virtio_init_out_iov_from_pdu,
+    .push_and_notify = virtio_9p_push_and_notify,
+};
 
 /* virtio-9p device */
 

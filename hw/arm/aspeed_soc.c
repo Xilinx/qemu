@@ -19,6 +19,7 @@
 #include "hw/char/serial.h"
 #include "qemu/log.h"
 #include "hw/i2c/aspeed_i2c.h"
+#include "net/net.h"
 
 #define ASPEED_SOC_UART_5_BASE      0x00184000
 #define ASPEED_SOC_IOMEM_SIZE       0x00200000
@@ -29,8 +30,12 @@
 #define ASPEED_SOC_VIC_BASE         0x1E6C0000
 #define ASPEED_SOC_SDMC_BASE        0x1E6E0000
 #define ASPEED_SOC_SCU_BASE         0x1E6E2000
+#define ASPEED_SOC_SRAM_BASE        0x1E720000
 #define ASPEED_SOC_TIMER_BASE       0x1E782000
+#define ASPEED_SOC_WDT_BASE         0x1E785000
 #define ASPEED_SOC_I2C_BASE         0x1E78A000
+#define ASPEED_SOC_ETH1_BASE        0x1E660000
+#define ASPEED_SOC_ETH2_BASE        0x1E680000
 
 static const int uart_irqs[] = { 9, 32, 33, 34, 10 };
 static const int timer_irqs[] = { 16, 17, 18, 35, 36, 37, 38, 39, };
@@ -47,15 +52,51 @@ static const char *aspeed_soc_ast2500_typenames[] = {
     "aspeed.smc.ast2500-spi1", "aspeed.smc.ast2500-spi2" };
 
 static const AspeedSoCInfo aspeed_socs[] = {
-    { "ast2400-a0", "arm926", AST2400_A0_SILICON_REV, AST2400_SDRAM_BASE,
-      1, aspeed_soc_ast2400_spi_bases,
-      "aspeed.smc.fmc", aspeed_soc_ast2400_typenames },
-    { "ast2400",    "arm926", AST2400_A0_SILICON_REV, AST2400_SDRAM_BASE,
-      1, aspeed_soc_ast2400_spi_bases,
-     "aspeed.smc.fmc", aspeed_soc_ast2400_typenames },
-    { "ast2500-a1", "arm1176", AST2500_A1_SILICON_REV, AST2500_SDRAM_BASE,
-      2, aspeed_soc_ast2500_spi_bases,
-      "aspeed.smc.ast2500-fmc", aspeed_soc_ast2500_typenames },
+    {
+        .name         = "ast2400-a0",
+        .cpu_model    = "arm926",
+        .silicon_rev  = AST2400_A0_SILICON_REV,
+        .sdram_base   = AST2400_SDRAM_BASE,
+        .sram_size    = 0x8000,
+        .spis_num     = 1,
+        .spi_bases    = aspeed_soc_ast2400_spi_bases,
+        .fmc_typename = "aspeed.smc.fmc",
+        .spi_typename = aspeed_soc_ast2400_typenames,
+        .wdts_num     = 2,
+    }, {
+        .name         = "ast2400-a1",
+        .cpu_model    = "arm926",
+        .silicon_rev  = AST2400_A1_SILICON_REV,
+        .sdram_base   = AST2400_SDRAM_BASE,
+        .sram_size    = 0x8000,
+        .spis_num     = 1,
+        .spi_bases    = aspeed_soc_ast2400_spi_bases,
+        .fmc_typename = "aspeed.smc.fmc",
+        .spi_typename = aspeed_soc_ast2400_typenames,
+        .wdts_num     = 2,
+    }, {
+        .name         = "ast2400",
+        .cpu_model    = "arm926",
+        .silicon_rev  = AST2400_A0_SILICON_REV,
+        .sdram_base   = AST2400_SDRAM_BASE,
+        .sram_size    = 0x8000,
+        .spis_num     = 1,
+        .spi_bases    = aspeed_soc_ast2400_spi_bases,
+        .fmc_typename = "aspeed.smc.fmc",
+        .spi_typename = aspeed_soc_ast2400_typenames,
+        .wdts_num     = 2,
+    }, {
+        .name         = "ast2500-a1",
+        .cpu_model    = "arm1176",
+        .silicon_rev  = AST2500_A1_SILICON_REV,
+        .sdram_base   = AST2500_SDRAM_BASE,
+        .sram_size    = 0x9000,
+        .spis_num     = 2,
+        .spi_bases    = aspeed_soc_ast2500_spi_bases,
+        .fmc_typename = "aspeed.smc.ast2500-fmc",
+        .spi_typename = aspeed_soc_ast2500_typenames,
+        .wdts_num     = 3,
+    },
 };
 
 /*
@@ -87,9 +128,13 @@ static void aspeed_soc_init(Object *obj)
 {
     AspeedSoCState *s = ASPEED_SOC(obj);
     AspeedSoCClass *sc = ASPEED_SOC_GET_CLASS(s);
+    char *cpu_typename;
     int i;
 
-    s->cpu = cpu_arm_init(sc->info->cpu_model);
+    cpu_typename = g_strdup_printf("%s-" TYPE_ARM_CPU, sc->info->cpu_model);
+    object_initialize(&s->cpu, sizeof(s->cpu), cpu_typename);
+    object_property_add_child(obj, "cpu", OBJECT(&s->cpu), NULL);
+    g_free(cpu_typename);
 
     object_initialize(&s->vic, sizeof(s->vic), TYPE_ASPEED_VIC);
     object_property_add_child(obj, "vic", OBJECT(&s->vic), NULL);
@@ -116,11 +161,13 @@ static void aspeed_soc_init(Object *obj)
     object_initialize(&s->fmc, sizeof(s->fmc), sc->info->fmc_typename);
     object_property_add_child(obj, "fmc", OBJECT(&s->fmc), NULL);
     qdev_set_parent_bus(DEVICE(&s->fmc), sysbus_get_default());
+    object_property_add_alias(obj, "num-cs", OBJECT(&s->fmc), "num-cs",
+                              &error_abort);
 
     for (i = 0; i < sc->info->spis_num; i++) {
         object_initialize(&s->spi[i], sizeof(s->spi[i]),
                           sc->info->spi_typename[i]);
-        object_property_add_child(obj, "spi", OBJECT(&s->spi[i]), NULL);
+        object_property_add_child(obj, "spi[*]", OBJECT(&s->spi[i]), NULL);
         qdev_set_parent_bus(DEVICE(&s->spi[i]), sysbus_get_default());
     }
 
@@ -131,6 +178,16 @@ static void aspeed_soc_init(Object *obj)
                          sc->info->silicon_rev);
     object_property_add_alias(obj, "ram-size", OBJECT(&s->sdmc),
                               "ram-size", &error_abort);
+
+    for (i = 0; i < sc->info->wdts_num; i++) {
+        object_initialize(&s->wdt[i], sizeof(s->wdt[i]), TYPE_ASPEED_WDT);
+        object_property_add_child(obj, "wdt[*]", OBJECT(&s->wdt[i]), NULL);
+        qdev_set_parent_bus(DEVICE(&s->wdt[i]), sysbus_get_default());
+    }
+
+    object_initialize(&s->ftgmac100, sizeof(s->ftgmac100), TYPE_FTGMAC100);
+    object_property_add_child(obj, "ftgmac100", OBJECT(&s->ftgmac100), NULL);
+    qdev_set_parent_bus(DEVICE(&s->ftgmac100), sysbus_get_default());
 }
 
 static void aspeed_soc_realize(DeviceState *dev, Error **errp)
@@ -146,6 +203,24 @@ static void aspeed_soc_realize(DeviceState *dev, Error **errp)
     memory_region_add_subregion_overlap(get_system_memory(),
                                         ASPEED_SOC_IOMEM_BASE, &s->iomem, -1);
 
+    /* CPU */
+    object_property_set_bool(OBJECT(&s->cpu), true, "realized", &err);
+    if (err) {
+        error_propagate(errp, err);
+        return;
+    }
+
+    /* SRAM */
+    memory_region_init_ram_nomigrate(&s->sram, OBJECT(dev), "aspeed.sram",
+                           sc->info->sram_size, &err);
+    if (err) {
+        error_propagate(errp, err);
+        return;
+    }
+    vmstate_register_ram_global(&s->sram);
+    memory_region_add_subregion(get_system_memory(), ASPEED_SOC_SRAM_BASE,
+                                &s->sram);
+
     /* VIC */
     object_property_set_bool(OBJECT(&s->vic), true, "realized", &err);
     if (err) {
@@ -154,9 +229,9 @@ static void aspeed_soc_realize(DeviceState *dev, Error **errp)
     }
     sysbus_mmio_map(SYS_BUS_DEVICE(&s->vic), 0, ASPEED_SOC_VIC_BASE);
     sysbus_connect_irq(SYS_BUS_DEVICE(&s->vic), 0,
-                       qdev_get_gpio_in(DEVICE(s->cpu), ARM_CPU_IRQ));
+                       qdev_get_gpio_in(DEVICE(&s->cpu), ARM_CPU_IRQ));
     sysbus_connect_irq(SYS_BUS_DEVICE(&s->vic), 1,
-                       qdev_get_gpio_in(DEVICE(s->cpu), ARM_CPU_FIQ));
+                       qdev_get_gpio_in(DEVICE(&s->cpu), ARM_CPU_FIQ));
 
     /* Timer */
     object_property_set_bool(OBJECT(&s->timerctrl), true, "realized", &err);
@@ -195,10 +270,8 @@ static void aspeed_soc_realize(DeviceState *dev, Error **errp)
     sysbus_connect_irq(SYS_BUS_DEVICE(&s->i2c), 0,
                        qdev_get_gpio_in(DEVICE(&s->vic), 12));
 
-    /* FMC */
-    object_property_set_int(OBJECT(&s->fmc), 1, "num-cs", &err);
-    object_property_set_bool(OBJECT(&s->fmc), true, "realized", &local_err);
-    error_propagate(&err, local_err);
+    /* FMC, The number of CS is set at the board level */
+    object_property_set_bool(OBJECT(&s->fmc), true, "realized", &err);
     if (err) {
         error_propagate(errp, err);
         return;
@@ -231,6 +304,31 @@ static void aspeed_soc_realize(DeviceState *dev, Error **errp)
         return;
     }
     sysbus_mmio_map(SYS_BUS_DEVICE(&s->sdmc), 0, ASPEED_SOC_SDMC_BASE);
+
+    /* Watch dog */
+    for (i = 0; i < sc->info->wdts_num; i++) {
+        object_property_set_bool(OBJECT(&s->wdt[i]), true, "realized", &err);
+        if (err) {
+            error_propagate(errp, err);
+            return;
+        }
+        sysbus_mmio_map(SYS_BUS_DEVICE(&s->wdt[i]), 0,
+                        ASPEED_SOC_WDT_BASE + i * 0x20);
+    }
+
+    /* Net */
+    qdev_set_nic_properties(DEVICE(&s->ftgmac100), &nd_table[0]);
+    object_property_set_bool(OBJECT(&s->ftgmac100), true, "aspeed", &err);
+    object_property_set_bool(OBJECT(&s->ftgmac100), true, "realized",
+                             &local_err);
+    error_propagate(&err, local_err);
+    if (err) {
+        error_propagate(errp, err);
+        return;
+    }
+    sysbus_mmio_map(SYS_BUS_DEVICE(&s->ftgmac100), 0, ASPEED_SOC_ETH1_BASE);
+    sysbus_connect_irq(SYS_BUS_DEVICE(&s->ftgmac100), 0,
+                       qdev_get_gpio_in(DEVICE(&s->vic), 2));
 }
 
 static void aspeed_soc_class_init(ObjectClass *oc, void *data)
@@ -240,12 +338,6 @@ static void aspeed_soc_class_init(ObjectClass *oc, void *data)
 
     sc->info = (AspeedSoCInfo *) data;
     dc->realize = aspeed_soc_realize;
-
-    /*
-     * Reason: creates an ARM CPU, thus use after free(), see
-     * arm_cpu_class_init()
-     */
-    dc->cannot_destroy_with_object_finalize_yet = true;
 }
 
 static const TypeInfo aspeed_soc_type_info = {

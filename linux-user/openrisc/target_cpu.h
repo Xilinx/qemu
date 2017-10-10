@@ -23,16 +23,14 @@
 static inline void cpu_clone_regs(CPUOpenRISCState *env, target_ulong newsp)
 {
     if (newsp) {
-        env->gpr[1] = newsp;
+        cpu_set_gpr(env, 1, newsp);
     }
-    env->gpr[11] = 0;
+    cpu_set_gpr(env, 11, 0);
 }
 
 static inline void cpu_set_tls(CPUOpenRISCState *env, target_ulong newtls)
 {
-    /* Linux kernel 3.10 does not pay any attention to CLONE_SETTLS
-     * in copy_thread(), so QEMU need not do so either.
-     */
+    cpu_set_gpr(env, 10, newtls);
 }
 
 #endif

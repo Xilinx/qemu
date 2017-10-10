@@ -9,6 +9,7 @@
 #include "qemu/config-file.h"
 #include "qemu/option.h"
 #include "qemu/module.h"
+#include "qemu/throttle-options.h"
 
 static QemuOptsList qemu_fsdev_opts = {
     .name = "fsdev",
@@ -37,7 +38,15 @@ static QemuOptsList qemu_fsdev_opts = {
         }, {
             .name = "sock_fd",
             .type = QEMU_OPT_NUMBER,
+        }, {
+            .name = "fmode",
+            .type = QEMU_OPT_NUMBER,
+        }, {
+            .name = "dmode",
+            .type = QEMU_OPT_NUMBER,
         },
+
+        THROTTLE_OPTS,
 
         { /*End of list */ }
     },
@@ -71,6 +80,12 @@ static QemuOptsList qemu_virtfs_opts = {
             .type = QEMU_OPT_STRING,
         }, {
             .name = "sock_fd",
+            .type = QEMU_OPT_NUMBER,
+        }, {
+            .name = "fmode",
+            .type = QEMU_OPT_NUMBER,
+        }, {
+            .name = "dmode",
             .type = QEMU_OPT_NUMBER,
         },
 

@@ -186,6 +186,9 @@ static void do_flush_queued_data(VirtIOSerialPort *port, VirtQueue *vq,
                                   port->elem->out_sg[i].iov_base
                                   + port->iov_offset,
                                   buf_size);
+            if (!port->elem) { /* bail if we got disconnected */
+                return;
+            }
             if (port->throttled) {
                 port->iov_idx = i;
                 if (ret > 0) {
@@ -724,6 +727,7 @@ static void virtio_serial_post_load_timer_cb(void *opaque)
         }
     }
     g_free(s->post_load->connected);
+    timer_del(s->post_load->timer);
     timer_free(s->post_load->timer);
     g_free(s->post_load);
     s->post_load = NULL;
@@ -732,6 +736,7 @@ static void virtio_serial_post_load_timer_cb(void *opaque)
 static int fetch_active_ports_list(QEMUFile *f,
                                    VirtIOSerial *s, uint32_t nr_active_ports)
 {
+    VirtIODevice *vdev = VIRTIO_DEVICE(s);
     uint32_t i;
 
     s->post_load = g_malloc0(sizeof(*s->post_load));
@@ -765,7 +770,7 @@ static int fetch_active_ports_list(QEMUFile *f,
             qemu_get_be64s(f, &port->iov_offset);
 
             port->elem =
-                qemu_get_virtqueue_element(f, sizeof(VirtQueueElement));
+                qemu_get_virtqueue_element(vdev, f, sizeof(VirtQueueElement));
 
             /*
              *  Port was throttled on source machine.  Let's
@@ -1119,6 +1124,9 @@ static void virtio_serial_device_unrealize(DeviceState *dev, Error **errp)
         timer_free(vser->post_load->timer);
         g_free(vser->post_load);
     }
+
+    qbus_set_hotplug_handler(BUS(&vser->bus), NULL, errp);
+
     virtio_cleanup(vdev);
 }
 

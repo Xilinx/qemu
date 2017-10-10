@@ -327,6 +327,7 @@ char *qemu_get_exec_dir(void)
     return g_strdup(exec_dir);
 }
 
+#if !GLIB_CHECK_VERSION(2, 50, 0)
 /*
  * The original implementation of g_poll from glib has a problem on Windows
  * when using timeouts < 10 ms.
@@ -437,10 +438,8 @@ static int poll_rest(gboolean poll_msgs, HANDLE *handles, gint nhandles,
         if (nhandles > 1) {
             /* Remove the handle that fired */
             int i;
-            if ((ready - WAIT_OBJECT_0) < nhandles - 1) {
-                for (i = ready - WAIT_OBJECT_0 + 1; i < nhandles; i++) {
-                    handles[i-1] = handles[i];
-                }
+            for (i = ready - WAIT_OBJECT_0 + 1; i < nhandles; i++) {
+                handles[i-1] = handles[i];
             }
             nhandles--;
 
@@ -543,6 +542,7 @@ gint g_poll(GPollFD *fds, guint nfds, gint timeout)
 
     return retval;
 }
+#endif
 
 int getpagesize(void)
 {
@@ -552,7 +552,8 @@ int getpagesize(void)
     return system_info.dwPageSize;
 }
 
-void os_mem_prealloc(int fd, char *area, size_t memory, Error **errp)
+void os_mem_prealloc(int fd, char *area, size_t memory, int smp_cpus,
+                     Error **errp)
 {
     int i;
     size_t pagesize = getpagesize();
@@ -561,30 +562,6 @@ void os_mem_prealloc(int fd, char *area, size_t memory, Error **errp)
     for (i = 0; i < memory / pagesize; i++) {
         memset(area + pagesize * i, 0, 1);
     }
-}
-
-
-/* XXX: put correct support for win32 */
-int qemu_read_password(char *buf, int buf_size)
-{
-    int c, i;
-
-    printf("Password: ");
-    fflush(stdout);
-    i = 0;
-    for (;;) {
-        c = getchar();
-        if (c < 0) {
-            buf[i] = '\0';
-            return -1;
-        } else if (c == '\n') {
-            break;
-        } else if (i < (buf_size - 1)) {
-            buf[i++] = c;
-        }
-    }
-    buf[i] = '\0';
-    return 0;
 }
 
 

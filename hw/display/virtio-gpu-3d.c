@@ -77,10 +77,18 @@ static void virgl_cmd_resource_unref(VirtIOGPU *g,
                                      struct virtio_gpu_ctrl_command *cmd)
 {
     struct virtio_gpu_resource_unref unref;
+    struct iovec *res_iovs = NULL;
+    int num_iovs = 0;
 
     VIRTIO_GPU_FILL_CMD(unref);
     trace_virtio_gpu_cmd_res_unref(unref.resource_id);
 
+    virgl_renderer_resource_detach_iov(unref.resource_id,
+                                       &res_iovs,
+                                       &num_iovs);
+    if (res_iovs != NULL && num_iovs != 0) {
+        virtio_gpu_cleanup_mapping_iov(res_iovs, num_iovs);
+    }
     virgl_renderer_resource_unref(unref.resource_id);
 }
 
@@ -169,16 +177,15 @@ static void virgl_cmd_set_scanout(VirtIOGPU *g,
         qemu_console_resize(g->scanout[ss.scanout_id].con,
                             ss.r.width, ss.r.height);
         virgl_renderer_force_ctx_0();
-        dpy_gl_scanout(g->scanout[ss.scanout_id].con, info.tex_id,
-                       info.flags & 1 /* FIXME: Y_0_TOP */,
-                       info.width, info.height,
-                       ss.r.x, ss.r.y, ss.r.width, ss.r.height);
+        dpy_gl_scanout_texture(g->scanout[ss.scanout_id].con, info.tex_id,
+                               info.flags & 1 /* FIXME: Y_0_TOP */,
+                               info.width, info.height,
+                               ss.r.x, ss.r.y, ss.r.width, ss.r.height);
     } else {
         if (ss.scanout_id != 0) {
             dpy_gfx_replace_surface(g->scanout[ss.scanout_id].con, NULL);
         }
-        dpy_gl_scanout(g->scanout[ss.scanout_id].con, 0, false,
-                       0, 0, 0, 0, 0, 0);
+        dpy_gl_scanout_disable(g->scanout[ss.scanout_id].con);
     }
     g->scanout[ss.scanout_id].resource_id = ss.resource_id;
 }
@@ -291,8 +298,11 @@ static void virgl_resource_attach_backing(VirtIOGPU *g,
         return;
     }
 
-    virgl_renderer_resource_attach_iov(att_rb.resource_id,
-                                       res_iovs, att_rb.nr_entries);
+    ret = virgl_renderer_resource_attach_iov(att_rb.resource_id,
+                                             res_iovs, att_rb.nr_entries);
+
+    if (ret != 0)
+        virtio_gpu_cleanup_mapping_iov(res_iovs, att_rb.nr_entries);
 }
 
 static void virgl_resource_detach_backing(VirtIOGPU *g,
@@ -371,8 +381,12 @@ static void virgl_cmd_get_capset(VirtIOGPU *g,
 
     virgl_renderer_get_cap_set(gc.capset_id, &max_ver,
                                &max_size);
-    resp = g_malloc(sizeof(*resp) + max_size);
+    if (!max_size) {
+        cmd->error = VIRTIO_GPU_RESP_ERR_INVALID_PARAMETER;
+        return;
+    }
 
+    resp = g_malloc0(sizeof(*resp) + max_size);
     resp->hdr.type = VIRTIO_GPU_RESP_OK_CAPSET;
     virgl_renderer_fill_caps(gc.capset_id,
                              gc.capset_version,
@@ -582,7 +596,23 @@ void virtio_gpu_virgl_reset(VirtIOGPU *g)
         if (i != 0) {
             dpy_gfx_replace_surface(g->scanout[i].con, NULL);
         }
-        dpy_gl_scanout(g->scanout[i].con, 0, false, 0, 0, 0, 0, 0, 0);
+        dpy_gl_scanout_disable(g->scanout[i].con);
+    }
+}
+
+void virtio_gpu_gl_block(void *opaque, bool block)
+{
+    VirtIOGPU *g = opaque;
+
+    if (block) {
+        g->renderer_blocked++;
+    } else {
+        g->renderer_blocked--;
+    }
+    assert(g->renderer_blocked >= 0);
+
+    if (g->renderer_blocked == 0) {
+        virtio_gpu_process_cmdq(g);
     }
 }
 

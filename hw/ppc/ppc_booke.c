@@ -198,8 +198,12 @@ static void booke_decr_cb(void *opaque)
     booke_update_irq(cpu);
 
     if (env->spr[SPR_BOOKE_TCR] & TCR_ARE) {
-        /* Auto Reload */
-        cpu_ppc_store_decr(env, env->spr[SPR_BOOKE_DECAR]);
+        /* Do not reload 0, it is already there. It would just trigger
+         * the timer again and lead to infinite loop */
+        if (env->spr[SPR_BOOKE_DECAR] != 0) {
+            /* Auto Reload */
+            cpu_ppc_store_decr(env, env->spr[SPR_BOOKE_DECAR]);
+        }
     }
 }
 
@@ -278,7 +282,6 @@ void store_booke_tcr(CPUPPCState *env, target_ulong val)
     ppc_tb_t *tb_env = env->tb_env;
     booke_timer_t *booke_timer = tb_env->opaque;
 
-    tb_env = env->tb_env;
     env->spr[SPR_BOOKE_TCR] = val;
     kvmppc_set_tcr(cpu);
 

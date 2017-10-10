@@ -195,8 +195,8 @@ void register_write_memory(void *opaque, hwaddr addr,
     }
 
     if (!reg) {
-        qemu_log_mask(LOG_GUEST_ERROR, "Write to unimplemented register at " \
-                      "address: %#" PRIx64 "\n", addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: write to unimplemented register " \
+                      "at address: %#" PRIx64 "\n", reg_array->prefix, addr);
         return;
     }
 
@@ -224,8 +224,8 @@ uint64_t register_read_memory(void *opaque, hwaddr addr,
     }
 
     if (!reg) {
-        qemu_log_mask(LOG_GUEST_ERROR, "Read to unimplemented register at " \
-                      "address: %#" PRIx64 "\n", addr);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s:  read to unimplemented register " \
+                      "at address: %#" PRIx64 "\n", reg_array->prefix, addr);
         return 0;
     }
 
@@ -283,9 +283,18 @@ void register_finalize_block(RegisterInfoArray *r_array)
     g_free(r_array);
 }
 
+static void register_class_init(ObjectClass *oc, void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(oc);
+
+    /* Reason: needs to be wired up to work */
+    dc->user_creatable = false;
+}
+
 static const TypeInfo register_info = {
     .name  = TYPE_REGISTER,
     .parent = TYPE_DEVICE,
+    .class_init = register_class_init,
 };
 
 static void register_register_types(void)

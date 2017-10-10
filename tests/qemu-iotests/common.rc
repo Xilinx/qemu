@@ -70,8 +70,6 @@ if [ "$IMGOPTSSYNTAX" = "true" ]; then
     elif [ "$IMGPROTO" = "nfs" ]; then
         TEST_DIR="$DRIVER,file.driver=nfs,file.filename=nfs://127.0.0.1/$TEST_DIR"
         TEST_IMG=$TEST_DIR/t.$IMGFMT
-    elif [ "$IMGPROTO" = "archipelago" ]; then
-        TEST_IMG="$DRIVER,file.driver=archipelago,file.volume=:at.$IMGFMT"
     else
         TEST_IMG="$DRIVER,file.driver=$IMGPROTO,file.filename=$TEST_DIR/t.$IMGFMT"
     fi
@@ -87,12 +85,14 @@ else
     elif [ "$IMGPROTO" = "nfs" ]; then
         TEST_DIR="nfs://127.0.0.1/$TEST_DIR"
         TEST_IMG=$TEST_DIR/t.$IMGFMT
-    elif [ "$IMGPROTO" = "archipelago" ]; then
-        TEST_IMG="archipelago:at.$IMGFMT"
+    elif [ "$IMGPROTO" = "vxhs" ]; then
+        TEST_IMG_FILE=$TEST_DIR/t.$IMGFMT
+        TEST_IMG="vxhs://127.0.0.1:9999/t.$IMGFMT"
     else
         TEST_IMG=$IMGPROTO:$TEST_DIR/t.$IMGFMT
     fi
 fi
+ORIG_TEST_IMG="$TEST_IMG"
 
 _optstr_add()
 {
@@ -107,6 +107,9 @@ _set_default_imgopts()
 {
     if [ "$IMGFMT" == "qcow2" ] && ! (echo "$IMGOPTS" | grep "compat=" > /dev/null); then
         IMGOPTS=$(_optstr_add "$IMGOPTS" "compat=1.1")
+    fi
+    if [ "$IMGFMT" == "luks" ] && ! (echo "$IMGOPTS" | grep "iter-time=" > /dev/null); then
+        IMGOPTS=$(_optstr_add "$IMGOPTS" "iter-time=10")
     fi
 }
 
@@ -172,8 +175,16 @@ _make_test_img()
 
     # Start an NBD server on the image file, which is what we'll be talking to
     if [ $IMGPROTO = "nbd" ]; then
-        eval "$QEMU_NBD -v -t -b 127.0.0.1 -p 10810 -f $IMGFMT  $TEST_IMG_FILE &"
+        # Pass a sufficiently high number to -e that should be enough for all
+        # tests
+        eval "$QEMU_NBD -v -t -b 127.0.0.1 -p 10810 -f $IMGFMT -e 42  $TEST_IMG_FILE >/dev/null &"
         sleep 1 # FIXME: qemu-nbd needs to be listening before we continue
+    fi
+
+    # Start QNIO server on image directory for vxhs protocol
+    if [ $IMGPROTO = "vxhs" ]; then
+        eval "$QEMU_VXHS -d  $TEST_DIR > /dev/null &"
+        sleep 1 # Wait for server to come up.
     fi
 }
 
@@ -193,14 +204,24 @@ _cleanup_test_img()
     case "$IMGPROTO" in
 
         nbd)
-            if [ -f "${TEST_DIR}/qemu-nbd.pid" ]; then
+            if [ -f "${QEMU_TEST_DIR}/qemu-nbd.pid" ]; then
                 local QEMU_NBD_PID
-                read QEMU_NBD_PID < "${TEST_DIR}/qemu-nbd.pid"
+                read QEMU_NBD_PID < "${QEMU_TEST_DIR}/qemu-nbd.pid"
                 kill ${QEMU_NBD_PID}
-                rm -f "${TEST_DIR}/qemu-nbd.pid"
+                rm -f "${QEMU_TEST_DIR}/qemu-nbd.pid"
             fi
             rm -f "$TEST_IMG_FILE"
             ;;
+        vxhs)
+            if [ -f "${TEST_DIR}/qemu-vxhs.pid" ]; then
+                local QEMU_VXHS_PID
+                read QEMU_VXHS_PID < "${TEST_DIR}/qemu-vxhs.pid"
+                kill ${QEMU_VXHS_PID} >/dev/null 2>&1
+                rm -f "${TEST_DIR}/qemu-vxhs.pid"
+            fi
+            rm -f "$TEST_IMG_FILE"
+            ;;
+
         file)
             _rm_test_img "$TEST_DIR/t.$IMGFMT"
             _rm_test_img "$TEST_DIR/t.$IMGFMT.orig"
@@ -208,15 +229,13 @@ _cleanup_test_img()
             if [ -n "$SAMPLE_IMG_FILE" ]
             then
                 rm -f "$TEST_DIR/$SAMPLE_IMG_FILE"
+                SAMPLE_IMG_FILE=
+                TEST_IMG="$ORIG_TEST_IMG"
             fi
             ;;
 
         rbd)
             rbd --no-progress rm "$TEST_DIR/t.$IMGFMT" > /dev/null
-            ;;
-
-        archipelago)
-            vlmc remove "at.$IMGFMT" > /dev/null
             ;;
 
         sheepdog)
@@ -355,6 +374,17 @@ _supported_fmt()
     _notrun "not suitable for this image format: $IMGFMT"
 }
 
+# tests whether $IMGFMT is one of the unsupported image format for a test
+#
+_unsupported_fmt()
+{
+    for f; do
+        if [ "$f" = "$IMGFMT" ]; then
+            _notrun "not suitable for this image format: $IMGFMT"
+        fi
+    done
+}
+
 # tests whether $IMGPROTO is one of the supported image protocols for a test
 #
 _supported_proto()
@@ -366,6 +396,18 @@ _supported_proto()
     done
 
     _notrun "not suitable for this image protocol: $IMGPROTO"
+}
+
+# tests whether $IMGPROTO is specified as an unsupported image protocol for a test
+#
+_unsupported_proto()
+{
+    for f; do
+        if [ "$f" = "$IMGPROTO" ]; then
+            _notrun "not suitable for this image protocol: $IMGPROTO"
+            return
+        fi
+    done
 }
 
 # tests whether the host OS is one of the supported OSes for a test
@@ -438,11 +480,6 @@ _full_imgfmt_details()
     else
         echo "$IMGFMT"
     fi
-}
-
-_full_imgproto_details()
-{
-    echo "$IMGPROTO"
 }
 
 _full_platform_details()

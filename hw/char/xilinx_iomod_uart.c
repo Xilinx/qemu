@@ -26,7 +26,8 @@
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "hw/ptimer.h"
-#include "sysemu/char.h"
+#include "chardev/char.h"
+#include "chardev/char-fe.h"
 #include "hw/register-dep.h"
 #include "qemu/log.h"
 #include "sysemu/sysemu.h"
@@ -215,7 +216,7 @@ static void xlx_iom_realize(DeviceState *dev, Error **errp)
 
     if (s->cfg.use_rx || s->cfg.use_tx) {
         qemu_chr_fe_set_handlers(&s->chr, uart_can_rx, uart_rx, uart_event,
-                                 s, NULL, true);
+                                 NULL, s, NULL, true);
     }
 }
 

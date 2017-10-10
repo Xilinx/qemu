@@ -119,6 +119,7 @@ static void aspeed_sdmc_write(void *opaque, hwaddr addr, uint64_t data,
         /* Make sure readonly bits are kept */
         switch (s->silicon_rev) {
         case AST2400_A0_SILICON_REV:
+        case AST2400_A1_SILICON_REV:
             data &= ~ASPEED_SDMC_READONLY_MASK;
             break;
         case AST2500_A0_SILICON_REV:
@@ -156,8 +157,8 @@ static int ast2400_rambits(AspeedSDMCState *s)
     }
 
     /* use a common default */
-    error_report("warning: Invalid RAM size 0x%" PRIx64
-                 ". Using default 256M", s->ram_size);
+    warn_report("Invalid RAM size 0x%" PRIx64 ". Using default 256M",
+                s->ram_size);
     s->ram_size = 256 << 20;
     return ASPEED_SDMC_DRAM_256MB;
 }
@@ -178,8 +179,8 @@ static int ast2500_rambits(AspeedSDMCState *s)
     }
 
     /* use a common default */
-    error_report("warning: Invalid RAM size 0x%" PRIx64
-                 ". Using default 512M", s->ram_size);
+    warn_report("Invalid RAM size 0x%" PRIx64 ". Using default 512M",
+                s->ram_size);
     s->ram_size = 512 << 20;
     return ASPEED_SDMC_AST2500_512MB;
 }
@@ -193,6 +194,7 @@ static void aspeed_sdmc_reset(DeviceState *dev)
     /* Set ram size bit and defaults values */
     switch (s->silicon_rev) {
     case AST2400_A0_SILICON_REV:
+    case AST2400_A1_SILICON_REV:
         s->regs[R_CONF] |=
             ASPEED_SDMC_VGA_COMPAT |
             ASPEED_SDMC_DRAM_SIZE(s->ram_bits);
@@ -224,6 +226,7 @@ static void aspeed_sdmc_realize(DeviceState *dev, Error **errp)
 
     switch (s->silicon_rev) {
     case AST2400_A0_SILICON_REV:
+    case AST2400_A1_SILICON_REV:
         s->ram_bits = ast2400_rambits(s);
         break;
     case AST2500_A0_SILICON_REV:

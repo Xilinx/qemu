@@ -286,12 +286,24 @@ void tcg_gen_eqv_i32(TCGv_i32 ret, TCGv_i32 arg1, TCGv_i32 arg2);
 void tcg_gen_nand_i32(TCGv_i32 ret, TCGv_i32 arg1, TCGv_i32 arg2);
 void tcg_gen_nor_i32(TCGv_i32 ret, TCGv_i32 arg1, TCGv_i32 arg2);
 void tcg_gen_orc_i32(TCGv_i32 ret, TCGv_i32 arg1, TCGv_i32 arg2);
+void tcg_gen_clz_i32(TCGv_i32 ret, TCGv_i32 arg1, TCGv_i32 arg2);
+void tcg_gen_ctz_i32(TCGv_i32 ret, TCGv_i32 arg1, TCGv_i32 arg2);
+void tcg_gen_clzi_i32(TCGv_i32 ret, TCGv_i32 arg1, uint32_t arg2);
+void tcg_gen_ctzi_i32(TCGv_i32 ret, TCGv_i32 arg1, uint32_t arg2);
+void tcg_gen_clrsb_i32(TCGv_i32 ret, TCGv_i32 arg);
+void tcg_gen_ctpop_i32(TCGv_i32 a1, TCGv_i32 a2);
 void tcg_gen_rotl_i32(TCGv_i32 ret, TCGv_i32 arg1, TCGv_i32 arg2);
 void tcg_gen_rotli_i32(TCGv_i32 ret, TCGv_i32 arg1, unsigned arg2);
 void tcg_gen_rotr_i32(TCGv_i32 ret, TCGv_i32 arg1, TCGv_i32 arg2);
 void tcg_gen_rotri_i32(TCGv_i32 ret, TCGv_i32 arg1, unsigned arg2);
 void tcg_gen_deposit_i32(TCGv_i32 ret, TCGv_i32 arg1, TCGv_i32 arg2,
                          unsigned int ofs, unsigned int len);
+void tcg_gen_deposit_z_i32(TCGv_i32 ret, TCGv_i32 arg,
+                           unsigned int ofs, unsigned int len);
+void tcg_gen_extract_i32(TCGv_i32 ret, TCGv_i32 arg,
+                         unsigned int ofs, unsigned int len);
+void tcg_gen_sextract_i32(TCGv_i32 ret, TCGv_i32 arg,
+                          unsigned int ofs, unsigned int len);
 void tcg_gen_brcond_i32(TCGCond cond, TCGv_i32 arg1, TCGv_i32 arg2, TCGLabel *);
 void tcg_gen_brcondi_i32(TCGCond cond, TCGv_i32 arg1, int32_t arg2, TCGLabel *);
 void tcg_gen_setcond_i32(TCGCond cond, TCGv_i32 ret,
@@ -463,12 +475,24 @@ void tcg_gen_eqv_i64(TCGv_i64 ret, TCGv_i64 arg1, TCGv_i64 arg2);
 void tcg_gen_nand_i64(TCGv_i64 ret, TCGv_i64 arg1, TCGv_i64 arg2);
 void tcg_gen_nor_i64(TCGv_i64 ret, TCGv_i64 arg1, TCGv_i64 arg2);
 void tcg_gen_orc_i64(TCGv_i64 ret, TCGv_i64 arg1, TCGv_i64 arg2);
+void tcg_gen_clz_i64(TCGv_i64 ret, TCGv_i64 arg1, TCGv_i64 arg2);
+void tcg_gen_ctz_i64(TCGv_i64 ret, TCGv_i64 arg1, TCGv_i64 arg2);
+void tcg_gen_clzi_i64(TCGv_i64 ret, TCGv_i64 arg1, uint64_t arg2);
+void tcg_gen_ctzi_i64(TCGv_i64 ret, TCGv_i64 arg1, uint64_t arg2);
+void tcg_gen_clrsb_i64(TCGv_i64 ret, TCGv_i64 arg);
+void tcg_gen_ctpop_i64(TCGv_i64 a1, TCGv_i64 a2);
 void tcg_gen_rotl_i64(TCGv_i64 ret, TCGv_i64 arg1, TCGv_i64 arg2);
 void tcg_gen_rotli_i64(TCGv_i64 ret, TCGv_i64 arg1, unsigned arg2);
 void tcg_gen_rotr_i64(TCGv_i64 ret, TCGv_i64 arg1, TCGv_i64 arg2);
 void tcg_gen_rotri_i64(TCGv_i64 ret, TCGv_i64 arg1, unsigned arg2);
 void tcg_gen_deposit_i64(TCGv_i64 ret, TCGv_i64 arg1, TCGv_i64 arg2,
                          unsigned int ofs, unsigned int len);
+void tcg_gen_deposit_z_i64(TCGv_i64 ret, TCGv_i64 arg,
+                           unsigned int ofs, unsigned int len);
+void tcg_gen_extract_i64(TCGv_i64 ret, TCGv_i64 arg,
+                         unsigned int ofs, unsigned int len);
+void tcg_gen_sextract_i64(TCGv_i64 ret, TCGv_i64 arg,
+                          unsigned int ofs, unsigned int len);
 void tcg_gen_brcond_i64(TCGCond cond, TCGv_i64 arg1, TCGv_i64 arg2, TCGLabel *);
 void tcg_gen_brcondi_i64(TCGCond cond, TCGv_i64 arg1, int64_t arg2, TCGLabel *);
 void tcg_gen_setcond_i64(TCGCond cond, TCGv_i64 ret,
@@ -772,6 +796,17 @@ static inline void tcg_gen_exit_tb(uintptr_t val)
  */
 void tcg_gen_goto_tb(unsigned idx);
 
+/**
+ * tcg_gen_lookup_and_goto_ptr() - look up a TB and jump to it if valid
+ * @addr: Guest address of the target TB
+ *
+ * If the TB is not valid, jump to the epilogue.
+ *
+ * This operation is optional. If the TCG backend does not implement goto_ptr,
+ * this op is equivalent to calling tcg_gen_exit_tb() with 0 as the argument.
+ */
+void tcg_gen_lookup_and_goto_ptr(TCGv addr);
+
 #if TARGET_LONG_BITS == 32
 #define tcg_temp_new() tcg_temp_new_i32()
 #define tcg_global_reg_new tcg_global_reg_new_i32
@@ -800,6 +835,8 @@ void tcg_gen_qemu_ld_i32(TCGv_i32, TCGv, TCGArg, TCGMemOp);
 void tcg_gen_qemu_st_i32(TCGv_i32, TCGv, TCGArg, TCGMemOp);
 void tcg_gen_qemu_ld_i64(TCGv_i64, TCGv, TCGArg, TCGMemOp);
 void tcg_gen_qemu_st_i64(TCGv_i64, TCGv, TCGArg, TCGMemOp);
+void tcg_gen_ext_i32(TCGv_i32 ret, TCGv_i32 val, TCGMemOp opc);
+void tcg_gen_ext_i64(TCGv_i64 ret, TCGv_i64 val, TCGMemOp opc);
 
 static inline void tcg_gen_qemu_ld8u(TCGv ret, TCGv addr, int mem_index)
 {
@@ -946,11 +983,20 @@ void tcg_gen_atomic_xor_fetch_i64(TCGv_i64, TCGv, TCGv_i64, TCGArg, TCGMemOp);
 #define tcg_gen_nand_tl tcg_gen_nand_i64
 #define tcg_gen_nor_tl tcg_gen_nor_i64
 #define tcg_gen_orc_tl tcg_gen_orc_i64
+#define tcg_gen_clz_tl tcg_gen_clz_i64
+#define tcg_gen_ctz_tl tcg_gen_ctz_i64
+#define tcg_gen_clzi_tl tcg_gen_clzi_i64
+#define tcg_gen_ctzi_tl tcg_gen_ctzi_i64
+#define tcg_gen_clrsb_tl tcg_gen_clrsb_i64
+#define tcg_gen_ctpop_tl tcg_gen_ctpop_i64
 #define tcg_gen_rotl_tl tcg_gen_rotl_i64
 #define tcg_gen_rotli_tl tcg_gen_rotli_i64
 #define tcg_gen_rotr_tl tcg_gen_rotr_i64
 #define tcg_gen_rotri_tl tcg_gen_rotri_i64
 #define tcg_gen_deposit_tl tcg_gen_deposit_i64
+#define tcg_gen_deposit_z_tl tcg_gen_deposit_z_i64
+#define tcg_gen_extract_tl tcg_gen_extract_i64
+#define tcg_gen_sextract_tl tcg_gen_sextract_i64
 #define tcg_const_tl tcg_const_i64
 #define tcg_const_local_tl tcg_const_local_i64
 #define tcg_gen_movcond_tl tcg_gen_movcond_i64
@@ -1034,11 +1080,20 @@ void tcg_gen_atomic_xor_fetch_i64(TCGv_i64, TCGv, TCGv_i64, TCGArg, TCGMemOp);
 #define tcg_gen_nand_tl tcg_gen_nand_i32
 #define tcg_gen_nor_tl tcg_gen_nor_i32
 #define tcg_gen_orc_tl tcg_gen_orc_i32
+#define tcg_gen_clz_tl tcg_gen_clz_i32
+#define tcg_gen_ctz_tl tcg_gen_ctz_i32
+#define tcg_gen_clzi_tl tcg_gen_clzi_i32
+#define tcg_gen_ctzi_tl tcg_gen_ctzi_i32
+#define tcg_gen_clrsb_tl tcg_gen_clrsb_i32
+#define tcg_gen_ctpop_tl tcg_gen_ctpop_i32
 #define tcg_gen_rotl_tl tcg_gen_rotl_i32
 #define tcg_gen_rotli_tl tcg_gen_rotli_i32
 #define tcg_gen_rotr_tl tcg_gen_rotr_i32
 #define tcg_gen_rotri_tl tcg_gen_rotri_i32
 #define tcg_gen_deposit_tl tcg_gen_deposit_i32
+#define tcg_gen_deposit_z_tl tcg_gen_deposit_z_i32
+#define tcg_gen_extract_tl tcg_gen_extract_i32
+#define tcg_gen_sextract_tl tcg_gen_sextract_i32
 #define tcg_const_tl tcg_const_i32
 #define tcg_const_local_tl tcg_const_local_i32
 #define tcg_gen_movcond_tl tcg_gen_movcond_i32

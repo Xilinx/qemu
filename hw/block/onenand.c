@@ -778,6 +778,7 @@ static int onenand_initfn(SysBusDevice *sbd)
     OneNANDState *s = ONE_NAND(dev);
     uint32_t size = 1 << (24 + ((s->id.dev >> 4) & 7));
     void *ram;
+    Error *local_err = NULL;
 
     s->base = (hwaddr)-1;
     s->rdy = NULL;
@@ -796,11 +797,17 @@ static int onenand_initfn(SysBusDevice *sbd)
             error_report("Can't use a read-only drive");
             return -1;
         }
+        blk_set_perm(s->blk, BLK_PERM_CONSISTENT_READ | BLK_PERM_WRITE,
+                     BLK_PERM_ALL, &local_err);
+        if (local_err) {
+            error_report_err(local_err);
+            return -1;
+        }
         s->blk_cur = s->blk;
     }
     s->otp = memset(g_malloc((64 + 2) << PAGE_SHIFT),
                     0xff, (64 + 2) << PAGE_SHIFT);
-    memory_region_init_ram(&s->ram, OBJECT(s), "onenand.ram",
+    memory_region_init_ram_nomigrate(&s->ram, OBJECT(s), "onenand.ram",
                            0xc000 << s->shift, &error_fatal);
     vmstate_register_ram_global(&s->ram);
     ram = memory_region_get_ram_ptr(&s->ram);

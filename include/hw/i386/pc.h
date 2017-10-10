@@ -20,19 +20,6 @@
 
 #define HPET_INTCAP "hpet-intcap"
 
-#ifdef CONFIG_KVM
-#define kvm_pit_in_kernel() \
-    (kvm_irqchip_in_kernel() && !kvm_irqchip_is_split())
-#define kvm_pic_in_kernel()  \
-    (kvm_irqchip_in_kernel() && !kvm_irqchip_is_split())
-#define kvm_ioapic_in_kernel() \
-    (kvm_irqchip_in_kernel() && !kvm_irqchip_is_split())
-#else
-#define kvm_pit_in_kernel()      0
-#define kvm_pic_in_kernel()      0
-#define kvm_ioapic_in_kernel()   0
-#endif
-
 /**
  * PCMachineState:
  * @acpi_dev: link to ACPI PM device that performs ACPI hotplug handling
@@ -63,6 +50,9 @@ struct PCMachineState {
     AcpiNVDIMMState acpi_nvdimm_state;
 
     bool acpi_build_enabled;
+    bool smbus;
+    bool sata;
+    bool pit;
 
     /* RAM information (sizes, addresses, configuration): */
     ram_addr_t below_4g_mem_size, above_4g_mem_size;
@@ -70,7 +60,6 @@ struct PCMachineState {
     /* CPU and apic information: */
     bool apic_xrupt_override;
     unsigned apic_id_limit;
-    CPUArchIdList *possible_cpus;
     uint16_t boot_cpus;
 
     /* NUMA information: */
@@ -88,6 +77,9 @@ struct PCMachineState {
 #define PC_MACHINE_VMPORT           "vmport"
 #define PC_MACHINE_SMM              "smm"
 #define PC_MACHINE_NVDIMM           "nvdimm"
+#define PC_MACHINE_SMBUS            "smbus"
+#define PC_MACHINE_SATA             "sata"
+#define PC_MACHINE_PIT              "pit"
 
 /**
  * PCMachineClass:
@@ -146,6 +138,9 @@ struct PCMachineClass {
     bool save_tsc_khz;
     /* generate legacy CPU hotplug AML */
     bool legacy_cpu_hotplug;
+
+    /* use DMA capable linuxboot option rom */
+    bool linuxboot_dma_enabled;
 };
 
 #define TYPE_PC_MACHINE "generic-pc-machine"
@@ -175,7 +170,7 @@ void parallel_hds_isa_init(ISABus *bus, int n);
 
 bool parallel_mm_init(MemoryRegion *address_space,
                       hwaddr base, int it_shift, qemu_irq irq,
-                      CharDriverState *chr);
+                      Chardev *chr);
 
 /* i8259.c */
 
@@ -260,6 +255,7 @@ void pc_basic_device_init(ISABus *isa_bus, qemu_irq *gsi,
                           ISADevice **rtc_state,
                           bool create_fdctrl,
                           bool no_vmport,
+                          bool has_pit,
                           uint32_t hpet_irqs);
 void pc_init_ne2k_isa(ISABus *bus, NICInfo *nd);
 void pc_cmos_init(PCMachineState *pcms,
@@ -296,6 +292,12 @@ typedef struct PCII440FXState PCII440FXState;
 #define TYPE_I440FX_PCI_DEVICE "i440FX"
 
 #define TYPE_IGD_PASSTHROUGH_I440FX_PCI_DEVICE "igd-passthrough-i440FX"
+
+/*
+ * Reset Control Register: PCI-accessible ISA-Compatible Register at address
+ * 0xcf9, provided by the PCI/ISA bridge (PIIX3 PCI function 0, 8086:7000).
+ */
+#define RCR_IOPORT 0xcf9
 
 PCIBus *i440fx_init(const char *host_type, const char *pci_type,
                     PCII440FXState **pi440fx_state, int *piix_devfn,
@@ -354,7 +356,7 @@ uint16_t pvpanic_port(void);
 
 /* acpi-build.c */
 void pc_madt_cpu_entry(AcpiDeviceIf *adev, int uid,
-                       CPUArchIdList *apic_ids, GArray *entry);
+                       const CPUArchIdList *apic_ids, GArray *entry);
 
 /* e820 types */
 #define E820_RAM        1
@@ -367,7 +369,41 @@ int e820_add_entry(uint64_t, uint64_t, uint32_t);
 int e820_get_num_entries(void);
 bool e820_get_entry(int, uint32_t, uint64_t *, uint64_t *);
 
+#define PC_COMPAT_2_9 \
+    HW_COMPAT_2_9 \
+    {\
+        .driver   = "mch",\
+        .property = "extended-tseg-mbytes",\
+        .value    = stringify(0),\
+    },\
+
 #define PC_COMPAT_2_8 \
+    HW_COMPAT_2_8 \
+    {\
+        .driver   = TYPE_X86_CPU,\
+        .property = "tcg-cpuid",\
+        .value    = "off",\
+    },\
+    {\
+        .driver   = "kvmclock",\
+        .property = "x-mach-use-reliable-get-clock",\
+        .value    = "off",\
+    },\
+    {\
+        .driver   = "ICH9-LPC",\
+        .property = "x-smi-broadcast",\
+        .value    = "off",\
+    },\
+    {\
+        .driver   = TYPE_X86_CPU,\
+        .property = "vmware-cpuid-freq",\
+        .value    = "off",\
+    },\
+    {\
+        .driver   = "Haswell-" TYPE_X86_CPU,\
+        .property = "stepping",\
+        .value    = "1",\
+    },
 
 #define PC_COMPAT_2_7 \
     HW_COMPAT_2_7 \
@@ -405,10 +441,6 @@ bool e820_get_entry(int, uint32_t, uint64_t *, uint64_t *);
 #define PC_COMPAT_2_6 \
     HW_COMPAT_2_6 \
     {\
-        .driver   = "fw_cfg_io",\
-        .property = "dma_enabled",\
-        .value    = "off",\
-    },{\
         .driver   = TYPE_X86_CPU,\
         .property = "cpuid-0xb",\
         .value    = "off",\
@@ -531,76 +563,80 @@ bool e820_get_entry(int, uint32_t, uint64_t *, uint64_t *);
         .value    = "off",\
     },{\
         .driver   = "qemu64" "-" TYPE_X86_CPU,\
-        .property = "level",\
+        .property = "min-level",\
         .value    = stringify(4),\
     },{\
         .driver   = "kvm64" "-" TYPE_X86_CPU,\
-        .property = "level",\
+        .property = "min-level",\
         .value    = stringify(5),\
     },{\
         .driver   = "pentium3" "-" TYPE_X86_CPU,\
-        .property = "level",\
+        .property = "min-level",\
         .value    = stringify(2),\
     },{\
         .driver   = "n270" "-" TYPE_X86_CPU,\
-        .property = "level",\
+        .property = "min-level",\
         .value    = stringify(5),\
     },{\
         .driver   = "Conroe" "-" TYPE_X86_CPU,\
-        .property = "level",\
+        .property = "min-level",\
         .value    = stringify(4),\
     },{\
         .driver   = "Penryn" "-" TYPE_X86_CPU,\
-        .property = "level",\
+        .property = "min-level",\
         .value    = stringify(4),\
     },{\
         .driver   = "Nehalem" "-" TYPE_X86_CPU,\
-        .property = "level",\
+        .property = "min-level",\
         .value    = stringify(4),\
     },{\
         .driver   = "n270" "-" TYPE_X86_CPU,\
-        .property = "xlevel",\
+        .property = "min-xlevel",\
         .value    = stringify(0x8000000a),\
     },{\
         .driver   = "Penryn" "-" TYPE_X86_CPU,\
-        .property = "xlevel",\
+        .property = "min-xlevel",\
         .value    = stringify(0x8000000a),\
     },{\
         .driver   = "Conroe" "-" TYPE_X86_CPU,\
-        .property = "xlevel",\
+        .property = "min-xlevel",\
         .value    = stringify(0x8000000a),\
     },{\
         .driver   = "Nehalem" "-" TYPE_X86_CPU,\
-        .property = "xlevel",\
+        .property = "min-xlevel",\
         .value    = stringify(0x8000000a),\
     },{\
         .driver   = "Westmere" "-" TYPE_X86_CPU,\
-        .property = "xlevel",\
+        .property = "min-xlevel",\
         .value    = stringify(0x8000000a),\
     },{\
         .driver   = "SandyBridge" "-" TYPE_X86_CPU,\
-        .property = "xlevel",\
+        .property = "min-xlevel",\
         .value    = stringify(0x8000000a),\
     },{\
         .driver   = "IvyBridge" "-" TYPE_X86_CPU,\
-        .property = "xlevel",\
+        .property = "min-xlevel",\
         .value    = stringify(0x8000000a),\
     },{\
         .driver   = "Haswell" "-" TYPE_X86_CPU,\
-        .property = "xlevel",\
+        .property = "min-xlevel",\
         .value    = stringify(0x8000000a),\
     },{\
         .driver   = "Haswell-noTSX" "-" TYPE_X86_CPU,\
-        .property = "xlevel",\
+        .property = "min-xlevel",\
         .value    = stringify(0x8000000a),\
     },{\
         .driver   = "Broadwell" "-" TYPE_X86_CPU,\
-        .property = "xlevel",\
+        .property = "min-xlevel",\
         .value    = stringify(0x8000000a),\
     },{\
         .driver   = "Broadwell-noTSX" "-" TYPE_X86_CPU,\
-        .property = "xlevel",\
+        .property = "min-xlevel",\
         .value    = stringify(0x8000000a),\
+    },{\
+        .driver = TYPE_X86_CPU,\
+        .property = "kvm-no-smi-migration",\
+        .value    = "on",\
     },
 
 #define PC_COMPAT_2_2 \
@@ -821,7 +857,7 @@ bool e820_get_entry(int, uint32_t, uint64_t *, uint64_t *);
         .value    = stringify(2),\
     },{\
         .driver   = "Conroe-" TYPE_X86_CPU,\
-        .property = "level",\
+        .property = "min-level",\
         .value    = stringify(2),\
     },{\
         .driver   = "Penryn-" TYPE_X86_CPU,\
@@ -829,7 +865,7 @@ bool e820_get_entry(int, uint32_t, uint64_t *, uint64_t *);
         .value    = stringify(2),\
     },{\
         .driver   = "Penryn-" TYPE_X86_CPU,\
-        .property = "level",\
+        .property = "min-level",\
         .value    = stringify(2),\
     },{\
         .driver   = "Nehalem-" TYPE_X86_CPU,\
@@ -837,7 +873,7 @@ bool e820_get_entry(int, uint32_t, uint64_t *, uint64_t *);
         .value    = stringify(2),\
     },{\
         .driver   = "Nehalem-" TYPE_X86_CPU,\
-        .property = "level",\
+        .property = "min-level",\
         .value    = stringify(2),\
     },{\
         .driver   = "virtio-net-pci",\

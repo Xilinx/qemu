@@ -21,6 +21,9 @@
 #include "hw/intc/arm_gicv3.h"
 #include "gicv3_internal.h"
 
+#include "hw/fdt_generic_util.h"
+#include "qom/cpu.h"
+
 static bool irqbetter(GICv3CPUState *cs, int irq, uint8_t prio)
 {
     /* Return true if this IRQ at this priority should take
@@ -54,6 +57,7 @@ static uint32_t gicd_int_pending(GICv3State *s, int irq)
      *  + the PENDING latch is set OR it is level triggered and the input is 1
      *  + its ENABLE bit is set
      *  + the GICD enable bit for its group is set
+     *  + its ACTIVE bit is not set (otherwise it would be Active+Pending)
      * Conveniently we can bulk-calculate this with bitwise operations.
      */
     uint32_t pend, grpmask;
@@ -63,9 +67,11 @@ static uint32_t gicd_int_pending(GICv3State *s, int irq)
     uint32_t group = *gic_bmp_ptr32(s->group, irq);
     uint32_t grpmod = *gic_bmp_ptr32(s->grpmod, irq);
     uint32_t enable = *gic_bmp_ptr32(s->enabled, irq);
+    uint32_t active = *gic_bmp_ptr32(s->active, irq);
 
     pend = pending | (~edge_trigger & level);
     pend &= enable;
+    pend &= ~active;
 
     if (s->gicd_ctlr & GICD_CTLR_DS) {
         grpmod = 0;
@@ -96,12 +102,14 @@ static uint32_t gicr_int_pending(GICv3CPUState *cs)
      *  + the PENDING latch is set OR it is level triggered and the input is 1
      *  + its ENABLE bit is set
      *  + the GICD enable bit for its group is set
+     *  + its ACTIVE bit is not set (otherwise it would be Active+Pending)
      * Conveniently we can bulk-calculate this with bitwise operations.
      */
     uint32_t pend, grpmask, grpmod;
 
     pend = cs->gicr_ipendr0 | (~cs->edge_trigger & cs->level);
     pend &= cs->gicr_ienabler0;
+    pend &= ~cs->gicr_iactiver0;
 
     if (cs->gic->gicd_ctlr & GICD_CTLR_DS) {
         grpmod = 0;
@@ -373,15 +381,30 @@ static void arm_gic_realize(DeviceState *dev, Error **errp)
     gicv3_init_cpuif(s);
 }
 
+static const FDTGenericGPIOSet arm_gicv3_client_gpios[] = {
+    {
+        .names = &fdt_generic_gpio_name_set_interrupts,
+        .gpios = (FDTGenericGPIOConnection []) {
+            { .name = "irq",    .range = 8 },
+            { .name = "fiq",    .range = 8, .fdt_index = 8 },
+            { .name = "maint",  .range = 4, .fdt_index = 16 },
+            { },
+        },
+    },
+    { },
+};
+
 static void arm_gicv3_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     ARMGICv3CommonClass *agcc = ARM_GICV3_COMMON_CLASS(klass);
     ARMGICv3Class *agc = ARM_GICV3_CLASS(klass);
+    FDTGenericGPIOClass *fggc = FDT_GENERIC_GPIO_CLASS(klass);
 
     agcc->post_load = arm_gicv3_post_load;
     agc->parent_realize = dc->realize;
     dc->realize = arm_gic_realize;
+    fggc->client_gpios = arm_gicv3_client_gpios;
 }
 
 static const TypeInfo arm_gicv3_info = {

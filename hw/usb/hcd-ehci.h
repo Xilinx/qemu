@@ -297,6 +297,7 @@ struct EHCIState {
      */
     QEMUTimer *frame_timer;
     QEMUBH *async_bh;
+    bool working;
     uint32_t astate;         /* Current state in asynchronous schedule */
     uint32_t pstate;         /* Current state in periodic schedule     */
     USBPort ports[NB_PORTS];
@@ -323,6 +324,7 @@ struct EHCIState {
 extern const VMStateDescription vmstate_ehci;
 
 void usb_ehci_init(EHCIState *s, DeviceState *dev);
+void usb_ehci_finalize(EHCIState *s);
 void usb_ehci_realize(EHCIState *s, DeviceState *dev, Error **errp);
 void usb_ehci_unrealize(EHCIState *s, DeviceState *dev, Error **errp);
 void ehci_reset(void *opaque);

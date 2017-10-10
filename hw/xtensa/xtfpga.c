@@ -40,7 +40,7 @@
 #include "hw/sysbus.h"
 #include "hw/block/flash.h"
 #include "sysemu/block-backend.h"
-#include "sysemu/char.h"
+#include "chardev/char.h"
 #include "sysemu/device_tree.h"
 #include "qemu/error-report.h"
 #include "bootparam.h"
@@ -100,7 +100,7 @@ static void lx60_fpga_write(void *opaque, hwaddr addr,
 
     case 0x10: /*board reset*/
         if (val == 0xdead) {
-            qemu_system_reset_request();
+            qemu_system_reset_request(SHUTDOWN_CAUSE_GUEST_RESET);
         }
         break;
     }
@@ -147,7 +147,7 @@ static void lx60_net_init(MemoryRegion *address_space,
             sysbus_mmio_get_region(s, 1));
 
     ram = g_malloc(sizeof(*ram));
-    memory_region_init_ram(ram, OBJECT(s), "open_eth.ram", 16384,
+    memory_region_init_ram_nomigrate(ram, OBJECT(s), "open_eth.ram", 16384,
                            &error_fatal);
     vmstate_register_ram_global(ram);
     memory_region_add_subregion(address_space, buffers, ram);
@@ -251,7 +251,6 @@ static void lx_init(const LxBoardDesc *board, MachineState *machine)
     ram = g_malloc(sizeof(*ram));
     memory_region_init_ram(ram, NULL, "lx60.dram", machine->ram_size,
                            &error_fatal);
-    vmstate_register_ram_global(ram);
     memory_region_add_subregion(system_memory, 0, ram);
 
     system_io = g_malloc(sizeof(*system_io));
@@ -294,7 +293,6 @@ static void lx_init(const LxBoardDesc *board, MachineState *machine)
         rom = g_malloc(sizeof(*rom));
         memory_region_init_ram(rom, NULL, "lx60.sram", board->sram_size,
                                &error_fatal);
-        vmstate_register_ram_global(rom);
         memory_region_add_subregion(system_memory, 0xfe000000, rom);
 
         if (kernel_cmdline) {
@@ -317,6 +315,7 @@ static void lx_init(const LxBoardDesc *board, MachineState *machine)
             cur_tagptr = put_tag(cur_tagptr, BP_TAG_COMMAND_LINE,
                                  strlen(kernel_cmdline) + 1, kernel_cmdline);
         }
+#ifdef CONFIG_FDT
         if (dtb_filename) {
             int fdt_size;
             void *fdt = load_device_tree(dtb_filename, &fdt_size);
@@ -332,6 +331,14 @@ static void lx_init(const LxBoardDesc *board, MachineState *machine)
                                  sizeof(dtb_addr), &dtb_addr);
             cur_lowmem = QEMU_ALIGN_UP(cur_lowmem + fdt_size, 4096);
         }
+#else
+        if (dtb_filename) {
+            error_report("could not load DTB '%s': "
+                         "FDT support is not configured in QEMU",
+                         dtb_filename);
+            exit(EXIT_FAILURE);
+        }
+#endif
         if (initrd_filename) {
             BpMemInfo initrd_location = { 0 };
             int initrd_size = load_ramdisk(initrd_filename, cur_lowmem,

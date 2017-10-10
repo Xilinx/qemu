@@ -31,6 +31,7 @@
 #include "sysemu/block-backend.h"
 #include "exec/address-spaces.h"
 #include "sysemu/qtest.h"
+#include "qemu/error-report.h"
 
 #define MAX_IDE_BUS 2
 
@@ -53,9 +54,9 @@ static void mips_qemu_write (void *opaque, hwaddr addr,
                              uint64_t val, unsigned size)
 {
     if ((addr & 0xffff) == 0 && val == 42)
-        qemu_system_reset_request ();
+        qemu_system_reset_request(SHUTDOWN_CAUSE_GUEST_RESET);
     else if ((addr & 0xffff) == 4 && val == 42)
-        qemu_system_shutdown_request ();
+        qemu_system_shutdown_request(SHUTDOWN_CAUSE_GUEST_SHUTDOWN);
 }
 
 static uint64_t mips_qemu_read (void *opaque, hwaddr addr,
@@ -96,8 +97,9 @@ static int64_t load_kernel(void)
         if ((entry & ~0x7fffffffULL) == 0x80000000)
             entry = (int32_t)entry;
     } else {
-        fprintf(stderr, "qemu: could not load kernel '%s'\n",
-                loaderparams.kernel_filename);
+        error_report("qemu: could not load kernel '%s': %s",
+                     loaderparams.kernel_filename,
+                     load_elf_strerror(kernel_size));
         exit(1);
     }
 
@@ -238,7 +240,6 @@ void mips_r4k_init(MachineState *machine)
         bios = g_new(MemoryRegion, 1);
         memory_region_init_ram(bios, NULL, "mips_r4k.bios", BIOS_SIZE,
                                &error_fatal);
-        vmstate_register_ram_global(bios);
         memory_region_set_readonly(bios, true);
         memory_region_add_subregion(get_system_memory(), 0x1fc00000, bios);
 
@@ -278,14 +279,6 @@ void mips_r4k_init(MachineState *machine)
     memory_region_add_subregion(get_system_memory(), 0x10000000, isa_mem);
     isa_bus = isa_bus_new(NULL, isa_mem, get_system_io(), &error_abort);
 
-    /* ISA bus: IO space at 0x14000000, mem space at 0x10000000 */
-    memory_region_init_alias(isa_io, NULL, "isa-io",
-                             get_system_io(), 0, 0x00010000);
-    memory_region_init(isa_mem, NULL, "isa-mem", 0x01000000);
-    memory_region_add_subregion(get_system_memory(), 0x14000000, isa_io);
-    memory_region_add_subregion(get_system_memory(), 0x10000000, isa_mem);
-    isa_bus = isa_bus_new(NULL, isa_mem, get_system_io(), &error_abort);
-
     /* The PIC is attached to the MIPS CPU INT0 pin */
     i8259 = i8259_init(isa_bus, env->irq[2]);
     isa_bus_irqs(isa_bus, i8259);
@@ -314,6 +307,7 @@ static void mips_machine_init(MachineClass *mc)
 {
     mc->desc = "mips r4k platform";
     mc->init = mips_r4k_init;
+    mc->block_default_type = IF_IDE;
 }
 
 DEFINE_MACHINE("mips", mips_machine_init)

@@ -49,8 +49,8 @@
 #define AMDVI_CAPAB_INIT_TYPE         (3 << 16)
 
 /* No. of used MMIO registers */
-#define AMDVI_MMIO_REGS_HIGH  8
-#define AMDVI_MMIO_REGS_LOW   7
+#define AMDVI_MMIO_REGS_HIGH  7
+#define AMDVI_MMIO_REGS_LOW   8
 
 /* MMIO registers */
 #define AMDVI_MMIO_DEVICE_TABLE       0x0000
@@ -220,6 +220,8 @@
 
 #define TYPE_AMD_IOMMU_PCI "AMDVI-PCI"
 
+#define TYPE_AMD_IOMMU_MEMORY_REGION "amd-iommu-iommu-memory-region"
+
 typedef struct AMDVIAddressSpace AMDVIAddressSpace;
 
 /* functions to steal PCI config space */
@@ -275,9 +277,6 @@ typedef struct AMDVIState {
     uint8_t w1cmask[AMDVI_MMIO_SIZE];  /* read/write 1 clear mask      */
     uint8_t romask[AMDVI_MMIO_SIZE];   /* MMIO read/only mask          */
     bool mmio_enabled;
-
-    /* IOMMU function */
-    MemoryRegionIOMMUOps iommu_ops;
 
     /* for each served device */
     AMDVIAddressSpace **address_spaces[PCI_BUS_MAX];

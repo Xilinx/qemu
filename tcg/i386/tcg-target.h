@@ -76,6 +76,7 @@ typedef enum {
 #endif
 
 extern bool have_bmi1;
+extern bool have_popcnt;
 
 /* optional instructions */
 #define TCG_TARGET_HAS_div2_i32         1
@@ -93,7 +94,12 @@ extern bool have_bmi1;
 #define TCG_TARGET_HAS_eqv_i32          0
 #define TCG_TARGET_HAS_nand_i32         0
 #define TCG_TARGET_HAS_nor_i32          0
+#define TCG_TARGET_HAS_clz_i32          1
+#define TCG_TARGET_HAS_ctz_i32          1
+#define TCG_TARGET_HAS_ctpop_i32        have_popcnt
 #define TCG_TARGET_HAS_deposit_i32      1
+#define TCG_TARGET_HAS_extract_i32      1
+#define TCG_TARGET_HAS_sextract_i32     1
 #define TCG_TARGET_HAS_movcond_i32      1
 #define TCG_TARGET_HAS_add2_i32         1
 #define TCG_TARGET_HAS_sub2_i32         1
@@ -101,6 +107,7 @@ extern bool have_bmi1;
 #define TCG_TARGET_HAS_muls2_i32        1
 #define TCG_TARGET_HAS_muluh_i32        0
 #define TCG_TARGET_HAS_mulsh_i32        0
+#define TCG_TARGET_HAS_goto_ptr         1
 
 #if TCG_TARGET_REG_BITS == 64
 #define TCG_TARGET_HAS_extrl_i64_i32    0
@@ -123,7 +130,12 @@ extern bool have_bmi1;
 #define TCG_TARGET_HAS_eqv_i64          0
 #define TCG_TARGET_HAS_nand_i64         0
 #define TCG_TARGET_HAS_nor_i64          0
+#define TCG_TARGET_HAS_clz_i64          1
+#define TCG_TARGET_HAS_ctz_i64          1
+#define TCG_TARGET_HAS_ctpop_i64        have_popcnt
 #define TCG_TARGET_HAS_deposit_i64      1
+#define TCG_TARGET_HAS_extract_i64      1
+#define TCG_TARGET_HAS_sextract_i64     0
 #define TCG_TARGET_HAS_movcond_i64      1
 #define TCG_TARGET_HAS_add2_i64         1
 #define TCG_TARGET_HAS_sub2_i64         1
@@ -138,6 +150,12 @@ extern bool have_bmi1;
      ((ofs) == 0 && (len) == 16))
 #define TCG_TARGET_deposit_i64_valid    TCG_TARGET_deposit_i32_valid
 
+/* Check for the possibility of high-byte extraction and, for 64-bit,
+   zero-extending 32-bit right-shift.  */
+#define TCG_TARGET_extract_i32_valid(ofs, len) ((ofs) == 8 && (len) == 8)
+#define TCG_TARGET_extract_i64_valid(ofs, len) \
+    (((ofs) == 8 && (len) == 8) || ((ofs) + (len)) == 32)
+
 #if TCG_TARGET_REG_BITS == 64
 # define TCG_AREG0 TCG_REG_R14
 #else
@@ -147,5 +165,16 @@ extern bool have_bmi1;
 static inline void flush_icache_range(uintptr_t start, uintptr_t stop)
 {
 }
+
+/* This defines the natural memory order supported by this
+ * architecture before guarantees made by various barrier
+ * instructions.
+ *
+ * The x86 has a pretty strong memory ordering which only really
+ * allows for some stores to be re-ordered after loads.
+ */
+#include "tcg-mo.h"
+
+#define TCG_TARGET_DEFAULT_MO (TCG_MO_ALL & ~TCG_MO_ST_LD)
 
 #endif

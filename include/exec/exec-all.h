@@ -35,15 +35,38 @@ typedef abi_ulong tb_page_addr_t;
 typedef ram_addr_t tb_page_addr_t;
 #endif
 
-/* is_jmp field values */
+/* DisasContext is_jmp field values
+ *
+ * is_jmp starts as DISAS_NEXT. The translator will keep processing
+ * instructions until an exit condition is reached. If we reach the
+ * exit condition and is_jmp is still DISAS_NEXT (because of some
+ * other condition) we simply "jump" to the next address.
+ * The remaining exit cases are:
+ *
+ *   DISAS_JUMP    - Only the PC was modified dynamically (e.g computed)
+ *   DISAS_TB_JUMP - Only the PC was modified statically (e.g. branch)
+ *
+ * In these cases as long as the PC is updated we can chain to the
+ * next TB either by exiting the loop or looking up the next TB via
+ * the loookup helper.
+ *
+ *   DISAS_UPDATE  - CPU State was modified dynamically
+ *
+ * This covers any other CPU state which necessities us exiting the
+ * TCG code to the main run-loop. Typically this includes anything
+ * that might change the interrupt state.
+ *
+ * Individual translators may define additional exit cases to deal
+ * with per-target special conditions.
+ */
 #define DISAS_NEXT    0 /* next instruction can be analyzed */
 #define DISAS_JUMP    1 /* only pc was modified dynamically */
-#define DISAS_UPDATE  2 /* cpu state was modified dynamically */
-#define DISAS_TB_JUMP 3 /* only pc was modified statically */
+#define DISAS_TB_JUMP 2 /* only pc was modified statically */
+#define DISAS_UPDATE  3 /* cpu state was modified dynamically */
 
 #include "qemu/log.h"
 
-void gen_intermediate_code(CPUArchState *env, struct TranslationBlock *tb);
+void gen_intermediate_code(CPUState *cpu, struct TranslationBlock *tb);
 void restore_state_to_opc(CPUArchState *env, struct TranslationBlock *tb,
                           target_ulong *data);
 
@@ -82,6 +105,9 @@ void cpu_reloading_memory_map(void);
  * Note that with KVM only one address space is supported.
  */
 void cpu_address_space_init(CPUState *cpu, AddressSpace *as, int asidx);
+#endif
+
+#if !defined(CONFIG_USER_ONLY) && defined(CONFIG_TCG)
 /* cputlb.c */
 /**
  * tlb_flush_page:
@@ -93,36 +119,118 @@ void cpu_address_space_init(CPUState *cpu, AddressSpace *as, int asidx);
  */
 void tlb_flush_page(CPUState *cpu, target_ulong addr);
 /**
+ * tlb_flush_page_all_cpus:
+ * @cpu: src CPU of the flush
+ * @addr: virtual address of page to be flushed
+ *
+ * Flush one page from the TLB of the specified CPU, for all
+ * MMU indexes.
+ */
+void tlb_flush_page_all_cpus(CPUState *src, target_ulong addr);
+/**
+ * tlb_flush_page_all_cpus_synced:
+ * @cpu: src CPU of the flush
+ * @addr: virtual address of page to be flushed
+ *
+ * Flush one page from the TLB of the specified CPU, for all MMU
+ * indexes like tlb_flush_page_all_cpus except the source vCPUs work
+ * is scheduled as safe work meaning all flushes will be complete once
+ * the source vCPUs safe work is complete. This will depend on when
+ * the guests translation ends the TB.
+ */
+void tlb_flush_page_all_cpus_synced(CPUState *src, target_ulong addr);
+/**
  * tlb_flush:
  * @cpu: CPU whose TLB should be flushed
- * @flush_global: ignored
  *
- * Flush the entire TLB for the specified CPU.
- * The flush_global flag is in theory an indicator of whether the whole
- * TLB should be flushed, or only those entries not marked global.
- * In practice QEMU does not implement any global/not global flag for
- * TLB entries, and the argument is ignored.
+ * Flush the entire TLB for the specified CPU. Most CPU architectures
+ * allow the implementation to drop entries from the TLB at any time
+ * so this is generally safe. If more selective flushing is required
+ * use one of the other functions for efficiency.
  */
-void tlb_flush(CPUState *cpu, int flush_global);
+void tlb_flush(CPUState *cpu);
+/**
+ * tlb_flush_all_cpus:
+ * @cpu: src CPU of the flush
+ */
+void tlb_flush_all_cpus(CPUState *src_cpu);
+/**
+ * tlb_flush_all_cpus_synced:
+ * @cpu: src CPU of the flush
+ *
+ * Like tlb_flush_all_cpus except this except the source vCPUs work is
+ * scheduled as safe work meaning all flushes will be complete once
+ * the source vCPUs safe work is complete. This will depend on when
+ * the guests translation ends the TB.
+ */
+void tlb_flush_all_cpus_synced(CPUState *src_cpu);
 /**
  * tlb_flush_page_by_mmuidx:
  * @cpu: CPU whose TLB should be flushed
  * @addr: virtual address of page to be flushed
- * @...: list of MMU indexes to flush, terminated by a negative value
+ * @idxmap: bitmap of MMU indexes to flush
  *
  * Flush one page from the TLB of the specified CPU, for the specified
  * MMU indexes.
  */
-void tlb_flush_page_by_mmuidx(CPUState *cpu, target_ulong addr, ...);
+void tlb_flush_page_by_mmuidx(CPUState *cpu, target_ulong addr,
+                              uint16_t idxmap);
+/**
+ * tlb_flush_page_by_mmuidx_all_cpus:
+ * @cpu: Originating CPU of the flush
+ * @addr: virtual address of page to be flushed
+ * @idxmap: bitmap of MMU indexes to flush
+ *
+ * Flush one page from the TLB of all CPUs, for the specified
+ * MMU indexes.
+ */
+void tlb_flush_page_by_mmuidx_all_cpus(CPUState *cpu, target_ulong addr,
+                                       uint16_t idxmap);
+/**
+ * tlb_flush_page_by_mmuidx_all_cpus_synced:
+ * @cpu: Originating CPU of the flush
+ * @addr: virtual address of page to be flushed
+ * @idxmap: bitmap of MMU indexes to flush
+ *
+ * Flush one page from the TLB of all CPUs, for the specified MMU
+ * indexes like tlb_flush_page_by_mmuidx_all_cpus except the source
+ * vCPUs work is scheduled as safe work meaning all flushes will be
+ * complete once  the source vCPUs safe work is complete. This will
+ * depend on when the guests translation ends the TB.
+ */
+void tlb_flush_page_by_mmuidx_all_cpus_synced(CPUState *cpu, target_ulong addr,
+                                              uint16_t idxmap);
 /**
  * tlb_flush_by_mmuidx:
  * @cpu: CPU whose TLB should be flushed
- * @...: list of MMU indexes to flush, terminated by a negative value
+ * @wait: If true ensure synchronisation by exiting the cpu_loop
+ * @idxmap: bitmap of MMU indexes to flush
  *
  * Flush all entries from the TLB of the specified CPU, for the specified
  * MMU indexes.
  */
-void tlb_flush_by_mmuidx(CPUState *cpu, ...);
+void tlb_flush_by_mmuidx(CPUState *cpu, uint16_t idxmap);
+/**
+ * tlb_flush_by_mmuidx_all_cpus:
+ * @cpu: Originating CPU of the flush
+ * @idxmap: bitmap of MMU indexes to flush
+ *
+ * Flush all entries from all TLBs of all CPUs, for the specified
+ * MMU indexes.
+ */
+void tlb_flush_by_mmuidx_all_cpus(CPUState *cpu, uint16_t idxmap);
+/**
+ * tlb_flush_by_mmuidx_all_cpus_synced:
+ * @cpu: Originating CPU of the flush
+ * @idxmap: bitmap of MMU indexes to flush
+ *
+ * Flush all entries from all TLBs of all CPUs, for the specified
+ * MMU indexes like tlb_flush_by_mmuidx_all_cpus except except the source
+ * vCPUs work is scheduled as safe work meaning all flushes will be
+ * complete once  the source vCPUs safe work is complete. This will
+ * depend on when the guests translation ends the TB.
+ */
+void tlb_flush_by_mmuidx_all_cpus_synced(CPUState *cpu, uint16_t idxmap);
 /**
  * tlb_set_page_with_attrs:
  * @cpu: CPU to add this TLB entry for
@@ -164,17 +272,48 @@ void probe_write(CPUArchState *env, target_ulong addr, int mmu_idx,
 static inline void tlb_flush_page(CPUState *cpu, target_ulong addr)
 {
 }
-
-static inline void tlb_flush(CPUState *cpu, int flush_global)
+static inline void tlb_flush_page_all_cpus(CPUState *src, target_ulong addr)
 {
 }
-
+static inline void tlb_flush_page_all_cpus_synced(CPUState *src,
+                                                  target_ulong addr)
+{
+}
+static inline void tlb_flush(CPUState *cpu)
+{
+}
+static inline void tlb_flush_all_cpus(CPUState *src_cpu)
+{
+}
+static inline void tlb_flush_all_cpus_synced(CPUState *src_cpu)
+{
+}
 static inline void tlb_flush_page_by_mmuidx(CPUState *cpu,
-                                            target_ulong addr, ...)
+                                            target_ulong addr, uint16_t idxmap)
 {
 }
 
-static inline void tlb_flush_by_mmuidx(CPUState *cpu, ...)
+static inline void tlb_flush_by_mmuidx(CPUState *cpu, uint16_t idxmap)
+{
+}
+static inline void tlb_flush_page_by_mmuidx_all_cpus(CPUState *cpu,
+                                                     target_ulong addr,
+                                                     uint16_t idxmap)
+{
+}
+static inline void tlb_flush_page_by_mmuidx_all_cpus_synced(CPUState *cpu,
+                                                            target_ulong addr,
+                                                            uint16_t idxmap)
+{
+}
+static inline void tlb_flush_by_mmuidx_all_cpus(CPUState *cpu, uint16_t idxmap)
+{
+}
+static inline void tlb_flush_by_mmuidx_all_cpus_synced(CPUState *cpu,
+                                                       uint16_t idxmap)
+{
+}
+static inline void tb_invalidate_phys_addr(AddressSpace *as, hwaddr addr)
 {
 }
 #endif
@@ -191,7 +330,7 @@ static inline void tlb_flush_by_mmuidx(CPUState *cpu, ...)
 #define CODE_GEN_AVG_BLOCK_SIZE 150
 #endif
 
-#if defined(__arm__) || defined(_ARCH_PPC) \
+#if defined(_ARCH_PPC) \
     || defined(__x86_64__) || defined(__i386__) \
     || defined(__sparc__) || defined(__aarch64__) \
     || defined(__s390x__) || defined(__mips__) \
@@ -213,6 +352,9 @@ struct TranslationBlock {
 #define CF_NOCACHE     0x10000 /* To be freed after execution */
 #define CF_USE_ICOUNT  0x20000
 #define CF_IGNORE_ICOUNT 0x40000 /* Do not generate icount code */
+
+    /* Per-vCPU dynamic tracing state used to generate this TB */
+    uint32_t trace_vcpu_dstate;
 
     uint16_t invalid;
 
@@ -258,6 +400,8 @@ struct TranslationBlock {
 void tb_free(TranslationBlock *tb);
 void tb_flush(CPUState *cpu);
 void tb_phys_invalidate(TranslationBlock *tb, tb_page_addr_t page_addr);
+TranslationBlock *tb_htable_lookup(CPUState *cpu, target_ulong pc,
+                                   target_ulong cs_base, uint32_t flags);
 
 #if defined(USE_DIRECT_JUMP)
 
@@ -289,9 +433,6 @@ static inline void tb_set_jmp_target1(uintptr_t jmp_addr, uintptr_t addr)
 #elif defined(__aarch64__)
 void aarch64_tb_set_jmp_target(uintptr_t jmp_addr, uintptr_t addr);
 #define tb_set_jmp_target1 aarch64_tb_set_jmp_target
-#elif defined(__arm__)
-void arm_tb_set_jmp_target(uintptr_t jmp_addr, uintptr_t addr);
-#define tb_set_jmp_target1 arm_tb_set_jmp_target
 #elif defined(__sparc__) || defined(__mips__)
 void tb_set_jmp_target1(uintptr_t jmp_addr, uintptr_t addr);
 #else
@@ -358,6 +499,10 @@ extern uintptr_t tci_tb_ptr;
    smaller than 4 bytes, so we don't worry about special-casing this.  */
 #define GETPC_ADJ   2
 
+void tb_lock(void);
+void tb_unlock(void);
+void tb_lock_reset(void);
+
 #if !defined(CONFIG_USER_ONLY)
 
 struct MemoryRegion *iotlb_to_region(CPUState *cpu,
@@ -406,9 +551,5 @@ bool memory_region_is_unassigned(MemoryRegion *mr);
 
 /* vl.c */
 extern int singlestep;
-
-/* cpu-exec.c, accessed with atomic_mb_read/atomic_mb_set */
-extern CPUState *tcg_current_cpu;
-extern bool exit_request;
 
 #endif

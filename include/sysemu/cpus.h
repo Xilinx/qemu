@@ -1,6 +1,8 @@
 #ifndef QEMU_CPUS_H
 #define QEMU_CPUS_H
 
+#include "qemu/timer.h"
+
 /* cpus.c */
 bool qemu_in_vcpu_thread(void);
 void qemu_init_cpu_loop(void);
@@ -21,10 +23,12 @@ void dump_drift_info(FILE *f, fprintf_function cpu_fprintf);
 
 /* Unblock cpu */
 void qemu_cpu_kick_self(void);
+void qemu_timer_notify_cb(void *opaque, QEMUClockType type);
 
 void cpu_synchronize_all_states(void);
 void cpu_synchronize_all_post_reset(void);
 void cpu_synchronize_all_post_init(void);
+void cpu_synchronize_all_pre_loadvm(void);
 
 void tcg_clock_warp(int64_t dest);
 bool tcg_idle_clock_warp(int64_t dest);
@@ -40,5 +44,7 @@ extern int smp_threads;
 #endif
 
 void list_cpus(FILE *f, fprintf_function cpu_fprintf, const char *optarg);
+
+void qemu_tcg_configure(QemuOpts *opts, Error **errp);
 
 #endif

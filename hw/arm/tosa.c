@@ -90,7 +90,7 @@ static void tosa_out_switch(void *opaque, int line, int level)
 static void tosa_reset(void *opaque, int line, int level)
 {
     if (level) {
-        qemu_system_reset_request();
+        qemu_system_reset_request(SHUTDOWN_CAUSE_GUEST_RESET);
     }
 }
 
@@ -172,7 +172,7 @@ static int tosa_dac_send(I2CSlave *i2c, uint8_t data)
     return 0;
 }
 
-static void tosa_dac_event(I2CSlave *i2c, enum i2c_event event)
+static int tosa_dac_event(I2CSlave *i2c, enum i2c_event event)
 {
     TosaDACState *s = TOSA_DAC(i2c);
 
@@ -194,18 +194,14 @@ static void tosa_dac_event(I2CSlave *i2c, enum i2c_event event)
     default:
         break;
     }
+
+    return 0;
 }
 
 static int tosa_dac_recv(I2CSlave *s)
 {
     printf("%s: recv not supported!!!\n", __FUNCTION__);
     return -1;
-}
-
-static int tosa_dac_init(I2CSlave *i2c)
-{
-    /* Nothing to do.  */
-    return 0;
 }
 
 static void tosa_tg_init(PXA2xxState *cpu)
@@ -239,7 +235,6 @@ static void tosa_init(MachineState *machine)
     mpu = pxa255_init(address_space_mem, tosa_binfo.ram_size);
 
     memory_region_init_ram(rom, NULL, "tosa.rom", TOSA_ROM, &error_fatal);
-    vmstate_register_ram_global(rom);
     memory_region_set_readonly(rom, true);
     memory_region_add_subregion(address_space_mem, 0, rom);
 
@@ -267,6 +262,7 @@ static void tosapda_machine_init(MachineClass *mc)
 {
     mc->desc = "Sharp SL-6000 (Tosa) PDA (PXA255)";
     mc->init = tosa_init;
+    mc->block_default_type = IF_IDE;
 }
 
 DEFINE_MACHINE("tosa", tosapda_machine_init)
@@ -275,7 +271,6 @@ static void tosa_dac_class_init(ObjectClass *klass, void *data)
 {
     I2CSlaveClass *k = I2C_SLAVE_CLASS(klass);
 
-    k->init = tosa_dac_init;
     k->event = tosa_dac_event;
     k->recv = tosa_dac_recv;
     k->send = tosa_dac_send;

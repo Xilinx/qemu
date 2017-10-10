@@ -44,6 +44,7 @@
 #endif
 
 #define TYPE_XILINX_AXIPCIE_MAIN "xlnx.nwl-pcie-main"
+#define TYPE_XILINX_AXIPCIE_MAIN_IOMMU_MEMORY_REGION "xlnx.nwl-pcie-main-iommu-memory-region"
 
 #define XILINX_AXIPCIE_MAIN(obj) \
      OBJECT_CHECK(AXIPCIE_MAIN, (obj), TYPE_XILINX_AXIPCIE_MAIN)
@@ -327,7 +328,7 @@ typedef struct AXIPCIE_MAIN {
     AddressSpace *dma_as;
     MemTxAttrs *attr;
 
-    MemoryRegion iommu_attr;
+    IOMMUMemoryRegion iommu_attr;
     AddressSpace *iommu_attr_as;
 
     MemoryRegion iomem;
@@ -746,7 +747,7 @@ static const MemoryRegionOps axipcie_msi_ops = {
     },
 };
 
-static IOMMUTLBEntry axipcie_translate(MemoryRegion *mr, hwaddr addr,
+static IOMMUTLBEntry axipcie_translate(IOMMUMemoryRegion *mr, hwaddr addr,
                                        bool is_write, MemTxAttrs *attr)
 {
     AXIPCIE_MAIN *s = container_of(mr, AXIPCIE_MAIN, iommu_attr);
@@ -763,10 +764,6 @@ static IOMMUTLBEntry axipcie_translate(MemoryRegion *mr, hwaddr addr,
     }
     return ret;
 }
-
-static const MemoryRegionIOMMUOps axipcie_iommu_ops = {
-    .translate_attr = axipcie_translate,
-};
 
 static AddressSpace *axipcie_dma_as(PCIBus *bus, void *opaque, int devfn)
 {
@@ -818,9 +815,11 @@ static void axipcie_main_realize(DeviceState *dev, Error **errp)
                                 &s->io_ioport, PCI_DEVFN(0, 0), 4,
                                 TYPE_PCIE_BUS);
 
-    memory_region_init_iommu(&s->iommu_attr, OBJECT(s), &axipcie_iommu_ops,
+    memory_region_init_iommu(&s->iommu_attr, sizeof(s->iommu_attr), 
+                             TYPE_XILINX_AXIPCIE_MAIN_IOMMU_MEMORY_REGION,
+                             OBJECT(s),
                              "axipcie-attr-iommu", UINT64_MAX);
-    s->iommu_attr_as = address_space_init_shareable(&s->iommu_attr, NULL);
+    s->iommu_attr_as = address_space_init_shareable(MEMORY_REGION(&s->iommu_attr), NULL);
 
     pci_setup_iommu(pci->bus, axipcie_dma_as, s->iommu_attr_as);
 }
@@ -879,6 +878,14 @@ static void axipcie_main_class_init(ObjectClass *klass, void *data)
     hc->root_bus_path = axipcie_main_host_root_bus_path;
 }
 
+static void axipcie_main_iommu_memory_region_class_init(ObjectClass *klass,
+                                                   void *data)
+{
+    IOMMUMemoryRegionClass *imrc = IOMMU_MEMORY_REGION_CLASS(klass);
+
+    imrc->translate_attr = axipcie_translate;
+}
+
 static const TypeInfo axipcie_main_info = {
     .name          = TYPE_XILINX_AXIPCIE_MAIN,
     .parent        = TYPE_PCIE_HOST_BRIDGE,
@@ -887,9 +894,17 @@ static const TypeInfo axipcie_main_info = {
     .instance_init = axipcie_main_init,
 };
 
+static const TypeInfo axipcie_main_iommu_memory_region_info = {
+    .name = TYPE_XILINX_AXIPCIE_MAIN_IOMMU_MEMORY_REGION,
+    .parent = TYPE_IOMMU_MEMORY_REGION,
+    .class_init = axipcie_main_iommu_memory_region_class_init,
+};
+
+
 static void axipcie_main_register_types(void)
 {
     type_register_static(&axipcie_main_info);
+    type_register_static(&axipcie_main_iommu_memory_region_info);
 }
 
 type_init(axipcie_main_register_types)

@@ -33,7 +33,7 @@
 #include "hw/ptimer.h"
 #include "qemu/bitops.h"
 #include "sysemu/dma.h"
-#include "hw/register-dep.h"
+#include "hw/register.h"
 #include "qapi/error.h"
 #include "qemu/main-loop.h"
 
@@ -56,64 +56,85 @@
 
 #define DB_PRINT(fmt, args...) DB_PRINT_L(0, fmt, ##args)
 
-enum {
-    R_ADDR         = 0x00 / 4,
-    R_SIZE         = 0x04 / 4,
-    R_STATUS       = 0x08 / 4,
-    R_CTRL         = 0x0c / 4,
-    R_CRC          = 0x10 / 4,
-    R_INT_STATUS   = 0x14 / 4,
-    R_INT_ENABLE   = 0x18 / 4,
-    R_INT_DISABLE  = 0x1c / 4,
-    R_INT_MASK     = 0x20 / 4,
-    R_CTRL2        = 0x24 / 4,
-    R_ADDR_MSB     = 0x28 / 4,
+REG32(ADDR, 0x0)
+    FIELD(ADDR, ADDR, 2, 30)
+REG32(SIZE, 0x4)
+    FIELD(SIZE, SIZE, 2, 27)
+    FIELD(SIZE, LAST_WORD, 0, 1)
+REG32(STATUS, 0x8)
+    FIELD(STATUS, CMD_Q_EMPTY, 17, 1)
+    FIELD(STATUS, CMD_Q_FULL, 16, 1)
+    FIELD(STATUS, DONE_CNT, 13, 3)
+    FIELD(STATUS, SRC_FIFO_LEVEL, 5, 8)
+    FIELD(STATUS, RD_OUTSTANDING, 1, 4)
+    FIELD(STATUS, BUSY, 0, 1)
+REG32(CTRL, 0xc)
+    FIELD(CTRL, APB_ERR_RESP, 24, 1)
+    FIELD(CTRL, ENDIANNESS, 23, 1)
+    FIELD(CTRL, AXI_BRST_TYPE, 22, 1)
+    FIELD(CTRL, TIMEOUT_VAL, 10, 12)
+    FIELD(CTRL, FIFO_THRESH, 2, 8)
+    FIELD(CTRL, PAUSE_STRM, 1, 1)
+    FIELD(CTRL, PAUSE_MEM, 0, 1)
+REG32(CRC0, 0x10)
+REG32(INT_STATUS, 0x14)
+    FIELD(INT_STATUS, WR_FULL_CMDQ, 7, 1)
+    FIELD(INT_STATUS, INVALID_APB, 6, 1)
+    FIELD(INT_STATUS, THRESH_HIT, 5, 1)
+    FIELD(INT_STATUS, TIMEOUT_MEM, 4, 1)
+    FIELD(INT_STATUS, TIMEOUT_STRM, 3, 1)
+    FIELD(INT_STATUS, AXI_RDERR, 2, 1)
+    FIELD(INT_STATUS, DONE, 1, 1)
+    FIELD(INT_STATUS, MEM_DONE, 0, 1)
+REG32(INT_ENABLE, 0x18)
+    FIELD(INT_ENABLE, WR_FULL_CMDQ, 7, 1)
+    FIELD(INT_ENABLE, INVALID_APB, 6, 1)
+    FIELD(INT_ENABLE, THRESH_HIT, 5, 1)
+    FIELD(INT_ENABLE, TIMEOUT_MEM, 4, 1)
+    FIELD(INT_ENABLE, TIMEOUT_STRM, 3, 1)
+    FIELD(INT_ENABLE, AXI_RDERR, 2, 1)
+    FIELD(INT_ENABLE, DONE, 1, 1)
+    FIELD(INT_ENABLE, MEM_DONE, 0, 1)
+REG32(INT_DISABLE, 0x1c)
+    FIELD(INT_DISABLE, WR_FULL_CMDQ, 7, 1)
+    FIELD(INT_DISABLE, INVALID_APB, 6, 1)
+    FIELD(INT_DISABLE, THRESH_HIT, 5, 1)
+    FIELD(INT_DISABLE, TIMEOUT_MEM, 4, 1)
+    FIELD(INT_DISABLE, TIMEOUT_STRM, 3, 1)
+    FIELD(INT_DISABLE, AXI_RDERR, 2, 1)
+    FIELD(INT_DISABLE, DONE, 1, 1)
+    FIELD(INT_DISABLE, MEM_DONE, 0, 1)
+REG32(INT_MASK, 0x20)
+    FIELD(INT_MASK, WR_FULL_CMDQ, 7, 1)
+    FIELD(INT_MASK, INVALID_APB, 6, 1)
+    FIELD(INT_MASK, THRESH_HIT, 5, 1)
+    FIELD(INT_MASK, TIMEOUT_MEM, 4, 1)
+    FIELD(INT_MASK, TIMEOUT_STRM, 3, 1)
+    FIELD(INT_MASK, AXI_RDERR, 2, 1)
+    FIELD(INT_MASK, DONE, 1, 1)
+    FIELD(INT_MASK, MEM_DONE, 0, 1)
+REG32(CTRL2, 0x24)
+    FIELD(CTRL2, RAM_EMASA, 27, 1)
+    FIELD(CTRL2, ARCACHE, 24, 3)
+    FIELD(CTRL2, ROUTE_BIT, 23, 1)
+    FIELD(CTRL2, TIMEOUT_EN, 22, 1)
+    FIELD(CTRL2, RAM_EMAB, 19, 3)
+    FIELD(CTRL2, RAM_EMAA, 16, 3)
+    FIELD(CTRL2, TIMEOUT_PRE, 4, 12)
+    FIELD(CTRL2, MAX_OUTS_CMDS, 0, 4)
+REG32(ADDR_MSB, 0x28)
+    FIELD(ADDR_MSB, ADDR_MSB, 0, 17)
 
-    R_MAX          = R_ADDR_MSB + 1
-};
+#define R_MAX (R_ADDR_MSB + 1)
 
-enum {
-    STATUS_DMA_BUSY          = (1 << 0),
-    STATUS_RSVD              = 0
-};
+/* Remove these */
+#define CTRL_RSVD       (~((1 << 25) - 1))
 
-/* The DMA_DONE_CNT is write to clear.  */
-DEP_FIELD(STATUS, DMA_DONE_CNT, 3, 13)
+#define INT_RSVD        (~((1 << 8) - 1))
+#define INT_ALL_SRC     ((~(INT_RSVD)) & (~(R_INT_STATUS_WR_FULL_CMDQ_MASK)))
+#define INT_ALL_DST     ((~(INT_RSVD)) & (~(R_INT_STATUS_MEM_DONE_MASK)))
 
-enum {
-    CTRL_PAUSE_MEM                  = (1 << 0),
-    CTRL_PAUSE_STRM                 = (1 << 1),
-
-    CTRL_FIFO_THRESH_SHIFT          = 2,
-    CTRL_AXI_BURST_FIXED            = (1 << 22),
-    CTRL_ENDIANNESS                 = (1 << 23),
-    CTRL_ERR_RESP                   = (1 << 24),
-    CTRL_SSS_FIFOTHRESH_SHIFT       = 25,
-    CTRL_RSVD                       = (~((1 << 25) - 1))
-};
-
-DEP_FIELD(CTRL, TIMEOUT, 12, 10)
-
-enum {
-    INT_FIFO_OVERFLOW               = 1 << 7,
-    INT_INVALID_APB_ACCESS          = 1 << 6,
-    INT_FIFO_THRESH_HIT             = 1 << 5,
-    INT_TIMEOUT_MEM                 = 1 << 4,
-    INT_TIMEOUT_STRM                = 1 << 3,
-    INT_AXI_RDERR                   = 1 << 2,
-    INT_DONE                        = 1 << 1,
-    INT_MEM_DONE                    = 1 << 0,
-    INT_RSVD                        = (~((1 << 8) - 1)),
-    INT_ALL_SRC                     = ~INT_RSVD & ~INT_FIFO_OVERFLOW,
-    INT_ALL_DST                     = ~INT_RSVD & ~INT_MEM_DONE,
-};
-
-enum {
-    CTRL2_MAX_OUTS_CMDS_SHIFT       = 0,
-    CTRL2_TIMEOUT_EN                = 1 << 22,
-    CTRL2_TIMEOUT_PRE_SHIFT         = 4,
-    CTRL2_RSVD                      = (~((1 << 28) - 1))
-};
+#define CTRL2_RSVD      (~((1 << 28) - 1))
 
 typedef struct ZynqMPCSUDMA {
     SysBusDevice busdev;
@@ -133,15 +154,15 @@ typedef struct ZynqMPCSUDMA {
     void *notify_opaque;
 
     uint32_t regs[R_MAX];
-    DepRegisterInfo regs_info[R_MAX];
+    RegisterInfo regs_info[R_MAX];
 } ZynqMPCSUDMA;
 
 static bool dmach_is_paused(ZynqMPCSUDMA *s)
 {
     bool paused;
 
-    paused = !!(s->regs[R_CTRL] & CTRL_PAUSE_STRM);
-    paused |= !!(s->regs[R_CTRL] & CTRL_PAUSE_MEM);
+    paused = !!(s->regs[R_CTRL] & R_CTRL_PAUSE_STRM_MASK);
+    paused |= !!(s->regs[R_CTRL] & R_CTRL_PAUSE_MEM_MASK);
     return paused;
 }
 
@@ -165,12 +186,12 @@ static void dmach_set_size(ZynqMPCSUDMA *s, uint32_t size)
 
 static bool dmach_burst_is_fixed(ZynqMPCSUDMA *s)
 {
-    return !!(s->regs[R_CTRL] & CTRL_AXI_BURST_FIXED);
+    return !!(s->regs[R_CTRL] & R_CTRL_AXI_BRST_TYPE_MASK);
 }
 
 static bool dmach_timeout_enabled(ZynqMPCSUDMA *s)
 {
-    return s->regs[R_CTRL2] & CTRL2_TIMEOUT_EN;
+    return s->regs[R_CTRL2] & R_CTRL2_TIMEOUT_EN_MASK;
 }
 
 static inline void dmach_update_dma_cnt(ZynqMPCSUDMA *s, int a)
@@ -178,19 +199,19 @@ static inline void dmach_update_dma_cnt(ZynqMPCSUDMA *s, int a)
     int cnt;
 
     /* Increase dma_cnt.  */
-    cnt = DEP_AF_EX32(s->regs, STATUS, DMA_DONE_CNT) + a;
-    DEP_AF_DP32(s->regs, STATUS, DMA_DONE_CNT, cnt);
+    cnt = ARRAY_FIELD_EX32(s->regs, STATUS, DONE_CNT) + a;
+    ARRAY_FIELD_DP32(s->regs, STATUS, DONE_CNT, cnt);
 }
 
 static void dmach_done(ZynqMPCSUDMA *s)
 {
     dmach_update_dma_cnt(s, +1);
-    s->regs[R_STATUS] &= ~STATUS_DMA_BUSY;
+    s->regs[R_STATUS] &= ~R_STATUS_BUSY_MASK;
 
     DB_PRINT("\n");
-    s->regs[R_INT_STATUS] |= INT_DONE;
+    s->regs[R_INT_STATUS] |= R_INT_STATUS_DONE_MASK;
     if (!s->is_dst) {
-        s->regs[R_INT_STATUS] |= INT_MEM_DONE;
+        s->regs[R_INT_STATUS] |= R_INT_STATUS_MEM_DONE_MASK;
     }
 }
 
@@ -220,7 +241,7 @@ static void dmach_data_process(ZynqMPCSUDMA *s, uint8_t *buf, unsigned int len)
     unsigned int i;
 
     /* Xor only for src channel.  */
-    bswap = s->regs[R_CTRL] & CTRL_ENDIANNESS;
+    bswap = s->regs[R_CTRL] & R_CTRL_ENDIANNESS_MASK;
     if (s->is_dst && !bswap) {
         /* Fast!  */
         return;
@@ -239,7 +260,7 @@ static void dmach_data_process(ZynqMPCSUDMA *s, uint8_t *buf, unsigned int len)
         };
 
         if (!s->is_dst) {
-            s->regs[R_CRC] += v.u32;
+            s->regs[R_CRC0] += v.u32;
         }
         if (bswap) {
             /* No point using bswap, we need to writeback
@@ -307,7 +328,7 @@ static void zynqmp_csu_dma_reset(DeviceState *dev)
     int i;
 
     for (i = 0; i < R_MAX; i++) {
-        dep_register_reset(&s->regs_info[i]);
+        register_reset(&s->regs_info[i]);
     }
 }
 
@@ -322,7 +343,7 @@ static size_t zynqmp_csu_dma_stream_push(StreamSlave *obj, uint8_t *buf,
     if (len && (dmach_is_paused(s) || btt == 0)) {
         qemu_log_mask(LOG_GUEST_ERROR,
                       "csu-dma: DST channel dropping %zd b of data.\n", len);
-        s->regs[R_INT_STATUS] |= INT_FIFO_OVERFLOW;
+        s->regs[R_INT_STATUS] |= R_INT_STATUS_WR_FULL_CMDQ_MASK;
         return len;
     }
 
@@ -382,7 +403,7 @@ static void zynqmp_csu_dma_src_notify(void *opaque)
        we currently never see backpreassure.  */
     if (dmach_timeout_enabled(s) && dmach_get_size(s)
         && !stream_can_push(s->tx_dev, zynqmp_csu_dma_src_notify, s)) {
-        unsigned int timeout = DEP_AF_EX32(s->regs, CTRL, TIMEOUT);
+        unsigned int timeout = ARRAY_FIELD_EX32(s->regs, CTRL, TIMEOUT_VAL);
         unsigned int div = extract32(s->regs[R_CTRL2], 4, 12) + 1;
         unsigned int freq = 400 * 1000 * 1000;
 
@@ -395,7 +416,7 @@ static void zynqmp_csu_dma_src_notify(void *opaque)
     ronaldu_csu_dma_update_irq(s);
 }
 
-static void r_ctrl_post_write(DepRegisterInfo *reg, uint64_t val)
+static void r_ctrl_post_write(RegisterInfo *reg, uint64_t val)
 {
     ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(reg->opaque);
 
@@ -410,7 +431,7 @@ static void r_ctrl_post_write(DepRegisterInfo *reg, uint64_t val)
     }
 }
 
-static uint64_t size_pre_write(DepRegisterInfo *reg, uint64_t val)
+static uint64_t size_pre_write(RegisterInfo *reg, uint64_t val)
 {
     ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(reg->opaque);
     if (dmach_get_size(s) != 0) {
@@ -420,11 +441,11 @@ static uint64_t size_pre_write(DepRegisterInfo *reg, uint64_t val)
     return val;
 }
 
-static void size_post_write(DepRegisterInfo *reg, uint64_t val)
+static void size_post_write(RegisterInfo *reg, uint64_t val)
 {
     ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(reg->opaque);
 
-    s->regs[R_STATUS] |= STATUS_DMA_BUSY;
+    s->regs[R_STATUS] |= R_STATUS_BUSY_MASK;
     /* When starting the DMA channel with a zero length, it signals
        done immediately.  */
     if (dmach_get_size(s) == 0) {
@@ -442,26 +463,26 @@ static void size_post_write(DepRegisterInfo *reg, uint64_t val)
     }
 }
 
-static uint64_t int_status_pre_write(DepRegisterInfo *reg, uint64_t val)
+static uint64_t int_status_pre_write(RegisterInfo *reg, uint64_t val)
 {
     ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(reg->opaque);
 
     /* DMA counter decrements on interrupt clear */
-    if (~val & s->regs[R_INT_STATUS] & INT_DONE) {
+    if (~val & s->regs[R_INT_STATUS] & R_INT_STATUS_DONE_MASK) {
         dmach_update_dma_cnt(s, -1);
     }
 
     return val;
 }
 
-static void int_status_post_write(DepRegisterInfo *reg, uint64_t val)
+static void int_status_post_write(RegisterInfo *reg, uint64_t val)
 {
     ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(reg->opaque);
 
     ronaldu_csu_dma_update_irq(s);
 }
 
-static uint64_t int_enable_pre_write(DepRegisterInfo *reg, uint64_t val)
+static uint64_t int_enable_pre_write(RegisterInfo *reg, uint64_t val)
 {
     ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(reg->opaque);
     uint32_t v32 = val;
@@ -471,7 +492,7 @@ static uint64_t int_enable_pre_write(DepRegisterInfo *reg, uint64_t val)
     return 0;
 }
 
-static uint64_t int_disable_pre_write(DepRegisterInfo *reg, uint64_t val)
+static uint64_t int_disable_pre_write(RegisterInfo *reg, uint64_t val)
 {
     ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(reg->opaque);
     uint32_t v32 = val;
@@ -490,7 +511,7 @@ static void src_timeout_hit(void *opaque)
         return;
     }
 
-    s->regs[R_INT_STATUS] |= INT_TIMEOUT_STRM;
+    s->regs[R_INT_STATUS] |= R_INT_STATUS_TIMEOUT_STRM_MASK;
     ronaldu_csu_dma_update_irq(s);
 }
 
@@ -498,74 +519,57 @@ static void
 zynqmp_csu_dma_dma_ctrl_read(DmaCtrl *dma_ctrl, hwaddr addr, uint32_t len)
 {
     ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(dma_ctrl);
-    DepRegisterInfo *r = &s->regs_info[R_SIZE];
+    RegisterInfo *reg = &s->regs_info[R_SIZE];
+    uint64_t we = MAKE_64BIT_MASK(0, 4 * 8);
 
     s->regs[R_ADDR] = addr;
     s->regs[R_ADDR_MSB] = (uint64_t)addr >> 32;
-    dep_register_write(r, len, ~0);
+
+    register_write(reg, len, we, object_get_typename(OBJECT(s)),
+                   ZYNQMP_CSU_DMA_ERR_DEBUG);
 }
 
-static const DepRegisterAccessInfo *zynqmp_csu_dma_regs_info[] = {
+static const RegisterAccessInfo *zynqmp_csu_dma_regs_info[] = {
 #define DMACH_REGINFO(NAME, snd)                                              \
-(const DepRegisterAccessInfo []) {                                               \
-    [R_ADDR] = { .name =  #NAME "_ADDR" },                                    \
-    [R_SIZE] = { .name =  #NAME "_SIZE",                                      \
-                               .pre_write = size_pre_write,                   \
-                               .post_write = size_post_write },               \
-    [R_STATUS] = { .name =  #NAME "_STATUS",                                  \
-            .ro = STATUS_RSVD,                                                \
-            .w1c = R_STATUS_DMA_DONE_CNT_MASK,                                \
-            .ge1 = (DepRegisterAccessError[]) {                                  \
-                 { .mask = ~(R_STATUS_DMA_DONE_CNT_MASK),                     \
-                   .reason = "cannot write to status register" },             \
-                   {},                                                        \
-            },                                                                \
-    },                                                                        \
-    [R_CTRL] = { .name = #NAME "_CTRL",                                       \
-        .ro = (snd) ? CTRL_RSVD : 0,                                          \
-        .reset = ((snd) ? 0 : 0x40 << CTRL_SSS_FIFOTHRESH_SHIFT) |            \
-                 R_CTRL_TIMEOUT_MASK | 0x80 << CTRL_FIFO_THRESH_SHIFT,        \
-        .ge1 = (DepRegisterAccessError[]) {                                      \
-            { .mask = (snd) ? CTRL_RSVD : 0,                                  \
-              .reason = "write of 1 to reserved bit" },                       \
-            {},                                                               \
-        },                                                                    \
-        .post_write = r_ctrl_post_write,                                      \
-    },                                                                        \
-    [R_CRC] = { .name =  #NAME "_CRC" },                                      \
-    [R_INT_STATUS] = { .name =  #NAME "_INT_STATUS",                          \
-                                     .w1c = ~0,                               \
-                                     .pre_write = int_status_pre_write,       \
-                                     .post_write = int_status_post_write },   \
-    [R_INT_ENABLE] = { .name =  #NAME "_INT_ENABLE",                          \
-                                     .pre_write = int_enable_pre_write },     \
-    [R_INT_DISABLE] = { .name =  #NAME "_INT_DISABLE",                        \
-                                     .pre_write = int_disable_pre_write },    \
-    [R_INT_MASK] = { .name =  #NAME "_INT_MASK",                              \
-                                     .reset = snd ? INT_ALL_SRC : INT_ALL_DST,\
-                                     .ro = ~0 },                              \
-    [R_CTRL2] = { .name =  #NAME "_CTRL2",                                    \
-        .reset = 0x8 << CTRL2_MAX_OUTS_CMDS_SHIFT |                           \
-                 0xFFF << CTRL2_TIMEOUT_PRE_SHIFT | 0x081b0000,               \
+(const RegisterAccessInfo []) {                                               \
+    {   .name = #NAME "_ADDR",          .addr = A_ADDR,                       \
+    },{ .name = #NAME "_SIZE",          .addr = A_SIZE,                       \
+        .pre_write = size_pre_write,                                          \
+        .post_write = size_post_write                                         \
+    },{ .name = #NAME "_STATUS",        .addr = A_STATUS,                     \
+        .w1c = R_STATUS_DONE_CNT_MASK                                         \
+    },{ .name = #NAME "_CTRL",          .addr = A_CTRL,                       \
+        .ro = snd ? CTRL_RSVD : 0,                                            \
+        .reset = (snd ? 0 : 0x40 << R_CTRL_FIFO_THRESH_SHIFT) |               \
+                     R_CTRL_TIMEOUT_VAL_MASK |                                \
+                     0x80 << R_CTRL_FIFO_THRESH_SHIFT,                        \
+        .post_write = r_ctrl_post_write                                       \
+    },{ .name =  #NAME "_CRC0",          .addr = A_CRC0,                      \
+    },{ .name =  #NAME "_INT_STATUS",   .addr = A_INT_STATUS,                 \
+        .w1c = ~0,                                                            \
+        .pre_write = int_status_pre_write,                                    \
+        .post_write = int_status_post_write                                   \
+    },{ .name =  #NAME "_INT_ENABLE",   .addr = A_INT_ENABLE,                 \
+        .pre_write = int_enable_pre_write                                     \
+    },{ .name =  #NAME "_INT_DISABLE",  .addr = A_INT_DISABLE,                \
+        .pre_write = int_disable_pre_write                                    \
+    },{ .name =  #NAME "_INT_MASK",     .addr = A_INT_MASK,                   \
+        .ro = ~0,                                                             \
+        .reset = snd ? INT_ALL_SRC : INT_ALL_DST,                             \
+    },{ .name =  #NAME "_CTRL2",        .addr = A_CTRL2,                      \
         .ro = CTRL2_RSVD,                                                     \
-        .ge0 = (DepRegisterAccessError[]) {                                      \
-            { .mask = 0x00090000, .reason = "reserved - do not modify" },     \
-            {}                                                                \
-        },                                                                    \
-        .ge1 = (DepRegisterAccessError[]) {                                      \
-            { .mask = 0x00F60000, .reason = "reserved - do not modify" },     \
-            {}                                                                \
-        }                                                                     \
-    },                                                                        \
-    [R_ADDR_MSB] = { .name =  #NAME "_ADDR_MSB" }                             \
+        .reset = 0x8 << R_CTRL2_MAX_OUTS_CMDS_SHIFT |                         \
+                     0xFFF << R_CTRL2_TIMEOUT_PRE_SHIFT | 0x081b0000,         \
+    },{ .name =  #NAME "_ADDR_MSB",     .addr = A_ADDR_MSB,                   \
+    }                                                                         \
 }
     DMACH_REGINFO(DMA_SRC, true),
     DMACH_REGINFO(DMA_DST, false)
 };
 
 static const MemoryRegionOps zynqmp_csu_dma_ops = {
-    .read = dep_register_read_memory_le,
-    .write = dep_register_write_memory_le,
+    .read = register_read_memory,
+    .write = register_write_memory,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
@@ -573,38 +577,23 @@ static const MemoryRegionOps zynqmp_csu_dma_ops = {
     }
 };
 
-static void map_dma_channel(const char *prefix, ZynqMPCSUDMA *s)
-{
-    int i;
-
-    for (i = 0; i < R_MAX; ++i) {
-        DepRegisterInfo *r = &s->regs_info[i];
-
-        *r = (DepRegisterInfo) {
-            .data = (uint8_t *)&s->regs[i],
-            .data_size = sizeof(uint32_t),
-            .access = &zynqmp_csu_dma_regs_info[!!s->is_dst][i],
-            .debug = ZYNQMP_CSU_DMA_ERR_DEBUG,
-            .prefix = prefix,
-            .opaque = s,
-        };
-        memory_region_init_io(&r->mem, OBJECT(s), &zynqmp_csu_dma_ops, r,
-                              r->access->name, 4);
-        memory_region_add_subregion(&s->iomem, i * 4, &r->mem);
-    }
-}
-
 static void zynqmp_csu_dma_realize(DeviceState *dev, Error **errp)
 {
     ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(dev);
     SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
+    RegisterInfoArray *reg_array;
 
-    memory_region_init(&s->iomem, OBJECT(dev), "zynqmp.csu-dma", 0x800);
+    reg_array =
+        register_init_block32(dev, zynqmp_csu_dma_regs_info[!!s->is_dst],
+                              R_MAX,
+                              s->regs_info, s->regs,
+                              &zynqmp_csu_dma_ops,
+                              ZYNQMP_CSU_DMA_ERR_DEBUG,
+                              R_MAX * 4);
+    memory_region_add_subregion(&s->iomem,
+                                0x0,
+                                &reg_array->mem);
     sysbus_init_mmio(sbd, &s->iomem);
-
-    const char *prefix = object_get_canonical_path(OBJECT(dev));
-
-    map_dma_channel(prefix, s);
 
     s->bh = qemu_bh_new(src_timeout_hit, s);
     s->src_timer = ptimer_init(s->bh, PTIMER_POLICY_DEFAULT);
@@ -622,6 +611,9 @@ static void zynqmp_csu_dma_init(Object *obj)
 {
     ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+
+    memory_region_init(&s->iomem, obj, "zynqmp.csu-dma",
+                       R_MAX * 4);
 
     sysbus_init_irq(sbd, &s->irq);
 

@@ -19,16 +19,20 @@
 #include "hw/timer/aspeed_timer.h"
 #include "hw/i2c/aspeed_i2c.h"
 #include "hw/ssi/aspeed_smc.h"
+#include "hw/watchdog/wdt_aspeed.h"
+#include "hw/net/ftgmac100.h"
 
 #define ASPEED_SPIS_NUM  2
+#define ASPEED_WDTS_NUM  3
 
 typedef struct AspeedSoCState {
     /*< private >*/
     DeviceState parent;
 
     /*< public >*/
-    ARMCPU *cpu;
+    ARMCPU cpu;
     MemoryRegion iomem;
+    MemoryRegion sram;
     AspeedVICState vic;
     AspeedTimerCtrlState timerctrl;
     AspeedI2CState i2c;
@@ -36,6 +40,8 @@ typedef struct AspeedSoCState {
     AspeedSMCState fmc;
     AspeedSMCState spi[ASPEED_SPIS_NUM];
     AspeedSDMCState sdmc;
+    AspeedWDTState wdt[ASPEED_WDTS_NUM];
+    FTGMAC100State ftgmac100;
 } AspeedSoCState;
 
 #define TYPE_ASPEED_SOC "aspeed-soc"
@@ -46,10 +52,12 @@ typedef struct AspeedSoCInfo {
     const char *cpu_model;
     uint32_t silicon_rev;
     hwaddr sdram_base;
+    uint64_t sram_size;
     int spis_num;
     const hwaddr *spi_bases;
     const char *fmc_typename;
     const char **spi_typename;
+    int wdts_num;
 } AspeedSoCInfo;
 
 typedef struct AspeedSoCClass {

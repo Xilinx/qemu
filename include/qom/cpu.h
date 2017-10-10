@@ -132,6 +132,8 @@ struct TranslationBlock;
  * @cpu_exec_exit: Callback for cpu_exec cleanup.
  * @cpu_exec_interrupt: Callback for processing interrupts in cpu_exec.
  * @disas_set_info: Setup architecture specific components of disassembly info
+ * @adjust_watchpoint_address: Perform a target-specific adjustment to an
+ * address before attempting to match it against watchpoints.
  *
  * Represents a CPU family or model.
  */
@@ -156,6 +158,7 @@ typedef struct CPUClass {
                            uint8_t *buf, int len, bool is_write);
     void (*dump_state)(CPUState *cpu, FILE *f, fprintf_function cpu_fprintf,
                        int flags);
+    GuestPanicInformation* (*get_crash_info)(CPUState *cpu);
     void (*dump_statistics)(CPUState *cpu, FILE *f,
                             fprintf_function cpu_fprintf, int flags);
     int64_t (*get_arch_id)(CPUState *cpu);
@@ -198,6 +201,7 @@ typedef struct CPUClass {
     bool (*cpu_exec_interrupt)(CPUState *cpu, int interrupt_request);
 
     void (*disas_set_info)(CPUState *cpu, disassemble_info *info);
+    vaddr (*adjust_watchpoint_address)(CPUState *cpu, vaddr addr, int len);
 } CPUClass;
 
 #ifdef HOST_WORDS_BIGENDIAN
@@ -230,6 +234,8 @@ struct CPUWatchpoint {
 struct KVMState;
 struct kvm_run;
 
+struct hax_vcpu_state;
+
 #define TB_JMP_CACHE_BITS 12
 #define TB_JMP_CACHE_SIZE (1 << TB_JMP_CACHE_BITS)
 
@@ -255,13 +261,14 @@ typedef void (*run_on_cpu_func)(CPUState *cpu, run_on_cpu_data data);
 
 struct qemu_work_item;
 
+#define CPU_UNSET_NUMA_NODE_ID -1
+#define CPU_TRACE_DSTATE_MAX_EVENTS 32
+
 /**
  * CPUState:
  * @cpu_index: CPU index (informative).
  * @nr_cores: Number of cores within this CPU package.
  * @nr_threads: Number of threads within this CPU.
- * @numa_node: NUMA node this CPU is belonging to.
- * @host_tid: Host thread ID.
  * @running: #true if CPU is currently running (lockless).
  * @has_waiter: #true if a CPU is currently waiting for the cpu_exec_end;
  * valid under cpu_list_lock.
@@ -272,11 +279,11 @@ struct qemu_work_item;
  * @stopped: Indicates the CPU has been artificially stopped.
  * @unplug: Indicates a pending CPU unplug request.
  * @crash_occurred: Indicates the OS reported a crash (panic) for this CPU
- * @tcg_exit_req: Set to force TCG to stop executing linked TBs for this
- *           CPU and return to its top level loop.
  * @singlestep_enabled: Flags for single-stepping.
  * @icount_extra: Instructions until next timer event.
- * @icount_decr: Number of cycles left, with interrupt flag in high bit.
+ * @icount_decr: Low 16 bits: number of cycles left, only used in icount mode.
+ * High 16 bits: Set to -1 to force TCG to stop executing linked TBs for this
+ * CPU and return to its top level loop (even in non-icount mode).
  * This allows a single read-compare-cbranch-write sequence to test
  * for both decrementer underflow and exceptions.
  * @can_do_io: Nonzero if memory-mapped IO is safe. Deterministic execution
@@ -298,6 +305,8 @@ struct qemu_work_item;
  * @kvm_fd: vCPU file descriptor for KVM.
  * @work_mutex: Lock to prevent multiple access to queued_work_*.
  * @queued_work_first: First asynchronous work pending.
+ * @trace_dstate_delayed: Delayed changes to trace_dstate (includes all changes
+ *                        to @trace_dstate).
  * @trace_dstate: Dynamic tracing state of events for this vCPU (bitmask).
  *
  * State of one CPU core or thread.
@@ -309,14 +318,12 @@ struct CPUState {
 
     int nr_cores;
     int nr_threads;
-    int numa_node;
 
     struct QemuThread *thread;
 #ifdef _WIN32
     HANDLE hThread;
 #endif
     int thread_id;
-    uint32_t host_tid;
     bool running, has_waiter;
     struct QemuCond *halt_cond;
     bool thread_kicked;
@@ -326,8 +333,10 @@ struct CPUState {
     bool unplug;
     bool crash_occurred;
     bool exit_request;
+    /* updates protected by BQL */
     uint32_t interrupt_request;
     int singlestep_enabled;
+    int64_t icount_budget;
     int64_t icount_extra;
     sigjmp_buf jmp_env;
 
@@ -341,7 +350,7 @@ struct CPUState {
 
     void *env_ptr; /* CPUArchState */
 
-    /* Writes protected by tb_lock, reads not thread-safe  */
+    /* Accessed in parallel; all accesses must be atomic */
     struct TranslationBlock *tb_jmp_cache[TB_JMP_CACHE_SIZE];
 
     struct GDBRegisterState *gdb_regs;
@@ -364,26 +373,21 @@ struct CPUState {
     vaddr mem_io_vaddr;
 
     int kvm_fd;
-    bool kvm_vcpu_dirty;
     struct KVMState *kvm_state;
     struct kvm_run *kvm_run;
 
-    /*
-     * Used for events with 'vcpu' and *without* the 'disabled' properties.
-     * Dynamically allocated based on bitmap requried to hold up to
-     * trace_get_vcpu_event_count() entries.
-     */
-    unsigned long *trace_dstate;
+    /* Used for events with 'vcpu' and *without* the 'disabled' properties */
+    DECLARE_BITMAP(trace_dstate_delayed, CPU_TRACE_DSTATE_MAX_EVENTS);
+    DECLARE_BITMAP(trace_dstate, CPU_TRACE_DSTATE_MAX_EVENTS);
 
     /* TODO Move common fields from CPUArchState here. */
     int cpu_index; /* used by alpha TCG */
     uint32_t halted; /* used by alpha, cris, ppc TCG */
-    union {
-        uint32_t u32;
-        icount_decr_u16 u16;
-    } icount_decr;
     uint32_t can_do_io;
     int32_t exception_index; /* used by m68k TCG */
+
+    /* shared by kvm, hax and hvf */
+    bool vcpu_dirty;
 
     /* Used to keep track of an outstanding cpu throttle thread for migration
      * autoconverge
@@ -394,7 +398,18 @@ struct CPUState {
        offset from AREG0.  Leave this field at the end so as to make the
        (absolute value) offset as small as possible.  This reduces code
        size, especially for hosts without large memory offsets.  */
-    uint32_t tcg_exit_req;
+    union {
+        uint32_t u32;
+        icount_decr_u16 u16;
+    } icount_decr;
+
+    struct hax_vcpu_state *hax_vcpu;
+
+    /* The pending_tlb_flush flag is set and cleared atomically to
+     * avoid potential races. The aim of the flag is to avoid
+     * unnecessary flushes.
+     */
+    uint16_t pending_tlb_flush;
 
     bool reset_pin; /* state of reset pin */
     bool halt_pin; /* state of halt pin */
@@ -414,6 +429,24 @@ extern struct CPUTailQ cpus;
 #define first_cpu QTAILQ_FIRST(&cpus)
 
 extern __thread CPUState *current_cpu;
+
+static inline void cpu_tb_jmp_cache_clear(CPUState *cpu)
+{
+    unsigned int i;
+
+    for (i = 0; i < TB_JMP_CACHE_SIZE; i++) {
+        atomic_set(&cpu->tb_jmp_cache[i], NULL);
+    }
+}
+
+/**
+ * qemu_tcg_mttcg_enabled:
+ * Check whether we are running MultiThread TCG or not.
+ *
+ * Returns: %true if we are in MTTCG mode %false otherwise.
+ */
+extern bool mttcg_enabled;
+#define qemu_tcg_mttcg_enabled() (mttcg_enabled)
 
 /**
  * cpu_paging_enabled:
@@ -471,6 +504,15 @@ int cpu_write_elf32_note(WriteCoreDumpFunction f, CPUState *cpu,
  */
 int cpu_write_elf32_qemunote(WriteCoreDumpFunction f, CPUState *cpu,
                              void *opaque);
+
+/**
+ * cpu_get_crash_info:
+ * @cpu: The CPU to get crash information for
+ *
+ * Gets the previously saved crash information.
+ * Caller is responsible for freeing the data.
+ */
+GuestPanicInformation *cpu_get_crash_info(CPUState *cpu);
 
 /**
  * CPUDumpFlags:
@@ -782,6 +824,8 @@ void cpu_interrupt(CPUState *cpu, int mask);
 
 #endif /* USER_ONLY */
 
+#ifdef NEED_CPU_H
+
 #ifdef CONFIG_SOFTMMU
 static inline void cpu_unassigned_access(CPUState *cpu, hwaddr addr,
                                          bool is_write, bool is_exec,
@@ -803,6 +847,8 @@ static inline void cpu_unaligned_access(CPUState *cpu, vaddr addr,
     cc->do_unaligned_access(cpu, addr, access_type, mmu_idx, retaddr);
 }
 #endif
+
+#endif /* NEED_CPU_H */
 
 /**
  * cpu_set_pc:
@@ -976,9 +1022,12 @@ AddressSpace *cpu_get_address_space(CPUState *cpu, int asidx);
 
 void QEMU_NORETURN cpu_abort(CPUState *cpu, const char *fmt, ...)
     GCC_FMT_ATTR(2, 3);
+extern Property cpu_common_props[];
 void cpu_exec_initfn(CPUState *cpu);
 void cpu_exec_realizefn(CPUState *cpu, Error **errp);
 void cpu_exec_unrealizefn(CPUState *cpu);
+
+#ifdef NEED_CPU_H
 
 #ifdef CONFIG_SOFTMMU
 extern const struct VMStateDescription vmstate_cpu_common;
@@ -993,6 +1042,8 @@ extern const struct VMStateDescription vmstate_cpu_common;
     .flags = VMS_STRUCT,                                                    \
     .offset = 0,                                                            \
 }
+
+#endif /* NEED_CPU_H */
 
 void cpu_halt_gpio(void *opaque, int irq, int level);
 void cpu_reset_gpio(void *opaque, int irq, int level);
