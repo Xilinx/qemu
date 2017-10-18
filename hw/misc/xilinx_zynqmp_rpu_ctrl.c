@@ -37,14 +37,14 @@
 #include "hw/fdt_generic_util.h"
 #include "hw/intc/xlnx_scu_gic.h"
 
-#ifndef XILINX_RPU_ERR_DEBUG
-#define XILINX_RPU_ERR_DEBUG 0
+#ifndef XLNX_RPU_CTRL_ERR_DEBUG
+#define XLNX_RPU_CTRL_ERR_DEBUG 0
 #endif
 
-#define TYPE_XILINX_RPU "xlnx.rpu-control"
+#define TYPE_XLNX_RPU_CTRL "xlnx.rpu-control"
 
-#define XILINX_RPU(obj) \
-     OBJECT_CHECK(RPU, (obj), TYPE_XILINX_RPU)
+#define XLNX_RPU_CTRL(obj) \
+     OBJECT_CHECK(RPU, (obj), TYPE_XLNX_RPU_CTRL)
 
 DEP_REG32(RPU_GLBL_CNTL, 0x0)
     DEP_FIELD(RPU_GLBL_CNTL, GIC_AXPROT, 1, 10)
@@ -443,7 +443,7 @@ static void rpu_1_update_irq(RPU *s)
 
 static void ronaldo_rpu_err_inj(DepRegisterInfo *reg, uint64_t val64)
 {
-    RPU *s = XILINX_RPU(reg->opaque);
+    RPU *s = XLNX_RPU_CTRL(reg->opaque);
     bool comp_0 = DEP_AF_EX32(s->regs, RPU_ERR_INJ, DCCMINP);
     bool comp_1 = DEP_AF_EX32(s->regs, RPU_ERR_INJ, DCCMINP2);
 
@@ -456,13 +456,13 @@ static void ronaldo_rpu_err_inj(DepRegisterInfo *reg, uint64_t val64)
 
 static void rpu_1_isr_postw(DepRegisterInfo *reg, uint64_t val64)
 {
-    RPU *s = XILINX_RPU(reg->opaque);
+    RPU *s = XLNX_RPU_CTRL(reg->opaque);
     rpu_1_update_irq(s);
 }
 
 static void ronaldo_rpu_update_irq_injection(DepRegisterInfo *reg, uint64_t val)
 {
-    RPU *s = XILINX_RPU(reg->opaque);
+    RPU *s = XLNX_RPU_CTRL(reg->opaque);
 
     uint8_t bank = INT_INJ_BANK_FROM_OFFSET(reg->access->decode.addr >> 2);
     uint32_t irqs = s->regs[R_RPU_INTR(bank)] &
@@ -473,7 +473,7 @@ static void ronaldo_rpu_update_irq_injection(DepRegisterInfo *reg, uint64_t val)
 
 static uint64_t rpu_1_ien_prew(DepRegisterInfo *reg, uint64_t val64)
 {
-    RPU *s = XILINX_RPU(reg->opaque);
+    RPU *s = XLNX_RPU_CTRL(reg->opaque);
     uint32_t val = val64;
 
     s->regs[R_RPU_1_IMR] &= ~val;
@@ -483,7 +483,7 @@ static uint64_t rpu_1_ien_prew(DepRegisterInfo *reg, uint64_t val64)
 
 static uint64_t rpu_1_ids_prew(DepRegisterInfo *reg, uint64_t val64)
 {
-    RPU *s = XILINX_RPU(reg->opaque);
+    RPU *s = XLNX_RPU_CTRL(reg->opaque);
     uint32_t val = val64;
 
     s->regs[R_RPU_1_IMR] |= val;
@@ -499,13 +499,13 @@ static void rpu_0_update_irq(RPU *s)
 
 static void rpu_0_isr_postw(DepRegisterInfo *reg, uint64_t val64)
 {
-    RPU *s = XILINX_RPU(reg->opaque);
+    RPU *s = XLNX_RPU_CTRL(reg->opaque);
     rpu_0_update_irq(s);
 }
 
 static uint64_t rpu_0_ien_prew(DepRegisterInfo *reg, uint64_t val64)
 {
-    RPU *s = XILINX_RPU(reg->opaque);
+    RPU *s = XLNX_RPU_CTRL(reg->opaque);
     uint32_t val = val64;
 
     s->regs[R_RPU_0_IMR] &= ~val;
@@ -515,7 +515,7 @@ static uint64_t rpu_0_ien_prew(DepRegisterInfo *reg, uint64_t val64)
 
 static uint64_t rpu_0_ids_prew(DepRegisterInfo *reg, uint64_t val64)
 {
-    RPU *s = XILINX_RPU(reg->opaque);
+    RPU *s = XLNX_RPU_CTRL(reg->opaque);
     uint32_t val = val64;
 
     s->regs[R_RPU_0_IMR] |= val;
@@ -525,7 +525,7 @@ static uint64_t rpu_0_ids_prew(DepRegisterInfo *reg, uint64_t val64)
 
 static void rpu_rpu_glbl_cntl_postw(DepRegisterInfo *reg, uint64_t val64)
 {
-    RPU *s = XILINX_RPU(reg->opaque);
+    RPU *s = XLNX_RPU_CTRL(reg->opaque);
     bool tcm_comb = DEP_AF_EX32(s->regs, RPU_GLBL_CNTL, TCM_COMB);
     bool sls_split = DEP_AF_EX32(s->regs, RPU_GLBL_CNTL, SLSPLIT);
 
@@ -539,7 +539,7 @@ static void rpu_rpu_glbl_cntl_postw(DepRegisterInfo *reg, uint64_t val64)
 
 static void update_wfi_out(void *opaque)
 {
-    RPU *s = XILINX_RPU(opaque);
+    RPU *s = XLNX_RPU_CTRL(opaque);
     unsigned int i, wfi_pending;
     unsigned int pwrdnreq[2];
 
@@ -554,13 +554,13 @@ static void update_wfi_out(void *opaque)
 
 static void zynqmp_rpu_pwrctl_post_write(DepRegisterInfo *reg, uint64_t val)
 {
-    RPU *s = XILINX_RPU(reg->opaque);
+    RPU *s = XLNX_RPU_CTRL(reg->opaque);
     update_wfi_out(s);
 }
 
 static uint64_t rpu_1_cfg_pw(DepRegisterInfo *reg, uint64_t val)
 {
-    RPU *s = XILINX_RPU(reg->opaque);
+    RPU *s = XLNX_RPU_CTRL(reg->opaque);
 
     /* Split-Mode: Remove R5-1 from hold upon request
      * LockStep-Mode: Keep R5-1 under hold, to make only R5-0 run
@@ -695,7 +695,7 @@ static DepRegisterAccessInfo rpu_regs_info[] = {
 
 static void rpu_reset(DeviceState *dev)
 {
-    RPU *s = XILINX_RPU(dev);
+    RPU *s = XLNX_RPU_CTRL(dev);
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
@@ -713,7 +713,7 @@ static void rpu_reset(DeviceState *dev)
 
 static uint64_t rpu_read(void *opaque, hwaddr addr, unsigned size)
 {
-    RPU *s = XILINX_RPU(opaque);
+    RPU *s = XLNX_RPU_CTRL(opaque);
     DepRegisterInfo *r = &s->regs_info[addr / 4];
 
     if (!r->data) {
@@ -729,7 +729,7 @@ static uint64_t rpu_read(void *opaque, hwaddr addr, unsigned size)
 static void rpu_write(void *opaque, hwaddr addr, uint64_t value,
                       unsigned size)
 {
-    RPU *s = XILINX_RPU(opaque);
+    RPU *s = XLNX_RPU_CTRL(opaque);
     DepRegisterInfo *r = &s->regs_info[addr / 4];
 
     if (!r->data) {
@@ -779,7 +779,7 @@ static const MemoryRegionOps disabled_tcm_ops = {
 
 static void zynqmp_rpu_0_handle_wfi(void *opaque, int irq, int level)
 {
-    RPU *s = XILINX_RPU(opaque);
+    RPU *s = XLNX_RPU_CTRL(opaque);
 
     s->cpu_in_wfi[0] = level;
     update_wfi_out(s);
@@ -787,7 +787,7 @@ static void zynqmp_rpu_0_handle_wfi(void *opaque, int irq, int level)
 
 static void zynqmp_rpu_1_handle_wfi(void *opaque, int irq, int level)
 {
-    RPU *s = XILINX_RPU(opaque);
+    RPU *s = XLNX_RPU_CTRL(opaque);
 
     s->cpu_in_wfi[1] = level;
     update_wfi_out(s);
@@ -795,7 +795,7 @@ static void zynqmp_rpu_1_handle_wfi(void *opaque, int irq, int level)
 
 static void rpu_realize(DeviceState *dev, Error **errp)
 {
-    RPU *s = XILINX_RPU(dev);
+    RPU *s = XLNX_RPU_CTRL(dev);
     const char *prefix = object_get_canonical_path(OBJECT(dev));
     unsigned int i;
     hwaddr region_addr;
@@ -810,7 +810,7 @@ static void rpu_realize(DeviceState *dev, Error **errp)
                     rpu_regs_info[i].decode.addr/4],
             .data_size = sizeof(uint32_t),
             .access = &rpu_regs_info[i],
-            .debug = XILINX_RPU_ERR_DEBUG,
+            .debug = XLNX_RPU_CTRL_ERR_DEBUG,
             .prefix = prefix,
             .opaque = s,
         };
@@ -885,11 +885,11 @@ static void rpu_realize(DeviceState *dev, Error **errp)
 
 static void rpu_init(Object *obj)
 {
-    RPU *s = XILINX_RPU(obj);
+    RPU *s = XLNX_RPU_CTRL(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
 
     memory_region_init_io(&s->iomem, obj, &rpu_ops, s,
-                          TYPE_XILINX_RPU, R_MAX * 4);
+                          TYPE_XLNX_RPU_CTRL, R_MAX * 4);
     sysbus_init_mmio(sbd, &s->iomem);
     sysbus_init_irq(sbd, &s->irq_rpu_1);
     sysbus_init_irq(sbd, &s->irq_rpu_0);
@@ -956,7 +956,7 @@ static void rpu_init(Object *obj)
 }
 
 static const VMStateDescription vmstate_rpu = {
-    .name = TYPE_XILINX_RPU,
+    .name = TYPE_XLNX_RPU_CTRL,
     .version_id = 1,
     .minimum_version_id = 1,
     .minimum_version_id_old = 1,
@@ -1010,7 +1010,7 @@ static void rpu_class_init(ObjectClass *klass, void *data)
 }
 
 static const TypeInfo rpu_info = {
-    .name          = TYPE_XILINX_RPU,
+    .name          = TYPE_XLNX_RPU_CTRL,
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(RPU),
     .class_init    = rpu_class_init,
