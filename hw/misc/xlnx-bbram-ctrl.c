@@ -99,7 +99,7 @@ typedef struct BBRAMCtrl {
     MemoryRegion iomem;
     qemu_irq irq_bbram;
 
-    BlockDriverState *blk;
+    BlockBackend *blk;
     ZynqMPAESKeySink *zynqmp_keysink;
     uint32_t *ram32;
     uint32_t size;
@@ -127,8 +127,8 @@ static void bbram_ram_sync(BBRAMCtrl *s)
     }
 
     memcpy(s->ram32, &s->regs[R_BBRAM_0], (R_BBRAM_8 - R_BBRAM_0) * 4);
-    if (blk_pwrite((BlockBackend *) s->blk, 0, (void *) s->ram32, 1, 0) < 0) {
-        error_report("%s: write error in sector 1.\n", __func__);
+    if (blk_pwrite(s->blk, 0, (void *) s->ram32, s->size, 0) < 0) {
+        error_report("%s: write error in sector", __func__);
     }
 }
 
@@ -394,20 +394,20 @@ static void bbram_ctrl_realize(DeviceState *dev, Error **errp)
 {
     BBRAMCtrl *s = XILINX_BBRAM_CTRL(dev);
     DriveInfo *dinfo;
+    BlockBackend *blk;
     const char *prefix = object_get_canonical_path(OBJECT(dev));
-    unsigned int i, nr_sectors;
+    unsigned int i;
 
     dinfo = drive_get_next(IF_PFLASH);
-    s->blk = dinfo ? (BlockDriverState *) blk_by_legacy_dinfo(dinfo) : NULL;
-    nr_sectors = DIV_ROUND_UP(ZYNQMP_BBRAM_SIZE, BDRV_SECTOR_SIZE);
-    s->ram32 = g_malloc0(nr_sectors * BDRV_SECTOR_SIZE);
-    memset(s->ram32, 0, nr_sectors * BDRV_SECTOR_SIZE);
-    if (s->blk) {
-        if (blk_pread((BlockBackend *) s->blk, 0, (void *) s->ram32, nr_sectors)) {
-            error_report("%s: Unable to read-out contents.\n"
-                         "backing file too small? Expecting %u bytes\n",
-                          prefix,
-                          (unsigned int) (nr_sectors * BDRV_SECTOR_SIZE));
+    blk = dinfo ? blk_by_legacy_dinfo(dinfo) : NULL;
+    s->ram32 = g_malloc0(s->size);
+    memset(s->ram32, 0, s->size);
+    if (blk) {
+        qdev_prop_set_drive(dev, "drive", blk, errp);
+        if (!blk_pread(s->blk, 0, (void *) s->ram32, s->size)) {
+            error_report("%s: Unable to read-out contents."
+                         "backing file too small? Expecting %u bytes",
+                          prefix, s->size);
             exit(1);
         }
     }
@@ -459,6 +459,7 @@ static const VMStateDescription vmstate_bbram_ctrl = {
 
 static Property bbram_ctrl_props[] = {
     DEFINE_PROP_UINT32("bbram-size", BBRAMCtrl, size, ZYNQMP_BBRAM_SIZE),
+    DEFINE_PROP_DRIVE("drive", BBRAMCtrl, blk),
     DEFINE_PROP_END_OF_LIST(),
 };
 
