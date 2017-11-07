@@ -21,7 +21,6 @@
 #include "qemu/error-report.h"
 #include "qom/cpu.h"
 
-#include <semaphore.h>
 #ifndef _WIN32
 #include <sys/mman.h>
 #endif
