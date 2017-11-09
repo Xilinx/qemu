@@ -876,7 +876,7 @@ static char *gdb_get_process_list(GDBState *s)
 
     pstrcat(buf, MAX_PLIST, HEADER);
     for (i = 0; i < s->num_clusters; i++) {
-        char lbuf[64];
+        char lbuf[70];
         unsigned int num_cores = 0;
 
         len = snprintf(lbuf, sizeof(lbuf),
