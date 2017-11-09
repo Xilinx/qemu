@@ -174,6 +174,14 @@ static void swdt_mode_postw(RegisterInfo *reg, uint64_t val64)
     swdt_counter_reload(s);
 }
 
+static uint64_t swdt_mode_postr(RegisterInfo *reg, uint64_t val)
+{
+    SWDTState *s = XLNX_SWDT(reg->opaque);
+
+    /* The ZKEY is write only */
+    return s->regs[R_MODE] & ~R_MODE_ZKEY_MASK;
+}
+
 static void swdt_control_postw(RegisterInfo *reg, uint64_t val64)
 {
     SWDTState *s = XLNX_SWDT(reg->opaque);
@@ -208,6 +216,7 @@ static const RegisterAccessInfo swdt_regs_info[] = {
         .reset = 0x1c2,
         .rsvd = 0xe08,
         .post_write = swdt_mode_postw,
+        .post_read = swdt_mode_postr,
     },{ .name = "CONTROL",  .addr = A_CONTROL,
         .reset = 0x3ffc,
         .post_write = swdt_control_postw,
