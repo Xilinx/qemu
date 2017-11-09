@@ -26,7 +26,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
-#include "hw/register-dep.h"
+#include "hw/register.h"
 #include "qemu/timer.h"
 #include "qemu/bitops.h"
 #include "qapi/error.h"
@@ -43,23 +43,23 @@
 #define XLNX_SWDT(obj) \
      OBJECT_CHECK(SWDTState, (obj), TYPE_XLNX_SWDT)
 
-DEP_REG32(SWDT_MODE, 0x0)
-    DEP_FIELD(SWDT_MODE, ZKEY, 11, 12)
-    DEP_FIELD(SWDT_MODE, IRQLN, 2, 7)
-    DEP_FIELD(SWDT_MODE, RSTLN, 3, 4)
-    DEP_FIELD(SWDT_MODE, IRQEN, 1, 2)
-    DEP_FIELD(SWDT_MODE, RSTEN, 1, 1)
-    DEP_FIELD(SWDT_MODE, WDEN, 1, 0)
-DEP_REG32(SWDT_CONTROL, 0x4)
-    DEP_FIELD(SWDT_CONTROL, CKEY, 12, 14)
-    DEP_FIELD(SWDT_CONTROL, CRV, 12, 2)
-    DEP_FIELD(SWDT_CONTROL, CLKSEL, 2, 0)
-DEP_REG32(SWDT_RESTART, 0x8)
-    DEP_FIELD(SWDT_RESTART, RSTKEY, 16, 0)
-DEP_REG32(SWDT_STATUS, 0xC)
-    DEP_FIELD(SWDT_STATUS, WDZ, 1, 0)
+REG32(MODE, 0x0)
+    FIELD(MODE, ZKEY, 12, 12)
+    FIELD(MODE, IRQLN, 7, 2)
+    FIELD(MODE, RSTLN, 4, 3)
+    FIELD(MODE, IRQEN, 2, 1)
+    FIELD(MODE, RSTEN, 1, 1)
+    FIELD(MODE, WDEN, 0, 1)
+REG32(CONTROL, 0x4)
+    FIELD(CONTROL, CKEY, 14, 12)
+    FIELD(CONTROL, CRV, 2, 12)
+    FIELD(CONTROL, CLKSEL, 0, 2)
+REG32(RESTART, 0x8)
+    FIELD(RESTART, RSTKEY, 0, 16)
+REG32(STATUS, 0xc)
+    FIELD(STATUS, WDZ, 0, 1)
 
-#define R_MAX (R_SWDT_STATUS + 1)
+#define SWDT_R_MAX (R_STATUS + 1)
 
 typedef struct SWDTState {
     SysBusDevice parent_obj;
@@ -74,26 +74,28 @@ typedef struct SWDTState {
     uint64_t pclk;
     uint32_t current_mode;
     uint32_t current_control;
-    uint32_t regs[R_MAX];
-    DepRegisterInfo regs_info[R_MAX];
+    uint32_t regs[SWDT_R_MAX];
+    RegisterInfo regs_info[SWDT_R_MAX];
 } SWDTState;
 
 static void swdt_done_irq_update(SWDTState *s)
 {
+    uint64_t irqln = muldiv64(1000000000,
+                              4 << ARRAY_FIELD_EX32(s->regs, MODE, IRQLN),
+                              s->pclk);
+
     qemu_set_irq(s->irq, 1);
-    timer_mod(s->irq_done_timer, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL)
-                                 + muldiv64(1000000000,
-                                      4 << DEP_AF_EX32(s->regs, SWDT_MODE, IRQLN),
-                                      s->pclk));
+    timer_mod(s->irq_done_timer, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + irqln);
 }
 
 static void swdt_reset_irq_update(SWDTState *s)
 {
+    uint64_t rstln = muldiv64(1000000000,
+                              2 << ARRAY_FIELD_EX32(s->regs, MODE, RSTLN),
+                              s->pclk);
+
     qemu_set_irq(s->rst, 1);
-    timer_mod(s->rst_done_timer, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL)
-                           + muldiv64(1000000000,
-                                      2 << DEP_AF_EX32(s->regs, SWDT_MODE, RSTLN),
-                                      s->pclk));
+    timer_mod(s->rst_done_timer, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + rstln);
 }
 
 static void swdt_irq_done(void *opaque)
@@ -113,10 +115,10 @@ static void swdt_reset_done(void *opaque)
 static void swdt_time_elapsed(void *opaque)
 {
     SWDTState *s = XLNX_SWDT(opaque);
-    bool do_a_reset = DEP_AF_EX32(s->regs, SWDT_MODE, RSTEN);
-    bool do_an_irq = DEP_AF_EX32(s->regs, SWDT_MODE, IRQEN);
+    bool do_a_reset = ARRAY_FIELD_EX32(s->regs, MODE, RSTEN);
+    bool do_an_irq = ARRAY_FIELD_EX32(s->regs, MODE, IRQEN);
 
-    s->regs[R_SWDT_STATUS] = 1;
+    s->regs[R_STATUS] = 1;
 
     if (do_a_reset) {
         swdt_reset_irq_update(s);
@@ -128,89 +130,91 @@ static void swdt_time_elapsed(void *opaque)
 
 static uint32_t swdt_reload_value(SWDTState *s)
 {
-    return (DEP_AF_EX32(s->regs, SWDT_CONTROL, CRV) << 12) + 0xFFF;
+    return (ARRAY_FIELD_EX32(s->regs, CONTROL, CRV) << 12) + 0xFFF;
 }
 
 static uint64_t swdt_next_trigger(SWDTState *s)
 {
-    return (muldiv64(1000000000,
-                     8 << (3 * DEP_AF_EX32(s->regs, SWDT_CONTROL, CLKSEL)), s->pclk)
-           * swdt_reload_value(s)) + qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+    uint64_t clksel = muldiv64(1000000000,
+                               8 << (3 * ARRAY_FIELD_EX32(s->regs,
+                                                          CONTROL, CLKSEL)),
+                               s->pclk);
+
+    return (clksel * swdt_reload_value(s)) +
+               qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
 }
 
 /* Reload the counter, mod the timer. */
 static void swdt_counter_reload(SWDTState *s)
 {
-    bool watchdog_enabled = DEP_AF_EX32(s->regs, SWDT_MODE, WDEN);
+    bool watchdog_enabled = ARRAY_FIELD_EX32(s->regs, MODE, WDEN);
 
     if (watchdog_enabled) {
-        s->regs[R_SWDT_STATUS] = 0;
+        s->regs[R_STATUS] = 0;
         timer_mod(s->timer, swdt_next_trigger(s));
     } else {
         timer_del(s->timer);
     }
 }
 
-static void swdt_mode_postw(DepRegisterInfo *reg, uint64_t val64)
+static void swdt_mode_postw(RegisterInfo *reg, uint64_t val64)
 {
     SWDTState *s = XLNX_SWDT(reg->opaque);
-    bool valid = (DEP_AF_EX32(s->regs, SWDT_MODE, ZKEY) == 0xABC);
+    bool valid = (ARRAY_FIELD_EX32(s->regs, MODE, ZKEY) == 0xABC);
 
     if (!valid) {
         /* The write is not valid, just restore the old value of the register.
          */
-        s->regs[R_SWDT_MODE] = s->current_mode;
+        s->regs[R_MODE] = s->current_mode;
         return;
     }
     /* Backup the mode in case a non valid write happens. */
-    s->current_mode = s->regs[R_SWDT_MODE];
+    s->current_mode = s->regs[R_MODE];
 
     swdt_counter_reload(s);
 }
 
-static void swdt_control_postw(DepRegisterInfo *reg, uint64_t val64)
+static void swdt_control_postw(RegisterInfo *reg, uint64_t val64)
 {
     SWDTState *s = XLNX_SWDT(reg->opaque);
-    bool valid = (DEP_AF_EX32(s->regs, SWDT_CONTROL, CKEY) == 0x248);
+    bool valid = (ARRAY_FIELD_EX32(s->regs, CONTROL, CKEY) == 0x248);
 
     if (!valid) {
         /* The write is not valid, just restore the old value of the register.
          */
-        s->regs[R_SWDT_CONTROL] = s->current_control;
+        s->regs[R_CONTROL] = s->current_control;
         return;
     }
+
     /* Backup the mode in case a non valid write happens. */
-    s->current_control = s->regs[R_SWDT_CONTROL];
+    s->current_control = s->regs[R_CONTROL];
 }
 
-static void swdt_restart_key_postw(DepRegisterInfo *reg, uint64_t val64)
+static void swdt_restart_key_postw(RegisterInfo *reg, uint64_t val64)
 {
     SWDTState *s = XLNX_SWDT(reg->opaque);
-    bool valid = (DEP_AF_EX32(s->regs, SWDT_RESTART, RSTKEY) == 0x1999);
+    bool valid = (ARRAY_FIELD_EX32(s->regs, RESTART, RSTKEY) == 0x1999);
 
     if (valid) {
         swdt_counter_reload(s);
     }
 
     /* Read as 0 (but we probably don't care). */
-    s->regs[R_SWDT_RESTART] = 0x0000;
+    s->regs[R_RESTART] = 0x0000;
 }
 
-static DepRegisterAccessInfo swdt_regs_info[] = {
-    {   .name = "SWDT_MODE",  .decode.addr = A_SWDT_MODE,
-        .reset = 0x000001C2,
-        .rsvd = 0x00000E08,
-        .ro = 0x00000E08,
+static const RegisterAccessInfo swdt_regs_info[] = {
+    {   .name = "MODE",  .addr = A_MODE,
+        .reset = 0x1c2,
+        .rsvd = 0xe08,
         .post_write = swdt_mode_postw,
-    },{ .name = "SWDT_CONTROL",  .decode.addr = A_SWDT_CONTROL,
-        .reset = 0x00003FFC,
+    },{ .name = "CONTROL",  .addr = A_CONTROL,
+        .reset = 0x3ffc,
         .post_write = swdt_control_postw,
-    },{ .name = "SWDT_RESTART",  .decode.addr = A_SWDT_RESTART,
-        .reset = 0x00000000,
+    },{ .name = "RESTART",  .addr = A_RESTART,
         .post_write = swdt_restart_key_postw,
-    },{ .name = "SWDT_STATUS",  .decode.addr = A_SWDT_STATUS,
-        .reset = 0x00000000,
-        .ro = 0x00000001
+    },{ .name = "STATUS",  .addr = A_STATUS,
+        .ro = 0x1,
     }
 };
 
@@ -227,7 +231,7 @@ static void swdt_reset(DeviceState *dev)
     s->current_control = 0x00003FFC;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        dep_register_reset(&s->regs_info[i]);
+        register_reset(&s->regs_info[i]);
     }
 
     swdt_counter_reload(s);
@@ -236,8 +240,8 @@ static void swdt_reset(DeviceState *dev)
 }
 
 static const MemoryRegionOps swdt_ops = {
-    .read = dep_register_read_memory_le,
-    .write = dep_register_write_memory_le,
+    .read = register_read_memory,
+    .write = register_write_memory,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
@@ -248,28 +252,10 @@ static const MemoryRegionOps swdt_ops = {
 static void swdt_realize(DeviceState *dev, Error **errp)
 {
     SWDTState *s = XLNX_SWDT(dev);
-    const char *prefix = object_get_canonical_path(OBJECT(dev));
-    unsigned int i;
 
     if (!s->pclk) {
         error_set(errp, ERROR_CLASS_DEVICE_NOT_FOUND, "pclk");
         return;
-    }
-
-    for (i = 0; i < ARRAY_SIZE(swdt_regs_info); ++i) {
-        DepRegisterInfo *r = &s->regs_info[i];
-
-        *r = (DepRegisterInfo) {
-            .data = (uint8_t *)&s->regs[swdt_regs_info[i].decode.addr / 4],
-            .data_size = sizeof(uint32_t),
-            .access = &swdt_regs_info[i],
-            .debug = XLNX_SWDT_ERR_DEBUG,
-            .prefix = prefix,
-            .opaque = s,
-        };
-        memory_region_init_io(&r->mem, OBJECT(dev), &swdt_ops, r,
-                              r->access->name, 4);
-        memory_region_add_subregion(&s->iomem, r->access->decode.addr, &r->mem);
     }
 }
 
@@ -277,8 +263,19 @@ static void swdt_init(Object *obj)
 {
     SWDTState *s = XLNX_SWDT(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+    RegisterInfoArray *reg_array;
 
-    memory_region_init(&s->iomem, obj, TYPE_XLNX_SWDT, R_MAX * 4);
+    memory_region_init(&s->iomem, obj, TYPE_XLNX_SWDT, SWDT_R_MAX * 4);
+    reg_array =
+        register_init_block32(DEVICE(obj), swdt_regs_info,
+                              ARRAY_SIZE(swdt_regs_info),
+                              s->regs_info, s->regs,
+                              &swdt_ops,
+                              XLNX_SWDT_ERR_DEBUG,
+                              SWDT_R_MAX * 4);
+    memory_region_add_subregion(&s->iomem,
+                                0x0,
+                                &reg_array->mem);
     sysbus_init_mmio(sbd, &s->iomem);
     sysbus_init_irq(sbd, &s->irq);
 
@@ -298,7 +295,7 @@ static const VMStateDescription vmstate_swdt = {
     .version_id = 1,
     .minimum_version_id = 1,
     .fields = (VMStateField[]) {
-        VMSTATE_UINT32_ARRAY(regs, SWDTState, R_MAX),
+        VMSTATE_UINT32_ARRAY(regs, SWDTState, SWDT_R_MAX),
         VMSTATE_END_OF_LIST(),
     }
 };
