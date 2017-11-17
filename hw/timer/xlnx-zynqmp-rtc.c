@@ -29,6 +29,10 @@
 #include "hw/register.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
+#include "hw/ptimer.h"
+#include "qemu/cutils.h"
+#include "sysemu/sysemu.h"
+#include "trace.h"
 #include "hw/timer/xlnx-zynqmp-rtc.h"
 
 #ifndef XLNX_ZYNQMP_RTC_ERR_DEBUG
@@ -45,6 +49,19 @@ static void addr_error_int_update_irq(XlnxZynqMPRTC *s)
 {
     bool pending = s->regs[R_ADDR_ERROR] & ~s->regs[R_ADDR_ERROR_INT_MASK];
     qemu_set_irq(s->irq_addr_error_int, pending);
+}
+
+static uint32_t rtc_get_count(XlnxZynqMPRTC *s)
+{
+    int64_t now = qemu_clock_get_ns(rtc_clock);
+    return s->tick_offset + now / NANOSECONDS_PER_SECOND;
+}
+
+static uint64_t current_time_postr(RegisterInfo *reg, uint64_t val64)
+{
+    XlnxZynqMPRTC *s = XLNX_ZYNQMP_RTC(reg->opaque);
+
+    return rtc_get_count(s);
 }
 
 static void rtc_int_status_postw(RegisterInfo *reg, uint64_t val64)
@@ -97,13 +114,17 @@ static uint64_t addr_error_int_dis_prew(RegisterInfo *reg, uint64_t val64)
 
 static const RegisterAccessInfo rtc_regs_info[] = {
     {   .name = "SET_TIME_WRITE",  .addr = A_SET_TIME_WRITE,
+        .unimp = MAKE_64BIT_MASK(0, 32),
     },{ .name = "SET_TIME_READ",  .addr = A_SET_TIME_READ,
         .ro = 0xffffffff,
+        .post_read = current_time_postr,
     },{ .name = "CALIB_WRITE",  .addr = A_CALIB_WRITE,
+        .unimp = MAKE_64BIT_MASK(0, 32),
     },{ .name = "CALIB_READ",  .addr = A_CALIB_READ,
         .ro = 0x1fffff,
     },{ .name = "CURRENT_TIME",  .addr = A_CURRENT_TIME,
         .ro = 0xffffffff,
+        .post_read = current_time_postr,
     },{ .name = "CURRENT_TICK",  .addr = A_CURRENT_TICK,
         .ro = 0xffff,
     },{ .name = "ALARM",  .addr = A_ALARM,
@@ -143,6 +164,10 @@ static void rtc_reset(DeviceState *dev)
         register_reset(&s->regs_info[i]);
     }
 
+    trace_xlnx_zynqmp_rtc_gettime(s->current_tm.tm_year, s->current_tm.tm_mon,
+                                  s->current_tm.tm_mday, s->current_tm.tm_hour,
+                                  s->current_tm.tm_min, s->current_tm.tm_sec);
+
     rtc_int_update_irq(s);
     addr_error_int_update_irq(s);
 }
@@ -178,14 +203,41 @@ static void rtc_init(Object *obj)
     sysbus_init_mmio(sbd, &s->iomem);
     sysbus_init_irq(sbd, &s->irq_rtc_int);
     sysbus_init_irq(sbd, &s->irq_addr_error_int);
+
+    qemu_get_timedate(&s->current_tm, 0);
+    s->tick_offset = mktimegm(&s->current_tm) -
+        qemu_clock_get_ns(rtc_clock) / NANOSECONDS_PER_SECOND;
+}
+
+static int rtc_post_load(void *opaque, int version_id)
+{
+    XlnxZynqMPRTC *s = opaque;
+
+    /* The tick_offset is added to the current time to determine the guest
+     * time. After migration we don't want to use the original time as that
+     * will indicate to the guest that time has passed, so we need to
+     * recalculate the tick_offset here.
+     */
+    s->tick_offset = mktimegm(&s->current_tm) -
+        qemu_clock_get_ns(rtc_clock) / NANOSECONDS_PER_SECOND;
+
+    return 0;
 }
 
 static const VMStateDescription vmstate_rtc = {
     .name = TYPE_XLNX_ZYNQMP_RTC,
     .version_id = 1,
     .minimum_version_id = 1,
+    .post_load = rtc_post_load,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, XlnxZynqMPRTC, XLNX_ZYNQMP_RTC_R_MAX),
+        VMSTATE_INT32(current_tm.tm_sec, XlnxZynqMPRTC),
+        VMSTATE_INT32(current_tm.tm_min, XlnxZynqMPRTC),
+        VMSTATE_INT32(current_tm.tm_hour, XlnxZynqMPRTC),
+        VMSTATE_INT32(current_tm.tm_wday, XlnxZynqMPRTC),
+        VMSTATE_INT32(current_tm.tm_mday, XlnxZynqMPRTC),
+        VMSTATE_INT32(current_tm.tm_mon, XlnxZynqMPRTC),
+        VMSTATE_INT32(current_tm.tm_year, XlnxZynqMPRTC),
         VMSTATE_END_OF_LIST(),
     }
 };
