@@ -1253,24 +1253,6 @@ void device_reset(DeviceState *dev)
     }
 }
 
-void device_halt(DeviceState *dev)
-{
-    DeviceClass *klass = DEVICE_GET_CLASS(dev);
-
-    if (klass->halt) {
-        klass->halt(dev);
-    }
-}
-
-void device_unhalt(DeviceState *dev)
-{
-    DeviceClass *klass = DEVICE_GET_CLASS(dev);
-
-    if (klass->halt) {
-        klass->unhalt(dev);
-    }
-}
-
 Object *qdev_get_machine(void)
 {
     static Object *dev;
