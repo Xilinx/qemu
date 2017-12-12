@@ -3829,8 +3829,10 @@ void cpu_halt_update(CPUState *cpu)
     val = cpu->reset_pin || cpu->halt_pin || cpu->arch_halt_pin;
 
     if (val) {
+        cpu->halted = true;
         cpu_interrupt(cpu, CPU_INTERRUPT_HALT);
     } else {
+        cpu->halted = false;
         cpu_reset_interrupt(cpu, CPU_INTERRUPT_HALT);
     }
 }

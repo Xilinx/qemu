@@ -487,6 +487,7 @@ void HELPER(wfi)(CPUARMState *env, uint32_t insn_len)
     if (use_icount) {
         cs->exception_index = EXCP_YIELD;
     } else {
+        cs->halted = 1;
         cs->exception_index = EXCP_HLT;
     }
 
