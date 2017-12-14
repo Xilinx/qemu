@@ -379,8 +379,8 @@ microblaze_generic_fdt_init(MachineState *machine)
              * RAM to handle this.
              */
             MemoryRegion *hack_ram = g_new(MemoryRegion, 1);
-            memory_region_init_ram(hack_ram, NULL, "hack_ram", 0x1000,
-                                   &error_abort);
+            memory_region_init_ram_nomigrate(hack_ram, NULL, "hack_ram",
+                                             0x1000, &error_abort);
             vmstate_register_ram_global(hack_ram);
             memory_region_add_subregion(get_system_memory(), 0, hack_ram);
         }
