@@ -55,10 +55,6 @@
 /* 16 MiB max in 3 byte address mode */
 #define MAX_3BYTES_SIZE 0x1000000
 
-#define WR_1 0x100
-
-#define BAR_7_4_BYTE_ADDR    (1<<7)
-
 #define SPI_NOR_MAX_ID_LEN 6
 
 typedef struct FlashPartInfo {
@@ -78,8 +74,6 @@ typedef struct FlashPartInfo {
     uint32_t n_sectors;
     uint32_t page_size;
     uint16_t flags;
-    uint8_t manf_id;
-    uint8_t dev_id;
     /*
      * Big sized spi nor are often stacked devices, thus sometime
      * replace chip erase with die erase.
@@ -90,8 +84,8 @@ typedef struct FlashPartInfo {
 
 /* adapted from linux */
 /* Used when the "_ext_id" is two bytes at most */
-#define INFO(_part_name, _jedec_id, _ext_id, _manf_id, _dev_id, _sector_size, _n_sectors, _flags)\
-    .part_name = (_part_name),\
+#define INFO(_part_name, _jedec_id, _ext_id, _sector_size, _n_sectors, _flags)\
+    .part_name = _part_name,\
     .id = {\
         ((_jedec_id) >> 16) & 0xff,\
         ((_jedec_id) >> 8) & 0xff,\
@@ -100,8 +94,23 @@ typedef struct FlashPartInfo {
         (_ext_id) & 0xff,\
           },\
     .id_len = (!(_jedec_id) ? 0 : (3 + ((_ext_id) ? 2 : 0))),\
-    .manf_id = (_manf_id), \
-    .dev_id = (_dev_id), \
+    .sector_size = (_sector_size),\
+    .n_sectors = (_n_sectors),\
+    .page_size = 256,\
+    .flags = (_flags),\
+    .die_cnt = 0
+
+#define INFO6(_part_name, _jedec_id, _ext_id, _sector_size, _n_sectors, _flags)\
+    .part_name = _part_name,\
+    .id = {\
+        ((_jedec_id) >> 16) & 0xff,\
+        ((_jedec_id) >> 8) & 0xff,\
+        (_jedec_id) & 0xff,\
+        ((_ext_id) >> 16) & 0xff,\
+        ((_ext_id) >> 8) & 0xff,\
+        (_ext_id) & 0xff,\
+          },\
+    .id_len = 6,\
     .sector_size = (_sector_size),\
     .n_sectors = (_n_sectors),\
     .page_size = 256,\
@@ -147,7 +156,6 @@ typedef struct FlashPartInfo {
 #define EVCFG_QUAD_IO_ENABLED (1 << 7)
 #define NVCFG_4BYTE_ADDR_MASK (1 << 0)
 #define NVCFG_LOWER_SEGMENT_MASK (1 << 1)
-#define CFG_UPPER_128MB_SEG_ENABLED 0x3
 
 /* Numonyx (Micron) Flag Status Register macros */
 #define FSR_4BYTE_ADDR_MODE_ENABLED 0x1
@@ -171,69 +179,71 @@ typedef struct FlashPartInfo {
 
 static const FlashPartInfo known_devices[] = {
     /* Atmel -- some are (confusingly) marketed as "DataFlash" */
-    { INFO("at25fs010",   0x1f6601,      0, 0x00, 0x00,  32 << 10,   4, ER_4K) },
-    { INFO("at25fs040",   0x1f6604,      0, 0x00, 0x00,  64 << 10,   8, ER_4K) },
+    { INFO("at25fs010",   0x1f6601,      0,  32 << 10,   4, ER_4K) },
+    { INFO("at25fs040",   0x1f6604,      0,  64 << 10,   8, ER_4K) },
 
-    { INFO("at25df041a",  0x1f4401,      0, 0x00, 0x00,  64 << 10,   8, ER_4K) },
-    { INFO("at25df321a",  0x1f4701,      0, 0x00, 0x00,  64 << 10,  64, ER_4K) },
-    { INFO("at25df641",   0x1f4800,      0, 0x00, 0x00,  64 << 10, 128, ER_4K) },
+    { INFO("at25df041a",  0x1f4401,      0,  64 << 10,   8, ER_4K) },
+    { INFO("at25df321a",  0x1f4701,      0,  64 << 10,  64, ER_4K) },
+    { INFO("at25df641",   0x1f4800,      0,  64 << 10, 128, ER_4K) },
 
-    { INFO("at26f004",    0x1f0400,      0, 0x00, 0x00,  64 << 10,   8, ER_4K) },
-    { INFO("at26df081a",  0x1f4501,      0, 0x00, 0x00,  64 << 10,  16, ER_4K) },
-    { INFO("at26df161a",  0x1f4601,      0, 0x00, 0x00,  64 << 10,  32, ER_4K) },
-    { INFO("at26df321",   0x1f4700,      0, 0x00, 0x00,  64 << 10,  64, ER_4K) },
+    { INFO("at26f004",    0x1f0400,      0,  64 << 10,   8, ER_4K) },
+    { INFO("at26df081a",  0x1f4501,      0,  64 << 10,  16, ER_4K) },
+    { INFO("at26df161a",  0x1f4601,      0,  64 << 10,  32, ER_4K) },
+    { INFO("at26df321",   0x1f4700,      0,  64 << 10,  64, ER_4K) },
 
-    { INFO("at45db081d",  0x1f2500,      0, 0x00, 0x00,  64 << 10,  16, ER_4K) },
+    { INFO("at45db081d",  0x1f2500,      0,  64 << 10,  16, ER_4K) },
+
+    /* Atmel EEPROMS - it is assumed, that don't care bit in command
+     * is set to 0. Block protection is not supported.
+     */
+    { INFO("at25128a-nonjedec", 0x0,     0,         1, 131072, EEPROM) },
+    { INFO("at25256a-nonjedec", 0x0,     0,         1, 262144, EEPROM) },
 
     /* EON -- en25xxx */
-    { INFO("en25f32",     0x1c3116,      0, 0x00, 0x00,  64 << 10,  64, ER_4K) },
-    { INFO("en25p32",     0x1c2016,      0, 0x00, 0x00,  64 << 10,  64, 0) },
-    { INFO("en25q32b",    0x1c3016,      0, 0x00, 0x00,  64 << 10,  64, 0) },
-    { INFO("en25p64",     0x1c2017,      0, 0x00, 0x00,  64 << 10, 128, 0) },
-    { INFO("en25q64",     0x1c3017,      0, 0x00, 0x00,  64 << 10, 128, ER_4K) },
+    { INFO("en25f32",     0x1c3116,      0,  64 << 10,  64, ER_4K) },
+    { INFO("en25p32",     0x1c2016,      0,  64 << 10,  64, 0) },
+    { INFO("en25q32b",    0x1c3016,      0,  64 << 10,  64, 0) },
+    { INFO("en25p64",     0x1c2017,      0,  64 << 10, 128, 0) },
+    { INFO("en25q64",     0x1c3017,      0,  64 << 10, 128, ER_4K) },
 
     /* GigaDevice */
-    { INFO("gd25q32",     0xc84016,      0, 0x00, 0x00,  64 << 10,  64, ER_4K) },
-    { INFO("gd25q64",     0xc84017,      0, 0x00, 0x00,  64 << 10, 128, ER_4K) },
+    { INFO("gd25q32",     0xc84016,      0,  64 << 10,  64, ER_4K) },
+    { INFO("gd25q64",     0xc84017,      0,  64 << 10, 128, ER_4K) },
 
     /* Intel/Numonyx -- xxxs33b */
-    { INFO("160s33b",     0x898911,      0, 0x00, 0x00,  64 << 10,  32, 0) },
-    { INFO("320s33b",     0x898912,      0, 0x00, 0x00,  64 << 10,  64, 0) },
-    { INFO("640s33b",     0x898913,      0, 0x00, 0x00,  64 << 10, 128, 0) },
-    { INFO("n25q064",     0x20ba17,      0, 0x00, 0x00,  64 << 10, 128, 0) },
+    { INFO("160s33b",     0x898911,      0,  64 << 10,  32, 0) },
+    { INFO("320s33b",     0x898912,      0,  64 << 10,  64, 0) },
+    { INFO("640s33b",     0x898913,      0,  64 << 10, 128, 0) },
+    { INFO("n25q064",     0x20ba17,      0,  64 << 10, 128, 0) },
 
     /* Macronix */
-    { INFO("mx25l2005a",  0xc22012,      0, 0x00, 0x00,  64 << 10,   4, ER_4K) },
-    { INFO("mx25l4005a",  0xc22013,      0, 0x00, 0x00,  64 << 10,   8, ER_4K) },
-    { INFO("mx25l8005",   0xc22014,      0, 0x00, 0x00,  64 << 10,  16, 0) },
-    { INFO("mx25l1606e",  0xc22015,      0, 0x00, 0x00,  64 << 10,  32, ER_4K) },
-    { INFO("mx25l3205d",  0xc22016,      0, 0x00, 0x00,  64 << 10,  64, 0) },
-    { INFO("mx25l6405d",  0xc22017,      0, 0x00, 0x00,  64 << 10, 128, 0) },
-    { INFO("mx25l12805d", 0xc22018,      0, 0x00, 0x00,  64 << 10, 256, 0) },
-    { INFO("mx25l12855e", 0xc22618,      0, 0x00, 0x00,  64 << 10, 256, 0) },
-    { INFO("mx25l25635e", 0xc22019,      0, 0x00, 0x00,  64 << 10, 512, 0) },
-    { INFO("mx25l25655e", 0xc22619,      0, 0x00, 0x00,  64 << 10, 512, 0) },
-    { INFO("mx66l1g55g",  0xc2261b,      0, 0x00, 0x00,  64 << 10, 2048, ER_4K) },
-    { INFO("mx66u51235f", 0xc2253a,      0, 0x00, 0x00,  64 << 10, 1024, ER_4K | ER_32K) },
-    { INFO("mx66u1g45g",  0xc2253b,      0, 0x00, 0x00,  64 << 10, 2048, ER_4K | ER_32K) },
-    { INFO("mx66l1g45g",  0xc2201b,      0, 0x00, 0x00,  64 << 10, 2048, ER_4K | ER_32K) },
+    { INFO("mx25l2005a",  0xc22012,      0,  64 << 10,   4, ER_4K) },
+    { INFO("mx25l4005a",  0xc22013,      0,  64 << 10,   8, ER_4K) },
+    { INFO("mx25l8005",   0xc22014,      0,  64 << 10,  16, 0) },
+    { INFO("mx25l1606e",  0xc22015,      0,  64 << 10,  32, ER_4K) },
+    { INFO("mx25l3205d",  0xc22016,      0,  64 << 10,  64, 0) },
+    { INFO("mx25l6405d",  0xc22017,      0,  64 << 10, 128, 0) },
+    { INFO("mx25l12805d", 0xc22018,      0,  64 << 10, 256, 0) },
+    { INFO("mx25l12855e", 0xc22618,      0,  64 << 10, 256, 0) },
+    { INFO("mx25l25635e", 0xc22019,      0,  64 << 10, 512, 0) },
+    { INFO("mx25l25655e", 0xc22619,      0,  64 << 10, 512, 0) },
+    { INFO("mx66u51235f", 0xc2253a,      0,  64 << 10, 1024, ER_4K | ER_32K) },
+    { INFO("mx66u1g45g",  0xc2253b,      0,  64 << 10, 2048, ER_4K | ER_32K) },
+    { INFO("mx66l1g45g",  0xc2201b,      0,  64 << 10, 2048, ER_4K | ER_32K) },
 
     /* Micron */
-    { INFO("n25q032a11",  0x20bb16,      0, 0x00, 0x00,  64 << 10,  64, ER_4K) },
-    { INFO("n25q032a13",  0x20ba16,      0, 0x00, 0x00,  64 << 10,  64, ER_4K) },
-    { INFO("n25q064a11",  0x20bb17,      0, 0x00, 0x00,  64 << 10, 128, ER_4K) },
-    { INFO("n25q064a13",  0x20ba17,      0, 0x00, 0x00,  64 << 10, 128, ER_4K) },
-    { INFO("n25q128a11",  0x20bb18,      0, 0x00, 0x00,  64 << 10, 256, ER_4K) },
-    { INFO("n25q128a13",  0x20ba18,      0, 0x00, 0x00,  64 << 10, 256, ER_4K) },
-    { INFO("n25q256a11",  0x20bb19,      0, 0x00, 0x00,  64 << 10, 512, ER_4K) },
-    { INFO("n25q256a13",  0x20ba19,      0, 0x00, 0x00,  64 << 10, 512, ER_4K) },
-    { INFO("n25q512a11",  0x20bb20,      0, 0x00, 0x00,  64 << 10, 1024, ER_4K) },
-    { INFO("n25q512a13",  0x20ba20,      0, 0x00, 0x00,  64 << 10, 1024, ER_4K) },
-    { INFO("m25qu02gcbb", 0x22bb20,      0, 0x00, 0x00,  64 << 10, 4096, ER_4K) },
-    { INFO("mt35xu01gbba", 0x2c5b1b,   0, 0x00, 0x00, 128 << 10, 1024, ER_4K) },
-    { INFO("n25q128",     0x20ba18,      0, 0x00, 0x00,  64 << 10, 256, 0) },
-    { INFO("n25q256a",    0x20ba19,      0, 0x00, 0x00,  64 << 10, 512, ER_4K) },
-    { INFO("n25q512a",    0x20ba20,      0, 0x00, 0x00,  64 << 10, 1024, ER_4K) },
+    { INFO("n25q032a11",  0x20bb16,      0,  64 << 10,  64, ER_4K) },
+    { INFO("n25q032a13",  0x20ba16,      0,  64 << 10,  64, ER_4K) },
+    { INFO("n25q064a11",  0x20bb17,      0,  64 << 10, 128, ER_4K) },
+    { INFO("n25q064a13",  0x20ba17,      0,  64 << 10, 128, ER_4K) },
+    { INFO("n25q128a11",  0x20bb18,      0,  64 << 10, 256, ER_4K) },
+    { INFO("n25q128a13",  0x20ba18,      0,  64 << 10, 256, ER_4K) },
+    { INFO("n25q256a11",  0x20bb19,      0,  64 << 10, 512, ER_4K) },
+    { INFO("n25q256a13",  0x20ba19,      0,  64 << 10, 512, ER_4K) },
+    { INFO("n25q128",     0x20ba18,      0,  64 << 10, 256, 0) },
+    { INFO("n25q256a",    0x20ba19,      0,  64 << 10, 512, ER_4K) },
+    { INFO("n25q512a",    0x20ba20,      0,  64 << 10, 1024, ER_4K) },
+    { INFO("mt35xu01gbba", 0x2c5b1b,     0, 128 << 10, 1024, ER_4K) },
     { INFO_STACKED("n25q00",    0x20ba21, 0x1000, 64 << 10, 2048, ER_4K, 4) },
     { INFO_STACKED("n25q00a",   0x20bb21, 0x1000, 64 << 10, 2048, ER_4K, 4) },
     { INFO_STACKED("mt25ql01g", 0x20ba21, 0x1040, 64 << 10, 2048, ER_4K, 2) },
@@ -242,74 +252,78 @@ static const FlashPartInfo known_devices[] = {
     /* Spansion -- single (large) sector size only, at least
      * for the chips listed here (without boot sectors).
      */
-    { INFO("s25sl032p",   0x010215, 0x4d00, 0x00, 0x00,  64 << 10,  64, ER_4K) },
-    { INFO("s25sl064p",   0x010216, 0x4d00, 0x00, 0x00,  64 << 10, 128, ER_4K) },
-    { INFO("s25fl256s0",  0x010219, 0x4d00, 0x00, 0x00, 256 << 10, 128, 0) },
-    { INFO("s25fl256s1",  0x010219, 0x4d01, 0x00, 0x00,  64 << 10, 512, 0) },
-    { INFO("s25fl512s",   0x010220, 0x4d00, 0x00, 0x00, 256 << 10, 256, 0) },
-    { INFO("s70fl01gs",   0x010221, 0x4d00, 0x00, 0x00, 256 << 10, 256, 0) },
-    { INFO("s25sl12800",  0x012018, 0x0300, 0x00, 0x00, 256 << 10,  64, 0) },
-    { INFO("s25sl12801",  0x012018, 0x0301, 0x00, 0x00,  64 << 10, 256, 0) },
-    { INFO("s25fl129p0",  0x012018, 0x4d00, 0x00, 0x00, 256 << 10,  64, 0) },
-    { INFO("s25fl129p1",  0x012018, 0x4d01, 0x00, 0x00,  64 << 10, 256, 0) },
-    { INFO("s25sl004a",   0x010212,      0, 0x00, 0x00,  64 << 10,   8, 0) },
-    { INFO("s25sl008a",   0x010213,      0, 0x00, 0x00,  64 << 10,  16, 0) },
-    { INFO("s25sl016a",   0x010214,      0, 0x00, 0x00,  64 << 10,  32, 0) },
-    { INFO("s25sl032a",   0x010215,      0, 0x00, 0x00,  64 << 10,  64, 0) },
-    { INFO("s25sl064a",   0x010216,      0, 0x00, 0x00,  64 << 10, 128, 0) },
-    { INFO("s25fl016k",   0xef4015,      0, 0x00, 0x00,  64 << 10,  32, ER_4K | ER_32K) },
-    { INFO("s25fl064k",   0xef4017,      0, 0x00, 0x00,  64 << 10, 128, ER_4K | ER_32K) },
+    { INFO("s25sl032p",   0x010215, 0x4d00,  64 << 10,  64, ER_4K) },
+    { INFO("s25sl064p",   0x010216, 0x4d00,  64 << 10, 128, ER_4K) },
+    { INFO("s25fl256s0",  0x010219, 0x4d00, 256 << 10, 128, 0) },
+    { INFO("s25fl256s1",  0x010219, 0x4d01,  64 << 10, 512, 0) },
+    { INFO6("s25fl512s",  0x010220, 0x4d0080, 256 << 10, 256, 0) },
+    { INFO6("s70fl01gs",  0x010221, 0x4d0080, 256 << 10, 512, 0) },
+    { INFO("s25sl12800",  0x012018, 0x0300, 256 << 10,  64, 0) },
+    { INFO("s25sl12801",  0x012018, 0x0301,  64 << 10, 256, 0) },
+    { INFO("s25fl129p0",  0x012018, 0x4d00, 256 << 10,  64, 0) },
+    { INFO("s25fl129p1",  0x012018, 0x4d01,  64 << 10, 256, 0) },
+    { INFO("s25sl004a",   0x010212,      0,  64 << 10,   8, 0) },
+    { INFO("s25sl008a",   0x010213,      0,  64 << 10,  16, 0) },
+    { INFO("s25sl016a",   0x010214,      0,  64 << 10,  32, 0) },
+    { INFO("s25sl032a",   0x010215,      0,  64 << 10,  64, 0) },
+    { INFO("s25sl064a",   0x010216,      0,  64 << 10, 128, 0) },
+    { INFO("s25fl016k",   0xef4015,      0,  64 << 10,  32, ER_4K | ER_32K) },
+    { INFO("s25fl064k",   0xef4017,      0,  64 << 10, 128, ER_4K | ER_32K) },
+
+    /* Spansion --  boot sectors support  */
+    { INFO6("s25fs512s",    0x010220, 0x4d0081, 256 << 10, 256, 0) },
+    { INFO6("s70fs01gs",    0x010221, 0x4d0081, 256 << 10, 512, 0) },
 
     /* SST -- large erase sizes are "overlays", "sectors" are 4<< 10 */
-    { INFO("sst25vf040b", 0xbf258d,      0, 0x00, 0x00,  64 << 10,   8, ER_4K) },
-    { INFO("sst25vf080b", 0xbf258e,      0, 0x00, 0x00,  64 << 10,  16, ER_4K) },
-    { INFO("sst25vf016b", 0xbf2541,      0, 0x00, 0x00,  64 << 10,  32, ER_4K) },
-    { INFO("sst25vf032b", 0xbf254a,      0, 0x00, 0x00,  64 << 10,  64, ER_4K) },
-    { INFO("sst25wf512",  0xbf2501,      0, 0x00, 0x00,  64 << 10,   1, ER_4K) },
-    { INFO("sst25wf010",  0xbf2502,      0, 0x00, 0x00,  64 << 10,   2, ER_4K) },
-    { INFO("sst25wf020",  0xbf2503,      0, 0x00, 0x00,  64 << 10,   4, ER_4K) },
-    { INFO("sst25wf040",  0xbf2504,      0, 0x00, 0x00,  64 << 10,   8, ER_4K) },
-    { INFO("sst25wf080",  0xbf2505,      0, 0xbf, 0x05,  64 << 10,  16, ER_4K) },
+    { INFO("sst25vf040b", 0xbf258d,      0,  64 << 10,   8, ER_4K) },
+    { INFO("sst25vf080b", 0xbf258e,      0,  64 << 10,  16, ER_4K) },
+    { INFO("sst25vf016b", 0xbf2541,      0,  64 << 10,  32, ER_4K) },
+    { INFO("sst25vf032b", 0xbf254a,      0,  64 << 10,  64, ER_4K) },
+    { INFO("sst25wf512",  0xbf2501,      0,  64 << 10,   1, ER_4K) },
+    { INFO("sst25wf010",  0xbf2502,      0,  64 << 10,   2, ER_4K) },
+    { INFO("sst25wf020",  0xbf2503,      0,  64 << 10,   4, ER_4K) },
+    { INFO("sst25wf040",  0xbf2504,      0,  64 << 10,   8, ER_4K) },
+    { INFO("sst25wf080",  0xbf2505,      0,  64 << 10,  16, ER_4K) },
 
     /* ST Microelectronics -- newer production may have feature updates */
-    { INFO("m25p05",      0x202010,      0, 0x00, 0x00,  32 << 10,   2, 0) },
-    { INFO("m25p10",      0x202011,      0, 0x00, 0x00,  32 << 10,   4, 0) },
-    { INFO("m25p20",      0x202012,      0, 0x00, 0x00,  64 << 10,   4, 0) },
-    { INFO("m25p40",      0x202013,      0, 0x00, 0x00,  64 << 10,   8, 0) },
-    { INFO("m25p80",      0x202014,      0, 0x00, 0x00,  64 << 10,  16, 0) },
-    { INFO("m25p16",      0x202015,      0, 0x00, 0x00,  64 << 10,  32, 0) },
-    { INFO("m25p32",      0x202016,      0, 0x00, 0x00,  64 << 10,  64, 0) },
-    { INFO("m25p64",      0x202017,      0, 0x00, 0x00,  64 << 10, 128, 0) },
-    { INFO("m25p128",     0x202018,      0, 0x00, 0x00, 256 << 10,  64, 0) },
-    { INFO("n25q032",     0x20ba16,      0, 0x00, 0x00,  64 << 10,  64, 0) },
+    { INFO("m25p05",      0x202010,      0,  32 << 10,   2, 0) },
+    { INFO("m25p10",      0x202011,      0,  32 << 10,   4, 0) },
+    { INFO("m25p20",      0x202012,      0,  64 << 10,   4, 0) },
+    { INFO("m25p40",      0x202013,      0,  64 << 10,   8, 0) },
+    { INFO("m25p80",      0x202014,      0,  64 << 10,  16, 0) },
+    { INFO("m25p16",      0x202015,      0,  64 << 10,  32, 0) },
+    { INFO("m25p32",      0x202016,      0,  64 << 10,  64, 0) },
+    { INFO("m25p64",      0x202017,      0,  64 << 10, 128, 0) },
+    { INFO("m25p128",     0x202018,      0, 256 << 10,  64, 0) },
+    { INFO("n25q032",     0x20ba16,      0,  64 << 10,  64, 0) },
 
-    { INFO("m45pe10",     0x204011,      0, 0x00, 0x00,  64 << 10,   2, 0) },
-    { INFO("m45pe80",     0x204014,      0, 0x00, 0x00,  64 << 10,  16, 0) },
-    { INFO("m45pe16",     0x204015,      0, 0x00, 0x00,  64 << 10,  32, 0) },
+    { INFO("m45pe10",     0x204011,      0,  64 << 10,   2, 0) },
+    { INFO("m45pe80",     0x204014,      0,  64 << 10,  16, 0) },
+    { INFO("m45pe16",     0x204015,      0,  64 << 10,  32, 0) },
 
-    { INFO("m25pe20",     0x208012,      0, 0x00, 0x00,  64 << 10,   4, 0) },
-    { INFO("m25pe80",     0x208014,      0, 0x00, 0x00,  64 << 10,  16, 0) },
-    { INFO("m25pe16",     0x208015,      0, 0x00, 0x00,  64 << 10,  32, ER_4K) },
+    { INFO("m25pe20",     0x208012,      0,  64 << 10,   4, 0) },
+    { INFO("m25pe80",     0x208014,      0,  64 << 10,  16, 0) },
+    { INFO("m25pe16",     0x208015,      0,  64 << 10,  32, ER_4K) },
 
-    { INFO("m25px32",     0x207116,      0, 0x00, 0x00,  64 << 10,  64, ER_4K) },
-    { INFO("m25px32-s0",  0x207316,      0, 0x00, 0x00,  64 << 10,  64, ER_4K) },
-    { INFO("m25px32-s1",  0x206316,      0, 0x00, 0x00,  64 << 10,  64, ER_4K) },
-    { INFO("m25px64",     0x207117,      0, 0x00, 0x00,  64 << 10, 128, 0) },
+    { INFO("m25px32",     0x207116,      0,  64 << 10,  64, ER_4K) },
+    { INFO("m25px32-s0",  0x207316,      0,  64 << 10,  64, ER_4K) },
+    { INFO("m25px32-s1",  0x206316,      0,  64 << 10,  64, ER_4K) },
+    { INFO("m25px64",     0x207117,      0,  64 << 10, 128, 0) },
 
     /* Winbond -- w25x "blocks" are 64k, "sectors" are 4KiB */
-    { INFO("w25x10",      0xef3011,      0, 0x00, 0x00,  64 << 10,   2, ER_4K) },
-    { INFO("w25x20",      0xef3012,      0, 0x00, 0x00,  64 << 10,   4, ER_4K) },
-    { INFO("w25x40",      0xef3013,      0, 0x00, 0x00,  64 << 10,   8, ER_4K) },
-    { INFO("w25x80",      0xef3014,      0, 0x00, 0x00,  64 << 10,  16, ER_4K) },
-    { INFO("w25x16",      0xef3015,      0, 0x00, 0x00,  64 << 10,  32, ER_4K) },
-    { INFO("w25x32",      0xef3016,      0, 0x00, 0x00,  64 << 10,  64, ER_4K) },
-    { INFO("w25q32",      0xef4016,      0, 0x00, 0x00,  64 << 10,  64, ER_4K) },
-    { INFO("w25q32dw",    0xef6016,      0, 0x00, 0x00,  64 << 10,  64, ER_4K) },
-    { INFO("w25x64",      0xef3017,      0, 0x00, 0x00,  64 << 10, 128, ER_4K) },
-    { INFO("w25q64",      0xef4017,      0, 0x00, 0x00,  64 << 10, 128, ER_4K) },
-    { INFO("w25q80",      0xef5014,      0, 0x00, 0x00,  64 << 10,  16, ER_4K) },
-    { INFO("w25q80bl",    0xef4014,      0, 0x00, 0x00,  64 << 10,  16, ER_4K) },
-    { INFO("w25q256",     0xef4019,      0, 0x00, 0x00,  64 << 10, 512, ER_4K) },
+    { INFO("w25x10",      0xef3011,      0,  64 << 10,   2, ER_4K) },
+    { INFO("w25x20",      0xef3012,      0,  64 << 10,   4, ER_4K) },
+    { INFO("w25x40",      0xef3013,      0,  64 << 10,   8, ER_4K) },
+    { INFO("w25x80",      0xef3014,      0,  64 << 10,  16, ER_4K) },
+    { INFO("w25x16",      0xef3015,      0,  64 << 10,  32, ER_4K) },
+    { INFO("w25x32",      0xef3016,      0,  64 << 10,  64, ER_4K) },
+    { INFO("w25q32",      0xef4016,      0,  64 << 10,  64, ER_4K) },
+    { INFO("w25q32dw",    0xef6016,      0,  64 << 10,  64, ER_4K) },
+    { INFO("w25x64",      0xef3017,      0,  64 << 10, 128, ER_4K) },
+    { INFO("w25q64",      0xef4017,      0,  64 << 10, 128, ER_4K) },
+    { INFO("w25q80",      0xef5014,      0,  64 << 10,  16, ER_4K) },
+    { INFO("w25q80bl",    0xef4014,      0,  64 << 10,  16, ER_4K) },
+    { INFO("w25q256",     0xef4019,      0,  64 << 10, 512, ER_4K) },
 };
 
 typedef enum {
@@ -317,10 +331,7 @@ typedef enum {
     WRSR = 0x1,
     WRDI = 0x4,
     RDSR = 0x5,
-    RDFSR = 0x70,
     WREN = 0x6,
-    BRRD = 0x16,
-    BRWR = 0x17,
     JEDEC_READ = 0x9f,
     BULK_ERASE = 0xc7,
     READ_FSR = 0x70,
@@ -330,8 +341,6 @@ typedef enum {
     READ4 = 0x13,
     FAST_READ = 0x0b,
     FAST_READ4 = 0x0c,
-    O_FAST_READ = 0x9d,
-    O_FAST_READ4 = 0xfc,
     DOR = 0x3b,
     DOR4 = 0x3c,
     QOR = 0x6b,
@@ -340,11 +349,6 @@ typedef enum {
     DIOR4 = 0xbc,
     QIOR = 0xeb,
     QIOR4 = 0xec,
-    OOR = 0x8b,
-    OOR4 = 0x8c,
-    OOR4_MT35X = 0x7c, /* according mt35x datasheet */
-    OIOR = 0xcb,
-    OIOR4 = 0xcc,
 
     PP = 0x02,
     PP4 = 0x12,
@@ -352,11 +356,6 @@ typedef enum {
     DPP = 0xa2,
     QPP = 0x32,
     QPP_4 = 0x34,
-    RDID_90 = 0x90,
-    RDID_AB = 0xab,
-    AAI = 0xad,
-    OPP = 0x82,
-    OPP4 = 0x84,
 
     ERASE_4K = 0x20,
     ERASE4_4K = 0x21,
@@ -367,9 +366,6 @@ typedef enum {
 
     EN_4BYTE_ADDR = 0xB7,
     EX_4BYTE_ADDR = 0xE9,
-
-    BULK_ERASE_C7 = 0xc7,
-    BULK_ERASE_60 = 0x60,
 
     EXTEND_ADDR_READ = 0xC8,
     EXTEND_ADDR_WRITE = 0xC5,
@@ -403,7 +399,6 @@ typedef enum {
     STATE_COLLECTING_DATA,
     STATE_COLLECTING_VAR_LEN_DATA,
     STATE_READING_DATA,
-    DUMMY_CYCLE_WAIT,
 } CMDState;
 
 typedef enum {
@@ -429,7 +424,6 @@ typedef struct Flash {
     uint8_t data[M25P80_INTERNAL_DATA_BUFFER_SZ];
     uint32_t len;
     uint32_t pos;
-    bool data_read_loop;
     uint8_t needed_bytes;
     uint8_t cmd_in_progress;
     uint32_t cur_addr;
@@ -456,9 +450,8 @@ typedef struct Flash {
 
     uint8_t n_datalines;
     uint8_t n_dummy_cycles;
-    uint8_t dummy_count;
-    const FlashPartInfo *pi;
 
+    const FlashPartInfo *pi;
 } Flash;
 
 typedef struct M25P80Class {
@@ -540,10 +533,12 @@ static void flash_erase(Flash *s, int offset, FlashCMD cmd)
 
     switch (cmd) {
     case ERASE_4K:
+    case ERASE4_4K:
         len = 4 << 10;
         capa_to_assert = ER_4K;
         break;
     case ERASE_32K:
+    case ERASE4_32K:
         len = 32 << 10;
         capa_to_assert = ER_32K;
         break;
@@ -628,15 +623,12 @@ static inline int get_addr_length(Flash *s)
    case QPP_4:
    case READ4:
    case QIOR4:
-   case OIOR4:
    case ERASE4_4K:
+   case ERASE4_32K:
    case ERASE4_SECTOR:
    case FAST_READ4:
-   case O_FAST_READ4:
    case DOR4:
    case QOR4:
-   case OOR4:
-   case OOR4_MT35X:
    case DIOR4:
        return 4;
    default:
@@ -644,63 +636,18 @@ static inline int get_addr_length(Flash *s)
    }
 }
 
-static inline void flash_write(Flash *s, uint8_t data, int num_bits)
-{
-    int64_t page = (s->cur_addr >> 3) / s->pi->page_size;
-    uint8_t prev = s->storage[s->cur_addr >> 3];
-    uint32_t data_mask = ((1ul << num_bits) - 1) <<
-                         (8 - (s->cur_addr & 0x7) - num_bits);
-
-    assert(!(data_mask & ~0xfful));
-    data <<= 8 - (s->cur_addr & 0x7) - num_bits;
-
-    if (!s->write_enable) {
-        qemu_log_mask(LOG_GUEST_ERROR, "M25P80: write with write protect!\n");
-    }
-
-    if (s->pi->flags & WR_1) {
-        s->storage[s->cur_addr >> 3] = (prev & ~data_mask) | (data & data_mask);
-    } else {
-        if ((prev ^ data) & data & data_mask) {
-            DB_PRINT_L(1, "programming zero to one! addr=%" PRIx32 "  %" PRIx8
-                       " -> %" PRIx8 ", mask = %" PRIx32 "\n",
-                       s->cur_addr >> 3, prev, data, data_mask);
-        }
-        s->storage[s->cur_addr >> 3] &= data | ~data_mask;
-    }
-
-    flash_sync_dirty(s, page);
-    s->dirty_page = page;
-}
-
-static inline bool set_dummy_cycles(Flash *s, uint8_t num)
-{
-    if (s->dummy_count == 0) {
-        /* Dummy Phase Yet to start */
-        s->n_dummy_cycles = num * s->n_datalines;
-        return true;
-    } else {
-        /* Dummy Phase done */
-        s->dummy_count = 0;
-        return false;
-    }
-}
-
 static void complete_collecting_data(Flash *s)
 {
-    int i;
-    bool dummy_state = false;
+    int i, n;
 
-    s->cur_addr = 0;
-
-    for (i = 0; i < get_addr_length(s); ++i) {
+    n = get_addr_length(s);
+    s->cur_addr = (n == 3 ? s->ear : 0);
+    for (i = 0; i < n; ++i) {
         s->cur_addr <<= 8;
         s->cur_addr |= s->data[i];
     }
 
-    if (get_addr_length(s) == 3) {
-        s->cur_addr += (s->ear & 0x3) * MAX_3BYTES_SIZE;
-    }
+    s->cur_addr &= s->size - 1;
 
     s->state = STATE_IDLE;
 
@@ -708,60 +655,48 @@ static void complete_collecting_data(Flash *s)
     case DPP:
     case QPP:
     case QPP_4:
-    case OPP:
-    case AAI:
     case PP:
-        s->state = STATE_PAGE_PROGRAM;
-        break;
-    case OPP4:
     case PP4:
+    case PP4_4:
         s->state = STATE_PAGE_PROGRAM;
         break;
-    case FAST_READ:
-    case O_FAST_READ:
-    case DOR:
-    case QOR:
-    case OOR:
-    case DIOR:
-    case QIOR:
-    case OIOR:
-        /* Fall through after executing dummy cycles/bytes */
-        dummy_state = set_dummy_cycles(s, 1);
     case READ:
-        if (dummy_state == true) {
-            s->state = DUMMY_CYCLE_WAIT;
-        } else {
-            s->state = STATE_READ;
-        }
-        break;
-    case FAST_READ4:
-    case O_FAST_READ4:
-    case DOR4:
-    case QOR4:
-    case OOR4:
-    case OOR4_MT35X:
-    case DIOR4:
-    case QIOR4:
-    case OIOR4:
-        /* Fall through after executing dummy cycles/bytes */
-        dummy_state = set_dummy_cycles(s, 1);
     case READ4:
-        if (dummy_state == false) {
-            s->state = STATE_READ;
-        } else {
-            s->state = DUMMY_CYCLE_WAIT;
-        }
+    case FAST_READ:
+    case FAST_READ4:
+    case DOR:
+    case DOR4:
+    case QOR:
+    case QOR4:
+    case DIOR:
+    case DIOR4:
+    case QIOR:
+    case QIOR4:
+        s->state = STATE_READ;
         break;
-    case ERASE_SECTOR:
     case ERASE_4K:
+    case ERASE4_4K:
     case ERASE_32K:
-        flash_erase(s, s->cur_addr, s->cmd_in_progress);
-        break;
+    case ERASE4_32K:
+    case ERASE_SECTOR:
     case ERASE4_SECTOR:
     case DIE_ERASE:
         flash_erase(s, s->cur_addr, s->cmd_in_progress);
         break;
     case WRSR:
+        switch (get_man(s)) {
+        case MAN_SPANSION:
+            s->quad_enable = !!(s->data[1] & 0x02);
+            break;
+        case MAN_MACRONIX:
+            s->quad_enable = extract32(s->data[0], 6, 1);
+            if (s->len > 1) {
+                s->four_bytes_address_mode = extract32(s->data[1], 5, 1);
+            }
+            break;
+        default:
+            break;
+        }
         if (s->write_enable) {
             s->write_enable = false;
         }
@@ -781,8 +716,6 @@ static void complete_collecting_data(Flash *s)
     default:
         break;
     }
-
-    s->cur_addr <<= 3;
 }
 
 static void reset_memory(Flash *s)
@@ -857,6 +790,38 @@ static void reset_memory(Flash *s)
     DB_PRINT_L(0, "Reset done.\n");
 }
 
+static void decode_fast_read_cmd(Flash *s)
+{
+    s->needed_bytes = get_addr_length(s);
+    switch (get_man(s)) {
+    /* Dummy cycles - modeled with bytes writes instead of bits */
+    case MAN_WINBOND:
+        s->needed_bytes += 8;
+        break;
+    case MAN_NUMONYX:
+        s->needed_bytes += extract32(s->volatile_cfg, 4, 4);
+        break;
+    case MAN_MACRONIX:
+        if (extract32(s->volatile_cfg, 6, 2) == 1) {
+            s->needed_bytes += 6;
+        } else {
+            s->needed_bytes += 8;
+        }
+        break;
+    case MAN_SPANSION:
+        s->needed_bytes += extract32(s->spansion_cr2v,
+                                    SPANSION_DUMMY_CLK_POS,
+                                    SPANSION_DUMMY_CLK_LEN
+                                    );
+        break;
+    default:
+        break;
+    }
+    s->pos = 0;
+    s->len = 0;
+    s->state = STATE_COLLECTING_DATA;
+}
+
 static void decode_dio_read_cmd(Flash *s)
 {
     s->needed_bytes = get_addr_length(s);
@@ -929,7 +894,6 @@ static void decode_qio_read_cmd(Flash *s)
         }
         break;
     default:
-        s->needed_bytes += 5;
         break;
     }
     s->pos = 0;
@@ -947,80 +911,64 @@ static void decode_new_cmd(Flash *s, uint32_t value)
         s->reset_enable = false;
     }
 
-    s->needed_bytes = 0;
-
     switch (value) {
 
-    case READ4:
-    case ERASE4_SECTOR:
-    case QPP_4:
-    case OPP4:
-    case PP4:
-        if (s->four_bytes_address_mode == false) {
-            s->needed_bytes += 1;
-        }
     case ERASE_4K:
+    case ERASE4_4K:
     case ERASE_32K:
+    case ERASE4_32K:
     case ERASE_SECTOR:
+    case ERASE4_SECTOR:
     case READ:
+    case READ4:
     case DPP:
     case QPP:
-    case OPP:
+    case QPP_4:
     case PP:
-    case QOR:
-    case OOR:
-    case FAST_READ:
-    case O_FAST_READ:
-    case DOR:
+    case PP4:
     case PP4_4:
     case DIE_ERASE:
-        s->needed_bytes += get_addr_length(s);
+        s->needed_bytes = get_addr_length(s);
         s->pos = 0;
         s->len = 0;
         s->state = STATE_COLLECTING_DATA;
         break;
 
+    case FAST_READ:
     case FAST_READ4:
-    case O_FAST_READ4:
+    case DOR:
     case DOR4:
+    case QOR:
     case QOR4:
-    case OOR4:
-    case OOR4_MT35X:
-        s->needed_bytes += 4;
-        s->pos = 0;
-        s->len = 0;
-        s->state = STATE_COLLECTING_DATA;
+        decode_fast_read_cmd(s);
         break;
 
-    case DIOR4:
-        s->needed_bytes += 1;
     case DIOR:
+    case DIOR4:
         decode_dio_read_cmd(s);
         break;
 
-    case QIOR4:
-    case OIOR4:
-        s->needed_bytes += 1;
-    case OIOR:
     case QIOR:
+    case QIOR4:
         decode_qio_read_cmd(s);
         break;
 
     case WRSR:
         if (s->write_enable) {
-            s->needed_bytes = 1;
+            switch (get_man(s)) {
+            case MAN_SPANSION:
+                s->needed_bytes = 2;
+                s->state = STATE_COLLECTING_DATA;
+                break;
+            case MAN_MACRONIX:
+                s->needed_bytes = 2;
+                s->state = STATE_COLLECTING_VAR_LEN_DATA;
+                break;
+            default:
+                s->needed_bytes = 1;
+                s->state = STATE_COLLECTING_DATA;
+            }
             s->pos = 0;
-            s->len = 0;
-            s->state = STATE_COLLECTING_DATA;
-        }
-        break;
-
-    case BRWR:
-        if (s->write_enable) {
-            s->needed_bytes = 1;
-            s->pos = 0;
-            s->len = 0;
-            s->state = STATE_COLLECTING_DATA;
         }
         break;
 
@@ -1033,25 +981,21 @@ static void decode_new_cmd(Flash *s, uint32_t value)
 
     case RDSR:
         s->data[0] = (!!s->write_enable) << 1;
+        if (get_man(s) == MAN_MACRONIX) {
+            s->data[0] |= (!!s->quad_enable) << 6;
+        }
         s->pos = 0;
         s->len = 1;
-        s->data_read_loop = true;
         s->state = STATE_READING_DATA;
         break;
 
-    case RDFSR:
-        s->data[0] = 1 << 7;
+    case READ_FSR:
+        s->data[0] = FSR_FLASH_READY;
+        if (s->four_bytes_address_mode) {
+            s->data[0] |= FSR_4BYTE_ADDR_MODE_ENABLED;
+        }
         s->pos = 0;
         s->len = 1;
-        s->data_read_loop = true;
-        s->state = STATE_READING_DATA;
-        break;
-
-
-    case BRRD:
-        s->pos = 0;
-        s->len = 1;
-        s->data_read_loop = false;
         s->state = STATE_READING_DATA;
         break;
 
@@ -1060,25 +1004,21 @@ static void decode_new_cmd(Flash *s, uint32_t value)
         for (i = 0; i < s->pi->id_len; i++) {
             s->data[i] = s->pi->id[i];
         }
+
         s->len = s->pi->id_len;
         s->pos = 0;
-        s->data_read_loop = false;
         s->state = STATE_READING_DATA;
         break;
 
-    case RDID_90:
-    case RDID_AB:
-        DB_PRINT_L(0, "populated manf/dev ID\n");
-        s->data[0] = s->pi->manf_id;
-        s->data[1] = s->pi->dev_id;
+    case RDCR:
+        s->data[0] = s->volatile_cfg & 0xFF;
+        s->data[0] |= (!!s->four_bytes_address_mode) << 5;
         s->pos = 0;
-        s->len = 2;
-        s->data_read_loop = true;
+        s->len = 1;
         s->state = STATE_READING_DATA;
         break;
 
-    case BULK_ERASE_60:
-    case BULK_ERASE_C7:
+    case BULK_ERASE:
         if (s->write_enable) {
             DB_PRINT_L(0, "chip erase\n");
             flash_erase(s, 0, BULK_ERASE);
@@ -1214,31 +1154,25 @@ static void m25p80_num_datalines(SSISlave *ss, uint8_t lines)
     s->n_datalines = lines;
 }
 
-static uint32_t m25p80_transfer(SSISlave *ss, uint32_t tx, int num_bits)
+static uint32_t m25p80_transfer8(SSISlave *ss, uint32_t tx)
 {
     Flash *s = M25P80(ss);
     uint32_t r = 0;
-
-    if (!num_bits) {
-        num_bits = 8;
-    }
 
     switch (s->state) {
 
     case STATE_PAGE_PROGRAM:
         DB_PRINT_L(1, "page program cur_addr=%#" PRIx32 " data=%" PRIx8 "\n",
                    s->cur_addr, (uint8_t)tx);
-        flash_write(s, (uint8_t)tx, num_bits);
-        s->cur_addr += num_bits;
+        flash_write8(s, s->cur_addr, (uint8_t)tx);
+        s->cur_addr = (s->cur_addr + 1) & (s->size - 1);
         break;
 
     case STATE_READ:
-        assert((s->cur_addr & 0x7) + num_bits <= 8);
-        r = s->storage[s->cur_addr >> 3] >>
-            (8 - (s->cur_addr & 0x7) - num_bits);
+        r = s->storage[s->cur_addr];
         DB_PRINT_L(1, "READ 0x%" PRIx32 "=%" PRIx8 "\n", s->cur_addr,
                    (uint8_t)r);
-        s->cur_addr = (s->cur_addr + num_bits) % (s->size * 8);
+        s->cur_addr = (s->cur_addr + 1) & (s->size - 1);
         break;
 
     case STATE_COLLECTING_DATA:
@@ -1278,23 +1212,12 @@ static uint32_t m25p80_transfer(SSISlave *ss, uint32_t tx, int num_bits)
         s->pos++;
         if (s->pos == s->len) {
             s->pos = 0;
-            if (!s->data_read_loop) {
-                s->state = STATE_IDLE;
-            }
+            s->state = STATE_IDLE;
         }
         break;
 
-    case DUMMY_CYCLE_WAIT:
-        s->dummy_count++;
-        DB_PRINT_L(0, "Dummy Byte/Cycle %d\n", s->dummy_count);
-        s->n_dummy_cycles--;
-        if (!s->n_dummy_cycles) {
-            complete_collecting_data(s);
-        }
-        break;
     default:
     case STATE_IDLE:
-        assert(num_bits == 8);
         decode_new_cmd(s, (uint8_t)tx);
         break;
     }
@@ -1307,9 +1230,6 @@ static void m25p80_realize(SSISlave *ss, Error **errp)
     Flash *s = M25P80(ss);
     M25P80Class *mc = M25P80_GET_CLASS(s);
     int ret;
-
-    /* Xilinx: Set the number of data lines to 1 by default */
-    s->n_datalines = 1;
 
     s->pi = mc->pi;
 
@@ -1408,7 +1328,7 @@ static void m25p80_class_init(ObjectClass *klass, void *data)
     M25P80Class *mc = M25P80_CLASS(klass);
 
     k->realize = m25p80_realize;
-    k->transfer_bits = m25p80_transfer;
+    k->transfer = m25p80_transfer8;
     k->set_cs = m25p80_cs;
     k->set_data_lines = m25p80_num_datalines;
     k->cs_polarity = SSI_CS_LOW;
