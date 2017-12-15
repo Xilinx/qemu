@@ -1259,9 +1259,7 @@ static void xilinx_spips_realize(DeviceState *dev, Error **errp)
     }
 
     sysbus_init_irq(sbd, &s->irq);
-    for (i = 0; i < s->num_cs * s->num_busses; ++i) {
-        sysbus_init_irq(sbd, &s->cs_lines[i]);
-    }
+    qdev_init_gpio_out(dev, s->cs_lines, s->num_cs * s->num_busses);
 
     memory_region_init_io(&s->iomem, OBJECT(s), xsc->reg_ops, s,
                           "spi", XLNX_ZYNQMP_SPIPS_R_MAX * 4);
