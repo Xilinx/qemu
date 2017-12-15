@@ -1011,6 +1011,30 @@ static void xilinx_qspips_write(void *opaque, hwaddr addr,
 
     if (addr == R_LQSPI_CFG) {
         xilinx_qspips_invalidate_mmio_ptr(q);
+        q->lqspi_cached_addr = ~0ULL;
+        if (q->lqspi_size) {
+#define LQSPI_HACK_CHUNK_SIZE (1 * 1024 * 1024)
+            uint32_t src = q->lqspi_src;
+            uint32_t dst = q->lqspi_dst;
+            uint32_t btt = q->lqspi_size;
+
+            assert(!(btt % LQSPI_HACK_CHUNK_SIZE));
+            fprintf(stderr, "QEMU: Syncing LQSPI - this may be slow "
+                    "(1 \".\" / MByte):");
+
+            while (btt) {
+                uint8_t lqspi_hack_buf[LQSPI_HACK_CHUNK_SIZE];
+                dma_memory_read(q->hack_as, src, lqspi_hack_buf,
+                                LQSPI_HACK_CHUNK_SIZE);
+                dma_memory_write(q->hack_as, dst, lqspi_hack_buf,
+                                 LQSPI_HACK_CHUNK_SIZE);
+                fprintf(stderr, ".");
+                btt -= LQSPI_HACK_CHUNK_SIZE;
+                src += LQSPI_HACK_CHUNK_SIZE;
+                dst += LQSPI_HACK_CHUNK_SIZE;
+            }
+            fprintf(stderr, "\n");
+        }
     }
     if (s->regs[R_CMND] & R_CMND_RXFIFO_DRAIN) {
         fifo8_reset(&s->rx_fifo);
@@ -1262,6 +1286,8 @@ static void xilinx_qspips_realize(DeviceState *dev, Error **errp)
     s->num_txrx_bytes = 4;
 
     xilinx_spips_realize(dev, errp);
+    q->hack_as = q->hack_dma ? address_space_init_shareable(q->hack_dma,
+                NULL) : &address_space_memory;
     memory_region_init_io(&s->mmlqspi, OBJECT(s), &lqspi_ops, s, "lqspi",
                           (1 << LQSPI_ADDRESS_BITS) * 2);
     sysbus_init_mmio(sbd, &s->mmlqspi);
