@@ -55,6 +55,8 @@
 /* 16 MiB max in 3 byte address mode */
 #define MAX_3BYTES_SIZE 0x1000000
 
+#define WR_1 0x100
+
 #define SPI_NOR_MAX_ID_LEN 6
 
 typedef struct FlashPartInfo {
@@ -333,6 +335,7 @@ typedef enum {
     WRSR = 0x1,
     WRDI = 0x4,
     RDSR = 0x5,
+    RDFSR = 0x70,
     WREN = 0x6,
     BRRD = 0x16,
     BRWR = 0x17,
@@ -346,6 +349,8 @@ typedef enum {
     READ4 = 0x13,
     FAST_READ = 0x0b,
     FAST_READ4 = 0x0c,
+    O_FAST_READ = 0x9d,
+    O_FAST_READ4 = 0xfc,
     DOR = 0x3b,
     DOR4 = 0x3c,
     QOR = 0x6b,
@@ -354,6 +359,11 @@ typedef enum {
     DIOR4 = 0xbc,
     QIOR = 0xeb,
     QIOR4 = 0xec,
+    OOR = 0x8b,
+    OOR4 = 0x8c,
+    OOR4_MT35X = 0x7c, /* according mt35x datasheet */
+    OIOR = 0xcb,
+    OIOR4 = 0xcc,
 
     PP = 0x02,
     PP4 = 0x12,
@@ -363,6 +373,9 @@ typedef enum {
     QPP_4 = 0x34,
     RDID_90 = 0x90,
     RDID_AB = 0xab,
+    AAI = 0xad,
+    OPP = 0x82,
+    OPP4 = 0x84,
 
     ERASE_4K = 0x20,
     ERASE4_4K = 0x21,
@@ -406,6 +419,7 @@ typedef enum {
     STATE_COLLECTING_DATA,
     STATE_COLLECTING_VAR_LEN_DATA,
     STATE_READING_DATA,
+    DUMMY_CYCLE_WAIT,
 } CMDState;
 
 typedef enum {
@@ -459,8 +473,10 @@ typedef struct Flash {
 
     uint8_t n_datalines;
     uint8_t n_dummy_cycles;
+    uint8_t dummy_count;
 
     const FlashPartInfo *pi;
+
 } Flash;
 
 typedef struct M25P80Class {
@@ -634,12 +650,16 @@ static inline int get_addr_length(Flash *s)
    case QPP_4:
    case READ4:
    case QIOR4:
+   case OIOR4:
    case ERASE4_4K:
    case ERASE4_32K:
    case ERASE4_SECTOR:
    case FAST_READ4:
+   case O_FAST_READ4:
    case DOR4:
    case QOR4:
+   case OOR4:
+   case OOR4_MT35X:
    case DIOR4:
        return 4;
    default:
@@ -647,18 +667,63 @@ static inline int get_addr_length(Flash *s)
    }
 }
 
+static inline void flash_write(Flash *s, uint8_t data, int num_bits)
+{
+    int64_t page = (s->cur_addr >> 3) / s->pi->page_size;
+    uint8_t prev = s->storage[s->cur_addr >> 3];
+    uint32_t data_mask = ((1ul << num_bits) - 1) <<
+                         (8 - (s->cur_addr & 0x7) - num_bits);
+
+    assert(!(data_mask & ~0xfful));
+    data <<= 8 - (s->cur_addr & 0x7) - num_bits;
+
+    if (!s->write_enable) {
+        qemu_log_mask(LOG_GUEST_ERROR, "M25P80: write with write protect!\n");
+    }
+
+    if (s->pi->flags & WR_1) {
+        s->storage[s->cur_addr >> 3] = (prev & ~data_mask) | (data & data_mask);
+    } else {
+        if ((prev ^ data) & data & data_mask) {
+            DB_PRINT_L(1, "programming zero to one! addr=%" PRIx32 "  %" PRIx8
+                       " -> %" PRIx8 ", mask = %" PRIx32 "\n",
+                       s->cur_addr >> 3, prev, data, data_mask);
+        }
+        s->storage[s->cur_addr >> 3] &= data | ~data_mask;
+    }
+
+    flash_sync_dirty(s, page);
+    s->dirty_page = page;
+}
+
+static inline bool set_dummy_cycles(Flash *s, uint8_t num)
+{
+    if (s->dummy_count == 0) {
+        /* Dummy Phase Yet to start */
+        s->n_dummy_cycles = num * s->n_datalines;
+        return true;
+    } else {
+        /* Dummy Phase done */
+        s->dummy_count = 0;
+        return false;
+    }
+}
+
 static void complete_collecting_data(Flash *s)
 {
-    int i, n;
+    int i;
+    bool dummy_state = false;
 
-    n = get_addr_length(s);
-    s->cur_addr = (n == 3 ? s->ear : 0);
-    for (i = 0; i < n; ++i) {
+    s->cur_addr = 0;
+
+    for (i = 0; i < get_addr_length(s); ++i) {
         s->cur_addr <<= 8;
         s->cur_addr |= s->data[i];
     }
 
-    s->cur_addr &= s->size - 1;
+    if (get_addr_length(s) == 3) {
+        s->cur_addr += (s->ear & 0x3) * MAX_3BYTES_SIZE;
+    }
 
     s->state = STATE_IDLE;
 
@@ -666,30 +731,55 @@ static void complete_collecting_data(Flash *s)
     case DPP:
     case QPP:
     case QPP_4:
+    case OPP:
+    case AAI:
     case PP:
-    case PP4:
-    case PP4_4:
         s->state = STATE_PAGE_PROGRAM;
         break;
-    case READ:
-    case READ4:
-    case FAST_READ:
-    case FAST_READ4:
-    case DOR:
-    case DOR4:
-    case QOR:
-    case QOR4:
-    case DIOR:
-    case DIOR4:
-    case QIOR:
-    case QIOR4:
-        s->state = STATE_READ;
+    case OPP4:
+    case PP4:
+        s->state = STATE_PAGE_PROGRAM;
         break;
-    case ERASE_4K:
-    case ERASE4_4K:
-    case ERASE_32K:
-    case ERASE4_32K:
+    case FAST_READ:
+    case O_FAST_READ:
+    case DOR:
+    case QOR:
+    case OOR:
+    case DIOR:
+    case QIOR:
+    case OIOR:
+        /* Fall through after executing dummy cycles/bytes */
+        dummy_state = set_dummy_cycles(s, 1);
+    case READ:
+        if (dummy_state == true) {
+            s->state = DUMMY_CYCLE_WAIT;
+        } else {
+            s->state = STATE_READ;
+        }
+        break;
+    case FAST_READ4:
+    case O_FAST_READ4:
+    case DOR4:
+    case QOR4:
+    case OOR4:
+    case OOR4_MT35X:
+    case DIOR4:
+    case QIOR4:
+    case OIOR4:
+        /* Fall through after executing dummy cycles/bytes */
+        dummy_state = set_dummy_cycles(s, 1);
+    case READ4:
+        if (dummy_state == false) {
+            s->state = STATE_READ;
+        } else {
+            s->state = DUMMY_CYCLE_WAIT;
+        }
+        break;
     case ERASE_SECTOR:
+    case ERASE_4K:
+    case ERASE_32K:
+        flash_erase(s, s->cur_addr, s->cmd_in_progress);
+        break;
     case ERASE4_SECTOR:
     case DIE_ERASE:
         flash_erase(s, s->cur_addr, s->cmd_in_progress);
@@ -712,7 +802,6 @@ static void complete_collecting_data(Flash *s)
             s->write_enable = false;
         }
         break;
-    case BRWR:
     case EXTEND_ADDR_WRITE:
         s->ear = s->data[0];
         break;
@@ -753,6 +842,8 @@ static void complete_collecting_data(Flash *s)
     default:
         break;
     }
+
+    s->cur_addr <<= 3;
 }
 
 static void reset_memory(Flash *s)
@@ -827,38 +918,6 @@ static void reset_memory(Flash *s)
     DB_PRINT_L(0, "Reset done.\n");
 }
 
-static void decode_fast_read_cmd(Flash *s)
-{
-    s->needed_bytes = get_addr_length(s);
-    switch (get_man(s)) {
-    /* Dummy cycles - modeled with bytes writes instead of bits */
-    case MAN_WINBOND:
-        s->needed_bytes += 8;
-        break;
-    case MAN_NUMONYX:
-        s->needed_bytes += extract32(s->volatile_cfg, 4, 4);
-        break;
-    case MAN_MACRONIX:
-        if (extract32(s->volatile_cfg, 6, 2) == 1) {
-            s->needed_bytes += 6;
-        } else {
-            s->needed_bytes += 8;
-        }
-        break;
-    case MAN_SPANSION:
-        s->needed_bytes += extract32(s->spansion_cr2v,
-                                    SPANSION_DUMMY_CLK_POS,
-                                    SPANSION_DUMMY_CLK_LEN
-                                    );
-        break;
-    default:
-        break;
-    }
-    s->pos = 0;
-    s->len = 0;
-    s->state = STATE_COLLECTING_DATA;
-}
-
 static void decode_dio_read_cmd(Flash *s)
 {
     s->needed_bytes = get_addr_length(s);
@@ -931,6 +990,7 @@ static void decode_qio_read_cmd(Flash *s)
         }
         break;
     default:
+        s->needed_bytes += 5;
         break;
     }
     s->pos = 0;
@@ -948,66 +1008,80 @@ static void decode_new_cmd(Flash *s, uint32_t value)
         s->reset_enable = false;
     }
 
+    s->needed_bytes = 0;
+
     switch (value) {
 
-    case ERASE_4K:
-    case ERASE4_4K:
-    case ERASE_32K:
-    case ERASE4_32K:
-    case ERASE_SECTOR:
-    case ERASE4_SECTOR:
-    case READ:
     case READ4:
+    case ERASE4_SECTOR:
+    case QPP_4:
+    case OPP4:
+    case PP4:
+        if (s->four_bytes_address_mode == false) {
+            s->needed_bytes += 1;
+        }
+    case ERASE_4K:
+    case ERASE_32K:
+    case ERASE_SECTOR:
+    case READ:
     case DPP:
     case QPP:
-    case QPP_4:
+    case OPP:
     case PP:
-    case PP4:
+    case QOR:
+    case OOR:
+    case FAST_READ:
+    case O_FAST_READ:
+    case DOR:
     case PP4_4:
     case DIE_ERASE:
-    case RDID_90:
-    case RDID_AB:
-        s->needed_bytes = get_addr_length(s);
+        s->needed_bytes += get_addr_length(s);
         s->pos = 0;
         s->len = 0;
         s->state = STATE_COLLECTING_DATA;
         break;
 
-    case FAST_READ:
     case FAST_READ4:
-    case DOR:
+    case O_FAST_READ4:
     case DOR4:
-    case QOR:
     case QOR4:
-        decode_fast_read_cmd(s);
+    case OOR4:
+    case OOR4_MT35X:
+        s->needed_bytes += 4;
+        s->pos = 0;
+        s->len = 0;
+        s->state = STATE_COLLECTING_DATA;
         break;
 
-    case DIOR:
     case DIOR4:
+        s->needed_bytes += 1;
+    case DIOR:
         decode_dio_read_cmd(s);
         break;
 
-    case QIOR:
     case QIOR4:
+    case OIOR4:
+        s->needed_bytes += 1;
+    case OIOR:
+    case QIOR:
         decode_qio_read_cmd(s);
         break;
 
     case WRSR:
         if (s->write_enable) {
-            switch (get_man(s)) {
-            case MAN_SPANSION:
-                s->needed_bytes = 2;
-                s->state = STATE_COLLECTING_DATA;
-                break;
-            case MAN_MACRONIX:
-                s->needed_bytes = 2;
-                s->state = STATE_COLLECTING_VAR_LEN_DATA;
-                break;
-            default:
-                s->needed_bytes = 1;
-                s->state = STATE_COLLECTING_DATA;
-            }
+            s->needed_bytes = 1;
             s->pos = 0;
+            s->len = 0;
+            s->state = STATE_COLLECTING_DATA;
+        }
+        break;
+
+    case BRWR:
+        if (s->write_enable) {
+            s->needed_bytes = 1;
+            s->pos = 0;
+            s->len = 0;
+            s->state = STATE_COLLECTING_DATA;
         }
         break;
 
@@ -1029,14 +1103,19 @@ static void decode_new_cmd(Flash *s, uint32_t value)
         s->state = STATE_READING_DATA;
         break;
 
-    case READ_FSR:
-        s->data[0] = FSR_FLASH_READY;
-        if (s->four_bytes_address_mode) {
-            s->data[0] |= FSR_4BYTE_ADDR_MODE_ENABLED;
-        }
+    case RDFSR:
+        s->data[0] = 1 << 7;
         s->pos = 0;
         s->len = 1;
         s->data_read_loop = true;
+        s->state = STATE_READING_DATA;
+        break;
+
+
+    case BRRD:
+        s->pos = 0;
+        s->len = 1;
+        s->data_read_loop = false;
         s->state = STATE_READING_DATA;
         break;
 
@@ -1045,9 +1124,9 @@ static void decode_new_cmd(Flash *s, uint32_t value)
         for (i = 0; i < s->pi->id_len; i++) {
             s->data[i] = s->pi->id[i];
         }
-
         s->len = s->pi->id_len;
         s->pos = 0;
+        s->data_read_loop = false;
         s->state = STATE_READING_DATA;
         break;
 
@@ -1077,14 +1156,12 @@ static void decode_new_cmd(Flash *s, uint32_t value)
     case EX_4BYTE_ADDR:
         s->four_bytes_address_mode = false;
         break;
-    case BRRD:
     case EXTEND_ADDR_READ:
         s->data[0] = s->ear;
         s->pos = 0;
         s->len = 1;
         s->state = STATE_READING_DATA;
         break;
-    case BRWR:
     case EXTEND_ADDR_WRITE:
         if (s->write_enable) {
             s->needed_bytes = 1;
@@ -1180,7 +1257,6 @@ static int m25p80_cs(SSISlave *ss, bool select)
         s->pos = 0;
         s->state = STATE_IDLE;
         flash_sync_dirty(s, -1);
-        s->data_read_loop = false;
     }
 
     DB_PRINT_L(0, "%sselect\n", select ? "de" : "");
@@ -1199,25 +1275,31 @@ static void m25p80_num_datalines(SSISlave *ss, uint8_t lines)
     s->n_datalines = lines;
 }
 
-static uint32_t m25p80_transfer8(SSISlave *ss, uint32_t tx)
+static uint32_t m25p80_transfer(SSISlave *ss, uint32_t tx, int num_bits)
 {
     Flash *s = M25P80(ss);
     uint32_t r = 0;
+
+    if (!num_bits) {
+        num_bits = 8;
+    }
 
     switch (s->state) {
 
     case STATE_PAGE_PROGRAM:
         DB_PRINT_L(1, "page program cur_addr=%#" PRIx32 " data=%" PRIx8 "\n",
                    s->cur_addr, (uint8_t)tx);
-        flash_write8(s, s->cur_addr, (uint8_t)tx);
-        s->cur_addr = (s->cur_addr + 1) & (s->size - 1);
+        flash_write(s, (uint8_t)tx, num_bits);
+        s->cur_addr += num_bits;
         break;
 
     case STATE_READ:
-        r = s->storage[s->cur_addr];
+        assert((s->cur_addr & 0x7) + num_bits <= 8);
+        r = s->storage[s->cur_addr >> 3] >>
+            (8 - (s->cur_addr & 0x7) - num_bits);
         DB_PRINT_L(1, "READ 0x%" PRIx32 "=%" PRIx8 "\n", s->cur_addr,
                    (uint8_t)r);
-        s->cur_addr = (s->cur_addr + 1) & (s->size - 1);
+        s->cur_addr = (s->cur_addr + num_bits) % (s->size * 8);
         break;
 
     case STATE_COLLECTING_DATA:
@@ -1263,6 +1345,14 @@ static uint32_t m25p80_transfer8(SSISlave *ss, uint32_t tx)
         }
         break;
 
+    case DUMMY_CYCLE_WAIT:
+        s->dummy_count++;
+        DB_PRINT_L(0, "Dummy Byte/Cycle %d\n", s->dummy_count);
+        s->n_dummy_cycles--;
+        if (!s->n_dummy_cycles) {
+            complete_collecting_data(s);
+        }
+        break;
     default:
     case STATE_IDLE:
         decode_new_cmd(s, (uint8_t)tx);
@@ -1277,6 +1367,9 @@ static void m25p80_realize(SSISlave *ss, Error **errp)
     Flash *s = M25P80(ss);
     M25P80Class *mc = M25P80_GET_CLASS(s);
     int ret;
+
+    /* Xilinx: Set the number of data lines to 1 by default */
+    s->n_datalines = 1;
 
     s->pi = mc->pi;
 
@@ -1406,7 +1499,7 @@ static void m25p80_class_init(ObjectClass *klass, void *data)
     M25P80Class *mc = M25P80_CLASS(klass);
 
     k->realize = m25p80_realize;
-    k->transfer = m25p80_transfer8;
+    k->transfer_bits = m25p80_transfer;
     k->set_cs = m25p80_cs;
     k->set_data_lines = m25p80_num_datalines;
     k->cs_polarity = SSI_CS_LOW;
