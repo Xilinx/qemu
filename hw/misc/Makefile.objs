@@ -47,6 +47,7 @@ common-obj-$(CONFIG_XILINX_AXI) += stream-fifo.o
 common-obj-$(CONFIG_EDU) += edu.o
 
 common-obj-y += unimp.o
+common-obj-$(CONFIG_FW_CFG_DMA) += vmcoreinfo.o
 
 obj-$(CONFIG_VMPORT) += vmport.o
 
@@ -97,3 +98,4 @@ obj-$(CONFIG_HYPERV_TESTDEV) += hyperv_testdev.o
 obj-$(CONFIG_AUX) += auxbus.o
 obj-$(CONFIG_ASPEED_SOC) += aspeed_scu.o aspeed_sdmc.o
 obj-y += mmio_interface.o
+obj-$(CONFIG_MSF2) += msf2-sysreg.o

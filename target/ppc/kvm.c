@@ -74,6 +74,7 @@ static int cap_interrupt_level = false;
 static int cap_segstate;
 static int cap_booke_sregs;
 static int cap_ppc_smt;
+static int cap_ppc_smt_possible;
 static int cap_ppc_rma;
 static int cap_spapr_tce;
 static int cap_spapr_tce_64;
@@ -119,10 +120,10 @@ static void kvm_kick_cpu(void *opaque)
 static bool kvmppc_is_pr(KVMState *ks)
 {
     /* Assume KVM-PR if the GET_PVINFO capability is available */
-    return kvm_check_extension(ks, KVM_CAP_PPC_GET_PVINFO) != 0;
+    return kvm_vm_check_extension(ks, KVM_CAP_PPC_GET_PVINFO) != 0;
 }
 
-static int kvm_ppc_register_host_cpu_type(void);
+static int kvm_ppc_register_host_cpu_type(MachineState *ms);
 
 int kvm_arch_init(MachineState *ms, KVMState *s)
 {
@@ -130,7 +131,7 @@ int kvm_arch_init(MachineState *ms, KVMState *s)
     cap_interrupt_level = kvm_check_extension(s, KVM_CAP_PPC_IRQ_LEVEL);
     cap_segstate = kvm_check_extension(s, KVM_CAP_PPC_SEGSTATE);
     cap_booke_sregs = kvm_check_extension(s, KVM_CAP_PPC_BOOKE_SREGS);
-    cap_ppc_smt = kvm_check_extension(s, KVM_CAP_PPC_SMT);
+    cap_ppc_smt_possible = kvm_vm_check_extension(s, KVM_CAP_PPC_SMT_POSSIBLE);
     cap_ppc_rma = kvm_check_extension(s, KVM_CAP_PPC_RMA);
     cap_spapr_tce = kvm_check_extension(s, KVM_CAP_SPAPR_TCE);
     cap_spapr_tce_64 = kvm_check_extension(s, KVM_CAP_SPAPR_TCE_64);
@@ -142,8 +143,9 @@ int kvm_arch_init(MachineState *ms, KVMState *s)
     cap_ppc_watchdog = kvm_check_extension(s, KVM_CAP_PPC_BOOKE_WATCHDOG);
     /* Note: we don't set cap_papr here, because this capability is
      * only activated after this by kvmppc_set_papr() */
-    cap_htab_fd = kvm_check_extension(s, KVM_CAP_PPC_HTAB_FD);
+    cap_htab_fd = kvm_vm_check_extension(s, KVM_CAP_PPC_HTAB_FD);
     cap_fixup_hcalls = kvm_check_extension(s, KVM_CAP_PPC_FIXUP_HCALL);
+    cap_ppc_smt = kvm_vm_check_extension(s, KVM_CAP_PPC_SMT);
     cap_htm = kvm_vm_check_extension(s, KVM_CAP_PPC_HTM);
     cap_mmu_radix = kvm_vm_check_extension(s, KVM_CAP_PPC_MMU_RADIX);
     cap_mmu_hash_v3 = kvm_vm_check_extension(s, KVM_CAP_PPC_MMU_HASH_V3);
@@ -161,7 +163,7 @@ int kvm_arch_init(MachineState *ms, KVMState *s)
                         "VM to stall at times!\n");
     }
 
-    kvm_ppc_register_host_cpu_type();
+    kvm_ppc_register_host_cpu_type(ms);
 
     return 0;
 }
@@ -520,7 +522,7 @@ bool kvmppc_is_mem_backend_page_size_ok(const char *obj_path)
 
 unsigned long kvm_arch_vcpu_id(CPUState *cpu)
 {
-    return ppc_get_vcpu_dt_id(POWERPC_CPU(cpu));
+    return POWERPC_CPU(cpu)->vcpu_id;
 }
 
 /* e500 supports 2 h/w breakpoint and 2 watchpoint.
@@ -939,7 +941,13 @@ int kvmppc_put_books_sregs(PowerPCCPU *cpu)
 
     sregs.pvr = env->spr[SPR_PVR];
 
-    sregs.u.s.sdr1 = env->spr[SPR_SDR1];
+    if (cpu->vhyp) {
+        PPCVirtualHypervisorClass *vhc =
+            PPC_VIRTUAL_HYPERVISOR_GET_CLASS(cpu->vhyp);
+        sregs.u.s.sdr1 = vhc->encode_hpt_for_kvm_pr(cpu->vhyp);
+    } else {
+        sregs.u.s.sdr1 = env->spr[SPR_SDR1];
+    }
 
     /* Sync SLB */
 #ifdef TARGET_PPC64
@@ -2134,6 +2142,41 @@ int kvmppc_smt_threads(void)
     return cap_ppc_smt ? cap_ppc_smt : 1;
 }
 
+int kvmppc_set_smt_threads(int smt)
+{
+    int ret;
+
+    ret = kvm_vm_enable_cap(kvm_state, KVM_CAP_PPC_SMT, 0, smt, 0);
+    if (!ret) {
+        cap_ppc_smt = smt;
+    }
+    return ret;
+}
+
+void kvmppc_hint_smt_possible(Error **errp)
+{
+    int i;
+    GString *g;
+    char *s;
+
+    assert(kvm_enabled());
+    if (cap_ppc_smt_possible) {
+        g = g_string_new("Available VSMT modes:");
+        for (i = 63; i >= 0; i--) {
+            if ((1UL << i) & cap_ppc_smt_possible) {
+                g_string_append_printf(g, " %lu", (1UL << i));
+            }
+        }
+        s = g_string_free(g, false);
+        error_append_hint(errp, "%s.\n", s);
+        g_free(s);
+    } else {
+        error_append_hint(errp,
+                          "This KVM seems to be too old to support VSMT.\n");
+    }
+}
+
+
 #ifdef TARGET_PPC64
 off_t kvmppc_alloc_rma(void **rma)
 {
@@ -2316,7 +2359,7 @@ int kvmppc_reset_htab(int shift_hint)
         /* Full emulation, tell caller to allocate htab itself */
         return 0;
     }
-    if (kvm_check_extension(kvm_state, KVM_CAP_PPC_ALLOC_HTAB)) {
+    if (kvm_vm_check_extension(kvm_state, KVM_CAP_PPC_ALLOC_HTAB)) {
         int ret;
         ret = kvm_vm_ioctl(kvm_state, KVM_PPC_ALLOCATE_HTAB, &shift);
         if (ret == -ENOTTY) {
@@ -2411,11 +2454,6 @@ bool kvmppc_has_cap_epr(void)
     return cap_epr;
 }
 
-bool kvmppc_has_cap_htab_fd(void)
-{
-    return cap_htab_fd;
-}
-
 bool kvmppc_has_cap_fixup_hcalls(void)
 {
     return cap_fixup_hcalls;
@@ -2449,12 +2487,13 @@ PowerPCCPUClass *kvm_ppc_get_host_cpu_class(void)
     return pvr_pcc;
 }
 
-static int kvm_ppc_register_host_cpu_type(void)
+static int kvm_ppc_register_host_cpu_type(MachineState *ms)
 {
     TypeInfo type_info = {
         .name = TYPE_HOST_POWERPC_CPU,
         .class_init = kvmppc_host_cpu_class_init,
     };
+    MachineClass *mc = MACHINE_GET_CLASS(ms);
     PowerPCCPUClass *pvr_pcc;
     ObjectClass *oc;
     DeviceClass *dc;
@@ -2466,20 +2505,13 @@ static int kvm_ppc_register_host_cpu_type(void)
     }
     type_info.parent = object_class_get_name(OBJECT_CLASS(pvr_pcc));
     type_register(&type_info);
+    if (object_dynamic_cast(OBJECT(ms), TYPE_SPAPR_MACHINE)) {
+        /* override TCG default cpu type with 'host' cpu model */
+        mc->default_cpu_type = TYPE_HOST_POWERPC_CPU;
+    }
 
     oc = object_class_by_name(type_info.name);
     g_assert(oc);
-
-#if defined(TARGET_PPC64)
-    type_info.name = g_strdup_printf("%s-"TYPE_SPAPR_CPU_CORE, "host");
-    type_info.parent = TYPE_SPAPR_CPU_CORE,
-    type_info.instance_size = sizeof(sPAPRCPUCore);
-    type_info.instance_init = NULL;
-    type_info.class_init = spapr_cpu_core_class_init;
-    type_info.class_data = (void *) "host";
-    type_register(&type_info);
-    g_free((void *)type_info.name);
-#endif
 
     /*
      * Update generic CPU family class alias (e.g. on a POWER8NVL host,
@@ -2488,15 +2520,14 @@ static int kvm_ppc_register_host_cpu_type(void)
      */
     dc = DEVICE_CLASS(ppc_cpu_get_family_class(pvr_pcc));
     for (i = 0; ppc_cpu_aliases[i].alias != NULL; i++) {
-        if (strcmp(ppc_cpu_aliases[i].alias, dc->desc) == 0) {
+        if (strcasecmp(ppc_cpu_aliases[i].alias, dc->desc) == 0) {
             char *suffix;
 
             ppc_cpu_aliases[i].model = g_strdup(object_class_get_name(oc));
-            suffix = strstr(ppc_cpu_aliases[i].model, "-"TYPE_POWERPC_CPU);
+            suffix = strstr(ppc_cpu_aliases[i].model, POWERPC_CPU_TYPE_SUFFIX);
             if (suffix) {
                 *suffix = 0;
             }
-            ppc_cpu_aliases[i].oc = oc;
             break;
         }
     }
@@ -2519,19 +2550,29 @@ int kvmppc_define_rtas_kernel_token(uint32_t token, const char *function)
     return kvm_vm_ioctl(kvm_state, KVM_PPC_RTAS_DEFINE_TOKEN, &args);
 }
 
-int kvmppc_get_htab_fd(bool write)
+int kvmppc_get_htab_fd(bool write, uint64_t index, Error **errp)
 {
     struct kvm_get_htab_fd s = {
         .flags = write ? KVM_GET_HTAB_WRITE : 0,
-        .start_index = 0,
+        .start_index = index,
     };
+    int ret;
 
     if (!cap_htab_fd) {
-        fprintf(stderr, "KVM version doesn't support saving the hash table\n");
-        return -1;
+        error_setg(errp, "KVM version doesn't support %s the HPT",
+                   write ? "writing" : "reading");
+        return -ENOTSUP;
     }
 
-    return kvm_vm_ioctl(kvm_state, KVM_PPC_GET_HTAB_FD, &s);
+    ret = kvm_vm_ioctl(kvm_state, KVM_PPC_GET_HTAB_FD, &s);
+    if (ret < 0) {
+        error_setg(errp, "Unable to open fd for %s HPT %s KVM: %s",
+                   write ? "writing" : "reading", write ? "to" : "from",
+                   strerror(errno));
+        return -errno;
+    }
+
+    return ret;
 }
 
 int kvmppc_save_htab(QEMUFile *f, int fd, size_t bufsize, int64_t max_ns)
@@ -2611,17 +2652,10 @@ void kvm_arch_init_irq_routing(KVMState *s)
 
 void kvmppc_read_hptes(ppc_hash_pte64_t *hptes, hwaddr ptex, int n)
 {
-    struct kvm_get_htab_fd ghf = {
-        .flags = 0,
-        .start_index = ptex,
-    };
     int fd, rc;
     int i;
 
-    fd = kvm_vm_ioctl(kvm_state, KVM_PPC_GET_HTAB_FD, &ghf);
-    if (fd < 0) {
-        hw_error("kvmppc_read_hptes: Unable to open HPT fd");
-    }
+    fd = kvmppc_get_htab_fd(false, ptex, &error_abort);
 
     i = 0;
     while (i < n) {
@@ -2663,19 +2697,13 @@ void kvmppc_read_hptes(ppc_hash_pte64_t *hptes, hwaddr ptex, int n)
 void kvmppc_write_hpte(hwaddr ptex, uint64_t pte0, uint64_t pte1)
 {
     int fd, rc;
-    struct kvm_get_htab_fd ghf;
     struct {
         struct kvm_get_htab_header hdr;
         uint64_t pte0;
         uint64_t pte1;
     } buf;
 
-    ghf.flags = 0;
-    ghf.start_index = 0;     /* Ignored */
-    fd = kvm_vm_ioctl(kvm_state, KVM_PPC_GET_HTAB_FD, &ghf);
-    if (fd < 0) {
-        hw_error("kvmppc_write_hpte: Unable to open HPT fd");
-    }
+    fd = kvmppc_get_htab_fd(true, 0 /* Ignored */, &error_abort);
 
     buf.hdr.n_valid = 1;
     buf.hdr.n_invalid = 0;
@@ -2768,30 +2796,6 @@ int kvmppc_resize_hpt_commit(PowerPCCPU *cpu, target_ulong flags, int shift)
     }
 
     return kvm_vm_ioctl(cs->kvm_state, KVM_PPC_RESIZE_HPT_COMMIT, &rhpt);
-}
-
-static void kvmppc_pivot_hpt_cpu(CPUState *cs, run_on_cpu_data arg)
-{
-    target_ulong sdr1 = arg.target_ptr;
-    PowerPCCPU *cpu = POWERPC_CPU(cs);
-    CPUPPCState *env = &cpu->env;
-
-    /* This is just for the benefit of PR KVM */
-    cpu_synchronize_state(cs);
-    env->spr[SPR_SDR1] = sdr1;
-    if (kvmppc_put_books_sregs(cpu) < 0) {
-        error_report("Unable to update SDR1 in KVM");
-        exit(1);
-    }
-}
-
-void kvmppc_update_sdr1(target_ulong sdr1)
-{
-    CPUState *cs;
-
-    CPU_FOREACH(cs) {
-        run_on_cpu(cs, kvmppc_pivot_hpt_cpu, RUN_ON_CPU_TARGET_PTR(sdr1));
-    }
 }
 
 /*

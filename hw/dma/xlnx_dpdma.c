@@ -565,8 +565,12 @@ static void xlnx_dpdma_realize(DeviceState *dev, Error **errp)
 {
     XlnxDPDMAState *s = XLNX_DPDMA(dev);
 
-    s->dma_as = s->dma_mr ? address_space_init_shareable(s->dma_mr, NULL)
-                          : &address_space_memory;
+    if (s->dma_mr) {
+        s->dma_as = g_malloc0(sizeof(AddressSpace));
+        address_space_init(s->dma_as, s->dma_mr, NULL);
+    } else {
+        s->dma_as = &address_space_memory;
+    }
 }
 
 static void xlnx_dpdma_init(Object *obj)

@@ -17,6 +17,8 @@
 #include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "cpu.h"
+#include "internal.h"
+#include "kvm_s390x.h"
 #include "sysemu/kvm.h"
 
 static int cpu_post_load(void *opaque, int version_id)
@@ -35,13 +37,15 @@ static int cpu_post_load(void *opaque, int version_id)
     return 0;
 }
 
-static void cpu_pre_save(void *opaque)
+static int cpu_pre_save(void *opaque)
 {
     S390CPU *cpu = opaque;
 
     if (kvm_enabled()) {
         kvm_s390_vcpu_interrupt_pre_save(cpu);
     }
+
+    return 0;
 }
 
 static inline bool fpu_needed(void *opaque)
@@ -176,7 +180,7 @@ const VMStateDescription vmstate_exval = {
 
 static bool gscb_needed(void *opaque)
 {
-    return kvm_s390_get_gs();
+    return s390_has_feat(S390_FEAT_GUARDED_STORAGE);
 }
 
 const VMStateDescription vmstate_gscb = {

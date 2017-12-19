@@ -415,6 +415,7 @@ static const TypeInfo rp_info = {
     .class_init    = rp_pci_class_init,
     .interfaces    = (InterfaceInfo[]) {
         { TYPE_REMOTE_PORT_DEVICE },
+        { INTERFACE_CONVENTIONAL_PCI_DEVICE },
         { },
     },
 };

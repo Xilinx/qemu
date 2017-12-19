@@ -52,6 +52,16 @@ typedef struct MemTxAttrs {
  */
 #define MEMTXATTRS_UNSPECIFIED ((MemTxAttrs) { .unspecified = 1 })
 
+/* New-style MMIO accessors can indicate that the transaction failed.
+ * A zero (MEMTX_OK) response means success; anything else is a failure
+ * of some kind. The memory subsystem will bitwise-OR together results
+ * if it is synthesizing an operation from multiple smaller accesses.
+ */
+#define MEMTX_OK 0
+#define MEMTX_ERROR             (1U << 0) /* device returned an error */
+#define MEMTX_DECODE_ERROR      (1U << 1) /* nothing at that address */
+typedef uint32_t MemTxResult;
+
 void cpu_set_mr(Object *obj, Visitor *v, void *opaque,
                 const char *name, Error **errp);
 

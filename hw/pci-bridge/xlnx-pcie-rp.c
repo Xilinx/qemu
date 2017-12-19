@@ -152,6 +152,11 @@ static const TypeInfo xlnx_info = {
     .name          = "xlnx-pcie-rp",
     .parent        = TYPE_PCIE_SLOT,
     .class_init    = xlnx_class_init,
+    .interfaces = (InterfaceInfo[]) {
+        { INTERFACE_PCIE_DEVICE },
+        { },
+    },
+
 };
 
 static void xlnx_register_types(void)

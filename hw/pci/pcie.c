@@ -72,7 +72,7 @@ pcie_cap_v1_fill(PCIDevice *dev, uint8_t port, uint8_t type, uint8_t version)
                  PCI_EXP_LNK_LS_25);
 
     pci_set_word(exp_cap + PCI_EXP_LNKSTA,
-                 PCI_EXP_LNK_MLW_1 | PCI_EXP_LNK_LS_25 |PCI_EXP_LNKSTA_DLLLA);
+                 PCI_EXP_LNK_MLW_1 | PCI_EXP_LNK_LS_25);
 
     if (dev->cap_present & QEMU_PCIE_LNKSTA_DLLLA) {
         pci_word_test_and_set_mask(exp_cap + PCI_EXP_LNKSTA,

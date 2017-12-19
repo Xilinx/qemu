@@ -131,7 +131,7 @@ static void vnc_init_basic_info(SocketAddress *addr,
     case SOCKET_ADDRESS_TYPE_VSOCK:
     case SOCKET_ADDRESS_TYPE_FD:
         error_setg(errp, "Unsupported socket address type %s",
-                   SocketAddressType_lookup[addr->type]);
+                   SocketAddressType_str(addr->type));
         break;
     default:
         abort();
@@ -416,7 +416,7 @@ VncInfo *qmp_query_vnc(Error **errp)
         case SOCKET_ADDRESS_TYPE_VSOCK:
         case SOCKET_ADDRESS_TYPE_FD:
             error_setg(errp, "Unsupported socket address type %s",
-                       SocketAddressType_lookup[addr->type]);
+                       SocketAddressType_str(addr->type));
             goto out_error;
         default:
             abort();
@@ -1118,9 +1118,11 @@ static void vnc_disconnect_start(VncState *vs)
     if (vs->disconnecting) {
         return;
     }
+    trace_vnc_client_disconnect_start(vs, vs->ioc);
     vnc_set_share_mode(vs, VNC_SHARE_MODE_DISCONNECTED);
     if (vs->ioc_tag) {
         g_source_remove(vs->ioc_tag);
+        vs->ioc_tag = 0;
     }
     qio_channel_close(vs->ioc, NULL);
     vs->disconnecting = TRUE;
@@ -1129,6 +1131,8 @@ static void vnc_disconnect_start(VncState *vs)
 void vnc_disconnect_finish(VncState *vs)
 {
     int i;
+
+    trace_vnc_client_disconnect_finish(vs, vs->ioc);
 
     vnc_jobs_join(vs); /* Wait encoding jobs */
 
@@ -1183,11 +1187,12 @@ ssize_t vnc_client_io_error(VncState *vs, ssize_t ret, Error **errp)
 {
     if (ret <= 0) {
         if (ret == 0) {
-            VNC_DEBUG("Closing down client sock: EOF\n");
+            trace_vnc_client_eof(vs, vs->ioc);
             vnc_disconnect_start(vs);
         } else if (ret != QIO_CHANNEL_ERR_BLOCK) {
-            VNC_DEBUG("Closing down client sock: ret %zd (%s)\n",
-                      ret, errp ? error_get_pretty(*errp) : "Unknown");
+            trace_vnc_client_io_error(vs, vs->ioc,
+                                      errp ? error_get_pretty(*errp) :
+                                      "Unknown");
             vnc_disconnect_start(vs);
         }
 
@@ -1839,7 +1844,7 @@ static void vnc_release_modifiers(VncState *vs)
 
 static const char *code2name(int keycode)
 {
-    return QKeyCode_lookup[qemu_input_key_number_to_qcode(keycode)];
+    return QKeyCode_str(qemu_input_key_number_to_qcode(keycode));
 }
 
 static void key_event(VncState *vs, int down, uint32_t sym)
@@ -2402,11 +2407,11 @@ static int protocol_client_auth_vnc(VncState *vs, uint8_t *data, size_t len)
     Error *err = NULL;
 
     if (!vs->vd->password) {
-        VNC_DEBUG("No password configured on server");
+        trace_vnc_auth_fail(vs, vs->auth, "password is not set", "");
         goto reject;
     }
     if (vs->vd->expires < now) {
-        VNC_DEBUG("Password is expired");
+        trace_vnc_auth_fail(vs, vs->auth, "password is expired", "");
         goto reject;
     }
 
@@ -2423,8 +2428,8 @@ static int protocol_client_auth_vnc(VncState *vs, uint8_t *data, size_t len)
         key, G_N_ELEMENTS(key),
         &err);
     if (!cipher) {
-        VNC_DEBUG("Cannot initialize cipher %s",
-                  error_get_pretty(err));
+        trace_vnc_auth_fail(vs, vs->auth, "cannot create cipher",
+                            error_get_pretty(err));
         error_free(err);
         goto reject;
     }
@@ -2434,18 +2439,18 @@ static int protocol_client_auth_vnc(VncState *vs, uint8_t *data, size_t len)
                                response,
                                VNC_AUTH_CHALLENGE_SIZE,
                                &err) < 0) {
-        VNC_DEBUG("Cannot encrypt challenge %s",
-                  error_get_pretty(err));
+        trace_vnc_auth_fail(vs, vs->auth, "cannot encrypt challenge response",
+                            error_get_pretty(err));
         error_free(err);
         goto reject;
     }
 
     /* Compare expected vs actual challenge response */
     if (memcmp(response, data, VNC_AUTH_CHALLENGE_SIZE) != 0) {
-        VNC_DEBUG("Client challenge response did not match\n");
+        trace_vnc_auth_fail(vs, vs->auth, "mis-matched challenge response", "");
         goto reject;
     } else {
-        VNC_DEBUG("Accepting VNC challenge response\n");
+        trace_vnc_auth_pass(vs, vs->auth);
         vnc_write_u32(vs, 0); /* Accept auth */
         vnc_flush(vs);
 
@@ -2484,7 +2489,7 @@ static int protocol_client_auth(VncState *vs, uint8_t *data, size_t len)
     /* We only advertise 1 auth scheme at a time, so client
      * must pick the one we sent. Verify this */
     if (data[0] != vs->auth) { /* Reject auth */
-       VNC_DEBUG("Reject auth %d because it didn't match advertized\n", (int)data[0]);
+       trace_vnc_auth_reject(vs, vs->auth, (int)data[0]);
        vnc_write_u32(vs, 1);
        if (vs->minor >= 8) {
            static const char err[] = "Authentication failed";
@@ -2493,36 +2498,33 @@ static int protocol_client_auth(VncState *vs, uint8_t *data, size_t len)
        }
        vnc_client_error(vs);
     } else { /* Accept requested auth */
-       VNC_DEBUG("Client requested auth %d\n", (int)data[0]);
+       trace_vnc_auth_start(vs, vs->auth);
        switch (vs->auth) {
        case VNC_AUTH_NONE:
-           VNC_DEBUG("Accept auth none\n");
            if (vs->minor >= 8) {
                vnc_write_u32(vs, 0); /* Accept auth completion */
                vnc_flush(vs);
            }
+           trace_vnc_auth_pass(vs, vs->auth);
            start_client_init(vs);
            break;
 
        case VNC_AUTH_VNC:
-           VNC_DEBUG("Start VNC auth\n");
            start_auth_vnc(vs);
            break;
 
        case VNC_AUTH_VENCRYPT:
-           VNC_DEBUG("Accept VeNCrypt auth\n");
            start_auth_vencrypt(vs);
            break;
 
 #ifdef CONFIG_VNC_SASL
        case VNC_AUTH_SASL:
-           VNC_DEBUG("Accept SASL auth\n");
            start_auth_sasl(vs);
            break;
 #endif /* CONFIG_VNC_SASL */
 
        default: /* Should not be possible, but just in case */
-           VNC_DEBUG("Reject auth %d server code bug\n", vs->auth);
+           trace_vnc_auth_fail(vs, vs->auth, "Unhandled auth method", "");
            vnc_write_u8(vs, 1);
            if (vs->minor >= 8) {
                static const char err[] = "Authentication failed";
@@ -2567,10 +2569,11 @@ static int protocol_version(VncState *vs, uint8_t *version, size_t len)
         vs->minor = 3;
 
     if (vs->minor == 3) {
+        trace_vnc_auth_start(vs, vs->auth);
         if (vs->auth == VNC_AUTH_NONE) {
-            VNC_DEBUG("Tell client auth none\n");
             vnc_write_u32(vs, vs->auth);
             vnc_flush(vs);
+            trace_vnc_auth_pass(vs, vs->auth);
             start_client_init(vs);
        } else if (vs->auth == VNC_AUTH_VNC) {
             VNC_DEBUG("Tell client VNC auth\n");
@@ -2578,13 +2581,13 @@ static int protocol_version(VncState *vs, uint8_t *version, size_t len)
             vnc_flush(vs);
             start_auth_vnc(vs);
        } else {
-            VNC_DEBUG("Unsupported auth %d for protocol 3.3\n", vs->auth);
+            trace_vnc_auth_fail(vs, vs->auth,
+                                "Unsupported auth method for v3.3", "");
             vnc_write_u32(vs, VNC_AUTH_INVALID);
             vnc_flush(vs);
             vnc_client_error(vs);
        }
     } else {
-        VNC_DEBUG("Telling client we support auth %d\n", vs->auth);
         vnc_write_u8(vs, 1); /* num auth */
         vnc_write_u8(vs, vs->auth);
         vnc_read_when(vs, protocol_client_auth, 1);
@@ -2624,8 +2627,8 @@ static int vnc_refresh_lossy_rect(VncDisplay *vd, int x, int y)
     int stx = x / VNC_STAT_RECT;
     int has_dirty = 0;
 
-    y = y / VNC_STAT_RECT * VNC_STAT_RECT;
-    x = x / VNC_STAT_RECT * VNC_STAT_RECT;
+    y = QEMU_ALIGN_DOWN(y, VNC_STAT_RECT);
+    x = QEMU_ALIGN_DOWN(x, VNC_STAT_RECT);
 
     QTAILQ_FOREACH(vs, &vd->clients, next) {
         int j;
@@ -2714,8 +2717,8 @@ double vnc_update_freq(VncState *vs, int x, int y, int w, int h)
     double total = 0;
     int num = 0;
 
-    x =  (x / VNC_STAT_RECT) * VNC_STAT_RECT;
-    y =  (y / VNC_STAT_RECT) * VNC_STAT_RECT;
+    x =  QEMU_ALIGN_DOWN(x, VNC_STAT_RECT);
+    y =  QEMU_ALIGN_DOWN(y, VNC_STAT_RECT);
 
     for (j = y; j <= y + h; j += VNC_STAT_RECT) {
         for (i = x; i <= x + w; i += VNC_STAT_RECT) {
@@ -2781,7 +2784,7 @@ static int vnc_refresh_server_surface(VncDisplay *vd)
             PIXMAN_FORMAT_BPP(pixman_image_get_format(vd->guest.fb));
         guest_row0 = (uint8_t *)pixman_image_get_data(vd->guest.fb);
         guest_stride = pixman_image_get_stride(vd->guest.fb);
-        guest_ll = pixman_image_get_width(vd->guest.fb) * ((guest_bpp + 7) / 8);
+        guest_ll = pixman_image_get_width(vd->guest.fb) * (DIV_ROUND_UP(guest_bpp, 8));
     }
     line_bytes = MIN(server_stride, guest_ll);
 
@@ -2884,6 +2887,7 @@ static void vnc_connect(VncDisplay *vd, QIOChannelSocket *sioc,
     bool first_client = QTAILQ_EMPTY(&vd->clients);
     int i;
 
+    trace_vnc_client_connect(vs, sioc);
     vs->sioc = sioc;
     object_ref(OBJECT(vs->sioc));
     vs->ioc = QIO_CHANNEL(sioc);
@@ -2931,6 +2935,9 @@ static void vnc_connect(VncDisplay *vd, QIOChannelSocket *sioc,
     VNC_DEBUG("New client on socket %p\n", vs->sioc);
     update_displaychangelistener(&vd->dcl, VNC_REFRESH_INTERVAL_BASE);
     qio_channel_set_blocking(vs->ioc, false, NULL);
+    if (vs->ioc_tag) {
+        g_source_remove(vs->ioc_tag);
+    }
     if (websocket) {
         vs->websocket = 1;
         if (vd->tlscreds) {
@@ -3937,12 +3944,14 @@ void vnc_display_open(const char *id, Error **errp)
                                sasl, false, errp) < 0) {
         goto fail;
     }
+    trace_vnc_auth_init(vd, 0, vd->auth, vd->subauth);
 
     if (vnc_display_setup_auth(&vd->ws_auth, &vd->ws_subauth,
                                vd->tlscreds, password,
                                sasl, true, errp) < 0) {
         goto fail;
     }
+    trace_vnc_auth_init(vd, 1, vd->ws_auth, vd->ws_subauth);
 
 #ifdef CONFIG_VNC_SASL
     if ((saslErr = sasl_server_init(NULL, "qemu")) != SASL_OK) {

@@ -194,9 +194,11 @@ static void m24cxx_realize(DeviceState *dev, Error **errp)
     }
 }
 
-static void m24cxx_pre_save(void *opaque)
+static int m24cxx_pre_save(void *opaque)
 {
     m24cxx_sync((I2CSlave *)opaque);
+
+    return 0;
 }
 
 static const VMStateDescription vmstate_m24cxx = {

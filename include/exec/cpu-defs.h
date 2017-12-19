@@ -142,6 +142,7 @@ typedef struct CPUIOTLBEntry {
     CPUIOTLBEntry iotlb[NB_MMU_MODES][CPU_TLB_SIZE];                    \
     CPUIOTLBEntry iotlb_v[NB_MMU_MODES][CPU_VTLB_SIZE];                 \
     CPUIOTLBEntry memattr[NB_MEM_ATTR];                                 \
+    size_t tlb_flush_count;                                             \
     target_ulong tlb_flush_addr;                                        \
     target_ulong tlb_flush_mask;                                        \
     target_ulong vtlb_index;                                            \

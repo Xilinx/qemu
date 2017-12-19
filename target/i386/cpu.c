@@ -51,6 +51,8 @@
 #include "hw/i386/apic_internal.h"
 #endif
 
+#include "disas/capstone.h"
+
 
 /* Cache topology CPUID constants: */
 
@@ -345,7 +347,7 @@ static FeatureWordInfo feature_word_info[FEATURE_WORDS] = {
         .feat_names = {
             "kvmclock", "kvm-nopiodelay", "kvm-mmu", "kvmclock",
             "kvm-asyncpf", "kvm-steal-time", "kvm-pv-eoi", "kvm-pv-unhalt",
-            NULL, NULL, NULL, NULL,
+            NULL, "kvm-pv-tlb-flush", NULL, NULL,
             NULL, NULL, NULL, NULL,
             NULL, NULL, NULL, NULL,
             NULL, NULL, NULL, NULL,
@@ -704,9 +706,6 @@ void host_vendor_fms(char *vendor, int *family, int *model, int *stepping)
 }
 
 /* CPU class name definitions: */
-
-#define X86_CPU_TYPE_SUFFIX "-" TYPE_X86_CPU
-#define X86_CPU_TYPE_NAME(name) (name X86_CPU_TYPE_SUFFIX)
 
 /* Return type name for a given CPU model name
  * Caller is responsible for freeing the returned string.
@@ -1522,6 +1521,50 @@ static X86CPUDefinition builtin_x86_defs[] = {
         .xlevel = 0x8000001A,
         .model_id = "AMD Opteron 63xx class CPU",
     },
+    {
+        .name = "EPYC",
+        .level = 0xd,
+        .vendor = CPUID_VENDOR_AMD,
+        .family = 23,
+        .model = 1,
+        .stepping = 2,
+        .features[FEAT_1_EDX] =
+            CPUID_SSE2 | CPUID_SSE | CPUID_FXSR | CPUID_MMX | CPUID_CLFLUSH |
+            CPUID_PSE36 | CPUID_PAT | CPUID_CMOV | CPUID_MCA | CPUID_PGE |
+            CPUID_MTRR | CPUID_SEP | CPUID_APIC | CPUID_CX8 | CPUID_MCE |
+            CPUID_PAE | CPUID_MSR | CPUID_TSC | CPUID_PSE | CPUID_DE |
+            CPUID_VME | CPUID_FP87,
+        .features[FEAT_1_ECX] =
+            CPUID_EXT_RDRAND | CPUID_EXT_F16C | CPUID_EXT_AVX |
+            CPUID_EXT_XSAVE | CPUID_EXT_AES |  CPUID_EXT_POPCNT |
+            CPUID_EXT_MOVBE | CPUID_EXT_SSE42 | CPUID_EXT_SSE41 |
+            CPUID_EXT_CX16 | CPUID_EXT_FMA | CPUID_EXT_SSSE3 |
+            CPUID_EXT_MONITOR | CPUID_EXT_PCLMULQDQ | CPUID_EXT_SSE3,
+        .features[FEAT_8000_0001_EDX] =
+            CPUID_EXT2_LM | CPUID_EXT2_RDTSCP | CPUID_EXT2_PDPE1GB |
+            CPUID_EXT2_FFXSR | CPUID_EXT2_MMXEXT | CPUID_EXT2_NX |
+            CPUID_EXT2_SYSCALL,
+        .features[FEAT_8000_0001_ECX] =
+            CPUID_EXT3_OSVW | CPUID_EXT3_3DNOWPREFETCH |
+            CPUID_EXT3_MISALIGNSSE | CPUID_EXT3_SSE4A | CPUID_EXT3_ABM |
+            CPUID_EXT3_CR8LEG | CPUID_EXT3_SVM | CPUID_EXT3_LAHF_LM,
+        .features[FEAT_7_0_EBX] =
+            CPUID_7_0_EBX_FSGSBASE | CPUID_7_0_EBX_BMI1 | CPUID_7_0_EBX_AVX2 |
+            CPUID_7_0_EBX_SMEP | CPUID_7_0_EBX_BMI2 | CPUID_7_0_EBX_RDSEED |
+            CPUID_7_0_EBX_ADX | CPUID_7_0_EBX_SMAP | CPUID_7_0_EBX_CLFLUSHOPT |
+            CPUID_7_0_EBX_SHA_NI,
+        /* Missing: XSAVES (not supported by some Linux versions,
+         * including v4.1 to v4.12).
+         * KVM doesn't yet expose any XSAVES state save component.
+         */
+        .features[FEAT_XSAVE] =
+            CPUID_XSAVE_XSAVEOPT | CPUID_XSAVE_XSAVEC |
+            CPUID_XSAVE_XGETBV1,
+        .features[FEAT_6_EAX] =
+            CPUID_6_EAX_ARAT,
+        .xlevel = 0x8000000A,
+        .model_id = "AMD EPYC Processor",
+    },
 };
 
 typedef struct PropValue {
@@ -1722,12 +1765,12 @@ static void report_unavailable_features(FeatureWord w, uint32_t mask)
         if ((1UL << i) & mask) {
             const char *reg = get_register_name_32(f->cpuid_reg);
             assert(reg);
-            fprintf(stderr, "warning: %s doesn't support requested feature: "
-                "CPUID.%02XH:%s%s%s [bit %d]\n",
-                kvm_enabled() ? "host" : "TCG",
-                f->cpuid_eax, reg,
-                f->feat_names[i] ? "." : "",
-                f->feat_names[i] ? f->feat_names[i] : "", i);
+            warn_report("%s doesn't support requested feature: "
+                        "CPUID.%02XH:%s%s%s [bit %d]",
+                        kvm_enabled() ? "host" : "TCG",
+                        f->cpuid_eax, reg,
+                        f->feat_names[i] ? "." : "",
+                        f->feat_names[i] ? f->feat_names[i] : "", i);
         }
     }
 }
@@ -2454,7 +2497,7 @@ static QDict *x86_cpu_static_props(void)
 
     d = qdict_new();
     for (i = 0; props[i]; i++) {
-        qdict_put(d, props[i], qnull());
+        qdict_put_null(d, props[i]);
     }
 
     for (w = 0; w < FEATURE_WORDS; w++) {
@@ -2464,7 +2507,7 @@ static QDict *x86_cpu_static_props(void)
             if (!fi->feat_names[bit]) {
                 continue;
             }
-            qdict_put(d, fi->feat_names[bit], qnull());
+            qdict_put_null(d, fi->feat_names[bit]);
         }
     }
 
@@ -2640,11 +2683,6 @@ static gchar *x86_gdb_arch_name(CPUState *cs)
 #else
     return g_strdup("i386");
 #endif
-}
-
-X86CPU *cpu_x86_init(const char *cpu_model)
-{
-    return X86_CPU(cpu_generic_init(TYPE_X86_CPU, cpu_model));
 }
 
 static void x86_cpu_cpudef_class_init(ObjectClass *oc, void *data)
@@ -3683,10 +3721,6 @@ static void x86_cpu_realizefn(DeviceState *dev, Error **errp)
         return;
     }
 
-    if (tcg_enabled()) {
-        tcg_x86_init();
-    }
-
 #ifndef CONFIG_USER_ONLY
     qemu_register_reset(x86_cpu_machine_reset_cb, cpu);
 
@@ -3702,9 +3736,10 @@ static void x86_cpu_realizefn(DeviceState *dev, Error **errp)
 
 #ifndef CONFIG_USER_ONLY
     if (tcg_enabled()) {
-        AddressSpace *as_normal = address_space_init_shareable(cs->memory,
-                                                               "cpu-memory");
+        AddressSpace *as_normal = g_new0(AddressSpace, 1);
         AddressSpace *as_smm = g_new(AddressSpace, 1);
+
+        address_space_init(as_normal, cs->memory, "cpu-memory");
 
         cpu->cpu_as_mem = g_new(MemoryRegion, 1);
         cpu->cpu_as_root = g_new(MemoryRegion, 1);
@@ -3895,12 +3930,12 @@ static GuestPanicInformation *x86_cpu_get_crash_info(CPUState *cs)
     CPUX86State *env = &cpu->env;
     GuestPanicInformation *panic_info = NULL;
 
-    if (env->features[FEAT_HYPERV_EDX] & HV_X64_GUEST_CRASH_MSR_AVAILABLE) {
+    if (env->features[FEAT_HYPERV_EDX] & HV_GUEST_CRASH_MSR_AVAILABLE) {
         panic_info = g_malloc0(sizeof(GuestPanicInformation));
 
         panic_info->type = GUEST_PANIC_INFORMATION_TYPE_HYPER_V;
 
-        assert(HV_X64_MSR_CRASH_PARAMS >= 5);
+        assert(HV_CRASH_PARAMS >= 5);
         panic_info->u.hyper_v.arg1 = env->msr_hv_crash_params[0];
         panic_info->u.hyper_v.arg2 = env->msr_hv_crash_params[1];
         panic_info->u.hyper_v.arg3 = env->msr_hv_crash_params[2];
@@ -4060,6 +4095,24 @@ static bool x86_cpu_has_work(CPUState *cs)
             !(env->hflags & HF_SMM_MASK));
 }
 
+static void x86_disas_set_info(CPUState *cs, disassemble_info *info)
+{
+    X86CPU *cpu = X86_CPU(cs);
+    CPUX86State *env = &cpu->env;
+
+    info->mach = (env->hflags & HF_CS64_MASK ? bfd_mach_x86_64
+                  : env->hflags & HF_CS32_MASK ? bfd_mach_i386_i386
+                  : bfd_mach_i386_i8086);
+    info->print_insn = print_insn_i386;
+
+    info->cap_arch = CS_ARCH_X86;
+    info->cap_mode = (env->hflags & HF_CS64_MASK ? CS_MODE_64
+                      : env->hflags & HF_CS32_MASK ? CS_MODE_32
+                      : CS_MODE_16);
+    info->cap_insn_unit = 1;
+    info->cap_insn_split = 8;
+}
+
 static Property x86_cpu_properties[] = {
 #ifdef CONFIG_USER_ONLY
     /* apic_id = 0 by default for *-user, see commit 9886e834 */
@@ -4106,6 +4159,20 @@ static Property x86_cpu_properties[] = {
                      false),
     DEFINE_PROP_BOOL("vmware-cpuid-freq", X86CPU, vmware_cpuid_freq, true),
     DEFINE_PROP_BOOL("tcg-cpuid", X86CPU, expose_tcg, true),
+
+    /*
+     * From "Requirements for Implementing the Microsoft
+     * Hypervisor Interface":
+     * https://docs.microsoft.com/en-us/virtualization/hyper-v-on-windows/reference/tlfs
+     *
+     * "Starting with Windows Server 2012 and Windows 8, if
+     * CPUID.40000005.EAX contains a value of -1, Windows assumes that
+     * the hypervisor imposes no specific limit to the number of VPs.
+     * In this case, Windows Server 2012 guest VMs may use more than
+     * 64 VPs, up to the maximum supported number of processors applicable
+     * to the specific Windows version being used."
+     */
+    DEFINE_PROP_INT32("x-hv-max-vps", X86CPU, hv_max_vps, -1),
     DEFINE_PROP_END_OF_LIST()
 };
 
@@ -4165,6 +4232,10 @@ static void x86_cpu_common_class_init(ObjectClass *oc, void *data)
 #endif
     cc->cpu_exec_enter = x86_cpu_exec_enter;
     cc->cpu_exec_exit = x86_cpu_exec_exit;
+#ifdef CONFIG_TCG
+    cc->tcg_initialize = tcg_x86_init;
+#endif
+    cc->disas_set_info = x86_disas_set_info;
 
     dc->user_creatable = true;
 }

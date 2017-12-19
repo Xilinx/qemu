@@ -25,7 +25,7 @@
 
 #include "hw/fdt_generic_devices.h"
 
-static void gic_pre_save(void *opaque)
+static int gic_pre_save(void *opaque)
 {
     GICState *s = (GICState *)opaque;
     ARMGICCommonClass *c = ARM_GIC_COMMON_GET_CLASS(s);
@@ -33,6 +33,8 @@ static void gic_pre_save(void *opaque)
     if (c->pre_save) {
         c->pre_save(s);
     }
+
+    return 0;
 }
 
 static int gic_post_load(void *opaque, int version_id)

@@ -51,8 +51,6 @@
 
 #define QTEST_RUNNING (qtest_enabled() && qtest_driver())
 
-#define MAX_CPUS 4
-
 #define ZYNQ7000_MPCORE_PERIPHBASE 0xF8F00000
 
 #define SMP_BOOT_ADDR 0xfffffff0
@@ -599,14 +597,19 @@ static void arm_generic_fdt_machine_init(MachineClass *mc)
 {
     mc->desc = "ARM device tree driven machine model";
     mc->init = arm_generic_fdt_init;
-    mc->max_cpus = MAX_CPUS;
+    mc->ignore_memory_transaction_failures = true;
+    /* 4 A53s and 2 R5s */
+    mc->max_cpus = 6;
+    mc->default_cpus = 6;
 }
 
 static void arm_generic_fdt_7000_machine_init(MachineClass *mc)
 {
     mc->desc = "ARM device tree driven machine model for the Zynq-7000";
     mc->init = arm_generic_fdt_7000_init;
-    mc->max_cpus = MAX_CPUS;
+    mc->ignore_memory_transaction_failures = true;
+    mc->max_cpus = 2;
+    mc->default_cpus = 2;
 }
 
 /* Deprecated, remove this */
@@ -614,7 +617,9 @@ static void arm_generic_fdt_dep_machine_init(MachineClass *mc)
 {
     mc->desc = "Deprecated ARM device tree driven machine for the Zynq-7000";
     mc->init = arm_generic_fdt_7000_init;
-    mc->max_cpus = MAX_CPUS;
+    mc->ignore_memory_transaction_failures = true;
+    mc->max_cpus = 2;
+    mc->default_cpus = 2;
 }
 
 fdt_register_compatibility_opaque(pflash_cfi01_fdt_init,

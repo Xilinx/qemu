@@ -420,8 +420,12 @@ static void xilinx_devcfg_realize(DeviceState *dev, Error **errp)
                               r->access->name, 4);
         memory_region_add_subregion(&s->iomem, r->access->decode.addr, &r->mem);
 
-        s->dma_as = s->dma_mr ? address_space_init_shareable(s->dma_mr, NULL)
-                              : &address_space_memory;
+        if (s->dma_mr) {
+            s->dma_as = g_malloc0(sizeof *as);
+            address_space_init_shareable(s->dma_as, s->dma_mr, NULL)
+        } else {
+            s->dma_as = &address_space_memory;
+        }
     }
 }
 

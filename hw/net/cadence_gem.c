@@ -951,9 +951,8 @@ static ssize_t gem_receive(NetClientState *nc, const uint8_t *buf, size_t size)
             return -1;
         }
 
-        DB_PRINT("copy %d bytes to 0x%" PRIx64 "\n",
-                 MIN(bytes_to_copy, rxbufsize),
-                 rx_desc_get_buffer(s, s->rx_desc[q]));
+        DB_PRINT("copy %d bytes to 0x%x\n", MIN(bytes_to_copy, rxbufsize),
+                rx_desc_get_buffer(s->rx_desc[q]));
 
         /* Copy packet data to emulated DMA buffer */
         address_space_rw(s->dma_as, rx_desc_get_buffer(s, s->rx_desc[q]) +
@@ -1125,7 +1124,7 @@ static void gem_transmit(CadenceGEMState *s)
             if (tx_desc_get_length(desc) > sizeof(tx_packet) -
                                                (p - tx_packet)) {
                 DB_PRINT("TX descriptor @ 0x%x too large: size 0x%x space " \
-                         "0x%lx\n", (unsigned)packet_desc_addr,
+                         "0x%x\n", (unsigned)packet_desc_addr,
                          (unsigned)tx_desc_get_length(desc),
                          sizeof(tx_packet) - (p - tx_packet));
                 break;
@@ -1217,6 +1216,29 @@ static void gem_transmit(CadenceGEMState *s)
             gem_update_int_status(s);
         }
     }
+}
+
+static void gem_phy_reset(CadenceGEMState *s)
+{
+    memset(&s->phy_regs[0], 0, sizeof(s->phy_regs));
+    s->phy_regs[PHY_REG_CONTROL] = 0x1140;
+    s->phy_regs[PHY_REG_STATUS] = 0x7969;
+    s->phy_regs[PHY_REG_PHYID1] = 0x0141;
+    s->phy_regs[PHY_REG_PHYID2] = 0x0CC2;
+    s->phy_regs[PHY_REG_ANEGADV] = 0x01E1;
+    s->phy_regs[PHY_REG_LINKPABIL] = 0xCDE1;
+    s->phy_regs[PHY_REG_ANEGEXP] = 0x000F;
+    s->phy_regs[PHY_REG_NEXTP] = 0x2001;
+    s->phy_regs[PHY_REG_LINKPNEXTP] = 0x40E6;
+    s->phy_regs[PHY_REG_100BTCTRL] = 0x0300;
+    s->phy_regs[PHY_REG_1000BTSTAT] = 0x7C00;
+    s->phy_regs[PHY_REG_EXTSTAT] = 0x3000;
+    s->phy_regs[PHY_REG_PHYSPCFC_CTL] = 0x0078;
+    s->phy_regs[PHY_REG_PHYSPCFC_ST] = 0x7C00;
+    s->phy_regs[PHY_REG_EXT_PHYSPCFC_CTL] = 0x0C60;
+    s->phy_regs[PHY_REG_LED] = 0x4100;
+    s->phy_regs[PHY_REG_EXT_PHYSPCFC_CTL2] = 0x000A;
+    s->phy_regs[PHY_REG_EXT_PHYSPCFC_ST] = 0x848B;
 
     phy_update_link(s);
 }
@@ -1253,13 +1275,59 @@ static void gem_reset(DeviceState *d)
         s->sar_active[i] = false;
     }
 
-    phy_update_link(s);
+    if (s->mdio) {
+        phy_update_link(s);
+    } else {
+        gem_phy_reset(s);
+    }
+
     gem_update_int_status(s);
+}
+
+static uint16_t gem_phy_read(CadenceGEMState *s, unsigned reg_num)
+{
+    DB_PRINT("reg: %d value: 0x%04x\n", reg_num, s->phy_regs[reg_num]);
+
+    assert(!s->mdio);
+
+    return s->phy_regs[reg_num];
+}
+
+static void gem_phy_write(CadenceGEMState *s, unsigned reg_num, uint16_t val)
+{
+    DB_PRINT("reg: %d value: 0x%04x\n", reg_num, val);
+
+    assert(!s->mdio);
+
+    switch (reg_num) {
+    case PHY_REG_CONTROL:
+        if (val & PHY_REG_CONTROL_RST) {
+            /* Phy reset */
+            gem_phy_reset(s);
+            val &= ~(PHY_REG_CONTROL_RST | PHY_REG_CONTROL_LOOP);
+            s->phy_loop = 0;
+        }
+        if (val & PHY_REG_CONTROL_ANEG) {
+            /* Complete autonegotiation immediately */
+            val &= ~PHY_REG_CONTROL_ANEG;
+            s->phy_regs[PHY_REG_STATUS] |= PHY_REG_STATUS_ANEGCMPL;
+        }
+        if (val & PHY_REG_CONTROL_LOOP) {
+            DB_PRINT("PHY placed in loopback\n");
+            s->phy_loop = 1;
+        } else {
+            s->phy_loop = 0;
+        }
+        break;
+    }
+    s->phy_regs[reg_num] = val;
 }
 
 static void gem_phy_loopback_setup(CadenceGEMState *s, unsigned reg_num,
                                    uint16_t val)
 {
+    assert(s->mdio);
+
     switch (reg_num) {
     case PHY_REG_CONTROL:
         if (val & PHY_REG_CONTROL_RST) {
@@ -1301,10 +1369,16 @@ static uint64_t gem_read(void *opaque, hwaddr offset, unsigned size)
             uint32_t phy_addr, reg_num;
 
             phy_addr = (retval & GEM_PHYMNTNC_ADDR) >> GEM_PHYMNTNC_ADDR_SHFT;
-            reg_num = (retval & GEM_PHYMNTNC_REG) >> GEM_PHYMNTNC_REG_SHIFT;
-            retval &= 0xFFFF0000;
             if (s->mdio) {
+                reg_num = (retval & GEM_PHYMNTNC_REG) >> GEM_PHYMNTNC_REG_SHIFT;
+                retval &= 0xFFFF0000;
                 retval |= s->mdio->read(s->mdio, phy_addr, reg_num);
+            } else if (phy_addr == BOARD_PHY_ADDRESS || phy_addr == 0) {
+                reg_num = (retval & GEM_PHYMNTNC_REG) >> GEM_PHYMNTNC_REG_SHIFT;
+                retval &= 0xFFFF0000;
+                retval |= gem_phy_read(s, reg_num);
+            } else {
+                retval |= 0xFFFF; /* No device at this address */
             }
         }
         break;
@@ -1419,10 +1493,13 @@ static void gem_write(void *opaque, hwaddr offset, uint64_t val,
             uint32_t phy_addr, reg_num;
 
             phy_addr = (val & GEM_PHYMNTNC_ADDR) >> GEM_PHYMNTNC_ADDR_SHFT;
-            reg_num = (val & GEM_PHYMNTNC_REG) >> GEM_PHYMNTNC_REG_SHIFT;
-            gem_phy_loopback_setup(s, reg_num, val);
             if (s->mdio) {
+                reg_num = (val & GEM_PHYMNTNC_REG) >> GEM_PHYMNTNC_REG_SHIFT;
+                gem_phy_loopback_setup(s, reg_num, val);
                 s->mdio->write(s->mdio, phy_addr, reg_num, val);
+            } else if (phy_addr == BOARD_PHY_ADDRESS || phy_addr == 0) {
+                reg_num = (val & GEM_PHYMNTNC_REG) >> GEM_PHYMNTNC_REG_SHIFT;
+                gem_phy_write(s, reg_num, val);
             }
         }
         break;
@@ -1459,8 +1536,12 @@ static void gem_realize(DeviceState *dev, Error **errp)
     CadenceGEMState *s = CADENCE_GEM(dev);
     int i;
 
-    s->dma_as = s->dma_mr ? address_space_init_shareable(s->dma_mr, NULL)
-                          : &address_space_memory;
+    if (s->dma_mr) {
+        s->dma_as = g_malloc0(sizeof(AddressSpace));
+        address_space_init(s->dma_as, s->dma_mr, NULL);
+    } else {
+        s->dma_as = &address_space_memory;
+    }
 
     if (s->num_priority_queues == 0 ||
         s->num_priority_queues > MAX_PRIORITY_QUEUES) {

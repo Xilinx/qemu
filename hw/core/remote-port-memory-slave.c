@@ -119,8 +119,12 @@ static void rp_memory_slave_realize(DeviceState *dev, Error **errp)
     s->peer = rp_get_peer(s->rp);
 
     /* FIXME: do something with per paster address spaces */
-    s->as = s->mr ? address_space_init_shareable(s->mr, NULL)
-                  : &address_space_memory;
+    if (s->mr) {
+        s->as = g_malloc0(sizeof(AddressSpace));
+        address_space_init(s->as, s->mr, NULL);
+    } else {
+        s->as = &address_space_memory;
+    }
 }
 
 static void rp_memory_slave_write(RemotePortDevice *s, struct rp_pkt *pkt)

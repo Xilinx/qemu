@@ -1621,8 +1621,12 @@ static void pl330_realize(DeviceState *dev, Error **errp)
     pl330_queue_init(&s->write_queue, s->wr_q_dep, s);
     pl330_fifo_init(&s->fifo, s->data_width / 4 * s->data_buffer_dep);
 
-    s->dma_as = s->dma_mr ? address_space_init_shareable(s->dma_mr, NULL)
-                          : &address_space_memory;
+    if (s->dma_mr) {
+        s->dma_as = g_malloc0(sizeof(AddressSpace));
+        address_space_init(s->dma_as, s->dma_mr, NULL);
+    } else {
+        s->dma_as = &address_space_memory;
+    }
 }
 
 static void pl330_init(Object *obj)
