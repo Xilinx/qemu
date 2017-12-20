@@ -197,6 +197,7 @@
 
 /* 16MB per linear region */
 #define LQSPI_ADDRESS_BITS 24
+#define LQSPI_HACK_CHUNK_SIZE (1 * 1024 * 1024)
 
 #define SNOOP_CHECKING 0xFF
 #define SNOOP_ADDR 0xF0
@@ -245,7 +246,6 @@ static void xlnx_zynqmp_qspips_update_cs_lines(XlnxZynqMPQSPIPS *s)
 static void xilinx_spips_update_cs_lines(XilinxSPIPS *s)
 {
     int field = ~((s->regs[R_CONFIG] & CS) >> CS_SHIFT);
-    int i;
 
     /* In dual parallel, mirror low CS to both */
     if (num_effective_busses(s) == 2) {
@@ -260,37 +260,16 @@ static void xilinx_spips_update_cs_lines(XilinxSPIPS *s)
         /* change from CS0 to CS1 */
         field <<= 1;
     }
+    /* Auto CS */
+    if (!(s->regs[R_CONFIG] & MANUAL_CS) &&
+        fifo8_is_empty(&s->tx_fifo)) {
+        field = 0;
+    }
     xilinx_spips_update_cs(s, field);
-
-    for (i = 0; i < s->num_cs; i++) {
-        bool old_state = s->cs_lines_state[i];
-        bool new_state = field & (1 << i);
-
-        if (old_state != new_state) {
-            s->cs_lines_state[i] = new_state;
-            s->rx_discard = ARRAY_FIELD_EX32(s->regs, CMND, RX_DISCARD);
-            DB_PRINT_L(0, "%sselecting slave %d\n", new_state ? "" : "de", i);
-        }
-        qemu_set_irq(s->cs_lines[i], !new_state);
-    }
-
-    if (!(field & ((1 << s->num_cs) - 1))) {
-        s->snoop_state = SNOOP_CHECKING;
-        s->link_state = 1;
-        s->link_state_next = 1;
-        s->link_state_next_when = 0;
-        DB_PRINT_L(1, "moving to snoop check state\n");
-    }
 }
 
 static void xilinx_spips_update_ixr(XilinxSPIPS *s)
 {
-    bool zynqmp = false;
-
-    if (object_dynamic_cast(OBJECT(s), TYPE_XLNX_ZYNQMP_QSPIPS)) {
-        zynqmp = true;
-    }
-
     if (!(s->regs[R_LQSPI_CFG] & LQSPI_CFG_LQ_MODE)) {
         s->regs[R_INTR_STATUS] &= ~IXR_SELF_CLEAR;
         s->regs[R_INTR_STATUS] |=
@@ -298,10 +277,8 @@ static void xilinx_spips_update_ixr(XilinxSPIPS *s)
             (s->rx_fifo.num >= s->regs[R_RX_THRES] ?
                                     IXR_RX_FIFO_NOT_EMPTY : 0) |
             (fifo8_is_full(&s->tx_fifo) ? IXR_TX_FIFO_FULL : 0) |
+            (fifo8_is_empty(&s->tx_fifo) ? IXR_TX_FIFO_EMPTY : 0) |
             (s->tx_fifo.num < s->regs[R_TX_THRES] ? IXR_TX_FIFO_NOT_FULL : 0);
-        if (zynqmp) {
-            s->regs[R_INTR_STATUS] |= fifo8_is_empty(&s->tx_fifo) ? IXR_TX_FIFO_EMPTY : 0;
-        }
     }
     int new_irqline = !!(s->regs[R_INTR_MASK] & s->regs[R_INTR_STATUS] &
                                                                 IXR_ALL);
@@ -432,7 +409,6 @@ static void xlnx_zynqmp_qspips_flush_fifo_g(XlnxZynqMPQSPIPS *s)
         int num_stripes = 1;
         uint8_t busses;
         int i;
-        uint8_t spi_mode = ARRAY_FIELD_EX32(s->regs, GQSPI_GF_SNAPSHOT, SPI_MODE);
 
         if (!s->regs[R_GQSPI_DATA_STS]) {
             uint8_t imm;
@@ -464,12 +440,6 @@ static void xlnx_zynqmp_qspips_flush_fifo_g(XlnxZynqMPQSPIPS *s)
             } else {
                 s->regs[R_GQSPI_DATA_STS] = imm;
             }
-            /* Dummy transfers are in terms of clocks rather than bytes */
-            if (!ARRAY_FIELD_EX32(s->regs, GQSPI_GF_SNAPSHOT, TRANSMIT) &&
-                !ARRAY_FIELD_EX32(s->regs, GQSPI_GF_SNAPSHOT, RECIEVE)) {
-                s->regs[R_GQSPI_DATA_STS] *= 1 << (spi_mode - 1);
-                s->regs[R_GQSPI_DATA_STS] /= 8;
-            }
         }
         /* Zero length transfer check */
         if (!s->regs[R_GQSPI_DATA_STS]) {
@@ -480,11 +450,10 @@ static void xlnx_zynqmp_qspips_flush_fifo_g(XlnxZynqMPQSPIPS *s)
             /* No space in RX fifo for transfer - try again later */
             return;
         }
-
-        num_stripes = ARRAY_FIELD_EX32(s->regs, GQSPI_GF_SNAPSHOT, STRIPE) ? 2 : 1;
-        if (!ARRAY_FIELD_EX32(s->regs, GQSPI_GF_SNAPSHOT, TRANSMIT) &&
-            !ARRAY_FIELD_EX32(s->regs, GQSPI_GF_SNAPSHOT, RECIEVE)) {
-            num_stripes = 1;
+        if (ARRAY_FIELD_EX32(s->regs, GQSPI_GF_SNAPSHOT, STRIPE) &&
+            (ARRAY_FIELD_EX32(s->regs, GQSPI_GF_SNAPSHOT, TRANSMIT) ||
+             ARRAY_FIELD_EX32(s->regs, GQSPI_GF_SNAPSHOT, RECIEVE))) {
+            num_stripes = 2;
         }
         if (!ARRAY_FIELD_EX32(s->regs, GQSPI_GF_SNAPSHOT, DATA_XFER)) {
             tx_rx[0] = ARRAY_FIELD_EX32(s->regs,
@@ -1028,14 +997,15 @@ static void xilinx_qspips_write(void *opaque, hwaddr addr,
     XilinxQSPIPS *q = XILINX_QSPIPS(opaque);
     XilinxSPIPS *s = XILINX_SPIPS(opaque);
 
+    uint32_t lqspi_cfg_old = s->regs[R_LQSPI_CFG];
+
     xilinx_spips_write(opaque, addr, value, size);
     addr >>= 2;
 
-    if (addr == R_LQSPI_CFG) {
-        xilinx_qspips_invalidate_mmio_ptr(q);
+    if (addr == R_LQSPI_CFG &&
+               ((lqspi_cfg_old ^ value) & ~LQSPI_CFG_U_PAGE)) {
         q->lqspi_cached_addr = ~0ULL;
         if (q->lqspi_size) {
-#define LQSPI_HACK_CHUNK_SIZE (1 * 1024 * 1024)
             uint32_t src = q->lqspi_src;
             uint32_t dst = q->lqspi_dst;
             uint32_t btt = q->lqspi_size;
@@ -1408,6 +1378,9 @@ static const VMStateDescription vmstate_xlnx_zynqmp_qspips = {
 };
 
 static Property xilinx_qspips_properties[] = {
+    DEFINE_PROP_UINT32("lqspi-size", XilinxQSPIPS, lqspi_size, 0),
+    DEFINE_PROP_UINT32("lqspi-src", XilinxQSPIPS, lqspi_src, 0),
+    DEFINE_PROP_UINT32("lqspi-dst", XilinxQSPIPS, lqspi_dst, 0),
     /* We had to turn this off for 2.10 as it is not compatible with migration.
      * It can be enabled but will prevent the device to be migrated.
      * This will go aways when a fix will be released.
@@ -1423,6 +1396,17 @@ static Property xilinx_spips_properties[] = {
     DEFINE_PROP_UINT8("num-txrx-bytes", XilinxSPIPS, num_txrx_bytes, 1),
     DEFINE_PROP_END_OF_LIST(),
 };
+
+static void xilinx_qspips_init(Object *obj)
+{
+    XilinxQSPIPS *q = XILINX_QSPIPS(obj);
+
+    object_property_add_link(obj, "dma", TYPE_MEMORY_REGION,
+                             (Object **) &q->hack_dma,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             &error_abort);
+}
 
 static void xilinx_qspips_class_init(ObjectClass *klass, void * data)
 {
@@ -1477,6 +1461,7 @@ static const TypeInfo xilinx_qspips_info = {
     .parent = TYPE_XILINX_SPIPS,
     .instance_size  = sizeof(XilinxQSPIPS),
     .class_init = xilinx_qspips_class_init,
+    .instance_init = xilinx_qspips_init,
 };
 
 static const TypeInfo xlnx_zynqmp_qspips_info = {
