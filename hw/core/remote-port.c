@@ -102,7 +102,7 @@ static inline int64_t rp_denormalize_clk(RemotePort *s, int64_t rclk)
 
 void rp_restart_sync_timer(RemotePort *s)
 {
-    if (!use_icount || !s->do_sync) {
+    if (!s->do_sync) {
         return;
     }
 
@@ -332,10 +332,6 @@ static void sync_timer_hit(void *opaque)
     int64_t clk;
     int64_t rclk;
     RemotePortDynPkt rsp;
-
-    if (!use_icount) {
-        hw_error("Sync timer without icount??\n");
-    }
 
     clk = rp_normalized_vmclk(s);
     if (s->sync.resp_timer_enabled) {
