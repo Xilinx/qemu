@@ -517,6 +517,13 @@ void HELPER(wfe)(CPUARMState *env)
     }
 }
 
+static void cpu_unhalt(CPUState *cpu, run_on_cpu_data data)
+{
+    assert(qemu_mutex_iothread_locked());
+    cpu->halted = 0;
+    cpu->exception_index = -1;
+}
+
 void HELPER(sev)(CPUARMState *env)
 {
     CPUState *cs = CPU(arm_env_get_cpu(env));
@@ -528,7 +535,7 @@ void HELPER(sev)(CPUARMState *env)
         if (i == cs || i->halt_pin || i->reset_pin || i->arch_halt_pin) {
             continue;
         }
-        cpu_reset_interrupt(i, CPU_INTERRUPT_HALT);
+        async_run_on_cpu(i, cpu_unhalt, RUN_ON_CPU_NULL);
     }
 }
 

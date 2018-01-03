@@ -3822,6 +3822,20 @@ err:
 
 #endif
 
+static void cpu_halt(CPUState *cpu, run_on_cpu_data data)
+{
+    assert(qemu_mutex_iothread_locked());
+    cpu->halted = 1;
+    cpu->exception_index = EXCP_HLT;
+}
+
+static void cpu_unhalt(CPUState *cpu, run_on_cpu_data data)
+{
+    assert(qemu_mutex_iothread_locked());
+    cpu->halted = 0;
+    cpu->exception_index = -1;
+}
+
 void cpu_halt_update(CPUState *cpu)
 {
     bool val;
@@ -3829,11 +3843,9 @@ void cpu_halt_update(CPUState *cpu)
     val = cpu->reset_pin || cpu->halt_pin || cpu->arch_halt_pin;
 
     if (val) {
-        cpu->halted = true;
-        cpu_interrupt(cpu, CPU_INTERRUPT_HALT);
+        async_run_on_cpu(cpu, cpu_halt, RUN_ON_CPU_NULL);
     } else {
-        cpu->halted = false;
-        cpu_reset_interrupt(cpu, CPU_INTERRUPT_HALT);
+        async_run_on_cpu(cpu, cpu_unhalt, RUN_ON_CPU_NULL);
     }
 }
 
