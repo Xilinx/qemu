@@ -3852,16 +3852,25 @@ void cpu_halt_update(CPUState *cpu)
 void cpu_reset_gpio(void *opaque, int irq, int level)
 {
     CPUState *cpu = CPU(opaque);
+    int old_reset_pin = cpu->reset_pin;
 
     if (level == cpu->reset_pin) {
         return;
     }
 
-    if (level || cpu->reset_pin) {
+    /* On hardware when the reset pin is asserted the CPU resets and stays
+     * in reset until the pin is lowered. As we don't have a reset state, we
+     * do it a little differently. If the reset_pin is being set high then
+     * cpu_halt_update() will halt the CPU, but it isn't reset. Once the pin
+     * is lowered we reset the CPU and then let it run, as long as no halt pin
+     * is set. This avoids us having to double reset, which can cause issues
+     * with MTTCG.
+     */
+    cpu->reset_pin = level;
+    if (old_reset_pin && !cpu->reset_pin) {
         cpu_reset(cpu);
     }
 
-    cpu->reset_pin = level;
     cpu_halt_update(cpu);
 }
 
