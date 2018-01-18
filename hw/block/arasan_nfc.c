@@ -383,7 +383,8 @@ static inline void arasan_nfc_do_dma(ArasanNFCState *s, bool rnw)
     while (DEP_AF_EX32(s->regs, CMD, DMA_EN) == 0x2 &&
            !(rnw ? fifo_is_empty : fifo_is_full)(&s->buffer) &&
            !s->dbb_blocked) {
-        uint32_t dbb_mask = ONES(s->regs[R_DMA_BUF_BOUNDARY] + 12);
+        uint32_t dbb_mask = MAKE_64BIT_MASK(0,
+                                            s->regs[R_DMA_BUF_BOUNDARY] + 12);
         uint8_t tmp;
 
         if (rnw) {
