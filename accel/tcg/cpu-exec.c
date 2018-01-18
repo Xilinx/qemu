@@ -642,7 +642,6 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
 static inline void cpu_loop_exec_tb(CPUState *cpu, TranslationBlock *tb,
                                     TranslationBlock **last_tb, int *tb_exit)
 {
-    CPUArchState *env = (CPUArchState *)cpu->env_ptr;
     uintptr_t ret;
     int32_t insns_left;
 
@@ -686,23 +685,6 @@ static inline void cpu_loop_exec_tb(CPUState *cpu, TranslationBlock *tb,
         }
     }
 #endif
-
-    if (qemu_etrace_mask(ETRACE_F_EXEC)) {
-        target_ulong cs_base, pc;
-        uint32_t flags;
-
-        if (tb_exit) {
-            /* TB early exit, ask for CPU state.  */
-            cpu_get_tb_cpu_state(env, &pc, &cs_base, &flags);
-        } else {
-            /* TB didn't exit, assume we ran all of it.  */
-            pc = tb->pc + tb->size;
-        }
-        etrace_dump_exec_end(&qemu_etracer,
-                             cpu->cpu_index, pc);
-    }
-
-    qemu_etracer.exec_start_valid = false;
 }
 
 /* main execution loop */
@@ -784,6 +766,24 @@ int cpu_exec(CPUState *cpu)
 
             tb = tb_find(cpu, last_tb, tb_exit, cflags);
             cpu_loop_exec_tb(cpu, tb, &last_tb, &tb_exit);
+
+            if (qemu_etrace_mask(ETRACE_F_EXEC)) {
+                target_ulong cs_base, pc;
+                uint32_t flags;
+
+                if (tb_exit) {
+                    /* TB early exit, ask for CPU state.  */
+                    cpu_get_tb_cpu_state(env, &pc, &cs_base, &flags);
+                } else {
+                    /* TB didn't exit, assume we ran all of it.  */
+                    pc = tb->pc + tb->size;
+                }
+                etrace_dump_exec_end(&qemu_etracer,
+                                     cpu->cpu_index, pc);
+            }
+
+            qemu_etracer.exec_start_valid = false;
+
             /* Try to align the host and virtual clocks
                if the guest is in advance */
             align_clocks(&sc, cpu);
