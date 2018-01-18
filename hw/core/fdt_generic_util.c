@@ -34,6 +34,7 @@
 #include "hw/sysbus.h"
 #include "qapi/error.h"
 #include "sysemu/sysemu.h"
+#include "qemu/cutils.h"
 #include "sysemu/blockdev.h"
 #include "chardev/char.h"
 #include "qemu/log.h"
@@ -744,6 +745,8 @@ qemu_irq *fdt_get_irq(FDTMachineInfo *fdti, char *node_path, int irq_idx,
 
 static void trim_version(char *x)
 {
+    long result;
+
     for (;;) {
         x = strchr(x, '-');
         if (!x) {
@@ -751,10 +754,10 @@ static void trim_version(char *x)
         }
         if (DIGIT(x[1])) {
             /* Try to trim Xilinx version suffix */
-            char *p;
-            if (strtol(x+1, &p, 0)) {
-                p = p;	/* -Werror */
-            }
+            const char *p;
+
+            qemu_strtol(x + 1, &p, 0, &result);
+
             if ( *p == '.') {
                 *x = 0;
                 return;
