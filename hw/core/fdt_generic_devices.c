@@ -147,19 +147,6 @@ static int sysmem_fdt_init(char *node_path, FDTMachineInfo *fdti,
     return 0;
 }
 
-static inline void razwi_unimp_rw(void *opaque, hwaddr addr, uint64_t val64,
-                           unsigned int size, bool rnw) {
-    char str[1024];
-
-    snprintf(str, sizeof(str), "%s: RAZ/WI device %s: addr: %#llx data: %#llx"
-             " size: %d\n",
-             opaque ? (const char *)opaque : "(none)", rnw ? "read" : "write",
-             (unsigned long long)addr, (unsigned long long)val64, size);
-
-    DB_PRINT(0, "%s", str);
-    qemu_log_mask(LOG_UNIMP, "%s", str);
-}
-
 fdt_register_compatibility(sysmem_fdt_init, "compatible:qemu:system-memory");
 fdt_register_compatibility_n(uart16550_fdt_init, "compatible:ns16550", 0);
 fdt_register_compatibility_n(uart16550_fdt_init, "compatible:ns16550a", 1);
