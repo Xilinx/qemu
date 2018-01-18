@@ -327,7 +327,7 @@ static qemu_irq fdt_get_gpio(FDTMachineInfo *fdti, char *node_path,
     DeviceState *parent;
     int i;
     Error *errp = NULL;
-    const char *reason;
+    const char *reason = NULL;
     bool free_reason = false;
     const char *propname = gpio_set->names->propname;
     const char *cells_propname = gpio_set->names->cells_propname;
@@ -414,9 +414,6 @@ static qemu_irq fdt_get_gpio(FDTMachineInfo *fdti, char *node_path,
                    && fgg_con->name) {
                 fgg_con++;
             }
-            if (!fgg_con) {
-                goto fail;
-            }
 
             idx -= fgg_con->fdt_index;
             gpio_name = fgg_con->name;
@@ -481,7 +478,10 @@ static qemu_irq fdt_get_gpio(FDTMachineInfo *fdti, char *node_path,
         return ret;
     }
 fail:
-    fprintf(stderr, "%s Failed: %s\n", node_path, reason);
+    if (reason) {
+        fprintf(stderr, "%s Failed: %s\n", node_path, reason);
+    }
+
 fail_silent:
     if (free_reason) {
         g_free((void *)reason);
