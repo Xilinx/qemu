@@ -93,13 +93,6 @@ int64_t rp_normalized_vmclk(RemotePort *s)
     return clk;
 }
 
-static inline int64_t rp_denormalize_clk(RemotePort *s, int64_t rclk)
-{
-    int64_t clk;
-    clk = rclk + s->peer.clk_base;
-    return clk;
-}
-
 void rp_restart_sync_timer(RemotePort *s)
 {
     if (!s->do_sync) {
