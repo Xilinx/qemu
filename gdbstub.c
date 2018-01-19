@@ -866,7 +866,6 @@ static char *gdb_get_process_list(GDBState *s)
     CPUState *cpu;
     char *buf;
     unsigned int i;
-    int len;
 
     buf = g_malloc0(MAX_PLIST);
 
@@ -879,14 +878,14 @@ static char *gdb_get_process_list(GDBState *s)
         char lbuf[70];
         unsigned int num_cores = 0;
 
-        len = snprintf(lbuf, sizeof(lbuf),
+        snprintf(lbuf, sizeof(lbuf),
                        "<item>\n <column name=\"pid\">%u</column>\n <column name=\"cores\">",
                        i + 1);
         pstrcat(buf, MAX_PLIST, lbuf);
 
         cpu = s->clusters[i].cpus.first;
         while (cpu) {
-            len = snprintf(lbuf, sizeof(lbuf), "%s%u",
+            snprintf(lbuf, sizeof(lbuf), "%s%u",
                            num_cores ? "," : "", (cpu->cpu_index + 1));
             pstrcat(buf, MAX_PLIST, lbuf);
             if (cpu == s->clusters[i].cpus.last) {
@@ -897,7 +896,6 @@ static char *gdb_get_process_list(GDBState *s)
         }
         pstrcat(buf, MAX_PLIST, "</column>\n</item>\n");
     }
-    len = len;
     pstrcat(buf, MAX_PLIST, "</osdata>");
     return buf;
 }
