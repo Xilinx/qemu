@@ -258,7 +258,7 @@ void gic_update(GICState *s)
     for (cpu = 0; cpu < NUM_CPU(s); cpu++) {
         bool cpu_irq = false;
         bool cpu_fiq = false;
-        bool next_grp0;
+        bool next_grp0 = 0;
 
         cm = 1 << cpu;
         s->current_pending[cpu] = 1023;
@@ -283,7 +283,9 @@ void gic_update(GICState *s)
             }
         }
 
-        next_grp0 = GIC_GROUP(best_irq) == 0;
+        if (best_irq < GIC_MAXIRQ) {
+            next_grp0 = GIC_GROUP(best_irq) == 0;
+        }
         if (level) {
             if (next_grp0 && s->gicc_ctrl[cpu].fiq_en) {
                 if (s->gicc_ctrl[cpu].enable_grp[0]) {
