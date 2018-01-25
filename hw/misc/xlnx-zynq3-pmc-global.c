@@ -791,6 +791,7 @@ typedef struct PMC_GLOBAL {
     qemu_irq irq_pmc_pl_irq;
     qemu_irq irq_req_iso_int;
 
+    qemu_irq tamper_reg;
     qemu_irq ppu1_wakeup;
     qemu_irq ppu1_rst;
 
@@ -1106,6 +1107,12 @@ static void ppu1_rst_x_postw(RegisterInfo *reg, uint64_t val64)
     ppu1_update_ctrl(s);
 }
 
+static void tamper_trig_postw(RegisterInfo *reg, uint64_t val64)
+{
+   PMC_GLOBAL *s = XILINX_PMC_GLOBAL(reg->opaque);
+   qemu_irq_pulse(s->tamper_reg);
+}
+
 static RegisterAccessInfo pmc_global_regs_info[] = {
     {   .name = "GLOBAL_CNTRL",  .addr = A_GLOBAL_CNTRL,
         .reset = 0x8800,
@@ -1247,6 +1254,7 @@ static RegisterAccessInfo pmc_global_regs_info[] = {
     },{ .name = "TAMPER_RESP_13",  .addr = A_TAMPER_RESP_13,
         .rsvd = 0xffffffe0,
     },{ .name = "TAMPER_TRIG",  .addr = A_TAMPER_TRIG,
+        .post_write = tamper_trig_postw,
     },{ .name = "PPU0_MB_FATAL",  .addr = A_PPU0_MB_FATAL,
         .rsvd = 0xfffffff8,
         .ro = 0xffffffff,
@@ -1523,6 +1531,7 @@ static void pmc_global_init(Object *obj)
     sysbus_init_irq(sbd, &s->irq_req_iso_int);
 
     /* Out signals.  */
+    qdev_init_gpio_out_named(DEVICE(obj), &s->tamper_reg, "tamper_reg", 1);
     qdev_init_gpio_out_named(DEVICE(obj), &s->ppu1_rst, "ppu1_rst", 1);
     qdev_init_gpio_out_named(DEVICE(obj), &s->ppu1_wakeup, "ppu1_wakeup", 1);
 }
