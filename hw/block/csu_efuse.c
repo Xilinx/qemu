@@ -49,10 +49,14 @@
 #endif
 
 #define TYPE_ZYNQMP_EFUSE "xlnx.zynqmp-efuse"
-#define TYPE_ZYNQ3_EFUSE "xlnx.zynq3-efuse"
+#define TYPE_ZYNQ3_EFUSE "xlnx.versal-efuse"
 
 #define ZYNQMP_EFUSE(obj) \
      OBJECT_CHECK(ZynqMPEFuse, (obj), TYPE_ZYNQMP_EFUSE)
+
+#define ZYNQ3_EFUSE(obj) \
+     OBJECT_CHECK(Zynq3EFuse, (obj), TYPE_ZYNQ3_EFUSE)
+
 
 DEP_REG32(WR_LOCK, 0x0)
     DEP_FIELD(WR_LOCK, LOCK, 16, 0)
@@ -380,7 +384,7 @@ static void zynqmp_efuse_sync_cache(ZynqMPEFuse *s, unsigned int bit)
                    EFUSE_PPK1_START, EFUSE_PPK1_END, bit);
 }
 
-static void zynq3_efuse_sync_cache(ZynqMPEFuse *s, unsigned int bit)
+static void versal_efuse_sync_cache(ZynqMPEFuse *s, unsigned int bit)
 {
     /* Update the tbits.  */
     update_tbit_status(s);
@@ -735,6 +739,13 @@ static void zynqmp_efuse_realize(DeviceState *dev, Error **errp)
     }
 }
 
+static void versal_efuse_realize(DeviceState *dev, Error **errp)
+{
+    Zynq3EFuse *s = ZYNQ3_EFUSE(dev);
+
+    zynqmp_efuse_realize(dev, errp);
+}
+
 static void zynqmp_efuse_init(Object *obj)
 {
     ZynqMPEFuse *s = ZYNQMP_EFUSE(obj);
@@ -771,11 +782,11 @@ static void zynqmp_efuse_init(Object *obj)
     s->refresh_cache = zynqmp_efuse_sync_cache;
 }
 
-static void zynq3_efuse_init(Object *obj)
+static void versal_efuse_init(Object *obj)
 {
     ZynqMPEFuse *s = ZYNQMP_EFUSE(obj);
 
-    s->refresh_cache = zynq3_efuse_sync_cache;
+    s->refresh_cache = versal_efuse_sync_cache;
 }
 
 static const VMStateDescription vmstate_efuse = {
@@ -798,11 +809,11 @@ static void zynqmp_efuse_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_efuse;
 }
 
-static void zynq3_efuse_class_init(ObjectClass *klass, void *data)
+static void versal_efuse_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->realize = zynqmp_efuse_realize;
+    dc->realize = versal_efuse_realize;
 }
 
 
@@ -814,18 +825,18 @@ static const TypeInfo efuse_info = {
     .instance_init = zynqmp_efuse_init,
 };
 
-static const TypeInfo zynq3_efuse_info = {
+static const TypeInfo versal_efuse_info = {
     .name          = TYPE_ZYNQ3_EFUSE,
     .parent        = TYPE_ZYNQMP_EFUSE,
     .instance_size = sizeof(Zynq3EFuse),
-    .class_init    = zynq3_efuse_class_init,
-    .instance_init = zynq3_efuse_init,
+    .class_init    = versal_efuse_class_init,
+    .instance_init = versal_efuse_init,
 };
 
 static void efuse_register_types(void)
 {
     type_register_static(&efuse_info);
-    type_register_static(&zynq3_efuse_info);
+    type_register_static(&versal_efuse_info);
 }
 
 type_init(efuse_register_types)
