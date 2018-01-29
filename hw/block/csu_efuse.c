@@ -270,7 +270,8 @@ DEP_REG32(PPK1_11, 0x10fc)
 #define ZYNQ3_EFUSE_USER0_END    BIT_POS(27, 31)
 #define ZYNQ3_EFUSE_USER1_START  BIT_POS(28, 0)
 #define ZYNQ3_EFUSE_USER1_END    BIT_POS(35, 31)
-
+#define ZYNQ3_EFUSE_SEC_DBG0     BIT_POS(43, 19)
+#define ZYNQ3_EFUSE_SEC_DBG4     BIT_POS(43, 22)
 
 typedef struct EfuseKey {
     union {
@@ -299,6 +300,7 @@ typedef struct ZynqMPEFuse {
 typedef struct Zynq3EFuse {
     ZynqMPEFuse parent_obj;
 
+    qemu_irq sec_dbg_dis[4];
 } Zynq3EFuse;
 
 #define EFUSE_CACHE_BIT(s, reg, field) \
@@ -386,6 +388,10 @@ static void zynqmp_efuse_sync_cache(ZynqMPEFuse *s, unsigned int bit)
 
 static void versal_efuse_sync_cache(ZynqMPEFuse *s, unsigned int bit)
 {
+    Zynq3EFuse *ss = ZYNQ3_EFUSE(s);
+    uint32_t sec_dbg_dis = 0;
+    int i;
+
     /* Update the tbits.  */
     update_tbit_status(s);
     /* Sync the AES Key.  */
@@ -394,6 +400,11 @@ static void versal_efuse_sync_cache(ZynqMPEFuse *s, unsigned int bit)
                        ZYNQ3_EFUSE_USER0_END);
     efuse_aes_key_sync(s, &s->user_key1, ZYNQ3_EFUSE_USER1_START,
                        ZYNQ3_EFUSE_USER1_END);
+    efuse_sync_u32(s->efuse, &sec_dbg_dis, ZYNQ3_EFUSE_SEC_DBG0,
+                   ZYNQ3_EFUSE_SEC_DBG4, FBIT_UNKNOWN);
+    for (i = 0; i < 4; i++) {
+        qemu_set_irq(ss->sec_dbg_dis[i], !!(sec_dbg_dis & (1 << i)));
+    }
 }
 
 static void zynqmp_efuse_update_irq(ZynqMPEFuse *s)
@@ -743,6 +754,7 @@ static void versal_efuse_realize(DeviceState *dev, Error **errp)
 {
     Zynq3EFuse *s = ZYNQ3_EFUSE(dev);
 
+    qdev_init_gpio_out(dev, s->sec_dbg_dis, 4);
     zynqmp_efuse_realize(dev, errp);
 }
 
