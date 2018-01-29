@@ -30,6 +30,9 @@
 #include "hw/register.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
+#include "chardev/char.h"
+#include "chardev/char-fe.h"
+#
 
 #ifndef XILINX_PMC_TAP_ERR_DEBUG
 #define XILINX_PMC_TAP_ERR_DEBUG 0
@@ -40,6 +43,16 @@
 #define XILINX_PMC_TAP(obj) \
      OBJECT_CHECK(PMC_TAP, (obj), TYPE_XILINX_PMC_TAP)
 #define PLATFORM_VERSION_QEMU   (0x3 << 24)
+
+#define MAX_SEC_PAYLOAD (4 * 512)
+
+#define DPRINT(args, ...) \
+    do { \
+        if (XILINX_PMC_TAP_ERR_DEBUG) { \
+            qemu_log("%s: " args, __func__, ## __VA_ARGS__); \
+        } \
+    } while (0)
+
 
 REG32(IDCODE, 0x0)
 REG32(VERSION, 0x4)
@@ -676,12 +689,20 @@ REG32(SEC_DBG_DATA_511, 0x1082c)
 
 #define R_MAX (R_SEC_DBG_DATA_511 + 1)
 
+#define SEC_DBG_DIS_MASK 0x3
+#define SEC_LOCK_DBG_DIS_MASK (0x3 << 2)
+
 typedef struct PMC_TAP {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
     qemu_irq irq_sec_dbg_int;
     qemu_irq irq_pmc_tap_int;
+    CharBackend chr;
 
+    uint8_t sec_dbg_dis;
+    uint32_t payload_received;
+    bool auth_data_load;
+    bool first_image_done;
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
 } PMC_TAP;
@@ -1824,8 +1845,40 @@ static void pmc_tap_reset(DeviceState *dev)
         register_reset(&s->regs_info[i]);
     }
 
+    s->auth_data_load = 0;
+    s->payload_received = 0;
     sec_dbg_int_update_irq(s);
     pmc_tap_int_update_irq(s);
+}
+
+static int pmc_tap_can_receive(void *opaque)
+{
+    PMC_TAP *s = XILINX_PMC_TAP(opaque);
+
+    if (s->sec_dbg_dis & SEC_DBG_DIS_MASK) {
+        qemu_log_mask(LOG_GUEST_ERROR, "Efuse: Secure Debug disabled as "
+                                      "bits are blown");
+        qemu_log_flush();
+        return 0;
+    } else if ((s->sec_dbg_dis & SEC_LOCK_DBG_DIS_MASK) &
+               s->first_image_done) {
+        qemu_log_mask(LOG_GUEST_ERROR, "EFUSE: Secure Debug Lock "
+                                      "bits are blown, "
+                                      "Cannot accept 2nd image");
+        qemu_log_flush();
+        return 0;
+    }
+    return s->auth_data_load ?
+            MAX_SEC_PAYLOAD - s->payload_received : 0;
+}
+
+static void pmc_tap_receive(void *opaque, const uint8_t *buf, int size)
+{
+     PMC_TAP *s = XILINX_PMC_TAP(opaque);
+
+     memcpy((uint8_t *)&s->regs[R_SEC_DBG_DATA_0] + s->payload_received,
+            buf, size);
+     s->payload_received += size;
 }
 
 static const MemoryRegionOps pmc_tap_ops = {
@@ -1838,9 +1891,47 @@ static const MemoryRegionOps pmc_tap_ops = {
     },
 };
 
+static void pmc_tap_sec_debug_data_load(void *opaque, int n, int level)
+{
+    PMC_TAP *s = XILINX_PMC_TAP(opaque);
+
+    if (s->auth_data_load) {
+        if(!level) {
+            /* Secure payload done */
+            ARRAY_FIELD_DP32(s->regs, SEC_DBG_INT_STATUS, SEC_DBG, 1);
+            s->first_image_done = true;
+            sec_dbg_int_update_irq(s);
+        }
+    }
+    DPRINT("sec-dbg : %s\n", level ? "true": "false");
+    s->auth_data_load = level;
+}
+
+static void pmc_tap_efuse_sec_dbg_dis(void *opaque, int n, int level)
+{
+    PMC_TAP *s = XILINX_PMC_TAP(opaque);
+
+    s->sec_dbg_dis = deposit32(s->sec_dbg_dis, n, 1, level);
+}
+
 static void pmc_tap_realize(DeviceState *dev, Error **errp)
 {
-    /* Delete this if you don't need it */
+    PMC_TAP *s = XILINX_PMC_TAP(dev);
+    Chardev *chr;
+
+    chr = qemu_chr_find("sec-boot");
+    qdev_prop_set_chr(dev, "chardev", chr);
+    if (!qemu_chr_fe_get_driver(&s->chr)) {
+        DPRINT("Seucre Boot interface not connected\n");
+    } else {
+        qemu_chr_fe_set_handlers(&s->chr, pmc_tap_can_receive, pmc_tap_receive,
+                                 NULL, NULL, s, NULL, true);
+        qemu_chr_fe_accept_input(&s->chr);
+    }
+    qdev_init_gpio_in_named(dev, pmc_tap_sec_debug_data_load, "sec-dbg-data", 1);
+    qdev_init_gpio_in(dev, pmc_tap_efuse_sec_dbg_dis, 4);
+    qdev_init_gpio_out_named(dev, &s->irq_sec_dbg_int, "sec-dbg-int", 1);
+    qdev_init_gpio_out_named(dev, &s->irq_pmc_tap_int, "pmc-tap-int", 1);
 }
 
 static void pmc_tap_init(Object *obj)
@@ -1861,8 +1952,6 @@ static void pmc_tap_init(Object *obj)
                                 0x0,
                                 &reg_array->mem);
     sysbus_init_mmio(sbd, &s->iomem);
-    sysbus_init_irq(sbd, &s->irq_sec_dbg_int);
-    sysbus_init_irq(sbd, &s->irq_pmc_tap_int);
 }
 
 static const VMStateDescription vmstate_pmc_tap = {
@@ -1875,6 +1964,11 @@ static const VMStateDescription vmstate_pmc_tap = {
     }
 };
 
+static Property pmc_tap_props[] = {
+        DEFINE_PROP_CHR("chardev", PMC_TAP, chr),
+        DEFINE_PROP_END_OF_LIST(),
+};
+
 static void pmc_tap_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -1882,6 +1976,7 @@ static void pmc_tap_class_init(ObjectClass *klass, void *data)
     dc->reset = pmc_tap_reset;
     dc->realize = pmc_tap_realize;
     dc->vmsd = &vmstate_pmc_tap;
+    dc->props = pmc_tap_props;
 }
 
 static const TypeInfo pmc_tap_info = {
