@@ -92,6 +92,9 @@ static int cap_mmu_radix;
 static int cap_mmu_hash_v3;
 static int cap_resize_hpt;
 static int cap_ppc_pvr_compat;
+static int cap_ppc_safe_cache;
+static int cap_ppc_safe_bounds_check;
+static int cap_ppc_safe_indirect_branch;
 
 static uint32_t debug_inst_opcode;
 
@@ -124,6 +127,7 @@ static bool kvmppc_is_pr(KVMState *ks)
 }
 
 static int kvm_ppc_register_host_cpu_type(MachineState *ms);
+static void kvmppc_get_cpu_characteristics(KVMState *s);
 
 int kvm_arch_init(MachineState *ms, KVMState *s)
 {
@@ -150,6 +154,7 @@ int kvm_arch_init(MachineState *ms, KVMState *s)
     cap_mmu_radix = kvm_vm_check_extension(s, KVM_CAP_PPC_MMU_RADIX);
     cap_mmu_hash_v3 = kvm_vm_check_extension(s, KVM_CAP_PPC_MMU_HASH_V3);
     cap_resize_hpt = kvm_vm_check_extension(s, KVM_CAP_SPAPR_RESIZE_HPT);
+    kvmppc_get_cpu_characteristics(s);
     /*
      * Note: setting it to false because there is not such capability
      * in KVM at this moment.
@@ -2014,16 +2019,6 @@ uint64_t kvmppc_get_clockfreq(void)
     return kvmppc_read_int_cpu_dt("clock-frequency");
 }
 
-uint32_t kvmppc_get_vmx(void)
-{
-    return kvmppc_read_int_cpu_dt("ibm,vmx");
-}
-
-uint32_t kvmppc_get_dfp(void)
-{
-    return kvmppc_read_int_cpu_dt("ibm,dfp");
-}
-
 static int kvmppc_get_pvinfo(CPUPPCState *env, struct kvm_ppc_pvinfo *pvinfo)
  {
      PowerPCCPU *cpu = ppc_env_get_cpu(env);
@@ -2407,23 +2402,18 @@ static void alter_insns(uint64_t *word, uint64_t flags, bool on)
 static void kvmppc_host_cpu_class_init(ObjectClass *oc, void *data)
 {
     PowerPCCPUClass *pcc = POWERPC_CPU_CLASS(oc);
-    uint32_t vmx = kvmppc_get_vmx();
-    uint32_t dfp = kvmppc_get_dfp();
     uint32_t dcache_size = kvmppc_read_int_cpu_dt("d-cache-size");
     uint32_t icache_size = kvmppc_read_int_cpu_dt("i-cache-size");
 
     /* Now fix up the class with information we can query from the host */
     pcc->pvr = mfpvr();
 
-    if (vmx != -1) {
-        /* Only override when we know what the host supports */
-        alter_insns(&pcc->insns_flags, PPC_ALTIVEC, vmx > 0);
-        alter_insns(&pcc->insns_flags2, PPC2_VSX, vmx > 1);
-    }
-    if (dfp != -1) {
-        /* Only override when we know what the host supports */
-        alter_insns(&pcc->insns_flags2, PPC2_DFP, dfp);
-    }
+    alter_insns(&pcc->insns_flags, PPC_ALTIVEC,
+                qemu_getauxval(AT_HWCAP) & PPC_FEATURE_HAS_ALTIVEC);
+    alter_insns(&pcc->insns_flags2, PPC2_VSX,
+                qemu_getauxval(AT_HWCAP) & PPC_FEATURE_HAS_VSX);
+    alter_insns(&pcc->insns_flags2, PPC2_DFP,
+                qemu_getauxval(AT_HWCAP) & PPC_FEATURE_HAS_DFP);
 
     if (dcache_size != -1) {
         pcc->l1_dcache_size = dcache_size;
@@ -2472,6 +2462,59 @@ bool kvmppc_has_cap_mmu_radix(void)
 bool kvmppc_has_cap_mmu_hash_v3(void)
 {
     return cap_mmu_hash_v3;
+}
+
+static void kvmppc_get_cpu_characteristics(KVMState *s)
+{
+    struct kvm_ppc_cpu_char c;
+    int ret;
+
+    /* Assume broken */
+    cap_ppc_safe_cache = 0;
+    cap_ppc_safe_bounds_check = 0;
+    cap_ppc_safe_indirect_branch = 0;
+
+    ret = kvm_vm_check_extension(s, KVM_CAP_PPC_GET_CPU_CHAR);
+    if (!ret) {
+        return;
+    }
+    ret = kvm_vm_ioctl(s, KVM_PPC_GET_CPU_CHAR, &c);
+    if (ret < 0) {
+        return;
+    }
+    /* Parse and set cap_ppc_safe_cache */
+    if (~c.behaviour & c.behaviour_mask & H_CPU_BEHAV_L1D_FLUSH_PR) {
+        cap_ppc_safe_cache = 2;
+    } else if ((c.character & c.character_mask & H_CPU_CHAR_L1D_THREAD_PRIV) &&
+               (c.character & c.character_mask
+                & (H_CPU_CHAR_L1D_FLUSH_ORI30 | H_CPU_CHAR_L1D_FLUSH_TRIG2))) {
+        cap_ppc_safe_cache = 1;
+    }
+    /* Parse and set cap_ppc_safe_bounds_check */
+    if (~c.behaviour & c.behaviour_mask & H_CPU_BEHAV_BNDS_CHK_SPEC_BAR) {
+        cap_ppc_safe_bounds_check = 2;
+    } else if (c.character & c.character_mask & H_CPU_CHAR_SPEC_BAR_ORI31) {
+        cap_ppc_safe_bounds_check = 1;
+    }
+    /* Parse and set cap_ppc_safe_indirect_branch */
+    if (c.character & H_CPU_CHAR_BCCTRL_SERIALISED) {
+        cap_ppc_safe_indirect_branch = 2;
+    }
+}
+
+int kvmppc_get_cap_safe_cache(void)
+{
+    return cap_ppc_safe_cache;
+}
+
+int kvmppc_get_cap_safe_bounds_check(void)
+{
+    return cap_ppc_safe_bounds_check;
+}
+
+int kvmppc_get_cap_safe_indirect_branch(void)
+{
+    return cap_ppc_safe_indirect_branch;
 }
 
 PowerPCCPUClass *kvm_ppc_get_host_cpu_class(void)

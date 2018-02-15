@@ -51,6 +51,41 @@ typedef enum {
 } sPAPRResizeHPT;
 
 /**
+ * Capabilities
+ */
+
+/* Hardware Transactional Memory */
+#define SPAPR_CAP_HTM                   0x00
+/* Vector Scalar Extensions */
+#define SPAPR_CAP_VSX                   0x01
+/* Decimal Floating Point */
+#define SPAPR_CAP_DFP                   0x02
+/* Cache Flush on Privilege Change */
+#define SPAPR_CAP_CFPC                  0x03
+/* Speculation Barrier Bounds Checking */
+#define SPAPR_CAP_SBBC                  0x04
+/* Indirect Branch Serialisation */
+#define SPAPR_CAP_IBS                   0x05
+/* Num Caps */
+#define SPAPR_CAP_NUM                   (SPAPR_CAP_IBS + 1)
+
+/*
+ * Capability Values
+ */
+/* Bool Caps */
+#define SPAPR_CAP_OFF                   0x00
+#define SPAPR_CAP_ON                    0x01
+/* Broken | Workaround | Fixed Caps */
+#define SPAPR_CAP_BROKEN                0x00
+#define SPAPR_CAP_WORKAROUND            0x01
+#define SPAPR_CAP_FIXED                 0x02
+
+typedef struct sPAPRCapabilities sPAPRCapabilities;
+struct sPAPRCapabilities {
+    uint8_t caps[SPAPR_CAP_NUM];
+};
+
+/**
  * sPAPRMachineClass:
  */
 struct sPAPRMachineClass {
@@ -66,6 +101,7 @@ struct sPAPRMachineClass {
                           hwaddr *mmio32, hwaddr *mmio64,
                           unsigned n_dma, uint32_t *liobns, Error **errp);
     sPAPRResizeHPT resize_hpt_default;
+    sPAPRCapabilities default_caps;
 };
 
 /**
@@ -127,6 +163,9 @@ struct sPAPRMachineState {
     MemoryHotplugState hotplug_memory;
 
     const char *icp_type;
+
+    bool cmd_line_caps[SPAPR_CAP_NUM];
+    sPAPRCapabilities def, eff, mig;
 };
 
 #define H_SUCCESS         0
@@ -266,6 +305,18 @@ struct sPAPRMachineState {
 #define H_DABRX_KERNEL     (1ULL<<(63-62))
 #define H_DABRX_USER       (1ULL<<(63-63))
 
+/* Values for KVM_PPC_GET_CPU_CHAR & H_GET_CPU_CHARACTERISTICS */
+#define H_CPU_CHAR_SPEC_BAR_ORI31               PPC_BIT(0)
+#define H_CPU_CHAR_BCCTRL_SERIALISED            PPC_BIT(1)
+#define H_CPU_CHAR_L1D_FLUSH_ORI30              PPC_BIT(2)
+#define H_CPU_CHAR_L1D_FLUSH_TRIG2              PPC_BIT(3)
+#define H_CPU_CHAR_L1D_THREAD_PRIV              PPC_BIT(4)
+#define H_CPU_CHAR_HON_BRANCH_HINTS             PPC_BIT(5)
+#define H_CPU_CHAR_THR_RECONF_TRIG              PPC_BIT(6)
+#define H_CPU_BEHAV_FAVOUR_SECURITY             PPC_BIT(0)
+#define H_CPU_BEHAV_L1D_FLUSH_PR                PPC_BIT(1)
+#define H_CPU_BEHAV_BNDS_CHK_SPEC_BAR           PPC_BIT(2)
+
 /* Each control block has to be on a 4K boundary */
 #define H_CB_ALIGNMENT     4096
 
@@ -353,6 +404,7 @@ struct sPAPRMachineState {
 #define H_GET_HCA_INFO          0x1B8
 #define H_GET_PERF_COUNT        0x1BC
 #define H_MANAGE_TRACE          0x1C0
+#define H_GET_CPU_CHARACTERISTICS 0x1C8
 #define H_FREE_LOGICAL_LAN_BUFFER 0x1D4
 #define H_QUERY_INT_STATE       0x1E4
 #define H_POLL_PENDING          0x1D8
@@ -706,5 +758,27 @@ void spapr_do_system_reset_on_cpu(CPUState *cs, run_on_cpu_data arg);
 
 int spapr_vcpu_id(PowerPCCPU *cpu);
 PowerPCCPU *spapr_find_cpu(int vcpu_id);
+
+int spapr_caps_pre_load(void *opaque);
+int spapr_caps_pre_save(void *opaque);
+
+/*
+ * Handling of optional capabilities
+ */
+extern const VMStateDescription vmstate_spapr_cap_htm;
+extern const VMStateDescription vmstate_spapr_cap_vsx;
+extern const VMStateDescription vmstate_spapr_cap_dfp;
+extern const VMStateDescription vmstate_spapr_cap_cfpc;
+extern const VMStateDescription vmstate_spapr_cap_sbbc;
+extern const VMStateDescription vmstate_spapr_cap_ibs;
+
+static inline uint8_t spapr_get_cap(sPAPRMachineState *spapr, int cap)
+{
+    return spapr->eff.caps[cap];
+}
+
+void spapr_caps_reset(sPAPRMachineState *spapr);
+void spapr_caps_add_properties(sPAPRMachineClass *smc, Error **errp);
+int spapr_caps_post_migration(sPAPRMachineState *spapr);
 
 #endif /* HW_SPAPR_H */

@@ -1396,7 +1396,7 @@ static void gic_hyp_write(GICState *s, int vcpu, int offset, uint32_t value)
         break;
     default:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: Bad offset %x\n", __func__, offset);
+                      "gic_cpu_write: Bad offset %x\n", (int)offset);
         return;
     }
 }
