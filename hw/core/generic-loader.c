@@ -181,6 +181,14 @@ static void generic_loader_realize(DeviceState *dev, Error **errp)
     } else {
         s->data = cpu_to_le64(s->data);
     }
+
+    /* Xilinx: If qdev_hotplug is set then the machine has already been
+     * created. This means we are hot-plugging a device. We need to forefully
+     * call the reset function to ensure the operation completes.
+     */
+    if (qdev_hotplug) {
+        generic_loader_reset(dev);
+    }
 }
 
 static void generic_loader_unrealize(DeviceState *dev, Error **errp)
