@@ -103,10 +103,6 @@ void rp_restart_sync_timer(RemotePort *s)
         ptimer_stop(s->sync.ptimer);
         ptimer_set_limit(s->sync.ptimer, s->sync.quantum, 1);
         ptimer_run(s->sync.ptimer, 1);
-    } else {
-        ptimer_stop(s->sync.ptimer);
-        ptimer_set_limit(s->sync.ptimer, 10 * 1000, 1);
-        ptimer_run(s->sync.ptimer, 1);
     }
 }
 
@@ -781,7 +777,8 @@ static Property rp_properties[] = {
     DEFINE_PROP_STRING("chardesc", RemotePort, chardesc),
     DEFINE_PROP_STRING("chrdev-id", RemotePort, chrdev_id),
     DEFINE_PROP_BOOL("sync", RemotePort, do_sync, false),
-    DEFINE_PROP_UINT64("sync-quantum", RemotePort, peer.local_cfg.quantum, 0),
+    DEFINE_PROP_UINT64("sync-quantum", RemotePort, peer.local_cfg.quantum,
+                       1000000),
     DEFINE_PROP_END_OF_LIST(),
 };
 
