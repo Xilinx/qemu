@@ -325,7 +325,6 @@ static int xilinx_spi_init(SysBusDevice *sbd)
 {
     DeviceState *dev = DEVICE(sbd);
     XilinxSPI *s = XILINX_SPI(dev);
-    int i;
 
     DB_PRINT("\n");
 
@@ -334,9 +333,7 @@ static int xilinx_spi_init(SysBusDevice *sbd)
     sysbus_init_irq(sbd, &s->irq);
     s->cs_lines = g_new0(qemu_irq, s->num_cs);
     ssi_auto_connect_slaves(dev, s->cs_lines, s->spi);
-    for (i = 0; i < s->num_cs; ++i) {
-        sysbus_init_irq(sbd, &s->cs_lines[i]);
-    }
+    qdev_init_gpio_out(dev, s->cs_lines, s->num_cs);
 
     memory_region_init_io(&s->mmio, OBJECT(s), &spi_ops, s,
                           "xilinx-spi", R_MAX * 4);
