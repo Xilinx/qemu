@@ -217,7 +217,7 @@ static int ssi_auto_connect_slave(Object *child, void *opaque)
     SSISlave *dev = (SSISlave *)object_dynamic_cast(child, TYPE_SSI_SLAVE);
     qemu_irq cs_line;
 
-    if (!dev) {
+    if (!dev || qdev_get_parent_bus(DEVICE(dev))) {
         return 0;
     }
 
