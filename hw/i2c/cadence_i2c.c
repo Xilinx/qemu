@@ -330,6 +330,7 @@ static void cadence_i2c_write(void *opaque, hwaddr offset,
         }
         if (i2c_start_transfer(s->bus, new_value & 0x7f,
                                s->regs[R_CONTROL] & CONTROL_RW)) {
+            i2c_end_transfer(s->bus);
             DB_PRINT("No match for device 0x%x\n", new_value);
         } else {
             DB_PRINT("device 0x%x probe success\n", new_value);
