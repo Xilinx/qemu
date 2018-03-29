@@ -40,6 +40,7 @@
 #include "qemu/log.h"
 #include "qemu/config-file.h"
 #include "qom/cpu.h"
+#include "block/block.h"
 
 #ifndef FDT_GENERIC_UTIL_ERR_DEBUG
 #define FDT_GENERIC_UTIL_ERR_DEBUG 3
@@ -195,6 +196,7 @@ FDTMachineInfo *fdt_generic_create_machine(void *fdt, qemu_irq *cpu_irq)
             , node_path);
     }
 
+    bdrv_drain_all();
     DB_PRINT(0, "FDT: Device tree scan complete\n");
 
     /* Set the number of CPUs */
