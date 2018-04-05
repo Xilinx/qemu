@@ -31,6 +31,8 @@
 #include "qemu/fifo8.h"
 #include "hw/dma/xlnx_dpdma.h"
 #include "audio/audio.h"
+#include "hw/ptimer.h"
+#include "qemu/main-loop.h"
 
 #ifndef XLNX_DP_H
 #define XLNX_DP_H
@@ -101,6 +103,9 @@ typedef struct XlnxDPState {
      */
     DPCDState *dpcd;
     I2CDDCState *edid;
+
+    ptimer_state *vblank;
+    QEMUBH *bh;
 } XlnxDPState;
 
 #define TYPE_XLNX_DP "xlnx.v-dp"
