@@ -457,7 +457,7 @@ static void dec_msr(DisasContext *dc)
     CPUState *cs = CPU(dc->cpu);
     TCGv_i32 t0, t1;
     unsigned int sr, rn;
-    bool to, clrset;
+    bool to, clrset, extended;
 
     sr = extract32(dc->imm, 0, 14);
     to = extract32(dc->imm, 14, 1);
@@ -465,6 +465,9 @@ static void dec_msr(DisasContext *dc)
     dc->type_b = 1;
     if (to) {
         dc->cpustate_changed = 1;
+        extended = extract32(dc->imm, 24, 1);
+    } else {
+        extended = extract32(dc->imm, 19, 1);
     }
 
     /* msrclr and msrset.  */
@@ -557,6 +560,10 @@ static void dec_msr(DisasContext *dc)
                 msr_read(dc, cpu_R[dc->rd]);
                 break;
             case SR_EAR:
+                if (extended) {
+                    tcg_gen_extrh_i64_i32(cpu_R[dc->rd], cpu_SR[sr]);
+                    break;
+                }
             case SR_ESR:
             case SR_FSR:
             case SR_BTR:
