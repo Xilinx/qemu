@@ -282,7 +282,7 @@ struct CPUMBState {
     /* These fields are preserved on reset.  */
 
     struct {
-        uint32_t regs[16];
+        uint32_t regs[13];
     } pvr;
 
     /* MicroBlaze does not have state that affects the memory attributes so
