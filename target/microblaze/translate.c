@@ -417,15 +417,9 @@ static inline void msr_read(DisasContext *dc, TCGv d)
 
 static inline void msr_write(DisasContext *dc, TCGv v)
 {
-    TCGv t;
-
-    t = tcg_temp_new();
     dc->cpustate_changed = 1;
     /* PVR bit is not writable.  */
-    tcg_gen_andi_tl(t, v, ~MSR_PVR);
-    tcg_gen_andi_tl(cpu_SR[SR_MSR], cpu_SR[SR_MSR], MSR_PVR);
-    tcg_gen_or_tl(cpu_SR[SR_MSR], cpu_SR[SR_MSR], v);
-    tcg_temp_free(t);
+    tcg_gen_deposit_tl(cpu_SR[SR_MSR], v, cpu_SR[SR_MSR], MSR_PVR_SHIFT, 1);
 }
 
 static void dec_msr(DisasContext *dc)

@@ -59,6 +59,8 @@ typedef struct CPUMBState CPUMBState;
 #define SR_EDR   0xd
 
 /* MSR flags.  */
+#define MSR_PVR_SHIFT 10
+
 #define MSR_BE  (1<<0) /* 0x001 */
 #define MSR_IE  (1<<1) /* 0x002 */
 #define MSR_C   (1<<2) /* 0x004 */
@@ -69,7 +71,7 @@ typedef struct CPUMBState CPUMBState;
 #define MSR_DCE (1<<7) /* 0x080 */
 #define MSR_EE  (1<<8) /* 0x100 */
 #define MSR_EIP (1<<9) /* 0x200 */
-#define MSR_PVR (1<<10) /* 0x400 */
+#define MSR_PVR (1 << MSR_PVR_SHIFT)
 #define MSR_CC  (1<<31)
 
 /* Machine State Register (MSR) Fields */
