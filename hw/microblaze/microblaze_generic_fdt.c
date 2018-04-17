@@ -184,10 +184,12 @@ microblaze_generic_fdt_reset(MicroBlazeCPU *cpu)
             }
             i++;
         }
+
+        env->pvr.regs[10] &= ~0xff000000;
         if (!str || !arch_lookup[i].arch) {
-            env->pvr.regs[10] = 0x0c000000; /* spartan 3a dsp family.  */
+            env->pvr.regs[10] |= 0x0c000000; /* spartan 3a dsp family.  */
         } else {
-            env->pvr.regs[10] = arch_lookup[i].arch << 24;
+            env->pvr.regs[10] |= arch_lookup[i].arch << 24;
         }
         g_free(str);
     }
