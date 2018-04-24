@@ -448,7 +448,9 @@ static inline void msr_write(DisasContext *dc, TCGv_i32 v)
     dc->cpustate_changed = 1;
     /* PVR bit is not writable.  */
     tcg_gen_extu_i32_i64(t, v);
-    tcg_gen_deposit_i64(cpu_SR[SR_MSR], t, cpu_SR[SR_MSR], MSR_PVR_SHIFT, 1);
+    tcg_gen_andi_i64(t, t, ~MSR_PVR);
+    tcg_gen_andi_i64(cpu_SR[SR_MSR], cpu_SR[SR_MSR], MSR_PVR);
+    tcg_gen_or_i64(cpu_SR[SR_MSR], cpu_SR[SR_MSR], t);
     tcg_temp_free_i64(t);
 }
 
