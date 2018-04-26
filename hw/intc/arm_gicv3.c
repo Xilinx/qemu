@@ -385,9 +385,7 @@ static const FDTGenericGPIOSet arm_gicv3_client_gpios[] = {
     {
         .names = &fdt_generic_gpio_name_set_interrupts,
         .gpios = (FDTGenericGPIOConnection []) {
-            { .name = "irq",    .range = 8 },
-            { .name = "fiq",    .range = 8, .fdt_index = 8 },
-            { .name = "maint",  .range = 4, .fdt_index = 16 },
+            { .name = "sysbus-irq",    .range = UINT16_MAX },
             { },
         },
     },
