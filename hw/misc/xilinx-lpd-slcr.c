@@ -278,6 +278,28 @@ static void lpd_slcr_intstatus_posw(DepRegisterInfo *reg, uint64_t val64)
     lpd_slcr_peripheral_irq_update(s, OFFSET_TO_BANK(reg->access->decode.addr));
 }
 
+static void iso_aibaxi_req_postw(DepRegisterInfo *reg, uint64_t val64)
+{
+    LPD_SLCR *s = XILINX_LPD_SLCR(reg->opaque);
+
+    bool w_dis = DEP_AF_EX32(s->regs, WPROT0, ACTIVE);
+
+    if (!w_dis) {
+        s->regs[R_ISO_AIBAXI_ACK] = val64;
+    }
+}
+
+static void iso_aibapb_req_postw(DepRegisterInfo *reg, uint64_t val64)
+{
+    LPD_SLCR *s = XILINX_LPD_SLCR(reg->opaque);
+
+    bool w_dis = DEP_AF_EX32(s->regs, WPROT0, ACTIVE);
+
+    if (!w_dis) {
+        s->regs[R_ISO_AIBAPB_ACK] = val64;
+    }
+}
+
 static DepRegisterAccessInfo lpd_slcr_regs_info[] = {
     {   .name = "WPROT0",  .decode.addr = A_WPROT0,
         .reset = 0x1,
@@ -364,6 +386,7 @@ static DepRegisterAccessInfo lpd_slcr_regs_info[] = {
     },{ .name = "ISO_AIBAXI_REQ", .decode.addr = A_ISO_AIBAXI_REQ,
         .reset = 0,
         .pre_write = protection_prew,
+        .post_write = iso_aibaxi_req_postw,
     },{ .name = "ISO_AIBAXI_TYPE", .decode.addr = A_ISO_AIBAXI_TYPE,
         .reset = 0x19CF000F,
         .pre_write = protection_prew,
@@ -374,6 +397,7 @@ static DepRegisterAccessInfo lpd_slcr_regs_info[] = {
     },{ .name = "ISO_AIBAPB_REQ", .decode.addr = A_ISO_AIBAPB_REQ,
         .reset = 0,
         .pre_write = protection_prew,
+        .post_write = iso_aibapb_req_postw,
     },{ .name = "ISO_AIBAPB_TYPE", .decode.addr = A_ISO_AIBAPB_TYPE,
         .reset = 0x00000001,
         .pre_write = protection_prew,
