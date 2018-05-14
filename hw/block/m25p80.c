@@ -1316,6 +1316,11 @@ static void m25p80_realize(SSISlave *ss, Error **errp)
 
         DB_PRINT_L(0, "Binding to IF_MTD drive\n");
         s->storage = blk_blockalign(s->blk, s->size);
+        if (blk_pread(s->blk, 0, s->storage, s->size) != s->size) {
+            fprintf(stderr, "failed to read the initial flash content");
+            exit(1);
+        }
+
     } else {
         DB_PRINT_L(0, "No BDRV - binding to RAM\n");
         s->storage = blk_blockalign(NULL, s->size);
@@ -1326,20 +1331,6 @@ static void m25p80_realize(SSISlave *ss, Error **errp)
 static void m25p80_reset(DeviceState *d)
 {
     Flash *s = M25P80(d);
-
-    /* Xilinx: This isn't right, but we need to move this from the realize.
-     * This funciton ends up creating a new thread, which hangs performing the
-     * I/O when created from FDT generic's corotines. This causes a
-     * use-after-free crash and probably other issues as we are still stuck
-     * in the realize function until the main loop starts. I'm not sure how we
-     * can nicely fix it as the I/O only goes through in the main loop.
-     */
-    if (s->blk) {
-        if (blk_pread(s->blk, 0, s->storage, s->size) != s->size) {
-            fprintf(stderr, "failed to read the initial flash content");
-            exit(1);
-        }
-    }
 
     reset_memory(s);
 }
