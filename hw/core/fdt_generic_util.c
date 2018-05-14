@@ -41,6 +41,7 @@
 #include "qemu/config-file.h"
 #include "qom/cpu.h"
 #include "block/block.h"
+#include "hw/ssi/ssi.h"
 
 #ifndef FDT_GENERIC_UTIL_ERR_DEBUG
 #define FDT_GENERIC_UTIL_ERR_DEBUG 3
@@ -1162,15 +1163,17 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
          * here. Don't use drive_get_next() as it always increments the
          * next_block_unit variable.
          */
-        object_property_find(OBJECT(dev), "drive", &errp);
-        if (errp == NULL) {
-            DriveInfo *dinfo = drive_get_next(IF_MTD);
-            if (dinfo) {
-                qdev_prop_set_drive(DEVICE(dev), "drive",
+        if (object_dynamic_cast(dev, TYPE_SSI_SLAVE)) {
+            object_property_find(OBJECT(dev), "drive", &errp);
+            if (errp == NULL) {
+                DriveInfo *dinfo = drive_get_next(IF_MTD);
+                if (dinfo) {
+                    qdev_prop_set_drive(DEVICE(dev), "drive",
                                     blk_by_legacy_dinfo(dinfo), &error_abort);
-            }
+                 }
+             }
+             errp = NULL;
         }
-        errp = NULL;
 
         /* Regular TYPE_DEVICE houskeeping */
         DB_PRINT_NP(0, "Short naming node: %s\n", short_name);
