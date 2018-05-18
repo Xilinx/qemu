@@ -275,7 +275,11 @@ static void dmach_data_process(ZynqMPCSUDMA *s, uint8_t *buf, unsigned int len)
 
 static inline uint64_t dmach_addr(ZynqMPCSUDMA *s)
 {
-    return s->regs[R_ADDR];
+    uint64_t addr;
+
+    addr = s->regs[R_ADDR];
+    addr |= (uint64_t) s->regs[R_ADDR_MSB] << 32;
+    return addr;
 }
 
 /* len is in bytes.  */
