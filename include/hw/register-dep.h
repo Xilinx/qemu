@@ -200,9 +200,16 @@ void dep_register_write_memory_be(void *opaque, hwaddr addr, uint64_t value,
                               unsigned size);
 void dep_register_write_memory_le(void *opaque, hwaddr addr, uint64_t value,
                               unsigned size);
+MemTxResult dep_register_write_memory_be_with_attrs(void *opaque, hwaddr addr,
+                             uint64_t value, unsigned size, MemTxAttrs attrs);
+MemTxResult dep_register_write_memory_le_with_attrs(void *opaque, hwaddr addr,
+                             uint64_t value, unsigned size, MemTxAttrs attrs);
 
 uint64_t dep_register_read_memory_be(void *opaque, hwaddr addr, unsigned size);
 uint64_t dep_register_read_memory_le(void *opaque, hwaddr addr, unsigned size);
+void dep_register_trap_access(DepRegisterInfo *reg,
+                              DepRegisterInfo *reg_debug,
+                              DepRegisterAccessInfo *access);
 
 /* Define constants for a 32 bit register */
 

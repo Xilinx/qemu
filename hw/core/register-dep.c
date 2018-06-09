@@ -348,6 +348,47 @@ void dep_register_write_memory_le(void *opaque, hwaddr addr, uint64_t value,
     register_write_memory(opaque, addr, value, size, false);
 }
 
+void dep_register_trap_access(DepRegisterInfo *reg,
+                              DepRegisterInfo *reg_d,
+                              DepRegisterAccessInfo *access_d)
+{
+    memcpy(reg_d, reg, sizeof(DepRegisterInfo));
+    memcpy(access_d, reg->access, sizeof(DepRegisterAccessInfo));
+    access_d->ro = 0;
+    access_d->w1c = 0;
+    reg_d->access = access_d;
+}
+
+MemTxResult dep_register_write_memory_be_with_attrs(void *opaque, hwaddr addr,
+                             uint64_t value, unsigned size, MemTxAttrs attrs)
+{
+    DepRegisterInfo reg_d;
+    DepRegisterAccessInfo access_d;
+    DepRegisterInfo *reg;
+
+    if (attrs.debug) {
+        dep_register_trap_access(opaque, &reg_d, &access_d);
+        reg = &reg_d;
+    }
+    register_write_memory((void *)reg, addr, value, size, true);
+    return MEMTX_OK;
+}
+
+MemTxResult dep_register_write_memory_le_with_attrs(void *opaque, hwaddr addr,
+                             uint64_t value, unsigned size, MemTxAttrs attrs)
+{
+    DepRegisterInfo reg_d;
+    DepRegisterAccessInfo access_d;
+    DepRegisterInfo *reg;
+
+    if (attrs.debug) {
+        dep_register_trap_access(opaque, &reg_d, &access_d);
+        reg = &reg_d;
+    }
+    register_write_memory((void *)&reg, addr, value, size, false);
+    return MEMTX_OK;
+}
+
 static inline uint64_t register_read_memory(void *opaque, hwaddr addr,
                                             unsigned size, bool be)
 {
