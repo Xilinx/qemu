@@ -160,6 +160,19 @@ void register_write_memory(void *opaque, hwaddr addr, uint64_t value,
                            unsigned size);
 
 /**
+ * Memory API MMIO write-with-attributes handler that will write to a
+ * Register API register.
+ * @opaque: RegisterArrayInfo to write to
+ * @addr: Address to write
+ * @value: Value to write
+ * @size: Number of bytes to write
+ * @attrs: Memory transaction attributes
+ */
+
+MemTxResult register_write_memory_with_attrs(void *opaque, hwaddr addr,
+                             uint64_t value, unsigned size, MemTxAttrs attrs);
+
+/**
  * Memory API MMIO read handler that will read from a Register API register.
  * @opaque: RegisterInfo to read from
  * @addr: Address to read
@@ -206,5 +219,18 @@ RegisterInfoArray *register_init_block32(DeviceState *owner,
  */
 
 void register_finalize_block(RegisterInfoArray *r_array);
+
+/**
+ * This function create a copy of RegisterInfo &  RegisterAccessInfo,
+ * even alters the access config data removing ro and w1c properties.
+ * Useful for fault injections.
+ *
+ * @reg: Original RegisterInfo
+ * @reg_d: Duplicate RegisterInfo
+ * @access_d: Duplicate RegisterAccessInfo
+ */
+void register_trap_access(RegisterInfo *reg,
+                          RegisterInfo *reg_d,
+                          RegisterAccessInfo *access_d);
 
 #endif

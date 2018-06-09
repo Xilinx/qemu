@@ -207,6 +207,55 @@ void register_write_memory(void *opaque, hwaddr addr,
                    reg_array->debug);
 }
 
+void register_trap_access(RegisterInfo *reg,
+                          RegisterInfo *reg_d,
+                          RegisterAccessInfo *access_d)
+{
+    memcpy(reg_d, reg, sizeof(RegisterInfo));
+    memcpy(access_d, reg->access, sizeof(RegisterAccessInfo));
+    access_d->ro = 0;
+    access_d->w1c = 0;
+    reg_d->access = access_d;
+}
+
+MemTxResult register_write_memory_with_attrs(void *opaque, hwaddr addr,
+                             uint64_t value, unsigned size, MemTxAttrs attrs)
+{
+    RegisterInfo reg_d;
+    RegisterAccessInfo access_d;
+    RegisterInfoArray *reg_array = opaque;
+    RegisterInfo *reg = NULL;
+    uint64_t we;
+    int i;
+
+    for (i = 0; i < reg_array->num_elements; i++) {
+        if (reg_array->r[i]->access->addr == addr) {
+            reg = reg_array->r[i];
+            break;
+        }
+    }
+
+    if (!reg) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: write to unimplemented register " \
+                      "at address: %#" PRIx64 "\n", reg_array->prefix, addr);
+        return MEMTX_DECODE_ERROR;
+    }
+
+    if (attrs.debug) {
+        register_trap_access(reg, &reg_d, &access_d);
+        reg = &reg_d;
+    }
+
+    /* Generate appropriate write enable mask */
+    we = register_enabled_mask(reg->data_size, size);
+
+    register_write(reg, value, we, reg_array->prefix,
+                   reg_array->debug);
+
+    return MEMTX_OK;
+}
+
+
 uint64_t register_read_memory(void *opaque, hwaddr addr,
                               unsigned size)
 {
