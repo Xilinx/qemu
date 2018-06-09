@@ -657,11 +657,19 @@ static uint64_t zynqmp_efuse_mem_read(void *opaque, hwaddr addr, unsigned size)
     return v;
 }
 
-static void zynqmp_efuse_mem_write(void *opaque, hwaddr addr,
-                            uint64_t v64, unsigned size)
+static MemTxResult zynqmp_efuse_mem_write_with_attrs(void *opaque, hwaddr addr,
+                            uint64_t v64, unsigned size, MemTxAttrs attrs)
 {
+    DepRegisterInfo reg;
+    DepRegisterAccessInfo access;
     DepRegisterInfo *regi = opaque;
-    ZynqMPEFuse *s = ZYNQMP_EFUSE(regi->opaque);
+    ZynqMPEFuse *s;
+
+    if (attrs.debug) {
+        dep_register_trap_access(opaque, &reg, &access);
+        regi = &reg;
+    }
+    s = ZYNQMP_EFUSE(regi->opaque);
 
     /* Process programming completion if late.  */
     efuse_pgm_complete(s->efuse);
@@ -672,11 +680,12 @@ static void zynqmp_efuse_mem_write(void *opaque, hwaddr addr,
                       object_get_canonical_path(OBJECT(s)));
     }
     dep_register_write(regi, v64, ~0);
+    return MEMTX_OK;
 }
 
 static const MemoryRegionOps zynqmp_efuse_ops = {
     .read = zynqmp_efuse_mem_read,
-    .write = zynqmp_efuse_mem_write,
+    .write_with_attrs = zynqmp_efuse_mem_write_with_attrs,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
