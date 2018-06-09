@@ -56,7 +56,7 @@
 ##
 { 'command': 'write_mem',
   'data': {'addr': 'int', 'val': 'int', 'size': 'int', '*cpu': 'int',
-           '*qom': 'str'} }
+           '*qom': 'str', 'debug': 'bool'} }
 
 ##
 # @trigger_event:

@@ -101,22 +101,24 @@ class FaultInjectionFramework(qmp.QEMUMonitorProtocol):
                                 'time_ns': time_ns}}
         self.send(qmpcmd)
 
-    def write(self, address, value, size, cpu):
+    def write(self, address, value, size, cpu, debug = False):
         # write a value
         self.time_print('write: 0x%08x @0x%08x size %s from cpu %s' \
                         %(value, address, size, cpu))
         if type(cpu) is int:
-	        qmpcmd = {'execute': 'write_mem',
-	                  'arguments': {'size': size,
-	                                'addr': address,
-	                                'val': value,
-	                                'cpu': cpu}}
+                qmpcmd = {'execute': 'write_mem',
+                          'arguments': {'size': size,
+                                        'addr': address,
+                                        'val': value,
+                                        'cpu': cpu,
+                                        'debug': debug}}
         else:
-	        qmpcmd = {'execute': 'write_mem',
-	                  'arguments': {'size': size,
-	                                'addr': address,
-	                                'val': value,
-	                                'qom': cpu}}
+                qmpcmd = {'execute': 'write_mem',
+                          'arguments': {'size': size,
+                                        'addr': address,
+                                        'val': value,
+                                        'qom': cpu,
+                                        'debug': debug}}
         self.send(qmpcmd)
 
     def read(self, address, size, cpu):
@@ -176,9 +178,11 @@ class FaultInjectionFramework(qmp.QEMUMonitorProtocol):
         print " * Start the simulation when the notify are set.\n"
         print "notify(time_ns, cb)"
         print " * Notify the callback cb in guest time time_ns.\n"
-        print "write(address, value, size, cpu)"
+        print "write(address, value, size, cpu, debug)"
         print " * Write @value of size @size at @address from @cpu."
         print " * @cpu can be either a qom path or the cpu id.\n"
+        print " * set @debug to True to make a write transaction with"
+        print " * debug attributes enabled"
         print "read(address, size, cpu)"
         print " * Read a value of size @size at @address from @cpu."
         print " * @cpu can be either a qom path or the cpu id."
