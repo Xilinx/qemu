@@ -16,6 +16,7 @@ common-obj-$(CONFIG_XLNX_ZYNQMP) += csu_pcap.o
 obj-$(CONFIG_XLNX_ZYNQMP_ARM) += xilinx-lpd-slcr.o
 obj-$(CONFIG_XLNX_ZYNQMP_ARM) += xilinx_zynqmp_apu_ctrl.o
 obj-$(CONFIG_XLNX_ZYNQMP_ARM) += xilinx_zynqmp_rpu_ctrl.o
+obj-$(CONFIG_XLNX_ZYNQMP_ARM) += xlnx-zynq3-apu-ctrl.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx_zynqmp_ocmc.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += zynqmp-iou-slcr.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xlnx-lpd-slcr-secure.o
