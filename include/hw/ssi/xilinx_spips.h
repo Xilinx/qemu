@@ -37,6 +37,8 @@ typedef struct XilinxSPIPS XilinxSPIPS;
 /* Bite off 4k chunks at a time */
 #define LQSPI_CACHE_SIZE 1024
 
+#define QSPI_DMA_MAX_BURST_SIZE 2048
+
 typedef enum {
     READ = 0x3,         READ_4 = 0x13,
     FAST_READ = 0xb,    FAST_READ_4 = 0x0c,
@@ -102,7 +104,8 @@ typedef struct {
     XilinxQSPIPS parent_obj;
 
     StreamSlave *dma;
-    uint8_t dma_buf[4];
+    uint8_t dma_buf[QSPI_DMA_MAX_BURST_SIZE];
+    uint32_t dma_burst_size;
     int gqspi_irqline;
 
     uint32_t regs[XLNX_ZYNQMP_SPIPS_R_MAX];
