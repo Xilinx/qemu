@@ -53,6 +53,7 @@ common-obj-$(CONFIG_XLNX_ZYNQ3_PMC) += pmc_sbi.o
 common-obj-$(CONFIG_XLNX_ZYNQ3_PMC) += xlnx-zynq3-noc-nmu.o
 common-obj-$(CONFIG_XLNX_ZYNQ3_PMC) += xlnx-zynq3-noc-nsu.o
 common-obj-$(CONFIG_XLNX_ZYNQ3_PMC) += xlnx-zynq3-noc-nps.o
+common-obj-$(CONFIG_XLNX_ZYNQ3_PMC) += xlnx-zynq3-me-npi.o
 
 common-obj-$(CONFIG_SOFTMMU) += gpio-mr-mux.o
 
