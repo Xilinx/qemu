@@ -44,6 +44,7 @@ common-obj-$(CONFIG_SI57X) += si57x.o
 common-obj-$(CONFIG_XLNX_ZYNQ3_PMC) += sss-pmc.o
 common-obj-$(CONFIG_XLNX_ZYNQ3_PMC) += xlnx-zynq3-pmc-clk-rst.o
 common-obj-$(CONFIG_XLNX_ZYNQ3_PMC) += xlnx-zynq3-pmc-global.o
+common-obj-$(CONFIG_XLNX_ZYNQ3_PMC) += xlnx-zynq3-pmc-iou-slcr.o
 
 common-obj-$(CONFIG_SOFTMMU) += gpio-mr-mux.o
 
