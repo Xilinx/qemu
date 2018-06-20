@@ -41,6 +41,8 @@ common-obj-$(CONFIG_XLNX_ZYNQMP) += reset-dev.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += reset-domain.o
 common-obj-$(CONFIG_SI57X) += si57x.o
 
+common-obj-$(CONFIG_XLNX_ZYNQ3_PMC) += sss-pmc.o
+
 common-obj-$(CONFIG_SOFTMMU) += gpio-mr-mux.o
 
 common-obj-$(CONFIG_XILINX_AXI) += stream-fifo.o
