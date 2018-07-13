@@ -9,6 +9,8 @@ common-obj-$(CONFIG_XEN) += xen_disk.o
 common-obj-$(CONFIG_ECC) += ecc.o
 common-obj-$(CONFIG_ONENAND) += onenand.o
 common-obj-$(CONFIG_NVME_PCI) += nvme.o
+common-obj-$(CONFIG_XLNX_ZYNQMP_CSU) += csu_efuse.o
+common-obj-$(CONFIG_XLNX_ZYNQMP_CSU) += xlnx-efuse.o
 common-obj-$(CONFIG_ARASAN_NFC) += arasan_nfc.o
 common-obj-$(CONFIG_M24CXX) += m24cxx.o
 
