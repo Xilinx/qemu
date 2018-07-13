@@ -86,6 +86,7 @@ common-obj-$(CONFIG_XLNX_VERSAL_PMC) += xlnx-versal-cmt-mmcm.o
 common-obj-$(CONFIG_XLNX_VERSAL_PMC) += xlnx-versal-pmc-sysmon.o
 common-obj-$(CONFIG_XLNX_VERSAL_PMC) += xlnx-versal-pmc-pzm.o
 common-obj-$(CONFIG_XLNX_VERSAL_PMC) += xlnx-versal-pmc-tamper.o
+common-obj-$(CONFIG_XLNX_VERSAL_PMC) += xlnx-versal-aes.o
 
 common-obj-$(CONFIG_SOFTMMU) += gpio-mr-mux.o
 
