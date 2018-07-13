@@ -19,6 +19,7 @@ common-obj-$(CONFIG_XLNX_ZYNQMP_CSU) += csu_rsa5_4k.o
 common-obj-$(CONFIG_XLNX_VERSAL_PMC) += xlnx-versal-ecdsa-rsa.o
 endif
 common-obj-$(CONFIG_XLNX_ZYNQMP_CSU) += zynqmp_aes_key.o
+obj-$(CONFIG_XLNX_ZYNQMP_CSU) += xlnx-bbram-ctrl.o
 
 obj-$(CONFIG_XLNX_ZYNQMP_ARM) += xilinx-lpd-slcr.o
 obj-$(CONFIG_XLNX_ZYNQMP_ARM) += xilinx_zynqmp_apu_ctrl.o
