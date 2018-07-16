@@ -532,7 +532,7 @@ static uint64_t rst_ps_prew(RegisterInfo *reg, uint64_t val64)
                 !!(val & (R_RST_PS_PMC_POR_MASK |
                           R_RST_PS_PS_POR_MASK |
                           R_RST_PS_PL_POR_MASK)));
-    for (i = 0; i <= R_RST_PS_PMC_POR_SHIFT; i++) {
+    for (i = R_RST_PS_PL_SRST_SHIFT; i <= R_RST_PS_PMC_POR_SHIFT; i++) {
         switch ((val ^ pval) & (1 << i)) {
         case R_RST_PS_PL_SRST_MASK:
             qemu_set_irq(s->rst_ps[0], !!(val & R_RST_PS_PL_SRST_MASK));
