@@ -780,13 +780,23 @@ static void crp_reset(DeviceState *dev)
     QemuOpts *opts = qemu_find_opts_singleton("boot-opts");
     uint32_t boot_mode = qemu_opt_get_number(opts, "mode", 0);
     unsigned int i;
+    hwaddr addr;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        /* R_RESET_REASON is maintained across resets.  */
-        if (i != R_RESET_REASON) {
+        if (s->regs_info[i].access) {
+            addr = s->regs_info[i].access->addr;
+        } else {
+            continue;
+        }
+        switch (addr) {
+        case A_RESET_REASON:
+        case A_RST_PS:
+            continue;
+        default:
             register_reset(&s->regs_info[i]);
         }
     }
+
     s->regs[R_BOOT_MODE_POR] = boot_mode;
     update_boot_mode_user(s);
 
