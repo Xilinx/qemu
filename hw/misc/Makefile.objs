@@ -49,6 +49,7 @@ common-obj-$(CONFIG_XLNX_ZYNQ3_PMC) += xlnx-zynq3-pmc-iou-slcr.o
 common-obj-$(CONFIG_XLNX_ZYNQ3_PMC) += xlnx-zynq3-cfu.o
 common-obj-$(CONFIG_XLNX_ZYNQ3_PMC) += xlnx-zynq3-trng.o
 common-obj-$(CONFIG_XLNX_ZYNQ3_PMC) += xlnx-zynq3-crf.o
+common-obj-$(CONFIG_XLNX_ZYNQ3_PMC) += xlnx-zynq3-crl.o
 common-obj-$(CONFIG_XLNX_ZYNQ3_PMC) += xlnx-zynq3-pmc-tap.o
 common-obj-$(CONFIG_XLNX_ZYNQ3_PMC) += pmc_sbi.o
 common-obj-$(CONFIG_XLNX_ZYNQ3_PMC) += xlnx-zynq3-noc-nmu.o
