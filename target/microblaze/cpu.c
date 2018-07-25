@@ -79,7 +79,7 @@ static void mb_cpu_set_pc(CPUState *cs, vaddr value)
 {
     MicroBlazeCPU *cpu = MICROBLAZE_CPU(cs);
 
-    cpu->env.sregs[SR_PC] = value;
+    cpu->env.sregs[SR_PC] = (uint32_t) value;
 }
 
 static vaddr mb_cpu_get_pc(CPUState *cs)
