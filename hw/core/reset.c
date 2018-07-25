@@ -38,6 +38,9 @@ typedef struct QEMUResetEntry {
 static QTAILQ_HEAD(reset_handlers, QEMUResetEntry) reset_handlers =
     QTAILQ_HEAD_INITIALIZER(reset_handlers);
 
+static QTAILQ_HEAD(loader_handlers, QEMUResetEntry) loader_handlers =
+    QTAILQ_HEAD_INITIALIZER(loader_handlers);
+
 #define REGISTER_RESET_LIST(head, func, opaque)                 \
     {                                                           \
         QEMUResetEntry *re = g_malloc0(sizeof(QEMUResetEntry)); \
@@ -66,12 +69,29 @@ void qemu_unregister_reset(QEMUResetHandler *func, void *opaque)
     UNREGISTER_RESET_LIST(&reset_handlers, func, opaque);
 }
 
+void qemu_register_reset_loader(QEMUResetHandler *func, void *opaque)
+{
+    REGISTER_RESET_LIST(&loader_handlers, func, opaque);
+}
+
+void qemu_unregister_reset_loader(QEMUResetHandler *func, void *opaque)
+{
+    UNREGISTER_RESET_LIST(&loader_handlers, func, opaque);
+}
+
 void qemu_devices_reset(void)
 {
     QEMUResetEntry *re, *nre;
 
     /* reset all devices */
     QTAILQ_FOREACH_SAFE(re, &reset_handlers, entry, nre) {
+        if (re->func) {
+            re->func(re->opaque);
+        }
+    }
+
+    /* reset all device loaders */
+    QTAILQ_FOREACH_SAFE(re, &loader_handlers, entry, nre) {
         if (re->func) {
             re->func(re->opaque);
         }
