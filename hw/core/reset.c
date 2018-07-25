@@ -38,26 +38,32 @@ typedef struct QEMUResetEntry {
 static QTAILQ_HEAD(reset_handlers, QEMUResetEntry) reset_handlers =
     QTAILQ_HEAD_INITIALIZER(reset_handlers);
 
+#define REGISTER_RESET_LIST(head, func, opaque)                 \
+    {                                                           \
+        QEMUResetEntry *re = g_malloc0(sizeof(QEMUResetEntry)); \
+        re->func = func;                                        \
+        re->opaque = opaque;                                    \
+        QTAILQ_INSERT_TAIL(head, re, entry);                    \
+    }
+
+#define UNREGISTER_RESET_LIST(head, func, opaque)               \
+    QEMUResetEntry *re;                                         \
+    QTAILQ_FOREACH(re, head, entry) {                           \
+        if (re->func == func && re->opaque == opaque) {         \
+            QTAILQ_REMOVE(head, re, entry);                     \
+            g_free(re);                                         \
+            return;                                             \
+        }                                                       \
+    }
+
 void qemu_register_reset(QEMUResetHandler *func, void *opaque)
 {
-    QEMUResetEntry *re = g_malloc0(sizeof(QEMUResetEntry));
-
-    re->func = func;
-    re->opaque = opaque;
-    QTAILQ_INSERT_TAIL(&reset_handlers, re, entry);
+    REGISTER_RESET_LIST(&reset_handlers, func, opaque);
 }
 
 void qemu_unregister_reset(QEMUResetHandler *func, void *opaque)
 {
-    QEMUResetEntry *re;
-
-    QTAILQ_FOREACH(re, &reset_handlers, entry) {
-        if (re->func == func && re->opaque == opaque) {
-            QTAILQ_REMOVE(&reset_handlers, re, entry);
-            g_free(re);
-            return;
-        }
-    }
+    UNREGISTER_RESET_LIST(&reset_handlers, func, opaque);
 }
 
 void qemu_devices_reset(void)
