@@ -1225,7 +1225,11 @@ static void device_rst_cntrl(void *opaque, int n, int level)
 {
     DeviceState *dev = DEVICE(opaque);
 
-    device_reset(dev);
+    /* Apply reset on the negative edge.  */
+    if (level == 0 && dev->reset_level != !!level) {
+        device_reset(dev);
+    }
+    dev->reset_level = level;
 }
 
 static void device_class_init(ObjectClass *class, void *data)

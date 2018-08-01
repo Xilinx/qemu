@@ -177,6 +177,7 @@ struct DeviceState {
     int instance_id_alias;
     int alias_required_for_version;
     PowerState ps;
+    bool reset_level;
 };
 
 struct DeviceListener {
