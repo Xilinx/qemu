@@ -326,6 +326,7 @@ static void cfu_apb_reset(DeviceState *dev)
         register_reset(&s->regs_info[i]);
     }
 
+    s->regs[R_CFU_STATUS] |= R_CFU_STATUS_HC_COMPLETE_MASK;
     cfu_imr_update_irq(s);
 }
 
