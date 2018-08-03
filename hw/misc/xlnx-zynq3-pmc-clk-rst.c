@@ -797,6 +797,9 @@ static void crp_reset(DeviceState *dev)
         }
     }
 
+    s->regs[R_PLL_STATUS] |= R_PLL_STATUS_NOCPLL_LOCK_MASK |
+                             R_PLL_STATUS_PMCPLL_LOCK_MASK;
+
     s->regs[R_BOOT_MODE_POR] = boot_mode;
     update_boot_mode_user(s);
 
