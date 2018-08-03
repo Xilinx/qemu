@@ -26,7 +26,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
-#include "hw/register-dep.h"
+#include "hw/register.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
 
@@ -39,69 +39,169 @@
 #define XILINX_CFU_APB(obj) \
      OBJECT_CHECK(CFU, (obj), TYPE_XILINX_CFU_APB)
 
-DEP_REG32(CFU_ISR, 0x0)
-    DEP_FIELD(CFU_ISR, CRC8_ERROR, 1, 2)
-    DEP_FIELD(CFU_ISR, CFI_ERROR, 1, 1)
-    DEP_FIELD(CFU_ISR, SEU_ERROR, 1, 0)
-DEP_REG32(CFU_IMR, 0x4)
-    DEP_FIELD(CFU_IMR, CRC8_ERROR, 1, 2)
-    DEP_FIELD(CFU_IMR, CFI_ERROR, 1, 1)
-    DEP_FIELD(CFU_IMR, SEU_ERROR, 1, 0)
-DEP_REG32(CFU_IER, 0x8)
-    DEP_FIELD(CFU_IER, CRC8_ERROR, 1, 2)
-    DEP_FIELD(CFU_IER, CFI_ERROR, 1, 1)
-    DEP_FIELD(CFU_IER, SEU_ERROR, 1, 0)
-DEP_REG32(CFU_IDR, 0xc)
-    DEP_FIELD(CFU_IDR, CRC8_ERROR, 1, 2)
-    DEP_FIELD(CFU_IDR, CFI_ERROR, 1, 1)
-    DEP_FIELD(CFU_IDR, SEU_ERROR, 1, 0)
-DEP_REG32(CFU_PROTECT, 0x10)
-    DEP_FIELD(CFU_PROTECT, ACTIVE, 1, 0)
-DEP_REG32(CFU_GLOBAL, 0x14)
-    DEP_FIELD(CFU_GLOBAL, GPWRDWN, 1, 10)
-    DEP_FIELD(CFU_GLOBAL, GCAP, 1, 9)
-    DEP_FIELD(CFU_GLOBAL, GSCWE, 1, 8)
-    DEP_FIELD(CFU_GLOBAL, GHIGH_B, 1, 7)
-    DEP_FIELD(CFU_GLOBAL, GMC_B, 1, 6)
-    DEP_FIELD(CFU_GLOBAL, GWE, 1, 5)
-    DEP_FIELD(CFU_GLOBAL, GRESTORE, 1, 4)
-    DEP_FIELD(CFU_GLOBAL, GTS_CFG_B, 1, 3)
-    DEP_FIELD(CFU_GLOBAL, GLUTMASK, 1, 2)
-    DEP_FIELD(CFU_GLOBAL, EN_GLOB, 1, 1)
-    DEP_FIELD(CFU_GLOBAL, GSCAN_START, 1, 0)
-DEP_REG32(CFU_CTL, 0x18)
-    DEP_FIELD(CFU_CTL, QWORD_CNT_RESET, 1, 4)
-    DEP_FIELD(CFU_CTL, CRC8_DISABLE, 1, 3)
-    DEP_FIELD(CFU_CTL, DECOMPRESS, 1, 2)
-    DEP_FIELD(CFU_CTL, SEU_GO, 1, 1)
-    DEP_FIELD(CFU_CTL, CFI_LOCAL_RESET, 1, 0)
-DEP_REG32(CFU_STATUS, 0x1c)
-    DEP_FIELD(CFU_STATUS, CRC8_ERROR, 1, 9)
-    DEP_FIELD(CFU_STATUS, CFI_CFRAME_BUSY, 1, 8)
-    DEP_FIELD(CFU_STATUS, CFI_ERROR, 1, 7)
-    DEP_FIELD(CFU_STATUS, CFI_SEU_CRC_ERROR, 1, 6)
-    DEP_FIELD(CFU_STATUS, CFI_SEU_ECC_ERROR, 1, 5)
-    DEP_FIELD(CFU_STATUS, CFI_SEU_HEARTBEAT, 1, 4)
-    DEP_FIELD(CFU_STATUS, BITSTREAM_CRC_ERR, 1, 3)
-    DEP_FIELD(CFU_STATUS, GHIGH_B_LAST, 1, 2)
-    DEP_FIELD(CFU_STATUS, GMC_B_LAST, 1, 1)
-    DEP_FIELD(CFU_STATUS, GPWRDWN_B_LAST, 1, 0)
-DEP_REG32(CFU_CRAM_RW, 0x20)
-    DEP_FIELD(CFU_CRAM_RW, RD_WAVE_CNT_LEFT, 6, 12)
-    DEP_FIELD(CFU_CRAM_RW, RD_WAVE_CNT, 6, 6)
-    DEP_FIELD(CFU_CRAM_RW, WR_WAVE_CNT, 6, 0)
-DEP_REG32(CFU_CRAM_SWITCH, 0x24)
-    DEP_FIELD(CFU_CRAM_SWITCH, ROW_DELAY, 10, 8)
-    DEP_FIELD(CFU_CRAM_SWITCH, WRCFG_DELAY, 8, 0)
-DEP_REG32(CFU_CFRAME_LEFT_T0, 0x28)
-DEP_REG32(CFU_CFRAME_LEFT_T1, 0x2c)
-DEP_REG32(CFU_CFRAME_LEFT_T2, 0x30)
-DEP_REG32(CFU_QWORD_CNT, 0x34)
-DEP_REG32(CFU_CRC, 0x38)
-DEP_REG32(CFU_INTERNAL_STATUS, 0x3c)
-    DEP_FIELD(CFU_INTERNAL_STATUS, WFIFO_DCNT, 4, 0)
+REG32(CFU_ISR, 0x0)
+    FIELD(CFU_ISR, USR_GTS_EVENT, 9, 1)
+    FIELD(CFU_ISR, USR_GSR_EVENT, 8, 1)
+    FIELD(CFU_ISR, SLVERR, 7, 1)
+    FIELD(CFU_ISR, DECOMP_ERROR, 6, 1)
+    FIELD(CFU_ISR, BAD_CFI_PACKET, 5, 1)
+    FIELD(CFU_ISR, AXI_ALIGN_ERROR, 4, 1)
+    FIELD(CFU_ISR, CFI_ROW_ERROR, 3, 1)
+    FIELD(CFU_ISR, CRC32_ERROR, 2, 1)
+    FIELD(CFU_ISR, CRC8_ERROR, 1, 1)
+    FIELD(CFU_ISR, SEU_ENDOFCALIB, 0, 1)
+REG32(CFU_IMR, 0x4)
+    FIELD(CFU_IMR, USR_GTS_EVENT, 9, 1)
+    FIELD(CFU_IMR, USR_GSR_EVENT, 8, 1)
+    FIELD(CFU_IMR, SLVERR, 7, 1)
+    FIELD(CFU_IMR, DECOMP_ERROR, 6, 1)
+    FIELD(CFU_IMR, BAD_CFI_PACKET, 5, 1)
+    FIELD(CFU_IMR, AXI_ALIGN_ERROR, 4, 1)
+    FIELD(CFU_IMR, CFI_ROW_ERROR, 3, 1)
+    FIELD(CFU_IMR, CRC32_ERROR, 2, 1)
+    FIELD(CFU_IMR, CRC8_ERROR, 1, 1)
+    FIELD(CFU_IMR, SEU_ENDOFCALIB, 0, 1)
+REG32(CFU_IER, 0x8)
+    FIELD(CFU_IER, USR_GTS_EVENT, 9, 1)
+    FIELD(CFU_IER, USR_GSR_EVENT, 8, 1)
+    FIELD(CFU_IER, SLVERR, 7, 1)
+    FIELD(CFU_IER, DECOMP_ERROR, 6, 1)
+    FIELD(CFU_IER, BAD_CFI_PACKET, 5, 1)
+    FIELD(CFU_IER, AXI_ALIGN_ERROR, 4, 1)
+    FIELD(CFU_IER, CFI_ROW_ERROR, 3, 1)
+    FIELD(CFU_IER, CRC32_ERROR, 2, 1)
+    FIELD(CFU_IER, CRC8_ERROR, 1, 1)
+    FIELD(CFU_IER, SEU_ENDOFCALIB, 0, 1)
+REG32(CFU_IDR, 0xc)
+    FIELD(CFU_IDR, USR_GTS_EVENT, 9, 1)
+    FIELD(CFU_IDR, USR_GSR_EVENT, 8, 1)
+    FIELD(CFU_IDR, SLVERR, 7, 1)
+    FIELD(CFU_IDR, DECOMP_ERROR, 6, 1)
+    FIELD(CFU_IDR, BAD_CFI_PACKET, 5, 1)
+    FIELD(CFU_IDR, AXI_ALIGN_ERROR, 4, 1)
+    FIELD(CFU_IDR, CFI_ROW_ERROR, 3, 1)
+    FIELD(CFU_IDR, CRC32_ERROR, 2, 1)
+    FIELD(CFU_IDR, CRC8_ERROR, 1, 1)
+    FIELD(CFU_IDR, SEU_ENDOFCALIB, 0, 1)
+REG32(CFU_ITR, 0x10)
+    FIELD(CFU_ITR, USR_GTS_EVENT, 9, 1)
+    FIELD(CFU_ITR, USR_GSR_EVENT, 8, 1)
+    FIELD(CFU_ITR, SLVERR, 7, 1)
+    FIELD(CFU_ITR, DECOMP_ERROR, 6, 1)
+    FIELD(CFU_ITR, BAD_CFI_PACKET, 5, 1)
+    FIELD(CFU_ITR, AXI_ALIGN_ERROR, 4, 1)
+    FIELD(CFU_ITR, CFI_ROW_ERROR, 3, 1)
+    FIELD(CFU_ITR, CRC32_ERROR, 2, 1)
+    FIELD(CFU_ITR, CRC8_ERROR, 1, 1)
+    FIELD(CFU_ITR, SEU_ENDOFCALIB, 0, 1)
+REG32(CFU_PROTECT, 0x14)
+    FIELD(CFU_PROTECT, ACTIVE, 0, 1)
+REG32(CFU_FGCR, 0x18)
+    FIELD(CFU_FGCR, GCLK_CAL, 14, 1)
+    FIELD(CFU_FGCR, SC_HBC_TRIGGER, 13, 1)
+    FIELD(CFU_FGCR, GLOW, 12, 1)
+    FIELD(CFU_FGCR, GPWRDWN, 11, 1)
+    FIELD(CFU_FGCR, GCAP, 10, 1)
+    FIELD(CFU_FGCR, GSCWE, 9, 1)
+    FIELD(CFU_FGCR, GHIGH_B, 8, 1)
+    FIELD(CFU_FGCR, GMC_B, 7, 1)
+    FIELD(CFU_FGCR, GWE, 6, 1)
+    FIELD(CFU_FGCR, GRESTORE, 5, 1)
+    FIELD(CFU_FGCR, GTS_CFG_B, 4, 1)
+    FIELD(CFU_FGCR, GLUTMASK, 3, 1)
+    FIELD(CFU_FGCR, EN_GLOBS_B, 2, 1)
+    FIELD(CFU_FGCR, EOS, 1, 1)
+    FIELD(CFU_FGCR, INIT_COMPLETE, 0, 1)
+REG32(CFU_CTL, 0x1c)
+    FIELD(CFU_CTL, GSR_GSC, 15, 1)
+    FIELD(CFU_CTL, SLVERR_EN, 14, 1)
+    FIELD(CFU_CTL, CRC32_RESET, 13, 1)
+    FIELD(CFU_CTL, AXI_ERROR_EN, 12, 1)
+    FIELD(CFU_CTL, FLUSH_AXI, 11, 1)
+    FIELD(CFU_CTL, SSI_PER_SLR_PR, 10, 1)
+    FIELD(CFU_CTL, GCAP_CLK_EN, 9, 1)
+    FIELD(CFU_CTL, STATUS_SYNC_DISABLE, 8, 1)
+    FIELD(CFU_CTL, IGNORE_CFI_ERROR, 7, 1)
+    FIELD(CFU_CTL, CFRAME_DISABLE, 6, 1)
+    FIELD(CFU_CTL, QWORD_CNT_RESET, 5, 1)
+    FIELD(CFU_CTL, CRC8_DISABLE, 4, 1)
+    FIELD(CFU_CTL, CRC32_CHECK, 3, 1)
+    FIELD(CFU_CTL, DECOMPRESS, 2, 1)
+    FIELD(CFU_CTL, SEU_GO, 1, 1)
+    FIELD(CFU_CTL, CFI_LOCAL_RESET, 0, 1)
+REG32(CFU_CRAM_RW, 0x20)
+    FIELD(CFU_CRAM_RW, RFIFO_AFULL_DEPTH, 18, 9)
+    FIELD(CFU_CRAM_RW, RD_WAVE_CNT_LEFT, 12, 6)
+    FIELD(CFU_CRAM_RW, RD_WAVE_CNT, 6, 6)
+    FIELD(CFU_CRAM_RW, WR_WAVE_CNT, 0, 6)
+REG32(CFU_MASK, 0x28)
+REG32(CFU_CRC_EXPECT, 0x2c)
+REG32(CFU_CFRAME_LEFT_T0, 0x60)
+    FIELD(CFU_CFRAME_LEFT_T0, NUM, 0, 20)
+REG32(CFU_CFRAME_LEFT_T1, 0x64)
+    FIELD(CFU_CFRAME_LEFT_T1, NUM, 0, 20)
+REG32(CFU_CFRAME_LEFT_T2, 0x68)
+    FIELD(CFU_CFRAME_LEFT_T2, NUM, 0, 20)
+REG32(CFU_ROW_RANGE, 0x6c)
+    FIELD(CFU_ROW_RANGE, HALF_FSR, 5, 1)
+    FIELD(CFU_ROW_RANGE, NUM, 0, 5)
+REG32(CFU_STATUS, 0x100)
+    FIELD(CFU_STATUS, SEU_WRITE_ERROR, 30, 1)
+    FIELD(CFU_STATUS, FRCNT_ERROR, 29, 1)
+    FIELD(CFU_STATUS, RSVD_ERROR, 28, 1)
+    FIELD(CFU_STATUS, FDRO_ERROR, 27, 1)
+    FIELD(CFU_STATUS, FDRI_ERROR, 26, 1)
+    FIELD(CFU_STATUS, FDRI_READ_ERROR, 25, 1)
+    FIELD(CFU_STATUS, READ_FDRI_ERROR, 24, 1)
+    FIELD(CFU_STATUS, READ_SFR_ERROR, 23, 1)
+    FIELD(CFU_STATUS, READ_STREAM_ERROR, 22, 1)
+    FIELD(CFU_STATUS, UNKNOWN_STREAM_PKT, 21, 1)
+    FIELD(CFU_STATUS, USR_GTS, 20, 1)
+    FIELD(CFU_STATUS, USR_GSR, 19, 1)
+    FIELD(CFU_STATUS, AXI_BAD_WSTRB, 18, 1)
+    FIELD(CFU_STATUS, AXI_BAD_AR_SIZE, 17, 1)
+    FIELD(CFU_STATUS, AXI_BAD_AW_SIZE, 16, 1)
+    FIELD(CFU_STATUS, AXI_BAD_ARADDR, 15, 1)
+    FIELD(CFU_STATUS, AXI_BAD_AWADDR, 14, 1)
+    FIELD(CFU_STATUS, SCAN_CLEAR_PASS, 13, 1)
+    FIELD(CFU_STATUS, HC_SEC_ERROR, 12, 1)
+    FIELD(CFU_STATUS, GHIGH_B_ISHIGH, 11, 1)
+    FIELD(CFU_STATUS, GHIGH_B_ISLOW, 10, 1)
+    FIELD(CFU_STATUS, GMC_B_ISHIGH, 9, 1)
+    FIELD(CFU_STATUS, GMC_B_ISLOW, 8, 1)
+    FIELD(CFU_STATUS, GPWRDWN_B_ISHIGH, 7, 1)
+    FIELD(CFU_STATUS, CFI_SEU_CRC_ERROR, 6, 1)
+    FIELD(CFU_STATUS, CFI_SEU_ECC_ERROR, 5, 1)
+    FIELD(CFU_STATUS, CFI_SEU_HEARTBEAT, 4, 1)
+    FIELD(CFU_STATUS, SCAN_CLEAR_DONE, 3, 1)
+    FIELD(CFU_STATUS, HC_COMPLETE, 2, 1)
+    FIELD(CFU_STATUS, CFI_CFRAME_BUSY, 1, 1)
+    FIELD(CFU_STATUS, CFU_STREAM_BUSY, 0, 1)
+REG32(CFU_INTERNAL_STATUS, 0x104)
+    FIELD(CFU_INTERNAL_STATUS, SSI_EOS, 22, 1)
+    FIELD(CFU_INTERNAL_STATUS, SSI_GWE, 21, 1)
+    FIELD(CFU_INTERNAL_STATUS, RFIFO_EMPTY, 20, 1)
+    FIELD(CFU_INTERNAL_STATUS, RFIFO_FULL, 19, 1)
+    FIELD(CFU_INTERNAL_STATUS, SEL_SFR, 18, 1)
+    FIELD(CFU_INTERNAL_STATUS, STREAM_CFRAME, 17, 1)
+    FIELD(CFU_INTERNAL_STATUS, FDRI_PHASE, 16, 1)
+    FIELD(CFU_INTERNAL_STATUS, CFI_PIPE_EN, 15, 1)
+    FIELD(CFU_INTERNAL_STATUS, AWFIFO_DCNT, 10, 5)
+    FIELD(CFU_INTERNAL_STATUS, WFIFO_DCNT, 5, 5)
+    FIELD(CFU_INTERNAL_STATUS, REPAIR_BUSY, 4, 1)
+    FIELD(CFU_INTERNAL_STATUS, TRIMU_BUSY, 3, 1)
+    FIELD(CFU_INTERNAL_STATUS, TRIMB_BUSY, 2, 1)
+    FIELD(CFU_INTERNAL_STATUS, HCLEANR_BUSY, 1, 1)
+    FIELD(CFU_INTERNAL_STATUS, HCLEAN_BUSY, 0, 1)
+REG32(CFU_QWORD_CNT, 0x108)
+REG32(CFU_CRC_LIVE, 0x10c)
+REG32(CFU_PENDING_READ_CNT, 0x110)
+    FIELD(CFU_PENDING_READ_CNT, NUM, 0, 25)
+REG32(CFU_FDRI_CNT, 0x114)
+REG32(CFU_ECO1, 0x118)
+REG32(CFU_ECO2, 0x11c)
 
-#define R_MAX (R_CFU_INTERNAL_STATUS + 1)
+#define R_MAX (R_CFU_ECO2 + 1)
 
 typedef struct CFU {
     SysBusDevice parent_obj;
@@ -113,7 +213,7 @@ typedef struct CFU {
     uint32_t wfifo[4];
 
     uint32_t regs[R_MAX];
-    DepRegisterInfo regs_info[R_MAX];
+    RegisterInfo regs_info[R_MAX];
 } CFU;
 
 static void cfu_imr_update_irq(CFU *s)
@@ -122,13 +222,13 @@ static void cfu_imr_update_irq(CFU *s)
     qemu_set_irq(s->irq_cfu_imr, pending);
 }
 
-static void cfu_isr_postw(DepRegisterInfo *reg, uint64_t val64)
+static void cfu_isr_postw(RegisterInfo *reg, uint64_t val64)
 {
     CFU *s = XILINX_CFU_APB(reg->opaque);
     cfu_imr_update_irq(s);
 }
 
-static uint64_t cfu_ier_prew(DepRegisterInfo *reg, uint64_t val64)
+static uint64_t cfu_ier_prew(RegisterInfo *reg, uint64_t val64)
 {
     CFU *s = XILINX_CFU_APB(reg->opaque);
     uint32_t val = val64;
@@ -138,7 +238,7 @@ static uint64_t cfu_ier_prew(DepRegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
-static uint64_t cfu_idr_prew(DepRegisterInfo *reg, uint64_t val64)
+static uint64_t cfu_idr_prew(RegisterInfo *reg, uint64_t val64)
 {
     CFU *s = XILINX_CFU_APB(reg->opaque);
     uint32_t val = val64;
@@ -148,50 +248,72 @@ static uint64_t cfu_idr_prew(DepRegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
-static DepRegisterAccessInfo cfu_apb_regs_info[] = {
-    {   .name = "CFU_ISR",  .decode.addr = A_CFU_ISR,
-        .rsvd = 0xfffffff8,
-        .w1c = 0x7,
+static uint64_t cfu_itr_prew(RegisterInfo *reg, uint64_t val64)
+{
+    CFU *s = XILINX_CFU_APB(reg->opaque);
+    uint32_t val = val64;
+
+    s->regs[R_CFU_ISR] |= val;
+    cfu_imr_update_irq(s);
+    return 0;
+}
+
+
+static const RegisterAccessInfo cfu_apb_regs_info[] = {
+    {   .name = "CFU_ISR",  .addr = A_CFU_ISR,
+        .rsvd = 0xfffffc00,
+        .w1c = 0x3ff,
         .post_write = cfu_isr_postw,
-    },{ .name = "CFU_IMR",  .decode.addr = A_CFU_IMR,
-        .reset = 0x7,
-        .rsvd = 0xfffffff8,
-        .ro = 0x3,
-        .w1c = 0x4,
-    },{ .name = "CFU_IER",  .decode.addr = A_CFU_IER,
-        .rsvd = 0xfffffff8,
-        .w1c = 0x4,
-        .pre_write = cfu_ier_prew,
-    },{ .name = "CFU_IDR",  .decode.addr = A_CFU_IDR,
-        .rsvd = 0xfffffff8,
-        .w1c = 0x4,
-        .pre_write = cfu_idr_prew,
-    },{ .name = "CFU_PROTECT",  .decode.addr = A_CFU_PROTECT,
-        .reset = 0x1,
-    },{ .name = "CFU_GLOBAL",  .decode.addr = A_CFU_GLOBAL,
-        .rsvd = 0xfffff800,
-    },{ .name = "CFU_CTL",  .decode.addr = A_CFU_CTL,
-        .reset = 0x8,
-        .rsvd = 0xffffffe0,
-    },{ .name = "CFU_STATUS",  .decode.addr = A_CFU_STATUS,
+    },{ .name = "CFU_IMR",  .addr = A_CFU_IMR,
+        .reset = 0x3ff,
         .rsvd = 0xfffffc00,
         .ro = 0x3ff,
-    },{ .name = "CFU_CRAM_RW",  .decode.addr = A_CFU_CRAM_RW,
-        .reset = 0x25719,
-        .rsvd = 0xfffc0000,
-    },{ .name = "CFU_CRAM_SWITCH",  .decode.addr = A_CFU_CRAM_SWITCH,
-        .reset = 0xc850,
-        .rsvd = 0xfffc0000,
-    },{ .name = "CFU_CFRAME_LEFT_T0",  .decode.addr = A_CFU_CFRAME_LEFT_T0,
-    },{ .name = "CFU_CFRAME_LEFT_T1",  .decode.addr = A_CFU_CFRAME_LEFT_T1,
-    },{ .name = "CFU_CFRAME_LEFT_T2",  .decode.addr = A_CFU_CFRAME_LEFT_T2,
-    },{ .name = "CFU_QWORD_CNT",  .decode.addr = A_CFU_QWORD_CNT,
+    },{ .name = "CFU_IER",  .addr = A_CFU_IER,
+        .rsvd = 0xfffffc00,
+        .pre_write = cfu_ier_prew,
+    },{ .name = "CFU_IDR",  .addr = A_CFU_IDR,
+        .rsvd = 0xfffffc00,
+        .pre_write = cfu_idr_prew,
+    },{ .name = "CFU_ITR",  .addr = A_CFU_ITR,
+        .rsvd = 0xfffffc00,
+        .pre_write = cfu_itr_prew,
+    },{ .name = "CFU_PROTECT",  .addr = A_CFU_PROTECT,
+        .reset = 0x1,
+    },{ .name = "CFU_FGCR",  .addr = A_CFU_FGCR,
+        .rsvd = 0xffff8000,
+    },{ .name = "CFU_CTL",  .addr = A_CFU_CTL,
+        .rsvd = 0xffff0000,
+    },{ .name = "CFU_CRAM_RW",  .addr = A_CFU_CRAM_RW,
+        .reset = 0x401f7d9,
+        .rsvd = 0xf8000000,
+    },{ .name = "CFU_MASK",  .addr = A_CFU_MASK,
+    },{ .name = "CFU_CRC_EXPECT",  .addr = A_CFU_CRC_EXPECT,
+    },{ .name = "CFU_CFRAME_LEFT_T0",  .addr = A_CFU_CFRAME_LEFT_T0,
+        .rsvd = 0xfff00000,
+    },{ .name = "CFU_CFRAME_LEFT_T1",  .addr = A_CFU_CFRAME_LEFT_T1,
+        .rsvd = 0xfff00000,
+    },{ .name = "CFU_CFRAME_LEFT_T2",  .addr = A_CFU_CFRAME_LEFT_T2,
+        .rsvd = 0xfff00000,
+    },{ .name = "CFU_ROW_RANGE",  .addr = A_CFU_ROW_RANGE,
+        .rsvd = 0xffffffc0,
+        .ro = 0x3f,
+    },{ .name = "CFU_STATUS",  .addr = A_CFU_STATUS,
+        .rsvd = 0x80000000,
+        .ro = 0x7fffffff,
+    },{ .name = "CFU_INTERNAL_STATUS",  .addr = A_CFU_INTERNAL_STATUS,
+        .rsvd = 0xff800000,
+        .ro = 0x7fffff,
+    },{ .name = "CFU_QWORD_CNT",  .addr = A_CFU_QWORD_CNT,
         .ro = 0xffffffff,
-    },{ .name = "CFU_CRC",  .decode.addr = A_CFU_CRC,
+    },{ .name = "CFU_CRC_LIVE",  .addr = A_CFU_CRC_LIVE,
         .ro = 0xffffffff,
-    },{ .name = "CFU_INTERNAL_STATUS",  .decode.addr = A_CFU_INTERNAL_STATUS,
-        .rsvd = 0xfffffff0,
-        .ro = 0xf,
+    },{ .name = "CFU_PENDING_READ_CNT",  .addr = A_CFU_PENDING_READ_CNT,
+        .rsvd = 0xfe000000,
+        .ro = 0x1ffffff,
+    },{ .name = "CFU_FDRI_CNT",  .addr = A_CFU_FDRI_CNT,
+        .ro = 0xffffffff,
+    },{ .name = "CFU_ECO1",  .addr = A_CFU_ECO1,
+    },{ .name = "CFU_ECO2",  .addr = A_CFU_ECO2,
     }
 };
 
@@ -201,44 +323,15 @@ static void cfu_apb_reset(DeviceState *dev)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        dep_register_reset(&s->regs_info[i]);
+        register_reset(&s->regs_info[i]);
     }
 
     cfu_imr_update_irq(s);
 }
 
-static uint64_t cfu_apb_read(void *opaque, hwaddr addr, unsigned size)
-{
-    CFU *s = XILINX_CFU_APB(opaque);
-    DepRegisterInfo *r = &s->regs_info[addr / 4];
-
-    if (!r->data) {
-        qemu_log("%s: Decode error: read from %" HWADDR_PRIx "\n",
-                 object_get_canonical_path(OBJECT(s)),
-                 addr);
-        return 0;
-    }
-    return dep_register_read(r);
-}
-
-static void cfu_apb_write(void *opaque, hwaddr addr, uint64_t value,
-                      unsigned size)
-{
-    CFU *s = XILINX_CFU_APB(opaque);
-    DepRegisterInfo *r = &s->regs_info[addr / 4];
-
-    if (!r->data) {
-        qemu_log("%s: Decode error: write to %" HWADDR_PRIx "=%" PRIx64 "\n",
-                 object_get_canonical_path(OBJECT(s)),
-                 addr, value);
-        return;
-    }
-    dep_register_write(r, value, ~0);
-}
-
 static const MemoryRegionOps cfu_apb_ops = {
-    .read = cfu_apb_read,
-    .write = cfu_apb_write,
+    .read = register_read_memory,
+    .write = register_write_memory,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
@@ -292,34 +385,23 @@ static const MemoryRegionOps cfu_stream_ops = {
     },
 };
 
-static void cfu_apb_realize(DeviceState *dev, Error **errp)
-{
-    CFU *s = XILINX_CFU_APB(dev);
-    const char *prefix = object_get_canonical_path(OBJECT(dev));
-    unsigned int i;
-
-    for (i = 0; i < ARRAY_SIZE(cfu_apb_regs_info); ++i) {
-        DepRegisterInfo *r = &s->regs_info[cfu_apb_regs_info[i].decode.addr/4];
-
-        *r = (DepRegisterInfo) {
-            .data = (uint8_t *)&s->regs[
-                    cfu_apb_regs_info[i].decode.addr/4],
-            .data_size = sizeof(uint32_t),
-            .access = &cfu_apb_regs_info[i],
-            .debug = XILINX_CFU_APB_ERR_DEBUG,
-            .prefix = prefix,
-            .opaque = s,
-        };
-    }
-}
-
 static void cfu_apb_init(Object *obj)
 {
     CFU *s = XILINX_CFU_APB(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+    RegisterInfoArray *reg_array;
 
-    memory_region_init_io(&s->iomem, obj, &cfu_apb_ops, s,
-                          TYPE_XILINX_CFU_APB, R_MAX * 4);
+    memory_region_init(&s->iomem, obj, TYPE_XILINX_CFU_APB, R_MAX * 4);
+    reg_array =
+        register_init_block32(DEVICE(obj), cfu_apb_regs_info,
+                              ARRAY_SIZE(cfu_apb_regs_info),
+                              s->regs_info, s->regs,
+                              &cfu_apb_ops,
+                              XILINX_CFU_APB_ERR_DEBUG,
+                              R_MAX * 4);
+    memory_region_add_subregion(&s->iomem,
+                                0x0,
+                                &reg_array->mem);
     memory_region_init_io(&s->iomem_stream, obj, &cfu_stream_ops, s,
                           TYPE_XILINX_CFU_APB "-stream", 4 * 1024);
     sysbus_init_mmio(sbd, &s->iomem);
@@ -343,7 +425,6 @@ static void cfu_apb_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->reset = cfu_apb_reset;
-    dc->realize = cfu_apb_realize;
     dc->vmsd = &vmstate_cfu_apb;
 }
 
