@@ -331,6 +331,7 @@ static void crf_reset(DeviceState *dev)
         dep_register_reset(&s->regs_info[i]);
     }
 
+    s->regs[R_PLL_STATUS] |= R_PLL_STATUS_APLL_LOCK_MASK;
     ir_update_irq(s);
 }
 
