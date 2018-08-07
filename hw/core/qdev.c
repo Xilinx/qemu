@@ -1224,12 +1224,16 @@ static void device_hlt_cntrl(void *opaque, int n, int level)
 static void device_rst_cntrl(void *opaque, int n, int level)
 {
     DeviceState *dev = DEVICE(opaque);
+    uint64_t p_level = dev->reset_level;
 
-    /* Apply reset on the negative edge.  */
-    if (level == 0 && dev->reset_level != !!level) {
+    /* Update the reset state.  */
+    dev->reset_level &= ~(1 << n);
+    dev->reset_level |= (!!level) << n;
+
+    /* Do not reset device on updates without state change.  */
+    if (p_level != dev->reset_level) {
         device_reset(dev);
     }
-    dev->reset_level = level;
 }
 
 static void device_class_init(ObjectClass *class, void *data)
