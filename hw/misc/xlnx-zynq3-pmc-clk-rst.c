@@ -33,6 +33,8 @@
 #include "qemu/config-file.h"
 #include "sysemu/sysemu.h"
 
+#include "hw/fdt_generic_util.h"
+
 #ifndef XILINX_CRP_ERR_DEBUG
 #define XILINX_CRP_ERR_DEBUG 0
 #endif
@@ -414,7 +416,35 @@ typedef struct CRP {
     qemu_irq irq_ir;
     qemu_irq irq_clkmon;
 
-    qemu_irq rst_ps[6];
+    qemu_irq rst_qspi;
+    qemu_irq rst_ospi;
+    qemu_irq rst_sdio[2];
+    qemu_irq rst_i2c;
+    qemu_irq rst_gpio;
+
+    qemu_irq rst_ps_pl_srst;
+    qemu_irq rst_ps_ps_srst;
+    qemu_irq rst_ps_pmc_srst;
+    qemu_irq rst_ps_pl_por;
+    qemu_irq rst_ps_ps_por;
+    qemu_irq rst_ps_pmc_por;
+
+    qemu_irq rst_nonps_sys3;
+    qemu_irq rst_nonps_sys2;
+    qemu_irq rst_nonps_sys1;
+    qemu_irq rst_nonps_npi;
+    qemu_irq rst_nonps_noc_por;
+    qemu_irq rst_nonps_noc;
+
+    qemu_irq rst_sbi;
+    qemu_irq rst_pdma[2];
+    qemu_irq rst_sysmon_cfg;
+    qemu_irq rst_sysmon_seq;
+    qemu_irq rst_pl[4];
+    qemu_irq rst_usb;
+    qemu_irq rst_dbg;
+    qemu_irq rst_dbg_dpc;
+
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
 } CRP;
@@ -516,12 +546,59 @@ static void boot_mode_user_postw(RegisterInfo *reg, uint64_t val64)
     update_boot_mode_user(s);
 }
 
+#define PROPAGATE_GPIO(reg, f, irq) {             \
+    bool val = ARRAY_FIELD_EX32(s->regs, reg, f); \
+    qemu_set_irq(irq, val);                       \
+}
+
+static void crp_update_gpios(CRP *s)
+{
+    PROPAGATE_GPIO(RST_QSPI, RESET, s->rst_qspi);
+    PROPAGATE_GPIO(RST_OSPI, RESET, s->rst_ospi);
+    PROPAGATE_GPIO(RST_SDIO0, RESET, s->rst_sdio[0]);
+    PROPAGATE_GPIO(RST_SDIO1, RESET, s->rst_sdio[1]);
+    PROPAGATE_GPIO(RST_I2C, RESET, s->rst_i2c);
+    PROPAGATE_GPIO(RST_GPIO, RESET, s->rst_gpio);
+
+    PROPAGATE_GPIO(RST_PS, PL_SRST, s->rst_ps_pl_srst);
+    PROPAGATE_GPIO(RST_PS, PS_SRST, s->rst_ps_ps_srst);
+    PROPAGATE_GPIO(RST_PS, PMC_SRST, s->rst_ps_pmc_srst);
+    PROPAGATE_GPIO(RST_PS, PL_POR, s->rst_ps_pl_por);
+    PROPAGATE_GPIO(RST_PS, PS_POR, s->rst_ps_ps_por);
+    PROPAGATE_GPIO(RST_PS, PMC_POR, s->rst_ps_pmc_por);
+
+    PROPAGATE_GPIO(RST_NONPS, SYS_RST_3, s->rst_nonps_sys3);
+    PROPAGATE_GPIO(RST_NONPS, SYS_RST_2, s->rst_nonps_sys2);
+    PROPAGATE_GPIO(RST_NONPS, SYS_RST_1, s->rst_nonps_sys1);
+    PROPAGATE_GPIO(RST_NONPS, NPI_RESET, s->rst_nonps_npi);
+    PROPAGATE_GPIO(RST_NONPS, NOC_POR, s->rst_nonps_noc_por);
+    PROPAGATE_GPIO(RST_NONPS, NOC_RESET, s->rst_nonps_noc);
+
+    PROPAGATE_GPIO(RST_SBI, RESET, s->rst_sbi);
+    PROPAGATE_GPIO(RST_PDMA, RESET0, s->rst_pdma[0]);
+    PROPAGATE_GPIO(RST_PDMA, RESET1, s->rst_pdma[1]);
+    PROPAGATE_GPIO(RST_SYSMON, CFG_RST, s->rst_sysmon_cfg);
+    PROPAGATE_GPIO(RST_SYSMON, SEQ_RST, s->rst_sysmon_seq);
+    PROPAGATE_GPIO(RST_PL, RESET0, s->rst_pl[0]);
+    PROPAGATE_GPIO(RST_PL, RESET1, s->rst_pl[0]);
+    PROPAGATE_GPIO(RST_PL, RESET2, s->rst_pl[0]);
+    PROPAGATE_GPIO(RST_PL, RESET3, s->rst_pl[0]);
+    PROPAGATE_GPIO(RST_USB, PHY_RST, s->rst_usb);
+    PROPAGATE_GPIO(RST_DBG, RESET, s->rst_dbg);
+    PROPAGATE_GPIO(RST_DBG, DPC, s->rst_dbg_dpc);
+}
+
+static void crp_update_gpios_pw(RegisterInfo *reg, uint64_t val64)
+{
+    CRP *s = XILINX_CRP(reg->opaque);
+    crp_update_gpios(s);
+}
+
 static uint64_t rst_ps_prew(RegisterInfo *reg, uint64_t val64)
 {
     CRP *s = XILINX_CRP(reg->opaque);
     uint32_t val = val64;
-    uint32_t pval = s->regs[R_RST_PS];
-    unsigned int i;
+
     ARRAY_FIELD_DP32(s->regs, RESET_REASON, SW_SYS,
                 ARRAY_FIELD_EX32(s->regs, RESET_REASON, SW_SYS) |
                 !!(val & (R_RST_PS_PMC_SRST_MASK |
@@ -532,31 +609,6 @@ static uint64_t rst_ps_prew(RegisterInfo *reg, uint64_t val64)
                 !!(val & (R_RST_PS_PMC_POR_MASK |
                           R_RST_PS_PS_POR_MASK |
                           R_RST_PS_PL_POR_MASK)));
-    for (i = R_RST_PS_PL_SRST_SHIFT; i <= R_RST_PS_PMC_POR_SHIFT; i++) {
-        switch ((val ^ pval) & (1 << i)) {
-        case R_RST_PS_PL_SRST_MASK:
-            qemu_set_irq(s->rst_ps[0], !!(val & R_RST_PS_PL_SRST_MASK));
-            break;
-        case R_RST_PS_PS_SRST_MASK:
-            qemu_set_irq(s->rst_ps[1], !!(val & R_RST_PS_PS_SRST_MASK));
-            break;
-        case R_RST_PS_PMC_SRST_MASK:
-            qemu_set_irq(s->rst_ps[2], !!(val & R_RST_PS_PMC_SRST_MASK));
-            break;
-        case R_RST_PS_PL_POR_MASK:
-            qemu_set_irq(s->rst_ps[3], !!(val & R_RST_PS_PL_POR_MASK));
-            break;
-        case R_RST_PS_PS_POR_MASK:
-            qemu_set_irq(s->rst_ps[4], !!(val & R_RST_PS_PS_POR_MASK));
-            break;
-        case R_RST_PS_PMC_POR_MASK:
-            qemu_set_irq(s->rst_ps[5], !!(val & R_RST_PS_PMC_POR_MASK));
-            break;
-        default:
-            break;
-        };
-    }
-
     return val64;
 }
 
@@ -731,34 +783,48 @@ static RegisterAccessInfo crp_regs_info[] = {
         .ro = 0x400,
     },{ .name = "RST_QSPI",  .addr = A_RST_QSPI,
         .reset = 0x1,
+        .post_write = crp_update_gpios_pw,
     },{ .name = "RST_OSPI",  .addr = A_RST_OSPI,
         .reset = 0x1,
+        .post_write = crp_update_gpios_pw,
     },{ .name = "RST_SDIO0",  .addr = A_RST_SDIO0,
         .reset = 0x1,
+        .post_write = crp_update_gpios_pw,
     },{ .name = "RST_SDIO1",  .addr = A_RST_SDIO1,
         .reset = 0x1,
+        .post_write = crp_update_gpios_pw,
     },{ .name = "RST_I2C",  .addr = A_RST_I2C,
         .reset = 0x1,
+        .post_write = crp_update_gpios_pw,
     },{ .name = "RST_GPIO",  .addr = A_RST_GPIO,
         .reset = 0x1,
+        .post_write = crp_update_gpios_pw,
     },{ .name = "RST_PS",  .addr = A_RST_PS,
         .reset = 0x66,
         .rsvd = 0x11,
         .pre_write = rst_ps_prew,
+        .post_write = crp_update_gpios_pw,
     },{ .name = "RST_NONPS",  .addr = A_RST_NONPS,
         .reset = 0x77,
         .rsvd = 0x88,
+        .post_write = crp_update_gpios_pw,
     },{ .name = "RST_SBI",  .addr = A_RST_SBI,
         .reset = 0x1,
+        .post_write = crp_update_gpios_pw,
     },{ .name = "RST_PDMA",  .addr = A_RST_PDMA,
         .reset = 0x3,
+        .post_write = crp_update_gpios_pw,
     },{ .name = "RST_SYSMON",  .addr = A_RST_SYSMON,
+        .post_write = crp_update_gpios_pw,
     },{ .name = "RST_PL",  .addr = A_RST_PL,
         .reset = 0xf,
+        .post_write = crp_update_gpios_pw,
     },{ .name = "RST_USB",  .addr = A_RST_USB,
         .reset = 0x1,
+        .post_write = crp_update_gpios_pw,
     },{ .name = "RST_DBG",  .addr = A_RST_DBG,
         .reset = 0x3,
+        .post_write = crp_update_gpios_pw,
     },{ .name = "PMC_PL0_REF_CTRL",  .addr = A_PMC_PL0_REF_CTRL,
         .reset = 0x500,
         .rsvd = 0xfefc00f8,
@@ -805,6 +871,7 @@ static void crp_reset(DeviceState *dev)
 
     ir_update_irq(s);
     clkmon_update_irq(s);
+    crp_update_gpios(s);
 }
 
 static const MemoryRegionOps crp_ops = {
@@ -816,13 +883,6 @@ static const MemoryRegionOps crp_ops = {
         .max_access_size = 4,
     },
 };
-
-static void crp_realize(DeviceState *dev, Error **errp)
-{
-    CRP *s = XILINX_CRP(dev);
-
-    qdev_init_gpio_out(dev, s->rst_ps, 6);
-}
 
 static void crp_init(Object *obj)
 {
@@ -844,6 +904,55 @@ static void crp_init(Object *obj)
     sysbus_init_mmio(sbd, &s->iomem);
     sysbus_init_irq(sbd, &s->irq_ir);
     sysbus_init_irq(sbd, &s->irq_clkmon);
+
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_qspi, "rst-qspi", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_ospi, "rst-ospi", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_sdio[0], "rst-sdio0", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_sdio[1], "rst-sdio1", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_i2c, "rst-i2c", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_gpio, "rst-gpio", 1);
+
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_ps_pl_srst,
+                             "rst-ps-pl-srst", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_ps_ps_srst,
+                             "rst-ps-ps-srst", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_ps_pmc_srst,
+                             "rst-ps-pmc-srst", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_ps_pl_por,
+                             "rst-ps-pl-por", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_ps_ps_por,
+                             "rst-ps-ps-por", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_ps_pmc_por,
+                             "rst-ps-pmc-por", 1);
+
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_nonps_sys3,
+                             "rst-nonps-sys3", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_nonps_sys2,
+                             "rst-nonps-sys2", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_nonps_sys1,
+                             "rst-nonps-sys1", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_nonps_npi,
+                             "rst-nonps-npi", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_nonps_noc_por,
+                             "rst-nonps-noc-por", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_nonps_noc,
+                             "rst-nonps-noc", 1);
+
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_sbi, "rst-sbi", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_pdma[0], "rst-pdma0", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_pdma[1], "rst-pdma1", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_sysmon_cfg,
+                             "rst-sysmon-cfg", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_sysmon_seq,
+                             "rst-sysmon-seq", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_pl[0], "rst-pl0", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_pl[1], "rst-pl1", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_pl[2], "rst-pl2", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_pl[3], "rst-pl3", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_usb, "rst-usb", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_dbg, "rst-dbg-reset", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_dbg_dpc, "rst-dbg-dpc", 1);
+
 }
 
 static const VMStateDescription vmstate_crp = {
@@ -856,13 +965,62 @@ static const VMStateDescription vmstate_crp = {
     }
 };
 
+static const FDTGenericGPIOSet crp_gpios[] = {
+    {
+      .names = &fdt_generic_gpio_name_set_gpio,
+      .gpios = (FDTGenericGPIOConnection[]) {
+        { .name = "rst-qspi", .fdt_index = 0, .range = 1 },
+        { .name = "rst-ospi", .fdt_index = 1, .range = 1 },
+        /*
+         * To avoid breaking backwards compatibility, we keep
+         * PMC-SRST at index 2 and put SDIO0 and index 8.
+         */
+        { .name = "rst-ps-pmc-srst", .fdt_index = 2, .range = 1 },
+        { .name = "rst-sdio1", .fdt_index = 3, .range = 1 },
+        { .name = "rst-i2c", .fdt_index = 4, .range = 1 },
+        { .name = "rst-gpio", .fdt_index = 5, .range = 1 },
+
+        { .name = "rst-ps-pl-srst", .fdt_index = 6, .range = 1 },
+        { .name = "rst-ps-ps-srst", .fdt_index = 7, .range = 1 },
+        /* SDIO0 at index 8, see above.  */
+        { .name = "rst-sdio0", .fdt_index = 8, .range = 1 },
+        { .name = "rst-ps-pl-por", .fdt_index = 9, .range = 1 },
+        { .name = "rst-ps-ps-por", .fdt_index = 10, .range = 1 },
+        { .name = "rst-ps-pmc-por", .fdt_index = 11, .range = 1 },
+
+        { .name = "rst-nonps-sys3", .fdt_index = 12, .range = 1 },
+        { .name = "rst-nonps-sys2", .fdt_index = 13, .range = 1 },
+        { .name = "rst-nonps-sys1", .fdt_index = 14, .range = 1 },
+        { .name = "rst-nonps-npi", .fdt_index = 15, .range = 1 },
+        { .name = "rst-nonps-noc-por", .fdt_index = 16, .range = 1 },
+        { .name = "rst-nonps-noc", .fdt_index = 17, .range = 1 },
+
+        { .name = "rst-sbi", .fdt_index = 18, .range = 1 },
+        { .name = "rst-pdma0", .fdt_index = 19, .range = 1 },
+        { .name = "rst-pdma1", .fdt_index = 20, .range = 1 },
+        { .name = "rst-sysmon-cfg", .fdt_index = 21, .range = 1 },
+        { .name = "rst-sysmon-seq", .fdt_index = 22, .range = 1 },
+        { .name = "rst-pl0", .fdt_index = 23, .range = 1 },
+        { .name = "rst-pl1", .fdt_index = 24, .range = 1 },
+        { .name = "rst-pl2", .fdt_index = 25, .range = 1 },
+        { .name = "rst-pl3", .fdt_index = 26, .range = 1 },
+        { .name = "rst-usb", .fdt_index = 27, .range = 1 },
+        { .name = "rst-dbg-reset", .fdt_index = 28, .range = 1 },
+        { .name = "rst-dbg-dpc", .fdt_index = 29, .range = 1 },
+        { },
+      },
+    },
+    { },
+};
+
 static void crp_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    FDTGenericGPIOClass *fggc = FDT_GENERIC_GPIO_CLASS(klass);
 
     dc->reset = crp_reset;
-    dc->realize = crp_realize;
     dc->vmsd = &vmstate_crp;
+    fggc->controller_gpios = crp_gpios;
 }
 
 static const TypeInfo crp_info = {
@@ -871,6 +1029,10 @@ static const TypeInfo crp_info = {
     .instance_size = sizeof(CRP),
     .class_init    = crp_class_init,
     .instance_init = crp_init,
+    .interfaces = (InterfaceInfo[]) {
+        { TYPE_FDT_GENERIC_GPIO },
+        { }
+    },
 };
 
 static void crp_register_types(void)
