@@ -691,6 +691,7 @@ REG32(SEC_DBG_DATA_511, 0x1082c)
 
 #define SEC_DBG_DIS_MASK 0x3
 #define SEC_LOCK_DBG_DIS_MASK (0x3 << 2)
+#define PMC_TAP_SLR_TYPE_MONO 0x7
 
 typedef struct PMC_TAP {
     SysBusDevice parent_obj;
@@ -700,6 +701,7 @@ typedef struct PMC_TAP {
     CharBackend chr;
 
     uint8_t sec_dbg_dis;
+    uint32_t slr_type;
     uint32_t payload_received;
     bool auth_data_load;
     bool first_image_done;
@@ -1845,6 +1847,7 @@ static void pmc_tap_reset(DeviceState *dev)
         register_reset(&s->regs_info[i]);
     }
 
+    s->regs[R_SLR_TYPE] = s->slr_type;
     s->auth_data_load = 0;
     s->payload_received = 0;
     sec_dbg_int_update_irq(s);
@@ -1966,6 +1969,8 @@ static const VMStateDescription vmstate_pmc_tap = {
 
 static Property pmc_tap_props[] = {
         DEFINE_PROP_CHR("chardev", PMC_TAP, chr),
+        DEFINE_PROP_UINT32("slr-type", PMC_TAP, slr_type,
+                           PMC_TAP_SLR_TYPE_MONO),
         DEFINE_PROP_END_OF_LIST(),
 };
 
