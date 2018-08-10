@@ -1113,7 +1113,7 @@ static void device_initfn(Object *obj)
     qdev_init_gpio_in_named(dev, dc->pwr_cntrl, "pwr_cntrl", 1);
     qdev_init_gpio_in_named(dev, dc->hlt_cntrl, "hlt_cntrl", 1);
     /* Reset control. */
-    qdev_init_gpio_in_named(dev, dc->rst_cntrl, "rst_cntrl", 32);
+    qdev_init_gpio_in_named(dev, dc->rst_cntrl, "rst_cntrl", 6);
 
     QLIST_INIT(&dev->gpios);
 }
