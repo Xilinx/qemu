@@ -77,7 +77,7 @@ static void reset_reset(DeviceState *dev)
     int i;
 
     DPRINT("\n\n");
-    DPRINT("****** RESET DOMAIN *****\n");
+    DPRINT("****** RESET DOMAIN %s *****\n", dev->id);
     for (i = 0; i < MAX_RESET_MR; i++) {
         if (s->mr[i]) {
             reset_mr(s, s->mr[i], 0);
