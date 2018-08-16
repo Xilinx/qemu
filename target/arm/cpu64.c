@@ -279,6 +279,11 @@ static void aarch64_a72_initfn(Object *obj)
     cpu->gic_vpribits = 5;
     cpu->gic_vprebits = 5;
     define_arm_cp_regs(cpu, cortex_a57_a53_cp_reginfo);
+
+    /* Xilinx FIXUPs.  */
+    /* These indicate the BP hardening and KPTI aren't needed.  */
+    cpu->id_aa64pfr0 |= (uint64_t)1 << 56; /* BP.  */
+    cpu->id_aa64pfr0 |= (uint64_t)1 << 60; /* KPTI.  */
 }
 
 #ifdef CONFIG_USER_ONLY
