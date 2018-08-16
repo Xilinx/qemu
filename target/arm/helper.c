@@ -2755,12 +2755,17 @@ static void vmsa_ttbr_write(CPUARMState *env, const ARMCPRegInfo *ri,
                             uint64_t value)
 {
     /* 64 bit accesses to the TTBRs can change the ASID and so we
-     * must flush the TLB.
+     * may need to flush the TLB.
      */
+
     if (cpreg_field_is_64bit(ri)) {
         ARMCPU *cpu = arm_env_get_cpu(env);
+        uint16_t prev_asid = raw_read(env, ri) >> 48;
+        uint16_t new_asid = value >> 48;
 
-        tlb_flush(CPU(cpu));
+        if (prev_asid != new_asid) {
+            tlb_flush(CPU(cpu));
+        }
     }
     raw_write(env, ri, value);
 }
