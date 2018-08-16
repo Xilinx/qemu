@@ -367,6 +367,7 @@ static void mb_cpu_class_init(ObjectClass *oc, void *data)
 #endif
     cc->disas_set_info = mb_disas_set_info;
     cc->tcg_initialize = mb_tcg_init;
+    dc->rst_cntrl = cpu_reset_gpio;
 }
 
 static const TypeInfo mb_cpu_type_info = {
