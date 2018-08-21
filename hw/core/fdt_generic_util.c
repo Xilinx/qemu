@@ -417,6 +417,7 @@ static qemu_irq fdt_get_gpio(FDTMachineInfo *fdti, char *node_path,
                      && idx < (fgg_con->fdt_index + range))
                    && fgg_con->name) {
                 fgg_con++;
+                range = fgg_con->range ? fgg_con->range : 1;
             }
 
             idx -= fgg_con->fdt_index;
