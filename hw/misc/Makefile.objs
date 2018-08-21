@@ -43,6 +43,7 @@ common-obj-$(CONFIG_XLNX_ZYNQMP) += reset-domain.o
 common-obj-$(CONFIG_SI57X) += si57x.o
 
 common-obj-$(CONFIG_XLNX_ZYNQ3) += xlnx-zynq3-psm-local.o
+common-obj-$(CONFIG_XLNX_ZYNQ3) += xlnx-zynq3-psm-global.o
 
 common-obj-$(CONFIG_XLNX_ZYNQ3_PMC) += sss-pmc.o
 common-obj-$(CONFIG_XLNX_ZYNQ3_PMC) += xlnx-zynq3-pmc-clk-rst.o
