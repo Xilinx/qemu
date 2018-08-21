@@ -162,6 +162,12 @@ typedef struct FDTGenericGPIOSet {
     const FDTGenericGPIOConnection *gpios;
 } FDTGenericGPIOSet;
 
+static const FDTGenericGPIONameSet fdt_generic_gpio_name_set_power_gpio = {
+    .propname = "power-gpios",
+    .cells_propname = "#gpio-cells",
+    .names_propname = "power-gpio-names",
+};
+
 static const FDTGenericGPIONameSet fdt_generic_gpio_name_set_reset_gpio = {
     .propname = "reset-gpios",
     .cells_propname = "#gpio-cells",
@@ -204,6 +210,12 @@ static const FDTGenericGPIOSet default_gpio_sets [] = {
       .names = &fdt_generic_gpio_name_set_resets,
       .gpios = (FDTGenericGPIOConnection[]) {
         { .name = "rst_cntrl", .fdt_index = 0, .range = 6 },
+      },
+    },
+    {
+      .names = &fdt_generic_gpio_name_set_power_gpio,
+      .gpios = (FDTGenericGPIOConnection[]) {
+        { .name = "pwr_cntrl", .fdt_index = 0, .range = 1 },
       },
     },
     { .names = &fdt_generic_gpio_name_set_clock },
