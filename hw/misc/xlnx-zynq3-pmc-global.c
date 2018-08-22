@@ -43,6 +43,8 @@
      OBJECT_CHECK(PMC_GLOBAL, (obj), TYPE_XILINX_PMC_GLOBAL)
 
 REG32(GLOBAL_CNTRL, 0x0)
+    FIELD(GLOBAL_CNTRL, MB_CLK_EN_FORCE, 18, 1)
+    FIELD(GLOBAL_CNTRL, MB_DBG_WAKE, 17, 1)
     FIELD(GLOBAL_CNTRL, MB_SLEEP, 16, 1)
     FIELD(GLOBAL_CNTRL, WRITE_QOS, 12, 4)
     FIELD(GLOBAL_CNTRL, READ_QOS, 8, 4)
@@ -75,6 +77,8 @@ REG32(PMC_GLOBAL_IDR, 0x1c)
     FIELD(PMC_GLOBAL_IDR, ADDR_ERR_DIS, 0, 1)
 REG32(PPU1_DEBUG_CTRL, 0x20)
     FIELD(PPU1_DEBUG_CTRL, EN, 0, 1)
+REG32(PPU1_DEBUG_LOCK, 0x24)
+    FIELD(PPU1_DEBUG_LOCK, DIS, 0, 1)
 REG32(GLOBAL_GEN_STORAGE0, 0x30)
 REG32(GLOBAL_GEN_STORAGE1, 0x34)
 REG32(GLOBAL_GEN_STORAGE2, 0x38)
@@ -180,6 +184,8 @@ REG32(REQ_ISO_TRIG, 0x320)
     FIELD(REQ_ISO_TRIG, LPD, 0, 1)
 REG32(DDR_RETENTION, 0x324)
     FIELD(DDR_RETENTION, VALUE, 0, 1)
+REG32(USR_GTS, 0x328)
+    FIELD(USR_GTS, USR_GTS, 0, 1)
 REG32(REQ_SWRST_STATUS, 0x410)
     FIELD(REQ_SWRST_STATUS, PL, 3, 1)
     FIELD(REQ_SWRST_STATUS, SOC, 2, 1)
@@ -205,6 +211,24 @@ REG32(REQ_SWRST_TRIG, 0x420)
     FIELD(REQ_SWRST_TRIG, SOC, 2, 1)
     FIELD(REQ_SWRST_TRIG, LPD, 1, 1)
     FIELD(REQ_SWRST_TRIG, PS_ONLY, 0, 1)
+REG32(WAKEUP_IRQ_STATUS, 0x430)
+    FIELD(WAKEUP_IRQ_STATUS, CPM_CORESIGHT, 1, 1)
+    FIELD(WAKEUP_IRQ_STATUS, LPD_CORESIGHT, 0, 1)
+REG32(WAKEUP_IRQ_MASK, 0x434)
+    FIELD(WAKEUP_IRQ_MASK, CPM_CORESIGHT, 1, 1)
+    FIELD(WAKEUP_IRQ_MASK, LPD_CORESIGHT, 0, 1)
+REG32(WAKEUP_IRQ_EN, 0x438)
+    FIELD(WAKEUP_IRQ_EN, CPM_CORESIGHT, 1, 1)
+    FIELD(WAKEUP_IRQ_EN, LPD_CORESIGHT, 0, 1)
+REG32(WAKEUP_IRQ_DIS, 0x43c)
+    FIELD(WAKEUP_IRQ_DIS, CPM_CORESIGHT, 1, 1)
+    FIELD(WAKEUP_IRQ_DIS, LPD_CORESIGHT, 0, 1)
+REG32(WAKEUP_IRQ_TRIG, 0x440)
+    FIELD(WAKEUP_IRQ_TRIG, CPM_CORESIGHT, 1, 1)
+    FIELD(WAKEUP_IRQ_TRIG, LPD_CORESIGHT, 0, 1)
+REG32(DBG_PWR_ACK, 0x444)
+    FIELD(DBG_PWR_ACK, CPM_CORESIGHT, 1, 1)
+    FIELD(DBG_PWR_ACK, LPD_CORESIGHT, 0, 1)
 REG32(PMC_SSS_CFG, 0x500)
     FIELD(PMC_SSS_CFG, SBI_CFG, 20, 4)
     FIELD(PMC_SSS_CFG, SHA_CFG, 16, 4)
@@ -614,13 +638,14 @@ REG32(SSIT_SEC_STATUS, 0x954)
 REG32(SSIT_ERR, 0x958)
     FIELD(SSIT_ERR, IRQ_OUT, 0, 3)
 REG32(SEM_CRAM_ATTRIB, 0x1000)
-    FIELD(SEM_CRAM_ATTRIB, UNUSED, 8, 8)
-    FIELD(SEM_CRAM_ATTRIB, RDBCRC_ONEROW, 7, 1)
-    FIELD(SEM_CRAM_ATTRIB, SWCRC_SEL, 6, 1)
-    FIELD(SEM_CRAM_ATTRIB, EN_SCAN_CHECK, 5, 1)
-    FIELD(SEM_CRAM_ATTRIB, EN_SCAN_POST_CONFIG, 4, 1)
-    FIELD(SEM_CRAM_ATTRIB, EN_ERR_INJ, 3, 1)
-    FIELD(SEM_CRAM_ATTRIB, SWECC_SEL, 2, 1)
+    FIELD(SEM_CRAM_ATTRIB, UNUSED, 9, 7)
+    FIELD(SEM_CRAM_ATTRIB, RDBCRC_ONEROW, 8, 1)
+    FIELD(SEM_CRAM_ATTRIB, SWCRC_SEL, 7, 1)
+    FIELD(SEM_CRAM_ATTRIB, EN_SCAN_CHECK, 6, 1)
+    FIELD(SEM_CRAM_ATTRIB, EN_SCAN_POST_CONFIG, 5, 1)
+    FIELD(SEM_CRAM_ATTRIB, EN_ERR_INJ, 4, 1)
+    FIELD(SEM_CRAM_ATTRIB, SWECC_SEL, 3, 1)
+    FIELD(SEM_CRAM_ATTRIB, EN_CORR, 2, 1)
     FIELD(SEM_CRAM_ATTRIB, MODE, 0, 2)
 REG32(SEM_NPI_ATTRIB, 0x1004)
     FIELD(SEM_NPI_ATTRIB, UNUSED0, 18, 6)
@@ -631,8 +656,11 @@ REG32(SEM_NPI_ATTRIB, 0x1004)
     FIELD(SEM_NPI_ATTRIB, EN_ERR_INJ, 3, 1)
     FIELD(SEM_NPI_ATTRIB, SWSHA_SEL, 2, 1)
     FIELD(SEM_NPI_ATTRIB, MODE, 0, 2)
-REG32(SEM_CLASSIFICATION, 0x1008)
-REG32(SEM_STATUS, 0x100c)
+REG32(SEM_NPI_HDR_ADDR_0, 0x1008)
+REG32(SEM_NPI_HDR_ADDR_1, 0x100c)
+REG32(SEM_CLASSIFICATION_0, 0x1010)
+REG32(SEM_CLASSIFICATION_1, 0x1014)
+REG32(SEM_STATUS, 0x1018)
     FIELD(SEM_STATUS, UNUSED0, 27, 5)
     FIELD(SEM_STATUS, NPI_LAST, 26, 1)
     FIELD(SEM_STATUS, NPI_FATAL_STATE, 25, 1)
@@ -657,7 +685,7 @@ REG32(SEM_STATUS, 0x100c)
     FIELD(SEM_STATUS, CRAM_INIT_STATE, 2, 1)
     FIELD(SEM_STATUS, CRAM_FUNC_ACTIVE, 1, 1)
     FIELD(SEM_STATUS, CRAM_FUNC_PRESENT, 0, 1)
-REG32(SEM_ERROR, 0x1010)
+REG32(SEM_ERROR, 0x101c)
     FIELD(SEM_ERROR, UNUSED0, 28, 4)
     FIELD(SEM_ERROR, NPI_HRT_ERR, 27, 1)
     FIELD(SEM_ERROR, NPI_UNCOR_ERR, 26, 1)
@@ -670,81 +698,85 @@ REG32(SEM_ERROR, 0x1010)
     FIELD(SEM_ERROR, CRAM_CRC_ERR, 3, 1)
     FIELD(SEM_ERROR, CRAM_UNCOR_ERR, 2, 1)
     FIELD(SEM_ERROR, CRAM_INIT_ERR, 0, 2)
-REG32(SEM_CMD_REG0, 0x1014)
+REG32(SEM_CMD_REG0, 0x1020)
     FIELD(SEM_CMD_REG0, CMD_CODE, 8, 20)
     FIELD(SEM_CMD_REG0, UNUSED, 4, 4)
     FIELD(SEM_CMD_REG0, CMD_PROCESSED, 3, 1)
     FIELD(SEM_CMD_REG0, CMD_GO, 2, 1)
     FIELD(SEM_CMD_REG0, CMD_READY, 1, 1)
     FIELD(SEM_CMD_REG0, CMD_VALID, 0, 1)
-REG32(SEM_CMD_REG0_EXT, 0x1018)
-REG32(SEM_CMD_REG1, 0x101c)
+REG32(SEM_CMD_REG0_EXT, 0x1024)
+REG32(SEM_CMD_REG1, 0x1028)
     FIELD(SEM_CMD_REG1, CMD_CODE, 8, 20)
     FIELD(SEM_CMD_REG1, UNUSED, 1, 7)
     FIELD(SEM_CMD_REG1, CMD_VALID, 0, 1)
-REG32(SEM_CMD_REG1_EXT, 0x1020)
-REG32(SEM_CMD_REG2, 0x1024)
+REG32(SEM_CMD_REG1_EXT, 0x102c)
+REG32(SEM_CMD_REG2, 0x1030)
     FIELD(SEM_CMD_REG2, CMD_CODE, 8, 20)
     FIELD(SEM_CMD_REG2, UNUSED, 1, 7)
     FIELD(SEM_CMD_REG2, CMD_VALID, 0, 1)
-REG32(SEM_CMD_REG2_EXT, 0x1028)
-REG32(SEM_CMD_REG3, 0x102c)
+REG32(SEM_CMD_REG2_EXT, 0x1034)
+REG32(SEM_CMD_REG3, 0x1038)
     FIELD(SEM_CMD_REG3, CMD_CODE, 8, 20)
     FIELD(SEM_CMD_REG3, UNUSED, 1, 7)
     FIELD(SEM_CMD_REG3, CMD_VALID, 0, 1)
-REG32(SEM_CMD_REG3_EXT, 0x1030)
-REG32(SEM_CRAMERR_ADDRL0, 0x1034)
+REG32(SEM_CMD_REG3_EXT, 0x103c)
+REG32(SEM_CRAMERR_ADDRL0, 0x1040)
     FIELD(SEM_CRAMERR_ADDRL0, QWORDS, 23, 5)
     FIELD(SEM_CRAMERR_ADDRL0, BITS, 16, 7)
     FIELD(SEM_CRAMERR_ADDRL0, UNUSED, 4, 12)
     FIELD(SEM_CRAMERR_ADDRL0, UNCORRECTABLE, 3, 1)
     FIELD(SEM_CRAMERR_ADDRL0, CLASSIFICATION, 2, 1)
     FIELD(SEM_CRAMERR_ADDRL0, VALID, 0, 2)
-REG32(SEM_CRAMERR_ADDRH0, 0x1038)
+REG32(SEM_CRAMERR_ADDRH0, 0x1044)
     FIELD(SEM_CRAMERR_ADDRH0, UNUSED, 30, 2)
     FIELD(SEM_CRAMERR_ADDRH0, SLR, 27, 3)
     FIELD(SEM_CRAMERR_ADDRH0, ROW, 23, 4)
     FIELD(SEM_CRAMERR_ADDRH0, BLOCKTYPE, 20, 3)
     FIELD(SEM_CRAMERR_ADDRH0, FRAME_ADDR, 0, 20)
-REG32(SEM_CRAMERR_ADDRL1, 0x103c)
+REG32(SEM_CRAMERR_ADDRL1, 0x1048)
     FIELD(SEM_CRAMERR_ADDRL1, QWORDS, 23, 5)
     FIELD(SEM_CRAMERR_ADDRL1, BITS, 16, 7)
     FIELD(SEM_CRAMERR_ADDRL1, UNUSED, 4, 12)
     FIELD(SEM_CRAMERR_ADDRL1, UNCORRECTABLE, 3, 1)
     FIELD(SEM_CRAMERR_ADDRL1, CLASSIFICATION, 2, 1)
     FIELD(SEM_CRAMERR_ADDRL1, VALID, 0, 2)
-REG32(SEM_CRAMERR_ADDRH1, 0x1040)
+REG32(SEM_CRAMERR_ADDRH1, 0x104c)
     FIELD(SEM_CRAMERR_ADDRH1, UNUSED, 30, 2)
     FIELD(SEM_CRAMERR_ADDRH1, SLR, 27, 3)
     FIELD(SEM_CRAMERR_ADDRH1, ROW, 23, 4)
     FIELD(SEM_CRAMERR_ADDRH1, BLOCKTYPE, 20, 3)
     FIELD(SEM_CRAMERR_ADDRH1, FRAME_ADDR, 0, 20)
-REG32(SEM_CRAMERR_ADDRL2, 0x1044)
+REG32(SEM_CRAMERR_ADDRL2, 0x1050)
     FIELD(SEM_CRAMERR_ADDRL2, QWORDS, 23, 5)
     FIELD(SEM_CRAMERR_ADDRL2, BITS, 16, 7)
     FIELD(SEM_CRAMERR_ADDRL2, UNUSED, 4, 12)
     FIELD(SEM_CRAMERR_ADDRL2, UNCORRECTABLE, 3, 1)
     FIELD(SEM_CRAMERR_ADDRL2, CLASSIFICATION, 2, 1)
     FIELD(SEM_CRAMERR_ADDRL2, VALID, 0, 2)
-REG32(SEM_CRAMERR_ADDRH2, 0x1048)
+REG32(SEM_CRAMERR_ADDRH2, 0x1054)
     FIELD(SEM_CRAMERR_ADDRH2, UNUSED, 30, 2)
     FIELD(SEM_CRAMERR_ADDRH2, SLR, 27, 3)
     FIELD(SEM_CRAMERR_ADDRH2, ROW, 23, 4)
     FIELD(SEM_CRAMERR_ADDRH2, BLOCKTYPE, 20, 3)
     FIELD(SEM_CRAMERR_ADDRH2, FRAME_ADDR, 0, 20)
-REG32(SEM_CRAMERR_ADDRL3, 0x104c)
+REG32(SEM_CRAMERR_ADDRL3, 0x1058)
     FIELD(SEM_CRAMERR_ADDRL3, QWORDS, 23, 5)
     FIELD(SEM_CRAMERR_ADDRL3, BITS, 16, 7)
     FIELD(SEM_CRAMERR_ADDRL3, UNUSED, 4, 12)
     FIELD(SEM_CRAMERR_ADDRL3, UNCORRECTABLE, 3, 1)
     FIELD(SEM_CRAMERR_ADDRL3, CLASSIFICATION, 2, 1)
     FIELD(SEM_CRAMERR_ADDRL3, VALID, 0, 2)
-REG32(SEM_CRAMERR_ADDRH3, 0x1050)
+REG32(SEM_CRAMERR_ADDRH3, 0x105c)
     FIELD(SEM_CRAMERR_ADDRH3, UNUSED, 30, 2)
     FIELD(SEM_CRAMERR_ADDRH3, SLR, 27, 3)
     FIELD(SEM_CRAMERR_ADDRH3, ROW, 23, 4)
     FIELD(SEM_CRAMERR_ADDRH3, BLOCKTYPE, 20, 3)
     FIELD(SEM_CRAMERR_ADDRH3, FRAME_ADDR, 0, 20)
+REG32(SEM_RESERVED_0, 0x1060)
+REG32(SEM_RESERVED_1, 0x1064)
+REG32(SEM_RESERVED_2, 0x1068)
+REG32(SEM_RESERVED_3, 0x106c)
 REG32(PMC_MUTEX_0, 0x1100)
 REG32(PMC_MUTEX_1, 0x1104)
 REG32(PMC_MUTEX_2, 0x1108)
@@ -777,14 +809,19 @@ REG32(PMC_MUTEX_28, 0x1170)
 REG32(PMC_MUTEX_29, 0x1174)
 REG32(PMC_MUTEX_30, 0x1178)
 REG32(PMC_MUTEX_31, 0x117c)
+REG32(PPU_1_RST_LOCK, 0x1200)
+    FIELD(PPU_1_RST_LOCK, LOCK, 0, 1)
+REG32(POR_LOCK, 0x1204)
+    FIELD(POR_LOCK, LOCK, 0, 1)
 
-#define R_MAX (R_PMC_MUTEX_31 + 1)
+#define R_MAX (R_POR_LOCK + 1)
 
 typedef struct PMC_GLOBAL {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
     qemu_irq irq_pmc_ppu1_gpi;
     qemu_irq irq_req_pwrdwn_int;
+    qemu_irq irq_wakeup_irq;
     qemu_irq irq_req_swrst_int;
     qemu_irq irq_req_pwrup_int;
     qemu_irq irq_pmc_global_imr;
@@ -836,6 +873,12 @@ static void pmc_ppu1_gpi_update_irq(PMC_GLOBAL *s)
 {
     bool pending = s->regs[R_PMC_PPU1_GPI] & ~s->regs[R_PMC_PPU1_GPI_MASK];
     qemu_set_irq(s->irq_pmc_ppu1_gpi, pending);
+}
+
+static void pmc_ppu1_gpi_postw(RegisterInfo *reg, uint64_t val64)
+{
+    PMC_GLOBAL *s = XILINX_PMC_GLOBAL(reg->opaque);
+    pmc_ppu1_gpi_update_irq(s);
 }
 
 static uint64_t pmc_ppu1_gpi_en_prew(RegisterInfo *reg, uint64_t val64)
@@ -908,6 +951,48 @@ static uint64_t req_pwrdwn_trig_prew(RegisterInfo *reg, uint64_t val64)
 
     s->regs[R_REQ_PWRDWN_STATUS] |= val;
     req_pwrdwn_int_update_irq(s);
+    return 0;
+}
+
+static void wakeup_irq_update_irq(PMC_GLOBAL *s)
+{
+    bool pending = s->regs[R_WAKEUP_IRQ_STATUS] & ~s->regs[R_WAKEUP_IRQ_MASK];
+    qemu_set_irq(s->irq_wakeup_irq, pending);
+}
+
+static void wakeup_irq_status_postw(RegisterInfo *reg, uint64_t val64)
+{
+    PMC_GLOBAL *s = XILINX_PMC_GLOBAL(reg->opaque);
+    wakeup_irq_update_irq(s);
+}
+
+static uint64_t wakeup_irq_en_prew(RegisterInfo *reg, uint64_t val64)
+{
+    PMC_GLOBAL *s = XILINX_PMC_GLOBAL(reg->opaque);
+    uint32_t val = val64;
+
+    s->regs[R_WAKEUP_IRQ_MASK] &= ~val;
+    wakeup_irq_update_irq(s);
+    return 0;
+}
+
+static uint64_t wakeup_irq_dis_prew(RegisterInfo *reg, uint64_t val64)
+{
+    PMC_GLOBAL *s = XILINX_PMC_GLOBAL(reg->opaque);
+    uint32_t val = val64;
+
+    s->regs[R_WAKEUP_IRQ_MASK] |= val;
+    wakeup_irq_update_irq(s);
+    return 0;
+}
+
+static uint64_t wakeup_irq_trig_prew(RegisterInfo *reg, uint64_t val64)
+{
+    PMC_GLOBAL *s = XILINX_PMC_GLOBAL(reg->opaque);
+    uint32_t val = val64;
+
+    s->regs[R_WAKEUP_IRQ_STATUS] |= val;
+    wakeup_irq_update_irq(s);
     return 0;
 }
 
@@ -1115,9 +1200,9 @@ static void tamper_trig_postw(RegisterInfo *reg, uint64_t val64)
 
 static RegisterAccessInfo pmc_global_regs_info[] = {
     {   .name = "GLOBAL_CNTRL",  .addr = A_GLOBAL_CNTRL,
-        .reset = 0x8800,
-        .rsvd = 0xfffe00e8,
-        .ro = 0xffff00e8,
+        .reset = 0x48800,
+        .rsvd = 0xfff800e8,
+        .ro = 0xfffb00e8,
     },{ .name = "PMC_MULTI_BOOT",  .addr = A_PMC_MULTI_BOOT,
     },{ .name = "PPU1_TRM_CTRL",  .addr = A_PPU1_TRM_CTRL,
         .rsvd = 0xfffffffe,
@@ -1136,6 +1221,9 @@ static RegisterAccessInfo pmc_global_regs_info[] = {
         .pre_write = pmc_global_idr_prew,
     },{ .name = "PPU1_DEBUG_CTRL",  .addr = A_PPU1_DEBUG_CTRL,
         .reset = 0x1,
+        .rsvd = 0xfffffffe,
+        .ro = 0xfffffffe,
+    },{ .name = "PPU1_DEBUG_LOCK",  .addr = A_PPU1_DEBUG_LOCK,
         .rsvd = 0xfffffffe,
         .ro = 0xfffffffe,
     },{ .name = "GLOBAL_GEN_STORAGE0",  .addr = A_GLOBAL_GEN_STORAGE0,
@@ -1204,6 +1292,7 @@ static RegisterAccessInfo pmc_global_regs_info[] = {
         .rsvd = 0xfffffff8,
         .pre_write = req_iso_trig_prew,
     },{ .name = "DDR_RETENTION",  .addr = A_DDR_RETENTION,
+    },{ .name = "USR_GTS",  .addr = A_USR_GTS,
     },{ .name = "REQ_SWRST_STATUS",  .addr = A_REQ_SWRST_STATUS,
         .rsvd = 0xfffffff0,
         .ro = 0xfffffff0,
@@ -1219,6 +1308,25 @@ static RegisterAccessInfo pmc_global_regs_info[] = {
         .pre_write = req_swrst_int_dis_prew,
     },{ .name = "REQ_SWRST_TRIG",  .addr = A_REQ_SWRST_TRIG,
         .pre_write = req_swrst_trig_prew,
+    },{ .name = "WAKEUP_IRQ_STATUS",  .addr = A_WAKEUP_IRQ_STATUS,
+        .rsvd = 0xfffffffc,
+        .w1c = 0xffffffff,
+        .post_write = wakeup_irq_status_postw,
+    },{ .name = "WAKEUP_IRQ_MASK",  .addr = A_WAKEUP_IRQ_MASK,
+        .reset = 0x3,
+        .rsvd = 0xfffffffc,
+        .ro = 0xffffffff,
+    },{ .name = "WAKEUP_IRQ_EN",  .addr = A_WAKEUP_IRQ_EN,
+        .rsvd = 0xfffffffc,
+        .pre_write = wakeup_irq_en_prew,
+    },{ .name = "WAKEUP_IRQ_DIS",  .addr = A_WAKEUP_IRQ_DIS,
+        .rsvd = 0xfffffffc,
+        .pre_write = wakeup_irq_dis_prew,
+    },{ .name = "WAKEUP_IRQ_TRIG",  .addr = A_WAKEUP_IRQ_TRIG,
+        .rsvd = 0xfffffffc,
+        .pre_write = wakeup_irq_trig_prew,
+    },{ .name = "DBG_PWR_ACK",  .addr = A_DBG_PWR_ACK,
+        .rsvd = 0xfffffffc,
     },{ .name = "PMC_SSS_CFG",  .addr = A_PMC_SSS_CFG,
         .rsvd = 0xff000000,
     },{ .name = "TEST_PATTERN_CFG",  .addr = A_TEST_PATTERN_CFG,
@@ -1366,6 +1474,7 @@ static RegisterAccessInfo pmc_global_regs_info[] = {
     },{ .name = "PMC_PL_GPO",  .addr = A_PMC_PL_GPO,
     },{ .name = "PMC_PPU1_GPI",  .addr = A_PMC_PPU1_GPI,
         .w1c = 0xffffffff,
+        .post_write = pmc_ppu1_gpi_postw,
     },{ .name = "PMC_PPU1_GPI_MASK",  .addr = A_PMC_PPU1_GPI_MASK,
         .reset = 0xffffffff,
         .ro = 0xffffffff,
@@ -1397,7 +1506,10 @@ static RegisterAccessInfo pmc_global_regs_info[] = {
         .rsvd = 0xffff0000,
     },{ .name = "SEM_NPI_ATTRIB",  .addr = A_SEM_NPI_ATTRIB,
         .rsvd = 0xff000000,
-    },{ .name = "SEM_CLASSIFICATION",  .addr = A_SEM_CLASSIFICATION,
+    },{ .name = "SEM_NPI_HDR_ADDR_0",  .addr = A_SEM_NPI_HDR_ADDR_0,
+    },{ .name = "SEM_NPI_HDR_ADDR_1",  .addr = A_SEM_NPI_HDR_ADDR_1,
+    },{ .name = "SEM_CLASSIFICATION_0",  .addr = A_SEM_CLASSIFICATION_0,
+    },{ .name = "SEM_CLASSIFICATION_1",  .addr = A_SEM_CLASSIFICATION_1,
     },{ .name = "SEM_STATUS",  .addr = A_SEM_STATUS,
     },{ .name = "SEM_ERROR",  .addr = A_SEM_ERROR,
     },{ .name = "SEM_CMD_REG0",  .addr = A_SEM_CMD_REG0,
@@ -1424,6 +1536,10 @@ static RegisterAccessInfo pmc_global_regs_info[] = {
     },{ .name = "SEM_CRAMERR_ADDRL3",  .addr = A_SEM_CRAMERR_ADDRL3,
         .rsvd = 0xf0000000,
     },{ .name = "SEM_CRAMERR_ADDRH3",  .addr = A_SEM_CRAMERR_ADDRH3,
+    },{ .name = "SEM_RESERVED_0",  .addr = A_SEM_RESERVED_0,
+    },{ .name = "SEM_RESERVED_1",  .addr = A_SEM_RESERVED_1,
+    },{ .name = "SEM_RESERVED_2",  .addr = A_SEM_RESERVED_2,
+    },{ .name = "SEM_RESERVED_3",  .addr = A_SEM_RESERVED_3,
     },{ .name = "PMC_MUTEX_0",  .addr = A_PMC_MUTEX_0,
     },{ .name = "PMC_MUTEX_1",  .addr = A_PMC_MUTEX_1,
     },{ .name = "PMC_MUTEX_2",  .addr = A_PMC_MUTEX_2,
@@ -1456,6 +1572,8 @@ static RegisterAccessInfo pmc_global_regs_info[] = {
     },{ .name = "PMC_MUTEX_29",  .addr = A_PMC_MUTEX_29,
     },{ .name = "PMC_MUTEX_30",  .addr = A_PMC_MUTEX_30,
     },{ .name = "PMC_MUTEX_31",  .addr = A_PMC_MUTEX_31,
+    },{ .name = "PPU_1_RST_LOCK",  .addr = A_PPU_1_RST_LOCK,
+    },{ .name = "POR_LOCK",  .addr = A_POR_LOCK,
     }
 };
 
@@ -1482,6 +1600,7 @@ static void pmc_global_reset(DeviceState *dev)
     ppu1_update_ctrl(s);
     pmc_ppu1_gpi_update_irq(s);
     req_pwrdwn_int_update_irq(s);
+    wakeup_irq_update_irq(s);
     req_swrst_int_update_irq(s);
     req_pwrup_int_update_irq(s);
     pmc_global_imr_update_irq(s);
@@ -1524,6 +1643,7 @@ static void pmc_global_init(Object *obj)
     sysbus_init_mmio(sbd, &s->iomem);
     sysbus_init_irq(sbd, &s->irq_pmc_ppu1_gpi);
     sysbus_init_irq(sbd, &s->irq_req_pwrdwn_int);
+    sysbus_init_irq(sbd, &s->irq_wakeup_irq);
     sysbus_init_irq(sbd, &s->irq_req_swrst_int);
     sysbus_init_irq(sbd, &s->irq_req_pwrup_int);
     sysbus_init_irq(sbd, &s->irq_pmc_global_imr);
@@ -1540,7 +1660,6 @@ static const VMStateDescription vmstate_pmc_global = {
     .name = TYPE_XILINX_PMC_GLOBAL,
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, PMC_GLOBAL, R_MAX),
         VMSTATE_END_OF_LIST(),
