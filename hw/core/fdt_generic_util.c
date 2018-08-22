@@ -1279,7 +1279,7 @@ exit_reg_parse:
         /* connect irq */
         j = 0;
         for (i = 0;; i++) {
-            char irq_info[1024];
+            char irq_info[6 * 1024];
             char *irq_info_p = irq_info;
             bool map_mode;
             int len = -1;
