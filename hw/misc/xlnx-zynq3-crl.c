@@ -582,18 +582,13 @@ static void crl_init(Object *obj)
     sysbus_init_irq(sbd, &s->irq_ir);
 
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_adma, "rst-adma", 1);
-    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_gem[0], "rst-gem0", 1);
-    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_gem[1], "rst-gem1", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), s->rst_gem, "rst-gem", 2);
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_spare, "rst-spare", 1);
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_usb0, "rst-usb0", 1);
-    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_uart[0], "rst-uart0", 1);
-    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_uart[1], "rst-uart1", 1);
-    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_spi[0], "rst-spi0", 1);
-    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_spi[1], "rst-spi1", 1);
-    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_can[0], "rst-can0", 1);
-    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_can[1], "rst-can1", 1);
-    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_i2c[0], "rst-i2c0", 1);
-    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_i2c[1], "rst-i2c1", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), s->rst_uart, "rst-uart", 2);
+    qdev_init_gpio_out_named(DEVICE(obj), s->rst_spi, "rst-spi", 2);
+    qdev_init_gpio_out_named(DEVICE(obj), s->rst_can, "rst-can", 2);
+    qdev_init_gpio_out_named(DEVICE(obj), s->rst_i2c, "rst-i2c", 2);
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_dbg_lpd, "rst-dbg-lpd", 1);
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_dbg_lpd_hsdp,
                              "rst-dbg-lpd-hsdp", 1);
@@ -602,10 +597,7 @@ static void crl_init(Object *obj)
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_dbg_lpd_rpu1,
                              "rst-dbg-lpd-rpu1", 1);
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_gpio, "rst-gpio", 1);
-    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_ttc[0], "rst-ttc0", 1);
-    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_ttc[1], "rst-ttc1", 1);
-    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_ttc[2], "rst-ttc2", 1);
-    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_ttc[3], "rst-ttc3", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), s->rst_ttc, "rst-ttc", 4);
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_timestamp,
                              "rst-timestamp", 1);
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_swdt, "rst-swdt", 1);
@@ -636,27 +628,19 @@ static const FDTGenericGPIOSet crl_gpios[] = {
       .names = &fdt_generic_gpio_name_set_gpio,
       .gpios = (FDTGenericGPIOConnection[]) {
         { .name = "rst-adma", .fdt_index = 0, .range = 1 },
-        { .name = "rst-gem0", .fdt_index = 1, .range = 1 },
-        { .name = "rst-gem1", .fdt_index = 2, .range = 1 },
+        { .name = "rst-gem", .fdt_index = 1, .range = 2 },
         { .name = "rst-spare", .fdt_index = 3, .range = 1 },
         { .name = "rst-usb0", .fdt_index = 4, .range = 1 },
-        { .name = "rst-uart0", .fdt_index = 5, .range = 1 },
-        { .name = "rst-uart1", .fdt_index = 6, .range = 1 },
-        { .name = "rst-spi0", .fdt_index = 7, .range = 1 },
-        { .name = "rst-spi1", .fdt_index = 8, .range = 1 },
-        { .name = "rst-can0", .fdt_index = 9, .range = 1 },
-        { .name = "rst-can1", .fdt_index = 10, .range = 1 },
-        { .name = "rst-i2c0", .fdt_index = 11, .range = 1 },
-        { .name = "rst-i2c1", .fdt_index = 12, .range = 1 },
+        { .name = "rst-uart", .fdt_index = 5, .range = 2 },
+        { .name = "rst-spi", .fdt_index = 7, .range = 2 },
+        { .name = "rst-can", .fdt_index = 9, .range = 2 },
+        { .name = "rst-i2c", .fdt_index = 11, .range = 2 },
         { .name = "rst-dbg-lpd", .fdt_index = 13, .range = 1 },
         { .name = "rst-dbg-lpd-hsdp", .fdt_index = 14, .range = 1 },
         { .name = "rst-dbg-lpd-rpu0", .fdt_index = 15, .range = 1 },
         { .name = "rst-dbg-lpd-rpu1", .fdt_index = 16, .range = 1 },
         { .name = "rst-gpio", .fdt_index = 17, .range = 1 },
-        { .name = "rst-ttc0", .fdt_index = 18, .range = 1 },
-        { .name = "rst-ttc1", .fdt_index = 19, .range = 1 },
-        { .name = "rst-ttc2", .fdt_index = 20, .range = 1 },
-        { .name = "rst-ttc3", .fdt_index = 21, .range = 1 },
+        { .name = "rst-ttc", .fdt_index = 18, .range = 4 },
         { .name = "rst-timestamp", .fdt_index = 22, .range = 1 },
         { .name = "rst-swdt", .fdt_index = 23, .range = 1 },
         { .name = "rst-ocm", .fdt_index = 24, .range = 1 },
