@@ -939,16 +939,12 @@ static void crp_init(Object *obj)
                              "rst-nonps-noc", 1);
 
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_sbi, "rst-sbi", 1);
-    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_pdma[0], "rst-pdma0", 1);
-    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_pdma[1], "rst-pdma1", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), s->rst_pdma, "rst-pdma", 2);
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_sysmon_cfg,
                              "rst-sysmon-cfg", 1);
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_sysmon_seq,
                              "rst-sysmon-seq", 1);
-    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_pl[0], "rst-pl0", 1);
-    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_pl[1], "rst-pl1", 1);
-    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_pl[2], "rst-pl2", 1);
-    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_pl[3], "rst-pl3", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), s->rst_pl, "rst-pl", 4);
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_usb, "rst-usb", 1);
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_dbg, "rst-dbg-reset", 1);
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_dbg_dpc, "rst-dbg-dpc", 1);
@@ -996,14 +992,10 @@ static const FDTGenericGPIOSet crp_gpios[] = {
         { .name = "rst-nonps-noc", .fdt_index = 17, .range = 1 },
 
         { .name = "rst-sbi", .fdt_index = 18, .range = 1 },
-        { .name = "rst-pdma0", .fdt_index = 19, .range = 1 },
-        { .name = "rst-pdma1", .fdt_index = 20, .range = 1 },
+        { .name = "rst-pdma", .fdt_index = 19, .range = 2 },
         { .name = "rst-sysmon-cfg", .fdt_index = 21, .range = 1 },
         { .name = "rst-sysmon-seq", .fdt_index = 22, .range = 1 },
-        { .name = "rst-pl0", .fdt_index = 23, .range = 1 },
-        { .name = "rst-pl1", .fdt_index = 24, .range = 1 },
-        { .name = "rst-pl2", .fdt_index = 25, .range = 1 },
-        { .name = "rst-pl3", .fdt_index = 26, .range = 1 },
+        { .name = "rst-pl", .fdt_index = 23, .range = 4 },
         { .name = "rst-usb", .fdt_index = 27, .range = 1 },
         { .name = "rst-dbg-reset", .fdt_index = 28, .range = 1 },
         { .name = "rst-dbg-dpc", .fdt_index = 29, .range = 1 },
