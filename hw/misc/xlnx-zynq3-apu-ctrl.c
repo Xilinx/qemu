@@ -150,6 +150,44 @@ static void rvbar_postw(RegisterInfo *reg, uint64_t val64)
     }
 }
 
+static void pwrctl_postw(RegisterInfo *reg, uint64_t val64)
+{
+    XlnxZynq3APUCtrl *s = XILINX_APU_CTRL(reg->opaque);
+    int i;
+
+    if (ARRAY_FIELD_EX32(s->regs, PWRCTL, L2FLUSHREQ)) {
+        bool flush_req_ok = true;
+
+        if (!ARRAY_FIELD_EX32(s->regs, SNOOP_CTRL, ACE_INACT)
+            || !ARRAY_FIELD_EX32(s->regs, SNOOP_CTRL, ACP_INACT)) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                 "%s: SNOOP_CTRL not inactive while requesting L2FLUSHREQ\n",
+                 DEVICE(s)->id);
+            flush_req_ok = false;
+        }
+
+        /* HAX:
+         * We shouldn't be peeking into this internal ARMCPU state.
+         * This is useful for debugging.
+         */
+        for (i = 0; i < MAX_CPUS; i++) {
+            if (s->cpus[i] && !s->cpus[i]->is_in_wfi) {
+                qemu_log_mask(LOG_GUEST_ERROR,
+                       "%s: ACPU%d not in WFI while requesting L2FLUSHREQ\n",
+                       DEVICE(s)->id, i);
+                flush_req_ok = false;
+            }
+        }
+
+        ARRAY_FIELD_DP32(s->regs, PWRSTAT, L2FLUSHDONE, flush_req_ok);
+    }
+
+    if (ARRAY_FIELD_EX32(s->regs, PWRCTL, CLREXMONREQ)) {
+        qemu_log_mask(LOG_UNIMP, "%s: CLREXMONREQ unimplemented.\n",
+                      DEVICE(s)->id);
+    }
+}
+
 static const RegisterAccessInfo apu_ctrl_regs_info[] = {
     {   .name = "ERR_CTRL",  .addr = A_ERR_CTRL,
     },{ .name = "ISR",  .addr = A_ISR,
@@ -179,6 +217,7 @@ static const RegisterAccessInfo apu_ctrl_regs_info[] = {
         .reset = 0xf000f,
     },{ .name = "SNOOP_CTRL",  .addr = A_SNOOP_CTRL,
     },{ .name = "PWRCTL",  .addr = A_PWRCTL,
+        .post_write = pwrctl_postw,
     },{ .name = "PWRSTAT",  .addr = A_PWRSTAT,
         .ro = 0x30003,
     }
