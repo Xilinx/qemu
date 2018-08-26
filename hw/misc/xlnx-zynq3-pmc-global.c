@@ -1641,14 +1641,16 @@ static void pmc_global_init(Object *obj)
                                 0x0,
                                 &reg_array->mem);
     sysbus_init_mmio(sbd, &s->iomem);
-    sysbus_init_irq(sbd, &s->irq_pmc_ppu1_gpi);
-    sysbus_init_irq(sbd, &s->irq_req_pwrdwn_int);
+
+    /* Order according to PPU1 INTC bits.  */
     sysbus_init_irq(sbd, &s->irq_wakeup_irq);
+    sysbus_init_irq(sbd, &s->irq_req_iso_int);
     sysbus_init_irq(sbd, &s->irq_req_swrst_int);
     sysbus_init_irq(sbd, &s->irq_req_pwrup_int);
-    sysbus_init_irq(sbd, &s->irq_pmc_global_imr);
+    sysbus_init_irq(sbd, &s->irq_req_pwrdwn_int);
     sysbus_init_irq(sbd, &s->irq_pmc_pl_irq);
-    sysbus_init_irq(sbd, &s->irq_req_iso_int);
+    sysbus_init_irq(sbd, &s->irq_pmc_ppu1_gpi);
+    sysbus_init_irq(sbd, &s->irq_pmc_global_imr);
 
     /* Out signals.  */
     qdev_init_gpio_out_named(DEVICE(obj), &s->tamper_reg, "tamper_reg", 1);
@@ -1672,6 +1674,14 @@ static const FDTGenericGPIOSet ctrl_gpios[] = {
       .gpios = (FDTGenericGPIOConnection[]) {
         { .name = "ppu1_rst", .fdt_index = 1 },
         { .name = "ppu1_wakeup", .fdt_index = 2 },
+        { },
+      },
+    },
+    {
+      .names = &fdt_generic_gpio_name_set_interrupts,
+      .gpios = (FDTGenericGPIOConnection[]) {
+        { .name = SYSBUS_DEVICE_GPIO_IRQ, .fdt_index = 0, .range = 8 },
+        { .name = "tamper_reg", .fdt_index = 8 },
         { },
       },
     },
