@@ -863,6 +863,14 @@ static void crp_reset(DeviceState *dev)
         }
     }
 
+    /* PMC is made out of reset automatically by hardware */
+    if (ARRAY_FIELD_EX32(s->regs, RST_PS, PMC_SRST) ||
+        ARRAY_FIELD_EX32(s->regs, RST_PS, PMC_POR)) {
+        ARRAY_FIELD_DP32(s->regs, RST_PS, PMC_SRST, 0);
+        ARRAY_FIELD_DP32(s->regs, RST_PS, PMC_POR, 0);
+
+       /* TODO: Issue PS and PL resets */
+    }
     s->regs[R_PLL_STATUS] |= R_PLL_STATUS_NOCPLL_LOCK_MASK |
                              R_PLL_STATUS_PMCPLL_LOCK_MASK;
 
