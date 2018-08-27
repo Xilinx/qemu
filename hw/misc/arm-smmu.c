@@ -6710,7 +6710,7 @@ static IOMMUTLBEntry smmu_translate(IOMMUMemoryRegion *mr, hwaddr addr,
     hwaddr pa = va;
     int prot;
     bool err = false;
-    uint64_t master_id = attr->master_id;
+    uint64_t master_id = attr->requester_id;
     bool clientpd = DEP_AF_EX32(s->regs, SMMU_SCR0, CLIENTPD);
 
     if (clientpd) {

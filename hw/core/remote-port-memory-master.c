@@ -102,7 +102,7 @@ static void rp_io_access(MemoryTransaction *tr)
     in.id = rp_new_id(s->rp);
     in.dev = s->rp_dev;
     in.clk = rp_normalized_vmclk(s->rp);
-    in.master_id = tr->attr.master_id;
+    in.master_id = tr->attr.requester_id;
     in.addr = addr;
     in.attr |= tr->attr.secure ? RP_BUS_ATTR_SECURE : 0;
     in.size = tr->size;

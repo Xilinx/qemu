@@ -890,7 +890,7 @@ static IOMMUTLBEntry xmpu_master_translate(XMPUMaster *xm, hwaddr addr,
         xr.end &= ~s->addr_mask;
 
         id_match = (xr.master.mask & xr.master.id) ==
-                       (xr.master.mask & attr->master_id);
+                       (xr.master.mask & attr->requester_id);
         match = id_match && (addr >= xr.start && addr < xr.end);
         if (match) {
             nr_matched++;
@@ -965,7 +965,7 @@ static uint64_t zero_read(void *opaque, hwaddr addr, unsigned size,
             addr = (DEP_AF_EX32(s->regs, POISON, BASE) << 12) | (addr & 0xfff);
             dma_memory_read(as, addr, &value, size);
         }
-        DEP_AF_DP32(s->regs, ERR_STATUS2, AXI_ID, attr.master_id);
+        DEP_AF_DP32(s->regs, ERR_STATUS2, AXI_ID, attr.requester_id);
         if (sec_vio) {
             DEP_AF_DP32(s->regs, ISR, SECURITYVIO, true);
         } else {
@@ -996,7 +996,7 @@ static void zero_write(void *opaque, hwaddr addr, uint64_t value,
             addr = (DEP_AF_EX32(s->regs, POISON, BASE) << 12) | (addr & 0xfff);
             dma_memory_write(as, addr, &value, size);
         }
-        DEP_AF_DP32(s->regs, ERR_STATUS2, AXI_ID, attr.master_id);
+        DEP_AF_DP32(s->regs, ERR_STATUS2, AXI_ID, attr.requester_id);
         if (sec_vio) {
             DEP_AF_DP32(s->regs, ISR, SECURITYVIO, true);
         } else {

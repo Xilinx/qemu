@@ -3527,25 +3527,35 @@ static void memory_transaction_attr_set_secure(Object *obj, bool value,
     mattr->secure = value;
 }
 
-static void mattr_get_master_id(Object *obj, Visitor *v, const char *name,
-                                void *opaque, Error **errp)
+static void mattr_get_requester_id(Object *obj, Visitor *v, const char *name,
+                                   void *opaque, Error **errp)
 {
     MemTxAttrs *mattr = MEMORY_TRANSACTION_ATTR(obj);
-    uint64_t value = mattr->master_id;
+    uint16_t value = mattr->requester_id;
 
-    visit_type_uint64(v, name, &value, errp);
+    visit_type_uint16(v, name, &value, errp);
 }
 
+
+static void mattr_set_requester_id(Object *obj, Visitor *v, const char *name,
+                                   void *opaque, Error **errp)
+{
+    MemTxAttrs *mattr = MEMORY_TRANSACTION_ATTR(obj);
+    Error *local_err = NULL;
+    uint16_t value;
+
+    visit_type_uint16(v, name, &value, &local_err);
+    mattr->requester_id = value;
+}
 
 static void mattr_set_master_id(Object *obj, Visitor *v, const char *name,
                                 void *opaque, Error **errp)
 {
-    MemTxAttrs *mattr = MEMORY_TRANSACTION_ATTR(obj);
-    Error *local_err = NULL;
-    uint64_t value;
+    gchar *path = object_get_canonical_path(obj);
 
-    visit_type_uint64(v, name, &value, &local_err);
-    mattr->master_id = value;
+    qemu_log("WARNING: %s: The %s property will be deprecated.\n", path, name);
+    g_free(path);
+    mattr_set_requester_id(obj, v, name, opaque, errp);
 }
 
 
@@ -3557,8 +3567,13 @@ static void memory_transaction_attr_initfn(Object *obj)
                         memory_transaction_attr_get_secure,
                         memory_transaction_attr_set_secure,
                         NULL);
-    object_property_add(OBJECT(mattr), "master-id", "uint64",
-                        mattr_get_master_id,
+    object_property_add(OBJECT(mattr), "requester-id", "uint16",
+                        mattr_get_requester_id,
+                        mattr_set_requester_id,
+                        NULL, NULL, &error_abort);
+    /* Will be deprecated.  */
+    object_property_add(OBJECT(mattr), "master-id", "uint16",
+                        mattr_get_requester_id,
                         mattr_set_master_id,
                         NULL, NULL, &error_abort);
 }

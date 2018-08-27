@@ -85,7 +85,7 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
                      pkt->busaccess.len);
     }
     s->attr.secure = !!(pkt->busaccess.attributes & RP_BUS_ATTR_SECURE);
-    s->attr.master_id = pkt->busaccess.master_id;
+    s->attr.requester_id = pkt->busaccess.master_id;
 
     if (byte_en) {
         process_data_slow(s, pkt, dir, data, byte_en);

@@ -117,7 +117,7 @@ static uint64_t rp_io_read(void *opaque, hwaddr addr, unsigned size,
     in.flags = 0;
     in.dev = map->rp_dev;
     in.clk = rp_normalized_vmclk(s->rp);
-    in.master_id = attr.master_id;
+    in.master_id = attr.requester_id;
     in.addr = addr;
     in.attr |= attr.secure ? RP_BUS_ATTR_SECURE : 0;
     in.size = size;
@@ -176,7 +176,7 @@ static void rp_io_write(void *opaque, hwaddr addr, uint64_t value,
     in.id = rp_new_id(s->rp);
     in.dev = map->rp_dev;
     in.clk = rp_normalized_vmclk(s->rp);
-    in.master_id = attr.master_id;
+    in.master_id = attr.requester_id;
     in.addr = addr;
     in.attr |= attr.secure ? RP_BUS_ATTR_SECURE : 0;
     in.size = size;

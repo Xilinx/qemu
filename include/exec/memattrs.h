@@ -43,8 +43,6 @@ typedef struct MemTxAttrs {
     unsigned int debug:1;
     /* Requester ID (for MSI for example) */
     unsigned int requester_id:16;
-
-    uint64_t master_id;
 } MemTxAttrs;
 
 /* Bus masters which don't specify any attributes will get this,

@@ -581,7 +581,7 @@ static bool xppu_ap_check(XPPU *s, MemoryTransaction *tr, uint32_t apl)
         readonly = DEP_F_EX32(val32, MASTER_ID00, MIDR);
         mask = DEP_F_EX32(val32, MASTER_ID00, MIDM);
 
-        if ((mid & mask) != (tr->attr.master_id & mask)) {
+        if ((mid & mask) != (tr->attr.requester_id & mask)) {
             continue;
         }
 
@@ -643,7 +643,7 @@ static void xppu_ap_access(MemoryTransaction *tr)
         if (isr_free) {
             DEP_AF_DP32(s->regs, ISR, APER_PERM, true);
             DEP_AF_DP32(s->regs, ERR_STATUS1, AXI_ADDR, addr >> 12);
-            DEP_AF_DP32(s->regs, ERR_STATUS2, AXI_ID, tr->attr.master_id);
+            DEP_AF_DP32(s->regs, ERR_STATUS2, AXI_ID, tr->attr.requester_id);
         }
 
         /* Poison the transaction.
