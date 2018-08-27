@@ -49,7 +49,9 @@ REG32(PRAM_ZEROIZE_SIZE, 0x0)
 
 #define R_MAX (R_PRAM_ZEROIZE_SIZE + 1)
 
+/* PZM_BEAT_SIZE must be a multiple of 4.  */
 #define PZM_BEAT_SIZE 16
+QEMU_BUILD_BUG_ON((PZM_BEAT_SIZE % 4) != 0);
 
 typedef struct PmcStreamZero {
     SysBusDevice parent_obj;
@@ -60,7 +62,7 @@ typedef struct PmcStreamZero {
     StreamCanPushNotifyFn notify;
     void *notify_opaque;
 
-    uint8_t data[PZM_BEAT_SIZE];
+    uint32_t data[PZM_BEAT_SIZE / 4];
     uint32_t regs[R_MAX];
 } PmcStreamZero;
 
@@ -70,7 +72,8 @@ static void pmc_stream_zero_notify(void *opaque)
 
     while (s->regs[R_PRAM_ZEROIZE_SIZE] &&
           stream_can_push(s->tx_dev, pmc_stream_zero_notify, s)) {
-        if (stream_push(s->tx_dev, s->data, PZM_BEAT_SIZE, 0) != PZM_BEAT_SIZE) {
+        if (stream_push(s->tx_dev, (uint8_t *)s->data, PZM_BEAT_SIZE, 0) !=
+            PZM_BEAT_SIZE) {
             qemu_log("pmc_zero_pump: transfer size < %d\n", PZM_BEAT_SIZE);
         }
         s->regs[R_PRAM_ZEROIZE_SIZE] -= 1;
@@ -144,6 +147,7 @@ static void pmc_stream_zero_init(Object *obj)
 {
     PmcStreamZero *s = PMC_STREAM_ZERO(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+    unsigned int i;
 
     memory_region_init_io(&s->iomem, obj, &pmc_stream_zero_mem_ops, obj,
                           TYPE_PMC_STREAM_ZERO, R_MAX * 4);
@@ -153,7 +157,9 @@ static void pmc_stream_zero_init(Object *obj)
                            qdev_prop_allow_set_link_before_realize,
                            OBJ_PROP_LINK_UNREF_ON_RELEASE,
                            NULL);
-    memset(s->data, 0, PZM_BEAT_SIZE);
+    for (i = 0; (i * 4) < PZM_BEAT_SIZE; i++) {
+        s->data[i] = 0xDEADBEEF;
+    }
 }
 
 static const TypeInfo pmc_stream_zero_info = {
