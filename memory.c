@@ -1409,16 +1409,24 @@ static void memory_region_do_set_ram(MemoryRegion *mr)
         mr->ram_block = qemu_ram_alloc(int128_get64(mr->size), mr, &error_abort);
         break;
     case(2):
-        sanitized_name = g_strdup(object_get_canonical_path(OBJECT(mr)));
+        if (mr->filename) {
+            filename = g_strdup_printf("%s%s%s",
+                                       machine_path ? machine_path : "",
+                                       machine_path ? G_DIR_SEPARATOR_S : "",
+                                       mr->filename);
+        } else {
+            sanitized_name = g_strdup(object_get_canonical_path(OBJECT(mr)));
 
-        for (c = sanitized_name; *c != '\0'; c++) {
-            if (*c == '/')
-                *c = '_';
+            for (c = sanitized_name; *c != '\0'; c++) {
+                if (*c == '/') {
+                    *c = '_';
+                }
+            }
+            filename = g_strdup_printf("%s" G_DIR_SEPARATOR_S "qemu-memory-%s",
+                                       machine_path ? machine_path : ".",
+                                       sanitized_name);
+            g_free(sanitized_name);
         }
-        filename = g_strdup_printf("%s" G_DIR_SEPARATOR_S "qemu-memory-%s",
-                                   machine_path ? machine_path : ".",
-                                   sanitized_name);
-        g_free(sanitized_name);
         mr->ram_block = qemu_ram_alloc_from_file(int128_get64(mr->size), mr,
                                                  true, filename, &error_abort);
         g_free(filename);
@@ -1479,6 +1487,28 @@ static void memory_region_set_object_size(Object *obj, Visitor *v, const char *n
     memory_region_set_size(mr, size);
 }
 
+static void memory_region_get_filename(Object *obj, Visitor *v,
+                                       const char *name,
+                                       void *opaque, Error **errp)
+{
+    MemoryRegion *mr = MEMORY_REGION(obj);
+    char *filename = mr->filename;
+
+    visit_type_str(v, name, &filename, errp);
+}
+
+static void memory_region_set_filename(Object *obj, Visitor *v,
+                                       const char *name,
+                                       void *opaque, Error **errp)
+{
+    MemoryRegion *mr = MEMORY_REGION(obj);
+    Error *local_err = NULL;
+    char *filename;
+
+    visit_type_str(v, name, &filename, &local_err);
+    mr->filename = filename;
+}
+
 static void memory_region_initfn(Object *obj)
 {
     MemoryRegion *mr = MEMORY_REGION(obj);
@@ -1519,6 +1549,10 @@ static void memory_region_initfn(Object *obj)
     object_property_add(OBJECT(mr), "ram", "uint8",
                         NULL, /* FIXME: Add getter */
                         memory_region_set_ram,
+                        NULL, NULL, &error_abort);
+    object_property_add(OBJECT(mr), "filename", "string",
+                        memory_region_get_filename,
+                        memory_region_set_filename,
                         NULL, NULL, &error_abort);
     object_property_add_bool(OBJECT(mr), "may-overlap",
                         memory_region_get_may_overlap,

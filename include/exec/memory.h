@@ -288,6 +288,7 @@ struct MemoryRegion {
     const char *name;
     unsigned ioeventfd_nb;
     MemoryRegionIoeventfd *ioeventfds;
+    char *filename;
 };
 
 struct IOMMUMemoryRegion {
