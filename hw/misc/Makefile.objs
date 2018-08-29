@@ -29,6 +29,7 @@ common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx_zynqmp_pmu_global.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx_zynqmp_crf.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx_zynqmp_crl.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx_zynqmp_ams.o
+common-obj-$(CONFIG_XLNX_ZYNQMP) += xlnx-zynq3-pmc-analog.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx_zynqmp_sysmon.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += mem_ctrl.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += test_component.o
