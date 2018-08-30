@@ -33,6 +33,7 @@
 #include "exec/address-spaces.h"
 #include "hw/sysbus.h"
 #include "qapi/error.h"
+#include "qemu/error-report.h"
 #include "sysemu/sysemu.h"
 #include "qemu/cutils.h"
 #include "sysemu/blockdev.h"
@@ -879,6 +880,25 @@ static const int fdt_generic_reg_cells_defaults[] = {
     0,
 };
 
+/*
+ * Error handler for device creation failure.
+ *
+ * We look for qemu-fdt-abort-on-error properties up the tree.
+ * If we find one, we abort with the provided error message.
+ */
+static void fdt_dev_error(FDTMachineInfo *fdti, char *node_path, char *compat)
+{
+    char *error_abort;
+
+    error_abort = qemu_fdt_getprop(fdti->fdt, node_path,
+                                   "qemu-fdt-abort-on-error", 0,
+                                   true, NULL);
+    if (error_abort) {
+        error_report("Failed to create %s", compat);
+        error_setg(&error_fatal, "%s", error_abort);
+    }
+}
+
 static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
 {
     Object *dev, *parent;
@@ -897,6 +917,7 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
     dev = fdt_create_from_compat(compat, &dev_type);
     if (!dev) {
         DB_PRINT_NP(1, "no match found for %s\n", compat);
+        fdt_dev_error(fdti, node_path, compat);
         return 1;
     }
     DB_PRINT_NP(1, "matched compat %s\n", compat);
