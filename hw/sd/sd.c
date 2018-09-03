@@ -433,9 +433,9 @@ static void sd_set_csd(SDState *sd, uint64_t size)
     sd->csd[15] = (sd_crc7(sd->csd, 15) << 1) | 1;
 }
 
-static void sd_set_rca(SDState *sd)
+static void sd_set_rca(SDState *sd, uint32_t val)
 {
-    sd->rca += 0x4567;
+    sd->rca = val;
 }
 
 FIELD(CSR, AKE_SEQ_ERROR,               3,  1)
@@ -960,15 +960,17 @@ static sd_rsp_type_t sd_normal_command(SDState *sd, SDRequest req)
         }
         break;
 
-    case 3:	/* CMD3:   SEND_RELATIVE_ADDR */
+    case 3:    /* CMD3:   SD: SEND_RELATIVE_ADDR
+                          MMC: SET_RELATEIVE_ADDR */
         if (sd->spi)
             goto bad_cmd;
         switch (sd->state) {
         case sd_identification_state:
         case sd_standby_state:
             sd->state = sd_standby_state;
-            sd_set_rca(sd);
-            return sd_r6;
+            sd_set_rca(sd, sd->mmc ? extract32(req.arg, 16, 16) :
+                       0x4567);
+            return sd->mmc ? sd_r1 : sd_r6;
 
         default:
             break;
