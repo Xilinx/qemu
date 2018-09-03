@@ -947,6 +947,10 @@ static sd_rsp_type_t sd_normal_command(SDState *sd, SDRequest req)
         if (sd->spi)
             goto bad_cmd;
         switch (sd->state) {
+        case sd_idle_state:
+            if (!sd->mmc) {
+                break;
+            }
         case sd_ready_state:
             sd->state = sd_identification_state;
             return sd_r2_i;
