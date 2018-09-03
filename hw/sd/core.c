@@ -21,8 +21,13 @@
 
 #include "qemu/osdep.h"
 #include "hw/qdev-core.h"
-#include "sysemu/block-backend.h"
 #include "hw/sd/sd.h"
+#include "trace.h"
+
+static inline const char *sdbus_name(SDBus *sdbus)
+{
+    return sdbus->qbus.name;
+}
 
 static SDState *get_card(SDBus *sdbus)
 {
@@ -37,38 +42,48 @@ static SDState *get_card(SDBus *sdbus)
 
 uint8_t sdbus_get_dat_lines(SDBus *sdbus)
 {
-    SDState *card = get_card(sdbus);
+    SDState *slave = get_card(sdbus);
+    uint8_t dat_lines = 0b1111; /* 4 bit bus width */
 
-    if (card) {
-        SDCardClass *sc = SD_CARD_GET_CLASS(card);
+    if (slave) {
+        SDCardClass *sc = SD_CARD_GET_CLASS(slave);
 
-        return sc->get_dat_lines(card);
+        if (sc->get_dat_lines) {
+            dat_lines = sc->get_dat_lines(slave);
+        }
     }
+    trace_sdbus_get_dat_lines(sdbus_name(sdbus), dat_lines);
 
-    return 0;
+    return dat_lines;
 }
 
 bool sdbus_get_cmd_line(SDBus *sdbus)
 {
-    SDState *card = get_card(sdbus);
+    SDState *slave = get_card(sdbus);
+    bool cmd_line = true;
 
-    if (card) {
-        SDCardClass *sc = SD_CARD_GET_CLASS(card);
+    if (slave) {
+        SDCardClass *sc = SD_CARD_GET_CLASS(slave);
 
-        return sc->get_cmd_line(card);
+        if (sc->get_cmd_line) {
+            cmd_line = sc->get_cmd_line(slave);
+        }
     }
+    trace_sdbus_get_cmd_line(sdbus_name(sdbus), cmd_line);
 
-    return false;
+    return cmd_line;
 }
 
-void sdbus_set_voltage(SDBus *sdbus, int v)
+void sdbus_set_voltage(SDBus *sdbus, uint16_t millivolts)
 {
     SDState *card = get_card(sdbus);
 
+    trace_sdbus_set_voltage(sdbus_name(sdbus), millivolts);
     if (card) {
         SDCardClass *sc = SD_CARD_GET_CLASS(card);
 
-        sc->set_voltage(card, v);
+        assert(sc->set_voltage);
+        sc->set_voltage(card, millivolts);
     }
 }
 
@@ -76,6 +91,7 @@ int sdbus_do_command(SDBus *sdbus, SDRequest *req, uint8_t *response)
 {
     SDState *card = get_card(sdbus);
 
+    trace_sdbus_command(sdbus_name(sdbus), req->cmd, req->arg, req->crc);
     if (card) {
         SDCardClass *sc = SD_CARD_GET_CLASS(card);
 
@@ -89,6 +105,7 @@ void sdbus_write_data(SDBus *sdbus, uint8_t value)
 {
     SDState *card = get_card(sdbus);
 
+    trace_sdbus_write(sdbus_name(sdbus), value);
     if (card) {
         SDCardClass *sc = SD_CARD_GET_CLASS(card);
 
@@ -99,14 +116,16 @@ void sdbus_write_data(SDBus *sdbus, uint8_t value)
 uint8_t sdbus_read_data(SDBus *sdbus)
 {
     SDState *card = get_card(sdbus);
+    uint8_t value = 0;
 
     if (card) {
         SDCardClass *sc = SD_CARD_GET_CLASS(card);
 
-        return sc->read_data(card);
+        value = sc->read_data(card);
     }
+    trace_sdbus_read(sdbus_name(sdbus), value);
 
-    return 0;
+    return value;
 }
 
 bool sdbus_data_ready(SDBus *sdbus)
