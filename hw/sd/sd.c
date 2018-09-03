@@ -373,6 +373,13 @@ static const uint8_t sd_csd_rw_mask[16] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xfc, 0xfe,
 };
 
+static void sd_set_ext_csd(SDState *sd)
+{
+    /* FIXME: come up with sane reset value */
+    memset(sd->ext_csd, 0, sizeof(sd->ext_csd));
+    sd->ext_csd[196] = 0x3f; /* Support all timing modes */
+}
+
 static void sd_set_csd(SDState *sd, uint64_t size)
 {
     uint32_t csize = (size >> (CMULT_SHIFT + HWBLOCK_SHIFT)) - 1;
@@ -558,6 +565,7 @@ static void sd_reset(DeviceState *dev)
     sd_set_scr(sd);
     sd_set_cid(sd);
     sd_set_csd(sd, size);
+    sd_set_ext_csd(sd);
     sd_set_cardstatus(sd);
     sd_set_sdstatus(sd);
 
