@@ -929,8 +929,16 @@ static sd_rsp_type_t sd_normal_command(SDState *sd, SDRequest req)
         break;
 
     case 1:	/* CMD1:   SEND_OP_CMD */
-        if (!sd->spi)
+        /* MMC: Powerup & send r3
+         * SD: send r1 in spi mode
+         */
+        if (sd->mmc) {
+            sd_ocr_powerup(sd);
+            return sd->state == sd_idle_state ?
+                   sd_r3 : sd_r0;
+        } else if (!sd->spi) {
             goto bad_cmd;
+        }
 
         sd->state = sd_transfer_state;
         return sd_r1;
