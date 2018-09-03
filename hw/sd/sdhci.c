@@ -1117,6 +1117,9 @@ sdhci_write(void *opaque, hwaddr offset, uint64_t val, unsigned size)
         }
         sdhci_update_irq(s);
         break;
+    case SDHC_ACMD12ERRSTS:
+        MASKED_WRITE(s->acmd12errsts, mask, value);
+        break;
     default:
         ERRPRINT("bad %ub write offset: addr[0x%04x] <- %u(0x%x)\n",
                  size, (int)offset, value >> shift, value >> shift);
