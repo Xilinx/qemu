@@ -87,6 +87,7 @@ struct SDState {
     uint8_t scr[8];
     uint8_t cid[16];
     uint8_t csd[16];
+    uint8_t ext_csd[512];
     uint16_t rca;
     uint32_t card_status;
     uint8_t sd_status[64];
@@ -95,6 +96,7 @@ struct SDState {
     uint8_t spec_version;
     BlockBackend *blk;
     bool spi;
+    bool mmc;
 
     uint32_t mode;    /* current card mode, one of SDCardModes */
     int32_t state;    /* current card state, one of SDCardStates */
@@ -2108,6 +2110,7 @@ static Property sd_properties[] = {
      * board to ensure that ssi transfers only occur when the chip select
      * is asserted.  */
     DEFINE_PROP_BOOL("spi", SDState, spi, false),
+    DEFINE_PROP_BOOL("mmc", SDState, mmc, false),
     DEFINE_PROP_END_OF_LIST()
 };
 
