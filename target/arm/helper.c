@@ -1773,9 +1773,26 @@ static CPAccessResult gt_stimer_access(CPUARMState *env,
     }
 }
 
+static uint64_t gt_conv_arm2qemu(ARMCPU *cpu, uint64_t cnt)
+{
+    Int128 cnt128_scaled = int128_mul((Int128)cnt, (Int128)cpu->gt_scale);
+
+    return (uint64_t)int128_rshift(cnt128_scaled,
+                                    GTIMER_SCALE_SHIFT);
+}
+
+static uint64_t gt_conv_qemu2arm(ARMCPU *cpu, uint64_t cnt)
+{
+    Int128 cnt128_scaled = int128_lshift((Int128)cnt, GTIMER_SCALE_SHIFT);
+
+    return (uint64_t)int128_div(cnt128_scaled, (Int128)cpu->gt_scale);
+}
+
 static uint64_t gt_get_countervalue(CPUARMState *env)
 {
-    return qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) / GTIMER_SCALE;
+    ARMCPU *cpu = arm_env_get_cpu(env);
+
+    return gt_conv_qemu2arm(cpu, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
 }
 
 static void gt_recalc_timer(ARMCPU *cpu, int timeridx)
@@ -1804,15 +1821,15 @@ static void gt_recalc_timer(ARMCPU *cpu, int timeridx)
             nexttick = UINT64_MAX;
         } else {
             /* Next transition is when we hit cval */
-            nexttick = gt->cval + offset;
+            nexttick = gt_conv_arm2qemu(cpu, gt->cval + offset);
         }
         /* Note that the desired next expiry time might be beyond the
          * signed-64-bit range of a QEMUTimer -- in this case we just
          * set the timer for as far in the future as possible. When the
          * timer expires we will reset the timer for any remaining period.
          */
-        if (nexttick > INT64_MAX / GTIMER_SCALE) {
-            nexttick = INT64_MAX / GTIMER_SCALE;
+        if (nexttick > INT64_MAX) {
+            nexttick = INT64_MAX;
         }
         timer_mod(cpu->gt_timer[timeridx], nexttick);
         trace_arm_gt_recalc(timeridx, irqstate, nexttick);
