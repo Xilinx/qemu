@@ -1014,6 +1014,27 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
             continue;
         }
 
+        /* Special case for chardevs. It's an ordered list of strings.  */
+        if (!strcmp(propname, "chardev") && !strcmp(p->type, "str")) {
+            const char *chardev = val;
+            const char *chardevs_end = chardev + len;
+
+            assert(errp == NULL);
+            while (chardev < chardevs_end) {
+                object_property_set_str(OBJECT(dev), (const char *)chardev,
+                                        propname, &errp);
+                if (!errp) {
+                    DB_PRINT_NP(0, "set property %s to %s\n", propname,
+                                chardev);
+                    break;
+                }
+                chardev += strlen(chardev) + 1;
+                errp = NULL;
+            }
+            assert(errp == NULL);
+            continue;
+        }
+
         /* FIXME: handle generically using accessors and stuff */
         if (!strcmp(p->type, "uint8") || !strcmp(p->type, "uint16") ||
                 !strcmp(p->type, "uint32") || !strcmp(p->type, "uint64")) {
