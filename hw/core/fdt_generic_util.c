@@ -1170,13 +1170,18 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
             /* Connect chardev if we can */
             if (fdt_serial_ports < MAX_SERIAL_PORTS && serial_hds[fdt_serial_ports]) {
                 Chardev *value = (Chardev*) serial_hds[fdt_serial_ports];
+                char *chardev;
 
-                object_property_set_str(dev, value->label, "chardev", &errp);
-                if (!errp) {
-                    /* It worked, the device is a charecter device */
-                    fdt_serial_ports++;
+                /* Check if the device already has a chardev.  */
+                chardev = object_property_get_str(dev, "chardev", &errp);
+                if (!errp && !strcmp(chardev, "")) {
+                    object_property_set_str(dev, value->label,
+                                            "chardev", &errp);
+                    if (!errp) {
+                        /* It worked, the device is a charecter device */
+                        fdt_serial_ports++;
+                    }
                 }
-
                 errp = NULL;
             }
         }
