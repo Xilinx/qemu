@@ -25,7 +25,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
-#include "hw/register-dep.h"
+#include "hw/register.h"
 #include "qemu/log.h"
 #include "hw/fdt_generic_util.h"
 
@@ -47,14 +47,14 @@
 #define DB_PRINT(fmt, args...) DB_PRINT_L(1, fmt, ## args)
 
 
-#define R_IOM_IRQ_MODE              (0x00 / 4)
+REG32(IOM_IRQ_MODE, 0x0)
 
 #define R_MAX_0                     (1)
 
-#define R_IOM_IRQ_STATUS            (0x00 / 4)
-#define R_IOM_IRQ_PENDING           (0x04 / 4)
-#define R_IOM_IRQ_ENABLE            (0x08 / 4)
-#define R_IOM_IRQ_ACK               (0x0C / 4)
+REG32(IOM_IRQ_STATUS, 0x0)
+REG32(IOM_IRQ_PENDING, 0x4)
+REG32(IOM_IRQ_ENABLE, 0x8)
+REG32(IOM_IRQ_ACK, 0xC)
 
 #define IOM_IRQF_PIT1_SHIFT         3
 #define IOM_IRQF_PIT2_SHIFT         4
@@ -80,39 +80,6 @@
 
 #define R_MAX_1                     (R_IOM_IRQ_ACK + 1)
 
-#define R_IOM_IRQ_VECTOR0           (0x00 / 4)
-#define R_IOM_IRQ_VECTOR1           (0x04 / 4)
-#define R_IOM_IRQ_VECTOR2           (0x08 / 4)
-#define R_IOM_IRQ_VECTOR3           (0x0C / 4)
-#define R_IOM_IRQ_VECTOR4           (0x10 / 4)
-#define R_IOM_IRQ_VECTOR5           (0x14 / 4)
-#define R_IOM_IRQ_VECTOR6           (0x18 / 4)
-#define R_IOM_IRQ_VECTOR7           (0x1C / 4)
-#define R_IOM_IRQ_VECTOR8           (0x20 / 4)
-#define R_IOM_IRQ_VECTOR9           (0x24 / 4)
-#define R_IOM_IRQ_VECTOR10          (0x28 / 4)
-#define R_IOM_IRQ_VECTOR11          (0x2C / 4)
-#define R_IOM_IRQ_VECTOR12          (0x30 / 4)
-#define R_IOM_IRQ_VECTOR13          (0x34 / 4)
-#define R_IOM_IRQ_VECTOR14          (0x38 / 4)
-#define R_IOM_IRQ_VECTOR15          (0x3C / 4)
-#define R_IOM_IRQ_VECTOR16          (0x40 / 4)
-#define R_IOM_IRQ_VECTOR17          (0x44 / 4)
-#define R_IOM_IRQ_VECTOR18          (0x48 / 4)
-#define R_IOM_IRQ_VECTOR19          (0x4C / 4)
-#define R_IOM_IRQ_VECTOR20          (0x50 / 4)
-#define R_IOM_IRQ_VECTOR21          (0x54 / 4)
-#define R_IOM_IRQ_VECTOR22          (0x58 / 4)
-#define R_IOM_IRQ_VECTOR23          (0x5C / 4)
-#define R_IOM_IRQ_VECTOR24          (0x60 / 4)
-#define R_IOM_IRQ_VECTOR25          (0x64 / 4)
-#define R_IOM_IRQ_VECTOR26          (0x68 / 4)
-#define R_IOM_IRQ_VECTOR27          (0x6C / 4)
-#define R_IOM_IRQ_VECTOR28          (0x70 / 4)
-#define R_IOM_IRQ_VECTOR29          (0x74 / 4)
-#define R_IOM_IRQ_VECTOR30          (0x78 / 4)
-#define R_IOM_IRQ_VECTOR31          (0x7C / 4)
-
 #define R_MAX_2                     (0x80 / 4)
 
 typedef struct XilinxIntC {
@@ -134,10 +101,10 @@ typedef struct XilinxIntC {
     uint32_t irq_mode;
     uint32_t regs[R_MAX_1];
     uint32_t vectors[R_MAX_1];
-    DepRegisterInfo regs_info0[R_MAX_0];
-    DepRegisterInfo regs_info1[R_MAX_1];
-    DepRegisterInfo regs_info2[R_MAX_2];
-    DepRegisterInfo *regs_infos[3];
+    RegisterInfo regs_info0[R_MAX_0];
+    RegisterInfo regs_info1[R_MAX_1];
+    RegisterInfo regs_info2[R_MAX_2];
+    RegisterInfo *regs_infos[3];
     const char *prefix;
     /* Debug only */
     bool irq_output;
@@ -154,8 +121,8 @@ static Property xlx_iom_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static void iom_intc_irq_ack(DepRegisterInfo *reg, uint64_t val64);
-static void iom_intc_update(DepRegisterInfo *reg, uint64_t val64);
+static void iom_intc_irq_ack(RegisterInfo *reg, uint64_t val64);
+static void iom_intc_update(RegisterInfo *reg, uint64_t val64);
 
 static void xlx_iom_irq_update(XilinxIntC *s)
 {
@@ -169,7 +136,7 @@ static void xlx_iom_irq_update(XilinxIntC *s)
     qemu_set_irq(s->parent_irq, s->irq_output);
 }
 
-static void iom_intc_irq_ack(DepRegisterInfo *reg, uint64_t val64)
+static void iom_intc_irq_ack(RegisterInfo *reg, uint64_t val64)
 {
     XilinxIntC *s = XILINX_IO_MODULE_INTC(reg->opaque);
     uint32_t val = val64;
@@ -183,15 +150,15 @@ static void iom_intc_irq_ack(DepRegisterInfo *reg, uint64_t val64)
     xlx_iom_irq_update(s);
 }
 
-static void iom_intc_update(DepRegisterInfo *reg, uint64_t val64)
+static void iom_intc_update(RegisterInfo *reg, uint64_t val64)
 {
     XilinxIntC *s = XILINX_IO_MODULE_INTC(reg->opaque);
     xlx_iom_irq_update(s);
 }
 
 static const MemoryRegionOps iom_intc_ops = {
-    .read = dep_register_read_memory_le,
-    .write = dep_register_write_memory_le,
+    .read = register_read_memory,
+    .write = register_write_memory,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
@@ -226,24 +193,25 @@ static void irq_handler(void *opaque, int irq, int level)
     xlx_iom_irq_update(s);
 }
 
-static const DepRegisterAccessInfo intc_regs_info0[] = {
-    [R_IOM_IRQ_MODE] = { .name = "IRQ_MODE" },
+static const RegisterAccessInfo intc_regs_info0[] = {
+    {  .name = "IRQ_MODE",  .addr = A_IOM_IRQ_MODE }
 };
 
-static const DepRegisterAccessInfo intc_regs_info1[] = {
-    [R_IOM_IRQ_STATUS] = { .name = "IRQ_STATUS", .ro = ~0 },
-    [R_IOM_IRQ_PENDING] = { .name = "IRQ_PENDING" , .ro = ~0 },
-    [R_IOM_IRQ_ENABLE] = { .name = "IRQ_ENABLE",
-                           .post_write = iom_intc_update },
-    [R_IOM_IRQ_ACK] = { .name = "IRQ_ACK", .post_write = iom_intc_irq_ack },
+static const RegisterAccessInfo intc_regs_info1[] = {
+    {  .name = "IRQ_STATUS",  .addr = A_IOM_IRQ_STATUS,  .ro = ~0 },
+    {  .name = "IRQ_PENDING",  .addr = A_IOM_IRQ_PENDING,  .ro = ~0 },
+    {  .name = "IRQ_ENABLE",  .addr = A_IOM_IRQ_ENABLE,
+       .post_write = iom_intc_update,
+    },
+    {  .name = "IRQ_ACK",  .addr = A_IOM_IRQ_ACK,
+       .post_write = iom_intc_irq_ack,
+    },
 };
 
-static const DepRegisterAccessInfo intc_regs_info2[] = {
-#define REG_VECTOR(n) [R_IOM_IRQ_VECTOR ## n] =                            \
-    { .name  = "IRQ_VECTOR" #n,                                            \
-      .ui1 = (DepRegisterAccessError[]) {                                     \
-             { .mask = ~0, .reason = "IRQ Vectors not implemented" }, {} } }
 
+static const RegisterAccessInfo intc_regs_info2[] = {
+#define REG_VECTOR(n)  \
+    { .name  = "IRQ_VECTOR" #n, .addr = n * 4 }
     REG_VECTOR(0),
     REG_VECTOR(1),
     REG_VECTOR(2),
@@ -278,7 +246,7 @@ static const DepRegisterAccessInfo intc_regs_info2[] = {
     REG_VECTOR(31),
 };
 
-static const DepRegisterAccessInfo *intc_reginfos[] = {
+static const RegisterAccessInfo *intc_reginfos[] = {
     &intc_regs_info0[0], &intc_regs_info1[0], &intc_regs_info2[0]
 };
 
@@ -297,7 +265,7 @@ static void iom_intc_reset(DeviceState *dev)
 
     for (rmap = 0; rmap < ARRAY_SIZE(intc_reginfos); rmap++) {
         for (i = 0; i < intc_reginfo_sizes[rmap]; ++i) {
-            dep_register_reset(&s->regs_infos[rmap][i]);
+            register_reset(&s->regs_infos[rmap][i]);
         }
     }
 }
@@ -305,11 +273,7 @@ static void iom_intc_reset(DeviceState *dev)
 static void xlx_iom_realize(DeviceState *dev, Error **errp)
 {
     XilinxIntC *s = XILINX_IO_MODULE_INTC(dev);
-    unsigned int i;
-    unsigned int rmap;
-    uint32_t *regmaps[3] = {
-        &s->irq_mode, &s->regs[0], &s->vectors[0]
-    };
+
     s->prefix = object_get_canonical_path(OBJECT(dev));
     /* Internal interrupts are edge triggered?  */
     s->cfg.level_edge <<= 16;
@@ -320,23 +284,6 @@ static void xlx_iom_realize(DeviceState *dev, Error **errp)
     /* Max 16 external interrupts.  */
     assert(s->cfg.intr_size <= 16);
 
-    for (rmap = 0; rmap < ARRAY_SIZE(intc_reginfos); rmap++) {
-        for (i = 0; i < intc_reginfo_sizes[rmap]; ++i) {
-            DepRegisterInfo *r = &s->regs_infos[rmap][i];
-
-            *r = (DepRegisterInfo) {
-                .data = (uint8_t *)&regmaps[rmap][i],
-                .data_size = sizeof(uint32_t),
-                .access = &intc_reginfos[rmap][i],
-                .debug = XILINX_IO_MODULE_INTC_ERR_DEBUG,
-                .prefix = s->prefix,
-                .opaque = s,
-            };
-            memory_region_init_io(&r->mem, OBJECT(dev), &iom_intc_ops, r,
-                                  r->access->name, 4);
-            memory_region_add_subregion(&s->iomem[rmap], i * 4, &r->mem);
-        }
-    }
     qdev_init_gpio_in(dev, irq_handler, 16 + s->cfg.intr_size);
 }
 
@@ -351,11 +298,23 @@ static void xlx_iom_init(Object *obj)
     s->regs_infos[2] = s->regs_info2;
 
     for (i = 0; i < ARRAY_SIZE(s->iomem); i++) {
+        RegisterInfoArray *reg_array;
         char *region_name = g_strdup_printf("%s-%d", TYPE_XILINX_IO_MODULE_INTC,
                                             i);
-        memory_region_init_io(&s->iomem[i], obj, &iom_intc_ops, s,
-                              region_name, intc_reginfo_sizes[i] * 4);
+        memory_region_init(&s->iomem[i], obj,
+                           region_name, intc_reginfo_sizes[i] * 4);
         g_free(region_name);
+
+        reg_array =
+             register_init_block32(DEVICE(obj), intc_reginfos[i],
+                              intc_reginfo_sizes[i],
+                              s->regs_infos[i], s->regs,
+                              &iom_intc_ops,
+                              XILINX_IO_MODULE_INTC_ERR_DEBUG,
+                              intc_reginfo_sizes[i] * 4);
+        memory_region_add_subregion(&s->iomem[i],
+                                    0x0,
+                                    &reg_array->mem);
         sysbus_init_mmio(sbd, &s->iomem[i]);
     }
     qdev_init_gpio_out(DEVICE(obj), &s->parent_irq, 1);
