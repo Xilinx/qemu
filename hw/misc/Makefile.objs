@@ -47,6 +47,7 @@ common-obj-$(CONFIG_XLNX_ZYNQ3) += xlnx-zynq3-psm-local.o
 common-obj-$(CONFIG_XLNX_ZYNQ3) += xlnx-zynq3-psm-global.o
 common-obj-$(CONFIG_XLNX_ZYNQ3) += xlnx-zynq3-ddrmc-ub.o
 common-obj-$(CONFIG_XLNX_ZYNQ3) += xlnx-zynq3-ddrmc-main.o
+common-obj-$(CONFIG_XLNX_ZYNQ3) += xlnx-zynq3-ddrmc-noc.o
 
 common-obj-$(CONFIG_XLNX_ZYNQ3_PMC) += sss-pmc.o
 common-obj-$(CONFIG_XLNX_ZYNQ3_PMC) += xlnx-zynq3-pmc-clk-rst.o
