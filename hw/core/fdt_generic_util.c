@@ -307,7 +307,12 @@ static int simple_bus_fdt_init(char *node_path, FDTMachineInfo *fdti)
     int i;
     int num_children = qemu_devtree_get_num_children(fdti->fdt, node_path,
                                                         1);
-    char **children = qemu_devtree_get_children(fdti->fdt, node_path, 1);
+    char **children;
+
+    if (num_children == 0) {
+        return 0;
+    }
+    children = qemu_devtree_get_children(fdti->fdt, node_path, 1);
 
     DB_PRINT_NP(num_children ? 0 : 1, "num child devices: %d\n", num_children);
 
