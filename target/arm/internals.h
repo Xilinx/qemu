@@ -37,9 +37,6 @@
 #define BANK_HYP    6
 #define BANK_MON    7
 
-/* GTimer Scale shift for Fixed Point implentation */
-#define GTIMER_SCALE_SHIFT    8
-
 static inline bool excp_is_internal(int excp)
 {
     /* Return true if this exception number represents a QEMU-internal
@@ -53,6 +50,11 @@ static inline bool excp_is_internal(int excp)
         || excp == EXCP_KERNEL_TRAP
         || excp == EXCP_SEMIHOST;
 }
+
+/* Scale factor for generic timers, ie number of ns per tick.
+ * This gives a 62.5MHz timer.
+ */
+#define GTIMER_SCALE 16
 
 /* Bit definitions for the v7M CONTROL register */
 FIELD(V7M_CONTROL, NPRIV, 0, 1)

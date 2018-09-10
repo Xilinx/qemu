@@ -160,13 +160,6 @@ static inline Int128 bswap128(Int128 a)
 
 #else /* !CONFIG_INT128 */
 
-/* FIXME: Update the file with support for
- *     int128_mul(),
- *     int128_div(),
- *     int128_lshift()
- */
-_Static_assert(0, "arm generic timer needs __Int128 defined");
-
 typedef struct Int128 Int128;
 
 struct Int128 {
