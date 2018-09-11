@@ -161,6 +161,9 @@ static void arm_cpu_reset(CPUState *s)
                            PSCI_OFF : PSCI_ON;
     s->halted = cpu->start_powered_off || s->halt_pin || s->arch_halt_pin;
 
+    if (arm_feature(env, ARM_FEATURE_GENERIC_TIMER)) {
+        cpu->env.cp15.c14_cntfrq = cpu->gt_freq;
+    }
     /* Reset value of SCTLR_V is controlled by input signal VINITHI.  */
     env->cp15.sctlr_ns &= ~SCTLR_V;
     env->cp15.sctlr_s &= ~SCTLR_V;
@@ -1932,6 +1935,7 @@ static Property arm_cpu_properties[] = {
                         mp_affinity, ARM64_AFFINITY_INVALID),
     DEFINE_PROP_INT32("node-id", ARMCPU, node_id, CPU_UNSET_NUMA_NODE_ID),
     DEFINE_PROP_INT32("core-count", ARMCPU, core_count, -1),
+    DEFINE_PROP_UINT64("generic-timer-frequency", ARMCPU, gt_freq, 62500000),
     DEFINE_PROP_END_OF_LIST()
 };
 
