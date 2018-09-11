@@ -660,6 +660,7 @@ struct ARMCPU {
 
     /* Generic Timer freqency*/
     uint64_t gt_freq;
+    uint64_t gt_scale;
     /* Timers used by the generic (architected) timer */
     QEMUTimer *gt_timer[NUM_GTIMERS];
     /* GPIO outputs for generic timer */

@@ -134,6 +134,18 @@ static void cp_reg_check_reset(gpointer key, gpointer value,  gpointer opaque)
     assert(oldvalue == newvalue);
 }
 
+#ifndef CONFIG_USER_ONLY
+static void arm_gt_compute_scale(ARMCPU *s)
+{
+    Int128 ref_clk = 1000 * 1000 * 1000;
+    Int128 ref_clk_scaled = int128_lshift(ref_clk,
+                                       GTIMER_SCALE_SHIFT);
+
+    s->gt_scale = (uint64_t)int128_div(ref_clk_scaled,
+                                        (Int128)s->gt_freq);
+}
+#endif
+
 /* CPUClass::reset() */
 static void arm_cpu_reset(CPUState *s)
 {
@@ -689,14 +701,6 @@ static void arm_cpu_initfn(Object *obj)
     qdev_init_gpio_in_named(DEVICE(cpu), arm_cpu_set_ncpuhalt, "ncpuhalt", 1);
     qdev_init_gpio_in_named(DEVICE(cpu), arm_cpu_set_vinithi, "vinithi", 1);
 
-    cpu->gt_timer[GTIMER_PHYS] = timer_new(QEMU_CLOCK_VIRTUAL, GTIMER_SCALE,
-                                                arm_gt_ptimer_cb, cpu);
-    cpu->gt_timer[GTIMER_VIRT] = timer_new(QEMU_CLOCK_VIRTUAL, GTIMER_SCALE,
-                                                arm_gt_vtimer_cb, cpu);
-    cpu->gt_timer[GTIMER_HYP] = timer_new(QEMU_CLOCK_VIRTUAL, GTIMER_SCALE,
-                                                arm_gt_htimer_cb, cpu);
-    cpu->gt_timer[GTIMER_SEC] = timer_new(QEMU_CLOCK_VIRTUAL, GTIMER_SCALE,
-                                                arm_gt_stimer_cb, cpu);
     qdev_init_gpio_out(DEVICE(cpu), cpu->gt_timer_outputs,
                        ARRAY_SIZE(cpu->gt_timer_outputs));
 
@@ -1090,6 +1094,28 @@ static void arm_cpu_realizefn(DeviceState *dev, Error **errp)
         set_feature(env, ARM_FEATURE_VBAR);
     }
 
+#ifndef CONFIG_USER_ONLY
+    if (arm_feature(env, ARM_FEATURE_GENERIC_TIMER)) {
+        if (!cpu->gt_freq) {
+            error_setg(errp, "gtimer frequency 0 is invalid");
+            return;
+        }
+        arm_gt_compute_scale(cpu);
+        if (!cpu->gt_scale) {
+            error_setg(errp, "gtimer frequency cannot be greater"
+                               " than QEMU_CLOCK_VIRTUAL");
+            return;
+        }
+        cpu->gt_timer[GTIMER_PHYS] = timer_new(QEMU_CLOCK_VIRTUAL,
+                                               1, arm_gt_ptimer_cb, cpu);
+        cpu->gt_timer[GTIMER_VIRT] = timer_new(QEMU_CLOCK_VIRTUAL,
+                                               1, arm_gt_vtimer_cb, cpu);
+        cpu->gt_timer[GTIMER_HYP] = timer_new(QEMU_CLOCK_VIRTUAL,
+                                               1, arm_gt_htimer_cb, cpu);
+        cpu->gt_timer[GTIMER_SEC] = timer_new(QEMU_CLOCK_VIRTUAL,
+                                               1, arm_gt_stimer_cb, cpu);
+    }
+#endif
     register_cp_regs_for_features(cpu);
     arm_cpu_register_gdb_regs_for_features(cpu);
 
