@@ -1213,6 +1213,7 @@ static void gem_reset(DeviceState *d)
     int i;
     CadenceGEMState *s = CADENCE_GEM(d);
     const uint8_t *a;
+    uint32_t queues_mask;
 
     DB_PRINT("\n");
 
@@ -1229,7 +1230,10 @@ static void gem_reset(DeviceState *d)
     s->regs[GEM_DESCONF] = 0x02500111;
     s->regs[GEM_DESCONF2] = 0x2ab13fff;
     s->regs[GEM_DESCONF5] = 0x002f2045;
-    s->regs[GEM_DESCONF6] = 0x00000200;
+    s->regs[GEM_DESCONF6] = 0x0;
+
+    queues_mask = MAKE_64BIT_MASK(1, s->num_priority_queues - 1);
+    s->regs[GEM_DESCONF6] |= queues_mask;
 
     /* Set MAC address */
     a = &s->conf.macaddr.a[0];
