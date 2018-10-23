@@ -4922,7 +4922,7 @@ static void ddr_phy_reset(DeviceState *dev)
 
 static const MemoryRegionOps ddr_phy_ops = {
     .read = register_read_memory,
-    .write = register_write_memory,
+    .write_with_attrs = register_write_memory_with_attrs,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
