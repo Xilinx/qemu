@@ -415,6 +415,51 @@ static void rpu_1_update_irq(XlnxZynqMPRPUCtrl *s)
     qemu_set_irq(s->irq_rpu_1, pending);
 }
 
+static void rpu_0_update_halt_gpio(XlnxZynqMPRPUCtrl *s)
+{
+    /* Inverse polarity */
+    qemu_set_irq(s->cont_out_gpios[R5_0_HALT],
+                !(s->regs[R_RPU_0_CFG] & R_RPU_0_CFG_NCPUHALT_MASK));
+}
+
+static void rpu_1_update_halt_gpio(XlnxZynqMPRPUCtrl *s)
+{
+    /* Inverse polarity */
+    qemu_set_irq(s->cont_out_gpios[R5_1_HALT],
+                !(s->regs[R_RPU_1_CFG] & R_RPU_1_CFG_NCPUHALT_MASK));
+}
+
+static void rpu_0_update_vinithi_gpio(XlnxZynqMPRPUCtrl *s)
+{
+    qemu_set_irq(s->cont_out_gpios[R5_0_VINITHI],
+                !!(s->regs[R_RPU_0_CFG] & R_RPU_0_CFG_VINITHI_MASK));
+}
+
+static void rpu_1_update_vinithi_gpio(XlnxZynqMPRPUCtrl *s)
+{
+    qemu_set_irq(s->cont_out_gpios[R5_1_VINITHI],
+                !!(s->regs[R_RPU_1_CFG] & R_RPU_1_CFG_VINITHI_MASK));
+}
+
+static void rpu_0_update_pwrdn_gpio(XlnxZynqMPRPUCtrl *s)
+{
+    qemu_set_irq(s->cont_out_gpios[R5_0_PWRDWN_REQ],
+                 !!(s->regs[R_RPU_0_PWRDWN] & R_RPU_0_PWRDWN_EN_MASK));
+}
+
+static void rpu_1_update_pwrdn_gpio(XlnxZynqMPRPUCtrl *s)
+{
+    qemu_set_irq(s->cont_out_gpios[R5_1_PWRDWN_REQ],
+                 !!(s->regs[R_RPU_1_PWRDWN] & R_RPU_1_PWRDWN_EN_MASK));
+}
+
+static void rpu_update_split_gpio(XlnxZynqMPRPUCtrl *s)
+{
+    /* Inverse polarity */
+    qemu_set_irq(s->cont_out_gpios[R5_SLSPLIT],
+                 !(s->regs[R_RPU_GLBL_CNTL] & R_RPU_GLBL_CNTL_SLSPLIT_MASK));
+}
+
 static void ronaldo_rpu_err_inj(RegisterInfo *reg, uint64_t val64)
 {
     XlnxZynqMPRPUCtrl *s = XLNX_RPU_CTRL(reg->opaque);
@@ -510,9 +555,7 @@ static void rpu_rpu_glbl_cntl_postw(RegisterInfo *reg, uint64_t val64)
     memory_region_set_enabled(s->dcache_for_rpu1, sls_split);
     memory_region_set_enabled(s->ddr, sls_split);
 
-    /* Inverse polarity */
-    qemu_set_irq(s->cont_out_gpios[R5_SLSPLIT],
-                 !(val64 & R_RPU_GLBL_CNTL_SLSPLIT_MASK));
+    rpu_update_split_gpio(s);
 }
 
 static void update_wfi_out(void *opaque)
@@ -535,11 +578,9 @@ static void zynqmp_rpu_pwrctl_post_write(RegisterInfo *reg, uint64_t val)
     XlnxZynqMPRPUCtrl *s = XLNX_RPU_CTRL(reg->opaque);
 
     if (reg->access->addr == A_RPU_0_PWRDWN) {
-        qemu_set_irq(s->cont_out_gpios[R5_0_PWRDWN_REQ],
-                     !!(val & R_RPU_0_PWRDWN_EN_MASK));
+        rpu_0_update_pwrdn_gpio(s);
     } else if (reg->access->addr == A_RPU_1_PWRDWN) {
-        qemu_set_irq(s->cont_out_gpios[R5_1_PWRDWN_REQ],
-                     !!(val & R_RPU_1_PWRDWN_EN_MASK));
+        rpu_1_update_pwrdn_gpio(s);
     } else {
         g_assert_not_reached();
     }
@@ -552,19 +593,11 @@ static void zynqmp_rpu_cfg_post_write(RegisterInfo *reg, uint64_t val)
     XlnxZynqMPRPUCtrl *s = XLNX_RPU_CTRL(reg->opaque);
 
     if (reg->access->addr == A_RPU_0_CFG) {
-        /* Inverse polarity */
-        qemu_set_irq(s->cont_out_gpios[R5_0_HALT],
-                     !(val & R_RPU_0_CFG_NCPUHALT_MASK));
-
-        qemu_set_irq(s->cont_out_gpios[R5_0_VINITHI],
-                     !!(val & R_RPU_0_CFG_VINITHI_MASK));
+        rpu_0_update_halt_gpio(s);
+        rpu_0_update_vinithi_gpio(s);
     } else if (reg->access->addr == A_RPU_1_CFG) {
-        /* Inverse polarity*/
-        qemu_set_irq(s->cont_out_gpios[R5_1_HALT],
-                     !(val & R_RPU_1_CFG_NCPUHALT_MASK));
-
-        qemu_set_irq(s->cont_out_gpios[R5_1_VINITHI],
-                     !!(val & R_RPU_1_CFG_VINITHI_MASK));
+        rpu_1_update_halt_gpio(s);
+        rpu_1_update_vinithi_gpio(s);
     } else {
         g_assert_not_reached();
     }
@@ -702,6 +735,13 @@ static void rpu_reset(DeviceState *dev)
 
     rpu_1_update_irq(s);
     rpu_0_update_irq(s);
+    rpu_update_split_gpio(s);
+    rpu_0_update_halt_gpio(s);
+    rpu_0_update_vinithi_gpio(s);
+    rpu_1_update_halt_gpio(s);
+    rpu_1_update_vinithi_gpio(s);
+    rpu_0_update_pwrdn_gpio(s);
+    rpu_1_update_pwrdn_gpio(s);
 
     for (i = 0; i < 2; i++) {
         s->cpu_in_wfi[i] = false;
