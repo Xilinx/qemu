@@ -208,7 +208,7 @@
 #define GEM_NWCFG_BCAST_REJ    0x00000020 /* Reject broadcast packets */
 #define GEM_NWCFG_PROMISC      0x00000010 /* Accept all packets */
 
-#define GEM_DMACFG_ADDR_BUS_WIDTH_M    0x40000000
+#define GEM_DMACFG_ADDR_64B    (1U << 30)
 #define GEM_DMACFG_TX_BD_EXT   (1 << 29)
 #define GEM_DMACFG_RX_BD_EXT   (1 << 28)
 #define GEM_DMACFG_RBUFSZ_M    0x00FF0000 /* DMA RX Buffer Size mask */
@@ -310,7 +310,7 @@ static inline uint64_t tx_desc_get_buffer(CadenceGEMState *s, uint32_t *desc)
 {
     uint64_t ret = desc[0];
 
-    if (s->regs[GEM_DMACFG] & GEM_DMACFG_TX_BD_EXT) {
+    if (s->regs[GEM_DMACFG] & GEM_DMACFG_ADDR_64B) {
         ret |= (uint64_t)desc[2] << 32;
     }
     return ret;
@@ -360,7 +360,7 @@ static inline uint64_t rx_desc_get_buffer(CadenceGEMState *s, uint32_t *desc)
 {
     uint64_t ret = desc[0] & ~0x3UL;
 
-    if (s->regs[GEM_DMACFG] & GEM_DMACFG_RX_BD_EXT) {
+    if (s->regs[GEM_DMACFG] & GEM_DMACFG_ADDR_64B) {
         ret |= (uint64_t)desc[2] << 32;
     }
     return ret;
@@ -370,7 +370,7 @@ static inline int gem_get_desc_len(CadenceGEMState *s, bool rx_n_tx)
 {
     int ret = 2;
 
-    if (s->regs[GEM_DMACFG] & GEM_DMACFG_ADDR_BUS_WIDTH_M) {
+    if (s->regs[GEM_DMACFG] & GEM_DMACFG_ADDR_64B) {
         ret += 2;
     }
     if (s->regs[GEM_DMACFG] & (rx_n_tx ? GEM_DMACFG_RX_BD_EXT
