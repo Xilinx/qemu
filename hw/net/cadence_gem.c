@@ -212,8 +212,8 @@
 #define GEM_NWCFG_PROMISC      0x00000010 /* Accept all packets */
 
 #define GEM_DMACFG_ADDR_64B    (1U << 30)
-#define GEM_DMACFG_TX_BD_EXT   (1 << 29)
-#define GEM_DMACFG_RX_BD_EXT   (1 << 28)
+#define GEM_DMACFG_TX_BD_EXT   (1U << 29)
+#define GEM_DMACFG_RX_BD_EXT   (1U << 28)
 #define GEM_DMACFG_RBUFSZ_M    0x00FF0000 /* DMA RX Buffer Size mask */
 #define GEM_DMACFG_RBUFSZ_S    16         /* DMA RX Buffer Size shift */
 #define GEM_DMACFG_RBUFSZ_MUL  64         /* DMA RX Buffer Size multiplier */
