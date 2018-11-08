@@ -1003,7 +1003,7 @@ static ssize_t gem_receive(NetClientState *nc, const uint8_t *buf, size_t size)
 
         DB_PRINT("copy %" PRIu32 " bytes to 0x%" PRIx64 "\n",
                 MIN(bytes_to_copy, rxbufsize),
-                rx_desc_get_buffer(s, s->rx_desc[q] + rxbuf_offset));
+                rx_desc_get_buffer(s, s->rx_desc[q]) + rxbuf_offset);
 
         /* Copy packet data to emulated DMA buffer */
         address_space_write(&s->dma_as, rx_desc_get_buffer(s, s->rx_desc[q]) +
