@@ -894,10 +894,20 @@ static const int fdt_generic_reg_cells_defaults[] = {
 static void fdt_dev_error(FDTMachineInfo *fdti, char *node_path, char *compat)
 {
     char *abort_on_error;
+    char *warn_on_error;
 
+    warn_on_error = qemu_fdt_getprop(fdti->fdt, node_path,
+                                   "qemu-fdt-warn-on-error", 0,
+                                   true, NULL);
     abort_on_error = qemu_fdt_getprop(fdti->fdt, node_path,
                                    "qemu-fdt-abort-on-error", 0,
                                    true, NULL);
+    if (warn_on_error) {
+        if (strncmp("device_type", compat, strlen("device_type"))) {
+            warn_report("%s: %s", compat, warn_on_error);
+        }
+    }
+
     if (abort_on_error) {
         error_report("Failed to create %s", compat);
         error_setg(&error_fatal, "%s", abort_on_error);
