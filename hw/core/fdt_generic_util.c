@@ -893,14 +893,14 @@ static const int fdt_generic_reg_cells_defaults[] = {
  */
 static void fdt_dev_error(FDTMachineInfo *fdti, char *node_path, char *compat)
 {
-    char *error_abort;
+    char *abort_on_error;
 
-    error_abort = qemu_fdt_getprop(fdti->fdt, node_path,
+    abort_on_error = qemu_fdt_getprop(fdti->fdt, node_path,
                                    "qemu-fdt-abort-on-error", 0,
                                    true, NULL);
-    if (error_abort) {
+    if (abort_on_error) {
         error_report("Failed to create %s", compat);
-        error_setg(&error_fatal, "%s", error_abort);
+        error_setg(&error_fatal, "%s", abort_on_error);
     }
 }
 
