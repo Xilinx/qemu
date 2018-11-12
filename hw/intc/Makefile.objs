@@ -25,8 +25,8 @@ common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx-zynqmp-intc-redirect.o
 common-obj-$(CONFIG_XLNX_ZYNQMP_ARM) += xlnx_scu_gic.o
 common-obj-y += intc.o
 
-common-obj-$(CONFIG_XLNX_ZYNQ3) += xlnx-zynq3-ipi.o
-common-obj-$(CONFIG_XLNX_ZYNQ3_PMC) += xlnx-zynq3-pmc-gic-proxy.o
+common-obj-$(CONFIG_XLNX_VERSAL) += xlnx-versal-ipi.o
+common-obj-$(CONFIG_XLNX_VERSAL_PMC) += xlnx-versal-pmc-gic-proxy.o
 
 obj-$(CONFIG_APIC) += apic.o apic_common.o
 obj-$(CONFIG_ARM_GIC_KVM) += arm_gic_kvm.o
