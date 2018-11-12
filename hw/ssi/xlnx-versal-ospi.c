@@ -41,7 +41,7 @@
 #define XILINX_OSPI_ERR_DEBUG 0
 #endif
 
-#define TYPE_XILINX_OSPI "xlnx,zynq3-ospi"
+#define TYPE_XILINX_OSPI "xlnx,versal-ospi"
 
 #define XILINX_OSPI(obj) \
      OBJECT_CHECK(OSPI, (obj), TYPE_XILINX_OSPI)

@@ -34,7 +34,7 @@
 #define XILINX_CFU_APB_ERR_DEBUG 0
 #endif
 
-#define TYPE_XILINX_CFU_APB "xlnx,zynq3-cfu"
+#define TYPE_XILINX_CFU_APB "xlnx,versal-cfu"
 
 #define XILINX_CFU_APB(obj) \
      OBJECT_CHECK(CFU, (obj), TYPE_XILINX_CFU_APB)

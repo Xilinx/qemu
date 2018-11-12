@@ -34,7 +34,7 @@
 #define XILINX_DDRMC_NOC_ERR_DEBUG 0
 #endif
 
-#define TYPE_XILINX_DDRMC_NOC "xlnx.zynq3-ddrmc-noc"
+#define TYPE_XILINX_DDRMC_NOC "xlnx.versal-ddrmc-noc"
 
 #define XILINX_DDRMC_NOC(obj) \
      OBJECT_CHECK(DDRMC_NOC, (obj), TYPE_XILINX_DDRMC_NOC)

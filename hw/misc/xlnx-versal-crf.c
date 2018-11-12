@@ -37,7 +37,7 @@
 #define XILINX_CRF_ERR_DEBUG 0
 #endif
 
-#define TYPE_XILINX_CRF "xlnx.zynq3-crf"
+#define TYPE_XILINX_CRF "xlnx.versal-crf"
 
 #define XILINX_CRF(obj) \
      OBJECT_CHECK(XlnxZynq3Crf, (obj), TYPE_XILINX_CRF)

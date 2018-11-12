@@ -35,7 +35,7 @@
 #define XILINX_IPI_ERR_DEBUG 0
 #endif
 
-#define TYPE_XILINX_IPI "xlnx.zynq3-ipi"
+#define TYPE_XILINX_IPI "xlnx.versal-ipi"
 
 #define XILINX_IPI(obj) \
      OBJECT_CHECK(XlnxZynq3IPI, (obj), TYPE_XILINX_IPI)

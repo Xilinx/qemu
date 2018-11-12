@@ -34,7 +34,7 @@
 #define XILINX_PMC_IOU_SLCR_ERR_DEBUG 0
 #endif
 
-#define TYPE_XILINX_PMC_IOU_SLCR "xlnx,zynq3-pmc-iou-slcr"
+#define TYPE_XILINX_PMC_IOU_SLCR "xlnx,versal-pmc-iou-slcr"
 
 #define XILINX_PMC_IOU_SLCR(obj) \
      OBJECT_CHECK(PMC_IOU_SLCR, (obj), TYPE_XILINX_PMC_IOU_SLCR)

@@ -9,7 +9,7 @@
 #define PMC_SSS_ERR_DEBUG 0
 #endif
 
-#define TYPE_PMC_SSS "zynq3,pmc-sss"
+#define TYPE_PMC_SSS "versal,pmc-sss"
 
 #define PMC_SSS(obj) \
      OBJECT_CHECK(PMCSSS, (obj), TYPE_PMC_SSS)
@@ -239,7 +239,7 @@ static void pmc_sss_init(Object *obj)
     }
 
     memory_region_init_io(&s->iomem, obj, &sss_ops, s,
-                          "zynq3.pmc-stream-switch", R_MAX * 4);
+                          "versal.pmc-stream-switch", R_MAX * 4);
     sysbus_init_mmio(sbd, &s->iomem);
 }
 

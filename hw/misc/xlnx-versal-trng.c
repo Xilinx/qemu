@@ -35,7 +35,7 @@
 #define XILINX_TRNG_ERR_DEBUG 0
 #endif
 
-#define TYPE_XILINX_TRNG "xlnx.zynq3-trng"
+#define TYPE_XILINX_TRNG "xlnx.versal-trng"
 
 #define XILINX_TRNG(obj) \
      OBJECT_CHECK(TRNG, (obj), TYPE_XILINX_TRNG)

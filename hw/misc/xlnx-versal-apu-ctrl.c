@@ -38,7 +38,7 @@
 #define XILINX_APU_CTRL_ERR_DEBUG 0
 #endif
 
-#define TYPE_XILINX_APU_CTRL "xlnx.zynq3-apu-ctrl"
+#define TYPE_XILINX_APU_CTRL "xlnx.versal-apu-ctrl"
 
 #define XILINX_APU_CTRL(obj) \
      OBJECT_CHECK(XlnxZynq3APUCtrl, (obj), TYPE_XILINX_APU_CTRL)

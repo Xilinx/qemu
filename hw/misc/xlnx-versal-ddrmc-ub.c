@@ -36,7 +36,7 @@
 #define XILINX_DDRMC_UB_ERR_DEBUG 0
 #endif
 
-#define TYPE_XILINX_DDRMC_UB "xlnx.zynq3-ddrmc-ub"
+#define TYPE_XILINX_DDRMC_UB "xlnx.versal-ddrmc-ub"
 
 #define XILINX_DDRMC_UB(obj) \
      OBJECT_CHECK(DDRMC_UB, (obj), TYPE_XILINX_DDRMC_UB)
