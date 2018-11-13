@@ -380,6 +380,8 @@ static inline int gem_get_desc_len(CadenceGEMState *s, bool rx_n_tx)
                                        : GEM_DMACFG_TX_BD_EXT)) {
         ret += 2;
     }
+
+    assert(ret <= DESC_MAX_NUM_WORDS);
     return ret;
 }
 
