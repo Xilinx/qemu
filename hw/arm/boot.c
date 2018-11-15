@@ -645,6 +645,8 @@ static void do_cpu_reset(void *opaque)
 
             if (cs == first_cpu) {
                 cpu_set_pc(cs, info->loader_start);
+                cs->halt_pin = false;
+                cpu_reset_interrupt(cs, CPU_INTERRUPT_HALT);
 
                 if (!have_dtb(info)) {
                     if (old_param) {
