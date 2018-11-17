@@ -435,6 +435,10 @@ static void arm_generic_fdt_init(MachineState *machine)
     char *qspi_clone_spi_flash_node_name = NULL;
     memory_info kernel_info;
     bool zynq_7000 = false;
+    int is_linux;
+
+    is_linux = object_property_get_bool(OBJECT(qdev_get_machine()),
+                                        "linux", NULL);
 
     /* If booting a Zynq-7000 Machine*/
     if (!strcmp(MACHINE_GET_CLASS(machine)->name, ZYNQ7000_MACHINE_NAME)) {
@@ -528,7 +532,7 @@ static void arm_generic_fdt_init(MachineState *machine)
     arm_generic_fdt_binfo.smp_bootreg_addr = SMP_BOOTREG_ADDR;
     arm_generic_fdt_binfo.board_id = 0xd32;
     arm_generic_fdt_binfo.loader_start = kernel_info.ram_kernel_base;
-    arm_generic_fdt_binfo.secure_boot = true;
+    arm_generic_fdt_binfo.secure_boot = is_linux && !zynq_7000 ? false : true;
 
     if (qspi_clone_spi_flash_node_name != NULL) {
         /* Remove cloned DTB node */
