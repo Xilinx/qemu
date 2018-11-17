@@ -261,6 +261,10 @@ static memory_info init_memory(void *fdt, ram_addr_t ram_size, bool zynq_7000)
     kernel_info.ram_kernel_size = object_property_get_int(OBJECT(mem_area),
                                                           "size", NULL);
 
+    if (kernel_info.ram_kernel_size == -1) {
+        kernel_info.ram_kernel_size = ram_size;
+    }
+
     if (zynq_7000) {
         do {
             mem_offset = fdt_node_offset_by_compatible(fdt, mem_offset,
