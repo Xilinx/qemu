@@ -404,6 +404,7 @@ typedef struct OSPI {
     qemu_irq irq;
 
     DmaCtrl *dma_src;
+    bool dac_with_indac;
     bool dac_enable;
 
     IndOp rd_ind_op[2];
@@ -1680,12 +1681,21 @@ static bool is_inside_indac_range(OSPI *s, hwaddr addr)
     return addr >= range_start && addr < range_end;
 }
 
+static bool ospi_is_indac_active(OSPI *s)
+{
+    /* When dac and indac cannot be active at the same time,
+     * return true when dac is disabled.
+     */
+    return s->dac_with_indac || !s->dac_enable;
+}
+
 static uint64_t ospi_dac_read(void *opaque, hwaddr addr, unsigned int size)
 {
     OSPI *s = XILINX_OSPI(opaque);
 
     if (DEP_AF_EX32(s->regs, CONFIG_REG, ENB_SPI_FLD)) {
-        if (is_inside_indac_range(s, addr)) {
+        if (ospi_is_indac_active(s) &&
+            is_inside_indac_range(s, addr)) {
             return ospi_indac_read(s, size);
         }
         if (DEP_AF_EX32(s->regs, CONFIG_REG, ENB_DIR_ACC_CTLR_FLD)
@@ -1710,7 +1720,8 @@ static void ospi_dac_write(void *opaque, hwaddr addr, uint64_t value,
     OSPI *s = XILINX_OSPI(opaque);
 
     if (DEP_AF_EX32(s->regs, CONFIG_REG, ENB_SPI_FLD)) {
-        if (is_inside_indac_range(s, addr)) {
+        if (ospi_is_indac_active(s) &&
+            is_inside_indac_range(s, addr)) {
             return ospi_indac_write(s, value, size);
         }
         if (DEP_AF_EX32(s->regs, CONFIG_REG, ENB_DIR_ACC_CTLR_FLD) &&
@@ -1817,6 +1828,7 @@ static const VMStateDescription vmstate_ospi = {
 
 static Property ospi_properties[] = {
     DEFINE_PROP_UINT64("dac-base", OSPI, dac_base, 0),
+    DEFINE_PROP_BOOL("dac-with-indac", OSPI, dac_with_indac, false),
     DEFINE_PROP_END_OF_LIST(),
 };
 
