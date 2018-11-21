@@ -1886,6 +1886,7 @@ static const VMStateDescription vmstate_ospi = {
 static Property ospi_properties[] = {
     DEFINE_PROP_BOOL("dac-with-indac", OSPI, dac_with_indac, false),
     DEFINE_PROP_BOOL("indac-write-disabled", OSPI, ind_write_disabled, true),
+    DEFINE_PROP_UINT8("num-cs", OSPI, num_cs, 4),
     DEFINE_PROP_END_OF_LIST(),
 };
 
