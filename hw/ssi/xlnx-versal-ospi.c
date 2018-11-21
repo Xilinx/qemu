@@ -346,6 +346,10 @@ DEP_REG32(MODULE_ID_REG, 0xfc)
 #define SZ_4GBIT   (4ULL * SZ_1GBIT)
 
 #define IS_IND_DMA_START(op) (op->done_bytes == 0)
+/* Bit field size of R_INDIRECT_WRITE_XFER_CTRL_REG_NUM_IND_OPS_DONE_FLD
+ * is 2 bits, which can record max of 3 indac operations.
+ */
+#define IND_OPS_DONE_MAX 3
 
 typedef enum {
     WREN = 0x6,
@@ -864,7 +868,9 @@ static void ind_rd_inc_num_done(OSPI *s)
 {
     unsigned int done = DEP_AF_EX32(s->regs,
                             INDIRECT_READ_XFER_CTRL_REG, NUM_IND_OPS_DONE_FLD);
-    done++;
+    if (done < IND_OPS_DONE_MAX) {
+        done++;
+    }
     done &= 0x3;
     DEP_AF_DP32(s->regs, INDIRECT_READ_XFER_CTRL_REG,
                          NUM_IND_OPS_DONE_FLD, done);
@@ -1040,7 +1046,9 @@ static void ind_wr_inc_num_done(OSPI *s)
 {
     unsigned int done = DEP_AF_EX32(s->regs, INDIRECT_WRITE_XFER_CTRL_REG,
                                          NUM_IND_OPS_DONE_FLD);
-    done++;
+    if (done < IND_OPS_DONE_MAX) {
+        done++;
+    }
     done &= 0x3;
     DEP_AF_DP32(s->regs, INDIRECT_WRITE_XFER_CTRL_REG,
                          NUM_IND_OPS_DONE_FLD, done);
@@ -1414,23 +1422,15 @@ static uint64_t ind_rd_dec_num_done(OSPI *s, uint64_t val)
     return val;
 }
 
-static bool ind_rd_clearing_op_done(OSPI *s, uint64_t new_val)
-{
-    bool set_in_reg = DEP_AF_EX32(s->regs, INDIRECT_READ_XFER_CTRL_REG,
-                                       IND_OPS_DONE_STATUS_FLD);
-    bool set_in_new_val = DEP_F_EX32(new_val, INDIRECT_READ_XFER_CTRL_REG,
-                                          IND_OPS_DONE_STATUS_FLD);
-    /* return true if clearing bit */
-    return set_in_reg && !set_in_new_val;
-}
-
 static uint64_t ind_rd_xfer_ctrl_reg_pre_write(DepRegisterInfo *reg,
                                                uint64_t val)
 {
     OSPI *s = XILINX_OSPI(reg->opaque);
 
-    if (ind_rd_clearing_op_done(s, val)) {
+    if (DEP_F_EX32(val, INDIRECT_READ_XFER_CTRL_REG,
+                   IND_OPS_DONE_STATUS_FLD)) {
         val = ind_rd_dec_num_done(s, val);
+        val &= ~R_INDIRECT_READ_XFER_CTRL_REG_IND_OPS_DONE_STATUS_FLD_MASK;
     }
     return val;
 }
@@ -1572,7 +1572,7 @@ static DepRegisterAccessInfo ospi_regs_info[] = {
     },{ .name = "INDIRECT_READ_XFER_CTRL_REG",
         .decode.addr = A_INDIRECT_READ_XFER_CTRL_REG,
         .ro = 0xffffffd4,
-        .w1c = 0x28,
+        .w1c = 0x08,
         .pre_write = ind_rd_xfer_ctrl_reg_pre_write,
         .post_write = ind_rd_xfer_ctrl_reg_post_write,
         .post_read = ind_rd_xfer_ctrl_reg_post_read,
