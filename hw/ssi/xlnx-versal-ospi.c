@@ -404,6 +404,7 @@ typedef struct OSPI {
     qemu_irq irq;
 
     DmaCtrl *dma_src;
+    bool ind_write_disabled;
     bool dac_with_indac;
     bool dac_enable;
 
@@ -1324,6 +1325,10 @@ static void ind_wr_xfer_ctrl_reg_post_write(DepRegisterInfo *reg, uint64_t val)
 {
     OSPI *s = XILINX_OSPI(reg->opaque);
 
+    if (s->ind_write_disabled) {
+        return;
+    }
+
     if (DEP_AF_EX32(s->regs, INDIRECT_WRITE_XFER_CTRL_REG, START_FLD)) {
         ospi_ind_op_queue_up_wr(s);
         ospi_do_indirect_write(s);
@@ -1659,6 +1664,10 @@ static void ospi_indac_write(void *opaque, uint64_t value, unsigned int size)
 {
     OSPI *s = XILINX_OSPI(opaque);
 
+    if (s->ind_write_disabled) {
+        g_assert_not_reached();
+    }
+
     if (!ospi_ind_op_completed(s->wr_ind_op)) {
         ospi_tx_sram_write(s, value, size);
         ospi_do_indirect_write(s);
@@ -1721,6 +1730,7 @@ static void ospi_dac_write(void *opaque, hwaddr addr, uint64_t value,
 
     if (DEP_AF_EX32(s->regs, CONFIG_REG, ENB_SPI_FLD)) {
         if (ospi_is_indac_active(s) &&
+            !s->ind_write_disabled &&
             is_inside_indac_range(s, addr)) {
             return ospi_indac_write(s, value, size);
         }
@@ -1829,6 +1839,7 @@ static const VMStateDescription vmstate_ospi = {
 static Property ospi_properties[] = {
     DEFINE_PROP_UINT64("dac-base", OSPI, dac_base, 0),
     DEFINE_PROP_BOOL("dac-with-indac", OSPI, dac_with_indac, false),
+    DEFINE_PROP_BOOL("indac-write-disabled", OSPI, ind_write_disabled, true),
     DEFINE_PROP_END_OF_LIST(),
 };
 
