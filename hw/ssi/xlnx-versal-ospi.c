@@ -388,8 +388,6 @@ typedef struct OSPI {
     MemoryRegion iomem;
     MemoryRegion iomem_dac;
 
-    uint64_t dac_base;
-
     uint8_t num_cs;
     qemu_irq *cs_lines;
 
@@ -913,10 +911,10 @@ static void ospi_do_ind_read(OSPI *s)
         ind_op_advance(op, len);
 
         if (DEP_AF_EX32(s->regs, CONFIG_REG, ENB_DMA_IF_FLD)) {
-            /* Request dma transaction */
-            hwaddr addr = (s->dac_base & 0xFFFFFF00000000) |
-                           s->regs[R_IND_AHB_ADDR_TRIGGER_REG];
-            dma_ctrl_read(s->dma_src, addr, len);
+            /* Request dma transaction
+             * Source dma access SRAM at address 0 (at its own address space).
+             */
+            dma_ctrl_read(s->dma_src, 0, len);
         }
     }
 
@@ -1685,7 +1683,11 @@ static bool is_inside_indac_range(OSPI *s, hwaddr addr)
                                            INDIRECT_TRIGGER_ADDR_RANGE_REG,
                                            IND_RANGE_WIDTH_FLD));
 
-    addr += s->dac_base & 0xFFFFFFFF;
+    if (DEP_AF_EX32(s->regs, CONFIG_REG, ENB_DMA_IF_FLD)) {
+        addr += s->regs[R_IND_AHB_ADDR_TRIGGER_REG];
+    } else {
+        addr += s->regs[R_IND_AHB_ADDR_TRIGGER_REG] & 0xF0000000;
+    }
 
     return addr >= range_start && addr < range_end;
 }
@@ -1837,7 +1839,6 @@ static const VMStateDescription vmstate_ospi = {
 };
 
 static Property ospi_properties[] = {
-    DEFINE_PROP_UINT64("dac-base", OSPI, dac_base, 0),
     DEFINE_PROP_BOOL("dac-with-indac", OSPI, dac_with_indac, false),
     DEFINE_PROP_BOOL("indac-write-disabled", OSPI, ind_write_disabled, true),
     DEFINE_PROP_END_OF_LIST(),
