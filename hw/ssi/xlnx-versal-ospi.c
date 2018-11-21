@@ -853,12 +853,6 @@ static void ospi_ind_read(OSPI *s, uint32_t flash_addr, uint32_t len)
     ospi_disable_cs(s);
 }
 
-static unsigned int ospi_dma_burst_size(OSPI *s)
-{
-    return 1 << DEP_AF_EX32(s->regs,
-                        DMA_PERIPH_CONFIG_REG, NUM_BURST_REQ_BYTES_FLD);
-}
-
 static void ind_rd_inc_num_done(OSPI *s)
 {
     unsigned int done = DEP_AF_EX32(s->regs,
@@ -883,27 +877,17 @@ static void ospi_ind_rd_completed(OSPI *s)
 
 static void ospi_do_ind_read(OSPI *s)
 {
-    uint32_t watermark = s->regs[R_INDIRECT_READ_XFER_WATERMARK_REG];
     IndOp *op = s->rd_ind_op;
     uint32_t next_b;
     uint32_t end_b;
     uint32_t len;
 
-    if (!ospi_ind_rd_watermark_enabled(s)) {
-        if (DEP_AF_EX32(s->regs, CONFIG_REG, ENB_DMA_IF_FLD)) {
-            watermark = ospi_dma_burst_size(s);
-        } else {
-            /* Fill the cache if the watermark is disabled */
-            watermark = RXFF_SZ;
-        }
-    }
-
-    /* While there are bytes left to read and we have not reached watermark */
+    /* Continue to read flash until we run out of space in sram */
     while (!ospi_ind_op_completed(op) &&
-           fifo_num_used(&s->rx_sram) < watermark) {
-        /* Read up until watermark or end */
+           !fifo_is_full(&s->rx_sram)) {
+        /* Read reqested number of bytes, max bytes limited to size of sram */
         next_b = ind_op_next_byte(op);
-        end_b = next_b +  watermark - fifo_num_used(&s->rx_sram);
+        end_b = next_b + fifo_num_free(&s->rx_sram);
         end_b = MIN(end_b, ind_op_end_byte(op));
 
         len = end_b - next_b;
