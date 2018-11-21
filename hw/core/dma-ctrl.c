@@ -1,10 +1,11 @@
 #include "qemu/osdep.h"
 #include "hw/dma-ctrl.h"
 
-void dma_ctrl_read(DmaCtrl *dma_ctrl, hwaddr addr, uint32_t len)
+void dma_ctrl_read_with_notify(DmaCtrl *dma_ctrl, hwaddr addr, uint32_t len,
+                               DmaCtrlNotify *notify, bool start_dma)
 {
     DmaCtrlClass *dcc =  DMA_CTRL_GET_CLASS(dma_ctrl);
-    dcc->read(dma_ctrl, addr, len);
+    dcc->read(dma_ctrl, addr, len, notify, start_dma);
 }
 
 static const TypeInfo dma_ctrl_info = {

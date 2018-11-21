@@ -155,6 +155,9 @@ typedef struct ZynqMPCSUDMA {
     StreamCanPushNotifyFn notify;
     void *notify_opaque;
 
+    dmactrl_notify_fn dma_ctrl_notify;
+    void *dma_ctrl_opaque;
+
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
 } ZynqMPCSUDMA;
@@ -231,6 +234,11 @@ static void dmach_advance(ZynqMPCSUDMA *s, unsigned int len)
 
     size -= len;
     dmach_set_size(s, size);
+
+    /* Notify dma-ctrl clients when the transfer has been completed */
+    if (size == 0 && s->dma_ctrl_notify) {
+        s->dma_ctrl_notify(s->dma_ctrl_opaque);
+    }
 
     if (size == 0) {
         dmach_done(s);
@@ -522,7 +530,8 @@ static void src_timeout_hit(void *opaque)
 }
 
 static void
-zynqmp_csu_dma_dma_ctrl_read(DmaCtrl *dma_ctrl, hwaddr addr, uint32_t len)
+zynqmp_csu_dma_dma_ctrl_read(DmaCtrl *dma_ctrl, hwaddr addr, uint32_t len,
+ DmaCtrlNotify *notify, bool start_dma)
 {
     ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(dma_ctrl);
     RegisterInfo *reg = &s->regs_info[R_SIZE];
@@ -531,8 +540,17 @@ zynqmp_csu_dma_dma_ctrl_read(DmaCtrl *dma_ctrl, hwaddr addr, uint32_t len)
     s->regs[R_ADDR] = addr;
     s->regs[R_ADDR_MSB] = (uint64_t)addr >> 32;
 
-    register_write(reg, len, we, object_get_typename(OBJECT(s)),
-                   ZYNQMP_CSU_DMA_ERR_DEBUG);
+    if (notify) {
+        s->dma_ctrl_notify = notify->cb;
+        s->dma_ctrl_opaque = notify->opaque;
+    }
+
+    if (start_dma) {
+        register_write(reg, len, we, object_get_typename(OBJECT(s)),
+                       ZYNQMP_CSU_DMA_ERR_DEBUG);
+    } else {
+        dmach_set_size(s, len);
+    }
 }
 
 static const RegisterAccessInfo *zynqmp_csu_dma_regs_info[] = {

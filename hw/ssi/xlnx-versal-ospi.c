@@ -345,6 +345,8 @@ DEP_REG32(MODULE_ID_REG, 0xfc)
 #define SZ_2GBIT   (2ULL * SZ_1GBIT)
 #define SZ_4GBIT   (4ULL * SZ_1GBIT)
 
+#define IS_IND_DMA_START(op) (op->done_bytes == 0)
+
 typedef enum {
     WREN = 0x6,
     READ = 0x03,
@@ -405,6 +407,7 @@ typedef struct OSPI {
     bool ind_write_disabled;
     bool dac_with_indac;
     bool dac_enable;
+    bool src_dma_inprog;
 
     IndOp rd_ind_op[2];
     IndOp wr_ind_op[2];
@@ -499,14 +502,6 @@ static uint32_t ospi_get_page_sz(OSPI *s)
 static bool ospi_ind_rd_watermark_enabled(OSPI *s)
 {
     return s->regs[R_INDIRECT_READ_XFER_WATERMARK_REG];
-}
-
-static bool ospi_ind_rd_watermark_breached(OSPI *s)
-{
-    bool w_reached = (fifo_num_used(&s->rx_sram) >=
-                     s->regs[R_INDIRECT_READ_XFER_WATERMARK_REG]);
-
-    return ospi_ind_rd_watermark_enabled(s) && w_reached;
 }
 
 static void ind_op_advance(IndOp *op, unsigned int len)
@@ -853,6 +848,18 @@ static void ospi_ind_read(OSPI *s, uint32_t flash_addr, uint32_t len)
     ospi_disable_cs(s);
 }
 
+static unsigned int ospi_dma_burst_size(OSPI *s)
+{
+    return 1 << DEP_AF_EX32(s->regs,
+                        DMA_PERIPH_CONFIG_REG, NUM_BURST_REQ_BYTES_FLD);
+}
+
+static unsigned int ospi_dma_single_size(OSPI *s)
+{
+    return 1 << DEP_AF_EX32(s->regs,
+                        DMA_PERIPH_CONFIG_REG, NUM_SINGLE_REQ_BYTES_FLD);
+}
+
 static void ind_rd_inc_num_done(OSPI *s)
 {
     unsigned int done = DEP_AF_EX32(s->regs,
@@ -875,12 +882,54 @@ static void ospi_ind_rd_completed(OSPI *s)
     }
 }
 
+static uint32_t get_ind_rd_dma_len(OSPI *s, IndOp *op)
+{
+    uint32_t len = 0;
+    if (DEP_AF_EX32(s->regs, CONFIG_REG, ENB_DMA_IF_FLD)) {
+        if (fifo_num_used(&s->rx_sram) <
+            ospi_dma_burst_size(s)) {
+            len = ospi_dma_single_size(s);
+        } else {
+            len = ospi_dma_burst_size(s);
+        }
+    }
+    return len;
+}
+
+static void ospi_notify(void *opaque);
+
+static void ospi_dma_read(OSPI *s, bool start_dma)
+{
+    IndOp *op = s->rd_ind_op;
+    uint32_t dma_len;
+    uint32_t flush_bytes = fifo_num_used(&s->rx_sram);
+    DmaCtrlNotify notify = { .cb = ospi_notify,
+                             .opaque = (void *)s,
+                           };
+
+    if (flush_bytes && !s->src_dma_inprog) {
+        dma_len = get_ind_rd_dma_len(s, op);
+        /* Source dma accesses SRAM at address 0 (at its own addresss space).
+         */
+        dma_ctrl_read_with_notify(s->dma_src, 0, dma_len, &notify, start_dma);
+        /* ospi_dma_read is called for every call of ospi_notify
+         * in that case, by the time we are here, if flush_bytes is not zero
+         * then we have pending dma transactions.
+         */
+        flush_bytes = fifo_num_used(&s->rx_sram);
+        if (flush_bytes) {
+            s->src_dma_inprog = true;
+        }
+    }
+}
+
 static void ospi_do_ind_read(OSPI *s)
 {
     IndOp *op = s->rd_ind_op;
     uint32_t next_b;
     uint32_t end_b;
     uint32_t len;
+    bool start_dma = IS_IND_DMA_START(op);
 
     /* Continue to read flash until we run out of space in sram */
     while (!ospi_ind_op_completed(op) &&
@@ -894,16 +943,17 @@ static void ospi_do_ind_read(OSPI *s)
         ospi_ind_read(s, next_b, len);
         ind_op_advance(op, len);
 
-        if (DEP_AF_EX32(s->regs, CONFIG_REG, ENB_DMA_IF_FLD)) {
-            /* Request dma transaction
-             * Source dma access SRAM at address 0 (at its own address space).
-             */
-            dma_ctrl_read(s->dma_src, 0, len);
+        if (ospi_ind_rd_watermark_enabled(s)) {
+            DEP_AF_DP32(s->regs, IRQ_STATUS_REG,
+                        INDIRECT_XFER_LEVEL_BREACH_FLD, 1);
+            set_irq(s,
+                R_IRQ_STATUS_REG_INDIRECT_XFER_LEVEL_BREACH_FLD_MASK);
         }
-    }
 
-    if (ospi_ind_rd_watermark_breached(s) || ospi_ind_op_completed(op)) {
-        set_irq(s, R_IRQ_STATUS_REG_INDIRECT_XFER_LEVEL_BREACH_FLD_MASK);
+        if (!s->src_dma_inprog &&
+            DEP_AF_EX32(s->regs, CONFIG_REG, ENB_DMA_IF_FLD)) {
+            ospi_dma_read(s, start_dma);
+        }
     }
 
     /* Set sram full */
@@ -915,6 +965,17 @@ static void ospi_do_ind_read(OSPI *s)
     /* Signal completion if done */
     if (ospi_ind_op_completed(op)) {
         ospi_ind_rd_completed(s);
+    }
+}
+
+static void ospi_notify(void *opaque)
+{
+    OSPI *s = XILINX_OSPI(opaque);
+
+    s->src_dma_inprog = false;
+    ospi_dma_read(s, false);
+    if (!ospi_ind_op_completed(s->rd_ind_op)) {
+        ospi_do_ind_read(s);
     }
 }
 

@@ -14,6 +14,13 @@
 #define DMA_CTRL(obj) \
      INTERFACE_CHECK(DmaCtrl, (obj), TYPE_DMA_CTRL)
 
+typedef void (*dmactrl_notify_fn)(void *opaque);
+
+typedef struct DmaCtrlNotify {
+    void *opaque;
+    dmactrl_notify_fn cb;
+} DmaCtrlNotify;
+
 typedef struct DmaCtrl {
     Object Parent;
 } DmaCtrl;
@@ -21,8 +28,11 @@ typedef struct DmaCtrl {
 typedef struct DmaCtrlClass {
     InterfaceClass parent;
 
-    void (*read)(DmaCtrl *dma_ctrl, hwaddr addr, uint32_t len);
+    void (*read)(DmaCtrl *dma_ctrl, hwaddr addr, uint32_t len,
+                 DmaCtrlNotify *notify, bool start_dma);
 } DmaCtrlClass;
 
-void dma_ctrl_read(DmaCtrl *dma_ctrl, hwaddr addr, uint32_t len);
+void dma_ctrl_read_with_notify(DmaCtrl *dma_ctrl, hwaddr addr, uint32_t len,
+                   DmaCtrlNotify *notify, bool start_dma);
+
 #endif /* DMA_CTRL_H */
