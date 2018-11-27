@@ -6090,7 +6090,7 @@ struct SMMU {
     MemoryRegion iomem;
 
     MemoryRegion *dma_mr;
-    AddressSpace *dma_as;
+    AddressSpace dma_as;
 
     TBU tbu[MAX_TBU];
 
@@ -6430,7 +6430,7 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
             }
             descaddr = s2req.pa;
         }
-        dma_memory_read(s->dma_as, descaddr, &desc, sizeof(desc));
+        dma_memory_read(&s->dma_as, descaddr, &desc, sizeof(desc));
         type = desc & 3;
 
         D_PTW("smmu: S%d L%d va=0x%"PRIx64" gz=%d descaddr=0x%"PRIx64" "
@@ -8379,10 +8379,8 @@ static void smmu500_realize(DeviceState *dev, Error **errp)
     SMMU *s = XILINX_SMMU500(dev);
     unsigned int i;
 
-    s->dma_as = s->dma_mr ? address_space_init_shareable(s->dma_mr, NULL)
-                          : &address_space_memory;
-
-    assert(s->dma_as);
+    address_space_init(&s->dma_as,
+                       s->dma_mr ? s->dma_mr : get_system_memory(), NULL);
 
     sysbus_init_irq(SYS_BUS_DEVICE(dev), &s->irq.global);
     for (i = 0; i < 16; i++) {
