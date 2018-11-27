@@ -8376,6 +8376,52 @@ static const MemoryRegionOps smmu500_ops = {
     },
 };
 
+static void smmu_populate_regarray(SMMU *s,
+                                   RegisterInfoArray *r_array, int pos,
+                                   const RegisterAccessInfo *rae,
+                                   int num_rae)
+{
+    int i;
+
+    for (i = 0; i < num_rae; i++) {
+        int index = rae[i].addr / 4;
+        RegisterInfo *r = &s->regs_info[index];
+
+        *r = (RegisterInfo) {
+            .data = &s->regs[index],
+            .data_size = sizeof(uint32_t),
+            .access = &rae[i],
+            .opaque = OBJECT(s),
+        };
+        register_init(r);
+
+        r_array->r[i + pos] = r;
+    }
+}
+
+static RegisterInfoArray *smmu_create_regarray(SMMU *s)
+{
+    const char *device_prefix = object_get_typename(OBJECT(s));
+    uint64_t memory_size = R_MAX * 4;
+    RegisterInfoArray *r_array;
+    int num_regs;
+
+    num_regs = ARRAY_SIZE(smmu500_regs_info);
+
+    r_array = g_new0(RegisterInfoArray, 1);
+    r_array->r = g_new0(RegisterInfo *, num_regs);
+    r_array->num_elements = num_regs;
+    r_array->debug = XILINX_SMMU500_ERR_DEBUG;
+    r_array->prefix = device_prefix;
+
+    smmu_populate_regarray(s, r_array, 0,
+                           smmu500_regs_info, ARRAY_SIZE(smmu500_regs_info));
+
+    memory_region_init_io(&r_array->mem, OBJECT(s), &smmu500_ops, r_array,
+                          device_prefix, memory_size);
+    return r_array;
+}
+
 static void smmu500_realize(DeviceState *dev, Error **errp)
 {
     SMMU *s = XILINX_SMMU500(dev);
@@ -8384,13 +8430,7 @@ static void smmu500_realize(DeviceState *dev, Error **errp)
     unsigned int i;
 
     memory_region_init(&s->iomem, OBJECT(dev), TYPE_XILINX_SMMU500, R_MAX * 4);
-    reg_array =
-        register_init_block32(dev, smmu500_regs_info,
-                              ARRAY_SIZE(smmu500_regs_info),
-                              s->regs_info, s->regs,
-                              &smmu500_ops,
-                              XILINX_SMMU500_ERR_DEBUG,
-                              R_MAX * 4);
+    reg_array = smmu_create_regarray(s);
     memory_region_add_subregion(&s->iomem,
                                 0x0,
                                 &reg_array->mem);
