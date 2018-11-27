@@ -6184,6 +6184,8 @@ static int smmu_stream_id_match(SMMU *s, uint32_t stream_id)
             break;
         }
     }
+
+    D("SMMU StreamID 0x%x -> CB%d\n", stream_id, cbndx);
     return cbndx;
 }
 
