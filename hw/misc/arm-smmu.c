@@ -8379,7 +8379,22 @@ static const MemoryRegionOps smmu500_ops = {
 static void smmu500_realize(DeviceState *dev, Error **errp)
 {
     SMMU *s = XILINX_SMMU500(dev);
+    SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
+    RegisterInfoArray *reg_array;
     unsigned int i;
+
+    memory_region_init(&s->iomem, OBJECT(dev), TYPE_XILINX_SMMU500, R_MAX * 4);
+    reg_array =
+        register_init_block32(dev, smmu500_regs_info,
+                              ARRAY_SIZE(smmu500_regs_info),
+                              s->regs_info, s->regs,
+                              &smmu500_ops,
+                              XILINX_SMMU500_ERR_DEBUG,
+                              R_MAX * 4);
+    memory_region_add_subregion(&s->iomem,
+                                0x0,
+                                &reg_array->mem);
+    sysbus_init_mmio(sbd, &s->iomem);
 
     address_space_init(&s->dma_as,
                        s->dma_mr ? s->dma_mr : get_system_memory(), NULL);
@@ -8393,22 +8408,7 @@ static void smmu500_realize(DeviceState *dev, Error **errp)
 static void smmu500_init(Object *obj)
 {
     SMMU *s = XILINX_SMMU500(obj);
-    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
-    RegisterInfoArray *reg_array;
     int i;
-
-    memory_region_init(&s->iomem, obj, TYPE_XILINX_SMMU500, R_MAX * 4);
-    reg_array =
-        register_init_block32(DEVICE(obj), smmu500_regs_info,
-                              ARRAY_SIZE(smmu500_regs_info),
-                              s->regs_info, s->regs,
-                              &smmu500_ops,
-                              XILINX_SMMU500_ERR_DEBUG,
-                              R_MAX * 4);
-    memory_region_add_subregion(&s->iomem,
-                                0x0,
-                                &reg_array->mem);
-    sysbus_init_mmio(sbd, &s->iomem);
 
     object_property_add_link(obj, "dma", TYPE_MEMORY_REGION,
                              (Object **)&s->dma_mr,
