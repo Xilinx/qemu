@@ -119,13 +119,13 @@ static uint64_t cadence_timer_get_steps(CadenceTimerState *s, uint64_t ns)
     uint64_t r = ns;
      /* for very large intervals (> 8s) do some division first to stop
       * overflow (costs some prescision) */
-    while (r >= 8ULL << 30 && to_divide > 1) {
+    while (r >= 8 * NANOSECONDS_PER_SECOND && to_divide > 1) {
         r /= 1000;
         to_divide /= 1000;
     }
     r <<= 16;
     /* keep early-dividing as needed */
-    while (r >= 8ULL << 30 && to_divide > 1) {
+    while (r >= 8 * NANOSECONDS_PER_SECOND && to_divide > 1) {
         r /= 1000;
         to_divide /= 1000;
     }
