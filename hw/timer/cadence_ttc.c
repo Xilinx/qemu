@@ -100,10 +100,6 @@ static CadenceTimerState *cadence_timer_from_addr(void *opaque,
 
 static uint64_t cadence_timer_get_ns(CadenceTimerState *s, uint64_t timer_steps)
 {
-    /* timer_steps has max value of 0x100000000. double check it
-     * (or overflow can happen below) */
-    assert(timer_steps <= 1ULL << 32);
-
     uint64_t r = timer_steps * 1000000000ULL;
     if (s->reg_clock & CLOCK_CTRL_PS_EN) {
         r >>= 16 - (((s->reg_clock & CLOCK_CTRL_PS_V) >> 1) + 1);
