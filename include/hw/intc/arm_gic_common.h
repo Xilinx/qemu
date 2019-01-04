@@ -156,6 +156,7 @@ typedef struct GICState {
     uint32_t num_irq;
     uint32_t revision;
     bool security_extn;
+    bool irq_reset_nonsecure;
     bool disable_linux_gic_init;
     int dev_fd; /* kvm device fd if backed by kvm vgic support */
 } GICState;

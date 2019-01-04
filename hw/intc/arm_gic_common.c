@@ -20,6 +20,7 @@
 
 #include "qemu/osdep.h"
 #include "gic_internal.h"
+#include "hw/arm/linux-boot-if.h"
 #include "qapi/error.h"
 #include "hw/fdt_generic_util.h"
 
@@ -177,12 +178,27 @@ static void arm_gic_common_reset(DeviceState *dev)
 {
     GICState *s = ARM_GIC_COMMON(dev);
     int i;
+    int resetprio;
+
+    /* If we're resetting a TZ-aware GIC as if secure firmware
+     * had set it up ready to start a kernel in non-secure,
+     * we need to set interrupt priorities to a "zero for the
+     * NS view" value. This is particularly critical for the
+     * priority_mask[] values, because if they are zero then NS
+     * code cannot ever rewrite the priority to anything else.
+     */
+    if (s->security_extn && s->irq_reset_nonsecure) {
+        resetprio = 0x80;
+    } else {
+        resetprio = 0;
+    }
+
     memset(s->irq_state, 0, GIC_MAXIRQ * sizeof(gic_irq_state));
     for (i = 0 ; i < GIC_NCPU; i++) {
         if (s->revision == REV_11MPCORE) {
             s->priority_mask[i] = 0xf0;
         } else {
-            s->priority_mask[i] = 0;
+            s->priority_mask[i] = resetprio;
         }
         s->current_pending[i] = 1023;
         s->running_irq[i] = 1023;
@@ -199,6 +215,13 @@ static void arm_gic_common_reset(DeviceState *dev)
             s->irq_target[i] = 1;
         }
     }
+
+    if (s->security_extn && s->irq_reset_nonsecure) {
+        for (i = 0 ; i < s->num_irq; ++i) {
+            s->irq_state[i].group = 1;
+        }
+    }
+
     if (!s->c_iidr) {
         s->c_iidr |= s->revision << 16;
         s->c_iidr |= 0x43B;
@@ -251,6 +274,23 @@ static int arm_gic_common_fdt_get_irq(FDTGenericIntc *obj, qemu_irq *irqs,
     }
 }
 
+static void arm_gic_common_linux_init(ARMLinuxBootIf *obj,
+                                      bool secure_boot)
+{
+    GICState *s = ARM_GIC_COMMON(obj);
+
+    if (!s->disable_linux_gic_init && s->security_extn && !secure_boot) {
+        /* We're directly booting a kernel into NonSecure. If this GIC
+         * implements the security extensions then we must configure it
+         * to have all the interrupts be NonSecure (this is a job that
+         * is done by the Secure boot firmware in real hardware, and in
+         * this mode QEMU is acting as a minimalist firmware-and-bootloader
+         * equivalent).
+         */
+        s->irq_reset_nonsecure = true;
+    }
+}
+
 static Property arm_gic_common_properties[] = {
     DEFINE_PROP_UINT32("num-cpu", GICState, num_cpu, 0),
     DEFINE_PROP_UINT32("num-irq", GICState, num_irq, 96),
@@ -272,12 +312,14 @@ static void arm_gic_common_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     FDTGenericIntcClass *fgic = FDT_GENERIC_INTC_CLASS(klass);
+    ARMLinuxBootIfClass *albifc = ARM_LINUX_BOOT_IF_CLASS(klass);
 
     dc->reset = arm_gic_common_reset;
     dc->realize = arm_gic_common_realize;
     dc->props = arm_gic_common_properties;
     dc->vmsd = &vmstate_gic;
     fgic->get_irq = arm_gic_common_fdt_get_irq;
+    albifc->arm_linux_init = arm_gic_common_linux_init;
 }
 
 static const TypeInfo arm_gic_common_type = {
@@ -287,6 +329,7 @@ static const TypeInfo arm_gic_common_type = {
     .class_size = sizeof(ARMGICCommonClass),
     .class_init = arm_gic_common_class_init,
     .interfaces = (InterfaceInfo[]) {
+        { TYPE_ARM_LINUX_BOOT_IF },
         { TYPE_FDT_GENERIC_INTC },
         { TYPE_FDT_GENERIC_GPIO },
         { }

@@ -1636,34 +1636,18 @@ static const FDTGenericGPIOSet arm_gic_client_gpios [] = {
     { },
 };
 
-static void arm_gic_linux_init(LinuxDevice *obj)
-{
-    GICState *s = ARM_GIC(obj);
-    int i;
-
-    if (s->disable_linux_gic_init) {
-        return;
-    }
-
-    for (i = 0 ; i < s->num_irq; ++i) {
-        s->irq_state[i].group = 1;
-    }
-}
-
 static void arm_gic_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     ARMGICClass *agc = ARM_GIC_CLASS(klass);
     FDTGenericIntcClass *fgic = FDT_GENERIC_INTC_CLASS(klass);
     FDTGenericGPIOClass *fggc = FDT_GENERIC_GPIO_CLASS(klass);
-    LinuxDeviceClass *ldc = LINUX_DEVICE_CLASS(klass);
 
     agc->irq_handler = gic_set_irq;
     agc->parent_realize = dc->realize;
     dc->realize = arm_gic_realize;
     fgic->auto_parent = arm_gic_fdt_auto_parent;
     fggc->client_gpios = arm_gic_client_gpios;
-    ldc->linux_init = arm_gic_linux_init;
 }
 
 static const TypeInfo arm_gic_info = {
@@ -1672,10 +1656,6 @@ static const TypeInfo arm_gic_info = {
     .instance_size = sizeof(GICState),
     .class_init = arm_gic_class_init,
     .class_size = sizeof(ARMGICClass),
-    .interfaces = (InterfaceInfo []) {
-        { TYPE_LINUX_DEVICE },
-        { },
-    }
 };
 
 static void arm_gic_register_types(void)
