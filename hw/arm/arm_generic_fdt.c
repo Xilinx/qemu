@@ -167,10 +167,12 @@ static int zynq7000_mdio_phy_create(char *node_path, FDTMachineInfo *fdti,
     return 0;
 }
 
+#define ZYNQ7000_QSPI_DUMMY_NAME "/ps7-qspi-dummy@0"
+
 static char *zynq7000_qspi_flash_node_clone(void *fdt)
 {
     char qspi_node_path[DT_PATH_LENGTH];
-    char qspi_new_node_path[DT_PATH_LENGTH];
+    char qspi_new_node_path[DT_PATH_LENGTH + strlen(ZYNQ7000_QSPI_DUMMY_NAME)];
     char *qspi_clone_name = NULL;
     uint32_t val[2];
 
@@ -191,8 +193,12 @@ static char *zynq7000_qspi_flash_node_clone(void *fdt)
                     "#bus-cells", val, 4);
 
         /* Generate dummy name */
-        snprintf(qspi_new_node_path, DT_PATH_LENGTH, "%s/ps7-qspi-dummy@0",
-                 qspi_node_path);
+        snprintf(qspi_new_node_path, sizeof(qspi_new_node_path),
+                 "%s" ZYNQ7000_QSPI_DUMMY_NAME, qspi_node_path);
+        if (strlen(qspi_new_node_path) > DT_PATH_LENGTH) {
+            error_report("%s, %zd chars too long DT path!", qspi_new_node_path,
+                         strlen(qspi_new_node_path));
+        }
 
         /* get the spi flash node to clone from (assume first child node) */
         int child_num = qemu_devtree_get_num_children(fdt, qspi_node_path, 1);
