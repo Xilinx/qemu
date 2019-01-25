@@ -362,6 +362,7 @@ static const TypeInfo i2c_slave_type_info = {
     .class_init = i2c_slave_class_init,
     .interfaces = (InterfaceInfo []) {
         { TYPE_FDT_GENERIC_MMAP },
+        { },
     },
 };
 
