@@ -1,7 +1,6 @@
 # Instead of cluttering the source-code with #ifdefs, we enable
 # all the necessary features in the x86 models.
 # x86_64 configs can include this file for convinience.
-CONFIG_FDT_GENERIC=$(CONFIG_FDT)
 CONFIG_PCI_GENERIC=y
 CONFIG_PLATFORM_BUS=y
 CONFIG_XILINX=y
