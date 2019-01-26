@@ -101,4 +101,4 @@ obj-$(CONFIG_ASPEED_SOC) += aspeed_scu.o aspeed_sdmc.o
 obj-y += mmio_interface.o
 obj-$(CONFIG_MSF2) += msf2-sysreg.o
 obj-$(CONFIG_ZYNQ) += i2c-dev-dummy.o
-obj-$(CONFIG_ZYNQ) += sodimm-spd.o
+obj-$(CONFIG_M24CXX) += sodimm-spd.o
