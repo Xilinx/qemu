@@ -71,7 +71,7 @@ static void rp_pkt_dump(const char *prefix, const char *buf, size_t len)
 
 uint32_t rp_new_id(RemotePort *s)
 {
-    return s->current_id++;
+    return atomic_fetch_inc(&s->current_id);
 }
 
 void rp_rsp_mutex_lock(RemotePort *s)
