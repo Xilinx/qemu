@@ -135,8 +135,9 @@ ssize_t rp_write(RemotePort *s, const void *buf, size_t count)
     ssize_t r;
 
     qemu_mutex_lock(&s->write_mutex);
-    r = qemu_chr_fe_write(&s->chr, buf, count);
+    r = qemu_chr_fe_write_all(&s->chr, buf, count);
     qemu_mutex_unlock(&s->write_mutex);
+    assert(r == count);
     if (r <= 0) {
         error_report("%s: Disconnected r=%zd buf=%p count=%zd\n",
                      s->prefix, r, buf, count);
