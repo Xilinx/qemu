@@ -146,44 +146,8 @@ ssize_t rp_write(RemotePort *s, const void *buf, size_t count)
     return r;
 }
 
-/* Warp time if cpus are idle. diff is max time in ns to warp.  */
-static int64_t rp_time_warp(RemotePort *s, int64_t diff)
-{
-    int64_t future = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + diff;
-    int64_t clk;
-
-    if (!time_warp_enable) {
-        return 0;
-    }
-
-    /* If cpus are idle. warp.  */
-    do {
-        bool cpus_idle;
-
-        cpus_idle = tcg_idle_clock_warp(future);
-        clk = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-        if (!cpus_idle) {
-            break;
-        }
-    } while (clk < future);
-
-    return future - clk;
-}
-
-static void rp_idle(CPUState *cpu, run_on_cpu_data data)
-{
-    int64_t deadline = qemu_clock_deadline_ns_all(QEMU_CLOCK_VIRTUAL);
-    if (deadline == INT32_MAX) {
-            return;
-    }
-    rp_time_warp((void *)(uintptr_t) data.target_ptr, deadline);
-}
-
 void rp_leave_iothread(RemotePort *s)
 {
-    if (use_icount && all_cpu_threads_idle() && time_warp_enable) {
-        async_run_on_cpu(first_cpu, rp_idle, RUN_ON_CPU_TARGET_PTR((uintptr_t) s));
-    }
 }
 
 RemotePortDynPkt rp_wait_resp(RemotePort *s)
@@ -197,26 +161,6 @@ RemotePortDynPkt rp_wait_resp(RemotePort *s)
 
 void rp_sync_vmclock(RemotePort *s, int64_t lclk, int64_t rclk)
 {
-    int64_t diff;
-
-    /* FIXME: syncing is broken at the moment.  */
-    return;
-
-    if (!time_warp_enable) {
-        return;
-    }
-
-    /* Warp all the way to dest. We need to account for
-       spent time in the remote call.  */
-    while (lclk < rclk) {
-        diff = rclk - lclk;
-        tcg_clock_warp(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + diff);
-        lclk = rp_normalized_vmclk(s);
-    }
-
-    if (lclk < rclk) {
-        printf("Wrong sync! local=%" PRIu64 " remote=%" PRIu64 "\n", lclk, rclk);
-    }
 }
 
 static void rp_cmd_hello(RemotePort *s, struct rp_pkt *pkt)
@@ -244,22 +188,12 @@ static void rp_cmd_sync(RemotePort *s, struct rp_pkt *pkt)
 
     assert(!(pkt->hdr.flags & RP_PKT_FLAGS_response));
 
-    /* If cpus are idle. warp.  */
     clk = rp_normalized_vmclk(s);
     diff = pkt->sync.timestamp - clk;
-    if (diff > 0LL && use_icount && time_warp_enable) {
-        diff = rp_time_warp(s, diff);
-    }
 
     enclen = rp_encode_sync_resp(pkt->hdr.id, pkt->hdr.dev, &s->sync.rsp.sync,
                                  pkt->sync.timestamp);
     assert(enclen == sizeof s->sync.rsp.sync);
-
-    /* We are already a head of time.  */
-    if (all_cpu_threads_idle() || 0) {
-        if (pkt->sync.timestamp >  clk && use_icount)
-            rp_sync_vmclock(s, clk, pkt->sync.timestamp);
-    }
 
     /* We have temporarily disabled blocking syncs into QEMU.  */
     if (diff <= 0LL || true) {
