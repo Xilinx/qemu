@@ -19,6 +19,13 @@
 #define TYPE_REMOTE_PORT "remote-port"
 #define REMOTE_PORT(obj) OBJECT_CHECK(RemotePort, (obj), TYPE_REMOTE_PORT)
 
+typedef struct RemotePortRespSlot {
+            RemotePortDynPkt rsp;
+            uint32_t id;
+            bool used;
+            bool valid;
+} RemotePortRespSlot;
+
 struct RemotePort {
     DeviceState parent;
 
@@ -82,6 +89,11 @@ struct RemotePort {
     uint32_t current_id;
 
 #define REMOTE_PORT_MAX_DEVS 1024
+#define RP_MAX_OUTSTANDING_TRANSACTIONS 32
+    struct {
+        RemotePortRespSlot rsp_queue[RP_MAX_OUTSTANDING_TRANSACTIONS];
+    } dev_state[REMOTE_PORT_MAX_DEVS];
+
     RemotePortDevice *devs[REMOTE_PORT_MAX_DEVS];
 };
 
@@ -110,5 +122,16 @@ bool rp_time_warp_enable(bool en);
  * Function used in qdev-monitor.c to connect remote port devices.
  */
 void rp_device_add(QemuOpts *opts, DeviceState *dev, Error **errp);
+
+static inline void rp_resp_slot_done(RemotePort *s,
+                                     RemotePortRespSlot *rsp_slot)
+{
+    rp_dpkt_invalidate(&rsp_slot->rsp);
+    rsp_slot->id = ~0;
+    rsp_slot->used = false;
+    rsp_slot->valid = false;
+}
+
+RemotePortRespSlot *rp_dev_wait_resp(RemotePort *s, uint32_t dev, uint32_t id);
 
 #endif
