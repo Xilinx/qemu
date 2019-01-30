@@ -355,6 +355,11 @@ static void rp_process(RemotePort *s)
                  s->prefix, s->rx_queue.rpos, s->rx_queue.wpos,
                  pkt->hdr.cmd, pkt->hdr.dev));
 
+        /* To handle recursiveness, we need to advance the index
+         * index before processing the packet.  */
+        s->rx_queue.rpos++;
+        qemu_sem_post(&s->rx_queue.sem);
+
         dev = s->devs[pkt->hdr.dev];
         if (dev) {
             rpdc = REMOTE_PORT_DEVICE_GET_CLASS(dev);
@@ -371,9 +376,6 @@ static void rp_process(RemotePort *s)
         default:
             assert(actioned);
         }
-
-        s->rx_queue.rpos++;
-        qemu_sem_post(&s->rx_queue.sem);
     }
 }
 
