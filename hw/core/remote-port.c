@@ -153,7 +153,13 @@ void rp_leave_iothread(RemotePort *s)
 RemotePortDynPkt rp_wait_resp(RemotePort *s)
 {
     while (!rp_dpkt_is_valid(&s->rspqueue)) {
+        rp_rsp_mutex_unlock(s);
         rp_event_read(s);
+        rp_rsp_mutex_lock(s);
+        /* Need to recheck the condition with the rsp lock taken.  */
+        if (rp_dpkt_is_valid(&s->rspqueue)) {
+            break;
+        }
         qemu_cond_wait(&s->progress_cond, &s->rsp_mutex);
     }
     return s->rspqueue;
