@@ -15,6 +15,7 @@
 #include "hw/sysbus.h"
 
 #include "hw/remote-port-proto.h"
+#include "hw/remote-port.h"
 #include "hw/remote-port-device.h"
 
 #include "hw/fdt_generic_util.h"
@@ -72,7 +73,8 @@ static void rp_io_access(MemoryTransaction *tr)
     RemotePortMap *map = tr->opaque;
     RemotePortMemoryMaster *s = map->parent;
     int64_t rclk;
-    RemotePortDynPkt rsp;
+    RemotePortRespSlot *rsp_slot;
+    RemotePortDynPkt *rsp;
     struct  {
         struct rp_pkt_busaccess_ext_base pkt;
         uint8_t reserved[RP_MAX_ACCESS_SIZE];
@@ -113,13 +115,14 @@ static void rp_io_access(MemoryTransaction *tr)
     rp_rsp_mutex_lock(s->rp);
     rp_write(s->rp, (void *) &pay, len);
 
-    rsp = rp_wait_resp(s->rp);
+    rsp_slot = rp_dev_wait_resp(s->rp, in.dev, in.id);
+    rsp = &rsp_slot->rsp;
 
     /* We dont support out of order answers yet.  */
-    assert(rsp.pkt->hdr.id == be32_to_cpu(pay.pkt.hdr.id));
+    assert(rsp->pkt->hdr.id == in.id);
 
     if (!tr->rw) {
-        data = rp_busaccess_rx_dataptr(s->peer, &rsp.pkt->busaccess_ext_base);
+        data = rp_busaccess_rx_dataptr(s->peer, &rsp->pkt->busaccess_ext_base);
         /* Data up to 8 bytes is return as values.  */
         if (tr->size <= 8) {
             for (i = 0; i < tr->size; i++) {
@@ -130,8 +133,8 @@ static void rp_io_access(MemoryTransaction *tr)
         }
     }
 
-    rclk = rsp.pkt->busaccess.timestamp;
-    rp_dpkt_invalidate(&rsp);
+    rclk = rsp->pkt->busaccess.timestamp;
+    rp_resp_slot_done(s->rp, rsp_slot);
     rp_rsp_mutex_unlock(s->rp);
     rp_sync_vmclock(s->rp, in.clk, rclk);
     /* Reads are sync-points, roll the sync timer.  */
