@@ -24,9 +24,9 @@ typedef struct RemotePortGPIO {
     qemu_irq *gpio_out;
     uint16_t cell_offset_irq_num;
 
-    uint64_t current_id;
-
+    bool posted_updates;
     uint32_t rp_dev;
     struct RemotePort *rp;
+    struct rp_peer_state *peer;
 } RemotePortGPIO;
 #endif

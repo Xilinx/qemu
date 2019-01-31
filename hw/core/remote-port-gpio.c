@@ -17,6 +17,7 @@
 
 #include "hw/fdt_generic_util.h"
 
+#include "hw/remote-port.h"
 #include "hw/remote-port-proto.h"
 #include "hw/remote-port-device.h"
 #include "hw/remote-port-gpio.h"
@@ -29,6 +30,8 @@ static void rp_gpio_handler(void *opaque, int irq, int level)
     struct rp_pkt pkt;
     size_t len;
     int64_t clk;
+    uint32_t id = rp_new_id(s->rp);
+    uint32_t flags = s->posted_updates ? RP_PKT_FLAGS_posted : 0;
 
     /* If we hit the cache, return early.  */
     if (s->cache[irq] != CACHE_INVALID && s->cache[irq] == level) {
@@ -38,16 +41,47 @@ static void rp_gpio_handler(void *opaque, int irq, int level)
     s->cache[irq] = level;
 
     clk = rp_normalized_vmclk(s->rp);
-    len = rp_encode_interrupt(s->current_id++, s->rp_dev, &pkt.interrupt, clk,
-                              irq, 0, level);
+    len = rp_encode_interrupt_f(id, s->rp_dev, &pkt.interrupt, clk,
+                              irq, 0, level, flags);
+
+    if (s->peer->caps.wire_posted_updates && s->posted_updates) {
+        rp_rsp_mutex_lock(s->rp);
+    }
+
     rp_write(s->rp, (void *)&pkt, len);
+
+    if (s->peer->caps.wire_posted_updates && s->posted_updates) {
+        RemotePortRespSlot *rsp_slot;
+
+        rsp_slot = rp_dev_wait_resp(s->rp, s->rp_dev, id);
+        assert(rsp_slot->rsp.pkt->hdr.id == id);
+        rp_resp_slot_done(s->rp, rsp_slot);
+        rp_rsp_mutex_unlock(s->rp);
+    }
 }
 
-static void rp_gpio_interrupt(RemotePortDevice *s, struct rp_pkt *pkt)
+static void rp_gpio_interrupt(RemotePortDevice *rpdev, struct rp_pkt *pkt)
 {
-    RemotePortGPIO *rpg = REMOTE_PORT_GPIO(s);
+    RemotePortGPIO *s = REMOTE_PORT_GPIO(rpdev);
 
-    qemu_set_irq(rpg->gpio_out[pkt->interrupt.line], pkt->interrupt.val);
+    qemu_set_irq(s->gpio_out[pkt->interrupt.line], pkt->interrupt.val);
+
+    if (s->peer->caps.wire_posted_updates
+        && !(pkt->hdr.flags & RP_PKT_FLAGS_posted)) {
+        RemotePortDynPkt rsp = {0};
+        size_t len;
+
+        /* Need to reply.  */
+        rp_dpkt_alloc(&rsp, sizeof(struct rp_pkt_interrupt));
+        len = rp_encode_interrupt_f(pkt->hdr.id, pkt->hdr.dev,
+                                    &rsp.pkt->interrupt,
+                                    pkt->interrupt.timestamp,
+                                    pkt->interrupt.line,
+                                    pkt->interrupt.vector,
+                                    pkt->interrupt.val,
+                                    pkt->hdr.flags | RP_PKT_FLAGS_response);
+        rp_write(s->rp, (void *)rsp.pkt, len);
+    }
 }
 
 static void rp_gpio_reset(DeviceState *dev)
@@ -62,6 +96,8 @@ static void rp_gpio_realize(DeviceState *dev, Error **errp)
 {
     RemotePortGPIO *s = REMOTE_PORT_GPIO(dev);
     unsigned int i;
+
+    s->peer = rp_get_peer(s->rp);
 
     s->gpio_out = g_new0(qemu_irq, s->num_gpios);
     qdev_init_gpio_out(dev, s->gpio_out, s->num_gpios);
@@ -88,6 +124,7 @@ static Property rp_properties[] = {
     DEFINE_PROP_UINT32("num-gpios", RemotePortGPIO, num_gpios, 16),
     DEFINE_PROP_UINT16("cell-offset-irq-num", RemotePortGPIO,
                        cell_offset_irq_num, 0),
+    DEFINE_PROP_BOOL("posted-updates", RemotePortGPIO, posted_updates, false),
     DEFINE_PROP_END_OF_LIST(),
 };
 

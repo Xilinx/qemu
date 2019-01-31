@@ -270,6 +270,7 @@ static void rp_say_hello(RemotePort *s)
     uint32_t caps[] = {
         CAP_BUSACCESS_EXT_BASE,
         CAP_BUSACCESS_EXT_BYTE_EN,
+        CAP_WIRE_POSTED_UPDATES,
     };
     size_t len;
 
