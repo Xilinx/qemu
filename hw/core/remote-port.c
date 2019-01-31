@@ -205,7 +205,10 @@ RemotePortDynPkt rp_wait_resp(RemotePort *s)
         if (rp_dpkt_is_valid(&s->rspqueue)) {
             break;
         }
-        qemu_cond_wait(&s->progress_cond, &s->rsp_mutex);
+        D(qemu_log("%s: wait for progress\n", __func__));
+        if (!rp_has_work(s)) {
+            qemu_cond_wait(&s->progress_cond, &s->rsp_mutex);
+        }
     }
     return s->rspqueue;
 }
