@@ -65,6 +65,7 @@ common-obj-$(CONFIG_XLNX_VERSAL_PMC) += xlnx-versal-noc-nps.o
 common-obj-$(CONFIG_XLNX_VERSAL_PMC) += xlnx-versal-me-npi.o
 common-obj-$(CONFIG_XLNX_VERSAL_PMC) += xlnx-versal-gty-npi.o
 common-obj-$(CONFIG_XLNX_VERSAL_PMC) += xlnx-versal-xpio-dci.o
+common-obj-$(CONFIG_XLNX_VERSAL_PMC) += xlnx-versal-cmt-xpll.o
 common-obj-$(CONFIG_XLNX_VERSAL_PMC) += xlnx-versal-pmc-sysmon.o
 common-obj-$(CONFIG_XLNX_VERSAL_PMC) += xlnx-versal-pmc-pzm.o
 common-obj-$(CONFIG_XLNX_VERSAL_PMC) += xlnx-versal-pmc-tamper.o
