@@ -272,6 +272,7 @@ typedef struct Zynq3CRL {
     qemu_irq rst_fpd_srst;
     qemu_irq psm_sleep;
     qemu_irq psm_wakeup;
+    qemu_irq rst_cpu_r5[2];
 
     uint32_t regs[CRL_R_MAX];
     RegisterInfo regs_info[CRL_R_MAX];
@@ -317,6 +318,9 @@ static uint64_t ir_disable_prew(RegisterInfo *reg, uint64_t val64)
 static void crl_update_gpios(Zynq3CRL *s)
 {
     bool val;
+
+    PROPAGATE_GPIO(RST_CPU_R5, RESET_CPU0, s->rst_cpu_r5[0]);
+    PROPAGATE_GPIO(RST_CPU_R5, RESET_CPU1, s->rst_cpu_r5[1]);
 
     PROPAGATE_GPIO(RST_ADMA, RESET, s->rst_adma);
     PROPAGATE_GPIO(RST_GEM0, RESET, s->rst_gem[0]);
@@ -462,6 +466,7 @@ static const RegisterAccessInfo crl_regs_info[] = {
     },{ .name = "RST_CPU_R5",  .addr = A_RST_CPU_R5,
         .reset = 0x17,
         .rsvd = 0x8,
+        .post_write = crl_update_gpios_pw,
     },{ .name = "RST_ADMA",  .addr = A_RST_ADMA,
         .reset = 0x1,
         .post_write = crl_update_gpios_pw,
@@ -611,6 +616,7 @@ static void crl_init(Object *obj)
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_fpd_srst, "rst-fpd-srst", 1);
     qdev_init_gpio_out_named(DEVICE(obj), &s->psm_sleep, "psm-sleep", 1);
     qdev_init_gpio_out_named(DEVICE(obj), &s->psm_wakeup, "psm-wakeup", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), s->rst_cpu_r5, "rst-cpu-r5", 2);
 }
 
 static const VMStateDescription vmstate_crl = {
@@ -651,6 +657,7 @@ static const FDTGenericGPIOSet crl_gpios[] = {
         { .name = "rst-fpd-srst", .fdt_index = 29, .range = 1 },
         { .name = "psm-sleep", .fdt_index = 30, .range = 1 },
         { .name = "psm-wakeup", .fdt_index = 31, .range = 1 },
+        { .name = "rst-cpu-r5", .fdt_index = 32, .range = 2 },
         { },
       },
     },
