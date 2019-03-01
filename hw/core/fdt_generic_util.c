@@ -534,7 +534,7 @@ fail:
     error_setg(errp, "%s", __func__);
 }
 
-static uint32_t imap_cache[4096];
+static uint32_t imap_cache[32 * 1024];
 static bool imap_cached = false;
 
 qemu_irq *fdt_get_irq_info(FDTMachineInfo *fdti, char *node_path, int irq_idx,
