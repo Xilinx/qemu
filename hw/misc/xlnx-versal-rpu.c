@@ -514,6 +514,7 @@ static void rpu_glbl_cntl_pw(RegisterInfo *reg, uint64_t val64)
     RPU *s = XILINX_VERSAL_RPU(reg->opaque);
 
     rpu_setup_tcm(s);
+    rpu_update_gpios(s);
 }
 
 static const RegisterAccessInfo rpu_regs_info[] = {
