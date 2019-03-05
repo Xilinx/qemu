@@ -637,6 +637,12 @@ static void rpu_handle_gpio_in(void *opaque, int irq, int level)
     case 0 ... 1:
         s->r5_rst[irq] = level;
         break;
+    case 2:
+        ARRAY_FIELD_DP32(s->regs, RPU_0_STATUS, NWFIPIPESTOPPED, !level);
+        break;
+    case 3:
+        ARRAY_FIELD_DP32(s->regs, RPU_1_STATUS, NWFIPIPESTOPPED, !level);
+        break;
     default:
         g_assert_not_reached();
     }
@@ -789,7 +795,7 @@ static void rpu_init(Object *obj)
     sysbus_init_irq(sbd, &s->irq_rpu_0_imr);
 
     qdev_init_gpio_out_named(DEVICE(obj), s->halt, "halt", 2);
-    qdev_init_gpio_in(DEVICE(obj), rpu_handle_gpio_in, 2);
+    qdev_init_gpio_in(DEVICE(obj), rpu_handle_gpio_in, 4);
 }
 
 static const VMStateDescription vmstate_rpu = {
