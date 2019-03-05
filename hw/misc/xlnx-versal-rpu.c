@@ -615,6 +615,8 @@ static void rpu_reset(DeviceState *dev)
 
     rpu_1_imr_update_irq(s);
     rpu_0_imr_update_irq(s);
+
+    rpu_update_gpios(s);
 }
 
 static const MemoryRegionOps rpu_ops = {
