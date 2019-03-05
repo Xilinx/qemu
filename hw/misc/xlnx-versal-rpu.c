@@ -358,7 +358,8 @@ typedef struct RPU {
     qemu_irq irq_rpu_1_imr;
     qemu_irq irq_rpu_0_imr;
 
-    qemu_irq ncpuhalt[2];
+    bool r5_rst[2];
+    qemu_irq halt[2];
     qemu_irq vinithi[2];
 
     struct {
@@ -479,24 +480,33 @@ static void rpu_setup_tcm(RPU *s)
     qemu_set_irq(irq, val);                       \
 }
 
-#define PROPAGATE_GPIO_NEG(reg, f, irq) {         \
-    bool val = ARRAY_FIELD_EX32(s->regs, reg, f); \
-    qemu_set_irq(irq, !val);                      \
-}
-
 static void rpu_update_gpios(RPU *s)
 {
     bool sl_split;
+    bool ncpuhalt[2];
+    int i;
 
     sl_split = ARRAY_FIELD_EX32(s->regs, RPU_GLBL_CNTL, SLSPLIT);
 
-    PROPAGATE_GPIO_NEG(RPU_0_CFG, NCPUHALT, s->ncpuhalt[0]);
+    ncpuhalt[0] = ARRAY_FIELD_EX32(s->regs, RPU_0_CFG, NCPUHALT);
+    ncpuhalt[1] = ARRAY_FIELD_EX32(s->regs, RPU_1_CFG, NCPUHALT);
 
-    if (sl_split) {
-        PROPAGATE_GPIO_NEG(RPU_1_CFG, NCPUHALT, s->ncpuhalt[1]);
-    } else {
-        /* Always sleeping.  */
-        qemu_set_irq(s->ncpuhalt[1], true);
+    for (i = 0; i < ARRAY_SIZE(ncpuhalt); i++) {
+        bool halt;
+
+        /* Sleep if halted or in reset.  */
+        halt = !ncpuhalt[i];
+        halt |= s->r5_rst[i];
+
+        if (i == 1 && !sl_split) {
+            /* In lockstep mode we only run core0.  */
+            halt = true;
+        }
+
+        qemu_log_mask(CPU_LOG_RESET,
+                      "r5 halt[%d]=%d rst=%d ncpuhalt=%d sl_split=%d\n",
+                      i, halt, s->r5_rst[i], ncpuhalt[i], sl_split);
+        qemu_set_irq(s->halt[i], halt);
     }
 
     PROPAGATE_GPIO(RPU_0_CFG, VINITHI, s->vinithi[0]);
@@ -616,6 +626,20 @@ static void rpu_reset(DeviceState *dev)
     rpu_1_imr_update_irq(s);
     rpu_0_imr_update_irq(s);
 
+    rpu_update_gpios(s);
+}
+
+static void rpu_handle_gpio_in(void *opaque, int irq, int level)
+{
+    RPU *s = XILINX_VERSAL_RPU(opaque);
+
+    switch (irq) {
+    case 0 ... 1:
+        s->r5_rst[irq] = level;
+        break;
+    default:
+        g_assert_not_reached();
+    }
     rpu_update_gpios(s);
 }
 
@@ -764,7 +788,8 @@ static void rpu_init(Object *obj)
     sysbus_init_irq(sbd, &s->irq_rpu_1_imr);
     sysbus_init_irq(sbd, &s->irq_rpu_0_imr);
 
-    qdev_init_gpio_out_named(DEVICE(obj), s->ncpuhalt, "ncpuhalt", 2);
+    qdev_init_gpio_out_named(DEVICE(obj), s->halt, "halt", 2);
+    qdev_init_gpio_in(DEVICE(obj), rpu_handle_gpio_in, 2);
 }
 
 static const VMStateDescription vmstate_rpu = {
@@ -781,7 +806,7 @@ static const FDTGenericGPIOSet crl_gpios[] = {
     {
       .names = &fdt_generic_gpio_name_set_gpio,
       .gpios = (FDTGenericGPIOConnection[]) {
-        { .name = "ncpuhalt", .fdt_index = 0, .range = 2 },
+        { .name = "halt", .fdt_index = 0, .range = 2 },
         { },
       },
     },
