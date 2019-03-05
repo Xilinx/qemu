@@ -499,8 +499,8 @@ static void rpu_update_gpios(RPU *s)
         qemu_set_irq(s->ncpuhalt[1], true);
     }
 
-    PROPAGATE_GPIO_NEG(RPU_0_CFG, VINITHI, s->vinithi[0]);
-    PROPAGATE_GPIO_NEG(RPU_1_CFG, VINITHI, s->vinithi[1]);
+    PROPAGATE_GPIO(RPU_0_CFG, VINITHI, s->vinithi[0]);
+    PROPAGATE_GPIO(RPU_1_CFG, VINITHI, s->vinithi[1]);
 }
 
 static void rpu_update_gpios_pw(RegisterInfo *reg, uint64_t val64)
