@@ -223,7 +223,8 @@ static const RegisterAccessInfo crf_regs_info[] = {
     },{ .name = "APLL_FRAC_CFG",  .addr = A_APLL_FRAC_CFG,
         .rsvd = 0x7e330000,
     },{ .name = "PLL_STATUS",  .addr = A_PLL_STATUS,
-        .reset = 0x4,
+        .reset = R_PLL_STATUS_APLL_LOCK_MASK |
+                 R_PLL_STATUS_APLL_STABLE_MASK,
         .rsvd = 0xfa,
         .ro = 0x5,
     },{ .name = "APLL_TO_XPD_CTRL",  .addr = A_APLL_TO_XPD_CTRL,
