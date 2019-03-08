@@ -343,6 +343,8 @@ static const RegisterAccessInfo me_npi_regs_info[] = {
         .rsvd = 0x7e330000,
         .ro = 0x7e330000,
     },{ .name = "ME_PLL_STATUS",  .addr = A_ME_PLL_STATUS,
+        .reset = R_ME_PLL_STATUS_MPLL_LOCK_MASK |
+                 R_ME_PLL_STATUS_MPLL_STABLE_MASK,
         .rsvd = 0xfa,
         .ro = 0xff,
     },{ .name = "ME_CORE_REF_CTRL",  .addr = A_ME_CORE_REF_CTRL,
@@ -408,7 +410,7 @@ static void me_npi_reset(DeviceState *dev)
 
 static const MemoryRegionOps me_npi_ops = {
     .read = register_read_memory,
-    .write = register_write_memory,
+    .write_with_attrs = register_write_memory_with_attrs,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
