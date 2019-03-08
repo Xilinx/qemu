@@ -645,7 +645,10 @@ static RegisterAccessInfo crp_regs_info[] = {
     },{ .name = "NOCPLL_FRAC_CFG",  .addr = A_NOCPLL_FRAC_CFG,
         .rsvd = 0x7e330000,
     },{ .name = "PLL_STATUS",  .addr = A_PLL_STATUS,
-        .reset = 0xc,
+        .reset = R_PLL_STATUS_PMCPLL_LOCK_MASK |
+                 R_PLL_STATUS_NOCPLL_LOCK_MASK |
+                 R_PLL_STATUS_PMCPLL_STABLE_MASK |
+                 R_PLL_STATUS_NOCPLL_STABLE_MASK,
         .rsvd = 0xf0,
         .ro = 0xf,
     },{ .name = "PPLL_TO_XPD_CTRL",  .addr = A_PPLL_TO_XPD_CTRL,
@@ -871,8 +874,6 @@ static void crp_reset(DeviceState *dev)
 
        /* TODO: Issue PS and PL resets */
     }
-    s->regs[R_PLL_STATUS] |= R_PLL_STATUS_NOCPLL_LOCK_MASK |
-                             R_PLL_STATUS_PMCPLL_LOCK_MASK;
 
     s->regs[R_BOOT_MODE_POR] = boot_mode;
     update_boot_mode_user(s);
