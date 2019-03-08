@@ -48,6 +48,7 @@ common-obj-$(CONFIG_XLNX_VERSAL) += xlnx-versal-psm-global.o
 common-obj-$(CONFIG_XLNX_VERSAL) += xlnx-versal-ddrmc-ub.o
 common-obj-$(CONFIG_XLNX_VERSAL) += xlnx-versal-ddrmc-main.o
 common-obj-$(CONFIG_XLNX_VERSAL) += xlnx-versal-ddrmc-noc.o
+common-obj-$(CONFIG_XLNX_VERSAL) += xlnx-versal-afi-fm.o
 common-obj-$(CONFIG_XLNX_VERSAL) += xlnx-versal-rpu.o
 
 common-obj-$(CONFIG_XLNX_VERSAL_PMC) += sss-pmc.o
