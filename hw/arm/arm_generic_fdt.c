@@ -390,7 +390,7 @@ static memory_info init_memory(void *fdt, ram_addr_t ram_size, bool zynq_7000)
                     region_size = MIN(region_size, ram_size - mem_created);
                     ram_size -= region_size;
 
-                    DB_PRINT_RAW(1, "End: 0x%" PRIx64 "\n", region_size);
+                    DB_PRINT_RAW(1, "Size: 0x%" PRIx64 "\n", region_size);
 
                     container_phandle = qemu_fdt_getprop_cell(fdt,
                                                               mem_node_path,
