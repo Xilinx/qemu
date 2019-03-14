@@ -853,20 +853,20 @@ static void ppu1_update_ctrl(PMC_GLOBAL *s)
         qemu_set_irq(s->ppu1_rst, rst);
         break;
     case 1:
-        /* MB enters sleep when released from RESET.  */
-
-        /*
-         * FIXME: We don't have a way to put the MB to sleep from
-         * the outside. We keep the MB in reset until wakeup is released.
-         * This might have undesired side effects.
-         */
-        qemu_set_irq(s->ppu1_rst, rst || !wakeup);
+        /* MB enters sleep when released from RESET.*/
+        /* RST signal can be low only after wakeup is high,
+         * wakeup=0 should not effect the RST signal when RST=0*/
+        if (wakeup || rst) {
+            qemu_set_irq(s->ppu1_rst, rst);
+        }
+        /* Wakeup (i.e halt) signal is updated only when RST=1
+         * So that clearing wakeup bit dosent effect RST signal */
+        qemu_set_irq(s->ppu1_wakeup, rst & wakeup);
         break;
     default:
         qemu_log_mask(LOG_GUEST_ERROR, "Invalid PPU1_RST_MODE %x\n", rst_mode);
         break;
     };
-    qemu_set_irq(s->ppu1_wakeup, wakeup);
 }
 
 static void pmc_ppu1_gpi_update_irq(PMC_GLOBAL *s)
