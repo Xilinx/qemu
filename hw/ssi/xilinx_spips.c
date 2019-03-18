@@ -578,6 +578,7 @@ static int xilinx_spips_num_dummies(XilinxQSPIPS *qs, uint8_t command)
     case QIOR:
     case QIOR_4:
         return 4;
+    case JEDEC_READ: /* Flash Register Read/Write CMD's */
     default:
         return -1;
     }
@@ -619,13 +620,13 @@ static void xilinx_spips_flush_txfifo(XilinxSPIPS *s)
         if (fifo8_is_empty(&s->tx_fifo)) {
             xilinx_spips_update_ixr(s);
             return;
-        } else if (s->snoop_state == SNOOP_STRIPING ||
-                   s->snoop_state == SNOOP_NONE) {
+        } else if (s->snoop_state == SNOOP_STRIPING) {
             for (i = 0; i < num_effective_busses(s); ++i) {
                 tx_rx[i] = fifo8_pop(&s->tx_fifo);
             }
             stripe8(tx_rx, num_effective_busses(s), false);
-        } else if (s->snoop_state >= SNOOP_ADDR) {
+        } else if ( s->snoop_state == SNOOP_NONE ||
+                    s->snoop_state >= SNOOP_ADDR) {
             tx = fifo8_pop(&s->tx_fifo);
             for (i = 0; i < num_effective_busses(s); ++i) {
                 tx_rx[i] = tx;

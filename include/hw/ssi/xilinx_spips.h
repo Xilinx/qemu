@@ -53,7 +53,9 @@ typedef enum {
 
     ERASE_4K = 0x20,    ERASE4_4K = 0x21,
     ERASE_32K = 0x52,   ERASE4_32K = 0x5c,
-    ERASE_SEC = 0xd8,   ERASE4_SEC = 0xdc
+    ERASE_SEC = 0xd8,   ERASE4_SEC = 0xdc,
+
+    JEDEC_READ = 0x9f
 } FlashCMD;
 
 struct XilinxSPIPS {
