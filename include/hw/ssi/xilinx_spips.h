@@ -50,6 +50,10 @@ typedef enum {
     PP = 0x2,           PP_4 = 0x12,
     DPP = 0xa2,
     QPP = 0x32,         QPP_4 = 0x34,
+
+    ERASE_4K = 0x20,    ERASE4_4K = 0x21,
+    ERASE_32K = 0x52,   ERASE4_32K = 0x5c,
+    ERASE_SEC = 0xd8,   ERASE4_SEC = 0xdc
 } FlashCMD;
 
 struct XilinxSPIPS {

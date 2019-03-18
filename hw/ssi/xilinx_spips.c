@@ -555,9 +555,15 @@ static int xilinx_spips_num_dummies(XilinxQSPIPS *qs, uint8_t command)
     case PP:
     case DPP:
     case QPP:
+    case ERASE_4K:
+    case ERASE_32K:
+    case ERASE_SEC:
     case READ_4:
     case PP_4:
     case QPP_4:
+    case ERASE4_4K:
+    case ERASE4_32K:
+    case ERASE4_SEC:
         return 0;
     case FAST_READ:
     case DOR:
@@ -588,6 +594,9 @@ static inline uint8_t get_addr_length(XilinxSPIPS *s, uint8_t cmd)
     case DOR_4:
     case QOR_4:
     case DIOR_4:
+    case ERASE4_4K:
+    case ERASE4_32K:
+    case ERASE4_SEC:
         return 4;
     default:
         return (s->regs[R_CMND] & R_CMND_EXT_ADD) ? 4 : 3;
