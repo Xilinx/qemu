@@ -278,7 +278,13 @@ static void xlnx_zynqmp_qspips_update_cs_lines(XlnxZynqMPQSPIPS *s)
 
 static void xilinx_spips_update_cs_lines(XilinxSPIPS *s)
 {
-    int field = ~((s->regs[R_CONFIG] & CS) >> CS_SHIFT);
+    int field;
+
+    if (object_dynamic_cast(OBJECT(s), TYPE_XILINX_QSPIPS)) {
+        field = !extract32(s->regs[R_CONFIG], CS_SHIFT, 1);
+    } else {
+        field = ~((s->regs[R_CONFIG] & CS) >> CS_SHIFT);
+    }
 
     /* In dual parallel, mirror low CS to both */
     if (num_effective_busses(s) == 2) {
