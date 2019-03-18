@@ -579,19 +579,19 @@ static int xilinx_spips_num_dummies(XilinxQSPIPS *qs, uint8_t command)
 
 static inline uint8_t get_addr_length(XilinxSPIPS *s, uint8_t cmd)
 {
-   switch (cmd) {
-   case PP_4:
-   case QPP_4:
-   case READ_4:
-   case QIOR_4:
-   case FAST_READ_4:
-   case DOR_4:
-   case QOR_4:
-   case DIOR_4:
-       return 4;
-   default:
-       return (s->regs[R_CMND] & R_CMND_EXT_ADD) ? 4 : 3;
-   }
+    switch (cmd) {
+    case PP_4:
+    case QPP_4:
+    case READ_4:
+    case QIOR_4:
+    case FAST_READ_4:
+    case DOR_4:
+    case QOR_4:
+    case DIOR_4:
+        return 4;
+    default:
+        return (s->regs[R_CMND] & R_CMND_EXT_ADD) ? 4 : 3;
+    }
 }
 
 static void xilinx_spips_flush_txfifo(XilinxSPIPS *s)
