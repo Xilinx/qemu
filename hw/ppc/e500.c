@@ -277,12 +277,12 @@ static int ppce500_load_device_tree(MachineState *machine,
     int i;
     char compatible_sb[] = "fsl,mpc8544-immr\0simple-bus";
     char soc[128];
-    char mpic[128];
+    char mpic[256];
     uint32_t mpic_ph;
     uint32_t msi_ph;
-    char gutil[128];
+    char gutil[256];
     char pci[128];
-    char msi[128];
+    char msi[256];
     uint32_t *pci_map = NULL;
     int len;
     uint32_t pci_ranges[14] =
