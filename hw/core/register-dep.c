@@ -364,7 +364,7 @@ MemTxResult dep_register_write_memory_be_with_attrs(void *opaque, hwaddr addr,
 {
     DepRegisterInfo reg_d;
     DepRegisterAccessInfo access_d;
-    DepRegisterInfo *reg;
+    DepRegisterInfo *reg = opaque;
 
     if (attrs.debug) {
         dep_register_trap_access(opaque, &reg_d, &access_d);
@@ -379,7 +379,7 @@ MemTxResult dep_register_write_memory_le_with_attrs(void *opaque, hwaddr addr,
 {
     DepRegisterInfo reg_d;
     DepRegisterAccessInfo access_d;
-    DepRegisterInfo *reg;
+    DepRegisterInfo *reg = opaque;
 
     if (attrs.debug) {
         dep_register_trap_access(opaque, &reg_d, &access_d);
