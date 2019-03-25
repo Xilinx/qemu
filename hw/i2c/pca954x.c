@@ -247,6 +247,7 @@ static void pca954x_class_init(ObjectClass *klass, void *data)
 static TypeInfo pca954x_info = {
     .name          = TYPE_PCA954X,
     .parent        = TYPE_I2C_SLAVE,
+    .class_size    = sizeof(PCA954XClass),
     .instance_size = sizeof(PCA954XState),
     .instance_init = pca954x_init,
 };
