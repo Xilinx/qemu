@@ -26,7 +26,7 @@
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "hw/ptimer.h"
-#include "hw/register-dep.h"
+#include "hw/register.h"
 #include "qemu/log.h"
 #include "qemu/main-loop.h"
 #include "qapi/error.h"
@@ -41,12 +41,12 @@
 #define XILINX_IO_MODULE_PIT(obj) \
      OBJECT_CHECK(XilinxPIT, (obj), TYPE_XILINX_IO_MODULE_PIT)
 
+REG32(IOM_PIT_PRELOAD, 0x0)
+REG32(IOM_PIT_COUNTER, 0x4)
+REG32(IOM_PIT_CONTROL, 0x8)
+ FIELD(IOM_PIT_CONTROL, EN, 0, 1)
+ FIELD(IOM_PIT_CONTROL, PRELOAD, 1, 1)
 
-#define R_IOM_PIT_PRELOAD           (0x00 / 4)
-#define R_IOM_PIT_COUNTER           (0x04 / 4)
-#define R_IOM_PIT_CONTROL           (0x08 / 4)
-#define IOM_PIT_CONTROL_EN          (1 << 0)
-#define IOM_PIT_CONTROL_PRELOAD     (1 << 1)
 #define R_MAX                       (R_IOM_PIT_CONTROL + 1)
 
 typedef struct XilinxPIT {
@@ -73,7 +73,7 @@ typedef struct XilinxPIT {
     QEMUBH *bh;
     ptimer_state *ptimer;
     uint32_t regs[R_MAX];
-    DepRegisterInfo regs_info[R_MAX];
+    RegisterInfo regs_info[R_MAX];
     const char *prefix;
 } XilinxPIT;
 
@@ -86,7 +86,7 @@ static Property xlx_iom_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static uint64_t pit_ctr_pr(DepRegisterInfo *reg, uint64_t val)
+static uint64_t pit_ctr_pr(RegisterInfo *reg, uint64_t val)
 {
     XilinxPIT *s = XILINX_IO_MODULE_PIT(reg->opaque);
     uint32_t r;
@@ -104,7 +104,7 @@ static uint64_t pit_ctr_pr(DepRegisterInfo *reg, uint64_t val)
     return r;
 }
 
-static void pit_control_pw(DepRegisterInfo *reg, uint64_t value)
+static void pit_control_pw(RegisterInfo *reg, uint64_t value)
 {
     XilinxPIT *s = XILINX_IO_MODULE_PIT(reg->opaque);
     uint32_t v32 = value;
@@ -115,14 +115,14 @@ static void pit_control_pw(DepRegisterInfo *reg, uint64_t value)
     }
 
     ptimer_stop(s->ptimer);
-    if (v32 & IOM_PIT_CONTROL_EN) {
+    if (v32 & R_IOM_PIT_CONTROL_EN_MASK) {
         if (s->ps_enable) {
             /* pre-scalar mode Do-Nothing here. Wait for the friend to hit_in
              * and decrement the counter(s->ps_counter)*/
             s->ps_counter = s->regs[R_IOM_PIT_PRELOAD];
         } else {
             ptimer_set_limit(s->ptimer, s->regs[R_IOM_PIT_PRELOAD], 1);
-            ptimer_run(s->ptimer, !(v32 & IOM_PIT_CONTROL_PRELOAD));
+            ptimer_run(s->ptimer, !(v32 & R_IOM_PIT_CONTROL_PRELOAD_MASK));
 
         }
     }
@@ -141,7 +141,7 @@ static void iom_pit_ps_hit_in(void *opaque, int n, int level)
 {
     XilinxPIT *s = XILINX_IO_MODULE_PIT(opaque);
 
-    if (!(s->regs[R_IOM_PIT_CONTROL] & IOM_PIT_CONTROL_EN)) {
+    if (!(s->regs[R_IOM_PIT_CONTROL] & R_IOM_PIT_CONTROL_EN_MASK)) {
         /* PIT disabled */
         return;
     }
@@ -160,12 +160,12 @@ static void iom_pit_ps_hit_in(void *opaque, int n, int level)
     if (s->ps_counter == 0) {
         pit_timer_hit(opaque);
         /* Check for pit preload/one-shot mode */
-        if (s->regs[R_IOM_PIT_CONTROL] & IOM_PIT_CONTROL_PRELOAD) {
+        if (s->regs[R_IOM_PIT_CONTROL] & R_IOM_PIT_CONTROL_PRELOAD_MASK) {
             /* Preload Mode, Reload the ps_counter */
             s->ps_counter = s->regs[R_IOM_PIT_PRELOAD];
         } else {
             /* One-Shot mode, turn off the timer */
-            s->regs[R_IOM_PIT_CONTROL] &= ~IOM_PIT_CONTROL_EN;
+            s->regs[R_IOM_PIT_CONTROL] &= ~R_IOM_PIT_CONTROL_EN_MASK;
         }
     }
 }
@@ -176,15 +176,17 @@ static void iom_pit_ps_config(void *opaque, int n, int level)
     s->ps_enable = level;
 }
 
-static const DepRegisterAccessInfo pit_regs_info[] = {
-    [R_IOM_PIT_PRELOAD] = { .name = "PRELOAD" },
-    [R_IOM_PIT_COUNTER] = { .name = "COUNTER", .post_read = pit_ctr_pr },
-    [R_IOM_PIT_CONTROL] = { .name = "CONTROL", .post_write = pit_control_pw },
+static const RegisterAccessInfo pit_regs_info[] = {
+    [R_IOM_PIT_PRELOAD] = { .name = "PRELOAD", .addr = A_IOM_PIT_PRELOAD },
+    [R_IOM_PIT_COUNTER] = { .name = "COUNTER", .addr = A_IOM_PIT_COUNTER,
+                            .post_read = pit_ctr_pr },
+    [R_IOM_PIT_CONTROL] = { .name = "CONTROL", .addr = A_IOM_PIT_CONTROL,
+                            .post_write = pit_control_pw },
 };
 
 static const MemoryRegionOps iom_pit_ops = {
-    .read = dep_register_read_memory_le,
-    .write = dep_register_write_memory_le,
+    .read = register_read_memory,
+    .write = register_write_memory,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
@@ -198,7 +200,7 @@ static void iom_pit_reset(DeviceState *dev)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        dep_register_reset(&s->regs_info[i]);
+        register_reset(&s->regs_info[i]);
     }
     s->ps_level = false;
 }
@@ -206,25 +208,8 @@ static void iom_pit_reset(DeviceState *dev)
 static void xlx_iom_realize(DeviceState *dev, Error **errp)
 {
     XilinxPIT *s = XILINX_IO_MODULE_PIT(dev);
-    unsigned int i;
 
     s->prefix = object_get_canonical_path(OBJECT(dev));
-
-    for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        DepRegisterInfo *r = &s->regs_info[i];
-
-        *r = (DepRegisterInfo) {
-            .data = (uint8_t *)&s->regs[i],
-            .data_size = sizeof(uint32_t),
-            .access = &pit_regs_info[i],
-            .debug = XILINX_IO_MODULE_PIT_ERR_DEBUG,
-            .prefix = s->prefix,
-            .opaque = s,
-        };
-        memory_region_init_io(&r->mem, OBJECT(dev), &iom_pit_ops, r,
-                              r->access->name, 4);
-        memory_region_add_subregion(&s->iomem, i * 4, &r->mem);
-    }
 
     if (s->cfg.use) {
         s->bh = qemu_bh_new(pit_timer_hit, s);
@@ -243,8 +228,17 @@ static void xlx_iom_pit_init(Object *obj)
 {
     XilinxPIT *s = XILINX_IO_MODULE_PIT(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+    RegisterInfoArray *reg_array;
 
-    memory_region_init_io(&s->iomem, obj, &iom_pit_ops, s,
+    reg_array =
+        register_init_block32(DEVICE(obj), pit_regs_info,
+                              ARRAY_SIZE(pit_regs_info),
+                              s->regs_info, s->regs,
+                              &iom_pit_ops,
+                              XILINX_IO_MODULE_PIT_ERR_DEBUG,
+                              R_MAX * 4);
+
+    memory_region_init_io(&s->iomem, obj, &iom_pit_ops, reg_array,
                           TYPE_XILINX_IO_MODULE_PIT,
                           R_MAX * 4);
     sysbus_init_mmio(sbd, &s->iomem);
