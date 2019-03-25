@@ -44,13 +44,15 @@ static void rp_gpio_handler(void *opaque, int irq, int level)
     len = rp_encode_interrupt_f(id, s->rp_dev, &pkt.interrupt, clk,
                               irq, 0, level, flags);
 
-    if (s->peer->caps.wire_posted_updates && s->posted_updates) {
+    if (s->peer->caps.wire_posted_updates && !s->posted_updates) {
         rp_rsp_mutex_lock(s->rp);
     }
 
     rp_write(s->rp, (void *)&pkt, len);
 
-    if (s->peer->caps.wire_posted_updates && s->posted_updates) {
+    /* If peer supports posted updates it will respect our flag and
+     * not respond.  */
+    if (s->peer->caps.wire_posted_updates && !s->posted_updates) {
         RemotePortRespSlot *rsp_slot;
 
         rsp_slot = rp_dev_wait_resp(s->rp, s->rp_dev, id);
@@ -124,7 +126,7 @@ static Property rp_properties[] = {
     DEFINE_PROP_UINT32("num-gpios", RemotePortGPIO, num_gpios, 16),
     DEFINE_PROP_UINT16("cell-offset-irq-num", RemotePortGPIO,
                        cell_offset_irq_num, 0),
-    DEFINE_PROP_BOOL("posted-updates", RemotePortGPIO, posted_updates, false),
+    DEFINE_PROP_BOOL("posted-updates", RemotePortGPIO, posted_updates, true),
     DEFINE_PROP_END_OF_LIST(),
 };
 
