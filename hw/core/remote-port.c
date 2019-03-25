@@ -384,13 +384,19 @@ static Chardev *rp_autocreate_chardev(RemotePort *s, char *name)
 
 static void rp_process(RemotePort *s)
 {
-    while (rp_has_work(s)) {
+    while (true) {
         struct rp_pkt *pkt;
-        unsigned int rpos = s->rx_queue.rpos;
+        unsigned int rpos;
         bool actioned = false;
         RemotePortDevice *dev;
         RemotePortDeviceClass *rpdc;
 
+        qemu_mutex_lock(&s->rsp_mutex);
+        if (!rp_has_work(s)) {
+            qemu_mutex_unlock(&s->rsp_mutex);
+            break;
+        }
+        rpos = s->rx_queue.rpos;
         rpos &= ARRAY_SIZE(s->rx_queue.pkt) - 1;
 
         pkt = s->rx_queue.pkt[rpos].pkt;
@@ -401,6 +407,7 @@ static void rp_process(RemotePort *s)
         /* To handle recursiveness, we need to advance the index
          * index before processing the packet.  */
         s->rx_queue.rpos++;
+        qemu_mutex_unlock(&s->rsp_mutex);
         qemu_sem_post(&s->rx_queue.sem);
 
         dev = s->devs[pkt->hdr.dev];
