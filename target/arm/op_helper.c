@@ -488,14 +488,7 @@ void HELPER(wfi)(CPUARMState *env, uint32_t insn_len)
     if (use_icount) {
         cs->exception_index = EXCP_YIELD;
     } else {
-#ifdef CONFIG_USER_ONLY
         cs->halted = 1;
-#else
-        if (!machine_path || !parallel_cpus) {
-            /* If not running CoSim/Multi-Arch or MTTCG is not enabled. */
-            cs->halted = 1;
-        }
-#endif
         cs->exception_index = EXCP_HLT;
     }
 
