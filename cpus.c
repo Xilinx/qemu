@@ -258,8 +258,7 @@ int64_t cpu_get_icount_raw(void)
 
     if (cpu && cpu->running) {
         if (!cpu->can_do_io) {
-            fprintf(stderr, "Bad icount read\n");
-            exit(1);
+            qemu_log("Bad icount read\n");
         }
         /* Take into account what has run */
         cpu_update_icount(cpu);
