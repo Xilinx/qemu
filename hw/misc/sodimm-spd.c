@@ -95,6 +95,7 @@ static const TypeInfo sodimm_spd_info = {
     .instance_size = sizeof(SodimmSPD),
     .class_init = sodimm_spd_class_init,
     .instance_init = sodimm_spd_init,
+    .class_size = sizeof(SodimmSPDClass),
     .class_data = &dev_info[0],
 };
 
