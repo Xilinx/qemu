@@ -484,6 +484,7 @@ void HELPER(wfi)(CPUARMState *env, uint32_t insn_len)
                         target_el);
     }
 
+    qemu_mutex_lock_iothread();
     if (use_icount) {
         cs->exception_index = EXCP_YIELD;
     } else {
@@ -500,6 +501,7 @@ void HELPER(wfi)(CPUARMState *env, uint32_t insn_len)
 
     cpu->is_in_wfi = true;
     qemu_set_irq(cpu->wfi, 1);
+    qemu_mutex_unlock_iothread();
 
     cpu_loop_exit(cs);
 }
