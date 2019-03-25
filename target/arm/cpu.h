@@ -551,6 +551,7 @@ typedef struct CPUARMState {
     CPU_COMMON
 
     /* Fields after CPU_COMMON are preserved across CPU reset. */
+    bool irq_wires[4];
 
     /* Internal CPU feature flags.  */
     uint64_t features;

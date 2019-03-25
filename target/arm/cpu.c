@@ -37,6 +37,10 @@
 
 #include "hw/fdt_generic_util.h"
 
+#if !defined(CONFIG_USER_ONLY)
+static void arm_cpu_set_irq(void *opaque, int irq, int level);
+#endif
+
 static void arm_cpu_set_pc(CPUState *cs, vaddr value)
 {
     ARMCPU *cpu = ARM_CPU(cs);
@@ -155,6 +159,7 @@ static void arm_cpu_reset(CPUState *s)
 #ifndef CONFIG_USER_ONLY
     CPUClass *cc = CPU_GET_CLASS(s);
     vaddr old_pc = cc->get_pc(s);
+    int i;
 #endif
 
     acc->parent_reset(s);
@@ -378,6 +383,13 @@ static void arm_cpu_reset(CPUState *s)
             /* Only set secure mode if the CPU support EL3 */
             env->memattr[MEM_ATTR_SEC].attrs.secure = true;
     }
+
+    for (i = 0; i < ARRAY_SIZE(cpu->env.irq_wires); i++) {
+        if (!arm_feature(env, ARM_FEATURE_EL2) && i >= ARM_CPU_VIRQ) {
+            break;
+        }
+        arm_cpu_set_irq(cpu, i, cpu->env.irq_wires[i]);
+    }
 #endif
 }
 
@@ -481,6 +493,8 @@ static void arm_cpu_set_irq(void *opaque, int irq, int level)
         [ARM_CPU_VIRQ] = CPU_INTERRUPT_VIRQ,
         [ARM_CPU_VFIQ] = CPU_INTERRUPT_VFIQ
     };
+
+    env->irq_wires[irq] = level;
 
     switch (irq) {
     case ARM_CPU_VIRQ:
