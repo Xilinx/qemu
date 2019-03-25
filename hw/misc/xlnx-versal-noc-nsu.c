@@ -721,7 +721,7 @@ REG32(REG_SPARE, 0x27c)
 
 typedef struct NOC_NSU {
     SysBusDevice parent_obj;
-    MemoryRegion iomem;
+    RegisterInfoArray *reg_array;
 
     uint32_t regs[NOC_NSU_R_MAX];
     RegisterInfo regs_info[NOC_NSU_R_MAX];
@@ -1057,20 +1057,15 @@ static void noc_nsu_init(Object *obj)
 {
     NOC_NSU *s = XILINX_NOC_NSU(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
-    RegisterInfoArray *reg_array;
 
-    memory_region_init(&s->iomem, obj, TYPE_XILINX_NOC_NSU, NOC_NSU_R_MAX * 4);
-    reg_array =
+    s->reg_array =
         register_init_block32(DEVICE(obj), noc_nsu_regs_info,
                               ARRAY_SIZE(noc_nsu_regs_info),
                               s->regs_info, s->regs,
                               &noc_nsu_ops,
                               XILINX_NOC_NSU_ERR_DEBUG,
                               NOC_NSU_R_MAX * 4);
-    memory_region_add_subregion(&s->iomem,
-                                0x0,
-                                &reg_array->mem);
-    sysbus_init_mmio(sbd, &s->iomem);
+    sysbus_init_mmio(sbd, &s->reg_array->mem);
 }
 
 static const VMStateDescription vmstate_noc_nsu = {

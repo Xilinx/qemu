@@ -1157,7 +1157,7 @@ REG32(REG_SPARE, 0x914)
 
 typedef struct NOC_NMU {
     SysBusDevice parent_obj;
-    MemoryRegion iomem;
+    RegisterInfoArray *reg_array;
 
     uint32_t regs[NOC_NMU_R_MAX];
     RegisterInfo regs_info[NOC_NMU_R_MAX];
@@ -1755,20 +1755,15 @@ static void noc_nmu_init(Object *obj)
 {
     NOC_NMU *s = XILINX_NOC_NMU(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
-    RegisterInfoArray *reg_array;
 
-    memory_region_init(&s->iomem, obj, TYPE_XILINX_NOC_NMU, NOC_NMU_R_MAX * 4);
-    reg_array =
+    s->reg_array =
         register_init_block32(DEVICE(obj), noc_nmu_regs_info,
                               ARRAY_SIZE(noc_nmu_regs_info),
                               s->regs_info, s->regs,
                               &noc_nmu_ops,
                               XILINX_NOC_NMU_ERR_DEBUG,
                               NOC_NMU_R_MAX * 4);
-    memory_region_add_subregion(&s->iomem,
-                                0x0,
-                                &reg_array->mem);
-    sysbus_init_mmio(sbd, &s->iomem);
+    sysbus_init_mmio(sbd, &s->reg_array->mem);
 }
 
 static const VMStateDescription vmstate_noc_nmu = {
