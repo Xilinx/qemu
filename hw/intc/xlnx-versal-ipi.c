@@ -1350,7 +1350,10 @@ static bool ipi_valid_access(XlnxZynq3IPI *s, hwaddr addr,
         bool override = FIELD_EX32(s->regs[r], MASTER_ID00, OVERRIDEEN);
         uint16_t midm = FIELD_EX32(s->regs[r], MASTER_ID00, MIDM);
         uint16_t mid = FIELD_EX32(s->regs[r], MASTER_ID00, MID);
-        unsigned int prot_agent = r / (R_MASTER_ID01 - R_MASTER_ID00);
+        unsigned int prot_agent;
+
+        prot_agent = (r - R_MASTER_ID00) / (R_MASTER_ID01 - R_MASTER_ID00);
+
         /* 0 = Secure, 1 = Non-Secure.  */
         bool secure = !extract32(s->regs[R_IPI_APER_TZ_008], prot_agent, 1);
 
