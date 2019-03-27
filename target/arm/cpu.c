@@ -1979,15 +1979,6 @@ static Property arm_cpu_properties[] = {
     DEFINE_PROP_END_OF_LIST()
 };
 
-/* Update state of wfi out gpio */
-static void update_wfi_out(void *opaque, int level)
-{
-    ARMCPU *cpu = ARM_CPU(opaque);
-
-    cpu->is_in_wfi = level;
-    qemu_set_irq(cpu->wfi, level);
-}
-
 static void set_debug_context(CPUState *cs, unsigned int ctx)
 {
     ARMCPU *cpu = ARM_CPU(cs);
@@ -2009,7 +2000,6 @@ static void arm_cpu_pwr_cntrl(void *opaque, int n, int level)
 
     cpu->power_state = level ? PSCI_ON : PSCI_OFF;
     dc_parent->pwr_cntrl(opaque, n, level);
-    update_wfi_out(opaque, level);
 }
 
 #ifdef CONFIG_USER_ONLY
