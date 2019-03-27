@@ -135,6 +135,10 @@ void cpu_reset_interrupt(CPUState *cpu, int mask)
         qemu_mutex_lock_iothread();
     }
     cpu->interrupt_request &= ~mask;
+    /* Need to kick the CPU to get it out of qemu_tcg_wait_io_event if
+     * resetting CPU_INTERRUPT_HALT.
+     */
+    qemu_cpu_kick(cpu);
     if (need_lock) {
         qemu_mutex_unlock_iothread();
     }
