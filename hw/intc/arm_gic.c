@@ -93,7 +93,7 @@ static inline void gic_dump_lrs(GICState *s, const char *prefix)
 static inline int gic_get_current_cpu(GICState *s)
 {
     if (s->num_cpu > 1 && current_cpu) {
-        return current_cpu->cpu_index % 4;
+        return current_cpu->cpu_index % s->num_cpu;
     }
     return 0;
 }
