@@ -1285,10 +1285,10 @@ static void psm_global_reg_init(Object *obj)
     sysbus_init_irq(sbd, &s->irq_wakeup_irq);
     sysbus_init_irq(sbd, &s->irq_req_swrst_int);
     sysbus_init_irq(sbd, &s->irq_req_pwrup_int);
-    sysbus_init_irq(sbd, &s->irq_req_aux_int);
-    sysbus_init_irq(sbd, &s->irq_addr_error_int);
     sysbus_init_irq(sbd, &s->irq_pwr_ctrl_irq);
     sysbus_init_irq(sbd, &s->irq_req_iso_int);
+    sysbus_init_irq(sbd, &s->irq_addr_error_int);
+    sysbus_init_irq(sbd, &s->irq_req_aux_int);
 
     qdev_init_gpio_in_named(DEVICE(obj), pwr_state_h, "pwr-state", 32);
     qdev_init_gpio_in_named(DEVICE(obj), aux_pwr_state_h, "aux-pwr-state", 32);
