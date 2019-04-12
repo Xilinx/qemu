@@ -704,7 +704,7 @@ static void rpu_realize(DeviceState *dev, Error **errp)
         name = g_strdup_printf("mr-R5_%d", i);
         memory_region_init(&s->mr_R5[i], OBJECT(dev),
                            name,
-                           s->cfg.tcm_size * 2);
+                           s->cfg.tcm_size * 6);
         g_free(name);
 
         name = g_strdup_printf("tcm_A%d", i);
@@ -729,7 +729,7 @@ static void rpu_realize(DeviceState *dev, Error **errp)
 
         name = g_strdup_printf("mr-R5_%d-alias", i);
         memory_region_init_alias(&s->mr_R5_alias[i], OBJECT(dev),
-                                 name, &s->mr_R5[i], 0x0, INT64_MAX);
+                                 name, &s->mr_R5[i], 0x0, s->cfg.tcm_size * 6);
         g_free(name);
 
         sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->mr_R5[i]);
