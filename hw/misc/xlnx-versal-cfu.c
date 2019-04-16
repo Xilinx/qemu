@@ -29,6 +29,8 @@
 #include "hw/register.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
+#include "chardev/char.h"
+#include "chardev/char-fe.h"
 
 #ifndef XILINX_CFU_APB_ERR_DEBUG
 #define XILINX_CFU_APB_ERR_DEBUG 0
@@ -38,6 +40,14 @@
 
 #define XILINX_CFU_APB(obj) \
      OBJECT_CHECK(CFU, (obj), TYPE_XILINX_CFU_APB)
+
+#define DPRINT(args, ...) \
+    do { \
+        if (XILINX_CFU_APB_ERR_DEBUG) { \
+            qemu_log(args, ## __VA_ARGS__); \
+        } \
+    } while (0)
+
 
 REG32(CFU_ISR, 0x0)
     FIELD(CFU_ISR, USR_GTS_EVENT, 9, 1)
@@ -212,6 +222,7 @@ typedef struct CFU {
     /* 128-bit wfifo.  */
     uint32_t wfifo[4];
 
+    CharBackend chr;
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
 } CFU;
@@ -363,11 +374,18 @@ static void cfu_stream_write(void *opaque, hwaddr addr, uint64_t value,
         uint8_t packet_type, row_addr, reg_addr, crc8;
         int i;
 
+        if (qemu_chr_fe_get_driver(&s->chr)) {
+            for (i = idx; i >= 0; i--) {
+                qemu_chr_fe_printf(&s->chr, "%08x", (unsigned int)s->wfifo[i]);
+            }
+            qemu_chr_fe_printf(&s->chr, "\n");
+        }
+
         packet_type = extract32(s->wfifo[0], 24, 8);
         row_addr = extract32(s->wfifo[0], 16, 5);
         reg_addr = extract32(s->wfifo[0], 8, 6);
         crc8 = extract32(s->wfifo[0], 0, 8);
-        qemu_log("CFU: pt=%x row=%x reg=%x crc8=%x\n",
+        DPRINT("CFU: pt=%x row=%x reg=%x crc8=%x\n",
                  packet_type, row_addr, reg_addr, crc8);
 
         for (i = 0; i < ARRAY_SIZE(s->wfifo); i++) {
@@ -385,6 +403,18 @@ static const MemoryRegionOps cfu_stream_ops = {
         .max_access_size = 8,
     },
 };
+
+static void cfu_apb_realize(DeviceState *dev, Error **errp)
+{
+    CFU *s = XILINX_CFU_APB(dev);
+    Chardev *chr;
+
+    chr = qemu_chr_find("pmc-cfu");
+    qdev_prop_set_chr(dev, "chardev", chr);
+    if (!qemu_chr_fe_get_driver(&s->chr)) {
+        DPRINT("CFU Debug socket not connected\n");
+    }
+}
 
 static void cfu_apb_init(Object *obj)
 {
@@ -410,6 +440,11 @@ static void cfu_apb_init(Object *obj)
     sysbus_init_irq(sbd, &s->irq_cfu_imr);
 }
 
+static Property cfu_props[] = {
+        DEFINE_PROP_CHR("chardev", CFU, chr),
+        DEFINE_PROP_END_OF_LIST(),
+};
+
 static const VMStateDescription vmstate_cfu_apb = {
     .name = TYPE_XILINX_CFU_APB,
     .version_id = 1,
@@ -427,6 +462,9 @@ static void cfu_apb_class_init(ObjectClass *klass, void *data)
 
     dc->reset = cfu_apb_reset;
     dc->vmsd = &vmstate_cfu_apb;
+    dc->realize = cfu_apb_realize;
+    dc->props = cfu_props;
+
 }
 
 static const TypeInfo cfu_apb_info = {
