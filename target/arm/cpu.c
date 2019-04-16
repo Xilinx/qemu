@@ -791,6 +791,17 @@ static void arm_cpu_set_rvbar(Object *obj, Visitor *v,
     }
 }
 
+static void arm_cpu_set_memattr_secure(Object *obj, Visitor *v,
+                                          const char *name, void *opaque,
+                                          Error **errp)
+{
+    ARMCPU *cpu = ARM_CPU(obj);
+    bool secure;
+    visit_type_bool(v, name, &secure,
+                    errp);
+    cpu->env.memattr[MEM_ATTR_NS].attrs.secure = secure;
+}
+
 static Property arm_cpu_has_el2_property =
             DEFINE_PROP_BOOL("has_el2", ARMCPU, has_el2, true);
 
@@ -844,6 +855,12 @@ static void arm_cpu_post_init(Object *obj)
         object_property_add(obj, "rvbar", "uint64",
                             arm_cpu_get_rvbar,
                             arm_cpu_set_rvbar,
+                            NULL, NULL, &error_abort);
+    }
+
+    if (arm_feature(&cpu->env, ARM_FEATURE_V7)) {
+        object_property_add(obj, "memattr-secure", "bool",
+                            NULL, arm_cpu_set_memattr_secure,
                             NULL, NULL, &error_abort);
     }
 
