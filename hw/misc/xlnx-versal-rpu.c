@@ -813,6 +813,7 @@ static void rpu_init(Object *obj)
     sysbus_init_irq(sbd, &s->irq_rpu_0_imr);
 
     qdev_init_gpio_out_named(DEVICE(obj), s->halt, "halt", 2);
+    qdev_init_gpio_out_named(DEVICE(obj), s->vinithi, "vinithi", 2);
     qdev_init_gpio_in(DEVICE(obj), rpu_handle_gpio_in, 4);
 
     for (i = 0; i < MAX_RPU; i++) {
@@ -841,6 +842,7 @@ static const FDTGenericGPIOSet crl_gpios[] = {
       .names = &fdt_generic_gpio_name_set_gpio,
       .gpios = (FDTGenericGPIOConnection[]) {
         { .name = "halt", .fdt_index = 0, .range = 2 },
+        { .name = "vinithi", .fdt_index = 4, .range = 2 },
         { },
       },
     },
