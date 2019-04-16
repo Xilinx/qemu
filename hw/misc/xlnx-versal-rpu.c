@@ -342,6 +342,8 @@ REG32(RPU_1_AXI_OVER, 0x228)
 
 #define RPU_R_MAX (R_RPU_1_AXI_OVER + 1)
 
+#define MAX_RPU 2
+
 typedef struct RPU {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
@@ -368,6 +370,7 @@ typedef struct RPU {
         uint32_t dcache_size;
     } cfg;
 
+    DeviceState *rpu_cpu[MAX_RPU];
     uint32_t regs[RPU_R_MAX];
     RegisterInfo regs_info[RPU_R_MAX];
 } RPU;
@@ -519,10 +522,22 @@ static void rpu_update_gpios_pw(RegisterInfo *reg, uint64_t val64)
     rpu_update_gpios(s);
 }
 
+static void rpu_update_gic_axprot(RPU *s, bool secure)
+{
+    unsigned int i;
+    for (i = 0; i < MAX_RPU; i++) {
+        if (s->rpu_cpu[i]) {
+            qdev_prop_set_bit(s->rpu_cpu[i], "memattr-secure", secure);
+        }
+    }
+}
+
 static void rpu_glbl_cntl_pw(RegisterInfo *reg, uint64_t val64)
 {
     RPU *s = XILINX_VERSAL_RPU(reg->opaque);
 
+    rpu_update_gic_axprot(s, val64 & R_RPU_GLBL_CNTL_GIC_AXPROT_MASK ? false :
+                          true);
     rpu_setup_tcm(s);
     rpu_update_gpios(s);
 }
@@ -626,6 +641,7 @@ static void rpu_reset(DeviceState *dev)
     rpu_1_imr_update_irq(s);
     rpu_0_imr_update_irq(s);
 
+    rpu_update_gic_axprot(s, true);
     rpu_update_gpios(s);
 }
 
@@ -777,6 +793,8 @@ static void rpu_init(Object *obj)
     RPU *s = XILINX_VERSAL_RPU(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
     RegisterInfoArray *reg_array;
+    unsigned int i;
+    char *name;
 
     memory_region_init(&s->iomem, obj, TYPE_XILINX_VERSAL_RPU, RPU_R_MAX * 4);
     reg_array =
@@ -796,6 +814,16 @@ static void rpu_init(Object *obj)
 
     qdev_init_gpio_out_named(DEVICE(obj), s->halt, "halt", 2);
     qdev_init_gpio_in(DEVICE(obj), rpu_handle_gpio_in, 4);
+
+    for (i = 0; i < MAX_RPU; i++) {
+        name = g_strdup_printf("rpu%d", i);
+        object_property_add_link(obj, name, TYPE_DEVICE,
+                                 (Object **)&s->rpu_cpu[i],
+                                 qdev_prop_allow_set_link_before_realize,
+                                 OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                                 &error_abort);
+        g_free(name);
+    }
 }
 
 static const VMStateDescription vmstate_rpu = {

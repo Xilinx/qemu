@@ -791,6 +791,7 @@ static void arm_cpu_set_rvbar(Object *obj, Visitor *v,
     }
 }
 
+#ifndef CONFIG_USER_ONLY
 static void arm_cpu_set_memattr_secure(Object *obj, Visitor *v,
                                           const char *name, void *opaque,
                                           Error **errp)
@@ -801,6 +802,7 @@ static void arm_cpu_set_memattr_secure(Object *obj, Visitor *v,
                     errp);
     cpu->env.memattr[MEM_ATTR_NS].attrs.secure = secure;
 }
+#endif
 
 static Property arm_cpu_has_el2_property =
             DEFINE_PROP_BOOL("has_el2", ARMCPU, has_el2, true);
@@ -858,11 +860,13 @@ static void arm_cpu_post_init(Object *obj)
                             NULL, NULL, &error_abort);
     }
 
+#ifndef CONFIG_USER_ONLY
     if (arm_feature(&cpu->env, ARM_FEATURE_V7)) {
         object_property_add(obj, "memattr-secure", "bool",
                             NULL, arm_cpu_set_memattr_secure,
                             NULL, NULL, &error_abort);
     }
+#endif
 
     if (arm_feature(&cpu->env, ARM_FEATURE_EL3)) {
         /* Add the has_el3 state CPU property only if EL3 is allowed.  This will
