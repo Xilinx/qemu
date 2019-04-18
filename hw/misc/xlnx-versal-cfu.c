@@ -409,10 +409,7 @@ static const MemoryRegionOps cfu_stream_ops = {
 static void cfu_apb_realize(DeviceState *dev, Error **errp)
 {
     CFU *s = XILINX_CFU_APB(dev);
-    Chardev *chr;
 
-    chr = qemu_chr_find("pmc-cfu");
-    qdev_prop_set_chr(dev, "chardev", chr);
     if (!qemu_chr_fe_get_driver(&s->chr)) {
         DPRINT("CFU Debug socket not connected\n");
     }
