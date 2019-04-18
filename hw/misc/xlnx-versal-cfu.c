@@ -214,6 +214,8 @@ REG32(CFU_ECO2, 0x11c)
 #define R_MAX (R_CFU_ECO2 + 1)
 
 #define NUM_STREAM 2
+#define KEYHOLE_STREAM_4K 0x1000
+#define KEYHOLE_STREAM_256K 0x40000
 
 typedef struct CFU {
     SysBusDevice parent_obj;
@@ -438,7 +440,8 @@ static void cfu_apb_init(Object *obj)
     for (i = 0; i < NUM_STREAM; i++) {
         name = g_strdup_printf(TYPE_XILINX_CFU_APB "-stream%d", i);
         memory_region_init_io(&s->iomem_stream[i], obj, &cfu_stream_ops, s,
-                          name, 4 * 1024);
+                          name, i == 0 ? KEYHOLE_STREAM_4K :
+                                         KEYHOLE_STREAM_256K);
         sysbus_init_mmio(sbd, &s->iomem_stream[i]);
         g_free(name);
     }
