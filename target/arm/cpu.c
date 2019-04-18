@@ -403,14 +403,7 @@ bool arm_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
     uint32_t target_el;
     uint32_t excp_idx;
     bool ret = false;
-
-    /* Xilinx: If we get here we want to make sure that we update the WFI
-     * status to make sure that the PMU knows we are running again.
-     */
-    if (cpu->is_in_wfi) {
-        cpu->is_in_wfi = false;
-        qemu_set_irq(cpu->wfi, 0);
-    }
+    bool exit_wfi = false;
 
     if (interrupt_request & CPU_INTERRUPT_FIQ) {
         excp_idx = EXCP_FIQ;
@@ -420,6 +413,7 @@ bool arm_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
             env->exception.target_el = target_el;
             cc->do_interrupt(cs);
             ret = true;
+            exit_wfi = true;
         }
     }
     if (interrupt_request & CPU_INTERRUPT_HARD) {
@@ -430,6 +424,7 @@ bool arm_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
             env->exception.target_el = target_el;
             cc->do_interrupt(cs);
             ret = true;
+            exit_wfi = true;
         }
     }
     if (interrupt_request & CPU_INTERRUPT_VIRQ) {
@@ -451,6 +446,14 @@ bool arm_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
             cc->do_interrupt(cs);
             ret = true;
         }
+    }
+
+    /* Xilinx: If we get here we want to make sure that we update the WFI
+     * status to make sure that the PMU knows we are running again.
+     */
+    if (exit_wfi == true && cpu->is_in_wfi) {
+        cpu->is_in_wfi = false;
+        qemu_set_irq(cpu->wfi, 0);
     }
 
     return ret;
