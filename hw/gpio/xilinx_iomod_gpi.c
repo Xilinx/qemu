@@ -76,6 +76,13 @@ static const MemoryRegionOps iom_gpi_ops = {
     },
 };
 
+static void update_irq(XilinxGPI *s)
+{
+    if (s->ien & s->regs[R_IOM_GPI]) {
+        qemu_irq_pulse(s->parent_irq);
+    }
+}
+
 static void irq_handler(void *opaque, int irq, int level)
 {
     XilinxGPI *s = XILINX_IO_MODULE_GPI(opaque);
@@ -83,13 +90,10 @@ static void irq_handler(void *opaque, int irq, int level)
 
     /* If enable is set for @irq pin, update @irq pin in GPI and
      * trigger interrupt if transition is 0->1 */
-    if (s->ien & (1 << irq)) {
-        s->regs[R_IOM_GPI] &= ~(1 << irq);
-        s->regs[R_IOM_GPI] |= level << irq;
-        /* On input pin transition 0->1 trigger interrupt. */
-        if ((old != s->regs[R_IOM_GPI]) && level) {
-            qemu_irq_pulse(s->parent_irq);
-        }
+    s->regs[R_IOM_GPI] &= ~(1 << irq);
+    s->regs[R_IOM_GPI] |= (!!level) << irq;
+    if (old != s->regs[R_IOM_GPI]) {
+        update_irq(s);
     }
 }
 
@@ -105,9 +109,10 @@ static void ien_handler(void *opaque, int n, int level)
 {
     XilinxGPI *s = XILINX_IO_MODULE_GPI(opaque);
 
-    s->ien = level;
-    /* Clear all GPIs that got disabled */
-    s->regs[R_IOM_GPI] &= s->ien;
+    if (level != s->ien) {
+        s->ien = level;
+        update_irq(s);
+    }
 }
 
 static const DepRegisterAccessInfo gpi_regs_info[] = {
