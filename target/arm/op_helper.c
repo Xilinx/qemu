@@ -485,7 +485,7 @@ void HELPER(wfi)(CPUARMState *env, uint32_t insn_len)
     }
 
     qemu_mutex_lock_iothread();
-    if (use_icount) {
+    if (use_icount || 1) {
         cs->exception_index = EXCP_YIELD;
     } else {
         cs->halted = 1;
