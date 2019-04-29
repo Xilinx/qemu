@@ -12,6 +12,12 @@ common-obj-$(CONFIG_XLNX_ZYNQMP) += csu_core.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += sss.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += sss-csu.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += csu_pcap.o
+common-obj-$(CONFIG_XLNX_ZYNQMP_CSU) += csu_sha3.o
+ifeq ($(CONFIG_GCRYPT), y)
+common-obj-$(CONFIG_XLNX_ZYNQMP_CSU) += ipcores-rsa5-4k.o
+common-obj-$(CONFIG_XLNX_ZYNQMP_CSU) += csu_rsa5_4k.o
+common-obj-$(CONFIG_XLNX_VERSAL_PMC) += xlnx-versal-ecdsa-rsa.o
+endif
 
 obj-$(CONFIG_XLNX_ZYNQMP_ARM) += xilinx-lpd-slcr.o
 obj-$(CONFIG_XLNX_ZYNQMP_ARM) += xilinx_zynqmp_apu_ctrl.o
