@@ -188,7 +188,15 @@ static void mpi_to_signed(gcry_mpi_t a, unsigned int bytelen)
     if (gcry_mpi_test_bit(a, s_bit)) {
         gcry_mpi_t tmp;
 
-        tmp = gcry_mpi_new(bytelen * 8);
+        /*
+         * Allocate an additional bit to workaround a bug in older
+         * libgcrypt (at least 1.5.2). They allocate new space on demand but
+         * seem to fail to zero it in certain cases. This of course leads
+         * to incorrect computations.
+         *
+         * This makes sure the space is pre-allocated and zeroed out.
+         */
+        tmp = gcry_mpi_new(s_bit + 2);
         gcry_mpi_set_ui(tmp, 0);
         gcry_mpi_set_bit(tmp, s_bit + 1);
 
