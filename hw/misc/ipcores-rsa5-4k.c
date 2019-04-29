@@ -201,6 +201,7 @@ static void mpi_to_signed(gcry_mpi_t a, unsigned int bytelen)
         gcry_mpi_set_bit(tmp, s_bit + 1);
 
         gcry_mpi_sub(a, a, tmp);
+        gcry_mpi_release(tmp);
     }
 }
 
@@ -215,6 +216,7 @@ static void mpi_to_unsigned(gcry_mpi_t a, unsigned int bytelen)
         gcry_mpi_set_ui(r, 0);
         gcry_mpi_set_bit(r, s_bit);
         gcry_mpi_add(a, r, a);
+        gcry_mpi_release(r);
     }
 }
 
@@ -420,7 +422,10 @@ done:
 
     gcry_mpi_release(a);
     gcry_mpi_release(b);
+    gcry_mpi_release(m2);
     gcry_mpi_release(r);
+    gcry_mpi_release(bit);
+    gcry_mpi_release(tmp);
     return ret;
 }
 
@@ -713,6 +718,7 @@ int rsa_do_exppre(IPCoresRSA *s, unsigned int bitlen,
     }
 
     gcry_mpi_release(m);
+    gcry_mpi_release(y);
     gcry_mpi_release(r);
 
     return rsa_do_exp(s, bitlen, digits);
