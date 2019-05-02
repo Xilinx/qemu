@@ -124,6 +124,8 @@ DEP_REG32(EFUSE_CACHE_LOAD, 0x40)
 DEP_REG32(EFUSE_PGM_LOCK, 0x44)
     DEP_FIELD(EFUSE_PGM_LOCK, SPK_ID_LOCK, 1, 0)
 DEP_REG32(EFUSE_AES_CRC, 0x48)
+DEP_REG32(EFUSE_TBITS_PRGRMG_EN, 0x100)
+    DEP_FIELD(EFUSE_TBITS_PRGRMG_EN, TBITS_PRGRMG_EN, 1, 3)
 DEP_REG32(DNA_0, 0x100c)
 DEP_REG32(DNA_1, 0x1010)
 DEP_REG32(DNA_2, 0x1014)
@@ -561,6 +563,8 @@ static DepRegisterAccessInfo zynqmp_efuse_regs_info[] = {
         .pre_write = zynqmp_efuse_cache_load_prew,
     },{ .name = "EFUSE_PGM_LOCK",  .decode.addr = A_EFUSE_PGM_LOCK,
     },{ .name = "EFUSE_AES_CRC",  .decode.addr = A_EFUSE_AES_CRC,
+    },{ .name = "EFUSE_TBITS_PRGRMG_EN",  .decode.addr = A_EFUSE_TBITS_PRGRMG_EN,
+        .reset = R_EFUSE_TBITS_PRGRMG_EN_TBITS_PRGRMG_EN_MASK,
     },{ .name = "DNA_0",  .decode.addr = A_DNA_0,
         .ro = 0xffffffff,
     },{ .name = "DNA_1",  .decode.addr = A_DNA_1,
