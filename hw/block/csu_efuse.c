@@ -220,10 +220,6 @@ DEP_REG32(PPK1_11, 0x10fc)
 
 /* TBIT pattern is specific to zynqmp */
 #define TBITS_PATTERN    0xA
-#define TBIT0_OFFSET     28
-#define TBIT1_OFFSET     29
-#define TBIT2_OFFSET     30
-#define TBIT3_OFFSET     31
 
 /* #define EFUSE_XOSC            26 */
 #define EFUSE_DFT             BIT_POS(22, 6)
