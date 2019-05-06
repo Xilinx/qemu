@@ -87,7 +87,7 @@ static void m24cxx_reset(DeviceState *dev)
     s->cur_addr = 0;
 }
 
-static int m24cxx_recv(I2CSlave *i2c)
+static uint8_t m24cxx_recv(I2CSlave *i2c)
 {
     M24CXXState *s = M24CXX(i2c);
     int ret = 0;

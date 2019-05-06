@@ -94,6 +94,7 @@ static void copy_properties_from_host(HostProperty *props, int nb_props,
         r = qemu_fdt_getprop(host_fdt, node_path,
                              props[i].name,
                              &prop_len,
+                             false,
                              &err);
         if (r) {
             qemu_fdt_setprop(guest_fdt, nodename,
@@ -162,7 +163,7 @@ static void fdt_build_clock_node(void *host_fdt, void *guest_fdt,
     }
 
     r = qemu_fdt_getprop(host_fdt, node_path, "compatible", &prop_len,
-                         &error_fatal);
+                         false, &error_fatal);
     if (strcmp(r, "fixed-clock")) {
         error_report("clock handle %d is not a fixed clock", host_phandle);
         exit(1);
@@ -335,7 +336,7 @@ static int add_amd_xgbe_fdt_node(SysBusDevice *sbdev, void *opaque)
 
     /* generate nodes for DMA_CLK and PTP_CLK */
     r = qemu_fdt_getprop(host_fdt, node_path[0], "clocks",
-                         &prop_len, &error_fatal);
+                         &prop_len, false, &error_fatal);
     if (prop_len != 8) {
         error_report("%s clocks property should contain 2 handles", __func__);
         exit(1);

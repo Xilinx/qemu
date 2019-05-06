@@ -54,6 +54,11 @@ static inline bool excp_is_internal(int excp)
         || excp == EXCP_SEMIHOST;
 }
 
+/* Scale factor for generic timers, ie number of ns per tick.
+ * This gives a 62.5MHz timer.
+ */
+#define GTIMER_SCALE 16
+
 /* Bit definitions for the v7M CONTROL register */
 FIELD(V7M_CONTROL, NPRIV, 0, 1)
 FIELD(V7M_CONTROL, SPSEL, 1, 1)

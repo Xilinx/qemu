@@ -901,17 +901,17 @@ static void rpu_init(Object *obj)
     object_property_add_link(obj, "atcm1-for-rpu0", TYPE_MEMORY_REGION,
                              (Object **)&s->atcm1_for_rpu0,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             OBJ_PROP_LINK_STRONG,
                              &error_abort);
     object_property_add_link(obj, "btcm1-for-rpu0", TYPE_MEMORY_REGION,
                              (Object **)&s->btcm1_for_rpu0,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             OBJ_PROP_LINK_STRONG,
                              &error_abort);
     object_property_add_link(obj, "rpu1-for-main-bus", TYPE_MEMORY_REGION,
                              (Object **)&s->atcm1_for_rpu0,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             OBJ_PROP_LINK_STRONG,
                              &error_abort);
 
     /* This link allows to enable/disable those memory region when we are in
@@ -920,12 +920,12 @@ static void rpu_init(Object *obj)
     object_property_add_link(obj, "icache-for-rpu1", TYPE_MEMORY_REGION,
                              (Object **)&s->icache_for_rpu1,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             OBJ_PROP_LINK_STRONG,
                              &error_abort);
     object_property_add_link(obj, "dcache-for-rpu1", TYPE_MEMORY_REGION,
                              (Object **)&s->dcache_for_rpu1,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             OBJ_PROP_LINK_STRONG,
                              &error_abort);
 
     /* Link to the second part of the DDR which is enabled in split mode and
@@ -934,7 +934,7 @@ static void rpu_init(Object *obj)
     object_property_add_link(obj, "ddr-mem-for-rpu", TYPE_MEMORY_REGION,
                              (Object **)&s->ddr,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             OBJ_PROP_LINK_STRONG,
                              &error_abort);
 
     /* Link to the GIC which allow to inject irq through rpu_intr/rpu_mask
@@ -943,7 +943,7 @@ static void rpu_init(Object *obj)
     object_property_add_link(obj, "gic-for-rpu", TYPE_XLNX_SCU_GIC,
                              (Object **)&s->gic,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             OBJ_PROP_LINK_STRONG,
                              &error_abort);
 
     /* comp_fault gpios are connected to the PMU. */

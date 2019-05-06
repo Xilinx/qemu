@@ -73,13 +73,6 @@ static void arm_cpu_synchronize_from_tb(CPUState *cs, TranslationBlock *tb)
     }
 }
 
-static vaddr arm_cpu_get_pc(CPUState *cs)
-{
-    ARMCPU *cpu = ARM_CPU(cs);
-
-    return cpu->env.regs[15];
-}
-
 enum {
     ARM_DEBUG_CURRENT_EL,
     ARM_DEBUG_PHYS
@@ -196,7 +189,7 @@ static void arm_cpu_reset(CPUState *s)
     CPUARMState *env = &cpu->env;
 #ifndef CONFIG_USER_ONLY
     CPUClass *cc = CPU_GET_CLASS(s);
-    vaddr old_pc = cc->get_pc(s);
+    vaddr old_pc = is_a64(&cpu->env) ? cpu->env.pc : cpu->env.regs[15];
     int i;
 #endif
 
@@ -621,6 +614,8 @@ static void arm_cpu_set_irq(void *opaque, int irq, int level)
         [ARM_CPU_VFIQ] = CPU_INTERRUPT_VFIQ
     };
 
+    env->irq_wires[irq] = level;
+
     if (level) {
         env->irq_line_state |= mask[irq];
     } else {
@@ -911,13 +906,13 @@ static void arm_cpu_initfn(Object *obj)
     object_property_add_link(obj, "memattr_ns", TYPE_MEMORY_TRANSACTION_ATTR,
                              (Object **)&cpu->env.memattr_ns,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             OBJ_PROP_LINK_STRONG,
                              &error_abort);
 
     object_property_add_link(obj, "memattr_s", TYPE_MEMORY_TRANSACTION_ATTR,
                              (Object **)&cpu->env.memattr_s,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             OBJ_PROP_LINK_STRONG,
                              &error_abort);
 #endif
 }
@@ -1167,14 +1162,14 @@ static void arm_cpu_realizefn(DeviceState *dev, Error **errp)
         }
     }
 
-    cpu->gt_timer[GTIMER_PHYS] = timer_new(QEMU_CLOCK_VIRTUAL, GTIMER_SCALE,
-                                           arm_gt_ptimer_cb, cpu);
-    cpu->gt_timer[GTIMER_VIRT] = timer_new(QEMU_CLOCK_VIRTUAL, GTIMER_SCALE,
-                                           arm_gt_vtimer_cb, cpu);
-    cpu->gt_timer[GTIMER_HYP] = timer_new(QEMU_CLOCK_VIRTUAL, GTIMER_SCALE,
-                                          arm_gt_htimer_cb, cpu);
-    cpu->gt_timer[GTIMER_SEC] = timer_new(QEMU_CLOCK_VIRTUAL, GTIMER_SCALE,
-                                          arm_gt_stimer_cb, cpu);
+    cpu->gt_timer[GTIMER_PHYS] = timer_new(QEMU_CLOCK_VIRTUAL,
+                                           1, arm_gt_ptimer_cb, cpu);
+    cpu->gt_timer[GTIMER_VIRT] = timer_new(QEMU_CLOCK_VIRTUAL,
+                                           1, arm_gt_vtimer_cb, cpu);
+    cpu->gt_timer[GTIMER_HYP] = timer_new(QEMU_CLOCK_VIRTUAL,
+                                          1, arm_gt_htimer_cb, cpu);
+    cpu->gt_timer[GTIMER_SEC] = timer_new(QEMU_CLOCK_VIRTUAL,
+                                          1, arm_gt_stimer_cb, cpu);
 #endif
 
     cpu_exec_realizefn(cs, &local_err);
@@ -1846,7 +1841,6 @@ static void cortex_r4_initfn(Object *obj)
 {
     ARMCPU *cpu = ARM_CPU(obj);
     set_feature(&cpu->env, ARM_FEATURE_V7);
-    set_feature(&cpu->env, ARM_FEATURE_THUMB_DIV);
     set_feature(&cpu->env, ARM_FEATURE_PMSA);
     cpu->midr = 0x411FC144; /* r1p4 */
     cpu->id_pfr0 = 0x0131;
@@ -1857,12 +1851,12 @@ static void cortex_r4_initfn(Object *obj)
     cpu->id_mmfr1 = 0x00000000;
     cpu->id_mmfr2 = 0x01200000;
     cpu->id_mmfr3 = 0x0211;
-    cpu->id_isar0 = 0x1101111;
-    cpu->id_isar1 = 0x13112111;
-    cpu->id_isar2 = 0x21232131;
-    cpu->id_isar3 = 0x01112131;
-    cpu->id_isar4 = 0x0010142;
-    cpu->id_isar5 = 0x0;
+    cpu->isar.id_isar0 = 0x1101111;
+    cpu->isar.id_isar1 = 0x13112111;
+    cpu->isar.id_isar2 = 0x21232131;
+    cpu->isar.id_isar3 = 0x01112131;
+    cpu->isar.id_isar4 = 0x0010142;
+    cpu->isar.id_isar5 = 0x0;
     cpu->mp_is_up = true;
 }
 
@@ -2503,7 +2497,6 @@ static void arm_cpu_class_init(ObjectClass *oc, void *data)
     cc->cpu_exec_interrupt = arm_cpu_exec_interrupt;
     cc->dump_state = arm_cpu_dump_state;
     cc->set_pc = arm_cpu_set_pc;
-    cc->get_pc = arm_cpu_get_pc;
     cc->debug_contexts = arm_debug_ctx;
     cc->set_debug_context = set_debug_context;
     cc->synchronize_from_tb = arm_cpu_synchronize_from_tb;

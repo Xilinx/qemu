@@ -27,6 +27,8 @@
 #include "trace.h"
 #include "sysemu/kvm.h"
 
+#include "hw/fdt_generic_util.h"
+
 /* #define DEBUG_GIC */
 
 #ifdef DEBUG_GIC
@@ -2088,12 +2090,56 @@ static void arm_gic_realize(DeviceState *dev, Error **errp)
 
 }
 
+static void arm_gic_fdt_auto_parent(FDTGenericIntc *obj, Error **errp)
+{
+    GICState *s = ARM_GIC(obj);
+    CPUState *cs;
+    int i = 0;
+
+    for (cs = first_cpu; cs; cs = CPU_NEXT(cs)) {
+        if (i >= s->num_cpu) {
+            break;
+        }
+        qdev_connect_gpio_out_named(DEVICE(obj), "irq", i,
+                                    qdev_get_gpio_in(DEVICE(cs), 0));
+        i++;
+    }
+
+    /* FIXME: Add some error checking */
+}
+
+static const FDTGenericGPIOSet arm_gic_client_gpios [] = {
+    {
+        .names = &fdt_generic_gpio_name_set_interrupts,
+        .gpios = (FDTGenericGPIOConnection []) {
+            { .name = "irq",        .range = 16 },
+            { .name = "fiq",    .range = 16, .fdt_index = 16 },
+            { .name = "maint",    .range = 4, .fdt_index = 32 },
+            { },
+        },
+    },
+    {
+        .names = &fdt_generic_gpio_name_set_gpio,
+        .gpios = (FDTGenericGPIOConnection []) {
+            { .name = "pwr_cntrl", .range = 1, .fdt_index = 0 },
+            { .name = "rst_cntrl", .range = 1, .fdt_index = 1 },
+            { },
+        },
+    },
+    { },
+};
+
 static void arm_gic_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     ARMGICClass *agc = ARM_GIC_CLASS(klass);
+    FDTGenericIntcClass *fgic = FDT_GENERIC_INTC_CLASS(klass);
+    FDTGenericGPIOClass *fggc = FDT_GENERIC_GPIO_CLASS(klass);
 
+    agc->irq_handler = gic_set_irq;
     device_class_set_parent_realize(dc, arm_gic_realize, &agc->parent_realize);
+    fgic->auto_parent = arm_gic_fdt_auto_parent;
+    fggc->client_gpios = arm_gic_client_gpios;
 }
 
 static const TypeInfo arm_gic_info = {

@@ -484,8 +484,12 @@ static MemoryRegionSection address_space_translate_iommu(IOMMUMemoryRegion *iomm
             iommu_idx = imrc->attrs_to_index(iommu_mr, attrs);
         }
 
-        iotlb = imrc->translate(iommu_mr, addr, is_write ?
-                                IOMMU_WO : IOMMU_RO, iommu_idx);
+        if (imrc->translate_attr) {
+            iotlb = imrc->translate_attr(iommu_mr, addr, is_write, &attrs);
+        } else {
+            iotlb = imrc->translate(iommu_mr, addr, is_write ?
+                                    IOMMU_WO : IOMMU_RO, iommu_idx);
+        }
 
         if (!(iotlb.perm & (1 << is_write))) {
             goto unassigned;
@@ -742,7 +746,11 @@ address_space_translate_for_iotlb(CPUState *cpu, int asidx, hwaddr addr,
         /* We need all the permissions, so pass IOMMU_NONE so the IOMMU
          * doesn't short-cut its translation table walk.
          */
-        iotlb = imrc->translate(iommu_mr, addr, IOMMU_NONE, iommu_idx);
+        if (imrc->translate_attr) {
+            iotlb = imrc->translate_attr(iommu_mr, addr, IOMMU_NONE, &attrs);
+        } else {
+            iotlb = imrc->translate(iommu_mr, addr, IOMMU_NONE, iommu_idx);
+        }
         addr = ((iotlb.translated_addr & ~iotlb.addr_mask)
                 | (addr & iotlb.addr_mask));
         /* Update the caller's prot bits to remove permissions the IOMMU

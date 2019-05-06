@@ -40,6 +40,7 @@
 #include "qapi/error.h"
 #include "sysemu/qtest.h"
 #include "qemu/config-file.h"
+#include "qemu/option.h"
 
 #include "hw/fdt_generic_util.h"
 #include "hw/fdt_generic_devices.h"

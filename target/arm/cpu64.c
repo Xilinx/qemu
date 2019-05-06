@@ -211,8 +211,8 @@ static void aarch64_a53_initfn(Object *obj)
 
     /* Xilinx FIXUPs.  */
     /* These indicate the BP hardening and KPTI aren't needed.  */
-    cpu->id_aa64pfr0 |= (uint64_t)1 << 56; /* BP.  */
-    cpu->id_aa64pfr0 |= (uint64_t)1 << 60; /* KPTI.  */
+    cpu->isar.id_aa64pfr0 |= (uint64_t)1 << 56; /* BP.  */
+    cpu->isar.id_aa64pfr0 |= (uint64_t)1 << 60; /* KPTI.  */
 }
 
 static void aarch64_a72_initfn(Object *obj)
@@ -268,8 +268,8 @@ static void aarch64_a72_initfn(Object *obj)
 
     /* Xilinx FIXUPs.  */
     /* These indicate the BP hardening and KPTI aren't needed.  */
-    cpu->id_aa64pfr0 |= (uint64_t)1 << 56; /* BP.  */
-    cpu->id_aa64pfr0 |= (uint64_t)1 << 60; /* KPTI.  */
+    cpu->isar.id_aa64pfr0 |= (uint64_t)1 << 56; /* BP.  */
+    cpu->isar.id_aa64pfr0 |= (uint64_t)1 << 60; /* KPTI.  */
 }
 
 static void cpu_max_get_sve_vq(Object *obj, Visitor *v, const char *name,

@@ -22,6 +22,7 @@
 #include "sysemu/sysemu.h"
 #include "qom/cpu.h"
 #include "qapi/error.h"
+#include "qemu/option.h"
 #include "qemu/log.h"
 
 #ifdef CONFIG_FDT

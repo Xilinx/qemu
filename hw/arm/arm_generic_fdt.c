@@ -22,6 +22,7 @@
 #include "qemu/error-report.h"
 #include "qemu/log.h"
 #include "qemu/config-file.h"
+#include "qemu/option.h"
 #include "sysemu/qtest.h"
 #include "hw/arm/xlnx-zynqmp.h"
 

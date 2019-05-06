@@ -14349,7 +14349,6 @@ static void aarch64_tr_init_disas_context(DisasContextBase *dcbase,
     dc->current_el = arm_mmu_idx_to_el(dc->mmu_idx);
 #if !defined(CONFIG_USER_ONLY)
     dc->user = (dc->current_el == 0);
-    dc->ns = ARM_TBFLAG_NS(dc->base.tb->flags);
 #endif
     dc->fp_excp_el = FIELD_EX32(tb_flags, TBFLAG_ANY, FPEXC_EL);
     dc->sve_excp_el = FIELD_EX32(tb_flags, TBFLAG_A64, SVEEXC_EL);
@@ -14505,7 +14504,6 @@ static void aarch64_tr_tb_stop(DisasContextBase *dcbase, CPUState *cpu)
         case DISAS_WFE:
             gen_a64_set_pc_im(dc->pc);
             gen_helper_wfe(cpu_env);
-            tcg_gen_exit_tb(0);
             break;
         case DISAS_YIELD:
             gen_a64_set_pc_im(dc->pc);

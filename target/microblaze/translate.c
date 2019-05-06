@@ -1237,8 +1237,6 @@ static void dec_br(DisasContext *dc)
                            -offsetof(MicroBlazeCPU, env)
                            +offsetof(CPUState, halted));
             tcg_gen_movi_i64(cpu_SR[SR_PC], dc->pc + 4);
-            gen_helper_raise_exception(cpu_env, tmp_hlt);
-            tcg_temp_free_i32(tmp_hlt);
             tcg_temp_free_i32(tmp_1);
             dc->is_jmp = DISAS_UPDATE;
             gen_helper_sleep(cpu_env);

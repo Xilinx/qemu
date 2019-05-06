@@ -189,7 +189,7 @@ static void xlnx_zynqmp_pmu_init(MachineState *machine)
                            machine->ram_size,
                            machine->initrd_filename,
                            machine->dtb,
-                           NULL);
+                           NULL, NULL, 0);
 }
 
 static void xlnx_zynqmp_pmu_machine_init(MachineClass *mc)

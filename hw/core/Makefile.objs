@@ -27,6 +27,7 @@ common-obj-$(CONFIG_PFLASH_CFI01) += fdt_generic_devices_flash.o
 common-obj-$(CONFIG_SSI_M25P80) += fdt_generic_devices_ssi_m25p80.o
 common-obj-$(CONFIG_SI57X) += fdt_generic_devices_si57x.o
 common-obj-$(CONFIG_USB_EHCI_SYSBUS) += fdt_generic_devices_usb_ehci_sysbus.o
+common-obj-$(CONFIG_SOFTMMU) += register-dep.o
 
 obj-y += remote-port-qdev.o
 obj-$(CONFIG_REMOTE_PORT) += remote-port-proto.o
@@ -37,13 +38,8 @@ obj-$(CONFIG_REMOTE_PORT) += remote-port-gpio.o
 obj-$(CONFIG_REMOTE_PORT) += remote-port-stream.o
 obj-$(CONFIG_REMOTE_PORT) += remote-port-net.o
 obj-$(CONFIG_REMOTE_PORT_PCI) += remote-port-pci-device.o
-common-obj-$(CONFIG_PLATFORM_BUS) += platform-bus.o
 
-obj-$(CONFIG_SOFTMMU) += generic-loader.o
-common-obj-$(CONFIG_PLATFORM_BUS) += platform-bus.o
-
-obj-$(CONFIG_SOFTMMU) += generic-loader.o
-common-obj-$(CONFIG_SOFTMMU) += register.o register-dep.o
+common-obj-$(CONFIG_SOFTMMU) += register.o
 common-obj-$(CONFIG_SOFTMMU) += or-irq.o
 common-obj-$(CONFIG_SOFTMMU) += split-irq.o
 common-obj-$(CONFIG_PLATFORM_BUS) += platform-bus.o

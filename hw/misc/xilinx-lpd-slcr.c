@@ -674,12 +674,12 @@ static void lpd_slcr_init(Object *obj)
     object_property_add_link(obj, "gic-for-rpu", TYPE_XLNX_SCU_GIC,
                              (Object **)&s->rpu_gic,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             OBJ_PROP_LINK_STRONG,
                              &error_abort);
     object_property_add_link(obj, "gic-for-apu", TYPE_XLNX_SCU_GIC,
                              (Object **)&s->apu_gic,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             OBJ_PROP_LINK_STRONG,
                              &error_abort);
 }
 
