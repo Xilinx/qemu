@@ -61,7 +61,7 @@ typedef struct Tca6416 {
      uint8_t regs[RMAX];
 } tca6416;
 
-static int tca6416_read(I2CSlave *i2c)
+static uint8_t tca6416_read(I2CSlave *i2c)
 {
     tca6416 *s = TCA6416(i2c);
     uint8_t ret;
@@ -85,13 +85,12 @@ static int tca6416_write(I2CSlave *i2c, uint8_t data)
     return 0;
 }
 
-static int tca6416_init(I2CSlave *i2c)
+static void tca6416_realize(DeviceState *dev, Error **errp)
 {
-    tca6416 *s = TCA6416(i2c);
+    tca6416 *s = TCA6416(dev);
 
     s->regs[CONF_PORT0] = 0xFF;
     s->regs[CONF_PORT1] = 0xFF;
-    return 0;
 }
 
 static int tca6416_event(I2CSlave *i2c, enum i2c_event event)
@@ -110,9 +109,10 @@ static int tca6416_event(I2CSlave *i2c, enum i2c_event event)
 
 static void tca6416_class_init(ObjectClass *klass, void *data)
 {
+    DeviceClass *dc = DEVICE_CLASS(klass);
     I2CSlaveClass *k = I2C_SLAVE_CLASS(klass);
 
-    k->init = tca6416_init;
+    dc->realize = tca6416_realize;
     k->recv = tca6416_read;
     k->send = tca6416_write;
     k->event = tca6416_event;

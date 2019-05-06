@@ -21,13 +21,15 @@
 #include "qemu/osdep.h"
 
 #include "block/block_int.h"
+#include "block/qdict.h"
 #include "sysemu/block-backend.h"
 #include "crypto/block.h"
 #include "qapi/opts-visitor.h"
+#include "qapi/qapi-visit-crypto.h"
 #include "qapi/qobject-input-visitor.h"
-#include "qapi-visit.h"
 #include "qapi/error.h"
-#include "block/crypto.h"
+#include "qemu/option.h"
+#include "crypto.h"
 
 typedef struct BlockCrypto BlockCrypto;
 
@@ -69,8 +71,6 @@ static ssize_t block_crypto_read_func(QCryptoBlock *block,
 
 
 struct BlockCryptoCreateData {
-    const char *filename;
-    QemuOpts *opts;
     BlockBackend *blk;
     uint64_t size;
 };
@@ -101,27 +101,18 @@ static ssize_t block_crypto_init_func(QCryptoBlock *block,
                                       Error **errp)
 {
     struct BlockCryptoCreateData *data = opaque;
-    int ret;
+
+    if (data->size > INT64_MAX || headerlen > INT64_MAX - data->size) {
+        error_setg(errp, "The requested file size is too large");
+        return -EFBIG;
+    }
 
     /* User provided size should reflect amount of space made
      * available to the guest, so we must take account of that
      * which will be used by the crypto header
      */
-    data->size += headerlen;
-
-    qemu_opt_set_number(data->opts, BLOCK_OPT_SIZE, data->size, &error_abort);
-    ret = bdrv_create_file(data->filename, data->opts, errp);
-    if (ret < 0) {
-        return -1;
-    }
-
-    data->blk = blk_new_open(data->filename, NULL, NULL,
-                             BDRV_O_RDWR | BDRV_O_PROTOCOL, errp);
-    if (!data->blk) {
-        return -1;
-    }
-
-    return 0;
+    return blk_truncate(data->blk, data->size + headerlen, PREALLOC_MODE_OFF,
+                        errp);
 }
 
 
@@ -157,102 +148,36 @@ static QemuOptsList block_crypto_create_opts_luks = {
 
 
 QCryptoBlockOpenOptions *
-block_crypto_open_opts_init(QCryptoBlockFormat format,
-                            QDict *opts,
-                            Error **errp)
+block_crypto_open_opts_init(QDict *opts, Error **errp)
 {
     Visitor *v;
-    QCryptoBlockOpenOptions *ret = NULL;
-    Error *local_err = NULL;
+    QCryptoBlockOpenOptions *ret;
 
-    ret = g_new0(QCryptoBlockOpenOptions, 1);
-    ret->format = format;
-
-    v = qobject_input_visitor_new_keyval(QOBJECT(opts));
-
-    visit_start_struct(v, NULL, NULL, 0, &local_err);
-    if (local_err) {
-        goto out;
+    v = qobject_input_visitor_new_flat_confused(opts, errp);
+    if (!v) {
+        return NULL;
     }
 
-    switch (format) {
-    case Q_CRYPTO_BLOCK_FORMAT_LUKS:
-        visit_type_QCryptoBlockOptionsLUKS_members(
-            v, &ret->u.luks, &local_err);
-        break;
+    visit_type_QCryptoBlockOpenOptions(v, NULL, &ret, errp);
 
-    case Q_CRYPTO_BLOCK_FORMAT_QCOW:
-        visit_type_QCryptoBlockOptionsQCow_members(
-            v, &ret->u.qcow, &local_err);
-        break;
-
-    default:
-        error_setg(&local_err, "Unsupported block format %d", format);
-        break;
-    }
-    if (!local_err) {
-        visit_check_struct(v, &local_err);
-    }
-
-    visit_end_struct(v, NULL);
-
- out:
-    if (local_err) {
-        error_propagate(errp, local_err);
-        qapi_free_QCryptoBlockOpenOptions(ret);
-        ret = NULL;
-    }
     visit_free(v);
     return ret;
 }
 
 
 QCryptoBlockCreateOptions *
-block_crypto_create_opts_init(QCryptoBlockFormat format,
-                              QDict *opts,
-                              Error **errp)
+block_crypto_create_opts_init(QDict *opts, Error **errp)
 {
     Visitor *v;
-    QCryptoBlockCreateOptions *ret = NULL;
-    Error *local_err = NULL;
+    QCryptoBlockCreateOptions *ret;
 
-    ret = g_new0(QCryptoBlockCreateOptions, 1);
-    ret->format = format;
-
-    v = qobject_input_visitor_new_keyval(QOBJECT(opts));
-
-    visit_start_struct(v, NULL, NULL, 0, &local_err);
-    if (local_err) {
-        goto out;
+    v = qobject_input_visitor_new_flat_confused(opts, errp);
+    if (!v) {
+        return NULL;
     }
 
-    switch (format) {
-    case Q_CRYPTO_BLOCK_FORMAT_LUKS:
-        visit_type_QCryptoBlockCreateOptionsLUKS_members(
-            v, &ret->u.luks, &local_err);
-        break;
+    visit_type_QCryptoBlockCreateOptions(v, NULL, &ret, errp);
 
-    case Q_CRYPTO_BLOCK_FORMAT_QCOW:
-        visit_type_QCryptoBlockOptionsQCow_members(
-            v, &ret->u.qcow, &local_err);
-        break;
-
-    default:
-        error_setg(&local_err, "Unsupported block format %d", format);
-        break;
-    }
-    if (!local_err) {
-        visit_check_struct(v, &local_err);
-    }
-
-    visit_end_struct(v, NULL);
-
- out:
-    if (local_err) {
-        error_propagate(errp, local_err);
-        qapi_free_QCryptoBlockCreateOptions(ret);
-        ret = NULL;
-    }
     visit_free(v);
     return ret;
 }
@@ -290,8 +215,9 @@ static int block_crypto_open_generic(QCryptoBlockFormat format,
     }
 
     cryptoopts = qemu_opts_to_qdict(opts, NULL);
+    qdict_put_str(cryptoopts, "format", QCryptoBlockFormat_str(format));
 
-    open_opts = block_crypto_open_opts_init(format, cryptoopts, errp);
+    open_opts = block_crypto_open_opts_init(cryptoopts, errp);
     if (!open_opts) {
         goto cleanup;
     }
@@ -303,6 +229,7 @@ static int block_crypto_open_generic(QCryptoBlockFormat format,
                                        block_crypto_read_func,
                                        bs,
                                        cflags,
+                                       1,
                                        errp);
 
     if (!crypto->block) {
@@ -314,36 +241,35 @@ static int block_crypto_open_generic(QCryptoBlockFormat format,
 
     ret = 0;
  cleanup:
-    QDECREF(cryptoopts);
+    qobject_unref(cryptoopts);
     qapi_free_QCryptoBlockOpenOptions(open_opts);
     return ret;
 }
 
 
-static int block_crypto_create_generic(QCryptoBlockFormat format,
-                                       const char *filename,
-                                       QemuOpts *opts,
-                                       Error **errp)
+static int block_crypto_co_create_generic(BlockDriverState *bs,
+                                          int64_t size,
+                                          QCryptoBlockCreateOptions *opts,
+                                          Error **errp)
 {
-    int ret = -EINVAL;
-    QCryptoBlockCreateOptions *create_opts = NULL;
+    int ret;
+    BlockBackend *blk;
     QCryptoBlock *crypto = NULL;
-    struct BlockCryptoCreateData data = {
-        .size = ROUND_UP(qemu_opt_get_size_del(opts, BLOCK_OPT_SIZE, 0),
-                         BDRV_SECTOR_SIZE),
-        .opts = opts,
-        .filename = filename,
-    };
-    QDict *cryptoopts;
+    struct BlockCryptoCreateData data;
 
-    cryptoopts = qemu_opts_to_qdict(opts, NULL);
+    blk = blk_new(BLK_PERM_WRITE | BLK_PERM_RESIZE, BLK_PERM_ALL);
 
-    create_opts = block_crypto_create_opts_init(format, cryptoopts, errp);
-    if (!create_opts) {
-        return -1;
+    ret = blk_insert_bs(blk, bs, errp);
+    if (ret < 0) {
+        goto cleanup;
     }
 
-    crypto = qcrypto_block_create(create_opts, NULL,
+    data = (struct BlockCryptoCreateData) {
+        .blk = blk,
+        .size = size,
+    };
+
+    crypto = qcrypto_block_create(opts, NULL,
                                   block_crypto_init_func,
                                   block_crypto_write_func,
                                   &data,
@@ -356,24 +282,27 @@ static int block_crypto_create_generic(QCryptoBlockFormat format,
 
     ret = 0;
  cleanup:
-    QDECREF(cryptoopts);
     qcrypto_block_free(crypto);
-    blk_unref(data.blk);
-    qapi_free_QCryptoBlockCreateOptions(create_opts);
+    blk_unref(blk);
     return ret;
 }
 
-static int block_crypto_truncate(BlockDriverState *bs, int64_t offset,
-                                 PreallocMode prealloc, Error **errp)
+static int coroutine_fn
+block_crypto_co_truncate(BlockDriverState *bs, int64_t offset,
+                         PreallocMode prealloc, Error **errp)
 {
     BlockCrypto *crypto = bs->opaque;
     uint64_t payload_offset =
         qcrypto_block_get_payload_offset(crypto->block);
-    assert(payload_offset < (INT64_MAX - offset));
+
+    if (payload_offset > INT64_MAX - offset) {
+        error_setg(errp, "The requested file size is too large");
+        return -EFBIG;
+    }
 
     offset += payload_offset;
 
-    return bdrv_truncate(bs->file, offset, prealloc, errp);
+    return bdrv_co_truncate(bs->file, offset, prealloc, errp);
 }
 
 static void block_crypto_close(BlockDriverState *bs)
@@ -382,6 +311,12 @@ static void block_crypto_close(BlockDriverState *bs)
     qcrypto_block_free(crypto->block);
 }
 
+static int block_crypto_reopen_prepare(BDRVReopenState *state,
+                                       BlockReopenQueue *queue, Error **errp)
+{
+    /* nothing needs checking */
+    return 0;
+}
 
 /*
  * 1 MB bounce buffer gives good performance / memory tradeoff
@@ -529,7 +464,10 @@ static int64_t block_crypto_getlength(BlockDriverState *bs)
 
     uint64_t offset = qcrypto_block_get_payload_offset(crypto->block);
     assert(offset < INT64_MAX);
-    assert(offset < len);
+
+    if (offset > len) {
+        return -EIO;
+    }
 
     len -= offset;
 
@@ -554,12 +492,88 @@ static int block_crypto_open_luks(BlockDriverState *bs,
                                      bs, options, flags, errp);
 }
 
-static int block_crypto_create_luks(const char *filename,
-                                    QemuOpts *opts,
-                                    Error **errp)
+static int coroutine_fn
+block_crypto_co_create_luks(BlockdevCreateOptions *create_options, Error **errp)
 {
-    return block_crypto_create_generic(Q_CRYPTO_BLOCK_FORMAT_LUKS,
-                                       filename, opts, errp);
+    BlockdevCreateOptionsLUKS *luks_opts;
+    BlockDriverState *bs = NULL;
+    QCryptoBlockCreateOptions create_opts;
+    int ret;
+
+    assert(create_options->driver == BLOCKDEV_DRIVER_LUKS);
+    luks_opts = &create_options->u.luks;
+
+    bs = bdrv_open_blockdev_ref(luks_opts->file, errp);
+    if (bs == NULL) {
+        return -EIO;
+    }
+
+    create_opts = (QCryptoBlockCreateOptions) {
+        .format = Q_CRYPTO_BLOCK_FORMAT_LUKS,
+        .u.luks = *qapi_BlockdevCreateOptionsLUKS_base(luks_opts),
+    };
+
+    ret = block_crypto_co_create_generic(bs, luks_opts->size, &create_opts,
+                                         errp);
+    if (ret < 0) {
+        goto fail;
+    }
+
+    ret = 0;
+fail:
+    bdrv_unref(bs);
+    return ret;
+}
+
+static int coroutine_fn block_crypto_co_create_opts_luks(const char *filename,
+                                                         QemuOpts *opts,
+                                                         Error **errp)
+{
+    QCryptoBlockCreateOptions *create_opts = NULL;
+    BlockDriverState *bs = NULL;
+    QDict *cryptoopts;
+    int64_t size;
+    int ret;
+
+    /* Parse options */
+    size = qemu_opt_get_size_del(opts, BLOCK_OPT_SIZE, 0);
+
+    cryptoopts = qemu_opts_to_qdict_filtered(opts, NULL,
+                                             &block_crypto_create_opts_luks,
+                                             true);
+
+    qdict_put_str(cryptoopts, "format", "luks");
+    create_opts = block_crypto_create_opts_init(cryptoopts, errp);
+    if (!create_opts) {
+        ret = -EINVAL;
+        goto fail;
+    }
+
+    /* Create protocol layer */
+    ret = bdrv_create_file(filename, opts, errp);
+    if (ret < 0) {
+        goto fail;
+    }
+
+    bs = bdrv_open(filename, NULL, NULL,
+                   BDRV_O_RDWR | BDRV_O_RESIZE | BDRV_O_PROTOCOL, errp);
+    if (!bs) {
+        ret = -EINVAL;
+        goto fail;
+    }
+
+    /* Create format layer */
+    ret = block_crypto_co_create_generic(bs, size, create_opts, errp);
+    if (ret < 0) {
+        goto fail;
+    }
+
+    ret = 0;
+fail:
+    bdrv_unref(bs);
+    qapi_free_QCryptoBlockCreateOptions(create_opts);
+    qobject_unref(cryptoopts);
+    return ret;
 }
 
 static int block_crypto_get_info_luks(BlockDriverState *bs,
@@ -574,27 +588,23 @@ static int block_crypto_get_info_luks(BlockDriverState *bs,
     }
 
     bdi->unallocated_blocks_are_zero = false;
-    bdi->can_write_zeroes_with_unmap = false;
     bdi->cluster_size = subbdi.cluster_size;
 
     return 0;
 }
 
 static ImageInfoSpecific *
-block_crypto_get_specific_info_luks(BlockDriverState *bs)
+block_crypto_get_specific_info_luks(BlockDriverState *bs, Error **errp)
 {
     BlockCrypto *crypto = bs->opaque;
     ImageInfoSpecific *spec_info;
     QCryptoBlockInfo *info;
 
-    info = qcrypto_block_get_info(crypto->block, NULL);
+    info = qcrypto_block_get_info(crypto->block, errp);
     if (!info) {
         return NULL;
     }
-    if (info->format != Q_CRYPTO_BLOCK_FORMAT_LUKS) {
-        qapi_free_QCryptoBlockInfo(info);
-        return NULL;
-    }
+    assert(info->format == Q_CRYPTO_BLOCK_FORMAT_LUKS);
 
     spec_info = g_new(ImageInfoSpecific, 1);
     spec_info->type = IMAGE_INFO_SPECIFIC_KIND_LUKS;
@@ -609,23 +619,35 @@ block_crypto_get_specific_info_luks(BlockDriverState *bs)
     return spec_info;
 }
 
-BlockDriver bdrv_crypto_luks = {
+static const char *const block_crypto_strong_runtime_opts[] = {
+    BLOCK_CRYPTO_OPT_LUKS_KEY_SECRET,
+
+    NULL
+};
+
+static BlockDriver bdrv_crypto_luks = {
     .format_name        = "luks",
     .instance_size      = sizeof(BlockCrypto),
     .bdrv_probe         = block_crypto_probe_luks,
     .bdrv_open          = block_crypto_open_luks,
     .bdrv_close         = block_crypto_close,
-    .bdrv_child_perm    = bdrv_format_default_perms,
-    .bdrv_create        = block_crypto_create_luks,
-    .bdrv_truncate      = block_crypto_truncate,
+    /* This driver doesn't modify LUKS metadata except when creating image.
+     * Allow share-rw=on as a special case. */
+    .bdrv_child_perm    = bdrv_filter_default_perms,
+    .bdrv_co_create     = block_crypto_co_create_luks,
+    .bdrv_co_create_opts = block_crypto_co_create_opts_luks,
+    .bdrv_co_truncate   = block_crypto_co_truncate,
     .create_opts        = &block_crypto_create_opts_luks,
 
+    .bdrv_reopen_prepare = block_crypto_reopen_prepare,
     .bdrv_refresh_limits = block_crypto_refresh_limits,
     .bdrv_co_preadv     = block_crypto_co_preadv,
     .bdrv_co_pwritev    = block_crypto_co_pwritev,
     .bdrv_getlength     = block_crypto_getlength,
     .bdrv_get_info      = block_crypto_get_info_luks,
     .bdrv_get_specific_info = block_crypto_get_specific_info_luks,
+
+    .strong_runtime_opts = block_crypto_strong_runtime_opts,
 };
 
 static void block_crypto_init(void)

@@ -21,15 +21,13 @@
 #include "hw/ssi/ssi.h"
 #include "hw/block/flash.h"
 #include "qemu/timer.h"
-#include "hw/devices.h"
 #include "hw/arm/sharpsl.h"
 #include "ui/console.h"
+#include "hw/audio/wm8750.h"
 #include "audio/audio.h"
 #include "hw/boards.h"
-#include "sysemu/block-backend.h"
 #include "hw/sysbus.h"
 #include "exec/address-spaces.h"
-#include "sysemu/sysemu.h"
 #include "cpu.h"
 
 #undef REG_FMT
@@ -170,16 +168,22 @@ static void sl_nand_init(Object *obj)
 {
     SLNANDState *s = SL_NAND(obj);
     SysBusDevice *dev = SYS_BUS_DEVICE(obj);
-    DriveInfo *nand;
 
     s->ctl = 0;
+
+    memory_region_init_io(&s->iomem, obj, &sl_ops, s, "sl", 0x40);
+    sysbus_init_mmio(dev, &s->iomem);
+}
+
+static void sl_nand_realize(DeviceState *dev, Error **errp)
+{
+    SLNANDState *s = SL_NAND(dev);
+    DriveInfo *nand;
+
     /* FIXME use a qdev drive property instead of drive_get() */
     nand = drive_get(IF_MTD, 0, 0);
     s->nand = nand_init(nand ? blk_by_legacy_dinfo(nand) : NULL,
                         s->manf_id, s->chip_id);
-
-    memory_region_init_io(&s->iomem, obj, &sl_ops, s, "sl", 0x40);
-    sysbus_init_mmio(dev, &s->iomem);
 }
 
 /* Spitz Keyboard */
@@ -746,7 +750,7 @@ static void spitz_i2c_setup(PXA2xxState *cpu)
     DeviceState *wm;
 
     /* Attach a WM8750 to the bus */
-    wm = i2c_create_slave(bus, "wm8750", 0);
+    wm = i2c_create_slave(bus, TYPE_WM8750, 0);
 
     spitz_wm8750_addr(wm, 0, 0);
     qdev_connect_gpio_out(cpu->gpio, SPITZ_GPIO_WM,
@@ -1080,6 +1084,7 @@ static void sl_nand_class_init(ObjectClass *klass, void *data)
 
     dc->vmsd = &vmstate_sl_nand_info;
     dc->props = sl_nand_properties;
+    dc->realize = sl_nand_realize;
     /* Reason: init() method uses drive_get() */
     dc->user_creatable = false;
 }

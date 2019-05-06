@@ -6,14 +6,14 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
+ * You should have received a copy of the GNU Lesser General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
@@ -29,18 +29,15 @@
 /* Try to fill the TLB and return an exception if error. If retaddr is
    NULL, it means that the function was called in C code (i.e. not
    from generated code or from helper.c) */
-void tlb_fill(CPUState *cs, target_ulong addr, MMUAccessType access_type,
-              int mmu_idx, uintptr_t retaddr)
+void tlb_fill(CPUState *cs, target_ulong addr, int size,
+              MMUAccessType access_type, int mmu_idx, uintptr_t retaddr)
 {
     int ret;
 
-    ret = moxie_cpu_handle_mmu_fault(cs, addr, access_type, mmu_idx);
+    ret = moxie_cpu_handle_mmu_fault(cs, addr, size, access_type, mmu_idx);
     if (unlikely(ret)) {
-        if (retaddr) {
-            cpu_restore_state(cs, retaddr);
-        }
+        cpu_loop_exit_restore(cs, retaddr);
     }
-    cpu_loop_exit(cs);
 }
 
 void helper_raise_exception(CPUMoxieState *env, int ex)
@@ -51,7 +48,7 @@ void helper_raise_exception(CPUMoxieState *env, int ex)
     /* Stash the exception type.  */
     env->sregs[2] = ex;
     /* Stash the address where the exception occurred.  */
-    cpu_restore_state(cs, GETPC());
+    cpu_restore_state(cs, GETPC(), true);
     env->sregs[5] = env->pc;
     /* Jump to the exception handline routine.  */
     env->pc = env->sregs[1];
@@ -97,20 +94,20 @@ void moxie_cpu_do_interrupt(CPUState *cs)
     cs->exception_index = -1;
 }
 
-int moxie_cpu_handle_mmu_fault(CPUState *cs, vaddr address,
+int moxie_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int size,
                                int rw, int mmu_idx)
 {
     MoxieCPU *cpu = MOXIE_CPU(cs);
 
     cs->exception_index = 0xaa;
     cpu->env.debug1 = address;
-    cpu_dump_state(cs, stderr, fprintf, 0);
+    cpu_dump_state(cs, stderr, 0);
     return 1;
 }
 
 #else /* !CONFIG_USER_ONLY */
 
-int moxie_cpu_handle_mmu_fault(CPUState *cs, vaddr address,
+int moxie_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int size,
                                int rw, int mmu_idx)
 {
     MoxieCPU *cpu = MOXIE_CPU(cs);

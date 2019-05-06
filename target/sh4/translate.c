@@ -25,28 +25,28 @@
 #include "exec/exec-all.h"
 #include "tcg-op.h"
 #include "exec/cpu_ldst.h"
-
 #include "exec/helper-proto.h"
 #include "exec/helper-gen.h"
-
+#include "exec/translator.h"
 #include "trace-tcg.h"
 #include "exec/log.h"
+#include "qemu/qemu-print.h"
 
 
 typedef struct DisasContext {
-    struct TranslationBlock *tb;
-    target_ulong pc;
-    uint16_t opcode;
-    uint32_t tbflags;    /* should stay unmodified during the TB translation */
-    uint32_t envflags;   /* should stay in sync with env->flags using TCG ops */
-    int bstate;
+    DisasContextBase base;
+
+    uint32_t tbflags;  /* should stay unmodified during the TB translation */
+    uint32_t envflags; /* should stay in sync with env->flags using TCG ops */
     int memidx;
     int gbank;
     int fbank;
     uint32_t delayed_pc;
-    int singlestep_enabled;
     uint32_t features;
-    int has_movcal;
+
+    uint16_t opcode;
+
+    bool has_movcal;
 } DisasContext;
 
 #if defined(CONFIG_USER_ONLY)
@@ -55,21 +55,18 @@ typedef struct DisasContext {
 #define IS_USER(ctx) (!(ctx->tbflags & (1u << SR_MD)))
 #endif
 
-enum {
-    BS_NONE     = 0, /* We go out of the TB without reaching a branch or an
-                      * exception condition
-                      */
-    BS_STOP     = 1, /* We want to stop translation for any reason */
-    BS_BRANCH   = 2, /* We reached a branch condition     */
-    BS_EXCP     = 3, /* We reached an exception condition */
-};
+/* Target-specific values for ctx->base.is_jmp.  */
+/* We want to exit back to the cpu loop for some reason.
+   Usually this is to recognize interrupts immediately.  */
+#define DISAS_STOP    DISAS_TARGET_0
 
 /* global register indexes */
 static TCGv cpu_gregs[32];
 static TCGv cpu_sr, cpu_sr_m, cpu_sr_q, cpu_sr_t;
 static TCGv cpu_pc, cpu_ssr, cpu_spc, cpu_gbr;
 static TCGv cpu_vbr, cpu_sgr, cpu_dbr, cpu_mach, cpu_macl;
-static TCGv cpu_pr, cpu_fpscr, cpu_fpul, cpu_ldst;
+static TCGv cpu_pr, cpu_fpscr, cpu_fpul;
+static TCGv cpu_lock_addr, cpu_lock_value;
 static TCGv cpu_fregs[32];
 
 /* internal register indexes */
@@ -147,8 +144,12 @@ void sh4_translate_init(void)
                                               offsetof(CPUSH4State,
                                                        delayed_cond),
                                               "_delayed_cond_");
-    cpu_ldst = tcg_global_mem_new_i32(cpu_env,
-				      offsetof(CPUSH4State, ldst), "_ldst_");
+    cpu_lock_addr = tcg_global_mem_new_i32(cpu_env,
+                                           offsetof(CPUSH4State, lock_addr),
+                                           "_lock_addr_");
+    cpu_lock_value = tcg_global_mem_new_i32(cpu_env,
+                                            offsetof(CPUSH4State, lock_value),
+                                            "_lock_value_");
 
     for (i = 0; i < 32; i++)
         cpu_fregs[i] = tcg_global_mem_new_i32(cpu_env,
@@ -156,32 +157,32 @@ void sh4_translate_init(void)
                                               fregnames[i]);
 }
 
-void superh_cpu_dump_state(CPUState *cs, FILE *f,
-                           fprintf_function cpu_fprintf, int flags)
+void superh_cpu_dump_state(CPUState *cs, FILE *f, int flags)
 {
     SuperHCPU *cpu = SUPERH_CPU(cs);
     CPUSH4State *env = &cpu->env;
     int i;
-    cpu_fprintf(f, "pc=0x%08x sr=0x%08x pr=0x%08x fpscr=0x%08x\n",
-                env->pc, cpu_read_sr(env), env->pr, env->fpscr);
-    cpu_fprintf(f, "spc=0x%08x ssr=0x%08x gbr=0x%08x vbr=0x%08x\n",
-		env->spc, env->ssr, env->gbr, env->vbr);
-    cpu_fprintf(f, "sgr=0x%08x dbr=0x%08x delayed_pc=0x%08x fpul=0x%08x\n",
-		env->sgr, env->dbr, env->delayed_pc, env->fpul);
+
+    qemu_fprintf(f, "pc=0x%08x sr=0x%08x pr=0x%08x fpscr=0x%08x\n",
+                 env->pc, cpu_read_sr(env), env->pr, env->fpscr);
+    qemu_fprintf(f, "spc=0x%08x ssr=0x%08x gbr=0x%08x vbr=0x%08x\n",
+                 env->spc, env->ssr, env->gbr, env->vbr);
+    qemu_fprintf(f, "sgr=0x%08x dbr=0x%08x delayed_pc=0x%08x fpul=0x%08x\n",
+                 env->sgr, env->dbr, env->delayed_pc, env->fpul);
     for (i = 0; i < 24; i += 4) {
-	cpu_fprintf(f, "r%d=0x%08x r%d=0x%08x r%d=0x%08x r%d=0x%08x\n",
+        qemu_printf("r%d=0x%08x r%d=0x%08x r%d=0x%08x r%d=0x%08x\n",
 		    i, env->gregs[i], i + 1, env->gregs[i + 1],
 		    i + 2, env->gregs[i + 2], i + 3, env->gregs[i + 3]);
     }
     if (env->flags & DELAY_SLOT) {
-	cpu_fprintf(f, "in delay slot (delayed_pc=0x%08x)\n",
+        qemu_printf("in delay slot (delayed_pc=0x%08x)\n",
 		    env->delayed_pc);
     } else if (env->flags & DELAY_SLOT_CONDITIONAL) {
-	cpu_fprintf(f, "in conditional delay slot (delayed_pc=0x%08x)\n",
+        qemu_printf("in conditional delay slot (delayed_pc=0x%08x)\n",
 		    env->delayed_pc);
     } else if (env->flags & DELAY_SLOT_RTE) {
-        cpu_fprintf(f, "in rte delay slot (delayed_pc=0x%08x)\n",
-                    env->delayed_pc);
+        qemu_fprintf(f, "in rte delay slot (delayed_pc=0x%08x)\n",
+                     env->delayed_pc);
     }
 }
 
@@ -209,7 +210,7 @@ static void gen_write_sr(TCGv src)
 static inline void gen_save_cpu_state(DisasContext *ctx, bool save_pc)
 {
     if (save_pc) {
-        tcg_gen_movi_i32(cpu_pc, ctx->pc);
+        tcg_gen_movi_i32(cpu_pc, ctx->base.pc_next);
     }
     if (ctx->delayed_pc != (uint32_t) -1) {
         tcg_gen_movi_i32(cpu_delayed_pc, ctx->delayed_pc);
@@ -227,11 +228,11 @@ static inline bool use_exit_tb(DisasContext *ctx)
 static inline bool use_goto_tb(DisasContext *ctx, target_ulong dest)
 {
     /* Use a direct jump if in same page and singlestep not enabled */
-    if (unlikely(ctx->singlestep_enabled || use_exit_tb(ctx))) {
+    if (unlikely(ctx->base.singlestep_enabled || use_exit_tb(ctx))) {
         return false;
     }
 #ifndef CONFIG_USER_ONLY
-    return (ctx->tb->pc & TARGET_PAGE_MASK) == (dest & TARGET_PAGE_MASK);
+    return (ctx->base.tb->pc & TARGET_PAGE_MASK) == (dest & TARGET_PAGE_MASK);
 #else
     return true;
 #endif
@@ -242,17 +243,18 @@ static void gen_goto_tb(DisasContext *ctx, int n, target_ulong dest)
     if (use_goto_tb(ctx, dest)) {
         tcg_gen_goto_tb(n);
         tcg_gen_movi_i32(cpu_pc, dest);
-        tcg_gen_exit_tb((uintptr_t)ctx->tb + n);
+        tcg_gen_exit_tb(ctx->base.tb, n);
     } else {
         tcg_gen_movi_i32(cpu_pc, dest);
-        if (ctx->singlestep_enabled) {
+        if (ctx->base.singlestep_enabled) {
             gen_helper_debug(cpu_env);
         } else if (use_exit_tb(ctx)) {
-            tcg_gen_exit_tb(0);
+            tcg_gen_exit_tb(NULL, 0);
         } else {
             tcg_gen_lookup_and_goto_ptr();
         }
     }
+    ctx->base.is_jmp = DISAS_NORETURN;
 }
 
 static void gen_jump(DisasContext * ctx)
@@ -262,13 +264,14 @@ static void gen_jump(DisasContext * ctx)
 	   delayed jump as immediate jump are conditinal jumps */
 	tcg_gen_mov_i32(cpu_pc, cpu_delayed_pc);
         tcg_gen_discard_i32(cpu_delayed_pc);
-        if (ctx->singlestep_enabled) {
+        if (ctx->base.singlestep_enabled) {
             gen_helper_debug(cpu_env);
         } else if (use_exit_tb(ctx)) {
-            tcg_gen_exit_tb(0);
+            tcg_gen_exit_tb(NULL, 0);
         } else {
             tcg_gen_lookup_and_goto_ptr();
         }
+        ctx->base.is_jmp = DISAS_NORETURN;
     } else {
 	gen_goto_tb(ctx, 0, ctx->delayed_pc);
     }
@@ -291,6 +294,7 @@ static void gen_conditional_jump(DisasContext *ctx, target_ulong dest,
            disallow it in use_goto_tb, but it handles exit + singlestep.  */
         gen_goto_tb(ctx, 0, dest);
         gen_set_label(l1);
+        ctx->base.is_jmp = DISAS_NEXT;
         return;
     }
 
@@ -298,8 +302,8 @@ static void gen_conditional_jump(DisasContext *ctx, target_ulong dest,
     tcg_gen_brcondi_i32(cond_not_taken, cpu_sr_t, 0, l1);
     gen_goto_tb(ctx, 0, dest);
     gen_set_label(l1);
-    gen_goto_tb(ctx, 1, ctx->pc + 2);
-    ctx->bstate = BS_BRANCH;
+    gen_goto_tb(ctx, 1, ctx->base.pc_next + 2);
+    ctx->base.is_jmp = DISAS_NORETURN;
 }
 
 /* Delayed conditional jump (bt or bf) */
@@ -322,11 +326,12 @@ static void gen_delayed_conditional_jump(DisasContext * ctx)
         gen_jump(ctx);
 
         gen_set_label(l1);
+        ctx->base.is_jmp = DISAS_NEXT;
         return;
     }
 
     tcg_gen_brcondi_i32(TCG_COND_NE, ds, 0, l1);
-    gen_goto_tb(ctx, 1, ctx->pc + 2);
+    gen_goto_tb(ctx, 1, ctx->base.pc_next + 2);
     gen_set_label(l1);
     gen_jump(ctx);
 }
@@ -463,7 +468,7 @@ static void _decode_opc(DisasContext * ctx)
 	tcg_gen_mov_i32(cpu_delayed_pc, cpu_spc);
         ctx->envflags |= DELAY_SLOT_RTE;
 	ctx->delayed_pc = (uint32_t) - 1;
-        ctx->bstate = BS_STOP;
+        ctx->base.is_jmp = DISAS_STOP;
 	return;
     case 0x0058:		/* sets */
         tcg_gen_ori_i32(cpu_sr, cpu_sr, (1u << SR_S));
@@ -474,23 +479,23 @@ static void _decode_opc(DisasContext * ctx)
     case 0xfbfd:		/* frchg */
         CHECK_FPSCR_PR_0
 	tcg_gen_xori_i32(cpu_fpscr, cpu_fpscr, FPSCR_FR);
-	ctx->bstate = BS_STOP;
+        ctx->base.is_jmp = DISAS_STOP;
 	return;
     case 0xf3fd:		/* fschg */
         CHECK_FPSCR_PR_0
         tcg_gen_xori_i32(cpu_fpscr, cpu_fpscr, FPSCR_SZ);
-	ctx->bstate = BS_STOP;
+        ctx->base.is_jmp = DISAS_STOP;
 	return;
     case 0xf7fd:                /* fpchg */
         CHECK_SH4A
         tcg_gen_xori_i32(cpu_fpscr, cpu_fpscr, FPSCR_PR);
-        ctx->bstate = BS_STOP;
+        ctx->base.is_jmp = DISAS_STOP;
         return;
     case 0x0009:		/* nop */
 	return;
     case 0x001b:		/* sleep */
 	CHECK_PRIVILEGED
-        tcg_gen_movi_i32(cpu_pc, ctx->pc + 2);
+        tcg_gen_movi_i32(cpu_pc, ctx->base.pc_next + 2);
         gen_helper_sleep(cpu_env);
 	return;
     }
@@ -517,23 +522,24 @@ static void _decode_opc(DisasContext * ctx)
         /* Detect the start of a gUSA region.  If so, update envflags
            and end the TB.  This will allow us to see the end of the
            region (stored in R0) in the next TB.  */
-        if (B11_8 == 15 && B7_0s < 0 && (tb_cflags(ctx->tb) & CF_PARALLEL)) {
+        if (B11_8 == 15 && B7_0s < 0 &&
+            (tb_cflags(ctx->base.tb) & CF_PARALLEL)) {
             ctx->envflags = deposit32(ctx->envflags, GUSA_SHIFT, 8, B7_0s);
-            ctx->bstate = BS_STOP;
+            ctx->base.is_jmp = DISAS_STOP;
         }
 #endif
 	tcg_gen_movi_i32(REG(B11_8), B7_0s);
 	return;
     case 0x9000:		/* mov.w @(disp,PC),Rn */
 	{
-	    TCGv addr = tcg_const_i32(ctx->pc + 4 + B7_0 * 2);
+            TCGv addr = tcg_const_i32(ctx->base.pc_next + 4 + B7_0 * 2);
             tcg_gen_qemu_ld_i32(REG(B11_8), addr, ctx->memidx, MO_TESW);
 	    tcg_temp_free(addr);
 	}
 	return;
     case 0xd000:		/* mov.l @(disp,PC),Rn */
 	{
-	    TCGv addr = tcg_const_i32((ctx->pc + 4 + B7_0 * 4) & ~3);
+            TCGv addr = tcg_const_i32((ctx->base.pc_next + 4 + B7_0 * 4) & ~3);
             tcg_gen_qemu_ld_i32(REG(B11_8), addr, ctx->memidx, MO_TESL);
 	    tcg_temp_free(addr);
 	}
@@ -543,13 +549,13 @@ static void _decode_opc(DisasContext * ctx)
 	return;
     case 0xa000:		/* bra disp */
 	CHECK_NOT_DELAY_SLOT
-	ctx->delayed_pc = ctx->pc + 4 + B11_0s * 2;
+        ctx->delayed_pc = ctx->base.pc_next + 4 + B11_0s * 2;
         ctx->envflags |= DELAY_SLOT;
 	return;
     case 0xb000:		/* bsr disp */
 	CHECK_NOT_DELAY_SLOT
-	tcg_gen_movi_i32(cpu_pr, ctx->pc + 4);
-	ctx->delayed_pc = ctx->pc + 4 + B11_0s * 2;
+        tcg_gen_movi_i32(cpu_pr, ctx->base.pc_next + 4);
+        ctx->delayed_pc = ctx->base.pc_next + 4 + B11_0s * 2;
         ctx->envflags |= DELAY_SLOT;
 	return;
     }
@@ -669,7 +675,7 @@ static void _decode_opc(DisasContext * ctx)
 	return;
     case 0x6008:		/* swap.b Rm,Rn */
 	{
-            TCGv low = tcg_temp_new();;
+            TCGv low = tcg_temp_new();
 	    tcg_gen_ext16u_i32(low, REG(B7_4));
 	    tcg_gen_bswap16_i32(low, low);
             tcg_gen_deposit_i32(REG(B11_8), REG(B7_4), low, 0, 16);
@@ -1177,22 +1183,22 @@ static void _decode_opc(DisasContext * ctx)
 	return;
     case 0x8b00:		/* bf label */
 	CHECK_NOT_DELAY_SLOT
-        gen_conditional_jump(ctx, ctx->pc + 4 + B7_0s * 2, false);
+        gen_conditional_jump(ctx, ctx->base.pc_next + 4 + B7_0s * 2, false);
 	return;
     case 0x8f00:		/* bf/s label */
 	CHECK_NOT_DELAY_SLOT
         tcg_gen_xori_i32(cpu_delayed_cond, cpu_sr_t, 1);
-        ctx->delayed_pc = ctx->pc + 4 + B7_0s * 2;
+        ctx->delayed_pc = ctx->base.pc_next + 4 + B7_0s * 2;
         ctx->envflags |= DELAY_SLOT_CONDITIONAL;
 	return;
     case 0x8900:		/* bt label */
 	CHECK_NOT_DELAY_SLOT
-        gen_conditional_jump(ctx, ctx->pc + 4 + B7_0s * 2, true);
+        gen_conditional_jump(ctx, ctx->base.pc_next + 4 + B7_0s * 2, true);
 	return;
     case 0x8d00:		/* bt/s label */
 	CHECK_NOT_DELAY_SLOT
         tcg_gen_mov_i32(cpu_delayed_cond, cpu_sr_t);
-        ctx->delayed_pc = ctx->pc + 4 + B7_0s * 2;
+        ctx->delayed_pc = ctx->base.pc_next + 4 + B7_0s * 2;
         ctx->envflags |= DELAY_SLOT_CONDITIONAL;
 	return;
     case 0x8800:		/* cmp/eq #imm,R0 */
@@ -1279,7 +1285,8 @@ static void _decode_opc(DisasContext * ctx)
 	}
 	return;
     case 0xc700:		/* mova @(disp,PC),R0 */
-	tcg_gen_movi_i32(REG(0), ((ctx->pc & 0xfffffffc) + 4 + B7_0 * 4) & ~3);
+        tcg_gen_movi_i32(REG(0), ((ctx->base.pc_next & 0xfffffffc) +
+                                  4 + B7_0 * 4) & ~3);
 	return;
     case 0xcb00:		/* or #imm,R0 */
 	tcg_gen_ori_i32(REG(0), REG(0), B7_0);
@@ -1305,7 +1312,7 @@ static void _decode_opc(DisasContext * ctx)
 	    imm = tcg_const_i32(B7_0);
             gen_helper_trapa(cpu_env, imm);
 	    tcg_temp_free(imm);
-            ctx->bstate = BS_EXCP;
+            ctx->base.is_jmp = DISAS_NORETURN;
 	}
 	return;
     case 0xc800:		/* tst #imm,R0 */
@@ -1373,13 +1380,13 @@ static void _decode_opc(DisasContext * ctx)
     switch (ctx->opcode & 0xf0ff) {
     case 0x0023:		/* braf Rn */
 	CHECK_NOT_DELAY_SLOT
-	tcg_gen_addi_i32(cpu_delayed_pc, REG(B11_8), ctx->pc + 4);
+        tcg_gen_addi_i32(cpu_delayed_pc, REG(B11_8), ctx->base.pc_next + 4);
         ctx->envflags |= DELAY_SLOT;
 	ctx->delayed_pc = (uint32_t) - 1;
 	return;
     case 0x0003:		/* bsrf Rn */
 	CHECK_NOT_DELAY_SLOT
-	tcg_gen_movi_i32(cpu_pr, ctx->pc + 4);
+        tcg_gen_movi_i32(cpu_pr, ctx->base.pc_next + 4);
 	tcg_gen_add_i32(cpu_delayed_pc, REG(B11_8), cpu_pr);
         ctx->envflags |= DELAY_SLOT;
 	ctx->delayed_pc = (uint32_t) - 1;
@@ -1402,7 +1409,7 @@ static void _decode_opc(DisasContext * ctx)
 	return;
     case 0x400b:		/* jsr @Rn */
 	CHECK_NOT_DELAY_SLOT
-	tcg_gen_movi_i32(cpu_pr, ctx->pc + 4);
+        tcg_gen_movi_i32(cpu_pr, ctx->base.pc_next + 4);
 	tcg_gen_mov_i32(cpu_delayed_pc, REG(B11_8));
         ctx->envflags |= DELAY_SLOT;
 	ctx->delayed_pc = (uint32_t) - 1;
@@ -1414,7 +1421,7 @@ static void _decode_opc(DisasContext * ctx)
             tcg_gen_andi_i32(val, REG(B11_8), 0x700083f3);
             gen_write_sr(val);
             tcg_temp_free(val);
-            ctx->bstate = BS_STOP;
+            ctx->base.is_jmp = DISAS_STOP;
         }
 	return;
     case 0x4007:		/* ldc.l @Rm+,SR */
@@ -1426,7 +1433,7 @@ static void _decode_opc(DisasContext * ctx)
             gen_write_sr(val);
 	    tcg_temp_free(val);
 	    tcg_gen_addi_i32(REG(B11_8), REG(B11_8), 4);
-	    ctx->bstate = BS_STOP;
+            ctx->base.is_jmp = DISAS_STOP;
 	}
 	return;
     case 0x0002:		/* stc SR,Rn */
@@ -1488,7 +1495,7 @@ static void _decode_opc(DisasContext * ctx)
     case 0x406a:		/* lds Rm,FPSCR */
 	CHECK_FPU_ENABLED
         gen_helper_ld_fpscr(cpu_env, REG(B11_8));
-	ctx->bstate = BS_STOP;
+        ctx->base.is_jmp = DISAS_STOP;
 	return;
     case 0x4066:		/* lds.l @Rm+,FPSCR */
 	CHECK_FPU_ENABLED
@@ -1498,7 +1505,7 @@ static void _decode_opc(DisasContext * ctx)
 	    tcg_gen_addi_i32(REG(B11_8), REG(B11_8), 4);
             gen_helper_ld_fpscr(cpu_env, addr);
 	    tcg_temp_free(addr);
-	    ctx->bstate = BS_STOP;
+            ctx->base.is_jmp = DISAS_STOP;
 	}
 	return;
     case 0x006a:		/* sts FPSCR,Rn */
@@ -1549,31 +1556,64 @@ static void _decode_opc(DisasContext * ctx)
 	return;
     case 0x0073:
         /* MOVCO.L
-	       LDST -> T
-               If (T == 1) R0 -> (Rn)
-               0 -> LDST
-        */
+         *     LDST -> T
+         *     If (T == 1) R0 -> (Rn)
+         *     0 -> LDST
+         *
+         * The above description doesn't work in a parallel context.
+         * Since we currently support no smp boards, this implies user-mode.
+         * But we can still support the official mechanism while user-mode
+         * is single-threaded.  */
         CHECK_SH4A
         {
-            TCGLabel *label = gen_new_label();
-            tcg_gen_mov_i32(cpu_sr_t, cpu_ldst);
-	    tcg_gen_brcondi_i32(TCG_COND_EQ, cpu_ldst, 0, label);
-            tcg_gen_qemu_st_i32(REG(0), REG(B11_8), ctx->memidx, MO_TEUL);
-	    gen_set_label(label);
-	    tcg_gen_movi_i32(cpu_ldst, 0);
-	    return;
+            TCGLabel *fail = gen_new_label();
+            TCGLabel *done = gen_new_label();
+
+            if ((tb_cflags(ctx->base.tb) & CF_PARALLEL)) {
+                TCGv tmp;
+
+                tcg_gen_brcond_i32(TCG_COND_NE, REG(B11_8),
+                                   cpu_lock_addr, fail);
+                tmp = tcg_temp_new();
+                tcg_gen_atomic_cmpxchg_i32(tmp, REG(B11_8), cpu_lock_value,
+                                           REG(0), ctx->memidx, MO_TEUL);
+                tcg_gen_setcond_i32(TCG_COND_EQ, cpu_sr_t, tmp, cpu_lock_value);
+                tcg_temp_free(tmp);
+            } else {
+                tcg_gen_brcondi_i32(TCG_COND_EQ, cpu_lock_addr, -1, fail);
+                tcg_gen_qemu_st_i32(REG(0), REG(B11_8), ctx->memidx, MO_TEUL);
+                tcg_gen_movi_i32(cpu_sr_t, 1);
+            }
+            tcg_gen_br(done);
+
+            gen_set_label(fail);
+            tcg_gen_movi_i32(cpu_sr_t, 0);
+
+            gen_set_label(done);
+            tcg_gen_movi_i32(cpu_lock_addr, -1);
         }
+        return;
     case 0x0063:
         /* MOVLI.L @Rm,R0
-               1 -> LDST
-               (Rm) -> R0
-               When interrupt/exception
-               occurred 0 -> LDST
-        */
+         *     1 -> LDST
+         *     (Rm) -> R0
+         *     When interrupt/exception
+         *     occurred 0 -> LDST
+         *
+         * In a parallel context, we must also save the loaded value
+         * for use with the cmpxchg that we'll use with movco.l.  */
         CHECK_SH4A
-        tcg_gen_movi_i32(cpu_ldst, 0);
-        tcg_gen_qemu_ld_i32(REG(0), REG(B11_8), ctx->memidx, MO_TESL);
-        tcg_gen_movi_i32(cpu_ldst, 1);
+        if ((tb_cflags(ctx->base.tb) & CF_PARALLEL)) {
+            TCGv tmp = tcg_temp_new();
+            tcg_gen_mov_i32(tmp, REG(B11_8));
+            tcg_gen_qemu_ld_i32(REG(0), REG(B11_8), ctx->memidx, MO_TESL);
+            tcg_gen_mov_i32(cpu_lock_value, REG(0));
+            tcg_gen_mov_i32(cpu_lock_addr, tmp);
+            tcg_temp_free(tmp);
+        } else {
+            tcg_gen_qemu_ld_i32(REG(0), REG(B11_8), ctx->memidx, MO_TESL);
+            tcg_gen_movi_i32(cpu_lock_addr, 0);
+        }
         return;
     case 0x0093:		/* ocbi @Rn */
 	{
@@ -1791,7 +1831,7 @@ static void _decode_opc(DisasContext * ctx)
     }
 #if 0
     fprintf(stderr, "unknown instruction 0x%04x at pc 0x%08x\n",
-	    ctx->opcode, ctx->pc);
+            ctx->opcode, ctx->base.pc_next);
     fflush(stderr);
 #endif
  do_illegal:
@@ -1803,7 +1843,7 @@ static void _decode_opc(DisasContext * ctx)
         gen_save_cpu_state(ctx, true);
         gen_helper_raise_illegal_instruction(cpu_env);
     }
-    ctx->bstate = BS_EXCP;
+    ctx->base.is_jmp = DISAS_NORETURN;
     return;
 
  do_fpu_disabled:
@@ -1813,7 +1853,7 @@ static void _decode_opc(DisasContext * ctx)
     } else {
         gen_helper_raise_fpu_disable(cpu_env);
     }
-    ctx->bstate = BS_EXCP;
+    ctx->base.is_jmp = DISAS_NORETURN;
     return;
 }
 
@@ -1839,7 +1879,6 @@ static void decode_opc(DisasContext * ctx)
         ctx->envflags &= ~GUSA_MASK;
 
         tcg_gen_movi_i32(cpu_flags, ctx->envflags);
-        ctx->bstate = BS_BRANCH;
         if (old_flags & DELAY_SLOT_CONDITIONAL) {
 	    gen_delayed_conditional_jump(ctx);
         } else {
@@ -1858,34 +1897,17 @@ static void decode_opc(DisasContext * ctx)
    any sequence via cpu_exec_step_atomic, we can recognize the "normal"
    sequences and transform them into atomic operations as seen by the host.
 */
-static int decode_gusa(DisasContext *ctx, CPUSH4State *env, int *pmax_insns)
+static void decode_gusa(DisasContext *ctx, CPUSH4State *env)
 {
     uint16_t insns[5];
     int ld_adr, ld_dst, ld_mop;
     int op_dst, op_src, op_opc;
     int mv_src, mt_dst, st_src, st_mop;
     TCGv op_arg;
-
-    uint32_t pc = ctx->pc;
-    uint32_t pc_end = ctx->tb->cs_base;
-    int backup = sextract32(ctx->tbflags, GUSA_SHIFT, 8);
+    uint32_t pc = ctx->base.pc_next;
+    uint32_t pc_end = ctx->base.tb->cs_base;
     int max_insns = (pc_end - pc) / 2;
     int i;
-
-    if (pc != pc_end + backup || max_insns < 2) {
-        /* This is a malformed gUSA region.  Don't do anything special,
-           since the interpreter is likely to get confused.  */
-        ctx->envflags &= ~GUSA_MASK;
-        return 0;
-    }
-
-    if (ctx->tbflags & GUSA_EXCLUSIVE) {
-        /* Regardless of single-stepping or the end of the page,
-           we must complete execution of the gUSA region while
-           holding the exclusive lock.  */
-        *pmax_insns = max_insns;
-        return 0;
-    }
 
     /* The state machine below will consume only a few insns.
        If there are more than that in a region, fail now.  */
@@ -1903,7 +1925,7 @@ static int decode_gusa(DisasContext *ctx, CPUSH4State *env, int *pmax_insns)
     op_dst = op_src = op_opc = -1;
     mt_dst = -1;
     st_src = st_mop = -1;
-    TCGV_UNUSED(op_arg);
+    op_arg = NULL;
     i = 0;
 
 #define NEXT_INSN \
@@ -2103,7 +2125,6 @@ static int decode_gusa(DisasContext *ctx, CPUSH4State *env, int *pmax_insns)
     /*
      * Emit the operation.
      */
-    tcg_gen_insn_start(pc, ctx->envflags);
     switch (op_opc) {
     case -1:
         /* No operation found.  Look for exchange pattern.  */
@@ -2191,14 +2212,15 @@ static int decode_gusa(DisasContext *ctx, CPUSH4State *env, int *pmax_insns)
     }
 
     /* If op_src is not a valid register, then op_arg was a constant.  */
-    if (op_src < 0 && !TCGV_IS_UNUSED(op_arg)) {
+    if (op_src < 0 && op_arg) {
         tcg_temp_free_i32(op_arg);
     }
 
     /* The entire region has been translated.  */
     ctx->envflags &= ~GUSA_MASK;
-    ctx->pc = pc_end;
-    return max_insns;
+    ctx->base.pc_next = pc_end;
+    ctx->base.num_insns += max_insns - 1;
+    return;
 
  fail:
     qemu_log_mask(LOG_UNIMP, "Unrecognized gUSA sequence %08x-%08x\n",
@@ -2206,143 +2228,166 @@ static int decode_gusa(DisasContext *ctx, CPUSH4State *env, int *pmax_insns)
 
     /* Restart with the EXCLUSIVE bit set, within a TB run via
        cpu_exec_step_atomic holding the exclusive lock.  */
-    tcg_gen_insn_start(pc, ctx->envflags);
     ctx->envflags |= GUSA_EXCLUSIVE;
     gen_save_cpu_state(ctx, false);
     gen_helper_exclusive(cpu_env);
-    ctx->bstate = BS_EXCP;
+    ctx->base.is_jmp = DISAS_NORETURN;
 
     /* We're not executing an instruction, but we must report one for the
        purposes of accounting within the TB.  We might as well report the
-       entire region consumed via ctx->pc so that it's immediately available
-       in the disassembly dump.  */
-    ctx->pc = pc_end;
-    return 1;
+       entire region consumed via ctx->base.pc_next so that it's immediately
+       available in the disassembly dump.  */
+    ctx->base.pc_next = pc_end;
+    ctx->base.num_insns += max_insns - 1;
 }
 #endif
 
-void gen_intermediate_code(CPUState *cs, struct TranslationBlock *tb)
+static void sh4_tr_init_disas_context(DisasContextBase *dcbase, CPUState *cs)
 {
+    DisasContext *ctx = container_of(dcbase, DisasContext, base);
     CPUSH4State *env = cs->env_ptr;
-    DisasContext ctx;
-    target_ulong pc_start;
-    int num_insns;
-    int max_insns;
+    uint32_t tbflags;
+    int bound;
 
-    pc_start = tb->pc;
-    ctx.pc = pc_start;
-    ctx.tbflags = (uint32_t)tb->flags;
-    ctx.envflags = tb->flags & TB_FLAG_ENVFLAGS_MASK;
-    ctx.bstate = BS_NONE;
-    ctx.memidx = (ctx.tbflags & (1u << SR_MD)) == 0 ? 1 : 0;
+    ctx->tbflags = tbflags = ctx->base.tb->flags;
+    ctx->envflags = tbflags & TB_FLAG_ENVFLAGS_MASK;
+    ctx->memidx = (tbflags & (1u << SR_MD)) == 0 ? 1 : 0;
     /* We don't know if the delayed pc came from a dynamic or static branch,
        so assume it is a dynamic branch.  */
-    ctx.delayed_pc = -1; /* use delayed pc from env pointer */
-    ctx.tb = tb;
-    ctx.singlestep_enabled = cs->singlestep_enabled;
-    ctx.features = env->features;
-    ctx.has_movcal = (ctx.tbflags & TB_FLAG_PENDING_MOVCA);
-    ctx.gbank = ((ctx.tbflags & (1 << SR_MD)) &&
-                 (ctx.tbflags & (1 << SR_RB))) * 0x10;
-    ctx.fbank = ctx.tbflags & FPSCR_FR ? 0x10 : 0;
+    ctx->delayed_pc = -1; /* use delayed pc from env pointer */
+    ctx->features = env->features;
+    ctx->has_movcal = (tbflags & TB_FLAG_PENDING_MOVCA);
+    ctx->gbank = ((tbflags & (1 << SR_MD)) &&
+                  (tbflags & (1 << SR_RB))) * 0x10;
+    ctx->fbank = tbflags & FPSCR_FR ? 0x10 : 0;
 
-    max_insns = tb_cflags(tb) & CF_COUNT_MASK;
-    if (max_insns == 0) {
-        max_insns = CF_COUNT_MASK;
+    if (tbflags & GUSA_MASK) {
+        uint32_t pc = ctx->base.pc_next;
+        uint32_t pc_end = ctx->base.tb->cs_base;
+        int backup = sextract32(ctx->tbflags, GUSA_SHIFT, 8);
+        int max_insns = (pc_end - pc) / 2;
+
+        if (pc != pc_end + backup || max_insns < 2) {
+            /* This is a malformed gUSA region.  Don't do anything special,
+               since the interpreter is likely to get confused.  */
+            ctx->envflags &= ~GUSA_MASK;
+        } else if (tbflags & GUSA_EXCLUSIVE) {
+            /* Regardless of single-stepping or the end of the page,
+               we must complete execution of the gUSA region while
+               holding the exclusive lock.  */
+            ctx->base.max_insns = max_insns;
+            return;
+        }
     }
-    max_insns = MIN(max_insns, TCG_MAX_INSNS);
 
     /* Since the ISA is fixed-width, we can bound by the number
        of instructions remaining on the page.  */
-    num_insns = -(ctx.pc | TARGET_PAGE_MASK) / 2;
-    max_insns = MIN(max_insns, num_insns);
+    bound = -(ctx->base.pc_next | TARGET_PAGE_MASK) / 2;
+    ctx->base.max_insns = MIN(ctx->base.max_insns, bound);
+}
 
-    /* Single stepping means just that.  */
-    if (ctx.singlestep_enabled || singlestep) {
-        max_insns = 1;
-    }
+static void sh4_tr_tb_start(DisasContextBase *dcbase, CPUState *cs)
+{
+}
 
-    gen_tb_start(tb);
-    num_insns = 0;
+static void sh4_tr_insn_start(DisasContextBase *dcbase, CPUState *cs)
+{
+    DisasContext *ctx = container_of(dcbase, DisasContext, base);
+
+    tcg_gen_insn_start(ctx->base.pc_next, ctx->envflags);
+}
+
+static bool sh4_tr_breakpoint_check(DisasContextBase *dcbase, CPUState *cs,
+                                    const CPUBreakpoint *bp)
+{
+    DisasContext *ctx = container_of(dcbase, DisasContext, base);
+
+    /* We have hit a breakpoint - make sure PC is up-to-date */
+    gen_save_cpu_state(ctx, true);
+    gen_helper_debug(cpu_env);
+    ctx->base.is_jmp = DISAS_NORETURN;
+    /* The address covered by the breakpoint must be included in
+       [tb->pc, tb->pc + tb->size) in order to for it to be
+       properly cleared -- thus we increment the PC here so that
+       the logic setting tb->size below does the right thing.  */
+    ctx->base.pc_next += 2;
+    return true;
+}
+
+static void sh4_tr_translate_insn(DisasContextBase *dcbase, CPUState *cs)
+{
+    CPUSH4State *env = cs->env_ptr;
+    DisasContext *ctx = container_of(dcbase, DisasContext, base);
 
 #ifdef CONFIG_USER_ONLY
-    if (ctx.tbflags & GUSA_MASK) {
-        num_insns = decode_gusa(&ctx, env, &max_insns);
+    if (unlikely(ctx->envflags & GUSA_MASK)
+        && !(ctx->envflags & GUSA_EXCLUSIVE)) {
+        /* We're in an gUSA region, and we have not already fallen
+           back on using an exclusive region.  Attempt to parse the
+           region into a single supported atomic operation.  Failure
+           is handled within the parser by raising an exception to
+           retry using an exclusive region.  */
+        decode_gusa(ctx, env);
+        return;
     }
 #endif
 
-    while (ctx.bstate == BS_NONE
-           && num_insns < max_insns
-           && !tcg_op_buf_full()) {
-        tcg_gen_insn_start(ctx.pc, ctx.envflags);
-        num_insns++;
+    ctx->opcode = cpu_lduw_code(env, ctx->base.pc_next);
+    decode_opc(ctx);
+    ctx->base.pc_next += 2;
+}
 
-        if (unlikely(cpu_breakpoint_test(cs, ctx.pc, BP_ANY))) {
-            /* We have hit a breakpoint - make sure PC is up-to-date */
-            gen_save_cpu_state(&ctx, true);
-            gen_helper_debug(cpu_env);
-            ctx.bstate = BS_EXCP;
-            /* The address covered by the breakpoint must be included in
-               [tb->pc, tb->pc + tb->size) in order to for it to be
-               properly cleared -- thus we increment the PC here so that
-               the logic setting tb->size below does the right thing.  */
-            ctx.pc += 2;
-            break;
-        }
+static void sh4_tr_tb_stop(DisasContextBase *dcbase, CPUState *cs)
+{
+    DisasContext *ctx = container_of(dcbase, DisasContext, base);
 
-        if (num_insns == max_insns && (tb_cflags(tb) & CF_LAST_IO)) {
-            gen_io_start();
-        }
-
-        ctx.opcode = cpu_lduw_code(env, ctx.pc);
-	decode_opc(&ctx);
-	ctx.pc += 2;
-    }
-    if (tb_cflags(tb) & CF_LAST_IO) {
-        gen_io_end();
-    }
-
-    if (ctx.tbflags & GUSA_EXCLUSIVE) {
+    if (ctx->tbflags & GUSA_EXCLUSIVE) {
         /* Ending the region of exclusivity.  Clear the bits.  */
-        ctx.envflags &= ~GUSA_MASK;
+        ctx->envflags &= ~GUSA_MASK;
     }
 
-    if (cs->singlestep_enabled) {
-        gen_save_cpu_state(&ctx, true);
-        gen_helper_debug(cpu_env);
-    } else {
-	switch (ctx.bstate) {
-        case BS_STOP:
-            gen_save_cpu_state(&ctx, true);
-            tcg_gen_exit_tb(0);
-            break;
-        case BS_NONE:
-            gen_save_cpu_state(&ctx, false);
-            gen_goto_tb(&ctx, 0, ctx.pc);
-            break;
-        case BS_EXCP:
-            /* fall through */
-        case BS_BRANCH:
-        default:
-            break;
-	}
+    switch (ctx->base.is_jmp) {
+    case DISAS_STOP:
+        gen_save_cpu_state(ctx, true);
+        if (ctx->base.singlestep_enabled) {
+            gen_helper_debug(cpu_env);
+        } else {
+            tcg_gen_exit_tb(NULL, 0);
+        }
+        break;
+    case DISAS_NEXT:
+    case DISAS_TOO_MANY:
+        gen_save_cpu_state(ctx, false);
+        gen_goto_tb(ctx, 0, ctx->base.pc_next);
+        break;
+    case DISAS_NORETURN:
+        break;
+    default:
+        g_assert_not_reached();
     }
+}
 
-    gen_tb_end(tb, num_insns);
+static void sh4_tr_disas_log(const DisasContextBase *dcbase, CPUState *cs)
+{
+    qemu_log("IN:\n");  /* , lookup_symbol(dcbase->pc_first)); */
+    log_target_disas(cs, dcbase->pc_first, dcbase->tb->size);
+}
 
-    tb->size = ctx.pc - pc_start;
-    tb->icount = num_insns;
+static const TranslatorOps sh4_tr_ops = {
+    .init_disas_context = sh4_tr_init_disas_context,
+    .tb_start           = sh4_tr_tb_start,
+    .insn_start         = sh4_tr_insn_start,
+    .breakpoint_check   = sh4_tr_breakpoint_check,
+    .translate_insn     = sh4_tr_translate_insn,
+    .tb_stop            = sh4_tr_tb_stop,
+    .disas_log          = sh4_tr_disas_log,
+};
 
-#ifdef DEBUG_DISAS
-    if (qemu_loglevel_mask(CPU_LOG_TB_IN_ASM)
-        && qemu_log_in_addr_range(pc_start)) {
-        qemu_log_lock();
-	qemu_log("IN:\n");	/* , lookup_symbol(pc_start)); */
-        log_target_disas(cs, pc_start, ctx.pc - pc_start);
-	qemu_log("\n");
-        qemu_log_unlock();
-    }
-#endif
+void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
+{
+    DisasContext ctx;
+
+    translator_loop(&sh4_tr_ops, &ctx.base, cs, tb, max_insns);
 }
 
 void restore_state_to_opc(CPUSH4State *env, TranslationBlock *tb,

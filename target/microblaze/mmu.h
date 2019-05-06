@@ -56,7 +56,7 @@
 
 /* TLBX  */
 #define R_TBLX_MISS_SHIFT 31
-#define R_TBLX_MISS_MASK (1U << 31)
+#define R_TBLX_MISS_MASK (1U << R_TBLX_MISS_SHIFT)
 
 #define TLB_ENTRIES    64
 

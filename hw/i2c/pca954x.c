@@ -62,7 +62,7 @@ static void pca954x_reset(DeviceState *dev)
     s->active_lanes = 0;
 }
 
-static int pca954x_recv(I2CSlave *i2c)
+static uint8_t pca954x_recv(I2CSlave *i2c)
 {
     PCA954XState *s = PCA954X(i2c);
     int i;

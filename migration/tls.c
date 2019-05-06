@@ -94,7 +94,7 @@ void migration_tls_channel_process_incoming(MigrationState *s,
 
     tioc = qio_channel_tls_new_server(
         ioc, creds,
-        NULL, /* XXX pass ACL name */
+        s->parameters.tls_authz,
         errp);
     if (!tioc) {
         return;
@@ -104,6 +104,7 @@ void migration_tls_channel_process_incoming(MigrationState *s,
     qio_channel_set_name(QIO_CHANNEL(tioc), "migration-tls-incoming");
     qio_channel_tls_handshake(tioc,
                               migration_tls_incoming_handshake,
+                              NULL,
                               NULL,
                               NULL);
 }
@@ -118,11 +119,10 @@ static void migration_tls_outgoing_handshake(QIOTask *task,
 
     if (qio_task_propagate_error(task, &err)) {
         trace_migration_tls_outgoing_handshake_error(error_get_pretty(err));
-        migrate_fd_error(s, err);
     } else {
         trace_migration_tls_outgoing_handshake_complete();
-        migration_channel_connect(s, ioc, NULL);
     }
+    migration_channel_connect(s, ioc, NULL, err);
     object_unref(OBJECT(ioc));
 }
 
@@ -160,5 +160,6 @@ void migration_tls_channel_connect(MigrationState *s,
     qio_channel_tls_handshake(tioc,
                               migration_tls_outgoing_handshake,
                               s,
+                              NULL,
                               NULL);
 }

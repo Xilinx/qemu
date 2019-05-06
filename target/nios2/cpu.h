@@ -20,7 +20,6 @@
 #ifndef CPU_NIOS2_H
 #define CPU_NIOS2_H
 
-#include "qemu/osdep.h"
 #include "qemu-common.h"
 
 #define TARGET_LONG_BITS 32
@@ -28,7 +27,6 @@
 #define CPUArchState struct CPUNios2State
 
 #include "exec/cpu-defs.h"
-#include "fpu/softfloat.h"
 #include "qom/cpu.h"
 struct CPUNios2State;
 typedef struct CPUNios2State CPUNios2State;
@@ -143,7 +141,7 @@ typedef struct Nios2CPUClass {
 #define R_PC         64
 
 /* Exceptions */
-#define EXCP_BREAK    -1
+#define EXCP_BREAK    0x1000
 #define EXCP_RESET    0
 #define EXCP_PRESET   1
 #define EXCP_IRQ      2
@@ -214,9 +212,8 @@ static inline Nios2CPU *nios2_env_get_cpu(CPUNios2State *env)
 void nios2_tcg_init(void);
 void nios2_cpu_do_interrupt(CPUState *cs);
 int cpu_nios2_signal_handler(int host_signum, void *pinfo, void *puc);
-void dump_mmu(FILE *f, fprintf_function cpu_fprintf, CPUNios2State *env);
-void nios2_cpu_dump_state(CPUState *cpu, FILE *f, fprintf_function cpu_fprintf,
-                          int flags);
+void dump_mmu(CPUNios2State *env);
+void nios2_cpu_dump_state(CPUState *cpu, FILE *f, int flags);
 hwaddr nios2_cpu_get_phys_page_debug(CPUState *cpu, vaddr addr);
 void nios2_cpu_do_unaligned_access(CPUState *cpu, vaddr addr,
                                    MMUAccessType access_type,
@@ -225,6 +222,8 @@ void nios2_cpu_do_unaligned_access(CPUState *cpu, vaddr addr,
 qemu_irq *nios2_cpu_pic_init(Nios2CPU *cpu);
 void nios2_check_interrupts(CPUNios2State *env);
 
+void do_nios2_semihosting(CPUNios2State *env);
+
 #define TARGET_PHYS_ADDR_SPACE_BITS 32
 #ifdef CONFIG_USER_ONLY
 # define TARGET_VIRT_ADDR_SPACE_BITS 31
@@ -232,7 +231,7 @@ void nios2_check_interrupts(CPUNios2State *env);
 # define TARGET_VIRT_ADDR_SPACE_BITS 32
 #endif
 
-#define cpu_init(cpu_model) cpu_generic_init(TYPE_NIOS2_CPU, cpu_model)
+#define CPU_RESOLVING_TYPE TYPE_NIOS2_CPU
 
 #define cpu_gen_code cpu_nios2_gen_code
 #define cpu_signal_handler cpu_nios2_signal_handler
@@ -253,7 +252,7 @@ static inline int cpu_mmu_index(CPUNios2State *env, bool ifetch)
                                                   MMU_SUPERVISOR_IDX;
 }
 
-int nios2_cpu_handle_mmu_fault(CPUState *env, vaddr address,
+int nios2_cpu_handle_mmu_fault(CPUState *env, vaddr address, int size,
                                int rw, int mmu_idx);
 
 static inline int cpu_interrupts_enabled(CPUNios2State *env)
@@ -262,7 +261,6 @@ static inline int cpu_interrupts_enabled(CPUNios2State *env)
 }
 
 #include "exec/cpu-all.h"
-#include "exec/exec-all.h"
 
 static inline void cpu_get_tb_cpu_state(CPUNios2State *env, target_ulong *pc,
                                         target_ulong *cs_base, uint32_t *flags)

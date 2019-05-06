@@ -299,11 +299,12 @@ void qio_channel_set_aio_fd_handler(QIOChannel *ioc,
     klass->io_set_aio_fd_handler(ioc, ctx, io_read, io_write, opaque);
 }
 
-guint qio_channel_add_watch(QIOChannel *ioc,
-                            GIOCondition condition,
-                            QIOChannelFunc func,
-                            gpointer user_data,
-                            GDestroyNotify notify)
+guint qio_channel_add_watch_full(QIOChannel *ioc,
+                                 GIOCondition condition,
+                                 QIOChannelFunc func,
+                                 gpointer user_data,
+                                 GDestroyNotify notify,
+                                 GMainContext *context)
 {
     GSource *source;
     guint id;
@@ -312,10 +313,37 @@ guint qio_channel_add_watch(QIOChannel *ioc,
 
     g_source_set_callback(source, (GSourceFunc)func, user_data, notify);
 
-    id = g_source_attach(source, NULL);
+    id = g_source_attach(source, context);
     g_source_unref(source);
 
     return id;
+}
+
+guint qio_channel_add_watch(QIOChannel *ioc,
+                            GIOCondition condition,
+                            QIOChannelFunc func,
+                            gpointer user_data,
+                            GDestroyNotify notify)
+{
+    return qio_channel_add_watch_full(ioc, condition, func,
+                                      user_data, notify, NULL);
+}
+
+GSource *qio_channel_add_watch_source(QIOChannel *ioc,
+                                      GIOCondition condition,
+                                      QIOChannelFunc func,
+                                      gpointer user_data,
+                                      GDestroyNotify notify,
+                                      GMainContext *context)
+{
+    GSource *source;
+    guint id;
+
+    id = qio_channel_add_watch_full(ioc, condition, func,
+                                    user_data, notify, context);
+    source = g_main_context_find_source_by_id(context, id);
+    g_source_ref(source);
+    return source;
 }
 
 
@@ -372,15 +400,14 @@ off_t qio_channel_io_seek(QIOChannel *ioc,
 }
 
 
-static void qio_channel_set_aio_fd_handlers(QIOChannel *ioc);
-
 static void qio_channel_restart_read(void *opaque)
 {
     QIOChannel *ioc = opaque;
     Coroutine *co = ioc->read_coroutine;
 
-    ioc->read_coroutine = NULL;
-    qio_channel_set_aio_fd_handlers(ioc);
+    /* Assert that aio_co_wake() reenters the coroutine directly */
+    assert(qemu_get_current_aio_context() ==
+           qemu_coroutine_get_aio_context(co));
     aio_co_wake(co);
 }
 
@@ -389,8 +416,9 @@ static void qio_channel_restart_write(void *opaque)
     QIOChannel *ioc = opaque;
     Coroutine *co = ioc->write_coroutine;
 
-    ioc->write_coroutine = NULL;
-    qio_channel_set_aio_fd_handlers(ioc);
+    /* Assert that aio_co_wake() reenters the coroutine directly */
+    assert(qemu_get_current_aio_context() ==
+           qemu_coroutine_get_aio_context(co));
     aio_co_wake(co);
 }
 
@@ -441,6 +469,16 @@ void coroutine_fn qio_channel_yield(QIOChannel *ioc,
     }
     qio_channel_set_aio_fd_handlers(ioc);
     qemu_coroutine_yield();
+
+    /* Allow interrupting the operation by reentering the coroutine other than
+     * through the aio_fd_handlers. */
+    if (condition == G_IO_IN && ioc->read_coroutine) {
+        ioc->read_coroutine = NULL;
+        qio_channel_set_aio_fd_handlers(ioc);
+    } else if (condition == G_IO_OUT && ioc->write_coroutine) {
+        ioc->write_coroutine = NULL;
+        qio_channel_set_aio_fd_handlers(ioc);
+    }
 }
 
 

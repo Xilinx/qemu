@@ -15,9 +15,9 @@
  */
 
 #include "qemu/osdep.h"
-#include "qapi/error.h"
 #include "channel.h"
 #include "fd.h"
+#include "migration.h"
 #include "monitor/monitor.h"
 #include "io/channel-util.h"
 #include "trace.h"
@@ -39,7 +39,7 @@ void fd_start_outgoing_migration(MigrationState *s, const char *fdname, Error **
     }
 
     qio_channel_set_name(QIO_CHANNEL(ioc), "migration-fd-outgoing");
-    migration_channel_connect(s, ioc, NULL);
+    migration_channel_connect(s, ioc, NULL, NULL);
     object_unref(OBJECT(ioc));
 }
 
@@ -67,9 +67,8 @@ void fd_start_incoming_migration(const char *infd, Error **errp)
     }
 
     qio_channel_set_name(QIO_CHANNEL(ioc), "migration-fd-incoming");
-    qio_channel_add_watch(ioc,
-                          G_IO_IN,
-                          fd_accept_incoming_migration,
-                          NULL,
-                          NULL);
+    qio_channel_add_watch_full(ioc, G_IO_IN,
+                               fd_accept_incoming_migration,
+                               NULL, NULL,
+                               g_main_context_get_thread_default());
 }

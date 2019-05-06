@@ -53,14 +53,14 @@ void crisv10_cpu_do_interrupt(CPUState *cs)
     cris_cpu_do_interrupt(cs);
 }
 
-int cris_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int rw,
+int cris_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int size, int rw,
                               int mmu_idx)
 {
     CRISCPU *cpu = CRIS_CPU(cs);
 
     cs->exception_index = 0xaa;
     cpu->env.pregs[PR_EDA] = address;
-    cpu_dump_state(cs, stderr, fprintf, 0);
+    cpu_dump_state(cs, stderr, 0);
     return 1;
 }
 
@@ -76,7 +76,7 @@ static void cris_shift_ccs(CPUCRISState *env)
     env->pregs[PR_CCS] = ccs;
 }
 
-int cris_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int rw,
+int cris_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int size, int rw,
                               int mmu_idx)
 {
     CRISCPU *cpu = CRIS_CPU(cs);
@@ -240,7 +240,7 @@ void cris_cpu_do_interrupt(CPUState *cs)
         /* Exception starts with dslot cleared.  */
         env->dslot = 0;
     }
-	
+
     if (env->pregs[PR_CCS] & U_FLAG) {
         /* Swap stack pointers.  */
         env->pregs[PR_USP] = env->regs[R_SP];

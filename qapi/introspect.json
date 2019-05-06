@@ -120,7 +120,7 @@
 ##
 # @JSONType:
 #
-# The four primitive and two structured types according to RFC 7159
+# The four primitive and two structured types according to RFC 8259
 # section 1, plus 'int' (split off 'number'), plus the obvious top
 # type 'value'.
 #
@@ -259,12 +259,16 @@
 #
 # @ret-type: the name of the command's result type.
 #
+# @allow-oob: whether the command allows out-of-band execution,
+#             defaults to false (Since: 2.12)
+#
 # TODO: @success-response (currently irrelevant, because it's QGA, not QMP)
 #
 # Since: 2.5
 ##
 { 'struct': 'SchemaInfoCommand',
-  'data': { 'arg-type': 'str', 'ret-type': 'str' } }
+  'data': { 'arg-type': 'str', 'ret-type': 'str',
+            '*allow-oob': 'bool' } }
 
 ##
 # @SchemaInfoEvent:

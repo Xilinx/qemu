@@ -1,8 +1,9 @@
 /* General "disassemble this chunk" code.  Used for debugging. */
 #include "qemu/osdep.h"
 #include "qemu-common.h"
-#include "disas/bfd.h"
+#include "disas/dis-asm.h"
 #include "elf.h"
+#include "qemu/qemu-print.h"
 
 #include "cpu.h"
 #include "disas/disas.h"
@@ -522,6 +523,14 @@ void disas(FILE *out, void *code, unsigned long size)
 # ifdef _ARCH_PPC64
     s.info.cap_mode = CS_MODE_64;
 # endif
+#elif defined(__riscv) && defined(CONFIG_RISCV_DIS)
+#if defined(_ILP32) || (__riscv_xlen == 32)
+    print_insn = print_insn_riscv32;
+#elif defined(_LP64)
+    print_insn = print_insn_riscv64;
+#else
+#error unsupported RISC-V ABI
+#endif
 #elif defined(__aarch64__) && defined(CONFIG_ARM_A64_DIS)
     print_insn = print_insn_arm_a64;
     s.info.cap_arch = CS_ARCH_ARM64;
@@ -586,7 +595,10 @@ static int
 physical_read_memory(bfd_vma memaddr, bfd_byte *myaddr, int length,
                      struct disassemble_info *info)
 {
-    cpu_physical_memory_read(memaddr, myaddr, length);
+    CPUDebug *s = container_of(info, CPUDebug, info);
+
+    address_space_read(s->cpu->as, memaddr, MEMTXATTRS_UNSPECIFIED,
+                       myaddr, length);
     return 0;
 }
 
@@ -598,7 +610,7 @@ void monitor_disas(Monitor *mon, CPUState *cpu,
     int count, i;
     CPUDebug s;
 
-    INIT_DISASSEMBLE_INFO(s.info, (FILE *)mon, monitor_fprintf);
+    INIT_DISASSEMBLE_INFO(s.info, NULL, qemu_fprintf);
 
     s.cpu = cpu;
     s.info.read_memory_func

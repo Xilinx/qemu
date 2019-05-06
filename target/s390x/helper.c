@@ -7,7 +7,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -19,35 +19,16 @@
  */
 
 #include "qemu/osdep.h"
-#include "qapi/error.h"
 #include "cpu.h"
 #include "internal.h"
 #include "exec/gdbstub.h"
 #include "qemu/timer.h"
-#include "exec/exec-all.h"
+#include "qemu/qemu-print.h"
 #include "hw/s390x/ioinst.h"
 #include "sysemu/hw_accel.h"
 #ifndef CONFIG_USER_ONLY
 #include "sysemu/sysemu.h"
 #endif
-
-//#define DEBUG_S390
-//#define DEBUG_S390_STDOUT
-
-#ifdef DEBUG_S390
-#ifdef DEBUG_S390_STDOUT
-#define DPRINTF(fmt, ...) \
-    do { fprintf(stderr, fmt, ## __VA_ARGS__); \
-         if (qemu_log_separate()) qemu_log(fmt, ##__VA_ARGS__); } while (0)
-#else
-#define DPRINTF(fmt, ...) \
-    do { qemu_log(fmt, ## __VA_ARGS__); } while (0)
-#endif
-#else
-#define DPRINTF(fmt, ...) \
-    do { } while (0)
-#endif
-
 
 #ifndef CONFIG_USER_ONLY
 void s390x_tod_timer(void *opaque)
@@ -102,12 +83,15 @@ static inline bool is_special_wait_psw(uint64_t psw_addr)
 
 void s390_handle_wait(S390CPU *cpu)
 {
+    CPUState *cs = CPU(cpu);
+
     if (s390_cpu_halt(cpu) == 0) {
 #ifndef CONFIG_USER_ONLY
         if (is_special_wait_psw(cpu->env.psw.addr)) {
             qemu_system_shutdown_request(SHUTDOWN_CAUSE_GUEST_SHUTDOWN);
         } else {
-            qemu_system_guest_panicked(NULL);
+            cpu->env.crash_reason = S390_CRASH_REASON_DISABLED_WAIT;
+            qemu_system_guest_panicked(cpu_get_crash_info(cs));
         }
 #endif
     }
@@ -119,16 +103,18 @@ void load_psw(CPUS390XState *env, uint64_t mask, uint64_t addr)
 
     env->psw.addr = addr;
     env->psw.mask = mask;
-    if (tcg_enabled()) {
-        env->cc_op = (mask >> 44) & 3;
+
+    /* KVM will handle all WAITs and trigger a WAIT exit on disabled_wait */
+    if (!tcg_enabled()) {
+        return;
     }
+    env->cc_op = (mask >> 44) & 3;
 
     if ((old_mask ^ mask) & PSW_MASK_PER) {
         s390_cpu_recompute_watchpoints(CPU(s390_env_get_cpu(env)));
     }
 
-    /* KVM will handle all WAITs and trigger a WAIT exit on disabled_wait */
-    if (tcg_enabled() && (mask & PSW_MASK_WAIT)) {
+    if (mask & PSW_MASK_WAIT) {
         s390_handle_wait(s390_env_get_cpu(env));
     }
 }
@@ -226,7 +212,7 @@ void s390_cpu_recompute_watchpoints(CPUState *cs)
     }
 }
 
-struct sigp_save_area {
+typedef struct SigpSaveArea {
     uint64_t    fprs[16];                       /* 0x0000 */
     uint64_t    grs[16];                        /* 0x0080 */
     PSW         psw;                            /* 0x0100 */
@@ -240,13 +226,13 @@ struct sigp_save_area {
     uint8_t     pad_0x0138[0x0140 - 0x0138];    /* 0x0138 */
     uint32_t    ars[16];                        /* 0x0140 */
     uint64_t    crs[16];                        /* 0x0384 */
-};
-QEMU_BUILD_BUG_ON(sizeof(struct sigp_save_area) != 512);
+} SigpSaveArea;
+QEMU_BUILD_BUG_ON(sizeof(SigpSaveArea) != 512);
 
 int s390_store_status(S390CPU *cpu, hwaddr addr, bool store_arch)
 {
     static const uint8_t ar_id = 1;
-    struct sigp_save_area *sa;
+    SigpSaveArea *sa;
     hwaddr len = sizeof(*sa);
     int i;
 
@@ -287,94 +273,105 @@ int s390_store_status(S390CPU *cpu, hwaddr addr, bool store_arch)
     return 0;
 }
 
-#define ADTL_GS_OFFSET   1024 /* offset of GS data in adtl save area */
+typedef struct SigpAdtlSaveArea {
+    uint64_t    vregs[32][2];                     /* 0x0000 */
+    uint8_t     pad_0x0200[0x0400 - 0x0200];      /* 0x0200 */
+    uint64_t    gscb[4];                          /* 0x0400 */
+    uint8_t     pad_0x0420[0x1000 - 0x0420];      /* 0x0420 */
+} SigpAdtlSaveArea;
+QEMU_BUILD_BUG_ON(sizeof(SigpAdtlSaveArea) != 4096);
+
 #define ADTL_GS_MIN_SIZE 2048 /* minimal size of adtl save area for GS */
 int s390_store_adtl_status(S390CPU *cpu, hwaddr addr, hwaddr len)
 {
+    SigpAdtlSaveArea *sa;
     hwaddr save = len;
-    void *mem;
+    int i;
 
-    mem = cpu_physical_memory_map(addr, &save, 1);
-    if (!mem) {
+    sa = cpu_physical_memory_map(addr, &save, 1);
+    if (!sa) {
         return -EFAULT;
     }
     if (save != len) {
-        cpu_physical_memory_unmap(mem, len, 1, 0);
+        cpu_physical_memory_unmap(sa, len, 1, 0);
         return -EFAULT;
     }
 
-    /* FIXME: as soon as TCG supports these features, convert cpu->be */
     if (s390_has_feat(S390_FEAT_VECTOR)) {
-        memcpy(mem, &cpu->env.vregs, 512);
+        for (i = 0; i < 32; i++) {
+            sa->vregs[i][0] = cpu_to_be64(cpu->env.vregs[i][0].ll);
+            sa->vregs[i][1] = cpu_to_be64(cpu->env.vregs[i][1].ll);
+        }
     }
     if (s390_has_feat(S390_FEAT_GUARDED_STORAGE) && len >= ADTL_GS_MIN_SIZE) {
-        memcpy(mem + ADTL_GS_OFFSET, &cpu->env.gscb, 32);
+        for (i = 0; i < 4; i++) {
+            sa->gscb[i] = cpu_to_be64(cpu->env.gscb[i]);
+        }
     }
 
-    cpu_physical_memory_unmap(mem, len, 1, len);
-
+    cpu_physical_memory_unmap(sa, len, 1, len);
     return 0;
 }
 #endif /* CONFIG_USER_ONLY */
 
-void s390_cpu_dump_state(CPUState *cs, FILE *f, fprintf_function cpu_fprintf,
-                         int flags)
+void s390_cpu_dump_state(CPUState *cs, FILE *f, int flags)
 {
     S390CPU *cpu = S390_CPU(cs);
     CPUS390XState *env = &cpu->env;
     int i;
 
     if (env->cc_op > 3) {
-        cpu_fprintf(f, "PSW=mask %016" PRIx64 " addr %016" PRIx64 " cc %15s\n",
-                    env->psw.mask, env->psw.addr, cc_name(env->cc_op));
+        qemu_fprintf(f, "PSW=mask %016" PRIx64 " addr %016" PRIx64 " cc %15s\n",
+                     env->psw.mask, env->psw.addr, cc_name(env->cc_op));
     } else {
-        cpu_fprintf(f, "PSW=mask %016" PRIx64 " addr %016" PRIx64 " cc %02x\n",
-                    env->psw.mask, env->psw.addr, env->cc_op);
+        qemu_fprintf(f, "PSW=mask %016" PRIx64 " addr %016" PRIx64 " cc %02x\n",
+                     env->psw.mask, env->psw.addr, env->cc_op);
     }
 
     for (i = 0; i < 16; i++) {
-        cpu_fprintf(f, "R%02d=%016" PRIx64, i, env->regs[i]);
+        qemu_fprintf(f, "R%02d=%016" PRIx64, i, env->regs[i]);
         if ((i % 4) == 3) {
-            cpu_fprintf(f, "\n");
+            qemu_fprintf(f, "\n");
         } else {
-            cpu_fprintf(f, " ");
+            qemu_fprintf(f, " ");
         }
     }
 
-    for (i = 0; i < 16; i++) {
-        cpu_fprintf(f, "F%02d=%016" PRIx64, i, get_freg(env, i)->ll);
-        if ((i % 4) == 3) {
-            cpu_fprintf(f, "\n");
+    if (flags & CPU_DUMP_FPU) {
+        if (s390_has_feat(S390_FEAT_VECTOR)) {
+            for (i = 0; i < 32; i++) {
+                qemu_fprintf(f, "V%02d=%016" PRIx64 "%016" PRIx64 "%c",
+                             i, env->vregs[i][0].ll, env->vregs[i][1].ll,
+                             i % 2 ? '\n' : ' ');
+            }
         } else {
-            cpu_fprintf(f, " ");
+            for (i = 0; i < 16; i++) {
+                qemu_fprintf(f, "F%02d=%016" PRIx64 "%c",
+                             i, get_freg(env, i)->ll,
+                             (i % 4) == 3 ? '\n' : ' ');
+            }
         }
-    }
-
-    for (i = 0; i < 32; i++) {
-        cpu_fprintf(f, "V%02d=%016" PRIx64 "%016" PRIx64, i,
-                    env->vregs[i][0].ll, env->vregs[i][1].ll);
-        cpu_fprintf(f, (i % 2) ? "\n" : " ");
     }
 
 #ifndef CONFIG_USER_ONLY
     for (i = 0; i < 16; i++) {
-        cpu_fprintf(f, "C%02d=%016" PRIx64, i, env->cregs[i]);
+        qemu_fprintf(f, "C%02d=%016" PRIx64, i, env->cregs[i]);
         if ((i % 4) == 3) {
-            cpu_fprintf(f, "\n");
+            qemu_fprintf(f, "\n");
         } else {
-            cpu_fprintf(f, " ");
+            qemu_fprintf(f, " ");
         }
     }
 #endif
 
 #ifdef DEBUG_INLINE_BRANCHES
     for (i = 0; i < CC_OP_MAX; i++) {
-        cpu_fprintf(f, "  %15s = %10ld\t%10ld\n", cc_name(i),
-                    inline_branch_miss[i], inline_branch_hit[i]);
+        qemu_fprintf(f, "  %15s = %10ld\t%10ld\n", cc_name(i),
+                     inline_branch_miss[i], inline_branch_hit[i]);
     }
 #endif
 
-    cpu_fprintf(f, "\n");
+    qemu_fprintf(f, "\n");
 }
 
 const char *cc_name(enum cc_op cc_op)
@@ -420,6 +417,7 @@ const char *cc_name(enum cc_op cc_op)
         [CC_OP_SLA_32]    = "CC_OP_SLA_32",
         [CC_OP_SLA_64]    = "CC_OP_SLA_64",
         [CC_OP_FLOGR]     = "CC_OP_FLOGR",
+        [CC_OP_LCBB]      = "CC_OP_LCBB",
     };
 
     return cc_names[cc_op];

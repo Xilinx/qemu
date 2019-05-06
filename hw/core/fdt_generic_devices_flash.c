@@ -11,7 +11,6 @@
 #include "qapi/error.h"
 #include "chardev/char.h"
 #include "qemu/coroutine.h"
-#include "qapi-types.h"
 
 #include "hw/block/flash.h"
 #include "hw/qdev-core.h"
@@ -65,9 +64,9 @@ int pflash_cfi01_fdt_init(char *node_path, FDTMachineInfo *fdti, void *opaque)
                 flash_base, flash_size);
 
     dinfo = drive_get_next(IF_PFLASH);
-    pflash_cfi01_register(flash_base, NULL, node_path, flash_size,
+    pflash_cfi01_register(flash_base, node_path, flash_size,
                             dinfo ? blk_by_legacy_dinfo(dinfo) : NULL,
-                            FLASH_SECTOR_SIZE, flash_size / FLASH_SECTOR_SIZE,
+                            FLASH_SECTOR_SIZE,
                             bank_width, 0x89, 0x18, 0x0000, 0x0, 0);
     return 0;
 }

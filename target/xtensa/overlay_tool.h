@@ -25,9 +25,14 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#define XTREG(idx, ofs, bi, sz, al, no, flags, cp, typ, grp, name, \
-        a1, a2, a3, a4, a5, a6) \
-    { .targno = (no), .type = (typ), .group = (grp), .size = (sz) },
+#define XTREG(idx, ofs, bi, sz, al, no, fl, cp, typ, grp, name, \
+              a1, a2, a3, a4, a5, a6) { \
+    .targno = (no), \
+    .flags = (fl), \
+    .type = (typ), \
+    .group = (grp), \
+    .size = (sz), \
+},
 #define XTREG_END { .targno = -1 },
 
 #ifndef XCHAL_HAVE_DEPBITS
@@ -342,24 +347,24 @@
     .dtlb = TLB_TEMPLATE
 
 #ifndef XCHAL_SYSROM0_PADDR
-#define XCHAL_SYSROM0_PADDR 0x60000000
+#define XCHAL_SYSROM0_PADDR 0x50000000
 #define XCHAL_SYSROM0_SIZE  0x04000000
 #endif
 
 #ifndef XCHAL_SYSRAM0_PADDR
-#define XCHAL_SYSRAM0_PADDR 0x50000000
+#define XCHAL_SYSRAM0_PADDR 0x60000000
 #define XCHAL_SYSRAM0_SIZE  0x04000000
 #endif
 
 #else
 
 #ifndef XCHAL_SYSROM0_PADDR
-#define XCHAL_SYSROM0_PADDR 0x60000000
+#define XCHAL_SYSROM0_PADDR 0x50000000
 #define XCHAL_SYSROM0_SIZE  0x04000000
 #endif
 
 #ifndef XCHAL_SYSRAM0_PADDR
-#define XCHAL_SYSRAM0_PADDR 0x50000000
+#define XCHAL_SYSRAM0_PADDR 0x60000000
 #define XCHAL_SYSRAM0_SIZE  0x04000000
 #endif
 
@@ -372,7 +377,6 @@
         static XtensaConfigList node = { \
             .config = &core, \
         }; \
-        xtensa_finalize_config(&core); \
         xtensa_register_core(&node); \
     }
 #else
@@ -451,6 +455,8 @@
     .options = XTENSA_OPTIONS, \
     .nareg = XCHAL_NUM_AREGS, \
     .ndepc = (XCHAL_XEA_VERSION >= 2), \
+    .inst_fetch_width = XCHAL_INST_FETCH_WIDTH, \
+    .max_insn_size = XCHAL_MAX_INSTRUCTION_SIZE, \
     EXCEPTIONS_SECTION, \
     INTERRUPTS_SECTION, \
     TLB_SECTION, \

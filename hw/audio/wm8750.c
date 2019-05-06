@@ -8,8 +8,8 @@
  */
 
 #include "qemu/osdep.h"
-#include "hw/hw.h"
 #include "hw/i2c/i2c.h"
+#include "hw/audio/wm8750.h"
 #include "audio/audio.h"
 
 #define IN_PORT_N	3
@@ -24,7 +24,6 @@ typedef struct {
     int dac_hz;
 } WMRate;
 
-#define TYPE_WM8750 "wm8750"
 #define WM8750(obj) OBJECT_CHECK(WM8750State, (obj), TYPE_WM8750)
 
 typedef struct WM8750State {
@@ -202,7 +201,7 @@ static void wm8750_set_format(WM8750State *s)
     in_fmt.endianness = 0;
     in_fmt.nchannels = 2;
     in_fmt.freq = s->adc_hz;
-    in_fmt.fmt = AUD_FMT_S16;
+    in_fmt.fmt = AUDIO_FORMAT_S16;
 
     s->adc_voice[0] = AUD_open_in(&s->card, s->adc_voice[0],
                     CODEC ".input1", s, wm8750_audio_in_cb, &in_fmt);
@@ -215,7 +214,7 @@ static void wm8750_set_format(WM8750State *s)
     out_fmt.endianness = 0;
     out_fmt.nchannels = 2;
     out_fmt.freq = s->dac_hz;
-    out_fmt.fmt = AUD_FMT_S16;
+    out_fmt.fmt = AUDIO_FORMAT_S16;
 
     s->dac_voice[0] = AUD_open_out(&s->card, s->dac_voice[0],
                     CODEC ".speaker", s, wm8750_audio_out_cb, &out_fmt);
@@ -315,7 +314,7 @@ static int wm8750_event(I2CSlave *i2c, enum i2c_event event)
 #ifdef VERBOSE
         if (s->i2c_len < 2)
             printf("%s: message too short (%i bytes)\n",
-                            __FUNCTION__, s->i2c_len);
+                            __func__, s->i2c_len);
 #endif
         break;
     default:
@@ -555,14 +554,14 @@ static int wm8750_tx(I2CSlave *i2c, uint8_t data)
 
 #ifdef VERBOSE
     default:
-        printf("%s: unknown register %02x\n", __FUNCTION__, cmd);
+        printf("%s: unknown register %02x\n", __func__, cmd);
 #endif
     }
 
     return 0;
 }
 
-static int wm8750_rx(I2CSlave *i2c)
+static uint8_t wm8750_rx(I2CSlave *i2c)
 {
     return 0x00;
 }
@@ -618,14 +617,12 @@ static const VMStateDescription vmstate_wm8750 = {
     }
 };
 
-static int wm8750_init(I2CSlave *i2c)
+static void wm8750_realize(DeviceState *dev, Error **errp)
 {
-    WM8750State *s = WM8750(i2c);
+    WM8750State *s = WM8750(dev);
 
     AUD_register_card(CODEC, &s->card);
     wm8750_reset(I2C_SLAVE(s));
-
-    return 0;
 }
 
 #if 0
@@ -639,8 +636,7 @@ static void wm8750_fini(I2CSlave *i2c)
 }
 #endif
 
-void wm8750_data_req_set(DeviceState *dev,
-                void (*data_req)(void *, int, int), void *opaque)
+void wm8750_data_req_set(DeviceState *dev, data_req_cb *data_req, void *opaque)
 {
     WM8750State *s = WM8750(dev);
 
@@ -685,7 +681,7 @@ uint32_t wm8750_adc_dat(void *opaque)
     if (s->idx_in >= sizeof(s->data_in)) {
         wm8750_in_load(s);
         if (s->idx_in >= sizeof(s->data_in)) {
-            return 0x80008000; /* silence in AUD_FMT_S16 sample format */
+            return 0x80008000; /* silence in AUDIO_FORMAT_S16 sample format */
         }
     }
 
@@ -709,7 +705,7 @@ static void wm8750_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     I2CSlaveClass *sc = I2C_SLAVE_CLASS(klass);
 
-    sc->init = wm8750_init;
+    dc->realize = wm8750_realize;
     sc->event = wm8750_event;
     sc->recv = wm8750_rx;
     sc->send = wm8750_tx;

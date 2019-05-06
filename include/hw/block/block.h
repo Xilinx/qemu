@@ -11,7 +11,8 @@
 #ifndef HW_BLOCK_H
 #define HW_BLOCK_H
 
-#include "qemu-common.h"
+#include "exec/hwaddr.h"
+#include "qapi/qapi-types-block-core.h"
 
 /* Configuration */
 
@@ -69,14 +70,18 @@ static inline unsigned int get_physical_block_exp(BlockConf *conf)
     DEFINE_PROP_BLOCKDEV_ON_ERROR("werror", _state, _conf.werror,       \
                                   BLOCKDEV_ON_ERROR_AUTO)
 
+/* Backend access helpers */
+
+bool blk_check_size_and_read_all(BlockBackend *blk, void *buf, hwaddr size,
+                                 Error **errp);
+
 /* Configuration helpers */
 
-void blkconf_serial(BlockConf *conf, char **serial);
-void blkconf_geometry(BlockConf *conf, int *trans,
+bool blkconf_geometry(BlockConf *conf, int *trans,
                       unsigned cyls_max, unsigned heads_max, unsigned secs_max,
                       Error **errp);
 void blkconf_blocksizes(BlockConf *conf);
-void blkconf_apply_backend_options(BlockConf *conf, bool readonly,
+bool blkconf_apply_backend_options(BlockConf *conf, bool readonly,
                                    bool resizable, Error **errp);
 
 /* Hard disk geometry */

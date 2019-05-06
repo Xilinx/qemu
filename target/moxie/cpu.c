@@ -13,7 +13,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
+ * You should have received a copy of the GNU Lesser General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
@@ -23,7 +23,6 @@
 #include "qemu-common.h"
 #include "migration/vmstate.h"
 #include "machine.h"
-#include "exec/exec-all.h"
 
 static void moxie_cpu_set_pc(CPUState *cs, vaddr value)
 {
@@ -102,9 +101,8 @@ static void moxie_cpu_class_init(ObjectClass *oc, void *data)
     CPUClass *cc = CPU_CLASS(oc);
     MoxieCPUClass *mcc = MOXIE_CPU_CLASS(oc);
 
-    mcc->parent_realize = dc->realize;
-    dc->realize = moxie_cpu_realizefn;
-
+    device_class_set_parent_realize(dc, moxie_cpu_realizefn,
+                                    &mcc->parent_realize);
     mcc->parent_reset = cc->reset;
     cc->reset = moxie_cpu_reset;
 

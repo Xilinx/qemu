@@ -9,7 +9,6 @@
 #include "qapi/error.h"
 #include "chardev/char.h"
 #include "qemu/coroutine.h"
-#include "qapi-types.h"
 
 #include "hw/char/serial.h"
 #include "hw/qdev-core.h"
@@ -67,7 +66,7 @@ static int uart16550_fdt_init(char *node_path, FDTMachineInfo *fdti,
 
     /* it_shift = 2, reg-shift in DTS - for Xilnx IP is hardcoded */
     serial_mm_init(address_space_mem, base, 2, irqline, baudrate,
-                   serial_hds[fdt_serial_ports], DEVICE_LITTLE_ENDIAN);
+                   serial_hd(fdt_serial_ports), DEVICE_LITTLE_ENDIAN);
     return 0;
 }
 

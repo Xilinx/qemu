@@ -11,9 +11,8 @@
 
 #include "libqtest.h"
 #include "libqos/i2c.h"
+#include "qapi/qmp/qdict.h"
 #include "hw/misc/tmp105_regs.h"
-
-#define OMAP2_I2C_1_BASE 0x48070000
 
 #define TMP105_TEST_ID   "tmp105-test"
 #define TMP105_TEST_ADDR 0x49
@@ -73,7 +72,7 @@ static int qmp_tmp105_get_temperature(const char *id)
                    "'property': 'temperature' } }", id);
     g_assert(qdict_haskey(response, "return"));
     ret = qdict_get_int(response, "return");
-    QDECREF(response);
+    qobject_unref(response);
     return ret;
 }
 
@@ -84,7 +83,7 @@ static void qmp_tmp105_set_temperature(const char *id, int value)
     response = qmp("{ 'execute': 'qom-set', 'arguments': { 'path': %s, "
                    "'property': 'temperature', 'value': %d } }", id, value);
     g_assert(qdict_haskey(response, "return"));
-    QDECREF(response);
+    qobject_unref(response);
 }
 
 #define TMP105_PRECISION (1000/16)
@@ -154,15 +153,13 @@ int main(int argc, char **argv)
     s = qtest_start("-machine n800 "
                     "-device tmp105,bus=i2c-bus.0,id=" TMP105_TEST_ID
                     ",address=0x49");
-    i2c = omap_i2c_create(OMAP2_I2C_1_BASE);
+    i2c = omap_i2c_create(s, OMAP2_I2C_1_BASE);
 
     qtest_add_func("/tmp105/tx-rx", send_and_receive);
 
     ret = g_test_run();
 
-    if (s) {
-        qtest_quit(s);
-    }
+    qtest_quit(s);
     g_free(i2c);
 
     return ret;

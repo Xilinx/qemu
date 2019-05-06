@@ -26,7 +26,8 @@
 #include "cpu.h"
 #include "monitor/monitor.h"
 #include "monitor/qdev.h"
-#include "qmp-commands.h"
+#include "qapi/qapi-commands-ui.h"
+#include "qapi/qapi-events-ui.h"
 #include "sysemu/arch_init.h"
 #include "qemu/config-file.h"
 

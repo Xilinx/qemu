@@ -16,13 +16,12 @@
 #include "hw/hw.h"
 #include "hw/arm/pxa.h"
 #include "hw/arm/arm.h"
-#include "hw/devices.h"
 #include "hw/arm/sharpsl.h"
 #include "hw/pcmcia.h"
 #include "hw/boards.h"
+#include "hw/display/tc6393xb.h"
 #include "hw/i2c/i2c.h"
 #include "hw/ssi/ssi.h"
-#include "sysemu/block-backend.h"
 #include "hw/sysbus.h"
 #include "exec/address-spaces.h"
 #include "sysemu/sysemu.h"
@@ -159,7 +158,7 @@ static int tosa_dac_send(I2CSlave *i2c, uint8_t data)
     s->buf[s->len] = data;
     if (s->len ++ > 2) {
 #ifdef VERBOSE
-        fprintf(stderr, "%s: message too long (%i bytes)\n", __FUNCTION__, s->len);
+        fprintf(stderr, "%s: message too long (%i bytes)\n", __func__, s->len);
 #endif
         return 1;
     }
@@ -181,14 +180,14 @@ static int tosa_dac_event(I2CSlave *i2c, enum i2c_event event)
     case I2C_START_SEND:
         break;
     case I2C_START_RECV:
-        printf("%s: recv not supported!!!\n", __FUNCTION__);
+        printf("%s: recv not supported!!!\n", __func__);
         break;
     case I2C_FINISH:
 #ifdef VERBOSE
         if (s->len < 2)
-            printf("%s: message too short (%i bytes)\n", __FUNCTION__, s->len);
+            printf("%s: message too short (%i bytes)\n", __func__, s->len);
         if (s->len > 2)
-            printf("%s: message too long\n", __FUNCTION__);
+            printf("%s: message too long\n", __func__);
 #endif
         break;
     default:
@@ -198,10 +197,10 @@ static int tosa_dac_event(I2CSlave *i2c, enum i2c_event event)
     return 0;
 }
 
-static int tosa_dac_recv(I2CSlave *s)
+static uint8_t tosa_dac_recv(I2CSlave *s)
 {
-    printf("%s: recv not supported!!!\n", __FUNCTION__);
-    return -1;
+    printf("%s: recv not supported!!!\n", __func__);
+    return 0xff;
 }
 
 static void tosa_tg_init(PXA2xxState *cpu)

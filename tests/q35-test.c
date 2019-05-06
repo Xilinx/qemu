@@ -14,6 +14,7 @@
 #include "libqos/pci.h"
 #include "libqos/pci-pc.h"
 #include "hw/pci-host/q35.h"
+#include "qapi/qmp/qdict.h"
 
 #define TSEG_SIZE_TEST_GUEST_RAM_MBYTES 128
 
@@ -86,7 +87,7 @@ static void test_smram_lock(void)
 
     qtest_start("-M q35");
 
-    pcibus = qpci_init_pc(NULL);
+    pcibus = qpci_new_pc(global_qtest, NULL);
     g_assert(pcibus != NULL);
 
     pcidev = qpci_device_find(pcibus, 0);
@@ -108,7 +109,7 @@ static void test_smram_lock(void)
     response = qmp("{'execute': 'system_reset', 'arguments': {} }");
     g_assert(response);
     g_assert(!qdict_haskey(response, "error"));
-    QDECREF(response);
+    qobject_unref(response);
 
     /* check open is settable again */
     smram_set_bit(pcidev, MCH_HOST_BRIDGE_SMRAM_D_OPEN, false);
@@ -145,7 +146,7 @@ static void test_tseg_size(const void *data)
     g_free(cmdline);
 
     /* locate the DRAM controller */
-    pcibus = qpci_init_pc(NULL);
+    pcibus = qpci_new_pc(global_qtest, NULL);
     g_assert(pcibus != NULL);
     pcidev = qpci_device_find(pcibus, 0);
     g_assert(pcidev != NULL);

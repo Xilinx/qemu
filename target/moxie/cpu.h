@@ -6,14 +6,14 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
+ * You should have received a copy of the GNU Lesser General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
@@ -34,7 +34,6 @@
 #define MOXIE_EX_BREAK      16
 
 #include "exec/cpu-defs.h"
-#include "fpu/softfloat.h"
 
 #define TARGET_PAGE_BITS 12     /* 4k */
 
@@ -113,17 +112,15 @@ static inline MoxieCPU *moxie_env_get_cpu(CPUMoxieState *env)
 #define ENV_OFFSET offsetof(MoxieCPU, env)
 
 void moxie_cpu_do_interrupt(CPUState *cs);
-void moxie_cpu_dump_state(CPUState *cpu, FILE *f,
-                          fprintf_function cpu_fprintf, int flags);
+void moxie_cpu_dump_state(CPUState *cpu, FILE *f, int flags);
 hwaddr moxie_cpu_get_phys_page_debug(CPUState *cpu, vaddr addr);
 void moxie_translate_init(void);
 int cpu_moxie_signal_handler(int host_signum, void *pinfo,
                              void *puc);
 
-#define cpu_init(cpu_model) cpu_generic_init(TYPE_MOXIE_CPU, cpu_model)
-
 #define MOXIE_CPU_TYPE_SUFFIX "-" TYPE_MOXIE_CPU
 #define MOXIE_CPU_TYPE_NAME(model) model MOXIE_CPU_TYPE_SUFFIX
+#define CPU_RESOLVING_TYPE TYPE_MOXIE_CPU
 
 #define cpu_signal_handler cpu_moxie_signal_handler
 
@@ -142,7 +139,7 @@ static inline void cpu_get_tb_cpu_state(CPUMoxieState *env, target_ulong *pc,
     *flags = 0;
 }
 
-int moxie_cpu_handle_mmu_fault(CPUState *cpu, vaddr address,
+int moxie_cpu_handle_mmu_fault(CPUState *cpu, vaddr address, int size,
                                int rw, int mmu_idx);
 
 #endif /* MOXIE_CPU_H */

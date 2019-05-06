@@ -157,6 +157,7 @@ static uint64_t uart_read(void *opaque, hwaddr offset, unsigned size)
         r = s->rxbuf;
         s->state &= ~R_STATE_RXFULL_MASK;
         cmsdk_apb_uart_update(s);
+        qemu_chr_fe_accept_input(&s->chr);
         break;
     case A_STATE:
         r = s->state;
@@ -274,6 +275,7 @@ static void uart_write(void *opaque, hwaddr offset, uint64_t value,
          * is then reflected into the intstatus value by the update function).
          */
         s->state &= ~(value & (R_INTSTATUS_TXO_MASK | R_INTSTATUS_RXO_MASK));
+        s->intstatus &= ~value;
         cmsdk_apb_uart_update(s);
         break;
     case A_BAUDDIV:

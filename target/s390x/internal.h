@@ -43,7 +43,7 @@ typedef struct LowCore {
     uint8_t         pad3[0xc8 - 0xc4];        /* 0x0c4 */
     uint32_t        stfl_fac_list;            /* 0x0c8 */
     uint8_t         pad4[0xe8 - 0xcc];        /* 0x0cc */
-    uint32_t        mcck_interruption_code[2]; /* 0x0e8 */
+    uint64_t        mcic;                     /* 0x0e8 */
     uint8_t         pad5[0xf4 - 0xf0];        /* 0x0f0 */
     uint32_t        external_damage_code;     /* 0x0f4 */
     uint64_t        failing_storage_address;  /* 0x0f8 */
@@ -63,45 +63,9 @@ typedef struct LowCore {
     PSW             program_new_psw;          /* 0x1d0 */
     PSW             mcck_new_psw;             /* 0x1e0 */
     PSW             io_new_psw;               /* 0x1f0 */
-    PSW             return_psw;               /* 0x200 */
-    uint8_t         irb[64];                  /* 0x210 */
-    uint64_t        sync_enter_timer;         /* 0x250 */
-    uint64_t        async_enter_timer;        /* 0x258 */
-    uint64_t        exit_timer;               /* 0x260 */
-    uint64_t        last_update_timer;        /* 0x268 */
-    uint64_t        user_timer;               /* 0x270 */
-    uint64_t        system_timer;             /* 0x278 */
-    uint64_t        last_update_clock;        /* 0x280 */
-    uint64_t        steal_clock;              /* 0x288 */
-    PSW             return_mcck_psw;          /* 0x290 */
-    uint8_t         pad9[0xc00 - 0x2a0];      /* 0x2a0 */
-    /* System info area */
-    uint64_t        save_area[16];            /* 0xc00 */
-    uint8_t         pad10[0xd40 - 0xc80];     /* 0xc80 */
-    uint64_t        kernel_stack;             /* 0xd40 */
-    uint64_t        thread_info;              /* 0xd48 */
-    uint64_t        async_stack;              /* 0xd50 */
-    uint64_t        kernel_asce;              /* 0xd58 */
-    uint64_t        user_asce;                /* 0xd60 */
-    uint64_t        panic_stack;              /* 0xd68 */
-    uint64_t        user_exec_asce;           /* 0xd70 */
-    uint8_t         pad11[0xdc0 - 0xd78];     /* 0xd78 */
+    uint8_t         pad13[0x11b0 - 0x200];    /* 0x200 */
 
-    /* SMP info area: defined by DJB */
-    uint64_t        clock_comparator;         /* 0xdc0 */
-    uint64_t        ext_call_fast;            /* 0xdc8 */
-    uint64_t        percpu_offset;            /* 0xdd0 */
-    uint64_t        current_task;             /* 0xdd8 */
-    uint32_t        softirq_pending;          /* 0xde0 */
-    uint32_t        pad_0x0de4;               /* 0xde4 */
-    uint64_t        int_clock;                /* 0xde8 */
-    uint8_t         pad12[0xe00 - 0xdf0];     /* 0xdf0 */
-
-    /* 0xe00 is used as indicator for dump tools */
-    /* whether the kernel died with panic() or not */
-    uint32_t        panic_magic;              /* 0xe00 */
-
-    uint8_t         pad13[0x11b8 - 0xe04];    /* 0xe04 */
+    uint64_t        mcesad;                    /* 0x11B0 */
 
     /* 64 bit extparam used for pfault, diag 250 etc  */
     uint64_t        ext_params2;               /* 0x11B8 */
@@ -118,8 +82,8 @@ typedef struct LowCore {
     uint32_t        fpt_creg_save_area;        /* 0x131c */
     uint8_t         pad16[0x1324 - 0x1320];    /* 0x1320 */
     uint32_t        tod_progreg_save_area;     /* 0x1324 */
-    uint32_t        cpu_timer_save_area[2];    /* 0x1328 */
-    uint32_t        clock_comp_save_area[2];   /* 0x1330 */
+    uint64_t        cpu_timer_save_area;       /* 0x1328 */
+    uint64_t        clock_comp_save_area;      /* 0x1330 */
     uint8_t         pad17[0x1340 - 0x1338];    /* 0x1338 */
     uint32_t        access_regs_save_area[16]; /* 0x1340 */
     uint64_t        cregs_save_area[16];       /* 0x1380 */
@@ -128,6 +92,7 @@ typedef struct LowCore {
 
     uint8_t         pad18[0x2000 - 0x1400];    /* 0x1400 */
 } QEMU_PACKED LowCore;
+QEMU_BUILD_BUG_ON(sizeof(LowCore) != 8192);
 #endif /* CONFIG_USER_ONLY */
 
 #define MAX_ILEN 6
@@ -234,23 +199,9 @@ enum cc_op {
     CC_OP_SLA_32,               /* Calculate shift left signed (32bit) */
     CC_OP_SLA_64,               /* Calculate shift left signed (64bit) */
     CC_OP_FLOGR,                /* find leftmost one */
+    CC_OP_LCBB,                 /* load count to block boundary */
     CC_OP_MAX
 };
-
-/* The value of the TOD clock for 1.1.1970. */
-#define TOD_UNIX_EPOCH 0x7d91048bca000000ULL
-
-/* Converts ns to s390's clock format */
-static inline uint64_t time2tod(uint64_t ns)
-{
-    return (ns << 9) / 125;
-}
-
-/* Converts s390's clock format to ns */
-static inline uint64_t tod2time(uint64_t t)
-{
-    return (t * 125) >> 9;
-}
 
 static inline hwaddr decode_basedisp_s(CPUS390XState *env, uint32_t ipb,
                                        uint8_t *ar)
@@ -272,17 +223,6 @@ static inline hwaddr decode_basedisp_s(CPUS390XState *env, uint32_t ipb,
 
 /* Base/displacement are at the same locations. */
 #define decode_basedisp_rs decode_basedisp_s
-
-static inline void s390_do_cpu_full_reset(CPUState *cs, run_on_cpu_data arg)
-{
-    cpu_reset(cs);
-}
-
-static inline uint8_t s390_cpu_get_state(S390CPU *cpu)
-{
-    return cpu->env.cpu_state;
-}
-
 
 /* arch_dump.c */
 int s390_cpu_write_elf64_note(WriteCoreDumpFunction f, CPUState *cs,
@@ -323,7 +263,7 @@ ObjectClass *s390_cpu_class_by_name(const char *name);
 void s390x_cpu_debug_excp_handler(CPUState *cs);
 void s390_cpu_do_interrupt(CPUState *cpu);
 bool s390_cpu_exec_interrupt(CPUState *cpu, int int_req);
-int s390_cpu_handle_mmu_fault(CPUState *cpu, vaddr address, int rw,
+int s390_cpu_handle_mmu_fault(CPUState *cpu, vaddr address, int size, int rw,
                               int mmu_idx);
 void s390x_cpu_do_unaligned_access(CPUState *cs, vaddr addr,
                                    MMUAccessType access_type,
@@ -334,6 +274,15 @@ void s390x_cpu_do_unaligned_access(CPUState *cs, vaddr addr,
 uint32_t set_cc_nz_f32(float32 v);
 uint32_t set_cc_nz_f64(float64 v);
 uint32_t set_cc_nz_f128(float128 v);
+#define S390_IEEE_MASK_INVALID   0x80
+#define S390_IEEE_MASK_DIVBYZERO 0x40
+#define S390_IEEE_MASK_OVERFLOW  0x20
+#define S390_IEEE_MASK_UNDERFLOW 0x10
+#define S390_IEEE_MASK_INEXACT   0x08
+#define S390_IEEE_MASK_QUANTUM   0x04
+uint8_t s390_softfloat_exc_to_ieee(unsigned int exc);
+int s390_swap_bfp_rounding_mode(CPUS390XState *env, int m3);
+void s390_restore_bfp_rounding_mode(CPUS390XState *env, int old_mode);
 
 
 /* gdbstub.c */
@@ -343,8 +292,7 @@ void s390_cpu_gdb_init(CPUState *cs);
 
 
 /* helper.c */
-void s390_cpu_dump_state(CPUState *cpu, FILE *f, fprintf_function cpu_fprintf,
-                         int flags);
+void s390_cpu_dump_state(CPUState *cpu, FILE *f, int flags);
 hwaddr s390_cpu_get_phys_page_debug(CPUState *cpu, vaddr addr);
 hwaddr s390_cpu_get_phys_addr_debug(CPUState *cpu, vaddr addr);
 uint64_t get_psw_mask(CPUS390XState *env);
@@ -379,25 +327,29 @@ void cpu_inject_stop(S390CPU *cpu);
 
 
 /* ioinst.c */
-void ioinst_handle_xsch(S390CPU *cpu, uint64_t reg1);
-void ioinst_handle_csch(S390CPU *cpu, uint64_t reg1);
-void ioinst_handle_hsch(S390CPU *cpu, uint64_t reg1);
-void ioinst_handle_msch(S390CPU *cpu, uint64_t reg1, uint32_t ipb);
-void ioinst_handle_ssch(S390CPU *cpu, uint64_t reg1, uint32_t ipb);
-void ioinst_handle_stcrw(S390CPU *cpu, uint32_t ipb);
-void ioinst_handle_stsch(S390CPU *cpu, uint64_t reg1, uint32_t ipb);
-int ioinst_handle_tsch(S390CPU *cpu, uint64_t reg1, uint32_t ipb);
-void ioinst_handle_chsc(S390CPU *cpu, uint32_t ipb);
-int ioinst_handle_tpi(S390CPU *cpu, uint32_t ipb);
+void ioinst_handle_xsch(S390CPU *cpu, uint64_t reg1, uintptr_t ra);
+void ioinst_handle_csch(S390CPU *cpu, uint64_t reg1, uintptr_t ra);
+void ioinst_handle_hsch(S390CPU *cpu, uint64_t reg1, uintptr_t ra);
+void ioinst_handle_msch(S390CPU *cpu, uint64_t reg1, uint32_t ipb,
+                        uintptr_t ra);
+void ioinst_handle_ssch(S390CPU *cpu, uint64_t reg1, uint32_t ipb,
+                        uintptr_t ra);
+void ioinst_handle_stcrw(S390CPU *cpu, uint32_t ipb, uintptr_t ra);
+void ioinst_handle_stsch(S390CPU *cpu, uint64_t reg1, uint32_t ipb,
+                         uintptr_t ra);
+int ioinst_handle_tsch(S390CPU *cpu, uint64_t reg1, uint32_t ipb, uintptr_t ra);
+void ioinst_handle_chsc(S390CPU *cpu, uint32_t ipb, uintptr_t ra);
 void ioinst_handle_schm(S390CPU *cpu, uint64_t reg1, uint64_t reg2,
-                        uint32_t ipb);
-void ioinst_handle_rsch(S390CPU *cpu, uint64_t reg1);
-void ioinst_handle_rchp(S390CPU *cpu, uint64_t reg1);
-void ioinst_handle_sal(S390CPU *cpu, uint64_t reg1);
+                        uint32_t ipb, uintptr_t ra);
+void ioinst_handle_rsch(S390CPU *cpu, uint64_t reg1, uintptr_t ra);
+void ioinst_handle_rchp(S390CPU *cpu, uint64_t reg1, uintptr_t ra);
+void ioinst_handle_sal(S390CPU *cpu, uint64_t reg1, uintptr_t ra);
 
 
 /* mem_helper.c */
 target_ulong mmu_real2abs(CPUS390XState *env, target_ulong raddr);
+void probe_write_access(CPUS390XState *env, uint64_t addr, uint64_t len,
+                        uintptr_t ra);
 
 
 /* mmu_helper.c */
@@ -408,10 +360,9 @@ int mmu_translate_real(CPUS390XState *env, target_ulong raddr, int rw,
 
 
 /* misc_helper.c */
-void QEMU_NORETURN runtime_exception(CPUS390XState *env, int excp,
-                                     uintptr_t retaddr);
 int handle_diag_288(CPUS390XState *env, uint64_t r1, uint64_t r3);
-void handle_diag_308(CPUS390XState *env, uint64_t r1, uint64_t r3);
+void handle_diag_308(CPUS390XState *env, uint64_t r1, uint64_t r3,
+                     uintptr_t ra);
 
 
 /* translate.c */

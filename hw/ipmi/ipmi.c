@@ -26,8 +26,9 @@
 #include "hw/hw.h"
 #include "hw/ipmi/ipmi.h"
 #include "sysemu/sysemu.h"
-#include "qmp-commands.h"
 #include "qom/object_interfaces.h"
+#include "qapi/error.h"
+#include "qapi/qapi-commands-misc.h"
 #include "qapi/visitor.h"
 
 static uint32_t ipmi_current_uuid = 1;
@@ -103,7 +104,7 @@ void ipmi_bmc_find_and_link(Object *obj, Object **bmc)
 {
     object_property_add_link(obj, "bmc", TYPE_IPMI_BMC, bmc,
                              isa_ipmi_bmc_check,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             OBJ_PROP_LINK_STRONG,
                              &error_abort);
 }
 

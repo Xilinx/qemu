@@ -31,6 +31,7 @@
 #include "qemu/bitops.h"
 #include "qemu/log.h"
 #include "qemu/config-file.h"
+#include "qemu/option.h"
 #include "sysemu/sysemu.h"
 
 #include "hw/fdt_generic_util.h"

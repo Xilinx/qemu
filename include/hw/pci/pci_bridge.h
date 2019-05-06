@@ -27,6 +27,54 @@
 #define QEMU_PCI_BRIDGE_H
 
 #include "hw/pci/pci.h"
+#include "hw/pci/pci_bus.h"
+
+typedef struct PCIBridgeWindows PCIBridgeWindows;
+
+/*
+ * Aliases for each of the address space windows that the bridge
+ * can forward. Mapped into the bridge's parent's address space,
+ * as subregions.
+ */
+struct PCIBridgeWindows {
+    MemoryRegion alias_pref_mem;
+    MemoryRegion alias_mem;
+    MemoryRegion alias_io;
+    /*
+     * When bridge control VGA forwarding is enabled, bridges will
+     * provide positive decode on the PCI VGA defined I/O port and
+     * MMIO ranges.  When enabled forwarding is only qualified on the
+     * I/O and memory enable bits in the bridge command register.
+     */
+    MemoryRegion alias_vga[QEMU_PCI_VGA_NUM_REGIONS];
+};
+
+#define TYPE_PCI_BRIDGE "base-pci-bridge"
+#define PCI_BRIDGE(obj) OBJECT_CHECK(PCIBridge, (obj), TYPE_PCI_BRIDGE)
+
+struct PCIBridge {
+    /*< private >*/
+    PCIDevice parent_obj;
+    /*< public >*/
+
+    /* private member */
+    PCIBus sec_bus;
+    /*
+     * Memory regions for the bridge's address spaces.  These regions are not
+     * directly added to system_memory/system_io or its descendants.
+     * Bridge's secondary bus points to these, so that devices
+     * under the bridge see these regions as its address spaces.
+     * The regions are as large as the entire address space -
+     * they don't take into account any windows.
+     */
+    MemoryRegion address_space_mem;
+    MemoryRegion address_space_io;
+
+    PCIBridgeWindows *windows;
+
+    pci_map_irq_fn map_irq;
+    const char *bus_name;
+};
 
 #define PCI_BRIDGE_DEV_PROP_CHASSIS_NR "chassis_nr"
 #define PCI_BRIDGE_DEV_PROP_MSI        "msi"
@@ -51,6 +99,12 @@ void pci_bridge_reset(DeviceState *qdev);
 void pci_bridge_initfn(PCIDevice *pci_dev, const char *typename);
 void pci_bridge_exitfn(PCIDevice *pci_dev);
 
+void pci_bridge_dev_plug_cb(HotplugHandler *hotplug_dev, DeviceState *dev,
+                            Error **errp);
+void pci_bridge_dev_unplug_cb(HotplugHandler *hotplug_dev, DeviceState *dev,
+                              Error **errp);
+void pci_bridge_dev_unplug_request_cb(HotplugHandler *hotplug_dev,
+                                      DeviceState *dev, Error **errp);
 
 /*
  * before qdev initialization(qdev_init()), this function sets bus_name and
@@ -85,11 +139,19 @@ typedef struct PCIBridgeQemuCap {
 
 #define REDHAT_PCI_CAP_RESOURCE_RESERVE 1
 
+/*
+ * PCI BUS/IO/MEM/PREFMEM additional resources recorded as a
+ * capability in PCI configuration space to reserve on firmware init.
+ */
+typedef struct PCIResReserve {
+    uint32_t bus;
+    uint64_t io;
+    uint64_t mem_non_pref;
+    uint64_t mem_pref_32;
+    uint64_t mem_pref_64;
+} PCIResReserve;
+
 int pci_bridge_qemu_reserve_cap_init(PCIDevice *dev, int cap_offset,
-                              uint32_t bus_reserve, uint64_t io_reserve,
-                              uint32_t mem_non_pref_reserve,
-                              uint32_t mem_pref_32_reserve,
-                              uint64_t mem_pref_64_reserve,
-                              Error **errp);
+                               PCIResReserve res_reserve, Error **errp);
 
 #endif /* QEMU_PCI_BRIDGE_H */

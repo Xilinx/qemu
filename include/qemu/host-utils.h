@@ -207,7 +207,7 @@ static inline int cto64(uint64_t val)
  */
 static inline int clrsb32(uint32_t val)
 {
-#if QEMU_GNUC_PREREQ(4, 7)
+#if __has_builtin(__builtin_clrsb) || !defined(__clang__)
     return __builtin_clrsb(val);
 #else
     return clz32(val ^ ((int32_t)val >> 1)) - 1;
@@ -223,7 +223,7 @@ static inline int clrsb32(uint32_t val)
  */
 static inline int clrsb64(uint64_t val)
 {
-#if QEMU_GNUC_PREREQ(4, 7)
+#if __has_builtin(__builtin_clrsbll) || !defined(__clang__)
     return __builtin_clrsbll(val);
 #else
     return clz64(val ^ ((int64_t)val >> 1)) - 1;
@@ -398,6 +398,16 @@ static inline uint64_t pow2ceil(uint64_t value)
         return !value;
     }
     return 0x8000000000000000ull >> (n - 1);
+}
+
+static inline uint32_t pow2roundup32(uint32_t x)
+{
+    x |= (x >> 1);
+    x |= (x >> 2);
+    x |= (x >> 4);
+    x |= (x >> 8);
+    x |= (x >> 16);
+    return x + 1;
 }
 
 /**

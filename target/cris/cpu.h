@@ -207,8 +207,7 @@ void cris_cpu_do_interrupt(CPUState *cpu);
 void crisv10_cpu_do_interrupt(CPUState *cpu);
 bool cris_cpu_exec_interrupt(CPUState *cpu, int int_req);
 
-void cris_cpu_dump_state(CPUState *cs, FILE *f, fprintf_function cpu_fprintf,
-                         int flags);
+void cris_cpu_dump_state(CPUState *cs, FILE *f, int flags);
 
 hwaddr cris_cpu_get_phys_page_debug(CPUState *cpu, vaddr addr);
 
@@ -267,10 +266,9 @@ enum {
 #define TARGET_PHYS_ADDR_SPACE_BITS 32
 #define TARGET_VIRT_ADDR_SPACE_BITS 32
 
-#define cpu_init(cpu_model) cpu_generic_init(TYPE_CRIS_CPU, cpu_model)
-
 #define CRIS_CPU_TYPE_SUFFIX "-" TYPE_CRIS_CPU
 #define CRIS_CPU_TYPE_NAME(name) (name CRIS_CPU_TYPE_SUFFIX)
+#define CPU_RESOLVING_TYPE TYPE_CRIS_CPU
 
 #define cpu_signal_handler cpu_cris_signal_handler
 
@@ -283,7 +281,7 @@ static inline int cpu_mmu_index (CPUCRISState *env, bool ifetch)
 	return !!(env->pregs[PR_CCS] & U_FLAG);
 }
 
-int cris_cpu_handle_mmu_fault(CPUState *cpu, vaddr address, int rw,
+int cris_cpu_handle_mmu_fault(CPUState *cpu, vaddr address, int size, int rw,
                               int mmu_idx);
 
 /* Support function regs.  */
@@ -309,6 +307,6 @@ static inline void cpu_get_tb_cpu_state(CPUCRISState *env, target_ulong *pc,
 }
 
 #define cpu_list cris_cpu_list
-void cris_cpu_list(FILE *f, fprintf_function cpu_fprintf);
+void cris_cpu_list(void);
 
 #endif

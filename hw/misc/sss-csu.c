@@ -165,7 +165,7 @@ static void zynqmp_csu_sss_realize(DeviceState *dev, Error **errp)
         object_property_add_link(OBJECT(ss), "sss", TYPE_ZYNQMP_CSU_SSS,
                                  (Object **)&ss->sss,
                                  qdev_prop_allow_set_link_before_realize,
-                                 OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                                 OBJ_PROP_LINK_STRONG,
                                  &local_errp);
         if (local_errp) {
             goto zynqmp_csu_sss_realize_fail;
@@ -222,7 +222,7 @@ static void zynqmp_csu_sss_init(Object *obj)
         object_property_add_link(OBJECT(s), name, TYPE_STREAM_SLAVE,
                                  (Object **)&p->tx_devs[remote],
                                  qdev_prop_allow_set_link_before_realize,
-                                 OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                                 OBJ_PROP_LINK_STRONG,
                                  NULL);
         g_free(name);
         object_initialize(&p->rx_devs[remote], sizeof(SSSStream),

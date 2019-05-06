@@ -28,6 +28,7 @@
 #include "hw/qdev-properties.h"
 #include "migration/vmstate.h"
 #include "exec/exec-all.h"
+#include "fpu/softfloat.h"
 
 #ifndef CONFIG_USER_ONLY
 #include "hw/fdt_generic_util.h"
@@ -74,6 +75,9 @@ static const struct {
     {"10.0", 0x24},
     {NULL, 0},
 };
+
+/* If no specific version gets selected, default to the following.  */
+#define DEFAULT_CPU_VERSION "10.0"
 
 static void mb_cpu_set_pc(CPUState *cs, vaddr value)
 {
@@ -177,6 +181,7 @@ static void mb_cpu_realizefn(DeviceState *dev, Error **errp)
     MicroBlazeCPU *cpu = MICROBLAZE_CPU(cs);
     CPUMBState *env = &cpu->env;
     uint8_t version_code = 0;
+    const char *version;
     int i = 0;
     Error *local_err = NULL;
 
@@ -204,8 +209,9 @@ static void mb_cpu_realizefn(DeviceState *dev, Error **errp)
                         | PVR2_FPU_EXC_MASK \
                         | 0;
 
-    for (i = 0; mb_cpu_lookup[i].name && cpu->cfg.version; i++) {
-        if (strcmp(mb_cpu_lookup[i].name, cpu->cfg.version) == 0) {
+    version = cpu->cfg.version ? cpu->cfg.version : DEFAULT_CPU_VERSION;
+    for (i = 0; mb_cpu_lookup[i].name && version; i++) {
+        if (strcmp(mb_cpu_lookup[i].name, version) == 0) {
             version_code = mb_cpu_lookup[i].version_id;
             break;
         }
@@ -232,14 +238,18 @@ static void mb_cpu_realizefn(DeviceState *dev, Error **errp)
                         (cpu->cfg.use_barrel ? PVR2_USE_BARREL_MASK : 0) |
                         (cpu->cfg.use_div ? PVR2_USE_DIV_MASK : 0) |
                         (cpu->cfg.use_msr_instr ? PVR2_USE_MSR_INSTR : 0) |
-                        (cpu->cfg.use_pcmp_instr ? PVR2_USE_PCMP_INSTR : 0);
+                        (cpu->cfg.use_pcmp_instr ? PVR2_USE_PCMP_INSTR : 0) |
+                        (cpu->cfg.dopb_bus_exception ?
+                                                 PVR2_DOPB_BUS_EXC_MASK : 0) |
+                        (cpu->cfg.iopb_bus_exception ?
+                                                 PVR2_IOPB_BUS_EXC_MASK : 0);
 
     env->pvr.regs[5] |= cpu->cfg.dcache_writeback ?
                                         PVR5_DCACHE_WRITEBACK_MASK : 0;
 
     env->pvr.regs[10] = 0x0c000000 | /* Default to spartan 3a dsp family.  */
                         (cpu->cfg.addr_size - 32) << PVR10_ASIZE_SHIFT;
-    env->pvr.regs[11] = cpu->cfg.use_mmu ? PVR11_USE_MMU : 0 |
+    env->pvr.regs[11] = (cpu->cfg.use_mmu ? PVR11_USE_MMU : 0) |
                         16 << 17;
 
     mcc->parent_realize(dev, errp);
@@ -304,6 +314,12 @@ static Property mb_properties[] = {
     DEFINE_PROP_BOOL("dcache-writeback", MicroBlazeCPU, cfg.dcache_writeback,
                      false),
     DEFINE_PROP_BOOL("endianness", MicroBlazeCPU, cfg.endi, false),
+    /* Enables bus exceptions on failed data accesses (load/stores).  */
+    DEFINE_PROP_BOOL("dopb-bus-exception", MicroBlazeCPU,
+                     cfg.dopb_bus_exception, false),
+    /* Enables bus exceptions on failed instruction fetches.  */
+    DEFINE_PROP_BOOL("iopb-bus-exception", MicroBlazeCPU,
+                     cfg.iopb_bus_exception, false),
     DEFINE_PROP_STRING("version", MicroBlazeCPU, cfg.version),
     DEFINE_PROP_UINT8("pvr", MicroBlazeCPU, cfg.pvr, C_PVR_FULL),
     DEFINE_PROP_END_OF_LIST(),
@@ -337,9 +353,8 @@ static void mb_cpu_class_init(ObjectClass *oc, void *data)
     CPUClass *cc = CPU_CLASS(oc);
     MicroBlazeCPUClass *mcc = MICROBLAZE_CPU_CLASS(oc);
 
-    mcc->parent_realize = dc->realize;
-    dc->realize = mb_cpu_realizefn;
-
+    device_class_set_parent_realize(dc, mb_cpu_realizefn,
+                                    &mcc->parent_realize);
     mcc->parent_reset = cc->reset;
     cc->reset = mb_cpu_reset;
 
@@ -355,7 +370,7 @@ static void mb_cpu_class_init(ObjectClass *oc, void *data)
 #ifdef CONFIG_USER_ONLY
     cc->handle_mmu_fault = mb_cpu_handle_mmu_fault;
 #else
-    cc->do_unassigned_access = mb_cpu_unassigned_access;
+    cc->do_transaction_failed = mb_cpu_transaction_failed;
     cc->get_phys_page_debug = mb_cpu_get_phys_page_debug;
 #endif
     dc->vmsd = &vmstate_mb_cpu;

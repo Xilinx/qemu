@@ -463,7 +463,7 @@ static void xmpu_flush(XMPU *s)
             .addr_mask = ~0,
             .perm = IOMMU_NONE,
         };
-        memory_region_notify_iommu(&s->masters[i].iommu, entry);
+        memory_region_notify_iommu(&s->masters[i].iommu, 0, entry);
         /* Temporary hack.  */
         memory_region_transaction_begin();
         memory_region_set_readonly(MEMORY_REGION(&s->masters[i].iommu), false);
@@ -1088,12 +1088,12 @@ static void xmpu_init(Object *obj)
     object_property_add_link(obj, "protected-mr", TYPE_MEMORY_REGION,
                              (Object **)&s->protected_mr,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             OBJ_PROP_LINK_STRONG,
                              &error_abort);
     object_property_add_link(obj, "mr-0", TYPE_MEMORY_REGION,
                              (Object **)&s->masters[0].parent_mr,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             OBJ_PROP_LINK_STRONG,
                              &error_abort);
 
     qdev_init_gpio_out(DEVICE(sbd), &s->enabled_signal, 1);

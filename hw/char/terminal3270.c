@@ -45,6 +45,14 @@ static int terminal_can_read(void *opaque)
     return INPUT_BUFFER_SIZE - t->in_len;
 }
 
+static void terminal_timer_cancel(Terminal3270 *t)
+{
+    if (t->timer_tag) {
+        g_source_remove(t->timer_tag);
+        t->timer_tag = 0;
+    }
+}
+
 /*
  * Protocol handshake done,
  * signal guest by an unsolicited DE irq.
@@ -90,12 +98,8 @@ static void terminal_read(void *opaque, const uint8_t *buf, int size)
 
     assert(size <= (INPUT_BUFFER_SIZE - t->in_len));
 
-    if (t->timer_tag) {
-        g_source_remove(t->timer_tag);
-        t->timer_tag = 0;
-    }
+    terminal_timer_cancel(t);
     t->timer_tag = g_timeout_add_seconds(600, send_timing_mark_cb, t);
-
     memcpy(&t->inv[t->in_len], buf, size);
     t->in_len += size;
     if (t->in_len < 2) {
@@ -145,10 +149,7 @@ static void chr_event(void *opaque, int event)
     /* Ensure the initial status correct, always reset them. */
     t->in_len = 0;
     t->handshake_done = false;
-    if (t->timer_tag) {
-        g_source_remove(t->timer_tag);
-        t->timer_tag = 0;
-    }
+    terminal_timer_cancel(t);
 
     switch (event) {
     case CHR_EVENT_OPENED:

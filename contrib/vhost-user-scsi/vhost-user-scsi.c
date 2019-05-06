@@ -11,12 +11,11 @@
  */
 
 #include "qemu/osdep.h"
+#include <iscsi/iscsi.h>
+#include <iscsi/scsi-lowlevel.h>
 #include "contrib/libvhost-user/libvhost-user-glib.h"
 #include "standard-headers/linux/virtio_scsi.h"
-#include "iscsi/iscsi.h"
-#include "iscsi/scsi-lowlevel.h"
 
-#include <glib.h>
 
 #define VUS_ISCSI_INITIATOR "iqn.2016-11.com.nutanix:vhost-user-scsi"
 

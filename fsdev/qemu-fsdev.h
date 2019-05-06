@@ -12,7 +12,6 @@
  */
 #ifndef QEMU_FSDEV_H
 #define QEMU_FSDEV_H
-#include "qemu/option.h"
 #include "file-op-9p.h"
 
 
@@ -39,7 +38,7 @@ typedef struct FsDriverListEntry {
     QTAILQ_ENTRY(FsDriverListEntry) next;
 } FsDriverListEntry;
 
-int qemu_fsdev_add(QemuOpts *opts);
+int qemu_fsdev_add(QemuOpts *opts, Error **errp);
 FsDriverEntry *get_fsdev_fsentry(char *id);
 extern FileOperations local_ops;
 extern FileOperations handle_ops;

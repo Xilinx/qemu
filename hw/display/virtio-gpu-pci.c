@@ -10,12 +10,28 @@
  * See the COPYING file in the top-level directory.
  *
  */
+
 #include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "hw/pci/pci.h"
 #include "hw/virtio/virtio.h"
 #include "hw/virtio/virtio-bus.h"
 #include "hw/virtio/virtio-pci.h"
 #include "hw/virtio/virtio-gpu.h"
+
+typedef struct VirtIOGPUPCI VirtIOGPUPCI;
+
+/*
+ * virtio-gpu-pci: This extends VirtioPCIProxy.
+ */
+#define TYPE_VIRTIO_GPU_PCI "virtio-gpu-pci"
+#define VIRTIO_GPU_PCI(obj) \
+        OBJECT_CHECK(VirtIOGPUPCI, (obj), TYPE_VIRTIO_GPU_PCI)
+
+struct VirtIOGPUPCI {
+    VirtIOPCIProxy parent_obj;
+    VirtIOGPU vdev;
+};
 
 static Property virtio_gpu_pci_properties[] = {
     DEFINE_VIRTIO_GPU_PCI_PROPERTIES(VirtIOPCIProxy),
@@ -28,10 +44,16 @@ static void virtio_gpu_pci_realize(VirtIOPCIProxy *vpci_dev, Error **errp)
     VirtIOGPU *g = &vgpu->vdev;
     DeviceState *vdev = DEVICE(&vgpu->vdev);
     int i;
+    Error *local_error = NULL;
 
     qdev_set_parent_bus(vdev, BUS(&vpci_dev->bus));
     virtio_pci_force_virtio_1(vpci_dev);
-    object_property_set_bool(OBJECT(vdev), true, "realized", errp);
+    object_property_set_bool(OBJECT(vdev), true, "realized", &local_error);
+
+    if (local_error) {
+        error_propagate(errp, local_error);
+        return;
+    }
 
     for (i = 0; i < g->conf.max_outputs; i++) {
         object_property_set_link(OBJECT(g->scanout[i].con),
@@ -61,9 +83,8 @@ static void virtio_gpu_initfn(Object *obj)
                                 TYPE_VIRTIO_GPU);
 }
 
-static const TypeInfo virtio_gpu_pci_info = {
-    .name = TYPE_VIRTIO_GPU_PCI,
-    .parent = TYPE_VIRTIO_PCI,
+static const VirtioPCIDeviceTypeInfo virtio_gpu_pci_info = {
+    .generic_name = TYPE_VIRTIO_GPU_PCI,
     .instance_size = sizeof(VirtIOGPUPCI),
     .instance_init = virtio_gpu_initfn,
     .class_init = virtio_gpu_pci_class_init,
@@ -71,6 +92,6 @@ static const TypeInfo virtio_gpu_pci_info = {
 
 static void virtio_gpu_pci_register_types(void)
 {
-    type_register_static(&virtio_gpu_pci_info);
+    virtio_pci_types_register(&virtio_gpu_pci_info);
 }
 type_init(virtio_gpu_pci_register_types)

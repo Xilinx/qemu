@@ -25,10 +25,6 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#include <stdlib.h>
-#include <string.h>
-#include <sys/time.h>
-#include <time.h>
 
 #include "qemu/osdep.h"
 #include "qemu-common.h"
@@ -181,7 +177,7 @@ static void wctablet_input_sync(DeviceState *dev)
 }
 
 static QemuInputHandler wctablet_handler = {
-    .name  = "QEMU Wacome Pen Tablet",
+    .name  = "QEMU Wacom Pen Tablet",
     .mask  = INPUT_EVENT_MASK_BTN | INPUT_EVENT_MASK_ABS,
     .event = wctablet_input_event,
     .sync  = wctablet_input_sync,

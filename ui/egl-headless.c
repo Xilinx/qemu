@@ -38,6 +38,14 @@ static void egl_gfx_switch(DisplayChangeListener *dcl,
     edpy->ds = new_surface;
 }
 
+static QEMUGLContext egl_create_context(DisplayChangeListener *dcl,
+                                        QEMUGLParams *params)
+{
+    eglMakeCurrent(qemu_egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE,
+                   qemu_egl_rn_ctx);
+    return qemu_egl_create_context(dcl, params);
+}
+
 static void egl_scanout_disable(DisplayChangeListener *dcl)
 {
     egl_dpy *edpy = container_of(dcl, egl_dpy, dcl);
@@ -84,21 +92,30 @@ static void egl_scanout_dmabuf(DisplayChangeListener *dcl,
 }
 
 static void egl_cursor_dmabuf(DisplayChangeListener *dcl,
-                              QemuDmaBuf *dmabuf,
-                              uint32_t pos_x, uint32_t pos_y)
+                              QemuDmaBuf *dmabuf, bool have_hot,
+                              uint32_t hot_x, uint32_t hot_y)
+{
+    egl_dpy *edpy = container_of(dcl, egl_dpy, dcl);
+
+    if (dmabuf) {
+        egl_dmabuf_import_texture(dmabuf);
+        if (!dmabuf->texture) {
+            return;
+        }
+        egl_fb_setup_for_tex(&edpy->cursor_fb, dmabuf->width, dmabuf->height,
+                             dmabuf->texture, false);
+    } else {
+        egl_fb_destroy(&edpy->cursor_fb);
+    }
+}
+
+static void egl_cursor_position(DisplayChangeListener *dcl,
+                                uint32_t pos_x, uint32_t pos_y)
 {
     egl_dpy *edpy = container_of(dcl, egl_dpy, dcl);
 
     edpy->pos_x = pos_x;
     edpy->pos_y = pos_y;
-
-    egl_dmabuf_import_texture(dmabuf);
-    if (!dmabuf->texture) {
-        return;
-    }
-
-    egl_fb_setup_for_tex(&edpy->cursor_fb, dmabuf->width, dmabuf->height,
-                         dmabuf->texture, false);
 }
 
 static void egl_release_dmabuf(DisplayChangeListener *dcl,
@@ -125,7 +142,8 @@ static void egl_scanout_flush(DisplayChangeListener *dcl,
         egl_texture_blit(edpy->gls, &edpy->blit_fb, &edpy->guest_fb,
                          !edpy->y_0_top);
         egl_texture_blend(edpy->gls, &edpy->blit_fb, &edpy->cursor_fb,
-                          !edpy->y_0_top, edpy->pos_x, edpy->pos_y);
+                          !edpy->y_0_top, edpy->pos_x, edpy->pos_y,
+                          1.0, 1.0);
     } else {
         /* no cursor -> use simple framebuffer blit */
         egl_fb_blit(&edpy->blit_fb, &edpy->guest_fb, edpy->y_0_top);
@@ -141,7 +159,7 @@ static const DisplayChangeListenerOps egl_ops = {
     .dpy_gfx_update          = egl_gfx_update,
     .dpy_gfx_switch          = egl_gfx_switch,
 
-    .dpy_gl_ctx_create       = qemu_egl_create_context,
+    .dpy_gl_ctx_create       = egl_create_context,
     .dpy_gl_ctx_destroy      = qemu_egl_destroy_context,
     .dpy_gl_ctx_make_current = qemu_egl_make_context_current,
     .dpy_gl_ctx_get_current  = qemu_egl_get_current_context,
@@ -150,17 +168,24 @@ static const DisplayChangeListenerOps egl_ops = {
     .dpy_gl_scanout_texture  = egl_scanout_texture,
     .dpy_gl_scanout_dmabuf   = egl_scanout_dmabuf,
     .dpy_gl_cursor_dmabuf    = egl_cursor_dmabuf,
+    .dpy_gl_cursor_position  = egl_cursor_position,
     .dpy_gl_release_dmabuf   = egl_release_dmabuf,
     .dpy_gl_update           = egl_scanout_flush,
 };
 
-void egl_headless_init(void)
+static void early_egl_headless_init(DisplayOptions *opts)
 {
+    display_opengl = 1;
+}
+
+static void egl_headless_init(DisplayState *ds, DisplayOptions *opts)
+{
+    DisplayGLMode mode = opts->has_gl ? opts->gl : DISPLAYGL_MODE_ON;
     QemuConsole *con;
     egl_dpy *edpy;
     int idx;
 
-    if (egl_rendernode_init(NULL) < 0) {
+    if (egl_rendernode_init(opts->u.egl_headless.rendernode, mode) < 0) {
         error_report("egl: render node init failed");
         exit(1);
     }
@@ -178,3 +203,16 @@ void egl_headless_init(void)
         register_displaychangelistener(&edpy->dcl);
     }
 }
+
+static QemuDisplay qemu_display_egl = {
+    .type       = DISPLAY_TYPE_EGL_HEADLESS,
+    .early_init = early_egl_headless_init,
+    .init       = egl_headless_init,
+};
+
+static void register_egl(void)
+{
+    qemu_display_register(&qemu_display_egl);
+}
+
+type_init(register_egl);

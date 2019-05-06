@@ -32,7 +32,7 @@
    the Intel manual for details.  */
 
 #include "qemu/osdep.h"
-#include "disas/bfd.h"
+#include "disas/dis-asm.h"
 #include "qemu/cutils.h"
 
 /* include/opcode/i386.h r1.78 */
@@ -6075,7 +6075,7 @@ OP_EM (int bytemode, int sizeflag)
 	{
 	  bytemode = (prefixes & PREFIX_DATA) ? x_mode : q_mode;
 	  used_prefixes |= (prefixes & PREFIX_DATA);
- 	}
+	}
       OP_E (bytemode, sizeflag);
       return;
     }
@@ -6112,7 +6112,7 @@ OP_EMC (int bytemode, int sizeflag)
 	{
 	  bytemode = (prefixes & PREFIX_DATA) ? x_mode : q_mode;
 	  used_prefixes |= (prefixes & PREFIX_DATA);
- 	}
+	}
       OP_E (bytemode, sizeflag);
       return;
     }

@@ -7,7 +7,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -397,6 +397,11 @@ static uint32_t cc_calc_flogr(uint64_t dst)
     return dst ? 2 : 0;
 }
 
+static uint32_t cc_calc_lcbb(uint64_t dst)
+{
+    return dst == 16 ? 0 : 3;
+}
+
 static uint32_t do_calc_cc(CPUS390XState *env, uint32_t cc_op,
                                   uint64_t src, uint64_t dst, uint64_t vr)
 {
@@ -506,6 +511,9 @@ static uint32_t do_calc_cc(CPUS390XState *env, uint32_t cc_op,
     case CC_OP_FLOGR:
         r = cc_calc_flogr(dst);
         break;
+    case CC_OP_LCBB:
+        r = cc_calc_lcbb(dst);
+        break;
 
     case CC_OP_NZ_F32:
         r = set_cc_nz_f32(dst);
@@ -564,7 +572,7 @@ void HELPER(sacf)(CPUS390XState *env, uint64_t a1)
         break;
     default:
         HELPER_LOG("unknown sacf mode: %" PRIx64 "\n", a1);
-        program_interrupt(env, PGM_SPECIFICATION, 2);
+        s390_program_interrupt(env, PGM_SPECIFICATION, 2, GETPC());
         break;
     }
 }

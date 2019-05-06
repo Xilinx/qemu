@@ -14,9 +14,9 @@
 
 #include "qemu/osdep.h"
 #include "qapi/dealloc-visitor.h"
+#include "qapi/qmp/qnull.h"
 #include "qemu/queue.h"
 #include "qemu-common.h"
-#include "qapi/qmp/types.h"
 #include "qapi/visitor-impl.h"
 
 struct QapiDeallocVisitor
@@ -99,7 +99,7 @@ static void qapi_dealloc_type_anything(Visitor *v, const char *name,
                                        QObject **obj, Error **errp)
 {
     if (obj) {
-        qobject_decref(*obj);
+        qobject_unref(*obj);
     }
 }
 
@@ -107,7 +107,7 @@ static void qapi_dealloc_type_null(Visitor *v, const char *name,
                                    QNull **obj, Error **errp)
 {
     if (obj) {
-        QDECREF(*obj);
+        qobject_unref(*obj);
     }
 }
 

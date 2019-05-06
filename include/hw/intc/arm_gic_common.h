@@ -29,13 +29,26 @@
 #define GIC_INTERNAL 32
 #define GIC_NR_SGIS 16
 /* Maximum number of possible CPU interfaces, determined by GIC architecture */
-/* Include a vCPU interface per CPU.  */
-#define GIC_N_REALCPU 8
-#define GIC_NCPU (GIC_N_REALCPU * 2)
+#define GIC_NCPU 8
+/* Maximum number of possible CPU interfaces with their respective vCPU */
+#define GIC_NCPU_VCPU (GIC_NCPU * 2)
 
-#define MAX_NR_GROUP_PRIO 256
+#define MAX_NR_GROUP_PRIO 128
 #define GIC_NR_APRS (MAX_NR_GROUP_PRIO / 32)
-#define GICV_NR_LR 4
+
+#define GIC_MIN_BPR 0
+#define GIC_MIN_ABPR (GIC_MIN_BPR + 1)
+
+/* Architectural maximum number of list registers in the virtual interface */
+#define GIC_MAX_LR 64
+
+/* Only 32 priority levels and 32 preemption levels in the vCPU interfaces */
+#define GIC_VIRT_MAX_GROUP_PRIO_BITS 5
+#define GIC_VIRT_MAX_NR_GROUP_PRIO (1 << GIC_VIRT_MAX_GROUP_PRIO_BITS)
+#define GIC_VIRT_NR_APRS (GIC_VIRT_MAX_NR_GROUP_PRIO / 32)
+
+#define GIC_VIRT_MIN_BPR 2
+#define GIC_VIRT_MIN_ABPR (GIC_VIRT_MIN_BPR + 1)
 
 typedef struct gic_irq_state {
     /* The enable bits are only banked for per-cpu interrupts.  */
@@ -45,7 +58,7 @@ typedef struct gic_irq_state {
     uint8_t level;
     bool model; /* 0 = N:N, 1 = 1:N */
     bool edge_trigger; /* true: edge-triggered, false: level-triggered  */
-    bool group;
+    uint8_t group;
 } gic_irq_state;
 
 typedef struct GICState {
@@ -57,20 +70,7 @@ typedef struct GICState {
     qemu_irq parent_fiq[GIC_NCPU];
     qemu_irq parent_virq[GIC_NCPU];
     qemu_irq parent_vfiq[GIC_NCPU];
-    qemu_irq maint[GIC_N_REALCPU];
-
-    bool enabled;
-    bool enabled_grp0;
-
-    struct {
-        bool enable_grp[2];
-        bool ack_ctl;
-        bool fiq_en;
-        bool eoirmode;
-        bool eoirmode_ns;
-    } gicc_ctrl[GIC_NCPU];
-
-    uint32_t ctrl[GIC_NCPU];
+    qemu_irq maintenance_irq[GIC_NCPU];
 
     /* GICD_CTLR; for a GIC with the security extensions the NS banked version
      * of this register is just an alias of bit 1 of the S banked version.
@@ -79,13 +79,12 @@ typedef struct GICState {
     /* GICC_CTLR; again, the NS banked version is just aliases of bits of
      * the S banked register, so our state only needs to store the S version.
      */
-    uint32_t cpu_ctlr[GIC_NCPU];
+    uint32_t cpu_ctlr[GIC_NCPU_VCPU];
 
     gic_irq_state irq_state[GIC_MAXIRQ];
     uint8_t irq_target[GIC_MAXIRQ];
     uint8_t priority1[GIC_INTERNAL][GIC_NCPU];
     uint8_t priority2[GIC_MAXIRQ - GIC_INTERNAL];
-    uint16_t last_active[GIC_MAXIRQ][GIC_NCPU];
     /* For each SGI on the target CPU, we store 8 bits
      * indicating which source CPUs have made this SGI
      * pending on the target CPU. These correspond to
@@ -94,53 +93,36 @@ typedef struct GICState {
      */
     uint8_t sgi_pending[GIC_NR_SGIS][GIC_NCPU];
 
-    uint16_t priority_mask[GIC_NCPU];
-    uint16_t running_irq[GIC_NCPU];
-    uint16_t running_priority[GIC_NCPU];
-    uint16_t current_pending[GIC_NCPU];
+    uint16_t priority_mask[GIC_NCPU_VCPU];
+    uint16_t running_priority[GIC_NCPU_VCPU];
+    uint16_t current_pending[GIC_NCPU_VCPU];
 
-    /* We present the GICv2 without security extensions to a guest and
-     * therefore the guest can configure the GICC_CTLR to configure group 1
-     * binary point in the abpr.
+    /* If we present the GICv2 without security extensions to a guest,
+     * the guest can configure the GICC_CTLR to configure group 1 binary point
+     * in the abpr.
+     * For a GIC with Security Extensions we use use bpr for the
+     * secure copy and abpr as storage for the non-secure copy of the register.
      */
-    uint8_t  bpr[GIC_NCPU];
-    uint8_t  abpr[GIC_NCPU];
-
-    /* The Interface Identification Register.
-     * This is implementation defined
-     */
-    uint32_t c_iidr;
+    uint8_t  bpr[GIC_NCPU_VCPU];
+    uint8_t  abpr[GIC_NCPU_VCPU];
 
     /* The APR is implementation defined, so we choose a layout identical to
      * the KVM ABI layout for QEMU's implementation of the gic:
      * If an interrupt for preemption level X is active, then
      *   APRn[X mod 32] == 0b1,  where n = X / 32
      * otherwise the bit is clear.
-     *
-     * TODO: rewrite the interrupt acknowlege/complete routines to use
-     * the APR registers to track the necessary information to update
-     * s->running_priority[] on interrupt completion (ie completely remove
-     * last_active[][] and running_irq[]). This will be necessary if we ever
-     * want to support TCG<->KVM migration, or TCG guests which can
-     * do power management involving powering down and restarting
-     * the GIC.
      */
-    /* We don't use all of this space but we allocate all of it.  */
     uint32_t apr[GIC_NR_APRS][GIC_NCPU];
-    uint32_t apr_guard[32];
+    uint32_t nsapr[GIC_NR_APRS][GIC_NCPU];
 
-    struct {
-        uint32_t hcr[GIC_N_REALCPU];
-        uint32_t vtr[GIC_N_REALCPU];
-        uint32_t misr[GIC_N_REALCPU];
-        uint64_t eisr[GIC_N_REALCPU];
-        uint64_t elrsr[GIC_N_REALCPU];
-        uint32_t apr[GIC_N_REALCPU];
-        uint32_t lr[GIC_N_REALCPU][GICV_NR_LR];
+    /* Virtual interface control registers */
+    uint32_t h_hcr[GIC_NCPU];
+    uint32_t h_misr[GIC_NCPU];
+    uint32_t h_lr[GIC_MAX_LR][GIC_NCPU];
+    uint32_t h_apr[GIC_NCPU];
 
-        uint32_t pending_prio[GIC_N_REALCPU];
-        uint8_t pending_lrn[GIC_N_REALCPU];
-    } gich;
+    /* Number of LRs implemented in this GIC instance */
+    uint32_t num_lrs;
 
     uint32_t num_cpu;
 
@@ -150,15 +132,16 @@ typedef struct GICState {
      */
     struct GICState *backref[GIC_NCPU];
     MemoryRegion cpuiomem[GIC_NCPU + 1]; /* CPU interfaces */
-    MemoryRegion hypiomem[GIC_NCPU + 1]; /* Virtual control interfaces */
-    MemoryRegion vcpuiomem; /* Virtual CPU interface */
-    uint32_t map_stride;
+    MemoryRegion vifaceiomem[GIC_NCPU + 1]; /* Virtual interfaces */
+    MemoryRegion vcpuiomem; /* vCPU interface */
+
     uint32_t num_irq;
     uint32_t revision;
     bool security_extn;
-    bool irq_reset_nonsecure;
-    bool disable_linux_gic_init;
+    bool virt_extn;
+    bool irq_reset_nonsecure; /* configure IRQs as group 1 (NS) on reset? */
     int dev_fd; /* kvm device fd if backed by kvm vgic support */
+    Error *migration_blocker;
 } GICState;
 
 #define TYPE_ARM_GIC_COMMON "arm_gic_common"
@@ -179,6 +162,7 @@ typedef struct ARMGICCommonClass {
 } ARMGICCommonClass;
 
 void gic_init_irqs_and_mmio(GICState *s, qemu_irq_handler handler,
-                            const MemoryRegionOps *ops);
+                            const MemoryRegionOps *ops,
+                            const MemoryRegionOps *virt_ops);
 
 #endif

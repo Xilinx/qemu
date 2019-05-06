@@ -8,28 +8,26 @@
  *
  * This work is licensed under the terms of the GNU GPL, version 2.  See
  * the COPYING file in the top-level directory.
- *
  */
+
 #include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "qemu-fsdev.h"
 #include "qemu/queue.h"
-#include "qemu-common.h"
 #include "qemu/config-file.h"
 #include "qemu/error-report.h"
+#include "qemu/option.h"
 
-static QTAILQ_HEAD(FsDriverEntry_head, FsDriverListEntry) fsdriver_entries =
+static QTAILQ_HEAD(, FsDriverListEntry) fsdriver_entries =
     QTAILQ_HEAD_INITIALIZER(fsdriver_entries);
 
 static FsDriverTable FsDrivers[] = {
     { .name = "local", .ops = &local_ops},
-#ifdef CONFIG_OPEN_BY_HANDLE
-    { .name = "handle", .ops = &handle_ops},
-#endif
     { .name = "synth", .ops = &synth_ops},
     { .name = "proxy", .ops = &proxy_ops},
 };
 
-int qemu_fsdev_add(QemuOpts *opts)
+int qemu_fsdev_add(QemuOpts *opts, Error **errp)
 {
     int i;
     struct FsDriverListEntry *fsle;
@@ -39,7 +37,7 @@ int qemu_fsdev_add(QemuOpts *opts)
     bool ro = qemu_opt_get_bool(opts, "readonly", 0);
 
     if (!fsdev_id) {
-        error_report("fsdev: No id specified");
+        error_setg(errp, "fsdev: No id specified");
         return -1;
     }
 
@@ -51,11 +49,11 @@ int qemu_fsdev_add(QemuOpts *opts)
         }
 
         if (i == ARRAY_SIZE(FsDrivers)) {
-            error_report("fsdev: fsdriver %s not found", fsdriver);
+            error_setg(errp, "fsdev: fsdriver %s not found", fsdriver);
             return -1;
         }
     } else {
-        error_report("fsdev: No fsdriver specified");
+        error_setg(errp, "fsdev: No fsdriver specified");
         return -1;
     }
 
@@ -74,7 +72,7 @@ int qemu_fsdev_add(QemuOpts *opts)
     }
 
     if (fsle->fse.ops->parse_opts) {
-        if (fsle->fse.ops->parse_opts(opts, &fsle->fse)) {
+        if (fsle->fse.ops->parse_opts(opts, &fsle->fse, errp)) {
             g_free(fsle->fse.fsdev_id);
             g_free(fsle);
             return -1;

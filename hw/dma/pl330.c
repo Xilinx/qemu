@@ -29,7 +29,7 @@
     if (PL330_ERR_DEBUG >= lvl) {\
         fprintf(stderr, "PL330: %s:" fmt, __func__, ## args);\
     } \
-} while (0);
+} while (0)
 
 #define DB_PRINT(fmt, args...) DB_PRINT_L(1, fmt, ## args)
 
@@ -1636,7 +1636,7 @@ static void pl330_init(Object *obj)
     object_property_add_link(obj, "dma", TYPE_MEMORY_REGION,
                              (Object **)&s->dma_mr,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             OBJ_PROP_LINK_STRONG,
                              &error_abort);
 }
 

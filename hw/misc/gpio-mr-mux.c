@@ -107,7 +107,7 @@ static void gpio_mr_mux_init(Object *obj)
             object_property_add_link(obj, name, TYPE_MEMORY_REGION,
                     (Object **)&s->mr[i],
                     qdev_prop_allow_set_link_before_realize,
-                    OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                    OBJ_PROP_LINK_STRONG,
                     &error_abort);
             g_free(name);
     }

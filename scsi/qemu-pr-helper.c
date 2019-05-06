@@ -74,6 +74,12 @@ static int uid = -1;
 static int gid = -1;
 #endif
 
+static void compute_default_paths(void)
+{
+    socket_path = qemu_get_local_state_pathname("run/qemu-pr-helper.sock");
+    pidfile = qemu_get_local_state_pathname("run/qemu-pr-helper.pid");
+}
+
 static void usage(const char *name)
 {
     (printf) (
@@ -102,46 +108,13 @@ QEMU_HELP_BOTTOM "\n"
 static void version(const char *name)
 {
     printf(
-"%s " QEMU_VERSION QEMU_PKGVERSION "\n"
+"%s " QEMU_FULL_VERSION "\n"
 "Written by Paolo Bonzini.\n"
 "\n"
 QEMU_COPYRIGHT "\n"
 "This is free software; see the source for copying conditions.  There is NO\n"
 "warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n"
     , name);
-}
-
-static void write_pidfile(void)
-{
-    int pidfd;
-    char pidstr[32];
-
-    pidfd = qemu_open(pidfile, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
-    if (pidfd == -1) {
-        error_report("Cannot open pid file, %s", strerror(errno));
-        exit(EXIT_FAILURE);
-    }
-
-    if (lockf(pidfd, F_TLOCK, 0)) {
-        error_report("Cannot lock pid file, %s", strerror(errno));
-        goto fail;
-    }
-    if (ftruncate(pidfd, 0)) {
-        error_report("Failed to truncate pid file");
-        goto fail;
-    }
-
-    snprintf(pidstr, sizeof(pidstr), "%d\n", getpid());
-    if (write(pidfd, pidstr, strlen(pidstr)) != strlen(pidstr)) {
-        error_report("Failed to write pid file");
-        goto fail;
-    }
-    return;
-
-fail:
-    unlink(pidfile);
-    close(pidfd);
-    exit(EXIT_FAILURE);
 }
 
 /* SG_IO support */
@@ -263,7 +236,7 @@ static void dm_init(void)
         perror("Cannot open " CONTROL_PATH);
         exit(1);
     }
-    struct dm_ioctl dm = { 0 };
+    struct dm_ioctl dm = { };
     if (!dm_ioctl(DM_VERSION, &dm)) {
         perror("ioctl");
         exit(1);
@@ -295,7 +268,11 @@ void put_multipath_config(struct config *conf)
 static void multipath_pr_init(void)
 {
     udev = udev_new();
+#ifdef CONFIG_MPATH_NEW_API
     multipath_conf = mpath_lib_init();
+#else
+    mpath_lib_init(udev);
+#endif
 }
 
 static int is_mpath(int fd)
@@ -447,6 +424,14 @@ static int multipath_pr_out(int fd, const uint8_t *cdb, uint8_t *sense,
     char transportids[PR_HELPER_DATA_SIZE];
     int r;
 
+    if (sz < PR_OUT_FIXED_PARAM_SIZE) {
+        /* Illegal request, Parameter list length error.  This isn't fatal;
+         * we have read the data, send an error without closing the socket.
+         */
+        scsi_build_sense(sense, SENSE_CODE(INVALID_PARAM_LEN));
+        return CHECK_CONDITION;
+    }
+
     switch (rq_servact) {
     case MPATH_PROUT_REG_SA:
     case MPATH_PROUT_RES_SA:
@@ -550,7 +535,11 @@ static int do_pr_in(int fd, const uint8_t *cdb, uint8_t *sense,
 #ifdef CONFIG_MPATH
     if (is_mpath(fd)) {
         /* multipath_pr_in fills the whole input buffer.  */
-        return multipath_pr_in(fd, cdb, sense, data, *resp_sz);
+        int r = multipath_pr_in(fd, cdb, sense, data, *resp_sz);
+        if (r != GOOD) {
+            *resp_sz = 0;
+        }
+        return r;
     }
 #endif
 
@@ -562,6 +551,12 @@ static int do_pr_out(int fd, const uint8_t *cdb, uint8_t *sense,
                      const uint8_t *param, int sz)
 {
     int resp_sz;
+
+    if ((fcntl(fd, F_GETFL) & O_ACCMODE) == O_RDONLY) {
+        scsi_build_sense(sense, SENSE_CODE(INVALID_OPCODE));
+        return CHECK_CONDITION;
+    }
+
 #ifdef CONFIG_MPATH
     if (is_mpath(fd)) {
         return multipath_pr_out(fd, cdb, sense, param, sz);
@@ -678,21 +673,6 @@ static int coroutine_fn prh_read_request(PRHelperClient *client,
                                  errp) < 0) {
             goto out_close;
         }
-        if ((fcntl(client->fd, F_GETFL) & O_ACCMODE) == O_RDONLY) {
-            scsi_build_sense(resp->sense, SENSE_CODE(INVALID_OPCODE));
-            sz = 0;
-        } else if (sz < PR_OUT_FIXED_PARAM_SIZE) {
-            /* Illegal request, Parameter list length error.  This isn't fatal;
-             * we have read the data, send an error without closing the socket.
-             */
-            scsi_build_sense(resp->sense, SENSE_CODE(INVALID_PARAM_LEN));
-            sz = 0;
-        }
-        if (sz == 0) {
-            resp->result = CHECK_CONDITION;
-            close(client->fd);
-            client->fd = -1;
-        }
     }
 
     req->fd = client->fd;
@@ -773,25 +753,23 @@ static void coroutine_fn prh_co_entry(void *opaque)
             break;
         }
 
-        if (sz > 0) {
-            num_active_sockets++;
-            if (req.cdb[0] == PERSISTENT_RESERVE_OUT) {
-                r = do_pr_out(req.fd, req.cdb, resp.sense,
-                              client->data, sz);
-                resp.sz = 0;
-            } else {
-                resp.sz = sizeof(client->data);
-                r = do_pr_in(req.fd, req.cdb, resp.sense,
-                             client->data, &resp.sz);
-                resp.sz = MIN(resp.sz, sz);
-            }
-            num_active_sockets--;
-            close(req.fd);
-            if (r == -1) {
-                break;
-            }
-            resp.result = r;
+        num_active_sockets++;
+        if (req.cdb[0] == PERSISTENT_RESERVE_OUT) {
+            r = do_pr_out(req.fd, req.cdb, resp.sense,
+                          client->data, sz);
+            resp.sz = 0;
+        } else {
+            resp.sz = sizeof(client->data);
+            r = do_pr_in(req.fd, req.cdb, resp.sense,
+                         client->data, &resp.sz);
+            resp.sz = MIN(resp.sz, sz);
         }
+        num_active_sockets--;
+        close(req.fd);
+        if (r == -1) {
+            break;
+        }
+        resp.result = r;
 
         if (prh_write_response(client, &req, &resp, &local_err) < 0) {
             break;
@@ -830,26 +808,6 @@ static gboolean accept_client(QIOChannel *ioc, GIOCondition cond, gpointer opaqu
     qemu_coroutine_enter(prh->co);
 
     return TRUE;
-}
-
-
-/*
- * Check socket parameters compatibility when socket activation is used.
- */
-static const char *socket_activation_validate_opts(void)
-{
-    if (socket_path != NULL) {
-        return "Unix socket can't be set when using socket activation";
-    }
-
-    return NULL;
-}
-
-static void compute_default_paths(void)
-{
-    if (!socket_path) {
-        socket_path = qemu_get_local_state_pathname("run/qemu-pr-helper.sock");
-    }
 }
 
 static void termsig_handler(int signum)
@@ -903,12 +861,12 @@ static int drop_privileges(void)
 
 int main(int argc, char **argv)
 {
-    const char *sopt = "hVk:fdT:u:g:vq";
+    const char *sopt = "hVk:f:dT:u:g:vq";
     struct option lopt[] = {
         { "help", no_argument, NULL, 'h' },
         { "version", no_argument, NULL, 'V' },
         { "socket", required_argument, NULL, 'k' },
-        { "pidfile", no_argument, NULL, 'f' },
+        { "pidfile", required_argument, NULL, 'f' },
         { "daemon", no_argument, NULL, 'd' },
         { "trace", required_argument, NULL, 'T' },
         { "user", required_argument, NULL, 'u' },
@@ -924,6 +882,8 @@ int main(int argc, char **argv)
     Error *local_err = NULL;
     char *trace_file = NULL;
     bool daemonize = false;
+    bool pidfile_specified = false;
+    bool socket_path_specified = false;
     unsigned socket_activation;
 
     struct sigaction sa_sigterm;
@@ -935,24 +895,29 @@ int main(int argc, char **argv)
 
     signal(SIGPIPE, SIG_IGN);
 
+    error_init(argv[0]);
     module_call_init(MODULE_INIT_TRACE);
     module_call_init(MODULE_INIT_QOM);
     qemu_add_opts(&qemu_trace_opts);
     qemu_init_exec_dir(argv[0]);
 
-    pidfile = qemu_get_local_state_pathname("run/qemu-pr-helper.pid");
+    compute_default_paths();
 
     while ((ch = getopt_long(argc, argv, sopt, lopt, &opt_ind)) != -1) {
         switch (ch) {
         case 'k':
-            socket_path = optarg;
+            g_free(socket_path);
+            socket_path = g_strdup(optarg);
+            socket_path_specified = true;
             if (socket_path[0] != '/') {
                 error_report("socket path must be absolute");
                 exit(EXIT_FAILURE);
             }
             break;
         case 'f':
-            pidfile = optarg;
+            g_free(pidfile);
+            pidfile = g_strdup(optarg);
+            pidfile_specified = true;
             break;
 #ifdef CONFIG_LIBCAP
         case 'u': {
@@ -1034,10 +999,9 @@ int main(int argc, char **argv)
     socket_activation = check_socket_activation();
     if (socket_activation == 0) {
         SocketAddress saddr;
-        compute_default_paths();
         saddr = (SocketAddress){
             .type = SOCKET_ADDRESS_TYPE_UNIX,
-            .u.q_unix.path = g_strdup(socket_path)
+            .u.q_unix.path = socket_path,
         };
         server_ioc = qio_channel_socket_new();
         if (qio_channel_socket_listen_sync(server_ioc, &saddr, &local_err) < 0) {
@@ -1045,12 +1009,10 @@ int main(int argc, char **argv)
             error_report_err(local_err);
             return 1;
         }
-        g_free(saddr.u.q_unix.path);
     } else {
         /* Using socket activation - check user didn't use -p etc. */
-        const char *err_msg = socket_activation_validate_opts();
-        if (err_msg != NULL) {
-            error_report("%s", err_msg);
+        if (socket_path_specified) {
+            error_report("Unix socket can't be set when using socket activation");
             exit(EXIT_FAILURE);
         }
 
@@ -1067,7 +1029,6 @@ int main(int argc, char **argv)
                          error_get_pretty(local_err));
             exit(EXIT_FAILURE);
         }
-        socket_path = NULL;
     }
 
     if (qemu_init_main_loop(&local_err)) {
@@ -1080,20 +1041,25 @@ int main(int argc, char **argv)
                                          accept_client,
                                          NULL, NULL);
 
+    if (daemonize) {
+        if (daemon(0, 0) < 0) {
+            error_report("Failed to daemonize: %s", strerror(errno));
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    if ((daemonize || pidfile_specified) &&
+        !qemu_write_pidfile(pidfile, &local_err)) {
+        error_report_err(local_err);
+        exit(EXIT_FAILURE);
+    }
+
 #ifdef CONFIG_LIBCAP
     if (drop_privileges() < 0) {
         error_report("Failed to drop privileges: %s", strerror(errno));
         exit(EXIT_FAILURE);
     }
 #endif
-
-    if (daemonize) {
-        if (daemon(0, 0) < 0) {
-            error_report("Failed to daemonize: %s", strerror(errno));
-            exit(EXIT_FAILURE);
-        }
-        write_pidfile();
-    }
 
     state = RUNNING;
     do {

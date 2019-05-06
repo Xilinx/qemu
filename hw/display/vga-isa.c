@@ -25,8 +25,7 @@
  */
 #include "qemu/osdep.h"
 #include "hw/hw.h"
-#include "ui/console.h"
-#include "hw/i386/pc.h"
+#include "hw/isa/isa.h"
 #include "vga_int.h"
 #include "ui/pixel_ops.h"
 #include "qemu/timer.h"
@@ -59,7 +58,8 @@ static void vga_isa_realizefn(DeviceState *dev, Error **errp)
     MemoryRegion *vga_io_memory;
     const MemoryRegionPortio *vga_ports, *vbe_ports;
 
-    vga_common_init(s, OBJECT(dev), true);
+    s->global_vmstate = true;
+    vga_common_init(s, OBJECT(dev));
     s->legacy_address_space = isa_address_space(isadev);
     vga_io_memory = vga_init_io(s, OBJECT(dev), &vga_ports, &vbe_ports);
     isa_register_portio_list(isadev, &d->portio_vga,

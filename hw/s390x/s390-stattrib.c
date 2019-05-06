@@ -10,17 +10,19 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/units.h"
 #include "hw/boards.h"
 #include "cpu.h"
-#include "qmp-commands.h"
 #include "migration/qemu-file.h"
 #include "migration/register.h"
 #include "hw/s390x/storage-attributes.h"
 #include "qemu/error-report.h"
 #include "exec/ram_addr.h"
 #include "qapi/error.h"
+#include "qapi/qmp/qdict.h"
 
-#define CMMA_BLOCK_SIZE  (1 << 10)
+/* 512KiB cover 2GB of guest memory */
+#define CMMA_BLOCK_SIZE  (512 * KiB)
 
 #define STATTR_FLAG_EOS     0x01ULL
 #define STATTR_FLAG_MORE    0x02ULL
@@ -183,15 +185,16 @@ static int cmma_save_setup(QEMUFile *f, void *opaque)
 }
 
 static void cmma_save_pending(QEMUFile *f, void *opaque, uint64_t max_size,
-                             uint64_t *non_postcopiable_pending,
-                             uint64_t *postcopiable_pending)
+                              uint64_t *res_precopy_only,
+                              uint64_t *res_compatible,
+                              uint64_t *res_postcopy_only)
 {
     S390StAttribState *sas = S390_STATTRIB(opaque);
     S390StAttribClass *sac = S390_STATTRIB_GET_CLASS(sas);
     long long res = sac->get_dirtycount(sas);
 
     if (res >= 0) {
-        *non_postcopiable_pending += res;
+        *res_precopy_only += res;
     }
 }
 
@@ -201,7 +204,7 @@ static int cmma_save(QEMUFile *f, void *opaque, int final)
     S390StAttribClass *sac = S390_STATTRIB_GET_CLASS(sas);
     uint8_t *buf;
     int r, cx, reallen = 0, ret = 0;
-    uint32_t buflen = 1 << 19;   /* 512kB cover 2GB of guest memory */
+    uint32_t buflen = CMMA_BLOCK_SIZE;
     uint64_t start_gfn = sas->migration_cur_gfn;
 
     buf = g_try_malloc(buflen);
@@ -365,22 +368,22 @@ static inline void s390_stattrib_set_migration_enabled(Object *obj, bool value,
     s->migration_enabled = value;
 }
 
+static SaveVMHandlers savevm_s390_stattrib_handlers = {
+    .save_setup = cmma_save_setup,
+    .save_live_iterate = cmma_save_iterate,
+    .save_live_complete_precopy = cmma_save_complete,
+    .save_live_pending = cmma_save_pending,
+    .save_cleanup = cmma_save_cleanup,
+    .load_state = cmma_load,
+    .is_active = cmma_active,
+};
+
 static void s390_stattrib_instance_init(Object *obj)
 {
     S390StAttribState *sas = S390_STATTRIB(obj);
-    SaveVMHandlers *ops;
 
-    /* ops will always be freed by qemu when unregistering */
-    ops = g_new0(SaveVMHandlers, 1);
-
-    ops->save_setup = cmma_save_setup;
-    ops->save_live_iterate = cmma_save_iterate;
-    ops->save_live_complete_precopy = cmma_save_complete;
-    ops->save_live_pending = cmma_save_pending;
-    ops->save_cleanup = cmma_save_cleanup;
-    ops->load_state = cmma_load;
-    ops->is_active = cmma_active;
-    register_savevm_live(NULL, TYPE_S390_STATTRIB, 0, 0, ops, sas);
+    register_savevm_live(NULL, TYPE_S390_STATTRIB, 0, 0,
+                         &savevm_s390_stattrib_handlers, sas);
 
     object_property_add_bool(obj, "migration-enabled",
                              s390_stattrib_get_migration_enabled,

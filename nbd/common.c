@@ -17,7 +17,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qapi/error.h"
 #include "trace.h"
 #include "nbd-internal.h"
 
@@ -32,7 +31,7 @@ int nbd_drop(QIOChannel *ioc, size_t size, Error **errp)
     buffer = sizeof(small) >= size ? small : g_malloc(MIN(65536, size));
     while (size > 0) {
         ssize_t count = MIN(65536, size);
-        ret = nbd_read(ioc, buffer, MIN(65536, size), errp);
+        ret = nbd_read(ioc, buffer, MIN(65536, size), NULL, errp);
 
         if (ret < 0) {
             goto cleanup;
@@ -76,6 +75,10 @@ const char *nbd_opt_lookup(uint32_t opt)
         return "go";
     case NBD_OPT_STRUCTURED_REPLY:
         return "structured reply";
+    case NBD_OPT_LIST_META_CONTEXT:
+        return "list meta context";
+    case NBD_OPT_SET_META_CONTEXT:
+        return "set meta context";
     default:
         return "<unknown>";
     }
@@ -91,6 +94,8 @@ const char *nbd_rep_lookup(uint32_t rep)
         return "server";
     case NBD_REP_INFO:
         return "info";
+    case NBD_REP_META_CONTEXT:
+        return "meta context";
     case NBD_REP_ERR_UNSUP:
         return "unsupported";
     case NBD_REP_ERR_POLICY:
@@ -143,8 +148,12 @@ const char *nbd_cmd_lookup(uint16_t cmd)
         return "flush";
     case NBD_CMD_TRIM:
         return "trim";
+    case NBD_CMD_CACHE:
+        return "cache";
     case NBD_CMD_WRITE_ZEROES:
         return "write zeroes";
+    case NBD_CMD_BLOCK_STATUS:
+        return "block status";
     default:
         return "<unknown>";
     }
@@ -160,6 +169,8 @@ const char *nbd_reply_type_lookup(uint16_t type)
         return "data";
     case NBD_REPLY_TYPE_OFFSET_HOLE:
         return "hole";
+    case NBD_REPLY_TYPE_BLOCK_STATUS:
+        return "block status";
     case NBD_REPLY_TYPE_ERROR:
         return "generic error";
     case NBD_REPLY_TYPE_ERROR_OFFSET:

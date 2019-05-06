@@ -30,12 +30,14 @@
 #include "ui/console.h"
 #include "hw/boards.h"
 #include "hw/i2c/i2c.h"
-#include "hw/devices.h"
+#include "hw/display/blizzard.h"
+#include "hw/input/tsc2xxx.h"
+#include "hw/misc/cbus.h"
+#include "hw/misc/tmp105.h"
 #include "hw/block/flash.h"
 #include "hw/hw.h"
 #include "hw/bt.h"
 #include "hw/loader.h"
-#include "sysemu/block-backend.h"
 #include "hw/sysbus.h"
 #include "qemu/log.h"
 #include "exec/address-spaces.h"
@@ -219,7 +221,7 @@ static void n8x0_i2c_setup(struct n800_s *s)
     qemu_register_powerdown_notifier(&n8x0_system_powerdown_notifier);
 
     /* Attach a TMP105 PM chip (A0 wired to ground) */
-    dev = i2c_create_slave(i2c, "tmp105", N8X0_TMP105_ADDR);
+    dev = i2c_create_slave(i2c, TYPE_TMP105, N8X0_TMP105_ADDR);
     qdev_connect_gpio_out(dev, 0, tmp_irq);
 }
 
@@ -463,7 +465,7 @@ static uint32_t mipid_txrx(void *opaque, uint32_t cmd, int len)
     uint8_t ret;
 
     if (len > 9) {
-        hw_error("%s: FIXME: bad SPI word width %i\n", __FUNCTION__, len);
+        hw_error("%s: FIXME: bad SPI word width %i\n", __func__, len);
     }
 
     if (s->p >= ARRAY_SIZE(s->resp)) {

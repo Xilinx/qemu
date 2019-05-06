@@ -810,10 +810,10 @@ static void axipcie_main_realize(DeviceState *dev, Error **errp)
     sysbus_init_irq(sbd, &s->irq_msi[0]);
     sysbus_init_irq(sbd, &s->irq_msi[1]);
 
-    pci->bus = pci_register_bus(dev, "pcie.0", axipcie_set_irq,
-                                pci_swizzle_map_irq_fn, s, &s->io_mmio,
-                                &s->io_ioport, PCI_DEVFN(0, 0), 4,
-                                TYPE_PCIE_BUS);
+    pci->bus = pci_register_root_bus(dev, "pcie.0", axipcie_set_irq,
+                                     pci_swizzle_map_irq_fn, s, &s->io_mmio,
+                                     &s->io_ioport, PCI_DEVFN(0, 0), 4,
+                                     TYPE_PCIE_BUS);
 
     memory_region_init_iommu(&s->iommu_attr, sizeof(s->iommu_attr), 
                              TYPE_XILINX_AXIPCIE_MAIN_IOMMU_MEMORY_REGION,
@@ -840,12 +840,12 @@ static void axipcie_main_init(Object *obj)
     object_property_add_link(obj, "dma", TYPE_MEMORY_REGION,
                              (Object **)&s->dma_mr,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             OBJ_PROP_LINK_STRONG,
                              &error_abort);
     object_property_add_link(obj, "memattr", TYPE_MEMORY_TRANSACTION_ATTR,
                              (Object **)&s->attr,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             OBJ_PROP_LINK_STRONG,
                              &error_abort);
 }
 

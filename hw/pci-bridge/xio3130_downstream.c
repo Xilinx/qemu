@@ -23,7 +23,7 @@
 #include "hw/pci/pci_ids.h"
 #include "hw/pci/msi.h"
 #include "hw/pci/pcie.h"
-#include "xio3130_downstream.h"
+#include "hw/pci/pcie_port.h"
 #include "qapi/error.h"
 
 #define PCI_DEVICE_ID_TI_XIO3130D       0x8233  /* downstream port */
@@ -127,32 +127,6 @@ static void xio3130_downstream_exitfn(PCIDevice *d)
     pci_bridge_exitfn(d);
 }
 
-PCIESlot *xio3130_downstream_init(PCIBus *bus, int devfn, bool multifunction,
-                                  const char *bus_name, pci_map_irq_fn map_irq,
-                                  uint8_t port, uint8_t chassis,
-                                  uint16_t slot)
-{
-    PCIDevice *d;
-    PCIBridge *br;
-    DeviceState *qdev;
-
-    d = pci_create_multifunction(bus, devfn, multifunction,
-                                 "xio3130-downstream");
-    if (!d) {
-        return NULL;
-    }
-    br = PCI_BRIDGE(d);
-
-    qdev = DEVICE(d);
-    pci_bridge_map_irq(br, bus_name, map_irq);
-    qdev_prop_set_uint8(qdev, "port", port);
-    qdev_prop_set_uint8(qdev, "chassis", chassis);
-    qdev_prop_set_uint16(qdev, "slot", slot);
-    qdev_init_nofail(qdev);
-
-    return PCIE_SLOT(d);
-}
-
 static Property xio3130_downstream_props[] = {
     DEFINE_PROP_BIT(COMPAT_PROP_PCP, PCIDevice, cap_present,
                     QEMU_PCIE_SLTCAP_PCP_BITNR, true),
@@ -161,6 +135,7 @@ static Property xio3130_downstream_props[] = {
 
 static const VMStateDescription vmstate_xio3130_downstream = {
     .name = "xio3130-express-downstream-port",
+    .priority = MIG_PRI_PCI_BUS,
     .version_id = 1,
     .minimum_version_id = 1,
     .post_load = pcie_cap_slot_post_load,
@@ -177,7 +152,6 @@ static void xio3130_downstream_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
-    k->is_express = 1;
     k->is_bridge = 1;
     k->config_write = xio3130_downstream_write_config;
     k->realize = xio3130_downstream_realize;

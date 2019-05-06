@@ -25,7 +25,7 @@
  * THE SOFTWARE.
  */
 
-#include <qemu/log.h>
+#include "qemu/log.h"
 
 #ifndef PM_DEBUG_H
 #define PM_DEBUG_H

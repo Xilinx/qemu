@@ -25,22 +25,17 @@ typedef struct I2CSlave I2CSlave;
 #define I2C_SLAVE_GET_CLASS(obj) \
      OBJECT_GET_CLASS(I2CSlaveClass, (obj), TYPE_I2C_SLAVE)
 
-typedef struct I2CSlaveClass
-{
+typedef struct I2CSlaveClass {
     DeviceClass parent_class;
-
-    /* Callbacks provided by the device.  */
-    int (*init)(I2CSlave *dev);
 
     /* Master to slave. Returns non-zero for a NAK, 0 for success. */
     int (*send)(I2CSlave *s, uint8_t data);
 
     /*
      * Slave to master.  This cannot fail, the device should always
-     * return something here.  Negative values probably result in 0xff
-     * and a possible log from the driver, and shouldn't be used.
+     * return something here.
      */
-    int (*recv)(I2CSlave *s);
+    uint8_t (*recv)(I2CSlave *s);
 
     /*
      * Notify the slave of a bus state change.  For start event,
@@ -55,13 +50,22 @@ typedef struct I2CSlaveClass
     int (*decode_address)(I2CSlave *s, uint8_t address);
 } I2CSlaveClass;
 
-struct I2CSlave
-{
+struct I2CSlave {
     DeviceState qdev;
 
     /* Remaining fields for internal use by the I2C code.  */
     uint8_t address;
     uint8_t address_range;
+};
+
+#define TYPE_I2C_BUS "i2c-bus"
+#define I2C_BUS(obj) OBJECT_CHECK(I2CBus, (obj), TYPE_I2C_BUS)
+
+typedef struct I2CNode I2CNode;
+
+struct I2CNode {
+    I2CSlave *elt;
+    QLIST_ENTRY(I2CNode) next;
 };
 
 struct I2CBus {
@@ -79,18 +83,11 @@ void i2c_end_transfer(I2CBus *bus);
 void i2c_nack(I2CBus *bus);
 int i2c_send_recv(I2CBus *bus, uint8_t *data, bool send);
 int i2c_send(I2CBus *bus, uint8_t data);
-int i2c_recv(I2CBus *bus);
+uint8_t i2c_recv(I2CBus *bus);
 
 DeviceState *i2c_create_slave(I2CBus *bus, const char *name, uint8_t addr);
 
-/* wm8750.c */
-void wm8750_data_req_set(DeviceState *dev,
-                void (*data_req)(void *, int, int), void *opaque);
-void wm8750_dac_dat(void *opaque, uint32_t sample);
-uint32_t wm8750_adc_dat(void *opaque);
-void *wm8750_dac_buffer(void *opaque, int samples);
-void wm8750_dac_commit(void *opaque);
-void wm8750_set_bclk_in(void *opaque, int new_hz);
+typedef struct bitbang_i2c_interface bitbang_i2c_interface;
 
 /* lm832x.c */
 void lm832x_key_event(DeviceState *dev, int key, int state);

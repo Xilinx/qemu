@@ -11,7 +11,8 @@
  */
 
 #include "qemu/osdep.h"
-#include "qmp-commands.h"
+#include "qapi/error.h"
+#include "qapi/qapi-commands-misc.h"
 #include "hw/acpi/acpi.h"
 #include "hw/acpi/aml-build.h"
 #include "hw/acpi/vmgenid.h"
@@ -29,8 +30,7 @@ void vmgenid_build_acpi(VmGenIdState *vms, GArray *table_data, GArray *guid,
      * first, since that's what the guest expects
      */
     g_array_set_size(guid, VMGENID_FW_CFG_SIZE - ARRAY_SIZE(guid_le.data));
-    guid_le = vms->guid;
-    qemu_uuid_bswap(&guid_le);
+    guid_le = qemu_uuid_bswap(vms->guid);
     /* The GUID is written at a fixed offset into the fw_cfg file
      * in order to implement the "OVMF SDT Header probe suppressor"
      * see docs/specs/vmgenid.txt for more details
@@ -148,8 +148,7 @@ static void vmgenid_update_guest(VmGenIdState *vms)
              * however, will expect the fields to be little-endian.
              * Perform a byte swap immediately before writing.
              */
-            guid_le = vms->guid;
-            qemu_uuid_bswap(&guid_le);
+            guid_le = qemu_uuid_bswap(vms->guid);
             /* The GUID is written at a fixed offset into the fw_cfg file
              * in order to implement the "OVMF SDT Header probe suppressor"
              * see docs/specs/vmgenid.txt for more details.
@@ -160,21 +159,6 @@ static void vmgenid_update_guest(VmGenIdState *vms)
             acpi_send_event(DEVICE(obj), ACPI_VMGENID_CHANGE_STATUS);
         }
     }
-}
-
-static void vmgenid_set_guid(Object *obj, const char *value, Error **errp)
-{
-    VmGenIdState *vms = VMGENID(obj);
-
-    if (!strcmp(value, "auto")) {
-        qemu_uuid_generate(&vms->guid);
-    } else if (qemu_uuid_parse(value, &vms->guid) < 0) {
-        error_setg(errp, "'%s. %s': Failed to parse GUID string: %s",
-                   object_get_typename(OBJECT(vms)), VMGENID_GUID, value);
-        return;
-    }
-
-    vmgenid_update_guest(vms);
 }
 
 /* After restoring an image, we need to update the guest memory and notify
@@ -224,7 +208,14 @@ static void vmgenid_realize(DeviceState *dev, Error **errp)
     }
 
     qemu_register_reset(vmgenid_handle_reset, vms);
+
+    vmgenid_update_guest(vms);
 }
+
+static Property vmgenid_device_properties[] = {
+    DEFINE_PROP_UUID(VMGENID_GUID, VmGenIdState, guid),
+    DEFINE_PROP_END_OF_LIST(),
+};
 
 static void vmgenid_device_class_init(ObjectClass *klass, void *data)
 {
@@ -232,15 +223,9 @@ static void vmgenid_device_class_init(ObjectClass *klass, void *data)
 
     dc->vmsd = &vmstate_vmgenid;
     dc->realize = vmgenid_realize;
+    dc->props = vmgenid_device_properties;
     dc->hotpluggable = false;
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
-
-    object_class_property_add_str(klass, VMGENID_GUID, NULL,
-                                  vmgenid_set_guid, NULL);
-    object_class_property_set_description(klass, VMGENID_GUID,
-                                    "Set Global Unique Identifier "
-                                    "(big-endian) or auto for random value",
-                                    NULL);
 }
 
 static const TypeInfo vmgenid_device_info = {

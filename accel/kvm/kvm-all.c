@@ -38,6 +38,8 @@
 #include "qemu/event_notifier.h"
 #include "trace.h"
 #include "hw/irq.h"
+#include "sysemu/sev.h"
+#include "sysemu/balloon.h"
 
 #include "hw/boards.h"
 
@@ -77,13 +79,14 @@ struct KVMState
     int fd;
     int vmfd;
     int coalesced_mmio;
+    int coalesced_pio;
     struct kvm_coalesced_mmio_ring *coalesced_mmio_ring;
     bool coalesced_flush_in_progress;
     int vcpu_events;
     int robust_singlestep;
     int debugregs;
 #ifdef KVM_CAP_SET_GUEST_DEBUG
-    struct kvm_sw_breakpoint_head kvm_sw_breakpoints;
+    QTAILQ_HEAD(, kvm_sw_breakpoint) kvm_sw_breakpoints;
 #endif
     int many_ioeventfds;
     int intx_set_mask;
@@ -99,10 +102,14 @@ struct KVMState
     int nr_allocated_irq_routes;
     unsigned long *used_gsi_bitmap;
     unsigned int gsi_count;
-    QTAILQ_HEAD(msi_hashtab, KVMMSIRoute) msi_hashtab[KVM_MSI_HASHTAB_SIZE];
+    QTAILQ_HEAD(, KVMMSIRoute) msi_hashtab[KVM_MSI_HASHTAB_SIZE];
 #endif
     KVMMemoryListener memory_listener;
     QLIST_HEAD(, KVMParkedVcpu) kvm_parked_vcpus;
+
+    /* memory encryption */
+    void *memcrypt_handle;
+    int (*memcrypt_encrypt_data)(void *handle, uint8_t *ptr, uint64_t len);
 };
 
 KVMState *kvm_state;
@@ -136,6 +143,26 @@ int kvm_get_max_memslots(void)
     KVMState *s = KVM_STATE(current_machine->accelerator);
 
     return s->nr_slots;
+}
+
+bool kvm_memcrypt_enabled(void)
+{
+    if (kvm_state && kvm_state->memcrypt_handle) {
+        return true;
+    }
+
+    return false;
+}
+
+int kvm_memcrypt_encrypt_data(uint8_t *ptr, uint64_t len)
+{
+    if (kvm_state->memcrypt_handle &&
+        kvm_state->memcrypt_encrypt_data) {
+        return kvm_state->memcrypt_encrypt_data(kvm_state->memcrypt_handle,
+                                              ptr, len);
+    }
+
+    return 1;
 }
 
 static KVMSlot *kvm_get_free_slot(KVMMemoryListener *kml)
@@ -231,24 +258,29 @@ int kvm_physical_memory_addr_from_host(KVMState *s, void *ram,
     return 0;
 }
 
-static int kvm_set_user_memory_region(KVMMemoryListener *kml, KVMSlot *slot)
+static int kvm_set_user_memory_region(KVMMemoryListener *kml, KVMSlot *slot, bool new)
 {
     KVMState *s = kvm_state;
     struct kvm_userspace_memory_region mem;
+    int ret;
 
     mem.slot = slot->slot | (kml->as_id << 16);
     mem.guest_phys_addr = slot->start_addr;
     mem.userspace_addr = (unsigned long)slot->ram;
     mem.flags = slot->flags;
 
-    if (slot->memory_size && mem.flags & KVM_MEM_READONLY) {
+    if (slot->memory_size && !new && (mem.flags ^ slot->old_flags) & KVM_MEM_READONLY) {
         /* Set the slot size to 0 before setting the slot to the desired
          * value. This is needed based on KVM commit 75d61fbc. */
         mem.memory_size = 0;
         kvm_vm_ioctl(s, KVM_SET_USER_MEMORY_REGION, &mem);
     }
     mem.memory_size = slot->memory_size;
-    return kvm_vm_ioctl(s, KVM_SET_USER_MEMORY_REGION, &mem);
+    ret = kvm_vm_ioctl(s, KVM_SET_USER_MEMORY_REGION, &mem);
+    slot->old_flags = mem.flags;
+    trace_kvm_set_user_memory(mem.slot, mem.flags, mem.guest_phys_addr,
+                              mem.memory_size, mem.userspace_addr, ret);
+    return ret;
 }
 
 int kvm_destroy_vcpu(CPUState *cpu)
@@ -362,17 +394,14 @@ static int kvm_mem_flags(MemoryRegion *mr)
 static int kvm_slot_update_flags(KVMMemoryListener *kml, KVMSlot *mem,
                                  MemoryRegion *mr)
 {
-    int old_flags;
-
-    old_flags = mem->flags;
     mem->flags = kvm_mem_flags(mr);
 
     /* If nothing changed effectively, no need to issue ioctl */
-    if (mem->flags == old_flags) {
+    if (mem->flags == mem->old_flags) {
         return 0;
     }
 
-    return kvm_set_user_memory_region(kml, mem);
+    return kvm_set_user_memory_region(kml, mem, false);
 }
 
 static int kvm_section_update_flags(KVMMemoryListener *kml,
@@ -532,6 +561,45 @@ static void kvm_uncoalesce_mmio_region(MemoryListener *listener,
     }
 }
 
+static void kvm_coalesce_pio_add(MemoryListener *listener,
+                                MemoryRegionSection *section,
+                                hwaddr start, hwaddr size)
+{
+    KVMState *s = kvm_state;
+
+    if (s->coalesced_pio) {
+        struct kvm_coalesced_mmio_zone zone;
+
+        zone.addr = start;
+        zone.size = size;
+        zone.pio = 1;
+
+        (void)kvm_vm_ioctl(s, KVM_REGISTER_COALESCED_MMIO, &zone);
+    }
+}
+
+static void kvm_coalesce_pio_del(MemoryListener *listener,
+                                MemoryRegionSection *section,
+                                hwaddr start, hwaddr size)
+{
+    KVMState *s = kvm_state;
+
+    if (s->coalesced_pio) {
+        struct kvm_coalesced_mmio_zone zone;
+
+        zone.addr = start;
+        zone.size = size;
+        zone.pio = 1;
+
+        (void)kvm_vm_ioctl(s, KVM_UNREGISTER_COALESCED_MMIO, &zone);
+     }
+}
+
+static MemoryListener kvm_coalesced_pio_listener = {
+    .coalesced_io_add = kvm_coalesce_pio_add,
+    .coalesced_io_del = kvm_coalesce_pio_del,
+};
+
 int kvm_check_extension(KVMState *s, unsigned int extension)
 {
     int ret;
@@ -589,6 +657,8 @@ static int kvm_set_ioeventfd_mmio(int fd, hwaddr addr, uint32_t val,
         .fd = fd,
     };
 
+    trace_kvm_set_ioeventfd_mmio(fd, (uint64_t)addr, val, assign, size,
+                                 datamatch);
     if (!kvm_enabled()) {
         return -ENOSYS;
     }
@@ -620,6 +690,7 @@ static int kvm_set_ioeventfd_pio(int fd, uint16_t addr, uint16_t val,
         .fd = fd,
     };
     int r;
+    trace_kvm_set_ioeventfd_pio(fd, addr, val, assign, size, datamatch);
     if (!kvm_enabled()) {
         return -ENOSYS;
     }
@@ -726,7 +797,8 @@ static void kvm_set_phys_mem(KVMMemoryListener *kml,
 
         /* unregister the slot */
         mem->memory_size = 0;
-        err = kvm_set_user_memory_region(kml, mem);
+        mem->flags = 0;
+        err = kvm_set_user_memory_region(kml, mem, false);
         if (err) {
             fprintf(stderr, "%s: error unregistering slot: %s\n",
                     __func__, strerror(-err));
@@ -742,7 +814,7 @@ static void kvm_set_phys_mem(KVMMemoryListener *kml,
     mem->ram = ram;
     mem->flags = kvm_mem_flags(mr);
 
-    err = kvm_set_user_memory_region(kml, mem);
+    err = kvm_set_user_memory_region(kml, mem, true);
     if (err) {
         fprintf(stderr, "%s: error registering slot: %s\n", __func__,
                 strerror(-err));
@@ -1521,7 +1593,7 @@ static int kvm_init(MachineState *ms)
 
     kvm_type = qemu_opt_get(qemu_get_machine_opts(), "kvm-type");
     if (mc->kvm_type) {
-        type = mc->kvm_type(kvm_type);
+        type = mc->kvm_type(ms, kvm_type);
     } else if (kvm_type) {
         ret = -EINVAL;
         fprintf(stderr, "Invalid argument kvm-type=%s\n", kvm_type);
@@ -1587,6 +1659,8 @@ static int kvm_init(MachineState *ms)
     }
 
     s->coalesced_mmio = kvm_check_extension(s, KVM_CAP_COALESCED_MMIO);
+    s->coalesced_pio = s->coalesced_mmio &&
+                       kvm_check_extension(s, KVM_CAP_COALESCED_PIO);
 
 #ifdef KVM_CAP_VCPU_EVENTS
     s->vcpu_events = kvm_check_extension(s, KVM_CAP_VCPU_EVENTS);
@@ -1610,10 +1684,8 @@ static int kvm_init(MachineState *ms)
         s->irq_set_ioctl = KVM_IRQ_LINE_STATUS;
     }
 
-#ifdef KVM_CAP_READONLY_MEM
     kvm_readonly_mem_allowed =
         (kvm_check_extension(s, KVM_CAP_READONLY_MEM) > 0);
-#endif
 
     kvm_eventfds_allowed =
         (kvm_check_extension(s, KVM_CAP_IOEVENTFD) > 0);
@@ -1632,6 +1704,20 @@ static int kvm_init(MachineState *ms)
 
     kvm_state = s;
 
+    /*
+     * if memory encryption object is specified then initialize the memory
+     * encryption context.
+     */
+    if (ms->memory_encryption) {
+        kvm_state->memcrypt_handle = sev_guest_init(ms->memory_encryption);
+        if (!kvm_state->memcrypt_handle) {
+            ret = -1;
+            goto err;
+        }
+
+        kvm_state->memcrypt_encrypt_data = sev_encrypt_data;
+    }
+
     ret = kvm_arch_init(ms, s);
     if (ret < 0) {
         goto err;
@@ -1645,17 +1731,22 @@ static int kvm_init(MachineState *ms)
         s->memory_listener.listener.eventfd_add = kvm_mem_ioeventfd_add;
         s->memory_listener.listener.eventfd_del = kvm_mem_ioeventfd_del;
     }
-    s->memory_listener.listener.coalesced_mmio_add = kvm_coalesce_mmio_region;
-    s->memory_listener.listener.coalesced_mmio_del = kvm_uncoalesce_mmio_region;
+    s->memory_listener.listener.coalesced_io_add = kvm_coalesce_mmio_region;
+    s->memory_listener.listener.coalesced_io_del = kvm_uncoalesce_mmio_region;
 
     kvm_memory_listener_register(s, &s->memory_listener,
                                  &address_space_memory, 0);
     memory_listener_register(&kvm_io_listener,
                              &address_space_io);
+    memory_listener_register(&kvm_coalesced_pio_listener,
+                             &address_space_io);
 
     s->many_ioeventfds = kvm_check_many_ioeventfds();
 
     s->sync_mmu = !!kvm_vm_check_extension(kvm_state, KVM_CAP_SYNC_MMU);
+    if (!s->sync_mmu) {
+        qemu_balloon_inhibit(true);
+    }
 
     return 0;
 
@@ -1707,7 +1798,7 @@ static int kvm_handle_internal_error(CPUState *cpu, struct kvm_run *run)
     if (run->internal.suberror == KVM_INTERNAL_ERROR_EMULATION) {
         fprintf(stderr, "emulation failure\n");
         if (!kvm_arch_stop_on_emulation_error(cpu)) {
-            cpu_dump_state(cpu, stderr, fprintf, CPU_DUMP_CODE);
+            cpu_dump_state(cpu, stderr, CPU_DUMP_CODE);
             return EXCP_INTERRUPT;
         }
     }
@@ -1734,7 +1825,13 @@ void kvm_flush_coalesced_mmio_buffer(void)
 
             ent = &ring->coalesced_mmio[ring->first];
 
-            cpu_physical_memory_write(ent->phys_addr, ent->data, ent->len);
+            if (ent->pio == 1) {
+                address_space_rw(&address_space_io, ent->phys_addr,
+                                 MEMTXATTRS_UNSPECIFIED, ent->data,
+                                 ent->len, true);
+            } else {
+                cpu_physical_memory_write(ent->phys_addr, ent->data, ent->len);
+            }
             smp_wmb();
             ring->first = (ring->first + 1) % KVM_COALESCED_MMIO_MAX;
         }
@@ -1992,7 +2089,7 @@ int kvm_cpu_exec(CPUState *cpu)
     qemu_mutex_lock_iothread();
 
     if (ret < 0) {
-        cpu_dump_state(cpu, stderr, fprintf, CPU_DUMP_CODE);
+        cpu_dump_state(cpu, stderr, CPU_DUMP_CODE);
         vm_stop(RUN_STATE_INTERNAL_ERROR);
     }
 

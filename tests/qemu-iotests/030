@@ -86,11 +86,9 @@ class TestSingleDrive(iotests.QMPTestCase):
         result = self.vm.qmp('block-stream', device='drive0')
         self.assert_qmp(result, 'return', {})
 
-        result = self.vm.qmp('block-job-pause', device='drive0')
-        self.assert_qmp(result, 'return', {})
-
+        self.pause_job('drive0', wait=False)
         self.vm.resume_drive('drive0')
-        self.pause_job('drive0')
+        self.pause_wait('drive0')
 
         result = self.vm.qmp('query-block-jobs')
         offset = self.dictpath(result, 'return[0]/offset')
@@ -156,7 +154,7 @@ class TestSingleDrive(iotests.QMPTestCase):
 class TestParallelOps(iotests.QMPTestCase):
     num_ops = 4 # Number of parallel block-stream operations
     num_imgs = num_ops * 2 + 1
-    image_len = num_ops * 1024 * 1024
+    image_len = num_ops * 512 * 1024
     imgs = []
 
     def setUp(self):
@@ -176,14 +174,14 @@ class TestParallelOps(iotests.QMPTestCase):
                      '-o', 'backing_file=%s' % self.imgs[i-1], self.imgs[i])
 
         # Put data into the images we are copying data from
-        for i in range(self.num_imgs / 2):
-            img_index = i * 2 + 1
-            # Alternate between 512k and 1M.
+        odd_img_indexes = [x for x in reversed(range(self.num_imgs)) if x % 2 == 1]
+        for i in range(len(odd_img_indexes)):
+            # Alternate between 256KB and 512KB.
             # This way jobs will not finish in the same order they were created
-            num_kb = 512 + 512 * (i % 2)
+            num_kb = 256 + 256 * (i % 2)
             qemu_io('-f', iotests.imgfmt,
-                    '-c', 'write -P %d %d %d' % (i, i*1024*1024, num_kb * 1024),
-                    self.imgs[img_index])
+                    '-c', 'write -P 0xFF %dk %dk' % (i * 512, num_kb),
+                    self.imgs[odd_img_indexes[i]])
 
         # Attach the drive to the VM
         self.vm = iotests.VM()
@@ -306,8 +304,7 @@ class TestParallelOps(iotests.QMPTestCase):
         result = self.vm.qmp('block-stream', device='node5', base=self.imgs[3], job_id='stream-node6')
         self.assert_qmp(result, 'error/class', 'GenericError')
 
-        event = self.vm.get_qmp_event(wait=True)
-        self.assertEqual(event['event'], 'BLOCK_JOB_READY')
+        event = self.vm.event_wait(name='BLOCK_JOB_READY')
         self.assert_qmp(event, 'data/device', 'commit-drive0')
         self.assert_qmp(event, 'data/type', 'commit')
         self.assert_qmp_absent(event, 'data/error')
@@ -317,13 +314,32 @@ class TestParallelOps(iotests.QMPTestCase):
 
         self.wait_until_completed(drive='commit-drive0')
 
+    # In this case the base node of the stream job is the same as the
+    # top node of commit job. Since block-commit removes the top node
+    # when it finishes, this is not allowed.
+    def test_overlapping_4(self):
+        self.assert_no_active_block_jobs()
+
+        # Commit from node2 into node0
+        result = self.vm.qmp('block-commit', device='drive0', top=self.imgs[2], base=self.imgs[0])
+        self.assert_qmp(result, 'return', {})
+
+        # Stream from node2 into node4
+        result = self.vm.qmp('block-stream', device='node4', base_node='node2', job_id='node4')
+        self.assert_qmp(result, 'error/class', 'GenericError')
+
+        self.wait_until_completed()
+        self.assert_no_active_block_jobs()
+
     # Test a block-stream and a block-commit job in parallel
-    def test_stream_commit(self):
+    # Here the stream job is supposed to finish quickly in order to reproduce
+    # the scenario that triggers the bug fixed in 3d5d319e1221 and 1a63a907507
+    def test_stream_commit_1(self):
         self.assertLessEqual(8, self.num_imgs)
         self.assert_no_active_block_jobs()
 
         # Stream from node0 into node2
-        result = self.vm.qmp('block-stream', device='node2', job_id='node2')
+        result = self.vm.qmp('block-stream', device='node2', base_node='node0', job_id='node2')
         self.assert_qmp(result, 'return', {})
 
         # Commit from the active layer into node3
@@ -332,6 +348,38 @@ class TestParallelOps(iotests.QMPTestCase):
 
         # Wait for all jobs to be finished.
         pending_jobs = ['node2', 'drive0']
+        while len(pending_jobs) > 0:
+            for event in self.vm.get_qmp_events(wait=True):
+                if event['event'] == 'BLOCK_JOB_COMPLETED':
+                    node_name = self.dictpath(event, 'data/device')
+                    self.assertTrue(node_name in pending_jobs)
+                    self.assert_qmp_absent(event, 'data/error')
+                    pending_jobs.remove(node_name)
+                if event['event'] == 'BLOCK_JOB_READY':
+                    self.assert_qmp(event, 'data/device', 'drive0')
+                    self.assert_qmp(event, 'data/type', 'commit')
+                    self.assert_qmp_absent(event, 'data/error')
+                    self.assertTrue('drive0' in pending_jobs)
+                    self.vm.qmp('block-job-complete', device='drive0')
+
+        self.assert_no_active_block_jobs()
+
+    # This is similar to test_stream_commit_1 but both jobs are slowed
+    # down so they can run in parallel for a little while.
+    def test_stream_commit_2(self):
+        self.assertLessEqual(8, self.num_imgs)
+        self.assert_no_active_block_jobs()
+
+        # Stream from node0 into node4
+        result = self.vm.qmp('block-stream', device='node4', base_node='node0', job_id='node4', speed=1024*1024)
+        self.assert_qmp(result, 'return', {})
+
+        # Commit from the active layer into node5
+        result = self.vm.qmp('block-commit', device='drive0', base=self.imgs[5], speed=1024*1024)
+        self.assert_qmp(result, 'return', {})
+
+        # Wait for all jobs to be finished.
+        pending_jobs = ['node4', 'drive0']
         while len(pending_jobs) > 0:
             for event in self.vm.get_qmp_events(wait=True):
                 if event['event'] == 'BLOCK_JOB_COMPLETED':
@@ -490,7 +538,7 @@ new_state = "2"
 state = "2"
 event = "%s"
 new_state = "1"
-''' % (event, errno, self.STREAM_BUFFER_SIZE / 512, event, event))
+''' % (event, errno, self.STREAM_BUFFER_SIZE // 512, event, event))
         file.close()
 
 class TestEIO(TestErrors):
@@ -533,6 +581,8 @@ class TestEIO(TestErrors):
                     self.assert_qmp(event, 'data/offset', self.STREAM_BUFFER_SIZE)
                     self.assert_qmp(event, 'data/len', self.image_len)
                     completed = True
+                elif event['event'] == 'JOB_STATUS_CHANGE':
+                    self.assert_qmp(event, 'data/id', 'drive0')
 
         self.assert_no_active_block_jobs()
         self.vm.shutdown()
@@ -564,6 +614,8 @@ class TestEIO(TestErrors):
                     self.assert_qmp(event, 'data/offset', self.image_len)
                     self.assert_qmp(event, 'data/len', self.image_len)
                     completed = True
+                elif event['event'] == 'JOB_STATUS_CHANGE':
+                    self.assert_qmp(event, 'data/id', 'drive0')
 
         self.assert_no_active_block_jobs()
         self.vm.shutdown()
@@ -605,6 +657,8 @@ class TestEIO(TestErrors):
                     self.assert_qmp(event, 'data/offset', self.image_len)
                     self.assert_qmp(event, 'data/len', self.image_len)
                     completed = True
+                elif event['event'] == 'JOB_STATUS_CHANGE':
+                    self.assert_qmp(event, 'data/id', 'drive0')
 
         self.assert_no_active_block_jobs()
         self.vm.shutdown()
@@ -631,6 +685,8 @@ class TestEIO(TestErrors):
                     self.assert_qmp(event, 'data/offset', self.STREAM_BUFFER_SIZE)
                     self.assert_qmp(event, 'data/len', self.image_len)
                     completed = True
+                elif event['event'] == 'JOB_STATUS_CHANGE':
+                    self.assert_qmp(event, 'data/id', 'drive0')
 
         self.assert_no_active_block_jobs()
         self.vm.shutdown()
@@ -690,6 +746,8 @@ class TestENOSPC(TestErrors):
                     self.assert_qmp(event, 'data/offset', self.image_len)
                     self.assert_qmp(event, 'data/len', self.image_len)
                     completed = True
+                elif event['event'] == 'JOB_STATUS_CHANGE':
+                    self.assert_qmp(event, 'data/id', 'drive0')
 
         self.assert_no_active_block_jobs()
         self.vm.shutdown()
@@ -719,7 +777,9 @@ class TestStreamStop(iotests.QMPTestCase):
 
         time.sleep(0.1)
         events = self.vm.get_qmp_events(wait=False)
-        self.assertEqual(events, [], 'unexpected QMP event: %s' % events)
+        for e in events:
+            self.assert_qmp(e, 'event', 'JOB_STATUS_CHANGE')
+            self.assert_qmp(e, 'data/id', 'drive0')
 
         self.cancel_and_wait(resume=True)
 

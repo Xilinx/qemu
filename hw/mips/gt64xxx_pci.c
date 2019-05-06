@@ -33,7 +33,7 @@
 //#define DEBUG
 
 #ifdef DEBUG
-#define DPRINTF(fmt, ...) fprintf(stderr, "%s: " fmt, __FUNCTION__, ##__VA_ARGS__)
+#define DPRINTF(fmt, ...) fprintf(stderr, "%s: " fmt, __func__, ##__VA_ARGS__)
 #else
 #define DPRINTF(fmt, ...)
 #endif
@@ -395,7 +395,7 @@ static void gt64120_writel (void *opaque, hwaddr addr,
         s->regs[GT_CPU] = val;
         break;
     case GT_MULTI:
-	/* Read-only register as only one GT64xxx is present on the CPU bus */
+        /* Read-only register as only one GT64xxx is present on the CPU bus */
         break;
 
     /* CPU Address Decode */
@@ -457,13 +457,13 @@ static void gt64120_writel (void *opaque, hwaddr addr,
     case GT_CPUERR_DATALO:
     case GT_CPUERR_DATAHI:
     case GT_CPUERR_PARITY:
-	/* Read-only registers, do nothing */
+        /* Read-only registers, do nothing */
         break;
 
     /* CPU Sync Barrier */
     case GT_PCI0SYNC:
     case GT_PCI1SYNC:
-	/* Read-only registers, do nothing */
+        /* Read-only registers, do nothing */
         break;
 
     /* SDRAM and Device Address Decode */
@@ -992,9 +992,9 @@ static void gt64120_pci_set_irq(void *opaque, int irq_num, int level)
 }
 
 
-static void gt64120_reset(void *opaque)
+static void gt64120_reset(DeviceState *dev)
 {
-    GT64120State *s = opaque;
+    GT64120State *s = GT64120_PCI_HOST_BRIDGE(dev);
 
     /* FIXME: Malta specific hw assumptions ahead */
 
@@ -1171,27 +1171,17 @@ PCIBus *gt64120_register(qemu_irq *pic)
     phb = PCI_HOST_BRIDGE(dev);
     memory_region_init(&d->pci0_mem, OBJECT(dev), "pci0-mem", UINT32_MAX);
     address_space_init(&d->pci0_mem_as, &d->pci0_mem, "pci0-mem");
-    phb->bus = pci_register_bus(dev, "pci",
-                                gt64120_pci_set_irq, gt64120_pci_map_irq,
-                                pic,
-                                &d->pci0_mem,
-                                get_system_io(),
-                                PCI_DEVFN(18, 0), 4, TYPE_PCI_BUS);
+    phb->bus = pci_register_root_bus(dev, "pci",
+                                     gt64120_pci_set_irq, gt64120_pci_map_irq,
+                                     pic,
+                                     &d->pci0_mem,
+                                     get_system_io(),
+                                     PCI_DEVFN(18, 0), 4, TYPE_PCI_BUS);
     qdev_init_nofail(dev);
     memory_region_init_io(&d->ISD_mem, OBJECT(dev), &isd_mem_ops, d, "isd-mem", 0x1000);
 
     pci_create_simple(phb->bus, PCI_DEVFN(0, 0), "gt64120_pci");
     return phb->bus;
-}
-
-static int gt64120_init(SysBusDevice *dev)
-{
-    GT64120State *s;
-
-    s = GT64120_PCI_HOST_BRIDGE(dev);
-
-    qemu_register_reset(gt64120_reset, s);
-    return 0;
 }
 
 static void gt64120_pci_realize(PCIDevice *d, Error **errp)
@@ -1241,9 +1231,9 @@ static const TypeInfo gt64120_pci_info = {
 static void gt64120_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-    SysBusDeviceClass *sdc = SYS_BUS_DEVICE_CLASS(klass);
 
-    sdc->init = gt64120_init;
+    set_bit(DEVICE_CATEGORY_BRIDGE, dc->categories);
+    dc->reset = gt64120_reset;
     dc->vmsd = &vmstate_gt64120;
 }
 

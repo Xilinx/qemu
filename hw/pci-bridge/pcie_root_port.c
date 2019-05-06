@@ -47,6 +47,7 @@ static void rp_reset(DeviceState *qdev)
     pcie_cap_deverr_reset(d);
     pcie_cap_slot_reset(d);
     pcie_cap_arifwd_reset(d);
+    pcie_acs_reset(d);
     pcie_aer_root_reset(d);
     pci_bridge_reset(qdev);
     pci_bridge_disable_base_limit(d);
@@ -106,6 +107,9 @@ static void rp_realize(PCIDevice *d, Error **errp)
     pcie_aer_root_init(d);
     rp_aer_vector_update(d);
 
+    if (rpc->acs_offset) {
+        pcie_acs_init(d, rpc->acs_offset);
+    }
     return;
 
 err:
@@ -140,12 +144,24 @@ static Property rp_props[] = {
     DEFINE_PROP_END_OF_LIST()
 };
 
+static void rp_instance_post_init(Object *obj)
+{
+    PCIESlot *s = PCIE_SLOT(obj);
+
+    if (!s->speed) {
+        s->speed = QEMU_PCI_EXP_LNK_2_5GT;
+    }
+
+    if (!s->width) {
+        s->width = QEMU_PCI_EXP_LNK_X1;
+    }
+}
+
 static void rp_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
-    k->is_express = 1;
     k->is_bridge = 1;
     k->config_write = rp_write_config;
     k->realize = rp_realize;
@@ -158,6 +174,7 @@ static void rp_class_init(ObjectClass *klass, void *data)
 static const TypeInfo rp_info = {
     .name          = TYPE_PCIE_ROOT_PORT,
     .parent        = TYPE_PCIE_SLOT,
+    .instance_post_init = rp_instance_post_init,
     .class_init    = rp_class_init,
     .abstract      = true,
     .class_size = sizeof(PCIERootPortClass),

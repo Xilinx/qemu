@@ -22,6 +22,8 @@
  * THE SOFTWARE.
  */
 #include "qemu/osdep.h"
+#include "qemu/units.h"
+#include "qemu/error-report.h"
 #include "qapi/error.h"
 #include "qemu-common.h"
 #include "cpu.h"
@@ -138,10 +140,10 @@ static void leon3_generic_hw_init(MachineState *machine)
     env->qemu_irq_ack = leon3_irq_manager;
 
     /* Allocate RAM */
-    if ((uint64_t)ram_size > (1UL << 30)) {
-        fprintf(stderr,
-                "qemu: Too much memory for this machine: %d, maximum 1G\n",
-                (unsigned int)(ram_size / (1024 * 1024)));
+    if (ram_size > 1 * GiB) {
+        error_report("Too much memory for this machine: %" PRId64 "MB,"
+                     " maximum 1G",
+                     ram_size / MiB);
         exit(1);
     }
 
@@ -149,7 +151,7 @@ static void leon3_generic_hw_init(MachineState *machine)
     memory_region_add_subregion(address_space_mem, 0x40000000, ram);
 
     /* Allocate BIOS */
-    prom_size = 8 * 1024 * 1024; /* 8Mb */
+    prom_size = 8 * MiB;
     memory_region_init_ram(prom, NULL, "Leon3.bios", prom_size, &error_fatal);
     memory_region_set_readonly(prom, true);
     memory_region_add_subregion(address_space_mem, 0x00000000, prom);
@@ -167,19 +169,18 @@ static void leon3_generic_hw_init(MachineState *machine)
     }
 
     if (bios_size > prom_size) {
-        fprintf(stderr, "qemu: could not load prom '%s': file too big\n",
-                filename);
+        error_report("could not load prom '%s': file too big", filename);
         exit(1);
     }
 
     if (bios_size > 0) {
         ret = load_image_targphys(filename, 0x00000000, bios_size);
         if (ret < 0 || ret > prom_size) {
-            fprintf(stderr, "qemu: could not load prom '%s'\n", filename);
+            error_report("could not load prom '%s'", filename);
             exit(1);
         }
     } else if (kernel_filename == NULL && !qtest_enabled()) {
-        fprintf(stderr, "Can't read bios image %s\n", filename);
+        error_report("Can't read bios image %s", filename);
         exit(1);
     }
     g_free(filename);
@@ -189,11 +190,11 @@ static void leon3_generic_hw_init(MachineState *machine)
         long     kernel_size;
         uint64_t entry;
 
-        kernel_size = load_elf(kernel_filename, NULL, NULL, &entry, NULL, NULL,
+        kernel_size = load_elf(kernel_filename, NULL, NULL, NULL,
+                               &entry, NULL, NULL,
                                1 /* big endian */, EM_SPARC, 0, 0);
         if (kernel_size < 0) {
-            fprintf(stderr, "qemu: could not load kernel '%s'\n",
-                    kernel_filename);
+            error_report("could not load kernel '%s'", kernel_filename);
             exit(1);
         }
         if (bios_size <= 0) {
@@ -208,8 +209,8 @@ static void leon3_generic_hw_init(MachineState *machine)
     grlib_gptimer_create(0x80000300, 2, CPU_CLK, cpu_irqs, 6);
 
     /* Allocate uart */
-    if (serial_hds[0]) {
-        grlib_apbuart_create(0x80000100, serial_hds[0], cpu_irqs[3]);
+    if (serial_hd(0)) {
+        grlib_apbuart_create(0x80000100, serial_hd(0), cpu_irqs[3]);
     }
 }
 

@@ -43,7 +43,7 @@
         fprintf(stderr,  ": %s: ", __func__); \
         fprintf(stderr, ## __VA_ARGS__); \
     } \
-} while (0);
+} while (0)
 
 /* config register */
 #define R_CONFIG            (0x00 / 4)
@@ -188,6 +188,13 @@
 #define R_GQSPI_MOD_ID        (0x1fc / 4)
 #define R_GQSPI_MOD_ID_RESET  (0x10a0000)
 
+#define R_QSPIDMA_DST_CTRL         (0x80c / 4)
+#define R_QSPIDMA_DST_CTRL_RESET   (0x803ffa00)
+#define R_QSPIDMA_DST_I_MASK       (0x820 / 4)
+#define R_QSPIDMA_DST_I_MASK_RESET (0xfe)
+#define R_QSPIDMA_DST_CTRL2        (0x824 / 4)
+#define R_QSPIDMA_DST_CTRL2_RESET  (0x081bfff8)
+
 /* size of TXRX FIFOs */
 #define RXFF_A          (128)
 #define TXFF_A          (128)
@@ -203,6 +210,9 @@
 #define SNOOP_ADDR 0xF0
 #define SNOOP_NONE 0xEE
 #define SNOOP_STRIPING 0
+
+#define MIN_NUM_BUSSES 1
+#define MAX_NUM_BUSSES 2
 
 static inline int num_effective_busses(XilinxSPIPS *s)
 {
@@ -406,6 +416,9 @@ static void xlnx_zynqmp_qspips_reset(DeviceState *d)
     s->regs[R_GQSPI_GPIO] = 1;
     s->regs[R_GQSPI_LPBK_DLY_ADJ] = R_GQSPI_LPBK_DLY_ADJ_RESET;
     s->regs[R_GQSPI_MOD_ID] = R_GQSPI_MOD_ID_RESET;
+    s->regs[R_QSPIDMA_DST_CTRL] = R_QSPIDMA_DST_CTRL_RESET;
+    s->regs[R_QSPIDMA_DST_I_MASK] = R_QSPIDMA_DST_I_MASK_RESET;
+    s->regs[R_QSPIDMA_DST_CTRL2] = R_QSPIDMA_DST_CTRL2_RESET;
     s->man_start_com_g = false;
     s->gqspi_irqline = 0;
     xlnx_zynqmp_qspips_update_ixr(s);
@@ -423,11 +436,13 @@ static void xlnx_zynqmp_qspips_reset(DeviceState *d)
 
 static inline void stripe8(uint8_t *x, int num, bool dir)
 {
-    uint8_t r[num];
-    memset(r, 0, sizeof(uint8_t) * num);
+    uint8_t r[MAX_NUM_BUSSES];
     int idx[2] = {0, 0};
     int bit[2] = {0, 7};
     int d = dir;
+
+    assert(num <= MAX_NUM_BUSSES);
+    memset(r, 0, sizeof(uint8_t) * num);
 
     for (idx[0] = 0; idx[0] < num; ++idx[0]) {
         for (bit[0] = 7; bit[0] >= 0; bit[0]--) {
@@ -586,22 +601,22 @@ static int xilinx_spips_num_dummies(XilinxQSPIPS *qs, uint8_t command)
 
 static inline uint8_t get_addr_length(XilinxSPIPS *s, uint8_t cmd)
 {
-    switch (cmd) {
-    case PP_4:
-    case QPP_4:
-    case READ_4:
-    case QIOR_4:
-    case FAST_READ_4:
-    case DOR_4:
-    case QOR_4:
-    case DIOR_4:
-    case ERASE4_4K:
-    case ERASE4_32K:
-    case ERASE4_SEC:
-        return 4;
-    default:
-        return (s->regs[R_CMND] & R_CMND_EXT_ADD) ? 4 : 3;
-    }
+   switch (cmd) {
+   case PP_4:
+   case QPP_4:
+   case READ_4:
+   case QIOR_4:
+   case FAST_READ_4:
+   case DOR_4:
+   case QOR_4:
+   case DIOR_4:
+   case ERASE4_4K:
+   case ERASE4_32K:
+   case ERASE4_SEC:
+       return 4;
+   default:
+       return (s->regs[R_CMND] & R_CMND_EXT_ADD) ? 4 : 3;
+   }
 }
 
 static void xilinx_spips_flush_txfifo(XilinxSPIPS *s)
@@ -613,14 +628,15 @@ static void xilinx_spips_flush_txfifo(XilinxSPIPS *s)
     for (;;) {
         int i;
         uint8_t tx = 0;
-        uint8_t tx_rx[num_effective_busses(s)];
+        uint8_t tx_rx[MAX_NUM_BUSSES] = { 0 };
         uint8_t dummy_cycles = 0;
         uint8_t addr_length;
 
         if (fifo8_is_empty(&s->tx_fifo)) {
             xilinx_spips_update_ixr(s);
             return;
-        } else if (s->snoop_state == SNOOP_STRIPING) {
+        } else if (s->snoop_state == SNOOP_STRIPING ||
+                   s->snoop_state == SNOOP_NONE) {
             for (i = 0; i < num_effective_busses(s); ++i) {
                 tx_rx[i] = fifo8_pop(&s->tx_fifo);
             }
@@ -1035,14 +1051,6 @@ static const MemoryRegionOps spips_ops = {
 
 static void xilinx_qspips_invalidate_mmio_ptr(XilinxQSPIPS *q)
 {
-    XilinxSPIPS *s = &q->parent_obj;
-
-    if ((q->mmio_execution_enabled) && (q->lqspi_cached_addr != ~0ULL)) {
-        /* Invalidate the current mapped mmio */
-        memory_region_invalidate_mmio_ptr(&s->mmlqspi, q->lqspi_cached_addr,
-                                          LQSPI_CACHE_SIZE);
-    }
-
     q->lqspi_cached_addr = ~0ULL;
 }
 
@@ -1082,6 +1090,9 @@ static void xilinx_qspips_write(void *opaque, hwaddr addr,
             }
             fprintf(stderr, "\n");
         }
+    }
+    if (s->regs[R_CMND] & R_CMND_RXFIFO_DRAIN) {
+        fifo8_reset(&s->rx_fifo);
     }
     if (s->regs[R_CMND] & R_CMND_RXFIFO_DRAIN) {
         fifo8_reset(&s->rx_fifo);
@@ -1236,23 +1247,6 @@ static void lqspi_load_cache(void *opaque, hwaddr addr)
     }
 }
 
-static void *lqspi_request_mmio_ptr(void *opaque, hwaddr addr, unsigned *size,
-                                    unsigned *offset)
-{
-    XilinxQSPIPS *q = opaque;
-    hwaddr offset_within_the_region;
-
-    if (!q->mmio_execution_enabled) {
-        return NULL;
-    }
-
-    offset_within_the_region = addr & ~(LQSPI_CACHE_SIZE - 1);
-    lqspi_load_cache(opaque, offset_within_the_region);
-    *size = LQSPI_CACHE_SIZE;
-    *offset = offset_within_the_region;
-    return q->lqspi_buf;
-}
-
 static uint64_t
 lqspi_read(void *opaque, hwaddr addr, unsigned int size)
 {
@@ -1274,7 +1268,6 @@ lqspi_read(void *opaque, hwaddr addr, unsigned int size)
 
 static const MemoryRegionOps lqspi_ops = {
     .read = lqspi_read,
-    .request_ptr = lqspi_request_mmio_ptr,
     .endianness = DEVICE_NATIVE_ENDIAN,
     .valid = {
         .min_access_size = 1,
@@ -1291,6 +1284,19 @@ static void xilinx_spips_realize(DeviceState *dev, Error **errp)
     int i;
 
     DB_PRINT_L(0, "realized spips\n");
+
+    if (s->num_busses > MAX_NUM_BUSSES) {
+        error_setg(errp,
+                   "requested number of SPI busses %u exceeds maximum %d",
+                   s->num_busses, MAX_NUM_BUSSES);
+        return;
+    }
+    if (s->num_busses < MIN_NUM_BUSSES) {
+        error_setg(errp,
+                   "requested number of SPI busses %u is below minimum %d",
+                   s->num_busses, MIN_NUM_BUSSES);
+        return;
+    }
 
     s->spi = g_new(SSIBus *, s->num_busses);
     for (i = 0; i < s->num_busses; ++i) {
@@ -1338,15 +1344,17 @@ static void xilinx_qspips_realize(DeviceState *dev, Error **errp)
     sysbus_init_mmio(sbd, &s->mmlqspi);
 
     q->lqspi_cached_addr = ~0ULL;
+}
 
-    /* mmio_execution breaks migration better aborting than having strange
-     * bugs.
-     */
-    if (q->mmio_execution_enabled) {
-        error_setg(&q->migration_blocker,
-                   "enabling mmio_execution breaks migration");
-        migrate_add_blocker(q->migration_blocker, &error_fatal);
-    }
+static void xlnx_zynqmp_qspips_init(Object *obj)
+{
+    XlnxZynqMPQSPIPS *rq = XLNX_ZYNQMP_QSPIPS(obj);
+
+    object_property_add_link(obj, "stream-connected-dma", TYPE_STREAM_SLAVE,
+                             (Object **)&rq->dma,
+                             object_property_allow_set_link,
+                             OBJ_PROP_LINK_STRONG,
+                             NULL);
 }
 
 static void xlnx_zynqmp_qspips_realize(DeviceState *dev, Error **errp)
@@ -1364,17 +1372,6 @@ static void xlnx_zynqmp_qspips_realize(DeviceState *dev, Error **errp)
     fifo8_create(&s->rx_fifo_g, xsc->rx_fifo_size);
     fifo8_create(&s->tx_fifo_g, xsc->tx_fifo_size);
     fifo32_create(&s->fifo_g, 32);
-}
-
-static void xlnx_zynqmp_qspips_init(Object *obj)
-{
-    XlnxZynqMPQSPIPS *rq = XLNX_ZYNQMP_QSPIPS(obj);
-
-    object_property_add_link(obj, "stream-connected-dma", TYPE_STREAM_SLAVE,
-                             (Object **)&rq->dma,
-                             object_property_allow_set_link,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
-                             NULL);
 }
 
 static int xilinx_spips_post_load(void *opaque, int version_id)
@@ -1470,7 +1467,7 @@ static void xilinx_qspips_init(Object *obj)
     object_property_add_link(obj, "dma", TYPE_MEMORY_REGION,
                              (Object **) &q->hack_dma,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             OBJ_PROP_LINK_STRONG,
                              &error_abort);
 }
 

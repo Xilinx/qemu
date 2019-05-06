@@ -6,11 +6,13 @@
  * This work is licensed under the terms of the GNU GPL, version 2 or later.
  * See the COPYING file in the top-level directory.
  */
+
 #include "qemu/osdep.h"
 
 #include "libqtest.h"
 #include "libqos/pci.h"
 #include "libqos/pci-pc.h"
+#include "qapi/qmp/qdict.h"
 #include "hw/pci/pci_regs.h"
 #include "hw/i386/ich9.h"
 #include "hw/acpi/ich9.h"
@@ -56,13 +58,13 @@ static void test_init(TestData *d)
 {
     QTestState *qs;
 
-    qs = qtest_startf("-machine q35 %s %s",
-                      d->noreboot ? "" : "-global ICH9-LPC.noreboot=false",
-                      !d->args ? "" : d->args);
+    qs = qtest_initf("-machine q35 %s %s",
+                     d->noreboot ? "" : "-global ICH9-LPC.noreboot=false",
+                     !d->args ? "" : d->args);
     global_qtest = qs;
     qtest_irq_intercept_in(qs, "ioapic");
 
-    d->bus = qpci_init_pc(NULL);
+    d->bus = qpci_new_pc(qs, NULL);
     d->dev = qpci_device_find(d->bus, QPCI_DEVFN(0x1f, 0x00));
     g_assert(d->dev != NULL);
 
@@ -235,13 +237,12 @@ static void test_tco_max_timeout(void)
 
 static QDict *get_watchdog_action(void)
 {
-    QDict *ev = qmp("");
+    QDict *ev = qmp_eventwait_ref("WATCHDOG");
     QDict *data;
-    g_assert(!strcmp(qdict_get_str(ev, "event"), "WATCHDOG"));
 
     data = qdict_get_qdict(ev, "data");
-    QINCREF(data);
-    QDECREF(ev);
+    qobject_ref(data);
+    qobject_unref(ev);
     return data;
 }
 
@@ -264,7 +265,7 @@ static void test_tco_second_timeout_pause(void)
     clock_step(ticks * TCO_TICK_NSEC * 2);
     ad = get_watchdog_action();
     g_assert(!strcmp(qdict_get_str(ad, "action"), "pause"));
-    QDECREF(ad);
+    qobject_unref(ad);
 
     stop_tco(&td);
     test_end(&td);
@@ -289,7 +290,7 @@ static void test_tco_second_timeout_reset(void)
     clock_step(ticks * TCO_TICK_NSEC * 2);
     ad = get_watchdog_action();
     g_assert(!strcmp(qdict_get_str(ad, "action"), "reset"));
-    QDECREF(ad);
+    qobject_unref(ad);
 
     stop_tco(&td);
     test_end(&td);
@@ -314,7 +315,7 @@ static void test_tco_second_timeout_shutdown(void)
     clock_step(ticks * TCO_TICK_NSEC * 2);
     ad = get_watchdog_action();
     g_assert(!strcmp(qdict_get_str(ad, "action"), "shutdown"));
-    QDECREF(ad);
+    qobject_unref(ad);
 
     stop_tco(&td);
     test_end(&td);
@@ -339,7 +340,7 @@ static void test_tco_second_timeout_none(void)
     clock_step(ticks * TCO_TICK_NSEC * 2);
     ad = get_watchdog_action();
     g_assert(!strcmp(qdict_get_str(ad, "action"), "none"));
-    QDECREF(ad);
+    qobject_unref(ad);
 
     stop_tco(&td);
     test_end(&td);

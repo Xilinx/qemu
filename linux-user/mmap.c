@@ -20,7 +20,6 @@
 
 #include "qemu.h"
 #include "qemu-common.h"
-#include "translate-all.h"
 
 //#define DEBUG_MMAP
 
@@ -77,11 +76,12 @@ int target_mprotect(abi_ulong start, abi_ulong len, int prot)
 #endif
 
     if ((start & ~TARGET_PAGE_MASK) != 0)
-        return -EINVAL;
+        return -TARGET_EINVAL;
     len = TARGET_PAGE_ALIGN(len);
     end = start + len;
-    if (end < start)
-        return -EINVAL;
+    if (!guest_range_valid(start, len)) {
+        return -TARGET_ENOMEM;
+    }
     prot &= PROT_READ | PROT_WRITE | PROT_EXEC;
     if (len == 0)
         return 0;
@@ -234,7 +234,7 @@ static abi_ulong mmap_find_vma_reserved(abi_ulong start, abi_ulong size)
         if (prot) {
             end_addr = addr;
         }
-        if (addr + size == end_addr) {
+        if (addr && addr + size == end_addr) {
             break;
         }
         addr -= qemu_host_page_size;
@@ -391,14 +391,23 @@ abi_long target_mmap(abi_ulong start, abi_ulong len, int prot,
     }
 #endif
 
+    if (!len) {
+        errno = EINVAL;
+        goto fail;
+    }
+
+    /* Also check for overflows... */
+    len = TARGET_PAGE_ALIGN(len);
+    if (!len) {
+        errno = ENOMEM;
+        goto fail;
+    }
+
     if (offset & ~TARGET_PAGE_MASK) {
         errno = EINVAL;
         goto fail;
     }
 
-    len = TARGET_PAGE_ALIGN(len);
-    if (len == 0)
-        goto the_end;
     real_start = start & qemu_host_page_mask;
     host_offset = offset & qemu_host_page_mask;
 
@@ -476,13 +485,13 @@ abi_long target_mmap(abi_ulong start, abi_ulong len, int prot,
         end = start + len;
         real_end = HOST_PAGE_ALIGN(end);
 
-	/*
-	 * Test if requested memory area fits target address space
-	 * It can fail only on 64-bit host with 32-bit target.
-	 * On any other target/host host mmap() handles this error correctly.
-	 */
-        if ((unsigned long)start + len - 1 > (abi_ulong) -1) {
-            errno = EINVAL;
+        /*
+         * Test if requested memory area fits target address space
+         * It can fail only on 64-bit host with 32-bit target.
+         * On any other target/host host mmap() handles this error correctly.
+         */
+        if (!guest_range_valid(start, len)) {
+            errno = ENOMEM;
             goto fail;
         }
 
@@ -620,10 +629,12 @@ int target_munmap(abi_ulong start, abi_ulong len)
            start, len);
 #endif
     if (start & ~TARGET_PAGE_MASK)
-        return -EINVAL;
+        return -TARGET_EINVAL;
     len = TARGET_PAGE_ALIGN(len);
-    if (len == 0)
-        return -EINVAL;
+    if (len == 0 || !guest_range_valid(start, len)) {
+        return -TARGET_EINVAL;
+    }
+
     mmap_lock();
     end = start + len;
     real_start = start & qemu_host_page_mask;
@@ -677,6 +688,13 @@ abi_long target_mremap(abi_ulong old_addr, abi_ulong old_size,
 {
     int prot;
     void *host_addr;
+
+    if (!guest_range_valid(old_addr, old_size) ||
+        ((flags & MREMAP_FIXED) &&
+         !guest_range_valid(new_addr, new_size))) {
+        errno = ENOMEM;
+        return -1;
+    }
 
     mmap_lock();
 
@@ -743,21 +761,4 @@ abi_long target_mremap(abi_ulong old_addr, abi_ulong old_size,
     tb_invalidate_phys_range(new_addr, new_addr + new_size);
     mmap_unlock();
     return new_addr;
-}
-
-int target_msync(abi_ulong start, abi_ulong len, int flags)
-{
-    abi_ulong end;
-
-    if (start & ~TARGET_PAGE_MASK)
-        return -EINVAL;
-    len = TARGET_PAGE_ALIGN(len);
-    end = start + len;
-    if (end < start)
-        return -EINVAL;
-    if (end == start)
-        return 0;
-
-    start &= qemu_host_page_mask;
-    return msync(g2h(start), end - start, flags);
 }

@@ -23,7 +23,7 @@
    for things we don't care about.  */
 
 #include "qemu/osdep.h"
-#include "disas/bfd.h"
+#include "disas/dis-asm.h"
 
 #define ARM_EXT_V1	 0
 #define ARM_EXT_V2	 0
@@ -1077,7 +1077,7 @@ static const struct opcode32 arm_opcodes[] =
    %S                   print Thumb register (bits 3..5 as high number if bit 6 set)
    %D                   print Thumb register (bits 0..2 as high number if bit 7 set)
    %<bitfield>I         print bitfield as a signed decimal
-   				(top bit of range being the sign bit)
+				(top bit of range being the sign bit)
    %N                   print Thumb register mask (with LR)
    %O                   print Thumb register mask (with PC)
    %M                   print Thumb register mask
@@ -1662,7 +1662,7 @@ print_insn_coprocessor (bfd_vma pc, struct disassemble_info *info, long given,
 	}
       else
 	{
-	  /* Only match unconditional instuctions against unconditional
+          /* Only match unconditional instructions against unconditional
 	     patterns.  */
 	  if ((given & 0xf0000000) == 0xf0000000)
 	    {

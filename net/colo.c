@@ -14,7 +14,8 @@
 
 #include "qemu/osdep.h"
 #include "trace.h"
-#include "net/colo.h"
+#include "colo.h"
+#include "util.h"
 
 uint32_t connection_key_hash(const void *opaque)
 {
@@ -137,7 +138,9 @@ Connection *connection_new(ConnectionKey *key)
     conn->ip_proto = key->ip_proto;
     conn->processing = false;
     conn->offset = 0;
-    conn->syn_flag = 0;
+    conn->tcp_state = TCPS_CLOSED;
+    conn->pack = 0;
+    conn->sack = 0;
     g_queue_init(&conn->primary_list);
     g_queue_init(&conn->secondary_list);
 
@@ -163,6 +166,13 @@ Packet *packet_new(const void *data, int size, int vnet_hdr_len)
     pkt->size = size;
     pkt->creation_ms = qemu_clock_get_ms(QEMU_CLOCK_HOST);
     pkt->vnet_hdr_len = vnet_hdr_len;
+    pkt->tcp_seq = 0;
+    pkt->tcp_ack = 0;
+    pkt->seq_end = 0;
+    pkt->header_size = 0;
+    pkt->payload_size = 0;
+    pkt->offset = 0;
+    pkt->flags = 0;
 
     return pkt;
 }
@@ -211,4 +221,12 @@ Connection *connection_get(GHashTable *connection_track_table,
     }
 
     return conn;
+}
+
+bool connection_has_tracked(GHashTable *connection_track_table,
+                            ConnectionKey *key)
+{
+    Connection *conn = g_hash_table_lookup(connection_track_table, key);
+
+    return conn ? true : false;
 }

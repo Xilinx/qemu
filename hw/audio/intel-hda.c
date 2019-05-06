@@ -23,6 +23,7 @@
 #include "hw/pci/msi.h"
 #include "qemu/timer.h"
 #include "qemu/bitops.h"
+#include "qemu/log.h"
 #include "hw/audio/soundhw.h"
 #include "intel-hda.h"
 #include "intel-hda-defs.h"
@@ -265,7 +266,7 @@ static void intel_hda_update_irq(IntelHDAState *d)
     } else {
         level = 0;
     }
-    dprint(d, 2, "%s: level %d [%s]\n", __FUNCTION__,
+    dprint(d, 2, "%s: level %d [%s]\n", __func__,
            level, msi ? "msi" : "intx");
     if (msi) {
         if (level) {
@@ -285,7 +286,7 @@ static int intel_hda_send_command(IntelHDAState *d, uint32_t verb)
     cad = (verb >> 28) & 0x0f;
     if (verb & (1 << 27)) {
         /* indirect node addressing, not specified in HDA 1.0 */
-        dprint(d, 1, "%s: indirect node addressing (guest bug?)\n", __FUNCTION__);
+        dprint(d, 1, "%s: indirect node addressing (guest bug?)\n", __func__);
         return -1;
     }
     nid = (verb >> 20) & 0x7f;
@@ -293,7 +294,7 @@ static int intel_hda_send_command(IntelHDAState *d, uint32_t verb)
 
     codec = hda_codec_find(&d->codecs, cad);
     if (codec == NULL) {
-        dprint(d, 1, "%s: addressed non-existing codec\n", __FUNCTION__);
+        dprint(d, 1, "%s: addressed non-existing codec\n", __func__);
         return -1;
     }
     cdc = HDA_CODEC_DEVICE_GET_CLASS(codec);
@@ -307,22 +308,22 @@ static void intel_hda_corb_run(IntelHDAState *d)
     uint32_t rp, verb;
 
     if (d->ics & ICH6_IRS_BUSY) {
-        dprint(d, 2, "%s: [icw] verb 0x%08x\n", __FUNCTION__, d->icw);
+        dprint(d, 2, "%s: [icw] verb 0x%08x\n", __func__, d->icw);
         intel_hda_send_command(d, d->icw);
         return;
     }
 
     for (;;) {
         if (!(d->corb_ctl & ICH6_CORBCTL_RUN)) {
-            dprint(d, 2, "%s: !run\n", __FUNCTION__);
+            dprint(d, 2, "%s: !run\n", __func__);
             return;
         }
         if ((d->corb_rp & 0xff) == d->corb_wp) {
-            dprint(d, 2, "%s: corb ring empty\n", __FUNCTION__);
+            dprint(d, 2, "%s: corb ring empty\n", __func__);
             return;
         }
         if (d->rirb_count == d->rirb_cnt) {
-            dprint(d, 2, "%s: rirb count reached\n", __FUNCTION__);
+            dprint(d, 2, "%s: rirb count reached\n", __func__);
             return;
         }
 
@@ -331,7 +332,7 @@ static void intel_hda_corb_run(IntelHDAState *d)
         verb = ldl_le_pci_dma(&d->pci, addr + 4*rp);
         d->corb_rp = rp;
 
-        dprint(d, 2, "%s: [rp 0x%x] verb 0x%08x\n", __FUNCTION__, rp, verb);
+        dprint(d, 2, "%s: [rp 0x%x] verb 0x%08x\n", __func__, rp, verb);
         intel_hda_send_command(d, verb);
     }
 }
@@ -345,7 +346,7 @@ static void intel_hda_response(HDACodecDevice *dev, bool solicited, uint32_t res
 
     if (d->ics & ICH6_IRS_BUSY) {
         dprint(d, 2, "%s: [irr] response 0x%x, cad 0x%x\n",
-               __FUNCTION__, response, dev->cad);
+               __func__, response, dev->cad);
         d->irr = response;
         d->ics &= ~(ICH6_IRS_BUSY | 0xf0);
         d->ics |= (ICH6_IRS_VALID | (dev->cad << 4));
@@ -353,7 +354,7 @@ static void intel_hda_response(HDACodecDevice *dev, bool solicited, uint32_t res
     }
 
     if (!(d->rirb_ctl & ICH6_RBCTL_DMA_EN)) {
-        dprint(d, 1, "%s: rirb dma disabled, drop codec response\n", __FUNCTION__);
+        dprint(d, 1, "%s: rirb dma disabled, drop codec response\n", __func__);
         return;
     }
 
@@ -365,17 +366,17 @@ static void intel_hda_response(HDACodecDevice *dev, bool solicited, uint32_t res
     d->rirb_wp = wp;
 
     dprint(d, 2, "%s: [wp 0x%x] response 0x%x, extra 0x%x\n",
-           __FUNCTION__, wp, response, ex);
+           __func__, wp, response, ex);
 
     d->rirb_count++;
     if (d->rirb_count == d->rirb_cnt) {
-        dprint(d, 2, "%s: rirb count reached (%d)\n", __FUNCTION__, d->rirb_count);
+        dprint(d, 2, "%s: rirb count reached (%d)\n", __func__, d->rirb_count);
         if (d->rirb_ctl & ICH6_RBCTL_IRQ_EN) {
             d->rirb_sts |= ICH6_RBSTS_IRQ;
             intel_hda_update_irq(d);
         }
     } else if ((d->corb_rp & 0xff) == d->corb_wp) {
-        dprint(d, 2, "%s: corb ring empty (%d/%d)\n", __FUNCTION__,
+        dprint(d, 2, "%s: corb ring empty (%d/%d)\n", __func__,
                d->rirb_count, d->rirb_cnt);
         if (d->rirb_ctl & ICH6_RBCTL_IRQ_EN) {
             d->rirb_sts |= ICH6_RBSTS_IRQ;
@@ -405,13 +406,6 @@ static bool intel_hda_xfer(HDACodecDevice *dev, uint32_t stnr, bool output,
         return false;
     }
     if (st->bpl == NULL) {
-        return false;
-    }
-    if (st->ctl & (1 << 26)) {
-        /*
-         * Wait with the next DMA xfer until the guest
-         * has acked the buffer completion interrupt
-         */
         return false;
     }
 
@@ -936,6 +930,11 @@ static void intel_hda_reg_write(IntelHDAState *d, const IntelHDAReg *reg, uint32
     if (!reg) {
         return;
     }
+    if (!reg->wmask) {
+        qemu_log_mask(LOG_GUEST_ERROR, "intel-hda: write to r/o reg %s\n",
+                      reg->name);
+        return;
+    }
 
     if (d->debug) {
         time_t now = time(NULL);
@@ -1144,7 +1143,7 @@ static int intel_hda_post_load(void *opaque, int version)
     IntelHDAState* d = opaque;
     int i;
 
-    dprint(d, 1, "%s\n", __FUNCTION__);
+    dprint(d, 1, "%s\n", __func__);
     for (i = 0; i < ARRAY_SIZE(d->st); i++) {
         if (d->st[i].ctl & 0x02) {
             intel_hda_parse_bdl(d, &d->st[i]);

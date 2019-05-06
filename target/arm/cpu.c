@@ -19,8 +19,9 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/error-report.h"
+#include "target/arm/idau.h"
 #include "qapi/error.h"
+#include "qapi/visitor.h"
 #include "cpu.h"
 #include "internals.h"
 #include "qemu-common.h"
@@ -34,6 +35,7 @@
 #include "sysemu/hw_accel.h"
 #include "kvm_arm.h"
 #include "disas/capstone.h"
+#include "fpu/softfloat.h"
 
 #include "hw/fdt_generic_util.h"
 
@@ -44,8 +46,31 @@ static void arm_cpu_set_irq(void *opaque, int irq, int level);
 static void arm_cpu_set_pc(CPUState *cs, vaddr value)
 {
     ARMCPU *cpu = ARM_CPU(cs);
+    CPUARMState *env = &cpu->env;
 
-    cpu->env.regs[15] = value;
+    if (is_a64(env)) {
+        env->pc = value;
+        env->thumb = 0;
+    } else {
+        env->regs[15] = value & ~1;
+        env->thumb = value & 1;
+    }
+}
+
+static void arm_cpu_synchronize_from_tb(CPUState *cs, TranslationBlock *tb)
+{
+    ARMCPU *cpu = ARM_CPU(cs);
+    CPUARMState *env = &cpu->env;
+
+    /*
+     * It's OK to look at env for the current mode here, because it's
+     * never possible for an AArch64 TB to chain to an AArch32 TB.
+     */
+    if (is_a64(env)) {
+        env->pc = tb->pc;
+    } else {
+        env->regs[15] = tb->pc;
+    }
 }
 
 static vaddr arm_cpu_get_pc(CPUState *cs)
@@ -77,13 +102,26 @@ static bool arm_cpu_has_work(CPUState *cs)
          | CPU_INTERRUPT_EXITTB);
 }
 
-void arm_register_el_change_hook(ARMCPU *cpu, ARMELChangeHook *hook,
+void arm_register_pre_el_change_hook(ARMCPU *cpu, ARMELChangeHookFn *hook,
                                  void *opaque)
 {
-    /* We currently only support registering a single hook function */
-    assert(!cpu->el_change_hook);
-    cpu->el_change_hook = hook;
-    cpu->el_change_hook_opaque = opaque;
+    ARMELChangeHook *entry = g_new0(ARMELChangeHook, 1);
+
+    entry->hook = hook;
+    entry->opaque = opaque;
+
+    QLIST_INSERT_HEAD(&cpu->pre_el_change_hooks, entry, node);
+}
+
+void arm_register_el_change_hook(ARMCPU *cpu, ARMELChangeHookFn *hook,
+                                 void *opaque)
+{
+    ARMELChangeHook *entry = g_new0(ARMELChangeHook, 1);
+
+    entry->hook = hook;
+    entry->opaque = opaque;
+
+    QLIST_INSERT_HEAD(&cpu->el_change_hooks, entry, node);
 }
 
 static void cp_reg_reset(gpointer key, gpointer value, gpointer opaque)
@@ -170,9 +208,9 @@ static void arm_cpu_reset(CPUState *s)
     g_hash_table_foreach(cpu->cp_regs, cp_reg_check_reset, cpu);
 
     env->vfp.xregs[ARM_VFP_FPSID] = cpu->reset_fpsid;
-    env->vfp.xregs[ARM_VFP_MVFR0] = cpu->mvfr0;
-    env->vfp.xregs[ARM_VFP_MVFR1] = cpu->mvfr1;
-    env->vfp.xregs[ARM_VFP_MVFR2] = cpu->mvfr2;
+    env->vfp.xregs[ARM_VFP_MVFR0] = cpu->isar.mvfr0;
+    env->vfp.xregs[ARM_VFP_MVFR1] = cpu->isar.mvfr1;
+    env->vfp.xregs[ARM_VFP_MVFR2] = cpu->isar.mvfr2;
 
     cpu->power_state = cpu->start_powered_off || s->arch_halt_pin ?
                            PSCI_OFF : PSCI_ON;
@@ -198,8 +236,27 @@ static void arm_cpu_reset(CPUState *s)
         env->pstate = PSTATE_MODE_EL0t;
         /* Userspace expects access to DC ZVA, CTL_EL0 and the cache ops */
         env->cp15.sctlr_el[1] |= SCTLR_UCT | SCTLR_UCI | SCTLR_DZE;
+        /* Enable all PAC keys.  */
+        env->cp15.sctlr_el[1] |= (SCTLR_EnIA | SCTLR_EnIB |
+                                  SCTLR_EnDA | SCTLR_EnDB);
+        /* Enable all PAC instructions */
+        env->cp15.hcr_el2 |= HCR_API;
+        env->cp15.scr_el3 |= SCR_API;
         /* and to the FP/Neon instructions */
         env->cp15.cpacr_el1 = deposit64(env->cp15.cpacr_el1, 20, 2, 3);
+        /* and to the SVE instructions */
+        env->cp15.cpacr_el1 = deposit64(env->cp15.cpacr_el1, 16, 2, 3);
+        env->cp15.cptr_el[3] |= CPTR_EZ;
+        /* with maximum vector length */
+        env->vfp.zcr_el[1] = cpu->sve_max_vq - 1;
+        env->vfp.zcr_el[2] = env->vfp.zcr_el[1];
+        env->vfp.zcr_el[3] = env->vfp.zcr_el[1];
+        /*
+         * Enable TBI0 and TBI1.  While the real kernel only enables TBI0,
+         * turning on both here will produce smaller code and otherwise
+         * make no difference to the user-level emulation.
+         */
+        env->cp15.tcr_el[1].raw_tcr = (3ULL << 37);
 #else
         /* Reset into the highest available EL */
         if (arm_feature(env, ARM_FEATURE_EL3)) {
@@ -228,14 +285,25 @@ static void arm_cpu_reset(CPUState *s)
         env->cp15.c15_cpar = 1;
     }
 #else
-    /* SVC mode with interrupts disabled.  */
-    env->uncached_cpsr = ARM_CPU_MODE_SVC;
+
+    /*
+     * If the highest available EL is EL2, AArch32 will start in Hyp
+     * mode; otherwise it starts in SVC. Note that if we start in
+     * AArch64 then these values in the uncached_cpsr will be ignored.
+     */
+    if (arm_feature(env, ARM_FEATURE_EL2) &&
+        !arm_feature(env, ARM_FEATURE_EL3)) {
+        env->uncached_cpsr = ARM_CPU_MODE_HYP;
+    } else {
+        env->uncached_cpsr = ARM_CPU_MODE_SVC;
+    }
     env->daif = PSTATE_D | PSTATE_A | PSTATE_I | PSTATE_F;
 
     if (arm_feature(env, ARM_FEATURE_M)) {
         uint32_t initial_msp; /* Loaded from 0x0 */
         uint32_t initial_pc; /* Loaded from 0x4 */
         uint8_t *rom;
+        uint32_t vecbase;
 
         if (arm_feature(env, ARM_FEATURE_M_SECURITY)) {
             env->v7m.secure = true;
@@ -259,12 +327,24 @@ static void arm_cpu_reset(CPUState *s)
             env->v7m.ccr[M_REG_NS] |= R_V7M_CCR_NONBASETHRDENA_MASK;
             env->v7m.ccr[M_REG_S] |= R_V7M_CCR_NONBASETHRDENA_MASK;
         }
+        if (!arm_feature(env, ARM_FEATURE_M_MAIN)) {
+            env->v7m.ccr[M_REG_NS] |= R_V7M_CCR_UNALIGN_TRP_MASK;
+            env->v7m.ccr[M_REG_S] |= R_V7M_CCR_UNALIGN_TRP_MASK;
+        }
 
+        if (arm_feature(env, ARM_FEATURE_VFP)) {
+            env->v7m.fpccr[M_REG_NS] = R_V7M_FPCCR_ASPEN_MASK;
+            env->v7m.fpccr[M_REG_S] = R_V7M_FPCCR_ASPEN_MASK |
+                R_V7M_FPCCR_LSPEN_MASK | R_V7M_FPCCR_S_MASK;
+        }
         /* Unlike A/R profile, M profile defines the reset LR value */
         env->regs[14] = 0xffffffff;
 
-        /* Load the initial SP and PC from the vector table at address 0 */
-        rom = rom_ptr(0);
+        env->v7m.vecbase[M_REG_S] = cpu->init_svtor & 0xffffff80;
+
+        /* Load the initial SP and PC from offset 0 and 4 in the vector table */
+        vecbase = env->v7m.vecbase[env->v7m.secure];
+        rom = rom_ptr(vecbase, 8);
         if (rom) {
             /* Address zero is covered by ROM which hasn't yet been
              * copied into physical memory.
@@ -277,8 +357,8 @@ static void arm_cpu_reset(CPUState *s)
              * it got copied into memory. In the latter case, rom_ptr
              * will return a NULL pointer and we should use ldl_phys instead.
              */
-            initial_msp = ldl_phys(s->as, 0);
-            initial_pc = ldl_phys(s->as, 4);
+            initial_msp = ldl_phys(s->as, vecbase);
+            initial_pc = ldl_phys(s->as, vecbase + 4);
         }
 
         env->regs[13] = initial_msp & 0xFFFFFFFC;
@@ -356,6 +436,8 @@ static void arm_cpu_reset(CPUState *s)
                               &env->vfp.fp_status);
     set_float_detect_tininess(float_tininess_before_rounding,
                               &env->vfp.standard_fp_status);
+    set_float_detect_tininess(float_tininess_before_rounding,
+                              &env->vfp.fp_status_f16);
 #ifndef CONFIG_USER_ONLY
     if (kvm_enabled()) {
         kvm_arm_reset_vcpu(cpu);
@@ -484,6 +566,48 @@ static bool arm_v7m_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
 }
 #endif
 
+void arm_cpu_update_virq(ARMCPU *cpu)
+{
+    /*
+     * Update the interrupt level for VIRQ, which is the logical OR of
+     * the HCR_EL2.VI bit and the input line level from the GIC.
+     */
+    CPUARMState *env = &cpu->env;
+    CPUState *cs = CPU(cpu);
+
+    bool new_state = (env->cp15.hcr_el2 & HCR_VI) ||
+        (env->irq_line_state & CPU_INTERRUPT_VIRQ);
+
+    if (new_state != ((cs->interrupt_request & CPU_INTERRUPT_VIRQ) != 0)) {
+        if (new_state) {
+            cpu_interrupt(cs, CPU_INTERRUPT_VIRQ);
+        } else {
+            cpu_reset_interrupt(cs, CPU_INTERRUPT_VIRQ);
+        }
+    }
+}
+
+void arm_cpu_update_vfiq(ARMCPU *cpu)
+{
+    /*
+     * Update the interrupt level for VFIQ, which is the logical OR of
+     * the HCR_EL2.VF bit and the input line level from the GIC.
+     */
+    CPUARMState *env = &cpu->env;
+    CPUState *cs = CPU(cpu);
+
+    bool new_state = (env->cp15.hcr_el2 & HCR_VF) ||
+        (env->irq_line_state & CPU_INTERRUPT_VFIQ);
+
+    if (new_state != ((cs->interrupt_request & CPU_INTERRUPT_VFIQ) != 0)) {
+        if (new_state) {
+            cpu_interrupt(cs, CPU_INTERRUPT_VFIQ);
+        } else {
+            cpu_reset_interrupt(cs, CPU_INTERRUPT_VFIQ);
+        }
+    }
+}
+
 #ifndef CONFIG_USER_ONLY
 static void arm_cpu_set_irq(void *opaque, int irq, int level)
 {
@@ -497,13 +621,21 @@ static void arm_cpu_set_irq(void *opaque, int irq, int level)
         [ARM_CPU_VFIQ] = CPU_INTERRUPT_VFIQ
     };
 
-    env->irq_wires[irq] = level;
+    if (level) {
+        env->irq_line_state |= mask[irq];
+    } else {
+        env->irq_line_state &= ~mask[irq];
+    }
 
     switch (irq) {
     case ARM_CPU_VIRQ:
+        assert(arm_feature(env, ARM_FEATURE_EL2));
+        arm_cpu_update_virq(cpu);
+        break;
     case ARM_CPU_VFIQ:
         assert(arm_feature(env, ARM_FEATURE_EL2));
-        /* fall through */
+        arm_cpu_update_vfiq(cpu);
+        break;
     case ARM_CPU_IRQ:
     case ARM_CPU_FIQ:
         if (level) {
@@ -521,19 +653,30 @@ static void arm_cpu_kvm_set_irq(void *opaque, int irq, int level)
 {
 #ifdef CONFIG_KVM
     ARMCPU *cpu = opaque;
+    CPUARMState *env = &cpu->env;
     CPUState *cs = CPU(cpu);
     int kvm_irq = KVM_ARM_IRQ_TYPE_CPU << KVM_ARM_IRQ_TYPE_SHIFT;
+    uint32_t linestate_bit;
 
     switch (irq) {
     case ARM_CPU_IRQ:
         kvm_irq |= KVM_ARM_IRQ_CPU_IRQ;
+        linestate_bit = CPU_INTERRUPT_HARD;
         break;
     case ARM_CPU_FIQ:
         kvm_irq |= KVM_ARM_IRQ_CPU_FIQ;
+        linestate_bit = CPU_INTERRUPT_FIQ;
         break;
     default:
         g_assert_not_reached();
     }
+
+    if (level) {
+        env->irq_line_state |= linestate_bit;
+    } else {
+        env->irq_line_state &= ~linestate_bit;
+    }
+
     kvm_irq |= cs->cpu_index << KVM_ARM_IRQ_VCPU_SHIFT;
     kvm_set_irq(kvm_state, kvm_irq, level ? 1 : 0);
 #endif
@@ -695,6 +838,20 @@ uint64_t arm_cpu_mp_affinity(int idx, uint8_t clustersz)
     return (Aff1 << ARM_AFF1_SHIFT) | Aff0;
 }
 
+static void cpreg_hashtable_data_destroy(gpointer data)
+{
+    /*
+     * Destroy function for cpu->cp_regs hashtable data entries.
+     * We must free the name string because it was g_strdup()ed in
+     * add_cpreg_to_hashtable(). It's OK to cast away the 'const'
+     * from r->name because we know we definitely allocated it.
+     */
+    ARMCPRegInfo *r = data;
+
+    g_free((void *)r->name);
+    g_free(r);
+}
+
 static void arm_cpu_initfn(Object *obj)
 {
     CPUState *cs = CPU(obj);
@@ -702,7 +859,10 @@ static void arm_cpu_initfn(Object *obj)
 
     cs->env_ptr = &cpu->env;
     cpu->cp_regs = g_hash_table_new_full(g_int_hash, g_int_equal,
-                                         g_free, g_free);
+                                         g_free, cpreg_hashtable_data_destroy);
+
+    QLIST_INIT(&cpu->pre_el_change_hooks);
+    QLIST_INIT(&cpu->el_change_hooks);
 
 #ifndef CONFIG_USER_ONLY
     /* Our inbound IRQ and FIQ lines */
@@ -833,7 +993,23 @@ static Property arm_cpu_pmsav7_dregion_property =
                                            pmsav7_dregion,
                                            qdev_prop_uint32, uint32_t);
 
-static void arm_cpu_post_init(Object *obj)
+static void arm_get_init_svtor(Object *obj, Visitor *v, const char *name,
+                               void *opaque, Error **errp)
+{
+    ARMCPU *cpu = ARM_CPU(obj);
+
+    visit_type_uint32(v, name, &cpu->init_svtor, errp);
+}
+
+static void arm_set_init_svtor(Object *obj, Visitor *v, const char *name,
+                               void *opaque, Error **errp)
+{
+    ARMCPU *cpu = ARM_CPU(obj);
+
+    visit_type_uint32(v, name, &cpu->init_svtor, errp);
+}
+
+void arm_cpu_post_init(Object *obj)
 {
     ARMCPU *cpu = ARM_CPU(obj);
 
@@ -883,7 +1059,7 @@ static void arm_cpu_post_init(Object *obj)
                                  TYPE_MEMORY_REGION,
                                  (Object **)&cpu->secure_memory,
                                  qdev_prop_allow_set_link_before_realize,
-                                 OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                                 OBJ_PROP_LINK_STRONG,
                                  &error_abort);
 #endif
     }
@@ -908,6 +1084,21 @@ static void arm_cpu_post_init(Object *obj)
         }
     }
 
+    if (arm_feature(&cpu->env, ARM_FEATURE_M_SECURITY)) {
+        object_property_add_link(obj, "idau", TYPE_IDAU_INTERFACE, &cpu->idau,
+                                 qdev_prop_allow_set_link_before_realize,
+                                 OBJ_PROP_LINK_STRONG,
+                                 &error_abort);
+        /*
+         * M profile: initial value of the Secure VTOR. We can't just use
+         * a simple DEFINE_PROP_UINT32 for this because we want to permit
+         * the property to be set after realize.
+         */
+        object_property_add(obj, "init-svtor", "uint32",
+                            arm_get_init_svtor, arm_set_init_svtor,
+                            NULL, NULL, &error_abort);
+    }
+
     qdev_property_add_static(DEVICE(obj), &arm_cpu_cfgend_property,
                              &error_abort);
 }
@@ -915,7 +1106,25 @@ static void arm_cpu_post_init(Object *obj)
 static void arm_cpu_finalizefn(Object *obj)
 {
     ARMCPU *cpu = ARM_CPU(obj);
+    ARMELChangeHook *hook, *next;
+
     g_hash_table_destroy(cpu->cp_regs);
+
+    QLIST_FOREACH_SAFE(hook, &cpu->pre_el_change_hooks, node, next) {
+        QLIST_REMOVE(hook, node);
+        g_free(hook);
+    }
+    QLIST_FOREACH_SAFE(hook, &cpu->el_change_hooks, node, next) {
+        QLIST_REMOVE(hook, node);
+        g_free(hook);
+    }
+#ifndef CONFIG_USER_ONLY
+    if (cpu->pmu_timer) {
+        timer_del(cpu->pmu_timer);
+        timer_deinit(cpu->pmu_timer);
+        timer_free(cpu->pmu_timer);
+    }
+#endif
 }
 
 static void arm_cpu_realizefn(DeviceState *dev, Error **errp)
@@ -926,8 +1135,46 @@ static void arm_cpu_realizefn(DeviceState *dev, Error **errp)
     CPUARMState *env = &cpu->env;
     int pagebits;
     Error *local_err = NULL;
+    bool no_aa32 = false;
+
+    /* If we needed to query the host kernel for the CPU features
+     * then it's possible that might have failed in the initfn, but
+     * this is the first point where we can report it.
+     */
+    if (cpu->host_cpu_probe_failed) {
+        if (!kvm_enabled()) {
+            error_setg(errp, "The 'host' CPU type can only be used with KVM");
+        } else {
+            error_setg(errp, "Failed to retrieve host CPU features");
+        }
+        return;
+    }
+
 #ifndef CONFIG_USER_ONLY
-    AddressSpace *as;
+    /* The NVIC and M-profile CPU are two halves of a single piece of
+     * hardware; trying to use one without the other is a command line
+     * error and will result in segfaults if not caught here.
+     */
+    if (arm_feature(env, ARM_FEATURE_M)) {
+        if (!env->nvic) {
+            error_setg(errp, "This board cannot be used with Cortex-M CPUs");
+            return;
+        }
+    } else {
+        if (env->nvic) {
+            error_setg(errp, "This board can only be used with Cortex-M CPUs");
+            return;
+        }
+    }
+
+    cpu->gt_timer[GTIMER_PHYS] = timer_new(QEMU_CLOCK_VIRTUAL, GTIMER_SCALE,
+                                           arm_gt_ptimer_cb, cpu);
+    cpu->gt_timer[GTIMER_VIRT] = timer_new(QEMU_CLOCK_VIRTUAL, GTIMER_SCALE,
+                                           arm_gt_vtimer_cb, cpu);
+    cpu->gt_timer[GTIMER_HYP] = timer_new(QEMU_CLOCK_VIRTUAL, GTIMER_SCALE,
+                                          arm_gt_htimer_cb, cpu);
+    cpu->gt_timer[GTIMER_SEC] = timer_new(QEMU_CLOCK_VIRTUAL, GTIMER_SCALE,
+                                          arm_gt_stimer_cb, cpu);
 #endif
 
     cpu_exec_realizefn(cs, &local_err);
@@ -944,9 +1191,34 @@ static void arm_cpu_realizefn(DeviceState *dev, Error **errp)
 
     /* Some features automatically imply others: */
     if (arm_feature(env, ARM_FEATURE_V8)) {
-        set_feature(env, ARM_FEATURE_V7);
-        set_feature(env, ARM_FEATURE_ARM_DIV);
+        if (arm_feature(env, ARM_FEATURE_M)) {
+            set_feature(env, ARM_FEATURE_V7);
+        } else {
+            set_feature(env, ARM_FEATURE_V7VE);
+        }
+    }
+
+    /*
+     * There exist AArch64 cpus without AArch32 support.  When KVM
+     * queries ID_ISAR0_EL1 on such a host, the value is UNKNOWN.
+     * Similarly, we cannot check ID_AA64PFR0 without AArch64 support.
+     */
+    if (arm_feature(&cpu->env, ARM_FEATURE_AARCH64)) {
+        no_aa32 = !cpu_isar_feature(aa64_aa32, cpu);
+    }
+
+    if (arm_feature(env, ARM_FEATURE_V7VE)) {
+        /* v7 Virtualization Extensions. In real hardware this implies
+         * EL2 and also the presence of the Security Extensions.
+         * For QEMU, for backwards-compatibility we implement some
+         * CPUs or CPU configs which have no actual EL2 or EL3 but do
+         * include the various other features that V7VE implies.
+         * Presence of EL2 itself is ARM_FEATURE_EL2, and of the
+         * Security Extensions is ARM_FEATURE_EL3.
+         */
+        assert(no_aa32 || cpu_isar_feature(arm_div, cpu));
         set_feature(env, ARM_FEATURE_LPAE);
+        set_feature(env, ARM_FEATURE_V7);
     }
     if (arm_feature(env, ARM_FEATURE_V7)) {
         set_feature(env, ARM_FEATURE_VAPA);
@@ -969,23 +1241,16 @@ static void arm_cpu_realizefn(DeviceState *dev, Error **errp)
     }
     if (arm_feature(env, ARM_FEATURE_V6)) {
         set_feature(env, ARM_FEATURE_V5);
-        set_feature(env, ARM_FEATURE_JAZELLE);
         if (!arm_feature(env, ARM_FEATURE_M)) {
+            assert(no_aa32 || cpu_isar_feature(jazelle, cpu));
             set_feature(env, ARM_FEATURE_AUXCR);
         }
     }
     if (arm_feature(env, ARM_FEATURE_V5)) {
         set_feature(env, ARM_FEATURE_V4T);
     }
-    if (arm_feature(env, ARM_FEATURE_M)) {
-        set_feature(env, ARM_FEATURE_THUMB_DIV);
-    }
-    if (arm_feature(env, ARM_FEATURE_ARM_DIV)) {
-        set_feature(env, ARM_FEATURE_THUMB_DIV);
-    }
     if (arm_feature(env, ARM_FEATURE_VFP4)) {
         set_feature(env, ARM_FEATURE_VFP3);
-        set_feature(env, ARM_FEATURE_VFP_FP16);
     }
     if (arm_feature(env, ARM_FEATURE_VFP3)) {
         set_feature(env, ARM_FEATURE_VFP);
@@ -1001,6 +1266,13 @@ static void arm_cpu_realizefn(DeviceState *dev, Error **errp)
         !arm_feature(env, ARM_FEATURE_M)) {
         set_feature(env, ARM_FEATURE_THUMB_DSP);
     }
+
+    /*
+     * We rely on no XScale CPU having VFP so we can use the same bits in the
+     * TB flags field for VECSTRIDE and XSCALE_CPAR.
+     */
+    assert(!(arm_feature(env, ARM_FEATURE_VFP) &&
+             arm_feature(env, ARM_FEATURE_XSCALE)));
 
     if (arm_feature(env, ARM_FEATURE_V7) &&
         !arm_feature(env, ARM_FEATURE_M) &&
@@ -1057,7 +1329,7 @@ static void arm_cpu_realizefn(DeviceState *dev, Error **errp)
          * registers as well. These are id_pfr1[7:4] and id_aa64pfr0[15:12].
          */
         cpu->id_pfr1 &= ~0xf0;
-        cpu->id_aa64pfr0 &= ~0xf000;
+        cpu->isar.id_aa64pfr0 &= ~0xf000;
     }
 
     if (!cpu->has_el2) {
@@ -1066,7 +1338,24 @@ static void arm_cpu_realizefn(DeviceState *dev, Error **errp)
 
     if (!cpu->has_pmu) {
         unset_feature(env, ARM_FEATURE_PMU);
+    }
+    if (arm_feature(env, ARM_FEATURE_PMU)) {
+        pmu_init(cpu);
+
+        if (!kvm_enabled()) {
+            arm_register_pre_el_change_hook(cpu, &pmu_pre_el_change, 0);
+            arm_register_el_change_hook(cpu, &pmu_post_el_change, 0);
+        }
+
+#ifndef CONFIG_USER_ONLY
+        cpu->pmu_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, arm_pmu_timer_cb,
+                cpu);
+#endif
+    } else {
         cpu->id_aa64dfr0 &= ~0xf00;
+        cpu->id_dfr0 &= ~(0xf << 24);
+        cpu->pmceid0 = 0;
+        cpu->pmceid1 = 0;
     }
 
     if (!arm_feature(env, ARM_FEATURE_EL2)) {
@@ -1074,7 +1363,7 @@ static void arm_cpu_realizefn(DeviceState *dev, Error **errp)
          * registers if we don't have EL2. These are id_pfr1[15:12] and
          * id_aa64pfr0_el1[11:8].
          */
-        cpu->id_aa64pfr0 &= ~0xf00;
+        cpu->isar.id_aa64pfr0 &= ~0xf00;
         cpu->id_pfr1 &= ~0xf000;
     }
 
@@ -1173,21 +1462,17 @@ static void arm_cpu_realizefn(DeviceState *dev, Error **errp)
 
     if (cpu->has_el3 || arm_feature(env, ARM_FEATURE_M_SECURITY) ||
         CPU_NO_EL3_SEC_ENABLE) {
-        as = g_new0(AddressSpace, 1);
-
         cs->num_ases = 2;
 
         if (!cpu->secure_memory) {
             cpu->secure_memory = cs->memory;
         }
-        address_space_init(as, cpu->secure_memory, "cpu-secure-memory");
-        cpu_address_space_init(cs, as, ARMASIdx_S);
+        cpu_address_space_init(cs, ARMASIdx_S, "cpu-secure-memory",
+                               cpu->secure_memory);
     } else {
         cs->num_ases = 1;
     }
-    as = g_new0(AddressSpace, 1);
-    address_space_init(as, cs->memory, "cpu-memory");
-    cpu_address_space_init(cs, as, ARMASIdx_NS);
+    cpu_address_space_init(cs, ARMASIdx_NS, "cpu-memory", cs->memory);
 
     /* No core_count specified, default to smp_cpus. */
     if (cpu->core_count == -1) {
@@ -1206,9 +1491,19 @@ static ObjectClass *arm_cpu_class_by_name(const char *cpu_model)
     ObjectClass *oc;
     char *typename;
     char **cpuname;
+    const char *cpunamestr;
 
     cpuname = g_strsplit(cpu_model, ",", 1);
-    typename = g_strdup_printf(ARM_CPU_TYPE_NAME("%s"), cpuname[0]);
+    cpunamestr = cpuname[0];
+#ifdef CONFIG_USER_ONLY
+    /* For backwards compatibility usermode emulation allows "-cpu any",
+     * which has the same semantics as "-cpu max".
+     */
+    if (!strcmp(cpunamestr, "any")) {
+        cpunamestr = "max";
+    }
+#endif
+    typename = g_strdup_printf(ARM_CPU_TYPE_NAME("%s"), cpunamestr);
     oc = object_class_by_name(typename);
     g_strfreev(cpuname);
     g_free(typename);
@@ -1231,11 +1526,16 @@ static void arm926_initfn(Object *obj)
     set_feature(&cpu->env, ARM_FEATURE_VFP);
     set_feature(&cpu->env, ARM_FEATURE_DUMMY_C15_REGS);
     set_feature(&cpu->env, ARM_FEATURE_CACHE_TEST_CLEAN);
-    set_feature(&cpu->env, ARM_FEATURE_JAZELLE);
     cpu->midr = 0x41069265;
     cpu->reset_fpsid = 0x41011090;
     cpu->ctr = 0x1dd20d2;
     cpu->reset_sctlr = 0x00090078;
+
+    /*
+     * ARMv5 does not have the ID_ISAR registers, but we can still
+     * set the field to indicate Jazelle support within QEMU.
+     */
+    cpu->isar.id_isar1 = FIELD_DP32(cpu->isar.id_isar1, ID_ISAR1, JAZELLE, 1);
 }
 
 static void arm946_initfn(Object *obj)
@@ -1261,12 +1561,18 @@ static void arm1026_initfn(Object *obj)
     set_feature(&cpu->env, ARM_FEATURE_AUXCR);
     set_feature(&cpu->env, ARM_FEATURE_DUMMY_C15_REGS);
     set_feature(&cpu->env, ARM_FEATURE_CACHE_TEST_CLEAN);
-    set_feature(&cpu->env, ARM_FEATURE_JAZELLE);
     cpu->midr = 0x4106a262;
     cpu->reset_fpsid = 0x410110a0;
     cpu->ctr = 0x1dd20d2;
     cpu->reset_sctlr = 0x00090078;
     cpu->reset_auxcr = 1;
+
+    /*
+     * ARMv5 does not have the ID_ISAR registers, but we can still
+     * set the field to indicate Jazelle support within QEMU.
+     */
+    cpu->isar.id_isar1 = FIELD_DP32(cpu->isar.id_isar1, ID_ISAR1, JAZELLE, 1);
+
     {
         /* The 1026 had an IFAR at c6,c0,0,1 rather than the ARMv6 c6,c0,0,2 */
         ARMCPRegInfo ifar = {
@@ -1298,8 +1604,8 @@ static void arm1136_r2_initfn(Object *obj)
     set_feature(&cpu->env, ARM_FEATURE_CACHE_BLOCK_OPS);
     cpu->midr = 0x4107b362;
     cpu->reset_fpsid = 0x410120b4;
-    cpu->mvfr0 = 0x11111111;
-    cpu->mvfr1 = 0x00000000;
+    cpu->isar.mvfr0 = 0x11111111;
+    cpu->isar.mvfr1 = 0x00000000;
     cpu->ctr = 0x1dd20d2;
     cpu->reset_sctlr = 0x00050078;
     cpu->id_pfr0 = 0x111;
@@ -1309,11 +1615,11 @@ static void arm1136_r2_initfn(Object *obj)
     cpu->id_mmfr0 = 0x01130003;
     cpu->id_mmfr1 = 0x10030302;
     cpu->id_mmfr2 = 0x01222110;
-    cpu->id_isar0 = 0x00140011;
-    cpu->id_isar1 = 0x12002111;
-    cpu->id_isar2 = 0x11231111;
-    cpu->id_isar3 = 0x01102131;
-    cpu->id_isar4 = 0x141;
+    cpu->isar.id_isar0 = 0x00140011;
+    cpu->isar.id_isar1 = 0x12002111;
+    cpu->isar.id_isar2 = 0x11231111;
+    cpu->isar.id_isar3 = 0x01102131;
+    cpu->isar.id_isar4 = 0x141;
     cpu->reset_auxcr = 7;
 }
 
@@ -1330,8 +1636,8 @@ static void arm1136_initfn(Object *obj)
     set_feature(&cpu->env, ARM_FEATURE_CACHE_BLOCK_OPS);
     cpu->midr = 0x4117b363;
     cpu->reset_fpsid = 0x410120b4;
-    cpu->mvfr0 = 0x11111111;
-    cpu->mvfr1 = 0x00000000;
+    cpu->isar.mvfr0 = 0x11111111;
+    cpu->isar.mvfr1 = 0x00000000;
     cpu->ctr = 0x1dd20d2;
     cpu->reset_sctlr = 0x00050078;
     cpu->id_pfr0 = 0x111;
@@ -1341,11 +1647,11 @@ static void arm1136_initfn(Object *obj)
     cpu->id_mmfr0 = 0x01130003;
     cpu->id_mmfr1 = 0x10030302;
     cpu->id_mmfr2 = 0x01222110;
-    cpu->id_isar0 = 0x00140011;
-    cpu->id_isar1 = 0x12002111;
-    cpu->id_isar2 = 0x11231111;
-    cpu->id_isar3 = 0x01102131;
-    cpu->id_isar4 = 0x141;
+    cpu->isar.id_isar0 = 0x00140011;
+    cpu->isar.id_isar1 = 0x12002111;
+    cpu->isar.id_isar2 = 0x11231111;
+    cpu->isar.id_isar3 = 0x01102131;
+    cpu->isar.id_isar4 = 0x141;
     cpu->reset_auxcr = 7;
 }
 
@@ -1363,8 +1669,8 @@ static void arm1176_initfn(Object *obj)
     set_feature(&cpu->env, ARM_FEATURE_EL3);
     cpu->midr = 0x410fb767;
     cpu->reset_fpsid = 0x410120b5;
-    cpu->mvfr0 = 0x11111111;
-    cpu->mvfr1 = 0x00000000;
+    cpu->isar.mvfr0 = 0x11111111;
+    cpu->isar.mvfr1 = 0x00000000;
     cpu->ctr = 0x1dd20d2;
     cpu->reset_sctlr = 0x00050078;
     cpu->id_pfr0 = 0x111;
@@ -1374,11 +1680,11 @@ static void arm1176_initfn(Object *obj)
     cpu->id_mmfr0 = 0x01130003;
     cpu->id_mmfr1 = 0x10030302;
     cpu->id_mmfr2 = 0x01222100;
-    cpu->id_isar0 = 0x0140011;
-    cpu->id_isar1 = 0x12002111;
-    cpu->id_isar2 = 0x11231121;
-    cpu->id_isar3 = 0x01102131;
-    cpu->id_isar4 = 0x01141;
+    cpu->isar.id_isar0 = 0x0140011;
+    cpu->isar.id_isar1 = 0x12002111;
+    cpu->isar.id_isar2 = 0x11231121;
+    cpu->isar.id_isar3 = 0x01102131;
+    cpu->isar.id_isar4 = 0x01141;
     cpu->reset_auxcr = 7;
 }
 
@@ -1394,8 +1700,8 @@ static void arm11mpcore_initfn(Object *obj)
     set_feature(&cpu->env, ARM_FEATURE_DUMMY_C15_REGS);
     cpu->midr = 0x410fb022;
     cpu->reset_fpsid = 0x410120b4;
-    cpu->mvfr0 = 0x11111111;
-    cpu->mvfr1 = 0x00000000;
+    cpu->isar.mvfr0 = 0x11111111;
+    cpu->isar.mvfr1 = 0x00000000;
     cpu->ctr = 0x1d192992; /* 32K icache 32K dcache */
     cpu->id_pfr0 = 0x111;
     cpu->id_pfr1 = 0x1;
@@ -1404,12 +1710,21 @@ static void arm11mpcore_initfn(Object *obj)
     cpu->id_mmfr0 = 0x01100103;
     cpu->id_mmfr1 = 0x10020302;
     cpu->id_mmfr2 = 0x01222000;
-    cpu->id_isar0 = 0x00100011;
-    cpu->id_isar1 = 0x12002111;
-    cpu->id_isar2 = 0x11221011;
-    cpu->id_isar3 = 0x01102131;
-    cpu->id_isar4 = 0x141;
+    cpu->isar.id_isar0 = 0x00100011;
+    cpu->isar.id_isar1 = 0x12002111;
+    cpu->isar.id_isar2 = 0x11221011;
+    cpu->isar.id_isar3 = 0x01102131;
+    cpu->isar.id_isar4 = 0x141;
     cpu->reset_auxcr = 1;
+}
+
+static void cortex_m0_initfn(Object *obj)
+{
+    ARMCPU *cpu = ARM_CPU(obj);
+    set_feature(&cpu->env, ARM_FEATURE_V6);
+    set_feature(&cpu->env, ARM_FEATURE_M);
+
+    cpu->midr = 0x410cc200;
 }
 
 static void cortex_m3_initfn(Object *obj)
@@ -1417,8 +1732,24 @@ static void cortex_m3_initfn(Object *obj)
     ARMCPU *cpu = ARM_CPU(obj);
     set_feature(&cpu->env, ARM_FEATURE_V7);
     set_feature(&cpu->env, ARM_FEATURE_M);
+    set_feature(&cpu->env, ARM_FEATURE_M_MAIN);
     cpu->midr = 0x410fc231;
     cpu->pmsav7_dregion = 8;
+    cpu->id_pfr0 = 0x00000030;
+    cpu->id_pfr1 = 0x00000200;
+    cpu->id_dfr0 = 0x00100000;
+    cpu->id_afr0 = 0x00000000;
+    cpu->id_mmfr0 = 0x00000030;
+    cpu->id_mmfr1 = 0x00000000;
+    cpu->id_mmfr2 = 0x00000000;
+    cpu->id_mmfr3 = 0x00000000;
+    cpu->isar.id_isar0 = 0x01141110;
+    cpu->isar.id_isar1 = 0x02111000;
+    cpu->isar.id_isar2 = 0x21112231;
+    cpu->isar.id_isar3 = 0x01111110;
+    cpu->isar.id_isar4 = 0x01310102;
+    cpu->isar.id_isar5 = 0x00000000;
+    cpu->isar.id_isar6 = 0x00000000;
 }
 
 static void cortex_m4_initfn(Object *obj)
@@ -1427,15 +1758,72 @@ static void cortex_m4_initfn(Object *obj)
 
     set_feature(&cpu->env, ARM_FEATURE_V7);
     set_feature(&cpu->env, ARM_FEATURE_M);
+    set_feature(&cpu->env, ARM_FEATURE_M_MAIN);
     set_feature(&cpu->env, ARM_FEATURE_THUMB_DSP);
+    set_feature(&cpu->env, ARM_FEATURE_VFP4);
     cpu->midr = 0x410fc240; /* r0p0 */
     cpu->pmsav7_dregion = 8;
+    cpu->isar.mvfr0 = 0x10110021;
+    cpu->isar.mvfr1 = 0x11000011;
+    cpu->isar.mvfr2 = 0x00000000;
+    cpu->id_pfr0 = 0x00000030;
+    cpu->id_pfr1 = 0x00000200;
+    cpu->id_dfr0 = 0x00100000;
+    cpu->id_afr0 = 0x00000000;
+    cpu->id_mmfr0 = 0x00000030;
+    cpu->id_mmfr1 = 0x00000000;
+    cpu->id_mmfr2 = 0x00000000;
+    cpu->id_mmfr3 = 0x00000000;
+    cpu->isar.id_isar0 = 0x01141110;
+    cpu->isar.id_isar1 = 0x02111000;
+    cpu->isar.id_isar2 = 0x21112231;
+    cpu->isar.id_isar3 = 0x01111110;
+    cpu->isar.id_isar4 = 0x01310102;
+    cpu->isar.id_isar5 = 0x00000000;
+    cpu->isar.id_isar6 = 0x00000000;
+}
+
+static void cortex_m33_initfn(Object *obj)
+{
+    ARMCPU *cpu = ARM_CPU(obj);
+
+    set_feature(&cpu->env, ARM_FEATURE_V8);
+    set_feature(&cpu->env, ARM_FEATURE_M);
+    set_feature(&cpu->env, ARM_FEATURE_M_MAIN);
+    set_feature(&cpu->env, ARM_FEATURE_M_SECURITY);
+    set_feature(&cpu->env, ARM_FEATURE_THUMB_DSP);
+    set_feature(&cpu->env, ARM_FEATURE_VFP4);
+    cpu->midr = 0x410fd213; /* r0p3 */
+    cpu->pmsav7_dregion = 16;
+    cpu->sau_sregion = 8;
+    cpu->isar.mvfr0 = 0x10110021;
+    cpu->isar.mvfr1 = 0x11000011;
+    cpu->isar.mvfr2 = 0x00000040;
+    cpu->id_pfr0 = 0x00000030;
+    cpu->id_pfr1 = 0x00000210;
+    cpu->id_dfr0 = 0x00200000;
+    cpu->id_afr0 = 0x00000000;
+    cpu->id_mmfr0 = 0x00101F40;
+    cpu->id_mmfr1 = 0x00000000;
+    cpu->id_mmfr2 = 0x01000000;
+    cpu->id_mmfr3 = 0x00000000;
+    cpu->isar.id_isar0 = 0x01101110;
+    cpu->isar.id_isar1 = 0x02212000;
+    cpu->isar.id_isar2 = 0x20232232;
+    cpu->isar.id_isar3 = 0x01111131;
+    cpu->isar.id_isar4 = 0x01310132;
+    cpu->isar.id_isar5 = 0x00000000;
+    cpu->isar.id_isar6 = 0x00000000;
+    cpu->clidr = 0x00000000;
+    cpu->ctr = 0x8000c000;
 }
 
 static void arm_v7m_class_init(ObjectClass *oc, void *data)
 {
+    ARMCPUClass *acc = ARM_CPU_CLASS(oc);
     CPUClass *cc = CPU_CLASS(oc);
 
+    acc->info = data;
 #ifndef CONFIG_USER_ONLY
     cc->do_interrupt = arm_v7m_cpu_do_interrupt;
 #endif
@@ -1483,8 +1871,6 @@ static void cortex_r5_initfn(Object *obj)
     ARMCPU *cpu = ARM_CPU(obj);
 
     set_feature(&cpu->env, ARM_FEATURE_V7);
-    set_feature(&cpu->env, ARM_FEATURE_THUMB_DIV);
-    set_feature(&cpu->env, ARM_FEATURE_ARM_DIV);
     set_feature(&cpu->env, ARM_FEATURE_V7MP);
     set_feature(&cpu->env, ARM_FEATURE_PMSA);
     cpu->midr = 0x411fc153; /* r1p3 */
@@ -1496,12 +1882,13 @@ static void cortex_r5_initfn(Object *obj)
     cpu->id_mmfr1 = 0x00000000;
     cpu->id_mmfr2 = 0x01200000;
     cpu->id_mmfr3 = 0x0211;
-    cpu->id_isar0 = 0x2101111;
-    cpu->id_isar1 = 0x13112111;
-    cpu->id_isar2 = 0x21232141;
-    cpu->id_isar3 = 0x01112131;
-    cpu->id_isar4 = 0x0010142;
-    cpu->id_isar5 = 0x0;
+    cpu->isar.id_isar0 = 0x02101111;
+    cpu->isar.id_isar1 = 0x13112111;
+    cpu->isar.id_isar2 = 0x21232141;
+    cpu->isar.id_isar3 = 0x01112131;
+    cpu->isar.id_isar4 = 0x0010142;
+    cpu->isar.id_isar5 = 0x0;
+    cpu->isar.id_isar6 = 0x0;
     cpu->mp_is_up = true;
     cpu->pmsav7_dregion = 16;
     define_arm_cp_regs(cpu, cortexr5_cp_reginfo);
@@ -1536,8 +1923,8 @@ static void cortex_a8_initfn(Object *obj)
     set_feature(&cpu->env, ARM_FEATURE_EL3);
     cpu->midr = 0x410fc080;
     cpu->reset_fpsid = 0x410330c0;
-    cpu->mvfr0 = 0x11110222;
-    cpu->mvfr1 = 0x00011100;
+    cpu->isar.mvfr0 = 0x11110222;
+    cpu->isar.mvfr1 = 0x00011111;
     cpu->ctr = 0x82048004;
     cpu->reset_sctlr = 0x00c50078;
     cpu->id_pfr0 = 0x1031;
@@ -1548,11 +1935,11 @@ static void cortex_a8_initfn(Object *obj)
     cpu->id_mmfr1 = 0x20000000;
     cpu->id_mmfr2 = 0x01202000;
     cpu->id_mmfr3 = 0x11;
-    cpu->id_isar0 = 0x00101111;
-    cpu->id_isar1 = 0x12112111;
-    cpu->id_isar2 = 0x21232031;
-    cpu->id_isar3 = 0x11112131;
-    cpu->id_isar4 = 0x00111142;
+    cpu->isar.id_isar0 = 0x00101111;
+    cpu->isar.id_isar1 = 0x12112111;
+    cpu->isar.id_isar2 = 0x21232031;
+    cpu->isar.id_isar3 = 0x11112131;
+    cpu->isar.id_isar4 = 0x00111142;
     cpu->dbgdidr = 0x15141000;
     cpu->clidr = (1 << 27) | (2 << 24) | 3;
     cpu->ccsidr[0] = 0xe007e01a; /* 16k L1 dcache. */
@@ -1598,7 +1985,6 @@ static void cortex_a9_initfn(Object *obj)
     cpu->dtb_compatible = "arm,cortex-a9";
     set_feature(&cpu->env, ARM_FEATURE_V7);
     set_feature(&cpu->env, ARM_FEATURE_VFP3);
-    set_feature(&cpu->env, ARM_FEATURE_VFP_FP16);
     set_feature(&cpu->env, ARM_FEATURE_NEON);
     set_feature(&cpu->env, ARM_FEATURE_THUMB2EE);
     set_feature(&cpu->env, ARM_FEATURE_EL3);
@@ -1610,8 +1996,8 @@ static void cortex_a9_initfn(Object *obj)
     set_feature(&cpu->env, ARM_FEATURE_CBAR);
     cpu->midr = 0x410fc090;
     cpu->reset_fpsid = 0x41033090;
-    cpu->mvfr0 = 0x11110222;
-    cpu->mvfr1 = 0x01111111;
+    cpu->isar.mvfr0 = 0x11110222;
+    cpu->isar.mvfr1 = 0x01111111;
     cpu->ctr = 0x80038003;
     cpu->reset_sctlr = 0x00c50078;
     cpu->id_pfr0 = 0x1031;
@@ -1622,11 +2008,11 @@ static void cortex_a9_initfn(Object *obj)
     cpu->id_mmfr1 = 0x20000000;
     cpu->id_mmfr2 = 0x01230000;
     cpu->id_mmfr3 = 0x00002111;
-    cpu->id_isar0 = 0x00101111;
-    cpu->id_isar1 = 0x13112111;
-    cpu->id_isar2 = 0x21232041;
-    cpu->id_isar3 = 0x11112131;
-    cpu->id_isar4 = 0x00111142;
+    cpu->isar.id_isar0 = 0x00101111;
+    cpu->isar.id_isar1 = 0x13112111;
+    cpu->isar.id_isar2 = 0x21232041;
+    cpu->isar.id_isar3 = 0x11112131;
+    cpu->isar.id_isar4 = 0x00111142;
     cpu->dbgdidr = 0x35141000;
     cpu->clidr = (1 << 27) | (1 << 24) | 3;
     cpu->ccsidr[0] = 0xe00fe019; /* 16k L1 dcache. */
@@ -1660,38 +2046,39 @@ static void cortex_a7_initfn(Object *obj)
     ARMCPU *cpu = ARM_CPU(obj);
 
     cpu->dtb_compatible = "arm,cortex-a7";
-    set_feature(&cpu->env, ARM_FEATURE_V7);
+    set_feature(&cpu->env, ARM_FEATURE_V7VE);
     set_feature(&cpu->env, ARM_FEATURE_VFP4);
     set_feature(&cpu->env, ARM_FEATURE_NEON);
     set_feature(&cpu->env, ARM_FEATURE_THUMB2EE);
-    set_feature(&cpu->env, ARM_FEATURE_ARM_DIV);
     set_feature(&cpu->env, ARM_FEATURE_GENERIC_TIMER);
     set_feature(&cpu->env, ARM_FEATURE_DUMMY_C15_REGS);
     set_feature(&cpu->env, ARM_FEATURE_CBAR_RO);
-    set_feature(&cpu->env, ARM_FEATURE_LPAE);
+    set_feature(&cpu->env, ARM_FEATURE_EL2);
     set_feature(&cpu->env, ARM_FEATURE_EL3);
+    set_feature(&cpu->env, ARM_FEATURE_PMU);
     cpu->kvm_target = QEMU_KVM_ARM_TARGET_CORTEX_A7;
     cpu->midr = 0x410fc075;
     cpu->reset_fpsid = 0x41023075;
-    cpu->mvfr0 = 0x10110222;
-    cpu->mvfr1 = 0x11111111;
+    cpu->isar.mvfr0 = 0x10110222;
+    cpu->isar.mvfr1 = 0x11111111;
     cpu->ctr = 0x84448003;
     cpu->reset_sctlr = 0x00c50078;
     cpu->id_pfr0 = 0x00001131;
     cpu->id_pfr1 = 0x00011011;
     cpu->id_dfr0 = 0x02010555;
-    cpu->pmceid0 = 0x00000000;
-    cpu->pmceid1 = 0x00000000;
     cpu->id_afr0 = 0x00000000;
     cpu->id_mmfr0 = 0x10101105;
     cpu->id_mmfr1 = 0x40000000;
     cpu->id_mmfr2 = 0x01240000;
     cpu->id_mmfr3 = 0x02102211;
-    cpu->id_isar0 = 0x01101110;
-    cpu->id_isar1 = 0x13112111;
-    cpu->id_isar2 = 0x21232041;
-    cpu->id_isar3 = 0x11112131;
-    cpu->id_isar4 = 0x10011142;
+    /* a7_mpcore_r0p5_trm, page 4-4 gives 0x01101110; but
+     * table 4-41 gives 0x02101110, which includes the arm div insns.
+     */
+    cpu->isar.id_isar0 = 0x02101110;
+    cpu->isar.id_isar1 = 0x13112111;
+    cpu->isar.id_isar2 = 0x21232041;
+    cpu->isar.id_isar3 = 0x11112131;
+    cpu->isar.id_isar4 = 0x10011142;
     cpu->dbgdidr = 0x3515f005;
     cpu->clidr = 0x0a200023;
     cpu->ccsidr[0] = 0x701fe00a; /* 32K L1 dcache */
@@ -1705,38 +2092,36 @@ static void cortex_a15_initfn(Object *obj)
     ARMCPU *cpu = ARM_CPU(obj);
 
     cpu->dtb_compatible = "arm,cortex-a15";
-    set_feature(&cpu->env, ARM_FEATURE_V7);
+    set_feature(&cpu->env, ARM_FEATURE_V7VE);
     set_feature(&cpu->env, ARM_FEATURE_VFP4);
     set_feature(&cpu->env, ARM_FEATURE_NEON);
     set_feature(&cpu->env, ARM_FEATURE_THUMB2EE);
-    set_feature(&cpu->env, ARM_FEATURE_ARM_DIV);
     set_feature(&cpu->env, ARM_FEATURE_GENERIC_TIMER);
     set_feature(&cpu->env, ARM_FEATURE_DUMMY_C15_REGS);
     set_feature(&cpu->env, ARM_FEATURE_CBAR_RO);
-    set_feature(&cpu->env, ARM_FEATURE_LPAE);
+    set_feature(&cpu->env, ARM_FEATURE_EL2);
     set_feature(&cpu->env, ARM_FEATURE_EL3);
+    set_feature(&cpu->env, ARM_FEATURE_PMU);
     cpu->kvm_target = QEMU_KVM_ARM_TARGET_CORTEX_A15;
     cpu->midr = 0x412fc0f1;
     cpu->reset_fpsid = 0x410430f0;
-    cpu->mvfr0 = 0x10110222;
-    cpu->mvfr1 = 0x11111111;
+    cpu->isar.mvfr0 = 0x10110222;
+    cpu->isar.mvfr1 = 0x11111111;
     cpu->ctr = 0x8444c004;
     cpu->reset_sctlr = 0x00c50078;
     cpu->id_pfr0 = 0x00001131;
     cpu->id_pfr1 = 0x00011011;
     cpu->id_dfr0 = 0x02010555;
-    cpu->pmceid0 = 0x0000000;
-    cpu->pmceid1 = 0x00000000;
     cpu->id_afr0 = 0x00000000;
     cpu->id_mmfr0 = 0x10201105;
     cpu->id_mmfr1 = 0x20000000;
     cpu->id_mmfr2 = 0x01240000;
     cpu->id_mmfr3 = 0x02102211;
-    cpu->id_isar0 = 0x02101110;
-    cpu->id_isar1 = 0x13112111;
-    cpu->id_isar2 = 0x21232041;
-    cpu->id_isar3 = 0x11112131;
-    cpu->id_isar4 = 0x10011142;
+    cpu->isar.id_isar0 = 0x02101110;
+    cpu->isar.id_isar1 = 0x13112111;
+    cpu->isar.id_isar2 = 0x21232041;
+    cpu->isar.id_isar3 = 0x11112131;
+    cpu->isar.id_isar4 = 0x10011142;
     cpu->dbgdidr = 0x3515f021;
     cpu->clidr = 0x0a200023;
     cpu->ccsidr[0] = 0x701fe00a; /* 32K L1 dcache */
@@ -1913,30 +2298,67 @@ static void pxa270c5_initfn(Object *obj)
     cpu->reset_sctlr = 0x00000078;
 }
 
-#ifdef CONFIG_USER_ONLY
-static void arm_any_initfn(Object *obj)
+#ifndef TARGET_AARCH64
+/* -cpu max: if KVM is enabled, like -cpu host (best possible with this host);
+ * otherwise, a CPU with as many features enabled as our emulation supports.
+ * The version of '-cpu max' for qemu-system-aarch64 is defined in cpu64.c;
+ * this only needs to handle 32 bits.
+ */
+static void arm_max_initfn(Object *obj)
 {
     ARMCPU *cpu = ARM_CPU(obj);
-    set_feature(&cpu->env, ARM_FEATURE_V8);
-    set_feature(&cpu->env, ARM_FEATURE_VFP4);
-    set_feature(&cpu->env, ARM_FEATURE_NEON);
-    set_feature(&cpu->env, ARM_FEATURE_THUMB2EE);
-    set_feature(&cpu->env, ARM_FEATURE_V8_AES);
-    set_feature(&cpu->env, ARM_FEATURE_V8_SHA1);
-    set_feature(&cpu->env, ARM_FEATURE_V8_SHA256);
-    set_feature(&cpu->env, ARM_FEATURE_V8_PMULL);
-    set_feature(&cpu->env, ARM_FEATURE_CRC);
-    cpu->midr = 0xffffffff;
+
+    if (kvm_enabled()) {
+        kvm_arm_set_cpu_features_from_host(cpu);
+    } else {
+        cortex_a15_initfn(obj);
+#ifdef CONFIG_USER_ONLY
+        /* We don't set these in system emulation mode for the moment,
+         * since we don't correctly set (all of) the ID registers to
+         * advertise them.
+         */
+        set_feature(&cpu->env, ARM_FEATURE_V8);
+        {
+            uint32_t t;
+
+            t = cpu->isar.id_isar5;
+            t = FIELD_DP32(t, ID_ISAR5, AES, 2);
+            t = FIELD_DP32(t, ID_ISAR5, SHA1, 1);
+            t = FIELD_DP32(t, ID_ISAR5, SHA2, 1);
+            t = FIELD_DP32(t, ID_ISAR5, CRC32, 1);
+            t = FIELD_DP32(t, ID_ISAR5, RDM, 1);
+            t = FIELD_DP32(t, ID_ISAR5, VCMA, 1);
+            cpu->isar.id_isar5 = t;
+
+            t = cpu->isar.id_isar6;
+            t = FIELD_DP32(t, ID_ISAR6, JSCVT, 1);
+            t = FIELD_DP32(t, ID_ISAR6, DP, 1);
+            t = FIELD_DP32(t, ID_ISAR6, FHM, 1);
+            t = FIELD_DP32(t, ID_ISAR6, SB, 1);
+            t = FIELD_DP32(t, ID_ISAR6, SPECRES, 1);
+            cpu->isar.id_isar6 = t;
+
+            t = cpu->isar.mvfr2;
+            t = FIELD_DP32(t, MVFR2, SIMDMISC, 3); /* SIMD MaxNum */
+            t = FIELD_DP32(t, MVFR2, FPMISC, 4);   /* FP MaxNum */
+            cpu->isar.mvfr2 = t;
+
+            t = cpu->id_mmfr4;
+            t = FIELD_DP32(t, ID_MMFR4, HPDS, 1); /* AA32HPD */
+            cpu->id_mmfr4 = t;
+        }
+#endif
+    }
 }
 #endif
 
 #endif /* !defined(CONFIG_USER_ONLY) || !defined(TARGET_AARCH64) */
 
-typedef struct ARMCPUInfo {
+struct ARMCPUInfo {
     const char *name;
     void (*initfn)(Object *obj);
     void (*class_init)(ObjectClass *oc, void *data);
-} ARMCPUInfo;
+};
 
 static const ARMCPUInfo arm_cpus[] = {
 #if !defined(CONFIG_USER_ONLY) || !defined(TARGET_AARCH64)
@@ -1951,9 +2373,13 @@ static const ARMCPUInfo arm_cpus[] = {
     { .name = "arm1136",     .initfn = arm1136_initfn },
     { .name = "arm1176",     .initfn = arm1176_initfn },
     { .name = "arm11mpcore", .initfn = arm11mpcore_initfn },
+    { .name = "cortex-m0",   .initfn = cortex_m0_initfn,
+                             .class_init = arm_v7m_class_init },
     { .name = "cortex-m3",   .initfn = cortex_m3_initfn,
                              .class_init = arm_v7m_class_init },
     { .name = "cortex-m4",   .initfn = cortex_m4_initfn,
+                             .class_init = arm_v7m_class_init },
+    { .name = "cortex-m33",  .initfn = cortex_m33_initfn,
                              .class_init = arm_v7m_class_init },
     { .name = "cortex-r4",   .initfn = cortex_r4_initfn },
     { .name = "cortex-r5",   .initfn = cortex_r5_initfn },
@@ -1978,8 +2404,11 @@ static const ARMCPUInfo arm_cpus[] = {
     { .name = "pxa270-b1",   .initfn = pxa270b1_initfn },
     { .name = "pxa270-c0",   .initfn = pxa270c0_initfn },
     { .name = "pxa270-c5",   .initfn = pxa270c5_initfn },
+#ifndef TARGET_AARCH64
+    { .name = "max",         .initfn = arm_max_initfn },
+#endif
 #ifdef CONFIG_USER_ONLY
-    { .name = "any",         .initfn = arm_any_initfn },
+    { .name = "any",         .initfn = arm_max_initfn },
 #endif
 #endif
     { .name = NULL }
@@ -2027,8 +2456,8 @@ static void arm_cpu_pwr_cntrl(void *opaque, int n, int level)
 }
 
 #ifdef CONFIG_USER_ONLY
-static int arm_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int rw,
-                                    int mmu_idx)
+static int arm_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int size,
+                                    int rw, int mmu_idx)
 {
     ARMCPU *cpu = ARM_CPU(cs);
     CPUARMState *env = &cpu->env;
@@ -2060,8 +2489,8 @@ static void arm_cpu_class_init(ObjectClass *oc, void *data)
     CPUClass *cc = CPU_CLASS(acc);
     DeviceClass *dc = DEVICE_CLASS(oc);
 
-    acc->parent_realize = dc->realize;
-    dc->realize = arm_cpu_realizefn;
+    device_class_set_parent_realize(dc, arm_cpu_realizefn,
+                                    &acc->parent_realize);
     dc->props = arm_cpu_properties;
     dc->pwr_cntrl = arm_cpu_pwr_cntrl;
     dc->rst_cntrl = cpu_reset_gpio;
@@ -2077,6 +2506,7 @@ static void arm_cpu_class_init(ObjectClass *oc, void *data)
     cc->get_pc = arm_cpu_get_pc;
     cc->debug_contexts = arm_debug_ctx;
     cc->set_debug_context = set_debug_context;
+    cc->synchronize_from_tb = arm_cpu_synchronize_from_tb;
     cc->gdb_read_register = arm_cpu_gdb_read_register;
     cc->gdb_write_register = arm_cpu_gdb_write_register;
 #ifdef CONFIG_USER_ONLY
@@ -2095,6 +2525,7 @@ static void arm_cpu_class_init(ObjectClass *oc, void *data)
     cc->gdb_num_core_regs = 32;
     cc->gdb_core_xml_file = "arm-core.xml";
     cc->gdb_arch_name = arm_gdb_arch_name;
+    cc->gdb_get_dynamic_xml = arm_gdb_get_dynamic_xml;
     cc->gdb_stop_before_watchpoint = true;
     cc->debug_excp_handler = arm_debug_excp_handler;
     cc->debug_check_watchpoint = arm_debug_check_watchpoint;
@@ -2108,14 +2539,51 @@ static void arm_cpu_class_init(ObjectClass *oc, void *data)
 #endif
 }
 
+#ifdef CONFIG_KVM
+static void arm_host_initfn(Object *obj)
+{
+    ARMCPU *cpu = ARM_CPU(obj);
+
+    kvm_arm_set_cpu_features_from_host(cpu);
+    arm_cpu_post_init(obj);
+}
+
+static const TypeInfo host_arm_cpu_type_info = {
+    .name = TYPE_ARM_HOST_CPU,
+#ifdef TARGET_AARCH64
+    .parent = TYPE_AARCH64_CPU,
+#else
+    .parent = TYPE_ARM_CPU,
+#endif
+    .instance_init = arm_host_initfn,
+};
+
+#endif
+
+static void arm_cpu_instance_init(Object *obj)
+{
+    ARMCPUClass *acc = ARM_CPU_GET_CLASS(obj);
+
+    acc->info->initfn(obj);
+    arm_cpu_post_init(obj);
+}
+
+static void cpu_register_class_init(ObjectClass *oc, void *data)
+{
+    ARMCPUClass *acc = ARM_CPU_CLASS(oc);
+
+    acc->info = data;
+}
+
 static void cpu_register(const ARMCPUInfo *info)
 {
     TypeInfo type_info = {
         .parent = TYPE_ARM_CPU,
         .instance_size = sizeof(ARMCPU),
-        .instance_init = info->initfn,
+        .instance_init = arm_cpu_instance_init,
         .class_size = sizeof(ARMCPUClass),
-        .class_init = info->class_init,
+        .class_init = info->class_init ?: cpu_register_class_init,
+        .class_data = (void *)info,
     };
 
     type_info.name = g_strdup_printf("%s-" TYPE_ARM_CPU, info->name);
@@ -2128,11 +2596,16 @@ static const TypeInfo arm_cpu_type_info = {
     .parent = TYPE_CPU,
     .instance_size = sizeof(ARMCPU),
     .instance_init = arm_cpu_initfn,
-    .instance_post_init = arm_cpu_post_init,
     .instance_finalize = arm_cpu_finalizefn,
     .abstract = true,
     .class_size = sizeof(ARMCPUClass),
     .class_init = arm_cpu_class_init,
+};
+
+static const TypeInfo idau_interface_type_info = {
+    .name = TYPE_IDAU_INTERFACE,
+    .parent = TYPE_INTERFACE,
+    .class_size = sizeof(IDAUInterfaceClass),
 };
 
 static void arm_cpu_register_types(void)
@@ -2140,11 +2613,16 @@ static void arm_cpu_register_types(void)
     const ARMCPUInfo *info = arm_cpus;
 
     type_register_static(&arm_cpu_type_info);
+    type_register_static(&idau_interface_type_info);
 
     while (info->name) {
         cpu_register(info);
         info++;
     }
+
+#ifdef CONFIG_KVM
+    type_register_static(&host_arm_cpu_type_info);
+#endif
 }
 
 type_init(arm_cpu_register_types)

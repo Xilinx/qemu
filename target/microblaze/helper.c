@@ -38,17 +38,17 @@ void mb_cpu_do_interrupt(CPUState *cs)
     env->regs[14] = env->sregs[SR_PC];
 }
 
-int mb_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int rw,
+int mb_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int size, int rw,
                             int mmu_idx)
 {
     cs->exception_index = 0xaa;
-    cpu_dump_state(cs, stderr, fprintf, 0);
+    cpu_dump_state(cs, stderr, 0);
     return 1;
 }
 
 #else /* !CONFIG_USER_ONLY */
 
-int mb_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int rw,
+int mb_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int size, int rw,
                             int mmu_idx)
 {
     MicroBlazeCPU *cpu = MICROBLAZE_CPU(cs);
@@ -58,8 +58,7 @@ int mb_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int rw,
     int prot;
 
     /* Translate if the MMU is available and enabled.  */
-    if (cpu->cfg.use_mmu && (env->sregs[SR_MSR] & MSR_VM)
-        && mmu_idx != MMU_NOMMU_IDX) {
+    if (mmu_idx != MMU_NOMMU_IDX) {
         uint32_t vaddr, paddr;
         struct microblaze_mmu_lookup lu;
 
@@ -108,8 +107,6 @@ int mb_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int rw,
     return r;
 }
 
-#include "hw/remote-port.h"
-
 void mb_cpu_do_interrupt(CPUState *cs)
 {
     MicroBlazeCPU *cpu = MICROBLAZE_CPU(cs);
@@ -120,9 +117,7 @@ void mb_cpu_do_interrupt(CPUState *cs)
     assert(!((env->iflags & D_FLAG) && (env->iflags & IMM_FLAG)));
     assert(!(env->iflags & (DRTI_FLAG | DRTE_FLAG | DRTB_FLAG)));
 /*    assert(env->sregs[SR_MSR] & (MSR_EE)); Only for HW exceptions.  */
-    if (env->res_addr != RES_ADDR_NONE) {
-        env->res_addr = RES_ADDR_NONE;
-    }
+    env->res_addr = RES_ADDR_NONE;
     switch (cs->exception_index) {
         case EXCP_HW_EXCP:
             if (!(env->pvr.regs[0] & PVR0_USE_EXC_MASK)) {
@@ -274,9 +269,10 @@ hwaddr mb_cpu_get_phys_page_debug(CPUState *cs, vaddr addr)
     CPUMBState *env = &cpu->env;
     target_ulong vaddr, paddr = 0;
     struct microblaze_mmu_lookup lu;
+    int mmu_idx = cpu_mmu_index(env, false);
     unsigned int hit;
 
-    if (env->sregs[SR_MSR] & MSR_VM) {
+    if (mmu_idx != MMU_NOMMU_IDX) {
         hit = mmu_translate(&env->mmu, &lu, addr, 0, 0);
         if (hit) {
             vaddr = addr & TARGET_PAGE_MASK;

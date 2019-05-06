@@ -26,11 +26,8 @@
 #include "qemu/osdep.h"
 #include "cpu.h"
 #include "exec/address-spaces.h"
-#include "exec/exec-all.h"
-#include "exec/ioport.h"
 
 #include "qemu-common.h"
-#include "strings.h"
 #include "hax-i386.h"
 #include "sysemu/accel.h"
 #include "sysemu/sysemu.h"
@@ -104,6 +101,8 @@ static int hax_get_capability(struct hax_state *hax)
         return -ENOTSUP;
     }
 
+    hax->supports_64bit_ramblock = !!(cap->winfo & HAX_CAP_64BIT_RAMBLOCK);
+
     if (cap->wstatus & HAX_CAP_MEMQUOTA) {
         if (cap->mem_quota < hax->mem_quota) {
             fprintf(stderr, "The VM memory needed exceeds the driver limit.\n");
@@ -155,13 +154,7 @@ int hax_vcpu_create(int id)
         return 0;
     }
 
-    vcpu = g_malloc(sizeof(struct hax_vcpu_state));
-    if (!vcpu) {
-        fprintf(stderr, "Failed to alloc vcpu state\n");
-        return -ENOMEM;
-    }
-
-    memset(vcpu, 0, sizeof(struct hax_vcpu_state));
+    vcpu = g_new0(struct hax_vcpu_state, 1);
 
     ret = hax_host_create_vcpu(hax_global.vm->fd, id);
     if (ret) {
@@ -212,7 +205,7 @@ int hax_vcpu_destroy(CPUState *cpu)
     }
 
     /*
-     * 1. The hax_tunnel is also destroied when vcpu destroy
+     * 1. The hax_tunnel is also destroyed when vcpu is destroyed
      * 2. close fd will cause hax module vcpu be cleaned
      */
     hax_close_fd(vcpu->fd);
@@ -251,11 +244,8 @@ struct hax_vm *hax_vm_create(struct hax_state *hax)
         return hax->vm;
     }
 
-    vm = g_malloc(sizeof(struct hax_vm));
-    if (!vm) {
-        return NULL;
-    }
-    memset(vm, 0, sizeof(struct hax_vm));
+    vm = g_new0(struct hax_vm, 1);
+
     ret = hax_host_create_vm(hax, &vm_id);
     if (ret) {
         fprintf(stderr, "Failed to create vm %x\n", ret);
@@ -550,7 +540,7 @@ static int hax_vcpu_hax_exec(CPUArchState *env)
                     ht->_exit_reason);
             qemu_system_reset_request(SHUTDOWN_CAUSE_GUEST_RESET);
             hax_vcpu_sync_state(env, 0);
-            cpu_dump_state(cpu, stderr, fprintf, 0);
+            cpu_dump_state(cpu, stderr, 0);
             ret = -1;
             break;
         case HAX_EXIT_HLT:
@@ -581,7 +571,7 @@ static int hax_vcpu_hax_exec(CPUArchState *env)
             fprintf(stderr, "Unknown exit %x from HAX\n", ht->_exit_status);
             qemu_system_reset_request(SHUTDOWN_CAUSE_GUEST_RESET);
             hax_vcpu_sync_state(env, 0);
-            cpu_dump_state(cpu, stderr, fprintf, 0);
+            cpu_dump_state(cpu, stderr, 0);
             ret = 1;
             break;
         }
@@ -782,56 +772,6 @@ static int hax_set_segments(CPUArchState *env, struct vcpu_state_t *sregs)
     return 0;
 }
 
-/*
- * After get the state from the kernel module, some
- * qemu emulator state need be updated also
- */
-static int hax_setup_qemu_emulator(CPUArchState *env)
-{
-
-#define HFLAG_COPY_MASK (~( \
-  HF_CPL_MASK | HF_PE_MASK | HF_MP_MASK | HF_EM_MASK | \
-  HF_TS_MASK | HF_TF_MASK | HF_VM_MASK | HF_IOPL_MASK | \
-  HF_OSFXSR_MASK | HF_LMA_MASK | HF_CS32_MASK | \
-  HF_SS32_MASK | HF_CS64_MASK | HF_ADDSEG_MASK))
-
-    uint32_t hflags;
-
-    hflags = (env->segs[R_CS].flags >> DESC_DPL_SHIFT) & HF_CPL_MASK;
-    hflags |= (env->cr[0] & CR0_PE_MASK) << (HF_PE_SHIFT - CR0_PE_SHIFT);
-    hflags |= (env->cr[0] << (HF_MP_SHIFT - CR0_MP_SHIFT)) &
-        (HF_MP_MASK | HF_EM_MASK | HF_TS_MASK);
-    hflags |= (env->eflags & (HF_TF_MASK | HF_VM_MASK | HF_IOPL_MASK));
-    hflags |= (env->cr[4] & CR4_OSFXSR_MASK) <<
-              (HF_OSFXSR_SHIFT - CR4_OSFXSR_SHIFT);
-
-    if (env->efer & MSR_EFER_LMA) {
-        hflags |= HF_LMA_MASK;
-    }
-
-    if ((hflags & HF_LMA_MASK) && (env->segs[R_CS].flags & DESC_L_MASK)) {
-        hflags |= HF_CS32_MASK | HF_SS32_MASK | HF_CS64_MASK;
-    } else {
-        hflags |= (env->segs[R_CS].flags & DESC_B_MASK) >>
-            (DESC_B_SHIFT - HF_CS32_SHIFT);
-        hflags |= (env->segs[R_SS].flags & DESC_B_MASK) >>
-            (DESC_B_SHIFT - HF_SS32_SHIFT);
-        if (!(env->cr[0] & CR0_PE_MASK) ||
-            (env->eflags & VM_MASK) || !(hflags & HF_CS32_MASK)) {
-            hflags |= HF_ADDSEG_MASK;
-        } else {
-            hflags |= ((env->segs[R_DS].base |
-                        env->segs[R_ES].base |
-                        env->segs[R_SS].base) != 0) << HF_ADDSEG_SHIFT;
-        }
-    }
-
-    hflags &= ~HF_SMM_MASK;
-
-    env->hflags = (env->hflags & HFLAG_COPY_MASK) | hflags;
-    return 0;
-}
-
 static int hax_sync_vcpu_register(CPUArchState *env, int set)
 {
     struct vcpu_state_t regs;
@@ -886,9 +826,6 @@ static int hax_sync_vcpu_register(CPUArchState *env, int set)
         if (ret < 0) {
             return -1;
         }
-    }
-    if (!set) {
-        hax_setup_qemu_emulator(env);
     }
     return 0;
 }
@@ -1070,6 +1007,7 @@ static int hax_arch_get_registers(CPUArchState *env)
         return ret;
     }
 
+    x86_update_hflags(env);
     return 0;
 }
 

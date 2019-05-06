@@ -1,5 +1,5 @@
 /*
- * Declarations for obsolete exec.c functions
+ * Declarations for functions which are internal to the memory subsystem.
  *
  * Copyright 2011 Red Hat, Inc. and/or its affiliates
  *
@@ -12,32 +12,43 @@
  */
 
 /*
- * This header is for use by exec.c and memory.c ONLY.  Do not include it.
- * The functions declared here will be removed soon.
+ * This header is for use by exec.c, memory.c and accel/tcg/cputlb.c ONLY,
+ * for declarations which are shared between the memory subsystem's
+ * internals and the TCG TLB code. Do not include it from elsewhere.
  */
 
 #ifndef MEMORY_INTERNAL_H
 #define MEMORY_INTERNAL_H
 
 #ifndef CONFIG_USER_ONLY
-typedef struct AddressSpaceDispatch AddressSpaceDispatch;
+static inline AddressSpaceDispatch *flatview_to_dispatch(FlatView *fv)
+{
+    return fv->dispatch;
+}
+
+static inline AddressSpaceDispatch *address_space_to_dispatch(AddressSpace *as)
+{
+    return flatview_to_dispatch(address_space_to_flatview(as));
+}
+
+FlatView *address_space_get_flatview(AddressSpace *as);
+void flatview_unref(FlatView *view);
 
 extern const MemoryRegionOps unassigned_mem_ops;
 
 bool memory_region_access_valid(MemoryRegion *mr, hwaddr addr,
-                                unsigned size, bool is_write);
+                                unsigned size, bool is_write,
+                                MemTxAttrs attrs);
 
 void flatview_add_to_dispatch(FlatView *fv, MemoryRegionSection *section);
 AddressSpaceDispatch *address_space_dispatch_new(FlatView *fv);
 void address_space_dispatch_compact(AddressSpaceDispatch *d);
-
-AddressSpaceDispatch *address_space_to_dispatch(AddressSpace *as);
-AddressSpaceDispatch *flatview_to_dispatch(FlatView *fv);
 void address_space_dispatch_free(AddressSpaceDispatch *d);
 
-void mtree_print_dispatch(fprintf_function mon, void *f,
-                          struct AddressSpaceDispatch *d,
+void mtree_print_dispatch(struct AddressSpaceDispatch *d,
                           MemoryRegion *root);
+
+struct page_collection;
 
 /* Opaque struct for passing info from memory_notdirty_write_prepare()
  * to memory_notdirty_write_complete(). Callers should treat all fields
@@ -50,10 +61,10 @@ void mtree_print_dispatch(fprintf_function mon, void *f,
  */
 typedef struct {
     CPUState *cpu;
+    struct page_collection *pages;
     ram_addr_t ram_addr;
     vaddr mem_vaddr;
     unsigned size;
-    bool locked;
     bool active;
 } NotDirtyInfo;
 
@@ -81,7 +92,7 @@ typedef struct {
  *
  * This must only be called if we are using TCG; it will assert otherwise.
  *
- * We may take a lock in the prepare call, so callers must ensure that
+ * We may take locks in the prepare call, so callers must ensure that
  * they don't exit (via longjump or otherwise) without calling complete.
  *
  * This call must only be made inside an RCU critical section.

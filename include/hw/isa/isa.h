@@ -43,10 +43,6 @@ static inline uint16_t applesmc_port(void)
 #define ISADMA(obj) \
     INTERFACE_CHECK(IsaDma, (obj), TYPE_ISADMA)
 
-struct IsaDma {
-    Object parent;
-};
-
 typedef enum {
     ISADMA_TRANSFER_VERIFY,
     ISADMA_TRANSFER_READ,
@@ -151,6 +147,4 @@ static inline ISABus *isa_bus_from_device(ISADevice *d)
     return ISA_BUS(qdev_get_parent_bus(DEVICE(d)));
 }
 
-/* i8257.c */
-void DMA_init(ISABus *bus, int high_page_enable);
 #endif

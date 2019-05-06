@@ -9,7 +9,6 @@ void qemu_init_cpu_loop(void);
 void resume_all_vcpus(void);
 void pause_all_vcpus(void);
 void cpu_stop_current(void);
-bool all_cpu_threads_idle(void);
 void cpu_ticks_init(void);
 
 void configure_icount(QemuOpts *opts, Error **errp);
@@ -19,7 +18,7 @@ extern int icount_align_option;
 /* drift information for info jit command */
 extern int64_t max_delay;
 extern int64_t max_advance;
-void dump_drift_info(FILE *f, fprintf_function cpu_fprintf);
+void dump_drift_info(void);
 
 /* Unblock cpu */
 void qemu_cpu_kick_self(void);
@@ -30,11 +29,7 @@ void cpu_synchronize_all_post_reset(void);
 void cpu_synchronize_all_post_init(void);
 void cpu_synchronize_all_pre_loadvm(void);
 
-void tcg_clock_warp(int64_t dest);
-bool tcg_idle_clock_warp(int64_t dest);
 void qtest_clock_warp(int64_t dest);
-
-void qemu_icount_enable_idle_timewarps(bool enable);
 
 #ifndef CONFIG_USER_ONLY
 /* vl.c */
@@ -43,7 +38,7 @@ extern int smp_cores;
 extern int smp_threads;
 #endif
 
-void list_cpus(FILE *f, fprintf_function cpu_fprintf, const char *optarg);
+void list_cpus(const char *optarg);
 
 void qemu_tcg_configure(QemuOpts *opts, Error **errp);
 

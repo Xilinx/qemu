@@ -19,12 +19,9 @@
  */
 
 #include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "gic_internal.h"
 #include "hw/arm/linux-boot-if.h"
-#include "qapi/error.h"
-#include "hw/fdt_generic_util.h"
-
-#include "hw/fdt_generic_devices.h"
 
 static int gic_pre_save(void *opaque)
 {
@@ -49,6 +46,13 @@ static int gic_post_load(void *opaque, int version_id)
     return 0;
 }
 
+static bool gic_virt_state_needed(void *opaque)
+{
+    GICState *s = (GICState *)opaque;
+
+    return s->virt_extn;
+}
+
 static const VMStateDescription vmstate_gic_irq_state = {
     .name = "arm_gic_irq_state",
     .version_id = 1,
@@ -60,48 +64,68 @@ static const VMStateDescription vmstate_gic_irq_state = {
         VMSTATE_UINT8(level, gic_irq_state),
         VMSTATE_BOOL(model, gic_irq_state),
         VMSTATE_BOOL(edge_trigger, gic_irq_state),
+        VMSTATE_UINT8(group, gic_irq_state),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static const VMStateDescription vmstate_gic_virt_state = {
+    .name = "arm_gic_virt_state",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = gic_virt_state_needed,
+    .fields = (VMStateField[]) {
+        /* Virtual interface */
+        VMSTATE_UINT32_ARRAY(h_hcr, GICState, GIC_NCPU),
+        VMSTATE_UINT32_ARRAY(h_misr, GICState, GIC_NCPU),
+        VMSTATE_UINT32_2DARRAY(h_lr, GICState, GIC_MAX_LR, GIC_NCPU),
+        VMSTATE_UINT32_ARRAY(h_apr, GICState, GIC_NCPU),
+
+        /* Virtual CPU interfaces */
+        VMSTATE_UINT32_SUB_ARRAY(cpu_ctlr, GICState, GIC_NCPU, GIC_NCPU),
+        VMSTATE_UINT16_SUB_ARRAY(priority_mask, GICState, GIC_NCPU, GIC_NCPU),
+        VMSTATE_UINT16_SUB_ARRAY(running_priority, GICState, GIC_NCPU, GIC_NCPU),
+        VMSTATE_UINT16_SUB_ARRAY(current_pending, GICState, GIC_NCPU, GIC_NCPU),
+        VMSTATE_UINT8_SUB_ARRAY(bpr, GICState, GIC_NCPU, GIC_NCPU),
+        VMSTATE_UINT8_SUB_ARRAY(abpr, GICState, GIC_NCPU, GIC_NCPU),
+
         VMSTATE_END_OF_LIST()
     }
 };
 
 static const VMStateDescription vmstate_gic = {
     .name = "arm_gic",
-    .version_id = 8,
-    .minimum_version_id = 8,
+    .version_id = 12,
+    .minimum_version_id = 12,
     .pre_save = gic_pre_save,
     .post_load = gic_post_load,
     .fields = (VMStateField[]) {
-        VMSTATE_BOOL(enabled, GICState),
-        VMSTATE_UINT32_ARRAY(ctrl, GICState, GIC_NCPU),
+        VMSTATE_UINT32(ctlr, GICState),
+        VMSTATE_UINT32_SUB_ARRAY(cpu_ctlr, GICState, 0, GIC_NCPU),
         VMSTATE_STRUCT_ARRAY(irq_state, GICState, GIC_MAXIRQ, 1,
                              vmstate_gic_irq_state, gic_irq_state),
         VMSTATE_UINT8_ARRAY(irq_target, GICState, GIC_MAXIRQ),
         VMSTATE_UINT8_2DARRAY(priority1, GICState, GIC_INTERNAL, GIC_NCPU),
         VMSTATE_UINT8_ARRAY(priority2, GICState, GIC_MAXIRQ - GIC_INTERNAL),
-        VMSTATE_UINT16_2DARRAY(last_active, GICState, GIC_MAXIRQ, GIC_NCPU),
         VMSTATE_UINT8_2DARRAY(sgi_pending, GICState, GIC_NR_SGIS, GIC_NCPU),
-        VMSTATE_UINT16_ARRAY(priority_mask, GICState, GIC_NCPU),
-        VMSTATE_UINT16_ARRAY(running_irq, GICState, GIC_NCPU),
-        VMSTATE_UINT16_ARRAY(running_priority, GICState, GIC_NCPU),
-        VMSTATE_UINT16_ARRAY(current_pending, GICState, GIC_NCPU),
-        VMSTATE_UINT8_ARRAY(bpr, GICState, GIC_NCPU),
-        VMSTATE_UINT8_ARRAY(abpr, GICState, GIC_NCPU),
+        VMSTATE_UINT16_SUB_ARRAY(priority_mask, GICState, 0, GIC_NCPU),
+        VMSTATE_UINT16_SUB_ARRAY(running_priority, GICState, 0, GIC_NCPU),
+        VMSTATE_UINT16_SUB_ARRAY(current_pending, GICState, 0, GIC_NCPU),
+        VMSTATE_UINT8_SUB_ARRAY(bpr, GICState, 0, GIC_NCPU),
+        VMSTATE_UINT8_SUB_ARRAY(abpr, GICState, 0, GIC_NCPU),
         VMSTATE_UINT32_2DARRAY(apr, GICState, GIC_NR_APRS, GIC_NCPU),
-        VMSTATE_UINT32_ARRAY(gich.hcr, GICState, GIC_N_REALCPU),
-        VMSTATE_UINT32_ARRAY(gich.vtr, GICState, GIC_N_REALCPU),
-        VMSTATE_UINT32_ARRAY(gich.misr, GICState, GIC_N_REALCPU),
-        VMSTATE_UINT64_ARRAY(gich.eisr, GICState, GIC_N_REALCPU),
-        VMSTATE_UINT64_ARRAY(gich.elrsr, GICState, GIC_N_REALCPU),
-        VMSTATE_UINT32_ARRAY(gich.apr, GICState, GIC_N_REALCPU),
-        VMSTATE_UINT32_2DARRAY(gich.lr, GICState, GIC_N_REALCPU, GICV_NR_LR),
-        VMSTATE_UINT32_ARRAY(gich.pending_prio, GICState, GIC_N_REALCPU),
-        VMSTATE_UINT8_ARRAY(gich.pending_lrn, GICState, GIC_N_REALCPU),
+        VMSTATE_UINT32_2DARRAY(nsapr, GICState, GIC_NR_APRS, GIC_NCPU),
         VMSTATE_END_OF_LIST()
+    },
+    .subsections = (const VMStateDescription * []) {
+        &vmstate_gic_virt_state,
+        NULL
     }
 };
 
 void gic_init_irqs_and_mmio(GICState *s, qemu_irq_handler handler,
-                            const MemoryRegionOps *ops)
+                            const MemoryRegionOps *ops,
+                            const MemoryRegionOps *virt_ops)
 {
     SysBusDevice *sbd = SYS_BUS_DEVICE(s);
     int i = s->num_irq - GIC_INTERNAL;
@@ -128,6 +152,11 @@ void gic_init_irqs_and_mmio(GICState *s, qemu_irq_handler handler,
     for (i = 0; i < s->num_cpu; i++) {
         sysbus_init_irq(sbd, &s->parent_vfiq[i]);
     }
+    if (s->virt_extn) {
+        for (i = 0; i < s->num_cpu; i++) {
+            sysbus_init_irq(sbd, &s->maintenance_irq[i]);
+        }
+    }
 
     /* Distributor */
     memory_region_init_io(&s->iomem, OBJECT(s), ops, s, "gic_dist", 0x1000);
@@ -139,6 +168,17 @@ void gic_init_irqs_and_mmio(GICState *s, qemu_irq_handler handler,
     memory_region_init_io(&s->cpuiomem[0], OBJECT(s), ops ? &ops[1] : NULL,
                           s, "gic_cpu", s->revision == 2 ? 0x2000 : 0x100);
     sysbus_init_mmio(sbd, &s->cpuiomem[0]);
+
+    if (s->virt_extn) {
+        memory_region_init_io(&s->vifaceiomem[0], OBJECT(s), virt_ops,
+                              s, "gic_viface", 0x1000);
+        sysbus_init_mmio(sbd, &s->vifaceiomem[0]);
+
+        memory_region_init_io(&s->vcpuiomem, OBJECT(s),
+                              virt_ops ? &virt_ops[1] : NULL,
+                              s, "gic_vcpu", 0x2000);
+        sysbus_init_mmio(sbd, &s->vcpuiomem);
+    }
 }
 
 static void arm_gic_common_realize(DeviceState *dev, Error **errp)
@@ -146,16 +186,11 @@ static void arm_gic_common_realize(DeviceState *dev, Error **errp)
     GICState *s = ARM_GIC_COMMON(dev);
     int num_irq = s->num_irq;
 
-    if (!s->num_cpu) {
-        s->num_cpu = fdt_generic_num_cpus;
-    }
-
     if (s->num_cpu > GIC_NCPU) {
         error_setg(errp, "requested %u CPUs exceeds GIC maximum %d",
                    s->num_cpu, GIC_NCPU);
         return;
     }
-    s->num_irq += GIC_BASE_IRQ;
     if (s->num_irq > GIC_MAXIRQ) {
         error_setg(errp,
                    "requested %u interrupt lines exceeds GIC maximum %d",
@@ -172,12 +207,61 @@ static void arm_gic_common_realize(DeviceState *dev, Error **errp)
                    num_irq);
         return;
     }
+
+    if (s->security_extn &&
+        (s->revision == REV_11MPCORE)) {
+        error_setg(errp, "this GIC revision does not implement "
+                   "the security extensions");
+        return;
+    }
+
+    if (s->virt_extn) {
+        if (s->revision != 2) {
+            error_setg(errp, "GIC virtualization extensions are only "
+                       "supported by revision 2");
+            return;
+        }
+
+        /* For now, set the number of implemented LRs to 4, as found in most
+         * real GICv2. This could be promoted as a QOM property if we need to
+         * emulate a variant with another num_lrs.
+         */
+        s->num_lrs = 4;
+    }
+}
+
+static inline void arm_gic_common_reset_irq_state(GICState *s, int first_cpu,
+                                                  int resetprio)
+{
+    int i, j;
+
+    for (i = first_cpu; i < first_cpu + s->num_cpu; i++) {
+        if (s->revision == REV_11MPCORE) {
+            s->priority_mask[i] = 0xf0;
+        } else {
+            s->priority_mask[i] = resetprio;
+        }
+        s->current_pending[i] = 1023;
+        s->running_priority[i] = 0x100;
+        s->cpu_ctlr[i] = 0;
+        s->bpr[i] = gic_is_vcpu(i) ? GIC_VIRT_MIN_BPR : GIC_MIN_BPR;
+        s->abpr[i] = gic_is_vcpu(i) ? GIC_VIRT_MIN_ABPR : GIC_MIN_ABPR;
+
+        if (!gic_is_vcpu(i)) {
+            for (j = 0; j < GIC_INTERNAL; j++) {
+                s->priority1[j][i] = resetprio;
+            }
+            for (j = 0; j < GIC_NR_SGIS; j++) {
+                s->sgi_pending[j][i] = 0;
+            }
+        }
+    }
 }
 
 static void arm_gic_common_reset(DeviceState *dev)
 {
     GICState *s = ARM_GIC_COMMON(dev);
-    int i;
+    int i, j;
     int resetprio;
 
     /* If we're resetting a TZ-aware GIC as if secure firmware
@@ -194,84 +278,52 @@ static void arm_gic_common_reset(DeviceState *dev)
     }
 
     memset(s->irq_state, 0, GIC_MAXIRQ * sizeof(gic_irq_state));
-    for (i = 0 ; i < GIC_NCPU; i++) {
-        if (s->revision == REV_11MPCORE) {
-            s->priority_mask[i] = 0xf0;
-        } else {
-            s->priority_mask[i] = resetprio;
-        }
-        s->current_pending[i] = 1023;
-        s->running_irq[i] = 1023;
-        s->running_priority[i] = 0x100;
-        s->ctrl[i] = 0;
+    arm_gic_common_reset_irq_state(s, 0, resetprio);
+
+    if (s->virt_extn) {
+        /* vCPU states are stored at indexes GIC_NCPU .. GIC_NCPU+num_cpu.
+         * The exposed vCPU interface does not have security extensions.
+         */
+        arm_gic_common_reset_irq_state(s, GIC_NCPU, 0);
     }
+
     for (i = 0; i < GIC_NR_SGIS; i++) {
-        GIC_SET_ENABLED(i, ALL_CPU_MASK);
-        GIC_SET_EDGE_TRIGGER(i);
+        GIC_DIST_SET_ENABLED(i, ALL_CPU_MASK);
+        GIC_DIST_SET_EDGE_TRIGGER(i);
     }
-    if (s->num_cpu == 1) {
+
+    for (i = 0; i < ARRAY_SIZE(s->priority2); i++) {
+        s->priority2[i] = resetprio;
+    }
+
+    for (i = 0; i < GIC_MAXIRQ; i++) {
         /* For uniprocessor GICs all interrupts always target the sole CPU */
-        for (i = 0; i < GIC_MAXIRQ; i++) {
+        if (s->num_cpu == 1) {
             s->irq_target[i] = 1;
+        } else {
+            s->irq_target[i] = 0;
         }
     }
-
     if (s->security_extn && s->irq_reset_nonsecure) {
-        for (i = 0 ; i < s->num_irq; ++i) {
-            s->irq_state[i].group = 1;
+        for (i = 0; i < GIC_MAXIRQ; i++) {
+            GIC_DIST_SET_GROUP(i, ALL_CPU_MASK);
         }
     }
 
-    if (!s->c_iidr) {
-        s->c_iidr |= s->revision << 16;
-        s->c_iidr |= 0x43B;
-    }
-    s->enabled = false;
-}
-
-static int arm_gic_common_fdt_get_irq(FDTGenericIntc *obj, qemu_irq *irqs,
-                                      uint32_t *cells, int ncells, int max,
-                                      Error **errp)
-{
-    GICState *gs = ARM_GIC_COMMON(obj);
-    int cpu = 0;
-    uint32_t idx;
-
-    if (ncells != 3) {
-        error_setg(errp, "ARM GIC requires 3 interrupt cells, %d cells given",
-                   ncells);
-        return 0;
-    }
-    idx = cells[1];
-
-    switch (cells[0]) {
-    case 0:
-        if (idx >= gs->num_irq) {
-            error_setg(errp, "ARM GIC SPI has maximum index of %" PRId32 ", "
-                       "index %" PRId32 " given", gs->num_irq - 1, idx);
-            return 0;
-        }
-        (*irqs) = qdev_get_gpio_in(DEVICE(obj), cells[1]);
-        return 1;
-    case 1: /* PPI */
-        if (idx >= 16) {
-            error_setg(errp, "ARM GIC PPI has maximum index of 15, "
-                       "index %" PRId32 " given", idx);
-            return 0;
-        }
-        for (cpu = 0; cpu < max && cpu < gs->num_cpu; cpu++) {
-            if (cells[2] & 1 << (cpu + 8)) {
-                *irqs = qdev_get_gpio_in(DEVICE(obj),
-                                         gs->num_irq - 16 + idx + cpu * 32);
+    if (s->virt_extn) {
+        for (i = 0; i < s->num_lrs; i++) {
+            for (j = 0; j < s->num_cpu; j++) {
+                s->h_lr[i][j] = 0;
             }
-            irqs++;
         }
-        return cpu;
-    default:
-        error_setg(errp, "Invalid cell 0 value in interrupt binding: %d",
-                   cells[0]);
-        return 0;
+
+        for (i = 0; i < s->num_cpu; i++) {
+            s->h_hcr[i] = 0;
+            s->h_misr[i] = 0;
+        }
     }
+
+    s->ctlr = 0;
 }
 
 static void arm_gic_common_linux_init(ARMLinuxBootIf *obj,
@@ -279,7 +331,7 @@ static void arm_gic_common_linux_init(ARMLinuxBootIf *obj,
 {
     GICState *s = ARM_GIC_COMMON(obj);
 
-    if (!s->disable_linux_gic_init && s->security_extn && !secure_boot) {
+    if (s->security_extn && !secure_boot) {
         /* We're directly booting a kernel into NonSecure. If this GIC
          * implements the security extensions then we must configure it
          * to have all the interrupts be NonSecure (this is a job that
@@ -292,33 +344,28 @@ static void arm_gic_common_linux_init(ARMLinuxBootIf *obj,
 }
 
 static Property arm_gic_common_properties[] = {
-    DEFINE_PROP_UINT32("num-cpu", GICState, num_cpu, 0),
-    DEFINE_PROP_UINT32("num-irq", GICState, num_irq, 96),
+    DEFINE_PROP_UINT32("num-cpu", GICState, num_cpu, 1),
+    DEFINE_PROP_UINT32("num-irq", GICState, num_irq, 32),
     /* Revision can be 1 or 2 for GIC architecture specification
      * versions 1 or 2, or 0 to indicate the legacy 11MPCore GIC.
      */
     DEFINE_PROP_UINT32("revision", GICState, revision, 1),
-    DEFINE_PROP_BOOL("disable-linux-gic-init", GICState,
-                     disable_linux_gic_init, false),
-    DEFINE_PROP_UINT32("map-stride", GICState, map_stride, 0x1000),
-    /* We set this later if it isn't set */
-    DEFINE_PROP_UINT32("int-id", GICState, c_iidr, 0),
-    /* Xilinx: we default to true to avoid breaking backwards compatibility */
-    DEFINE_PROP_BOOL("has-security-extensions", GICState, security_extn, true),
+    /* True if the GIC should implement the security extensions */
+    DEFINE_PROP_BOOL("has-security-extensions", GICState, security_extn, 0),
+    /* True if the GIC should implement the virtualization extensions */
+    DEFINE_PROP_BOOL("has-virtualization-extensions", GICState, virt_extn, 0),
     DEFINE_PROP_END_OF_LIST(),
 };
 
 static void arm_gic_common_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-    FDTGenericIntcClass *fgic = FDT_GENERIC_INTC_CLASS(klass);
     ARMLinuxBootIfClass *albifc = ARM_LINUX_BOOT_IF_CLASS(klass);
 
     dc->reset = arm_gic_common_reset;
     dc->realize = arm_gic_common_realize;
     dc->props = arm_gic_common_properties;
     dc->vmsd = &vmstate_gic;
-    fgic->get_irq = arm_gic_common_fdt_get_irq;
     albifc->arm_linux_init = arm_gic_common_linux_init;
 }
 
@@ -328,13 +375,11 @@ static const TypeInfo arm_gic_common_type = {
     .instance_size = sizeof(GICState),
     .class_size = sizeof(ARMGICCommonClass),
     .class_init = arm_gic_common_class_init,
-    .interfaces = (InterfaceInfo[]) {
-        { TYPE_ARM_LINUX_BOOT_IF },
-        { TYPE_FDT_GENERIC_INTC },
-        { TYPE_FDT_GENERIC_GPIO },
-        { }
-    },
     .abstract = true,
+    .interfaces = (InterfaceInfo []) {
+        { TYPE_ARM_LINUX_BOOT_IF },
+        { },
+    },
 };
 
 static void register_types(void)

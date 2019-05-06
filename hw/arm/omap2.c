@@ -19,11 +19,11 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/error-report.h"
 #include "qapi/error.h"
 #include "qemu-common.h"
 #include "cpu.h"
-#include "sysemu/block-backend.h"
-#include "sysemu/blockdev.h"
+#include "sysemu/qtest.h"
 #include "hw/boards.h"
 #include "hw/hw.h"
 #include "hw/arm/arm.h"
@@ -273,7 +273,7 @@ static void omap_eac_format_update(struct omap_eac_s *s)
      * does I2S specify it?  */
     /* All register writes are 16 bits so we we store 16-bit samples
      * in the buffers regardless of AGCFR[B8_16] value.  */
-    fmt.fmt = AUD_FMT_U16;
+    fmt.fmt = AUDIO_FORMAT_U16;
 
     s->codec.in_voice = AUD_open_in(&s->codec.card, s->codec.in_voice,
                     "eac.codec.in", s, omap_eac_in_cb, &fmt);
@@ -799,7 +799,7 @@ static struct omap_sti_s *omap_sti_init(struct omap_target_agent_s *ta,
     s->irq = irq;
     omap_sti_reset(s);
 
-    qemu_chr_fe_init(&s->chr, chr ?: qemu_chr_new("null", "null"),
+    qemu_chr_fe_init(&s->chr, chr ?: qemu_chr_new("null", "null", NULL),
                      &error_abort);
 
     memory_region_init_io(&s->iomem, NULL, &omap_sti_ops, s, "omap.sti",
@@ -1312,7 +1312,7 @@ static void omap_prcm_apll_update(struct omap_prcm_s *s)
 
     if (mode[0] == 1 || mode[0] == 2 || mode[1] == 1 || mode[1] == 2)
         fprintf(stderr, "%s: bad EN_54M_PLL or bad EN_96M_PLL\n",
-                        __FUNCTION__);
+                        __func__);
 }
 
 static void omap_prcm_dpll_update(struct omap_prcm_s *s)
@@ -1331,7 +1331,7 @@ static void omap_prcm_dpll_update(struct omap_prcm_s *s)
     s->dpll_lock = 0;
     switch (mode) {
     case 0:
-        fprintf(stderr, "%s: bad EN_DPLL\n", __FUNCTION__);
+        fprintf(stderr, "%s: bad EN_DPLL\n", __func__);
         break;
     case 1:	/* Low-power bypass mode (Default) */
     case 2:	/* Fast-relock bypass mode */
@@ -1358,7 +1358,7 @@ static void omap_prcm_dpll_update(struct omap_prcm_s *s)
         omap_clk_reparent(core, dpll_x2);
         break;
     case 3:
-        fprintf(stderr, "%s: bad CORE_CLK_SRC\n", __FUNCTION__);
+        fprintf(stderr, "%s: bad CORE_CLK_SRC\n", __func__);
         break;
     }
 }
@@ -1628,7 +1628,7 @@ static void omap_prcm_write(void *opaque, hwaddr addr,
     case 0x500:	/* CM_CLKEN_PLL */
         if (value & 0xffffff30)
             fprintf(stderr, "%s: write 0s in CM_CLKEN_PLL for "
-                            "future compatibility\n", __FUNCTION__);
+                            "future compatibility\n", __func__);
         if ((s->clken[9] ^ value) & 0xcc) {
             s->clken[9] &= ~0xcc;
             s->clken[9] |= value & 0xcc;
@@ -1647,7 +1647,7 @@ static void omap_prcm_write(void *opaque, hwaddr addr,
     case 0x540:	/* CM_CLKSEL1_PLL */
         if (value & 0xfc4000d7)
             fprintf(stderr, "%s: write 0s in CM_CLKSEL1_PLL for "
-                            "future compatibility\n", __FUNCTION__);
+                            "future compatibility\n", __func__);
         if ((s->clksel[5] ^ value) & 0x003fff00) {
             s->clksel[5] = value & 0x03bfff28;
             omap_prcm_dpll_update(s);
@@ -1659,7 +1659,7 @@ static void omap_prcm_write(void *opaque, hwaddr addr,
     case 0x544:	/* CM_CLKSEL2_PLL */
         if (value & ~3)
             fprintf(stderr, "%s: write 0s in CM_CLKSEL2_PLL[31:2] for "
-                            "future compatibility\n", __FUNCTION__);
+                            "future compatibility\n", __func__);
         if (s->clksel[6] != (value & 3)) {
             s->clksel[6] = value & 3;
             omap_prcm_dpll_update(s);
@@ -2348,7 +2348,7 @@ struct omap_mpu_state_s *omap2420_mpu_init(MemoryRegion *sysmem,
                     s->drq[OMAP24XX_DMA_UART1_TX],
                     s->drq[OMAP24XX_DMA_UART1_RX],
                     "uart1",
-                    serial_hds[0]);
+                    serial_hd(0));
     s->uart[1] = omap2_uart_init(sysmem, omap_l4ta(s->l4, 20),
                                  qdev_get_gpio_in(s->ih[0],
                                                   OMAP_INT_24XX_UART2_IRQ),
@@ -2357,7 +2357,7 @@ struct omap_mpu_state_s *omap2420_mpu_init(MemoryRegion *sysmem,
                     s->drq[OMAP24XX_DMA_UART2_TX],
                     s->drq[OMAP24XX_DMA_UART2_RX],
                     "uart2",
-                    serial_hds[0] ? serial_hds[1] : NULL);
+                    serial_hd(0) ? serial_hd(1) : NULL);
     s->uart[2] = omap2_uart_init(sysmem, omap_l4ta(s->l4, 21),
                                  qdev_get_gpio_in(s->ih[0],
                                                   OMAP_INT_24XX_UART3_IRQ),
@@ -2366,7 +2366,7 @@ struct omap_mpu_state_s *omap2420_mpu_init(MemoryRegion *sysmem,
                     s->drq[OMAP24XX_DMA_UART3_TX],
                     s->drq[OMAP24XX_DMA_UART3_RX],
                     "uart3",
-                    serial_hds[0] && serial_hds[1] ? serial_hds[2] : NULL);
+                    serial_hd(0) && serial_hd(1) ? serial_hd(2) : NULL);
 
     s->gptimer[0] = omap_gp_timer_init(omap_l4ta(s->l4, 7),
                     qdev_get_gpio_in(s->ih[0], OMAP_INT_24XX_GPTIMER1),
@@ -2485,12 +2485,11 @@ struct omap_mpu_state_s *omap2420_mpu_init(MemoryRegion *sysmem,
                              s->drq[OMAP24XX_DMA_GPMC]);
 
     dinfo = drive_get(IF_SD, 0, 0);
-    if (!dinfo) {
-        fprintf(stderr, "qemu: missing SecureDigital device\n");
-        exit(1);
+    if (!dinfo && !qtest_enabled()) {
+        warn_report("missing SecureDigital device");
     }
     s->mmc = omap2_mmc_init(omap_l4tao(s->l4, 9),
-                    blk_by_legacy_dinfo(dinfo),
+                    dinfo ? blk_by_legacy_dinfo(dinfo) : NULL,
                     qdev_get_gpio_in(s->ih[0], OMAP_INT_24XX_MMC_IRQ),
                     &s->drq[OMAP24XX_DMA_MMC1_TX],
                     omap_findclk(s, "mmc_fclk"), omap_findclk(s, "mmc_iclk"));
@@ -2518,8 +2517,8 @@ struct omap_mpu_state_s *omap2420_mpu_init(MemoryRegion *sysmem,
     omap_sti_init(omap_l4ta(s->l4, 18), sysmem, 0x54000000,
                   qdev_get_gpio_in(s->ih[0], OMAP_INT_24XX_STI),
                   omap_findclk(s, "emul_ck"),
-                    serial_hds[0] && serial_hds[1] && serial_hds[2] ?
-                    serial_hds[3] : NULL);
+                    serial_hd(0) && serial_hd(1) && serial_hd(2) ?
+                    serial_hd(3) : NULL);
 
     s->eac = omap_eac_init(omap_l4ta(s->l4, 32),
                            qdev_get_gpio_in(s->ih[0], OMAP_INT_24XX_EAC_IRQ),

@@ -51,7 +51,7 @@ static void ccw_device_unplug(HotplugHandler *hotplug_dev,
 
     css_generate_sch_crws(sch->cssid, sch->ssid, sch->schid, 1, 0);
 
-    object_unparent(OBJECT(dev));
+    object_property_set_bool(OBJECT(dev), false, "realized", NULL);
 }
 
 static void virtual_css_bus_reset(BusState *qbus)
@@ -99,15 +99,16 @@ VirtualCssBus *virtual_css_bus_init(void)
 
     /* Create bridge device */
     dev = qdev_create(NULL, TYPE_VIRTUAL_CSS_BRIDGE);
+    object_property_add_child(qdev_get_machine(), TYPE_VIRTUAL_CSS_BRIDGE,
+                              OBJECT(dev), NULL);
     qdev_init_nofail(dev);
 
     /* Create bus on bridge device */
     bus = qbus_create(TYPE_VIRTUAL_CSS_BUS, dev, "virtual-css");
     cbus = VIRTUAL_CSS_BUS(bus);
-    cbus->squash_mcss = s390_get_squash_mcss();
 
     /* Enable hotplugging */
-    qbus_set_hotplug_handler(bus, dev, &error_abort);
+    qbus_set_hotplug_handler(bus, OBJECT(dev), &error_abort);
 
     css_register_io_adapters(CSS_IO_ADAPTER_VIRTIO, true, false,
                              0, &error_abort);
@@ -123,6 +124,11 @@ static Property virtual_css_bridge_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
+static bool prop_get_true(Object *obj, Error **errp)
+{
+    return true;
+}
+
 static void virtual_css_bridge_class_init(ObjectClass *klass, void *data)
 {
     HotplugHandlerClass *hc = HOTPLUG_HANDLER_CLASS(klass);
@@ -131,6 +137,12 @@ static void virtual_css_bridge_class_init(ObjectClass *klass, void *data)
     hc->unplug = ccw_device_unplug;
     set_bit(DEVICE_CATEGORY_BRIDGE, dc->categories);
     dc->props = virtual_css_bridge_properties;
+    object_class_property_add_bool(klass, "cssid-unrestricted",
+                                   prop_get_true, NULL, NULL);
+    object_class_property_set_description(klass, "cssid-unrestricted",
+            "A css device can use any cssid, regardless whether virtual"
+            " or not (read only, always true)",
+            NULL);
 }
 
 static const TypeInfo virtual_css_bridge_info = {

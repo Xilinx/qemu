@@ -52,8 +52,12 @@
  * where Error **errp is a parameter, by convention the last one.
  *
  * Pass an existing error to the caller with the message modified:
+ *     error_propagate_prepend(errp, err);
+ *
+ * Avoid
  *     error_propagate(errp, err);
  *     error_prepend(errp, "Could not frobnicate '%s': ", name);
+ * because this fails to prepend when @errp is &error_fatal.
  *
  * Create a new error and pass it to the caller:
  *     error_setg(errp, "situation normal, all fouled up");
@@ -115,7 +119,7 @@
 #ifndef ERROR_H
 #define ERROR_H
 
-#include "qapi-types.h"
+#include "qapi/qapi-types-common.h"
 
 /*
  * Overall category of an error.
@@ -215,6 +219,16 @@ void error_setg_win32_internal(Error **errp,
  */
 void error_propagate(Error **dst_errp, Error *local_err);
 
+
+/*
+ * Propagate error object (if any) with some text prepended.
+ * Behaves like
+ *     error_prepend(&local_err, fmt, ...);
+ *     error_propagate(dst_errp, local_err);
+ */
+void error_propagate_prepend(Error **dst_errp, Error *local_err,
+                             const char *fmt, ...);
+
 /*
  * Prepend some text to @errp's human-readable error message.
  * The text is made by formatting @fmt, @ap like vprintf().
@@ -230,6 +244,12 @@ void error_prepend(Error **errp, const char *fmt, ...)
 
 /*
  * Append a printf-style human-readable explanation to an existing error.
+ * If the error is later reported to a human user with
+ * error_report_err() or warn_report_err(), the hints will be shown,
+ * too.  If it's reported via QMP, the hints will be ignored.
+ * Intended use is adding helpful hints on the human user interface,
+ * e.g. a list of valid values.  It's not for clarifying a confusing
+ * error message.
  * @errp may be NULL, but not &error_fatal or &error_abort.
  * Trivially the case if you call it only after error_setg() or
  * error_propagate().
@@ -267,11 +287,13 @@ void error_free_or_abort(Error **errp);
 
 /*
  * Convenience function to warn_report() and free @err.
+ * The report includes hints added with error_append_hint().
  */
 void warn_report_err(Error *err);
 
 /*
  * Convenience function to error_report() and free @err.
+ * The report includes hints added with error_append_hint().
  */
 void error_report_err(Error *err);
 

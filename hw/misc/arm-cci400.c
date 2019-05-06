@@ -585,7 +585,7 @@ static IOMMUTLBEntry cci_translate(IOMMUMemoryRegion *mr, hwaddr addr,
     /* Is there anything backing this address on M1 or M2?  */
     for (i = 1; i < ARRAY_SIZE(s->as); i++) {
         bool t;
-        t = address_space_access_valid(s->as[i], addr, 4, false);
+        t = address_space_access_valid(s->as[i], addr, 4, false, *attr);
         if (i > 1) {
             assert(valid == t);
         }
@@ -658,7 +658,7 @@ static void cci400_init(Object *obj)
         object_property_add_link(obj, name, TYPE_MEMORY_REGION,
                                  (Object **)&s->M[i],
                                  qdev_prop_allow_set_link_before_realize,
-                                 OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                                 OBJ_PROP_LINK_STRONG,
                                  &error_abort);
         g_free(name);
     }

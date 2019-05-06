@@ -5,7 +5,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
- * as published by the Free Software Foundation; either version 2 of
+ * as published by the Free Software Foundation; either version 2.1 of
  * the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful, but
@@ -13,7 +13,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
+ * You should have received a copy of the GNU Lesser General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
@@ -28,6 +28,7 @@
 #include "disas/disas.h"
 #include "tcg-op.h"
 #include "exec/cpu_ldst.h"
+#include "qemu/qemu-print.h"
 
 #include "exec/helper-proto.h"
 #include "exec/helper-gen.h"
@@ -69,24 +70,23 @@ static int extract_branch_offset(int opcode)
   return (((signed short)((opcode & ((1 << 10) - 1)) << 6)) >> 6) << 1;
 }
 
-void moxie_cpu_dump_state(CPUState *cs, FILE *f, fprintf_function cpu_fprintf,
-                          int flags)
+void moxie_cpu_dump_state(CPUState *cs, FILE *f, int flags)
 {
     MoxieCPU *cpu = MOXIE_CPU(cs);
     CPUMoxieState *env = &cpu->env;
     int i;
-    cpu_fprintf(f, "pc=0x%08x\n", env->pc);
-    cpu_fprintf(f, "$fp=0x%08x $sp=0x%08x $r0=0x%08x $r1=0x%08x\n",
-                env->gregs[0], env->gregs[1], env->gregs[2], env->gregs[3]);
+    qemu_fprintf(f, "pc=0x%08x\n", env->pc);
+    qemu_fprintf(f, "$fp=0x%08x $sp=0x%08x $r0=0x%08x $r1=0x%08x\n",
+                 env->gregs[0], env->gregs[1], env->gregs[2], env->gregs[3]);
     for (i = 4; i < 16; i += 4) {
-        cpu_fprintf(f, "$r%d=0x%08x $r%d=0x%08x $r%d=0x%08x $r%d=0x%08x\n",
-                    i-2, env->gregs[i], i-1, env->gregs[i + 1],
-                    i, env->gregs[i + 2], i+1, env->gregs[i + 3]);
+        qemu_fprintf(f, "$r%d=0x%08x $r%d=0x%08x $r%d=0x%08x $r%d=0x%08x\n",
+                     i - 2, env->gregs[i], i - 1, env->gregs[i + 1],
+                     i, env->gregs[i + 2], i + 1, env->gregs[i + 3]);
     }
     for (i = 4; i < 16; i += 4) {
-        cpu_fprintf(f, "sr%d=0x%08x sr%d=0x%08x sr%d=0x%08x sr%d=0x%08x\n",
-                    i-2, env->sregs[i], i-1, env->sregs[i + 1],
-                    i, env->sregs[i + 2], i+1, env->sregs[i + 3]);
+        qemu_fprintf(f, "sr%d=0x%08x sr%d=0x%08x sr%d=0x%08x sr%d=0x%08x\n",
+                     i - 2, env->sregs[i], i - 1, env->sregs[i + 1],
+                     i, env->sregs[i + 2], i + 1, env->sregs[i + 3]);
     }
 }
 
@@ -132,13 +132,13 @@ static inline void gen_goto_tb(CPUMoxieState *env, DisasContext *ctx,
     if (use_goto_tb(ctx, dest)) {
         tcg_gen_goto_tb(n);
         tcg_gen_movi_i32(cpu_pc, dest);
-        tcg_gen_exit_tb((uintptr_t)ctx->tb + n);
+        tcg_gen_exit_tb(ctx->tb, n);
     } else {
         tcg_gen_movi_i32(cpu_pc, dest);
         if (ctx->singlestep_enabled) {
             gen_helper_debug(cpu_env);
         }
-        tcg_gen_exit_tb(0);
+        tcg_gen_exit_tb(NULL, 0);
     }
 }
 
@@ -328,7 +328,7 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
                 tcg_temp_free_i32(t1);
 
                 /* Jump... */
-                tcg_gen_exit_tb(0);
+                tcg_gen_exit_tb(NULL, 0);
 
                 ctx->bstate = BS_BRANCH;
             }
@@ -472,14 +472,14 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
                 tcg_gen_mov_i32(cpu_pc, REG(fnreg));
                 tcg_temp_free_i32(t1);
                 tcg_temp_free_i32(t2);
-                tcg_gen_exit_tb(0);
+                tcg_gen_exit_tb(NULL, 0);
                 ctx->bstate = BS_BRANCH;
             }
             break;
         case 0x1a: /* jmpa */
             {
                 tcg_gen_movi_i32(cpu_pc, cpu_ldl_code(env, ctx->pc+2));
-                tcg_gen_exit_tb(0);
+                tcg_gen_exit_tb(NULL, 0);
                 ctx->bstate = BS_BRANCH;
                 length = 6;
             }
@@ -584,7 +584,7 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
             {
                 int reg = (opcode >> 4) & 0xf;
                 tcg_gen_mov_i32(cpu_pc, REG(reg));
-                tcg_gen_exit_tb(0);
+                tcg_gen_exit_tb(NULL, 0);
                 ctx->bstate = BS_BRANCH;
             }
             break;
@@ -813,13 +813,13 @@ static int decode_opc(MoxieCPU *cpu, DisasContext *ctx)
 }
 
 /* generate intermediate code for basic block 'tb'.  */
-void gen_intermediate_code(CPUState *cs, struct TranslationBlock *tb)
+void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
 {
     CPUMoxieState *env = cs->env_ptr;
     MoxieCPU *cpu = moxie_env_get_cpu(env);
     DisasContext ctx;
     target_ulong pc_start;
-    int num_insns, max_insns;
+    int num_insns;
 
     pc_start = tb->pc;
     ctx.pc = pc_start;
@@ -829,13 +829,6 @@ void gen_intermediate_code(CPUState *cs, struct TranslationBlock *tb)
     ctx.singlestep_enabled = 0;
     ctx.bstate = BS_NONE;
     num_insns = 0;
-    max_insns = tb_cflags(tb) & CF_COUNT_MASK;
-    if (max_insns == 0) {
-        max_insns = CF_COUNT_MASK;
-    }
-    if (max_insns > TCG_MAX_INSNS) {
-        max_insns = TCG_MAX_INSNS;
-    }
 
     gen_tb_start(tb);
     do {
@@ -878,7 +871,7 @@ void gen_intermediate_code(CPUState *cs, struct TranslationBlock *tb)
             gen_goto_tb(env, &ctx, 0, ctx.pc);
             break;
         case BS_EXCP:
-            tcg_gen_exit_tb(0);
+            tcg_gen_exit_tb(NULL, 0);
             break;
         case BS_BRANCH:
         default:

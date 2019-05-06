@@ -21,20 +21,25 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "qemu-common.h"
 #include "qemu/error-report.h"
 #include "block/block_int.h"
+#include "block/qdict.h"
 #include "sysemu/block-backend.h"
 #include "qemu/module.h"
+#include "qemu/option.h"
 #include "qemu/bswap.h"
+#include "qemu/cutils.h"
 #include <zlib.h>
-#include "qapi/qmp/qerror.h"
+#include "qapi/qmp/qdict.h"
 #include "qapi/qmp/qstring.h"
+#include "qapi/qobject-input-visitor.h"
+#include "qapi/qapi-visit-block-core.h"
 #include "crypto/block.h"
 #include "migration/blocker.h"
-#include "block/crypto.h"
+#include "crypto.h"
 
 /**************************************************************/
 /* QEMU COW block driver with compression and encryption support */
@@ -66,7 +71,6 @@ typedef struct QCowHeader {
 typedef struct BDRVQcowState {
     int cluster_bits;
     int cluster_size;
-    int cluster_sectors;
     int l2_bits;
     int l2_size;
     unsigned int l1_size;
@@ -84,6 +88,8 @@ typedef struct BDRVQcowState {
     CoMutex lock;
     Error *migration_blocker;
 } BDRVQcowState;
+
+static QemuOptsList qcow_create_opts;
 
 static int decompress_cluster(BlockDriverState *bs, uint64_t cluster_offset);
 
@@ -135,14 +141,14 @@ static int qcow_open(BlockDriverState *bs, QDict *options, int flags,
     if (ret < 0) {
         goto fail;
     }
-    be32_to_cpus(&header.magic);
-    be32_to_cpus(&header.version);
-    be64_to_cpus(&header.backing_file_offset);
-    be32_to_cpus(&header.backing_file_size);
-    be32_to_cpus(&header.mtime);
-    be64_to_cpus(&header.size);
-    be32_to_cpus(&header.crypt_method);
-    be64_to_cpus(&header.l1_table_offset);
+    header.magic = be32_to_cpu(header.magic);
+    header.version = be32_to_cpu(header.version);
+    header.backing_file_offset = be64_to_cpu(header.backing_file_offset);
+    header.backing_file_size = be32_to_cpu(header.backing_file_size);
+    header.mtime = be32_to_cpu(header.mtime);
+    header.size = be64_to_cpu(header.size);
+    header.crypt_method = be32_to_cpu(header.crypt_method);
+    header.l1_table_offset = be64_to_cpu(header.l1_table_offset);
 
     if (header.magic != QCOW_MAGIC) {
         error_setg(errp, "Image not in qcow format");
@@ -197,9 +203,8 @@ static int qcow_open(BlockDriverState *bs, QDict *options, int flags,
                 ret = -EINVAL;
                 goto fail;
             }
-            qdict_del(encryptopts, "format");
-            crypto_opts = block_crypto_open_opts_init(
-                Q_CRYPTO_BLOCK_FORMAT_QCOW, encryptopts, errp);
+            qdict_put_str(encryptopts, "format", "qcow");
+            crypto_opts = block_crypto_open_opts_init(encryptopts, errp);
             if (!crypto_opts) {
                 ret = -EINVAL;
                 goto fail;
@@ -209,7 +214,7 @@ static int qcow_open(BlockDriverState *bs, QDict *options, int flags,
                 cflags |= QCRYPTO_BLOCK_OPEN_NO_IO;
             }
             s->crypto = qcrypto_block_open(crypto_opts, "encrypt.",
-                                           NULL, NULL, cflags, errp);
+                                           NULL, NULL, cflags, 1, errp);
             if (!s->crypto) {
                 ret = -EINVAL;
                 goto fail;
@@ -230,7 +235,6 @@ static int qcow_open(BlockDriverState *bs, QDict *options, int flags,
     }
     s->cluster_bits = header.cluster_bits;
     s->cluster_size = 1 << s->cluster_bits;
-    s->cluster_sectors = 1 << (s->cluster_bits - 9);
     s->l2_bits = header.l2_bits;
     s->l2_size = 1 << s->l2_bits;
     bs->total_sectors = header.size / 512;
@@ -267,7 +271,7 @@ static int qcow_open(BlockDriverState *bs, QDict *options, int flags,
     }
 
     for(i = 0;i < s->l1_size; i++) {
-        be64_to_cpus(&s->l1_table[i]);
+        s->l1_table[i] = be64_to_cpu(s->l1_table[i]);
     }
 
     /* alloc L2 cache (max. 64k * 16 * 8 = 8 MB) */
@@ -292,11 +296,13 @@ static int qcow_open(BlockDriverState *bs, QDict *options, int flags,
             goto fail;
         }
         ret = bdrv_pread(bs->file, header.backing_file_offset,
-                   bs->backing_file, len);
+                   bs->auto_backing_file, len);
         if (ret < 0) {
             goto fail;
         }
-        bs->backing_file[len] = '\0';
+        bs->auto_backing_file[len] = '\0';
+        pstrcpy(bs->backing_file, sizeof(bs->backing_file),
+                bs->auto_backing_file);
     }
 
     /* Disable migration when qcow images are used */
@@ -310,7 +316,7 @@ static int qcow_open(BlockDriverState *bs, QDict *options, int flags,
         goto fail;
     }
 
-    QDECREF(encryptopts);
+    qobject_unref(encryptopts);
     qapi_free_QCryptoBlockOpenOptions(crypto_opts);
     qemu_co_mutex_init(&s->lock);
     return 0;
@@ -321,7 +327,7 @@ static int qcow_open(BlockDriverState *bs, QDict *options, int flags,
     g_free(s->cluster_cache);
     g_free(s->cluster_data);
     qcrypto_block_free(s->crypto);
-    QDECREF(encryptopts);
+    qobject_unref(encryptopts);
     qapi_free_QCryptoBlockOpenOptions(crypto_opts);
     return ret;
 }
@@ -340,8 +346,8 @@ static int qcow_reopen_prepare(BDRVReopenState *state,
  *
  * 0 to not allocate.
  *
- * 1 to allocate a normal cluster (for sector indexes 'n_start' to
- * 'n_end')
+ * 1 to allocate a normal cluster (for sector-aligned byte offsets 'n_start'
+ * to 'n_end' within the cluster)
  *
  * 2 to allocate a compressed cluster of size
  * 'compressed_size'. 'compressed_size' must be > 0 and <
@@ -379,6 +385,7 @@ static int get_cluster_offset(BlockDriverState *bs,
         /* update the L1 entry */
         s->l1_table[l1_index] = l2_offset;
         tmp = cpu_to_be64(l2_offset);
+        BLKDBG_EVENT(bs->file, BLKDBG_L1_UPDATE);
         ret = bdrv_pwrite_sync(bs->file,
                                s->l1_table_offset + l1_index * sizeof(tmp),
                                &tmp, sizeof(tmp));
@@ -409,6 +416,7 @@ static int get_cluster_offset(BlockDriverState *bs,
         }
     }
     l2_table = s->l2_cache + (min_index << s->l2_bits);
+    BLKDBG_EVENT(bs->file, BLKDBG_L2_LOAD);
     if (new_l2_table) {
         memset(l2_table, 0, s->l2_size * sizeof(uint64_t));
         ret = bdrv_pwrite_sync(bs->file, l2_offset, l2_table,
@@ -432,9 +440,11 @@ static int get_cluster_offset(BlockDriverState *bs,
         ((cluster_offset & QCOW_OFLAG_COMPRESSED) && allocate == 1)) {
         if (!allocate)
             return 0;
+        BLKDBG_EVENT(bs->file, BLKDBG_CLUSTER_ALLOC);
+        assert(QEMU_IS_ALIGNED(n_start | n_end, BDRV_SECTOR_SIZE));
         /* allocate a new cluster */
         if ((cluster_offset & QCOW_OFLAG_COMPRESSED) &&
-            (n_end - n_start) < s->cluster_sectors) {
+            (n_end - n_start) < s->cluster_size) {
             /* if the cluster is already compressed, we must
                decompress it in the case it is not completely
                overwritten */
@@ -447,6 +457,7 @@ static int get_cluster_offset(BlockDriverState *bs,
             }
             cluster_offset = QEMU_ALIGN_UP(cluster_offset, s->cluster_size);
             /* write the cluster content */
+            BLKDBG_EVENT(bs->file, BLKDBG_WRITE_AIO);
             ret = bdrv_pwrite(bs->file, cluster_offset, s->cluster_cache,
                               s->cluster_size);
             if (ret < 0) {
@@ -471,24 +482,25 @@ static int get_cluster_offset(BlockDriverState *bs,
                 /* if encrypted, we must initialize the cluster
                    content which won't be written */
                 if (bs->encrypted &&
-                    (n_end - n_start) < s->cluster_sectors) {
-                    uint64_t start_sect;
+                    (n_end - n_start) < s->cluster_size) {
+                    uint64_t start_offset;
                     assert(s->crypto);
-                    start_sect = (offset & ~(s->cluster_size - 1)) >> 9;
-                    for(i = 0; i < s->cluster_sectors; i++) {
+                    start_offset = offset & ~(s->cluster_size - 1);
+                    for (i = 0; i < s->cluster_size; i += BDRV_SECTOR_SIZE) {
                         if (i < n_start || i >= n_end) {
-                            memset(s->cluster_data, 0x00, 512);
+                            memset(s->cluster_data, 0x00, BDRV_SECTOR_SIZE);
                             if (qcrypto_block_encrypt(s->crypto,
-                                                      (start_sect + i) *
-                                                      BDRV_SECTOR_SIZE,
+                                                      start_offset + i,
                                                       s->cluster_data,
                                                       BDRV_SECTOR_SIZE,
                                                       NULL) < 0) {
                                 return -EIO;
                             }
+                            BLKDBG_EVENT(bs->file, BLKDBG_WRITE_AIO);
                             ret = bdrv_pwrite(bs->file,
-                                              cluster_offset + i * 512,
-                                              s->cluster_data, 512);
+                                              cluster_offset + i,
+                                              s->cluster_data,
+                                              BDRV_SECTOR_SIZE);
                             if (ret < 0) {
                                 return ret;
                             }
@@ -503,6 +515,11 @@ static int get_cluster_offset(BlockDriverState *bs,
         /* update L2 table */
         tmp = cpu_to_be64(cluster_offset);
         l2_table[l2_index] = tmp;
+        if (allocate == 2) {
+            BLKDBG_EVENT(bs->file, BLKDBG_L2_UPDATE_COMPRESSED);
+        } else {
+            BLKDBG_EVENT(bs->file, BLKDBG_L2_UPDATE);
+        }
         ret = bdrv_pwrite_sync(bs->file, l2_offset + l2_index * sizeof(tmp),
                                &tmp, sizeof(tmp));
         if (ret < 0) {
@@ -513,23 +530,28 @@ static int get_cluster_offset(BlockDriverState *bs,
     return 1;
 }
 
-static int64_t coroutine_fn qcow_co_get_block_status(BlockDriverState *bs,
-        int64_t sector_num, int nb_sectors, int *pnum, BlockDriverState **file)
+static int coroutine_fn qcow_co_block_status(BlockDriverState *bs,
+                                             bool want_zero,
+                                             int64_t offset, int64_t bytes,
+                                             int64_t *pnum, int64_t *map,
+                                             BlockDriverState **file)
 {
     BDRVQcowState *s = bs->opaque;
-    int index_in_cluster, n, ret;
+    int index_in_cluster, ret;
+    int64_t n;
     uint64_t cluster_offset;
 
     qemu_co_mutex_lock(&s->lock);
-    ret = get_cluster_offset(bs, sector_num << 9, 0, 0, 0, 0, &cluster_offset);
+    ret = get_cluster_offset(bs, offset, 0, 0, 0, 0, &cluster_offset);
     qemu_co_mutex_unlock(&s->lock);
     if (ret < 0) {
         return ret;
     }
-    index_in_cluster = sector_num & (s->cluster_sectors - 1);
-    n = s->cluster_sectors - index_in_cluster;
-    if (n > nb_sectors)
-        n = nb_sectors;
+    index_in_cluster = offset & (s->cluster_size - 1);
+    n = s->cluster_size - index_in_cluster;
+    if (n > bytes) {
+        n = bytes;
+    }
     *pnum = n;
     if (!cluster_offset) {
         return 0;
@@ -537,9 +559,9 @@ static int64_t coroutine_fn qcow_co_get_block_status(BlockDriverState *bs,
     if ((cluster_offset & QCOW_OFLAG_COMPRESSED) || s->crypto) {
         return BDRV_BLOCK_DATA;
     }
-    cluster_offset |= (index_in_cluster << BDRV_SECTOR_BITS);
+    *map = cluster_offset | index_in_cluster;
     *file = bs->file->bs;
-    return BDRV_BLOCK_DATA | BDRV_BLOCK_OFFSET_VALID | cluster_offset;
+    return BDRV_BLOCK_DATA | BDRV_BLOCK_OFFSET_VALID;
 }
 
 static int decompress_buffer(uint8_t *out_buf, int out_buf_size,
@@ -579,6 +601,7 @@ static int decompress_cluster(BlockDriverState *bs, uint64_t cluster_offset)
     if (s->cluster_cache_offset != coffset) {
         csize = cluster_offset >> (63 - s->cluster_bits);
         csize &= (s->cluster_size - 1);
+        BLKDBG_EVENT(bs->file, BLKDBG_READ_COMPRESSED);
         ret = bdrv_pread(bs->file, coffset, s->cluster_data, csize);
         if (ret != csize)
             return -1;
@@ -591,18 +614,28 @@ static int decompress_cluster(BlockDriverState *bs, uint64_t cluster_offset)
     return 0;
 }
 
-static coroutine_fn int qcow_co_readv(BlockDriverState *bs, int64_t sector_num,
-                         int nb_sectors, QEMUIOVector *qiov)
+static void qcow_refresh_limits(BlockDriverState *bs, Error **errp)
+{
+    /* At least encrypted images require 512-byte alignment. Apply the
+     * limit universally, rather than just on encrypted images, as
+     * it's easier to let the block layer handle rounding than to
+     * audit this code further. */
+    bs->bl.request_alignment = BDRV_SECTOR_SIZE;
+}
+
+static coroutine_fn int qcow_co_preadv(BlockDriverState *bs, uint64_t offset,
+                                       uint64_t bytes, QEMUIOVector *qiov,
+                                       int flags)
 {
     BDRVQcowState *s = bs->opaque;
-    int index_in_cluster;
+    int offset_in_cluster;
     int ret = 0, n;
     uint64_t cluster_offset;
-    struct iovec hd_iov;
     QEMUIOVector hd_qiov;
     uint8_t *buf;
     void *orig_buf;
 
+    assert(!flags);
     if (qiov->niov > 1) {
         buf = orig_buf = qemu_try_blockalign(bs, qiov->size);
         if (buf == NULL) {
@@ -615,34 +648,33 @@ static coroutine_fn int qcow_co_readv(BlockDriverState *bs, int64_t sector_num,
 
     qemu_co_mutex_lock(&s->lock);
 
-    while (nb_sectors != 0) {
+    while (bytes != 0) {
         /* prepare next request */
-        ret = get_cluster_offset(bs, sector_num << 9,
-                                 0, 0, 0, 0, &cluster_offset);
+        ret = get_cluster_offset(bs, offset, 0, 0, 0, 0, &cluster_offset);
         if (ret < 0) {
             break;
         }
-        index_in_cluster = sector_num & (s->cluster_sectors - 1);
-        n = s->cluster_sectors - index_in_cluster;
-        if (n > nb_sectors) {
-            n = nb_sectors;
+        offset_in_cluster = offset & (s->cluster_size - 1);
+        n = s->cluster_size - offset_in_cluster;
+        if (n > bytes) {
+            n = bytes;
         }
 
         if (!cluster_offset) {
             if (bs->backing) {
                 /* read from the base image */
-                hd_iov.iov_base = (void *)buf;
-                hd_iov.iov_len = n * 512;
-                qemu_iovec_init_external(&hd_qiov, &hd_iov, 1);
+                qemu_iovec_init_buf(&hd_qiov, buf, n);
                 qemu_co_mutex_unlock(&s->lock);
-                ret = bdrv_co_readv(bs->backing, sector_num, n, &hd_qiov);
+                /* qcow2 emits this on bs->file instead of bs->backing */
+                BLKDBG_EVENT(bs->file, BLKDBG_READ_BACKING_AIO);
+                ret = bdrv_co_preadv(bs->backing, offset, n, &hd_qiov, 0);
                 qemu_co_mutex_lock(&s->lock);
                 if (ret < 0) {
                     break;
                 }
             } else {
                 /* Note: in this case, no need to wait */
-                memset(buf, 0, 512 * n);
+                memset(buf, 0, n);
             }
         } else if (cluster_offset & QCOW_OFLAG_COMPRESSED) {
             /* add AIO support for compressed blocks ? */
@@ -650,20 +682,17 @@ static coroutine_fn int qcow_co_readv(BlockDriverState *bs, int64_t sector_num,
                 ret = -EIO;
                 break;
             }
-            memcpy(buf,
-                   s->cluster_cache + index_in_cluster * 512, 512 * n);
+            memcpy(buf, s->cluster_cache + offset_in_cluster, n);
         } else {
             if ((cluster_offset & 511) != 0) {
                 ret = -EIO;
                 break;
             }
-            hd_iov.iov_base = (void *)buf;
-            hd_iov.iov_len = n * 512;
-            qemu_iovec_init_external(&hd_qiov, &hd_iov, 1);
+            qemu_iovec_init_buf(&hd_qiov, buf, n);
             qemu_co_mutex_unlock(&s->lock);
-            ret = bdrv_co_readv(bs->file,
-                                (cluster_offset >> 9) + index_in_cluster,
-                                n, &hd_qiov);
+            BLKDBG_EVENT(bs->file, BLKDBG_READ_AIO);
+            ret = bdrv_co_preadv(bs->file, cluster_offset + offset_in_cluster,
+                                 n, &hd_qiov, 0);
             qemu_co_mutex_lock(&s->lock);
             if (ret < 0) {
                 break;
@@ -671,8 +700,7 @@ static coroutine_fn int qcow_co_readv(BlockDriverState *bs, int64_t sector_num,
             if (bs->encrypted) {
                 assert(s->crypto);
                 if (qcrypto_block_decrypt(s->crypto,
-                                          sector_num * BDRV_SECTOR_SIZE, buf,
-                                          n * BDRV_SECTOR_SIZE, NULL) < 0) {
+                                          offset, buf, n, NULL) < 0) {
                     ret = -EIO;
                     break;
                 }
@@ -680,9 +708,9 @@ static coroutine_fn int qcow_co_readv(BlockDriverState *bs, int64_t sector_num,
         }
         ret = 0;
 
-        nb_sectors -= n;
-        sector_num += n;
-        buf += n * 512;
+        bytes -= n;
+        offset += n;
+        buf += n;
     }
 
     qemu_co_mutex_unlock(&s->lock);
@@ -695,18 +723,19 @@ static coroutine_fn int qcow_co_readv(BlockDriverState *bs, int64_t sector_num,
     return ret;
 }
 
-static coroutine_fn int qcow_co_writev(BlockDriverState *bs, int64_t sector_num,
-                          int nb_sectors, QEMUIOVector *qiov)
+static coroutine_fn int qcow_co_pwritev(BlockDriverState *bs, uint64_t offset,
+                                        uint64_t bytes, QEMUIOVector *qiov,
+                                        int flags)
 {
     BDRVQcowState *s = bs->opaque;
-    int index_in_cluster;
+    int offset_in_cluster;
     uint64_t cluster_offset;
     int ret = 0, n;
-    struct iovec hd_iov;
     QEMUIOVector hd_qiov;
     uint8_t *buf;
     void *orig_buf;
 
+    assert(!flags);
     s->cluster_cache_offset = -1; /* disable compressed cache */
 
     /* We must always copy the iov when encrypting, so we
@@ -724,16 +753,14 @@ static coroutine_fn int qcow_co_writev(BlockDriverState *bs, int64_t sector_num,
 
     qemu_co_mutex_lock(&s->lock);
 
-    while (nb_sectors != 0) {
-
-        index_in_cluster = sector_num & (s->cluster_sectors - 1);
-        n = s->cluster_sectors - index_in_cluster;
-        if (n > nb_sectors) {
-            n = nb_sectors;
+    while (bytes != 0) {
+        offset_in_cluster = offset & (s->cluster_size - 1);
+        n = s->cluster_size - offset_in_cluster;
+        if (n > bytes) {
+            n = bytes;
         }
-        ret = get_cluster_offset(bs, sector_num << 9, 1, 0,
-                                 index_in_cluster,
-                                 index_in_cluster + n, &cluster_offset);
+        ret = get_cluster_offset(bs, offset, 1, 0, offset_in_cluster,
+                                 offset_in_cluster + n, &cluster_offset);
         if (ret < 0) {
             break;
         }
@@ -743,29 +770,26 @@ static coroutine_fn int qcow_co_writev(BlockDriverState *bs, int64_t sector_num,
         }
         if (bs->encrypted) {
             assert(s->crypto);
-            if (qcrypto_block_encrypt(s->crypto, sector_num * BDRV_SECTOR_SIZE,
-                                      buf, n * BDRV_SECTOR_SIZE, NULL) < 0) {
+            if (qcrypto_block_encrypt(s->crypto, offset, buf, n, NULL) < 0) {
                 ret = -EIO;
                 break;
             }
         }
 
-        hd_iov.iov_base = (void *)buf;
-        hd_iov.iov_len = n * 512;
-        qemu_iovec_init_external(&hd_qiov, &hd_iov, 1);
+        qemu_iovec_init_buf(&hd_qiov, buf, n);
         qemu_co_mutex_unlock(&s->lock);
-        ret = bdrv_co_writev(bs->file,
-                             (cluster_offset >> 9) + index_in_cluster,
-                             n, &hd_qiov);
+        BLKDBG_EVENT(bs->file, BLKDBG_WRITE_AIO);
+        ret = bdrv_co_pwritev(bs->file, cluster_offset + offset_in_cluster,
+                              n, &hd_qiov, 0);
         qemu_co_mutex_lock(&s->lock);
         if (ret < 0) {
             break;
         }
         ret = 0;
 
-        nb_sectors -= n;
-        sector_num += n;
-        buf += n * 512;
+        bytes -= n;
+        offset += n;
+        buf += n;
     }
     qemu_co_mutex_unlock(&s->lock);
 
@@ -789,61 +813,50 @@ static void qcow_close(BlockDriverState *bs)
     error_free(s->migration_blocker);
 }
 
-static int qcow_create(const char *filename, QemuOpts *opts, Error **errp)
+static int coroutine_fn qcow_co_create(BlockdevCreateOptions *opts,
+                                       Error **errp)
 {
+    BlockdevCreateOptionsQcow *qcow_opts;
     int header_size, backing_filename_len, l1_size, shift, i;
     QCowHeader header;
     uint8_t *tmp;
     int64_t total_size = 0;
-    char *backing_file = NULL;
-    Error *local_err = NULL;
     int ret;
+    BlockDriverState *bs;
     BlockBackend *qcow_blk;
-    char *encryptfmt = NULL;
-    QDict *options;
-    QDict *encryptopts = NULL;
-    QCryptoBlockCreateOptions *crypto_opts = NULL;
     QCryptoBlock *crypto = NULL;
 
-    /* Read out options */
-    total_size = ROUND_UP(qemu_opt_get_size_del(opts, BLOCK_OPT_SIZE, 0),
-                          BDRV_SECTOR_SIZE);
+    assert(opts->driver == BLOCKDEV_DRIVER_QCOW);
+    qcow_opts = &opts->u.qcow;
+
+    /* Sanity checks */
+    total_size = qcow_opts->size;
     if (total_size == 0) {
         error_setg(errp, "Image size is too small, cannot be zero length");
-        ret = -EINVAL;
-        goto cleanup;
+        return -EINVAL;
     }
 
-    backing_file = qemu_opt_get_del(opts, BLOCK_OPT_BACKING_FILE);
-    encryptfmt = qemu_opt_get_del(opts, BLOCK_OPT_ENCRYPT_FORMAT);
-    if (encryptfmt) {
-        if (qemu_opt_get(opts, BLOCK_OPT_ENCRYPT)) {
-            error_setg(errp, "Options " BLOCK_OPT_ENCRYPT " and "
-                       BLOCK_OPT_ENCRYPT_FORMAT " are mutually exclusive");
-            ret = -EINVAL;
-            goto cleanup;
-        }
-    } else if (qemu_opt_get_bool_del(opts, BLOCK_OPT_ENCRYPT, false)) {
-        encryptfmt = g_strdup("aes");
+    if (qcow_opts->has_encrypt &&
+        qcow_opts->encrypt->format != Q_CRYPTO_BLOCK_FORMAT_QCOW)
+    {
+        error_setg(errp, "Unsupported encryption format");
+        return -EINVAL;
     }
 
-    ret = bdrv_create_file(filename, opts, &local_err);
+    /* Create BlockBackend to write to the image */
+    bs = bdrv_open_blockdev_ref(qcow_opts->file, errp);
+    if (bs == NULL) {
+        return -EIO;
+    }
+
+    qcow_blk = blk_new(BLK_PERM_WRITE | BLK_PERM_RESIZE, BLK_PERM_ALL);
+    ret = blk_insert_bs(qcow_blk, bs, errp);
     if (ret < 0) {
-        error_propagate(errp, local_err);
-        goto cleanup;
+        goto exit;
     }
-
-    qcow_blk = blk_new_open(filename, NULL, NULL,
-                            BDRV_O_RDWR | BDRV_O_RESIZE | BDRV_O_PROTOCOL,
-                            &local_err);
-    if (qcow_blk == NULL) {
-        error_propagate(errp, local_err);
-        ret = -EIO;
-        goto cleanup;
-    }
-
     blk_set_allow_write_beyond_eof(qcow_blk, true);
 
+    /* Create image format */
     ret = blk_truncate(qcow_blk, 0, PREALLOC_MODE_OFF, errp);
     if (ret < 0) {
         goto exit;
@@ -855,16 +868,15 @@ static int qcow_create(const char *filename, QemuOpts *opts, Error **errp)
     header.size = cpu_to_be64(total_size);
     header_size = sizeof(header);
     backing_filename_len = 0;
-    if (backing_file) {
-        if (strcmp(backing_file, "fat:")) {
+    if (qcow_opts->has_backing_file) {
+        if (strcmp(qcow_opts->backing_file, "fat:")) {
             header.backing_file_offset = cpu_to_be64(header_size);
-            backing_filename_len = strlen(backing_file);
+            backing_filename_len = strlen(qcow_opts->backing_file);
             header.backing_file_size = cpu_to_be32(backing_filename_len);
             header_size += backing_filename_len;
         } else {
             /* special backing file for vvfat */
-            g_free(backing_file);
-            backing_file = NULL;
+            qcow_opts->has_backing_file = false;
         }
         header.cluster_bits = 9; /* 512 byte cluster to avoid copying
                                     unmodified sectors */
@@ -879,26 +891,10 @@ static int qcow_create(const char *filename, QemuOpts *opts, Error **errp)
 
     header.l1_table_offset = cpu_to_be64(header_size);
 
-    options = qemu_opts_to_qdict(opts, NULL);
-    qdict_extract_subqdict(options, &encryptopts, "encrypt.");
-    QDECREF(options);
-    if (encryptfmt) {
-        if (!g_str_equal(encryptfmt, "aes")) {
-            error_setg(errp, "Unknown encryption format '%s', expected 'aes'",
-                       encryptfmt);
-            ret = -EINVAL;
-            goto exit;
-        }
+    if (qcow_opts->has_encrypt) {
         header.crypt_method = cpu_to_be32(QCOW_CRYPT_AES);
 
-        crypto_opts = block_crypto_create_opts_init(
-            Q_CRYPTO_BLOCK_FORMAT_QCOW, encryptopts, errp);
-        if (!crypto_opts) {
-            ret = -EINVAL;
-            goto exit;
-        }
-
-        crypto = qcrypto_block_create(crypto_opts, "encrypt.",
+        crypto = qcrypto_block_create(qcow_opts->encrypt, "encrypt.",
                                       NULL, NULL, NULL, errp);
         if (!crypto) {
             ret = -EINVAL;
@@ -914,9 +910,9 @@ static int qcow_create(const char *filename, QemuOpts *opts, Error **errp)
         goto exit;
     }
 
-    if (backing_file) {
+    if (qcow_opts->has_backing_file) {
         ret = blk_pwrite(qcow_blk, sizeof(header),
-                         backing_file, backing_filename_len, 0);
+                         qcow_opts->backing_file, backing_filename_len, 0);
         if (ret != backing_filename_len) {
             goto exit;
         }
@@ -937,12 +933,97 @@ static int qcow_create(const char *filename, QemuOpts *opts, Error **errp)
     ret = 0;
 exit:
     blk_unref(qcow_blk);
-cleanup:
-    QDECREF(encryptopts);
-    g_free(encryptfmt);
+    bdrv_unref(bs);
     qcrypto_block_free(crypto);
-    qapi_free_QCryptoBlockCreateOptions(crypto_opts);
-    g_free(backing_file);
+    return ret;
+}
+
+static int coroutine_fn qcow_co_create_opts(const char *filename,
+                                            QemuOpts *opts, Error **errp)
+{
+    BlockdevCreateOptions *create_options = NULL;
+    BlockDriverState *bs = NULL;
+    QDict *qdict;
+    Visitor *v;
+    const char *val;
+    Error *local_err = NULL;
+    int ret;
+
+    static const QDictRenames opt_renames[] = {
+        { BLOCK_OPT_BACKING_FILE,       "backing-file" },
+        { BLOCK_OPT_ENCRYPT,            BLOCK_OPT_ENCRYPT_FORMAT },
+        { NULL, NULL },
+    };
+
+    /* Parse options and convert legacy syntax */
+    qdict = qemu_opts_to_qdict_filtered(opts, NULL, &qcow_create_opts, true);
+
+    val = qdict_get_try_str(qdict, BLOCK_OPT_ENCRYPT);
+    if (val && !strcmp(val, "on")) {
+        qdict_put_str(qdict, BLOCK_OPT_ENCRYPT, "qcow");
+    } else if (val && !strcmp(val, "off")) {
+        qdict_del(qdict, BLOCK_OPT_ENCRYPT);
+    }
+
+    val = qdict_get_try_str(qdict, BLOCK_OPT_ENCRYPT_FORMAT);
+    if (val && !strcmp(val, "aes")) {
+        qdict_put_str(qdict, BLOCK_OPT_ENCRYPT_FORMAT, "qcow");
+    }
+
+    if (!qdict_rename_keys(qdict, opt_renames, errp)) {
+        ret = -EINVAL;
+        goto fail;
+    }
+
+    /* Create and open the file (protocol layer) */
+    ret = bdrv_create_file(filename, opts, &local_err);
+    if (ret < 0) {
+        error_propagate(errp, local_err);
+        goto fail;
+    }
+
+    bs = bdrv_open(filename, NULL, NULL,
+                   BDRV_O_RDWR | BDRV_O_RESIZE | BDRV_O_PROTOCOL, errp);
+    if (bs == NULL) {
+        ret = -EIO;
+        goto fail;
+    }
+
+    /* Now get the QAPI type BlockdevCreateOptions */
+    qdict_put_str(qdict, "driver", "qcow");
+    qdict_put_str(qdict, "file", bs->node_name);
+
+    v = qobject_input_visitor_new_flat_confused(qdict, errp);
+    if (!v) {
+        ret = -EINVAL;
+        goto fail;
+    }
+
+    visit_type_BlockdevCreateOptions(v, NULL, &create_options, &local_err);
+    visit_free(v);
+
+    if (local_err) {
+        error_propagate(errp, local_err);
+        ret = -EINVAL;
+        goto fail;
+    }
+
+    /* Silently round up size */
+    assert(create_options->driver == BLOCKDEV_DRIVER_QCOW);
+    create_options->u.qcow.size =
+        ROUND_UP(create_options->u.qcow.size, BDRV_SECTOR_SIZE);
+
+    /* Create the qcow image (format layer) */
+    ret = qcow_co_create(create_options, errp);
+    if (ret < 0) {
+        goto fail;
+    }
+
+    ret = 0;
+fail:
+    qobject_unref(qdict);
+    bdrv_unref(bs);
+    qapi_free_BlockdevCreateOptions(create_options);
     return ret;
 }
 
@@ -976,7 +1057,6 @@ qcow_co_pwritev_compressed(BlockDriverState *bs, uint64_t offset,
 {
     BDRVQcowState *s = bs->opaque;
     QEMUIOVector hd_qiov;
-    struct iovec iov;
     z_stream strm;
     int ret, out_len;
     uint8_t *buf, *out_buf;
@@ -1024,8 +1104,7 @@ qcow_co_pwritev_compressed(BlockDriverState *bs, uint64_t offset,
 
     if (ret != Z_STREAM_END || out_len >= s->cluster_size) {
         /* could not compress: write normal cluster */
-        ret = qcow_co_writev(bs, offset >> BDRV_SECTOR_BITS,
-                             bytes >> BDRV_SECTOR_BITS, qiov);
+        ret = qcow_co_pwritev(bs, offset, bytes, qiov, 0);
         if (ret < 0) {
             goto fail;
         }
@@ -1043,11 +1122,8 @@ qcow_co_pwritev_compressed(BlockDriverState *bs, uint64_t offset,
     }
     cluster_offset &= s->cluster_offset_mask;
 
-    iov = (struct iovec) {
-        .iov_base   = out_buf,
-        .iov_len    = out_len,
-    };
-    qemu_iovec_init_external(&hd_qiov, &iov, 1);
+    qemu_iovec_init_buf(&hd_qiov, out_buf, out_len);
+    BLKDBG_EVENT(bs->file, BLKDBG_WRITE_COMPRESSED);
     ret = bdrv_co_pwritev(bs->file, cluster_offset, out_len, &hd_qiov, 0);
     if (ret < 0) {
         goto fail;
@@ -1097,6 +1173,12 @@ static QemuOptsList qcow_create_opts = {
     }
 };
 
+static const char *const qcow_strong_runtime_opts[] = {
+    "encrypt." BLOCK_CRYPTO_OPT_QCOW_KEY_SECRET,
+
+    NULL
+};
+
 static BlockDriver bdrv_qcow = {
     .format_name	= "qcow",
     .instance_size	= sizeof(BDRVQcowState),
@@ -1105,19 +1187,22 @@ static BlockDriver bdrv_qcow = {
     .bdrv_close		= qcow_close,
     .bdrv_child_perm        = bdrv_format_default_perms,
     .bdrv_reopen_prepare    = qcow_reopen_prepare,
-    .bdrv_create            = qcow_create,
+    .bdrv_co_create         = qcow_co_create,
+    .bdrv_co_create_opts    = qcow_co_create_opts,
     .bdrv_has_zero_init     = bdrv_has_zero_init_1,
     .supports_backing       = true,
+    .bdrv_refresh_limits    = qcow_refresh_limits,
 
-    .bdrv_co_readv          = qcow_co_readv,
-    .bdrv_co_writev         = qcow_co_writev,
-    .bdrv_co_get_block_status   = qcow_co_get_block_status,
+    .bdrv_co_preadv         = qcow_co_preadv,
+    .bdrv_co_pwritev        = qcow_co_pwritev,
+    .bdrv_co_block_status   = qcow_co_block_status,
 
     .bdrv_make_empty        = qcow_make_empty,
     .bdrv_co_pwritev_compressed = qcow_co_pwritev_compressed,
     .bdrv_get_info          = qcow_get_info,
 
     .create_opts            = &qcow_create_opts,
+    .strong_runtime_opts    = qcow_strong_runtime_opts,
 };
 
 static void bdrv_qcow_init(void)

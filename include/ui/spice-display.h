@@ -86,7 +86,6 @@ struct SimpleSpiceDisplay {
     DisplayChangeListener dcl;
     void *buf;
     int bufsize;
-    QXLWorker *worker;
     QXLInstance qxl;
     uint32_t unique;
     pixman_image_t *surface;
@@ -123,6 +122,15 @@ struct SimpleSpiceDisplay {
     int gl_updates;
     bool have_scanout;
     bool have_surface;
+
+    QemuDmaBuf *guest_dmabuf;
+    bool guest_dmabuf_refresh;
+    bool render_cursor;
+
+    egl_fb guest_fb;
+    egl_fb blit_fb;
+    egl_fb cursor_fb;
+    bool have_hot;
 #endif
 };
 
@@ -171,3 +179,7 @@ void qemu_spice_wakeup(SimpleSpiceDisplay *ssd);
 void qemu_spice_display_start(void);
 void qemu_spice_display_stop(void);
 int qemu_spice_display_is_running(SimpleSpiceDisplay *ssd);
+
+bool qemu_spice_fill_device_address(QemuConsole *con,
+                                    char *device_address,
+                                    size_t size);

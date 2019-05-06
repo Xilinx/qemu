@@ -36,25 +36,7 @@
 #include "exec/memory.h"
 #include "exec/address-spaces.h"
 #include "qemu/error-report.h"
-
-static void xtensa_create_memory_regions(const XtensaMemory *memory,
-                                         const char *name)
-{
-    unsigned i;
-    GString *num_name = g_string_new(NULL);
-
-    for (i = 0; i < memory->num; ++i) {
-        MemoryRegion *m;
-
-        g_string_printf(num_name, "%s%u", name, i);
-        m = g_new(MemoryRegion, 1);
-        memory_region_init_ram(m, NULL, num_name->str,
-                               memory->location[i].size, &error_fatal);
-        memory_region_add_subregion(get_system_memory(),
-                                    memory->location[i].addr, m);
-    }
-    g_string_free(num_name, true);
-}
+#include "xtensa_memory.h"
 
 static uint64_t translate_phys_addr(void *opaque, uint64_t addr)
 {
@@ -94,26 +76,36 @@ static void xtensa_sim_init(MachineState *machine)
         XtensaMemory sysram = env->config->sysram;
 
         sysram.location[0].size = ram_size;
-        xtensa_create_memory_regions(&env->config->instrom, "xtensa.instrom");
-        xtensa_create_memory_regions(&env->config->instram, "xtensa.instram");
-        xtensa_create_memory_regions(&env->config->datarom, "xtensa.datarom");
-        xtensa_create_memory_regions(&env->config->dataram, "xtensa.dataram");
-        xtensa_create_memory_regions(&env->config->sysrom, "xtensa.sysrom");
-        xtensa_create_memory_regions(&sysram, "xtensa.sysram");
+        xtensa_create_memory_regions(&env->config->instrom, "xtensa.instrom",
+                                     get_system_memory());
+        xtensa_create_memory_regions(&env->config->instram, "xtensa.instram",
+                                     get_system_memory());
+        xtensa_create_memory_regions(&env->config->datarom, "xtensa.datarom",
+                                     get_system_memory());
+        xtensa_create_memory_regions(&env->config->dataram, "xtensa.dataram",
+                                     get_system_memory());
+        xtensa_create_memory_regions(&env->config->sysrom, "xtensa.sysrom",
+                                     get_system_memory());
+        xtensa_create_memory_regions(&sysram, "xtensa.sysram",
+                                     get_system_memory());
     }
 
-    if (serial_hds[0]) {
-        xtensa_sim_open_console(serial_hds[0]);
+    if (serial_hd(0)) {
+        xtensa_sim_open_console(serial_hd(0));
     }
     if (kernel_filename) {
         uint64_t elf_entry;
         uint64_t elf_lowaddr;
 #ifdef TARGET_WORDS_BIGENDIAN
-        int success = load_elf(kernel_filename, translate_phys_addr, cpu,
-                &elf_entry, &elf_lowaddr, NULL, 1, EM_XTENSA, 0, 0);
+        int success = load_elf(kernel_filename, NULL,
+                               translate_phys_addr, cpu,
+                               &elf_entry, &elf_lowaddr,
+                               NULL, 1, EM_XTENSA, 0, 0);
 #else
-        int success = load_elf(kernel_filename, translate_phys_addr, cpu,
-                &elf_entry, &elf_lowaddr, NULL, 0, EM_XTENSA, 0, 0);
+        int success = load_elf(kernel_filename, NULL,
+                               translate_phys_addr, cpu,
+                               &elf_entry, &elf_lowaddr,
+                               NULL, 0, EM_XTENSA, 0, 0);
 #endif
         if (success > 0) {
             env->pc = elf_entry;

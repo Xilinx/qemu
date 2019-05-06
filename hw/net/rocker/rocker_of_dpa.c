@@ -16,9 +16,10 @@
 
 #include "qemu/osdep.h"
 #include "net/eth.h"
+#include "qapi/error.h"
+#include "qapi/qapi-commands-rocker.h"
 #include "qemu/iov.h"
 #include "qemu/timer.h"
-#include "qmp-commands.h"
 
 #include "rocker.h"
 #include "rocker_hw.h"
@@ -103,7 +104,7 @@ typedef struct of_dpa_flow_key {
 
 /* Width of key which includes field 'f' in u64s, rounded up */
 #define FLOW_KEY_WIDTH(f) \
-    DIV_ROUND_UP(offsetof(OfDpaFlowKey, f) + sizeof(((OfDpaFlowKey *)0)->f), \
+    DIV_ROUND_UP(offsetof(OfDpaFlowKey, f) + sizeof_field(OfDpaFlowKey, f), \
     sizeof(uint64_t))
 
 typedef struct of_dpa_flow_action {

@@ -58,9 +58,8 @@ typedef struct ResetData {
 
 static int64_t load_kernel(void)
 {
-    int64_t entry, kernel_high;
+    int64_t entry, kernel_high, initrd_size;
     long kernel_size;
-    long initrd_size;
     ram_addr_t initrd_offset;
     int big_endian;
 
@@ -70,15 +69,16 @@ static int64_t load_kernel(void)
     big_endian = 0;
 #endif
 
-    kernel_size = load_elf(loaderparams.kernel_filename, cpu_mips_kseg0_to_phys,
-                           NULL, (uint64_t *)&entry, NULL,
+    kernel_size = load_elf(loaderparams.kernel_filename, NULL,
+                           cpu_mips_kseg0_to_phys, NULL,
+                           (uint64_t *)&entry, NULL,
                            (uint64_t *)&kernel_high, big_endian,
                            EM_MIPS, 1, 0);
     if (kernel_size >= 0) {
         if ((entry & ~0x7fffffffULL) == 0x80000000)
             entry = (int32_t)entry;
     } else {
-        error_report("qemu: could not load kernel '%s': %s",
+        error_report("could not load kernel '%s': %s",
                      loaderparams.kernel_filename,
                      load_elf_strerror(kernel_size));
         exit(1);
@@ -92,17 +92,16 @@ static int64_t load_kernel(void)
         if (initrd_size > 0) {
             initrd_offset = (kernel_high + ~INITRD_PAGE_MASK) & INITRD_PAGE_MASK;
             if (initrd_offset + initrd_size > loaderparams.ram_size) {
-                fprintf(stderr,
-                        "qemu: memory too small for initial ram disk '%s'\n",
-                        loaderparams.initrd_filename);
+                error_report("memory too small for initial ram disk '%s'",
+                             loaderparams.initrd_filename);
                 exit(1);
             }
             initrd_size = load_image_targphys(loaderparams.initrd_filename,
                 initrd_offset, loaderparams.ram_size - initrd_offset);
         }
         if (initrd_size == (target_ulong) -1) {
-            fprintf(stderr, "qemu: could not load initial ram disk '%s'\n",
-                    loaderparams.initrd_filename);
+            error_report("could not load initial ram disk '%s'",
+                         loaderparams.initrd_filename);
             exit(1);
         }
     }
@@ -214,8 +213,8 @@ mips_mipssim_init(MachineState *machine)
 
     /* A single 16450 sits at offset 0x3f8. It is attached to
        MIPS CPU INT2, which is interrupt 4. */
-    if (serial_hds[0])
-        serial_init(0x3f8, env->irq[4], 115200, serial_hds[0],
+    if (serial_hd(0))
+        serial_init(0x3f8, env->irq[4], 115200, serial_hd(0),
                     get_system_io());
 
     if (nd_table[0].used)

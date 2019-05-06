@@ -75,7 +75,7 @@ static void nios2_10m50_ghrd_init(MachineState *machine)
                                 phys_ram_alias);
 
     /* Create CPU -- FIXME */
-    cpu = NIOS2_CPU(cpu_generic_init(TYPE_NIOS2_CPU, "nios2"));
+    cpu = NIOS2_CPU(cpu_create(TYPE_NIOS2_CPU));
 
     /* Register: CPU interrupt controller (PIC) */
     cpu_irq = nios2_cpu_pic_init(cpu);
@@ -92,7 +92,7 @@ static void nios2_10m50_ghrd_init(MachineState *machine)
 
     /* Register: Altera 16550 UART */
     serial_mm_init(address_space_mem, 0xf8001600, 2, irq[1], 115200,
-                   serial_hds[0], DEVICE_NATIVE_ENDIAN);
+                   serial_hd(0), DEVICE_NATIVE_ENDIAN);
 
     /* Register: Timer sys_clk_timer  */
     dev = qdev_create(NULL, "ALTR.timer");

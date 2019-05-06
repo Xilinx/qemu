@@ -18,7 +18,7 @@ static bool vfp_needed(void *opaque)
 }
 
 static int get_fpscr(QEMUFile *f, void *opaque, size_t size,
-                     VMStateField *field)
+                     const VMStateField *field)
 {
     ARMCPU *cpu = opaque;
     CPUARMState *env = &cpu->env;
@@ -29,7 +29,7 @@ static int get_fpscr(QEMUFile *f, void *opaque, size_t size,
 }
 
 static int put_fpscr(QEMUFile *f, void *opaque, size_t size,
-                     VMStateField *field, QJSON *vmdesc)
+                     const VMStateField *field, QJSON *vmdesc)
 {
     ARMCPU *cpu = opaque;
     CPUARMState *env = &cpu->env;
@@ -50,7 +50,40 @@ static const VMStateDescription vmstate_vfp = {
     .minimum_version_id = 3,
     .needed = vfp_needed,
     .fields = (VMStateField[]) {
-        VMSTATE_FLOAT64_ARRAY(env.vfp.regs, ARMCPU, 64),
+        /* For compatibility, store Qn out of Zn here.  */
+        VMSTATE_UINT64_SUB_ARRAY(env.vfp.zregs[0].d, ARMCPU, 0, 2),
+        VMSTATE_UINT64_SUB_ARRAY(env.vfp.zregs[1].d, ARMCPU, 0, 2),
+        VMSTATE_UINT64_SUB_ARRAY(env.vfp.zregs[2].d, ARMCPU, 0, 2),
+        VMSTATE_UINT64_SUB_ARRAY(env.vfp.zregs[3].d, ARMCPU, 0, 2),
+        VMSTATE_UINT64_SUB_ARRAY(env.vfp.zregs[4].d, ARMCPU, 0, 2),
+        VMSTATE_UINT64_SUB_ARRAY(env.vfp.zregs[5].d, ARMCPU, 0, 2),
+        VMSTATE_UINT64_SUB_ARRAY(env.vfp.zregs[6].d, ARMCPU, 0, 2),
+        VMSTATE_UINT64_SUB_ARRAY(env.vfp.zregs[7].d, ARMCPU, 0, 2),
+        VMSTATE_UINT64_SUB_ARRAY(env.vfp.zregs[8].d, ARMCPU, 0, 2),
+        VMSTATE_UINT64_SUB_ARRAY(env.vfp.zregs[9].d, ARMCPU, 0, 2),
+        VMSTATE_UINT64_SUB_ARRAY(env.vfp.zregs[10].d, ARMCPU, 0, 2),
+        VMSTATE_UINT64_SUB_ARRAY(env.vfp.zregs[11].d, ARMCPU, 0, 2),
+        VMSTATE_UINT64_SUB_ARRAY(env.vfp.zregs[12].d, ARMCPU, 0, 2),
+        VMSTATE_UINT64_SUB_ARRAY(env.vfp.zregs[13].d, ARMCPU, 0, 2),
+        VMSTATE_UINT64_SUB_ARRAY(env.vfp.zregs[14].d, ARMCPU, 0, 2),
+        VMSTATE_UINT64_SUB_ARRAY(env.vfp.zregs[15].d, ARMCPU, 0, 2),
+        VMSTATE_UINT64_SUB_ARRAY(env.vfp.zregs[16].d, ARMCPU, 0, 2),
+        VMSTATE_UINT64_SUB_ARRAY(env.vfp.zregs[17].d, ARMCPU, 0, 2),
+        VMSTATE_UINT64_SUB_ARRAY(env.vfp.zregs[18].d, ARMCPU, 0, 2),
+        VMSTATE_UINT64_SUB_ARRAY(env.vfp.zregs[19].d, ARMCPU, 0, 2),
+        VMSTATE_UINT64_SUB_ARRAY(env.vfp.zregs[20].d, ARMCPU, 0, 2),
+        VMSTATE_UINT64_SUB_ARRAY(env.vfp.zregs[21].d, ARMCPU, 0, 2),
+        VMSTATE_UINT64_SUB_ARRAY(env.vfp.zregs[22].d, ARMCPU, 0, 2),
+        VMSTATE_UINT64_SUB_ARRAY(env.vfp.zregs[23].d, ARMCPU, 0, 2),
+        VMSTATE_UINT64_SUB_ARRAY(env.vfp.zregs[24].d, ARMCPU, 0, 2),
+        VMSTATE_UINT64_SUB_ARRAY(env.vfp.zregs[25].d, ARMCPU, 0, 2),
+        VMSTATE_UINT64_SUB_ARRAY(env.vfp.zregs[26].d, ARMCPU, 0, 2),
+        VMSTATE_UINT64_SUB_ARRAY(env.vfp.zregs[27].d, ARMCPU, 0, 2),
+        VMSTATE_UINT64_SUB_ARRAY(env.vfp.zregs[28].d, ARMCPU, 0, 2),
+        VMSTATE_UINT64_SUB_ARRAY(env.vfp.zregs[29].d, ARMCPU, 0, 2),
+        VMSTATE_UINT64_SUB_ARRAY(env.vfp.zregs[30].d, ARMCPU, 0, 2),
+        VMSTATE_UINT64_SUB_ARRAY(env.vfp.zregs[31].d, ARMCPU, 0, 2),
+
         /* The xregs array is a little awkward because element 1 (FPSCR)
          * requires a specific accessor, so we have to split it up in
          * the vmstate:
@@ -89,6 +122,92 @@ static const VMStateDescription vmstate_iwmmxt = {
     }
 };
 
+#ifdef TARGET_AARCH64
+/* The expression ARM_MAX_VQ - 2 is 0 for pure AArch32 build,
+ * and ARMPredicateReg is actively empty.  This triggers errors
+ * in the expansion of the VMSTATE macros.
+ */
+
+static bool sve_needed(void *opaque)
+{
+    ARMCPU *cpu = opaque;
+
+    return cpu_isar_feature(aa64_sve, cpu);
+}
+
+/* The first two words of each Zreg is stored in VFP state.  */
+static const VMStateDescription vmstate_zreg_hi_reg = {
+    .name = "cpu/sve/zreg_hi",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT64_SUB_ARRAY(d, ARMVectorReg, 2, ARM_MAX_VQ - 2),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static const VMStateDescription vmstate_preg_reg = {
+    .name = "cpu/sve/preg",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT64_ARRAY(p, ARMPredicateReg, 2 * ARM_MAX_VQ / 8),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static const VMStateDescription vmstate_sve = {
+    .name = "cpu/sve",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = sve_needed,
+    .fields = (VMStateField[]) {
+        VMSTATE_STRUCT_ARRAY(env.vfp.zregs, ARMCPU, 32, 0,
+                             vmstate_zreg_hi_reg, ARMVectorReg),
+        VMSTATE_STRUCT_ARRAY(env.vfp.pregs, ARMCPU, 17, 0,
+                             vmstate_preg_reg, ARMPredicateReg),
+        VMSTATE_END_OF_LIST()
+    }
+};
+#endif /* AARCH64 */
+
+static bool serror_needed(void *opaque)
+{
+    ARMCPU *cpu = opaque;
+    CPUARMState *env = &cpu->env;
+
+    return env->serror.pending != 0;
+}
+
+static const VMStateDescription vmstate_serror = {
+    .name = "cpu/serror",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = serror_needed,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT8(env.serror.pending, ARMCPU),
+        VMSTATE_UINT8(env.serror.has_esr, ARMCPU),
+        VMSTATE_UINT64(env.serror.esr, ARMCPU),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static bool irq_line_state_needed(void *opaque)
+{
+    return true;
+}
+
+static const VMStateDescription vmstate_irq_line_state = {
+    .name = "cpu/irq-line-state",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = irq_line_state_needed,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT32(env.irq_line_state, ARMCPU),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static bool m_needed(void *opaque)
 {
     ARMCPU *cpu = opaque;
@@ -101,9 +220,102 @@ static const VMStateDescription vmstate_m_faultmask_primask = {
     .name = "cpu/m/faultmask-primask",
     .version_id = 1,
     .minimum_version_id = 1,
+    .needed = m_needed,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32(env.v7m.faultmask[M_REG_NS], ARMCPU),
         VMSTATE_UINT32(env.v7m.primask[M_REG_NS], ARMCPU),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+/* CSSELR is in a subsection because we didn't implement it previously.
+ * Migration from an old implementation will leave it at zero, which
+ * is OK since the only CPUs in the old implementation make the
+ * register RAZ/WI.
+ * Since there was no version of QEMU which implemented the CSSELR for
+ * just non-secure, we transfer both banks here rather than putting
+ * the secure banked version in the m-security subsection.
+ */
+static bool csselr_vmstate_validate(void *opaque, int version_id)
+{
+    ARMCPU *cpu = opaque;
+
+    return cpu->env.v7m.csselr[M_REG_NS] <= R_V7M_CSSELR_INDEX_MASK
+        && cpu->env.v7m.csselr[M_REG_S] <= R_V7M_CSSELR_INDEX_MASK;
+}
+
+static bool m_csselr_needed(void *opaque)
+{
+    ARMCPU *cpu = opaque;
+
+    return !arm_v7m_csselr_razwi(cpu);
+}
+
+static const VMStateDescription vmstate_m_csselr = {
+    .name = "cpu/m/csselr",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = m_csselr_needed,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT32_ARRAY(env.v7m.csselr, ARMCPU, M_REG_NUM_BANKS),
+        VMSTATE_VALIDATE("CSSELR is valid", csselr_vmstate_validate),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static const VMStateDescription vmstate_m_scr = {
+    .name = "cpu/m/scr",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = m_needed,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT32(env.v7m.scr[M_REG_NS], ARMCPU),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static const VMStateDescription vmstate_m_other_sp = {
+    .name = "cpu/m/other-sp",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = m_needed,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT32(env.v7m.other_sp, ARMCPU),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static bool m_v8m_needed(void *opaque)
+{
+    ARMCPU *cpu = opaque;
+    CPUARMState *env = &cpu->env;
+
+    return arm_feature(env, ARM_FEATURE_M) && arm_feature(env, ARM_FEATURE_V8);
+}
+
+static const VMStateDescription vmstate_m_v8m = {
+    .name = "cpu/m/v8m",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = m_v8m_needed,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT32_ARRAY(env.v7m.msplim, ARMCPU, M_REG_NUM_BANKS),
+        VMSTATE_UINT32_ARRAY(env.v7m.psplim, ARMCPU, M_REG_NUM_BANKS),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static const VMStateDescription vmstate_m_fp = {
+    .name = "cpu/m/fp",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = vfp_needed,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT32_ARRAY(env.v7m.fpcar, ARMCPU, M_REG_NUM_BANKS),
+        VMSTATE_UINT32_ARRAY(env.v7m.fpccr, ARMCPU, M_REG_NUM_BANKS),
+        VMSTATE_UINT32_ARRAY(env.v7m.fpdscr, ARMCPU, M_REG_NUM_BANKS),
+        VMSTATE_UINT32_ARRAY(env.v7m.cpacr, ARMCPU, M_REG_NUM_BANKS),
+        VMSTATE_UINT32(env.v7m.nsacr, ARMCPU),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -129,6 +341,11 @@ static const VMStateDescription vmstate_m = {
     },
     .subsections = (const VMStateDescription*[]) {
         &vmstate_m_faultmask_primask,
+        &vmstate_m_csselr,
+        &vmstate_m_scr,
+        &vmstate_m_other_sp,
+        &vmstate_m_v8m,
+        &vmstate_m_fp,
         NULL
     }
 };
@@ -292,12 +509,17 @@ static const VMStateDescription vmstate_m_security = {
         VMSTATE_UINT32(env.sau.rnr, ARMCPU),
         VMSTATE_VALIDATE("SAU_RNR is valid", sau_rnr_vmstate_validate),
         VMSTATE_UINT32(env.sau.ctrl, ARMCPU),
+        VMSTATE_UINT32(env.v7m.scr[M_REG_S], ARMCPU),
+        /* AIRCR is not secure-only, but our implementation is R/O if the
+         * security extension is unimplemented, so we migrate it here.
+         */
+        VMSTATE_UINT32(env.v7m.aircr, ARMCPU),
         VMSTATE_END_OF_LIST()
     }
 };
 
 static int get_cpsr(QEMUFile *f, void *opaque, size_t size,
-                    VMStateField *field)
+                    const VMStateField *field)
 {
     ARMCPU *cpu = opaque;
     CPUARMState *env = &cpu->env;
@@ -353,7 +575,7 @@ static int get_cpsr(QEMUFile *f, void *opaque, size_t size,
 }
 
 static int put_cpsr(QEMUFile *f, void *opaque, size_t size,
-                    VMStateField *field, QJSON *vmdesc)
+                    const VMStateField *field, QJSON *vmdesc)
 {
     ARMCPU *cpu = opaque;
     CPUARMState *env = &cpu->env;
@@ -379,7 +601,7 @@ static const VMStateInfo vmstate_cpsr = {
 };
 
 static int get_power(QEMUFile *f, void *opaque, size_t size,
-                    VMStateField *field)
+                    const VMStateField *field)
 {
     ARMCPU *cpu = opaque;
     bool powered_off = qemu_get_byte(f);
@@ -388,7 +610,7 @@ static int get_power(QEMUFile *f, void *opaque, size_t size,
 }
 
 static int put_power(QEMUFile *f, void *opaque, size_t size,
-                    VMStateField *field, QJSON *vmdesc)
+                    const VMStateField *field, QJSON *vmdesc)
 {
     ARMCPU *cpu = opaque;
 
@@ -414,6 +636,10 @@ static int cpu_pre_save(void *opaque)
 {
     ARMCPU *cpu = opaque;
 
+    if (!kvm_enabled()) {
+        pmu_op_start(&cpu->env);
+    }
+
     if (kvm_enabled()) {
         if (!write_kvmstate_to_list(cpu)) {
             /* This should never fail */
@@ -435,10 +661,58 @@ static int cpu_pre_save(void *opaque)
     return 0;
 }
 
+static int cpu_post_save(void *opaque)
+{
+    ARMCPU *cpu = opaque;
+
+    if (!kvm_enabled()) {
+        pmu_op_finish(&cpu->env);
+    }
+
+    return 0;
+}
+
+static int cpu_pre_load(void *opaque)
+{
+    ARMCPU *cpu = opaque;
+    CPUARMState *env = &cpu->env;
+
+    /*
+     * Pre-initialize irq_line_state to a value that's never valid as
+     * real data, so cpu_post_load() can tell whether we've seen the
+     * irq-line-state subsection in the incoming migration state.
+     */
+    env->irq_line_state = UINT32_MAX;
+
+    if (!kvm_enabled()) {
+        pmu_op_start(&cpu->env);
+    }
+
+    return 0;
+}
+
 static int cpu_post_load(void *opaque, int version_id)
 {
     ARMCPU *cpu = opaque;
+    CPUARMState *env = &cpu->env;
     int i, v;
+
+    /*
+     * Handle migration compatibility from old QEMU which didn't
+     * send the irq-line-state subsection. A QEMU without it did not
+     * implement the HCR_EL2.{VI,VF} bits as generating interrupts,
+     * so for TCG the line state matches the bits set in cs->interrupt_request.
+     * For KVM the line state is not stored in cs->interrupt_request
+     * and so this will leave irq_line_state as 0, but this is OK because
+     * we only need to care about it for TCG.
+     */
+    if (env->irq_line_state == UINT32_MAX) {
+        CPUState *cs = CPU(cpu);
+
+        env->irq_line_state = cs->interrupt_request &
+            (CPU_INTERRUPT_HARD | CPU_INTERRUPT_FIQ |
+             CPU_INTERRUPT_VIRQ | CPU_INTERRUPT_VFIQ);
+    }
 
     /* Update the values list from the incoming migration data.
      * Anything in the incoming data which we don't know about is
@@ -482,6 +756,10 @@ static int cpu_post_load(void *opaque, int version_id)
     hw_breakpoint_update_all(cpu);
     hw_watchpoint_update_all(cpu);
 
+    if (!kvm_enabled()) {
+        pmu_op_finish(&cpu->env);
+    }
+
     return 0;
 }
 
@@ -490,6 +768,8 @@ const VMStateDescription vmstate_arm_cpu = {
     .version_id = 22,
     .minimum_version_id = 22,
     .pre_save = cpu_pre_save,
+    .post_save = cpu_post_save,
+    .pre_load = cpu_pre_load,
     .post_load = cpu_post_load,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32_ARRAY(env.regs, ARMCPU, 16),
@@ -553,6 +833,11 @@ const VMStateDescription vmstate_arm_cpu = {
         &vmstate_pmsav7,
         &vmstate_pmsav8,
         &vmstate_m_security,
+#ifdef TARGET_AARCH64
+        &vmstate_sve,
+#endif
+        &vmstate_serror,
+        &vmstate_irq_line_state,
         NULL
     }
 };

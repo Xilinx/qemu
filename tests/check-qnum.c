@@ -15,7 +15,6 @@
 #include "qemu/osdep.h"
 
 #include "qapi/qmp/qnum.h"
-#include "qapi/error.h"
 #include "qemu-common.h"
 
 /*
@@ -36,7 +35,7 @@ static void qnum_from_int_test(void)
     g_assert_cmpint(qn->base.refcnt, ==, 1);
     g_assert_cmpint(qobject_type(QOBJECT(qn)), ==, QTYPE_QNUM);
 
-    QDECREF(qn);
+    qobject_unref(qn);
 }
 
 static void qnum_from_uint_test(void)
@@ -51,7 +50,7 @@ static void qnum_from_uint_test(void)
     g_assert(qn->base.refcnt == 1);
     g_assert(qobject_type(QOBJECT(qn)) == QTYPE_QNUM);
 
-    QDECREF(qn);
+    qobject_unref(qn);
 }
 
 static void qnum_from_double_test(void)
@@ -66,7 +65,7 @@ static void qnum_from_double_test(void)
     g_assert_cmpint(qn->base.refcnt, ==, 1);
     g_assert_cmpint(qobject_type(QOBJECT(qn)), ==, QTYPE_QNUM);
 
-    QDECREF(qn);
+    qobject_unref(qn);
 }
 
 static void qnum_from_int64_test(void)
@@ -77,7 +76,7 @@ static void qnum_from_int64_test(void)
     qn = qnum_from_int(value);
     g_assert_cmpint((int64_t) qn->u.i64, ==, value);
 
-    QDECREF(qn);
+    qobject_unref(qn);
 }
 
 static void qnum_get_int_test(void)
@@ -88,7 +87,7 @@ static void qnum_get_int_test(void)
     qn = qnum_from_int(value);
     g_assert_cmpint(qnum_get_int(qn), ==, value);
 
-    QDECREF(qn);
+    qobject_unref(qn);
 }
 
 static void qnum_get_uint_test(void)
@@ -101,25 +100,25 @@ static void qnum_get_uint_test(void)
     qn = qnum_from_uint(value);
     g_assert(qnum_get_try_uint(qn, &val));
     g_assert_cmpuint(val, ==, value);
-    QDECREF(qn);
+    qobject_unref(qn);
 
     qn = qnum_from_int(value);
     g_assert(qnum_get_try_uint(qn, &val));
     g_assert_cmpuint(val, ==, value);
-    QDECREF(qn);
+    qobject_unref(qn);
 
     /* invalid cases */
     qn = qnum_from_int(-1);
     g_assert(!qnum_get_try_uint(qn, &val));
-    QDECREF(qn);
+    qobject_unref(qn);
 
     qn = qnum_from_uint(-1ULL);
     g_assert(!qnum_get_try_int(qn, &ival));
-    QDECREF(qn);
+    qobject_unref(qn);
 
     qn = qnum_from_double(0.42);
     g_assert(!qnum_get_try_uint(qn, &val));
-    QDECREF(qn);
+    qobject_unref(qn);
 }
 
 static void qobject_to_qnum_test(void)
@@ -127,12 +126,12 @@ static void qobject_to_qnum_test(void)
     QNum *qn;
 
     qn = qnum_from_int(0);
-    g_assert(qobject_to_qnum(QOBJECT(qn)) == qn);
-    QDECREF(qn);
+    g_assert(qobject_to(QNum, QOBJECT(qn)) == qn);
+    qobject_unref(qn);
 
     qn = qnum_from_double(0);
-    g_assert(qobject_to_qnum(QOBJECT(qn)) == qn);
-    QDECREF(qn);
+    g_assert(qobject_to(QNum, QOBJECT(qn)) == qn);
+    qobject_unref(qn);
 }
 
 static void qnum_to_string_test(void)
@@ -144,13 +143,13 @@ static void qnum_to_string_test(void)
     tmp = qnum_to_string(qn);
     g_assert_cmpstr(tmp, ==, "123456");
     g_free(tmp);
-    QDECREF(qn);
+    qobject_unref(qn);
 
     qn = qnum_from_double(0.42);
     tmp = qnum_to_string(qn);
     g_assert_cmpstr(tmp, ==, "0.42");
     g_free(tmp);
-    QDECREF(qn);
+    qobject_unref(qn);
 }
 
 int main(int argc, char **argv)

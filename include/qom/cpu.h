@@ -21,10 +21,12 @@
 #define QEMU_CPU_H
 
 #include "hw/qdev-core.h"
-#include "disas/bfd.h"
+#include "disas/dis-asm.h"
 #include "exec/hwaddr.h"
 #include "exec/memattrs.h"
+#include "qapi/qapi-types-run-state.h"
 #include "qemu/bitmap.h"
+#include "qemu/rcu_queue.h"
 #include "qemu/queue.h"
 #include "qemu/thread.h"
 
@@ -100,9 +102,21 @@ struct TranslationBlock;
  * @get_arch_id: Callback for getting architecture-dependent CPU ID.
  * @get_paging_enabled: Callback for inquiring whether paging is enabled.
  * @get_memory_mapping: Callback for obtaining the memory mappings.
- * @set_pc: Callback for setting the Program Counter register.
+ * @set_pc: Callback for setting the Program Counter register. This
+ *       should have the semantics used by the target architecture when
+ *       setting the PC from a source such as an ELF file entry point;
+ *       for example on Arm it will also set the Thumb mode bit based
+ *       on the least significant bit of the new PC value.
+ *       If the target behaviour here is anything other than "set
+ *       the PC register to the value passed in" then the target must
+ *       also implement the synchronize_from_tb hook.
  * @synchronize_from_tb: Callback for synchronizing state from a TCG
- * #TranslationBlock.
+ *       #TranslationBlock. This is called when we abandon execution
+ *       of a TB before starting it, and must set all parts of the CPU
+ *       state which the previous TB in the chain may not have updated.
+ *       This always includes at least the program counter; some targets
+ *       will need to do more. If this hook is not implemented then the
+ *       default is to call @set_pc(tb->pc).
  * @handle_mmu_fault: Callback for handling an MMU fault.
  * @get_phys_page_debug: Callback for obtaining a physical address.
  * @get_phys_page_attrs_debug: Callback for obtaining a physical address and the
@@ -131,6 +145,9 @@ struct TranslationBlock;
  *           before the insn which triggers a watchpoint rather than after it.
  * @gdb_arch_name: Optional callback that returns the architecture name known
  * to GDB. The caller must free the returned string with g_free.
+ * @gdb_get_dynamic_xml: Callback to return dynamically generated XML for the
+ *   gdb stub. Returns a pointer to the XML contents for the specified XML file
+ *   or NULL if the CPU doesn't have a dynamically generated content for it.
  * @cpu_exec_enter: Callback for cpu_exec preparation.
  * @cpu_exec_exit: Callback for cpu_exec cleanup.
  * @cpu_exec_interrupt: Callback for processing interrupts in cpu_exec.
@@ -163,11 +180,9 @@ typedef struct CPUClass {
     bool (*virtio_is_big_endian)(CPUState *cpu);
     int (*memory_rw_debug)(CPUState *cpu, vaddr addr,
                            uint8_t *buf, int len, bool is_write);
-    void (*dump_state)(CPUState *cpu, FILE *f, fprintf_function cpu_fprintf,
-                       int flags);
+    void (*dump_state)(CPUState *cpu, FILE *, int flags);
     GuestPanicInformation* (*get_crash_info)(CPUState *cpu);
-    void (*dump_statistics)(CPUState *cpu, FILE *f,
-                            fprintf_function cpu_fprintf, int flags);
+    void (*dump_statistics)(CPUState *cpu, int flags);
     int64_t (*get_arch_id)(CPUState *cpu);
     bool (*get_paging_enabled)(const CPUState *cpu);
     void (*get_memory_mapping)(CPUState *cpu, MemoryMappingList *list,
@@ -175,7 +190,7 @@ typedef struct CPUClass {
     void (*set_pc)(CPUState *cpu, vaddr value);
     vaddr (*get_pc)(CPUState *cpu);
     void (*synchronize_from_tb)(CPUState *cpu, struct TranslationBlock *tb);
-    int (*handle_mmu_fault)(CPUState *cpu, vaddr address, int rw,
+    int (*handle_mmu_fault)(CPUState *cpu, vaddr address, int size, int rw,
                             int mmu_index);
     hwaddr (*get_phys_page_debug)(CPUState *cpu, vaddr addr);
     hwaddr (*get_phys_page_attrs_debug)(CPUState *cpu, vaddr addr,
@@ -200,7 +215,7 @@ typedef struct CPUClass {
     const struct VMStateDescription *vmsd;
     const char *gdb_core_xml_file;
     gchar * (*gdb_arch_name)(CPUState *cpu);
-
+    const char * (*gdb_get_dynamic_xml)(CPUState *cpu, const char *xmlname);
     void (*cpu_exec_enter)(CPUState *cpu);
     void (*cpu_exec_exit)(CPUState *cpu);
     bool (*cpu_exec_interrupt)(CPUState *cpu, int interrupt_request);
@@ -277,6 +292,11 @@ struct qemu_work_item;
 /**
  * CPUState:
  * @cpu_index: CPU index (informative).
+ * @cluster_index: Identifies which cluster this CPU is in.
+ *   For boards which don't define clusters or for "loose" CPUs not assigned
+ *   to a cluster this will be UNASSIGNED_CLUSTER_INDEX; otherwise it will
+ *   be the same as the cluster-id property of the CPU object's TYPE_CPU_CLUSTER
+ *   QOM parent.
  * @nr_cores: Number of cores within this CPU package.
  * @nr_threads: Number of threads within this CPU.
  * @running: #true if CPU is currently running (lockless).
@@ -373,9 +393,9 @@ struct CPUState {
     QTAILQ_ENTRY(CPUState) node;
 
     /* ice debug support */
-    QTAILQ_HEAD(breakpoints_head, CPUBreakpoint) breakpoints;
+    QTAILQ_HEAD(, CPUBreakpoint) breakpoints;
 
-    QTAILQ_HEAD(watchpoints_head, CPUWatchpoint) watchpoints;
+    QTAILQ_HEAD(, CPUWatchpoint) watchpoints;
     CPUWatchpoint *watchpoint_hit;
 
     void *opaque;
@@ -385,6 +405,12 @@ struct CPUState {
      */
     uintptr_t mem_io_pc;
     vaddr mem_io_vaddr;
+    /*
+     * This is only needed for the legacy cpu_unassigned_access() hook;
+     * when all targets using it have been converted to use
+     * cpu_transaction_failed() instead it can be removed.
+     */
+    MMUAccessType mem_io_access_type;
 
     int kvm_fd;
     struct KVMState *kvm_state;
@@ -396,6 +422,7 @@ struct CPUState {
 
     /* TODO Move common fields from CPUArchState here. */
     int cpu_index;
+    int cluster_index;
     uint32_t halted;
     uint32_t can_do_io;
     int32_t exception_index;
@@ -421,28 +448,25 @@ struct CPUState {
 
     struct hax_vcpu_state *hax_vcpu;
 
-    /* The pending_tlb_flush flag is set and cleared atomically to
-     * avoid potential races. The aim of the flag is to avoid
-     * unnecessary flushes.
-     */
-    uint16_t pending_tlb_flush;
-
     bool reset_pin; /* state of reset pin */
     bool halt_pin; /* state of halt pin */
     bool arch_halt_pin;
 
     char *gdb_id;
+    int hvf_fd;
+
+    /* track IOMMUs whose translations we've cached in the TCG TLB */
+    GArray *iommu_notifiers;
 };
 
-QTAILQ_HEAD(CPUTailQ, CPUState);
-extern struct CPUTailQ cpus;
-#define CPU_NEXT(cpu) QTAILQ_NEXT(cpu, node)
-#define CPU_FOREACH(cpu) QTAILQ_FOREACH(cpu, &cpus, node)
+typedef QTAILQ_HEAD(CPUTailQ, CPUState) CPUTailQ;
+extern CPUTailQ cpus;
+
+#define first_cpu        QTAILQ_FIRST_RCU(&cpus)
+#define CPU_NEXT(cpu)    QTAILQ_NEXT_RCU(cpu, node)
+#define CPU_FOREACH(cpu) QTAILQ_FOREACH_RCU(cpu, &cpus, node)
 #define CPU_FOREACH_SAFE(cpu, next_cpu) \
-    QTAILQ_FOREACH_SAFE(cpu, &cpus, node, next_cpu)
-#define CPU_FOREACH_REVERSE(cpu) \
-    QTAILQ_FOREACH_REVERSE(cpu, &cpus, CPUTailQ, node)
-#define first_cpu QTAILQ_FIRST(&cpus)
+    QTAILQ_FOREACH_SAFE_RCU(cpu, &cpus, node, next_cpu)
 
 extern __thread CPUState *current_cpu;
 
@@ -545,26 +569,21 @@ enum CPUDumpFlags {
 /**
  * cpu_dump_state:
  * @cpu: The CPU whose state is to be dumped.
- * @f: File to dump to.
- * @cpu_fprintf: Function to dump with.
- * @flags: Flags what to dump.
+ * @f: If non-null, dump to this stream, else to current print sink.
  *
  * Dumps CPU state.
  */
-void cpu_dump_state(CPUState *cpu, FILE *f, fprintf_function cpu_fprintf,
-                    int flags);
+void cpu_dump_state(CPUState *cpu, FILE *f, int flags);
 
 /**
  * cpu_dump_statistics:
  * @cpu: The CPU whose state is to be dumped.
- * @f: File to dump to.
- * @cpu_fprintf: Function to dump with.
  * @flags: Flags what to dump.
  *
- * Dumps CPU statistics.
+ * Dump CPU statistics to the current monitor if we have one, else to
+ * stdout.
  */
-void cpu_dump_statistics(CPUState *cpu, FILE *f, fprintf_function cpu_fprintf,
-                         int flags);
+void cpu_dump_statistics(CPUState *cpu, int flags);
 
 #ifndef CONFIG_USER_ONLY
 /**
@@ -620,11 +639,13 @@ static inline hwaddr cpu_get_phys_page_debug(CPUState *cpu, vaddr addr)
 static inline int cpu_asidx_from_attrs(CPUState *cpu, MemTxAttrs attrs)
 {
     CPUClass *cc = CPU_GET_CLASS(cpu);
+    int ret = 0;
 
     if (cc->asidx_from_attrs) {
-        return cc->asidx_from_attrs(cpu, attrs);
+        ret = cc->asidx_from_attrs(cpu, attrs);
+        assert(ret < cpu->num_ases && ret >= 0);
     }
-    return 0;
+    return ret;
 }
 #endif
 
@@ -668,27 +689,15 @@ ObjectClass *cpu_class_by_name(const char *typename, const char *cpu_model);
 CPUState *cpu_create(const char *typename);
 
 /**
- * cpu_parse_cpu_model:
- * @typename: The CPU base type or CPU type.
- * @cpu_model: The model string including optional parameters.
+ * parse_cpu_option:
+ * @cpu_option: The -cpu option including optional parameters.
  *
  * processes optional parameters and registers them as global properties
  *
  * Returns: type of CPU to create or prints error and terminates process
  *          if an error occurred.
  */
-const char *cpu_parse_cpu_model(const char *typename, const char *cpu_model);
-
-/**
- * cpu_generic_init:
- * @typename: The CPU base type.
- * @cpu_model: The model string including optional parameters.
- *
- * Instantiates a CPU, processes optional parameters and realizes the CPU.
- *
- * Returns: A #CPUState or %NULL if an error occurred.
- */
-CPUState *cpu_generic_init(const char *typename, const char *cpu_model);
+const char *parse_cpu_option(const char *cpu_option);
 
 /**
  * cpu_has_work:
@@ -857,7 +866,7 @@ extern CPUInterruptHandler cpu_interrupt_handler;
 /**
  * cpu_interrupt:
  * @cpu: The CPU to set an interrupt on.
- * @mask: The interupts to set.
+ * @mask: The interrupts to set.
  *
  * Invokes the interrupt handler.
  */
@@ -1090,6 +1099,17 @@ void cpu_exec_initfn(CPUState *cpu);
 void cpu_exec_realizefn(CPUState *cpu, Error **errp);
 void cpu_exec_unrealizefn(CPUState *cpu);
 
+/**
+ * target_words_bigendian:
+ * Returns true if the (default) endianness of the target is big endian,
+ * false otherwise. Note that in target-specific code, you can use
+ * TARGET_WORDS_BIGENDIAN directly instead. On the other hand, common
+ * code should normally never need to know about the endianness of the
+ * target, so please do *not* use this function unless you know very well
+ * what you are doing!
+ */
+bool target_words_bigendian(void);
+
 #ifdef NEED_CPU_H
 
 #ifdef CONFIG_SOFTMMU
@@ -1113,5 +1133,6 @@ void cpu_reset_gpio(void *opaque, int irq, int level);
 void cpu_halt_update(CPUState *cpu);
 
 #define UNASSIGNED_CPU_INDEX -1
+#define UNASSIGNED_CLUSTER_INDEX -1
 
 #endif

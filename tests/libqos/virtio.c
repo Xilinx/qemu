@@ -40,6 +40,7 @@ uint32_t qvirtio_get_features(QVirtioDevice *d)
 
 void qvirtio_set_features(QVirtioDevice *d, uint32_t features)
 {
+    d->features = features;
     d->bus->set_features(d, features);
 }
 
@@ -119,6 +120,8 @@ uint8_t qvirtio_wait_status_byte_no_isr(QVirtioDevice *d,
 /*
  * qvirtio_wait_used_elem:
  * @desc_idx: The next expected vq->desc[] index in the used ring
+ * @len: A pointer that is filled with the length written into the buffer, may
+ *       be NULL
  * @timeout_us: How many microseconds to wait before failing
  *
  * This function waits for the next completed request on the used ring.
@@ -126,6 +129,7 @@ uint8_t qvirtio_wait_status_byte_no_isr(QVirtioDevice *d,
 void qvirtio_wait_used_elem(QVirtioDevice *d,
                             QVirtQueue *vq,
                             uint32_t desc_idx,
+                            uint32_t *len,
                             gint64 timeout_us)
 {
     gint64 start_time = g_get_monotonic_time();
@@ -136,7 +140,7 @@ void qvirtio_wait_used_elem(QVirtioDevice *d,
         clock_step(100);
 
         if (d->bus->get_queue_isr_status(d, vq) &&
-            qvirtqueue_get_buf(vq, &got_desc_idx)) {
+            qvirtqueue_get_buf(vq, &got_desc_idx, len)) {
             g_assert_cmpint(got_desc_idx, ==, desc_idx);
             return;
         }
@@ -304,28 +308,34 @@ void qvirtqueue_kick(QVirtioDevice *d, QVirtQueue *vq, uint32_t free_head)
 /*
  * qvirtqueue_get_buf:
  * @desc_idx: A pointer that is filled with the vq->desc[] index, may be NULL
+ * @len: A pointer that is filled with the length written into the buffer, may
+ *       be NULL
  *
  * This function gets the next used element if there is one ready.
  *
  * Returns: true if an element was ready, false otherwise
  */
-bool qvirtqueue_get_buf(QVirtQueue *vq, uint32_t *desc_idx)
+bool qvirtqueue_get_buf(QVirtQueue *vq, uint32_t *desc_idx, uint32_t *len)
 {
     uint16_t idx;
+    uint64_t elem_addr;
 
     idx = readw(vq->used + offsetof(struct vring_used, idx));
     if (idx == vq->last_used_idx) {
         return false;
     }
 
-    if (desc_idx) {
-        uint64_t elem_addr;
+    elem_addr = vq->used +
+        offsetof(struct vring_used, ring) +
+        (vq->last_used_idx % vq->size) *
+        sizeof(struct vring_used_elem);
 
-        elem_addr = vq->used +
-                    offsetof(struct vring_used, ring) +
-                    (vq->last_used_idx % vq->size) *
-                    sizeof(struct vring_used_elem);
+    if (desc_idx) {
         *desc_idx = readl(elem_addr + offsetof(struct vring_used_elem, id));
+    }
+
+    if (len) {
+        *len = readw(elem_addr + offsetof(struct vring_used_elem, len));
     }
 
     vq->last_used_idx++;
@@ -340,19 +350,14 @@ void qvirtqueue_set_used_event(QVirtQueue *vq, uint16_t idx)
     writew(vq->avail + 4 + (2 * vq->size), idx);
 }
 
-/*
- * qvirtio_get_dev_type:
- * Returns: the preferred virtio bus/device type for the current architecture.
- */
-const char *qvirtio_get_dev_type(void)
+void qvirtio_start_device(QVirtioDevice *vdev)
 {
-    const char *arch = qtest_get_arch();
+    qvirtio_reset(vdev);
+    qvirtio_set_acknowledge(vdev);
+    qvirtio_set_driver(vdev);
+}
 
-    if (g_str_equal(arch, "arm") || g_str_equal(arch, "aarch64")) {
-        return "device";  /* for virtio-mmio */
-    } else if (g_str_equal(arch, "s390x")) {
-        return "ccw";
-    } else {
-        return "pci";
-    }
+bool qvirtio_is_big_endian(QVirtioDevice *d)
+{
+    return d->big_endian;
 }

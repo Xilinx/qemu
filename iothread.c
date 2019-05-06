@@ -18,7 +18,8 @@
 #include "block/aio.h"
 #include "block/block.h"
 #include "sysemu/iothread.h"
-#include "qmp-commands.h"
+#include "qapi/error.h"
+#include "qapi/qapi-commands-misc.h"
 #include "qemu/error-report.h"
 #include "qemu/rcu.h"
 #include "qemu/main-loop.h"
@@ -30,11 +31,15 @@ typedef ObjectClass IOThreadClass;
 #define IOTHREAD_CLASS(klass) \
    OBJECT_CLASS_CHECK(IOThreadClass, klass, TYPE_IOTHREAD)
 
+#ifdef CONFIG_POSIX
 /* Benchmark results from 2016 on NVMe SSD drives show max polling times around
  * 16-32 microseconds yield IOPS improvements for both iodepth=1 and iodepth=32
  * workloads.
  */
 #define IOTHREAD_POLL_MAX_NS_DEFAULT 32768ULL
+#else
+#define IOTHREAD_POLL_MAX_NS_DEFAULT 0ULL
+#endif
 
 static __thread IOThread *my_iothread;
 
@@ -48,34 +53,51 @@ static void *iothread_run(void *opaque)
     IOThread *iothread = opaque;
 
     rcu_register_thread();
-
+    /*
+     * g_main_context_push_thread_default() must be called before anything
+     * in this new thread uses glib.
+     */
+    g_main_context_push_thread_default(iothread->worker_context);
     my_iothread = iothread;
-    qemu_mutex_lock(&iothread->init_done_lock);
     iothread->thread_id = qemu_get_thread_id();
-    qemu_cond_signal(&iothread->init_done_cond);
-    qemu_mutex_unlock(&iothread->init_done_lock);
+    qemu_sem_post(&iothread->init_done_sem);
 
-    while (!atomic_read(&iothread->stopping)) {
+    while (iothread->running) {
+        /*
+         * Note: from functional-wise the g_main_loop_run() below can
+         * already cover the aio_poll() events, but we can't run the
+         * main loop unconditionally because explicit aio_poll() here
+         * is faster than g_main_loop_run() when we do not need the
+         * gcontext at all (e.g., pure block layer iothreads).  In
+         * other words, when we want to run the gcontext with the
+         * iothread we need to pay some performance for functionality.
+         */
         aio_poll(iothread->ctx, true);
 
-        if (atomic_read(&iothread->worker_context)) {
-            GMainLoop *loop;
-
-            g_main_context_push_thread_default(iothread->worker_context);
-            iothread->main_loop =
-                g_main_loop_new(iothread->worker_context, TRUE);
-            loop = iothread->main_loop;
-
+        /*
+         * We must check the running state again in case it was
+         * changed in previous aio_poll()
+         */
+        if (iothread->running && atomic_read(&iothread->run_gcontext)) {
             g_main_loop_run(iothread->main_loop);
-            iothread->main_loop = NULL;
-            g_main_loop_unref(loop);
-
-            g_main_context_pop_thread_default(iothread->worker_context);
         }
     }
 
+    g_main_context_pop_thread_default(iothread->worker_context);
     rcu_unregister_thread();
     return NULL;
+}
+
+/* Runs in iothread_run() thread */
+static void iothread_stop_bh(void *opaque)
+{
+    IOThread *iothread = opaque;
+
+    iothread->running = false; /* stop iothread_run() */
+
+    if (iothread->main_loop) {
+        g_main_loop_quit(iothread->main_loop);
+    }
 }
 
 void iothread_stop(IOThread *iothread)
@@ -84,23 +106,8 @@ void iothread_stop(IOThread *iothread)
         return;
     }
     iothread->stopping = true;
-    aio_notify(iothread->ctx);
-    if (atomic_read(&iothread->main_loop)) {
-        g_main_loop_quit(iothread->main_loop);
-    }
+    aio_bh_schedule_oneshot(iothread->ctx, iothread_stop_bh, iothread);
     qemu_thread_join(&iothread->thread);
-}
-
-static int iothread_stop_iter(Object *object, void *opaque)
-{
-    IOThread *iothread;
-
-    iothread = (IOThread *)object_dynamic_cast(object, TYPE_IOTHREAD);
-    if (!iothread) {
-        return 0;
-    }
-    iothread_stop(iothread);
-    return 0;
 }
 
 static void iothread_instance_init(Object *obj)
@@ -108,6 +115,10 @@ static void iothread_instance_init(Object *obj)
     IOThread *iothread = IOTHREAD(obj);
 
     iothread->poll_max_ns = IOTHREAD_POLL_MAX_NS_DEFAULT;
+    iothread->thread_id = -1;
+    qemu_sem_init(&iothread->init_done_sem, 0);
+    /* By default, we don't run gcontext */
+    atomic_set(&iothread->run_gcontext, 0);
 }
 
 static void iothread_instance_finalize(Object *obj)
@@ -115,16 +126,39 @@ static void iothread_instance_finalize(Object *obj)
     IOThread *iothread = IOTHREAD(obj);
 
     iothread_stop(iothread);
+
+    /*
+     * Before glib2 2.33.10, there is a glib2 bug that GSource context
+     * pointer may not be cleared even if the context has already been
+     * destroyed (while it should).  Here let's free the AIO context
+     * earlier to bypass that glib bug.
+     *
+     * We can remove this comment after the minimum supported glib2
+     * version boosts to 2.33.10.  Before that, let's free the
+     * GSources first before destroying any GMainContext.
+     */
+    if (iothread->ctx) {
+        aio_context_unref(iothread->ctx);
+        iothread->ctx = NULL;
+    }
     if (iothread->worker_context) {
         g_main_context_unref(iothread->worker_context);
         iothread->worker_context = NULL;
+        g_main_loop_unref(iothread->main_loop);
+        iothread->main_loop = NULL;
     }
-    qemu_cond_destroy(&iothread->init_done_cond);
-    qemu_mutex_destroy(&iothread->init_done_lock);
-    if (!iothread->ctx) {
-        return;
-    }
-    aio_context_unref(iothread->ctx);
+    qemu_sem_destroy(&iothread->init_done_sem);
+}
+
+static void iothread_init_gcontext(IOThread *iothread)
+{
+    GSource *source;
+
+    iothread->worker_context = g_main_context_new();
+    source = aio_get_g_source(iothread_get_aio_context(iothread));
+    g_source_attach(source, iothread->worker_context);
+    g_source_unref(source);
+    iothread->main_loop = g_main_loop_new(iothread->worker_context, TRUE);
 }
 
 static void iothread_complete(UserCreatable *obj, Error **errp)
@@ -134,12 +168,18 @@ static void iothread_complete(UserCreatable *obj, Error **errp)
     char *name, *thread_name;
 
     iothread->stopping = false;
-    iothread->thread_id = -1;
+    iothread->running = true;
     iothread->ctx = aio_context_new(&local_error);
     if (!iothread->ctx) {
         error_propagate(errp, local_error);
         return;
     }
+
+    /*
+     * Init one GMainContext for the iothread unconditionally, even if
+     * it's not used
+     */
+    iothread_init_gcontext(iothread);
 
     aio_context_set_poll_params(iothread->ctx,
                                 iothread->poll_max_ns,
@@ -153,10 +193,6 @@ static void iothread_complete(UserCreatable *obj, Error **errp)
         return;
     }
 
-    qemu_mutex_init(&iothread->init_done_lock);
-    qemu_cond_init(&iothread->init_done_cond);
-    iothread->once = (GOnce) G_ONCE_INIT;
-
     /* This assumes we are called from a thread with useful CPU affinity for us
      * to inherit.
      */
@@ -168,12 +204,9 @@ static void iothread_complete(UserCreatable *obj, Error **errp)
     g_free(name);
 
     /* Wait for initialization to complete */
-    qemu_mutex_lock(&iothread->init_done_lock);
     while (iothread->thread_id == -1) {
-        qemu_cond_wait(&iothread->init_done_cond,
-                       &iothread->init_done_lock);
+        qemu_sem_wait(&iothread->init_done_sem);
     }
-    qemu_mutex_unlock(&iothread->init_done_lock);
 }
 
 typedef struct {
@@ -322,46 +355,10 @@ IOThreadInfoList *qmp_query_iothreads(Error **errp)
     return head;
 }
 
-void iothread_stop_all(void)
-{
-    Object *container = object_get_objects_root();
-    BlockDriverState *bs;
-    BdrvNextIterator it;
-
-    for (bs = bdrv_first(&it); bs; bs = bdrv_next(&it)) {
-        AioContext *ctx = bdrv_get_aio_context(bs);
-        if (ctx == qemu_get_aio_context()) {
-            continue;
-        }
-        aio_context_acquire(ctx);
-        bdrv_set_aio_context(bs, qemu_get_aio_context());
-        aio_context_release(ctx);
-    }
-
-    object_child_foreach(container, iothread_stop_iter, NULL);
-}
-
-static gpointer iothread_g_main_context_init(gpointer opaque)
-{
-    AioContext *ctx;
-    IOThread *iothread = opaque;
-    GSource *source;
-
-    iothread->worker_context = g_main_context_new();
-
-    ctx = iothread_get_aio_context(iothread);
-    source = aio_get_g_source(ctx);
-    g_source_attach(source, iothread->worker_context);
-    g_source_unref(source);
-
-    aio_notify(iothread->ctx);
-    return NULL;
-}
-
 GMainContext *iothread_get_g_main_context(IOThread *iothread)
 {
-    g_once(&iothread->once, iothread_g_main_context_init, iothread);
-
+    atomic_set(&iothread->run_gcontext, 1);
+    aio_notify(iothread->ctx);
     return iothread->worker_context;
 }
 
@@ -379,4 +376,11 @@ IOThread *iothread_create(const char *id, Error **errp)
 void iothread_destroy(IOThread *iothread)
 {
     object_unparent(OBJECT(iothread));
+}
+
+/* Lookup IOThread by its id.  Only finds user-created objects, not internal
+ * iothread_create() objects. */
+IOThread *iothread_by_id(const char *id)
+{
+    return IOTHREAD(object_resolve_path_type(id, TYPE_IOTHREAD, NULL));
 }

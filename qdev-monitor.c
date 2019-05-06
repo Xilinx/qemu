@@ -22,12 +22,16 @@
 #include "hw/sysbus.h"
 #include "monitor/monitor.h"
 #include "monitor/qdev.h"
-#include "qmp-commands.h"
 #include "sysemu/arch_init.h"
+#include "qapi/error.h"
+#include "qapi/qapi-commands-misc.h"
+#include "qapi/qmp/qdict.h"
 #include "qapi/qmp/qerror.h"
 #include "qemu/config-file.h"
 #include "qemu/error-report.h"
 #include "qemu/help_option.h"
+#include "qemu/option.h"
+#include "qemu/qemu-print.h"
 #include "sysemu/block-backend.h"
 #include "migration/misc.h"
 
@@ -106,26 +110,20 @@ static bool qdev_class_has_alias(DeviceClass *dc)
 
 static void qdev_print_devinfo(DeviceClass *dc)
 {
-    error_printf("name \"%s\"", object_class_get_name(OBJECT_CLASS(dc)));
+    qemu_printf("name \"%s\"", object_class_get_name(OBJECT_CLASS(dc)));
     if (dc->bus_type) {
-        error_printf(", bus %s", dc->bus_type);
+        qemu_printf(", bus %s", dc->bus_type);
     }
     if (qdev_class_has_alias(dc)) {
-        error_printf(", alias \"%s\"", qdev_class_get_alias(dc));
+        qemu_printf(", alias \"%s\"", qdev_class_get_alias(dc));
     }
     if (dc->desc) {
-        error_printf(", desc \"%s\"", dc->desc);
+        qemu_printf(", desc \"%s\"", dc->desc);
     }
     if (!dc->user_creatable) {
-        error_printf(", no-user");
+        qemu_printf(", no-user");
     }
-    error_printf("\n");
-}
-
-static gint devinfo_cmp(gconstpointer a, gconstpointer b)
-{
-    return strcasecmp(object_class_get_name((ObjectClass *)a),
-                      object_class_get_name((ObjectClass *)b));
+    qemu_printf("\n");
 }
 
 static void qdev_print_devinfos(bool show_no_user)
@@ -146,8 +144,7 @@ static void qdev_print_devinfos(bool show_no_user)
     int i;
     bool cat_printed;
 
-    list = g_slist_sort(object_class_get_list(TYPE_DEVICE, false),
-                        devinfo_cmp);
+    list = object_class_get_list_sorted(TYPE_DEVICE, false);
 
     for (i = 0; i <= DEVICE_CATEGORY_MAX; i++) {
         cat_printed = false;
@@ -162,8 +159,7 @@ static void qdev_print_devinfos(bool show_no_user)
                 continue;
             }
             if (!cat_printed) {
-                error_printf("%s%s devices:\n", i ? "\n" : "",
-                             cat_name[i]);
+                qemu_printf("%s%s devices:\n", i ? "\n" : "", cat_name[i]);
                 cat_printed = true;
             }
             qdev_print_devinfo(dc);
@@ -261,8 +257,8 @@ int qdev_device_help(QemuOpts *opts)
 {
     Error *local_err = NULL;
     const char *driver;
-    DevicePropertyInfoList *prop_list;
-    DevicePropertyInfoList *prop;
+    ObjectPropertyInfoList *prop_list;
+    ObjectPropertyInfoList *prop;
 
     driver = qemu_opt_get(opts, "driver");
     if (driver && is_help_option(driver)) {
@@ -287,18 +283,25 @@ int qdev_device_help(QemuOpts *opts)
         goto error;
     }
 
+    if (prop_list) {
+        qemu_printf("%s options:\n", driver);
+    } else {
+        qemu_printf("There are no options for %s.\n", driver);
+    }
     for (prop = prop_list; prop; prop = prop->next) {
-        error_printf("%s.%s=%s", driver,
-                     prop->value->name,
-                     prop->value->type);
+        int len;
+        qemu_printf("  %s=<%s>%n", prop->value->name, prop->value->type, &len);
         if (prop->value->has_description) {
-            error_printf(" (%s)\n", prop->value->description);
+            if (len < 24) {
+                qemu_printf("%*s", 24 - len, "");
+            }
+            qemu_printf(" - %s\n", prop->value->description);
         } else {
-            error_printf("\n");
+            qemu_printf("\n");
         }
     }
 
-    qapi_free_DevicePropertyInfoList(prop_list);
+    qapi_free_ObjectPropertyInfoList(prop_list);
     return 1;
 
 error:
@@ -409,7 +412,7 @@ static DeviceState *qbus_find_dev(BusState *bus, char *elem)
 static inline bool qbus_is_full(BusState *bus)
 {
     BusClass *bus_class = BUS_GET_CLASS(bus);
-    return bus_class->max_dev && bus->max_index >= bus_class->max_dev;
+    return bus_class->max_dev && bus->num_children >= bus_class->max_dev;
 }
 
 /*
@@ -619,6 +622,11 @@ DeviceState *qdev_device_add(QemuOpts *opts, Error **errp)
 
     if (bus) {
         qdev_set_parent_bus(dev, bus);
+    } else if (qdev_hotplug && !qdev_get_machine_hotplug_handler(dev)) {
+        /* No bus, no machine hotplug handler --> device is not hotpluggable */
+        error_setg(&err, "Device '%s' can not be hotplugged on this machine",
+                   driver);
+        goto err_del_dev;
     } else {
         if (dc->reset) {
             qemu_register_reset((void (*)(void *))dc->reset, dev);
@@ -637,22 +645,22 @@ DeviceState *qdev_device_add(QemuOpts *opts, Error **errp)
 
     /* set properties */
     if (qemu_opt_foreach(opts, set_property, dev, &err)) {
-        error_propagate(errp, err);
-        object_unparent(OBJECT(dev));
-        object_unref(OBJECT(dev));
-        return NULL;
+        goto err_del_dev;
     }
 
     dev->opts = opts;
     object_property_set_bool(OBJECT(dev), true, "realized", &err);
     if (err != NULL) {
-        error_propagate(errp, err);
         dev->opts = NULL;
-        object_unparent(OBJECT(dev));
-        object_unref(OBJECT(dev));
-        return NULL;
+        goto err_del_dev;
     }
     return dev;
+
+err_del_dev:
+    error_propagate(errp, err);
+    object_unparent(OBJECT(dev));
+    object_unref(OBJECT(dev));
+    return NULL;
 }
 
 
@@ -864,6 +872,7 @@ void qdev_unplug(DeviceState *dev, Error **errp)
     DeviceClass *dc = DEVICE_GET_CLASS(dev);
     HotplugHandler *hotplug_ctrl;
     HotplugHandlerClass *hdc;
+    Error *local_err = NULL;
 
     if (dev->parent_bus && !qbus_is_hotpluggable(dev->parent_bus)) {
         error_setg(errp, QERR_BUS_NO_HOTPLUG, dev->parent_bus->name);
@@ -892,10 +901,14 @@ void qdev_unplug(DeviceState *dev, Error **errp)
      * otherwise just remove it synchronously */
     hdc = HOTPLUG_HANDLER_GET_CLASS(hotplug_ctrl);
     if (hdc->unplug_request) {
-        hotplug_handler_unplug_request(hotplug_ctrl, dev, errp);
+        hotplug_handler_unplug_request(hotplug_ctrl, dev, &local_err);
     } else {
-        hotplug_handler_unplug(hotplug_ctrl, dev, errp);
+        hotplug_handler_unplug(hotplug_ctrl, dev, &local_err);
+        if (!local_err) {
+            object_unparent(OBJECT(dev));
+        }
     }
+    error_propagate(errp, local_err);
 }
 
 void qmp_device_del(const char *id, Error **errp)

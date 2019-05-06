@@ -1,7 +1,7 @@
 #include "qemu/osdep.h"
 #include "qemu-common.h"
-#include "qapi/error.h"
 #include "qapi/qmp/qdict.h"
+#include "qapi/qmp/qlist.h"
 #include "qapi/qmp/qnum.h"
 #include "qapi/qmp/qbool.h"
 #include "libqtest.h"
@@ -17,9 +17,9 @@ static char *get_cpu0_qom_path(void)
     g_assert(qdict_haskey(resp, "return"));
     ret = qdict_get_qlist(resp, "return");
 
-    cpu0 = qobject_to_qdict(qlist_peek(ret));
+    cpu0 = qobject_to(QDict, qlist_peek(ret));
     path = g_strdup(qdict_get_str(cpu0, "qom_path"));
-    QDECREF(resp);
+    qobject_unref(resp);
     return path;
 }
 
@@ -30,21 +30,19 @@ static QObject *qom_get(const char *path, const char *prop)
                       "                 'property': %s } }",
                       path, prop);
     QObject *ret = qdict_get(resp, "return");
-    qobject_incref(ret);
-    QDECREF(resp);
+    qobject_ref(ret);
+    qobject_unref(resp);
     return ret;
 }
 
-#ifdef CONFIG_HAS_GLIB_SUBPROCESS_TESTS
 static bool qom_get_bool(const char *path, const char *prop)
 {
-    QBool *value = qobject_to_qbool(qom_get(path, prop));
+    QBool *value = qobject_to(QBool, qom_get(path, prop));
     bool b = qbool_get_bool(value);
 
-    QDECREF(value);
+    qobject_unref(value);
     return b;
 }
-#endif
 
 typedef struct CpuidTestArgs {
     const char *cmdline;
@@ -61,12 +59,12 @@ static void test_cpuid_prop(const void *data)
 
     qtest_start(args->cmdline);
     path = get_cpu0_qom_path();
-    value = qobject_to_qnum(qom_get(path, args->property));
+    value = qobject_to(QNum, qom_get(path, args->property));
     g_assert(qnum_get_try_int(value, &val));
     g_assert_cmpint(val, ==, args->expected_value);
     qtest_end();
 
-    QDECREF(value);
+    qobject_unref(value);
     g_free(path);
 }
 
@@ -105,7 +103,7 @@ static uint32_t get_feature_word(QList *features, uint32_t eax, uint32_t ecx,
     const QListEntry *e;
 
     for (e = qlist_first(features); e; e = qlist_next(e)) {
-        QDict *w = qobject_to_qdict(qlist_entry_obj(e));
+        QDict *w = qobject_to(QDict, qlist_entry_obj(e));
         const char *rreg = qdict_get_str(w, "cpuid-register");
         uint32_t reax = qdict_get_int(w, "cpuid-input-eax");
         bool has_ecx = qdict_haskey(w, "cpuid-input-ecx");
@@ -116,8 +114,9 @@ static uint32_t get_feature_word(QList *features, uint32_t eax, uint32_t ecx,
             recx = qdict_get_int(w, "cpuid-input-ecx");
         }
         if (eax == reax && (!has_ecx || ecx == recx) && !strcmp(rreg, reg)) {
-            g_assert(qnum_get_try_int(qobject_to_qnum(qdict_get(w, "features")),
-                                  &val));
+            g_assert(qnum_get_try_int(qobject_to(QNum,
+                                                 qdict_get(w, "features")),
+                                      &val));
             return val;
         }
     }
@@ -133,16 +132,16 @@ static void test_feature_flag(const void *data)
 
     qtest_start(args->cmdline);
     path = get_cpu0_qom_path();
-    present = qobject_to_qlist(qom_get(path, "feature-words"));
-    filtered = qobject_to_qlist(qom_get(path, "filtered-features"));
+    present = qobject_to(QList, qom_get(path, "feature-words"));
+    filtered = qobject_to(QList, qom_get(path, "filtered-features"));
     value = get_feature_word(present, args->in_eax, args->in_ecx, args->reg);
     value |= get_feature_word(filtered, args->in_eax, args->in_ecx, args->reg);
     qtest_end();
 
     g_assert(!!(value & (1U << args->bitnr)) == args->expected_value);
 
-    QDECREF(present);
-    QDECREF(filtered);
+    qobject_unref(present);
+    qobject_unref(filtered);
     g_free(path);
 }
 
@@ -167,7 +166,6 @@ static FeatureTestArgs *add_feature_test(const char *name, const char *cmdline,
     return args;
 }
 
-#ifdef CONFIG_HAS_GLIB_SUBPROCESS_TESTS
 static void test_plus_minus_subprocess(void)
 {
     char *path;
@@ -209,17 +207,14 @@ static void test_plus_minus(void)
                               "Don't mix both \"+cx8\" and \"cx8=off\"*");
     g_test_trap_assert_stdout("");
 }
-#endif
 
 int main(int argc, char **argv)
 {
     g_test_init(&argc, &argv, NULL);
 
-#ifdef CONFIG_HAS_GLIB_SUBPROCESS_TESTS
     g_test_add_func("/x86/cpuid/parsing-plus-minus/subprocess",
                     test_plus_minus_subprocess);
     g_test_add_func("/x86/cpuid/parsing-plus-minus", test_plus_minus);
-#endif
 
     /* Original level values for CPU models: */
     add_cpuid_test("x86/cpuid/phenom/level",

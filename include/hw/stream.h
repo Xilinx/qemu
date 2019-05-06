@@ -16,9 +16,7 @@
 
 #define STREAM_ATTR_EOP      (1 << 0)   /* Signal End-Of-Packet.  */
 
-typedef struct StreamSlave {
-    Object Parent;
-} StreamSlave;
+typedef struct StreamSlave StreamSlave;
 
 typedef void (*StreamCanPushNotifyFn)(void *opaque);
 

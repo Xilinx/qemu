@@ -5,7 +5,7 @@
  *
  * Authors:
  *  Michael S. Tsirkin <mst@redhat.com>
- *  Victor Kaplansky <victork@redhat.com>    
+ *  Victor Kaplansky <victork@redhat.com>
  *
  * This work is licensed under the terms of the GNU GPL, version 2 or later.
  * See the COPYING file in the top-level directory.
@@ -68,8 +68,11 @@ static uint8_t x86_boot_sector[512] = {
 };
 
 /* For s390x, use a mini "kernel" with the appropriate signature */
-static const uint8_t s390x_psw[] = {
-    0x00, 0x08, 0x00, 0x00, 0x80, 0x01, 0x00, 0x00
+static const uint8_t s390x_psw_and_magic[] = {
+    0x00, 0x08, 0x00, 0x00, 0x80, 0x01, 0x00, 0x00,  /* Program status word  */
+    0x02, 0x00, 0x00, 0x18, 0x60, 0x00, 0x00, 0x50,  /* Magic:               */
+    0x02, 0x00, 0x00, 0x68, 0x60, 0x00, 0x00, 0x50,  /* see linux_s390_magic */
+    0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40   /* in the s390-ccw bios */
 };
 static const uint8_t s390x_code[] = {
     0xa7, 0xf4, 0x00, 0x0a,                                /* j 0x10010 */
@@ -110,7 +113,7 @@ int boot_sector_init(char *fname)
     } else if (g_str_equal(arch, "s390x")) {
         len = 0x10000 + sizeof(s390x_code);
         boot_code = g_malloc0(len);
-        memcpy(boot_code, s390x_psw, sizeof(s390x_psw));
+        memcpy(boot_code, s390x_psw_and_magic, sizeof(s390x_psw_and_magic));
         memcpy(&boot_code[0x10000], s390x_code, sizeof(s390x_code));
     } else {
         g_assert_not_reached();
@@ -130,7 +133,7 @@ int boot_sector_init(char *fname)
 }
 
 /* Loop until signature in memory is OK.  */
-void boot_sector_test(void)
+void boot_sector_test(QTestState *qts)
 {
     uint8_t signature_low;
     uint8_t signature_high;
@@ -146,8 +149,8 @@ void boot_sector_test(void)
      * instruction.
      */
     for (i = 0; i < TEST_CYCLES; ++i) {
-        signature_low = readb(SIGNATURE_ADDR);
-        signature_high = readb(SIGNATURE_ADDR + 1);
+        signature_low = qtest_readb(qts, SIGNATURE_ADDR);
+        signature_high = qtest_readb(qts, SIGNATURE_ADDR + 1);
         signature = (signature_high << 8) | signature_low;
         if (signature == SIGNATURE) {
             break;

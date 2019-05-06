@@ -824,12 +824,12 @@ static void arasan_nfc_init(Object *obj)
     object_property_add_link(obj, "nand0", TYPE_DEVICE,
                              (Object **)&s->nand[0],
                              object_property_allow_set_link,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             OBJ_PROP_LINK_STRONG,
                              &error_abort);
     object_property_add_link(obj, "nand1", TYPE_DEVICE,
                              (Object **)&s->nand[1],
                              object_property_allow_set_link,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             OBJ_PROP_LINK_STRONG,
                              &error_abort);
 
     sysbus_init_irq(sbd, &s->irq);
@@ -840,7 +840,7 @@ static void arasan_nfc_init(Object *obj)
     object_property_add_link(obj, "dma", TYPE_MEMORY_REGION,
                              (Object **)&s->dma_mr,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             OBJ_PROP_LINK_STRONG,
                              &error_abort);
 }
 

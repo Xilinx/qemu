@@ -43,6 +43,8 @@
 #include "qom/cpu.h"
 #include "block/block.h"
 #include "hw/ssi/ssi.h"
+#include "qemu/option.h"
+
 
 #ifndef FDT_GENERIC_UTIL_ERR_DEBUG
 #define FDT_GENERIC_UTIL_ERR_DEBUG 3
@@ -190,7 +192,7 @@ FDTMachineInfo *fdt_generic_create_machine(void *fdt, qemu_irq *cpu_irq)
         memory_region_transaction_begin();
         fdt_init_set_opaque(fdti, node_path, NULL);
         simple_bus_fdt_init(node_path, fdti);
-        while (qemu_co_enter_next(fdti->cq));
+        while (qemu_co_enter_next(fdti->cq, NULL));
         fdt_init_all_irqs(fdti);
         memory_region_transaction_commit();
     } else {
@@ -1204,8 +1206,8 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
          */
         if (!object_dynamic_cast(dev, TYPE_REMOTE_PORT)) {
             /* Connect chardev if we can */
-            if (fdt_serial_ports < MAX_SERIAL_PORTS && serial_hds[fdt_serial_ports]) {
-                Chardev *value = (Chardev*) serial_hds[fdt_serial_ports];
+            if (fdt_serial_ports < serial_max_hds() && serial_hd(fdt_serial_ports)) {
+                Chardev *value = (Chardev*) serial_hd(fdt_serial_ports);
                 char *chardev;
 
                 /* Check if the device already has a chardev.  */

@@ -28,9 +28,10 @@
 #include "sysemu/arch_init.h"
 #include "hw/pci/pci.h"
 #include "hw/audio/soundhw.h"
+#include "qapi/qapi-commands-misc.h"
+#include "qapi/error.h"
 #include "qemu/config-file.h"
 #include "qemu/error-report.h"
-#include "qmp-commands.h"
 #include "hw/acpi/acpi.h"
 #include "qemu/help_option.h"
 
@@ -51,12 +52,14 @@ int graphic_depth = 32;
 #define QEMU_ARCH QEMU_ARCH_ARM
 #elif defined(TARGET_CRIS)
 #define QEMU_ARCH QEMU_ARCH_CRIS
+#elif defined(TARGET_HPPA)
+#define QEMU_ARCH QEMU_ARCH_HPPA
 #elif defined(TARGET_I386)
 #define QEMU_ARCH QEMU_ARCH_I386
-#elif defined(TARGET_M68K)
-#define QEMU_ARCH QEMU_ARCH_M68K
 #elif defined(TARGET_LM32)
 #define QEMU_ARCH QEMU_ARCH_LM32
+#elif defined(TARGET_M68K)
+#define QEMU_ARCH QEMU_ARCH_M68K
 #elif defined(TARGET_MICROBLAZE)
 #define QEMU_ARCH QEMU_ARCH_MICROBLAZE
 #elif defined(TARGET_MIPS)
@@ -69,18 +72,20 @@ int graphic_depth = 32;
 #define QEMU_ARCH QEMU_ARCH_OPENRISC
 #elif defined(TARGET_PPC)
 #define QEMU_ARCH QEMU_ARCH_PPC
+#elif defined(TARGET_RISCV)
+#define QEMU_ARCH QEMU_ARCH_RISCV
 #elif defined(TARGET_S390X)
 #define QEMU_ARCH QEMU_ARCH_S390X
 #elif defined(TARGET_SH4)
 #define QEMU_ARCH QEMU_ARCH_SH4
 #elif defined(TARGET_SPARC)
 #define QEMU_ARCH QEMU_ARCH_SPARC
-#elif defined(TARGET_XTENSA)
-#define QEMU_ARCH QEMU_ARCH_XTENSA
-#elif defined(TARGET_UNICORE32)
-#define QEMU_ARCH QEMU_ARCH_UNICORE32
 #elif defined(TARGET_TRICORE)
 #define QEMU_ARCH QEMU_ARCH_TRICORE
+#elif defined(TARGET_UNICORE32)
+#define QEMU_ARCH QEMU_ARCH_UNICORE32
+#elif defined(TARGET_XTENSA)
+#define QEMU_ARCH QEMU_ARCH_XTENSA
 #endif
 
 const uint32_t arch_type = QEMU_ARCH;
@@ -108,7 +113,8 @@ TargetInfo *qmp_query_target(Error **errp)
 {
     TargetInfo *info = g_malloc0(sizeof(*info));
 
-    info->arch = g_strdup(TARGET_NAME);
+    info->arch = qapi_enum_parse(&SysEmuTarget_lookup, TARGET_NAME, -1,
+                                 &error_abort);
 
     return info;
 }

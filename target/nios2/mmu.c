@@ -20,6 +20,7 @@
 
 #include "qemu/osdep.h"
 #include "qemu-common.h"
+#include "qemu/qemu-print.h"
 #include "cpu.h"
 #include "exec/exec-all.h"
 #include "mmu.h"
@@ -35,18 +36,15 @@
 #define MMU_LOG(x)
 #endif
 
-void tlb_fill(CPUState *cs, target_ulong addr, MMUAccessType access_type,
-              int mmu_idx, uintptr_t retaddr)
+void tlb_fill(CPUState *cs, target_ulong addr, int size,
+              MMUAccessType access_type, int mmu_idx, uintptr_t retaddr)
 {
     int ret;
 
-    ret = nios2_cpu_handle_mmu_fault(cs, addr, access_type, mmu_idx);
+    ret = nios2_cpu_handle_mmu_fault(cs, addr, size, access_type, mmu_idx);
     if (unlikely(ret)) {
-        if (retaddr) {
-            /* now we have a real cpu fault */
-            cpu_restore_state(cs, retaddr);
-        }
-        cpu_loop_exit(cs);
+        /* now we have a real cpu fault */
+        cpu_loop_exit_restore(cs, retaddr);
     }
 }
 
@@ -267,18 +265,18 @@ void mmu_init(CPUNios2State *env)
     mmu->tlb = g_new0(Nios2TLBEntry, cpu->tlb_num_entries);
 }
 
-void dump_mmu(FILE *f, fprintf_function cpu_fprintf, CPUNios2State *env)
+void dump_mmu(CPUNios2State *env)
 {
     Nios2CPU *cpu = nios2_env_get_cpu(env);
     int i;
 
-    cpu_fprintf(f, "MMU: ways %d, entries %d, pid bits %d\n",
+    qemu_printf("MMU: ways %d, entries %d, pid bits %d\n",
                 cpu->tlb_num_ways, cpu->tlb_num_entries,
                 cpu->pid_num_bits);
 
     for (i = 0; i < cpu->tlb_num_entries; i++) {
         Nios2TLBEntry *entry = &env->mmu.tlb[i];
-        cpu_fprintf(f, "TLB[%d] = %08X %08X %c VPN %05X "
+        qemu_printf("TLB[%d] = %08X %08X %c VPN %05X "
                     "PID %02X %c PFN %05X %c%c%c%c\n",
                     i, entry->tag, entry->data,
                     (entry->tag & (1 << 10)) ? 'V' : '-',

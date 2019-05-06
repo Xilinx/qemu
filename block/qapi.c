@@ -27,10 +27,16 @@
 #include "block/block_int.h"
 #include "block/throttle-groups.h"
 #include "block/write-threshold.h"
-#include "qmp-commands.h"
-#include "qapi-visit.h"
+#include "qapi/error.h"
+#include "qapi/qapi-commands-block-core.h"
 #include "qapi/qobject-output-visitor.h"
-#include "qapi/qmp/types.h"
+#include "qapi/qapi-visit-block-core.h"
+#include "qapi/qmp/qbool.h"
+#include "qapi/qmp/qdict.h"
+#include "qapi/qmp/qlist.h"
+#include "qapi/qmp/qnum.h"
+#include "qapi/qmp/qstring.h"
+#include "qemu/qemu-print.h"
 #include "sysemu/block-backend.h"
 #include "qemu/cutils.h"
 
@@ -45,6 +51,8 @@ BlockDeviceInfo *bdrv_block_device_info(BlockBackend *blk,
         error_setg(errp, "Block device %s is ejected", bs->node_name);
         return NULL;
     }
+
+    bdrv_refresh_filename(bs);
 
     info = g_malloc0(sizeof(*info));
     info->file                   = g_strdup(bs->filename);
@@ -259,6 +267,8 @@ void bdrv_query_image_info(BlockDriverState *bs,
         goto out;
     }
 
+    bdrv_refresh_filename(bs);
+
     info = g_new0(ImageInfo, 1);
     info->filename        = g_strdup(bs->filename);
     info->format          = g_strdup(bdrv_get_format_name(bs));
@@ -277,23 +287,20 @@ void bdrv_query_image_info(BlockDriverState *bs,
         info->dirty_flag = bdi.is_dirty;
         info->has_dirty_flag = true;
     }
-    info->format_specific     = bdrv_get_specific_info(bs);
+    info->format_specific = bdrv_get_specific_info(bs, &err);
+    if (err) {
+        error_propagate(errp, err);
+        qapi_free_ImageInfo(info);
+        goto out;
+    }
     info->has_format_specific = info->format_specific != NULL;
 
     backing_filename = bs->backing_file;
     if (backing_filename[0] != '\0') {
-        char *backing_filename2 = g_malloc0(PATH_MAX);
+        char *backing_filename2;
         info->backing_filename = g_strdup(backing_filename);
         info->has_backing_filename = true;
-        bdrv_get_full_backing_filename(bs, backing_filename2, PATH_MAX, &err);
-        if (err) {
-            /* Can't reconstruct the full backing filename, so we must omit
-             * this field and apply a Best Effort to this query. */
-            g_free(backing_filename2);
-            backing_filename2 = NULL;
-            error_free(err);
-            err = NULL;
-        }
+        backing_filename2 = bdrv_get_full_backing_filename(bs, NULL);
 
         /* Always report the full_backing_filename if present, even if it's the
          * same as backing_filename. That they are same is useful info. */
@@ -389,6 +396,37 @@ static void bdrv_query_info(BlockBackend *blk, BlockInfo **p_info,
     qapi_free_BlockInfo(info);
 }
 
+static uint64List *uint64_list(uint64_t *list, int size)
+{
+    int i;
+    uint64List *out_list = NULL;
+    uint64List **pout_list = &out_list;
+
+    for (i = 0; i < size; i++) {
+        uint64List *entry = g_new(uint64List, 1);
+        entry->value = list[i];
+        *pout_list = entry;
+        pout_list = &entry->next;
+    }
+
+    *pout_list = NULL;
+
+    return out_list;
+}
+
+static void bdrv_latency_histogram_stats(BlockLatencyHistogram *hist,
+                                         bool *not_null,
+                                         BlockLatencyHistogramInfo **info)
+{
+    *not_null = hist->bins != NULL;
+    if (*not_null) {
+        *info = g_new0(BlockLatencyHistogramInfo, 1);
+
+        (*info)->boundaries = uint64_list(hist->boundaries, hist->nbins - 1);
+        (*info)->bins = uint64_list(hist->bins, hist->nbins);
+    }
+}
+
 static void bdrv_query_blk_stats(BlockDeviceStats *ds, BlockBackend *blk)
 {
     BlockAcctStats *stats = blk_get_stats(blk);
@@ -454,6 +492,16 @@ static void bdrv_query_blk_stats(BlockDeviceStats *ds, BlockBackend *blk)
         dev_stats->avg_wr_queue_depth =
             block_acct_queue_depth(ts, BLOCK_ACCT_WRITE);
     }
+
+    bdrv_latency_histogram_stats(&stats->latency_histogram[BLOCK_ACCT_READ],
+                                 &ds->has_rd_latency_histogram,
+                                 &ds->rd_latency_histogram);
+    bdrv_latency_histogram_stats(&stats->latency_histogram[BLOCK_ACCT_WRITE],
+                                 &ds->has_wr_latency_histogram,
+                                 &ds->wr_latency_histogram);
+    bdrv_latency_histogram_stats(&stats->latency_histogram[BLOCK_ACCT_FLUSH],
+                                 &ds->has_flush_latency_histogram,
+                                 &ds->flush_latency_histogram);
 }
 
 static BlockStats *bdrv_query_bds_stats(BlockDriverState *bs,
@@ -547,18 +595,33 @@ BlockStatsList *qmp_query_blockstats(bool has_query_nodes,
             p_next = &info->next;
         }
     } else {
-        for (blk = blk_next(NULL); blk; blk = blk_next(blk)) {
-            BlockStatsList *info = g_malloc0(sizeof(*info));
+        for (blk = blk_all_next(NULL); blk; blk = blk_all_next(blk)) {
+            BlockStatsList *info;
             AioContext *ctx = blk_get_aio_context(blk);
             BlockStats *s;
+            char *qdev;
+
+            if (!*blk_name(blk) && !blk_get_attached_dev(blk)) {
+                continue;
+            }
 
             aio_context_acquire(ctx);
             s = bdrv_query_bds_stats(blk_bs(blk), true);
             s->has_device = true;
             s->device = g_strdup(blk_name(blk));
+
+            qdev = blk_get_attached_dev_id(blk);
+            if (qdev && *qdev) {
+                s->has_qdev = true;
+                s->qdev = qdev;
+            } else {
+                g_free(qdev);
+            }
+
             bdrv_query_blk_stats(s->stats, blk);
             aio_context_release(ctx);
 
+            info = g_malloc0(sizeof(*info));
             info->value = s;
             *p_next = info;
             p_next = &info->next;
@@ -598,8 +661,7 @@ static char *get_human_readable_size(char *buf, int buf_size, int64_t size)
     return buf;
 }
 
-void bdrv_snapshot_dump(fprintf_function func_fprintf, void *f,
-                        QEMUSnapshotInfo *sn)
+void bdrv_snapshot_dump(QEMUSnapshotInfo *sn)
 {
     char buf1[128], date_buf[128], clock_buf[128];
     struct tm tm;
@@ -607,9 +669,8 @@ void bdrv_snapshot_dump(fprintf_function func_fprintf, void *f,
     int64_t secs;
 
     if (!sn) {
-        func_fprintf(f,
-                     "%-10s%-20s%7s%20s%15s",
-                     "ID", "TAG", "VM SIZE", "DATE", "VM CLOCK");
+        qemu_printf("%-10s%-20s%7s%20s%15s",
+                    "ID", "TAG", "VM SIZE", "DATE", "VM CLOCK");
     } else {
         ti = sn->date_sec;
         localtime_r(&ti, &tm);
@@ -622,50 +683,46 @@ void bdrv_snapshot_dump(fprintf_function func_fprintf, void *f,
                  (int)((secs / 60) % 60),
                  (int)(secs % 60),
                  (int)((sn->vm_clock_nsec / 1000000) % 1000));
-        func_fprintf(f,
-                     "%-10s%-20s%7s%20s%15s",
-                     sn->id_str, sn->name,
-                     get_human_readable_size(buf1, sizeof(buf1),
-                                             sn->vm_state_size),
-                     date_buf,
-                     clock_buf);
+        qemu_printf("%-10s%-20s%7s%20s%15s",
+                    sn->id_str, sn->name,
+                    get_human_readable_size(buf1, sizeof(buf1),
+                                            sn->vm_state_size),
+                    date_buf,
+                    clock_buf);
     }
 }
 
-static void dump_qdict(fprintf_function func_fprintf, void *f, int indentation,
-                       QDict *dict);
-static void dump_qlist(fprintf_function func_fprintf, void *f, int indentation,
-                       QList *list);
+static void dump_qdict(int indentation, QDict *dict);
+static void dump_qlist(int indentation, QList *list);
 
-static void dump_qobject(fprintf_function func_fprintf, void *f,
-                         int comp_indent, QObject *obj)
+static void dump_qobject(int comp_indent, QObject *obj)
 {
     switch (qobject_type(obj)) {
         case QTYPE_QNUM: {
-            QNum *value = qobject_to_qnum(obj);
+            QNum *value = qobject_to(QNum, obj);
             char *tmp = qnum_to_string(value);
-            func_fprintf(f, "%s", tmp);
+            qemu_printf("%s", tmp);
             g_free(tmp);
             break;
         }
         case QTYPE_QSTRING: {
-            QString *value = qobject_to_qstring(obj);
-            func_fprintf(f, "%s", qstring_get_str(value));
+            QString *value = qobject_to(QString, obj);
+            qemu_printf("%s", qstring_get_str(value));
             break;
         }
         case QTYPE_QDICT: {
-            QDict *value = qobject_to_qdict(obj);
-            dump_qdict(func_fprintf, f, comp_indent, value);
+            QDict *value = qobject_to(QDict, obj);
+            dump_qdict(comp_indent, value);
             break;
         }
         case QTYPE_QLIST: {
-            QList *value = qobject_to_qlist(obj);
-            dump_qlist(func_fprintf, f, comp_indent, value);
+            QList *value = qobject_to(QList, obj);
+            dump_qlist(comp_indent, value);
             break;
         }
         case QTYPE_QBOOL: {
-            QBool *value = qobject_to_qbool(obj);
-            func_fprintf(f, "%s", qbool_get_bool(value) ? "true" : "false");
+            QBool *value = qobject_to(QBool, obj);
+            qemu_printf("%s", qbool_get_bool(value) ? "true" : "false");
             break;
         }
         default:
@@ -673,8 +730,7 @@ static void dump_qobject(fprintf_function func_fprintf, void *f,
     }
 }
 
-static void dump_qlist(fprintf_function func_fprintf, void *f, int indentation,
-                       QList *list)
+static void dump_qlist(int indentation, QList *list)
 {
     const QListEntry *entry;
     int i = 0;
@@ -682,17 +738,16 @@ static void dump_qlist(fprintf_function func_fprintf, void *f, int indentation,
     for (entry = qlist_first(list); entry; entry = qlist_next(entry), i++) {
         QType type = qobject_type(entry->value);
         bool composite = (type == QTYPE_QDICT || type == QTYPE_QLIST);
-        func_fprintf(f, "%*s[%i]:%c", indentation * 4, "", i,
-                     composite ? '\n' : ' ');
-        dump_qobject(func_fprintf, f, indentation + 1, entry->value);
+        qemu_printf("%*s[%i]:%c", indentation * 4, "", i,
+                    composite ? '\n' : ' ');
+        dump_qobject(indentation + 1, entry->value);
         if (!composite) {
-            func_fprintf(f, "\n");
+            qemu_printf("\n");
         }
     }
 }
 
-static void dump_qdict(fprintf_function func_fprintf, void *f, int indentation,
-                       QDict *dict)
+static void dump_qdict(int indentation, QDict *dict)
 {
     const QDictEntry *entry;
 
@@ -707,32 +762,30 @@ static void dump_qdict(fprintf_function func_fprintf, void *f, int indentation,
             key[i] = entry->key[i] == '-' ? ' ' : entry->key[i];
         }
         key[i] = 0;
-        func_fprintf(f, "%*s%s:%c", indentation * 4, "", key,
-                     composite ? '\n' : ' ');
-        dump_qobject(func_fprintf, f, indentation + 1, entry->value);
+        qemu_printf("%*s%s:%c", indentation * 4, "", key,
+                    composite ? '\n' : ' ');
+        dump_qobject(indentation + 1, entry->value);
         if (!composite) {
-            func_fprintf(f, "\n");
+            qemu_printf("\n");
         }
         g_free(key);
     }
 }
 
-void bdrv_image_info_specific_dump(fprintf_function func_fprintf, void *f,
-                                   ImageInfoSpecific *info_spec)
+void bdrv_image_info_specific_dump(ImageInfoSpecific *info_spec)
 {
     QObject *obj, *data;
     Visitor *v = qobject_output_visitor_new(&obj);
 
     visit_type_ImageInfoSpecific(v, NULL, &info_spec, &error_abort);
     visit_complete(v, &obj);
-    data = qdict_get(qobject_to_qdict(obj), "data");
-    dump_qobject(func_fprintf, f, 1, data);
-    qobject_decref(obj);
+    data = qdict_get(qobject_to(QDict, obj), "data");
+    dump_qobject(1, data);
+    qobject_unref(obj);
     visit_free(v);
 }
 
-void bdrv_image_info_dump(fprintf_function func_fprintf, void *f,
-                          ImageInfo *info)
+void bdrv_image_info_dump(ImageInfo *info)
 {
     char size_buf[128], dsize_buf[128];
     if (!info->has_actual_size) {
@@ -742,49 +795,48 @@ void bdrv_image_info_dump(fprintf_function func_fprintf, void *f,
                                 info->actual_size);
     }
     get_human_readable_size(size_buf, sizeof(size_buf), info->virtual_size);
-    func_fprintf(f,
-                 "image: %s\n"
-                 "file format: %s\n"
-                 "virtual size: %s (%" PRId64 " bytes)\n"
-                 "disk size: %s\n",
-                 info->filename, info->format, size_buf,
-                 info->virtual_size,
-                 dsize_buf);
+    qemu_printf("image: %s\n"
+                "file format: %s\n"
+                "virtual size: %s (%" PRId64 " bytes)\n"
+                "disk size: %s\n",
+                info->filename, info->format, size_buf,
+                info->virtual_size,
+                dsize_buf);
 
     if (info->has_encrypted && info->encrypted) {
-        func_fprintf(f, "encrypted: yes\n");
+        qemu_printf("encrypted: yes\n");
     }
 
     if (info->has_cluster_size) {
-        func_fprintf(f, "cluster_size: %" PRId64 "\n",
-                       info->cluster_size);
+        qemu_printf("cluster_size: %" PRId64 "\n",
+                    info->cluster_size);
     }
 
     if (info->has_dirty_flag && info->dirty_flag) {
-        func_fprintf(f, "cleanly shut down: no\n");
+        qemu_printf("cleanly shut down: no\n");
     }
 
     if (info->has_backing_filename) {
-        func_fprintf(f, "backing file: %s", info->backing_filename);
+        qemu_printf("backing file: %s", info->backing_filename);
         if (!info->has_full_backing_filename) {
-            func_fprintf(f, " (cannot determine actual path)");
+            qemu_printf(" (cannot determine actual path)");
         } else if (strcmp(info->backing_filename,
                           info->full_backing_filename) != 0) {
-            func_fprintf(f, " (actual path: %s)", info->full_backing_filename);
+            qemu_printf(" (actual path: %s)", info->full_backing_filename);
         }
-        func_fprintf(f, "\n");
+        qemu_printf("\n");
         if (info->has_backing_filename_format) {
-            func_fprintf(f, "backing file format: %s\n",
-                         info->backing_filename_format);
+            qemu_printf("backing file format: %s\n",
+                        info->backing_filename_format);
         }
     }
 
     if (info->has_snapshots) {
         SnapshotInfoList *elem;
 
-        func_fprintf(f, "Snapshot list:\n");
-        bdrv_snapshot_dump(func_fprintf, f, NULL);
-        func_fprintf(f, "\n");
+        qemu_printf("Snapshot list:\n");
+        bdrv_snapshot_dump(NULL);
+        qemu_printf("\n");
 
         /* Ideally bdrv_snapshot_dump() would operate on SnapshotInfoList but
          * we convert to the block layer's native QEMUSnapshotInfo for now.
@@ -800,13 +852,13 @@ void bdrv_image_info_dump(fprintf_function func_fprintf, void *f,
 
             pstrcpy(sn.id_str, sizeof(sn.id_str), elem->value->id);
             pstrcpy(sn.name, sizeof(sn.name), elem->value->name);
-            bdrv_snapshot_dump(func_fprintf, f, &sn);
-            func_fprintf(f, "\n");
+            bdrv_snapshot_dump(&sn);
+            qemu_printf("\n");
         }
     }
 
     if (info->has_format_specific) {
-        func_fprintf(f, "Format specific information:\n");
-        bdrv_image_info_specific_dump(func_fprintf, f, info->format_specific);
+        qemu_printf("Format specific information:\n");
+        bdrv_image_info_specific_dump(info->format_specific);
     }
 }

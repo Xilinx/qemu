@@ -195,7 +195,7 @@ static void zynqmp_csu_pcap_init(Object *obj)
     object_property_add_link(obj, "stream-connected-pcap", TYPE_STREAM_SLAVE,
                              (Object **) &s->tx_dev,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             OBJ_PROP_LINK_STRONG,
                              NULL);
 
     memory_region_init(&s->iomem, obj, TYPE_ZYNQMP_CSU_PCAP, R_MAX * 4);

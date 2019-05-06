@@ -22,11 +22,16 @@
 #include "sysemu/sysemu.h"
 #include "sysemu/memory_mapping.h"
 #include "sysemu/cpus.h"
+#include "qapi/error.h"
+#include "qapi/qapi-commands-misc.h"
+#include "qapi/qapi-events-misc.h"
 #include "qapi/qmp/qerror.h"
-#include "qmp-commands.h"
-#include "qapi-event.h"
 #include "qemu/error-report.h"
 #include "hw/misc/vmcoreinfo.h"
+
+#ifdef TARGET_X86_64
+#include "win_dump.h"
+#endif
 
 #include <zlib.h>
 #ifdef CONFIG_LZO
@@ -106,7 +111,7 @@ static int fd_write_vmcore(const void *buf, size_t size, void *opaque)
 
     written_size = qemu_write_full(s->fd, buf, size);
     if (written_size != size) {
-        return -1;
+        return -errno;
     }
 
     return 0;
@@ -139,7 +144,7 @@ static void write_elf64_header(DumpState *s, Error **errp)
 
     ret = fd_write_vmcore(&elf_header, sizeof(elf_header), s);
     if (ret < 0) {
-        error_setg(errp, "dump: failed to write elf header");
+        error_setg_errno(errp, -ret, "dump: failed to write elf header");
     }
 }
 
@@ -170,7 +175,7 @@ static void write_elf32_header(DumpState *s, Error **errp)
 
     ret = fd_write_vmcore(&elf_header, sizeof(elf_header), s);
     if (ret < 0) {
-        error_setg(errp, "dump: failed to write elf header");
+        error_setg_errno(errp, -ret, "dump: failed to write elf header");
     }
 }
 
@@ -187,13 +192,14 @@ static void write_elf64_load(DumpState *s, MemoryMapping *memory_mapping,
     phdr.p_paddr = cpu_to_dump64(s, memory_mapping->phys_addr);
     phdr.p_filesz = cpu_to_dump64(s, filesz);
     phdr.p_memsz = cpu_to_dump64(s, memory_mapping->length);
-    phdr.p_vaddr = cpu_to_dump64(s, memory_mapping->virt_addr);
+    phdr.p_vaddr = cpu_to_dump64(s, memory_mapping->virt_addr) ?: phdr.p_paddr;
 
     assert(memory_mapping->length >= filesz);
 
     ret = fd_write_vmcore(&phdr, sizeof(Elf64_Phdr), s);
     if (ret < 0) {
-        error_setg(errp, "dump: failed to write program header table");
+        error_setg_errno(errp, -ret,
+                         "dump: failed to write program header table");
     }
 }
 
@@ -210,13 +216,15 @@ static void write_elf32_load(DumpState *s, MemoryMapping *memory_mapping,
     phdr.p_paddr = cpu_to_dump32(s, memory_mapping->phys_addr);
     phdr.p_filesz = cpu_to_dump32(s, filesz);
     phdr.p_memsz = cpu_to_dump32(s, memory_mapping->length);
-    phdr.p_vaddr = cpu_to_dump32(s, memory_mapping->virt_addr);
+    phdr.p_vaddr =
+        cpu_to_dump32(s, memory_mapping->virt_addr) ?: phdr.p_paddr;
 
     assert(memory_mapping->length >= filesz);
 
     ret = fd_write_vmcore(&phdr, sizeof(Elf32_Phdr), s);
     if (ret < 0) {
-        error_setg(errp, "dump: failed to write program header table");
+        error_setg_errno(errp, -ret,
+                         "dump: failed to write program header table");
     }
 }
 
@@ -236,7 +244,8 @@ static void write_elf64_note(DumpState *s, Error **errp)
 
     ret = fd_write_vmcore(&phdr, sizeof(Elf64_Phdr), s);
     if (ret < 0) {
-        error_setg(errp, "dump: failed to write program header table");
+        error_setg_errno(errp, -ret,
+                         "dump: failed to write program header table");
     }
 }
 
@@ -301,7 +310,8 @@ static void write_elf32_note(DumpState *s, Error **errp)
 
     ret = fd_write_vmcore(&phdr, sizeof(Elf32_Phdr), s);
     if (ret < 0) {
-        error_setg(errp, "dump: failed to write program header table");
+        error_setg_errno(errp, -ret,
+                         "dump: failed to write program header table");
     }
 }
 
@@ -354,7 +364,8 @@ static void write_elf_section(DumpState *s, int type, Error **errp)
 
     ret = fd_write_vmcore(&shdr, shdr_size, s);
     if (ret < 0) {
-        error_setg(errp, "dump: failed to write section header table");
+        error_setg_errno(errp, -ret,
+                         "dump: failed to write section header table");
     }
 }
 
@@ -364,7 +375,7 @@ static void write_data(DumpState *s, void *buf, int length, Error **errp)
 
     ret = fd_write_vmcore(buf, length, s);
     if (ret < 0) {
-        error_setg(errp, "dump: failed to save memory");
+        error_setg_errno(errp, -ret, "dump: failed to save memory");
     } else {
         s->written_size += length;
     }
@@ -788,12 +799,7 @@ static bool note_name_equal(DumpState *s,
     get_note_sizes(s, note, &head_size, &name_size, NULL);
     head_size = ROUND_UP(head_size, 4);
 
-    if (name_size != len ||
-        memcmp(note + head_size, "VMCOREINFO", len)) {
-        return false;
-    }
-
-    return true;
+    return name_size == len && memcmp(note + head_size, name, len) == 0;
 }
 
 /* write common header, sub header and elf note to vmcore */
@@ -1552,7 +1558,7 @@ static void get_max_mapnr(DumpState *s)
 {
     GuestPhysBlock *last_block;
 
-    last_block = QTAILQ_LAST(&s->guest_phys_blocks.head, GuestPhysBlockHead);
+    last_block = QTAILQ_LAST(&s->guest_phys_blocks.head);
     s->max_mapnr = dump_paddr_to_pfn(s, last_block->target_end);
 }
 
@@ -1613,10 +1619,18 @@ static void vmcoreinfo_update_phys_base(DumpState *s)
 
     lines = g_strsplit((char *)vmci, "\n", -1);
     for (i = 0; lines[i]; i++) {
-        if (g_str_has_prefix(lines[i], "NUMBER(phys_base)=")) {
-            if (qemu_strtou64(lines[i] + 18, NULL, 16,
+        const char *prefix = NULL;
+
+        if (s->dump_info.d_machine == EM_X86_64) {
+            prefix = "NUMBER(phys_base)=";
+        } else if (s->dump_info.d_machine == EM_AARCH64) {
+            prefix = "NUMBER(PHYS_OFFSET)=";
+        }
+
+        if (prefix && g_str_has_prefix(lines[i], prefix)) {
+            if (qemu_strtou64(lines[i] + strlen(prefix), NULL, 16,
                               &phys_base) < 0) {
-                warn_report("Failed to read NUMBER(phys_base)=");
+                warn_report("Failed to read %s", prefix);
             } else {
                 s->dump_info.phys_base = phys_base;
             }
@@ -1729,7 +1743,7 @@ static void dump_init(DumpState *s, int fd, bool has_format,
             warn_report("guest note is not present");
         } else if (size < note_head_size || size > MAX_GUEST_NOTE_SIZE) {
             warn_report("guest note size is invalid: %" PRIu32, size);
-        } else if (format != VMCOREINFO_FORMAT_ELF) {
+        } else if (format != FW_CFG_VMCOREINFO_FORMAT_ELF) {
             warn_report("guest note format is unsupported: %" PRIu16, format);
         } else {
             s->guest_note = g_malloc(size + 1); /* +1 for adding \0 */
@@ -1857,7 +1871,11 @@ static void dump_process(DumpState *s, Error **errp)
     Error *local_err = NULL;
     DumpQueryResult *result = NULL;
 
-    if (s->has_format && s->format != DUMP_GUEST_MEMORY_FORMAT_ELF) {
+    if (s->has_format && s->format == DUMP_GUEST_MEMORY_FORMAT_WIN_DMP) {
+#ifdef TARGET_X86_64
+        create_win_dump(s, &local_err);
+#endif
+    } else if (s->has_format && s->format != DUMP_GUEST_MEMORY_FORMAT_ELF) {
         create_kdump_vmcore(s, &local_err);
     } else {
         create_vmcore(s, &local_err);
@@ -1873,8 +1891,7 @@ static void dump_process(DumpState *s, Error **errp)
     /* should never fail */
     assert(result);
     qapi_event_send_dump_completed(result, !!local_err, (local_err ? \
-                                   error_get_pretty(local_err) : NULL),
-                                   &error_abort);
+                                   error_get_pretty(local_err) : NULL));
     qapi_free_DumpQueryResult(result);
 
     error_propagate(errp, local_err);
@@ -1961,6 +1978,13 @@ void qmp_dump_guest_memory(bool paging, const char *file,
     }
 #endif
 
+#ifndef TARGET_X86_64
+    if (has_format && format == DUMP_GUEST_MEMORY_FORMAT_WIN_DMP) {
+        error_setg(errp, "Windows dump is only available for x86-64");
+        return;
+    }
+#endif
+
 #if !defined(WIN32)
     if (strstart(file, "fd:", &p)) {
         fd = monitor_get_fd(cur_mon, p, errp);
@@ -2033,6 +2057,13 @@ DumpGuestMemoryCapability *qmp_query_dump_guest_memory_capability(Error **errp)
     item->next = g_malloc0(sizeof(DumpGuestMemoryFormatList));
     item = item->next;
     item->value = DUMP_GUEST_MEMORY_FORMAT_KDUMP_SNAPPY;
+#endif
+
+    /* Windows dump is available only if target is x86_64 */
+#ifdef TARGET_X86_64
+    item->next = g_malloc0(sizeof(DumpGuestMemoryFormatList));
+    item = item->next;
+    item->value = DUMP_GUEST_MEMORY_FORMAT_WIN_DMP;
 #endif
 
     return cap;

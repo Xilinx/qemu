@@ -20,7 +20,7 @@
 typedef struct {
     Coroutine *coroutine;
     uint64_t offset;        /* original offset of the request */
-    bool receiving;         /* waiting for read_reply_co? */
+    bool receiving;         /* waiting for connection_co? */
 } NBDClientRequest;
 
 typedef struct NBDClientSession {
@@ -30,21 +30,23 @@ typedef struct NBDClientSession {
 
     CoMutex send_mutex;
     CoQueue free_sema;
-    Coroutine *read_reply_co;
+    Coroutine *connection_co;
     int in_flight;
 
     NBDClientRequest requests[MAX_NBD_REQUESTS];
     NBDReply reply;
+    BlockDriverState *bs;
     bool quit;
 } NBDClientSession;
 
 NBDClientSession *nbd_get_client_session(BlockDriverState *bs);
 
 int nbd_client_init(BlockDriverState *bs,
-                    QIOChannelSocket *sock,
+                    SocketAddress *saddr,
                     const char *export_name,
                     QCryptoTLSCreds *tlscreds,
                     const char *hostname,
+                    const char *x_dirty_bitmap,
                     Error **errp);
 void nbd_client_close(BlockDriverState *bs);
 
@@ -60,5 +62,11 @@ int nbd_client_co_preadv(BlockDriverState *bs, uint64_t offset,
 void nbd_client_detach_aio_context(BlockDriverState *bs);
 void nbd_client_attach_aio_context(BlockDriverState *bs,
                                    AioContext *new_context);
+
+int coroutine_fn nbd_client_co_block_status(BlockDriverState *bs,
+                                            bool want_zero,
+                                            int64_t offset, int64_t bytes,
+                                            int64_t *pnum, int64_t *map,
+                                            BlockDriverState **file);
 
 #endif /* NBD_CLIENT_H */

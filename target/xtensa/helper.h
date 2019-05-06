@@ -3,23 +3,26 @@ DEF_HELPER_3(exception_cause, noreturn, env, i32, i32)
 DEF_HELPER_4(exception_cause_vaddr, noreturn, env, i32, i32, i32)
 DEF_HELPER_3(debug_exception, noreturn, env, i32, i32)
 
-DEF_HELPER_2(wsr_windowbase, void, env, i32)
+DEF_HELPER_1(sync_windowbase, void, env)
 DEF_HELPER_4(entry, void, env, i32, i32, i32)
-DEF_HELPER_2(retw, i32, env, i32)
-DEF_HELPER_2(rotw, void, env, i32)
+DEF_HELPER_2(test_ill_retw, void, env, i32)
+DEF_HELPER_2(test_underflow_retw, void, env, i32)
+DEF_HELPER_2(retw, void, env, i32)
 DEF_HELPER_3(window_check, noreturn, env, i32, i32)
 DEF_HELPER_1(restore_owb, void, env)
 DEF_HELPER_2(movsp, void, env, i32)
-DEF_HELPER_2(wsr_lbeg, void, env, i32)
-DEF_HELPER_2(wsr_lend, void, env, i32)
+#ifndef CONFIG_USER_ONLY
 DEF_HELPER_1(simcall, void, env)
-DEF_HELPER_1(dump_state, void, env)
+#endif
 
+#ifndef CONFIG_USER_ONLY
 DEF_HELPER_3(waiti, void, env, i32, i32)
 DEF_HELPER_1(update_ccount, void, env)
 DEF_HELPER_2(wsr_ccount, void, env, i32)
 DEF_HELPER_2(update_ccompare, void, env, i32)
 DEF_HELPER_1(check_interrupts, void, env)
+DEF_HELPER_2(intset, void, env, i32)
+DEF_HELPER_2(intclear, void, env, i32)
 DEF_HELPER_3(check_atomctl, void, env, i32, i32)
 DEF_HELPER_2(wsr_memctl, void, env, i32)
 
@@ -35,6 +38,7 @@ DEF_HELPER_2(wsr_ibreakenable, void, env, i32)
 DEF_HELPER_3(wsr_ibreaka, void, env, i32, i32)
 DEF_HELPER_3(wsr_dbreaka, void, env, i32, i32)
 DEF_HELPER_3(wsr_dbreakc, void, env, i32, i32)
+#endif
 
 DEF_HELPER_2(wur_fcr, void, env, i32)
 DEF_HELPER_FLAGS_1(abs_s, TCG_CALL_NO_RWG_SE, f32, f32)

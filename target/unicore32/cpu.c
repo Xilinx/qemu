@@ -18,6 +18,7 @@
 #include "qemu-common.h"
 #include "migration/vmstate.h"
 #include "exec/exec-all.h"
+#include "fpu/softfloat.h"
 
 static void uc32_cpu_set_pc(CPUState *cs, vaddr value)
 {
@@ -69,7 +70,6 @@ static void unicore_ii_cpu_initfn(Object *obj)
 
     set_feature(env, UC32_HWCAP_CMOV);
     set_feature(env, UC32_HWCAP_UCF64);
-    set_snan_bit_is_one(1, &env->ucf64.fp_status);
 }
 
 static void uc32_any_cpu_initfn(Object *obj)
@@ -82,7 +82,6 @@ static void uc32_any_cpu_initfn(Object *obj)
 
     set_feature(env, UC32_HWCAP_CMOV);
     set_feature(env, UC32_HWCAP_UCF64);
-    set_snan_bit_is_one(1, &env->ucf64.fp_status);
 }
 
 static void uc32_cpu_realizefn(DeviceState *dev, Error **errp)
@@ -117,8 +116,6 @@ static void uc32_cpu_initfn(Object *obj)
     env->uncached_asr = ASR_MODE_PRIV;
     env->regs[31] = 0x03000000;
 #endif
-
-    tlb_flush(cs);
 }
 
 static const VMStateDescription vmstate_uc32_cpu = {
@@ -132,8 +129,8 @@ static void uc32_cpu_class_init(ObjectClass *oc, void *data)
     CPUClass *cc = CPU_CLASS(oc);
     UniCore32CPUClass *ucc = UNICORE32_CPU_CLASS(oc);
 
-    ucc->parent_realize = dc->realize;
-    dc->realize = uc32_cpu_realizefn;
+    device_class_set_parent_realize(dc, uc32_cpu_realizefn,
+                                    &ucc->parent_realize);
 
     cc->class_by_name = uc32_cpu_class_by_name;
     cc->has_work = uc32_cpu_has_work;

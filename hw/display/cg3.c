@@ -63,7 +63,7 @@
     if (DEBUG_CG3) { \
         printf("CG3: " fmt , ## __VA_ARGS__); \
     } \
-} while (0);
+} while (0)
 
 #define TYPE_CG3 "cgthree"
 #define CG3(obj) OBJECT_CHECK(CG3State, (obj), TYPE_CG3)
@@ -108,7 +108,6 @@ static void cg3_update_display(void *opaque)
     data = (uint32_t *)surface_data(surface);
 
     if (!s->full_update) {
-        memory_region_sync_dirty_bitmap(&s->vram_mem);
         snap = memory_region_snapshot_and_clear_dirty(&s->vram_mem, 0x0,
                                               memory_region_size(&s->vram_mem),
                                               DIRTY_MEMORY_VGA);
@@ -233,6 +232,7 @@ static void cg3_reg_write(void *opaque, hwaddr addr, uint64_t val,
                 s->b[s->dac_index] = regval;
                 /* Index autoincrement */
                 s->dac_index = (s->dac_index + 1) & 0xff;
+                /* fall through */
             default:
                 s->dac_state = 0;
                 break;
@@ -307,7 +307,7 @@ static void cg3_realizefn(DeviceState *dev, Error **errp)
         ret = load_image_mr(fcode_filename, &s->rom);
         g_free(fcode_filename);
         if (ret < 0 || ret > FCODE_MAX_ROM_SIZE) {
-            error_report("cg3: could not load prom '%s'", CG3_ROM_FILE);
+            warn_report("cg3: could not load prom '%s'", CG3_ROM_FILE);
         }
     }
 

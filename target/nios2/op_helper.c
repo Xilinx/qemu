@@ -18,9 +18,11 @@
  * <http://www.gnu.org/licenses/lgpl-2.1.html>
  */
 
+#include "qemu/osdep.h"
 #include "cpu.h"
 #include "exec/helper-proto.h"
 #include "exec/cpu_ldst.h"
+#include "exec/exec-all.h"
 #include "qemu/main-loop.h"
 
 #if !defined(CONFIG_USER_ONLY)

@@ -18,28 +18,19 @@
 #include "qed.h"
 #include "qemu/bswap.h"
 
-/* Called either from qed_check or with table_lock held.  */
+/* Called with table_lock held.  */
 static int qed_read_table(BDRVQEDState *s, uint64_t offset, QEDTable *table)
 {
-    QEMUIOVector qiov;
+    QEMUIOVector qiov = QEMU_IOVEC_INIT_BUF(
+        qiov, table->offsets, s->header.cluster_size * s->header.table_size);
     int noffsets;
     int i, ret;
 
-    struct iovec iov = {
-        .iov_base = table->offsets,
-        .iov_len = s->header.cluster_size * s->header.table_size,
-    };
-    qemu_iovec_init_external(&qiov, &iov, 1);
-
     trace_qed_read_table(s, offset, table);
 
-    if (qemu_in_coroutine()) {
-        qemu_co_mutex_unlock(&s->table_lock);
-    }
+    qemu_co_mutex_unlock(&s->table_lock);
     ret = bdrv_preadv(s->bs->file, offset, &qiov);
-    if (qemu_in_coroutine()) {
-        qemu_co_mutex_lock(&s->table_lock);
-    }
+    qemu_co_mutex_lock(&s->table_lock);
     if (ret < 0) {
         goto out;
     }
@@ -67,7 +58,7 @@ out:
  * @n:          Number of elements
  * @flush:      Whether or not to sync to disk
  *
- * Called either from qed_check or with table_lock held.
+ * Called with table_lock held.
  */
 static int qed_write_table(BDRVQEDState *s, uint64_t offset, QEDTable *table,
                            unsigned int index, unsigned int n, bool flush)
@@ -75,7 +66,6 @@ static int qed_write_table(BDRVQEDState *s, uint64_t offset, QEDTable *table,
     unsigned int sector_mask = BDRV_SECTOR_SIZE / sizeof(uint64_t) - 1;
     unsigned int start, end, i;
     QEDTable *new_table;
-    struct iovec iov;
     QEMUIOVector qiov;
     size_t len_bytes;
     int ret;
@@ -89,11 +79,7 @@ static int qed_write_table(BDRVQEDState *s, uint64_t offset, QEDTable *table,
     len_bytes = (end - start) * sizeof(uint64_t);
 
     new_table = qemu_blockalign(s->bs, len_bytes);
-    iov = (struct iovec) {
-        .iov_base = new_table->offsets,
-        .iov_len = len_bytes,
-    };
-    qemu_iovec_init_external(&qiov, &iov, 1);
+    qemu_iovec_init_buf(&qiov, new_table->offsets, len_bytes);
 
     /* Byteswap table */
     for (i = start; i < end; i++) {
@@ -104,13 +90,9 @@ static int qed_write_table(BDRVQEDState *s, uint64_t offset, QEDTable *table,
     /* Adjust for offset into table */
     offset += start * sizeof(uint64_t);
 
-    if (qemu_in_coroutine()) {
-        qemu_co_mutex_unlock(&s->table_lock);
-    }
+    qemu_co_mutex_unlock(&s->table_lock);
     ret = bdrv_pwritev(s->bs->file, offset, &qiov);
-    if (qemu_in_coroutine()) {
-        qemu_co_mutex_lock(&s->table_lock);
-    }
+    qemu_co_mutex_lock(&s->table_lock);
     trace_qed_write_table_cb(s, table, flush, ret);
     if (ret < 0) {
         goto out;
@@ -134,7 +116,7 @@ int qed_read_l1_table_sync(BDRVQEDState *s)
     return qed_read_table(s, s->header.l1_table_offset, s->l1_table);
 }
 
-/* Called either from qed_check or with table_lock held.  */
+/* Called with table_lock held.  */
 int qed_write_l1_table(BDRVQEDState *s, unsigned int index, unsigned int n)
 {
     BLKDBG_EVENT(s->bs->file, BLKDBG_L1_UPDATE);
@@ -148,7 +130,7 @@ int qed_write_l1_table_sync(BDRVQEDState *s, unsigned int index,
     return qed_write_l1_table(s, index, n);
 }
 
-/* Called either from qed_check or with table_lock held.  */
+/* Called with table_lock held.  */
 int qed_read_l2_table(BDRVQEDState *s, QEDRequest *request, uint64_t offset)
 {
     int ret;
@@ -191,7 +173,7 @@ int qed_read_l2_table_sync(BDRVQEDState *s, QEDRequest *request, uint64_t offset
     return qed_read_l2_table(s, request, offset);
 }
 
-/* Called either from qed_check or with table_lock held.  */
+/* Called with table_lock held.  */
 int qed_write_l2_table(BDRVQEDState *s, QEDRequest *request,
                        unsigned int index, unsigned int n, bool flush)
 {

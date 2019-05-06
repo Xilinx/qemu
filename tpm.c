@@ -11,24 +11,19 @@
  *
  * Based on net.c
  */
+
 #include "qemu/osdep.h"
 
+#include "qapi/error.h"
+#include "qapi/qapi-commands-tpm.h"
 #include "qapi/qmp/qerror.h"
 #include "sysemu/tpm_backend.h"
 #include "sysemu/tpm.h"
 #include "qemu/config-file.h"
 #include "qemu/error-report.h"
-#include "qmp-commands.h"
 
 static QLIST_HEAD(, TPMBackend) tpm_backends =
     QLIST_HEAD_INITIALIZER(tpm_backends);
-
-static bool tpm_models[TPM_MODEL__MAX];
-
-void tpm_register_model(enum TpmModel model)
-{
-    tpm_models[model] = true;
-}
 
 static const TPMBackendClass *
 tpm_be_find_by_type(enum TpmType type)
@@ -69,7 +64,7 @@ static void tpm_display_backend_drivers(void)
 /*
  * Find the TPM with the given Id
  */
-TPMBackend *qemu_find_tpm(const char *id)
+TPMBackend *qemu_find_tpm_be(const char *id)
 {
     TPMBackend *drv;
 
@@ -94,19 +89,19 @@ static int tpm_init_tpmdev(void *dummy, QemuOpts *opts, Error **errp)
     int i;
 
     if (!QLIST_EMPTY(&tpm_backends)) {
-        error_report("Only one TPM is allowed.");
+        error_setg(errp, "Only one TPM is allowed.");
         return 1;
     }
 
     id = qemu_opts_id(opts);
     if (id == NULL) {
-        error_report(QERR_MISSING_PARAMETER, "id");
+        error_setg(errp, QERR_MISSING_PARAMETER, "id");
         return 1;
     }
 
     value = qemu_opt_get(opts, "type");
     if (!value) {
-        error_report(QERR_MISSING_PARAMETER, "type");
+        error_setg(errp, QERR_MISSING_PARAMETER, "type");
         tpm_display_backend_drivers();
         return 1;
     }
@@ -114,8 +109,8 @@ static int tpm_init_tpmdev(void *dummy, QemuOpts *opts, Error **errp)
     i = qapi_enum_parse(&TpmType_lookup, value, -1, NULL);
     be = i >= 0 ? tpm_be_find_by_type(i) : NULL;
     if (be == NULL) {
-        error_report(QERR_INVALID_PARAMETER_VALUE,
-                     "type", "a TPM backend type");
+        error_setg(errp, QERR_INVALID_PARAMETER_VALUE, "type",
+                   "a TPM backend type");
         tpm_display_backend_drivers();
         return 1;
     }
@@ -123,21 +118,16 @@ static int tpm_init_tpmdev(void *dummy, QemuOpts *opts, Error **errp)
     /* validate backend specific opts */
     qemu_opts_validate(opts, be->opts, &local_err);
     if (local_err) {
-        error_report_err(local_err);
+        error_propagate(errp, local_err);
         return 1;
     }
 
-    drv = be->create(opts, id);
+    drv = be->create(opts);
     if (!drv) {
         return 1;
     }
 
-    tpm_backend_open(drv, &local_err);
-    if (local_err) {
-        error_report_err(local_err);
-        return 1;
-    }
-
+    drv->id = g_strdup(id);
     QLIST_INSERT_HEAD(&tpm_backends, drv, list);
 
     return 0;
@@ -161,14 +151,10 @@ void tpm_cleanup(void)
  * Initialize the TPM. Process the tpmdev command line options describing the
  * TPM backend.
  */
-int tpm_init(void)
+void tpm_init(void)
 {
-    if (qemu_opts_foreach(qemu_find_opts("tpmdev"),
-                          tpm_init_tpmdev, NULL, NULL)) {
-        return -1;
-    }
-
-    return 0;
+    qemu_opts_foreach(qemu_find_opts("tpmdev"),
+                      tpm_init_tpmdev, NULL, &error_fatal);
 }
 
 /*
@@ -191,8 +177,7 @@ int tpm_config_parse(QemuOptsList *opts_list, const char *optarg)
 }
 
 /*
- * Walk the list of active TPM backends and collect information about them
- * following the schema description in qapi-schema.json.
+ * Walk the list of active TPM backends and collect information about them.
  */
 TPMInfoList *qmp_query_tpm(Error **errp)
 {
@@ -200,9 +185,10 @@ TPMInfoList *qmp_query_tpm(Error **errp)
     TPMInfoList *info, *head = NULL, *cur_item = NULL;
 
     QLIST_FOREACH(drv, &tpm_backends, list) {
-        if (!tpm_models[drv->fe_model]) {
+        if (!drv->tpmif) {
             continue;
         }
+
         info = g_new0(TPMInfoList, 1);
         info->value = tpm_backend_query_tpm(drv);
 
@@ -240,18 +226,16 @@ TpmTypeList *qmp_query_tpm_types(Error **errp)
 
     return head;
 }
-
 TpmModelList *qmp_query_tpm_models(Error **errp)
 {
-    unsigned int i = 0;
     TpmModelList *head = NULL, *prev = NULL, *cur_item;
+    GSList *e, *l = object_class_get_list(TYPE_TPM_IF, false);
 
-    for (i = 0; i < TPM_MODEL__MAX; i++) {
-        if (!tpm_models[i]) {
-            continue;
-        }
+    for (e = l; e; e = e->next) {
+        TPMIfClass *c = TPM_IF_CLASS(e->data);
+
         cur_item = g_new0(TpmModelList, 1);
-        cur_item->value = i;
+        cur_item->value = c->model;
 
         if (prev) {
             prev->next = cur_item;
@@ -261,6 +245,7 @@ TpmModelList *qmp_query_tpm_models(Error **errp)
         }
         prev = cur_item;
     }
+    g_slist_free(l);
 
     return head;
 }

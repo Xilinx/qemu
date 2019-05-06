@@ -98,7 +98,7 @@
 #define FIMD_WINCON_BUFSTATUS       ((1 << 21) | (1 << 31))
 #define FIMD_WINCON_BUF0_STAT       ((0 << 21) | (0 << 31))
 #define FIMD_WINCON_BUF1_STAT       ((1 << 21) | (0 << 31))
-#define FIMD_WINCON_BUF2_STAT       ((0 << 21) | (1 << 31))
+#define FIMD_WINCON_BUF2_STAT       ((0 << 21) | (1U << 31))
 #define FIMD_WINCON_BUFSELECT       ((1 << 20) | (1 << 30))
 #define FIMD_WINCON_BUF0_SEL        ((0 << 20) | (0 << 30))
 #define FIMD_WINCON_BUF1_SEL        ((1 << 20) | (0 << 30))
@@ -1272,8 +1272,6 @@ static void exynos4210_fimd_update(void *opaque)
     uint8_t *host_fb_addr;
     bool is_dirty = false;
     const int global_width = (s->vidtcon[2] & FIMD_VIDTCON2_SIZE_MASK) + 1;
-    const int global_height = ((s->vidtcon[2] >> FIMD_VIDTCON2_VER_SHIFT) &
-            FIMD_VIDTCON2_SIZE_MASK) + 1;
 
     if (!s || !s->console || !s->enabled ||
         surface_bits_per_pixel(qemu_console_surface(s->console)) == 0) {
@@ -1289,7 +1287,6 @@ static void exynos4210_fimd_update(void *opaque)
             scrn_width = w->virtpage_width;
             /* Total width of virtual screen page in bytes */
             inc_size = scrn_width + w->virtpage_offsize;
-            memory_region_sync_dirty_bitmap(w->mem_section.mr);
             host_fb_addr = w->host_fb_addr;
             fb_line_addr = w->mem_section.offset_within_region;
             snap = memory_region_snapshot_and_clear_dirty(w->mem_section.mr,
@@ -1330,7 +1327,7 @@ static void exynos4210_fimd_update(void *opaque)
             fimd_copy_line_toqemu(global_width, s->ifb + global_width * line *
                     RGBA_SIZE, d + global_width * line * bpp);
         }
-        dpy_gfx_update(s->console, 0, 0, global_width, global_height);
+        dpy_gfx_update_full(s->console);
     }
     s->invalidate = false;
     s->vidintcon[1] |= FIMD_VIDINT_INTFRMPEND;

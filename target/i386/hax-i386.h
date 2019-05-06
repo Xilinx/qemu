@@ -16,7 +16,7 @@
 #include "cpu.h"
 #include "sysemu/hax.h"
 
-#ifdef CONFIG_DARWIN
+#ifdef CONFIG_POSIX
 typedef int hax_fd;
 #endif
 
@@ -37,6 +37,7 @@ struct hax_state {
     uint32_t version;
     struct hax_vm *vm;
     uint64_t mem_quota;
+    bool supports_64bit_ramblock;
 };
 
 #define HAX_MAX_VCPU 0x10
@@ -81,8 +82,8 @@ hax_fd hax_mod_open(void);
 void hax_memory_init(void);
 
 
-#ifdef CONFIG_DARWIN
-#include "target/i386/hax-darwin.h"
+#ifdef CONFIG_POSIX
+#include "target/i386/hax-posix.h"
 #endif
 
 #ifdef CONFIG_WIN32

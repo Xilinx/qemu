@@ -155,7 +155,7 @@ static void pmc_stream_zero_init(Object *obj)
     object_property_add_link(obj, "stream-connected-pzm", TYPE_STREAM_SLAVE,
                            (Object **) &s->tx_dev,
                            qdev_prop_allow_set_link_before_realize,
-                           OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                           OBJ_PROP_LINK_STRONG,
                            NULL);
     for (i = 0; (i * 4) < PZM_BEAT_SIZE; i++) {
         s->data[i] = 0xDEADBEEF;

@@ -52,13 +52,14 @@ Escape character is '^]'.
     "QMP": {
         "version": {
             "qemu": {
-                "micro": 50, 
-                "minor": 6, 
-                "major": 1
-            }, 
-            "package": ""
-        }, 
+                "micro": 0,
+                "minor": 0,
+                "major": 3
+            },
+            "package": "v3.0.0"
+        },
         "capabilities": [
+            "oob"
         ]
     }
 }
@@ -78,7 +79,8 @@ Escape character is '^]'.
     }
 }
 
-Please, refer to the qapi-schema.json file for a complete command reference.
+Please refer to docs/interop/qemu-qmp-ref.* for a complete command
+reference, generated from qapi/qapi-schema.json.
 
 QMP wiki page
 -------------

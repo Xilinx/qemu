@@ -22,13 +22,14 @@
  * THE SOFTWARE.
  */
 #include "qemu/osdep.h"
+#include "qemu/units.h"
 #include "qapi/error.h"
 #include "qemu-common.h"
 #include "cpu.h"
 #include "hw/sysbus.h"
 #include "qemu/error-report.h"
 #include "qemu/timer.h"
-#include "hw/sparc/sun4m.h"
+#include "hw/sparc/sun4m_iommu.h"
 #include "hw/timer/m48t59.h"
 #include "hw/sparc/sparc32_dma.h"
 #include "hw/block/fdc.h"
@@ -36,8 +37,6 @@
 #include "net/net.h"
 #include "hw/boards.h"
 #include "hw/scsi/esp.h"
-#include "hw/i386/pc.h"
-#include "hw/isa/isa.h"
 #include "hw/nvram/sun_nvram.h"
 #include "hw/nvram/chrp_nvram.h"
 #include "hw/nvram/fw_cfg.h"
@@ -45,9 +44,7 @@
 #include "hw/empty_slot.h"
 #include "hw/loader.h"
 #include "elf.h"
-#include "sysemu/block-backend.h"
 #include "trace.h"
-#include "qemu/cutils.h"
 
 /*
  * Sun4m architecture was used in the following machines:
@@ -68,7 +65,7 @@
 #define KERNEL_LOAD_ADDR     0x00004000
 #define CMDLINE_ADDR         0x007ff000
 #define INITRD_LOAD_ADDR     0x00800000
-#define PROM_SIZE_MAX        (1024 * 1024)
+#define PROM_SIZE_MAX        (1 * MiB)
 #define PROM_VADDR           0xffd00000
 #define PROM_FILENAME        "openbios-sparc32"
 #define CFG_ADDR             0xd00000510ULL
@@ -99,10 +96,6 @@ struct sun4m_hwdef {
     uint16_t machine_id;
     uint8_t nvram_machine_id;
 };
-
-void DMA_init(ISABus *bus, int high_page_enable)
-{
-}
 
 static void fw_cfg_boot_set(void *opaque, const char *boot_device,
                             Error **errp)
@@ -231,11 +224,12 @@ static uint64_t translate_kernel_address(void *opaque, uint64_t addr)
 
 static unsigned long sun4m_load_kernel(const char *kernel_filename,
                                        const char *initrd_filename,
-                                       ram_addr_t RAM_size)
+                                       ram_addr_t RAM_size,
+                                       uint32_t *initrd_size)
 {
     int linux_boot;
     unsigned int i;
-    long initrd_size, kernel_size;
+    long kernel_size;
     uint8_t *ptr;
 
     linux_boot = (kernel_filename != NULL);
@@ -249,7 +243,8 @@ static unsigned long sun4m_load_kernel(const char *kernel_filename,
 #else
         bswap_needed = 0;
 #endif
-        kernel_size = load_elf(kernel_filename, translate_kernel_address, NULL,
+        kernel_size = load_elf(kernel_filename, NULL,
+                               translate_kernel_address, NULL,
                                NULL, NULL, NULL, 1, EM_SPARC, 0, 0);
         if (kernel_size < 0)
             kernel_size = load_aout(kernel_filename, KERNEL_LOAD_ADDR,
@@ -260,29 +255,28 @@ static unsigned long sun4m_load_kernel(const char *kernel_filename,
                                               KERNEL_LOAD_ADDR,
                                               RAM_size - KERNEL_LOAD_ADDR);
         if (kernel_size < 0) {
-            fprintf(stderr, "qemu: could not load kernel '%s'\n",
-                    kernel_filename);
+            error_report("could not load kernel '%s'", kernel_filename);
             exit(1);
         }
 
         /* load initrd */
-        initrd_size = 0;
+        *initrd_size = 0;
         if (initrd_filename) {
-            initrd_size = load_image_targphys(initrd_filename,
-                                              INITRD_LOAD_ADDR,
-                                              RAM_size - INITRD_LOAD_ADDR);
-            if (initrd_size < 0) {
-                fprintf(stderr, "qemu: could not load initial ram disk '%s'\n",
-                        initrd_filename);
+            *initrd_size = load_image_targphys(initrd_filename,
+                                               INITRD_LOAD_ADDR,
+                                               RAM_size - INITRD_LOAD_ADDR);
+            if ((int)*initrd_size < 0) {
+                error_report("could not load initial ram disk '%s'",
+                             initrd_filename);
                 exit(1);
             }
         }
-        if (initrd_size > 0) {
+        if (*initrd_size > 0) {
             for (i = 0; i < 64 * TARGET_PAGE_SIZE; i += TARGET_PAGE_SIZE) {
-                ptr = rom_ptr(KERNEL_LOAD_ADDR + i);
-                if (ldl_p(ptr) == 0x48647253) { // HdrS
+                ptr = rom_ptr(KERNEL_LOAD_ADDR + i, 24);
+                if (ptr && ldl_p(ptr) == 0x48647253) { /* HdrS */
                     stl_p(ptr + 16, INITRD_LOAD_ADDR);
-                    stl_p(ptr + 20, initrd_size);
+                    stl_p(ptr + 20, *initrd_size);
                     break;
                 }
             }
@@ -326,6 +320,7 @@ static void *sparc32_dma_init(hwaddr dma_base,
 
     esp = ESP_STATE(object_resolve_path_component(OBJECT(espdma), "esp"));
     sysbus_mmio_map(SYS_BUS_DEVICE(esp), 0, esp_base);
+    scsi_bus_legacy_handle_cmdline(&esp->esp.bus);
 
     ledma = SPARC32_LEDMA_DEVICE(object_resolve_path_component(
                                  OBJECT(dma), "ledma"));
@@ -565,8 +560,9 @@ static void idreg_init(hwaddr addr)
     s = SYS_BUS_DEVICE(dev);
 
     sysbus_mmio_map(s, 0, addr);
-    cpu_physical_memory_write_rom(&address_space_memory,
-                                  addr, idreg_data, sizeof(idreg_data));
+    address_space_write_rom(&address_space_memory, addr,
+                            MEMTXATTRS_UNSPECIFIED,
+                            idreg_data, sizeof(idreg_data));
 }
 
 #define MACIO_ID_REGISTER(obj) \
@@ -578,23 +574,36 @@ typedef struct IDRegState {
     MemoryRegion mem;
 } IDRegState;
 
-static void idreg_init1(Object *obj)
+static void idreg_realize(DeviceState *ds, Error **errp)
 {
-    IDRegState *s = MACIO_ID_REGISTER(obj);
-    SysBusDevice *dev = SYS_BUS_DEVICE(obj);
+    IDRegState *s = MACIO_ID_REGISTER(ds);
+    SysBusDevice *dev = SYS_BUS_DEVICE(ds);
+    Error *local_err = NULL;
 
-    memory_region_init_ram_nomigrate(&s->mem, obj,
-                           "sun4m.idreg", sizeof(idreg_data), &error_fatal);
+    memory_region_init_ram_nomigrate(&s->mem, OBJECT(ds), "sun4m.idreg",
+                                     sizeof(idreg_data), &local_err);
+    if (local_err) {
+        error_propagate(errp, local_err);
+        return;
+    }
+
     vmstate_register_ram_global(&s->mem);
     memory_region_set_readonly(&s->mem, true);
     sysbus_init_mmio(dev, &s->mem);
+}
+
+static void idreg_class_init(ObjectClass *oc, void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(oc);
+
+    dc->realize = idreg_realize;
 }
 
 static const TypeInfo idreg_info = {
     .name          = TYPE_MACIO_ID_REGISTER,
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(IDRegState),
-    .instance_init = idreg_init1,
+    .class_init    = idreg_class_init,
 };
 
 #define TYPE_TCX_AFX "tcx_afx"
@@ -619,21 +628,35 @@ static void afx_init(hwaddr addr)
     sysbus_mmio_map(s, 0, addr);
 }
 
-static void afx_init1(Object *obj)
+static void afx_realize(DeviceState *ds, Error **errp)
 {
-    AFXState *s = TCX_AFX(obj);
-    SysBusDevice *dev = SYS_BUS_DEVICE(obj);
+    AFXState *s = TCX_AFX(ds);
+    SysBusDevice *dev = SYS_BUS_DEVICE(ds);
+    Error *local_err = NULL;
 
-    memory_region_init_ram_nomigrate(&s->mem, obj, "sun4m.afx", 4, &error_fatal);
+    memory_region_init_ram_nomigrate(&s->mem, OBJECT(ds), "sun4m.afx", 4,
+                                     &local_err);
+    if (local_err) {
+        error_propagate(errp, local_err);
+        return;
+    }
+
     vmstate_register_ram_global(&s->mem);
     sysbus_init_mmio(dev, &s->mem);
+}
+
+static void afx_class_init(ObjectClass *oc, void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(oc);
+
+    dc->realize = afx_realize;
 }
 
 static const TypeInfo afx_info = {
     .name          = TYPE_TCX_AFX,
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(AFXState),
-    .instance_init = afx_init1,
+    .class_init    = afx_class_init,
 };
 
 #define TYPE_OPENPROM "openprom"
@@ -671,7 +694,8 @@ static void prom_init(hwaddr addr, const char *bios_name)
     }
     filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, bios_name);
     if (filename) {
-        ret = load_elf(filename, translate_prom_address, &addr, NULL,
+        ret = load_elf(filename, NULL,
+                       translate_prom_address, &addr, NULL,
                        NULL, NULL, 1, EM_SPARC, 0, 0);
         if (ret < 0 || ret > PROM_SIZE_MAX) {
             ret = load_image_targphys(filename, addr, PROM_SIZE_MAX);
@@ -681,18 +705,24 @@ static void prom_init(hwaddr addr, const char *bios_name)
         ret = -1;
     }
     if (ret < 0 || ret > PROM_SIZE_MAX) {
-        fprintf(stderr, "qemu: could not load prom '%s'\n", bios_name);
+        error_report("could not load prom '%s'", bios_name);
         exit(1);
     }
 }
 
-static void prom_init1(Object *obj)
+static void prom_realize(DeviceState *ds, Error **errp)
 {
-    PROMState *s = OPENPROM(obj);
-    SysBusDevice *dev = SYS_BUS_DEVICE(obj);
+    PROMState *s = OPENPROM(ds);
+    SysBusDevice *dev = SYS_BUS_DEVICE(ds);
+    Error *local_err = NULL;
 
-    memory_region_init_ram_nomigrate(&s->prom, obj, "sun4m.prom", PROM_SIZE_MAX,
-                           &error_fatal);
+    memory_region_init_ram_nomigrate(&s->prom, OBJECT(ds), "sun4m.prom",
+                                     PROM_SIZE_MAX, &local_err);
+    if (local_err) {
+        error_propagate(errp, local_err);
+        return;
+    }
+
     vmstate_register_ram_global(&s->prom);
     memory_region_set_readonly(&s->prom, true);
     sysbus_init_mmio(dev, &s->prom);
@@ -707,6 +737,7 @@ static void prom_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->props = prom_properties;
+    dc->realize = prom_realize;
 }
 
 static const TypeInfo prom_info = {
@@ -714,7 +745,6 @@ static const TypeInfo prom_info = {
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(PROMState),
     .class_init    = prom_class_init,
-    .instance_init = prom_init1,
 };
 
 #define TYPE_SUN4M_MEMORY "memory"
@@ -747,10 +777,9 @@ static void ram_init(hwaddr addr, ram_addr_t RAM_size,
 
     /* allocate RAM */
     if ((uint64_t)RAM_size > max_mem) {
-        fprintf(stderr,
-                "qemu: Too much memory for this machine: %d, maximum %d\n",
-                (unsigned int)(RAM_size / (1024 * 1024)),
-                (unsigned int)(max_mem / (1024 * 1024)));
+        error_report("Too much memory for this machine: %" PRId64 ","
+                     " maximum %" PRId64,
+                     RAM_size / MiB, max_mem / MiB);
         exit(1);
     }
     dev = qdev_create(NULL, "memory");
@@ -818,9 +847,12 @@ static void sun4m_hw_init(const struct sun4m_hwdef *hwdef,
     qemu_irq *cpu_irqs[MAX_CPUS], slavio_irq[32], slavio_cpu_irq[MAX_CPUS];
     qemu_irq fdc_tc;
     unsigned long kernel_size;
+    uint32_t initrd_size;
     DriveInfo *fd[MAX_FD];
     FWCfgState *fw_cfg;
     unsigned int num_vsimms;
+    DeviceState *dev;
+    SysBusDevice *s;
 
     /* init CPUs */
     for(i = 0; i < smp_cpus; i++) {
@@ -928,12 +960,36 @@ static void sun4m_hw_init(const struct sun4m_hwdef *hwdef,
 
     slavio_timer_init_all(hwdef->counter_base, slavio_irq[19], slavio_cpu_irq, smp_cpus);
 
-    slavio_serial_ms_kbd_init(hwdef->ms_kb_base, slavio_irq[14],
-                              !machine->enable_graphics, ESCC_CLOCK, 1);
     /* Slavio TTYA (base+4, Linux ttyS0) is the first QEMU serial device
        Slavio TTYB (base+0, Linux ttyS1) is the second QEMU serial device */
-    escc_init(hwdef->serial_base, slavio_irq[15], slavio_irq[15],
-              serial_hds[0], serial_hds[1], ESCC_CLOCK, 1);
+    dev = qdev_create(NULL, TYPE_ESCC);
+    qdev_prop_set_uint32(dev, "disabled", !machine->enable_graphics);
+    qdev_prop_set_uint32(dev, "frequency", ESCC_CLOCK);
+    qdev_prop_set_uint32(dev, "it_shift", 1);
+    qdev_prop_set_chr(dev, "chrB", NULL);
+    qdev_prop_set_chr(dev, "chrA", NULL);
+    qdev_prop_set_uint32(dev, "chnBtype", escc_mouse);
+    qdev_prop_set_uint32(dev, "chnAtype", escc_kbd);
+    qdev_init_nofail(dev);
+    s = SYS_BUS_DEVICE(dev);
+    sysbus_connect_irq(s, 0, slavio_irq[14]);
+    sysbus_connect_irq(s, 1, slavio_irq[14]);
+    sysbus_mmio_map(s, 0, hwdef->ms_kb_base);
+
+    dev = qdev_create(NULL, TYPE_ESCC);
+    qdev_prop_set_uint32(dev, "disabled", 0);
+    qdev_prop_set_uint32(dev, "frequency", ESCC_CLOCK);
+    qdev_prop_set_uint32(dev, "it_shift", 1);
+    qdev_prop_set_chr(dev, "chrB", serial_hd(1));
+    qdev_prop_set_chr(dev, "chrA", serial_hd(0));
+    qdev_prop_set_uint32(dev, "chnBtype", escc_serial);
+    qdev_prop_set_uint32(dev, "chnAtype", escc_serial);
+    qdev_init_nofail(dev);
+
+    s = SYS_BUS_DEVICE(dev);
+    sysbus_connect_irq(s, 0, slavio_irq[15]);
+    sysbus_connect_irq(s, 1,  slavio_irq[15]);
+    sysbus_mmio_map(s, 0, hwdef->serial_base);
 
     if (hwdef->apc_base) {
         apc_init(hwdef->apc_base, qemu_allocate_irq(cpu_halt_signal, NULL, 0));
@@ -970,9 +1026,10 @@ static void sun4m_hw_init(const struct sun4m_hwdef *hwdef,
         empty_slot_init(hwdef->bpp_base, 0x20);
     }
 
+    initrd_size = 0;
     kernel_size = sun4m_load_kernel(machine->kernel_filename,
                                     machine->initrd_filename,
-                                    machine->ram_size);
+                                    machine->ram_size, &initrd_size);
 
     nvram_init(nvram, (uint8_t *)&nd_table[0].macaddr, machine->kernel_cmdline,
                machine->boot_order, machine->ram_size, kernel_size,
@@ -983,7 +1040,17 @@ static void sun4m_hw_init(const struct sun4m_hwdef *hwdef,
         ecc_init(hwdef->ecc_base, slavio_irq[28],
                  hwdef->ecc_version);
 
-    fw_cfg = fw_cfg_init_mem(CFG_ADDR, CFG_ADDR + 2);
+    dev = qdev_create(NULL, TYPE_FW_CFG_MEM);
+    fw_cfg = FW_CFG(dev);
+    qdev_prop_set_uint32(dev, "data_width", 1);
+    qdev_prop_set_bit(dev, "dma_enabled", false);
+    object_property_add_child(OBJECT(qdev_get_machine()), TYPE_FW_CFG,
+                              OBJECT(fw_cfg), NULL);
+    qdev_init_nofail(dev);
+    s = SYS_BUS_DEVICE(dev);
+    sysbus_mmio_map(s, 0, CFG_ADDR);
+    sysbus_mmio_map(s, 1, CFG_ADDR + 2);
+
     fw_cfg_add_i16(fw_cfg, FW_CFG_NB_CPUS, (uint16_t)smp_cpus);
     fw_cfg_add_i16(fw_cfg, FW_CFG_MAX_CPUS, (uint16_t)max_cpus);
     fw_cfg_add_i64(fw_cfg, FW_CFG_RAM_SIZE, (uint64_t)ram_size);
@@ -1005,7 +1072,7 @@ static void sun4m_hw_init(const struct sun4m_hwdef *hwdef,
         fw_cfg_add_i32(fw_cfg, FW_CFG_CMDLINE_SIZE, 0);
     }
     fw_cfg_add_i32(fw_cfg, FW_CFG_INITRD_ADDR, INITRD_LOAD_ADDR);
-    fw_cfg_add_i32(fw_cfg, FW_CFG_INITRD_SIZE, 0); // not used
+    fw_cfg_add_i32(fw_cfg, FW_CFG_INITRD_SIZE, initrd_size);
     fw_cfg_add_i16(fw_cfg, FW_CFG_BOOT_DEVICE, machine->boot_order[0]);
     qemu_register_boot_set(fw_cfg_boot_set, fw_cfg);
 }

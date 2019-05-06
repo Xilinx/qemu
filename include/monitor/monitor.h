@@ -2,11 +2,11 @@
 #define MONITOR_H
 
 #include "qemu-common.h"
-#include "qapi/qmp/qdict.h"
 #include "block/block.h"
+#include "qapi/qapi-types-misc.h"
 #include "qemu/readline.h"
 
-extern Monitor *cur_mon;
+extern __thread Monitor *cur_mon;
 
 /* flags for monitor_init */
 /* 0x01 unused */
@@ -14,9 +14,11 @@ extern Monitor *cur_mon;
 #define MONITOR_USE_CONTROL   0x04
 #define MONITOR_USE_PRETTY    0x08
 
+#define QMP_REQ_QUEUE_LEN_MAX 8
+
 bool monitor_cur_is_qmp(void);
 
-void monitor_init_qmp_commands(void);
+void monitor_init_globals(void);
 void monitor_init(Chardev *chr, int flags);
 void monitor_cleanup(void);
 
@@ -26,10 +28,9 @@ void monitor_resume(Monitor *mon);
 int monitor_get_fd(Monitor *mon, const char *fdname, Error **errp);
 int monitor_fd_param(Monitor *mon, const char *fdname, Error **errp);
 
-void monitor_vprintf(Monitor *mon, const char *fmt, va_list ap)
+int monitor_vprintf(Monitor *mon, const char *fmt, va_list ap)
     GCC_FMT_ATTR(2, 0);
-void monitor_printf(Monitor *mon, const char *fmt, ...) GCC_FMT_ATTR(2, 3);
-int monitor_fprintf(FILE *stream, const char *fmt, ...) GCC_FMT_ATTR(2, 3);
+int monitor_printf(Monitor *mon, const char *fmt, ...) GCC_FMT_ATTR(2, 3);
 void monitor_flush(Monitor *mon);
 int monitor_set_cpu(int cpu_index);
 int monitor_get_cpu_index(void);

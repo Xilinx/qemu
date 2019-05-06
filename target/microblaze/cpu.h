@@ -28,7 +28,7 @@
 #define CPUArchState struct CPUMBState
 
 #include "exec/cpu-defs.h"
-#include "fpu/softfloat.h"
+#include "fpu/softfloat-types.h"
 struct CPUMBState;
 typedef struct CPUMBState CPUMBState;
 #if !defined(CONFIG_USER_ONLY)
@@ -243,7 +243,7 @@ typedef struct CPUMBState CPUMBState;
 struct CPUMBState {
     uint32_t debug;
     uint32_t btaken;
-    uint32_t btarget;
+    uint64_t btarget;
     uint32_t bimm;
 
     uint32_t imm;
@@ -318,6 +318,8 @@ struct MicroBlazeCPU {
         bool use_mmu;
         bool dcache_writeback;
         bool endi;
+        bool dopb_bus_exception;
+        bool iopb_bus_exception;
         char *version;
         uint8_t pvr;
     } cfg;
@@ -336,8 +338,7 @@ static inline MicroBlazeCPU *mb_env_get_cpu(CPUMBState *env)
 
 void mb_cpu_do_interrupt(CPUState *cs);
 bool mb_cpu_exec_interrupt(CPUState *cs, int int_req);
-void mb_cpu_dump_state(CPUState *cpu, FILE *f, fprintf_function cpu_fprintf,
-                       int flags);
+void mb_cpu_dump_state(CPUState *cpu, FILE *f, int flags);
 hwaddr mb_cpu_get_phys_page_debug(CPUState *cpu, vaddr addr);
 int mb_cpu_gdb_read_register(CPUState *cpu, uint8_t *buf, int reg);
 int mb_cpu_gdb_write_register(CPUState *cpu, uint8_t *buf, int reg);
@@ -355,7 +356,7 @@ int cpu_mb_signal_handler(int host_signum, void *pinfo,
 #define TARGET_PHYS_ADDR_SPACE_BITS 64
 #define TARGET_VIRT_ADDR_SPACE_BITS 64
 
-#define cpu_init(cpu_model) cpu_generic_init(TYPE_MICROBLAZE_CPU, cpu_model)
+#define CPU_RESOLVING_TYPE TYPE_MICROBLAZE_CPU
 
 #define cpu_signal_handler cpu_mb_signal_handler
 
@@ -370,16 +371,20 @@ int cpu_mb_signal_handler(int host_signum, void *pinfo,
 
 static inline int cpu_mmu_index (CPUMBState *env, bool ifetch)
 {
-        /* Are we in nommu mode?.  */
-        if (!(env->sregs[SR_MSR] & MSR_VM))
-            return MMU_NOMMU_IDX;
+    MicroBlazeCPU *cpu = mb_env_get_cpu(env);
 
-	if (env->sregs[SR_MSR] & MSR_UM)
-            return MMU_USER_IDX;
-        return MMU_KERNEL_IDX;
+    /* Are we in nommu mode?.  */
+    if (!(env->sregs[SR_MSR] & MSR_VM) || !cpu->cfg.use_mmu) {
+        return MMU_NOMMU_IDX;
+    }
+
+    if (env->sregs[SR_MSR] & MSR_UM) {
+        return MMU_USER_IDX;
+    }
+    return MMU_KERNEL_IDX;
 }
 
-int mb_cpu_handle_mmu_fault(CPUState *cpu, vaddr address, int rw,
+int mb_cpu_handle_mmu_fault(CPUState *cpu, vaddr address, int size, int rw,
                             int mmu_idx);
 
 #include "exec/cpu-all.h"
@@ -394,9 +399,10 @@ static inline void cpu_get_tb_cpu_state(CPUMBState *env, target_ulong *pc,
 }
 
 #if !defined(CONFIG_USER_ONLY)
-void mb_cpu_unassigned_access(CPUState *cpu, hwaddr addr,
-                              bool is_write, bool is_exec, int is_asi,
-                              unsigned size);
+void mb_cpu_transaction_failed(CPUState *cs, hwaddr physaddr, vaddr addr,
+                               unsigned size, MMUAccessType access_type,
+                               int mmu_idx, MemTxAttrs attrs,
+                               MemTxResult response, uintptr_t retaddr);
 #endif
 
 #endif

@@ -22,19 +22,20 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+
 #include "qemu/osdep.h"
 #include "hw/hw.h"
-#include "hw/i386/pc.h"
-#include "hw/pci/pci.h"
 #include "hw/isa/isa.h"
 #include "qemu/error-report.h"
 #include "qemu/timer.h"
 #include "sysemu/sysemu.h"
+#include "sysemu/blockdev.h"
 #include "sysemu/dma.h"
 #include "hw/block/block.h"
 #include "sysemu/block-backend.h"
+#include "qapi/error.h"
 #include "qemu/cutils.h"
-#include "qemu/error-report.h"
+#include "sysemu/replay.h"
 
 #include "hw/ide/internal.h"
 #include "trace.h"
@@ -381,9 +382,21 @@ static void ide_set_signature(IDEState *s)
     }
 }
 
+static bool ide_sect_range_ok(IDEState *s,
+                              uint64_t sector, uint64_t nb_sectors)
+{
+    uint64_t total_sectors;
+
+    blk_get_geometry(s->blk, &total_sectors);
+    if (sector > total_sectors || nb_sectors > total_sectors - sector) {
+        return false;
+    }
+    return true;
+}
+
 typedef struct TrimAIOCB {
     BlockAIOCB common;
-    BlockBackend *blk;
+    IDEState *s;
     QEMUBH *bh;
     int ret;
     QEMUIOVector *qiov;
@@ -426,6 +439,8 @@ static void ide_trim_bh_cb(void *opaque)
 static void ide_issue_trim_cb(void *opaque, int ret)
 {
     TrimAIOCB *iocb = opaque;
+    IDEState *s = iocb->s;
+
     if (ret >= 0) {
         while (iocb->j < iocb->qiov->niov) {
             int j = iocb->j;
@@ -442,8 +457,13 @@ static void ide_issue_trim_cb(void *opaque, int ret)
                     continue;
                 }
 
+                if (!ide_sect_range_ok(s, sector, count)) {
+                    iocb->ret = -EINVAL;
+                    goto done;
+                }
+
                 /* Got an entry! Submit and exit.  */
-                iocb->aiocb = blk_aio_pdiscard(iocb->blk,
+                iocb->aiocb = blk_aio_pdiscard(s->blk,
                                                sector << BDRV_SECTOR_BITS,
                                                count << BDRV_SECTOR_BITS,
                                                ide_issue_trim_cb, opaque);
@@ -457,9 +477,10 @@ static void ide_issue_trim_cb(void *opaque, int ret)
         iocb->ret = ret;
     }
 
+done:
     iocb->aiocb = NULL;
     if (iocb->bh) {
-        qemu_bh_schedule(iocb->bh);
+        replay_bh_schedule_event(iocb->bh);
     }
 }
 
@@ -467,11 +488,11 @@ BlockAIOCB *ide_issue_trim(
         int64_t offset, QEMUIOVector *qiov,
         BlockCompletionFunc *cb, void *cb_opaque, void *opaque)
 {
-    BlockBackend *blk = opaque;
+    IDEState *s = opaque;
     TrimAIOCB *iocb;
 
-    iocb = blk_aio_get(&trim_aiocb_info, blk, cb, cb_opaque);
-    iocb->blk = blk;
+    iocb = blk_aio_get(&trim_aiocb_info, s->blk, cb, cb_opaque);
+    iocb->s = s;
     iocb->bh = qemu_bh_new(ide_trim_bh_cb, iocb);
     iocb->ret = 0;
     iocb->qiov = qiov;
@@ -503,18 +524,28 @@ static void ide_clear_retry(IDEState *s)
 }
 
 /* prepare data transfer and tell what to do after */
-void ide_transfer_start(IDEState *s, uint8_t *buf, int size,
-                        EndTransferFunc *end_transfer_func)
+bool ide_transfer_start_norecurse(IDEState *s, uint8_t *buf, int size,
+                                  EndTransferFunc *end_transfer_func)
 {
-    s->end_transfer_func = end_transfer_func;
     s->data_ptr = buf;
     s->data_end = buf + size;
     ide_set_retry(s);
     if (!(s->status & ERR_STAT)) {
         s->status |= DRQ_STAT;
     }
-    if (s->bus->dma->ops->start_transfer) {
-        s->bus->dma->ops->start_transfer(s->bus->dma);
+    if (!s->bus->dma->ops->pio_transfer) {
+        s->end_transfer_func = end_transfer_func;
+        return false;
+    }
+    s->bus->dma->ops->pio_transfer(s->bus->dma);
+    return true;
+}
+
+void ide_transfer_start(IDEState *s, uint8_t *buf, int size,
+                        EndTransferFunc *end_transfer_func)
+{
+    if (ide_transfer_start_norecurse(s, buf, size, end_transfer_func)) {
+        end_transfer_func(s);
     }
 }
 
@@ -525,27 +556,18 @@ static void ide_cmd_done(IDEState *s)
     }
 }
 
-static void ide_transfer_halt(IDEState *s,
-                              void(*end_transfer_func)(IDEState *),
-                              bool notify)
+static void ide_transfer_halt(IDEState *s)
 {
-    s->end_transfer_func = end_transfer_func;
+    s->end_transfer_func = ide_transfer_stop;
     s->data_ptr = s->io_buffer;
     s->data_end = s->io_buffer;
     s->status &= ~DRQ_STAT;
-    if (notify) {
-        ide_cmd_done(s);
-    }
 }
 
 void ide_transfer_stop(IDEState *s)
 {
-    ide_transfer_halt(s, ide_transfer_stop, true);
-}
-
-static void ide_transfer_cancel(IDEState *s)
-{
-    ide_transfer_halt(s, ide_transfer_cancel, false);
+    ide_transfer_halt(s);
+    ide_cmd_done(s);
 }
 
 int64_t ide_get_sector(IDEState *s)
@@ -553,16 +575,16 @@ int64_t ide_get_sector(IDEState *s)
     int64_t sector_num;
     if (s->select & 0x40) {
         /* lba */
-	if (!s->lba48) {
-	    sector_num = ((s->select & 0x0f) << 24) | (s->hcyl << 16) |
-		(s->lcyl << 8) | s->sector;
-	} else {
-	    sector_num = ((int64_t)s->hob_hcyl << 40) |
-		((int64_t) s->hob_lcyl << 32) |
-		((int64_t) s->hob_sector << 24) |
-		((int64_t) s->hcyl << 16) |
-		((int64_t) s->lcyl << 8) | s->sector;
-	}
+        if (!s->lba48) {
+            sector_num = ((s->select & 0x0f) << 24) | (s->hcyl << 16) |
+                (s->lcyl << 8) | s->sector;
+        } else {
+            sector_num = ((int64_t)s->hob_hcyl << 40) |
+                ((int64_t) s->hob_lcyl << 32) |
+                ((int64_t) s->hob_sector << 24) |
+                ((int64_t) s->hcyl << 16) |
+                ((int64_t) s->lcyl << 8) | s->sector;
+        }
     } else {
         sector_num = ((s->hcyl << 8) | s->lcyl) * s->heads * s->sectors +
             (s->select & 0x0f) * s->sectors + (s->sector - 1);
@@ -574,19 +596,19 @@ void ide_set_sector(IDEState *s, int64_t sector_num)
 {
     unsigned int cyl, r;
     if (s->select & 0x40) {
-	if (!s->lba48) {
+        if (!s->lba48) {
             s->select = (s->select & 0xf0) | (sector_num >> 24);
             s->hcyl = (sector_num >> 16);
             s->lcyl = (sector_num >> 8);
             s->sector = (sector_num);
-	} else {
-	    s->sector = sector_num;
-	    s->lcyl = sector_num >> 8;
-	    s->hcyl = sector_num >> 16;
-	    s->hob_sector = sector_num >> 24;
-	    s->hob_lcyl = sector_num >> 32;
-	    s->hob_hcyl = sector_num >> 40;
-	}
+        } else {
+            s->sector = sector_num;
+            s->lcyl = sector_num >> 8;
+            s->hcyl = sector_num >> 16;
+            s->hob_sector = sector_num >> 24;
+            s->hob_lcyl = sector_num >> 32;
+            s->hob_hcyl = sector_num >> 40;
+        }
     } else {
         cyl = sector_num / (s->heads * s->sectors);
         r = sector_num % (s->heads * s->sectors);
@@ -602,30 +624,20 @@ static void ide_rw_error(IDEState *s) {
     ide_set_irq(s->bus);
 }
 
-static bool ide_sect_range_ok(IDEState *s,
-                              uint64_t sector, uint64_t nb_sectors)
-{
-    uint64_t total_sectors;
-
-    blk_get_geometry(s->blk, &total_sectors);
-    if (sector > total_sectors || nb_sectors > total_sectors - sector) {
-        return false;
-    }
-    return true;
-}
-
 static void ide_buffered_readv_cb(void *opaque, int ret)
 {
     IDEBufferedRequest *req = opaque;
     if (!req->orphaned) {
         if (!ret) {
-            qemu_iovec_from_buf(req->original_qiov, 0, req->iov.iov_base,
+            assert(req->qiov.size == req->original_qiov->size);
+            qemu_iovec_from_buf(req->original_qiov, 0,
+                                req->qiov.local_iov.iov_base,
                                 req->original_qiov->size);
         }
         req->original_cb(req->original_opaque, ret);
     }
     QLIST_REMOVE(req, list);
-    qemu_vfree(req->iov.iov_base);
+    qemu_vfree(qemu_iovec_buf(&req->qiov));
     g_free(req);
 }
 
@@ -650,9 +662,8 @@ BlockAIOCB *ide_buffered_readv(IDEState *s, int64_t sector_num,
     req->original_qiov = iov;
     req->original_cb = cb;
     req->original_opaque = opaque;
-    req->iov.iov_base = qemu_blockalign(blk_bs(s->blk), iov->size);
-    req->iov.iov_len = iov->size;
-    qemu_iovec_init_external(&req->qiov, &req->iov, 1);
+    qemu_iovec_init_buf(&req->qiov, blk_blockalign(s->blk, iov->size),
+                        iov->size);
 
     aioreq = blk_aio_preadv(s->blk, sector_num << BDRV_SECTOR_BITS,
                             &req->qiov, 0, ide_buffered_readv_cb, req);
@@ -764,9 +775,7 @@ static void ide_sector_read(IDEState *s)
         return;
     }
 
-    s->iov.iov_base = s->io_buffer;
-    s->iov.iov_len  = n * BDRV_SECTOR_SIZE;
-    qemu_iovec_init_external(&s->qiov, &s->iov, 1);
+    qemu_iovec_init_buf(&s->qiov, s->io_buffer, n * BDRV_SECTOR_SIZE);
 
     block_acct_start(blk_get_stats(s->blk), &s->acct,
                      n * BDRV_SECTOR_SIZE, BLOCK_ACCT_READ);
@@ -834,6 +843,12 @@ static void ide_dma_cb(void *opaque, int ret)
     if (ret == -ECANCELED) {
         return;
     }
+
+    if (ret == -EINVAL) {
+        ide_dma_error(s);
+        return;
+    }
+
     if (ret < 0) {
         if (ide_handle_rw_error(s, -ret, ide_dma_cmd_to_retry(s->dma_cmd))) {
             s->bus->dma->aiocb = NULL;
@@ -901,7 +916,7 @@ static void ide_dma_cb(void *opaque, int ret)
     case IDE_DMA_TRIM:
         s->bus->dma->aiocb = dma_blk_io(blk_get_aio_context(s->blk),
                                         &s->sg, offset, BDRV_SECTOR_SIZE,
-                                        ide_issue_trim, s->blk, ide_dma_cb, s,
+                                        ide_issue_trim, s, ide_dma_cb, s,
                                         DMA_DIRECTION_TO_DEVICE);
         break;
     default:
@@ -1029,9 +1044,7 @@ static void ide_sector_write(IDEState *s)
         return;
     }
 
-    s->iov.iov_base = s->io_buffer;
-    s->iov.iov_len  = n * BDRV_SECTOR_SIZE;
-    qemu_iovec_init_external(&s->qiov, &s->iov, 1);
+    qemu_iovec_init_buf(&s->qiov, s->io_buffer, n * BDRV_SECTOR_SIZE);
 
     block_acct_start(blk_get_stats(s->blk), &s->acct,
                      n * BDRV_SECTOR_SIZE, BLOCK_ACCT_WRITE);
@@ -1073,15 +1086,7 @@ static void ide_flush_cache(IDEState *s)
     s->status |= BUSY_STAT;
     ide_set_retry(s);
     block_acct_start(blk_get_stats(s->blk), &s->acct, 0, BLOCK_ACCT_FLUSH);
-
-    if (blk_bs(s->blk)) {
-        s->pio_aiocb = blk_aio_flush(s->blk, ide_flush_cb, s);
-    } else {
-        /* XXX blk_aio_flush() crashes when blk_bs(blk) is NULL, remove this
-         * temporary workaround when blk_aio_*() functions handle NULL blk_bs.
-         */
-        ide_flush_cb(s, 0);
-    }
+    s->pio_aiocb = blk_aio_flush(s->blk, ide_flush_cb, s);
 }
 
 static void ide_cfata_metadata_inquiry(IDEState *s)
@@ -1180,17 +1185,17 @@ static void ide_cmd_lba48_transform(IDEState *s, int lba48)
      * full sector count in ->nsector and ignore ->hob_nsector from now
      */
     if (!s->lba48) {
-	if (!s->nsector)
-	    s->nsector = 256;
+        if (!s->nsector)
+            s->nsector = 256;
     } else {
-	if (!s->nsector && !s->hob_nsector)
-	    s->nsector = 65536;
-	else {
-	    int lo = s->nsector;
-	    int hi = s->hob_nsector;
+        if (!s->nsector && !s->hob_nsector)
+            s->nsector = 65536;
+        else {
+            int lo = s->nsector;
+            int hi = s->hob_nsector;
 
-	    s->nsector = (hi << 8) | lo;
-	}
+            s->nsector = (hi << 8) | lo;
+        }
     }
 }
 
@@ -1250,35 +1255,35 @@ void ide_ioport_write(void *opaque, uint32_t addr, uint32_t val)
         bus->ifs[1].feature = val;
         break;
     case ATA_IOPORT_WR_SECTOR_COUNT:
-	ide_clear_hob(bus);
-	bus->ifs[0].hob_nsector = bus->ifs[0].nsector;
-	bus->ifs[1].hob_nsector = bus->ifs[1].nsector;
+        ide_clear_hob(bus);
+        bus->ifs[0].hob_nsector = bus->ifs[0].nsector;
+        bus->ifs[1].hob_nsector = bus->ifs[1].nsector;
         bus->ifs[0].nsector = val;
         bus->ifs[1].nsector = val;
         break;
     case ATA_IOPORT_WR_SECTOR_NUMBER:
-	ide_clear_hob(bus);
-	bus->ifs[0].hob_sector = bus->ifs[0].sector;
-	bus->ifs[1].hob_sector = bus->ifs[1].sector;
+        ide_clear_hob(bus);
+        bus->ifs[0].hob_sector = bus->ifs[0].sector;
+        bus->ifs[1].hob_sector = bus->ifs[1].sector;
         bus->ifs[0].sector = val;
         bus->ifs[1].sector = val;
         break;
     case ATA_IOPORT_WR_CYLINDER_LOW:
-	ide_clear_hob(bus);
-	bus->ifs[0].hob_lcyl = bus->ifs[0].lcyl;
-	bus->ifs[1].hob_lcyl = bus->ifs[1].lcyl;
+        ide_clear_hob(bus);
+        bus->ifs[0].hob_lcyl = bus->ifs[0].lcyl;
+        bus->ifs[1].hob_lcyl = bus->ifs[1].lcyl;
         bus->ifs[0].lcyl = val;
         bus->ifs[1].lcyl = val;
         break;
     case ATA_IOPORT_WR_CYLINDER_HIGH:
-	ide_clear_hob(bus);
-	bus->ifs[0].hob_hcyl = bus->ifs[0].hcyl;
-	bus->ifs[1].hob_hcyl = bus->ifs[1].hcyl;
+        ide_clear_hob(bus);
+        bus->ifs[0].hob_hcyl = bus->ifs[0].hcyl;
+        bus->ifs[1].hob_hcyl = bus->ifs[1].hcyl;
         bus->ifs[0].hcyl = val;
         bus->ifs[1].hcyl = val;
         break;
     case ATA_IOPORT_WR_DEVICE_HEAD:
-	/* FIXME: HOB readback uses bit 7 */
+        /* FIXME: HOB readback uses bit 7 */
         bus->ifs[0].select = (val & ~0x10) | 0xa0;
         bus->ifs[1].select = (val | 0x10) | 0xa0;
         /* select drive */
@@ -1356,7 +1361,7 @@ static bool cmd_nop(IDEState *s, uint8_t cmd)
 static bool cmd_device_reset(IDEState *s, uint8_t cmd)
 {
     /* Halt PIO (in the DRQ phase), then DMA */
-    ide_transfer_cancel(s);
+    ide_transfer_halt(s);
     ide_cancel_dma_sync(s);
 
     /* Reset any PIO commands, reset signature, etc */
@@ -2138,7 +2143,7 @@ uint32_t ide_ioport_read(void *opaque, uint32_t addr)
         } else if (!hob) {
             ret = s->error;
         } else {
-	    ret = s->hob_feature;
+            ret = s->hob_feature;
         }
         break;
     case ATA_IOPORT_RR_SECTOR_COUNT:
@@ -2147,7 +2152,7 @@ uint32_t ide_ioport_read(void *opaque, uint32_t addr)
         } else if (!hob) {
             ret = s->nsector & 0xff;
         } else {
-	    ret = s->hob_nsector;
+            ret = s->hob_nsector;
         }
         break;
     case ATA_IOPORT_RR_SECTOR_NUMBER:
@@ -2156,7 +2161,7 @@ uint32_t ide_ioport_read(void *opaque, uint32_t addr)
         } else if (!hob) {
             ret = s->sector;
         } else {
-	    ret = s->hob_sector;
+            ret = s->hob_sector;
         }
         break;
     case ATA_IOPORT_RR_CYLINDER_LOW:
@@ -2165,7 +2170,7 @@ uint32_t ide_ioport_read(void *opaque, uint32_t addr)
         } else if (!hob) {
             ret = s->lcyl;
         } else {
-	    ret = s->hob_lcyl;
+            ret = s->hob_lcyl;
         }
         break;
     case ATA_IOPORT_RR_CYLINDER_HIGH:
@@ -2174,7 +2179,7 @@ uint32_t ide_ioport_read(void *opaque, uint32_t addr)
         } else if (!hob) {
             ret = s->hcyl;
         } else {
-	    ret = s->hob_hcyl;
+            ret = s->hob_hcyl;
         }
         break;
     case ATA_IOPORT_RR_DEVICE_HEAD:
@@ -2678,31 +2683,6 @@ void ide_exit(IDEState *s)
     qemu_vfree(s->io_buffer);
 }
 
-static const MemoryRegionPortio ide_portio_list[] = {
-    { 0, 8, 1, .read = ide_ioport_read, .write = ide_ioport_write },
-    { 0, 1, 2, .read = ide_data_readw, .write = ide_data_writew },
-    { 0, 1, 4, .read = ide_data_readl, .write = ide_data_writel },
-    PORTIO_END_OF_LIST(),
-};
-
-static const MemoryRegionPortio ide_portio2_list[] = {
-    { 0, 1, 1, .read = ide_status_read, .write = ide_cmd_write },
-    PORTIO_END_OF_LIST(),
-};
-
-void ide_init_ioport(IDEBus *bus, ISADevice *dev, int iobase, int iobase2)
-{
-    /* ??? Assume only ISA and PCI configurations, and that the PCI-ISA
-       bridge has been setup properly to always register with ISA.  */
-    isa_register_portio_list(dev, &bus->portio_list,
-                             iobase, ide_portio_list, bus, "ide");
-
-    if (iobase2) {
-        isa_register_portio_list(dev, &bus->portio2_list,
-                                 iobase2, ide_portio2_list, bus, "ide");
-    }
-}
-
 static bool is_identify_set(void *opaque, int version_id)
 {
     IDEState *s = opaque;
@@ -2839,7 +2819,7 @@ static const VMStateDescription vmstate_ide_drive_pio_state = {
     .fields = (VMStateField[]) {
         VMSTATE_INT32(req_nb_sectors, IDEState),
         VMSTATE_VARRAY_INT32(io_buffer, IDEState, io_buffer_total_len, 1,
-			     vmstate_info_uint8, uint8_t),
+                             vmstate_info_uint8, uint8_t),
         VMSTATE_INT32(cur_io_buffer_offset, IDEState),
         VMSTATE_INT32(cur_io_buffer_len, IDEState),
         VMSTATE_UINT8(end_transfer_fn_idx, IDEState),

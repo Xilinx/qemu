@@ -113,11 +113,20 @@ static void mips_cpu_reset(CPUState *s)
 }
 
 static void mips_cpu_disas_set_info(CPUState *s, disassemble_info *info) {
+    MIPSCPU *cpu = MIPS_CPU(s);
+    CPUMIPSState *env = &cpu->env;
+
+    if (!(env->insn_flags & ISA_NANOMIPS32)) {
 #ifdef TARGET_WORDS_BIGENDIAN
-    info->print_insn = print_insn_big_mips;
+        info->print_insn = print_insn_big_mips;
 #else
-    info->print_insn = print_insn_little_mips;
+        info->print_insn = print_insn_little_mips;
 #endif
+    } else {
+#if defined(CONFIG_NANOMIPS_DIS)
+        info->print_insn = print_insn_nanomips;
+#endif
+    }
 }
 
 static void mips_cpu_realizefn(DeviceState *dev, Error **errp)
@@ -174,9 +183,8 @@ static void mips_cpu_class_init(ObjectClass *c, void *data)
     CPUClass *cc = CPU_CLASS(c);
     DeviceClass *dc = DEVICE_CLASS(c);
 
-    mcc->parent_realize = dc->realize;
-    dc->realize = mips_cpu_realizefn;
-
+    device_class_set_parent_realize(dc, mips_cpu_realizefn,
+                                    &mcc->parent_realize);
     mcc->parent_reset = cc->reset;
     cc->reset = mips_cpu_reset;
 

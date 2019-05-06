@@ -27,7 +27,9 @@
 #include "hw/mips/mips.h"
 #include "hw/mips/cpudevs.h"
 #include "hw/i386/pc.h"
+#include "hw/dma/i8257.h"
 #include "hw/char/serial.h"
+#include "hw/char/parallel.h"
 #include "hw/isa/isa.h"
 #include "hw/block/fdc.h"
 #include "sysemu/sysemu.h"
@@ -39,11 +41,13 @@
 #include "hw/loader.h"
 #include "hw/timer/mc146818rtc.h"
 #include "hw/timer/i8254.h"
+#include "hw/display/vga.h"
 #include "hw/audio/pcspk.h"
-#include "sysemu/block-backend.h"
+#include "hw/input/i8042.h"
 #include "hw/sysbus.h"
 #include "exec/address-spaces.h"
 #include "sysemu/qtest.h"
+#include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "qemu/help_option.h"
 
@@ -141,10 +145,11 @@ static void mips_jazz_init(MachineState *machine,
     ISABus *isa_bus;
     ISADevice *pit;
     DriveInfo *fds[MAX_FD];
-    qemu_irq esp_reset, dma_enable;
     MemoryRegion *ram = g_new(MemoryRegion, 1);
     MemoryRegion *bios = g_new(MemoryRegion, 1);
     MemoryRegion *bios2 = g_new(MemoryRegion, 1);
+    SysBusESPState *sysbus_esp;
+    ESPState *esp;
 
     /* init CPUs */
     cpu = MIPS_CPU(cpu_create(machine->cpu_type));
@@ -217,8 +222,8 @@ static void mips_jazz_init(MachineState *machine,
     /* ISA devices */
     i8259 = i8259_init(isa_bus, env->irq[4]);
     isa_bus_irqs(isa_bus, i8259);
-    DMA_init(isa_bus, 0);
-    pit = pit_init(isa_bus, 0x40, 0, NULL);
+    i8257_dma_init(isa_bus, 0);
+    pit = i8254_pit_init(isa_bus, 0x40, 0, NULL);
     pcspk_init(isa_bus, pit);
 
     /* Video card */
@@ -267,18 +272,31 @@ static void mips_jazz_init(MachineState *machine,
             sysbus_connect_irq(sysbus, 0, qdev_get_gpio_in(rc4030, 4));
             break;
         } else if (is_help_option(nd->model)) {
-            fprintf(stderr, "qemu: Supported NICs: dp83932\n");
+            error_report("Supported NICs: dp83932");
             exit(1);
         } else {
-            fprintf(stderr, "qemu: Unsupported NIC: %s\n", nd->model);
+            error_report("Unsupported NIC: %s", nd->model);
             exit(1);
         }
     }
 
     /* SCSI adapter */
-    esp_init(0x80002000, 0,
-             rc4030_dma_read, rc4030_dma_write, dmas[0],
-             qdev_get_gpio_in(rc4030, 5), &esp_reset, &dma_enable);
+    dev = qdev_create(NULL, TYPE_ESP);
+    sysbus_esp = ESP_STATE(dev);
+    esp = &sysbus_esp->esp;
+    esp->dma_memory_read = rc4030_dma_read;
+    esp->dma_memory_write = rc4030_dma_write;
+    esp->dma_opaque = dmas[0];
+    sysbus_esp->it_shift = 0;
+    /* XXX for now until rc4030 has been changed to use DMA enable signal */
+    esp->dma_enabled = 1;
+    qdev_init_nofail(dev);
+
+    sysbus = SYS_BUS_DEVICE(dev);
+    sysbus_connect_irq(sysbus, 0, qdev_get_gpio_in(rc4030, 5));
+    sysbus_mmio_map(sysbus, 0, 0x80002000);
+
+    scsi_bus_legacy_handle_cmdline(&esp->bus);
 
     /* Floppy */
     for (n = 0; n < MAX_FD; n++) {
@@ -288,7 +306,7 @@ static void mips_jazz_init(MachineState *machine,
     fdctrl_init_sysbus(qdev_get_gpio_in(rc4030, 1), -1, 0x80003000, fds);
 
     /* Real time clock */
-    rtc_init(isa_bus, 1980, NULL);
+    mc146818_rtc_init(isa_bus, 1980, NULL);
     memory_region_init_io(rtc, NULL, &rtc_ops, NULL, "rtc", 0x1000);
     memory_region_add_subregion(address_space, 0x80004000, rtc);
 
@@ -298,15 +316,15 @@ static void mips_jazz_init(MachineState *machine,
     memory_region_add_subregion(address_space, 0x80005000, i8042);
 
     /* Serial ports */
-    if (serial_hds[0]) {
+    if (serial_hd(0)) {
         serial_mm_init(address_space, 0x80006000, 0,
                        qdev_get_gpio_in(rc4030, 8), 8000000/16,
-                       serial_hds[0], DEVICE_NATIVE_ENDIAN);
+                       serial_hd(0), DEVICE_NATIVE_ENDIAN);
     }
-    if (serial_hds[1]) {
+    if (serial_hd(1)) {
         serial_mm_init(address_space, 0x80007000, 0,
                        qdev_get_gpio_in(rc4030, 9), 8000000/16,
-                       serial_hds[1], DEVICE_NATIVE_ENDIAN);
+                       serial_hd(1), DEVICE_NATIVE_ENDIAN);
     }
 
     /* Parallel port */

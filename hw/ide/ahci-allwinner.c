@@ -18,12 +18,14 @@
 #include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "qemu/error-report.h"
-#include "sysemu/block-backend.h"
 #include "sysemu/dma.h"
 #include "hw/ide/internal.h"
-#include "hw/ide/ahci_internal.h"
+#include "ahci_internal.h"
 
 #include "trace.h"
+
+#define ALLWINNER_AHCI(obj) \
+        OBJECT_CHECK(AllwinnerAHCIState, (obj), TYPE_ALLWINNER_AHCI)
 
 #define ALLWINNER_AHCI_BISTAFR    ((0xa0 - ALLWINNER_AHCI_MMIO_OFF) / 4)
 #define ALLWINNER_AHCI_BISTCR     ((0xa4 - ALLWINNER_AHCI_MMIO_OFF) / 4)

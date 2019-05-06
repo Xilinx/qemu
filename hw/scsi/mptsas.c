@@ -26,7 +26,6 @@
 #include "hw/hw.h"
 #include "hw/pci/pci.h"
 #include "sysemu/dma.h"
-#include "sysemu/block-backend.h"
 #include "hw/pci/msi.h"
 #include "qemu/iov.h"
 #include "hw/scsi/scsi.h"
@@ -1312,7 +1311,7 @@ static void mptsas_scsi_realize(PCIDevice *dev, Error **errp)
     if (!s->sas_addr) {
         s->sas_addr = ((NAA_LOCALLY_ASSIGNED_ID << 24) |
                        IEEE_COMPANY_LOCALLY_ASSIGNED) << 36;
-        s->sas_addr |= (pci_bus_num(dev->bus) << 16);
+        s->sas_addr |= (pci_dev_bus_num(dev) << 16);
         s->sas_addr |= (PCI_SLOT(dev->devfn) << 8);
         s->sas_addr |= PCI_FUNC(dev->devfn);
     }
@@ -1432,6 +1431,7 @@ static void mptsas1068_class_init(ObjectClass *oc, void *data)
     dc->reset = mptsas_reset;
     dc->vmsd = &vmstate_mptsas;
     dc->desc = "LSI SAS 1068";
+    set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
 }
 
 static const TypeInfo mptsas_info = {

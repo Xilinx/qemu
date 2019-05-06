@@ -18,17 +18,15 @@
  * <http://www.gnu.org/licenses/lgpl-2.1.html>
  */
 
-#include <stdio.h>
-#include <string.h>
-#include <assert.h>
+#include "qemu/osdep.h"
 
 #include "cpu.h"
-#include "qemu/osdep.h"
 #include "qemu/host-utils.h"
-#include "qapi/error.h"
 #include "exec/exec-all.h"
+#include "exec/cpu_ldst.h"
 #include "exec/log.h"
 #include "exec/helper-proto.h"
+#include "exec/semihost.h"
 
 #if defined(CONFIG_USER_ONLY)
 
@@ -40,12 +38,13 @@ void nios2_cpu_do_interrupt(CPUState *cs)
     env->regs[R_EA] = env->regs[R_PC] + 4;
 }
 
-int nios2_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int rw, int mmu_idx)
+int nios2_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int size,
+                               int rw, int mmu_idx)
 {
     cs->exception_index = 0xaa;
     /* Page 0x1000 is kuser helper */
     if (address < 0x1000 || address >= 0x2000) {
-        cpu_dump_state(cs, stderr, fprintf, 0);
+        cpu_dump_state(cs, stderr, 0);
     }
     return 1;
 }
@@ -172,6 +171,17 @@ void nios2_cpu_do_interrupt(CPUState *cs)
         break;
 
     case EXCP_BREAK:
+        qemu_log_mask(CPU_LOG_INT, "BREAK exception at pc=%x\n",
+                      env->regs[R_PC]);
+        /* The semihosting instruction is "break 1".  */
+        if (semihosting_enabled() &&
+            cpu_ldl_code(env, env->regs[R_PC]) == 0x003da07a)  {
+            qemu_log_mask(CPU_LOG_INT, "Entering semihosting\n");
+            env->regs[R_PC] += 4;
+            do_nios2_semihosting(env);
+            break;
+        }
+
         if ((env->regs[CR_STATUS] & CR_STATUS_EH) == 0) {
             env->regs[CR_BSTATUS] = env->regs[CR_STATUS];
             env->regs[R_BA] = env->regs[R_PC] + 4;
@@ -235,7 +245,8 @@ static int cpu_nios2_handle_virtual_page(
     return 1;
 }
 
-int nios2_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int rw, int mmu_idx)
+int nios2_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int size,
+                               int rw, int mmu_idx)
 {
     Nios2CPU *cpu = NIOS2_CPU(cs);
     CPUNios2State *env = &cpu->env;

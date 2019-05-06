@@ -7,6 +7,7 @@
 #include "hw/i386/pc.h"
 #include "hw/isa/isa.h"
 #include "migration/cpu.h"
+#include "hyperv.h"
 
 #include "sysemu/kvm.h"
 
@@ -395,6 +396,25 @@ static const VMStateDescription vmstate_msr_tsc_adjust = {
     }
 };
 
+static bool msr_smi_count_needed(void *opaque)
+{
+    X86CPU *cpu = opaque;
+    CPUX86State *env = &cpu->env;
+
+    return cpu->migrate_smi_count && env->msr_smi_count != 0;
+}
+
+static const VMStateDescription vmstate_msr_smi_count = {
+    .name = "cpu/msr_smi_count",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = msr_smi_count_needed,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT64(env.msr_smi_count, X86CPU),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static bool tscdeadline_needed(void *opaque)
 {
     X86CPU *cpu = opaque;
@@ -653,11 +673,19 @@ static bool hyperv_synic_enable_needed(void *opaque)
     return false;
 }
 
+static int hyperv_synic_post_load(void *opaque, int version_id)
+{
+    X86CPU *cpu = opaque;
+    hyperv_x86_synic_update(cpu);
+    return 0;
+}
+
 static const VMStateDescription vmstate_msr_hyperv_synic = {
     .name = "cpu/msr_hyperv_synic",
     .version_id = 1,
     .minimum_version_id = 1,
     .needed = hyperv_synic_enable_needed,
+    .post_load = hyperv_synic_post_load,
     .fields = (VMStateField[]) {
         VMSTATE_UINT64(env.msr_hv_synic_control, X86CPU),
         VMSTATE_UINT64(env.msr_hv_synic_evt_page, X86CPU),
@@ -690,6 +718,29 @@ static const VMStateDescription vmstate_msr_hyperv_stimer = {
         VMSTATE_UINT64_ARRAY(env.msr_hv_stimer_config, X86CPU,
                              HV_STIMER_COUNT),
         VMSTATE_UINT64_ARRAY(env.msr_hv_stimer_count, X86CPU, HV_STIMER_COUNT),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static bool hyperv_reenlightenment_enable_needed(void *opaque)
+{
+    X86CPU *cpu = opaque;
+    CPUX86State *env = &cpu->env;
+
+    return env->msr_hv_reenlightenment_control != 0 ||
+        env->msr_hv_tsc_emulation_control != 0 ||
+        env->msr_hv_tsc_emulation_status != 0;
+}
+
+static const VMStateDescription vmstate_msr_hyperv_reenlightenment = {
+    .name = "cpu/msr_hyperv_reenlightenment",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = hyperv_reenlightenment_enable_needed,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT64(env.msr_hv_reenlightenment_control, X86CPU),
+        VMSTATE_UINT64(env.msr_hv_tsc_emulation_control, X86CPU),
+        VMSTATE_UINT64(env.msr_hv_tsc_emulation_status, X86CPU),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -837,6 +888,82 @@ static const VMStateDescription vmstate_spec_ctrl = {
     }
 };
 
+static bool intel_pt_enable_needed(void *opaque)
+{
+    X86CPU *cpu = opaque;
+    CPUX86State *env = &cpu->env;
+    int i;
+
+    if (env->msr_rtit_ctrl || env->msr_rtit_status ||
+        env->msr_rtit_output_base || env->msr_rtit_output_mask ||
+        env->msr_rtit_cr3_match) {
+        return true;
+    }
+
+    for (i = 0; i < MAX_RTIT_ADDRS; i++) {
+        if (env->msr_rtit_addrs[i]) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static const VMStateDescription vmstate_msr_intel_pt = {
+    .name = "cpu/intel_pt",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = intel_pt_enable_needed,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT64(env.msr_rtit_ctrl, X86CPU),
+        VMSTATE_UINT64(env.msr_rtit_status, X86CPU),
+        VMSTATE_UINT64(env.msr_rtit_output_base, X86CPU),
+        VMSTATE_UINT64(env.msr_rtit_output_mask, X86CPU),
+        VMSTATE_UINT64(env.msr_rtit_cr3_match, X86CPU),
+        VMSTATE_UINT64_ARRAY(env.msr_rtit_addrs, X86CPU, MAX_RTIT_ADDRS),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static bool virt_ssbd_needed(void *opaque)
+{
+    X86CPU *cpu = opaque;
+    CPUX86State *env = &cpu->env;
+
+    return env->virt_ssbd != 0;
+}
+
+static const VMStateDescription vmstate_msr_virt_ssbd = {
+    .name = "cpu/virt_ssbd",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = virt_ssbd_needed,
+    .fields = (VMStateField[]){
+        VMSTATE_UINT64(env.virt_ssbd, X86CPU),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static bool svm_npt_needed(void *opaque)
+{
+    X86CPU *cpu = opaque;
+    CPUX86State *env = &cpu->env;
+
+    return !!(env->hflags2 & HF2_NPT_MASK);
+}
+
+static const VMStateDescription vmstate_svm_npt = {
+    .name = "cpu/svn_npt",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = svm_npt_needed,
+    .fields = (VMStateField[]){
+        VMSTATE_UINT64(env.nested_cr3, X86CPU),
+        VMSTATE_UINT32(env.nested_pg_mode, X86CPU),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 VMStateDescription vmstate_x86_cpu = {
     .name = "cpu",
     .version_id = 12,
@@ -949,14 +1076,19 @@ VMStateDescription vmstate_x86_cpu = {
         &vmstate_msr_hyperv_runtime,
         &vmstate_msr_hyperv_synic,
         &vmstate_msr_hyperv_stimer,
+        &vmstate_msr_hyperv_reenlightenment,
         &vmstate_avx512,
         &vmstate_xss,
         &vmstate_tsc_khz,
+        &vmstate_msr_smi_count,
 #ifdef TARGET_X86_64
         &vmstate_pkru,
 #endif
         &vmstate_spec_ctrl,
         &vmstate_mcg_ext_ctl,
+        &vmstate_msr_intel_pt,
+        &vmstate_msr_virt_ssbd,
+        &vmstate_svm_npt,
         NULL
     }
 };

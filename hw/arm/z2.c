@@ -15,14 +15,13 @@
 #include "hw/hw.h"
 #include "hw/arm/pxa.h"
 #include "hw/arm/arm.h"
-#include "hw/devices.h"
 #include "hw/i2c/i2c.h"
 #include "hw/ssi/ssi.h"
 #include "hw/boards.h"
 #include "sysemu/sysemu.h"
 #include "hw/block/flash.h"
-#include "sysemu/block-backend.h"
 #include "ui/console.h"
+#include "hw/audio/wm8750.h"
 #include "audio/audio.h"
 #include "exec/address-spaces.h"
 #include "sysemu/qtest.h"
@@ -243,7 +242,7 @@ static int aer915_event(I2CSlave *i2c, enum i2c_event event)
     return 0;
 }
 
-static int aer915_recv(I2CSlave *slave)
+static uint8_t aer915_recv(I2CSlave *slave)
 {
     AER915State *s = AER915(slave);
     int retval = 0x00;
@@ -319,17 +318,15 @@ static void z2_init(MachineState *machine)
 #endif
     dinfo = drive_get(IF_PFLASH, 0, 0);
     if (!dinfo && !qtest_enabled()) {
-        fprintf(stderr, "Flash image must be given with the "
-                "'pflash' parameter\n");
+        error_report("Flash image must be given with the "
+                     "'pflash' parameter");
         exit(1);
     }
 
-    if (!pflash_cfi01_register(Z2_FLASH_BASE,
-                               NULL, "z2.flash0", Z2_FLASH_SIZE,
+    if (!pflash_cfi01_register(Z2_FLASH_BASE, "z2.flash0", Z2_FLASH_SIZE,
                                dinfo ? blk_by_legacy_dinfo(dinfo) : NULL,
-                               sector_len, Z2_FLASH_SIZE / sector_len,
-                               4, 0, 0, 0, 0, be)) {
-        fprintf(stderr, "qemu: Error registering flash memory.\n");
+                               sector_len, 4, 0, 0, 0, 0, be)) {
+        error_report("Error registering flash memory");
         exit(1);
     }
 
@@ -346,7 +343,7 @@ static void z2_init(MachineState *machine)
     z2_lcd = ssi_create_slave(mpu->ssp[1], "zipit-lcd");
     bus = pxa2xx_i2c_bus(mpu->i2c[0]);
     i2c_create_slave(bus, TYPE_AER915, 0x55);
-    wm = i2c_create_slave(bus, "wm8750", 0x1b);
+    wm = i2c_create_slave(bus, TYPE_WM8750, 0x1b);
     mpu->i2s->opaque = wm;
     mpu->i2s->codec_out = wm8750_dac_dat;
     mpu->i2s->codec_in = wm8750_adc_dat;

@@ -371,12 +371,12 @@ static Chardev *rp_autocreate_chardev(RemotePort *s, char *name)
     char *chardesc;
 
     chardesc = rp_autocreate_chardesc(s, false);
-    chr = qemu_chr_new_noreplay(name, chardesc);
+    chr = qemu_chr_new_noreplay(name, chardesc, false, NULL);
     free(chardesc);
 
     if (!chr) {
         chardesc = rp_autocreate_chardesc(s, true);
-        chr = qemu_chr_new_noreplay(name, chardesc);
+        chr = qemu_chr_new_noreplay(name, chardesc, false, NULL);
         free(chardesc);
     }
     return chr;
@@ -669,7 +669,7 @@ static void rp_realize(DeviceState *dev, Error **errp)
         if (chr) {
             /* Found the chardev via commandline */
         } else if (s->chardesc) {
-            chr = qemu_chr_new(name, s->chardesc);
+            chr = qemu_chr_new(name, s->chardesc, NULL);
         } else {
             if (!machine_path) {
                 error_report("%s: Missing chardesc prop."
@@ -812,15 +812,12 @@ static void rp_init(Object *obj)
     int t;
     int i;
 
-    /* Disable icount IDLE time warping. remoteport will take care of it.  */
-    qemu_icount_enable_idle_timewarps(false);
-
     for (i = 0; i < REMOTE_PORT_MAX_DEVS; ++i) {
         char *name = g_strdup_printf("remote-port-dev%d", i);
         object_property_add_link(obj, name, TYPE_REMOTE_PORT_DEVICE,
                              (Object **)&s->devs[i],
                              qdev_prop_allow_set_link,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             OBJ_PROP_LINK_STRONG,
                              &error_abort);
         g_free(name);
 

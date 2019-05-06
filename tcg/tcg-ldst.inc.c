@@ -30,7 +30,7 @@ typedef struct TCGLabelQemuLdst {
     TCGReg datahi_reg;      /* reg index for high word to be loaded or stored */
     tcg_insn_unit *raddr;   /* gen code addr of the next IR of qemu_ld/st IR */
     tcg_insn_unit *label_ptr[2]; /* label pointers to be updated */
-    struct TCGLabelQemuLdst *next;
+    QSIMPLEQ_ENTRY(TCGLabelQemuLdst) next;
 } TCGLabelQemuLdst;
 
 
@@ -38,19 +38,19 @@ typedef struct TCGLabelQemuLdst {
  * Generate TB finalization at the end of block
  */
 
-static void tcg_out_qemu_ld_slow_path(TCGContext *s, TCGLabelQemuLdst *l);
-static void tcg_out_qemu_st_slow_path(TCGContext *s, TCGLabelQemuLdst *l);
+static bool tcg_out_qemu_ld_slow_path(TCGContext *s, TCGLabelQemuLdst *l);
+static bool tcg_out_qemu_st_slow_path(TCGContext *s, TCGLabelQemuLdst *l);
 
-static bool tcg_out_ldst_finalize(TCGContext *s)
+static int tcg_out_ldst_finalize(TCGContext *s)
 {
     TCGLabelQemuLdst *lb;
 
     /* qemu_ld/st slow paths */
-    for (lb = s->ldst_labels; lb != NULL; lb = lb->next) {
-        if (lb->is_ld) {
-            tcg_out_qemu_ld_slow_path(s, lb);
-        } else {
-            tcg_out_qemu_st_slow_path(s, lb);
+    QSIMPLEQ_FOREACH(lb, &s->ldst_labels, next) {
+        if (lb->is_ld
+            ? !tcg_out_qemu_ld_slow_path(s, lb)
+            : !tcg_out_qemu_st_slow_path(s, lb)) {
+            return -2;
         }
 
         /* Test for (pending) buffer overflow.  The assumption is that any
@@ -58,10 +58,10 @@ static bool tcg_out_ldst_finalize(TCGContext *s)
            the buffer completely.  Thus we can test for overflow after
            generating code without having to check during generation.  */
         if (unlikely((void *)s->code_ptr > s->code_gen_highwater)) {
-            return false;
+            return -1;
         }
     }
-    return true;
+    return 0;
 }
 
 /*
@@ -72,7 +72,7 @@ static inline TCGLabelQemuLdst *new_ldst_label(TCGContext *s)
 {
     TCGLabelQemuLdst *l = tcg_malloc(sizeof(*l));
 
-    l->next = s->ldst_labels;
-    s->ldst_labels = l;
+    QSIMPLEQ_INSERT_TAIL(&s->ldst_labels, l, next);
+
     return l;
 }

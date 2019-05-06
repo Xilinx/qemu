@@ -96,7 +96,7 @@ void register_write(RegisterInfo *reg, uint64_t val, uint64_t we,
     if (test) {
         qemu_log_mask(LOG_UNIMP,
                       "%s:%s writing %#" PRIx64 " to unimplemented bits:" \
-                      " %#" PRIx64 "",
+                      " %#" PRIx64 "\n",
                       prefix, reg->access->name, val, ac->unimp);
     }
 
@@ -159,13 +159,21 @@ uint64_t register_read(RegisterInfo *reg, uint64_t re, const char* prefix,
 
 void register_reset(RegisterInfo *reg)
 {
+    const RegisterAccessInfo *ac;
+
     g_assert(reg);
 
     if (!reg->data || !reg->access) {
         return;
     }
 
+    ac = reg->access;
+
     register_write_val(reg, reg->access->reset);
+
+    if (ac->post_write) {
+        ac->post_write(reg, reg->access->reset);
+    }
 }
 
 void register_init(RegisterInfo *reg)

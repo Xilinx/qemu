@@ -17,7 +17,6 @@
 #include "trace.h"
 #include "hw/virtio/virtio.h"
 #include "hw/virtio/virtio-gpu.h"
-#include "qapi/error.h"
 
 #ifdef CONFIG_VIRGL
 
@@ -87,7 +86,7 @@ static void virgl_cmd_resource_unref(VirtIOGPU *g,
                                        &res_iovs,
                                        &num_iovs);
     if (res_iovs != NULL && num_iovs != 0) {
-        virtio_gpu_cleanup_mapping_iov(res_iovs, num_iovs);
+        virtio_gpu_cleanup_mapping_iov(g, res_iovs, num_iovs);
     }
     virgl_renderer_resource_unref(unref.resource_id);
 }
@@ -292,7 +291,7 @@ static void virgl_resource_attach_backing(VirtIOGPU *g,
     VIRTIO_GPU_FILL_CMD(att_rb);
     trace_virtio_gpu_cmd_res_back_attach(att_rb.resource_id);
 
-    ret = virtio_gpu_create_mapping_iov(&att_rb, cmd, NULL, &res_iovs);
+    ret = virtio_gpu_create_mapping_iov(g, &att_rb, cmd, NULL, &res_iovs);
     if (ret != 0) {
         cmd->error = VIRTIO_GPU_RESP_ERR_UNSPEC;
         return;
@@ -302,7 +301,7 @@ static void virgl_resource_attach_backing(VirtIOGPU *g,
                                              res_iovs, att_rb.nr_entries);
 
     if (ret != 0)
-        virtio_gpu_cleanup_mapping_iov(res_iovs, att_rb.nr_entries);
+        virtio_gpu_cleanup_mapping_iov(g, res_iovs, att_rb.nr_entries);
 }
 
 static void virgl_resource_detach_backing(VirtIOGPU *g,
@@ -321,7 +320,7 @@ static void virgl_resource_detach_backing(VirtIOGPU *g,
     if (res_iovs == NULL || num_iovs == 0) {
         return;
     }
-    virtio_gpu_cleanup_mapping_iov(res_iovs, num_iovs);
+    virtio_gpu_cleanup_mapping_iov(g, res_iovs, num_iovs);
 }
 
 
@@ -363,6 +362,11 @@ static void virgl_cmd_get_capset_info(VirtIOGPU *g,
         virgl_renderer_get_cap_set(resp.capset_id,
                                    &resp.capset_max_version,
                                    &resp.capset_max_size);
+    } else if (info.capset_index == 1) {
+        resp.capset_id = VIRTIO_GPU_CAPSET_VIRGL2;
+        virgl_renderer_get_cap_set(resp.capset_id,
+                                   &resp.capset_max_version,
+                                   &resp.capset_max_size);
     } else {
         resp.capset_max_version = 0;
         resp.capset_max_size = 0;
@@ -399,11 +403,6 @@ void virtio_gpu_virgl_process_cmd(VirtIOGPU *g,
                                       struct virtio_gpu_ctrl_command *cmd)
 {
     VIRTIO_GPU_FILL_CMD(cmd->cmd_hdr);
-
-    cmd->waiting = g->renderer_blocked;
-    if (cmd->waiting) {
-        return;
-    }
 
     virgl_renderer_force_ctx_0();
     switch (cmd->cmd_hdr.type) {
@@ -464,6 +463,9 @@ void virtio_gpu_virgl_process_cmd(VirtIOGPU *g,
     case VIRTIO_GPU_CMD_GET_DISPLAY_INFO:
         virtio_gpu_get_display_info(g, cmd);
         break;
+    case VIRTIO_GPU_CMD_GET_EDID:
+        virtio_gpu_get_edid(g, cmd);
+        break;
     default:
         cmd->error = VIRTIO_GPU_RESP_ERR_UNSPEC;
         break;
@@ -494,9 +496,9 @@ static void virgl_write_fence(void *opaque, uint32_t fence)
 
     QTAILQ_FOREACH_SAFE(cmd, &g->fenceq, next, tmp) {
         /*
-	 * the guest can end up emitting fences out of order
-	 * so we should check all fenced cmds not just the first one.
-	 */
+         * the guest can end up emitting fences out of order
+         * so we should check all fenced cmds not just the first one.
+         */
         if (cmd->cmd_hdr.fence_id > fence) {
             continue;
         }
@@ -600,22 +602,6 @@ void virtio_gpu_virgl_reset(VirtIOGPU *g)
     }
 }
 
-void virtio_gpu_gl_block(void *opaque, bool block)
-{
-    VirtIOGPU *g = opaque;
-
-    if (block) {
-        g->renderer_blocked++;
-    } else {
-        g->renderer_blocked--;
-    }
-    assert(g->renderer_blocked >= 0);
-
-    if (g->renderer_blocked == 0) {
-        virtio_gpu_process_cmdq(g);
-    }
-}
-
 int virtio_gpu_virgl_init(VirtIOGPU *g)
 {
     int ret;
@@ -634,6 +620,16 @@ int virtio_gpu_virgl_init(VirtIOGPU *g)
         timer_mod(g->print_stats, qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + 1000);
     }
     return 0;
+}
+
+int virtio_gpu_virgl_get_num_capsets(VirtIOGPU *g)
+{
+    uint32_t capset2_max_ver, capset2_max_size;
+    virgl_renderer_get_cap_set(VIRTIO_GPU_CAPSET_VIRGL2,
+                              &capset2_max_ver,
+                              &capset2_max_size);
+
+    return capset2_max_ver ? 2 : 1;
 }
 
 #endif /* CONFIG_VIRGL */

@@ -43,12 +43,12 @@ static void test_port_2(void)
 
 static void test_uhci_hotplug(void)
 {
-    usb_test_hotplug("uhci", 2, test_port_2);
+    usb_test_hotplug("uhci", "2", test_port_2);
 }
 
 static void test_usb_storage_hotplug(void)
 {
-    qtest_qmp_device_add("usb-storage", "usbdev0", "'drive': 'drive0'");
+    qtest_qmp_device_add("usb-storage", "usbdev0", "{'drive': 'drive0'}");
 
     qtest_qmp_device_del("usbdev0");
 }
@@ -77,6 +77,7 @@ int main(int argc, char **argv)
                    "available on x86 or ppc64\n");
         exit(EXIT_FAILURE);
     }
+    global_qtest = qs->qts;
     ret = g_test_run();
     qtest_shutdown(qs);
 

@@ -32,6 +32,7 @@
 #include "qemu/log.h"
 #include "qemu/config-file.h"
 #include "sysemu/sysemu.h"
+#include "qemu/option.h"
 
 #include "hw/fdt_generic_util.h"
 

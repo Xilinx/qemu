@@ -25,8 +25,7 @@
  *
  */
 #include "qemu/osdep.h"
-#include "hw/pci/pci.h"
-#include "hw/i386/pc.h"
+#include "hw/isa/isa.h"
 #include "hw/loader.h"
 #include "sysemu/sysemu.h"
 

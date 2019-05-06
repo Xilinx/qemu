@@ -28,6 +28,7 @@
 #include "exec/log.h"
 #include "exec/cpu-common.h"
 #include "qemu/error-report.h"
+#include "qemu/qemu-print.h"
 #include "sysemu/sysemu.h"
 #include "hw/boards.h"
 #include "hw/qdev-properties.h"
@@ -65,37 +66,6 @@ CPUState *cpu_create(const char *typename)
         exit(EXIT_FAILURE);
     }
     return cpu;
-}
-
-const char *cpu_parse_cpu_model(const char *typename, const char *cpu_model)
-{
-    ObjectClass *oc;
-    CPUClass *cc;
-    gchar **model_pieces;
-    const char *cpu_type;
-
-    model_pieces = g_strsplit(cpu_model, ",", 2);
-
-    oc = cpu_class_by_name(typename, model_pieces[0]);
-    if (oc == NULL) {
-        error_report("unable to find CPU model '%s'", model_pieces[0]);
-        g_strfreev(model_pieces);
-        exit(EXIT_FAILURE);
-    }
-
-    cpu_type = object_class_get_name(oc);
-    cc = CPU_CLASS(oc);
-    cc->parse_features(cpu_type, model_pieces[1], &error_fatal);
-    g_strfreev(model_pieces);
-    return cpu_type;
-}
-
-CPUState *cpu_generic_init(const char *typename, const char *cpu_model)
-{
-    /* TODO: all callers of cpu_generic_init() need to be converted to
-     * call cpu_parse_features() only once, before calling cpu_generic_init().
-     */
-    return cpu_create(cpu_parse_cpu_model(typename, cpu_model));
 }
 
 bool cpu_paging_enabled(const CPUState *cpu)
@@ -229,7 +199,6 @@ static bool cpu_common_debug_check_watchpoint(CPUState *cpu, CPUWatchpoint *wp)
     return true;
 }
 
-bool target_words_bigendian(void);
 static bool cpu_common_virtio_is_big_endian(CPUState *cpu)
 {
     return target_words_bigendian();
@@ -255,24 +224,22 @@ GuestPanicInformation *cpu_get_crash_info(CPUState *cpu)
     return res;
 }
 
-void cpu_dump_state(CPUState *cpu, FILE *f, fprintf_function cpu_fprintf,
-                    int flags)
+void cpu_dump_state(CPUState *cpu, FILE *f, int flags)
 {
     CPUClass *cc = CPU_GET_CLASS(cpu);
 
     if (cc->dump_state) {
         cpu_synchronize_state(cpu);
-        cc->dump_state(cpu, f, cpu_fprintf, flags);
+        cc->dump_state(cpu, f, flags);
     }
 }
 
-void cpu_dump_statistics(CPUState *cpu, FILE *f, fprintf_function cpu_fprintf,
-                         int flags)
+void cpu_dump_statistics(CPUState *cpu, int flags)
 {
     CPUClass *cc = CPU_GET_CLASS(cpu);
 
     if (cc->dump_statistics) {
-        cc->dump_statistics(cpu, f, cpu_fprintf, flags);
+        cc->dump_statistics(cpu, flags);
     }
 }
 
@@ -303,7 +270,7 @@ static void cpu_common_reset(CPUState *cpu)
     cpu->mem_io_pc = 0;
     cpu->mem_io_vaddr = 0;
     cpu->icount_extra = 0;
-    cpu->icount_decr.u32 = 0;
+    atomic_set(&cpu->icount_decr.u32, 0);
     cpu->can_do_io = 1;
     cpu->exception_index = -1;
     cpu->crash_occurred = false;
@@ -331,40 +298,23 @@ static void cpu_device_reset(DeviceState *dev)
 
 ObjectClass *cpu_class_by_name(const char *typename, const char *cpu_model)
 {
-    CPUClass *cc;
+    CPUClass *cc = CPU_CLASS(object_class_by_name(typename));
 
-    if (!cpu_model) {
-        return NULL;
-    }
-    cc = CPU_CLASS(object_class_by_name(typename));
-
+    assert(cpu_model && cc->class_by_name);
     return cc->class_by_name(cpu_model);
-}
-
-static ObjectClass *cpu_common_class_by_name(const char *cpu_model)
-{
-    return NULL;
 }
 
 static void cpu_common_parse_features(const char *typename, char *features,
                                       Error **errp)
 {
-    char *featurestr; /* Single "key=value" string being parsed */
     char *val;
     static bool cpu_globals_initialized;
+    /* Single "key=value" string being parsed */
+    char *featurestr = features ? strtok(features, ",") : NULL;
 
-    /* TODO: all callers of ->parse_features() need to be changed to
-     * call it only once, so we can remove this check (or change it
-     * to assert(!cpu_globals_initialized).
-     * Current callers of ->parse_features() are:
-     * - cpu_generic_init()
-     */
-    if (cpu_globals_initialized) {
-        return;
-    }
+    /* should be called only once, catch invalid users */
+    assert(!cpu_globals_initialized);
     cpu_globals_initialized = true;
-
-    featurestr = features ? strtok(features, ",") : NULL;
 
     while (featurestr) {
         val = strchr(featurestr, '=');
@@ -375,7 +325,6 @@ static void cpu_common_parse_features(const char *typename, char *features,
             prop->driver = typename;
             prop->property = g_strdup(featurestr);
             prop->value = g_strdup(val);
-            prop->errp = &error_fatal;
             qdev_prop_register_global(prop);
         } else {
             error_setg(errp, "Expected key=value format, found %s.",
@@ -428,6 +377,7 @@ static void cpu_common_initfn(Object *obj)
     CPUClass *cc = CPU_GET_CLASS(obj);
 
     cpu->cpu_index = UNASSIGNED_CPU_INDEX;
+    cpu->cluster_index = UNASSIGNED_CLUSTER_INDEX;
     cpu->gdb_num_regs = cpu->gdb_num_g_regs = cc->gdb_num_core_regs;
     /* *-user doesn't have configurable SMP topology */
     /* the default value is changed by qemu_init_vcpu() for softmmu */
@@ -447,6 +397,9 @@ static void cpu_common_initfn(Object *obj)
 
 static void cpu_common_finalize(Object *obj)
 {
+    CPUState *cpu = CPU(obj);
+
+    qemu_mutex_destroy(&cpu->work_mutex);
 }
 
 static int64_t cpu_common_get_arch_id(CPUState *cpu)
@@ -475,7 +428,6 @@ static void cpu_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     CPUClass *k = CPU_CLASS(klass);
 
-    k->class_by_name = cpu_common_class_by_name;
     k->parse_features = cpu_common_parse_features;
     k->reset = cpu_common_reset;
     k->get_arch_id = cpu_common_get_arch_id;

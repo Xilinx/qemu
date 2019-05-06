@@ -24,12 +24,12 @@ typedef struct {
 
     QemuThread thread;
     AioContext *ctx;
+    bool run_gcontext;          /* whether we should run gcontext */
     GMainContext *worker_context;
     GMainLoop *main_loop;
-    GOnce once;
-    QemuMutex init_done_lock;
-    QemuCond init_done_cond;    /* is thread initialization done? */
-    bool stopping;
+    QemuSemaphore init_done_sem; /* is thread init done? */
+    bool stopping;              /* has iothread_stop() been called? */
+    bool running;               /* should iothread_run() continue? */
     int thread_id;
 
     /* AioContext poll parameters */
@@ -42,8 +42,8 @@ typedef struct {
    OBJECT_CHECK(IOThread, obj, TYPE_IOTHREAD)
 
 char *iothread_get_id(IOThread *iothread);
+IOThread *iothread_by_id(const char *id);
 AioContext *iothread_get_aio_context(IOThread *iothread);
-void iothread_stop_all(void);
 GMainContext *iothread_get_g_main_context(IOThread *iothread);
 
 /*

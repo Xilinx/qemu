@@ -10,9 +10,10 @@
 #include "qemu/osdep.h"
 
 #include "qemu-common.h"
+#include "qapi/qmp/qdict.h"
+#include "qapi/qmp/qlist.h"
 #include "qemu/cutils.h"
 #include "libqtest.h"
-#include "qapi/qmp/types.h"
 
 static const char *blacklist_x86[] = {
     "xenfv", "xenpv", NULL
@@ -56,14 +57,14 @@ static void test_properties(const char *path, bool recurse)
     g_assert(response);
 
     if (!recurse) {
-        QDECREF(response);
+        qobject_unref(response);
         return;
     }
 
     g_assert(qdict_haskey(response, "return"));
-    list = qobject_to_qlist(qdict_get(response, "return"));
+    list = qobject_to(QList, qdict_get(response, "return"));
     QLIST_FOREACH_ENTRY(list, entry) {
-        tuple = qobject_to_qdict(qlist_entry_obj(entry));
+        tuple = qobject_to(QDict, qlist_entry_obj(entry));
         bool is_child = strstart(qdict_get_str(tuple, "type"), "child<", NULL);
         bool is_link = strstart(qdict_get_str(tuple, "type"), "link<", NULL);
 
@@ -81,10 +82,10 @@ static void test_properties(const char *path, bool recurse)
                       path, prop);
             /* qom-get may fail but should not, e.g., segfault. */
             g_assert(tmp);
-            QDECREF(tmp);
+            qobject_unref(tmp);
         }
     }
-    QDECREF(response);
+    qobject_unref(response);
 }
 
 static void test_machine(gconstpointer data)
@@ -100,7 +101,7 @@ static void test_machine(gconstpointer data)
 
     response = qmp("{ 'execute': 'quit' }");
     g_assert(qdict_haskey(response, "return"));
-    QDECREF(response);
+    qobject_unref(response);
 
     qtest_end();
     g_free(args);
@@ -122,7 +123,7 @@ int main(int argc, char **argv)
 {
     g_test_init(&argc, &argv, NULL);
 
-    qtest_cb_for_every_machine(add_machine_test_case);
+    qtest_cb_for_every_machine(add_machine_test_case, g_test_quick());
 
     return g_test_run();
 }

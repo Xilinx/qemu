@@ -1,0 +1,17 @@
+config EMPTY_SLOT
+    bool
+
+config PTIMER
+    bool
+
+config FITLOADER
+    bool
+
+config PLATFORM_BUS
+    bool
+
+config REMOTE_PORT
+	bool
+
+config REMOTE_PORT_PCI
+	bool

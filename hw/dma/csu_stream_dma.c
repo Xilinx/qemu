@@ -656,27 +656,27 @@ static void zynqmp_csu_dma_init(Object *obj)
     object_property_add_link(obj, "stream-connected-dma", TYPE_STREAM_SLAVE,
                              (Object **) &s->tx_dev,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             OBJ_PROP_LINK_STRONG,
                              NULL);
     object_property_add_link(obj, "stream-connected-dma0", TYPE_STREAM_SLAVE,
                              (Object **) &s->tx_dev0,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             OBJ_PROP_LINK_STRONG,
                              NULL);
     object_property_add_link(obj, "stream-connected-dma1", TYPE_STREAM_SLAVE,
                              (Object **) &s->tx_dev1,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             OBJ_PROP_LINK_STRONG,
                              NULL);
     object_property_add_link(obj, "dma", TYPE_MEMORY_REGION,
                              (Object **)&s->dma_mr,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             OBJ_PROP_LINK_STRONG,
                              &error_abort);
     object_property_add_link(obj, "memattr", TYPE_MEMORY_TRANSACTION_ATTR,
                              (Object **)&s->attr,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             OBJ_PROP_LINK_STRONG,
                              &error_abort);
 
 }

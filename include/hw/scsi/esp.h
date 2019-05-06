@@ -7,11 +7,6 @@
 /* esp.c */
 #define ESP_MAX_DEVS 7
 typedef void (*ESPDMAMemoryReadWriteFunc)(void *opaque, uint8_t *buf, int len);
-void esp_init(hwaddr espaddr, int it_shift,
-              ESPDMAMemoryReadWriteFunc dma_memory_read,
-              ESPDMAMemoryReadWriteFunc dma_memory_write,
-              void *dma_opaque, qemu_irq irq, qemu_irq *reset,
-              qemu_irq *dma_enable);
 
 #define ESP_REGS 16
 #define TI_BUFSZ 16
@@ -28,6 +23,8 @@ struct ESPState {
     int32_t ti_size;
     uint32_t ti_rptr, ti_wptr;
     uint32_t status;
+    uint32_t deferred_status;
+    bool deferred_complete;
     uint32_t dma;
     uint8_t ti_buf[TI_BUFSZ];
     SCSIBus bus;

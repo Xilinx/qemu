@@ -156,17 +156,13 @@ void exynos4210_write_secondary(ARMCPU *cpu,
 
 static uint64_t exynos4210_calc_affinity(int cpu)
 {
-    uint64_t mp_affinity;
-
     /* Exynos4210 has 0x9 as cluster ID */
-    mp_affinity = (0x9 << ARM_AFF1_SHIFT) | cpu;
-
-    return mp_affinity;
+    return (0x9 << ARM_AFF1_SHIFT) | cpu;
 }
 
 Exynos4210State *exynos4210_init(MemoryRegion *system_mem)
 {
-    Exynos4210State *s = g_new(Exynos4210State, 1);
+    Exynos4210State *s = g_new0(Exynos4210State, 1);
     qemu_irq gate_irq[EXYNOS4210_NCPUS][EXYNOS4210_IRQ_GATE_NINPUTS];
     SysBusDevice *busdev;
     DeviceState *dev;
@@ -356,19 +352,19 @@ Exynos4210State *exynos4210_init(MemoryRegion *system_mem)
 
     /*** UARTs ***/
     exynos4210_uart_create(EXYNOS4210_UART0_BASE_ADDR,
-                           EXYNOS4210_UART0_FIFO_SIZE, 0, NULL,
+                           EXYNOS4210_UART0_FIFO_SIZE, 0, serial_hd(0),
                   s->irq_table[exynos4210_get_irq(EXYNOS4210_UART_INT_GRP, 0)]);
 
     exynos4210_uart_create(EXYNOS4210_UART1_BASE_ADDR,
-                           EXYNOS4210_UART1_FIFO_SIZE, 1, NULL,
+                           EXYNOS4210_UART1_FIFO_SIZE, 1, serial_hd(1),
                   s->irq_table[exynos4210_get_irq(EXYNOS4210_UART_INT_GRP, 1)]);
 
     exynos4210_uart_create(EXYNOS4210_UART2_BASE_ADDR,
-                           EXYNOS4210_UART2_FIFO_SIZE, 2, NULL,
+                           EXYNOS4210_UART2_FIFO_SIZE, 2, serial_hd(2),
                   s->irq_table[exynos4210_get_irq(EXYNOS4210_UART_INT_GRP, 2)]);
 
     exynos4210_uart_create(EXYNOS4210_UART3_BASE_ADDR,
-                           EXYNOS4210_UART3_FIFO_SIZE, 3, NULL,
+                           EXYNOS4210_UART3_FIFO_SIZE, 3, serial_hd(3),
                   s->irq_table[exynos4210_get_irq(EXYNOS4210_UART_INT_GRP, 3)]);
 
     /*** SD/MMC host controllers ***/
@@ -377,8 +373,20 @@ Exynos4210State *exynos4210_init(MemoryRegion *system_mem)
         BlockBackend *blk;
         DriveInfo *di;
 
+        /* Compatible with:
+         * - SD Host Controller Specification Version 2.0
+         * - SDIO Specification Version 2.0
+         * - MMC Specification Version 4.3
+         * - SDMA
+         * - ADMA2
+         *
+         * As this part of the Exynos4210 is not publically available,
+         * we used the "HS-MMC Controller S3C2416X RISC Microprocessor"
+         * public datasheet which is very similar (implementing
+         * MMC Specification Version 4.0 being the only difference noted)
+         */
         dev = qdev_create(NULL, TYPE_SYSBUS_SDHCI);
-        qdev_prop_set_uint32(dev, "capareg", EXYNOS4210_SDHCI_CAPABILITIES);
+        qdev_prop_set_uint64(dev, "capareg", EXYNOS4210_SDHCI_CAPABILITIES);
         qdev_init_nofail(dev);
 
         busdev = SYS_BUS_DEVICE(dev);

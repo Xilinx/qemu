@@ -2,10 +2,9 @@
 #define SYSEMU_H
 /* Misc. things related to the system emulator.  */
 
-#include "qemu/option.h"
+#include "qapi/qapi-types-run-state.h"
 #include "qemu/queue.h"
 #include "qemu/timer.h"
-#include "qapi-types.h"
 #include "qemu/notify.h"
 #include "qemu/main-loop.h"
 #include "qemu/bitmap.h"
@@ -15,6 +14,7 @@
 /* vl.c */
 
 extern const char *bios_name;
+extern int only_migratable;
 extern const char *qemu_name;
 extern QemuUUID qemu_uuid;
 extern bool qemu_uuid_set;
@@ -32,22 +32,6 @@ VMChangeStateEntry *qemu_add_vm_change_state_handler(VMChangeStateHandler *cb,
 void qemu_del_vm_change_state_handler(VMChangeStateEntry *e);
 void vm_state_notify(int running, RunState state);
 
-/* Enumeration of various causes for shutdown. */
-typedef enum ShutdownCause {
-    SHUTDOWN_CAUSE_NONE,          /* No shutdown request pending */
-    SHUTDOWN_CAUSE_HOST_ERROR,    /* An error prevents further use of guest */
-    SHUTDOWN_CAUSE_HOST_QMP,      /* Reaction to a QMP command, like 'quit' */
-    SHUTDOWN_CAUSE_HOST_SIGNAL,   /* Reaction to a signal, such as SIGINT */
-    SHUTDOWN_CAUSE_HOST_UI,       /* Reaction to UI event, like window close */
-    SHUTDOWN_CAUSE_GUEST_SHUTDOWN,/* Guest shutdown/suspend request, via
-                                     ACPI or other hardware-specific means */
-    SHUTDOWN_CAUSE_GUEST_RESET,   /* Guest reset request, and command line
-                                     turns that into a shutdown */
-    SHUTDOWN_CAUSE_GUEST_PANIC,   /* Guest panicked, and command line turns
-                                     that into a shutdown */
-    SHUTDOWN_CAUSE__MAX,
-} ShutdownCause;
-
 static inline bool shutdown_caused_by_guest(ShutdownCause cause)
 {
     return cause >= SHUTDOWN_CAUSE_GUEST_SHUTDOWN;
@@ -58,6 +42,7 @@ int vm_prepare_start(void);
 int vm_stop(RunState state);
 int vm_stop_force_state(RunState state);
 void vm_stop_from_timer(RunState state);
+int vm_shutdown(void);
 
 typedef enum WakeupReason {
     /* Always keep QEMU_WAKEUP_REASON_NONE = 0 */
@@ -67,15 +52,19 @@ typedef enum WakeupReason {
     QEMU_WAKEUP_REASON_OTHER,
 } WakeupReason;
 
+void qemu_exit_preconfig_request(void);
 void qemu_system_reset_request(ShutdownCause reason);
 void qemu_system_suspend_request(void);
 void qemu_register_suspend_notifier(Notifier *notifier);
-void qemu_system_wakeup_request(WakeupReason reason);
+bool qemu_wakeup_suspend_enabled(void);
+void qemu_system_wakeup_request(WakeupReason reason, Error **errp);
 void qemu_system_wakeup_enable(WakeupReason reason, bool enabled);
 void qemu_register_wakeup_notifier(Notifier *notifier);
+void qemu_register_wakeup_support(void);
 void qemu_system_shutdown_request(ShutdownCause reason);
 void qemu_system_powerdown_request(void);
 void qemu_register_powerdown_notifier(Notifier *notifier);
+void qemu_register_shutdown_notifier(Notifier *notifier);
 void qemu_system_debug_request(void);
 void qemu_system_vmstop_request(RunState reason);
 void qemu_system_vmstop_request_prepare(void);
@@ -89,10 +78,10 @@ void qemu_system_guest_panicked(GuestPanicInformation *info);
 void qemu_add_exit_notifier(Notifier *notify);
 void qemu_remove_exit_notifier(Notifier *notify);
 
+extern bool machine_init_done;
+
 void qemu_add_machine_init_done_notifier(Notifier *notify);
 void qemu_remove_machine_init_done_notifier(Notifier *notify);
-
-void qemu_announce_self(void);
 
 extern int autostart;
 
@@ -123,9 +112,8 @@ extern int old_param;
 extern int boot_menu;
 extern bool boot_strict;
 extern uint8_t *boot_splash_filedata;
-extern size_t boot_splash_filedata_size;
 extern bool enable_mlock;
-extern uint8_t qemu_extra_params_fw[2];
+extern bool enable_cpu_pm;
 extern QEMUClockType rtc_clock;
 extern const char *mem_path;
 extern int mem_prealloc;
@@ -159,9 +147,12 @@ void hmp_pcie_aer_inject_error(Monitor *mon, const QDict *qdict);
 
 /* serial ports */
 
-#define MAX_SERIAL_PORTS 4
-
-extern Chardev *serial_hds[MAX_SERIAL_PORTS];
+/* Return the Chardev for serial port i, or NULL if none */
+Chardev *serial_hd(int i);
+/* return the number of serial ports defined by the user. serial_hd(i)
+ * will always return NULL for any i which is greater than or equal to this.
+ */
+int serial_max_hds(void);
 
 /* parallel ports */
 
@@ -169,13 +160,11 @@ extern Chardev *serial_hds[MAX_SERIAL_PORTS];
 
 extern Chardev *parallel_hds[MAX_PARALLEL_PORTS];
 
-void hmp_usb_add(Monitor *mon, const QDict *qdict);
-void hmp_usb_del(Monitor *mon, const QDict *qdict);
 void hmp_info_usb(Monitor *mon, const QDict *qdict);
 
 void add_boot_device_path(int32_t bootindex, DeviceState *dev,
                           const char *suffix);
-char *get_boot_devices_list(size_t *size, bool ignore_suffixes);
+char *get_boot_devices_list(size_t *size);
 
 DeviceState *get_boot_device(uint32_t position);
 void check_boot_index(int32_t bootindex, Error **errp);
@@ -203,6 +192,7 @@ extern QemuOptsList bdrv_runtime_opts;
 extern QemuOptsList qemu_chardev_opts;
 extern QemuOptsList qemu_device_opts;
 extern QemuOptsList qemu_netdev_opts;
+extern QemuOptsList qemu_nic_opts;
 extern QemuOptsList qemu_net_opts;
 extern QemuOptsList qemu_global_opts;
 extern QemuOptsList qemu_mon_opts;
