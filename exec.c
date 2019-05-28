@@ -834,6 +834,7 @@ Property cpu_common_props[] = {
     DEFINE_PROP_LINK("memory", CPUState, memory, TYPE_MEMORY_REGION,
                      MemoryRegion *),
 #endif
+    DEFINE_PROP_BOOL("halt", CPUState, reset_pin, false),
     DEFINE_PROP_STRING("gdb-id", CPUState, gdb_id),
     DEFINE_PROP_END_OF_LIST(),
 };
