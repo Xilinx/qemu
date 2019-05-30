@@ -2125,9 +2125,6 @@ uint8_t sd_read_data(SDState *sd)
         break;
 
     case 21:    /* CMD21: SEND_TUNNING_BLOCK (MMC) */
-        if (sd->data_offset >= MMC_TUNING_BLOCK_SIZE - 1) {
-            sd->state = sd_transfer_state;
-        }
         if (sd->ext_csd[EXCSD_BUS_WIDTH_OFFSET] & BUS_WIDTH_8_MASK) {
             ret = mmc_tunning_block_pattern[sd->data_offset++];
         } else {
@@ -2136,6 +2133,9 @@ uint8_t sd_read_data(SDState *sd)
              */
             ret = mmc_tunning_block_pattern[sd->data_offset++] & 0x0F;
             ret |= (mmc_tunning_block_pattern[sd->data_offset++] & 0x0F) << 4;
+        }
+        if (sd->data_offset >= MMC_TUNING_BLOCK_SIZE - 1) {
+            sd->state = sd_transfer_state;
         }
         break;
 
