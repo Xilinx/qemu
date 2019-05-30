@@ -37,6 +37,7 @@
 #include "hw/sd/sd.h"
 #include "hw/sd/sdhci.h"
 #include "qapi/error.h"
+#include "sdhci-internal.h"
 
 #ifndef ZYNQMP_SDHCI_ERR_DEBUG
 #define ZYNQMP_SDHCI_ERR_DEBUG 0
@@ -82,8 +83,14 @@ static void zynqmp_sdhci_slottype_handler(void *opaque, int n, int level)
 static void zynqmp_sdhci_reset(DeviceState *dev)
 {
     DeviceClass *dc_parent = DEVICE_CLASS(ZYNQMP_SDHCI_PARENT_CLASS);
+    ZynqMPSDHCIState *s = ZYNQMP_SDHCI(dev);
+    SDHCIState *p = SYSBUS_SDHCI(dev);
 
     dc_parent->reset(dev);
+    if (s->is_mmc) {
+        p->capareg = deposit64(p->capareg, R_SDHC_CAPAB_SLOT_TYPE_SHIFT,
+                  R_SDHC_CAPAB_SLOT_TYPE_LENGTH, 0x01);
+    }
 }
 
 static void zynqmp_sdhci_realize(DeviceState *dev, Error **errp)
