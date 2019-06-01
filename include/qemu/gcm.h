@@ -27,7 +27,45 @@
 #ifndef POLARSSL_GCM_H
 #define POLARSSL_GCM_H
 
+#if 1
+/*
+ * QEMU glue layer to integrate PolarSSL's GCM code with QEMUs AES-ECB
+ * implementation borrowed from OpenSSL.
+ */
+#include <stdint.h>
+#include <stdlib.h>
+#include <assert.h>
+#include <string.h>
+#include "crypto/aes.h"
+
+typedef AES_KEY aes_context;
+
+static inline int aes_setkey_enc(aes_context *ctx, const unsigned char *key,
+                                 unsigned int keysize)
+{
+    return AES_set_encrypt_key(key, keysize, ctx);
+}
+
+#define AES_ENCRYPT     1
+#define AES_DECRYPT     0
+
+static inline int aes_crypt_ecb(aes_context *ctx,
+                                int mode,
+                                const unsigned char input[16],
+                                unsigned char output[16])
+{
+    if (mode == AES_ENCRYPT) {
+        AES_encrypt(input, output, ctx);
+    } else {
+        assert(mode == AES_DECRYPT);
+        AES_decrypt(input, output, ctx);
+    }
+    return 0;
+}
+
+#else
 #include "aes.h"
+#endif
 
 #ifdef _MSC_VER
 #include <basetsd.h>
@@ -47,6 +85,15 @@ typedef UINT64 uint64_t;
  */
 typedef struct {
     aes_context aes_ctx;        /*!< AES context used */
+    uint8_t iv[16];
+    uint8_t ectr[16];
+    uint8_t mul[16];
+    uint8_t tag[16];
+    uint32_t mul_idx;
+    uint32_t ectr_len;
+    uint32_t aad_len;
+    uint32_t data_len;
+
     uint64_t HL[16];            /*!< Precalculated HTable */
     uint64_t HH[16];            /*!< Precalculated HTable */
 }
@@ -66,6 +113,21 @@ extern "C" {
  * \return          0 if successful, or POLARSSL_ERR_AES_INVALID_KEY_LENGTH
  */
 int gcm_init( gcm_context *ctx, const unsigned char *key, unsigned int keysize );
+
+void gcm_push_iv(gcm_context *ctx,
+                 const unsigned char *iv,
+                 size_t iv_len, size_t tag_len);
+void gcm_push_aad(gcm_context *ctx,
+                  const unsigned char *add,
+                  size_t add_len);
+void gcm_push_data(gcm_context *ctx,
+                   int mode,
+                   unsigned char *output,
+                   const unsigned char *input,
+                   size_t length);
+void gcm_emit_tag(gcm_context *ctx,
+                  unsigned char *tag,
+                  size_t tag_len);
 
 /**
  * \brief           GCM buffer encryption/decryption using AES

@@ -25,11 +25,20 @@
 /*
  *  http://csrc.nist.gov/publications/nistpubs/800-38D/SP-800-38D.pdf
  */
-#include "polarssl/config.h"
+/*
+ * This is an adaptation of the PolarSSL GCM implementation for
+ * QEMU. It adds support for a streaming interface.
+ * Copyright (C) Xilinx Inc.
+ * Edgar E. Iglesias
+ */
+#define POLARSSL_GCM_C
 
 #if defined(POLARSSL_GCM_C)
 
-#include "polarssl/gcm.h"
+#include "qemu/osdep.h"
+#include "qemu-common.h"
+#include "qemu/gcm.h"
+#include "qemu/log.h"
 
 /*
  * 32-bit integer manipulation macros (big endian)
@@ -80,7 +89,7 @@ static void gcm_gen_table( gcm_context *ctx )
 
     for( i = 4; i > 0; i >>= 1 )
     {
-        uint32_t T = ( vl & 1 ) * 0xe1000000U;
+        uint32_t T = ( vl & 1 ) ? 0xe1000000U : 0;
         vl  = ( vh << 63 ) | ( vl >> 1 );
         vh  = ( vh >> 1 ) ^ ( (uint64_t) T << 32);
 
@@ -124,14 +133,16 @@ static const uint64_t last4[16] =
     0x9180, 0x8da0, 0xa9c0, 0xb5e0
 };
 
-void gcm_mult( gcm_context *ctx, const unsigned char x[16], unsigned char output[16] )
+static void gcm_mult( gcm_context *ctx, const unsigned char x[16], unsigned char output[16] )
 {
     int i = 0;
     unsigned char z[16];
+    unsigned char v[16];
     unsigned char lo, hi, rem;
     uint64_t zh, zl;
 
     memset( z, 0x00, 16 );
+    memcpy( v, x, 16 );
 
     lo = x[15] & 0xf;
     hi = x[15] >> 4;
@@ -169,6 +180,126 @@ void gcm_mult( gcm_context *ctx, const unsigned char x[16], unsigned char output
     PUT_UINT32_BE( zl, output, 12 );
 }
 
+void gcm_push_iv(gcm_context *ctx,
+                 const unsigned char *iv,
+                 size_t iv_len, size_t tag_len)
+{
+    assert(iv_len == 12);
+    memcpy(ctx->iv, iv, iv_len );
+    ctx->iv[15] = 1;
+
+    aes_crypt_ecb(&ctx->aes_ctx, AES_ENCRYPT, ctx->iv, ctx->ectr);
+    memcpy(ctx->tag, ctx->ectr, tag_len);
+}
+
+void gcm_push_aad(gcm_context *ctx,
+                  const unsigned char *aad,
+                  size_t aad_len)
+{
+    const unsigned char *p;
+    size_t use_len;
+    size_t i;
+
+    p = aad;
+    while(aad_len > 0)
+    {
+        use_len = ( aad_len < 16 ) ? aad_len : 16;
+
+        for( i = 0; i < use_len; i++ )
+            ctx->mul[i] ^= p[i];
+
+        gcm_mult(ctx, ctx->mul, ctx->mul);
+
+        aad_len -= use_len;
+        p += use_len;
+        ctx->aad_len += use_len;
+    }
+}
+
+void gcm_push_data(gcm_context *ctx,
+                   int mode,
+                   unsigned char *output,
+                   const unsigned char *input,
+                   size_t length)
+{
+    const unsigned char *p;
+    unsigned char *out_p = output;
+    unsigned char **xor_p;
+    size_t use_len, ectr_pos;
+    size_t i;
+
+    if( mode == GCM_ENCRYPT )
+        xor_p = (unsigned char **) &out_p;
+    else
+        xor_p = (unsigned char **) &p;
+
+    p = input;
+    while( length > 0 )
+    {
+        use_len = ( length < 16 ) ? length : 16;
+        if (ctx->ectr_len && use_len > ctx->ectr_len) {
+            use_len = ctx->ectr_len;
+        }
+        if (use_len > (16 - ctx->mul_idx)) {
+            use_len = 16 - ctx->mul_idx;
+        }
+
+        if (ctx->ectr_len == 0) {
+            for( i = 16; i > 12; i-- )
+                if( ++ctx->iv[i - 1] != 0 )
+                    break;
+
+            aes_crypt_ecb(&ctx->aes_ctx, AES_ENCRYPT, ctx->iv, ctx->ectr);
+            ctx->ectr_len = 16;
+        }
+
+        ectr_pos = 16 - ctx->ectr_len;
+        ctx->ectr_len -= use_len;
+
+        for( i = 0; i < use_len; i++ )
+        {
+            out_p[i] = ctx->ectr[ectr_pos + i] ^ p[i];
+            ctx->mul[ctx->mul_idx++] ^= (*xor_p)[i];
+        }
+
+        length -= use_len;
+        p += use_len;
+        out_p += use_len;
+        ctx->data_len += use_len;
+        if (ctx->mul_idx == 16) {
+            gcm_mult(ctx, ctx->mul, ctx->mul);
+            ctx->mul_idx = 0;
+        }
+    }
+}
+
+void gcm_emit_tag(gcm_context *ctx,
+                  unsigned char *tag,
+                  size_t tag_len)
+{
+    unsigned char work_buf[16];
+    size_t i;
+
+    if (ctx->mul_idx) {
+        gcm_mult(ctx, ctx->mul, ctx->mul);
+        ctx->mul_idx = 0;
+    }
+    memset(work_buf, 0x00, 16);
+
+    PUT_UINT32_BE(ctx->aad_len * 8, work_buf, 4);
+    PUT_UINT32_BE(ctx->data_len * 8, work_buf, 12);
+
+    for( i = 0; i < 16; i++ )
+        ctx->mul[i] ^= work_buf[i];
+
+    gcm_mult(ctx, ctx->mul, ctx->mul);
+
+    for( i = 0; i < tag_len; i++ )
+        ctx->tag[i] ^= ctx->mul[i];
+
+    memcpy(tag, ctx->tag, tag_len);
+}
+
 int gcm_crypt_and_tag( gcm_context *ctx,
                        int mode,
                        size_t length,
@@ -189,16 +320,25 @@ int gcm_crypt_and_tag( gcm_context *ctx,
     const unsigned char *p;
     unsigned char *out_p = output;
     size_t use_len;
-    uint64_t orig_len = length * 8;
-    uint64_t orig_add_len = add_len * 8;
+    size_t orig_len = length * 8;
+    size_t orig_add_len = add_len * 8;
+    unsigned char **xor_p;
 
     memset( y, 0x00, 16 );
     memset( work_buf, 0x00, 16 );
     memset( tag, 0x00, tag_len );
     memset( buf, 0x00, 16 );
 
-    if( output > input && (size_t) ( output - input ) < length )
+    if( ( mode == GCM_DECRYPT && output <= input && ( input - output ) < 8 ) ||
+        ( output > input && (size_t) ( output - input ) < length ) )
+    {
         return( POLARSSL_ERR_GCM_BAD_INPUT );
+    }
+
+    if( mode == GCM_ENCRYPT )
+        xor_p = (unsigned char **) &out_p;
+    else
+        xor_p = (unsigned char **) &p;
 
     if( iv_len == 12 )
     {
@@ -260,11 +400,8 @@ int gcm_crypt_and_tag( gcm_context *ctx,
 
         for( i = 0; i < use_len; i++ )
         {
-            if( mode == GCM_DECRYPT )
-                buf[i] ^= p[i];
             out_p[i] = ectr[i] ^ p[i];
-            if( mode == GCM_ENCRYPT )
-                buf[i] ^= out_p[i];
+            buf[i] ^= (*xor_p)[i];
         }
 
         gcm_mult( ctx, buf, buf );
@@ -278,10 +415,8 @@ int gcm_crypt_and_tag( gcm_context *ctx,
     {
         memset( work_buf, 0x00, 16 );
 
-        PUT_UINT32_BE( ( orig_add_len >> 32 ), work_buf, 0  );
-        PUT_UINT32_BE( ( orig_add_len       ), work_buf, 4  );
-        PUT_UINT32_BE( ( orig_len     >> 32 ), work_buf, 8  );
-        PUT_UINT32_BE( ( orig_len           ), work_buf, 12 );
+        PUT_UINT32_BE( orig_add_len , work_buf, 4 );
+        PUT_UINT32_BE( orig_len , work_buf, 12 );
 
         for( i = 0; i < 16; i++ )
             buf[i] ^= work_buf[i];
