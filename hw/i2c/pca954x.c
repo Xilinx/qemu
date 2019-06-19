@@ -161,20 +161,26 @@ static int pca954x_decode_address(I2CSlave *i2c, uint8_t address)
         return 0;
     }
 
+    if (!s->active_lanes) {
+        return 1;
+    }
+
     for (i = 0; i < s->lanes; ++i) {
         if (s->active_lanes & (1 << i)) {
             DB_PRINT("starting active bus %d addr:%02x rnw:%d\n", i, address,
                     s->event == I2C_START_RECV);
             channel_status |= (i2c_start_transfer(s->busses[i], address,
                                s->event == I2C_START_RECV)) << i;
+        } else {
+            channel_status |= 1 << i;
         }
     }
 
-    if (s->active_lanes == channel_status) {
-        return 1;
+    if (s->active_lanes & (~channel_status & 0xFF)) {
+        return 0;
     }
 
-    return 0;
+    return 1;
 }
 
 static void pca954x_init(Object *obj)
