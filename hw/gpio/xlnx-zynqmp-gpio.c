@@ -218,6 +218,7 @@ typedef struct XlnxZynqmpGPIO {
     qemu_irq *gpio_out;
     qemu_irq *gpio_oen;
 
+    bool por_done;
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
 } XlnxZynqmpGPIO;
@@ -765,9 +766,19 @@ static void gpio_reset(DeviceState *dev)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
+        if (s->por_done && s->regs_info[i].access) {
+            switch (s->regs_info[i].access->addr) {
+            case A_DATA_0 ... A_DATA_5:
+                /* No update to gpio pins after POR */
+                continue;
+            default:
+                break;
+            }
+        }
         register_reset(&s->regs_info[i]);
     }
 
+    s->por_done = true;
 }
 
 static const MemoryRegionOps gpio_ops = {
@@ -830,6 +841,7 @@ static const VMStateDescription vmstate_gpio = {
     .minimum_version_id = 1,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, XlnxZynqmpGPIO, R_MAX),
+        VMSTATE_BOOL(por_done, XlnxZynqmpGPIO),
         VMSTATE_END_OF_LIST(),
     }
 };
