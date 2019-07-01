@@ -26,7 +26,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
-#include "hw/register-dep.h"
+#include "hw/register.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
 
@@ -47,141 +47,141 @@
         qemu_log(__VA_ARGS__);         \
     }
 
-DEP_REG32(MASK_DATA_0_LSW, 0x0)
-    DEP_FIELD(MASK_DATA_0_LSW, MASK_0_LSW, 16, 16)
-    DEP_FIELD(MASK_DATA_0_LSW, DATA_0_LSW, 16, 0)
-DEP_REG32(MASK_DATA_0_MSW, 0x4)
-    DEP_FIELD(MASK_DATA_0_MSW, MASK_0_MSW, 10, 16)
-    DEP_FIELD(MASK_DATA_0_MSW, DATA_0_MSW, 10, 0)
-DEP_REG32(MASK_DATA_1_LSW, 0x8)
-    DEP_FIELD(MASK_DATA_1_LSW, MASK_1_LSW, 16, 16)
-    DEP_FIELD(MASK_DATA_1_LSW, DATA_1_LSW, 16, 0)
-DEP_REG32(MASK_DATA_1_MSW, 0xc)
-    DEP_FIELD(MASK_DATA_1_MSW, MASK_1_MSW, 10, 16)
-    DEP_FIELD(MASK_DATA_1_MSW, DATA_1_MSW, 10, 0)
-DEP_REG32(MASK_DATA_2_LSW, 0x10)
-    DEP_FIELD(MASK_DATA_2_LSW, MASK_2_LSW, 16, 16)
-    DEP_FIELD(MASK_DATA_2_LSW, DATA_2_LSW, 16, 0)
-DEP_REG32(MASK_DATA_2_MSW, 0x14)
-    DEP_FIELD(MASK_DATA_2_MSW, MASK_2_MSW, 10, 16)
-    DEP_FIELD(MASK_DATA_2_MSW, DATA_2_MSW, 10, 0)
-DEP_REG32(MASK_DATA_3_LSW, 0x18)
-    DEP_FIELD(MASK_DATA_3_LSW, MASK_3_LSW, 16, 16)
-    DEP_FIELD(MASK_DATA_3_LSW, DATA_3_LSW, 16, 0)
-DEP_REG32(MASK_DATA_3_MSW, 0x1c)
-    DEP_FIELD(MASK_DATA_3_MSW, MASK_3_MSW, 16, 16)
-    DEP_FIELD(MASK_DATA_3_MSW, DATA_3_MSW, 16, 0)
-DEP_REG32(MASK_DATA_4_LSW, 0x20)
-    DEP_FIELD(MASK_DATA_4_LSW, MASK_4_LSW, 16, 16)
-    DEP_FIELD(MASK_DATA_4_LSW, DATA_4_LSW, 16, 0)
-DEP_REG32(MASK_DATA_4_MSW, 0x24)
-    DEP_FIELD(MASK_DATA_4_MSW, MASK_4_MSW, 16, 16)
-    DEP_FIELD(MASK_DATA_4_MSW, DATA_4_MSW, 16, 0)
-DEP_REG32(MASK_DATA_5_LSW, 0x28)
-    DEP_FIELD(MASK_DATA_5_LSW, MASK_5_LSW, 16, 16)
-    DEP_FIELD(MASK_DATA_5_LSW, DATA_5_LSW, 16, 0)
-DEP_REG32(MASK_DATA_5_MSW, 0x2c)
-    DEP_FIELD(MASK_DATA_5_MSW, MASK_5_MSW, 16, 16)
-    DEP_FIELD(MASK_DATA_5_MSW, DATA_5_MSW, 16, 0)
-DEP_REG32(DATA_0, 0x40)
-    DEP_FIELD(DATA_0, DATA_0, 26, 0)
-DEP_REG32(DATA_1, 0x44)
-    DEP_FIELD(DATA_1, DATA_1, 26, 0)
-DEP_REG32(DATA_2, 0x48)
-    DEP_FIELD(DATA_2, DATA_2, 26, 0)
-DEP_REG32(DATA_3, 0x4c)
-DEP_REG32(DATA_4, 0x50)
-DEP_REG32(DATA_5, 0x54)
-DEP_REG32(DATA_0_RO, 0x60)
-    DEP_FIELD(DATA_0_RO, DATA_0_RO, 26, 0)
-DEP_REG32(DATA_1_RO, 0x64)
-    DEP_FIELD(DATA_1_RO, DATA_1_RO, 26, 0)
-DEP_REG32(DATA_2_RO, 0x68)
-    DEP_FIELD(DATA_2_RO, DATA_2_RO, 26, 0)
-DEP_REG32(DATA_3_RO, 0x6c)
-DEP_REG32(DATA_4_RO, 0x70)
-DEP_REG32(DATA_5_RO, 0x74)
-DEP_REG32(DIRM_0, 0x204)
-    DEP_FIELD(DIRM_0, DIRECTION_0, 26, 0)
-DEP_REG32(OEN_0, 0x208)
-    DEP_FIELD(OEN_0, OP_ENABLE_0, 26, 0)
-DEP_REG32(INT_MASK_0, 0x20c)
-    DEP_FIELD(INT_MASK_0, INT_MASK_0, 26, 0)
-DEP_REG32(INT_EN_0, 0x210)
-    DEP_FIELD(INT_EN_0, INT_ENABLE_0, 26, 0)
-DEP_REG32(INT_DIS_0, 0x214)
-    DEP_FIELD(INT_DIS_0, INT_DISABLE_0, 26, 0)
-DEP_REG32(INT_STAT_0, 0x218)
-    DEP_FIELD(INT_STAT_0, INT_STATUS_0, 26, 0)
-DEP_REG32(INT_TYPE_0, 0x21c)
-    DEP_FIELD(INT_TYPE_0, INT_TYPE_0, 26, 0)
-DEP_REG32(INT_POLARITY_0, 0x220)
-    DEP_FIELD(INT_POLARITY_0, INT_POL_0, 26, 0)
-DEP_REG32(INT_ANY_0, 0x224)
-    DEP_FIELD(INT_ANY_0, INT_ON_ANY_0, 26, 0)
-DEP_REG32(DIRM_1, 0x244)
-    DEP_FIELD(DIRM_1, DIRECTION_1, 26, 0)
-DEP_REG32(OEN_1, 0x248)
-    DEP_FIELD(OEN_1, OP_ENABLE_1, 26, 0)
-DEP_REG32(INT_MASK_1, 0x24c)
-    DEP_FIELD(INT_MASK_1, INT_MASK_1, 26, 0)
-DEP_REG32(INT_EN_1, 0x250)
-    DEP_FIELD(INT_EN_1, INT_ENABLE_1, 26, 0)
-DEP_REG32(INT_DIS_1, 0x254)
-    DEP_FIELD(INT_DIS_1, INT_DISABLE_1, 26, 0)
-DEP_REG32(INT_STAT_1, 0x258)
-    DEP_FIELD(INT_STAT_1, INT_STATUS_1, 26, 0)
-DEP_REG32(INT_TYPE_1, 0x25c)
-    DEP_FIELD(INT_TYPE_1, INT_TYPE_1, 26, 0)
-DEP_REG32(INT_POLARITY_1, 0x260)
-    DEP_FIELD(INT_POLARITY_1, INT_POL_1, 26, 0)
-DEP_REG32(INT_ANY_1, 0x264)
-    DEP_FIELD(INT_ANY_1, INT_ON_ANY_1, 26, 0)
-DEP_REG32(DIRM_2, 0x284)
-    DEP_FIELD(DIRM_2, DIRECTION_2, 26, 0)
-DEP_REG32(OEN_2, 0x288)
-    DEP_FIELD(OEN_2, OP_ENABLE_2, 26, 0)
-DEP_REG32(INT_MASK_2, 0x28c)
-    DEP_FIELD(INT_MASK_2, INT_MASK_2, 26, 0)
-DEP_REG32(INT_EN_2, 0x290)
-    DEP_FIELD(INT_EN_2, INT_ENABLE_2, 26, 0)
-DEP_REG32(INT_DIS_2, 0x294)
-    DEP_FIELD(INT_DIS_2, INT_DISABLE_2, 26, 0)
-DEP_REG32(INT_STAT_2, 0x298)
-    DEP_FIELD(INT_STAT_2, INT_STATUS_2, 26, 0)
-DEP_REG32(INT_TYPE_2, 0x29c)
-    DEP_FIELD(INT_TYPE_2, INT_TYPE_2, 26, 0)
-DEP_REG32(INT_POLARITY_2, 0x2a0)
-    DEP_FIELD(INT_POLARITY_2, INT_POL_2, 26, 0)
-DEP_REG32(INT_ANY_2, 0x2a4)
-    DEP_FIELD(INT_ANY_2, INT_ON_ANY_2, 26, 0)
-DEP_REG32(DIRM_3, 0x2c4)
-DEP_REG32(OEN_3, 0x2c8)
-DEP_REG32(INT_MASK_3, 0x2cc)
-DEP_REG32(INT_EN_3, 0x2d0)
-DEP_REG32(INT_DIS_3, 0x2d4)
-DEP_REG32(INT_STAT_3, 0x2d8)
-DEP_REG32(INT_TYPE_3, 0x2dc)
-DEP_REG32(INT_POLARITY_3, 0x2e0)
-DEP_REG32(INT_ANY_3, 0x2e4)
-DEP_REG32(DIRM_4, 0x304)
-DEP_REG32(OEN_4, 0x308)
-DEP_REG32(INT_MASK_4, 0x30c)
-DEP_REG32(INT_EN_4, 0x310)
-DEP_REG32(INT_DIS_4, 0x314)
-DEP_REG32(INT_STAT_4, 0x318)
-DEP_REG32(INT_TYPE_4, 0x31c)
-DEP_REG32(INT_POLARITY_4, 0x320)
-DEP_REG32(INT_ANY_4, 0x324)
-DEP_REG32(DIRM_5, 0x344)
-DEP_REG32(OEN_5, 0x348)
-DEP_REG32(INT_MASK_5, 0x34c)
-DEP_REG32(INT_EN_5, 0x350)
-DEP_REG32(INT_DIS_5, 0x354)
-DEP_REG32(INT_STAT_5, 0x358)
-DEP_REG32(INT_TYPE_5, 0x35c)
-DEP_REG32(INT_POLARITY_5, 0x360)
-DEP_REG32(INT_ANY_5, 0x364)
+REG32(MASK_DATA_0_LSW, 0x0)
+    FIELD(MASK_DATA_0_LSW, MASK_0_LSW, 16, 16)
+    FIELD(MASK_DATA_0_LSW, DATA_0_LSW, 0, 16)
+REG32(MASK_DATA_0_MSW, 0x4)
+    FIELD(MASK_DATA_0_MSW, MASK_0_MSW, 16, 10)
+    FIELD(MASK_DATA_0_MSW, DATA_0_MSW, 0, 10)
+REG32(MASK_DATA_1_LSW, 0x8)
+    FIELD(MASK_DATA_1_LSW, MASK_1_LSW, 16, 16)
+    FIELD(MASK_DATA_1_LSW, DATA_1_LSW, 0, 16)
+REG32(MASK_DATA_1_MSW, 0xc)
+    FIELD(MASK_DATA_1_MSW, MASK_1_MSW, 16, 10)
+    FIELD(MASK_DATA_1_MSW, DATA_1_MSW, 0, 10)
+REG32(MASK_DATA_2_LSW, 0x10)
+    FIELD(MASK_DATA_2_LSW, MASK_2_LSW, 16, 16)
+    FIELD(MASK_DATA_2_LSW, DATA_2_LSW, 0, 16)
+REG32(MASK_DATA_2_MSW, 0x14)
+    FIELD(MASK_DATA_2_MSW, MASK_2_MSW, 16, 10)
+    FIELD(MASK_DATA_2_MSW, DATA_2_MSW, 0, 10)
+REG32(MASK_DATA_3_LSW, 0x18)
+    FIELD(MASK_DATA_3_LSW, MASK_3_LSW, 16, 16)
+    FIELD(MASK_DATA_3_LSW, DATA_3_LSW, 0, 16)
+REG32(MASK_DATA_3_MSW, 0x1c)
+    FIELD(MASK_DATA_3_MSW, MASK_3_MSW, 16, 16)
+    FIELD(MASK_DATA_3_MSW, DATA_3_MSW, 0, 16)
+REG32(MASK_DATA_4_LSW, 0x20)
+    FIELD(MASK_DATA_4_LSW, MASK_4_LSW, 16, 16)
+    FIELD(MASK_DATA_4_LSW, DATA_4_LSW, 0, 16)
+REG32(MASK_DATA_4_MSW, 0x24)
+    FIELD(MASK_DATA_4_MSW, MASK_4_MSW, 16, 16)
+    FIELD(MASK_DATA_4_MSW, DATA_4_MSW, 0, 16)
+REG32(MASK_DATA_5_LSW, 0x28)
+    FIELD(MASK_DATA_5_LSW, MASK_5_LSW, 16, 16)
+    FIELD(MASK_DATA_5_LSW, DATA_5_LSW, 0, 16)
+REG32(MASK_DATA_5_MSW, 0x2c)
+    FIELD(MASK_DATA_5_MSW, MASK_5_MSW, 16, 16)
+    FIELD(MASK_DATA_5_MSW, DATA_5_MSW, 0, 16)
+REG32(DATA_0, 0x40)
+    FIELD(DATA_0, DATA_0, 0, 26)
+REG32(DATA_1, 0x44)
+    FIELD(DATA_1, DATA_1, 0, 26)
+REG32(DATA_2, 0x48)
+    FIELD(DATA_2, DATA_2, 0, 26)
+REG32(DATA_3, 0x4c)
+REG32(DATA_4, 0x50)
+REG32(DATA_5, 0x54)
+REG32(DATA_0_RO, 0x60)
+    FIELD(DATA_0_RO, DATA_0_RO, 0, 26)
+REG32(DATA_1_RO, 0x64)
+    FIELD(DATA_1_RO, DATA_1_RO, 0, 26)
+REG32(DATA_2_RO, 0x68)
+    FIELD(DATA_2_RO, DATA_2_RO, 0, 26)
+REG32(DATA_3_RO, 0x6c)
+REG32(DATA_4_RO, 0x70)
+REG32(DATA_5_RO, 0x74)
+REG32(DIRM_0, 0x204)
+    FIELD(DIRM_0, DIRECTION_0, 0, 26)
+REG32(OEN_0, 0x208)
+    FIELD(OEN_0, OP_ENABLE_0, 0, 26)
+REG32(INT_MASK_0, 0x20c)
+    FIELD(INT_MASK_0, INT_MASK_0, 0, 26)
+REG32(INT_EN_0, 0x210)
+    FIELD(INT_EN_0, INT_ENABLE_0, 0, 26)
+REG32(INT_DIS_0, 0x214)
+    FIELD(INT_DIS_0, INT_DISABLE_0, 0, 26)
+REG32(INT_STAT_0, 0x218)
+    FIELD(INT_STAT_0, INT_STATUS_0, 0, 26)
+REG32(INT_TYPE_0, 0x21c)
+    FIELD(INT_TYPE_0, INT_TYPE_0, 0, 26)
+REG32(INT_POLARITY_0, 0x220)
+    FIELD(INT_POLARITY_0, INT_POL_0, 0, 26)
+REG32(INT_ANY_0, 0x224)
+    FIELD(INT_ANY_0, INT_ON_ANY_0, 0, 26)
+REG32(DIRM_1, 0x244)
+    FIELD(DIRM_1, DIRECTION_1, 0, 26)
+REG32(OEN_1, 0x248)
+    FIELD(OEN_1, OP_ENABLE_1, 0, 26)
+REG32(INT_MASK_1, 0x24c)
+    FIELD(INT_MASK_1, INT_MASK_1, 0, 26)
+REG32(INT_EN_1, 0x250)
+    FIELD(INT_EN_1, INT_ENABLE_1, 0, 26)
+REG32(INT_DIS_1, 0x254)
+    FIELD(INT_DIS_1, INT_DISABLE_1, 0, 26)
+REG32(INT_STAT_1, 0x258)
+    FIELD(INT_STAT_1, INT_STATUS_1, 0, 26)
+REG32(INT_TYPE_1, 0x25c)
+    FIELD(INT_TYPE_1, INT_TYPE_1, 0, 26)
+REG32(INT_POLARITY_1, 0x260)
+    FIELD(INT_POLARITY_1, INT_POL_1, 0, 26)
+REG32(INT_ANY_1, 0x264)
+    FIELD(INT_ANY_1, INT_ON_ANY_1, 0, 26)
+REG32(DIRM_2, 0x284)
+    FIELD(DIRM_2, DIRECTION_2, 0, 26)
+REG32(OEN_2, 0x288)
+    FIELD(OEN_2, OP_ENABLE_2, 0, 26)
+REG32(INT_MASK_2, 0x28c)
+    FIELD(INT_MASK_2, INT_MASK_2, 0, 26)
+REG32(INT_EN_2, 0x290)
+    FIELD(INT_EN_2, INT_ENABLE_2, 0, 26)
+REG32(INT_DIS_2, 0x294)
+    FIELD(INT_DIS_2, INT_DISABLE_2, 0, 26)
+REG32(INT_STAT_2, 0x298)
+    FIELD(INT_STAT_2, INT_STATUS_2, 0, 26)
+REG32(INT_TYPE_2, 0x29c)
+    FIELD(INT_TYPE_2, INT_TYPE_2, 0, 26)
+REG32(INT_POLARITY_2, 0x2a0)
+    FIELD(INT_POLARITY_2, INT_POL_2, 0, 26)
+REG32(INT_ANY_2, 0x2a4)
+    FIELD(INT_ANY_2, INT_ON_ANY_2, 0, 26)
+REG32(DIRM_3, 0x2c4)
+REG32(OEN_3, 0x2c8)
+REG32(INT_MASK_3, 0x2cc)
+REG32(INT_EN_3, 0x2d0)
+REG32(INT_DIS_3, 0x2d4)
+REG32(INT_STAT_3, 0x2d8)
+REG32(INT_TYPE_3, 0x2dc)
+REG32(INT_POLARITY_3, 0x2e0)
+REG32(INT_ANY_3, 0x2e4)
+REG32(DIRM_4, 0x304)
+REG32(OEN_4, 0x308)
+REG32(INT_MASK_4, 0x30c)
+REG32(INT_EN_4, 0x310)
+REG32(INT_DIS_4, 0x314)
+REG32(INT_STAT_4, 0x318)
+REG32(INT_TYPE_4, 0x31c)
+REG32(INT_POLARITY_4, 0x320)
+REG32(INT_ANY_4, 0x324)
+REG32(DIRM_5, 0x344)
+REG32(OEN_5, 0x348)
+REG32(INT_MASK_5, 0x34c)
+REG32(INT_EN_5, 0x350)
+REG32(INT_DIS_5, 0x354)
+REG32(INT_STAT_5, 0x358)
+REG32(INT_TYPE_5, 0x35c)
+REG32(INT_POLARITY_5, 0x360)
+REG32(INT_ANY_5, 0x364)
 
 #define R_MAX (R_INT_ANY_5 + 1)
 
@@ -219,7 +219,7 @@ typedef struct XlnxZynqmpGPIO {
     qemu_irq *gpio_oen;
 
     uint32_t regs[R_MAX];
-    DepRegisterInfo regs_info[R_MAX];
+    RegisterInfo regs_info[R_MAX];
 } XlnxZynqmpGPIO;
 
 /* Returns Bank number based on addr passed
@@ -359,11 +359,11 @@ static void zynqmp_gpio_in_handler(void *opaque, int n, int level)
     gpio_update_irq(s);
 }
 
-static uint64_t gpio_data_reg_prew(DepRegisterInfo *reg, uint64_t val)
+static uint64_t gpio_data_reg_prew(RegisterInfo *reg, uint64_t val)
 {
     XlnxZynqmpGPIO *s = XLNX_ZYNQMP_GPIO(reg->opaque);
     uint32_t data = (uint32_t) val;
-    int bank = gpio_get_bank(reg->access->decode.addr);
+    int bank = gpio_get_bank(reg->access->addr);
     int width;
     uint32_t data_old = s->regs[R_GPIO_DATA_X(bank)];
     uint32_t mask;
@@ -380,13 +380,13 @@ static uint64_t gpio_data_reg_prew(DepRegisterInfo *reg, uint64_t val)
     return val;
 }
 
-static uint64_t gpio_mask_data_lsw_prew(DepRegisterInfo *reg, uint64_t val)
+static uint64_t gpio_mask_data_lsw_prew(RegisterInfo *reg, uint64_t val)
 {
     XlnxZynqmpGPIO *s = XLNX_ZYNQMP_GPIO(reg->opaque);
     uint32_t data = (uint32_t) val;
     uint16_t maskw = data >> 16;
     uint32_t data_old = 0;
-    int bank = gpio_get_bank(reg->access->decode.addr);
+    int bank = gpio_get_bank(reg->access->addr);
     uint32_t data_reg = R_GPIO_DATA_X(bank);
     uint32_t mask;
 
@@ -406,14 +406,14 @@ static uint64_t gpio_mask_data_lsw_prew(DepRegisterInfo *reg, uint64_t val)
     return val;
 }
 
-static uint64_t gpio_mask_data_msw_prew(DepRegisterInfo *reg, uint64_t val)
+static uint64_t gpio_mask_data_msw_prew(RegisterInfo *reg, uint64_t val)
 {
     XlnxZynqmpGPIO *s = XLNX_ZYNQMP_GPIO(reg->opaque);
     uint32_t data = (uint32_t) val;
     uint16_t maskw = data >> 16;
     uint32_t data_old = 0;
     int width;
-    int bank = gpio_get_bank(reg->access->decode.addr);
+    int bank = gpio_get_bank(reg->access->addr);
     uint32_t data_reg = R_GPIO_DATA_X(bank);
     uint32_t mask;
 
@@ -436,43 +436,43 @@ static uint64_t gpio_mask_data_msw_prew(DepRegisterInfo *reg, uint64_t val)
     return val;
 }
 
-static uint64_t gpio_reg_wo(DepRegisterInfo *reg, uint64_t val)
+static uint64_t gpio_reg_wo(RegisterInfo *reg, uint64_t val)
 {
     return 0;
 }
 
-static uint64_t gpio_data_ro_postr(DepRegisterInfo *reg, uint64_t val)
+static uint64_t gpio_data_ro_postr(RegisterInfo *reg, uint64_t val)
 {
     XlnxZynqmpGPIO *s = XLNX_ZYNQMP_GPIO(reg->opaque);
-    int bank = gpio_get_bank(reg->access->decode.addr);
+    int bank = gpio_get_bank(reg->access->addr);
 
     return s->regs[R_GPIO_DATA_X(bank)];
 }
 
-static void gpio_int_en_postw(DepRegisterInfo *reg, uint64_t val)
+static void gpio_int_en_postw(RegisterInfo *reg, uint64_t val)
 {
     XlnxZynqmpGPIO *s = XLNX_ZYNQMP_GPIO(reg->opaque);
     uint32_t data = (uint32_t) val;
-    int bank = gpio_get_bank(reg->access->decode.addr);
+    int bank = gpio_get_bank(reg->access->addr);
 
     s->regs[R_GPIO_INT_MASK_X(bank)] &= ~data;
 }
 
-static void gpio_int_dis_postw(DepRegisterInfo *reg, uint64_t val)
+static void gpio_int_dis_postw(RegisterInfo *reg, uint64_t val)
 {
     XlnxZynqmpGPIO *s = XLNX_ZYNQMP_GPIO(reg->opaque);
     uint32_t data = (uint32_t) val;
-    int bank = gpio_get_bank(reg->access->decode.addr);
+    int bank = gpio_get_bank(reg->access->addr);
 
     s->regs[R_GPIO_INT_MASK_X(bank)] |= data;
 }
 
-static uint64_t gpio_oen_prew(DepRegisterInfo *reg, uint64_t val)
+static uint64_t gpio_oen_prew(RegisterInfo *reg, uint64_t val)
 {
     XlnxZynqmpGPIO *s = XLNX_ZYNQMP_GPIO(reg->opaque);
     uint32_t data = (uint32_t) val;
     uint32_t data_old = *(uint32_t *)reg->data;
-    int bank = gpio_get_bank(reg->access->decode.addr);
+    int bank = gpio_get_bank(reg->access->addr);
     int oen_pin;
     int width;
     int i;
@@ -503,259 +503,259 @@ static uint64_t gpio_oen_prew(DepRegisterInfo *reg, uint64_t val)
     return val;
 }
 
-static DepRegisterAccessInfo gpio_regs_info[] = {
+static RegisterAccessInfo gpio_regs_info[] = {
     {   .name = "MASK_DATA_0_LSW",
-        .decode.addr = A_MASK_DATA_0_LSW,
+        .addr = A_MASK_DATA_0_LSW,
         .pre_write = gpio_mask_data_lsw_prew,
         .post_read = gpio_reg_wo,
     },{ .name = "MASK_DATA_0_MSW",
-        .decode.addr = A_MASK_DATA_0_MSW,
+        .addr = A_MASK_DATA_0_MSW,
         .rsvd = 0xfc00fc00,
         .pre_write = gpio_mask_data_msw_prew,
         .post_read = gpio_reg_wo,
     },{   .name = "MASK_DATA_1_LSW",
-        .decode.addr = A_MASK_DATA_1_LSW,
+        .addr = A_MASK_DATA_1_LSW,
         .pre_write = gpio_mask_data_lsw_prew,
         .post_read = gpio_reg_wo,
     },{ .name = "MASK_DATA_1_MSW",
-        .decode.addr = A_MASK_DATA_1_MSW,
+        .addr = A_MASK_DATA_1_MSW,
         .rsvd = 0xfc00fc00,
         .pre_write = gpio_mask_data_msw_prew,
         .post_read = gpio_reg_wo,
     },{   .name = "MASK_DATA_2_LSW",
-        .decode.addr = A_MASK_DATA_2_LSW,
+        .addr = A_MASK_DATA_2_LSW,
         .pre_write = gpio_mask_data_lsw_prew,
         .post_read = gpio_reg_wo,
     },{ .name = "MASK_DATA_2_MSW",
-        .decode.addr = A_MASK_DATA_2_MSW,
+        .addr = A_MASK_DATA_2_MSW,
         .rsvd = 0xfc00fc00,
         .pre_write = gpio_mask_data_msw_prew,
         .post_read = gpio_reg_wo,
     },{   .name = "MASK_DATA_3_LSW",
-        .decode.addr = A_MASK_DATA_3_LSW,
+        .addr = A_MASK_DATA_3_LSW,
         .pre_write = gpio_mask_data_lsw_prew,
         .post_read = gpio_reg_wo,
     },{ .name = "MASK_DATA_3_MSW",
-        .decode.addr = A_MASK_DATA_3_MSW,
+        .addr = A_MASK_DATA_3_MSW,
         .pre_write = gpio_mask_data_msw_prew,
         .post_read = gpio_reg_wo,
     },{   .name = "MASK_DATA_4_LSW",
-        .decode.addr = A_MASK_DATA_4_LSW,
+        .addr = A_MASK_DATA_4_LSW,
         .pre_write = gpio_mask_data_lsw_prew,
         .post_read = gpio_reg_wo,
     },{ .name = "MASK_DATA_4_MSW",
-        .decode.addr = A_MASK_DATA_4_MSW,
+        .addr = A_MASK_DATA_4_MSW,
         .pre_write = gpio_mask_data_msw_prew,
         .post_read = gpio_reg_wo,
     },{   .name = "MASK_DATA_5_LSW",
-        .decode.addr = A_MASK_DATA_5_LSW,
+        .addr = A_MASK_DATA_5_LSW,
         .pre_write = gpio_mask_data_lsw_prew,
         .post_read = gpio_reg_wo,
     },{ .name = "MASK_DATA_5_MSW",
-        .decode.addr = A_MASK_DATA_5_MSW,
+        .addr = A_MASK_DATA_5_MSW,
         .pre_write = gpio_mask_data_msw_prew,
         .post_read = gpio_reg_wo,
-    },{ .name = "DATA_0",  .decode.addr = A_DATA_0,
+    },{ .name = "DATA_0",  .addr = A_DATA_0,
         .pre_write = gpio_data_reg_prew,
         .rsvd = 0xfc000000,
-    },{ .name = "DATA_1",  .decode.addr = A_DATA_1,
+    },{ .name = "DATA_1",  .addr = A_DATA_1,
         .pre_write = gpio_data_reg_prew,
         .rsvd = 0xfc000000,
-    },{ .name = "DATA_2",  .decode.addr = A_DATA_2,
+    },{ .name = "DATA_2",  .addr = A_DATA_2,
         .pre_write = gpio_data_reg_prew,
         .rsvd = 0xfc000000,
-    },{ .name = "DATA_3",  .decode.addr = A_DATA_3,
+    },{ .name = "DATA_3",  .addr = A_DATA_3,
         .pre_write = gpio_data_reg_prew,
-    },{ .name = "DATA_4",  .decode.addr = A_DATA_4,
+    },{ .name = "DATA_4",  .addr = A_DATA_4,
         .pre_write = gpio_data_reg_prew,
-    },{ .name = "DATA_5",  .decode.addr = A_DATA_5,
+    },{ .name = "DATA_5",  .addr = A_DATA_5,
         .pre_write = gpio_data_reg_prew,
     },{ .name = "DATA_0_RO",
-        .decode.addr = A_DATA_0_RO,
+        .addr = A_DATA_0_RO,
         .rsvd = 0xfc000000,
         .ro = 0xffffffff,
         .post_read = gpio_data_ro_postr,
     },{ .name = "DATA_1_RO",
-        .decode.addr = A_DATA_1_RO,
+        .addr = A_DATA_1_RO,
         .rsvd = 0xfc000000,
         .ro = 0xffffffff,
         .post_read = gpio_data_ro_postr,
     },{ .name = "DATA_2_RO",
-        .decode.addr = A_DATA_2_RO,
+        .addr = A_DATA_2_RO,
         .rsvd = 0xfc000000,
         .ro = 0xffffffff,
         .post_read = gpio_data_ro_postr,
     },{ .name = "DATA_3_RO",
-        .decode.addr = A_DATA_3_RO,
+        .addr = A_DATA_3_RO,
         .ro = 0xffffffff,
         .post_read = gpio_data_ro_postr,
     },{ .name = "DATA_4_RO",
-        .decode.addr = A_DATA_4_RO,
+        .addr = A_DATA_4_RO,
         .ro = 0xffffffff,
         .post_read = gpio_data_ro_postr,
     },{ .name = "DATA_5_RO",
-        .decode.addr = A_DATA_5_RO,
+        .addr = A_DATA_5_RO,
         .ro = 0xffffffff,
         .post_read = gpio_data_ro_postr,
-    },{ .name = "DIRM_0",  .decode.addr = A_DIRM_0,
+    },{ .name = "DIRM_0",  .addr = A_DIRM_0,
         .rsvd = 0xfc000000,
-    },{ .name = "OEN_0",  .decode.addr = A_OEN_0,
+    },{ .name = "OEN_0",  .addr = A_OEN_0,
         .rsvd = 0xfc000000,
         .pre_write = gpio_oen_prew,
     },{ .name = "INT_MASK_0",
-        .decode.addr = A_INT_MASK_0,
+        .addr = A_INT_MASK_0,
         .reset = 0x3ffffff,
         .rsvd = 0xfc000000,
         .ro = 0x3ffffff,
-    },{ .name = "INT_EN_0",  .decode.addr = A_INT_EN_0,
+    },{ .name = "INT_EN_0",  .addr = A_INT_EN_0,
         .post_write = gpio_int_en_postw,
         .rsvd = 0xfc000000,
     },{ .name = "INT_DIS_0",
-        .decode.addr = A_INT_DIS_0,
+        .addr = A_INT_DIS_0,
         .rsvd = 0xfc000000,
         .post_write = gpio_int_dis_postw,
     },{ .name = "INT_STAT_0",
-        .decode.addr = A_INT_STAT_0,
+        .addr = A_INT_STAT_0,
         .w1c = 0x3ffffff,
         .rsvd = 0xfc000000,
     },{ .name = "INT_TYPE_0",
-        .decode.addr = A_INT_TYPE_0,
+        .addr = A_INT_TYPE_0,
         .rsvd = 0xfc000000,
         .reset = 0x3ffffff,
     },{ .name = "INT_POLARITY_0",
-        .decode.addr = A_INT_POLARITY_0,
+        .addr = A_INT_POLARITY_0,
         .rsvd = 0xfc000000,
     },{ .name = "INT_ANY_0",
-        .decode.addr = A_INT_ANY_0,
+        .addr = A_INT_ANY_0,
         .rsvd = 0xfc000000,
-    },{ .name = "DIRM_1",  .decode.addr = A_DIRM_1,
+    },{ .name = "DIRM_1", .addr = A_DIRM_1,
         .rsvd = 0xfc000000,
-    },{ .name = "OEN_1",  .decode.addr = A_OEN_1,
+    },{ .name = "OEN_1",  .addr = A_OEN_1,
         .rsvd = 0xfc000000,
         .pre_write = gpio_oen_prew,
     },{ .name = "INT_MASK_1",
-        .decode.addr = A_INT_MASK_1,
+        .addr = A_INT_MASK_1,
         .reset = 0x3ffffff,
         .rsvd = 0xfc000000,
         .ro = 0x3ffffff,
-    },{ .name = "INT_EN_1",  .decode.addr = A_INT_EN_1,
+    },{ .name = "INT_EN_1",  .addr = A_INT_EN_1,
         .rsvd = 0xfc000000,
         .post_write = gpio_int_en_postw,
     },{ .name = "INT_DIS_1",
         .rsvd = 0xfc000000,
-        .decode.addr = A_INT_DIS_1,
+        .addr = A_INT_DIS_1,
         .post_write = gpio_int_dis_postw,
     },{ .name = "INT_STAT_1",
-        .decode.addr = A_INT_STAT_1,
+        .addr = A_INT_STAT_1,
         .rsvd = 0xfc000000,
         .w1c = 0x3ffffff,
     },{ .name = "INT_TYPE_1",
-        .decode.addr = A_INT_TYPE_1,
+        .addr = A_INT_TYPE_1,
         .rsvd = 0xfc000000,
         .reset = 0x3ffffff,
     },{ .name = "INT_POLARITY_1",
-        .decode.addr = A_INT_POLARITY_1,
+        .addr = A_INT_POLARITY_1,
         .rsvd = 0xfc000000,
     },{ .name = "INT_ANY_1",
-        .decode.addr = A_INT_ANY_1,
+        .addr = A_INT_ANY_1,
         .rsvd = 0xfc000000,
-    },{ .name = "DIRM_2",  .decode.addr = A_DIRM_2,
+    },{ .name = "DIRM_2",  .addr = A_DIRM_2,
         .rsvd = 0xfc000000,
-    },{ .name = "OEN_2",  .decode.addr = A_OEN_2,
+    },{ .name = "OEN_2",  .addr = A_OEN_2,
         .rsvd = 0xfc000000,
         .pre_write = gpio_oen_prew,
     },{ .name = "INT_MASK_2",
-        .decode.addr = A_INT_MASK_2,
+        .addr = A_INT_MASK_2,
         .ro = 0x3ffffff,
         .rsvd = 0xfc000000,
         .reset = 0x3ffffff,
-    },{ .name = "INT_EN_2",  .decode.addr = A_INT_EN_2,
+    },{ .name = "INT_EN_2",  .addr = A_INT_EN_2,
         .post_write = gpio_int_en_postw,
         .rsvd = 0xfc000000,
     },{ .name = "INT_DIS_2",
-        .decode.addr = A_INT_DIS_2,
+        .addr = A_INT_DIS_2,
         .rsvd = 0xfc000000,
         .post_write = gpio_int_dis_postw,
     },{ .name = "INT_STAT_2",
-        .decode.addr = A_INT_STAT_2,
+        .addr = A_INT_STAT_2,
         .rsvd = 0xfc000000,
         .w1c = 0x3ffffff,
     },{ .name = "INT_TYPE_2",
-        .decode.addr = A_INT_TYPE_2,
+        .addr = A_INT_TYPE_2,
         .rsvd = 0xfc000000,
         .reset = 0x3ffffff,
     },{ .name = "INT_POLARITY_2",
-        .decode.addr = A_INT_POLARITY_2,
+        .addr = A_INT_POLARITY_2,
         .rsvd = 0xfc000000,
     },{ .name = "INT_ANY_2",
-        .decode.addr = A_INT_ANY_2,
+        .addr = A_INT_ANY_2,
         .rsvd = 0xfc000000,
-    },{ .name = "DIRM_3",  .decode.addr = A_DIRM_3,
-    },{ .name = "OEN_3",  .decode.addr = A_OEN_3,
+    },{ .name = "DIRM_3",  .addr = A_DIRM_3,
+    },{ .name = "OEN_3",  .addr = A_OEN_3,
         .pre_write = gpio_oen_prew,
     },{ .name = "INT_MASK_3",
-        .decode.addr = A_INT_MASK_3,
+        .addr = A_INT_MASK_3,
         .ro = 0xffffffff,
         .reset = 0xffffffff,
-    },{ .name = "INT_EN_3",  .decode.addr = A_INT_EN_3,
+    },{ .name = "INT_EN_3",  .addr = A_INT_EN_3,
         .post_write = gpio_int_en_postw,
     },{ .name = "INT_DIS_3",
-        .decode.addr = A_INT_DIS_3,
+        .addr = A_INT_DIS_3,
         .post_write = gpio_int_dis_postw,
     },{ .name = "INT_STAT_3",
-        .decode.addr = A_INT_STAT_3,
+        .addr = A_INT_STAT_3,
         .w1c = 0xffffffff,
     },{ .name = "INT_TYPE_3",
-        .decode.addr = A_INT_TYPE_3,
+        .addr = A_INT_TYPE_3,
         .reset = 0xffffffff,
     },{ .name = "INT_POLARITY_3",
-        .decode.addr = A_INT_POLARITY_3,
+        .addr = A_INT_POLARITY_3,
     },{ .name = "INT_ANY_3",
-        .decode.addr = A_INT_ANY_3,
-    },{ .name = "DIRM_4",  .decode.addr = A_DIRM_4,
-    },{ .name = "OEN_4",  .decode.addr = A_OEN_4,
+        .addr = A_INT_ANY_3,
+    },{ .name = "DIRM_4",  .addr = A_DIRM_4,
+    },{ .name = "OEN_4",  .addr = A_OEN_4,
         .pre_write = gpio_oen_prew,
     },{ .name = "INT_MASK_4",
-        .decode.addr = A_INT_MASK_4,
+        .addr = A_INT_MASK_4,
         .ro = 0xffffffff,
         .reset = 0xffffffff,
-    },{ .name = "INT_EN_4",  .decode.addr = A_INT_EN_4,
+    },{ .name = "INT_EN_4",  .addr = A_INT_EN_4,
         .post_write = gpio_int_en_postw,
     },{ .name = "INT_DIS_4",
-        .decode.addr = A_INT_DIS_4,
+        .addr = A_INT_DIS_4,
         .post_write = gpio_int_dis_postw,
     },{ .name = "INT_STAT_4",
-        .decode.addr = A_INT_STAT_4,
+        .addr = A_INT_STAT_4,
         .w1c = 0xffffffff,
     },{ .name = "INT_TYPE_4",
-        .decode.addr = A_INT_TYPE_4,
+        .addr = A_INT_TYPE_4,
         .reset = 0xffffffff,
     },{ .name = "INT_POLARITY_4",
-        .decode.addr = A_INT_POLARITY_4,
+        .addr = A_INT_POLARITY_4,
     },{ .name = "INT_ANY_4",
-        .decode.addr = A_INT_ANY_4,
-    },{ .name = "DIRM_5",  .decode.addr = A_DIRM_5,
-    },{ .name = "OEN_5",  .decode.addr = A_OEN_5,
+        .addr = A_INT_ANY_4,
+    },{ .name = "DIRM_5",  .addr = A_DIRM_5,
+    },{ .name = "OEN_5",  .addr = A_OEN_5,
         .pre_write = gpio_oen_prew,
     },{ .name = "INT_MASK_5",
-        .decode.addr = A_INT_MASK_5,
+        .addr = A_INT_MASK_5,
         .ro = 0xffffffff,
         .reset = 0xffffffff,
-    },{ .name = "INT_EN_5",  .decode.addr = A_INT_EN_5,
+    },{ .name = "INT_EN_5",  .addr = A_INT_EN_5,
         .post_write = gpio_int_en_postw,
     },{ .name = "INT_DIS_5",
-        .decode.addr = A_INT_DIS_5,
+        .addr = A_INT_DIS_5,
         .post_write = gpio_int_dis_postw,
     },{ .name = "INT_STAT_5",
-        .decode.addr = A_INT_STAT_5,
+        .addr = A_INT_STAT_5,
         .w1c = 0xffffffff,
     },{ .name = "INT_TYPE_5",
-        .decode.addr = A_INT_TYPE_5,
+        .addr = A_INT_TYPE_5,
         .reset = 0xffffffff,
     },{ .name = "INT_POLARITY_5",
-        .decode.addr = A_INT_POLARITY_5,
+        .addr = A_INT_POLARITY_5,
     },{ .name = "INT_ANY_5",
-        .decode.addr = A_INT_ANY_5,
+        .addr = A_INT_ANY_5,
     },
 };
 
@@ -765,44 +765,14 @@ static void gpio_reset(DeviceState *dev)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        dep_register_reset(&s->regs_info[i]);
+        register_reset(&s->regs_info[i]);
     }
 
-}
-
-static uint64_t gpio_read(void *opaque, hwaddr addr, unsigned size)
-{
-    XlnxZynqmpGPIO *s = XLNX_ZYNQMP_GPIO(opaque);
-    DepRegisterInfo *r = &s->regs_info[addr / 4];
-
-    if (!r->data) {
-        qemu_log("%s: Decode error: read from %" HWADDR_PRIx "\n",
-                 object_get_canonical_path(OBJECT(s)),
-                 addr);
-        return 0;
-    }
-    return dep_register_read(r);
-}
-
-static void gpio_write(void *opaque, hwaddr addr, uint64_t value,
-                      unsigned size)
-{
-    XlnxZynqmpGPIO *s = XLNX_ZYNQMP_GPIO(opaque);
-    DepRegisterInfo *r = &s->regs_info[addr / 4];
-
-    if (!r->data) {
-        qemu_log("%s: Decode error: write to %" HWADDR_PRIx "=%" PRIx64 "\n",
-                 object_get_canonical_path(OBJECT(s)),
-                 addr, value);
-        return;
-    }
-    dep_register_write(r, value, ~0);
-    gpio_update_irq(s);
 }
 
 static const MemoryRegionOps gpio_ops = {
-    .read = gpio_read,
-    .write = gpio_write,
+    .read = register_read_memory,
+    .write = register_write_memory,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
@@ -813,23 +783,8 @@ static const MemoryRegionOps gpio_ops = {
 static void gpio_realize(DeviceState *dev, Error **errp)
 {
     XlnxZynqmpGPIO *s = XLNX_ZYNQMP_GPIO(dev);
-    const char *prefix = object_get_canonical_path(OBJECT(dev));
     const char *gpios_name;
-    unsigned int i;
 
-    for (i = 0; i < ARRAY_SIZE(gpio_regs_info); ++i) {
-        DepRegisterInfo *r = &s->regs_info[gpio_regs_info[i].decode.addr / 4];
-
-        *r = (DepRegisterInfo) {
-            .data = (uint8_t *)&s->regs[
-                    gpio_regs_info[i].decode.addr / 4],
-            .data_size = sizeof(uint32_t),
-            .access = &gpio_regs_info[i],
-            .debug = XLNX_ZYNQMP_GPIO_ERR_DEBUG,
-            .prefix = prefix,
-            .opaque = s,
-        };
-    }
     s->gpio_out = g_new0(qemu_irq, ZYNQMP_NUM_GPIOS);
     s->gpio_oen = g_new0(qemu_irq, ZYNQMP_NUM_OEN_SIGNALS);
 
@@ -846,16 +801,25 @@ static void gpio_realize(DeviceState *dev, Error **errp)
     qdev_init_gpio_in_named(dev, zynqmp_gpio_in_handler, gpios_name,
                             ZYNQMP_NUM_GPIOS);
     g_free((gpointer)gpios_name);
-
 }
 
 static void gpio_init(Object *obj)
 {
     XlnxZynqmpGPIO *s = XLNX_ZYNQMP_GPIO(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+    RegisterInfoArray *reg_array;
 
-    memory_region_init_io(&s->iomem, obj, &gpio_ops, s,
-                          TYPE_XLNX_ZYNQMP_GPIO, R_MAX * 4);
+    memory_region_init(&s->iomem, obj, TYPE_XLNX_ZYNQMP_GPIO, R_MAX * 4);
+    reg_array =
+        register_init_block32(DEVICE(obj), gpio_regs_info,
+                              ARRAY_SIZE(gpio_regs_info),
+                              s->regs_info, s->regs,
+                              &gpio_ops,
+                              XLNX_ZYNQMP_GPIO_ERR_DEBUG,
+                              R_MAX * 4);
+    memory_region_add_subregion(&s->iomem,
+                                0x0,
+                                &reg_array->mem);
     sysbus_init_mmio(sbd, &s->iomem);
     sysbus_init_irq(sbd, &s->irq);
 }
@@ -864,7 +828,6 @@ static const VMStateDescription vmstate_gpio = {
     .name = TYPE_XLNX_ZYNQMP_GPIO,
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, XlnxZynqmpGPIO, R_MAX),
         VMSTATE_END_OF_LIST(),
