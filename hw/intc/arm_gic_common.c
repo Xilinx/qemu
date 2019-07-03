@@ -161,6 +161,14 @@ void gic_init_irqs_and_mmio(GICState *s, qemu_irq_handler handler,
         }
     }
 
+    /* Xilinx FDT generic overrides.  */
+    qdev_init_gpio_out_named(DEVICE(s), s->parent_irq, "irq", GIC_NCPU);
+    qdev_init_gpio_out_named(DEVICE(s), s->parent_virq, "virq", GIC_NCPU);
+    qdev_init_gpio_out_named(DEVICE(s), s->parent_fiq, "fiq", GIC_NCPU);
+    qdev_init_gpio_out_named(DEVICE(s), s->parent_vfiq, "vfiq", GIC_NCPU);
+    qdev_init_gpio_out_named(DEVICE(s), s->maintenance_irq, "maint",
+                             s->num_cpu);
+
     /* Distributor */
     memory_region_init_io(&s->iomem, OBJECT(s), ops, s, "gic_dist", 0x1000);
     sysbus_init_mmio(sbd, &s->iomem);
@@ -216,6 +224,11 @@ static void arm_gic_common_realize(DeviceState *dev, Error **errp)
         error_setg(errp, "this GIC revision does not implement "
                    "the security extensions");
         return;
+    }
+
+    /* Xilinx: Handle gracefully for our backwards compat layout.  */
+    if (s->virt_extn && s->revision != 2) {
+        s->virt_extn = false;
     }
 
     if (s->virt_extn) {
@@ -374,6 +387,12 @@ static int arm_gic_common_fdt_get_irq(FDTGenericIntc *obj, qemu_irq *irqs,
     }
 }
 
+static void arm_gic_common_fdt_set_props(Object *obj, Error **errp)
+{
+    object_property_set_bool(obj, true, "has-security-extensions", errp);
+    object_property_set_bool(obj, true, "has-virtualization-extensions", errp);
+}
+
 static void arm_gic_common_linux_init(ARMLinuxBootIf *obj,
                                       bool secure_boot)
 {
@@ -410,6 +429,7 @@ static void arm_gic_common_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     ARMLinuxBootIfClass *albifc = ARM_LINUX_BOOT_IF_CLASS(klass);
     FDTGenericIntcClass *fgic = FDT_GENERIC_INTC_CLASS(klass);
+    FDTGenericPropsClass *fprops = FDT_GENERIC_PROPS_CLASS(klass);
 
     dc->reset = arm_gic_common_reset;
     dc->realize = arm_gic_common_realize;
@@ -417,6 +437,7 @@ static void arm_gic_common_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_gic;
     fgic->get_irq = arm_gic_common_fdt_get_irq;
     albifc->arm_linux_init = arm_gic_common_linux_init;
+    fprops->set_props = arm_gic_common_fdt_set_props;
 }
 
 static const TypeInfo arm_gic_common_type = {
@@ -430,6 +451,7 @@ static const TypeInfo arm_gic_common_type = {
         { TYPE_ARM_LINUX_BOOT_IF },
         { TYPE_FDT_GENERIC_INTC },
         { TYPE_FDT_GENERIC_GPIO },
+        { TYPE_FDT_GENERIC_PROPS },
         { },
     },
 };

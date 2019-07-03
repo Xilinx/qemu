@@ -2112,8 +2112,10 @@ static const FDTGenericGPIOSet arm_gic_client_gpios [] = {
     {
         .names = &fdt_generic_gpio_name_set_interrupts,
         .gpios = (FDTGenericGPIOConnection []) {
-            { .name = "irq",        .range = 16 },
-            { .name = "fiq",    .range = 16, .fdt_index = 16 },
+            { .name = "irq",    .range = 8 },
+            { .name = "virq",   .range = 8, .fdt_index = 8},
+            { .name = "fiq",    .range = 8, .fdt_index = 16 },
+            { .name = "vfiq",    .range = 8, .fdt_index = 24 },
             { .name = "maint",    .range = 4, .fdt_index = 32 },
             { },
         },
