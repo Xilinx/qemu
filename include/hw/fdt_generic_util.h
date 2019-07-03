@@ -243,4 +243,21 @@ typedef struct FDTGenericGPIOClass {
     const FDTGenericGPIOSet *client_gpios;
 } FDTGenericGPIOClass;
 
+#define TYPE_FDT_GENERIC_PROPS "fdt-generic-props"
+
+#define FDT_GENERIC_PROPS_CLASS(klass) \
+     OBJECT_CLASS_CHECK(FDTGenericPropsClass, (klass), \
+                        TYPE_FDT_GENERIC_PROPS)
+#define FDT_GENERIC_PROPS_GET_CLASS(obj) \
+    OBJECT_GET_CLASS(FDTGenericPropsClass, (obj), \
+                     TYPE_FDT_GENERIC_PROPS)
+
+typedef struct FDTGenericPropsClass {
+    /*< private >*/
+    InterfaceClass parent_class;
+
+    /*< public >*/
+    void (*set_props)(Object *obj, Error **errp);
+} FDTGenericPropsClass;
+
 #endif /* FDT_GENERIC_UTIL_H */

@@ -1012,6 +1012,14 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
         }
     }
 
+    /* Call FDT Generic hooks for overriding prop default values.  */
+    if (object_dynamic_cast(dev, TYPE_FDT_GENERIC_PROPS)) {
+        FDTGenericPropsClass *k = FDT_GENERIC_PROPS_GET_CLASS(dev);
+
+        assert(k->set_props);
+        k->set_props(OBJECT(dev), &error_fatal);
+    }
+
     props = qemu_devtree_get_props(fdti->fdt, node_path);
     for (prop = props; prop->name; prop++) {
         const char *propname = trim_vendor(prop->name);
@@ -1483,11 +1491,18 @@ static const TypeInfo fdt_generic_gpio_info = {
     .class_size = sizeof(FDTGenericGPIOClass),
 };
 
+static const TypeInfo fdt_generic_props_info = {
+    .name          = TYPE_FDT_GENERIC_PROPS,
+    .parent        = TYPE_INTERFACE,
+    .class_size = sizeof(FDTGenericPropsClass),
+};
+
 static void fdt_generic_intc_register_types(void)
 {
     type_register_static(&fdt_generic_intc_info);
     type_register_static(&fdt_generic_mmap_info);
     type_register_static(&fdt_generic_gpio_info);
+    type_register_static(&fdt_generic_props_info);
 }
 
 type_init(fdt_generic_intc_register_types)
