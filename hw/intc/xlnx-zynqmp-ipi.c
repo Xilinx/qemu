@@ -32,6 +32,8 @@
 #include "qemu/log.h"
 #include "hw/intc/xlnx-zynqmp-ipi.h"
 
+#include "hw/fdt_generic_util.h"
+
 #ifndef XLNX_ZYNQMP_IPI_ERR_DEBUG
 #define XLNX_ZYNQMP_IPI_ERR_DEBUG 0
 #endif
@@ -307,6 +309,72 @@ static void xlnx_zynqmp_ipi_realize(DeviceState *dev, Error **errp)
     qdev_init_gpio_in_named(dev, xlnx_zynqmp_obs_handler, "OBS_INPUTS", 32);
 }
 
+#define GPIO_FDT_TRIG_OUT(x, n)                                           \
+    {                                                                     \
+        .name = stringify(x),                                             \
+        .fdt_index = n,                                                   \
+    }
+
+#define GPIO_FDT_OBS_OUT(x, n)                                            \
+    {                                                                     \
+        .name = "OBS_" stringify(x),                                      \
+        .fdt_index = n,                                                   \
+    }
+
+static const FDTGenericGPIONameSet interrupt_gpios_names = {
+    .propname = "interrupt-gpios",
+    .cells_propname = "#gpio-cells",
+    .names_propname = "gpio-names",
+};
+
+static const FDTGenericGPIOSet ipi_ctrl_gpios[] = {
+    {
+      .names = &fdt_generic_gpio_name_set_gpio,
+      .gpios = (FDTGenericGPIOConnection[]) {
+        { .name = "IPI_INPUTS", .fdt_index = 0, .range = 32 },
+        { .name = "OBS_INPUTS", .fdt_index = 32, .range = 32 },
+        { },
+      },
+    },
+    { },
+};
+
+static const FDTGenericGPIOSet ipi_client_gpios[] = {
+    {
+        .names = &interrupt_gpios_names,
+        .gpios = (FDTGenericGPIOConnection[]) {
+            GPIO_FDT_TRIG_OUT(APU, 0),
+            GPIO_FDT_TRIG_OUT(RPU_0, 1),
+            GPIO_FDT_TRIG_OUT(RPU_1, 2),
+            GPIO_FDT_TRIG_OUT(PMU_0, 3),
+            GPIO_FDT_TRIG_OUT(PMU_1, 4),
+            GPIO_FDT_TRIG_OUT(PMU_2, 5),
+            GPIO_FDT_TRIG_OUT(PMU_3, 6),
+            GPIO_FDT_TRIG_OUT(PL_0, 7),
+            GPIO_FDT_TRIG_OUT(PL_1, 8),
+            GPIO_FDT_TRIG_OUT(PL_2, 9),
+            GPIO_FDT_TRIG_OUT(PL_3, 10),
+        }
+    },
+    {
+        .names = &fdt_generic_gpio_name_set_gpio,
+        .gpios = (FDTGenericGPIOConnection[]) {
+            GPIO_FDT_OBS_OUT(APU, 0),
+            GPIO_FDT_OBS_OUT(RPU_0, 1),
+            GPIO_FDT_OBS_OUT(RPU_1, 2),
+            GPIO_FDT_OBS_OUT(PMU_0, 3),
+            GPIO_FDT_OBS_OUT(PMU_1, 4),
+            GPIO_FDT_OBS_OUT(PMU_2, 5),
+            GPIO_FDT_OBS_OUT(PMU_3, 6),
+            GPIO_FDT_OBS_OUT(PL_0, 7),
+            GPIO_FDT_OBS_OUT(PL_1, 8),
+            GPIO_FDT_OBS_OUT(PL_2, 9),
+            GPIO_FDT_OBS_OUT(PL_3, 10),
+        }
+    },
+    { },
+};
+
 static void xlnx_zynqmp_ipi_init(Object *obj)
 {
     XlnxZynqMPIPI *s = XLNX_ZYNQMP_IPI(obj);
@@ -355,10 +423,13 @@ static const VMStateDescription vmstate_zynqmp_pmu_ipi = {
 static void xlnx_zynqmp_ipi_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    FDTGenericGPIOClass *fggc = FDT_GENERIC_GPIO_CLASS(klass);
 
     dc->reset = xlnx_zynqmp_ipi_reset;
     dc->realize = xlnx_zynqmp_ipi_realize;
     dc->vmsd = &vmstate_zynqmp_pmu_ipi;
+    fggc->controller_gpios = ipi_ctrl_gpios;
+    fggc->client_gpios = ipi_client_gpios;
 }
 
 static const TypeInfo xlnx_zynqmp_ipi_info = {
@@ -367,6 +438,10 @@ static const TypeInfo xlnx_zynqmp_ipi_info = {
     .instance_size = sizeof(XlnxZynqMPIPI),
     .class_init    = xlnx_zynqmp_ipi_class_init,
     .instance_init = xlnx_zynqmp_ipi_init,
+    .interfaces    = (InterfaceInfo[]) {
+        { TYPE_FDT_GENERIC_GPIO },
+        { }
+    },
 };
 
 static void xlnx_zynqmp_ipi_register_types(void)
