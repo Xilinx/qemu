@@ -706,10 +706,11 @@ void tlb_set_page_with_attrs(CPUState *cpu, target_ulong vaddr,
     hwaddr iotlb, xlat, sz, paddr_page;
     target_ulong vaddr_page;
     int asidx = cpu_asidx_from_attrs(cpu, attrs);
-    /* Xiilnx: Make sure we use this for the attr instead of what
-     * mainline uses. Otherwise the XPPU and XMPU don't work.
+    /* Xiilnx: Make sure we override attr with what was configured
+     * through properties. Needed for the IOMMU parts.
      */
     CPUIOTLBEntry *attr = &env->memattr[attrs.secure];
+    attrs = attr->attrs;
 
     assert_cpu_is_self(cpu);
 
