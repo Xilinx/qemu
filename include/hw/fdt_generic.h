@@ -19,6 +19,12 @@ typedef struct FDTDevOpaque {
     void *opaque;
 } FDTDevOpaque;
 
+typedef struct FDTCPUCluster {
+    char *cpu_type;
+    void *cpu_cluster;
+    void *next;
+} FDTCPUCluster;
+
 typedef struct FDTIRQConnection {
     DeviceState *dev;
     const char *name;
@@ -40,6 +46,8 @@ typedef struct FDTMachineInfo {
     CoQueue *cq;
     /* list of all IRQ connections */
     FDTIRQConnection *irqs;
+    /* list of all CPU clusters */
+    FDTCPUCluster *clusters;
 } FDTMachineInfo;
 
 /* create a new FDTMachineInfo. The client is responsible for setting irq_base.
@@ -84,6 +92,8 @@ void fdt_init_yield(FDTMachineInfo *);
 void fdt_init_set_opaque(FDTMachineInfo *fdti, char *node_path, void *opaque);
 int fdt_init_has_opaque(FDTMachineInfo *fdti, char *node_path);
 void *fdt_init_get_opaque(FDTMachineInfo *fdti, char *node_path);
+
+void *fdt_init_get_cpu_cluster(FDTMachineInfo *fdti, char *compat);
 
 /* statically register a FDTInitFn as being associate with a compatibility */
 

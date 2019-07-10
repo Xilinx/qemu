@@ -177,6 +177,16 @@ static void fdt_init_all_irqs(FDTMachineInfo *fdti)
     }
 }
 
+static void fdt_init_cpu_clusters(FDTMachineInfo *fdti)
+{
+	FDTCPUCluster *cl = fdti->clusters;
+
+	while (cl) {
+		qdev_init_nofail(DEVICE(cl->cpu_cluster));
+		cl = cl->next;
+	}
+}
+
 FDTMachineInfo *fdt_generic_create_machine(void *fdt, qemu_irq *cpu_irq)
 {
     char node_path[DT_PATH_LENGTH];
@@ -193,6 +203,7 @@ FDTMachineInfo *fdt_generic_create_machine(void *fdt, qemu_irq *cpu_irq)
         fdt_init_set_opaque(fdti, node_path, NULL);
         simple_bus_fdt_init(node_path, fdti);
         while (qemu_co_enter_next(fdti->cq, NULL));
+        fdt_init_cpu_clusters(fdti);
         fdt_init_all_irqs(fdti);
         memory_region_transaction_commit();
     } else {
@@ -951,7 +962,11 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
     while (!fdt_init_has_opaque(fdti, parent_node_path)) {
         fdt_init_yield(fdti);
     }
-    parent = fdt_init_get_opaque(fdti, parent_node_path);
+    if (object_dynamic_cast(dev, TYPE_CPU)) {
+	parent = fdt_init_get_cpu_cluster(fdti, compat);
+    } else {
+        parent = fdt_init_get_opaque(fdti, parent_node_path);
+    }
     if (dev->parent) {
         DB_PRINT_NP(0, "Node already parented - skipping node\n");
     } else if (parent) {
