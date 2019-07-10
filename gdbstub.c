@@ -1665,23 +1665,22 @@ static int gdb_handle_packet(GDBState *s, const char *line_buf)
             cpu = gdb_get_cpu(s, pid, tid);
             if (cpu != NULL) {
                 cpu_synchronize_state(cpu);
+                if (!cpu->gdb_id) {
+                    const char *name = object_get_canonical_path(OBJECT(cpu));
 
-                if (s->multiprocess && (s->process_num > 1)) {
-                    /* Print the CPU model and name in multiprocess mode */
-                    ObjectClass *oc = object_get_class(OBJECT(cpu));
-                    const char *cpu_model = object_class_get_name(oc);
-                    char *cpu_name =
-                        object_get_canonical_path_component(OBJECT(cpu));
-                    len = snprintf((char *)mem_buf, sizeof(buf) / 2,
-                                   "%s %s [%s]", cpu_model, cpu_name,
-                                   cpu->halted ? "halted " : "running");
-                    g_free(cpu_name);
+                    if (!strncmp("/cluster", name, 8)) {
+                        /* Skip 'clusterX' */
+                        name += 9;
+                    }
+
+                    len = snprintf((char *)mem_buf, sizeof(mem_buf),
+                                   "CPU#%d %s", cpu->cpu_index, name);
                 } else {
-                    /* memtohex() doubles the required space */
-                    len = snprintf((char *)mem_buf, sizeof(buf) / 2,
-                                   "CPU#%d [%s]", cpu->cpu_index,
-                                   cpu->halted ? "halted " : "running");
+                    len = snprintf((char *)mem_buf, sizeof(mem_buf),
+                                   "%s", cpu->gdb_id);
                 }
+                len += snprintf((char *)mem_buf + len, sizeof(mem_buf) - len,
+                               " [%s]", cpu->halted ? "halted " : "running");
                 trace_gdbstub_op_extra_info((char *)mem_buf);
                 memtohex(buf, mem_buf, len);
                 put_packet(s, buf);
