@@ -1068,10 +1068,10 @@ static void x_isr_postw(RegisterInfo *reg, uint64_t val64)
 static uint64_t x_ier_prew(RegisterInfo *reg, uint64_t val64)
 {
     XlnxVersalIPI *s = XILINX_IPI(reg->opaque);
-    hwaddr addr = reg->access->addr;
+    unsigned int r_imr = reg->access->addr / 4 - 1;
     uint32_t val = val64;
 
-    s->regs[addr] &= ~val;
+    s->regs[r_imr] &= ~val;
     x_update_irq(s);
     return 0;
 }
@@ -1079,10 +1079,10 @@ static uint64_t x_ier_prew(RegisterInfo *reg, uint64_t val64)
 static uint64_t x_idr_prew(RegisterInfo *reg, uint64_t val64)
 {
     XlnxVersalIPI *s = XILINX_IPI(reg->opaque);
-    hwaddr addr = reg->access->addr;
+    unsigned int r_imr = reg->access->addr / 4 - 2;
     uint32_t val = val64;
 
-    s->regs[addr] |= val;
+    s->regs[r_imr] |= val;
     x_update_irq(s);
     return 0;
 }
