@@ -1100,6 +1100,27 @@ static void arm_setup_direct_kernel_boot(ARMCPU *cpu,
         fixupcontext[FIXUP_BOARDID] = info->board_id;
         fixupcontext[FIXUP_BOARD_SETUP] = info->board_setup_addr;
 
+        if (info->fdt && fdt_path_offset(info->fdt, "/psci") > 0) {
+            /* There is a PSCI node in the DTS and the image being loaded is a
+             * Linux image. Therefore tell QEMU to handle the PSCI calls as
+             * ATF is not loaded.
+             */
+            char *method = NULL;
+
+            method = qemu_fdt_getprop_string(info->fdt, "/psci", "method",
+                                             0, false, NULL);
+
+            for (cs = CPU(cpu); cs; cs = CPU_NEXT(cs)) {
+                if (!strcmp(method, "smc")) {
+                    cpu->psci_conduit = QEMU_PSCI_CONDUIT_SMC;
+                } else if (!strcmp(method, "hvc")) {
+                    cpu->psci_conduit = QEMU_PSCI_CONDUIT_HVC;
+                }
+            }
+
+            g_free(method);
+        }
+
         /*
          * for device tree boot, we pass the DTB directly in r2. Otherwise
          * we point to the kernel args.
