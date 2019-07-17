@@ -64,6 +64,7 @@ common-obj-$(CONFIG_XLNX_VERSAL) += xlnx-versal-cci_reg.o
 common-obj-$(CONFIG_XLNX_VERSAL) += xlnx-versal-cci500.o
 common-obj-$(CONFIG_XLNX_VERSAL) += xlnx-versal-noc-ncrb.o
 common-obj-$(CONFIG_XLNX_VERSAL) += xlnx-versal-cpm-crcpm.o
+common-obj-$(CONFIG_XLNX_VERSAL) += xlnx-versal-cpm-pcsr.o
 
 common-obj-$(CONFIG_XLNX_VERSAL_PMC) += sss-pmc.o
 common-obj-$(CONFIG_XLNX_VERSAL_PMC) += xlnx-versal-pmc-clk-rst.o
