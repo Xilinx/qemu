@@ -730,9 +730,23 @@ address_space_translate_for_iotlb(CPUState *cpu, int asidx, hwaddr addr,
     IOMMUTLBEntry iotlb;
     int iommu_idx;
     AddressSpaceDispatch *d = atomic_rcu_read(&cpu->cpu_ases[asidx].memory_dispatch);
+    struct {
+        AddressSpace *as;
+        MemoryRegionSection *section;
+        hwaddr addr;
+        hwaddr plen;
+    } root = {0};
+
+    root.as = cpu->cpu_ases[asidx].as;
+    root.addr = addr;
+    iotlb.target_as = root.as;
 
     for (;;) {
         section = address_space_translate_internal(d, addr, &addr, plen, false);
+        if (!root.section) {
+            root.section = section;
+            root.plen = *plen;
+        }
 
         iommu_mr = memory_region_get_iommu(section->mr);
         if (!iommu_mr) {
@@ -772,6 +786,12 @@ address_space_translate_for_iotlb(CPUState *cpu, int asidx, hwaddr addr,
     }
 
     assert(!memory_region_is_iommu(section->mr));
+    if (!memory_region_is_ram(section->mr) && iotlb.target_as != root.as) {
+        section = root.section;
+        addr = root.addr;
+        *plen = root.plen;
+    }
+
     *xlat = addr;
     return section;
 

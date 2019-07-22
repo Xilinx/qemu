@@ -914,8 +914,17 @@ static uint64_t io_readx(CPUArchState *env, CPUIOTLBEntry *iotlbentry,
         locked = true;
     }
 
-    r = memory_region_dispatch_read(mr, mr_offset,
-                                    &val, size, iotlbentry->attrs);
+    /* Xilinx: Make sure we first check if the MemoryRegion is an IOMMU region.
+     * This is required to make sure the XMPU works as expected.
+     */
+    if (memory_region_get_iommu(mr)) {
+        r = address_space_rw(cpu->as, mr_offset, iotlbentry->attrs,
+                             (void *) &val, size, false);
+    } else {
+        r = memory_region_dispatch_read(mr, mr_offset,
+                                        &val, size, iotlbentry->attrs);
+    }
+
     if (r != MEMTX_OK) {
         hwaddr physaddr = mr_offset +
             section->offset_within_address_space -
@@ -981,8 +990,17 @@ static void io_writex(CPUArchState *env, CPUIOTLBEntry *iotlbentry,
         qemu_mutex_lock_iothread();
         locked = true;
     }
-    r = memory_region_dispatch_write(mr, mr_offset,
+    /* Xilinx: Make sure we first check if iommu_ops is avaliable. This is
+     * required to make sure the XMPU works as expected.
+     */
+    if (memory_region_get_iommu(mr)) {
+        r = address_space_rw(cpu->as, mr_offset, iotlbentry->attrs,
+                             (void *) &val, size, true);
+    } else {
+        r = memory_region_dispatch_write(mr, mr_offset,
                                      val, size, iotlbentry->attrs);
+    }
+
     if (r != MEMTX_OK) {
         hwaddr physaddr = mr_offset +
             section->offset_within_address_space -
