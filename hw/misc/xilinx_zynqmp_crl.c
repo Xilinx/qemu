@@ -931,12 +931,15 @@ static void crl_apb_reset(DeviceState *dev)
     unsigned int i;
     QemuOpts *opts = qemu_find_opts_singleton("boot-opts");
     uint32_t boot_mode = qemu_opt_get_number(opts, "mode", 0);
+    uint32_t reset_reason_value = s->regs[R_RESET_REASON];
 
     assert(boot_mode < (1 << R_BOOT_MODE_USER_BOOT_MODE_LENGTH));
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
         dep_register_reset(&s->regs_info[i]);
     }
+
+    s->regs[R_RESET_REASON] = reset_reason_value;
 
     s->regs[R_BOOT_MODE_POR] = deposit32(s->regs[R_BOOT_MODE_POR],
                                          R_BOOT_MODE_POR_BOOT_MODE0_SHIFT,
