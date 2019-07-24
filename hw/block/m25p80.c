@@ -427,6 +427,7 @@ typedef enum {
     MAN_WINBOND,
     MAN_SST,
     MAN_GENERIC,
+    MAN_MICRON_OCTAL,
 } Manufacturer;
 
 #define M25P80_INTERNAL_DATA_BUFFER_SZ 16
@@ -499,6 +500,8 @@ static inline Manufacturer get_man(Flash *s)
         return MAN_MACRONIX;
     case 0xBF:
         return MAN_SST;
+    case 0x2C:
+        return MAN_MICRON_OCTAL;
     default:
         return MAN_GENERIC;
     }
