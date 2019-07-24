@@ -431,6 +431,7 @@ typedef enum {
 } Manufacturer;
 
 #define M25P80_INTERNAL_DATA_BUFFER_SZ 16
+#define MICRON_OCTAL_CFG_SIZE 256
 
 typedef struct Flash {
     SSISlave parent_obj;
@@ -453,6 +454,11 @@ typedef struct Flash {
     /* Configuration register for Macronix */
     uint32_t volatile_cfg;
     uint32_t enh_volatile_cfg;
+    /* micron octal cfg registers */
+    uint8_t *nonvolatile_cfg_large;
+    uint32_t nv_cfg_large_len;
+    uint8_t *nv_cfg_large_stage;
+    uint8_t *volatile_cfg_large;
     /* Spansion cfg registers. */
     uint8_t spansion_cr1nv;
     uint8_t spansion_cr2nv;
@@ -848,6 +854,10 @@ static void reset_memory(Flash *s)
                 SPANSION_ADDR_LEN_LEN
                 );
         break;
+    case MAN_MICRON_OCTAL:
+        memcpy(s->volatile_cfg_large, s->nonvolatile_cfg_large,
+               MICRON_OCTAL_CFG_SIZE);
+        break;
     default:
         break;
     }
@@ -878,6 +888,9 @@ static void decode_fast_read_cmd(Flash *s)
                                     SPANSION_DUMMY_CLK_POS,
                                     SPANSION_DUMMY_CLK_LEN
                                     );
+        break;
+    case MAN_MICRON_OCTAL:
+        s->needed_bytes += s->volatile_cfg_large[1];
         break;
     default:
         break;
@@ -1298,6 +1311,15 @@ static uint32_t m25p80_transfer8(SSISlave *ss, uint32_t tx)
     return r;
 }
 
+static void m25p80_exit(Object *obj)
+{
+    Flash *s = M25P80(obj);
+
+    g_free(s->nonvolatile_cfg_large);
+    g_free(s->volatile_cfg_large);
+    g_free(s->nv_cfg_large_stage);
+}
+
 static void m25p80_realize(SSISlave *ss, Error **errp)
 {
     Flash *s = M25P80(ss);
@@ -1308,6 +1330,25 @@ static void m25p80_realize(SSISlave *ss, Error **errp)
 
     s->size = s->pi->sector_size * s->pi->n_sectors;
     s->dirty_page = -1;
+
+    if (get_man(s) == MAN_MICRON_OCTAL) {
+        s->nonvolatile_cfg_large = g_new(uint8_t, MICRON_OCTAL_CFG_SIZE);
+        memset(s->nonvolatile_cfg_large, 0xFF, MICRON_OCTAL_CFG_SIZE);
+        s->volatile_cfg_large = g_new0(uint8_t, MICRON_OCTAL_CFG_SIZE);
+        if (s->nv_cfg_large_len) {
+            if (s->nv_cfg_large_len <= MICRON_OCTAL_CFG_SIZE) {
+                memcpy(s->nonvolatile_cfg_large, s->nv_cfg_large_stage,
+                       s->nv_cfg_large_len);
+            } else {
+               error_setg(errp, "m25p80: ERROR: nv-cfg-large-len > %d",
+                          MICRON_OCTAL_CFG_SIZE);
+               return;
+            }
+        } else {
+            /* Set default values if not provided */
+            s->nonvolatile_cfg_large[1] = 0; /* dummy cycles for fast read */
+        }
+    }
 
     if (s->blk) {
         uint64_t perm = BLK_PERM_CONSISTENT_READ |
@@ -1352,6 +1393,9 @@ static Property m25p80_properties[] = {
     DEFINE_PROP_UINT8("spansion-cr2nv", Flash, spansion_cr2nv, 0x8),
     DEFINE_PROP_UINT8("spansion-cr3nv", Flash, spansion_cr3nv, 0x2),
     DEFINE_PROP_UINT8("spansion-cr4nv", Flash, spansion_cr4nv, 0x10),
+    DEFINE_PROP_ARRAY("nv-cfg-large-stage", Flash, nv_cfg_large_len,
+                      nv_cfg_large_stage,
+                      qdev_prop_uint8, uint8_t),
     DEFINE_PROP_DRIVE("drive", Flash, blk),
     DEFINE_PROP_END_OF_LIST(),
 };
@@ -1371,6 +1415,13 @@ static bool m25p80_data_read_loop_needed(void *opaque)
     return s->data_read_loop;
 }
 
+static bool m25p80_cfg_large_needed(void *opaque)
+{
+    Flash *s = M25P80(opaque);
+
+    return get_man(s) == MAN_MICRON_OCTAL;
+}
+
 static const VMStateDescription vmstate_m25p80_data_read_loop = {
     .name = "m25p80/data_read_loop",
     .version_id = 1,
@@ -1378,6 +1429,22 @@ static const VMStateDescription vmstate_m25p80_data_read_loop = {
     .needed = m25p80_data_read_loop_needed,
     .fields = (VMStateField[]) {
         VMSTATE_BOOL(data_read_loop, Flash),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static const VMStateDescription vmstate_m25p80_cfg_large = {
+    .name = "m25p80/cfg_large",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = m25p80_cfg_large_needed,
+    .fields = (VMStateField[]) {
+        VMSTATE_VARRAY_UINT32(volatile_cfg_large, Flash,
+                            nv_cfg_large_len, 0,
+                            vmstate_info_uint8, uint8_t),
+        VMSTATE_VARRAY_UINT32(nonvolatile_cfg_large, Flash,
+                            nv_cfg_large_len, 0,
+                            vmstate_info_uint8, uint8_t),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -1412,6 +1479,7 @@ static const VMStateDescription vmstate_m25p80 = {
     },
     .subsections = (const VMStateDescription * []) {
         &vmstate_m25p80_data_read_loop,
+        &vmstate_m25p80_cfg_large,
         NULL
     }
 };
@@ -1438,6 +1506,7 @@ static const TypeInfo m25p80_info = {
     .instance_size  = sizeof(Flash),
     .class_size     = sizeof(M25P80Class),
     .abstract       = true,
+    .instance_finalize = m25p80_exit,
 };
 
 static void m25p80_register_types(void)
