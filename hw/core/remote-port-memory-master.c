@@ -58,6 +58,9 @@ struct RemotePortMemoryMaster {
     RemotePortMap *mmaps;
 
     /* public */
+    uint32_t map_num;
+    uint64_t map_offset;
+    uint64_t map_size;
     uint32_t rp_dev;
     bool relative;
     uint32_t max_access_size;
@@ -153,6 +156,7 @@ static const MemoryRegionOps rp_ops_template = {
 static void rp_memory_master_realize(DeviceState *dev, Error **errp)
 {
     RemotePortMemoryMaster *s = REMOTE_PORT_MEMORY_MASTER(dev);
+    int i;
 
     /* Sanity check max access size.  */
     if (s->max_access_size > RP_MAX_ACCESS_SIZE) {
@@ -170,6 +174,26 @@ static void rp_memory_master_realize(DeviceState *dev, Error **errp)
 
     assert(s->rp);
     s->peer = rp_get_peer(s->rp);
+
+    /* Create a single static region if configuration says so.  */
+    if (s->map_num) {
+        /* Initialize rp_ops from template.  */
+        s->rp_ops = g_malloc(sizeof *s->rp_ops);
+        memcpy(s->rp_ops, &rp_ops_template, sizeof *s->rp_ops);
+        s->rp_ops->valid.max_access_size = s->max_access_size;
+
+        s->mmaps = g_new0(typeof(*s->mmaps), s->map_num);
+        for (i = 0; i < s->map_num; ++i) {
+            char *name = g_strdup_printf("rp-%d", i);
+
+            s->mmaps[i].offset = s->map_offset;
+            memory_region_init_io(&s->mmaps[i].iomem, OBJECT(dev), s->rp_ops,
+                                  &s->mmaps[i], name, s->map_size);
+            sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->mmaps[i].iomem);
+            s->mmaps[i].parent = s;
+            g_free(name);
+        }
+    }
 }
 
 static void rp_memory_master_init(Object *obj)
@@ -211,6 +235,9 @@ static bool rp_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
 }
 
 static Property rp_properties[] = {
+    DEFINE_PROP_UINT32("map-num", RemotePortMemoryMaster, map_num, 0),
+    DEFINE_PROP_UINT64("map-offset", RemotePortMemoryMaster, map_offset, 0),
+    DEFINE_PROP_UINT64("map-size", RemotePortMemoryMaster, map_size, 0),
     DEFINE_PROP_UINT32("rp-chan0", RemotePortMemoryMaster, rp_dev, 0),
     DEFINE_PROP_BOOL("relative", RemotePortMemoryMaster, relative, false),
     DEFINE_PROP_UINT32("max-access-size", RemotePortMemoryMaster,
