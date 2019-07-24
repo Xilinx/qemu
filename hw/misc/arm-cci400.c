@@ -569,8 +569,18 @@ static const MemoryRegionOps cci400_ops = {
     },
 };
 
+static int cci_attrs_to_index(IOMMUMemoryRegion *iommu, MemTxAttrs attrs)
+{
+    return attrs.secure;
+}
+
+static int cci_num_indexes(IOMMUMemoryRegion *iommu)
+{
+    return 2;
+}
+
 static IOMMUTLBEntry cci_translate(IOMMUMemoryRegion *mr, hwaddr addr,
-                                   bool is_write, MemTxAttrs *attr)
+                                   IOMMUAccessFlags flags, int iommu_idx)
 {
     CCI *s = container_of(mr, CCI, iommu);;
     IOMMUTLBEntry ret = {
@@ -579,13 +589,14 @@ static IOMMUTLBEntry cci_translate(IOMMUMemoryRegion *mr, hwaddr addr,
         .addr_mask = s->cfg.stripe_granule_sz - 1,
         .perm = IOMMU_RW,
     };
+    MemTxAttrs attr = { .secure = iommu_idx & 1 };
     unsigned int i, mi = 0;
     bool valid = false;
 
     /* Is there anything backing this address on M1 or M2?  */
     for (i = 1; i < ARRAY_SIZE(s->as); i++) {
         bool t;
-        t = address_space_access_valid(s->as[i], addr, 4, false, *attr);
+        t = address_space_access_valid(s->as[i], addr, 4, false, attr);
         if (i > 1) {
             assert(valid == t);
         }
@@ -623,6 +634,7 @@ static void cci400_realize(DeviceState *dev, Error **errp)
 
     for (i = 0; i < ARRAY_SIZE(s->M); i++) {
         s->as[i] = address_space_init_shareable(s->M[i], NULL);
+        assert(s->M[i]);
         assert(s->as[i]);
     }
 }
@@ -707,7 +719,9 @@ static void cci400_iommu_memory_region_class_init(ObjectClass *klass,
 {
     IOMMUMemoryRegionClass *imrc = IOMMU_MEMORY_REGION_CLASS(klass);
 
-    imrc->translate_attr = cci_translate;
+    imrc->translate = cci_translate;
+    imrc->attrs_to_index = cci_attrs_to_index;
+    imrc->num_indexes = cci_num_indexes;
 }
 
 static const TypeInfo cci400_info = {

@@ -1683,9 +1683,21 @@ static void smmu_nscr0_pw(RegisterInfo *reg, uint64_t val)
     s->regs[R_SMMU_NSCR0] = val;
 }
 
+static int smmu_attrs_to_index(IOMMUMemoryRegion *iommu, MemTxAttrs attrs)
+{
+    uint16_t master_id = attrs.requester_id & 0xffff;
+
+    return (master_id << 1) | attrs.secure;
+}
+
+static int smmu_num_indexes(IOMMUMemoryRegion *iommu)
+{
+    return (1 << 17) - 1;
+}
+
 static IOMMUTLBEntry smmu_translate(IOMMUMemoryRegion *mr, hwaddr addr,
-                                    bool is_write,
-                                    MemTxAttrs *attr)
+                                    IOMMUAccessFlags flags, int iommu_idx)
+
 {
     TBU *tbu = container_of(mr, TBU, iommu);
     SMMU *s = tbu->smmu;
@@ -1700,7 +1712,7 @@ static IOMMUTLBEntry smmu_translate(IOMMUMemoryRegion *mr, hwaddr addr,
     hwaddr pa = va;
     int prot;
     bool err = false;
-    uint64_t master_id = attr->requester_id;
+    uint16_t master_id = iommu_idx >> 1;
     bool clientpd = ARRAY_FIELD_EX32(s->regs, SMMU_SCR0, CLIENTPD);
 
     if (clientpd) {
@@ -2333,7 +2345,9 @@ static void smmu500_iommu_memory_region_class_init(ObjectClass *klass,
 {
     IOMMUMemoryRegionClass *imrc = IOMMU_MEMORY_REGION_CLASS(klass);
 
-    imrc->translate_attr = smmu_translate;
+    imrc->translate = smmu_translate;
+    imrc->attrs_to_index = smmu_attrs_to_index;
+    imrc->num_indexes = smmu_num_indexes;
 }
 
 static const TypeInfo smmu500_info = {

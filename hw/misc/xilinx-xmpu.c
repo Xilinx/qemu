@@ -463,7 +463,7 @@ static void xmpu_flush(XMPU *s)
             .addr_mask = ~0,
             .perm = IOMMU_NONE,
         };
-        memory_region_notify_iommu(&s->masters[i].iommu, 0, entry);
+        memory_region_notify_iommu(&s->masters[i].iommu, -1, entry);
         /* Temporary hack.  */
         memory_region_transaction_begin();
         memory_region_set_readonly(MEMORY_REGION(&s->masters[i].iommu), false);
@@ -821,9 +821,22 @@ static const MemoryRegionOps xmpu_ops = {
     },
 };
 
+static int xmpu_attrs_to_index(IOMMUMemoryRegion *iommu, MemTxAttrs attrs)
+{
+    uint16_t master_id = attrs.requester_id & 0xffff;
+
+    return (master_id << 1) | attrs.secure;
+}
+
+static int xmpu_num_indexes(IOMMUMemoryRegion *iommu)
+{
+    return (1 << 17) - 1;
+}
+
 static IOMMUTLBEntry xmpu_master_translate(XMPUMaster *xm, hwaddr addr,
-                                           MemTxAttrs *attr,
-                                           bool *sec_vio)
+                                           bool attr_secure,
+                                           uint16_t master_id,
+                                           bool *sec_vio, int *perm)
 {
     XMPU *s = xm->parent;
     XMPURegion xr;
@@ -841,14 +854,13 @@ static IOMMUTLBEntry xmpu_master_translate(XMPUMaster *xm, hwaddr addr,
     };
     bool default_wr = DEP_AF_EX32(s->regs, CTRL, DEFWRALLOWED);
     bool default_rd = DEP_AF_EX32(s->regs, CTRL, DEFRDALLOWED);
-    bool sec = attr->secure;
+    bool sec = attr_secure;
     bool sec_access_check;
     unsigned int nr_matched = 0;
     int i;
 
     /* No security violation by default.  */
     *sec_vio = false;
-
     if (!s->enabled) {
         ret.target_as = &xm->down.rw.as;
         ret.perm = IOMMU_RW;
@@ -890,7 +902,7 @@ static IOMMUTLBEntry xmpu_master_translate(XMPUMaster *xm, hwaddr addr,
         xr.end &= ~s->addr_mask;
 
         id_match = (xr.master.mask & xr.master.id) ==
-                       (xr.master.mask & attr->requester_id);
+                       (xr.master.mask & master_id);
         match = id_match && (addr >= xr.start && addr < xr.end);
         if (match) {
             nr_matched++;
@@ -932,19 +944,23 @@ static IOMMUTLBEntry xmpu_master_translate(XMPUMaster *xm, hwaddr addr,
         }
     }
 
+    *perm = ret.perm;
     ret.target_as = as_map[ret.perm];
     if (ret.perm == IOMMU_RO) {
         ret.target_as = &xm->down.none.as;
+        ret.perm = IOMMU_RW;
     }
 #if 0
     qemu_log("%s: nr_matched=%d AS=%p addr=%lx - > %lx (%lx) perm=%x\n",
-           __func__, nr_matched, ret.target_as, ret.iova,
+          object_get_canonical_path(OBJECT(s)), nr_matched, ret.target_as, ret.iova,
           ret.translated_addr, (addr | ret.addr_mask) - addr + 1, ret.perm);
 #endif
     return ret;
 }
 
-static uint64_t zero_read(void *opaque, hwaddr addr, unsigned size,
+static MemTxResult zero_read(void *opaque, hwaddr addr,
+                          uint64_t *pdata,
+                          unsigned size,
                           MemTxAttrs attr)
 {
     XMPUMaster *xm = opaque;
@@ -952,7 +968,12 @@ static uint64_t zero_read(void *opaque, hwaddr addr, unsigned size,
     bool poisoncfg = DEP_AF_EX32(s->regs, CTRL, POISONCFG);
     uint64_t value = 0;
     bool sec_vio;
-    IOMMUTLBEntry ret = xmpu_master_translate(xm, addr, &attr, &sec_vio);
+    IOMMUTLBEntry ret;
+    int perm;
+
+    ret = xmpu_master_translate(xm, addr, attr.secure, attr.requester_id,
+                                &sec_vio, &perm);
+    ret.perm = perm;
 
     if (ret.perm & IOMMU_RO) {
         dma_memory_read(&xm->down.rw.as, addr, &value, size);
@@ -973,17 +994,24 @@ static uint64_t zero_read(void *opaque, hwaddr addr, unsigned size,
         }
         isr_update_irq(s);
     }
-    return value;
+
+    *pdata = value;
+    return MEMTX_OK;
 }
 
-static void zero_write(void *opaque, hwaddr addr, uint64_t value,
+static MemTxResult zero_write(void *opaque, hwaddr addr, uint64_t value,
                        unsigned size, MemTxAttrs attr)
 {
     XMPUMaster *xm = opaque;
     XMPU *s = xm->parent;
     bool poisoncfg = DEP_AF_EX32(s->regs, CTRL, POISONCFG);
     bool sec_vio;
-    IOMMUTLBEntry ret = xmpu_master_translate(xm, addr, &attr, &sec_vio);
+    IOMMUTLBEntry ret;
+    int perm;
+
+    ret = xmpu_master_translate(xm, addr, attr.secure, attr.requester_id,
+                                &sec_vio, &perm);
+    ret.perm = perm;
 
     if (ret.perm & IOMMU_WO) {
         dma_memory_write(&xm->down.rw.as, addr, &value, size);
@@ -1004,42 +1032,36 @@ static void zero_write(void *opaque, hwaddr addr, uint64_t value,
         }
         isr_update_irq(s);
     }
-}
 
-static void zero_access(MemoryTransaction *tr)
-{
-    MemTxAttrs attr = tr->attr;
-    void *opaque = tr->opaque;
-    hwaddr addr = tr->addr;
-    unsigned size = tr->size;
-    uint64_t value = tr->data.u64;;
-    bool is_write = tr->rw;
-
-    if (is_write) {
-        zero_write(opaque, addr, value, size, attr);
-    } else {
-        tr->data.u64 = zero_read(opaque, addr, size, attr);
-    }
+    return MEMTX_OK;
 }
 
 static const MemoryRegionOps zero_ops = {
-    .access = zero_access,
+    .read_with_attrs = zero_read,
+    .write_with_attrs = zero_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
-        .min_access_size = 4,
-        .max_access_size = 4,
+        .min_access_size = 1,
+        .max_access_size = 8,
     },
+    . impl = {
+        .min_access_size = 1,
+        .max_access_size = 8,
+    }
 };
 
 static IOMMUTLBEntry xmpu_translate(IOMMUMemoryRegion *mr, hwaddr addr,
-                                    bool is_write, MemTxAttrs *attr)
+                                    IOMMUAccessFlags flags, int iommu_idx)
 {
     XMPUMaster *xm;
     IOMMUTLBEntry ret;
+    uint16_t master_id = iommu_idx >> 1;
+    bool secure = iommu_idx & 1;
     bool sec_vio;
+    int perm;
 
     xm = container_of(mr, XMPUMaster, iommu);
-    ret = xmpu_master_translate(xm, addr, attr, &sec_vio);
+    ret = xmpu_master_translate(xm, addr, secure, master_id, &sec_vio, &perm);
 #if 0
     qemu_log("%s: nr_matched=%d addr=%lx - > %lx (%lx) perm=%x\n",
            __func__, nr_matched, ret.iova,
@@ -1210,7 +1232,9 @@ static void xmpu_iommu_memory_region_class_init(ObjectClass *klass,
 {
     IOMMUMemoryRegionClass *imrc = IOMMU_MEMORY_REGION_CLASS(klass);
 
-    imrc->translate_attr = xmpu_translate;
+    imrc->translate = xmpu_translate;
+    imrc->attrs_to_index = xmpu_attrs_to_index;
+    imrc->num_indexes = xmpu_num_indexes;
 }
 
 static const TypeInfo xmpu_info = {
