@@ -53,6 +53,7 @@ typedef union {
 typedef struct XlnxZDMA {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
+    MemTxAttrs *attr_ptr;
     MemTxAttrs attr;
     MemoryRegion *dma_mr;
     AddressSpace *dma_as;

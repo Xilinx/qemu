@@ -771,7 +771,7 @@ static void zdma_realize(DeviceState *dev, Error **errp)
     } else {
         s->dma_as = &address_space_memory;
     }
-    s->attr = MEMTXATTRS_UNSPECIFIED;
+    s->attr = *s->attr_ptr;
 }
 
 static void zdma_init(Object *obj)
@@ -786,6 +786,11 @@ static void zdma_init(Object *obj)
 
     object_property_add_link(obj, "dma", TYPE_MEMORY_REGION,
                              (Object **)&s->dma_mr,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG,
+                             &error_abort);
+    object_property_add_link(obj, "memattr", TYPE_MEMORY_TRANSACTION_ATTR,
+                             (Object **)&s->attr_ptr,
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_STRONG,
                              &error_abort);
