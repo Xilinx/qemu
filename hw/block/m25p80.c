@@ -750,11 +750,41 @@ static void complete_collecting_data(Flash *s)
     case EXTEND_ADDR_WRITE:
         s->ear = s->data[0];
         break;
+    case RNVCR:
+        g_assert(get_man(s) == MAN_MICRON_OCTAL);
+        s->data[0] = s->nonvolatile_cfg_large[s->cur_addr];
+        s->pos = 0;
+        s->len = 1;
+        s->state = STATE_READING_DATA;
+        s->data_read_loop = true;
+        break;
+    case RVCR:
+        g_assert(get_man(s) == MAN_MICRON_OCTAL);
+        s->data[0] = s->volatile_cfg_large[s->cur_addr];
+        s->pos = 0;
+        s->len = 1;
+        s->state = STATE_READING_DATA;
+        s->data_read_loop = true;
+        break;
     case WNVCR:
-        s->nonvolatile_cfg = s->data[0] | (s->data[1] << 8);
+        if (get_man(s) == MAN_MICRON_OCTAL) {
+            if (s->cur_addr <= 7) {
+                s->nonvolatile_cfg_large[s->cur_addr] =
+                                      s->data[get_addr_length(s)];
+            }
+        } else {
+            s->nonvolatile_cfg = s->data[0] | (s->data[1] << 8);
+        }
         break;
     case WVCR:
-        s->volatile_cfg = s->data[0];
+        if (get_man(s) == MAN_MICRON_OCTAL) {
+            if (s->cur_addr <= 7) {
+                s->volatile_cfg_large[s->cur_addr] =
+                                      s->data[get_addr_length(s)];
+            }
+        } else {
+            s->volatile_cfg = s->data[0];
+        }
         break;
     case WEVCR:
         s->enh_volatile_cfg = s->data[0];
@@ -1144,29 +1174,52 @@ static void decode_new_cmd(Flash *s, uint32_t value)
         }
         break;
     case RNVCR:
-        s->data[0] = s->nonvolatile_cfg & 0xFF;
-        s->data[1] = (s->nonvolatile_cfg >> 8) & 0xFF;
+        if (get_man(s) == MAN_MICRON_OCTAL) {
+            s->needed_bytes = get_addr_length(s);
+            s->state = STATE_COLLECTING_DATA;
+            s->len = 0;
+        } else {
+            s->data[0] = s->nonvolatile_cfg & 0xFF;
+            s->data[1] = (s->nonvolatile_cfg >> 8) & 0xFF;
+            s->len = 2;
+            s->state = STATE_READING_DATA;
+        }
         s->pos = 0;
-        s->len = 2;
-        s->state = STATE_READING_DATA;
         break;
     case WNVCR:
-        if (s->write_enable && get_man(s) == MAN_NUMONYX) {
-            s->needed_bytes = 2;
-            s->pos = 0;
-            s->len = 0;
-            s->state = STATE_COLLECTING_DATA;
+        if (s->write_enable) {
+            if (get_man(s) == MAN_NUMONYX) {
+                s->needed_bytes = 2;
+                s->pos = 0;
+                s->len = 0;
+                s->state = STATE_COLLECTING_DATA;
+            } else if (get_man(s) == MAN_MICRON_OCTAL) {
+                s->needed_bytes = 1;
+                s->needed_bytes += get_addr_length(s);
+                s->pos = 0;
+                s->len = 0;
+                s->state = STATE_COLLECTING_DATA;
+            }
         }
         break;
     case RVCR:
-        s->data[0] = s->volatile_cfg & 0xFF;
+        if (get_man(s) == MAN_MICRON_OCTAL) {
+            s->needed_bytes = get_addr_length(s);
+            s->state = STATE_COLLECTING_DATA;
+            s->len = 0;
+        } else {
+            s->data[0] = s->volatile_cfg & 0xFF;
+            s->state = STATE_READING_DATA;
+            s->len = 1;
+        }
         s->pos = 0;
-        s->len = 1;
-        s->state = STATE_READING_DATA;
         break;
     case WVCR:
         if (s->write_enable) {
             s->needed_bytes = 1;
+            if (get_man(s) == MAN_MICRON_OCTAL) {
+                s->needed_bytes += get_addr_length(s);
+            }
             s->pos = 0;
             s->len = 0;
             s->state = STATE_COLLECTING_DATA;
