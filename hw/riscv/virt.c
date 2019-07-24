@@ -57,6 +57,7 @@ static const struct MemmapEntry {
     [VIRT_UART0] =       { 0x10000000,         0x100 },
     [VIRT_VIRTIO] =      { 0x10001000,        0x1000 },
     [VIRT_DRAM] =        { 0x80000000,           0x0 },
+    [VIRT_COSIM] =       { 0x20000000,    0x10000000 },
     [VIRT_PCIE_MMIO] =   { 0x40000000,    0x40000000 },
     [VIRT_PCIE_PIO] =    { 0x03000000,    0x00010000 },
     [VIRT_PCIE_ECAM] =   { 0x30000000,    0x10000000 },
@@ -384,6 +385,49 @@ static inline DeviceState *gpex_pcie_init(MemoryRegion *sys_mem,
     return dev;
 }
 
+static void riscv_virt_create_remoteport(MachineState *machine,
+                                         MemoryRegion *system_memory)
+{
+    const struct MemmapEntry *memmap = virt_memmap;
+    SysBusDevice *sbd;
+    Object *rp_obj;
+    Object *rpm_obj;
+    Object *rpms_obj;
+
+    rp_obj = object_new("remote-port");
+    object_property_add_child(OBJECT(machine), "cosim", rp_obj, &error_fatal);
+    object_property_set_str(rp_obj, "cosim", "chrdev-id", &error_fatal);
+    object_property_set_bool(rp_obj, true, "sync", &error_fatal);
+
+    rpm_obj = object_new("remote-port-memory-master");
+    object_property_add_child(OBJECT(machine), "cosim-mmap-0", rpm_obj, &error_fatal);
+    object_property_set_int(rpm_obj, 1, "map-num", &error_fatal);
+    object_property_set_int(rpm_obj, memmap[VIRT_COSIM].base, "map-offset", &error_fatal);
+    object_property_set_int(rpm_obj, memmap[VIRT_COSIM].size, "map-size", &error_fatal);
+    object_property_set_int(rpm_obj, 9, "rp-chan0", &error_fatal);
+
+    rpms_obj = object_new("remote-port-memory-slave");
+    object_property_add_child(OBJECT(machine), "cosim-mmap-slave-0", rpms_obj, &error_fatal);
+//    object_property_set_int(rpms_obj, 0, "rp-chan0", &error_fatal);
+
+    object_property_set_link(rpm_obj, rp_obj, "rp-adaptor0",
+                             &error_abort);
+    object_property_set_link(rpms_obj, rp_obj, "rp-adaptor0",
+                             &error_abort);
+    object_property_set_link(rp_obj, rpms_obj, "remote-port-dev0",
+                             &error_abort);
+    object_property_set_link(rp_obj, rpm_obj, "remote-port-dev9",
+                             &error_abort);
+
+    object_property_set_bool(rp_obj, true, "realized", &error_fatal);
+    object_property_set_bool(rpms_obj, true, "realized", &error_fatal);
+    object_property_set_bool(rpm_obj, true, "realized", &error_fatal);
+
+    sbd = SYS_BUS_DEVICE(rpm_obj);
+    memory_region_add_subregion(system_memory, memmap[VIRT_COSIM].base,
+                                sysbus_mmio_get_region(sbd, 0));
+}
+
 static void riscv_virt_board_init(MachineState *machine)
 {
     const struct MemmapEntry *memmap = virt_memmap;
@@ -412,6 +456,8 @@ static void riscv_virt_board_init(MachineState *machine)
                            machine->ram_size, &error_fatal);
     memory_region_add_subregion(system_memory, memmap[VIRT_DRAM].base,
         main_mem);
+
+    riscv_virt_create_remoteport(machine, system_memory);
 
     /* create device tree */
     fdt = create_fdt(s, memmap, machine->ram_size, machine->kernel_cmdline);

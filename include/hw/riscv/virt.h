@@ -39,6 +39,7 @@ enum {
     VIRT_UART0,
     VIRT_VIRTIO,
     VIRT_DRAM,
+    VIRT_COSIM,
     VIRT_PCIE_MMIO,
     VIRT_PCIE_PIO,
     VIRT_PCIE_ECAM
