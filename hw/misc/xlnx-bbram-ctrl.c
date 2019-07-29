@@ -30,6 +30,7 @@
 #include "qemu/error-report.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
+#include "qapi/error.h"
 #include "sysemu/blockdev.h"
 #include "sysemu/block-backend.h"
 
@@ -39,7 +40,7 @@
 #define XILINX_BBRAM_CTRL_ERR_DEBUG 0
 #endif
 
-#define TYPE_XILINX_BBRAM_CTRL "xlnx,bbram-ctrl"
+#define TYPE_XILINX_BBRAM_CTRL "xlnx.bbram-ctrl"
 
 #define XILINX_BBRAM_CTRL(obj) \
      OBJECT_CHECK(BBRAMCtrl, (obj), TYPE_XILINX_BBRAM_CTRL)
@@ -398,6 +399,11 @@ static void bbram_ctrl_realize(DeviceState *dev, Error **errp)
     const char *prefix = object_get_canonical_path(OBJECT(dev));
     unsigned int i;
 
+    if (!s->zynqmp_keysink) {
+        error_setg(&error_abort,
+                   "%s: AES BBRAM key sink not connected\n", prefix);
+    }
+
     dinfo = drive_get_next(IF_PFLASH);
     blk = dinfo ? blk_by_legacy_dinfo(dinfo) : NULL;
     s->ram32 = g_malloc0(s->size);
@@ -405,10 +411,9 @@ static void bbram_ctrl_realize(DeviceState *dev, Error **errp)
     if (blk) {
         qdev_prop_set_drive(dev, "drive", blk, errp);
         if (!blk_pread(s->blk, 0, (void *) s->ram32, s->size)) {
-            error_report("%s: Unable to read-out contents."
+            error_setg(&error_abort, "%s: Unable to read-out contents."
                          "backing file too small? Expecting %u bytes",
                           prefix, s->size);
-            exit(1);
         }
     }
     memcpy(&s->regs[R_BBRAM_0], s->ram32, (R_BBRAM_8 - R_BBRAM_0) * 4);
@@ -434,13 +439,6 @@ static void bbram_ctrl_init(Object *obj)
     BBRAMCtrl *s = XILINX_BBRAM_CTRL(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
 
-    object_property_add_link(obj, "zynqmp-aes-key-sink-bbram",
-                                 TYPE_ZYNQMP_AES_KEY_SINK,
-                                 (Object **)&s->zynqmp_keysink,
-                                 qdev_prop_allow_set_link_before_realize,
-                                 OBJ_PROP_LINK_UNREF_ON_RELEASE,
-                                 NULL);
-
     memory_region_init_io(&s->iomem, obj, &bbram_ctrl_ops, s,
                           TYPE_XILINX_BBRAM_CTRL, R_MAX * 4);
     sysbus_init_mmio(sbd, &s->iomem);
@@ -458,6 +456,8 @@ static const VMStateDescription vmstate_bbram_ctrl = {
 };
 
 static Property bbram_ctrl_props[] = {
+    DEFINE_PROP_LINK("zynqmp-aes-key-sink-bbram", BBRAMCtrl, zynqmp_keysink,
+                     TYPE_ZYNQMP_AES_KEY_SINK, ZynqMPAESKeySink *),
     DEFINE_PROP_UINT32("bbram-size", BBRAMCtrl, size, ZYNQMP_BBRAM_SIZE),
     DEFINE_PROP_DRIVE("drive", BBRAMCtrl, blk),
     DEFINE_PROP_END_OF_LIST(),
