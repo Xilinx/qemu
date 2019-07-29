@@ -3391,8 +3391,24 @@ static MemTxResult flatview_write_continue(FlatView *fv, hwaddr addr,
             l = memory_access_size(mr, l, addr1);
             /* XXX: could force current_cpu to NULL to avoid
                potential bugs */
-            val = ldn_p(buf, l);
-            result |= memory_region_dispatch_write(mr, addr1, val, l, attrs);
+            if (l <= 8) {
+                val = ldn_p(buf, l);
+                result |= memory_region_dispatch_write(mr, addr1, val, l, attrs);
+            } else {
+                if (mr->ops->access) {
+                    MemoryTransaction tr = {
+                        .data.p8 = (uint8_t *) buf,
+                        .rw = true,
+                        .addr = addr1,
+                        .size = l,
+                        .attr = attrs,
+                        .opaque = mr->opaque,
+                    };
+                    mr->ops->access(&tr);
+                } else {
+                    abort();
+                }
+            }
         } else {
             /* RAM case */
             ptr = qemu_ram_ptr_length(mr->ram_block, addr1, &l, false);
@@ -3453,8 +3469,24 @@ MemTxResult flatview_read_continue(FlatView *fv, hwaddr addr,
             /* I/O case */
             release_lock |= prepare_mmio_access(mr);
             l = memory_access_size(mr, l, addr1);
-            result |= memory_region_dispatch_read(mr, addr1, &val, l, attrs);
-            stn_p(buf, l, val);
+            if (l <= 8) {
+                result |= memory_region_dispatch_read(mr, addr1, &val, l, attrs);
+                stn_p(buf, l, val);
+            } else {
+                if (mr->ops->access) {
+                    MemoryTransaction tr = {
+                        .data.p8 = buf,
+                        .rw = false,
+                        .addr = addr1,
+                        .size = l,
+                        .attr = attrs,
+                        .opaque = mr->opaque,
+                    };
+                    mr->ops->access(&tr);
+                } else {
+                    abort();
+                }
+            }
         } else {
             /* RAM case */
             ptr = qemu_ram_ptr_length(mr->ram_block, addr1, &l, false);
