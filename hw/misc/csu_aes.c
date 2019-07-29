@@ -10,6 +10,7 @@
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "qemu/log.h"
+#include "qapi/error.h"
 
 #include "hw/stream.h"
 #include "qemu/bitops.h"
@@ -25,9 +26,13 @@
 #endif
 
 #define TYPE_ZYNQMP_CSU_AES "zynqmp.csu-aes"
+#define TYPE_ZYNQMP_CSU_DEVKEY_SINK "zynqmp.csu-aes.devkey-sink"
 
 #define ZYNQMP_CSU_AES(obj) \
      OBJECT_CHECK(ZynqMPCSUAES, (obj), TYPE_ZYNQMP_CSU_AES)
+
+#define ZYNQMP_CSU_KEY_SINK(obj) \
+     OBJECT_CHECK(CSUKeySink, (obj), TYPE_ZYNQMP_CSU_DEVKEY_SINK)
 
 DEP_REG32(AES_STATUS, 0x00)
     DEP_FIELD(AES_STATUS, OKR_ZEROED, 1, 11)
@@ -105,9 +110,20 @@ static const DepRegisterAccessInfo aes_regs_info[] = {
     }
 };
 
+typedef struct ZynqMPCSUAES ZynqMPCSUAES;
+
+typedef struct CSUKeySink {
+    Object parent;
+    ZynqMPCSUAES *tmr;
+
+    union {
+        uint8_t key[256 / 8];
+        uint32_t k32[256 / 32];
+    };
+} CSUKeySink;
 
 /* This implements a model of the wrapper logic around the Helion unit.  */
-typedef struct ZynqMPCSUAES {
+struct ZynqMPCSUAES {
     SysBusDevice busdev;
     MemoryRegion iomem;
     StreamSlave *tx_dev;
@@ -117,8 +133,6 @@ typedef struct ZynqMPCSUAES {
     bool aes_done;
     bool aes_busy;
 
-    /* holds the device key beeing passed to us.  */
-    uint32_t device_key[8];
     bool key_loaded;
     uint32_t data_count;
     uint32_t regs[R_MAX];
@@ -135,8 +149,13 @@ typedef struct ZynqMPCSUAES {
         bool bl[5];
     } inputs;
 
-    ZynqMPAESKeySink *boot_key;
-    ZynqMPAESKeySink *okr_key;
+    CSUKeySink bbram_key;
+    CSUKeySink boot_key;
+    CSUKeySink efuse_key;
+    CSUKeySink family_key;
+    CSUKeySink okr_key;
+    CSUKeySink puf_key;
+    CSUKeySink *dev_key;
 
     struct {
         uint32_t key[256 / 32];
@@ -150,7 +169,7 @@ typedef struct ZynqMPCSUAES {
     /* AES needs blocks of 16 bytes.  */
     uint8_t buf[16];
     uint8_t bufpos;
-} ZynqMPCSUAES;
+};
 
 /* Xilinx wrapper logic.
  *
@@ -222,6 +241,11 @@ static uint32_t shift_in_u32(uint32_t *a, unsigned int size, uint32_t data)
     return r;
 }
 
+static void update_devkey_sink(CSUKeySink *ks, void *key)
+{
+    memcpy(ks->key, key, sizeof(ks->key));
+}
+
 static void xlx_aes_feedback(ZynqMPCSUAES *s, unsigned char *buf, int len)
 {
     bool key_feedback;
@@ -266,16 +290,10 @@ static void xlx_aes_feedback(ZynqMPCSUAES *s, unsigned char *buf, int len)
     }
 
     if (s->inputs.boot_write) {
-        assert(s->boot_key);
-        zynqmp_aes_key_update(s->boot_key,
-                               (void *) s->feedback.key,
-                               sizeof(s->feedback.key));
+        update_devkey_sink(&s->boot_key, s->feedback.key);
     }
     if (s->inputs.okr_write) {
-        assert(s->okr_key);
-        zynqmp_aes_key_update(s->okr_key,
-                               (void *) s->feedback.key,
-                               sizeof(s->feedback.key));
+        update_devkey_sink(&s->okr_key, s->feedback.key);
     }
 }
 
@@ -356,24 +374,27 @@ static void xlx_aes_write_key(ZynqMPCSUAES *s, unsigned int pos, uint32_t val)
 
 static void xlx_aes_load_key(ZynqMPCSUAES *s, int len)
 {
+    static uint32_t const zero_key[256 / 32] = { 0};
+    const uint32_t *k32;
+
     unsigned int src, i;
     src = (s->regs[R_AES_KEY_SRC] & R_AES_KEY_SRC_KEY_SRC_MASK)
            >> R_AES_KEY_SRC_KEY_SRC_SHIFT;
 
     switch (src) {
     case AES_KEYSRC_KUP:
-        for (i = 0; i < 8; i++) {
-            xlx_aes_write_key(s, i, s->regs[R_AES_KUP_0 + i]);
-        }
+        k32 = &s->regs[R_AES_KUP_0];
         break;
     case AES_KEYSRC_DEV:
-        for (i = 0; i < 8; i++) {
-            xlx_aes_write_key(s, i, s->device_key[i]);
-        }
-    break;
+        k32 = s->dev_key ? s->dev_key->k32 : zero_key;
+        break;
     default:
         hw_error("%s: Unsupported AES Key source %d\n", s->prefix, src);
-        break;
+        k32 = zero_key;
+    }
+
+    for (i = 0; i < 8; i++) {
+        xlx_aes_write_key(s, i, k32[i]);
     }
 
     if (!s->inputs.key_decrypt) {
@@ -410,15 +431,6 @@ static uint64_t xlx_aes_read(void *opaque, hwaddr addr, unsigned size)
         break;
     }
     return v;
-}
-
-static void device_key_update(ZynqMPAESKeySink *obj, uint8_t *key, size_t len)
-{
-    ZynqMPCSUAES *s = ZYNQMP_CSU_AES(obj);
-    /* We only support MAX 256 bit keys at the moment.  */
-    assert(len == 256 / 8);
-
-    memcpy(s->device_key, key, len);
 }
 
 static void xlx_aes_reset(DeviceState *dev)
@@ -532,35 +544,35 @@ static void aes_realize(DeviceState *dev, Error **errp)
     qdev_init_gpio_in_named(dev, gpio_key_write_ctrl, "key-wr", 5);
 }
 
+static void csu_devkey_sink_init(ZynqMPCSUAES *s,
+                                 const char *name, CSUKeySink *ks)
+{
+    char *ch_name;
+
+    ch_name = g_strdup_printf("zynqmp-aes-key-sink-%s-target", name);
+    object_initialize(ks, sizeof(*ks), TYPE_ZYNQMP_CSU_DEVKEY_SINK);
+    object_property_add_child(OBJECT(s), ch_name, (Object *)ks, &error_abort);
+    free(ch_name);
+
+    /* Back link, non-qom for the moment.  */
+    ks->tmr = s;
+}
+
 static void aes_init(Object *obj)
 {
     ZynqMPCSUAES *s = ZYNQMP_CSU_AES(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
 
-    object_property_add_link(obj, "stream-connected-aes", TYPE_STREAM_SLAVE,
-                             (Object **) &s->tx_dev,
-                             qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
-                             NULL);
+    /* Sources of device key, as shown in Xilinx UG1085, v1.9, Fig.12-2 */
+    csu_devkey_sink_init(s, "bbram", &s->bbram_key);
+    csu_devkey_sink_init(s, "boot", &s->boot_key);
+    csu_devkey_sink_init(s, "efuses", &s->efuse_key);
+    csu_devkey_sink_init(s, "family", &s->family_key);
+    csu_devkey_sink_init(s, "operational", &s->okr_key);
+    csu_devkey_sink_init(s, "puf", &s->puf_key);
 
-    object_property_add_link(obj, "zynqmp-aes-key-sink-boot",
-                                 TYPE_ZYNQMP_AES_KEY_SINK,
-                                 (Object **)&s->boot_key,
-                                 qdev_prop_allow_set_link_before_realize,
-                                 OBJ_PROP_LINK_UNREF_ON_RELEASE,
-                                 NULL);
-
-    object_property_add_link(obj, "zynqmp-aes-key-sink-operational",
-                                 TYPE_ZYNQMP_AES_KEY_SINK,
-                                 (Object **)&s->okr_key,
-                                 qdev_prop_allow_set_link_before_realize,
-                                 OBJ_PROP_LINK_UNREF_ON_RELEASE,
-                                 NULL);
-    object_property_add_link(obj, "aes-core", TYPE_XLNX_AES,
-                             (Object **) &s->aes,
-                             qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
-                             NULL);
+    /* A reference to one of above, to emulate the mux shown in Fig.12-2 */
+    s->dev_key = NULL;
 
     memory_region_init_io(&s->iomem, obj, &aes_ops, s,
                           "zynqmp.csu-aes", R_MAX * 4);
@@ -580,6 +592,22 @@ static const VMStateDescription vmstate_aes = {
     }
 };
 
+static Property aes_properties[] = {
+    DEFINE_PROP_LINK("stream-connected-aes",
+                     ZynqMPCSUAES, tx_dev,
+                     TYPE_STREAM_SLAVE, StreamSlave *),
+    DEFINE_PROP_LINK("aes-core",
+                     ZynqMPCSUAES, aes,
+                     TYPE_XLNX_AES, XlnxAES *),
+
+    DEFINE_PROP_XLNX_AES_KEY256("zynqmp-aes-family-key",
+                                ZynqMPCSUAES, family_key.key),
+    DEFINE_PROP_XLNX_AES_KEY256("zynqmp-aes-puf-key",
+                                ZynqMPCSUAES, puf_key.key),
+
+    DEFINE_PROP_END_OF_LIST(),
+};
+
 static const FDTGenericGPIOSet aes_gpios[] = {
     {
       .names = &fdt_generic_gpio_name_set_gpio,
@@ -592,6 +620,49 @@ static const FDTGenericGPIOSet aes_gpios[] = {
     { },
 };
 
+static void aes_select_device_key(ZynqMPAESKeySink *obj, uint8_t *key, size_t len)
+{
+    ZynqMPCSUAES *s = ZYNQMP_CSU_AES(obj);
+
+    /*
+     * Class-specific:
+     * The key-material is 1-character key-sink label, not key values
+     */
+    assert(key);
+    assert(len == 1);
+
+    switch (key[0]) {
+    case 'M':
+    case 'm':
+        s->dev_key = &s->bbram_key;
+        break;
+    case 'E':
+    case 'e':
+        s->dev_key = &s->efuse_key;
+        break;
+    case 'B':
+    case 'b':
+        s->dev_key = &s->boot_key;
+        break;
+    case 'O':
+    case 'o':
+        s->dev_key = &s->okr_key;
+        break;
+    case 'F':
+    case 'f':
+        s->dev_key = &s->family_key;
+        break;
+    case 'P':
+    case 'p':
+        s->dev_key = &s->puf_key;
+        break;
+    default:
+        s->dev_key = NULL;
+    }
+
+    return;
+}
+
 static void aes_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -603,12 +674,28 @@ static void aes_class_init(ObjectClass *klass, void *data)
     dc->reset = xlx_aes_reset;
     dc->realize = aes_realize;
     dc->vmsd = &vmstate_aes;
+    dc->props = aes_properties;
 
     ssc->push = xlx_aes_stream_push;
     ssc->can_push = xlx_aes_stream_can_push;
 
-    ksc->update = device_key_update;
+    ksc->update = aes_select_device_key;
     fggc->controller_gpios = aes_gpios;
+}
+
+static void csu_devkey_sink_update(ZynqMPAESKeySink *obj,
+                                   uint8_t *key, size_t len)
+{
+    CSUKeySink *ks = ZYNQMP_CSU_KEY_SINK(obj);
+
+    assert(len == sizeof(ks->key)); /* Support only 1 size */
+    update_devkey_sink(ks, key);
+}
+
+static void csu_devkey_sink_class_init(ObjectClass *klass, void *data)
+{
+    ZynqMPAESKeySinkClass *c = ZYNQMP_AES_KEY_SINK_CLASS(klass);
+    c->update = csu_devkey_sink_update;
 }
 
 static const TypeInfo aes_info = {
@@ -625,9 +712,21 @@ static const TypeInfo aes_info = {
     }
 };
 
+static const TypeInfo csu_devkey_sink_info = {
+    .name          = TYPE_ZYNQMP_CSU_DEVKEY_SINK,
+    .parent        = TYPE_OBJECT,
+    .instance_size = sizeof(CSUKeySink),
+    .class_init    = csu_devkey_sink_class_init,
+    .interfaces    = (InterfaceInfo[]) {
+        { TYPE_ZYNQMP_AES_KEY_SINK },
+        { }
+    }
+};
+
 static void aes_register_types(void)
 {
     type_register_static(&aes_info);
+    type_register_static(&csu_devkey_sink_info);
 }
 
 type_init(aes_register_types)
