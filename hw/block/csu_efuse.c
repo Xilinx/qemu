@@ -36,7 +36,6 @@
 #include "hw/register-dep.h"
 #include "sysemu/blockdev.h"
 #include "qemu/bitops.h"
-#include "qemu/error-report.h"
 #include "qemu/log.h"
 #include "qemu/main-loop.h"
 
@@ -727,8 +726,8 @@ static void zynqmp_efuse_realize(DeviceState *dev, Error **errp)
     unsigned int i;
 
     if (!s->key.sink) {
-        error_report("%s: AES key sink not connected\n", prefix);
-        exit(1);
+        error_setg(&error_abort,
+                   "%s: AES EFUSE key sink not connected\n", prefix);
     }
 
     for (i = 0; i < ARRAY_SIZE(zynqmp_efuse_regs_info); ++i) {
@@ -763,24 +762,6 @@ static void zynqmp_efuse_init(Object *obj)
     ZynqMPEFuse *s = ZYNQMP_EFUSE(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
 
-    object_property_add_link(obj, "zynqmp-aes-key-sink-efuses",
-                                 TYPE_ZYNQMP_AES_KEY_SINK,
-                                 (Object **)&s->key.sink,
-                                 qdev_prop_allow_set_link_before_realize,
-                                 OBJ_PROP_LINK_UNREF_ON_RELEASE,
-                                 NULL);
-    object_property_add_link(obj, "zynqmp-aes-key-sink-efuses-user0",
-                                 TYPE_ZYNQMP_AES_KEY_SINK,
-                                 (Object **)&s->user_key0.sink,
-                                 qdev_prop_allow_set_link_before_realize,
-                                 OBJ_PROP_LINK_UNREF_ON_RELEASE,
-                                 NULL);
-    object_property_add_link(obj, "zynqmp-aes-key-sink-efuses-user1",
-                                 TYPE_ZYNQMP_AES_KEY_SINK,
-                                 (Object **)&s->user_key1.sink,
-                                 qdev_prop_allow_set_link_before_realize,
-                                 OBJ_PROP_LINK_UNREF_ON_RELEASE,
-                                 NULL);
     object_property_add_link(obj, "efuse",
                             TYPE_XLNX_EFUSE,
                             (Object **)&s->efuse,
@@ -812,6 +793,24 @@ static const VMStateDescription vmstate_efuse = {
     }
 };
 
+static Property zynqmp_efuse_props[] = {
+    DEFINE_PROP_LINK("efuse",
+                     ZynqMPEFuse, efuse,
+                     TYPE_XLNX_EFUSE, XLNXEFuse *),
+
+    DEFINE_PROP_LINK("zynqmp-aes-key-sink-efuses",
+                     ZynqMPEFuse, key.sink,
+                     TYPE_ZYNQMP_AES_KEY_SINK, ZynqMPAESKeySink *),
+    DEFINE_PROP_LINK("zynqmp-aes-key-sink-efuses-user0",
+                     ZynqMPEFuse, user_key0.sink,
+                     TYPE_ZYNQMP_AES_KEY_SINK, ZynqMPAESKeySink *),
+    DEFINE_PROP_LINK("zynqmp-aes-key-sink-efuses-user1",
+                     ZynqMPEFuse, user_key1.sink,
+                     TYPE_ZYNQMP_AES_KEY_SINK, ZynqMPAESKeySink *),
+
+    DEFINE_PROP_END_OF_LIST(),
+};
+
 static void zynqmp_efuse_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -819,6 +818,7 @@ static void zynqmp_efuse_class_init(ObjectClass *klass, void *data)
     dc->reset = zynqmp_efuse_reset;
     dc->realize = zynqmp_efuse_realize;
     dc->vmsd = &vmstate_efuse;
+    dc->props = zynqmp_efuse_props;
 }
 
 static void versal_efuse_class_init(ObjectClass *klass, void *data)
