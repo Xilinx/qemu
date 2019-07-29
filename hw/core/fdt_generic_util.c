@@ -37,6 +37,7 @@
 #include "sysemu/sysemu.h"
 #include "qemu/cutils.h"
 #include "sysemu/blockdev.h"
+#include "sysemu/block-backend.h"
 #include "chardev/char.h"
 #include "qemu/log.h"
 #include "qemu/config-file.h"
@@ -822,6 +823,103 @@ static inline const char *trim_vendor(const char *s)
     return ret ? ret + 1 : s;
 }
 
+/*
+ * Try to attach by matching drive created by '-blockdev node-name=LABEL'
+ * iff the FDT node contains property 'blockdev-node-name=LABEL'.
+ *
+ * Return false unless the given node_path has the property.
+ *
+ * Presence of the property also disables the node from ever attached
+ * to any drive created by the legacy '-drive' QEMU option.
+ *
+ * For more on '-blockdev', see:
+ *   http://events17.linuxfoundation.org/sites/events/files/slides/talk_11.pdf
+ */
+static bool fdt_attach_blockdev(FDTMachineInfo *fdti,
+                                char *node_path, Object *dev)
+{
+    static const char propname[] = "blockdev-node-name";
+    BlockBackend *bdev = NULL;
+    char *label;
+
+    /* Inspect FDT node for blockdev-only binding */
+    label = qemu_fdt_getprop(fdti->fdt, node_path, propname,
+                             NULL, false, NULL);
+
+    /* Skip legacy node */
+    if (!label) {
+        return false;
+    }
+
+    /*
+     * Missing matching bdev is not an error: attachment is optional.
+     *
+     * error_setg() aborts, never returns: 'goto ret' is just sanity.
+     */
+    if (!label[0]) {
+        error_setg(&error_abort, "FDT-node '%s': property '%s' = <empty>",
+                   node_path, propname);
+        goto ret;
+    }
+
+    bdev = blk_by_name(label);
+    if (!bdev) {
+        goto ret;
+    }
+
+    if (blk_legacy_dinfo(bdev)) {
+        error_setg(&error_abort,
+                   "FDT-node '%s': property '%s' = \"%s\" matched to"
+                   " a '-drive' option. Must use -blockdev instead.",
+                   node_path, propname, label);
+        goto ret;
+    }
+
+    qdev_prop_set_drive(DEVICE(dev), "drive", bdev, &error_abort);
+
+ ret:
+    g_free(label);
+    return true;
+}
+
+static void fdt_attach_drive(FDTMachineInfo *fdti, char *node_path,
+                             Object *dev, BlockInterfaceType drive_type)
+{
+    DriveInfo *dinfo = NULL;
+    uint32_t *di_val = NULL;
+    int di_len = 0;
+
+    /* Do nothing if the device is not a block front-end */
+    if (!object_property_find(OBJECT(dev), "drive", NULL)) {
+        return;
+    }
+
+    /* Try non-legacy */
+    if (fdt_attach_blockdev(fdti, node_path, dev)) {
+        return;
+    }
+
+    /*
+     * Try legacy with explicit 'drive-index' binding, or next-unit
+     * as fallback binding.
+     */
+    di_val = qemu_fdt_getprop(fdti->fdt, node_path, "drive-index",
+                              &di_len, false, NULL);
+
+    if (di_val && (di_len == sizeof(*di_val))) {
+        dinfo = drive_get_by_index(drive_type, be32_to_cpu(*di_val));
+    } else {
+        dinfo = drive_get_next(drive_type);
+    }
+
+    if (dinfo) {
+        qdev_prop_set_drive(DEVICE(dev), "drive",
+                            blk_by_legacy_dinfo(dinfo), &error_abort);
+    }
+
+    return;
+}
+
 static Object *fdt_create_from_compat(const char *compat, char **dev_type)
 {
     Object *ret = NULL;
@@ -1253,19 +1351,10 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
         }
 
         /* We also need to externally connect drives. Let's try to do that
-         * here. Don't use drive_get_next() as it always increments the
-         * next_block_unit variable.
+         * here.
          */
         if (object_dynamic_cast(dev, TYPE_SSI_SLAVE)) {
-            object_property_find(OBJECT(dev), "drive", &errp);
-            if (errp == NULL) {
-                DriveInfo *dinfo = drive_get_next(IF_MTD);
-                if (dinfo) {
-                    qdev_prop_set_drive(DEVICE(dev), "drive",
-                                    blk_by_legacy_dinfo(dinfo), &error_abort);
-                 }
-             }
-             errp = NULL;
+            fdt_attach_drive(fdti, node_path, dev, IF_MTD);
         }
 
         /* Regular TYPE_DEVICE houskeeping */
