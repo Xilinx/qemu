@@ -28,6 +28,7 @@
 #include "qemu/osdep.h"
 #include "qemu/log.h"
 #include "qemu/error-report.h"
+#include "qapi/error.h"
 #include "hw/misc/xlnx-aes.h"
 #include "hw/fdt_generic_util.h"
 
@@ -50,6 +51,108 @@
             qemu_log(fmt, ##args); \
         } \
     } while (0)
+
+/*
+ * AES 256-bit Key Property:
+ * -- internal, as uint8_t array of length 32.
+ * -- external, as a 64-character string of hex digits, case insensitive.
+ */
+static void xlnx_aes_key256_to_str(Object *obj, Visitor *v, const char *name,
+                                   void *opaque, Error **errp)
+{
+    DeviceState *dev = DEVICE(obj);
+    Property *prop = opaque;
+    uint8_t *val = qdev_get_prop_ptr(dev, prop);
+    int  i;
+    char text[32 * 2 + 1];
+    char *p;
+
+    for (i = 0; i < 32; i++) {
+        static const char hex[16] = "0123456789abcdef";
+        uint8_t k8 = val[i];
+        uint8_t k8_u = (k8 >> 4) & 15;
+        uint8_t k8_l = (k8     ) & 15;
+
+        text[i * 2 + 0] = hex[k8_u];
+        text[i * 2 + 1] = hex[k8_l];
+    }
+    text[sizeof(text) - 1] = '\0';
+
+    p = text;
+    visit_type_str(v, name, &p, errp);
+}
+
+static void xlnx_aes_key256_to_bin(Object *obj, Visitor *v, const char *name,
+                                   void *opaque, Error **errp)
+{
+    DeviceState *dev = DEVICE(obj);
+    Property *prop = opaque;
+    uint8_t *val = qdev_get_prop_ptr(dev, prop);
+    Error *local_err = NULL;
+    int i;
+    char *str;
+
+    if (dev->realized) {
+        qdev_prop_set_after_realize(dev, name, errp);
+        return;
+    }
+
+    visit_type_str(v, name, &str, &local_err);
+    if (local_err) {
+        error_propagate(errp, local_err);
+        return;
+    }
+
+    for (i = 0; i < 32; i++) {
+        const char *hex = &str[i * 2];
+        unsigned k8, j;
+
+        for (k8 = 0, j = 0; j < 2; j++) {
+            char x = hex[j];
+
+            switch (x) {
+              case '0' ... '9':
+                x = x - '0';
+                break;
+              case 'A' ... 'F':
+                x = x - 'A' + 10;
+                break;
+              case 'a' ... 'f':
+                x = x - 'a' + 10;
+                break;
+              default:
+                goto inval;
+            }
+
+            k8 = (k8 << 4) | (x & 15);
+        }
+
+        val[i] = k8;
+    }
+    g_free(str);
+    return;
+
+inval:
+    error_set_from_qdev_prop_error(errp, EINVAL, dev, prop, str);
+    g_free(str);
+}
+
+static void xlnx_aes_key256_default(Object *obj, const Property *prop)
+{
+    static const char default_val[] =
+        "00111100" "22333322" "44555544" "66777766"
+        "88999988" "aabbbbaa" "ccddddcc" "eeffffee";
+
+    object_property_set_str(obj, default_val, prop->name, &error_abort);
+}
+
+const PropertyInfo xlnx_aes_prop_key256 = {
+    .name  = "str",
+    .description = "AES 256bit Key, as a 64-character string of hex digits",
+    .get   = xlnx_aes_key256_to_str,
+    .set   = xlnx_aes_key256_to_bin,
+    .set_default_value = xlnx_aes_key256_default,
+};
 
 /* This implements a model of the Xlnx AES unit.  */
 static const char *aes_state2str(enum XlnxAESState state)

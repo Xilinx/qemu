@@ -77,4 +77,16 @@ int xlnx_aes_push_data(XlnxAES *s,
                                 uint8_t *data8, int len,
                                 bool last_word , int lw_len,
                                 uint8_t *outbuf, int *outlen);
+
+extern const PropertyInfo xlnx_aes_prop_key256;
+
+#define DEFINE_PROP_XLNX_AES_KEY256(_n, _s, _f) {                \
+        .name      = (_n),                                       \
+        .info      = &(xlnx_aes_prop_key256),                    \
+        .offset    = offsetof(_s, _f)                            \
+            + ((uint8_t (*)[32])0 - (typeof_field(_s, _f)*)0),   \
+              /* no, type_check() macro not working here */      \
+        .set_default = true,                                     \
+        }
+
 #endif
