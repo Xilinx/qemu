@@ -391,6 +391,7 @@ static void arm_gic_common_fdt_set_props(Object *obj, Error **errp)
 {
     object_property_set_bool(obj, true, "has-security-extensions", errp);
     object_property_set_bool(obj, true, "has-virtualization-extensions", errp);
+    object_property_set_int(obj, 96, "num-irq", errp);
 }
 
 static void arm_gic_common_linux_init(ARMLinuxBootIf *obj,
