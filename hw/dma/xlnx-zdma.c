@@ -771,7 +771,10 @@ static void zdma_realize(DeviceState *dev, Error **errp)
     } else {
         s->dma_as = &address_space_memory;
     }
-    s->attr = *s->attr_ptr;
+    s->attr = MEMTXATTRS_UNSPECIFIED;
+    if (s->attr_ptr) {
+        s->attr = *s->attr_ptr;
+    }
 }
 
 static void zdma_init(Object *obj)
