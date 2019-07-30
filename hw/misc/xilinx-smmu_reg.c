@@ -103,6 +103,9 @@ DEP_REG32(MISC, 0x54)
     DEP_FIELD(MISC, EMA, 3, 1)
 DEP_REG32(CONFIG_SIGNALS, 0x58)
     DEP_FIELD(CONFIG_SIGNALS, CFG_NORMALIZE, 1, 1)
+DEP_REG32(PL_AT, 0x60)
+    DEP_FIELD(PL_AT, PL_CONFIG_DONE, 1, 1)
+    DEP_FIELD(PL_AT, CLK_SEL, 1, 0)
 DEP_REG32(ECO_INFO, 0x100)
     DEP_FIELD(ECO_INFO, ECOREVNUM, 4, 0)
 DEP_REG32(ECO_0, 0x104)
@@ -210,6 +213,9 @@ static DepRegisterAccessInfo smmu_reg_regs_info[] = {
         .ro = 0xf00,
     },{ .name = "CONFIG_SIGNALS",  .decode.addr = A_CONFIG_SIGNALS,
         .rsvd = 0xfffffffd,
+    },{ .name = "PL_AT",  .decode.addr = A_PL_AT,
+        .rsvd = 0xfffffffc,
+        .ro = 0x2,
     },{ .name = "ECO_INFO",  .decode.addr = A_ECO_INFO,
     },{ .name = "ECO_0",  .decode.addr = A_ECO_0,
     },{ .name = "ECO_1",  .decode.addr = A_ECO_1,
