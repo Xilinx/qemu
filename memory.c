@@ -1416,7 +1416,7 @@ static void memory_region_do_set_ram(MemoryRegion *mr)
             g_free(sanitized_name);
         }
         mr->ram_block = qemu_ram_alloc_from_file(int128_get64(mr->size), mr,
-                                                 MAP_SHARED, filename, &error_abort);
+                                                 RAM_SHARED, filename, &error_abort);
         g_free(filename);
         break;
     default:
