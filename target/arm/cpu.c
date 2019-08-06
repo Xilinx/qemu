@@ -57,6 +57,14 @@ static void arm_cpu_set_pc(CPUState *cs, vaddr value)
     }
 }
 
+static vaddr arm_cpu_get_pc(CPUState *cs)
+{
+    ARMCPU *cpu = ARM_CPU(cs);
+    CPUARMState *env = &cpu->env;
+
+   return is_a64(env) ? env->pc : env->regs[15];
+}
+
 static void arm_cpu_synchronize_from_tb(CPUState *cs, TranslationBlock *tb)
 {
     ARMCPU *cpu = ARM_CPU(cs);
@@ -2497,6 +2505,7 @@ static void arm_cpu_class_init(ObjectClass *oc, void *data)
     cc->cpu_exec_interrupt = arm_cpu_exec_interrupt;
     cc->dump_state = arm_cpu_dump_state;
     cc->set_pc = arm_cpu_set_pc;
+    cc->get_pc = arm_cpu_get_pc;
     cc->debug_contexts = arm_debug_ctx;
     cc->set_debug_context = set_debug_context;
     cc->synchronize_from_tb = arm_cpu_synchronize_from_tb;
