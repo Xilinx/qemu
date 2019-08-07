@@ -69,6 +69,7 @@ typedef struct GICProxy {
     MemoryRegion iomem;
     qemu_irq irq;
 
+    uint32_t pinState[GICP_GROUPS];
     uint32_t regs[R_MAX];
     DepRegisterInfo regs_info[R_MAX];
 } GICProxy;
@@ -148,6 +149,7 @@ static void gicpn_status_postw(DepRegisterInfo *reg, uint64_t val64)
     GICProxy *s = XILINX_GIC_PROXY(reg->opaque);
     uint64_t nr = (uintptr_t)reg->access->opaque;
 
+    s->regs[GICPN_STATUS_REG(nr)] |= s->pinState[nr];
     gicp_update(s, nr);
 }
 
@@ -340,10 +342,11 @@ static void gic_proxy_set_irq(void *opaque, int irq, int level)
     int bit = irq % 32;
 
     if (level) {
-        s->regs[GICPN_STATUS_REG(group)] |= 1 << bit;
+        s->pinState[group] |= 1 << bit;
     } else {
-        s->regs[GICPN_STATUS_REG(group)] &= ~(1 << bit);
+        s->pinState[group] &= ~(1 << bit);
     }
+    s->regs[GICPN_STATUS_REG(group)] |= s->pinState[group];
     gicp_update(s, group);
 }
 
