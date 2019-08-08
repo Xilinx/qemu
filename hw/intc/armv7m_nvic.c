@@ -16,7 +16,6 @@
 #include "cpu.h"
 #include "hw/sysbus.h"
 #include "qemu/timer.h"
-#include "hw/arm/arm.h"
 #include "hw/intc/armv7m_nvic.h"
 #include "target/arm/cpu.h"
 #include "exec/exec-all.h"
@@ -2596,9 +2595,9 @@ static void armv7m_nvic_realize(DeviceState *dev, Error **errp)
          * as we didn't know then if the CPU had the security extensions;
          * so we have to do it here.
          */
-        object_initialize(&s->systick[M_REG_S], sizeof(s->systick[M_REG_S]),
-                          TYPE_SYSTICK);
-        qdev_set_parent_bus(DEVICE(&s->systick[M_REG_S]), sysbus_get_default());
+        sysbus_init_child_obj(OBJECT(dev), "systick-reg-s",
+                              &s->systick[M_REG_S],
+                              sizeof(s->systick[M_REG_S]), TYPE_SYSTICK);
 
         object_property_set_bool(OBJECT(&s->systick[M_REG_S]), true,
                                  "realized", &err);
