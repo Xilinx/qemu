@@ -33,7 +33,7 @@
 
 int32_t main(void)
 {
-    char *instruction_name = "*ILVEV.B";
+    char *instruction_name = "ILVEV.B";
     int32_t ret;
     uint32_t i, j;
     struct timeval start, end;
@@ -122,6 +122,8 @@ int32_t main(void)
         { 0x4f5a4daa31cf4e80ULL, 0xf1d8d8ff422ba014ULL, },
         { 0x4f4f4d4d31314e4eULL, 0xf1f1d8d84242a0a0ULL, },
     };
+
+    reset_msa_registers();
 
     gettimeofday(&start, NULL);
 

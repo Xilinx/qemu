@@ -2758,20 +2758,25 @@ static bool object_create_initial(const char *type, QemuOpts *opts)
         exit(0);
     }
 
-    if (g_str_equal(type, "rng-egd") ||
-        g_str_has_prefix(type, "pr-manager-")) {
+    /*
+     * Objects should not be made "delayed" without a reason.  If you
+     * add one, state the reason in a comment!
+     */
+
+    /* Reason: rng-egd property "chardev" */
+    if (g_str_equal(type, "rng-egd")) {
         return false;
     }
 
 #if defined(CONFIG_VHOST_USER) && defined(CONFIG_LINUX)
+    /* Reason: cryptodev-vhost-user property "chardev" */
     if (g_str_equal(type, "cryptodev-vhost-user")) {
         return false;
     }
 #endif
 
     /*
-     * return false for concrete netfilters since
-     * they depend on netdevs already existing
+     * Reason: filter-* property "netdev" etc.
      */
     if (g_str_equal(type, "filter-buffer") ||
         g_str_equal(type, "filter-dump") ||
@@ -3599,7 +3604,23 @@ int main(int argc, char **argv, char **envp)
                                                      optarg, true);
                 optarg = qemu_opt_get(accel_opts, "accel");
                 if (!optarg || is_help_option(optarg)) {
-                    printf("Possible accelerators: kvm, xen, hax, tcg\n");
+                    printf("Accelerators supported in QEMU binary:\n");
+                    GSList *el, *accel_list = object_class_get_list(TYPE_ACCEL,
+                                                                    false);
+                    for (el = accel_list; el; el = el->next) {
+                        gchar *typename = g_strdup(object_class_get_name(
+                                                   OBJECT_CLASS(el->data)));
+                        /* omit qtest which is used for tests only */
+                        if (g_strcmp0(typename, ACCEL_CLASS_NAME("qtest")) &&
+                            g_str_has_suffix(typename, ACCEL_CLASS_SUFFIX)) {
+                            gchar **optname = g_strsplit(typename,
+                                                         ACCEL_CLASS_SUFFIX, 0);
+                            printf("%s\n", optname[0]);
+                            g_free(optname);
+                        }
+                        g_free(typename);
+                    }
+                    g_slist_free(accel_list);
                     exit(0);
                 }
                 opts = qemu_opts_create(qemu_find_opts("machine"), NULL,
