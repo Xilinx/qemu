@@ -91,23 +91,13 @@ static const char *tmpfs;
  */
 #include "tests/migration/i386/a-b-bootblock.h"
 #include "tests/migration/aarch64/a-b-kernel.h"
-
-static void init_bootfile(const char *bootpath, void *content)
-{
-    FILE *bootfile = fopen(bootpath, "wb");
-
-    g_assert_cmpint(fwrite(content, 512, 1, bootfile), ==, 1);
-    fclose(bootfile);
-}
-
 #include "tests/migration/s390x/a-b-bios.h"
 
-static void init_bootfile_s390x(const char *bootpath)
+static void init_bootfile(const char *bootpath, void *content, size_t len)
 {
     FILE *bootfile = fopen(bootpath, "wb");
-    size_t len = sizeof(s390x_elf);
 
-    g_assert_cmpint(fwrite(s390x_elf, len, 1, bootfile), ==, 1);
+    g_assert_cmpint(fwrite(content, len, 1, bootfile), ==, 1);
     fclose(bootfile);
 }
 
@@ -318,7 +308,7 @@ static void check_guests_ram(QTestState *who)
     uint8_t first_byte;
     uint8_t last_byte;
     bool hit_edge = false;
-    bool bad = false;
+    int bad = 0;
 
     qtest_memread(who, start_address, &first_byte, 1);
     last_byte = first_byte;
@@ -337,15 +327,20 @@ static void check_guests_ram(QTestState *who)
                 hit_edge = true;
                 last_byte = b;
             } else {
-                fprintf(stderr, "Memory content inconsistency at %x"
-                                " first_byte = %x last_byte = %x current = %x"
-                                " hit_edge = %x\n",
-                                address, first_byte, last_byte, b, hit_edge);
-                bad = true;
+                bad++;
+                if (bad <= 10) {
+                    fprintf(stderr, "Memory content inconsistency at %x"
+                            " first_byte = %x last_byte = %x current = %x"
+                            " hit_edge = %x\n",
+                            address, first_byte, last_byte, b, hit_edge);
+                }
             }
         }
     }
-    g_assert_false(bad);
+    if (bad >= 10) {
+        fprintf(stderr, "and in another %d pages", bad - 10);
+    }
+    g_assert(bad == 0);
 }
 
 static void cleanup(const char *filename)
@@ -408,7 +403,8 @@ static char *migrate_get_socket_address(QTestState *who, const char *parameter)
     return result;
 }
 
-static long long migrate_get_parameter(QTestState *who, const char *parameter)
+static long long migrate_get_parameter_int(QTestState *who,
+                                           const char *parameter)
 {
     QDict *rsp;
     long long result;
@@ -419,17 +415,17 @@ static long long migrate_get_parameter(QTestState *who, const char *parameter)
     return result;
 }
 
-static void migrate_check_parameter(QTestState *who, const char *parameter,
-                                    long long value)
+static void migrate_check_parameter_int(QTestState *who, const char *parameter,
+                                        long long value)
 {
     long long result;
 
-    result = migrate_get_parameter(who, parameter);
+    result = migrate_get_parameter_int(who, parameter);
     g_assert_cmpint(result, ==, value);
 }
 
-static void migrate_set_parameter(QTestState *who, const char *parameter,
-                                  long long value)
+static void migrate_set_parameter_int(QTestState *who, const char *parameter,
+                                      long long value)
 {
     QDict *rsp;
 
@@ -439,7 +435,7 @@ static void migrate_set_parameter(QTestState *who, const char *parameter,
                     parameter, value);
     g_assert(qdict_haskey(rsp, "return"));
     qobject_unref(rsp);
-    migrate_check_parameter(who, parameter, value);
+    migrate_check_parameter_int(who, parameter, value);
 }
 
 static void migrate_pause(QTestState *who)
@@ -537,7 +533,9 @@ static int test_migrate_start(QTestState **from, QTestState **to,
     got_stop = false;
     bootpath = g_strdup_printf("%s/bootsect", tmpfs);
     if (strcmp(arch, "i386") == 0 || strcmp(arch, "x86_64") == 0) {
-        init_bootfile(bootpath, x86_bootsect);
+        /* the assembled x86 boot sector should be exactly one sector large */
+        assert(sizeof(x86_bootsect) == 512);
+        init_bootfile(bootpath, x86_bootsect, sizeof(x86_bootsect));
         extra_opts = use_shmem ? get_shmem_opts("150M", shmem_path) : NULL;
         cmd_src = g_strdup_printf("-machine accel=%s -m 150M"
                                   " -name source,debug-threads=on"
@@ -555,7 +553,7 @@ static int test_migrate_start(QTestState **from, QTestState **to,
         start_address = X86_TEST_MEM_START;
         end_address = X86_TEST_MEM_END;
     } else if (g_str_equal(arch, "s390x")) {
-        init_bootfile_s390x(bootpath);
+        init_bootfile(bootpath, s390x_elf, sizeof(s390x_elf));
         extra_opts = use_shmem ? get_shmem_opts("128M", shmem_path) : NULL;
         cmd_src = g_strdup_printf("-machine accel=%s -m 128M"
                                   " -name source,debug-threads=on"
@@ -590,7 +588,7 @@ static int test_migrate_start(QTestState **from, QTestState **to,
         start_address = PPC_TEST_MEM_START;
         end_address = PPC_TEST_MEM_END;
     } else if (strcmp(arch, "aarch64") == 0) {
-        init_bootfile(bootpath, aarch64_kernel);
+        init_bootfile(bootpath, aarch64_kernel, sizeof(aarch64_kernel));
         extra_opts = use_shmem ? get_shmem_opts("150M", shmem_path) : NULL;
         cmd_src = g_strdup_printf("-machine virt,accel=%s,gic-version=max "
                                   "-name vmsource,debug-threads=on -cpu max "
@@ -689,7 +687,7 @@ static void deprecated_set_downtime(QTestState *who, const double value)
                     " 'arguments': { 'value': %f } }", value);
     g_assert(qdict_haskey(rsp, "return"));
     qobject_unref(rsp);
-    migrate_check_parameter(who, "downtime-limit", value * 1000);
+    migrate_check_parameter_int(who, "downtime-limit", value * 1000);
 }
 
 static void deprecated_set_speed(QTestState *who, long long value)
@@ -700,7 +698,7 @@ static void deprecated_set_speed(QTestState *who, long long value)
                           "'arguments': { 'value': %lld } }", value);
     g_assert(qdict_haskey(rsp, "return"));
     qobject_unref(rsp);
-    migrate_check_parameter(who, "max-bandwidth", value);
+    migrate_check_parameter_int(who, "max-bandwidth", value);
 }
 
 static void deprecated_set_cache_size(QTestState *who, long long value)
@@ -711,7 +709,7 @@ static void deprecated_set_cache_size(QTestState *who, long long value)
                          "'arguments': { 'value': %lld } }", value);
     g_assert(qdict_haskey(rsp, "return"));
     qobject_unref(rsp);
-    migrate_check_parameter(who, "xbzrle-cache-size", value);
+    migrate_check_parameter_int(who, "xbzrle-cache-size", value);
 }
 
 static void test_deprecated(void)
@@ -746,8 +744,8 @@ static int migrate_postcopy_prepare(QTestState **from_ptr,
      * quickly, but that it doesn't complete precopy even on a slow
      * machine, so also set the downtime.
      */
-    migrate_set_parameter(from, "max-bandwidth", 100000000);
-    migrate_set_parameter(from, "downtime-limit", 1);
+    migrate_set_parameter_int(from, "max-bandwidth", 100000000);
+    migrate_set_parameter_int(from, "downtime-limit", 1);
 
     /* Wait for the first serial output from the source */
     wait_for_serial("src_serial");
@@ -798,7 +796,7 @@ static void test_postcopy_recovery(void)
     }
 
     /* Turn postcopy speed down, 4K/s is slow enough on any machines */
-    migrate_set_parameter(from, "max-postcopy-bandwidth", 4096);
+    migrate_set_parameter_int(from, "max-postcopy-bandwidth", 4096);
 
     /* Now we start the postcopy */
     migrate_postcopy_start(from, to);
@@ -839,7 +837,7 @@ static void test_postcopy_recovery(void)
     g_free(uri);
 
     /* Restore the postcopy bandwidth to unlimited */
-    migrate_set_parameter(from, "max-postcopy-bandwidth", 0);
+    migrate_set_parameter_int(from, "max-postcopy-bandwidth", 0);
 
     migrate_postcopy_complete(from, to);
 }
@@ -885,9 +883,9 @@ static void test_precopy_unix(void)
      * machine, so also set the downtime.
      */
     /* 1 ms should make it not converge*/
-    migrate_set_parameter(from, "downtime-limit", 1);
+    migrate_set_parameter_int(from, "downtime-limit", 1);
     /* 1GB/s */
-    migrate_set_parameter(from, "max-bandwidth", 1000000000);
+    migrate_set_parameter_int(from, "max-bandwidth", 1000000000);
 
     /* Wait for the first serial output from the source */
     wait_for_serial("src_serial");
@@ -897,7 +895,7 @@ static void test_precopy_unix(void)
     wait_for_migration_pass(from);
 
     /* 300 ms should converge */
-    migrate_set_parameter(from, "downtime-limit", 300);
+    migrate_set_parameter_int(from, "downtime-limit", 300);
 
     if (!got_stop) {
         qtest_qmp_eventwait(from, "STOP");
@@ -964,11 +962,11 @@ static void test_xbzrle(const char *uri)
      * machine, so also set the downtime.
      */
     /* 1 ms should make it not converge*/
-    migrate_set_parameter(from, "downtime-limit", 1);
+    migrate_set_parameter_int(from, "downtime-limit", 1);
     /* 1GB/s */
-    migrate_set_parameter(from, "max-bandwidth", 1000000000);
+    migrate_set_parameter_int(from, "max-bandwidth", 1000000000);
 
-    migrate_set_parameter(from, "xbzrle-cache-size", 33554432);
+    migrate_set_parameter_int(from, "xbzrle-cache-size", 33554432);
 
     migrate_set_capability(from, "xbzrle", "true");
     migrate_set_capability(to, "xbzrle", "true");
@@ -980,7 +978,7 @@ static void test_xbzrle(const char *uri)
     wait_for_migration_pass(from);
 
     /* 300ms should converge */
-    migrate_set_parameter(from, "downtime-limit", 300);
+    migrate_set_parameter_int(from, "downtime-limit", 300);
 
     if (!got_stop) {
         qtest_qmp_eventwait(from, "STOP");
@@ -1016,9 +1014,9 @@ static void test_precopy_tcp(void)
      * machine, so also set the downtime.
      */
     /* 1 ms should make it not converge*/
-    migrate_set_parameter(from, "downtime-limit", 1);
+    migrate_set_parameter_int(from, "downtime-limit", 1);
     /* 1GB/s */
-    migrate_set_parameter(from, "max-bandwidth", 1000000000);
+    migrate_set_parameter_int(from, "max-bandwidth", 1000000000);
 
     /* Wait for the first serial output from the source */
     wait_for_serial("src_serial");
@@ -1030,7 +1028,7 @@ static void test_precopy_tcp(void)
     wait_for_migration_pass(from);
 
     /* 300ms should converge */
-    migrate_set_parameter(from, "downtime-limit", 300);
+    migrate_set_parameter_int(from, "downtime-limit", 300);
 
     if (!got_stop) {
         qtest_qmp_eventwait(from, "STOP");
@@ -1062,9 +1060,9 @@ static void test_migrate_fd_proto(void)
      * machine, so also set the downtime.
      */
     /* 1 ms should make it not converge */
-    migrate_set_parameter(from, "downtime-limit", 1);
+    migrate_set_parameter_int(from, "downtime-limit", 1);
     /* 1GB/s */
-    migrate_set_parameter(from, "max-bandwidth", 1000000000);
+    migrate_set_parameter_int(from, "max-bandwidth", 1000000000);
 
     /* Wait for the first serial output from the source */
     wait_for_serial("src_serial");
@@ -1098,7 +1096,7 @@ static void test_migrate_fd_proto(void)
     wait_for_migration_pass(from);
 
     /* 300ms should converge */
-    migrate_set_parameter(from, "downtime-limit", 300);
+    migrate_set_parameter_int(from, "downtime-limit", 300);
 
     if (!got_stop) {
         qtest_qmp_eventwait(from, "STOP");

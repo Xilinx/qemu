@@ -1388,6 +1388,8 @@ bool cpu_physical_memory_test_and_clear_dirty(ram_addr_t start,
     DirtyMemoryBlocks *blocks;
     unsigned long end, page;
     bool dirty = false;
+    RAMBlock *ramblock;
+    uint64_t mr_offset, mr_size;
 
     if (length == 0) {
         return false;
@@ -1399,6 +1401,10 @@ bool cpu_physical_memory_test_and_clear_dirty(ram_addr_t start,
     rcu_read_lock();
 
     blocks = atomic_rcu_read(&ram_list.dirty_memory[client]);
+    ramblock = qemu_get_ram_block(start);
+    /* Range sanity check on the ramblock */
+    assert(start >= ramblock->offset &&
+           start + length <= ramblock->offset + ramblock->used_length);
 
     while (page < end) {
         unsigned long idx = page / DIRTY_MEMORY_BLOCK_SIZE;
@@ -1410,6 +1416,10 @@ bool cpu_physical_memory_test_and_clear_dirty(ram_addr_t start,
         page += num;
     }
 
+    mr_offset = (ram_addr_t)(page << TARGET_PAGE_BITS) - ramblock->offset;
+    mr_size = (end - page) << TARGET_PAGE_BITS;
+    memory_region_clear_dirty_bitmap(ramblock->mr, mr_offset, mr_size);
+
     rcu_read_unlock();
 
     if (dirty && tcg_enabled()) {
@@ -1420,9 +1430,10 @@ bool cpu_physical_memory_test_and_clear_dirty(ram_addr_t start,
 }
 
 DirtyBitmapSnapshot *cpu_physical_memory_snapshot_and_clear_dirty
-     (ram_addr_t start, ram_addr_t length, unsigned client)
+    (MemoryRegion *mr, hwaddr offset, hwaddr length, unsigned client)
 {
     DirtyMemoryBlocks *blocks;
+    ram_addr_t start = memory_region_get_ram_addr(mr) + offset;
     unsigned long align = 1UL << (TARGET_PAGE_BITS + BITS_PER_LEVEL);
     ram_addr_t first = QEMU_ALIGN_DOWN(start, align);
     ram_addr_t last  = QEMU_ALIGN_UP(start + length, align);
@@ -1463,6 +1474,8 @@ DirtyBitmapSnapshot *cpu_physical_memory_snapshot_and_clear_dirty
     if (tcg_enabled()) {
         tlb_reset_dirty_range_all(start, length);
     }
+
+    memory_region_clear_dirty_bitmap(mr, offset, length);
 
     return snap;
 }
@@ -1907,6 +1920,7 @@ static void *file_ram_alloc(RAMBlock *block,
                             bool truncate,
                             Error **errp)
 {
+    MachineState *ms = MACHINE(qdev_get_machine());
     void *area;
 
 #ifdef _WIN32
@@ -1978,7 +1992,7 @@ static void *file_ram_alloc(RAMBlock *block,
     }
 
     if (mem_prealloc) {
-        os_mem_prealloc(fd, area, memory, smp_cpus, errp);
+        os_mem_prealloc(fd, area, memory, ms->smp.cpus, errp);
         if (errp && *errp) {
 #ifndef _WIN32
             qemu_ram_munmap(fd, area, memory);

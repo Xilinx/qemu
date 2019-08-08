@@ -1771,10 +1771,6 @@ static bool trans_VFM_sp(DisasContext *s, arg_VFM_sp *a)
         return false;
     }
 
-    if (!dc_isar_feature(aa32_fpdp, s)) {
-        return false;
-    }
-
     if (!vfp_access_check(s)) {
         return true;
     }
@@ -1835,6 +1831,10 @@ static bool trans_VFM_dp(DisasContext *s, arg_VFM_dp *a)
 
     /* UNDEF accesses to D16-D31 if they don't exist. */
     if (!dc_isar_feature(aa32_fp_d32, s) && ((a->vd | a->vn | a->vm) & 0x10)) {
+        return false;
+    }
+
+    if (!dc_isar_feature(aa32_fpdp, s)) {
         return false;
     }
 
@@ -1971,7 +1971,7 @@ static bool trans_VMOV_imm_dp(DisasContext *s, arg_VMOV_imm_dp *a)
 
         /* Set up the operands for the next iteration */
         veclen--;
-        vfp_advance_dreg(vd, delta_d);
+        vd = vfp_advance_dreg(vd, delta_d);
     }
 
     tcg_temp_free_i64(fd);

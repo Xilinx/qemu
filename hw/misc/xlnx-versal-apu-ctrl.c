@@ -136,17 +136,19 @@ static void rvbar_postw(RegisterInfo *reg, uint64_t val64)
     XlnxZynq3APUCtrl *s = XILINX_APU_CTRL(reg->opaque);
     int i;
 
-    for (i = 0; i < MIN(smp_cpus, MAX_CPUS); i++) {
+    for (i = 0; i < MAX_CPUS; i++) {
         uint64_t rvbar;
 
-        if (s->cpus[i]) {
-            rvbar = s->regs[R_RVBARADDR0H + i * 2];
-            rvbar <<= 32;
-            rvbar |= s->regs[R_RVBARADDR0L + i * 2];
-
-            object_property_set_int(OBJECT(s->cpus[i]), rvbar, "rvbar",
-                                    &error_abort);
+        if (!s->cpus[i]) {
+            break;
         }
+
+        rvbar = s->regs[R_RVBARADDR0H + i * 2];
+        rvbar <<= 32;
+        rvbar |= s->regs[R_RVBARADDR0L + i * 2];
+
+        object_property_set_int(OBJECT(s->cpus[i]), rvbar, "rvbar",
+                                &error_abort);
     }
 }
 

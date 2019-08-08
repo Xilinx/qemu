@@ -121,7 +121,7 @@ static void blk_root_inherit_options(int *child_flags, QDict *child_options,
 }
 static void blk_root_drained_begin(BdrvChild *child);
 static bool blk_root_drained_poll(BdrvChild *child);
-static void blk_root_drained_end(BdrvChild *child);
+static void blk_root_drained_end(BdrvChild *child, int *drained_end_counter);
 
 static void blk_root_change_media(BdrvChild *child, bool load);
 static void blk_root_resize(BdrvChild *child);
@@ -1073,11 +1073,7 @@ void blk_iostatus_disable(BlockBackend *blk)
 void blk_iostatus_reset(BlockBackend *blk)
 {
     if (blk_iostatus_is_enabled(blk)) {
-        BlockDriverState *bs = blk_bs(blk);
         blk->iostatus = BLOCK_DEVICE_IO_STATUS_OK;
-        if (bs && bs->job) {
-            block_job_iostatus_reset(bs->job);
-        }
     }
 }
 
@@ -1253,7 +1249,7 @@ int blk_pread_unthrottled(BlockBackend *blk, int64_t offset, uint8_t *buf,
 
     blk_root_drained_begin(blk->root);
     ret = blk_pread(blk, offset, buf, count);
-    blk_root_drained_end(blk->root);
+    blk_root_drained_end(blk->root, NULL);
     return ret;
 }
 
@@ -2240,7 +2236,7 @@ static bool blk_root_drained_poll(BdrvChild *child)
     return !!blk->in_flight;
 }
 
-static void blk_root_drained_end(BdrvChild *child)
+static void blk_root_drained_end(BdrvChild *child, int *drained_end_counter)
 {
     BlockBackend *blk = child->opaque;
     assert(blk->quiesce_counter);

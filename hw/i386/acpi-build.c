@@ -43,6 +43,7 @@
 #include "sysemu/tpm.h"
 #include "hw/acpi/tpm.h"
 #include "hw/acpi/vmgenid.h"
+#include "hw/boards.h"
 #include "sysemu/tpm_backend.h"
 #include "hw/timer/mc146818rtc_regs.h"
 #include "hw/mem/memory-device.h"
@@ -123,7 +124,8 @@ typedef struct FwCfgTPMConfig {
 
 static bool acpi_get_mcfg(AcpiMcfgInfo *mcfg);
 
-static void init_common_fadt_data(Object *o, AcpiFadtData *data)
+static void init_common_fadt_data(MachineState *ms, Object *o,
+                                  AcpiFadtData *data)
 {
     uint32_t io = object_property_get_uint(o, ACPI_PM_PROP_PM_IO_BASE, NULL);
     AmlAddressSpace as = AML_AS_SYSTEM_IO;
@@ -139,7 +141,8 @@ static void init_common_fadt_data(Object *o, AcpiFadtData *data)
              * CPUs for more than 8 CPUs, "Clustered Logical" mode has to be
              * used
              */
-            ((max_cpus > 8) ? (1 << ACPI_FADT_F_FORCE_APIC_CLUSTER_MODEL) : 0),
+            ((ms->smp.max_cpus > 8) ?
+                        (1 << ACPI_FADT_F_FORCE_APIC_CLUSTER_MODEL) : 0),
         .int_model = 1 /* Multiple APIC */,
         .rtc_century = RTC_CENTURY,
         .plvl2_lat = 0xfff /* C2 state not supported */,
@@ -173,7 +176,7 @@ static Object *object_resolve_type_unambiguous(const char *typename)
     return o;
 }
 
-static void acpi_get_pm_info(AcpiPmInfo *pm)
+static void acpi_get_pm_info(MachineState *machine, AcpiPmInfo *pm)
 {
     Object *piix = object_resolve_type_unambiguous(TYPE_PIIX4_PM);
     Object *lpc = object_resolve_type_unambiguous(TYPE_ICH9_LPC_DEVICE);
@@ -184,7 +187,7 @@ static void acpi_get_pm_info(AcpiPmInfo *pm)
     pm->pcihp_io_len = 0;
 
     assert(obj);
-    init_common_fadt_data(obj, &pm->fadt);
+    init_common_fadt_data(machine, obj, &pm->fadt);
     if (piix) {
         /* w2k requires FADT(rev1) or it won't boot, keep PC compatible */
         pm->fadt.rev = 1;
@@ -752,10 +755,16 @@ static void crs_range_set_free(CrsRangeSet *range_set)
 
 static gint crs_range_compare(gconstpointer a, gconstpointer b)
 {
-     CrsRangeEntry *entry_a = *(CrsRangeEntry **)a;
-     CrsRangeEntry *entry_b = *(CrsRangeEntry **)b;
+    CrsRangeEntry *entry_a = *(CrsRangeEntry **)a;
+    CrsRangeEntry *entry_b = *(CrsRangeEntry **)b;
 
-     return (int64_t)entry_a->base - (int64_t)entry_b->base;
+    if (entry_a->base < entry_b->base) {
+        return -1;
+    } else if (entry_a->base > entry_b->base) {
+        return 1;
+    } else {
+        return 0;
+    }
 }
 
 /*
@@ -1905,10 +1914,13 @@ build_dsdt(GArray *table_data, BIOSLinker *linker,
             scope = aml_scope("\\_SB");
             dev = aml_device("PC%.02X", bus_num);
             aml_append(dev, aml_name_decl("_UID", aml_int(bus_num)));
-            aml_append(dev, aml_name_decl("_HID", aml_eisaid("PNP0A03")));
             aml_append(dev, aml_name_decl("_BBN", aml_int(bus_num)));
             if (pci_bus_is_express(bus)) {
+                aml_append(dev, aml_name_decl("_HID", aml_eisaid("PNP0A08")));
+                aml_append(dev, aml_name_decl("_CID", aml_eisaid("PNP0A03")));
                 aml_append(dev, build_q35_osc_method());
+            } else {
+                aml_append(dev, aml_name_decl("_HID", aml_eisaid("PNP0A03")));
             }
 
             if (numa_node != NUMA_NODE_UNASSIGNED) {
@@ -2612,7 +2624,7 @@ void acpi_build(AcpiBuildTables *tables, MachineState *machine)
     AcpiSlicOem slic_oem = { .id = NULL, .table_id = NULL };
     Object *vmgenid_dev;
 
-    acpi_get_pm_info(&pm);
+    acpi_get_pm_info(machine, &pm);
     acpi_get_misc_info(&misc);
     acpi_get_pci_holes(&pci_hole, &pci_hole64);
     acpi_get_slic_oem(&slic_oem);

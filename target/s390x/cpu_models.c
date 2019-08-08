@@ -28,7 +28,7 @@
 #include "sysemu/arch_init.h"
 #include "hw/pci/pci.h"
 #endif
-#include "qapi/qapi-commands-target.h"
+#include "qapi/qapi-commands-machine-target.h"
 
 #define CPUDEF_INIT(_type, _gen, _ec_ga, _mha_pow, _hmfai, _name, _desc) \
     {                                                                    \
@@ -818,6 +818,7 @@ static void check_consistency(const S390CPUModel *model)
         { S390_FEAT_PTFF_QTOUE, S390_FEAT_MULTIPLE_EPOCH },
         { S390_FEAT_PTFF_STOE, S390_FEAT_MULTIPLE_EPOCH },
         { S390_FEAT_PTFF_STOUE, S390_FEAT_MULTIPLE_EPOCH },
+        { S390_FEAT_AP_QUEUE_INTERRUPT_CONTROL, S390_FEAT_AP },
     };
     int i;
 

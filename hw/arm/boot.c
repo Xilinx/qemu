@@ -995,7 +995,9 @@ static void arm_setup_direct_kernel_boot(ARMCPU *cpu,
     int kernel_size;
     int initrd_size;
     int is_linux = 0;
-    uint64_t elf_entry, elf_low_addr, elf_high_addr;
+    uint64_t elf_entry;
+    /* Addresses of first byte used and first byte not used by the image */
+    uint64_t image_low_addr = 0, image_high_addr = 0;
     int elf_machine;
     hwaddr entry;
     static const ARMInsnFixup *primary_loader;
@@ -1027,27 +1029,24 @@ static void arm_setup_direct_kernel_boot(ARMCPU *cpu,
         info->nb_cpus = 1;
 
     /* Assume that raw images are linux kernels, and ELF images are not.  */
-    /* Xilinx: Don't use a specified ELF machine, instead let the loader read
-     * it from the ELF file
-     */
-    kernel_size = arm_load_elf(info, &elf_entry, &elf_low_addr,
-                               &elf_high_addr, elf_machine, as);
+    kernel_size = arm_load_elf(info, &elf_entry, &image_low_addr,
+                               &image_high_addr, elf_machine, as);
     if (kernel_size > 0 && have_dtb(info)) {
         /*
          * If there is still some room left at the base of RAM, try and put
          * the DTB there like we do for images loaded with -bios or -pflash.
          */
-        if (elf_low_addr > info->loader_start
-            || elf_high_addr < info->loader_start) {
+        if (image_low_addr > info->loader_start
+            || image_high_addr < info->loader_start) {
             /*
-             * Set elf_low_addr as address limit for arm_load_dtb if it may be
+             * Set image_low_addr as address limit for arm_load_dtb if it may be
              * pointing into RAM, otherwise pass '0' (no limit)
              */
-            if (elf_low_addr < info->loader_start) {
-                elf_low_addr = 0;
+            if (image_low_addr < info->loader_start) {
+                image_low_addr = 0;
             }
             info->dtb_start = info->loader_start;
-            info->dtb_limit = elf_low_addr;
+            info->dtb_limit = image_low_addr;
         }
     }
     entry = elf_entry;
@@ -1055,17 +1054,29 @@ static void arm_setup_direct_kernel_boot(ARMCPU *cpu,
         uint64_t loadaddr = info->loader_start + KERNEL_NOLOAD_ADDR;
         kernel_size = load_uimage_as(info->kernel_filename, &entry, &loadaddr,
                                      &is_linux, NULL, NULL, as);
+        if (kernel_size >= 0) {
+            image_low_addr = loadaddr;
+            image_high_addr = image_low_addr + kernel_size;
+        }
     }
     if (arm_feature(&cpu->env, ARM_FEATURE_AARCH64) && kernel_size < 0) {
         kernel_size = load_aarch64_image(info->kernel_filename,
                                          info->loader_start, &entry, as);
         is_linux = 1;
+        if (kernel_size >= 0) {
+            image_low_addr = entry;
+            image_high_addr = image_low_addr + kernel_size;
+        }
     } else if (kernel_size < 0) {
         /* 32-bit ARM */
         entry = info->loader_start + KERNEL_LOAD_ADDR;
         kernel_size = load_image_targphys_as(info->kernel_filename, entry,
                                              ram_end - KERNEL_LOAD_ADDR, as);
         is_linux = 1;
+        if (kernel_size >= 0) {
+            image_low_addr = entry;
+            image_high_addr = image_low_addr + kernel_size;
+        }
     }
     if (kernel_size < 0) {
         error_report("could not load kernel '%s'", info->kernel_filename);
@@ -1097,7 +1108,10 @@ static void arm_setup_direct_kernel_boot(ARMCPU *cpu,
      * we might still make a bad choice here.
      */
     info->initrd_start = info->loader_start +
-        MAX(MIN(info->ram_size / 2, 128 * 1024 * 1024), kernel_size);
+        MIN(info->ram_size / 2, 128 * 1024 * 1024);
+    if (image_high_addr) {
+        info->initrd_start = MAX(info->initrd_start, image_high_addr);
+    }
     info->initrd_start = TARGET_PAGE_ALIGN(info->initrd_start);
 
     if (is_linux) {
@@ -1125,10 +1139,11 @@ static void arm_setup_direct_kernel_boot(ARMCPU *cpu,
                              info->initrd_filename);
                 exit(1);
             }
-            if (info->initrd_start + initrd_size > info->ram_size) {
+            if (info->initrd_start + initrd_size > ram_end) {
                 error_report("could not load initrd '%s': "
                              "too big to fit into RAM after the kernel",
                              info->initrd_filename);
+                exit(1);
             }
         } else {
             initrd_size = 0;

@@ -51,6 +51,8 @@ extern const char *machine_path;
         OBJECT_GET_CLASS(IOMMUMemoryRegionClass, (obj), \
                          TYPE_IOMMU_MEMORY_REGION)
 
+extern bool global_dirty_log;
+
 typedef struct MemoryRegionOps MemoryRegionOps;
 typedef struct MemoryRegionMmio MemoryRegionMmio;
 
@@ -447,6 +449,7 @@ struct MemoryListener {
     void (*log_stop)(MemoryListener *listener, MemoryRegionSection *section,
                      int old, int new);
     void (*log_sync)(MemoryListener *listener, MemoryRegionSection *section);
+    void (*log_clear)(MemoryListener *listener, MemoryRegionSection *section);
     void (*log_global_start)(MemoryListener *listener);
     void (*log_global_stop)(MemoryListener *listener);
     void (*eventfd_add)(MemoryListener *listener, MemoryRegionSection *section,
@@ -1301,6 +1304,22 @@ void memory_region_set_dirty(MemoryRegion *mr, hwaddr addr,
                              hwaddr size);
 
 /**
+ * memory_region_clear_dirty_bitmap - clear dirty bitmap for memory range
+ *
+ * This function is called when the caller wants to clear the remote
+ * dirty bitmap of a memory range within the memory region.  This can
+ * be used by e.g. KVM to manually clear dirty log when
+ * KVM_CAP_MANUAL_DIRTY_LOG_PROTECT is declared support by the host
+ * kernel.
+ *
+ * @mr:     the memory region to clear the dirty log upon
+ * @start:  start address offset within the memory region
+ * @len:    length of the memory region to clear dirty bitmap
+ */
+void memory_region_clear_dirty_bitmap(MemoryRegion *mr, hwaddr start,
+                                      hwaddr len);
+
+/**
  * memory_region_snapshot_and_clear_dirty: Get a snapshot of the dirty
  *                                         bitmap and clear it.
  *
@@ -1793,6 +1812,16 @@ AddressSpace *address_space_init_shareable(MemoryRegion *root,
  * @as: address space to be destroyed
  */
 void address_space_destroy(AddressSpace *as);
+
+/**
+ * address_space_remove_listeners: unregister all listeners of an address space
+ *
+ * Removes all callbacks previously registered with memory_listener_register()
+ * for @as.
+ *
+ * @as: an initialized #AddressSpace
+ */
+void address_space_remove_listeners(AddressSpace *as);
 
 /**
  * address_space_rw: read from or write to an address space.

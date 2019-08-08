@@ -28,7 +28,7 @@
 #define PPC4XX_I2C_H
 
 #include "hw/sysbus.h"
-#include "hw/i2c/i2c.h"
+#include "hw/i2c/bitbang_i2c.h"
 
 #define TYPE_PPC4xx_I2C "ppc4xx-i2c"
 #define PPC4xx_I2C(obj) OBJECT_CHECK(PPC4xxI2CState, (obj), TYPE_PPC4xx_I2C)
@@ -41,7 +41,7 @@ typedef struct PPC4xxI2CState {
     I2CBus *bus;
     qemu_irq irq;
     MemoryRegion iomem;
-    bitbang_i2c_interface *bitbang;
+    bitbang_i2c_interface bitbang;
     int mdidx;
     uint8_t mdata[4];
     uint8_t lmadr;

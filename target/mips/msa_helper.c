@@ -72,9 +72,6 @@
  * --------
  *
  * +---------------+----------------------------------------------------------+
- * | BMNZ.V        | Vector Bit Move If Not Zero                              |
- * | BMZ.V         | Vector Bit Move If Zero                                  |
- * | BSEL.V        | Vector Bit Select                                        |
  * | BINSL.B       | Vector Bit Insert Left (byte)                            |
  * | BINSL.H       | Vector Bit Insert Left (halfword)                        |
  * | BINSL.W       | Vector Bit Insert Left (word)                            |
@@ -83,6 +80,9 @@
  * | BINSR.H       | Vector Bit Insert Right (halfword)                       |
  * | BINSR.W       | Vector Bit Insert Right (word)                           |
  * | BINSR.D       | Vector Bit Insert Right (doubleword)                     |
+ * | BMNZ.V        | Vector Bit Move If Not Zero                              |
+ * | BMZ.V         | Vector Bit Move If Zero                                  |
+ * | BSEL.V        | Vector Bit Select                                        |
  * +---------------+----------------------------------------------------------+
  */
 
@@ -179,12 +179,12 @@
  * | ADDV.H        | Vector Add (halfword)                                    |
  * | ADDV.W        | Vector Add (word)                                        |
  * | ADDV.D        | Vector Add (doubleword)                                  |
- * | HSUB_S.H      | Vector Signed Horizontal Add (halfword)                  |
- * | HSUB_S.W      | Vector Signed Horizontal Add (word)                      |
- * | HSUB_S.D      | Vector Signed Horizontal Add (doubleword)                |
- * | HSUB_U.H      | Vector Unigned Horizontal Add (halfword)                 |
- * | HSUB_U.W      | Vector Unigned Horizontal Add (word)                     |
- * | HSUB_U.D      | Vector Unigned Horizontal Add (doubleword)               |
+ * | HADD_S.H      | Vector Signed Horizontal Add (halfword)                  |
+ * | HADD_S.W      | Vector Signed Horizontal Add (word)                      |
+ * | HADD_S.D      | Vector Signed Horizontal Add (doubleword)                |
+ * | HADD_U.H      | Vector Unigned Horizontal Add (halfword)                 |
+ * | HADD_U.W      | Vector Unigned Horizontal Add (word)                     |
+ * | HADD_U.D      | Vector Unigned Horizontal Add (doubleword)               |
  * +---------------+----------------------------------------------------------+
  */
 
@@ -279,6 +279,18 @@
  * | DOTP_U.H      | Vector Unsigned Dot Product (halfword)                   |
  * | DOTP_U.W      | Vector Unsigned Dot Product (word)                       |
  * | DOTP_U.D      | Vector Unsigned Dot Product (doubleword)                 |
+ * | DPADD_S.H     | Vector Signed Dot Product (halfword)                     |
+ * | DPADD_S.W     | Vector Signed Dot Product (word)                         |
+ * | DPADD_S.D     | Vector Signed Dot Product (doubleword)                   |
+ * | DPADD_U.H     | Vector Unsigned Dot Product (halfword)                   |
+ * | DPADD_U.W     | Vector Unsigned Dot Product (word)                       |
+ * | DPADD_U.D     | Vector Unsigned Dot Product (doubleword)                 |
+ * | DPSUB_S.H     | Vector Signed Dot Product (halfword)                     |
+ * | DPSUB_S.W     | Vector Signed Dot Product (word)                         |
+ * | DPSUB_S.D     | Vector Signed Dot Product (doubleword)                   |
+ * | DPSUB_U.H     | Vector Unsigned Dot Product (halfword)                   |
+ * | DPSUB_U.W     | Vector Unsigned Dot Product (word)                       |
+ * | DPSUB_U.D     | Vector Unsigned Dot Product (doubleword)                 |
  * +---------------+----------------------------------------------------------+
  */
 
@@ -389,14 +401,14 @@
  * | SUBS_U.H      | Vector Unsigned Saturated Subtract (of Uns.) (halfword)  |
  * | SUBS_U.W      | Vector Unsigned Saturated Subtract (of Uns.) (word)      |
  * | SUBS_U.D      | Vector Unsigned Saturated Subtract (of Uns.) (doubleword)|
- * | SUBSUS_S.B    | Vector Uns. Sat. Subtract (of S. from Uns.) (byte)       |
- * | SUBSUS_S.H    | Vector Uns. Sat. Subtract (of S. from Uns.) (halfword)   |
- * | SUBSUS_S.W    | Vector Uns. Sat. Subtract (of S. from Uns.) (word)       |
- * | SUBSUS_S.D    | Vector Uns. Sat. Subtract (of S. from Uns.) (doubleword) |
- * | SUBSUU_U.B    | Vector Signed Saturated Subtract (of Uns.) (byte)        |
- * | SUBSUU_U.H    | Vector Signed Saturated Subtract (of Uns.) (halfword)    |
- * | SUBSUU_U.W    | Vector Signed Saturated Subtract (of Uns.) (word)        |
- * | SUBSUU_U.D    | Vector Signed Saturated Subtract (of Uns.) (doubleword)  |
+ * | SUBSUS_U.B    | Vector Uns. Sat. Subtract (of S. from Uns.) (byte)       |
+ * | SUBSUS_U.H    | Vector Uns. Sat. Subtract (of S. from Uns.) (halfword)   |
+ * | SUBSUS_U.W    | Vector Uns. Sat. Subtract (of S. from Uns.) (word)       |
+ * | SUBSUS_U.D    | Vector Uns. Sat. Subtract (of S. from Uns.) (doubleword) |
+ * | SUBSUU_S.B    | Vector Signed Saturated Subtract (of Uns.) (byte)        |
+ * | SUBSUU_S.H    | Vector Signed Saturated Subtract (of Uns.) (halfword)    |
+ * | SUBSUU_S.W    | Vector Signed Saturated Subtract (of Uns.) (word)        |
+ * | SUBSUU_S.D    | Vector Signed Saturated Subtract (of Uns.) (doubleword)  |
  * | SUBV.B        | Vector Subtract (byte)                                   |
  * | SUBV.H        | Vector Subtract (halfword)                               |
  * | SUBV.W        | Vector Subtract (word)                                   |
@@ -447,6 +459,18 @@
  */
 
 /* TODO: insert Logic group helpers here */
+
+
+/*
+ * Move
+ * ----
+ *
+ * +---------------+----------------------------------------------------------+
+ * | MOVE.V        | Vector Move                                              |
+ * +---------------+----------------------------------------------------------+
+ */
+
+/* TODO: insert Move group helpers here */
 
 
 /*
@@ -1737,6 +1761,24 @@ void helper_msa_ilvev_df(CPUMIPSState *env, uint32_t df, uint32_t wd,
 
     switch (df) {
     case DF_BYTE:
+#if defined(HOST_WORDS_BIGENDIAN)
+        pwd->b[8]  = pws->b[9];
+        pwd->b[9]  = pwt->b[9];
+        pwd->b[10] = pws->b[11];
+        pwd->b[11] = pwt->b[11];
+        pwd->b[12] = pws->b[13];
+        pwd->b[13] = pwt->b[13];
+        pwd->b[14] = pws->b[15];
+        pwd->b[15] = pwt->b[15];
+        pwd->b[0]  = pws->b[1];
+        pwd->b[1]  = pwt->b[1];
+        pwd->b[2]  = pws->b[3];
+        pwd->b[3]  = pwt->b[3];
+        pwd->b[4]  = pws->b[5];
+        pwd->b[5]  = pwt->b[5];
+        pwd->b[6]  = pws->b[7];
+        pwd->b[7]  = pwt->b[7];
+#else
         pwd->b[15] = pws->b[14];
         pwd->b[14] = pwt->b[14];
         pwd->b[13] = pws->b[12];
@@ -1753,8 +1795,19 @@ void helper_msa_ilvev_df(CPUMIPSState *env, uint32_t df, uint32_t wd,
         pwd->b[2]  = pwt->b[2];
         pwd->b[1]  = pws->b[0];
         pwd->b[0]  = pwt->b[0];
+#endif
         break;
     case DF_HALF:
+#if defined(HOST_WORDS_BIGENDIAN)
+        pwd->h[4] = pws->h[5];
+        pwd->h[5] = pwt->h[5];
+        pwd->h[6] = pws->h[7];
+        pwd->h[7] = pwt->h[7];
+        pwd->h[0] = pws->h[1];
+        pwd->h[1] = pwt->h[1];
+        pwd->h[2] = pws->h[3];
+        pwd->h[3] = pwt->h[3];
+#else
         pwd->h[7] = pws->h[6];
         pwd->h[6] = pwt->h[6];
         pwd->h[5] = pws->h[4];
@@ -1763,12 +1816,20 @@ void helper_msa_ilvev_df(CPUMIPSState *env, uint32_t df, uint32_t wd,
         pwd->h[2] = pwt->h[2];
         pwd->h[1] = pws->h[0];
         pwd->h[0] = pwt->h[0];
+#endif
         break;
     case DF_WORD:
+#if defined(HOST_WORDS_BIGENDIAN)
+        pwd->w[2] = pws->w[3];
+        pwd->w[3] = pwt->w[3];
+        pwd->w[0] = pws->w[1];
+        pwd->w[1] = pwt->w[1];
+#else
         pwd->w[3] = pws->w[2];
         pwd->w[2] = pwt->w[2];
         pwd->w[1] = pws->w[0];
         pwd->w[0] = pwt->w[0];
+#endif
         break;
     case DF_DOUBLE:
         pwd->d[1] = pws->d[0];
@@ -1788,6 +1849,24 @@ void helper_msa_ilvod_df(CPUMIPSState *env, uint32_t df, uint32_t wd,
 
     switch (df) {
     case DF_BYTE:
+#if defined(HOST_WORDS_BIGENDIAN)
+        pwd->b[7]  = pwt->b[6];
+        pwd->b[6]  = pws->b[6];
+        pwd->b[5]  = pwt->b[4];
+        pwd->b[4]  = pws->b[4];
+        pwd->b[3]  = pwt->b[2];
+        pwd->b[2]  = pws->b[2];
+        pwd->b[1]  = pwt->b[0];
+        pwd->b[0]  = pws->b[0];
+        pwd->b[15] = pwt->b[14];
+        pwd->b[14] = pws->b[14];
+        pwd->b[13] = pwt->b[12];
+        pwd->b[12] = pws->b[12];
+        pwd->b[11] = pwt->b[10];
+        pwd->b[10] = pws->b[10];
+        pwd->b[9]  = pwt->b[8];
+        pwd->b[8]  = pws->b[8];
+#else
         pwd->b[0]  = pwt->b[1];
         pwd->b[1]  = pws->b[1];
         pwd->b[2]  = pwt->b[3];
@@ -1804,8 +1883,19 @@ void helper_msa_ilvod_df(CPUMIPSState *env, uint32_t df, uint32_t wd,
         pwd->b[13] = pws->b[13];
         pwd->b[14] = pwt->b[15];
         pwd->b[15] = pws->b[15];
+#endif
         break;
     case DF_HALF:
+#if defined(HOST_WORDS_BIGENDIAN)
+        pwd->h[3] = pwt->h[2];
+        pwd->h[2] = pws->h[2];
+        pwd->h[1] = pwt->h[0];
+        pwd->h[0] = pws->h[0];
+        pwd->h[7] = pwt->h[6];
+        pwd->h[6] = pws->h[6];
+        pwd->h[5] = pwt->h[4];
+        pwd->h[4] = pws->h[4];
+#else
         pwd->h[0] = pwt->h[1];
         pwd->h[1] = pws->h[1];
         pwd->h[2] = pwt->h[3];
@@ -1814,12 +1904,20 @@ void helper_msa_ilvod_df(CPUMIPSState *env, uint32_t df, uint32_t wd,
         pwd->h[5] = pws->h[5];
         pwd->h[6] = pwt->h[7];
         pwd->h[7] = pws->h[7];
+#endif
         break;
     case DF_WORD:
+#if defined(HOST_WORDS_BIGENDIAN)
+        pwd->w[1] = pwt->w[0];
+        pwd->w[0] = pws->w[0];
+        pwd->w[3] = pwt->w[2];
+        pwd->w[2] = pws->w[2];
+#else
         pwd->w[0] = pwt->w[1];
         pwd->w[1] = pws->w[1];
         pwd->w[2] = pwt->w[3];
         pwd->w[3] = pws->w[3];
+#endif
         break;
     case DF_DOUBLE:
         pwd->d[0] = pwt->d[1];
@@ -1839,6 +1937,24 @@ void helper_msa_ilvl_df(CPUMIPSState *env, uint32_t df, uint32_t wd,
 
     switch (df) {
     case DF_BYTE:
+#if defined(HOST_WORDS_BIGENDIAN)
+        pwd->b[7]  = pwt->b[15];
+        pwd->b[6]  = pws->b[15];
+        pwd->b[5]  = pwt->b[14];
+        pwd->b[4]  = pws->b[14];
+        pwd->b[3]  = pwt->b[13];
+        pwd->b[2]  = pws->b[13];
+        pwd->b[1]  = pwt->b[12];
+        pwd->b[0]  = pws->b[12];
+        pwd->b[15] = pwt->b[11];
+        pwd->b[14] = pws->b[11];
+        pwd->b[13] = pwt->b[10];
+        pwd->b[12] = pws->b[10];
+        pwd->b[11] = pwt->b[9];
+        pwd->b[10] = pws->b[9];
+        pwd->b[9]  = pwt->b[8];
+        pwd->b[8]  = pws->b[8];
+#else
         pwd->b[0]  = pwt->b[8];
         pwd->b[1]  = pws->b[8];
         pwd->b[2]  = pwt->b[9];
@@ -1855,8 +1971,19 @@ void helper_msa_ilvl_df(CPUMIPSState *env, uint32_t df, uint32_t wd,
         pwd->b[13] = pws->b[14];
         pwd->b[14] = pwt->b[15];
         pwd->b[15] = pws->b[15];
+#endif
         break;
     case DF_HALF:
+#if defined(HOST_WORDS_BIGENDIAN)
+        pwd->h[3] = pwt->h[7];
+        pwd->h[2] = pws->h[7];
+        pwd->h[1] = pwt->h[6];
+        pwd->h[0] = pws->h[6];
+        pwd->h[7] = pwt->h[5];
+        pwd->h[6] = pws->h[5];
+        pwd->h[5] = pwt->h[4];
+        pwd->h[4] = pws->h[4];
+#else
         pwd->h[0] = pwt->h[4];
         pwd->h[1] = pws->h[4];
         pwd->h[2] = pwt->h[5];
@@ -1865,12 +1992,20 @@ void helper_msa_ilvl_df(CPUMIPSState *env, uint32_t df, uint32_t wd,
         pwd->h[5] = pws->h[6];
         pwd->h[6] = pwt->h[7];
         pwd->h[7] = pws->h[7];
+#endif
         break;
     case DF_WORD:
+#if defined(HOST_WORDS_BIGENDIAN)
+        pwd->w[1] = pwt->w[3];
+        pwd->w[0] = pws->w[3];
+        pwd->w[3] = pwt->w[2];
+        pwd->w[2] = pws->w[2];
+#else
         pwd->w[0] = pwt->w[2];
         pwd->w[1] = pws->w[2];
         pwd->w[2] = pwt->w[3];
         pwd->w[3] = pws->w[3];
+#endif
         break;
     case DF_DOUBLE:
         pwd->d[0] = pwt->d[1];
@@ -1890,6 +2025,24 @@ void helper_msa_ilvr_df(CPUMIPSState *env, uint32_t df, uint32_t wd,
 
     switch (df) {
     case DF_BYTE:
+#if defined(HOST_WORDS_BIGENDIAN)
+        pwd->b[8]  = pws->b[0];
+        pwd->b[9]  = pwt->b[0];
+        pwd->b[10] = pws->b[1];
+        pwd->b[11] = pwt->b[1];
+        pwd->b[12] = pws->b[2];
+        pwd->b[13] = pwt->b[2];
+        pwd->b[14] = pws->b[3];
+        pwd->b[15] = pwt->b[3];
+        pwd->b[0]  = pws->b[4];
+        pwd->b[1]  = pwt->b[4];
+        pwd->b[2]  = pws->b[5];
+        pwd->b[3]  = pwt->b[5];
+        pwd->b[4]  = pws->b[6];
+        pwd->b[5]  = pwt->b[6];
+        pwd->b[6]  = pws->b[7];
+        pwd->b[7]  = pwt->b[7];
+#else
         pwd->b[15] = pws->b[7];
         pwd->b[14] = pwt->b[7];
         pwd->b[13] = pws->b[6];
@@ -1906,8 +2059,19 @@ void helper_msa_ilvr_df(CPUMIPSState *env, uint32_t df, uint32_t wd,
         pwd->b[2]  = pwt->b[1];
         pwd->b[1]  = pws->b[0];
         pwd->b[0]  = pwt->b[0];
+#endif
         break;
     case DF_HALF:
+#if defined(HOST_WORDS_BIGENDIAN)
+        pwd->h[4] = pws->h[0];
+        pwd->h[5] = pwt->h[0];
+        pwd->h[6] = pws->h[1];
+        pwd->h[7] = pwt->h[1];
+        pwd->h[0] = pws->h[2];
+        pwd->h[1] = pwt->h[2];
+        pwd->h[2] = pws->h[3];
+        pwd->h[3] = pwt->h[3];
+#else
         pwd->h[7] = pws->h[3];
         pwd->h[6] = pwt->h[3];
         pwd->h[5] = pws->h[2];
@@ -1916,12 +2080,20 @@ void helper_msa_ilvr_df(CPUMIPSState *env, uint32_t df, uint32_t wd,
         pwd->h[2] = pwt->h[1];
         pwd->h[1] = pws->h[0];
         pwd->h[0] = pwt->h[0];
+#endif
         break;
     case DF_WORD:
+#if defined(HOST_WORDS_BIGENDIAN)
+        pwd->w[2] = pws->w[0];
+        pwd->w[3] = pwt->w[0];
+        pwd->w[0] = pws->w[1];
+        pwd->w[1] = pwt->w[1];
+#else
         pwd->w[3] = pws->w[1];
         pwd->w[2] = pwt->w[1];
         pwd->w[1] = pws->w[0];
         pwd->w[0] = pwt->w[0];
+#endif
         break;
     case DF_DOUBLE:
         pwd->d[1] = pws->d[0];
@@ -1941,6 +2113,24 @@ void helper_msa_pckev_df(CPUMIPSState *env, uint32_t df, uint32_t wd,
 
     switch (df) {
     case DF_BYTE:
+#if defined(HOST_WORDS_BIGENDIAN)
+        pwd->b[8]  = pws->b[9];
+        pwd->b[10] = pws->b[13];
+        pwd->b[12] = pws->b[1];
+        pwd->b[14] = pws->b[5];
+        pwd->b[0]  = pwt->b[9];
+        pwd->b[2]  = pwt->b[13];
+        pwd->b[4]  = pwt->b[1];
+        pwd->b[6]  = pwt->b[5];
+        pwd->b[9]  = pws->b[11];
+        pwd->b[13] = pws->b[3];
+        pwd->b[1]  = pwt->b[11];
+        pwd->b[5]  = pwt->b[3];
+        pwd->b[11] = pws->b[15];
+        pwd->b[3]  = pwt->b[15];
+        pwd->b[15] = pws->b[7];
+        pwd->b[7]  = pwt->b[7];
+#else
         pwd->b[15] = pws->b[14];
         pwd->b[13] = pws->b[10];
         pwd->b[11] = pws->b[6];
@@ -1957,8 +2147,19 @@ void helper_msa_pckev_df(CPUMIPSState *env, uint32_t df, uint32_t wd,
         pwd->b[4]  = pwt->b[8];
         pwd->b[8]  = pws->b[0];
         pwd->b[0]  = pwt->b[0];
+#endif
         break;
     case DF_HALF:
+#if defined(HOST_WORDS_BIGENDIAN)
+        pwd->h[4] = pws->h[5];
+        pwd->h[6] = pws->h[1];
+        pwd->h[0] = pwt->h[5];
+        pwd->h[2] = pwt->h[1];
+        pwd->h[5] = pws->h[7];
+        pwd->h[1] = pwt->h[7];
+        pwd->h[7] = pws->h[3];
+        pwd->h[3] = pwt->h[3];
+#else
         pwd->h[7] = pws->h[6];
         pwd->h[5] = pws->h[2];
         pwd->h[3] = pwt->h[6];
@@ -1967,12 +2168,20 @@ void helper_msa_pckev_df(CPUMIPSState *env, uint32_t df, uint32_t wd,
         pwd->h[2] = pwt->h[4];
         pwd->h[4] = pws->h[0];
         pwd->h[0] = pwt->h[0];
+#endif
         break;
     case DF_WORD:
+#if defined(HOST_WORDS_BIGENDIAN)
+        pwd->w[2] = pws->w[3];
+        pwd->w[0] = pwt->w[3];
+        pwd->w[3] = pws->w[1];
+        pwd->w[1] = pwt->w[1];
+#else
         pwd->w[3] = pws->w[2];
         pwd->w[1] = pwt->w[2];
         pwd->w[2] = pws->w[0];
         pwd->w[0] = pwt->w[0];
+#endif
         break;
     case DF_DOUBLE:
         pwd->d[1] = pws->d[0];
@@ -1992,6 +2201,24 @@ void helper_msa_pckod_df(CPUMIPSState *env, uint32_t df, uint32_t wd,
 
     switch (df) {
     case DF_BYTE:
+#if defined(HOST_WORDS_BIGENDIAN)
+        pwd->b[7]  = pwt->b[6];
+        pwd->b[5]  = pwt->b[2];
+        pwd->b[3]  = pwt->b[14];
+        pwd->b[1]  = pwt->b[10];
+        pwd->b[15] = pws->b[6];
+        pwd->b[13] = pws->b[2];
+        pwd->b[11] = pws->b[14];
+        pwd->b[9]  = pws->b[10];
+        pwd->b[6]  = pwt->b[4];
+        pwd->b[2]  = pwt->b[12];
+        pwd->b[14] = pws->b[4];
+        pwd->b[10] = pws->b[12];
+        pwd->b[4]  = pwt->b[0];
+        pwd->b[12] = pws->b[0];
+        pwd->b[0]  = pwt->b[8];
+        pwd->b[8]  = pws->b[8];
+#else
         pwd->b[0]  = pwt->b[1];
         pwd->b[2]  = pwt->b[5];
         pwd->b[4]  = pwt->b[9];
@@ -2008,8 +2235,19 @@ void helper_msa_pckod_df(CPUMIPSState *env, uint32_t df, uint32_t wd,
         pwd->b[11] = pws->b[7];
         pwd->b[7]  = pwt->b[15];
         pwd->b[15] = pws->b[15];
+#endif
         break;
     case DF_HALF:
+#if defined(HOST_WORDS_BIGENDIAN)
+        pwd->h[3] = pwt->h[2];
+        pwd->h[1] = pwt->h[6];
+        pwd->h[7] = pws->h[2];
+        pwd->h[5] = pws->h[6];
+        pwd->h[2] = pwt->h[0];
+        pwd->h[6] = pws->h[0];
+        pwd->h[0] = pwt->h[4];
+        pwd->h[4] = pws->h[4];
+#else
         pwd->h[0] = pwt->h[1];
         pwd->h[2] = pwt->h[5];
         pwd->h[4] = pws->h[1];
@@ -2018,12 +2256,20 @@ void helper_msa_pckod_df(CPUMIPSState *env, uint32_t df, uint32_t wd,
         pwd->h[5] = pws->h[3];
         pwd->h[3] = pwt->h[7];
         pwd->h[7] = pws->h[7];
+#endif
         break;
     case DF_WORD:
+#if defined(HOST_WORDS_BIGENDIAN)
+        pwd->w[1] = pwt->w[0];
+        pwd->w[3] = pws->w[0];
+        pwd->w[0] = pwt->w[2];
+        pwd->w[2] = pws->w[2];
+#else
         pwd->w[0] = pwt->w[1];
         pwd->w[2] = pws->w[1];
         pwd->w[1] = pwt->w[3];
         pwd->w[3] = pws->w[3];
+#endif
         break;
     case DF_DOUBLE:
         pwd->d[0] = pwt->d[1];
@@ -3678,35 +3924,65 @@ void helper_msa_fmin_df(CPUMIPSState *env, uint32_t df, uint32_t wd,
     wr_t *pwd = &(env->active_fpu.fpr[wd].wr);
     wr_t *pws = &(env->active_fpu.fpr[ws].wr);
     wr_t *pwt = &(env->active_fpu.fpr[wt].wr);
-    uint32_t i;
 
     clear_msacsr_cause(env);
 
-    switch (df) {
-    case DF_WORD:
-        for (i = 0; i < DF_ELEMENTS(DF_WORD); i++) {
-            if (NUMBER_QNAN_PAIR(pws->w[i], pwt->w[i], 32, status)) {
-                MSA_FLOAT_MAXOP(pwx->w[i], min, pws->w[i], pws->w[i], 32);
-            } else if (NUMBER_QNAN_PAIR(pwt->w[i], pws->w[i], 32, status)) {
-                MSA_FLOAT_MAXOP(pwx->w[i], min, pwt->w[i], pwt->w[i], 32);
-            } else {
-                MSA_FLOAT_MAXOP(pwx->w[i], min, pws->w[i], pwt->w[i], 32);
-            }
+    if (df == DF_WORD) {
+
+        if (NUMBER_QNAN_PAIR(pws->w[0], pwt->w[0], 32, status)) {
+            MSA_FLOAT_MAXOP(pwx->w[0], min, pws->w[0], pws->w[0], 32);
+        } else if (NUMBER_QNAN_PAIR(pwt->w[0], pws->w[0], 32, status)) {
+            MSA_FLOAT_MAXOP(pwx->w[0], min, pwt->w[0], pwt->w[0], 32);
+        } else {
+            MSA_FLOAT_MAXOP(pwx->w[0], min, pws->w[0], pwt->w[0], 32);
         }
-        break;
-    case DF_DOUBLE:
-        for (i = 0; i < DF_ELEMENTS(DF_DOUBLE); i++) {
-            if (NUMBER_QNAN_PAIR(pws->d[i], pwt->d[i], 64, status)) {
-                MSA_FLOAT_MAXOP(pwx->d[i], min, pws->d[i], pws->d[i], 64);
-            } else if (NUMBER_QNAN_PAIR(pwt->d[i], pws->d[i], 64, status)) {
-                MSA_FLOAT_MAXOP(pwx->d[i], min, pwt->d[i], pwt->d[i], 64);
-            } else {
-                MSA_FLOAT_MAXOP(pwx->d[i], min, pws->d[i], pwt->d[i], 64);
-            }
+
+        if (NUMBER_QNAN_PAIR(pws->w[1], pwt->w[1], 32, status)) {
+            MSA_FLOAT_MAXOP(pwx->w[1], min, pws->w[1], pws->w[1], 32);
+        } else if (NUMBER_QNAN_PAIR(pwt->w[1], pws->w[1], 32, status)) {
+            MSA_FLOAT_MAXOP(pwx->w[1], min, pwt->w[1], pwt->w[1], 32);
+        } else {
+            MSA_FLOAT_MAXOP(pwx->w[1], min, pws->w[1], pwt->w[1], 32);
         }
-        break;
-    default:
+
+        if (NUMBER_QNAN_PAIR(pws->w[2], pwt->w[2], 32, status)) {
+            MSA_FLOAT_MAXOP(pwx->w[2], min, pws->w[2], pws->w[2], 32);
+        } else if (NUMBER_QNAN_PAIR(pwt->w[2], pws->w[2], 32, status)) {
+            MSA_FLOAT_MAXOP(pwx->w[2], min, pwt->w[2], pwt->w[2], 32);
+        } else {
+            MSA_FLOAT_MAXOP(pwx->w[2], min, pws->w[2], pwt->w[2], 32);
+        }
+
+        if (NUMBER_QNAN_PAIR(pws->w[3], pwt->w[3], 32, status)) {
+            MSA_FLOAT_MAXOP(pwx->w[3], min, pws->w[3], pws->w[3], 32);
+        } else if (NUMBER_QNAN_PAIR(pwt->w[3], pws->w[3], 32, status)) {
+            MSA_FLOAT_MAXOP(pwx->w[3], min, pwt->w[3], pwt->w[3], 32);
+        } else {
+            MSA_FLOAT_MAXOP(pwx->w[3], min, pws->w[3], pwt->w[3], 32);
+        }
+
+    } else if (df == DF_DOUBLE) {
+
+        if (NUMBER_QNAN_PAIR(pws->d[0], pwt->d[0], 64, status)) {
+            MSA_FLOAT_MAXOP(pwx->d[0], min, pws->d[0], pws->d[0], 64);
+        } else if (NUMBER_QNAN_PAIR(pwt->d[0], pws->d[0], 64, status)) {
+            MSA_FLOAT_MAXOP(pwx->d[0], min, pwt->d[0], pwt->d[0], 64);
+        } else {
+            MSA_FLOAT_MAXOP(pwx->d[0], min, pws->d[0], pwt->d[0], 64);
+        }
+
+        if (NUMBER_QNAN_PAIR(pws->d[1], pwt->d[1], 64, status)) {
+            MSA_FLOAT_MAXOP(pwx->d[1], min, pws->d[1], pws->d[1], 64);
+        } else if (NUMBER_QNAN_PAIR(pwt->d[1], pws->d[1], 64, status)) {
+            MSA_FLOAT_MAXOP(pwx->d[1], min, pwt->d[1], pwt->d[1], 64);
+        } else {
+            MSA_FLOAT_MAXOP(pwx->d[1], min, pws->d[1], pwt->d[1], 64);
+        }
+
+    } else {
+
         assert(0);
+
     }
 
     check_msacsr_cause(env, GETPC());
@@ -3722,22 +3998,18 @@ void helper_msa_fmin_a_df(CPUMIPSState *env, uint32_t df, uint32_t wd,
     wr_t *pwd = &(env->active_fpu.fpr[wd].wr);
     wr_t *pws = &(env->active_fpu.fpr[ws].wr);
     wr_t *pwt = &(env->active_fpu.fpr[wt].wr);
-    uint32_t i;
 
     clear_msacsr_cause(env);
 
-    switch (df) {
-    case DF_WORD:
-        for (i = 0; i < DF_ELEMENTS(DF_WORD); i++) {
-            FMAXMIN_A(min, max, pwx->w[i], pws->w[i], pwt->w[i], 32, status);
-        }
-        break;
-    case DF_DOUBLE:
-        for (i = 0; i < DF_ELEMENTS(DF_DOUBLE); i++) {
-            FMAXMIN_A(min, max, pwx->d[i], pws->d[i], pwt->d[i], 64, status);
-        }
-        break;
-    default:
+    if (df == DF_WORD) {
+        FMAXMIN_A(min, max, pwx->w[0], pws->w[0], pwt->w[0], 32, status);
+        FMAXMIN_A(min, max, pwx->w[1], pws->w[1], pwt->w[1], 32, status);
+        FMAXMIN_A(min, max, pwx->w[2], pws->w[2], pwt->w[2], 32, status);
+        FMAXMIN_A(min, max, pwx->w[3], pws->w[3], pwt->w[3], 32, status);
+    } else if (df == DF_DOUBLE) {
+        FMAXMIN_A(min, max, pwx->d[0], pws->d[0], pwt->d[0], 64, status);
+        FMAXMIN_A(min, max, pwx->d[1], pws->d[1], pwt->d[1], 64, status);
+    } else {
         assert(0);
     }
 
@@ -3749,40 +4021,70 @@ void helper_msa_fmin_a_df(CPUMIPSState *env, uint32_t df, uint32_t wd,
 void helper_msa_fmax_df(CPUMIPSState *env, uint32_t df, uint32_t wd,
         uint32_t ws, uint32_t wt)
 {
-    float_status *status = &env->active_tc.msa_fp_status;
+     float_status *status = &env->active_tc.msa_fp_status;
     wr_t wx, *pwx = &wx;
     wr_t *pwd = &(env->active_fpu.fpr[wd].wr);
     wr_t *pws = &(env->active_fpu.fpr[ws].wr);
     wr_t *pwt = &(env->active_fpu.fpr[wt].wr);
-    uint32_t i;
 
     clear_msacsr_cause(env);
 
-    switch (df) {
-    case DF_WORD:
-        for (i = 0; i < DF_ELEMENTS(DF_WORD); i++) {
-            if (NUMBER_QNAN_PAIR(pws->w[i], pwt->w[i], 32, status)) {
-                MSA_FLOAT_MAXOP(pwx->w[i], max, pws->w[i], pws->w[i], 32);
-            } else if (NUMBER_QNAN_PAIR(pwt->w[i], pws->w[i], 32, status)) {
-                MSA_FLOAT_MAXOP(pwx->w[i], max, pwt->w[i], pwt->w[i], 32);
-            } else {
-                MSA_FLOAT_MAXOP(pwx->w[i], max, pws->w[i], pwt->w[i], 32);
-            }
+    if (df == DF_WORD) {
+
+        if (NUMBER_QNAN_PAIR(pws->w[0], pwt->w[0], 32, status)) {
+            MSA_FLOAT_MAXOP(pwx->w[0], max, pws->w[0], pws->w[0], 32);
+        } else if (NUMBER_QNAN_PAIR(pwt->w[0], pws->w[0], 32, status)) {
+            MSA_FLOAT_MAXOP(pwx->w[0], max, pwt->w[0], pwt->w[0], 32);
+        } else {
+            MSA_FLOAT_MAXOP(pwx->w[0], max, pws->w[0], pwt->w[0], 32);
         }
-        break;
-    case DF_DOUBLE:
-        for (i = 0; i < DF_ELEMENTS(DF_DOUBLE); i++) {
-            if (NUMBER_QNAN_PAIR(pws->d[i], pwt->d[i], 64, status)) {
-                MSA_FLOAT_MAXOP(pwx->d[i], max, pws->d[i], pws->d[i], 64);
-            } else if (NUMBER_QNAN_PAIR(pwt->d[i], pws->d[i], 64, status)) {
-                MSA_FLOAT_MAXOP(pwx->d[i], max, pwt->d[i], pwt->d[i], 64);
-            } else {
-                MSA_FLOAT_MAXOP(pwx->d[i], max, pws->d[i], pwt->d[i], 64);
-            }
+
+        if (NUMBER_QNAN_PAIR(pws->w[1], pwt->w[1], 32, status)) {
+            MSA_FLOAT_MAXOP(pwx->w[1], max, pws->w[1], pws->w[1], 32);
+        } else if (NUMBER_QNAN_PAIR(pwt->w[1], pws->w[1], 32, status)) {
+            MSA_FLOAT_MAXOP(pwx->w[1], max, pwt->w[1], pwt->w[1], 32);
+        } else {
+            MSA_FLOAT_MAXOP(pwx->w[1], max, pws->w[1], pwt->w[1], 32);
         }
-        break;
-    default:
+
+        if (NUMBER_QNAN_PAIR(pws->w[2], pwt->w[2], 32, status)) {
+            MSA_FLOAT_MAXOP(pwx->w[2], max, pws->w[2], pws->w[2], 32);
+        } else if (NUMBER_QNAN_PAIR(pwt->w[2], pws->w[2], 32, status)) {
+            MSA_FLOAT_MAXOP(pwx->w[2], max, pwt->w[2], pwt->w[2], 32);
+        } else {
+            MSA_FLOAT_MAXOP(pwx->w[2], max, pws->w[2], pwt->w[2], 32);
+        }
+
+        if (NUMBER_QNAN_PAIR(pws->w[3], pwt->w[3], 32, status)) {
+            MSA_FLOAT_MAXOP(pwx->w[3], max, pws->w[3], pws->w[3], 32);
+        } else if (NUMBER_QNAN_PAIR(pwt->w[3], pws->w[3], 32, status)) {
+            MSA_FLOAT_MAXOP(pwx->w[3], max, pwt->w[3], pwt->w[3], 32);
+        } else {
+            MSA_FLOAT_MAXOP(pwx->w[3], max, pws->w[3], pwt->w[3], 32);
+        }
+
+    } else if (df == DF_DOUBLE) {
+
+        if (NUMBER_QNAN_PAIR(pws->d[0], pwt->d[0], 64, status)) {
+            MSA_FLOAT_MAXOP(pwx->d[0], max, pws->d[0], pws->d[0], 64);
+        } else if (NUMBER_QNAN_PAIR(pwt->d[0], pws->d[0], 64, status)) {
+            MSA_FLOAT_MAXOP(pwx->d[0], max, pwt->d[0], pwt->d[0], 64);
+        } else {
+            MSA_FLOAT_MAXOP(pwx->d[0], max, pws->d[0], pwt->d[0], 64);
+        }
+
+        if (NUMBER_QNAN_PAIR(pws->d[1], pwt->d[1], 64, status)) {
+            MSA_FLOAT_MAXOP(pwx->d[1], max, pws->d[1], pws->d[1], 64);
+        } else if (NUMBER_QNAN_PAIR(pwt->d[1], pws->d[1], 64, status)) {
+            MSA_FLOAT_MAXOP(pwx->d[1], max, pwt->d[1], pwt->d[1], 64);
+        } else {
+            MSA_FLOAT_MAXOP(pwx->d[1], max, pws->d[1], pwt->d[1], 64);
+        }
+
+    } else {
+
         assert(0);
+
     }
 
     check_msacsr_cause(env, GETPC());
@@ -3798,22 +4100,18 @@ void helper_msa_fmax_a_df(CPUMIPSState *env, uint32_t df, uint32_t wd,
     wr_t *pwd = &(env->active_fpu.fpr[wd].wr);
     wr_t *pws = &(env->active_fpu.fpr[ws].wr);
     wr_t *pwt = &(env->active_fpu.fpr[wt].wr);
-    uint32_t i;
 
     clear_msacsr_cause(env);
 
-    switch (df) {
-    case DF_WORD:
-        for (i = 0; i < DF_ELEMENTS(DF_WORD); i++) {
-            FMAXMIN_A(max, min, pwx->w[i], pws->w[i], pwt->w[i], 32, status);
-        }
-        break;
-    case DF_DOUBLE:
-        for (i = 0; i < DF_ELEMENTS(DF_DOUBLE); i++) {
-            FMAXMIN_A(max, min, pwx->d[i], pws->d[i], pwt->d[i], 64, status);
-        }
-        break;
-    default:
+    if (df == DF_WORD) {
+        FMAXMIN_A(max, min, pwx->w[0], pws->w[0], pwt->w[0], 32, status);
+        FMAXMIN_A(max, min, pwx->w[1], pws->w[1], pwt->w[1], 32, status);
+        FMAXMIN_A(max, min, pwx->w[2], pws->w[2], pwt->w[2], 32, status);
+        FMAXMIN_A(max, min, pwx->w[3], pws->w[3], pwt->w[3], 32, status);
+    } else if (df == DF_DOUBLE) {
+        FMAXMIN_A(max, min, pwx->d[0], pws->d[0], pwt->d[0], 64, status);
+        FMAXMIN_A(max, min, pwx->d[1], pws->d[1], pwt->d[1], 64, status);
+    } else {
         assert(0);
     }
 
@@ -3834,9 +4132,11 @@ void helper_msa_fclass_df(CPUMIPSState *env, uint32_t df,
         pwd->w[1] = float_class_s(pws->w[1], status);
         pwd->w[2] = float_class_s(pws->w[2], status);
         pwd->w[3] = float_class_s(pws->w[3], status);
-    } else {
+    } else if (df == DF_DOUBLE) {
         pwd->d[0] = float_class_d(pws->d[0], status);
         pwd->d[1] = float_class_d(pws->d[1], status);
+    } else {
+        assert(0);
     }
 }
 

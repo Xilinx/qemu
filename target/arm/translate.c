@@ -28,7 +28,6 @@
 #include "tcg-op-gvec.h"
 #include "qemu/log.h"
 #include "qemu/bitops.h"
-#include "qemu/qemu-print.h"
 #include "arm_ldst.h"
 #include "hw/semihosting/semihost.h"
 
@@ -9109,7 +9108,7 @@ static void disas_arm_insn(DisasContext *s, unsigned int insn)
                 loaded_base = 0;
                 loaded_var = NULL;
                 n = 0;
-                for(i=0;i<16;i++) {
+                for (i = 0; i < 16; i++) {
                     if (insn & (1 << i))
                         n++;
                 }
@@ -9132,7 +9131,7 @@ static void disas_arm_insn(DisasContext *s, unsigned int insn)
                     }
                 }
                 j = 0;
-                for(i=0;i<16;i++) {
+                for (i = 0; i < 16; i++) {
                     if (insn & (1 << i)) {
                         if (is_load) {
                             /* load */
@@ -11595,7 +11594,14 @@ static void disas_thumb_insn(DisasContext *s, uint32_t insn)
                 gen_nop_hint(s, (insn >> 4) & 0xf);
                 break;
             }
-            /* If Then.  */
+            /*
+             * IT (If-Then)
+             *
+             * Combinations of firstcond and mask which set up an 0b1111
+             * condition are UNPREDICTABLE; we take the CONSTRAINED
+             * UNPREDICTABLE choice to treat 0b1111 the same as 0b1110,
+             * i.e. both meaning "execute always".
+             */
             s->condexec_cond = (insn >> 4) & 0xe;
             s->condexec_mask = insn & 0x1f;
             /* No actual code generated for this insn, just setup state.  */
@@ -12129,7 +12135,11 @@ static void thumb_tr_translate_insn(DisasContextBase *dcbase, CPUState *cpu)
     if (dc->condexec_mask && !thumb_insn_is_unconditional(dc, insn)) {
         uint32_t cond = dc->condexec_cond;
 
-        if (cond != 0x0e) {     /* Skip conditional when condition is AL. */
+        /*
+         * Conditionally skip the insn. Note that both 0xe and 0xf mean
+         * "always"; 0xf is not "never".
+         */
+        if (cond < 0x0e) {
             arm_skip_unless(dc, cond);
         }
     }
@@ -12340,92 +12350,6 @@ void gen_intermediate_code(CPUState *cpu, TranslationBlock *tb, int max_insns)
 #endif
 
     translator_loop(ops, &dc.base, cpu, tb, max_insns);
-}
-
-void arm_cpu_dump_state(CPUState *cs, FILE *f, int flags)
-{
-    ARMCPU *cpu = ARM_CPU(cs);
-    CPUARMState *env = &cpu->env;
-    int i;
-
-    if (is_a64(env)) {
-        aarch64_cpu_dump_state(cs, f, flags);
-        return;
-    }
-
-    for(i=0;i<16;i++) {
-        qemu_fprintf(f, "R%02d=%08x", i, env->regs[i]);
-        if ((i % 4) == 3)
-            qemu_fprintf(f, "\n");
-        else
-            qemu_fprintf(f, " ");
-    }
-
-    if (arm_feature(env, ARM_FEATURE_M)) {
-        uint32_t xpsr = xpsr_read(env);
-        const char *mode;
-        const char *ns_status = "";
-
-        if (arm_feature(env, ARM_FEATURE_M_SECURITY)) {
-            ns_status = env->v7m.secure ? "S " : "NS ";
-        }
-
-        if (xpsr & XPSR_EXCP) {
-            mode = "handler";
-        } else {
-            if (env->v7m.control[env->v7m.secure] & R_V7M_CONTROL_NPRIV_MASK) {
-                mode = "unpriv-thread";
-            } else {
-                mode = "priv-thread";
-            }
-        }
-
-        qemu_fprintf(f, "XPSR=%08x %c%c%c%c %c %s%s\n",
-                     xpsr,
-                     xpsr & XPSR_N ? 'N' : '-',
-                     xpsr & XPSR_Z ? 'Z' : '-',
-                     xpsr & XPSR_C ? 'C' : '-',
-                     xpsr & XPSR_V ? 'V' : '-',
-                     xpsr & XPSR_T ? 'T' : 'A',
-                     ns_status,
-                     mode);
-    } else {
-        uint32_t psr = cpsr_read(env);
-        const char *ns_status = "";
-
-        if (arm_feature(env, ARM_FEATURE_EL3) &&
-            (psr & CPSR_M) != ARM_CPU_MODE_MON) {
-            ns_status = env->cp15.scr_el3 & SCR_NS ? "NS " : "S ";
-        }
-
-        qemu_fprintf(f, "PSR=%08x %c%c%c%c %c %s%s%d\n",
-                     psr,
-                     psr & CPSR_N ? 'N' : '-',
-                     psr & CPSR_Z ? 'Z' : '-',
-                     psr & CPSR_C ? 'C' : '-',
-                     psr & CPSR_V ? 'V' : '-',
-                     psr & CPSR_T ? 'T' : 'A',
-                     ns_status,
-                     aarch32_mode_name(psr), (psr & 0x10) ? 32 : 26);
-    }
-
-    if (flags & CPU_DUMP_FPU) {
-        int numvfpregs = 0;
-        if (arm_feature(env, ARM_FEATURE_VFP)) {
-            numvfpregs += 16;
-        }
-        if (arm_feature(env, ARM_FEATURE_VFP3)) {
-            numvfpregs += 16;
-        }
-        for (i = 0; i < numvfpregs; i++) {
-            uint64_t v = *aa32_vfp_dreg(env, i);
-            qemu_fprintf(f, "s%02d=%08x s%02d=%08x d%02d=%016" PRIx64 "\n",
-                         i * 2, (uint32_t)v,
-                         i * 2 + 1, (uint32_t)(v >> 32),
-                         i, v);
-        }
-        qemu_fprintf(f, "FPSCR: %08x\n", vfp_get_fpscr(env));
-    }
 }
 
 void restore_state_to_opc(CPUARMState *env, TranslationBlock *tb,

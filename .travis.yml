@@ -31,7 +31,7 @@ addons:
       - libseccomp-dev
       - libspice-protocol-dev
       - libspice-server-dev
-      - libssh2-1-dev
+      - libssh-dev
       - liburcu-dev
       - libusb-1.0-0-dev
       - libvte-2.91-dev
@@ -43,6 +43,7 @@ addons:
       - glib
       - pixman
       - gnu-sed
+    update: true
 
 
 # The channel name "irc.oftc.net#qemu" is encrypted against qemu/qemu
@@ -74,13 +75,13 @@ before_script:
   - mkdir -p ${BUILD_DIR} && cd ${BUILD_DIR}
   - ${SRC_DIR}/configure ${BASE_CONFIG} ${CONFIG} || { cat config.log && exit 1; }
 script:
-  - make -j3 && ${TEST_CMD}
+  - make -j3 && travis_retry ${TEST_CMD}
 
 
 matrix:
   include:
     - env:
-        - CONFIG="--disable-system"
+        - CONFIG="--disable-system --static"
 
 
     # we split the system builds as it takes a while to build them all
@@ -232,7 +233,9 @@ matrix:
     # Acceptance (Functional) tests
     - env:
         - CONFIG="--python=/usr/bin/python3 --target-list=x86_64-softmmu,mips-softmmu,mips64el-softmmu,aarch64-softmmu,arm-softmmu,s390x-softmmu,alpha-softmmu"
-        - TEST_CMD="make AVOCADO_SHOW=test check-acceptance"
+        - TEST_CMD="make check-acceptance"
+      after_failure:
+        - cat tests/results/latest/job.log
       addons:
         apt:
           packages:
@@ -268,7 +271,7 @@ matrix:
             - libseccomp-dev
             - libspice-protocol-dev
             - libspice-server-dev
-            - libssh2-1-dev
+            - libssh-dev
             - liburcu-dev
             - libusb-1.0-0-dev
             - libvte-2.91-dev

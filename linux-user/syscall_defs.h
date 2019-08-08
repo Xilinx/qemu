@@ -32,6 +32,7 @@
 #define TARGET_SYS_RECVMMSG     19        /* recvmmsg()            */
 #define TARGET_SYS_SENDMMSG     20        /* sendmmsg()            */
 
+#define IPCOP_CALL(VERSION, OP) ((VERSION) << 16 | (OP))
 #define IPCOP_semop		1
 #define IPCOP_semget		2
 #define IPCOP_semctl		3
@@ -208,14 +209,32 @@ struct target_linger {
     abi_int l_linger;       /* How long to linger for       */
 };
 
+#if defined(TARGET_SPARC64) && !defined(TARGET_ABI32)
+struct target_timeval {
+    abi_long tv_sec;
+    abi_int tv_usec;
+};
+#define target__kernel_sock_timeval target_timeval
+#else
 struct target_timeval {
     abi_long tv_sec;
     abi_long tv_usec;
 };
 
+struct target__kernel_sock_timeval {
+    abi_llong tv_sec;
+    abi_llong tv_usec;
+};
+#endif
+
 struct target_timespec {
     abi_long tv_sec;
     abi_long tv_nsec;
+};
+
+struct target__kernel_timespec {
+    abi_llong tv_sec;
+    abi_llong tv_nsec;
 };
 
 struct target_timezone {
@@ -748,8 +767,16 @@ struct target_pollfd {
 #define TARGET_SIOCGPGRP       0x8904
 #endif
 
-#define TARGET_SIOCGSTAMP      0x8906          /* Get stamp (timeval) */
-#define TARGET_SIOCGSTAMPNS    0x8907          /* Get stamp (timespec) */
+#if defined(TARGET_SH4)
+#define TARGET_SIOCGSTAMP_OLD   TARGET_IOR('s', 100, struct target_timeval)
+#define TARGET_SIOCGSTAMPNS_OLD TARGET_IOR('s', 101, struct target_timespec)
+#else
+#define TARGET_SIOCGSTAMP_OLD   0x8906
+#define TARGET_SIOCGSTAMPNS_OLD 0x8907
+#endif
+
+#define TARGET_SIOCGSTAMP_NEW   TARGET_IOR(0x89, 0x06, abi_llong[2])
+#define TARGET_SIOCGSTAMPNS_NEW TARGET_IOR(0x89, 0x07, abi_llong[2])
 
 /* Networking ioctls */
 #define TARGET_SIOCADDRT       0x890B          /* add routing table entry */
@@ -2535,5 +2562,42 @@ struct target_user_cap_data {
 #define TARGET_SYSLOG_ACTION_SIZE_UNREAD    9
 /* Return size of the log buffer */
 #define TARGET_SYSLOG_ACTION_SIZE_BUFFER   10
+
+struct target_statx_timestamp {
+   int64_t tv_sec;
+   uint32_t tv_nsec;
+   int32_t __reserved;
+};
+
+struct target_statx {
+   /* 0x00 */
+   uint32_t stx_mask;       /* What results were written [uncond] */
+   uint32_t stx_blksize;    /* Preferred general I/O size [uncond] */
+   uint64_t stx_attributes; /* Flags conveying information about the file */
+   /* 0x10 */
+   uint32_t stx_nlink;      /* Number of hard links */
+   uint32_t stx_uid;        /* User ID of owner */
+   uint32_t stx_gid;        /* Group ID of owner */
+   uint16_t stx_mode;       /* File mode */
+   uint16_t __spare0[1];
+   /* 0x20 */
+   uint64_t stx_ino;        /* Inode number */
+   uint64_t stx_size;       /* File size */
+   uint64_t stx_blocks;     /* Number of 512-byte blocks allocated */
+   uint64_t stx_attributes_mask; /* Mask to show what is supported */
+   /* 0x40 */
+   struct target_statx_timestamp  stx_atime;  /* Last access time */
+   struct target_statx_timestamp  stx_btime;  /* File creation time */
+   struct target_statx_timestamp  stx_ctime;  /* Last attribute change time */
+   struct target_statx_timestamp  stx_mtime;  /* Last data modification time */
+   /* 0x80 */
+   uint32_t stx_rdev_major;   /* Device ID of special file [if bdev/cdev] */
+   uint32_t stx_rdev_minor;
+   uint32_t stx_dev_major; /* ID of device containing file [uncond] */
+   uint32_t stx_dev_minor;
+   /* 0x90 */
+   uint64_t __spare2[14];  /* Spare space for future expansion */
+   /* 0x100 */
+};
 
 #endif

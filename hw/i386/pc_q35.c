@@ -367,8 +367,10 @@ static void pc_q35_machine_options(MachineClass *m)
 
 static void pc_q35_4_1_machine_options(MachineClass *m)
 {
+    PCMachineClass *pcmc = PC_MACHINE_CLASS(m);
     pc_q35_machine_options(m);
     m->alias = "q35";
+    pcmc->default_cpu_version = 1;
 }
 
 DEFINE_Q35_MACHINE(v4_1, "pc-q35-4.1", NULL,
@@ -376,10 +378,17 @@ DEFINE_Q35_MACHINE(v4_1, "pc-q35-4.1", NULL,
 
 static void pc_q35_4_0_1_machine_options(MachineClass *m)
 {
+    PCMachineClass *pcmc = PC_MACHINE_CLASS(m);
     pc_q35_4_1_machine_options(m);
     m->alias = NULL;
-    compat_props_add(m->compat_props, hw_compat_4_0_1, hw_compat_4_0_1_len);
-    compat_props_add(m->compat_props, pc_compat_4_0_1, pc_compat_4_0_1_len);
+    pcmc->default_cpu_version = CPU_VERSION_LEGACY;
+    /*
+     * This is the default machine for the 4.0-stable branch. It is basically
+     * a 4.0 that doesn't use split irqchip by default. It MUST hence apply the
+     * 4.0 compat props.
+     */
+    compat_props_add(m->compat_props, hw_compat_4_0, hw_compat_4_0_len);
+    compat_props_add(m->compat_props, pc_compat_4_0, pc_compat_4_0_len);
 }
 
 DEFINE_Q35_MACHINE(v4_0_1, "pc-q35-4.0.1", NULL,
@@ -390,8 +399,7 @@ static void pc_q35_4_0_machine_options(MachineClass *m)
     pc_q35_4_0_1_machine_options(m);
     m->default_kernel_irqchip_split = true;
     m->alias = NULL;
-    compat_props_add(m->compat_props, hw_compat_4_0, hw_compat_4_0_len);
-    compat_props_add(m->compat_props, pc_compat_4_0, pc_compat_4_0_len);
+    /* Compat props are applied by the 4.0.1 machine */
 }
 
 DEFINE_Q35_MACHINE(v4_0, "pc-q35-4.0", NULL,

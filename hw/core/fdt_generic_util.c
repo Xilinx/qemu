@@ -214,14 +214,6 @@ FDTMachineInfo *fdt_generic_create_machine(void *fdt, qemu_irq *cpu_irq)
 
     bdrv_drain_all();
     DB_PRINT(0, "FDT: Device tree scan complete\n");
-
-    /* Set the number of CPUs */
-    if (!qemu_opt_get_number(opts, "cpus", 0)) {
-        smp_cpus = fdt_generic_num_cpus;
-    }
-
-    DB_PRINT(0, "The value of smp_cpus is: %d\n", smp_cpus);
-
     return fdti;
 }
 

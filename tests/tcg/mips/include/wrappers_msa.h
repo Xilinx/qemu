@@ -124,8 +124,9 @@ static inline void do_msa_##suffix(const void *input1,                 \
 }
 
 #define DO_MSA__WD__WD_WT(suffix, mnemonic)                            \
-static inline void do_msa_##suffix(void *input1, void *input2,         \
-                                   void *output)                       \
+static inline void do_msa_##suffix(const void *input1,                 \
+                                   const void *input2,                 \
+                                   const void *output)                 \
 {                                                                      \
    __asm__ volatile (                                                  \
       "move $t0, %0\n\t"                                               \
@@ -142,8 +143,9 @@ static inline void do_msa_##suffix(void *input1, void *input2,         \
 }
 
 #define DO_MSA__WD__WS_WD(suffix, mnemonic)                            \
-static inline void do_msa_##suffix(void *input1, void *input2,         \
-                                   void *output)                       \
+static inline void do_msa_##suffix(const void *input1,                 \
+                                   const void *input2,                 \
+                                   const void *output)                 \
 {                                                                      \
    __asm__ volatile (                                                  \
       "move $t0, %0\n\t"                                               \
@@ -187,18 +189,40 @@ DO_MSA__WD__WS(PCNT_D, pcnt.d)
  */
 
 DO_MSA__WD__WS_WT(BINSL_B, binsl.b)
+DO_MSA__WD__WD_WT(BINSL_B__DDT, binsl.b)
+DO_MSA__WD__WS_WD(BINSL_B__DSD, binsl.b)
 DO_MSA__WD__WS_WT(BINSL_H, binsl.h)
+DO_MSA__WD__WD_WT(BINSL_H__DDT, binsl.h)
+DO_MSA__WD__WS_WD(BINSL_H__DSD, binsl.h)
 DO_MSA__WD__WS_WT(BINSL_W, binsl.w)
+DO_MSA__WD__WD_WT(BINSL_W__DDT, binsl.w)
+DO_MSA__WD__WS_WD(BINSL_W__DSD, binsl.w)
 DO_MSA__WD__WS_WT(BINSL_D, binsl.d)
+DO_MSA__WD__WD_WT(BINSL_D__DDT, binsl.d)
+DO_MSA__WD__WS_WD(BINSL_D__DSD, binsl.d)
 
 DO_MSA__WD__WS_WT(BINSR_B, binsr.b)
+DO_MSA__WD__WD_WT(BINSR_B__DDT, binsr.b)
+DO_MSA__WD__WS_WD(BINSR_B__DSD, binsr.b)
 DO_MSA__WD__WS_WT(BINSR_H, binsr.h)
+DO_MSA__WD__WD_WT(BINSR_H__DDT, binsr.h)
+DO_MSA__WD__WS_WD(BINSR_H__DSD, binsr.h)
 DO_MSA__WD__WS_WT(BINSR_W, binsr.w)
+DO_MSA__WD__WD_WT(BINSR_W__DDT, binsr.w)
+DO_MSA__WD__WS_WD(BINSR_W__DSD, binsr.w)
 DO_MSA__WD__WS_WT(BINSR_D, binsr.d)
+DO_MSA__WD__WD_WT(BINSR_D__DDT, binsr.d)
+DO_MSA__WD__WS_WD(BINSR_D__DSD, binsr.d)
 
 DO_MSA__WD__WS_WT(BMNZ_V, bmnz.v)
+DO_MSA__WD__WD_WT(BMNZ_V__DDT, bmnz.v)
+DO_MSA__WD__WS_WD(BMNZ_V__DSD, bmnz.v)
 DO_MSA__WD__WS_WT(BMZ_V, bmz.v)
+DO_MSA__WD__WD_WT(BMZ_V__DDT, bmz.v)
+DO_MSA__WD__WS_WD(BMZ_V__DSD, bmz.v)
 DO_MSA__WD__WS_WT(BSEL_V, bsel.v)
+DO_MSA__WD__WD_WT(BSEL_V__DDT, bsel.v)
+DO_MSA__WD__WS_WD(BSEL_V__DSD, bsel.v)
 
 
 /*
@@ -228,16 +252,32 @@ DO_MSA__WD__WS_WT(BNEG_D, bneg.d)
  */
 
 DO_MSA__WD__WS_WT(MADD_Q_H, madd_q.h)
+DO_MSA__WD__WD_WT(MADD_Q_H__DDT, madd_q.h)
+DO_MSA__WD__WS_WD(MADD_Q_H__DSD, madd_q.h)
 DO_MSA__WD__WS_WT(MADD_Q_W, madd_q.w)
+DO_MSA__WD__WD_WT(MADD_Q_W__DDT, madd_q.w)
+DO_MSA__WD__WS_WD(MADD_Q_W__DSD, madd_q.w)
 
 DO_MSA__WD__WS_WT(MADDR_Q_H, maddr_q.h)
+DO_MSA__WD__WD_WT(MADDR_Q_H__DDT, maddr_q.h)
+DO_MSA__WD__WS_WD(MADDR_Q_H__DSD, maddr_q.h)
 DO_MSA__WD__WS_WT(MADDR_Q_W, maddr_q.w)
+DO_MSA__WD__WD_WT(MADDR_Q_W__DDT, maddr_q.w)
+DO_MSA__WD__WS_WD(MADDR_Q_W__DSD, maddr_q.w)
 
 DO_MSA__WD__WS_WT(MSUB_Q_H, msub_q.h)
+DO_MSA__WD__WD_WT(MSUB_Q_H__DDT, msub_q.h)
+DO_MSA__WD__WS_WD(MSUB_Q_H__DSD, msub_q.h)
 DO_MSA__WD__WS_WT(MSUB_Q_W, msub_q.w)
+DO_MSA__WD__WD_WT(MSUB_Q_W__DDT, msub_q.w)
+DO_MSA__WD__WS_WD(MSUB_Q_W__DSD, msub_q.w)
 
 DO_MSA__WD__WS_WT(MSUBR_Q_H, msubr_q.h)
+DO_MSA__WD__WD_WT(MSUBR_Q_H__DDT, msubr_q.h)
+DO_MSA__WD__WS_WD(MSUBR_Q_H__DSD, msubr_q.h)
 DO_MSA__WD__WS_WT(MSUBR_Q_W, msubr_q.w)
+DO_MSA__WD__WD_WT(MSUBR_Q_W__DDT, msubr_q.w)
+DO_MSA__WD__WS_WD(MSUBR_Q_W__DSD, msubr_q.w)
 
 DO_MSA__WD__WS_WT(MUL_Q_H, mul_q.h)
 DO_MSA__WD__WS_WT(MUL_Q_W, mul_q.w)
@@ -389,6 +429,46 @@ DO_MSA__WD__WS_WT(DOTP_U_H, dotp_u.h)
 DO_MSA__WD__WS_WT(DOTP_U_W, dotp_u.w)
 DO_MSA__WD__WS_WT(DOTP_U_D, dotp_u.d)
 
+DO_MSA__WD__WS_WT(DPADD_S_H, dpadd_s.h)
+DO_MSA__WD__WD_WT(DPADD_S_H__DDT, dpadd_s.h)
+DO_MSA__WD__WS_WD(DPADD_S_H__DSD, dpadd_s.h)
+DO_MSA__WD__WS_WT(DPADD_S_W, dpadd_s.w)
+DO_MSA__WD__WD_WT(DPADD_S_W__DDT, dpadd_s.w)
+DO_MSA__WD__WS_WD(DPADD_S_W__DSD, dpadd_s.w)
+DO_MSA__WD__WS_WT(DPADD_S_D, dpadd_s.d)
+DO_MSA__WD__WD_WT(DPADD_S_D__DDT, dpadd_s.d)
+DO_MSA__WD__WS_WD(DPADD_S_D__DSD, dpadd_s.d)
+
+DO_MSA__WD__WS_WT(DPADD_U_H, dpadd_u.h)
+DO_MSA__WD__WD_WT(DPADD_U_H__DDT, dpadd_u.h)
+DO_MSA__WD__WS_WD(DPADD_U_H__DSD, dpadd_u.h)
+DO_MSA__WD__WS_WT(DPADD_U_W, dpadd_u.w)
+DO_MSA__WD__WD_WT(DPADD_U_W__DDT, dpadd_u.w)
+DO_MSA__WD__WS_WD(DPADD_U_W__DSD, dpadd_u.w)
+DO_MSA__WD__WS_WT(DPADD_U_D, dpadd_u.d)
+DO_MSA__WD__WD_WT(DPADD_U_D__DDT, dpadd_u.d)
+DO_MSA__WD__WS_WD(DPADD_U_D__DSD, dpadd_u.d)
+
+DO_MSA__WD__WS_WT(DPSUB_S_H, dpsub_s.h)
+DO_MSA__WD__WD_WT(DPSUB_S_H__DDT, dpsub_s.h)
+DO_MSA__WD__WS_WD(DPSUB_S_H__DSD, dpsub_s.h)
+DO_MSA__WD__WS_WT(DPSUB_S_W, dpsub_s.w)
+DO_MSA__WD__WD_WT(DPSUB_S_W__DDT, dpsub_s.w)
+DO_MSA__WD__WS_WD(DPSUB_S_W__DSD, dpsub_s.w)
+DO_MSA__WD__WS_WT(DPSUB_S_D, dpsub_s.d)
+DO_MSA__WD__WD_WT(DPSUB_S_D__DDT, dpsub_s.d)
+DO_MSA__WD__WS_WD(DPSUB_S_D__DSD, dpsub_s.d)
+
+DO_MSA__WD__WS_WT(DPSUB_U_H, dpsub_u.h)
+DO_MSA__WD__WD_WT(DPSUB_U_H__DDT, dpsub_u.h)
+DO_MSA__WD__WS_WD(DPSUB_U_H__DSD, dpsub_u.h)
+DO_MSA__WD__WS_WT(DPSUB_U_W, dpsub_u.w)
+DO_MSA__WD__WD_WT(DPSUB_U_W__DDT, dpsub_u.w)
+DO_MSA__WD__WS_WD(DPSUB_U_W__DSD, dpsub_u.w)
+DO_MSA__WD__WS_WT(DPSUB_U_D, dpsub_u.d)
+DO_MSA__WD__WD_WT(DPSUB_U_D__DDT, dpsub_u.d)
+DO_MSA__WD__WS_WD(DPSUB_U_D__DSD, dpsub_u.d)
+
 
 /*
  * Int Max Min
@@ -448,14 +528,30 @@ DO_MSA__WD__WS_WT(MOD_U_D, mod_u.d)
  */
 
 DO_MSA__WD__WS_WT(MADDV_B, maddv.b)
+DO_MSA__WD__WD_WT(MADDV_B__DDT, maddv.b)
+DO_MSA__WD__WS_WD(MADDV_B__DSD, maddv.b)
 DO_MSA__WD__WS_WT(MADDV_H, maddv.h)
+DO_MSA__WD__WD_WT(MADDV_H__DDT, maddv.h)
+DO_MSA__WD__WS_WD(MADDV_H__DSD, maddv.h)
 DO_MSA__WD__WS_WT(MADDV_W, maddv.w)
+DO_MSA__WD__WD_WT(MADDV_W__DDT, maddv.w)
+DO_MSA__WD__WS_WD(MADDV_W__DSD, maddv.w)
 DO_MSA__WD__WS_WT(MADDV_D, maddv.d)
+DO_MSA__WD__WD_WT(MADDV_D__DDT, maddv.d)
+DO_MSA__WD__WS_WD(MADDV_D__DSD, maddv.d)
 
 DO_MSA__WD__WS_WT(MSUBV_B, msubv.b)
+DO_MSA__WD__WD_WT(MSUBV_B__DDT, msubv.b)
+DO_MSA__WD__WS_WD(MSUBV_B__DSD, msubv.b)
 DO_MSA__WD__WS_WT(MSUBV_H, msubv.h)
+DO_MSA__WD__WD_WT(MSUBV_H__DDT, msubv.h)
+DO_MSA__WD__WS_WD(MSUBV_H__DSD, msubv.h)
 DO_MSA__WD__WS_WT(MSUBV_W, msubv.w)
+DO_MSA__WD__WD_WT(MSUBV_W__DDT, msubv.w)
+DO_MSA__WD__WS_WD(MSUBV_W__DSD, msubv.w)
 DO_MSA__WD__WS_WT(MSUBV_D, msubv.d)
+DO_MSA__WD__WD_WT(MSUBV_D__DDT, msubv.d)
+DO_MSA__WD__WS_WD(MSUBV_D__DSD, msubv.d)
 
 DO_MSA__WD__WS_WT(MULV_B, mulv.b)
 DO_MSA__WD__WS_WT(MULV_H, mulv.h)
@@ -550,24 +646,56 @@ DO_MSA__WD__WS_WT(XOR_V, xor.v)
 
 
 /*
+ * Move
+ * ----
+ */
+
+DO_MSA__WD__WS(MOVE_V, move.v)
+
+
+/*
  * Pack
  * ----
  */
 
 DO_MSA__WD__WS_WT(PCKEV_B, pckev.b)
+DO_MSA__WD__WD_WT(PCKEV_B__DDT, pckev.b)
+DO_MSA__WD__WS_WD(PCKEV_B__DSD, pckev.b)
 DO_MSA__WD__WS_WT(PCKEV_H, pckev.h)
+DO_MSA__WD__WD_WT(PCKEV_H__DDT, pckev.h)
+DO_MSA__WD__WS_WD(PCKEV_H__DSD, pckev.h)
 DO_MSA__WD__WS_WT(PCKEV_W, pckev.w)
+DO_MSA__WD__WD_WT(PCKEV_W__DDT, pckev.w)
+DO_MSA__WD__WS_WD(PCKEV_W__DSD, pckev.w)
 DO_MSA__WD__WS_WT(PCKEV_D, pckev.d)
+DO_MSA__WD__WD_WT(PCKEV_D__DDT, pckev.d)
+DO_MSA__WD__WS_WD(PCKEV_D__DSD, pckev.d)
 
 DO_MSA__WD__WS_WT(PCKOD_B, pckod.b)
+DO_MSA__WD__WD_WT(PCKOD_B__DDT, pckod.b)
+DO_MSA__WD__WS_WD(PCKOD_B__DSD, pckod.b)
 DO_MSA__WD__WS_WT(PCKOD_H, pckod.h)
+DO_MSA__WD__WD_WT(PCKOD_H__DDT, pckod.h)
+DO_MSA__WD__WS_WD(PCKOD_H__DSD, pckod.h)
 DO_MSA__WD__WS_WT(PCKOD_W, pckod.w)
+DO_MSA__WD__WD_WT(PCKOD_W__DDT, pckod.w)
+DO_MSA__WD__WS_WD(PCKOD_W__DSD, pckod.w)
 DO_MSA__WD__WS_WT(PCKOD_D, pckod.d)
+DO_MSA__WD__WD_WT(PCKOD_D__DDT, pckod.d)
+DO_MSA__WD__WS_WD(PCKOD_D__DSD, pckod.d)
 
 DO_MSA__WD__WS_WT(VSHF_B, vshf.b)
+DO_MSA__WD__WD_WT(VSHF_B__DDT, vshf.b)
+DO_MSA__WD__WS_WD(VSHF_B__DSD, vshf.b)
 DO_MSA__WD__WS_WT(VSHF_H, vshf.h)
+DO_MSA__WD__WD_WT(VSHF_H__DDT, vshf.h)
+DO_MSA__WD__WS_WD(VSHF_H__DSD, vshf.h)
 DO_MSA__WD__WS_WT(VSHF_W, vshf.w)
+DO_MSA__WD__WD_WT(VSHF_W__DDT, vshf.w)
+DO_MSA__WD__WS_WD(VSHF_W__DSD, vshf.w)
 DO_MSA__WD__WS_WT(VSHF_D, vshf.d)
+DO_MSA__WD__WD_WT(VSHF_D__DDT, vshf.d)
+DO_MSA__WD__WS_WD(VSHF_D__DSD, vshf.d)
 
 
 /*

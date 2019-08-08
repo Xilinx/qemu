@@ -324,19 +324,37 @@ must support changing some configuration aspects on the fly.
 Multiple queue support
 ----------------------
 
-Multiple queue is treated as a protocol extension, hence the slave has
-to implement protocol features first. The multiple queues feature is
-supported only when the protocol feature ``VHOST_USER_PROTOCOL_F_MQ``
-(bit 0) is set.
+Many devices have a fixed number of virtqueues.  In this case the master
+already knows the number of available virtqueues without communicating with the
+slave.
 
-The max number of queue pairs the slave supports can be queried with
-message ``VHOST_USER_GET_QUEUE_NUM``. Master should stop when the
-number of requested queues is bigger than that.
+Some devices do not have a fixed number of virtqueues.  Instead the maximum
+number of virtqueues is chosen by the slave.  The number can depend on host
+resource availability or slave implementation details.  Such devices are called
+multiple queue devices.
+
+Multiple queue support allows the slave to advertise the maximum number of
+queues.  This is treated as a protocol extension, hence the slave has to
+implement protocol features first. The multiple queues feature is supported
+only when the protocol feature ``VHOST_USER_PROTOCOL_F_MQ`` (bit 0) is set.
+
+The max number of queues the slave supports can be queried with message
+``VHOST_USER_GET_QUEUE_NUM``. Master should stop when the number of requested
+queues is bigger than that.
 
 As all queues share one connection, the master uses a unique index for each
-queue in the sent message to identify a specified queue. One queue pair
-is enabled initially. More queues are enabled dynamically, by sending
-message ``VHOST_USER_SET_VRING_ENABLE``.
+queue in the sent message to identify a specified queue.
+
+The master enables queues by sending message ``VHOST_USER_SET_VRING_ENABLE``.
+vhost-user-net has historically automatically enabled the first queue pair.
+
+Slaves should always implement the ``VHOST_USER_PROTOCOL_F_MQ`` protocol
+feature, even for devices with a fixed number of virtqueues, since it is simple
+to implement and offers a degree of introspection.
+
+Masters must not rely on the ``VHOST_USER_PROTOCOL_F_MQ`` protocol feature for
+devices with a fixed number of virtqueues.  Only true multiqueue devices
+require this protocol feature.
 
 Migration
 ---------

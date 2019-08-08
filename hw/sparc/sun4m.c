@@ -871,6 +871,8 @@ static void sun4m_hw_init(const struct sun4m_hwdef *hwdef,
     FWCfgState *fw_cfg;
     DeviceState *dev;
     SysBusDevice *s;
+    unsigned int smp_cpus = machine->smp.cpus;
+    unsigned int max_cpus = machine->smp.max_cpus;
 
     /* init CPUs */
     for(i = 0; i < smp_cpus; i++) {
@@ -1406,6 +1408,7 @@ static void ss5_class_init(ObjectClass *oc, void *data)
     mc->is_default = 1;
     mc->default_boot_order = "c";
     mc->default_cpu_type = SPARC_CPU_TYPE_NAME("Fujitsu-MB86904");
+    mc->default_display = "tcx";
 }
 
 static const TypeInfo ss5_type = {
@@ -1424,6 +1427,7 @@ static void ss10_class_init(ObjectClass *oc, void *data)
     mc->max_cpus = 4;
     mc->default_boot_order = "c";
     mc->default_cpu_type = SPARC_CPU_TYPE_NAME("TI-SuperSparc-II");
+    mc->default_display = "tcx";
 }
 
 static const TypeInfo ss10_type = {
@@ -1442,6 +1446,7 @@ static void ss600mp_class_init(ObjectClass *oc, void *data)
     mc->max_cpus = 4;
     mc->default_boot_order = "c";
     mc->default_cpu_type = SPARC_CPU_TYPE_NAME("TI-SuperSparc-II");
+    mc->default_display = "tcx";
 }
 
 static const TypeInfo ss600mp_type = {
@@ -1460,6 +1465,7 @@ static void ss20_class_init(ObjectClass *oc, void *data)
     mc->max_cpus = 4;
     mc->default_boot_order = "c";
     mc->default_cpu_type = SPARC_CPU_TYPE_NAME("TI-SuperSparc-II");
+    mc->default_display = "tcx";
 }
 
 static const TypeInfo ss20_type = {
@@ -1477,6 +1483,7 @@ static void voyager_class_init(ObjectClass *oc, void *data)
     mc->block_default_type = IF_SCSI;
     mc->default_boot_order = "c";
     mc->default_cpu_type = SPARC_CPU_TYPE_NAME("Fujitsu-MB86904");
+    mc->default_display = "tcx";
 }
 
 static const TypeInfo voyager_type = {
@@ -1494,6 +1501,7 @@ static void ss_lx_class_init(ObjectClass *oc, void *data)
     mc->block_default_type = IF_SCSI;
     mc->default_boot_order = "c";
     mc->default_cpu_type = SPARC_CPU_TYPE_NAME("TI-MicroSparc-I");
+    mc->default_display = "tcx";
 }
 
 static const TypeInfo ss_lx_type = {
@@ -1511,6 +1519,7 @@ static void ss4_class_init(ObjectClass *oc, void *data)
     mc->block_default_type = IF_SCSI;
     mc->default_boot_order = "c";
     mc->default_cpu_type = SPARC_CPU_TYPE_NAME("Fujitsu-MB86904");
+    mc->default_display = "tcx";
 }
 
 static const TypeInfo ss4_type = {
@@ -1528,6 +1537,7 @@ static void scls_class_init(ObjectClass *oc, void *data)
     mc->block_default_type = IF_SCSI;
     mc->default_boot_order = "c";
     mc->default_cpu_type = SPARC_CPU_TYPE_NAME("TI-MicroSparc-I");
+    mc->default_display = "tcx";
 }
 
 static const TypeInfo scls_type = {
@@ -1545,6 +1555,7 @@ static void sbook_class_init(ObjectClass *oc, void *data)
     mc->block_default_type = IF_SCSI;
     mc->default_boot_order = "c";
     mc->default_cpu_type = SPARC_CPU_TYPE_NAME("TI-MicroSparc-I");
+    mc->default_display = "tcx";
 }
 
 static const TypeInfo sbook_type = {
