@@ -44,6 +44,7 @@
 #include "qom/cpu.h"
 #include "block/block.h"
 #include "hw/ssi/ssi.h"
+#include "hw/boards.h"
 #include "qemu/option.h"
 
 
@@ -191,7 +192,6 @@ static void fdt_init_cpu_clusters(FDTMachineInfo *fdti)
 FDTMachineInfo *fdt_generic_create_machine(void *fdt, qemu_irq *cpu_irq)
 {
     char node_path[DT_PATH_LENGTH];
-    QemuOpts *opts = qemu_opts_find(qemu_find_opts("smp-opts"), NULL);
     FDTMachineInfo *fdti = fdt_init_new_fdti(fdt);
 
     fdti->irq_base = cpu_irq;
@@ -211,6 +211,11 @@ FDTMachineInfo *fdt_generic_create_machine(void *fdt, qemu_irq *cpu_irq)
         fprintf(stderr, "FDT: ERROR: cannot get root node from device tree %s\n"
             , node_path);
     }
+
+    /* FIXME: Populate these from DTS and create CPU clusters.  */
+    current_machine->smp.cores = fdt_generic_num_cpus;
+    current_machine->smp.cpus = fdt_generic_num_cpus;
+    current_machine->smp.max_cpus = fdt_generic_num_cpus;
 
     bdrv_drain_all();
     DB_PRINT(0, "FDT: Device tree scan complete\n");
