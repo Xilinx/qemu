@@ -90,8 +90,6 @@ uint32_t HELPER(neon_tbl)(uint32_t ireg, uint32_t def, void *vn,
 
 #if !defined(CONFIG_USER_ONLY)
 
-#include "hw/remote-port.h"
-
 static inline uint32_t merge_syn_data_abort(uint32_t template_syn,
                                             unsigned int target_el,
                                             bool same_el, bool ea,
