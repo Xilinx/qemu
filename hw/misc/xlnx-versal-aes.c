@@ -584,7 +584,7 @@ static void aes_reset(DeviceState *dev);
 static void aes_soft_rst_postw(RegisterInfo *reg, uint64_t val)
 {
     Zynq3AES *s = XILINX_AES(reg->opaque);
-    if (val) {
+    if (val && !s->inSoftRst) {
         qemu_irq_pulse(s->aes_rst);
         s->inSoftRst = true;
         aes_reset(DEVICE(s));
