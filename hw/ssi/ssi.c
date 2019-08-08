@@ -16,6 +16,7 @@
 #include "hw/ssi/ssi.h"
 #include "qapi/error.h"
 #include "hw/fdt_generic_util.h"
+#include "qemu/module.h"
 
 struct SSIBus {
     BusState parent_obj;

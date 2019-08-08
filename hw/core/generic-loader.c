@@ -36,6 +36,7 @@
 #include "sysemu/dma.h"
 #include "hw/loader.h"
 #include "qapi/error.h"
+#include "qemu/module.h"
 #include "hw/core/generic-loader.h"
 #include "exec/memory.h"
 

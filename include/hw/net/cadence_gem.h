@@ -23,6 +23,7 @@
  */
 
 #ifndef CADENCE_GEM_H
+#define CADENCE_GEM_H
 
 #define TYPE_CADENCE_GEM "cadence_gem"
 #define CADENCE_GEM(obj) OBJECT_CHECK(CadenceGEMState, (obj), TYPE_CADENCE_GEM)
@@ -87,5 +88,4 @@ typedef struct CadenceGEMState {
     MDIO *mdio;
 } CadenceGEMState;
 
-#define CADENCE_GEM_H
 #endif

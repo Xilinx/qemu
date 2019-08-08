@@ -25,6 +25,7 @@
 #include "hw/qdev.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
+#include "qemu/module.h"
 
 #ifndef NAND_ERR_DEBUG
 #define NAND_ERR_DEBUG 1

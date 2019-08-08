@@ -24,6 +24,7 @@
 #include "qapi/error.h"
 #include "qemu/option.h"
 #include "qemu/log.h"
+#include "qemu/module.h"
 
 #ifdef CONFIG_FDT
 #include "qemu/config-file.h"
