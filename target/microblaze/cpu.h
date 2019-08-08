@@ -22,14 +22,9 @@
 
 #include "qemu-common.h"
 #include "cpu-qom.h"
-
-#define TARGET_LONG_BITS 64
-
-#define CPUArchState struct CPUMBState
-
 #include "exec/cpu-defs.h"
 #include "fpu/softfloat-types.h"
-struct CPUMBState;
+
 typedef struct CPUMBState CPUMBState;
 #if !defined(CONFIG_USER_ONLY)
 #include "mmu.h"
@@ -230,7 +225,6 @@ typedef struct CPUMBState CPUMBState;
 #define CC_NE  1
 #define CC_EQ  0
 
-#define NB_MMU_MODES    3
 #undef NB_MEM_ATTR
 #define NB_MEM_ATTR     1
 
@@ -278,8 +272,6 @@ struct CPUMBState {
     /* Fields up to this point are cleared by a CPU reset */
     struct {} end_reset_fields;
 
-    CPU_COMMON
-
     /* These fields are preserved on reset.  */
 
     struct {
@@ -304,6 +296,9 @@ struct MicroBlazeCPU {
     /*< public >*/
     qemu_irq mb_sleep;
 
+    CPUNegativeOffsetState neg;
+    CPUMBState env;
+
     /* Microblaze Configuration Settings */
     struct {
         bool stackprot;
@@ -323,18 +318,8 @@ struct MicroBlazeCPU {
         char *version;
         uint8_t pvr;
     } cfg;
-
-    CPUMBState env;
 };
 
-static inline MicroBlazeCPU *mb_env_get_cpu(CPUMBState *env)
-{
-    return container_of(env, MicroBlazeCPU, env);
-}
-
-#define ENV_GET_CPU(e) CPU(mb_env_get_cpu(e))
-
-#define ENV_OFFSET offsetof(MicroBlazeCPU, env)
 
 void mb_cpu_do_interrupt(CPUState *cs);
 bool mb_cpu_exec_interrupt(CPUState *cs, int int_req);
@@ -350,12 +335,6 @@ void mb_tcg_init(void);
 int cpu_mb_signal_handler(int host_signum, void *pinfo,
                           void *puc);
 
-/* FIXME: MB uses variable pages down to 1K but linux only uses 4k.  */
-#define TARGET_PAGE_BITS 12
-
-#define TARGET_PHYS_ADDR_SPACE_BITS 64
-#define TARGET_VIRT_ADDR_SPACE_BITS 64
-
 #define CPU_RESOLVING_TYPE TYPE_MICROBLAZE_CPU
 
 #define cpu_signal_handler cpu_mb_signal_handler
@@ -369,24 +348,12 @@ int cpu_mb_signal_handler(int host_signum, void *pinfo,
 #define MMU_USER_IDX    2
 /* See NB_MMU_MODES further up the file.  */
 
-static inline int cpu_mmu_index (CPUMBState *env, bool ifetch)
-{
-    MicroBlazeCPU *cpu = mb_env_get_cpu(env);
-
-    /* Are we in nommu mode?.  */
-    if (!(env->sregs[SR_MSR] & MSR_VM) || !cpu->cfg.use_mmu) {
-        return MMU_NOMMU_IDX;
-    }
-
-    if (env->sregs[SR_MSR] & MSR_UM) {
-        return MMU_USER_IDX;
-    }
-    return MMU_KERNEL_IDX;
-}
-
 bool mb_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
                      MMUAccessType access_type, int mmu_idx,
                      bool probe, uintptr_t retaddr);
+
+typedef CPUMBState CPUArchState;
+typedef MicroBlazeCPU ArchCPU;
 
 #include "exec/cpu-all.h"
 
@@ -405,5 +372,20 @@ void mb_cpu_transaction_failed(CPUState *cs, hwaddr physaddr, vaddr addr,
                                int mmu_idx, MemTxAttrs attrs,
                                MemTxResult response, uintptr_t retaddr);
 #endif
+
+static inline int cpu_mmu_index(CPUMBState *env, bool ifetch)
+{
+    MicroBlazeCPU *cpu = env_archcpu(env);
+
+    /* Are we in nommu mode?.  */
+    if (!(env->sregs[SR_MSR] & MSR_VM) || !cpu->cfg.use_mmu) {
+        return MMU_NOMMU_IDX;
+    }
+
+    if (env->sregs[SR_MSR] & MSR_UM) {
+        return MMU_USER_IDX;
+    }
+    return MMU_KERNEL_IDX;
+}
 
 #endif

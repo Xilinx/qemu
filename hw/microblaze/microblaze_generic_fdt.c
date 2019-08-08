@@ -215,7 +215,7 @@ microblaze_generic_fdt_reset(MicroBlazeCPU *cpu)
         env->pvr.regs[9] = VAL("i-cache-highaddr");
     }
     if (VAL("qemu,halt")) {
-        cpu_interrupt(ENV_GET_CPU(env), CPU_INTERRUPT_HALT);
+        cpu_interrupt(env_cpu(env), CPU_INTERRUPT_HALT);
     }
 }
 

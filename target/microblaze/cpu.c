@@ -163,7 +163,7 @@ static void mb_cpu_reset(CPUState *s)
     env->mmu.c_addr_mask = MAKE_64BIT_MASK(0, cpu->cfg.addr_size);
 
     if (cpu->env.memattr_p) {
-        env->memattr[0].attrs = *cpu->env.memattr_p;
+        env_tlb(&cpu->env)->memattr[0].attrs = *cpu->env.memattr_p;
     }
 #endif
 }
@@ -257,11 +257,10 @@ static void mb_cpu_realizefn(DeviceState *dev, Error **errp)
 
 static void mb_cpu_initfn(Object *obj)
 {
-    CPUState *cs = CPU(obj);
     MicroBlazeCPU *cpu = MICROBLAZE_CPU(obj);
     CPUMBState *env = &cpu->env;
 
-    cs->env_ptr = env;
+    cpu_set_cpustate_pointers(cpu);
 
     set_float_rounding_mode(float_round_nearest_even, &env->fp_status);
 

@@ -32,7 +32,7 @@
 static CPUState *do_raise_exception(CPUARMState *env, uint32_t excp,
                                     uint32_t syndrome, uint32_t target_el)
 {
-    CPUState *cs = CPU(arm_env_get_cpu(env));
+    CPUState *cs = env_cpu(env);
 
     if (target_el == 1 && (arm_hcr_el2_eff(env) & HCR_TGE)) {
         /*
@@ -227,7 +227,7 @@ void HELPER(v8m_stackcheck)(CPUARMState *env, uint32_t newvalue)
      * raising an exception if the limit is breached.
      */
     if (newvalue < v7m_sp_limit(env)) {
-        CPUState *cs = CPU(arm_env_get_cpu(env));
+        CPUState *cs = env_cpu(env);
 
         /*
          * Stack limit exceptions are a rare case, so rather than syncing
@@ -430,8 +430,9 @@ static inline int check_wfx_trap(CPUARMState *env, bool is_wfe)
 
 void HELPER(wfi)(CPUARMState *env, uint32_t insn_len)
 {
-    CPUState *cs = CPU(arm_env_get_cpu(env));
-    ARMCPU *cpu = arm_env_get_cpu(env);
+    CPUState *cs = env_cpu(env);
+    ARMCPU *cpu = env_archcpu(env);
+
     int target_el = check_wfx_trap(env, false);
 
     if (cpu_has_work(cs) && 0) {
@@ -463,8 +464,8 @@ void HELPER(wfi)(CPUARMState *env, uint32_t insn_len)
 
 void HELPER(wfe)(CPUARMState *env)
 {
-    ARMCPU *ac = ARM_CPU(arm_env_get_cpu(env));
-    CPUState *cs = CPU(ac);
+    CPUState *cs = env_cpu(env);
+    ARMCPU *ac = env_archcpu(env);
 
     g_assert(!parallel_cpus);
 
@@ -490,7 +491,7 @@ static void cpu_unhalt(CPUState *cpu, run_on_cpu_data data)
 
 void HELPER(sev)(CPUARMState *env)
 {
-    CPUState *cs = CPU(arm_env_get_cpu(env));
+    CPUState *cs = env_cpu(env);
     CPUState *i;
 
     for (i = first_cpu; i; i = CPU_NEXT(i)) {
@@ -505,7 +506,7 @@ void HELPER(sev)(CPUARMState *env)
 
 void HELPER(sevl)(CPUARMState *env)
 {
-    ARMCPU *ac = arm_env_get_cpu(env);
+    ARMCPU *ac = env_archcpu(env);
 
     g_assert(!parallel_cpus);
 
@@ -514,8 +515,7 @@ void HELPER(sevl)(CPUARMState *env)
 
 void HELPER(yield)(CPUARMState *env)
 {
-    ARMCPU *cpu = arm_env_get_cpu(env);
-    CPUState *cs = CPU(cpu);
+    CPUState *cs = env_cpu(env);
 
     /* This is a non-trappable hint instruction that generally indicates
      * that the guest is currently busy-looping. Yield control back to the
@@ -533,7 +533,7 @@ void HELPER(yield)(CPUARMState *env)
  */
 void HELPER(exception_internal)(CPUARMState *env, uint32_t excp)
 {
-    CPUState *cs = CPU(arm_env_get_cpu(env));
+    CPUState *cs = env_cpu(env);
 
     assert(excp_is_internal(excp));
     cs->exception_index = excp;
@@ -576,7 +576,7 @@ void HELPER(cpsr_write)(CPUARMState *env, uint32_t val, uint32_t mask)
 void HELPER(cpsr_write_eret)(CPUARMState *env, uint32_t val)
 {
     qemu_mutex_lock_iothread();
-    arm_call_pre_el_change_hook(arm_env_get_cpu(env));
+    arm_call_pre_el_change_hook(env_archcpu(env));
     qemu_mutex_unlock_iothread();
 
     cpsr_write(env, val, CPSR_ERET_MASK, CPSRWriteExceptionReturn);
@@ -589,7 +589,7 @@ void HELPER(cpsr_write_eret)(CPUARMState *env, uint32_t val)
     env->regs[15] &= (env->thumb ? ~1 : ~3);
 
     qemu_mutex_lock_iothread();
-    arm_call_el_change_hook(arm_env_get_cpu(env));
+    arm_call_el_change_hook(env_archcpu(env));
     qemu_mutex_unlock_iothread();
 }
 
@@ -894,7 +894,7 @@ uint64_t HELPER(get_cp_reg64)(CPUARMState *env, void *rip)
 
 void HELPER(pre_hvc)(CPUARMState *env)
 {
-    ARMCPU *cpu = arm_env_get_cpu(env);
+    ARMCPU *cpu = env_archcpu(env);
     int cur_el = arm_current_el(env);
     /* FIXME: Use actual secure state.  */
     bool secure = false;
@@ -934,7 +934,7 @@ void HELPER(pre_hvc)(CPUARMState *env)
 
 void HELPER(pre_smc)(CPUARMState *env, uint32_t syndrome)
 {
-    ARMCPU *cpu = arm_env_get_cpu(env);
+    ARMCPU *cpu = env_archcpu(env);
     int cur_el = arm_current_el(env);
     bool secure = arm_is_secure(env);
     bool smd_flag = env->cp15.scr_el3 & SCR_SMD;
@@ -1208,7 +1208,7 @@ static bool check_breakpoints(ARMCPU *cpu)
 
 void HELPER(check_breakpoints)(CPUARMState *env)
 {
-    ARMCPU *cpu = arm_env_get_cpu(env);
+    ARMCPU *cpu = env_archcpu(env);
 
     if (check_breakpoints(cpu)) {
         HELPER(exception_internal(env, EXCP_DEBUG));

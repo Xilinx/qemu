@@ -66,7 +66,7 @@ uint32_t helper_get(uint32_t id, uint32_t ctrl)
 
 void helper_raise_exception(CPUMBState *env, uint32_t index)
 {
-    CPUState *cs = CPU(mb_env_get_cpu(env));
+    CPUState *cs = env_cpu(env);
 
     cs->exception_index = index;
     cpu_loop_exit(cs);
@@ -74,7 +74,7 @@ void helper_raise_exception(CPUMBState *env, uint32_t index)
 
 void helper_sleep(CPUMBState *env)
 {
-    MicroBlazeCPU *cpu = mb_env_get_cpu(env);
+    MicroBlazeCPU *cpu = env_archcpu(env);
     CPUState *cs = CPU(cpu);
     CPUClass *cc = CPU_GET_CLASS(cs);
 
