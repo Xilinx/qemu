@@ -2019,9 +2019,16 @@ static void handle_query_thread_extra(GdbCmdContext *gdb_ctx, void *user_ctx)
         ObjectClass *oc = object_get_class(OBJECT(cpu));
         const char *cpu_model = object_class_get_name(oc);
         char *cpu_name = object_get_canonical_path_component(OBJECT(cpu));
-        len = snprintf((char *)gdb_ctx->mem_buf, sizeof(gdb_ctx->str_buf) / 2,
-                       "%s %s [%s]", cpu_model, cpu_name,
-                       cpu->halted ? "halted " : "running");
+
+        if (cpu->gdb_id) {
+            len = snprintf((char *)gdb_ctx->mem_buf, sizeof(gdb_ctx->str_buf) / 2,
+                           "%s [%s]", cpu->gdb_id,
+                           cpu->halted ? "halted " : "running");
+        } else {
+            len = snprintf((char *)gdb_ctx->mem_buf, sizeof(gdb_ctx->str_buf) / 2,
+                           "%s %s [%s]", cpu_model, cpu_name,
+                           cpu->halted ? "halted " : "running");
+        }
         g_free(cpu_name);
     } else {
         /* memtohex() doubles the required space */
