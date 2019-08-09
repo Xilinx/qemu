@@ -424,6 +424,7 @@ static Property arm_gic_common_properties[] = {
      * versions 1 or 2, or 0 to indicate the legacy 11MPCore GIC.
      */
     DEFINE_PROP_UINT32("revision", GICState, revision, 1),
+    DEFINE_PROP_UINT32("int-id", GICState, c_iidr, 0),
     /* True if the GIC should implement the security extensions */
     DEFINE_PROP_BOOL("has-security-extensions", GICState, security_extn, 0),
     /* True if the GIC should implement the virtualization extensions */

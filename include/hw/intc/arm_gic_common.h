@@ -135,6 +135,11 @@ typedef struct GICState {
     MemoryRegion vifaceiomem[GIC_NCPU + 1]; /* Virtual interfaces */
     MemoryRegion vcpuiomem; /* vCPU interface */
 
+    /* The Interface Identification Register.
+     * This is implementation defined
+     */
+    uint32_t c_iidr;
+
     uint32_t num_irq;
     uint32_t revision;
     bool security_extn;
