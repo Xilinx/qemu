@@ -178,7 +178,7 @@ void gic_init_irqs_and_mmio(GICState *s, qemu_irq_handler handler,
      * present because it is required by both software emulation and KVM.
      */
     memory_region_init_io(&s->cpuiomem[0], OBJECT(s), ops ? &ops[1] : NULL,
-                          s, "gic_cpu", s->revision == 2 ? 0x2000 : 0x100);
+                          s, "gic_cpu", s->revision == 2 ? s->map_stride * 2 : 0x100);
     sysbus_init_mmio(sbd, &s->cpuiomem[0]);
 
     if (s->virt_extn) {
@@ -188,7 +188,7 @@ void gic_init_irqs_and_mmio(GICState *s, qemu_irq_handler handler,
 
         memory_region_init_io(&s->vcpuiomem, OBJECT(s),
                               virt_ops ? &virt_ops[1] : NULL,
-                              s, "gic_vcpu", 0x2000);
+                              s, "gic_vcpu", s->map_stride * 2);
         sysbus_init_mmio(sbd, &s->vcpuiomem);
     }
 }
@@ -424,6 +424,8 @@ static Property arm_gic_common_properties[] = {
      * versions 1 or 2, or 0 to indicate the legacy 11MPCore GIC.
      */
     DEFINE_PROP_UINT32("revision", GICState, revision, 1),
+    /* TODO: 2019.2: Deprecate the map-stride option at some point.  */
+    DEFINE_PROP_UINT32("map-stride", GICState, map_stride, 0x1000),
     DEFINE_PROP_UINT32("int-id", GICState, c_iidr, 0),
     /* True if the GIC should implement the security extensions */
     DEFINE_PROP_BOOL("has-security-extensions", GICState, security_extn, 0),

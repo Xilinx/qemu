@@ -140,6 +140,7 @@ typedef struct GICState {
      */
     uint32_t c_iidr;
 
+    uint32_t map_stride;
     uint32_t num_irq;
     uint32_t revision;
     bool security_extn;
