@@ -1107,7 +1107,7 @@ static void device_unparent(Object *obj)
 }
 
 static Property device_props[] = {
-    DEFINE_PROP_STRING("device-id", DeviceState, id),
+    DEFINE_PROP_STRING_CONST("device-id", DeviceState, id),
     DEFINE_PROP_END_OF_LIST(),
 };
 

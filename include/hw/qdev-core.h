@@ -153,7 +153,7 @@ struct DeviceState {
     Object parent_obj;
     /*< public >*/
 
-    char *id;
+    const char *id;
     char *canonical_path;
     bool realized;
     bool pending_deleted_event;

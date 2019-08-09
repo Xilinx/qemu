@@ -210,7 +210,7 @@ static void pxb_dev_realize_common(PCIDevice *dev, bool pcie, Error **errp)
     PXBDev *pxb = convert_to_pxb(dev);
     DeviceState *ds, *bds = NULL;
     PCIBus *bus;
-    char *dev_name = NULL;
+    const char *dev_name = NULL;
     Error *local_err = NULL;
 
     if (pxb->numa_node != NUMA_NODE_UNASSIGNED &&
