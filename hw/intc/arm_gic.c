@@ -1565,9 +1565,9 @@ static void arm_gic_realize(DeviceState *dev, Error **errp)
     memory_region_init_io(&s->cpuiomem[0], OBJECT(s), &gic_thiscpu_ops, s,
                           "gic_cpu", s->revision >= 2 ? s->map_stride * 2 : 0x100);
     memory_region_init_io(&s->hypiomem[0], OBJECT(s), &gic_thishyp_ops, s,
-                          "gic_thishyp_cpu", 0x200);
+                          "gic_viface", 0x200);
     memory_region_init_io(&s->vcpuiomem, OBJECT(s), &gic_thisvcpu_ops, s,
-                          "gic_thisvcpu",
+                          "gic_vcpu",
                           s->revision >= 2 ? s->map_stride * 2 : 0x2000);
     for (i = 0; i < NUM_CPU(s); i++) {
         char *region_name = g_strdup_printf("gic_hyp_cpu-%d", i);
