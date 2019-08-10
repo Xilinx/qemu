@@ -358,8 +358,8 @@ static char *rp_autocreate_chardesc(RemotePort *s, bool server)
     int r;
 
     prefix = rp_sanitize_prefix(s);
-    r = asprintf(&chardesc, "unix:%s/qemu-rport-%s,wait%s",
-                 machine_path, prefix, server ? ",server" : "");
+    r = asprintf(&chardesc, "unix:%s/qemu-rport-%s%s",
+                 machine_path, prefix, server ? ",wait,server" : "");
     assert(r > 0);
     free(prefix);
     return chardesc;
