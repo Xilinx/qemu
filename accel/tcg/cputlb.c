@@ -33,7 +33,6 @@
 #include "exec/helper-proto.h"
 #include "qemu/atomic.h"
 #include "qemu/atomic128.h"
-#include "qemu/etrace.h"
 
 /* DEBUG defines, enable DEBUG_TLB_LOG to log to the CPU_LOG_MMU target */
 /* #define DEBUG_TLB */
@@ -932,7 +931,6 @@ static uint64_t io_readx(CPUArchState *env, CPUIOTLBEntry *iotlbentry,
         cpu_transaction_failed(cpu, physaddr, addr, size, access_type,
                                mmu_idx, iotlbentry->attrs, r, retaddr);
     }
-
     if (locked) {
         qemu_mutex_unlock_iothread();
     }
@@ -983,7 +981,6 @@ static void io_writex(CPUArchState *env, CPUIOTLBEntry *iotlbentry,
         cpu_transaction_failed(cpu, physaddr, addr, size, MMU_DATA_STORE,
                                mmu_idx, iotlbentry->attrs, r, retaddr);
     }
-
     if (locked) {
         qemu_mutex_unlock_iothread();
     }
