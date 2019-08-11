@@ -27,6 +27,7 @@
 #include "hw/register.h"
 
 #define TYPE_XLNX_ZYNQMP_RTC "xlnx-zynmp.rtc"
+#define TYPE_XLNX_ZYNQMP_ALIAS_RTC "xlnx,zynqmp-rtc"
 
 #define XLNX_ZYNQMP_RTC(obj) \
      OBJECT_CHECK(XlnxZynqMPRTC, (obj), TYPE_XLNX_ZYNQMP_RTC)
