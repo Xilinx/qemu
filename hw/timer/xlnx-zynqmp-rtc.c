@@ -266,9 +266,15 @@ static const TypeInfo rtc_info = {
     .instance_init = rtc_init,
 };
 
+static const TypeInfo rtc_alias_info = {
+    .name           = TYPE_XLNX_ZYNQMP_ALIAS_RTC,
+    .parent         = TYPE_XLNX_ZYNQMP_RTC,
+};
+
 static void rtc_register_types(void)
 {
     type_register_static(&rtc_info);
+    type_register_static(&rtc_alias_info);
 }
 
 type_init(rtc_register_types)
