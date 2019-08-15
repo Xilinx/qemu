@@ -452,6 +452,24 @@ static void zynqmp_efuse_pgm_addr_postw(DepRegisterInfo *reg, uint64_t val64)
 
     efuse_idx = s->regs[R_EFUSE_PGM_ADDR];
 
+    /* Allow only valid array, and adjust for skipped array 1 */
+    switch (DEP_AF_EX32(s->regs, EFUSE_PGM_ADDR, EFUSE)) {
+    case 0:
+        break;
+    case 2:
+        val64 = DEP_F_DP32(efuse_idx, EFUSE_PGM_ADDR, EFUSE, 1);
+        break;
+    case 3:
+        val64 = DEP_F_DP32(efuse_idx, EFUSE_PGM_ADDR, EFUSE, 2);
+        break;
+    default:
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: Denied write to invalid eFuse array: addr=%#x\n",
+                      object_get_canonical_path(OBJECT(s)),
+                      efuse_idx);
+        return;
+    }
+
     /* TODO: Sanity check the timing setup.  */
 
     wr_lock = DEP_AF_EX32(s->regs, WR_LOCK, LOCK);
@@ -481,11 +499,34 @@ static void zynqmp_efuse_pgm_addr_postw(DepRegisterInfo *reg, uint64_t val64)
                       efuse_idx);
         return;
     }
+
+    /* Set up to detect done-transition */
+    DEP_AF_DP32(s->regs, EFUSE_ISR, PGM_ERROR, 0);
+    DEP_AF_DP32(s->regs, EFUSE_ISR, PGM_DONE, 0);
+
     efuse_pgm_start(s->efuse, 13, val64);
     /* To Vefify after programming, Cache reload should should happen or
      * Margin Read is done
      * FIXME: Implement Margin Read
      */
+}
+
+static void zynqmp_efuse_pgm_done(DeviceState *dev, bool failed)
+{
+    ZynqMPEFuse *s = ZYNQMP_EFUSE(dev);
+
+    DEP_AF_DP32(s->regs, EFUSE_ISR, PGM_ERROR, (failed ? 1 : 0));
+    DEP_AF_DP32(s->regs, EFUSE_ISR, PGM_DONE, 1);
+    zynqmp_efuse_update_irq(s);
+}
+
+static void zynqmp_efuse_aes_crc_postw(DepRegisterInfo *reg, uint64_t val64)
+{
+    ZynqMPEFuse *s = ZYNQMP_EFUSE(reg->opaque);
+
+    /* TODO: do real CRC-check */
+    DEP_AF_DP32(s->regs, STATUS, AES_CRC_PASS, (val64 != 0));
+    DEP_AF_DP32(s->regs, STATUS, AES_CRC_DONE, 1);
 }
 
 static void zynqmp_efuse_cfg_postw(DepRegisterInfo *reg, uint64_t val64)
@@ -562,6 +603,7 @@ static DepRegisterAccessInfo zynqmp_efuse_regs_info[] = {
         .pre_write = zynqmp_efuse_cache_load_prew,
     },{ .name = "EFUSE_PGM_LOCK",  .decode.addr = A_EFUSE_PGM_LOCK,
     },{ .name = "EFUSE_AES_CRC",  .decode.addr = A_EFUSE_AES_CRC,
+        .post_write = zynqmp_efuse_aes_crc_postw,
     },{ .name = "EFUSE_TBITS_PRGRMG_EN",  .decode.addr = A_EFUSE_TBITS_PRGRMG_EN,
         .reset = R_EFUSE_TBITS_PRGRMG_EN_TBITS_PRGRMG_EN_MASK,
     },{ .name = "DNA_0",  .decode.addr = A_DNA_0,
@@ -729,6 +771,12 @@ static void zynqmp_efuse_realize(DeviceState *dev, Error **errp)
         error_setg(&error_abort,
                    "%s: AES EFUSE key sink not connected\n", prefix);
     }
+
+    if (!s->efuse) {
+        error_setg(&error_abort, "%s: XLN-EFUSE not connected", prefix);
+    }
+    s->efuse->pgm_done = zynqmp_efuse_pgm_done;
+    s->efuse->dev = dev;
 
     for (i = 0; i < ARRAY_SIZE(zynqmp_efuse_regs_info); ++i) {
         DepRegisterInfo *r = &s->regs_info[
