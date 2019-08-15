@@ -520,6 +520,112 @@ static void zynqmp_efuse_pgm_done(DeviceState *dev, bool failed)
     zynqmp_efuse_update_irq(s);
 }
 
+static void zynqmp_efuse_rd_addr_postw(DepRegisterInfo *reg, uint64_t val64)
+{
+    ZynqMPEFuse *s = ZYNQMP_EFUSE(reg->opaque);
+
+    /*
+     * zynqmp_efuse_mem_read() has already applied in-programming guard.
+     *
+     * Still need to grant reads only to allowed bits; reference sources:
+     * 1/ XilSKey - XilSKey_ZynqMp_EfusePs_ReadRow()
+     * 2/ UG1085, v2.0, table 12-13
+     */
+#define COL_MASK(L_, H_) \
+    ((uint32_t)(((1ULL << ((H_) - (L_) + 1)) - 1) << (L_)))
+
+    static const uint32_t ary0_col_mask[] = {
+        /* XilSKey - XSK_ZYNQMP_EFUSEPS_TBITS_ROW */
+        [0]  = COL_MASK(28, 31),
+
+        /* XilSKey - XSK_ZYNQMP_EFUSEPS_USR{0:7}_FUSE_ROW */
+        [8]  = COL_MASK(0, 31), [9]  = COL_MASK(0, 31),
+        [10] = COL_MASK(0, 31), [11] = COL_MASK(0, 31),
+        [12] = COL_MASK(0, 31), [13] = COL_MASK(0, 31),
+        [14] = COL_MASK(0, 31), [15] = COL_MASK(0, 31),
+
+        /* XilSKey - XSK_ZYNQMP_EFUSEPS_MISC_USR_CTRL_ROW */
+        [16] = COL_MASK(0, 0) | COL_MASK(10, 16),
+
+        /* XilSKey - XSK_ZYNQMP_EFUSEPS_PBR_BOOT_ERR_ROW */
+        [17] = COL_MASK(0, 2),
+
+        /* XilSKey - XSK_ZYNQMP_EFUSEPS_PUF_CHASH_ROW */
+        [20] = COL_MASK(0, 31),
+
+        /* XilSKey - XSK_ZYNQMP_EFUSEPS_PUF_AUX_ROW */
+        [21] = COL_MASK(0, 23) | COL_MASK(29, 31),
+
+        /* XilSKey - XSK_ZYNQMP_EFUSEPS_SEC_CTRL_ROW */
+        [22] = COL_MASK(0, 31),
+
+        /* XilSKey - XSK_ZYNQMP_EFUSEPS_SPK_ID_ROW */
+        [23] = COL_MASK(0, 31),
+
+        /* XilSKey - XSK_ZYNQMP_EFUSEPS_PPK0_START_ROW */
+        [40] = COL_MASK(0, 31), [41] = COL_MASK(0, 31),
+        [42] = COL_MASK(0, 31), [43] = COL_MASK(0, 31),
+        [44] = COL_MASK(0, 31), [45] = COL_MASK(0, 31),
+        [46] = COL_MASK(0, 31), [47] = COL_MASK(0, 31),
+        [48] = COL_MASK(0, 31), [49] = COL_MASK(0, 31),
+        [50] = COL_MASK(0, 31), [51] = COL_MASK(0, 31),
+
+        /* XilSKey - XSK_ZYNQMP_EFUSEPS_PPK1_START_ROW */
+        [52] = COL_MASK(0, 31), [53] = COL_MASK(0, 31),
+        [54] = COL_MASK(0, 31), [55] = COL_MASK(0, 31),
+        [56] = COL_MASK(0, 31), [57] = COL_MASK(0, 31),
+        [58] = COL_MASK(0, 31), [59] = COL_MASK(0, 31),
+        [60] = COL_MASK(0, 31), [61] = COL_MASK(0, 31),
+        [62] = COL_MASK(0, 31), [63] = COL_MASK(0, 31),
+    };
+
+    uint32_t col_mask = COL_MASK(0, 31);
+#undef COL_MASK
+
+    uint32_t efuse_idx = s->regs[R_EFUSE_RD_ADDR];
+    uint32_t efuse_ary = DEP_F_EX32(efuse_idx, EFUSE_RD_ADDR, EFUSE);
+    uint32_t efuse_row = DEP_F_EX32(efuse_idx, EFUSE_RD_ADDR, ROW);
+
+    switch (efuse_ary) {
+    case 0:     /* Various */
+        if (efuse_row >= ARRAY_SIZE(ary0_col_mask)) {
+            goto denied;
+        }
+
+        col_mask = ary0_col_mask[efuse_row];
+        if (!col_mask) {
+            goto denied;
+        }
+        break;
+    case 2:     /* PUF helper data, adjust for skipped array 1 */
+    case 3:
+        val64 = DEP_F_DP32(efuse_idx, EFUSE_RD_ADDR, EFUSE, efuse_ary - 1);
+        break;
+    default:
+        goto denied;
+    }
+
+    s->regs[R_EFUSE_RD_DATA] = s->efuse->fuse32[val64 / 32] & col_mask;
+
+    DEP_AF_DP32(s->regs, EFUSE_ISR, RD_ERROR, 0);
+    DEP_AF_DP32(s->regs, EFUSE_ISR, RD_DONE, 1);
+    zynqmp_efuse_update_irq(s);
+    return;
+
+ denied:
+    qemu_log_mask(LOG_GUEST_ERROR,
+                  "%s: Denied efuse read from array %u, row %u\n",
+                  object_get_canonical_path(OBJECT(s)),
+                  efuse_ary, efuse_row);
+
+    s->regs[R_EFUSE_RD_DATA] = 0;
+
+    DEP_AF_DP32(s->regs, EFUSE_ISR, RD_ERROR, 1);
+    DEP_AF_DP32(s->regs, EFUSE_ISR, RD_DONE, 0);
+    zynqmp_efuse_update_irq(s);
+    return;
+}
+
 static void zynqmp_efuse_aes_crc_postw(DepRegisterInfo *reg, uint64_t val64)
 {
     ZynqMPEFuse *s = ZYNQMP_EFUSE(reg->opaque);
@@ -574,6 +680,7 @@ static DepRegisterAccessInfo zynqmp_efuse_regs_info[] = {
          .post_write = zynqmp_efuse_pgm_addr_postw
     },{ .name = "EFUSE_RD_ADDR",  .decode.addr = A_EFUSE_RD_ADDR,
         .rsvd = 0x1f,
+        .post_write = zynqmp_efuse_rd_addr_postw,
     },{ .name = "EFUSE_RD_DATA",  .decode.addr = A_EFUSE_RD_DATA,
         .ro = 0xffffffff,
     },{ .name = "TPGM",  .decode.addr = A_TPGM,
