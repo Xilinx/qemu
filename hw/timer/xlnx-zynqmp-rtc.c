@@ -39,6 +39,26 @@
 #define XLNX_ZYNQMP_RTC_ERR_DEBUG 0
 #endif
 
+enum version_id {
+    IP_VERSION_1_0_1 = 0,
+    IP_VERSION_2_0_0 = 1
+};
+
+struct version_item_lookup {
+    enum version_id id;
+    const char *str;
+};
+
+static struct version_item_lookup  version_table_lookup[] = {
+    { IP_VERSION_1_0_1, "1.0.1" },
+    { IP_VERSION_2_0_0, "2.0.0" }
+};
+
+static Property xlnx_rtc_properties[] = {
+    DEFINE_PROP_STRING("version", XlnxZynqMPRTC, cfg.version),
+    DEFINE_PROP_END_OF_LIST(),
+};
+
 static void rtc_int_update_irq(XlnxZynqMPRTC *s)
 {
     bool pending = s->regs[R_RTC_INT_STATUS] & ~s->regs[R_RTC_INT_MASK];
@@ -112,14 +132,26 @@ static uint64_t addr_error_int_dis_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
+static void rtc_set_timer_postw(RegisterInfo *reg, uint64_t val64)
+{
+    XlnxZynqMPRTC *s = XLNX_ZYNQMP_RTC(reg->opaque);
+    s->tick_offset = (uint32_t) val64;
+}
+
+static void rtc_calib_write_postw(RegisterInfo *reg, uint64_t val64)
+{
+    XlnxZynqMPRTC *s = XLNX_ZYNQMP_RTC(reg->opaque);
+    s->regs[R_CALIB_READ] = (uint32_t) val64;
+}
+
 static const RegisterAccessInfo rtc_regs_info[] = {
     {   .name = "SET_TIME_WRITE",  .addr = A_SET_TIME_WRITE,
-        .unimp = MAKE_64BIT_MASK(0, 32),
+        .post_write = rtc_set_timer_postw,
     },{ .name = "SET_TIME_READ",  .addr = A_SET_TIME_READ,
         .ro = 0xffffffff,
         .post_read = current_time_postr,
     },{ .name = "CALIB_WRITE",  .addr = A_CALIB_WRITE,
-        .unimp = MAKE_64BIT_MASK(0, 32),
+        .post_write = rtc_calib_write_postw,
     },{ .name = "CALIB_READ",  .addr = A_CALIB_READ,
         .ro = 0x1fffff,
     },{ .name = "CURRENT_TIME",  .addr = A_CURRENT_TIME,
@@ -155,6 +187,30 @@ static const RegisterAccessInfo rtc_regs_info[] = {
     }
 };
 
+static const RegisterAccessInfo rtc_regs_control_v2_info = {
+    .name = "CONTROL",   .addr = A_CONTROL,
+    .reset = 0x2000000,  .rsvd = 0x70fffffe,
+};
+
+static enum version_id version_id_lookup(const char *str)
+{
+    uint32_t i;
+    enum version_id version;
+
+    version = IP_VERSION_1_0_1;
+
+    if (str) {
+        for (i = 0; i < ARRAY_SIZE(version_table_lookup); ++i) {
+            if (!strcmp(str, version_table_lookup[i].str)) {
+                version =  version_table_lookup[i].id;
+                break;
+            }
+        }
+    }
+
+    return version;
+}
+
 static void rtc_reset(DeviceState *dev)
 {
     XlnxZynqMPRTC *s = XLNX_ZYNQMP_RTC(dev);
@@ -162,6 +218,11 @@ static void rtc_reset(DeviceState *dev)
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
         register_reset(&s->regs_info[i]);
+    }
+
+    if (version_id_lookup(s->cfg.version) == IP_VERSION_2_0_0) {
+        s->regs_info[R_CONTROL].access = &rtc_regs_control_v2_info;
+        register_reset(&s->regs_info[R_CONTROL]);
     }
 
     trace_xlnx_zynqmp_rtc_gettime(s->current_tm.tm_year, s->current_tm.tm_mon,
@@ -247,6 +308,7 @@ static void rtc_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->reset = rtc_reset;
+    dc->props = xlnx_rtc_properties;
     dc->vmsd = &vmstate_rtc;
 }
 
