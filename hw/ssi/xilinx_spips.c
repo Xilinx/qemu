@@ -1282,7 +1282,7 @@ static const MemoryRegionOps lqspi_ops = {
     .write_with_attrs = lqspi_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
     .impl = {
-        .min_access_size = 4,
+        .min_access_size = 1,
         .max_access_size = 4,
     },
     .valid = {
