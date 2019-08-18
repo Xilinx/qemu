@@ -1,6 +1,9 @@
 common-obj-$(CONFIG_DP8393X) += dp8393x.o
 common-obj-$(CONFIG_XEN) += xen_nic.o
 
+# CAN
+common-obj-$(CONFIG_XILINX_ZYNQMP) += can/xlnx-zynqmp-can.o
+
 # PCI network cards
 common-obj-$(CONFIG_NE2000_PCI) += ne2000.o
 common-obj-$(CONFIG_EEPRO100_PCI) += eepro100.o
