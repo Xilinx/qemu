@@ -118,8 +118,8 @@ static void efuse_sync_bdrv(XLNXEFuse *s)
 {
     unsigned int efuse_byte;
 
-    if (!s->blk) {
-        return;
+    if (!s->blk || s->blk_ro) {
+        return;  /* Silient on read-only backend to avoid message flood */
     }
 
     efuse_byte = s->efuse_idx / 8;
@@ -156,12 +156,20 @@ static void timer_pgm_hit(void *opaque)
     XLNXEFuse *s = XLNX_EFUSE(opaque);
     unsigned int efuse_word;
 
+    if (s->programming == false) {
+        return;     /* false alarm */
+    }
+
     efuse_word = s->efuse_idx / 32;
 
     s->fuse32[efuse_word] |= 1 << (s->efuse_idx % 32);
     efuse_sync_bdrv(s);
 
     s->programming = false;
+
+    if (s->pgm_done) {
+        s->pgm_done(s->dev, false);
+    }
 }
 
 void efuse_stop_timer_ps(XLNXEFuse *s)
@@ -206,12 +214,22 @@ static void efuse_realize(DeviceState *dev, Error **errp)
     s->fuse32 = g_malloc0(nr_bytes);
     if (blk) {
         qdev_prop_set_drive(dev, "drive", blk, NULL);
+
+        s->blk_ro = blk_is_read_only(s->blk);
+        if (s->blk_ro) {
+            warn_report("%s: update not saved: backstore is read-only",
+                        object_get_canonical_path(OBJECT(s)));
+        }
+        blk_set_perm(s->blk,
+                     (BLK_PERM_CONSISTENT_READ
+                      | (s->blk_ro ? 0 : BLK_PERM_WRITE)), BLK_PERM_ALL,
+                     &error_abort);
+
         if (blk_pread(s->blk, 0, (void *) s->fuse32, nr_bytes) < 0) {
-            error_report("%s: Unable to read-out contents."
+            error_setg(&error_abort, "%s: Unable to read-out contents."
                          "backing file too small? Expecting %" PRIu32" bytes",
                           prefix,
                           (unsigned int) (nr_bytes));
-            exit(1);
         }
     }
 
