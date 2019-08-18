@@ -623,7 +623,6 @@ static void zynqmp_efuse_rd_addr_postw(DepRegisterInfo *reg, uint64_t val64)
     DEP_AF_DP32(s->regs, EFUSE_ISR, RD_ERROR, 1);
     DEP_AF_DP32(s->regs, EFUSE_ISR, RD_DONE, 0);
     zynqmp_efuse_update_irq(s);
-    return;
 }
 
 static void zynqmp_efuse_aes_crc_postw(DepRegisterInfo *reg, uint64_t val64)
