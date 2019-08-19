@@ -255,8 +255,14 @@ REG32(AFIR4, 0x80)
 
 static void can_update_irq(XlnxZynqMPCAN *s)
 {
-    unsigned int irq = s->regs[R_INTERRUPT_STATUS_REGISTER] &
-                        s->regs[R_INTERRUPT_ENABLE_REGISTER];
+    unsigned int irq;
+
+    if (fifo_num_used(&s->rx_fifo) >= CAN_FRAME_SIZE) {
+        ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, RXNEMP, 1);
+    }
+
+    irq = s->regs[R_INTERRUPT_STATUS_REGISTER];
+    irq &= s->regs[R_INTERRUPT_ENABLE_REGISTER];
 
     qemu_set_irq(s->irq, irq);
 }
@@ -538,7 +544,6 @@ static void transfer_data(XlnxZynqMPCAN *s, uint32_t reg_idx)
          * before the TXOK bit.
          */
         ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, RXOK, 1);
-        ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, RXNEMP, 1);
         ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, TXOK, 1);
 
         can_update_irq(s);
@@ -661,7 +666,6 @@ static void update_rx_fifo(XlnxZynqMPCAN *s, const qemu_can_frame *frame)
                                           R_TXFIFO_DATA2_DB4_LENGTH,
                                           frame->data[7])));
 
-            ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, RXNEMP, 1);
             ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, RXOK, 1);
         }
 
@@ -676,26 +680,18 @@ static void update_rx_fifo(XlnxZynqMPCAN *s, const qemu_can_frame *frame)
 static uint64_t can_rxfifo_pre_read(RegisterInfo *reg, uint64_t val64)
 {
     XlnxZynqMPCAN *s = XLNX_ZYNQMP_CAN(reg->opaque);
+    uint32_t r = 0;
 
-    if (!(fifo_is_empty(&s->rx_fifo))) {
-        /*
-         * After performing the read, if there are one or more messages in the
-         * RX FIFO, the RXNEMP bit in the ISR is set.
-         */
-        if (fifo_num_used(&s->rx_fifo) >= CAN_FRAME_SIZE) {
-            ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, RXNEMP, 1);
-            can_update_irq(s);
-        }
-
-        return fifo_pop32(&s->rx_fifo);
+    if (!fifo_is_empty(&s->rx_fifo)) {
+        r = fifo_pop32(&s->rx_fifo);
     } else {
         DB_PRINT("No message in RXFIFO\n");
 
         ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, RXUFLW, 1);
-        can_update_irq(s);
-
-        return 0;
     }
+
+    can_update_irq(s);
+    return r;
 }
 
 static void can_filter_enable_post_write(RegisterInfo *reg, uint64_t val64)
