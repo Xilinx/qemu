@@ -541,7 +541,6 @@ static void transfer_data(XlnxZynqMPCAN *s, uint32_t reg_idx)
         ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, TXOK, 1);
 
         can_update_irq(s);
-
     } else {
         qemu_can_frame frame;
 
