@@ -28,6 +28,8 @@
 #include "hw/stream.h"
 #include "hw/register.h"
 #include "qapi/error.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 
 #define TYPE_PMC_STREAM_ZERO "xlnx,pmc-stream-zero"
 

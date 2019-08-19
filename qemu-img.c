@@ -38,10 +38,10 @@
 #include "qemu/option.h"
 #include "qemu/error-report.h"
 #include "qemu/log.h"
+#include "qemu/main-loop.h"
 #include "qemu/module.h"
 #include "qemu/units.h"
 #include "qom/object_interfaces.h"
-#include "sysemu/sysemu.h"
 #include "sysemu/block-backend.h"
 #include "block/block_int.h"
 #include "block/blockjob.h"
@@ -2229,6 +2229,11 @@ static int img_convert(int argc, char **argv)
     if (tgt_image_opts && !skip_create) {
         error_report("--target-image-opts requires use of -n flag");
         goto fail_getopt;
+    }
+
+    if (skip_create && options) {
+        warn_report("-o has no effect when skipping image creation");
+        warn_report("This will become an error in future QEMU versions.");
     }
 
     s.src_num = argc - optind - 1;

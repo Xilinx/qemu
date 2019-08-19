@@ -31,6 +31,8 @@
 #include "qapi/qmp/qerror.h"
 #include "sysemu/blockdev.h"
 #include "sysemu/block-backend.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 
 #include "hw/fdt_generic_util.h"
 

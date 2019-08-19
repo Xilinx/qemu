@@ -15,13 +15,12 @@
 #include "qapi/error.h"
 #include "cpu.h"
 #include "sysemu/qtest.h"
-#include "hw/qdev.h"
+#include "sysemu/runstate.h"
 #include "chardev/char-fe.h"
 #include "exec/ioport.h"
 #include "exec/memory.h"
 #include "hw/irq.h"
 #include "sysemu/accel.h"
-#include "sysemu/sysemu.h"
 #include "sysemu/cpus.h"
 #include "qemu/config-file.h"
 #include "qemu/option.h"
@@ -748,8 +747,7 @@ static void qtest_event(void *opaque, int event)
         break;
     }
 }
-
-void qtest_init(const char *qtest_chrdev, const char *qtest_log, Error **errp)
+void qtest_server_init(const char *qtest_chrdev, const char *qtest_log, Error **errp)
 {
     Chardev *chr;
 

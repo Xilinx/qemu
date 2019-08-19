@@ -32,6 +32,8 @@
 #include "sysemu/block-backend.h"
 #include "exec/address-spaces.h"
 #include "qemu/host-utils.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 #include "hw/sysbus.h"
 
 #ifdef PL35X_ERR_DEBUG

@@ -29,6 +29,8 @@
 #include "qapi/error.h"
 #include "hw/i2c/i2c.h"
 #include "hw/block/m24cxx.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 
 #define TYPE_SODIMM_SPD "sodimm-spd"
 #define DEBUG_SODIMM_SPD     0

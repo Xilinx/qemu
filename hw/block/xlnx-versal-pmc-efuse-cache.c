@@ -28,6 +28,8 @@
 #include "hw/sysbus.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 #include "hw/block/xlnx-efuse.h"
 
 #ifndef XILINX_EFUSE_CACHE_ERR_DEBUG

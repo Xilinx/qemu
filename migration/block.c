@@ -16,6 +16,7 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
+#include "qemu/main-loop.h"
 #include "qemu/cutils.h"
 #include "qemu/queue.h"
 #include "block.h"
@@ -520,7 +521,6 @@ static int mig_save_device_dirty(QEMUFile *f, BlkMigDevState *bmds,
                                  int is_async)
 {
     BlkMigBlock *blk;
-    BlockDriverState *bs = blk_bs(bmds->blk);
     int64_t total_sectors = bmds->total_sectors;
     int64_t sector;
     int nr_sectors;
@@ -535,8 +535,8 @@ static int mig_save_device_dirty(QEMUFile *f, BlkMigDevState *bmds,
             blk_mig_unlock();
         }
         bdrv_dirty_bitmap_lock(bmds->dirty_bitmap);
-        if (bdrv_get_dirty_locked(bs, bmds->dirty_bitmap,
-                                  sector * BDRV_SECTOR_SIZE)) {
+        if (bdrv_dirty_bitmap_get_locked(bmds->dirty_bitmap,
+                                         sector * BDRV_SECTOR_SIZE)) {
             if (total_sectors - sector < BDRV_SECTORS_PER_DIRTY_CHUNK) {
                 nr_sectors = total_sectors - sector;
             } else {

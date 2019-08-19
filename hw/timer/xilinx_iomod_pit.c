@@ -30,6 +30,8 @@
 #include "qemu/log.h"
 #include "qemu/main-loop.h"
 #include "qapi/error.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 #include "hw/fdt_generic_util.h"
 
 #ifndef XILINX_IO_MODULE_PIT_ERR_DEBUG

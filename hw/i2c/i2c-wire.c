@@ -25,6 +25,8 @@
 
 
 #include "qemu/osdep.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 #include "hw/i2c/i2c.h"
 
 #define TYPE_I2C_WIRE "i2c-wire"

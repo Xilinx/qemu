@@ -23,6 +23,8 @@
 #include "sysemu/blockdev.h"
 #include "hw/i2c/pca954x.h"
 #include "qemu/log.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 
 #ifndef PCA954X_DEBUG
 #define PCA954X_DEBUG 0

@@ -28,7 +28,7 @@
 #define XLNX_AES_H
 
 #include "qemu/gcm.h"
-#include "hw/qdev.h"
+#include "hw/qdev-core.h"
 
 #define TYPE_XLNX_AES "xlnx-aes"
 

@@ -28,10 +28,13 @@
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "hw/register.h"
+#include "hw/irq.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
 #include "qapi/error.h"
 #include "sysemu/sysemu.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 #include "cpu.h"
 
 #ifndef XILINX_APU_CTRL_ERR_DEBUG

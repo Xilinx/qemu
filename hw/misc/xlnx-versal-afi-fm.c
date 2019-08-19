@@ -27,8 +27,11 @@
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "hw/register.h"
+#include "hw/irq.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 
 #ifndef XILINX_AFI_FM_ERR_DEBUG
 #define XILINX_AFI_FM_ERR_DEBUG 0

@@ -26,9 +26,10 @@
 #include "hw/sysbus.h"
 #include "qapi/error.h"
 #include "qemu/module.h"
-#include "hw/hw.h"
 #include "qom/cpu.h"
 #include "hw/fdt_generic_util.h"
+#include "hw/irq.h"
+#include "hw/qdev-properties.h"
 
 #define D(x)
 

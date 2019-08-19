@@ -31,6 +31,8 @@
 #include "sysemu/dma.h"
 #include "hw/hw.h"
 #include "net/net.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 
 #include "hw/remote-port.h"
 #include "hw/remote-port-device.h"

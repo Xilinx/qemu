@@ -30,6 +30,8 @@
 #include "hw/register-dep.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 
 #ifndef XILINX_PCIE_ATTRIB_ERR_DEBUG
 #define XILINX_PCIE_ATTRIB_ERR_DEBUG 0

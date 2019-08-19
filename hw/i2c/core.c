@@ -10,6 +10,8 @@
 #include "qemu/osdep.h"
 #include "hw/i2c/i2c.h"
 #include "hw/fdt_generic_util.h"
+#include "hw/qdev-properties.h"
+#include "migration/vmstate.h"
 #include "qemu/module.h"
 #include "trace.h"
 

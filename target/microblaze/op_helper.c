@@ -24,7 +24,7 @@
 #include "qemu/host-utils.h"
 #include "exec/exec-all.h"
 #include "exec/cpu_ldst.h"
-#include "hw/remote-port.h"
+#include "hw/irq.h"
 #include "fpu/softfloat.h"
 
 #define D(x)

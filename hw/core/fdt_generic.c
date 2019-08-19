@@ -26,9 +26,12 @@
 
 #include "qemu/osdep.h"
 #include "hw/fdt_generic.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 #include "qemu/coroutine.h"
 #include "qemu/log.h"
 #include "hw/cpu/cluster.h"
+#include "sysemu/reset.h"
 
 #ifndef FDT_GENERIC_ERR_DEBUG
 #define FDT_GENERIC_ERR_DEBUG 0

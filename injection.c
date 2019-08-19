@@ -21,10 +21,12 @@
 #include "qapi/qapi-commands-injection.h"
 #include "qemu/timer.h"
 #include "exec/memory.h"
+#include "hw/irq.h"
 #include "qom/cpu.h"
 #include "qemu/log.h"
 #include "qemu/queue.h"
 #include "sysemu/sysemu.h"
+#include "sysemu/runstate.h"
 #include "exec/exec-all.h"
 
 typedef struct FaultEventEntry FaultEventEntry;

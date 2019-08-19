@@ -1,4 +1,5 @@
 #include "qemu/osdep.h"
+#include "exec/hwaddr.h"
 #include "hw/dma-ctrl.h"
 
 void dma_ctrl_read_with_notify(DmaCtrl *dma_ctrl, hwaddr addr, uint32_t len,

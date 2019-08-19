@@ -27,11 +27,13 @@
 
 #include "qemu/osdep.h"
 #include "cpu.h"
+#include "hw/hw.h"
 #include "hw/sysbus.h"
 #include "qemu/log.h"
 #include "net/net.h"
 #include "hw/block/flash.h"
 #include "sysemu/sysemu.h"
+#include "sysemu/reset.h"
 #include "hw/boards.h"
 #include "sysemu/device_tree.h"
 #include "exec/memory.h"
@@ -41,6 +43,8 @@
 #include "sysemu/qtest.h"
 #include "qemu/config-file.h"
 #include "qemu/option.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 
 #include "hw/fdt_generic_util.h"
 #include "hw/fdt_generic_devices.h"

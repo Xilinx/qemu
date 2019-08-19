@@ -30,6 +30,8 @@
 #include "hw/sysbus.h"
 #include "qemu/log.h"
 #include "cpu.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 
 #include "qemu/bitops.h"
 #include "qapi/qmp/qerror.h"

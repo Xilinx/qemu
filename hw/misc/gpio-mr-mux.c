@@ -25,6 +25,7 @@
 #include "hw/sysbus.h"
 #include "qemu/log.h"
 #include "qapi/error.h"
+#include "hw/qdev-properties.h"
 
 #define TYPE_GPIO_MR_MUX "gpio-mr-mux"
 

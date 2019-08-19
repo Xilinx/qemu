@@ -11,6 +11,8 @@
 #include "qemu/osdep.h"
 #include "hw/misc/a9scu.h"
 #include "hw/fdt_generic_devices.h"
+#include "hw/qdev-properties.h"
+#include "migration/vmstate.h"
 #include "qemu/module.h"
 
 static uint64_t a9_scu_read(void *opaque, hwaddr offset,

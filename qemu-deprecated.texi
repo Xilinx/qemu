@@ -154,6 +154,18 @@ The ``status'' field of the ``BlockDirtyInfo'' structure, returned by
 the query-block command is deprecated. Two new boolean fields,
 ``recording'' and ``busy'' effectively replace it.
 
+@subsection query-block result field dirty-bitmaps (Since 4.2)
+
+The ``dirty-bitmaps`` field of the ``BlockInfo`` structure, returned by
+the query-block command is itself now deprecated. The ``dirty-bitmaps``
+field of the ``BlockDeviceInfo`` struct should be used instead, which is the
+type of the ``inserted`` field in query-block replies, as well as the
+type of array items in query-named-block-nodes.
+
+Since the ``dirty-bitmaps`` field is optionally present in both the old and
+new locations, clients must use introspection to learn where to anticipate
+the field if/when it does appear in command output.
+
 @subsection query-cpus (since 2.12.0)
 
 The ``query-cpus'' command is replaced by the ``query-cpus-fast'' command.
@@ -304,6 +316,13 @@ Note that if you are exposing the export via /dev/nbd0, it is easier
 to just export the entire image and then mount only /dev/nbd0p1 than
 it is to reinvoke @command{qemu-nbd -c /dev/nbd0} limited to just a
 subset of the image.
+
+@subsection qemu-img convert -n -o (since 4.2.0)
+
+All options specified in @option{-o} are image creation options, so
+they have no effect when used with @option{-n} to skip image creation.
+Silently ignored options can be confusing, so this combination of
+options will be made an error in future versions.
 
 @section Build system
 

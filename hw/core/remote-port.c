@@ -13,6 +13,7 @@
 #include "chardev/char.h"
 #include "sysemu/cpus.h"
 #include "hw/sysbus.h"
+#include "hw/hw.h"
 #include "hw/ptimer.h"
 #include "qemu/sockets.h"
 #include "qemu/thread.h"
@@ -20,6 +21,8 @@
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "qom/cpu.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 
 #ifndef _WIN32
 #include <sys/mman.h>

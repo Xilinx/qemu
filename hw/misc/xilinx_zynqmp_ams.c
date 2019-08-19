@@ -29,6 +29,8 @@
 #include "hw/register-dep.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 
 #ifndef XILINX_AMS_ERR_DEBUG
 #define XILINX_AMS_ERR_DEBUG 0

@@ -31,6 +31,8 @@
 #include "qapi/error.h"
 #include "qemu/log.h"
 #include "qemu/timer.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 
 #ifndef ARM_GEN_TIMER_ERR_DEBUG
 #define ARM_GEN_TIMER_ERR_DEBUG 0

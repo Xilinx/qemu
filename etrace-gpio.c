@@ -34,7 +34,7 @@
 #include "qemu/etrace.h"
 
 #ifndef CONFIG_USER_ONLY
-#include "hw/qdev.h"
+#include "hw/qdev-core.h"
 #include "hw/sysbus.h"
 
 typedef struct {

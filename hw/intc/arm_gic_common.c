@@ -23,6 +23,8 @@
 #include "qemu/module.h"
 #include "gic_internal.h"
 #include "hw/arm/linux-boot-if.h"
+#include "hw/qdev-properties.h"
+#include "migration/vmstate.h"
 
 #include "hw/fdt_generic_util.h"
 #include "hw/fdt_generic_devices.h"

@@ -10,9 +10,12 @@
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "sysemu/sysemu.h"
+#include "sysemu/runstate.h"
+#include "sysemu/reset.h"
 #include "qemu/log.h"
 #include "qapi/qmp/qerror.h"
-#include "hw/qdev.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 
 #define TYPE_RESET_DEVICE "qemu.reset-device"
 #define RESET_DEVICE(obj) \

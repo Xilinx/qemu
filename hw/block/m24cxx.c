@@ -26,6 +26,8 @@
 #include "qemu/log.h"
 #include "qapi/error.h"
 #include "hw/block/m24cxx.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 
 #ifndef M24CXX_DEBUG
 #define M24CXX_DEBUG 0

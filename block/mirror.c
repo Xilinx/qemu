@@ -476,7 +476,7 @@ static uint64_t coroutine_fn mirror_iteration(MirrorBlockJob *s)
         int64_t next_offset = offset + nb_chunks * s->granularity;
         int64_t next_chunk = next_offset / s->granularity;
         if (next_offset >= s->bdev_length ||
-            !bdrv_get_dirty_locked(source, s->dirty_bitmap, next_offset)) {
+            !bdrv_dirty_bitmap_get_locked(s->dirty_bitmap, next_offset)) {
             break;
         }
         if (test_bit(next_chunk, s->in_flight_bitmap)) {
@@ -656,7 +656,10 @@ static int mirror_exit_common(Job *job)
     s->target = NULL;
 
     /* We don't access the source any more. Dropping any WRITE/RESIZE is
-     * required before it could become a backing file of target_bs. */
+     * required before it could become a backing file of target_bs. Not having
+     * these permissions any more means that we can't allow any new requests on
+     * mirror_top_bs from now on, so keep it drained. */
+    bdrv_drained_begin(mirror_top_bs);
     bs_opaque->stop = true;
     bdrv_child_refresh_perms(mirror_top_bs, mirror_top_bs->backing,
                              &error_abort);
@@ -724,6 +727,7 @@ static int mirror_exit_common(Job *job)
     bs_opaque->job = NULL;
 
     bdrv_drained_end(src);
+    bdrv_drained_end(mirror_top_bs);
     s->in_drain = false;
     bdrv_unref(mirror_top_bs);
     bdrv_unref(src);
@@ -1632,6 +1636,7 @@ static BlockJob *mirror_start_job(
         blk_set_force_allow_inactivate(s->target);
     }
     blk_set_allow_aio_context_change(s->target, true);
+    blk_set_disable_request_queuing(s->target, true);
 
     s->replaces = g_strdup(replaces);
     s->on_source_error = on_source_error;
@@ -1750,8 +1755,10 @@ void mirror_start(const char *job_id, BlockDriverState *bs,
     bool is_none_mode;
     BlockDriverState *base;
 
-    if (mode == MIRROR_SYNC_MODE_INCREMENTAL) {
-        error_setg(errp, "Sync mode 'incremental' not supported");
+    if ((mode == MIRROR_SYNC_MODE_INCREMENTAL) ||
+        (mode == MIRROR_SYNC_MODE_BITMAP)) {
+        error_setg(errp, "Sync mode '%s' not supported",
+                   MirrorSyncMode_str(mode));
         return;
     }
     is_none_mode = mode == MIRROR_SYNC_MODE_NONE;

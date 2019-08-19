@@ -10,9 +10,12 @@
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "sysemu/sysemu.h"
+#include "sysemu/runstate.h"
+#include "sysemu/reset.h"
 #include "qemu/log.h"
 #include "qapi/error.h"
-#include "hw/qdev.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 
 #ifndef RESET_DOMAIN_DEBUG
 #define RESET_DOMAIN_DEBUG 0

@@ -11,7 +11,10 @@
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "qemu/log.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 
+#include "hw/hw.h"
 #include "hw/stream.h"
 #include "qemu/bitops.h"
 #include "sysemu/dma.h"

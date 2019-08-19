@@ -1,7 +1,7 @@
 #ifndef MDIO_SLAVE_H
 #define MDIO_SLAVE_H
 
-#include "hw/qdev.h"
+#include "hw/qdev-core.h"
 
 #define TYPE_MDIO_SLAVE "mdio-slave"
 #define MDIO_SLAVE(obj) \

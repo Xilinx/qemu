@@ -28,6 +28,17 @@
 
 #define IRQ(obj) OBJECT_CHECK(struct IRQState, (obj), TYPE_IRQ)
 
+#if 0
+/* Xilinx: Inherited by irq.h due to RegAPI.  */
+struct IRQState {
+    Object parent_obj;
+
+    qemu_irq_handler handler;
+    void *opaque;
+    int n;
+};
+#endif
+
 void qemu_set_irq(qemu_irq irq, int level)
 {
     if (!irq)

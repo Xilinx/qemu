@@ -41,6 +41,8 @@
 #include "qemu/error-report.h"
 #include "qemu/log.h"
 #include "qemu/main-loop.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 
 #include "sysemu/block-backend.h"
 #include "hw/zynqmp_aes_key.h"

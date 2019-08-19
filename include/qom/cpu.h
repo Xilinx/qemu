@@ -216,9 +216,9 @@ typedef struct CPUClass {
     int (*write_elf32_qemunote)(WriteCoreDumpFunction f, CPUState *cpu,
                                 void *opaque);
 
+    const VMStateDescription *vmsd;
     void (*set_debug_context)(CPUState *cpu, unsigned int ctx);
     const char **debug_contexts;
-    const struct VMStateDescription *vmsd;
     const char *gdb_core_xml_file;
     gchar * (*gdb_arch_name)(CPUState *cpu);
     const char * (*gdb_get_dynamic_xml)(CPUState *cpu, const char *xmlname);
@@ -1116,7 +1116,7 @@ bool target_words_bigendian(void);
 #ifdef NEED_CPU_H
 
 #ifdef CONFIG_SOFTMMU
-extern const struct VMStateDescription vmstate_cpu_common;
+extern const VMStateDescription vmstate_cpu_common;
 #else
 #define vmstate_cpu_common vmstate_dummy
 #endif

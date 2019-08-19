@@ -29,6 +29,8 @@
 #include "hw/sysbus.h"
 #include "hw/register-dep.h"
 #include "qemu/log.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 
 #ifndef IRQ_TEST_COMPONENT_ERR_DEBUG
 #define IRQ_TEST_COMPONENT_ERR_DEBUG 0

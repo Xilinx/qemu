@@ -27,6 +27,8 @@
 
 #include "qemu/bitops.h"
 #include "qapi/qmp/qerror.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 #include "hw/register-dep.h"
 #include "hw/stream.h"
 #include "qemu/fifo.h"

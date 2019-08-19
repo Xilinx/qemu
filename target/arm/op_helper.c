@@ -25,6 +25,7 @@
 #include "internals.h"
 #include "exec/exec-all.h"
 #include "exec/cpu_ldst.h"
+#include "hw/irq.h"
 #include "sysemu/cpus.h"
 
 #define SIGNBIT (uint32_t)0x80000000
@@ -132,21 +133,6 @@ uint32_t HELPER(sub_saturate)(CPUARMState *env, uint32_t a, uint32_t b)
     if (((res ^ a) & SIGNBIT) && ((a ^ b) & SIGNBIT)) {
         env->QF = 1;
         res = ~(((int32_t)a >> 31) ^ SIGNBIT);
-    }
-    return res;
-}
-
-uint32_t HELPER(double_saturate)(CPUARMState *env, int32_t val)
-{
-    uint32_t res;
-    if (val >= 0x40000000) {
-        res = ~SIGNBIT;
-        env->QF = 1;
-    } else if (val <= (int32_t)0xc0000000) {
-        res = SIGNBIT;
-        env->QF = 1;
-    } else {
-        res = val << 1;
     }
     return res;
 }

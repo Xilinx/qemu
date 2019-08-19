@@ -22,9 +22,12 @@
 #include "qemu/bitops.h"
 #include "qemu/timer.h"
 #include "hw/sysbus.h"
+#include "hw/irq.h"
 #include "hw/i2c/i2c.h"
 #include "qemu/fifo.h"
 #include "qemu/log.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 
 #define TYPE_CADENCE_I2C                  "cdns.i2c-r1p10"
 #define CADENCE_I2C(obj)                  \

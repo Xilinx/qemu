@@ -20,6 +20,8 @@
  */
 
 #include "qemu/osdep.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 #include "hw/pci/pci_ids.h"
 #include "hw/pci/msi.h"
 #include "hw/pci/pcie.h"

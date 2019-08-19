@@ -37,6 +37,8 @@
 #include "sysemu/blockdev.h"
 #include "qemu/log.h"
 #include "qapi/error.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 
 #ifndef ARASAN_NFC_ERR_DEBUG
 #define ARASAN_NFC_ERR_DEBUG 0

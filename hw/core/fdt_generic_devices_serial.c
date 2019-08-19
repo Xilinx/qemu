@@ -3,6 +3,7 @@
 #include "hw/fdt_generic_devices.h"
 #include "qom/object.h"
 #include "sysemu/blockdev.h"
+#include "sysemu/sysemu.h"
 #include "exec/memory.h"
 #include "exec/address-spaces.h"
 #include "qemu/log.h"

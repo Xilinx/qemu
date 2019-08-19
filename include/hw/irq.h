@@ -7,10 +7,7 @@
 
 #define TYPE_IRQ "irq"
 
-typedef struct IRQState *qemu_irq;
-
-typedef void (*qemu_irq_handler)(void *opaque, int n, int level);
-
+/* Xilinx: Needed by deprecated RegAPI.  */
 struct IRQState {
     Object parent_obj;
 

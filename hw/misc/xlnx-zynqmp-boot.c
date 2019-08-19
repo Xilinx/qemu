@@ -33,6 +33,8 @@
 #include "qemu/log.h"
 #include "qemu/main-loop.h"
 #include "qom/cpu.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 
 #include "hw/misc/xlnx-zynqmp-pmufw-cfg.h"
 

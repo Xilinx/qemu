@@ -8,7 +8,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "hw/qdev.h"
+#include "hw/qdev-core.h"
 #include "hw/sysbus.h"
 #include "monitor/monitor.h"
 #include "monitor/qdev.h"

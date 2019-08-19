@@ -28,7 +28,9 @@
  */
 
 #include "qemu/osdep.h"
-#include "hw/qdev.h"
+#include "hw/qdev-core.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 #include "qemu/log.h"
 #include "hw/register.h"
 #include "hw/sysbus.h"

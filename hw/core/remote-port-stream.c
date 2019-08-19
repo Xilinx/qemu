@@ -31,6 +31,8 @@
 #include "hw/register-dep.h"
 #include "hw/stream.h"
 #include "qapi/error.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 #include "hw/remote-port-device.h"
 
 #ifndef REMOTE_PORT_STREAM_ERR_DEBUG

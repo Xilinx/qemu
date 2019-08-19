@@ -27,6 +27,8 @@
 #include "hw/sysbus.h"
 #include "hw/register.h"
 #include "qemu/log.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 #include "hw/fdt_generic_util.h"
 
 #ifndef XILINX_IO_MODULE_INTC_ERR_DEBUG

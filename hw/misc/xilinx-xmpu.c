@@ -32,6 +32,8 @@
 #include "qemu/bitops.h"
 #include "qapi/error.h"
 #include "qemu/log.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 
 #include "sysemu/dma.h"
 #include "exec/address-spaces.h"

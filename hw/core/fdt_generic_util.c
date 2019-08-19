@@ -35,6 +35,7 @@
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "sysemu/sysemu.h"
+#include "sysemu/reset.h"
 #include "qemu/cutils.h"
 #include "sysemu/blockdev.h"
 #include "sysemu/block-backend.h"
@@ -46,7 +47,7 @@
 #include "hw/ssi/ssi.h"
 #include "hw/boards.h"
 #include "qemu/option.h"
-
+#include "hw/qdev-properties.h"
 
 #ifndef FDT_GENERIC_UTIL_ERR_DEBUG
 #define FDT_GENERIC_UTIL_ERR_DEBUG 3

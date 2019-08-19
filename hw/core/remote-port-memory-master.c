@@ -13,6 +13,8 @@
 #include "qapi/qmp/qerror.h"
 #include "qapi/error.h"
 #include "hw/sysbus.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 
 #include "hw/remote-port-proto.h"
 #include "hw/remote-port.h"

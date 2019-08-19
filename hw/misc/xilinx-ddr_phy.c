@@ -29,6 +29,8 @@
 #include "hw/register.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 
 #ifndef XILINX_DDR_PHY_ERR_DEBUG
 #define XILINX_DDR_PHY_ERR_DEBUG 0

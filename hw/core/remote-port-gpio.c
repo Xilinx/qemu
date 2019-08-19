@@ -13,7 +13,9 @@
 #include "qemu/log.h"
 #include "qapi/qmp/qerror.h"
 #include "qapi/error.h"
-#include "hw/qdev.h"
+#include "hw/qdev-core.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 
 #include "hw/fdt_generic_util.h"
 

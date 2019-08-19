@@ -31,6 +31,8 @@
 #include "hw/register-dep.h"
 #include "qemu/log.h"
 #include "sysemu/sysemu.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 
 #ifndef XILINX_IO_MODULE_UART_ERR_DEBUG
 #define XILINX_IO_MODULE_UART_ERR_DEBUG 0

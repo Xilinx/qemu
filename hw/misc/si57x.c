@@ -20,6 +20,8 @@
 
 #include "qemu/osdep.h"
 #include "qemu/log.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 #include "hw/i2c/i2c.h"
 
 #ifndef SI57X_DEBUG

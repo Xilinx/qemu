@@ -2,6 +2,8 @@
 #include "hw/misc/sss.h"
 #include "qapi/error.h"
 #include "qemu/log.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 #include "hw/register-dep.h"
 #include "hw/misc/sss.h"
 

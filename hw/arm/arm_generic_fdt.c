@@ -15,6 +15,7 @@
 
 #include "qemu/osdep.h"
 #include "cpu.h"
+#include "hw/hw.h"
 #include "hw/boards.h"
 #include "hw/loader.h"
 #include "qapi/error.h"
@@ -23,6 +24,7 @@
 #include "qemu/log.h"
 #include "qemu/config-file.h"
 #include "qemu/option.h"
+#include "sysemu/sysemu.h"
 #include "sysemu/qtest.h"
 #include "hw/arm/xlnx-zynqmp.h"
 

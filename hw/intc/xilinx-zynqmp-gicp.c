@@ -28,6 +28,9 @@
 #include "qapi/error.h"
 #include "hw/sysbus.h"
 #include "hw/register-dep.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
+
 #include "qemu/bitops.h"
 #include "qemu/log.h"
 

@@ -33,6 +33,8 @@
 #include "qapi/error.h"
 #include "sysemu/blockdev.h"
 #include "sysemu/block-backend.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 
 #include "hw/zynqmp_aes_key.h"
 

@@ -2,6 +2,8 @@
 #include "hw/sysbus.h"
 #include "chardev/char.h"
 #include "chardev/char-fe.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 #include "hw/register-dep.h"
 #include "qemu/fifo.h"
 #include "hw/remote-port-proto.h"

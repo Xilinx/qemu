@@ -36,6 +36,8 @@
 #include "hw/register.h"
 #include "qapi/error.h"
 #include "qemu/main-loop.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 
 #include "hw/fdt_generic_util.h"
 
