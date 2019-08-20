@@ -7,6 +7,13 @@ config PTIMER
 config FITLOADER
     bool
 
+config GENERIC_LOADER
+    bool
+    default y
+
+config OR_IRQ
+    bool
+
 config PLATFORM_BUS
     bool
 
@@ -15,3 +22,9 @@ config REMOTE_PORT
 
 config REMOTE_PORT_PCI
 	bool
+
+config REGISTER
+    bool
+
+config SPLIT_IRQ
+    bool

@@ -126,4 +126,7 @@ config XLNX_VERSAL_PMC
 config SI57X
 	bool
 
+config UNIMP
+    bool
+
 source macio/Kconfig

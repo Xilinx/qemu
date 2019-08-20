@@ -40,11 +40,11 @@ obj-$(CONFIG_REMOTE_PORT) += remote-port-stream.o
 obj-$(CONFIG_REMOTE_PORT) += remote-port-net.o
 obj-$(CONFIG_REMOTE_PORT_PCI) += remote-port-pci-device.o
 
-common-obj-$(CONFIG_SOFTMMU) += register.o
-common-obj-$(CONFIG_SOFTMMU) += or-irq.o
-common-obj-$(CONFIG_SOFTMMU) += split-irq.o
+common-obj-$(CONFIG_REGISTER) += register.o
+common-obj-$(CONFIG_OR_IRQ) += or-irq.o
+common-obj-$(CONFIG_SPLIT_IRQ) += split-irq.o
 common-obj-$(CONFIG_PLATFORM_BUS) += platform-bus.o
-common-obj-$(CONFIG_SOFTMMU) += generic-loader.o
+common-obj-$(CONFIG_GENERIC_LOADER) += generic-loader.o
 common-obj-$(CONFIG_SOFTMMU) += null-machine.o
 
 obj-$(CONFIG_SOFTMMU) += machine-qmp-cmds.o
