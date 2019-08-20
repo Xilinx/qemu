@@ -125,7 +125,7 @@ static bool rp_stream_stream_can_push(StreamSlave *obj,
 
     if (s->rsp_pending) {
         s->notify = notify;
-        s->notify = notify_opaque;
+        s->notify_opaque = notify_opaque;
         return false;
     }
     return true;
