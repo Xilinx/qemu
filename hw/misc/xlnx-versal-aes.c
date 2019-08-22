@@ -555,6 +555,7 @@ static void xlx_aes_load_key(Zynq3AES *s, int len)
         }
         DPRINT("Key Decrypt Done!\n");
         s->key_dec_done = true;
+        qemu_irq_pulse(s->aes_rst);
         g_free(outbuf);
         g_free(enc_key);
     }
