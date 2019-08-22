@@ -657,6 +657,16 @@ static uint64_t mon_ir_trigger_prew(DepRegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
+static void update_reset_reason_postw(DepRegisterInfo *reg, uint64_t val64)
+{
+    CRL_APB *s = XILINX_CRL_APB(reg->opaque);
+
+    DEP_AF_DP32(s->regs, RESET_REASON, SOFT,
+                DEP_AF_EX32(s->regs, RESET_CTRL, SOFT_RESET));
+    DEP_AF_DP32(s->regs, RESET_REASON, DEBUG_SYS,
+                DEP_AF_EX32(s->regs, BLOCKONLY_RST, DEBUG_ONLY));
+}
+
 static DepRegisterAccessInfo crl_apb_regs_info[] = {
     {   .name = "ERR_CTRL",  .decode.addr = A_ERR_CTRL,
     },{ .name = "IR_STATUS",  .decode.addr = A_IR_STATUS,
@@ -879,10 +889,12 @@ static DepRegisterAccessInfo crl_apb_regs_info[] = {
             { .name = "SRST_B", .bit_pos = 4,   .width = 1 },
             {},
         },
+        .post_write = update_reset_reason_postw,
     },{ .name = "BLOCKONLY_RST",  .decode.addr = A_BLOCKONLY_RST,
         .rsvd = 0x7dcc,
         .ro = 0x7dcc,
         .w1c = 0x8233,
+        .post_write = update_reset_reason_postw,
     },{ .name = "RESET_REASON",  .decode.addr = A_RESET_REASON,
         .rsvd = 0x7e0c,
         .ro = 0x7e0c,
