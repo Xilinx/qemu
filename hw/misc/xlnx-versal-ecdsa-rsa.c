@@ -94,14 +94,11 @@ DEP_REG32(ECDSA_RSA_IER, 0x50)
 DEP_REG32(ECDSA_RSA_IDR, 0x54)
     DEP_FIELD(ECDSA_RSA_IDR, SLVERR, 1, 1)
     DEP_FIELD(ECDSA_RSA_IDR, DONE, 1, 0)
-DEP_REG32(RSA_RAM_CFG_EMA, 0x60)
-    DEP_FIELD(RSA_RAM_CFG_EMA, VAL, 3, 0)
-DEP_REG32(RSA_RAM_CFG_EMAW, 0x64)
-    DEP_FIELD(RSA_RAM_CFG_EMAW, VAL, 2, 0)
-DEP_REG32(RSA_RAM_CFG_EMAS, 0x68)
-    DEP_FIELD(RSA_RAM_CFG_EMAS, VAL, 1, 0)
+DEP_REG32(RSA_CFG, 0x58)
+    DEP_FIELD(RSA_CFG, RD_ENDIANNESS, 1, 1)
+    DEP_FIELD(RSA_CFG, WR_ENDIANNESS, 1, 0)
 
-#define R_MAX (R_RSA_RAM_CFG_EMAS + 1)
+#define R_MAX (R_RSA_CFG + 1)
 
 #define R_CTRL_nop         0x00
 #define R_CTRL_exp         0x01
@@ -192,6 +189,17 @@ static void ecdsa_rsa_reset(DeviceState *dev)
     ecdsa_rsa_update_irq(s);
 }
 
+static uint64_t ecdsa_rsa_ram_data_prew(DepRegisterInfo *reg, uint64_t val)
+{
+    ECDSA_RSA *s = XILINX_ECDSA_RSA(reg->opaque);
+    uint32_t r = (uint32_t) val;
+
+    if (DEP_AF_EX32(s->regs, RSA_CFG, WR_ENDIANNESS)) {
+        r = bswap32(r);
+    }
+    return r;
+}
+
 static uint64_t ecdsa_rsa_ram_data_postr(DepRegisterInfo *reg, uint64_t val64)
 {
     ECDSA_RSA *s = XILINX_ECDSA_RSA(reg->opaque);
@@ -200,6 +208,9 @@ static uint64_t ecdsa_rsa_ram_data_postr(DepRegisterInfo *reg, uint64_t val64)
     r = s->rw_buf.u32[0];
     memmove(&s->rw_buf.u32[0], &s->rw_buf.u32[1],
             sizeof s->rw_buf.u32 - sizeof s->rw_buf.u32[0]);
+    if (DEP_AF_EX32(s->regs, RSA_CFG, RD_ENDIANNESS)) {
+        r = bswap32(r);
+    }
     return r;
 }
 
@@ -399,6 +410,7 @@ static DepRegisterAccessInfo ecdsa_rsa_regs_info[] = {
     {   .name = "RAM_DATA",  .decode.addr = A_RAM_DATA,
         .post_read = ecdsa_rsa_ram_data_postr,
         .post_write = ecdsa_rsa_ram_data_postw,
+        .pre_write = ecdsa_rsa_ram_data_prew,
     },{ .name = "RAM_ADDR",  .decode.addr = A_RAM_ADDR,
         .post_write = ecdsa_rsa_ram_addr_postw,
     },{ .name = "CTRL",  .decode.addr = A_CTRL,
@@ -429,11 +441,7 @@ static DepRegisterAccessInfo ecdsa_rsa_regs_info[] = {
         .pre_write = ecdsa_rsa_ier_prew,
     },{ .name = "ECDSA_RSA_IDR",  .decode.addr = A_ECDSA_RSA_IDR,
         .pre_write = ecdsa_rsa_idr_prew,
-    },{ .name = "RSA_RAM_CFG_EMA",  .decode.addr = A_RSA_RAM_CFG_EMA,
-        .reset = 0x3,
-    },{ .name = "RSA_RAM_CFG_EMAW",  .decode.addr = A_RSA_RAM_CFG_EMAW,
-        .reset = 0x1,
-    },{ .name = "RSA_RAM_CFG_EMAS",  .decode.addr = A_RSA_RAM_CFG_EMAS,
+    },{ .name = "RSA_CFG",  .decode.addr = A_RSA_CFG,
     }
 };
 

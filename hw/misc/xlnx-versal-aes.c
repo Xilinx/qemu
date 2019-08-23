@@ -558,6 +558,7 @@ static void xlx_aes_load_key(Zynq3AES *s, int len)
         }
         DPRINT("Key Decrypt Done!\n");
         s->key_dec_done = true;
+        qemu_irq_pulse(s->aes_rst);
         g_free(outbuf);
         g_free(enc_key);
     }
@@ -902,6 +903,8 @@ static void aes_reset(DeviceState *dev)
             switch (i) {
             case R_AES_KEY_LOCK_STATUS:
             case R_KEY_ZEROED_STATUS:
+            case R_BH_KEY_0 ... R_BH_KEY_7:
+            case R_USER_KEY_0_0 ... R_USER_KEY_7_7:
                 continue;
             default:
                 break;

@@ -532,9 +532,11 @@ static void zynqmp_efuse_rd_addr_postw(DepRegisterInfo *reg, uint64_t val64)
      * Still need to grant reads only to allowed bits; reference sources:
      * 1/ XilSKey - XilSKey_ZynqMp_EfusePs_ReadRow()
      * 2/ UG1085, v2.0, table 12-13
+     * (note: enumerates the masks as <first, last> per described in
+     *  references to avoid mental translation).
      */
 #define COL_MASK(L_, H_) \
-    ((uint32_t)(((1ULL << ((H_) - (L_) + 1)) - 1) << (L_)))
+    ((uint32_t)MAKE_64BIT_MASK((L_), (1 + (H_) - (L_))))
 
     static const uint32_t ary0_col_mask[] = {
         /* XilSKey - XSK_ZYNQMP_EFUSEPS_TBITS_ROW */
