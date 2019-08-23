@@ -20,7 +20,7 @@
 #include "hw/sysbus.h"
 #include "hw/fdt_generic_devices.h"
 #include "sysemu/sysemu.h"
-#include "qom/cpu.h"
+#include "hw/core/cpu.h"
 #include "qapi/error.h"
 #include "qemu/option.h"
 #include "migration/vmstate.h"

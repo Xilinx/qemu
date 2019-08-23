@@ -42,7 +42,6 @@
 #include "chardev/char.h"
 #include "qemu/log.h"
 #include "qemu/config-file.h"
-#include "qom/cpu.h"
 #include "block/block.h"
 #include "hw/ssi/ssi.h"
 #include "hw/boards.h"

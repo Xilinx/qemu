@@ -32,7 +32,7 @@
 #include "sysemu/dma.h"
 #include "qemu/log.h"
 #include "qemu/main-loop.h"
-#include "qom/cpu.h"
+#include "hw/core/cpu.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
 

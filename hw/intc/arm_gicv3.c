@@ -23,7 +23,6 @@
 #include "gicv3_internal.h"
 
 #include "hw/fdt_generic_util.h"
-#include "qom/cpu.h"
 
 static bool irqbetter(GICv3CPUState *cs, int irq, uint8_t prio)
 {

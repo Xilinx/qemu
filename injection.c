@@ -22,7 +22,6 @@
 #include "qemu/timer.h"
 #include "exec/memory.h"
 #include "hw/irq.h"
-#include "qom/cpu.h"
 #include "qemu/log.h"
 #include "qemu/queue.h"
 #include "sysemu/sysemu.h"

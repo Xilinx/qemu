@@ -31,7 +31,7 @@
 #include "qemu/bitops.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
-#include "qom/cpu.h"
+#include "hw/core/cpu.h"
 
 #include "hw/fdt_generic_util.h"
 #include "hw/fdt_generic_devices.h"

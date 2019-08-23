@@ -20,7 +20,6 @@
 #include "qemu/log.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
-#include "qom/cpu.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
 
