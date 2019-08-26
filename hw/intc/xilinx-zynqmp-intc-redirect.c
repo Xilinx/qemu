@@ -59,12 +59,14 @@ typedef struct INTCRedirect {
 static void intc_redirect_update_irqs(void *opaque)
 {
     INTCRedirect *s = XILINX_ZYNQMP_INTC_REDIRECT(opaque);
+    bool gic_pmu_int = 0;
     unsigned int i;
 
     /* If CPU has set PWRDWN to 1, direct interrupts to PMU.  */
     if (s->cpu_pwrdwn_en) {
-        qemu_set_irq(s->pmu_out, !!s->irq_in);
+        gic_pmu_int = !!s->irq_in;
     }
+    qemu_set_irq(s->pmu_out, gic_pmu_int);
 
     /* Always propagate IRQs between GIC and APU.  */
     for (i = 0; i < NUM_LINES_FROM_GIC; i++) {
