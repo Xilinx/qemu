@@ -61,15 +61,14 @@ static void intc_redirect_update_irqs(void *opaque)
     INTCRedirect *s = XILINX_ZYNQMP_INTC_REDIRECT(opaque);
     unsigned int i;
 
-    /* If CPU has set PWRDWN to 1, direct interrupts to PMU,
-     * otherwise, to CPU.
-     */
+    /* If CPU has set PWRDWN to 1, direct interrupts to PMU.  */
     if (s->cpu_pwrdwn_en) {
         qemu_set_irq(s->pmu_out, !!s->irq_in);
-    } else {
-        for (i = 0; i < NUM_LINES_FROM_GIC; i++) {
-            qemu_set_irq(s->cpu_out[i], !!(s->irq_in & (1 << i)));
-        }
+    }
+
+    /* Always propagate IRQs between GIC and APU.  */
+    for (i = 0; i < NUM_LINES_FROM_GIC; i++) {
+        qemu_set_irq(s->cpu_out[i], !!(s->irq_in & (1 << i)));
     }
 }
 
