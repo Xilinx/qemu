@@ -69,6 +69,8 @@ typedef struct XlnxZynqMPCAN {
     uint16_t            rx_time_stamp;
 
     Fifo                rx_fifo;
+    Fifo                tx_fifo;
+    Fifo                txhpb_fifo;
 
 } XlnxZynqMPCAN;
 
