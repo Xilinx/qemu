@@ -268,6 +268,7 @@ static void can_update_irq(XlnxZynqMPCAN *s)
         ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, RXFWMFLL, 1);
     }
 
+    /* RX Interrupts. */
     if (fifo_num_used(&s->rx_fifo) >= CAN_FRAME_SIZE) {
         ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, RXNEMP, 1);
     }
@@ -528,8 +529,8 @@ static uint64_t can_msr_pre_write(RegisterInfo *reg, uint64_t val64)
     uint8_t multi_mode = 0;
 
     /*
-     * Mutiple mode set check. This is done to make sure user doesn't set
-     * mutiple modes.
+     * Multiple mode set check. This is done to make sure user doesn't set
+     * multiple modes.
      */
     multi_mode = FIELD_EX32(val, MODE_SELECT_REGISTER, LBACK) +
                  FIELD_EX32(val, MODE_SELECT_REGISTER, SLEEP) +
@@ -662,13 +663,13 @@ static void update_rx_fifo(XlnxZynqMPCAN *s, const qemu_can_frame *frame)
             fifo_push32(&s->rx_fifo, (deposit32(0, R_TXFIFO_DATA1_DB3_SHIFT,
                                         R_TXFIFO_DATA1_DB3_LENGTH,
                                         frame->data[0]) |
-                                     deposit32(0, R_TXFIFO_DATA1_DB2_SHIFT,
+                                      deposit32(0, R_TXFIFO_DATA1_DB2_SHIFT,
                                         R_TXFIFO_DATA1_DB2_LENGTH,
                                         frame->data[1]) |
-                                     deposit32(0, R_TXFIFO_DATA1_DB1_SHIFT,
+                                      deposit32(0, R_TXFIFO_DATA1_DB1_SHIFT,
                                         R_TXFIFO_DATA1_DB1_LENGTH,
                                         frame->data[2]) |
-                                     deposit32(0, R_TXFIFO_DATA1_DB0_SHIFT,
+                                      deposit32(0, R_TXFIFO_DATA1_DB0_SHIFT,
                                         R_TXFIFO_DATA1_DB0_LENGTH,
                                         frame->data[3])));
             /* Last 32 bit of the data. */
@@ -681,7 +682,7 @@ static void update_rx_fifo(XlnxZynqMPCAN *s, const qemu_can_frame *frame)
                                       deposit32(0, R_TXFIFO_DATA2_DB5_SHIFT,
                                          R_TXFIFO_DATA2_DB5_LENGTH,
                                          frame->data[6]) |
-                                       deposit32(0, R_TXFIFO_DATA2_DB4_SHIFT,
+                                      deposit32(0, R_TXFIFO_DATA2_DB4_SHIFT,
                                           R_TXFIFO_DATA2_DB4_LENGTH,
                                           frame->data[7])));
 
