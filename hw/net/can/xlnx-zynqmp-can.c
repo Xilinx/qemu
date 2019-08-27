@@ -587,6 +587,18 @@ static uint64_t can_btr_pre_write(RegisterInfo  *reg, uint64_t val64)
     return val;
 }
 
+static uint64_t can_tcr_pre_write(RegisterInfo  *reg, uint64_t val64)
+{
+    XlnxZynqMPCAN *s = XLNX_ZYNQMP_CAN(reg->opaque);
+    uint32_t val = val64;
+
+    if (FIELD_EX32(val, TIMESTAMP_REGISTER, CTS)) {
+        s->rx_time_stamp = 0;
+    }
+
+    return 0;
+}
+
 static void update_rx_fifo(XlnxZynqMPCAN *s, const qemu_can_frame *frame)
 {
     uint32_t filter_pass = 0;
@@ -838,6 +850,7 @@ static const RegisterAccessInfo can_regs_info[] = {
     },{ .name = "TIMESTAMP_REGISTER",
         .addr = A_TIMESTAMP_REGISTER,
         .rsvd = 0xfffffffe,
+        .pre_write = can_tcr_pre_write,
     },{ .name = "WIR",  .addr = A_WIR,
         .reset = 0x3f3f,
         .rsvd = 0xffff0000,
