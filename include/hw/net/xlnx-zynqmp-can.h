@@ -66,6 +66,8 @@ typedef struct XlnxZynqMPCAN {
     RegisterInfo        reg_info[XLNX_ZYNQMP_CAN_R_MAX];
     uint32_t            regs[XLNX_ZYNQMP_CAN_R_MAX];
 
+    uint16_t            rx_time_stamp;
+
     Fifo                rx_fifo;
 
 } XlnxZynqMPCAN;

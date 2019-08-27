@@ -630,14 +630,20 @@ static void update_rx_fifo(XlnxZynqMPCAN *s, const qemu_can_frame *frame)
     if (filter_pass && frame->can_dlc >= MIN_DLC && frame->can_dlc <= MAX_DLC) {
 
         if (fifo_is_full(&s->rx_fifo)) {
-            DB_PRINT("FIFO is full.\n");
+            DB_PRINT("RX FIFO is full.\n");
 
             ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, RXOFLW, 1);
         } else {
+            s->rx_time_stamp += 1;
+
             fifo_push32(&s->rx_fifo, frame->can_id);
-            fifo_push32(&s->rx_fifo, deposit32(0, R_TXFIFO_DLC_DLC_SHIFT,
-                                                R_TXFIFO_DLC_DLC_LENGTH,
-                                                frame->can_dlc));
+
+            fifo_push32(&s->rx_fifo, (deposit32(0, R_RXFIFO_DLC_DLC_SHIFT,
+                                                R_RXFIFO_DLC_DLC_LENGTH,
+                                                frame->can_dlc) |
+                                      deposit32(0, R_RXFIFO_DLC_RXT_SHIFT,
+                                                R_RXFIFO_DLC_RXT_LENGTH,
+                                                s->rx_time_stamp)));
 
             /* First 32 bit of the data. */
             fifo_push32(&s->rx_fifo, (deposit32(0, R_TXFIFO_DATA1_DB3_SHIFT,
