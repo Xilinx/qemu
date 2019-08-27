@@ -257,6 +257,17 @@ static void can_update_irq(XlnxZynqMPCAN *s)
 {
     unsigned int irq;
 
+    /* Watermark register interrupts. */
+    if ((fifo_num_free(&s->tx_fifo) / CAN_FRAME_SIZE) >
+            ARRAY_FIELD_EX32(s->regs, WIR, EW)) {
+        ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, TXFWMEMP, 1);
+    }
+
+    if ((fifo_num_used(&s->rx_fifo) / CAN_FRAME_SIZE) >
+            ARRAY_FIELD_EX32(s->regs, WIR, FW)) {
+        ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, RXFWMFLL, 1);
+    }
+
     if (fifo_num_used(&s->rx_fifo) >= CAN_FRAME_SIZE) {
         ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, RXNEMP, 1);
     }
