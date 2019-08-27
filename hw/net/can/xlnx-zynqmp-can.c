@@ -53,7 +53,6 @@
     } \
 } while (0);
 
-#define MIN_DLC            1
 #define MAX_DLC            8
 
 REG32(SOFTWARE_RESET_REGISTER, 0x0)
@@ -641,7 +640,7 @@ static void update_rx_fifo(XlnxZynqMPCAN *s, const qemu_can_frame *frame)
     }
 
     /* Store the message in fifo if it passed through any of the filters. */
-    if (filter_pass && frame->can_dlc >= MIN_DLC && frame->can_dlc <= MAX_DLC) {
+    if (filter_pass && frame->can_dlc <= MAX_DLC) {
 
         if (fifo_is_full(&s->rx_fifo)) {
             DB_PRINT("RX FIFO is full.\n");
