@@ -54,6 +54,7 @@
 } while (0);
 
 #define MAX_DLC            8
+#undef ERROR
 
 REG32(SOFTWARE_RESET_REGISTER, 0x0)
     FIELD(SOFTWARE_RESET_REGISTER, CEN, 1, 1)
