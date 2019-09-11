@@ -335,6 +335,7 @@ static void cadence_i2c_write(void *opaque, hwaddr offset,
             i2c_end_transfer(s->bus);
             qemu_log_mask(LOG_GUEST_ERROR,
                           "%s: No match for device 0x%x\n", path, new_value);
+            s->regs[R_ISR] |= ISR_NACK;
             g_free(path);
         } else {
             DB_PRINT("device 0x%x probe success\n", new_value);
