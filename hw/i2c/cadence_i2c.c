@@ -343,7 +343,9 @@ static void cadence_i2c_write(void *opaque, hwaddr offset,
                 /* Set "device found" in slave monitor mode */
                 s->regs[R_ISR] |= ISR_SLV_RDY;
             } else {
-                s->regs[R_ISR] |= ISR_COMP;
+                if (fifo_is_empty(&s->fifo)) {
+                    s->regs[R_ISR] |= ISR_COMP;
+                }
                 s->regs[R_STATUS] |= STATUS_BA;
             }
         }
