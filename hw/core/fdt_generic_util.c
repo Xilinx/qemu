@@ -341,8 +341,7 @@ static int simple_bus_fdt_init(char *node_path, FDTMachineInfo *fdti)
 static qemu_irq fdt_get_gpio(FDTMachineInfo *fdti, char *node_path,
                              int* cur_cell, qemu_irq input,
                              const FDTGenericGPIOSet *gpio_set,
-                             const char *debug_success, bool *end,
-                             uint16_t *named_idx) {
+                             const char *debug_success, bool *end) {
     void *fdt = fdti->fdt;
     uint32_t parent_phandle, parent_cells = 0, cells[32];
     char parent_node_path[DT_PATH_LENGTH];
@@ -491,10 +490,6 @@ static qemu_irq fdt_get_gpio(FDTMachineInfo *fdti, char *node_path,
             }
             g_free(irqs);
         } else {
-            if (parent_cells > 1) {
-                /* Let cell 1 be output gpio fdt index */
-                *named_idx = cells[1];
-            }
             ret = qdev_get_gpio_in_named(parent, gpio_name, idx);
         }
 
@@ -1552,7 +1547,7 @@ exit_reg_parse:
             debug_success = g_strdup_printf("Wiring GPIO input %s[%" PRId16 "] "
                                             "to", gpio_name, named_idx);
             output = fdt_get_gpio(fdti, node_path, &cur_cell, input, gpio_set,
-                                  debug_success, &end, &named_idx);
+                                  debug_success, &end);
             g_free(debug_success);
             if (output) {
                 FDTIRQConnection *irq = g_new0(FDTIRQConnection, 1);

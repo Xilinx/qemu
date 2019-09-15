@@ -539,7 +539,9 @@ static void csu_core_reset(DeviceState *dev)
     int i;
 
     for (i = 0; i < R_MAX; ++i) {
-        dep_register_reset(&s->regs_info[i]);
+        if (i != R_CSU_MULTI_BOOT) {
+            dep_register_reset(&s->regs_info[i]);
+        }
     }
     s->regs[R_IDCODE] = s->cfg.idcode;
     DEP_AF_DP32(s->regs, VERSION, PLATFORM, s->cfg.version.platform);

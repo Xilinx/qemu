@@ -56,8 +56,8 @@
     } \
 } while (0);
 
-#define MIN_DLC            1
 #define MAX_DLC            8
+#undef ERROR
 
 REG32(SOFTWARE_RESET_REGISTER, 0x0)
     FIELD(SOFTWARE_RESET_REGISTER, CEN, 1, 1)
@@ -260,8 +260,33 @@ static void can_update_irq(XlnxZynqMPCAN *s)
 {
     unsigned int irq;
 
+    /* Watermark register interrupts. */
+    if ((fifo_num_free(&s->tx_fifo) / CAN_FRAME_SIZE) >
+            ARRAY_FIELD_EX32(s->regs, WIR, EW)) {
+        ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, TXFWMEMP, 1);
+    }
+
+    if ((fifo_num_used(&s->rx_fifo) / CAN_FRAME_SIZE) >
+            ARRAY_FIELD_EX32(s->regs, WIR, FW)) {
+        ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, RXFWMFLL, 1);
+    }
+
+    /* RX Interrupts. */
     if (fifo_num_used(&s->rx_fifo) >= CAN_FRAME_SIZE) {
         ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, RXNEMP, 1);
+    }
+
+    /* TX interrupts. */
+    if (fifo_is_empty(&s->tx_fifo)) {
+        ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, TXFEMP, 1);
+    }
+
+    if (fifo_is_full(&s->tx_fifo)) {
+        ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, TXFLL, 1);
+    }
+
+    if (fifo_is_full(&s->txhpb_fifo)) {
+        ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, TXBFLL, 1);
     }
 
     irq = s->regs[R_INTERRUPT_STATUS_REGISTER];
@@ -360,6 +385,110 @@ static void update_status_register_mode_bits(XlnxZynqMPCAN *s)
     can_update_irq(s);
 }
 
+static void can_exit_sleep_mode(XlnxZynqMPCAN *s)
+{
+    ARRAY_FIELD_DP32(s->regs, MODE_SELECT_REGISTER, SLEEP, 0);
+    update_status_register_mode_bits(s);
+}
+
+static void generate_frame(qemu_can_frame *frame, uint32_t *data)
+{
+    frame->can_id = data[0];
+    frame->can_dlc = FIELD_EX32(data[1], TXFIFO_DLC, DLC);
+
+    frame->data[0] = FIELD_EX32(data[2], TXFIFO_DATA1, DB3);
+    frame->data[1] = FIELD_EX32(data[2], TXFIFO_DATA1, DB2);
+    frame->data[2] = FIELD_EX32(data[2], TXFIFO_DATA1, DB1);
+    frame->data[3] = FIELD_EX32(data[2], TXFIFO_DATA1, DB0);
+
+    frame->data[4] = FIELD_EX32(data[3], TXFIFO_DATA2, DB7);
+    frame->data[5] = FIELD_EX32(data[3], TXFIFO_DATA2, DB6);
+    frame->data[6] = FIELD_EX32(data[3], TXFIFO_DATA2, DB5);
+    frame->data[7] = FIELD_EX32(data[3], TXFIFO_DATA2, DB4);
+}
+
+static bool tx_ready_check(XlnxZynqMPCAN *s)
+{
+    if (ARRAY_FIELD_EX32(s->regs, SOFTWARE_RESET_REGISTER, SRST)) {
+        qemu_log_mask(LOG_GUEST_ERROR, "Attempting to transfer data while"
+                      " XlnxZynqMPCAN%d is in reset mode\n", s->cfg.ctrl_idx);
+        return false;
+    }
+
+    if (ARRAY_FIELD_EX32(s->regs, SOFTWARE_RESET_REGISTER, CEN) == 0) {
+        qemu_log_mask(LOG_GUEST_ERROR, "Attempting to transfer data while"
+                      " XlnxZynqMPCAN%d is in configuration mode.Reset the"
+                      " core so operations can start fresh\n",
+                      s->cfg.ctrl_idx);
+        return false;
+    }
+
+    if (ARRAY_FIELD_EX32(s->regs, STATUS_REGISTER, SNOOP)) {
+        qemu_log_mask(LOG_GUEST_ERROR, "Attempting to transfer data while"
+                        " XlnxZynqMPCAN%d is in SNOOP MODE\n",
+                         s->cfg.ctrl_idx);
+        return false;
+    }
+
+    return true;
+}
+
+static void transfer_fifo(XlnxZynqMPCAN *s, Fifo *fifo)
+{
+    qemu_can_frame frame;
+    uint32_t data[CAN_FRAME_SIZE];
+    int i;
+    bool can_tx = tx_ready_check(s);
+
+    if (can_tx) {
+        while (!fifo_is_empty(fifo)) {
+            for (i = 0; i < CAN_FRAME_SIZE; i++) {
+                data[i] = fifo_pop32(fifo);
+            }
+
+            if (ARRAY_FIELD_EX32(s->regs, STATUS_REGISTER, LBACK)) {
+                /*
+                 * Controller in loopback. In Loopback mode, the XlnxZynqMPCAN
+                 * core transmits a recessive bitstream on to the XlnxZynqMPCAN
+                 * Bus. Any message transmitted is looped back to the RX line
+                 * and acknowledged. The XlnxZynqMPCAN core receives any
+                 * message that it transmits.
+                 */
+                if (fifo_is_full(&s->rx_fifo)) {
+                    DB_PRINT("Loopback: RX FIFO is full."
+                             "TX FIFO will be flushed.\n");
+
+                    ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER,
+                                      RXOFLW, 1);
+                } else {
+                    for (i = 0; i < CAN_FRAME_SIZE; i++) {
+                        fifo_push32(&s->rx_fifo, data[i]);
+                    }
+
+                    ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER,
+                                      RXOK, 1);
+                }
+            } else {
+                /* Normal mode Tx. */
+                generate_frame(&frame, data);
+
+                can_bus_client_send(&s->bus_client, &frame, 1);
+            }
+        }
+
+        ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, TXOK, 1);
+        ARRAY_FIELD_DP32(s->regs, STATUS_REGISTER, TXBFLL, 0);
+
+        if (ARRAY_FIELD_EX32(s->regs, STATUS_REGISTER, SLEEP)) {
+            can_exit_sleep_mode(s);
+        }
+    } else {
+        DB_PRINT("CAN is not enabled for data transfer.\n")
+    }
+
+    can_update_irq(s);
+}
+
 static uint64_t can_srr_pre_write(RegisterInfo *reg, uint64_t val64)
 {
     XlnxZynqMPCAN *s = XLNX_ZYNQMP_CAN(reg->opaque);
@@ -386,6 +515,10 @@ static uint64_t can_srr_pre_write(RegisterInfo *reg, uint64_t val64)
          */
         ARRAY_FIELD_DP32(s->regs, STATUS_REGISTER, CONFIG, 0);
 
+        /* XlnxZynqMP CAN is out of config mode. it will send pending data. */
+        transfer_fifo(s, &s->txhpb_fifo);
+        transfer_fifo(s, &s->tx_fifo);
+
         update_status_register_mode_bits(s);
     }
 
@@ -399,8 +532,8 @@ static uint64_t can_msr_pre_write(RegisterInfo *reg, uint64_t val64)
     uint8_t multi_mode = 0;
 
     /*
-     * Mutiple mode set check. This is done to make sure user doesn't set
-     * mutiple modes.
+     * Multiple mode set check. This is done to make sure user doesn't set
+     * multiple modes.
      */
     multi_mode = FIELD_EX32(val, MODE_SELECT_REGISTER, LBACK) +
                  FIELD_EX32(val, MODE_SELECT_REGISTER, SLEEP) +
@@ -458,123 +591,16 @@ static uint64_t can_btr_pre_write(RegisterInfo  *reg, uint64_t val64)
     return val;
 }
 
-static void can_exit_sleep_mode(XlnxZynqMPCAN *s)
+static uint64_t can_tcr_pre_write(RegisterInfo  *reg, uint64_t val64)
 {
-    ARRAY_FIELD_DP32(s->regs, MODE_SELECT_REGISTER, SLEEP, 0);
-    update_status_register_mode_bits(s);
-}
+    XlnxZynqMPCAN *s = XLNX_ZYNQMP_CAN(reg->opaque);
+    uint32_t val = val64;
 
-static void regs2frame(XlnxZynqMPCAN *s, qemu_can_frame *frame,
-                        uint32_t reg_idx)
-{
-    if (reg_idx == R_TXFIFO_DATA2) {
-        frame->can_id = s->regs[R_TXFIFO_ID];
-        frame->can_dlc = ARRAY_FIELD_EX32(s->regs, TXFIFO_DLC, DLC);
-
-        frame->data[0] = ARRAY_FIELD_EX32(s->regs, TXFIFO_DATA1, DB3);
-        frame->data[1] = ARRAY_FIELD_EX32(s->regs, TXFIFO_DATA1, DB2);
-        frame->data[2] = ARRAY_FIELD_EX32(s->regs, TXFIFO_DATA1, DB1);
-        frame->data[3] = ARRAY_FIELD_EX32(s->regs, TXFIFO_DATA1, DB0);
-        frame->data[4] = ARRAY_FIELD_EX32(s->regs, TXFIFO_DATA2, DB7);
-        frame->data[5] = ARRAY_FIELD_EX32(s->regs, TXFIFO_DATA2, DB6);
-        frame->data[6] = ARRAY_FIELD_EX32(s->regs, TXFIFO_DATA2, DB5);
-        frame->data[7] = ARRAY_FIELD_EX32(s->regs, TXFIFO_DATA2, DB4);
-
-    } else if (reg_idx == R_TXHPB_DATA2) {
-        frame->can_id = s->regs[R_TXHPB_ID];
-        frame->can_dlc = ARRAY_FIELD_EX32(s->regs, TXHPB_DLC, DLC);
-
-        frame->data[0] = ARRAY_FIELD_EX32(s->regs, TXHPB_DATA1, DB3);
-        frame->data[1] = ARRAY_FIELD_EX32(s->regs, TXHPB_DATA1, DB2);
-        frame->data[2] = ARRAY_FIELD_EX32(s->regs, TXHPB_DATA1, DB1);
-        frame->data[3] = ARRAY_FIELD_EX32(s->regs, TXHPB_DATA1, DB0);
-        frame->data[4] = ARRAY_FIELD_EX32(s->regs, TXHPB_DATA2, DB7);
-        frame->data[5] = ARRAY_FIELD_EX32(s->regs, TXHPB_DATA2, DB6);
-        frame->data[6] = ARRAY_FIELD_EX32(s->regs, TXHPB_DATA2, DB5);
-        frame->data[7] = ARRAY_FIELD_EX32(s->regs, TXHPB_DATA2, DB4);
-
-    } else {
-        qemu_log_mask(LOG_GUEST_ERROR,
-                    "Incorrect TX register is selected for frame production\n");
-    }
-}
-
-/*
- * TODO: Add TXFLL interrupt and status register update.
- */
-static void transfer_data(XlnxZynqMPCAN *s, uint32_t reg_idx)
-{
-    if (ARRAY_FIELD_EX32(s->regs, SOFTWARE_RESET_REGISTER, SRST)) {
-        qemu_log_mask(LOG_GUEST_ERROR, "Attempting to transfer data while"
-                        " XlnxZynqMPCAN%d is in reset mode\n", s->cfg.ctrl_idx);
-
-        return;
+    if (FIELD_EX32(val, TIMESTAMP_REGISTER, CTS)) {
+        s->rx_time_stamp = 0;
     }
 
-    if (ARRAY_FIELD_EX32(s->regs, SOFTWARE_RESET_REGISTER, CEN) == 0) {
-        qemu_log_mask(LOG_GUEST_ERROR, "Attempting to transfer data while"
-                        " XlnxZynqMPCAN%d is in configuration mode."
-                        " Reset the core so operations can start fresh\n",
-                         s->cfg.ctrl_idx);
-        return;
-    }
-
-    if (ARRAY_FIELD_EX32(s->regs, STATUS_REGISTER, SNOOP)) {
-        qemu_log_mask(LOG_GUEST_ERROR, "Attempting to transfer data while"
-                        " XlnxZynqMPCAN%d is in SNOOP MODE\n",
-                         s->cfg.ctrl_idx);
-    } else if (ARRAY_FIELD_EX32(s->regs, STATUS_REGISTER, LBACK)) {
-
-        /*
-         * Controller in loopback. In Loopback mode, the XlnxZynqMPCAN core
-         * transmits a recessive bitstream on to the XlnxZynqMPCAN Bus. Any
-         * message transmitted is looped back to the RX line and is acknowledged
-         * . The XlnxZynqMPCAN core receives any message that it transmits.
-         */
-        if (reg_idx == R_TXFIFO_DATA2) {
-            fifo_push32(&s->rx_fifo, s->regs[R_TXFIFO_ID]);
-            fifo_push32(&s->rx_fifo, s->regs[R_TXFIFO_DLC]);
-            fifo_push32(&s->rx_fifo, s->regs[R_TXFIFO_DATA1]);
-            fifo_push32(&s->rx_fifo, s->regs[R_TXFIFO_DATA2]);
-        } else {
-            fifo_push32(&s->rx_fifo, s->regs[R_TXHPB_ID]);
-            fifo_push32(&s->rx_fifo, s->regs[R_TXHPB_DLC]);
-            fifo_push32(&s->rx_fifo, s->regs[R_TXHPB_DATA1]);
-            fifo_push32(&s->rx_fifo, s->regs[R_TXHPB_DATA2]);
-        }
-        /*
-         * Loopback mode, both TXOK and RXOK bits are set. The RXOK bit is set
-         * before the TXOK bit.
-         */
-        ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, RXOK, 1);
-        ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, TXOK, 1);
-
-        can_update_irq(s);
-    } else {
-        qemu_can_frame frame;
-
-        regs2frame(s, &frame, reg_idx);
-        can_bus_client_send(&s->bus_client, &frame, 1);
-
-        if (ARRAY_FIELD_EX32(s->regs, STATUS_REGISTER, SLEEP)) {
-            can_exit_sleep_mode(s);
-        }
-
-        ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, TXOK, 1);
-        /*
-         * Mark TX buffer full as empty now. This functionality will be updated
-         * later.
-         */
-        if (reg_idx == R_TXHPB_DATA2) {
-            ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, TXBFLL, 0);
-            ARRAY_FIELD_DP32(s->regs, STATUS_REGISTER, TXBFLL, 0);
-        } else {
-            ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, TXFLL, 0);
-            ARRAY_FIELD_DP32(s->regs, STATUS_REGISTER, TXFLL, 0);
-        }
-
-        can_update_irq(s);
-    }
+    return 0;
 }
 
 static void update_rx_fifo(XlnxZynqMPCAN *s, const qemu_can_frame *frame)
@@ -630,29 +656,35 @@ static void update_rx_fifo(XlnxZynqMPCAN *s, const qemu_can_frame *frame)
     }
 
     /* Store the message in fifo if it passed through any of the filters. */
-    if (filter_pass && frame->can_dlc >= MIN_DLC && frame->can_dlc <= MAX_DLC) {
+    if (filter_pass && frame->can_dlc <= MAX_DLC) {
 
         if (fifo_is_full(&s->rx_fifo)) {
-            DB_PRINT("FIFO is full.\n");
+            DB_PRINT("RX FIFO is full.\n");
 
             ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, RXOFLW, 1);
         } else {
+            s->rx_time_stamp += 1;
+
             fifo_push32(&s->rx_fifo, frame->can_id);
-            fifo_push32(&s->rx_fifo, deposit32(0, R_TXFIFO_DLC_DLC_SHIFT,
-                                                R_TXFIFO_DLC_DLC_LENGTH,
-                                                frame->can_dlc));
+
+            fifo_push32(&s->rx_fifo, (deposit32(0, R_RXFIFO_DLC_DLC_SHIFT,
+                                                R_RXFIFO_DLC_DLC_LENGTH,
+                                                frame->can_dlc) |
+                                      deposit32(0, R_RXFIFO_DLC_RXT_SHIFT,
+                                                R_RXFIFO_DLC_RXT_LENGTH,
+                                                s->rx_time_stamp)));
 
             /* First 32 bit of the data. */
             fifo_push32(&s->rx_fifo, (deposit32(0, R_TXFIFO_DATA1_DB3_SHIFT,
                                         R_TXFIFO_DATA1_DB3_LENGTH,
                                         frame->data[0]) |
-                                     deposit32(0, R_TXFIFO_DATA1_DB2_SHIFT,
+                                      deposit32(0, R_TXFIFO_DATA1_DB2_SHIFT,
                                         R_TXFIFO_DATA1_DB2_LENGTH,
                                         frame->data[1]) |
-                                     deposit32(0, R_TXFIFO_DATA1_DB1_SHIFT,
+                                      deposit32(0, R_TXFIFO_DATA1_DB1_SHIFT,
                                         R_TXFIFO_DATA1_DB1_LENGTH,
                                         frame->data[2]) |
-                                     deposit32(0, R_TXFIFO_DATA1_DB0_SHIFT,
+                                      deposit32(0, R_TXFIFO_DATA1_DB0_SHIFT,
                                         R_TXFIFO_DATA1_DB0_LENGTH,
                                         frame->data[3])));
             /* Last 32 bit of the data. */
@@ -665,7 +697,7 @@ static void update_rx_fifo(XlnxZynqMPCAN *s, const qemu_can_frame *frame)
                                       deposit32(0, R_TXFIFO_DATA2_DB5_SHIFT,
                                          R_TXFIFO_DATA2_DB5_LENGTH,
                                          frame->data[6]) |
-                                       deposit32(0, R_TXFIFO_DATA2_DB4_SHIFT,
+                                      deposit32(0, R_TXFIFO_DATA2_DB4_SHIFT,
                                           R_TXFIFO_DATA2_DB4_LENGTH,
                                           frame->data[7])));
 
@@ -751,13 +783,30 @@ static uint64_t can_filter_id_pre_write(RegisterInfo *reg, uint64_t val64)
 static void can_tx_post_write(RegisterInfo *reg, uint64_t val64)
 {
     XlnxZynqMPCAN *s = XLNX_ZYNQMP_CAN(reg->opaque);
-    uint32_t reg_idx = (reg->access->addr) / 4;
+    uint32_t val = val64;
 
-    /* Initiate the message send if TX register is being written. */
-    if (reg->access->addr  == A_TXFIFO_DATA2 ||
-        reg->access->addr  == A_TXHPB_DATA2) {
-        transfer_data(s, reg_idx);
+    bool is_txhpb = reg->access->addr > A_TXFIFO_DATA2;
+
+    bool initiate_transfer = (reg->access->addr == A_TXFIFO_DATA2) ||
+                             (reg->access->addr == A_TXHPB_DATA2);
+
+    Fifo *f = is_txhpb ? &s->txhpb_fifo : &s->tx_fifo;
+
+    DB_PRINT("TX FIFO write for CAN%d\n", s->cfg.ctrl_idx);
+
+    if (!fifo_is_full(f)) {
+        fifo_push32(f, val);
+    } else {
+        DB_PRINT("TX FIFO is full.\n");
     }
+
+    /* Initiate the message send if TX register is written. */
+    if (initiate_transfer &&
+            ARRAY_FIELD_EX32(s->regs, SOFTWARE_RESET_REGISTER, CEN)) {
+        transfer_fifo(s, f);
+    }
+
+    can_update_irq(s);
 }
 
 static const RegisterAccessInfo can_regs_info[] = {
@@ -805,6 +854,7 @@ static const RegisterAccessInfo can_regs_info[] = {
     },{ .name = "TIMESTAMP_REGISTER",
         .addr = A_TIMESTAMP_REGISTER,
         .rsvd = 0xfffffffe,
+        .pre_write = can_tcr_pre_write,
     },{ .name = "WIR",  .addr = A_WIR,
         .reset = 0x3f3f,
         .rsvd = 0xffff0000,
@@ -899,6 +949,8 @@ static ssize_t xlnx_zynqmp_can_receive(CanBusClientState *client,
     XlnxZynqMPCAN *s = container_of(client, XlnxZynqMPCAN, bus_client);
     const qemu_can_frame *frame = buf;
 
+    DB_PRINT("Incoming data for CAN%d\n", s->cfg.ctrl_idx);
+
     if (buf_size <= 0) {
         DB_PRINT("junk data received on XlnxZynqMPCAN bus\n");
         return 0;
@@ -966,8 +1018,10 @@ static void xlnx_zynqmp_can_realize(DeviceState *dev, Error **errp)
                     s->cfg.ctrl_idx, s->cfg.ctrl_idx);
     }
 
-    /* Create RX FIFO for incoming message storage. */
+    /* Create RX FIFO, TXFIFO, TXHPB storage. */
     fifo_create32(&s->rx_fifo, RXFIFO_SIZE);
+    fifo_create32(&s->tx_fifo, RXFIFO_SIZE);
+    fifo_create32(&s->txhpb_fifo, CAN_FRAME_SIZE);
 }
 
 static void xlnx_zynqmp_can_init(Object *obj)
