@@ -926,6 +926,16 @@ static void xlnx_zynqmp_can_reset(DeviceState *dev)
     for (i = 0; i < ARRAY_SIZE(s->reg_info); ++i) {
         register_reset(&s->reg_info[i]);
     }
+
+    /*
+     * Reset FIFOs when CAN model is reset. This will clear the fifo writes
+     * done by post_write which gets called from register_reset function,
+     * post_write handle will not be able to trigger tx because CAN will be
+     * disabled when software_reset_register is cleared first.
+     */
+    fifo_reset(&s->rx_fifo);
+    fifo_reset(&s->tx_fifo);
+    fifo_reset(&s->txhpb_fifo);
 }
 
 static int xlnx_zynqmp_can_can_receive(CanBusClientState *client)
