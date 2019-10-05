@@ -85,7 +85,7 @@ typedef void NeonGenOneOpFn(TCGv_i64, TCGv_i64);
 typedef void CryptoTwoOpFn(TCGv_ptr, TCGv_ptr);
 typedef void CryptoThreeOpIntFn(TCGv_ptr, TCGv_ptr, TCGv_i32);
 typedef void CryptoThreeOpFn(TCGv_ptr, TCGv_ptr, TCGv_ptr);
-typedef void AtomicThreeOpFn(TCGv_i64, TCGv_i64, TCGv_i64, TCGArg, TCGMemOp);
+typedef void AtomicThreeOpFn(TCGv_i64, TCGv_i64, TCGv_i64, TCGArg, MemOp);
 
 /* initialize TCG globals.  */
 void a64_translate_init(void)
@@ -338,6 +338,13 @@ static inline void gen_goto_tb(DisasContext *s, int n, uint64_t dest)
     }
 }
 
+void unallocated_encoding(DisasContext *s)
+{
+    /* Unallocated and reserved encodings are uncategorized */
+    gen_exception_insn(s, s->pc_curr, EXCP_UDEF, syn_uncategorized(),
+                       default_exception_el(s));
+}
+
 static void init_tmp_a64_array(DisasContext *s)
 {
 #ifdef CONFIG_DEBUG_TCG
@@ -433,7 +440,7 @@ TCGv_i64 read_cpu_reg_sp(DisasContext *s, int reg, int sf)
  * Dn, Sn, Hn or Bn).
  * (Note that this is not the same mapping as for A32; see cpu.h)
  */
-static inline int fp_reg_offset(DisasContext *s, int regno, TCGMemOp size)
+static inline int fp_reg_offset(DisasContext *s, int regno, MemOp size)
 {
     return vec_reg_offset(s, regno, 0, size);
 }
@@ -849,7 +856,7 @@ static void do_gpr_ld_memidx(DisasContext *s,
                              bool iss_valid, unsigned int iss_srt,
                              bool iss_sf, bool iss_ar)
 {
-    TCGMemOp memop = s->be_data + size;
+    MemOp memop = s->be_data + size;
 
     g_assert(size <= 3);
 
@@ -926,7 +933,7 @@ static void do_fp_ld(DisasContext *s, int destidx, TCGv_i64 tcg_addr, int size)
     TCGv_i64 tmphi;
 
     if (size < 4) {
-        TCGMemOp memop = s->be_data + size;
+        MemOp memop = s->be_data + size;
         tmphi = tcg_const_i64(0);
         tcg_gen_qemu_ld_i64(tmplo, tcg_addr, get_mem_index(s), memop);
     } else {
@@ -967,7 +974,7 @@ static void do_fp_ld(DisasContext *s, int destidx, TCGv_i64 tcg_addr, int size)
 
 /* Get value of an element within a vector register */
 static void read_vec_element(DisasContext *s, TCGv_i64 tcg_dest, int srcidx,
-                             int element, TCGMemOp memop)
+                             int element, MemOp memop)
 {
     int vect_off = vec_reg_offset(s, srcidx, element, memop & MO_SIZE);
     switch (memop) {
@@ -999,7 +1006,7 @@ static void read_vec_element(DisasContext *s, TCGv_i64 tcg_dest, int srcidx,
 }
 
 static void read_vec_element_i32(DisasContext *s, TCGv_i32 tcg_dest, int srcidx,
-                                 int element, TCGMemOp memop)
+                                 int element, MemOp memop)
 {
     int vect_off = vec_reg_offset(s, srcidx, element, memop & MO_SIZE);
     switch (memop) {
@@ -1026,7 +1033,7 @@ static void read_vec_element_i32(DisasContext *s, TCGv_i32 tcg_dest, int srcidx,
 
 /* Set value of an element within a vector register */
 static void write_vec_element(DisasContext *s, TCGv_i64 tcg_src, int destidx,
-                              int element, TCGMemOp memop)
+                              int element, MemOp memop)
 {
     int vect_off = vec_reg_offset(s, destidx, element, memop & MO_SIZE);
     switch (memop) {
@@ -1048,7 +1055,7 @@ static void write_vec_element(DisasContext *s, TCGv_i64 tcg_src, int destidx,
 }
 
 static void write_vec_element_i32(DisasContext *s, TCGv_i32 tcg_src,
-                                  int destidx, int element, TCGMemOp memop)
+                                  int destidx, int element, MemOp memop)
 {
     int vect_off = vec_reg_offset(s, destidx, element, memop & MO_SIZE);
     switch (memop) {
@@ -1068,7 +1075,7 @@ static void write_vec_element_i32(DisasContext *s, TCGv_i32 tcg_src,
 
 /* Store from vector register to memory */
 static void do_vec_st(DisasContext *s, int srcidx, int element,
-                      TCGv_i64 tcg_addr, int size, TCGMemOp endian)
+                      TCGv_i64 tcg_addr, int size, MemOp endian)
 {
     TCGv_i64 tcg_tmp = tcg_temp_new_i64();
 
@@ -1080,7 +1087,7 @@ static void do_vec_st(DisasContext *s, int srcidx, int element,
 
 /* Load from memory to vector register */
 static void do_vec_ld(DisasContext *s, int destidx, int element,
-                      TCGv_i64 tcg_addr, int size, TCGMemOp endian)
+                      TCGv_i64 tcg_addr, int size, MemOp endian)
 {
     TCGv_i64 tcg_tmp = tcg_temp_new_i64();
 
@@ -1712,6 +1719,12 @@ static void handle_sys(DisasContext *s, uint32_t insn, bool isread,
         tcg_temp_free_ptr(tmpptr);
         tcg_temp_free_i32(tcg_syn);
         tcg_temp_free_i32(tcg_isread);
+    } else if (ri->type & ARM_CP_RAISES_EXC) {
+        /*
+         * The readfn or writefn might raise an exception;
+         * synchronize the CPU state in case it does.
+         */
+        gen_a64_set_pc_im(s->pc_curr);
     }
 
     /* Handle special cases first */
@@ -2181,7 +2194,7 @@ static void gen_load_exclusive(DisasContext *s, int rt, int rt2,
                                TCGv_i64 addr, int size, bool is_pair)
 {
     int idx = get_mem_index(s);
-    TCGMemOp memop = s->be_data;
+    MemOp memop = s->be_data;
 
     g_assert(size <= 3);
     if (is_pair) {
@@ -3267,7 +3280,7 @@ static void disas_ldst_multiple_struct(DisasContext *s, uint32_t insn)
     bool is_postidx = extract32(insn, 23, 1);
     bool is_q = extract32(insn, 30, 1);
     TCGv_i64 clean_addr, tcg_rn, tcg_ebytes;
-    TCGMemOp endian = s->be_data;
+    MemOp endian = s->be_data;
 
     int ebytes;   /* bytes per element */
     int elements; /* elements per vector */
@@ -5436,7 +5449,7 @@ static void disas_fp_csel(DisasContext *s, uint32_t insn)
     unsigned int mos, type, rm, cond, rn, rd;
     TCGv_i64 t_true, t_false, t_zero;
     DisasCompare64 c;
-    TCGMemOp sz;
+    MemOp sz;
 
     mos = extract32(insn, 29, 3);
     type = extract32(insn, 22, 2);
@@ -6248,7 +6261,7 @@ static void disas_fp_imm(DisasContext *s, uint32_t insn)
     int mos = extract32(insn, 29, 3);
     uint64_t imm;
     TCGv_i64 tcg_res;
-    TCGMemOp sz;
+    MemOp sz;
 
     if (mos || imm5) {
         unallocated_encoding(s);
@@ -7011,7 +7024,7 @@ static TCGv_i32 do_reduction_op(DisasContext *s, int fpopcode, int rn,
 {
     if (esize == size) {
         int element;
-        TCGMemOp msize = esize == 16 ? MO_16 : MO_32;
+        MemOp msize = esize == 16 ? MO_16 : MO_32;
         TCGv_i32 tcg_elem;
 
         /* We should have one register left here */
@@ -8003,7 +8016,7 @@ static void handle_vec_simd_sqshrn(DisasContext *s, bool is_scalar, bool is_q,
     int shift = (2 * esize) - immhb;
     int elements = is_scalar ? 1 : (64 / esize);
     bool round = extract32(opcode, 0, 1);
-    TCGMemOp ldop = (size + 1) | (is_u_shift ? 0 : MO_SIGN);
+    MemOp ldop = (size + 1) | (is_u_shift ? 0 : MO_SIGN);
     TCGv_i64 tcg_rn, tcg_rd, tcg_round;
     TCGv_i32 tcg_rd_narrowed;
     TCGv_i64 tcg_final;
@@ -8162,7 +8175,7 @@ static void handle_simd_qshl(DisasContext *s, bool scalar, bool is_q,
             }
         };
         NeonGenTwoOpEnvFn *genfn = fns[src_unsigned][dst_unsigned][size];
-        TCGMemOp memop = scalar ? size : MO_32;
+        MemOp memop = scalar ? size : MO_32;
         int maxpass = scalar ? 1 : is_q ? 4 : 2;
 
         for (pass = 0; pass < maxpass; pass++) {
@@ -8206,7 +8219,7 @@ static void handle_simd_intfp_conv(DisasContext *s, int rd, int rn,
     TCGv_ptr tcg_fpst = get_fpstatus_ptr(size == MO_16);
     TCGv_i32 tcg_shift = NULL;
 
-    TCGMemOp mop = size | (is_signed ? MO_SIGN : 0);
+    MemOp mop = size | (is_signed ? MO_SIGN : 0);
     int pass;
 
     if (fracbits || size == MO_64) {
@@ -9985,7 +9998,7 @@ static void handle_vec_simd_shri(DisasContext *s, bool is_q, bool is_u,
     int dsize = is_q ? 128 : 64;
     int esize = 8 << size;
     int elements = dsize/esize;
-    TCGMemOp memop = size | (is_u ? 0 : MO_SIGN);
+    MemOp memop = size | (is_u ? 0 : MO_SIGN);
     TCGv_i64 tcg_rn = new_tmp_a64(s);
     TCGv_i64 tcg_rd = new_tmp_a64(s);
     TCGv_i64 tcg_round;
@@ -10328,7 +10341,7 @@ static void handle_3rd_widening(DisasContext *s, int is_q, int is_u, int size,
             TCGv_i64 tcg_op1 = tcg_temp_new_i64();
             TCGv_i64 tcg_op2 = tcg_temp_new_i64();
             TCGv_i64 tcg_passres;
-            TCGMemOp memop = MO_32 | (is_u ? 0 : MO_SIGN);
+            MemOp memop = MO_32 | (is_u ? 0 : MO_SIGN);
 
             int elt = pass + is_q * 2;
 
@@ -11808,7 +11821,7 @@ static void handle_2misc_pairwise(DisasContext *s, int opcode, bool u,
 
     if (size == 2) {
         /* 32 + 32 -> 64 op */
-        TCGMemOp memop = size + (u ? 0 : MO_SIGN);
+        MemOp memop = size + (u ? 0 : MO_SIGN);
 
         for (pass = 0; pass < maxpass; pass++) {
             TCGv_i64 tcg_op1 = tcg_temp_new_i64();
@@ -12830,7 +12843,7 @@ static void disas_simd_indexed(DisasContext *s, uint32_t insn)
 
     switch (is_fp) {
     case 1: /* normal fp */
-        /* convert insn encoded size to TCGMemOp size */
+        /* convert insn encoded size to MemOp size */
         switch (size) {
         case 0: /* half-precision */
             size = MO_16;
@@ -12878,7 +12891,7 @@ static void disas_simd_indexed(DisasContext *s, uint32_t insn)
         return;
     }
 
-    /* Given TCGMemOp size, adjust register and indexing.  */
+    /* Given MemOp size, adjust register and indexing.  */
     switch (size) {
     case MO_16:
         index = h << 2 | l << 1 | m;
@@ -13175,7 +13188,7 @@ static void disas_simd_indexed(DisasContext *s, uint32_t insn)
         TCGv_i64 tcg_res[2];
         int pass;
         bool satop = extract32(opcode, 0, 1);
-        TCGMemOp memop = MO_32;
+        MemOp memop = MO_32;
 
         if (satop || !u) {
             memop |= MO_SIGN;

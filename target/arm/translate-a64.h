@@ -18,6 +18,8 @@
 #ifndef TARGET_ARM_TRANSLATE_A64_H
 #define TARGET_ARM_TRANSLATE_A64_H
 
+void unallocated_encoding(DisasContext *s);
+
 #define unsupported_encoding(s, insn)                                    \
     do {                                                                 \
         qemu_log_mask(LOG_UNIMP,                                         \
@@ -62,7 +64,7 @@ static inline void assert_fp_access_checked(DisasContext *s)
  * the FP/vector register Qn.
  */
 static inline int vec_reg_offset(DisasContext *s, int regno,
-                                 int element, TCGMemOp size)
+                                 int element, MemOp size)
 {
     int element_size = 1 << size;
     int offs = element * element_size;

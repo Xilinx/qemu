@@ -23,7 +23,7 @@ typedef struct DisasContext {
     int condexec_cond;
     int thumb;
     int sctlr_b;
-    TCGMemOp be_data;
+    MemOp be_data;
 #if !defined(CONFIG_USER_ONLY)
     int user;
 #endif
@@ -98,8 +98,6 @@ typedef struct DisasCompare {
     TCGv_i32 value;
     bool value_global;
 } DisasCompare;
-
-void unallocated_encoding(DisasContext *s);
 
 /* Share the TCG temporaries common between 32 and 64 bit modes.  */
 extern TCGv_i32 cpu_NF, cpu_ZF, cpu_CF, cpu_VF;

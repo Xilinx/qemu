@@ -114,7 +114,7 @@ typedef enum ISSInfo {
 } ISSInfo;
 
 /* Save the syndrome information for a Data Abort */
-static void disas_set_da_iss(DisasContext *s, TCGMemOp memop, ISSInfo issinfo)
+static void disas_set_da_iss(DisasContext *s, MemOp memop, ISSInfo issinfo)
 {
     uint32_t syn;
     int sas = memop & MO_SIZE;
@@ -355,7 +355,7 @@ static void gen_smul_dual(TCGv_i32 a, TCGv_i32 b)
 }
 
 /* Byteswap each halfword.  */
-static void gen_rev16(TCGv_i32 var)
+static void gen_rev16(TCGv_i32 dest, TCGv_i32 var)
 {
     TCGv_i32 tmp = tcg_temp_new_i32();
     TCGv_i32 mask = tcg_const_i32(0x00ff00ff);
@@ -363,17 +363,17 @@ static void gen_rev16(TCGv_i32 var)
     tcg_gen_and_i32(tmp, tmp, mask);
     tcg_gen_and_i32(var, var, mask);
     tcg_gen_shli_i32(var, var, 8);
-    tcg_gen_or_i32(var, var, tmp);
+    tcg_gen_or_i32(dest, var, tmp);
     tcg_temp_free_i32(mask);
     tcg_temp_free_i32(tmp);
 }
 
 /* Byteswap low halfword and sign extend.  */
-static void gen_revsh(TCGv_i32 var)
+static void gen_revsh(TCGv_i32 dest, TCGv_i32 var)
 {
     tcg_gen_ext16u_i32(var, var);
     tcg_gen_bswap16_i32(var, var);
-    tcg_gen_ext16s_i32(var, var);
+    tcg_gen_ext16s_i32(dest, var);
 }
 
 /* 32x32->64 multiply.  Marks inputs as dead.  */
@@ -426,7 +426,7 @@ static void gen_swap_half(TCGv_i32 var)
     t0 = (t0 + t1) ^ tmp;
  */
 
-static void gen_add16(TCGv_i32 t0, TCGv_i32 t1)
+static void gen_add16(TCGv_i32 dest, TCGv_i32 t0, TCGv_i32 t1)
 {
     TCGv_i32 tmp = tcg_temp_new_i32();
     tcg_gen_xor_i32(tmp, t0, t1);
@@ -434,15 +434,8 @@ static void gen_add16(TCGv_i32 t0, TCGv_i32 t1)
     tcg_gen_andi_i32(t0, t0, ~0x8000);
     tcg_gen_andi_i32(t1, t1, ~0x8000);
     tcg_gen_add_i32(t0, t0, t1);
-    tcg_gen_xor_i32(t0, t0, tmp);
+    tcg_gen_xor_i32(dest, t0, tmp);
     tcg_temp_free_i32(tmp);
-    tcg_temp_free_i32(t1);
-}
-
-/* Set CF to the top bit of var.  */
-static void gen_set_CF_bit31(TCGv_i32 var)
-{
-    tcg_gen_shri_i32(cpu_CF, var, 31);
 }
 
 /* Set N and Z flags from var.  */
@@ -450,13 +443,6 @@ static inline void gen_logic_CC(TCGv_i32 var)
 {
     tcg_gen_mov_i32(cpu_NF, var);
     tcg_gen_mov_i32(cpu_ZF, var);
-}
-
-/* T0 += T1 + CF.  */
-static void gen_adc(TCGv_i32 t0, TCGv_i32 t1)
-{
-    tcg_gen_add_i32(t0, t0, t1);
-    tcg_gen_add_i32(t0, t0, cpu_CF);
 }
 
 /* dest = T0 + T1 + CF. */
@@ -654,99 +640,6 @@ static inline void gen_arm_shift_reg(TCGv_i32 var, int shiftop,
     tcg_temp_free_i32(shift);
 }
 
-#define PAS_OP(pfx) \
-    switch (op2) {  \
-    case 0: gen_pas_helper(glue(pfx,add16)); break; \
-    case 1: gen_pas_helper(glue(pfx,addsubx)); break; \
-    case 2: gen_pas_helper(glue(pfx,subaddx)); break; \
-    case 3: gen_pas_helper(glue(pfx,sub16)); break; \
-    case 4: gen_pas_helper(glue(pfx,add8)); break; \
-    case 7: gen_pas_helper(glue(pfx,sub8)); break; \
-    }
-static void gen_arm_parallel_addsub(int op1, int op2, TCGv_i32 a, TCGv_i32 b)
-{
-    TCGv_ptr tmp;
-
-    switch (op1) {
-#define gen_pas_helper(name) glue(gen_helper_,name)(a, a, b, tmp)
-    case 1:
-        tmp = tcg_temp_new_ptr();
-        tcg_gen_addi_ptr(tmp, cpu_env, offsetof(CPUARMState, GE));
-        PAS_OP(s)
-        tcg_temp_free_ptr(tmp);
-        break;
-    case 5:
-        tmp = tcg_temp_new_ptr();
-        tcg_gen_addi_ptr(tmp, cpu_env, offsetof(CPUARMState, GE));
-        PAS_OP(u)
-        tcg_temp_free_ptr(tmp);
-        break;
-#undef gen_pas_helper
-#define gen_pas_helper(name) glue(gen_helper_,name)(a, a, b)
-    case 2:
-        PAS_OP(q);
-        break;
-    case 3:
-        PAS_OP(sh);
-        break;
-    case 6:
-        PAS_OP(uq);
-        break;
-    case 7:
-        PAS_OP(uh);
-        break;
-#undef gen_pas_helper
-    }
-}
-#undef PAS_OP
-
-/* For unknown reasons Arm and Thumb-2 use arbitrarily different encodings.  */
-#define PAS_OP(pfx) \
-    switch (op1) {  \
-    case 0: gen_pas_helper(glue(pfx,add8)); break; \
-    case 1: gen_pas_helper(glue(pfx,add16)); break; \
-    case 2: gen_pas_helper(glue(pfx,addsubx)); break; \
-    case 4: gen_pas_helper(glue(pfx,sub8)); break; \
-    case 5: gen_pas_helper(glue(pfx,sub16)); break; \
-    case 6: gen_pas_helper(glue(pfx,subaddx)); break; \
-    }
-static void gen_thumb2_parallel_addsub(int op1, int op2, TCGv_i32 a, TCGv_i32 b)
-{
-    TCGv_ptr tmp;
-
-    switch (op2) {
-#define gen_pas_helper(name) glue(gen_helper_,name)(a, a, b, tmp)
-    case 0:
-        tmp = tcg_temp_new_ptr();
-        tcg_gen_addi_ptr(tmp, cpu_env, offsetof(CPUARMState, GE));
-        PAS_OP(s)
-        tcg_temp_free_ptr(tmp);
-        break;
-    case 4:
-        tmp = tcg_temp_new_ptr();
-        tcg_gen_addi_ptr(tmp, cpu_env, offsetof(CPUARMState, GE));
-        PAS_OP(u)
-        tcg_temp_free_ptr(tmp);
-        break;
-#undef gen_pas_helper
-#define gen_pas_helper(name) glue(gen_helper_,name)(a, a, b)
-    case 1:
-        PAS_OP(q);
-        break;
-    case 2:
-        PAS_OP(sh);
-        break;
-    case 5:
-        PAS_OP(uq);
-        break;
-    case 6:
-        PAS_OP(uh);
-        break;
-#undef gen_pas_helper
-    }
-}
-#undef PAS_OP
-
 /*
  * Generate a conditional based on ARM condition code cc.
  * This is common between ARM and Aarch64 targets.
@@ -857,25 +750,6 @@ void arm_gen_test_cc(int cc, TCGLabel *label)
     arm_free_cc(&cmp);
 }
 
-static const uint8_t table_logic_cc[16] = {
-    1, /* and */
-    1, /* xor */
-    0, /* sub */
-    0, /* rsb */
-    0, /* add */
-    0, /* adc */
-    0, /* sbc */
-    0, /* rsc */
-    1, /* andl */
-    1, /* xorl */
-    0, /* cmp */
-    0, /* cmn */
-    1, /* orr */
-    1, /* mov */
-    1, /* bic */
-    1, /* mvn */
-};
-
 static inline void gen_set_condexec(DisasContext *s)
 {
     if (s->condexec_mask) {
@@ -891,21 +765,6 @@ static inline void gen_set_pc_im(DisasContext *s, target_ulong val)
     tcg_gen_movi_i32(cpu_R[15], val);
 }
 
-/* Set PC and Thumb state from an immediate address.  */
-static inline void gen_bx_im(DisasContext *s, uint32_t addr)
-{
-    TCGv_i32 tmp;
-
-    s->base.is_jmp = DISAS_JUMP;
-    if (s->thumb != (addr & 1)) {
-        tmp = tcg_temp_new_i32();
-        tcg_gen_movi_i32(tmp, addr & 1);
-        tcg_gen_st_i32(tmp, cpu_env, offsetof(CPUARMState, thumb));
-        tcg_temp_free_i32(tmp);
-    }
-    tcg_gen_movi_i32(cpu_R[15], addr & ~1);
-}
-
 /* Set PC and Thumb state from var.  var is marked as dead.  */
 static inline void gen_bx(DisasContext *s, TCGv_i32 var)
 {
@@ -915,10 +774,27 @@ static inline void gen_bx(DisasContext *s, TCGv_i32 var)
     store_cpu_field(var, thumb);
 }
 
-/* Set PC and Thumb state from var. var is marked as dead.
+/*
+ * Set PC and Thumb state from var. var is marked as dead.
  * For M-profile CPUs, include logic to detect exception-return
  * branches and handle them. This is needed for Thumb POP/LDM to PC, LDR to PC,
  * and BX reg, and no others, and happens only for code in Handler mode.
+ * The Security Extension also requires us to check for the FNC_RETURN
+ * which signals a function return from non-secure state; this can happen
+ * in both Handler and Thread mode.
+ * To avoid having to do multiple comparisons in inline generated code,
+ * we make the check we do here loose, so it will match for EXC_RETURN
+ * in Thread mode. For system emulation do_v7m_exception_exit() checks
+ * for these spurious cases and returns without doing anything (giving
+ * the same behaviour as for a branch to a non-magic address).
+ *
+ * In linux-user mode it is unclear what the right behaviour for an
+ * attempted FNC_RETURN should be, because in real hardware this will go
+ * directly to Secure code (ie not the Linux kernel) which will then treat
+ * the error in any way it chooses. For QEMU we opt to make the FNC_RETURN
+ * attempt behave the way it would on a CPU without the security extension,
+ * which is to say "like a normal branch". That means we can simply treat
+ * all branches as normal with no magic address behaviour.
  */
 static inline void gen_bx_excret(DisasContext *s, TCGv_i32 var)
 {
@@ -926,10 +802,12 @@ static inline void gen_bx_excret(DisasContext *s, TCGv_i32 var)
      * s->base.is_jmp that we need to do the rest of the work later.
      */
     gen_bx(s, var);
+#ifndef CONFIG_USER_ONLY
     if (arm_dc_feature(s, ARM_FEATURE_M_SECURITY) ||
         (s->v7m_handler_mode && arm_dc_feature(s, ARM_FEATURE_M))) {
         s->base.is_jmp = DISAS_BX_EXCRET;
     }
+#endif
 }
 
 static inline void gen_bx_excret_final_code(DisasContext *s)
@@ -1042,7 +920,7 @@ static inline void store_reg_from_load(DisasContext *s, int reg, TCGv_i32 var)
  * that the address argument is TCGv_i32 rather than TCGv.
  */
 
-static inline TCGv gen_aa32_addr(DisasContext *s, TCGv_i32 a32, TCGMemOp op)
+static inline TCGv gen_aa32_addr(DisasContext *s, TCGv_i32 a32, MemOp op)
 {
     TCGv addr = tcg_temp_new();
     tcg_gen_extu_i32_tl(addr, a32);
@@ -1055,7 +933,7 @@ static inline TCGv gen_aa32_addr(DisasContext *s, TCGv_i32 a32, TCGMemOp op)
 }
 
 static void gen_aa32_ld_i32(DisasContext *s, TCGv_i32 val, TCGv_i32 a32,
-                            int index, TCGMemOp opc)
+                            int index, MemOp opc)
 {
     TCGv addr;
 
@@ -1070,7 +948,7 @@ static void gen_aa32_ld_i32(DisasContext *s, TCGv_i32 val, TCGv_i32 a32,
 }
 
 static void gen_aa32_st_i32(DisasContext *s, TCGv_i32 val, TCGv_i32 a32,
-                            int index, TCGMemOp opc)
+                            int index, MemOp opc)
 {
     TCGv addr;
 
@@ -1089,14 +967,6 @@ static inline void gen_aa32_ld##SUFF(DisasContext *s, TCGv_i32 val,      \
                                      TCGv_i32 a32, int index)            \
 {                                                                        \
     gen_aa32_ld_i32(s, val, a32, index, OPC | s->be_data);               \
-}                                                                        \
-static inline void gen_aa32_ld##SUFF##_iss(DisasContext *s,              \
-                                           TCGv_i32 val,                 \
-                                           TCGv_i32 a32, int index,      \
-                                           ISSInfo issinfo)              \
-{                                                                        \
-    gen_aa32_ld##SUFF(s, val, a32, index);                               \
-    disas_set_da_iss(s, OPC, issinfo);                                   \
 }
 
 #define DO_GEN_ST(SUFF, OPC)                                             \
@@ -1104,14 +974,6 @@ static inline void gen_aa32_st##SUFF(DisasContext *s, TCGv_i32 val,      \
                                      TCGv_i32 a32, int index)            \
 {                                                                        \
     gen_aa32_st_i32(s, val, a32, index, OPC | s->be_data);               \
-}                                                                        \
-static inline void gen_aa32_st##SUFF##_iss(DisasContext *s,              \
-                                           TCGv_i32 val,                 \
-                                           TCGv_i32 a32, int index,      \
-                                           ISSInfo issinfo)              \
-{                                                                        \
-    gen_aa32_st##SUFF(s, val, a32, index);                               \
-    disas_set_da_iss(s, OPC, issinfo | ISSIsWrite);                      \
 }
 
 static inline void gen_aa32_frob64(DisasContext *s, TCGv_i64 val)
@@ -1123,7 +985,7 @@ static inline void gen_aa32_frob64(DisasContext *s, TCGv_i64 val)
 }
 
 static void gen_aa32_ld_i64(DisasContext *s, TCGv_i64 val, TCGv_i32 a32,
-                            int index, TCGMemOp opc)
+                            int index, MemOp opc)
 {
     TCGv addr = gen_aa32_addr(s, a32, opc);
     tcg_gen_qemu_ld_i64(val, addr, index, opc);
@@ -1138,7 +1000,7 @@ static inline void gen_aa32_ld64(DisasContext *s, TCGv_i64 val,
 }
 
 static void gen_aa32_st_i64(DisasContext *s, TCGv_i64 val, TCGv_i32 a32,
-                            int index, TCGMemOp opc)
+                            int index, MemOp opc)
 {
     TCGv addr = gen_aa32_addr(s, a32, opc);
 
@@ -1160,9 +1022,7 @@ static inline void gen_aa32_st64(DisasContext *s, TCGv_i64 val,
     gen_aa32_st_i64(s, val, a32, index, MO_Q | s->be_data);
 }
 
-DO_GEN_LD(8s, MO_SB)
 DO_GEN_LD(8u, MO_UB)
-DO_GEN_LD(16s, MO_SW)
 DO_GEN_LD(16u, MO_UW)
 DO_GEN_LD(32u, MO_UL)
 DO_GEN_ST(8, MO_UB)
@@ -1231,7 +1091,7 @@ static void gen_exception_bkpt_insn(DisasContext *s, uint32_t syn)
     s->base.is_jmp = DISAS_NORETURN;
 }
 
-void unallocated_encoding(DisasContext *s)
+static void unallocated_encoding(DisasContext *s)
 {
     /* Unallocated and reserved encodings are uncategorized */
     gen_exception_insn(s, s->pc_curr, EXCP_UDEF, syn_uncategorized(),
@@ -1269,62 +1129,6 @@ static inline void gen_hlt(DisasContext *s, int imm)
     }
 
     unallocated_encoding(s);
-}
-
-static inline void gen_add_data_offset(DisasContext *s, unsigned int insn,
-                                       TCGv_i32 var)
-{
-    int val, rm, shift, shiftop;
-    TCGv_i32 offset;
-
-    if (!(insn & (1 << 25))) {
-        /* immediate */
-        val = insn & 0xfff;
-        if (!(insn & (1 << 23)))
-            val = -val;
-        if (val != 0)
-            tcg_gen_addi_i32(var, var, val);
-    } else {
-        /* shift/register */
-        rm = (insn) & 0xf;
-        shift = (insn >> 7) & 0x1f;
-        shiftop = (insn >> 5) & 3;
-        offset = load_reg(s, rm);
-        gen_arm_shift_im(offset, shiftop, shift, 0);
-        if (!(insn & (1 << 23)))
-            tcg_gen_sub_i32(var, var, offset);
-        else
-            tcg_gen_add_i32(var, var, offset);
-        tcg_temp_free_i32(offset);
-    }
-}
-
-static inline void gen_add_datah_offset(DisasContext *s, unsigned int insn,
-                                        int extra, TCGv_i32 var)
-{
-    int val, rm;
-    TCGv_i32 offset;
-
-    if (insn & (1 << 22)) {
-        /* immediate */
-        val = (insn & 0xf) | ((insn >> 4) & 0xf0);
-        if (!(insn & (1 << 23)))
-            val = -val;
-        val += extra;
-        if (val != 0)
-            tcg_gen_addi_i32(var, var, val);
-    } else {
-        /* register */
-        if (extra)
-            tcg_gen_addi_i32(var, var, extra);
-        rm = (insn) & 0xf;
-        offset = load_reg(s, rm);
-        if (!(insn & (1 << 23)))
-            tcg_gen_sub_i32(var, var, offset);
-        else
-            tcg_gen_add_i32(var, var, offset);
-        tcg_temp_free_i32(offset);
-    }
 }
 
 static TCGv_ptr get_fpstatus_ptr(int neon)
@@ -1369,7 +1173,7 @@ neon_reg_offset (int reg, int n)
  * where 0 is the least significant end of the register.
  */
 static inline long
-neon_element_offset(int reg, int element, TCGMemOp size)
+neon_element_offset(int reg, int element, MemOp size)
 {
     int element_size = 1 << size;
     int ofs = element * element_size;
@@ -1391,7 +1195,7 @@ static TCGv_i32 neon_load_reg(int reg, int pass)
     return tmp;
 }
 
-static void neon_load_element(TCGv_i32 var, int reg, int ele, TCGMemOp mop)
+static void neon_load_element(TCGv_i32 var, int reg, int ele, MemOp mop)
 {
     long offset = neon_element_offset(reg, ele, mop & MO_SIZE);
 
@@ -1410,7 +1214,7 @@ static void neon_load_element(TCGv_i32 var, int reg, int ele, TCGMemOp mop)
     }
 }
 
-static void neon_load_element64(TCGv_i64 var, int reg, int ele, TCGMemOp mop)
+static void neon_load_element64(TCGv_i64 var, int reg, int ele, MemOp mop)
 {
     long offset = neon_element_offset(reg, ele, mop & MO_SIZE);
 
@@ -1438,7 +1242,7 @@ static void neon_store_reg(int reg, int pass, TCGv_i32 var)
     tcg_temp_free_i32(var);
 }
 
-static void neon_store_element(int reg, int ele, TCGMemOp size, TCGv_i32 var)
+static void neon_store_element(int reg, int ele, MemOp size, TCGv_i32 var)
 {
     long offset = neon_element_offset(reg, ele, size);
 
@@ -1457,7 +1261,7 @@ static void neon_store_element(int reg, int ele, TCGMemOp size, TCGv_i32 var)
     }
 }
 
-static void neon_store_element64(int reg, int ele, TCGMemOp size, TCGv_i64 var)
+static void neon_store_element64(int reg, int ele, MemOp size, TCGv_i64 var)
 {
     long offset = neon_element_offset(reg, ele, size);
 
@@ -2906,9 +2710,8 @@ static inline void gen_jmp (DisasContext *s, uint32_t dest)
 {
     if (unlikely(is_singlestepping(s))) {
         /* An indirect jump so that we still trigger the debug exception.  */
-        if (s->thumb)
-            dest |= 1;
-        gen_bx_im(s, dest);
+        gen_set_pc_im(s, dest);
+        s->base.is_jmp = DISAS_JUMP;
     } else {
         gen_goto_tb(s, 0, dest);
     }
@@ -3224,46 +3027,6 @@ static void gen_exception_return(DisasContext *s, TCGv_i32 pc)
     gen_rfe(s, pc, load_cpu_field(spsr));
 }
 
-/*
- * For WFI we will halt the vCPU until an IRQ. For WFE and YIELD we
- * only call the helper when running single threaded TCG code to ensure
- * the next round-robin scheduled vCPU gets a crack. In MTTCG mode we
- * just skip this instruction. Currently the SEV/SEVL instructions
- * which are *one* of many ways to wake the CPU from WFE are not
- * implemented so we can't sleep like WFI does.
- */
-static void gen_nop_hint(DisasContext *s, int val)
-{
-    switch (val) {
-        /* When running in MTTCG we don't generate jumps to the yield and
-         * WFE helpers as it won't affect the scheduling of other vCPUs.
-         * If we wanted to more completely model WFE/SEV so we don't busy
-         * spin unnecessarily we would need to do something more involved.
-         */
-    case 1: /* yield */
-        if (!(tb_cflags(s->base.tb) & CF_PARALLEL)) {
-            gen_set_pc_im(s, s->base.pc_next);
-            s->base.is_jmp = DISAS_YIELD;
-        }
-        break;
-    case 3: /* wfi */
-        gen_set_pc_im(s, s->base.pc_next);
-        s->base.is_jmp = DISAS_WFI;
-        break;
-    case 2: /* wfe */
-        if (!(tb_cflags(s->base.tb) & CF_PARALLEL)) {
-            gen_set_pc_im(s, s->base.pc_next);
-            s->base.is_jmp = DISAS_WFE;
-        }
-        break;
-    case 4: /* sev */
-    case 5: /* sevl */
-        /* TODO: Implement SEV, SEVL and WFE.  May help SMP performance.  */
-    default: /* nop */
-        break;
-    }
-}
-
 #define CPU_V001 cpu_V0, cpu_V0, cpu_V1
 
 static inline void gen_neon_add(int size, TCGv_i32 t0, TCGv_i32 t1)
@@ -3523,7 +3286,7 @@ static int disas_neon_ls_insn(DisasContext *s, uint32_t insn)
     int n;
     int vec_size;
     int mmu_idx;
-    TCGMemOp endian;
+    MemOp endian;
     TCGv_i32 addr;
     TCGv_i32 tmp;
     TCGv_i32 tmp2;
@@ -6511,7 +6274,7 @@ static int disas_neon_data_insn(DisasContext *s, uint32_t insn)
                             }
                             break;
                         case NEON_2RM_VREV16:
-                            gen_rev16(tmp);
+                            gen_rev16(tmp, tmp);
                             break;
                         case NEON_2RM_VCLS:
                             switch (size) {
@@ -6830,7 +6593,7 @@ static int disas_neon_data_insn(DisasContext *s, uint32_t insn)
             } else if ((insn & 0x380) == 0) {
                 /* VDUP */
                 int element;
-                TCGMemOp size;
+                MemOp size;
 
                 if ((insn & (7 << 16)) == 0 || (q && (rd & 1))) {
                     return 1;
@@ -7191,6 +6954,13 @@ static int disas_coproc_insn(DisasContext *s, uint32_t insn)
             tcg_temp_free_ptr(tmpptr);
             tcg_temp_free_i32(tcg_syn);
             tcg_temp_free_i32(tcg_isread);
+        } else if (ri->type & ARM_CP_RAISES_EXC) {
+            /*
+             * The readfn or writefn might raise an exception;
+             * synchronize the CPU state in case it does.
+             */
+            gen_set_condexec(s);
+            gen_set_pc_im(s, s->pc_curr);
         }
 
         /* Handle special cases first */
@@ -7345,21 +7115,6 @@ static void gen_storeq_reg(DisasContext *s, int rlow, int rhigh, TCGv_i64 val)
     store_reg(s, rhigh, tmp);
 }
 
-/* load a 32-bit value from a register and perform a 64-bit accumulate.  */
-static void gen_addq_lo(DisasContext *s, TCGv_i64 val, int rlow)
-{
-    TCGv_i64 tmp;
-    TCGv_i32 tmp2;
-
-    /* Load value and extend to 64 bits.  */
-    tmp = tcg_temp_new_i64();
-    tmp2 = load_reg(s, rlow);
-    tcg_gen_extu_i32_i64(tmp, tmp2);
-    tcg_temp_free_i32(tmp2);
-    tcg_gen_add_i64(val, val, tmp);
-    tcg_temp_free_i64(tmp);
-}
-
 /* load and add a 64-bit value from a register pair.  */
 static void gen_addq(DisasContext *s, TCGv_i64 val, int rlow, int rhigh)
 {
@@ -7395,7 +7150,7 @@ static void gen_load_exclusive(DisasContext *s, int rt, int rt2,
                                TCGv_i32 addr, int size)
 {
     TCGv_i32 tmp = tcg_temp_new_i32();
-    TCGMemOp opc = size | MO_ALIGN | s->be_data;
+    MemOp opc = size | MO_ALIGN | s->be_data;
 
     s->is_ldex = true;
 
@@ -7449,7 +7204,7 @@ static void gen_store_exclusive(DisasContext *s, int rd, int rt, int rt2,
     TCGv taddr;
     TCGLabel *done_label;
     TCGLabel *fail_label;
-    TCGMemOp opc = size | MO_ALIGN | s->be_data;
+    MemOp opc = size | MO_ALIGN | s->be_data;
 
     /* if (env->exclusive_addr == addr && env->exclusive_val == [addr]) {
          [addr] = {Rt};
@@ -7657,14 +7412,3075 @@ static void arm_skip_unless(DisasContext *s, uint32_t cond)
     arm_gen_test_cc(cond ^ 1, s->condlabel);
 }
 
+
+/*
+ * Constant expanders for the decoders.
+ */
+
+static int negate(DisasContext *s, int x)
+{
+    return -x;
+}
+
+static int plus_2(DisasContext *s, int x)
+{
+    return x + 2;
+}
+
+static int times_2(DisasContext *s, int x)
+{
+    return x * 2;
+}
+
+static int times_4(DisasContext *s, int x)
+{
+    return x * 4;
+}
+
+/* Return only the rotation part of T32ExpandImm.  */
+static int t32_expandimm_rot(DisasContext *s, int x)
+{
+    return x & 0xc00 ? extract32(x, 7, 5) : 0;
+}
+
+/* Return the unrotated immediate from T32ExpandImm.  */
+static int t32_expandimm_imm(DisasContext *s, int x)
+{
+    int imm = extract32(x, 0, 8);
+
+    switch (extract32(x, 8, 4)) {
+    case 0: /* XY */
+        /* Nothing to do.  */
+        break;
+    case 1: /* 00XY00XY */
+        imm *= 0x00010001;
+        break;
+    case 2: /* XY00XY00 */
+        imm *= 0x01000100;
+        break;
+    case 3: /* XYXYXYXY */
+        imm *= 0x01010101;
+        break;
+    default:
+        /* Rotated constant.  */
+        imm |= 0x80;
+        break;
+    }
+    return imm;
+}
+
+static int t32_branch24(DisasContext *s, int x)
+{
+    /* Convert J1:J2 at x[22:21] to I2:I1, which involves I=J^~S.  */
+    x ^= !(x < 0) * (3 << 21);
+    /* Append the final zero.  */
+    return x << 1;
+}
+
+static int t16_setflags(DisasContext *s)
+{
+    return s->condexec_mask == 0;
+}
+
+static int t16_push_list(DisasContext *s, int x)
+{
+    return (x & 0xff) | (x & 0x100) << (14 - 8);
+}
+
+static int t16_pop_list(DisasContext *s, int x)
+{
+    return (x & 0xff) | (x & 0x100) << (15 - 8);
+}
+
+/*
+ * Include the generated decoders.
+ */
+
+#include "decode-a32.inc.c"
+#include "decode-a32-uncond.inc.c"
+#include "decode-t32.inc.c"
+#include "decode-t16.inc.c"
+
+/* Helpers to swap operands for reverse-subtract.  */
+static void gen_rsb(TCGv_i32 dst, TCGv_i32 a, TCGv_i32 b)
+{
+    tcg_gen_sub_i32(dst, b, a);
+}
+
+static void gen_rsb_CC(TCGv_i32 dst, TCGv_i32 a, TCGv_i32 b)
+{
+    gen_sub_CC(dst, b, a);
+}
+
+static void gen_rsc(TCGv_i32 dest, TCGv_i32 a, TCGv_i32 b)
+{
+    gen_sub_carry(dest, b, a);
+}
+
+static void gen_rsc_CC(TCGv_i32 dest, TCGv_i32 a, TCGv_i32 b)
+{
+    gen_sbc_CC(dest, b, a);
+}
+
+/*
+ * Helpers for the data processing routines.
+ *
+ * After the computation store the results back.
+ * This may be suppressed altogether (STREG_NONE), require a runtime
+ * check against the stack limits (STREG_SP_CHECK), or generate an
+ * exception return.  Oh, or store into a register.
+ *
+ * Always return true, indicating success for a trans_* function.
+ */
+typedef enum {
+   STREG_NONE,
+   STREG_NORMAL,
+   STREG_SP_CHECK,
+   STREG_EXC_RET,
+} StoreRegKind;
+
+static bool store_reg_kind(DisasContext *s, int rd,
+                            TCGv_i32 val, StoreRegKind kind)
+{
+    switch (kind) {
+    case STREG_NONE:
+        tcg_temp_free_i32(val);
+        return true;
+    case STREG_NORMAL:
+        /* See ALUWritePC: Interworking only from a32 mode. */
+        if (s->thumb) {
+            store_reg(s, rd, val);
+        } else {
+            store_reg_bx(s, rd, val);
+        }
+        return true;
+    case STREG_SP_CHECK:
+        store_sp_checked(s, val);
+        return true;
+    case STREG_EXC_RET:
+        gen_exception_return(s, val);
+        return true;
+    }
+    g_assert_not_reached();
+}
+
+/*
+ * Data Processing (register)
+ *
+ * Operate, with set flags, one register source,
+ * one immediate shifted register source, and a destination.
+ */
+static bool op_s_rrr_shi(DisasContext *s, arg_s_rrr_shi *a,
+                         void (*gen)(TCGv_i32, TCGv_i32, TCGv_i32),
+                         int logic_cc, StoreRegKind kind)
+{
+    TCGv_i32 tmp1, tmp2;
+
+    tmp2 = load_reg(s, a->rm);
+    gen_arm_shift_im(tmp2, a->shty, a->shim, logic_cc);
+    tmp1 = load_reg(s, a->rn);
+
+    gen(tmp1, tmp1, tmp2);
+    tcg_temp_free_i32(tmp2);
+
+    if (logic_cc) {
+        gen_logic_CC(tmp1);
+    }
+    return store_reg_kind(s, a->rd, tmp1, kind);
+}
+
+static bool op_s_rxr_shi(DisasContext *s, arg_s_rrr_shi *a,
+                         void (*gen)(TCGv_i32, TCGv_i32),
+                         int logic_cc, StoreRegKind kind)
+{
+    TCGv_i32 tmp;
+
+    tmp = load_reg(s, a->rm);
+    gen_arm_shift_im(tmp, a->shty, a->shim, logic_cc);
+
+    gen(tmp, tmp);
+    if (logic_cc) {
+        gen_logic_CC(tmp);
+    }
+    return store_reg_kind(s, a->rd, tmp, kind);
+}
+
+/*
+ * Data-processing (register-shifted register)
+ *
+ * Operate, with set flags, one register source,
+ * one register shifted register source, and a destination.
+ */
+static bool op_s_rrr_shr(DisasContext *s, arg_s_rrr_shr *a,
+                         void (*gen)(TCGv_i32, TCGv_i32, TCGv_i32),
+                         int logic_cc, StoreRegKind kind)
+{
+    TCGv_i32 tmp1, tmp2;
+
+    tmp1 = load_reg(s, a->rs);
+    tmp2 = load_reg(s, a->rm);
+    gen_arm_shift_reg(tmp2, a->shty, tmp1, logic_cc);
+    tmp1 = load_reg(s, a->rn);
+
+    gen(tmp1, tmp1, tmp2);
+    tcg_temp_free_i32(tmp2);
+
+    if (logic_cc) {
+        gen_logic_CC(tmp1);
+    }
+    return store_reg_kind(s, a->rd, tmp1, kind);
+}
+
+static bool op_s_rxr_shr(DisasContext *s, arg_s_rrr_shr *a,
+                         void (*gen)(TCGv_i32, TCGv_i32),
+                         int logic_cc, StoreRegKind kind)
+{
+    TCGv_i32 tmp1, tmp2;
+
+    tmp1 = load_reg(s, a->rs);
+    tmp2 = load_reg(s, a->rm);
+    gen_arm_shift_reg(tmp2, a->shty, tmp1, logic_cc);
+
+    gen(tmp2, tmp2);
+    if (logic_cc) {
+        gen_logic_CC(tmp2);
+    }
+    return store_reg_kind(s, a->rd, tmp2, kind);
+}
+
+/*
+ * Data-processing (immediate)
+ *
+ * Operate, with set flags, one register source,
+ * one rotated immediate, and a destination.
+ *
+ * Note that logic_cc && a->rot setting CF based on the msb of the
+ * immediate is the reason why we must pass in the unrotated form
+ * of the immediate.
+ */
+static bool op_s_rri_rot(DisasContext *s, arg_s_rri_rot *a,
+                         void (*gen)(TCGv_i32, TCGv_i32, TCGv_i32),
+                         int logic_cc, StoreRegKind kind)
+{
+    TCGv_i32 tmp1, tmp2;
+    uint32_t imm;
+
+    imm = ror32(a->imm, a->rot);
+    if (logic_cc && a->rot) {
+        tcg_gen_movi_i32(cpu_CF, imm >> 31);
+    }
+    tmp2 = tcg_const_i32(imm);
+    tmp1 = load_reg(s, a->rn);
+
+    gen(tmp1, tmp1, tmp2);
+    tcg_temp_free_i32(tmp2);
+
+    if (logic_cc) {
+        gen_logic_CC(tmp1);
+    }
+    return store_reg_kind(s, a->rd, tmp1, kind);
+}
+
+static bool op_s_rxi_rot(DisasContext *s, arg_s_rri_rot *a,
+                         void (*gen)(TCGv_i32, TCGv_i32),
+                         int logic_cc, StoreRegKind kind)
+{
+    TCGv_i32 tmp;
+    uint32_t imm;
+
+    imm = ror32(a->imm, a->rot);
+    if (logic_cc && a->rot) {
+        tcg_gen_movi_i32(cpu_CF, imm >> 31);
+    }
+    tmp = tcg_const_i32(imm);
+
+    gen(tmp, tmp);
+    if (logic_cc) {
+        gen_logic_CC(tmp);
+    }
+    return store_reg_kind(s, a->rd, tmp, kind);
+}
+
+#define DO_ANY3(NAME, OP, L, K)                                         \
+    static bool trans_##NAME##_rrri(DisasContext *s, arg_s_rrr_shi *a)  \
+    { StoreRegKind k = (K); return op_s_rrr_shi(s, a, OP, L, k); }      \
+    static bool trans_##NAME##_rrrr(DisasContext *s, arg_s_rrr_shr *a)  \
+    { StoreRegKind k = (K); return op_s_rrr_shr(s, a, OP, L, k); }      \
+    static bool trans_##NAME##_rri(DisasContext *s, arg_s_rri_rot *a)   \
+    { StoreRegKind k = (K); return op_s_rri_rot(s, a, OP, L, k); }
+
+#define DO_ANY2(NAME, OP, L, K)                                         \
+    static bool trans_##NAME##_rxri(DisasContext *s, arg_s_rrr_shi *a)  \
+    { StoreRegKind k = (K); return op_s_rxr_shi(s, a, OP, L, k); }      \
+    static bool trans_##NAME##_rxrr(DisasContext *s, arg_s_rrr_shr *a)  \
+    { StoreRegKind k = (K); return op_s_rxr_shr(s, a, OP, L, k); }      \
+    static bool trans_##NAME##_rxi(DisasContext *s, arg_s_rri_rot *a)   \
+    { StoreRegKind k = (K); return op_s_rxi_rot(s, a, OP, L, k); }
+
+#define DO_CMP2(NAME, OP, L)                                            \
+    static bool trans_##NAME##_xrri(DisasContext *s, arg_s_rrr_shi *a)  \
+    { return op_s_rrr_shi(s, a, OP, L, STREG_NONE); }                   \
+    static bool trans_##NAME##_xrrr(DisasContext *s, arg_s_rrr_shr *a)  \
+    { return op_s_rrr_shr(s, a, OP, L, STREG_NONE); }                   \
+    static bool trans_##NAME##_xri(DisasContext *s, arg_s_rri_rot *a)   \
+    { return op_s_rri_rot(s, a, OP, L, STREG_NONE); }
+
+DO_ANY3(AND, tcg_gen_and_i32, a->s, STREG_NORMAL)
+DO_ANY3(EOR, tcg_gen_xor_i32, a->s, STREG_NORMAL)
+DO_ANY3(ORR, tcg_gen_or_i32, a->s, STREG_NORMAL)
+DO_ANY3(BIC, tcg_gen_andc_i32, a->s, STREG_NORMAL)
+
+DO_ANY3(RSB, a->s ? gen_rsb_CC : gen_rsb, false, STREG_NORMAL)
+DO_ANY3(ADC, a->s ? gen_adc_CC : gen_add_carry, false, STREG_NORMAL)
+DO_ANY3(SBC, a->s ? gen_sbc_CC : gen_sub_carry, false, STREG_NORMAL)
+DO_ANY3(RSC, a->s ? gen_rsc_CC : gen_rsc, false, STREG_NORMAL)
+
+DO_CMP2(TST, tcg_gen_and_i32, true)
+DO_CMP2(TEQ, tcg_gen_xor_i32, true)
+DO_CMP2(CMN, gen_add_CC, false)
+DO_CMP2(CMP, gen_sub_CC, false)
+
+DO_ANY3(ADD, a->s ? gen_add_CC : tcg_gen_add_i32, false,
+        a->rd == 13 && a->rn == 13 ? STREG_SP_CHECK : STREG_NORMAL)
+
+/*
+ * Note for the computation of StoreRegKind we return out of the
+ * middle of the functions that are expanded by DO_ANY3, and that
+ * we modify a->s via that parameter before it is used by OP.
+ */
+DO_ANY3(SUB, a->s ? gen_sub_CC : tcg_gen_sub_i32, false,
+        ({
+            StoreRegKind ret = STREG_NORMAL;
+            if (a->rd == 15 && a->s) {
+                /*
+                 * See ALUExceptionReturn:
+                 * In User mode, UNPREDICTABLE; we choose UNDEF.
+                 * In Hyp mode, UNDEFINED.
+                 */
+                if (IS_USER(s) || s->current_el == 2) {
+                    unallocated_encoding(s);
+                    return true;
+                }
+                /* There is no writeback of nzcv to PSTATE.  */
+                a->s = 0;
+                ret = STREG_EXC_RET;
+            } else if (a->rd == 13 && a->rn == 13) {
+                ret = STREG_SP_CHECK;
+            }
+            ret;
+        }))
+
+DO_ANY2(MOV, tcg_gen_mov_i32, a->s,
+        ({
+            StoreRegKind ret = STREG_NORMAL;
+            if (a->rd == 15 && a->s) {
+                /*
+                 * See ALUExceptionReturn:
+                 * In User mode, UNPREDICTABLE; we choose UNDEF.
+                 * In Hyp mode, UNDEFINED.
+                 */
+                if (IS_USER(s) || s->current_el == 2) {
+                    unallocated_encoding(s);
+                    return true;
+                }
+                /* There is no writeback of nzcv to PSTATE.  */
+                a->s = 0;
+                ret = STREG_EXC_RET;
+            } else if (a->rd == 13) {
+                ret = STREG_SP_CHECK;
+            }
+            ret;
+        }))
+
+DO_ANY2(MVN, tcg_gen_not_i32, a->s, STREG_NORMAL)
+
+/*
+ * ORN is only available with T32, so there is no register-shifted-register
+ * form of the insn.  Using the DO_ANY3 macro would create an unused function.
+ */
+static bool trans_ORN_rrri(DisasContext *s, arg_s_rrr_shi *a)
+{
+    return op_s_rrr_shi(s, a, tcg_gen_orc_i32, a->s, STREG_NORMAL);
+}
+
+static bool trans_ORN_rri(DisasContext *s, arg_s_rri_rot *a)
+{
+    return op_s_rri_rot(s, a, tcg_gen_orc_i32, a->s, STREG_NORMAL);
+}
+
+#undef DO_ANY3
+#undef DO_ANY2
+#undef DO_CMP2
+
+static bool trans_ADR(DisasContext *s, arg_ri *a)
+{
+    store_reg_bx(s, a->rd, add_reg_for_lit(s, 15, a->imm));
+    return true;
+}
+
+static bool trans_MOVW(DisasContext *s, arg_MOVW *a)
+{
+    TCGv_i32 tmp;
+
+    if (!ENABLE_ARCH_6T2) {
+        return false;
+    }
+
+    tmp = tcg_const_i32(a->imm);
+    store_reg(s, a->rd, tmp);
+    return true;
+}
+
+static bool trans_MOVT(DisasContext *s, arg_MOVW *a)
+{
+    TCGv_i32 tmp;
+
+    if (!ENABLE_ARCH_6T2) {
+        return false;
+    }
+
+    tmp = load_reg(s, a->rd);
+    tcg_gen_ext16u_i32(tmp, tmp);
+    tcg_gen_ori_i32(tmp, tmp, a->imm << 16);
+    store_reg(s, a->rd, tmp);
+    return true;
+}
+
+/*
+ * Multiply and multiply accumulate
+ */
+
+static bool op_mla(DisasContext *s, arg_s_rrrr *a, bool add)
+{
+    TCGv_i32 t1, t2;
+
+    t1 = load_reg(s, a->rn);
+    t2 = load_reg(s, a->rm);
+    tcg_gen_mul_i32(t1, t1, t2);
+    tcg_temp_free_i32(t2);
+    if (add) {
+        t2 = load_reg(s, a->ra);
+        tcg_gen_add_i32(t1, t1, t2);
+        tcg_temp_free_i32(t2);
+    }
+    if (a->s) {
+        gen_logic_CC(t1);
+    }
+    store_reg(s, a->rd, t1);
+    return true;
+}
+
+static bool trans_MUL(DisasContext *s, arg_MUL *a)
+{
+    return op_mla(s, a, false);
+}
+
+static bool trans_MLA(DisasContext *s, arg_MLA *a)
+{
+    return op_mla(s, a, true);
+}
+
+static bool trans_MLS(DisasContext *s, arg_MLS *a)
+{
+    TCGv_i32 t1, t2;
+
+    if (!ENABLE_ARCH_6T2) {
+        return false;
+    }
+    t1 = load_reg(s, a->rn);
+    t2 = load_reg(s, a->rm);
+    tcg_gen_mul_i32(t1, t1, t2);
+    tcg_temp_free_i32(t2);
+    t2 = load_reg(s, a->ra);
+    tcg_gen_sub_i32(t1, t2, t1);
+    tcg_temp_free_i32(t2);
+    store_reg(s, a->rd, t1);
+    return true;
+}
+
+static bool op_mlal(DisasContext *s, arg_s_rrrr *a, bool uns, bool add)
+{
+    TCGv_i32 t0, t1, t2, t3;
+
+    t0 = load_reg(s, a->rm);
+    t1 = load_reg(s, a->rn);
+    if (uns) {
+        tcg_gen_mulu2_i32(t0, t1, t0, t1);
+    } else {
+        tcg_gen_muls2_i32(t0, t1, t0, t1);
+    }
+    if (add) {
+        t2 = load_reg(s, a->ra);
+        t3 = load_reg(s, a->rd);
+        tcg_gen_add2_i32(t0, t1, t0, t1, t2, t3);
+        tcg_temp_free_i32(t2);
+        tcg_temp_free_i32(t3);
+    }
+    if (a->s) {
+        gen_logicq_cc(t0, t1);
+    }
+    store_reg(s, a->ra, t0);
+    store_reg(s, a->rd, t1);
+    return true;
+}
+
+static bool trans_UMULL(DisasContext *s, arg_UMULL *a)
+{
+    return op_mlal(s, a, true, false);
+}
+
+static bool trans_SMULL(DisasContext *s, arg_SMULL *a)
+{
+    return op_mlal(s, a, false, false);
+}
+
+static bool trans_UMLAL(DisasContext *s, arg_UMLAL *a)
+{
+    return op_mlal(s, a, true, true);
+}
+
+static bool trans_SMLAL(DisasContext *s, arg_SMLAL *a)
+{
+    return op_mlal(s, a, false, true);
+}
+
+static bool trans_UMAAL(DisasContext *s, arg_UMAAL *a)
+{
+    TCGv_i32 t0, t1, t2, zero;
+
+    if (s->thumb
+        ? !arm_dc_feature(s, ARM_FEATURE_THUMB_DSP)
+        : !ENABLE_ARCH_6) {
+        return false;
+    }
+
+    t0 = load_reg(s, a->rm);
+    t1 = load_reg(s, a->rn);
+    tcg_gen_mulu2_i32(t0, t1, t0, t1);
+    zero = tcg_const_i32(0);
+    t2 = load_reg(s, a->ra);
+    tcg_gen_add2_i32(t0, t1, t0, t1, t2, zero);
+    tcg_temp_free_i32(t2);
+    t2 = load_reg(s, a->rd);
+    tcg_gen_add2_i32(t0, t1, t0, t1, t2, zero);
+    tcg_temp_free_i32(t2);
+    tcg_temp_free_i32(zero);
+    store_reg(s, a->ra, t0);
+    store_reg(s, a->rd, t1);
+    return true;
+}
+
+/*
+ * Saturating addition and subtraction
+ */
+
+static bool op_qaddsub(DisasContext *s, arg_rrr *a, bool add, bool doub)
+{
+    TCGv_i32 t0, t1;
+
+    if (s->thumb
+        ? !arm_dc_feature(s, ARM_FEATURE_THUMB_DSP)
+        : !ENABLE_ARCH_5TE) {
+        return false;
+    }
+
+    t0 = load_reg(s, a->rm);
+    t1 = load_reg(s, a->rn);
+    if (doub) {
+        gen_helper_add_saturate(t1, cpu_env, t1, t1);
+    }
+    if (add) {
+        gen_helper_add_saturate(t0, cpu_env, t0, t1);
+    } else {
+        gen_helper_sub_saturate(t0, cpu_env, t0, t1);
+    }
+    tcg_temp_free_i32(t1);
+    store_reg(s, a->rd, t0);
+    return true;
+}
+
+#define DO_QADDSUB(NAME, ADD, DOUB) \
+static bool trans_##NAME(DisasContext *s, arg_rrr *a)    \
+{                                                        \
+    return op_qaddsub(s, a, ADD, DOUB);                  \
+}
+
+DO_QADDSUB(QADD, true, false)
+DO_QADDSUB(QSUB, false, false)
+DO_QADDSUB(QDADD, true, true)
+DO_QADDSUB(QDSUB, false, true)
+
+#undef DO_QADDSUB
+
+/*
+ * Halfword multiply and multiply accumulate
+ */
+
+static bool op_smlaxxx(DisasContext *s, arg_rrrr *a,
+                       int add_long, bool nt, bool mt)
+{
+    TCGv_i32 t0, t1, tl, th;
+
+    if (s->thumb
+        ? !arm_dc_feature(s, ARM_FEATURE_THUMB_DSP)
+        : !ENABLE_ARCH_5TE) {
+        return false;
+    }
+
+    t0 = load_reg(s, a->rn);
+    t1 = load_reg(s, a->rm);
+    gen_mulxy(t0, t1, nt, mt);
+    tcg_temp_free_i32(t1);
+
+    switch (add_long) {
+    case 0:
+        store_reg(s, a->rd, t0);
+        break;
+    case 1:
+        t1 = load_reg(s, a->ra);
+        gen_helper_add_setq(t0, cpu_env, t0, t1);
+        tcg_temp_free_i32(t1);
+        store_reg(s, a->rd, t0);
+        break;
+    case 2:
+        tl = load_reg(s, a->ra);
+        th = load_reg(s, a->rd);
+        t1 = tcg_const_i32(0);
+        tcg_gen_add2_i32(tl, th, tl, th, t0, t1);
+        tcg_temp_free_i32(t0);
+        tcg_temp_free_i32(t1);
+        store_reg(s, a->ra, tl);
+        store_reg(s, a->rd, th);
+        break;
+    default:
+        g_assert_not_reached();
+    }
+    return true;
+}
+
+#define DO_SMLAX(NAME, add, nt, mt) \
+static bool trans_##NAME(DisasContext *s, arg_rrrr *a)     \
+{                                                          \
+    return op_smlaxxx(s, a, add, nt, mt);                  \
+}
+
+DO_SMLAX(SMULBB, 0, 0, 0)
+DO_SMLAX(SMULBT, 0, 0, 1)
+DO_SMLAX(SMULTB, 0, 1, 0)
+DO_SMLAX(SMULTT, 0, 1, 1)
+
+DO_SMLAX(SMLABB, 1, 0, 0)
+DO_SMLAX(SMLABT, 1, 0, 1)
+DO_SMLAX(SMLATB, 1, 1, 0)
+DO_SMLAX(SMLATT, 1, 1, 1)
+
+DO_SMLAX(SMLALBB, 2, 0, 0)
+DO_SMLAX(SMLALBT, 2, 0, 1)
+DO_SMLAX(SMLALTB, 2, 1, 0)
+DO_SMLAX(SMLALTT, 2, 1, 1)
+
+#undef DO_SMLAX
+
+static bool op_smlawx(DisasContext *s, arg_rrrr *a, bool add, bool mt)
+{
+    TCGv_i32 t0, t1;
+
+    if (!ENABLE_ARCH_5TE) {
+        return false;
+    }
+
+    t0 = load_reg(s, a->rn);
+    t1 = load_reg(s, a->rm);
+    /*
+     * Since the nominal result is product<47:16>, shift the 16-bit
+     * input up by 16 bits, so that the result is at product<63:32>.
+     */
+    if (mt) {
+        tcg_gen_andi_i32(t1, t1, 0xffff0000);
+    } else {
+        tcg_gen_shli_i32(t1, t1, 16);
+    }
+    tcg_gen_muls2_i32(t0, t1, t0, t1);
+    tcg_temp_free_i32(t0);
+    if (add) {
+        t0 = load_reg(s, a->ra);
+        gen_helper_add_setq(t1, cpu_env, t1, t0);
+        tcg_temp_free_i32(t0);
+    }
+    store_reg(s, a->rd, t1);
+    return true;
+}
+
+#define DO_SMLAWX(NAME, add, mt) \
+static bool trans_##NAME(DisasContext *s, arg_rrrr *a)     \
+{                                                          \
+    return op_smlawx(s, a, add, mt);                       \
+}
+
+DO_SMLAWX(SMULWB, 0, 0)
+DO_SMLAWX(SMULWT, 0, 1)
+DO_SMLAWX(SMLAWB, 1, 0)
+DO_SMLAWX(SMLAWT, 1, 1)
+
+#undef DO_SMLAWX
+
+/*
+ * MSR (immediate) and hints
+ */
+
+static bool trans_YIELD(DisasContext *s, arg_YIELD *a)
+{
+    /*
+     * When running single-threaded TCG code, use the helper to ensure that
+     * the next round-robin scheduled vCPU gets a crack.  When running in
+     * MTTCG we don't generate jumps to the helper as it won't affect the
+     * scheduling of other vCPUs.
+     */
+    if (!(tb_cflags(s->base.tb) & CF_PARALLEL)) {
+        gen_set_pc_im(s, s->base.pc_next);
+        s->base.is_jmp = DISAS_YIELD;
+    }
+    return true;
+}
+
+static bool trans_WFE(DisasContext *s, arg_WFE *a)
+{
+    /*
+     * When running single-threaded TCG code, use the helper to ensure that
+     * the next round-robin scheduled vCPU gets a crack.  In MTTCG mode we
+     * just skip this instruction.  Currently the SEV/SEVL instructions,
+     * which are *one* of many ways to wake the CPU from WFE, are not
+     * implemented so we can't sleep like WFI does.
+     */
+    if (!(tb_cflags(s->base.tb) & CF_PARALLEL)) {
+        gen_set_pc_im(s, s->base.pc_next);
+        s->base.is_jmp = DISAS_WFE;
+    }
+    return true;
+}
+
+static bool trans_WFI(DisasContext *s, arg_WFI *a)
+{
+    /* For WFI, halt the vCPU until an IRQ. */
+    gen_set_pc_im(s, s->base.pc_next);
+    s->base.is_jmp = DISAS_WFI;
+    return true;
+}
+
+static bool trans_NOP(DisasContext *s, arg_NOP *a)
+{
+    return true;
+}
+
+static bool trans_MSR_imm(DisasContext *s, arg_MSR_imm *a)
+{
+    uint32_t val = ror32(a->imm, a->rot * 2);
+    uint32_t mask = msr_mask(s, a->mask, a->r);
+
+    if (gen_set_psr_im(s, mask, a->r, val)) {
+        unallocated_encoding(s);
+    }
+    return true;
+}
+
+/*
+ * Cyclic Redundancy Check
+ */
+
+static bool op_crc32(DisasContext *s, arg_rrr *a, bool c, MemOp sz)
+{
+    TCGv_i32 t1, t2, t3;
+
+    if (!dc_isar_feature(aa32_crc32, s)) {
+        return false;
+    }
+
+    t1 = load_reg(s, a->rn);
+    t2 = load_reg(s, a->rm);
+    switch (sz) {
+    case MO_8:
+        gen_uxtb(t2);
+        break;
+    case MO_16:
+        gen_uxth(t2);
+        break;
+    case MO_32:
+        break;
+    default:
+        g_assert_not_reached();
+    }
+    t3 = tcg_const_i32(1 << sz);
+    if (c) {
+        gen_helper_crc32c(t1, t1, t2, t3);
+    } else {
+        gen_helper_crc32(t1, t1, t2, t3);
+    }
+    tcg_temp_free_i32(t2);
+    tcg_temp_free_i32(t3);
+    store_reg(s, a->rd, t1);
+    return true;
+}
+
+#define DO_CRC32(NAME, c, sz) \
+static bool trans_##NAME(DisasContext *s, arg_rrr *a)  \
+    { return op_crc32(s, a, c, sz); }
+
+DO_CRC32(CRC32B, false, MO_8)
+DO_CRC32(CRC32H, false, MO_16)
+DO_CRC32(CRC32W, false, MO_32)
+DO_CRC32(CRC32CB, true, MO_8)
+DO_CRC32(CRC32CH, true, MO_16)
+DO_CRC32(CRC32CW, true, MO_32)
+
+#undef DO_CRC32
+
+/*
+ * Miscellaneous instructions
+ */
+
+static bool trans_MRS_bank(DisasContext *s, arg_MRS_bank *a)
+{
+    if (arm_dc_feature(s, ARM_FEATURE_M)) {
+        return false;
+    }
+    gen_mrs_banked(s, a->r, a->sysm, a->rd);
+    return true;
+}
+
+static bool trans_MSR_bank(DisasContext *s, arg_MSR_bank *a)
+{
+    if (arm_dc_feature(s, ARM_FEATURE_M)) {
+        return false;
+    }
+    gen_msr_banked(s, a->r, a->sysm, a->rn);
+    return true;
+}
+
+static bool trans_MRS_reg(DisasContext *s, arg_MRS_reg *a)
+{
+    TCGv_i32 tmp;
+
+    if (arm_dc_feature(s, ARM_FEATURE_M)) {
+        return false;
+    }
+    if (a->r) {
+        if (IS_USER(s)) {
+            unallocated_encoding(s);
+            return true;
+        }
+        tmp = load_cpu_field(spsr);
+    } else {
+        tmp = tcg_temp_new_i32();
+        gen_helper_cpsr_read(tmp, cpu_env);
+    }
+    store_reg(s, a->rd, tmp);
+    return true;
+}
+
+static bool trans_MSR_reg(DisasContext *s, arg_MSR_reg *a)
+{
+    TCGv_i32 tmp;
+    uint32_t mask = msr_mask(s, a->mask, a->r);
+
+    if (arm_dc_feature(s, ARM_FEATURE_M)) {
+        return false;
+    }
+    tmp = load_reg(s, a->rn);
+    if (gen_set_psr(s, mask, a->r, tmp)) {
+        unallocated_encoding(s);
+    }
+    return true;
+}
+
+static bool trans_MRS_v7m(DisasContext *s, arg_MRS_v7m *a)
+{
+    TCGv_i32 tmp;
+
+    if (!arm_dc_feature(s, ARM_FEATURE_M)) {
+        return false;
+    }
+    tmp = tcg_const_i32(a->sysm);
+    gen_helper_v7m_mrs(tmp, cpu_env, tmp);
+    store_reg(s, a->rd, tmp);
+    return true;
+}
+
+static bool trans_MSR_v7m(DisasContext *s, arg_MSR_v7m *a)
+{
+    TCGv_i32 addr, reg;
+
+    if (!arm_dc_feature(s, ARM_FEATURE_M)) {
+        return false;
+    }
+    addr = tcg_const_i32((a->mask << 10) | a->sysm);
+    reg = load_reg(s, a->rn);
+    gen_helper_v7m_msr(cpu_env, addr, reg);
+    tcg_temp_free_i32(addr);
+    tcg_temp_free_i32(reg);
+    gen_lookup_tb(s);
+    return true;
+}
+
+static bool trans_BX(DisasContext *s, arg_BX *a)
+{
+    if (!ENABLE_ARCH_4T) {
+        return false;
+    }
+    gen_bx_excret(s, load_reg(s, a->rm));
+    return true;
+}
+
+static bool trans_BXJ(DisasContext *s, arg_BXJ *a)
+{
+    if (!ENABLE_ARCH_5J || arm_dc_feature(s, ARM_FEATURE_M)) {
+        return false;
+    }
+    /* Trivial implementation equivalent to bx.  */
+    gen_bx(s, load_reg(s, a->rm));
+    return true;
+}
+
+static bool trans_BLX_r(DisasContext *s, arg_BLX_r *a)
+{
+    TCGv_i32 tmp;
+
+    if (!ENABLE_ARCH_5) {
+        return false;
+    }
+    tmp = load_reg(s, a->rm);
+    tcg_gen_movi_i32(cpu_R[14], s->base.pc_next | s->thumb);
+    gen_bx(s, tmp);
+    return true;
+}
+
+/*
+ * BXNS/BLXNS: only exist for v8M with the security extensions,
+ * and always UNDEF if NonSecure.  We don't implement these in
+ * the user-only mode either (in theory you can use them from
+ * Secure User mode but they are too tied in to system emulation).
+ */
+static bool trans_BXNS(DisasContext *s, arg_BXNS *a)
+{
+    if (!s->v8m_secure || IS_USER_ONLY) {
+        unallocated_encoding(s);
+    } else {
+        gen_bxns(s, a->rm);
+    }
+    return true;
+}
+
+static bool trans_BLXNS(DisasContext *s, arg_BLXNS *a)
+{
+    if (!s->v8m_secure || IS_USER_ONLY) {
+        unallocated_encoding(s);
+    } else {
+        gen_blxns(s, a->rm);
+    }
+    return true;
+}
+
+static bool trans_CLZ(DisasContext *s, arg_CLZ *a)
+{
+    TCGv_i32 tmp;
+
+    if (!ENABLE_ARCH_5) {
+        return false;
+    }
+    tmp = load_reg(s, a->rm);
+    tcg_gen_clzi_i32(tmp, tmp, 32);
+    store_reg(s, a->rd, tmp);
+    return true;
+}
+
+static bool trans_ERET(DisasContext *s, arg_ERET *a)
+{
+    TCGv_i32 tmp;
+
+    if (!arm_dc_feature(s, ARM_FEATURE_V7VE)) {
+        return false;
+    }
+    if (IS_USER(s)) {
+        unallocated_encoding(s);
+        return true;
+    }
+    if (s->current_el == 2) {
+        /* ERET from Hyp uses ELR_Hyp, not LR */
+        tmp = load_cpu_field(elr_el[2]);
+    } else {
+        tmp = load_reg(s, 14);
+    }
+    gen_exception_return(s, tmp);
+    return true;
+}
+
+static bool trans_HLT(DisasContext *s, arg_HLT *a)
+{
+    gen_hlt(s, a->imm);
+    return true;
+}
+
+static bool trans_BKPT(DisasContext *s, arg_BKPT *a)
+{
+    if (!ENABLE_ARCH_5) {
+        return false;
+    }
+    if (arm_dc_feature(s, ARM_FEATURE_M) &&
+        semihosting_enabled() &&
+#ifndef CONFIG_USER_ONLY
+        !IS_USER(s) &&
+#endif
+        (a->imm == 0xab)) {
+        gen_exception_internal_insn(s, s->base.pc_next, EXCP_SEMIHOST);
+    } else {
+        gen_exception_bkpt_insn(s, syn_aa32_bkpt(a->imm, false));
+    }
+    return true;
+}
+
+static bool trans_HVC(DisasContext *s, arg_HVC *a)
+{
+    if (!ENABLE_ARCH_7 || arm_dc_feature(s, ARM_FEATURE_M)) {
+        return false;
+    }
+    if (IS_USER(s)) {
+        unallocated_encoding(s);
+    } else {
+        gen_hvc(s, a->imm);
+    }
+    return true;
+}
+
+static bool trans_SMC(DisasContext *s, arg_SMC *a)
+{
+    if (!ENABLE_ARCH_6K || arm_dc_feature(s, ARM_FEATURE_M)) {
+        return false;
+    }
+    if (IS_USER(s)) {
+        unallocated_encoding(s);
+    } else {
+        gen_smc(s);
+    }
+    return true;
+}
+
+static bool trans_SG(DisasContext *s, arg_SG *a)
+{
+    if (!arm_dc_feature(s, ARM_FEATURE_M) ||
+        !arm_dc_feature(s, ARM_FEATURE_V8)) {
+        return false;
+    }
+    /*
+     * SG (v8M only)
+     * The bulk of the behaviour for this instruction is implemented
+     * in v7m_handle_execute_nsc(), which deals with the insn when
+     * it is executed by a CPU in non-secure state from memory
+     * which is Secure & NonSecure-Callable.
+     * Here we only need to handle the remaining cases:
+     *  * in NS memory (including the "security extension not
+     *    implemented" case) : NOP
+     *  * in S memory but CPU already secure (clear IT bits)
+     * We know that the attribute for the memory this insn is
+     * in must match the current CPU state, because otherwise
+     * get_phys_addr_pmsav8 would have generated an exception.
+     */
+    if (s->v8m_secure) {
+        /* Like the IT insn, we don't need to generate any code */
+        s->condexec_cond = 0;
+        s->condexec_mask = 0;
+    }
+    return true;
+}
+
+static bool trans_TT(DisasContext *s, arg_TT *a)
+{
+    TCGv_i32 addr, tmp;
+
+    if (!arm_dc_feature(s, ARM_FEATURE_M) ||
+        !arm_dc_feature(s, ARM_FEATURE_V8)) {
+        return false;
+    }
+    if (a->rd == 13 || a->rd == 15 || a->rn == 15) {
+        /* We UNDEF for these UNPREDICTABLE cases */
+        unallocated_encoding(s);
+        return true;
+    }
+    if (a->A && !s->v8m_secure) {
+        /* This case is UNDEFINED.  */
+        unallocated_encoding(s);
+        return true;
+    }
+
+    addr = load_reg(s, a->rn);
+    tmp = tcg_const_i32((a->A << 1) | a->T);
+    gen_helper_v7m_tt(tmp, cpu_env, addr, tmp);
+    tcg_temp_free_i32(addr);
+    store_reg(s, a->rd, tmp);
+    return true;
+}
+
+/*
+ * Load/store register index
+ */
+
+static ISSInfo make_issinfo(DisasContext *s, int rd, bool p, bool w)
+{
+    ISSInfo ret;
+
+    /* ISS not valid if writeback */
+    if (p && !w) {
+        ret = rd;
+    } else {
+        ret = ISSInvalid;
+    }
+    return ret;
+}
+
+static TCGv_i32 op_addr_rr_pre(DisasContext *s, arg_ldst_rr *a)
+{
+    TCGv_i32 addr = load_reg(s, a->rn);
+
+    if (s->v8m_stackcheck && a->rn == 13 && a->w) {
+        gen_helper_v8m_stackcheck(cpu_env, addr);
+    }
+
+    if (a->p) {
+        TCGv_i32 ofs = load_reg(s, a->rm);
+        gen_arm_shift_im(ofs, a->shtype, a->shimm, 0);
+        if (a->u) {
+            tcg_gen_add_i32(addr, addr, ofs);
+        } else {
+            tcg_gen_sub_i32(addr, addr, ofs);
+        }
+        tcg_temp_free_i32(ofs);
+    }
+    return addr;
+}
+
+static void op_addr_rr_post(DisasContext *s, arg_ldst_rr *a,
+                            TCGv_i32 addr, int address_offset)
+{
+    if (!a->p) {
+        TCGv_i32 ofs = load_reg(s, a->rm);
+        gen_arm_shift_im(ofs, a->shtype, a->shimm, 0);
+        if (a->u) {
+            tcg_gen_add_i32(addr, addr, ofs);
+        } else {
+            tcg_gen_sub_i32(addr, addr, ofs);
+        }
+        tcg_temp_free_i32(ofs);
+    } else if (!a->w) {
+        tcg_temp_free_i32(addr);
+        return;
+    }
+    tcg_gen_addi_i32(addr, addr, address_offset);
+    store_reg(s, a->rn, addr);
+}
+
+static bool op_load_rr(DisasContext *s, arg_ldst_rr *a,
+                       MemOp mop, int mem_idx)
+{
+    ISSInfo issinfo = make_issinfo(s, a->rt, a->p, a->w);
+    TCGv_i32 addr, tmp;
+
+    addr = op_addr_rr_pre(s, a);
+
+    tmp = tcg_temp_new_i32();
+    gen_aa32_ld_i32(s, tmp, addr, mem_idx, mop | s->be_data);
+    disas_set_da_iss(s, mop, issinfo);
+
+    /*
+     * Perform base writeback before the loaded value to
+     * ensure correct behavior with overlapping index registers.
+     */
+    op_addr_rr_post(s, a, addr, 0);
+    store_reg_from_load(s, a->rt, tmp);
+    return true;
+}
+
+static bool op_store_rr(DisasContext *s, arg_ldst_rr *a,
+                        MemOp mop, int mem_idx)
+{
+    ISSInfo issinfo = make_issinfo(s, a->rt, a->p, a->w) | ISSIsWrite;
+    TCGv_i32 addr, tmp;
+
+    addr = op_addr_rr_pre(s, a);
+
+    tmp = load_reg(s, a->rt);
+    gen_aa32_st_i32(s, tmp, addr, mem_idx, mop | s->be_data);
+    disas_set_da_iss(s, mop, issinfo);
+    tcg_temp_free_i32(tmp);
+
+    op_addr_rr_post(s, a, addr, 0);
+    return true;
+}
+
+static bool trans_LDRD_rr(DisasContext *s, arg_ldst_rr *a)
+{
+    int mem_idx = get_mem_index(s);
+    TCGv_i32 addr, tmp;
+
+    if (!ENABLE_ARCH_5TE) {
+        return false;
+    }
+    if (a->rt & 1) {
+        unallocated_encoding(s);
+        return true;
+    }
+    addr = op_addr_rr_pre(s, a);
+
+    tmp = tcg_temp_new_i32();
+    gen_aa32_ld_i32(s, tmp, addr, mem_idx, MO_UL | s->be_data);
+    store_reg(s, a->rt, tmp);
+
+    tcg_gen_addi_i32(addr, addr, 4);
+
+    tmp = tcg_temp_new_i32();
+    gen_aa32_ld_i32(s, tmp, addr, mem_idx, MO_UL | s->be_data);
+    store_reg(s, a->rt + 1, tmp);
+
+    /* LDRD w/ base writeback is undefined if the registers overlap.  */
+    op_addr_rr_post(s, a, addr, -4);
+    return true;
+}
+
+static bool trans_STRD_rr(DisasContext *s, arg_ldst_rr *a)
+{
+    int mem_idx = get_mem_index(s);
+    TCGv_i32 addr, tmp;
+
+    if (!ENABLE_ARCH_5TE) {
+        return false;
+    }
+    if (a->rt & 1) {
+        unallocated_encoding(s);
+        return true;
+    }
+    addr = op_addr_rr_pre(s, a);
+
+    tmp = load_reg(s, a->rt);
+    gen_aa32_st_i32(s, tmp, addr, mem_idx, MO_UL | s->be_data);
+    tcg_temp_free_i32(tmp);
+
+    tcg_gen_addi_i32(addr, addr, 4);
+
+    tmp = load_reg(s, a->rt + 1);
+    gen_aa32_st_i32(s, tmp, addr, mem_idx, MO_UL | s->be_data);
+    tcg_temp_free_i32(tmp);
+
+    op_addr_rr_post(s, a, addr, -4);
+    return true;
+}
+
+/*
+ * Load/store immediate index
+ */
+
+static TCGv_i32 op_addr_ri_pre(DisasContext *s, arg_ldst_ri *a)
+{
+    int ofs = a->imm;
+
+    if (!a->u) {
+        ofs = -ofs;
+    }
+
+    if (s->v8m_stackcheck && a->rn == 13 && a->w) {
+        /*
+         * Stackcheck. Here we know 'addr' is the current SP;
+         * U is set if we're moving SP up, else down. It is
+         * UNKNOWN whether the limit check triggers when SP starts
+         * below the limit and ends up above it; we chose to do so.
+         */
+        if (!a->u) {
+            TCGv_i32 newsp = tcg_temp_new_i32();
+            tcg_gen_addi_i32(newsp, cpu_R[13], ofs);
+            gen_helper_v8m_stackcheck(cpu_env, newsp);
+            tcg_temp_free_i32(newsp);
+        } else {
+            gen_helper_v8m_stackcheck(cpu_env, cpu_R[13]);
+        }
+    }
+
+    return add_reg_for_lit(s, a->rn, a->p ? ofs : 0);
+}
+
+static void op_addr_ri_post(DisasContext *s, arg_ldst_ri *a,
+                            TCGv_i32 addr, int address_offset)
+{
+    if (!a->p) {
+        if (a->u) {
+            address_offset += a->imm;
+        } else {
+            address_offset -= a->imm;
+        }
+    } else if (!a->w) {
+        tcg_temp_free_i32(addr);
+        return;
+    }
+    tcg_gen_addi_i32(addr, addr, address_offset);
+    store_reg(s, a->rn, addr);
+}
+
+static bool op_load_ri(DisasContext *s, arg_ldst_ri *a,
+                       MemOp mop, int mem_idx)
+{
+    ISSInfo issinfo = make_issinfo(s, a->rt, a->p, a->w);
+    TCGv_i32 addr, tmp;
+
+    addr = op_addr_ri_pre(s, a);
+
+    tmp = tcg_temp_new_i32();
+    gen_aa32_ld_i32(s, tmp, addr, mem_idx, mop | s->be_data);
+    disas_set_da_iss(s, mop, issinfo);
+
+    /*
+     * Perform base writeback before the loaded value to
+     * ensure correct behavior with overlapping index registers.
+     */
+    op_addr_ri_post(s, a, addr, 0);
+    store_reg_from_load(s, a->rt, tmp);
+    return true;
+}
+
+static bool op_store_ri(DisasContext *s, arg_ldst_ri *a,
+                        MemOp mop, int mem_idx)
+{
+    ISSInfo issinfo = make_issinfo(s, a->rt, a->p, a->w) | ISSIsWrite;
+    TCGv_i32 addr, tmp;
+
+    addr = op_addr_ri_pre(s, a);
+
+    tmp = load_reg(s, a->rt);
+    gen_aa32_st_i32(s, tmp, addr, mem_idx, mop | s->be_data);
+    disas_set_da_iss(s, mop, issinfo);
+    tcg_temp_free_i32(tmp);
+
+    op_addr_ri_post(s, a, addr, 0);
+    return true;
+}
+
+static bool op_ldrd_ri(DisasContext *s, arg_ldst_ri *a, int rt2)
+{
+    int mem_idx = get_mem_index(s);
+    TCGv_i32 addr, tmp;
+
+    addr = op_addr_ri_pre(s, a);
+
+    tmp = tcg_temp_new_i32();
+    gen_aa32_ld_i32(s, tmp, addr, mem_idx, MO_UL | s->be_data);
+    store_reg(s, a->rt, tmp);
+
+    tcg_gen_addi_i32(addr, addr, 4);
+
+    tmp = tcg_temp_new_i32();
+    gen_aa32_ld_i32(s, tmp, addr, mem_idx, MO_UL | s->be_data);
+    store_reg(s, rt2, tmp);
+
+    /* LDRD w/ base writeback is undefined if the registers overlap.  */
+    op_addr_ri_post(s, a, addr, -4);
+    return true;
+}
+
+static bool trans_LDRD_ri_a32(DisasContext *s, arg_ldst_ri *a)
+{
+    if (!ENABLE_ARCH_5TE || (a->rt & 1)) {
+        return false;
+    }
+    return op_ldrd_ri(s, a, a->rt + 1);
+}
+
+static bool trans_LDRD_ri_t32(DisasContext *s, arg_ldst_ri2 *a)
+{
+    arg_ldst_ri b = {
+        .u = a->u, .w = a->w, .p = a->p,
+        .rn = a->rn, .rt = a->rt, .imm = a->imm
+    };
+    return op_ldrd_ri(s, &b, a->rt2);
+}
+
+static bool op_strd_ri(DisasContext *s, arg_ldst_ri *a, int rt2)
+{
+    int mem_idx = get_mem_index(s);
+    TCGv_i32 addr, tmp;
+
+    addr = op_addr_ri_pre(s, a);
+
+    tmp = load_reg(s, a->rt);
+    gen_aa32_st_i32(s, tmp, addr, mem_idx, MO_UL | s->be_data);
+    tcg_temp_free_i32(tmp);
+
+    tcg_gen_addi_i32(addr, addr, 4);
+
+    tmp = load_reg(s, rt2);
+    gen_aa32_st_i32(s, tmp, addr, mem_idx, MO_UL | s->be_data);
+    tcg_temp_free_i32(tmp);
+
+    op_addr_ri_post(s, a, addr, -4);
+    return true;
+}
+
+static bool trans_STRD_ri_a32(DisasContext *s, arg_ldst_ri *a)
+{
+    if (!ENABLE_ARCH_5TE || (a->rt & 1)) {
+        return false;
+    }
+    return op_strd_ri(s, a, a->rt + 1);
+}
+
+static bool trans_STRD_ri_t32(DisasContext *s, arg_ldst_ri2 *a)
+{
+    arg_ldst_ri b = {
+        .u = a->u, .w = a->w, .p = a->p,
+        .rn = a->rn, .rt = a->rt, .imm = a->imm
+    };
+    return op_strd_ri(s, &b, a->rt2);
+}
+
+#define DO_LDST(NAME, WHICH, MEMOP) \
+static bool trans_##NAME##_ri(DisasContext *s, arg_ldst_ri *a)        \
+{                                                                     \
+    return op_##WHICH##_ri(s, a, MEMOP, get_mem_index(s));            \
+}                                                                     \
+static bool trans_##NAME##T_ri(DisasContext *s, arg_ldst_ri *a)       \
+{                                                                     \
+    return op_##WHICH##_ri(s, a, MEMOP, get_a32_user_mem_index(s));   \
+}                                                                     \
+static bool trans_##NAME##_rr(DisasContext *s, arg_ldst_rr *a)        \
+{                                                                     \
+    return op_##WHICH##_rr(s, a, MEMOP, get_mem_index(s));            \
+}                                                                     \
+static bool trans_##NAME##T_rr(DisasContext *s, arg_ldst_rr *a)       \
+{                                                                     \
+    return op_##WHICH##_rr(s, a, MEMOP, get_a32_user_mem_index(s));   \
+}
+
+DO_LDST(LDR, load, MO_UL)
+DO_LDST(LDRB, load, MO_UB)
+DO_LDST(LDRH, load, MO_UW)
+DO_LDST(LDRSB, load, MO_SB)
+DO_LDST(LDRSH, load, MO_SW)
+
+DO_LDST(STR, store, MO_UL)
+DO_LDST(STRB, store, MO_UB)
+DO_LDST(STRH, store, MO_UW)
+
+#undef DO_LDST
+
+/*
+ * Synchronization primitives
+ */
+
+static bool op_swp(DisasContext *s, arg_SWP *a, MemOp opc)
+{
+    TCGv_i32 addr, tmp;
+    TCGv taddr;
+
+    opc |= s->be_data;
+    addr = load_reg(s, a->rn);
+    taddr = gen_aa32_addr(s, addr, opc);
+    tcg_temp_free_i32(addr);
+
+    tmp = load_reg(s, a->rt2);
+    tcg_gen_atomic_xchg_i32(tmp, taddr, tmp, get_mem_index(s), opc);
+    tcg_temp_free(taddr);
+
+    store_reg(s, a->rt, tmp);
+    return true;
+}
+
+static bool trans_SWP(DisasContext *s, arg_SWP *a)
+{
+    return op_swp(s, a, MO_UL | MO_ALIGN);
+}
+
+static bool trans_SWPB(DisasContext *s, arg_SWP *a)
+{
+    return op_swp(s, a, MO_UB);
+}
+
+/*
+ * Load/Store Exclusive and Load-Acquire/Store-Release
+ */
+
+static bool op_strex(DisasContext *s, arg_STREX *a, MemOp mop, bool rel)
+{
+    TCGv_i32 addr;
+
+    /* We UNDEF for these UNPREDICTABLE cases.  */
+    if (a->rd == 15 || a->rn == 15 || a->rt == 15
+        || a->rd == a->rn || a->rd == a->rt
+        || (s->thumb && (a->rd == 13 || a->rt == 13))
+        || (mop == MO_64
+            && (a->rt2 == 15
+                || a->rd == a->rt2 || a->rt == a->rt2
+                || (s->thumb && a->rt2 == 13)))) {
+        unallocated_encoding(s);
+        return true;
+    }
+
+    if (rel) {
+        tcg_gen_mb(TCG_MO_ALL | TCG_BAR_STRL);
+    }
+
+    addr = tcg_temp_local_new_i32();
+    load_reg_var(s, addr, a->rn);
+    tcg_gen_addi_i32(addr, addr, a->imm);
+
+    gen_store_exclusive(s, a->rd, a->rt, a->rt2, addr, mop);
+    tcg_temp_free_i32(addr);
+    return true;
+}
+
+static bool trans_STREX(DisasContext *s, arg_STREX *a)
+{
+    if (!ENABLE_ARCH_6) {
+        return false;
+    }
+    return op_strex(s, a, MO_32, false);
+}
+
+static bool trans_STREXD_a32(DisasContext *s, arg_STREX *a)
+{
+    if (!ENABLE_ARCH_6K) {
+        return false;
+    }
+    /* We UNDEF for these UNPREDICTABLE cases.  */
+    if (a->rt & 1) {
+        unallocated_encoding(s);
+        return true;
+    }
+    a->rt2 = a->rt + 1;
+    return op_strex(s, a, MO_64, false);
+}
+
+static bool trans_STREXD_t32(DisasContext *s, arg_STREX *a)
+{
+    return op_strex(s, a, MO_64, false);
+}
+
+static bool trans_STREXB(DisasContext *s, arg_STREX *a)
+{
+    if (s->thumb ? !ENABLE_ARCH_7 : !ENABLE_ARCH_6K) {
+        return false;
+    }
+    return op_strex(s, a, MO_8, false);
+}
+
+static bool trans_STREXH(DisasContext *s, arg_STREX *a)
+{
+    if (s->thumb ? !ENABLE_ARCH_7 : !ENABLE_ARCH_6K) {
+        return false;
+    }
+    return op_strex(s, a, MO_16, false);
+}
+
+static bool trans_STLEX(DisasContext *s, arg_STREX *a)
+{
+    if (!ENABLE_ARCH_8) {
+        return false;
+    }
+    return op_strex(s, a, MO_32, true);
+}
+
+static bool trans_STLEXD_a32(DisasContext *s, arg_STREX *a)
+{
+    if (!ENABLE_ARCH_8) {
+        return false;
+    }
+    /* We UNDEF for these UNPREDICTABLE cases.  */
+    if (a->rt & 1) {
+        unallocated_encoding(s);
+        return true;
+    }
+    a->rt2 = a->rt + 1;
+    return op_strex(s, a, MO_64, true);
+}
+
+static bool trans_STLEXD_t32(DisasContext *s, arg_STREX *a)
+{
+    if (!ENABLE_ARCH_8) {
+        return false;
+    }
+    return op_strex(s, a, MO_64, true);
+}
+
+static bool trans_STLEXB(DisasContext *s, arg_STREX *a)
+{
+    if (!ENABLE_ARCH_8) {
+        return false;
+    }
+    return op_strex(s, a, MO_8, true);
+}
+
+static bool trans_STLEXH(DisasContext *s, arg_STREX *a)
+{
+    if (!ENABLE_ARCH_8) {
+        return false;
+    }
+    return op_strex(s, a, MO_16, true);
+}
+
+static bool op_stl(DisasContext *s, arg_STL *a, MemOp mop)
+{
+    TCGv_i32 addr, tmp;
+
+    if (!ENABLE_ARCH_8) {
+        return false;
+    }
+    /* We UNDEF for these UNPREDICTABLE cases.  */
+    if (a->rn == 15 || a->rt == 15) {
+        unallocated_encoding(s);
+        return true;
+    }
+
+    addr = load_reg(s, a->rn);
+    tmp = load_reg(s, a->rt);
+    tcg_gen_mb(TCG_MO_ALL | TCG_BAR_STRL);
+    gen_aa32_st_i32(s, tmp, addr, get_mem_index(s), mop | s->be_data);
+    disas_set_da_iss(s, mop, a->rt | ISSIsAcqRel | ISSIsWrite);
+
+    tcg_temp_free_i32(tmp);
+    tcg_temp_free_i32(addr);
+    return true;
+}
+
+static bool trans_STL(DisasContext *s, arg_STL *a)
+{
+    return op_stl(s, a, MO_UL);
+}
+
+static bool trans_STLB(DisasContext *s, arg_STL *a)
+{
+    return op_stl(s, a, MO_UB);
+}
+
+static bool trans_STLH(DisasContext *s, arg_STL *a)
+{
+    return op_stl(s, a, MO_UW);
+}
+
+static bool op_ldrex(DisasContext *s, arg_LDREX *a, MemOp mop, bool acq)
+{
+    TCGv_i32 addr;
+
+    /* We UNDEF for these UNPREDICTABLE cases.  */
+    if (a->rn == 15 || a->rt == 15
+        || (s->thumb && a->rt == 13)
+        || (mop == MO_64
+            && (a->rt2 == 15 || a->rt == a->rt2
+                || (s->thumb && a->rt2 == 13)))) {
+        unallocated_encoding(s);
+        return true;
+    }
+
+    addr = tcg_temp_local_new_i32();
+    load_reg_var(s, addr, a->rn);
+    tcg_gen_addi_i32(addr, addr, a->imm);
+
+    gen_load_exclusive(s, a->rt, a->rt2, addr, mop);
+    tcg_temp_free_i32(addr);
+
+    if (acq) {
+        tcg_gen_mb(TCG_MO_ALL | TCG_BAR_LDAQ);
+    }
+    return true;
+}
+
+static bool trans_LDREX(DisasContext *s, arg_LDREX *a)
+{
+    if (!ENABLE_ARCH_6) {
+        return false;
+    }
+    return op_ldrex(s, a, MO_32, false);
+}
+
+static bool trans_LDREXD_a32(DisasContext *s, arg_LDREX *a)
+{
+    if (!ENABLE_ARCH_6K) {
+        return false;
+    }
+    /* We UNDEF for these UNPREDICTABLE cases.  */
+    if (a->rt & 1) {
+        unallocated_encoding(s);
+        return true;
+    }
+    a->rt2 = a->rt + 1;
+    return op_ldrex(s, a, MO_64, false);
+}
+
+static bool trans_LDREXD_t32(DisasContext *s, arg_LDREX *a)
+{
+    return op_ldrex(s, a, MO_64, false);
+}
+
+static bool trans_LDREXB(DisasContext *s, arg_LDREX *a)
+{
+    if (s->thumb ? !ENABLE_ARCH_7 : !ENABLE_ARCH_6K) {
+        return false;
+    }
+    return op_ldrex(s, a, MO_8, false);
+}
+
+static bool trans_LDREXH(DisasContext *s, arg_LDREX *a)
+{
+    if (s->thumb ? !ENABLE_ARCH_7 : !ENABLE_ARCH_6K) {
+        return false;
+    }
+    return op_ldrex(s, a, MO_16, false);
+}
+
+static bool trans_LDAEX(DisasContext *s, arg_LDREX *a)
+{
+    if (!ENABLE_ARCH_8) {
+        return false;
+    }
+    return op_ldrex(s, a, MO_32, true);
+}
+
+static bool trans_LDAEXD_a32(DisasContext *s, arg_LDREX *a)
+{
+    if (!ENABLE_ARCH_8) {
+        return false;
+    }
+    /* We UNDEF for these UNPREDICTABLE cases.  */
+    if (a->rt & 1) {
+        unallocated_encoding(s);
+        return true;
+    }
+    a->rt2 = a->rt + 1;
+    return op_ldrex(s, a, MO_64, true);
+}
+
+static bool trans_LDAEXD_t32(DisasContext *s, arg_LDREX *a)
+{
+    if (!ENABLE_ARCH_8) {
+        return false;
+    }
+    return op_ldrex(s, a, MO_64, true);
+}
+
+static bool trans_LDAEXB(DisasContext *s, arg_LDREX *a)
+{
+    if (!ENABLE_ARCH_8) {
+        return false;
+    }
+    return op_ldrex(s, a, MO_8, true);
+}
+
+static bool trans_LDAEXH(DisasContext *s, arg_LDREX *a)
+{
+    if (!ENABLE_ARCH_8) {
+        return false;
+    }
+    return op_ldrex(s, a, MO_16, true);
+}
+
+static bool op_lda(DisasContext *s, arg_LDA *a, MemOp mop)
+{
+    TCGv_i32 addr, tmp;
+
+    if (!ENABLE_ARCH_8) {
+        return false;
+    }
+    /* We UNDEF for these UNPREDICTABLE cases.  */
+    if (a->rn == 15 || a->rt == 15) {
+        unallocated_encoding(s);
+        return true;
+    }
+
+    addr = load_reg(s, a->rn);
+    tmp = tcg_temp_new_i32();
+    gen_aa32_ld_i32(s, tmp, addr, get_mem_index(s), mop | s->be_data);
+    disas_set_da_iss(s, mop, a->rt | ISSIsAcqRel);
+    tcg_temp_free_i32(addr);
+
+    store_reg(s, a->rt, tmp);
+    tcg_gen_mb(TCG_MO_ALL | TCG_BAR_STRL);
+    return true;
+}
+
+static bool trans_LDA(DisasContext *s, arg_LDA *a)
+{
+    return op_lda(s, a, MO_UL);
+}
+
+static bool trans_LDAB(DisasContext *s, arg_LDA *a)
+{
+    return op_lda(s, a, MO_UB);
+}
+
+static bool trans_LDAH(DisasContext *s, arg_LDA *a)
+{
+    return op_lda(s, a, MO_UW);
+}
+
+/*
+ * Media instructions
+ */
+
+static bool trans_USADA8(DisasContext *s, arg_USADA8 *a)
+{
+    TCGv_i32 t1, t2;
+
+    if (!ENABLE_ARCH_6) {
+        return false;
+    }
+
+    t1 = load_reg(s, a->rn);
+    t2 = load_reg(s, a->rm);
+    gen_helper_usad8(t1, t1, t2);
+    tcg_temp_free_i32(t2);
+    if (a->ra != 15) {
+        t2 = load_reg(s, a->ra);
+        tcg_gen_add_i32(t1, t1, t2);
+        tcg_temp_free_i32(t2);
+    }
+    store_reg(s, a->rd, t1);
+    return true;
+}
+
+static bool op_bfx(DisasContext *s, arg_UBFX *a, bool u)
+{
+    TCGv_i32 tmp;
+    int width = a->widthm1 + 1;
+    int shift = a->lsb;
+
+    if (!ENABLE_ARCH_6T2) {
+        return false;
+    }
+    if (shift + width > 32) {
+        /* UNPREDICTABLE; we choose to UNDEF */
+        unallocated_encoding(s);
+        return true;
+    }
+
+    tmp = load_reg(s, a->rn);
+    if (u) {
+        tcg_gen_extract_i32(tmp, tmp, shift, width);
+    } else {
+        tcg_gen_sextract_i32(tmp, tmp, shift, width);
+    }
+    store_reg(s, a->rd, tmp);
+    return true;
+}
+
+static bool trans_SBFX(DisasContext *s, arg_SBFX *a)
+{
+    return op_bfx(s, a, false);
+}
+
+static bool trans_UBFX(DisasContext *s, arg_UBFX *a)
+{
+    return op_bfx(s, a, true);
+}
+
+static bool trans_BFCI(DisasContext *s, arg_BFCI *a)
+{
+    TCGv_i32 tmp;
+    int msb = a->msb, lsb = a->lsb;
+    int width;
+
+    if (!ENABLE_ARCH_6T2) {
+        return false;
+    }
+    if (msb < lsb) {
+        /* UNPREDICTABLE; we choose to UNDEF */
+        unallocated_encoding(s);
+        return true;
+    }
+
+    width = msb + 1 - lsb;
+    if (a->rn == 15) {
+        /* BFC */
+        tmp = tcg_const_i32(0);
+    } else {
+        /* BFI */
+        tmp = load_reg(s, a->rn);
+    }
+    if (width != 32) {
+        TCGv_i32 tmp2 = load_reg(s, a->rd);
+        tcg_gen_deposit_i32(tmp, tmp2, tmp, lsb, width);
+        tcg_temp_free_i32(tmp2);
+    }
+    store_reg(s, a->rd, tmp);
+    return true;
+}
+
+static bool trans_UDF(DisasContext *s, arg_UDF *a)
+{
+    unallocated_encoding(s);
+    return true;
+}
+
+/*
+ * Parallel addition and subtraction
+ */
+
+static bool op_par_addsub(DisasContext *s, arg_rrr *a,
+                          void (*gen)(TCGv_i32, TCGv_i32, TCGv_i32))
+{
+    TCGv_i32 t0, t1;
+
+    if (s->thumb
+        ? !arm_dc_feature(s, ARM_FEATURE_THUMB_DSP)
+        : !ENABLE_ARCH_6) {
+        return false;
+    }
+
+    t0 = load_reg(s, a->rn);
+    t1 = load_reg(s, a->rm);
+
+    gen(t0, t0, t1);
+
+    tcg_temp_free_i32(t1);
+    store_reg(s, a->rd, t0);
+    return true;
+}
+
+static bool op_par_addsub_ge(DisasContext *s, arg_rrr *a,
+                             void (*gen)(TCGv_i32, TCGv_i32,
+                                         TCGv_i32, TCGv_ptr))
+{
+    TCGv_i32 t0, t1;
+    TCGv_ptr ge;
+
+    if (s->thumb
+        ? !arm_dc_feature(s, ARM_FEATURE_THUMB_DSP)
+        : !ENABLE_ARCH_6) {
+        return false;
+    }
+
+    t0 = load_reg(s, a->rn);
+    t1 = load_reg(s, a->rm);
+
+    ge = tcg_temp_new_ptr();
+    tcg_gen_addi_ptr(ge, cpu_env, offsetof(CPUARMState, GE));
+    gen(t0, t0, t1, ge);
+
+    tcg_temp_free_ptr(ge);
+    tcg_temp_free_i32(t1);
+    store_reg(s, a->rd, t0);
+    return true;
+}
+
+#define DO_PAR_ADDSUB(NAME, helper) \
+static bool trans_##NAME(DisasContext *s, arg_rrr *a)   \
+{                                                       \
+    return op_par_addsub(s, a, helper);                 \
+}
+
+#define DO_PAR_ADDSUB_GE(NAME, helper) \
+static bool trans_##NAME(DisasContext *s, arg_rrr *a)   \
+{                                                       \
+    return op_par_addsub_ge(s, a, helper);              \
+}
+
+DO_PAR_ADDSUB_GE(SADD16, gen_helper_sadd16)
+DO_PAR_ADDSUB_GE(SASX, gen_helper_saddsubx)
+DO_PAR_ADDSUB_GE(SSAX, gen_helper_ssubaddx)
+DO_PAR_ADDSUB_GE(SSUB16, gen_helper_ssub16)
+DO_PAR_ADDSUB_GE(SADD8, gen_helper_sadd8)
+DO_PAR_ADDSUB_GE(SSUB8, gen_helper_ssub8)
+
+DO_PAR_ADDSUB_GE(UADD16, gen_helper_uadd16)
+DO_PAR_ADDSUB_GE(UASX, gen_helper_uaddsubx)
+DO_PAR_ADDSUB_GE(USAX, gen_helper_usubaddx)
+DO_PAR_ADDSUB_GE(USUB16, gen_helper_usub16)
+DO_PAR_ADDSUB_GE(UADD8, gen_helper_uadd8)
+DO_PAR_ADDSUB_GE(USUB8, gen_helper_usub8)
+
+DO_PAR_ADDSUB(QADD16, gen_helper_qadd16)
+DO_PAR_ADDSUB(QASX, gen_helper_qaddsubx)
+DO_PAR_ADDSUB(QSAX, gen_helper_qsubaddx)
+DO_PAR_ADDSUB(QSUB16, gen_helper_qsub16)
+DO_PAR_ADDSUB(QADD8, gen_helper_qadd8)
+DO_PAR_ADDSUB(QSUB8, gen_helper_qsub8)
+
+DO_PAR_ADDSUB(UQADD16, gen_helper_uqadd16)
+DO_PAR_ADDSUB(UQASX, gen_helper_uqaddsubx)
+DO_PAR_ADDSUB(UQSAX, gen_helper_uqsubaddx)
+DO_PAR_ADDSUB(UQSUB16, gen_helper_uqsub16)
+DO_PAR_ADDSUB(UQADD8, gen_helper_uqadd8)
+DO_PAR_ADDSUB(UQSUB8, gen_helper_uqsub8)
+
+DO_PAR_ADDSUB(SHADD16, gen_helper_shadd16)
+DO_PAR_ADDSUB(SHASX, gen_helper_shaddsubx)
+DO_PAR_ADDSUB(SHSAX, gen_helper_shsubaddx)
+DO_PAR_ADDSUB(SHSUB16, gen_helper_shsub16)
+DO_PAR_ADDSUB(SHADD8, gen_helper_shadd8)
+DO_PAR_ADDSUB(SHSUB8, gen_helper_shsub8)
+
+DO_PAR_ADDSUB(UHADD16, gen_helper_uhadd16)
+DO_PAR_ADDSUB(UHASX, gen_helper_uhaddsubx)
+DO_PAR_ADDSUB(UHSAX, gen_helper_uhsubaddx)
+DO_PAR_ADDSUB(UHSUB16, gen_helper_uhsub16)
+DO_PAR_ADDSUB(UHADD8, gen_helper_uhadd8)
+DO_PAR_ADDSUB(UHSUB8, gen_helper_uhsub8)
+
+#undef DO_PAR_ADDSUB
+#undef DO_PAR_ADDSUB_GE
+
+/*
+ * Packing, unpacking, saturation, and reversal
+ */
+
+static bool trans_PKH(DisasContext *s, arg_PKH *a)
+{
+    TCGv_i32 tn, tm;
+    int shift = a->imm;
+
+    if (s->thumb
+        ? !arm_dc_feature(s, ARM_FEATURE_THUMB_DSP)
+        : !ENABLE_ARCH_6) {
+        return false;
+    }
+
+    tn = load_reg(s, a->rn);
+    tm = load_reg(s, a->rm);
+    if (a->tb) {
+        /* PKHTB */
+        if (shift == 0) {
+            shift = 31;
+        }
+        tcg_gen_sari_i32(tm, tm, shift);
+        tcg_gen_deposit_i32(tn, tn, tm, 0, 16);
+    } else {
+        /* PKHBT */
+        tcg_gen_shli_i32(tm, tm, shift);
+        tcg_gen_deposit_i32(tn, tm, tn, 0, 16);
+    }
+    tcg_temp_free_i32(tm);
+    store_reg(s, a->rd, tn);
+    return true;
+}
+
+static bool op_sat(DisasContext *s, arg_sat *a,
+                   void (*gen)(TCGv_i32, TCGv_env, TCGv_i32, TCGv_i32))
+{
+    TCGv_i32 tmp, satimm;
+    int shift = a->imm;
+
+    if (!ENABLE_ARCH_6) {
+        return false;
+    }
+
+    tmp = load_reg(s, a->rn);
+    if (a->sh) {
+        tcg_gen_sari_i32(tmp, tmp, shift ? shift : 31);
+    } else {
+        tcg_gen_shli_i32(tmp, tmp, shift);
+    }
+
+    satimm = tcg_const_i32(a->satimm);
+    gen(tmp, cpu_env, tmp, satimm);
+    tcg_temp_free_i32(satimm);
+
+    store_reg(s, a->rd, tmp);
+    return true;
+}
+
+static bool trans_SSAT(DisasContext *s, arg_sat *a)
+{
+    return op_sat(s, a, gen_helper_ssat);
+}
+
+static bool trans_USAT(DisasContext *s, arg_sat *a)
+{
+    return op_sat(s, a, gen_helper_usat);
+}
+
+static bool trans_SSAT16(DisasContext *s, arg_sat *a)
+{
+    if (s->thumb && !arm_dc_feature(s, ARM_FEATURE_THUMB_DSP)) {
+        return false;
+    }
+    return op_sat(s, a, gen_helper_ssat16);
+}
+
+static bool trans_USAT16(DisasContext *s, arg_sat *a)
+{
+    if (s->thumb && !arm_dc_feature(s, ARM_FEATURE_THUMB_DSP)) {
+        return false;
+    }
+    return op_sat(s, a, gen_helper_usat16);
+}
+
+static bool op_xta(DisasContext *s, arg_rrr_rot *a,
+                   void (*gen_extract)(TCGv_i32, TCGv_i32),
+                   void (*gen_add)(TCGv_i32, TCGv_i32, TCGv_i32))
+{
+    TCGv_i32 tmp;
+
+    if (!ENABLE_ARCH_6) {
+        return false;
+    }
+
+    tmp = load_reg(s, a->rm);
+    /*
+     * TODO: In many cases we could do a shift instead of a rotate.
+     * Combined with a simple extend, that becomes an extract.
+     */
+    tcg_gen_rotri_i32(tmp, tmp, a->rot * 8);
+    gen_extract(tmp, tmp);
+
+    if (a->rn != 15) {
+        TCGv_i32 tmp2 = load_reg(s, a->rn);
+        gen_add(tmp, tmp, tmp2);
+        tcg_temp_free_i32(tmp2);
+    }
+    store_reg(s, a->rd, tmp);
+    return true;
+}
+
+static bool trans_SXTAB(DisasContext *s, arg_rrr_rot *a)
+{
+    return op_xta(s, a, tcg_gen_ext8s_i32, tcg_gen_add_i32);
+}
+
+static bool trans_SXTAH(DisasContext *s, arg_rrr_rot *a)
+{
+    return op_xta(s, a, tcg_gen_ext16s_i32, tcg_gen_add_i32);
+}
+
+static bool trans_SXTAB16(DisasContext *s, arg_rrr_rot *a)
+{
+    if (s->thumb && !arm_dc_feature(s, ARM_FEATURE_THUMB_DSP)) {
+        return false;
+    }
+    return op_xta(s, a, gen_helper_sxtb16, gen_add16);
+}
+
+static bool trans_UXTAB(DisasContext *s, arg_rrr_rot *a)
+{
+    return op_xta(s, a, tcg_gen_ext8u_i32, tcg_gen_add_i32);
+}
+
+static bool trans_UXTAH(DisasContext *s, arg_rrr_rot *a)
+{
+    return op_xta(s, a, tcg_gen_ext16u_i32, tcg_gen_add_i32);
+}
+
+static bool trans_UXTAB16(DisasContext *s, arg_rrr_rot *a)
+{
+    if (s->thumb && !arm_dc_feature(s, ARM_FEATURE_THUMB_DSP)) {
+        return false;
+    }
+    return op_xta(s, a, gen_helper_uxtb16, gen_add16);
+}
+
+static bool trans_SEL(DisasContext *s, arg_rrr *a)
+{
+    TCGv_i32 t1, t2, t3;
+
+    if (s->thumb
+        ? !arm_dc_feature(s, ARM_FEATURE_THUMB_DSP)
+        : !ENABLE_ARCH_6) {
+        return false;
+    }
+
+    t1 = load_reg(s, a->rn);
+    t2 = load_reg(s, a->rm);
+    t3 = tcg_temp_new_i32();
+    tcg_gen_ld_i32(t3, cpu_env, offsetof(CPUARMState, GE));
+    gen_helper_sel_flags(t1, t3, t1, t2);
+    tcg_temp_free_i32(t3);
+    tcg_temp_free_i32(t2);
+    store_reg(s, a->rd, t1);
+    return true;
+}
+
+static bool op_rr(DisasContext *s, arg_rr *a,
+                  void (*gen)(TCGv_i32, TCGv_i32))
+{
+    TCGv_i32 tmp;
+
+    tmp = load_reg(s, a->rm);
+    gen(tmp, tmp);
+    store_reg(s, a->rd, tmp);
+    return true;
+}
+
+static bool trans_REV(DisasContext *s, arg_rr *a)
+{
+    if (!ENABLE_ARCH_6) {
+        return false;
+    }
+    return op_rr(s, a, tcg_gen_bswap32_i32);
+}
+
+static bool trans_REV16(DisasContext *s, arg_rr *a)
+{
+    if (!ENABLE_ARCH_6) {
+        return false;
+    }
+    return op_rr(s, a, gen_rev16);
+}
+
+static bool trans_REVSH(DisasContext *s, arg_rr *a)
+{
+    if (!ENABLE_ARCH_6) {
+        return false;
+    }
+    return op_rr(s, a, gen_revsh);
+}
+
+static bool trans_RBIT(DisasContext *s, arg_rr *a)
+{
+    if (!ENABLE_ARCH_6T2) {
+        return false;
+    }
+    return op_rr(s, a, gen_helper_rbit);
+}
+
+/*
+ * Signed multiply, signed and unsigned divide
+ */
+
+static bool op_smlad(DisasContext *s, arg_rrrr *a, bool m_swap, bool sub)
+{
+    TCGv_i32 t1, t2;
+
+    if (!ENABLE_ARCH_6) {
+        return false;
+    }
+
+    t1 = load_reg(s, a->rn);
+    t2 = load_reg(s, a->rm);
+    if (m_swap) {
+        gen_swap_half(t2);
+    }
+    gen_smul_dual(t1, t2);
+
+    if (sub) {
+        /* This subtraction cannot overflow. */
+        tcg_gen_sub_i32(t1, t1, t2);
+    } else {
+        /*
+         * This addition cannot overflow 32 bits; however it may
+         * overflow considered as a signed operation, in which case
+         * we must set the Q flag.
+         */
+        gen_helper_add_setq(t1, cpu_env, t1, t2);
+    }
+    tcg_temp_free_i32(t2);
+
+    if (a->ra != 15) {
+        t2 = load_reg(s, a->ra);
+        gen_helper_add_setq(t1, cpu_env, t1, t2);
+        tcg_temp_free_i32(t2);
+    }
+    store_reg(s, a->rd, t1);
+    return true;
+}
+
+static bool trans_SMLAD(DisasContext *s, arg_rrrr *a)
+{
+    return op_smlad(s, a, false, false);
+}
+
+static bool trans_SMLADX(DisasContext *s, arg_rrrr *a)
+{
+    return op_smlad(s, a, true, false);
+}
+
+static bool trans_SMLSD(DisasContext *s, arg_rrrr *a)
+{
+    return op_smlad(s, a, false, true);
+}
+
+static bool trans_SMLSDX(DisasContext *s, arg_rrrr *a)
+{
+    return op_smlad(s, a, true, true);
+}
+
+static bool op_smlald(DisasContext *s, arg_rrrr *a, bool m_swap, bool sub)
+{
+    TCGv_i32 t1, t2;
+    TCGv_i64 l1, l2;
+
+    if (!ENABLE_ARCH_6) {
+        return false;
+    }
+
+    t1 = load_reg(s, a->rn);
+    t2 = load_reg(s, a->rm);
+    if (m_swap) {
+        gen_swap_half(t2);
+    }
+    gen_smul_dual(t1, t2);
+
+    l1 = tcg_temp_new_i64();
+    l2 = tcg_temp_new_i64();
+    tcg_gen_ext_i32_i64(l1, t1);
+    tcg_gen_ext_i32_i64(l2, t2);
+    tcg_temp_free_i32(t1);
+    tcg_temp_free_i32(t2);
+
+    if (sub) {
+        tcg_gen_sub_i64(l1, l1, l2);
+    } else {
+        tcg_gen_add_i64(l1, l1, l2);
+    }
+    tcg_temp_free_i64(l2);
+
+    gen_addq(s, l1, a->ra, a->rd);
+    gen_storeq_reg(s, a->ra, a->rd, l1);
+    tcg_temp_free_i64(l1);
+    return true;
+}
+
+static bool trans_SMLALD(DisasContext *s, arg_rrrr *a)
+{
+    return op_smlald(s, a, false, false);
+}
+
+static bool trans_SMLALDX(DisasContext *s, arg_rrrr *a)
+{
+    return op_smlald(s, a, true, false);
+}
+
+static bool trans_SMLSLD(DisasContext *s, arg_rrrr *a)
+{
+    return op_smlald(s, a, false, true);
+}
+
+static bool trans_SMLSLDX(DisasContext *s, arg_rrrr *a)
+{
+    return op_smlald(s, a, true, true);
+}
+
+static bool op_smmla(DisasContext *s, arg_rrrr *a, bool round, bool sub)
+{
+    TCGv_i32 t1, t2;
+
+    if (s->thumb
+        ? !arm_dc_feature(s, ARM_FEATURE_THUMB_DSP)
+        : !ENABLE_ARCH_6) {
+        return false;
+    }
+
+    t1 = load_reg(s, a->rn);
+    t2 = load_reg(s, a->rm);
+    tcg_gen_muls2_i32(t2, t1, t1, t2);
+
+    if (a->ra != 15) {
+        TCGv_i32 t3 = load_reg(s, a->ra);
+        if (sub) {
+            /*
+             * For SMMLS, we need a 64-bit subtract.  Borrow caused by
+             * a non-zero multiplicand lowpart, and the correct result
+             * lowpart for rounding.
+             */
+            TCGv_i32 zero = tcg_const_i32(0);
+            tcg_gen_sub2_i32(t2, t1, zero, t3, t2, t1);
+            tcg_temp_free_i32(zero);
+        } else {
+            tcg_gen_add_i32(t1, t1, t3);
+        }
+        tcg_temp_free_i32(t3);
+    }
+    if (round) {
+        /*
+         * Adding 0x80000000 to the 64-bit quantity means that we have
+         * carry in to the high word when the low word has the msb set.
+         */
+        tcg_gen_shri_i32(t2, t2, 31);
+        tcg_gen_add_i32(t1, t1, t2);
+    }
+    tcg_temp_free_i32(t2);
+    store_reg(s, a->rd, t1);
+    return true;
+}
+
+static bool trans_SMMLA(DisasContext *s, arg_rrrr *a)
+{
+    return op_smmla(s, a, false, false);
+}
+
+static bool trans_SMMLAR(DisasContext *s, arg_rrrr *a)
+{
+    return op_smmla(s, a, true, false);
+}
+
+static bool trans_SMMLS(DisasContext *s, arg_rrrr *a)
+{
+    return op_smmla(s, a, false, true);
+}
+
+static bool trans_SMMLSR(DisasContext *s, arg_rrrr *a)
+{
+    return op_smmla(s, a, true, true);
+}
+
+static bool op_div(DisasContext *s, arg_rrr *a, bool u)
+{
+    TCGv_i32 t1, t2;
+
+    if (s->thumb
+        ? !dc_isar_feature(thumb_div, s)
+        : !dc_isar_feature(arm_div, s)) {
+        return false;
+    }
+
+    t1 = load_reg(s, a->rn);
+    t2 = load_reg(s, a->rm);
+    if (u) {
+        gen_helper_udiv(t1, t1, t2);
+    } else {
+        gen_helper_sdiv(t1, t1, t2);
+    }
+    tcg_temp_free_i32(t2);
+    store_reg(s, a->rd, t1);
+    return true;
+}
+
+static bool trans_SDIV(DisasContext *s, arg_rrr *a)
+{
+    return op_div(s, a, false);
+}
+
+static bool trans_UDIV(DisasContext *s, arg_rrr *a)
+{
+    return op_div(s, a, true);
+}
+
+/*
+ * Block data transfer
+ */
+
+static TCGv_i32 op_addr_block_pre(DisasContext *s, arg_ldst_block *a, int n)
+{
+    TCGv_i32 addr = load_reg(s, a->rn);
+
+    if (a->b) {
+        if (a->i) {
+            /* pre increment */
+            tcg_gen_addi_i32(addr, addr, 4);
+        } else {
+            /* pre decrement */
+            tcg_gen_addi_i32(addr, addr, -(n * 4));
+        }
+    } else if (!a->i && n != 1) {
+        /* post decrement */
+        tcg_gen_addi_i32(addr, addr, -((n - 1) * 4));
+    }
+
+    if (s->v8m_stackcheck && a->rn == 13 && a->w) {
+        /*
+         * If the writeback is incrementing SP rather than
+         * decrementing it, and the initial SP is below the
+         * stack limit but the final written-back SP would
+         * be above, then then we must not perform any memory
+         * accesses, but it is IMPDEF whether we generate
+         * an exception. We choose to do so in this case.
+         * At this point 'addr' is the lowest address, so
+         * either the original SP (if incrementing) or our
+         * final SP (if decrementing), so that's what we check.
+         */
+        gen_helper_v8m_stackcheck(cpu_env, addr);
+    }
+
+    return addr;
+}
+
+static void op_addr_block_post(DisasContext *s, arg_ldst_block *a,
+                               TCGv_i32 addr, int n)
+{
+    if (a->w) {
+        /* write back */
+        if (!a->b) {
+            if (a->i) {
+                /* post increment */
+                tcg_gen_addi_i32(addr, addr, 4);
+            } else {
+                /* post decrement */
+                tcg_gen_addi_i32(addr, addr, -(n * 4));
+            }
+        } else if (!a->i && n != 1) {
+            /* pre decrement */
+            tcg_gen_addi_i32(addr, addr, -((n - 1) * 4));
+        }
+        store_reg(s, a->rn, addr);
+    } else {
+        tcg_temp_free_i32(addr);
+    }
+}
+
+static bool op_stm(DisasContext *s, arg_ldst_block *a, int min_n)
+{
+    int i, j, n, list, mem_idx;
+    bool user = a->u;
+    TCGv_i32 addr, tmp, tmp2;
+
+    if (user) {
+        /* STM (user) */
+        if (IS_USER(s)) {
+            /* Only usable in supervisor mode.  */
+            unallocated_encoding(s);
+            return true;
+        }
+    }
+
+    list = a->list;
+    n = ctpop16(list);
+    if (n < min_n || a->rn == 15) {
+        unallocated_encoding(s);
+        return true;
+    }
+
+    addr = op_addr_block_pre(s, a, n);
+    mem_idx = get_mem_index(s);
+
+    for (i = j = 0; i < 16; i++) {
+        if (!(list & (1 << i))) {
+            continue;
+        }
+
+        if (user && i != 15) {
+            tmp = tcg_temp_new_i32();
+            tmp2 = tcg_const_i32(i);
+            gen_helper_get_user_reg(tmp, cpu_env, tmp2);
+            tcg_temp_free_i32(tmp2);
+        } else {
+            tmp = load_reg(s, i);
+        }
+        gen_aa32_st32(s, tmp, addr, mem_idx);
+        tcg_temp_free_i32(tmp);
+
+        /* No need to add after the last transfer.  */
+        if (++j != n) {
+            tcg_gen_addi_i32(addr, addr, 4);
+        }
+    }
+
+    op_addr_block_post(s, a, addr, n);
+    return true;
+}
+
+static bool trans_STM(DisasContext *s, arg_ldst_block *a)
+{
+    /* BitCount(list) < 1 is UNPREDICTABLE */
+    return op_stm(s, a, 1);
+}
+
+static bool trans_STM_t32(DisasContext *s, arg_ldst_block *a)
+{
+    /* Writeback register in register list is UNPREDICTABLE for T32.  */
+    if (a->w && (a->list & (1 << a->rn))) {
+        unallocated_encoding(s);
+        return true;
+    }
+    /* BitCount(list) < 2 is UNPREDICTABLE */
+    return op_stm(s, a, 2);
+}
+
+static bool do_ldm(DisasContext *s, arg_ldst_block *a, int min_n)
+{
+    int i, j, n, list, mem_idx;
+    bool loaded_base;
+    bool user = a->u;
+    bool exc_return = false;
+    TCGv_i32 addr, tmp, tmp2, loaded_var;
+
+    if (user) {
+        /* LDM (user), LDM (exception return) */
+        if (IS_USER(s)) {
+            /* Only usable in supervisor mode.  */
+            unallocated_encoding(s);
+            return true;
+        }
+        if (extract32(a->list, 15, 1)) {
+            exc_return = true;
+            user = false;
+        } else {
+            /* LDM (user) does not allow writeback.  */
+            if (a->w) {
+                unallocated_encoding(s);
+                return true;
+            }
+        }
+    }
+
+    list = a->list;
+    n = ctpop16(list);
+    if (n < min_n || a->rn == 15) {
+        unallocated_encoding(s);
+        return true;
+    }
+
+    addr = op_addr_block_pre(s, a, n);
+    mem_idx = get_mem_index(s);
+    loaded_base = false;
+    loaded_var = NULL;
+
+    for (i = j = 0; i < 16; i++) {
+        if (!(list & (1 << i))) {
+            continue;
+        }
+
+        tmp = tcg_temp_new_i32();
+        gen_aa32_ld32u(s, tmp, addr, mem_idx);
+        if (user) {
+            tmp2 = tcg_const_i32(i);
+            gen_helper_set_user_reg(cpu_env, tmp2, tmp);
+            tcg_temp_free_i32(tmp2);
+            tcg_temp_free_i32(tmp);
+        } else if (i == a->rn) {
+            loaded_var = tmp;
+            loaded_base = true;
+        } else if (i == 15 && exc_return) {
+            store_pc_exc_ret(s, tmp);
+        } else {
+            store_reg_from_load(s, i, tmp);
+        }
+
+        /* No need to add after the last transfer.  */
+        if (++j != n) {
+            tcg_gen_addi_i32(addr, addr, 4);
+        }
+    }
+
+    op_addr_block_post(s, a, addr, n);
+
+    if (loaded_base) {
+        /* Note that we reject base == pc above.  */
+        store_reg(s, a->rn, loaded_var);
+    }
+
+    if (exc_return) {
+        /* Restore CPSR from SPSR.  */
+        tmp = load_cpu_field(spsr);
+        if (tb_cflags(s->base.tb) & CF_USE_ICOUNT) {
+            gen_io_start();
+        }
+        gen_helper_cpsr_write_eret(cpu_env, tmp);
+        if (tb_cflags(s->base.tb) & CF_USE_ICOUNT) {
+            gen_io_end();
+        }
+        tcg_temp_free_i32(tmp);
+        /* Must exit loop to check un-masked IRQs */
+        s->base.is_jmp = DISAS_EXIT;
+    }
+    return true;
+}
+
+static bool trans_LDM_a32(DisasContext *s, arg_ldst_block *a)
+{
+    /*
+     * Writeback register in register list is UNPREDICTABLE
+     * for ArchVersion() >= 7.  Prior to v7, A32 would write
+     * an UNKNOWN value to the base register.
+     */
+    if (ENABLE_ARCH_7 && a->w && (a->list & (1 << a->rn))) {
+        unallocated_encoding(s);
+        return true;
+    }
+    /* BitCount(list) < 1 is UNPREDICTABLE */
+    return do_ldm(s, a, 1);
+}
+
+static bool trans_LDM_t32(DisasContext *s, arg_ldst_block *a)
+{
+    /* Writeback register in register list is UNPREDICTABLE for T32. */
+    if (a->w && (a->list & (1 << a->rn))) {
+        unallocated_encoding(s);
+        return true;
+    }
+    /* BitCount(list) < 2 is UNPREDICTABLE */
+    return do_ldm(s, a, 2);
+}
+
+static bool trans_LDM_t16(DisasContext *s, arg_ldst_block *a)
+{
+    /* Writeback is conditional on the base register not being loaded.  */
+    a->w = !(a->list & (1 << a->rn));
+    /* BitCount(list) < 1 is UNPREDICTABLE */
+    return do_ldm(s, a, 1);
+}
+
+/*
+ * Branch, branch with link
+ */
+
+static bool trans_B(DisasContext *s, arg_i *a)
+{
+    gen_jmp(s, read_pc(s) + a->imm);
+    return true;
+}
+
+static bool trans_B_cond_thumb(DisasContext *s, arg_ci *a)
+{
+    /* This has cond from encoding, required to be outside IT block.  */
+    if (a->cond >= 0xe) {
+        return false;
+    }
+    if (s->condexec_mask) {
+        unallocated_encoding(s);
+        return true;
+    }
+    arm_skip_unless(s, a->cond);
+    gen_jmp(s, read_pc(s) + a->imm);
+    return true;
+}
+
+static bool trans_BL(DisasContext *s, arg_i *a)
+{
+    tcg_gen_movi_i32(cpu_R[14], s->base.pc_next | s->thumb);
+    gen_jmp(s, read_pc(s) + a->imm);
+    return true;
+}
+
+static bool trans_BLX_i(DisasContext *s, arg_BLX_i *a)
+{
+    TCGv_i32 tmp;
+
+    /* For A32, ARCH(5) is checked near the start of the uncond block. */
+    if (s->thumb && (a->imm & 2)) {
+        return false;
+    }
+    tcg_gen_movi_i32(cpu_R[14], s->base.pc_next | s->thumb);
+    tmp = tcg_const_i32(!s->thumb);
+    store_cpu_field(tmp, thumb);
+    gen_jmp(s, (read_pc(s) & ~3) + a->imm);
+    return true;
+}
+
+static bool trans_BL_BLX_prefix(DisasContext *s, arg_BL_BLX_prefix *a)
+{
+    assert(!arm_dc_feature(s, ARM_FEATURE_THUMB2));
+    tcg_gen_movi_i32(cpu_R[14], read_pc(s) + (a->imm << 12));
+    return true;
+}
+
+static bool trans_BL_suffix(DisasContext *s, arg_BL_suffix *a)
+{
+    TCGv_i32 tmp = tcg_temp_new_i32();
+
+    assert(!arm_dc_feature(s, ARM_FEATURE_THUMB2));
+    tcg_gen_addi_i32(tmp, cpu_R[14], (a->imm << 1) | 1);
+    tcg_gen_movi_i32(cpu_R[14], s->base.pc_next | 1);
+    gen_bx(s, tmp);
+    return true;
+}
+
+static bool trans_BLX_suffix(DisasContext *s, arg_BLX_suffix *a)
+{
+    TCGv_i32 tmp;
+
+    assert(!arm_dc_feature(s, ARM_FEATURE_THUMB2));
+    if (!ENABLE_ARCH_5) {
+        return false;
+    }
+    tmp = tcg_temp_new_i32();
+    tcg_gen_addi_i32(tmp, cpu_R[14], a->imm << 1);
+    tcg_gen_andi_i32(tmp, tmp, 0xfffffffc);
+    tcg_gen_movi_i32(cpu_R[14], s->base.pc_next | 1);
+    gen_bx(s, tmp);
+    return true;
+}
+
+static bool op_tbranch(DisasContext *s, arg_tbranch *a, bool half)
+{
+    TCGv_i32 addr, tmp;
+
+    tmp = load_reg(s, a->rm);
+    if (half) {
+        tcg_gen_add_i32(tmp, tmp, tmp);
+    }
+    addr = load_reg(s, a->rn);
+    tcg_gen_add_i32(addr, addr, tmp);
+
+    gen_aa32_ld_i32(s, tmp, addr, get_mem_index(s),
+                    half ? MO_UW | s->be_data : MO_UB);
+    tcg_temp_free_i32(addr);
+
+    tcg_gen_add_i32(tmp, tmp, tmp);
+    tcg_gen_addi_i32(tmp, tmp, read_pc(s));
+    store_reg(s, 15, tmp);
+    return true;
+}
+
+static bool trans_TBB(DisasContext *s, arg_tbranch *a)
+{
+    return op_tbranch(s, a, false);
+}
+
+static bool trans_TBH(DisasContext *s, arg_tbranch *a)
+{
+    return op_tbranch(s, a, true);
+}
+
+static bool trans_CBZ(DisasContext *s, arg_CBZ *a)
+{
+    TCGv_i32 tmp = load_reg(s, a->rn);
+
+    arm_gen_condlabel(s);
+    tcg_gen_brcondi_i32(a->nz ? TCG_COND_EQ : TCG_COND_NE,
+                        tmp, 0, s->condlabel);
+    tcg_temp_free_i32(tmp);
+    gen_jmp(s, read_pc(s) + a->imm);
+    return true;
+}
+
+/*
+ * Supervisor call - both T32 & A32 come here so we need to check
+ * which mode we are in when checking for semihosting.
+ */
+
+static bool trans_SVC(DisasContext *s, arg_SVC *a)
+{
+    const uint32_t semihost_imm = s->thumb ? 0xab : 0x123456;
+
+    if (!arm_dc_feature(s, ARM_FEATURE_M) && semihosting_enabled() &&
+#ifndef CONFIG_USER_ONLY
+        !IS_USER(s) &&
+#endif
+        (a->imm == semihost_imm)) {
+        gen_exception_internal_insn(s, s->base.pc_next, EXCP_SEMIHOST);
+    } else {
+        gen_set_pc_im(s, s->base.pc_next);
+        s->svc_imm = a->imm;
+        s->base.is_jmp = DISAS_SWI;
+    }
+    return true;
+}
+
+/*
+ * Unconditional system instructions
+ */
+
+static bool trans_RFE(DisasContext *s, arg_RFE *a)
+{
+    static const int8_t pre_offset[4] = {
+        /* DA */ -4, /* IA */ 0, /* DB */ -8, /* IB */ 4
+    };
+    static const int8_t post_offset[4] = {
+        /* DA */ -8, /* IA */ 4, /* DB */ -4, /* IB */ 0
+    };
+    TCGv_i32 addr, t1, t2;
+
+    if (!ENABLE_ARCH_6 || arm_dc_feature(s, ARM_FEATURE_M)) {
+        return false;
+    }
+    if (IS_USER(s)) {
+        unallocated_encoding(s);
+        return true;
+    }
+
+    addr = load_reg(s, a->rn);
+    tcg_gen_addi_i32(addr, addr, pre_offset[a->pu]);
+
+    /* Load PC into tmp and CPSR into tmp2.  */
+    t1 = tcg_temp_new_i32();
+    gen_aa32_ld32u(s, t1, addr, get_mem_index(s));
+    tcg_gen_addi_i32(addr, addr, 4);
+    t2 = tcg_temp_new_i32();
+    gen_aa32_ld32u(s, t2, addr, get_mem_index(s));
+
+    if (a->w) {
+        /* Base writeback.  */
+        tcg_gen_addi_i32(addr, addr, post_offset[a->pu]);
+        store_reg(s, a->rn, addr);
+    } else {
+        tcg_temp_free_i32(addr);
+    }
+    gen_rfe(s, t1, t2);
+    return true;
+}
+
+static bool trans_SRS(DisasContext *s, arg_SRS *a)
+{
+    if (!ENABLE_ARCH_6 || arm_dc_feature(s, ARM_FEATURE_M)) {
+        return false;
+    }
+    gen_srs(s, a->mode, a->pu, a->w);
+    return true;
+}
+
+static bool trans_CPS(DisasContext *s, arg_CPS *a)
+{
+    uint32_t mask, val;
+
+    if (!ENABLE_ARCH_6 || arm_dc_feature(s, ARM_FEATURE_M)) {
+        return false;
+    }
+    if (IS_USER(s)) {
+        /* Implemented as NOP in user mode.  */
+        return true;
+    }
+    /* TODO: There are quite a lot of UNPREDICTABLE argument combinations. */
+
+    mask = val = 0;
+    if (a->imod & 2) {
+        if (a->A) {
+            mask |= CPSR_A;
+        }
+        if (a->I) {
+            mask |= CPSR_I;
+        }
+        if (a->F) {
+            mask |= CPSR_F;
+        }
+        if (a->imod & 1) {
+            val |= mask;
+        }
+    }
+    if (a->M) {
+        mask |= CPSR_M;
+        val |= a->mode;
+    }
+    if (mask) {
+        gen_set_psr_im(s, mask, 0, val);
+    }
+    return true;
+}
+
+static bool trans_CPS_v7m(DisasContext *s, arg_CPS_v7m *a)
+{
+    TCGv_i32 tmp, addr;
+
+    if (!arm_dc_feature(s, ARM_FEATURE_M)) {
+        return false;
+    }
+    if (IS_USER(s)) {
+        /* Implemented as NOP in user mode.  */
+        return true;
+    }
+
+    tmp = tcg_const_i32(a->im);
+    /* FAULTMASK */
+    if (a->F) {
+        addr = tcg_const_i32(19);
+        gen_helper_v7m_msr(cpu_env, addr, tmp);
+        tcg_temp_free_i32(addr);
+    }
+    /* PRIMASK */
+    if (a->I) {
+        addr = tcg_const_i32(16);
+        gen_helper_v7m_msr(cpu_env, addr, tmp);
+        tcg_temp_free_i32(addr);
+    }
+    tcg_temp_free_i32(tmp);
+    gen_lookup_tb(s);
+    return true;
+}
+
+/*
+ * Clear-Exclusive, Barriers
+ */
+
+static bool trans_CLREX(DisasContext *s, arg_CLREX *a)
+{
+    if (s->thumb
+        ? !ENABLE_ARCH_7 && !arm_dc_feature(s, ARM_FEATURE_M)
+        : !ENABLE_ARCH_6K) {
+        return false;
+    }
+    gen_clrex(s);
+    return true;
+}
+
+static bool trans_DSB(DisasContext *s, arg_DSB *a)
+{
+    if (!ENABLE_ARCH_7 && !arm_dc_feature(s, ARM_FEATURE_M)) {
+        return false;
+    }
+    tcg_gen_mb(TCG_MO_ALL | TCG_BAR_SC);
+    return true;
+}
+
+static bool trans_DMB(DisasContext *s, arg_DMB *a)
+{
+    return trans_DSB(s, NULL);
+}
+
+static bool trans_ISB(DisasContext *s, arg_ISB *a)
+{
+    if (!ENABLE_ARCH_7 && !arm_dc_feature(s, ARM_FEATURE_M)) {
+        return false;
+    }
+    /*
+     * We need to break the TB after this insn to execute
+     * self-modifying code correctly and also to take
+     * any pending interrupts immediately.
+     */
+    gen_goto_tb(s, 0, s->base.pc_next);
+    return true;
+}
+
+static bool trans_SB(DisasContext *s, arg_SB *a)
+{
+    if (!dc_isar_feature(aa32_sb, s)) {
+        return false;
+    }
+    /*
+     * TODO: There is no speculation barrier opcode
+     * for TCG; MB and end the TB instead.
+     */
+    tcg_gen_mb(TCG_MO_ALL | TCG_BAR_SC);
+    gen_goto_tb(s, 0, s->base.pc_next);
+    return true;
+}
+
+static bool trans_SETEND(DisasContext *s, arg_SETEND *a)
+{
+    if (!ENABLE_ARCH_6) {
+        return false;
+    }
+    if (a->E != (s->be_data == MO_BE)) {
+        gen_helper_setend(cpu_env);
+        s->base.is_jmp = DISAS_UPDATE;
+    }
+    return true;
+}
+
+/*
+ * Preload instructions
+ * All are nops, contingent on the appropriate arch level.
+ */
+
+static bool trans_PLD(DisasContext *s, arg_PLD *a)
+{
+    return ENABLE_ARCH_5TE;
+}
+
+static bool trans_PLDW(DisasContext *s, arg_PLD *a)
+{
+    return arm_dc_feature(s, ARM_FEATURE_V7MP);
+}
+
+static bool trans_PLI(DisasContext *s, arg_PLD *a)
+{
+    return ENABLE_ARCH_7;
+}
+
+/*
+ * If-then
+ */
+
+static bool trans_IT(DisasContext *s, arg_IT *a)
+{
+    int cond_mask = a->cond_mask;
+
+    /*
+     * No actual code generated for this insn, just setup state.
+     *
+     * Combinations of firstcond and mask which set up an 0b1111
+     * condition are UNPREDICTABLE; we take the CONSTRAINED
+     * UNPREDICTABLE choice to treat 0b1111 the same as 0b1110,
+     * i.e. both meaning "execute always".
+     */
+    s->condexec_cond = (cond_mask >> 4) & 0xe;
+    s->condexec_mask = cond_mask & 0x1f;
+    return true;
+}
+
+/*
+ * Legacy decoder.
+ */
+
 static void disas_arm_insn(DisasContext *s, unsigned int insn)
 {
-    unsigned int cond, val, op1, i, shift, rm, rs, rn, rd, sh;
-    TCGv_i32 tmp;
-    TCGv_i32 tmp2;
-    TCGv_i32 tmp3;
-    TCGv_i32 addr;
-    TCGv_i64 tmp64;
+    unsigned int cond = insn >> 28;
 
     /* M variants do not implement ARM mode; this must raise the INVSTATE
      * UsageFault exception.
@@ -7674,8 +10490,8 @@ static void disas_arm_insn(DisasContext *s, unsigned int insn)
                            default_exception_el(s));
         return;
     }
-    cond = insn >> 28;
-    if (cond == 0xf){
+
+    if (cond == 0xf) {
         /* In ARMv3 and v4 the NV condition is UNPREDICTABLE; we
          * choose to UNDEF. In ARMv5 and above the space is used
          * for miscellaneous unconditional instructions.
@@ -7683,6 +10499,11 @@ static void disas_arm_insn(DisasContext *s, unsigned int insn)
         ARCH(5);
 
         /* Unconditional instructions.  */
+        if (disas_a32_uncond(s, insn)) {
+            return;
+        }
+        /* fall back to legacy decoder */
+
         if (((insn >> 25) & 7) == 1) {
             /* NEON Data processing.  */
             if (!arm_dc_feature(s, ARM_FEATURE_NEON)) {
@@ -7712,133 +10533,7 @@ static void disas_arm_insn(DisasContext *s, unsigned int insn)
             }
             return;
         }
-        if (((insn & 0x0f30f000) == 0x0510f000) ||
-            ((insn & 0x0f30f010) == 0x0710f000)) {
-            if ((insn & (1 << 22)) == 0) {
-                /* PLDW; v7MP */
-                if (!arm_dc_feature(s, ARM_FEATURE_V7MP)) {
-                    goto illegal_op;
-                }
-            }
-            /* Otherwise PLD; v5TE+ */
-            ARCH(5TE);
-            return;
-        }
-        if (((insn & 0x0f70f000) == 0x0450f000) ||
-            ((insn & 0x0f70f010) == 0x0650f000)) {
-            ARCH(7);
-            return; /* PLI; V7 */
-        }
-        if (((insn & 0x0f700000) == 0x04100000) ||
-            ((insn & 0x0f700010) == 0x06100000)) {
-            if (!arm_dc_feature(s, ARM_FEATURE_V7MP)) {
-                goto illegal_op;
-            }
-            return; /* v7MP: Unallocated memory hint: must NOP */
-        }
-
-        if ((insn & 0x0ffffdff) == 0x01010000) {
-            ARCH(6);
-            /* setend */
-            if (((insn >> 9) & 1) != !!(s->be_data == MO_BE)) {
-                gen_helper_setend(cpu_env);
-                s->base.is_jmp = DISAS_UPDATE;
-            }
-            return;
-        } else if ((insn & 0x0fffff00) == 0x057ff000) {
-            switch ((insn >> 4) & 0xf) {
-            case 1: /* clrex */
-                ARCH(6K);
-                gen_clrex(s);
-                return;
-            case 4: /* dsb */
-            case 5: /* dmb */
-                ARCH(7);
-                tcg_gen_mb(TCG_MO_ALL | TCG_BAR_SC);
-                return;
-            case 6: /* isb */
-                /* We need to break the TB after this insn to execute
-                 * self-modifying code correctly and also to take
-                 * any pending interrupts immediately.
-                 */
-                gen_goto_tb(s, 0, s->base.pc_next);
-                return;
-            case 7: /* sb */
-                if ((insn & 0xf) || !dc_isar_feature(aa32_sb, s)) {
-                    goto illegal_op;
-                }
-                /*
-                 * TODO: There is no speculation barrier opcode
-                 * for TCG; MB and end the TB instead.
-                 */
-                tcg_gen_mb(TCG_MO_ALL | TCG_BAR_SC);
-                gen_goto_tb(s, 0, s->base.pc_next);
-                return;
-            default:
-                goto illegal_op;
-            }
-        } else if ((insn & 0x0e5fffe0) == 0x084d0500) {
-            /* srs */
-            ARCH(6);
-            gen_srs(s, (insn & 0x1f), (insn >> 23) & 3, insn & (1 << 21));
-            return;
-        } else if ((insn & 0x0e50ffe0) == 0x08100a00) {
-            /* rfe */
-            int32_t offset;
-            if (IS_USER(s))
-                goto illegal_op;
-            ARCH(6);
-            rn = (insn >> 16) & 0xf;
-            addr = load_reg(s, rn);
-            i = (insn >> 23) & 3;
-            switch (i) {
-            case 0: offset = -4; break; /* DA */
-            case 1: offset = 0; break; /* IA */
-            case 2: offset = -8; break; /* DB */
-            case 3: offset = 4; break; /* IB */
-            default: abort();
-            }
-            if (offset)
-                tcg_gen_addi_i32(addr, addr, offset);
-            /* Load PC into tmp and CPSR into tmp2.  */
-            tmp = tcg_temp_new_i32();
-            gen_aa32_ld32u(s, tmp, addr, get_mem_index(s));
-            tcg_gen_addi_i32(addr, addr, 4);
-            tmp2 = tcg_temp_new_i32();
-            gen_aa32_ld32u(s, tmp2, addr, get_mem_index(s));
-            if (insn & (1 << 21)) {
-                /* Base writeback.  */
-                switch (i) {
-                case 0: offset = -8; break;
-                case 1: offset = 4; break;
-                case 2: offset = -4; break;
-                case 3: offset = 0; break;
-                default: abort();
-                }
-                if (offset)
-                    tcg_gen_addi_i32(addr, addr, offset);
-                store_reg(s, rn, addr);
-            } else {
-                tcg_temp_free_i32(addr);
-            }
-            gen_rfe(s, tmp, tmp2);
-            return;
-        } else if ((insn & 0x0e000000) == 0x0a000000) {
-            /* branch link and change to thumb (blx <offset>) */
-            int32_t offset;
-
-            tmp = tcg_temp_new_i32();
-            tcg_gen_movi_i32(tmp, s->base.pc_next);
-            store_reg(s, 14, tmp);
-            /* Sign-extend the 24-bit offset */
-            offset = (((int32_t)insn) << 8) >> 8;
-            val = read_pc(s);
-            /* offset * 4 + bit24 * 2 + (thumb bit) */
-            val += (offset << 2) | ((insn >> 23) & 2) | 1;
-            /* protected by ARCH(5); above, near the start of uncond block */
-            gen_bx_im(s, val);
-            return;
-        } else if ((insn & 0x0e000f00) == 0x0c000100) {
+        if ((insn & 0x0e000f00) == 0x0c000100) {
             if (arm_dc_feature(s, ARM_FEATURE_IWMMXT)) {
                 /* iWMMXt register transfer.  */
                 if (extract32(s->c15_cpar, 1, 1)) {
@@ -7859,36 +10554,6 @@ static void disas_arm_insn(DisasContext *s, unsigned int insn)
                 goto illegal_op;
             }
             return;
-        } else if ((insn & 0x0fe00000) == 0x0c400000) {
-            /* Coprocessor double register transfer.  */
-            ARCH(5TE);
-        } else if ((insn & 0x0f000010) == 0x0e000010) {
-            /* Additional coprocessor register transfer.  */
-        } else if ((insn & 0x0ff10020) == 0x01000000) {
-            uint32_t mask;
-            uint32_t val;
-            /* cps (privileged) */
-            if (IS_USER(s))
-                return;
-            mask = val = 0;
-            if (insn & (1 << 19)) {
-                if (insn & (1 << 8))
-                    mask |= CPSR_A;
-                if (insn & (1 << 7))
-                    mask |= CPSR_I;
-                if (insn & (1 << 6))
-                    mask |= CPSR_F;
-                if (insn & (1 << 18))
-                    val |= mask;
-            }
-            if (insn & (1 << 17)) {
-                mask |= CPSR_M;
-                val |= (insn & 0x1f);
-            }
-            if (mask) {
-                gen_set_psr_im(s, mask, 0, val);
-            }
-            return;
         }
         goto illegal_op;
     }
@@ -7897,1313 +10562,30 @@ static void disas_arm_insn(DisasContext *s, unsigned int insn)
            next instruction */
         arm_skip_unless(s, cond);
     }
-    if ((insn & 0x0f900000) == 0x03000000) {
-        if ((insn & (1 << 21)) == 0) {
-            ARCH(6T2);
-            rd = (insn >> 12) & 0xf;
-            val = ((insn >> 4) & 0xf000) | (insn & 0xfff);
-            if ((insn & (1 << 22)) == 0) {
-                /* MOVW */
-                tmp = tcg_temp_new_i32();
-                tcg_gen_movi_i32(tmp, val);
-            } else {
-                /* MOVT */
-                tmp = load_reg(s, rd);
-                tcg_gen_ext16u_i32(tmp, tmp);
-                tcg_gen_ori_i32(tmp, tmp, val << 16);
-            }
-            store_reg(s, rd, tmp);
-        } else {
-            if (((insn >> 12) & 0xf) != 0xf)
-                goto illegal_op;
-            if (((insn >> 16) & 0xf) == 0) {
-                gen_nop_hint(s, insn & 0xff);
-            } else {
-                /* CPSR = immediate */
-                val = insn & 0xff;
-                shift = ((insn >> 8) & 0xf) * 2;
-                val = ror32(val, shift);
-                i = ((insn & (1 << 22)) != 0);
-                if (gen_set_psr_im(s, msr_mask(s, (insn >> 16) & 0xf, i),
-                                   i, val)) {
-                    goto illegal_op;
-                }
-            }
-        }
-    } else if ((insn & 0x0f900000) == 0x01000000
-               && (insn & 0x00000090) != 0x00000090) {
-        /* miscellaneous instructions */
-        op1 = (insn >> 21) & 3;
-        sh = (insn >> 4) & 0xf;
-        rm = insn & 0xf;
-        switch (sh) {
-        case 0x0: /* MSR, MRS */
-            if (insn & (1 << 9)) {
-                /* MSR (banked) and MRS (banked) */
-                int sysm = extract32(insn, 16, 4) |
-                    (extract32(insn, 8, 1) << 4);
-                int r = extract32(insn, 22, 1);
 
-                if (op1 & 1) {
-                    /* MSR (banked) */
-                    gen_msr_banked(s, r, sysm, rm);
-                } else {
-                    /* MRS (banked) */
-                    int rd = extract32(insn, 12, 4);
+    if (disas_a32(s, insn)) {
+        return;
+    }
+    /* fall back to legacy decoder */
 
-                    gen_mrs_banked(s, r, sysm, rd);
-                }
-                break;
-            }
-
-            /* MSR, MRS (for PSRs) */
-            if (op1 & 1) {
-                /* PSR = reg */
-                tmp = load_reg(s, rm);
-                i = ((op1 & 2) != 0);
-                if (gen_set_psr(s, msr_mask(s, (insn >> 16) & 0xf, i), i, tmp))
-                    goto illegal_op;
-            } else {
-                /* reg = PSR */
-                rd = (insn >> 12) & 0xf;
-                if (op1 & 2) {
-                    if (IS_USER(s))
-                        goto illegal_op;
-                    tmp = load_cpu_field(spsr);
-                } else {
-                    tmp = tcg_temp_new_i32();
-                    gen_helper_cpsr_read(tmp, cpu_env);
-                }
-                store_reg(s, rd, tmp);
-            }
-            break;
-        case 0x1:
-            if (op1 == 1) {
-                /* branch/exchange thumb (bx).  */
-                ARCH(4T);
-                tmp = load_reg(s, rm);
-                gen_bx(s, tmp);
-            } else if (op1 == 3) {
-                /* clz */
-                ARCH(5);
-                rd = (insn >> 12) & 0xf;
-                tmp = load_reg(s, rm);
-                tcg_gen_clzi_i32(tmp, tmp, 32);
-                store_reg(s, rd, tmp);
-            } else {
+    switch ((insn >> 24) & 0xf) {
+    case 0xc:
+    case 0xd:
+    case 0xe:
+        if (((insn >> 8) & 0xe) == 10) {
+            /* VFP.  */
+            if (disas_vfp_insn(s, insn)) {
                 goto illegal_op;
             }
-            break;
-        case 0x2:
-            if (op1 == 1) {
-                ARCH(5J); /* bxj */
-                /* Trivial implementation equivalent to bx.  */
-                tmp = load_reg(s, rm);
-                gen_bx(s, tmp);
-            } else {
-                goto illegal_op;
-            }
-            break;
-        case 0x3:
-            if (op1 != 1)
-              goto illegal_op;
-
-            ARCH(5);
-            /* branch link/exchange thumb (blx) */
-            tmp = load_reg(s, rm);
-            tmp2 = tcg_temp_new_i32();
-            tcg_gen_movi_i32(tmp2, s->base.pc_next);
-            store_reg(s, 14, tmp2);
-            gen_bx(s, tmp);
-            break;
-        case 0x4:
-        {
-            /* crc32/crc32c */
-            uint32_t c = extract32(insn, 8, 4);
-
-            /* Check this CPU supports ARMv8 CRC instructions.
-             * op1 == 3 is UNPREDICTABLE but handle as UNDEFINED.
-             * Bits 8, 10 and 11 should be zero.
-             */
-            if (!dc_isar_feature(aa32_crc32, s) || op1 == 0x3 || (c & 0xd) != 0) {
-                goto illegal_op;
-            }
-
-            rn = extract32(insn, 16, 4);
-            rd = extract32(insn, 12, 4);
-
-            tmp = load_reg(s, rn);
-            tmp2 = load_reg(s, rm);
-            if (op1 == 0) {
-                tcg_gen_andi_i32(tmp2, tmp2, 0xff);
-            } else if (op1 == 1) {
-                tcg_gen_andi_i32(tmp2, tmp2, 0xffff);
-            }
-            tmp3 = tcg_const_i32(1 << op1);
-            if (c & 0x2) {
-                gen_helper_crc32c(tmp, tmp, tmp2, tmp3);
-            } else {
-                gen_helper_crc32(tmp, tmp, tmp2, tmp3);
-            }
-            tcg_temp_free_i32(tmp2);
-            tcg_temp_free_i32(tmp3);
-            store_reg(s, rd, tmp);
-            break;
-        }
-        case 0x5: /* saturating add/subtract */
-            ARCH(5TE);
-            rd = (insn >> 12) & 0xf;
-            rn = (insn >> 16) & 0xf;
-            tmp = load_reg(s, rm);
-            tmp2 = load_reg(s, rn);
-            if (op1 & 2)
-                gen_helper_add_saturate(tmp2, cpu_env, tmp2, tmp2);
-            if (op1 & 1)
-                gen_helper_sub_saturate(tmp, cpu_env, tmp, tmp2);
-            else
-                gen_helper_add_saturate(tmp, cpu_env, tmp, tmp2);
-            tcg_temp_free_i32(tmp2);
-            store_reg(s, rd, tmp);
-            break;
-        case 0x6: /* ERET */
-            if (op1 != 3) {
-                goto illegal_op;
-            }
-            if (!arm_dc_feature(s, ARM_FEATURE_V7VE)) {
-                goto illegal_op;
-            }
-            if ((insn & 0x000fff0f) != 0x0000000e) {
-                /* UNPREDICTABLE; we choose to UNDEF */
-                goto illegal_op;
-            }
-
-            if (s->current_el == 2) {
-                tmp = load_cpu_field(elr_el[2]);
-            } else {
-                tmp = load_reg(s, 14);
-            }
-            gen_exception_return(s, tmp);
-            break;
-        case 7:
-        {
-            int imm16 = extract32(insn, 0, 4) | (extract32(insn, 8, 12) << 4);
-            switch (op1) {
-            case 0:
-                /* HLT */
-                gen_hlt(s, imm16);
-                break;
-            case 1:
-                /* bkpt */
-                ARCH(5);
-                gen_exception_bkpt_insn(s, syn_aa32_bkpt(imm16, false));
-                break;
-            case 2:
-                /* Hypervisor call (v7) */
-                ARCH(7);
-                if (IS_USER(s)) {
-                    goto illegal_op;
-                }
-                gen_hvc(s, imm16);
-                break;
-            case 3:
-                /* Secure monitor call (v6+) */
-                ARCH(6K);
-                if (IS_USER(s)) {
-                    goto illegal_op;
-                }
-                gen_smc(s);
-                break;
-            default:
-                g_assert_not_reached();
-            }
-            break;
-        }
-        case 0x8: /* signed multiply */
-        case 0xa:
-        case 0xc:
-        case 0xe:
-            ARCH(5TE);
-            rs = (insn >> 8) & 0xf;
-            rn = (insn >> 12) & 0xf;
-            rd = (insn >> 16) & 0xf;
-            if (op1 == 1) {
-                /* (32 * 16) >> 16 */
-                tmp = load_reg(s, rm);
-                tmp2 = load_reg(s, rs);
-                if (sh & 4)
-                    tcg_gen_sari_i32(tmp2, tmp2, 16);
-                else
-                    gen_sxth(tmp2);
-                tmp64 = gen_muls_i64_i32(tmp, tmp2);
-                tcg_gen_shri_i64(tmp64, tmp64, 16);
-                tmp = tcg_temp_new_i32();
-                tcg_gen_extrl_i64_i32(tmp, tmp64);
-                tcg_temp_free_i64(tmp64);
-                if ((sh & 2) == 0) {
-                    tmp2 = load_reg(s, rn);
-                    gen_helper_add_setq(tmp, cpu_env, tmp, tmp2);
-                    tcg_temp_free_i32(tmp2);
-                }
-                store_reg(s, rd, tmp);
-            } else {
-                /* 16 * 16 */
-                tmp = load_reg(s, rm);
-                tmp2 = load_reg(s, rs);
-                gen_mulxy(tmp, tmp2, sh & 2, sh & 4);
-                tcg_temp_free_i32(tmp2);
-                if (op1 == 2) {
-                    tmp64 = tcg_temp_new_i64();
-                    tcg_gen_ext_i32_i64(tmp64, tmp);
-                    tcg_temp_free_i32(tmp);
-                    gen_addq(s, tmp64, rn, rd);
-                    gen_storeq_reg(s, rn, rd, tmp64);
-                    tcg_temp_free_i64(tmp64);
-                } else {
-                    if (op1 == 0) {
-                        tmp2 = load_reg(s, rn);
-                        gen_helper_add_setq(tmp, cpu_env, tmp, tmp2);
-                        tcg_temp_free_i32(tmp2);
-                    }
-                    store_reg(s, rd, tmp);
-                }
-            }
-            break;
-        default:
+        } else if (disas_coproc_insn(s, insn)) {
+            /* Coprocessor.  */
             goto illegal_op;
         }
-    } else if (((insn & 0x0e000000) == 0 &&
-                (insn & 0x00000090) != 0x90) ||
-               ((insn & 0x0e000000) == (1 << 25))) {
-        int set_cc, logic_cc, shiftop;
-
-        op1 = (insn >> 21) & 0xf;
-        set_cc = (insn >> 20) & 1;
-        logic_cc = table_logic_cc[op1] & set_cc;
-
-        /* data processing instruction */
-        if (insn & (1 << 25)) {
-            /* immediate operand */
-            val = insn & 0xff;
-            shift = ((insn >> 8) & 0xf) * 2;
-            val = ror32(val, shift);
-            tmp2 = tcg_temp_new_i32();
-            tcg_gen_movi_i32(tmp2, val);
-            if (logic_cc && shift) {
-                gen_set_CF_bit31(tmp2);
-            }
-        } else {
-            /* register */
-            rm = (insn) & 0xf;
-            tmp2 = load_reg(s, rm);
-            shiftop = (insn >> 5) & 3;
-            if (!(insn & (1 << 4))) {
-                shift = (insn >> 7) & 0x1f;
-                gen_arm_shift_im(tmp2, shiftop, shift, logic_cc);
-            } else {
-                rs = (insn >> 8) & 0xf;
-                tmp = load_reg(s, rs);
-                gen_arm_shift_reg(tmp2, shiftop, tmp, logic_cc);
-            }
-        }
-        if (op1 != 0x0f && op1 != 0x0d) {
-            rn = (insn >> 16) & 0xf;
-            tmp = load_reg(s, rn);
-        } else {
-            tmp = NULL;
-        }
-        rd = (insn >> 12) & 0xf;
-        switch(op1) {
-        case 0x00:
-            tcg_gen_and_i32(tmp, tmp, tmp2);
-            if (logic_cc) {
-                gen_logic_CC(tmp);
-            }
-            store_reg_bx(s, rd, tmp);
-            break;
-        case 0x01:
-            tcg_gen_xor_i32(tmp, tmp, tmp2);
-            if (logic_cc) {
-                gen_logic_CC(tmp);
-            }
-            store_reg_bx(s, rd, tmp);
-            break;
-        case 0x02:
-            if (set_cc && rd == 15) {
-                /* SUBS r15, ... is used for exception return.  */
-                if (IS_USER(s)) {
-                    goto illegal_op;
-                }
-                gen_sub_CC(tmp, tmp, tmp2);
-                gen_exception_return(s, tmp);
-            } else {
-                if (set_cc) {
-                    gen_sub_CC(tmp, tmp, tmp2);
-                } else {
-                    tcg_gen_sub_i32(tmp, tmp, tmp2);
-                }
-                store_reg_bx(s, rd, tmp);
-            }
-            break;
-        case 0x03:
-            if (set_cc) {
-                gen_sub_CC(tmp, tmp2, tmp);
-            } else {
-                tcg_gen_sub_i32(tmp, tmp2, tmp);
-            }
-            store_reg_bx(s, rd, tmp);
-            break;
-        case 0x04:
-            if (set_cc) {
-                gen_add_CC(tmp, tmp, tmp2);
-            } else {
-                tcg_gen_add_i32(tmp, tmp, tmp2);
-            }
-            store_reg_bx(s, rd, tmp);
-            break;
-        case 0x05:
-            if (set_cc) {
-                gen_adc_CC(tmp, tmp, tmp2);
-            } else {
-                gen_add_carry(tmp, tmp, tmp2);
-            }
-            store_reg_bx(s, rd, tmp);
-            break;
-        case 0x06:
-            if (set_cc) {
-                gen_sbc_CC(tmp, tmp, tmp2);
-            } else {
-                gen_sub_carry(tmp, tmp, tmp2);
-            }
-            store_reg_bx(s, rd, tmp);
-            break;
-        case 0x07:
-            if (set_cc) {
-                gen_sbc_CC(tmp, tmp2, tmp);
-            } else {
-                gen_sub_carry(tmp, tmp2, tmp);
-            }
-            store_reg_bx(s, rd, tmp);
-            break;
-        case 0x08:
-            if (set_cc) {
-                tcg_gen_and_i32(tmp, tmp, tmp2);
-                gen_logic_CC(tmp);
-            }
-            tcg_temp_free_i32(tmp);
-            break;
-        case 0x09:
-            if (set_cc) {
-                tcg_gen_xor_i32(tmp, tmp, tmp2);
-                gen_logic_CC(tmp);
-            }
-            tcg_temp_free_i32(tmp);
-            break;
-        case 0x0a:
-            if (set_cc) {
-                gen_sub_CC(tmp, tmp, tmp2);
-            }
-            tcg_temp_free_i32(tmp);
-            break;
-        case 0x0b:
-            if (set_cc) {
-                gen_add_CC(tmp, tmp, tmp2);
-            }
-            tcg_temp_free_i32(tmp);
-            break;
-        case 0x0c:
-            tcg_gen_or_i32(tmp, tmp, tmp2);
-            if (logic_cc) {
-                gen_logic_CC(tmp);
-            }
-            store_reg_bx(s, rd, tmp);
-            break;
-        case 0x0d:
-            if (logic_cc && rd == 15) {
-                /* MOVS r15, ... is used for exception return.  */
-                if (IS_USER(s)) {
-                    goto illegal_op;
-                }
-                gen_exception_return(s, tmp2);
-            } else {
-                if (logic_cc) {
-                    gen_logic_CC(tmp2);
-                }
-                store_reg_bx(s, rd, tmp2);
-            }
-            break;
-        case 0x0e:
-            tcg_gen_andc_i32(tmp, tmp, tmp2);
-            if (logic_cc) {
-                gen_logic_CC(tmp);
-            }
-            store_reg_bx(s, rd, tmp);
-            break;
-        default:
-        case 0x0f:
-            tcg_gen_not_i32(tmp2, tmp2);
-            if (logic_cc) {
-                gen_logic_CC(tmp2);
-            }
-            store_reg_bx(s, rd, tmp2);
-            break;
-        }
-        if (op1 != 0x0f && op1 != 0x0d) {
-            tcg_temp_free_i32(tmp2);
-        }
-    } else {
-        /* other instructions */
-        op1 = (insn >> 24) & 0xf;
-        switch(op1) {
-        case 0x0:
-        case 0x1:
-            /* multiplies, extra load/stores */
-            sh = (insn >> 5) & 3;
-            if (sh == 0) {
-                if (op1 == 0x0) {
-                    rd = (insn >> 16) & 0xf;
-                    rn = (insn >> 12) & 0xf;
-                    rs = (insn >> 8) & 0xf;
-                    rm = (insn) & 0xf;
-                    op1 = (insn >> 20) & 0xf;
-                    switch (op1) {
-                    case 0: case 1: case 2: case 3: case 6:
-                        /* 32 bit mul */
-                        tmp = load_reg(s, rs);
-                        tmp2 = load_reg(s, rm);
-                        tcg_gen_mul_i32(tmp, tmp, tmp2);
-                        tcg_temp_free_i32(tmp2);
-                        if (insn & (1 << 22)) {
-                            /* Subtract (mls) */
-                            ARCH(6T2);
-                            tmp2 = load_reg(s, rn);
-                            tcg_gen_sub_i32(tmp, tmp2, tmp);
-                            tcg_temp_free_i32(tmp2);
-                        } else if (insn & (1 << 21)) {
-                            /* Add */
-                            tmp2 = load_reg(s, rn);
-                            tcg_gen_add_i32(tmp, tmp, tmp2);
-                            tcg_temp_free_i32(tmp2);
-                        }
-                        if (insn & (1 << 20))
-                            gen_logic_CC(tmp);
-                        store_reg(s, rd, tmp);
-                        break;
-                    case 4:
-                        /* 64 bit mul double accumulate (UMAAL) */
-                        ARCH(6);
-                        tmp = load_reg(s, rs);
-                        tmp2 = load_reg(s, rm);
-                        tmp64 = gen_mulu_i64_i32(tmp, tmp2);
-                        gen_addq_lo(s, tmp64, rn);
-                        gen_addq_lo(s, tmp64, rd);
-                        gen_storeq_reg(s, rn, rd, tmp64);
-                        tcg_temp_free_i64(tmp64);
-                        break;
-                    case 8: case 9: case 10: case 11:
-                    case 12: case 13: case 14: case 15:
-                        /* 64 bit mul: UMULL, UMLAL, SMULL, SMLAL. */
-                        tmp = load_reg(s, rs);
-                        tmp2 = load_reg(s, rm);
-                        if (insn & (1 << 22)) {
-                            tcg_gen_muls2_i32(tmp, tmp2, tmp, tmp2);
-                        } else {
-                            tcg_gen_mulu2_i32(tmp, tmp2, tmp, tmp2);
-                        }
-                        if (insn & (1 << 21)) { /* mult accumulate */
-                            TCGv_i32 al = load_reg(s, rn);
-                            TCGv_i32 ah = load_reg(s, rd);
-                            tcg_gen_add2_i32(tmp, tmp2, tmp, tmp2, al, ah);
-                            tcg_temp_free_i32(al);
-                            tcg_temp_free_i32(ah);
-                        }
-                        if (insn & (1 << 20)) {
-                            gen_logicq_cc(tmp, tmp2);
-                        }
-                        store_reg(s, rn, tmp);
-                        store_reg(s, rd, tmp2);
-                        break;
-                    default:
-                        goto illegal_op;
-                    }
-                } else {
-                    rn = (insn >> 16) & 0xf;
-                    rd = (insn >> 12) & 0xf;
-                    if (insn & (1 << 23)) {
-                        /* load/store exclusive */
-                        bool is_ld = extract32(insn, 20, 1);
-                        bool is_lasr = !extract32(insn, 8, 1);
-                        int op2 = (insn >> 8) & 3;
-                        op1 = (insn >> 21) & 0x3;
-
-                        switch (op2) {
-                        case 0: /* lda/stl */
-                            if (op1 == 1) {
-                                goto illegal_op;
-                            }
-                            ARCH(8);
-                            break;
-                        case 1: /* reserved */
-                            goto illegal_op;
-                        case 2: /* ldaex/stlex */
-                            ARCH(8);
-                            break;
-                        case 3: /* ldrex/strex */
-                            if (op1) {
-                                ARCH(6K);
-                            } else {
-                                ARCH(6);
-                            }
-                            break;
-                        }
-
-                        addr = tcg_temp_local_new_i32();
-                        load_reg_var(s, addr, rn);
-
-                        if (is_lasr && !is_ld) {
-                            tcg_gen_mb(TCG_MO_ALL | TCG_BAR_STRL);
-                        }
-
-                        if (op2 == 0) {
-                            if (is_ld) {
-                                tmp = tcg_temp_new_i32();
-                                switch (op1) {
-                                case 0: /* lda */
-                                    gen_aa32_ld32u_iss(s, tmp, addr,
-                                                       get_mem_index(s),
-                                                       rd | ISSIsAcqRel);
-                                    break;
-                                case 2: /* ldab */
-                                    gen_aa32_ld8u_iss(s, tmp, addr,
-                                                      get_mem_index(s),
-                                                      rd | ISSIsAcqRel);
-                                    break;
-                                case 3: /* ldah */
-                                    gen_aa32_ld16u_iss(s, tmp, addr,
-                                                       get_mem_index(s),
-                                                       rd | ISSIsAcqRel);
-                                    break;
-                                default:
-                                    abort();
-                                }
-                                store_reg(s, rd, tmp);
-                            } else {
-                                rm = insn & 0xf;
-                                tmp = load_reg(s, rm);
-                                switch (op1) {
-                                case 0: /* stl */
-                                    gen_aa32_st32_iss(s, tmp, addr,
-                                                      get_mem_index(s),
-                                                      rm | ISSIsAcqRel);
-                                    break;
-                                case 2: /* stlb */
-                                    gen_aa32_st8_iss(s, tmp, addr,
-                                                     get_mem_index(s),
-                                                     rm | ISSIsAcqRel);
-                                    break;
-                                case 3: /* stlh */
-                                    gen_aa32_st16_iss(s, tmp, addr,
-                                                      get_mem_index(s),
-                                                      rm | ISSIsAcqRel);
-                                    break;
-                                default:
-                                    abort();
-                                }
-                                tcg_temp_free_i32(tmp);
-                            }
-                        } else if (is_ld) {
-                            switch (op1) {
-                            case 0: /* ldrex */
-                                gen_load_exclusive(s, rd, 15, addr, 2);
-                                break;
-                            case 1: /* ldrexd */
-                                gen_load_exclusive(s, rd, rd + 1, addr, 3);
-                                break;
-                            case 2: /* ldrexb */
-                                gen_load_exclusive(s, rd, 15, addr, 0);
-                                break;
-                            case 3: /* ldrexh */
-                                gen_load_exclusive(s, rd, 15, addr, 1);
-                                break;
-                            default:
-                                abort();
-                            }
-                        } else {
-                            rm = insn & 0xf;
-                            switch (op1) {
-                            case 0:  /*  strex */
-                                gen_store_exclusive(s, rd, rm, 15, addr, 2);
-                                break;
-                            case 1: /*  strexd */
-                                gen_store_exclusive(s, rd, rm, rm + 1, addr, 3);
-                                break;
-                            case 2: /*  strexb */
-                                gen_store_exclusive(s, rd, rm, 15, addr, 0);
-                                break;
-                            case 3: /* strexh */
-                                gen_store_exclusive(s, rd, rm, 15, addr, 1);
-                                break;
-                            default:
-                                abort();
-                            }
-                        }
-                        tcg_temp_free_i32(addr);
-
-                        if (is_lasr && is_ld) {
-                            tcg_gen_mb(TCG_MO_ALL | TCG_BAR_LDAQ);
-                        }
-                    } else if ((insn & 0x00300f00) == 0) {
-                        /* 0bcccc_0001_0x00_xxxx_xxxx_0000_1001_xxxx
-                        *  - SWP, SWPB
-                        */
-
-                        TCGv taddr;
-                        TCGMemOp opc = s->be_data;
-
-                        rm = (insn) & 0xf;
-
-                        if (insn & (1 << 22)) {
-                            opc |= MO_UB;
-                        } else {
-                            opc |= MO_UL | MO_ALIGN;
-                        }
-
-                        addr = load_reg(s, rn);
-                        taddr = gen_aa32_addr(s, addr, opc);
-                        tcg_temp_free_i32(addr);
-
-                        tmp = load_reg(s, rm);
-                        tcg_gen_atomic_xchg_i32(tmp, taddr, tmp,
-                                                get_mem_index(s), opc);
-                        tcg_temp_free(taddr);
-                        store_reg(s, rd, tmp);
-                    } else {
-                        goto illegal_op;
-                    }
-                }
-            } else {
-                int address_offset;
-                bool load = insn & (1 << 20);
-                bool wbit = insn & (1 << 21);
-                bool pbit = insn & (1 << 24);
-                bool doubleword = false;
-                ISSInfo issinfo;
-
-                /* Misc load/store */
-                rn = (insn >> 16) & 0xf;
-                rd = (insn >> 12) & 0xf;
-
-                /* ISS not valid if writeback */
-                issinfo = (pbit & !wbit) ? rd : ISSInvalid;
-
-                if (!load && (sh & 2)) {
-                    /* doubleword */
-                    ARCH(5TE);
-                    if (rd & 1) {
-                        /* UNPREDICTABLE; we choose to UNDEF */
-                        goto illegal_op;
-                    }
-                    load = (sh & 1) == 0;
-                    doubleword = true;
-                }
-
-                addr = load_reg(s, rn);
-                if (pbit) {
-                    gen_add_datah_offset(s, insn, 0, addr);
-                }
-                address_offset = 0;
-
-                if (doubleword) {
-                    if (!load) {
-                        /* store */
-                        tmp = load_reg(s, rd);
-                        gen_aa32_st32(s, tmp, addr, get_mem_index(s));
-                        tcg_temp_free_i32(tmp);
-                        tcg_gen_addi_i32(addr, addr, 4);
-                        tmp = load_reg(s, rd + 1);
-                        gen_aa32_st32(s, tmp, addr, get_mem_index(s));
-                        tcg_temp_free_i32(tmp);
-                    } else {
-                        /* load */
-                        tmp = tcg_temp_new_i32();
-                        gen_aa32_ld32u(s, tmp, addr, get_mem_index(s));
-                        store_reg(s, rd, tmp);
-                        tcg_gen_addi_i32(addr, addr, 4);
-                        tmp = tcg_temp_new_i32();
-                        gen_aa32_ld32u(s, tmp, addr, get_mem_index(s));
-                        rd++;
-                    }
-                    address_offset = -4;
-                } else if (load) {
-                    /* load */
-                    tmp = tcg_temp_new_i32();
-                    switch (sh) {
-                    case 1:
-                        gen_aa32_ld16u_iss(s, tmp, addr, get_mem_index(s),
-                                           issinfo);
-                        break;
-                    case 2:
-                        gen_aa32_ld8s_iss(s, tmp, addr, get_mem_index(s),
-                                          issinfo);
-                        break;
-                    default:
-                    case 3:
-                        gen_aa32_ld16s_iss(s, tmp, addr, get_mem_index(s),
-                                           issinfo);
-                        break;
-                    }
-                } else {
-                    /* store */
-                    tmp = load_reg(s, rd);
-                    gen_aa32_st16_iss(s, tmp, addr, get_mem_index(s), issinfo);
-                    tcg_temp_free_i32(tmp);
-                }
-                /* Perform base writeback before the loaded value to
-                   ensure correct behavior with overlapping index registers.
-                   ldrd with base writeback is undefined if the
-                   destination and index registers overlap.  */
-                if (!pbit) {
-                    gen_add_datah_offset(s, insn, address_offset, addr);
-                    store_reg(s, rn, addr);
-                } else if (wbit) {
-                    if (address_offset)
-                        tcg_gen_addi_i32(addr, addr, address_offset);
-                    store_reg(s, rn, addr);
-                } else {
-                    tcg_temp_free_i32(addr);
-                }
-                if (load) {
-                    /* Complete the load.  */
-                    store_reg(s, rd, tmp);
-                }
-            }
-            break;
-        case 0x4:
-        case 0x5:
-            goto do_ldst;
-        case 0x6:
-        case 0x7:
-            if (insn & (1 << 4)) {
-                ARCH(6);
-                /* Armv6 Media instructions.  */
-                rm = insn & 0xf;
-                rn = (insn >> 16) & 0xf;
-                rd = (insn >> 12) & 0xf;
-                rs = (insn >> 8) & 0xf;
-                switch ((insn >> 23) & 3) {
-                case 0: /* Parallel add/subtract.  */
-                    op1 = (insn >> 20) & 7;
-                    tmp = load_reg(s, rn);
-                    tmp2 = load_reg(s, rm);
-                    sh = (insn >> 5) & 7;
-                    if ((op1 & 3) == 0 || sh == 5 || sh == 6)
-                        goto illegal_op;
-                    gen_arm_parallel_addsub(op1, sh, tmp, tmp2);
-                    tcg_temp_free_i32(tmp2);
-                    store_reg(s, rd, tmp);
-                    break;
-                case 1:
-                    if ((insn & 0x00700020) == 0) {
-                        /* Halfword pack.  */
-                        tmp = load_reg(s, rn);
-                        tmp2 = load_reg(s, rm);
-                        shift = (insn >> 7) & 0x1f;
-                        if (insn & (1 << 6)) {
-                            /* pkhtb */
-                            if (shift == 0) {
-                                shift = 31;
-                            }
-                            tcg_gen_sari_i32(tmp2, tmp2, shift);
-                            tcg_gen_deposit_i32(tmp, tmp, tmp2, 0, 16);
-                        } else {
-                            /* pkhbt */
-                            tcg_gen_shli_i32(tmp2, tmp2, shift);
-                            tcg_gen_deposit_i32(tmp, tmp2, tmp, 0, 16);
-                        }
-                        tcg_temp_free_i32(tmp2);
-                        store_reg(s, rd, tmp);
-                    } else if ((insn & 0x00200020) == 0x00200000) {
-                        /* [us]sat */
-                        tmp = load_reg(s, rm);
-                        shift = (insn >> 7) & 0x1f;
-                        if (insn & (1 << 6)) {
-                            if (shift == 0)
-                                shift = 31;
-                            tcg_gen_sari_i32(tmp, tmp, shift);
-                        } else {
-                            tcg_gen_shli_i32(tmp, tmp, shift);
-                        }
-                        sh = (insn >> 16) & 0x1f;
-                        tmp2 = tcg_const_i32(sh);
-                        if (insn & (1 << 22))
-                          gen_helper_usat(tmp, cpu_env, tmp, tmp2);
-                        else
-                          gen_helper_ssat(tmp, cpu_env, tmp, tmp2);
-                        tcg_temp_free_i32(tmp2);
-                        store_reg(s, rd, tmp);
-                    } else if ((insn & 0x00300fe0) == 0x00200f20) {
-                        /* [us]sat16 */
-                        tmp = load_reg(s, rm);
-                        sh = (insn >> 16) & 0x1f;
-                        tmp2 = tcg_const_i32(sh);
-                        if (insn & (1 << 22))
-                          gen_helper_usat16(tmp, cpu_env, tmp, tmp2);
-                        else
-                          gen_helper_ssat16(tmp, cpu_env, tmp, tmp2);
-                        tcg_temp_free_i32(tmp2);
-                        store_reg(s, rd, tmp);
-                    } else if ((insn & 0x00700fe0) == 0x00000fa0) {
-                        /* Select bytes.  */
-                        tmp = load_reg(s, rn);
-                        tmp2 = load_reg(s, rm);
-                        tmp3 = tcg_temp_new_i32();
-                        tcg_gen_ld_i32(tmp3, cpu_env, offsetof(CPUARMState, GE));
-                        gen_helper_sel_flags(tmp, tmp3, tmp, tmp2);
-                        tcg_temp_free_i32(tmp3);
-                        tcg_temp_free_i32(tmp2);
-                        store_reg(s, rd, tmp);
-                    } else if ((insn & 0x000003e0) == 0x00000060) {
-                        tmp = load_reg(s, rm);
-                        shift = (insn >> 10) & 3;
-                        /* ??? In many cases it's not necessary to do a
-                           rotate, a shift is sufficient.  */
-                        tcg_gen_rotri_i32(tmp, tmp, shift * 8);
-                        op1 = (insn >> 20) & 7;
-                        switch (op1) {
-                        case 0: gen_sxtb16(tmp);  break;
-                        case 2: gen_sxtb(tmp);    break;
-                        case 3: gen_sxth(tmp);    break;
-                        case 4: gen_uxtb16(tmp);  break;
-                        case 6: gen_uxtb(tmp);    break;
-                        case 7: gen_uxth(tmp);    break;
-                        default: goto illegal_op;
-                        }
-                        if (rn != 15) {
-                            tmp2 = load_reg(s, rn);
-                            if ((op1 & 3) == 0) {
-                                gen_add16(tmp, tmp2);
-                            } else {
-                                tcg_gen_add_i32(tmp, tmp, tmp2);
-                                tcg_temp_free_i32(tmp2);
-                            }
-                        }
-                        store_reg(s, rd, tmp);
-                    } else if ((insn & 0x003f0f60) == 0x003f0f20) {
-                        /* rev */
-                        tmp = load_reg(s, rm);
-                        if (insn & (1 << 22)) {
-                            if (insn & (1 << 7)) {
-                                gen_revsh(tmp);
-                            } else {
-                                ARCH(6T2);
-                                gen_helper_rbit(tmp, tmp);
-                            }
-                        } else {
-                            if (insn & (1 << 7))
-                                gen_rev16(tmp);
-                            else
-                                tcg_gen_bswap32_i32(tmp, tmp);
-                        }
-                        store_reg(s, rd, tmp);
-                    } else {
-                        goto illegal_op;
-                    }
-                    break;
-                case 2: /* Multiplies (Type 3).  */
-                    switch ((insn >> 20) & 0x7) {
-                    case 5:
-                        if (((insn >> 6) ^ (insn >> 7)) & 1) {
-                            /* op2 not 00x or 11x : UNDEF */
-                            goto illegal_op;
-                        }
-                        /* Signed multiply most significant [accumulate].
-                           (SMMUL, SMMLA, SMMLS) */
-                        tmp = load_reg(s, rm);
-                        tmp2 = load_reg(s, rs);
-                        tcg_gen_muls2_i32(tmp2, tmp, tmp, tmp2);
-
-                        if (rd != 15) {
-                            tmp3 = load_reg(s, rd);
-                            if (insn & (1 << 6)) {
-                                tcg_gen_sub_i32(tmp, tmp, tmp3);
-                            } else {
-                                tcg_gen_add_i32(tmp, tmp, tmp3);
-                            }
-                            tcg_temp_free_i32(tmp3);
-                        }
-                        if (insn & (1 << 5)) {
-                            /*
-                             * Adding 0x80000000 to the 64-bit quantity
-                             * means that we have carry in to the high
-                             * word when the low word has the high bit set.
-                             */
-                            tcg_gen_shri_i32(tmp2, tmp2, 31);
-                            tcg_gen_add_i32(tmp, tmp, tmp2);
-                        }
-                        tcg_temp_free_i32(tmp2);
-                        store_reg(s, rn, tmp);
-                        break;
-                    case 0:
-                    case 4:
-                        /* SMLAD, SMUAD, SMLSD, SMUSD, SMLALD, SMLSLD */
-                        if (insn & (1 << 7)) {
-                            goto illegal_op;
-                        }
-                        tmp = load_reg(s, rm);
-                        tmp2 = load_reg(s, rs);
-                        if (insn & (1 << 5))
-                            gen_swap_half(tmp2);
-                        gen_smul_dual(tmp, tmp2);
-                        if (insn & (1 << 22)) {
-                            /* smlald, smlsld */
-                            TCGv_i64 tmp64_2;
-
-                            tmp64 = tcg_temp_new_i64();
-                            tmp64_2 = tcg_temp_new_i64();
-                            tcg_gen_ext_i32_i64(tmp64, tmp);
-                            tcg_gen_ext_i32_i64(tmp64_2, tmp2);
-                            tcg_temp_free_i32(tmp);
-                            tcg_temp_free_i32(tmp2);
-                            if (insn & (1 << 6)) {
-                                tcg_gen_sub_i64(tmp64, tmp64, tmp64_2);
-                            } else {
-                                tcg_gen_add_i64(tmp64, tmp64, tmp64_2);
-                            }
-                            tcg_temp_free_i64(tmp64_2);
-                            gen_addq(s, tmp64, rd, rn);
-                            gen_storeq_reg(s, rd, rn, tmp64);
-                            tcg_temp_free_i64(tmp64);
-                        } else {
-                            /* smuad, smusd, smlad, smlsd */
-                            if (insn & (1 << 6)) {
-                                /* This subtraction cannot overflow. */
-                                tcg_gen_sub_i32(tmp, tmp, tmp2);
-                            } else {
-                                /* This addition cannot overflow 32 bits;
-                                 * however it may overflow considered as a
-                                 * signed operation, in which case we must set
-                                 * the Q flag.
-                                 */
-                                gen_helper_add_setq(tmp, cpu_env, tmp, tmp2);
-                            }
-                            tcg_temp_free_i32(tmp2);
-                            if (rd != 15)
-                              {
-                                tmp2 = load_reg(s, rd);
-                                gen_helper_add_setq(tmp, cpu_env, tmp, tmp2);
-                                tcg_temp_free_i32(tmp2);
-                              }
-                            store_reg(s, rn, tmp);
-                        }
-                        break;
-                    case 1:
-                    case 3:
-                        /* SDIV, UDIV */
-                        if (!dc_isar_feature(arm_div, s)) {
-                            goto illegal_op;
-                        }
-                        if (((insn >> 5) & 7) || (rd != 15)) {
-                            goto illegal_op;
-                        }
-                        tmp = load_reg(s, rm);
-                        tmp2 = load_reg(s, rs);
-                        if (insn & (1 << 21)) {
-                            gen_helper_udiv(tmp, tmp, tmp2);
-                        } else {
-                            gen_helper_sdiv(tmp, tmp, tmp2);
-                        }
-                        tcg_temp_free_i32(tmp2);
-                        store_reg(s, rn, tmp);
-                        break;
-                    default:
-                        goto illegal_op;
-                    }
-                    break;
-                case 3:
-                    op1 = ((insn >> 17) & 0x38) | ((insn >> 5) & 7);
-                    switch (op1) {
-                    case 0: /* Unsigned sum of absolute differences.  */
-                        ARCH(6);
-                        tmp = load_reg(s, rm);
-                        tmp2 = load_reg(s, rs);
-                        gen_helper_usad8(tmp, tmp, tmp2);
-                        tcg_temp_free_i32(tmp2);
-                        if (rd != 15) {
-                            tmp2 = load_reg(s, rd);
-                            tcg_gen_add_i32(tmp, tmp, tmp2);
-                            tcg_temp_free_i32(tmp2);
-                        }
-                        store_reg(s, rn, tmp);
-                        break;
-                    case 0x20: case 0x24: case 0x28: case 0x2c:
-                        /* Bitfield insert/clear.  */
-                        ARCH(6T2);
-                        shift = (insn >> 7) & 0x1f;
-                        i = (insn >> 16) & 0x1f;
-                        if (i < shift) {
-                            /* UNPREDICTABLE; we choose to UNDEF */
-                            goto illegal_op;
-                        }
-                        i = i + 1 - shift;
-                        if (rm == 15) {
-                            tmp = tcg_temp_new_i32();
-                            tcg_gen_movi_i32(tmp, 0);
-                        } else {
-                            tmp = load_reg(s, rm);
-                        }
-                        if (i != 32) {
-                            tmp2 = load_reg(s, rd);
-                            tcg_gen_deposit_i32(tmp, tmp2, tmp, shift, i);
-                            tcg_temp_free_i32(tmp2);
-                        }
-                        store_reg(s, rd, tmp);
-                        break;
-                    case 0x12: case 0x16: case 0x1a: case 0x1e: /* sbfx */
-                    case 0x32: case 0x36: case 0x3a: case 0x3e: /* ubfx */
-                        ARCH(6T2);
-                        tmp = load_reg(s, rm);
-                        shift = (insn >> 7) & 0x1f;
-                        i = ((insn >> 16) & 0x1f) + 1;
-                        if (shift + i > 32)
-                            goto illegal_op;
-                        if (i < 32) {
-                            if (op1 & 0x20) {
-                                tcg_gen_extract_i32(tmp, tmp, shift, i);
-                            } else {
-                                tcg_gen_sextract_i32(tmp, tmp, shift, i);
-                            }
-                        }
-                        store_reg(s, rd, tmp);
-                        break;
-                    default:
-                        goto illegal_op;
-                    }
-                    break;
-                }
-                break;
-            }
-        do_ldst:
-            /* Check for undefined extension instructions
-             * per the ARM Bible IE:
-             * xxxx 0111 1111 xxxx  xxxx xxxx 1111 xxxx
-             */
-            sh = (0xf << 20) | (0xf << 4);
-            if (op1 == 0x7 && ((insn & sh) == sh))
-            {
-                goto illegal_op;
-            }
-            /* load/store byte/word */
-            rn = (insn >> 16) & 0xf;
-            rd = (insn >> 12) & 0xf;
-            tmp2 = load_reg(s, rn);
-            if ((insn & 0x01200000) == 0x00200000) {
-                /* ldrt/strt */
-                i = get_a32_user_mem_index(s);
-            } else {
-                i = get_mem_index(s);
-            }
-            if (insn & (1 << 24))
-                gen_add_data_offset(s, insn, tmp2);
-            if (insn & (1 << 20)) {
-                /* load */
-                tmp = tcg_temp_new_i32();
-                if (insn & (1 << 22)) {
-                    gen_aa32_ld8u_iss(s, tmp, tmp2, i, rd);
-                } else {
-                    gen_aa32_ld32u_iss(s, tmp, tmp2, i, rd);
-                }
-            } else {
-                /* store */
-                tmp = load_reg(s, rd);
-                if (insn & (1 << 22)) {
-                    gen_aa32_st8_iss(s, tmp, tmp2, i, rd);
-                } else {
-                    gen_aa32_st32_iss(s, tmp, tmp2, i, rd);
-                }
-                tcg_temp_free_i32(tmp);
-            }
-            if (!(insn & (1 << 24))) {
-                gen_add_data_offset(s, insn, tmp2);
-                store_reg(s, rn, tmp2);
-            } else if (insn & (1 << 21)) {
-                store_reg(s, rn, tmp2);
-            } else {
-                tcg_temp_free_i32(tmp2);
-            }
-            if (insn & (1 << 20)) {
-                /* Complete the load.  */
-                store_reg_from_load(s, rd, tmp);
-            }
-            break;
-        case 0x08:
-        case 0x09:
-            {
-                int j, n, loaded_base;
-                bool exc_return = false;
-                bool is_load = extract32(insn, 20, 1);
-                bool user = false;
-                TCGv_i32 loaded_var;
-                /* load/store multiple words */
-                /* XXX: store correct base if write back */
-                if (insn & (1 << 22)) {
-                    /* LDM (user), LDM (exception return) and STM (user) */
-                    if (IS_USER(s))
-                        goto illegal_op; /* only usable in supervisor mode */
-
-                    if (is_load && extract32(insn, 15, 1)) {
-                        exc_return = true;
-                    } else {
-                        user = true;
-                    }
-                }
-                rn = (insn >> 16) & 0xf;
-                addr = load_reg(s, rn);
-
-                /* compute total size */
-                loaded_base = 0;
-                loaded_var = NULL;
-                n = 0;
-                for (i = 0; i < 16; i++) {
-                    if (insn & (1 << i))
-                        n++;
-                }
-                /* XXX: test invalid n == 0 case ? */
-                if (insn & (1 << 23)) {
-                    if (insn & (1 << 24)) {
-                        /* pre increment */
-                        tcg_gen_addi_i32(addr, addr, 4);
-                    } else {
-                        /* post increment */
-                    }
-                } else {
-                    if (insn & (1 << 24)) {
-                        /* pre decrement */
-                        tcg_gen_addi_i32(addr, addr, -(n * 4));
-                    } else {
-                        /* post decrement */
-                        if (n != 1)
-                        tcg_gen_addi_i32(addr, addr, -((n - 1) * 4));
-                    }
-                }
-                j = 0;
-                for (i = 0; i < 16; i++) {
-                    if (insn & (1 << i)) {
-                        if (is_load) {
-                            /* load */
-                            tmp = tcg_temp_new_i32();
-                            gen_aa32_ld32u(s, tmp, addr, get_mem_index(s));
-                            if (user) {
-                                tmp2 = tcg_const_i32(i);
-                                gen_helper_set_user_reg(cpu_env, tmp2, tmp);
-                                tcg_temp_free_i32(tmp2);
-                                tcg_temp_free_i32(tmp);
-                            } else if (i == rn) {
-                                loaded_var = tmp;
-                                loaded_base = 1;
-                            } else if (i == 15 && exc_return) {
-                                store_pc_exc_ret(s, tmp);
-                            } else {
-                                store_reg_from_load(s, i, tmp);
-                            }
-                        } else {
-                            /* store */
-                            if (i == 15) {
-                                tmp = tcg_temp_new_i32();
-                                tcg_gen_movi_i32(tmp, read_pc(s));
-                            } else if (user) {
-                                tmp = tcg_temp_new_i32();
-                                tmp2 = tcg_const_i32(i);
-                                gen_helper_get_user_reg(tmp, cpu_env, tmp2);
-                                tcg_temp_free_i32(tmp2);
-                            } else {
-                                tmp = load_reg(s, i);
-                            }
-                            gen_aa32_st32(s, tmp, addr, get_mem_index(s));
-                            tcg_temp_free_i32(tmp);
-                        }
-                        j++;
-                        /* no need to add after the last transfer */
-                        if (j != n)
-                            tcg_gen_addi_i32(addr, addr, 4);
-                    }
-                }
-                if (insn & (1 << 21)) {
-                    /* write back */
-                    if (insn & (1 << 23)) {
-                        if (insn & (1 << 24)) {
-                            /* pre increment */
-                        } else {
-                            /* post increment */
-                            tcg_gen_addi_i32(addr, addr, 4);
-                        }
-                    } else {
-                        if (insn & (1 << 24)) {
-                            /* pre decrement */
-                            if (n != 1)
-                                tcg_gen_addi_i32(addr, addr, -((n - 1) * 4));
-                        } else {
-                            /* post decrement */
-                            tcg_gen_addi_i32(addr, addr, -(n * 4));
-                        }
-                    }
-                    store_reg(s, rn, addr);
-                } else {
-                    tcg_temp_free_i32(addr);
-                }
-                if (loaded_base) {
-                    store_reg(s, rn, loaded_var);
-                }
-                if (exc_return) {
-                    /* Restore CPSR from SPSR.  */
-                    tmp = load_cpu_field(spsr);
-                    if (tb_cflags(s->base.tb) & CF_USE_ICOUNT) {
-                        gen_io_start();
-                    }
-                    gen_helper_cpsr_write_eret(cpu_env, tmp);
-                    tcg_temp_free_i32(tmp);
-                    /* Must exit loop to check un-masked IRQs */
-                    s->base.is_jmp = DISAS_EXIT;
-                }
-            }
-            break;
-        case 0xa:
-        case 0xb:
-            {
-                int32_t offset;
-
-                /* branch (and link) */
-                if (insn & (1 << 24)) {
-                    tmp = tcg_temp_new_i32();
-                    tcg_gen_movi_i32(tmp, s->base.pc_next);
-                    store_reg(s, 14, tmp);
-                }
-                offset = sextract32(insn << 2, 0, 26);
-                gen_jmp(s, read_pc(s) + offset);
-            }
-            break;
-        case 0xc:
-        case 0xd:
-        case 0xe:
-            if (((insn >> 8) & 0xe) == 10) {
-                /* VFP.  */
-                if (disas_vfp_insn(s, insn)) {
-                    goto illegal_op;
-                }
-            } else if (disas_coproc_insn(s, insn)) {
-                /* Coprocessor.  */
-                goto illegal_op;
-            }
-            break;
-        case 0xf:
-            /* swi */
-            gen_set_pc_im(s, s->base.pc_next);
-            s->svc_imm = extract32(insn, 0, 24);
-            s->base.is_jmp = DISAS_SWI;
-            break;
-        default:
-        illegal_op:
-            unallocated_encoding(s);
-            break;
-        }
+        break;
+    default:
+    illegal_op:
+        unallocated_encoding(s);
+        break;
     }
 }
 
@@ -9246,104 +10628,9 @@ static bool thumb_insn_is_16bit(DisasContext *s, uint32_t pc, uint32_t insn)
     return true;
 }
 
-/* Return true if this is a Thumb-2 logical op.  */
-static int
-thumb2_logic_op(int op)
-{
-    return (op < 8);
-}
-
-/* Generate code for a Thumb-2 data processing operation.  If CONDS is nonzero
-   then set condition code flags based on the result of the operation.
-   If SHIFTER_OUT is nonzero then set the carry flag for logical operations
-   to the high bit of T1.
-   Returns zero if the opcode is valid.  */
-
-static int
-gen_thumb2_data_op(DisasContext *s, int op, int conds, uint32_t shifter_out,
-                   TCGv_i32 t0, TCGv_i32 t1)
-{
-    int logic_cc;
-
-    logic_cc = 0;
-    switch (op) {
-    case 0: /* and */
-        tcg_gen_and_i32(t0, t0, t1);
-        logic_cc = conds;
-        break;
-    case 1: /* bic */
-        tcg_gen_andc_i32(t0, t0, t1);
-        logic_cc = conds;
-        break;
-    case 2: /* orr */
-        tcg_gen_or_i32(t0, t0, t1);
-        logic_cc = conds;
-        break;
-    case 3: /* orn */
-        tcg_gen_orc_i32(t0, t0, t1);
-        logic_cc = conds;
-        break;
-    case 4: /* eor */
-        tcg_gen_xor_i32(t0, t0, t1);
-        logic_cc = conds;
-        break;
-    case 8: /* add */
-        if (conds)
-            gen_add_CC(t0, t0, t1);
-        else
-            tcg_gen_add_i32(t0, t0, t1);
-        break;
-    case 10: /* adc */
-        if (conds)
-            gen_adc_CC(t0, t0, t1);
-        else
-            gen_adc(t0, t1);
-        break;
-    case 11: /* sbc */
-        if (conds) {
-            gen_sbc_CC(t0, t0, t1);
-        } else {
-            gen_sub_carry(t0, t0, t1);
-        }
-        break;
-    case 13: /* sub */
-        if (conds)
-            gen_sub_CC(t0, t0, t1);
-        else
-            tcg_gen_sub_i32(t0, t0, t1);
-        break;
-    case 14: /* rsb */
-        if (conds)
-            gen_sub_CC(t0, t1, t0);
-        else
-            tcg_gen_sub_i32(t0, t1, t0);
-        break;
-    default: /* 5, 6, 7, 9, 12, 15. */
-        return 1;
-    }
-    if (logic_cc) {
-        gen_logic_CC(t0);
-        if (shifter_out)
-            gen_set_CF_bit31(t1);
-    }
-    return 0;
-}
-
 /* Translate a 32-bit thumb instruction. */
 static void disas_thumb2_insn(DisasContext *s, uint32_t insn)
 {
-    uint32_t imm, shift, offset;
-    uint32_t rd, rn, rm, rs;
-    TCGv_i32 tmp;
-    TCGv_i32 tmp2;
-    TCGv_i32 tmp3;
-    TCGv_i32 addr;
-    TCGv_i64 tmp64;
-    int op;
-    int shiftop;
-    int conds;
-    int logic_cc;
-
     /*
      * ARMv6-M supports a limited subset of Thumb2 instructions.
      * Other Thumb1 architectures allow only 32-bit
@@ -9379,800 +10666,15 @@ static void disas_thumb2_insn(DisasContext *s, uint32_t insn)
         ARCH(6T2);
     }
 
-    rn = (insn >> 16) & 0xf;
-    rs = (insn >> 12) & 0xf;
-    rd = (insn >> 8) & 0xf;
-    rm = insn & 0xf;
+    if (disas_t32(s, insn)) {
+        return;
+    }
+    /* fall back to legacy decoder */
+
     switch ((insn >> 25) & 0xf) {
     case 0: case 1: case 2: case 3:
         /* 16-bit instructions.  Should never happen.  */
         abort();
-    case 4:
-        if (insn & (1 << 22)) {
-            /* 0b1110_100x_x1xx_xxxx_xxxx_xxxx_xxxx_xxxx
-             * - load/store doubleword, load/store exclusive, ldacq/strel,
-             *   table branch, TT.
-             */
-            if (insn == 0xe97fe97f && arm_dc_feature(s, ARM_FEATURE_M) &&
-                arm_dc_feature(s, ARM_FEATURE_V8)) {
-                /* 0b1110_1001_0111_1111_1110_1001_0111_111
-                 *  - SG (v8M only)
-                 * The bulk of the behaviour for this instruction is implemented
-                 * in v7m_handle_execute_nsc(), which deals with the insn when
-                 * it is executed by a CPU in non-secure state from memory
-                 * which is Secure & NonSecure-Callable.
-                 * Here we only need to handle the remaining cases:
-                 *  * in NS memory (including the "security extension not
-                 *    implemented" case) : NOP
-                 *  * in S memory but CPU already secure (clear IT bits)
-                 * We know that the attribute for the memory this insn is
-                 * in must match the current CPU state, because otherwise
-                 * get_phys_addr_pmsav8 would have generated an exception.
-                 */
-                if (s->v8m_secure) {
-                    /* Like the IT insn, we don't need to generate any code */
-                    s->condexec_cond = 0;
-                    s->condexec_mask = 0;
-                }
-            } else if (insn & 0x01200000) {
-                /* 0b1110_1000_x11x_xxxx_xxxx_xxxx_xxxx_xxxx
-                 *  - load/store dual (post-indexed)
-                 * 0b1111_1001_x10x_xxxx_xxxx_xxxx_xxxx_xxxx
-                 *  - load/store dual (literal and immediate)
-                 * 0b1111_1001_x11x_xxxx_xxxx_xxxx_xxxx_xxxx
-                 *  - load/store dual (pre-indexed)
-                 */
-                bool wback = extract32(insn, 21, 1);
-
-                if (rn == 15 && (insn & (1 << 21))) {
-                    /* UNPREDICTABLE */
-                    goto illegal_op;
-                }
-
-                addr = add_reg_for_lit(s, rn, 0);
-                offset = (insn & 0xff) * 4;
-                if ((insn & (1 << 23)) == 0) {
-                    offset = -offset;
-                }
-
-                if (s->v8m_stackcheck && rn == 13 && wback) {
-                    /*
-                     * Here 'addr' is the current SP; if offset is +ve we're
-                     * moving SP up, else down. It is UNKNOWN whether the limit
-                     * check triggers when SP starts below the limit and ends
-                     * up above it; check whichever of the current and final
-                     * SP is lower, so QEMU will trigger in that situation.
-                     */
-                    if ((int32_t)offset < 0) {
-                        TCGv_i32 newsp = tcg_temp_new_i32();
-
-                        tcg_gen_addi_i32(newsp, addr, offset);
-                        gen_helper_v8m_stackcheck(cpu_env, newsp);
-                        tcg_temp_free_i32(newsp);
-                    } else {
-                        gen_helper_v8m_stackcheck(cpu_env, addr);
-                    }
-                }
-
-                if (insn & (1 << 24)) {
-                    tcg_gen_addi_i32(addr, addr, offset);
-                    offset = 0;
-                }
-                if (insn & (1 << 20)) {
-                    /* ldrd */
-                    tmp = tcg_temp_new_i32();
-                    gen_aa32_ld32u(s, tmp, addr, get_mem_index(s));
-                    store_reg(s, rs, tmp);
-                    tcg_gen_addi_i32(addr, addr, 4);
-                    tmp = tcg_temp_new_i32();
-                    gen_aa32_ld32u(s, tmp, addr, get_mem_index(s));
-                    store_reg(s, rd, tmp);
-                } else {
-                    /* strd */
-                    tmp = load_reg(s, rs);
-                    gen_aa32_st32(s, tmp, addr, get_mem_index(s));
-                    tcg_temp_free_i32(tmp);
-                    tcg_gen_addi_i32(addr, addr, 4);
-                    tmp = load_reg(s, rd);
-                    gen_aa32_st32(s, tmp, addr, get_mem_index(s));
-                    tcg_temp_free_i32(tmp);
-                }
-                if (wback) {
-                    /* Base writeback.  */
-                    tcg_gen_addi_i32(addr, addr, offset - 4);
-                    store_reg(s, rn, addr);
-                } else {
-                    tcg_temp_free_i32(addr);
-                }
-            } else if ((insn & (1 << 23)) == 0) {
-                /* 0b1110_1000_010x_xxxx_xxxx_xxxx_xxxx_xxxx
-                 * - load/store exclusive word
-                 * - TT (v8M only)
-                 */
-                if (rs == 15) {
-                    if (!(insn & (1 << 20)) &&
-                        arm_dc_feature(s, ARM_FEATURE_M) &&
-                        arm_dc_feature(s, ARM_FEATURE_V8)) {
-                        /* 0b1110_1000_0100_xxxx_1111_xxxx_xxxx_xxxx
-                         *  - TT (v8M only)
-                         */
-                        bool alt = insn & (1 << 7);
-                        TCGv_i32 addr, op, ttresp;
-
-                        if ((insn & 0x3f) || rd == 13 || rd == 15 || rn == 15) {
-                            /* we UNDEF for these UNPREDICTABLE cases */
-                            goto illegal_op;
-                        }
-
-                        if (alt && !s->v8m_secure) {
-                            goto illegal_op;
-                        }
-
-                        addr = load_reg(s, rn);
-                        op = tcg_const_i32(extract32(insn, 6, 2));
-                        ttresp = tcg_temp_new_i32();
-                        gen_helper_v7m_tt(ttresp, cpu_env, addr, op);
-                        tcg_temp_free_i32(addr);
-                        tcg_temp_free_i32(op);
-                        store_reg(s, rd, ttresp);
-                        break;
-                    }
-                    goto illegal_op;
-                }
-                addr = tcg_temp_local_new_i32();
-                load_reg_var(s, addr, rn);
-                tcg_gen_addi_i32(addr, addr, (insn & 0xff) << 2);
-                if (insn & (1 << 20)) {
-                    gen_load_exclusive(s, rs, 15, addr, 2);
-                } else {
-                    gen_store_exclusive(s, rd, rs, 15, addr, 2);
-                }
-                tcg_temp_free_i32(addr);
-            } else if ((insn & (7 << 5)) == 0) {
-                /* Table Branch.  */
-                addr = load_reg(s, rn);
-                tmp = load_reg(s, rm);
-                tcg_gen_add_i32(addr, addr, tmp);
-                if (insn & (1 << 4)) {
-                    /* tbh */
-                    tcg_gen_add_i32(addr, addr, tmp);
-                    tcg_temp_free_i32(tmp);
-                    tmp = tcg_temp_new_i32();
-                    gen_aa32_ld16u(s, tmp, addr, get_mem_index(s));
-                } else { /* tbb */
-                    tcg_temp_free_i32(tmp);
-                    tmp = tcg_temp_new_i32();
-                    gen_aa32_ld8u(s, tmp, addr, get_mem_index(s));
-                }
-                tcg_temp_free_i32(addr);
-                tcg_gen_shli_i32(tmp, tmp, 1);
-                tcg_gen_addi_i32(tmp, tmp, read_pc(s));
-                store_reg(s, 15, tmp);
-            } else {
-                bool is_lasr = false;
-                bool is_ld = extract32(insn, 20, 1);
-                int op2 = (insn >> 6) & 0x3;
-                op = (insn >> 4) & 0x3;
-                switch (op2) {
-                case 0:
-                    goto illegal_op;
-                case 1:
-                    /* Load/store exclusive byte/halfword/doubleword */
-                    if (op == 2) {
-                        goto illegal_op;
-                    }
-                    ARCH(7);
-                    break;
-                case 2:
-                    /* Load-acquire/store-release */
-                    if (op == 3) {
-                        goto illegal_op;
-                    }
-                    /* Fall through */
-                case 3:
-                    /* Load-acquire/store-release exclusive */
-                    ARCH(8);
-                    is_lasr = true;
-                    break;
-                }
-
-                if (is_lasr && !is_ld) {
-                    tcg_gen_mb(TCG_MO_ALL | TCG_BAR_STRL);
-                }
-
-                addr = tcg_temp_local_new_i32();
-                load_reg_var(s, addr, rn);
-                if (!(op2 & 1)) {
-                    if (is_ld) {
-                        tmp = tcg_temp_new_i32();
-                        switch (op) {
-                        case 0: /* ldab */
-                            gen_aa32_ld8u_iss(s, tmp, addr, get_mem_index(s),
-                                              rs | ISSIsAcqRel);
-                            break;
-                        case 1: /* ldah */
-                            gen_aa32_ld16u_iss(s, tmp, addr, get_mem_index(s),
-                                               rs | ISSIsAcqRel);
-                            break;
-                        case 2: /* lda */
-                            gen_aa32_ld32u_iss(s, tmp, addr, get_mem_index(s),
-                                               rs | ISSIsAcqRel);
-                            break;
-                        default:
-                            abort();
-                        }
-                        store_reg(s, rs, tmp);
-                    } else {
-                        tmp = load_reg(s, rs);
-                        switch (op) {
-                        case 0: /* stlb */
-                            gen_aa32_st8_iss(s, tmp, addr, get_mem_index(s),
-                                             rs | ISSIsAcqRel);
-                            break;
-                        case 1: /* stlh */
-                            gen_aa32_st16_iss(s, tmp, addr, get_mem_index(s),
-                                              rs | ISSIsAcqRel);
-                            break;
-                        case 2: /* stl */
-                            gen_aa32_st32_iss(s, tmp, addr, get_mem_index(s),
-                                              rs | ISSIsAcqRel);
-                            break;
-                        default:
-                            abort();
-                        }
-                        tcg_temp_free_i32(tmp);
-                    }
-                } else if (is_ld) {
-                    gen_load_exclusive(s, rs, rd, addr, op);
-                } else {
-                    gen_store_exclusive(s, rm, rs, rd, addr, op);
-                }
-                tcg_temp_free_i32(addr);
-
-                if (is_lasr && is_ld) {
-                    tcg_gen_mb(TCG_MO_ALL | TCG_BAR_LDAQ);
-                }
-            }
-        } else {
-            /* Load/store multiple, RFE, SRS.  */
-            if (((insn >> 23) & 1) == ((insn >> 24) & 1)) {
-                /* RFE, SRS: not available in user mode or on M profile */
-                if (IS_USER(s) || arm_dc_feature(s, ARM_FEATURE_M)) {
-                    goto illegal_op;
-                }
-                if (insn & (1 << 20)) {
-                    /* rfe */
-                    addr = load_reg(s, rn);
-                    if ((insn & (1 << 24)) == 0)
-                        tcg_gen_addi_i32(addr, addr, -8);
-                    /* Load PC into tmp and CPSR into tmp2.  */
-                    tmp = tcg_temp_new_i32();
-                    gen_aa32_ld32u(s, tmp, addr, get_mem_index(s));
-                    tcg_gen_addi_i32(addr, addr, 4);
-                    tmp2 = tcg_temp_new_i32();
-                    gen_aa32_ld32u(s, tmp2, addr, get_mem_index(s));
-                    if (insn & (1 << 21)) {
-                        /* Base writeback.  */
-                        if (insn & (1 << 24)) {
-                            tcg_gen_addi_i32(addr, addr, 4);
-                        } else {
-                            tcg_gen_addi_i32(addr, addr, -4);
-                        }
-                        store_reg(s, rn, addr);
-                    } else {
-                        tcg_temp_free_i32(addr);
-                    }
-                    gen_rfe(s, tmp, tmp2);
-                } else {
-                    /* srs */
-                    gen_srs(s, (insn & 0x1f), (insn & (1 << 24)) ? 1 : 2,
-                            insn & (1 << 21));
-                }
-            } else {
-                int i, loaded_base = 0;
-                TCGv_i32 loaded_var;
-                bool wback = extract32(insn, 21, 1);
-                /* Load/store multiple.  */
-                addr = load_reg(s, rn);
-                offset = 0;
-                for (i = 0; i < 16; i++) {
-                    if (insn & (1 << i))
-                        offset += 4;
-                }
-
-                if (insn & (1 << 24)) {
-                    tcg_gen_addi_i32(addr, addr, -offset);
-                }
-
-                if (s->v8m_stackcheck && rn == 13 && wback) {
-                    /*
-                     * If the writeback is incrementing SP rather than
-                     * decrementing it, and the initial SP is below the
-                     * stack limit but the final written-back SP would
-                     * be above, then then we must not perform any memory
-                     * accesses, but it is IMPDEF whether we generate
-                     * an exception. We choose to do so in this case.
-                     * At this point 'addr' is the lowest address, so
-                     * either the original SP (if incrementing) or our
-                     * final SP (if decrementing), so that's what we check.
-                     */
-                    gen_helper_v8m_stackcheck(cpu_env, addr);
-                }
-
-                loaded_var = NULL;
-                for (i = 0; i < 16; i++) {
-                    if ((insn & (1 << i)) == 0)
-                        continue;
-                    if (insn & (1 << 20)) {
-                        /* Load.  */
-                        tmp = tcg_temp_new_i32();
-                        gen_aa32_ld32u(s, tmp, addr, get_mem_index(s));
-                        if (i == 15) {
-                            gen_bx_excret(s, tmp);
-                        } else if (i == rn) {
-                            loaded_var = tmp;
-                            loaded_base = 1;
-                        } else {
-                            store_reg(s, i, tmp);
-                        }
-                    } else {
-                        /* Store.  */
-                        tmp = load_reg(s, i);
-                        gen_aa32_st32(s, tmp, addr, get_mem_index(s));
-                        tcg_temp_free_i32(tmp);
-                    }
-                    tcg_gen_addi_i32(addr, addr, 4);
-                }
-                if (loaded_base) {
-                    store_reg(s, rn, loaded_var);
-                }
-                if (wback) {
-                    /* Base register writeback.  */
-                    if (insn & (1 << 24)) {
-                        tcg_gen_addi_i32(addr, addr, -offset);
-                    }
-                    /* Fault if writeback register is in register list.  */
-                    if (insn & (1 << rn))
-                        goto illegal_op;
-                    store_reg(s, rn, addr);
-                } else {
-                    tcg_temp_free_i32(addr);
-                }
-            }
-        }
-        break;
-    case 5:
-
-        op = (insn >> 21) & 0xf;
-        if (op == 6) {
-            if (!arm_dc_feature(s, ARM_FEATURE_THUMB_DSP)) {
-                goto illegal_op;
-            }
-            /* Halfword pack.  */
-            tmp = load_reg(s, rn);
-            tmp2 = load_reg(s, rm);
-            shift = ((insn >> 10) & 0x1c) | ((insn >> 6) & 0x3);
-            if (insn & (1 << 5)) {
-                /* pkhtb */
-                if (shift == 0) {
-                    shift = 31;
-                }
-                tcg_gen_sari_i32(tmp2, tmp2, shift);
-                tcg_gen_deposit_i32(tmp, tmp, tmp2, 0, 16);
-            } else {
-                /* pkhbt */
-                tcg_gen_shli_i32(tmp2, tmp2, shift);
-                tcg_gen_deposit_i32(tmp, tmp2, tmp, 0, 16);
-            }
-            tcg_temp_free_i32(tmp2);
-            store_reg(s, rd, tmp);
-        } else {
-            /* Data processing register constant shift.  */
-            if (rn == 15) {
-                tmp = tcg_temp_new_i32();
-                tcg_gen_movi_i32(tmp, 0);
-            } else {
-                tmp = load_reg(s, rn);
-            }
-            tmp2 = load_reg(s, rm);
-
-            shiftop = (insn >> 4) & 3;
-            shift = ((insn >> 6) & 3) | ((insn >> 10) & 0x1c);
-            conds = (insn & (1 << 20)) != 0;
-            logic_cc = (conds && thumb2_logic_op(op));
-            gen_arm_shift_im(tmp2, shiftop, shift, logic_cc);
-            if (gen_thumb2_data_op(s, op, conds, 0, tmp, tmp2))
-                goto illegal_op;
-            tcg_temp_free_i32(tmp2);
-            if (rd == 13 &&
-                ((op == 2 && rn == 15) ||
-                 (op == 8 && rn == 13) ||
-                 (op == 13 && rn == 13))) {
-                /* MOV SP, ... or ADD SP, SP, ... or SUB SP, SP, ... */
-                store_sp_checked(s, tmp);
-            } else if (rd != 15) {
-                store_reg(s, rd, tmp);
-            } else {
-                tcg_temp_free_i32(tmp);
-            }
-        }
-        break;
-    case 13: /* Misc data processing.  */
-        op = ((insn >> 22) & 6) | ((insn >> 7) & 1);
-        if (op < 4 && (insn & 0xf000) != 0xf000)
-            goto illegal_op;
-        switch (op) {
-        case 0: /* Register controlled shift.  */
-            tmp = load_reg(s, rn);
-            tmp2 = load_reg(s, rm);
-            if ((insn & 0x70) != 0)
-                goto illegal_op;
-            /*
-             * 0b1111_1010_0xxx_xxxx_1111_xxxx_0000_xxxx:
-             *  - MOV, MOVS (register-shifted register), flagsetting
-             */
-            op = (insn >> 21) & 3;
-            logic_cc = (insn & (1 << 20)) != 0;
-            gen_arm_shift_reg(tmp, op, tmp2, logic_cc);
-            if (logic_cc)
-                gen_logic_CC(tmp);
-            store_reg(s, rd, tmp);
-            break;
-        case 1: /* Sign/zero extend.  */
-            op = (insn >> 20) & 7;
-            switch (op) {
-            case 0: /* SXTAH, SXTH */
-            case 1: /* UXTAH, UXTH */
-            case 4: /* SXTAB, SXTB */
-            case 5: /* UXTAB, UXTB */
-                break;
-            case 2: /* SXTAB16, SXTB16 */
-            case 3: /* UXTAB16, UXTB16 */
-                if (!arm_dc_feature(s, ARM_FEATURE_THUMB_DSP)) {
-                    goto illegal_op;
-                }
-                break;
-            default:
-                goto illegal_op;
-            }
-            if (rn != 15) {
-                if (!arm_dc_feature(s, ARM_FEATURE_THUMB_DSP)) {
-                    goto illegal_op;
-                }
-            }
-            tmp = load_reg(s, rm);
-            shift = (insn >> 4) & 3;
-            /* ??? In many cases it's not necessary to do a
-               rotate, a shift is sufficient.  */
-            tcg_gen_rotri_i32(tmp, tmp, shift * 8);
-            op = (insn >> 20) & 7;
-            switch (op) {
-            case 0: gen_sxth(tmp);   break;
-            case 1: gen_uxth(tmp);   break;
-            case 2: gen_sxtb16(tmp); break;
-            case 3: gen_uxtb16(tmp); break;
-            case 4: gen_sxtb(tmp);   break;
-            case 5: gen_uxtb(tmp);   break;
-            default:
-                g_assert_not_reached();
-            }
-            if (rn != 15) {
-                tmp2 = load_reg(s, rn);
-                if ((op >> 1) == 1) {
-                    gen_add16(tmp, tmp2);
-                } else {
-                    tcg_gen_add_i32(tmp, tmp, tmp2);
-                    tcg_temp_free_i32(tmp2);
-                }
-            }
-            store_reg(s, rd, tmp);
-            break;
-        case 2: /* SIMD add/subtract.  */
-            if (!arm_dc_feature(s, ARM_FEATURE_THUMB_DSP)) {
-                goto illegal_op;
-            }
-            op = (insn >> 20) & 7;
-            shift = (insn >> 4) & 7;
-            if ((op & 3) == 3 || (shift & 3) == 3)
-                goto illegal_op;
-            tmp = load_reg(s, rn);
-            tmp2 = load_reg(s, rm);
-            gen_thumb2_parallel_addsub(op, shift, tmp, tmp2);
-            tcg_temp_free_i32(tmp2);
-            store_reg(s, rd, tmp);
-            break;
-        case 3: /* Other data processing.  */
-            op = ((insn >> 17) & 0x38) | ((insn >> 4) & 7);
-            if (op < 4) {
-                /* Saturating add/subtract.  */
-                if (!arm_dc_feature(s, ARM_FEATURE_THUMB_DSP)) {
-                    goto illegal_op;
-                }
-                tmp = load_reg(s, rn);
-                tmp2 = load_reg(s, rm);
-                if (op & 1)
-                    gen_helper_add_saturate(tmp, cpu_env, tmp, tmp);
-                if (op & 2)
-                    gen_helper_sub_saturate(tmp, cpu_env, tmp2, tmp);
-                else
-                    gen_helper_add_saturate(tmp, cpu_env, tmp, tmp2);
-                tcg_temp_free_i32(tmp2);
-            } else {
-                switch (op) {
-                case 0x0a: /* rbit */
-                case 0x08: /* rev */
-                case 0x09: /* rev16 */
-                case 0x0b: /* revsh */
-                case 0x18: /* clz */
-                    break;
-                case 0x10: /* sel */
-                    if (!arm_dc_feature(s, ARM_FEATURE_THUMB_DSP)) {
-                        goto illegal_op;
-                    }
-                    break;
-                case 0x20: /* crc32/crc32c */
-                case 0x21:
-                case 0x22:
-                case 0x28:
-                case 0x29:
-                case 0x2a:
-                    if (!dc_isar_feature(aa32_crc32, s)) {
-                        goto illegal_op;
-                    }
-                    break;
-                default:
-                    goto illegal_op;
-                }
-                tmp = load_reg(s, rn);
-                switch (op) {
-                case 0x0a: /* rbit */
-                    gen_helper_rbit(tmp, tmp);
-                    break;
-                case 0x08: /* rev */
-                    tcg_gen_bswap32_i32(tmp, tmp);
-                    break;
-                case 0x09: /* rev16 */
-                    gen_rev16(tmp);
-                    break;
-                case 0x0b: /* revsh */
-                    gen_revsh(tmp);
-                    break;
-                case 0x10: /* sel */
-                    tmp2 = load_reg(s, rm);
-                    tmp3 = tcg_temp_new_i32();
-                    tcg_gen_ld_i32(tmp3, cpu_env, offsetof(CPUARMState, GE));
-                    gen_helper_sel_flags(tmp, tmp3, tmp, tmp2);
-                    tcg_temp_free_i32(tmp3);
-                    tcg_temp_free_i32(tmp2);
-                    break;
-                case 0x18: /* clz */
-                    tcg_gen_clzi_i32(tmp, tmp, 32);
-                    break;
-                case 0x20:
-                case 0x21:
-                case 0x22:
-                case 0x28:
-                case 0x29:
-                case 0x2a:
-                {
-                    /* crc32/crc32c */
-                    uint32_t sz = op & 0x3;
-                    uint32_t c = op & 0x8;
-
-                    tmp2 = load_reg(s, rm);
-                    if (sz == 0) {
-                        tcg_gen_andi_i32(tmp2, tmp2, 0xff);
-                    } else if (sz == 1) {
-                        tcg_gen_andi_i32(tmp2, tmp2, 0xffff);
-                    }
-                    tmp3 = tcg_const_i32(1 << sz);
-                    if (c) {
-                        gen_helper_crc32c(tmp, tmp, tmp2, tmp3);
-                    } else {
-                        gen_helper_crc32(tmp, tmp, tmp2, tmp3);
-                    }
-                    tcg_temp_free_i32(tmp2);
-                    tcg_temp_free_i32(tmp3);
-                    break;
-                }
-                default:
-                    g_assert_not_reached();
-                }
-            }
-            store_reg(s, rd, tmp);
-            break;
-        case 4: case 5: /* 32-bit multiply.  Sum of absolute differences.  */
-            switch ((insn >> 20) & 7) {
-            case 0: /* 32 x 32 -> 32 */
-            case 7: /* Unsigned sum of absolute differences.  */
-                break;
-            case 1: /* 16 x 16 -> 32 */
-            case 2: /* Dual multiply add.  */
-            case 3: /* 32 * 16 -> 32msb */
-            case 4: /* Dual multiply subtract.  */
-            case 5: case 6: /* 32 * 32 -> 32msb (SMMUL, SMMLA, SMMLS) */
-                if (!arm_dc_feature(s, ARM_FEATURE_THUMB_DSP)) {
-                    goto illegal_op;
-                }
-                break;
-            }
-            op = (insn >> 4) & 0xf;
-            tmp = load_reg(s, rn);
-            tmp2 = load_reg(s, rm);
-            switch ((insn >> 20) & 7) {
-            case 0: /* 32 x 32 -> 32 */
-                tcg_gen_mul_i32(tmp, tmp, tmp2);
-                tcg_temp_free_i32(tmp2);
-                if (rs != 15) {
-                    tmp2 = load_reg(s, rs);
-                    if (op)
-                        tcg_gen_sub_i32(tmp, tmp2, tmp);
-                    else
-                        tcg_gen_add_i32(tmp, tmp, tmp2);
-                    tcg_temp_free_i32(tmp2);
-                }
-                break;
-            case 1: /* 16 x 16 -> 32 */
-                gen_mulxy(tmp, tmp2, op & 2, op & 1);
-                tcg_temp_free_i32(tmp2);
-                if (rs != 15) {
-                    tmp2 = load_reg(s, rs);
-                    gen_helper_add_setq(tmp, cpu_env, tmp, tmp2);
-                    tcg_temp_free_i32(tmp2);
-                }
-                break;
-            case 2: /* Dual multiply add.  */
-            case 4: /* Dual multiply subtract.  */
-                if (op)
-                    gen_swap_half(tmp2);
-                gen_smul_dual(tmp, tmp2);
-                if (insn & (1 << 22)) {
-                    /* This subtraction cannot overflow. */
-                    tcg_gen_sub_i32(tmp, tmp, tmp2);
-                } else {
-                    /* This addition cannot overflow 32 bits;
-                     * however it may overflow considered as a signed
-                     * operation, in which case we must set the Q flag.
-                     */
-                    gen_helper_add_setq(tmp, cpu_env, tmp, tmp2);
-                }
-                tcg_temp_free_i32(tmp2);
-                if (rs != 15)
-                  {
-                    tmp2 = load_reg(s, rs);
-                    gen_helper_add_setq(tmp, cpu_env, tmp, tmp2);
-                    tcg_temp_free_i32(tmp2);
-                  }
-                break;
-            case 3: /* 32 * 16 -> 32msb */
-                if (op)
-                    tcg_gen_sari_i32(tmp2, tmp2, 16);
-                else
-                    gen_sxth(tmp2);
-                tmp64 = gen_muls_i64_i32(tmp, tmp2);
-                tcg_gen_shri_i64(tmp64, tmp64, 16);
-                tmp = tcg_temp_new_i32();
-                tcg_gen_extrl_i64_i32(tmp, tmp64);
-                tcg_temp_free_i64(tmp64);
-                if (rs != 15)
-                  {
-                    tmp2 = load_reg(s, rs);
-                    gen_helper_add_setq(tmp, cpu_env, tmp, tmp2);
-                    tcg_temp_free_i32(tmp2);
-                  }
-                break;
-            case 5: case 6: /* 32 * 32 -> 32msb (SMMUL, SMMLA, SMMLS) */
-                tcg_gen_muls2_i32(tmp2, tmp, tmp, tmp2);
-                if (rs != 15) {
-                    tmp3 = load_reg(s, rs);
-                    if (insn & (1 << 20)) {
-                        tcg_gen_add_i32(tmp, tmp, tmp3);
-                    } else {
-                        tcg_gen_sub_i32(tmp, tmp, tmp3);
-                    }
-                    tcg_temp_free_i32(tmp3);
-                }
-                if (insn & (1 << 4)) {
-                    /*
-                     * Adding 0x80000000 to the 64-bit quantity
-                     * means that we have carry in to the high
-                     * word when the low word has the high bit set.
-                     */
-                    tcg_gen_shri_i32(tmp2, tmp2, 31);
-                    tcg_gen_add_i32(tmp, tmp, tmp2);
-                }
-                tcg_temp_free_i32(tmp2);
-                break;
-            case 7: /* Unsigned sum of absolute differences.  */
-                gen_helper_usad8(tmp, tmp, tmp2);
-                tcg_temp_free_i32(tmp2);
-                if (rs != 15) {
-                    tmp2 = load_reg(s, rs);
-                    tcg_gen_add_i32(tmp, tmp, tmp2);
-                    tcg_temp_free_i32(tmp2);
-                }
-                break;
-            }
-            store_reg(s, rd, tmp);
-            break;
-        case 6: case 7: /* 64-bit multiply, Divide.  */
-            op = ((insn >> 4) & 0xf) | ((insn >> 16) & 0x70);
-            tmp = load_reg(s, rn);
-            tmp2 = load_reg(s, rm);
-            if ((op & 0x50) == 0x10) {
-                /* sdiv, udiv */
-                if (!dc_isar_feature(thumb_div, s)) {
-                    goto illegal_op;
-                }
-                if (op & 0x20)
-                    gen_helper_udiv(tmp, tmp, tmp2);
-                else
-                    gen_helper_sdiv(tmp, tmp, tmp2);
-                tcg_temp_free_i32(tmp2);
-                store_reg(s, rd, tmp);
-            } else if ((op & 0xe) == 0xc) {
-                /* Dual multiply accumulate long.  */
-                if (!arm_dc_feature(s, ARM_FEATURE_THUMB_DSP)) {
-                    tcg_temp_free_i32(tmp);
-                    tcg_temp_free_i32(tmp2);
-                    goto illegal_op;
-                }
-                if (op & 1)
-                    gen_swap_half(tmp2);
-                gen_smul_dual(tmp, tmp2);
-                if (op & 0x10) {
-                    tcg_gen_sub_i32(tmp, tmp, tmp2);
-                } else {
-                    tcg_gen_add_i32(tmp, tmp, tmp2);
-                }
-                tcg_temp_free_i32(tmp2);
-                /* BUGFIX */
-                tmp64 = tcg_temp_new_i64();
-                tcg_gen_ext_i32_i64(tmp64, tmp);
-                tcg_temp_free_i32(tmp);
-                gen_addq(s, tmp64, rs, rd);
-                gen_storeq_reg(s, rs, rd, tmp64);
-                tcg_temp_free_i64(tmp64);
-            } else {
-                if (op & 0x20) {
-                    /* Unsigned 64-bit multiply  */
-                    tmp64 = gen_mulu_i64_i32(tmp, tmp2);
-                } else {
-                    if (op & 8) {
-                        /* smlalxy */
-                        if (!arm_dc_feature(s, ARM_FEATURE_THUMB_DSP)) {
-                            tcg_temp_free_i32(tmp2);
-                            tcg_temp_free_i32(tmp);
-                            goto illegal_op;
-                        }
-                        gen_mulxy(tmp, tmp2, op & 2, op & 1);
-                        tcg_temp_free_i32(tmp2);
-                        tmp64 = tcg_temp_new_i64();
-                        tcg_gen_ext_i32_i64(tmp64, tmp);
-                        tcg_temp_free_i32(tmp);
-                    } else {
-                        /* Signed 64-bit multiply  */
-                        tmp64 = gen_muls_i64_i32(tmp, tmp2);
-                    }
-                }
-                if (op & 4) {
-                    /* umaal */
-                    if (!arm_dc_feature(s, ARM_FEATURE_THUMB_DSP)) {
-                        tcg_temp_free_i64(tmp64);
-                        goto illegal_op;
-                    }
-                    gen_addq_lo(s, tmp64, rs);
-                    gen_addq_lo(s, tmp64, rd);
-                } else if (op & 0x40) {
-                    /* 64-bit accumulate.  */
-                    gen_addq(s, tmp64, rs, rd);
-                }
-                gen_storeq_reg(s, rs, rd, tmp64);
-                tcg_temp_free_i64(tmp64);
-            }
-            break;
-        }
-        break;
     case 6: case 7: case 14: case 15:
         /* Coprocessor.  */
         if (arm_dc_feature(s, ARM_FEATURE_M)) {
@@ -10201,6 +10703,7 @@ static void disas_thumb2_insn(DisasContext *s, uint32_t insn)
                 }
 
                 if (arm_dc_feature(s, ARM_FEATURE_VFP)) {
+                    uint32_t rn = (insn >> 16) & 0xf;
                     TCGv_i32 fptr = load_reg(s, rn);
 
                     if (extract32(insn, 20, 1)) {
@@ -10259,1457 +10762,25 @@ static void disas_thumb2_insn(DisasContext *s, uint32_t insn)
             }
         }
         break;
-    case 8: case 9: case 10: case 11:
-        if (insn & (1 << 15)) {
-            /* Branches, misc control.  */
-            if (insn & 0x5000) {
-                /* Unconditional branch.  */
-                /* signextend(hw1[10:0]) -> offset[:12].  */
-                offset = ((int32_t)insn << 5) >> 9 & ~(int32_t)0xfff;
-                /* hw1[10:0] -> offset[11:1].  */
-                offset |= (insn & 0x7ff) << 1;
-                /* (~hw2[13, 11] ^ offset[24]) -> offset[23,22]
-                   offset[24:22] already have the same value because of the
-                   sign extension above.  */
-                offset ^= ((~insn) & (1 << 13)) << 10;
-                offset ^= ((~insn) & (1 << 11)) << 11;
-
-                if (insn & (1 << 14)) {
-                    /* Branch and link.  */
-                    tcg_gen_movi_i32(cpu_R[14], s->base.pc_next | 1);
-                }
-
-                offset += read_pc(s);
-                if (insn & (1 << 12)) {
-                    /* b/bl */
-                    gen_jmp(s, offset);
-                } else {
-                    /* blx */
-                    offset &= ~(uint32_t)2;
-                    /* thumb2 bx, no need to check */
-                    gen_bx_im(s, offset);
-                }
-            } else if (((insn >> 23) & 7) == 7) {
-                /* Misc control */
-                if (insn & (1 << 13))
-                    goto illegal_op;
-
-                if (insn & (1 << 26)) {
-                    if (arm_dc_feature(s, ARM_FEATURE_M)) {
-                        goto illegal_op;
-                    }
-                    if (!(insn & (1 << 20))) {
-                        /* Hypervisor call (v7) */
-                        int imm16 = extract32(insn, 16, 4) << 12
-                            | extract32(insn, 0, 12);
-                        ARCH(7);
-                        if (IS_USER(s)) {
-                            goto illegal_op;
-                        }
-                        gen_hvc(s, imm16);
-                    } else {
-                        /* Secure monitor call (v6+) */
-                        ARCH(6K);
-                        if (IS_USER(s)) {
-                            goto illegal_op;
-                        }
-                        gen_smc(s);
-                    }
-                } else {
-                    op = (insn >> 20) & 7;
-                    switch (op) {
-                    case 0: /* msr cpsr.  */
-                        if (arm_dc_feature(s, ARM_FEATURE_M)) {
-                            tmp = load_reg(s, rn);
-                            /* the constant is the mask and SYSm fields */
-                            addr = tcg_const_i32(insn & 0xfff);
-                            gen_helper_v7m_msr(cpu_env, addr, tmp);
-                            tcg_temp_free_i32(addr);
-                            tcg_temp_free_i32(tmp);
-                            gen_lookup_tb(s);
-                            break;
-                        }
-                        /* fall through */
-                    case 1: /* msr spsr.  */
-                        if (arm_dc_feature(s, ARM_FEATURE_M)) {
-                            goto illegal_op;
-                        }
-
-                        if (extract32(insn, 5, 1)) {
-                            /* MSR (banked) */
-                            int sysm = extract32(insn, 8, 4) |
-                                (extract32(insn, 4, 1) << 4);
-                            int r = op & 1;
-
-                            gen_msr_banked(s, r, sysm, rm);
-                            break;
-                        }
-
-                        /* MSR (for PSRs) */
-                        tmp = load_reg(s, rn);
-                        if (gen_set_psr(s,
-                              msr_mask(s, (insn >> 8) & 0xf, op == 1),
-                              op == 1, tmp))
-                            goto illegal_op;
-                        break;
-                    case 2: /* cps, nop-hint.  */
-                        if (((insn >> 8) & 7) == 0) {
-                            gen_nop_hint(s, insn & 0xff);
-                        }
-                        /* Implemented as NOP in user mode.  */
-                        if (IS_USER(s))
-                            break;
-                        offset = 0;
-                        imm = 0;
-                        if (insn & (1 << 10)) {
-                            if (insn & (1 << 7))
-                                offset |= CPSR_A;
-                            if (insn & (1 << 6))
-                                offset |= CPSR_I;
-                            if (insn & (1 << 5))
-                                offset |= CPSR_F;
-                            if (insn & (1 << 9))
-                                imm = CPSR_A | CPSR_I | CPSR_F;
-                        }
-                        if (insn & (1 << 8)) {
-                            offset |= 0x1f;
-                            imm |= (insn & 0x1f);
-                        }
-                        if (offset) {
-                            gen_set_psr_im(s, offset, 0, imm);
-                        }
-                        break;
-                    case 3: /* Special control operations.  */
-                        if (!arm_dc_feature(s, ARM_FEATURE_V7) &&
-                            !arm_dc_feature(s, ARM_FEATURE_M)) {
-                            goto illegal_op;
-                        }
-                        op = (insn >> 4) & 0xf;
-                        switch (op) {
-                        case 2: /* clrex */
-                            gen_clrex(s);
-                            break;
-                        case 4: /* dsb */
-                        case 5: /* dmb */
-                            tcg_gen_mb(TCG_MO_ALL | TCG_BAR_SC);
-                            break;
-                        case 6: /* isb */
-                            /* We need to break the TB after this insn
-                             * to execute self-modifying code correctly
-                             * and also to take any pending interrupts
-                             * immediately.
-                             */
-                            gen_goto_tb(s, 0, s->base.pc_next);
-                            break;
-                        case 7: /* sb */
-                            if ((insn & 0xf) || !dc_isar_feature(aa32_sb, s)) {
-                                goto illegal_op;
-                            }
-                            /*
-                             * TODO: There is no speculation barrier opcode
-                             * for TCG; MB and end the TB instead.
-                             */
-                            tcg_gen_mb(TCG_MO_ALL | TCG_BAR_SC);
-                            gen_goto_tb(s, 0, s->base.pc_next);
-                            break;
-                        default:
-                            goto illegal_op;
-                        }
-                        break;
-                    case 4: /* bxj */
-                        /* Trivial implementation equivalent to bx.
-                         * This instruction doesn't exist at all for M-profile.
-                         */
-                        if (arm_dc_feature(s, ARM_FEATURE_M)) {
-                            goto illegal_op;
-                        }
-                        tmp = load_reg(s, rn);
-                        gen_bx(s, tmp);
-                        break;
-                    case 5: /* Exception return.  */
-                        if (IS_USER(s)) {
-                            goto illegal_op;
-                        }
-                        if (rn != 14 || rd != 15) {
-                            goto illegal_op;
-                        }
-                        if (s->current_el == 2) {
-                            /* ERET from Hyp uses ELR_Hyp, not LR */
-                            if (insn & 0xff) {
-                                goto illegal_op;
-                            }
-                            tmp = load_cpu_field(elr_el[2]);
-                        } else {
-                            tmp = load_reg(s, rn);
-                            tcg_gen_subi_i32(tmp, tmp, insn & 0xff);
-                        }
-                        gen_exception_return(s, tmp);
-                        break;
-                    case 6: /* MRS */
-                        if (extract32(insn, 5, 1) &&
-                            !arm_dc_feature(s, ARM_FEATURE_M)) {
-                            /* MRS (banked) */
-                            int sysm = extract32(insn, 16, 4) |
-                                (extract32(insn, 4, 1) << 4);
-
-                            gen_mrs_banked(s, 0, sysm, rd);
-                            break;
-                        }
-
-                        if (extract32(insn, 16, 4) != 0xf) {
-                            goto illegal_op;
-                        }
-                        if (!arm_dc_feature(s, ARM_FEATURE_M) &&
-                            extract32(insn, 0, 8) != 0) {
-                            goto illegal_op;
-                        }
-
-                        /* mrs cpsr */
-                        tmp = tcg_temp_new_i32();
-                        if (arm_dc_feature(s, ARM_FEATURE_M)) {
-                            addr = tcg_const_i32(insn & 0xff);
-                            gen_helper_v7m_mrs(tmp, cpu_env, addr);
-                            tcg_temp_free_i32(addr);
-                        } else {
-                            gen_helper_cpsr_read(tmp, cpu_env);
-                        }
-                        store_reg(s, rd, tmp);
-                        break;
-                    case 7: /* MRS */
-                        if (extract32(insn, 5, 1) &&
-                            !arm_dc_feature(s, ARM_FEATURE_M)) {
-                            /* MRS (banked) */
-                            int sysm = extract32(insn, 16, 4) |
-                                (extract32(insn, 4, 1) << 4);
-
-                            gen_mrs_banked(s, 1, sysm, rd);
-                            break;
-                        }
-
-                        /* mrs spsr.  */
-                        /* Not accessible in user mode.  */
-                        if (IS_USER(s) || arm_dc_feature(s, ARM_FEATURE_M)) {
-                            goto illegal_op;
-                        }
-
-                        if (extract32(insn, 16, 4) != 0xf ||
-                            extract32(insn, 0, 8) != 0) {
-                            goto illegal_op;
-                        }
-
-                        tmp = load_cpu_field(spsr);
-                        store_reg(s, rd, tmp);
-                        break;
-                    }
-                }
-            } else {
-                /* Conditional branch.  */
-                op = (insn >> 22) & 0xf;
-                /* Generate a conditional jump to next instruction.  */
-                arm_skip_unless(s, op);
-
-                /* offset[11:1] = insn[10:0] */
-                offset = (insn & 0x7ff) << 1;
-                /* offset[17:12] = insn[21:16].  */
-                offset |= (insn & 0x003f0000) >> 4;
-                /* offset[31:20] = insn[26].  */
-                offset |= ((int32_t)((insn << 5) & 0x80000000)) >> 11;
-                /* offset[18] = insn[13].  */
-                offset |= (insn & (1 << 13)) << 5;
-                /* offset[19] = insn[11].  */
-                offset |= (insn & (1 << 11)) << 8;
-
-                /* jump to the offset */
-                gen_jmp(s, read_pc(s) + offset);
-            }
-        } else {
-            /*
-             * 0b1111_0xxx_xxxx_0xxx_xxxx_xxxx
-             *  - Data-processing (modified immediate, plain binary immediate)
-             */
-            if (insn & (1 << 25)) {
-                /*
-                 * 0b1111_0x1x_xxxx_0xxx_xxxx_xxxx
-                 *  - Data-processing (plain binary immediate)
-                 */
-                if (insn & (1 << 24)) {
-                    if (insn & (1 << 20))
-                        goto illegal_op;
-                    /* Bitfield/Saturate.  */
-                    op = (insn >> 21) & 7;
-                    imm = insn & 0x1f;
-                    shift = ((insn >> 6) & 3) | ((insn >> 10) & 0x1c);
-                    if (rn == 15) {
-                        tmp = tcg_temp_new_i32();
-                        tcg_gen_movi_i32(tmp, 0);
-                    } else {
-                        tmp = load_reg(s, rn);
-                    }
-                    switch (op) {
-                    case 2: /* Signed bitfield extract.  */
-                        imm++;
-                        if (shift + imm > 32)
-                            goto illegal_op;
-                        if (imm < 32) {
-                            tcg_gen_sextract_i32(tmp, tmp, shift, imm);
-                        }
-                        break;
-                    case 6: /* Unsigned bitfield extract.  */
-                        imm++;
-                        if (shift + imm > 32)
-                            goto illegal_op;
-                        if (imm < 32) {
-                            tcg_gen_extract_i32(tmp, tmp, shift, imm);
-                        }
-                        break;
-                    case 3: /* Bitfield insert/clear.  */
-                        if (imm < shift)
-                            goto illegal_op;
-                        imm = imm + 1 - shift;
-                        if (imm != 32) {
-                            tmp2 = load_reg(s, rd);
-                            tcg_gen_deposit_i32(tmp, tmp2, tmp, shift, imm);
-                            tcg_temp_free_i32(tmp2);
-                        }
-                        break;
-                    case 7:
-                        goto illegal_op;
-                    default: /* Saturate.  */
-                        if (op & 1) {
-                            tcg_gen_sari_i32(tmp, tmp, shift);
-                        } else {
-                            tcg_gen_shli_i32(tmp, tmp, shift);
-                        }
-                        tmp2 = tcg_const_i32(imm);
-                        if (op & 4) {
-                            /* Unsigned.  */
-                            if ((op & 1) && shift == 0) {
-                                if (!arm_dc_feature(s, ARM_FEATURE_THUMB_DSP)) {
-                                    tcg_temp_free_i32(tmp);
-                                    tcg_temp_free_i32(tmp2);
-                                    goto illegal_op;
-                                }
-                                gen_helper_usat16(tmp, cpu_env, tmp, tmp2);
-                            } else {
-                                gen_helper_usat(tmp, cpu_env, tmp, tmp2);
-                            }
-                        } else {
-                            /* Signed.  */
-                            if ((op & 1) && shift == 0) {
-                                if (!arm_dc_feature(s, ARM_FEATURE_THUMB_DSP)) {
-                                    tcg_temp_free_i32(tmp);
-                                    tcg_temp_free_i32(tmp2);
-                                    goto illegal_op;
-                                }
-                                gen_helper_ssat16(tmp, cpu_env, tmp, tmp2);
-                            } else {
-                                gen_helper_ssat(tmp, cpu_env, tmp, tmp2);
-                            }
-                        }
-                        tcg_temp_free_i32(tmp2);
-                        break;
-                    }
-                    store_reg(s, rd, tmp);
-                } else {
-                    imm = ((insn & 0x04000000) >> 15)
-                          | ((insn & 0x7000) >> 4) | (insn & 0xff);
-                    if (insn & (1 << 22)) {
-                        /* 16-bit immediate.  */
-                        imm |= (insn >> 4) & 0xf000;
-                        if (insn & (1 << 23)) {
-                            /* movt */
-                            tmp = load_reg(s, rd);
-                            tcg_gen_ext16u_i32(tmp, tmp);
-                            tcg_gen_ori_i32(tmp, tmp, imm << 16);
-                        } else {
-                            /* movw */
-                            tmp = tcg_temp_new_i32();
-                            tcg_gen_movi_i32(tmp, imm);
-                        }
-                        store_reg(s, rd, tmp);
-                    } else {
-                        /* Add/sub 12-bit immediate.  */
-                        if (insn & (1 << 23)) {
-                            imm = -imm;
-                        }
-                        tmp = add_reg_for_lit(s, rn, imm);
-                        if (rn == 13 && rd == 13) {
-                            /* ADD SP, SP, imm or SUB SP, SP, imm */
-                            store_sp_checked(s, tmp);
-                        } else {
-                            store_reg(s, rd, tmp);
-                        }
-                    }
-                }
-            } else {
-                /*
-                 * 0b1111_0x0x_xxxx_0xxx_xxxx_xxxx
-                 *  - Data-processing (modified immediate)
-                 */
-                int shifter_out = 0;
-                /* modified 12-bit immediate.  */
-                shift = ((insn & 0x04000000) >> 23) | ((insn & 0x7000) >> 12);
-                imm = (insn & 0xff);
-                switch (shift) {
-                case 0: /* XY */
-                    /* Nothing to do.  */
-                    break;
-                case 1: /* 00XY00XY */
-                    imm |= imm << 16;
-                    break;
-                case 2: /* XY00XY00 */
-                    imm |= imm << 16;
-                    imm <<= 8;
-                    break;
-                case 3: /* XYXYXYXY */
-                    imm |= imm << 16;
-                    imm |= imm << 8;
-                    break;
-                default: /* Rotated constant.  */
-                    shift = (shift << 1) | (imm >> 7);
-                    imm |= 0x80;
-                    imm = imm << (32 - shift);
-                    shifter_out = 1;
-                    break;
-                }
-                tmp2 = tcg_temp_new_i32();
-                tcg_gen_movi_i32(tmp2, imm);
-                rn = (insn >> 16) & 0xf;
-                if (rn == 15) {
-                    tmp = tcg_temp_new_i32();
-                    tcg_gen_movi_i32(tmp, 0);
-                } else {
-                    tmp = load_reg(s, rn);
-                }
-                op = (insn >> 21) & 0xf;
-                if (gen_thumb2_data_op(s, op, (insn & (1 << 20)) != 0,
-                                       shifter_out, tmp, tmp2))
-                    goto illegal_op;
-                tcg_temp_free_i32(tmp2);
-                rd = (insn >> 8) & 0xf;
-                if (rd == 13 && rn == 13
-                    && (op == 8 || op == 13)) {
-                    /* ADD(S) SP, SP, imm or SUB(S) SP, SP, imm */
-                    store_sp_checked(s, tmp);
-                } else if (rd != 15) {
-                    store_reg(s, rd, tmp);
-                } else {
-                    tcg_temp_free_i32(tmp);
-                }
-            }
-        }
-        break;
-    case 12: /* Load/store single data item.  */
-        {
-        int postinc = 0;
-        int writeback = 0;
-        int memidx;
-        ISSInfo issinfo;
-
+    case 12:
         if ((insn & 0x01100000) == 0x01000000) {
             if (disas_neon_ls_insn(s, insn)) {
                 goto illegal_op;
             }
             break;
         }
-        op = ((insn >> 21) & 3) | ((insn >> 22) & 4);
-        if (rs == 15) {
-            if (!(insn & (1 << 20))) {
-                goto illegal_op;
-            }
-            if (op != 2) {
-                /* Byte or halfword load space with dest == r15 : memory hints.
-                 * Catch them early so we don't emit pointless addressing code.
-                 * This space is a mix of:
-                 *  PLD/PLDW/PLI,  which we implement as NOPs (note that unlike
-                 *     the ARM encodings, PLDW space doesn't UNDEF for non-v7MP
-                 *     cores)
-                 *  unallocated hints, which must be treated as NOPs
-                 *  UNPREDICTABLE space, which we NOP or UNDEF depending on
-                 *     which is easiest for the decoding logic
-                 *  Some space which must UNDEF
-                 */
-                int op1 = (insn >> 23) & 3;
-                int op2 = (insn >> 6) & 0x3f;
-                if (op & 2) {
-                    goto illegal_op;
-                }
-                if (rn == 15) {
-                    /* UNPREDICTABLE, unallocated hint or
-                     * PLD/PLDW/PLI (literal)
-                     */
-                    return;
-                }
-                if (op1 & 1) {
-                    return; /* PLD/PLDW/PLI or unallocated hint */
-                }
-                if ((op2 == 0) || ((op2 & 0x3c) == 0x30)) {
-                    return; /* PLD/PLDW/PLI or unallocated hint */
-                }
-                /* UNDEF space, or an UNPREDICTABLE */
-                goto illegal_op;
-            }
-        }
-        memidx = get_mem_index(s);
-        imm = insn & 0xfff;
-        if (insn & (1 << 23)) {
-            /* PC relative or Positive offset.  */
-            addr = add_reg_for_lit(s, rn, imm);
-        } else if (rn == 15) {
-            /* PC relative with negative offset.  */
-            addr = add_reg_for_lit(s, rn, -imm);
-        } else {
-            addr = load_reg(s, rn);
-            imm = insn & 0xff;
-            switch ((insn >> 8) & 0xf) {
-            case 0x0: /* Shifted Register.  */
-                shift = (insn >> 4) & 0xf;
-                if (shift > 3) {
-                    tcg_temp_free_i32(addr);
-                    goto illegal_op;
-                }
-                tmp = load_reg(s, rm);
-                tcg_gen_shli_i32(tmp, tmp, shift);
-                tcg_gen_add_i32(addr, addr, tmp);
-                tcg_temp_free_i32(tmp);
-                break;
-            case 0xc: /* Negative offset.  */
-                tcg_gen_addi_i32(addr, addr, -imm);
-                break;
-            case 0xe: /* User privilege.  */
-                tcg_gen_addi_i32(addr, addr, imm);
-                memidx = get_a32_user_mem_index(s);
-                break;
-            case 0x9: /* Post-decrement.  */
-                imm = -imm;
-                /* Fall through.  */
-            case 0xb: /* Post-increment.  */
-                postinc = 1;
-                writeback = 1;
-                break;
-            case 0xd: /* Pre-decrement.  */
-                imm = -imm;
-                /* Fall through.  */
-            case 0xf: /* Pre-increment.  */
-                writeback = 1;
-                break;
-            default:
-                tcg_temp_free_i32(addr);
-                goto illegal_op;
-            }
-        }
-
-        issinfo = writeback ? ISSInvalid : rs;
-
-        if (s->v8m_stackcheck && rn == 13 && writeback) {
-            /*
-             * Stackcheck. Here we know 'addr' is the current SP;
-             * if imm is +ve we're moving SP up, else down. It is
-             * UNKNOWN whether the limit check triggers when SP starts
-             * below the limit and ends up above it; we chose to do so.
-             */
-            if ((int32_t)imm < 0) {
-                TCGv_i32 newsp = tcg_temp_new_i32();
-
-                tcg_gen_addi_i32(newsp, addr, imm);
-                gen_helper_v8m_stackcheck(cpu_env, newsp);
-                tcg_temp_free_i32(newsp);
-            } else {
-                gen_helper_v8m_stackcheck(cpu_env, addr);
-            }
-        }
-
-        if (writeback && !postinc) {
-            tcg_gen_addi_i32(addr, addr, imm);
-        }
-
-        if (insn & (1 << 20)) {
-            /* Load.  */
-            tmp = tcg_temp_new_i32();
-            switch (op) {
-            case 0:
-                gen_aa32_ld8u_iss(s, tmp, addr, memidx, issinfo);
-                break;
-            case 4:
-                gen_aa32_ld8s_iss(s, tmp, addr, memidx, issinfo);
-                break;
-            case 1:
-                gen_aa32_ld16u_iss(s, tmp, addr, memidx, issinfo);
-                break;
-            case 5:
-                gen_aa32_ld16s_iss(s, tmp, addr, memidx, issinfo);
-                break;
-            case 2:
-                gen_aa32_ld32u_iss(s, tmp, addr, memidx, issinfo);
-                break;
-            default:
-                tcg_temp_free_i32(tmp);
-                tcg_temp_free_i32(addr);
-                goto illegal_op;
-            }
-            if (rs == 15) {
-                gen_bx_excret(s, tmp);
-            } else {
-                store_reg(s, rs, tmp);
-            }
-        } else {
-            /* Store.  */
-            tmp = load_reg(s, rs);
-            switch (op) {
-            case 0:
-                gen_aa32_st8_iss(s, tmp, addr, memidx, issinfo);
-                break;
-            case 1:
-                gen_aa32_st16_iss(s, tmp, addr, memidx, issinfo);
-                break;
-            case 2:
-                gen_aa32_st32_iss(s, tmp, addr, memidx, issinfo);
-                break;
-            default:
-                tcg_temp_free_i32(tmp);
-                tcg_temp_free_i32(addr);
-                goto illegal_op;
-            }
-            tcg_temp_free_i32(tmp);
-        }
-        if (postinc)
-            tcg_gen_addi_i32(addr, addr, imm);
-        if (writeback) {
-            store_reg(s, rn, addr);
-        } else {
-            tcg_temp_free_i32(addr);
-        }
-        }
-        break;
-    default:
         goto illegal_op;
+    default:
+    illegal_op:
+        unallocated_encoding(s);
     }
-    return;
-illegal_op:
-    unallocated_encoding(s);
 }
 
 static void disas_thumb_insn(DisasContext *s, uint32_t insn)
 {
-    uint32_t val, op, rm, rn, rd, shift, cond;
-    int32_t offset;
-    int i;
-    TCGv_i32 tmp;
-    TCGv_i32 tmp2;
-    TCGv_i32 addr;
-
-    switch (insn >> 12) {
-    case 0: case 1:
-
-        rd = insn & 7;
-        op = (insn >> 11) & 3;
-        if (op == 3) {
-            /*
-             * 0b0001_1xxx_xxxx_xxxx
-             *  - Add, subtract (three low registers)
-             *  - Add, subtract (two low registers and immediate)
-             */
-            rn = (insn >> 3) & 7;
-            tmp = load_reg(s, rn);
-            if (insn & (1 << 10)) {
-                /* immediate */
-                tmp2 = tcg_temp_new_i32();
-                tcg_gen_movi_i32(tmp2, (insn >> 6) & 7);
-            } else {
-                /* reg */
-                rm = (insn >> 6) & 7;
-                tmp2 = load_reg(s, rm);
-            }
-            if (insn & (1 << 9)) {
-                if (s->condexec_mask)
-                    tcg_gen_sub_i32(tmp, tmp, tmp2);
-                else
-                    gen_sub_CC(tmp, tmp, tmp2);
-            } else {
-                if (s->condexec_mask)
-                    tcg_gen_add_i32(tmp, tmp, tmp2);
-                else
-                    gen_add_CC(tmp, tmp, tmp2);
-            }
-            tcg_temp_free_i32(tmp2);
-            store_reg(s, rd, tmp);
-        } else {
-            /* shift immediate */
-            rm = (insn >> 3) & 7;
-            shift = (insn >> 6) & 0x1f;
-            tmp = load_reg(s, rm);
-            gen_arm_shift_im(tmp, op, shift, s->condexec_mask == 0);
-            if (!s->condexec_mask)
-                gen_logic_CC(tmp);
-            store_reg(s, rd, tmp);
-        }
-        break;
-    case 2: case 3:
-        /*
-         * 0b001x_xxxx_xxxx_xxxx
-         *  - Add, subtract, compare, move (one low register and immediate)
-         */
-        op = (insn >> 11) & 3;
-        rd = (insn >> 8) & 0x7;
-        if (op == 0) { /* mov */
-            tmp = tcg_temp_new_i32();
-            tcg_gen_movi_i32(tmp, insn & 0xff);
-            if (!s->condexec_mask)
-                gen_logic_CC(tmp);
-            store_reg(s, rd, tmp);
-        } else {
-            tmp = load_reg(s, rd);
-            tmp2 = tcg_temp_new_i32();
-            tcg_gen_movi_i32(tmp2, insn & 0xff);
-            switch (op) {
-            case 1: /* cmp */
-                gen_sub_CC(tmp, tmp, tmp2);
-                tcg_temp_free_i32(tmp);
-                tcg_temp_free_i32(tmp2);
-                break;
-            case 2: /* add */
-                if (s->condexec_mask)
-                    tcg_gen_add_i32(tmp, tmp, tmp2);
-                else
-                    gen_add_CC(tmp, tmp, tmp2);
-                tcg_temp_free_i32(tmp2);
-                store_reg(s, rd, tmp);
-                break;
-            case 3: /* sub */
-                if (s->condexec_mask)
-                    tcg_gen_sub_i32(tmp, tmp, tmp2);
-                else
-                    gen_sub_CC(tmp, tmp, tmp2);
-                tcg_temp_free_i32(tmp2);
-                store_reg(s, rd, tmp);
-                break;
-            }
-        }
-        break;
-    case 4:
-        if (insn & (1 << 11)) {
-            rd = (insn >> 8) & 7;
-            /* load pc-relative.  Bit 1 of PC is ignored.  */
-            addr = add_reg_for_lit(s, 15, (insn & 0xff) * 4);
-            tmp = tcg_temp_new_i32();
-            gen_aa32_ld32u_iss(s, tmp, addr, get_mem_index(s),
-                               rd | ISSIs16Bit);
-            tcg_temp_free_i32(addr);
-            store_reg(s, rd, tmp);
-            break;
-        }
-        if (insn & (1 << 10)) {
-            /* 0b0100_01xx_xxxx_xxxx
-             * - data processing extended, branch and exchange
-             */
-            rd = (insn & 7) | ((insn >> 4) & 8);
-            rm = (insn >> 3) & 0xf;
-            op = (insn >> 8) & 3;
-            switch (op) {
-            case 0: /* add */
-                tmp = load_reg(s, rd);
-                tmp2 = load_reg(s, rm);
-                tcg_gen_add_i32(tmp, tmp, tmp2);
-                tcg_temp_free_i32(tmp2);
-                if (rd == 13) {
-                    /* ADD SP, SP, reg */
-                    store_sp_checked(s, tmp);
-                } else {
-                    store_reg(s, rd, tmp);
-                }
-                break;
-            case 1: /* cmp */
-                tmp = load_reg(s, rd);
-                tmp2 = load_reg(s, rm);
-                gen_sub_CC(tmp, tmp, tmp2);
-                tcg_temp_free_i32(tmp2);
-                tcg_temp_free_i32(tmp);
-                break;
-            case 2: /* mov/cpy */
-                tmp = load_reg(s, rm);
-                if (rd == 13) {
-                    /* MOV SP, reg */
-                    store_sp_checked(s, tmp);
-                } else {
-                    store_reg(s, rd, tmp);
-                }
-                break;
-            case 3:
-            {
-                /* 0b0100_0111_xxxx_xxxx
-                 * - branch [and link] exchange thumb register
-                 */
-                bool link = insn & (1 << 7);
-
-                if (insn & 3) {
-                    goto undef;
-                }
-                if (link) {
-                    ARCH(5);
-                }
-                if ((insn & 4)) {
-                    /* BXNS/BLXNS: only exists for v8M with the
-                     * security extensions, and always UNDEF if NonSecure.
-                     * We don't implement these in the user-only mode
-                     * either (in theory you can use them from Secure User
-                     * mode but they are too tied in to system emulation.)
-                     */
-                    if (!s->v8m_secure || IS_USER_ONLY) {
-                        goto undef;
-                    }
-                    if (link) {
-                        gen_blxns(s, rm);
-                    } else {
-                        gen_bxns(s, rm);
-                    }
-                    break;
-                }
-                /* BLX/BX */
-                tmp = load_reg(s, rm);
-                if (link) {
-                    val = (uint32_t)s->base.pc_next | 1;
-                    tmp2 = tcg_temp_new_i32();
-                    tcg_gen_movi_i32(tmp2, val);
-                    store_reg(s, 14, tmp2);
-                    gen_bx(s, tmp);
-                } else {
-                    /* Only BX works as exception-return, not BLX */
-                    gen_bx_excret(s, tmp);
-                }
-                break;
-            }
-            }
-            break;
-        }
-
-        /*
-         * 0b0100_00xx_xxxx_xxxx
-         *  - Data-processing (two low registers)
-         */
-        rd = insn & 7;
-        rm = (insn >> 3) & 7;
-        op = (insn >> 6) & 0xf;
-        if (op == 2 || op == 3 || op == 4 || op == 7) {
-            /* the shift/rotate ops want the operands backwards */
-            val = rm;
-            rm = rd;
-            rd = val;
-            val = 1;
-        } else {
-            val = 0;
-        }
-
-        if (op == 9) { /* neg */
-            tmp = tcg_temp_new_i32();
-            tcg_gen_movi_i32(tmp, 0);
-        } else if (op != 0xf) { /* mvn doesn't read its first operand */
-            tmp = load_reg(s, rd);
-        } else {
-            tmp = NULL;
-        }
-
-        tmp2 = load_reg(s, rm);
-        switch (op) {
-        case 0x0: /* and */
-            tcg_gen_and_i32(tmp, tmp, tmp2);
-            if (!s->condexec_mask)
-                gen_logic_CC(tmp);
-            break;
-        case 0x1: /* eor */
-            tcg_gen_xor_i32(tmp, tmp, tmp2);
-            if (!s->condexec_mask)
-                gen_logic_CC(tmp);
-            break;
-        case 0x2: /* lsl */
-            if (s->condexec_mask) {
-                gen_shl(tmp2, tmp2, tmp);
-            } else {
-                gen_helper_shl_cc(tmp2, cpu_env, tmp2, tmp);
-                gen_logic_CC(tmp2);
-            }
-            break;
-        case 0x3: /* lsr */
-            if (s->condexec_mask) {
-                gen_shr(tmp2, tmp2, tmp);
-            } else {
-                gen_helper_shr_cc(tmp2, cpu_env, tmp2, tmp);
-                gen_logic_CC(tmp2);
-            }
-            break;
-        case 0x4: /* asr */
-            if (s->condexec_mask) {
-                gen_sar(tmp2, tmp2, tmp);
-            } else {
-                gen_helper_sar_cc(tmp2, cpu_env, tmp2, tmp);
-                gen_logic_CC(tmp2);
-            }
-            break;
-        case 0x5: /* adc */
-            if (s->condexec_mask) {
-                gen_adc(tmp, tmp2);
-            } else {
-                gen_adc_CC(tmp, tmp, tmp2);
-            }
-            break;
-        case 0x6: /* sbc */
-            if (s->condexec_mask) {
-                gen_sub_carry(tmp, tmp, tmp2);
-            } else {
-                gen_sbc_CC(tmp, tmp, tmp2);
-            }
-            break;
-        case 0x7: /* ror */
-            if (s->condexec_mask) {
-                tcg_gen_andi_i32(tmp, tmp, 0x1f);
-                tcg_gen_rotr_i32(tmp2, tmp2, tmp);
-            } else {
-                gen_helper_ror_cc(tmp2, cpu_env, tmp2, tmp);
-                gen_logic_CC(tmp2);
-            }
-            break;
-        case 0x8: /* tst */
-            tcg_gen_and_i32(tmp, tmp, tmp2);
-            gen_logic_CC(tmp);
-            rd = 16;
-            break;
-        case 0x9: /* neg */
-            if (s->condexec_mask)
-                tcg_gen_neg_i32(tmp, tmp2);
-            else
-                gen_sub_CC(tmp, tmp, tmp2);
-            break;
-        case 0xa: /* cmp */
-            gen_sub_CC(tmp, tmp, tmp2);
-            rd = 16;
-            break;
-        case 0xb: /* cmn */
-            gen_add_CC(tmp, tmp, tmp2);
-            rd = 16;
-            break;
-        case 0xc: /* orr */
-            tcg_gen_or_i32(tmp, tmp, tmp2);
-            if (!s->condexec_mask)
-                gen_logic_CC(tmp);
-            break;
-        case 0xd: /* mul */
-            tcg_gen_mul_i32(tmp, tmp, tmp2);
-            if (!s->condexec_mask)
-                gen_logic_CC(tmp);
-            break;
-        case 0xe: /* bic */
-            tcg_gen_andc_i32(tmp, tmp, tmp2);
-            if (!s->condexec_mask)
-                gen_logic_CC(tmp);
-            break;
-        case 0xf: /* mvn */
-            tcg_gen_not_i32(tmp2, tmp2);
-            if (!s->condexec_mask)
-                gen_logic_CC(tmp2);
-            val = 1;
-            rm = rd;
-            break;
-        }
-        if (rd != 16) {
-            if (val) {
-                store_reg(s, rm, tmp2);
-                if (op != 0xf)
-                    tcg_temp_free_i32(tmp);
-            } else {
-                store_reg(s, rd, tmp);
-                tcg_temp_free_i32(tmp2);
-            }
-        } else {
-            tcg_temp_free_i32(tmp);
-            tcg_temp_free_i32(tmp2);
-        }
-        break;
-
-    case 5:
-        /* load/store register offset.  */
-        rd = insn & 7;
-        rn = (insn >> 3) & 7;
-        rm = (insn >> 6) & 7;
-        op = (insn >> 9) & 7;
-        addr = load_reg(s, rn);
-        tmp = load_reg(s, rm);
-        tcg_gen_add_i32(addr, addr, tmp);
-        tcg_temp_free_i32(tmp);
-
-        if (op < 3) { /* store */
-            tmp = load_reg(s, rd);
-        } else {
-            tmp = tcg_temp_new_i32();
-        }
-
-        switch (op) {
-        case 0: /* str */
-            gen_aa32_st32_iss(s, tmp, addr, get_mem_index(s), rd | ISSIs16Bit);
-            break;
-        case 1: /* strh */
-            gen_aa32_st16_iss(s, tmp, addr, get_mem_index(s), rd | ISSIs16Bit);
-            break;
-        case 2: /* strb */
-            gen_aa32_st8_iss(s, tmp, addr, get_mem_index(s), rd | ISSIs16Bit);
-            break;
-        case 3: /* ldrsb */
-            gen_aa32_ld8s_iss(s, tmp, addr, get_mem_index(s), rd | ISSIs16Bit);
-            break;
-        case 4: /* ldr */
-            gen_aa32_ld32u_iss(s, tmp, addr, get_mem_index(s), rd | ISSIs16Bit);
-            break;
-        case 5: /* ldrh */
-            gen_aa32_ld16u_iss(s, tmp, addr, get_mem_index(s), rd | ISSIs16Bit);
-            break;
-        case 6: /* ldrb */
-            gen_aa32_ld8u_iss(s, tmp, addr, get_mem_index(s), rd | ISSIs16Bit);
-            break;
-        case 7: /* ldrsh */
-            gen_aa32_ld16s_iss(s, tmp, addr, get_mem_index(s), rd | ISSIs16Bit);
-            break;
-        }
-        if (op >= 3) { /* load */
-            store_reg(s, rd, tmp);
-        } else {
-            tcg_temp_free_i32(tmp);
-        }
-        tcg_temp_free_i32(addr);
-        break;
-
-    case 6:
-        /* load/store word immediate offset */
-        rd = insn & 7;
-        rn = (insn >> 3) & 7;
-        addr = load_reg(s, rn);
-        val = (insn >> 4) & 0x7c;
-        tcg_gen_addi_i32(addr, addr, val);
-
-        if (insn & (1 << 11)) {
-            /* load */
-            tmp = tcg_temp_new_i32();
-            gen_aa32_ld32u(s, tmp, addr, get_mem_index(s));
-            store_reg(s, rd, tmp);
-        } else {
-            /* store */
-            tmp = load_reg(s, rd);
-            gen_aa32_st32(s, tmp, addr, get_mem_index(s));
-            tcg_temp_free_i32(tmp);
-        }
-        tcg_temp_free_i32(addr);
-        break;
-
-    case 7:
-        /* load/store byte immediate offset */
-        rd = insn & 7;
-        rn = (insn >> 3) & 7;
-        addr = load_reg(s, rn);
-        val = (insn >> 6) & 0x1f;
-        tcg_gen_addi_i32(addr, addr, val);
-
-        if (insn & (1 << 11)) {
-            /* load */
-            tmp = tcg_temp_new_i32();
-            gen_aa32_ld8u_iss(s, tmp, addr, get_mem_index(s), rd | ISSIs16Bit);
-            store_reg(s, rd, tmp);
-        } else {
-            /* store */
-            tmp = load_reg(s, rd);
-            gen_aa32_st8_iss(s, tmp, addr, get_mem_index(s), rd | ISSIs16Bit);
-            tcg_temp_free_i32(tmp);
-        }
-        tcg_temp_free_i32(addr);
-        break;
-
-    case 8:
-        /* load/store halfword immediate offset */
-        rd = insn & 7;
-        rn = (insn >> 3) & 7;
-        addr = load_reg(s, rn);
-        val = (insn >> 5) & 0x3e;
-        tcg_gen_addi_i32(addr, addr, val);
-
-        if (insn & (1 << 11)) {
-            /* load */
-            tmp = tcg_temp_new_i32();
-            gen_aa32_ld16u_iss(s, tmp, addr, get_mem_index(s), rd | ISSIs16Bit);
-            store_reg(s, rd, tmp);
-        } else {
-            /* store */
-            tmp = load_reg(s, rd);
-            gen_aa32_st16_iss(s, tmp, addr, get_mem_index(s), rd | ISSIs16Bit);
-            tcg_temp_free_i32(tmp);
-        }
-        tcg_temp_free_i32(addr);
-        break;
-
-    case 9:
-        /* load/store from stack */
-        rd = (insn >> 8) & 7;
-        addr = load_reg(s, 13);
-        val = (insn & 0xff) * 4;
-        tcg_gen_addi_i32(addr, addr, val);
-
-        if (insn & (1 << 11)) {
-            /* load */
-            tmp = tcg_temp_new_i32();
-            gen_aa32_ld32u_iss(s, tmp, addr, get_mem_index(s), rd | ISSIs16Bit);
-            store_reg(s, rd, tmp);
-        } else {
-            /* store */
-            tmp = load_reg(s, rd);
-            gen_aa32_st32_iss(s, tmp, addr, get_mem_index(s), rd | ISSIs16Bit);
-            tcg_temp_free_i32(tmp);
-        }
-        tcg_temp_free_i32(addr);
-        break;
-
-    case 10:
-        /*
-         * 0b1010_xxxx_xxxx_xxxx
-         *  - Add PC/SP (immediate)
-         */
-        rd = (insn >> 8) & 7;
-        val = (insn & 0xff) * 4;
-        tmp = add_reg_for_lit(s, insn & (1 << 11) ? 13 : 15, val);
-        store_reg(s, rd, tmp);
-        break;
-
-    case 11:
-        /* misc */
-        op = (insn >> 8) & 0xf;
-        switch (op) {
-        case 0:
-            /*
-             * 0b1011_0000_xxxx_xxxx
-             *  - ADD (SP plus immediate)
-             *  - SUB (SP minus immediate)
-             */
-            tmp = load_reg(s, 13);
-            val = (insn & 0x7f) * 4;
-            if (insn & (1 << 7))
-                val = -(int32_t)val;
-            tcg_gen_addi_i32(tmp, tmp, val);
-            store_sp_checked(s, tmp);
-            break;
-
-        case 2: /* sign/zero extend.  */
-            ARCH(6);
-            rd = insn & 7;
-            rm = (insn >> 3) & 7;
-            tmp = load_reg(s, rm);
-            switch ((insn >> 6) & 3) {
-            case 0: gen_sxth(tmp); break;
-            case 1: gen_sxtb(tmp); break;
-            case 2: gen_uxth(tmp); break;
-            case 3: gen_uxtb(tmp); break;
-            }
-            store_reg(s, rd, tmp);
-            break;
-        case 4: case 5: case 0xc: case 0xd:
-            /*
-             * 0b1011_x10x_xxxx_xxxx
-             *  - push/pop
-             */
-            addr = load_reg(s, 13);
-            if (insn & (1 << 8))
-                offset = 4;
-            else
-                offset = 0;
-            for (i = 0; i < 8; i++) {
-                if (insn & (1 << i))
-                    offset += 4;
-            }
-            if ((insn & (1 << 11)) == 0) {
-                tcg_gen_addi_i32(addr, addr, -offset);
-            }
-
-            if (s->v8m_stackcheck) {
-                /*
-                 * Here 'addr' is the lower of "old SP" and "new SP";
-                 * if this is a pop that starts below the limit and ends
-                 * above it, it is UNKNOWN whether the limit check triggers;
-                 * we choose to trigger.
-                 */
-                gen_helper_v8m_stackcheck(cpu_env, addr);
-            }
-
-            for (i = 0; i < 8; i++) {
-                if (insn & (1 << i)) {
-                    if (insn & (1 << 11)) {
-                        /* pop */
-                        tmp = tcg_temp_new_i32();
-                        gen_aa32_ld32u(s, tmp, addr, get_mem_index(s));
-                        store_reg(s, i, tmp);
-                    } else {
-                        /* push */
-                        tmp = load_reg(s, i);
-                        gen_aa32_st32(s, tmp, addr, get_mem_index(s));
-                        tcg_temp_free_i32(tmp);
-                    }
-                    /* advance to the next address.  */
-                    tcg_gen_addi_i32(addr, addr, 4);
-                }
-            }
-            tmp = NULL;
-            if (insn & (1 << 8)) {
-                if (insn & (1 << 11)) {
-                    /* pop pc */
-                    tmp = tcg_temp_new_i32();
-                    gen_aa32_ld32u(s, tmp, addr, get_mem_index(s));
-                    /* don't set the pc until the rest of the instruction
-                       has completed */
-                } else {
-                    /* push lr */
-                    tmp = load_reg(s, 14);
-                    gen_aa32_st32(s, tmp, addr, get_mem_index(s));
-                    tcg_temp_free_i32(tmp);
-                }
-                tcg_gen_addi_i32(addr, addr, 4);
-            }
-            if ((insn & (1 << 11)) == 0) {
-                tcg_gen_addi_i32(addr, addr, -offset);
-            }
-            /* write back the new stack pointer */
-            store_reg(s, 13, addr);
-            /* set the new PC value */
-            if ((insn & 0x0900) == 0x0900) {
-                store_reg_from_load(s, 15, tmp);
-            }
-            break;
-
-        case 1: case 3: case 9: case 11: /* czb */
-            rm = insn & 7;
-            tmp = load_reg(s, rm);
-            arm_gen_condlabel(s);
-            if (insn & (1 << 11))
-                tcg_gen_brcondi_i32(TCG_COND_EQ, tmp, 0, s->condlabel);
-            else
-                tcg_gen_brcondi_i32(TCG_COND_NE, tmp, 0, s->condlabel);
-            tcg_temp_free_i32(tmp);
-            offset = ((insn & 0xf8) >> 2) | (insn & 0x200) >> 3;
-            gen_jmp(s, read_pc(s) + offset);
-            break;
-
-        case 15: /* IT, nop-hint.  */
-            if ((insn & 0xf) == 0) {
-                gen_nop_hint(s, (insn >> 4) & 0xf);
-                break;
-            }
-            /*
-             * IT (If-Then)
-             *
-             * Combinations of firstcond and mask which set up an 0b1111
-             * condition are UNPREDICTABLE; we take the CONSTRAINED
-             * UNPREDICTABLE choice to treat 0b1111 the same as 0b1110,
-             * i.e. both meaning "execute always".
-             */
-            s->condexec_cond = (insn >> 4) & 0xe;
-            s->condexec_mask = insn & 0x1f;
-            /* No actual code generated for this insn, just setup state.  */
-            break;
-
-        case 0xe: /* bkpt */
-        {
-            int imm8 = extract32(insn, 0, 8);
-            ARCH(5);
-            gen_exception_bkpt_insn(s, syn_aa32_bkpt(imm8, true));
-            break;
-        }
-
-        case 0xa: /* rev, and hlt */
-        {
-            int op1 = extract32(insn, 6, 2);
-
-            if (op1 == 2) {
-                /* HLT */
-                int imm6 = extract32(insn, 0, 6);
-
-                gen_hlt(s, imm6);
-                break;
-            }
-
-            /* Otherwise this is rev */
-            ARCH(6);
-            rn = (insn >> 3) & 0x7;
-            rd = insn & 0x7;
-            tmp = load_reg(s, rn);
-            switch (op1) {
-            case 0: tcg_gen_bswap32_i32(tmp, tmp); break;
-            case 1: gen_rev16(tmp); break;
-            case 3: gen_revsh(tmp); break;
-            default:
-                g_assert_not_reached();
-            }
-            store_reg(s, rd, tmp);
-            break;
-        }
-
-        case 6:
-            switch ((insn >> 5) & 7) {
-            case 2:
-                /* setend */
-                ARCH(6);
-                if (((insn >> 3) & 1) != !!(s->be_data == MO_BE)) {
-                    gen_helper_setend(cpu_env);
-                    s->base.is_jmp = DISAS_UPDATE;
-                }
-                break;
-            case 3:
-                /* cps */
-                ARCH(6);
-                if (IS_USER(s)) {
-                    break;
-                }
-                if (arm_dc_feature(s, ARM_FEATURE_M)) {
-                    tmp = tcg_const_i32((insn & (1 << 4)) != 0);
-                    /* FAULTMASK */
-                    if (insn & 1) {
-                        addr = tcg_const_i32(19);
-                        gen_helper_v7m_msr(cpu_env, addr, tmp);
-                        tcg_temp_free_i32(addr);
-                    }
-                    /* PRIMASK */
-                    if (insn & 2) {
-                        addr = tcg_const_i32(16);
-                        gen_helper_v7m_msr(cpu_env, addr, tmp);
-                        tcg_temp_free_i32(addr);
-                    }
-                    tcg_temp_free_i32(tmp);
-                    gen_lookup_tb(s);
-                } else {
-                    if (insn & (1 << 4)) {
-                        shift = CPSR_A | CPSR_I | CPSR_F;
-                    } else {
-                        shift = 0;
-                    }
-                    gen_set_psr_im(s, ((insn & 7) << 6), 0, shift);
-                }
-                break;
-            default:
-                goto undef;
-            }
-            break;
-
-        default:
-            goto undef;
-        }
-        break;
-
-    case 12:
-    {
-        /* load/store multiple */
-        TCGv_i32 loaded_var = NULL;
-        rn = (insn >> 8) & 0x7;
-        addr = load_reg(s, rn);
-        for (i = 0; i < 8; i++) {
-            if (insn & (1 << i)) {
-                if (insn & (1 << 11)) {
-                    /* load */
-                    tmp = tcg_temp_new_i32();
-                    gen_aa32_ld32u(s, tmp, addr, get_mem_index(s));
-                    if (i == rn) {
-                        loaded_var = tmp;
-                    } else {
-                        store_reg(s, i, tmp);
-                    }
-                } else {
-                    /* store */
-                    tmp = load_reg(s, i);
-                    gen_aa32_st32(s, tmp, addr, get_mem_index(s));
-                    tcg_temp_free_i32(tmp);
-                }
-                /* advance to the next address */
-                tcg_gen_addi_i32(addr, addr, 4);
-            }
-        }
-        if ((insn & (1 << rn)) == 0) {
-            /* base reg not in list: base register writeback */
-            store_reg(s, rn, addr);
-        } else {
-            /* base reg in list: if load, complete it now */
-            if (insn & (1 << 11)) {
-                store_reg(s, rn, loaded_var);
-            }
-            tcg_temp_free_i32(addr);
-        }
-        break;
+    if (!disas_t16(s, insn)) {
+        unallocated_encoding(s);
     }
-    case 13:
-        /* conditional branch or swi */
-        cond = (insn >> 8) & 0xf;
-        if (cond == 0xe)
-            goto undef;
-
-        if (cond == 0xf) {
-            /* swi */
-            gen_set_pc_im(s, s->base.pc_next);
-            s->svc_imm = extract32(insn, 0, 8);
-            s->base.is_jmp = DISAS_SWI;
-            break;
-        }
-        /* generate a conditional jump to next instruction */
-        arm_skip_unless(s, cond);
-
-        /* jump to the offset */
-        val = read_pc(s);
-        offset = ((int32_t)insn << 24) >> 24;
-        val += offset << 1;
-        gen_jmp(s, val);
-        break;
-
-    case 14:
-        if (insn & (1 << 11)) {
-            /* thumb_insn_is_16bit() ensures we can't get here for
-             * a Thumb2 CPU, so this must be a thumb1 split BL/BLX:
-             * 0b1110_1xxx_xxxx_xxxx : BLX suffix (or UNDEF)
-             */
-            assert(!arm_dc_feature(s, ARM_FEATURE_THUMB2));
-            ARCH(5);
-            offset = ((insn & 0x7ff) << 1);
-            tmp = load_reg(s, 14);
-            tcg_gen_addi_i32(tmp, tmp, offset);
-            tcg_gen_andi_i32(tmp, tmp, 0xfffffffc);
-
-            tmp2 = tcg_temp_new_i32();
-            tcg_gen_movi_i32(tmp2, s->base.pc_next | 1);
-            store_reg(s, 14, tmp2);
-            gen_bx(s, tmp);
-            break;
-        }
-        /* unconditional branch */
-        val = read_pc(s);
-        offset = ((int32_t)insn << 21) >> 21;
-        val += offset << 1;
-        gen_jmp(s, val);
-        break;
-
-    case 15:
-        /* thumb_insn_is_16bit() ensures we can't get here for
-         * a Thumb2 CPU, so this must be a thumb1 split BL/BLX.
-         */
-        assert(!arm_dc_feature(s, ARM_FEATURE_THUMB2));
-
-        if (insn & (1 << 11)) {
-            /* 0b1111_1xxx_xxxx_xxxx : BL suffix */
-            offset = ((insn & 0x7ff) << 1) | 1;
-            tmp = load_reg(s, 14);
-            tcg_gen_addi_i32(tmp, tmp, offset);
-
-            tmp2 = tcg_temp_new_i32();
-            tcg_gen_movi_i32(tmp2, s->base.pc_next | 1);
-            store_reg(s, 14, tmp2);
-            gen_bx(s, tmp);
-        } else {
-            /* 0b1111_0xxx_xxxx_xxxx : BL/BLX prefix */
-            uint32_t uoffset = ((int32_t)insn << 21) >> 9;
-
-            tcg_gen_movi_i32(cpu_R[14], read_pc(s) + uoffset);
-        }
-        break;
-    }
-    return;
-illegal_op:
-undef:
-    unallocated_encoding(s);
 }
 
 static bool insn_crosses_page(CPUARMState *env, DisasContext *s)

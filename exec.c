@@ -88,7 +88,6 @@ static MemoryRegion *system_io;
 AddressSpace address_space_io;
 AddressSpace address_space_memory;
 
-MemoryRegion io_mem_rom, io_mem_notdirty;
 static MemoryRegion io_mem_unassigned;
 #endif
 
@@ -191,16 +190,11 @@ typedef struct subpage_t {
 } subpage_t;
 
 #define PHYS_SECTION_UNASSIGNED 0
-#define PHYS_SECTION_NOTDIRTY 1
-#define PHYS_SECTION_ROM 2
-#define PHYS_SECTION_WATCH 3
 
 static void io_mem_init(void);
 static void memory_map_init(void);
 static void tcg_log_global_after_sync(MemoryListener *listener);
 static void tcg_commit(MemoryListener *listener);
-
-static MemoryRegion io_mem_watch;
 
 /**
  * CPUAddressSpace: all the information a CPU needs about an AddressSpace
@@ -230,8 +224,7 @@ static void phys_map_node_reserve(PhysPageMap *map, unsigned nodes)
 {
     static unsigned alloc_hint = 16;
     if (map->nodes_nb + nodes > map->nodes_nb_alloc) {
-        map->nodes_nb_alloc = MAX(map->nodes_nb_alloc, alloc_hint);
-        map->nodes_nb_alloc = MAX(map->nodes_nb_alloc, map->nodes_nb + nodes);
+        map->nodes_nb_alloc = MAX(alloc_hint, map->nodes_nb + nodes);
         map->nodes = g_renew(Node, map->nodes, map->nodes_nb_alloc);
         alloc_hint = map->nodes_nb_alloc;
     }
@@ -258,7 +251,7 @@ static uint32_t phys_map_node_alloc(PhysPageMap *map, bool leaf)
 }
 
 static void phys_page_set_level(PhysPageMap *map, PhysPageEntry *lp,
-                                hwaddr *index, hwaddr *nb, uint16_t leaf,
+                                hwaddr *index, uint64_t *nb, uint16_t leaf,
                                 int level)
 {
     PhysPageEntry *p;
@@ -284,7 +277,7 @@ static void phys_page_set_level(PhysPageMap *map, PhysPageEntry *lp,
 }
 
 static void phys_page_set(AddressSpaceDispatch *d,
-                          hwaddr index, hwaddr nb,
+                          hwaddr index, uint64_t nb,
                           uint16_t leaf)
 {
     /* Wildly overreserve - it doesn't matter much. */
@@ -328,7 +321,8 @@ static void phys_page_compact(PhysPageEntry *lp, Node *nodes)
     assert(valid_ptr < P_L2_SIZE);
 
     /* Don't compress if it won't fit in the # of bits we have. */
-    if (lp->skip + p[valid_ptr].skip >= (1 << 3)) {
+    if (P_L2_LEVELS >= (1 << 6) &&
+        lp->skip + p[valid_ptr].skip >= (1 << 6)) {
         return;
     }
 
@@ -1048,7 +1042,7 @@ const char *parse_cpu_option(const char *cpu_option)
 void tb_invalidate_phys_addr(target_ulong addr)
 {
     mmap_lock();
-    tb_invalidate_phys_page_range(addr, addr + 1, 0);
+    tb_invalidate_phys_page_range(addr, addr + 1);
     mmap_unlock();
 }
 
@@ -1075,7 +1069,7 @@ void tb_invalidate_phys_addr(AddressSpace *as, hwaddr addr, MemTxAttrs attrs)
         return;
     }
     ram_addr = memory_region_get_ram_addr(mr) + addr;
-    tb_invalidate_phys_page_range(ram_addr, ram_addr + 1, 0);
+    tb_invalidate_phys_page_range(ram_addr, ram_addr + 1);
     rcu_read_unlock();
 }
 
@@ -1092,28 +1086,7 @@ static void breakpoint_invalidate(CPUState *cpu, target_ulong pc)
 }
 #endif
 
-#if defined(CONFIG_USER_ONLY)
-void cpu_watchpoint_remove_all(CPUState *cpu, int mask)
-
-{
-}
-
-int cpu_watchpoint_remove(CPUState *cpu, vaddr addr, vaddr len,
-                          int flags)
-{
-    return -ENOSYS;
-}
-
-void cpu_watchpoint_remove_by_ref(CPUState *cpu, CPUWatchpoint *watchpoint)
-{
-}
-
-int cpu_watchpoint_insert(CPUState *cpu, vaddr addr, vaddr len,
-                          int flags, CPUWatchpoint **watchpoint)
-{
-    return -ENOSYS;
-}
-#else
+#ifndef CONFIG_USER_ONLY
 /* Add a watchpoint.  */
 int cpu_watchpoint_insert(CPUState *cpu, vaddr addr, vaddr len,
                           int flags, CPUWatchpoint **watchpoint)
@@ -1189,9 +1162,8 @@ void cpu_watchpoint_remove_all(CPUState *cpu, int mask)
  * partially or completely with the address range covered by the
  * access).
  */
-static inline bool cpu_watchpoint_address_matches(CPUWatchpoint *wp,
-                                                  vaddr addr,
-                                                  vaddr len)
+static inline bool watchpoint_address_matches(CPUWatchpoint *wp,
+                                              vaddr addr, vaddr len)
 {
     /* We know the lengths are non-zero, but a little caution is
      * required to avoid errors in the case where the range ends
@@ -1204,7 +1176,20 @@ static inline bool cpu_watchpoint_address_matches(CPUWatchpoint *wp,
     return !(addr > wpend || wp->vaddr > addrend);
 }
 
-#endif
+/* Return flags for watchpoints that match addr + prot.  */
+int cpu_watchpoint_address_matches(CPUState *cpu, vaddr addr, vaddr len)
+{
+    CPUWatchpoint *wp;
+    int ret = 0;
+
+    QTAILQ_FOREACH(wp, &cpu->watchpoints, entry) {
+        if (watchpoint_address_matches(wp, addr, TARGET_PAGE_SIZE)) {
+            ret |= wp->flags;
+        }
+    }
+    return ret;
+}
+#endif /* !CONFIG_USER_ONLY */
 
 /* Add a breakpoint.  */
 int cpu_breakpoint_insert(CPUState *cpu, vaddr pc, int flags,
@@ -1504,52 +1489,17 @@ bool cpu_physical_memory_snapshot_get_dirty(DirtyBitmapSnapshot *snap,
 
 /* Called from RCU critical section */
 hwaddr memory_region_section_get_iotlb(CPUState *cpu,
-                                       MemoryRegionSection *section,
-                                       target_ulong vaddr,
-                                       hwaddr paddr, hwaddr xlat,
-                                       int prot,
-                                       target_ulong *address)
+                                       MemoryRegionSection *section)
 {
-    hwaddr iotlb;
-    CPUWatchpoint *wp;
-
-    if (memory_region_is_ram(section->mr)) {
-        /* Normal RAM.  */
-        iotlb = memory_region_get_ram_addr(section->mr) + xlat;
-        if (!section->readonly) {
-            iotlb |= PHYS_SECTION_NOTDIRTY;
-        } else {
-            iotlb |= PHYS_SECTION_ROM;
-        }
-    } else {
-        AddressSpaceDispatch *d;
-
-        d = flatview_to_dispatch(section->fv);
-        iotlb = section - d->map.sections;
-        iotlb += xlat;
-    }
-
-    /* Make accesses to pages with watchpoints go via the
-       watchpoint trap routines.  */
-    QTAILQ_FOREACH(wp, &cpu->watchpoints, entry) {
-        if (cpu_watchpoint_address_matches(wp, vaddr, TARGET_PAGE_SIZE)) {
-            /* Avoid trapping reads of pages with a write breakpoint. */
-            if ((prot & PAGE_WRITE) || (wp->flags & BP_MEM_READ)) {
-                iotlb = PHYS_SECTION_WATCH + paddr;
-                *address |= TLB_MMIO;
-                break;
-            }
-        }
-    }
-
-    return iotlb;
+    AddressSpaceDispatch *d = flatview_to_dispatch(section->fv);
+    return section - d->map.sections;
 }
 #endif /* defined(CONFIG_USER_ONLY) */
 
 #if !defined(CONFIG_USER_ONLY)
 
-static int subpage_register (subpage_t *mmio, uint32_t start, uint32_t end,
-                             uint16_t section);
+static int subpage_register(subpage_t *mmio, uint32_t start, uint32_t end,
+                            uint16_t section);
 static subpage_t *subpage_init(FlatView *fv, hwaddr base);
 
 static void *(*phys_mem_alloc)(size_t size, uint64_t *align, bool shared) =
@@ -1780,6 +1730,7 @@ long qemu_minrampagesize(void)
     long hpsize = LONG_MAX;
     long mainrampagesize;
     Object *memdev_root;
+    MachineState *ms = MACHINE(qdev_get_machine());
 
     mainrampagesize = qemu_mempath_getpagesize(mem_path);
 
@@ -1807,7 +1758,9 @@ long qemu_minrampagesize(void)
      * so if its page size is smaller we have got to report that size instead.
      */
     if (hpsize > mainrampagesize &&
-        (nb_numa_nodes == 0 || numa_info[0].node_memdev == NULL)) {
+        (ms->numa_state == NULL ||
+         ms->numa_state->num_nodes == 0 ||
+         ms->numa_state->nodes[0].node_memdev == NULL)) {
         static bool warned;
         if (!warned) {
             error_report("Huge page support disabled (n/a for main memory).");
@@ -1843,7 +1796,39 @@ long qemu_maxrampagesize(void)
 
 static int64_t get_file_size(int fd)
 {
-    int64_t size = lseek(fd, 0, SEEK_END);
+    int64_t size;
+#if defined(__linux__)
+    struct stat st;
+
+    if (fstat(fd, &st) < 0) {
+        return -errno;
+    }
+
+    /* Special handling for devdax character devices */
+    if (S_ISCHR(st.st_mode)) {
+        g_autofree char *subsystem_path = NULL;
+        g_autofree char *subsystem = NULL;
+
+        subsystem_path = g_strdup_printf("/sys/dev/char/%d:%d/subsystem",
+                                         major(st.st_rdev), minor(st.st_rdev));
+        subsystem = g_file_read_link(subsystem_path, NULL);
+
+        if (subsystem && g_str_has_suffix(subsystem, "/dax")) {
+            g_autofree char *size_path = NULL;
+            g_autofree char *size_str = NULL;
+
+            size_path = g_strdup_printf("/sys/dev/char/%d:%d/size",
+                                    major(st.st_rdev), minor(st.st_rdev));
+
+            if (g_file_get_contents(size_path, &size_str, NULL, NULL)) {
+                return g_ascii_strtoll(size_str, NULL, 0);
+            }
+        }
+    }
+#endif /* defined(__linux__) */
+
+    /* st.st_size may be zero for special files yet lseek(2) works */
+    size = lseek(fd, 0, SEEK_END);
     if (size < 0) {
         return -errno;
     }
@@ -2780,110 +2765,36 @@ ram_addr_t qemu_ram_addr_from_host(void *ptr)
     return block->offset + offset;
 }
 
-/* Called within RCU critical section. */
-void memory_notdirty_write_prepare(NotDirtyInfo *ndi,
-                          CPUState *cpu,
-                          vaddr mem_vaddr,
-                          ram_addr_t ram_addr,
-                          unsigned size)
-{
-    ndi->cpu = cpu;
-    ndi->ram_addr = ram_addr;
-    ndi->mem_vaddr = mem_vaddr;
-    ndi->size = size;
-    ndi->pages = NULL;
-
-    assert(tcg_enabled());
-    if (!cpu_physical_memory_get_dirty_flag(ram_addr, DIRTY_MEMORY_CODE)) {
-        ndi->pages = page_collection_lock(ram_addr, ram_addr + size);
-        tb_invalidate_phys_page_fast(ndi->pages, ram_addr, size);
-    }
-}
-
-/* Called within RCU critical section. */
-void memory_notdirty_write_complete(NotDirtyInfo *ndi)
-{
-    if (ndi->pages) {
-        assert(tcg_enabled());
-        page_collection_unlock(ndi->pages);
-        ndi->pages = NULL;
-    }
-
-    /* Set both VGA and migration bits for simplicity and to remove
-     * the notdirty callback faster.
-     */
-    cpu_physical_memory_set_dirty_range(ndi->ram_addr, ndi->size,
-                                        DIRTY_CLIENTS_NOCODE);
-    /* we remove the notdirty callback only if the code has been
-       flushed */
-    if (!cpu_physical_memory_is_clean(ndi->ram_addr)) {
-        tlb_set_dirty(ndi->cpu, ndi->mem_vaddr);
-    }
-}
-
-/* Called within RCU critical section.  */
-static void notdirty_mem_write(void *opaque, hwaddr ram_addr,
-                               uint64_t val, unsigned size)
-{
-    NotDirtyInfo ndi;
-
-    memory_notdirty_write_prepare(&ndi, current_cpu, current_cpu->mem_io_vaddr,
-                         ram_addr, size);
-
-    stn_p(qemu_map_ram_ptr(NULL, ram_addr), size, val);
-    memory_notdirty_write_complete(&ndi);
-}
-
-static bool notdirty_mem_accepts(void *opaque, hwaddr addr,
-                                 unsigned size, bool is_write,
-                                 MemTxAttrs attrs)
-{
-    return is_write;
-}
-
-static const MemoryRegionOps notdirty_mem_ops = {
-    .write = notdirty_mem_write,
-    .valid.accepts = notdirty_mem_accepts,
-    .endianness = DEVICE_NATIVE_ENDIAN,
-    .valid = {
-        .min_access_size = 1,
-        .max_access_size = 8,
-        .unaligned = false,
-    },
-    .impl = {
-        .min_access_size = 1,
-        .max_access_size = 8,
-        .unaligned = false,
-    },
-};
-
 /* Generate a debug exception if a watchpoint has been hit.  */
-static void check_watchpoint(int offset, int len, MemTxAttrs attrs, int flags)
+void cpu_check_watchpoint(CPUState *cpu, vaddr addr, vaddr len,
+                          MemTxAttrs attrs, int flags, uintptr_t ra)
 {
-    CPUState *cpu = current_cpu;
     CPUClass *cc = CPU_GET_CLASS(cpu);
-    target_ulong vaddr;
     CPUWatchpoint *wp;
 
     assert(tcg_enabled());
     if (cpu->watchpoint_hit) {
-        /* We re-entered the check after replacing the TB. Now raise
-         * the debug interrupt so that is will trigger after the
-         * current instruction. */
+        /*
+         * We re-entered the check after replacing the TB.
+         * Now raise the debug interrupt so that it will
+         * trigger after the current instruction.
+         */
+        qemu_mutex_lock_iothread();
         cpu_interrupt(cpu, CPU_INTERRUPT_DEBUG);
+        qemu_mutex_unlock_iothread();
         return;
     }
-    vaddr = (cpu->mem_io_vaddr & TARGET_PAGE_MASK) + offset;
-    vaddr = cc->adjust_watchpoint_address(cpu, vaddr, len);
+
+    addr = cc->adjust_watchpoint_address(cpu, addr, len);
     QTAILQ_FOREACH(wp, &cpu->watchpoints, entry) {
-        if (cpu_watchpoint_address_matches(wp, vaddr, len)
+        if (watchpoint_address_matches(wp, addr, len)
             && (wp->flags & flags)) {
             if (flags == BP_MEM_READ) {
                 wp->flags |= BP_WATCHPOINT_HIT_READ;
             } else {
                 wp->flags |= BP_WATCHPOINT_HIT_WRITE;
             }
-            wp->hitaddr = vaddr;
+            wp->hitaddr = MAX(addr, wp->vaddr);
             wp->hitattrs = attrs;
             if (!cpu->watchpoint_hit) {
                 if (wp->flags & BP_CPU &&
@@ -2894,15 +2805,18 @@ static void check_watchpoint(int offset, int len, MemTxAttrs attrs, int flags)
                 cpu->watchpoint_hit = wp;
 
                 mmap_lock();
-                tb_check_watchpoint(cpu);
+                tb_check_watchpoint(cpu, ra);
                 if (wp->flags & BP_STOP_BEFORE_ACCESS) {
                     cpu->exception_index = EXCP_DEBUG;
                     mmap_unlock();
-                    cpu_loop_exit(cpu);
+                    cpu_loop_exit_restore(cpu, ra);
                 } else {
                     /* Force execution of one insn next time.  */
                     cpu->cflags_next_tb = 1 | curr_cflags();
                     mmap_unlock();
+                    if (ra) {
+                        cpu_restore_state(cpu, ra, true);
+                    }
                     cpu_loop_exit_noexc(cpu);
                 }
             }
@@ -2911,80 +2825,6 @@ static void check_watchpoint(int offset, int len, MemTxAttrs attrs, int flags)
         }
     }
 }
-
-/* Watchpoint access routines.  Watchpoints are inserted using TLB tricks,
-   so these check for a hit then pass through to the normal out-of-line
-   phys routines.  */
-static MemTxResult watch_mem_read(void *opaque, hwaddr addr, uint64_t *pdata,
-                                  unsigned size, MemTxAttrs attrs)
-{
-    MemTxResult res;
-    uint64_t data;
-    int asidx = cpu_asidx_from_attrs(current_cpu, attrs);
-    AddressSpace *as = current_cpu->cpu_ases[asidx].as;
-
-    check_watchpoint(addr & ~TARGET_PAGE_MASK, size, attrs, BP_MEM_READ);
-    switch (size) {
-    case 1:
-        data = address_space_ldub(as, addr, attrs, &res);
-        break;
-    case 2:
-        data = address_space_lduw(as, addr, attrs, &res);
-        break;
-    case 4:
-        data = address_space_ldl(as, addr, attrs, &res);
-        break;
-    case 8:
-        data = address_space_ldq(as, addr, attrs, &res);
-        break;
-    default: abort();
-    }
-    *pdata = data;
-    return res;
-}
-
-static MemTxResult watch_mem_write(void *opaque, hwaddr addr,
-                                   uint64_t val, unsigned size,
-                                   MemTxAttrs attrs)
-{
-    MemTxResult res;
-    int asidx = cpu_asidx_from_attrs(current_cpu, attrs);
-    AddressSpace *as = current_cpu->cpu_ases[asidx].as;
-
-    check_watchpoint(addr & ~TARGET_PAGE_MASK, size, attrs, BP_MEM_WRITE);
-    switch (size) {
-    case 1:
-        address_space_stb(as, addr, val, attrs, &res);
-        break;
-    case 2:
-        address_space_stw(as, addr, val, attrs, &res);
-        break;
-    case 4:
-        address_space_stl(as, addr, val, attrs, &res);
-        break;
-    case 8:
-        address_space_stq(as, addr, val, attrs, &res);
-        break;
-    default: abort();
-    }
-    return res;
-}
-
-static const MemoryRegionOps watch_mem_ops = {
-    .read_with_attrs = watch_mem_read,
-    .write_with_attrs = watch_mem_write,
-    .endianness = DEVICE_NATIVE_ENDIAN,
-    .valid = {
-        .min_access_size = 1,
-        .max_access_size = 8,
-        .unaligned = false,
-    },
-    .impl = {
-        .min_access_size = 1,
-        .max_access_size = 8,
-        .unaligned = false,
-    },
-};
 
 static MemTxResult flatview_read(FlatView *fv, hwaddr addr,
                                  MemTxAttrs attrs, uint8_t *buf, hwaddr len);
@@ -3052,8 +2892,8 @@ static const MemoryRegionOps subpage_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
-static int subpage_register (subpage_t *mmio, uint32_t start, uint32_t end,
-                             uint16_t section)
+static int subpage_register(subpage_t *mmio, uint32_t start, uint32_t end,
+                            uint16_t section)
 {
     int idx, eidx;
 
@@ -3076,6 +2916,7 @@ static subpage_t *subpage_init(FlatView *fv, hwaddr base)
 {
     subpage_t *mmio;
 
+    /* mmio->sub_section is set to PHYS_SECTION_UNASSIGNED with g_malloc0 */
     mmio = g_malloc0(sizeof(subpage_t) + TARGET_PAGE_SIZE * sizeof(uint16_t));
     mmio->fv = fv;
     mmio->base = base;
@@ -3086,7 +2927,6 @@ static subpage_t *subpage_init(FlatView *fv, hwaddr base)
     printf("%s: %p base " TARGET_FMT_plx " len %08x\n", __func__,
            mmio, base, TARGET_PAGE_SIZE);
 #endif
-    subpage_register(mmio, 0, TARGET_PAGE_SIZE-1, PHYS_SECTION_UNASSIGNED);
 
     return mmio;
 }
@@ -3105,38 +2945,6 @@ static uint16_t dummy_section(PhysPageMap *map, FlatView *fv, MemoryRegion *mr)
     return phys_section_add(map, &section);
 }
 
-static void readonly_mem_write(void *opaque, hwaddr addr,
-                               uint64_t val, unsigned size)
-{
-    /* Ignore any write to ROM. */
-}
-
-static bool readonly_mem_accepts(void *opaque, hwaddr addr,
-                                 unsigned size, bool is_write,
-                                 MemTxAttrs attrs)
-{
-    return is_write;
-}
-
-/* This will only be used for writes, because reads are special cased
- * to directly access the underlying host ram.
- */
-static const MemoryRegionOps readonly_mem_ops = {
-    .write = readonly_mem_write,
-    .valid.accepts = readonly_mem_accepts,
-    .endianness = DEVICE_NATIVE_ENDIAN,
-    .valid = {
-        .min_access_size = 1,
-        .max_access_size = 8,
-        .unaligned = false,
-    },
-    .impl = {
-        .min_access_size = 1,
-        .max_access_size = 8,
-        .unaligned = false,
-    },
-};
-
 MemoryRegionSection *iotlb_to_section(CPUState *cpu,
                                       hwaddr index, MemTxAttrs attrs)
 {
@@ -3150,19 +2958,7 @@ MemoryRegionSection *iotlb_to_section(CPUState *cpu,
 
 static void io_mem_init(void)
 {
-    memory_region_init_io(&io_mem_rom, NULL, &readonly_mem_ops,
-                          NULL, NULL, UINT64_MAX);
     memory_region_init_io(&io_mem_unassigned, NULL, &unassigned_mem_ops, NULL,
-                          NULL, UINT64_MAX);
-
-    /* io_mem_notdirty calls tb_invalidate_phys_page_fast,
-     * which can be called without the iothread mutex.
-     */
-    memory_region_init_io(&io_mem_notdirty, NULL, &notdirty_mem_ops, NULL,
-                          NULL, UINT64_MAX);
-    memory_region_clear_global_locking(&io_mem_notdirty);
-
-    memory_region_init_io(&io_mem_watch, NULL, &watch_mem_ops, NULL,
                           NULL, UINT64_MAX);
 }
 
@@ -3173,12 +2969,6 @@ AddressSpaceDispatch *address_space_dispatch_new(FlatView *fv)
 
     n = dummy_section(&d->map, fv, &io_mem_unassigned);
     assert(n == PHYS_SECTION_UNASSIGNED);
-    n = dummy_section(&d->map, fv, &io_mem_notdirty);
-    assert(n == PHYS_SECTION_NOTDIRTY);
-    n = dummy_section(&d->map, fv, &io_mem_rom);
-    assert(n == PHYS_SECTION_ROM);
-    n = dummy_section(&d->map, fv, &io_mem_watch);
-    assert(n == PHYS_SECTION_WATCH);
 
     d->phys_map  = (PhysPageEntry) { .ptr = PHYS_MAP_NODE_NIL, .skip = 1 };
 
@@ -3440,8 +3230,9 @@ static MemTxResult flatview_write_continue(FlatView *fv, hwaddr addr,
             /* XXX: could force current_cpu to NULL to avoid
                potential bugs */
             if (l <= 8) {
-                val = ldn_p(buf, l);
-                result |= memory_region_dispatch_write(mr, addr1, val, l, attrs);
+                val = ldn_he_p(buf, l);
+                result |= memory_region_dispatch_write(mr, addr1, val,
+                                                   size_memop(l), attrs);
             } else {
                 if (mr->ops->access) {
                     MemoryTransaction tr = {
@@ -3518,8 +3309,9 @@ MemTxResult flatview_read_continue(FlatView *fv, hwaddr addr,
             release_lock |= prepare_mmio_access(mr);
             l = memory_access_size(mr, l, addr1);
             if (l <= 8) {
-                result |= memory_region_dispatch_read(mr, addr1, &val, l, attrs);
-                stn_p(buf, l, val);
+                result |= memory_region_dispatch_read(mr, addr1, &val,
+                                                      size_memop(l), attrs);
+                stn_he_p(buf, l, val);
             } else {
                 if (mr->ops->access) {
                     MemoryTransaction tr = {

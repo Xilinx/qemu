@@ -152,7 +152,7 @@ static inline int vec_full_reg_offset(uint8_t reg)
     return offsetof(CPUS390XState, vregs[reg][0]);
 }
 
-static inline int vec_reg_offset(uint8_t reg, uint8_t enr, TCGMemOp es)
+static inline int vec_reg_offset(uint8_t reg, uint8_t enr, MemOp es)
 {
     /* Convert element size (es) - e.g. MO_8 - to bytes */
     const uint8_t bytes = 1 << es;
@@ -318,6 +318,9 @@ static inline uint64_t ld_code4(CPUS390XState *env, uint64_t pc)
 
 static int get_mem_index(DisasContext *s)
 {
+#ifdef CONFIG_USER_ONLY
+    return MMU_USER_IDX;
+#else
     if (!(s->base.tb->flags & FLAG_MASK_DAT)) {
         return MMU_REAL_IDX;
     }
@@ -333,6 +336,7 @@ static int get_mem_index(DisasContext *s)
         tcg_abort();
         break;
     }
+#endif
 }
 
 static void gen_exception(int excp)
@@ -2262,7 +2266,7 @@ static DisasJumpType op_csst(DisasContext *s, DisasOps *o)
 #ifndef CONFIG_USER_ONLY
 static DisasJumpType op_csp(DisasContext *s, DisasOps *o)
 {
-    TCGMemOp mop = s->insn->data;
+    MemOp mop = s->insn->data;
     TCGv_i64 addr, old, cc;
     TCGLabel *lab = gen_new_label();
 
@@ -3228,7 +3232,7 @@ static DisasJumpType op_lm64(DisasContext *s, DisasOps *o)
 static DisasJumpType op_lpd(DisasContext *s, DisasOps *o)
 {
     TCGv_i64 a1, a2;
-    TCGMemOp mop = s->insn->data;
+    MemOp mop = s->insn->data;
 
     /* In a parallel context, stop the world and single step.  */
     if (tb_cflags(s->base.tb) & CF_PARALLEL) {
@@ -3488,9 +3492,13 @@ static DisasJumpType op_mvpg(DisasContext *s, DisasOps *o)
 
 static DisasJumpType op_mvst(DisasContext *s, DisasOps *o)
 {
-    gen_helper_mvst(o->in1, cpu_env, regs[0], o->in1, o->in2);
+    TCGv_i32 t1 = tcg_const_i32(get_field(s->fields, r1));
+    TCGv_i32 t2 = tcg_const_i32(get_field(s->fields, r2));
+
+    gen_helper_mvst(cc_op, cpu_env, t1, t2);
+    tcg_temp_free_i32(t1);
+    tcg_temp_free_i32(t2);
     set_cc_static(s);
-    return_low128(o->in2);
     return DISAS_NEXT;
 }
 

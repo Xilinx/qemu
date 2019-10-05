@@ -555,7 +555,7 @@ static void arm_generic_fdt_init(MachineState *machine)
     }
 
     if (machine->kernel_filename) {
-        arm_load_kernel(ARM_CPU(first_cpu), &arm_generic_fdt_binfo);
+        arm_load_kernel(ARM_CPU(first_cpu), machine, &arm_generic_fdt_binfo);
     }
 
     return;

@@ -328,8 +328,18 @@ extern const VMStateDescription vmstate_s390_cpu;
 
 static inline int cpu_mmu_index(CPUS390XState *env, bool ifetch)
 {
+#ifdef CONFIG_USER_ONLY
+    return MMU_USER_IDX;
+#else
     if (!(env->psw.mask & PSW_MASK_DAT)) {
         return MMU_REAL_IDX;
+    }
+
+    if (ifetch) {
+        if ((env->psw.mask & PSW_MASK_ASC) == PSW_ASC_HOME) {
+            return MMU_HOME_IDX;
+        }
+        return MMU_PRIMARY_IDX;
     }
 
     switch (env->psw.mask & PSW_MASK_ASC) {
@@ -344,6 +354,7 @@ static inline int cpu_mmu_index(CPUS390XState *env, bool ifetch)
     default:
         abort();
     }
+#endif
 }
 
 static inline void cpu_get_tb_cpu_state(CPUS390XState* env, target_ulong *pc,

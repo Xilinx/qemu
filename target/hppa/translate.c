@@ -1500,7 +1500,7 @@ static void form_gva(DisasContext *ctx, TCGv_tl *pgva, TCGv_reg *pofs,
  */
 static void do_load_32(DisasContext *ctx, TCGv_i32 dest, unsigned rb,
                        unsigned rx, int scale, target_sreg disp,
-                       unsigned sp, int modify, TCGMemOp mop)
+                       unsigned sp, int modify, MemOp mop)
 {
     TCGv_reg ofs;
     TCGv_tl addr;
@@ -1518,7 +1518,7 @@ static void do_load_32(DisasContext *ctx, TCGv_i32 dest, unsigned rb,
 
 static void do_load_64(DisasContext *ctx, TCGv_i64 dest, unsigned rb,
                        unsigned rx, int scale, target_sreg disp,
-                       unsigned sp, int modify, TCGMemOp mop)
+                       unsigned sp, int modify, MemOp mop)
 {
     TCGv_reg ofs;
     TCGv_tl addr;
@@ -1536,7 +1536,7 @@ static void do_load_64(DisasContext *ctx, TCGv_i64 dest, unsigned rb,
 
 static void do_store_32(DisasContext *ctx, TCGv_i32 src, unsigned rb,
                         unsigned rx, int scale, target_sreg disp,
-                        unsigned sp, int modify, TCGMemOp mop)
+                        unsigned sp, int modify, MemOp mop)
 {
     TCGv_reg ofs;
     TCGv_tl addr;
@@ -1554,7 +1554,7 @@ static void do_store_32(DisasContext *ctx, TCGv_i32 src, unsigned rb,
 
 static void do_store_64(DisasContext *ctx, TCGv_i64 src, unsigned rb,
                         unsigned rx, int scale, target_sreg disp,
-                        unsigned sp, int modify, TCGMemOp mop)
+                        unsigned sp, int modify, MemOp mop)
 {
     TCGv_reg ofs;
     TCGv_tl addr;
@@ -1580,7 +1580,7 @@ static void do_store_64(DisasContext *ctx, TCGv_i64 src, unsigned rb,
 
 static bool do_load(DisasContext *ctx, unsigned rt, unsigned rb,
                     unsigned rx, int scale, target_sreg disp,
-                    unsigned sp, int modify, TCGMemOp mop)
+                    unsigned sp, int modify, MemOp mop)
 {
     TCGv_reg dest;
 
@@ -1653,7 +1653,7 @@ static bool trans_fldd(DisasContext *ctx, arg_ldst *a)
 
 static bool do_store(DisasContext *ctx, unsigned rt, unsigned rb,
                      target_sreg disp, unsigned sp,
-                     int modify, TCGMemOp mop)
+                     int modify, MemOp mop)
 {
     nullify_over(ctx);
     do_store_reg(ctx, load_gpr(ctx, rt), rb, 0, 0, disp, sp, modify, mop);
@@ -2214,10 +2214,11 @@ static bool trans_mtsp(DisasContext *ctx, arg_mtsp *a)
 static bool trans_mtctl(DisasContext *ctx, arg_mtctl *a)
 {
     unsigned ctl = a->t;
-    TCGv_reg reg = load_gpr(ctx, a->r);
+    TCGv_reg reg;
     TCGv_reg tmp;
 
     if (ctl == CR_SAR) {
+        reg = load_gpr(ctx, a->r);
         tmp = tcg_temp_new();
         tcg_gen_andi_reg(tmp, reg, TARGET_REGISTER_BITS - 1);
         save_or_nullify(ctx, cpu_sar, tmp);
@@ -2232,6 +2233,8 @@ static bool trans_mtctl(DisasContext *ctx, arg_mtctl *a)
 
 #ifndef CONFIG_USER_ONLY
     nullify_over(ctx);
+    reg = load_gpr(ctx, a->r);
+
     switch (ctl) {
     case CR_IT:
         gen_helper_write_interval_timer(cpu_env, reg);
@@ -2939,7 +2942,7 @@ static bool trans_st(DisasContext *ctx, arg_ldst *a)
 
 static bool trans_ldc(DisasContext *ctx, arg_ldst *a)
 {
-    TCGMemOp mop = MO_TEUL | MO_ALIGN_16 | a->size;
+    MemOp mop = MO_TEUL | MO_ALIGN_16 | a->size;
     TCGv_reg zero, dest, ofs;
     TCGv_tl addr;
 
@@ -3401,10 +3404,6 @@ static bool do_depw_sar(DisasContext *ctx, unsigned rt, unsigned c,
     TCGv_reg mask, tmp, shift, dest;
     unsigned msb = 1U << (len - 1);
 
-    if (c) {
-        nullify_over(ctx);
-    }
-
     dest = dest_gpr(ctx, rt);
     shift = tcg_temp_new();
     tmp = tcg_temp_new();
@@ -3437,11 +3436,17 @@ static bool do_depw_sar(DisasContext *ctx, unsigned rt, unsigned c,
 
 static bool trans_depw_sar(DisasContext *ctx, arg_depw_sar *a)
 {
+    if (a->c) {
+        nullify_over(ctx);
+    }
     return do_depw_sar(ctx, a->t, a->c, a->nz, a->clen, load_gpr(ctx, a->r));
 }
 
 static bool trans_depwi_sar(DisasContext *ctx, arg_depwi_sar *a)
 {
+    if (a->c) {
+        nullify_over(ctx);
+    }
     return do_depw_sar(ctx, a->t, a->c, a->nz, a->clen, load_const(ctx, a->i));
 }
 

@@ -57,13 +57,13 @@
 #define FPF_LONG        3
 #define FPF_EXT         4
 
-static inline bool valid_vec_element(uint8_t enr, TCGMemOp es)
+static inline bool valid_vec_element(uint8_t enr, MemOp es)
 {
     return !(enr & ~(NUM_VEC_ELEMENTS(es) - 1));
 }
 
 static void read_vec_element_i64(TCGv_i64 dst, uint8_t reg, uint8_t enr,
-                                 TCGMemOp memop)
+                                 MemOp memop)
 {
     const int offs = vec_reg_offset(reg, enr, memop & MO_SIZE);
 
@@ -96,7 +96,7 @@ static void read_vec_element_i64(TCGv_i64 dst, uint8_t reg, uint8_t enr,
 }
 
 static void read_vec_element_i32(TCGv_i32 dst, uint8_t reg, uint8_t enr,
-                                 TCGMemOp memop)
+                                 MemOp memop)
 {
     const int offs = vec_reg_offset(reg, enr, memop & MO_SIZE);
 
@@ -123,7 +123,7 @@ static void read_vec_element_i32(TCGv_i32 dst, uint8_t reg, uint8_t enr,
 }
 
 static void write_vec_element_i64(TCGv_i64 src, int reg, uint8_t enr,
-                                  TCGMemOp memop)
+                                  MemOp memop)
 {
     const int offs = vec_reg_offset(reg, enr, memop & MO_SIZE);
 
@@ -146,7 +146,7 @@ static void write_vec_element_i64(TCGv_i64 src, int reg, uint8_t enr,
 }
 
 static void write_vec_element_i32(TCGv_i32 src, int reg, uint8_t enr,
-                                  TCGMemOp memop)
+                                  MemOp memop)
 {
     const int offs = vec_reg_offset(reg, enr, memop & MO_SIZE);
 
@@ -213,7 +213,7 @@ static void get_vec_element_ptr_i64(TCGv_ptr ptr, uint8_t reg, TCGv_i64 enr,
                        vec_full_reg_offset(v3), ptr, 16, 16, data, fn)
 #define gen_gvec_3i(v1, v2, v3, c, gen) \
     tcg_gen_gvec_3i(vec_full_reg_offset(v1), vec_full_reg_offset(v2), \
-                    vec_full_reg_offset(v3), c, 16, 16, gen)
+                    vec_full_reg_offset(v3), 16, 16, c, gen)
 #define gen_gvec_4(v1, v2, v3, v4, gen) \
     tcg_gen_gvec_4(vec_full_reg_offset(v1), vec_full_reg_offset(v2), \
                    vec_full_reg_offset(v3), vec_full_reg_offset(v4), \

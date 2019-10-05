@@ -27,6 +27,7 @@ wrote 2097152/2097152 bytes at offset 2097152
 {"return": {}}
 {"return": {}}
 {"return": {}}
+{"return": {}}
 {"error": {"class": "GenericError", "desc": "NBD server not running"}}
 {"return": {}}
 {"error": {"class": "GenericError", "desc": "NBD server already running"}}
@@ -40,7 +41,7 @@ exports available: 0
 exports available: 2
  export: 'n'
   size:  4194304
-  flags: 0x4ef ( readonly flush fua trim zeroes df cache )
+  flags: 0x58f ( readonly flush fua df multi cache )
   min block: 1
   opt block: 4096
   max block: 33554432
@@ -49,7 +50,7 @@ exports available: 2
    qemu:dirty-bitmap:b
  export: 'n2'
   size:  4194304
-  flags: 0x4ed ( flush fua trim zeroes df cache )
+  flags: 0xced ( flush fua trim zeroes df cache fast-zero )
   min block: 1
   opt block: 4096
   max block: 33554432

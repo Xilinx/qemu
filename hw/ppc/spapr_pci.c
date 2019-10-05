@@ -280,7 +280,7 @@ static void rtas_ibm_change_msi(PowerPCCPU *cpu, SpaprMachineState *spapr,
     unsigned int irq, max_irqs = 0;
     SpaprPhbState *phb = NULL;
     PCIDevice *pdev = NULL;
-    spapr_pci_msi *msi;
+    SpaprPciMsi *msi;
     int *config_addr_key;
     Error *err = NULL;
     int i;
@@ -338,7 +338,7 @@ static void rtas_ibm_change_msi(PowerPCCPU *cpu, SpaprMachineState *spapr,
         return;
     }
 
-    msi = (spapr_pci_msi *) g_hash_table_lookup(phb->msi, &config_addr);
+    msi = (SpaprPciMsi *) g_hash_table_lookup(phb->msi, &config_addr);
 
     /* Releasing MSIs */
     if (!req_num) {
@@ -425,7 +425,7 @@ static void rtas_ibm_change_msi(PowerPCCPU *cpu, SpaprMachineState *spapr,
                      irq, req_num);
 
     /* Add MSI device to cache */
-    msi = g_new(spapr_pci_msi, 1);
+    msi = g_new(SpaprPciMsi, 1);
     msi->first_irq = irq;
     msi->num = req_num;
     config_addr_key = g_new(int, 1);
@@ -456,7 +456,7 @@ static void rtas_ibm_query_interrupt_source_number(PowerPCCPU *cpu,
     unsigned int intr_src_num = -1, ioa_intr_num = rtas_ld(args, 3);
     SpaprPhbState *phb = NULL;
     PCIDevice *pdev = NULL;
-    spapr_pci_msi *msi;
+    SpaprPciMsi *msi;
 
     /* Find SpaprPhbState */
     phb = spapr_pci_find_phb(spapr, buid);
@@ -469,7 +469,7 @@ static void rtas_ibm_query_interrupt_source_number(PowerPCCPU *cpu,
     }
 
     /* Find device descriptor and start IRQ */
-    msi = (spapr_pci_msi *) g_hash_table_lookup(phb->msi, &config_addr);
+    msi = (SpaprPciMsi *) g_hash_table_lookup(phb->msi, &config_addr);
     if (!msi || !msi->first_irq || !msi->num || (ioa_intr_num >= msi->num)) {
         trace_spapr_pci_msi("Failed to return vector", config_addr);
         rtas_st(rets, 0, RTAS_OUT_HW_ERROR);
@@ -1710,11 +1710,13 @@ static void spapr_pci_unplug_request(HotplugHandler *plug_handler,
                 state = func_drck->dr_entity_sense(func_drc);
                 if (state == SPAPR_DR_ENTITY_SENSE_PRESENT
                     && !spapr_drc_unplug_requested(func_drc)) {
-                    error_setg(errp,
-                               "PCI: slot %d, function %d still present. "
-                               "Must unplug all non-0 functions first.",
-                               slotnr, i);
-                    return;
+                    /*
+                     * Attempting to remove function 0 of a multifunction
+                     * device will will cascade into removing all child
+                     * functions, even if their unplug weren't requested
+                     * beforehand.
+                     */
+                    spapr_drc_detach(func_drc);
                 }
             }
         }
@@ -1814,7 +1816,7 @@ static void spapr_phb_destroy_msi(gpointer opaque)
 {
     SpaprMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
     SpaprMachineClass *smc = SPAPR_MACHINE_GET_CLASS(spapr);
-    spapr_pci_msi *msi = opaque;
+    SpaprPciMsi *msi = opaque;
 
     if (!smc->legacy_irq_allocation) {
         spapr_irq_msi_free(spapr, msi->first_irq, msi->num);
@@ -1835,6 +1837,7 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
     SysBusDevice *s = SYS_BUS_DEVICE(dev);
     SpaprPhbState *sphb = SPAPR_PCI_HOST_BRIDGE(s);
     PCIHostState *phb = PCI_HOST_BRIDGE(s);
+    MachineState *ms = MACHINE(spapr);
     char *namebuf;
     int i;
     PCIBus *bus;
@@ -1887,7 +1890,8 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
     }
 
     if (sphb->numa_node != -1 &&
-        (sphb->numa_node >= MAX_NODES || !numa_info[sphb->numa_node].present)) {
+        (sphb->numa_node >= MAX_NODES ||
+         !ms->numa_state->nodes[sphb->numa_node].present)) {
         error_setg(errp, "Invalid NUMA node ID for PCI host bridge");
         return;
     }
@@ -2128,7 +2132,7 @@ static const VMStateDescription vmstate_spapr_pci_lsi = {
     .version_id = 1,
     .minimum_version_id = 1,
     .fields = (VMStateField[]) {
-        VMSTATE_UINT32_EQUAL(irq, struct spapr_pci_lsi, NULL),
+        VMSTATE_UINT32_EQUAL(irq, SpaprPciLsi, NULL),
 
         VMSTATE_END_OF_LIST()
     },
@@ -2139,9 +2143,9 @@ static const VMStateDescription vmstate_spapr_pci_msi = {
     .version_id = 1,
     .minimum_version_id = 1,
     .fields = (VMStateField []) {
-        VMSTATE_UINT32(key, spapr_pci_msi_mig),
-        VMSTATE_UINT32(value.first_irq, spapr_pci_msi_mig),
-        VMSTATE_UINT32(value.num, spapr_pci_msi_mig),
+        VMSTATE_UINT32(key, SpaprPciMsiMig),
+        VMSTATE_UINT32(value.first_irq, SpaprPciMsiMig),
+        VMSTATE_UINT32(value.num, SpaprPciMsiMig),
         VMSTATE_END_OF_LIST()
     },
 };
@@ -2173,12 +2177,12 @@ static int spapr_pci_pre_save(void *opaque)
     if (!sphb->msi_devs_num) {
         return 0;
     }
-    sphb->msi_devs = g_new(spapr_pci_msi_mig, sphb->msi_devs_num);
+    sphb->msi_devs = g_new(SpaprPciMsiMig, sphb->msi_devs_num);
 
     g_hash_table_iter_init(&iter, sphb->msi);
     for (i = 0; g_hash_table_iter_next(&iter, &key, &value); ++i) {
         sphb->msi_devs[i].key = *(uint32_t *) key;
-        sphb->msi_devs[i].value = *(spapr_pci_msi *) value;
+        sphb->msi_devs[i].value = *(SpaprPciMsi *) value;
     }
 
     return 0;
@@ -2225,10 +2229,10 @@ static const VMStateDescription vmstate_spapr_pci = {
         VMSTATE_UINT64_TEST(mig_io_win_addr, SpaprPhbState, pre_2_8_migration),
         VMSTATE_UINT64_TEST(mig_io_win_size, SpaprPhbState, pre_2_8_migration),
         VMSTATE_STRUCT_ARRAY(lsi_table, SpaprPhbState, PCI_NUM_PINS, 0,
-                             vmstate_spapr_pci_lsi, struct spapr_pci_lsi),
+                             vmstate_spapr_pci_lsi, SpaprPciLsi),
         VMSTATE_INT32(msi_devs_num, SpaprPhbState),
         VMSTATE_STRUCT_VARRAY_ALLOC(msi_devs, SpaprPhbState, msi_devs_num, 0,
-                                    vmstate_spapr_pci_msi, spapr_pci_msi_mig),
+                                    vmstate_spapr_pci_msi, SpaprPciMsiMig),
         VMSTATE_END_OF_LIST()
     },
 };

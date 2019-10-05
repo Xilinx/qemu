@@ -1659,7 +1659,14 @@ bool migration_in_postcopy(void)
 {
     MigrationState *s = migrate_get_current();
 
-    return (s->state == MIGRATION_STATUS_POSTCOPY_ACTIVE);
+    switch (s->state) {
+    case MIGRATION_STATUS_POSTCOPY_ACTIVE:
+    case MIGRATION_STATUS_POSTCOPY_PAUSED:
+    case MIGRATION_STATUS_POSTCOPY_RECOVER:
+        return true;
+    default:
+        return false;
+    }
 }
 
 bool migration_in_postcopy_after_devices(MigrationState *s)
@@ -2138,6 +2145,15 @@ bool migrate_ignore_shared(void)
     s = migrate_get_current();
 
     return s->enabled_capabilities[MIGRATION_CAPABILITY_X_IGNORE_SHARED];
+}
+
+bool migrate_validate_uuid(void)
+{
+    MigrationState *s;
+
+    s = migrate_get_current();
+
+    return s->enabled_capabilities[MIGRATION_CAPABILITY_VALIDATE_UUID];
 }
 
 bool migrate_use_events(void)
@@ -3016,7 +3032,7 @@ static MigThrError migration_detect_error(MigrationState *s)
     }
 }
 
-/* How many bytes have we transferred since the beggining of the migration */
+/* How many bytes have we transferred since the beginning of the migration */
 static uint64_t migration_total_bytes(MigrationState *s)
 {
     return qemu_ftell(s->to_dst_file) + ram_counters.multifd_bytes;
@@ -3327,7 +3343,8 @@ void migrate_fd_connect(MigrationState *s, Error *error_in)
 
     if (resume) {
         /* This is a resumed migration */
-        rate_limit = INT64_MAX;
+        rate_limit = s->parameters.max_postcopy_bandwidth /
+            XFER_LIMIT_RATIO;
     } else {
         /* This is a fresh new migration */
         rate_limit = s->parameters.max_bandwidth / XFER_LIMIT_RATIO;

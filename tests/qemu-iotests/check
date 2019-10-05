@@ -581,13 +581,13 @@ export QEMU_PROG="$(type -p "$QEMU_PROG")"
 
 case "$QEMU_PROG" in
     *qemu-system-arm|*qemu-system-aarch64)
-        export QEMU_OPTIONS="-nodefaults -machine virt,accel=qtest"
+        export QEMU_OPTIONS="-nodefaults -display none -machine virt,accel=qtest"
         ;;
     *qemu-system-tricore)
-        export QEMU_OPTIONS="-nodefaults -machine tricore_testboard,accel=qtest"
+        export QEMU_OPTIONS="-nodefaults -display none -machine tricore_testboard,accel=qtest"
         ;;
     *)
-        export QEMU_OPTIONS="-nodefaults -machine accel=qtest"
+        export QEMU_OPTIONS="-nodefaults -display none -machine accel=qtest"
         ;;
 esac
 
@@ -694,12 +694,12 @@ END        { if (NR > 0) {
         if [ ! -z "$n_bad" -a $n_bad != 0 ]
         then
             echo "Failures:$bad"
-            echo "Failed $n_bad of $try tests"
+            echo "Failed $n_bad of $try iotests"
             echo "Failures:$bad" | fmt >>check.log
-            echo "Failed $n_bad of $try tests" >>check.log
+            echo "Failed $n_bad of $try iotests" >>check.log
         else
-            echo "Passed all $try tests"
-            echo "Passed all $try tests" >>check.log
+            echo "Passed all $try iotests"
+            echo "Passed all $try iotests" >>check.log
         fi
         needwrap=false
     fi
