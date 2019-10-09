@@ -137,6 +137,37 @@ static void zynqmp_apu_pwrctl_post_write(DepRegisterInfo *reg, uint64_t val)
     ZynqMPAPU *s = ZYNQMP_APU(reg->opaque);
     unsigned int i, new;
 
+    /*
+     * !!HACK ALERT!!
+     *
+     * When ZynqMP ATF writes this register to power down itself,
+     * the action implies the APU is not in WFI.
+     *
+     * However, it is still unknown why this APU's WFI-out is
+     * sometimes still active at the time of this register written,
+     * and that greatly confuses ZynqMP PMU firmware.
+     *
+     * The following is just a temporary hack to detect and correct
+     * the wrong WFI-out state, until the root-cause is found and fixed.
+     */
+    CPUState *cs = current_cpu;
+    if (cs) {
+        uint64_t cpu_mask = 1 << cs->cpu_index;
+        uint64_t self_suspend = cpu_mask & val;
+
+        if ((self_suspend & s->cpu_in_wfi) != 0) {
+            ARMCPU *apu = ARM_CPU(cs);
+            bool is_atf = arm_current_el(&apu->env) > 1;
+
+            if (is_atf) {
+                apu->is_in_wfi = false;
+                qemu_set_irq(apu->wfi, 0);
+                assert((self_suspend & s->cpu_in_wfi) == 0);
+            }
+        }
+    }
+    /* End of Hack */
+
     for (i = 0; i < NUM_CPUS; i++) {
         new = val & (1 << i);
         /* Check if CPU's CPUPWRDNREQ has changed. If yes, update GPIOs. */
