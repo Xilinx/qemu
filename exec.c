@@ -29,6 +29,7 @@
 #include "hw/qdev-core.h"
 #include "hw/qdev-properties.h"
 #if !defined(CONFIG_USER_ONLY)
+#include "hw/core/cpu-exec-gpio.h"
 #include "hw/boards.h"
 #include "hw/xen/xen.h"
 #endif
@@ -839,6 +840,18 @@ Property cpu_common_props[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
+void cpu_exec_reset(CPUState *cpu)
+{
+#ifndef CONFIG_USER_ONLY
+    /* Desired state before lost to pin-driven action */
+    bool old_halt = cpu->halt_pin;
+    bool old_reset = cpu->reset_pin;
+
+    cpu_halt_gpio(cpu, 0, old_halt);
+    cpu_reset_gpio(cpu, 0, old_reset);
+#endif
+}
+
 void cpu_exec_initfn(CPUState *cpu)
 {
     cpu->as = NULL;
@@ -848,6 +861,10 @@ void cpu_exec_initfn(CPUState *cpu)
     cpu->thread_id = qemu_get_thread_id();
     cpu->memory = system_memory;
     object_ref(OBJECT(cpu->memory));
+
+    /* Xilinx: The GPIO lines we use */
+    qdev_init_gpio_in_named(DEVICE(cpu), cpu_reset_gpio, "reset", 1);
+    qdev_init_gpio_in_named(DEVICE(cpu), cpu_halt_gpio, "halt", 1);
 #endif
 }
 
@@ -3822,64 +3839,6 @@ err:
 }
 
 #endif
-
-void cpu_halt_update(CPUState *cpu)
-{
-    bool val;
-    bool need_lock = !qemu_mutex_iothread_locked();
-
-    val = cpu->reset_pin || cpu->halt_pin || cpu->arch_halt_pin;
-
-    if (need_lock) {
-        qemu_mutex_lock_iothread();
-    }
-
-    if (val) {
-        cpu_interrupt(cpu, CPU_INTERRUPT_HALT);
-    } else {
-        cpu_reset_interrupt(cpu, CPU_INTERRUPT_HALT);
-        cpu_interrupt(cpu, CPU_INTERRUPT_EXITTB);
-    }
-
-    cpu->exception_index = -1;
-
-    if (need_lock) {
-        qemu_mutex_unlock_iothread();
-    }
-}
-
-void cpu_reset_gpio(void *opaque, int irq, int level)
-{
-    CPUState *cpu = CPU(opaque);
-    int old_reset_pin = cpu->reset_pin;
-
-    if (level == cpu->reset_pin) {
-        return;
-    }
-
-    /* On hardware when the reset pin is asserted the CPU resets and stays
-     * in reset until the pin is lowered. As we don't have a reset state, we
-     * do it a little differently. If the reset_pin is being set high then
-     * cpu_halt_update() will halt the CPU, but it isn't reset. Once the pin
-     * is lowered we reset the CPU and then let it run, as long as no halt pin
-     * is set. This avoids us having to double reset, which can cause issues
-     * with MTTCG.
-     */
-    cpu->reset_pin = level;
-    if (old_reset_pin && !cpu->reset_pin) {
-        cpu_reset(cpu);
-    }
-
-    cpu_halt_update(cpu);
-}
-
-void cpu_halt_gpio(void *opaque, int irq, int level)
-{
-    CPUState *cpu = CPU(opaque);
-
-    cpu->halt_pin = level;
-    cpu_halt_update(cpu);
-}
 
 void page_size_init(void)
 {

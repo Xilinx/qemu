@@ -35,6 +35,7 @@
 #include "kvm_arm.h"
 #include "disas/capstone.h"
 
+#include "hw/core/cpu-exec-gpio.h"
 #include "hw/fdt_generic_util.h"
 
 #if !defined(CONFIG_USER_ONLY)
@@ -2064,7 +2065,6 @@ static void arm_cpu_class_init(ObjectClass *oc, void *data)
     dc->realize = arm_cpu_realizefn;
     dc->props = arm_cpu_properties;
     dc->pwr_cntrl = arm_cpu_pwr_cntrl;
-    dc->rst_cntrl = cpu_reset_gpio;
 
     acc->parent_reset = cc->reset;
     cc->reset = arm_cpu_reset;
@@ -2082,6 +2082,7 @@ static void arm_cpu_class_init(ObjectClass *oc, void *data)
 #ifdef CONFIG_USER_ONLY
     cc->handle_mmu_fault = arm_cpu_handle_mmu_fault;
 #else
+    dc->rst_cntrl = cpu_reset_gpio;
     cc->do_interrupt = arm_cpu_do_interrupt;
     cc->do_unaligned_access = arm_cpu_do_unaligned_access;
     cc->do_transaction_failed = arm_cpu_do_transaction_failed;

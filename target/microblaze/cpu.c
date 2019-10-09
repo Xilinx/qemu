@@ -28,6 +28,7 @@
 #include "hw/qdev-properties.h"
 #include "migration/vmstate.h"
 #include "exec/exec-all.h"
+#include "hw/core/cpu-exec-gpio.h"
 
 #ifndef CONFIG_USER_ONLY
 #include "hw/fdt_generic_util.h"
@@ -364,10 +365,10 @@ static void mb_cpu_class_init(ObjectClass *oc, void *data)
 
 #ifndef CONFIG_USER_ONLY
     fggc->controller_gpios = mb_ctrl_gpios;
+    dc->rst_cntrl = cpu_reset_gpio;
 #endif
     cc->disas_set_info = mb_disas_set_info;
     cc->tcg_initialize = mb_tcg_init;
-    dc->rst_cntrl = cpu_reset_gpio;
 }
 
 static const TypeInfo mb_cpu_type_info = {

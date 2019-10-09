@@ -492,8 +492,12 @@ void HELPER(wfi)(CPUARMState *env, uint32_t insn_len)
         cs->exception_index = EXCP_HLT;
     }
 
-    cpu->is_in_wfi = true;
-    qemu_set_irq(cpu->wfi, 1);
+    /* Drive STANDBYWFI only if cpu reset-pin is inactive */
+    if (cs->reset_pin == false) {
+        cpu->is_in_wfi = true;
+        qemu_set_irq(cpu->wfi, 1);
+    }
+
     qemu_mutex_unlock_iothread();
 
     cpu_loop_exit(cs);
