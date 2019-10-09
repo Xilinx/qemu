@@ -164,11 +164,16 @@ static void pm_ipi_send(ZynqMPBoot *s,
     boot_store32(s, IPI_BASEADDR + IPI_TRIG_OFFSET, IPI_PMU_PM_INT_MASK);
 }
 
+static void release_cpu_set_pc(CPUState *cpu, run_on_cpu_data arg)
+{
+    cpu_set_pc(cpu, arg.target_ptr);
+}
+
 static void release_cpu(ZynqMPBoot *s)
 {
     CPUState *cpu = qemu_get_cpu(s->cfg.cpu_num);
     CPUClass *cc = CPU_GET_CLASS(cpu);
-    uint64_t pc = 0;
+    vaddr pc = 0;
     uint32_t r;
 
     DB_PRINT("Starting CPU#%d release\n", s->cfg.cpu_num)
@@ -189,7 +194,7 @@ static void release_cpu(ZynqMPBoot *s)
     }
     if (cc->set_pc) {
         DB_PRINT("Setting CPU#%d PC to 0x%" PRIx64 "\n", s->cfg.cpu_num, pc)
-        cc->set_pc(cpu, pc);
+        run_on_cpu(cpu, release_cpu_set_pc, RUN_ON_CPU_TARGET_PTR(pc));
     }
 }
 
