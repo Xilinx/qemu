@@ -452,7 +452,7 @@ static inline bool cpu_handle_halt(CPUState *cpu)
                              dev_name, "sleep", 0, 1);
         }
 
-        if (!cpu_has_work(cpu)) {
+        if (!cpu_has_work(cpu) || cpu->reset_pin) {
             return true;
         }
 
