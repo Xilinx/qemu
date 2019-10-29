@@ -41,6 +41,7 @@
 #include "disas/capstone.h"
 #include "fpu/softfloat.h"
 
+#include "hw/core/cpu-exec-gpio.h"
 #include "hw/fdt_generic_util.h"
 
 #if !defined(CONFIG_USER_ONLY)
@@ -2931,7 +2932,6 @@ static void arm_cpu_class_init(ObjectClass *oc, void *data)
                                     &acc->parent_realize);
     dc->props = arm_cpu_properties;
     dc->pwr_cntrl = arm_cpu_pwr_cntrl;
-    dc->rst_cntrl = cpu_reset_gpio;
 
     acc->parent_reset = cc->reset;
     cc->reset = arm_cpu_reset;
@@ -2948,6 +2948,7 @@ static void arm_cpu_class_init(ObjectClass *oc, void *data)
     cc->gdb_read_register = arm_cpu_gdb_read_register;
     cc->gdb_write_register = arm_cpu_gdb_write_register;
 #ifndef CONFIG_USER_ONLY
+    dc->rst_cntrl = cpu_reset_gpio;
     cc->do_interrupt = arm_cpu_do_interrupt;
     cc->get_phys_page_attrs_debug = arm_cpu_get_phys_page_attrs_debug;
     cc->asidx_from_attrs = arm_asidx_from_attrs;

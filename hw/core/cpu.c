@@ -31,6 +31,7 @@
 #include "sysemu/tcg.h"
 #include "hw/boards.h"
 #include "hw/qdev-properties.h"
+#include "hw/core/cpu-exec-gpio.h"
 #include "trace-root.h"
 
 CPUInterruptHandler cpu_interrupt_handler;
@@ -256,8 +257,6 @@ void cpu_reset(CPUState *cpu)
 static void cpu_common_reset(CPUState *cpu)
 {
     CPUClass *cc = CPU_GET_CLASS(cpu);
-    bool old_halt = cpu->halt_pin;
-    bool old_reset = cpu->reset_pin;
 
     if (qemu_loglevel_mask(CPU_LOG_RESET)) {
         qemu_log("CPU Reset (CPU %d)\n", cpu->cpu_index);
@@ -274,8 +273,8 @@ static void cpu_common_reset(CPUState *cpu)
     cpu->crash_occurred = false;
     cpu->cflags_next_tb = -1;
     memset(cpu->tb_jmp_cache, 0, TB_JMP_CACHE_SIZE * sizeof(void *));
-    cpu_halt_gpio(cpu, 0, old_halt);
-    cpu_reset_gpio(cpu, 0, old_reset);
+
+    cpu_exec_reset(cpu);
 
     if (tcg_enabled()) {
         cpu_tb_jmp_cache_clear(cpu);
@@ -385,10 +384,6 @@ static void cpu_common_initfn(Object *obj)
     qemu_mutex_init(&cpu->work_mutex);
     QTAILQ_INIT(&cpu->breakpoints);
     QTAILQ_INIT(&cpu->watchpoints);
-
-    /* Xilinx: The GPIO lines we use */
-    qdev_init_gpio_in_named(DEVICE(obj), cpu_reset_gpio, "reset", 1);
-    qdev_init_gpio_in_named(DEVICE(obj), cpu_halt_gpio, "halt", 1);
 
     cpu_exec_initfn(cpu);
 }

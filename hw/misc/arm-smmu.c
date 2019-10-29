@@ -1354,6 +1354,11 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
         break;
     }
 
+    outputsize = outsize_map[ps];
+    if (outputsize > s->cfg.pamax) {
+        outputsize = s->cfg.pamax;
+    }
+
     stride = grainsize - 3;
     if (req->stage == 1) {
         if (grainsize < 16 && (inputsize > (grainsize + 3 * stride))) {
@@ -1377,15 +1382,10 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
             level = 2 - startlevel;
         }
 
-        ok = check_s2_startlevel(true, 40, level, inputsize, stride);
+        ok = check_s2_startlevel(true, outputsize, level, inputsize, stride);
         if (!ok) {
             goto do_fault;
         }
-    }
-
-    outputsize = outsize_map[ps];
-    if (outputsize > s->cfg.pamax) {
-        outputsize = s->cfg.pamax;
     }
 
     baselowerbound = 3 + inputsize - ((3 - level) * stride + grainsize);

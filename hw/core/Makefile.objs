@@ -31,6 +31,7 @@ common-obj-$(CONFIG_SI57X) += fdt_generic_devices_si57x.o
 common-obj-$(CONFIG_USB_EHCI_SYSBUS) += fdt_generic_devices_usb_ehci_sysbus.o
 common-obj-$(CONFIG_SOFTMMU) += register-dep.o
 
+obj-y += cpu-exec-gpio.o
 obj-y += remote-port-qdev.o
 obj-$(CONFIG_REMOTE_PORT) += remote-port-proto.o
 obj-$(CONFIG_REMOTE_PORT) += remote-port.o

@@ -1262,6 +1262,9 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
                 DB_PRINT_NP(1, "cant get node from phandle\n");
                 break;
             }
+            while (!fdt_init_has_opaque(fdti, adaptor_node_path)) {
+                fdt_init_yield(fdti);
+            }
             adaptor = DEVICE(fdt_init_get_opaque(fdti, adaptor_node_path));
             name = g_strdup_printf("rp-adaptor%" PRId32, i);
             object_property_set_link(OBJECT(dev), OBJECT(adaptor), name, &errp);
