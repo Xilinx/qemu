@@ -95,7 +95,7 @@ int64_t rp_normalized_vmclk(RemotePort *s)
     return clk;
 }
 
-void rp_restart_sync_timer(RemotePort *s)
+static void rp_restart_sync_timer_bare(RemotePort *s)
 {
     if (!s->do_sync) {
         return;
@@ -106,6 +106,13 @@ void rp_restart_sync_timer(RemotePort *s)
         ptimer_set_limit(s->sync.ptimer, s->sync.quantum, 1);
         ptimer_run(s->sync.ptimer, 1);
     }
+}
+
+void rp_restart_sync_timer(RemotePort *s)
+{
+    ptimer_transaction_begin(s->sync.ptimer);
+    rp_restart_sync_timer_bare(s);
+    ptimer_transaction_commit(s->sync.ptimer);
 }
 
 static void rp_fatal_error(RemotePort *s, const char *reason)
@@ -261,9 +268,12 @@ static void rp_cmd_sync(RemotePort *s, struct rp_pkt *pkt)
 
     SYNCD(printf("%s: delayed sync resp - start diff=%ld (ts=%lu clk=%lu)\n",
           s->prefix, pkt->sync.timestamp - clk, pkt->sync.timestamp, clk));
+
+    ptimer_transaction_begin(s->sync.ptimer_resp);
     ptimer_set_limit(s->sync.ptimer_resp, diff, 1);
     ptimer_run(s->sync.ptimer_resp, 1);
     s->sync.resp_timer_enabled = true;
+    ptimer_transaction_commit(s->sync.ptimer_resp);
 }
 
 static void rp_say_hello(RemotePort *s)
@@ -319,7 +329,7 @@ static void sync_timer_hit(void *opaque)
         SYNCD(printf("%s: sync while delaying a resp! clk=%lu\n",
                      s->prefix, clk));
         s->sync.need_sync = true;
-        rp_restart_sync_timer(s);
+        rp_restart_sync_timer_bare(s);
         rp_leave_iothread(s);
         return;
     }
@@ -337,7 +347,7 @@ static void sync_timer_hit(void *opaque)
     qemu_mutex_unlock(&s->rsp_mutex);
 
     rp_sync_vmclock(s, clk, rclk);
-    rp_restart_sync_timer(s);
+    rp_restart_sync_timer_bare(s);
 }
 
 static char *rp_sanitize_prefix(RemotePort *s)
@@ -773,18 +783,23 @@ static void rp_realize(DeviceState *dev, Error **errp)
        change.  */
     s->sync.quantum = s->peer.local_cfg.quantum;
 
-    s->sync.bh = qemu_bh_new(sync_timer_hit, s);
-    s->sync.bh_resp = qemu_bh_new(syncresp_timer_hit, s);
-    s->sync.ptimer = ptimer_init(s->sync.bh, PTIMER_POLICY_DEFAULT);
-    s->sync.ptimer_resp = ptimer_init(s->sync.bh_resp, PTIMER_POLICY_DEFAULT);
+    s->sync.ptimer = ptimer_init(sync_timer_hit, s, PTIMER_POLICY_DEFAULT);
+    s->sync.ptimer_resp = ptimer_init(syncresp_timer_hit, s,
+                                      PTIMER_POLICY_DEFAULT);
 
     /* The Sync-quantum is expressed in nano-seconds.  */
+    ptimer_transaction_begin(s->sync.ptimer);
     ptimer_set_freq(s->sync.ptimer, 1000 * 1000 * 1000);
+    ptimer_transaction_commit(s->sync.ptimer);
+
+    ptimer_transaction_begin(s->sync.ptimer_resp);
     ptimer_set_freq(s->sync.ptimer_resp, 1000 * 1000 * 1000);
+    ptimer_transaction_commit(s->sync.ptimer_resp);
 
     qemu_sem_init(&s->rx_queue.sem, ARRAY_SIZE(s->rx_queue.pkt) - 1);
     qemu_thread_create(&s->thread, "remote-port", rp_protocol_thread, s,
                        QEMU_THREAD_JOINABLE);
+
     rp_restart_sync_timer(s);
 }
 

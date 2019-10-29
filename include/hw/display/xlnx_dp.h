@@ -105,7 +105,6 @@ typedef struct XlnxDPState {
     I2CDDCState *edid;
 
     ptimer_state *vblank;
-    QEMUBH *bh;
 } XlnxDPState;
 
 #define TYPE_XLNX_DP "xlnx.v-dp"

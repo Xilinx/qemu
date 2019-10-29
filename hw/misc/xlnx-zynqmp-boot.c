@@ -100,7 +100,6 @@ typedef struct ZynqMPBoot {
     MemoryRegion *dma_mr;
     AddressSpace *dma_as;
 
-    QEMUBH *bh;
     ptimer_state *ptimer;
 
     BootState state;
@@ -298,7 +297,9 @@ static void irq_handler(void *opaque, int irq, int level)
         /* Start the boot sequence.  */
         DB_PRINT("Starting the boot sequence\n");
         s->state = STATE_WAIT_PMUFW;
+        ptimer_transaction_begin(s->ptimer);
         boot_sequence(s);
+        ptimer_transaction_commit(s->ptimer);
     }
     s->n_reset = level;
 }
@@ -314,9 +315,10 @@ static void zynqmp_boot_realize(DeviceState *dev, Error **errp)
     s->dma_as = s->dma_mr ? address_space_init_shareable(s->dma_mr, NULL)
                           : &address_space_memory;
 
-    s->bh = qemu_bh_new(boot_sequence, s);
-    s->ptimer = ptimer_init(s->bh, PTIMER_POLICY_DEFAULT);
+    s->ptimer = ptimer_init(boot_sequence, s, PTIMER_POLICY_DEFAULT);
+    ptimer_transaction_begin(s->ptimer);
     ptimer_set_freq(s->ptimer, 1000000);
+    ptimer_transaction_commit(s->ptimer);
 }
 
 static void zynqmp_boot_init(Object *obj)

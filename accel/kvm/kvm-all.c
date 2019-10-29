@@ -52,7 +52,7 @@
 /* KVM uses PAGE_SIZE in its definition of KVM_COALESCED_MMIO_MAX. We
  * need to use the real host PAGE_SIZE, as that's what KVM will use.
  */
-#define PAGE_SIZE getpagesize()
+#define PAGE_SIZE qemu_real_host_page_size
 
 //#define DEBUG_KVM
 
@@ -507,7 +507,7 @@ static int kvm_get_dirty_pages_log_range(MemoryRegionSection *section,
 {
     ram_addr_t start = section->offset_within_region +
                        memory_region_get_ram_addr(section->mr);
-    ram_addr_t pages = int128_get64(section->size) / getpagesize();
+    ram_addr_t pages = int128_get64(section->size) / qemu_real_host_page_size;
 
     cpu_physical_memory_set_dirty_lebitmap(bitmap, start, pages);
     return 0;
@@ -712,11 +712,11 @@ static int kvm_physical_log_clear(KVMMemoryListener *kml,
     KVMState *s = kvm_state;
     uint64_t start, size, offset, count;
     KVMSlot *mem;
-    int ret, i;
+    int ret = 0, i;
 
     if (!s->manual_dirty_log_protect) {
         /* No need to do explicit clear */
-        return 0;
+        return ret;
     }
 
     start = section->offset_within_address_space;
@@ -724,7 +724,7 @@ static int kvm_physical_log_clear(KVMMemoryListener *kml,
 
     if (!size) {
         /* Nothing more we can do... */
-        return 0;
+        return ret;
     }
 
     kvm_slots_lock(kml);
@@ -1841,7 +1841,7 @@ static int kvm_init(MachineState *ms)
      * even with KVM.  TARGET_PAGE_SIZE is assumed to be the minimum
      * page size for the system though.
      */
-    assert(TARGET_PAGE_SIZE <= getpagesize());
+    assert(TARGET_PAGE_SIZE <= qemu_real_host_page_size);
 
     s->sigmask_len = 8;
 

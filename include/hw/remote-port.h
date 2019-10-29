@@ -47,8 +47,6 @@ struct RemotePort {
     struct rp_peer_state peer;
 
     struct {
-        QEMUBH *bh;
-        QEMUBH *bh_resp;
         ptimer_state *ptimer;
         ptimer_state *ptimer_resp;
         bool resp_timer_enabled;

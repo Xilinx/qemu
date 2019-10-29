@@ -51,8 +51,6 @@ typedef struct XLNXEFuse {
     void (*pgm_done)(DeviceState *dev, bool failed);
     DeviceState *dev;
 
-    QEMUBH *bh_ps;
-    QEMUBH *bh_pgm;
     ptimer_state *timer_ps;
     ptimer_state *timer_pgm;
 

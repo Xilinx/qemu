@@ -51,6 +51,8 @@
 
 #include "boot.h"
 
+#include <libfdt.h>
+
 #define VAL(name) qemu_fdt_getprop_cell(fdt_g, node_path, name, 0, false, NULL)
 
 #define IS_PETALINUX_MACHINE \
@@ -71,6 +73,10 @@ microblaze_generic_fdt_reset(MicroBlazeCPU *cpu)
     int t;
     int use_exc = 0;
 
+    if (fdt_path_offset(fdt_g, node_path) < 0) {
+        return;
+    }
+
     env->pvr.regs[0] = 0;
     env->pvr.regs[2] = PVR2_D_OPB_MASK \
                         | PVR2_D_LMB_MASK \
@@ -81,33 +87,6 @@ microblaze_generic_fdt_reset(MicroBlazeCPU *cpu)
     /* Even if we don't have PVR's, we fill out everything
        because QEMU will internally follow what the pvr regs
        state about the HW.  */
-
-    if (VAL("xlnx,use-barrel")) {
-        env->pvr.regs[0] |= PVR0_USE_BARREL_MASK;
-        env->pvr.regs[2] |= PVR2_USE_BARREL_MASK;
-    }
-
-    if (VAL("xlnx,use-div")) {
-        env->pvr.regs[0] |= PVR0_USE_DIV_MASK;
-        env->pvr.regs[2] |= PVR2_USE_DIV_MASK;
-    }
-
-    t = VAL("xlnx,use-hw-mul");
-    if (t) {
-        env->pvr.regs[0] |= PVR0_USE_HW_MUL_MASK;
-        env->pvr.regs[2] |= PVR2_USE_HW_MUL_MASK;
-        if (t >= 2) {
-            env->pvr.regs[2] |= PVR2_USE_MUL64_MASK;
-        }
-    }
-
-    if (VAL("xlnx,use-msr-instr")) {
-        env->pvr.regs[2] |= PVR2_USE_MSR_INSTR;
-    }
-
-    if (VAL("xlnx,use-pcmp-instr")) {
-        env->pvr.regs[2] |= PVR2_USE_PCMP_INSTR;
-    }
 
     if (VAL("xlnx,opcode-0x0-illegal")) {
         env->pvr.regs[2] |= PVR2_OPCODE_0x0_ILL_MASK;
@@ -123,16 +102,6 @@ microblaze_generic_fdt_reset(MicroBlazeCPU *cpu)
         use_exc = 1;
     }
 
-    if (VAL("xlnx,iopb-bus-exception")) {
-        env->pvr.regs[2] |= PVR2_IOPB_BUS_EXC_MASK;
-        use_exc = 1;
-    }
-
-    if (VAL("xlnx,dopb-bus-exception")) {
-        env->pvr.regs[2] |= PVR2_DOPB_BUS_EXC_MASK;
-        use_exc = 1;
-    }
-
     if (VAL("xlnx,div-zero-exception")) {
         env->pvr.regs[2] |= PVR2_DIV_ZERO_EXC_MASK;
         use_exc = 1;
@@ -141,13 +110,10 @@ microblaze_generic_fdt_reset(MicroBlazeCPU *cpu)
     env->pvr.regs[0] |= VAL("xlnx,pvr-user1") & 0xff;
     env->pvr.regs[1] = VAL("xlnx,pvr-user2");
 
-    /* MMU regs.  */
-    t = VAL("xlnx,use-mmu");
-    if (use_exc || t) {
+    if (use_exc) {
         env->pvr.regs[0] |= PVR0_USE_EXC_MASK ;
     }
 
-    env->pvr.regs[11] = t << 30;
     t = VAL("xlnx,mmu-zones");
     env->pvr.regs[11] |= t << 17;
     env->mmu.c_mmu_zones = t;

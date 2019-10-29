@@ -136,12 +136,14 @@ static void efuse_sync_bdrv(XLNXEFuse *s)
 void efuse_pgm_start(XLNXEFuse *s, int tpgm, uint64_t val)
 {
     s->efuse_idx = (uint32_t) val;
+    ptimer_transaction_begin(s->timer_pgm);
     ptimer_stop(s->timer_pgm);
     /* HW specs say 12us (+- 1us). Real value to be specified when
        real sillicon arrives. We emulate 13us per fuse, 26us with the
        redundancy bits.  */
     ptimer_set_limit(s->timer_pgm, tpgm * 2, 1);
     ptimer_run(s->timer_pgm, 1);
+    ptimer_transaction_commit(s->timer_pgm);
     s->programming = true;
 }
 
@@ -176,14 +178,18 @@ static void timer_pgm_hit(void *opaque)
 
 void efuse_stop_timer_ps(XLNXEFuse *s)
 {
+    ptimer_transaction_begin(s->timer_ps);
     ptimer_stop(s->timer_ps);
+    ptimer_transaction_commit(s->timer_ps);
 }
 
 void efuse_set_timer_ps(XLNXEFuse *s, int tsu_h_ps)
 {
+    ptimer_transaction_begin(s->timer_ps);
     ptimer_stop(s->timer_ps);
     ptimer_set_limit(s->timer_ps, tsu_h_ps * 1000, 1);
     ptimer_run(s->timer_ps, 1);
+    ptimer_transaction_commit(s->timer_ps);
 }
 
 void efuse_pgm_complete(XLNXEFuse *s)
@@ -235,14 +241,17 @@ static void efuse_realize(DeviceState *dev, Error **errp)
         }
     }
 
-    s->bh_ps = qemu_bh_new(timer_ps_hit, s);
-    s->bh_pgm = qemu_bh_new(timer_pgm_hit, s);
-    s->timer_ps = ptimer_init(s->bh_ps, PTIMER_POLICY_DEFAULT);
-    s->timer_pgm = ptimer_init(s->bh_pgm, PTIMER_POLICY_DEFAULT);
+    s->timer_ps = ptimer_init(timer_ps_hit, s, PTIMER_POLICY_DEFAULT);
+    s->timer_pgm = ptimer_init(timer_pgm_hit, s, PTIMER_POLICY_DEFAULT);
 
     /* Micro-seconds.  */
+    ptimer_transaction_begin(s->timer_ps);
     ptimer_set_freq(s->timer_ps, 1000 * 1000);
+    ptimer_transaction_commit(s->timer_ps);
+
+    ptimer_transaction_begin(s->timer_pgm);
     ptimer_set_freq(s->timer_pgm, 1000 * 1000);
+    ptimer_transaction_commit(s->timer_pgm);
 }
 
 static Property efuse_properties[] = {

@@ -148,7 +148,6 @@ typedef struct ZynqMPCSUDMA {
     StreamSlave *tx_dev;  /* Used as generic StreamSlave */
     StreamSlave *tx_dev0; /* Used for pmc dma0 */
     StreamSlave *tx_dev1; /* Used for pmc dma1 */
-    QEMUBH *bh;
     ptimer_state *src_timer;
 
     bool is_dst;
@@ -394,6 +393,7 @@ static void zynqmp_csu_dma_src_notify(void *opaque)
     ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(opaque);
     unsigned char buf[4 * 1024];
 
+    ptimer_transaction_begin(s->src_timer);
     /* Stop the backpreassure timer.  */
     ptimer_stop(s->src_timer);
 
@@ -429,6 +429,7 @@ static void zynqmp_csu_dma_src_notify(void *opaque)
         ptimer_run(s->src_timer, 1);
     }
 
+    ptimer_transaction_commit(s->src_timer);
     ronaldu_csu_dma_update_irq(s);
 }
 
@@ -629,8 +630,7 @@ static void zynqmp_csu_dma_realize(DeviceState *dev, Error **errp)
         s->tx_dev = s->tx_dev0 ? s->tx_dev0 :
                                  s->tx_dev1 ? s->tx_dev1 : 0;
     }
-    s->bh = qemu_bh_new(src_timeout_hit, s);
-    s->src_timer = ptimer_init(s->bh, PTIMER_POLICY_DEFAULT);
+    s->src_timer = ptimer_init(src_timeout_hit, s, PTIMER_POLICY_DEFAULT);
 
     if (s->dma_mr) {
         s->dma_as = g_malloc0(sizeof(AddressSpace));

@@ -72,7 +72,6 @@ typedef struct XilinxPIT {
     /* State var to remember hit_in level */
     bool ps_level;
 
-    QEMUBH *bh;
     ptimer_state *ptimer;
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
@@ -116,6 +115,7 @@ static void pit_control_pw(RegisterInfo *reg, uint64_t value)
         return;
     }
 
+    ptimer_transaction_begin(s->ptimer);
     ptimer_stop(s->ptimer);
     if (v32 & R_IOM_PIT_CONTROL_EN_MASK) {
         if (s->ps_enable) {
@@ -128,6 +128,7 @@ static void pit_control_pw(RegisterInfo *reg, uint64_t value)
 
         }
     }
+    ptimer_transaction_commit(s->ptimer);
 }
 
 static void pit_timer_hit(void *opaque)
@@ -214,9 +215,11 @@ static void xlx_iom_realize(DeviceState *dev, Error **errp)
     s->prefix = object_get_canonical_path(OBJECT(dev));
 
     if (s->cfg.use) {
-        s->bh = qemu_bh_new(pit_timer_hit, s);
-        s->ptimer = ptimer_init(s->bh, PTIMER_POLICY_DEFAULT);
+        s->ptimer = ptimer_init(pit_timer_hit, s, PTIMER_POLICY_DEFAULT);
+        ptimer_transaction_begin(s->ptimer);
         ptimer_set_freq(s->ptimer, s->frequency);
+        ptimer_transaction_commit(s->ptimer);
+
         /* IRQ out to pulse when present timer expires/reloads */
         qdev_init_gpio_out(dev, &s->hit_out, 1);
         /* IRQ in to enable pre-scalar mode. Routed from gpo1 */
