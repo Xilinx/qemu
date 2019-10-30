@@ -326,6 +326,8 @@ static Property mb_properties[] = {
                      cfg.iopb_bus_exception, false),
     DEFINE_PROP_BOOL("ill-opcode-exception", MicroBlazeCPU,
                      cfg.illegal_opcode_exception, false),
+    DEFINE_PROP_BOOL("div-zero-exception", MicroBlazeCPU,
+                     cfg.div_zero_exception, false),
     DEFINE_PROP_BOOL("opcode-0x0-illegal", MicroBlazeCPU,
                      cfg.opcode_0_illegal, false),
     DEFINE_PROP_STRING("version", MicroBlazeCPU, cfg.version),
