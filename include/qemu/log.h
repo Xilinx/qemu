@@ -45,15 +45,16 @@ static inline bool qemu_log_separate(void)
 /* LOG_TRACE (1 << 15) is defined in log-for-trace.h */
 #define CPU_LOG_TB_OP_IND  (1 << 16)
 #define CPU_LOG_TB_FPU     (1 << 17)
+#define CPU_LOG_PLUGIN     (1 << 18)
 
 /* device entries */
-#define DEV_LOG_NET_DEV    (1 << 18)
-#define DEV_LOG_NAND       (1 << 19)
-#define DEV_LOG_NANDC      (1 << 20)
-#define DEV_LOG_SPI        (1 << 23)
-#define DEV_LOG_SPI_DEV    (1 << 24)
-#define LOG_FDT            (1 << 25)
-#define LOG_PM             (1 << 26)
+#define DEV_LOG_NET_DEV    (1 << 24)
+#define DEV_LOG_NAND       (1 << 25)
+#define DEV_LOG_NANDC      (1 << 26)
+#define DEV_LOG_SPI        (1 << 27)
+#define DEV_LOG_SPI_DEV    (1 << 28)
+#define LOG_FDT            (1 << 29)
+#define LOG_PM             (1 << 30)
 
 /* Lock output for a series of related logs.  Since this is not needed
  * for a single qemu_log / qemu_log_mask / qemu_log_mask_and_addr, we

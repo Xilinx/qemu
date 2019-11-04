@@ -16,6 +16,7 @@
 #include "exec/gen-icount.h"
 #include "exec/log.h"
 #include "exec/translator.h"
+#include "exec/plugin-gen.h"
 #include "trace-tcg.h"
 
 /* Pairs with tcg_clear_temp_count.
@@ -50,8 +51,9 @@ static TCGOp *gen_trace_tb_enter(TranslationBlock *tb)
 void translator_loop(const TranslatorOps *ops, DisasContextBase *db,
                      CPUState *cpu, TranslationBlock *tb, int max_insns)
 {
-    int bp_insn = 0;
     TCGOp *trace_pc_end;
+    int bp_insn = 0;
+    bool plugin_enabled;
 
     /* Initialize DisasContext */
     db->tb = tb;
@@ -76,10 +78,16 @@ void translator_loop(const TranslatorOps *ops, DisasContextBase *db,
     ops->tb_start(db, cpu);
     tcg_debug_assert(db->is_jmp == DISAS_NEXT);  /* no early exit */
 
+    plugin_enabled = plugin_gen_tb_start(cpu, tb);
+
     while (true) {
         db->num_insns++;
         ops->insn_start(db, cpu);
         tcg_debug_assert(db->is_jmp == DISAS_NEXT);  /* no early exit */
+
+        if (plugin_enabled) {
+            plugin_gen_insn_start(cpu, db);
+        }
 
         /* Pass breakpoint hits to target for further processing */
         if (!db->singlestep_enabled
@@ -120,6 +128,14 @@ void translator_loop(const TranslatorOps *ops, DisasContextBase *db,
             break;
         }
 
+        /*
+         * We can't instrument after instructions that change control
+         * flow although this only really affects post-load operations.
+         */
+        if (plugin_enabled) {
+            plugin_gen_insn_end();
+        }
+
         /* Stop translation if the output buffer is full,
            or we have executed all of the allowed instructions.  */
         if (tcg_op_buf_full() || db->num_insns >= db->max_insns) {
@@ -134,6 +150,10 @@ void translator_loop(const TranslatorOps *ops, DisasContextBase *db,
 
     /* Fixup the last PC value in the tb_enter trace now that we know it */
     tcg_set_insn_param(trace_pc_end, 1, db->pc_next);
+
+    if (plugin_enabled) {
+        plugin_gen_tb_end(cpu);
+    }
 
     /* The disas_log hook may use these values rather than recompute.  */
     db->tb->size = db->pc_next - db->pc_first;

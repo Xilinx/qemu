@@ -46,3 +46,6 @@ config ARASAN_NFC
 
 config PL35X
 	bool
+
+config SWIM
+    bool

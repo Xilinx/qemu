@@ -129,4 +129,9 @@ config SI57X
 config UNIMP
     bool
 
+config MAC_VIA
+    bool
+    select MOS6522
+    select ADB
+
 source macio/Kconfig

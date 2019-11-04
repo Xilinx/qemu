@@ -121,6 +121,8 @@ obj-y += disas.o
 obj-$(call notempty,$(TARGET_XML_FILES)) += gdbstub-xml.o
 LIBS := $(libs_cpu) $(LIBS)
 
+obj-$(CONFIG_PLUGIN) += plugins/
+
 #########################################################
 # Linux user emulator target
 

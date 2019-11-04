@@ -284,6 +284,9 @@ const QEMULogItem qemu_log_items[] = {
     { DEV_LOG_SPI, "spi", "enable SPI controller log." },
     { DEV_LOG_SPI_DEV, "spi-dev", "enable SPI device logs." },
 
+#ifdef CONFIG_PLUGIN
+    { CPU_LOG_PLUGIN, "plugin", "output from TCG plugins\n"},
+#endif
     { 0, NULL, NULL },
 };
 
