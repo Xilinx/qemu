@@ -119,6 +119,8 @@ static void zynqmp_sdhci_realize(DeviceState *dev, Error **errp)
     qdev_prop_set_uint8(dev, "uhs", UHS_I);
     carddev_sd = qdev_create(qdev_get_child_bus(DEVICE(dev), "sd-bus"),
                              TYPE_SD_CARD);
+    object_property_add_child(OBJECT(dev), "sd-card",
+                              OBJECT(carddev_sd), &error_fatal);
     object_property_set_bool(OBJECT(carddev_sd), false, "spi", &error_fatal);
 
     /*
