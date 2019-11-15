@@ -427,6 +427,7 @@ softmmu="yes"
 linux_user="no"
 bsd_user="no"
 blobs="yes"
+edk2_blobs="no"
 pkgversion=""
 pie=""
 qom_cast_debug="yes"
@@ -2146,6 +2147,18 @@ case " $target_list " in
   ;;
 esac
 
+for target in $target_list; do
+  case "$target" in
+    arm-softmmu | aarch64-softmmu | i386-softmmu | x86_64-softmmu)
+      edk2_blobs="yes"
+      ;;
+  esac
+done
+# The EDK2 binaries are compressed with bzip2
+if test "$edk2_blobs" = "yes" && ! has bzip2; then
+  error_exit "The bzip2 program is required for building QEMU"
+fi
+
 feature_not_found() {
   feature=$1
   remedy=$2
@@ -3215,6 +3228,34 @@ else
         error_exit "PVRDMA requires rdma suppport"
     fi
     pvrdma="no"
+fi
+
+# Let's see if enhanced reg_mr is supported
+if test "$pvrdma" = "yes" ; then
+
+cat > $TMPC <<EOF &&
+#include <infiniband/verbs.h>
+
+int
+main(void)
+{
+    struct ibv_mr *mr;
+    struct ibv_pd *pd = NULL;
+    size_t length = 10;
+    uint64_t iova = 0;
+    int access = 0;
+    void *addr = NULL;
+
+    mr = ibv_reg_mr_iova(pd, addr, length, iova, access);
+
+    ibv_dereg_mr(mr);
+
+    return 0;
+}
+EOF
+    if ! compile_prog "" "-libverbs"; then
+        QEMU_CFLAGS="$QEMU_CFLAGS -DLEGACY_RDMA_REG_MR"
+    fi
 fi
 
 ##########################################
@@ -7496,6 +7537,10 @@ fi
 if test "$libudev" != "no"; then
     echo "CONFIG_LIBUDEV=y" >> $config_host_mak
     echo "LIBUDEV_LIBS=$libudev_libs" >> $config_host_mak
+fi
+
+if test "$edk2_blobs" = "yes" ; then
+  echo "DECOMPRESS_EDK2_BLOBS=y" >> $config_host_mak
 fi
 
 # use included Linux headers
