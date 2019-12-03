@@ -545,6 +545,8 @@ static void csu_core_reset(DeviceState *dev)
         }
     }
     s->regs[R_IDCODE] = s->cfg.idcode;
+    /* Indicates the PL is powered up. */
+    ARRAY_FIELD_DP32(s->regs, CSU_ISR, PL_POR_B, 1);
     ARRAY_FIELD_DP32(s->regs, VERSION, PLATFORM, s->cfg.version.platform);
     ARRAY_FIELD_DP32(s->regs, VERSION, PS_VERSION, s->cfg.version.ps_version);
     csu_update_irq(s);
