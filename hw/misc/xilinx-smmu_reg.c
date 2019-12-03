@@ -27,7 +27,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
-#include "hw/register-dep.h"
+#include "hw/register.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
 #include "migration/vmstate.h"
@@ -43,75 +43,75 @@
 #define XILINX_SMMU_REG(obj) \
      OBJECT_CHECK(SMMU_REG, (obj), TYPE_XILINX_SMMU_REG)
 
-DEP_REG32(MISC_CTRL, 0x0)
-    DEP_FIELD(MISC_CTRL, SLVERR_ENABLE, 1, 0)
-DEP_REG32(ISR_0, 0x10)
-    DEP_FIELD(ISR_0, ADDR_DECODE_ERR, 1, 31)
-    DEP_FIELD(ISR_0, GBL_FLT_IRPT_NS, 1, 4)
-    DEP_FIELD(ISR_0, GBL_FLT_IRPT_S, 1, 3)
-    DEP_FIELD(ISR_0, COMB_PERF_IRPT_TBU, 1, 2)
-    DEP_FIELD(ISR_0, COMB_IRPT_S, 1, 1)
-    DEP_FIELD(ISR_0, COMB_IRPT_NS, 1, 0)
-DEP_REG32(IMR_0, 0x14)
-    DEP_FIELD(IMR_0, ADDR_DECODE_ERR, 1, 31)
-    DEP_FIELD(IMR_0, GBL_FLT_IRPT_NS, 1, 4)
-    DEP_FIELD(IMR_0, GBL_FLT_IRPT_S, 1, 3)
-    DEP_FIELD(IMR_0, COMB_PERF_IRPT_TBU, 1, 2)
-    DEP_FIELD(IMR_0, COMB_IRPT_S, 1, 1)
-    DEP_FIELD(IMR_0, COMB_IRPT_NS, 1, 0)
-DEP_REG32(IER_0, 0x18)
-    DEP_FIELD(IER_0, ADDR_DECODE_ERR, 1, 31)
-    DEP_FIELD(IER_0, GBL_FLT_IRPT_NS, 1, 4)
-    DEP_FIELD(IER_0, GBL_FLT_IRPT_S, 1, 3)
-    DEP_FIELD(IER_0, COMB_PERF_IRPT_TBU, 1, 2)
-    DEP_FIELD(IER_0, COMB_IRPT_S, 1, 1)
-    DEP_FIELD(IER_0, COMB_IRPT_NS, 1, 0)
-DEP_REG32(IDR_0, 0x1c)
-    DEP_FIELD(IDR_0, ADDR_DECODE_ERR, 1, 31)
-    DEP_FIELD(IDR_0, GBL_FLT_IRPT_NS, 1, 4)
-    DEP_FIELD(IDR_0, GBL_FLT_IRPT_S, 1, 3)
-    DEP_FIELD(IDR_0, COMB_PERF_IRPT_TBU, 1, 2)
-    DEP_FIELD(IDR_0, COMB_IRPT_S, 1, 1)
-    DEP_FIELD(IDR_0, COMB_IRPT_NS, 1, 0)
-DEP_REG32(ITR_0, 0x20)
-    DEP_FIELD(ITR_0, ADDR_DECODE_ERR, 1, 31)
-    DEP_FIELD(ITR_0, GBL_FLT_IRPT_NS, 1, 4)
-    DEP_FIELD(ITR_0, GBL_FLT_IRPT_S, 1, 3)
-    DEP_FIELD(ITR_0, COMB_PERF_IRPT_TBU, 1, 2)
-    DEP_FIELD(ITR_0, COMB_IRPT_S, 1, 1)
-    DEP_FIELD(ITR_0, COMB_IRPT_NS, 1, 0)
-DEP_REG32(QREQN, 0x40)
-    DEP_FIELD(QREQN, TBU_TBU5_5_CG, 1, 14)
-    DEP_FIELD(QREQN, TBU_TBU5_5_PD, 1, 13)
-    DEP_FIELD(QREQN, TBU_TBU4_4_CG, 1, 12)
-    DEP_FIELD(QREQN, TBU_TBU4_4_PD, 1, 11)
-    DEP_FIELD(QREQN, TBU_TBU3_3_CG, 1, 10)
-    DEP_FIELD(QREQN, TBU_TBU3_3_PD, 1, 9)
-    DEP_FIELD(QREQN, PD_MST_BR_TBU2_2, 1, 8)
-    DEP_FIELD(QREQN, PD_SLV_BR_TBU2_2, 1, 7)
-    DEP_FIELD(QREQN, TBU_TBU2_2_CG, 1, 6)
-    DEP_FIELD(QREQN, TBU_TBU2_2_PD, 1, 5)
-    DEP_FIELD(QREQN, TBU_TBU1_1_CG, 1, 4)
-    DEP_FIELD(QREQN, TBU_TBU1_1_PD, 1, 3)
-    DEP_FIELD(QREQN, TBU_TBU0_0_CG, 1, 2)
-    DEP_FIELD(QREQN, TBU_TBU0_0_PD, 1, 1)
-    DEP_FIELD(QREQN, TCU, 1, 0)
-DEP_REG32(MISC, 0x54)
-    DEP_FIELD(MISC, SPNIDEN, 1, 12)
-    DEP_FIELD(MISC, ARQOSARB, 4, 8)
-    DEP_FIELD(MISC, AWAKEUP_PROG, 1, 7)
-    DEP_FIELD(MISC, EMAS, 1, 6)
-    DEP_FIELD(MISC, EMAW, 2, 4)
-    DEP_FIELD(MISC, EMA, 3, 1)
-DEP_REG32(CONFIG_SIGNALS, 0x58)
-    DEP_FIELD(CONFIG_SIGNALS, CFG_NORMALIZE, 1, 1)
-DEP_REG32(PL_AT, 0x60)
-    DEP_FIELD(PL_AT, PL_CONFIG_DONE, 1, 1)
-    DEP_FIELD(PL_AT, CLK_SEL, 1, 0)
-DEP_REG32(ECO_INFO, 0x100)
-    DEP_FIELD(ECO_INFO, ECOREVNUM, 4, 0)
-DEP_REG32(ECO_0, 0x104)
-DEP_REG32(ECO_1, 0x108)
+REG32(MISC_CTRL, 0x0)
+    FIELD(MISC_CTRL, SLVERR_ENABLE, 0, 1)
+REG32(ISR_0, 0x10)
+    FIELD(ISR_0, ADDR_DECODE_ERR, 31, 1)
+    FIELD(ISR_0, GBL_FLT_IRPT_NS, 4, 1)
+    FIELD(ISR_0, GBL_FLT_IRPT_S, 3, 1)
+    FIELD(ISR_0, COMB_PERF_IRPT_TBU, 2, 1)
+    FIELD(ISR_0, COMB_IRPT_S, 1, 1)
+    FIELD(ISR_0, COMB_IRPT_NS, 0, 1)
+REG32(IMR_0, 0x14)
+    FIELD(IMR_0, ADDR_DECODE_ERR, 31, 1)
+    FIELD(IMR_0, GBL_FLT_IRPT_NS, 4, 1)
+    FIELD(IMR_0, GBL_FLT_IRPT_S, 3, 1)
+    FIELD(IMR_0, COMB_PERF_IRPT_TBU, 2, 1)
+    FIELD(IMR_0, COMB_IRPT_S, 1, 1)
+    FIELD(IMR_0, COMB_IRPT_NS, 0, 1)
+REG32(IER_0, 0x18)
+    FIELD(IER_0, ADDR_DECODE_ERR, 31, 1)
+    FIELD(IER_0, GBL_FLT_IRPT_NS, 4, 1)
+    FIELD(IER_0, GBL_FLT_IRPT_S, 3, 1)
+    FIELD(IER_0, COMB_PERF_IRPT_TBU, 2, 1)
+    FIELD(IER_0, COMB_IRPT_S, 1, 1)
+    FIELD(IER_0, COMB_IRPT_NS, 0, 1)
+REG32(IDR_0, 0x1c)
+    FIELD(IDR_0, ADDR_DECODE_ERR, 31, 1)
+    FIELD(IDR_0, GBL_FLT_IRPT_NS, 4, 1)
+    FIELD(IDR_0, GBL_FLT_IRPT_S, 3, 1)
+    FIELD(IDR_0, COMB_PERF_IRPT_TBU, 2, 1)
+    FIELD(IDR_0, COMB_IRPT_S, 1, 1)
+    FIELD(IDR_0, COMB_IRPT_NS, 0, 1)
+REG32(ITR_0, 0x20)
+    FIELD(ITR_0, ADDR_DECODE_ERR, 31, 1)
+    FIELD(ITR_0, GBL_FLT_IRPT_NS, 4, 1)
+    FIELD(ITR_0, GBL_FLT_IRPT_S, 3, 1)
+    FIELD(ITR_0, COMB_PERF_IRPT_TBU, 2, 1)
+    FIELD(ITR_0, COMB_IRPT_S, 1, 1)
+    FIELD(ITR_0, COMB_IRPT_NS, 0, 1)
+REG32(QREQN, 0x40)
+    FIELD(QREQN, TBU_TBU5_5_CG, 14, 1)
+    FIELD(QREQN, TBU_TBU5_5_PD, 13, 1)
+    FIELD(QREQN, TBU_TBU4_4_CG, 12, 1)
+    FIELD(QREQN, TBU_TBU4_4_PD, 11, 1)
+    FIELD(QREQN, TBU_TBU3_3_CG, 10, 1)
+    FIELD(QREQN, TBU_TBU3_3_PD, 9, 1)
+    FIELD(QREQN, PD_MST_BR_TBU2_2, 8, 1)
+    FIELD(QREQN, PD_SLV_BR_TBU2_2, 7, 1)
+    FIELD(QREQN, TBU_TBU2_2_CG, 6, 1)
+    FIELD(QREQN, TBU_TBU2_2_PD, 5, 1)
+    FIELD(QREQN, TBU_TBU1_1_CG, 4, 1)
+    FIELD(QREQN, TBU_TBU1_1_PD, 3, 1)
+    FIELD(QREQN, TBU_TBU0_0_CG, 2, 1)
+    FIELD(QREQN, TBU_TBU0_0_PD, 1, 1)
+    FIELD(QREQN, TCU, 0, 1)
+REG32(MISC, 0x54)
+    FIELD(MISC, SPNIDEN, 12, 1)
+    FIELD(MISC, ARQOSARB, 8, 4)
+    FIELD(MISC, AWAKEUP_PROG, 7, 1)
+    FIELD(MISC, EMAS, 6, 1)
+    FIELD(MISC, EMAW, 4, 2)
+    FIELD(MISC, EMA, 1, 3)
+REG32(CONFIG_SIGNALS, 0x58)
+    FIELD(CONFIG_SIGNALS, CFG_NORMALIZE, 1, 1)
+REG32(PL_AT, 0x60)
+    FIELD(PL_AT, PL_CONFIG_DONE, 1, 1)
+    FIELD(PL_AT, CLK_SEL, 0, 1)
+REG32(ECO_INFO, 0x100)
+    FIELD(ECO_INFO, ECOREVNUM, 0, 4)
+REG32(ECO_0, 0x104)
+REG32(ECO_1, 0x108)
 
 #define R_MAX (R_ECO_1 + 1)
 
@@ -123,7 +123,7 @@ typedef struct SMMU_REG {
     uint32_t irq_src;
 
     uint32_t regs[R_MAX];
-    DepRegisterInfo regs_info[R_MAX];
+    RegisterInfo regs_info[R_MAX];
 } SMMU_REG;
 
 static void imr_0_update_irq(SMMU_REG *s)
@@ -143,13 +143,13 @@ static void imr_0_update_irq(SMMU_REG *s)
     qemu_set_irq(s->irq_imr_0, pending);
 }
 
-static void isr_0_postw(DepRegisterInfo *reg, uint64_t val64)
+static void isr_0_postw(RegisterInfo *reg, uint64_t val64)
 {
     SMMU_REG *s = XILINX_SMMU_REG(reg->opaque);
     imr_0_update_irq(s);
 }
 
-static uint64_t ier_0_prew(DepRegisterInfo *reg, uint64_t val64)
+static uint64_t ier_0_prew(RegisterInfo *reg, uint64_t val64)
 {
     SMMU_REG *s = XILINX_SMMU_REG(reg->opaque);
     uint32_t val = val64;
@@ -159,7 +159,7 @@ static uint64_t ier_0_prew(DepRegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
-static uint64_t idr_0_prew(DepRegisterInfo *reg, uint64_t val64)
+static uint64_t idr_0_prew(RegisterInfo *reg, uint64_t val64)
 {
     SMMU_REG *s = XILINX_SMMU_REG(reg->opaque);
     uint32_t val = val64;
@@ -169,7 +169,7 @@ static uint64_t idr_0_prew(DepRegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
-static uint64_t itr_0_prew(DepRegisterInfo *reg, uint64_t val64)
+static uint64_t itr_0_prew(RegisterInfo *reg, uint64_t val64)
 {
     SMMU_REG *s = XILINX_SMMU_REG(reg->opaque);
     uint32_t val = val64;
@@ -179,48 +179,48 @@ static uint64_t itr_0_prew(DepRegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
-static DepRegisterAccessInfo smmu_reg_regs_info[] = {
-    {   .name = "MISC_CTRL",  .decode.addr = A_MISC_CTRL,
-    },{ .name = "ISR_0",  .decode.addr = A_ISR_0,
+static const RegisterAccessInfo smmu_reg_regs_info[] = {
+    {   .name = "MISC_CTRL",  .addr = A_MISC_CTRL,
+    },{ .name = "ISR_0",  .addr = A_ISR_0,
         .rsvd = 0x7fffffe0,
         .ro = 0x7fffffe0,
         .w1c = 0x8000001f,
         .post_write = isr_0_postw,
-    },{ .name = "IMR_0",  .decode.addr = A_IMR_0,
+    },{ .name = "IMR_0",  .addr = A_IMR_0,
         .reset = 0x8000001f,
         .rsvd = 0x7fffffe0,
         .ro = 0x7fffffff,
         .w1c = 0x80000000,
-    },{ .name = "IER_0",  .decode.addr = A_IER_0,
+    },{ .name = "IER_0",  .addr = A_IER_0,
         .rsvd = 0x7fffffe0,
         .ro = 0x7fffffe0,
         .w1c = 0x80000000,
         .pre_write = ier_0_prew,
-    },{ .name = "IDR_0",  .decode.addr = A_IDR_0,
+    },{ .name = "IDR_0",  .addr = A_IDR_0,
         .rsvd = 0x7fffffe0,
         .ro = 0x7fffffe0,
         .w1c = 0x80000000,
         .pre_write = idr_0_prew,
-    },{ .name = "ITR_0",  .decode.addr = A_ITR_0,
+    },{ .name = "ITR_0",  .addr = A_ITR_0,
         .rsvd = 0x7fffffe0,
         .ro = 0x7fffffe0,
         .w1c = 0x80000000,
         .pre_write = itr_0_prew,
-    },{ .name = "QREQN",  .decode.addr = A_QREQN,
+    },{ .name = "QREQN",  .addr = A_QREQN,
         .reset = 0x7fff,
         .rsvd = 0xffff8000,
-    },{ .name = "MISC",  .decode.addr = A_MISC,
+    },{ .name = "MISC",  .addr = A_MISC,
         .reset = 0x16,
         .rsvd = 0xffffe001,
         .ro = 0xf00,
-    },{ .name = "CONFIG_SIGNALS",  .decode.addr = A_CONFIG_SIGNALS,
+    },{ .name = "CONFIG_SIGNALS",  .addr = A_CONFIG_SIGNALS,
         .rsvd = 0xfffffffd,
-    },{ .name = "PL_AT",  .decode.addr = A_PL_AT,
+    },{ .name = "PL_AT",  .addr = A_PL_AT,
         .rsvd = 0xfffffffc,
         .ro = 0x2,
-    },{ .name = "ECO_INFO",  .decode.addr = A_ECO_INFO,
-    },{ .name = "ECO_0",  .decode.addr = A_ECO_0,
-    },{ .name = "ECO_1",  .decode.addr = A_ECO_1,
+    },{ .name = "ECO_INFO",  .addr = A_ECO_INFO,
+    },{ .name = "ECO_0",  .addr = A_ECO_0,
+    },{ .name = "ECO_1",  .addr = A_ECO_1,
         .reset = 0xffffffff,
     }
 };
@@ -231,44 +231,15 @@ static void smmu_reg_reset(DeviceState *dev)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        dep_register_reset(&s->regs_info[i]);
+        register_reset(&s->regs_info[i]);
     }
 
     imr_0_update_irq(s);
 }
 
-static uint64_t smmu_reg_read(void *opaque, hwaddr addr, unsigned size)
-{
-    SMMU_REG *s = XILINX_SMMU_REG(opaque);
-    DepRegisterInfo *r = &s->regs_info[addr / 4];
-
-    if (!r->data) {
-        qemu_log("%s: Decode error: read from %" HWADDR_PRIx "\n",
-                 object_get_canonical_path(OBJECT(s)),
-                 addr);
-        return 0;
-    }
-    return dep_register_read(r);
-}
-
-static void smmu_reg_write(void *opaque, hwaddr addr, uint64_t value,
-                      unsigned size)
-{
-    SMMU_REG *s = XILINX_SMMU_REG(opaque);
-    DepRegisterInfo *r = &s->regs_info[addr / 4];
-
-    if (!r->data) {
-        qemu_log("%s: Decode error: write to %" HWADDR_PRIx "=%" PRIx64 "\n",
-                 object_get_canonical_path(OBJECT(s)),
-                 addr, value);
-        return;
-    }
-    dep_register_write(r, value, ~0);
-}
-
 static const MemoryRegionOps smmu_reg_ops = {
-    .read = smmu_reg_read,
-    .write = smmu_reg_write,
+    .read = register_read_memory,
+    .write = register_write_memory,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
@@ -285,38 +256,26 @@ static void irq_handler(void *opaque, int irq, int level)
     imr_0_update_irq(s);
 }
 
-static void smmu_reg_realize(DeviceState *dev, Error **errp)
-{
-    SMMU_REG *s = XILINX_SMMU_REG(dev);
-    const char *prefix = object_get_canonical_path(OBJECT(dev));
-    unsigned int i;
-
-    for (i = 0; i < ARRAY_SIZE(smmu_reg_regs_info); ++i) {
-        DepRegisterInfo *r = &s->regs_info[smmu_reg_regs_info[i].decode.addr/4];
-
-        *r = (DepRegisterInfo) {
-            .data = (uint8_t *)&s->regs[
-                    smmu_reg_regs_info[i].decode.addr/4],
-            .data_size = sizeof(uint32_t),
-            .access = &smmu_reg_regs_info[i],
-            .debug = XILINX_SMMU_REG_ERR_DEBUG,
-            .prefix = prefix,
-            .opaque = s,
-        };
-    }
-
-    qdev_init_gpio_in(dev, irq_handler, 17);
-}
-
 static void smmu_reg_init(Object *obj)
 {
     SMMU_REG *s = XILINX_SMMU_REG(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+    RegisterInfoArray *reg_array;
 
-    memory_region_init_io(&s->iomem, obj, &smmu_reg_ops, s,
-                          TYPE_XILINX_SMMU_REG, R_MAX * 4);
+    memory_region_init(&s->iomem, obj, TYPE_XILINX_SMMU_REG, R_MAX * 4);
+    reg_array =
+        register_init_block32(DEVICE(obj), smmu_reg_regs_info,
+                              ARRAY_SIZE(smmu_reg_regs_info),
+                              s->regs_info, s->regs,
+                              &smmu_reg_ops,
+                              XILINX_SMMU_REG_ERR_DEBUG,
+                              R_MAX * 4);
+    memory_region_add_subregion(&s->iomem,
+                                0x0,
+                                &reg_array->mem);
     sysbus_init_mmio(sbd, &s->iomem);
     sysbus_init_irq(sbd, &s->irq_imr_0);
+    qdev_init_gpio_in(DEVICE(obj), irq_handler, 17);
 }
 
 static int smmu_reg_fdt_get_irq(FDTGenericIntc *obj, qemu_irq *irqs,
@@ -332,7 +291,6 @@ static const VMStateDescription vmstate_smmu_reg = {
     .name = TYPE_XILINX_SMMU_REG,
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, SMMU_REG, R_MAX),
         VMSTATE_END_OF_LIST(),
@@ -345,7 +303,6 @@ static void smmu_reg_class_init(ObjectClass *klass, void *data)
     FDTGenericIntcClass *fgic = FDT_GENERIC_INTC_CLASS(klass);
 
     dc->reset = smmu_reg_reset;
-    dc->realize = smmu_reg_realize;
     dc->vmsd = &vmstate_smmu_reg;
     fgic->get_irq = smmu_reg_fdt_get_irq;
 }
