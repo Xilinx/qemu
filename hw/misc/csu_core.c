@@ -97,6 +97,7 @@ REG32(CSU_ISR, 0x20)
     FIELD(CSU_ISR, CSU_PL_ISO, 15, 1)
     FIELD(CSU_ISR, CSU_RAM_ECC_ERROR, 14, 1)
     FIELD(CSU_ISR, TAMPER, 13, 1)
+    FIELD(CSU_ISR, PUF_ACC_ERROR, 12, 1)
     FIELD(CSU_ISR, APB_SLVERR, 11, 1)
     FIELD(CSU_ISR, TMR_FATAL, 10, 1)
     FIELD(CSU_ISR, PL_SEU_ERROR, 9, 1)
@@ -113,6 +114,7 @@ REG32(CSU_IMR, 0x24)
     FIELD(CSU_IMR, CSU_PL_ISO, 15, 1)
     FIELD(CSU_IMR, CSU_RAM_ECC_ERROR, 14, 1)
     FIELD(CSU_IMR, TAMPER, 13, 1)
+    FIELD(CSU_IMR, PUF_ACC_ERROR, 12, 1)
     FIELD(CSU_IMR, APB_SLVERR, 11, 1)
     FIELD(CSU_IMR, TMR_FATAL, 10, 1)
     FIELD(CSU_IMR, PL_SEU_ERROR, 9, 1)
@@ -129,6 +131,7 @@ REG32(CSU_IER, 0x28)
     FIELD(CSU_IER, CSU_PL_ISO, 15, 1)
     FIELD(CSU_IER, CSU_RAM_ECC_ERROR, 14, 1)
     FIELD(CSU_IER, TAMPER, 13, 1)
+    FIELD(CSU_IER, PUF_ACC_ERROR, 12, 1)
     FIELD(CSU_IER, APB_SLVERR, 11, 1)
     FIELD(CSU_IER, TMR_FATAL, 10, 1)
     FIELD(CSU_IER, PL_SEU_ERROR, 9, 1)
@@ -145,6 +148,7 @@ REG32(CSU_IDR, 0x2c)
     FIELD(CSU_IDR, CSU_PL_ISO, 15, 1)
     FIELD(CSU_IDR, CSU_RAM_ECC_ERROR, 14, 1)
     FIELD(CSU_IDR, TAMPER, 13, 1)
+    FIELD(CSU_IDR, PUF_ACC_ERROR, 12, 1)
     FIELD(CSU_IDR, APB_SLVERR, 11, 1)
     FIELD(CSU_IDR, TMR_FATAL, 10, 1)
     FIELD(CSU_IDR, PL_SEU_ERROR, 9, 1)
@@ -387,6 +391,19 @@ static void csu_update_irq(CSU *s)
     qemu_set_irq(s->irq_csu, pending);
 }
 
+static void csu_isr_set_puf_acc_error(void *opaque, int n, int level)
+{
+    CSU *s = XLNX_CSU_CORE(opaque);
+
+    /* This error is only a positive-edge latch */
+    if (!level || ARRAY_FIELD_EX32(s->regs, CSU_ISR, PUF_ACC_ERROR)) {
+        return;
+    }
+
+    ARRAY_FIELD_DP32(s->regs, CSU_ISR, PUF_ACC_ERROR, 1);
+    csu_update_irq(s);
+}
+
 static void csu_isr_postw(RegisterInfo *reg, uint64_t val64)
 {
     CSU *s = XLNX_CSU_CORE(reg->opaque);
@@ -575,6 +592,9 @@ static void csu_core_init(Object *obj)
 
     sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->iomem);
     sysbus_init_irq(SYS_BUS_DEVICE(obj), &s->irq_csu);
+
+    qdev_init_gpio_in_named(DEVICE(obj), csu_isr_set_puf_acc_error,
+                            "puf-acc-error", 1);
 }
 
 static const VMStateDescription vmstate_csu_core = {
