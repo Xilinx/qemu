@@ -54,7 +54,7 @@
 
 bool efuse_get_bit(XLNXEFuse *s, unsigned int bit)
 {
-    bool b = s->fuse32[bit / 32] & (1 << bit);
+    bool b = s->fuse32[bit / 32] & (1 << (bit % 32));
     return b;
 }
 
