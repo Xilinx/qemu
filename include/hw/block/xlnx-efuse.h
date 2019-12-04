@@ -71,4 +71,18 @@ void efuse_set_timer_ps(XLNXEFuse *s, int tsu_h_ps);
 void efuse_pgm_complete(XLNXEFuse *s);
 bool efuse_get_bit(XLNXEFuse *s, unsigned int bit);
 unsigned int efuse_tbits_read(XLNXEFuse *s, int n);
+
+/* Return whole row containing the given bit address */
+static inline uint32_t efuse_get_row(XLNXEFuse *s, unsigned int bit)
+{
+    if (!(s->fuse32)) {
+        return 0;
+    } else {
+        unsigned int row_idx = bit / 32;
+
+        assert(row_idx < (s->efuse_size * s->efuse_nr / 32));
+        return s->fuse32[row_idx];
+    }
+}
+
 #endif

@@ -609,7 +609,7 @@ static void zynqmp_efuse_rd_addr_postw(DepRegisterInfo *reg, uint64_t val64)
         goto denied;
     }
 
-    s->regs[R_EFUSE_RD_DATA] = s->efuse->fuse32[val64 / 32] & col_mask;
+    s->regs[R_EFUSE_RD_DATA] = efuse_get_row(s->efuse, val64) & col_mask;
 
     DEP_AF_DP32(s->regs, EFUSE_ISR, RD_ERROR, 0);
     DEP_AF_DP32(s->regs, EFUSE_ISR, RD_DONE, 1);
