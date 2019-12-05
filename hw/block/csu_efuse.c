@@ -265,6 +265,7 @@ REG32(PPK1_11, 0x10fc)
 #define EFUSE_PUF_CHASH_END   BIT_POS(20, 31)
 #define EFUSE_PUF_MISC_START  BIT_POS(21, 0)
 #define EFUSE_PUF_MISC_END    BIT_POS(21, 31)
+#define EFUSE_PUF_SYN_WRLK    BIT_POS(21, 30)
 
 #define EFUSE_SPK_START       BIT_POS(23, 0)
 #define EFUSE_SPK_END         BIT_POS(23, 31)
@@ -464,6 +465,7 @@ static bool zynqmp_efuse_idx_is_aes_key(unsigned int fuse)
 static void zynqmp_efuse_pgm_addr_postw(RegisterInfo *reg, uint64_t val64)
 {
     ZynqMPEFuse *s = ZYNQMP_EFUSE(reg->opaque);
+    bool puf_prot = false;
     bool wr_lock, ps, prot;
     unsigned int efuse_idx;
 
@@ -474,9 +476,11 @@ static void zynqmp_efuse_pgm_addr_postw(RegisterInfo *reg, uint64_t val64)
     case 0:
         break;
     case 2:
+        puf_prot = efuse_get_bit(s->efuse, EFUSE_PUF_SYN_WRLK);
         val64 = FIELD_DP32(efuse_idx, EFUSE_PGM_ADDR, EFUSE, 1);
         break;
     case 3:
+        puf_prot = efuse_get_bit(s->efuse, EFUSE_PUF_SYN_WRLK);
         val64 = FIELD_DP32(efuse_idx, EFUSE_PGM_ADDR, EFUSE, 2);
         break;
     default:
@@ -504,6 +508,13 @@ static void zynqmp_efuse_pgm_addr_postw(RegisterInfo *reg, uint64_t val64)
                       "%s: Write to eFuse %u while not powered\n",
                       object_get_canonical_path(OBJECT(s)),
                       efuse_idx);
+        return;
+    }
+
+    if (puf_prot) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: Write to eFuse PUF_HD page while write-locked\n",
+                      object_get_canonical_path(OBJECT(s)));
         return;
     }
 
