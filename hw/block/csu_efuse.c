@@ -162,6 +162,7 @@ REG32(MISC_USER_CTRL, 0x1040)
     FIELD(MISC_USER_CTRL, USR_WRLK_0, 0, 1)
 REG32(ROM_RSVD, 0x1044)
     FIELD(ROM_RSVD, PBR_BOOT_ERROR, 0, 3)
+REG32(PUF_CHASH, 0x1050)
 REG32(PUF_MISC, 0x1054)
     FIELD(PUF_MISC, REGISTER_DIS, 31, 1)
     FIELD(PUF_MISC, SYN_WRLK, 30, 1)
@@ -226,6 +227,11 @@ REG32(PPK1_11, 0x10fc)
 #define TBITS_PATTERN    0xA
 
 /* #define EFUSE_XOSC            26 */
+
+/*
+ * eFUSE layout references:
+ *   ZynqMP: UG1085 (v2.1) August 21, 2019, p.277, Table 12-13
+ */
 #define EFUSE_DFT             BIT_POS(22, 6)
 #define EFUSE_AES_RDLK        BIT_POS(22, 0)
 #define EFUSE_AES_WRLK        BIT_POS(22, 1)
@@ -254,6 +260,11 @@ REG32(PPK1_11, 0x10fc)
 #define EFUSE_USER_END        BIT_POS(15, 31)
 #define EFUSE_BISR_START      BIT_POS(32, 0)
 #define EFUSE_BISR_END        BIT_POS(39, 31)
+
+#define EFUSE_PUF_CHASH_START BIT_POS(20, 0)
+#define EFUSE_PUF_CHASH_END   BIT_POS(20, 31)
+#define EFUSE_PUF_MISC_START  BIT_POS(21, 0)
+#define EFUSE_PUF_MISC_END    BIT_POS(21, 31)
 
 #define EFUSE_SPK_START       BIT_POS(23, 0)
 #define EFUSE_SPK_END         BIT_POS(23, 31)
@@ -362,6 +373,9 @@ static void zynqmp_efuse_sync_cache(ZynqMPEFuse *s, unsigned int bit)
     update_tbit_status(s);
 
     /* Sync the various areas.  */
+    s->regs[R_PUF_CHASH] = efuse_get_row(s->efuse, EFUSE_PUF_CHASH_START);
+    s->regs[R_PUF_MISC]  = efuse_get_row(s->efuse, EFUSE_PUF_MISC_START);
+
     efuse_sync_u32(s->efuse, &s->regs[R_DNA_0], EFUSE_DNA_START,
                    EFUSE_DNA_END, bit);
 
@@ -746,6 +760,8 @@ static RegisterAccessInfo zynqmp_efuse_regs_info[] = {
     },{ .name = "MISC_USER_CTRL",  .addr = A_MISC_USER_CTRL,
         .ro = 0xffffffff,
     },{ .name = "ROM_RSVD",  .addr = A_ROM_RSVD,
+        .ro = 0xffffffff,
+    },{ .name = "PUF_CHASH", .addr = A_PUF_CHASH,
         .ro = 0xffffffff,
     },{ .name = "PUF_MISC",  .addr = A_PUF_MISC,
         .ro = 0xffffffff,
