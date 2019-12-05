@@ -33,7 +33,8 @@
 #include "exec/address-spaces.h"
 #include "qemu/host-utils.h"
 #include "hw/sysbus.h"
-#include "hw/register-dep.h"
+#include "hw/register.h"
+#include "hw/irq.h"
 #include "sysemu/blockdev.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
@@ -59,160 +60,160 @@
      OBJECT_CHECK(Zynq3EFuse, (obj), TYPE_ZYNQ3_EFUSE)
 
 
-DEP_REG32(WR_LOCK, 0x0)
-    DEP_FIELD(WR_LOCK, LOCK, 16, 0)
-DEP_REG32(CFG, 0x4)
-    DEP_FIELD(CFG, SLVERR_ENABLE, 1, 5)
-    DEP_FIELD(CFG, MARGIN_RD, 2, 2)
-    DEP_FIELD(CFG, PGM_EN, 1, 1)
-    DEP_FIELD(CFG, EFUSE_CLK_SEL, 1, 0)
-DEP_REG32(STATUS, 0x8)
-    DEP_FIELD(STATUS, AES_CRC_PASS, 1, 7)
-    DEP_FIELD(STATUS, AES_CRC_DONE, 1, 6)
-    DEP_FIELD(STATUS, CACHE_DONE, 1, 5)
-    DEP_FIELD(STATUS, CACHE_LOAD, 1, 4)
-    DEP_FIELD(STATUS, EFUSE_3_TBIT, 1, 2)
-    DEP_FIELD(STATUS, EFUSE_2_TBIT, 1, 1)
-    DEP_FIELD(STATUS, EFUSE_0_TBIT, 1, 0)
-DEP_REG32(EFUSE_PGM_ADDR, 0xc)
-    DEP_FIELD(EFUSE_PGM_ADDR, EFUSE, 2, 11)
-    DEP_FIELD(EFUSE_PGM_ADDR, ROW, 6, 5)
-    DEP_FIELD(EFUSE_PGM_ADDR, COLUMN, 5, 0)
-DEP_REG32(EFUSE_RD_ADDR, 0x10)
-    DEP_FIELD(EFUSE_RD_ADDR, EFUSE, 2, 11)
-    DEP_FIELD(EFUSE_RD_ADDR, ROW, 6, 5)
-DEP_REG32(EFUSE_RD_DATA, 0x14)
-DEP_REG32(TPGM, 0x18)
-    DEP_FIELD(TPGM, VALUE, 16, 0)
-DEP_REG32(TRD, 0x1c)
-    DEP_FIELD(TRD, VALUE, 8, 0)
-DEP_REG32(TSU_H_PS, 0x20)
-    DEP_FIELD(TSU_H_PS, VALUE, 8, 0)
-DEP_REG32(TSU_H_PS_CS, 0x24)
-    DEP_FIELD(TSU_H_PS_CS, VALUE, 8, 0)
-DEP_REG32(TSU_H_CS, 0x2c)
-    DEP_FIELD(TSU_H_CS, VALUE, 4, 0)
-DEP_REG32(EFUSE_ISR, 0x30)
-    DEP_FIELD(EFUSE_ISR, APB_SLVERR, 1, 31)
-    DEP_FIELD(EFUSE_ISR, CACHE_ERROR, 1, 4)
-    DEP_FIELD(EFUSE_ISR, RD_ERROR, 1, 3)
-    DEP_FIELD(EFUSE_ISR, RD_DONE, 1, 2)
-    DEP_FIELD(EFUSE_ISR, PGM_ERROR, 1, 1)
-    DEP_FIELD(EFUSE_ISR, PGM_DONE, 1, 0)
-DEP_REG32(EFUSE_IMR, 0x34)
-    DEP_FIELD(EFUSE_IMR, APB_SLVERR, 1, 31)
-    DEP_FIELD(EFUSE_IMR, CACHE_ERROR, 1, 4)
-    DEP_FIELD(EFUSE_IMR, RD_ERROR, 1, 3)
-    DEP_FIELD(EFUSE_IMR, RD_DONE, 1, 2)
-    DEP_FIELD(EFUSE_IMR, PGM_ERROR, 1, 1)
-    DEP_FIELD(EFUSE_IMR, PGM_DONE, 1, 0)
-DEP_REG32(EFUSE_IER, 0x38)
-    DEP_FIELD(EFUSE_IER, APB_SLVERR, 1, 31)
-    DEP_FIELD(EFUSE_IER, CACHE_ERROR, 1, 4)
-    DEP_FIELD(EFUSE_IER, RD_ERROR, 1, 3)
-    DEP_FIELD(EFUSE_IER, RD_DONE, 1, 2)
-    DEP_FIELD(EFUSE_IER, PGM_ERROR, 1, 1)
-    DEP_FIELD(EFUSE_IER, PGM_DONE, 1, 0)
-DEP_REG32(EFUSE_IDR, 0x3c)
-    DEP_FIELD(EFUSE_IDR, APB_SLVERR, 1, 31)
-    DEP_FIELD(EFUSE_IDR, CACHE_ERROR, 1, 4)
-    DEP_FIELD(EFUSE_IDR, RD_ERROR, 1, 3)
-    DEP_FIELD(EFUSE_IDR, RD_DONE, 1, 2)
-    DEP_FIELD(EFUSE_IDR, PGM_ERROR, 1, 1)
-    DEP_FIELD(EFUSE_IDR, PGM_DONE, 1, 0)
-DEP_REG32(EFUSE_CACHE_LOAD, 0x40)
-    DEP_FIELD(EFUSE_CACHE_LOAD, LOAD, 1, 0)
-DEP_REG32(EFUSE_PGM_LOCK, 0x44)
-    DEP_FIELD(EFUSE_PGM_LOCK, SPK_ID_LOCK, 1, 0)
-DEP_REG32(EFUSE_AES_CRC, 0x48)
-DEP_REG32(EFUSE_TBITS_PRGRMG_EN, 0x100)
-    DEP_FIELD(EFUSE_TBITS_PRGRMG_EN, TBITS_PRGRMG_EN, 1, 3)
-DEP_REG32(DNA_0, 0x100c)
-DEP_REG32(DNA_1, 0x1010)
-DEP_REG32(DNA_2, 0x1014)
-DEP_REG32(IPDISABLE, 0x1018)
-    DEP_FIELD(IPDISABLE, VCU_DIS, 1, 8)
-    DEP_FIELD(IPDISABLE, GPU_DIS, 1, 5)
-    DEP_FIELD(IPDISABLE, APU3_DIS, 1, 3)
-    DEP_FIELD(IPDISABLE, APU2_DIS, 1, 2)
-    DEP_FIELD(IPDISABLE, APU1_DIS, 1, 1)
-    DEP_FIELD(IPDISABLE, APU0_DIS, 1, 0)
-DEP_REG32(SYSOSC_CTRL, 0x101c)
-    DEP_FIELD(SYSOSC_CTRL, SYSOSC_EN, 1, 0)
-DEP_REG32(USER_0, 0x1020)
-DEP_REG32(USER_1, 0x1024)
-DEP_REG32(USER_2, 0x1028)
-DEP_REG32(USER_3, 0x102c)
-DEP_REG32(USER_4, 0x1030)
-DEP_REG32(USER_5, 0x1034)
-DEP_REG32(USER_6, 0x1038)
-DEP_REG32(USER_7, 0x103c)
-DEP_REG32(MISC_USER_CTRL, 0x1040)
-    DEP_FIELD(MISC_USER_CTRL, FPD_SC_EN_0, 1, 14)
-    DEP_FIELD(MISC_USER_CTRL, LPD_SC_EN_0, 1, 11)
-    DEP_FIELD(MISC_USER_CTRL, LBIST_EN, 1, 10)
-    DEP_FIELD(MISC_USER_CTRL, USR_WRLK_7, 1, 7)
-    DEP_FIELD(MISC_USER_CTRL, USR_WRLK_6, 1, 6)
-    DEP_FIELD(MISC_USER_CTRL, USR_WRLK_5, 1, 5)
-    DEP_FIELD(MISC_USER_CTRL, USR_WRLK_4, 1, 4)
-    DEP_FIELD(MISC_USER_CTRL, USR_WRLK_3, 1, 3)
-    DEP_FIELD(MISC_USER_CTRL, USR_WRLK_2, 1, 2)
-    DEP_FIELD(MISC_USER_CTRL, USR_WRLK_1, 1, 1)
-    DEP_FIELD(MISC_USER_CTRL, USR_WRLK_0, 1, 0)
-DEP_REG32(ROM_RSVD, 0x1044)
-    DEP_FIELD(ROM_RSVD, PBR_BOOT_ERROR, 3, 0)
-DEP_REG32(PUF_MISC, 0x1054)
-    DEP_FIELD(PUF_MISC, REGISTER_DIS, 1, 31)
-    DEP_FIELD(PUF_MISC, SYN_WRLK, 1, 30)
-    DEP_FIELD(PUF_MISC, SYN_INVLD, 1, 29)
-    DEP_FIELD(PUF_MISC, TEST2_DIS, 1, 28)
-    DEP_FIELD(PUF_MISC, UNUSED27, 1, 27)
-    DEP_FIELD(PUF_MISC, UNUSED26, 1, 26)
-    DEP_FIELD(PUF_MISC, UNUSED25, 1, 25)
-    DEP_FIELD(PUF_MISC, UNUSED24, 1, 24)
-    DEP_FIELD(PUF_MISC, AUX, 24, 0)
-DEP_REG32(SEC_CTRL, 0x1058)
-    DEP_FIELD(SEC_CTRL, PPK1_INVLD, 2, 30)
-    DEP_FIELD(SEC_CTRL, PPK1_WRLK, 1, 29)
-    DEP_FIELD(SEC_CTRL, PPK0_INVLD, 2, 27)
-    DEP_FIELD(SEC_CTRL, PPK0_WRLK, 1, 26)
-    DEP_FIELD(SEC_CTRL, RSA_EN, 15, 11)
-    DEP_FIELD(SEC_CTRL, SEC_LOCK, 1, 10)
-    DEP_FIELD(SEC_CTRL, PROG_GATE_2, 1, 9)
-    DEP_FIELD(SEC_CTRL, PROG_GATE_1, 1, 8)
-    DEP_FIELD(SEC_CTRL, PROG_GATE_0, 1, 7)
-    DEP_FIELD(SEC_CTRL, DFT_DIS, 1, 6)
-    DEP_FIELD(SEC_CTRL, JTAG_DIS, 1, 5)
-    DEP_FIELD(SEC_CTRL, ERROR_DIS, 1, 4)
-    DEP_FIELD(SEC_CTRL, BBRAM_DIS, 1, 3)
-    DEP_FIELD(SEC_CTRL, ENC_ONLY, 1, 2)
-    DEP_FIELD(SEC_CTRL, AES_WRLK, 1, 1)
-    DEP_FIELD(SEC_CTRL, AES_RDLK, 1, 0)
-DEP_REG32(SPK_ID, 0x105c)
-DEP_REG32(PPK0_0, 0x10a0)
-DEP_REG32(PPK0_1, 0x10a4)
-DEP_REG32(PPK0_2, 0x10a8)
-DEP_REG32(PPK0_3, 0x10ac)
-DEP_REG32(PPK0_4, 0x10b0)
-DEP_REG32(PPK0_5, 0x10b4)
-DEP_REG32(PPK0_6, 0x10b8)
-DEP_REG32(PPK0_7, 0x10bc)
-DEP_REG32(PPK0_8, 0x10c0)
-DEP_REG32(PPK0_9, 0x10c4)
-DEP_REG32(PPK0_10, 0x10c8)
-DEP_REG32(PPK0_11, 0x10cc)
-DEP_REG32(PPK1_0, 0x10d0)
-DEP_REG32(PPK1_1, 0x10d4)
-DEP_REG32(PPK1_2, 0x10d8)
-DEP_REG32(PPK1_3, 0x10dc)
-DEP_REG32(PPK1_4, 0x10e0)
-DEP_REG32(PPK1_5, 0x10e4)
-DEP_REG32(PPK1_6, 0x10e8)
-DEP_REG32(PPK1_7, 0x10ec)
-DEP_REG32(PPK1_8, 0x10f0)
-DEP_REG32(PPK1_9, 0x10f4)
-DEP_REG32(PPK1_10, 0x10f8)
-DEP_REG32(PPK1_11, 0x10fc)
+REG32(WR_LOCK, 0x0)
+    FIELD(WR_LOCK, LOCK, 0, 16)
+REG32(CFG, 0x4)
+    FIELD(CFG, SLVERR_ENABLE, 5, 1)
+    FIELD(CFG, MARGIN_RD, 2, 2)
+    FIELD(CFG, PGM_EN, 1, 1)
+    FIELD(CFG, EFUSE_CLK_SEL, 0, 1)
+REG32(STATUS, 0x8)
+    FIELD(STATUS, AES_CRC_PASS, 7, 1)
+    FIELD(STATUS, AES_CRC_DONE, 6, 1)
+    FIELD(STATUS, CACHE_DONE, 5, 1)
+    FIELD(STATUS, CACHE_LOAD, 4, 1)
+    FIELD(STATUS, EFUSE_3_TBIT, 2, 1)
+    FIELD(STATUS, EFUSE_2_TBIT, 1, 1)
+    FIELD(STATUS, EFUSE_0_TBIT, 0, 1)
+REG32(EFUSE_PGM_ADDR, 0xc)
+    FIELD(EFUSE_PGM_ADDR, EFUSE, 11, 2)
+    FIELD(EFUSE_PGM_ADDR, ROW, 5, 6)
+    FIELD(EFUSE_PGM_ADDR, COLUMN, 0, 5)
+REG32(EFUSE_RD_ADDR, 0x10)
+    FIELD(EFUSE_RD_ADDR, EFUSE, 11, 2)
+    FIELD(EFUSE_RD_ADDR, ROW, 5, 6)
+REG32(EFUSE_RD_DATA, 0x14)
+REG32(TPGM, 0x18)
+    FIELD(TPGM, VALUE, 0, 16)
+REG32(TRD, 0x1c)
+    FIELD(TRD, VALUE, 0, 8)
+REG32(TSU_H_PS, 0x20)
+    FIELD(TSU_H_PS, VALUE, 0, 8)
+REG32(TSU_H_PS_CS, 0x24)
+    FIELD(TSU_H_PS_CS, VALUE, 0, 8)
+REG32(TSU_H_CS, 0x2c)
+    FIELD(TSU_H_CS, VALUE, 0, 4)
+REG32(EFUSE_ISR, 0x30)
+    FIELD(EFUSE_ISR, APB_SLVERR, 31, 1)
+    FIELD(EFUSE_ISR, CACHE_ERROR, 4, 1)
+    FIELD(EFUSE_ISR, RD_ERROR, 3, 1)
+    FIELD(EFUSE_ISR, RD_DONE, 2, 1)
+    FIELD(EFUSE_ISR, PGM_ERROR, 1, 1)
+    FIELD(EFUSE_ISR, PGM_DONE, 0, 1)
+REG32(EFUSE_IMR, 0x34)
+    FIELD(EFUSE_IMR, APB_SLVERR, 31, 1)
+    FIELD(EFUSE_IMR, CACHE_ERROR, 4, 1)
+    FIELD(EFUSE_IMR, RD_ERROR, 3, 1)
+    FIELD(EFUSE_IMR, RD_DONE, 2, 1)
+    FIELD(EFUSE_IMR, PGM_ERROR, 1, 1)
+    FIELD(EFUSE_IMR, PGM_DONE, 0, 1)
+REG32(EFUSE_IER, 0x38)
+    FIELD(EFUSE_IER, APB_SLVERR, 31, 1)
+    FIELD(EFUSE_IER, CACHE_ERROR, 4, 1)
+    FIELD(EFUSE_IER, RD_ERROR, 3, 1)
+    FIELD(EFUSE_IER, RD_DONE, 2, 1)
+    FIELD(EFUSE_IER, PGM_ERROR, 1, 1)
+    FIELD(EFUSE_IER, PGM_DONE, 0, 1)
+REG32(EFUSE_IDR, 0x3c)
+    FIELD(EFUSE_IDR, APB_SLVERR, 31, 1)
+    FIELD(EFUSE_IDR, CACHE_ERROR, 4, 1)
+    FIELD(EFUSE_IDR, RD_ERROR, 3, 1)
+    FIELD(EFUSE_IDR, RD_DONE, 2, 1)
+    FIELD(EFUSE_IDR, PGM_ERROR, 1, 1)
+    FIELD(EFUSE_IDR, PGM_DONE, 0, 1)
+REG32(EFUSE_CACHE_LOAD, 0x40)
+    FIELD(EFUSE_CACHE_LOAD, LOAD, 0, 1)
+REG32(EFUSE_PGM_LOCK, 0x44)
+    FIELD(EFUSE_PGM_LOCK, SPK_ID_LOCK, 0, 1)
+REG32(EFUSE_AES_CRC, 0x48)
+REG32(EFUSE_TBITS_PRGRMG_EN, 0x100)
+    FIELD(EFUSE_TBITS_PRGRMG_EN, TBITS_PRGRMG_EN, 3, 1)
+REG32(DNA_0, 0x100c)
+REG32(DNA_1, 0x1010)
+REG32(DNA_2, 0x1014)
+REG32(IPDISABLE, 0x1018)
+    FIELD(IPDISABLE, VCU_DIS, 8, 1)
+    FIELD(IPDISABLE, GPU_DIS, 5, 1)
+    FIELD(IPDISABLE, APU3_DIS, 3, 1)
+    FIELD(IPDISABLE, APU2_DIS, 2, 1)
+    FIELD(IPDISABLE, APU1_DIS, 1, 1)
+    FIELD(IPDISABLE, APU0_DIS, 0, 1)
+REG32(SYSOSC_CTRL, 0x101c)
+    FIELD(SYSOSC_CTRL, SYSOSC_EN, 0, 1)
+REG32(USER_0, 0x1020)
+REG32(USER_1, 0x1024)
+REG32(USER_2, 0x1028)
+REG32(USER_3, 0x102c)
+REG32(USER_4, 0x1030)
+REG32(USER_5, 0x1034)
+REG32(USER_6, 0x1038)
+REG32(USER_7, 0x103c)
+REG32(MISC_USER_CTRL, 0x1040)
+    FIELD(MISC_USER_CTRL, FPD_SC_EN_0, 14, 1)
+    FIELD(MISC_USER_CTRL, LPD_SC_EN_0, 11, 1)
+    FIELD(MISC_USER_CTRL, LBIST_EN, 10, 1)
+    FIELD(MISC_USER_CTRL, USR_WRLK_7, 7, 1)
+    FIELD(MISC_USER_CTRL, USR_WRLK_6, 6, 1)
+    FIELD(MISC_USER_CTRL, USR_WRLK_5, 5, 1)
+    FIELD(MISC_USER_CTRL, USR_WRLK_4, 4, 1)
+    FIELD(MISC_USER_CTRL, USR_WRLK_3, 3, 1)
+    FIELD(MISC_USER_CTRL, USR_WRLK_2, 2, 1)
+    FIELD(MISC_USER_CTRL, USR_WRLK_1, 1, 1)
+    FIELD(MISC_USER_CTRL, USR_WRLK_0, 0, 1)
+REG32(ROM_RSVD, 0x1044)
+    FIELD(ROM_RSVD, PBR_BOOT_ERROR, 0, 3)
+REG32(PUF_MISC, 0x1054)
+    FIELD(PUF_MISC, REGISTER_DIS, 31, 1)
+    FIELD(PUF_MISC, SYN_WRLK, 30, 1)
+    FIELD(PUF_MISC, SYN_INVLD, 29, 1)
+    FIELD(PUF_MISC, TEST2_DIS, 28, 1)
+    FIELD(PUF_MISC, UNUSED27, 27, 1)
+    FIELD(PUF_MISC, UNUSED26, 26, 1)
+    FIELD(PUF_MISC, UNUSED25, 25, 1)
+    FIELD(PUF_MISC, UNUSED24, 24, 1)
+    FIELD(PUF_MISC, AUX, 0, 24)
+REG32(SEC_CTRL, 0x1058)
+    FIELD(SEC_CTRL, PPK1_INVLD, 30, 2)
+    FIELD(SEC_CTRL, PPK1_WRLK, 29, 1)
+    FIELD(SEC_CTRL, PPK0_INVLD, 27, 2)
+    FIELD(SEC_CTRL, PPK0_WRLK, 26, 1)
+    FIELD(SEC_CTRL, RSA_EN, 11, 15)
+    FIELD(SEC_CTRL, SEC_LOCK, 10, 1)
+    FIELD(SEC_CTRL, PROG_GATE_2, 9, 1)
+    FIELD(SEC_CTRL, PROG_GATE_1, 8, 1)
+    FIELD(SEC_CTRL, PROG_GATE_0, 7, 1)
+    FIELD(SEC_CTRL, DFT_DIS, 6, 1)
+    FIELD(SEC_CTRL, JTAG_DIS, 5, 1)
+    FIELD(SEC_CTRL, ERROR_DIS, 4, 1)
+    FIELD(SEC_CTRL, BBRAM_DIS, 3, 1)
+    FIELD(SEC_CTRL, ENC_ONLY, 2, 1)
+    FIELD(SEC_CTRL, AES_WRLK, 1, 1)
+    FIELD(SEC_CTRL, AES_RDLK, 0, 1)
+REG32(SPK_ID, 0x105c)
+REG32(PPK0_0, 0x10a0)
+REG32(PPK0_1, 0x10a4)
+REG32(PPK0_2, 0x10a8)
+REG32(PPK0_3, 0x10ac)
+REG32(PPK0_4, 0x10b0)
+REG32(PPK0_5, 0x10b4)
+REG32(PPK0_6, 0x10b8)
+REG32(PPK0_7, 0x10bc)
+REG32(PPK0_8, 0x10c0)
+REG32(PPK0_9, 0x10c4)
+REG32(PPK0_10, 0x10c8)
+REG32(PPK0_11, 0x10cc)
+REG32(PPK1_0, 0x10d0)
+REG32(PPK1_1, 0x10d4)
+REG32(PPK1_2, 0x10d8)
+REG32(PPK1_3, 0x10dc)
+REG32(PPK1_4, 0x10e0)
+REG32(PPK1_5, 0x10e4)
+REG32(PPK1_6, 0x10e8)
+REG32(PPK1_7, 0x10ec)
+REG32(PPK1_8, 0x10f0)
+REG32(PPK1_9, 0x10f4)
+REG32(PPK1_10, 0x10f8)
+REG32(PPK1_11, 0x10fc)
 
 #define BIT_POS(ROW, COLUMN)    (ROW * 32 + COLUMN)
 #define R_MAX (R_PPK1_11 + 1)
@@ -293,7 +294,7 @@ typedef struct ZynqMPEFuse {
     XLNXEFuse *efuse;
     void (*refresh_cache)(struct ZynqMPEFuse *, unsigned int);
     uint32_t regs[R_MAX];
-    DepRegisterInfo regs_info[R_MAX];
+    RegisterInfo regs_info[R_MAX];
 } ZynqMPEFuse;
 
 typedef struct Zynq3EFuse {
@@ -303,7 +304,7 @@ typedef struct Zynq3EFuse {
 } Zynq3EFuse;
 
 #define EFUSE_CACHE_BIT(s, reg, field) \
-    DEP_AF_DP32((s)->regs, reg, field, efuse_get_bit((s->efuse), \
+    ARRAY_FIELD_DP32((s)->regs, reg, field, efuse_get_bit((s->efuse), \
                 EFUSE_ ## field))
 
 static void update_tbit_status(ZynqMPEFuse *s)
@@ -352,10 +353,10 @@ static void zynqmp_efuse_sync_cache(ZynqMPEFuse *s, unsigned int bit)
 
     i = efuse_get_bit(s->efuse, EFUSE_PPK0_VALID0);
     i += efuse_get_bit(s->efuse, EFUSE_PPK0_VALID1) * 2;
-    DEP_AF_DP32(s->regs, SEC_CTRL, PPK0_INVLD, i);
+    ARRAY_FIELD_DP32(s->regs, SEC_CTRL, PPK0_INVLD, i);
     i = efuse_get_bit(s->efuse, EFUSE_PPK1_VALID0);
     i += efuse_get_bit(s->efuse, EFUSE_PPK1_VALID1) * 2;
-    DEP_AF_DP32(s->regs, SEC_CTRL, PPK1_INVLD, i);
+    ARRAY_FIELD_DP32(s->regs, SEC_CTRL, PPK1_INVLD, i);
 
     /* Update the tbits.  */
     update_tbit_status(s);
@@ -412,13 +413,13 @@ static void zynqmp_efuse_update_irq(ZynqMPEFuse *s)
     qemu_set_irq(s->irq, pending);
 }
 
-static void zynqmp_efuse_isr_postw(DepRegisterInfo *reg, uint64_t val64)
+static void zynqmp_efuse_isr_postw(RegisterInfo *reg, uint64_t val64)
 {
     ZynqMPEFuse *s = ZYNQMP_EFUSE(reg->opaque);
     zynqmp_efuse_update_irq(s);
 }
 
-static uint64_t zynqmp_efuse_ier_prew(DepRegisterInfo *reg, uint64_t val64)
+static uint64_t zynqmp_efuse_ier_prew(RegisterInfo *reg, uint64_t val64)
 {
     ZynqMPEFuse *s = ZYNQMP_EFUSE(reg->opaque);
     uint32_t val = val64;
@@ -428,7 +429,7 @@ static uint64_t zynqmp_efuse_ier_prew(DepRegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
-static uint64_t zynqmp_efuse_idr_prew(DepRegisterInfo *reg, uint64_t val64)
+static uint64_t zynqmp_efuse_idr_prew(RegisterInfo *reg, uint64_t val64)
 {
     ZynqMPEFuse *s = ZYNQMP_EFUSE(reg->opaque);
     uint32_t val = val64;
@@ -446,7 +447,7 @@ static bool zynqmp_efuse_idx_is_aes_key(unsigned int fuse)
     return false;
 }
 
-static void zynqmp_efuse_pgm_addr_postw(DepRegisterInfo *reg, uint64_t val64)
+static void zynqmp_efuse_pgm_addr_postw(RegisterInfo *reg, uint64_t val64)
 {
     ZynqMPEFuse *s = ZYNQMP_EFUSE(reg->opaque);
     bool wr_lock, ps, prot;
@@ -455,14 +456,14 @@ static void zynqmp_efuse_pgm_addr_postw(DepRegisterInfo *reg, uint64_t val64)
     efuse_idx = s->regs[R_EFUSE_PGM_ADDR];
 
     /* Allow only valid array, and adjust for skipped array 1 */
-    switch (DEP_AF_EX32(s->regs, EFUSE_PGM_ADDR, EFUSE)) {
+    switch (ARRAY_FIELD_EX32(s->regs, EFUSE_PGM_ADDR, EFUSE)) {
     case 0:
         break;
     case 2:
-        val64 = DEP_F_DP32(efuse_idx, EFUSE_PGM_ADDR, EFUSE, 1);
+        val64 = FIELD_DP32(efuse_idx, EFUSE_PGM_ADDR, EFUSE, 1);
         break;
     case 3:
-        val64 = DEP_F_DP32(efuse_idx, EFUSE_PGM_ADDR, EFUSE, 2);
+        val64 = FIELD_DP32(efuse_idx, EFUSE_PGM_ADDR, EFUSE, 2);
         break;
     default:
         qemu_log_mask(LOG_GUEST_ERROR,
@@ -474,7 +475,7 @@ static void zynqmp_efuse_pgm_addr_postw(DepRegisterInfo *reg, uint64_t val64)
 
     /* TODO: Sanity check the timing setup.  */
 
-    wr_lock = DEP_AF_EX32(s->regs, WR_LOCK, LOCK);
+    wr_lock = ARRAY_FIELD_EX32(s->regs, WR_LOCK, LOCK);
     if (wr_lock) {
         qemu_log_mask(LOG_GUEST_ERROR,
                       "%s: Write to eFuse %u while write protected\n",
@@ -483,7 +484,7 @@ static void zynqmp_efuse_pgm_addr_postw(DepRegisterInfo *reg, uint64_t val64)
         return;
     }
 
-    ps = DEP_AF_EX32(s->regs, CFG, PGM_EN);
+    ps = ARRAY_FIELD_EX32(s->regs, CFG, PGM_EN);
     if (!ps) {
         qemu_log_mask(LOG_GUEST_ERROR,
                       "%s: Write to eFuse %u while not powered\n",
@@ -493,7 +494,7 @@ static void zynqmp_efuse_pgm_addr_postw(DepRegisterInfo *reg, uint64_t val64)
     }
 
     /* I'm not sure if this is HW enforced or not.  */
-    prot = DEP_AF_EX32(s->regs, SEC_CTRL, AES_WRLK);
+    prot = ARRAY_FIELD_EX32(s->regs, SEC_CTRL, AES_WRLK);
     if (prot && zynqmp_efuse_idx_is_aes_key(efuse_idx)) {
         qemu_log_mask(LOG_GUEST_ERROR,
                       "%s: Write to AES key eFuse %u while not wr protected\n",
@@ -503,8 +504,8 @@ static void zynqmp_efuse_pgm_addr_postw(DepRegisterInfo *reg, uint64_t val64)
     }
 
     /* Set up to detect done-transition */
-    DEP_AF_DP32(s->regs, EFUSE_ISR, PGM_ERROR, 0);
-    DEP_AF_DP32(s->regs, EFUSE_ISR, PGM_DONE, 0);
+    ARRAY_FIELD_DP32(s->regs, EFUSE_ISR, PGM_ERROR, 0);
+    ARRAY_FIELD_DP32(s->regs, EFUSE_ISR, PGM_DONE, 0);
 
     efuse_pgm_start(s->efuse, 13, val64);
     /* To Vefify after programming, Cache reload should should happen or
@@ -517,12 +518,12 @@ static void zynqmp_efuse_pgm_done(DeviceState *dev, bool failed)
 {
     ZynqMPEFuse *s = ZYNQMP_EFUSE(dev);
 
-    DEP_AF_DP32(s->regs, EFUSE_ISR, PGM_ERROR, (failed ? 1 : 0));
-    DEP_AF_DP32(s->regs, EFUSE_ISR, PGM_DONE, 1);
+    ARRAY_FIELD_DP32(s->regs, EFUSE_ISR, PGM_ERROR, (failed ? 1 : 0));
+    ARRAY_FIELD_DP32(s->regs, EFUSE_ISR, PGM_DONE, 1);
     zynqmp_efuse_update_irq(s);
 }
 
-static void zynqmp_efuse_rd_addr_postw(DepRegisterInfo *reg, uint64_t val64)
+static void zynqmp_efuse_rd_addr_postw(RegisterInfo *reg, uint64_t val64)
 {
     ZynqMPEFuse *s = ZYNQMP_EFUSE(reg->opaque);
 
@@ -587,8 +588,8 @@ static void zynqmp_efuse_rd_addr_postw(DepRegisterInfo *reg, uint64_t val64)
 #undef COL_MASK
 
     uint32_t efuse_idx = s->regs[R_EFUSE_RD_ADDR];
-    uint32_t efuse_ary = DEP_F_EX32(efuse_idx, EFUSE_RD_ADDR, EFUSE);
-    uint32_t efuse_row = DEP_F_EX32(efuse_idx, EFUSE_RD_ADDR, ROW);
+    uint32_t efuse_ary = FIELD_EX32(efuse_idx, EFUSE_RD_ADDR, EFUSE);
+    uint32_t efuse_row = FIELD_EX32(efuse_idx, EFUSE_RD_ADDR, ROW);
 
     switch (efuse_ary) {
     case 0:     /* Various */
@@ -603,7 +604,7 @@ static void zynqmp_efuse_rd_addr_postw(DepRegisterInfo *reg, uint64_t val64)
         break;
     case 2:     /* PUF helper data, adjust for skipped array 1 */
     case 3:
-        val64 = DEP_F_DP32(efuse_idx, EFUSE_RD_ADDR, EFUSE, efuse_ary - 1);
+        val64 = FIELD_DP32(efuse_idx, EFUSE_RD_ADDR, EFUSE, efuse_ary - 1);
         break;
     default:
         goto denied;
@@ -611,8 +612,8 @@ static void zynqmp_efuse_rd_addr_postw(DepRegisterInfo *reg, uint64_t val64)
 
     s->regs[R_EFUSE_RD_DATA] = efuse_get_row(s->efuse, val64) & col_mask;
 
-    DEP_AF_DP32(s->regs, EFUSE_ISR, RD_ERROR, 0);
-    DEP_AF_DP32(s->regs, EFUSE_ISR, RD_DONE, 1);
+    ARRAY_FIELD_DP32(s->regs, EFUSE_ISR, RD_ERROR, 0);
+    ARRAY_FIELD_DP32(s->regs, EFUSE_ISR, RD_DONE, 1);
     zynqmp_efuse_update_irq(s);
     return;
 
@@ -624,190 +625,202 @@ static void zynqmp_efuse_rd_addr_postw(DepRegisterInfo *reg, uint64_t val64)
 
     s->regs[R_EFUSE_RD_DATA] = 0;
 
-    DEP_AF_DP32(s->regs, EFUSE_ISR, RD_ERROR, 1);
-    DEP_AF_DP32(s->regs, EFUSE_ISR, RD_DONE, 0);
+    ARRAY_FIELD_DP32(s->regs, EFUSE_ISR, RD_ERROR, 1);
+    ARRAY_FIELD_DP32(s->regs, EFUSE_ISR, RD_DONE, 0);
     zynqmp_efuse_update_irq(s);
 }
 
-static void zynqmp_efuse_aes_crc_postw(DepRegisterInfo *reg, uint64_t val64)
+static void zynqmp_efuse_aes_crc_postw(RegisterInfo *reg, uint64_t val64)
 {
     ZynqMPEFuse *s = ZYNQMP_EFUSE(reg->opaque);
 
     /* TODO: do real CRC-check */
-    DEP_AF_DP32(s->regs, STATUS, AES_CRC_PASS, (val64 != 0));
-    DEP_AF_DP32(s->regs, STATUS, AES_CRC_DONE, 1);
+    ARRAY_FIELD_DP32(s->regs, STATUS, AES_CRC_PASS, (val64 != 0));
+    ARRAY_FIELD_DP32(s->regs, STATUS, AES_CRC_DONE, 1);
 }
 
-static void zynqmp_efuse_cfg_postw(DepRegisterInfo *reg, uint64_t val64)
+static void zynqmp_efuse_cfg_postw(RegisterInfo *reg, uint64_t val64)
 {
     ZynqMPEFuse *s = ZYNQMP_EFUSE(reg->opaque);
     unsigned int ps;
     uint32_t val32 = val64;
 
-    ps = DEP_F_EX32(val32, CFG, PGM_EN);
+    ps = FIELD_EX32(val32, CFG, PGM_EN);
     efuse_stop_timer_ps(s->efuse);
     if (ps) {
         efuse_set_timer_ps(s->efuse, 500);
     }
 }
 
-static uint64_t zynqmp_efuse_cache_load_prew(DepRegisterInfo *reg,
+static uint64_t zynqmp_efuse_cache_load_prew(RegisterInfo *reg,
                                              uint64_t valu64)
 {
     ZynqMPEFuse *s = ZYNQMP_EFUSE(reg->opaque);
 
     if (valu64 & R_EFUSE_CACHE_LOAD_LOAD_MASK) {
         s->refresh_cache(s, FBIT_UNKNOWN);
-        DEP_AF_DP32(s->regs, STATUS, CACHE_DONE, 1);
+        ARRAY_FIELD_DP32(s->regs, STATUS, CACHE_DONE, 1);
         zynqmp_efuse_update_irq(s);
     }
 
     return 0;
 }
 
-static uint64_t zynqmp_wr_lock_prew(DepRegisterInfo *reg, uint64_t val)
+static uint64_t zynqmp_wr_lock_prew(RegisterInfo *reg, uint64_t val)
 {
     return val == 0xDF0D ? 0 : 1;
 }
 
-static DepRegisterAccessInfo zynqmp_efuse_regs_info[] = {
-    {   .name = "WR_LOCK",  .decode.addr = A_WR_LOCK,
+static RegisterAccessInfo zynqmp_efuse_regs_info[] = {
+    {   .name = "WR_LOCK",  .addr = A_WR_LOCK,
         .reset = 0x1,
         .pre_write = zynqmp_wr_lock_prew,
-    },{ .name = "CFG",  .decode.addr = A_CFG,
+    },{ .name = "CFG",  .addr = A_CFG,
         .post_write = zynqmp_efuse_cfg_postw
-    },{ .name = "STATUS",  .decode.addr = A_STATUS,
+    },{ .name = "STATUS",  .addr = A_STATUS,
         .rsvd = 0x8,
         .ro = 0xff,
-    },{ .name = "EFUSE_PGM_ADDR",  .decode.addr = A_EFUSE_PGM_ADDR,
+    },{ .name = "EFUSE_PGM_ADDR",  .addr = A_EFUSE_PGM_ADDR,
          .post_write = zynqmp_efuse_pgm_addr_postw
-    },{ .name = "EFUSE_RD_ADDR",  .decode.addr = A_EFUSE_RD_ADDR,
+    },{ .name = "EFUSE_RD_ADDR",  .addr = A_EFUSE_RD_ADDR,
         .rsvd = 0x1f,
         .post_write = zynqmp_efuse_rd_addr_postw,
-    },{ .name = "EFUSE_RD_DATA",  .decode.addr = A_EFUSE_RD_DATA,
+    },{ .name = "EFUSE_RD_DATA",  .addr = A_EFUSE_RD_DATA,
         .ro = 0xffffffff,
-    },{ .name = "TPGM",  .decode.addr = A_TPGM,
-    },{ .name = "TRD",  .decode.addr = A_TRD,
+    },{ .name = "TPGM",  .addr = A_TPGM,
+    },{ .name = "TRD",  .addr = A_TRD,
         .reset = 0x1b,
-    },{ .name = "TSU_H_PS",  .decode.addr = A_TSU_H_PS,
+    },{ .name = "TSU_H_PS",  .addr = A_TSU_H_PS,
         .reset = 0xff,
-    },{ .name = "TSU_H_PS_CS",  .decode.addr = A_TSU_H_PS_CS,
+    },{ .name = "TSU_H_PS_CS",  .addr = A_TSU_H_PS_CS,
         .reset = 0xb,
-    },{ .name = "TSU_H_CS",  .decode.addr = A_TSU_H_CS,
+    },{ .name = "TSU_H_CS",  .addr = A_TSU_H_CS,
         .reset = 0x7,
-    },{ .name = "EFUSE_ISR",  .decode.addr = A_EFUSE_ISR,
+    },{ .name = "EFUSE_ISR",  .addr = A_EFUSE_ISR,
         .rsvd = 0x7fffffe0,
         .w1c = 0x8000001f,
         .post_write = zynqmp_efuse_isr_postw,
-    },{ .name = "EFUSE_IMR",  .decode.addr = A_EFUSE_IMR,
+    },{ .name = "EFUSE_IMR",  .addr = A_EFUSE_IMR,
         .reset = 0x8000001f,
         .rsvd = 0x7fffffe0,
         .ro = 0xffffffff,
-    },{ .name = "EFUSE_IER",  .decode.addr = A_EFUSE_IER,
+    },{ .name = "EFUSE_IER",  .addr = A_EFUSE_IER,
         .rsvd = 0x7fffffe0,
         .pre_write = zynqmp_efuse_ier_prew,
-    },{ .name = "EFUSE_IDR",  .decode.addr = A_EFUSE_IDR,
+    },{ .name = "EFUSE_IDR",  .addr = A_EFUSE_IDR,
         .rsvd = 0x7fffffe0,
         .pre_write = zynqmp_efuse_idr_prew,
-    },{ .name = "EFUSE_CACHE_LOAD",  .decode.addr = A_EFUSE_CACHE_LOAD,
+    },{ .name = "EFUSE_CACHE_LOAD",  .addr = A_EFUSE_CACHE_LOAD,
         .pre_write = zynqmp_efuse_cache_load_prew,
-    },{ .name = "EFUSE_PGM_LOCK",  .decode.addr = A_EFUSE_PGM_LOCK,
-    },{ .name = "EFUSE_AES_CRC",  .decode.addr = A_EFUSE_AES_CRC,
+    },{ .name = "EFUSE_PGM_LOCK",  .addr = A_EFUSE_PGM_LOCK,
+    },{ .name = "EFUSE_AES_CRC",  .addr = A_EFUSE_AES_CRC,
         .post_write = zynqmp_efuse_aes_crc_postw,
-    },{ .name = "EFUSE_TBITS_PRGRMG_EN",  .decode.addr = A_EFUSE_TBITS_PRGRMG_EN,
+    },{ .name = "EFUSE_TBITS_PRGRMG_EN",  .addr = A_EFUSE_TBITS_PRGRMG_EN,
         .reset = R_EFUSE_TBITS_PRGRMG_EN_TBITS_PRGRMG_EN_MASK,
-    },{ .name = "DNA_0",  .decode.addr = A_DNA_0,
+    },{ .name = "DNA_0",  .addr = A_DNA_0,
         .ro = 0xffffffff,
-    },{ .name = "DNA_1",  .decode.addr = A_DNA_1,
+    },{ .name = "DNA_1",  .addr = A_DNA_1,
         .ro = 0xffffffff,
-    },{ .name = "DNA_2",  .decode.addr = A_DNA_2,
+    },{ .name = "DNA_2",  .addr = A_DNA_2,
         .ro = 0xffffffff,
-    },{ .name = "IPDISABLE",  .decode.addr = A_IPDISABLE,
+    },{ .name = "IPDISABLE",  .addr = A_IPDISABLE,
         .ro = 0xffffffff,
-    },{ .name = "SYSOSC_CTRL",  .decode.addr = A_SYSOSC_CTRL,
+    },{ .name = "SYSOSC_CTRL",  .addr = A_SYSOSC_CTRL,
         .ro = 0xffffffff,
-    },{ .name = "USER_0",  .decode.addr = A_USER_0,
+    },{ .name = "USER_0",  .addr = A_USER_0,
         .ro = 0xffffffff,
-    },{ .name = "USER_1",  .decode.addr = A_USER_1,
+    },{ .name = "USER_1",  .addr = A_USER_1,
         .ro = 0xffffffff,
-    },{ .name = "USER_2",  .decode.addr = A_USER_2,
+    },{ .name = "USER_2",  .addr = A_USER_2,
         .ro = 0xffffffff,
-    },{ .name = "USER_3",  .decode.addr = A_USER_3,
+    },{ .name = "USER_3",  .addr = A_USER_3,
         .ro = 0xffffffff,
-    },{ .name = "USER_4",  .decode.addr = A_USER_4,
+    },{ .name = "USER_4",  .addr = A_USER_4,
         .ro = 0xffffffff,
-    },{ .name = "USER_5",  .decode.addr = A_USER_5,
+    },{ .name = "USER_5",  .addr = A_USER_5,
         .ro = 0xffffffff,
-    },{ .name = "USER_6",  .decode.addr = A_USER_6,
+    },{ .name = "USER_6",  .addr = A_USER_6,
         .ro = 0xffffffff,
-    },{ .name = "USER_7",  .decode.addr = A_USER_7,
+    },{ .name = "USER_7",  .addr = A_USER_7,
         .ro = 0xffffffff,
-    },{ .name = "MISC_USER_CTRL",  .decode.addr = A_MISC_USER_CTRL,
+    },{ .name = "MISC_USER_CTRL",  .addr = A_MISC_USER_CTRL,
         .ro = 0xffffffff,
-    },{ .name = "ROM_RSVD",  .decode.addr = A_ROM_RSVD,
+    },{ .name = "ROM_RSVD",  .addr = A_ROM_RSVD,
         .ro = 0xffffffff,
-    },{ .name = "PUF_MISC",  .decode.addr = A_PUF_MISC,
+    },{ .name = "PUF_MISC",  .addr = A_PUF_MISC,
         .ro = 0xffffffff,
-    },{ .name = "SEC_CTRL",  .decode.addr = A_SEC_CTRL,
+    },{ .name = "SEC_CTRL",  .addr = A_SEC_CTRL,
         .ro = 0xffffffff,
-    },{ .name = "SPK_ID",  .decode.addr = A_SPK_ID,
+    },{ .name = "SPK_ID",  .addr = A_SPK_ID,
         .ro = 0xffffffff,
-    },{ .name = "PPK0_0",  .decode.addr = A_PPK0_0,
+    },{ .name = "PPK0_0",  .addr = A_PPK0_0,
         .ro = 0xffffffff,
-    },{ .name = "PPK0_1",  .decode.addr = A_PPK0_1,
+    },{ .name = "PPK0_1",  .addr = A_PPK0_1,
         .ro = 0xffffffff,
-    },{ .name = "PPK0_2",  .decode.addr = A_PPK0_2,
+    },{ .name = "PPK0_2",  .addr = A_PPK0_2,
         .ro = 0xffffffff,
-    },{ .name = "PPK0_3",  .decode.addr = A_PPK0_3,
+    },{ .name = "PPK0_3",  .addr = A_PPK0_3,
         .ro = 0xffffffff,
-    },{ .name = "PPK0_4",  .decode.addr = A_PPK0_4,
+    },{ .name = "PPK0_4",  .addr = A_PPK0_4,
         .ro = 0xffffffff,
-    },{ .name = "PPK0_5",  .decode.addr = A_PPK0_5,
+    },{ .name = "PPK0_5",  .addr = A_PPK0_5,
         .ro = 0xffffffff,
-    },{ .name = "PPK0_6",  .decode.addr = A_PPK0_6,
+    },{ .name = "PPK0_6",  .addr = A_PPK0_6,
         .ro = 0xffffffff,
-    },{ .name = "PPK0_7",  .decode.addr = A_PPK0_7,
+    },{ .name = "PPK0_7",  .addr = A_PPK0_7,
         .ro = 0xffffffff,
-    },{ .name = "PPK0_8",  .decode.addr = A_PPK0_8,
+    },{ .name = "PPK0_8",  .addr = A_PPK0_8,
         .ro = 0xffffffff,
-    },{ .name = "PPK0_9",  .decode.addr = A_PPK0_9,
+    },{ .name = "PPK0_9",  .addr = A_PPK0_9,
         .ro = 0xffffffff,
-    },{ .name = "PPK0_10",  .decode.addr = A_PPK0_10,
+    },{ .name = "PPK0_10",  .addr = A_PPK0_10,
         .ro = 0xffffffff,
-    },{ .name = "PPK0_11",  .decode.addr = A_PPK0_11,
+    },{ .name = "PPK0_11",  .addr = A_PPK0_11,
         .ro = 0xffffffff,
-    },{ .name = "PPK1_0",  .decode.addr = A_PPK1_0,
+    },{ .name = "PPK1_0",  .addr = A_PPK1_0,
         .ro = 0xffffffff,
-    },{ .name = "PPK1_1",  .decode.addr = A_PPK1_1,
+    },{ .name = "PPK1_1",  .addr = A_PPK1_1,
         .ro = 0xffffffff,
-    },{ .name = "PPK1_2",  .decode.addr = A_PPK1_2,
+    },{ .name = "PPK1_2",  .addr = A_PPK1_2,
         .ro = 0xffffffff,
-    },{ .name = "PPK1_3",  .decode.addr = A_PPK1_3,
+    },{ .name = "PPK1_3",  .addr = A_PPK1_3,
         .ro = 0xffffffff,
-    },{ .name = "PPK1_4",  .decode.addr = A_PPK1_4,
+    },{ .name = "PPK1_4",  .addr = A_PPK1_4,
         .ro = 0xffffffff,
-    },{ .name = "PPK1_5",  .decode.addr = A_PPK1_5,
+    },{ .name = "PPK1_5",  .addr = A_PPK1_5,
         .ro = 0xffffffff,
-    },{ .name = "PPK1_6",  .decode.addr = A_PPK1_6,
+    },{ .name = "PPK1_6",  .addr = A_PPK1_6,
         .ro = 0xffffffff,
-    },{ .name = "PPK1_7",  .decode.addr = A_PPK1_7,
+    },{ .name = "PPK1_7",  .addr = A_PPK1_7,
         .ro = 0xffffffff,
-    },{ .name = "PPK1_8",  .decode.addr = A_PPK1_8,
+    },{ .name = "PPK1_8",  .addr = A_PPK1_8,
         .ro = 0xffffffff,
-    },{ .name = "PPK1_9",  .decode.addr = A_PPK1_9,
+    },{ .name = "PPK1_9",  .addr = A_PPK1_9,
         .ro = 0xffffffff,
-    },{ .name = "PPK1_10",  .decode.addr = A_PPK1_10,
+    },{ .name = "PPK1_10",  .addr = A_PPK1_10,
         .ro = 0xffffffff,
-    },{ .name = "PPK1_11",  .decode.addr = A_PPK1_11,
+    },{ .name = "PPK1_11",  .addr = A_PPK1_11,
         .ro = 0xffffffff,
     }
 };
 
+/* Return dev-obj from reg-region created by register_init_block32 */
+static ZynqMPEFuse *zynqmp_efuse_of_mr(void *mr_accessor)
+{
+    RegisterInfoArray *reg_array = mr_accessor;
+    Object *dev;
+
+    assert(reg_array != NULL);
+
+    dev = reg_array->mem.owner;
+    assert(dev);
+
+    return ZYNQMP_EFUSE(dev);
+}
+
 static uint64_t zynqmp_efuse_mem_read(void *opaque, hwaddr addr, unsigned size)
 {
-    DepRegisterInfo *regi = opaque;
-    ZynqMPEFuse *s = ZYNQMP_EFUSE(regi->opaque);
-    uint32_t v;
+    ZynqMPEFuse *s = zynqmp_efuse_of_mr(opaque);
 
     /* Process programming completion if late.  */
     efuse_pgm_complete(s->efuse);
@@ -817,23 +830,14 @@ static uint64_t zynqmp_efuse_mem_read(void *opaque, hwaddr addr, unsigned size)
                       "%s: Accessing device while programming\n",
                       object_get_canonical_path(OBJECT(s)));
     }
-    v = dep_register_read(regi);
-    return v;
+
+    return register_read_memory(opaque, addr, size);
 }
 
 static MemTxResult zynqmp_efuse_mem_write_with_attrs(void *opaque, hwaddr addr,
                             uint64_t v64, unsigned size, MemTxAttrs attrs)
 {
-    DepRegisterInfo reg;
-    DepRegisterAccessInfo access;
-    DepRegisterInfo *regi = opaque;
-    ZynqMPEFuse *s;
-
-    if (attrs.debug) {
-        dep_register_trap_access(opaque, &reg, &access);
-        regi = &reg;
-    }
-    s = ZYNQMP_EFUSE(regi->opaque);
+    ZynqMPEFuse *s = zynqmp_efuse_of_mr(opaque);
 
     /* Process programming completion if late.  */
     efuse_pgm_complete(s->efuse);
@@ -843,8 +847,8 @@ static MemTxResult zynqmp_efuse_mem_write_with_attrs(void *opaque, hwaddr addr,
                       "%s: Accessing device while programming\n",
                       object_get_canonical_path(OBJECT(s)));
     }
-    dep_register_write(regi, v64, ~0);
-    return MEMTX_OK;
+
+    return register_write_memory_with_attrs(opaque, addr, v64, size, attrs);
 }
 
 static const MemoryRegionOps zynqmp_efuse_ops = {
@@ -863,11 +867,11 @@ static void zynqmp_efuse_reset(DeviceState *dev)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        dep_register_reset(&s->regs_info[i]);
+        register_reset(&s->regs_info[i]);
     }
 
     s->refresh_cache(s, FBIT_UNKNOWN);
-    DEP_AF_DP32(s->regs, STATUS, CACHE_DONE, 1);
+    ARRAY_FIELD_DP32(s->regs, STATUS, CACHE_DONE, 1);
     zynqmp_efuse_update_irq(s);
 }
 
@@ -875,7 +879,6 @@ static void zynqmp_efuse_realize(DeviceState *dev, Error **errp)
 {
     ZynqMPEFuse *s = ZYNQMP_EFUSE(dev);
     const char *prefix = object_get_canonical_path(OBJECT(dev));
-    unsigned int i;
 
     if (!s->key.sink) {
         error_setg(&error_abort,
@@ -887,24 +890,6 @@ static void zynqmp_efuse_realize(DeviceState *dev, Error **errp)
     }
     s->efuse->pgm_done = zynqmp_efuse_pgm_done;
     s->efuse->dev = dev;
-
-    for (i = 0; i < ARRAY_SIZE(zynqmp_efuse_regs_info); ++i) {
-        DepRegisterInfo *r = &s->regs_info[
-                             zynqmp_efuse_regs_info[i].decode.addr / 4];
-
-        *r = (DepRegisterInfo) {
-            .data = (uint8_t *)&s->regs[
-                    zynqmp_efuse_regs_info[i].decode.addr / 4],
-            .data_size = sizeof(uint32_t),
-            .access = &zynqmp_efuse_regs_info[i],
-            .debug = ZYNQMP_EFUSE_ERR_DEBUG,
-            .prefix = prefix,
-            .opaque = s,
-        };
-        memory_region_init_io(&r->mem, OBJECT(dev), &zynqmp_efuse_ops, r,
-                              r->access->name, 4);
-        memory_region_add_subregion(&s->iomem, r->access->decode.addr, &r->mem);
-    }
 }
 
 static void versal_efuse_realize(DeviceState *dev, Error **errp)
@@ -919,6 +904,7 @@ static void zynqmp_efuse_init(Object *obj)
 {
     ZynqMPEFuse *s = ZYNQMP_EFUSE(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+    RegisterInfoArray *reg_array;
 
     object_property_add_link(obj, "efuse",
                             TYPE_XLNX_EFUSE,
@@ -927,6 +913,15 @@ static void zynqmp_efuse_init(Object *obj)
                             OBJ_PROP_LINK_STRONG,
                             NULL);
     memory_region_init(&s->iomem, obj, TYPE_ZYNQMP_EFUSE, R_MAX * 4);
+    reg_array =
+        register_init_block32(DEVICE(obj), zynqmp_efuse_regs_info,
+                              ARRAY_SIZE(zynqmp_efuse_regs_info),
+                              s->regs_info, s->regs,
+                              &zynqmp_efuse_ops,
+                              ZYNQMP_EFUSE_ERR_DEBUG,
+                              R_MAX * 4);
+    memory_region_add_subregion(&s->iomem, 0, &reg_array->mem);
+
     sysbus_init_mmio(sbd, &s->iomem);
     sysbus_init_irq(sbd, &s->irq);
 
