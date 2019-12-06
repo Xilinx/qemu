@@ -933,12 +933,6 @@ static void zynqmp_efuse_init(Object *obj)
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
     RegisterInfoArray *reg_array;
 
-    object_property_add_link(obj, "efuse",
-                            TYPE_XLNX_EFUSE,
-                            (Object **)&s->efuse,
-                            qdev_prop_allow_set_link_before_realize,
-                            OBJ_PROP_LINK_STRONG,
-                            NULL);
     memory_region_init(&s->iomem, obj, TYPE_ZYNQMP_EFUSE, R_MAX * 4);
     reg_array =
         register_init_block32(DEVICE(obj), zynqmp_efuse_regs_info,
