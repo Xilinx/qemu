@@ -152,6 +152,7 @@ static const TypeInfo mdio_slave_info = {
     .class_init = mdio_slave_class_init,
     .interfaces = (InterfaceInfo []) {
         {TYPE_FDT_GENERIC_MMAP},
+        { },
     },
 };
 
