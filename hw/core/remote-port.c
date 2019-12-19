@@ -718,7 +718,7 @@ static void rp_realize(DeviceState *dev, Error **errp)
         int listen_sk;
 
         sock = socket_parse("127.0.0.1:0", &error_abort);
-        listen_sk = socket_listen(sock, &error_abort);
+        listen_sk = socket_listen(sock, 1, &error_abort);
 
         if (s->event.pipe.read < 0) {
             perror("socket read");
