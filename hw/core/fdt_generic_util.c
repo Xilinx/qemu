@@ -1470,6 +1470,15 @@ exit_reg_parse:
                                         dev, TYPE_FDT_GENERIC_INTC);
                 FDTGenericIntcClass *idc = FDT_GENERIC_INTC_GET_CLASS(id);
                 if (id && idc->auto_parent) {
+                    /*
+                     * Hack alert! auto-parenting the interrupt
+                     * controller before the first CPU has been
+                     * realized leads to a segmentation fault in
+                     * xilinx_intc_fdt_auto_parent.
+                     */
+                    while (!DEVICE(first_cpu)) {
+                        fdt_init_yield(fdti);
+                    }
                     Error *err = NULL;
                     idc->auto_parent(id, &err);
                 } else {
