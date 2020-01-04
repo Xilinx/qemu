@@ -46,7 +46,7 @@
 #define FDT_GENERIC_MAX_PATTERN_LEN 1024
 
 typedef struct TableListNode {
-    void *next;
+    struct TableListNode *next;
     char key[FDT_GENERIC_MAX_PATTERN_LEN];
     FDTInitFn fdt_init;
     void *opaque;
@@ -61,7 +61,7 @@ static void add_to_table(
         TableListNode **head_p)
 {
     TableListNode *nn = malloc(sizeof(*nn));
-    nn->next = (void *)(*head_p);
+    nn->next = *head_p;
     strcpy(nn->key, key);
     nn->fdt_init = fdt_init;
     nn->opaque = opaque;
@@ -80,14 +80,18 @@ static int fdt_init_search_table(
         const char *key, /* string to match */
         TableListNode **head) /* head of the list to search */
 {
-    TableListNode *c = *head;
-    if (c == NULL) {
-        return 1;
-    } else if (!strcmp(key, c->key)) {
-        return c->fdt_init ? c->fdt_init(node_path, fdti, c->opaque) : 0;
+    TableListNode *iter;
+
+    for (iter = *head; iter != NULL; iter = iter->next) {
+        if (!strcmp(key, iter->key)) {
+            if (iter->fdt_init) {
+                return iter->fdt_init(node_path, fdti, iter->opaque);
+            }
+            return 0;
+        }
     }
-    return fdt_init_search_table(node_path, fdti, key,
-        (TableListNode **)(&(*head)->next));
+
+    return 1;
 }
 
 TableListNode *compat_list_head;
@@ -117,11 +121,11 @@ int fdt_init_inst_bind(char *node_path, FDTMachineInfo *fdti,
 
 static void dump_table(TableListNode *head)
 {
-    if (head == NULL) {
-        return;
+    TableListNode *iter;
+
+    for (iter = head; iter != NULL; iter = iter->next) {
+        printf("key : %s, opaque data %p\n", head->key, head->opaque);
     }
-    printf("key : %s, opaque data %p\n", head->key, head->opaque);
-    dump_table(head->next);
 }
 
 void dump_compat_table(void)
