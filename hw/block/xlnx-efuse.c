@@ -118,6 +118,7 @@ void efuse_sync_u32(XLNXEFuse *s, uint32_t *u32,
 
 static void efuse_sync_bdrv(XLNXEFuse *s)
 {
+    const int bswap_adj = (const_le32(0x1234) != 0x1234 ? 3 : 0);
     unsigned int efuse_byte;
 
     if (!s->blk || s->blk_ro) {
@@ -126,7 +127,8 @@ static void efuse_sync_bdrv(XLNXEFuse *s)
 
     efuse_byte = s->efuse_idx / 8;
 
-    if (blk_pwrite(s->blk, efuse_byte, ((uint8_t *) s->fuse32) + efuse_byte,
+    if (blk_pwrite(s->blk, efuse_byte,
+                   ((uint8_t *) s->fuse32) + (efuse_byte ^ bswap_adj),
                    1, 0) < 0) {
         error_report("%s: write error in byte %" PRIu32 ".",
                       __func__, efuse_byte);
@@ -218,7 +220,7 @@ static void efuse_realize(DeviceState *dev, Error **errp)
     dinfo = drive_get_next(IF_PFLASH);
     blk = dinfo ? blk_by_legacy_dinfo(dinfo) : NULL;
 
-    nr_bytes = (s->efuse_nr * s->efuse_size) / 8;
+    nr_bytes = ROUND_UP((s->efuse_nr * s->efuse_size) / 8, 4);
     s->fuse32 = g_malloc0(nr_bytes);
     if (blk) {
         qdev_prop_set_drive(dev, "drive", blk, NULL);
@@ -238,6 +240,14 @@ static void efuse_realize(DeviceState *dev, Error **errp)
                          "backing file too small? Expecting %" PRIu32" bytes",
                           prefix,
                           (unsigned int) (nr_bytes));
+        }
+        if (const_le32(0x1234) != 0x1234) {
+            /* Convert from little-endian backstore for each 32-bit row */
+            unsigned int nr_u32;
+
+            for (nr_u32 = 0; nr_u32 < (nr_bytes / 4); nr_u32++) {
+                s->fuse32[nr_u32] = le32_to_cpu(s->fuse32[nr_u32]);
+            }
         }
     }
 
