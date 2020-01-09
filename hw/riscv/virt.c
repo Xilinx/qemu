@@ -22,6 +22,7 @@
 #include "qemu/units.h"
 #include "qemu/log.h"
 #include "qemu/error-report.h"
+#include "qemu-common.h"
 #include "qapi/error.h"
 #include "hw/boards.h"
 #include "hw/loader.h"
@@ -64,7 +65,7 @@ static const struct MemmapEntry {
     [VIRT_VIRTIO] =      { 0x10001000,        0x1000 },
     [VIRT_FLASH] =       { 0x20000000,     0x4000000 },
     [VIRT_DRAM] =        { 0x80000000,           0x0 },
-    [VIRT_COSIM] =       { 0x20000000,    0x10000000 },
+    [VIRT_COSIM] =       { 0x28000000,    0x01000000 },
     [VIRT_PCIE_MMIO] =   { 0x40000000,    0x40000000 },
     [VIRT_PCIE_PIO] =    { 0x03000000,    0x00010000 },
     [VIRT_PCIE_ECAM] =   { 0x30000000,    0x10000000 },
@@ -188,8 +189,29 @@ static void create_fdt(RISCVVirtState *s, const struct MemmapEntry *memmap,
     char *nodename;
     uint32_t plic_phandle, phandle = 1;
     int i;
+    const char *dtb_filename;
+    int size;
     hwaddr flashsize = virt_memmap[VIRT_FLASH].size / 2;
     hwaddr flashbase = virt_memmap[VIRT_FLASH].base;
+
+    dtb_filename = qemu_opt_get(qemu_get_machine_opts(), "dtb");
+    if (dtb_filename) {
+        char *filename;
+        filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, dtb_filename);
+        if (!filename) {
+            fprintf(stderr, "Couldn't open dtb file %s\n", dtb_filename);
+            return;
+        }
+
+        fdt = s->fdt = load_device_tree(filename, &size);
+        if (!fdt) {
+            fprintf(stderr, "Couldn't open dtb file %s\n", filename);
+            g_free(filename);
+            return;
+        }
+        g_free(filename);
+        return;
+    }
 
     fdt = s->fdt = create_device_tree(&s->fdt_size);
     if (!fdt) {
@@ -442,10 +464,13 @@ static void riscv_virt_create_remoteport(MachineState *machine,
                                          MemoryRegion *system_memory)
 {
     const struct MemmapEntry *memmap = virt_memmap;
+    RISCVVirtState *s = RISCV_VIRT_MACHINE(machine);
     SysBusDevice *sbd;
     Object *rp_obj;
     Object *rpm_obj;
     Object *rpms_obj;
+    Object *rpirq_obj;
+    int i;
 
     rp_obj = object_new("remote-port");
     object_property_add_child(OBJECT(machine), "cosim", rp_obj, &error_fatal);
@@ -463,22 +488,40 @@ static void riscv_virt_create_remoteport(MachineState *machine,
     object_property_add_child(OBJECT(machine), "cosim-mmap-slave-0", rpms_obj, &error_fatal);
 //    object_property_set_int(rpms_obj, 0, "rp-chan0", &error_fatal);
 
+    rpirq_obj = object_new("remote-port-gpio");
+    object_property_add_child(OBJECT(machine), "cosim-irq-0", rpirq_obj,
+                              &error_fatal);
+    object_property_set_int(rpirq_obj, 12, "rp-chan0", &error_fatal);
+
+
     object_property_set_link(rpm_obj, rp_obj, "rp-adaptor0",
                              &error_abort);
     object_property_set_link(rpms_obj, rp_obj, "rp-adaptor0",
+                             &error_abort);
+    object_property_set_link(rpirq_obj, rp_obj, "rp-adaptor0",
                              &error_abort);
     object_property_set_link(rp_obj, rpms_obj, "remote-port-dev0",
                              &error_abort);
     object_property_set_link(rp_obj, rpm_obj, "remote-port-dev9",
                              &error_abort);
+    object_property_set_link(rp_obj, rpirq_obj, "remote-port-dev12",
+                             &error_abort);
 
     object_property_set_bool(rp_obj, true, "realized", &error_fatal);
     object_property_set_bool(rpms_obj, true, "realized", &error_fatal);
     object_property_set_bool(rpm_obj, true, "realized", &error_fatal);
+    object_property_set_bool(rpirq_obj, true, "realized", &error_fatal);
 
+    /* Connect things to the machine.  */
     sbd = SYS_BUS_DEVICE(rpm_obj);
     memory_region_add_subregion(system_memory, memmap[VIRT_COSIM].base,
                                 sysbus_mmio_get_region(sbd, 0));
+
+    /* Hook up IRQs.  */
+    for (i = 0; i < 5; i++) {
+        qemu_irq irq = qdev_get_gpio_in(DEVICE(s->plic), COSIM_IRQ + i);
+        sysbus_connect_irq(SYS_BUS_DEVICE(rpirq_obj), i, irq);
+    }
 }
 
 static void riscv_virt_board_init(MachineState *machine)
@@ -509,8 +552,6 @@ static void riscv_virt_board_init(MachineState *machine)
                            machine->ram_size, &error_fatal);
     memory_region_add_subregion(system_memory, memmap[VIRT_DRAM].base,
         main_mem);
-
-    riscv_virt_create_remoteport(machine, system_memory);
 
     /* create device tree */
     create_fdt(s, memmap, machine->ram_size, machine->kernel_cmdline);
@@ -641,6 +682,14 @@ static void riscv_virt_board_init(MachineState *machine)
     g_free(plic_hart_config);
 }
 
+static void riscv_virt_cosim_board_init(MachineState *machine)
+{
+    MemoryRegion *system_memory = get_system_memory();
+
+    riscv_virt_board_init(machine);
+    riscv_virt_create_remoteport(machine, system_memory);
+}
+
 static void riscv_virt_machine_instance_init(Object *obj)
 {
 }
@@ -655,6 +704,16 @@ static void riscv_virt_machine_class_init(ObjectClass *oc, void *data)
     mc->default_cpu_type = VIRT_CPU;
 }
 
+static void riscv_virt_machine_class_init_cosim(ObjectClass *oc, void *data)
+{
+    MachineClass *mc = MACHINE_CLASS(oc);
+
+    mc->desc = "RISC-V VirtIO board Cosim";
+    mc->init = riscv_virt_cosim_board_init;
+    mc->max_cpus = 8;
+    mc->default_cpu_type = VIRT_CPU;
+}
+
 static const TypeInfo riscv_virt_machine_typeinfo = {
     .name       = MACHINE_TYPE_NAME("virt"),
     .parent     = TYPE_MACHINE,
@@ -663,9 +722,18 @@ static const TypeInfo riscv_virt_machine_typeinfo = {
     .instance_size = sizeof(RISCVVirtState),
 };
 
+static const TypeInfo riscv_virt_cosim_machine_typeinfo = {
+    .name       = MACHINE_TYPE_NAME("virt-cosim"),
+    .parent     = TYPE_MACHINE,
+    .class_init = riscv_virt_machine_class_init_cosim,
+    .instance_init = riscv_virt_machine_instance_init,
+    .instance_size = sizeof(RISCVVirtState),
+};
+
 static void riscv_virt_machine_init_register_types(void)
 {
     type_register_static(&riscv_virt_machine_typeinfo);
+    type_register_static(&riscv_virt_cosim_machine_typeinfo);
 }
 
 type_init(riscv_virt_machine_init_register_types)

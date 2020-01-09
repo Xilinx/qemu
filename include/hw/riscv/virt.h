@@ -61,6 +61,7 @@ enum {
     VIRTIO_IRQ = 1, /* 1 to 8 */
     VIRTIO_COUNT = 8,
     PCIE_IRQ = 0x20, /* 32 to 35 */
+    COSIM_IRQ = 0x30, /* 0x35 - */
     VIRTIO_NDEV = 0x35 /* Arbitrary maximum number of interrupts */
 };
 
