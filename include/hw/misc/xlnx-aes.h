@@ -77,6 +77,9 @@ int xlnx_aes_push_data(XlnxAES *s,
                                 uint8_t *data8, int len,
                                 bool last_word , int lw_len,
                                 uint8_t *outbuf, int *outlen);
+int xlnx_aes_k256_get_provided(Object *obj, const char *id_prop,
+                               const char *default_xd,
+                               uint8_t (*key)[32], Error **errp);
 
 extern const PropertyInfo xlnx_aes_prop_key256;
 
