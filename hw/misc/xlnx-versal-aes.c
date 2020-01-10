@@ -48,7 +48,7 @@
 #define XILINX_AES_ERR_DEBUG 0
 #endif
 
-#define TYPE_XILINX_AES "xlnx.versal-aes"
+#define TYPE_XILINX_AES "xlnx,versal-aes"
 #define TYPE_XILINX_PMC_KEY_SINK "xlnx.pmc-key-sink"
 
 #define XILINX_AES(obj) \
@@ -293,6 +293,8 @@ struct Zynq3AES {
     bool inSoftRst;
 
     StreamSlave *tx_dev;
+    char *family_key_id;
+    char *puf_key_id;
 
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
@@ -315,6 +317,7 @@ struct Zynq3AES {
     PMCKeySink efuse_user_key_red[2];
 
     PMCKeySink puf_key;
+    PMCKeySink family_key;
 
     PMCKeySink kup_key;
 
@@ -1155,6 +1158,12 @@ static void aes_realize(DeviceState *dev, Error **errp)
     qdev_init_gpio_in_named(dev, bbram_key_lock_update, "bbram-key-lock", 1);
     qdev_init_gpio_in_named(dev, efuse_key_lock_update, "efuse-key-lock", 1);
     qdev_init_gpio_in_named(dev, user_key_lock_update, "user-key-lock", 8);
+
+    /* Set device keys to user-provided values */
+    xlnx_aes_k256_get_provided(OBJECT(s), "family-key-id",
+                               NULL, &s->family_key.key, NULL);
+    xlnx_aes_k256_get_provided(OBJECT(s), "puf-key-id",
+                               NULL, &s->puf_key.key, NULL);
 }
 
 static void pmc_init_key_sink(Zynq3AES *s,
@@ -1181,7 +1190,15 @@ static void aes_init(Object *obj)
     pmc_init_key_sink(s, "efuses", &s->efuse_key);
     pmc_init_key_sink(s, "efuses-user0", &s->efuse_user_key[0]);
     pmc_init_key_sink(s, "efuses-user1", &s->efuse_user_key[1]);
+    pmc_init_key_sink(s, "family", &s->family_key);
     pmc_init_key_sink(s, "puf", &s->puf_key);
+
+    if (s->family_key_id == NULL) {
+        s->family_key_id = g_strdup("xlnx-aes-family-key");
+    }
+    if (s->puf_key_id == NULL) {
+        s->puf_key_id = g_strdup("xlnx-aes-puf-key");
+    }
 
     memory_region_init(&s->iomem, obj, TYPE_XILINX_AES, R_MAX * 4);
     reg_array =
@@ -1218,6 +1235,13 @@ static const VMStateDescription vmstate_aes = {
     }
 };
 
+static Property aes_properties[] = {
+    DEFINE_PROP_STRING("family-key-id", Zynq3AES, family_key_id),
+    DEFINE_PROP_STRING("puf-key-id",    Zynq3AES, puf_key_id),
+
+    DEFINE_PROP_END_OF_LIST(),
+};
+
 static void aes_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -1227,6 +1251,7 @@ static void aes_class_init(ObjectClass *klass, void *data)
     dc->reset = aes_reset;
     dc->realize = aes_realize;
     dc->vmsd = &vmstate_aes;
+    dc->props = aes_properties;
     ksc->update = device_key_update;
 
     ssc->push = aes_stream_push;
