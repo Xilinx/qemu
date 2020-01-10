@@ -20,6 +20,7 @@ common-obj-$(CONFIG_SOFTMMU) += loader.o
 common-obj-$(CONFIG_FITLOADER) += loader-fit.o
 common-obj-$(CONFIG_SOFTMMU) += qdev-properties-system.o
 common-obj-$(CONFIG_SOFTMMU) += fdt_generic.o fdt_generic_devices.o fdt_generic_util.o
+common-obj-$(CONFIG_SOFTMMU) += fdt_generic_user_creatable.o
 common-obj-$(CONFIG_XILINX_AXI) += fdt_generic_devices_xilinx_axi.o
 common-obj-$(CONFIG_XILINX_SPIPS) += fdt_generic_devices_xilinx_spips.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += fdt_generic_devices_zynqmp.o
