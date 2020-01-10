@@ -28,7 +28,7 @@
 #define ZYNQMP_CSU_AES_ERR_DEBUG 0
 #endif
 
-#define TYPE_ZYNQMP_CSU_AES "zynqmp.csu-aes"
+#define TYPE_ZYNQMP_CSU_AES "zynqmp,csu-aes"
 #define TYPE_ZYNQMP_CSU_DEVKEY_SINK "zynqmp.csu-aes.devkey-sink"
 
 #define ZYNQMP_CSU_AES(obj) \
@@ -130,6 +130,8 @@ struct ZynqMPCSUAES {
     SysBusDevice busdev;
     MemoryRegion iomem;
     StreamSlave *tx_dev;
+    char *family_key_id;
+    char *puf_key_id;
 
     XlnxAES *aes;
     qemu_irq aes_rst;
@@ -545,6 +547,12 @@ static void aes_realize(DeviceState *dev, Error **errp)
     qdev_init_gpio_in_named(dev, aes_done_update, "done", 1);
     qdev_init_gpio_out_named(dev, &s->aes_rst, "reset", 1);
     qdev_init_gpio_in_named(dev, gpio_key_write_ctrl, "key-wr", 5);
+
+    /* Set device keys to user-provided values */
+    xlnx_aes_k256_get_provided(OBJECT(s), "family-key-id",
+                               NULL, &s->family_key.key, NULL);
+    xlnx_aes_k256_get_provided(OBJECT(s), "puf-key-id",
+                               NULL, &s->puf_key.key, NULL);
 }
 
 static void csu_devkey_sink_init(ZynqMPCSUAES *s,
@@ -573,6 +581,13 @@ static void aes_init(Object *obj)
     csu_devkey_sink_init(s, "family", &s->family_key);
     csu_devkey_sink_init(s, "operational", &s->okr_key);
     csu_devkey_sink_init(s, "puf", &s->puf_key);
+
+    if (s->family_key_id == NULL) {
+        s->family_key_id = g_strdup("xlnx-aes-family-key");
+    }
+    if (s->puf_key_id == NULL) {
+        s->puf_key_id = g_strdup("xlnx-aes-puf-key");
+    }
 
     /* A reference to one of above, to emulate the mux shown in Fig.12-2 */
     s->dev_key = NULL;
@@ -603,10 +618,8 @@ static Property aes_properties[] = {
                      ZynqMPCSUAES, aes,
                      TYPE_XLNX_AES, XlnxAES *),
 
-    DEFINE_PROP_XLNX_AES_KEY256("zynqmp-aes-family-key",
-                                ZynqMPCSUAES, family_key.key),
-    DEFINE_PROP_XLNX_AES_KEY256("zynqmp-aes-puf-key",
-                                ZynqMPCSUAES, puf_key.key),
+    DEFINE_PROP_STRING("family-key-id", ZynqMPCSUAES, family_key_id),
+    DEFINE_PROP_STRING("puf-key-id", ZynqMPCSUAES, puf_key_id),
 
     DEFINE_PROP_END_OF_LIST(),
 };
