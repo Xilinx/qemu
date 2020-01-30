@@ -739,61 +739,58 @@ static void xmpu_reset(DeviceState *dev)
     xmpu_flush(s);
 }
 
-static uint64_t xmpu_read(void *opaque, hwaddr addr, unsigned size,
-                          MemTxAttrs attr)
+static XMPU *xmpu_from_mr(void *mr_accessor)
 {
-    XMPU *s = XILINX_XMPU(opaque);
+    RegisterInfoArray *reg_array = mr_accessor;
+    Object *obj;
+
+    assert(reg_array != NULL);
+
+    obj = reg_array->mem.owner;
+    assert(obj);
+
+    return XILINX_XMPU(obj);
+}
+
+static MemTxResult xmpu_read(void *opaque, hwaddr addr, uint64_t *value,
+                             unsigned size, MemTxAttrs attr)
+{
+    XMPU *s = xmpu_from_mr(opaque);
     RegisterInfo *r = &s->regs_info[addr / 4];
 
     if (!attr.secure) {
         /* Non secure, return zero */
-        return 0;
+        *value = 0;
+        return MEMTX_ERROR;
     }
 
+    /*
+     * Even though register_read_memory does this check for us, there's no way
+     * for us to know if it succeeded or failed, so check here as well.
+     */
     if (!r->data) {
         qemu_log("%s: Decode error: read from %" HWADDR_PRIx "\n",
                  object_get_canonical_path(OBJECT(s)),
                  addr);
         ARRAY_FIELD_DP32(s->regs, ISR, INV_APB, true);
-        return 0;
+        *value = 0;
+        return MEMTX_DECODE_ERROR;
     }
-    return register_read(r, ~0, s->prefix, XILINX_XMPU_ERR_DEBUG);
+
+    *value = register_read_memory(opaque, addr, size);
+    return MEMTX_OK;
 }
 
-static void xmpu_write(void *opaque, hwaddr addr, uint64_t value,
-                      unsigned size, MemTxAttrs attr)
+static MemTxResult xmpu_write(void *opaque, hwaddr addr, uint64_t value,
+                              unsigned size, MemTxAttrs attr)
 {
-    XMPU *s = XILINX_XMPU(opaque);
+    XMPU *s = xmpu_from_mr(opaque);
     RegisterInfo *r = &s->regs_info[addr / 4];
+    bool locked;
 
     if (!attr.secure) {
-        return;
+        return MEMTX_ERROR;
     }
-
-    if (!r->data) {
-        qemu_log("%s: Decode error: write to %" HWADDR_PRIx "=%" PRIx64 "\n",
-                 object_get_canonical_path(OBJECT(s)),
-                 addr, value);
-        ARRAY_FIELD_DP32(s->regs, ISR, INV_APB, true);
-        return;
-    }
-    register_write(r, value, ~0, s->prefix, XILINX_XMPU_ERR_DEBUG);
-
-    if (addr > R_R00_MASTER) {
-        xmpu_flush(s);
-    }
-}
-
-static void xmpu_access(MemoryTransaction *tr)
-{
-    MemTxAttrs attr = tr->attr;
-    void *opaque = tr->opaque;
-    XMPU *s = XILINX_XMPU(opaque);
-    hwaddr addr = tr->addr;
-    unsigned size = tr->size;
-    uint64_t value = tr->data.u64;
-    bool is_write = tr->rw;
-    bool locked;
 
     locked = ARRAY_FIELD_EX32(s->regs, LOCK, REGWRDIS);
     if (locked && (addr < A_ISR || addr >= A_LOCK)) {
@@ -801,19 +798,32 @@ static void xmpu_access(MemoryTransaction *tr)
         qemu_log_mask(LOG_GUEST_ERROR, "%s: accessing locked register "\
                       "0x%"HWADDR_PRIx"\n",
                       object_get_canonical_path(OBJECT(s)), addr);
-        tr->data.u64 = 0;
-        return;
+        return MEMTX_ERROR;
     }
 
-    if (is_write) {
-        xmpu_write(opaque, addr, value, size, attr);
-    } else {
-        tr->data.u64 = xmpu_read(opaque, addr, size, attr);
+    /*
+     * Even though register_wite_memory does this check for us, there's no way
+     * for us to know if it succeeded or failed, so check here as well.
+     */
+    if (!r->data) {
+        qemu_log("%s: Decode error: write to %" HWADDR_PRIx "=%" PRIx64 "\n",
+                 object_get_canonical_path(OBJECT(s)),
+                 addr, value);
+        ARRAY_FIELD_DP32(s->regs, ISR, INV_APB, true);
+        return MEMTX_DECODE_ERROR;
     }
+    register_write_memory(opaque, addr, value, size);
+
+    if (addr > R_R00_MASTER) {
+        xmpu_flush(s);
+    }
+
+    return MEMTX_OK;
 }
 
 static const MemoryRegionOps xmpu_ops = {
-    .access = xmpu_access,
+    .read_with_attrs = xmpu_read,
+    .write_with_attrs = xmpu_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 1,
@@ -1090,7 +1100,8 @@ static void xmpu_init(Object *obj)
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
     RegisterInfoArray *reg_array;
 
-    memory_region_init(&s->iomem, obj, TYPE_XILINX_XMPU, XMPU_R_MAX * 4);
+    memory_region_init_io(&s->iomem, obj, &xmpu_ops, s, TYPE_XILINX_XMPU,
+                          XMPU_R_MAX * 4);
     reg_array =
         register_init_block32(DEVICE(obj), xmpu_ddr_regs_info,
                               ARRAY_SIZE(xmpu_ddr_regs_info),
@@ -1102,6 +1113,7 @@ static void xmpu_init(Object *obj)
                                 0x0,
                                 &reg_array->mem);
     sysbus_init_irq(sbd, &s->irq_isr);
+    sysbus_init_mmio(sbd, &s->iomem);
 
     object_property_add_link(obj, "protected-mr", TYPE_MEMORY_REGION,
                              (Object **)&s->protected_mr,
@@ -1128,9 +1140,6 @@ static bool xmpu_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
     unsigned int i, mid;
 
     parent_fmc = FDT_GENERIC_MMAP_CLASS(object_class_get_parent(klass));
-    memory_region_init_io(&s->iomem, OBJECT(obj), &xmpu_ops, s,
-                          TYPE_XILINX_XMPU, XMPU_R_MAX * 4);
-    sysbus_init_mmio(sbd, &s->iomem);
 
     for (i = 0; i < (reg.n - 1); i++) {
         mid = i;
