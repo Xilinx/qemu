@@ -297,6 +297,7 @@ static memory_info init_memory(void *fdt, ram_addr_t ram_size, bool zynq_7000)
         uint64_t reg_value, mem_created = 0;
         int mem_container;
         char mem_node_path[DT_PATH_LENGTH];
+        int size_cells;
 
         do {
             mem_offset =
@@ -323,6 +324,8 @@ static memory_info init_memory(void *fdt, ram_addr_t ram_size, bool zynq_7000)
 
                 DB_PRINT(0, "Found top level memory region %s\n",
                          mem_node_path);
+                size_cells = qemu_fdt_getprop_cell(fdt, mem_node_path,
+                                                "#size-cells", 0, true, NULL);
 
                 reg_value = qemu_fdt_getprop_cell(fdt, mem_node_path,
                                                   "reg", 0, 0, NULL);
@@ -332,8 +335,8 @@ static memory_info init_memory(void *fdt, ram_addr_t ram_size, bool zynq_7000)
 
                 DB_PRINT(1, "    Address: 0x%" PRIx64 " ", reg_value);
 
-                reg_value += qemu_fdt_getprop_cell(fdt, mem_node_path,
-                                                   "reg", 2, 0, NULL);
+                reg_value += qemu_fdt_getprop_sized_cell(fdt, mem_node_path,
+                                                   "reg", 2, size_cells, NULL);
 
                 DB_PRINT_RAW(1, "Size: 0x%" PRIx64 "\n", reg_value);
 
