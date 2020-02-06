@@ -23,6 +23,7 @@ common-obj-$(CONFIG_XLNX_ZYNQMP_CSU) += zynqmp_aes_key.o
 common-obj-$(CONFIG_XLNX_ZYNQMP_CSU) += xlnx-aes.o
 common-obj-$(CONFIG_XLNX_ZYNQMP_CSU) += xlnx-aes-devkey.o
 common-obj-$(CONFIG_XLNX_ZYNQMP_CSU) += xlnx-zynqmp-pufhd.o
+common-obj-$(CONFIG_XLNX_ZYNQMP_CSU) += xlnx-zynqmp-pufop.o
 obj-$(CONFIG_XLNX_ZYNQMP_CSU) += xlnx-bbram-ctrl.o
 
 obj-$(CONFIG_XLNX_ZYNQMP_ARM) += xilinx-lpd-slcr.o
