@@ -724,7 +724,7 @@ static const TypeInfo riscv_virt_machine_typeinfo = {
 
 static const TypeInfo riscv_virt_cosim_machine_typeinfo = {
     .name       = MACHINE_TYPE_NAME("virt-cosim"),
-    .parent     = TYPE_MACHINE,
+    .parent     = MACHINE_TYPE_NAME("virt"),
     .class_init = riscv_virt_machine_class_init_cosim,
     .instance_init = riscv_virt_machine_instance_init,
     .instance_size = sizeof(RISCVVirtState),
