@@ -39,6 +39,7 @@
 #include "exec/address-spaces.h"
 
 #include "hw/fdt_generic_util.h"
+#include "hw/misc/xlnx-xmpu.h"
 
 #ifndef XILINX_XMPU_ERR_DEBUG
 #define XILINX_XMPU_ERR_DEBUG 0
@@ -50,11 +51,11 @@
 #define XILINX_XMPU(obj) \
      OBJECT_CHECK(XMPU, (obj), TYPE_XILINX_XMPU)
 
-REG32(CTRL, 0x0)
-    FIELD(CTRL, ALIGNCFG, 3, 1)
+/*
+ * Register definitions shared between ZynqMP and Versal are in
+ * the XMPU header file
+ */
     FIELD(CTRL, POISONCFG, 2, 1)
-    FIELD(CTRL, DEFWRALLOWED, 1, 1)
-    FIELD(CTRL, DEFRDALLOWED, 0, 1)
 REG32(ERR_STATUS1, 0x4)
     FIELD(ERR_STATUS1, AXI_ADDR, 0, 28)
 REG32(ERR_STATUS2, 0x8)
@@ -62,28 +63,6 @@ REG32(ERR_STATUS2, 0x8)
 REG32(POISON, 0xc)
     FIELD(POISON, ATTRIB, 20, 1)
     FIELD(POISON, BASE, 0, 20)
-REG32(ISR, 0x10)
-    FIELD(ISR, SECURITYVIO, 3, 1)
-    FIELD(ISR, WRPERMVIO, 2, 1)
-    FIELD(ISR, RDPERMVIO, 1, 1)
-    FIELD(ISR, INV_APB, 0, 1)
-REG32(IMR, 0x14)
-    FIELD(IMR, SECURITYVIO, 3, 1)
-    FIELD(IMR, WRPERMVIO, 2, 1)
-    FIELD(IMR, RDPERMVIO, 1, 1)
-    FIELD(IMR, INV_APB, 0, 1)
-REG32(IEN, 0x18)
-    FIELD(IEN, SECURITYVIO, 3, 1)
-    FIELD(IEN, WRPERMVIO, 2, 1)
-    FIELD(IEN, RDPERMVIO, 1, 1)
-    FIELD(IEN, INV_APB, 0, 1)
-REG32(IDS, 0x1c)
-    FIELD(IDS, SECURITYVIO, 3, 1)
-    FIELD(IDS, WRPERMVIO, 2, 1)
-    FIELD(IDS, RDPERMVIO, 1, 1)
-    FIELD(IDS, INV_APB, 0, 1)
-REG32(LOCK, 0x20)
-    FIELD(LOCK, REGWRDIS, 0, 1)
 REG32(R00_START, 0x100)
     FIELD(R00_START, ADDR, 0, 28)
 REG32(R00_END, 0x104)
@@ -295,82 +274,6 @@ REG32(R15_CONFIG, 0x1fc)
 
 #define XMPU_R_MAX (R_R15_CONFIG + 1)
 
-#define NR_XMPU_REGIONS 16
-#define MAX_NR_MASTERS  8
-
-typedef struct XMPU XMPU;
-
-typedef struct XMPUMaster {
-    XMPU *parent;
-
-    AddressSpace *parent_as;
-    MemoryRegion *parent_mr;
-    uint64_t size;
-
-    MemoryRegion mr;
-    IOMMUMemoryRegion iommu;
-
-    struct {
-        struct {
-            AddressSpace as;
-            MemoryRegion mr;
-        } rw, ro, none;
-    } down;
-
-    struct {
-        MemoryRegion mr[NR_XMPU_REGIONS];
-    } err;
-} XMPUMaster;
-
-struct XMPU {
-    SysBusDevice parent_obj;
-    MemoryRegion iomem;
-
-    MemoryRegion *protected_mr;
-
-    /* Dynamically size this one based on attached masters.  */
-    XMPUMaster masters[MAX_NR_MASTERS];
-    qemu_irq irq_isr;
-
-    uint64_t addr_mask;
-    uint32_t addr_shift;
-
-    struct {
-        uint32_t nr_masters;
-        /* Will go away with proper MRs.  */
-        uint64_t base;
-
-        bool align;
-        bool poison;
-    } cfg;
-
-    uint32_t regs[XMPU_R_MAX];
-    RegisterInfo regs_info[XMPU_R_MAX];
-    const char *prefix;
-    bool enabled;
-    qemu_irq enabled_signal;
-};
-
-typedef struct XMPURegion {
-    uint64_t start;
-    uint64_t end;
-    uint64_t size;
-    union {
-        uint32_t u32;
-        struct {
-            uint16_t mask;
-            uint16_t id;
-        };
-    } master;
-    struct {
-        bool nschecktype;
-        bool regionns;
-        bool wrallowed;
-        bool rdallowed;
-        bool enable;
-    } config;
-} XMPURegion;
-
 static void xmpu_decode_region(XMPU *s, XMPURegion *xr, unsigned int region)
 {
     assert(region < NR_XMPU_REGIONS);
@@ -423,55 +326,6 @@ static uint64_t ids_prew(RegisterInfo *reg, uint64_t val64)
     s->regs[R_IMR] |= val;
     isr_update_irq(s);
     return 0;
-}
-
-static void xmpu_update_enabled(XMPU *s)
-{
-    bool regions_enabled = false;
-    bool default_wr = ARRAY_FIELD_EX32(s->regs, CTRL, DEFWRALLOWED);
-    bool default_rd = ARRAY_FIELD_EX32(s->regs, CTRL, DEFRDALLOWED);
-    int i;
-
-    /* Lookup if this address fits a region.  */
-    for (i = NR_XMPU_REGIONS - 1; i >= 0; i--) {
-        XMPURegion xr;
-        xmpu_decode_region(s, &xr, i);
-        if (!xr.config.enable) {
-            continue;
-        }
-        regions_enabled = true;
-        break;
-    }
-
-    s->enabled = true;
-    if (!regions_enabled && default_wr && default_rd) {
-        s->enabled = false;
-    }
-}
-
-static void xmpu_flush(XMPU *s)
-{
-    unsigned int i;
-
-    xmpu_update_enabled(s);
-    qemu_set_irq(s->enabled_signal, s->enabled);
-
-    for (i = 0; i < s->cfg.nr_masters; i++) {
-        IOMMUTLBEntry entry = {
-            .target_as = s->masters[i].parent_as,
-            .iova = 0,
-            .translated_addr = 0,
-            .addr_mask = ~0,
-            .perm = IOMMU_NONE,
-        };
-        memory_region_notify_iommu(&s->masters[i].iommu, -1, entry);
-        /* Temporary hack.  */
-        memory_region_transaction_begin();
-        memory_region_set_readonly(MEMORY_REGION(&s->masters[i].iommu), false);
-        memory_region_set_readonly(MEMORY_REGION(&s->masters[i].iommu), true);
-        memory_region_set_enabled(MEMORY_REGION(&s->masters[i].iommu), s->enabled);
-        memory_region_transaction_commit();
-    }
 }
 
 static void xmpu_setup_postw(RegisterInfo *reg, uint64_t val64)
@@ -756,7 +610,6 @@ static MemTxResult xmpu_read(void *opaque, hwaddr addr, uint64_t *value,
                              unsigned size, MemTxAttrs attr)
 {
     XMPU *s = xmpu_from_mr(opaque);
-    RegisterInfo *r = &s->regs_info[addr / 4];
 
     if (!attr.secure) {
         /* Non secure, return zero */
@@ -764,33 +617,15 @@ static MemTxResult xmpu_read(void *opaque, hwaddr addr, uint64_t *value,
         return MEMTX_ERROR;
     }
 
-    /*
-     * Even though register_read_memory does this check for us, there's no way
-     * for us to know if it succeeded or failed, so check here as well.
-     */
-    if (!r->data) {
-        qemu_log("%s: Decode error: read from %" HWADDR_PRIx "\n",
-                 object_get_canonical_path(OBJECT(s)),
-                 addr);
-        ARRAY_FIELD_DP32(s->regs, ISR, INV_APB, true);
-        *value = 0;
-        return MEMTX_DECODE_ERROR;
-    }
-
-    *value = register_read_memory(opaque, addr, size);
-    return MEMTX_OK;
+    return xmpu_read_common(opaque, s, addr, value, size, attr);
 }
 
 static MemTxResult xmpu_write(void *opaque, hwaddr addr, uint64_t value,
                               unsigned size, MemTxAttrs attr)
 {
     XMPU *s = xmpu_from_mr(opaque);
-    RegisterInfo *r = &s->regs_info[addr / 4];
+    MemTxResult res;
     bool locked;
-
-    if (!attr.secure) {
-        return MEMTX_ERROR;
-    }
 
     locked = ARRAY_FIELD_EX32(s->regs, LOCK, REGWRDIS);
     if (locked && (addr < A_ISR || addr >= A_LOCK)) {
@@ -801,24 +636,13 @@ static MemTxResult xmpu_write(void *opaque, hwaddr addr, uint64_t value,
         return MEMTX_ERROR;
     }
 
-    /*
-     * Even though register_wite_memory does this check for us, there's no way
-     * for us to know if it succeeded or failed, so check here as well.
-     */
-    if (!r->data) {
-        qemu_log("%s: Decode error: write to %" HWADDR_PRIx "=%" PRIx64 "\n",
-                 object_get_canonical_path(OBJECT(s)),
-                 addr, value);
-        ARRAY_FIELD_DP32(s->regs, ISR, INV_APB, true);
-        return MEMTX_DECODE_ERROR;
-    }
-    register_write_memory(opaque, addr, value, size);
+    res = xmpu_write_common(opaque, s, addr, value, size, attr);
 
     if (addr > R_R00_MASTER) {
         xmpu_flush(s);
     }
 
-    return MEMTX_OK;
+    return res;
 }
 
 static const MemoryRegionOps xmpu_ops = {
@@ -830,143 +654,6 @@ static const MemoryRegionOps xmpu_ops = {
         .max_access_size = 8,
     },
 };
-
-static int xmpu_attrs_to_index(IOMMUMemoryRegion *iommu, MemTxAttrs attrs)
-{
-    uint16_t master_id = attrs.requester_id & 0xffff;
-
-    return (master_id << 1) | attrs.secure;
-}
-
-static int xmpu_num_indexes(IOMMUMemoryRegion *iommu)
-{
-    return (1 << 17) - 1;
-}
-
-static IOMMUTLBEntry xmpu_master_translate(XMPUMaster *xm, hwaddr addr,
-                                           bool attr_secure,
-                                           uint16_t master_id,
-                                           bool *sec_vio, int *perm)
-{
-    XMPU *s = xm->parent;
-    XMPURegion xr;
-    IOMMUTLBEntry ret = {
-        .iova = addr,
-        .translated_addr = addr,
-        .addr_mask = s->addr_mask,
-        .perm = IOMMU_NONE,
-    };
-    AddressSpace *as_map[] = {
-        [IOMMU_NONE] = &xm->down.none.as,
-        [IOMMU_RO] = &xm->down.ro.as,
-        [IOMMU_WO] = &xm->down.none.as,
-        [IOMMU_RW] = &xm->down.rw.as,
-    };
-    bool default_wr = ARRAY_FIELD_EX32(s->regs, CTRL, DEFWRALLOWED);
-    bool default_rd = ARRAY_FIELD_EX32(s->regs, CTRL, DEFRDALLOWED);
-    bool sec = attr_secure;
-    bool sec_access_check;
-    unsigned int nr_matched = 0;
-    int i;
-
-    /* No security violation by default.  */
-    *sec_vio = false;
-    if (!s->enabled) {
-        ret.target_as = &xm->down.rw.as;
-        ret.perm = IOMMU_RW;
-        return ret;
-    }
-
-    /* Convert to an absolute address to simplify the compare logic.  */
-    addr += s->cfg.base;
-
-    /* Lookup if this address fits a region.  */
-    for (i = NR_XMPU_REGIONS - 1; i >= 0; i--) {
-        bool id_match;
-        bool match;
-
-        xmpu_decode_region(s, &xr, i);
-        if (!xr.config.enable) {
-            continue;
-        }
-
-        if (xr.start & s->addr_mask) {
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: Bad region start address %" PRIx64 "\n",
-                          s->prefix, xr.start);
-        }
-
-        if (xr.end & s->addr_mask) {
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: Bad region end address %" PRIx64 "\n",
-                           s->prefix, xr.end);
-        }
-
-        if (xr.start < s->cfg.base) {
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: Too low region start address %" PRIx64 "\n",
-                           s->prefix, xr.end);
-        }
-
-        xr.start &= ~s->addr_mask;
-        xr.end &= ~s->addr_mask;
-
-        id_match = (xr.master.mask & xr.master.id) ==
-                       (xr.master.mask & master_id);
-        match = id_match && (addr >= xr.start && addr < xr.end);
-        if (match) {
-            nr_matched++;
-            /* Determine if this region is accessible by the transactions
-             * security domain.
-             */
-            if (xr.config.nschecktype) {
-                /* In strict mode, secure accesses are not allowed to
-                 * non-secure regions (and vice-versa).
-                 */
-                sec_access_check = (sec != xr.config.regionns);
-            } else {
-                /* In relaxed mode secure accesses can access any region
-                 * while non-secure can only access non-secure areas.
-                 */
-                sec_access_check = (sec || xr.config.regionns);
-            }
-
-            if (sec_access_check) {
-                if (xr.config.rdallowed) {
-                    ret.perm |= IOMMU_RO;
-                }
-                if (xr.config.wrallowed) {
-                    ret.perm |= IOMMU_WO;
-                }
-            } else {
-                *sec_vio = true;
-            }
-            break;
-        }
-    }
-
-    if (nr_matched == 0) {
-        if (default_rd) {
-            ret.perm |= IOMMU_RO;
-        }
-        if (default_wr) {
-            ret.perm |= IOMMU_WO;
-        }
-    }
-
-    *perm = ret.perm;
-    ret.target_as = as_map[ret.perm];
-    if (ret.perm == IOMMU_RO) {
-        ret.target_as = &xm->down.none.as;
-        ret.perm = IOMMU_RW;
-    }
-#if 0
-    qemu_log("%s: nr_matched=%d AS=%p addr=%lx - > %lx (%lx) perm=%x\n",
-          object_get_canonical_path(OBJECT(s)), nr_matched, ret.target_as, ret.iova,
-          ret.translated_addr, (addr | ret.addr_mask) - addr + 1, ret.perm);
-#endif
-    return ret;
-}
 
 static MemTxResult zero_read(void *opaque, hwaddr addr,
                           uint64_t *pdata,
@@ -1060,27 +747,6 @@ static const MemoryRegionOps zero_ops = {
     }
 };
 
-static IOMMUTLBEntry xmpu_translate(IOMMUMemoryRegion *mr, hwaddr addr,
-                                    IOMMUAccessFlags flags, int iommu_idx)
-{
-    XMPUMaster *xm;
-    IOMMUTLBEntry ret;
-    uint16_t master_id = iommu_idx >> 1;
-    bool secure = iommu_idx & 1;
-    bool sec_vio;
-    int perm;
-
-    xm = container_of(mr, XMPUMaster, iommu);
-    ret = xmpu_master_translate(xm, addr, secure, master_id, &sec_vio, &perm);
-#if 0
-    qemu_log("%s: nr_matched=%d addr=%lx - > %lx (%lx) perm=%x\n",
-           __func__, nr_matched, ret.iova,
-          ret.translated_addr, (addr | ret.addr_mask) - addr + 1, ret.perm);
-#endif
-    ret.perm = IOMMU_RW;
-    return ret;
-}
-
 #define MASK_4K  (0xfff)
 #define MASK_1M  (0xfffff)
 static void xmpu_realize(DeviceState *dev, Error **errp)
@@ -1090,116 +756,26 @@ static void xmpu_realize(DeviceState *dev, Error **errp)
     s->prefix = object_get_canonical_path(OBJECT(dev));
     s->addr_shift = s->cfg.align ? 20 : 12;
     s->addr_mask = (1ULL << s->addr_shift) - 1;
-
+    s->decode_region = xmpu_decode_region;
     s->masters[0].parent = s;
 }
 
 static void xmpu_init(Object *obj)
 {
     XMPU *s = XILINX_XMPU(obj);
-    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
-    RegisterInfoArray *reg_array;
-
-    memory_region_init_io(&s->iomem, obj, &xmpu_ops, s, TYPE_XILINX_XMPU,
-                          XMPU_R_MAX * 4);
-    reg_array =
-        register_init_block32(DEVICE(obj), xmpu_ddr_regs_info,
-                              ARRAY_SIZE(xmpu_ddr_regs_info),
-                              s->regs_info, s->regs,
-                              &xmpu_ops,
-                              XILINX_XMPU_ERR_DEBUG,
-                              XMPU_R_MAX * 4);
-    memory_region_add_subregion(&s->iomem,
-                                0x0,
-                                &reg_array->mem);
-    sysbus_init_irq(sbd, &s->irq_isr);
-    sysbus_init_mmio(sbd, &s->iomem);
-
-    object_property_add_link(obj, "protected-mr", TYPE_MEMORY_REGION,
-                             (Object **)&s->protected_mr,
-                             qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_STRONG,
-                             &error_abort);
-    object_property_add_link(obj, "mr-0", TYPE_MEMORY_REGION,
-                             (Object **)&s->masters[0].parent_mr,
-                             qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_STRONG,
-                             &error_abort);
-
-    qdev_init_gpio_out(DEVICE(sbd), &s->enabled_signal, 1);
+    s->regs_size = XMPU_R_MAX;
+    xmpu_init_common(s, obj, TYPE_XILINX_XMPU, &xmpu_ops, xmpu_ddr_regs_info,
+                     ARRAY_SIZE(xmpu_ddr_regs_info));
 }
 
 static bool xmpu_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
                            Error **errp)
 {
     XMPU *s = XILINX_XMPU(obj);
-    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
-    ObjectClass *klass = object_class_by_name(TYPE_XILINX_XMPU);
-    FDTGenericMMapClass *parent_fmc;
-    char *name;
-    unsigned int i, mid;
 
-    parent_fmc = FDT_GENERIC_MMAP_CLASS(object_class_get_parent(klass));
-
-    for (i = 0; i < (reg.n - 1); i++) {
-        mid = i;
-
-        /* Create the read/write address space */
-        name = g_strdup_printf("xmpu-down-rw-master%d", mid);
-        memory_region_init_alias(&s->masters[mid].down.rw.mr, OBJECT(s),
-                                 name, s->protected_mr,
-                                 0, UINT64_MAX);
-        address_space_init(&s->masters[mid].down.rw.as,
-                           &s->masters[mid].down.rw.mr, name);
-        g_free(name);
-
-        /* Create the read only address space  */
-        name = g_strdup_printf("xmpu-down-ro-master%d", mid);
-        memory_region_init_alias(&s->masters[mid].down.ro.mr, OBJECT(s),
-                                 name, s->protected_mr,
-                                 0, UINT64_MAX);
-        memory_region_set_readonly(&s->masters[mid].down.ro.mr, true);
-        address_space_init(&s->masters[mid].down.ro.as,
-                           &s->masters[mid].down.ro.mr, name);
-        g_free(name);
-
-        /* Create the no access address space */
-        name = g_strdup_printf("xmpu-down-none-master\n");
-        memory_region_init_io(&s->masters[mid].down.none.mr, OBJECT(s),
-                              &zero_ops, &s->masters[mid],
-                              name, UINT64_MAX);
-        address_space_init(&s->masters[mid].down.none.as,
-                           &s->masters[mid].down.none.mr, name);
-        g_free(name);
-
-        name = g_strdup_printf("xmpu-master-%d\n", mid);
-        s->masters[mid].parent_as = address_space_init_shareable(
-                                            s->masters[mid].parent_mr,
-                                            NULL);
-
-        memory_region_init_iommu(&s->masters[mid].iommu,
-                                 sizeof(s->masters[mid].iommu),
+    return xmpu_parse_reg_common(s, TYPE_XILINX_XMPU,
                                  TYPE_XILINX_XMPU_IOMMU_MEMORY_REGION,
-                                 OBJECT(s),
-                                 name, reg.s[i + 1]);
-        g_free(name);
-
-        name = g_strdup_printf("xmpu-mr-%d\n", mid);
-        memory_region_init(&s->masters[mid].mr, OBJECT(s), name, UINT64_MAX);
-
-        memory_region_add_subregion_overlap(&s->masters[mid].mr,
-                                            0, &s->masters[mid].down.rw.mr, 0);
-        memory_region_add_subregion_overlap(&s->masters[mid].mr,
-                                        0,
-                                        MEMORY_REGION(&s->masters[mid].iommu),
-                                        1);
-        memory_region_set_enabled(MEMORY_REGION(&s->masters[mid].iommu), false);
-        sysbus_init_mmio(sbd, &s->masters[mid].mr);
-        g_free(name);
-    }
-    s->cfg.nr_masters = (i / 2) + 1;
-
-    return parent_fmc ? parent_fmc->parse_reg(obj, reg, errp) : false;
+                                 &zero_ops, reg, obj, errp);
 }
 
 static Property xmpu_properties[] = {
@@ -1214,7 +790,7 @@ static const VMStateDescription vmstate_xmpu = {
     .version_id = 1,
     .minimum_version_id = 1,
     .fields = (VMStateField[]) {
-        VMSTATE_UINT32_ARRAY(regs, XMPU, XMPU_R_MAX),
+        VMSTATE_UINT32_ARRAY(regs, XMPU, XMPU_VERSAL_R_MAX),
         VMSTATE_END_OF_LIST(),
     }
 };
