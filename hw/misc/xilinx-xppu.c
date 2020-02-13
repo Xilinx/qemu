@@ -36,167 +36,22 @@
 #include "hw/qdev-properties.h"
 
 #include "hw/fdt_generic_util.h"
-
-#ifndef XILINX_XPPU_ERR_DEBUG
-#define XILINX_XPPU_ERR_DEBUG 0
-#endif
+#include "hw/misc/xlnx-xppu.h"
 
 #define TYPE_XILINX_XPPU "xlnx.xppu"
 
 #define XILINX_XPPU(obj) \
      OBJECT_CHECK(XPPU, (obj), TYPE_XILINX_XPPU)
 
-REG32(CTRL, 0x0)
-    FIELD(CTRL, APER_PARITY_EN, 2, 1)
-    FIELD(CTRL, MID_PARITY_EN, 1, 1)
-    FIELD(CTRL, ENABLE, 0, 1)
-REG32(ERR_STATUS1, 0x4)
+/*
+ * Register definitions shared between ZynqMP and Versal are in
+ * the XPPU header file
+ */
     FIELD(ERR_STATUS1, AXI_ADDR, 0, 20)
-REG32(ERR_STATUS2, 0x8)
-    FIELD(ERR_STATUS2, AXI_ID, 0, 10)
 REG32(POISON, 0xc)
     FIELD(POISON, BASE, 0, 20)
-REG32(ISR, 0x10)
-    FIELD(ISR, APER_PARITY, 7, 1)
-    FIELD(ISR, APER_TZ, 6, 1)
-    FIELD(ISR, APER_PERM, 5, 1)
-    FIELD(ISR, MID_PARITY, 3, 1)
-    FIELD(ISR, MID_RO, 2, 1)
-    FIELD(ISR, MID_MISS, 1, 1)
-    FIELD(ISR, INV_APB, 0, 1)
-REG32(IMR, 0x14)
-    FIELD(IMR, APER_PARITY, 7, 1)
-    FIELD(IMR, APER_TZ, 6, 1)
-    FIELD(IMR, APER_PERM, 5, 1)
-    FIELD(IMR, MID_PARITY, 3, 1)
-    FIELD(IMR, MID_RO, 2, 1)
-    FIELD(IMR, MID_MISS, 1, 1)
-    FIELD(IMR, INV_APB, 0, 1)
-REG32(IEN, 0x18)
-    FIELD(IEN, APER_PARITY, 7, 1)
-    FIELD(IEN, APER_TZ, 6, 1)
-    FIELD(IEN, APER_PERM, 5, 1)
-    FIELD(IEN, MID_PARITY, 3, 1)
-    FIELD(IEN, MID_RO, 2, 1)
-    FIELD(IEN, MID_MISS, 1, 1)
-    FIELD(IEN, INV_APB, 0, 1)
-REG32(IDS, 0x1c)
-    FIELD(IDS, APER_PARITY, 7, 1)
-    FIELD(IDS, APER_TZ, 6, 1)
-    FIELD(IDS, APER_PERM, 5, 1)
-    FIELD(IDS, MID_PARITY, 3, 1)
-    FIELD(IDS, MID_RO, 2, 1)
-    FIELD(IDS, MID_MISS, 1, 1)
-    FIELD(IDS, INV_APB, 0, 1)
-REG32(M_MASTER_IDS, 0x3c)
 REG32(M_APERTURE_32B, 0x40)
-REG32(M_APERTURE_64KB, 0x44)
-REG32(M_APERTURE_1MB, 0x48)
-REG32(M_APERTURE_512MB, 0x4c)
 REG32(BASE_32B, 0x50)
-REG32(BASE_64KB, 0x54)
-REG32(BASE_1MB, 0x58)
-REG32(BASE_512MB, 0x5c)
-REG32(MASTER_ID00, 0x100)
-    FIELD(MASTER_ID00, MIDP, 31, 1)
-    FIELD(MASTER_ID00, MIDR, 30, 1)
-    FIELD(MASTER_ID00, MIDM, 16, 10)
-    FIELD(MASTER_ID00, MID, 0, 10)
-REG32(MASTER_ID01, 0x104)
-    FIELD(MASTER_ID01, MIDP, 31, 1)
-    FIELD(MASTER_ID01, MIDR, 30, 1)
-    FIELD(MASTER_ID01, MIDM, 16, 10)
-    FIELD(MASTER_ID01, MID, 0, 10)
-REG32(MASTER_ID02, 0x108)
-    FIELD(MASTER_ID02, MIDP, 31, 1)
-    FIELD(MASTER_ID02, MIDR, 30, 1)
-    FIELD(MASTER_ID02, MIDM, 16, 10)
-    FIELD(MASTER_ID02, MID, 0, 10)
-REG32(MASTER_ID03, 0x10c)
-    FIELD(MASTER_ID03, MIDP, 31, 1)
-    FIELD(MASTER_ID03, MIDR, 30, 1)
-    FIELD(MASTER_ID03, MIDM, 16, 10)
-    FIELD(MASTER_ID03, MID, 0, 10)
-REG32(MASTER_ID04, 0x110)
-    FIELD(MASTER_ID04, MIDP, 31, 1)
-    FIELD(MASTER_ID04, MIDR, 30, 1)
-    FIELD(MASTER_ID04, MIDM, 16, 10)
-    FIELD(MASTER_ID04, MID, 0, 10)
-REG32(MASTER_ID05, 0x114)
-    FIELD(MASTER_ID05, MIDP, 31, 1)
-    FIELD(MASTER_ID05, MIDR, 30, 1)
-    FIELD(MASTER_ID05, MIDM, 16, 10)
-    FIELD(MASTER_ID05, MID, 0, 10)
-REG32(MASTER_ID06, 0x118)
-    FIELD(MASTER_ID06, MIDP, 31, 1)
-    FIELD(MASTER_ID06, MIDR, 30, 1)
-    FIELD(MASTER_ID06, MIDM, 16, 10)
-    FIELD(MASTER_ID06, MID, 0, 10)
-REG32(MASTER_ID07, 0x11c)
-    FIELD(MASTER_ID07, MIDP, 31, 1)
-    FIELD(MASTER_ID07, MIDR, 30, 1)
-    FIELD(MASTER_ID07, MIDM, 16, 10)
-    FIELD(MASTER_ID07, MID, 0, 10)
-REG32(MASTER_ID08, 0x120)
-    FIELD(MASTER_ID08, MIDP, 31, 1)
-    FIELD(MASTER_ID08, MIDR, 30, 1)
-    FIELD(MASTER_ID08, MIDM, 16, 10)
-    FIELD(MASTER_ID08, MID, 0, 10)
-REG32(MASTER_ID09, 0x124)
-    FIELD(MASTER_ID09, MIDP, 31, 1)
-    FIELD(MASTER_ID09, MIDR, 30, 1)
-    FIELD(MASTER_ID09, MIDM, 16, 10)
-    FIELD(MASTER_ID09, MID, 0, 10)
-REG32(MASTER_ID10, 0x128)
-    FIELD(MASTER_ID10, MIDP, 31, 1)
-    FIELD(MASTER_ID10, MIDR, 30, 1)
-    FIELD(MASTER_ID10, MIDM, 16, 10)
-    FIELD(MASTER_ID10, MID, 0, 10)
-REG32(MASTER_ID11, 0x12c)
-    FIELD(MASTER_ID11, MIDP, 31, 1)
-    FIELD(MASTER_ID11, MIDR, 30, 1)
-    FIELD(MASTER_ID11, MIDM, 16, 10)
-    FIELD(MASTER_ID11, MID, 0, 10)
-REG32(MASTER_ID12, 0x130)
-    FIELD(MASTER_ID12, MIDP, 31, 1)
-    FIELD(MASTER_ID12, MIDR, 30, 1)
-    FIELD(MASTER_ID12, MIDM, 16, 10)
-    FIELD(MASTER_ID12, MID, 0, 10)
-REG32(MASTER_ID13, 0x134)
-    FIELD(MASTER_ID13, MIDP, 31, 1)
-    FIELD(MASTER_ID13, MIDR, 30, 1)
-    FIELD(MASTER_ID13, MIDM, 16, 10)
-    FIELD(MASTER_ID13, MID, 0, 10)
-REG32(MASTER_ID14, 0x138)
-    FIELD(MASTER_ID14, MIDP, 31, 1)
-    FIELD(MASTER_ID14, MIDR, 30, 1)
-    FIELD(MASTER_ID14, MIDM, 16, 10)
-    FIELD(MASTER_ID14, MID, 0, 10)
-REG32(MASTER_ID15, 0x13c)
-    FIELD(MASTER_ID15, MIDP, 31, 1)
-    FIELD(MASTER_ID15, MIDR, 30, 1)
-    FIELD(MASTER_ID15, MIDM, 16, 10)
-    FIELD(MASTER_ID15, MID, 0, 10)
-REG32(MASTER_ID16, 0x140)
-    FIELD(MASTER_ID16, MIDP, 31, 1)
-    FIELD(MASTER_ID16, MIDR, 30, 1)
-    FIELD(MASTER_ID16, MIDM, 16, 10)
-    FIELD(MASTER_ID16, MID, 0, 10)
-REG32(MASTER_ID17, 0x144)
-    FIELD(MASTER_ID17, MIDP, 31, 1)
-    FIELD(MASTER_ID17, MIDR, 30, 1)
-    FIELD(MASTER_ID17, MIDM, 16, 10)
-    FIELD(MASTER_ID17, MID, 0, 10)
-REG32(MASTER_ID18, 0x148)
-    FIELD(MASTER_ID18, MIDP, 31, 1)
-    FIELD(MASTER_ID18, MIDR, 30, 1)
-    FIELD(MASTER_ID18, MIDM, 16, 10)
-    FIELD(MASTER_ID18, MID, 0, 10)
-REG32(MASTER_ID19, 0x14c)
-    FIELD(MASTER_ID19, MIDP, 31, 1)
-    FIELD(MASTER_ID19, MIDR, 30, 1)
-    FIELD(MASTER_ID19, MIDM, 16, 10)
-    FIELD(MASTER_ID19, MID, 0, 10)
 REG32(RAM_ADJ, 0x1fc)
     FIELD(RAM_ADJ, MESSAGE_EMAS, 13, 1)
     FIELD(RAM_ADJ, MESSAGE_EMAW, 11, 2)
@@ -204,156 +59,6 @@ REG32(RAM_ADJ, 0x1fc)
     FIELD(RAM_ADJ, PERMISSION_EMAS, 5, 1)
     FIELD(RAM_ADJ, PERMISSION_EMAW, 3, 2)
     FIELD(RAM_ADJ, PERMISSION_EMA, 0, 3)
-
-#define XPPU_R_MAX (R_RAM_ADJ + 1)
-
-#define NR_MID_ENTRIES 20
-
-#define NR_32B_APL_ENTRIES 128
-#define NR_64K_APL_ENTRIES 256
-#define NR_1M_APL_ENTRIES 16
-#define NR_512M_APL_ENTRIES 1
-#define NR_APL_ENTRIES (NR_32B_APL_ENTRIES + NR_64K_APL_ENTRIES \
-                        + NR_1M_APL_ENTRIES + NR_512M_APL_ENTRIES)
-
-typedef enum {
-    GRANULE_32B,
-    GRANULE_64K,
-    GRANULE_1M,
-    GRANULE_512M,
-} XPPUGranule;
-
-typedef struct XPPU XPPU;
-
-typedef struct XPPUAperture {
-    XPPU *parent;
-    MemoryRegion iomem;
-
-    XPPUGranule granule;
-    /* MR base so we can offset the forwarded access.  */
-    uint64_t base;
-    /* Mask used to extract parts of the incoming address.  */
-    uint64_t extract_mask;
-    uint64_t extract_shift;
-    /* RAM base. Start of APL tables for this particular Aperture.  */
-    uint32_t ram_base;
-} XPPUAperture;
-
-struct XPPU {
-    SysBusDevice parent_obj;
-    MemoryRegion iomem;
-    MemoryRegion perm_ram_iomem;
-    qemu_irq irq_isr;
-
-    MemoryRegion *mr;
-    AddressSpace as;
-
-    XPPUAperture ap[4];
-
-    uint32_t perm_ram[NR_APL_ENTRIES];
-
-    uint32_t regs[XPPU_R_MAX];
-    RegisterInfo regs_info[XPPU_R_MAX];
-};
-
-static bool parity32(uint32_t v)
-{
-    /* We compute the parity in parallel, folding
-     * each result in half, all the way down to one last bit.
-     */
-    v = v ^ (v >> 16);
-    v = v ^ (v >> 8);
-    v = v ^ (v >> 4);
-    v = v ^ (v >> 2);
-    v = v ^ (v >> 1);
-    return v & 1;
-}
-
-static bool check_mid_parity(XPPU *s, uint32_t val32)
-{
-    static const uint32_t rsvd = 0x3c00fc00;
-    bool p_written;
-    bool p_computed;
-
-    if (!ARRAY_FIELD_EX32(s->regs, CTRL, MID_PARITY_EN)) {
-        return true;
-    }
-
-    /* Save the written parity.  */
-    p_written = val32 & 0x80000000;
-
-    /* Mask off parity field.  */
-    val32 &= ~0x80000000;
-    /* Mask off rsvd fields.  */
-    val32 &= ~rsvd;
-    p_computed = parity32(val32);
-
-    return p_written == p_computed;
-}
-
-static void check_mid_parities(XPPU *s)
-{
-    unsigned int i;
-
-    for (i = 0; i < NR_MID_ENTRIES; i++) {
-        uint32_t val32;
-
-        val32 = s->regs[R_MASTER_ID00 + i];
-
-        /* Check MID parity.  */
-        if (check_mid_parity(s, val32) == false) {
-            ARRAY_FIELD_DP32(s->regs, ISR, MID_PARITY, true);
-            continue;
-        }
-    }
-}
-
-static bool check_apl_parity(XPPU *s, uint32_t val32)
-{
-    unsigned int i;
-    /* Bit 31 - Parity of 27, 19:15.
-     * Bit 30 - Parity of 14:10
-     * Bit 29 - Parity of 9:5
-     * Bit 28 - Parity of 4:0
-     */
-    static const uint32_t apl_parities[] = {
-        0x1f,
-        0x1f << 5,
-        0x1f << 10,
-        (0x1f << 15) | 1 << 27,
-    };
-    uint32_t p = 0, p_written;
-    bool ok;
-
-    if (!ARRAY_FIELD_EX32(s->regs, CTRL, APER_PARITY_EN)) {
-        return true;
-    }
-
-    for (i = 0; i < ARRAY_SIZE(apl_parities); i++) {
-        uint32_t v = val32;
-        bool parity;
-
-        /* Extract the lanes for this pairity.  */
-        v &= apl_parities[i];
-        parity = parity32(v);
-        p |= ((int) parity) << i;
-    }
-
-    p_written = val32 >> 28;
-    ok = p_written == p;
-
-    if (!ok) {
-        qemu_log_mask(LOG_GUEST_ERROR, "Bad APL parity!\n");
-        ARRAY_FIELD_DP32(s->regs, ISR, APER_PARITY, true);
-    }
-    return ok;
-}
-
-static void isr_update_irq(XPPU *s)
-{
-    bool pending = s->regs[R_ISR] & ~s->regs[R_IMR];
-    qemu_set_irq(s->irq_isr, pending);
-}
 
 static void isr_postw(RegisterInfo *reg, uint64_t val64)
 {
@@ -379,16 +84,6 @@ static uint64_t ids_prew(RegisterInfo *reg, uint64_t val64)
     s->regs[R_IMR] |= val;
     isr_update_irq(s);
     return 0;
-}
-
-static void update_mrs(XPPU *s)
-{
-    bool xppu_enabled = ARRAY_FIELD_EX32(s->regs, CTRL, ENABLE);
-    unsigned int i;
-
-    for (i = 0; i < ARRAY_SIZE(s->ap); i++) {
-        memory_region_set_enabled(&s->ap[i].iomem, xppu_enabled);
-    }
 }
 
 static void ctrl_postw(RegisterInfo *reg, uint64_t val64)
@@ -556,65 +251,6 @@ static void xppu_reset(DeviceState *dev)
     isr_update_irq(s);
 }
 
-static bool xppu_ap_check(XPPU *s, MemTxAttrs attr, bool rw, uint32_t apl)
-{
-    unsigned int i;
-    bool mid_match = false;
-    bool tz = extract32(apl, 27, 1);
-    bool ok;
-
-    ok = check_apl_parity(s, apl);
-    if (!ok) {
-        return false;
-    }
-
-    /* Check MIDs.  */
-    for (i = 0; i < NR_MID_ENTRIES; i++) {
-        uint32_t val32, mid, mask;
-        bool readonly;
-
-        if (!extract32(apl, i, 1)) {
-            continue;
-        }
-
-        val32 = s->regs[R_MASTER_ID00 + i];
-        mid = FIELD_EX32(val32, MASTER_ID00, MID);
-        readonly = FIELD_EX32(val32, MASTER_ID00, MIDR);
-        mask = FIELD_EX32(val32, MASTER_ID00, MIDM);
-
-        if ((mid & mask) != (attr.requester_id & mask)) {
-            continue;
-        }
-
-        mid_match = true;
-
-        /* Check MID parity.  */
-        if (check_mid_parity(s, val32) == false) {
-            ARRAY_FIELD_DP32(s->regs, ISR, MID_PARITY, true);
-            continue;
-        }
-
-        if (readonly && rw) {
-            ARRAY_FIELD_DP32(s->regs, ISR, MID_RO, true);
-            continue;
-        }
-
-        if (!attr.secure && !tz) {
-            ARRAY_FIELD_DP32(s->regs, ISR, APER_TZ, true);
-            continue;
-        }
-
-        break;
-    }
-
-    if (!mid_match) {
-        /* Set if MID checks don't make it past masking and compare.  */
-        ARRAY_FIELD_DP32(s->regs, ISR, MID_MISS, true);
-    }
-
-    return i < NR_MID_ENTRIES;
-}
-
 static void xppu_ap_access(void *opaque, hwaddr addr, uint64_t *value, bool rw,
                            unsigned size, MemTxAttrs attr)
 {
@@ -707,99 +343,40 @@ static MemTxResult xppu_read(void *opaque, hwaddr addr, uint64_t *value,
                              unsigned size, MemTxAttrs attr)
 {
     XPPU *s = xppu_from_mr(opaque);
-    RegisterInfo *r;
 
     if (!attr.secure) {
         return MEMTX_ERROR;
     }
 
-    r = &s->regs_info[addr / 4];
-
-    if (!r->data) {
-        qemu_log("%s: Decode error: read from %" HWADDR_PRIx "\n",
-                 object_get_canonical_path(OBJECT(s)),
-                 addr);
-        ARRAY_FIELD_DP32(s->regs, ISR, INV_APB, true);
-        isr_update_irq(s);
-        return MEMTX_DECODE_ERROR;
-    }
-
-    *value = register_read_memory(opaque, addr, size);
-    return MEMTX_OK;
+    return xppu_read_common(opaque, s, addr, value, size, attr);
 }
 
 static MemTxResult xppu_write(void *opaque, hwaddr addr, uint64_t value,
                        unsigned size, MemTxAttrs attr)
 {
     XPPU *s = xppu_from_mr(opaque);
-    RegisterInfo *r;
 
-    if (!attr.secure) {
-        return MEMTX_ERROR;
-    }
-
-    r = &s->regs_info[addr / 4];
-
-    if (!r->data) {
-        qemu_log("%s: Decode error: write to %" HWADDR_PRIx "=%" PRIx64 "\n",
-                 object_get_canonical_path(OBJECT(s)),
-                 addr, value);
-        ARRAY_FIELD_DP32(s->regs, ISR, INV_APB, true);
-        isr_update_irq(s);
-        return MEMTX_DECODE_ERROR;
-    }
-
-    register_write_memory(opaque, addr, value, size);
-    return MEMTX_OK;
+    return xppu_write_common(opaque, s, addr, value, size, attr);
 }
-
 
 static MemTxResult xppu_perm_ram_read(void *opaque, hwaddr addr, uint64_t *val,
                              unsigned size, MemTxAttrs attr)
 {
     XPPU *s = XILINX_XPPU(opaque);
-    unsigned int i;
 
     if (!attr.secure) {
         return MEMTX_ERROR;
     }
 
-    i = addr / 4;
-    if (i >= ARRAY_SIZE(s->perm_ram)) {
-        qemu_log("%s: Decode error: read from %" HWADDR_PRIx "\n",
-                 object_get_canonical_path(OBJECT(s)),
-                 addr);
-        ARRAY_FIELD_DP32(s->regs, ISR, INV_APB, true);
-        isr_update_irq(s);
-        return MEMTX_DECODE_ERROR;
-    }
-
-    *val = s->perm_ram[i];
-    return MEMTX_OK;
+    return xppu_perm_ram_read_common(s, addr, val, size, attr);
 }
 
 static MemTxResult xppu_perm_ram_write(void *opaque, hwaddr addr, uint64_t val,
                               unsigned size, MemTxAttrs attr)
 {
     XPPU *s = XILINX_XPPU(opaque);
-    unsigned int i;
 
-    if (!attr.secure) {
-        return MEMTX_ERROR;
-    }
-
-    i = addr / 4;
-    if (i >= ARRAY_SIZE(s->perm_ram)) {
-        qemu_log("%s: Decode error: write to %" HWADDR_PRIx "=%" PRIx64 "\n",
-                 object_get_canonical_path(OBJECT(s)),
-                 addr, val);
-        ARRAY_FIELD_DP32(s->regs, ISR, INV_APB, true);
-        isr_update_irq(s);
-        return MEMTX_DECODE_ERROR;
-    }
-
-    s->perm_ram[i] = val;
-    return MEMTX_OK;
+    return xppu_perm_ram_write_common(s, addr, val, size, attr);
 }
 
 static const MemoryRegionOps xppu_ops = {
@@ -833,93 +410,59 @@ static void xppu_realize(DeviceState *dev, Error **errp)
 static void xppu_init(Object *obj)
 {
     XPPU *s = XILINX_XPPU(obj);
-    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
-    RegisterInfoArray *reg_array;
 
-    memory_region_init_io(&s->iomem, obj, &xppu_ops, s, TYPE_XILINX_XPPU,
-                          0x10000);
-    memory_region_init_io(&s->perm_ram_iomem, obj, &xppu_perm_ram_ops, s,
-                          TYPE_XILINX_XPPU, 0xE000);
-    reg_array =
-        register_init_block32(DEVICE(obj), xppu_regs_info,
-                              ARRAY_SIZE(xppu_regs_info),
-                              s->regs_info, s->regs,
-                              &xppu_ops,
-                              XILINX_XPPU_ERR_DEBUG,
-                              XPPU_R_MAX * 4);
-    memory_region_add_subregion(&s->iomem,
-                                0x0,
-                                &reg_array->mem);
-    memory_region_add_subregion(&s->iomem, 0x1000, &s->perm_ram_iomem);
-    sysbus_init_mmio(sbd, &s->iomem);
-    object_property_add_link(obj, "mr", TYPE_MEMORY_REGION,
-                             (Object **)&s->mr,
-                             qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_STRONG,
-                             &error_abort);
+    s->num_ap = 4;
+    s->ap = g_new(XPPUAperture, s->num_ap);
 
-    sysbus_init_irq(sbd, &s->irq_isr);
+    xppu_init_common(s, obj, TYPE_XILINX_XPPU, &xppu_ops, &xppu_perm_ram_ops,
+                     xppu_regs_info, ARRAY_SIZE(xppu_regs_info));
 }
 
 static bool xppu_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
                            Error **errp)
 {
     XPPU *s = XILINX_XPPU(obj);
-    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
-    ObjectClass *klass = object_class_by_name(TYPE_XILINX_XPPU);
-    FDTGenericMMapClass *parent_fmc;
-    unsigned int i;
+    XPPUApertureInfo ap_info;
 
-    parent_fmc = FDT_GENERIC_MMAP_CLASS(object_class_get_parent(klass));
+    static const XPPUGranule granules[] = {
+        GRANULE_32B,
+        GRANULE_64K,
+        GRANULE_1M,
+        GRANULE_512M
+    };
+    static const uint64_t bases[] = {
+        0xff990000,
+        0xff000000,
+        0xfe000000,
+        0xc0000000,
+    };
+    static const uint64_t masks[] = {
+        0x7f << 5,  /* 32B, bits 11:05.  */
+        0xff << 16, /* 64K, bits 23:16.  */
+        0x0f << 20, /* 1MB, bits 23:20.  */
+        0, /* No extraction.  */
+    };
+    static const unsigned int shifts[] = {
+        5,  /* 32B, bits 11:05.  */
+        16, /* 64K, bits 23:16.  */
+        20, /* 1MB, bits 23:20.  */
+        0, /* No extraction.  */
+    };
+    static const uint32_t ram_bases[] = {
+        0x100,
+        0x0,
+        0x180,
+        0x190,
+    };
 
-    for (i = 0; i < (reg.n - 1) && i < ARRAY_SIZE(s->ap); i++) {
-        static const XPPUGranule granules[] = {
-            GRANULE_32B,
-            GRANULE_64K,
-            GRANULE_1M,
-            GRANULE_512M
-        };
-        static const uint64_t bases[] = {
-            0xff990000,
-            0xff000000,
-            0xfe000000,
-            0xc0000000,
-        };
-        static const uint64_t masks[] = {
-            0x7f << 5,  /* 32B, bits 11:05.  */
-            0xff << 16, /* 64K, bits 23:16.  */
-            0x0f << 20, /* 1MB, bits 23:20.  */
-            0, /* No extraction.  */
-        };
-        static const unsigned int shifts[] = {
-            5,  /* 32B, bits 11:05.  */
-            16, /* 64K, bits 23:16.  */
-            20, /* 1MB, bits 23:20.  */
-            0, /* No extraction.  */
-        };
-        static const uint32_t ram_bases[] = {
-            0x100,
-            0x0,
-            0x180,
-            0x190,
-        };
-        char *name;
+    ap_info.masks = masks;
+    ap_info.shifts = shifts;
+    ap_info.ram_bases = ram_bases;
+    ap_info.granules = granules;
+    ap_info.bases = bases;
 
-        s->ap[i].parent = s;
-        s->ap[i].granule = granules[i];
-        s->ap[i].base = bases[i];
-        s->ap[i].extract_mask = masks[i];
-        s->ap[i].extract_shift = shifts[i];
-        s->ap[i].ram_base = ram_bases[i];
-
-        name = g_strdup_printf("xppu-mr-%d\n", i);
-        memory_region_init_io(&s->ap[i].iomem, OBJECT(obj),
-                              &xppu_ap_ops, &s->ap[i],
-                              name, reg.s[i + 1]);
-        sysbus_init_mmio(sbd, &s->ap[i].iomem);
-        g_free(name);
-    }
-    return parent_fmc ? parent_fmc->parse_reg(obj, reg, errp) : false;
+    return xppu_parse_reg_common(s, TYPE_XILINX_XPPU, reg, obj, &ap_info,
+                                 &xppu_ap_ops, errp);
 }
 
 static const VMStateDescription vmstate_xppu = {

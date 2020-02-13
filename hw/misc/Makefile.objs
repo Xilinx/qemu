@@ -38,6 +38,7 @@ common-obj-$(CONFIG_XLNX_ZYNQMP) += xlnx-zynqmp-boot.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xlnx-zynqmp-xmpu.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xlnx-xmpu.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx-xppu.o
+common-obj-$(CONFIG_XLNX_ZYNQMP) += xlnx-xppu.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx_zynqmp_pmu_local.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx_zynqmp_pmu_global.o
 common-obj-$(CONFIG_XLNX_ZYNQMP) += xilinx_zynqmp_crf.o
