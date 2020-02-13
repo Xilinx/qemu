@@ -283,7 +283,8 @@ static void xppu_ap_access(void *opaque, hwaddr addr, uint64_t *value, bool rw,
             ARRAY_FIELD_DP32(s->regs, ERR_STATUS2, AXI_ID, attr.requester_id);
         }
 
-        /* Poison the transaction.
+        /*
+         * Poison the transaction.
          *
          * Bits 11:0  remain untouched.
          * Bits 31:12 are taken from the POISONBASE register
@@ -352,31 +353,11 @@ static MemTxResult xppu_read(void *opaque, hwaddr addr, uint64_t *value,
 }
 
 static MemTxResult xppu_write(void *opaque, hwaddr addr, uint64_t value,
-                       unsigned size, MemTxAttrs attr)
+                              unsigned size, MemTxAttrs attr)
 {
     XPPU *s = xppu_from_mr(opaque);
 
     return xppu_write_common(opaque, s, addr, value, size, attr);
-}
-
-static MemTxResult xppu_perm_ram_read(void *opaque, hwaddr addr, uint64_t *val,
-                             unsigned size, MemTxAttrs attr)
-{
-    XPPU *s = XILINX_XPPU(opaque);
-
-    if (!attr.secure) {
-        return MEMTX_ERROR;
-    }
-
-    return xppu_perm_ram_read_common(s, addr, val, size, attr);
-}
-
-static MemTxResult xppu_perm_ram_write(void *opaque, hwaddr addr, uint64_t val,
-                              unsigned size, MemTxAttrs attr)
-{
-    XPPU *s = XILINX_XPPU(opaque);
-
-    return xppu_perm_ram_write_common(s, addr, val, size, attr);
 }
 
 static const MemoryRegionOps xppu_ops = {
@@ -388,6 +369,26 @@ static const MemoryRegionOps xppu_ops = {
         .max_access_size = 4,
     },
 };
+
+static MemTxResult xppu_perm_ram_read(void *opaque, hwaddr addr, uint64_t *val,
+                                      unsigned size, MemTxAttrs attr)
+{
+    XPPU *s = XILINX_XPPU(opaque);
+
+    if (!attr.secure) {
+        return MEMTX_ERROR;
+    }
+
+    return xppu_perm_ram_read_common(s, addr, val, size, attr);
+}
+
+static MemTxResult xppu_perm_ram_write(void *opaque, hwaddr addr, uint64_t val,
+                                       unsigned size, MemTxAttrs attr)
+{
+    XPPU *s = XILINX_XPPU(opaque);
+
+    return xppu_perm_ram_write_common(s, addr, val, size, attr);
+}
 
 static const MemoryRegionOps xppu_perm_ram_ops = {
     .read_with_attrs = xppu_perm_ram_read,
