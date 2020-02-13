@@ -34,7 +34,6 @@
 #include "qemu/log.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
-
 #include "sysemu/dma.h"
 #include "exec/address-spaces.h"
 
@@ -655,10 +654,8 @@ static const MemoryRegionOps xmpu_ops = {
     },
 };
 
-static MemTxResult zero_read(void *opaque, hwaddr addr,
-                          uint64_t *pdata,
-                          unsigned size,
-                          MemTxAttrs attr)
+static MemTxResult zero_read(void *opaque, hwaddr addr, uint64_t *pdata,
+                             unsigned size, MemTxAttrs attr)
 {
     XMPUMaster *xm = opaque;
     XMPU *s = xm->parent;
@@ -680,7 +677,8 @@ static MemTxResult zero_read(void *opaque, hwaddr addr,
         }
         if (poisoncfg) {
             AddressSpace *as = xm->parent_as;
-            addr = (ARRAY_FIELD_EX32(s->regs, POISON, BASE) << 12) | (addr & 0xfff);
+            addr = (ARRAY_FIELD_EX32(s->regs, POISON, BASE) << 12) |
+                    (addr & 0xfff);
             dma_memory_read(as, addr, &value, size);
         }
         ARRAY_FIELD_DP32(s->regs, ERR_STATUS2, AXI_ID, attr.requester_id);
@@ -697,7 +695,7 @@ static MemTxResult zero_read(void *opaque, hwaddr addr,
 }
 
 static MemTxResult zero_write(void *opaque, hwaddr addr, uint64_t value,
-                       unsigned size, MemTxAttrs attr)
+                              unsigned size, MemTxAttrs attr)
 {
     XMPUMaster *xm = opaque;
     XMPU *s = xm->parent;
@@ -718,7 +716,8 @@ static MemTxResult zero_write(void *opaque, hwaddr addr, uint64_t value,
         }
         if (poisoncfg) {
             AddressSpace *as = xm->parent_as;
-            addr = (ARRAY_FIELD_EX32(s->regs, POISON, BASE) << 12) | (addr & 0xfff);
+            addr = (ARRAY_FIELD_EX32(s->regs, POISON, BASE) << 12) |
+                   (addr & 0xfff);
             dma_memory_write(as, addr, &value, size);
         }
         ARRAY_FIELD_DP32(s->regs, ERR_STATUS2, AXI_ID, attr.requester_id);
@@ -747,8 +746,6 @@ static const MemoryRegionOps zero_ops = {
     }
 };
 
-#define MASK_4K  (0xfff)
-#define MASK_1M  (0xfffff)
 static void xmpu_realize(DeviceState *dev, Error **errp)
 {
     XMPU *s = XILINX_XMPU(dev);
@@ -807,8 +804,7 @@ static void xmpu_class_init(ObjectClass *klass, void *data)
     fmc->parse_reg = xmpu_parse_reg;
 }
 
-static void xmpu_iommu_memory_region_class_init(ObjectClass *klass,
-                                                void *data)
+static void xmpu_iommu_memory_region_class_init(ObjectClass *klass, void *data)
 {
     IOMMUMemoryRegionClass *imrc = IOMMU_MEMORY_REGION_CLASS(klass);
 
