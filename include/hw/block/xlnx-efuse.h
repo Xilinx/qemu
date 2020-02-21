@@ -35,11 +35,6 @@
 #define XLNX_EFUSE(obj) \
      OBJECT_CHECK(XLNXEFuse, (obj), TYPE_XLNX_EFUSE)
 
-#define TBIT0_OFFSET     28
-#define TBIT1_OFFSET     29
-#define TBIT2_OFFSET     30
-#define TBIT3_OFFSET     31
-
 #define FBIT_UNKNOWN (~0)
 
 typedef struct XLNXEFuse {
@@ -70,7 +65,7 @@ void efuse_stop_timer_ps(XLNXEFuse *s);
 void efuse_set_timer_ps(XLNXEFuse *s, int tsu_h_ps);
 void efuse_pgm_complete(XLNXEFuse *s);
 bool efuse_get_bit(XLNXEFuse *s, unsigned int bit);
-unsigned int efuse_tbits_read(XLNXEFuse *s, int n);
+uint32_t efuse_tbits_check(XLNXEFuse *s);
 
 /* Return whole row containing the given bit address */
 static inline uint32_t efuse_get_row(XLNXEFuse *s, unsigned int bit)

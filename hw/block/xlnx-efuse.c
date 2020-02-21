@@ -52,6 +52,13 @@
 #define XLNX_EFUSE_ERR_DEBUG 0
 #endif
 
+#define TBIT0_OFFSET     28
+#define TBIT1_OFFSET     29
+#define TBIT2_OFFSET     30
+#define TBIT3_OFFSET     31
+#define TBITS_PATTERN    (0x0AU << TBIT0_OFFSET)
+#define TBITS_MASK       (0x0FU << TBIT0_OFFSET)
+
 bool efuse_get_bit(XLNXEFuse *s, unsigned int bit)
 {
     bool b = s->fuse32[bit / 32] & (1 << (bit % 32));
@@ -202,11 +209,19 @@ void efuse_pgm_complete(XLNXEFuse *s)
     }
 }
 
-unsigned int efuse_tbits_read(XLNXEFuse *s, int n)
+uint32_t efuse_tbits_check(XLNXEFuse *s)
 {
-    int efuse_start_row_num = (s->efuse_size * n) / 32;
-    uint32_t data = s->fuse32[efuse_start_row_num] >> TBIT0_OFFSET;
-    return data;
+    int nr;
+    uint32_t check = 0;
+
+    for (nr = s->efuse_nr; nr-- > 0; ) {
+        int efuse_start_row_num = (s->efuse_size * nr) / 32;
+        uint32_t data = s->fuse32[efuse_start_row_num];
+
+        check = (check << 1) | ((data & TBITS_MASK) == TBITS_PATTERN);
+    }
+
+    return check;
 }
 
 static void efuse_realize(DeviceState *dev, Error **errp)

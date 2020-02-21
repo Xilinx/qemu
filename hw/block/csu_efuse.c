@@ -219,13 +219,6 @@ REG32(PPK1_11, 0x10fc)
 #define BIT_POS(ROW, COLUMN)    (ROW * 32 + COLUMN)
 #define R_MAX (R_PPK1_11 + 1)
 
-#define EFUSE_NR 3
-#define EFUSE_SIZE (64 * 32)
-#define EFUSE_ARRAY_SIZE (EFUSE_SIZE * EFUSE_NR)
-
-/* TBIT pattern is specific to zynqmp */
-#define TBITS_PATTERN    0xA
-
 /* #define EFUSE_XOSC            26 */
 
 /*
@@ -321,20 +314,14 @@ typedef struct Zynq3EFuse {
 
 static void update_tbit_status(ZynqMPEFuse *s)
 {
-    unsigned int i;
+    unsigned int check = efuse_tbits_check(s->efuse);
+    uint32_t val = s->regs[R_STATUS];
 
-    for (i = 0; i < EFUSE_NR; i++) {
-        unsigned int pattern;
+    val = FIELD_DP32(val, STATUS, EFUSE_0_TBIT, !!(check & (1 << 0)));
+    val = FIELD_DP32(val, STATUS, EFUSE_2_TBIT, !!(check & (1 << 1)));
+    val = FIELD_DP32(val, STATUS, EFUSE_3_TBIT, !!(check & (1 << 2)));
 
-        pattern = efuse_tbits_read(s->efuse, i);
-
-        /* In order to use efuse user must burn the TBITS(Test Bits)
-         * So check the tbits for each efuse and update the status.
-         * TBITS fixed pattern TBITS_PATTERN */
-        if (pattern == TBITS_PATTERN) {
-            s->regs[R_STATUS] |= 1 << (i);
-        }
-    }
+    s->regs[R_STATUS] = val;
 }
 
 static void efuse_aes_key_sync(ZynqMPEFuse *s, EfuseKey *key, uint32_t start,
