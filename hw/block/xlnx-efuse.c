@@ -123,7 +123,7 @@ void efuse_sync_u32(XLNXEFuse *s, uint32_t *u32,
     }
 }
 
-static void efuse_sync_bdrv(XLNXEFuse *s)
+static void efuse_sync_bdrv(XLNXEFuse *s, unsigned int bit)
 {
     const int bswap_adj = (const_le32(0x1234) != 0x1234 ? 3 : 0);
     unsigned int efuse_byte;
@@ -132,7 +132,7 @@ static void efuse_sync_bdrv(XLNXEFuse *s)
         return;  /* Silient on read-only backend to avoid message flood */
     }
 
-    efuse_byte = s->efuse_idx / 8;
+    efuse_byte = bit / 8;
 
     if (blk_pwrite(s->blk, efuse_byte,
                    ((uint8_t *) s->fuse32) + (efuse_byte ^ bswap_adj),
@@ -176,7 +176,7 @@ static void timer_pgm_hit(void *opaque)
     efuse_word = s->efuse_idx / 32;
 
     s->fuse32[efuse_word] |= 1 << (s->efuse_idx % 32);
-    efuse_sync_bdrv(s);
+    efuse_sync_bdrv(s, s->efuse_idx);
 
     s->programming = false;
 
@@ -217,6 +217,18 @@ uint32_t efuse_tbits_check(XLNXEFuse *s)
     for (nr = s->efuse_nr; nr-- > 0; ) {
         int efuse_start_row_num = (s->efuse_size * nr) / 32;
         uint32_t data = s->fuse32[efuse_start_row_num];
+
+        /*
+         * If the option is on, auto-init blank T-bits.
+         * (non-blank will still be reported as '0' in the check, e.g.,
+         *  for error-injection tests)
+         */
+        if ((data & TBITS_MASK) == 0 && s->init_tbits) {
+            data |= TBITS_PATTERN;
+
+            s->fuse32[efuse_start_row_num] = data;
+            efuse_sync_bdrv(s, (efuse_start_row_num * 32 + TBIT0_OFFSET));
+        }
 
         check = (check << 1) | ((data & TBITS_MASK) == TBITS_PATTERN);
     }
@@ -283,6 +295,7 @@ static Property efuse_properties[] = {
     DEFINE_PROP_UINT8("efuse-nr", XLNXEFuse, efuse_nr, 3),
     DEFINE_PROP_UINT32("efuse-size", XLNXEFuse, efuse_size, 64 * 32),
     DEFINE_PROP_DRIVE("drive", XLNXEFuse, blk),
+    DEFINE_PROP_BOOL("init-factory-tbits", XLNXEFuse, init_tbits, true),
     DEFINE_PROP_END_OF_LIST(),
 };
 

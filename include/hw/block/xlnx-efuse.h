@@ -49,6 +49,7 @@ typedef struct XLNXEFuse {
     ptimer_state *timer_ps;
     ptimer_state *timer_pgm;
 
+    bool init_tbits;
     bool programming;
     uint32_t efuse_idx;
 
