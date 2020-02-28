@@ -261,6 +261,10 @@ static memory_info init_memory(void *fdt, ram_addr_t ram_size, bool zynq_7000)
         qemu_fdt_setprop_cells(fdt, "/memory", "qemu,ram", 1);
     }
 
+    if (zynq_7000) {
+        qemu_fdt_setprop_cell(fdt, "/amba/interrupt-controller@f8f01000",
+                              "num-priority-bits", 5);
+    }
     /* Instantiate peripherals from the FDT.  */
     fdti = fdt_generic_create_machine(fdt, NULL);
 
