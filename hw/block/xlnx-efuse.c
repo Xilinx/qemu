@@ -261,6 +261,14 @@ bool efuse_k256_check(XLNXEFuse *s, uint32_t crc, unsigned start)
 
 void efuse_k256_sync(XLNXEFuse *s, ZynqMPAESKeySink *sink, unsigned start)
 {
+    union {
+        uint8_t u8[256 / 8];
+        uint32_t u32[256 / 32];
+    } key;
+
+    const unsigned last = ARRAY_SIZE(key.u32) - 1;
+    unsigned nr;
+
     /* A key always occupies multiple of whole rows */
     assert((start % 32) == 0);
 
@@ -269,7 +277,11 @@ void efuse_k256_sync(XLNXEFuse *s, ZynqMPAESKeySink *sink, unsigned start)
     }
 
     start /= 32;
-    zynqmp_aes_key_update(sink, (void *)&s->fuse32[start], (256 / 8));
+    for (nr = 0; nr <= last; nr++) {
+        key.u32[last - nr] = s->fuse32[start + nr];
+    }
+
+    zynqmp_aes_key_update(sink, key.u8, sizeof(key.u8));
 }
 
 uint32_t efuse_tbits_check(XLNXEFuse *s)
