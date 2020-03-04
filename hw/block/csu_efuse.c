@@ -645,9 +645,11 @@ static void zynqmp_efuse_rd_addr_postw(RegisterInfo *reg, uint64_t val64)
 static void zynqmp_efuse_aes_crc_postw(RegisterInfo *reg, uint64_t val64)
 {
     ZynqMPEFuse *s = ZYNQMP_EFUSE(reg->opaque);
+    bool ok;
 
-    /* TODO: do real CRC-check */
-    ARRAY_FIELD_DP32(s->regs, STATUS, AES_CRC_PASS, (val64 != 0));
+    ok = efuse_k256_check(s->efuse, (uint32_t)val64, EFUSE_AES_START);
+
+    ARRAY_FIELD_DP32(s->regs, STATUS, AES_CRC_PASS, (ok ? 1 : 0));
     ARRAY_FIELD_DP32(s->regs, STATUS, AES_CRC_DONE, 1);
 }
 
