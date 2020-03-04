@@ -1,5 +1,5 @@
 /*
- * QEMU model of the EFUSE eFuse
+ * QEMU model of the ZynqMP eFuse
  *
  * Copyright (c) 2015 Xilinx Inc.
  *
@@ -51,13 +51,9 @@
 #endif
 
 #define TYPE_ZYNQMP_EFUSE "xlnx.zynqmp-efuse"
-#define TYPE_ZYNQ3_EFUSE "xlnx.versal-efuse"
 
 #define ZYNQMP_EFUSE(obj) \
      OBJECT_CHECK(ZynqMPEFuse, (obj), TYPE_ZYNQMP_EFUSE)
-
-#define ZYNQ3_EFUSE(obj) \
-     OBJECT_CHECK(Zynq3EFuse, (obj), TYPE_ZYNQ3_EFUSE)
 
 
 REG32(WR_LOCK, 0x0)
@@ -268,16 +264,6 @@ REG32(PPK1_11, 0x10fc)
 #define EFUSE_PPK1_START      BIT_POS(52, 0)
 #define EFUSE_PPK1_END        BIT_POS(63, 31)
 
-/* ZYNQ3 */
-#define ZYNQ3_EFUSE_AES_START    BIT_POS(12, 0)
-#define ZYNQ3_EFUSE_AES_END      BIT_POS(19, 31)
-#define ZYNQ3_EFUSE_USER0_START  BIT_POS(20, 0)
-#define ZYNQ3_EFUSE_USER0_END    BIT_POS(27, 31)
-#define ZYNQ3_EFUSE_USER1_START  BIT_POS(28, 0)
-#define ZYNQ3_EFUSE_USER1_END    BIT_POS(35, 31)
-#define ZYNQ3_EFUSE_SEC_DBG0     BIT_POS(43, 19)
-#define ZYNQ3_EFUSE_SEC_DBG4     BIT_POS(43, 22)
-
 typedef struct EfuseKey {
     union {
         uint8_t u8[256 / 8];
@@ -293,20 +279,12 @@ typedef struct ZynqMPEFuse {
     qemu_irq irq;
 
     EfuseKey key;
-    EfuseKey user_key0;
-    EfuseKey user_key1;
 
     XLNXEFuse *efuse;
     void (*refresh_cache)(struct ZynqMPEFuse *, unsigned int);
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
 } ZynqMPEFuse;
-
-typedef struct Zynq3EFuse {
-    ZynqMPEFuse parent_obj;
-
-    qemu_irq sec_dbg_dis[4];
-} Zynq3EFuse;
 
 #define EFUSE_CACHE_BIT(s, reg, field) \
     ARRAY_FIELD_DP32((s)->regs, reg, field, efuse_get_bit((s->efuse), \
@@ -386,27 +364,6 @@ static void zynqmp_efuse_sync_cache(ZynqMPEFuse *s, unsigned int bit)
                    EFUSE_PPK0_START, EFUSE_PPK0_END, bit);
     efuse_sync_u32(s->efuse, &s->regs[R_PPK1_0],
                    EFUSE_PPK1_START, EFUSE_PPK1_END, bit);
-}
-
-static void versal_efuse_sync_cache(ZynqMPEFuse *s, unsigned int bit)
-{
-    Zynq3EFuse *ss = ZYNQ3_EFUSE(s);
-    uint32_t sec_dbg_dis = 0;
-    int i;
-
-    /* Update the tbits.  */
-    update_tbit_status(s);
-    /* Sync the AES Key.  */
-    efuse_aes_key_sync(s, &s->key, ZYNQ3_EFUSE_AES_START, ZYNQ3_EFUSE_AES_END);
-    efuse_aes_key_sync(s, &s->user_key0, ZYNQ3_EFUSE_USER0_START,
-                       ZYNQ3_EFUSE_USER0_END);
-    efuse_aes_key_sync(s, &s->user_key1, ZYNQ3_EFUSE_USER1_START,
-                       ZYNQ3_EFUSE_USER1_END);
-    efuse_sync_u32(s->efuse, &sec_dbg_dis, ZYNQ3_EFUSE_SEC_DBG0,
-                   ZYNQ3_EFUSE_SEC_DBG4, FBIT_UNKNOWN);
-    for (i = 0; i < 4; i++) {
-        qemu_set_irq(ss->sec_dbg_dis[i], !!(sec_dbg_dis & (1 << i)));
-    }
 }
 
 static void zynqmp_efuse_update_irq(ZynqMPEFuse *s)
@@ -908,14 +865,6 @@ static void zynqmp_efuse_realize(DeviceState *dev, Error **errp)
     s->efuse->dev = dev;
 }
 
-static void versal_efuse_realize(DeviceState *dev, Error **errp)
-{
-    Zynq3EFuse *s = ZYNQ3_EFUSE(dev);
-
-    qdev_init_gpio_out(dev, s->sec_dbg_dis, 4);
-    zynqmp_efuse_realize(dev, errp);
-}
-
 static void zynqmp_efuse_init(Object *obj)
 {
     ZynqMPEFuse *s = ZYNQMP_EFUSE(obj);
@@ -938,13 +887,6 @@ static void zynqmp_efuse_init(Object *obj)
     s->refresh_cache = zynqmp_efuse_sync_cache;
 }
 
-static void versal_efuse_init(Object *obj)
-{
-    ZynqMPEFuse *s = ZYNQMP_EFUSE(obj);
-
-    s->refresh_cache = versal_efuse_sync_cache;
-}
-
 static const VMStateDescription vmstate_efuse = {
     .name = TYPE_ZYNQMP_EFUSE,
     .version_id = 1,
@@ -964,12 +906,6 @@ static Property zynqmp_efuse_props[] = {
     DEFINE_PROP_LINK("zynqmp-aes-key-sink-efuses",
                      ZynqMPEFuse, key.sink,
                      TYPE_ZYNQMP_AES_KEY_SINK, ZynqMPAESKeySink *),
-    DEFINE_PROP_LINK("zynqmp-aes-key-sink-efuses-user0",
-                     ZynqMPEFuse, user_key0.sink,
-                     TYPE_ZYNQMP_AES_KEY_SINK, ZynqMPAESKeySink *),
-    DEFINE_PROP_LINK("zynqmp-aes-key-sink-efuses-user1",
-                     ZynqMPEFuse, user_key1.sink,
-                     TYPE_ZYNQMP_AES_KEY_SINK, ZynqMPAESKeySink *),
 
     DEFINE_PROP_END_OF_LIST(),
 };
@@ -984,13 +920,6 @@ static void zynqmp_efuse_class_init(ObjectClass *klass, void *data)
     dc->props = zynqmp_efuse_props;
 }
 
-static void versal_efuse_class_init(ObjectClass *klass, void *data)
-{
-    DeviceClass *dc = DEVICE_CLASS(klass);
-
-    dc->realize = versal_efuse_realize;
-}
-
 
 static const TypeInfo efuse_info = {
     .name          = TYPE_ZYNQMP_EFUSE,
@@ -1000,18 +929,9 @@ static const TypeInfo efuse_info = {
     .instance_init = zynqmp_efuse_init,
 };
 
-static const TypeInfo versal_efuse_info = {
-    .name          = TYPE_ZYNQ3_EFUSE,
-    .parent        = TYPE_ZYNQMP_EFUSE,
-    .instance_size = sizeof(Zynq3EFuse),
-    .class_init    = versal_efuse_class_init,
-    .instance_init = versal_efuse_init,
-};
-
 static void efuse_register_types(void)
 {
     type_register_static(&efuse_info);
-    type_register_static(&versal_efuse_info);
 }
 
 type_init(efuse_register_types)
