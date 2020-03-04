@@ -30,7 +30,7 @@
 #include "qemu/log.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
-#include "hw/block/xlnx-efuse.h"
+#include "xlnx-versal-pmc-efuse.h"
 
 #ifndef XILINX_EFUSE_CACHE_ERR_DEBUG
 #define XILINX_EFUSE_CACHE_ERR_DEBUG 0
@@ -49,11 +49,7 @@
 #define DPRINT_GE(args, ...) \
      qemu_log_mask(LOG_GUEST_ERROR, "%s: " args, __func__, ## __VA_ARGS__);
 
-#define R_HOLE_START 0x30
-#define R_HOLE_END   0x8C
-#define V_HOLE       0
-
-#define R_MAX 0xFFC
+#define R_MAX 0x1000
 
 typedef struct EFuseCache {
     SysBusDevice parent_obj;
@@ -65,23 +61,26 @@ typedef struct EFuseCache {
 static uint64_t efuse_cache_read(void *opaque, hwaddr addr, unsigned size)
 {
     EFuseCache *s = XILINX_EFUSE_CACHE(opaque);
-    unsigned int start = addr * 8;
-    unsigned int end = (addr + size) * 8;
-    uint32_t *ret = g_malloc0(size * 8 * sizeof(uint32_t));
+    unsigned int w0 = QEMU_ALIGN_DOWN(addr * 8, 32);
+    unsigned int w1 = QEMU_ALIGN_DOWN((addr + size - 1) * 8, 32);
 
-    DPRINT("%s: addr=>0x%x ", __func__, (unsigned int)addr);
-    switch (addr) {
-    case R_HOLE_START ... R_HOLE_END:
-        DPRINT_GE("Should not access unreadable efuse-cache hole %#llx!\n",
-                  (unsigned long long)addr);
-        return V_HOLE;
-    default:
-        break;
-    };
-    efuse_sync_u32(s->efuse, ret, start, end, FBIT_UNKNOWN);
+    uint64_t ret;
 
-    DPRINT("val=>0x%x\n", ret[0]);
-    return ret[0];
+    assert(w0 == w1 || (w0 + 32) == w1);
+
+    ret = versal_efuse_read_row(s->efuse, w1, NULL);
+    if (w0 < w1) {
+        ret <<= 32;
+        ret |= versal_efuse_read_row(s->efuse, w0, NULL);
+    }
+
+    /* If 'addr' unaligned, the guest is always assumed to be little-endian. */
+    addr &= 3;
+    if (addr) {
+        ret >>= 8 * addr;
+    }
+
+    return ret;
 }
 
 static void efuse_cache_write(void *opaque, hwaddr addr, uint64_t value,
