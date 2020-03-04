@@ -25,12 +25,17 @@
  */
 
 #include "qemu/osdep.h"
+
 #include "hw/sysbus.h"
 #include "hw/register.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
 #include "migration/vmstate.h"
 #include "hw/irq.h"
+#include "qapi/error.h"
+#include "hw/qdev-properties.h"
+#include "hw/zynqmp_aes_key.h"
+#include "xlnx-versal-pmc-efuse.h"
 
 #ifndef XILINX_EFUSE_CTRL_ERR_DEBUG
 #define XILINX_EFUSE_CTRL_ERR_DEBUG 0
@@ -160,10 +165,86 @@ REG32(EFUSE_TEST_CTRL, 0x100)
 
 #define EFUSE_CTRL_R_MAX (R_EFUSE_TEST_CTRL + 1)
 
+#define R_WR_LOCK_UNLOCK_PASSCODE   (0xDF0D)
+
+/*
+ * eFuse layout references:
+ *   UG????, p.???, Table ???
+ *   https://github.com/Xilinx/embeddedsw/blob/release-2019.2/lib/sw_services/xilnvm/src/xnvm_efuse_hw.h
+ */
+#define BIT_POS_OF(A_) \
+    ((uint32_t)((A_) & (R_EFUSE_PGM_ADDR_ROW_MASK | \
+                        R_EFUSE_PGM_ADDR_COLUMN_MASK)))
+
+#define BIT_POS(R_, C_) \
+        ((uint32_t)((R_EFUSE_PGM_ADDR_ROW_MASK                  \
+                    & ((R_) << R_EFUSE_PGM_ADDR_ROW_SHIFT))     \
+                    |                                           \
+                    (R_EFUSE_PGM_ADDR_COLUMN_MASK               \
+                     & ((C_) << R_EFUSE_PGM_ADDR_COLUMN_SHIFT))))
+
+#define EFUSE_TBIT_POS(A_)          (BIT_POS_OF(A_) >= BIT_POS(0, 28))
+
+#define EFUSE_AES_KEY_START         BIT_POS(12, 0)
+#define EFUSE_AES_KEY_END           BIT_POS(19, 31)
+#define EFUSE_USER_KEY_0_START      BIT_POS(20, 0)
+#define EFUSE_USER_KEY_0_END        BIT_POS(27, 31)
+#define EFUSE_USER_KEY_1_START      BIT_POS(28, 0)
+#define EFUSE_USER_KEY_1_END        BIT_POS(35, 31)
+
+#define EFUSE_RD_BLOCKED_START      EFUSE_AES_KEY_START
+#define EFUSE_RD_BLOCKED_END        EFUSE_USER_KEY_1_END
+
+#define EFUSE_GLITCH_DET_WR_LK      BIT_POS(4, 31)
+#define EFUSE_PPK0_WR_LK            BIT_POS(43, 6)
+#define EFUSE_PPK1_WR_LK            BIT_POS(43, 7)
+#define EFUSE_PPK2_WR_LK            BIT_POS(43, 8)
+#define EFUSE_AES_WR_LK             BIT_POS(43, 11)
+#define EFUSE_USER_KEY_0_WR_LK      BIT_POS(43, 13)
+#define EFUSE_USER_KEY_1_WR_LK      BIT_POS(43, 15)
+#define EFUSE_PUF_SYN_LK            BIT_POS(43, 16)
+#define EFUSE_DNA_WR_LK             BIT_POS(43, 27)
+#define EFUSE_BOOT_ENV_WR_LK        BIT_POS(43, 28)
+
+#define EFUSE_PGM_LOCKED_START      BIT_POS(44, 0)
+#define EFUSE_PGM_LOCKED_END        BIT_POS(51, 31)
+
+#define EFUSE_PUF_PAGE              (2)
+#define EFUSE_PUF_SYN_START         BIT_POS(129, 0)
+#define EFUSE_PUF_SYN_END           BIT_POS(255, 27)
+
+#define EFUSE_KEY_CRC_LK_ROW           (43)
+#define EFUSE_AES_KEY_CRC_LK_MASK      ((1U << 9) | (1U << 10))
+#define EFUSE_USER_KEY_0_CRC_LK_MASK   (1U << 12)
+#define EFUSE_USER_KEY_1_CRC_LK_MASK   (1U << 14)
+
+/*
+ * A handy macro to return value of an array element,
+ * or a specific default if given index is out of bound.
+ */
+#define ARRAY_GET(A_, I_, D_) \
+    ((unsigned int)(I_) < ARRAY_SIZE(A_) ? (A_)[I_] : (D_))
+
+typedef struct EFUSE_LK_SPEC {
+    uint16_t row;
+    uint16_t lk_bit;
+} EFUSE_LK_SPEC;
+
 typedef struct EFUSE_CTRL {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
     qemu_irq irq_efuse_imr;
+
+    XLNXEFuse *efuse;
+    ZynqMPAESKeySink *aes_key_sink;
+    ZynqMPAESKeySink *usr_key0_sink;
+    ZynqMPAESKeySink *usr_key1_sink;
+
+    union {
+        uint16_t *u16;
+        EFUSE_LK_SPEC *spec;
+    } extra_pg0_lock;
+    uint32_t extra_pg0_lock_n16;
 
     uint32_t regs[EFUSE_CTRL_R_MAX];
     RegisterInfo regs_info[EFUSE_CTRL_R_MAX];
@@ -201,17 +282,300 @@ static uint64_t efuse_idr_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
+static void efuse_status_tbits_sync(EFUSE_CTRL *s)
+{
+    uint32_t check = efuse_tbits_check(s->efuse);
+    uint32_t val = s->regs[R_STATUS];
+
+    val = FIELD_DP32(val, STATUS, EFUSE_0_TBIT, !!(check & (1 << 0)));
+    val = FIELD_DP32(val, STATUS, EFUSE_1_TBIT, !!(check & (1 << 1)));
+    val = FIELD_DP32(val, STATUS, EFUSE_2_TBIT, !!(check & (1 << 2)));
+
+    s->regs[R_STATUS] = val;
+}
+
+static void efuse_key_crc_check(RegisterInfo *reg, uint32_t crc,
+                                uint32_t pass_mask, uint32_t done_mask,
+                                unsigned first, uint32_t lk_mask)
+{
+    EFUSE_CTRL *s = XILINX_EFUSE_CTRL(reg->opaque);
+    uint32_t r, lk_bits;
+
+    /*
+     * To start, assume both DONE and PASS, and clear PASS by xor
+     * if CRC-check fails or CRC-check disabled by lock fuse.
+     */
+    r = s->regs[R_STATUS] | done_mask | pass_mask;
+
+    lk_bits = efuse_get_row(s->efuse, EFUSE_KEY_CRC_LK_ROW) & lk_mask;
+    if (lk_bits == 0 && efuse_k256_check(s->efuse, crc, first)) {
+        pass_mask = 0;
+    }
+
+    s->regs[R_STATUS] = r ^ pass_mask;
+}
+
+static void efuse_data_sync(EFUSE_CTRL *s)
+{
+    efuse_status_tbits_sync(s);
+    efuse_k256_sync(s->efuse, s->aes_key_sink, EFUSE_AES_KEY_START);
+    efuse_k256_sync(s->efuse, s->usr_key0_sink, EFUSE_USER_KEY_0_START);
+    efuse_k256_sync(s->efuse, s->usr_key1_sink, EFUSE_USER_KEY_1_START);
+}
+
+static int efuse_lk_spec_cmp(const void *a, const void *b)
+{
+    uint16_t r1 = ((const EFUSE_LK_SPEC *)a)->row;
+    uint16_t r2 = ((const EFUSE_LK_SPEC *)b)->row;
+
+    return (r1 > r2) - (r1 < r2);
+}
+
+static void efuse_lk_spec_sort(EFUSE_CTRL *s)
+{
+    EFUSE_LK_SPEC *ary = s->extra_pg0_lock.spec;
+    const uint32_t n8  = s->extra_pg0_lock_n16 * 2;
+    const uint32_t sz  = sizeof(ary[0]);
+    const uint32_t cnt = n8 / sz;
+
+    if (!ary || !n8) {
+        return;
+    }
+
+    if ((n8 % sz) != 0) {
+        error_setg(&error_abort,
+                   "%s: property 'pg0-lock' item-count not multiple of %u",
+                   object_get_canonical_path(OBJECT(s)), sz);
+    }
+
+    qsort(ary, cnt, sz, efuse_lk_spec_cmp);
+}
+
+static uint32_t efuse_lk_spec_find(EFUSE_CTRL *s, uint32_t row)
+{
+    const EFUSE_LK_SPEC *ary = s->extra_pg0_lock.spec;
+    const uint32_t n8  = s->extra_pg0_lock_n16 * 2;
+    const uint32_t sz  = sizeof(ary[0]);
+    const uint32_t cnt = n8 / sz;
+    const EFUSE_LK_SPEC *item = NULL;
+
+    if (ary && cnt) {
+        EFUSE_LK_SPEC k = { .row = row, };
+
+        item = bsearch(&k, ary, cnt, sz, efuse_lk_spec_cmp);
+    }
+
+    return item ? item->lk_bit : 0;
+}
+
+static uint32_t efuse_bit_locked(EFUSE_CTRL *s, uint32_t bit)
+{
+    /* Hard-coded locks */
+    static const uint16_t pg0_hard_lock[] = {
+        [4] = EFUSE_GLITCH_DET_WR_LK,
+        [37] = EFUSE_BOOT_ENV_WR_LK,
+
+        [8 ... 11]  = EFUSE_DNA_WR_LK,
+        [12 ... 19] = EFUSE_AES_WR_LK,
+        [20 ... 27] = EFUSE_USER_KEY_0_WR_LK,
+        [28 ... 35] = EFUSE_USER_KEY_1_WR_LK,
+        [64 ... 71] = EFUSE_PPK0_WR_LK,
+        [72 ... 79] = EFUSE_PPK1_WR_LK,
+        [80 ... 87] = EFUSE_PPK2_WR_LK,
+    };
+
+    uint32_t row = FIELD_EX32(bit, EFUSE_PGM_ADDR, ROW);
+    uint32_t lk_bit = ARRAY_GET(pg0_hard_lock, row, 0);
+
+    return lk_bit ? lk_bit : efuse_lk_spec_find(s, row);
+}
+
+static bool efuse_pgm_locked(EFUSE_CTRL *s, unsigned int bit)
+{
+
+    unsigned int lock = 1;
+
+    /* Global lock */
+    if (!ARRAY_FIELD_EX32(s->regs, CFG, PGM_EN)) {
+        goto ret_lock;
+    }
+
+    /* Row lock */
+    switch (FIELD_EX32(bit, EFUSE_PGM_ADDR, PAGE)) {
+    case 0:
+        if (ARRAY_FIELD_EX32(s->regs, EFUSE_PGM_LOCK, SPK_ID_LOCK) &&
+            bit >= EFUSE_PGM_LOCKED_START && bit <= EFUSE_PGM_LOCKED_END) {
+            goto ret_lock;
+        }
+
+        lock = efuse_bit_locked(s, bit);
+        break;
+    case EFUSE_PUF_PAGE:
+        if (bit < EFUSE_PUF_SYN_START || bit > EFUSE_PUF_SYN_END) {
+            lock = 0;
+            goto ret_lock;
+        }
+
+        lock = EFUSE_PUF_SYN_LK;
+        break;
+    default:
+        lock = 0;
+        goto ret_lock;
+    }
+
+    /* Row lock by an efuse bit */
+    if (lock) {
+        lock = efuse_get_bit(s->efuse, lock);
+    }
+
+ ret_lock:
+    return lock != 0;
+}
+
+static void efuse_pgm_addr_postw(RegisterInfo *reg, uint64_t val64)
+{
+    EFUSE_CTRL *s = XILINX_EFUSE_CTRL(reg->opaque);
+    unsigned bit = val64;
+    bool ok = false;
+
+    /* Always zero out PGM_ADDR because it is write-only */
+    s->regs[R_EFUSE_PGM_ADDR] = 0;
+
+    /*
+     * Indicate error if bit is write-protected (or read-only
+     * as guarded by efuse_set_bit()).
+     *
+     * Keep it simple by not modeling program timing.
+     *
+     * Note: model must NEVER clear the PGM_ERROR bit; it is
+     *       up to guest to do so (or by reset).
+     */
+    if (efuse_pgm_locked(s, bit)) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: Denied setting of efuse<%u, %u, %u>\n",
+                      object_get_canonical_path(OBJECT(s)),
+                      FIELD_EX32(bit, EFUSE_PGM_ADDR, PAGE),
+                      FIELD_EX32(bit, EFUSE_PGM_ADDR, ROW),
+                      FIELD_EX32(bit, EFUSE_PGM_ADDR, COLUMN));
+    } else if (efuse_set_bit(s->efuse, bit)) {
+        ok = true;
+        if (EFUSE_TBIT_POS(bit)) {
+            efuse_status_tbits_sync(s);
+        }
+    }
+
+    if (!ok) {
+        ARRAY_FIELD_DP32(s->regs, EFUSE_ISR, PGM_ERROR, 1);
+    }
+
+    ARRAY_FIELD_DP32(s->regs, EFUSE_ISR, PGM_DONE, 1);
+    efuse_imr_update_irq(s);
+}
+
+static void efuse_rd_addr_postw(RegisterInfo *reg, uint64_t val64)
+{
+    EFUSE_CTRL *s = XILINX_EFUSE_CTRL(reg->opaque);
+    unsigned bit = val64;
+    bool denied;
+
+    /* Always zero out RD_ADDR because it is write-only */
+    s->regs[R_EFUSE_RD_ADDR] = 0;
+
+    /*
+     * Indicate error if row is read-blocked.
+     *
+     * Note: model must NEVER clear the RD_ERROR bit; it is
+     *       up to guest to do so (or by reset).
+     */
+    s->regs[R_EFUSE_RD_DATA] = versal_efuse_read_row(s->efuse, bit, &denied);
+    if (denied) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: Denied reading of efuse<%u, %u>\n",
+                      object_get_canonical_path(OBJECT(s)),
+                      FIELD_EX32(bit, EFUSE_RD_ADDR, PAGE),
+                      FIELD_EX32(bit, EFUSE_RD_ADDR, ROW));
+
+        ARRAY_FIELD_DP32(s->regs, EFUSE_ISR, RD_ERROR, 1);
+    }
+
+    ARRAY_FIELD_DP32(s->regs, EFUSE_ISR, RD_DONE, 1);
+    efuse_imr_update_irq(s);
+    return;
+}
+
+static uint64_t efuse_cache_load_prew(RegisterInfo *reg, uint64_t val64)
+{
+    EFUSE_CTRL *s = XILINX_EFUSE_CTRL(reg->opaque);
+
+    if (val64 & R_EFUSE_CACHE_LOAD_LOAD_MASK) {
+        efuse_data_sync(s);
+
+        ARRAY_FIELD_DP32(s->regs, STATUS, CACHE_DONE, 1);
+        efuse_imr_update_irq(s);
+    }
+
+    return 0;
+}
+
+static uint64_t efuse_pgm_lock_prew(RegisterInfo *reg, uint64_t val64)
+{
+    EFUSE_CTRL *s = XILINX_EFUSE_CTRL(reg->opaque);
+
+    /* Ignore all other bits */
+    val64 = FIELD_EX32(val64, EFUSE_PGM_LOCK, SPK_ID_LOCK);
+
+    /* Once the bit is written 1, only reset will clear it to 0 */
+    val64 |= ARRAY_FIELD_EX32(s->regs, EFUSE_PGM_LOCK, SPK_ID_LOCK);
+
+    return val64;
+}
+
+static void efuse_aes_crc_postw(RegisterInfo *reg, uint64_t val64)
+{
+    efuse_key_crc_check(reg, val64,
+                        R_STATUS_AES_CRC_PASS_MASK,
+                        R_STATUS_AES_CRC_DONE_MASK,
+                        EFUSE_AES_KEY_START,
+                        EFUSE_AES_KEY_CRC_LK_MASK);
+}
+
+static void efuse_aes_u0_crc_postw(RegisterInfo *reg, uint64_t val64)
+{
+    efuse_key_crc_check(reg, val64,
+                        R_STATUS_AES_USER_KEY_0_CRC_PASS_MASK,
+                        R_STATUS_AES_USER_KEY_0_CRC_DONE_MASK,
+                        EFUSE_USER_KEY_0_START,
+                        EFUSE_USER_KEY_0_CRC_LK_MASK);
+}
+
+static void efuse_aes_u1_crc_postw(RegisterInfo *reg, uint64_t val64)
+{
+    efuse_key_crc_check(reg, val64,
+                        R_STATUS_AES_USER_KEY_1_CRC_PASS_MASK,
+                        R_STATUS_AES_USER_KEY_1_CRC_DONE_MASK,
+                        EFUSE_USER_KEY_1_START,
+                        EFUSE_USER_KEY_1_CRC_LK_MASK);
+}
+
+static uint64_t efuse_wr_lock_prew(RegisterInfo *reg, uint64_t val)
+{
+    return val != R_WR_LOCK_UNLOCK_PASSCODE;
+}
+
 static const RegisterAccessInfo efuse_ctrl_regs_info[] = {
     {   .name = "WR_LOCK",  .addr = A_WR_LOCK,
         .reset = 0x1,
+        .pre_write = efuse_wr_lock_prew,
     },{ .name = "CFG",  .addr = A_CFG,
         .rsvd = 0x9,
     },{ .name = "STATUS",  .addr = A_STATUS,
         .rsvd = 0x8,
         .ro = 0xfff,
     },{ .name = "EFUSE_PGM_ADDR",  .addr = A_EFUSE_PGM_ADDR,
+        .post_write = efuse_pgm_addr_postw,
     },{ .name = "EFUSE_RD_ADDR",  .addr = A_EFUSE_RD_ADDR,
         .rsvd = 0x1f,
+        .post_write = efuse_rd_addr_postw,
     },{ .name = "EFUSE_RD_DATA",  .addr = A_EFUSE_RD_DATA,
         .ro = 0xffffffff,
     },{ .name = "TPGM",  .addr = A_TPGM,
@@ -240,16 +604,47 @@ static const RegisterAccessInfo efuse_ctrl_regs_info[] = {
         .rsvd = 0x7fff8000,
         .pre_write = efuse_idr_prew,
     },{ .name = "EFUSE_CACHE_LOAD",  .addr = A_EFUSE_CACHE_LOAD,
+        .pre_write = efuse_cache_load_prew,
     },{ .name = "EFUSE_PGM_LOCK",  .addr = A_EFUSE_PGM_LOCK,
+        .pre_write = efuse_pgm_lock_prew,
     },{ .name = "EFUSE_AES_CRC",  .addr = A_EFUSE_AES_CRC,
+        .post_write = efuse_aes_crc_postw,
     },{ .name = "EFUSE_AES_USR_KEY0_CRC",  .addr = A_EFUSE_AES_USR_KEY0_CRC,
+        .post_write = efuse_aes_u0_crc_postw,
     },{ .name = "EFUSE_AES_USR_KEY1_CRC",  .addr = A_EFUSE_AES_USR_KEY1_CRC,
+        .post_write = efuse_aes_u1_crc_postw,
     },{ .name = "EFUSE_PD",  .addr = A_EFUSE_PD,
+        .ro = 0xfffffffe,
     },{ .name = "EFUSE_ANLG_OSC_SW_1LP",  .addr = A_EFUSE_ANLG_OSC_SW_1LP,
     },{ .name = "EFUSE_TEST_CTRL",  .addr = A_EFUSE_TEST_CTRL,
         .reset = 0x8,
     }
 };
+
+static MemTxResult efuse_ctrl_write_with_attrs(void *opaque, hwaddr addr,
+                                               uint64_t v64, unsigned size,
+                                               MemTxAttrs attrs)
+{
+    EFUSE_CTRL *s;
+    RegisterInfoArray *reg_array = opaque;
+    Object *dev;
+
+    assert(reg_array != NULL);
+
+    dev = reg_array->mem.owner;
+    assert(dev);
+
+    s = XILINX_EFUSE_CTRL(dev);
+
+    if (addr != A_WR_LOCK && s->regs[R_WR_LOCK]) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s[reg_0x%02lx]: Attempt to write locked register.\n",
+                      object_get_canonical_path(OBJECT(s)), (long)addr);
+        return MEMTX_ERROR;
+    }
+
+    return register_write_memory_with_attrs(opaque, addr, v64, size, attrs);
+}
 
 static void efuse_ctrl_reset(DeviceState *dev)
 {
@@ -260,12 +655,13 @@ static void efuse_ctrl_reset(DeviceState *dev)
         register_reset(&s->regs_info[i]);
     }
 
+    efuse_data_sync(s);
     efuse_imr_update_irq(s);
 }
 
 static const MemoryRegionOps efuse_ctrl_ops = {
     .read = register_read_memory,
-    .write = register_write_memory,
+    .write_with_attrs = efuse_ctrl_write_with_attrs,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
@@ -275,7 +671,30 @@ static const MemoryRegionOps efuse_ctrl_ops = {
 
 static void efuse_ctrl_realize(DeviceState *dev, Error **errp)
 {
-    /* Delete this if you don't need it */
+    EFUSE_CTRL *s = XILINX_EFUSE_CTRL(dev);
+    const char *prefix = object_get_canonical_path(OBJECT(dev));
+
+    if (!s->efuse) {
+        error_setg(&error_abort, "%s: XLN-EFUSE not connected", prefix);
+    }
+
+    if (!s->aes_key_sink) {
+        error_setg(&error_abort,
+                   "%s: eFuse AES key sink not connected", prefix);
+    }
+
+    if (!s->usr_key0_sink) {
+        error_setg(&error_abort,
+                   "%s: eFuse USR_KEY0 key sink not connected", prefix);
+    }
+
+    if (!s->usr_key1_sink) {
+        error_setg(&error_abort,
+                   "%s: eFuse USR_KEY1 key sink not connected", prefix);
+    }
+
+    /* Sort property-defined pgm-locks for bsearch lookup */
+    efuse_lk_spec_sort(s);
 }
 
 static void efuse_ctrl_init(Object *obj)
@@ -310,6 +729,27 @@ static const VMStateDescription vmstate_efuse_ctrl = {
     }
 };
 
+static Property efuse_ctrl_props[] = {
+    DEFINE_PROP_LINK("efuse",
+                     EFUSE_CTRL, efuse,
+                     TYPE_XLNX_EFUSE, XLNXEFuse *),
+    DEFINE_PROP_ARRAY("pg0-lock",
+                      EFUSE_CTRL, extra_pg0_lock_n16, extra_pg0_lock.u16,
+                      qdev_prop_uint16, uint16_t),
+
+    DEFINE_PROP_LINK("zynqmp-aes-key-sink-efuses",
+                     EFUSE_CTRL, aes_key_sink,
+                     TYPE_ZYNQMP_AES_KEY_SINK, ZynqMPAESKeySink *),
+    DEFINE_PROP_LINK("zynqmp-aes-key-sink-efuses-user0",
+                     EFUSE_CTRL, usr_key0_sink,
+                     TYPE_ZYNQMP_AES_KEY_SINK, ZynqMPAESKeySink *),
+    DEFINE_PROP_LINK("zynqmp-aes-key-sink-efuses-user1",
+                     EFUSE_CTRL, usr_key1_sink,
+                     TYPE_ZYNQMP_AES_KEY_SINK, ZynqMPAESKeySink *),
+
+    DEFINE_PROP_END_OF_LIST(),
+};
+
 static void efuse_ctrl_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -317,6 +757,7 @@ static void efuse_ctrl_class_init(ObjectClass *klass, void *data)
     dc->reset = efuse_ctrl_reset;
     dc->realize = efuse_ctrl_realize;
     dc->vmsd = &vmstate_efuse_ctrl;
+    dc->props = efuse_ctrl_props;
 }
 
 static const TypeInfo efuse_ctrl_info = {
@@ -333,3 +774,23 @@ static void efuse_ctrl_register_types(void)
 }
 
 type_init(efuse_ctrl_register_types)
+
+/*
+ * Retrieve a row, with unreadable bits returned as 0.
+ */
+uint32_t versal_efuse_read_row(XLNXEFuse *efuse, uint32_t bit, bool *denied)
+{
+    bool dummy;
+
+    if (!denied) {
+        denied = &dummy;
+    }
+
+    if (bit >= EFUSE_RD_BLOCKED_START && bit <= EFUSE_RD_BLOCKED_END) {
+        *denied = true;
+        return 0;
+    }
+
+    *denied = false;
+    return efuse_get_row(efuse, bit);
+}
