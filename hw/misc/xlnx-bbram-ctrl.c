@@ -37,6 +37,7 @@
 #include "hw/qdev-properties.h"
 
 #include "hw/zynqmp_aes_key.h"
+#include "hw/misc/xlnx-aes.h"
 #include "hw/irq.h"
 
 #ifndef XILINX_BBRAM_CTRL_ERR_DEBUG
@@ -102,6 +103,7 @@ typedef struct BBRAMCtrl {
     ZynqMPAESKeySink *zynqmp_keysink;
     uint32_t *ram32;
     uint32_t size;
+    uint32_t crc_zpads;
     bool msw_lock;
 
     uint32_t regs[R_MAX];
@@ -176,6 +178,7 @@ static void bbram_pgm_mode_postw(RegisterInfo *reg, uint64_t val64)
 static void bbram_aes_crc_postw(RegisterInfo *reg, uint64_t val64)
 {
     BBRAMCtrl *s = XILINX_BBRAM_CTRL(reg->opaque);
+    uint32_t calc_crc;
 
     if (!(s->regs[R_BBRAM_STATUS] & R_BBRAM_STATUS_PGM_MODE_MASK)) {
         /* We are not in programming mode, don't do anything */
@@ -185,11 +188,10 @@ static void bbram_aes_crc_postw(RegisterInfo *reg, uint64_t val64)
     /* Perform the AES integrity check */
     s->regs[R_BBRAM_STATUS] |= R_BBRAM_STATUS_AES_CRC_DONE_MASK;
 
-    /* If the value calculated by the BBRAM controller matches the value
-     * written to this register the test passes. We don't know what the test
-     * is so let's just pass it.
-     */
-    s->regs[R_BBRAM_STATUS] |= R_BBRAM_STATUS_AES_CRC_PASS_MASK;
+    /* Set check status */
+    calc_crc = xlnx_aes_k256_crc(&s->regs[R_BBRAM_0], s->crc_zpads);
+    ARRAY_FIELD_DP32(s->regs, BBRAM_STATUS, AES_CRC_PASS,
+                     (s->regs[R_BBRAM_AES_CRC] == calc_crc));
 }
 
 static uint64_t bbram_key_prew(RegisterInfo *reg, uint64_t val64)
@@ -391,6 +393,7 @@ static Property bbram_ctrl_props[] = {
     DEFINE_PROP_LINK("zynqmp-aes-key-sink-bbram", BBRAMCtrl, zynqmp_keysink,
                      TYPE_ZYNQMP_AES_KEY_SINK, ZynqMPAESKeySink *),
     DEFINE_PROP_UINT32("bbram-size", BBRAMCtrl, size, ZYNQMP_BBRAM_SIZE),
+    DEFINE_PROP_UINT32("crc-zpads", BBRAMCtrl, crc_zpads, 1),
     DEFINE_PROP_DRIVE("drive", BBRAMCtrl, blk),
     DEFINE_PROP_END_OF_LIST(),
 };
