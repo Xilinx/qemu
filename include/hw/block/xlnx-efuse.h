@@ -31,6 +31,7 @@
 #define TYPE_XLNX_EFUSE "xlnx.efuse"
 #include "hw/ptimer.h"
 #include "sysemu/block-backend.h"
+#include "hw/zynqmp_aes_key.h"
 
 #define XLNX_EFUSE(obj) \
      OBJECT_CHECK(XLNXEFuse, (obj), TYPE_XLNX_EFUSE)
@@ -71,6 +72,7 @@ void efuse_pgm_complete(XLNXEFuse *s);
 bool efuse_get_bit(XLNXEFuse *s, unsigned int bit);
 bool efuse_set_bit(XLNXEFuse *s, unsigned int bit);
 bool efuse_k256_check(XLNXEFuse *s, uint32_t crc, unsigned start);
+void efuse_k256_sync(XLNXEFuse *s, ZynqMPAESKeySink *sink, unsigned start);
 uint32_t efuse_tbits_check(XLNXEFuse *s);
 
 /* Return whole row containing the given bit address */

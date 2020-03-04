@@ -259,6 +259,19 @@ bool efuse_k256_check(XLNXEFuse *s, uint32_t crc, unsigned start)
     return crc == xlnx_aes_k256_crc(&s->fuse32[start / 32], 0);
 }
 
+void efuse_k256_sync(XLNXEFuse *s, ZynqMPAESKeySink *sink, unsigned start)
+{
+    /* A key always occupies multiple of whole rows */
+    assert((start % 32) == 0);
+
+    if (!sink) {
+        return;
+    }
+
+    start /= 32;
+    zynqmp_aes_key_update(sink, (void *)&s->fuse32[start], (256 / 8));
+}
+
 uint32_t efuse_tbits_check(XLNXEFuse *s)
 {
     int nr;
