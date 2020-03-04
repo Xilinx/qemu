@@ -264,21 +264,12 @@ REG32(PPK1_11, 0x10fc)
 #define EFUSE_PPK1_START      BIT_POS(52, 0)
 #define EFUSE_PPK1_END        BIT_POS(63, 31)
 
-typedef struct EfuseKey {
-    union {
-        uint8_t u8[256 / 8];
-        uint32_t u32[256 / 32];
-    };
-
-    ZynqMPAESKeySink *sink;
-} EfuseKey;
-
 typedef struct ZynqMPEFuse {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
     qemu_irq irq;
 
-    EfuseKey key;
+    ZynqMPAESKeySink *key_sink;
 
     XLNXEFuse *efuse;
     void (*refresh_cache)(struct ZynqMPEFuse *, unsigned int);
@@ -300,15 +291,6 @@ static void update_tbit_status(ZynqMPEFuse *s)
     val = FIELD_DP32(val, STATUS, EFUSE_3_TBIT, !!(check & (1 << 2)));
 
     s->regs[R_STATUS] = val;
-}
-
-static void efuse_aes_key_sync(ZynqMPEFuse *s, EfuseKey *key, uint32_t start,
-                               uint32_t end)
-{
-    efuse_sync_u32(s->efuse, key->u32, start, end, FBIT_UNKNOWN);
-    if (key->sink) {
-        zynqmp_aes_key_update(key->sink, key->u8, sizeof key->u8);
-    }
 }
 
 /*
@@ -350,7 +332,7 @@ static void zynqmp_efuse_sync_cache(ZynqMPEFuse *s, unsigned int bit)
     }
 
     /* Sync the AES Key.  */
-    efuse_aes_key_sync(s, &s->key, EFUSE_AES_START, EFUSE_AES_END);
+    efuse_k256_sync(s->efuse, s->key_sink, EFUSE_AES_START);
 
     efuse_sync_u32(s->efuse, &s->regs[R_ROM_RSVD],
                    EFUSE_ROM_START, EFUSE_ROM_END, bit);
@@ -853,7 +835,7 @@ static void zynqmp_efuse_realize(DeviceState *dev, Error **errp)
     ZynqMPEFuse *s = ZYNQMP_EFUSE(dev);
     const char *prefix = object_get_canonical_path(OBJECT(dev));
 
-    if (!s->key.sink) {
+    if (!s->key_sink) {
         error_setg(&error_abort,
                    "%s: AES EFUSE key sink not connected\n", prefix);
     }
@@ -904,7 +886,7 @@ static Property zynqmp_efuse_props[] = {
                      TYPE_XLNX_EFUSE, XLNXEFuse *),
 
     DEFINE_PROP_LINK("zynqmp-aes-key-sink-efuses",
-                     ZynqMPEFuse, key.sink,
+                     ZynqMPEFuse, key_sink,
                      TYPE_ZYNQMP_AES_KEY_SINK, ZynqMPAESKeySink *),
 
     DEFINE_PROP_END_OF_LIST(),
