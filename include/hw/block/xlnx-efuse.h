@@ -55,6 +55,9 @@ typedef struct XLNXEFuse {
 
     uint8_t efuse_nr;
     uint32_t efuse_size;
+
+    uint32_t *ro_bits;
+    uint32_t ro_bits_cnt;
 } XLNXEFuse;
 
 bool efuse_is_pgm(XLNXEFuse *s);
@@ -66,6 +69,7 @@ void efuse_stop_timer_ps(XLNXEFuse *s);
 void efuse_set_timer_ps(XLNXEFuse *s, int tsu_h_ps);
 void efuse_pgm_complete(XLNXEFuse *s);
 bool efuse_get_bit(XLNXEFuse *s, unsigned int bit);
+bool efuse_set_bit(XLNXEFuse *s, unsigned int bit);
 bool efuse_k256_check(XLNXEFuse *s, uint32_t crc, unsigned start);
 uint32_t efuse_tbits_check(XLNXEFuse *s);
 

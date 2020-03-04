@@ -143,6 +143,51 @@ static void efuse_sync_bdrv(XLNXEFuse *s, unsigned int bit)
     }
 }
 
+static int efuse_ro_bits_cmp(const void *a, const void *b)
+{
+    uint32_t i = *(const uint32_t *)a;
+    uint32_t j = *(const uint32_t *)b;
+
+    return (i > j) - (i < j);
+}
+
+static void efuse_ro_bits_sort(XLNXEFuse *s)
+{
+    uint32_t *ary = s->ro_bits;
+    const uint32_t cnt = s->ro_bits_cnt;
+
+    if (ary && cnt > 1) {
+        qsort(ary, cnt, sizeof(ary[0]), efuse_ro_bits_cmp);
+    }
+}
+
+static bool efuse_ro_bits_find(XLNXEFuse *s, uint32_t k)
+{
+    const uint32_t *ary = s->ro_bits;
+    const uint32_t cnt = s->ro_bits_cnt;
+
+    if (!ary || !cnt) {
+        return false;
+    }
+
+    return bsearch(&k, ary, cnt, sizeof(ary[0]), efuse_ro_bits_cmp) != NULL;
+}
+
+bool efuse_set_bit(XLNXEFuse *s, unsigned int bit)
+{
+    if (efuse_ro_bits_find(s, bit)) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: WARN: "
+                      "Ignored setting of readonly efuse bit<%u,%u>!\n",
+                      object_get_canonical_path(OBJECT(s)),
+                      (bit / 32), (bit % 32));
+        return false;
+    }
+
+    s->fuse32[bit / 32] |= 1 << (bit % 32);
+    efuse_sync_bdrv(s, bit);
+    return true;
+}
+
 void efuse_pgm_start(XLNXEFuse *s, int tpgm, uint64_t val)
 {
     s->efuse_idx = (uint32_t) val;
@@ -168,21 +213,17 @@ static void timer_ps_hit(void *opaque)
 static void timer_pgm_hit(void *opaque)
 {
     XLNXEFuse *s = XLNX_EFUSE(opaque);
-    unsigned int efuse_word;
+    bool ok;
 
     if (s->programming == false) {
         return;     /* false alarm */
     }
 
-    efuse_word = s->efuse_idx / 32;
-
-    s->fuse32[efuse_word] |= 1 << (s->efuse_idx % 32);
-    efuse_sync_bdrv(s, s->efuse_idx);
-
+    ok = efuse_set_bit(s, s->efuse_idx);
     s->programming = false;
 
     if (s->pgm_done) {
-        s->pgm_done(s->dev, false);
+        s->pgm_done(s->dev, !ok);
     }
 }
 
@@ -298,6 +339,9 @@ static void efuse_realize(DeviceState *dev, Error **errp)
     ptimer_transaction_begin(s->timer_pgm);
     ptimer_set_freq(s->timer_pgm, 1000 * 1000);
     ptimer_transaction_commit(s->timer_pgm);
+
+    /* Sort readonly-list for bsearch lookup */
+    efuse_ro_bits_sort(s);
 }
 
 static Property efuse_properties[] = {
@@ -305,6 +349,8 @@ static Property efuse_properties[] = {
     DEFINE_PROP_UINT32("efuse-size", XLNXEFuse, efuse_size, 64 * 32),
     DEFINE_PROP_DRIVE("drive", XLNXEFuse, blk),
     DEFINE_PROP_BOOL("init-factory-tbits", XLNXEFuse, init_tbits, true),
+    DEFINE_PROP_ARRAY("read-only", XLNXEFuse, ro_bits_cnt, ro_bits,
+                      qdev_prop_uint32, uint32_t),
     DEFINE_PROP_END_OF_LIST(),
 };
 
