@@ -1039,6 +1039,43 @@ static void fdt_dev_error(FDTMachineInfo *fdti, char *node_path, char *compat)
     }
 }
 
+static void fdt_init_qdev_array_prop(Object *obj, QEMUDevtreeProp *prop)
+{
+    const char *propname = prop->name;
+    const uint32_t *v32 = prop->value;
+    int nr = prop->len;
+    Error *local_err = NULL;
+    char *len_name;
+
+    if (!v32 || !nr || (nr % 4)) {
+        return;
+    }
+    nr /= 4;
+
+    /*
+     * Fail gracefully on setting the 'len-' property, due to:
+     * 1. The property does not exist, or
+     * 2. The property is not integer type, or
+     * 3. The property has been set, e.g., by the '-global' cmd option
+     */
+    len_name = g_strconcat(PROP_ARRAY_LEN_PREFIX, propname, NULL);
+    object_property_set_int(obj, nr, len_name, &local_err);
+    g_free(len_name);
+
+    if (local_err) {
+        error_free(local_err);
+        return;
+    }
+
+    while (nr--) {
+        char *elem_name = g_strdup_printf("%s[%d]", propname, nr);
+
+        object_property_set_int(obj, get_int_be(&v32[nr], 4), elem_name,
+                                &error_abort);
+        g_free(elem_name);
+    }
+}
+
 static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
 {
     Object *dev, *parent;
@@ -1159,6 +1196,7 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
                                             propname, p->type, prop->len);
         }
         if (!p) {
+            fdt_init_qdev_array_prop(dev, prop);
             continue;
         }
 
