@@ -47,6 +47,7 @@
 #include "sysemu/block-backend.h"
 #include "hw/zynqmp_aes_key.h"
 #include "hw/block/xlnx-efuse.h"
+#include "hw/misc/xlnx-aes.h"
 
 #ifndef XLNX_EFUSE_ERR_DEBUG
 #define XLNX_EFUSE_ERR_DEBUG 0
@@ -207,6 +208,14 @@ void efuse_pgm_complete(XLNXEFuse *s)
         /* Programming is ready.  */
         timer_pgm_hit(s);
     }
+}
+
+bool efuse_k256_check(XLNXEFuse *s, uint32_t crc, unsigned start)
+{
+    /* A key always occupies multiple of whole rows */
+    assert((start % 32) == 0);
+
+    return crc == xlnx_aes_k256_crc(&s->fuse32[start / 32], 0);
 }
 
 uint32_t efuse_tbits_check(XLNXEFuse *s)

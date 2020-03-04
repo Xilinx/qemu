@@ -66,6 +66,7 @@ void efuse_stop_timer_ps(XLNXEFuse *s);
 void efuse_set_timer_ps(XLNXEFuse *s, int tsu_h_ps);
 void efuse_pgm_complete(XLNXEFuse *s);
 bool efuse_get_bit(XLNXEFuse *s, unsigned int bit);
+bool efuse_k256_check(XLNXEFuse *s, uint32_t crc, unsigned start);
 uint32_t efuse_tbits_check(XLNXEFuse *s);
 
 /* Return whole row containing the given bit address */
