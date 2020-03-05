@@ -216,13 +216,29 @@ static uint64_t bbram_key_prew(RegisterInfo *reg, uint64_t val64)
     }
 }
 
+static void bbram_aes_key_update(BBRAMCtrl *s)
+{
+    uint8_t end;
+    uint8_t i;
+    union {
+        uint8_t u8[ZYNQMP_BBRAM_SIZE];
+        uint32_t u32[ZYNQMP_BBRAM_SIZE / 4];
+    } key;
+
+    end = ZYNQMP_BBRAM_SIZE / 4 - 1;
+    for (i = 0; i <= end; ++i) {
+        key.u32[end - i] = s->regs[R_BBRAM_0 + i];
+    }
+
+    zynqmp_aes_key_update(s->zynqmp_keysink, key.u8, ZYNQMP_BBRAM_SIZE);
+}
+
 static void bbram_key_postw(RegisterInfo *reg, uint64_t val64)
 {
     BBRAMCtrl *s = XILINX_BBRAM_CTRL(reg->opaque);
 
     if (IS_ZYNQMP) {
-        zynqmp_aes_key_update(s->zynqmp_keysink, (void *) &s->regs[R_BBRAM_0],
-                              ZYNQMP_BBRAM_SIZE);
+        bbram_aes_key_update(s);
     }
 }
 
@@ -381,8 +397,7 @@ static void bbram_ctrl_reset(DeviceState *dev)
     }
 
     if (IS_ZYNQMP) {
-        zynqmp_aes_key_update(s->zynqmp_keysink, (void *) &s->regs[R_BBRAM_0],
-                              ZYNQMP_BBRAM_SIZE);
+        bbram_aes_key_update(s);
     }
 
     bbram_update_irq(s);
