@@ -85,8 +85,10 @@ REG32(BBRAM_IER, 0x40)
     FIELD(BBRAM_IER, APB_SLVERR, 0, 1)
 REG32(BBRAM_IDR, 0x44)
     FIELD(BBRAM_IDR, APB_SLVERR, 0, 1)
+REG32(BBRAM_MSW_LOCK, 0x4c)
+    FIELD(BBRAM_MSW_LOCK, VAL, 0, 1)
 
-#define R_MAX (R_BBRAM_IDR + 1)
+#define R_MAX (R_BBRAM_MSW_LOCK + 1)
 
 #define ZYNQMP_BBRAM_SIZE (8 * 4)
 #define ZYNQMP_PGM_MAGIC_MASK 0x757bdf0d
@@ -105,11 +107,20 @@ typedef struct BBRAMCtrl {
     uint32_t size;
     uint32_t crc_zpads;
     bool bbram8_wo;
-    bool msw_lock;
 
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
 } BBRAMCtrl;
+
+static bool bbram_pgm_enabled(BBRAMCtrl *s)
+{
+    return ARRAY_FIELD_EX32(s->regs, BBRAM_STATUS, PGM_MODE) != 0;
+}
+
+static void bbram_sync_bdrv(BBRAMCtrl *s, uint64_t hwaddr)
+{
+    /* TBD */
+}
 
 static void bbram_ram_sync(BBRAMCtrl *s)
 {
@@ -201,14 +212,8 @@ static uint64_t bbram_key_prew(RegisterInfo *reg, uint64_t val64)
     uint32_t original_data = *(uint32_t *) reg->data;
 
     if (s->regs[R_BBRAM_STATUS] & R_BBRAM_STATUS_PGM_MODE_MASK) {
-        if (s->msw_lock) {
-            DB_PRINT("MSW lock is set. Writing value: 0x%"HWADDR_PRIx"\n",
-                     val64 & 0xFFFF);
-            return val64 & 0xFFFF;
-        } else {
-            DB_PRINT("Writing value: 0x%"HWADDR_PRIx"\n", val64);
-            return val64;
-        }
+        DB_PRINT("Writing value: 0x%"HWADDR_PRIx"\n", val64);
+        return val64;
     } else {
         /* We are not in programming mode, don't do anything */
         qemu_log_mask(LOG_GUEST_ERROR,
@@ -237,6 +242,46 @@ static uint64_t bbram_r8_postr(RegisterInfo *reg, uint64_t val)
     BBRAMCtrl *s = XILINX_BBRAM_CTRL(reg->opaque);
 
     return s->bbram8_wo ? bbram_wo_postr(reg, val) : val;
+}
+
+static bool bbram_r8_readonly(BBRAMCtrl *s)
+{
+    return !bbram_pgm_enabled(s)
+           || (ARRAY_FIELD_EX32(s->regs, BBRAM_MSW_LOCK, VAL) != 0);
+}
+
+static uint64_t bbram_r8_prew(RegisterInfo *reg, uint64_t val64)
+{
+    BBRAMCtrl *s = XILINX_BBRAM_CTRL(reg->opaque);
+
+    if (bbram_r8_readonly(s)) {
+        val64 = *(uint32_t *)reg->data;
+    }
+
+    return val64;
+}
+
+static void bbram_r8_postw(RegisterInfo *reg, uint64_t val64)
+{
+    BBRAMCtrl *s = XILINX_BBRAM_CTRL(reg->opaque);
+
+    if (!bbram_r8_readonly(s)) {
+        bbram_sync_bdrv(s, A_BBRAM_8);
+    }
+}
+
+static uint64_t bbram_msw_lock_prew(RegisterInfo *reg, uint64_t val64)
+{
+    BBRAMCtrl *s = XILINX_BBRAM_CTRL(reg->opaque);
+
+    /* Never lock if bbram8 is wo; and, only POR can clear the lock */
+    if (s->bbram8_wo) {
+        val64 = 0;
+    } else {
+        val64 |= s->regs[R_BBRAM_MSW_LOCK];
+    }
+
+    return val64;
 }
 
 static void bbram_isr_postw(RegisterInfo *reg, uint64_t val64)
@@ -310,8 +355,8 @@ static RegisterAccessInfo bbram_ctrl_regs_info[] = {
         .post_write = bbram_key_postw,
         .post_read = bbram_wo_postr,
     },{ .name = "BBRAM_8",  .addr = A_BBRAM_8,
-        .pre_write = bbram_key_prew,
-        .post_write = bbram_key_postw,
+        .pre_write = bbram_r8_prew,
+        .post_write = bbram_r8_postw,
         .post_read = bbram_r8_postr,
     },{ .name = "BBRAM_SLVERR",  .addr = A_BBRAM_SLVERR,
         .rsvd = ~1,
@@ -324,6 +369,9 @@ static RegisterAccessInfo bbram_ctrl_regs_info[] = {
         .pre_write = bbram_ier_prew,
     },{ .name = "BBRAM_IDR",  .addr = A_BBRAM_IDR,
         .pre_write = bbram_idr_prew,
+    },{ .name = "BBRAM_MSW_LOCK",  .addr = A_BBRAM_MSW_LOCK,
+        .pre_write = bbram_msw_lock_prew,
+        .ro = ~R_BBRAM_MSW_LOCK_VAL_MASK,
     }
 };
 
