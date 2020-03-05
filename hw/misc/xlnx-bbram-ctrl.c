@@ -104,6 +104,7 @@ typedef struct BBRAMCtrl {
     uint32_t *ram32;
     uint32_t size;
     uint32_t crc_zpads;
+    bool bbram8_wo;
     bool msw_lock;
 
     uint32_t regs[R_MAX];
@@ -226,6 +227,18 @@ static void bbram_key_postw(RegisterInfo *reg, uint64_t val64)
     }
 }
 
+static uint64_t bbram_wo_postr(RegisterInfo *reg, uint64_t val)
+{
+    return 0;
+}
+
+static uint64_t bbram_r8_postr(RegisterInfo *reg, uint64_t val)
+{
+    BBRAMCtrl *s = XILINX_BBRAM_CTRL(reg->opaque);
+
+    return s->bbram8_wo ? bbram_wo_postr(reg, val) : val;
+}
+
 static void bbram_isr_postw(RegisterInfo *reg, uint64_t val64)
 {
     BBRAMCtrl *s = XILINX_BBRAM_CTRL(reg->opaque);
@@ -263,34 +276,45 @@ static RegisterAccessInfo bbram_ctrl_regs_info[] = {
         .post_write = bbram_pgm_mode_postw,
     },{ .name = "BBRAM_AES_CRC",  .addr = A_BBRAM_AES_CRC,
         .post_write = bbram_aes_crc_postw,
+        .post_read = bbram_wo_postr,
     },{ .name = "BBRAM_0",  .addr = A_BBRAM_0,
         .pre_write = bbram_key_prew,
         .post_write = bbram_key_postw,
+        .post_read = bbram_wo_postr,
     },{ .name = "BBRAM_1",  .addr = A_BBRAM_1,
         .pre_write = bbram_key_prew,
         .post_write = bbram_key_postw,
+        .post_read = bbram_wo_postr,
     },{ .name = "BBRAM_2",  .addr = A_BBRAM_2,
         .pre_write = bbram_key_prew,
         .post_write = bbram_key_postw,
+        .post_read = bbram_wo_postr,
     },{ .name = "BBRAM_3",  .addr = A_BBRAM_3,
         .pre_write = bbram_key_prew,
         .post_write = bbram_key_postw,
+        .post_read = bbram_wo_postr,
     },{ .name = "BBRAM_4",  .addr = A_BBRAM_4,
         .pre_write = bbram_key_prew,
         .post_write = bbram_key_postw,
+        .post_read = bbram_wo_postr,
     },{ .name = "BBRAM_5",  .addr = A_BBRAM_5,
         .pre_write = bbram_key_prew,
         .post_write = bbram_key_postw,
+        .post_read = bbram_wo_postr,
     },{ .name = "BBRAM_6",  .addr = A_BBRAM_6,
         .pre_write = bbram_key_prew,
         .post_write = bbram_key_postw,
+        .post_read = bbram_wo_postr,
     },{ .name = "BBRAM_7",  .addr = A_BBRAM_7,
         .pre_write = bbram_key_prew,
         .post_write = bbram_key_postw,
+        .post_read = bbram_wo_postr,
     },{ .name = "BBRAM_8",  .addr = A_BBRAM_8,
         .pre_write = bbram_key_prew,
         .post_write = bbram_key_postw,
+        .post_read = bbram_r8_postr,
     },{ .name = "BBRAM_SLVERR",  .addr = A_BBRAM_SLVERR,
+        .rsvd = ~1,
     },{ .name = "BBRAM_ISR",  .addr = A_BBRAM_ISR,
         .w1c = 0x1,
         .post_write = bbram_isr_postw,
@@ -395,6 +419,7 @@ static Property bbram_ctrl_props[] = {
     DEFINE_PROP_UINT32("bbram-size", BBRAMCtrl, size, ZYNQMP_BBRAM_SIZE),
     DEFINE_PROP_UINT32("crc-zpads", BBRAMCtrl, crc_zpads, 1),
     DEFINE_PROP_DRIVE("drive", BBRAMCtrl, blk),
+    DEFINE_PROP_BOOL("bbram8_wo", BBRAMCtrl, bbram8_wo, false),
     DEFINE_PROP_END_OF_LIST(),
 };
 
