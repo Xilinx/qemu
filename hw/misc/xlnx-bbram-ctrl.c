@@ -126,12 +126,6 @@ static void bbram_ram_sync(BBRAMCtrl *s)
 {
     /* Check if there is a ZynqMP key */
     if (IS_ZYNQMP) {
-        if (0) {
-            /* Real HW does only update the AES key at power on reset. */
-            zynqmp_aes_key_update(s->zynqmp_keysink,
-                                  (void *) &s->regs[R_BBRAM_0],
-                                  ZYNQMP_BBRAM_SIZE);
-        }
         return;
     }
 
