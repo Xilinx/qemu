@@ -93,10 +93,10 @@ REG32(BBRAM_MSW_LOCK, 0x4c)
 #define RAM_MAX (A_BBRAM_8 + 4 - A_BBRAM_0)
 
 #define ZYNQMP_BBRAM_SIZE (8 * 4)
-#define ZYNQMP_PGM_MAGIC_MASK 0x757bdf0d
+#define ZYNQMP_PGM_MAGIC 0x757bdf0d
 #define IS_ZYNQMP (s->zynqmp_keysink)
 
-#define ZYNQ3_PGM_MAGIC 0x757BDF0F
+#define VERSAL_PGM_MAGIC 0x757BDF0F
 
 typedef struct BBRAMCtrl {
     SysBusDevice parent_obj;
@@ -251,12 +251,14 @@ static void bbram_pgm_mode_postw(RegisterInfo *reg, uint64_t val64)
     BBRAMCtrl *s = XILINX_BBRAM_CTRL(reg->opaque);
     uint32_t val = val64;
 
-    if (val == ZYNQMP_PGM_MAGIC_MASK) {
+    switch (val) {
+    case ZYNQMP_PGM_MAGIC:
+    case VERSAL_PGM_MAGIC:
         bbram_zeroize(s);
-        s->regs[R_BBRAM_STATUS] |= R_BBRAM_STATUS_PGM_MODE_MASK;
-    } else if (val == ZYNQ3_PGM_MAGIC) {
-        bbram_zeroize(s);
-        s->regs[R_BBRAM_STATUS] |= R_BBRAM_STATUS_PGM_MODE_MASK;
+
+        /* The status bit is cleared only by POR */
+        ARRAY_FIELD_DP32(s->regs, BBRAM_STATUS, PGM_MODE, 1);
+        break;
     }
 }
 
@@ -265,7 +267,7 @@ static void bbram_aes_crc_postw(RegisterInfo *reg, uint64_t val64)
     BBRAMCtrl *s = XILINX_BBRAM_CTRL(reg->opaque);
     uint32_t calc_crc;
 
-    if (!(s->regs[R_BBRAM_STATUS] & R_BBRAM_STATUS_PGM_MODE_MASK)) {
+    if (!bbram_pgm_enabled(s)) {
         /* We are not in programming mode, don't do anything */
         return;
     }
@@ -284,7 +286,7 @@ static uint64_t bbram_key_prew(RegisterInfo *reg, uint64_t val64)
     BBRAMCtrl *s = XILINX_BBRAM_CTRL(reg->opaque);
     uint32_t original_data = *(uint32_t *) reg->data;
 
-    if (s->regs[R_BBRAM_STATUS] & R_BBRAM_STATUS_PGM_MODE_MASK) {
+    if (bbram_pgm_enabled(s)) {
         DB_PRINT("Writing value: 0x%"HWADDR_PRIx"\n", val64);
         return val64;
     } else {
