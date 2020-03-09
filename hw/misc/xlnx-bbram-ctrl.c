@@ -90,6 +90,8 @@ REG32(BBRAM_MSW_LOCK, 0x4c)
 
 #define R_MAX (R_BBRAM_MSW_LOCK + 1)
 
+#define RAM_MAX (A_BBRAM_8 + 4 - A_BBRAM_0)
+
 #define ZYNQMP_BBRAM_SIZE (8 * 4)
 #define ZYNQMP_PGM_MAGIC_MASK 0x757bdf0d
 #define IS_ZYNQMP (s->zynqmp_keysink)
@@ -103,47 +105,118 @@ typedef struct BBRAMCtrl {
 
     BlockBackend *blk;
     ZynqMPAESKeySink *zynqmp_keysink;
-    uint32_t *ram32;
     uint32_t size;
     uint32_t crc_zpads;
     bool bbram8_wo;
+    bool blk_ro;
 
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
 } BBRAMCtrl;
+
+static bool bbram_msw_locked(BBRAMCtrl *s)
+{
+    return ARRAY_FIELD_EX32(s->regs, BBRAM_MSW_LOCK, VAL) != 0;
+}
 
 static bool bbram_pgm_enabled(BBRAMCtrl *s)
 {
     return ARRAY_FIELD_EX32(s->regs, BBRAM_STATUS, PGM_MODE) != 0;
 }
 
-static void bbram_sync_bdrv(BBRAMCtrl *s, uint64_t hwaddr)
+static void bbram_bdrv_error(BBRAMCtrl *s, int rc, gchar *detail)
 {
-    /* TBD */
+    Error *errp;
+
+    error_setg_errno(&errp, -rc, "%s: BBRAM backstore %s failed.",
+                     blk_name(s->blk), detail);
+    error_report("%s", error_get_pretty(errp));
+    error_free(errp);
+
+    g_free(detail);
 }
 
-static void bbram_ram_sync(BBRAMCtrl *s)
+static void bbram_bdrv_read(BBRAMCtrl *s)
 {
-    /* Check if there is a ZynqMP key */
-    if (IS_ZYNQMP) {
+    const char *prefix = object_get_canonical_path(OBJECT(s));
+    uint32_t *ram = &s->regs[R_BBRAM_0];
+    int nr = RAM_MAX;
+    int rc;
+
+    assert(s->blk);
+
+    s->blk_ro = blk_is_read_only(s->blk);
+    if (s->blk_ro) {
+        warn_report("%s: update not saved: backstore is read-only", prefix);
+    }
+    blk_set_perm(s->blk,
+                 (BLK_PERM_CONSISTENT_READ | (s->blk_ro ? 0 : BLK_PERM_WRITE)),
+                 BLK_PERM_ALL, &error_abort);
+
+    rc = blk_pread(s->blk, 0, ram, nr);
+    if (rc < 0) {
+        bbram_bdrv_error(s, rc, g_strdup_printf("read %u bytes", nr));
+        error_setg(&error_abort, "%s: Unable to read-out contents."
+                   "backing file too small? Expecting %u bytes", prefix, nr);
+    }
+
+    if (const_le32(0x1234) != 0x1234) {
+        /* Convert from little-endian backstore for each 32-bit row */
+        nr /= 4;
+        while (nr--) {
+            ram[nr] = le32_to_cpu(ram[nr]);
+        }
+    }
+}
+
+static void bbram_bdrv_sync(BBRAMCtrl *s, uint64_t hwaddr)
+{
+    uint32_t le32;
+    unsigned offset;
+    int rc;
+
+    assert(A_BBRAM_0 <= hwaddr && hwaddr <= A_BBRAM_8);
+
+    if (!s->blk || s->blk_ro) {
         return;
     }
 
-    if (!s->blk) {
+    /* Backstore is always in little-endian */
+    le32 = cpu_to_le32(s->regs[hwaddr / 4]);
+
+    offset = hwaddr - A_BBRAM_0;
+    rc = blk_pwrite(s->blk, offset, &le32, 4, 0);
+    if (rc < 0) {
+        bbram_bdrv_error(s, rc, g_strdup_printf("write to %u", offset));
+    }
+}
+
+static void bbram_bdrv_zero(BBRAMCtrl *s)
+{
+    int rc;
+
+    if (!s->blk || s->blk_ro) {
         return;
     }
 
-    memcpy(s->ram32, &s->regs[R_BBRAM_0], (R_BBRAM_8 - R_BBRAM_0) * 4);
-    if (blk_pwrite(s->blk, 0, (void *) s->ram32, s->size, 0) < 0) {
-        error_report("%s: write error in sector", __func__);
+    rc = blk_make_zero(s->blk, 0);
+    if (rc < 0) {
+        bbram_bdrv_error(s, rc, g_strdup("zeroizing"));
+    }
+
+    /* Restore bbram8 if it is non-zero */
+    if (s->regs[R_BBRAM_8]) {
+        bbram_bdrv_sync(s, A_BBRAM_8);
     }
 }
 
 static void bbram_zeroize(BBRAMCtrl *s)
 {
+    int nr = RAM_MAX - (s->bbram8_wo ? 0 : 4); /* only wo bbram8 is cleared */
+
     DB_PRINT("Zeroing out the key\n");
-    memset(&s->regs[R_BBRAM_0], 0, (R_BBRAM_8 - R_BBRAM_0) * 4);
-    bbram_ram_sync(s);
+    memset(&s->regs[R_BBRAM_0], 0, nr);
+    bbram_bdrv_zero(s);
 }
 
 static void bbram_update_irq(BBRAMCtrl *s)
@@ -237,6 +310,8 @@ static void bbram_key_postw(RegisterInfo *reg, uint64_t val64)
 {
     BBRAMCtrl *s = XILINX_BBRAM_CTRL(reg->opaque);
 
+    bbram_bdrv_sync(s, reg->access->addr);
+
     if (IS_ZYNQMP) {
         bbram_aes_key_update(s);
     }
@@ -256,8 +331,7 @@ static uint64_t bbram_r8_postr(RegisterInfo *reg, uint64_t val)
 
 static bool bbram_r8_readonly(BBRAMCtrl *s)
 {
-    return !bbram_pgm_enabled(s)
-           || (ARRAY_FIELD_EX32(s->regs, BBRAM_MSW_LOCK, VAL) != 0);
+    return !bbram_pgm_enabled(s) || bbram_msw_locked(s);
 }
 
 static uint64_t bbram_r8_prew(RegisterInfo *reg, uint64_t val64)
@@ -276,7 +350,7 @@ static void bbram_r8_postw(RegisterInfo *reg, uint64_t val64)
     BBRAMCtrl *s = XILINX_BBRAM_CTRL(reg->opaque);
 
     if (!bbram_r8_readonly(s)) {
-        bbram_sync_bdrv(s, A_BBRAM_8);
+        bbram_bdrv_sync(s, A_BBRAM_8);
     }
 }
 
@@ -427,17 +501,10 @@ static void bbram_ctrl_realize(DeviceState *dev, Error **errp)
 
     dinfo = drive_get_next(IF_PFLASH);
     blk = dinfo ? blk_by_legacy_dinfo(dinfo) : NULL;
-    s->ram32 = g_malloc0(s->size);
-    memset(s->ram32, 0, s->size);
     if (blk) {
         qdev_prop_set_drive(dev, "drive", blk, errp);
-        if (!blk_pread(s->blk, 0, (void *) s->ram32, s->size)) {
-            error_setg(&error_abort, "%s: Unable to read-out contents."
-                         "backing file too small? Expecting %u bytes",
-                          prefix, s->size);
-        }
+        bbram_bdrv_read(s);
     }
-    memcpy(&s->regs[R_BBRAM_0], s->ram32, (R_BBRAM_8 - R_BBRAM_0) * 4);
 }
 
 static void bbram_ctrl_init(Object *obj)
