@@ -181,6 +181,9 @@ void xlnx_aes_start_message(XlnxAES *s, bool encrypt)
     xlnx_aes_set_state(s, IV0);
     s->encrypt = encrypt;
     s->tag_ok = 0;
+
+    qemu_set_irq(s->s_done, false);
+    qemu_set_irq(s->s_busy, false);
 }
 
 static void xlnx_aes_done(XlnxAES *s)
