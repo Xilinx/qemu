@@ -29,7 +29,7 @@
 #include "qapi/qmp/qerror.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
-#include "hw/register-dep.h"
+#include "hw/register.h"
 #include "hw/stream.h"
 #include "qemu/fifo.h"
 
@@ -42,8 +42,8 @@
 #define STREAM_FIFO(obj) \
      OBJECT_CHECK(StreamFifo, (obj), TYPE_STREAM_FIFO)
 
-DEP_REG32(DP, 0x00)
-DEP_REG32(CTL, 0x04)
+REG32(DP, 0x00)
+REG32(CTL, 0x04)
     #define R_CTL_CORK      (1 << 0)
     #define R_CTL_RSVD ~1ull
 
@@ -58,7 +58,7 @@ struct StreamFifo {
     Fifo fifo;
 
     uint32_t regs[R_MAX];
-    DepRegisterInfo regs_info[R_MAX];
+    RegisterInfo regs_info[R_MAX];
 
     StreamSlave *tx_dev;
 
@@ -118,14 +118,14 @@ static size_t stream_fifo_stream_push(StreamSlave *obj, uint8_t *buf,
 }
 
 
-static void stream_fifo_update(DepRegisterInfo *reg, uint64_t val)
+static void stream_fifo_update(RegisterInfo *reg, uint64_t val)
 {
     StreamFifo *s = STREAM_FIFO(reg->opaque);
 
     stream_fifo_notify(s);
 }
 
-static void stream_fifo_dp_post_write(DepRegisterInfo *reg, uint64_t val)
+static void stream_fifo_dp_post_write(RegisterInfo *reg, uint64_t val)
 {
     StreamFifo *s = STREAM_FIFO(reg->opaque);
 
@@ -137,7 +137,7 @@ static void stream_fifo_dp_post_write(DepRegisterInfo *reg, uint64_t val)
     stream_fifo_update(reg, val);
 }
 
-static uint64_t stream_fifo_dp_post_read(DepRegisterInfo *reg, uint64_t val)
+static uint64_t stream_fifo_dp_post_read(RegisterInfo *reg, uint64_t val)
 {
     StreamFifo *s = STREAM_FIFO(reg->opaque);
 
@@ -151,11 +151,11 @@ static uint64_t stream_fifo_dp_post_read(DepRegisterInfo *reg, uint64_t val)
 
 /* TODO: Define register definitions. One entry for each register */
 
-static const DepRegisterAccessInfo stream_fifo_regs_info[] = {
-    {   .name = "data port",                .decode.addr = A_DP,
+static const RegisterAccessInfo stream_fifo_regs_info[] = {
+    {   .name = "data port",                .addr = A_DP,
             .post_write = stream_fifo_dp_post_write,
             .post_read = stream_fifo_dp_post_read,
-    },{ .name = "control",                  .decode.addr = A_CTL,
+    },{ .name = "control",                  .addr = A_CTL,
             .rsvd = R_CTL_RSVD,
             .reset = R_CTL_CORK,
     }
@@ -167,15 +167,15 @@ static void stream_fifo_reset(DeviceState *dev)
     int i;
 
     for (i = 0; i < R_MAX; ++i) {
-        dep_register_reset(&s->regs_info[i]);
+        register_reset(&s->regs_info[i]);
     }
 
     fifo_reset(&s->fifo);
 }
 
 static const MemoryRegionOps stream_fifo_ops = {
-    .read = dep_register_read_memory_le,
-    .write = dep_register_write_memory_le,
+    .read = register_read_memory,
+    .write = register_write_memory,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
@@ -186,34 +186,27 @@ static const MemoryRegionOps stream_fifo_ops = {
 static void stream_fifo_realize(DeviceState *dev, Error **errp)
 {
     StreamFifo *s = STREAM_FIFO(dev);
-    const char *prefix = object_get_canonical_path(OBJECT(dev));
-    int i;
 
-    for (i = 0; i < ARRAY_SIZE(stream_fifo_regs_info); ++i) {
-        DepRegisterInfo *r = &s->regs_info[i];
-
-        *r = (DepRegisterInfo) {
-            .data = (uint8_t *)&s->regs[
-                    stream_fifo_regs_info[i].decode.addr/4],
-            .data_size = sizeof(uint32_t),
-            .access = &stream_fifo_regs_info[i],
-            .debug = STREAM_FIFO_ERR_DEBUG,
-            .prefix = prefix,
-            .opaque = s,
-        };
-        memory_region_init_io(&r->mem, OBJECT(dev), &stream_fifo_ops, r,
-                              r->access->name, 4);
-        memory_region_add_subregion(&s->iomem, r->access->decode.addr, &r->mem);
 #define STREAM_FIFO_DEPTH 64
-        fifo_create32(&s->fifo, STREAM_FIFO_DEPTH);
-    }
+    fifo_create32(&s->fifo, STREAM_FIFO_DEPTH);
 }
 
 static void stream_fifo_init(Object *obj)
 {
     StreamFifo *s = STREAM_FIFO(obj);
+    RegisterInfoArray *reg_array;
 
     memory_region_init(&s->iomem, obj, "MMIO", R_MAX * 4);
+    reg_array =
+        register_init_block32(DEVICE(obj), stream_fifo_regs_info,
+                              ARRAY_SIZE(stream_fifo_regs_info),
+                              s->regs_info, s->regs,
+                              &stream_fifo_ops,
+                              STREAM_FIFO_ERR_DEBUG,
+                              R_MAX * 4);
+    memory_region_add_subregion(&s->iomem,
+                                0x0,
+                                &reg_array->mem);
     sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->iomem);
 
     object_property_add_link(obj, "stream-connected",
