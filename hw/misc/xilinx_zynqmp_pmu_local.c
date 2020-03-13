@@ -299,11 +299,37 @@ typedef struct PMULocal {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
     qemu_irq irq_addr_error;
+
+    qemu_irq rst_csu;
+    qemu_irq pwr_acpu[4];
+    qemu_irq pwr_pp[2];
+    qemu_irq pwr_usb[2];
+    qemu_irq pwr_rpu;
+    qemu_irq pwr_l2;
+    qemu_irq ret_l2;
+    qemu_irq pwr_ocm[4];
+    qemu_irq ret_ocm[4];
+    qemu_irq pwr_tcm_a[2];
+    qemu_irq pwr_tcm_b[2];
+    qemu_irq ret_tcm_a[2];
+    qemu_irq ret_tcm_b[2];
     qemu_irq fpd_pwr_cntrl;
+    qemu_irq gpi_enable[2];
 
     uint32_t regs[R_MAX];
     DepRegisterInfo regs_info[R_MAX];
 } PMULocal;
+
+#define PROPAGATE_GPIO(s, reg, f, irq) {                         \
+    bool val = DEP_AF_EX32((s)->regs, reg, f);                   \
+    qemu_set_irq(irq, val);                                      \
+}
+
+#define PROPAGATE_FIELD1(s, sreg, sf, dreg, df, irq) {           \
+    unsigned int val = DEP_AF_EX32((s)->regs, sreg, sf);         \
+    DEP_AF_DP32((s)->regs, dreg, df, val);                       \
+    qemu_set_irq(irq, val);                                      \
+}
 
 static void addr_error_update_irq(PMULocal *s)
 {
@@ -406,28 +432,66 @@ static struct {
             { .end = true }
         }
     },
-
-    /* RAMs.  */
-    {   .addr = A_L2_PWR_CNTRL, .bit = 0, .mask = 0x1,
-        .map = (struct PwrStateMap[]) {
-            { .addr = A_L2_PWR_STATUS, .bit = 0 },
-            { .end = true }
-        }
-    },
-    {   .addr = A_OCM_PWR_CNTRL, .bit = 0, .mask = 0x01010101,
-        .map = (struct PwrStateMap[]) {
-            { .addr = A_OCM_PWR_STATUS, .bit = 0 },
-            { .end = true }
-        }
-    },
-    {   .addr = A_TCM_PWR_CNTRL, .bit = 0, .mask = 0x01010101,
-        .map = (struct PwrStateMap[]) {
-            { .addr = A_TCM_PWR_STATUS, .bit = 0 },
-            { .end = true }
-        }
-    },
     { .end = true }
 };
+
+static void update_gpios(PMULocal *s)
+{
+    /*
+     * This must be called after propagating the PWR Controls to
+     * the PWR STATUS fields.
+     */
+    PROPAGATE_GPIO(s, LOCAL_RESET, CSU_RST, s->rst_csu);
+
+    PROPAGATE_GPIO(s, ACPU0_PWR_STATUS, PWR_GATES, s->pwr_acpu[0]);
+    PROPAGATE_GPIO(s, ACPU1_PWR_STATUS, PWR_GATES, s->pwr_acpu[1]);
+    PROPAGATE_GPIO(s, ACPU2_PWR_STATUS, PWR_GATES, s->pwr_acpu[2]);
+    PROPAGATE_GPIO(s, ACPU3_PWR_STATUS, PWR_GATES, s->pwr_acpu[3]);
+
+    PROPAGATE_GPIO(s, PP0_PWR_STATUS, PWR_GATES, s->pwr_pp[0]);
+    PROPAGATE_GPIO(s, PP1_PWR_STATUS, PWR_GATES, s->pwr_pp[1]);
+
+    PROPAGATE_GPIO(s, USB0_PWR_STATUS, PWR_GATES, s->pwr_usb[0]);
+    PROPAGATE_GPIO(s, USB1_PWR_STATUS, PWR_GATES, s->pwr_usb[1]);
+
+    PROPAGATE_FIELD1(s, L2_PWR_CNTRL, BANK0,
+                     L2_PWR_STATUS, BANK0, s->pwr_l2);
+    PROPAGATE_GPIO(s, L2_RET_CNTRL, BANK0, s->ret_l2);
+
+    PROPAGATE_FIELD1(s, OCM_PWR_CNTRL, BANK0,
+                     OCM_PWR_STATUS, BANK0, s->pwr_ocm[0]);
+    PROPAGATE_FIELD1(s, OCM_PWR_CNTRL, BANK1,
+                     OCM_PWR_STATUS, BANK1, s->pwr_ocm[1]);
+    PROPAGATE_FIELD1(s, OCM_PWR_CNTRL, BANK2,
+                     OCM_PWR_STATUS, BANK2, s->pwr_ocm[2]);
+    PROPAGATE_FIELD1(s, OCM_PWR_CNTRL, BANK3,
+                     OCM_PWR_STATUS, BANK3, s->pwr_ocm[3]);
+
+    PROPAGATE_GPIO(s, OCM_RET_CNTRL, BANK0, s->ret_ocm[0]);
+    PROPAGATE_GPIO(s, OCM_RET_CNTRL, BANK1, s->ret_ocm[1]);
+    PROPAGATE_GPIO(s, OCM_RET_CNTRL, BANK2, s->ret_ocm[2]);
+    PROPAGATE_GPIO(s, OCM_RET_CNTRL, BANK3, s->ret_ocm[3]);
+
+    PROPAGATE_FIELD1(s, TCM_PWR_CNTRL, TCMA0,
+                     TCM_PWR_STATUS, TCMA0, s->pwr_tcm_a[0]);
+    PROPAGATE_FIELD1(s, TCM_PWR_CNTRL, TCMB0,
+                     TCM_PWR_STATUS, TCMB0, s->pwr_tcm_b[0]);
+    PROPAGATE_FIELD1(s, TCM_PWR_CNTRL, TCMA1,
+                     TCM_PWR_STATUS, TCMA1, s->pwr_tcm_a[1]);
+    PROPAGATE_FIELD1(s, TCM_PWR_CNTRL, TCMB1,
+                     TCM_PWR_STATUS, TCMB1, s->pwr_tcm_b[1]);
+
+    PROPAGATE_GPIO(s, TCM_RET_CNTRL, TCMA0, s->ret_tcm_a[0]);
+    PROPAGATE_GPIO(s, TCM_RET_CNTRL, TCMB0, s->ret_tcm_b[0]);
+    PROPAGATE_GPIO(s, TCM_RET_CNTRL, TCMA1, s->ret_tcm_a[1]);
+    PROPAGATE_GPIO(s, TCM_RET_CNTRL, TCMB1, s->ret_tcm_b[1]);
+
+    PROPAGATE_GPIO(s, RPU_PWR_STATUS, PWR_GATES, s->pwr_rpu);
+
+    /* This is wako but we need it for backwards compatibility.  */
+    qemu_set_irq(s->gpi_enable[0], s->regs[R_GPI1_MASK]);
+    qemu_set_irq(s->gpi_enable[1], s->regs[R_GPI2_MASK]);
+}
 
 static void prop_power_gate_postw(DepRegisterInfo *reg, uint64_t val64)
 {
@@ -460,6 +524,15 @@ static void prop_power_gate_postw(DepRegisterInfo *reg, uint64_t val64)
             s->regs[dst_addr / 4] |= dst_val;
         }
     }
+
+    update_gpios(s);
+}
+
+static void update_gpios_postw(DepRegisterInfo *reg, uint64_t val64)
+{
+    PMULocal *s = XILINX_PMU_LOCAL(reg->opaque);
+
+    update_gpios(s);
 }
 
 #define FPD_ISOLATION_MASK \
@@ -492,10 +565,6 @@ static DepRegisterAccessInfo pmu_local_regs_info[] = {
         .rsvd = 0xffffffe0, \
         .ro = 0xffffffe0, \
         .post_write = prop_power_gate_postw, \
-        .gpios = (DepRegisterGPIOMapping[]) { \
-            { .name = "ACPU" #n "_PWR_CNTRL", .bit_pos = 0, .width = 1 }, \
-            {}, \
-        } \
     },{ .name = "ACPU" #n "_PWR_STATUS", \
         .decode.addr = A_ACPU ## n ## _PWR_STATUS, \
         .reset = 0xf, \
@@ -511,10 +580,6 @@ static DepRegisterAccessInfo pmu_local_regs_info[] = {
         .rsvd = 0xffffffe0,
         .ro = 0xffffffe0,
         .post_write = prop_power_gate_postw,
-        .gpios = (DepRegisterGPIOMapping[]) {
-            { .name = "PP0_PWR_CNTRL", .bit_pos = 0, .width = 1 },
-            {},
-        }
     },{ .name = "PP0_PWR_STATUS",  .decode.addr = A_PP0_PWR_STATUS,
         .reset = 0xf,
         .rsvd = 0xfffffff0,
@@ -524,10 +589,6 @@ static DepRegisterAccessInfo pmu_local_regs_info[] = {
         .rsvd = 0xffffffe0,
         .ro = 0xffffffe0,
         .post_write = prop_power_gate_postw,
-        .gpios = (DepRegisterGPIOMapping[]) {
-            { .name = "PP1_PWR_CNTRL", .bit_pos = 0, .width = 1 },
-            {},
-        }
     },{ .name = "PP1_PWR_STATUS",  .decode.addr = A_PP1_PWR_STATUS,
         .reset = 0xf,
         .rsvd = 0xfffffff0,
@@ -537,10 +598,6 @@ static DepRegisterAccessInfo pmu_local_regs_info[] = {
         .rsvd = 0xffffffe0,
         .ro = 0xffffffe0,
         .post_write = prop_power_gate_postw,
-        .gpios = (DepRegisterGPIOMapping[]) {
-            { .name = "USB0_PWR_CNTRL", .bit_pos = 0, .width = 1 },
-            {},
-        }
     },{ .name = "USB0_PWR_STATUS",  .decode.addr = A_USB0_PWR_STATUS,
         .reset = 0xf,
         .rsvd = 0xfffffff0,
@@ -550,10 +607,6 @@ static DepRegisterAccessInfo pmu_local_regs_info[] = {
         .rsvd = 0xffffffe0,
         .ro = 0xffffffe0,
         .post_write = prop_power_gate_postw,
-        .gpios = (DepRegisterGPIOMapping[]) {
-            { .name = "USB1_PWR_CNTRL", .bit_pos = 0, .width = 1 },
-            {},
-        }
     },{ .name = "USB1_PWR_STATUS",  .decode.addr = A_USB1_PWR_STATUS,
         .reset = 0xf,
         .rsvd = 0xfffffff0,
@@ -563,10 +616,6 @@ static DepRegisterAccessInfo pmu_local_regs_info[] = {
         .rsvd = 0xffffffe0,
         .ro = 0xffffffe0,
         .post_write = prop_power_gate_postw,
-        .gpios = (DepRegisterGPIOMapping[]) {
-            { .name = "RPU_PWR_CNTRL", .bit_pos = 0, .width = 1 },
-            {},
-        }
     },{ .name = "RPU_PWR_STATUS",  .decode.addr = A_RPU_PWR_STATUS,
         .reset = 0xf,
         .rsvd = 0xfffffff0,
@@ -576,17 +625,9 @@ static DepRegisterAccessInfo pmu_local_regs_info[] = {
         .rsvd = 0xfffffffe,
         .ro = 0xfffffffe,
         .post_write = prop_power_gate_postw,
-        .gpios = (DepRegisterGPIOMapping[]) {
-            { .name = "L2_PWR_CNTRL", .bit_pos = 0, .width = 1 },
-            {},
-        }
     },{ .name = "L2_RET_CNTRL",  .decode.addr = A_L2_RET_CNTRL,
         .rsvd = 0xfffffffe,
         .ro = 0xfffffffe,
-        .gpios = (DepRegisterGPIOMapping[]) {
-            { .name = "L2_RET_CNTRL", .bit_pos = 0, .width = 1 },
-            {},
-        }
     },{ .name = "L2_CE_CNTRL",  .decode.addr = A_L2_CE_CNTRL,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
@@ -600,23 +641,10 @@ static DepRegisterAccessInfo pmu_local_regs_info[] = {
         .rsvd = 0xfefefefe,
         .ro = 0xfefefefe,
         .post_write = prop_power_gate_postw,
-        .gpios = (DepRegisterGPIOMapping[]) {
-            { .name = "OCM_PWR_CNTRL_BANK0", .bit_pos = 0, .width = 1 },
-            { .name = "OCM_PWR_CNTRL_BANK1", .bit_pos = 8, .width = 1 },
-            { .name = "OCM_PWR_CNTRL_BANK2", .bit_pos = 16, .width = 1 },
-            { .name = "OCM_PWR_CNTRL_BANK3", .bit_pos = 24, .width = 1 },
-            {},
-        }
     },{ .name = "OCM_RET_CNTRL",  .decode.addr = A_OCM_RET_CNTRL,
         .rsvd = 0xfffffff0,
         .ro = 0xfffffff0,
-        .gpios = (DepRegisterGPIOMapping[]) {
-            { .name = "OCM_RET_CNTRL_BANK0", .bit_pos = 0, .width = 1 },
-            { .name = "OCM_RET_CNTRL_BANK1", .bit_pos = 1, .width = 1 },
-            { .name = "OCM_RET_CNTRL_BANK2", .bit_pos = 2, .width = 1 },
-            { .name = "OCM_RET_CNTRL_BANK3", .bit_pos = 3, .width = 1 },
-            {},
-        }
+        .post_write = update_gpios_postw,
     },{ .name = "OCM_CE_CNTRL",  .decode.addr = A_OCM_CE_CNTRL,
         .reset = 0xf,
         .rsvd = 0xfffffff0,
@@ -630,23 +658,10 @@ static DepRegisterAccessInfo pmu_local_regs_info[] = {
         .rsvd = 0xfefefefe,
         .ro = 0xfefefefe,
         .post_write = prop_power_gate_postw,
-        .gpios = (DepRegisterGPIOMapping[]) {
-            { .name = "TCM_PWR_CNTRL_A0", .bit_pos = 0, .width = 1 },
-            { .name = "TCM_PWR_CNTRL_B0", .bit_pos = 8, .width = 1 },
-            { .name = "TCM_PWR_CNTRL_A1", .bit_pos = 16, .width = 1 },
-            { .name = "TCM_PWR_CNTRL_B1", .bit_pos = 24, .width = 1 },
-            {},
-        }
     },{ .name = "TCM_RET_CNTRL",  .decode.addr = A_TCM_RET_CNTRL,
         .rsvd = 0xfffffff0,
         .ro = 0xfffffff0,
-        .gpios = (DepRegisterGPIOMapping[]) {
-            { .name = "TCM_RET_CNTRL_A0", .bit_pos = 0, .width = 1 },
-            { .name = "TCM_RET_CNTRL_B0", .bit_pos = 1, .width = 1 },
-            { .name = "TCM_RET_CNTRL_A1", .bit_pos = 2, .width = 1 },
-            { .name = "TCM_RET_CNTRL_B1", .bit_pos = 3, .width = 1 },
-            {},
-        }
+        .post_write = update_gpios_postw,
     },{ .name = "TCM_CE_CNTRL",  .decode.addr = A_TCM_CE_CNTRL,
         .reset = 0xf,
         .rsvd = 0xfffffff0,
@@ -672,11 +687,7 @@ static DepRegisterAccessInfo pmu_local_regs_info[] = {
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0xfffffffe,
-        .inhibit_reset = 1u << 31,
-        .gpios = (DepRegisterGPIOMapping[]) {
-            { .name = "CSU_RST", .bit_pos = 0, .width = 1 },
-            {},
-        }
+        .post_write = update_gpios_postw,
     },{ .name = "LOCAL_CNTRL",  .decode.addr = A_LOCAL_CNTRL,
         .rsvd = 0xfffffffe,
         .ro = 0xfffffffe,
@@ -691,17 +702,11 @@ static DepRegisterAccessInfo pmu_local_regs_info[] = {
     },{ .name = "GPI1_MASK",  .decode.addr = A_GPI1_MASK,
         .rsvd = 0xf0e0000,
         .ro = 0xf0e0000,
-        .gpios = (DepRegisterGPIOMapping[]) {
-            { .name = "GPI1_ENABLE", .bit_pos = 0, .width = 32 },
-            {},
-        }
+        .post_write = update_gpios_postw,
     },{ .name = "GPI2_MASK",  .decode.addr = A_GPI2_MASK,
         .rsvd = 0xff00ff80,
         .ro = 0xff00ff80,
-        .gpios = (DepRegisterGPIOMapping[]) {
-            { .name = "GPI2_ENABLE", .bit_pos = 0, .width = 32 },
-            {},
-        }
+        .post_write = update_gpios_postw,
     },{ .name = "GPI3_MASK",  .decode.addr = A_GPI3_MASK,
     },{ .name = "LOCAL_GEN_STORAGE0",  .decode.addr = A_LOCAL_GEN_STORAGE0,
     },{ .name = "LOCAL_GEN_STORAGE1",  .decode.addr = A_LOCAL_GEN_STORAGE1,
@@ -765,6 +770,7 @@ static void pmu_local_reset(DeviceState *dev)
                             s->regs[R_DOMAIN_ISO_CNTRL]);
 
     addr_error_update_irq(s);
+    update_gpios(s);
 }
 
 static uint64_t pmu_local_read(void *opaque, hwaddr addr, unsigned size)
@@ -831,7 +837,44 @@ static void pmu_local_realize(DeviceState *dev, Error **errp)
         dep_register_init(r);
         qdev_pass_all_gpios(DEVICE(r), dev);
     }
+
+    qdev_init_gpio_out_named(dev, &s->rst_csu, "CSU_RST", 1);
+    qdev_init_gpio_out_named(dev, &s->pwr_acpu[0], "ACPU0_PWR_CNTRL", 1);
+    qdev_init_gpio_out_named(dev, &s->pwr_acpu[1], "ACPU1_PWR_CNTRL", 1);
+    qdev_init_gpio_out_named(dev, &s->pwr_acpu[2], "ACPU2_PWR_CNTRL", 1);
+    qdev_init_gpio_out_named(dev, &s->pwr_acpu[3], "ACPU3_PWR_CNTRL", 1);
+    qdev_init_gpio_out_named(dev, &s->pwr_pp[0], "PP0_PWR_CNTRL", 1);
+    qdev_init_gpio_out_named(dev, &s->pwr_pp[1], "PP1_PWR_CNTRL", 1);
+    qdev_init_gpio_out_named(dev, &s->pwr_usb[0], "USB0_PWR_CNTRL", 1);
+    qdev_init_gpio_out_named(dev, &s->pwr_usb[1], "USB1_PWR_CNTRL", 1);
+    qdev_init_gpio_out_named(dev, &s->pwr_rpu, "RPU_PWR_CNTRL", 1);
+    qdev_init_gpio_out_named(dev, &s->pwr_l2, "L2_PWR_CNTRL", 1);
+    qdev_init_gpio_out_named(dev, &s->ret_l2, "L2_RET_CNTRL", 1);
+
+    qdev_init_gpio_out_named(dev, &s->pwr_ocm[0], "OCM_PWR_CNTRL_BANK0", 1);
+    qdev_init_gpio_out_named(dev, &s->pwr_ocm[1], "OCM_PWR_CNTRL_BANK1", 1);
+    qdev_init_gpio_out_named(dev, &s->pwr_ocm[2], "OCM_PWR_CNTRL_BANK2", 1);
+    qdev_init_gpio_out_named(dev, &s->pwr_ocm[3], "OCM_PWR_CNTRL_BANK3", 1);
+
+    qdev_init_gpio_out_named(dev, &s->ret_ocm[0], "OCM_RET_CNTRL_BANK0", 1);
+    qdev_init_gpio_out_named(dev, &s->ret_ocm[1], "OCM_RET_CNTRL_BANK1", 1);
+    qdev_init_gpio_out_named(dev, &s->ret_ocm[2], "OCM_RET_CNTRL_BANK2", 1);
+    qdev_init_gpio_out_named(dev, &s->ret_ocm[3], "OCM_RET_CNTRL_BANK3", 1);
+
+    qdev_init_gpio_out_named(dev, &s->pwr_tcm_a[0], "TCM_PWR_CNTRL_A0", 1);
+    qdev_init_gpio_out_named(dev, &s->pwr_tcm_b[0], "TCM_PWR_CNTRL_B0", 1);
+    qdev_init_gpio_out_named(dev, &s->pwr_tcm_a[1], "TCM_PWR_CNTRL_A1", 1);
+    qdev_init_gpio_out_named(dev, &s->pwr_tcm_b[1], "TCM_PWR_CNTRL_B1", 1);
+
+    qdev_init_gpio_out_named(dev, &s->ret_tcm_a[0], "TCM_RET_CNTRL_A0", 1);
+    qdev_init_gpio_out_named(dev, &s->ret_tcm_b[0], "TCM_RET_CNTRL_B0", 1);
+    qdev_init_gpio_out_named(dev, &s->ret_tcm_a[1], "TCM_RET_CNTRL_A1", 1);
+    qdev_init_gpio_out_named(dev, &s->ret_tcm_b[1], "TCM_RET_CNTRL_B1", 1);
+
     qdev_init_gpio_out_named(dev, &s->fpd_pwr_cntrl, "fpd_pwr_cntrl", 1);
+
+    qdev_init_gpio_out_named(dev, &s->gpi_enable[0], "GPI1_ENABLE", 1);
+    qdev_init_gpio_out_named(dev, &s->gpi_enable[1], "GPI2_ENABLE", 1);
 }
 
 static void pmu_local_init(Object *obj)
