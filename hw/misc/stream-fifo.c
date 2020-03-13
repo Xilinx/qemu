@@ -122,7 +122,7 @@ static void stream_fifo_update(DepRegisterInfo *reg, uint64_t val)
 {
     StreamFifo *s = STREAM_FIFO(reg->opaque);
 
-    stream_fifo_notify(s);   
+    stream_fifo_notify(s);
 }
 
 static void stream_fifo_dp_post_write(DepRegisterInfo *reg, uint64_t val)
