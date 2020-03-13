@@ -25,7 +25,6 @@
 
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
-#include "hw/register-dep.h"
 #include "hw/ptimer.h"
 #include "qemu/bitops.h"
 #include "qapi/error.h"
