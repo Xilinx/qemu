@@ -34,7 +34,6 @@
 #include "exec/address-spaces.h"
 #include "qemu/host-utils.h"
 #include "hw/sysbus.h"
-#include "hw/register-dep.h"
 #include "hw/ptimer.h"
 #include "sysemu/blockdev.h"
 #include "qemu/bitops.h"
