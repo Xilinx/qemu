@@ -18,7 +18,7 @@
 #include "sysemu/dma.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
-#include "hw/register-dep.h"
+#include "hw/register.h"
 #include "hw/zynqmp_aes_key.h"
 #include "hw/fdt_generic_util.h"
 
@@ -37,79 +37,80 @@
 #define ZYNQMP_CSU_KEY_SINK(obj) \
      OBJECT_CHECK(CSUKeySink, (obj), TYPE_ZYNQMP_CSU_DEVKEY_SINK)
 
-DEP_REG32(AES_STATUS, 0x00)
-    DEP_FIELD(AES_STATUS, OKR_ZEROED, 1, 11)
-    DEP_FIELD(AES_STATUS, BOOT_ZEROED, 1, 10)
-    DEP_FIELD(AES_STATUS, KUP_ZEROED, 1, 9)
-    DEP_FIELD(AES_STATUS, AES_KEY_ZEROED, 1, 8)
-    DEP_FIELD(AES_STATUS, KEY_INIT_DONE, 1, 4)
-    DEP_FIELD(AES_STATUS, GCM_TAG_PASS, 1, 3)
-    DEP_FIELD(AES_STATUS, DONE, 1, 2)
-    DEP_FIELD(AES_STATUS, READY, 1, 1)
-    DEP_FIELD(AES_STATUS, BUSY, 1, 0)
-DEP_REG32(AES_KEY_SRC, 0x04)
-    DEP_FIELD(AES_KEY_SRC, KEY_SRC, 4, 0)
+REG32(AES_STATUS, 0x00)
+    FIELD(AES_STATUS, OKR_ZEROED, 11, 1)
+    FIELD(AES_STATUS, BOOT_ZEROED, 10, 1)
+    FIELD(AES_STATUS, KUP_ZEROED, 9, 1)
+    FIELD(AES_STATUS, AES_KEY_ZEROED, 8, 1)
+    FIELD(AES_STATUS, BLACK_KEY_DONE, 5, 1)
+    FIELD(AES_STATUS, KEY_INIT_DONE, 4, 1)
+    FIELD(AES_STATUS, GCM_TAG_PASS, 3, 1)
+    FIELD(AES_STATUS, DONE, 2, 1)
+    FIELD(AES_STATUS, READY, 1, 1)
+    FIELD(AES_STATUS, BUSY, 0, 1)
+REG32(AES_KEY_SRC, 0x04)
+    FIELD(AES_KEY_SRC, KEY_SRC, 0, 4)
 
 #define AES_KEYSRC_KUP        0
 #define AES_KEYSRC_DEV        1
 
-DEP_REG32(AES_KEY_LOAD, 0x08)
-    DEP_FIELD(AES_KEY_LOAD, KEY_LOAD, 1, 0)
-DEP_REG32(AES_START_MSG, 0x0c)
-    DEP_FIELD(AES_START_MSG, START_MSG, 1, 0)
-DEP_REG32(AES_RESET, 0x10)
-    DEP_FIELD(AES_RESET, RESET, 1, 0)
-DEP_REG32(AES_KEY_CLEAR, 0x14)
-    DEP_FIELD(AES_KEY_CLEAR, AES_KUP_ZERO, 1, 1)
-    DEP_FIELD(AES_KEY_CLEAR, AES_KEY_ZERO, 1, 0)
-DEP_REG32(AES_CFG, 0x18)
-    DEP_FIELD(AES_CFG, ENCRYPT_DECRYPT_N, 1, 0)
-DEP_REG32(AES_KUP_WR, 0x1c)
-    DEP_FIELD(AES_KUP_WR, IV_WRITE, 1, 1)
-    DEP_FIELD(AES_KUP_WR, KUP_WRITE, 1, 0)
-DEP_REG32(AES_KUP_0, 0x20)
-DEP_REG32(AES_KUP_1, 0x24)
-DEP_REG32(AES_KUP_2, 0x28)
-DEP_REG32(AES_KUP_3, 0x2c)
-DEP_REG32(AES_KUP_4, 0x30)
-DEP_REG32(AES_KUP_5, 0x34)
-DEP_REG32(AES_KUP_6, 0x38)
-DEP_REG32(AES_KUP_7, 0x3c)
-DEP_REG32(AES_IV_0, 0x40)
-DEP_REG32(AES_IV_1, 0x44)
-DEP_REG32(AES_IV_2, 0x48)
-DEP_REG32(AES_IV_3, 0x4c)
+REG32(AES_KEY_LOAD, 0x08)
+    FIELD(AES_KEY_LOAD, KEY_LOAD, 0, 1)
+REG32(AES_START_MSG, 0x0c)
+    FIELD(AES_START_MSG, START_MSG, 0, 1)
+REG32(AES_RESET, 0x10)
+    FIELD(AES_RESET, RESET, 0, 1)
+REG32(AES_KEY_CLEAR, 0x14)
+    FIELD(AES_KEY_CLEAR, AES_KUP_ZERO, 1, 1)
+    FIELD(AES_KEY_CLEAR, AES_KEY_ZERO, 0, 1)
+REG32(AES_CFG, 0x18)
+    FIELD(AES_CFG, ENCRYPT_DECRYPT_N, 0, 1)
+REG32(AES_KUP_WR, 0x1c)
+    FIELD(AES_KUP_WR, IV_WRITE, 1, 1)
+    FIELD(AES_KUP_WR, KUP_WRITE, 0, 1)
+REG32(AES_KUP_0, 0x020)
+REG32(AES_KUP_1, 0x24)
+REG32(AES_KUP_2, 0x28)
+REG32(AES_KUP_3, 0x2c)
+REG32(AES_KUP_4, 0x30)
+REG32(AES_KUP_5, 0x34)
+REG32(AES_KUP_6, 0x38)
+REG32(AES_KUP_7, 0x3c)
+REG32(AES_IV_0, 0x40)
+REG32(AES_IV_1, 0x44)
+REG32(AES_IV_2, 0x48)
+REG32(AES_IV_3, 0x4c)
 
 #define R_MAX                      (R_AES_IV_3 + 1)
 
-static const DepRegisterAccessInfo aes_regs_info[] = {
-    { .name = "AES_STATUS",  .decode.addr = A_AES_STATUS,
+static const RegisterAccessInfo aes_regs_info[] = {
+    {   .name = "AES_STATUS",  .addr = A_AES_STATUS,
         .reset = 0xf00,
-        .rsvd = 0xe0,
+        .rsvd = 0xc0,
         .ro = 0xfff,
-    },{ .name = "AES_KEY_SRC",  .decode.addr = A_AES_KEY_SRC,
-    },{ .name = "AES_KEY_LOAD",  .decode.addr = A_AES_KEY_LOAD,
-    },{ .name = "AES_START_MSG",  .decode.addr = A_AES_START_MSG,
-    },{ .name = "AES_KUP_WR",  .decode.addr = A_AES_KUP_WR,
-    },{ .name = "AES_RESET",  .decode.addr = A_AES_RESET,
-    },{ .name = "AES_KEY_CLEAR",  .decode.addr = A_AES_KEY_CLEAR,
-    },{ .name = "AES_CFG",  .decode.addr = A_AES_CFG,
-    },{ .name = "AES_KUP_0",  .decode.addr = A_AES_KUP_0,
-    },{ .name = "AES_KUP_1",  .decode.addr = A_AES_KUP_1,
-    },{ .name = "AES_KUP_2",  .decode.addr = A_AES_KUP_2,
-    },{ .name = "AES_KUP_3",  .decode.addr = A_AES_KUP_3,
-    },{ .name = "AES_KUP_4",  .decode.addr = A_AES_KUP_4,
-    },{ .name = "AES_KUP_5",  .decode.addr = A_AES_KUP_5,
-    },{ .name = "AES_KUP_6",  .decode.addr = A_AES_KUP_6,
-    },{ .name = "AES_KUP_7",  .decode.addr = A_AES_KUP_7,
-    },{ .name = "AES_IV_0",  .decode.addr = A_AES_IV_0,
-        .ro = 0xffffffffL,
-    },{ .name = "AES_IV_1",  .decode.addr = A_AES_IV_1,
-        .ro = 0xffffffffL,
-    },{ .name = "AES_IV_2",  .decode.addr = A_AES_IV_2,
-        .ro = 0xffffffffL,
-    },{ .name = "AES_IV_3",  .decode.addr = A_AES_IV_3,
-        .ro = 0xffffffffL,
+    },{ .name = "AES_KEY_SRC",  .addr = A_AES_KEY_SRC,
+    },{ .name = "AES_KEY_LOAD",  .addr = A_AES_KEY_LOAD,
+    },{ .name = "AES_START_MSG",  .addr = A_AES_START_MSG,
+    },{ .name = "AES_RESET",  .addr = A_AES_RESET,
+    },{ .name = "AES_KEY_CLEAR",  .addr = A_AES_KEY_CLEAR,
+    },{ .name = "AES_CFG",  .addr = A_AES_CFG,
+    },{ .name = "AES_KUP_WR",  .addr = A_AES_KUP_WR,
+    },{ .name = "AES_KUP_0",  .addr = A_AES_KUP_0,
+    },{ .name = "AES_KUP_1",  .addr = A_AES_KUP_1,
+    },{ .name = "AES_KUP_2",  .addr = A_AES_KUP_2,
+    },{ .name = "AES_KUP_3",  .addr = A_AES_KUP_3,
+    },{ .name = "AES_KUP_4",  .addr = A_AES_KUP_4,
+    },{ .name = "AES_KUP_5",  .addr = A_AES_KUP_5,
+    },{ .name = "AES_KUP_6",  .addr = A_AES_KUP_6,
+    },{ .name = "AES_KUP_7",  .addr = A_AES_KUP_7,
+    },{ .name = "AES_IV_0",  .addr = A_AES_IV_0,
+        .ro = 0xffffffff,
+    },{ .name = "AES_IV_1",  .addr = A_AES_IV_1,
+        .ro = 0xffffffff,
+    },{ .name = "AES_IV_2",  .addr = A_AES_IV_2,
+        .ro = 0xffffffff,
+    },{ .name = "AES_IV_3",  .addr = A_AES_IV_3,
+        .ro = 0xffffffff,
     }
 };
 
@@ -135,13 +136,14 @@ struct ZynqMPCSUAES {
 
     XlnxAES *aes;
     qemu_irq aes_rst;
+    bool in_reset;
     bool aes_done;
     bool aes_busy;
 
     bool key_loaded;
     uint32_t data_count;
     uint32_t regs[R_MAX];
-    DepRegisterInfo regs_info[R_MAX];
+    RegisterInfo regs_info[R_MAX];
 
     union {
         struct {
@@ -410,12 +412,14 @@ static void xlx_aes_load_key(ZynqMPCSUAES *s, int len)
 
 static uint64_t xlx_aes_read(void *opaque, hwaddr addr, unsigned size)
 {
-    ZynqMPCSUAES *s = ZYNQMP_CSU_AES(opaque);
+    RegisterInfoArray *reg_array = opaque;
+    ZynqMPCSUAES *s = ZYNQMP_CSU_AES(reg_array->r[0]->opaque);
     uint32_t v;
+
+    v = register_read_memory(opaque, addr, size);
 
     addr >>= 2;
     assert(addr < R_MAX);
-    v = dep_register_read(&s->regs_info[addr]);
     switch (addr) {
     case R_AES_KUP_0...R_AES_KUP_7:
         v = 0;
@@ -443,22 +447,27 @@ static void xlx_aes_reset(DeviceState *dev)
     ZynqMPCSUAES *s = ZYNQMP_CSU_AES(dev);
     int i;
 
-    for (i = 0; i < R_MAX; ++i) {
-        dep_register_reset(&s->regs_info[i]);
+    s->in_reset = true;
+    for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
+        register_reset(&s->regs_info[i]);
     }
+
     qemu_irq_pulse(s->aes_rst);
     s->key_loaded = false;
     s->data_count = 0;
+
+    s->in_reset = false;
 }
 
 static void xlx_aes_write(void *opaque, hwaddr addr, uint64_t value,
                       unsigned size)
 {
-    ZynqMPCSUAES *s = ZYNQMP_CSU_AES(opaque);
+    RegisterInfoArray *reg_array = opaque;
+    ZynqMPCSUAES *s = ZYNQMP_CSU_AES(reg_array->r[0]->opaque);
+
+    register_write_memory(opaque, addr, value, size);
 
     addr >>= 2;
-    dep_register_write(&s->regs_info[addr], value, ~0);
-
     switch (addr) {
     case R_AES_KEY_LOAD:
         if (value) {
@@ -473,8 +482,8 @@ static void xlx_aes_write(void *opaque, hwaddr addr, uint64_t value,
         }
         break;
     case R_AES_RESET:
-        if (value) {
-            xlx_aes_reset(opaque);
+        if (value && !s->in_reset) {
+            xlx_aes_reset((void *)s);
         }
         break;
     case R_AES_KEY_CLEAR:
@@ -524,23 +533,7 @@ static void aes_done_update(void *opaque, int n, int level)
 static void aes_realize(DeviceState *dev, Error **errp)
 {
     ZynqMPCSUAES *s = ZYNQMP_CSU_AES(dev);
-    const char *prefix = object_get_canonical_path(OBJECT(dev));
-    int i;
 
-    for (i = 0; i < R_MAX; ++i) {
-        DepRegisterInfo *r = &s->regs_info[i];
-
-        *r = (DepRegisterInfo) {
-            .data = (uint8_t *)&s->regs[i],
-            .data_size = sizeof(uint32_t),
-            .access = &aes_regs_info[i],
-            .debug = ZYNQMP_CSU_AES_ERR_DEBUG,
-            .prefix = prefix,
-            .opaque = s,
-        };
-        dep_register_init(r);
-        qdev_pass_all_gpios(DEVICE(r), dev);
-    }
     s->prefix = g_strdup_printf("%s:", object_get_canonical_path(OBJECT(s)));
     s->aes->prefix = s->prefix;
     qdev_init_gpio_in_named(dev, aes_busy_update, "busy", 1);
@@ -573,6 +566,7 @@ static void aes_init(Object *obj)
 {
     ZynqMPCSUAES *s = ZYNQMP_CSU_AES(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+    RegisterInfoArray *reg_array;
 
     /* Sources of device key, as shown in Xilinx UG1085, v1.9, Fig.12-2 */
     csu_devkey_sink_init(s, "bbram", &s->bbram_key);
@@ -592,8 +586,17 @@ static void aes_init(Object *obj)
     /* A reference to one of above, to emulate the mux shown in Fig.12-2 */
     s->dev_key = NULL;
 
-    memory_region_init_io(&s->iomem, obj, &aes_ops, s,
-                          "zynqmp.csu-aes", R_MAX * 4);
+    memory_region_init(&s->iomem, obj, TYPE_ZYNQMP_CSU_AES, R_MAX * 4);
+    reg_array =
+        register_init_block32(DEVICE(obj), aes_regs_info,
+                              ARRAY_SIZE(aes_regs_info),
+                              s->regs_info, s->regs,
+                              &aes_ops,
+                              ZYNQMP_CSU_AES_ERR_DEBUG,
+                              R_MAX * 4);
+    memory_region_add_subregion(&s->iomem,
+                                0x0,
+                                &reg_array->mem);
     sysbus_init_mmio(sbd, &s->iomem);
 }
 
