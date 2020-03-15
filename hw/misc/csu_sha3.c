@@ -18,7 +18,7 @@
 #include "hw/stream.h"
 #include "qemu/bitops.h"
 #include "sysemu/dma.h"
-#include "hw/register-dep.h"
+#include "hw/register.h"
 
 #ifndef ZYNQMP_CSU_SHA3_ERR_DEBUG
 #define ZYNQMP_CSU_SHA3_ERR_DEBUG 0
@@ -29,40 +29,58 @@
 #define ZYNQMP_CSU_SHA3(obj) \
      OBJECT_CHECK(ZynqMPCSUSHA3, (obj), TYPE_ZYNQMP_CSU_SHA3)
 
-#define R_SHA3_START               (0x00 / 4)
-#define R_SHA3_START_RSVD          (~1)
-#define SHA3_START_START           (1 << 0)
+REG32(SHA_START, 0x00)
+    FIELD(SHA_START, START_MSG, 0, 1)
+REG32(SHA_RESET, 0x04)
+    FIELD(SHA_RESET, RESET, 0, 1)
+REG32(SHA_DONE, 0x08)
+    FIELD(SHA_DONE, SHA_DONE, 0, 1)
+REG32(SHA_DIGEST_0, 0x10)
+REG32(SHA_DIGEST_1, 0x14)
+REG32(SHA_DIGEST_2, 0x18)
+REG32(SHA_DIGEST_3, 0x1c)
+REG32(SHA_DIGEST_4, 0x20)
+REG32(SHA_DIGEST_5, 0x24)
+REG32(SHA_DIGEST_6, 0x28)
+REG32(SHA_DIGEST_7, 0x2c)
+REG32(SHA_DIGEST_8, 0x30)
+REG32(SHA_DIGEST_9, 0x34)
+REG32(SHA_DIGEST_10, 0x38)
+REG32(SHA_DIGEST_11, 0x3c)
 
-#define R_SHA3_RESET               (0x04 / 4)
-#define R_SHA3_RESET_RSVD          (~1)
-#define SHA3_RESET_RESET           (1 << 0)
+#define R_MAX                      (R_SHA_DIGEST_11 + 1)
 
-#define R_SHA3_DONE                (0x08 / 4)
-#define R_SHA3_DONE_RSVD           (~1)
-#define SHA3_DONE                  (1 << 0)
-
-#define R_SHA3_DIGEST_0            (0x10 / 4)
-#define R_SHA3_DIGEST_11           (0x3C / 4)
-
-#define R_MAX                      (R_SHA3_DIGEST_11 + 1)
-
-static const DepRegisterAccessInfo sha3_regs_info[] = {
-    [R_SHA3_START] = { .name = "START",
-                       .ro = R_SHA3_START_RSVD | SHA3_START_START, },
-    [R_SHA3_RESET] = { .name = "RESET", .ro = R_SHA3_RESET_RSVD },
-    [R_SHA3_DONE] = { .name = "DONE", .ro = R_SHA3_DONE_RSVD },
-    [R_SHA3_DIGEST_0] = { .name = "DIGEST_0" },
-    [R_SHA3_DIGEST_0 + 1] = { .name = "DIGEST_1" },
-    [R_SHA3_DIGEST_0 + 2] = { .name = "DIGEST_2" },
-    [R_SHA3_DIGEST_0 + 3] = { .name = "DIGEST_3" },
-    [R_SHA3_DIGEST_0 + 4] = { .name = "DIGEST_4" },
-    [R_SHA3_DIGEST_0 + 5] = { .name = "DIGEST_5" },
-    [R_SHA3_DIGEST_0 + 6] = { .name = "DIGEST_6" },
-    [R_SHA3_DIGEST_0 + 7] = { .name = "DIGEST_7" },
-    [R_SHA3_DIGEST_0 + 8] = { .name = "DIGEST_8" },
-    [R_SHA3_DIGEST_0 + 9] = { .name = "DIGEST_9" },
-    [R_SHA3_DIGEST_0 + 10] = { .name = "DIGEST_10" },
-    [R_SHA3_DIGEST_0 + 11] = { .name = "DIGEST_11" },
+static const RegisterAccessInfo sha3_regs_info[] = {
+    {   .name = "SHA_START",  .addr = A_SHA_START,
+    },{ .name = "SHA_RESET",  .addr = A_SHA_RESET,
+        .ro = R_SHA_RESET_RESET_MASK,
+    },{ .name = "SHA_DONE",  .addr = A_SHA_DONE,
+        .ro = 0x1,
+    },{ .name = "SHA_DIGEST_0",  .addr = A_SHA_DIGEST_0,
+        .ro = 0xffffffff,
+    },{ .name = "SHA_DIGEST_1",  .addr = A_SHA_DIGEST_1,
+        .ro = 0xffffffff,
+    },{ .name = "SHA_DIGEST_2",  .addr = A_SHA_DIGEST_2,
+        .ro = 0xffffffff,
+    },{ .name = "SHA_DIGEST_3",  .addr = A_SHA_DIGEST_3,
+        .ro = 0xffffffff,
+    },{ .name = "SHA_DIGEST_4",  .addr = A_SHA_DIGEST_4,
+        .ro = 0xffffffff,
+    },{ .name = "SHA_DIGEST_5",  .addr = A_SHA_DIGEST_5,
+        .ro = 0xffffffff,
+    },{ .name = "SHA_DIGEST_6",  .addr = A_SHA_DIGEST_6,
+        .ro = 0xffffffff,
+    },{ .name = "SHA_DIGEST_7",  .addr = A_SHA_DIGEST_7,
+        .ro = 0xffffffff,
+    },{ .name = "SHA_DIGEST_8",  .addr = A_SHA_DIGEST_8,
+        .ro = 0xffffffff,
+    },{ .name = "SHA_DIGEST_9",  .addr = A_SHA_DIGEST_9,
+        .ro = 0xffffffff,
+    },{ .name = "SHA_DIGEST_10",  .addr = A_SHA_DIGEST_10,
+        .ro = 0xffffffff,
+    },{ .name = "SHA_DIGEST_11",  .addr = A_SHA_DIGEST_11,
+        .ro = 0xffffffff,
+    }
 };
 
 enum State {
@@ -100,7 +118,7 @@ typedef struct ZynqMPCSUSHA3 {
     uint32_t state;
     uint32_t data_count;
     uint32_t regs[R_MAX];
-    DepRegisterInfo regs_info[R_MAX];
+    RegisterInfo regs_info[R_MAX];
 
     StreamCanPushNotifyFn notify;
     void *notify_opaque;
@@ -378,7 +396,7 @@ static void xlx_sha3_emit_digest(ZynqMPCSUSHA3 *s)
 
     /* Store the digest in SHA_DIGEST_X. In reverse word order.  */
     for (i = 0; i < 12; i++) {
-        s->regs[R_SHA3_DIGEST_0 + i] = digest.u32[11 - i];
+        s->regs[R_SHA_DIGEST_0 + i] = digest.u32[11 - i];
     }
 }
 
@@ -412,7 +430,7 @@ static size_t xlx_sha3_stream_push(StreamSlave *obj, uint8_t *buf, size_t len,
     }
 
     if (stream_attr_has_eop(attr)) {
-        s->regs[R_SHA3_DONE] |= SHA3_DONE;
+        ARRAY_FIELD_DP32(s->regs, SHA_DONE, SHA_DONE, true);
     }
     return len;
 }
@@ -425,22 +443,13 @@ static bool xlx_sha3_stream_can_push(StreamSlave *obj,
     return s->state == RUNNING;
 }
 
-static uint64_t xlx_sha3_read(void *opaque, hwaddr addr, unsigned size)
-{
-    ZynqMPCSUSHA3 *s = ZYNQMP_CSU_SHA3(opaque);
-
-    addr >>= 2;
-    assert(addr < R_MAX);
-    return dep_register_read(&s->regs_info[addr]);
-}
-
 static void xlx_sha3_reset(DeviceState *dev)
 {
     ZynqMPCSUSHA3 *s = ZYNQMP_CSU_SHA3(dev);
     int i;
 
     for (i = 0; i < R_MAX; ++i) {
-        dep_register_reset(&s->regs_info[i]);
+        register_reset(&s->regs_info[i]);
     }
     s->data_count = 0;
 }
@@ -448,28 +457,30 @@ static void xlx_sha3_reset(DeviceState *dev)
 static void xlx_sha3_write(void *opaque, hwaddr addr, uint64_t value,
                       unsigned size)
 {
-    ZynqMPCSUSHA3 *s = ZYNQMP_CSU_SHA3(opaque);
+    RegisterInfoArray *reg_array = opaque;
+    ZynqMPCSUSHA3 *s = ZYNQMP_CSU_SHA3(reg_array->r[0]->opaque);
+
+    register_write_memory(opaque, addr, value, size);
 
     addr >>= 2;
-    dep_register_write(&s->regs_info[addr], value, ~0);
 
     switch (addr) {
-    case R_SHA3_START:
-        if (value & SHA3_START_START && s->state != RESETING) {
+    case R_SHA_START:
+        if (value & R_SHA_START_START_MSG_MASK && s->state != RESETING) {
             sha3_384_init(&s->ctx);
             s->data_count = 0;
             s->state = RUNNING;
-            s->regs[R_SHA3_DONE] &= ~SHA3_DONE;
+            ARRAY_FIELD_DP32(s->regs, SHA_DONE, SHA_DONE, false);
 
             /* Assume empty digest is available at init.  */
             xlx_sha3_emit_digest(s);
         }
         break;
-    case R_SHA3_RESET:
-        if (value & SHA3_RESET_RESET) {
+    case R_SHA_RESET:
+        if (value & R_SHA_RESET_RESET_MASK) {
             s->state = RESETING;
         } else {
-            xlx_sha3_reset(opaque);
+            xlx_sha3_reset((void *) s);
             s->state = IDLE;
         }
         break;
@@ -479,7 +490,7 @@ static void xlx_sha3_write(void *opaque, hwaddr addr, uint64_t value,
 }
 
 static const MemoryRegionOps sha3_ops = {
-    .read = xlx_sha3_read,
+    .read = register_read_memory,
     .write = xlx_sha3_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
@@ -488,36 +499,25 @@ static const MemoryRegionOps sha3_ops = {
     },
 };
 
-static void sha3_realize(DeviceState *dev, Error **errp)
-{
-    ZynqMPCSUSHA3 *s = ZYNQMP_CSU_SHA3(dev);
-
-    const char *prefix = object_get_canonical_path(OBJECT(dev));
-    int i;
-
-    s->prefix = prefix;
-
-    for (i = 0; i < R_MAX; ++i) {
-        DepRegisterInfo *r = &s->regs_info[i];
-
-        *r = (DepRegisterInfo) {
-            .data = (uint8_t *)&s->regs[i],
-            .data_size = sizeof(uint32_t),
-            .access = &sha3_regs_info[i],
-            .debug = ZYNQMP_CSU_SHA3_ERR_DEBUG,
-            .prefix = prefix,
-            .opaque = s,
-        };
-    }
-}
-
 static void sha3_init(Object *obj)
 {
     ZynqMPCSUSHA3 *s = ZYNQMP_CSU_SHA3(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+    RegisterInfoArray *reg_array;
 
-    memory_region_init_io(&s->iomem, obj, &sha3_ops, s,
-                          "zynqmp.csu-sha3", R_MAX * 4);
+    s->prefix = object_get_canonical_path(obj);
+
+    memory_region_init(&s->iomem, obj, TYPE_ZYNQMP_CSU_SHA3, R_MAX * 4);
+    reg_array =
+        register_init_block32(DEVICE(obj), sha3_regs_info,
+                              ARRAY_SIZE(sha3_regs_info),
+                              s->regs_info, s->regs,
+                              &sha3_ops,
+                              ZYNQMP_CSU_SHA3_ERR_DEBUG,
+                              R_MAX * 4);
+    memory_region_add_subregion(&s->iomem,
+                                0x0,
+                                &reg_array->mem);
     sysbus_init_mmio(sbd, &s->iomem);
 }
 
@@ -544,7 +544,6 @@ static void sha3_class_init(ObjectClass *klass, void *data)
     StreamSlaveClass *ssc = STREAM_SLAVE_CLASS(klass);
 
     dc->reset = xlx_sha3_reset;
-    dc->realize = sha3_realize;
     dc->vmsd = &vmstate_sha3;
 
     ssc->push = xlx_sha3_stream_push;
