@@ -27,7 +27,8 @@
 #include "hw/sysbus.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
-#include "hw/register-dep.h"
+#include "hw/register.h"
+#include "hw/irq.h"
 #include "qemu/log.h"
 
 #ifndef XILINX_IO_MODULE_GPO_ERR_DEBUG
@@ -39,8 +40,8 @@
 #define XILINX_IO_MODULE_GPO(obj) \
      OBJECT_CHECK(XilinxGPO, (obj), TYPE_XILINX_IO_MODULE_GPO)
 
-#define R_IOM_GPO                   (0x00 / 4)
-#define R_MAX                       (1)
+REG32(IOM_GPO, 0x00)
+#define R_MAX                       (R_IOM_GPO + 1)
 
 typedef struct XilinxGPO {
     SysBusDevice parent_obj;
@@ -51,7 +52,8 @@ typedef struct XilinxGPO {
         uint32_t size;
         uint32_t init;
     } cfg;
-    DepRegisterInfo regs_info[R_MAX];
+    RegisterInfo regs_info[R_MAX];
+    uint32_t regs[R_MAX];
 
     qemu_irq outputs[32];
     const char *prefix;
@@ -64,17 +66,7 @@ static Property xlx_iom_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static const MemoryRegionOps iom_gpo_ops = {
-    .read = dep_register_read_memory_le,
-    .write = dep_register_write_memory_le,
-    .endianness = DEVICE_LITTLE_ENDIAN,
-    .valid = {
-        .min_access_size = 4,
-        .max_access_size = 4,
-    },
-};
-
-static void gpo_pw(DepRegisterInfo *reg, uint64_t value)
+static void gpo_pw(RegisterInfo *reg, uint64_t value)
 {
     XilinxGPO *s = XILINX_IO_MODULE_GPO(reg->opaque);
     unsigned int i;
@@ -85,13 +77,15 @@ static void gpo_pw(DepRegisterInfo *reg, uint64_t value)
     }
 }
 
-static uint64_t gpo_pr(DepRegisterInfo *reg, uint64_t value)
+static uint64_t gpo_pr(RegisterInfo *reg, uint64_t value)
 {
     return 0;
 }
 
-static const DepRegisterAccessInfo gpo_regs_info[] = {
-    [R_IOM_GPO] = { .name = "GPO", .post_write = gpo_pw, .post_read = gpo_pr, },
+static const RegisterAccessInfo gpo_regs_info[] = {
+    {   .name = "GPO", .addr = A_IOM_GPO,
+        .post_write = gpo_pw, .post_read = gpo_pr
+    },
 };
 
 static void iom_gpo_reset(DeviceState *dev)
@@ -101,26 +95,19 @@ static void iom_gpo_reset(DeviceState *dev)
     gpo_pw(&s->regs_info[R_IOM_GPO], s->cfg.init);
 }
 
+static const MemoryRegionOps iom_gpo_ops = {
+    .read = register_read_memory,
+    .write = register_write_memory,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = {
+        .min_access_size = 4,
+        .max_access_size = 4,
+    },
+};
+
 static void xlx_iom_realize(DeviceState *dev, Error **errp)
 {
     XilinxGPO *s = XILINX_IO_MODULE_GPO(dev);
-    unsigned int i;
-    s->prefix = object_get_canonical_path(OBJECT(dev));
-
-    for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        DepRegisterInfo *r = &s->regs_info[i];
-
-        *r = (DepRegisterInfo) {
-            .data_size = sizeof(uint32_t),
-            .access = &gpo_regs_info[i],
-            .debug = XILINX_IO_MODULE_GPO_ERR_DEBUG,
-            .prefix = s->prefix,
-            .opaque = s,
-        };
-        memory_region_init_io(&r->mem, OBJECT(dev), &iom_gpo_ops, r,
-                              r->access->name, 4);
-        memory_region_add_subregion(&s->iomem, i * 4, &r->mem);
-    }
 
     assert(s->cfg.size <= 32);
     qdev_init_gpio_out(dev, s->outputs, s->cfg.size);
@@ -130,10 +117,19 @@ static void xlx_iom_init(Object *obj)
 {
     XilinxGPO *s = XILINX_IO_MODULE_GPO(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+    RegisterInfoArray *reg_array;
 
-    memory_region_init_io(&s->iomem, obj, &iom_gpo_ops, s,
-                          TYPE_XILINX_IO_MODULE_GPO,
-                          R_MAX * 4);
+    memory_region_init(&s->iomem, obj, TYPE_XILINX_IO_MODULE_GPO, R_MAX * 4);
+    reg_array =
+        register_init_block32(DEVICE(obj), gpo_regs_info,
+                              ARRAY_SIZE(gpo_regs_info),
+                              s->regs_info, s->regs,
+                              &iom_gpo_ops,
+                              XILINX_IO_MODULE_GPO_ERR_DEBUG,
+                              R_MAX * 4);
+    memory_region_add_subregion(&s->iomem,
+                                0x0,
+                                &reg_array->mem);
     sysbus_init_mmio(sbd, &s->iomem);
 }
 
