@@ -27,7 +27,8 @@
 #include "hw/sysbus.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
-#include "hw/register-dep.h"
+#include "hw/register.h"
+#include "hw/irq.h"
 #include "qemu/log.h"
 
 #include "hw/misc/ipcores-rsa5-4k.h"
@@ -43,46 +44,50 @@
 #define XILINX_CSU_RSA(obj) \
      OBJECT_CHECK(XilinxRSA, (obj), TYPE_XILINX_CSU_RSA)
 
-#define R_WRITE_DATA          0x00
-#define R_WRITE_ADDR          0x01
-#define R_READ_DATA           0x02
-#define R_READ_ADDR           0x03
-#define R_CONTROL             0x04
-#define R_CONTROL_nop         0x00
-#define R_CONTROL_exp         0x01
-#define R_CONTROL_mod         0x02
-#define R_CONTROL_mul         0x03
-#define R_CONTROL_rrmod       0x04
-#define R_CONTROL_exppre      0x05
+REG32(RSA_WR_DATA, 0x0)
+    FIELD(RSA_WR_DATA, WR_DATA, 0, 8)
+REG32(RSA_WR_ADDR, 0x4)
+    FIELD(RSA_WR_ADDR, WR_ADDR, 0, 7)
+REG32(RSA_RD_DATA, 0x8)
+    FIELD(RSA_RD_DATA, RD_DATA, 0, 8)
+REG32(RSA_RD_ADDR, 0xc)
+    FIELD(RSA_RD_ADDR, RD_ADDR, 0, 7)
+REG32(CTRL, 0x10)
+    FIELD(CTRL, LEN_CODE, 4, 4)
+    FIELD(CTRL, DONE_CLR_ABORT, 3, 1)
+    FIELD(CTRL, OPCODE, 0, 3)
+REG32(STATUS, 0x14)
+    FIELD(STATUS, PROG_CNT, 3, 5)
+    FIELD(STATUS, ERROR, 2, 1)
+    FIELD(STATUS, BUSY, 1, 1)
+    FIELD(STATUS, DONE, 0, 1)
+REG32(MINV0, 0x18)
+    FIELD(MINV0, MINV0, 0, 8)
+REG32(MINV1, 0x1c)
+    FIELD(MINV1, MINV1, 0, 8)
+REG32(MINV2, 0x20)
+    FIELD(MINV2, MINV2, 0, 8)
+REG32(MINV3, 0x24)
+    FIELD(MINV3, MINV2, 0, 8)
+REG32(ZERO, 0x28)
+    FIELD(ZERO, ZERO, 0, 1)
 
-#define R_STATUS              0x05
-#define R_STATUS_done         (1 << 0)
-#define R_STATUS_busy         (1 << 1)
-#define R_STATUS_error        (1 << 2)
+REG32(WR_DATA_0, 0x2c)
+REG32(WR_DATA_1, 0x30)
+REG32(WR_DATA_2, 0x34)
+REG32(WR_DATA_3, 0x38)
+REG32(WR_DATA_4, 0x3c)
+REG32(WR_DATA_5, 0x40)
+REG32(WR_ADDR, 0x44)
+REG32(RD_DATA_0, 0x48)
+REG32(RD_DATA_1, 0x4c)
+REG32(RD_DATA_2, 0x50)
+REG32(RD_DATA_3, 0x54)
+REG32(RD_DATA_4, 0x58)
+REG32(RD_DATA_5, 0x5c)
+REG32(RD_ADDR, 0x60)
 
-#define R_MINV0               0x06
-#define R_MINV1               0x07
-#define R_MINV2               0x08
-#define R_MINV3               0x09
-#define R_ZERO                0x0A
-
-#define R_WR_DATA_0           (0x2c / 4)
-#define R_WR_DATA_1           (0x30 / 4)
-#define R_WR_DATA_2           (0x34 / 4)
-#define R_WR_DATA_3           (0x38 / 4)
-#define R_WR_DATA_4           (0x3c / 4)
-#define R_WR_DATA_5           (0x40 / 4)
-#define R_WR_ADDR             (0x44 / 4)
-
-#define R_RD_DATA_0           (0x48 / 4)
-#define R_RD_DATA_1           (0x4c / 4)
-#define R_RD_DATA_2           (0x50 / 4)
-#define R_RD_DATA_3           (0x54 / 4)
-#define R_RD_DATA_4           (0x58 / 4)
-#define R_RD_DATA_5           (0x5c / 4)
-#define R_RD_ADDR             (0x60 / 4)
-
-#define R_MAX                 0x19
+#define RSA_CORE_R_MAX (R_RD_ADDR + 1)
 
 static const struct {
     unsigned int digits;
@@ -109,27 +114,24 @@ typedef struct XilinxRSA {
     qemu_irq parent_irq;
 
     IPCoresRSA rsa;
-    DepRegisterInfo regs_info[R_MAX];
+    RegisterInfo regs_info[RSA_CORE_R_MAX];
     struct word wbuf;
 
-    uint32_t regs[R_MAX];
+    uint32_t regs[RSA_CORE_R_MAX];
 
     const char *prefix;
 } XilinxRSA;
 
-static const MemoryRegionOps csu_rsa_ops = {
-    .read = dep_register_read_memory_le,
-    .write = dep_register_write_memory_le,
-    .endianness = DEVICE_LITTLE_ENDIAN,
-    .valid = {
-        .min_access_size = 1,
-        .max_access_size = 4,
-    },
-};
+#define R_CONTROL_nop         0x00
+#define R_CONTROL_exp         0x01
+#define R_CONTROL_mod         0x02
+#define R_CONTROL_mul         0x03
+#define R_CONTROL_rrmod       0x04
+#define R_CONTROL_exppre      0x05
 
 typedef int (*ALUFunc)(IPCoresRSA *, unsigned int, unsigned int);
 
-ALUFunc alu_ops[] = {
+static const ALUFunc alu_ops[] = {
     [R_CONTROL_nop] = rsa_do_nop,
     [R_CONTROL_exp] = rsa_do_exp,
     [R_CONTROL_mod] = rsa_do_mod,
@@ -140,11 +142,11 @@ ALUFunc alu_ops[] = {
 
 static void rsa_update_irq(XilinxRSA *s)
 {
-    bool v = s->regs[R_STATUS] & R_STATUS_done;
+    bool v = ARRAY_FIELD_EX32(s->regs, STATUS, DONE);
     qemu_set_irq(s->parent_irq, v);
 }
 
-static void rsa_wdata_pw(DepRegisterInfo *reg, uint64_t val64)
+static void rsa_wdata_pw(RegisterInfo *reg, uint64_t val64)
 {
     XilinxRSA *s = XILINX_CSU_RSA(reg->opaque);
 
@@ -154,7 +156,7 @@ static void rsa_wdata_pw(DepRegisterInfo *reg, uint64_t val64)
     s->wbuf.u8[sizeof(s->wbuf.u8) - 1] = val64;
 }
 
-static void rsa_waddr_pw(DepRegisterInfo *reg, uint64_t val64)
+static void rsa_waddr_pw(RegisterInfo *reg, uint64_t val64)
 {
     XilinxRSA *s = XILINX_CSU_RSA(reg->opaque);
 
@@ -167,7 +169,7 @@ static void rsa_waddr_pw(DepRegisterInfo *reg, uint64_t val64)
     s->rsa.word_def[val64] = true;
 }
 
-static void rsa_wr_addr32_pw(DepRegisterInfo *reg, uint64_t val64)
+static void rsa_wr_addr32_pw(RegisterInfo *reg, uint64_t val64)
 {
     XilinxRSA *s = XILINX_CSU_RSA(reg->opaque);
 
@@ -180,7 +182,7 @@ static void rsa_wr_addr32_pw(DepRegisterInfo *reg, uint64_t val64)
     s->rsa.word_def[val64] = true;
 }
 
-static uint64_t rsa_rdata_pr(DepRegisterInfo *reg, uint64_t val)
+static uint64_t rsa_rdata_pr(RegisterInfo *reg, uint64_t val)
 {
     XilinxRSA *s = XILINX_CSU_RSA(reg->opaque);
     uint8_t r;
@@ -191,7 +193,7 @@ static uint64_t rsa_rdata_pr(DepRegisterInfo *reg, uint64_t val)
     return r;
 }
 
-static void rsa_raddr_pw(DepRegisterInfo *reg, uint64_t val64)
+static void rsa_raddr_pw(RegisterInfo *reg, uint64_t val64)
 {
     XilinxRSA *s = XILINX_CSU_RSA(reg->opaque);
 
@@ -203,7 +205,7 @@ static void rsa_raddr_pw(DepRegisterInfo *reg, uint64_t val64)
             sizeof s->wbuf.u8);
 }
 
-static void rsa_rd_addr32_pw(DepRegisterInfo *reg, uint64_t val64)
+static void rsa_rd_addr32_pw(RegisterInfo *reg, uint64_t val64)
 {
     XilinxRSA *s = XILINX_CSU_RSA(reg->opaque);
 
@@ -215,7 +217,7 @@ static void rsa_rd_addr32_pw(DepRegisterInfo *reg, uint64_t val64)
            BYTES_PER_WORD);
 }
 
-static uint64_t rsa_zero_pw(DepRegisterInfo *reg, uint64_t val64)
+static uint64_t rsa_zero_pw(RegisterInfo *reg, uint64_t val64)
 {
     XilinxRSA *s = XILINX_CSU_RSA(reg->opaque);
     uint32_t v = val64;
@@ -227,7 +229,7 @@ static uint64_t rsa_zero_pw(DepRegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
-static void rsa_control_pw(DepRegisterInfo *reg, uint64_t val64)
+static void rsa_control_pw(RegisterInfo *reg, uint64_t val64)
 {
     XilinxRSA *s = XILINX_CSU_RSA(reg->opaque);
     uint32_t v = val64;
@@ -248,25 +250,25 @@ static void rsa_control_pw(DepRegisterInfo *reg, uint64_t val64)
     digits = len_code_map[lencode].digits * 6;
 
     /* Clear the error status for every new op.  */
-    s->regs[R_STATUS] &= ~R_STATUS_error;
+    ARRAY_FIELD_DP32(s->regs, STATUS, ERROR, false);
 
     err = alu_ops[op](&s->rsa, bitlen, digits);
     if (err) {
-        s->regs[R_STATUS] |= R_STATUS_error;
+        ARRAY_FIELD_DP32(s->regs, STATUS, ERROR, true);
         qemu_log_mask(LOG_GUEST_ERROR, "%s: Detected an error: %s\n",
                       s->prefix, rsa_strerror(err));
     } else {
-        s->regs[R_STATUS] |= R_STATUS_done;
+        ARRAY_FIELD_DP32(s->regs, STATUS, DONE, true);
     }
 
     if (abort) {
-        s->regs[R_STATUS] &= ~R_STATUS_done;
+        ARRAY_FIELD_DP32(s->regs, STATUS, DONE, false);
     }
 
     rsa_update_irq(s);
 }
 
-static void rsa_minv_pw(DepRegisterInfo *reg, uint64_t val64)
+static void rsa_minv_pw(RegisterInfo *reg, uint64_t val64)
 {
     XilinxRSA *s = XILINX_CSU_RSA(reg->opaque);
     uint32_t minv;
@@ -278,41 +280,55 @@ static void rsa_minv_pw(DepRegisterInfo *reg, uint64_t val64)
     rsa_set_minv(&s->rsa, minv);
 }
 
-static const DepRegisterAccessInfo rsa_regs_info[] = {
-    [R_WRITE_DATA] = { .name = "WRITE_DATA", .post_write = rsa_wdata_pw },
-    [R_WRITE_ADDR] = { .name = "WRITE_ADDR", .post_write = rsa_waddr_pw },
-    [R_READ_DATA] = { .name = "READ_DATA", .post_read = rsa_rdata_pr,
-                      .ro = ~0 },
-    [R_READ_ADDR] = { .name = "READ_ADDR", .post_write = rsa_raddr_pw },
-    [R_CONTROL] = { .name = "CONTROL", .post_write = rsa_control_pw },
-    [R_STATUS] = { .name = "STATUS", .ro = ~0 },
-    [R_MINV0] = { .name = "MINV0", .post_write = rsa_minv_pw },
-    [R_MINV1] = { .name = "MINV1", .post_write = rsa_minv_pw },
-    [R_MINV2] = { .name = "MINV2", .post_write = rsa_minv_pw },
-    [R_MINV3] = { .name = "MINV3", .post_write = rsa_minv_pw },
-    [R_ZERO] = {
-        .name = "ZERO",
+static const RegisterAccessInfo rsa_regs_info[] = {
+    {   .name = "RSA_WR_DATA",  .addr = A_RSA_WR_DATA,
+        .post_write = rsa_wdata_pw
+    },{ .name = "RSA_WR_ADDR",  .addr = A_RSA_WR_ADDR,
+        .post_write = rsa_waddr_pw
+    },{ .name = "RSA_RD_DATA",  .addr = A_RSA_RD_DATA,
+        .ro = 0xff,
+        .post_read = rsa_rdata_pr
+    },{ .name = "RSA_RD_ADDR",  .addr = A_RSA_RD_ADDR,
+        .post_write = rsa_raddr_pw
+    },{ .name = "CTRL",  .addr = A_CTRL,
+        .post_write = rsa_control_pw
+    },{ .name = "STATUS",  .addr = A_STATUS,
+        .ro = 0xff,
+    },{ .name = "MINV0",  .addr = A_MINV0,
+        .post_write = rsa_minv_pw
+    },{ .name = "MINV1",  .addr = A_MINV1,
+        .post_write = rsa_minv_pw
+    },{ .name = "MINV2",  .addr = A_MINV2,
+        .post_write = rsa_minv_pw
+    },{ .name = "MINV3",  .addr = A_MINV3,
+        .post_write = rsa_minv_pw
+    },{ .name = "ZERO",  .addr = A_ZERO,
         .pre_write = rsa_zero_pw,
-        .ge1 = (DepRegisterAccessError[]) {
-            { .mask = ~1, .reason = "reserved" },
-            {},
-        },
     },
-    [R_WR_DATA_0] = { .name = "WR_DATA_0" },
-    [R_WR_DATA_1] = { .name = "WR_DATA_1" },
-    [R_WR_DATA_2] = { .name = "WR_DATA_2" },
-    [R_WR_DATA_3] = { .name = "WR_DATA_3" },
-    [R_WR_DATA_4] = { .name = "WR_DATA_4" },
-    [R_WR_DATA_5] = { .name = "WR_DATA_5" },
-    [R_WR_ADDR] = { .name = "WR_ADDR", .post_write = rsa_wr_addr32_pw },
 
-    [R_RD_DATA_0] = { .name = "RD_DATA_0", .ro = ~0 },
-    [R_RD_DATA_1] = { .name = "RD_DATA_1", .ro = ~0 },
-    [R_RD_DATA_2] = { .name = "RD_DATA_2", .ro = ~0 },
-    [R_RD_DATA_3] = { .name = "RD_DATA_3", .ro = ~0 },
-    [R_RD_DATA_4] = { .name = "RD_DATA_4", .ro = ~0 },
-    [R_RD_DATA_5] = { .name = "RD_DATA_5", .ro = ~0 },
-    [R_RD_ADDR] = { .name = "RD_ADDR", .post_write = rsa_rd_addr32_pw },
+    {   .name = "WR_DATA_0",  .addr = A_WR_DATA_0,
+    },{ .name = "WR_DATA_1",  .addr = A_WR_DATA_1,
+    },{ .name = "WR_DATA_2",  .addr = A_WR_DATA_2,
+    },{ .name = "WR_DATA_3",  .addr = A_WR_DATA_3,
+    },{ .name = "WR_DATA_4",  .addr = A_WR_DATA_4,
+    },{ .name = "WR_DATA_5",  .addr = A_WR_DATA_5,
+    },{ .name = "WR_ADDR",  .addr = A_WR_ADDR,
+        .post_write = rsa_wr_addr32_pw
+    },{ .name = "RD_DATA_0",  .addr = A_RD_DATA_0,
+        .ro = 0xffffffff,
+    },{ .name = "RD_DATA_1",  .addr = A_RD_DATA_1,
+        .ro = 0xffffffff,
+    },{ .name = "RD_DATA_2",  .addr = A_RD_DATA_2,
+        .ro = 0xffffffff,
+    },{ .name = "RD_DATA_3",  .addr = A_RD_DATA_3,
+        .ro = 0xffffffff,
+    },{ .name = "RD_DATA_4",  .addr = A_RD_DATA_4,
+        .ro = 0xffffffff,
+    },{ .name = "RD_DATA_5",  .addr = A_RD_DATA_5,
+        .ro = 0xffffffff,
+    },{ .name = "RD_ADDR",  .addr = A_RD_ADDR,
+        .post_write = rsa_rd_addr32_pw
+    }
 };
 
 static void csu_rsa_reset(DeviceState *dev)
@@ -321,7 +337,7 @@ static void csu_rsa_reset(DeviceState *dev)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        dep_register_reset(&s->regs_info[i]);
+        register_reset(&s->regs_info[i]);
     }
 
     rsa_reset(&s->rsa);
@@ -329,37 +345,34 @@ static void csu_rsa_reset(DeviceState *dev)
     memset(&s->wbuf, 0, sizeof s->wbuf);
 }
 
-static void xlx_rsa_realize(DeviceState *dev, Error **errp)
-{
-    XilinxRSA *s = XILINX_CSU_RSA(dev);
-    unsigned int i;
-    s->prefix = object_get_canonical_path(OBJECT(dev));
-
-    for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        DepRegisterInfo *r = &s->regs_info[i];
-
-        *r = (DepRegisterInfo) {
-            .data = (uint8_t *) &s->regs[i],
-            .data_size = sizeof(uint32_t),
-            .access = &rsa_regs_info[i],
-            .debug = XILINX_CSU_RSA_ERR_DEBUG,
-            .prefix = s->prefix,
-            .opaque = s,
-        };
-        memory_region_init_io(&r->mem, OBJECT(dev), &csu_rsa_ops, r,
-                              r->access->name, 4);
-        memory_region_add_subregion(&s->iomem, i * 4, &r->mem);
-    }
-}
+static const MemoryRegionOps csu_rsa_ops = {
+    .read = register_read_memory,
+    .write = register_write_memory,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = {
+        .min_access_size = 1,
+        .max_access_size = 4,
+    },
+};
 
 static void xlx_rsa_init(Object *obj)
 {
     XilinxRSA *s = XILINX_CSU_RSA(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+    RegisterInfoArray *reg_array;
 
-    memory_region_init_io(&s->iomem, obj, &csu_rsa_ops, s,
-                          TYPE_XILINX_CSU_RSA,
-                          R_MAX * 4);
+    memory_region_init(&s->iomem, obj, TYPE_XILINX_CSU_RSA, RSA_CORE_R_MAX * 4);
+    reg_array =
+        register_init_block32(DEVICE(obj), rsa_regs_info,
+                              ARRAY_SIZE(rsa_regs_info),
+                              s->regs_info, s->regs,
+                              &csu_rsa_ops,
+                              XILINX_CSU_RSA_ERR_DEBUG,
+                              RSA_CORE_R_MAX * 4);
+    memory_region_add_subregion(&s->iomem,
+                                0x0,
+                                &reg_array->mem);
+
     sysbus_init_mmio(sbd, &s->iomem);
     sysbus_init_irq(sbd, &s->parent_irq);
 }
@@ -372,7 +385,7 @@ static const VMStateDescription vmstate_xlx_rsa = {
     .fields = (VMStateField[]) {
         VMSTATE_UINT8_ARRAY(rsa.mem.u8, XilinxRSA, RAMSIZE),
         VMSTATE_UINT8_ARRAY(wbuf.u8, XilinxRSA, BYTES_PER_WORD),
-        VMSTATE_UINT32_ARRAY(regs, XilinxRSA, R_MAX),
+        VMSTATE_UINT32_ARRAY(regs, XilinxRSA, RSA_CORE_R_MAX),
         VMSTATE_END_OF_LIST(),
     }
 };
@@ -382,7 +395,6 @@ static void xlx_rsa_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->reset = csu_rsa_reset;
-    dc->realize = xlx_rsa_realize;
     dc->vmsd = &vmstate_xlx_rsa;
 }
 
