@@ -25,7 +25,8 @@
 
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
-#include "hw/register-dep.h"
+#include "hw/register.h"
+#include "hw/irq.h"
 #include "qemu/log.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
@@ -41,8 +42,8 @@
 #define XILINX_IO_MODULE_GPI(obj) \
      OBJECT_CHECK(XilinxGPI, (obj), TYPE_XILINX_IO_MODULE_GPI)
 
-#define R_IOM_GPI                   (0x00 / 4)
-#define R_MAX                       (1)
+REG32(IOM_GPI, 0x00)
+#define R_MAX                       (R_IOM_GPI + 1)
 
 typedef struct XilinxGPI {
     SysBusDevice parent_obj;
@@ -57,7 +58,7 @@ typedef struct XilinxGPI {
         uint32_t size;
     } cfg;
     uint32_t regs[R_MAX];
-    DepRegisterInfo regs_info[R_MAX];
+    RegisterInfo regs_info[R_MAX];
     const char *prefix;
 } XilinxGPI;
 
@@ -66,16 +67,6 @@ static Property xlx_iom_properties[] = {
     DEFINE_PROP_BOOL("gpi-interrupt", XilinxGPI, cfg.interrupt, 0),
     DEFINE_PROP_UINT32("gpi-size", XilinxGPI, cfg.size, 0),
     DEFINE_PROP_END_OF_LIST(),
-};
-
-static const MemoryRegionOps iom_gpi_ops = {
-    .read = dep_register_read_memory_le,
-    .write = dep_register_write_memory_le,
-    .endianness = DEVICE_LITTLE_ENDIAN,
-    .valid = {
-        .min_access_size = 4,
-        .max_access_size = 4,
-    },
 };
 
 static void update_irq(XilinxGPI *s)
@@ -117,8 +108,8 @@ static void ien_handler(void *opaque, int n, int level)
     }
 }
 
-static const DepRegisterAccessInfo gpi_regs_info[] = {
-    [R_IOM_GPI] = { .name = "GPI", .ro = ~0 },
+static const RegisterAccessInfo gpi_regs_info[] = {
+    { .name = "GPI", .addr = A_IOM_GPI, .ro = ~0 },
 };
 
 static void iom_gpi_reset(DeviceState *dev)
@@ -127,33 +118,25 @@ static void iom_gpi_reset(DeviceState *dev)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        dep_register_reset(&s->regs_info[i]);
+        register_reset(&s->regs_info[i]);
     }
     /* Disable all interrupts initially. */
     s->ien = 0;
 }
 
+static const MemoryRegionOps iom_gpi_ops = {
+    .read = register_read_memory,
+    .write = register_write_memory,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = {
+        .min_access_size = 4,
+        .max_access_size = 4,
+    },
+};
+
 static void xlx_iom_realize(DeviceState *dev, Error **errp)
 {
     XilinxGPI *s = XILINX_IO_MODULE_GPI(dev);
-    unsigned int i;
-    s->prefix = object_get_canonical_path(OBJECT(dev));
-
-    for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        DepRegisterInfo *r = &s->regs_info[i];
-
-        *r = (DepRegisterInfo) {
-            .data = (uint8_t *)&s->regs[i],
-            .data_size = sizeof(uint32_t),
-            .access = &gpi_regs_info[i],
-            .debug = XILINX_IO_MODULE_GPI_ERR_DEBUG,
-            .prefix = s->prefix,
-            .opaque = s,
-        };
-        memory_region_init_io(&r->mem, OBJECT(dev), &iom_gpi_ops, r,
-                              r->access->name, 4);
-        memory_region_add_subregion(&s->iomem, i * 4, &r->mem);
-    }
 
     assert(s->cfg.size <= 32);
     /* FIXME: Leave the std ones for qtest. Add a qtest way to name
@@ -168,9 +151,19 @@ static void xlx_iom_init(Object *obj)
     XilinxGPI *s = XILINX_IO_MODULE_GPI(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
 
-    memory_region_init_io(&s->iomem, obj, &iom_gpi_ops, s,
-                          TYPE_XILINX_IO_MODULE_GPI,
-                          R_MAX * 4);
+    RegisterInfoArray *reg_array;
+
+    memory_region_init(&s->iomem, obj, TYPE_XILINX_IO_MODULE_GPI, R_MAX * 4);
+    reg_array =
+        register_init_block32(DEVICE(obj), gpi_regs_info,
+                              ARRAY_SIZE(gpi_regs_info),
+                              s->regs_info, s->regs,
+                              &iom_gpi_ops,
+                              XILINX_IO_MODULE_GPI_ERR_DEBUG,
+                              R_MAX * 4);
+    memory_region_add_subregion(&s->iomem,
+                                0x0,
+                                &reg_array->mem);
     sysbus_init_mmio(sbd, &s->iomem);
     sysbus_init_irq(sbd, &s->parent_irq);
 }
