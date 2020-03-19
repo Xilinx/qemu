@@ -1035,6 +1035,10 @@ typedef struct PMU_GLOBAL {
     qemu_irq irq_error_int_1;
     qemu_irq irq_req_iso_int;
 
+    qemu_irq pmu_wake;
+    qemu_irq fpd_rst;
+    qemu_irq ps_only_rst;
+
     bool fw_is_present;
     bool ignore_pwr_req;
     /* Record hardware error events, so error status register can be updated
@@ -1046,6 +1050,11 @@ typedef struct PMU_GLOBAL {
     uint32_t regs[R_MAX];
     DepRegisterInfo regs_info[R_MAX];
 } PMU_GLOBAL;
+
+#define PROPAGATE_GPIO(s, reg, f, irq) {             \
+    bool val = DEP_AF_EX32((s)->regs, reg, f);       \
+    qemu_set_irq(irq, val);                          \
+}
 
 static void req_pwrdwn_int_update_irq(PMU_GLOBAL *s)
 {
@@ -1520,15 +1529,27 @@ static void mbist_pg_en_postw(DepRegisterInfo *reg, uint64_t val64)
                            & s->regs[R_MBIST_SETUP] & s->regs[R_MBIST_PG_EN];
 }
 
+static void global_cntrl_postw(DepRegisterInfo *reg, uint64_t val64)
+{
+    PMU_GLOBAL *s = XILINX_PMU_GLOBAL(reg->opaque);
+
+    PROPAGATE_GPIO(s, GLOBAL_CNTRL, DONT_SLEEP, s->pmu_wake);
+}
+
+static void global_reset_postw(DepRegisterInfo *reg, uint64_t val64)
+{
+    PMU_GLOBAL *s = XILINX_PMU_GLOBAL(reg->opaque);
+
+    PROPAGATE_GPIO(s, GLOBAL_RESET, FPD_RST, s->fpd_rst);
+    PROPAGATE_GPIO(s, GLOBAL_RESET, PS_ONLY_RST, s->ps_only_rst);
+}
+
 static DepRegisterAccessInfo pmu_global_regs_info[] = {
     {   .name = "GLOBAL_CNTRL",  .decode.addr = A_GLOBAL_CNTRL,
         .rsvd = 0xfffe00e8,
         .ro = 0xffff00e8,
         .reset = 0x00008800,
-        .gpios = (DepRegisterGPIOMapping[]) {
-            { .name = "pmu_wake", .bit_pos = 0, .width = 1 },
-            {},
-        }
+        .post_write = global_cntrl_postw,
     },{ .name = "PS_CNTRL",  .decode.addr = A_PS_CNTRL,
         .rsvd = 0xfffefffc,
         .ro = 0xfffffffc,
@@ -1775,11 +1796,7 @@ static DepRegisterAccessInfo pmu_global_regs_info[] = {
     },{ .name = "GLOBAL_RESET",  .decode.addr = A_GLOBAL_RESET,
         .rsvd = 0xfffff8ff,
         .ro = 0xfffff8ff,
-        .gpios = (DepRegisterGPIOMapping[]) {
-            { .name = "FPD_RST", .bit_pos = 9, .width = 1 },
-            { .name = "PS_ONLY_RST", .bit_pos = 10, .width = 1 },
-            {},
-        }
+        .post_write = global_reset_postw,
     },{ .name = "ROM_VALIDATION_STATUS",  .decode.addr = A_ROM_VALIDATION_STATUS,
         .rsvd = 0xfffffffc,
         .ro = 0xffffffff,
@@ -1983,6 +2000,10 @@ static void pmu_global_init(Object *obj)
                              "error_1_out", 1);
     qdev_init_gpio_out_named(DEVICE(obj), &s->irq_error_int_2,
                              "error_2_out", 1);
+
+    qdev_init_gpio_out_named(DEVICE(obj), &s->pmu_wake, "pmu_wake", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->fpd_rst, "FPD_RST", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->ps_only_rst, "PS_ONLY_RST", 1);
 
     /* GPIOs that can be used from qtest */
     qdev_init_gpio_in(DEVICE(obj), error_handler, 64);
