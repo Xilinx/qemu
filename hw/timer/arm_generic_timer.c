@@ -26,13 +26,14 @@
 
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
-#include "hw/register-dep.h"
+#include "hw/register.h"
 #include "qemu/bitops.h"
 #include "qapi/error.h"
 #include "qemu/log.h"
 #include "qemu/timer.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
+#include "hw/irq.h"
 
 #ifndef ARM_GEN_TIMER_ERR_DEBUG
 #define ARM_GEN_TIMER_ERR_DEBUG 0
@@ -43,14 +44,14 @@
 #define ARM_GEN_TIMER(obj) \
      OBJECT_CHECK(ARMGenTimer, (obj), TYPE_ARM_GEN_TIMER)
 
-DEP_REG32(COUNTER_CONTROL_REGISTER, 0x0)
-    DEP_FIELD(COUNTER_CONTROL_REGISTER, EN, 1, 1)
-    DEP_FIELD(COUNTER_CONTROL_REGISTER, HDBG, 1, 0)
-DEP_REG32(COUNTER_STATUS_REGISTER, 0x4)
-    DEP_FIELD(COUNTER_STATUS_REGISTER, DBGH, 1, 1)
-DEP_REG32(CURRENT_COUNTER_VALUE_LOWER_REGISTER, 0x8)
-DEP_REG32(CURRENT_COUNTER_VALUE_UPPER_REGISTER, 0xc)
-DEP_REG32(BASE_FREQUENCY_ID_REGISTER, 0x20)
+REG32(COUNTER_CONTROL_REGISTER, 0x0)
+    FIELD(COUNTER_CONTROL_REGISTER, EN, 1, 1)
+    FIELD(COUNTER_CONTROL_REGISTER, HDBG, 0, 1)
+REG32(COUNTER_STATUS_REGISTER, 0x4)
+    FIELD(COUNTER_STATUS_REGISTER, DBGH, 1, 1)
+REG32(CURRENT_COUNTER_VALUE_LOWER_REGISTER, 0x8)
+REG32(CURRENT_COUNTER_VALUE_UPPER_REGISTER, 0xc)
+REG32(BASE_FREQUENCY_ID_REGISTER, 0x20)
 
 #define R_MAX (R_BASE_FREQUENCY_ID_REGISTER + 1)
 
@@ -62,10 +63,10 @@ typedef struct ARMGenTimer {
     uint64_t tick_offset;
 
     uint32_t regs[R_MAX];
-    DepRegisterInfo regs_info[R_MAX];
+    RegisterInfo regs_info[R_MAX];
 } ARMGenTimer;
 
-static void counter_control_postw(DepRegisterInfo *reg, uint64_t val64)
+static void counter_control_postw(RegisterInfo *reg, uint64_t val64)
 {
     ARMGenTimer *s = ARM_GEN_TIMER(reg->opaque);
     bool new_status = extract32(s->regs[R_COUNTER_CONTROL_REGISTER],
@@ -85,7 +86,7 @@ static void counter_control_postw(DepRegisterInfo *reg, uint64_t val64)
     s->enabled = new_status;
 }
 
-static uint64_t couter_low_value_postr(DepRegisterInfo *reg, uint64_t val64)
+static uint64_t couter_low_value_postr(RegisterInfo *reg, uint64_t val64)
 {
     ARMGenTimer *s = ARM_GEN_TIMER(reg->opaque);
     uint64_t current_ticks, total_ticks;
@@ -104,7 +105,7 @@ static uint64_t couter_low_value_postr(DepRegisterInfo *reg, uint64_t val64)
     return low_ticks;
 }
 
-static uint64_t couter_high_value_postr(DepRegisterInfo *reg, uint64_t val64)
+static uint64_t couter_high_value_postr(RegisterInfo *reg, uint64_t val64)
 {
     ARMGenTimer *s = ARM_GEN_TIMER(reg->opaque);
     uint64_t current_ticks, total_ticks;
@@ -124,22 +125,22 @@ static uint64_t couter_high_value_postr(DepRegisterInfo *reg, uint64_t val64)
 }
 
 
-static DepRegisterAccessInfo arm_gen_timer_regs_info[] = {
+static RegisterAccessInfo arm_gen_timer_regs_info[] = {
     {   .name = "COUNTER_CONTROL_REGISTER",
-        .decode.addr = A_COUNTER_CONTROL_REGISTER,
+        .addr = A_COUNTER_CONTROL_REGISTER,
         .rsvd = 0xfffffffc,
         .post_write = counter_control_postw,
     },{ .name = "COUNTER_STATUS_REGISTER",
-        .decode.addr = A_COUNTER_STATUS_REGISTER,
+        .addr = A_COUNTER_STATUS_REGISTER,
         .rsvd = 0xfffffffd, .ro = 0x2,
     },{ .name = "CURRENT_COUNTER_VALUE_LOWER_REGISTER",
-        .decode.addr = A_CURRENT_COUNTER_VALUE_LOWER_REGISTER,
+        .addr = A_CURRENT_COUNTER_VALUE_LOWER_REGISTER,
         .post_read = couter_low_value_postr,
     },{ .name = "CURRENT_COUNTER_VALUE_UPPER_REGISTER",
-        .decode.addr = A_CURRENT_COUNTER_VALUE_UPPER_REGISTER,
+        .addr = A_CURRENT_COUNTER_VALUE_UPPER_REGISTER,
         .post_read = couter_high_value_postr,
     },{ .name = "BASE_FREQUENCY_ID_REGISTER",
-        .decode.addr = A_BASE_FREQUENCY_ID_REGISTER,
+        .addr = A_BASE_FREQUENCY_ID_REGISTER,
     }
 };
 
@@ -149,40 +150,11 @@ static void arm_gen_timer_reset(DeviceState *dev)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        dep_register_reset(&s->regs_info[i]);
+        register_reset(&s->regs_info[i]);
     }
 
     s->tick_offset = 0;
     s->enabled = false;
-}
-
-static uint64_t arm_gen_timer_read(void *opaque, hwaddr addr, unsigned size)
-{
-    ARMGenTimer *s = ARM_GEN_TIMER(opaque);
-    DepRegisterInfo *r = &s->regs_info[addr / 4];
-
-    if (!r->data) {
-        qemu_log("%s: Decode error: read from %" HWADDR_PRIx "\n",
-                 object_get_canonical_path(OBJECT(s)),
-                 addr);
-        return 0;
-    }
-    return dep_register_read(r);
-}
-
-static void arm_gen_timer_write(void *opaque, hwaddr addr, uint64_t value,
-                      unsigned size)
-{
-    ARMGenTimer *s = ARM_GEN_TIMER(opaque);
-    DepRegisterInfo *r = &s->regs_info[addr / 4];
-
-    if (!r->data) {
-        qemu_log("%s: Decode error: write to %" HWADDR_PRIx "=%" PRIx64 "\n",
-                 object_get_canonical_path(OBJECT(s)),
-                 addr, value);
-        return;
-    }
-    dep_register_write(r, value, ~0);
 }
 
 static void arm_gen_timer_access(MemoryTransaction *tr)
@@ -203,9 +175,9 @@ static void arm_gen_timer_access(MemoryTransaction *tr)
     }
 
     if (is_write) {
-        arm_gen_timer_write(opaque, addr, value, size);
+        register_write_memory(opaque, addr, value, size);
     } else {
-        tr->data.u64 = arm_gen_timer_read(opaque, addr, size);
+        tr->data.u64 = register_read_memory(opaque, addr, size);
     }
 }
 
@@ -218,35 +190,24 @@ static const MemoryRegionOps arm_gen_timer_ops = {
     },
 };
 
-static void arm_gen_timer_realize(DeviceState *dev, Error **errp)
-{
-    ARMGenTimer *s = ARM_GEN_TIMER(dev);
-    const char *prefix = object_get_canonical_path(OBJECT(dev));
-    unsigned int i;
-
-    for (i = 0; i < ARRAY_SIZE(arm_gen_timer_regs_info); ++i) {
-        DepRegisterInfo *r =
-                    &s->regs_info[arm_gen_timer_regs_info[i].decode.addr / 4];
-
-        *r = (DepRegisterInfo) {
-            .data = (uint8_t *)&s->regs[
-                    arm_gen_timer_regs_info[i].decode.addr/4],
-            .data_size = sizeof(uint32_t),
-            .access = &arm_gen_timer_regs_info[i],
-            .debug = ARM_GEN_TIMER_ERR_DEBUG,
-            .prefix = prefix,
-            .opaque = s,
-        };
-    }
-}
-
 static void arm_gen_timer_init(Object *obj)
 {
     ARMGenTimer *s = ARM_GEN_TIMER(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+    RegisterInfoArray *reg_array;
 
-    memory_region_init_io(&s->iomem, obj, &arm_gen_timer_ops, s,
-                          TYPE_ARM_GEN_TIMER, R_MAX * 4);
+    memory_region_init(&s->iomem, obj, TYPE_ARM_GEN_TIMER,
+                       R_MAX * 4);
+    reg_array =
+        register_init_block32(DEVICE(obj), arm_gen_timer_regs_info,
+                              ARRAY_SIZE(arm_gen_timer_regs_info),
+                              s->regs_info, s->regs,
+                              &arm_gen_timer_ops,
+                              ARM_GEN_TIMER_ERR_DEBUG,
+                              R_MAX * 4);
+    memory_region_add_subregion(&s->iomem,
+                                0x0,
+                                &reg_array->mem);
     sysbus_init_mmio(sbd, &s->iomem);
 }
 
@@ -266,7 +227,6 @@ static void arm_gen_timer_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->reset = arm_gen_timer_reset;
-    dc->realize = arm_gen_timer_realize;
     dc->vmsd = &vmstate_arm_gen_timer;
 }
 
