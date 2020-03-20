@@ -1,10 +1,18 @@
+/*
+ * QEMU model of the PMC SBI
+ *
+ * Copyright (c) 2020 Xilinx Inc
+ *
+ * This code is licensed under the GNU GPL.
+ */
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "chardev/char.h"
 #include "chardev/char-fe.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
-#include "hw/register-dep.h"
+#include "hw/register.h"
+#include "hw/irq.h"
 #include "qemu/fifo.h"
 #include "hw/remote-port-proto.h"
 #include "hw/remote-port-device.h"
@@ -12,42 +20,42 @@
 #include "qemu/log.h"
 #include "hw/fdt_generic_util.h"
 
-DEP_REG32(SBI_MODE, 0x0)
-    DEP_FIELD(SBI_MODE, JTAG, 1, 1)
-    DEP_FIELD(SBI_MODE, SELECT, 1, 0)
-DEP_REG32(SBI_CTRL, 0x4)
-    DEP_FIELD(SBI_CTRL, APB_ERR_RES, 1, 5)
-    DEP_FIELD(SBI_CTRL, INTERFACE, 3, 2)
-    DEP_FIELD(SBI_CTRL, SOFT_RST, 1, 1)
-    DEP_FIELD(SBI_CTRL, ENABLE, 1, 0)
-DEP_REG32(SMAP_CTRL, 0x8)
-    DEP_FIELD(SMAP_CTRL, BURST_SIZE, 2, 1)
-    DEP_FIELD(SMAP_CTRL, MODE, 1, 0)
-DEP_REG32(SBI_IRQ_STATUS, 0x300)
-    DEP_FIELD(SBI_IRQ_STATUS, DATA_RDY, 1, 2)
-    DEP_FIELD(SBI_IRQ_STATUS, SMAP_ABORT, 1, 1)
-    DEP_FIELD(SBI_IRQ_STATUS, INV_APB, 1, 0)
-DEP_REG32(SBI_IRQ_MASK, 0x304)
-    DEP_FIELD(SBI_IRQ_MASK, DATA_RDY, 1, 2)
-    DEP_FIELD(SBI_IRQ_MASK, SMAP_ABORT, 1, 1)
-    DEP_FIELD(SBI_IRQ_MASK, INV_APB, 1, 0)
-DEP_REG32(SBI_IRQ_ENABLE, 0x308)
-    DEP_FIELD(SBI_IRQ_ENABLE, DATA_RDY, 1, 2)
-    DEP_FIELD(SBI_IRQ_ENABLE, SMAP_ABORT, 1, 1)
-    DEP_FIELD(SBI_IRQ_ENABLE, INV_APB, 1, 0)
-DEP_REG32(SBI_IRQ_DISABLE, 0x30c)
-    DEP_FIELD(SBI_IRQ_DISABLE, DATA_RDY, 1, 2)
-    DEP_FIELD(SBI_IRQ_DISABLE, SMAP_ABORT, 1, 1)
-    DEP_FIELD(SBI_IRQ_DISABLE, INV_APB, 1, 0)
-DEP_REG32(SBI_IRQ_TRIGGER, 0x310)
-    DEP_FIELD(SBI_IRQ_TRIGGER, DATA_RDY, 1, 2)
-    DEP_FIELD(SBI_IRQ_TRIGGER, SMAP_ABORT, 1, 1)
-    DEP_FIELD(SBI_IRQ_TRIGGER, INV_APB, 1, 0)
-DEP_REG32(SBI_RAM, 0x500)
-    DEP_FIELD(SBI_RAM, EMASA, 1, 6)
-    DEP_FIELD(SBI_RAM, EMAB, 3, 3)
-    DEP_FIELD(SBI_RAM, EMAA, 3, 0)
-DEP_REG32(SBI_ECO, 0x1000)
+REG32(SBI_MODE, 0x0)
+    FIELD(SBI_MODE, JTAG, 1, 1)
+    FIELD(SBI_MODE, SELECT, 0, 1)
+REG32(SBI_CTRL, 0x4)
+    FIELD(SBI_CTRL, APB_ERR_RES, 5, 1)
+    FIELD(SBI_CTRL, INTERFACE, 2, 3)
+    FIELD(SBI_CTRL, SOFT_RST, 1, 1)
+    FIELD(SBI_CTRL, ENABLE, 0, 1)
+REG32(SMAP_CTRL, 0x8)
+    FIELD(SMAP_CTRL, BURST_SIZE, 1, 2)
+    FIELD(SMAP_CTRL, MODE, 0, 1)
+REG32(SBI_IRQ_STATUS, 0x300)
+    FIELD(SBI_IRQ_STATUS, DATA_RDY, 2, 1)
+    FIELD(SBI_IRQ_STATUS, SMAP_ABORT, 1, 1)
+    FIELD(SBI_IRQ_STATUS, INV_APB, 0, 1)
+REG32(SBI_IRQ_MASK, 0x304)
+    FIELD(SBI_IRQ_MASK, DATA_RDY, 2, 1)
+    FIELD(SBI_IRQ_MASK, SMAP_ABORT, 1, 1)
+    FIELD(SBI_IRQ_MASK, INV_APB, 0, 1)
+REG32(SBI_IRQ_ENABLE, 0x308)
+    FIELD(SBI_IRQ_ENABLE, DATA_RDY, 2, 1)
+    FIELD(SBI_IRQ_ENABLE, SMAP_ABORT, 1, 1)
+    FIELD(SBI_IRQ_ENABLE, INV_APB, 0, 1)
+REG32(SBI_IRQ_DISABLE, 0x30c)
+    FIELD(SBI_IRQ_DISABLE, DATA_RDY, 2, 1)
+    FIELD(SBI_IRQ_DISABLE, SMAP_ABORT, 1, 1)
+    FIELD(SBI_IRQ_DISABLE, INV_APB, 0, 1)
+REG32(SBI_IRQ_TRIGGER, 0x310)
+    FIELD(SBI_IRQ_TRIGGER, DATA_RDY, 2, 1)
+    FIELD(SBI_IRQ_TRIGGER, SMAP_ABORT, 1, 1)
+    FIELD(SBI_IRQ_TRIGGER, INV_APB, 0, 1)
+REG32(SBI_RAM, 0x500)
+    FIELD(SBI_RAM, EMASA, 6, 1)
+    FIELD(SBI_RAM, EMAB, 3, 3)
+    FIELD(SBI_RAM, EMAA, 0, 3)
+REG32(SBI_ECO, 0x1000)
 
 #define R_MAX (R_SBI_ECO + 1)
 
@@ -81,16 +89,16 @@ DEP_REG32(SBI_ECO, 0x1000)
     } while (0)
 
 #define IF_BURST(pnum) \
-    (DEP_AF_EX32(s->regs, SMAP_CTRL, MODE) == SMAP_BURST_MODE && \
-     DEP_AF_EX32(s->regs, SBI_CTRL, INTERFACE) == SMAP_INTERFACE && \
-     (pnum >= (1 << DEP_AF_EX32(s->regs, SMAP_CTRL, BURST_SIZE)) * 1024))
+    (ARRAY_FIELD_EX32(s->regs, SMAP_CTRL, MODE) == SMAP_BURST_MODE && \
+     ARRAY_FIELD_EX32(s->regs, SBI_CTRL, INTERFACE) == SMAP_INTERFACE && \
+     (pnum >= (1 << ARRAY_FIELD_EX32(s->regs, SMAP_CTRL, BURST_SIZE)) * 1024))
 
 #define IF_NON_BURST(pnum) \
-    ((DEP_AF_EX32(s->regs, SMAP_CTRL, MODE) == SMAP_NORMAL_MODE) && \
+    ((ARRAY_FIELD_EX32(s->regs, SMAP_CTRL, MODE) == SMAP_NORMAL_MODE) && \
      (pnum >= 4))
 
 #define SMAP_BURST_SIZE(s) \
-        ((1 << DEP_AF_EX32(s->regs, SMAP_CTRL, BURST_SIZE)) * 1024)
+        ((1 << ARRAY_FIELD_EX32(s->regs, SMAP_CTRL, BURST_SIZE)) * 1024)
 
 typedef struct SlaveBootInt {
     SysBusDevice parent_obj;
@@ -102,7 +110,7 @@ typedef struct SlaveBootInt {
     void *notify_opaque;
     MemoryRegion iomem;
     uint32_t regs[R_MAX];
-    DepRegisterInfo regs_info[R_MAX];
+    RegisterInfo regs_info[R_MAX];
     int BusWidthDetectCounter;
 
     /* Select Map */
@@ -116,7 +124,7 @@ typedef struct SlaveBootInt {
 
 static int sbi_can_receive_from_dma(SlaveBootInt *s)
 {
-    if (!DEP_AF_EX32(s->regs, SBI_MODE, SELECT)) {
+    if (!ARRAY_FIELD_EX32(s->regs, SBI_MODE, SELECT)) {
         return 1;
     }
 
@@ -136,11 +144,11 @@ static void sbi_update_irq(SlaveBootInt *s)
     bool pending;
 
     if (IF_BURST(s->fifo.num)) {
-        DEP_AF_DP32(s->regs, SBI_IRQ_STATUS, DATA_RDY, 1);
+        ARRAY_FIELD_DP32(s->regs, SBI_IRQ_STATUS, DATA_RDY, 1);
     }
 
     if (IF_NON_BURST(s->fifo.num)) {
-        DEP_AF_DP32(s->regs, SBI_IRQ_STATUS, DATA_RDY, 1);
+        ARRAY_FIELD_DP32(s->regs, SBI_IRQ_STATUS, DATA_RDY, 1);
     }
     pending = !!(s->regs[R_SBI_IRQ_STATUS] & ~s->regs[R_SBI_IRQ_MASK]);
     qemu_set_irq(s->irq, pending);
@@ -150,13 +158,14 @@ static void ss_update_busy_line(SlaveBootInt *s)
 {
     uint32_t num = fifo_num_free(&s->fifo);
 
-    if (!DEP_AF_EX32(s->regs, SBI_CTRL, ENABLE)) {
+    if (!ARRAY_FIELD_EX32(s->regs, SBI_CTRL, ENABLE)) {
         s->busy_line = 1;
         goto update_busy;
     }
 
-    if (DEP_AF_EX32(s->regs, SMAP_CTRL, MODE) == SMAP_BURST_MODE) {
-        if (DEP_AF_EX32(s->regs, SBI_MODE, SELECT)  == SBI_DATA_LOADING_MODE) {
+    if (ARRAY_FIELD_EX32(s->regs, SMAP_CTRL, MODE) == SMAP_BURST_MODE) {
+        if (ARRAY_FIELD_EX32(s->regs, SBI_MODE, SELECT)
+            == SBI_DATA_LOADING_MODE) {
             s->busy_line = (num >= SMAP_BURST_SIZE(s)) ? 0 : 1;
         } else {
             /* Read Back Mode */
@@ -170,7 +179,8 @@ static void ss_update_busy_line(SlaveBootInt *s)
         /* Normal Mode: Busy Line status changes for availablity of 4byte
          * data/free-space while data-load/read-back
          */
-        if (DEP_AF_EX32(s->regs, SBI_MODE, SELECT) == SBI_DATA_LOADING_MODE) {
+        if (ARRAY_FIELD_EX32(s->regs, SBI_MODE, SELECT)
+            == SBI_DATA_LOADING_MODE) {
             s->busy_line = num >= 4 ? 0 : 1;
         } else {
             s->busy_line = s->fifo.num >= 4 ? 0 : 1;
@@ -201,20 +211,20 @@ static void smap_data_rdwr(SlaveBootInt *s)
 
 static void ss_reset(DeviceState *);
 
-static void sbi_ctrl_postw(DepRegisterInfo *reg, uint64_t val64)
+static void sbi_ctrl_postw(RegisterInfo *reg, uint64_t val64)
 {
     SlaveBootInt *s = SBI(reg->opaque);
     uint32_t val = val64;
 
     if (val & R_SBI_CTRL_SOFT_RST_MASK) {
         ss_reset(DEVICE(s));
-        DEP_AF_DP32(s->regs, SBI_CTRL, SOFT_RST, 0);
+        ARRAY_FIELD_DP32(s->regs, SBI_CTRL, SOFT_RST, 0);
     }
 
     ss_update_busy_line(s);
 }
 
-static uint64_t sbi_mode_prew(DepRegisterInfo *reg, uint64_t val64)
+static uint64_t sbi_mode_prew(RegisterInfo *reg, uint64_t val64)
 {
     SlaveBootInt *s = SBI(reg->opaque);
     uint32_t val = val64;
@@ -227,12 +237,12 @@ static uint64_t sbi_mode_prew(DepRegisterInfo *reg, uint64_t val64)
     }
 
     if (!s->smap_busy) {
-        s->rdwr = DEP_F_EX32(val, SBI_MODE, SELECT);
+        s->rdwr = FIELD_EX32(val, SBI_MODE, SELECT);
     }
     return val64;
 }
 
-static uint64_t sbi_irq_enable_prew(DepRegisterInfo *reg, uint64_t val64)
+static uint64_t sbi_irq_enable_prew(RegisterInfo *reg, uint64_t val64)
 {
 
     SlaveBootInt *s = SBI(reg->opaque);
@@ -242,7 +252,7 @@ static uint64_t sbi_irq_enable_prew(DepRegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
-static uint64_t sbi_irq_disable_prew(DepRegisterInfo *reg, uint64_t val64)
+static uint64_t sbi_irq_disable_prew(RegisterInfo *reg, uint64_t val64)
 {
     SlaveBootInt *s = SBI(reg->opaque);
     uint32_t val = val64;
@@ -251,7 +261,7 @@ static uint64_t sbi_irq_disable_prew(DepRegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
-static uint64_t sbi_irq_trigger_prew(DepRegisterInfo *reg, uint64_t val64)
+static uint64_t sbi_irq_trigger_prew(RegisterInfo *reg, uint64_t val64)
 {
     SlaveBootInt *s = SBI(reg->opaque);
     uint32_t val = val64;
@@ -287,7 +297,7 @@ static void ss_stream_out(SlaveBootInt *s)
     uint8_t *data;
     uint32_t len;
 
-    if (!DEP_AF_EX32(s->regs, SBI_MODE, SELECT)) {
+    if (!ARRAY_FIELD_EX32(s->regs, SBI_MODE, SELECT)) {
         return;
     }
 
@@ -368,10 +378,10 @@ static int ss_sbi_can_receive(void *opaque)
     /* Check for Busy Line
      * Check on Fifo Space
      */
-    if (DEP_AF_EX32(s->regs, SBI_CTRL, ENABLE) &&
-        !DEP_AF_EX32(s->regs, SBI_MODE, SELECT)) {
+    if (ARRAY_FIELD_EX32(s->regs, SBI_CTRL, ENABLE) &&
+        !ARRAY_FIELD_EX32(s->regs, SBI_MODE, SELECT)) {
         if (IF_BURST(num)) {
-            recvb = (1 << DEP_AF_EX32(s->regs, SMAP_CTRL, BURST_SIZE)) *
+            recvb = (1 << ARRAY_FIELD_EX32(s->regs, SMAP_CTRL, BURST_SIZE)) *
                      1024;
         } else if (num >= 4) {
             recvb = 4;
@@ -407,12 +417,12 @@ static void ss_sbi_receive(void *opaque, const uint8_t *buf, int size)
         fifo_push_all(&s->fifo, buf, size);
         if (IF_BURST(free)) {
             ss_stream_notify(s);
-            DEP_AF_DP32(s->regs, SBI_IRQ_STATUS, DATA_RDY, 1);
+            ARRAY_FIELD_DP32(s->regs, SBI_IRQ_STATUS, DATA_RDY, 1);
         }
 
         if (IF_NON_BURST(free)) {
             ss_stream_notify(s);
-            DEP_AF_DP32(s->regs, SBI_IRQ_STATUS, DATA_RDY, 1);
+            ARRAY_FIELD_DP32(s->regs, SBI_IRQ_STATUS, DATA_RDY, 1);
         }
     }
 
@@ -430,7 +440,7 @@ static void smap_update(void *opaque, int n, int level)
         break;
     case SMAP_RDWR_B:
         if (!s->cs && (s->rdwr ^ level)) {
-            DEP_AF_DP32(s->regs, SBI_IRQ_STATUS, SMAP_ABORT, 1);
+            ARRAY_FIELD_DP32(s->regs, SBI_IRQ_STATUS, SMAP_ABORT, 1);
         }
         s->rdwr = level;
         break;
@@ -438,72 +448,52 @@ static void smap_update(void *opaque, int n, int level)
     smap_data_rdwr(s);
 }
 
-static DepRegisterAccessInfo slave_boot_regs_info[] = {
-    {   .name = "SBI_MODE",  .decode.addr = A_SBI_MODE,
+static RegisterAccessInfo slave_boot_regs_info[] = {
+    {   .name = "SBI_MODE",  .addr = A_SBI_MODE,
         .reset = 0x2,
         .rsvd = 0xfffffffe,
         .pre_write = sbi_mode_prew,
-    },{ .name = "SBI_CTRL",  .decode.addr = A_SBI_CTRL,
+    },{ .name = "SBI_CTRL",  .addr = A_SBI_CTRL,
         .reset = 0x20,
         .rsvd = 0xffffffc0,
         .post_write = sbi_ctrl_postw,
-    },{ .name = "SMAP_CTRL",  .decode.addr = A_SMAP_CTRL,
+    },{ .name = "SMAP_CTRL",  .addr = A_SMAP_CTRL,
         .rsvd = 0xfffffff8,
-    },{ .name = "SBI_IRQ_STATUS",  .decode.addr = A_SBI_IRQ_STATUS,
+    },{ .name = "SBI_IRQ_STATUS",  .addr = A_SBI_IRQ_STATUS,
         .rsvd = 0xfffffff8,
         .w1c = 0x7,
-    },{ .name = "SBI_IRQ_MASK",  .decode.addr = A_SBI_IRQ_MASK,
+    },{ .name = "SBI_IRQ_MASK",  .addr = A_SBI_IRQ_MASK,
         .reset = 0x7,
         .rsvd = 0xfffffff8,
         .ro = 0x7,
-    },{ .name = "SBI_IRQ_ENABLE",  .decode.addr = A_SBI_IRQ_ENABLE,
+    },{ .name = "SBI_IRQ_ENABLE",  .addr = A_SBI_IRQ_ENABLE,
         .rsvd = 0xfffffff8,
         .pre_write = sbi_irq_enable_prew,
-    },{ .name = "SBI_IRQ_DISABLE",  .decode.addr = A_SBI_IRQ_DISABLE,
+    },{ .name = "SBI_IRQ_DISABLE",  .addr = A_SBI_IRQ_DISABLE,
         .rsvd = 0xfffffff8,
         .pre_write = sbi_irq_disable_prew,
-    },{ .name = "SBI_IRQ_TRIGGER",  .decode.addr = A_SBI_IRQ_TRIGGER,
+    },{ .name = "SBI_IRQ_TRIGGER",  .addr = A_SBI_IRQ_TRIGGER,
         .rsvd = 0xfffffff8,
         .pre_write = sbi_irq_trigger_prew,
-    },{ .name = "SBI_RAM",  .decode.addr = A_SBI_RAM,
+    },{ .name = "SBI_RAM",  .addr = A_SBI_RAM,
         .reset = 0x5b,
         .rsvd = 0xffffff80,
-    },{ .name = "SBI_ECO",  .decode.addr = A_SBI_ECO,
+    },{ .name = "SBI_ECO",  .addr = A_SBI_ECO,
     }
 };
-
-static uint64_t sbi_read(void *opaque, hwaddr addr, unsigned size)
-{
-    SlaveBootInt *s = SBI(opaque);
-    DepRegisterInfo *r = &s->regs_info[addr / 4];
-
-    if (!r->data) {
-        qemu_log("%s: Decode error: read from %" HWADDR_PRIx "\n",
-                 object_get_canonical_path(OBJECT(s)),
-                 addr);
-        return 0;
-    }
-    return dep_register_read(r);
-}
 
 static void sbi_write(void *opaque, hwaddr addr, uint64_t value,
                       unsigned size)
 {
-    SlaveBootInt *s = SBI(opaque);
-    DepRegisterInfo *r = &s->regs_info[addr / 4];
+    RegisterInfoArray *reg_array = opaque;
+    SlaveBootInt *s = SBI(reg_array->r[0]->opaque);
 
-    if (!r->data) {
-        qemu_log("%s: Decode error: write to %" HWADDR_PRIx "=%" PRIx64 "\n",
-                 object_get_canonical_path(OBJECT(s)),
-                 addr, value);
-        return;
-    }
-    dep_register_write(r, value, ~0);
+    register_write_memory(opaque, addr, value, size);
     smap_data_rdwr(s);
 }
 
 static const MemoryRegionOps ss_ops = {
-    .read = sbi_read,
+    .read = register_read_memory,
     .write = sbi_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
@@ -515,25 +505,8 @@ static const MemoryRegionOps ss_ops = {
 static void ss_realize(DeviceState *dev, Error **errp)
 {
     SlaveBootInt *s = SBI(dev);
-    const char *prefix = object_get_canonical_path(OBJECT(dev));
-    unsigned int i;
     const char *port_name;
     Chardev *chr;
-
-    for (i = 0; i < ARRAY_SIZE(slave_boot_regs_info); ++i) {
-        DepRegisterInfo *r = &s->regs_info[
-                                slave_boot_regs_info[i].decode.addr / 4];
-
-        *r = (DepRegisterInfo) {
-            .data = (uint8_t *)&s->regs[
-                    slave_boot_regs_info[i].decode.addr / 4],
-            .data_size = sizeof(uint32_t),
-            .access = &slave_boot_regs_info[i],
-            .debug = SBI_ERR_DEBUG,
-            .prefix = prefix,
-            .opaque = s,
-        };
-   }
 
     port_name = g_strdup("smap_busy_b");
     qdev_init_gpio_out_named(dev, &s->smap_busy, port_name, 1);
@@ -561,7 +534,7 @@ static void ss_reset(DeviceState *dev)
     uint32_t i;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        dep_register_reset(&s->regs_info[i]);
+        register_reset(&s->regs_info[i]);
     }
     fifo_reset(&s->fifo);
     s->busy_line = 1;
@@ -579,19 +552,30 @@ static void ss_reset(DeviceState *dev)
      */
 }
 
-static void ss_init(Object *Obj)
+static void ss_init(Object *obj)
 {
-    SlaveBootInt *s = SBI(Obj);
-    SysBusDevice *sbd = SYS_BUS_DEVICE(Obj);
+    SlaveBootInt *s = SBI(obj);
+    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+    RegisterInfoArray *reg_array;
 
-    object_property_add_link(Obj, "stream-connected-sbi", TYPE_STREAM_SLAVE,
+    object_property_add_link(obj, "stream-connected-sbi", TYPE_STREAM_SLAVE,
                 (Object **) &s->tx_dev,
                 qdev_prop_allow_set_link_before_realize,
                 OBJ_PROP_LINK_STRONG,
                 NULL);
 
-    memory_region_init_io(&s->iomem, Obj, &ss_ops, s,
-                TYPE_SBI, R_MAX * 4);
+    memory_region_init(&s->iomem, obj, TYPE_SBI, R_MAX * 4);
+    reg_array =
+        register_init_block32(DEVICE(obj), slave_boot_regs_info,
+                              ARRAY_SIZE(slave_boot_regs_info),
+                              s->regs_info, s->regs,
+                              &ss_ops,
+                              false,
+                              R_MAX * 4);
+    memory_region_add_subregion(&s->iomem,
+                                0x0,
+                                &reg_array->mem);
+
     sysbus_init_mmio(sbd, &s->iomem);
     sysbus_init_irq(sbd, &s->irq);
 }
