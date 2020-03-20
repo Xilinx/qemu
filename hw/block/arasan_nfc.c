@@ -29,7 +29,8 @@
 #include "sysemu/sysemu.h"
 #include "sysemu/dma.h"
 #include "hw/hw.h"
-#include "hw/register-dep.h"
+#include "hw/register.h"
+#include "hw/irq.h"
 #include "hw/sysbus.h"
 #include "hw/block/flash.h"
 #include "qapi/qmp/qerror.h"
@@ -69,28 +70,28 @@
  * s/BUFFER/BUF
  */
 
-DEP_REG32(PACKET, 0x00)
-    DEP_FIELD(PACKET, PACKET_SIZE, 11, 0)
-    DEP_FIELD(PACKET, PACKET_COUNT, 12, 12)
+REG32(PACKET, 0x00)
+    FIELD(PACKET, PACKET_SIZE, 0, 11)
+    FIELD(PACKET, PACKET_COUNT, 12, 12)
     #define R_PACKET_RSVD 0xff000800
 
-DEP_REG32(MEMORY_ADDR_1, 0x04)
+REG32(MEMORY_ADDR_1, 0x04)
 
-DEP_REG32(MEMORY_ADDR_2, 0x08)
-    DEP_FIELD(MEMORY_ADDR_2, MEMORY_ADDR, 8, 0)
+REG32(MEMORY_ADDR_2, 0x08)
+    FIELD(MEMORY_ADDR_2, MEMORY_ADDR, 0, 8)
     #define R_MEMORY_ADDR_2_BUS_WIDTH (1 << 24)
-    DEP_FIELD(MEMORY_ADDR_2, NFC_BCH_MODE, 3, 25)
-    DEP_FIELD(MEMORY_ADDR_2, MODE, 2, 28)
-    DEP_FIELD(MEMORY_ADDR_2, CHIP_SELECT, 2, 30)
+    FIELD(MEMORY_ADDR_2, NFC_BCH_MODE, 25, 3)
+    FIELD(MEMORY_ADDR_2, MODE, 28, 2)
+    FIELD(MEMORY_ADDR_2, CHIP_SELECT, 30, 2)
     #define R_MEMORY_ADDR_2_RSVD 0x00FFFF00
 
-DEP_REG32(CMD, 0x0C)
-    DEP_FIELD(CMD, CMD1, 8, 0)
-    DEP_FIELD(CMD, CMD2, 8, 8)
-    DEP_FIELD(CMD, PAGE_SIZE, 3, 23)
-    DEP_FIELD(CMD, DMA_EN, 2, 26)
+REG32(CMD, 0x0C)
+    FIELD(CMD, CMD1, 0, 8)
+    FIELD(CMD, CMD2, 8, 8)
+    FIELD(CMD, PAGE_SIZE, 23, 3)
+    FIELD(CMD, DMA_EN, 26, 2)
     /* deviated from TRM name as its overly long and typod */
-    DEP_FIELD(CMD, NUM_ADDR_CYCLES, 3, 28)
+    FIELD(CMD, NUM_ADDR_CYCLES, 28, 3)
     #define R_CMD_ECC_ON_OFF (1 << 31)
     #define R_CMD_RSVD 0x007F0000
 
@@ -104,7 +105,7 @@ static uint32_t arasan_nfc_page_size_lookup [] = {
     [7] = 0
 };
 
-DEP_REG32(PGRAM, 0x10)
+REG32(PGRAM, 0x10)
     #define R_PGRAM_READ (1 << 0)
     #define R_PGRAM_MULTI_DIE (1 << 1)
     #define R_PGRAM_BLOCK_ERASE (1 << 2)
@@ -133,11 +134,11 @@ DEP_REG32(PGRAM, 0x10)
     #define R_PGRAM_VOLUME_SELECT (1 << 25)
     #define R_PGRAM_ODT_CONFIGURE (1 << 26)
     #define R_PGRAM_RSVD (0x1f << 27)
-    
-DEP_REG32(INT_STATUS_EN, 0x14)
-DEP_REG32(INT_SIGNAL_EN, 0x18)
-DEP_REG32(INT_STATUS, 0x1C)
-    /* dropped the redundant STS_EN, DEP_REG32 and SIG_EN suffixes from TRM names */
+
+REG32(INT_STATUS_EN, 0x14)
+REG32(INT_SIGNAL_EN, 0x18)
+REG32(INT_STATUS, 0x1C)
+    /* dropped the redundant STS_EN, REG32 and SIG_EN suffixes from TRM names */
     #define R_INT_BUFF_WR_RDY (1 << 0)
     #define R_INT_BUFF_RD_RDY (1 << 1)
     #define R_INT_TRANS_COMP (1 << 2)
@@ -148,33 +149,33 @@ DEP_REG32(INT_STATUS, 0x1C)
     #define R_INT_RSVD 0xFFFFFF00
     #define R_INT_ANY (~(R_INT_RSVD))
 
-DEP_REG32(FLASH_STATUS, 0x28)
-    DEP_FIELD(FLASH_STATUS, FLASH_STATUS, 16, 0)
+REG32(FLASH_STATUS, 0x28)
+    FIELD(FLASH_STATUS, FLASH_STATUS, 0, 16)
     #define R_FLASH_STATUS_RSVD 0xffff0000
 
-DEP_REG32(TIMING, 0x2C)
-    DEP_FIELD(TIMING, TCCS_TIME, 2, 0)
+REG32(TIMING, 0x2C)
+    FIELD(TIMING, TCCS_TIME, 0, 2)
     #define R_TIMING_SLOW_FAST_TCAD (1 << 2)
-    DEP_FIELD(TIMING, DQS_BUFF_SEL, 4, 3)
-    DEP_FIELD(TIMING, TADL_TIME, 7, 7)
+    FIELD(TIMING, DQS_BUFF_SEL, 3, 4)
+    FIELD(TIMING, TADL_TIME, 7, 7)
 
-DEP_REG32(BUF_DATA_PORT, 0x30)
+REG32(BUF_DATA_PORT, 0x30)
 
-DEP_REG32(ECC, 0x34)
-    DEP_FIELD(ECC, ECC_ADDR, 16, 0)
-    DEP_FIELD(ECC, ECC_SIZE, 11, 16)
+REG32(ECC, 0x34)
+    FIELD(ECC, ECC_ADDR, 0, 16)
+    FIELD(ECC, ECC_SIZE, 16, 11)
     #define R_ECC_SLC_MLC (1 << 25)
     #define R_ECC_RSVD 0xfe000000
 
-DEP_REG32(ECC_ERR_COUNT, 0x38)
-    DEP_FIELD(ECC_ERR_COUNT, PACKET_BOUND, 8, 0)
-    DEP_FIELD(ECC_ERR_COUNT, PAGE_BOUND, 8, 8)
+REG32(ECC_ERR_COUNT, 0x38)
+    FIELD(ECC_ERR_COUNT, PACKET_BOUND, 0, 8)
+    FIELD(ECC_ERR_COUNT, PAGE_BOUND, 8, 8)
     #define R_ECC_ERR_COUNT_RSVD 0xFFFF0000
 
-DEP_REG32(ECC_SPARE_CMD, 0x3C)
-    DEP_FIELD(ECC_SPARE_CMD, CMD1, 8, 0)
-    DEP_FIELD(ECC_SPARE_CMD, CMD2, 8, 8)
-    DEP_FIELD(ECC_SPARE_CMD, NUM_ADDR_CYCLES, 3, 28)
+REG32(ECC_SPARE_CMD, 0x3C)
+    FIELD(ECC_SPARE_CMD, CMD1, 0, 8)
+    FIELD(ECC_SPARE_CMD, CMD2, 8, 8)
+    FIELD(ECC_SPARE_CMD, NUM_ADDR_CYCLES, 28, 3)
     #define R_ECC_SPARE_CMD_RSVD 0x8FFF0000
 
 /* FIXME Finish this */
@@ -188,20 +189,23 @@ DEP_REG32(ECC_SPARE_CMD, 0x3C)
 #define R_ERR_COUNT_7BIT (0x64/4)
 #define R_ERR_COUNT_8BIT (0x68/4)
 
-DEP_REG32(DMA_SYSTEM_ADDR1, 0x24)
-DEP_REG32(DMA_SYSTEM_ADDR0, 0x50)
+REG32(DMA_SYSTEM_ADDR1, 0x24)
+REG32(DMA_SYSTEM_ADDR0, 0x50)
 
-DEP_REG32(DMA_BUF_BOUNDARY, 0x54)
+REG32(DMA_BUF_BOUNDARY, 0x54)
     #define R_DMA_BUF_BOUNDARY_RSVD (ONES(29) << 3)
 
-DEP_REG32(DATA_INTERFACE,   0x6C)
-    DEP_FIELD(DATA_INTERFACE, SDR, 3, 0)
-    DEP_FIELD(DATA_INTERFACE, NV_DDR, 3, 3)
-    DEP_FIELD(DATA_INTERFACE, NV_DDR2, 3, 6)
-    DEP_FIELD(DATA_INTERFACE, DATA_INTF, 2, 9)
+REG32(DATA_INTERFACE,   0x6C)
+    FIELD(DATA_INTERFACE, SDR, 0, 3)
+    FIELD(DATA_INTERFACE, NV_DDR, 3, 3)
+    FIELD(DATA_INTERFACE, NV_DDR2, 6, 3)
+    FIELD(DATA_INTERFACE, DATA_INTF, 9, 2)
     #define R_DATA_INTERFACE_RSVD 0xFFFFF800
 
 #define R_MAX (R_DATA_INTERFACE+1)
+
+#define ONES(num) ((num) == 64 ? ~0ull : (1ull << (num)) - 1)
+
 
 /* The codeword size does vary in real hw between 512 and 1024 depding
  * on mode. But since we do not actually model a genuine ECC algorithm,
@@ -237,7 +241,7 @@ typedef struct ArasanNFCState {
     Fifo buffer;
 
     uint32_t regs[R_MAX];
-    DepRegisterInfo regs_info[R_MAX];
+    RegisterInfo regs_info[R_MAX];
 
 } ArasanNFCState;
 
@@ -266,9 +270,10 @@ static void arasan_nfc_ecc_init(ArasanNFCState *s)
 
 static void arasan_nfc_ecc_digest(ArasanNFCState *s, uint8_t data)
 {
-    uint32_t page_size = arasan_nfc_page_size_lookup[DEP_AF_EX32(s->regs, CMD,
-                                                             PAGE_SIZE)];
-    int ecc_bytes_per_subpage = DEP_AF_EX32(s->regs, ECC, ECC_SIZE) /
+    uint32_t page_size = arasan_nfc_page_size_lookup[ARRAY_FIELD_EX32(s->regs,
+                                                                      CMD,
+                                                                   PAGE_SIZE)];
+    int ecc_bytes_per_subpage = ARRAY_FIELD_EX32(s->regs, ECC, ECC_SIZE) /
                                 (page_size / ECC_CODEWORD_SIZE);
 
     s->ecc_digest[s->ecc_pos++] ^= ~data;
@@ -290,15 +295,16 @@ static bool arasan_nfc_ecc_correct(ArasanNFCState *s)
     int i;
     uint8_t cef = 0;
 
-    for (i = 0; i < DEP_AF_EX32(s->regs, ECC, ECC_SIZE); ++i) {
+    for (i = 0; i < ARRAY_FIELD_EX32(s->regs, ECC, ECC_SIZE); ++i) {
         if (s->ecc_oob[i] != s->ecc_digest[i]) {
             arasan_nfc_irq_event(s, R_INT_MUL_BIT_ERR);
-            if (DEP_AF_EX32(s->regs, ECC_ERR_COUNT, PAGE_BOUND) != 0xFF) {
+            if (ARRAY_FIELD_EX32(s->regs, ECC_ERR_COUNT, PAGE_BOUND) != 0xFF) {
                 s->regs[R_ECC_ERR_COUNT] +=
                     1 << R_ECC_ERR_COUNT_PAGE_BOUND_SHIFT;
             }
             /* FIXME: All errors in the first packet - not right */
-            if (DEP_AF_EX32(s->regs, ECC_ERR_COUNT, PACKET_BOUND) != 0xFF) {
+            if (ARRAY_FIELD_EX32(s->regs, ECC_ERR_COUNT, PACKET_BOUND) != 0xFF)
+            {
                 s->regs[R_ECC_ERR_COUNT] +=
                     1 << R_ECC_ERR_COUNT_PACKET_BOUND_SHIFT;
             }
@@ -325,8 +331,8 @@ static void arasan_nfc_do_cmd2(ArasanNFCState *s, bool ecc)
     uint8_t cmd;
 
     nand_setpins(s->current, 1, 0, 0, 1, 0); /* CMD */
-    cmd = ecc ? DEP_AF_EX32(s->regs, ECC_SPARE_CMD, CMD2) :
-                DEP_AF_EX32(s->regs, CMD, CMD2);
+    cmd = ecc ? ARRAY_FIELD_EX32(s->regs, ECC_SPARE_CMD, CMD2) :
+                ARRAY_FIELD_EX32(s->regs, CMD, CMD2);
     nand_setio(s->current, cmd);
     DB_PRINT("send second command cycle %#02" PRIx8 "\n", cmd);
 }
@@ -339,13 +345,14 @@ static void arasan_nfc_do_cmd(ArasanNFCState *s, uint8_t addr_cycles, bool ecc,
     uint8_t cmd;
 
     nand_setpins(s->current, 1, 0, 0, 1, 0); /* CMD */
-    cmd = ecc ? DEP_AF_EX32(s->regs, ECC_SPARE_CMD, CMD1) :
-                DEP_AF_EX32(s->regs, CMD, CMD1);
+    cmd = ecc ? ARRAY_FIELD_EX32(s->regs, ECC_SPARE_CMD, CMD1) :
+                ARRAY_FIELD_EX32(s->regs, CMD, CMD1);
     nand_setio(s->current, cmd);
     DB_PRINT("send command cycle %#02" PRIx8 "\n", cmd);
 
-    num_cycles = ecc ? DEP_AF_EX32(s->regs, ECC_SPARE_CMD, NUM_ADDR_CYCLES) :
-                       DEP_AF_EX32(s->regs, CMD, NUM_ADDR_CYCLES);
+    num_cycles = ecc ? ARRAY_FIELD_EX32(s->regs, ECC_SPARE_CMD,
+                                        NUM_ADDR_CYCLES) :
+                       ARRAY_FIELD_EX32(s->regs, CMD, NUM_ADDR_CYCLES);
     if (force_addr_cycles) {
         num_cycles = addr_cycles;
     } else if (num_cycles != addr_cycles) {
@@ -382,7 +389,7 @@ static inline void arasan_nfc_do_dma(ArasanNFCState *s, bool rnw)
     int debug_squelch = 5;
 
     /* FIXME: Be less dumb */
-    while (DEP_AF_EX32(s->regs, CMD, DMA_EN) == 0x2 &&
+    while (ARRAY_FIELD_EX32(s->regs, CMD, DMA_EN) == 0x2 &&
            !(rnw ? fifo_is_empty : fifo_is_full)(&s->buffer) &&
            !s->dbb_blocked) {
         uint32_t dbb_mask = MAKE_64BIT_MASK(0,
@@ -421,7 +428,7 @@ static inline bool arasan_nfc_write_check_ecc(ArasanNFCState *s)
 }
 
 static uint32_t arasan_nfc_get_packet_size(ArasanNFCState *s, uint32_t pgram) {
-    uint32_t packet_size = DEP_AF_EX32(s->regs, PACKET, PACKET_SIZE);
+    uint32_t packet_size = ARRAY_FIELD_EX32(s->regs, PACKET, PACKET_SIZE);
 
         switch (pgram) {
         case R_PGRAM_SET_FEATURES:
@@ -429,7 +436,7 @@ static uint32_t arasan_nfc_get_packet_size(ArasanNFCState *s, uint32_t pgram) {
         case R_PGRAM_READ_ID:
         case R_PGRAM_READ_STATUS_ENH:
         case R_PGRAM_READ_STATUS:
-        if (DEP_AF_EX32(s->regs, DATA_INTERFACE, DATA_INTF)) {
+        if (ARRAY_FIELD_EX32(s->regs, DATA_INTERFACE, DATA_INTF)) {
             DB_PRINT("Halving payload size for DDR command\n");
             packet_size /= 2;
         }
@@ -439,7 +446,7 @@ static uint32_t arasan_nfc_get_packet_size(ArasanNFCState *s, uint32_t pgram) {
 
 static void arasan_nfc_set_current(ArasanNFCState *s)
 {
-    int cs_dev = DEP_AF_EX32(s->regs, MEMORY_ADDR_2, CHIP_SELECT);
+    int cs_dev = ARRAY_FIELD_EX32(s->regs, MEMORY_ADDR_2, CHIP_SELECT);
 
     /* Lazy-init nand if its not initialised at realize,
      * i.e no pflash arg at command line */
@@ -468,13 +475,14 @@ static inline void arasan_nfc_update_state(ArasanNFCState *s)
         break;
     case R_PGRAM_READ_STATUS:
     case R_PGRAM_READ_STATUS_ENH:
-		if (!fifo_is_empty(&s->buffer)) {
-            DEP_AF_DP32(s->regs, FLASH_STATUS, FLASH_STATUS, fifo_pop8(&s->buffer));
+        if (!fifo_is_empty(&s->buffer)) {
+                    ARRAY_FIELD_DP32(s->regs, FLASH_STATUS, FLASH_STATUS,
+                                     fifo_pop8(&s->buffer));
 		    DB_PRINT("read completed\n");
 		    arasan_nfc_irq_event(s, R_INT_TRANS_COMP);
 		    s->regs[R_PGRAM] = 0;
         }
-	}
+    }
 
 	if (s->regs[R_PGRAM] & R_PGRAM_PAGE_PROGRAM) {
         arasan_nfc_do_dma(s, false);
@@ -501,7 +509,7 @@ static inline void arasan_nfc_update_state(ArasanNFCState *s)
             if (arasan_nfc_write_check_ecc(s)) {
                 arasan_nfc_do_cmd(s, 2, true, false);
                 nand_setpins(s->current, 0, 0, 0, 1, 0); /* data */
-                for (i = 0; i < DEP_AF_EX32(s->regs, ECC, ECC_SIZE); ++i) {
+                for (i = 0; i < ARRAY_FIELD_EX32(s->regs, ECC, ECC_SIZE); ++i) {
                     nand_setio(s->current, s->ecc_digest[i]);
                     DB_PRINT("write ecc byte %#02" PRIx8 "\n", s->ecc_digest[i]);
                 }
@@ -526,7 +534,7 @@ static inline void arasan_nfc_update_state(ArasanNFCState *s)
 
 }
 
-static void arasan_nfc_update_state_pw(DepRegisterInfo *reg, uint64_t val)
+static void arasan_nfc_update_state_pw(RegisterInfo *reg, uint64_t val)
 {
     ArasanNFCState *s = ARASAN_NFC(reg->opaque);
 
@@ -538,14 +546,15 @@ static void arasan_nfc_reset(DeviceState *dev) {
 
     /* Reset the registers */
     arasan_nfc_update_state(s);
-}    
+}
 
-static void arasan_nfc_r_unimp_post_write(DepRegisterInfo *reg, uint64_t val)
+static void arasan_nfc_r_unimp_post_write(RegisterInfo *reg, uint64_t val)
 {
 	fprintf(stderr, "unimplemented functionality touched\n");
 }
 
-static uint64_t arasan_nfc_r_buffer_data_port_pr(DepRegisterInfo *reg, uint64_t val)
+static uint64_t arasan_nfc_r_buffer_data_port_pr(RegisterInfo *reg,
+                                                 uint64_t val)
 {
     ArasanNFCState *s = ARASAN_NFC(reg->opaque);
     int i;
@@ -561,7 +570,7 @@ static uint64_t arasan_nfc_r_buffer_data_port_pr(DepRegisterInfo *reg, uint64_t 
     return cpu_to_le32(*((uint32_t *)buf));
 }
 
-static void arasan_nfc_r_buffer_data_port_pw(DepRegisterInfo *reg, uint64_t val)
+static void arasan_nfc_r_buffer_data_port_pw(RegisterInfo *reg, uint64_t val)
 {
     ArasanNFCState *s = ARASAN_NFC(reg->opaque);
     int i;
@@ -582,14 +591,14 @@ static void arasan_nfc_r_buffer_data_port_pw(DepRegisterInfo *reg, uint64_t val)
 	arasan_nfc_update_state(s);
 }
 
-static void arasan_nfc_r_dma_system_addr1_pw(DepRegisterInfo *reg, uint64_t val)
+static void arasan_nfc_r_dma_system_addr1_pw(RegisterInfo *reg, uint64_t val)
 {
     ArasanNFCState *s = ARASAN_NFC(reg->opaque);
 
     arasan_nfc_sync_dma_addr(s);
 }
 
-static void arasan_nfc_r_dma_system_addr_pw(DepRegisterInfo *reg, uint64_t val)
+static void arasan_nfc_r_dma_system_addr_pw(RegisterInfo *reg, uint64_t val)
 {
     ArasanNFCState *s = ARASAN_NFC(reg->opaque);
 
@@ -598,7 +607,7 @@ static void arasan_nfc_r_dma_system_addr_pw(DepRegisterInfo *reg, uint64_t val)
 	arasan_nfc_update_state(s);
 }
 
-static uint64_t r_program_pre_write(DepRegisterInfo *reg, uint64_t val)
+static uint64_t r_program_pre_write(RegisterInfo *reg, uint64_t val)
 {
     ArasanNFCState *s = ARASAN_NFC(reg->opaque);
     int i, j;
@@ -606,7 +615,7 @@ static uint64_t r_program_pre_write(DepRegisterInfo *reg, uint64_t val)
     DB_PRINT("val = %#08" PRIx32 "\n", (uint32_t)val);
 
     if (val && s->regs[R_PGRAM]) {
-        qemu_log_mask(LOG_GUEST_ERROR, "%s:CMD already in progress", reg->prefix);
+        qemu_log_mask(LOG_GUEST_ERROR, "CMD already in progress");
         return 0;
     }
 
@@ -614,7 +623,7 @@ static uint64_t r_program_pre_write(DepRegisterInfo *reg, uint64_t val)
     for (i = 0; i < 32; ++i) {
         uint32_t pgram = val & (1 << i);
         uint32_t payload_size = arasan_nfc_get_packet_size(s, pgram) *
-                                DEP_AF_EX32(s->regs, PACKET, PACKET_COUNT);
+                                ARRAY_FIELD_EX32(s->regs, PACKET, PACKET_COUNT);
 
         switch (pgram) {
             case R_PGRAM_READ_STATUS_ENH:
@@ -666,7 +675,7 @@ static uint64_t r_program_pre_write(DepRegisterInfo *reg, uint64_t val)
             continue;
         default:
 	    arasan_nfc_r_unimp_post_write(reg, val);
-            qemu_log_mask(LOG_UNIMP, "%s:Unimplemented CMD %" PRIx32, reg->prefix, pgram);
+            qemu_log_mask(LOG_UNIMP, "Unimplemented CMD %" PRIx32, pgram);
         }
 
         /* we are fast! Do reads now now now!! */
@@ -703,7 +712,7 @@ static uint64_t r_program_pre_write(DepRegisterInfo *reg, uint64_t val)
             if (arasan_nfc_ecc_enabled(s)) {
                 arasan_nfc_do_cmd(s, 2, true, false);
                 arasan_nfc_do_cmd2(s, true);
-                for (j = 0; j < DEP_AF_EX32(s->regs, ECC, ECC_SIZE); ++j) {
+                for (j = 0; j < ARRAY_FIELD_EX32(s->regs, ECC, ECC_SIZE); ++j) {
                     s->ecc_oob[j] = nand_getio(s->current);
                     DB_PRINT("read ecc %#02" PRIx8 "\n", s->ecc_oob[j]);
                 }
@@ -716,8 +725,8 @@ static uint64_t r_program_pre_write(DepRegisterInfo *reg, uint64_t val)
 }
 
 static const MemoryRegionOps arasan_nfc_ops = {
-    .read = dep_register_read_memory_le,
-    .write = dep_register_write_memory_le,
+    .read = register_read_memory,
+    .write = register_write_memory,
     .endianness = DEVICE_NATIVE_ENDIAN,
     .valid = {
         .min_access_size = 4,
@@ -725,51 +734,51 @@ static const MemoryRegionOps arasan_nfc_ops = {
     }
 };
 
-static const DepRegisterAccessInfo arasan_nfc_regs_info[] = {
-    {   .name = "Packet",                   .decode.addr = A_PACKET,
+static const RegisterAccessInfo arasan_nfc_regs_info[] = {
+    {   .name = "Packet",                   .addr = A_PACKET,
             .rsvd = R_PACKET_RSVD,
             .reset = 0x200 << R_PACKET_PACKET_SIZE_SHIFT,
-    },{ .name = "Memory Address 1",         .decode.addr = A_MEMORY_ADDR_1,
-    },{ .name = "Memory Address 2",         .decode.addr = A_MEMORY_ADDR_2,
+    },{ .name = "Memory Address 1",         .addr = A_MEMORY_ADDR_1,
+    },{ .name = "Memory Address 2",         .addr = A_MEMORY_ADDR_2,
             .rsvd = R_MEMORY_ADDR_2_RSVD,
             .post_write = arasan_nfc_update_state_pw,
-    },{ .name = "CMD",                      .decode.addr = A_CMD,
+    },{ .name = "CMD",                      .addr = A_CMD,
             .rsvd = R_CMD_RSVD,
             .reset = 0x2 << R_CMD_PAGE_SIZE_SHIFT,
-    },{ .name = "Program",                  .decode.addr = A_PGRAM,
+    },{ .name = "Program",                  .addr = A_PGRAM,
             .rsvd = R_PGRAM_RSVD,
             .pre_write = r_program_pre_write,
             .post_write = arasan_nfc_update_state_pw,
-    },{ .name = "Interrupt Status Enable",  .decode.addr = A_INT_STATUS_EN,
+    },{ .name = "Interrupt Status Enable",  .addr = A_INT_STATUS_EN,
             .rsvd = R_INT_RSVD,
             .post_write = arasan_nfc_update_state_pw,
-    },{ .name = "Interrupt Signal Enable",  .decode.addr = A_INT_SIGNAL_EN,
+    },{ .name = "Interrupt Signal Enable",  .addr = A_INT_SIGNAL_EN,
             .rsvd = R_INT_RSVD,
             .post_write = arasan_nfc_update_state_pw,
-    },{ .name = "Interrupt Status",         .decode.addr = A_INT_STATUS,
+    },{ .name = "Interrupt Status",         .addr = A_INT_STATUS,
             .rsvd = R_INT_RSVD,
             .w1c = R_INT_ANY,
             .post_write = arasan_nfc_update_state_pw,
-    },{ .name = "Flash Status",             .decode.addr = A_FLASH_STATUS,
+    },{ .name = "Flash Status",             .addr = A_FLASH_STATUS,
             .ro = ~0,
-    },{ .name = "Timing",                   .decode.addr = A_TIMING,
+    },{ .name = "Timing",                   .addr = A_TIMING,
             .reset = 0x6 << R_TIMING_DQS_BUFF_SEL_SHIFT,
-    },{ .name = "Buffer Data Port",         .decode.addr = A_BUF_DATA_PORT,
+    },{ .name = "Buffer Data Port",         .addr = A_BUF_DATA_PORT,
             .post_write = arasan_nfc_r_buffer_data_port_pw,
             .post_read = arasan_nfc_r_buffer_data_port_pr,
-    },{ .name = "ECC",                      .decode.addr = A_ECC,
+    },{ .name = "ECC",                      .addr = A_ECC,
         .rsvd = R_ECC_RSVD,
-    },{ .name = "ECC Error Count",          .decode.addr = A_ECC_ERR_COUNT,
+    },{ .name = "ECC Error Count",          .addr = A_ECC_ERR_COUNT,
         .rsvd = R_ECC_ERR_COUNT_RSVD,
-    },{ .name = "ECC Spare Command",        .decode.addr = A_ECC_SPARE_CMD,
+    },{ .name = "ECC Spare Command",        .addr = A_ECC_SPARE_CMD,
         .rsvd = R_ECC_SPARE_CMD_RSVD,
-    },{ .name = "DMA System Addr High",     .decode.addr = A_DMA_SYSTEM_ADDR1,
+    },{ .name = "DMA System Addr High",     .addr = A_DMA_SYSTEM_ADDR1,
             .post_write = arasan_nfc_r_dma_system_addr1_pw,
-    },{ .name = "DMA System Addr Low",      .decode.addr = A_DMA_SYSTEM_ADDR0,
+    },{ .name = "DMA System Addr Low",      .addr = A_DMA_SYSTEM_ADDR0,
             .post_write = arasan_nfc_r_dma_system_addr_pw,
-    },{ .name = "DMA Buffer Boundary",      .decode.addr = A_DMA_BUF_BOUNDARY,
+    },{ .name = "DMA Buffer Boundary",      .addr = A_DMA_BUF_BOUNDARY,
             .rsvd = R_DMA_BUF_BOUNDARY_RSVD,
-    },{ .name = "Data Interface",           .decode.addr = A_DATA_INTERFACE,
+    },{ .name = "Data Interface",           .addr = A_DATA_INTERFACE,
             .rsvd = R_DATA_INTERFACE_RSVD,
     },
 };
@@ -777,9 +786,7 @@ static const DepRegisterAccessInfo arasan_nfc_regs_info[] = {
 static void arasan_nfc_realize(DeviceState *dev, Error ** errp)
 {
     ArasanNFCState *s = ARASAN_NFC(dev);
-    const char *prefix = object_get_canonical_path(OBJECT(dev));
     DriveInfo *dinfo;
-    int i;
 
     /* FIXME: add support for multiple chips */
     dinfo = drive_get_next(IF_PFLASH);
@@ -791,21 +798,6 @@ static void arasan_nfc_realize(DeviceState *dev, Error ** errp)
     if (dinfo) {
         s->nand[1] = nand_init(dinfo ? blk_by_legacy_dinfo(dinfo) : NULL,
                                NAND_MFR_MICRON, 0x44);
-    }
-    for (i = 0; i < ARRAY_SIZE(arasan_nfc_regs_info); ++i) {
-        DepRegisterInfo *r = &s->regs_info[i];
-
-        *r = (DepRegisterInfo) {
-            .data = &s->regs[arasan_nfc_regs_info[i].decode.addr/4],
-            .data_size = sizeof(uint32_t),
-            .access = &arasan_nfc_regs_info[i],
-            .debug = qemu_loglevel_mask(DEV_LOG_NANDC),
-            .prefix = prefix,
-            .opaque = s,
-        };
-        memory_region_init_io(&r->mem, OBJECT(dev), &arasan_nfc_ops, r,
-                              r->access->name, 4);
-        memory_region_add_subregion(&s->iomem, r->access->decode.addr, &r->mem);
     }
 
     fifo_create8(&s->buffer, 1);
@@ -822,6 +814,7 @@ static void arasan_nfc_init(Object *obj)
 {
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
     ArasanNFCState *s = ARASAN_NFC(obj);
+    RegisterInfoArray *reg_array;
 
     object_property_add_link(obj, "nand0", TYPE_DEVICE,
                              (Object **)&s->nand[0],
@@ -836,7 +829,18 @@ static void arasan_nfc_init(Object *obj)
 
     sysbus_init_irq(sbd, &s->irq);
 
-    memory_region_init(&s->iomem, obj, "nand", R_MAX*4);
+    memory_region_init(&s->iomem, obj, TYPE_ARASAN_NFC, R_MAX * 4);
+    reg_array =
+        register_init_block32(DEVICE(obj), arasan_nfc_regs_info,
+                              ARRAY_SIZE(arasan_nfc_regs_info),
+                              s->regs_info, s->regs,
+                              &arasan_nfc_ops,
+                              ARASAN_NFC_ERR_DEBUG,
+                              R_MAX * 4);
+    memory_region_add_subregion(&s->iomem,
+                                0x0,
+                                &reg_array->mem);
+
     sysbus_init_mmio(sbd, &s->iomem);
 
     object_property_add_link(obj, "dma", TYPE_MEMORY_REGION,
