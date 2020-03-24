@@ -58,7 +58,7 @@ REG32(CTRL, 0x10)
     FIELD(CTRL, OPCODE, 0, 3)
 REG32(STATUS, 0x14)
     FIELD(STATUS, PROG_CNT, 3, 5)
-    FIELD(STATUS, ERROR, 2, 1)
+    FIELD(STATUS, ERROR_RSA, 2, 1)
     FIELD(STATUS, BUSY, 1, 1)
     FIELD(STATUS, DONE, 0, 1)
 REG32(MINV0, 0x18)
@@ -250,11 +250,11 @@ static void rsa_control_pw(RegisterInfo *reg, uint64_t val64)
     digits = len_code_map[lencode].digits * 6;
 
     /* Clear the error status for every new op.  */
-    ARRAY_FIELD_DP32(s->regs, STATUS, ERROR, false);
+    ARRAY_FIELD_DP32(s->regs, STATUS, ERROR_RSA, false);
 
     err = alu_ops[op](&s->rsa, bitlen, digits);
     if (err) {
-        ARRAY_FIELD_DP32(s->regs, STATUS, ERROR, true);
+        ARRAY_FIELD_DP32(s->regs, STATUS, ERROR_RSA, true);
         qemu_log_mask(LOG_GUEST_ERROR, "%s: Detected an error: %s\n",
                       s->prefix, rsa_strerror(err));
     } else {
