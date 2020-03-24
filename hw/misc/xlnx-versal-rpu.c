@@ -44,6 +44,13 @@
 #define XILINX_VERSAL_RPU(obj) \
      OBJECT_CHECK(RPU, (obj), TYPE_XILINX_VERSAL_RPU)
 
+#define DPRINTF(...) do { \
+        if (XILINX_VERSAL_RPU_ERR_DEBUG) { \
+            qemu_log("%s: ", __func__); \
+            qemu_log(__VA_ARGS__); \
+        } \
+    } while (0)
+
 REG32(RPU_GLBL_CNTL, 0x0)
     FIELD(RPU_GLBL_CNTL, GIC_AXPROT, 10, 1)
     FIELD(RPU_GLBL_CNTL, TCM_CLK_CNTL, 8, 1)
@@ -452,7 +459,7 @@ static void rpu_setup_tcm(RPU *s)
     sl_split = ARRAY_FIELD_EX32(s->regs, RPU_GLBL_CNTL, SLSPLIT);
     tcm_combine = ARRAY_FIELD_EX32(s->regs, RPU_GLBL_CNTL, TCM_COMB);
 
-    qemu_log("%s: sl_clamp=%d sl_split=%d tcm_combine=%d\n",
+    DPRINTF("%s: sl_clamp=%d sl_split=%d tcm_combine=%d\n",
              __func__, sl_clamp, sl_split, tcm_combine);
 
     if (tcm_combine) {
