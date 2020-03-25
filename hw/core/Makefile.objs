@@ -30,7 +30,6 @@ common-obj-$(CONFIG_PFLASH_CFI01) += fdt_generic_devices_flash.o
 common-obj-$(CONFIG_SSI_M25P80) += fdt_generic_devices_ssi_m25p80.o
 common-obj-$(CONFIG_SI57X) += fdt_generic_devices_si57x.o
 common-obj-$(CONFIG_USB_EHCI_SYSBUS) += fdt_generic_devices_usb_ehci_sysbus.o
-common-obj-$(CONFIG_SOFTMMU) += register-dep.o
 
 obj-y += cpu-exec-gpio.o
 obj-y += remote-port-qdev.o
