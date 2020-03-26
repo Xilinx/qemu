@@ -394,7 +394,7 @@ static void mb_cpu_class_init(ObjectClass *oc, void *data)
 #endif
     dc->vmsd = &vmstate_mb_cpu;
     dc->props = mb_properties;
-    cc->gdb_num_core_regs = 32 + 5;
+    cc->gdb_num_core_regs = 32 + 27;
     cc->gdb_get_dynamic_xml = mb_gdb_get_dynamic_xml;
     cc->gdb_core_xml_file = "microblaze-core.xml";
 
