@@ -261,6 +261,8 @@ static void mb_cpu_realizefn(DeviceState *dev, Error **errp)
     env->pvr.regs[11] = (cpu->cfg.use_mmu ? PVR11_USE_MMU : 0) |
                         16 << 17;
 
+    mb_gen_dynamic_xml(cpu);
+
     mcc->parent_realize(dev, errp);
 }
 
@@ -393,6 +395,8 @@ static void mb_cpu_class_init(ObjectClass *oc, void *data)
     dc->vmsd = &vmstate_mb_cpu;
     dc->props = mb_properties;
     cc->gdb_num_core_regs = 32 + 5;
+    cc->gdb_get_dynamic_xml = mb_gdb_get_dynamic_xml;
+    cc->gdb_core_xml_file = "microblaze-core.xml";
 
 #ifndef CONFIG_USER_ONLY
     fggc->controller_gpios = mb_ctrl_gpios;
