@@ -80,6 +80,7 @@ common-obj-$(CONFIG_XLNX_VERSAL_PMC) += sss-pmc.o
 common-obj-$(CONFIG_XLNX_VERSAL_PMC) += xlnx-versal-pmc-clk-rst.o
 common-obj-$(CONFIG_XLNX_VERSAL_PMC) += xlnx-versal-pmc-global.o
 common-obj-$(CONFIG_XLNX_VERSAL_PMC) += xlnx-versal-pmc-iou-slcr.o
+common-obj-$(CONFIG_XLNX_VERSAL_PMC) += xlnx-versal-pmc-int.o
 common-obj-$(CONFIG_XLNX_VERSAL_PMC) += xlnx-versal-cfu.o
 common-obj-$(CONFIG_XLNX_VERSAL_PMC) += xlnx-versal-trng.o
 common-obj-$(CONFIG_XLNX_VERSAL_PMC) += xlnx-versal-crf.o
