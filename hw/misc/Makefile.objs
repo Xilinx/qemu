@@ -71,6 +71,7 @@ common-obj-$(CONFIG_XLNX_VERSAL) += xlnx-versal-noc-ncrb.o
 common-obj-$(CONFIG_XLNX_VERSAL) += xlnx-versal-cpm-crcpm.o
 common-obj-$(CONFIG_XLNX_VERSAL) += xlnx-versal-cpm-pcsr.o
 common-obj-$(CONFIG_XLNX_VERSAL) += xlnx-versal-ddrmc-xmpu.o
+common-obj-$(CONFIG_XLNX_VERSAL) += xlnx-versal-lpd-iou-slcr.o
 common-obj-$(CONFIG_XLNX_VERSAL) += xlnx-versal-xmpu.o
 common-obj-$(CONFIG_XLNX_VERSAL) += xlnx-xmpu.o
 common-obj-$(CONFIG_XLNX_VERSAL) += xlnx-versal-xppu.o
