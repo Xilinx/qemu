@@ -29,6 +29,7 @@
 
 #include "hw/register.h"
 #include "hw/sysbus.h"
+#include "qemu/timer.h"
 
 #define TYPE_XLNX_ZYNQMP_RTC "xlnx-zynmp.rtc"
 #define TYPE_XLNX_ZYNQMP_ALIAS_RTC "xlnx,zynqmp-rtc"
@@ -77,12 +78,15 @@ REG32(CONTROL, 0x40)
 REG32(SAFETY_CHK, 0x50)
 
 #define XLNX_ZYNQMP_RTC_R_MAX (R_SAFETY_CHK + 1)
+#define XLNX_ZYNQMP_RTC_IO_REGION_SZ 0x10000
 
 typedef struct XlnxZynqMPRTC {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
     qemu_irq irq_rtc_int;
     qemu_irq irq_addr_error_int;
+    QEMUTimer *alarm;
+    QEMUTimer *sec_tick;
 
     struct tm current_tm;
 
@@ -91,6 +95,7 @@ typedef struct XlnxZynqMPRTC {
     } cfg;
 
     uint32_t tick_offset;
+    uint32_t guest_offset;
 
     uint32_t regs[XLNX_ZYNQMP_RTC_R_MAX];
     RegisterInfo regs_info[XLNX_ZYNQMP_RTC_R_MAX];
