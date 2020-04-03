@@ -41,6 +41,9 @@ struct RAMBlock {
     QLIST_ENTRY(RAMBlock) next;
     QLIST_HEAD(, RAMBlockNotifier) ramblock_notifiers;
     int fd;
+#ifdef _WIN32
+    HANDLE hMapFile;
+#endif
     size_t page_size;
     /* dirty bitmap used during migration */
     unsigned long *bmap;
