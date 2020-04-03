@@ -1949,7 +1949,8 @@ static void *file_ram_alloc(RAMBlock *block,
 #ifdef _WIN32
     HANDLE fd_temp = (HANDLE)_get_osfhandle(fd);
     HANDLE hMapFile = CreateFileMapping(fd_temp, NULL, PAGE_READWRITE,
-                                        0, memory, NULL);
+                                        memory >> 32,
+                                        memory, NULL);
     area = MapViewOfFile(hMapFile, FILE_MAP_ALL_ACCESS, 0, 0, 0);
     if (area == NULL) {
 #else
