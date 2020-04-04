@@ -813,22 +813,18 @@ ObjectClass *object_class_dynamic_cast(ObjectClass *class,
     TypeImpl *target_type;
     TypeImpl *type;
 
-//        printf("%s:%d %s\n", __FILE__, __LINE__, typename);
     if (!class) {
-        printf("%s:%d\n", __FILE__, __LINE__);
         return NULL;
     }
 
     /* A simple fast path that can trigger a lot for leaf classes.  */
     type = class->type;
     if (type->name == typename) {
-        printf("%s:%d\n", __FILE__, __LINE__);
         return class;
     }
 
     target_type = type_get_by_name(typename);
     if (!target_type) {
-//        printf("%s:%d\n", __FILE__, __LINE__);
         /* target class type unknown, so fail the cast */
         return NULL;
     }
@@ -849,7 +845,6 @@ ObjectClass *object_class_dynamic_cast(ObjectClass *class,
 
         /* The match was ambiguous, don't allow a cast */
         if (found > 1) {
-        printf("%s:%d\n", __FILE__, __LINE__);
             ret = NULL;
         }
     } else if (type_is_ancestor(type, target_type)) {
