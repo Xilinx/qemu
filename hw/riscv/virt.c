@@ -687,7 +687,9 @@ static void riscv_virt_cosim_board_init(MachineState *machine)
     MemoryRegion *system_memory = get_system_memory();
 
     riscv_virt_board_init(machine);
-    riscv_virt_create_remoteport(machine, system_memory);
+    if (machine_path) {
+        riscv_virt_create_remoteport(machine, system_memory);
+    }
 }
 
 static void riscv_virt_machine_instance_init(Object *obj)
