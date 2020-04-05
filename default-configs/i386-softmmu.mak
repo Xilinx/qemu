@@ -23,6 +23,8 @@
 #CONFIG_TPM_TIS=n
 #CONFIG_VTD=n
 
+include remote-port-x86.mak
+
 # Boards:
 #
 CONFIG_ISAPC=y
