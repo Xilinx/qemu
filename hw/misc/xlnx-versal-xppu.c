@@ -579,7 +579,7 @@ static bool xppu_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
     };
     static const uint32_t ram_bases[] = {
         0x0,
-        0x100,
+        0x180,
         0x190,
     };
 
