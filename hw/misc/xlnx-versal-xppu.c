@@ -68,6 +68,17 @@ REG32(DYNAMIC_RECONFIG_APER_PERM, 0x154)
     FIELD(DYNAMIC_RECONFIG_APER_PERM, PARITY, 28, 4)
     FIELD(DYNAMIC_RECONFIG_APER_PERM, TRUSTZONE, 27, 1)
     FIELD(DYNAMIC_RECONFIG_APER_PERM, PERMISSION, 0, 20)
+REG32(ENABLE_PERM_CHECK_REG02, 0x158)
+REG32(ENABLE_PERM_CHECK_REG03, 0x15C)
+REG32(ENABLE_PERM_CHECK_REG04, 0x160)
+REG32(ENABLE_PERM_CHECK_REG05, 0x164)
+REG32(ENABLE_PERM_CHECK_REG06, 0x168)
+REG32(ENABLE_PERM_CHECK_REG07, 0x16C)
+REG32(ENABLE_PERM_CHECK_REG08, 0x170)
+REG32(ENABLE_PERM_CHECK_REG09, 0x174)
+REG32(ENABLE_PERM_CHECK_REG10, 0x178)
+REG32(ENABLE_PERM_CHECK_REG11, 0x17C)
+REG32(ENABLE_PERM_CHECK_REG12, 0x180)
 
 static void isr_postw(RegisterInfo *reg, uint64_t val64)
 {
@@ -281,6 +292,40 @@ static const RegisterAccessInfo xppu_regs_info[] = {
         .addr = A_DYNAMIC_RECONFIG_APER_PERM,
         .reset = 0xffffffff,
         .rsvd = 0x7f00000,
+    },{ .name = "ENABLE_PERM_CHECK_REG02",
+        .addr = A_ENABLE_PERM_CHECK_REG02,
+        .reset = 0xffffffff,
+    },{ .name = "ENABLE_PERM_CHECK_REG03",
+        .addr = A_ENABLE_PERM_CHECK_REG03,
+        .reset = 0xffffffff,
+    },{ .name = "ENABLE_PERM_CHECK_REG04",
+        .addr = A_ENABLE_PERM_CHECK_REG04,
+        .reset = 0xffffffff,
+    },{ .name = "ENABLE_PERM_CHECK_REG05",
+        .addr = A_ENABLE_PERM_CHECK_REG05,
+        .reset = 0xffffffff,
+    },{ .name = "ENABLE_PERM_CHECK_REG06",
+        .addr = A_ENABLE_PERM_CHECK_REG06,
+        .reset = 0xffffffff,
+    },{ .name = "ENABLE_PERM_CHECK_REG07",
+        .addr = A_ENABLE_PERM_CHECK_REG07,
+        .reset = 0xffffffff,
+    },{ .name = "ENABLE_PERM_CHECK_REG08",
+        .addr = A_ENABLE_PERM_CHECK_REG08,
+        .reset = 0xffffffff,
+    },{ .name = "ENABLE_PERM_CHECK_REG09",
+        .addr = A_ENABLE_PERM_CHECK_REG09,
+        .reset = 0xffffffff,
+    },{ .name = "ENABLE_PERM_CHECK_REG10",
+        .addr = A_ENABLE_PERM_CHECK_REG10,
+        .reset = 0xffffffff,
+    },{ .name = "ENABLE_PERM_CHECK_REG11",
+        .addr = A_ENABLE_PERM_CHECK_REG11,
+        .reset = 0xffffffff,
+    },{ .name = "ENABLE_PERM_CHECK_REG12",
+        .addr = A_ENABLE_PERM_CHECK_REG12,
+        .reset = 0xfffff,
+        .rsvd = 0xfff00000,
     }
 };
 
