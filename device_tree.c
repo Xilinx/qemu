@@ -677,6 +677,18 @@ int qemu_devtree_num_props(void *fdt, const char *node_path)
     return ret;
 }
 
+QEMUDevtreeProp *qemu_devtree_prop_search(QEMUDevtreeProp *props,
+                                          const char *name)
+{
+    while (props->name) {
+        if (!strcmp(props->name, name)) {
+            return props;
+        }
+        props++;
+    }
+    return NULL;
+}
+
 QEMUDevtreeProp *qemu_devtree_get_props(void *fdt, const char *node_path)
 {
     QEMUDevtreeProp *ret = g_new0(QEMUDevtreeProp,

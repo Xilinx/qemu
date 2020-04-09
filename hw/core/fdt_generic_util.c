@@ -1189,8 +1189,23 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
         const char *propname = trim_vendor(prop->name);
         int len = prop->len;
         void *val = prop->value;
-
-        ObjectProperty *p = object_property_find(OBJECT(dev), propname, NULL);
+        ObjectProperty *p = NULL;
+#ifdef _WIN32
+        QEMUDevtreeProp *wp;
+        char *winPropname = g_strdup_printf("windows-%s", propname);
+        wp = qemu_devtree_prop_search(props, winPropname);
+        if (wp) {
+            g_free(prop->value);
+            prop->len = wp->len;
+            prop->value = g_memdup(wp->value, wp->len);
+            val = prop->value;
+            len = prop->len;
+            DB_PRINT_NP(1, "Found windows property match: %s\n",
+                        winPropname);
+        }
+        g_free(winPropname);
+#endif
+        p = object_property_find(OBJECT(dev), propname, NULL);
         if (p) {
             DB_PRINT_NP(1, "matched property: %s of type %s, len %d\n",
                                             propname, p->type, prop->len);

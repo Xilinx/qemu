@@ -196,6 +196,8 @@ int qemu_devtree_get_num_children(void *fdt, const char *node_path, int depth);
 char **qemu_devtree_get_children(void *fdt, const char *node_path, int depth);
 int qemu_devtree_num_props(void *fdt, const char *node_path);
 QEMUDevtreeProp *qemu_devtree_get_props(void *fdt, const char *node_path);
+QEMUDevtreeProp *qemu_devtree_prop_search(QEMUDevtreeProp *props,
+                                          const char *name);
 
 /* node getters */
 
