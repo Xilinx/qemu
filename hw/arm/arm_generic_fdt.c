@@ -416,9 +416,8 @@ static memory_info init_memory(void *fdt, ram_addr_t ram_size, bool zynq_7000)
                     ram_prop = qemu_fdt_getprop_cell(fdt, mem_node_path,
                                                      "qemu,ram", 0,
                                                      0, NULL);
-
-                    memory_region_init_ram(ram_region, NULL, region_name,
-                                           region_size, &error_fatal);
+                    memory_region_init(ram_region, NULL, region_name,
+                                           region_size);
                     object_property_set_int(OBJECT(ram_region), ram_prop,
                                             "ram", &error_abort);
                     memory_region_add_subregion(container, region_start,
