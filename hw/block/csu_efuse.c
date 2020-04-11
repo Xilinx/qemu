@@ -221,18 +221,25 @@ REG32(PPK1_11, 0x10fc)
  * eFUSE layout references:
  *   ZynqMP: UG1085 (v2.1) August 21, 2019, p.277, Table 12-13
  */
-#define EFUSE_DFT             BIT_POS(22, 6)
 #define EFUSE_AES_RDLK        BIT_POS(22, 0)
 #define EFUSE_AES_WRLK        BIT_POS(22, 1)
 #define EFUSE_ENC_ONLY        BIT_POS(22, 2)
-#define EFUSE_BBRAM_DIS       BIT_POS(22, 4)
-#define EFUSE_RSA_EN          BIT_POS(22, 24)
+#define EFUSE_BBRAM_DIS       BIT_POS(22, 3)
+#define EFUSE_ERROR_DIS       BIT_POS(22, 4)
+#define EFUSE_JTAG_DIS        BIT_POS(22, 5)
+#define EFUSE_DFT_DIS         BIT_POS(22, 6)
+#define EFUSE_PROG_GATE_0     BIT_POS(22, 7)
+#define EFUSE_PROG_GATE_1     BIT_POS(22, 7)
+#define EFUSE_PROG_GATE_2     BIT_POS(22, 9)
+#define EFUSE_SEC_LOCK        BIT_POS(22, 10)
+#define EFUSE_RSA_EN          BIT_POS(22, 11)
+#define EFUSE_RSA_EN14        BIT_POS(22, 25)
 #define EFUSE_PPK0_WRLK       BIT_POS(22, 26)
-#define EFUSE_PPK0_VALID0     BIT_POS(22, 27)
-#define EFUSE_PPK0_VALID1     BIT_POS(22, 28)
+#define EFUSE_PPK0_INVLD      BIT_POS(22, 27)
+#define EFUSE_PPK0_INVLD_1    BIT_POS(22, 28)
 #define EFUSE_PPK1_WRLK       BIT_POS(22, 29)
-#define EFUSE_PPK1_VALID0     BIT_POS(22, 30)
-#define EFUSE_PPK1_VALID1     BIT_POS(22, 31)
+#define EFUSE_PPK1_INVLD      BIT_POS(22, 30)
+#define EFUSE_PPK1_INVLD_1    BIT_POS(22, 31)
 
 /* Areas.  */
 #define EFUSE_TRIM_START      BIT_POS(1, 0)
@@ -277,6 +284,11 @@ typedef struct ZynqMPEFuse {
     RegisterInfo regs_info[R_MAX];
 } ZynqMPEFuse;
 
+#define EFUSE_CACHE_FLD(s, reg, field) \
+    ARRAY_FIELD_DP32((s)->regs, reg, field, \
+                     (efuse_get_row((s->efuse), EFUSE_ ## field) \
+                      >> (EFUSE_ ## field % 32)))
+
 #define EFUSE_CACHE_BIT(s, reg, field) \
     ARRAY_FIELD_DP32((s)->regs, reg, field, efuse_get_bit((s->efuse), \
                 EFUSE_ ## field))
@@ -299,23 +311,23 @@ static void update_tbit_status(ZynqMPEFuse *s)
  */
 static void zynqmp_efuse_sync_cache(ZynqMPEFuse *s, unsigned int bit)
 {
-    unsigned int i;
-
     EFUSE_CACHE_BIT(s, SEC_CTRL, AES_RDLK);
     EFUSE_CACHE_BIT(s, SEC_CTRL, AES_WRLK);
     EFUSE_CACHE_BIT(s, SEC_CTRL, ENC_ONLY);
     EFUSE_CACHE_BIT(s, SEC_CTRL, BBRAM_DIS);
-
-    EFUSE_CACHE_BIT(s, SEC_CTRL, RSA_EN);
+    EFUSE_CACHE_BIT(s, SEC_CTRL, ERROR_DIS);
+    EFUSE_CACHE_BIT(s, SEC_CTRL, JTAG_DIS);
+    EFUSE_CACHE_BIT(s, SEC_CTRL, DFT_DIS);
+    EFUSE_CACHE_BIT(s, SEC_CTRL, PROG_GATE_0);
+    EFUSE_CACHE_BIT(s, SEC_CTRL, PROG_GATE_1);
+    EFUSE_CACHE_BIT(s, SEC_CTRL, PROG_GATE_2);
+    EFUSE_CACHE_BIT(s, SEC_CTRL, SEC_LOCK);
     EFUSE_CACHE_BIT(s, SEC_CTRL, PPK0_WRLK);
     EFUSE_CACHE_BIT(s, SEC_CTRL, PPK1_WRLK);
 
-    i = efuse_get_bit(s->efuse, EFUSE_PPK0_VALID0);
-    i += efuse_get_bit(s->efuse, EFUSE_PPK0_VALID1) * 2;
-    ARRAY_FIELD_DP32(s->regs, SEC_CTRL, PPK0_INVLD, i);
-    i = efuse_get_bit(s->efuse, EFUSE_PPK1_VALID0);
-    i += efuse_get_bit(s->efuse, EFUSE_PPK1_VALID1) * 2;
-    ARRAY_FIELD_DP32(s->regs, SEC_CTRL, PPK1_INVLD, i);
+    EFUSE_CACHE_FLD(s, SEC_CTRL, RSA_EN);
+    EFUSE_CACHE_FLD(s, SEC_CTRL, PPK0_INVLD);
+    EFUSE_CACHE_FLD(s, SEC_CTRL, PPK1_INVLD);
 
     /* Update the tbits.  */
     update_tbit_status(s);
