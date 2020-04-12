@@ -13,6 +13,8 @@
 #include "qapi/qmp/qerror.h"
 #include "qapi/error.h"
 #include "hw/pci/pci.h"
+#include "hw/pci/msi.h"
+#include "hw/pci/msix.h"
 #include "hw/sysbus.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
@@ -93,6 +95,9 @@ struct RemotePortPCIDevice {
         uint32_t class_id;
         uint8_t prog_if;
         uint8_t irq_pin;
+
+        bool msi;
+        bool msix;
     } cfg;
     struct RemotePort *rp;
     struct rp_peer_state *peer;
@@ -285,7 +290,22 @@ static void rp_gpio_interrupt(RemotePortDevice *rpd, struct rp_pkt *pkt)
     int level = pkt->interrupt.val;
 
     DB_PRINT_L(0, "%s: irq[%d]=%d\n", __func__, irq, level);
-    pci_set_irq(d, level);
+
+    /*
+     * If MSI/MSI-X is enabled, map interrupt wires onto MSI.
+     * This will only work when QEMU owns the CONFIG space.
+     */
+    if (s->cfg.msix && msix_enabled(d)) {
+        if (level) {
+            msix_notify(d, 0);
+        }
+    } else if (s->cfg.msi && msi_enabled(d)) {
+        if (level) {
+            msi_notify(d, 0);
+        }
+    } else {
+        pci_set_irq(d, level);
+    }
 }
 
 static void rp_pci_realize(PCIDevice *pci_dev, Error **errp)
@@ -307,6 +327,10 @@ static void rp_pci_realize(PCIDevice *pci_dev, Error **errp)
 
     /* The remote peer may want to snoop on CFG writes.  */
     pci_dev->config_write = rp_pci_write_config;
+
+    if (s->cfg.msi) {
+        msi_init(pci_dev, 0x60, 1, true, false, &error_fatal);
+    }
 
     /* Create and hook up the BARs.  */
     s->maps = g_new0(typeof(*s->maps), s->cfg.nr_io_bars + s->cfg.nr_mm_bars);
@@ -331,6 +355,13 @@ static void rp_pci_realize(PCIDevice *pci_dev, Error **errp)
         s->maps[i].rp_dev = RPDEV_PCI_BAR_BASE + i;
         s->maps[i].parent = s;
         g_free(name);
+    }
+
+    if (s->cfg.msix) {
+        msix_init_exclusive_bar(pci_dev, 1,
+                                s->cfg.nr_io_bars + s->cfg.nr_mm_bars,
+                                NULL);
+        msix_vector_use(pci_dev, 0);
     }
 
     /* Setup the DMA dev.  */
@@ -385,6 +416,9 @@ static Property rp_properties[] = {
                                     cfg.bar_size[4], 0x1000),
     DEFINE_PROP_UINT64("bar-size5", RemotePortPCIDevice,
                                     cfg.bar_size[5], 0x1000),
+
+    DEFINE_PROP_BOOL("msi", RemotePortPCIDevice, cfg.msi, false),
+    DEFINE_PROP_BOOL("msix", RemotePortPCIDevice, cfg.msix, false),
 
     /* These are read-only.  */
     DEFINE_PROP_UINT32("nr-devs", RemotePortPCIDevice, cfg.nr_devs, 20),
