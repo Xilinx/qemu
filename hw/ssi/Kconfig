@@ -14,6 +14,10 @@ config XILINX_SPIPS
     select SSI
     select REGISTER # For xlnx-versal-ospi
 
+config XILINX_AXIQSPI
+    bool
+    select SSI
+
 config STM32F2XX_SPI
     bool
     select SSI
