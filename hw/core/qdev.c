@@ -1067,7 +1067,6 @@ static void device_initfn(Object *obj)
 {
     DeviceState *dev = DEVICE(obj);
     DeviceClass *dc = DEVICE_GET_CLASS(obj);
-    ObjectClass *class;
 
     if (qdev_hotplug) {
         dev->hotplugged = 1;
@@ -1200,7 +1199,7 @@ static void device_rst_cntrl(void *opaque, int n, int level)
 
     /* Do not reset device on updates without state change.  */
     if (p_level != dev->reset_level) {
-        device_reset(dev);
+        device_legacy_reset(dev);
     }
 }
 
@@ -1270,7 +1269,6 @@ static void device_class_init(ObjectClass *class, void *data)
     ResettableClass *rc = RESETTABLE_CLASS(class);
 
     class->unparent = device_unparent;
-    dc->props = device_props;
 
     /* by default all devices were considered as hotpluggable,
      * so with intent to check it in generic qdev_unplug() /

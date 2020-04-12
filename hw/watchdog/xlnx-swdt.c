@@ -319,7 +319,7 @@ static void swdt_class_init(ObjectClass *klass, void *data)
     dc->reset = swdt_reset;
     dc->realize = swdt_realize;
     dc->vmsd = &vmstate_swdt;
-    dc->props = swdt_properties;
+    device_class_set_props(dc, swdt_properties);
 }
 
 static const TypeInfo swdt_info = {

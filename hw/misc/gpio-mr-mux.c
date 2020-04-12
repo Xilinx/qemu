@@ -124,7 +124,7 @@ static void gpio_mr_mux_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = gpio_mr_mux_realize;
-    dc->props = gpio_mr_mux_properties;
+    device_class_set_props(dc, gpio_mr_mux_properties);
 }
 
 static const TypeInfo gpio_mr_mux_info = {

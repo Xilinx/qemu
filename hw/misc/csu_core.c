@@ -623,7 +623,7 @@ static void csu_core_class_init(ObjectClass *klass, void *data)
 
     dc->reset = csu_core_reset;
     dc->realize = csu_core_realize;
-    dc->props = csu_core_properties;
+    device_class_set_props(dc, csu_core_properties);
     dc->vmsd = &vmstate_csu_core;
 }
 

@@ -1986,7 +1986,7 @@ static void pmc_tap_class_init(ObjectClass *klass, void *data)
     dc->reset = pmc_tap_reset;
     dc->realize = pmc_tap_realize;
     dc->vmsd = &vmstate_pmc_tap;
-    dc->props = pmc_tap_props;
+    device_class_set_props(dc, pmc_tap_props);
 }
 
 static const TypeInfo pmc_tap_info = {

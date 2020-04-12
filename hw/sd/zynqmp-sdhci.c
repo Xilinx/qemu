@@ -173,7 +173,7 @@ static void zynqmp_sdhci_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = zynqmp_sdhci_realize;
-    dc->props = zynqmp_sdhci_properties;
+    device_class_set_props(dc, zynqmp_sdhci_properties);
     dc->reset = zynqmp_sdhci_reset;
 }
 

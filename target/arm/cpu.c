@@ -210,9 +210,6 @@ static void arm_cpu_reset(DeviceState *dev)
                            PSCI_OFF : PSCI_ON;
     s->halted = cpu->start_powered_off || s->halt_pin || s->arch_halt_pin;
 
-    if (arm_feature(env, ARM_FEATURE_GENERIC_TIMER)) {
-        cpu->env.cp15.c14_cntfrq = cpu->gt_freq;
-    }
     /* Reset value of SCTLR_V is controlled by input signal VINITHI.  */
     env->cp15.sctlr_ns &= ~SCTLR_V;
     env->cp15.sctlr_s &= ~SCTLR_V;
@@ -646,7 +643,7 @@ bool arm_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
     /* Xilinx: If we get here we want to make sure that we update the WFI
      * status to make sure that the PMU knows we are running again.
      */
-    if (exit_wfi == true && cpu->is_in_wfi) {
+    if (cpu->is_in_wfi) {
         cpu->is_in_wfi = false;
         qemu_set_irq(cpu->wfi, 0);
     }
@@ -1261,6 +1258,10 @@ static Property arm_cpu_gt_cntfrq_property =
             DEFINE_PROP_UINT64("cntfrq", ARMCPU, gt_cntfrq_hz,
                                NANOSECONDS_PER_SECOND / GTIMER_SCALE);
 
+static Property arm_cpu_gt_cntfrq_property_alias =
+            DEFINE_PROP_UINT64("generic-timer-frequency", ARMCPU, gt_cntfrq_hz,
+                               NANOSECONDS_PER_SECOND / GTIMER_SCALE);
+
 static Property arm_cpu_reset_cbar_property =
             DEFINE_PROP_UINT64("reset-cbar", ARMCPU, reset_cbar, 0);
 
@@ -1422,9 +1423,6 @@ void arm_cpu_post_init(Object *obj)
     }
 #endif
 
-        qdev_property_add_static(DEVICE(obj), &arm_cpu_rvbar_property);
-    }
-
 #ifndef CONFIG_USER_ONLY
     if (arm_feature(&cpu->env, ARM_FEATURE_EL3)) {
         /* Add the has_el3 state CPU property only if EL3 is allowed.  This will
@@ -1504,6 +1502,7 @@ void arm_cpu_post_init(Object *obj)
 
     if (arm_feature(&cpu->env, ARM_FEATURE_GENERIC_TIMER)) {
         qdev_property_add_static(DEVICE(cpu), &arm_cpu_gt_cntfrq_property);
+        qdev_property_add_static(DEVICE(cpu), &arm_cpu_gt_cntfrq_property_alias);
     }
 }
 
@@ -1992,28 +1991,6 @@ static void arm_cpu_realizefn(DeviceState *dev, Error **errp)
         set_feature(env, ARM_FEATURE_VBAR);
     }
 
-#ifndef CONFIG_USER_ONLY
-    if (arm_feature(env, ARM_FEATURE_GENERIC_TIMER)) {
-        if (!cpu->gt_freq) {
-            error_setg(errp, "gtimer frequency 0 is invalid");
-            return;
-        }
-        arm_gt_compute_scale(cpu);
-        if (!cpu->gt_scale) {
-            error_setg(errp, "gtimer frequency cannot be greater"
-                               " than QEMU_CLOCK_VIRTUAL");
-            return;
-        }
-        cpu->gt_timer[GTIMER_PHYS] = timer_new(QEMU_CLOCK_VIRTUAL,
-                                               1, arm_gt_ptimer_cb, cpu);
-        cpu->gt_timer[GTIMER_VIRT] = timer_new(QEMU_CLOCK_VIRTUAL,
-                                               1, arm_gt_vtimer_cb, cpu);
-        cpu->gt_timer[GTIMER_HYP] = timer_new(QEMU_CLOCK_VIRTUAL,
-                                               1, arm_gt_htimer_cb, cpu);
-        cpu->gt_timer[GTIMER_SEC] = timer_new(QEMU_CLOCK_VIRTUAL,
-                                               1, arm_gt_stimer_cb, cpu);
-    }
-#endif
     register_cp_regs_for_features(cpu);
     arm_cpu_register_gdb_regs_for_features(cpu);
 
@@ -2460,12 +2437,12 @@ static void cortex_r4_initfn(Object *obj)
     cpu->midr = 0x411FC144; /* r1p4 */
     cpu->id_pfr0 = 0x0131;
     cpu->id_pfr1 = 0x001;
-    cpu->id_dfr0 = 0x010400;
+    cpu->isar.id_dfr0 = 0x010400;
     cpu->id_afr0 = 0x0;
-    cpu->id_mmfr0 = 0x0210030;
-    cpu->id_mmfr1 = 0x00000000;
-    cpu->id_mmfr2 = 0x01200000;
-    cpu->id_mmfr3 = 0x0211;
+    cpu->isar.id_mmfr0 = 0x0210030;
+    cpu->isar.id_mmfr1 = 0x00000000;
+    cpu->isar.id_mmfr2 = 0x01200000;
+    cpu->isar.id_mmfr3 = 0x0211;
     cpu->isar.id_isar0 = 0x1101111;
     cpu->isar.id_isar1 = 0x13112111;
     cpu->isar.id_isar2 = 0x21232131;
@@ -3048,13 +3025,12 @@ static Property arm_cpu_properties[] = {
     DEFINE_PROP_UINT32("clidr", ARMCPU, clidr, 0),
     DEFINE_PROP_UINT32("id_pfr0", ARMCPU, id_pfr0, 0),
     DEFINE_PROP_UINT32("id_pfr1", ARMCPU, id_pfr1, 0),
-    DEFINE_PROP_UINT32("ccsidr0", ARMCPU, ccsidr[0], 0),
-    DEFINE_PROP_UINT32("ccsidr1", ARMCPU, ccsidr[1], 0),
+    DEFINE_PROP_UINT64("ccsidr0", ARMCPU, ccsidr[0], 0),
+    DEFINE_PROP_UINT64("ccsidr1", ARMCPU, ccsidr[1], 0),
     DEFINE_PROP_UINT64("mp-affinity", ARMCPU,
                         mp_affinity, ARM64_AFFINITY_INVALID),
     DEFINE_PROP_INT32("node-id", ARMCPU, node_id, CPU_UNSET_NUMA_NODE_ID),
     DEFINE_PROP_INT32("core-count", ARMCPU, core_count, -1),
-    DEFINE_PROP_UINT64("generic-timer-frequency", ARMCPU, gt_freq, 62500000),
     DEFINE_PROP_END_OF_LIST()
 };
 

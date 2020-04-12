@@ -248,7 +248,7 @@ static void pca954x_class_init(ObjectClass *klass, void *data)
     dc->realize = pca954x_realize;
     dc->reset = pca954x_reset;
     dc->vmsd = &vmstate_PCA954X;
-    dc->props = pca954x_properties;
+    device_class_set_props(dc, pca954x_properties);
     sc->device = data;
 }
 

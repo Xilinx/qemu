@@ -398,7 +398,7 @@ static void rp_pci_class_init(ObjectClass *oc, void *data)
     PCIDeviceClass *k = PCI_DEVICE_CLASS(oc);
 
     dc->desc = "Remote-Port PCI Device";
-    dc->props = rp_properties;
+    device_class_set_props(dc, rp_properties);
 
     rpdc->ops[RP_CMD_interrupt] = rp_gpio_interrupt;
     k->realize = rp_pci_realize;

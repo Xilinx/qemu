@@ -493,6 +493,26 @@ SRST
     enabled and the guest startup RAM will never increase.
 ERST
 
+DEF("etrace", HAS_ARG, QEMU_OPTION_etrace,
+    "-etrace FILE  dump execution trace to FILE\n", QEMU_ARCH_ALL)
+SRST
+``-etrace path``
+    Dump an execution trace to @var{path}.
+ERST
+
+DEF("etrace-flags", HAS_ARG, QEMU_OPTION_etrace_flags,
+    "-etrace-flags FLAGS  Execution trace flags\n\texec,translation,mem,cpu\n", QEMU_ARCH_ALL)
+SRST
+``-etrace-flags flags``
+    Execution trace flags.
+
+    @example
+    exec          Trace instruction execution.
+    translation   Trace TB translation with TB contents. (for off-line disassembly)
+    mem           Trace memory accesses (Only MMIO at the moment).
+    cpu           Trace CPU register state (slow, currently not binary).
+ERST
+
 DEF("mem-path", HAS_ARG, QEMU_OPTION_mempath,
     "-mem-path FILE  provide backing storage for guest RAM\n", QEMU_ARCH_ALL)
 SRST

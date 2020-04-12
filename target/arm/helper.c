@@ -143,25 +143,20 @@ static int aarch64_fpu_gdb_set_reg(CPUARMState *env, uint8_t *buf, int reg)
     }
 }
 
-static int aarch64_elx_gdb_get_reg(CPUARMState *env, uint8_t *buf, int reg, int el)
+static int aarch64_elx_gdb_get_reg(CPUARMState *env, GByteArray *buf, int reg, int el)
 {
     switch (reg) {
     case 0:
-        stfq_le_p(buf, env->elr_el[el]);
-        return 8;
+        return gdb_get_reg64(buf, env->elr_el[el]);
     case 1:
-        stfq_le_p(buf, env->cp15.esr_el[el]);
-        return 8;
+        return gdb_get_reg64(buf, env->cp15.esr_el[el]);
     case 2:
-        stfq_le_p(buf, env->banked_spsr[aarch64_banked_spsr_index(el)]);
-        return 8;
+        return gdb_get_reg64(buf, env->banked_spsr[aarch64_banked_spsr_index(el)]);
     case 3:
-        stfq_le_p(buf, env->cp15.ttbr0_el[el]);
-        return 8;
+        return gdb_get_reg64(buf, env->cp15.ttbr0_el[el]);
     case 4:
         if (el == 1) {
-            stfq_le_p(buf, env->cp15.ttbr1_el[el]);
-            return 8;
+            return gdb_get_reg64(buf, env->cp15.ttbr1_el[el]);
         }
         /* Fallthrough */
     default:
@@ -195,7 +190,7 @@ static int aarch64_elx_gdb_set_reg(CPUARMState *env, uint8_t *buf, int reg, int 
     }
 }
 
-static int aarch64_el1_gdb_get_reg(CPUARMState *env, uint8_t *buf, int reg)
+static int aarch64_el1_gdb_get_reg(CPUARMState *env, GByteArray *buf, int reg)
 {
     return aarch64_elx_gdb_get_reg(env, buf, reg, 1);
 }
@@ -205,7 +200,7 @@ static int aarch64_el1_gdb_set_reg(CPUARMState *env, uint8_t *buf, int reg)
     return aarch64_elx_gdb_set_reg(env, buf, reg, 1);
 }
 
-static int aarch64_el2_gdb_get_reg(CPUARMState *env, uint8_t *buf, int reg)
+static int aarch64_el2_gdb_get_reg(CPUARMState *env, GByteArray *buf, int reg)
 {
     return aarch64_elx_gdb_get_reg(env, buf, reg, 2);
 }
@@ -215,7 +210,7 @@ static int aarch64_el2_gdb_set_reg(CPUARMState *env, uint8_t *buf, int reg)
     return aarch64_elx_gdb_set_reg(env, buf, reg, 2);
 }
 
-static int aarch64_el3_gdb_get_reg(CPUARMState *env, uint8_t *buf, int reg)
+static int aarch64_el3_gdb_get_reg(CPUARMState *env, GByteArray *buf, int reg)
 {
     return aarch64_elx_gdb_get_reg(env, buf, reg, 3);
 }
@@ -2793,21 +2788,6 @@ static CPAccessResult gt_stimer_access(CPUARMState *env,
     }
 }
 
-static uint64_t gt_conv_arm2qemu(ARMCPU *cpu, uint64_t cnt)
-{
-    Int128 cnt128_scaled = int128_mul((Int128)cnt, (Int128)cpu->gt_scale);
-
-    return (uint64_t)int128_rshift(cnt128_scaled,
-                                    GTIMER_SCALE_SHIFT);
-}
-
-static uint64_t gt_conv_qemu2arm(ARMCPU *cpu, uint64_t cnt)
-{
-    Int128 cnt128_scaled = int128_lshift((Int128)cnt, GTIMER_SCALE_SHIFT);
-
-    return (uint64_t)int128_div(cnt128_scaled, (Int128)cpu->gt_scale);
-}
-
 static uint64_t gt_get_countervalue(CPUARMState *env)
 {
     ARMCPU *cpu = env_archcpu(env);
@@ -2841,7 +2821,7 @@ static void gt_recalc_timer(ARMCPU *cpu, int timeridx)
             nexttick = UINT64_MAX;
         } else {
             /* Next transition is when we hit cval */
-            nexttick = gt_conv_arm2qemu(cpu, gt->cval + offset);
+            nexttick = gt->cval + offset;
         }
         /* Note that the desired next expiry time might be beyond the
          * signed-64-bit range of a QEMUTimer -- in this case we just
@@ -8229,10 +8209,6 @@ void arm_cpu_register_gdb_regs_for_features(ARMCPU *cpu)
                                      aarch64_el3_gdb_set_reg,
                                      4, "aarch64-el3.xml", 0);
         }
-    } else if (arm_feature(env, ARM_FEATURE_EL3)) {
-        gdb_register_coprocessor(cs, arm_sys_gdb_get_reg,
-                                 arm_sys_gdb_set_reg,
-                                 3, "arm-sys.xml", 0);
     }
     gdb_register_coprocessor(cs, arm_gdb_get_sysreg, arm_gdb_set_sysreg,
                              arm_gen_dynamic_sysreg_xml(cs, cs->gdb_num_regs),

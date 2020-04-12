@@ -1894,7 +1894,7 @@ static void ospi_class_init(ObjectClass *klass, void *data)
     dc->reset = ospi_reset;
     dc->realize = ospi_realize;
     dc->vmsd = &vmstate_ospi;
-    dc->props = ospi_properties;
+    device_class_set_props(dc, ospi_properties);
 }
 
 static const TypeInfo ospi_info = {

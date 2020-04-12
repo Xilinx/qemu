@@ -348,7 +348,7 @@ static void xlx_iom_class_init(ObjectClass *klass, void *data)
 
     dc->reset = iom_intc_reset;
     dc->realize = xlx_iom_realize;
-    dc->props = xlx_iom_properties;
+    device_class_set_props(dc, xlx_iom_properties);
     dc->vmsd = &vmstate_xlx_iom;
     fgic->get_irq = xilinx_iom_fdt_get_irq;
 }

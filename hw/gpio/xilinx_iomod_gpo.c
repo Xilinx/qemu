@@ -149,7 +149,7 @@ static void xlx_iom_class_init(ObjectClass *klass, void *data)
 
     dc->reset = iom_gpo_reset;
     dc->realize = xlx_iom_realize;
-    dc->props = xlx_iom_properties;
+    device_class_set_props(dc, xlx_iom_properties);
     dc->vmsd = &vmstate_xlx_iom;
 }
 

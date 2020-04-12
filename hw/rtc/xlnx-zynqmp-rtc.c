@@ -534,7 +534,7 @@ static void rtc_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->reset = rtc_reset;
-    dc->props = xlnx_rtc_properties;
+    device_class_set_props(dc, xlnx_rtc_properties);
     dc->vmsd = &vmstate_rtc;
 }
 

@@ -2163,7 +2163,7 @@ static void pmu_global_class_init(ObjectClass *klass, void *data)
 
     dc->reset = pmu_global_reset;
     dc->vmsd = &vmstate_pmu_global;
-    dc->props = pmu_global_properties;
+    device_class_set_props(dc, pmu_global_properties);
     fggc->controller_gpios = pmu_gpios;
     fggc->client_gpios = pmu_global_client_gpios;
 }

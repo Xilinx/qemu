@@ -873,7 +873,7 @@ static void rpu_class_init(ObjectClass *klass, void *data)
     dc->reset = rpu_reset;
     dc->realize = rpu_realize;
     dc->vmsd = &vmstate_rpu;
-    dc->props = rpu_properties;
+    device_class_set_props(dc, rpu_properties);
     fggc->controller_gpios = crl_gpios;
 }
 

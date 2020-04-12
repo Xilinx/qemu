@@ -2338,7 +2338,7 @@ static void smmu500_class_init(ObjectClass *klass, void *data)
     dc->reset = smmu500_reset;
     dc->realize = smmu500_realize;
     dc->vmsd = &vmstate_smmu500;
-    dc->props = smmu_properties;
+    device_class_set_props(dc, smmu_properties);
     fmc->parse_reg = smmu_parse_reg;
 }
 

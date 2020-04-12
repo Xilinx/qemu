@@ -251,7 +251,7 @@ static void rp_memory_master_class_init(ObjectClass *oc, void *data)
 {
     FDTGenericMMapClass *fmc = FDT_GENERIC_MMAP_CLASS(oc);
     DeviceClass *dc = DEVICE_CLASS(oc);
-    dc->props = rp_properties;
+    device_class_set_props(dc, rp_properties);
     dc->realize = rp_memory_master_realize;
     fmc->parse_reg = rp_parse_reg;
 }

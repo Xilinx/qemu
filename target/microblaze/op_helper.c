@@ -19,6 +19,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/main-loop.h"
 #include "cpu.h"
 #include "exec/helper-proto.h"
 #include "qemu/host-utils.h"
@@ -85,7 +86,9 @@ void helper_sleep(CPUMBState *env)
     }
 
 #if !defined(CONFIG_USER_ONLY)
+    qemu_mutex_lock_iothread();
     qemu_set_irq(cpu->mb_sleep, true);
+    qemu_mutex_unlock_iothread();
 #endif
     cs->halted = 1;
     cs->exception_index = EXCP_HLT;

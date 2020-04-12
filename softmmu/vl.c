@@ -4503,16 +4503,12 @@ void qemu_init(int argc, char **argv, char **envp)
     accel_setup_post(current_machine);
     os_setup_post();
 
-<<<<<<< HEAD:vl.c
     if (qemu_etrace_mask(ETRACE_F_GPIO)) {
         qemu_etrace_gpio_init();
     }
 
-    main_loop();
-=======
     return;
 }
->>>>>>> upstream/master:softmmu/vl.c
 
 void qemu_cleanup(void)
 {

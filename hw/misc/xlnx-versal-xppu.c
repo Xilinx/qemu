@@ -682,7 +682,7 @@ static void xppu_class_init(ObjectClass *klass, void *data)
     FDTGenericMMapClass *fmc = FDT_GENERIC_MMAP_CLASS(klass);
 
     dc->reset = xppu_reset;
-    dc->props = xppu_properties;
+    device_class_set_props(dc, xppu_properties);
     dc->realize = xppu_realize;
     dc->vmsd = &vmstate_xppu;
     fmc->parse_reg = xppu_parse_reg;

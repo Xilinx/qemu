@@ -357,7 +357,7 @@ static void zynqmp_pufop_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = zynqmp_pufop_realize;
-    dc->props = zynqmp_pufop_props;
+    device_class_set_props(dc, zynqmp_pufop_props);
     dc->vmsd = &zynqmp_pufop_vmstate;
 }
 

@@ -562,7 +562,7 @@ static void bbram_ctrl_class_init(ObjectClass *klass, void *data)
     dc->reset = bbram_ctrl_reset;
     dc->realize = bbram_ctrl_realize;
     dc->vmsd = &vmstate_bbram_ctrl;
-    dc->props = bbram_ctrl_props;
+    device_class_set_props(dc, bbram_ctrl_props);
 }
 
 static const TypeInfo bbram_ctrl_info = {

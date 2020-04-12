@@ -158,7 +158,7 @@ static void rp_gpio_class_init(ObjectClass *oc, void *data)
     rpdc->ops[RP_CMD_interrupt] = rp_gpio_interrupt;
     dc->reset = rp_gpio_reset;
     dc->realize = rp_gpio_realize;
-    dc->props = rp_properties;
+    device_class_set_props(dc, rp_properties);
     fgic->get_irq = rp_fdt_get_irq;
 }
 

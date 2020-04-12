@@ -938,7 +938,7 @@ static void xlnx_zynqmp_can_reset(DeviceState *dev)
     fifo_reset(&s->txhpb_fifo);
 }
 
-static int xlnx_zynqmp_can_can_receive(CanBusClientState *client)
+static bool xlnx_zynqmp_can_can_receive(CanBusClientState *client)
 {
     XlnxZynqMPCAN *s = container_of(client, XlnxZynqMPCAN, bus_client);
 
@@ -1087,7 +1087,7 @@ static void xlnx_zynqmp_can_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     dc->reset = xlnx_zynqmp_can_reset;
     dc->realize = xlnx_zynqmp_can_realize;
-    dc->props = xlnx_zynqmp_can_properties;
+    device_class_set_props(dc, xlnx_zynqmp_can_properties);
     dc->vmsd = &vmstate_can;
 }
 

@@ -13,8 +13,7 @@
 #include "hw/qdev-core.h"
 
 static const TypeInfo fdt_qom_aliases[] = {
-    {   .name = "xlnx.ps7-usb",             .parent = "xlnx,ps7-usb"        },
-    {   .name = "xlnx.zynq-usb",            .parent = "xlnx,ps7-usb"        },
+//    {   .name = "xlnx.zynq-usb",            .parent = "xlnx,ps7-usb"        },
 };
 
 static void fdt_generic_register_types(void)

@@ -382,7 +382,7 @@ static void ocm_class_init(ObjectClass *klass, void *data)
 
     dc->reset = ocm_reset;
     dc->vmsd = &vmstate_ocm;
-    dc->props = ocmc_properties;
+    device_class_set_props(dc, ocmc_properties);
 }
 
 static const TypeInfo ocm_info = {

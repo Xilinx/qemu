@@ -1299,7 +1299,7 @@ static void iou_slcr_class_init(ObjectClass *klass, void *data)
 
     dc->reset = iou_slcr_reset;
     dc->vmsd = &vmstate_iou_slcr;
-    dc->props = zynqmp_iou_slcr_props;
+    device_class_set_props(dc, zynqmp_iou_slcr_props);
 
     fggc->controller_gpios = zynqmp_iou_slcr_controller_gpios;
 }

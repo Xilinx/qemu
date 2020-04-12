@@ -196,7 +196,7 @@ static void rp_stream_class_init(ObjectClass *oc, void *data)
 
     ssc->push = rp_stream_stream_push;
     ssc->can_push = rp_stream_stream_can_push;
-    dc->props = rp_properties;
+    device_class_set_props(dc, rp_properties);
     rpdc->ops[RP_CMD_write] = rp_stream_write;
 }
 

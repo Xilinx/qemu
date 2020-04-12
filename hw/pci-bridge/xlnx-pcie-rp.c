@@ -78,7 +78,7 @@ static void xlnx_realize(PCIDevice *d, Error **errp)
 
     pcie_cap_arifwd_init(d);
     pcie_cap_deverr_init(d);
-    pcie_cap_slot_init(d, s->slot);
+    pcie_cap_slot_init(d, s);
     pcie_chassis_create(s->chassis);
     rc = pcie_chassis_add_slot(s);
     if (rc < 0) {
@@ -144,7 +144,7 @@ static void xlnx_class_init(ObjectClass *klass, void *data)
     dc->desc = "Xilinx PCIe Root Port";
     dc->reset = xlnx_reset;
     dc->vmsd = &vmstate_xlnx;
-    dc->props = xlnx_props;
+    device_class_set_props(dc, xlnx_props);
 }
 
 static const TypeInfo xlnx_info = {

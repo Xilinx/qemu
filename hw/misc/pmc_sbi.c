@@ -616,7 +616,7 @@ static void ss_class_init(ObjectClass *klass, void *data)
     FDTGenericGPIOClass *fggc = FDT_GENERIC_GPIO_CLASS(klass);
     dc->realize = ss_realize;
     dc->reset = ss_reset;
-    dc->props = sbi_props;
+    device_class_set_props(dc, sbi_props);
     ssc->push = ss_stream_push;
     ssc->can_push = ss_stream_can_push;
     fggc->controller_gpios = sbi_controller_gpios;

@@ -67,7 +67,7 @@ static void fixed_clock_class_init(ObjectClass *oc, void *data)
     DeviceClass *dc = DEVICE_CLASS(oc);
 
     dc->reset = fixed_clock_reset;
-    dc->props = fixed_clock_properties;
+    device_class_set_props(dc, fixed_clock_properties);
 }
 
 static const TypeInfo fixed_clock_info = {

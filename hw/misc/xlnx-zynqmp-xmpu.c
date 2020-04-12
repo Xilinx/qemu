@@ -800,7 +800,7 @@ static void xmpu_class_init(ObjectClass *klass, void *data)
     dc->reset = xmpu_reset;
     dc->realize = xmpu_realize;
     dc->vmsd = &vmstate_xmpu;
-    dc->props = xmpu_properties;
+    device_class_set_props(dc, xmpu_properties);
     fmc->parse_reg = xmpu_parse_reg;
 }
 

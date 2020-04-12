@@ -1323,7 +1323,7 @@ static void aes_class_init(ObjectClass *klass, void *data)
     dc->reset = aes_reset;
     dc->realize = aes_realize;
     dc->vmsd = &vmstate_aes;
-    dc->props = aes_properties;
+    device_class_set_props(dc, aes_properties);
     ksc->update = device_key_update;
 
     ssc->push = aes_stream_push;

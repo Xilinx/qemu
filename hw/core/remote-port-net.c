@@ -97,7 +97,7 @@ static void rp_net_tx(RemotePortDevice *rpd, struct rp_pkt *pkt)
                      data,  pkt->busaccess.len);
 }
 
-static int rp_net_can_rx(NetClientState *nc)
+static bool rp_net_can_rx(NetClientState *nc)
 {
     return true;
 }
@@ -202,7 +202,7 @@ static void rp_net_class_init(ObjectClass *klass, void *data)
 
     dc->realize = rp_net_realize;
     dc->reset = rp_net_reset;
-    dc->props = rp_net_properties;
+    device_class_set_props(dc, rp_net_properties);
 
     rpdc->ops[RP_CMD_write] = rp_net_tx;
 }

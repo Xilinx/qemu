@@ -364,7 +364,7 @@ static void zynqmp_boot_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = zynqmp_boot_realize;
-    dc->props = zynqmp_boot_props;
+    device_class_set_props(dc, zynqmp_boot_props);
     dc->unrealize = zynqmp_boot_unrealize;
 }
 

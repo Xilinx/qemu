@@ -474,7 +474,7 @@ static void cfu_apb_class_init(ObjectClass *klass, void *data)
     dc->reset = cfu_apb_reset;
     dc->vmsd = &vmstate_cfu_apb;
     dc->realize = cfu_apb_realize;
-    dc->props = cfu_props;
+    device_class_set_props(dc, cfu_props);
 
 }
 

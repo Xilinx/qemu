@@ -859,7 +859,7 @@ static void rp_class_init(ObjectClass *klass, void *data)
 
     dc->realize = rp_realize;
     dc->vmsd = &vmstate_rp;
-    dc->props = rp_properties;
+    device_class_set_props(dc, rp_properties);
 }
 
 static const TypeInfo rp_info = {

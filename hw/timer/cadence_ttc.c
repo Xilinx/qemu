@@ -436,12 +436,8 @@ static void cadence_ttc_realize(DeviceState *dev, Error **errp)
 
     for (i = 0; i < 3; ++i) {
         cadence_timer_init(133000000, &s->timer[i]);
-<<<<<<< HEAD
         s->timer[i].container = s;
-        sysbus_init_irq(SYS_BUS_DEVICE(obj), &s->timer[i].irq);
-=======
         sysbus_init_irq(SYS_BUS_DEVICE(dev), &s->timer[i].irq);
->>>>>>> upstream/master
     }
 }
 
@@ -505,11 +501,8 @@ static void cadence_ttc_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->vmsd = &vmstate_cadence_ttc;
-<<<<<<< HEAD
-    dc->props = cadence_ttc_props;
-=======
+    device_class_set_props(dc, cadence_ttc_props);
     dc->realize = cadence_ttc_realize;
->>>>>>> upstream/master
 }
 
 static const TypeInfo cadence_ttc_info = {

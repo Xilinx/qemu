@@ -288,7 +288,7 @@ static void si57x_class_init(ObjectClass *klass, void *data)
     k->event = si57x_event;
     k->recv = si57x_rx;
     k->send = si57x_tx;
-    dc->props = si57x_properties;
+    device_class_set_props(dc, si57x_properties);
     dc->reset = si57x_reset;
 }
 

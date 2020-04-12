@@ -693,7 +693,7 @@ static void aes_class_init(ObjectClass *klass, void *data)
     dc->reset = xlx_aes_reset;
     dc->realize = aes_realize;
     dc->vmsd = &vmstate_aes;
-    dc->props = aes_properties;
+    device_class_set_props(dc, aes_properties);
 
     ssc->push = xlx_aes_stream_push;
     ssc->can_push = xlx_aes_stream_can_push;
