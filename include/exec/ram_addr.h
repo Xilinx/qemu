@@ -24,6 +24,7 @@
 #include "hw/xen/xen.h"
 #include "sysemu/tcg.h"
 #include "exec/ramlist.h"
+<<<<<<< HEAD
 
 struct RAMBlock {
     struct rcu_head rcu;
@@ -66,6 +67,9 @@ struct RAMBlock {
     unsigned long *clear_bmap;
     uint8_t clear_bmap_shift;
 };
+=======
+#include "exec/ramblock.h"
+>>>>>>> upstream/master
 
 /**
  * clear_bmap_size: calculate clear bitmap size
@@ -176,6 +180,14 @@ RAMBlock *qemu_ram_alloc_resizeable(ram_addr_t size, ram_addr_t max_size,
 void qemu_ram_free(RAMBlock *block);
 
 int qemu_ram_resize(RAMBlock *block, ram_addr_t newsize, Error **errp);
+
+void qemu_ram_writeback(RAMBlock *block, ram_addr_t start, ram_addr_t length);
+
+/* Clear whole block of mem */
+static inline void qemu_ram_block_writeback(RAMBlock *block)
+{
+    qemu_ram_writeback(block, 0, block->used_length);
+}
 
 #define DIRTY_CLIENTS_ALL     ((1 << DIRTY_MEMORY_NUM) - 1)
 #define DIRTY_CLIENTS_NOCODE  (DIRTY_CLIENTS_ALL & ~(1 << DIRTY_MEMORY_CODE))

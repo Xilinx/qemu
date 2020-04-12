@@ -17,7 +17,7 @@ common-obj-$(CONFIG_ARASAN_NFC) += arasan_nfc.o
 common-obj-$(CONFIG_M24CXX) += m24cxx.o
 common-obj-$(CONFIG_SWIM) += swim.o
 
-obj-$(CONFIG_SH4) += tc58128.o
+common-obj-$(CONFIG_SH4) += tc58128.o
 
 obj-$(CONFIG_VIRTIO_BLK) += virtio-blk.o
 obj-$(CONFIG_VHOST_USER_BLK) += vhost-user-blk.o

@@ -567,10 +567,8 @@ void setup_rt_frame(int sig, struct target_sigaction *ka,
         env->nip = tswapl(handler->entry);
         env->gpr[2] = tswapl(handler->toc);
     } else {
-        /* ELFv2 PPC64 function pointers are entry points, but R12
-         * must also be set */
-        env->nip = tswapl((target_ulong) ka->_sa_handler);
-        env->gpr[12] = env->nip;
+        /* ELFv2 PPC64 function pointers are entry points. R12 must also be set. */
+        env->gpr[12] = env->nip = ka->_sa_handler;
     }
 #else
     env->nip = (target_ulong) ka->_sa_handler;
@@ -588,7 +586,7 @@ sigsegv:
 
 }
 
-#if !defined(TARGET_PPC64)
+#if !defined(TARGET_PPC64) || defined(TARGET_ABI32)
 long do_sigreturn(CPUPPCState *env)
 {
     struct target_sigcontext *sc = NULL;

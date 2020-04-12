@@ -757,7 +757,7 @@ static void efuse_ctrl_class_init(ObjectClass *klass, void *data)
     dc->reset = efuse_ctrl_reset;
     dc->realize = efuse_ctrl_realize;
     dc->vmsd = &vmstate_efuse_ctrl;
-    dc->props = efuse_ctrl_props;
+    device_class_set_props(dc, efuse_ctrl_props);
 }
 
 static const TypeInfo efuse_ctrl_info = {

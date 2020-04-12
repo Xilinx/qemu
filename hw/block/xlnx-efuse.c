@@ -397,7 +397,7 @@ static void efuse_class_init(ObjectClass *klass, void *data)
 
     dc->realize = efuse_realize;
     dc->vmsd = &vmstate_efuse;
-    dc->props = efuse_properties;
+    device_class_set_props(dc, efuse_properties);
 }
 
 static const TypeInfo efuse_info = {

@@ -872,7 +872,7 @@ static void arasan_nfc_class_init(ObjectClass *klass, void *data)
 
     dc->reset = arasan_nfc_reset;
     dc->realize = arasan_nfc_realize;
-    dc->props = arasan_nfc_properties;
+    device_class_set_props(dc, arasan_nfc_properties);
     dc->vmsd = &vmstate_arasan_nfc;
 }
 

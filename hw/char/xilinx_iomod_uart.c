@@ -120,7 +120,7 @@ static int uart_can_rx(void *opaque)
     return s->cfg.use_rx;
 }
 
-static void uart_event(void *opaque, int event)
+static void uart_event(void *opaque, QEMUChrEvent event)
 {
 }
 
@@ -258,7 +258,7 @@ static void xlx_iom_class_init(ObjectClass *klass, void *data)
 
     dc->reset = iom_uart_reset;
     dc->realize = xlx_iom_realize;
-    dc->props = xlx_iom_properties;
+    device_class_set_props(dc, xlx_iom_properties);
     dc->vmsd = &vmstate_xlx_iom;
 }
 

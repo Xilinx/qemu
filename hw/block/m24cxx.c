@@ -236,7 +236,7 @@ static void m24cxx_class_init(ObjectClass *klass, void *data)
     dc->realize = m24cxx_realize;
     dc->reset = m24cxx_reset;
     dc->vmsd = &vmstate_m24cxx;
-    dc->props = m24cxx_properties;
+    device_class_set_props(dc, m24cxx_properties);
 }
 
 static TypeInfo m24cxx_info = {

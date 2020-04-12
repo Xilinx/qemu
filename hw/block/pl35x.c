@@ -299,7 +299,7 @@ static void pl35x_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = pl35x_realize;
-    dc->props = pl35x_properties;
+    device_class_set_props(dc, pl35x_properties);
     dc->vmsd = &vmstate_pl35x;
 }
 

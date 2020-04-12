@@ -899,7 +899,7 @@ static void zynqmp_efuse_class_init(ObjectClass *klass, void *data)
     dc->reset = zynqmp_efuse_reset;
     dc->realize = zynqmp_efuse_realize;
     dc->vmsd = &vmstate_efuse;
-    dc->props = zynqmp_efuse_props;
+    device_class_set_props(dc, zynqmp_efuse_props);
 }
 
 

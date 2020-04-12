@@ -389,7 +389,7 @@ static void a9_gtimer_class_init(ObjectClass *klass, void *data)
     dc->realize = a9_gtimer_realize;
     dc->vmsd = &vmstate_a9_gtimer;
     dc->reset = a9_gtimer_reset;
-    dc->props = a9_gtimer_properties;
+    device_class_set_props(dc, a9_gtimer_properties);
     fggc->client_gpios = a9_gtimer_client_gpios;
 }
 

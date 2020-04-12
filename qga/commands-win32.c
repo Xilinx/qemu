@@ -315,8 +315,9 @@ void qmp_guest_shutdown(bool has_mode, const char *mode, Error **errp)
     }
 
     if (!ExitWindowsEx(shutdown_flag, SHTDN_REASON_FLAG_PLANNED)) {
-        slog("guest-shutdown failed: %lu", GetLastError());
-        error_setg(errp, QERR_UNDEFINED_ERROR);
+        g_autofree gchar *emsg = g_win32_error_message(GetLastError());
+        slog("guest-shutdown failed: %s", emsg);
+        error_setg_win32(errp, GetLastError(), "guest-shutdown failed");
     }
 }
 
@@ -342,7 +343,13 @@ GuestFileRead *qmp_guest_file_read(int64_t handle, bool has_count,
     }
 
     fh = gfh->fh;
-    buf = g_malloc0(count+1);
+    buf = g_try_malloc0(count + 1);
+    if (!buf) {
+        error_setg(errp,
+                   "failed to allocate sufficient memory "
+                   "to complete the requested service");
+        return NULL;
+    }
     is_ok = ReadFile(fh, buf, count, &read_count, NULL);
     if (!is_ok) {
         error_setg_win32(errp, GetLastError(), "failed to read file");
@@ -1319,7 +1326,8 @@ static DWORD WINAPI do_suspend(LPVOID opaque)
     DWORD ret = 0;
 
     if (!SetSuspendState(*mode == GUEST_SUSPEND_MODE_DISK, TRUE, TRUE)) {
-        slog("failed to suspend guest, %lu", GetLastError());
+        g_autofree gchar *emsg = g_win32_error_message(GetLastError());
+        slog("failed to suspend guest: %s", emsg);
         ret = -1;
     }
     g_free(mode);
@@ -1946,7 +1954,7 @@ typedef struct _GA_WTSINFOA {
 
 } GA_WTSINFOA;
 
-GuestUserList *qmp_guest_get_users(Error **err)
+GuestUserList *qmp_guest_get_users(Error **errp)
 {
 #define QGA_NANOSECONDS 10000000
 

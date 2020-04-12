@@ -710,7 +710,7 @@ static void zynqmp_csu_dma_class_init(ObjectClass *klass, void *data)
     dc->reset = zynqmp_csu_dma_reset;
     dc->realize = zynqmp_csu_dma_realize;
     dc->vmsd = &vmstate_zynqmp_csu_dma;
-    dc->props = zynqmp_csu_dma_properties;
+    device_class_set_props(dc, zynqmp_csu_dma_properties);
 
     ssc->push = zynqmp_csu_dma_stream_push;
     ssc->can_push = zynqmp_csu_dma_stream_can_push;

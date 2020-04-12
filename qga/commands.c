@@ -54,7 +54,7 @@ void qmp_guest_ping(Error **errp)
     slog("guest-ping called");
 }
 
-static void qmp_command_info(QmpCommand *cmd, void *opaque)
+static void qmp_command_info(const QmpCommand *cmd, void *opaque)
 {
     GuestAgentInfo *info = opaque;
     GuestAgentCommandInfo *cmd_info;
@@ -143,7 +143,7 @@ static GuestExecInfo *guest_exec_info_find(int64_t pid_numeric)
     return NULL;
 }
 
-GuestExecStatus *qmp_guest_exec_status(int64_t pid, Error **err)
+GuestExecStatus *qmp_guest_exec_status(int64_t pid, Error **errp)
 {
     GuestExecInfo *gei;
     GuestExecStatus *ges;
@@ -152,7 +152,7 @@ GuestExecStatus *qmp_guest_exec_status(int64_t pid, Error **err)
 
     gei = guest_exec_info_find(pid);
     if (gei == NULL) {
-        error_setg(err, QERR_INVALID_PARAMETER, "pid");
+        error_setg(errp, QERR_INVALID_PARAMETER, "pid");
         return NULL;
     }
 
@@ -385,7 +385,7 @@ GuestExec *qmp_guest_exec(const char *path,
                        bool has_env, strList *env,
                        bool has_input_data, const char *input_data,
                        bool has_capture_output, bool capture_output,
-                       Error **err)
+                       Error **errp)
 {
     GPid pid;
     GuestExec *ge = NULL;
@@ -405,7 +405,7 @@ GuestExec *qmp_guest_exec(const char *path,
     arglist.next = has_arg ? arg : NULL;
 
     if (has_input_data) {
-        input = qbase64_decode(input_data, -1, &ninput, err);
+        input = qbase64_decode(input_data, -1, &ninput, errp);
         if (!input) {
             return NULL;
         }
@@ -424,7 +424,7 @@ GuestExec *qmp_guest_exec(const char *path,
             guest_exec_task_setup, NULL, &pid, has_input_data ? &in_fd : NULL,
             has_output ? &out_fd : NULL, has_output ? &err_fd : NULL, &gerr);
     if (!ret) {
-        error_setg(err, QERR_QGA_COMMAND_FAILED, gerr->message);
+        error_setg(errp, QERR_QGA_COMMAND_FAILED, gerr->message);
         g_error_free(gerr);
         goto done;
     }
@@ -482,10 +482,15 @@ done:
  * the guest's SEEK_ constants.  */
 int ga_parse_whence(GuestFileWhence *whence, Error **errp)
 {
-    /* Exploit the fact that we picked values to match QGA_SEEK_*. */
+    /*
+     * Exploit the fact that we picked values to match QGA_SEEK_*;
+     * however, we have to use a temporary variable since the union
+     * members may have different size.
+     */
     if (whence->type == QTYPE_QSTRING) {
+        int value = whence->u.name;
         whence->type = QTYPE_QNUM;
-        whence->u.value = whence->u.name;
+        whence->u.value = value;
     }
     switch (whence->u.value) {
     case QGA_SEEK_SET:
@@ -499,7 +504,7 @@ int ga_parse_whence(GuestFileWhence *whence, Error **errp)
     return -1;
 }
 
-GuestHostName *qmp_guest_get_host_name(Error **err)
+GuestHostName *qmp_guest_get_host_name(Error **errp)
 {
     GuestHostName *result = NULL;
     gchar const *hostname = g_get_host_name();
