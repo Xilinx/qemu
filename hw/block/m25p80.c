@@ -734,6 +734,7 @@ static void complete_collecting_data(Flash *s)
     case WRSR:
         switch (get_man(s)) {
         case MAN_SPANSION:
+        case MAN_WINBOND:
             s->quad_enable = !!(s->data[1] & 0x02);
             break;
         case MAN_MACRONIX:
@@ -1078,6 +1079,7 @@ static void decode_new_cmd(Flash *s, uint32_t value)
     case WRSR:
         if (s->write_enable) {
             switch (get_man(s)) {
+            case MAN_WINBOND:
             case MAN_SPANSION:
                 s->needed_bytes = 2;
                 s->state = STATE_COLLECTING_DATA;
@@ -1252,6 +1254,7 @@ static void decode_new_cmd(Flash *s, uint32_t value)
         break;
     case RDCR_EQIO:
         switch (get_man(s)) {
+        case MAN_WINBOND:
         case MAN_SPANSION:
             s->data[0] = (!!s->quad_enable) << 1;
             s->pos = 0;
