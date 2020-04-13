@@ -1653,6 +1653,8 @@ static MemTxResult axiqspi_xip_read(void *opaque, hwaddr addr, uint64_t *val,
     case AXIQSPI_MODE_QUAD:
         cmd = FAST_READ_QUAD_IO;
         break;
+    default:
+        g_assert_not_reached();
     }
 
     /* Parse to get the number of dummy and addr bytes */
