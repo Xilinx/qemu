@@ -1197,7 +1197,7 @@ static bool axiqspi_bus_tx_addr(XlnxAXIQSPI *s)
 static bool axiqspi_bus_tx_dummies(XlnxAXIQSPI *s)
 {
     uint32_t dummy;
-    bool had_data;
+    bool had_data = false;
     int i;
 
     DB_PRINT("axiqspi: dummy byte TX start\n");
