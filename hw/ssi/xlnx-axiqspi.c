@@ -1198,9 +1198,10 @@ static bool axiqspi_bus_tx_dummies(XlnxAXIQSPI *s)
 {
     uint32_t dummy;
     bool had_data;
+    int i;
 
     DB_PRINT("axiqspi: dummy byte TX start\n");
-    for (uint8_t i = s->dummy_bytes_txed; i < s->num_dummies; ++i) {
+    for (i = s->dummy_bytes_txed; i < s->num_dummies; ++i) {
         had_data = axiqspi_tx_pop(s, &dummy);
         if (!had_data) {
             break;
