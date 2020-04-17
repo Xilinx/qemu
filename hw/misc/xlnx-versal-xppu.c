@@ -425,7 +425,7 @@ static bool xppu_ap_access(void *opaque, hwaddr addr, uint64_t *value, bool rw,
 
     /* If HIDE_EN is set, we always say the transaction was valid */
     if (ARRAY_FIELD_EX32(s->regs, CTRL, HIDE_EN)) {
-        if (!rw) {
+        if (!rw && !valid) {
             *value = 0;
         }
         return true;
