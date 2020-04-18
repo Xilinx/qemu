@@ -1,7 +1,23 @@
-FROM fedora:30
+# syntax=docker/dockerfile:1.0.0-experimental
+#
+# Docker setup for running the "Coverity Scan" tools over the source
+# tree and uploading them to the website, as per
+# https://scan.coverity.com/projects/qemu/builds/new
+# We do this on a fixed config (currently Fedora 30 with a known
+# set of dependencies and a configure command that enables a specific
+# set of options) so that random changes don't result in our accidentally
+# dropping some files from the scan.
+#
+# We don't build on top of the fedora.docker file because we don't
+# want to accidentally change or break the scan config when that
+# is updated.
 
-# Please keep this list sorted alphabetically
+# The work of actually doing the build is handled by the
+# run-coverity-scan script.
+
+FROM fedora:30
 ENV PACKAGES \
+    alsa-lib-devel \
     bc \
     bison \
     brlapi-devel \
@@ -9,6 +25,7 @@ ENV PACKAGES \
     bzip2-devel \
     ccache \
     clang \
+    curl \
     cyrus-sasl-devel \
     dbus-daemon \
     device-mapper-multipath-devel \
@@ -27,13 +44,16 @@ ENV PACKAGES \
     libasan \
     libattr-devel \
     libblockdev-mpath-devel \
+    libcap-devel \
     libcap-ng-devel \
     libcurl-devel \
     libepoxy-devel \
     libfdt-devel \
+    libgbm-devel \
     libiscsi-devel \
     libjpeg-devel \
     libpmem-devel \
+    libnfs-devel \
     libpng-devel \
     librbd-devel \
     libseccomp-devel \
@@ -80,9 +100,10 @@ ENV PACKAGES \
     perl \
     perl-Test-Harness \
     pixman-devel \
+    pulseaudio-libs-devel \
     python3 \
-    python3-PyYAML \
     python3-sphinx \
+    PyYAML \
     rdma-core-devel \
     SDL2-devel \
     snappy-devel \
@@ -95,12 +116,16 @@ ENV PACKAGES \
     usbredir-devel \
     virglrenderer-devel \
     vte291-devel \
+    wget \
     which \
     xen-devel \
+    xfsprogs-devel \
     zlib-devel
 ENV QEMU_CONFIGURE_OPTS --python=/usr/bin/python3
 
 RUN dnf install -y $PACKAGES
 RUN rpm -q $PACKAGES | sort > /packages.txt
 ENV PATH $PATH:/usr/libexec/python3-sphinx/
-ENV FEATURES mingw clang pyyaml asan docs
+ENV COVERITY_TOOL_BASE=/coverity-tools
+COPY run-coverity-scan run-coverity-scan
+RUN --mount=type=secret,id=coverity.token,required ./run-coverity-scan --update-tools-only --tokenfile /run/secrets/coverity.token
