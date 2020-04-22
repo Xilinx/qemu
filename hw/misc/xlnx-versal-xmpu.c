@@ -50,6 +50,7 @@
  * Register definitions shared between ZynqMP and Versal are in
  * the XMPU header file
  */
+    FIELD(CTRL, DISDEFSREGION, 4, 1)
 REG32(ERR_STATUS1_LO, 0x4)
 REG32(ERR_STATUS1_HI, 0x8)
     FIELD(ERR_STATUS1_HI, AXI_ADDR_HI, 0, 12)
@@ -378,8 +379,8 @@ static uint64_t lock_prew(RegisterInfo *reg, uint64_t val64)
 
 static const RegisterAccessInfo xmpu_regs_info[] = {
     {   .name = "CTRL",  .addr = A_CTRL,
-        .reset = 0x3,
-        .rsvd = 0xfffffff0,
+        .reset = 0x13,
+        .rsvd = 0xffffff70,
         .ro = 0xfffffff8,
         .post_write = xmpu_setup_postw,
     },{ .name = "ERR_STATUS1_LO",  .addr = A_ERR_STATUS1_LO,
@@ -661,6 +662,8 @@ static void xmpu_reset(DeviceState *dev)
         register_reset(&s->regs_info[i]);
     }
 
+    s->dis_def_rw = ARRAY_FIELD_EX32(s->regs, CTRL, DISDEFSREGION);
+
     isr_update_irq(s);
     xmpu_flush(s);
 }
@@ -701,6 +704,8 @@ static MemTxResult xmpu_write(void *opaque, hwaddr addr, uint64_t value,
                       object_get_canonical_path(OBJECT(s)), addr);
         return MEMTX_ERROR;
     }
+
+    s->dis_def_rw = FIELD_EX64(value, CTRL, DISDEFSREGION);
 
     res = xmpu_write_common(opaque, s, addr, value, size, attr);
 

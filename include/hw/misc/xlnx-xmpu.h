@@ -140,6 +140,7 @@ struct XMPU {
 
     const char *prefix;
     bool enabled;
+    bool dis_def_rw;
     qemu_irq enabled_signal;
     uint8_t addr_shift;
     uint64_t addr_mask;

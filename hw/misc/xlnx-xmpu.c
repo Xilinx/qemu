@@ -253,11 +253,13 @@ IOMMUTLBEntry xmpu_master_translate(XMPUMaster *xm, hwaddr addr,
     }
 
     if (nr_matched == 0) {
-        if (default_rd) {
-            ret.perm |= IOMMU_RO;
-        }
-        if (default_wr) {
-            ret.perm |= IOMMU_WO;
+        if (!s->dis_def_rw) {
+            if (default_rd) {
+                ret.perm |= IOMMU_RO;
+            }
+            if (default_wr) {
+                ret.perm |= IOMMU_WO;
+            }
         }
     }
 
