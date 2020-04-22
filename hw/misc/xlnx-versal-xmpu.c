@@ -410,6 +410,7 @@ static const RegisterAccessInfo xmpu_regs_info[] = {
         .pre_write = ids_prew,
     },{ .name = "LOCK",  .addr = A_LOCK,
         .pre_write = lock_prew,
+    },{ .name = "ECO",  .addr = A_ECO,
     },{ .name = "R00_START_LO",  .addr = A_R00_START_LO,
     },{ .name = "R00_START_HI",  .addr = A_R00_START_HI,
         .rsvd = 0xfffff000,
