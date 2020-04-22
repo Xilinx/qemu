@@ -51,6 +51,11 @@
  * the XMPU header file
  */
     FIELD(CTRL, DISDEFSREGION, 4, 1)
+REG32(ITR, 0x24)
+    FIELD(ITR, SECURITYVIO, 3, 1)
+    FIELD(ITR, WRPERMVIO, 2, 1)
+    FIELD(ITR, RDPERMVIO, 1, 1)
+    FIELD(ITR, INV_APB, 0, 1)
 REG32(ERR_STATUS1_LO, 0x4)
 REG32(ERR_STATUS1_HI, 0x8)
     FIELD(ERR_STATUS1_HI, AXI_ADDR_HI, 0, 12)
@@ -362,6 +367,16 @@ static uint64_t ids_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
+static uint64_t itr_prew(RegisterInfo *reg, uint64_t val64)
+{
+    XMPU *s = XILINX_XMPU(reg->opaque);
+    uint32_t val = val64;
+
+    s->regs[R_ISR] = val;
+    isr_update_irq(s);
+    return 0;
+}
+
 static void xmpu_setup_postw(RegisterInfo *reg, uint64_t val64)
 {
     XMPU *s = XILINX_XMPU(reg->opaque);
@@ -410,6 +425,10 @@ static const RegisterAccessInfo xmpu_regs_info[] = {
         .pre_write = ids_prew,
     },{ .name = "LOCK",  .addr = A_LOCK,
         .pre_write = lock_prew,
+    },{ .name = "ITR",  .addr = A_ITR,
+        .rsvd = 0xfffffff0,
+        .ro = 0xfffffff0,
+        .pre_write = itr_prew,
     },{ .name = "ECO",  .addr = A_ECO,
     },{ .name = "R00_START_LO",  .addr = A_R00_START_LO,
     },{ .name = "R00_START_HI",  .addr = A_R00_START_HI,
