@@ -697,7 +697,7 @@ static MemTxResult xmpu_write(void *opaque, hwaddr addr, uint64_t value,
     MemTxResult res;
 
     locked = ARRAY_FIELD_EX32(s->regs, LOCK, REGWRDIS);
-    if (locked && (addr == A_ISR)) {
+    if (locked && (addr != A_ISR)) {
         /* Locked access.  */
         qemu_log_mask(LOG_GUEST_ERROR, "%s: accessing locked register "\
                       "0x%"HWADDR_PRIx"\n",
