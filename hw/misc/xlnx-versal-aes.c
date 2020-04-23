@@ -443,12 +443,14 @@ static void xlx_aes_load_key(Zynq3AES *s, int len)
 
     AESKey key = { .u8 = 0 };
     uint8_t zerokey[32] = { 0 };
+    int be_adj = 7;
 
     src = s->regs[R_AES_KEY_SEL];
 
     switch (src) {
     case KEY_SEL_EFUSE_KEY:
         key.u8 = efuse_locked ? zerokey : s->efuse_key.key;
+        be_adj = 0;  /* due to zynqmp compatibility */
         break;
     case KEY_SEL_EFUSE_RED_KEY:
         key.u8 = s->efuse_key_red.key;
@@ -467,6 +469,7 @@ static void xlx_aes_load_key(Zynq3AES *s, int len)
         break;
     case KEY_SEL_BBRAM_KEY:
         key.u8 = bbram_locked ? zerokey : s->bbram_key.key;
+        be_adj = 0;  /* due to zynqmp compatibility */
         break;
     case KEY_SEL_BBRAM_RD_KEY:
         key.u8 = s->bbram_key_red.key;
@@ -522,7 +525,7 @@ static void xlx_aes_load_key(Zynq3AES *s, int len)
          *       xlnx_aes core.
          */
         for (i = 0; i < 8; i++) {
-            xlnx_aes_write_key(s->aes, len / 32 - 1 - i , key.u32[i]);
+            xlnx_aes_write_key(s->aes, i , key.u32[i ^ be_adj]);
         }
         xlnx_aes_load_key(s->aes, len);
     } else {
