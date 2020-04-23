@@ -735,7 +735,7 @@ static RegisterAccessInfo aes_regs_info[] = {
         .ro = 0xffffffff,
     },{ .name = "AES_KEY_LOCK_STATUS",  .addr = A_AES_KEY_LOCK_STATUS,
         .ro = 0x3,
-        .reset = 0x3,
+        /* reset value must be the reset states of input GPIOs */
     },{ .name = "AES_AAD",  .addr = A_AES_AAD,
     },{ .name = "AES_USER_SEL",  .addr = A_AES_USER_SEL,
     },{ .name = "AES_USER_KEY_CRC",  .addr = A_AES_USER_KEY_CRC,
