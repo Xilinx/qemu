@@ -1211,6 +1211,9 @@ static void aes_realize(DeviceState *dev, Error **errp)
 {
     Zynq3AES *s = XILINX_AES(dev);
 
+    s->prefix = object_get_canonical_path(OBJECT(s));
+    s->aes->prefix = g_strdup(s->prefix);
+
     s->bh_key = (uint8_t *) &s->regs[R_BH_KEY_0];
 #define USER_KEY(x) { \
     s->user_key[x] = (uint8_t *) &s->regs[R_USER_KEY_ ## x ## _0]; \
