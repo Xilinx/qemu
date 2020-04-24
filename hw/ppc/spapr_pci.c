@@ -295,16 +295,6 @@ static void rtas_ibm_change_msi(PowerPCCPU *cpu, SpaprMachineState *spapr,
         return;
     }
 
-    /* Fins sPAPRPHBState */
-    phb = spapr_pci_find_phb(spapr, buid);
-    if (phb) {
-        pdev = spapr_pci_find_dev(spapr, buid, config_addr);
-    }
-    if (!phb || !pdev) {
-        rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
-        return;
-    }
-
     switch (func) {
     case RTAS_CHANGE_FN:
         if (msi_present(pdev)) {
