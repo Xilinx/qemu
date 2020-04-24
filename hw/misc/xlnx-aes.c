@@ -175,7 +175,9 @@ static void xlnx_aes_push_iv(XlnxAES *s, uint32_t v)
 void xlnx_aes_start_message(XlnxAES *s, bool encrypt)
 {
     if (xlnx_check_state(s, IDLE, "Start message")) {
-        return;
+        /* Clean up then proceed anyway */
+        xlnx_aes_set_state(s, IDLE);
+        qemu_set_irq(s->s_busy, false);
     }
     /* Loading IV.  */
     xlnx_aes_set_state(s, IV0);
