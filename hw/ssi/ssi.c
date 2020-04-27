@@ -46,19 +46,14 @@ static void ssi_cs_default(void *opaque, int n, int level)
     s->cs = cs;
 }
 
-static uint32_t ssi_transfer_raw_default(SSISlave *dev, uint32_t val,
-                                         int num_bits)
+static uint32_t ssi_transfer_raw_default(SSISlave *dev, uint32_t val)
 {
     SSISlaveClass *ssc = SSI_SLAVE_GET_CLASS(dev);
 
     if ((dev->cs && ssc->cs_polarity == SSI_CS_HIGH) ||
             (!dev->cs && ssc->cs_polarity == SSI_CS_LOW) ||
             ssc->cs_polarity == SSI_CS_NONE) {
-        if (ssc->transfer_bits) {
-           return ssc->transfer_bits(dev, val, num_bits);
-        } else if (ssc->transfer) {
-           return ssc->transfer(dev, val);
-        }
+        return ssc->transfer(dev, val);
     }
     return 0;
 }
@@ -160,7 +155,7 @@ SSIBus *ssi_create_bus(DeviceState *parent, const char *name)
     return SSI_BUS(bus);
 }
 
-uint32_t ssi_transfer_bits(SSIBus *bus, uint32_t val, int num_bits)
+uint32_t ssi_transfer(SSIBus *bus, uint32_t val)
 {
     BusState *b = BUS(bus);
     BusChild *kid;
@@ -170,30 +165,10 @@ uint32_t ssi_transfer_bits(SSIBus *bus, uint32_t val, int num_bits)
     QTAILQ_FOREACH(kid, &b->children, sibling) {
         SSISlave *slave = SSI_SLAVE(kid->child);
         ssc = SSI_SLAVE_GET_CLASS(slave);
-        r |= ssc->transfer_raw(slave, val, num_bits);
+        r |= ssc->transfer_raw(slave, val);
     }
 
     return r;
-}
-
-uint32_t ssi_transfer(SSIBus *bus, uint32_t val)
-{
-    return ssi_transfer_bits(bus, val, 0);
-}
-
-void ssi_set_datalines(SSIBus *bus, uint8_t val)
-{
-    BusState *b = BUS(bus);
-    BusChild *kid;
-    SSISlaveClass *ssc;
-    SSISlave *slave;
-
-    QTAILQ_FOREACH(kid, &b->children, sibling) {
-        slave = SSI_SLAVE(kid->child);
-        ssc = SSI_SLAVE_GET_CLASS(slave);
-        ssc->set_data_lines(slave, val);
-    }
-
 }
 
 const VMStateDescription vmstate_ssi_slave = {

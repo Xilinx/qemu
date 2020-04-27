@@ -43,7 +43,6 @@ struct SSISlaveClass {
      * This is called when the device cs is active (true by default).
      */
     uint32_t (*transfer)(SSISlave *dev, uint32_t val);
-    uint32_t (*transfer_bits)(SSISlave *dev, uint32_t val, int num_bits);
     /* called when the CS line changes. Optional, devices only need to implement
      * this if they have side effects associated with the cs line (beyond
      * tristating the txrx lines).
@@ -57,9 +56,7 @@ struct SSISlaveClass {
      * cs_polarity are unused if this is overwritten. Transfer_raw will
      * always be called for the device for every txrx access to the parent bus
      */
-    uint32_t (*transfer_raw)(SSISlave *dev, uint32_t val, int num_bits);
-    /* Call this method to set the spi mode to single, dual or quad mode */
-    void (*set_data_lines)(SSISlave *dev, uint8_t val);
+    uint32_t (*transfer_raw)(SSISlave *dev, uint32_t val);
 };
 
 struct SSISlave {
@@ -87,10 +84,7 @@ DeviceState *ssi_create_slave_no_init(SSIBus *bus, const char *name);
 /* Master interface.  */
 SSIBus *ssi_create_bus(DeviceState *parent, const char *name);
 
-uint32_t ssi_transfer_bits(SSIBus *bus, uint32_t val, int num_bits);
 uint32_t ssi_transfer(SSIBus *bus, uint32_t val);
-
-void ssi_set_datalines(SSIBus *bus, uint8_t val);
 
 /* Automatically connect all children nodes a spi controller as slaves */
 void ssi_auto_connect_slaves(DeviceState *parent, qemu_irq *cs_lines,
