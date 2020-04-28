@@ -976,9 +976,10 @@ static sd_rsp_type_t sd_normal_command(SDState *sd, SDRequest req)
             sd_ocr_powerup(sd);
             return sd->state == sd_idle_state ?
                    sd_r3 : sd_r0;
-        } else if (!sd->spi) {
-            goto bad_cmd;
         }
+
+        if (!sd->spi)
+            goto bad_cmd;
 
         sd->state = sd_transfer_state;
         return sd_r1;
@@ -1000,8 +1001,8 @@ static sd_rsp_type_t sd_normal_command(SDState *sd, SDRequest req)
         }
         break;
 
-    case 3:    /* CMD3:   SD: SEND_RELATIVE_ADDR
-                          MMC: SET_RELATEIVE_ADDR */
+    case 3:	/* CMD3:   SEND_RELATIVE_ADDR */
+                /*         MMC: SET_RELATEIVE_ADDR */
         if (sd->spi)
             goto bad_cmd;
         switch (sd->state) {
@@ -1040,13 +1041,14 @@ static sd_rsp_type_t sd_normal_command(SDState *sd, SDRequest req)
                 mmc_function_switch(sd, req.arg);
                 sd->state = sd_transfer_state;
                 return sd_r1b;
-            } else {
-                sd_function_switch(sd, req.arg);
-                sd->state = sd_sendingdata_state;
-                sd->data_start = 0;
-                sd->data_offset = 0;
-                return sd_r1;
             }
+
+            sd_function_switch(sd, req.arg);
+            sd->state = sd_sendingdata_state;
+            sd->data_start = 0;
+            sd->data_offset = 0;
+            return sd_r1;
+
         default:
             break;
         }
@@ -1100,25 +1102,24 @@ static sd_rsp_type_t sd_normal_command(SDState *sd, SDRequest req)
             sd->data_start = 0;
             sd->data_offset = 0;
             return sd_r1;
-        } else {
-            if (sd->spec_version < SD_PHY_SPECv2_00_VERS) {
-                break;
-            }
-            if (sd->state != sd_idle_state) {
-                break;
-            }
-
-            sd->vhs = 0;
-
-            /* No response if not exactly one VHS bit is set.  */
-            if (!(req.arg >> 8) || (req.arg >> (ctz32(req.arg & ~0xff) + 1))) {
-                return sd->spi ? sd_r7 : sd_r0;
-            }
-
-            /* Accept.  */
-            sd->vhs = req.arg;
-            return sd_r7;
         }
+
+        if (sd->spec_version < SD_PHY_SPECv2_00_VERS) {
+            break;
+        }
+        if (sd->state != sd_idle_state) {
+            break;
+        }
+        sd->vhs = 0;
+
+        /* No response if not exactly one VHS bit is set.  */
+        if (!(req.arg >> 8) || (req.arg >> (ctz32(req.arg & ~0xff) + 1))) {
+            return sd->spi ? sd_r7 : sd_r0;
+        }
+
+        /* Accept.  */
+        sd->vhs = req.arg;
+        return sd_r7;
 
     case 9:	/* CMD9:   SEND_CSD */
         switch (sd->state) {
