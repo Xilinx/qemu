@@ -1215,7 +1215,7 @@ static void gem_transmit(CadenceGEMState *s)
                     s->tx_desc_addr[q] = gem_get_queue_base_addr(s,
                                          true, q);
                 } else {
-                    s->tx_desc_addr[q] +=
+                    s->tx_desc_addr[q] = (uint32_t)packet_desc_addr +
                                          4 * gem_get_desc_len(s, false);
                 }
                 DB_PRINT("TX descriptor next: 0x%08x\n", s->tx_desc_addr[q]);
