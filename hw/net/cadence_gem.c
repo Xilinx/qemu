@@ -1257,8 +1257,12 @@ static void gem_transmit(CadenceGEMState *s)
 
             /* read next descriptor */
             if (tx_desc_get_wrap(desc)) {
-                s->tx_desc_addr[q] = gem_get_queue_base_addr(s, true, q);
-                packet_desc_addr = gem_get_tx_desc_addr(s, q);
+                packet_desc_addr = 0;
+                if (s->regs[GEM_DMACFG] & GEM_DMACFG_ADDR_64B) {
+                    packet_desc_addr = s->regs[GEM_TBQPH];
+                    packet_desc_addr <<= 32;
+                }
+                packet_desc_addr |= gem_get_queue_base_addr(s, true, q);
             } else {
                 packet_desc_addr += 4 * gem_get_desc_len(s, false);
             }
