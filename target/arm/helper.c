@@ -101,45 +101,6 @@ static int vfp_gdb_set_reg(CPUARMState *env, uint8_t *buf, int reg)
     return 0;
 }
 
-static int arm_sys_gdb_get_reg(CPUARMState *env, uint8_t *buf, int reg)
-{
-    switch (reg) {
-    case 0:
-        /* TTBCR Secure */
-        stl_p(buf, env->cp15.tcr_el[3].raw_tcr);
-        return 4;
-    case 1:
-        /* TTBR0 Secure */
-        stl_p(buf, env->cp15.ttbr0_s);
-        return 4;
-    case 2:
-        /* TTBR1 Secure */
-        stl_p(buf, env->cp15.ttbr1_s);
-        return 4;
-    default:
-        return 0;
-    }
-}
-
-static int arm_sys_gdb_set_reg(CPUARMState *env, uint8_t *buf, int reg)
-{
-    switch (reg) {
-    case 0:
-        /* TTBCR Secure */
-        return 0;
-    case 1:
-        /* TTBR0 Secure */
-        env->cp15.ttbr0_s = ldl_p(buf);
-        return 4;
-    case 2:
-        /* TTBR1 Secure */
-        env->cp15.ttbr1_s = ldl_p(buf);
-        return 4;
-    default:
-        return 0;
-    }
-}
-
 static int aarch64_fpu_gdb_get_reg(CPUARMState *env, uint8_t *buf, int reg)
 {
     switch (reg) {
@@ -7169,10 +7130,6 @@ void arm_cpu_register_gdb_regs_for_features(ARMCPU *cpu)
                                      aarch64_el3_gdb_set_reg,
                                      4, "aarch64-el3.xml", 0);
         }
-    } else if (arm_feature(env, ARM_FEATURE_EL3)) {
-        gdb_register_coprocessor(cs, arm_sys_gdb_get_reg,
-                                 arm_sys_gdb_set_reg,
-                                 3, "arm-sys.xml", 0);
     }
     gdb_register_coprocessor(cs, arm_gdb_get_sysreg, arm_gdb_set_sysreg,
                              arm_gen_dynamic_xml(cs),
