@@ -111,8 +111,12 @@ static uint32_t host_time_from_guest(XlnxZynqMPRTC *s, uint32_t guest_time)
 
 static void rtc_int_update_irq(XlnxZynqMPRTC *s)
 {
-    bool pending = s->regs[R_RTC_INT_STATUS] & ~s->regs[R_RTC_INT_MASK];
-    qemu_set_irq(s->irq_rtc_int, pending);
+    uint32_t pending = s->regs[R_RTC_INT_STATUS] & ~s->regs[R_RTC_INT_MASK];
+    qemu_set_irq(s->irq_rtc_int[0],
+                 !!(pending & R_RTC_INT_STATUS_ALARM_MASK));
+    qemu_set_irq(s->irq_rtc_int[1],
+                 !!(pending & R_RTC_INT_STATUS_SECONDS_MASK));
+
 }
 
 static void addr_error_int_update_irq(XlnxZynqMPRTC *s)
@@ -482,8 +486,12 @@ static void rtc_init(Object *obj)
                                 0x0,
                                 &reg_array->mem);
     sysbus_init_mmio(sbd, &s->iomem);
-    sysbus_init_irq(sbd, &s->irq_rtc_int);
+    /* Error irq */
     sysbus_init_irq(sbd, &s->irq_addr_error_int);
+    /* Alarm irq */
+    sysbus_init_irq(sbd, &s->irq_rtc_int[0]);
+    /* Seconds irq */
+    sysbus_init_irq(sbd, &s->irq_rtc_int[1]);
 
     DPRINT_TM("%06d : %s()\n", __LINE__, __func__);
     clear_time(s);

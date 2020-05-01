@@ -346,11 +346,6 @@ static inline unsigned tx_desc_get_last(uint32_t *desc)
     return (desc[1] & DESC_1_TX_LAST) ? 1 : 0;
 }
 
-static inline void tx_desc_set_last(uint32_t *desc)
-{
-    desc[1] |= DESC_1_TX_LAST;
-}
-
 static inline unsigned tx_desc_get_length(uint32_t *desc)
 {
     return desc[1] & DESC_1_LENGTH;
@@ -1219,7 +1214,7 @@ static void gem_transmit(CadenceGEMState *s)
                     s->tx_desc_addr[q] = gem_get_queue_base_addr(s,
                                          true, q);
                 } else {
-                    s->tx_desc_addr[q] +=
+                    s->tx_desc_addr[q] = (uint32_t)packet_desc_addr +
                                          4 * gem_get_desc_len(s, false);
                 }
                 DB_PRINT("TX descriptor next: 0x%08x\n", s->tx_desc_addr[q]);
@@ -1261,9 +1256,12 @@ static void gem_transmit(CadenceGEMState *s)
 
             /* read next descriptor */
             if (tx_desc_get_wrap(desc)) {
-                tx_desc_set_last(desc);
-                s->tx_desc_addr[q] = gem_get_queue_base_addr(s, true, q);
-                packet_desc_addr = gem_get_tx_desc_addr(s, q);
+                packet_desc_addr = 0;
+                if (s->regs[GEM_DMACFG] & GEM_DMACFG_ADDR_64B) {
+                    packet_desc_addr = s->regs[GEM_TBQPH];
+                    packet_desc_addr <<= 32;
+                }
+                packet_desc_addr |= gem_get_queue_base_addr(s, true, q);
             } else {
                 packet_desc_addr += 4 * gem_get_desc_len(s, false);
             }

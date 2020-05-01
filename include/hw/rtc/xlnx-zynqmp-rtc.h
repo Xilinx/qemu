@@ -83,7 +83,7 @@ REG32(SAFETY_CHK, 0x50)
 typedef struct XlnxZynqMPRTC {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
-    qemu_irq irq_rtc_int;
+    qemu_irq irq_rtc_int[2];
     qemu_irq irq_addr_error_int;
     QEMUTimer *alarm;
     QEMUTimer *sec_tick;
