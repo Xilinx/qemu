@@ -128,7 +128,7 @@ static ssize_t rp_recv(RemotePort *s, void *buf, size_t count)
 
     r = qemu_chr_fe_read_all(&s->chr, buf, count);
     if (r <= 0) {
-        rp_fatal_error(s, "Disconnected");
+        return r;
     }
     if (r != count) {
         error_report("%s: Bad read, expected %zd but got %zd\n",
@@ -455,7 +455,7 @@ static void rp_event_read(void *opaque)
         r = read(s->event.pipe.read, buf, sizeof buf);
 #endif
         if (r == 0) {
-            hw_error("%s: pipe closed?\n", s->prefix);
+            return;
         }
     } while (r == sizeof buf || (r < 0 && errno == EINTR));
 
@@ -602,12 +602,16 @@ static void rp_pt_process_pkt(RemotePort *s, RemotePortDynPkt *dpkt)
     }
 }
 
-static void rp_read_pkt(RemotePort *s, RemotePortDynPkt *dpkt)
+static int rp_read_pkt(RemotePort *s, RemotePortDynPkt *dpkt)
 {
     struct rp_pkt *pkt = dpkt->pkt;
     int used;
+    int r;
 
-    rp_recv(s, pkt, sizeof pkt->hdr);
+    r = rp_recv(s, pkt, sizeof pkt->hdr);
+    if (r <= 0) {
+        return r;
+    }
     used = rp_decode_hdr((void *) &pkt->hdr);
     assert(used == sizeof pkt->hdr);
 
@@ -615,15 +619,21 @@ static void rp_read_pkt(RemotePort *s, RemotePortDynPkt *dpkt)
         rp_dpkt_alloc(dpkt, sizeof pkt->hdr + pkt->hdr.len);
         /* pkt may move due to realloc.  */
         pkt = dpkt->pkt;
-        rp_recv(s, &pkt->hdr + 1, pkt->hdr.len);
+        r = rp_recv(s, &pkt->hdr + 1, pkt->hdr.len);
+        if (r <= 0) {
+            return r;
+        }
         rp_decode_payload(pkt);
     }
+
+    return used + r;
 }
 
 static void *rp_protocol_thread(void *arg)
 {
     RemotePort *s = REMOTE_PORT(arg);
     unsigned int i;
+    int r;
 
     /* Make sure we have a decent bufsize to start with.  */
     rp_dpkt_alloc(&s->rsp, sizeof s->rsp.pkt->busaccess + 1024);
@@ -642,13 +652,19 @@ static void *rp_protocol_thread(void *arg)
         wpos &= ARRAY_SIZE(s->rx_queue.pkt) - 1;
         dpkt = &s->rx_queue.pkt[wpos];
 
-        rp_read_pkt(s, dpkt);
+        r = rp_read_pkt(s, dpkt);
+        if (r <= 0) {
+            /* Disconnected.  */
+            break;
+        }
         if (0) {
             rp_pkt_dump("rport-pkt", (void *) dpkt->pkt,
                         sizeof dpkt->pkt->hdr + dpkt->pkt->hdr.len);
         }
         rp_pt_process_pkt(s, dpkt);
     }
+
+    rp_fatal_error(s, "Disconnected");
     return NULL;
 }
 
