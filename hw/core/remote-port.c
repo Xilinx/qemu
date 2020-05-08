@@ -664,7 +664,9 @@ static void *rp_protocol_thread(void *arg)
         rp_pt_process_pkt(s, dpkt);
     }
 
-    rp_fatal_error(s, "Disconnected");
+    if (!s->finalizing) {
+        rp_fatal_error(s, "Disconnected");
+    }
     return NULL;
 }
 
@@ -716,6 +718,7 @@ static void rp_realize(DeviceState *dev, Error **errp)
         }
 
         qdev_prop_set_chr(dev, "chardev", chr);
+        s->chrdev = chr;
     }
 
     /* Force RP sockets into blocking mode since our RP-thread will deal
@@ -819,6 +822,24 @@ static void rp_realize(DeviceState *dev, Error **errp)
     rp_restart_sync_timer(s);
 }
 
+static void rp_unrealize(DeviceState *dev, Error **errp)
+{
+    RemotePort *s = REMOTE_PORT(dev);
+
+    s->finalizing = true;
+
+    /* Unregister handler.  */
+    qemu_set_fd_handler(s->event.pipe.read, NULL, NULL, s);
+
+    info_report("%s: Wait for remote-port to disconnect\n", s->prefix);
+    qemu_chr_fe_disconnect(&s->chr);
+    qemu_thread_join(&s->thread);
+
+    close(s->event.pipe.read);
+    close(s->event.pipe.write);
+    object_unparent(OBJECT(s->chrdev));
+}
+
 static const VMStateDescription vmstate_rp = {
     .name = TYPE_REMOTE_PORT,
     .version_id = 1,
@@ -874,6 +895,7 @@ static void rp_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = rp_realize;
+    dc->unrealize = rp_unrealize;
     dc->vmsd = &vmstate_rp;
     device_class_set_props(dc, rp_properties);
 }
