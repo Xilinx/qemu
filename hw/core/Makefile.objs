@@ -51,6 +51,7 @@ obj-$(CONFIG_REMOTE_PORT) += remote-port-gpio.o
 obj-$(CONFIG_REMOTE_PORT) += remote-port-stream.o
 obj-$(CONFIG_REMOTE_PORT) += remote-port-net.o
 obj-$(CONFIG_REMOTE_PORT_PCI) += remote-port-pci-device.o
+obj-$(CONFIG_REMOTE_PORT_PCI) += remote-port-pci-adaptor.o
 
 common-obj-$(CONFIG_REGISTER) += register.o
 common-obj-$(CONFIG_OR_IRQ) += or-irq.o
