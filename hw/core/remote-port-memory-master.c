@@ -203,7 +203,7 @@ static void rp_memory_master_init(Object *obj)
     RemotePortMemoryMaster *rpms = REMOTE_PORT_MEMORY_MASTER(obj);
     object_property_add_link(obj, "rp-adaptor0", "remote-port",
                              (Object **)&rpms->rp,
-                             qdev_prop_allow_set_link_before_realize,
+                             qdev_prop_allow_set_link,
                              OBJ_PROP_LINK_STRONG,
                              &error_abort);
 }
