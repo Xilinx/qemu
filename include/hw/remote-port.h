@@ -111,6 +111,9 @@ struct RemotePort {
 void rp_device_attach(Object *adaptor, Object *dev,
                       int rp_nr, int dev_nr,
                       Error **errp);
+void rp_device_detach(Object *adaptor, Object *dev,
+                      int rp_nr, int dev_nr,
+                      Error **errp);
 bool rp_time_warp_enable(bool en);
 
 /**
