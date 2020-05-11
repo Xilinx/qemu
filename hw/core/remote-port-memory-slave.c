@@ -150,6 +150,13 @@ static void rp_memory_slave_init(Object *obj)
                              &error_abort);
 }
 
+static void rp_memory_slave_unrealize(DeviceState *dev, Error **errp)
+{
+    RemotePortMemorySlave *s = REMOTE_PORT_MEMORY_SLAVE(dev);
+
+    address_space_destroy(&s->as);
+}
+
 static void rp_memory_slave_class_init(ObjectClass *oc, void *data)
 {
     RemotePortDeviceClass *rpdc = REMOTE_PORT_DEVICE_CLASS(oc);
@@ -158,6 +165,7 @@ static void rp_memory_slave_class_init(ObjectClass *oc, void *data)
     rpdc->ops[RP_CMD_write] = rp_memory_slave_write;
     rpdc->ops[RP_CMD_read] = rp_memory_slave_read;
     dc->realize = rp_memory_slave_realize;
+    dc->unrealize = rp_memory_slave_unrealize;
 }
 
 static const TypeInfo rp_info = {
