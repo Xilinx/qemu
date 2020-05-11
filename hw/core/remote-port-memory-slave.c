@@ -49,7 +49,7 @@ static void process_data_slow(RemotePortMemorySlave *s,
         if (byte_en && !byte_en[i % byte_en_len]) {
             continue;
         }
-        dma_memory_rw_attr(s->as, pkt->busaccess.addr + i, data + i,
+        dma_memory_rw_attr(&s->as, pkt->busaccess.addr + i, data + i,
                            1, dir, s->attr);
     }
 }
@@ -92,7 +92,7 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
     if (byte_en) {
         process_data_slow(s, pkt, dir, data, byte_en);
     } else {
-        dma_memory_rw_attr(s->as, pkt->busaccess.addr, data,
+        dma_memory_rw_attr(&s->as, pkt->busaccess.addr, data,
                            pkt->busaccess.len, dir, s->attr);
     }
     if (dir == DMA_DIRECTION_TO_DEVICE && REMOTE_PORT_DEBUG_LEVEL > 0) {
@@ -119,14 +119,7 @@ static void rp_memory_slave_realize(DeviceState *dev, Error **errp)
     RemotePortMemorySlave *s = REMOTE_PORT_MEMORY_SLAVE(dev);
 
     s->peer = rp_get_peer(s->rp);
-
-    /* FIXME: do something with per paster address spaces */
-    if (s->mr) {
-        s->as = g_malloc0(sizeof(AddressSpace));
-        address_space_init(s->as, s->mr, NULL);
-    } else {
-        s->as = &address_space_memory;
-    }
+    address_space_init(&s->as, s->mr ? s->mr : get_system_memory(), "dma");
 }
 
 static void rp_memory_slave_write(RemotePortDevice *s, struct rp_pkt *pkt)

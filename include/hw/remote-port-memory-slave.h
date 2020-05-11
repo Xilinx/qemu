@@ -23,7 +23,7 @@ typedef struct RemotePortMemorySlave {
     struct RemotePort *rp;
     struct rp_peer_state *peer;
     MemoryRegion *mr;
-    AddressSpace *as;
+    AddressSpace as;
     MemTxAttrs attr;
     RemotePortDynPkt rsp;
 } RemotePortMemorySlave;
