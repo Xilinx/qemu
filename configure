@@ -1194,6 +1194,11 @@ for opt do
   ;;
   --enable-brlapi) brlapi="yes"
   ;;
+  --disable-bluez)
+    bluez="no";
+    echo "WARNING: --disable-bluez has been deprecated."
+    echo "Please remove it from your scripts"
+  ;;
   --disable-kvm) kvm="no"
   ;;
   --enable-kvm) kvm="yes"
