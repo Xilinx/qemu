@@ -383,6 +383,8 @@ static void rp_pci_init(Object *obj)
     s->rp_dma = REMOTE_PORT_MEMORY_SLAVE(tmp_obj);
 
     object_property_add_child(obj, "rp-dma", tmp_obj, &error_abort);
+    /* add_child will grant us another ref, free the initial one.  */
+    object_unref(tmp_obj);
 }
 
 static Property rp_properties[] = {
