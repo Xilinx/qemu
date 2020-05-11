@@ -367,6 +367,23 @@ static void rp_pci_realize(PCIDevice *pci_dev, Error **errp)
     object_property_set_bool(OBJECT(s->rp_dma), true, "realized", &error_abort);
 }
 
+static void rp_pci_exit(PCIDevice *pci_dev)
+{
+    RemotePortPCIDevice *s = REMOTE_PORT_PCI_DEVICE(pci_dev);
+
+    /* Setup the DMA dev.  */
+    rp_device_detach(OBJECT(s->rp), OBJECT(s->rp_dma), 0,
+                            s->cfg.rp_dev + RPDEV_PCI_DMA, &error_abort);
+    rp_device_detach(OBJECT(s->rp), OBJECT(s), 0,
+                            s->cfg.rp_dev, &error_abort);
+
+    /*
+     * Cannot be a child of us since as->root->owner gets reffed by
+     * address_space_init in rp_dma creating a circular dep.
+     */
+    object_unparent(OBJECT(s->rp_dma));
+}
+
 static void rp_pci_init(Object *obj)
 {
     RemotePortPCIDevice *s = REMOTE_PORT_PCI_DEVICE(obj);
@@ -430,6 +447,7 @@ static void rp_pci_class_init(ObjectClass *oc, void *data)
 
     rpdc->ops[RP_CMD_interrupt] = rp_gpio_interrupt;
     k->realize = rp_pci_realize;
+    k->exit = rp_pci_exit;
     k->vendor_id = PCI_VENDOR_ID_XILINX;
     k->device_id = 0;
     k->revision = 0;
