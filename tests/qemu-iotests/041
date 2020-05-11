@@ -35,7 +35,7 @@ quorum_img3 = os.path.join(iotests.test_dir, 'quorum3.img')
 quorum_repair_img = os.path.join(iotests.test_dir, 'quorum_repair.img')
 quorum_snapshot_file = os.path.join(iotests.test_dir, 'quorum_snapshot.img')
 
-nbd_sock_path = os.path.join(iotests.test_dir, 'nbd.sock')
+nbd_sock_path = os.path.join(iotests.sock_dir, 'nbd.sock')
 
 class TestSingleDrive(iotests.QMPTestCase):
     image_len = 1 * 1024 * 1024 # MB
@@ -904,8 +904,6 @@ class TestRepairQuorum(iotests.QMPTestCase):
                 pass
 
     def test_complete(self):
-        self.assert_no_active_block_jobs()
-
         result = self.vm.qmp('drive-mirror', job_id='job0', device='quorum0',
                              sync='full', node_name="repair0", replaces="img1",
                              target=quorum_repair_img, format=iotests.imgfmt)
@@ -919,8 +917,6 @@ class TestRepairQuorum(iotests.QMPTestCase):
                         'target image does not match source after mirroring')
 
     def test_cancel(self):
-        self.assert_no_active_block_jobs()
-
         result = self.vm.qmp('drive-mirror', job_id='job0', device='quorum0',
                              sync='full', node_name="repair0", replaces="img1",
                              target=quorum_repair_img, format=iotests.imgfmt)
@@ -932,8 +928,6 @@ class TestRepairQuorum(iotests.QMPTestCase):
         self.assert_has_block_node(None, quorum_img3)
 
     def test_cancel_after_ready(self):
-        self.assert_no_active_block_jobs()
-
         result = self.vm.qmp('drive-mirror', job_id='job0', device='quorum0',
                              sync='full', node_name="repair0", replaces="img1",
                              target=quorum_repair_img, format=iotests.imgfmt)
@@ -948,8 +942,6 @@ class TestRepairQuorum(iotests.QMPTestCase):
                         'target image does not match source after mirroring')
 
     def test_pause(self):
-        self.assert_no_active_block_jobs()
-
         result = self.vm.qmp('drive-mirror', job_id='job0', device='quorum0',
                              sync='full', node_name="repair0", replaces="img1",
                              target=quorum_repair_img, format=iotests.imgfmt)

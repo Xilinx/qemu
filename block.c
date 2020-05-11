@@ -548,7 +548,8 @@ static int64_t create_file_fallback_truncate(BlockBackend *blk,
     int64_t size;
     int ret;
 
-    ret = blk_truncate(blk, minimum_size, false, PREALLOC_MODE_OFF, &local_err);
+    ret = blk_truncate(blk, minimum_size, false, PREALLOC_MODE_OFF, 0,
+                       &local_err);
     if (ret < 0 && ret != -ENOTSUP) {
         error_propagate(errp, local_err);
         return ret;
@@ -2982,7 +2983,6 @@ BdrvChild *bdrv_open_child(const char *filename,
 BlockDriverState *bdrv_open_blockdev_ref(BlockdevRef *ref, Error **errp)
 {
     BlockDriverState *bs = NULL;
-    Error *local_err = NULL;
     QObject *obj = NULL;
     QDict *qdict = NULL;
     const char *reference = NULL;
@@ -2995,11 +2995,7 @@ BlockDriverState *bdrv_open_blockdev_ref(BlockdevRef *ref, Error **errp)
         assert(ref->type == QTYPE_QDICT);
 
         v = qobject_output_visitor_new(&obj);
-        visit_type_BlockdevOptions(v, NULL, &options, &local_err);
-        if (local_err) {
-            error_propagate(errp, local_err);
-            goto fail;
-        }
+        visit_type_BlockdevOptions(v, NULL, &options, &error_abort);
         visit_complete(v, &obj);
 
         qdict = qobject_to(QDict, obj);
@@ -3017,8 +3013,6 @@ BlockDriverState *bdrv_open_blockdev_ref(BlockdevRef *ref, Error **errp)
 
     bs = bdrv_open_inherit(NULL, reference, qdict, 0, NULL, NULL, errp);
     obj = NULL;
-
-fail:
     qobject_unref(obj);
     visit_free(v);
     return bs;
@@ -3171,7 +3165,7 @@ static BlockDriverState *bdrv_open_inherit(const char *filename,
     }
 
     ret = bdrv_fill_options(&options, filename, &flags, &local_err);
-    if (local_err) {
+    if (ret < 0) {
         goto fail;
     }
 
@@ -5284,27 +5278,6 @@ int bdrv_has_zero_init(BlockDriverState *bs)
     }
     if (bs->file && bs->drv->is_filter) {
         return bdrv_has_zero_init(bs->file->bs);
-    }
-
-    /* safe default */
-    return 0;
-}
-
-int bdrv_has_zero_init_truncate(BlockDriverState *bs)
-{
-    if (!bs->drv) {
-        return 0;
-    }
-
-    if (bs->backing) {
-        /* Depends on the backing image length, but better safe than sorry */
-        return 0;
-    }
-    if (bs->drv->bdrv_has_zero_init_truncate) {
-        return bs->drv->bdrv_has_zero_init_truncate(bs);
-    }
-    if (bs->file && bs->drv->is_filter) {
-        return bdrv_has_zero_init_truncate(bs->file->bs);
     }
 
     /* safe default */

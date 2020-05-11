@@ -550,6 +550,7 @@ void multifd_save_cleanup(void)
         multifd_send_state->ops->send_cleanup(p, &local_err);
         if (local_err) {
             migrate_set_error(migrate_get_current(), local_err);
+            error_free(local_err);
         }
     }
     qemu_sem_destroy(&multifd_send_state->channels_ready);
@@ -688,6 +689,7 @@ out:
     if (local_err) {
         trace_multifd_send_error(p->id);
         multifd_send_terminate_threads(local_err);
+        error_free(local_err);
     }
 
     /*
@@ -727,6 +729,8 @@ static void multifd_new_send_channel_async(QIOTask *task, gpointer opaque)
          * its status.
          */
         p->quit = true;
+        object_unref(OBJECT(sioc));
+        error_free(local_err);
     } else {
         p->c = QIO_CHANNEL(sioc);
         qio_channel_set_delay(p->c, false);
@@ -894,11 +898,11 @@ void multifd_recv_sync_main(void)
     for (i = 0; i < migrate_multifd_channels(); i++) {
         MultiFDRecvParams *p = &multifd_recv_state->params[i];
 
-        qemu_mutex_lock(&p->mutex);
-        if (multifd_recv_state->packet_num < p->packet_num) {
-            multifd_recv_state->packet_num = p->packet_num;
+        WITH_QEMU_LOCK_GUARD(&p->mutex) {
+            if (multifd_recv_state->packet_num < p->packet_num) {
+                multifd_recv_state->packet_num = p->packet_num;
+            }
         }
-        qemu_mutex_unlock(&p->mutex);
         trace_multifd_recv_sync_main_signal(p->id);
         qemu_sem_post(&p->sem_sync);
     }
@@ -963,6 +967,7 @@ static void *multifd_recv_thread(void *opaque)
 
     if (local_err) {
         multifd_recv_terminate_threads(local_err);
+        error_free(local_err);
     }
     qemu_mutex_lock(&p->mutex);
     p->running = false;

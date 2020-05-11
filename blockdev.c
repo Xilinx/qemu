@@ -2711,7 +2711,6 @@ void qmp_block_resize(bool has_device, const char *device,
     BlockBackend *blk = NULL;
     BlockDriverState *bs;
     AioContext *aio_context;
-    int ret;
 
     bs = bdrv_lookup_bs(has_device ? device : NULL,
                         has_node_name ? node_name : NULL,
@@ -2734,14 +2733,13 @@ void qmp_block_resize(bool has_device, const char *device,
         goto out;
     }
 
-    blk = blk_new(bdrv_get_aio_context(bs), BLK_PERM_RESIZE, BLK_PERM_ALL);
-    ret = blk_insert_bs(blk, bs, errp);
-    if (ret < 0) {
+    blk = blk_new_with_bs(bs, BLK_PERM_RESIZE, BLK_PERM_ALL, errp);
+    if (!blk) {
         goto out;
     }
 
     bdrv_drained_begin(bs);
-    ret = blk_truncate(blk, size, false, PREALLOC_MODE_OFF, errp);
+    blk_truncate(blk, size, false, PREALLOC_MODE_OFF, 0, errp);
     bdrv_drained_end(bs);
 
 out:
@@ -3725,14 +3723,8 @@ void qmp_blockdev_add(BlockdevOptions *options, Error **errp)
     QObject *obj;
     Visitor *v = qobject_output_visitor_new(&obj);
     QDict *qdict;
-    Error *local_err = NULL;
 
-    visit_type_BlockdevOptions(v, NULL, &options, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
-        goto fail;
-    }
-
+    visit_type_BlockdevOptions(v, NULL, &options, &error_abort);
     visit_complete(v, &obj);
     qdict = qobject_to(QDict, obj);
 
@@ -3760,7 +3752,6 @@ void qmp_x_blockdev_reopen(BlockdevOptions *options, Error **errp)
     AioContext *ctx;
     QObject *obj;
     Visitor *v = qobject_output_visitor_new(&obj);
-    Error *local_err = NULL;
     BlockReopenQueue *queue;
     QDict *qdict;
 
@@ -3777,12 +3768,7 @@ void qmp_x_blockdev_reopen(BlockdevOptions *options, Error **errp)
     }
 
     /* Put all options in a QDict and flatten it */
-    visit_type_BlockdevOptions(v, NULL, &options, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
-        goto fail;
-    }
-
+    visit_type_BlockdevOptions(v, NULL, &options, &error_abort);
     visit_complete(v, &obj);
     qdict = qobject_to(QDict, obj);
 

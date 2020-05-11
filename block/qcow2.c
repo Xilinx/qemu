@@ -1726,6 +1726,7 @@ static int coroutine_fn qcow2_do_open(BlockDriverState *bs, QDict *options,
 
     bs->supported_zero_flags = header.version >= 3 ?
                                BDRV_REQ_MAY_UNMAP | BDRV_REQ_NO_FALLBACK : 0;
+    bs->supported_truncate_flags = BDRV_REQ_ZERO_WRITE;
 
     /* Repair image if dirty */
     if (!(flags & (BDRV_O_CHECK | BDRV_O_INACTIVE)) && !bs->read_only &&
@@ -3095,7 +3096,7 @@ static int coroutine_fn preallocate_co(BlockDriverState *bs, uint64_t offset,
             mode = PREALLOC_MODE_OFF;
         }
         ret = bdrv_co_truncate(s->data_file, host_offset + cur_bytes, false,
-                               mode, errp);
+                               mode, 0, errp);
         if (ret < 0) {
             return ret;
         }
@@ -3404,10 +3405,10 @@ qcow2_co_create(BlockdevCreateOptions *create_options, Error **errp)
     }
 
     /* Create BlockBackend to write to the image */
-    blk = blk_new(bdrv_get_aio_context(bs),
-                  BLK_PERM_WRITE | BLK_PERM_RESIZE, BLK_PERM_ALL);
-    ret = blk_insert_bs(blk, bs, errp);
-    if (ret < 0) {
+    blk = blk_new_with_bs(bs, BLK_PERM_WRITE | BLK_PERM_RESIZE, BLK_PERM_ALL,
+                          errp);
+    if (!blk) {
+        ret = -EPERM;
         goto out;
     }
     blk_set_allow_write_beyond_eof(blk, true);
@@ -3511,7 +3512,7 @@ qcow2_co_create(BlockdevCreateOptions *create_options, Error **errp)
 
     /* Okay, now that we have a valid image, let's give it the right size */
     ret = blk_truncate(blk, qcow2_opts->size, false, qcow2_opts->preallocation,
-                       errp);
+                       0, errp);
     if (ret < 0) {
         error_prepend(errp, "Could not resize image: ");
         goto out;
@@ -3964,7 +3965,7 @@ fail:
 
 static int coroutine_fn qcow2_co_truncate(BlockDriverState *bs, int64_t offset,
                                           bool exact, PreallocMode prealloc,
-                                          Error **errp)
+                                          BdrvRequestFlags flags, Error **errp)
 {
     BDRVQcow2State *s = bs->opaque;
     uint64_t old_length;
@@ -3988,14 +3989,17 @@ static int coroutine_fn qcow2_co_truncate(BlockDriverState *bs, int64_t offset,
 
     qemu_co_mutex_lock(&s->lock);
 
-    /* cannot proceed if image has snapshots */
-    if (s->nb_snapshots) {
-        error_setg(errp, "Can't resize an image which has snapshots");
+    /*
+     * Even though we store snapshot size for all images, it was not
+     * required until v3, so it is not safe to proceed for v2.
+     */
+    if (s->nb_snapshots && s->qcow_version < 3) {
+        error_setg(errp, "Can't resize a v2 image which has snapshots");
         ret = -ENOTSUP;
         goto fail;
     }
 
-    /* cannot proceed if image has bitmaps */
+    /* See qcow2-bitmap.c for which bitmap scenarios prevent a resize. */
     if (qcow2_truncate_bitmaps_check(bs, errp)) {
         ret = -ENOTSUP;
         goto fail;
@@ -4061,7 +4065,7 @@ static int coroutine_fn qcow2_co_truncate(BlockDriverState *bs, int64_t offset,
              * always fulfilled, so there is no need to pass it on.)
              */
             bdrv_co_truncate(bs->file, (last_cluster + 1) * s->cluster_size,
-                             false, PREALLOC_MODE_OFF, &local_err);
+                             false, PREALLOC_MODE_OFF, 0, &local_err);
             if (local_err) {
                 warn_reportf_err(local_err,
                                  "Failed to truncate the tail of the image: ");
@@ -4083,7 +4087,8 @@ static int coroutine_fn qcow2_co_truncate(BlockDriverState *bs, int64_t offset,
              * file should be resized to the exact target size, too,
              * so we pass @exact here.
              */
-            ret = bdrv_co_truncate(s->data_file, offset, exact, prealloc, errp);
+            ret = bdrv_co_truncate(s->data_file, offset, exact, prealloc, 0,
+                                   errp);
             if (ret < 0) {
                 goto fail;
             }
@@ -4102,7 +4107,7 @@ static int coroutine_fn qcow2_co_truncate(BlockDriverState *bs, int64_t offset,
     {
         int64_t allocation_start, host_offset, guest_offset;
         int64_t clusters_allocated;
-        int64_t old_file_size, new_file_size;
+        int64_t old_file_size, last_cluster, new_file_size;
         uint64_t nb_new_data_clusters, nb_new_l2_tables;
 
         /* With a data file, preallocation means just allocating the metadata
@@ -4122,7 +4127,13 @@ static int coroutine_fn qcow2_co_truncate(BlockDriverState *bs, int64_t offset,
             ret = old_file_size;
             goto fail;
         }
-        old_file_size = ROUND_UP(old_file_size, s->cluster_size);
+
+        last_cluster = qcow2_get_last_cluster(bs, old_file_size);
+        if (last_cluster >= 0) {
+            old_file_size = (last_cluster + 1) * s->cluster_size;
+        } else {
+            old_file_size = ROUND_UP(old_file_size, s->cluster_size);
+        }
 
         nb_new_data_clusters = DIV_ROUND_UP(offset - old_length,
                                             s->cluster_size);
@@ -4168,8 +4179,25 @@ static int coroutine_fn qcow2_co_truncate(BlockDriverState *bs, int64_t offset,
         /* Allocate the data area */
         new_file_size = allocation_start +
                         nb_new_data_clusters * s->cluster_size;
-        /* Image file grows, so @exact does not matter */
-        ret = bdrv_co_truncate(bs->file, new_file_size, false, prealloc, errp);
+        /*
+         * Image file grows, so @exact does not matter.
+         *
+         * If we need to zero out the new area, try first whether the protocol
+         * driver can already take care of this.
+         */
+        if (flags & BDRV_REQ_ZERO_WRITE) {
+            ret = bdrv_co_truncate(bs->file, new_file_size, false, prealloc,
+                                   BDRV_REQ_ZERO_WRITE, NULL);
+            if (ret >= 0) {
+                flags &= ~BDRV_REQ_ZERO_WRITE;
+            }
+        } else {
+            ret = -1;
+        }
+        if (ret < 0) {
+            ret = bdrv_co_truncate(bs->file, new_file_size, false, prealloc, 0,
+                                   errp);
+        }
         if (ret < 0) {
             error_prepend(errp, "Failed to resize underlying file: ");
             qcow2_free_clusters(bs, allocation_start,
@@ -4210,6 +4238,41 @@ static int coroutine_fn qcow2_co_truncate(BlockDriverState *bs, int64_t offset,
 
     default:
         g_assert_not_reached();
+    }
+
+    if ((flags & BDRV_REQ_ZERO_WRITE) && offset > old_length) {
+        uint64_t zero_start = QEMU_ALIGN_UP(old_length, s->cluster_size);
+
+        /*
+         * Use zero clusters as much as we can. qcow2_cluster_zeroize()
+         * requires a cluster-aligned start. The end may be unaligned if it is
+         * at the end of the image (which it is here).
+         */
+        if (offset > zero_start) {
+            ret = qcow2_cluster_zeroize(bs, zero_start, offset - zero_start, 0);
+            if (ret < 0) {
+                error_setg_errno(errp, -ret, "Failed to zero out new clusters");
+                goto fail;
+            }
+        }
+
+        /* Write explicit zeros for the unaligned head */
+        if (zero_start > old_length) {
+            uint64_t len = MIN(zero_start, offset) - old_length;
+            uint8_t *buf = qemu_blockalign0(bs, len);
+            QEMUIOVector qiov;
+            qemu_iovec_init_buf(&qiov, buf, len);
+
+            qemu_co_mutex_unlock(&s->lock);
+            ret = qcow2_co_pwritev_part(bs, old_length, len, &qiov, 0, 0);
+            qemu_co_mutex_lock(&s->lock);
+
+            qemu_vfree(buf);
+            if (ret < 0) {
+                error_setg_errno(errp, -ret, "Failed to zero out the new area");
+                goto fail;
+            }
+        }
     }
 
     if (prealloc != PREALLOC_MODE_OFF) {
@@ -4348,7 +4411,8 @@ qcow2_co_pwritev_compressed_part(BlockDriverState *bs,
         if (len < 0) {
             return len;
         }
-        return bdrv_co_truncate(bs->file, len, false, PREALLOC_MODE_OFF, NULL);
+        return bdrv_co_truncate(bs->file, len, false, PREALLOC_MODE_OFF, 0,
+                                NULL);
     }
 
     if (offset_into_cluster(s, offset)) {
@@ -4563,7 +4627,7 @@ static int make_completely_empty(BlockDriverState *bs)
     }
 
     ret = bdrv_truncate(bs->file, (3 + l1_clusters) * s->cluster_size, false,
-                        PREALLOC_MODE_OFF, &local_err);
+                        PREALLOC_MODE_OFF, 0, &local_err);
     if (ret < 0) {
         error_report_err(local_err);
         goto fail;
@@ -4952,6 +5016,7 @@ static int qcow2_downgrade(BlockDriverState *bs, int target_version,
     BDRVQcow2State *s = bs->opaque;
     int current_version = s->qcow_version;
     int ret;
+    int i;
 
     /* This is qcow2_downgrade(), not qcow2_upgrade() */
     assert(target_version < current_version);
@@ -4967,6 +5032,21 @@ static int qcow2_downgrade(BlockDriverState *bs, int target_version,
     if (has_data_file(bs)) {
         error_setg(errp, "Cannot downgrade an image with a data file");
         return -ENOTSUP;
+    }
+
+    /*
+     * If any internal snapshot has a different size than the current
+     * image size, or VM state size that exceeds 32 bits, downgrading
+     * is unsafe.  Even though we would still use v3-compliant output
+     * to preserve that data, other v2 programs might not realize
+     * those optional fields are important.
+     */
+    for (i = 0; i < s->nb_snapshots; i++) {
+        if (s->snapshots[i].vm_state_size > UINT32_MAX ||
+            s->snapshots[i].disk_size != bs->total_sectors * BDRV_SECTOR_SIZE) {
+            error_setg(errp, "Internal snapshots prevent downgrade of image");
+            return -ENOTSUP;
+        }
     }
 
     /* clear incompatible features */
@@ -5359,19 +5439,17 @@ static int qcow2_amend_options(BlockDriverState *bs, QemuOpts *opts,
     }
 
     if (new_size) {
-        BlockBackend *blk = blk_new(bdrv_get_aio_context(bs),
-                                    BLK_PERM_RESIZE, BLK_PERM_ALL);
-        ret = blk_insert_bs(blk, bs, errp);
-        if (ret < 0) {
-            blk_unref(blk);
-            return ret;
+        BlockBackend *blk = blk_new_with_bs(bs, BLK_PERM_RESIZE, BLK_PERM_ALL,
+                                            errp);
+        if (!blk) {
+            return -EPERM;
         }
 
         /*
          * Amending image options should ensure that the image has
          * exactly the given new values, so pass exact=true here.
          */
-        ret = blk_truncate(blk, new_size, true, PREALLOC_MODE_OFF, errp);
+        ret = blk_truncate(blk, new_size, true, PREALLOC_MODE_OFF, 0, errp);
         blk_unref(blk);
         if (ret < 0) {
             return ret;
@@ -5543,7 +5621,6 @@ BlockDriver bdrv_qcow2 = {
     .bdrv_co_create_opts  = qcow2_co_create_opts,
     .bdrv_co_create       = qcow2_co_create,
     .bdrv_has_zero_init   = qcow2_has_zero_init,
-    .bdrv_has_zero_init_truncate = bdrv_has_zero_init_1,
     .bdrv_co_block_status = qcow2_co_block_status,
 
     .bdrv_co_preadv_part    = qcow2_co_preadv_part,

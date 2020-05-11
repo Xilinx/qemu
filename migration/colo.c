@@ -263,7 +263,13 @@ ReplicationStatus *qmp_query_xen_replication_status(Error **errp)
 
 void qmp_xen_colo_do_checkpoint(Error **errp)
 {
-    replication_do_checkpoint_all(errp);
+    Error *err = NULL;
+
+    replication_do_checkpoint_all(&err);
+    if (err) {
+        error_propagate(errp, err);
+        return;
+    }
     /* Notify all filters of all NIC to do checkpoint */
     colo_notify_filters_event(COLO_EVENT_CHECKPOINT, errp);
 }
@@ -437,6 +443,9 @@ static int colo_do_checkpoint_transaction(MigrationState *s,
 
     /* Disable block migration */
     migrate_set_block_enabled(false, &local_err);
+    if (local_err) {
+        goto out;
+    }
     qemu_mutex_lock_iothread();
 
 #ifdef CONFIG_REPLICATION

@@ -104,18 +104,35 @@ static ssize_t block_crypto_init_func(QCryptoBlock *block,
                                       Error **errp)
 {
     struct BlockCryptoCreateData *data = opaque;
+    Error *local_error = NULL;
+    int ret;
 
     if (data->size > INT64_MAX || headerlen > INT64_MAX - data->size) {
-        error_setg(errp, "The requested file size is too large");
-        return -EFBIG;
+        ret = -EFBIG;
+        goto error;
     }
 
     /* User provided size should reflect amount of space made
      * available to the guest, so we must take account of that
      * which will be used by the crypto header
      */
-    return blk_truncate(data->blk, data->size + headerlen, false,
-                        data->prealloc, errp);
+    ret = blk_truncate(data->blk, data->size + headerlen, false,
+                       data->prealloc, 0, &local_error);
+
+    if (ret >= 0) {
+        return ret;
+    }
+
+error:
+    if (ret == -EFBIG) {
+        /* Replace the error message with a better one */
+        error_free(local_error);
+        error_setg(errp, "The requested file size is too large");
+    } else {
+        error_propagate(errp, local_error);
+    }
+
+    return ret;
 }
 
 
@@ -261,11 +278,10 @@ static int block_crypto_co_create_generic(BlockDriverState *bs,
     QCryptoBlock *crypto = NULL;
     struct BlockCryptoCreateData data;
 
-    blk = blk_new(bdrv_get_aio_context(bs),
-                  BLK_PERM_WRITE | BLK_PERM_RESIZE, BLK_PERM_ALL);
-
-    ret = blk_insert_bs(blk, bs, errp);
-    if (ret < 0) {
+    blk = blk_new_with_bs(bs, BLK_PERM_WRITE | BLK_PERM_RESIZE, BLK_PERM_ALL,
+                          errp);
+    if (!blk) {
+        ret = -EPERM;
         goto cleanup;
     }
 
@@ -299,7 +315,8 @@ static int block_crypto_co_create_generic(BlockDriverState *bs,
 
 static int coroutine_fn
 block_crypto_co_truncate(BlockDriverState *bs, int64_t offset, bool exact,
-                         PreallocMode prealloc, Error **errp)
+                         PreallocMode prealloc, BdrvRequestFlags flags,
+                         Error **errp)
 {
     BlockCrypto *crypto = bs->opaque;
     uint64_t payload_offset =
@@ -312,7 +329,7 @@ block_crypto_co_truncate(BlockDriverState *bs, int64_t offset, bool exact,
 
     offset += payload_offset;
 
-    return bdrv_co_truncate(bs->file, offset, exact, prealloc, errp);
+    return bdrv_co_truncate(bs->file, offset, exact, prealloc, 0, errp);
 }
 
 static void block_crypto_close(BlockDriverState *bs)

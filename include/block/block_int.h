@@ -355,7 +355,7 @@ struct BlockDriver {
      */
     int coroutine_fn (*bdrv_co_truncate)(BlockDriverState *bs, int64_t offset,
                                          bool exact, PreallocMode prealloc,
-                                         Error **errp);
+                                         BdrvRequestFlags flags, Error **errp);
 
     int64_t (*bdrv_getlength)(BlockDriverState *bs);
     bool has_variable_length;
@@ -449,15 +449,8 @@ struct BlockDriver {
     /*
      * Returns 1 if newly created images are guaranteed to contain only
      * zeros, 0 otherwise.
-     * Must return 0 if .bdrv_has_zero_init_truncate() returns 0.
      */
     int (*bdrv_has_zero_init)(BlockDriverState *bs);
-
-    /*
-     * Returns 1 if new areas added by growing the image with
-     * PREALLOC_MODE_OFF contain only zeros, 0 otherwise.
-     */
-    int (*bdrv_has_zero_init_truncate)(BlockDriverState *bs);
 
     /* Remove fd handlers, timers, and other event loop callbacks so the event
      * loop is no longer in use.  Called with no in-flight requests and in
@@ -847,6 +840,14 @@ struct BlockDriverState {
     /* Flags honored during pwrite_zeroes (so far: BDRV_REQ_FUA,
      * BDRV_REQ_MAY_UNMAP, BDRV_REQ_WRITE_UNCHANGED) */
     unsigned int supported_zero_flags;
+    /*
+     * Flags honoured during truncate (so far: BDRV_REQ_ZERO_WRITE).
+     *
+     * If BDRV_REQ_ZERO_WRITE is given, the truncate operation must make sure
+     * that any added space reads as all zeros. If this can't be guaranteed,
+     * the operation must fail.
+     */
+    unsigned int supported_truncate_flags;
 
     /* the following member gives a name to every node on the bs graph. */
     char node_name[32];
