@@ -335,23 +335,15 @@ static void rp_pci_realize(PCIDevice *pci_dev, Error **errp)
     /* Create and hook up the BARs.  */
     s->maps = g_new0(typeof(*s->maps), s->cfg.nr_io_bars + s->cfg.nr_mm_bars);
 
-    for (i = 0; i < s->cfg.nr_io_bars; i++) {
-        char *name = g_strdup_printf("rp-pci-io-%d", i);
+    for (i = 0; i < s->cfg.nr_io_bars + s->cfg.nr_mm_bars; i++) {
+        bool io_bar = i < s->cfg.nr_io_bars;
+        char *name = g_strdup_printf("rp-pci-%s-%d", io_bar ? "io" : "mmio", i);
+        uint8_t attr = io_bar ?
+               PCI_BASE_ADDRESS_SPACE_IO : PCI_BASE_ADDRESS_SPACE_MEMORY;
+
         memory_region_init_io(&s->maps[i].iomem, OBJECT(s), &rp_ops,
                               &s->maps[i], name, s->cfg.bar_size[i]);
-        pci_register_bar(pci_dev, i, PCI_BASE_ADDRESS_SPACE_IO,
-                         &s->maps[i].iomem);
-        s->maps[i].rp_dev = RPDEV_PCI_BAR_BASE + i;
-        s->maps[i].parent = s;
-        g_free(name);
-    }
-    for (; i < s->cfg.nr_mm_bars; i++) {
-        char *name = g_strdup_printf("rp-pci-mmio-%d", i);
-        memory_region_init_io(&s->maps[i].iomem, OBJECT(s), &rp_ops,
-                              &s->maps[i], name, s->cfg.bar_size[i]);
-        pci_register_bar(pci_dev, s->cfg.nr_io_bars + i,
-                         PCI_BASE_ADDRESS_SPACE_MEMORY,
-                         &s->maps[i].iomem);
+        pci_register_bar(pci_dev, i, attr, &s->maps[i].iomem);
         s->maps[i].rp_dev = RPDEV_PCI_BAR_BASE + i;
         s->maps[i].parent = s;
         g_free(name);
