@@ -840,33 +840,6 @@ static void arm_cpu_set_vinithi(void *opaque, int irq, int level)
 
     cpu->env.vinithi = level;
 }
-
-static void arm_cpu_set_mr_secure(Object *obj, Visitor *v, const char *name,
-                                  void *opaque, Error **errp)
-{
-    ARMCPU *ac = ARM_CPU(obj);
-    AddressSpace *as;
-    Error *local_err = NULL;
-    char *path = NULL;
-
-    qemu_log("set mr_secure\n");
-    visit_type_str(v, name, &path, &local_err);
-
-    if (!local_err && strcmp(path, "") != 0) {
-        ac->mr_secure = MEMORY_REGION(object_resolve_link(obj, name, path,
-                                      &local_err));
-    }
-
-    if (local_err) {
-        error_propagate(errp, local_err);
-        return;
-    }
-
-    object_ref(OBJECT(ac->mr_secure));
-    as = g_malloc0(sizeof *as);
-    address_space_init(as, ac->mr_secure, NULL);
-    ac->as_secure = as;
-}
 #endif
 
 static inline void set_feature(CPUARMState *env, int feature)
@@ -1235,12 +1208,6 @@ static void arm_cpu_initfn(Object *obj)
     }
 
 #ifndef CONFIG_USER_ONLY
-    object_property_add(obj, "mr-secure", "link<" TYPE_MEMORY_REGION ">",
-                        NULL, /* FIXME: Implement the getter */
-                        arm_cpu_set_mr_secure,
-                        NULL, /* FIXME: Implement the cleanup */
-                        NULL, &error_abort);
-
     object_property_add_link(obj, "memattr_ns", TYPE_MEMORY_TRANSACTION_ATTR,
                              (Object **)&cpu->env.memattr_ns,
                              qdev_prop_allow_set_link_before_realize,
@@ -1615,12 +1582,6 @@ static void arm_cpu_realizefn(DeviceState *dev, Error **errp)
     if (local_err != NULL) {
         error_propagate(errp, local_err);
         return;
-    }
-
-    /* Use the default AS as the NS one.  */
-    cpu->as_ns = cs->as;
-    if (!cpu->as_secure) {
-        cpu->as_secure = cs->as;
     }
 
     arm_cpu_finalize_features(cpu, &local_err);

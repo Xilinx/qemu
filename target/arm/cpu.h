@@ -962,8 +962,6 @@ struct ARMCPU {
     bool cfgend;
 
     MemoryRegion *mr_secure;
-    AddressSpace *as_secure;
-    AddressSpace *as_ns;
 
     QLIST_HEAD(, ARMELChangeHook) pre_el_change_hooks;
     QLIST_HEAD(, ARMELChangeHook) el_change_hooks;
