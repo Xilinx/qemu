@@ -77,7 +77,6 @@ static void rp_io_access(MemoryTransaction *tr)
     uint64_t addr = tr->addr;
     RemotePortMap *map = tr->opaque;
     RemotePortMemoryMaster *s = map->parent;
-    int64_t rclk;
     RemotePortRespSlot *rsp_slot;
     RemotePortDynPkt *rsp;
     struct  {
@@ -138,10 +137,8 @@ static void rp_io_access(MemoryTransaction *tr)
         }
     }
 
-    rclk = rsp->pkt->busaccess.timestamp;
     rp_resp_slot_done(s->rp, rsp_slot);
     rp_rsp_mutex_unlock(s->rp);
-    rp_sync_vmclock(s->rp, in.clk, rclk);
     /* Reads are sync-points, roll the sync timer.  */
     rp_restart_sync_timer(s->rp);
     rp_leave_iothread(s->rp);

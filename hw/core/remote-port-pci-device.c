@@ -111,7 +111,6 @@ static uint64_t rp_io_read(void *opaque, hwaddr addr, unsigned size,
     struct rp_pkt_busaccess_ext_base pkt;
     struct rp_encode_busaccess_in in = {0};
     uint64_t value = 0;
-    int64_t rclk;
     uint8_t *data;
     int len;
     int i;
@@ -142,10 +141,8 @@ static uint64_t rp_io_read(void *opaque, hwaddr addr, unsigned size,
     for (i = 0; i < size; i++) {
         value |= data[i] << (i * 8);
     }
-    rclk = rsp.pkt->busaccess.timestamp;
     rp_dpkt_invalidate(&rsp);
     rp_rsp_mutex_unlock(s->rp);
-    rp_sync_vmclock(s->rp, in.clk, rclk);
 
     /* Reads are sync-points, roll the sync timer.  */
     rp_restart_sync_timer(s->rp);
@@ -159,7 +156,6 @@ static void rp_io_write(void *opaque, hwaddr addr, uint64_t value,
 {
     RemotePortMap *map = opaque;
     RemotePortPCIDevice *s = map->parent;
-    int64_t rclk;
     RemotePortDynPkt rsp;
 
     struct  {
@@ -198,10 +194,8 @@ static void rp_io_write(void *opaque, hwaddr addr, uint64_t value,
 
     /* We dont support out of order answers yet.  */
     assert(rsp.pkt->hdr.id == be32_to_cpu(pay.pkt.hdr.id));
-    rclk = rsp.pkt->busaccess.timestamp;
     rp_dpkt_invalidate(&rsp);
     rp_rsp_mutex_unlock(s->rp);
-    rp_sync_vmclock(s->rp, in.clk, rclk);
     /* Reads are sync-points, roll the sync timer.  */
     rp_restart_sync_timer(s->rp);
     rp_leave_iothread(s->rp);
@@ -233,7 +227,6 @@ static void rp_pci_write_config(PCIDevice *pci_dev, uint32_t addr,
                                 uint32_t value, int size)
 {
     RemotePortPCIDevice *s = REMOTE_PORT_PCI_DEVICE(pci_dev);
-    int64_t rclk;
     RemotePortDynPkt rsp;
 
     struct  {
@@ -270,10 +263,8 @@ static void rp_pci_write_config(PCIDevice *pci_dev, uint32_t addr,
 
     /* We dont support out of order answers yet.  */
     assert(rsp.pkt->hdr.id == be32_to_cpu(pay.pkt.hdr.id));
-    rclk = rsp.pkt->busaccess.timestamp;
     rp_dpkt_invalidate(&rsp);
     rp_rsp_mutex_unlock(s->rp);
-    rp_sync_vmclock(s->rp, in.clk, rclk);
     /* Reads are sync-points, roll the sync timer.  */
     rp_restart_sync_timer(s->rp);
     rp_leave_iothread(s->rp);

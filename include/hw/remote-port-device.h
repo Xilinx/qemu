@@ -43,7 +43,6 @@ uint32_t rp_new_id(RemotePort *s);
 /* FIXME: Cleanup and reduce the API complexity for dealing with responses.  */
 void rp_rsp_mutex_lock(RemotePort *s);
 void rp_rsp_mutex_unlock(RemotePort *s);
-void rp_sync_vmclock(RemotePort *s, int64_t lclk, int64_t rclk);
 void rp_restart_sync_timer(RemotePort *s);
 void rp_leave_iothread(RemotePort *s);
 
