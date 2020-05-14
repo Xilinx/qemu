@@ -22,6 +22,7 @@ typedef struct RemotePortMemoryMaster RemotePortMemoryMaster;
 typedef struct RemotePortMap {
     void *parent;
     MemoryRegion iomem;
+    uint32_t rp_dev;
     uint64_t offset;
 } RemotePortMap;
 
