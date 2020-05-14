@@ -13,8 +13,6 @@
 #define STREAM_SLAVE(obj) \
      INTERFACE_CHECK(StreamSlave, (obj), TYPE_STREAM_SLAVE)
 
-#define STREAM_ATTR_EOP      (1 << 0)   /* Signal End-Of-Packet.  */
-
 typedef struct StreamSlave StreamSlave;
 
 typedef void (*StreamCanPushNotifyFn)(void *opaque);
@@ -41,14 +39,13 @@ typedef struct StreamSlaveClass {
      * @obj: Stream slave to push to
      * @buf: Data to write
      * @len: Maximum number of bytes to write
-     * @attr: Attributes.
+     * @eop: End of packet flag
      */
-    size_t (*push)(StreamSlave *obj, unsigned char *buf, size_t len,
-                   uint32_t attr);
+    size_t (*push)(StreamSlave *obj, unsigned char *buf, size_t len, bool eop);
 } StreamSlaveClass;
 
 size_t
-stream_push(StreamSlave *sink, uint8_t *buf, size_t len, uint32_t attr);
+stream_push(StreamSlave *sink, uint8_t *buf, size_t len, bool eop);
 
 bool
 stream_can_push(StreamSlave *sink, StreamCanPushNotifyFn notify,

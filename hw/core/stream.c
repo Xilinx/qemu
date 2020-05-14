@@ -3,11 +3,11 @@
 #include "qemu/module.h"
 
 size_t
-stream_push(StreamSlave *sink, uint8_t *buf, size_t len, uint32_t attr)
+stream_push(StreamSlave *sink, uint8_t *buf, size_t len, bool eop)
 {
     StreamSlaveClass *k =  STREAM_SLAVE_GET_CLASS(sink);
 
-    return k->push(sink, buf, len, attr);
+    return k->push(sink, buf, len, eop);
 }
 
 bool
