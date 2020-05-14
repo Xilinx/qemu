@@ -162,7 +162,6 @@ static size_t rp_stream_stream_push(StreamSlave *obj, uint8_t *buf,
     rp_dpkt_invalidate(&rsp);
     rp_rsp_mutex_unlock(s->rp);
     rp_restart_sync_timer(s->rp);
-    rp_leave_iothread(s->rp);
     return len;
 }
 

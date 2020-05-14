@@ -44,7 +44,6 @@ uint32_t rp_new_id(RemotePort *s);
 void rp_rsp_mutex_lock(RemotePort *s);
 void rp_rsp_mutex_unlock(RemotePort *s);
 void rp_restart_sync_timer(RemotePort *s);
-void rp_leave_iothread(RemotePort *s);
 
 ssize_t rp_write(RemotePort *s, const void *buf, size_t count);
 

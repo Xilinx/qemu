@@ -146,7 +146,6 @@ static uint64_t rp_io_read(void *opaque, hwaddr addr, unsigned size,
 
     /* Reads are sync-points, roll the sync timer.  */
     rp_restart_sync_timer(s->rp);
-    rp_leave_iothread(s->rp);
     DB_PRINT_L(0, "addr: %" HWADDR_PRIx " data: %" PRIx64 "\n", addr, value);
     return value;
 }
@@ -198,7 +197,6 @@ static void rp_io_write(void *opaque, hwaddr addr, uint64_t value,
     rp_rsp_mutex_unlock(s->rp);
     /* Reads are sync-points, roll the sync timer.  */
     rp_restart_sync_timer(s->rp);
-    rp_leave_iothread(s->rp);
     DB_PRINT_L(1, "\n");
 }
 
@@ -267,7 +265,6 @@ static void rp_pci_write_config(PCIDevice *pci_dev, uint32_t addr,
     rp_rsp_mutex_unlock(s->rp);
     /* Reads are sync-points, roll the sync timer.  */
     rp_restart_sync_timer(s->rp);
-    rp_leave_iothread(s->rp);
 
     pci_default_write_config(pci_dev, addr, value, size);
     DB_PRINT_L(1, "\n");
