@@ -341,7 +341,7 @@ struct Zynq3AES {
     uint8_t gcm_tag[16];
     uint8_t gcm_pos;
     uint8_t gcm_len;
-    uint32_t gcm_push_attr;
+    bool gcm_push_eop;
 };
 
 static void bswap32_buf8(uint8_t *buf, int len)
@@ -1080,22 +1080,22 @@ static void aes_stream_gcm_push(void *opaque)
         size_t ret;
 
         ret = stream_push(s->tx_dev, (s->gcm_tag + s->gcm_pos),
-                          s->gcm_len, s->gcm_push_attr);
+                          s->gcm_len, s->gcm_push_eop);
         s->gcm_pos += ret;
         s->gcm_len -= ret;
     }
 }
 
 static void aes_stream_dst_push(Zynq3AES *s, uint8_t *outbuf, int outlen,
-                                size_t len, uint32_t attr, bool encrypt)
+                                size_t len, bool eop, bool encrypt)
 {
     int limit = sizeof(s->gcm_tag);
     size_t pushed;
 
-    pushed = stream_push(s->tx_dev, outbuf, outlen, attr);
+    pushed = stream_push(s->tx_dev, outbuf, outlen, eop);
 
     /* Done if there is no generated GCM-tag */
-    if (!encrypt || !stream_attr_has_eop(attr)) {
+    if (!encrypt || !eop) {
         return;
     }
 
@@ -1129,13 +1129,13 @@ static void aes_stream_dst_push(Zynq3AES *s, uint8_t *outbuf, int outlen,
     memcpy(s->gcm_tag, (outbuf + pushed), outlen);
     s->gcm_len = outlen;
     s->gcm_pos = 0;
-    s->gcm_push_attr = attr;
+    s->gcm_push_eop = eop;
 
     aes_stream_gcm_push(s);
 }
 
 static size_t aes_stream_push(StreamSlave *obj, uint8_t *buf, size_t len,
-                                  uint32_t attr)
+                              bool eop)
 {
     Zynq3AES *s = XILINX_AES(obj);
     unsigned char outbuf[8 * 1024 + 16];
@@ -1148,7 +1148,7 @@ static size_t aes_stream_push(StreamSlave *obj, uint8_t *buf, size_t len,
     encrypt = s->aes->encrypt;
     if (encrypt && len > (sizeof(outbuf) - 16)) {
         len = sizeof(outbuf) - 16;
-        attr &= ~STREAM_ATTR_EOP;
+        eop = false;
     }
 
     /* TODO: Add explicit eop to the stream interface.  */
@@ -1159,8 +1159,7 @@ static size_t aes_stream_push(StreamSlave *obj, uint8_t *buf, size_t len,
         wswap128_buf8(buf, len);
     }
     bswap32_buf8(buf, len);
-    ret = xlx_aes_push_data(s, buf, len, stream_attr_has_eop(attr), 4,
-                            outbuf, &outlen);
+    ret = xlx_aes_push_data(s, buf, len, eop, 4, outbuf, &outlen);
     if (!s->regs[R_AES_DATA_ENDIANNESS_SWAP]) {
         wswap128_buf8(outbuf, outlen);
     }
@@ -1171,11 +1170,11 @@ static size_t aes_stream_push(StreamSlave *obj, uint8_t *buf, size_t len,
     if (feedback) {
         xlx_aes_feedback(s, outbuf, outlen);
     } else {
-        aes_stream_dst_push(s, outbuf, outlen, ret, attr, encrypt);
+        aes_stream_dst_push(s, outbuf, outlen, ret, eop, encrypt);
     }
 
     /* printf("%s len=%zd ret=%zd outlen=%d eop=%d\n",
-           __func__, len, ret, outlen, attr); */
+           __func__, len, ret, outlen, eop); */
     return ret;
 }
 

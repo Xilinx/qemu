@@ -401,7 +401,7 @@ static void xlx_sha3_emit_digest(ZynqMPCSUSHA3 *s)
 }
 
 static size_t xlx_sha3_stream_push(StreamSlave *obj, uint8_t *buf, size_t len,
-                                   uint32_t attr)
+                                   bool eop)
 {
     ZynqMPCSUSHA3 *s = ZYNQMP_CSU_SHA3(obj);
     unsigned int excess_len;
@@ -429,7 +429,7 @@ static size_t xlx_sha3_stream_push(StreamSlave *obj, uint8_t *buf, size_t len,
         sha3_384_update(&s->ctx, excess_len, buf + len - excess_len);
     }
 
-    if (stream_attr_has_eop(attr)) {
+    if (eop) {
         ARRAY_FIELD_DP32(s->regs, SHA_DONE, SHA_DONE, true);
     }
     return len;

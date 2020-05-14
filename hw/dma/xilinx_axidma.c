@@ -115,11 +115,6 @@ struct Stream {
     unsigned int complete_cnt;
     uint32_t regs[R_MAX];
     uint8_t app[20];
-
-    MemoryRegion *data_mr;
-    AddressSpace *data_as;
-    AddressSpace *sg_as;
-
     unsigned char txbuf[16 * 1024];
 };
 
@@ -142,8 +137,6 @@ struct XilinxAXIDMA {
     XilinxAXIDMAStreamSlave rx_control_dev;
 
     struct Stream streams[2];
-
-    MemoryRegion *sg_mr;
 
     StreamCanPushNotifyFn notify;
     void *notify_opaque;
@@ -576,10 +569,6 @@ static void xilinx_axidma_realize(DeviceState *dev, Error **errp)
         ptimer_transaction_begin(st->ptimer);
         ptimer_set_freq(st->ptimer, s->freqhz);
         ptimer_transaction_commit(st->ptimer);
-
-        st->data_as = g_malloc0(sizeof(AddressSpace));
-        address_space_init(st->data_as, st->data_mr, NULL);
-        st->sg_as = sg_as;
     }
 
     address_space_init(&s->as,
@@ -615,22 +604,6 @@ static void xilinx_axidma_init(Object *obj)
     memory_region_init_io(&s->iomem, obj, &axidma_ops, s,
                           "xlnx.axi-dma", R_MAX * 4 * 2);
     sysbus_init_mmio(sbd, &s->iomem);
-
-    object_property_add_link(obj, "mm2s", TYPE_MEMORY_REGION,
-                             (Object **)&s->streams[0].data_mr,
-                             qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_STRONG,
-                             &error_abort);
-    object_property_add_link(obj, "s2mm", TYPE_MEMORY_REGION,
-                             (Object **)&s->streams[1].data_mr,
-                             qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_STRONG,
-                             &error_abort);
-    object_property_add_link(obj, "sg", TYPE_MEMORY_REGION,
-                             (Object **)&s->sg_mr,
-                             qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_STRONG,
-                             &error_abort);
 }
 
 static Property axidma_properties[] = {

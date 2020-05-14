@@ -324,7 +324,7 @@ static void bswap32_buf8(uint8_t *buf, int len)
 }
 
 static size_t xlx_aes_stream_push(StreamSlave *obj, uint8_t *buf, size_t len,
-                                  uint32_t attr)
+                                  bool eop)
 {
     ZynqMPCSUAES *s = ZYNQMP_CSU_AES(obj);
     unsigned char outbuf[8 * 1024 + 16];
@@ -335,13 +335,11 @@ static size_t xlx_aes_stream_push(StreamSlave *obj, uint8_t *buf, size_t len,
     /* When encrypting, we need to be prepared to receive the 16 byte tag.  */
     if (len > (sizeof(outbuf) - 16)) {
         len = sizeof(outbuf) - 16;
-        attr &= ~STREAM_ATTR_EOP;
+        eop = false;
     }
 
-    /* TODO: Add explicit eop to the stream interface.  */
     bswap32_buf8(buf, len);
-    ret = xlx_aes_push_data(s, buf, len, stream_attr_has_eop(attr), 4,
-                            outbuf, &outlen);
+    ret = xlx_aes_push_data(s, buf, len, eop, 4, outbuf, &outlen);
     bswap32_buf8(outbuf, outlen);
 
     /* No flow-control on the output.  */
@@ -353,11 +351,7 @@ static size_t xlx_aes_stream_push(StreamSlave *obj, uint8_t *buf, size_t len,
         xlx_aes_feedback(s, outbuf, outlen);
         memset(outbuf, 0, outlen);
     }
-    stream_push(s->tx_dev, outbuf, outlen, attr);
-/*
-      printf("%s len=%zd ret=%zd outlen=%d eop=%d\n",
-             __func__, len, ret, outlen, attr);
-*/
+    stream_push(s->tx_dev, outbuf, outlen, eop);
     return ret;
 }
 
@@ -366,7 +360,6 @@ static bool xlx_aes_stream_can_push(StreamSlave *obj,
                                     void *notify_opaque)
 {
     ZynqMPCSUAES *s = ZYNQMP_CSU_AES(obj);
-/*    printf("%s: %d\n", __func__, s->aes->inp_ready); */
     return s->aes->inp_ready;
 }
 

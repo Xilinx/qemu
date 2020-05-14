@@ -348,7 +348,7 @@ static void zynqmp_csu_dma_reset(DeviceState *dev)
 }
 
 static size_t zynqmp_csu_dma_stream_push(StreamSlave *obj, uint8_t *buf,
-                                          size_t len, uint32_t attr)
+                                          size_t len, bool eop)
 {
     ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(obj);
     uint32_t size = dmach_get_size(s);
@@ -401,22 +401,22 @@ static void zynqmp_csu_dma_src_notify(void *opaque)
            stream_can_push(s->tx_dev, zynqmp_csu_dma_src_notify, s)) {
         uint32_t size = dmach_get_size(s);
         unsigned int plen = MIN(size, sizeof buf);
-        uint32_t attr = 0;
+        bool eop = false;
         size_t ret;
 
         /* Did we fit it all?  */
         if (size == plen && dmach_get_eop(s)) {
-            attr |= STREAM_ATTR_EOP;
+            eop = true;
         }
 
         /* DMA transfer.  */
         dmach_read(s, buf, plen);
-        ret = stream_push(s->tx_dev, buf, plen, attr);
+        ret = stream_push(s->tx_dev, buf, plen, eop);
         dmach_advance(s, ret);
     }
 
     /* REMOVE-ME?: Check for flow-control timeout. This is all theoretical as
-       we currently never see backpreassure.  */
+       we currently never see backpressure.  */
     if (dmach_timeout_enabled(s) && dmach_get_size(s)
         && !stream_can_push(s->tx_dev, zynqmp_csu_dma_src_notify, s)) {
         unsigned int timeout = ARRAY_FIELD_EX32(s->regs, CTRL, TIMEOUT_VAL);

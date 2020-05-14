@@ -51,10 +51,5 @@ bool
 stream_can_push(StreamSlave *sink, StreamCanPushNotifyFn notify,
                 void *notify_opaque);
 
-static inline bool stream_attr_has_eop(uint32_t attr)
-{
-    return (attr & STREAM_ATTR_EOP) != 0;
-}
-
 
 #endif /* STREAM_H */

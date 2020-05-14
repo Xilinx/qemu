@@ -105,10 +105,8 @@ sss_stream_can_push(StreamSlave *obj, StreamCanPushNotifyFn notify,
     return false;
 }
 
-
-
 static size_t sss_stream_push(StreamSlave *obj, uint8_t *buf,
-                                          size_t len, uint32_t attr)
+                              size_t len, bool eop)
 {
     SSSStream *ss = SSS_STREAM(obj);
     SSSBase *s = SSS_BASE(ss->sss);
@@ -116,12 +114,8 @@ static size_t sss_stream_push(StreamSlave *obj, uint8_t *buf,
     int tx = sss_lookup_tx_remote(s, rx);
 
     return (tx != NOT_REMOTE(s)) ?
-            stream_push(s->tx_devs[tx], buf, len, attr) : 0;
+            stream_push(s->tx_devs[tx], buf, len, eop) : 0;
 }
-
-/* FIXME: With no regs we are actually stateless. Although post load we need
- * to call notify() to start up the fire-hose of zeros again.
- */
 
 static void sss_stream_class_init(ObjectClass *klass, void *data)
 {

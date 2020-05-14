@@ -148,7 +148,7 @@ static void zynqmp_csu_pcap_notify(void *opaque)
 
     /* blast away - fire as many zeros as the target wants to accept */
     while (stream_can_push(s->tx_dev, zynqmp_csu_pcap_notify, s)) {
-        size_t ret = stream_push(s->tx_dev, zeros, CHUNK_SIZE, STREAM_ATTR_EOP);
+        size_t ret = stream_push(s->tx_dev, zeros, CHUNK_SIZE, true);
         /* FIXME: Check - assuming PCAP must be 32-bit aligned xactions */
         assert(!(ret % 4));
     }
@@ -167,7 +167,7 @@ static void zynqmp_csu_pcap_reset(DeviceState *dev)
 }
 
 static size_t zynqmp_csu_pcap_stream_push(StreamSlave *obj, uint8_t *buf,
-                                          size_t len, uint32_t attr)
+                                          size_t len, bool eop)
 {
     ZynqMPCSUPCAP *s = ZYNQMP_CSU_PCAP(obj);
     assert(!(len % 4));

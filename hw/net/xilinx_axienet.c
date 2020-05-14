@@ -906,12 +906,6 @@ xilinx_axienet_data_stream_push(StreamSlave *obj, uint8_t *buf, size_t size,
     XilinxAXIEnetStreamSlave *ds = XILINX_AXI_ENET_DATA_STREAM(obj);
     XilinxAXIEnet *s = ds->enet;
 
-    /* FIXME. buffer if not EOP. Or add a better scatter-gathering +
-       zero copying flow to the stream if.  */
-    if (!stream_attr_has_eop(attr)) {
-        hw_error("No EOP.\n");
-    }
-
     /* TX enable ?  */
     if (!(s->tc & TC_TX)) {
         return size;

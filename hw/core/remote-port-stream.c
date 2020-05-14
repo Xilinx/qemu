@@ -133,13 +133,13 @@ static bool rp_stream_stream_can_push(StreamSlave *obj,
 }
 
 static size_t rp_stream_stream_push(StreamSlave *obj, uint8_t *buf,
-                                    size_t len, uint32_t attr)
+                                    size_t len, bool eop)
 {
     RemotePortStream *s = REMOTE_PORT_STREAM(obj);
     RemotePortDynPkt rsp;
     struct rp_pkt_busaccess_ext_base pkt;
     struct rp_encode_busaccess_in in = {0};
-    uint64_t rp_attr = stream_attr_has_eop(attr) ? RP_BUS_ATTR_EOP : 0;
+    uint64_t rp_attr = eop ? RP_BUS_ATTR_EOP : 0;
     int64_t clk;
     int enclen;
 

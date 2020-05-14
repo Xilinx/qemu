@@ -76,7 +76,7 @@ static void stream_fifo_notify(void *opaque)
         uint8_t buf[4];
 
         *((uint32_t *)buf) = cpu_to_le32(fifo_pop32(&s->fifo));
-        ret = stream_push(s->tx_dev, buf, 4, 0);
+        ret = stream_push(s->tx_dev, buf, 4, false);
         assert(ret == 4);
     }
 
@@ -102,7 +102,7 @@ static bool stream_fifo_stream_can_push(StreamSlave *obj,
 }
 
 static size_t stream_fifo_stream_push(StreamSlave *obj, uint8_t *buf,
-                                      size_t len, uint32_t attr)
+                                      size_t len, bool eop)
 {
     StreamFifo *s = STREAM_FIFO(obj);
     size_t ret = 0;

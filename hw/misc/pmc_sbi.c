@@ -286,7 +286,7 @@ static void ss_stream_notify(void *opaque)
         data = (uint8_t *) fifo_pop_buf(&s->fifo,
                         4, &num);
 
-        stream_push(s->tx_dev, data, num, 0);
+        stream_push(s->tx_dev, data, num, false);
     }
     ss_update_busy_line(s);
     sbi_update_irq(s);
@@ -349,7 +349,7 @@ static bool ss_stream_can_push(StreamSlave *obj,
 }
 
 static size_t ss_stream_push(StreamSlave *obj, uint8_t *buf, size_t len,
-                uint32_t attr)
+                             bool eop)
 {
     SlaveBootInt *s = SBI(obj);
     uint32_t free = fifo_num_free(&s->fifo);
