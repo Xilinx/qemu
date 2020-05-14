@@ -42,4 +42,9 @@ struct RemotePortMemoryMaster {
     struct RemotePort *rp;
     struct rp_peer_state *peer;
 };
+
+void rp_mm_access(RemotePort *rp, uint32_t rp_dev,
+                  struct rp_peer_state *peer,
+                  MemoryTransaction *tr,
+                  bool relative, uint64_t offset);
 #endif

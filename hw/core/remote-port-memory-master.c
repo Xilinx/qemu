@@ -42,18 +42,19 @@
 
 #define RP_MAX_ACCESS_SIZE 128
 
-static void rp_io_access(MemoryTransaction *tr)
+void rp_mm_access(RemotePort *rp, uint32_t rp_dev,
+                  struct rp_peer_state *peer,
+                  MemoryTransaction *tr,
+                  bool relative, uint64_t offset)
 {
     uint64_t addr = tr->addr;
-    RemotePortMap *map = tr->opaque;
-    RemotePortMemoryMaster *s = map->parent;
     RemotePortRespSlot *rsp_slot;
     RemotePortDynPkt *rsp;
     struct  {
         struct rp_pkt_busaccess_ext_base pkt;
         uint8_t reserved[RP_MAX_ACCESS_SIZE];
     } pay;
-    uint8_t *data = rp_busaccess_tx_dataptr(s->peer, &pay.pkt);
+    uint8_t *data = rp_busaccess_tx_dataptr(peer, &pay.pkt);
     struct rp_encode_busaccess_in in = {0};
     int i;
     int len;
@@ -72,31 +73,31 @@ static void rp_io_access(MemoryTransaction *tr)
         }
     }
 
-    addr += s->relative ? 0 : map->offset;
+    addr += relative ? 0 : offset;
 
     in.cmd = tr->rw ? RP_CMD_write : RP_CMD_read;
-    in.id = rp_new_id(s->rp);
-    in.dev = s->rp_dev;
-    in.clk = rp_normalized_vmclk(s->rp);
+    in.id = rp_new_id(rp);
+    in.dev = rp_dev;
+    in.clk = rp_normalized_vmclk(rp);
     in.master_id = tr->attr.requester_id;
     in.addr = addr;
     in.attr |= tr->attr.secure ? RP_BUS_ATTR_SECURE : 0;
     in.size = tr->size;
     in.stream_width = tr->size;
-    len = rp_encode_busaccess(s->peer, &pay.pkt, &in);
+    len = rp_encode_busaccess(peer, &pay.pkt, &in);
     len += tr->rw ? tr->size : 0;
 
-    rp_rsp_mutex_lock(s->rp);
-    rp_write(s->rp, (void *) &pay, len);
+    rp_rsp_mutex_lock(rp);
+    rp_write(rp, (void *) &pay, len);
 
-    rsp_slot = rp_dev_wait_resp(s->rp, in.dev, in.id);
+    rsp_slot = rp_dev_wait_resp(rp, in.dev, in.id);
     rsp = &rsp_slot->rsp;
 
     /* We dont support out of order answers yet.  */
     assert(rsp->pkt->hdr.id == in.id);
 
     if (!tr->rw) {
-        data = rp_busaccess_rx_dataptr(s->peer, &rsp->pkt->busaccess_ext_base);
+        data = rp_busaccess_rx_dataptr(peer, &rsp->pkt->busaccess_ext_base);
         /* Data up to 8 bytes is return as values.  */
         if (tr->size <= 8) {
             for (i = 0; i < tr->size; i++) {
@@ -107,15 +108,23 @@ static void rp_io_access(MemoryTransaction *tr)
         }
     }
 
-    rp_resp_slot_done(s->rp, rsp_slot);
-    rp_rsp_mutex_unlock(s->rp);
+    rp_resp_slot_done(rp, rsp_slot);
+    rp_rsp_mutex_unlock(rp);
     /* Reads are sync-points, roll the sync timer.  */
-    rp_restart_sync_timer(s->rp);
+    rp_restart_sync_timer(rp);
     DB_PRINT_L(1, "\n");
 }
 
+static void rp_access(MemoryTransaction *tr)
+{
+    RemotePortMap *map = tr->opaque;
+    RemotePortMemoryMaster *s = map->parent;
+
+    rp_mm_access(s->rp, s->rp_dev, s->peer, tr, s->relative, map->offset);
+}
+
 static const MemoryRegionOps rp_ops_template = {
-    .access = rp_io_access,
+    .access = rp_access,
     .valid.max_access_size = RP_MAX_ACCESS_SIZE,
     .impl.unaligned = false,
     .endianness = DEVICE_LITTLE_ENDIAN,
