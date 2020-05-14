@@ -1,7 +1,7 @@
 /*
  * QEMU remote port PCI device.
  *
- * Copyright (c) 2016 Xilinx Inc
+ * Copyright (c) 2016-2020 Xilinx Inc
  * Written by Edgar E. Iglesias <edgar.iglesias@xilinx.com>
  *
  * This code is licensed under the GNU GPL.
@@ -21,6 +21,7 @@
 
 #include "hw/remote-port.h"
 #include "hw/remote-port-device.h"
+#include "hw/remote-port-memory-master.h"
 #include "hw/remote-port-memory-slave.h"
 
 #include "hw/fdt_generic_util.h"
@@ -67,13 +68,6 @@
 
 typedef struct RemotePortPCIDevice RemotePortPCIDevice;
 
-typedef struct RemotePortMap {
-    RemotePortPCIDevice *parent;
-    MemoryRegion iomem;
-    uint32_t rp_dev;
-    uint64_t offset;
-} RemotePortMap;
-
 struct RemotePortPCIDevice {
     /*< private >*/
     PCIDevice parent_obj;
@@ -103,117 +97,12 @@ struct RemotePortPCIDevice {
     struct rp_peer_state *peer;
 };
 
-static uint64_t rp_io_read(void *opaque, hwaddr addr, unsigned size,
-                           MemTxAttrs attr)
-{
-    RemotePortMap *map = opaque;
-    RemotePortPCIDevice *s = map->parent;
-    struct rp_pkt_busaccess_ext_base pkt;
-    struct rp_encode_busaccess_in in = {0};
-    uint64_t value = 0;
-    uint8_t *data;
-    int len;
-    int i;
-    RemotePortDynPkt rsp;
-
-    DB_PRINT_L(1, "\n");
-
-    in.cmd = RP_CMD_read;
-    in.id = rp_new_id(s->rp);
-    in.flags = 0;
-    in.dev = map->rp_dev;
-    in.clk = rp_normalized_vmclk(s->rp);
-    in.master_id = attr.requester_id;
-    in.addr = addr;
-    in.attr |= attr.secure ? RP_BUS_ATTR_SECURE : 0;
-    in.size = size;
-    in.width = 0;
-    in.stream_width = size;
-    len = rp_encode_busaccess(s->peer, &pkt, &in);
-    rp_rsp_mutex_lock(s->rp);
-    rp_write(s->rp, (void *) &pkt, len);
-
-    rsp = rp_wait_resp(s->rp);
-    /* We dont support out of order answers yet.  */
-    assert(rsp.pkt->hdr.id == be32_to_cpu(pkt.hdr.id));
-
-    data = rp_busaccess_rx_dataptr(s->peer, &rsp.pkt->busaccess_ext_base);
-    for (i = 0; i < size; i++) {
-        value |= data[i] << (i * 8);
-    }
-    rp_dpkt_invalidate(&rsp);
-    rp_rsp_mutex_unlock(s->rp);
-
-    /* Reads are sync-points, roll the sync timer.  */
-    rp_restart_sync_timer(s->rp);
-    DB_PRINT_L(0, "addr: %" HWADDR_PRIx " data: %" PRIx64 "\n", addr, value);
-    return value;
-}
-
-static void rp_io_write(void *opaque, hwaddr addr, uint64_t value,
-                        unsigned size, MemTxAttrs attr)
-{
-    RemotePortMap *map = opaque;
-    RemotePortPCIDevice *s = map->parent;
-    RemotePortDynPkt rsp;
-
-    struct  {
-        struct rp_pkt_busaccess_ext_base pkt;
-        uint8_t reserved[8];
-    } pay;
-    uint8_t *data = rp_busaccess_tx_dataptr(s->peer, &pay.pkt);
-    struct rp_encode_busaccess_in in = {0};
-    int i;
-    int len;
-
-    DB_PRINT_L(0, "addr: %" HWADDR_PRIx " data: %" PRIx64 "\n", addr, value);
-
-    for (i = 0; i < 8; i++) {
-        data[i] = value >> (i * 8);
-    }
-
-    assert(size <= 8);
-
-    in.cmd = RP_CMD_write;
-    in.id = rp_new_id(s->rp);
-    in.dev = map->rp_dev;
-    in.clk = rp_normalized_vmclk(s->rp);
-    in.master_id = attr.requester_id;
-    in.addr = addr;
-    in.attr |= attr.secure ? RP_BUS_ATTR_SECURE : 0;
-    in.size = size;
-    in.stream_width = size;
-    len = rp_encode_busaccess(s->peer, &pay.pkt, &in);
-
-    rp_rsp_mutex_lock(s->rp);
-
-    rp_write(s->rp, (void *) &pay, len + size);
-
-    rsp = rp_wait_resp(s->rp);
-
-    /* We dont support out of order answers yet.  */
-    assert(rsp.pkt->hdr.id == be32_to_cpu(pay.pkt.hdr.id));
-    rp_dpkt_invalidate(&rsp);
-    rp_rsp_mutex_unlock(s->rp);
-    /* Reads are sync-points, roll the sync timer.  */
-    rp_restart_sync_timer(s->rp);
-    DB_PRINT_L(1, "\n");
-}
-
 static void rp_io_access(MemoryTransaction *tr)
 {
-    MemTxAttrs attr = tr->attr;
-    void *opaque = tr->opaque;
-    hwaddr addr = tr->addr;
-    unsigned size = tr->size;
-    uint64_t value = tr->data.u64;;
-    bool is_write = tr->rw;
+    RemotePortMap *map = tr->opaque;
+    RemotePortPCIDevice *s = map->parent;
 
-    if (is_write) {
-        rp_io_write(opaque, addr, value, size, attr);
-    } else {
-        tr->data.u64 = rp_io_read(opaque, addr, size, attr);
-    }
+    rp_mm_access(s->rp, map->rp_dev, s->peer, tr, true, 0);
 }
 
 static const MemoryRegionOps rp_ops = {
@@ -225,47 +114,16 @@ static void rp_pci_write_config(PCIDevice *pci_dev, uint32_t addr,
                                 uint32_t value, int size)
 {
     RemotePortPCIDevice *s = REMOTE_PORT_PCI_DEVICE(pci_dev);
-    RemotePortDynPkt rsp;
-
-    struct  {
-        struct rp_pkt_busaccess_ext_base pkt;
-        uint8_t reserved[8];
-    } pay;
-    uint8_t *data = rp_busaccess_tx_dataptr(s->peer, &pay.pkt);
-    struct rp_encode_busaccess_in in = {0};
-    int i;
-    int len;
+    MemoryTransaction tr = {
+        .addr = addr,
+        .rw = true,
+        .size = size,
+        .data.u64 = value,
+        .attr = MEMTXATTRS_UNSPECIFIED
+    };
 
     DB_PRINT_L(0, "addr: %x data: %x\n", addr, value);
-
-    for (i = 0; i < 8; i++) {
-        data[i] = value >> (i * 8);
-    }
-
-    assert(size <= 8);
-    in.clk = rp_normalized_vmclk(s->rp);
-    in.id = rp_new_id(s->rp);
-
-    in.cmd = RP_CMD_write;
-    in.dev = s->cfg.rp_dev;
-    in.addr = addr;
-    in.size = size;
-    in.stream_width = size;
-    len = rp_encode_busaccess(s->peer, &pay.pkt, &in);
-
-    rp_rsp_mutex_lock(s->rp);
-
-    rp_write(s->rp, (void *) &pay, len + size);
-
-    rsp = rp_wait_resp(s->rp);
-
-    /* We dont support out of order answers yet.  */
-    assert(rsp.pkt->hdr.id == be32_to_cpu(pay.pkt.hdr.id));
-    rp_dpkt_invalidate(&rsp);
-    rp_rsp_mutex_unlock(s->rp);
-    /* Reads are sync-points, roll the sync timer.  */
-    rp_restart_sync_timer(s->rp);
-
+    rp_mm_access(s->rp, s->cfg.rp_dev, s->peer, &tr, true, 0);
     pci_default_write_config(pci_dev, addr, value, size);
     DB_PRINT_L(1, "\n");
 }
