@@ -90,6 +90,9 @@ struct RemotePortPCIDevice {
         uint8_t prog_if;
         uint8_t irq_pin;
 
+        /* Controls if the remote dev is responsible for the config space.  */
+        bool remote_config;
+
         bool msi;
         bool msix;
     } cfg;
@@ -109,6 +112,21 @@ static const MemoryRegionOps rp_ops = {
     .access = rp_io_access,
     .endianness = DEVICE_LITTLE_ENDIAN,
 };
+
+static uint32_t rp_pci_read_config(PCIDevice *pci_dev, uint32_t addr, int size)
+{
+    RemotePortPCIDevice *s = REMOTE_PORT_PCI_DEVICE(pci_dev);
+    MemoryTransaction tr = {
+        .addr = addr,
+        .rw = false,
+        .size = size,
+        .attr = MEMTXATTRS_UNSPECIFIED
+    };
+
+    rp_mm_access(s->rp, s->cfg.rp_dev, s->peer, &tr, true, 0);
+    DB_PRINT_L(0, "addr: %x data: %x\n", addr, (uint32_t) tr.data.u64);
+    return tr.data.u64;
+}
 
 static void rp_pci_write_config(PCIDevice *pci_dev, uint32_t addr,
                                 uint32_t value, int size)
@@ -171,6 +189,9 @@ static void rp_pci_realize(PCIDevice *pci_dev, Error **errp)
     pci_dev->config[PCI_CLASS_PROG] = s->cfg.prog_if;
     pci_dev->config[PCI_INTERRUPT_PIN] = s->cfg.irq_pin;
 
+    if (s->cfg.remote_config) {
+        pci_dev->config_read = rp_pci_read_config;
+    }
     /* The remote peer may want to snoop on CFG writes.  */
     pci_dev->config_write = rp_pci_write_config;
 
@@ -274,6 +295,8 @@ static Property rp_properties[] = {
     DEFINE_PROP_UINT64("bar-size5", RemotePortPCIDevice,
                                     cfg.bar_size[5], 0x1000),
 
+    DEFINE_PROP_BOOL("remote-config", RemotePortPCIDevice,
+                     cfg.remote_config, false),
     DEFINE_PROP_BOOL("msi", RemotePortPCIDevice, cfg.msi, false),
     DEFINE_PROP_BOOL("msix", RemotePortPCIDevice, cfg.msix, false),
 
