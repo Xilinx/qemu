@@ -33,7 +33,7 @@
         fprintf(stderr,  ": %s: ", __func__); \
         fprintf(stderr, ## __VA_ARGS__); \
     } \
-} while (0);
+} while (0)
 
 #define TYPE_REMOTE_PORT_MEMORY_MASTER "remote-port-memory-master"
 #define REMOTE_PORT_MEMORY_MASTER(obj) \
