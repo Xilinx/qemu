@@ -412,7 +412,7 @@ uint32_t helper_fint(CPUMBState *env, uint32_t a)
 
     set_float_exception_flags(0, &env->fp_status);
     fa.l = a;
-    r = float32_to_int32(fa.f, &env->fp_status);
+    r = float32_to_int32_round_to_zero(fa.f, &env->fp_status);
     flags = get_float_exception_flags(&env->fp_status);
     update_fpu_flags(env, flags);
 
