@@ -343,7 +343,7 @@ uint32_t helper_fcmp_le(CPUMBState *env, uint32_t a, uint32_t b)
     fa.l = a;
     fb.l = b;
     set_float_exception_flags(0, &env->fp_status);
-    r = float32_le(fa.f, fb.f, &env->fp_status);
+    r = float32_le(fb.f, fa.f, &env->fp_status);
     flags = get_float_exception_flags(&env->fp_status);
     update_fpu_flags(env, flags & float_flag_invalid);
 
@@ -388,7 +388,7 @@ uint32_t helper_fcmp_ge(CPUMBState *env, uint32_t a, uint32_t b)
     fa.l = a;
     fb.l = b;
     set_float_exception_flags(0, &env->fp_status);
-    r = !float32_lt(fa.f, fb.f, &env->fp_status);
+    r = !float32_lt(fb.f, fa.f, &env->fp_status);
     flags = get_float_exception_flags(&env->fp_status);
     update_fpu_flags(env, flags & float_flag_invalid);
 
