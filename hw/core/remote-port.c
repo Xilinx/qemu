@@ -110,6 +110,9 @@ static void rp_restart_sync_timer_bare(RemotePort *s)
 
 void rp_restart_sync_timer(RemotePort *s)
 {
+    if (s->doing_sync) {
+        return;
+    }
     ptimer_transaction_begin(s->sync.ptimer);
     rp_restart_sync_timer_bare(s);
     ptimer_transaction_commit(s->sync.ptimer);
@@ -323,6 +326,7 @@ static void sync_timer_hit(void *opaque)
     }
 
     /* Sync.  */
+    s->doing_sync = true;
     s->sync.need_sync = false;
     qemu_mutex_lock(&s->rsp_mutex);
     /* Send the sync.  */
@@ -332,6 +336,7 @@ static void sync_timer_hit(void *opaque)
     rsp = rp_wait_resp(s);
     rp_dpkt_invalidate(&rsp);
     qemu_mutex_unlock(&s->rsp_mutex);
+    s->doing_sync = false;
 
     rp_restart_sync_timer_bare(s);
 }
