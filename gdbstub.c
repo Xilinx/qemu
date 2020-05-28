@@ -815,10 +815,6 @@ static CPUState *gdb_get_cpu(uint32_t pid, uint32_t tid)
             return NULL;
         }
 
-        if (!process->attached) {
-            return NULL;
-        }
-
         return get_first_cpu_in_process(process);
     } else {
         /* a specific thread */
@@ -831,10 +827,6 @@ static CPUState *gdb_get_cpu(uint32_t pid, uint32_t tid)
         process = gdb_get_cpu_process(cpu);
 
         if (pid && process->pid != pid) {
-            return NULL;
-        }
-
-        if (!process->attached) {
             return NULL;
         }
 
