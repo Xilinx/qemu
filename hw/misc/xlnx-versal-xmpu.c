@@ -395,8 +395,8 @@ static uint64_t lock_prew(RegisterInfo *reg, uint64_t val64)
 static const RegisterAccessInfo xmpu_regs_info[] = {
     {   .name = "CTRL",  .addr = A_CTRL,
         .reset = 0x13,
-        .rsvd = 0xffffff70,
-        .ro = 0xfffffff8,
+        .rsvd = 0xffffffe0,
+        .ro = 0xffffffe8,
         .post_write = xmpu_setup_postw,
     },{ .name = "ERR_STATUS1_LO",  .addr = A_ERR_STATUS1_LO,
         .ro = 0xffffffff,
