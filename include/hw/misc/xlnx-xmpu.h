@@ -90,6 +90,7 @@ typedef struct XMPUMaster {
     struct {
         MemoryRegion mr[NR_XMPU_REGIONS];
     } err;
+    uint8_t curr_region;
 } XMPUMaster;
 
 typedef struct XMPURegion {

@@ -220,6 +220,7 @@ IOMMUTLBEntry xmpu_master_translate(XMPUMaster *xm, hwaddr addr,
         match = id_match && (addr >= xr.start && addr < xr.end);
         if (match) {
             nr_matched++;
+            xm->curr_region = i;
             /*
              * Determine if this region is accessible by the transactions
              * security domain.
@@ -253,6 +254,11 @@ IOMMUTLBEntry xmpu_master_translate(XMPUMaster *xm, hwaddr addr,
     }
 
     if (nr_matched == 0) {
+        /*
+         * The region number for default access is equal to the
+         * max number of regions
+         */
+        xm->curr_region = NR_XMPU_REGIONS;
         if (!s->dis_def_rw) {
             if (default_rd) {
                 ret.perm |= IOMMU_RO;

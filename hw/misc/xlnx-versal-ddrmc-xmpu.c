@@ -740,6 +740,7 @@ static MemTxResult zero_read(void *opaque, hwaddr addr, uint64_t *pdata,
         s->regs[R_ERR_ADD_HI] = (addr + s->cfg.base) >> 32;
         s->regs[R_ERR_ADD_LO] = (addr + s->cfg.base) & 0xFFFFF000;
 
+        ARRAY_FIELD_DP32(s->regs, ERR_STATUS, REGIONVIO, xm->curr_region);
         ARRAY_FIELD_DP32(s->regs, ERR_AXI_ID, ERR_SMID, attr.requester_id);
         if (sec_vio) {
             ARRAY_FIELD_DP32(s->regs, ERR_STATUS, SECURITYVIO, true);
@@ -774,6 +775,7 @@ static MemTxResult zero_write(void *opaque, hwaddr addr, uint64_t value,
         s->regs[R_ERR_ADD_HI] = (addr + s->cfg.base) >> 32;
         s->regs[R_ERR_ADD_LO] = (addr + s->cfg.base) & 0xFFFFFFFF;
 
+        ARRAY_FIELD_DP32(s->regs, ERR_STATUS, REGIONVIO, xm->curr_region);
         ARRAY_FIELD_DP32(s->regs, ERR_AXI_ID, ERR_SMID, attr.requester_id);
         if (sec_vio) {
             ARRAY_FIELD_DP32(s->regs, ERR_STATUS, SECURITYVIO, true);
