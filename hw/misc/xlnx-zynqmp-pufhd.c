@@ -334,6 +334,7 @@ static bool zynqmp_pufkey_from_regis(const Zynqmp_RegisPUF *rd, uint32_t size,
         return false;
     }
 
+    /* Extract PUF key from untrimmed helper-data into byte-wise big-endian */
     zynqmp_pufhd_kcpy(&(key->u8[0]),  rd->pkey_00_11, sizeof(rd->pkey_00_11));
     zynqmp_pufhd_kcpy(&(key->u8[12]), rd->pkey_12_23, sizeof(rd->pkey_12_23));
     zynqmp_pufhd_kcpy(&(key->u8[24]), rd->pkey_24_31, sizeof(rd->pkey_24_31));
@@ -357,6 +358,7 @@ static bool zynqmp_pufkey_from_efuse(const Zynqmp_EFusePUF *ed, uint32_t size,
         return false;
     }
 
+    /* Extract PUF key from trimmed helper-data into byte-wise big-endian */
     zynqmp_pufhd_kcpy(&(key->u8[0]),  ed->pkey_00,    sizeof(ed->pkey_00));
     zynqmp_pufhd_kcpy(&(key->u8[1]),  ed->pkey_01_08, sizeof(ed->pkey_01_08));
     zynqmp_pufhd_kcpy(&(key->u8[9]),  ed->pkey_09_11, sizeof(ed->pkey_09_11));
@@ -427,6 +429,8 @@ static void zynqmp_pufkey_import(Zynqmp_PUFHD *s)
      * The fake PUF key is provided by user, via the cmdline-provided
      * or FDT-provided "secret" object whose id is a string-valued
      * property of the parent object containing the PUF key-sink.
+     *
+     * The value is given and stored as big-endian in s->key.
      */
     xlnx_aes_k256_get_provided(zynqmp_pufkey_parent(s->keysink), "puf-key-id",
                                NULL, &s->key.u8, &error_abort);
@@ -444,7 +448,11 @@ static void zynqmp_pufkey_export(const Zynqmp_PUFKey *be,
         return;
     }
 
-    /* Key-sink expects the key in host endian */
+    /*
+     * Key-sink expects:
+     * 1. Each 32-bit in cpu endian; yet,
+     * 2. The order of 8 32b-words in big endian.
+     */
     for (i = 0; i < ARRAY_SIZE(key.u32); i++) {
         key.u32[i] = be32_to_cpu(be->u32[i]);
     }
@@ -597,7 +605,7 @@ Zynqmp_PUFHD *zynqmp_pufhd_new(ZynqMPAESKeySink *puf_keysink)
     /* Import PUF-Key to populate the fake helper-data */
     zynqmp_pufkey_import(s);
 
-    /* Copy key into helper-data with byte-lanes swapped */
+    /* Copy byte-wise big-endian key into helper-data with byte-lanes swapped */
     zynqmp_pufhd_kcpy(pd->pkey_00_11, &(s->key.u8[0]),  sizeof(pd->pkey_00_11));
     zynqmp_pufhd_kcpy(pd->pkey_12_23, &(s->key.u8[12]), sizeof(pd->pkey_12_23));
     zynqmp_pufhd_kcpy(pd->pkey_24_31, &(s->key.u8[24]), sizeof(pd->pkey_24_31));
