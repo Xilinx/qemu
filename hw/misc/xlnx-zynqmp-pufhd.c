@@ -288,7 +288,7 @@ typedef struct Zynqmp_PUFHD {
     XLNXEFuse *efuse;
     qemu_irq *acc_err;
 
-    Zynqmp_PUFKey key;  /* Kept in big-endian, same as in fake helper-data */
+    Zynqmp_PUFKey key;  /* In byte-wise big-endian */
 
     uint32_t pufhd_words;
     uint32_t pufhd_fills;
@@ -423,20 +423,13 @@ static Object *zynqmp_pufkey_parent(ZynqMPAESKeySink *sink)
 
 static void zynqmp_pufkey_import(Zynqmp_PUFHD *s)
 {
-    size_t i;
-    Zynqmp_PUFKey key;
-
     /*
      * The fake PUF key is provided by user, via the cmdline-provided
      * or FDT-provided "secret" object whose id is a string-valued
      * property of the parent object containing the PUF key-sink.
      */
     xlnx_aes_k256_get_provided(zynqmp_pufkey_parent(s->keysink), "puf-key-id",
-                               NULL, &(key.u8), &error_abort);
-
-    for (i = 0; i < ARRAY_SIZE(key.u32); i++) {
-        s->key.u32[i] = cpu_to_le32(key.u32[i]);
-    }
+                               NULL, &s->key.u8, &error_abort);
 }
 
 static void zynqmp_pufkey_export(const Zynqmp_PUFKey *be,
@@ -453,7 +446,7 @@ static void zynqmp_pufkey_export(const Zynqmp_PUFKey *be,
 
     /* Key-sink expects the key in host endian */
     for (i = 0; i < ARRAY_SIZE(key.u32); i++) {
-        key.u32[i] = le32_to_cpu(be->u32[i]);
+        key.u32[i] = be32_to_cpu(be->u32[i]);
     }
 
     zynqmp_aes_key_update(sink, key.u8, sizeof(key.u8));
