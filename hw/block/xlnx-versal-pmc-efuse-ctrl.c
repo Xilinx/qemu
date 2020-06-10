@@ -646,13 +646,31 @@ static MemTxResult efuse_ctrl_write_with_attrs(void *opaque, hwaddr addr,
     return register_write_memory_with_attrs(opaque, addr, v64, size, attrs);
 }
 
+static void efuse_ctrl_register_reset(RegisterInfo *reg)
+{
+    if (!reg->data || !reg->access) {
+        return;
+    }
+
+    /* Reset must not trigger some registers' writers */
+    switch (reg->access->addr) {
+    case A_EFUSE_AES_CRC:
+    case A_EFUSE_AES_USR_KEY0_CRC:
+    case A_EFUSE_AES_USR_KEY1_CRC:
+        *(uint32_t *)reg->data = reg->access->reset;
+        return;
+    }
+
+    register_reset(reg);
+}
+
 static void efuse_ctrl_reset(DeviceState *dev)
 {
     EFUSE_CTRL *s = XILINX_EFUSE_CTRL(dev);
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        register_reset(&s->regs_info[i]);
+        efuse_ctrl_register_reset(&s->regs_info[i]);
     }
 
     efuse_data_sync(s);
