@@ -828,13 +828,29 @@ static const MemoryRegionOps zynqmp_efuse_ops = {
     },
 };
 
+static void zynqmp_efuse_register_reset(RegisterInfo *reg)
+{
+    if (!reg->data || !reg->access) {
+        return;
+    }
+
+    /* Reset must not trigger some registers' writers */
+    switch (reg->access->addr) {
+    case A_EFUSE_AES_CRC:
+        *(uint32_t *)reg->data = reg->access->reset;
+        return;
+    }
+
+    register_reset(reg);
+}
+
 static void zynqmp_efuse_reset(DeviceState *dev)
 {
     ZynqMPEFuse *s = ZYNQMP_EFUSE(dev);
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        register_reset(&s->regs_info[i]);
+        zynqmp_efuse_register_reset(&s->regs_info[i]);
     }
 
     s->refresh_cache(s, FBIT_UNKNOWN);
