@@ -279,7 +279,7 @@ union Zynqmp_CheckPUF {
 };
 
 typedef union Zynqmp_PUFKey {
-    uint32_t u32[256 / 4];
+    uint32_t u32[256 / 32];
     uint8_t  u8[256 / 8];
 } Zynqmp_PUFKey;
 
