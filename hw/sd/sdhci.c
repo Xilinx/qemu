@@ -1362,10 +1362,9 @@ void sdhci_initfn(SDHCIState *s)
     s->io_ops = &sdhci_mmio_ops;
 
     object_property_add_link(OBJECT(s), "memattr", TYPE_MEMORY_TRANSACTION_ATTR,
-                            (Object **)&s->memattr,
-                            qdev_prop_allow_set_link_before_realize,
-                            OBJ_PROP_LINK_STRONG,
-                            NULL);
+                             (Object **)&s->memattr,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
 }
 
 void sdhci_uninitfn(SDHCIState *s)
@@ -1395,7 +1394,7 @@ void sdhci_common_realize(SDHCIState *s, Error **errp)
                           SDHC_REGISTERS_MAP_SIZE);
 }
 
-void sdhci_common_unrealize(SDHCIState *s, Error **errp)
+void sdhci_common_unrealize(SDHCIState *s)
 {
     /* This function is expected to be called only once for each class:
      * - SysBus:    via DeviceClass->unrealize(),
@@ -1533,11 +1532,11 @@ static void sdhci_sysbus_realize(DeviceState *dev, Error **errp)
     sysbus_init_mmio(sbd, &s->iomem);
 }
 
-static void sdhci_sysbus_unrealize(DeviceState *dev, Error **errp)
+static void sdhci_sysbus_unrealize(DeviceState *dev)
 {
     SDHCIState *s = SYSBUS_SDHCI(dev);
 
-    sdhci_common_unrealize(s, &error_abort);
+    sdhci_common_unrealize(s);
 
      if (s->dma_mr) {
         address_space_destroy(s->dma_as);

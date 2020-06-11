@@ -198,7 +198,7 @@ supported_kvm_target() {
         arm:arm | aarch64:aarch64 | \
         i386:i386 | i386:x86_64 | i386:x32 | \
         x86_64:i386 | x86_64:x86_64 | x86_64:x32 | \
-        mips:mips | mipsel:mips | \
+        mips:mips | mipsel:mips | mips64:mips | mips64el:mips | \
         ppc:ppc | ppc64:ppc | ppc:ppc64 | ppc64:ppc64 | ppc64:ppc64le | \
         s390x:s390x)
             return 0
@@ -941,7 +941,7 @@ done
 
 # Check for ancillary tools used in testing
 genisoimage=
-for binary in genisoimage
+for binary in genisoimage mkisofs
 do
     if has $binary
     then
@@ -1666,6 +1666,10 @@ QEMU_CFLAGS="$CPU_CFLAGS $QEMU_CFLAGS"
 if [ "$ARCH" = "unknown" ]; then
   bsd_user="no"
   linux_user="no"
+fi
+
+if [ "$bsd_user" = "no" -a "$linux_user" = "no" -a "$softmmu" = "no" ] ; then
+  tcg="no"
 fi
 
 default_target_list=""
@@ -2902,7 +2906,7 @@ fi
 if test "$gtk" != "no"; then
     gtkpackage="gtk+-3.0"
     gtkx11package="gtk+-x11-3.0"
-    gtkversion="3.14.0"
+    gtkversion="3.22.0"
     if $pkg_config --exists "$gtkpackage >= $gtkversion"; then
         gtk_cflags=$($pkg_config --cflags $gtkpackage)
         gtk_libs=$($pkg_config --libs $gtkpackage)
@@ -3632,6 +3636,22 @@ for drv in $audio_drv_list; do
 
     oss)
       oss_libs="$oss_lib"
+    ;;
+
+    jack | try-jack)
+    if $pkg_config jack --exists; then
+        jack_libs=$($pkg_config jack --libs)
+        if test "$drv" = "try-jack"; then
+            audio_drv_list=$(echo "$audio_drv_list" | sed -e 's/try-jack/jack/')
+        fi
+    else
+        if test "$drv" = "try-jack"; then
+            audio_drv_list=$(echo "$audio_drv_list" | sed -e 's/try-jack//')
+        else
+            error_exit "$drv check failed" \
+                "Make sure to have the $drv libs and headers installed."
+        fi
+    fi
     ;;
 
     *)
@@ -6909,6 +6929,7 @@ echo "PULSE_LIBS=$pulse_libs" >> $config_host_mak
 echo "COREAUDIO_LIBS=$coreaudio_libs" >> $config_host_mak
 echo "DSOUND_LIBS=$dsound_libs" >> $config_host_mak
 echo "OSS_LIBS=$oss_libs" >> $config_host_mak
+echo "JACK_LIBS=$jack_libs" >> $config_host_mak
 if test "$audio_win_int" = "yes" ; then
   echo "CONFIG_AUDIO_WIN_INT=y" >> $config_host_mak
 fi
@@ -7811,7 +7832,7 @@ case "$target_name" in
     TARGET_SYSTBL_ABI=common,oabi
     bflt="yes"
     mttcg="yes"
-    gdb_xml_files="arm-core.xml arm-vfp.xml arm-vfp3.xml arm-neon.xml"
+    gdb_xml_files="arm-core.xml arm-vfp.xml arm-vfp3.xml arm-neon.xml arm-m-profile.xml"
   ;;
   aarch64|aarch64_be)
     TARGET_ARCH=aarch64
@@ -7819,7 +7840,7 @@ case "$target_name" in
     bflt="yes"
     mttcg="yes"
     armv8_gdb_xml_files="aarch64-el1.xml aarch64-el2.xml aarch64-el3.xml"
-    gdb_xml_files="aarch64-core.xml aarch64-fpu.xml arm-core.xml arm-vfp.xml arm-vfp3.xml arm-neon.xml $armv8_gdb_xml_files"
+    gdb_xml_files="aarch64-core.xml aarch64-fpu.xml arm-core.xml arm-vfp.xml arm-vfp3.xml arm-neon.xml arm-m-profile.xml $armv8_gdb_xml_files"
   ;;
   cris)
   ;;

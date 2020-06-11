@@ -68,7 +68,7 @@ static void rp_pci_init(Object *obj)
 
     /* Can't embedd since the adaptor may outlive the PCI wrapper.  */
     s->rp = REMOTE_PORT(object_new(TYPE_REMOTE_PORT));
-    object_property_add_child(OBJECT(s), "rp", OBJECT(s->rp), &error_abort);
+    object_property_add_child(OBJECT(s), "rp", OBJECT(s->rp));
     /* Drop once since we now own it twice. */
     object_unref(OBJECT(s->rp));
 }

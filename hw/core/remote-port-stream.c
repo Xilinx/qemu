@@ -169,16 +169,14 @@ static void rp_stream_init(Object *obj)
 {
     RemotePortStream *s = REMOTE_PORT_STREAM(obj);
 
-    object_property_add_link(obj, "axistream-connected",
-                             TYPE_STREAM_SLAVE, (Object **) &s->tx_dev,
+    object_property_add_link(obj, "axistream-connected", TYPE_STREAM_SLAVE,
+                             (Object **)&s->tx_dev,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_STRONG,
-                             &error_abort);
+                             OBJ_PROP_LINK_STRONG);
     object_property_add_link(obj, "rp-adaptor0", "remote-port",
                              (Object **)&s->rp,
                              qdev_prop_allow_set_link,
-                             OBJ_PROP_LINK_STRONG,
-                             &error_abort);
+                             OBJ_PROP_LINK_STRONG);
 }
 
 static Property rp_properties[] = {

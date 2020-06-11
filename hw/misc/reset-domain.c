@@ -98,11 +98,10 @@ static void reset_init(Object *obj)
         char mr_name[16];
 
         snprintf(mr_name, 16, "mr%d", i);
-        object_property_add_link(obj, mr_name,
-                                 TYPE_MEMORY_REGION, (Object **)&s->mr,
-                                 qdev_prop_allow_set_link_before_realize,
-                                 OBJ_PROP_LINK_STRONG,
-                                 &error_abort);
+        object_property_add_link(obj, mr_name, TYPE_MEMORY_REGION,
+                             (Object **)&s->mr,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
     }
 }
 

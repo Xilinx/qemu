@@ -181,7 +181,7 @@ static void *fdt_init_add_cpu_cluster(FDTMachineInfo *fdti, char *compat)
 	Object *obj;
 
 	obj = object_new(TYPE_CPU_CLUSTER);
-	object_property_add_child(object_get_root(), name, OBJECT(obj), NULL);
+	object_property_add_child(object_get_root(), name, OBJECT(obj));
 	qdev_prop_set_uint32(DEVICE(obj), "cluster-id", i++);
 
 	cl->cpu_type = g_strdup(compat);

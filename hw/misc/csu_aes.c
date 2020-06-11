@@ -546,7 +546,7 @@ static void csu_devkey_sink_init(ZynqMPCSUAES *s,
 
     ch_name = g_strdup_printf("zynqmp-aes-key-sink-%s-target", name);
     object_initialize(ks, sizeof(*ks), TYPE_ZYNQMP_CSU_DEVKEY_SINK);
-    object_property_add_child(OBJECT(s), ch_name, (Object *)ks, &error_abort);
+    object_property_add_child(OBJECT(s), ch_name, (Object *)ks);
     free(ch_name);
 
     /* Back link, non-qom for the moment.  */

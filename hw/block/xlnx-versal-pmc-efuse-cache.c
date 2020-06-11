@@ -111,8 +111,7 @@ static void efuse_cache_init(Object *obj)
     object_property_add_link(obj, "efuse", TYPE_XLNX_EFUSE,
                              (Object **)&s->efuse,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_STRONG,
-                             NULL);
+                             OBJ_PROP_LINK_STRONG);
 }
 
 static const VMStateDescription vmstate_efuse_cache = {

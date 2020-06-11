@@ -74,16 +74,9 @@ static IOInstEnding vfio_ccw_handle_request(SubchDev *sch)
     struct ccw_io_region *region = vcdev->io_region;
     int ret;
 
-    if (!(sch->orb.ctrl0 & ORB_CTRL0_MASK_PFCH)) {
-        if (!(vcdev->force_orb_pfch)) {
-            warn_once_pfch(vcdev, sch, "requires PFCH flag set");
-            sch_gen_unit_exception(sch);
-            css_inject_io_interrupt(sch);
-            return IOINST_CC_EXPECTED;
-        } else {
-            sch->orb.ctrl0 |= ORB_CTRL0_MASK_PFCH;
-            warn_once_pfch(vcdev, sch, "PFCH flag forced");
-        }
+    if (!(sch->orb.ctrl0 & ORB_CTRL0_MASK_PFCH) && vcdev->force_orb_pfch) {
+        sch->orb.ctrl0 |= ORB_CTRL0_MASK_PFCH;
+        warn_once_pfch(vcdev, sch, "PFCH flag forced");
     }
 
     QEMU_BUILD_BUG_ON(sizeof(region->orb_area) != sizeof(ORB));
@@ -521,13 +514,13 @@ out_device_err:
     vfio_put_group(group);
 out_group_err:
     if (cdc->unrealize) {
-        cdc->unrealize(cdev, NULL);
+        cdc->unrealize(cdev);
     }
 out_err_propagate:
     error_propagate(errp, err);
 }
 
-static void vfio_ccw_unrealize(DeviceState *dev, Error **errp)
+static void vfio_ccw_unrealize(DeviceState *dev)
 {
     CcwDevice *ccw_dev = DO_UPCAST(CcwDevice, parent_obj, dev);
     S390CCWDevice *cdev = DO_UPCAST(S390CCWDevice, parent_obj, ccw_dev);
@@ -541,7 +534,7 @@ static void vfio_ccw_unrealize(DeviceState *dev, Error **errp)
     vfio_put_group(group);
 
     if (cdc->unrealize) {
-        cdc->unrealize(cdev, errp);
+        cdc->unrealize(cdev);
     }
 }
 

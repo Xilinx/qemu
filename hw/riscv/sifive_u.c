@@ -441,17 +441,18 @@ static void sifive_u_machine_instance_init(Object *obj)
     SiFiveUState *s = RISCV_U_MACHINE(obj);
 
     s->start_in_flash = false;
-    object_property_add_bool(obj, "start-in-flash", sifive_u_machine_get_start_in_flash,
-                             sifive_u_machine_set_start_in_flash, NULL);
+    object_property_add_bool(obj, "start-in-flash",
+                             sifive_u_machine_get_start_in_flash,
+                             sifive_u_machine_set_start_in_flash);
     object_property_set_description(obj, "start-in-flash",
                                     "Set on to tell QEMU's ROM to jump to "
-                                    "flash. Otherwise QEMU will jump to DRAM",
-                                    NULL);
+                                    "flash. Otherwise QEMU will jump to DRAM");
 
     s->serial = OTP_SERIAL;
-    object_property_add(obj, "serial", "uint32", sifive_u_machine_get_serial,
-                        sifive_u_machine_set_serial, NULL, &s->serial, NULL);
-    object_property_set_description(obj, "serial", "Board serial number", NULL);
+    object_property_add(obj, "serial", "uint32",
+                        sifive_u_machine_get_serial,
+                        sifive_u_machine_set_serial, NULL, &s->serial);
+    object_property_set_description(obj, "serial", "Board serial number");
 }
 
 static void sifive_u_machine_class_init(ObjectClass *oc, void *data)
@@ -480,7 +481,7 @@ static void sifive_u_machine_init_register_types(void)
 
 type_init(sifive_u_machine_init_register_types)
 
-static void riscv_sifive_u_soc_init(Object *obj)
+static void sifive_u_soc_instance_init(Object *obj)
 {
     MachineState *ms = MACHINE(qdev_get_machine());
     SiFiveUSoCState *s = RISCV_U_SOC(obj);
@@ -519,7 +520,7 @@ static void riscv_sifive_u_soc_init(Object *obj)
                           TYPE_CADENCE_GEM);
 }
 
-static void riscv_sifive_u_soc_realize(DeviceState *dev, Error **errp)
+static void sifive_u_soc_realize(DeviceState *dev, Error **errp)
 {
     MachineState *ms = MACHINE(qdev_get_machine());
     SiFiveUSoCState *s = RISCV_U_SOC(dev);
@@ -634,32 +635,32 @@ static void riscv_sifive_u_soc_realize(DeviceState *dev, Error **errp)
         memmap[SIFIVE_U_GEM_MGMT].base, memmap[SIFIVE_U_GEM_MGMT].size);
 }
 
-static Property riscv_sifive_u_soc_props[] = {
+static Property sifive_u_soc_props[] = {
     DEFINE_PROP_UINT32("serial", SiFiveUSoCState, serial, OTP_SERIAL),
     DEFINE_PROP_END_OF_LIST()
 };
 
-static void riscv_sifive_u_soc_class_init(ObjectClass *oc, void *data)
+static void sifive_u_soc_class_init(ObjectClass *oc, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
 
-    device_class_set_props(dc, riscv_sifive_u_soc_props);
-    dc->realize = riscv_sifive_u_soc_realize;
+    device_class_set_props(dc, sifive_u_soc_props);
+    dc->realize = sifive_u_soc_realize;
     /* Reason: Uses serial_hds in realize function, thus can't be used twice */
     dc->user_creatable = false;
 }
 
-static const TypeInfo riscv_sifive_u_soc_type_info = {
+static const TypeInfo sifive_u_soc_type_info = {
     .name = TYPE_RISCV_U_SOC,
     .parent = TYPE_DEVICE,
     .instance_size = sizeof(SiFiveUSoCState),
-    .instance_init = riscv_sifive_u_soc_init,
-    .class_init = riscv_sifive_u_soc_class_init,
+    .instance_init = sifive_u_soc_instance_init,
+    .class_init = sifive_u_soc_class_init,
 };
 
-static void riscv_sifive_u_soc_register_types(void)
+static void sifive_u_soc_register_types(void)
 {
-    type_register_static(&riscv_sifive_u_soc_type_info);
+    type_register_static(&sifive_u_soc_type_info);
 }
 
-type_init(riscv_sifive_u_soc_register_types)
+type_init(sifive_u_soc_register_types)

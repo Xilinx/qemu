@@ -335,7 +335,7 @@ static void zynqmp_boot_realize(DeviceState *dev, Error **errp)
     ptimer_transaction_commit(s->ptimer);
 }
 
-static void zynqmp_boot_unrealize(DeviceState *dev, Error **errp)
+static void zynqmp_boot_unrealize(DeviceState *dev)
 {
     qemu_unregister_reset_loader(zynqmp_boot_reset, dev);
 }
@@ -348,8 +348,7 @@ static void zynqmp_boot_init(Object *obj)
     object_property_add_link(obj, "dma", TYPE_MEMORY_REGION,
                              (Object **)&s->dma_mr,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_STRONG,
-                             &error_abort);
+                             OBJ_PROP_LINK_STRONG);
 }
 
 static Property zynqmp_boot_props[] = {

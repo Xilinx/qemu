@@ -46,7 +46,8 @@
 #include "hw/nvram/chrp_nvram.h"
 #include "hw/nvram/fw_cfg.h"
 #include "hw/char/escc.h"
-#include "hw/empty_slot.h"
+#include "hw/misc/empty_slot.h"
+#include "hw/misc/unimp.h"
 #include "hw/irq.h"
 #include "hw/loader.h"
 #include "elf.h"
@@ -795,10 +796,9 @@ static void ram_initfn(Object *obj)
     object_property_add_link(obj, "memdev", TYPE_MEMORY_BACKEND,
                              (Object **)&d->memdev,
                              object_property_allow_set_link,
-                             OBJ_PROP_LINK_STRONG, &error_abort);
+                             OBJ_PROP_LINK_STRONG);
     object_property_set_description(obj, "memdev", "Set RAM backend"
-                                    "Valid value is ID of a hostmem backend",
-                                     &error_abort);
+                                    "Valid value is ID of a hostmem backend");
 }
 
 static void ram_class_init(ObjectClass *klass, void *data)
@@ -884,7 +884,8 @@ static void sun4m_hw_init(const struct sun4m_hwdef *hwdef,
 
     /* models without ECC don't trap when missing ram is accessed */
     if (!hwdef->ecc_base) {
-        empty_slot_init(machine->ram_size, hwdef->max_mem - machine->ram_size);
+        empty_slot_init("ecc", machine->ram_size,
+                        hwdef->max_mem - machine->ram_size);
     }
 
     prom_init(hwdef->slavio_base, bios_name);
@@ -915,7 +916,8 @@ static void sun4m_hw_init(const struct sun4m_hwdef *hwdef,
            Software shouldn't use aliased addresses, neither should it crash
            when does. Using empty_slot instead of aliasing can help with
            debugging such accesses */
-        empty_slot_init(hwdef->iommu_pad_base,hwdef->iommu_pad_len);
+        empty_slot_init("iommu.alias",
+                        hwdef->iommu_pad_base, hwdef->iommu_pad_len);
     }
 
     sparc32_dma_init(hwdef->dma_base,
@@ -964,12 +966,14 @@ static void sun4m_hw_init(const struct sun4m_hwdef *hwdef,
     for (i = 0; i < MAX_VSIMMS; i++) {
         /* vsimm registers probed by OBP */
         if (hwdef->vsimm[i].reg_base) {
-            empty_slot_init(hwdef->vsimm[i].reg_base, 0x2000);
+            char *name = g_strdup_printf("vsimm[%d]", i);
+            empty_slot_init(name, hwdef->vsimm[i].reg_base, 0x2000);
+            g_free(name);
         }
     }
 
     if (hwdef->sx_base) {
-        empty_slot_init(hwdef->sx_base, 0x2000);
+        create_unimplemented_device("SUNW,sx", hwdef->sx_base, 0x2000);
     }
 
     nvram = m48t59_init(slavio_irq[0], hwdef->nvram_base, 0, 0x2000, 1968, 8);
@@ -1032,14 +1036,16 @@ static void sun4m_hw_init(const struct sun4m_hwdef *hwdef,
     if (hwdef->dbri_base) {
         /* ISDN chip with attached CS4215 audio codec */
         /* prom space */
-        empty_slot_init(hwdef->dbri_base+0x1000, 0x30);
+        create_unimplemented_device("SUNW,DBRI.prom",
+                                    hwdef->dbri_base + 0x1000, 0x30);
         /* reg space */
-        empty_slot_init(hwdef->dbri_base+0x10000, 0x100);
+        create_unimplemented_device("SUNW,DBRI",
+                                    hwdef->dbri_base + 0x10000, 0x100);
     }
 
     if (hwdef->bpp_base) {
         /* parallel port */
-        empty_slot_init(hwdef->bpp_base, 0x20);
+        create_unimplemented_device("SUNW,bpp", hwdef->bpp_base, 0x20);
     }
 
     initrd_size = 0;
@@ -1061,7 +1067,7 @@ static void sun4m_hw_init(const struct sun4m_hwdef *hwdef,
     qdev_prop_set_uint32(dev, "data_width", 1);
     qdev_prop_set_bit(dev, "dma_enabled", false);
     object_property_add_child(OBJECT(qdev_get_machine()), TYPE_FW_CFG,
-                              OBJECT(fw_cfg), NULL);
+                              OBJECT(fw_cfg));
     qdev_init_nofail(dev);
     s = SYS_BUS_DEVICE(dev);
     sysbus_mmio_map(s, 0, CFG_ADDR);

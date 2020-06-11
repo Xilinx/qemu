@@ -117,8 +117,9 @@ static int zynq7000_mdio_phy_connect(char *node_path, FDTMachineInfo *fdti,
     parent = fdt_init_get_opaque(fdti, parent_node_path);
 
     /* Add parent to mdio node */
-    object_property_add_child(OBJECT(parent), "mdio_child", OBJECT(Opaque),
-                              NULL);
+    if (!OBJECT(Opaque)->parent) {
+        object_property_add_child(OBJECT(parent), "mdio_child", OBJECT(Opaque));
+    }
 
     /* Set mdio property of gem device */
     object_property_set_link(OBJECT(parent), OBJECT(Opaque), "mdio", NULL);
@@ -583,7 +584,7 @@ static void arm_generic_fdt_7000_init(MachineState *machine)
 
     dev = qdev_create(NULL, "arm.pl35x");
     object_property_add_child(container_get(qdev_get_machine(), "/unattached"),
-                              "pl353", OBJECT(dev), NULL);
+                              "pl353", OBJECT(dev));
     qdev_prop_set_uint8(dev, "x", 3);
     dinfo = drive_get_next(IF_PFLASH);
     att_dev = nand_init(dinfo ? blk_by_legacy_dinfo(dinfo)

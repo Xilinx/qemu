@@ -94,10 +94,9 @@ static PFlashCFI01 *virt_flash_create1(RISCVVirtState *s,
     qdev_prop_set_uint16(dev, "id3", 0x00);
     qdev_prop_set_string(dev, "name", name);
 
-    object_property_add_child(OBJECT(s), name, OBJECT(dev),
-                              &error_abort);
+    object_property_add_child(OBJECT(s), name, OBJECT(dev));
     object_property_add_alias(OBJECT(s), alias_prop_name,
-                              OBJECT(dev), "drive", &error_abort);
+                              OBJECT(dev), "drive");
 
     return PFLASH_CFI01(dev);
 }
@@ -114,7 +113,7 @@ static void virt_flash_map1(PFlashCFI01 *flash,
 {
     DeviceState *dev = DEVICE(flash);
 
-    assert(size % VIRT_FLASH_SECTOR_SIZE == 0);
+    assert(QEMU_IS_ALIGNED(size, VIRT_FLASH_SECTOR_SIZE));
     assert(size / VIRT_FLASH_SECTOR_SIZE <= UINT32_MAX);
     qdev_prop_set_uint32(dev, "num-blocks", size / VIRT_FLASH_SECTOR_SIZE);
     qdev_init_nofail(dev);
@@ -495,8 +494,8 @@ static inline DeviceState *gpex_pcie_init(MemoryRegion *sys_mem,
     return dev;
 }
 
-static void riscv_virt_create_remoteport(MachineState *machine,
-                                         MemoryRegion *system_memory)
+static void virt_create_remoteport(MachineState *machine,
+                                   MemoryRegion *system_memory)
 {
     const struct MemmapEntry *memmap = virt_memmap;
     RISCVVirtState *s = RISCV_VIRT_MACHINE(machine);
@@ -508,24 +507,23 @@ static void riscv_virt_create_remoteport(MachineState *machine,
     int i;
 
     rp_obj = object_new("remote-port");
-    object_property_add_child(OBJECT(machine), "cosim", rp_obj, &error_fatal);
+    object_property_add_child(OBJECT(machine), "cosim", rp_obj);
     object_property_set_str(rp_obj, "cosim", "chrdev-id", &error_fatal);
     object_property_set_bool(rp_obj, true, "sync", &error_fatal);
 
     rpm_obj = object_new("remote-port-memory-master");
-    object_property_add_child(OBJECT(machine), "cosim-mmap-0", rpm_obj, &error_fatal);
+    object_property_add_child(OBJECT(machine), "cosim-mmap-0", rpm_obj);
     object_property_set_int(rpm_obj, 1, "map-num", &error_fatal);
     object_property_set_int(rpm_obj, memmap[VIRT_COSIM].base, "map-offset", &error_fatal);
     object_property_set_int(rpm_obj, memmap[VIRT_COSIM].size, "map-size", &error_fatal);
     object_property_set_int(rpm_obj, 9, "rp-chan0", &error_fatal);
 
     rpms_obj = object_new("remote-port-memory-slave");
-    object_property_add_child(OBJECT(machine), "cosim-mmap-slave-0", rpms_obj, &error_fatal);
+    object_property_add_child(OBJECT(machine), "cosim-mmap-slave-0", rpms_obj);
 //    object_property_set_int(rpms_obj, 0, "rp-chan0", &error_fatal);
 
     rpirq_obj = object_new("remote-port-gpio");
-    object_property_add_child(OBJECT(machine), "cosim-irq-0", rpirq_obj,
-                              &error_fatal);
+    object_property_add_child(OBJECT(machine), "cosim-irq-0", rpirq_obj);
     object_property_set_int(rpirq_obj, 12, "rp-chan0", &error_fatal);
 
 
@@ -559,7 +557,7 @@ static void riscv_virt_create_remoteport(MachineState *machine,
     }
 }
 
-static void riscv_virt_board_init(MachineState *machine)
+static void virt_machine_init(MachineState *machine)
 {
     const struct MemmapEntry *memmap = virt_memmap;
     RISCVVirtState *s = RISCV_VIRT_MACHINE(machine);
@@ -720,61 +718,61 @@ static void riscv_virt_board_init(MachineState *machine)
     g_free(plic_hart_config);
 }
 
-static void riscv_virt_cosim_board_init(MachineState *machine)
+static void virt_cosim_board_init(MachineState *machine)
 {
     MemoryRegion *system_memory = get_system_memory();
 
-    riscv_virt_board_init(machine);
+    virt_machine_init(machine);
     if (machine_path) {
-        riscv_virt_create_remoteport(machine, system_memory);
+        virt_create_remoteport(machine, system_memory);
     }
 }
 
-static void riscv_virt_machine_instance_init(Object *obj)
+static void virt_machine_instance_init(Object *obj)
 {
 }
 
-static void riscv_virt_machine_class_init(ObjectClass *oc, void *data)
+static void virt_machine_class_init(ObjectClass *oc, void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
 
     mc->desc = "RISC-V VirtIO board";
-    mc->init = riscv_virt_board_init;
+    mc->init = virt_machine_init;
     mc->max_cpus = 8;
     mc->default_cpu_type = VIRT_CPU;
     mc->pci_allow_0_address = true;
 }
 
-static void riscv_virt_machine_class_init_cosim(ObjectClass *oc, void *data)
+static void virt_machine_class_init_cosim(ObjectClass *oc, void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
 
     mc->desc = "RISC-V VirtIO board Cosim";
-    mc->init = riscv_virt_cosim_board_init;
+    mc->init = virt_cosim_board_init;
     mc->max_cpus = 8;
     mc->default_cpu_type = VIRT_CPU;
 }
 
-static const TypeInfo riscv_virt_machine_typeinfo = {
+static const TypeInfo virt_machine_typeinfo = {
     .name       = MACHINE_TYPE_NAME("virt"),
     .parent     = TYPE_MACHINE,
-    .class_init = riscv_virt_machine_class_init,
-    .instance_init = riscv_virt_machine_instance_init,
+    .class_init = virt_machine_class_init,
+    .instance_init = virt_machine_instance_init,
     .instance_size = sizeof(RISCVVirtState),
 };
 
-static const TypeInfo riscv_virt_cosim_machine_typeinfo = {
+static const TypeInfo virt_cosim_machine_typeinfo = {
     .name       = MACHINE_TYPE_NAME("virt-cosim"),
     .parent     = MACHINE_TYPE_NAME("virt"),
-    .class_init = riscv_virt_machine_class_init_cosim,
-    .instance_init = riscv_virt_machine_instance_init,
+    .class_init = virt_machine_class_init_cosim,
+    .instance_init = virt_machine_instance_init,
     .instance_size = sizeof(RISCVVirtState),
 };
 
-static void riscv_virt_machine_init_register_types(void)
+static void virt_machine_init_register_types(void)
 {
-    type_register_static(&riscv_virt_machine_typeinfo);
-    type_register_static(&riscv_virt_cosim_machine_typeinfo);
+    type_register_static(&virt_machine_typeinfo);
+    type_register_static(&virt_cosim_machine_typeinfo);
 }
 
-type_init(riscv_virt_machine_init_register_types)
+type_init(virt_machine_init_register_types)

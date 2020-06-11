@@ -319,8 +319,7 @@ void xppu_init_common(XPPU *s, Object *obj, const char *tn,
     object_property_add_link(obj, "mr", TYPE_MEMORY_REGION,
                              (Object **)&s->mr,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_STRONG,
-                             &error_abort);
+                             OBJ_PROP_LINK_STRONG);
 
     sysbus_init_irq(sbd, &s->irq_isr);
 }

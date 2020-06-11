@@ -329,13 +329,11 @@ void xmpu_init_common(XMPU *s, Object *obj, const char *tn,
     object_property_add_link(obj, "protected-mr", TYPE_MEMORY_REGION,
                              (Object **)&s->protected_mr,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_STRONG,
-                             &error_abort);
+                             OBJ_PROP_LINK_STRONG);
     object_property_add_link(obj, "mr-0", TYPE_MEMORY_REGION,
                              (Object **)&s->masters[0].parent_mr,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_STRONG,
-                             &error_abort);
+                             OBJ_PROP_LINK_STRONG);
 
     qdev_init_gpio_out(DEVICE(sbd), &s->enabled_signal, 1);
 }

@@ -28,6 +28,7 @@
 #include "qemu-common.h"
 #include "qemu-version.h"
 #include "qapi/error.h"
+#include "qapi/qapi-commands-block-core.h"
 #include "qapi/qapi-visit-block-core.h"
 #include "qapi/qobject-output-visitor.h"
 #include "qapi/qmp/qjson.h"
@@ -71,6 +72,13 @@ enum {
     OPTION_SHRINK = 266,
     OPTION_SALVAGE = 267,
     OPTION_TARGET_IS_ZERO = 268,
+    OPTION_ADD = 269,
+    OPTION_REMOVE = 270,
+    OPTION_CLEAR = 271,
+    OPTION_ENABLE = 272,
+    OPTION_DISABLE = 273,
+    OPTION_MERGE = 274,
+    OPTION_BITMAPS = 275,
 };
 
 typedef enum OutputFormat {
@@ -108,7 +116,7 @@ static void QEMU_NORETURN unrecognized_option(const char *option)
     error_exit("unrecognized option '%s'", option);
 }
 
-/* Please keep in synch with qemu-img.texi */
+/* Please keep in synch with docs/tools/qemu-img.rst */
 static void QEMU_NORETURN help(void)
 {
     const char *help_msg =
@@ -169,6 +177,14 @@ static void QEMU_NORETURN help(void)
            "  '-n' skips the target volume creation (useful if the volume is created\n"
            "       prior to running qemu-img)\n"
            "\n"
+           "Parameters to bitmap subcommand:\n"
+           "  'bitmap' is the name of the bitmap to manipulate, through one or more\n"
+           "       actions from '--add', '--remove', '--clear', '--enable', '--disable',\n"
+           "       or '--merge source'\n"
+           "  '-g granularity' sets the granularity for '--add' actions\n"
+           "  '-b source' and '-F src_fmt' tell '--merge' actions to find the source\n"
+           "       bitmaps from an alternative file\n"
+           "\n"
            "Parameters to check subcommand:\n"
            "  '-r' tries to repair any inconsistencies that are found during the check.\n"
            "       '-r leaks' repairs only cluster leaks, whereas '-r all' fixes all\n"
@@ -176,6 +192,7 @@ static void QEMU_NORETURN help(void)
            "       hiding corruption that has already occurred.\n"
            "\n"
            "Parameters to convert subcommand:\n"
+           "  '--bitmaps' copies all top-level persistent bitmaps to destination\n"
            "  '-m' specifies how many coroutines work in parallel during the convert\n"
            "       process (defaults to 8)\n"
            "  '-W' allow to write to the target out of order rather than sequential\n"
@@ -470,19 +487,31 @@ static int add_old_style_options(const char *fmt, QemuOpts *opts,
     return 0;
 }
 
-static int64_t cvtnum(const char *s)
+static int64_t cvtnum_full(const char *name, const char *value, int64_t min,
+                           int64_t max)
 {
     int err;
-    uint64_t value;
+    uint64_t res;
 
-    err = qemu_strtosz(s, NULL, &value);
-    if (err < 0) {
+    err = qemu_strtosz(value, NULL, &res);
+    if (err < 0 && err != -ERANGE) {
+        error_report("Invalid %s specified. You may use "
+                     "k, M, G, T, P or E suffixes for", name);
+        error_report("kilobytes, megabytes, gigabytes, terabytes, "
+                     "petabytes and exabytes.");
         return err;
     }
-    if (value > INT64_MAX) {
+    if (err == -ERANGE || res > max || res < min) {
+        error_report("Invalid %s specified. Must be between %" PRId64
+                     " and %" PRId64 ".", name, min, max);
         return -ERANGE;
     }
-    return value;
+    return res;
+}
+
+static int64_t cvtnum(const char *name, const char *value)
+{
+    return cvtnum_full(name, value, 0, INT64_MAX);
 }
 
 static int img_create(int argc, char **argv)
@@ -572,16 +601,8 @@ static int img_create(int argc, char **argv)
     if (optind < argc) {
         int64_t sval;
 
-        sval = cvtnum(argv[optind++]);
+        sval = cvtnum("image size", argv[optind++]);
         if (sval < 0) {
-            if (sval == -ERANGE) {
-                error_report("Image size must be less than 8 EiB!");
-            } else {
-                error_report("Invalid image size specified! You may use k, M, "
-                      "G, T, P or E suffixes for ");
-                error_report("kilobytes, megabytes, gigabytes, terabytes, "
-                             "petabytes and exabytes.");
-            }
             goto fail;
         }
         img_size = (uint64_t)sval;
@@ -1104,11 +1125,20 @@ static int img_commit(int argc, char **argv)
         goto unref_backing;
     }
 
-    if (!drop && bs->drv->bdrv_make_empty) {
-        ret = bs->drv->bdrv_make_empty(bs);
-        if (ret) {
-            error_setg_errno(&local_err, -ret, "Could not empty %s",
-                             filename);
+    if (!drop) {
+        BlockBackend *old_backing_blk;
+
+        old_backing_blk = blk_new_with_bs(bs, BLK_PERM_WRITE, BLK_PERM_ALL,
+                                          &local_err);
+        if (!old_backing_blk) {
+            goto unref_backing;
+        }
+        ret = blk_make_empty(old_backing_blk, &local_err);
+        blk_unref(old_backing_blk);
+        if (ret == -ENOTSUP) {
+            error_free(local_err);
+            local_err = NULL;
+        } else if (ret < 0) {
             goto unref_backing;
         }
     }
@@ -1610,6 +1640,24 @@ out4:
     return ret;
 }
 
+/* Convenience wrapper around qmp_block_dirty_bitmap_merge */
+static void do_dirty_bitmap_merge(const char *dst_node, const char *dst_name,
+                                  const char *src_node, const char *src_name,
+                                  Error **errp)
+{
+    BlockDirtyBitmapMergeSource *merge_src;
+    BlockDirtyBitmapMergeSourceList *list;
+
+    merge_src = g_new0(BlockDirtyBitmapMergeSource, 1);
+    merge_src->type = QTYPE_QDICT;
+    merge_src->u.external.node = g_strdup(src_node);
+    merge_src->u.external.name = g_strdup(src_name);
+    list = g_new0(BlockDirtyBitmapMergeSourceList, 1);
+    list->value = merge_src;
+    qmp_block_dirty_bitmap_merge(dst_node, dst_name, list, errp);
+    qapi_free_BlockDirtyBitmapMergeSourceList(list);
+}
+
 enum ImgConvertBlockStatus {
     BLK_DATA,
     BLK_ZERO,
@@ -2093,6 +2141,39 @@ static int convert_do_copy(ImgConvertState *s)
     return s->ret;
 }
 
+static int convert_copy_bitmaps(BlockDriverState *src, BlockDriverState *dst)
+{
+    BdrvDirtyBitmap *bm;
+    Error *err = NULL;
+
+    FOR_EACH_DIRTY_BITMAP(src, bm) {
+        const char *name;
+
+        if (!bdrv_dirty_bitmap_get_persistence(bm)) {
+            continue;
+        }
+        name = bdrv_dirty_bitmap_name(bm);
+        qmp_block_dirty_bitmap_add(dst->node_name, name,
+                                   true, bdrv_dirty_bitmap_granularity(bm),
+                                   true, true,
+                                   true, !bdrv_dirty_bitmap_enabled(bm),
+                                   &err);
+        if (err) {
+            error_reportf_err(err, "Failed to create bitmap %s: ", name);
+            return -1;
+        }
+
+        do_dirty_bitmap_merge(dst->node_name, name, src->node_name, name,
+                              &err);
+        if (err) {
+            error_reportf_err(err, "Failed to populate bitmap %s: ", name);
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
 #define MAX_BUF_SECTORS 32768
 
 static int img_convert(int argc, char **argv)
@@ -2114,6 +2195,7 @@ static int img_convert(int argc, char **argv)
     int64_t ret = -EINVAL;
     bool force_share = false;
     bool explict_min_sparse = false;
+    bool bitmaps = false;
 
     ImgConvertState s = (ImgConvertState) {
         /* Need at least 4k of zeros for sparse detection */
@@ -2133,6 +2215,7 @@ static int img_convert(int argc, char **argv)
             {"target-image-opts", no_argument, 0, OPTION_TARGET_IMAGE_OPTS},
             {"salvage", no_argument, 0, OPTION_SALVAGE},
             {"target-is-zero", no_argument, 0, OPTION_TARGET_IS_ZERO},
+            {"bitmaps", no_argument, 0, OPTION_BITMAPS},
             {0, 0, 0, 0}
         };
         c = getopt_long(argc, argv, ":hf:O:B:Cco:l:S:pt:T:qnm:WU",
@@ -2187,8 +2270,10 @@ static int img_convert(int argc, char **argv)
         {
             int64_t sval;
 
-            sval = cvtnum(optarg);
-            if (sval < 0 || !QEMU_IS_ALIGNED(sval, BDRV_SECTOR_SIZE) ||
+            sval = cvtnum("buffer size for sparse output", optarg);
+            if (sval < 0) {
+                goto fail_getopt;
+            } else if (!QEMU_IS_ALIGNED(sval, BDRV_SECTOR_SIZE) ||
                 sval / BDRV_SECTOR_SIZE > MAX_BUF_SECTORS) {
                 error_report("Invalid buffer size for sparse output specified. "
                     "Valid sizes are multiples of %llu up to %llu. Select "
@@ -2256,6 +2341,9 @@ static int img_convert(int argc, char **argv)
              */
             s.has_zero_init = true;
             break;
+        case OPTION_BITMAPS:
+            bitmaps = true;
+            break;
         }
     }
 
@@ -2316,7 +2404,6 @@ static int img_convert(int argc, char **argv)
         error_report("Must specify image file name");
         goto fail_getopt;
     }
-
 
     /* ret is still -EINVAL until here */
     ret = bdrv_parse_cache_mode(src_cache, &src_flags, &src_writethrough);
@@ -2477,6 +2564,20 @@ static int img_convert(int argc, char **argv)
         }
     }
 
+    /* Determine if bitmaps need copying */
+    if (bitmaps) {
+        if (s.src_num > 1) {
+            error_report("Copying bitmaps only possible with single source");
+            ret = -1;
+            goto out;
+        }
+        if (!bdrv_supports_persistent_dirty_bitmap(blk_bs(s.src[0]))) {
+            error_report("Source lacks bitmap support");
+            ret = -1;
+            goto out;
+        }
+    }
+
     /*
      * The later open call will need any decryption secrets, and
      * bdrv_create() will purge "opts", so extract them now before
@@ -2485,9 +2586,7 @@ static int img_convert(int argc, char **argv)
     if (!skip_create) {
         open_opts = qdict_new();
         qemu_opt_foreach(opts, img_add_key_secrets, open_opts, &error_abort);
-    }
 
-    if (!skip_create) {
         /* Create the new image */
         ret = bdrv_create(drv, out_filename, opts, &local_err);
         if (ret < 0) {
@@ -2524,6 +2623,13 @@ static int img_convert(int argc, char **argv)
         goto out;
     }
     out_bs = blk_bs(s.target);
+
+    if (bitmaps && !bdrv_supports_persistent_dirty_bitmap(out_bs)) {
+        error_report("Format driver '%s' does not support bitmaps",
+                     out_bs->drv->format_name);
+        ret = -1;
+        goto out;
+    }
 
     if (s.compressed && !block_driver_can_compress(out_bs->drv)) {
         error_report("Compression not supported for this file format");
@@ -2584,6 +2690,12 @@ static int img_convert(int argc, char **argv)
     }
 
     ret = convert_do_copy(&s);
+
+    /* Now copy the bitmaps */
+    if (bitmaps && ret == 0) {
+        ret = convert_copy_bitmaps(blk_bs(s.src[0]), out_bs);
+    }
+
 out:
     if (!ret) {
         qemu_progress_print(100, 0);
@@ -2896,9 +3008,8 @@ static int dump_map_entry(OutputFormat output_format, MapEntry *e,
         }
         break;
     case OFORMAT_JSON:
-        printf("%s{ \"start\": %"PRId64", \"length\": %"PRId64","
+        printf("{ \"start\": %"PRId64", \"length\": %"PRId64","
                " \"depth\": %"PRId64", \"zero\": %s, \"data\": %s",
-               (e->start == 0 ? "[" : ",\n"),
                e->start, e->length, e->depth,
                e->zero ? "true" : "false",
                e->data ? "true" : "false");
@@ -2907,8 +3018,8 @@ static int dump_map_entry(OutputFormat output_format, MapEntry *e,
         }
         putchar('}');
 
-        if (!next) {
-            printf("]\n");
+        if (next) {
+            puts(",");
         }
         break;
     }
@@ -3004,6 +3115,8 @@ static int img_map(int argc, char **argv)
     int ret = 0;
     bool image_opts = false;
     bool force_share = false;
+    int64_t start_offset = 0;
+    int64_t max_length = -1;
 
     fmt = NULL;
     output = NULL;
@@ -3016,9 +3129,11 @@ static int img_map(int argc, char **argv)
             {"object", required_argument, 0, OPTION_OBJECT},
             {"image-opts", no_argument, 0, OPTION_IMAGE_OPTS},
             {"force-share", no_argument, 0, 'U'},
+            {"start-offset", required_argument, 0, 's'},
+            {"max-length", required_argument, 0, 'l'},
             {0, 0, 0, 0}
         };
-        c = getopt_long(argc, argv, ":f:hU",
+        c = getopt_long(argc, argv, ":f:s:l:hU",
                         long_options, &option_index);
         if (c == -1) {
             break;
@@ -3041,6 +3156,18 @@ static int img_map(int argc, char **argv)
             break;
         case OPTION_OUTPUT:
             output = optarg;
+            break;
+        case 's':
+            start_offset = cvtnum("start offset", optarg);
+            if (start_offset < 0) {
+                return 1;
+            }
+            break;
+        case 'l':
+            max_length = cvtnum("max length", optarg);
+            if (max_length < 0) {
+                return 1;
+            }
             break;
         case OPTION_OBJECT: {
             QemuOpts *opts;
@@ -3083,9 +3210,20 @@ static int img_map(int argc, char **argv)
 
     if (output_format == OFORMAT_HUMAN) {
         printf("%-16s%-16s%-16s%s\n", "Offset", "Length", "Mapped to", "File");
+    } else if (output_format == OFORMAT_JSON) {
+        putchar('[');
     }
 
     length = blk_getlength(blk);
+    if (length < 0) {
+        error_report("Failed to get size for '%s'", filename);
+        return 1;
+    }
+    if (max_length != -1) {
+        length = MIN(start_offset + max_length, length);
+    }
+
+    curr.start = start_offset;
     while (curr.start + curr.length < length) {
         int64_t offset = curr.start + curr.length;
         int64_t n;
@@ -3114,6 +3252,9 @@ static int img_map(int argc, char **argv)
     }
 
     ret = dump_map_entry(output_format, &curr, NULL);
+    if (output_format == OFORMAT_JSON) {
+        puts("]");
+    }
 
 out:
     blk_unref(blk);
@@ -4291,9 +4432,8 @@ static int img_bench(int argc, char **argv)
             break;
         case 'o':
         {
-            offset = cvtnum(optarg);
+            offset = cvtnum("offset", optarg);
             if (offset < 0) {
-                error_report("Invalid offset specified");
                 return 1;
             }
             break;
@@ -4306,9 +4446,8 @@ static int img_bench(int argc, char **argv)
         {
             int64_t sval;
 
-            sval = cvtnum(optarg);
-            if (sval < 0 || sval > INT_MAX) {
-                error_report("Invalid buffer size specified");
+            sval = cvtnum_full("buffer size", optarg, 0, INT_MAX);
+            if (sval < 0) {
                 return 1;
             }
 
@@ -4319,9 +4458,8 @@ static int img_bench(int argc, char **argv)
         {
             int64_t sval;
 
-            sval = cvtnum(optarg);
-            if (sval < 0 || sval > INT_MAX) {
-                error_report("Invalid step size specified");
+            sval = cvtnum_full("step_size", optarg, 0, INT_MAX);
+            if (sval < 0) {
                 return 1;
             }
 
@@ -4461,6 +4599,229 @@ out:
     return 0;
 }
 
+enum ImgBitmapAct {
+    BITMAP_ADD,
+    BITMAP_REMOVE,
+    BITMAP_CLEAR,
+    BITMAP_ENABLE,
+    BITMAP_DISABLE,
+    BITMAP_MERGE,
+};
+typedef struct ImgBitmapAction {
+    enum ImgBitmapAct act;
+    const char *src; /* only used for merge */
+    QSIMPLEQ_ENTRY(ImgBitmapAction) next;
+} ImgBitmapAction;
+
+static int img_bitmap(int argc, char **argv)
+{
+    Error *err = NULL;
+    int c, ret = 1;
+    QemuOpts *opts = NULL;
+    const char *fmt = NULL, *src_fmt = NULL, *src_filename = NULL;
+    const char *filename, *bitmap;
+    BlockBackend *blk = NULL, *src = NULL;
+    BlockDriverState *bs = NULL, *src_bs = NULL;
+    bool image_opts = false;
+    int64_t granularity = 0;
+    bool add = false, merge = false;
+    QSIMPLEQ_HEAD(, ImgBitmapAction) actions;
+    ImgBitmapAction *act, *act_next;
+    const char *op;
+
+    QSIMPLEQ_INIT(&actions);
+
+    for (;;) {
+        static const struct option long_options[] = {
+            {"help", no_argument, 0, 'h'},
+            {"object", required_argument, 0, OPTION_OBJECT},
+            {"image-opts", no_argument, 0, OPTION_IMAGE_OPTS},
+            {"add", no_argument, 0, OPTION_ADD},
+            {"remove", no_argument, 0, OPTION_REMOVE},
+            {"clear", no_argument, 0, OPTION_CLEAR},
+            {"enable", no_argument, 0, OPTION_ENABLE},
+            {"disable", no_argument, 0, OPTION_DISABLE},
+            {"merge", required_argument, 0, OPTION_MERGE},
+            {"granularity", required_argument, 0, 'g'},
+            {"source-file", required_argument, 0, 'b'},
+            {"source-format", required_argument, 0, 'F'},
+            {0, 0, 0, 0}
+        };
+        c = getopt_long(argc, argv, ":b:f:F:g:h", long_options, NULL);
+        if (c == -1) {
+            break;
+        }
+
+        switch (c) {
+        case ':':
+            missing_argument(argv[optind - 1]);
+            break;
+        case '?':
+            unrecognized_option(argv[optind - 1]);
+            break;
+        case 'h':
+            help();
+            break;
+        case 'b':
+            src_filename = optarg;
+            break;
+        case 'f':
+            fmt = optarg;
+            break;
+        case 'F':
+            src_fmt = optarg;
+            break;
+        case 'g':
+            granularity = cvtnum("granularity", optarg);
+            if (granularity < 0) {
+                return 1;
+            }
+            break;
+        case OPTION_ADD:
+            act = g_new0(ImgBitmapAction, 1);
+            act->act = BITMAP_ADD;
+            QSIMPLEQ_INSERT_TAIL(&actions, act, next);
+            add = true;
+            break;
+        case OPTION_REMOVE:
+            act = g_new0(ImgBitmapAction, 1);
+            act->act = BITMAP_REMOVE;
+            QSIMPLEQ_INSERT_TAIL(&actions, act, next);
+            break;
+        case OPTION_CLEAR:
+            act = g_new0(ImgBitmapAction, 1);
+            act->act = BITMAP_CLEAR;
+            QSIMPLEQ_INSERT_TAIL(&actions, act, next);
+            break;
+        case OPTION_ENABLE:
+            act = g_new0(ImgBitmapAction, 1);
+            act->act = BITMAP_ENABLE;
+            QSIMPLEQ_INSERT_TAIL(&actions, act, next);
+            break;
+        case OPTION_DISABLE:
+            act = g_new0(ImgBitmapAction, 1);
+            act->act = BITMAP_DISABLE;
+            QSIMPLEQ_INSERT_TAIL(&actions, act, next);
+            break;
+        case OPTION_MERGE:
+            act = g_new0(ImgBitmapAction, 1);
+            act->act = BITMAP_MERGE;
+            act->src = optarg;
+            QSIMPLEQ_INSERT_TAIL(&actions, act, next);
+            merge = true;
+            break;
+        case OPTION_OBJECT:
+            opts = qemu_opts_parse_noisily(&qemu_object_opts, optarg, true);
+            if (!opts) {
+                goto out;
+            }
+            break;
+        case OPTION_IMAGE_OPTS:
+            image_opts = true;
+            break;
+        }
+    }
+
+    if (qemu_opts_foreach(&qemu_object_opts,
+                          user_creatable_add_opts_foreach,
+                          qemu_img_object_print_help, &error_fatal)) {
+        goto out;
+    }
+
+    if (QSIMPLEQ_EMPTY(&actions)) {
+        error_report("Need at least one of --add, --remove, --clear, "
+                     "--enable, --disable, or --merge");
+        goto out;
+    }
+
+    if (granularity && !add) {
+        error_report("granularity only supported with --add");
+        goto out;
+    }
+    if (src_fmt && !src_filename) {
+        error_report("-F only supported with -b");
+        goto out;
+    }
+    if (src_filename && !merge) {
+        error_report("Merge bitmap source file only supported with "
+                     "--merge");
+        goto out;
+    }
+
+    if (optind != argc - 2) {
+        error_report("Expecting filename and bitmap name");
+        goto out;
+    }
+
+    filename = argv[optind];
+    bitmap = argv[optind + 1];
+
+    blk = img_open(image_opts, filename, fmt, BDRV_O_RDWR, false, false,
+                   false);
+    if (!blk) {
+        goto out;
+    }
+    bs = blk_bs(blk);
+    if (src_filename) {
+        src = img_open(false, src_filename, src_fmt, 0, false, false, false);
+        if (!src) {
+            goto out;
+        }
+        src_bs = blk_bs(src);
+    } else {
+        src_bs = bs;
+    }
+
+    QSIMPLEQ_FOREACH_SAFE(act, &actions, next, act_next) {
+        switch (act->act) {
+        case BITMAP_ADD:
+            qmp_block_dirty_bitmap_add(bs->node_name, bitmap,
+                                       !!granularity, granularity, true, true,
+                                       false, false, &err);
+            op = "add";
+            break;
+        case BITMAP_REMOVE:
+            qmp_block_dirty_bitmap_remove(bs->node_name, bitmap, &err);
+            op = "remove";
+            break;
+        case BITMAP_CLEAR:
+            qmp_block_dirty_bitmap_clear(bs->node_name, bitmap, &err);
+            op = "clear";
+            break;
+        case BITMAP_ENABLE:
+            qmp_block_dirty_bitmap_enable(bs->node_name, bitmap, &err);
+            op = "enable";
+            break;
+        case BITMAP_DISABLE:
+            qmp_block_dirty_bitmap_disable(bs->node_name, bitmap, &err);
+            op = "disable";
+            break;
+        case BITMAP_MERGE:
+            do_dirty_bitmap_merge(bs->node_name, bitmap, src_bs->node_name,
+                                  act->src, &err);
+            op = "merge";
+            break;
+        default:
+            g_assert_not_reached();
+        }
+
+        if (err) {
+            error_reportf_err(err, "Operation %s on bitmap %s failed: ",
+                              op, bitmap);
+            goto out;
+        }
+        g_free(act);
+    }
+
+    ret = 0;
+
+ out:
+    blk_unref(src);
+    blk_unref(blk);
+    qemu_opts_del(opts);
+    return ret;
+}
+
 #define C_BS      01
 #define C_COUNT   02
 #define C_IF      04
@@ -4491,10 +4852,9 @@ static int img_dd_bs(const char *arg,
 {
     int64_t res;
 
-    res = cvtnum(arg);
+    res = cvtnum_full("bs", arg, 1, INT_MAX);
 
-    if (res <= 0 || res > INT_MAX) {
-        error_report("invalid number: '%s'", arg);
+    if (res < 0) {
         return 1;
     }
     in->bsz = out->bsz = res;
@@ -4506,10 +4866,9 @@ static int img_dd_count(const char *arg,
                         struct DdIo *in, struct DdIo *out,
                         struct DdInfo *dd)
 {
-    dd->count = cvtnum(arg);
+    dd->count = cvtnum("count", arg);
 
     if (dd->count < 0) {
-        error_report("invalid number: '%s'", arg);
         return 1;
     }
 
@@ -4538,10 +4897,9 @@ static int img_dd_skip(const char *arg,
                        struct DdIo *in, struct DdIo *out,
                        struct DdInfo *dd)
 {
-    in->offset = cvtnum(arg);
+    in->offset = cvtnum("skip", arg);
 
     if (in->offset < 0) {
-        error_report("invalid number: '%s'", arg);
         return 1;
     }
 
@@ -4923,16 +5281,8 @@ static int img_measure(int argc, char **argv)
         {
             int64_t sval;
 
-            sval = cvtnum(optarg);
+            sval = cvtnum("image size", optarg);
             if (sval < 0) {
-                if (sval == -ERANGE) {
-                    error_report("Image size must be less than 8 EiB!");
-                } else {
-                    error_report("Invalid image size specified! You may use "
-                                 "k, M, G, T, P or E suffixes for ");
-                    error_report("kilobytes, megabytes, gigabytes, terabytes, "
-                                 "petabytes and exabytes.");
-                }
                 goto out;
             }
             img_size = (uint64_t)sval;
@@ -5024,6 +5374,9 @@ static int img_measure(int argc, char **argv)
     if (output_format == OFORMAT_HUMAN) {
         printf("required size: %" PRIu64 "\n", info->required);
         printf("fully allocated size: %" PRIu64 "\n", info->fully_allocated);
+        if (info->has_bitmaps) {
+            printf("bitmaps size: %" PRIu64 "\n", info->bitmaps);
+        }
     } else {
         dump_json_block_measure_info(info);
     }

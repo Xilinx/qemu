@@ -1057,12 +1057,12 @@ static void xlnx_zynqmp_can_init(Object *obj)
     object_property_add_link(obj, "canbus0", TYPE_CAN_BUS,
                              (Object **)&s->canbus[0],
                              qdev_prop_allow_set_link_before_realize,
-                             0, &error_abort);
+                             0);
 
     object_property_add_link(obj, "canbus1", TYPE_CAN_BUS,
                              (Object **)&s->canbus[1],
                              qdev_prop_allow_set_link_before_realize,
-                             0, &error_abort);
+                             0);
 }
 
 static const VMStateDescription vmstate_can = {

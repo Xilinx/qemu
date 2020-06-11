@@ -812,7 +812,7 @@ static void rp_realize(DeviceState *dev, Error **errp)
     rp_restart_sync_timer(s);
 }
 
-static void rp_unrealize(DeviceState *dev, Error **errp)
+static void rp_unrealize(DeviceState *dev)
 {
     RemotePort *s = REMOTE_PORT(dev);
 
@@ -861,8 +861,7 @@ static void rp_init(Object *obj)
         object_property_add_link(obj, name, TYPE_REMOTE_PORT_DEVICE,
                              (Object **)&s->devs[i],
                              qdev_prop_allow_set_link,
-                             OBJ_PROP_LINK_STRONG,
-                             &error_abort);
+                             OBJ_PROP_LINK_STRONG);
         g_free(name);
 
 

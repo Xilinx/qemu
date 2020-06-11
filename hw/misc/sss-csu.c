@@ -150,10 +150,9 @@ static void zynqmp_csu_sss_realize(DeviceState *dev, Error **errp)
         SSSStream *ss = SSS_STREAM(&p->rx_devs[r]);
 
         object_property_add_link(OBJECT(ss), "sss", TYPE_ZYNQMP_CSU_SSS,
-                                 (Object **)&ss->sss,
-                                 qdev_prop_allow_set_link_before_realize,
-                                 OBJ_PROP_LINK_STRONG,
-                                 &local_errp);
+                             (Object **)&ss->sss,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
         if (local_errp) {
             goto zynqmp_csu_sss_realize_fail;
         }
@@ -208,17 +207,16 @@ static void zynqmp_csu_sss_init(Object *obj)
         name = g_strdup_printf("stream-connected-%s",
                                zynqmp_csu_sss_remote_names[remote]);
         object_property_add_link(OBJECT(s), name, TYPE_STREAM_SLAVE,
-                                 (Object **)&p->tx_devs[remote],
-                                 qdev_prop_allow_set_link_before_realize,
-                                 OBJ_PROP_LINK_STRONG,
-                                 NULL);
+                             (Object **)&p->tx_devs[remote],
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
         g_free(name);
         object_initialize(&p->rx_devs[remote], sizeof(SSSStream),
                           TYPE_SSS_STREAM);
         name = g_strdup_printf("stream-connected-%s-target",
                                zynqmp_csu_sss_remote_names[remote]);
         object_property_add_child(OBJECT(s), name,
-                                 (Object *)&p->rx_devs[remote], &error_abort);
+                                 (Object *)&p->rx_devs[remote]);
         g_free(name);
     }
 

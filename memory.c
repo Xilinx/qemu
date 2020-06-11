@@ -1212,7 +1212,7 @@ static void memory_region_do_init(MemoryRegion *mr,
             owner = container_get(qdev_get_machine(), "/unattached");
         }
 
-        object_property_add_child(owner, name_array, OBJECT(mr), &error_abort);
+        object_property_add_child(owner, name_array, OBJECT(mr));
         object_unref(OBJECT(mr));
         g_free(name_array);
         g_free(escaped_name);
@@ -1299,7 +1299,7 @@ static void memory_region_get_container(Object *obj, Visitor *v,
                                         Error **errp)
 {
     MemoryRegion *mr = MEMORY_REGION(obj);
-    gchar *path = (gchar *)"";
+    char *path = (char *)"";
 
     if (mr->container) {
         path = object_get_canonical_path(OBJECT(mr->container));
@@ -1512,34 +1512,33 @@ static void memory_region_initfn(Object *obj)
                              "link<" TYPE_MEMORY_REGION ">",
                              memory_region_get_container,
                              memory_region_set_container,
-                             NULL, NULL, &error_abort);
+                             NULL, NULL);
     op->resolve = memory_region_resolve_container;
 
     object_property_add_link(OBJECT(mr), "alias", TYPE_MEMORY_REGION,
                              (Object **)&mr->alias,
                              memory_region_set_alias,
-                             0,
-                             &error_abort);
+                             0);
     object_property_add(OBJECT(mr), "addr", "uint64",
                         memory_region_get_addr,
                         memory_region_set_addr,
-                        NULL, NULL, &error_abort);
+                        NULL, NULL);
     object_property_add(OBJECT(mr), "priority", "uint32",
                         memory_region_get_priority,
                         memory_region_set_priority,
-                        NULL, NULL, &error_abort);
+                        NULL, NULL);
     object_property_add(OBJECT(mr), "ram", "uint8",
                         NULL, /* FIXME: Add getter */
                         memory_region_set_ram,
-                        NULL, NULL, &error_abort);
+                        NULL, NULL);
     object_property_add(OBJECT(mr), "filename", "string",
                         memory_region_get_filename,
                         memory_region_set_filename,
-                        NULL, NULL, &error_abort);
+                        NULL, NULL);
     object_property_add(OBJECT(mr), "size", "uint64",
                         memory_region_get_size,
                         memory_region_set_object_size,
-                        NULL, NULL, &error_abort);
+                        NULL, NULL);
 }
 
 static void iommu_memory_region_initfn(Object *obj)
@@ -2506,15 +2505,21 @@ void memory_region_ram_resize(MemoryRegion *mr, ram_addr_t newsize, Error **errp
     qemu_ram_resize(mr->ram_block, newsize, errp);
 }
 
+void memory_region_msync(MemoryRegion *mr, hwaddr addr, hwaddr size)
+{
+    if (mr->ram_block) {
+        qemu_ram_msync(mr->ram_block, addr, size);
+    }
+}
 
-void memory_region_do_writeback(MemoryRegion *mr, hwaddr addr, hwaddr size)
+void memory_region_writeback(MemoryRegion *mr, hwaddr addr, hwaddr size)
 {
     /*
      * Might be extended case needed to cover
      * different types of memory regions
      */
-    if (mr->ram_block && mr->dirty_log_mask) {
-        qemu_ram_writeback(mr->ram_block, addr, size);
+    if (mr->dirty_log_mask) {
+        memory_region_msync(mr, addr, size);
     }
 }
 
@@ -3174,7 +3179,7 @@ static void mtree_expand_owner(const char *label, Object *obj)
     if (dev && dev->id) {
         qemu_printf(" id=%s", dev->id);
     } else {
-        gchar *canonical_path = object_get_canonical_path(obj);
+        char *canonical_path = object_get_canonical_path(obj);
         if (canonical_path) {
             qemu_printf(" path=%s", canonical_path);
             g_free(canonical_path);
@@ -3665,17 +3670,16 @@ static void memory_transaction_attr_initfn(Object *obj)
 
     object_property_add_bool(OBJECT(mattr), "secure",
                         memory_transaction_attr_get_secure,
-                        memory_transaction_attr_set_secure,
-                        NULL);
+                        memory_transaction_attr_set_secure);
     object_property_add(OBJECT(mattr), "requester-id", "uint16",
                         mattr_get_requester_id,
                         mattr_set_requester_id,
-                        NULL, NULL, &error_abort);
+                        NULL, NULL);
     /* Will be deprecated.  */
     object_property_add(OBJECT(mattr), "master-id", "uint16",
                         mattr_get_requester_id,
                         mattr_set_master_id,
-                        NULL, NULL, &error_abort);
+                        NULL, NULL);
 }
 
 static const TypeInfo memory_transaction_attr_info = {

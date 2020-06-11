@@ -886,6 +886,7 @@ int spapr_rtc_import_offset(SpaprRtcState *rtc, int64_t legacy_offset);
 #define SPAPR_LMB_FLAGS_ASSIGNED 0x00000008
 #define SPAPR_LMB_FLAGS_DRC_INVALID 0x00000020
 #define SPAPR_LMB_FLAGS_RESERVED 0x00000080
+#define SPAPR_LMB_FLAGS_HOTREMOVABLE 0x00000100
 
 void spapr_do_system_reset_on_cpu(CPUState *cs, run_on_cpu_data arg);
 
@@ -921,7 +922,7 @@ static inline uint8_t spapr_get_cap(SpaprMachineState *spapr, int cap)
 void spapr_caps_init(SpaprMachineState *spapr);
 void spapr_caps_apply(SpaprMachineState *spapr);
 void spapr_caps_cpu_apply(SpaprMachineState *spapr, PowerPCCPU *cpu);
-void spapr_caps_add_properties(SpaprMachineClass *smc, Error **errp);
+void spapr_caps_add_properties(SpaprMachineClass *smc);
 int spapr_caps_post_migration(SpaprMachineState *spapr);
 
 void spapr_check_pagesize(SpaprMachineState *spapr, hwaddr pagesize,

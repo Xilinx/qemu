@@ -160,7 +160,7 @@ static void fdt_init_all_irqs(FDTMachineInfo *fdti)
                     }
 
                     object_property_add_child(OBJECT(irq->dev), shared_irq_name,
-                                              OBJECT(*sources), &error_abort);
+                                              OBJECT(*sources));
                     g_free(shared_irq_name);
                     irq->irq = *(sources++);
                     s->num++;
@@ -1122,7 +1122,7 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
         DB_PRINT_NP(1, "parenting node\n");
         object_property_add_child(OBJECT(parent),
                               qemu_devtree_get_node_name(fdti->fdt, node_path),
-                              OBJECT(dev), NULL);
+                              OBJECT(dev));
         if (object_dynamic_cast(dev, TYPE_DEVICE)) {
             Object *parent_bus = parent;
             unsigned int depth = 0;
@@ -1160,7 +1160,7 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
         object_property_add_child(
                               object_get_root(),
                               qemu_devtree_get_node_name(fdti->fdt, node_path),
-                              OBJECT(dev), NULL);
+                              OBJECT(dev));
     }
     fdt_init_set_opaque(fdti, node_path, dev);
 

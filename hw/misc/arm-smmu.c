@@ -2247,16 +2247,14 @@ static void smmu500_init(Object *obj)
     object_property_add_link(obj, "dma", TYPE_MEMORY_REGION,
                              (Object **)&s->dma_mr,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_STRONG,
-                             &error_abort);
+                             OBJ_PROP_LINK_STRONG);
 
     for (i = 0; i < MAX_TBU; i++) {
         char *name = g_strdup_printf("mr-%d", i);
         object_property_add_link(obj, name, TYPE_MEMORY_REGION,
-                                 (Object **)&s->tbu[i].mr,
-                                 qdev_prop_allow_set_link_before_realize,
-                                 OBJ_PROP_LINK_STRONG,
-                                 &error_abort);
+                             (Object **)&s->tbu[i].mr,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
         g_free(name);
         s->tbu[i].smmu = s;
     }

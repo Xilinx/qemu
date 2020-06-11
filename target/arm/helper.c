@@ -3543,7 +3543,7 @@ static uint64_t do_ats_write(CPUARMState *env, uint64_t value,
              * Report exception with ESR indicating a fault due to a
              * translation table walk for a cache maintenance instruction.
              */
-            syn = syn_data_abort_no_iss(current_el == target_el,
+            syn = syn_data_abort_no_iss(current_el == target_el, 0,
                                         fi.ea, 1, fi.s1ptw, 1, fsc);
             env->exception.vaddress = value;
             env->exception.fsr = fsr;
@@ -6905,7 +6905,7 @@ static void dccvap_writefn(CPUARMState *env, const ARMCPRegInfo *opaque,
         mr = memory_region_from_host(haddr, &offset);
 
         if (mr) {
-            memory_region_do_writeback(mr, offset, dline_size);
+            memory_region_writeback(mr, offset, dline_size);
         }
     }
 }

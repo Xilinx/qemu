@@ -1176,14 +1176,12 @@ static void arm_cpu_initfn(Object *obj)
     object_property_add_link(obj, "memattr_ns", TYPE_MEMORY_TRANSACTION_ATTR,
                              (Object **)&cpu->env.memattr_ns,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_STRONG,
-                             &error_abort);
+                             OBJ_PROP_LINK_STRONG);
 
     object_property_add_link(obj, "memattr_s", TYPE_MEMORY_TRANSACTION_ATTR,
                              (Object **)&cpu->env.memattr_s,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_STRONG,
-                             &error_abort);
+                             OBJ_PROP_LINK_STRONG);
 #endif
 }
 
@@ -1345,14 +1343,14 @@ void arm_cpu_post_init(Object *obj)
         object_property_add(obj, "rvbar", "uint64",
                             arm_cpu_get_rvbar,
                             arm_cpu_set_rvbar,
-                            NULL, NULL, &error_abort);
+                            NULL, NULL);
     }
 
 #ifndef CONFIG_USER_ONLY
     if (arm_feature(&cpu->env, ARM_FEATURE_V7)) {
         object_property_add(obj, "memattr-secure", "bool",
                             NULL, arm_cpu_set_memattr_secure,
-                            NULL, NULL, &error_abort);
+                            NULL, NULL);
     }
 #endif
 
@@ -1367,8 +1365,7 @@ void arm_cpu_post_init(Object *obj)
                                  TYPE_MEMORY_REGION,
                                  (Object **)&cpu->secure_memory,
                                  qdev_prop_allow_set_link_before_realize,
-                                 OBJ_PROP_LINK_STRONG,
-                                 &error_abort);
+                                 OBJ_PROP_LINK_STRONG);
     }
 
     if (arm_feature(&cpu->env, ARM_FEATURE_EL2)) {
@@ -1378,8 +1375,7 @@ void arm_cpu_post_init(Object *obj)
 
     if (arm_feature(&cpu->env, ARM_FEATURE_PMU)) {
         cpu->has_pmu = true;
-        object_property_add_bool(obj, "pmu", arm_get_pmu, arm_set_pmu,
-                                 &error_abort);
+        object_property_add_bool(obj, "pmu", arm_get_pmu, arm_set_pmu);
     }
 
     /*
@@ -1419,8 +1415,7 @@ void arm_cpu_post_init(Object *obj)
     if (arm_feature(&cpu->env, ARM_FEATURE_M_SECURITY)) {
         object_property_add_link(obj, "idau", TYPE_IDAU_INTERFACE, &cpu->idau,
                                  qdev_prop_allow_set_link_before_realize,
-                                 OBJ_PROP_LINK_STRONG,
-                                 &error_abort);
+                                 OBJ_PROP_LINK_STRONG);
         /*
          * M profile: initial value of the Secure VTOR. We can't just use
          * a simple DEFINE_PROP_UINT32 for this because we want to permit
@@ -1428,7 +1423,7 @@ void arm_cpu_post_init(Object *obj)
          */
         object_property_add_uint32_ptr(obj, "init-svtor",
                                        &cpu->init_svtor,
-                                       OBJ_PROP_FLAG_READWRITE, &error_abort);
+                                       OBJ_PROP_FLAG_READWRITE);
     }
 
     qdev_property_add_static(DEVICE(obj), &arm_cpu_cfgend_property);

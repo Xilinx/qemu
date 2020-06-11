@@ -141,16 +141,14 @@ static void rp_memory_slave_init(Object *obj)
     object_property_add_link(obj, "rp-adaptor0", "remote-port",
                              (Object **)&rpms->rp,
                              qdev_prop_allow_set_link,
-                             OBJ_PROP_LINK_STRONG,
-                             &error_abort);
+                             OBJ_PROP_LINK_STRONG);
     object_property_add_link(obj, "mr", TYPE_MEMORY_REGION,
                              (Object **)&rpms->mr,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_STRONG,
-                             &error_abort);
+                             OBJ_PROP_LINK_STRONG);
 }
 
-static void rp_memory_slave_unrealize(DeviceState *dev, Error **errp)
+static void rp_memory_slave_unrealize(DeviceState *dev)
 {
     RemotePortMemorySlave *s = REMOTE_PORT_MEMORY_SLAVE(dev);
 

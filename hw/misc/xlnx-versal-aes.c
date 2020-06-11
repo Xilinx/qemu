@@ -1250,7 +1250,7 @@ static void pmc_init_key_sink(Zynq3AES *s,
 
     ch_name = g_strdup_printf("zynqmp-aes-key-sink-%s-target", name);
     object_initialize(ks, sizeof(*ks), TYPE_XILINX_PMC_KEY_SINK);
-    object_property_add_child(OBJECT(s), ch_name, (Object *)ks, &error_abort);
+    object_property_add_child(OBJECT(s), ch_name, (Object *)ks);
     free(ch_name);
 
     /* Back link, non-qom for the moment.  */
@@ -1289,15 +1289,13 @@ static void aes_init(Object *obj)
                                 0x0,
                                 &reg_array->mem);
     object_property_add_link(obj, "aes-core", TYPE_XLNX_AES,
-                             (Object **) &s->aes,
+                             (Object **)&s->aes,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_STRONG,
-                             NULL);
+                             OBJ_PROP_LINK_STRONG);
     object_property_add_link(obj, "stream-connected-aes", TYPE_STREAM_SLAVE,
-                             (Object **) &s->tx_dev,
+                             (Object **)&s->tx_dev,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_STRONG,
-                             NULL);
+                             OBJ_PROP_LINK_STRONG);
     sysbus_init_mmio(sbd, &s->iomem);
     sysbus_init_irq(sbd, &s->irq_aes_imr);
 }

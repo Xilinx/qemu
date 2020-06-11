@@ -287,8 +287,7 @@ static void mb_cpu_initfn(Object *obj)
     object_property_add_link(obj, "memattr", TYPE_MEMORY_TRANSACTION_ATTR,
                              (Object **)&cpu->env.memattr_p,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_STRONG,
-                             &error_abort);
+                             OBJ_PROP_LINK_STRONG);
 #endif
 }
 

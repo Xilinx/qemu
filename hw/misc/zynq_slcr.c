@@ -719,7 +719,7 @@ static void zynq_slcr_realize(DeviceState *dev, Error **errp)
         if (!cpu_obj->parent) {
             char *cpu_child_name = g_strdup_printf("cpu-%d\n", i);
             object_property_add_child(qdev_get_machine(), cpu_child_name,
-                                      cpu_obj, &error_abort);
+                                      cpu_obj);
         }
         qdev_connect_gpio_out(dev, i,
                               qdev_get_gpio_in_named(DEVICE(env), "reset", 0));

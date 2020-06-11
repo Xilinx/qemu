@@ -269,13 +269,11 @@ static void pl35x_initfn(Object *obj)
     object_property_add_link(obj, "dev0", TYPE_DEVICE,
                              (Object **)&s->itf[0].dev,
                              object_property_allow_set_link,
-                             OBJ_PROP_LINK_STRONG,
-                             &error_abort);
+                             OBJ_PROP_LINK_STRONG);
     object_property_add_link(obj, "dev1", TYPE_DEVICE,
                              (Object **)&s->itf[1].dev,
                              object_property_allow_set_link,
-                             OBJ_PROP_LINK_STRONG,
-                             &error_abort);
+                             OBJ_PROP_LINK_STRONG);
 }
 
 static Property pl35x_properties[] = {

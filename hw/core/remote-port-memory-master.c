@@ -179,8 +179,7 @@ static void rp_memory_master_init(Object *obj)
     object_property_add_link(obj, "rp-adaptor0", "remote-port",
                              (Object **)&rpms->rp,
                              qdev_prop_allow_set_link,
-                             OBJ_PROP_LINK_STRONG,
-                             &error_abort);
+                             OBJ_PROP_LINK_STRONG);
 }
 
 static bool rp_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,

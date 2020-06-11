@@ -194,7 +194,7 @@ static void generic_loader_realize(DeviceState *dev, Error **errp)
     }
 }
 
-static void generic_loader_unrealize(DeviceState *dev, Error **errp)
+static void generic_loader_unrealize(DeviceState *dev)
 {
     qemu_unregister_reset_loader(generic_loader_reset, dev);
 }

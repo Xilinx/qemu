@@ -1378,17 +1378,6 @@ static void xilinx_qspips_realize(DeviceState *dev, Error **errp)
     q->lqspi_cached_addr = ~0ULL;
 }
 
-static void xlnx_zynqmp_qspips_init(Object *obj)
-{
-    XlnxZynqMPQSPIPS *rq = XLNX_ZYNQMP_QSPIPS(obj);
-
-    object_property_add_link(obj, "stream-connected-dma", TYPE_STREAM_SLAVE,
-                             (Object **)&rq->dma,
-                             object_property_allow_set_link,
-                             OBJ_PROP_LINK_STRONG,
-                             NULL);
-}
-
 static void xlnx_zynqmp_qspips_realize(DeviceState *dev, Error **errp)
 {
     XlnxZynqMPQSPIPS *s = XLNX_ZYNQMP_QSPIPS(dev);
@@ -1404,6 +1393,16 @@ static void xlnx_zynqmp_qspips_realize(DeviceState *dev, Error **errp)
     fifo8_create(&s->rx_fifo_g, xsc->rx_fifo_size);
     fifo8_create(&s->tx_fifo_g, xsc->tx_fifo_size);
     fifo32_create(&s->fifo_g, 32);
+}
+
+static void xlnx_zynqmp_qspips_init(Object *obj)
+{
+    XlnxZynqMPQSPIPS *rq = XLNX_ZYNQMP_QSPIPS(obj);
+
+    object_property_add_link(obj, "stream-connected-dma", TYPE_STREAM_SLAVE,
+                             (Object **)&rq->dma,
+                             object_property_allow_set_link,
+                             OBJ_PROP_LINK_STRONG);
 }
 
 static int xilinx_spips_post_load(void *opaque, int version_id)
@@ -1497,10 +1496,9 @@ static void xilinx_qspips_init(Object *obj)
     XilinxQSPIPS *q = XILINX_QSPIPS(obj);
 
     object_property_add_link(obj, "dma", TYPE_MEMORY_REGION,
-                             (Object **) &q->hack_dma,
+                             (Object **)&q->hack_dma,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_STRONG,
-                             &error_abort);
+                             OBJ_PROP_LINK_STRONG);
 }
 
 static void xilinx_qspips_class_init(ObjectClass *klass, void * data)

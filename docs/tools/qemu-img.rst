@@ -142,30 +142,6 @@ by the used format or see the format descriptions below for details.
   the documentation of the emulator's ``-drive cache=...`` option for allowed
   values.
 
-Parameters to snapshot subcommand:
-
-.. program:: qemu-img-snapshot
-
-.. option:: snapshot
-
-  Is the name of the snapshot to create, apply or delete
-
-.. option:: -a
-
-  Applies a snapshot (revert disk to saved state)
-
-.. option:: -c
-
-  Creates a snapshot
-
-.. option:: -d
-
-  Deletes a snapshot
-
-.. option:: -l
-
-  Lists all snapshots in the given image
-
 Parameters to compare subcommand:
 
 .. program:: qemu-img-compare
@@ -185,6 +161,10 @@ Parameters to compare subcommand:
 Parameters to convert subcommand:
 
 .. program:: qemu-img-convert
+
+.. option:: --bitmaps
+
+  Additionally copy all persistent bitmaps from the top layer of the source
 
 .. option:: -n
 
@@ -245,6 +225,30 @@ Parameters to dd subcommand:
 
   Sets the number of input blocks to skip
 
+Parameters to snapshot subcommand:
+
+.. program:: qemu-img-snapshot
+
+.. option:: snapshot
+
+  Is the name of the snapshot to create, apply or delete
+
+.. option:: -a
+
+  Applies a snapshot (revert disk to saved state)
+
+.. option:: -c
+
+  Creates a snapshot
+
+.. option:: -d
+
+  Deletes a snapshot
+
+.. option:: -l
+
+  Lists all snapshots in the given image
+
 Command description:
 
 .. program:: qemu-img-commands
@@ -280,6 +284,30 @@ Command description:
 
   For write tests, by default a buffer filled with zeros is written. This can be
   overridden with a pattern byte specified by *PATTERN*.
+
+.. option:: bitmap (--merge SOURCE | --add | --remove | --clear | --enable | --disable)... [-b SOURCE_FILE [-F SOURCE_FMT]] [-g GRANULARITY] [--object OBJECTDEF] [--image-opts | -f FMT] FILENAME BITMAP
+
+  Perform one or more modifications of the persistent bitmap *BITMAP*
+  in the disk image *FILENAME*.  The various modifications are:
+
+  ``--add`` to create *BITMAP*, enabled to record future edits.
+
+  ``--remove`` to remove *BITMAP*.
+
+  ``--clear`` to clear *BITMAP*.
+
+  ``--enable`` to change *BITMAP* to start recording future edits.
+
+  ``--disable`` to change *BITMAP* to stop recording future edits.
+
+  ``--merge`` to merge the contents of *SOURCE_BITMAP* into *BITMAP*.
+
+  Additional options include ``-g`` which sets a non-default
+  *GRANULARITY* for ``--add``, and ``-b`` and ``-F`` which select an
+  alternative source file for all *SOURCE* bitmaps used by
+  ``--merge``.
+
+  To see what bitmaps are present in an image, use ``qemu-img info``.
 
 .. option:: check [--object OBJECTDEF] [--image-opts] [-q] [-f FMT] [--output=OFMT] [-r [leaks | all]] [-T SRC_CACHE] [-U] FILENAME
 
@@ -373,7 +401,7 @@ Command description:
   4
     Error on reading data
 
-.. option:: convert [--object OBJECTDEF] [--image-opts] [--target-image-opts] [--target-is-zero] [-U] [-C] [-c] [-p] [-q] [-n] [-f FMT] [-t CACHE] [-T SRC_CACHE] [-O OUTPUT_FMT] [-B BACKING_FILE] [-o OPTIONS] [-l SNAPSHOT_PARAM] [-S SPARSE_SIZE] [-m NUM_COROUTINES] [-W] FILENAME [FILENAME2 [...]] OUTPUT_FILENAME
+.. option:: convert [--object OBJECTDEF] [--image-opts] [--target-image-opts] [--target-is-zero] [--bitmaps] [-U] [-C] [-c] [-p] [-q] [-n] [-f FMT] [-t CACHE] [-T SRC_CACHE] [-O OUTPUT_FMT] [-B BACKING_FILE] [-o OPTIONS] [-l SNAPSHOT_PARAM] [-S SPARSE_SIZE] [-m NUM_COROUTINES] [-W] FILENAME [FILENAME2 [...]] OUTPUT_FILENAME
 
   Convert the disk image *FILENAME* or a snapshot *SNAPSHOT_PARAM*
   to disk image *OUTPUT_FILENAME* using format *OUTPUT_FMT*. It can
@@ -519,7 +547,7 @@ Command description:
     ``ImageInfoSpecific*`` QAPI object (e.g. ``ImageInfoSpecificQCow2``
     for qcow2 images).
 
-.. option:: map [--object OBJECTDEF] [--image-opts] [-f FMT] [--output=OFMT] [-U] FILENAME
+.. option:: map [--object OBJECTDEF] [--image-opts] [-f FMT] [--start-offset=OFFSET] [--max-length=LEN] [--output=OFMT] [-U] FILENAME
 
   Dump the metadata of image *FILENAME* and its backing file chain.
   In particular, this commands dumps the allocation state of every sector
@@ -592,6 +620,7 @@ Command description:
 
     required size: 524288
     fully allocated size: 1074069504
+    bitmaps size: 0
 
   The ``required size`` is the file size of the new image.  It may be smaller
   than the virtual disk size if the image format supports compact representation.
@@ -600,6 +629,12 @@ Command description:
   been written to all sectors.  This is the maximum size that the image file can
   occupy with the exception of internal snapshots, dirty bitmaps, vmstate data,
   and other advanced image format features.
+
+  The ``bitmaps size`` is the additional size required in order to
+  copy bitmaps from a source image in addition to the guest-visible
+  data; the line is omitted if either source or destination lacks
+  bitmap support, or 0 if bitmaps are supported but there is nothing
+  to copy.
 
 .. option:: snapshot [--object OBJECTDEF] [--image-opts] [-U] [-q] [-l | -a SNAPSHOT | -c SNAPSHOT | -d SNAPSHOT] FILENAME
 

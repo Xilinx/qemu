@@ -259,14 +259,13 @@ static void rp_pci_init(Object *obj)
     object_property_add_link(obj, "rp-adaptor0", "remote-port",
                              (Object **)&s->rp,
                              qdev_prop_allow_set_link,
-                             OBJ_PROP_LINK_STRONG,
-                             &error_abort);
+                             OBJ_PROP_LINK_STRONG);
 
 
     tmp_obj = object_new(TYPE_REMOTE_PORT_MEMORY_SLAVE);
     s->rp_dma = REMOTE_PORT_MEMORY_SLAVE(tmp_obj);
 
-    object_property_add_child(obj, "rp-dma", tmp_obj, &error_abort);
+    object_property_add_child(obj, "rp-dma", tmp_obj);
     /* add_child will grant us another ref, free the initial one.  */
     object_unref(tmp_obj);
 }

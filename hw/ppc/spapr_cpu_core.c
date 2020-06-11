@@ -218,7 +218,7 @@ static void spapr_cpu_core_reset_handler(void *opaque)
     spapr_cpu_core_reset(opaque);
 }
 
-static void spapr_cpu_core_unrealize(DeviceState *dev, Error **errp)
+static void spapr_cpu_core_unrealize(DeviceState *dev)
 {
     SpaprCpuCore *sc = SPAPR_CPU_CORE(OBJECT(dev));
     CPUCore *cc = CPU_CORE(dev);
@@ -290,11 +290,8 @@ static PowerPCCPU *spapr_create_vcpu(SpaprCpuCore *sc, int i, Error **errp)
     cpu->node_id = sc->node_id;
 
     id = g_strdup_printf("thread[%d]", i);
-    object_property_add_child(OBJECT(sc), id, obj, &local_err);
+    object_property_add_child(OBJECT(sc), id, obj);
     g_free(id);
-    if (local_err) {
-        goto err;
-    }
 
     cpu->machine_data = g_new0(SpaprCpuState, 1);
 
@@ -410,6 +407,7 @@ static const TypeInfo spapr_cpu_core_type_infos[] = {
     DEFINE_SPAPR_CPU_CORE_TYPE("power8nvl_v1.0"),
     DEFINE_SPAPR_CPU_CORE_TYPE("power9_v1.0"),
     DEFINE_SPAPR_CPU_CORE_TYPE("power9_v2.0"),
+    DEFINE_SPAPR_CPU_CORE_TYPE("power10_v1.0"),
 #ifdef CONFIG_KVM
     DEFINE_SPAPR_CPU_CORE_TYPE("host"),
 #endif

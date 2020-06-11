@@ -615,10 +615,9 @@ static void cci400_init(Object *obj)
     for (i = 0; i < ARRAY_SIZE(s->M); i++) {
         char *name = g_strdup_printf("M%d", i);
         object_property_add_link(obj, name, TYPE_MEMORY_REGION,
-                                 (Object **)&s->M[i],
-                                 qdev_prop_allow_set_link_before_realize,
-                                 OBJ_PROP_LINK_STRONG,
-                                 &error_abort);
+                             (Object **)&s->M[i],
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
         g_free(name);
     }
 

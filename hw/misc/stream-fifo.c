@@ -209,11 +209,10 @@ static void stream_fifo_init(Object *obj)
                                 &reg_array->mem);
     sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->iomem);
 
-    object_property_add_link(obj, "stream-connected",
-                             TYPE_STREAM_SLAVE, (Object **) &s->tx_dev,
+    object_property_add_link(obj, "stream-connected", TYPE_STREAM_SLAVE,
+                             (Object **)&s->tx_dev,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_STRONG,
-                             NULL);
+                             OBJ_PROP_LINK_STRONG);
 
 }
 

@@ -146,10 +146,9 @@ static void i2cWire_init(Object *obj)
 {
     I2CWire *s = I2C_WIRE(obj);
     object_property_add_link(obj, "i2cWire-peer", TYPE_I2C_WIRE,
-                             (Object **) &s->peer,
+                             (Object **)&s->peer,
                              qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_STRONG,
-                             NULL);
+                             OBJ_PROP_LINK_STRONG);
 }
 
 static void i2cWire_class_init(ObjectClass *klass, void *data)

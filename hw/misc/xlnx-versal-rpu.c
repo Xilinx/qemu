@@ -828,10 +828,9 @@ static void rpu_init(Object *obj)
     for (i = 0; i < MAX_RPU; i++) {
         name = g_strdup_printf("rpu%d", i);
         object_property_add_link(obj, name, TYPE_DEVICE,
-                                 (Object **)&s->rpu_cpu[i],
-                                 qdev_prop_allow_set_link_before_realize,
-                                 OBJ_PROP_LINK_STRONG,
-                                 &error_abort);
+                             (Object **)&s->rpu_cpu[i],
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
         g_free(name);
     }
 }

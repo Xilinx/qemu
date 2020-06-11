@@ -260,10 +260,9 @@ static void apu_ctrl_init(Object *obj)
     for (i = 0; i < MAX_CPUS; ++i) {
         char *prop_name = g_strdup_printf("cpu%d", i);
         object_property_add_link(obj, prop_name, TYPE_ARM_CPU,
-                                 (Object **)&s->cpus[i],
-                                 qdev_prop_allow_set_link_before_realize,
-                                 OBJ_PROP_LINK_STRONG,
-                                 &error_abort);
+                             (Object **)&s->cpus[i],
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
         g_free(prop_name);
     }
 

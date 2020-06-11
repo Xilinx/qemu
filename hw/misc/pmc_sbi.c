@@ -559,10 +559,9 @@ static void ss_init(Object *obj)
     RegisterInfoArray *reg_array;
 
     object_property_add_link(obj, "stream-connected-sbi", TYPE_STREAM_SLAVE,
-                (Object **) &s->tx_dev,
-                qdev_prop_allow_set_link_before_realize,
-                OBJ_PROP_LINK_STRONG,
-                NULL);
+                             (Object **)&s->tx_dev,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
 
     memory_region_init(&s->iomem, obj, TYPE_SBI, R_MAX * 4);
     reg_array =
