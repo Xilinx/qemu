@@ -44,12 +44,16 @@ static void process_data_slow(RemotePortMemorySlave *s,
 {
     unsigned int i;
     unsigned int byte_en_len = pkt->busaccess_ext_base.byte_enable_len;
+    unsigned int sw = pkt->busaccess.stream_width;
+
+    assert(sw);
 
     for (i = 0; i < pkt->busaccess.len; i++) {
         if (byte_en && !byte_en[i % byte_en_len]) {
             continue;
         }
-        dma_memory_rw_attr(&s->as, pkt->busaccess.addr + i, data + i,
+
+        dma_memory_rw_attr(&s->as, pkt->busaccess.addr + i % sw, data + i,
                            1, dir, s->attr);
     }
 }
@@ -73,7 +77,6 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
     }
 
     assert(pkt->busaccess.width == 0);
-    assert(pkt->busaccess.stream_width == pkt->busaccess.len);
     assert(!(pkt->hdr.flags & RP_PKT_FLAGS_response));
 
     rp_dpkt_alloc(&s->rsp, pktlen);
@@ -89,7 +92,7 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
     s->attr.secure = !!(pkt->busaccess.attributes & RP_BUS_ATTR_SECURE);
     s->attr.requester_id = pkt->busaccess.master_id;
 
-    if (byte_en) {
+    if (byte_en || pkt->busaccess.stream_width != pkt->busaccess.len) {
         process_data_slow(s, pkt, dir, data, byte_en);
     } else {
         dma_memory_rw_attr(&s->as, pkt->busaccess.addr, data,
