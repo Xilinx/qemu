@@ -40,7 +40,7 @@
     object_class_get_parent( \
             object_class_by_name(TYPE_REMOTE_PORT_MEMORY_MASTER))
 
-#define RP_MAX_ACCESS_SIZE 128
+#define RP_MAX_ACCESS_SIZE 4096
 
 void rp_mm_access(RemotePort *rp, uint32_t rp_dev,
                   struct rp_peer_state *peer,
