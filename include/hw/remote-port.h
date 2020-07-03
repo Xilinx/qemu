@@ -63,7 +63,7 @@ struct RemotePort {
 
     struct {
         /* This array must be sized minimum 2 and always a power of 2.  */
-        RemotePortDynPkt pkt[16];
+        RemotePortDynPkt pkt[128];
         QemuSemaphore sem;
         unsigned int wpos;
         unsigned int rpos;
