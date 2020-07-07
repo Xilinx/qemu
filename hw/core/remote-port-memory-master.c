@@ -110,6 +110,22 @@ void rp_mm_access(RemotePort *rp, uint32_t rp_dev,
 
     rp_resp_slot_done(rp, rsp_slot);
     rp_rsp_mutex_unlock(rp);
+
+    /*
+     * For strongly ordered or transactions that don't allow Early Acking,
+     * we need to drain the pending RP processing queue here. This is
+     * because RP handles responses in parallel with normal requests so
+     * they may get reordered. This becomes visible for example with reads
+     * to read-to-clear registers that clear interrupts. Even though the
+     * lowering of the interrupt-wires arrives to us before the read-resp,
+     * we may handle the response before the wire update, resulting in
+     * spurious interrupts.
+     *
+     * This has some room for optimization but for now we use the big hammer
+     * and drain the entire qeueue.
+     */
+    rp_process(rp);
+
     /* Reads are sync-points, roll the sync timer.  */
     rp_restart_sync_timer(rp);
     DB_PRINT_L(1, "\n");

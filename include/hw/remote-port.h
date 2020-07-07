@@ -137,5 +137,6 @@ static inline void rp_resp_slot_done(RemotePort *s,
 }
 
 RemotePortRespSlot *rp_dev_wait_resp(RemotePort *s, uint32_t dev, uint32_t id);
+void rp_process(RemotePort *s);
 
 #endif
