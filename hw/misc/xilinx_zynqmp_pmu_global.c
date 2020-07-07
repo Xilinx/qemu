@@ -1947,9 +1947,10 @@ static void pmu_global_reset(DeviceState *dev)
 static MemTxResult check_addr(PMU_GLOBAL *s, hwaddr addr)
 {
     MemTxResult ret = MEMTX_OK;
+    RegisterInfo *r = &s->regs_info[addr / 4];
 
-    /* Address out of bounds?  */
-    if (addr > A_SAFETY_CHK) {
+    /* Register doesn't exist?  */
+    if (!r->data) {
         s->regs[R_ADDR_ERROR_STATUS] |= R_ADDR_ERROR_STATUS_STATUS_MASK;
         addr_error_int_update_irq(s);
 
