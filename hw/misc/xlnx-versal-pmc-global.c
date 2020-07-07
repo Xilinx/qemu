@@ -1620,6 +1620,19 @@ static const MemoryRegionOps pmc_global_ops = {
     },
 };
 
+static void pmc_global_isr_set_puf_acc_error(void *opaque, int n, int level)
+{
+    PMC_GLOBAL *s = XILINX_PMC_GLOBAL(opaque);
+
+    /* This error is only a positive-edge latch */
+    if (!level || ARRAY_FIELD_EX32(s->regs, PMC_GLOBAL_ISR, PUF_ACC_ERROR)) {
+        return;
+    }
+
+    ARRAY_FIELD_DP32(s->regs, PMC_GLOBAL_ISR, PUF_ACC_ERROR, 1);
+    pmc_global_imr_update_irq(s);
+}
+
 static void pmc_global_realize(DeviceState *dev, Error **errp)
 {
     /* Delete this if you don't need it */
@@ -1658,6 +1671,9 @@ static void pmc_global_init(Object *obj)
     qdev_init_gpio_out_named(DEVICE(obj), &s->tamper_reg, "tamper_reg", 1);
     qdev_init_gpio_out_named(DEVICE(obj), &s->ppu1_rst, "ppu1_rst", 1);
     qdev_init_gpio_out_named(DEVICE(obj), &s->ppu1_wakeup, "ppu1_wakeup", 1);
+
+    /* In signals. */
+    qdev_init_gpio_in(DEVICE(obj), pmc_global_isr_set_puf_acc_error, 1);
 }
 
 static const VMStateDescription vmstate_pmc_global = {

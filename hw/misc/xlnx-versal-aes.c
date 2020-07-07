@@ -476,6 +476,7 @@ static void xlx_aes_load_key(Zynq3AES *s, int len)
         break;
     case KEY_SEL_PUF_KEY:
         key.u8 = s->puf_key.key;
+        be_adj = 0;  /* for zynqmp_aes_key_update() compatibility */
         break;
     case KEY_SEL_KUP_KEY:
         key.u8 = s->kup_key.key;
