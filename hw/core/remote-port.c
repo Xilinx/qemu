@@ -410,7 +410,6 @@ void rp_process(RemotePort *s)
         s->rx_queue.rpos++;
         s->rx_queue.rpos %= ARRAY_SIZE(s->rx_queue.pkt);
         qemu_mutex_unlock(&s->rsp_mutex);
-        qemu_sem_post(&s->rx_queue.sem);
 
         dev = s->devs[pkt->hdr.dev];
         if (dev) {
@@ -428,6 +427,8 @@ void rp_process(RemotePort *s)
         default:
             assert(actioned);
         }
+
+        qemu_sem_post(&s->rx_queue.sem);
     }
 }
 
