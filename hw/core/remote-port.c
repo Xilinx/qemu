@@ -399,7 +399,6 @@ void rp_process(RemotePort *s)
             break;
         }
         rpos = s->rx_queue.rpos;
-        rpos &= ARRAY_SIZE(s->rx_queue.pkt) - 1;
 
         pkt = s->rx_queue.pkt[rpos].pkt;
         D(qemu_log("%s: io-thread rpos=%d wpos=%d cmd=%d dev=%d\n",
@@ -409,6 +408,7 @@ void rp_process(RemotePort *s)
         /* To handle recursiveness, we need to advance the index
          * index before processing the packet.  */
         s->rx_queue.rpos++;
+        s->rx_queue.rpos %= ARRAY_SIZE(s->rx_queue.pkt);
         qemu_mutex_unlock(&s->rsp_mutex);
         qemu_sem_post(&s->rx_queue.sem);
 
@@ -475,6 +475,7 @@ static void rp_pt_handover_pkt(RemotePort *s, RemotePortDynPkt *dpkt)
        rp_wait_resp will race with us.  */
     qemu_mutex_lock(&s->rsp_mutex);
     s->rx_queue.wpos++;
+    s->rx_queue.wpos %= ARRAY_SIZE(s->rx_queue.pkt);
     smp_mb();
     rp_event_notify(s);
     qemu_cond_signal(&s->progress_cond);
@@ -638,7 +639,6 @@ static void *rp_protocol_thread(void *arg)
         RemotePortDynPkt *dpkt;
         unsigned int wpos = s->rx_queue.wpos;
 
-        wpos &= ARRAY_SIZE(s->rx_queue.pkt) - 1;
         dpkt = &s->rx_queue.pkt[wpos];
 
         r = rp_read_pkt(s, dpkt);
