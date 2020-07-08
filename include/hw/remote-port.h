@@ -61,9 +61,11 @@ struct RemotePort {
     QemuMutex rsp_mutex;
     QemuCond progress_cond;
 
+#define RX_QUEUE_SIZE 128
     struct {
         /* This array must be sized minimum 2 and always a power of 2.  */
-        RemotePortDynPkt pkt[128];
+        RemotePortDynPkt pkt[RX_QUEUE_SIZE];
+        bool inuse[RX_QUEUE_SIZE];
         QemuSemaphore sem;
         unsigned int wpos;
         unsigned int rpos;
