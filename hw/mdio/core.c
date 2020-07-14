@@ -52,6 +52,10 @@ static MDIOSlave *mdio_find_slave(struct MDIOBus *bus, uint8_t addr)
     QTAILQ_FOREACH(kid, &bus->qbus.children, sibling) {
         DeviceState *qdev = kid->child;
         MDIOSlave *candidate = MDIO_SLAVE(qdev);
+        /* For slave having no address, assign the requested addr */
+        if (candidate->addr == 0) {
+            candidate->addr = addr;
+        }
         if (addr == candidate->addr) {
             slave = candidate;
             break;
