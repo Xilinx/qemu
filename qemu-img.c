@@ -79,6 +79,7 @@ enum {
     OPTION_DISABLE = 273,
     OPTION_MERGE = 274,
     OPTION_BITMAPS = 275,
+    OPTION_FORCE = 276,
 };
 
 typedef enum OutputFormat {
@@ -464,23 +465,18 @@ static int add_old_style_options(const char *fmt, QemuOpts *opts,
                                  const char *base_filename,
                                  const char *base_fmt)
 {
-    Error *err = NULL;
-
     if (base_filename) {
-        qemu_opt_set(opts, BLOCK_OPT_BACKING_FILE, base_filename, &err);
-        if (err) {
+        if (!qemu_opt_set(opts, BLOCK_OPT_BACKING_FILE, base_filename,
+                          NULL)) {
             error_report("Backing file not supported for file format '%s'",
                          fmt);
-            error_free(err);
             return -1;
         }
     }
     if (base_fmt) {
-        qemu_opt_set(opts, BLOCK_OPT_BACKING_FMT, base_fmt, &err);
-        if (err) {
+        if (!qemu_opt_set(opts, BLOCK_OPT_BACKING_FMT, base_fmt, NULL)) {
             error_report("Backing file format not supported for file "
                          "format '%s'", fmt);
-            error_free(err);
             return -1;
         }
     }
@@ -1680,7 +1676,6 @@ typedef struct ImgConvertState {
     BlockBackend *target;
     bool has_zero_init;
     bool compressed;
-    bool unallocated_blocks_are_zero;
     bool target_is_new;
     bool target_has_backing;
     int64_t target_backing_sectors; /* negative if unknown */
@@ -1725,7 +1720,7 @@ static int convert_iteration_sectors(ImgConvertState *s, int64_t sector_num)
 
     if (s->target_backing_sectors >= 0) {
         if (sector_num >= s->target_backing_sectors) {
-            post_backing_zero = s->unallocated_blocks_are_zero;
+            post_backing_zero = true;
         } else if (sector_num + n > s->target_backing_sectors) {
             /* Split requests around target_backing_sectors (because
              * starting from there, zeros are handled differently) */
@@ -2082,15 +2077,6 @@ static int convert_do_copy(ImgConvertState *s)
     if (!s->has_zero_init && s->target_is_new && s->min_sparse &&
         !s->target_has_backing) {
         s->has_zero_init = bdrv_has_zero_init(blk_bs(s->target));
-    }
-
-    if (!s->has_zero_init && !s->target_has_backing &&
-        bdrv_can_write_zeroes_with_unmap(blk_bs(s->target)))
-    {
-        ret = blk_make_zero(s->target, BDRV_REQ_MAY_UNMAP | BDRV_REQ_NO_FALLBACK);
-        if (ret == 0) {
-            s->has_zero_init = true;
-        }
     }
 
     /* Allocate buffer for copied data. For compressed images, only one cluster
@@ -2496,8 +2482,7 @@ static int img_convert(int argc, char **argv)
 
         opts = qemu_opts_create(create_opts, NULL, 0, &error_abort);
         if (options) {
-            qemu_opts_do_parse(opts, options, NULL, &local_err);
-            if (local_err) {
+            if (!qemu_opts_do_parse(opts, options, NULL, &local_err)) {
                 error_report_err(local_err);
                 ret = -1;
                 goto out;
@@ -2686,7 +2671,6 @@ static int img_convert(int argc, char **argv)
     } else {
         s.compressed = s.compressed || bdi.needs_compressed_writes;
         s.cluster_sectors = bdi.cluster_size / BDRV_SECTOR_SIZE;
-        s.unallocated_blocks_are_zero = bdi.unallocated_blocks_are_zero;
     }
 
     ret = convert_do_copy(&s);
@@ -3973,8 +3957,7 @@ static int img_resize(int argc, char **argv)
 
     /* Parse size */
     param = qemu_opts_create(&resize_options, NULL, 0, &error_abort);
-    qemu_opt_set(param, BLOCK_OPT_SIZE, size, &err);
-    if (err) {
+    if (!qemu_opt_set(param, BLOCK_OPT_SIZE, size, &err)) {
         error_report_err(err);
         ret = -1;
         qemu_opts_del(param);
@@ -4076,12 +4059,11 @@ static int print_amend_option_help(const char *format)
         return 1;
     }
 
-    /* Every driver supporting amendment must have create_opts */
-    assert(drv->create_opts);
+    /* Every driver supporting amendment must have amend_opts */
+    assert(drv->amend_opts);
 
-    printf("Creation options for '%s':\n", format);
-    qemu_opts_print_help(drv->create_opts, false);
-    printf("\nNote that not all of these options may be amendable.\n");
+    printf("Amend options for '%s':\n", format);
+    qemu_opts_print_help(drv->amend_opts, false);
     return 0;
 }
 
@@ -4090,7 +4072,7 @@ static int img_amend(int argc, char **argv)
     Error *err = NULL;
     int c, ret = 0;
     char *options = NULL;
-    QemuOptsList *create_opts = NULL;
+    QemuOptsList *amend_opts = NULL;
     QemuOpts *opts = NULL;
     const char *fmt = NULL, *filename, *cache;
     int flags;
@@ -4099,6 +4081,7 @@ static int img_amend(int argc, char **argv)
     BlockBackend *blk = NULL;
     BlockDriverState *bs = NULL;
     bool image_opts = false;
+    bool force = false;
 
     cache = BDRV_DEFAULT_CACHE;
     for (;;) {
@@ -4106,6 +4089,7 @@ static int img_amend(int argc, char **argv)
             {"help", no_argument, 0, 'h'},
             {"object", required_argument, 0, OPTION_OBJECT},
             {"image-opts", no_argument, 0, OPTION_IMAGE_OPTS},
+            {"force", no_argument, 0, OPTION_FORCE},
             {0, 0, 0, 0}
         };
         c = getopt_long(argc, argv, ":ho:f:t:pq",
@@ -4152,6 +4136,9 @@ static int img_amend(int argc, char **argv)
             break;
         case OPTION_IMAGE_OPTS:
             image_opts = true;
+            break;
+        case OPTION_FORCE:
+            force = true;
             break;
         }
     }
@@ -4216,13 +4203,21 @@ static int img_amend(int argc, char **argv)
         goto out;
     }
 
-    /* Every driver supporting amendment must have create_opts */
-    assert(bs->drv->create_opts);
+    /* Every driver supporting amendment must have amend_opts */
+    assert(bs->drv->amend_opts);
 
-    create_opts = qemu_opts_append(create_opts, bs->drv->create_opts);
-    opts = qemu_opts_create(create_opts, NULL, 0, &error_abort);
-    qemu_opts_do_parse(opts, options, NULL, &err);
-    if (err) {
+    amend_opts = qemu_opts_append(amend_opts, bs->drv->amend_opts);
+    opts = qemu_opts_create(amend_opts, NULL, 0, &error_abort);
+    if (!qemu_opts_do_parse(opts, options, NULL, &err)) {
+        /* Try to parse options using the create options */
+        amend_opts = qemu_opts_append(amend_opts, bs->drv->create_opts);
+        qemu_opts_del(opts);
+        opts = qemu_opts_create(amend_opts, NULL, 0, &error_abort);
+        if (qemu_opts_do_parse(opts, options, NULL, NULL)) {
+            error_append_hint(&err,
+                              "This option is only supported for image creation\n");
+        }
+
         error_report_err(err);
         ret = -1;
         goto out;
@@ -4230,7 +4225,7 @@ static int img_amend(int argc, char **argv)
 
     /* In case the driver does not call amend_status_cb() */
     qemu_progress_print(0.f, 0);
-    ret = bdrv_amend_options(bs, opts, &amend_status_cb, NULL, &err);
+    ret = bdrv_amend_options(bs, opts, &amend_status_cb, NULL, force, &err);
     qemu_progress_print(100.f, 0);
     if (ret < 0) {
         error_report_err(err);
@@ -4243,7 +4238,7 @@ out:
 out_no_progress:
     blk_unref(blk);
     qemu_opts_del(opts);
-    qemu_opts_free(create_opts);
+    qemu_opts_free(amend_opts);
     g_free(options);
 
     if (ret) {
@@ -5354,8 +5349,7 @@ static int img_measure(int argc, char **argv)
     create_opts = qemu_opts_append(create_opts, bdrv_file.create_opts);
     opts = qemu_opts_create(create_opts, NULL, 0, &error_abort);
     if (options) {
-        qemu_opts_do_parse(opts, options, NULL, &local_err);
-        if (local_err) {
+        if (!qemu_opts_do_parse(opts, options, NULL, &local_err)) {
             error_report_err(local_err);
             error_report("Invalid options for file format '%s'", out_fmt);
             goto out;

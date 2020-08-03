@@ -57,7 +57,9 @@ typedef struct QDevAlias
 
 /* Please keep this table sorted by typename. */
 static const QDevAlias qdev_alias_table[] = {
+    { "AC97", "ac97" }, /* -soundhw name */
     { "e1000", "e1000-82540em" },
+    { "ES1370", "es1370" }, /* -soundhw name */
     { "ich9-ahci", "ahci" },
     { "lsi53c895a", "lsi" },
     { "virtio-9p-ccw", "virtio-9p", QEMU_ARCH_S390X },
@@ -151,6 +153,7 @@ static void qdev_print_devinfos(bool show_no_user)
     int i;
     bool cat_printed;
 
+    module_load_qom_all();
     list = object_class_get_list_sorted(TYPE_DEVICE, false);
 
     for (i = 0; i <= DEVICE_CATEGORY_MAX; i++) {
@@ -180,7 +183,6 @@ static int set_property(void *opaque, const char *name, const char *value,
                         Error **errp)
 {
     Object *obj = opaque;
-    Error *err = NULL;
 
     if (strcmp(name, "driver") == 0)
         return 0;
@@ -190,9 +192,7 @@ static int set_property(void *opaque, const char *name, const char *value,
         return 0;
     }
 
-    object_property_parse(obj, value, name, &err);
-    if (err != NULL) {
-        error_propagate(errp, err);
+    if (!object_property_parse(obj, name, value, errp)) {
         return -1;
     }
     return 0;
@@ -222,13 +222,13 @@ static DeviceClass *qdev_get_device_class(const char **driver, Error **errp)
     DeviceClass *dc;
     const char *original_name = *driver;
 
-    oc = object_class_by_name(*driver);
+    oc = module_object_class_by_name(*driver);
     if (!oc) {
         const char *typename = find_typename_by_alias(*driver);
 
         if (typename) {
             *driver = typename;
-            oc = object_class_by_name(*driver);
+            oc = module_object_class_by_name(*driver);
         }
     }
 
@@ -607,7 +607,6 @@ DeviceState *qdev_device_add(QemuOpts *opts, Error **errp)
     const char *driver, *path;
     DeviceState *dev = NULL;
     BusState *bus = NULL;
-    Error *err = NULL;
     bool hide;
 
     driver = qemu_opt_get(opts, "driver");
@@ -659,20 +658,16 @@ DeviceState *qdev_device_add(QemuOpts *opts, Error **errp)
     }
 
     /* create device */
-    dev = DEVICE(object_new(driver));
+    dev = qdev_new(driver);
 
     /* Check whether the hotplug is allowed by the machine */
-    if (qdev_hotplug && !qdev_hotplug_allowed(dev, &err)) {
-        /* Error must be set in the machine hook */
-        assert(err);
+    if (qdev_hotplug && !qdev_hotplug_allowed(dev, errp)) {
         goto err_del_dev;
     }
 
-    if (bus) {
-        qdev_set_parent_bus(dev, bus);
-    } else if (qdev_hotplug && !qdev_get_machine_hotplug_handler(dev)) {
+    if (!bus && qdev_hotplug && !qdev_get_machine_hotplug_handler(dev)) {
         /* No bus, no machine hotplug handler --> device is not hotpluggable */
-        error_setg(&err, "Device '%s' can not be hotplugged on this machine",
+        error_setg(errp, "Device '%s' can not be hotplugged on this machine",
                    driver);
         goto err_del_dev;
     } else {
@@ -683,29 +678,25 @@ DeviceState *qdev_device_add(QemuOpts *opts, Error **errp)
 
     qdev_set_id(dev, qemu_opts_id(opts));
 
-    rp_device_add(opts, dev, &err);
-    if (err != NULL) {
-        error_propagate(errp, err);
+    if (!rp_device_add(opts, dev, errp)) {
         object_unparent(OBJECT(dev));
         object_unref(OBJECT(dev));
         return NULL;
     }
 
     /* set properties */
-    if (qemu_opt_foreach(opts, set_property, dev, &err)) {
+    if (qemu_opt_foreach(opts, set_property, dev, errp)) {
         goto err_del_dev;
     }
 
     dev->opts = opts;
-    object_property_set_bool(OBJECT(dev), true, "realized", &err);
-    if (err != NULL) {
+    if (!qdev_realize(DEVICE(dev), bus, errp)) {
         dev->opts = NULL;
         goto err_del_dev;
     }
     return dev;
 
 err_del_dev:
-    error_propagate(errp, err);
     if (dev) {
         object_unparent(OBJECT(dev));
         object_unref(OBJECT(dev));
@@ -723,22 +714,22 @@ static void qdev_print_props(Monitor *mon, DeviceState *dev, Property *props,
     if (!props)
         return;
     for (; props->name; props++) {
-        Error *err = NULL;
         char *value;
         char *legacy_name = g_strdup_printf("legacy-%s", props->name);
+
         if (object_property_get_type(OBJECT(dev), legacy_name, NULL)) {
-            value = object_property_get_str(OBJECT(dev), legacy_name, &err);
+            value = object_property_get_str(OBJECT(dev), legacy_name, NULL);
         } else {
-            value = object_property_print(OBJECT(dev), props->name, true, &err);
+            value = object_property_print(OBJECT(dev), props->name, true,
+                                          NULL);
         }
         g_free(legacy_name);
 
-        if (err) {
-            error_free(err);
+        if (!value) {
             continue;
         }
         qdev_printf("%s = %s\n", props->name,
-                    value && *value ? value : "<null>");
+                    *value ? value : "<null>");
         g_free(value);
     }
 }
@@ -817,22 +808,19 @@ void hmp_info_qdm(Monitor *mon, const QDict *qdict)
 
 void qmp_device_add(QDict *qdict, QObject **ret_data, Error **errp)
 {
-    Error *local_err = NULL;
     QemuOpts *opts;
     DeviceState *dev;
 
-    opts = qemu_opts_from_qdict(qemu_find_opts("device"), qdict, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    opts = qemu_opts_from_qdict(qemu_find_opts("device"), qdict, errp);
+    if (!opts) {
         return;
     }
     if (!monitor_cur_is_qmp() && qdev_device_help(opts)) {
         qemu_opts_del(opts);
         return;
     }
-    dev = qdev_device_add(opts, &local_err);
+    dev = qdev_device_add(opts, errp);
     if (!dev) {
-        error_propagate(errp, local_err);
         qemu_opts_del(opts);
         return;
     }

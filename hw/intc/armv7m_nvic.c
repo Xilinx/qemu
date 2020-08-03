@@ -2619,7 +2619,6 @@ static void nvic_systick_trigger(void *opaque, int n, int level)
 static void armv7m_nvic_realize(DeviceState *dev, Error **errp)
 {
     NVICState *s = NVIC(dev);
-    Error *err = NULL;
     int regionlen;
 
     /* The armv7m container object will have set our CPU pointer */
@@ -2640,10 +2639,7 @@ static void armv7m_nvic_realize(DeviceState *dev, Error **errp)
 
     s->num_prio_bits = arm_feature(&s->cpu->env, ARM_FEATURE_V7) ? 8 : 2;
 
-    object_property_set_bool(OBJECT(&s->systick[M_REG_NS]), true,
-                             "realized", &err);
-    if (err != NULL) {
-        error_propagate(errp, err);
+    if (!sysbus_realize(SYS_BUS_DEVICE(&s->systick[M_REG_NS]), errp)) {
         return;
     }
     sysbus_connect_irq(SYS_BUS_DEVICE(&s->systick[M_REG_NS]), 0,
@@ -2655,14 +2651,10 @@ static void armv7m_nvic_realize(DeviceState *dev, Error **errp)
          * as we didn't know then if the CPU had the security extensions;
          * so we have to do it here.
          */
-        sysbus_init_child_obj(OBJECT(dev), "systick-reg-s",
-                              &s->systick[M_REG_S],
-                              sizeof(s->systick[M_REG_S]), TYPE_SYSTICK);
+        object_initialize_child(OBJECT(dev), "systick-reg-s",
+                                &s->systick[M_REG_S], TYPE_SYSTICK);
 
-        object_property_set_bool(OBJECT(&s->systick[M_REG_S]), true,
-                                 "realized", &err);
-        if (err != NULL) {
-            error_propagate(errp, err);
+        if (!sysbus_realize(SYS_BUS_DEVICE(&s->systick[M_REG_S]), errp)) {
             return;
         }
         sysbus_connect_irq(SYS_BUS_DEVICE(&s->systick[M_REG_S]), 0,
@@ -2737,8 +2729,8 @@ static void armv7m_nvic_instance_init(Object *obj)
     NVICState *nvic = NVIC(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
 
-    sysbus_init_child_obj(obj, "systick-reg-ns", &nvic->systick[M_REG_NS],
-                          sizeof(nvic->systick[M_REG_NS]), TYPE_SYSTICK);
+    object_initialize_child(obj, "systick-reg-ns", &nvic->systick[M_REG_NS],
+                            TYPE_SYSTICK);
     /* We can't initialize the secure systick here, as we don't know
      * yet if we need it.
      */

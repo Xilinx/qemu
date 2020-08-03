@@ -82,7 +82,7 @@ static PFlashCFI01 *virt_flash_create1(RISCVVirtState *s,
      * Create a single flash device.  We use the same parameters as
      * the flash devices on the ARM virt board.
      */
-    DeviceState *dev = qdev_create(NULL, TYPE_PFLASH_CFI01);
+    DeviceState *dev = qdev_new(TYPE_PFLASH_CFI01);
 
     qdev_prop_set_uint64(dev, "sector-length", VIRT_FLASH_SECTOR_SIZE);
     qdev_prop_set_uint8(dev, "width", 4);
@@ -116,7 +116,7 @@ static void virt_flash_map1(PFlashCFI01 *flash,
     assert(QEMU_IS_ALIGNED(size, VIRT_FLASH_SECTOR_SIZE));
     assert(size / VIRT_FLASH_SECTOR_SIZE <= UINT32_MAX);
     qdev_prop_set_uint32(dev, "num-blocks", size / VIRT_FLASH_SECTOR_SIZE);
-    qdev_init_nofail(dev);
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
 
     memory_region_add_subregion(sysmem, base,
                                 sysbus_mmio_get_region(SYS_BUS_DEVICE(dev),
@@ -466,9 +466,9 @@ static inline DeviceState *gpex_pcie_init(MemoryRegion *sys_mem,
     qemu_irq irq;
     int i;
 
-    dev = qdev_create(NULL, TYPE_GPEX_HOST);
+    dev = qdev_new(TYPE_GPEX_HOST);
 
-    qdev_init_nofail(dev);
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
 
     ecam_alias = g_new0(MemoryRegion, 1);
     ecam_reg = sysbus_mmio_get_region(SYS_BUS_DEVICE(dev), 0);
@@ -508,15 +508,15 @@ static void virt_create_remoteport(MachineState *machine,
 
     rp_obj = object_new("remote-port");
     object_property_add_child(OBJECT(machine), "cosim", rp_obj);
-    object_property_set_str(rp_obj, "cosim", "chrdev-id", &error_fatal);
-    object_property_set_bool(rp_obj, true, "sync", &error_fatal);
+    object_property_set_str(rp_obj, "chrdev-id", "cosim", &error_fatal);
+    object_property_set_bool(rp_obj, "sync", true, &error_fatal);
 
     rpm_obj = object_new("remote-port-memory-master");
     object_property_add_child(OBJECT(machine), "cosim-mmap-0", rpm_obj);
-    object_property_set_int(rpm_obj, 1, "map-num", &error_fatal);
-    object_property_set_int(rpm_obj, memmap[VIRT_COSIM].base, "map-offset", &error_fatal);
-    object_property_set_int(rpm_obj, memmap[VIRT_COSIM].size, "map-size", &error_fatal);
-    object_property_set_int(rpm_obj, 9, "rp-chan0", &error_fatal);
+    object_property_set_int(rpm_obj, "map-num", 1, &error_fatal);
+    object_property_set_int(rpm_obj, "map-offset", memmap[VIRT_COSIM].base, &error_fatal);
+    object_property_set_int(rpm_obj, "map-size", memmap[VIRT_COSIM].size, &error_fatal);
+    object_property_set_int(rpm_obj, "rp-chan0", 9, &error_fatal);
 
     rpms_obj = object_new("remote-port-memory-slave");
     object_property_add_child(OBJECT(machine), "cosim-mmap-slave-0", rpms_obj);
@@ -524,26 +524,20 @@ static void virt_create_remoteport(MachineState *machine,
 
     rpirq_obj = object_new("remote-port-gpio");
     object_property_add_child(OBJECT(machine), "cosim-irq-0", rpirq_obj);
-    object_property_set_int(rpirq_obj, 12, "rp-chan0", &error_fatal);
+    object_property_set_int(rpirq_obj, "rp-chan0", 12, &error_fatal);
 
 
-    object_property_set_link(rpm_obj, rp_obj, "rp-adaptor0",
-                             &error_abort);
-    object_property_set_link(rpms_obj, rp_obj, "rp-adaptor0",
-                             &error_abort);
-    object_property_set_link(rpirq_obj, rp_obj, "rp-adaptor0",
-                             &error_abort);
-    object_property_set_link(rp_obj, rpms_obj, "remote-port-dev0",
-                             &error_abort);
-    object_property_set_link(rp_obj, rpm_obj, "remote-port-dev9",
-                             &error_abort);
-    object_property_set_link(rp_obj, rpirq_obj, "remote-port-dev12",
-                             &error_abort);
+    object_property_set_link(rpm_obj, "rp-adaptor0", rp_obj, &error_abort);
+    object_property_set_link(rpms_obj, "rp-adaptor0", rp_obj, &error_abort);
+    object_property_set_link(rpirq_obj, "rp-adaptor0", rp_obj, &error_abort);
+    object_property_set_link(rp_obj, "remote-port-dev0", rpms_obj, &error_abort);
+    object_property_set_link(rp_obj, "remote-port-dev9", rpm_obj, &error_abort);
+    object_property_set_link(rp_obj, "remote-port-dev12", rpirq_obj, &error_abort);
 
-    object_property_set_bool(rp_obj, true, "realized", &error_fatal);
-    object_property_set_bool(rpms_obj, true, "realized", &error_fatal);
-    object_property_set_bool(rpm_obj, true, "realized", &error_fatal);
-    object_property_set_bool(rpirq_obj, true, "realized", &error_fatal);
+    object_property_set_bool(rp_obj, "realized", true, &error_fatal);
+    object_property_set_bool(rpms_obj, "realized", true, &error_fatal);
+    object_property_set_bool(rpm_obj, "realized", true, &error_fatal);
+    object_property_set_bool(rpirq_obj, "realized", true, &error_fatal);
 
     /* Connect things to the machine.  */
     sbd = SYS_BUS_DEVICE(rpm_obj);
@@ -571,14 +565,11 @@ static void virt_machine_init(MachineState *machine)
     unsigned int smp_cpus = machine->smp.cpus;
 
     /* Initialize SOC */
-    object_initialize_child(OBJECT(machine), "soc", &s->soc, sizeof(s->soc),
-                            TYPE_RISCV_HART_ARRAY, &error_abort, NULL);
-    object_property_set_str(OBJECT(&s->soc), machine->cpu_type, "cpu-type",
-                            &error_abort);
-    object_property_set_int(OBJECT(&s->soc), smp_cpus, "num-harts",
-                            &error_abort);
-    object_property_set_bool(OBJECT(&s->soc), true, "realized",
-                            &error_abort);
+    object_initialize_child(OBJECT(machine), "soc", &s->soc,
+                            TYPE_RISCV_HART_ARRAY);
+    object_property_set_str(OBJECT(&s->soc), machine->cpu_type, "cpu-type", &error_abort);
+    object_property_set_int(OBJECT(&s->soc), "num-harts", smp_cpus, &error_abort);
+    sysbus_realize(SYS_BUS_DEVICE(&s->soc), &error_abort);
 
     /* register system main memory (actual RAM) */
     memory_region_init_ram(main_mem, NULL, "riscv_virt_board.ram",

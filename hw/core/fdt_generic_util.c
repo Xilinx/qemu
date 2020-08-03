@@ -184,7 +184,7 @@ static void fdt_init_cpu_clusters(FDTMachineInfo *fdti)
 	FDTCPUCluster *cl = fdti->clusters;
 
 	while (cl) {
-		qdev_init_nofail(DEVICE(cl->cpu_cluster));
+		qdev_realize(DEVICE(cl->cpu_cluster), NULL, &error_fatal);
 		cl = cl->next;
 	}
 }
@@ -884,7 +884,7 @@ static bool fdt_attach_blockdev(FDTMachineInfo *fdti,
         goto ret;
     }
 
-    qdev_prop_set_drive(DEVICE(dev), "drive", bdev, &error_abort);
+    qdev_prop_set_drive(DEVICE(dev), "drive", bdev);
 
  ret:
     g_free(label);
@@ -923,7 +923,7 @@ static void fdt_attach_drive(FDTMachineInfo *fdti, char *node_path,
 
     if (dinfo) {
         qdev_prop_set_drive(DEVICE(dev), "drive",
-                            blk_by_legacy_dinfo(dinfo), &error_abort);
+                            blk_by_legacy_dinfo(dinfo));
     }
 
     return;
@@ -1059,7 +1059,7 @@ static void fdt_init_qdev_array_prop(Object *obj, QEMUDevtreeProp *prop)
      * 3. The property has been set, e.g., by the '-global' cmd option
      */
     len_name = g_strconcat(PROP_ARRAY_LEN_PREFIX, propname, NULL);
-    object_property_set_int(obj, nr, len_name, &local_err);
+    object_property_set_int(obj, len_name, nr, &local_err);
     g_free(len_name);
 
     if (local_err) {
@@ -1070,8 +1070,7 @@ static void fdt_init_qdev_array_prop(Object *obj, QEMUDevtreeProp *prop)
     while (nr--) {
         char *elem_name = g_strdup_printf("%s[%d]", propname, nr);
 
-        object_property_set_int(obj, get_int_be(&v32[nr], 4), elem_name,
-                                &error_abort);
+        object_property_set_int(obj, elem_name, get_int_be(&v32[nr], 4), &error_abort);
         g_free(elem_name);
     }
 }
@@ -1156,6 +1155,10 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
         }
     } else {
         DB_PRINT_NP(1, "orphaning node\n");
+        if (object_dynamic_cast(OBJECT(dev), TYPE_SYS_BUS_DEVICE)) {
+            qdev_set_parent_bus(DEVICE(dev), BUS(sysbus_get_default()));
+        }
+
         /* FIXME: Make this go away (centrally) */
         object_property_add_child(
                               object_get_root(),
@@ -1171,8 +1174,7 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
 
         p = object_property_find(OBJECT(dev), "sync-quantum", NULL);
         if (p) {
-            object_property_set_int(OBJECT(dev), global_sync_quantum,
-                                    "sync-quantum", &errp);
+            object_property_set_int(OBJECT(dev), "sync-quantum", global_sync_quantum, &errp);
         }
     }
 
@@ -1226,8 +1228,7 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
 
             assert(errp == NULL);
             while (chardev < chardevs_end) {
-                object_property_set_str(OBJECT(dev), (const char *)chardev,
-                                        propname, &errp);
+                object_property_set_str(OBJECT(dev), propname, (const char *)chardev, &errp);
                 if (!errp) {
                     DB_PRINT_NP(0, "set property %s to %s\n", propname,
                                 chardev);
@@ -1243,18 +1244,15 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
         /* FIXME: handle generically using accessors and stuff */
         if (!strcmp(p->type, "uint8") || !strcmp(p->type, "uint16") ||
                 !strcmp(p->type, "uint32") || !strcmp(p->type, "uint64")) {
-            object_property_set_int(OBJECT(dev), get_int_be(val, len), propname,
-                                    &error_abort);
+            object_property_set_int(OBJECT(dev), propname, get_int_be(val, len), &error_abort);
             DB_PRINT_NP(0, "set property %s to %#llx\n", propname,
                         (unsigned long long)get_int_be(val, len));
         } else if (!strcmp(p->type, "boolean") || !strcmp(p->type, "bool")) {
-            object_property_set_bool(OBJECT(dev), !!get_int_be(val, len),
-                                     propname, &error_abort);
+            object_property_set_bool(OBJECT(dev), propname, !!get_int_be(val, len), &error_abort);
             DB_PRINT_NP(0, "set property %s to %s\n", propname,
                         get_int_be(val, len) ? "true" : "false");
         } else if (!strcmp(p->type, "string") || !strcmp(p->type, "str")) {
-            object_property_set_str(OBJECT(dev), (const char *)val, propname,
-                                    &error_abort);
+            object_property_set_str(OBJECT(dev), propname, (const char *)val, &error_abort);
             DB_PRINT_NP(0, "set property %s to %s\n", propname,
                         (const char *)val);
         } else if (!strncmp(p->type, "link", 4)) {
@@ -1284,8 +1282,7 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
             }
             errp = NULL;
             if (linked_dev) {
-                object_property_set_link(OBJECT(dev), linked_dev, propname,
-                                         &errp);
+                object_property_set_link(OBJECT(dev), propname, linked_dev, &errp);
                 if (errp) {
                     /* Unable to set the property, maybe it is a memory
                      * alias?
@@ -1297,8 +1294,7 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
                                                get_int_be(val + offset,
                                                           len - offset));
 
-                    object_property_set_link(OBJECT(dev), OBJECT(alias_mr),
-                                             propname, &error_abort);
+                    object_property_set_link(OBJECT(dev), propname, OBJECT(alias_mr), &error_abort);
 
                     errp = NULL;
                 }
@@ -1337,7 +1333,7 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
             }
             adaptor = DEVICE(fdt_init_get_opaque(fdti, adaptor_node_path));
             name = g_strdup_printf("rp-adaptor%" PRId32, i);
-            object_property_set_link(OBJECT(dev), OBJECT(adaptor), name, &errp);
+            object_property_set_link(OBJECT(dev), name, OBJECT(adaptor), &errp);
             DB_PRINT_NP(0, "connecting RP to adaptor %s channel %d",
                         object_get_canonical_path(OBJECT(adaptor)), i);
             g_free(name);
@@ -1355,7 +1351,7 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
             }
 
             name = g_strdup_printf("rp-chan%" PRId32, i);
-            object_property_set_int(OBJECT(dev), chan, name, &errp);
+            object_property_set_int(OBJECT(dev), name, chan, &errp);
             /* Not critical - device has right to not care about channel
              * numbers if its a pure slave (only responses).
              */
@@ -1366,8 +1362,7 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
             g_free(name);
 
             name = g_strdup_printf("remote-port-dev%d", chan);
-            object_property_set_link(OBJECT(adaptor), OBJECT(dev), name,
-                                     &errp);
+            object_property_set_link(OBJECT(adaptor), name, OBJECT(dev), &errp);
             g_free(name);
             if (errp) {
                 DB_PRINT_NP(1, "cant set device link for adaptor\n");
@@ -1404,8 +1399,7 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
                 /* Check if the device already has a chardev.  */
                 chardev = object_property_get_str(dev, "chardev", &errp);
                 if (!errp && !strcmp(chardev, "")) {
-                    object_property_set_str(dev, value->label,
-                                            "chardev", &errp);
+                    object_property_set_str(dev, "chardev", value->label, &errp);
                     if (!errp) {
                         /* It worked, the device is a charecter device */
                         fdt_serial_ports++;
@@ -1425,11 +1419,11 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
         /* Regular TYPE_DEVICE houskeeping */
         DB_PRINT_NP(0, "Short naming node: %s\n", short_name);
         (DEVICE(dev))->id = g_strdup(short_name);
-        qdev_init_nofail(DEVICE(dev));
+        object_property_set_bool(OBJECT(dev), "realized", true, &error_fatal);
         qemu_register_reset((void (*)(void *))dc->reset, dev);
     }
 
-    if (object_dynamic_cast(dev, TYPE_SYS_BUS_DEVICE) || 
+    if (object_dynamic_cast(dev, TYPE_SYS_BUS_DEVICE) ||
         object_dynamic_cast(dev, TYPE_FDT_GENERIC_MMAP)) {
         FDTGenericRegPropInfo reg = {0};
         char parent_path[DT_PATH_LENGTH];
@@ -1487,7 +1481,7 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
                     error_free(errp);
                     errp = NULL;
                 }
-                
+
                 reg.x[i] = g_renew(uint64_t, reg.x[i], reg.n + 1);
                 reg.x[i][reg.n] = nc ?
                     qemu_fdt_getprop_sized_cell(fdti->fdt, node_path,
@@ -1513,7 +1507,7 @@ exit_reg_parse:
             }
         }
     }
-    
+
     if (object_dynamic_cast(dev, TYPE_SYS_BUS_DEVICE)) {
         {
             int len;

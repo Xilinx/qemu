@@ -18,6 +18,7 @@
 #include "hw/fdt_generic_util.h"
 #include "migration/vmstate.h"
 #include "qemu/module.h"
+#include "qapi/error.h"
 
 struct SSIBus {
     BusState parent_obj;
@@ -135,16 +136,16 @@ static const TypeInfo ssi_slave_info = {
     .abstract = true,
 };
 
-DeviceState *ssi_create_slave_no_init(SSIBus *bus, const char *name)
+bool ssi_realize_and_unref(DeviceState *dev, SSIBus *bus, Error **errp)
 {
-    return qdev_create(BUS(bus), name);
+    return qdev_realize_and_unref(dev, &bus->parent_obj, errp);
 }
 
 DeviceState *ssi_create_slave(SSIBus *bus, const char *name)
 {
-    DeviceState *dev = ssi_create_slave_no_init(bus, name);
+    DeviceState *dev = qdev_new(name);
 
-    qdev_init_nofail(dev);
+    ssi_realize_and_unref(dev, bus, &error_fatal);
     return dev;
 }
 

@@ -28,7 +28,6 @@
 
 #include "qemu/osdep.h"
 #include "hw/boards.h"
-#include "hw/xen/xen.h"
 #include "net/net.h"
 #include "migration.h"
 #include "migration/snapshot.h"
@@ -59,6 +58,7 @@
 #include "sysemu/replay.h"
 #include "sysemu/runstate.h"
 #include "sysemu/sysemu.h"
+#include "sysemu/xen.h"
 #include "qjson.h"
 #include "migration/colo.h"
 #include "qemu/bitmap.h"
@@ -2111,8 +2111,15 @@ static int loadvm_handle_recv_bitmap(MigrationIncomingState *mis,
 
 static int loadvm_process_enable_colo(MigrationIncomingState *mis)
 {
-    migration_incoming_enable_colo();
-    return colo_init_ram_cache();
+    int ret = migration_incoming_enable_colo();
+
+    if (!ret) {
+        ret = colo_init_ram_cache();
+        if (ret) {
+            migration_incoming_disable_colo();
+        }
+    }
+    return ret;
 }
 
 /*

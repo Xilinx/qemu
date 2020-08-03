@@ -228,10 +228,9 @@ static void rp_pci_realize(PCIDevice *pci_dev, Error **errp)
                             s->cfg.rp_dev + RPDEV_PCI_DMA, &error_abort);
 
     as = pci_get_address_space(pci_dev);
-    object_property_set_link(OBJECT(s->rp_dma), OBJECT(as->root), "mr",
-                             &error_abort);
+    object_property_set_link(OBJECT(s->rp_dma), "mr", OBJECT(as->root), &error_abort);
 
-    object_property_set_bool(OBJECT(s->rp_dma), true, "realized", &error_abort);
+    object_property_set_bool(OBJECT(s->rp_dma), "realized", true, &error_abort);
 }
 
 static void rp_pci_exit(PCIDevice *pci_dev)

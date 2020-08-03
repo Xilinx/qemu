@@ -142,7 +142,7 @@ void build_ged_aml(Aml *table, const char *name, HotplugHandler *hotplug_dev,
 }
 
 /* Memory read by the GED _EVT AML dynamic method */
-static uint64_t ged_read(void *opaque, hwaddr addr, unsigned size)
+static uint64_t ged_evt_read(void *opaque, hwaddr addr, unsigned size)
 {
     uint64_t val = 0;
     GEDState *ged_st = opaque;
@@ -161,14 +161,14 @@ static uint64_t ged_read(void *opaque, hwaddr addr, unsigned size)
 }
 
 /* Nothing is expected to be written to the GED memory region */
-static void ged_write(void *opaque, hwaddr addr, uint64_t data,
-                      unsigned int size)
+static void ged_evt_write(void *opaque, hwaddr addr, uint64_t data,
+                          unsigned int size)
 {
 }
 
-static const MemoryRegionOps ged_ops = {
-    .read = ged_read,
-    .write = ged_write,
+static const MemoryRegionOps ged_evt_ops = {
+    .read = ged_evt_read,
+    .write = ged_evt_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
@@ -189,6 +189,33 @@ static void acpi_ged_device_plug_cb(HotplugHandler *hotplug_dev,
         }
     } else {
         error_setg(errp, "virt: device plug request for unsupported device"
+                   " type: %s", object_get_typename(OBJECT(dev)));
+    }
+}
+
+static void acpi_ged_unplug_request_cb(HotplugHandler *hotplug_dev,
+                                       DeviceState *dev, Error **errp)
+{
+    AcpiGedState *s = ACPI_GED(hotplug_dev);
+
+    if ((object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM) &&
+                       !(object_dynamic_cast(OBJECT(dev), TYPE_NVDIMM)))) {
+        acpi_memory_unplug_request_cb(hotplug_dev, &s->memhp_state, dev, errp);
+    } else {
+        error_setg(errp, "acpi: device unplug request for unsupported device"
+                   " type: %s", object_get_typename(OBJECT(dev)));
+    }
+}
+
+static void acpi_ged_unplug_cb(HotplugHandler *hotplug_dev,
+                               DeviceState *dev, Error **errp)
+{
+    AcpiGedState *s = ACPI_GED(hotplug_dev);
+
+    if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
+        acpi_memory_unplug_cb(&s->memhp_state, dev, errp);
+    } else {
+        error_setg(errp, "acpi: device unplug for unsupported device"
                    " type: %s", object_get_typename(OBJECT(dev)));
     }
 }
@@ -287,9 +314,9 @@ static void acpi_ged_initfn(Object *obj)
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
     GEDState *ged_st = &s->ged_state;
 
-    memory_region_init_io(&ged_st->io, obj, &ged_ops, ged_st,
+    memory_region_init_io(&ged_st->evt, obj, &ged_evt_ops, ged_st,
                           TYPE_ACPI_GED, ACPI_GED_EVT_SEL_LEN);
-    sysbus_init_mmio(sbd, &ged_st->io);
+    sysbus_init_mmio(sbd, &ged_st->evt);
 
     sysbus_init_irq(sbd, &s->irq);
 
@@ -318,6 +345,8 @@ static void acpi_ged_class_init(ObjectClass *class, void *data)
     dc->vmsd = &vmstate_acpi_ged;
 
     hc->plug = acpi_ged_device_plug_cb;
+    hc->unplug_request = acpi_ged_unplug_request_cb;
+    hc->unplug = acpi_ged_unplug_cb;
 
     adevc->send_event = acpi_ged_send_event;
 }

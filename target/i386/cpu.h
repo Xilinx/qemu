@@ -356,6 +356,8 @@ typedef enum X86Seg {
 #define MSR_IA32_ARCH_CAPABILITIES      0x10a
 #define ARCH_CAP_TSX_CTRL_MSR		(1<<7)
 
+#define MSR_IA32_PERF_CAPABILITIES      0x345
+
 #define MSR_IA32_TSX_CTRL		0x122
 #define MSR_IA32_TSCDEADLINE            0x6e0
 
@@ -529,6 +531,7 @@ typedef enum FeatureWord {
     FEAT_XSAVE_COMP_HI, /* CPUID[EAX=0xd,ECX=0].EDX */
     FEAT_ARCH_CAPABILITIES,
     FEAT_CORE_CAPABILITY,
+    FEAT_PERF_CAPABILITIES,
     FEAT_VMX_PROCBASED_CTLS,
     FEAT_VMX_SECONDARY_CTLS,
     FEAT_VMX_PINBASED_CTLS,
@@ -772,6 +775,12 @@ typedef uint64_t FeatureWordArray[FEATURE_WORDS];
 #define CPUID_7_0_EDX_AVX512_4VNNIW     (1U << 2)
 /* AVX512 Multiply Accumulation Single Precision */
 #define CPUID_7_0_EDX_AVX512_4FMAPS     (1U << 3)
+/* AVX512 Vector Pair Intersection to a Pair of Mask Registers */
+#define CPUID_7_0_EDX_AVX512_VP2INTERSECT (1U << 8)
+/* SERIALIZE instruction */
+#define CPUID_7_0_EDX_SERIALIZE         (1U << 14)
+/* TSX Suspend Load Address Tracking instruction */
+#define CPUID_7_0_EDX_TSX_LDTRK         (1U << 16)
 /* Speculation Control */
 #define CPUID_7_0_EDX_SPEC_CTRL         (1U << 26)
 /* Single Thread Indirect Branch Predictors */
@@ -1361,6 +1370,11 @@ typedef struct CPUCaches {
         CPUCacheInfo *l3_cache;
 } CPUCaches;
 
+typedef struct HVFX86LazyFlags {
+    target_ulong result;
+    target_ulong auxbits;
+} HVFX86LazyFlags;
+
 typedef struct CPUX86State {
     /* standard registers */
     target_ulong regs[CPU_NB_REGS];
@@ -1584,6 +1598,7 @@ typedef struct CPUX86State {
     bool tsc_valid;
     int64_t tsc_khz;
     int64_t user_tsc_khz; /* for sanity check only */
+    uint64_t apic_bus_freq;
 #if defined(CONFIG_KVM) || defined(CONFIG_HVF)
     void *xsave_buf;
 #endif
@@ -1591,7 +1606,8 @@ typedef struct CPUX86State {
     struct kvm_nested_state *nested_state;
 #endif
 #if defined(CONFIG_HVF)
-    HVFX86EmulatorState *hvf_emul;
+    HVFX86LazyFlags hvf_lflags;
+    void *hvf_mmio_buf;
 #endif
 
     uint64_t mcg_cap;
@@ -1633,6 +1649,7 @@ struct X86CPU {
 
     CPUNegativeOffsetState neg;
     CPUX86State env;
+    VMChangeStateEntry *vmsentry;
 
     uint64_t ucode_rev;
 
@@ -2105,6 +2122,11 @@ static inline bool cpu_has_vmx(CPUX86State *env)
     return env->features[FEAT_1_ECX] & CPUID_EXT_VMX;
 }
 
+static inline bool cpu_has_svm(CPUX86State *env)
+{
+    return env->features[FEAT_8000_0001_ECX] & CPUID_EXT3_SVM;
+}
+
 /*
  * In order for a vCPU to enter VMX operation it must have CR4.VMXE set.
  * Since it was set, CR4.VMXE must remain set as long as vCPU is in
@@ -2130,6 +2152,7 @@ static inline bool cpu_vmx_maybe_enabled(CPUX86State *env)
 /* fpu_helper.c */
 void update_fp_status(CPUX86State *env);
 void update_mxcsr_status(CPUX86State *env);
+void update_mxcsr_from_sse_status(CPUX86State *env);
 
 static inline void cpu_set_mxcsr(CPUX86State *env, uint32_t mxcsr)
 {

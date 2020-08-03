@@ -14,6 +14,8 @@
 #include "qapi/visitor.h"
 #include "chardev/char.h"
 #include "qemu/uuid.h"
+#include "qemu/units.h"
+#include "qemu/cutils.h"
 
 void qdev_prop_set_after_realize(DeviceState *dev, const char *name,
                                   Error **errp)
@@ -121,7 +123,6 @@ static void prop_set_bit(Object *obj, Visitor *v, const char *name,
 {
     DeviceState *dev = DEVICE(obj);
     Property *prop = opaque;
-    Error *local_err = NULL;
     bool value;
 
     if (dev->realized) {
@@ -129,9 +130,7 @@ static void prop_set_bit(Object *obj, Visitor *v, const char *name,
         return;
     }
 
-    visit_type_bool(v, name, &value, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!visit_type_bool(v, name, &value, errp)) {
         return;
     }
     bit_prop_set(dev, prop, value);
@@ -185,7 +184,6 @@ static void prop_set_bit64(Object *obj, Visitor *v, const char *name,
 {
     DeviceState *dev = DEVICE(obj);
     Property *prop = opaque;
-    Error *local_err = NULL;
     bool value;
 
     if (dev->realized) {
@@ -193,9 +191,7 @@ static void prop_set_bit64(Object *obj, Visitor *v, const char *name,
         return;
     }
 
-    visit_type_bool(v, name, &value, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!visit_type_bool(v, name, &value, errp)) {
         return;
     }
     bit64_prop_set(dev, prop, value);
@@ -482,7 +478,6 @@ static void set_string(Object *obj, Visitor *v, const char *name,
     DeviceState *dev = DEVICE(obj);
     Property *prop = opaque;
     char **ptr = qdev_get_prop_ptr(dev, prop);
-    Error *local_err = NULL;
     char *str;
 
     if (dev->realized) {
@@ -490,9 +485,7 @@ static void set_string(Object *obj, Visitor *v, const char *name,
         return;
     }
 
-    visit_type_str(v, name, &str, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!visit_type_str(v, name, &str, errp)) {
         return;
     }
     g_free(*ptr);
@@ -535,7 +528,6 @@ static void set_mac(Object *obj, Visitor *v, const char *name, void *opaque,
     DeviceState *dev = DEVICE(obj);
     Property *prop = opaque;
     MACAddr *mac = qdev_get_prop_ptr(dev, prop);
-    Error *local_err = NULL;
     int i, pos;
     char *str, *p;
 
@@ -544,9 +536,7 @@ static void set_mac(Object *obj, Visitor *v, const char *name, void *opaque,
         return;
     }
 
-    visit_type_str(v, name, &str, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!visit_type_str(v, name, &str, errp)) {
         return;
     }
 
@@ -581,6 +571,94 @@ const PropertyInfo qdev_prop_macaddr = {
     .description = "Ethernet 6-byte MAC Address, example: 52:54:00:12:34:56",
     .get   = get_mac,
     .set   = set_mac,
+};
+
+/* --- Reserved Region --- */
+
+/*
+ * Accepted syntax:
+ *   <low address>:<high address>:<type>
+ *   where low/high addresses are uint64_t in hexadecimal
+ *   and type is a non-negative decimal integer
+ */
+static void get_reserved_region(Object *obj, Visitor *v, const char *name,
+                                void *opaque, Error **errp)
+{
+    DeviceState *dev = DEVICE(obj);
+    Property *prop = opaque;
+    ReservedRegion *rr = qdev_get_prop_ptr(dev, prop);
+    char buffer[64];
+    char *p = buffer;
+    int rc;
+
+    rc = snprintf(buffer, sizeof(buffer), "0x%"PRIx64":0x%"PRIx64":%u",
+                  rr->low, rr->high, rr->type);
+    assert(rc < sizeof(buffer));
+
+    visit_type_str(v, name, &p, errp);
+}
+
+static void set_reserved_region(Object *obj, Visitor *v, const char *name,
+                                void *opaque, Error **errp)
+{
+    DeviceState *dev = DEVICE(obj);
+    Property *prop = opaque;
+    ReservedRegion *rr = qdev_get_prop_ptr(dev, prop);
+    Error *local_err = NULL;
+    const char *endptr;
+    char *str;
+    int ret;
+
+    if (dev->realized) {
+        qdev_prop_set_after_realize(dev, name, errp);
+        return;
+    }
+
+    visit_type_str(v, name, &str, &local_err);
+    if (local_err) {
+        error_propagate(errp, local_err);
+        return;
+    }
+
+    ret = qemu_strtou64(str, &endptr, 16, &rr->low);
+    if (ret) {
+        error_setg(errp, "start address of '%s'"
+                   " must be a hexadecimal integer", name);
+        goto out;
+    }
+    if (*endptr != ':') {
+        goto separator_error;
+    }
+
+    ret = qemu_strtou64(endptr + 1, &endptr, 16, &rr->high);
+    if (ret) {
+        error_setg(errp, "end address of '%s'"
+                   " must be a hexadecimal integer", name);
+        goto out;
+    }
+    if (*endptr != ':') {
+        goto separator_error;
+    }
+
+    ret = qemu_strtoui(endptr + 1, &endptr, 10, &rr->type);
+    if (ret) {
+        error_setg(errp, "type of '%s'"
+                   " must be a non-negative decimal integer", name);
+    }
+    goto out;
+
+separator_error:
+    error_setg(errp, "reserved region fields must be separated with ':'");
+out:
+    g_free(str);
+    return;
+}
+
+const PropertyInfo qdev_prop_reserved_region = {
+    .name  = "reserved_region",
+    .description = "Reserved Region, example: 0xFEE00000:0xFEEFFFFF:0",
+    .get   = get_reserved_region,
+    .set   = set_reserved_region,
 };
 
 /* --- on/off/auto --- */
@@ -670,7 +748,6 @@ static void set_pci_devfn(Object *obj, Visitor *v, const char *name,
     Property *prop = opaque;
     int32_t value, *ptr = qdev_get_prop_ptr(dev, prop);
     unsigned int slot, fn, n;
-    Error *local_err = NULL;
     char *str;
 
     if (dev->realized) {
@@ -678,19 +755,16 @@ static void set_pci_devfn(Object *obj, Visitor *v, const char *name,
         return;
     }
 
-    visit_type_str(v, name, &str, &local_err);
-    if (local_err) {
-        error_free(local_err);
-        local_err = NULL;
-        visit_type_int32(v, name, &value, &local_err);
-        if (local_err) {
-            error_propagate(errp, local_err);
-        } else if (value < -1 || value > 255) {
+    if (!visit_type_str(v, name, &str, NULL)) {
+        if (!visit_type_int32(v, name, &value, errp)) {
+            return;
+        }
+        if (value < -1 || value > 255) {
             error_setg(errp, QERR_INVALID_PARAMETER_VALUE,
                        name ? name : "null", "pci_devfn");
-        } else {
-            *ptr = value;
+            return;
         }
+        *ptr = value;
         return;
     }
 
@@ -733,32 +807,89 @@ const PropertyInfo qdev_prop_pci_devfn = {
     .set_default_value = set_default_value_int,
 };
 
-/* --- blocksize --- */
+/* --- 32bit unsigned int 'size' type --- */
 
-static void set_blocksize(Object *obj, Visitor *v, const char *name,
-                          void *opaque, Error **errp)
+static void get_size32(Object *obj, Visitor *v, const char *name, void *opaque,
+                       Error **errp)
 {
     DeviceState *dev = DEVICE(obj);
     Property *prop = opaque;
-    uint16_t value, *ptr = qdev_get_prop_ptr(dev, prop);
-    Error *local_err = NULL;
-    const int64_t min = 512;
-    const int64_t max = 32768;
+    uint32_t *ptr = qdev_get_prop_ptr(dev, prop);
+    uint64_t value = *ptr;
+
+    visit_type_size(v, name, &value, errp);
+}
+
+static void set_size32(Object *obj, Visitor *v, const char *name, void *opaque,
+                       Error **errp)
+{
+    DeviceState *dev = DEVICE(obj);
+    Property *prop = opaque;
+    uint32_t *ptr = qdev_get_prop_ptr(dev, prop);
+    uint64_t value;
 
     if (dev->realized) {
         qdev_prop_set_after_realize(dev, name, errp);
         return;
     }
 
-    visit_type_uint16(v, name, &value, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!visit_type_size(v, name, &value, errp)) {
+        return;
+    }
+
+    if (value > UINT32_MAX) {
+        error_setg(errp,
+                   "Property %s.%s doesn't take value %" PRIu64
+                   " (maximum: %u)",
+                   dev->id ? : "", name, value, UINT32_MAX);
+        return;
+    }
+
+    *ptr = value;
+}
+
+const PropertyInfo qdev_prop_size32 = {
+    .name  = "size",
+    .get = get_size32,
+    .set = set_size32,
+    .set_default_value = set_default_value_uint,
+};
+
+/* --- blocksize --- */
+
+/* lower limit is sector size */
+#define MIN_BLOCK_SIZE          512
+#define MIN_BLOCK_SIZE_STR      "512 B"
+/*
+ * upper limit is arbitrary, 2 MiB looks sufficient for all sensible uses, and
+ * matches qcow2 cluster size limit
+ */
+#define MAX_BLOCK_SIZE          (2 * MiB)
+#define MAX_BLOCK_SIZE_STR      "2 MiB"
+
+static void set_blocksize(Object *obj, Visitor *v, const char *name,
+                          void *opaque, Error **errp)
+{
+    DeviceState *dev = DEVICE(obj);
+    Property *prop = opaque;
+    uint32_t *ptr = qdev_get_prop_ptr(dev, prop);
+    uint64_t value;
+
+    if (dev->realized) {
+        qdev_prop_set_after_realize(dev, name, errp);
+        return;
+    }
+
+    if (!visit_type_size(v, name, &value, errp)) {
         return;
     }
     /* value of 0 means "unset" */
-    if (value && (value < min || value > max)) {
-        error_setg(errp, QERR_PROPERTY_VALUE_OUT_OF_RANGE,
-                   dev->id ? : "", name, (int64_t)value, min, max);
+    if (value && (value < MIN_BLOCK_SIZE || value > MAX_BLOCK_SIZE)) {
+        error_setg(errp,
+                   "Property %s.%s doesn't take value %" PRIu64
+                   " (minimum: " MIN_BLOCK_SIZE_STR
+                   ", maximum: " MAX_BLOCK_SIZE_STR ")",
+                   dev->id ? : "", name, value);
         return;
     }
 
@@ -774,9 +905,10 @@ static void set_blocksize(Object *obj, Visitor *v, const char *name,
 }
 
 const PropertyInfo qdev_prop_blocksize = {
-    .name  = "uint16",
-    .description = "A power of two between 512 and 32768",
-    .get   = get_uint16,
+    .name  = "size",
+    .description = "A power of two between " MIN_BLOCK_SIZE_STR
+                   " and " MAX_BLOCK_SIZE_STR,
+    .get   = get_size32,
     .set   = set_blocksize,
     .set_default_value = set_default_value_uint,
 };
@@ -816,7 +948,6 @@ static void set_pci_host_devaddr(Object *obj, Visitor *v, const char *name,
     DeviceState *dev = DEVICE(obj);
     Property *prop = opaque;
     PCIHostDeviceAddress *addr = qdev_get_prop_ptr(dev, prop);
-    Error *local_err = NULL;
     char *str, *p;
     char *e;
     unsigned long val;
@@ -828,9 +959,7 @@ static void set_pci_host_devaddr(Object *obj, Visitor *v, const char *name,
         return;
     }
 
-    visit_type_str(v, name, &str, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!visit_type_str(v, name, &str, errp)) {
         return;
     }
 
@@ -920,7 +1049,6 @@ static void set_uuid(Object *obj, Visitor *v, const char *name, void *opaque,
     DeviceState *dev = DEVICE(obj);
     Property *prop = opaque;
     QemuUUID *uuid = qdev_get_prop_ptr(dev, prop);
-    Error *local_err = NULL;
     char *str;
 
     if (dev->realized) {
@@ -928,9 +1056,7 @@ static void set_uuid(Object *obj, Visitor *v, const char *name, void *opaque,
         return;
     }
 
-    visit_type_str(v, name, &str, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!visit_type_str(v, name, &str, errp)) {
         return;
     }
 
@@ -996,7 +1122,6 @@ static void set_prop_arraylen(Object *obj, Visitor *v, const char *name,
     Property *prop = opaque;
     uint32_t *alenptr = qdev_get_prop_ptr(dev, prop);
     void **arrayptr = (void *)dev + prop->arrayoffset;
-    Error *local_err = NULL;
     void *eltptr;
     const char *arrayname;
     int i;
@@ -1010,9 +1135,7 @@ static void set_prop_arraylen(Object *obj, Visitor *v, const char *name,
                    name);
         return;
     }
-    visit_type_uint32(v, name, alenptr, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!visit_type_uint32(v, name, alenptr, errp)) {
         return;
     }
     if (!*alenptr) {
@@ -1118,37 +1241,37 @@ void error_set_from_qdev_prop_error(Error **errp, int ret, DeviceState *dev,
 
 void qdev_prop_set_bit(DeviceState *dev, const char *name, bool value)
 {
-    object_property_set_bool(OBJECT(dev), value, name, &error_abort);
+    object_property_set_bool(OBJECT(dev), name, value, &error_abort);
 }
 
 void qdev_prop_set_uint8(DeviceState *dev, const char *name, uint8_t value)
 {
-    object_property_set_int(OBJECT(dev), value, name, &error_abort);
+    object_property_set_int(OBJECT(dev), name, value, &error_abort);
 }
 
 void qdev_prop_set_uint16(DeviceState *dev, const char *name, uint16_t value)
 {
-    object_property_set_int(OBJECT(dev), value, name, &error_abort);
+    object_property_set_int(OBJECT(dev), name, value, &error_abort);
 }
 
 void qdev_prop_set_uint32(DeviceState *dev, const char *name, uint32_t value)
 {
-    object_property_set_int(OBJECT(dev), value, name, &error_abort);
+    object_property_set_int(OBJECT(dev), name, value, &error_abort);
 }
 
 void qdev_prop_set_int32(DeviceState *dev, const char *name, int32_t value)
 {
-    object_property_set_int(OBJECT(dev), value, name, &error_abort);
+    object_property_set_int(OBJECT(dev), name, value, &error_abort);
 }
 
 void qdev_prop_set_uint64(DeviceState *dev, const char *name, uint64_t value)
 {
-    object_property_set_int(OBJECT(dev), value, name, &error_abort);
+    object_property_set_int(OBJECT(dev), name, value, &error_abort);
 }
 
 void qdev_prop_set_string(DeviceState *dev, const char *name, const char *value)
 {
-    object_property_set_str(OBJECT(dev), value, name, &error_abort);
+    object_property_set_str(OBJECT(dev), name, value, &error_abort);
 }
 
 void qdev_prop_set_macaddr(DeviceState *dev, const char *name,
@@ -1158,7 +1281,7 @@ void qdev_prop_set_macaddr(DeviceState *dev, const char *name,
     snprintf(str, sizeof(str), "%02x:%02x:%02x:%02x:%02x:%02x",
              value[0], value[1], value[2], value[3], value[4], value[5]);
 
-    object_property_set_str(OBJECT(dev), str, name, &error_abort);
+    object_property_set_str(OBJECT(dev), name, str, &error_abort);
 }
 
 void qdev_prop_set_enum(DeviceState *dev, const char *name, int value)
@@ -1166,9 +1289,9 @@ void qdev_prop_set_enum(DeviceState *dev, const char *name, int value)
     Property *prop;
 
     prop = qdev_prop_find(dev, name);
-    object_property_set_str(OBJECT(dev),
+    object_property_set_str(OBJECT(dev), name,
                             qapi_enum_lookup(prop->info->enum_table, value),
-                            name, &error_abort);
+                            &error_abort);
 }
 
 static GPtrArray *global_props(void)
@@ -1185,6 +1308,23 @@ static GPtrArray *global_props(void)
 void qdev_prop_register_global(GlobalProperty *prop)
 {
     g_ptr_array_add(global_props(), prop);
+}
+
+const GlobalProperty *qdev_find_global_prop(DeviceState *dev,
+                                            const char *name)
+{
+    GPtrArray *props = global_props();
+    const GlobalProperty *p;
+    int i;
+
+    for (i = 0; i < props->len; i++) {
+        p = g_ptr_array_index(props, i);
+        if (object_dynamic_cast(OBJECT(dev), p->driver)
+            && !strcmp(p->property, name)) {
+            return p;
+        }
+    }
+    return NULL;
 }
 
 int qdev_prop_check_globals(void)
@@ -1318,16 +1458,14 @@ static void set_prop_pcielinkspeed(Object *obj, Visitor *v, const char *name,
     Property *prop = opaque;
     PCIExpLinkSpeed *p = qdev_get_prop_ptr(dev, prop);
     int speed;
-    Error *local_err = NULL;
 
     if (dev->realized) {
         qdev_prop_set_after_realize(dev, name, errp);
         return;
     }
 
-    visit_type_enum(v, prop->name, &speed, prop->info->enum_table, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!visit_type_enum(v, prop->name, &speed, prop->info->enum_table,
+                         errp)) {
         return;
     }
 
@@ -1406,16 +1544,14 @@ static void set_prop_pcielinkwidth(Object *obj, Visitor *v, const char *name,
     Property *prop = opaque;
     PCIExpLinkWidth *p = qdev_get_prop_ptr(dev, prop);
     int width;
-    Error *local_err = NULL;
 
     if (dev->realized) {
         qdev_prop_set_after_realize(dev, name, errp);
         return;
     }
 
-    visit_type_enum(v, prop->name, &width, prop->info->enum_table, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!visit_type_enum(v, prop->name, &width, prop->info->enum_table,
+                         errp)) {
         return;
     }
 

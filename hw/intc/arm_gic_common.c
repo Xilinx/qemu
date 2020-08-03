@@ -396,10 +396,10 @@ static int arm_gic_common_fdt_get_irq(FDTGenericIntc *obj, qemu_irq *irqs,
 
 static void arm_gic_common_fdt_set_props(Object *obj, Error **errp)
 {
-    object_property_set_bool(obj, true, "has-security-extensions", errp);
-    object_property_set_bool(obj, true, "has-virtualization-extensions", errp);
-    object_property_set_int(obj, 0, "num-cpu", errp);
-    object_property_set_int(obj, 96, "num-irq", errp);
+    object_property_set_bool(obj, "has-security-extensions", true, errp);
+    object_property_set_bool(obj, "has-virtualization-extensions", true, errp);
+    object_property_set_int(obj, "num-cpu", 0, errp);
+    object_property_set_int(obj, "num-irq", 96, errp);
 }
 
 static void arm_gic_common_linux_init(ARMLinuxBootIf *obj,

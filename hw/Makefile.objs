@@ -36,7 +36,7 @@ devices-dirs-y += usb/
 devices-dirs-$(CONFIG_VFIO) += vfio/
 devices-dirs-y += virtio/
 devices-dirs-y += watchdog/
-devices-dirs-y += xen/
+devices-dirs-$(CONFIG_XEN) += xen/
 devices-dirs-$(CONFIG_MEM_DEVICE) += mem/
 devices-dirs-$(CONFIG_NUBUS) += nubus/
 devices-dirs-y += semihosting/
@@ -45,4 +45,6 @@ devices-dirs-y += mdio/
 endif
 
 common-obj-y += $(devices-dirs-y)
+common-obj-m += display/
+common-obj-m += usb/
 obj-y += $(devices-dirs-y)

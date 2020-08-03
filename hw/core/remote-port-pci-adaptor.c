@@ -58,7 +58,7 @@ static void rp_pci_realize(PCIDevice *pci_dev, Error **errp)
         }
     }
 
-    object_property_set_bool(OBJECT(s->rp), true, "realized", &error_abort);
+    object_property_set_bool(OBJECT(s->rp), "realized", true, &error_abort);
     info_report("%s ready", object_get_canonical_path(OBJECT(s->rp)));
 }
 

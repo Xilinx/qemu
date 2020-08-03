@@ -49,3 +49,9 @@ config TERMINAL3270
 
 config XILINX_IOMODULE_UART
 	bool
+
+config RENESAS_SCI
+    bool
+
+config AVR_USART
+    bool

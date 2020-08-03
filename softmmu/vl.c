@@ -36,6 +36,7 @@
 #include "sysemu/runstate.h"
 #include "sysemu/seccomp.h"
 #include "sysemu/tcg.h"
+#include "sysemu/xen.h"
 
 #include "qemu/error-report.h"
 #include "qemu/sockets.h"
@@ -183,7 +184,6 @@ static NotifierList exit_notifiers =
 static NotifierList machine_init_done_notifiers =
     NOTIFIER_LIST_INITIALIZER(machine_init_done_notifiers);
 
-bool xen_allowed;
 uint32_t xen_domid;
 enum xen_mode xen_mode = XEN_EMULATE;
 bool xen_domid_restrict;
@@ -397,6 +397,12 @@ static QemuOptsList qemu_msg_opts = {
             .name = "timestamp",
             .type = QEMU_OPT_BOOL,
         },
+        {
+            .name = "guest-name",
+            .type = QEMU_OPT_BOOL,
+            .help = "Prepends guest name for error messages but only if "
+                    "-name guest is set otherwise option is ignored\n",
+        },
         { /* end of list */ }
     },
 };
@@ -497,6 +503,11 @@ static QemuOptsList qemu_fw_cfg_opts = {
             .name = "string",
             .type = QEMU_OPT_STRING,
             .help = "Sets content of the blob to be inserted from a string",
+        }, {
+            .name = "gen_id",
+            .type = QEMU_OPT_STRING,
+            .help = "Sets id of the object generating the fw_cfg blob "
+                    "to be inserted",
         },
         { /* end of list */ }
     },
@@ -1117,6 +1128,7 @@ static void realtime_init(void)
 static void configure_msg(QemuOpts *opts)
 {
     error_with_timestamp = qemu_opt_get_bool(opts, "timestamp", false);
+    error_with_guestname = qemu_opt_get_bool(opts, "guest-name", false);
 }
 
 
@@ -1780,8 +1792,8 @@ static bool vga_interface_available(VGAInterfaceType t)
 
     assert(t < VGA_TYPE_MAX);
     return !ti->class_names[0] ||
-           object_class_by_name(ti->class_names[0]) ||
-           object_class_by_name(ti->class_names[1]);
+           module_object_class_by_name(ti->class_names[0]) ||
+           module_object_class_by_name(ti->class_names[1]);
 }
 
 static const char *
@@ -2028,7 +2040,7 @@ static int parse_fw_cfg(void *opaque, QemuOpts *opts, Error **errp)
 {
     gchar *buf;
     size_t size;
-    const char *name, *file, *str;
+    const char *name, *file, *str, *gen_id;
     FWCfgState *fw_cfg = (FWCfgState *) opaque;
 
     if (fw_cfg == NULL) {
@@ -2038,14 +2050,13 @@ static int parse_fw_cfg(void *opaque, QemuOpts *opts, Error **errp)
     name = qemu_opt_get(opts, "name");
     file = qemu_opt_get(opts, "file");
     str = qemu_opt_get(opts, "string");
+    gen_id = qemu_opt_get(opts, "gen_id");
 
-    /* we need name and either a file or the content string */
-    if (!(nonempty_str(name) && (nonempty_str(file) || nonempty_str(str)))) {
-        error_setg(errp, "invalid argument(s)");
-        return -1;
-    }
-    if (nonempty_str(file) && nonempty_str(str)) {
-        error_setg(errp, "file and string are mutually exclusive");
+    /* we need the name, and exactly one of: file, content string, gen_id */
+    if (!nonempty_str(name) ||
+        nonempty_str(file) + nonempty_str(str) + nonempty_str(gen_id) != 1) {
+        error_setg(errp, "name, plus exactly one of file,"
+                         " string and gen_id, are needed");
         return -1;
     }
     if (strlen(name) > FW_CFG_MAX_FILE_PATH - 1) {
@@ -2053,13 +2064,28 @@ static int parse_fw_cfg(void *opaque, QemuOpts *opts, Error **errp)
                    FW_CFG_MAX_FILE_PATH - 1);
         return -1;
     }
-    if (strncmp(name, "opt/", 4) != 0) {
+    if (nonempty_str(gen_id)) {
+        /*
+         * In this particular case where the content is populated
+         * internally, the "etc/" namespace protection is relaxed,
+         * so do not emit a warning.
+         */
+    } else if (strncmp(name, "opt/", 4) != 0) {
         warn_report("externally provided fw_cfg item names "
                     "should be prefixed with \"opt/\"");
     }
     if (nonempty_str(str)) {
         size = strlen(str); /* NUL terminator NOT included in fw_cfg blob */
         buf = g_memdup(str, size);
+    } else if (nonempty_str(gen_id)) {
+        Error *local_err = NULL;
+
+        fw_cfg_add_from_generator(fw_cfg, name, gen_id, errp);
+        if (local_err) {
+            error_propagate(errp, local_err);
+            return -1;
+        }
+        return 0;
     } else {
         GError *err = NULL;
         if (!g_file_get_contents(file, &buf, &size, &err)) {
@@ -2452,16 +2478,11 @@ static int object_parse_property_opt(Object *obj,
                                      const char *name, const char *value,
                                      const char *skip, Error **errp)
 {
-    Error *local_err = NULL;
-
     if (g_str_equal(name, skip)) {
         return 0;
     }
 
-    object_property_parse(obj, value, name, &local_err);
-
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!object_property_parse(obj, name, value, errp)) {
         return -1;
     }
 
@@ -2806,17 +2827,17 @@ static void create_default_memdev(MachineState *ms, const char *path)
 
     obj = object_new(path ? TYPE_MEMORY_BACKEND_FILE : TYPE_MEMORY_BACKEND_RAM);
     if (path) {
-        object_property_set_str(obj, path, "mem-path", &error_fatal);
+        object_property_set_str(obj, "mem-path", path, &error_fatal);
     }
-    object_property_set_int(obj, ms->ram_size, "size", &error_fatal);
+    object_property_set_int(obj, "size", ms->ram_size, &error_fatal);
     object_property_add_child(object_get_objects_root(), mc->default_ram_id,
                               obj);
     /* Ensure backend's memory region name is equal to mc->default_ram_id */
-    object_property_set_bool(obj, false, "x-use-canonical-path-for-ramblock-id",
-                             &error_fatal);
+    object_property_set_bool(obj, "x-use-canonical-path-for-ramblock-id",
+                             false, &error_fatal);
     user_creatable_complete(USER_CREATABLE(obj), &error_fatal);
     object_unref(obj);
-    object_property_set_str(OBJECT(ms), mc->default_ram_id, "memory-backend",
+    object_property_set_str(OBJECT(ms), "memory-backend", mc->default_ram_id,
                             &error_fatal);
 }
 
@@ -3509,11 +3530,6 @@ void qemu_init(int argc, char **argv, char **envp)
                     g_slist_free(accel_list);
                     exit(0);
                 }
-                if (optarg && strchr(optarg, ':')) {
-                    error_report("Don't use ':' with -accel, "
-                                 "use -M accel=... for now instead");
-                    exit(1);
-                }
                 break;
             case QEMU_OPTION_usb:
                 olist = qemu_find_opts("machine");
@@ -3602,6 +3618,8 @@ void qemu_init(int argc, char **argv, char **envp)
                 if (!opts) {
                     exit(1);
                 }
+                /* Capture guest name if -msg guest-name is used later */
+                error_guest_name = qemu_opt_get(opts, "guest");
                 break;
             case QEMU_OPTION_prom_env:
                 if (nb_prom_envs >= MAX_PROM_ENVS) {
@@ -3856,17 +3874,7 @@ void qemu_init(int argc, char **argv, char **envp)
                                               machine_class);
 
     os_daemonize();
-
-    /*
-     * If QTest is enabled, keep the rcu_atfork enabled, since system processes
-     * may be forked testing purposes (e.g. fork-server based fuzzing) The fork
-     * should happen before a signle cpu instruction is executed, to prevent
-     * deadlocks. See commit 73c6e40, rcu: "completely disable pthread_atfork
-     * callbacks as soon as possible"
-     */
-    if (!qtest_enabled()) {
-        rcu_disable_atfork();
-    }
+    rcu_disable_atfork();
 
     if (qemu_arg_etrace) {
         qemu_etrace_enabled = etrace_init(&qemu_etracer, qemu_arg_etrace,
@@ -4166,12 +4174,17 @@ void qemu_init(int argc, char **argv, char **envp)
                       fsdev_init_func, NULL, &error_fatal);
 #endif
 
+    /* spice needs the timers to be initialized by this point */
+    /* spice must initialize before audio as it changes the default auiodev */
+    qemu_spice_init();
+
     /*
-     * Note: we need to create block backends before
+     * Note: we need to create audio and block backends before
      * machine_set_property(), so machine properties can refer to
      * them.
      */
     configure_blockdev(&bdo_queue, machine_class, snapshot);
+    audio_init_audiodevs();
 
     machine_opts = qemu_get_machine_opts();
     qemu_opt_foreach(machine_opts, machine_set_property, current_machine,
@@ -4264,9 +4277,6 @@ void qemu_init(int argc, char **argv, char **envp)
         /* fall back to the -kernel/-append */
         semihosting_arg_fallback(kernel_filename, kernel_cmdline);
     }
-
-    /* spice needs the timers to be initialized by this point */
-    qemu_spice_init();
 
     cpu_ticks_init();
 
@@ -4369,17 +4379,24 @@ void qemu_init(int argc, char **argv, char **envp)
 
     parse_numa_opts(current_machine);
 
+    /* do monitor/qmp handling at preconfig state if requested */
+    qemu_main_loop();
+
     if (machine_class->default_ram_id && current_machine->ram_size &&
         numa_uses_legacy_mem() && !current_machine->ram_memdev_id) {
         create_default_memdev(current_machine, mem_path);
     }
-    /* do monitor/qmp handling at preconfig state if requested */
-    qemu_main_loop();
-
-    audio_init_audiodevs();
 
     /* from here on runstate is RUN_STATE_PRELAUNCH */
     machine_run_board_init(current_machine);
+
+    /*
+     * TODO To drop support for deprecated bogus if=..., move
+     * drive_check_orphaned() here, replacing this call.  Also drop
+     * its deprecation warning, along with DriveInfo member
+     * @claimed_by_board.
+     */
+    drive_mark_claimed_by_board();
 
     realtime_init();
 

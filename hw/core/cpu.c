@@ -60,8 +60,7 @@ CPUState *cpu_create(const char *typename)
 {
     Error *err = NULL;
     CPUState *cpu = CPU(object_new(typename));
-    object_property_set_bool(OBJECT(cpu), true, "realized", &err);
-    if (err != NULL) {
+    if (!qdev_realize(DEVICE(cpu), NULL, &err)) {
         error_report_err(err);
         object_unref(OBJECT(cpu));
         exit(EXIT_FAILURE);
@@ -383,6 +382,7 @@ static void cpu_common_initfn(Object *obj)
     cpu->nr_threads = 1;
 
     qemu_mutex_init(&cpu->work_mutex);
+    QSIMPLEQ_INIT(&cpu->work_list);
     QTAILQ_INIT(&cpu->breakpoints);
     QTAILQ_INIT(&cpu->watchpoints);
 

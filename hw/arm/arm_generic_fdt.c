@@ -122,7 +122,7 @@ static int zynq7000_mdio_phy_connect(char *node_path, FDTMachineInfo *fdti,
     }
 
     /* Set mdio property of gem device */
-    object_property_set_link(OBJECT(parent), OBJECT(Opaque), "mdio", NULL);
+    object_property_set_link(OBJECT(parent), "mdio", OBJECT(Opaque), NULL);
     return 0;
 }
 
@@ -167,7 +167,7 @@ static int zynq7000_mdio_phy_create(char *node_path, FDTMachineInfo *fdti,
     qdev_set_parent_bus(dev, qdev_get_child_bus(Opaque, "mdio-bus"));
     reg = qemu_fdt_getprop_cell(fdti->fdt, node_path, "reg", 0, false,
                                 NULL);
-    object_property_set_int(OBJECT(dev), reg, "reg", NULL);
+    object_property_set_int(OBJECT(dev), "reg", reg, NULL);
     return 0;
 }
 
@@ -419,8 +419,7 @@ static memory_info init_memory(void *fdt, ram_addr_t ram_size, bool zynq_7000)
                                                      0, NULL);
                     memory_region_init(ram_region, NULL, region_name,
                                            region_size);
-                    object_property_set_int(OBJECT(ram_region), ram_prop,
-                                            "ram", &error_abort);
+                    object_property_set_int(OBJECT(ram_region), "ram", ram_prop, &error_abort);
                     memory_region_add_subregion(container, region_start,
                                                 ram_region);
                 }
@@ -582,7 +581,7 @@ static void arm_generic_fdt_7000_init(MachineState *machine)
                            &error_abort);
     memory_region_add_subregion(address_space_mem, 0xFFFC0000, ocm_ram);
 
-    dev = qdev_create(NULL, "arm.pl35x");
+    dev = qdev_new("arm.pl35x");
     object_property_add_child(container_get(qdev_get_machine(), "/unattached"),
                               "pl353", OBJECT(dev));
     qdev_prop_set_uint8(dev, "x", 3);
@@ -590,10 +589,9 @@ static void arm_generic_fdt_7000_init(MachineState *machine)
     att_dev = nand_init(dinfo ? blk_by_legacy_dinfo(dinfo)
                               : NULL,
                         NAND_MFR_STMICRO, 0xaa);
-    object_property_set_link(OBJECT(dev), OBJECT(att_dev), "dev1",
-                             &error_abort);
+    object_property_set_link(OBJECT(dev), "dev1", OBJECT(att_dev), &error_abort);
 
-    qdev_init_nofail(dev);
+    qdev_realize_and_unref(dev, NULL, &error_fatal);
     busdev = SYS_BUS_DEVICE(dev);
     sysbus_mmio_map(busdev, 0, 0xe000e000);
     sysbus_mmio_map(busdev, 2, 0xe1000000);
@@ -601,19 +599,19 @@ static void arm_generic_fdt_7000_init(MachineState *machine)
     /* Mark the simple-bus as incompatible as it breaks the Zynq boot */
     add_to_compat_table(NULL, "compatible:simple-bus", NULL);
 
-    dev = qdev_create(NULL, "mdio");
-    qdev_init_nofail(dev);
+    dev = qdev_new("mdio");
     /* Add MDIO Connect Call back */
     add_to_inst_bind_table(zynq7000_mdio_phy_connect, "mdio", dev);
     add_to_compat_table(zynq7000_mdio_phy_create, "device_type:ethernet-phy",
                         dev);
+    qdev_realize(dev, NULL, &error_fatal);
 
     arm_generic_fdt_init(machine);
 
-    dev = qdev_create(NULL, "a9-scu");
+    dev = qdev_new("a9-scu");
     busdev = SYS_BUS_DEVICE(dev);
     qdev_prop_set_uint32(dev, "num-cpu", fdt_generic_num_cpus);
-    qdev_init_nofail(dev);
+    qdev_realize(dev, NULL, &error_fatal);
     sysbus_mmio_map(busdev, 0, ZYNQ7000_MPCORE_PERIPHBASE);
 }
 

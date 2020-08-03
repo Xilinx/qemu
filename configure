@@ -97,6 +97,11 @@ do_cxx() {
     do_compiler "$cxx" "$@"
 }
 
+# Append $2 to the variable named $1, with space separation
+add_to() {
+    eval $1=\${$1:+\"\$$1 \"}\$2
+}
+
 update_cxxflags() {
     # Set QEMU_CXXFLAGS from QEMU_CFLAGS by filtering out those
     # options which some versions of GCC's C++ compiler complain about
@@ -302,6 +307,7 @@ audio_win_int=""
 libs_qga=""
 debug_info="yes"
 stack_protector=""
+safe_stack=""
 use_containers="yes"
 gdb_bin=$(command -v "gdb-multiarch" || command -v "gdb")
 
@@ -395,6 +401,7 @@ gprof="no"
 debug_tcg="no"
 debug="no"
 sanitizers="no"
+tsan="no"
 fortify_source=""
 strip_opt="yes"
 tcg_interpreter="no"
@@ -411,6 +418,7 @@ prefix="/usr/local"
 mandir="\${prefix}/share/man"
 datadir="\${prefix}/share"
 firmwarepath="\${prefix}/share/qemu-firmware"
+efi_aarch64=""
 qemu_docdir="\${prefix}/share/doc/qemu"
 bindir="\${prefix}/bin"
 libdir="\${prefix}/lib"
@@ -509,6 +517,9 @@ libpmem=""
 default_devices="yes"
 plugins="no"
 fuzzing="no"
+rng_none="no"
+secret_keyring=""
+libdaxctl=""
 
 supported_cpu="no"
 supported_os="no"
@@ -950,6 +961,13 @@ do
     fi
 done
 
+# Check for existence of python3 yaml, needed to
+# import yaml config files into vm-build.
+python_yaml="no"
+if $(python3 -c "import yaml" 2> /dev/null); then
+    python_yaml="yes"
+fi
+
 : ${smbd=${SMBD-/usr/sbin/smbd}}
 
 # Default objcc to clang if available, otherwise use CC
@@ -1092,6 +1110,8 @@ for opt do
   ;;
   --firmwarepath=*) firmwarepath="$optarg"
   ;;
+  --efi-aarch64=*) efi_aarch64="$optarg"
+  ;;
   --host=*|--build=*|\
   --disable-dependency-tracking|\
   --sbindir=*|--sharedstatedir=*|\
@@ -1149,6 +1169,10 @@ for opt do
   --enable-sanitizers) sanitizers="yes"
   ;;
   --disable-sanitizers) sanitizers="no"
+  ;;
+  --enable-tsan) tsan="yes"
+  ;;
+  --disable-tsan) tsan="no"
   ;;
   --enable-sparse) sparse="yes"
   ;;
@@ -1279,6 +1303,10 @@ for opt do
   --enable-stack-protector) stack_protector="yes"
   ;;
   --disable-stack-protector) stack_protector="no"
+  ;;
+  --enable-safe-stack) safe_stack="yes"
+  ;;
+  --disable-safe-stack) safe_stack="no"
   ;;
   --disable-curses) curses="no"
   ;;
@@ -1562,6 +1590,10 @@ for opt do
   ;;
   --enable-vhost-user) vhost_user="yes"
   ;;
+  --disable-vhost-vdpa) vhost_vdpa="no"
+  ;;
+  --enable-vhost-vdpa) vhost_vdpa="yes"
+  ;;
   --disable-vhost-kernel) vhost_kernel="no"
   ;;
   --enable-vhost-kernel) vhost_kernel="yes"
@@ -1605,6 +1637,18 @@ for opt do
   --disable-fuzzing) fuzzing=no
   ;;
   --gdb=*) gdb_bin="$optarg"
+  ;;
+  --enable-rng-none) rng_none=yes
+  ;;
+  --disable-rng-none) rng_none=no
+  ;;
+  --enable-keyring) secret_keyring="yes"
+  ;;
+  --disable-keyring) secret_keyring="no"
+  ;;
+  --enable-libdaxctl) libdaxctl=yes
+  ;;
+  --disable-libdaxctl) libdaxctl=no
   ;;
   *)
       echo "ERROR: unknown option $opt"
@@ -1755,10 +1799,12 @@ Advanced options (experts only):
   --sysconfdir=PATH        install config in PATH$confsuffix
   --localstatedir=PATH     install local state in PATH (set at runtime on win32)
   --firmwarepath=PATH      search PATH for firmware files
+  --efi-aarch64=PATH       PATH of efi file to use for aarch64 VMs.
   --with-confsuffix=SUFFIX suffix for QEMU data inside datadir/libdir/sysconfdir [$confsuffix]
   --with-pkgversion=VERS   use specified string as sub-version of the package
   --enable-debug           enable common debug build options
   --enable-sanitizers      enable default sanitizers
+  --enable-tsan            enable thread sanitizer
   --disable-strip          disable stripping binaries
   --disable-werror         disable compilation abort on warning
   --disable-stack-protector disable compiler-provided stack protection
@@ -1813,6 +1859,8 @@ disabled with --disable-FEATURE, default is enabled if available:
   debug-tcg       TCG debugging (default is disabled)
   debug-info      debugging information
   sparse          sparse checker
+  safe-stack      SafeStack Stack Smash Protection. Depends on
+                  clang/llvm >= 3.7 and requires coroutine backend ucontext.
 
   gnutls          GNUTLS cryptography support
   nettle          nettle cryptography support
@@ -1855,6 +1903,7 @@ disabled with --disable-FEATURE, default is enabled if available:
   vhost-crypto    vhost-user-crypto backend support
   vhost-kernel    vhost kernel backend support
   vhost-user      vhost-user backend support
+  vhost-vdpa      vhost-vdpa kernel backend support
   spice           spice
   rbd             rados block device (rbd)
   libiscsi        iscsi support
@@ -1903,6 +1952,8 @@ disabled with --disable-FEATURE, default is enabled if available:
   debug-mutex     mutex debugging support
   libpmem         libpmem support
   xkbcommon       xkbcommon support
+  rng-none        dummy RNG, avoid using /dev/(u)random and getrandom()
+  libdaxctl       libdaxctl support
 
 NOTE: The object files are built at the place where configure is launched
 EOF
@@ -2012,16 +2063,35 @@ if ! compile_prog "" "" ; then
     error_exit "You need at least GCC v4.8 or Clang v3.4 (or XCode Clang v5.1)"
 fi
 
-gcc_flags="-Wold-style-declaration -Wold-style-definition -Wtype-limits"
-gcc_flags="-Wformat-security -Wformat-y2k -Winit-self -Wignored-qualifiers $gcc_flags"
-gcc_flags="-Wno-missing-include-dirs -Wempty-body -Wnested-externs $gcc_flags"
-gcc_flags="-Wendif-labels -Wno-shift-negative-value $gcc_flags"
-gcc_flags="-Wno-initializer-overrides -Wexpansion-to-defined $gcc_flags"
-gcc_flags="-Wno-string-plus-int -Wno-typedef-redefinition $gcc_flags"
-# Note that we do not add -Werror to gcc_flags here, because that would
-# enable it for all configure tests. If a configure test failed due
-# to -Werror this would just silently disable some features,
-# so it's too error prone.
+# Accumulate -Wfoo and -Wno-bar separately.
+# We will list all of the enable flags first, and the disable flags second.
+# Note that we do not add -Werror, because that would enable it for all
+# configure tests. If a configure test failed due to -Werror this would
+# just silently disable some features, so it's too error prone.
+
+warn_flags=
+add_to warn_flags -Wold-style-declaration
+add_to warn_flags -Wold-style-definition
+add_to warn_flags -Wtype-limits
+add_to warn_flags -Wformat-security
+add_to warn_flags -Wformat-y2k
+add_to warn_flags -Winit-self
+add_to warn_flags -Wignored-qualifiers
+add_to warn_flags -Wempty-body
+add_to warn_flags -Wnested-externs
+add_to warn_flags -Wendif-labels
+add_to warn_flags -Wexpansion-to-defined
+
+nowarn_flags=
+add_to nowarn_flags -Wno-initializer-overrides
+add_to nowarn_flags -Wno-missing-include-dirs
+add_to nowarn_flags -Wno-shift-negative-value
+add_to nowarn_flags -Wno-string-plus-int
+add_to nowarn_flags -Wno-typedef-redefinition
+add_to nowarn_flags -Wno-tautological-type-limit-compare
+add_to nowarn_flags -Wno-psabi
+
+gcc_flags="$warn_flags $nowarn_flags"
 
 cc_has_warning_flag() {
     write_c_skeleton;
@@ -2345,6 +2415,10 @@ test "$vhost_user" = "" && vhost_user=yes
 if test "$vhost_user" = "yes" && test "$mingw32" = "yes"; then
   error_exit "vhost-user isn't available on win32"
 fi
+test "$vhost_vdpa" = "" && vhost_vdpa=$linux
+if test "$vhost_vdpa" = "yes" && test "$linux" != "yes"; then
+  error_exit "vhost-vdpa is only available on Linux"
+fi
 test "$vhost_kernel" = "" && vhost_kernel=$linux
 if test "$vhost_kernel" = "yes" && test "$linux" != "yes"; then
   error_exit "vhost-kernel is only available on Linux"
@@ -2372,6 +2446,11 @@ fi
 test "$vhost_user_fs" = "" && vhost_user_fs=$vhost_user
 if test "$vhost_user_fs" = "yes" && test "$vhost_user" = "no"; then
   error_exit "--enable-vhost-user-fs requires --enable-vhost-user"
+fi
+#vhost-vdpa backends
+test "$vhost_net_vdpa" = "" && vhost_net_vdpa=$vhost_vdpa
+if test "$vhost_net_vdpa" = "yes" && test "$vhost_vdpa" = "no"; then
+  error_exit "--enable-vhost-net-vdpa requires --enable-vhost-vdpa"
 fi
 
 # OR the vhost-kernel and vhost-user values for simplicity
@@ -3145,6 +3224,13 @@ if ! check_include "ifaddrs.h" ; then
   have_ifaddrs_h=no
 fi
 
+#########################################
+# libdrm check
+have_drm_h=no
+if check_include "libdrm/drm.h" ; then
+    have_drm_h=yes
+fi
+
 ##########################################
 # VTE probe
 
@@ -3547,6 +3633,20 @@ EOF
       feature_not_found "netmap"
     fi
     netmap=no
+  fi
+fi
+
+############################################
+# efi-aarch64 probe
+# Check for efi files needed by aarch64 VMs.
+# By default we will use the efi included with QEMU.
+# Allow user to override the path for efi also.
+if ! test -f "$efi_aarch64"; then
+  if test -f $source_path/pc-bios/edk2-aarch64-code.fd.bz2; then
+    # valid after build
+    efi_aarch64=$PWD/pc-bios/edk2-aarch64-code.fd
+  else
+    efi_aarch64=""
   fi
 fi
 
@@ -4306,7 +4406,6 @@ EOF
           mkdir -p dtc
           if [ "$pwd_is_source_path" != "y" ] ; then
               symlink "$source_path/dtc/Makefile" "dtc/Makefile"
-              symlink "$source_path/dtc/scripts" "dtc/scripts"
           fi
           fdt_cflags="-I\$(SRC_PATH)/dtc/libfdt"
           fdt_ldflags="-L\$(BUILD_DIR)/dtc/libfdt"
@@ -4592,7 +4691,13 @@ fi
 if test "$tcmalloc" = "yes" ; then
   cat > $TMPC << EOF
 #include <stdlib.h>
-int main(void) { malloc(1); return 0; }
+int main(void) {
+    void *tmp = malloc(1);
+    if (tmp != NULL) {
+        return 0;
+    }
+    return 1;
+}
 EOF
 
   if compile_prog "" "-ltcmalloc" ; then
@@ -4608,7 +4713,13 @@ fi
 if test "$jemalloc" = "yes" ; then
   cat > $TMPC << EOF
 #include <stdlib.h>
-int main(void) { malloc(1); return 0; }
+int main(void) {
+    void *tmp = malloc(1);
+    if (tmp != NULL) {
+        return 0;
+    }
+    return 1;
+}
 EOF
 
   if compile_prog "" "-ljemalloc" ; then
@@ -5074,10 +5185,14 @@ extern int openpty(int *am, int *as, char *name, void *termp, void *winp);
 int main(void) { return openpty(0, 0, 0, 0, 0); }
 EOF
 
-if ! compile_prog "" "" ; then
+have_openpty="no"
+if compile_prog "" "" ; then
+  have_openpty="yes"
+else
   if compile_prog "" "-lutil" ; then
     libs_softmmu="-lutil $libs_softmmu"
     libs_tools="-lutil $libs_tools"
+    have_openpty="yes"
   fi
 fi
 
@@ -5526,6 +5641,67 @@ if test "$debug_stack_usage" = "yes"; then
   fi
 fi
 
+##################################################
+# SafeStack
+
+
+if test "$safe_stack" = "yes"; then
+cat > $TMPC << EOF
+int main(int argc, char *argv[])
+{
+#if ! __has_feature(safe_stack)
+#error SafeStack Disabled
+#endif
+    return 0;
+}
+EOF
+  flag="-fsanitize=safe-stack"
+  # Check that safe-stack is supported and enabled.
+  if compile_prog "-Werror $flag" "$flag"; then
+    # Flag needed both at compilation and at linking
+    QEMU_CFLAGS="$QEMU_CFLAGS $flag"
+    QEMU_LDFLAGS="$QEMU_LDFLAGS $flag"
+  else
+    error_exit "SafeStack not supported by your compiler"
+  fi
+  if test "$coroutine" != "ucontext"; then
+    error_exit "SafeStack is only supported by the coroutine backend ucontext"
+  fi
+else
+cat > $TMPC << EOF
+int main(int argc, char *argv[])
+{
+#if defined(__has_feature)
+#if __has_feature(safe_stack)
+#error SafeStack Enabled
+#endif
+#endif
+    return 0;
+}
+EOF
+if test "$safe_stack" = "no"; then
+  # Make sure that safe-stack is disabled
+  if ! compile_prog "-Werror" ""; then
+    # SafeStack was already enabled, try to explicitly remove the feature
+    flag="-fno-sanitize=safe-stack"
+    if ! compile_prog "-Werror $flag" "$flag"; then
+      error_exit "Configure cannot disable SafeStack"
+    fi
+    QEMU_CFLAGS="$QEMU_CFLAGS $flag"
+    QEMU_LDFLAGS="$QEMU_LDFLAGS $flag"
+  fi
+else # "$safe_stack" = ""
+  # Set safe_stack to yes or no based on pre-existing flags
+  if compile_prog "-Werror" ""; then
+    safe_stack="no"
+  else
+    safe_stack="yes"
+    if test "$coroutine" != "ucontext"; then
+      error_exit "SafeStack is only supported by the coroutine backend ucontext"
+    fi
+  fi
+fi
+fi
 
 ##########################################
 # check if we have open_by_handle_at
@@ -5555,31 +5731,6 @@ int main(void) {
 EOF
 if compile_prog "" "" ; then
     linux_magic_h=yes
-fi
-
-########################################
-# check whether we can disable warning option with a pragma (this is needed
-# to silence warnings in the headers of some versions of external libraries).
-# This test has to be compiled with -Werror as otherwise an unknown pragma is
-# only a warning.
-#
-# If we can't selectively disable warning in the code, disable -Werror so that
-# the build doesn't fail anyway.
-
-pragma_disable_unused_but_set=no
-cat > $TMPC << EOF
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstrict-prototypes"
-#pragma GCC diagnostic pop
-
-int main(void) {
-    return 0;
-}
-EOF
-if compile_prog "-Werror" "" ; then
-    pragma_diagnostic_available=yes
-else
-    werror=no
 fi
 
 ########################################
@@ -6169,7 +6320,10 @@ if test "$sanitizers" = "yes" ; then
 #include <stdlib.h>
 int main(void) {
     void *tmp = malloc(10);
-    return *(int *)(tmp + 2);
+    if (tmp != NULL) {
+        return *(int *)(tmp + 2);
+    }
+    return 1;
 }
 EOF
   if compile_prog "$CPU_CFLAGS -Werror -fsanitize=undefined" ""; then
@@ -6201,6 +6355,30 @@ if test "$fuzzing" = "yes" ; then
   fi
 fi
 
+# Thread sanitizer is, for now, much noisier than the other sanitizers;
+# keep it separate until that is not the case.
+if test "$tsan" = "yes" && test "$sanitizers" = "yes"; then
+  error_exit "TSAN is not supported with other sanitiziers."
+fi
+have_tsan=no
+have_tsan_iface_fiber=no
+if test "$tsan" = "yes" ; then
+  write_c_skeleton
+  if compile_prog "$CPU_CFLAGS -Werror -fsanitize=thread" "" ; then
+      have_tsan=yes
+  fi
+  cat > $TMPC << EOF
+#include <sanitizer/tsan_interface.h>
+int main(void) {
+  __tsan_create_fiber(0);
+  return 0;
+}
+EOF
+  if compile_prog "$CPU_CFLAGS -Werror -fsanitize=thread" "" ; then
+      have_tsan_iface_fiber=yes
+  fi
+fi
+
 ##########################################
 # check for libpmem
 
@@ -6216,6 +6394,24 @@ if test "$libpmem" != "no"; then
 			feature_not_found "libpmem" "Install nvml or pmdk"
 		fi
 		libpmem="no"
+	fi
+fi
+
+##########################################
+# check for libdaxctl
+
+if test "$libdaxctl" != "no"; then
+	if $pkg_config --atleast-version=57 "libdaxctl"; then
+		libdaxctl="yes"
+		libdaxctl_libs=$($pkg_config --libs libdaxctl)
+		libdaxctl_cflags=$($pkg_config --cflags libdaxctl)
+		libs_softmmu="$libs_softmmu $libdaxctl_libs"
+		QEMU_CFLAGS="$QEMU_CFLAGS $libdaxctl_cflags"
+	else
+		if test "$libdaxctl" = "yes" ; then
+			feature_not_found "libdaxctl" "Install libdaxctl"
+		fi
+		libdaxctl="no"
 	fi
 fi
 
@@ -6275,6 +6471,62 @@ case "$slirp" in
     ;;
 esac
 
+##########################################
+# check for usable __NR_keyctl syscall
+
+if test "$linux" = "yes" ; then
+
+    have_keyring=no
+    cat > $TMPC << EOF
+#include <errno.h>
+#include <asm/unistd.h>
+#include <linux/keyctl.h>
+#include <unistd.h>
+int main(void) {
+    return syscall(__NR_keyctl, KEYCTL_READ, 0, NULL, NULL, 0);
+}
+EOF
+    if compile_prog "" "" ; then
+        have_keyring=yes
+    fi
+fi
+if test "$secret_keyring" != "no"
+then
+    if test "$have_keyring" = "yes"
+    then
+	secret_keyring=yes
+    else
+	if test "$secret_keyring" = "yes"
+	then
+	    error_exit "syscall __NR_keyctl requested, \
+but not implemented on your system"
+	else
+	    secret_keyring=no
+	fi
+    fi
+fi
+
+##########################################
+# check for usable keyutils.h
+
+if test "$linux" = "yes" ; then
+
+    have_keyutils=no
+    cat > $TMPC << EOF
+#include <errno.h>
+#include <asm/unistd.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <keyutils.h>
+int main(void) {
+    return request_key("user", NULL, NULL, 0);
+}
+EOF
+    if compile_prog "" "-lkeyutils"; then
+        have_keyutils=yes
+    fi
+fi
+
 
 ##########################################
 # End of CC checks
@@ -6301,6 +6553,16 @@ if test "$have_asan" = "yes"; then
       echo "ASAN build enabled, but ASAN header is too old." \
            "Without code annotation, the report may be inferior."
   fi
+fi
+if test "$have_tsan" = "yes" ; then
+  if test "$have_tsan_iface_fiber" = "yes" ; then
+    QEMU_CFLAGS="-fsanitize=thread $QEMU_CFLAGS"
+    QEMU_LDFLAGS="-fsanitize=thread $QEMU_LDFLAGS"
+  else
+    error_exit "Cannot enable TSAN due to missing fiber annotation interface."
+  fi
+elif test "$tsan" = "yes" ; then
+  error_exit "Cannot enable TSAN due to missing sanitize thread interface."
 fi
 if test "$have_ubsan" = "yes"; then
   QEMU_CFLAGS="-fsanitize=undefined $QEMU_CFLAGS"
@@ -6337,7 +6599,8 @@ if test "$werror" = "yes"; then
     QEMU_CFLAGS="-Werror $QEMU_CFLAGS"
 fi
 
-if test "$solaris" = "no" ; then
+# Exclude --warn-common with TSan to suppress warnings from the TSan libraries.
+if test "$solaris" = "no" && test "$tsan" = "no"; then
     if $ld --version 2>/dev/null | grep "GNU ld" >/dev/null 2>/dev/null ; then
         QEMU_LDFLAGS="-Wl,--warn-common $QEMU_LDFLAGS"
     fi
@@ -6399,7 +6662,7 @@ if test "$softmmu" = yes ; then
   if test "$linux" = yes; then
     if test "$virtfs" != no && test "$cap_ng" = yes && test "$attr" = yes ; then
       virtfs=yes
-      tools="$tools fsdev/virtfs-proxy-helper\$(EXESUF)"
+      helpers="$helpers fsdev/virtfs-proxy-helper\$(EXESUF)"
     else
       if test "$virtfs" = yes; then
         error_exit "VirtFS requires libcap-ng devel and libattr devel"
@@ -6414,7 +6677,7 @@ if test "$softmmu" = yes ; then
       fi
       mpath=no
     fi
-    tools="$tools scsi/qemu-pr-helper\$(EXESUF)"
+    helpers="$helpers scsi/qemu-pr-helper\$(EXESUF)"
   else
     if test "$virtfs" = yes; then
       error_exit "VirtFS is supported only on Linux"
@@ -6524,6 +6787,11 @@ if test "$cpu" = "s390x" ; then
   write_c_skeleton
   if compile_prog "-march=z900" ""; then
     roms="$roms s390-ccw"
+    # SLOF is required for building the s390-ccw firmware on s390x,
+    # since it is using the libnet code from SLOF for network booting.
+    if test -e "${source_path}/.git" ; then
+      git_submodules="${git_submodules} roms/SLOF"
+    fi
   fi
 fi
 
@@ -6606,6 +6874,8 @@ if test "$docs" != "no"; then
     echo "sphinx-build      $sphinx_build"
 fi
 echo "genisoimage       $genisoimage"
+echo "efi_aarch64       $efi_aarch64"
+echo "python_yaml       $python_yaml"
 echo "slirp support     $slirp $(echo_version $slirp $slirp_version)"
 if test "$slirp" != "no" ; then
     echo "smbd              $smbd"
@@ -6620,6 +6890,7 @@ echo "sparse enabled    $sparse"
 echo "strip binaries    $strip_opt"
 echo "profiler          $profiler"
 echo "static build      $static"
+echo "safe stack        $safe_stack"
 if test "$darwin" = "yes" ; then
     echo "Cocoa support     $cocoa"
 fi
@@ -6698,6 +6969,7 @@ echo "vhost-scsi support $vhost_scsi"
 echo "vhost-vsock support $vhost_vsock"
 echo "vhost-user support $vhost_user"
 echo "vhost-user-fs support $vhost_user_fs"
+echo "vhost-vdpa support $vhost_vdpa"
 echo "Trace backends    $trace_backends"
 if have_backend "simple"; then
 echo "Trace output file $trace_file-<pid>"
@@ -6753,11 +7025,14 @@ echo "parallels support $parallels"
 echo "sheepdog support  $sheepdog"
 echo "capstone          $capstone"
 echo "libpmem support   $libpmem"
+echo "libdaxctl support $libdaxctl"
 echo "libudev           $libudev"
 echo "default devices   $default_devices"
 echo "plugin support    $plugins"
 echo "fuzzing support   $fuzzing"
 echo "gdb               $gdb_bin"
+echo "rng-none          $rng_none"
+echo "Linux keyring     $secret_keyring"
 
 if test "$supported_cpu" = "no"; then
     echo
@@ -7136,8 +7411,14 @@ fi
 if test "$have_ifaddrs_h" = "yes" ; then
     echo "HAVE_IFADDRS_H=y" >> $config_host_mak
 fi
+if test "$have_drm_h" = "yes" ; then
+  echo "HAVE_DRM_H=y" >> $config_host_mak
+fi
 if test "$have_broken_size_max" = "yes" ; then
     echo "HAVE_BROKEN_SIZE_MAX=y" >> $config_host_mak
+fi
+if test "$have_openpty" = "yes" ; then
+    echo "HAVE_OPENPTY=y" >> $config_host_mak
 fi
 
 # Work around a system header bug with some kernel/XFS header
@@ -7196,17 +7477,26 @@ fi
 if test "$vhost_net_user" = "yes" ; then
   echo "CONFIG_VHOST_NET_USER=y" >> $config_host_mak
 fi
+if test "$vhost_net_vdpa" = "yes" ; then
+  echo "CONFIG_VHOST_NET_VDPA=y" >> $config_host_mak
+fi
 if test "$vhost_crypto" = "yes" ; then
   echo "CONFIG_VHOST_CRYPTO=y" >> $config_host_mak
 fi
 if test "$vhost_vsock" = "yes" ; then
   echo "CONFIG_VHOST_VSOCK=y" >> $config_host_mak
+  if test "$vhost_user" = "yes" ; then
+    echo "CONFIG_VHOST_USER_VSOCK=y" >> $config_host_mak
+  fi
 fi
 if test "$vhost_kernel" = "yes" ; then
   echo "CONFIG_VHOST_KERNEL=y" >> $config_host_mak
 fi
 if test "$vhost_user" = "yes" ; then
   echo "CONFIG_VHOST_USER=y" >> $config_host_mak
+fi
+if test "$vhost_vdpa" = "yes" ; then
+  echo "CONFIG_VHOST_VDPA=y" >> $config_host_mak
 fi
 if test "$vhost_user_fs" = "yes" ; then
   echo "CONFIG_VHOST_USER_FS=y" >> $config_host_mak
@@ -7379,16 +7669,16 @@ if test "$linux_magic_h" = "yes" ; then
   echo "CONFIG_LINUX_MAGIC_H=y" >> $config_host_mak
 fi
 
-if test "$pragma_diagnostic_available" = "yes" ; then
-  echo "CONFIG_PRAGMA_DIAGNOSTIC_AVAILABLE=y" >> $config_host_mak
-fi
-
 if test "$valgrind_h" = "yes" ; then
   echo "CONFIG_VALGRIND_H=y" >> $config_host_mak
 fi
 
 if test "$have_asan_iface_fiber" = "yes" ; then
     echo "CONFIG_ASAN_IFACE_FIBER=y" >> $config_host_mak
+fi
+
+if test "$have_tsan" = "yes" && test "$have_tsan_iface_fiber" = "yes" ; then
+    echo "CONFIG_TSAN=y" >> $config_host_mak
 fi
 
 if test "$has_environ" = "yes" ; then
@@ -7577,6 +7867,10 @@ if test "$libpmem" = "yes" ; then
   echo "CONFIG_LIBPMEM=y" >> $config_host_mak
 fi
 
+if test "$libdaxctl" = "yes" ; then
+  echo "CONFIG_LIBDAXCTL=y" >> $config_host_mak
+fi
+
 if test "$bochs" = "yes" ; then
   echo "CONFIG_BOCHS=y" >> $config_host_mak
 fi
@@ -7608,7 +7902,7 @@ if test "$fuzzing" = "yes" ; then
   if test "$have_fuzzer" = "yes"; then
     FUZZ_LDFLAGS=" -fsanitize=address,fuzzer"
     FUZZ_CFLAGS=" -fsanitize=address,fuzzer"
-    CFLAGS=" -fsanitize=address,fuzzer-no-link"
+    CFLAGS="$CFLAGS -fsanitize=address,fuzzer-no-link"
   else
     error_exit "Your compiler doesn't support -fsanitize=address,fuzzer"
     exit 1
@@ -7640,6 +7934,13 @@ if test -n "$gdb_bin" ; then
     echo "HAVE_GDB_BIN=$gdb_bin" >> $config_host_mak
 fi
 
+if test "$secret_keyring" = "yes" ; then
+  echo "CONFIG_SECRET_KEYRING=y" >> $config_host_mak
+  if test "$have_keyutils" = "yes" ; then
+    echo "CONFIG_TEST_SECRET_KEYRING=y" >> $config_host_mak
+  fi
+fi
+
 if test "$tcg_interpreter" = "yes"; then
   QEMU_INCLUDES="-iquote \$(SRC_PATH)/tcg/tci $QEMU_INCLUDES"
 elif test "$ARCH" = "sparc64" ; then
@@ -7656,6 +7957,7 @@ else
   QEMU_INCLUDES="-iquote \$(SRC_PATH)/tcg/\$(ARCH) $QEMU_INCLUDES"
 fi
 
+echo "HELPERS=$helpers" >> $config_host_mak
 echo "TOOLS=$tools" >> $config_host_mak
 echo "ROMS=$roms" >> $config_host_mak
 echo "MAKE=$make" >> $config_host_mak
@@ -7668,6 +7970,8 @@ echo "PYTHON=$python" >> $config_host_mak
 echo "SPHINX_BUILD=$sphinx_build" >> $config_host_mak
 echo "SPHINX_WERROR=$sphinx_werror" >> $config_host_mak
 echo "GENISOIMAGE=$genisoimage" >> $config_host_mak
+echo "EFI_AARCH64=$efi_aarch64" >> $config_host_mak
+echo "PYTHON_YAML=$python_yaml" >> $config_host_mak
 echo "CC=$cc" >> $config_host_mak
 if $iasl -h > /dev/null 2>&1; then
   echo "IASL=$iasl" >> $config_host_mak
@@ -7729,6 +8033,10 @@ fi
 
 if test "$edk2_blobs" = "yes" ; then
   echo "DECOMPRESS_EDK2_BLOBS=y" >> $config_host_mak
+fi
+
+if test "$rng_none" = "yes"; then
+  echo "CONFIG_RNG_NONE=y" >> $config_host_mak
 fi
 
 # use included Linux headers
@@ -7841,6 +8149,10 @@ case "$target_name" in
     mttcg="yes"
     armv8_gdb_xml_files="aarch64-el1.xml aarch64-el2.xml aarch64-el3.xml"
     gdb_xml_files="aarch64-core.xml aarch64-fpu.xml arm-core.xml arm-vfp.xml arm-vfp3.xml arm-neon.xml arm-m-profile.xml $armv8_gdb_xml_files"
+  ;;
+  avr)
+    gdb_xml_files="avr-cpu.xml"
+    target_compiler=$cross_cc_avr
   ;;
   cris)
   ;;
@@ -8087,6 +8399,9 @@ for i in $ARCH $TARGET_BASE_ARCH ; do
       disas_config "ARM_A64"
     fi
   ;;
+  avr)
+    disas_config "AVR"
+  ;;
   cris)
     disas_config "CRIS"
   ;;
@@ -8206,6 +8521,10 @@ if test "$ccache_cpp2" = "yes"; then
   echo "export CCACHE_CPP2=y" >> $config_host_mak
 fi
 
+if test "$safe_stack" = "yes"; then
+  echo "CONFIG_SAFESTACK=y" >> $config_host_mak
+fi
+
 # If we're using a separate build tree, set it up now.
 # DIRS are directories which we simply mkdir in the build tree;
 # LINKS are things to symlink back into the source tree
@@ -8220,14 +8539,14 @@ DIRS="tests tests/tcg tests/tcg/lm32 tests/qapi-schema tests/qtest/libqos"
 DIRS="$DIRS tests/qtest tests/qemu-iotests tests/vm tests/fp tests/qgraph"
 DIRS="$DIRS docs docs/interop fsdev scsi"
 DIRS="$DIRS pc-bios/optionrom pc-bios/s390-ccw"
-DIRS="$DIRS roms/seabios roms/vgabios"
+DIRS="$DIRS roms/seabios"
 LINKS="Makefile"
 LINKS="$LINKS tests/tcg/lm32/Makefile po/Makefile"
 LINKS="$LINKS tests/tcg/Makefile.target tests/fp/Makefile"
 LINKS="$LINKS tests/plugin/Makefile"
 LINKS="$LINKS pc-bios/optionrom/Makefile pc-bios/keymaps"
 LINKS="$LINKS pc-bios/s390-ccw/Makefile"
-LINKS="$LINKS roms/seabios/Makefile roms/vgabios/Makefile"
+LINKS="$LINKS roms/seabios/Makefile"
 LINKS="$LINKS pc-bios/qemu-icon.bmp"
 LINKS="$LINKS .gdbinit scripts" # scripts needed by relative path in .gdbinit
 LINKS="$LINKS tests/acceptance tests/data"
@@ -8260,7 +8579,7 @@ export target_list source_path use_containers
 $source_path/tests/tcg/configure.sh)
 
 # temporary config to build submodules
-for rom in seabios vgabios ; do
+for rom in seabios; do
     config_mak=roms/$rom/config.mak
     echo "# Automatically generated by configure - do not modify" > $config_mak
     echo "SRC_PATH=$source_path/roms/$rom" >> $config_mak

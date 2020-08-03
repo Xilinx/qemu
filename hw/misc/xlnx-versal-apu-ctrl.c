@@ -150,8 +150,7 @@ static void rvbar_postw(RegisterInfo *reg, uint64_t val64)
         rvbar <<= 32;
         rvbar |= s->regs[R_RVBARADDR0L + i * 2];
 
-        object_property_set_int(OBJECT(s->cpus[i]), rvbar, "rvbar",
-                                &error_abort);
+        object_property_set_int(OBJECT(s->cpus[i]), "rvbar", rvbar, &error_abort);
     }
 }
 

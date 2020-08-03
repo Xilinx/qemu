@@ -126,8 +126,9 @@ bool rp_time_warp_enable(bool en);
  * @errp: Returns an error if the function fails
  *
  * Function used in qdev-monitor.c to connect remote port devices.
+ * Returns teue on success and false on failure.
  */
-void rp_device_add(QemuOpts *opts, DeviceState *dev, Error **errp);
+bool rp_device_add(QemuOpts *opts, DeviceState *dev, Error **errp);
 
 static inline void rp_resp_slot_done(RemotePort *s,
                                      RemotePortRespSlot *rsp_slot)

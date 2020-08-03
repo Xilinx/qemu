@@ -38,3 +38,12 @@ config CMSDK_APB_DUALTIMER
 
 config XILINX_IOMODULE_PIT
 	bool
+
+config RENESAS_TMR
+    bool
+
+config RENESAS_CMT
+    bool
+
+config AVR_TIMER16
+    bool

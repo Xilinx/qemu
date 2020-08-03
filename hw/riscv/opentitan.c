@@ -25,12 +25,14 @@
 #include "hw/misc/unimp.h"
 #include "hw/riscv/boot.h"
 #include "exec/address-spaces.h"
+#include "qemu/units.h"
+#include "sysemu/sysemu.h"
 
 static const struct MemmapEntry {
     hwaddr base;
     hwaddr size;
 } ibex_memmap[] = {
-    [IBEX_ROM] =            {  0x00008000,   0xc000 },
+    [IBEX_ROM] =            {  0x00008000, 16 * KiB },
     [IBEX_RAM] =            {  0x10000000,  0x10000 },
     [IBEX_FLASH] =          {  0x20000000,  0x80000 },
     [IBEX_UART] =           {  0x40000000,  0x10000 },
@@ -51,7 +53,7 @@ static const struct MemmapEntry {
     [IBEX_PADCTRL] =        {  0x40160000,  0x10000 }
 };
 
-static void riscv_opentitan_init(MachineState *machine)
+static void opentitan_board_init(MachineState *machine)
 {
     const struct MemmapEntry *memmap = ibex_memmap;
     OpenTitanState *s = g_new0(OpenTitanState, 1);
@@ -60,16 +62,13 @@ static void riscv_opentitan_init(MachineState *machine)
 
     /* Initialize SoC */
     object_initialize_child(OBJECT(machine), "soc", &s->soc,
-                            sizeof(s->soc), TYPE_RISCV_IBEX_SOC,
-                            &error_abort, NULL);
-    object_property_set_bool(OBJECT(&s->soc), true, "realized",
-                            &error_abort);
+                            TYPE_RISCV_IBEX_SOC);
+    qdev_realize(DEVICE(&s->soc), NULL, &error_abort);
 
     memory_region_init_ram(main_mem, NULL, "riscv.lowrisc.ibex.ram",
         memmap[IBEX_RAM].size, &error_fatal);
     memory_region_add_subregion(sys_mem,
         memmap[IBEX_RAM].base, main_mem);
-
 
     if (machine->firmware) {
         riscv_load_firmware(machine->firmware, memmap[IBEX_RAM].base, NULL);
@@ -80,38 +79,39 @@ static void riscv_opentitan_init(MachineState *machine)
     }
 }
 
-static void riscv_opentitan_machine_init(MachineClass *mc)
+static void opentitan_machine_init(MachineClass *mc)
 {
     mc->desc = "RISC-V Board compatible with OpenTitan";
-    mc->init = riscv_opentitan_init;
+    mc->init = opentitan_board_init;
     mc->max_cpus = 1;
     mc->default_cpu_type = TYPE_RISCV_CPU_IBEX;
 }
 
-DEFINE_MACHINE("opentitan", riscv_opentitan_machine_init)
+DEFINE_MACHINE("opentitan", opentitan_machine_init)
 
-static void riscv_lowrisc_ibex_soc_init(Object *obj)
+static void lowrisc_ibex_soc_init(Object *obj)
 {
     LowRISCIbexSoCState *s = RISCV_IBEX_SOC(obj);
 
-    object_initialize_child(obj, "cpus", &s->cpus,
-                            sizeof(s->cpus), TYPE_RISCV_HART_ARRAY,
-                            &error_abort, NULL);
+    object_initialize_child(obj, "cpus", &s->cpus, TYPE_RISCV_HART_ARRAY);
+
+    object_initialize_child(obj, "plic", &s->plic, TYPE_IBEX_PLIC);
+
+    object_initialize_child(obj, "uart", &s->uart, TYPE_IBEX_UART);
 }
 
-static void riscv_lowrisc_ibex_soc_realize(DeviceState *dev_soc, Error **errp)
+static void lowrisc_ibex_soc_realize(DeviceState *dev_soc, Error **errp)
 {
     const struct MemmapEntry *memmap = ibex_memmap;
     MachineState *ms = MACHINE(qdev_get_machine());
     LowRISCIbexSoCState *s = RISCV_IBEX_SOC(dev_soc);
     MemoryRegion *sys_mem = get_system_memory();
 
-    object_property_set_str(OBJECT(&s->cpus), ms->cpu_type, "cpu-type",
+    object_property_set_str(OBJECT(&s->cpus), "cpu-type", ms->cpu_type,
                             &error_abort);
-    object_property_set_int(OBJECT(&s->cpus), ms->smp.cpus, "num-harts",
+    object_property_set_int(OBJECT(&s->cpus), "num-harts", ms->smp.cpus,
                             &error_abort);
-    object_property_set_bool(OBJECT(&s->cpus), true, "realized",
-                            &error_abort);
+    sysbus_realize(SYS_BUS_DEVICE(&s->cpus), &error_abort);
 
     /* Boot ROM */
     memory_region_init_rom(&s->rom, OBJECT(dev_soc), "riscv.lowrisc.ibex.rom",
@@ -125,8 +125,31 @@ static void riscv_lowrisc_ibex_soc_realize(DeviceState *dev_soc, Error **errp)
     memory_region_add_subregion(sys_mem, memmap[IBEX_FLASH].base,
                                 &s->flash_mem);
 
-    create_unimplemented_device("riscv.lowrisc.ibex.uart",
-        memmap[IBEX_UART].base, memmap[IBEX_UART].size);
+    /* PLIC */
+    if (!sysbus_realize(SYS_BUS_DEVICE(&s->plic), errp)) {
+        return;
+    }
+    sysbus_mmio_map(SYS_BUS_DEVICE(&s->plic), 0, memmap[IBEX_PLIC].base);
+
+    /* UART */
+    qdev_prop_set_chr(DEVICE(&(s->uart)), "chardev", serial_hd(0));
+    if (!sysbus_realize(SYS_BUS_DEVICE(&s->uart), errp)) {
+        return;
+    }
+    sysbus_mmio_map(SYS_BUS_DEVICE(&s->uart), 0, memmap[IBEX_UART].base);
+    sysbus_connect_irq(SYS_BUS_DEVICE(&s->uart),
+                       0, qdev_get_gpio_in(DEVICE(&s->plic),
+                       IBEX_UART_TX_WATERMARK_IRQ));
+    sysbus_connect_irq(SYS_BUS_DEVICE(&s->uart),
+                       1, qdev_get_gpio_in(DEVICE(&s->plic),
+                       IBEX_UART_RX_WATERMARK_IRQ));
+    sysbus_connect_irq(SYS_BUS_DEVICE(&s->uart),
+                       2, qdev_get_gpio_in(DEVICE(&s->plic),
+                       IBEX_UART_TX_EMPTY_IRQ));
+    sysbus_connect_irq(SYS_BUS_DEVICE(&s->uart),
+                       3, qdev_get_gpio_in(DEVICE(&s->plic),
+                       IBEX_UART_RX_OVERFLOW_IRQ));
+
     create_unimplemented_device("riscv.lowrisc.ibex.gpio",
         memmap[IBEX_GPIO].base, memmap[IBEX_GPIO].size);
     create_unimplemented_device("riscv.lowrisc.ibex.spi",
@@ -145,8 +168,6 @@ static void riscv_lowrisc_ibex_soc_realize(DeviceState *dev_soc, Error **errp)
         memmap[IBEX_AES].base, memmap[IBEX_AES].size);
     create_unimplemented_device("riscv.lowrisc.ibex.hmac",
         memmap[IBEX_HMAC].base, memmap[IBEX_HMAC].size);
-    create_unimplemented_device("riscv.lowrisc.ibex.plic",
-        memmap[IBEX_PLIC].base, memmap[IBEX_PLIC].size);
     create_unimplemented_device("riscv.lowrisc.ibex.pinmux",
         memmap[IBEX_PINMUX].base, memmap[IBEX_PINMUX].size);
     create_unimplemented_device("riscv.lowrisc.ibex.alert_handler",
@@ -159,26 +180,26 @@ static void riscv_lowrisc_ibex_soc_realize(DeviceState *dev_soc, Error **errp)
         memmap[IBEX_PADCTRL].base, memmap[IBEX_PADCTRL].size);
 }
 
-static void riscv_lowrisc_ibex_soc_class_init(ObjectClass *oc, void *data)
+static void lowrisc_ibex_soc_class_init(ObjectClass *oc, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
 
-    dc->realize = riscv_lowrisc_ibex_soc_realize;
+    dc->realize = lowrisc_ibex_soc_realize;
     /* Reason: Uses serial_hds in realize function, thus can't be used twice */
     dc->user_creatable = false;
 }
 
-static const TypeInfo riscv_lowrisc_ibex_soc_type_info = {
+static const TypeInfo lowrisc_ibex_soc_type_info = {
     .name = TYPE_RISCV_IBEX_SOC,
     .parent = TYPE_DEVICE,
     .instance_size = sizeof(LowRISCIbexSoCState),
-    .instance_init = riscv_lowrisc_ibex_soc_init,
-    .class_init = riscv_lowrisc_ibex_soc_class_init,
+    .instance_init = lowrisc_ibex_soc_init,
+    .class_init = lowrisc_ibex_soc_class_init,
 };
 
-static void riscv_lowrisc_ibex_soc_register_types(void)
+static void lowrisc_ibex_soc_register_types(void)
 {
-    type_register_static(&riscv_lowrisc_ibex_soc_type_info);
+    type_register_static(&lowrisc_ibex_soc_type_info);
 }
 
-type_init(riscv_lowrisc_ibex_soc_register_types)
+type_init(lowrisc_ibex_soc_register_types)

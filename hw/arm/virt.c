@@ -217,11 +217,9 @@ static bool cpu_type_valid(const char *cpu)
 
 static void create_kaslr_seed(VirtMachineState *vms, const char *node)
 {
-    Error *err = NULL;
     uint64_t seed;
 
-    if (qemu_guest_getrandom(&seed, sizeof(seed), &err)) {
-        error_free(err);
+    if (qemu_guest_getrandom(&seed, sizeof(seed), NULL)) {
         return;
     }
     qemu_fdt_setprop_u64(vms->fdt, node, "kaslr-seed", seed);
@@ -572,14 +570,14 @@ static inline DeviceState *create_acpi_ged(VirtMachineState *vms)
         event |= ACPI_GED_NVDIMM_HOTPLUG_EVT;
     }
 
-    dev = qdev_create(NULL, TYPE_ACPI_GED);
+    dev = qdev_new(TYPE_ACPI_GED);
     qdev_prop_set_uint32(dev, "ged-event", event);
 
     sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, vms->memmap[VIRT_ACPI_GED].base);
     sysbus_mmio_map(SYS_BUS_DEVICE(dev), 1, vms->memmap[VIRT_PCDIMM_ACPI].base);
     sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, qdev_get_gpio_in(vms->gic, irq));
 
-    qdev_init_nofail(dev);
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
 
     return dev;
 }
@@ -594,14 +592,15 @@ static void create_its(VirtMachineState *vms)
         return;
     }
 
-    dev = qdev_create(NULL, itsclass);
+    dev = qdev_new(itsclass);
 
-    object_property_set_link(OBJECT(dev), OBJECT(vms->gic), "parent-gicv3",
+    object_property_set_link(OBJECT(dev), "parent-gicv3", OBJECT(vms->gic),
                              &error_abort);
-    qdev_init_nofail(dev);
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
     sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, vms->memmap[VIRT_GIC_ITS].base);
 
     fdt_add_its_gic_node(vms);
+    vms->msi_controller = VIRT_MSI_CTRL_ITS;
 }
 
 static void create_v2m(VirtMachineState *vms)
@@ -610,11 +609,11 @@ static void create_v2m(VirtMachineState *vms)
     int irq = vms->irqmap[VIRT_GIC_V2M];
     DeviceState *dev;
 
-    dev = qdev_create(NULL, "arm-gicv2m");
+    dev = qdev_new("arm-gicv2m");
     sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, vms->memmap[VIRT_GIC_V2M].base);
     qdev_prop_set_uint32(dev, "base-spi", irq);
     qdev_prop_set_uint32(dev, "num-spi", NUM_GICV2M_SPIS);
-    qdev_init_nofail(dev);
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
 
     for (i = 0; i < NUM_GICV2M_SPIS; i++) {
         sysbus_connect_irq(SYS_BUS_DEVICE(dev), i,
@@ -622,6 +621,7 @@ static void create_v2m(VirtMachineState *vms)
     }
 
     fdt_add_v2m_gic_node(vms);
+    vms->msi_controller = VIRT_MSI_CTRL_GICV2M;
 }
 
 static void create_gic(VirtMachineState *vms)
@@ -636,7 +636,7 @@ static void create_gic(VirtMachineState *vms)
 
     gictype = (type == 3) ? gicv3_class_name() : gic_class_name();
 
-    vms->gic = qdev_create(NULL, gictype);
+    vms->gic = qdev_new(gictype);
     qdev_prop_set_uint32(vms->gic, "revision", type);
     qdev_prop_set_uint32(vms->gic, "num-cpu", smp_cpus);
     /* Note that the num-irq property counts both internal and external
@@ -671,8 +671,8 @@ static void create_gic(VirtMachineState *vms)
                               vms->virt);
         }
     }
-    qdev_init_nofail(vms->gic);
     gicbusdev = SYS_BUS_DEVICE(vms->gic);
+    sysbus_realize_and_unref(gicbusdev, &error_fatal);
     sysbus_mmio_map(gicbusdev, 0, vms->memmap[VIRT_GIC_DIST].base);
     if (type == 3) {
         sysbus_mmio_map(gicbusdev, 1, vms->memmap[VIRT_GIC_REDIST].base);
@@ -754,11 +754,11 @@ static void create_uart(const VirtMachineState *vms, int uart,
     int irq = vms->irqmap[uart];
     const char compat[] = "arm,pl011\0arm,primecell";
     const char clocknames[] = "uartclk\0apb_pclk";
-    DeviceState *dev = qdev_create(NULL, TYPE_PL011);
+    DeviceState *dev = qdev_new(TYPE_PL011);
     SysBusDevice *s = SYS_BUS_DEVICE(dev);
 
     qdev_prop_set_chr(dev, "chardev", chr);
-    qdev_init_nofail(dev);
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
     memory_region_add_subregion(mem, base,
                                 sysbus_mmio_get_region(s, 0));
     sysbus_connect_irq(s, 0, qdev_get_gpio_in(vms->gic, irq));
@@ -948,7 +948,7 @@ static PFlashCFI01 *virt_flash_create1(VirtMachineState *vms,
      * Create a single flash device.  We use the same parameters as
      * the flash devices on the Versatile Express board.
      */
-    DeviceState *dev = qdev_create(NULL, TYPE_PFLASH_CFI01);
+    DeviceState *dev = qdev_new(TYPE_PFLASH_CFI01);
 
     qdev_prop_set_uint64(dev, "sector-length", VIRT_FLASH_SECTOR_SIZE);
     qdev_prop_set_uint8(dev, "width", 4);
@@ -980,7 +980,7 @@ static void virt_flash_map1(PFlashCFI01 *flash,
     assert(QEMU_IS_ALIGNED(size, VIRT_FLASH_SECTOR_SIZE));
     assert(size / VIRT_FLASH_SECTOR_SIZE <= UINT32_MAX);
     qdev_prop_set_uint32(dev, "num-blocks", size / VIRT_FLASH_SECTOR_SIZE);
-    qdev_init_nofail(dev);
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
 
     memory_region_add_subregion(sysmem, base,
                                 sysbus_mmio_get_region(SYS_BUS_DEVICE(dev),
@@ -1173,11 +1173,11 @@ static void create_smmu(const VirtMachineState *vms,
         return;
     }
 
-    dev = qdev_create(NULL, "arm-smmuv3");
+    dev = qdev_new("arm-smmuv3");
 
-    object_property_set_link(OBJECT(dev), OBJECT(bus), "primary-bus",
+    object_property_set_link(OBJECT(dev), "primary-bus", OBJECT(bus),
                              &error_abort);
-    qdev_init_nofail(dev);
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
     sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, base);
     for (i = 0; i < NUM_SMMU_IRQS; i++) {
         sysbus_connect_irq(SYS_BUS_DEVICE(dev), i,
@@ -1253,8 +1253,8 @@ static void create_pcie(VirtMachineState *vms)
     int i, ecam_id;
     PCIHostState *pci;
 
-    dev = qdev_create(NULL, TYPE_GPEX_HOST);
-    qdev_init_nofail(dev);
+    dev = qdev_new(TYPE_GPEX_HOST);
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
 
     ecam_id = VIRT_ECAM_ID(vms->highmem_ecam);
     base_ecam = vms->memmap[ecam_id].base;
@@ -1372,11 +1372,11 @@ static void create_platform_bus(VirtMachineState *vms)
     int i;
     MemoryRegion *sysmem = get_system_memory();
 
-    dev = qdev_create(NULL, TYPE_PLATFORM_BUS_DEVICE);
+    dev = qdev_new(TYPE_PLATFORM_BUS_DEVICE);
     dev->id = TYPE_PLATFORM_BUS_DEVICE;
     qdev_prop_set_uint32(dev, "num_irqs", PLATFORM_BUS_NUM_IRQS);
     qdev_prop_set_uint32(dev, "mmio_size", vms->memmap[VIRT_PLATFORM_BUS].size);
-    qdev_init_nofail(dev);
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
     vms->platform_bus_dev = dev;
 
     s = SYS_BUS_DEVICE(dev);
@@ -1390,8 +1390,19 @@ static void create_platform_bus(VirtMachineState *vms)
                                 sysbus_mmio_get_region(s, 0));
 }
 
+static void create_tag_ram(MemoryRegion *tag_sysmem,
+                           hwaddr base, hwaddr size,
+                           const char *name)
+{
+    MemoryRegion *tagram = g_new(MemoryRegion, 1);
+
+    memory_region_init_ram(tagram, NULL, name, size / 32, &error_fatal);
+    memory_region_add_subregion(tag_sysmem, base / 32, tagram);
+}
+
 static void create_secure_ram(VirtMachineState *vms,
-                              MemoryRegion *secure_sysmem)
+                              MemoryRegion *secure_sysmem,
+                              MemoryRegion *secure_tag_sysmem)
 {
     MemoryRegion *secram = g_new(MemoryRegion, 1);
     char *nodename;
@@ -1408,6 +1419,10 @@ static void create_secure_ram(VirtMachineState *vms,
     qemu_fdt_setprop_sized_cells(vms->fdt, nodename, "reg", 2, base, 2, size);
     qemu_fdt_setprop_string(vms->fdt, nodename, "status", "disabled");
     qemu_fdt_setprop_string(vms->fdt, nodename, "secure-status", "okay");
+
+    if (secure_tag_sysmem) {
+        create_tag_ram(secure_tag_sysmem, base, size, "mach-virt.secure-tag");
+    }
 
     g_free(nodename);
 }
@@ -1665,6 +1680,8 @@ static void machvirt_init(MachineState *machine)
     const CPUArchIdList *possible_cpus;
     MemoryRegion *sysmem = get_system_memory();
     MemoryRegion *secure_sysmem = NULL;
+    MemoryRegion *tag_sysmem = NULL;
+    MemoryRegion *secure_tag_sysmem = NULL;
     int n, virt_max_cpus;
     bool firmware_loaded;
     bool aarch64 = true;
@@ -1768,8 +1785,8 @@ static void machvirt_init(MachineState *machine)
         }
 
         cpuobj = object_new(possible_cpus->cpus[n].type);
-        object_property_set_int(cpuobj, possible_cpus->cpus[n].arch_id,
-                                "mp-affinity", NULL);
+        object_property_set_int(cpuobj, "mp-affinity",
+                                possible_cpus->cpus[n].arch_id, NULL);
 
         cs = CPU(cpuobj);
         cs->cpu_index = n;
@@ -1780,46 +1797,77 @@ static void machvirt_init(MachineState *machine)
         aarch64 &= object_property_get_bool(cpuobj, "aarch64", NULL);
 
         if (!vms->secure) {
-            object_property_set_bool(cpuobj, false, "has_el3", NULL);
+            object_property_set_bool(cpuobj, "has_el3", false, NULL);
         }
 
         if (!vms->virt && object_property_find(cpuobj, "has_el2", NULL)) {
-            object_property_set_bool(cpuobj, false, "has_el2", NULL);
+            object_property_set_bool(cpuobj, "has_el2", false, NULL);
         }
 
         if (vms->psci_conduit != QEMU_PSCI_CONDUIT_DISABLED) {
-            object_property_set_int(cpuobj, vms->psci_conduit,
-                                    "psci-conduit", NULL);
+            object_property_set_int(cpuobj, "psci-conduit", vms->psci_conduit,
+                                    NULL);
 
             /* Secondary CPUs start in PSCI powered-down state */
             if (n > 0) {
-                object_property_set_bool(cpuobj, true,
-                                         "start-powered-off", NULL);
+                object_property_set_bool(cpuobj, "start-powered-off", true,
+                                         NULL);
             }
         }
 
         if (vmc->kvm_no_adjvtime &&
             object_property_find(cpuobj, "kvm-no-adjvtime", NULL)) {
-            object_property_set_bool(cpuobj, true, "kvm-no-adjvtime", NULL);
+            object_property_set_bool(cpuobj, "kvm-no-adjvtime", true, NULL);
         }
 
         if (vmc->no_pmu && object_property_find(cpuobj, "pmu", NULL)) {
-            object_property_set_bool(cpuobj, false, "pmu", NULL);
+            object_property_set_bool(cpuobj, "pmu", false, NULL);
         }
 
         if (object_property_find(cpuobj, "reset-cbar", NULL)) {
-            object_property_set_int(cpuobj, vms->memmap[VIRT_CPUPERIPHS].base,
-                                    "reset-cbar", &error_abort);
+            object_property_set_int(cpuobj, "reset-cbar",
+                                    vms->memmap[VIRT_CPUPERIPHS].base,
+                                    &error_abort);
         }
 
-        object_property_set_link(cpuobj, OBJECT(sysmem), "memory",
+        object_property_set_link(cpuobj, "memory", OBJECT(sysmem),
                                  &error_abort);
         if (vms->secure) {
-            object_property_set_link(cpuobj, OBJECT(secure_sysmem),
-                                     "secure-memory", &error_abort);
+            object_property_set_link(cpuobj, "secure-memory",
+                                     OBJECT(secure_sysmem), &error_abort);
         }
 
-        object_property_set_bool(cpuobj, true, "realized", &error_fatal);
+        /*
+         * The cpu adds the property if and only if MemTag is supported.
+         * If it is, we must allocate the ram to back that up.
+         */
+        if (object_property_find(cpuobj, "tag-memory", NULL)) {
+            if (!tag_sysmem) {
+                tag_sysmem = g_new(MemoryRegion, 1);
+                memory_region_init(tag_sysmem, OBJECT(machine),
+                                   "tag-memory", UINT64_MAX / 32);
+
+                if (vms->secure) {
+                    secure_tag_sysmem = g_new(MemoryRegion, 1);
+                    memory_region_init(secure_tag_sysmem, OBJECT(machine),
+                                       "secure-tag-memory", UINT64_MAX / 32);
+
+                    /* As with ram, secure-tag takes precedence over tag.  */
+                    memory_region_add_subregion_overlap(secure_tag_sysmem, 0,
+                                                        tag_sysmem, -1);
+                }
+            }
+
+            object_property_set_link(cpuobj, "tag-memory", OBJECT(tag_sysmem),
+                                     &error_abort);
+            if (vms->secure) {
+                object_property_set_link(cpuobj, "secure-tag-memory",
+                                         OBJECT(secure_tag_sysmem),
+                                         &error_abort);
+            }
+        }
+
+        qdev_realize(DEVICE(cpuobj), NULL, &error_fatal);
         object_unref(cpuobj);
     }
     fdt_add_timer_nodes(vms);
@@ -1857,8 +1905,13 @@ static void machvirt_init(MachineState *machine)
     create_uart(vms, VIRT_UART, sysmem, serial_hd(0));
 
     if (vms->secure) {
-        create_secure_ram(vms, secure_sysmem);
+        create_secure_ram(vms, secure_sysmem, secure_tag_sysmem);
         create_uart(vms, VIRT_SECURE_UART, secure_sysmem, serial_hd(1));
+    }
+
+    if (tag_sysmem) {
+        create_tag_ram(tag_sysmem, vms->memmap[VIRT_MEM].base,
+                       machine->ram_size, "mach-virt.tag");
     }
 
     vms->highmem_ecam &= vms->highmem && (!firmware_loaded || aarch64);
@@ -2149,8 +2202,36 @@ out:
 static void virt_machine_device_pre_plug_cb(HotplugHandler *hotplug_dev,
                                             DeviceState *dev, Error **errp)
 {
+    VirtMachineState *vms = VIRT_MACHINE(hotplug_dev);
+
     if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
         virt_memory_pre_plug(hotplug_dev, dev, errp);
+    } else if (object_dynamic_cast(OBJECT(dev), TYPE_VIRTIO_IOMMU_PCI)) {
+        hwaddr db_start = 0, db_end = 0;
+        char *resv_prop_str;
+
+        switch (vms->msi_controller) {
+        case VIRT_MSI_CTRL_NONE:
+            return;
+        case VIRT_MSI_CTRL_ITS:
+            /* GITS_TRANSLATER page */
+            db_start = base_memmap[VIRT_GIC_ITS].base + 0x10000;
+            db_end = base_memmap[VIRT_GIC_ITS].base +
+                     base_memmap[VIRT_GIC_ITS].size - 1;
+            break;
+        case VIRT_MSI_CTRL_GICV2M:
+            /* MSI_SETSPI_NS page */
+            db_start = base_memmap[VIRT_GIC_V2M].base;
+            db_end = db_start + base_memmap[VIRT_GIC_V2M].size - 1;
+            break;
+        }
+        resv_prop_str = g_strdup_printf("0x%"PRIx64":0x%"PRIx64":%u",
+                                        db_start, db_end,
+                                        VIRTIO_IOMMU_RESV_MEM_T_MSI);
+
+        qdev_prop_set_uint32(dev, "len-reserved-regions", 1);
+        qdev_prop_set_string(dev, "reserved-regions[0]", resv_prop_str);
+        g_free(resv_prop_str);
     }
 }
 
@@ -2177,11 +2258,68 @@ static void virt_machine_device_plug_cb(HotplugHandler *hotplug_dev,
     }
 }
 
+static void virt_dimm_unplug_request(HotplugHandler *hotplug_dev,
+                                     DeviceState *dev, Error **errp)
+{
+    VirtMachineState *vms = VIRT_MACHINE(hotplug_dev);
+    Error *local_err = NULL;
+
+    if (!vms->acpi_dev) {
+        error_setg(&local_err,
+                   "memory hotplug is not enabled: missing acpi-ged device");
+        goto out;
+    }
+
+    if (object_dynamic_cast(OBJECT(dev), TYPE_NVDIMM)) {
+        error_setg(&local_err,
+                   "nvdimm device hot unplug is not supported yet.");
+        goto out;
+    }
+
+    hotplug_handler_unplug_request(HOTPLUG_HANDLER(vms->acpi_dev), dev,
+                                   &local_err);
+out:
+    error_propagate(errp, local_err);
+}
+
+static void virt_dimm_unplug(HotplugHandler *hotplug_dev,
+                             DeviceState *dev, Error **errp)
+{
+    VirtMachineState *vms = VIRT_MACHINE(hotplug_dev);
+    Error *local_err = NULL;
+
+    hotplug_handler_unplug(HOTPLUG_HANDLER(vms->acpi_dev), dev, &local_err);
+    if (local_err) {
+        goto out;
+    }
+
+    pc_dimm_unplug(PC_DIMM(dev), MACHINE(vms));
+    qdev_unrealize(dev);
+
+out:
+    error_propagate(errp, local_err);
+}
+
 static void virt_machine_device_unplug_request_cb(HotplugHandler *hotplug_dev,
                                           DeviceState *dev, Error **errp)
 {
-    error_setg(errp, "device unplug request for unsupported device"
-               " type: %s", object_get_typename(OBJECT(dev)));
+    if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
+        virt_dimm_unplug_request(hotplug_dev, dev, errp);
+    } else {
+        error_setg(errp, "device unplug request for unsupported device"
+                   " type: %s", object_get_typename(OBJECT(dev)));
+    }
+}
+
+static void virt_machine_device_unplug_cb(HotplugHandler *hotplug_dev,
+                                          DeviceState *dev, Error **errp)
+{
+    if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
+        virt_dimm_unplug(hotplug_dev, dev, errp);
+    } else {
+        error_setg(errp, "virt: device unplug for unsupported device"
+                   " type: %s", object_get_typename(OBJECT(dev)));
+    }
 }
 
 static HotplugHandler *virt_machine_get_hotplug_handler(MachineState *machine,
@@ -2262,9 +2400,10 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
     hc->pre_plug = virt_machine_device_pre_plug_cb;
     hc->plug = virt_machine_device_plug_cb;
     hc->unplug_request = virt_machine_device_unplug_request_cb;
-    mc->numa_mem_supported = true;
+    hc->unplug = virt_machine_device_unplug_cb;
     mc->nvdimm_supported = true;
     mc->auto_enable_numa_with_memhp = true;
+    mc->auto_enable_numa_with_memdev = true;
     mc->default_ram_id = "mach-virt.ram";
 
     object_class_property_add(oc, "acpi", "OnOffAuto",
@@ -2374,7 +2513,13 @@ DEFINE_VIRT_MACHINE_AS_LATEST(5, 1)
 
 static void virt_machine_5_0_options(MachineClass *mc)
 {
+    VirtMachineClass *vmc = VIRT_MACHINE_CLASS(OBJECT_CLASS(mc));
+
     virt_machine_5_1_options(mc);
+    compat_props_add(mc->compat_props, hw_compat_5_0, hw_compat_5_0_len);
+    mc->numa_mem_supported = true;
+    vmc->acpi_expose_flash = true;
+    mc->auto_enable_numa_with_memdev = false;
 }
 DEFINE_VIRT_MACHINE(5, 0)
 

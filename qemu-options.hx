@@ -239,10 +239,11 @@ SRST
         -numa node,nodeid=0 -numa node,nodeid=1 \
         -numa cpu,node-id=0,socket-id=0 -numa cpu,node-id=1,socket-id=1
 
-    '\ ``mem``\ ' assigns a given RAM amount to a node. '\ ``memdev``\ '
-    assigns RAM from a given memory backend device to a node. If
-    '\ ``mem``\ ' and '\ ``memdev``\ ' are omitted in all nodes, RAM is
-    split equally between them.
+    Legacy '\ ``mem``\ ' assigns a given RAM amount to a node (not supported
+    for 5.1 and newer machine types). '\ ``memdev``\ ' assigns RAM from
+    a given memory backend device to a node. If '\ ``mem``\ ' and
+    '\ ``memdev``\ ' are omitted in all nodes, RAM is split equally between them.
+
 
     '\ ``mem``\ ' and '\ ``memdev``\ ' are mutually exclusive.
     Furthermore, if one node uses '\ ``memdev``\ ', all of them have to
@@ -2459,6 +2460,10 @@ DEF("netdev", HAS_ARG, QEMU_OPTION_netdev,
     "-netdev vhost-user,id=str,chardev=dev[,vhostforce=on|off]\n"
     "                configure a vhost-user network, backed by a chardev 'dev'\n"
 #endif
+#ifdef __linux__
+    "-netdev vhost-vdpa,id=str,vhostdev=/path/to/dev\n"
+    "                configure a vhost-vdpa network,Establish a vhost-vdpa netdev\n"
+#endif
     "-netdev hubport,id=str,hubid=n[,netdev=nd]\n"
     "                configure a hub port on the hub with ID 'n'\n", QEMU_ARCH_ALL)
 DEF("nic", HAS_ARG, QEMU_OPTION_nic,
@@ -2936,6 +2941,14 @@ SRST
              -chardev socket,id=chr0,path=/path/to/socket \
              -netdev type=vhost-user,id=net0,chardev=chr0 \
              -device virtio-net-pci,netdev=net0
+
+``-netdev vhost-vdpa,vhostdev=/path/to/dev``
+    Establish a vhost-vdpa netdev.
+
+    vDPA device is a device that uses a datapath which complies with
+    the virtio specifications with a vendor specific control path.
+    vDPA devices can be both physically located on the hardware or
+    emulated by software.
 
 ``-netdev hubport,id=id,hubid=hubid[,netdev=nd]``
     Create a hub port on the emulated hub with ID hubid.
@@ -4340,16 +4353,22 @@ HXCOMM Deprecated by -accel tcg
 DEF("no-kvm", 0, QEMU_OPTION_no_kvm, "", QEMU_ARCH_I386)
 
 DEF("msg", HAS_ARG, QEMU_OPTION_msg,
-    "-msg timestamp[=on|off]\n"
+    "-msg [timestamp[=on|off]][,guest-name=[on|off]]\n"
     "                control error message format\n"
-    "                timestamp=on enables timestamps (default: off)\n",
+    "                timestamp=on enables timestamps (default: off)\n"
+    "                guest-name=on enables guest name prefix but only if\n"
+    "                              -name guest option is set (default: off)\n",
     QEMU_ARCH_ALL)
 SRST
-``-msg timestamp[=on|off]``
+``-msg [timestamp[=on|off]][,guest-name[=on|off]]``
     Control error message format.
 
     ``timestamp=on|off``
         Prefix messages with a timestamp. Default is off.
+
+    ``guest-name=on|off``
+        Prefix messages with guest name but only if -name guest option is set
+        otherwise the option is ignored. Default is off.
 ERST
 
 DEF("dump-vmstate", HAS_ARG, QEMU_OPTION_dump_vmstate,
@@ -4615,6 +4634,43 @@ SRST
         this through this parameter. Its format is a gnutls priority
         string as described at
         https://gnutls.org/manual/html_node/Priority-Strings.html.
+
+    ``-object tls-cipher-suites,id=id,priority=priority``
+        Creates a TLS cipher suites object, which can be used to control
+        the TLS cipher/protocol algorithms that applications are permitted
+        to use.
+
+        The ``id`` parameter is a unique ID which frontends will use to
+        access the ordered list of permitted TLS cipher suites from the
+        host.
+
+        The ``priority`` parameter allows to override the global default
+        priority used by gnutls. This can be useful if the system
+        administrator needs to use a weaker set of crypto priorities for
+        QEMU without potentially forcing the weakness onto all
+        applications. Or conversely if one wants wants a stronger
+        default for QEMU than for all other applications, they can do
+        this through this parameter. Its format is a gnutls priority
+        string as described at
+        https://gnutls.org/manual/html_node/Priority-Strings.html.
+
+        An example of use of this object is to control UEFI HTTPS Boot.
+        The tls-cipher-suites object exposes the ordered list of permitted
+        TLS cipher suites from the host side to the guest firmware, via
+        fw_cfg. The list is represented as an array of IANA_TLS_CIPHER
+        objects. The firmware uses the IANA_TLS_CIPHER array for configuring
+        guest-side TLS.
+
+        In the following example, the priority at which the host-side policy
+        is retrieved is given by the ``priority`` property.
+        Given that QEMU uses GNUTLS, ``priority=@SYSTEM`` may be used to
+        refer to /etc/crypto-policies/back-ends/gnutls.config.
+
+        .. parsed-literal::
+
+             # |qemu_system| \
+                 -object tls-cipher-suites,id=mysuite0,priority=@SYSTEM \
+                 -fw_cfg name=etc/edk2/https/ciphers,gen_id=mysuite0
 
     ``-object filter-buffer,id=id,netdev=netdevid,interval=t[,queue=all|rx|tx][,status=on|off][,position=head|tail|id=<id>][,insert=behind|before]``
         Interval t can't be 0, this filter batches the packet delivery:

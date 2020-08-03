@@ -156,10 +156,11 @@ static void zynqmp_csu_sss_realize(DeviceState *dev, Error **errp)
         if (local_errp) {
             goto zynqmp_csu_sss_realize_fail;
         }
-        object_property_set_link(OBJECT(ss), OBJECT(s), "sss", &local_errp);
+        object_property_set_link(OBJECT(ss), "sss", OBJECT(s), &local_errp);
         if (local_errp) {
             goto zynqmp_csu_sss_realize_fail;
         }
+        object_property_set_bool(OBJECT(ss), "realized", true, &error_fatal);
     }
     return;
 

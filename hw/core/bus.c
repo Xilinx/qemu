@@ -23,15 +23,15 @@
 #include "qemu/module.h"
 #include "qapi/error.h"
 
-void qbus_set_hotplug_handler(BusState *bus, Object *handler, Error **errp)
+void qbus_set_hotplug_handler(BusState *bus, Object *handler)
 {
-    object_property_set_link(OBJECT(bus), handler,
-                             QDEV_HOTPLUG_HANDLER_PROPERTY, errp);
+    object_property_set_link(OBJECT(bus), QDEV_HOTPLUG_HANDLER_PROPERTY,
+                             handler, &error_abort);
 }
 
-void qbus_set_bus_hotplug_handler(BusState *bus, Error **errp)
+void qbus_set_bus_hotplug_handler(BusState *bus)
 {
-    qbus_set_hotplug_handler(bus, OBJECT(bus), errp);
+    qbus_set_hotplug_handler(bus, OBJECT(bus));
 }
 
 int qbus_walk_children(BusState *bus,
@@ -95,7 +95,7 @@ static void bus_reset_child_foreach(Object *obj, ResettableChildCallback cb,
     }
 }
 
-static void qbus_realize(BusState *bus, DeviceState *parent, const char *name)
+static void qbus_init(BusState *bus, DeviceState *parent, const char *name)
 {
     const char *typename = object_get_typename(OBJECT(bus));
     BusClass *bc;
@@ -151,7 +151,7 @@ void qbus_create_inplace(void *bus, size_t size, const char *typename,
                          DeviceState *parent, const char *name)
 {
     object_initialize(bus, size, typename);
-    qbus_realize(bus, parent, name);
+    qbus_init(bus, parent, name);
 }
 
 BusState *qbus_create(const char *typename, DeviceState *parent, const char *name)
@@ -159,9 +159,19 @@ BusState *qbus_create(const char *typename, DeviceState *parent, const char *nam
     BusState *bus;
 
     bus = BUS(object_new(typename));
-    qbus_realize(bus, parent, name);
+    qbus_init(bus, parent, name);
 
     return bus;
+}
+
+bool qbus_realize(BusState *bus, Error **errp)
+{
+    return object_property_set_bool(OBJECT(bus), "realized", true, errp);
+}
+
+void qbus_unrealize(BusState *bus)
+{
+    object_property_set_bool(OBJECT(bus), "realized", false, &error_abort);
 }
 
 static bool bus_get_realized(Object *obj, Error **errp)
@@ -186,8 +196,7 @@ static void bus_set_realized(Object *obj, bool value, Error **errp)
     } else if (!value && bus->realized) {
         QTAILQ_FOREACH(kid, &bus->children, sibling) {
             DeviceState *dev = kid->child;
-            object_property_set_bool(OBJECT(dev), false, "realized",
-                                     &error_abort);
+            qdev_unrealize(dev);
         }
         if (bc->unrealize) {
             bc->unrealize(bus);

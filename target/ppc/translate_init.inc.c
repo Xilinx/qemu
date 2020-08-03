@@ -9086,11 +9086,6 @@ static void init_proc_POWER10(CPUPPCState *env)
     gen_spr_power8_rpr(env);
     gen_spr_power9_mmu(env);
 
-    /* POWER9 Specific registers */
-    spr_register_kvm(env, SPR_TIDR, "TIDR", NULL, NULL,
-                     spr_read_generic, spr_write_generic,
-                     KVM_REG_PPC_TIDR, 0);
-
     /* FIXME: Filter fields properly based on privilege level */
     spr_register_kvm_hv(env, SPR_PSSCR, "PSSCR", NULL, NULL, NULL, NULL,
                         spr_read_generic, spr_write_generic,
@@ -10487,7 +10482,7 @@ static void ppc_cpu_parse_featurestr(const char *type, char *features,
 
         if (compat_str) {
             char *v = compat_str + strlen("compat=");
-            object_property_set_str(machine, v, "max-cpu-compat", &local_err);
+            object_property_set_str(machine, "max-cpu-compat", v, &local_err);
         }
         g_strfreev(inpieces);
         if (local_err) {
@@ -10942,16 +10937,20 @@ static const TypeInfo ppc_cpu_type_info = {
     .class_init = ppc_cpu_class_init,
 };
 
+#ifndef CONFIG_USER_ONLY
 static const TypeInfo ppc_vhyp_type_info = {
     .name = TYPE_PPC_VIRTUAL_HYPERVISOR,
     .parent = TYPE_INTERFACE,
     .class_size = sizeof(PPCVirtualHypervisorClass),
 };
+#endif
 
 static void ppc_cpu_register_types(void)
 {
     type_register_static(&ppc_cpu_type_info);
+#ifndef CONFIG_USER_ONLY
     type_register_static(&ppc_vhyp_type_info);
+#endif
 }
 
 type_init(ppc_cpu_register_types)

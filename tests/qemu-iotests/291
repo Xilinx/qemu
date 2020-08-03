@@ -39,6 +39,8 @@ _supported_fmt qcow2
 _supported_proto file
 _supported_os Linux
 _require_command QEMU_NBD
+# compat=0.10 does not support bitmaps
+_unsupported_imgopts 'compat=0.10'
 
 echo
 echo "=== Initial image setup ==="
@@ -77,7 +79,7 @@ echo
 
 # Only bitmaps from the active layer are copied
 $QEMU_IMG convert --bitmaps -O qcow2 "$TEST_IMG.orig" "$TEST_IMG"
-$QEMU_IMG info "$TEST_IMG" | _filter_img_info --format-specific
+_img_info --format-specific
 # But we can also merge in bitmaps from other layers.  This test is a bit
 # contrived to cover more code paths, in reality, you could merge directly
 # into b0 without going through tmp
@@ -87,7 +89,7 @@ $QEMU_IMG bitmap --add --merge b0 -b "$TEST_IMG.base" -F $IMGFMT \
 $QEMU_IMG bitmap --merge tmp -f $IMGFMT "$TEST_IMG" b0
 $QEMU_IMG bitmap --remove --image-opts \
     driver=$IMGFMT,file.driver=file,file.filename="$TEST_IMG" tmp
-$QEMU_IMG info "$TEST_IMG" | _filter_img_info --format-specific
+_img_info --format-specific
 
 echo
 echo "=== Check bitmap contents ==="

@@ -64,3 +64,8 @@ config OMPIC
 
 config XILINX_IOMODULE_INTC
 	bool
+config RX_ICU
+    bool
+
+config LOONGSON_LIOINTC
+    bool

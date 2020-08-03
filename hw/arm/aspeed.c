@@ -32,10 +32,15 @@ static struct arm_boot_info aspeed_board_binfo = {
     .board_id = -1, /* device-tree-only board */
 };
 
-struct AspeedBoardState {
+struct AspeedMachineState {
+    /* Private */
+    MachineState parent_obj;
+    /* Public */
+
     AspeedSoCState soc;
     MemoryRegion ram_container;
     MemoryRegion max_ram;
+    bool mmio_exec;
 };
 
 /* Palmetto hardware value: 0x120CE416 */
@@ -215,8 +220,8 @@ static void write_boot_rom(DriveInfo *dinfo, hwaddr addr, size_t rom_size,
     g_free(storage);
 }
 
-static void aspeed_board_init_flashes(AspeedSMCState *s, const char *flashtype,
-                                      Error **errp)
+static void aspeed_board_init_flashes(AspeedSMCState *s,
+                                      const char *flashtype)
 {
     int i ;
 
@@ -225,12 +230,12 @@ static void aspeed_board_init_flashes(AspeedSMCState *s, const char *flashtype,
         DriveInfo *dinfo = drive_get_next(IF_MTD);
         qemu_irq cs_line;
 
-        fl->flash = ssi_create_slave_no_init(s->spi, flashtype);
+        fl->flash = qdev_new(flashtype);
         if (dinfo) {
-            qdev_prop_set_drive(fl->flash, "drive", blk_by_legacy_dinfo(dinfo),
-                                errp);
+            qdev_prop_set_drive(fl->flash, "drive",
+                                blk_by_legacy_dinfo(dinfo));
         }
-        qdev_init_nofail(fl->flash);
+        qdev_realize_and_unref(fl->flash, BUS(s->spi), &error_fatal);
 
         cs_line = qdev_get_gpio_in_named(fl->flash, SSI_GPIO_CS, 0);
         sysbus_connect_irq(SYS_BUS_DEVICE(s), i + 1, cs_line);
@@ -241,63 +246,66 @@ static void sdhci_attach_drive(SDHCIState *sdhci, DriveInfo *dinfo)
 {
         DeviceState *card;
 
-        card = qdev_create(qdev_get_child_bus(DEVICE(sdhci), "sd-bus"),
-                           TYPE_SD_CARD);
+        card = qdev_new(TYPE_SD_CARD);
         if (dinfo) {
-            qdev_prop_set_drive(card, "drive", blk_by_legacy_dinfo(dinfo),
-                                &error_fatal);
+            qdev_prop_set_drive_err(card, "drive", blk_by_legacy_dinfo(dinfo),
+                                    &error_fatal);
         }
-        object_property_set_bool(OBJECT(card), true, "realized", &error_fatal);
+        qdev_realize_and_unref(card,
+                               qdev_get_child_bus(DEVICE(sdhci), "sd-bus"),
+                               &error_fatal);
 }
 
 static void aspeed_machine_init(MachineState *machine)
 {
-    AspeedBoardState *bmc;
+    AspeedMachineState *bmc = ASPEED_MACHINE(machine);
     AspeedMachineClass *amc = ASPEED_MACHINE_GET_CLASS(machine);
     AspeedSoCClass *sc;
     DriveInfo *drive0 = drive_get(IF_MTD, 0, 0);
     ram_addr_t max_ram_size;
     int i;
-
-    bmc = g_new0(AspeedBoardState, 1);
+    NICInfo *nd = &nd_table[0];
 
     memory_region_init(&bmc->ram_container, NULL, "aspeed-ram-container",
-                       UINT32_MAX);
+                       4 * GiB);
     memory_region_add_subregion(&bmc->ram_container, 0, machine->ram);
 
-    object_initialize_child(OBJECT(machine), "soc", &bmc->soc,
-                            (sizeof(bmc->soc)), amc->soc_name, &error_abort,
-                            NULL);
+    object_initialize_child(OBJECT(machine), "soc", &bmc->soc, amc->soc_name);
 
     sc = ASPEED_SOC_GET_CLASS(&bmc->soc);
 
     /*
      * This will error out if isize is not supported by memory controller.
      */
-    object_property_set_uint(OBJECT(&bmc->soc), ram_size, "ram-size",
+    object_property_set_uint(OBJECT(&bmc->soc), "ram-size", ram_size,
                              &error_fatal);
 
-    object_property_set_int(OBJECT(&bmc->soc), amc->hw_strap1, "hw-strap1",
+    for (i = 0; i < sc->macs_num; i++) {
+        if ((amc->macs_mask & (1 << i)) && nd->used) {
+            qemu_check_nic_model(nd, TYPE_FTGMAC100);
+            qdev_set_nic_properties(DEVICE(&bmc->soc.ftgmac100[i]), nd);
+            nd++;
+        }
+    }
+
+    object_property_set_int(OBJECT(&bmc->soc), "hw-strap1", amc->hw_strap1,
                             &error_abort);
-    object_property_set_int(OBJECT(&bmc->soc), amc->hw_strap2, "hw-strap2",
+    object_property_set_int(OBJECT(&bmc->soc), "hw-strap2", amc->hw_strap2,
                             &error_abort);
-    object_property_set_int(OBJECT(&bmc->soc), amc->num_cs, "num-cs",
+    object_property_set_int(OBJECT(&bmc->soc), "num-cs", amc->num_cs,
                             &error_abort);
-    object_property_set_int(OBJECT(&bmc->soc), machine->smp.cpus, "num-cpus",
-                            &error_abort);
-    object_property_set_link(OBJECT(&bmc->soc), OBJECT(&bmc->ram_container),
-                             "dram", &error_abort);
+    object_property_set_link(OBJECT(&bmc->soc), "dram",
+                             OBJECT(&bmc->ram_container), &error_abort);
     if (machine->kernel_filename) {
         /*
          * When booting with a -kernel command line there is no u-boot
          * that runs to unlock the SCU. In this case set the default to
          * be unlocked as the kernel expects
          */
-        object_property_set_int(OBJECT(&bmc->soc), ASPEED_SCU_PROT_KEY,
-                                "hw-prot-key", &error_abort);
+        object_property_set_int(OBJECT(&bmc->soc), "hw-prot-key",
+                                ASPEED_SCU_PROT_KEY, &error_abort);
     }
-    object_property_set_bool(OBJECT(&bmc->soc), true, "realized",
-                             &error_abort);
+    qdev_realize(DEVICE(&bmc->soc), NULL, &error_abort);
 
     memory_region_add_subregion(get_system_memory(),
                                 sc->memmap[ASPEED_SDRAM],
@@ -309,8 +317,8 @@ static void aspeed_machine_init(MachineState *machine)
                           "max_ram", max_ram_size  - ram_size);
     memory_region_add_subregion(&bmc->ram_container, ram_size, &bmc->max_ram);
 
-    aspeed_board_init_flashes(&bmc->soc.fmc, amc->fmc_model, &error_abort);
-    aspeed_board_init_flashes(&bmc->soc.spi[0], amc->spi_model, &error_abort);
+    aspeed_board_init_flashes(&bmc->soc.fmc, amc->fmc_model);
+    aspeed_board_init_flashes(&bmc->soc.spi[0], amc->spi_model);
 
     /* Install first FMC flash content as a boot rom. */
     if (drive0) {
@@ -324,12 +332,12 @@ static void aspeed_machine_init(MachineState *machine)
          * needed by the flash modules of the Aspeed machines.
          */
         if (ASPEED_MACHINE(machine)->mmio_exec) {
-            memory_region_init_alias(boot_rom, OBJECT(bmc), "aspeed.boot_rom",
+            memory_region_init_alias(boot_rom, NULL, "aspeed.boot_rom",
                                      &fl->mmio, 0, fl->size);
             memory_region_add_subregion(get_system_memory(), FIRMWARE_ADDR,
                                         boot_rom);
         } else {
-            memory_region_init_rom(boot_rom, OBJECT(bmc), "aspeed.boot_rom",
+            memory_region_init_rom(boot_rom, NULL, "aspeed.boot_rom",
                                    fl->size, &error_abort);
             memory_region_add_subregion(get_system_memory(), FIRMWARE_ADDR,
                                         boot_rom);
@@ -337,10 +345,10 @@ static void aspeed_machine_init(MachineState *machine)
         }
     }
 
-    if (machine->kernel_filename && bmc->soc.num_cpus > 1) {
+    if (machine->kernel_filename && sc->num_cpus > 1) {
         /* With no u-boot we must set up a boot stub for the secondary CPU */
         MemoryRegion *smpboot = g_new(MemoryRegion, 1);
-        memory_region_init_ram(smpboot, OBJECT(bmc), "aspeed.smpboot",
+        memory_region_init_ram(smpboot, NULL, "aspeed.smpboot",
                                0x80, &error_abort);
         memory_region_add_subregion(get_system_memory(),
                                     AST_SMP_MAILBOX_BASE, smpboot);
@@ -352,7 +360,7 @@ static void aspeed_machine_init(MachineState *machine)
 
     aspeed_board_binfo.ram_size = ram_size;
     aspeed_board_binfo.loader_start = sc->memmap[ASPEED_SDRAM];
-    aspeed_board_binfo.nb_cpus = bmc->soc.num_cpus;
+    aspeed_board_binfo.nb_cpus = sc->num_cpus;
 
     if (amc->i2c_init) {
         amc->i2c_init(bmc);
@@ -369,7 +377,7 @@ static void aspeed_machine_init(MachineState *machine)
     arm_load_kernel(ARM_CPU(first_cpu), machine, &aspeed_board_binfo);
 }
 
-static void palmetto_bmc_i2c_init(AspeedBoardState *bmc)
+static void palmetto_bmc_i2c_init(AspeedMachineState *bmc)
 {
     AspeedSoCState *soc = &bmc->soc;
     DeviceState *dev;
@@ -385,13 +393,13 @@ static void palmetto_bmc_i2c_init(AspeedBoardState *bmc)
     /* add a TMP423 temperature sensor */
     dev = i2c_create_slave(aspeed_i2c_get_bus(DEVICE(&soc->i2c), 2),
                            "tmp423", 0x4c);
-    object_property_set_int(OBJECT(dev), 31000, "temperature0", &error_abort);
-    object_property_set_int(OBJECT(dev), 28000, "temperature1", &error_abort);
-    object_property_set_int(OBJECT(dev), 20000, "temperature2", &error_abort);
-    object_property_set_int(OBJECT(dev), 110000, "temperature3", &error_abort);
+    object_property_set_int(OBJECT(dev), "temperature0", 31000, &error_abort);
+    object_property_set_int(OBJECT(dev), "temperature1", 28000, &error_abort);
+    object_property_set_int(OBJECT(dev), "temperature2", 20000, &error_abort);
+    object_property_set_int(OBJECT(dev), "temperature3", 110000, &error_abort);
 }
 
-static void ast2500_evb_i2c_init(AspeedBoardState *bmc)
+static void ast2500_evb_i2c_init(AspeedMachineState *bmc)
 {
     AspeedSoCState *soc = &bmc->soc;
     uint8_t *eeprom_buf = g_malloc0(8 * 1024);
@@ -408,13 +416,13 @@ static void ast2500_evb_i2c_init(AspeedBoardState *bmc)
     i2c_create_slave(aspeed_i2c_get_bus(DEVICE(&soc->i2c), 11), "ds1338", 0x32);
 }
 
-static void ast2600_evb_i2c_init(AspeedBoardState *bmc)
+static void ast2600_evb_i2c_init(AspeedMachineState *bmc)
 {
     /* Start with some devices on our I2C busses */
     ast2500_evb_i2c_init(bmc);
 }
 
-static void romulus_bmc_i2c_init(AspeedBoardState *bmc)
+static void romulus_bmc_i2c_init(AspeedMachineState *bmc)
 {
     AspeedSoCState *soc = &bmc->soc;
 
@@ -423,7 +431,7 @@ static void romulus_bmc_i2c_init(AspeedBoardState *bmc)
     i2c_create_slave(aspeed_i2c_get_bus(DEVICE(&soc->i2c), 11), "ds1338", 0x32);
 }
 
-static void swift_bmc_i2c_init(AspeedBoardState *bmc)
+static void swift_bmc_i2c_init(AspeedMachineState *bmc)
 {
     AspeedSoCState *soc = &bmc->soc;
 
@@ -452,7 +460,7 @@ static void swift_bmc_i2c_init(AspeedBoardState *bmc)
     i2c_create_slave(aspeed_i2c_get_bus(DEVICE(&soc->i2c), 12), "tmp105", 0x4a);
 }
 
-static void sonorapass_bmc_i2c_init(AspeedBoardState *bmc)
+static void sonorapass_bmc_i2c_init(AspeedMachineState *bmc)
 {
     AspeedSoCState *soc = &bmc->soc;
 
@@ -496,16 +504,19 @@ static void sonorapass_bmc_i2c_init(AspeedBoardState *bmc)
 
 }
 
-static void witherspoon_bmc_i2c_init(AspeedBoardState *bmc)
+static void witherspoon_bmc_i2c_init(AspeedMachineState *bmc)
 {
     AspeedSoCState *soc = &bmc->soc;
     uint8_t *eeprom_buf = g_malloc0(8 * 1024);
+    DeviceState *dev;
 
     /* Bus 3: TODO bmp280@77 */
     /* Bus 3: TODO max31785@52 */
     /* Bus 3: TODO dps310@76 */
-    i2c_create_slave(aspeed_i2c_get_bus(DEVICE(&soc->i2c), 3), TYPE_PCA9552,
-                     0x60);
+    dev = i2c_try_create_slave(TYPE_PCA9552, 0x60);
+    qdev_prop_set_string(dev, "description", "pca1");
+    i2c_realize_and_unref(dev, aspeed_i2c_get_bus(DEVICE(&soc->i2c), 3),
+                          &error_fatal);
 
     i2c_create_slave(aspeed_i2c_get_bus(DEVICE(&soc->i2c), 4), "tmp423", 0x4c);
     i2c_create_slave(aspeed_i2c_get_bus(DEVICE(&soc->i2c), 5), "tmp423", 0x4c);
@@ -520,8 +531,10 @@ static void witherspoon_bmc_i2c_init(AspeedBoardState *bmc)
 
     smbus_eeprom_init_one(aspeed_i2c_get_bus(DEVICE(&soc->i2c), 11), 0x51,
                           eeprom_buf);
-    i2c_create_slave(aspeed_i2c_get_bus(DEVICE(&soc->i2c), 11), TYPE_PCA9552,
-                     0x60);
+    dev = i2c_try_create_slave(TYPE_PCA9552, 0x60);
+    qdev_prop_set_string(dev, "description", "pca0");
+    i2c_realize_and_unref(dev, aspeed_i2c_get_bus(DEVICE(&soc->i2c), 11),
+                          &error_fatal);
     /* Bus 11: TODO ucd90160@64 */
 }
 
@@ -549,16 +562,23 @@ static void aspeed_machine_class_props_init(ObjectClass *oc)
                            "boot directly from CE0 flash device");
 }
 
+static int aspeed_soc_num_cpus(const char *soc_name)
+{
+   AspeedSoCClass *sc = ASPEED_SOC_CLASS(object_class_by_name(soc_name));
+   return sc->num_cpus;
+}
+
 static void aspeed_machine_class_init(ObjectClass *oc, void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
+    AspeedMachineClass *amc = ASPEED_MACHINE_CLASS(oc);
 
     mc->init = aspeed_machine_init;
-    mc->max_cpus = ASPEED_CPUS_NUM;
     mc->no_floppy = 1;
     mc->no_cdrom = 1;
     mc->no_parallel = 1;
     mc->default_ram_id = "ram";
+    amc->macs_mask = ASPEED_MAC0_ON;
 
     aspeed_machine_class_props_init(oc);
 }
@@ -576,6 +596,8 @@ static void aspeed_machine_palmetto_class_init(ObjectClass *oc, void *data)
     amc->num_cs    = 1;
     amc->i2c_init  = palmetto_bmc_i2c_init;
     mc->default_ram_size       = 256 * MiB;
+    mc->default_cpus = mc->min_cpus = mc->max_cpus =
+        aspeed_soc_num_cpus(amc->soc_name);
 };
 
 static void aspeed_machine_ast2500_evb_class_init(ObjectClass *oc, void *data)
@@ -591,6 +613,8 @@ static void aspeed_machine_ast2500_evb_class_init(ObjectClass *oc, void *data)
     amc->num_cs    = 1;
     amc->i2c_init  = ast2500_evb_i2c_init;
     mc->default_ram_size       = 512 * MiB;
+    mc->default_cpus = mc->min_cpus = mc->max_cpus =
+        aspeed_soc_num_cpus(amc->soc_name);
 };
 
 static void aspeed_machine_romulus_class_init(ObjectClass *oc, void *data)
@@ -606,6 +630,8 @@ static void aspeed_machine_romulus_class_init(ObjectClass *oc, void *data)
     amc->num_cs    = 2;
     amc->i2c_init  = romulus_bmc_i2c_init;
     mc->default_ram_size       = 512 * MiB;
+    mc->default_cpus = mc->min_cpus = mc->max_cpus =
+        aspeed_soc_num_cpus(amc->soc_name);
 };
 
 static void aspeed_machine_sonorapass_class_init(ObjectClass *oc, void *data)
@@ -621,6 +647,8 @@ static void aspeed_machine_sonorapass_class_init(ObjectClass *oc, void *data)
     amc->num_cs    = 2;
     amc->i2c_init  = sonorapass_bmc_i2c_init;
     mc->default_ram_size       = 512 * MiB;
+    mc->default_cpus = mc->min_cpus = mc->max_cpus =
+        aspeed_soc_num_cpus(amc->soc_name);
 };
 
 static void aspeed_machine_swift_class_init(ObjectClass *oc, void *data)
@@ -636,6 +664,8 @@ static void aspeed_machine_swift_class_init(ObjectClass *oc, void *data)
     amc->num_cs    = 2;
     amc->i2c_init  = swift_bmc_i2c_init;
     mc->default_ram_size       = 512 * MiB;
+    mc->default_cpus = mc->min_cpus = mc->max_cpus =
+        aspeed_soc_num_cpus(amc->soc_name);
 };
 
 static void aspeed_machine_witherspoon_class_init(ObjectClass *oc, void *data)
@@ -651,6 +681,8 @@ static void aspeed_machine_witherspoon_class_init(ObjectClass *oc, void *data)
     amc->num_cs    = 2;
     amc->i2c_init  = witherspoon_bmc_i2c_init;
     mc->default_ram_size = 512 * MiB;
+    mc->default_cpus = mc->min_cpus = mc->max_cpus =
+        aspeed_soc_num_cpus(amc->soc_name);
 };
 
 static void aspeed_machine_ast2600_evb_class_init(ObjectClass *oc, void *data)
@@ -665,8 +697,11 @@ static void aspeed_machine_ast2600_evb_class_init(ObjectClass *oc, void *data)
     amc->fmc_model = "w25q512jv";
     amc->spi_model = "mx66u51235f";
     amc->num_cs    = 1;
+    amc->macs_mask  = ASPEED_MAC1_ON | ASPEED_MAC2_ON | ASPEED_MAC3_ON;
     amc->i2c_init  = ast2600_evb_i2c_init;
     mc->default_ram_size = 1 * GiB;
+    mc->default_cpus = mc->min_cpus = mc->max_cpus =
+        aspeed_soc_num_cpus(amc->soc_name);
 };
 
 static void aspeed_machine_tacoma_class_init(ObjectClass *oc, void *data)
@@ -681,8 +716,11 @@ static void aspeed_machine_tacoma_class_init(ObjectClass *oc, void *data)
     amc->fmc_model = "mx66l1g45g";
     amc->spi_model = "mx66l1g45g";
     amc->num_cs    = 2;
+    amc->macs_mask  = ASPEED_MAC2_ON;
     amc->i2c_init  = witherspoon_bmc_i2c_init; /* Same board layout */
     mc->default_ram_size = 1 * GiB;
+    mc->default_cpus = mc->min_cpus = mc->max_cpus =
+        aspeed_soc_num_cpus(amc->soc_name);
 };
 
 static const TypeInfo aspeed_machine_types[] = {
@@ -721,7 +759,7 @@ static const TypeInfo aspeed_machine_types[] = {
     }, {
         .name          = TYPE_ASPEED_MACHINE,
         .parent        = TYPE_MACHINE,
-        .instance_size = sizeof(AspeedMachine),
+        .instance_size = sizeof(AspeedMachineState),
         .instance_init = aspeed_machine_instance_init,
         .class_size    = sizeof(AspeedMachineClass),
         .class_init    = aspeed_machine_class_init,

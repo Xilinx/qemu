@@ -117,11 +117,10 @@ static void zynqmp_sdhci_realize(DeviceState *dev, Error **errp)
     qdev_prop_set_uint8(dev, "sd-spec-version", 3);
     qdev_prop_set_uint64(dev, "capareg", 0x280737ec6481);
     qdev_prop_set_uint8(dev, "uhs", UHS_I);
-    carddev_sd = qdev_create(qdev_get_child_bus(DEVICE(dev), "sd-bus"),
-                             TYPE_SD_CARD);
+    carddev_sd = qdev_new(TYPE_SD_CARD);
     object_property_add_child(OBJECT(dev), "sd-card",
                               OBJECT(carddev_sd));
-    object_property_set_bool(OBJECT(carddev_sd), false, "spi", &error_fatal);
+    object_property_set_bool(OBJECT(carddev_sd), "spi", false, &error_fatal);
 
     /*
      * drive_index is used to attach a card in SD mode.
@@ -141,22 +140,19 @@ static void zynqmp_sdhci_realize(DeviceState *dev, Error **errp)
     }
 
     if (di_sd) {
-        qdev_prop_set_drive(carddev_sd, "drive", blk_by_legacy_dinfo(di_sd),
-                            &error_fatal);
-        object_property_set_bool(OBJECT(carddev_sd), false, "mmc",
-                                 &error_fatal);
+        qdev_prop_set_drive(carddev_sd, "drive", blk_by_legacy_dinfo(di_sd));
+        object_property_set_bool(OBJECT(carddev_sd), "mmc", false, &error_fatal);
     }
 
     if (di_mmc) {
-        qdev_prop_set_drive(carddev_sd, "drive", blk_by_legacy_dinfo(di_mmc),
-                            &error_fatal);
-        object_property_set_bool(OBJECT(carddev_sd), true, "mmc", &error_fatal);
+        qdev_prop_set_drive(carddev_sd, "drive", blk_by_legacy_dinfo(di_mmc));
+        object_property_set_bool(OBJECT(carddev_sd), "mmc", true, &error_fatal);
         s->is_mmc = true;
     }
 
-    object_property_set_bool(OBJECT(carddev_sd), true, "realized",
-                             &error_fatal);
-
+    qdev_realize(carddev_sd,
+                           qdev_get_child_bus(DEVICE(dev), "sd-bus"),
+                           &error_abort);
     qdev_init_gpio_in_named(dev, zynqmp_sdhci_slottype_handler, "SLOTTYPE", 1);
     s->card = SD_CARD(carddev_sd);
 

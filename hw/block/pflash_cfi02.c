@@ -724,9 +724,9 @@ static const MemoryRegionOps pflash_cfi02_ops = {
 
 static void pflash_cfi02_realize(DeviceState *dev, Error **errp)
 {
+    ERRP_GUARD();
     PFlashCFI02 *pfl = PFLASH_CFI02(dev);
     int ret;
-    Error *local_err = NULL;
 
     if (pfl->uniform_sector_len == 0 && pfl->sector_len[0] == 0) {
         error_setg(errp, "attribute \"sector-length\" not specified or zero.");
@@ -792,9 +792,8 @@ static void pflash_cfi02_realize(DeviceState *dev, Error **errp)
 
     memory_region_init_rom_device(&pfl->orig_mem, OBJECT(pfl),
                                   &pflash_cfi02_ops, pfl, pfl->name,
-                                  pfl->chip_len, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+                                  pfl->chip_len, errp);
+    if (*errp) {
         return;
     }
 
@@ -998,10 +997,10 @@ PFlashCFI02 *pflash_cfi02_register(hwaddr base,
                                    uint16_t unlock_addr1,
                                    int be)
 {
-    DeviceState *dev = qdev_create(NULL, TYPE_PFLASH_CFI02);
+    DeviceState *dev = qdev_new(TYPE_PFLASH_CFI02);
 
     if (blk) {
-        qdev_prop_set_drive(dev, "drive", blk, &error_abort);
+        qdev_prop_set_drive(dev, "drive", blk);
     }
     assert(QEMU_IS_ALIGNED(size, sector_len));
     qdev_prop_set_uint32(dev, "num-blocks", size / sector_len);
@@ -1016,7 +1015,7 @@ PFlashCFI02 *pflash_cfi02_register(hwaddr base,
     qdev_prop_set_uint16(dev, "unlock-addr0", unlock_addr0);
     qdev_prop_set_uint16(dev, "unlock-addr1", unlock_addr1);
     qdev_prop_set_string(dev, "name", name);
-    qdev_init_nofail(dev);
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
 
     sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, base);
     return PFLASH_CFI02(dev);

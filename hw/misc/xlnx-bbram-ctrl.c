@@ -510,7 +510,7 @@ static void bbram_ctrl_realize(DeviceState *dev, Error **errp)
     dinfo = drive_get_next(IF_PFLASH);
     blk = dinfo ? blk_by_legacy_dinfo(dinfo) : NULL;
     if (blk) {
-        qdev_prop_set_drive(dev, "drive", blk, errp);
+        qdev_prop_set_drive(dev, "drive", blk);
         bbram_bdrv_read(s);
     }
 }

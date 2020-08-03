@@ -324,7 +324,7 @@ static void efuse_realize(DeviceState *dev, Error **errp)
     nr_bytes = ROUND_UP((s->efuse_nr * s->efuse_size) / 8, 4);
     s->fuse32 = g_malloc0(nr_bytes);
     if (blk) {
-        qdev_prop_set_drive(dev, "drive", blk, NULL);
+        qdev_prop_set_drive(dev, "drive", blk);
 
         s->blk_ro = blk_is_read_only(s->blk);
         if (s->blk_ro) {

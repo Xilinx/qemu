@@ -1712,26 +1712,25 @@ static void spapr_machine_reset(MachineState *machine)
 
 static void spapr_create_nvram(SpaprMachineState *spapr)
 {
-    DeviceState *dev = qdev_create(&spapr->vio_bus->bus, "spapr-nvram");
+    DeviceState *dev = qdev_new("spapr-nvram");
     DriveInfo *dinfo = drive_get(IF_PFLASH, 0, 0);
 
     if (dinfo) {
-        qdev_prop_set_drive(dev, "drive", blk_by_legacy_dinfo(dinfo),
-                            &error_fatal);
+        qdev_prop_set_drive_err(dev, "drive", blk_by_legacy_dinfo(dinfo),
+                                &error_fatal);
     }
 
-    qdev_init_nofail(dev);
+    qdev_realize_and_unref(dev, &spapr->vio_bus->bus, &error_fatal);
 
     spapr->nvram = (struct SpaprNvram *)dev;
 }
 
 static void spapr_rtc_create(SpaprMachineState *spapr)
 {
-    object_initialize_child(OBJECT(spapr), "rtc",
-                            &spapr->rtc, sizeof(spapr->rtc), TYPE_SPAPR_RTC,
-                            &error_fatal, NULL);
-    object_property_set_bool(OBJECT(&spapr->rtc), true, "realized",
-                              &error_fatal);
+    object_initialize_child_with_props(OBJECT(spapr), "rtc", &spapr->rtc,
+                                       sizeof(spapr->rtc), TYPE_SPAPR_RTC,
+                                       &error_fatal, NULL);
+    qdev_realize(DEVICE(&spapr->rtc), NULL, &error_fatal);
     object_property_add_alias(OBJECT(spapr), "rtc-time", OBJECT(&spapr->rtc),
                               "date");
 }
@@ -2498,23 +2497,23 @@ static void spapr_set_vsmt_mode(SpaprMachineState *spapr, Error **errp)
     unsigned int smp_threads = ms->smp.threads;
 
     if (!kvm_enabled() && (smp_threads > 1)) {
-        error_setg(&local_err, "TCG cannot support more than 1 thread/core "
-                     "on a pseries machine");
-        goto out;
+        error_setg(errp, "TCG cannot support more than 1 thread/core "
+                   "on a pseries machine");
+        return;
     }
     if (!is_power_of_2(smp_threads)) {
-        error_setg(&local_err, "Cannot support %d threads/core on a pseries "
-                     "machine because it must be a power of 2", smp_threads);
-        goto out;
+        error_setg(errp, "Cannot support %d threads/core on a pseries "
+                   "machine because it must be a power of 2", smp_threads);
+        return;
     }
 
     /* Detemine the VSMT mode to use: */
     if (vsmt_user) {
         if (spapr->vsmt < smp_threads) {
-            error_setg(&local_err, "Cannot support VSMT mode %d"
-                         " because it must be >= threads/core (%d)",
-                         spapr->vsmt, smp_threads);
-            goto out;
+            error_setg(errp, "Cannot support VSMT mode %d"
+                       " because it must be >= threads/core (%d)",
+                       spapr->vsmt, smp_threads);
+            return;
         }
         /* In this case, spapr->vsmt has been set by the command line */
     } else if (!smc->smp_threads_vsmt) {
@@ -2544,8 +2543,6 @@ static void spapr_set_vsmt_mode(SpaprMachineState *spapr, Error **errp)
              * behaviour will be correct */
             if ((kvm_smt >= smp_threads) && ((spapr->vsmt % kvm_smt) == 0)) {
                 warn_report_err(local_err);
-                local_err = NULL;
-                goto out;
             } else {
                 if (!vsmt_user) {
                     error_append_hint(&local_err,
@@ -2555,13 +2552,11 @@ static void spapr_set_vsmt_mode(SpaprMachineState *spapr, Error **errp)
                                       smp_threads, kvm_smt, spapr->vsmt);
                 }
                 kvmppc_error_append_smt_possible_hint(&local_err);
-                goto out;
+                error_propagate(errp, local_err);
             }
         }
     }
     /* else TCG: nothing to do currently */
-out:
-    error_propagate(errp, local_err);
 }
 
 static void spapr_init_cpus(SpaprMachineState *spapr)
@@ -2625,11 +2620,11 @@ static void spapr_init_cpus(SpaprMachineState *spapr)
                 nr_threads = smp_cpus - i * smp_threads;
             }
 
-            object_property_set_int(core, nr_threads, "nr-threads",
+            object_property_set_int(core, "nr-threads", nr_threads,
                                     &error_fatal);
-            object_property_set_int(core, core_id, CPU_CORE_PROP_CORE_ID,
+            object_property_set_int(core, CPU_CORE_PROP_CORE_ID, core_id,
                                     &error_fatal);
-            object_property_set_bool(core, true, "realized", &error_fatal);
+            qdev_realize(DEVICE(core), NULL, &error_fatal);
 
             object_unref(core);
         }
@@ -2640,9 +2635,9 @@ static PCIHostState *spapr_create_default_phb(void)
 {
     DeviceState *dev;
 
-    dev = qdev_create(NULL, TYPE_SPAPR_PCI_HOST_BRIDGE);
+    dev = qdev_new(TYPE_SPAPR_PCI_HOST_BRIDGE);
     qdev_prop_set_uint32(dev, "index", 0);
-    qdev_init_nofail(dev);
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
 
     return PCI_HOST_BRIDGE(dev);
 }
@@ -2732,6 +2727,7 @@ static void spapr_machine_init(MachineState *machine)
         error_report_err(resize_hpt_err);
         exit(1);
     }
+    error_free(resize_hpt_err);
 
     spapr->rma_size = spapr_rma_size(spapr, &error_fatal);
 
@@ -3033,8 +3029,7 @@ static void spapr_machine_init(MachineState *machine)
     register_savevm_live("spapr/htab", VMSTATE_INSTANCE_ID_ANY, 1,
                          &savevm_htab_handlers, spapr);
 
-    qbus_set_hotplug_handler(sysbus_get_default(), OBJECT(machine),
-                             &error_fatal);
+    qbus_set_hotplug_handler(sysbus_get_default(), OBJECT(machine));
 
     qemu_register_boot_set(spapr_boot_set, spapr);
 
@@ -3671,7 +3666,7 @@ static void spapr_memory_unplug(HotplugHandler *hotplug_dev, DeviceState *dev)
     SpaprDimmState *ds = spapr_pending_dimm_unplugs_find(spapr, PC_DIMM(dev));
 
     pc_dimm_unplug(PC_DIMM(dev), MACHINE(hotplug_dev));
-    object_property_set_bool(OBJECT(dev), false, "realized", &error_abort);
+    qdev_unrealize(dev);
     spapr_pending_dimm_unplugs_remove(spapr, ds);
 }
 
@@ -3687,9 +3682,8 @@ static void spapr_memory_unplug_request(HotplugHandler *hotplug_dev,
     SpaprDrc *drc;
 
     if (object_dynamic_cast(OBJECT(dev), TYPE_NVDIMM)) {
-        error_setg(&local_err,
-                   "nvdimm device hot unplug is not supported yet.");
-        goto out;
+        error_setg(errp, "nvdimm device hot unplug is not supported yet.");
+        return;
     }
 
     size = memory_device_get_region_size(MEMORY_DEVICE(dimm), &error_abort);
@@ -3698,7 +3692,8 @@ static void spapr_memory_unplug_request(HotplugHandler *hotplug_dev,
     addr_start = object_property_get_uint(OBJECT(dimm), PC_DIMM_ADDR_PROP,
                                          &local_err);
     if (local_err) {
-        goto out;
+        error_propagate(errp, local_err);
+        return;
     }
 
     /*
@@ -3708,10 +3703,9 @@ static void spapr_memory_unplug_request(HotplugHandler *hotplug_dev,
      * bail out to avoid detaching DRCs that were already released.
      */
     if (spapr_pending_dimm_unplugs_find(spapr, dimm)) {
-        error_setg(&local_err,
-                   "Memory unplug already in progress for device %s",
+        error_setg(errp, "Memory unplug already in progress for device %s",
                    dev->id);
-        goto out;
+        return;
     }
 
     spapr_pending_dimm_unplugs_add(spapr, nr_lmbs, dimm);
@@ -3730,8 +3724,6 @@ static void spapr_memory_unplug_request(HotplugHandler *hotplug_dev,
                           addr_start / SPAPR_MEMORY_BLOCK_SIZE);
     spapr_hotplug_req_remove_by_count_indexed(SPAPR_DR_CONNECTOR_TYPE_LMB,
                                               nr_lmbs, spapr_drc_index(drc));
-out:
-    error_propagate(errp, local_err);
 }
 
 /* Callback to be called during DRC release. */
@@ -3764,7 +3756,7 @@ static void spapr_core_unplug(HotplugHandler *hotplug_dev, DeviceState *dev)
 
     assert(core_slot);
     core_slot->cpu = NULL;
-    object_property_set_bool(OBJECT(dev), false, "realized", &error_abort);
+    qdev_unrealize(dev);
 }
 
 static
@@ -3892,7 +3884,6 @@ static void spapr_core_pre_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
 {
     MachineState *machine = MACHINE(OBJECT(hotplug_dev));
     MachineClass *mc = MACHINE_GET_CLASS(hotplug_dev);
-    Error *local_err = NULL;
     CPUCore *cc = CPU_CORE(dev);
     const char *base_core_type = spapr_get_cpu_core_type(machine->cpu_type);
     const char *type = object_get_typename(OBJECT(dev));
@@ -3901,18 +3892,18 @@ static void spapr_core_pre_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
     unsigned int smp_threads = machine->smp.threads;
 
     if (dev->hotplugged && !mc->has_hotpluggable_cpus) {
-        error_setg(&local_err, "CPU hotplug not supported for this machine");
-        goto out;
+        error_setg(errp, "CPU hotplug not supported for this machine");
+        return;
     }
 
     if (strcmp(base_core_type, type)) {
-        error_setg(&local_err, "CPU core type should be %s", base_core_type);
-        goto out;
+        error_setg(errp, "CPU core type should be %s", base_core_type);
+        return;
     }
 
     if (cc->core_id % smp_threads) {
-        error_setg(&local_err, "invalid core id %d", cc->core_id);
-        goto out;
+        error_setg(errp, "invalid core id %d", cc->core_id);
+        return;
     }
 
     /*
@@ -3922,26 +3913,23 @@ static void spapr_core_pre_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
      * total vcpus not a multiple of threads-per-core.
      */
     if (mc->has_hotpluggable_cpus && (cc->nr_threads != smp_threads)) {
-        error_setg(&local_err, "invalid nr-threads %d, must be %d",
-                   cc->nr_threads, smp_threads);
-        goto out;
+        error_setg(errp, "invalid nr-threads %d, must be %d", cc->nr_threads,
+                   smp_threads);
+        return;
     }
 
     core_slot = spapr_find_cpu_slot(MACHINE(hotplug_dev), cc->core_id, &index);
     if (!core_slot) {
-        error_setg(&local_err, "core id %d out of range", cc->core_id);
-        goto out;
+        error_setg(errp, "core id %d out of range", cc->core_id);
+        return;
     }
 
     if (core_slot->cpu) {
-        error_setg(&local_err, "core %d already populated", cc->core_id);
-        goto out;
+        error_setg(errp, "core %d already populated", cc->core_id);
+        return;
     }
 
-    numa_cpu_pre_plug(core_slot, dev, &local_err);
-
-out:
-    error_propagate(errp, local_err);
+    numa_cpu_pre_plug(core_slot, dev, errp);
 }
 
 int spapr_phb_dt_populate(SpaprDrc *drc, SpaprMachineState *spapr,
@@ -4037,7 +4025,7 @@ void spapr_phb_release(DeviceState *dev)
 
 static void spapr_phb_unplug(HotplugHandler *hotplug_dev, DeviceState *dev)
 {
-    object_property_set_bool(OBJECT(dev), false, "realized", &error_abort);
+    qdev_unrealize(dev);
 }
 
 static void spapr_phb_unplug_request(HotplugHandler *hotplug_dev,
@@ -4073,7 +4061,7 @@ static void spapr_tpm_proxy_unplug(HotplugHandler *hotplug_dev, DeviceState *dev
 {
     SpaprMachineState *spapr = SPAPR_MACHINE(OBJECT(hotplug_dev));
 
-    object_property_set_bool(OBJECT(dev), false, "realized", &error_abort);
+    qdev_unrealize(dev);
     object_unparent(OBJECT(dev));
     spapr->tpm_proxy = NULL;
 }
@@ -4511,7 +4499,6 @@ static void spapr_machine_class_init(ObjectClass *oc, void *data)
      * in which LMBs are represented and hot-added
      */
     mc->numa_mem_align_shift = 28;
-    mc->numa_mem_supported = true;
     mc->auto_enable_numa = true;
 
     smc->default_caps.caps[SPAPR_CAP_HTM] = SPAPR_CAP_OFF;
@@ -4599,6 +4586,7 @@ static void spapr_machine_5_0_class_options(MachineClass *mc)
 {
     spapr_machine_5_1_class_options(mc);
     compat_props_add(mc->compat_props, hw_compat_5_0, hw_compat_5_0_len);
+    mc->numa_mem_supported = true;
 }
 
 DEFINE_SPAPR_MACHINE(5_0, "5.0", false);

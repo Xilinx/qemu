@@ -241,9 +241,11 @@ iscsi_co_generic_cb(struct iscsi_context *iscsi, int status,
 
     iTask->status = status;
     iTask->do_retry = 0;
+    iTask->err_code = 0;
     iTask->task = task;
 
     if (status != SCSI_STATUS_GOOD) {
+        iTask->err_code = -EIO;
         if (iTask->retries++ < ISCSI_CMD_RETRIES) {
             if (status == SCSI_STATUS_BUSY ||
                 status == SCSI_STATUS_TIMEOUT ||
@@ -266,16 +268,16 @@ iscsi_co_generic_cb(struct iscsi_context *iscsi, int status,
                 timer_mod(&iTask->retry_timer,
                           qemu_clock_get_ms(QEMU_CLOCK_REALTIME) + retry_time);
                 iTask->do_retry = 1;
-            }
-        } else if (status == SCSI_STATUS_CHECK_CONDITION) {
-            int error = iscsi_translate_sense(&task->sense);
-            if (error == EAGAIN) {
-                error_report("iSCSI CheckCondition: %s",
-                             iscsi_get_error(iscsi));
-                iTask->do_retry = 1;
-            } else {
-                iTask->err_code = -error;
-                iTask->err_str = g_strdup(iscsi_get_error(iscsi));
+            } else if (status == SCSI_STATUS_CHECK_CONDITION) {
+                int error = iscsi_translate_sense(&task->sense);
+                if (error == EAGAIN) {
+                    error_report("iSCSI CheckCondition: %s",
+                                 iscsi_get_error(iscsi));
+                    iTask->do_retry = 1;
+                } else {
+                    iTask->err_code = -error;
+                    iTask->err_str = g_strdup(iscsi_get_error(iscsi));
+                }
             }
         }
     }
@@ -1792,9 +1794,7 @@ static int iscsi_open(BlockDriverState *bs, QDict *options, int flags,
     int i, ret = 0, timeout = 0, lun;
 
     opts = qemu_opts_create(&runtime_opts, NULL, 0, &error_abort);
-    qemu_opts_absorb_qdict(opts, options, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!qemu_opts_absorb_qdict(opts, options, errp)) {
         ret = -EINVAL;
         goto out;
     }
@@ -2163,7 +2163,6 @@ static int coroutine_fn iscsi_co_truncate(BlockDriverState *bs, int64_t offset,
 static int iscsi_get_info(BlockDriverState *bs, BlockDriverInfo *bdi)
 {
     IscsiLun *iscsilun = bs->opaque;
-    bdi->unallocated_blocks_are_zero = iscsilun->lbprz;
     bdi->cluster_size = iscsilun->cluster_size;
     return 0;
 }

@@ -327,9 +327,7 @@ static void prop_get_fdt(Object *obj, Visitor *v, const char *name,
         case FDT_BEGIN_NODE:
             fdt_depth++;
             name = fdt_get_name(fdt, fdt_offset, &name_len);
-            visit_start_struct(v, name, NULL, 0, &err);
-            if (err) {
-                error_propagate(errp, err);
+            if (!visit_start_struct(v, name, NULL, 0, errp)) {
                 return;
             }
             break;
@@ -348,15 +346,12 @@ static void prop_get_fdt(Object *obj, Visitor *v, const char *name,
             int i;
             prop = fdt_get_property_by_offset(fdt, fdt_offset, &prop_len);
             name = fdt_string(fdt, fdt32_to_cpu(prop->nameoff));
-            visit_start_list(v, name, NULL, 0, &err);
-            if (err) {
-                error_propagate(errp, err);
+            if (!visit_start_list(v, name, NULL, 0, errp)) {
                 return;
             }
             for (i = 0; i < prop_len; i++) {
-                visit_type_uint8(v, NULL, (uint8_t *)&prop->data[i], &err);
-                if (err) {
-                    error_propagate(errp, err);
+                if (!visit_type_uint8(v, NULL, (uint8_t *)&prop->data[i],
+                                      errp)) {
                     return;
                 }
             }
@@ -567,7 +562,7 @@ SpaprDrc *spapr_dr_connector_new(Object *owner, const char *type,
                                 spapr_drc_index(drc));
     object_property_add_child(owner, prop_name, OBJECT(drc));
     object_unref(OBJECT(drc));
-    object_property_set_bool(OBJECT(drc), true, "realized", NULL);
+    qdev_realize(DEVICE(drc), NULL, NULL);
     g_free(prop_name);
 
     return drc;
@@ -872,7 +867,8 @@ int spapr_dt_drc(void *fdt, int offset, Object *owner, uint32_t drc_type_mask)
             continue;
         }
 
-        obj = object_property_get_link(root_container, prop->name, NULL);
+        obj = object_property_get_link(root_container, prop->name,
+                                       &error_abort);
         drc = SPAPR_DR_CONNECTOR(obj);
         drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
 
@@ -1163,16 +1159,14 @@ static void rtas_ibm_configure_connector(PowerPCCPU *cpu,
     drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
 
     if (!drc->fdt) {
-        Error *local_err = NULL;
         void *fdt;
         int fdt_size;
 
         fdt = create_device_tree(&fdt_size);
 
         if (drck->dt_populate(drc, spapr, fdt, &drc->fdt_start_offset,
-                              &local_err)) {
+                              NULL)) {
             g_free(fdt);
-            error_free(local_err);
             rc = SPAPR_DR_CC_RESPONSE_ERROR;
             goto out;
         }

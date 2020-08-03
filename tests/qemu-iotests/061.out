@@ -25,7 +25,7 @@ refcount_order            4
 header_length             112
 
 Header extension:
-magic                     0x6803f857
+magic                     0x6803f857 (Feature table)
 length                    336
 data                      <binary>
 
@@ -83,7 +83,7 @@ refcount_order            4
 header_length             112
 
 Header extension:
-magic                     0x6803f857
+magic                     0x6803f857 (Feature table)
 length                    336
 data                      <binary>
 
@@ -139,7 +139,7 @@ refcount_order            4
 header_length             112
 
 Header extension:
-magic                     0x6803f857
+magic                     0x6803f857 (Feature table)
 length                    336
 data                      <binary>
 
@@ -194,7 +194,7 @@ refcount_order            4
 header_length             112
 
 Header extension:
-magic                     0x6803f857
+magic                     0x6803f857 (Feature table)
 length                    336
 data                      <binary>
 
@@ -263,7 +263,7 @@ refcount_order            4
 header_length             112
 
 Header extension:
-magic                     0x6803f857
+magic                     0x6803f857 (Feature table)
 length                    336
 data                      <binary>
 
@@ -325,7 +325,7 @@ refcount_order            4
 header_length             112
 
 Header extension:
-magic                     0x6803f857
+magic                     0x6803f857 (Feature table)
 length                    336
 data                      <binary>
 
@@ -354,7 +354,7 @@ refcount_order            4
 header_length             112
 
 Header extension:
-magic                     0x6803f857
+magic                     0x6803f857 (Feature table)
 length                    336
 data                      <binary>
 
@@ -381,16 +381,20 @@ qemu-img: Lazy refcounts only supported with compatibility level 1.1 and above (
 qemu-img: Lazy refcounts only supported with compatibility level 1.1 and above (use compat=1.1 or greater)
 qemu-img: Unknown compatibility level 0.42
 qemu-img: Invalid parameter 'foo'
-qemu-img: Changing the cluster size is not supported
-qemu-img: Changing the encryption flag is not supported
-qemu-img: Cannot change preallocation mode
+qemu-img: Invalid parameter 'cluster_size'
+This option is only supported for image creation
+qemu-img: Invalid parameter 'encryption'
+This option is only supported for image creation
+qemu-img: Invalid parameter 'preallocation'
+This option is only supported for image creation
 
 === Testing correct handling of unset value ===
 
 Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=67108864
 Should work:
 Should not work:
-qemu-img: Changing the cluster size is not supported
+qemu-img: Invalid parameter 'cluster_size'
+This option is only supported for image creation
 
 === Testing zero expansion on inactive clusters ===
 

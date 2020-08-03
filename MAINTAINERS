@@ -115,7 +115,7 @@ Overall TCG CPUs
 M: Richard Henderson <rth@twiddle.net>
 R: Paolo Bonzini <pbonzini@redhat.com>
 S: Maintained
-F: cpus.c
+F: softmmu/cpus.c
 F: cpus-common.c
 F: exec.c
 F: accel/tcg/
@@ -166,6 +166,14 @@ L: qemu-arm@nongnu.org
 S: Maintained
 F: hw/arm/smmu*
 F: include/hw/arm/smmu*
+
+AVR TCG CPUs
+M: Michael Rolnik <mrolnik@gmail.com>
+R: Sarah Harris <S.E.Harris@kent.ac.uk>
+S: Maintained
+F: gdb-xml/avr-cpu.xml
+F: target/avr/
+F: tests/acceptance/machine_avr6.py
 
 CRIS TCG CPUs
 M: Edgar E. Iglesias <edgar.iglesias@gmail.com>
@@ -296,7 +304,7 @@ F: tests/tcg/s390x/
 L: qemu-s390x@nongnu.org
 
 SH4 TCG CPUs
-M: Aurelien Jarno <aurelien@aurel32.net>
+M: Yoshinori Sato <ysato@users.sourceforge.jp>
 S: Odd Fixes
 F: target/sh4/
 F: hw/sh4/
@@ -362,7 +370,7 @@ Overall KVM CPUs
 M: Paolo Bonzini <pbonzini@redhat.com>
 L: kvm@vger.kernel.org
 S: Supported
-F: */kvm.*
+F: */*/kvm*
 F: accel/kvm/
 F: accel/stubs/kvm-stub.c
 F: include/hw/kvm/
@@ -416,8 +424,21 @@ S: Supported
 F: target/i386/kvm.c
 F: scripts/kvm/vmxcap
 
+Guest CPU Cores (other accelerators)
+------------------------------------
+Overall
+M: Richard Henderson <rth@twiddle.net>
+R: Paolo Bonzini <pbonzini@redhat.com>
+S: Maintained
+F: include/sysemu/accel.h
+F: accel/accel.c
+F: accel/Makefile.objs
+F: accel/stubs/Makefile.objs
+
 X86 HVF CPUs
+M: Cameron Esfahani <dirty@apple.com>
 M: Roman Bolshakov <r.bolshakov@yadro.com>
+W: https://wiki.qemu.org/Features/HVF
 S: Maintained
 F: accel/stubs/hvf-stub.c
 F: target/i386/hvf/
@@ -440,6 +461,7 @@ M: Paul Durrant <paul@xen.org>
 L: xen-devel@lists.xenproject.org
 S: Supported
 F: */xen*
+F: accel/xen/*
 F: hw/9pfs/xen-9p*
 F: hw/char/xen_console.c
 F: hw/display/xenfb.c
@@ -453,6 +475,7 @@ F: hw/i386/xen/
 F: hw/pci-host/xen_igd_pt.c
 F: include/hw/block/dataplane/xen*
 F: include/hw/xen/
+F: include/sysemu/xen.h
 F: include/sysemu/xen-mapcache.h
 
 Guest CPU Cores (HAXM)
@@ -463,6 +486,7 @@ M: Colin Xu <colin.xu@intel.com>
 L: haxm-team@intel.com
 W: https://github.com/intel/haxm/issues
 S: Maintained
+F: accel/stubs/hax-stub.c
 F: include/sysemu/hax.h
 F: target/i386/hax-*
 
@@ -785,6 +809,7 @@ F: hw/gpio/max7310.c
 F: hw/gpio/zaurus.c
 F: hw/misc/mst_fpga.c
 F: hw/misc/max111x.c
+F: include/hw/misc/max111x.h
 F: include/hw/arm/pxa.h
 F: include/hw/arm/sharpsl.h
 F: include/hw/display/tc6393xb.h
@@ -806,7 +831,7 @@ F: include/hw/misc/imx6_*.h
 F: include/hw/ssi/imx_spi.h
 
 SBSA-REF
-M: Radoslaw Biernacki <radoslaw.biernacki@linaro.org>
+M: Radoslaw Biernacki <rad@semihalf.com>
 M: Peter Maydell <peter.maydell@linaro.org>
 R: Leif Lindholm <leif@nuviainc.com>
 L: qemu-arm@nongnu.org
@@ -840,6 +865,7 @@ M: Peter Maydell <peter.maydell@linaro.org>
 L: qemu-arm@nongnu.org
 S: Maintained
 F: hw/*/versatile*
+F: include/hw/i2c/arm_sbcon_i2c.h
 F: hw/misc/arm_sysctl.c
 F: docs/system/arm/versatile.rst
 
@@ -963,6 +989,28 @@ F: hw/*/microbit*.c
 F: include/hw/*/nrf51*.h
 F: include/hw/*/microbit*.h
 F: tests/qtest/microbit-test.c
+
+AVR Machines
+-------------
+
+AVR MCUs
+M: Michael Rolnik <mrolnik@gmail.com>
+R: Sarah Harris <S.E.Harris@kent.ac.uk>
+S: Maintained
+F: default-configs/avr-softmmu.mak
+F: hw/avr/
+F: include/hw/char/avr_usart.h
+F: hw/char/avr_usart.c
+F: include/hw/timer/avr_timer16.h
+F: hw/timer/avr_timer16.c
+F: include/hw/misc/avr_power.h
+F: hw/misc/avr_power.c
+
+Arduino
+M: Philippe Mathieu-Daudé <f4bug@amsat.org>
+R: Sarah Harris <S.E.Harris@kent.ac.uk>
+S: Maintained
+F: hw/avr/arduino.c
 
 CRIS Machines
 -------------
@@ -1093,6 +1141,12 @@ F: hw/isa/vt82c686.c
 F: hw/pci-host/bonito.c
 F: include/hw/isa/vt82c686.h
 
+Loongson-3 virtual platforms
+M: Huacai Chen <chenhc@lemote.com>
+R: Jiaxun Yang <jiaxun.yang@flygoat.com>
+S: Maintained
+F: hw/intc/loongson_liointc.c
+
 Boston
 M: Paul Burton <pburton@wavecomp.com>
 R: Aleksandar Rikalo <aleksandar.rikalo@syrmia.com>
@@ -1216,7 +1270,9 @@ S: Maintained
 F: hw/ppc/pnv*
 F: hw/intc/pnv*
 F: hw/intc/xics_pnv.c
+F: hw/pci-host/pnv*
 F: include/hw/ppc/pnv*
+F: include/hw/pci-host/pnv*
 F: pc-bios/skiboot.lid
 F: tests/qtest/pnv*
 
@@ -1246,21 +1302,38 @@ M: Alistair Francis <Alistair.Francis@wdc.com>
 L: qemu-riscv@nongnu.org
 S: Supported
 F: hw/riscv/opentitan.c
+F: hw/char/ibex_uart.c
+F: hw/intc/ibex_plic.c
 F: include/hw/riscv/opentitan.h
+F: include/hw/char/ibex_uart.h
+F: include/hw/intc/ibex_plic.h
+
+RX Machines
+-----------
+rx-gdbsim
+M: Yoshinori Sato <ysato@users.sourceforge.jp>
+S: Maintained
+F: docs/system/target-rx.rst
+F: hw/rx/rx-gdbsim.c
+F: tests/acceptance/machine_rx_gdbsim.py
 
 SH4 Machines
 ------------
 R2D
-M: Magnus Damm <magnus.damm@gmail.com>
+M: Yoshinori Sato <ysato@users.sourceforge.jp>
+R: Magnus Damm <magnus.damm@gmail.com>
 S: Maintained
 F: hw/sh4/r2d.c
 F: hw/intc/sh_intc.c
-F: hw/timer/sh_timer.c
+F: include/hw/sh4/sh_intc.h
 
 Shix
-M: Magnus Damm <magnus.damm@gmail.com>
+M: Yoshinori Sato <ysato@users.sourceforge.jp>
+R: Magnus Damm <magnus.damm@gmail.com>
 S: Odd Fixes
 F: hw/sh4/shix.c
+F: hw/intc/sh_intc.c
+F: include/hw/sh4/sh_intc.h
 
 SPARC Machines
 --------------
@@ -1290,6 +1363,7 @@ F: include/hw/pci-host/sabre.h
 F: hw/pci-bridge/simba.c
 F: include/hw/pci-bridge/simba.h
 F: pc-bios/openbios-sparc64
+F: tests/acceptance/machine_sparc64_sun4u.py
 
 Sun4v
 M: Artyom Tarasenko <atar4qemu@gmail.com>
@@ -1531,7 +1605,7 @@ F: hw/acpi/*
 F: hw/smbios/*
 F: hw/i386/acpi-build.[hc]
 F: hw/arm/virt-acpi-build.c
-F: tests/qtest/bios-tables-test.c
+F: tests/qtest/bios-tables-test*
 F: tests/qtest/acpi-utils.[hc]
 F: tests/data/acpi/
 
@@ -1680,7 +1754,7 @@ M: David Hildenbrand <david@redhat.com>
 S: Maintained
 F: hw/virtio/virtio-balloon*.c
 F: include/hw/virtio/virtio-balloon.h
-F: balloon.c
+F: softmmu/balloon.c
 F: include/sysemu/balloon.h
 
 virtio-9p
@@ -1761,6 +1835,15 @@ S: Supported
 F: hw/virtio/virtio-crypto.c
 F: hw/virtio/virtio-crypto-pci.c
 F: include/hw/virtio/virtio-crypto.h
+
+virtio-mem
+M: David Hildenbrand <david@redhat.com>
+S: Supported
+W: https://virtio-mem.gitlab.io/
+F: hw/virtio/virtio-mem.c
+F: hw/virtio/virtio-mem-pci.h
+F: hw/virtio/virtio-mem-pci.c
+F: include/hw/virtio/virtio-mem.h
 
 nvme
 M: Keith Busch <kbusch@kernel.org>
@@ -1955,6 +2038,26 @@ F: hw/*/*xive*
 F: include/hw/*/*xive*
 F: docs/*/*xive*
 
+Renesas peripherals
+M: Yoshinori Sato <ysato@users.sourceforge.jp>
+R: Magnus Damm <magnus.damm@gmail.com>
+S: Maintained
+F: hw/char/renesas_sci.c
+F: hw/char/sh_serial.c
+F: hw/timer/renesas_*.c
+F: hw/timer/sh_timer.c
+F: include/hw/char/renesas_sci.h
+F: include/hw/sh4/sh.h
+F: include/hw/timer/renesas_*.h
+
+Renesas RX peripherals
+M: Yoshinori Sato <ysato@users.sourceforge.jp>
+S: Maintained
+F: hw/intc/rx_icu.c
+F: hw/rx/
+F: include/hw/intc/rx_icu.h
+F: include/hw/rx/
+
 Subsystems
 ----------
 Audio
@@ -2117,6 +2220,7 @@ F: scripts/coccinelle/error-use-after-free.cocci
 F: scripts/coccinelle/error_propagate_null.cocci
 F: scripts/coccinelle/remove_local_err.cocci
 F: scripts/coccinelle/use-error_fatal.cocci
+F: scripts/coccinelle/errp-guard.cocci
 
 GDB stub
 M: Alex Bennée <alex.bennee@linaro.org>
@@ -2129,12 +2233,12 @@ Memory API
 M: Paolo Bonzini <pbonzini@redhat.com>
 S: Supported
 F: include/exec/ioport.h
-F: ioport.c
 F: include/exec/memop.h
 F: include/exec/memory.h
 F: include/exec/ram_addr.h
 F: include/exec/ramblock.h
-F: memory.c
+F: softmmu/ioport.c
+F: softmmu/memory.c
 F: include/exec/memory-internal.h
 F: exec.c
 F: scripts/coccinelle/memory-region-housekeeping.cocci
@@ -2166,13 +2270,14 @@ F: ui/cocoa.m
 Main loop
 M: Paolo Bonzini <pbonzini@redhat.com>
 S: Maintained
-F: cpus.c
 F: include/qemu/main-loop.h
 F: include/sysemu/runstate.h
 F: util/main-loop.c
 F: util/qemu-timer.c
 F: softmmu/vl.c
 F: softmmu/main.c
+F: softmmu/cpus.c
+F: softmmu/cpu-throttle.c
 F: qapi/run-state.json
 
 Human Monitor (HMP)
@@ -2294,6 +2399,8 @@ R: Eduardo Habkost <ehabkost@redhat.com>
 S: Supported
 F: docs/qdev-device-use.txt
 F: hw/core/qdev*
+F: hw/core/bus.c
+F: hw/core/sysbus.c
 F: include/hw/qdev*
 F: include/monitor/qdev.h
 F: include/qom/
@@ -2325,9 +2432,10 @@ M: Thomas Huth <thuth@redhat.com>
 M: Laurent Vivier <lvivier@redhat.com>
 R: Paolo Bonzini <pbonzini@redhat.com>
 S: Maintained
-F: qtest.c
+F: softmmu/qtest.c
 F: accel/qtest.c
 F: tests/qtest/
+X: tests/qtest/bios-tables-test-allowed-diff.h
 
 Device Fuzzing
 M: Alexander Bulekov <alxndr@bu.edu>
@@ -2336,6 +2444,7 @@ R: Bandan Das <bsd@redhat.com>
 R: Stefan Hajnoczi <stefanha@redhat.com>
 S: Maintained
 F: tests/qtest/fuzz/
+F: scripts/oss-fuzz/
 
 Register API
 M: Alistair Francis <alistair@alistair23.me>
@@ -2385,7 +2494,7 @@ F: hw/tpm/*
 F: include/hw/acpi/tpm.h
 F: include/sysemu/tpm*
 F: qapi/tpm.json
-F: backends/tpm.c
+F: backends/tpm/
 F: tests/qtest/*tpm*
 T: git https://github.com/stefanberger/qemu-tpm.git tpm-next
 
@@ -2524,6 +2633,7 @@ F: net/filter-replay.c
 F: include/sysemu/replay.h
 F: docs/replay.txt
 F: stubs/replay.c
+F: tests/acceptance/replay_kernel.py
 
 IOVA Tree
 M: Peter Xu <peterx@redhat.com>
@@ -2562,6 +2672,15 @@ F: tests/uefi-test-tools/
 F: .gitlab-ci.d/edk2.yml
 F: .gitlab-ci.d/edk2/
 
+VT-d Emulation
+M: Michael S. Tsirkin <mst@redhat.com>
+M: Peter Xu <peterx@redhat.com>
+R: Jason Wang <jasowang@redhat.com>
+S: Supported
+F: hw/i386/intel_iommu.c
+F: hw/i386/intel_iommu_internal.h
+F: include/hw/i386/intel_iommu.h
+
 Usermode Emulation
 ------------------
 Overall usermode emulation
@@ -2576,8 +2695,7 @@ F: bsd-user/
 F: default-configs/*-bsd-user.mak
 
 Linux user
-M: Riku Voipio <riku.voipio@iki.fi>
-R: Laurent Vivier <laurent@vivier.eu>
+M: Laurent Vivier <laurent@vivier.eu>
 S: Maintained
 F: linux-user/
 F: default-configs/*-linux-user.mak
@@ -2931,6 +3049,14 @@ S: Maintained
 F: tests/tcg/Makefile
 F: tests/tcg/Makefile.include
 
+Acceptance (Integration) Testing with the Avocado framework
+W: https://trello.com/b/6Qi1pxVn/avocado-qemu
+R: Cleber Rosa <crosa@redhat.com>
+R: Philippe Mathieu-Daudé <philmd@redhat.com>
+R: Wainer dos Santos Moschetta <wainersm@redhat.com>
+S: Odd Fixes
+F: tests/acceptance/
+
 Documentation
 -------------
 Build system architecture
@@ -2964,3 +3090,10 @@ M: Peter Maydell <peter.maydell@linaro.org>
 S: Maintained
 F: docs/conf.py
 F: docs/*/conf.py
+
+Miscellaneous
+-------------
+Performance Tools and Tests
+M: Ahmed Karaman <ahmedkhaledkaraman@gmail.com>
+S: Maintained
+F: scripts/performance/

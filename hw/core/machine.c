@@ -28,7 +28,13 @@
 #include "hw/mem/nvdimm.h"
 #include "migration/vmstate.h"
 
-GlobalProperty hw_compat_5_0[] = {};
+GlobalProperty hw_compat_5_0[] = {
+    { "virtio-balloon-device", "page-poison", "false" },
+    { "vmport", "x-read-set-eax", "off" },
+    { "vmport", "x-signal-unsupported-cmd", "off" },
+    { "vmport", "x-report-vmx-type", "off" },
+    { "vmport", "x-cmds-v2", "off" },
+};
 const size_t hw_compat_5_0_len = G_N_ELEMENTS(hw_compat_5_0);
 
 GlobalProperty hw_compat_4_2[] = {
@@ -298,12 +304,9 @@ static void machine_set_phandle_start(Object *obj, Visitor *v,
                                       Error **errp)
 {
     MachineState *ms = MACHINE(obj);
-    Error *error = NULL;
     int64_t value;
 
-    visit_type_int(v, name, &value, &error);
-    if (error) {
-        error_propagate(errp, error);
+    if (!visit_type_int(v, name, &value, errp)) {
         return;
     }
 

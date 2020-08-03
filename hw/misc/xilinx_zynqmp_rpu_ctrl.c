@@ -856,8 +856,7 @@ static void rpu_realize(DeviceState *dev, Error **errp)
                                           NULL);
     region_priority = object_property_get_int(OBJECT(s->atcm1_for_rpu0),
                                               "priority", NULL) + 1;
-    object_property_set_int(OBJECT(&s->atcm1_mask), region_priority, "priority",
-                            NULL);
+    object_property_set_int(OBJECT(&s->atcm1_mask), "priority", region_priority, NULL);
     memory_region_add_subregion(region_container, region_addr, &s->atcm1_mask);
 
     memory_region_init_io(&s->btcm1_mask, OBJECT(s), &disabled_tcm_ops, s,
@@ -869,8 +868,7 @@ static void rpu_realize(DeviceState *dev, Error **errp)
                                           NULL);
     region_priority = object_property_get_int(OBJECT(s->btcm1_for_rpu0),
                                               "priority", NULL) + 1;
-    object_property_set_int(OBJECT(&s->btcm1_mask), region_priority, "priority",
-                            NULL);
+    object_property_set_int(OBJECT(&s->btcm1_mask), "priority", region_priority, NULL);
     memory_region_add_subregion(region_container, region_addr, &s->btcm1_mask);
 }
 

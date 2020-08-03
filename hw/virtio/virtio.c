@@ -3230,8 +3230,9 @@ void virtio_instance_init_common(Object *proxy_obj, void *data,
 {
     DeviceState *vdev = data;
 
-    object_initialize_child(proxy_obj, "virtio-backend", vdev, vdev_size,
-                            vdev_name, &error_abort, NULL);
+    object_initialize_child_with_props(proxy_obj, "virtio-backend", vdev,
+                                       vdev_size, vdev_name, &error_abort,
+                                       NULL);
     qdev_alias_all_properties(vdev, proxy_obj);
 }
 
@@ -3285,6 +3286,12 @@ hwaddr virtio_queue_get_desc_addr(VirtIODevice *vdev, int n)
 
 bool virtio_queue_enabled(VirtIODevice *vdev, int n)
 {
+    BusState *qbus = qdev_get_parent_bus(DEVICE(vdev));
+    VirtioBusClass *k = VIRTIO_BUS_GET_CLASS(qbus);
+
+    if (k->queue_enabled) {
+        return k->queue_enabled(qbus->parent, n);
+    }
     return virtio_queue_get_desc_addr(vdev, n) != 0;
 }
 

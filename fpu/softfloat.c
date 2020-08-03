@@ -3362,7 +3362,9 @@ static int32_t roundAndPackInt32(bool zSign, uint64_t absZ,
     }
     roundBits = absZ & 0x7F;
     absZ = ( absZ + roundIncrement )>>7;
-    absZ &= ~ ( ( ( roundBits ^ 0x40 ) == 0 ) & roundNearestEven );
+    if (!(roundBits ^ 0x40) && roundNearestEven) {
+        absZ &= ~1;
+    }
     z = absZ;
     if ( zSign ) z = - z;
     if ( ( absZ>>32 ) || ( z && ( ( z < 0 ) ^ zSign ) ) ) {
@@ -3420,7 +3422,9 @@ static int64_t roundAndPackInt64(bool zSign, uint64_t absZ0, uint64_t absZ1,
     if ( increment ) {
         ++absZ0;
         if ( absZ0 == 0 ) goto overflow;
-        absZ0 &= ~ ( ( (uint64_t) ( absZ1<<1 ) == 0 ) & roundNearestEven );
+        if (!(absZ1 << 1) && roundNearestEven) {
+            absZ0 &= ~1;
+        }
     }
     z = absZ0;
     if ( zSign ) z = - z;
@@ -3480,7 +3484,9 @@ static int64_t roundAndPackUint64(bool zSign, uint64_t absZ0,
             float_raise(float_flag_invalid, status);
             return UINT64_MAX;
         }
-        absZ0 &= ~(((uint64_t)(absZ1<<1) == 0) & roundNearestEven);
+        if (!(absZ1 << 1) && roundNearestEven) {
+            absZ0 &= ~1;
+        }
     }
 
     if (zSign && absZ0) {
@@ -3603,7 +3609,9 @@ static float32 roundAndPackFloat32(bool zSign, int zExp, uint32_t zSig,
         status->float_exception_flags |= float_flag_inexact;
     }
     zSig = ( zSig + roundIncrement )>>7;
-    zSig &= ~ ( ( ( roundBits ^ 0x40 ) == 0 ) & roundNearestEven );
+    if (!(roundBits ^ 0x40) && roundNearestEven) {
+        zSig &= ~1;
+    }
     if ( zSig == 0 ) zExp = 0;
     return packFloat32( zSign, zExp, zSig );
 
@@ -3757,7 +3765,9 @@ static float64 roundAndPackFloat64(bool zSign, int zExp, uint64_t zSig,
         status->float_exception_flags |= float_flag_inexact;
     }
     zSig = ( zSig + roundIncrement )>>10;
-    zSig &= ~ ( ( ( roundBits ^ 0x200 ) == 0 ) & roundNearestEven );
+    if (!(roundBits ^ 0x200) && roundNearestEven) {
+        zSig &= ~1;
+    }
     if ( zSig == 0 ) zExp = 0;
     return packFloat64( zSign, zExp, zSig );
 
@@ -3983,8 +3993,9 @@ floatx80 roundAndPackFloatx80(int8_t roundingPrecision, bool zSign,
             }
             if ( increment ) {
                 ++zSig0;
-                zSig0 &=
-                    ~ ( ( (uint64_t) ( zSig1<<1 ) == 0 ) & roundNearestEven );
+                if (!(zSig1 << 1) && roundNearestEven) {
+                    zSig0 &= ~1;
+                }
                 if ( (int64_t) zSig0 < 0 ) zExp = 1;
             }
             return packFloatx80( zSign, zExp, zSig0 );
@@ -4000,7 +4011,9 @@ floatx80 roundAndPackFloatx80(int8_t roundingPrecision, bool zSign,
             zSig0 = UINT64_C(0x8000000000000000);
         }
         else {
-            zSig0 &= ~ ( ( (uint64_t) ( zSig1<<1 ) == 0 ) & roundNearestEven );
+            if (!(zSig1 << 1) && roundNearestEven) {
+                zSig0 &= ~1;
+            }
         }
     }
     else {
@@ -4270,7 +4283,9 @@ static float128 roundAndPackFloat128(bool zSign, int32_t zExp,
     }
     if ( increment ) {
         add128( zSig0, zSig1, 0, 1, &zSig0, &zSig1 );
-        zSig1 &= ~ ( ( zSig2 + zSig2 == 0 ) & roundNearestEven );
+        if ((zSig2 + zSig2 == 0) && roundNearestEven) {
+            zSig1 &= ~1;
+        }
     }
     else {
         if ( ( zSig0 | zSig1 ) == 0 ) zExp = 0;
@@ -5682,22 +5697,27 @@ floatx80 floatx80_div(floatx80 a, floatx80 b, float_status *status)
 /*----------------------------------------------------------------------------
 | Returns the remainder of the extended double-precision floating-point value
 | `a' with respect to the corresponding value `b'.  The operation is performed
-| according to the IEC/IEEE Standard for Binary Floating-Point Arithmetic.
+| according to the IEC/IEEE Standard for Binary Floating-Point Arithmetic,
+| if 'mod' is false; if 'mod' is true, return the remainder based on truncating
+| the quotient toward zero instead.  '*quotient' is set to the low 64 bits of
+| the absolute value of the integer quotient.
 *----------------------------------------------------------------------------*/
 
-floatx80 floatx80_rem(floatx80 a, floatx80 b, float_status *status)
+floatx80 floatx80_modrem(floatx80 a, floatx80 b, bool mod, uint64_t *quotient,
+                         float_status *status)
 {
     bool aSign, zSign;
-    int32_t aExp, bExp, expDiff;
+    int32_t aExp, bExp, expDiff, aExpOrig;
     uint64_t aSig0, aSig1, bSig;
     uint64_t q, term0, term1, alternateASig0, alternateASig1;
 
+    *quotient = 0;
     if (floatx80_invalid_encoding(a) || floatx80_invalid_encoding(b)) {
         float_raise(float_flag_invalid, status);
         return floatx80_default_nan(status);
     }
     aSig0 = extractFloatx80Frac( a );
-    aExp = extractFloatx80Exp( a );
+    aExpOrig = aExp = extractFloatx80Exp( a );
     aSign = extractFloatx80Sign( a );
     bSig = extractFloatx80Frac( b );
     bExp = extractFloatx80Exp( b );
@@ -5712,6 +5732,13 @@ floatx80 floatx80_rem(floatx80 a, floatx80 b, float_status *status)
         if ((uint64_t)(bSig << 1)) {
             return propagateFloatx80NaN(a, b, status);
         }
+        if (aExp == 0 && aSig0 >> 63) {
+            /*
+             * Pseudo-denormal argument must be returned in normalized
+             * form.
+             */
+            return packFloatx80(aSign, 1, aSig0);
+        }
         return a;
     }
     if ( bExp == 0 ) {
@@ -5723,19 +5750,27 @@ floatx80 floatx80_rem(floatx80 a, floatx80 b, float_status *status)
         normalizeFloatx80Subnormal( bSig, &bExp, &bSig );
     }
     if ( aExp == 0 ) {
-        if ( (uint64_t) ( aSig0<<1 ) == 0 ) return a;
+        if ( aSig0 == 0 ) return a;
         normalizeFloatx80Subnormal( aSig0, &aExp, &aSig0 );
     }
-    bSig |= UINT64_C(0x8000000000000000);
     zSign = aSign;
     expDiff = aExp - bExp;
     aSig1 = 0;
     if ( expDiff < 0 ) {
-        if ( expDiff < -1 ) return a;
+        if ( mod || expDiff < -1 ) {
+            if (aExp == 1 && aExpOrig == 0) {
+                /*
+                 * Pseudo-denormal argument must be returned in
+                 * normalized form.
+                 */
+                return packFloatx80(aSign, aExp, aSig0);
+            }
+            return a;
+        }
         shift128Right( aSig0, 0, 1, &aSig0, &aSig1 );
         expDiff = 0;
     }
-    q = ( bSig <= aSig0 );
+    *quotient = q = ( bSig <= aSig0 );
     if ( q ) aSig0 -= bSig;
     expDiff -= 64;
     while ( 0 < expDiff ) {
@@ -5745,6 +5780,8 @@ floatx80 floatx80_rem(floatx80 a, floatx80 b, float_status *status)
         sub128( aSig0, aSig1, term0, term1, &aSig0, &aSig1 );
         shortShift128Left( aSig0, aSig1, 62, &aSig0, &aSig1 );
         expDiff -= 62;
+        *quotient <<= 62;
+        *quotient += q;
     }
     expDiff += 64;
     if ( 0 < expDiff ) {
@@ -5758,24 +5795,57 @@ floatx80 floatx80_rem(floatx80 a, floatx80 b, float_status *status)
             ++q;
             sub128( aSig0, aSig1, term0, term1, &aSig0, &aSig1 );
         }
+        if (expDiff < 64) {
+            *quotient <<= expDiff;
+        } else {
+            *quotient = 0;
+        }
+        *quotient += q;
     }
     else {
         term1 = 0;
         term0 = bSig;
     }
-    sub128( term0, term1, aSig0, aSig1, &alternateASig0, &alternateASig1 );
-    if (    lt128( alternateASig0, alternateASig1, aSig0, aSig1 )
-         || (    eq128( alternateASig0, alternateASig1, aSig0, aSig1 )
-              && ( q & 1 ) )
-       ) {
-        aSig0 = alternateASig0;
-        aSig1 = alternateASig1;
-        zSign = ! zSign;
+    if (!mod) {
+        sub128( term0, term1, aSig0, aSig1, &alternateASig0, &alternateASig1 );
+        if (    lt128( alternateASig0, alternateASig1, aSig0, aSig1 )
+                || (    eq128( alternateASig0, alternateASig1, aSig0, aSig1 )
+                        && ( q & 1 ) )
+            ) {
+            aSig0 = alternateASig0;
+            aSig1 = alternateASig1;
+            zSign = ! zSign;
+            ++*quotient;
+        }
     }
     return
         normalizeRoundAndPackFloatx80(
             80, zSign, bExp + expDiff, aSig0, aSig1, status);
 
+}
+
+/*----------------------------------------------------------------------------
+| Returns the remainder of the extended double-precision floating-point value
+| `a' with respect to the corresponding value `b'.  The operation is performed
+| according to the IEC/IEEE Standard for Binary Floating-Point Arithmetic.
+*----------------------------------------------------------------------------*/
+
+floatx80 floatx80_rem(floatx80 a, floatx80 b, float_status *status)
+{
+    uint64_t quotient;
+    return floatx80_modrem(a, b, false, &quotient, status);
+}
+
+/*----------------------------------------------------------------------------
+| Returns the remainder of the extended double-precision floating-point value
+| `a' with respect to the corresponding value `b', with the quotient truncated
+| toward zero.
+*----------------------------------------------------------------------------*/
+
+floatx80 floatx80_mod(floatx80 a, floatx80 b, float_status *status)
+{
+    uint64_t quotient;
+    return floatx80_modrem(a, b, true, &quotient, status);
 }
 
 /*----------------------------------------------------------------------------
