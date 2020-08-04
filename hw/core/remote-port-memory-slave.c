@@ -16,6 +16,7 @@
 #include "qapi/qmp/qerror.h"
 #include "qapi/error.h"
 #include "hw/qdev-core.h"
+#include "hw/sysbus.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
 
@@ -171,7 +172,7 @@ static void rp_memory_slave_class_init(ObjectClass *oc, void *data)
 
 static const TypeInfo rp_info = {
     .name          = TYPE_REMOTE_PORT_MEMORY_SLAVE,
-    .parent        = TYPE_DEVICE,
+    .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(RemotePortMemorySlave),
     .instance_init = rp_memory_slave_init,
     .class_init    = rp_memory_slave_class_init,

@@ -129,13 +129,6 @@ void qdev_set_parent_bus(DeviceState *dev, BusState *bus)
     }
 }
 
-/*
- * Create a device on the heap.
- * A type @name must exist.
- * This only initializes the device state structure and allows
- * properties to be set.  The device still needs to be realized.  See
- * qdev-core.h.
- */
 DeviceState *qdev_new(const char *name)
 {
     if (!object_class_by_name(name)) {
@@ -144,11 +137,6 @@ DeviceState *qdev_new(const char *name)
     return DEVICE(object_new(name));
 }
 
-/*
- * Try to create a device on the heap.
- * This is like qdev_new(), except it returns %NULL when type @name
- * does not exist.
- */
 DeviceState *qdev_try_new(const char *name)
 {
     if (!module_object_class_by_name(name)) {
@@ -379,14 +367,6 @@ void qdev_simple_device_unplug_cb(HotplugHandler *hotplug_dev,
     qdev_unrealize(dev);
 }
 
-/*
- * Realize @dev.
- * @dev must not be plugged into a bus.
- * If @bus, plug @dev into @bus.  This takes a reference to @dev.
- * If @dev has no QOM parent, make one up, taking another reference.
- * On success, return true.
- * On failure, store an error through @errp and return false.
- */
 bool qdev_realize(DeviceState *dev, BusState *bus, Error **errp)
 {
     assert(!dev->realized && !dev->parent_bus);
@@ -400,16 +380,6 @@ bool qdev_realize(DeviceState *dev, BusState *bus, Error **errp)
     return object_property_set_bool(OBJECT(dev), "realized", true, errp);
 }
 
-/*
- * Realize @dev and drop a reference.
- * This is like qdev_realize(), except the caller must hold a
- * (private) reference, which is dropped on return regardless of
- * success or failure.  Intended use:
- *     dev = qdev_new();
- *     [...]
- *     qdev_realize_and_unref(dev, bus, errp);
- * Now @dev can go away without further ado.
- */
 bool qdev_realize_and_unref(DeviceState *dev, BusState *bus, Error **errp)
 {
     bool ret;
@@ -432,7 +402,9 @@ static int qdev_assert_realized_properly(Object *obj, void *opaque)
     if (dev) {
         dc = DEVICE_GET_CLASS(dev);
         assert(dev->realized);
-        assert(dev->parent_bus || !dc->bus_type);
+        if (0) {
+            assert(dev->parent_bus || !dc->bus_type);
+        }
     }
     return 0;
 }
@@ -572,6 +544,7 @@ qemu_irq qdev_get_gpio_out(DeviceState *dev, int n)
 void qdev_connect_gpio_out_named(DeviceState *dev, const char *name, int n,
                                  qemu_irq pin)
 {
+    Error *errp = NULL;
     qemu_irq irq;
     if (!pin) {
         return;
@@ -599,7 +572,12 @@ void qdev_connect_gpio_out_named(DeviceState *dev, const char *name, int n,
                                                 "/unattached"),
                                   "non-qdev-gpio[*]", OBJECT(pin));
     }
-    object_property_set_link(OBJECT(dev), propname, OBJECT(pin), &error_abort);
+    object_property_set_link(OBJECT(dev), propname, OBJECT(irq), &errp);
+    if (errp) {
+        qemu_log_mask(LOG_FDT, "FAILED to connect %s.%s <-> %s\n",
+                       object_get_canonical_path(OBJECT(dev)), propname,
+                       object_get_canonical_path(OBJECT(pin)));
+    }
     g_free(propname);
 }
 
@@ -667,15 +645,6 @@ static void qdev_pass_ngl(DeviceState *dev, DeviceState *container,
     }
     QLIST_REMOVE(ngl, node);
     QLIST_INSERT_HEAD(&container->gpios, ngl, node);
-}
-
-void qdev_pass_all_gpios(DeviceState *dev, DeviceState *container)
-{
-    NamedGPIOList *ngl, *next;
-
-    QLIST_FOREACH_SAFE(ngl, &dev->gpios, node, next) {
-        qdev_pass_ngl(dev, container, ngl);
-    }
 }
 
 void qdev_pass_gpios(DeviceState *dev, DeviceState *container,
@@ -869,9 +838,6 @@ static void qdev_class_add_property(DeviceClass *klass, Property *prop)
                                           prop->info->description);
 }
 
-/* @qdev_alias_all_properties - Add alias properties to the source object for
- * all qdev properties on the target DeviceState.
- */
 void qdev_alias_all_properties(DeviceState *target, Object *source)
 {
     ObjectClass *class;

@@ -160,8 +160,9 @@ bool rp_device_add(QemuOpts *opts, DeviceState *dev, Error **errp)
             if (i == 0) {
                 /* At least one channel must be provided.  */
                 error_setg(errp, "Did not find rp-chan%d!\n", i);
+                return false;
             }
-            return false;
+            return true;
         }
 
         if (qemu_strtoul(dev_nr_str, NULL, 0, &dev_nr)) {

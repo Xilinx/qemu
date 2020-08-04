@@ -591,8 +591,8 @@ static void arm_generic_fdt_7000_init(MachineState *machine)
                         NAND_MFR_STMICRO, 0xaa);
     object_property_set_link(OBJECT(dev), "dev1", OBJECT(att_dev), &error_abort);
 
-    qdev_realize_and_unref(dev, NULL, &error_fatal);
     busdev = SYS_BUS_DEVICE(dev);
+    sysbus_realize(busdev, &error_fatal);
     sysbus_mmio_map(busdev, 0, 0xe000e000);
     sysbus_mmio_map(busdev, 2, 0xe1000000);
 
@@ -604,14 +604,14 @@ static void arm_generic_fdt_7000_init(MachineState *machine)
     add_to_inst_bind_table(zynq7000_mdio_phy_connect, "mdio", dev);
     add_to_compat_table(zynq7000_mdio_phy_create, "device_type:ethernet-phy",
                         dev);
-    qdev_realize(dev, NULL, &error_fatal);
+    sysbus_realize(SYS_BUS_DEVICE(dev), &error_fatal);
 
     arm_generic_fdt_init(machine);
 
     dev = qdev_new("a9-scu");
     busdev = SYS_BUS_DEVICE(dev);
     qdev_prop_set_uint32(dev, "num-cpu", fdt_generic_num_cpus);
-    qdev_realize(dev, NULL, &error_fatal);
+    sysbus_realize(busdev, &error_fatal);
     sysbus_mmio_map(busdev, 0, ZYNQ7000_MPCORE_PERIPHBASE);
 }
 

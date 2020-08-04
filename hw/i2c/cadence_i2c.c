@@ -333,13 +333,12 @@ static void cadence_i2c_write(void *opaque, hwaddr offset,
         }
         if (i2c_start_transfer(s->bus, new_value & 0x7f,
                                s->regs[R_CONTROL] & CONTROL_RW)) {
-            char *path = object_get_canonical_path_component(OBJECT(s));
+            const char *path = object_get_canonical_path_component(OBJECT(s));
 
             i2c_end_transfer(s->bus);
             qemu_log_mask(LOG_GUEST_ERROR,
                           "%s: No match for device 0x%x\n", path, new_value);
             s->regs[R_ISR] |= ISR_NACK;
-            g_free(path);
         } else {
             DB_PRINT("device 0x%x probe success\n", new_value);
             if (s->regs[R_CONTROL] & CONTROL_SLVMON) {

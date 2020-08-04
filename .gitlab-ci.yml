@@ -161,8 +161,24 @@ build-clang:
     IMAGE: fedora
     CONFIGURE_ARGS: --cc=clang --cxx=clang++
     TARGETS: alpha-softmmu arm-softmmu m68k-softmmu mips64-softmmu
-      ppc-softmmu s390x-softmmu x86_64-softmmu arm-linux-user
+      ppc-softmmu s390x-softmmu arm-linux-user
     MAKE_CHECK_ARGS: check
+
+build-oss-fuzz:
+  <<: *native_build_job_definition
+  variables:
+    IMAGE: fedora
+  script:
+    - mkdir build-oss-fuzz
+    - CC="clang" CXX="clang++" CFLAGS="-fsanitize=address"
+      ./scripts/oss-fuzz/build.sh
+    - for fuzzer in $(find ./build-oss-fuzz/DEST_DIR/ -executable -type f
+                      | grep -v slirp); do
+        grep "LLVMFuzzerTestOneInput" ${fuzzer} > /dev/null 2>&1 || continue ;
+        echo Testing ${fuzzer} ... ;
+        ASAN_OPTIONS="fast_unwind_on_malloc=0"
+         "${fuzzer}" -runs=1000 -seed=1 || exit 1 ;
+      done
 
 build-tci:
   <<: *native_build_job_definition
