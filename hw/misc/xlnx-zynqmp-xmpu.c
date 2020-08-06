@@ -295,6 +295,36 @@ static void xmpu_decode_region(XMPU *s, XMPURegion *xr, unsigned int region)
     xr->config.nschecktype = FIELD_EX32(config, R00_CONFIG, NSCHECKTYPE);
 }
 
+static bool xmpu_match(XMPU *s, XMPURegion *xr, uint16_t master_id, hwaddr addr)
+{
+    bool id_match;
+
+    if (xr->start & s->addr_mask) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: Bad region start address %" PRIx64 "\n",
+                      s->prefix, xr->start);
+    }
+
+    if (xr->end & s->addr_mask) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: Bad region end address %" PRIx64 "\n",
+                      s->prefix, xr->end);
+    }
+
+    if (xr->start < s->addr_mask) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: Too low region start address %" PRIx64 "\n",
+                      s->prefix, xr->end);
+    }
+
+    xr->start &= ~s->addr_mask;
+    xr->end &= ~s->addr_mask;
+
+    id_match = (xr->master.mask & xr->master.id) ==
+               (xr->master.mask & master_id);
+    return id_match && (addr >= xr->start && addr < xr->end);
+}
+
 static void isr_update_irq(XMPU *s)
 {
     bool pending = s->regs[R_ISR] & ~s->regs[R_IMR];
@@ -755,6 +785,7 @@ static void xmpu_realize(DeviceState *dev, Error **errp)
     s->addr_shift = s->cfg.align ? 20 : 12;
     s->addr_mask = (1ULL << s->addr_shift) - 1;
     s->decode_region = xmpu_decode_region;
+    s->match = xmpu_match;
     s->masters[0].parent = s;
 }
 

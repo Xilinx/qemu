@@ -148,6 +148,7 @@ struct XMPU {
     uint64_t addr_mask;
 
     void (*decode_region)(XMPU *s, XMPURegion *xr, unsigned int region);
+    bool (*match)(XMPU *s, XMPURegion *xr, uint16_t master_id, hwaddr addr);
 };
 
 void xmpu_update_enabled(XMPU *s);
