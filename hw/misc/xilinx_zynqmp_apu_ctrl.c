@@ -39,10 +39,6 @@
 #include "hw/register.h"
 #include "hw/fdt_generic_util.h"
 
-#ifndef ZYNQMP_APU_ERR_DEBUG
-#define ZYNQMP_APU_ERR_DEBUG 0
-#endif
-
 #define TYPE_ZYNQMP_APU "xlnx.apu"
 
 #define ZYNQMP_APU(obj) \
