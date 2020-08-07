@@ -1919,7 +1919,12 @@ static void pmu_global_reset(DeviceState *dev)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        register_reset(&s->regs_info[i]);
+        switch (i) {
+        case R_PERS_GLOB_GEN_STORAGE0...R_PERS_GLOB_GEN_STORAGE7:
+            continue;
+        default:
+            register_reset(&s->regs_info[i]);
+       };
     }
 
     req_pwrdwn_int_update_irq(s);
