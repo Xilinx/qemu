@@ -281,9 +281,9 @@ static const RegisterAccessInfo zynqmp_apu_regs_info[] = {
         .reset = 0xf000f,
     },{ .name = "SNOOP_CTRL",  .addr = A_SNOOP_CTRL,
     },{ .name = "PWRCTL",  .addr = A_PWRCTL,
+        .post_write = zynqmp_apu_pwrctl_post_write,
     },{ .name = "PWRSTAT",  .addr = A_PWRSTAT,
         .ro = 0x3000f,
-        .post_write = zynqmp_apu_pwrctl_post_write,
     }
 };
 
