@@ -1456,6 +1456,13 @@ static void error_en_2_postw(RegisterInfo *reg, uint64_t val64)
     set_error_2(s);
 }
 
+static void abi_cntrl_postw(RegisterInfo *reg, uint64_t val64)
+{
+    PMU_GLOBAL *s = XILINX_PMU_GLOBAL(reg->opaque);
+
+    s->regs[R_AIB_STATUS] |= val64;
+}
+
 static void error_status_1_postw(RegisterInfo *reg, uint64_t val64)
 {
     PMU_GLOBAL *s = XILINX_PMU_GLOBAL(reg->opaque);
@@ -1849,6 +1856,7 @@ static const RegisterAccessInfo pmu_global_regs_info[] = {
     },{ .name = "ERROR_EN_2",  .addr = A_ERROR_EN_2,
         .post_write = error_en_2_postw,
     },{ .name = "AIB_CNTRL",  .addr = A_AIB_CNTRL,
+        .post_write = abi_cntrl_postw,
         .rsvd = 0xfffffff0,
     },{ .name = "AIB_STATUS",  .addr = A_AIB_STATUS,
         .rsvd = 0xfffffff0,
