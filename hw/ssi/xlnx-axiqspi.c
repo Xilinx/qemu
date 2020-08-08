@@ -277,6 +277,7 @@ typedef enum {
     PASSWORD_UNLOCK = 0xE9,
     EXIT_4B_ADDR_MODE = 0xE9,
     FAST_READ_QUAD_IO = 0xEB,
+    FAST_READ_QUAD_IO_4B = 0xEC,
     RESET = 0xF0,
     EXIT_QUAD_IO_MODE = 0xF5,
     MODE_BIT_RESET = 0xFF
@@ -1710,6 +1711,9 @@ static MemTxResult axiqspi_xip_read(void *opaque, hwaddr addr, uint64_t *val,
 {
     XlnxAXIQSPI *s = XLNX_AXIQSPI(opaque);
     uint8_t cmd;
+    bool is_4b_cmd = (s->conf.spi_mem == SPI_MEM_SPANSION ||
+                      s->conf.spi_mem == SPI_MEM_MICRON) &&
+                      s->conf.xip_addr_bits == 32;
 
     assert(size <= 64);
 
@@ -1722,13 +1726,13 @@ static MemTxResult axiqspi_xip_read(void *opaque, hwaddr addr, uint64_t *val,
     /* These read commands are universal between all supported flashes */
     switch (s->conf.mode) {
     case AXIQSPI_MODE_STD:
-        cmd = FAST_READ;
+        cmd = is_4b_cmd ? READ_FAST_4B : FAST_READ;
         break;
     case AXIQSPI_MODE_DUAL:
-        cmd = FAST_READ_DUAL_IO;
+        cmd = is_4b_cmd ? READ_DUAL_IO_4B : FAST_READ_DUAL_IO;
         break;
     case AXIQSPI_MODE_QUAD:
-        cmd = FAST_READ_QUAD_IO;
+        cmd = is_4b_cmd ? FAST_READ_QUAD_IO_4B : FAST_READ_QUAD_IO;
         break;
     default:
         g_assert_not_reached();
