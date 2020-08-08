@@ -178,7 +178,7 @@ typedef enum {
     WRITE_ENABLE = 0x06,
     READ_STATUS_REG_2 = 0x07,
     FAST_READ = 0x0B,
-    READ_FAST_4B = 0x0C,
+    FAST_READ_4B = 0x0C,
     PAGE_PROGRAM_4B = 0x12,
     READ_4B = 0x13,
     AUTOBOOT_REG = 0x15,
@@ -203,7 +203,7 @@ typedef enum {
     QUAD_INPUT_FAST_IO = 0x38,
     FAST_READ_DUAL = 0x3B,
     FAST_READ_DUAL_4B = 0x3C,
-    QUAD_FAST_PROGRAM_IO_4B = 0x3E,
+    QUAD_PAGE_PROGRAM_IO_4B = 0x3E,
     PROGRAM_OTP = 0x42,
     READ_UNIQUE_ID = 0x4B,
     SP_OTP_READ = 0x4B,
@@ -248,7 +248,7 @@ typedef enum {
     POWER_DOWN = 0xB9,
     BANK_REGISTER_ACCESS = 0xB9,
     FAST_READ_DUAL_IO = 0xBB,
-    READ_DUAL_IO_4B = 0xBC,
+    FAST_READ_DUAL_IO_4B = 0xBC,
     SET_BURST_READ_LENGTH = 0xC0,
     EXIT_SECURE_OTP = 0xC1,
     DIE_ERASE = 0xC4,
@@ -494,9 +494,9 @@ static bool spansion_parse_cmd(XlnxAXIQSPI *s)
         s->num_dummies = 0;
 
     case READ_4B:
-    case READ_FAST_4B:
+    case FAST_READ_4B:
     case FAST_READ_DUAL_4B:
-    case READ_DUAL_IO_4B:
+    case FAST_READ_DUAL_IO_4B:
     case READ_QUAD_4B:
         s->addr_bytes = 4;
         s->num_dummies = 4;
@@ -592,11 +592,11 @@ static bool micron_parse_cmd(XlnxAXIQSPI *s)
         s->addr_bytes = axiqspi_get_addressing(s);
 
         return true;
-    case READ_FAST_4B:
+    case FAST_READ_4B:
     case FAST_READ_DUAL_4B:
-    case READ_DUAL_IO_4B:
+    case FAST_READ_DUAL_IO_4B:
     case READ_QUAD_4B:
-    case QUAD_FAST_PROGRAM_IO_4B:
+    case QUAD_PAGE_PROGRAM_IO_4B:
         s->num_dummies = 4;
         s->addr_bytes = 4;
 
@@ -671,10 +671,10 @@ static bool macronix_parse_cmd(XlnxAXIQSPI *s)
 
         return true;
     case READ_4B:
-    case READ_DUAL_IO_4B:
+    case FAST_READ_DUAL_IO_4B:
     case READ_QUAD_4B:
     case PAGE_PROGRAM_4B:
-    case QUAD_FAST_PROGRAM_IO_4B:
+    case QUAD_PAGE_PROGRAM_IO_4B:
     case READ_PASSWORD_4B:
     case ERASE_4B:
         s->num_dummies = 0;
@@ -695,7 +695,7 @@ static bool macronix_parse_cmd(XlnxAXIQSPI *s)
         s->addr_bytes = axiqspi_get_addressing(s);
 
         return true;
-    case READ_FAST_4B:
+    case FAST_READ_4B:
     case FAST_READ_DUAL_4B:
     case QUAD_INPUT_FAST_IO:
         s->num_dummies = 4;
@@ -718,12 +718,12 @@ static uint8_t shared_get_link_state(uint8_t cmd)
     case QUAD_PAGE_PROGRAM_4B:
     case QUAD_IO_READ_ID:
     case QUAD_INPUT_FAST_IO:
-    case QUAD_FAST_PROGRAM_IO_4B:
+    case QUAD_PAGE_PROGRAM_IO_4B:
     case OCTAL_WORD_READ_QUAD_IO:
         return LINK_STATE_QUAD;
     case FAST_READ_DUAL:
     case FAST_READ_DUAL_IO:
-    case READ_DUAL_IO_4B:
+    case FAST_READ_DUAL_IO_4B:
     case FAST_READ_DUAL_4B:
     case DUAL_FAST_PROGRAM:
     case DUAL_EXTENDED_FAST_PROGRAM:
@@ -1726,10 +1726,10 @@ static MemTxResult axiqspi_xip_read(void *opaque, hwaddr addr, uint64_t *val,
     /* These read commands are universal between all supported flashes */
     switch (s->conf.mode) {
     case AXIQSPI_MODE_STD:
-        cmd = is_4b_cmd ? READ_FAST_4B : FAST_READ;
+        cmd = is_4b_cmd ? FAST_READ_4B : FAST_READ;
         break;
     case AXIQSPI_MODE_DUAL:
-        cmd = is_4b_cmd ? READ_DUAL_IO_4B : FAST_READ_DUAL_IO;
+        cmd = is_4b_cmd ? FAST_READ_DUAL_IO_4B : FAST_READ_DUAL_IO;
         break;
     case AXIQSPI_MODE_QUAD:
         cmd = is_4b_cmd ? FAST_READ_QUAD_IO_4B : FAST_READ_QUAD_IO;
