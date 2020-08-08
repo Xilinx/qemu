@@ -1332,9 +1332,24 @@ static void axiqspi_do_reset(XlnxAXIQSPI *s)
     axiqspi_update_cs_lines(s);
 }
 
+static void axiqspi_xip_do_reset(XlnxAXIQSPI *s)
+{
+    fifo_reset(&s->rx_fifo);
+
+    for (size_t i = 0; i < ARRAY_SIZE(s->reg_info); ++i) {
+        register_reset(&s->reg_info[i]);
+    }
+}
+
 static void axiqspi_reset(DeviceState *dev)
 {
-    axiqspi_do_reset(XLNX_AXIQSPI(dev));
+    XlnxAXIQSPI *s = XLNX_AXIQSPI(dev);
+
+    if (s->conf.xip_mode) {
+        axiqspi_xip_do_reset(s);
+    } else {
+        axiqspi_do_reset(s);
+    }
 }
 
 static uint64_t axiqspi_srr_pre_write(RegisterInfo *reg, uint64_t val64)
@@ -1707,6 +1722,7 @@ static MemTxResult axiqspi_xip_read(void *opaque, hwaddr addr, uint64_t *val,
      * This is because we send data right after we receive it from
      * the SPI flash; meaning the FIFO is always empty.
      */
+    qemu_set_irq(s->cs_lines[0], 0);
     ssi_transfer(s->spi_bus, cmd);
     DB_PRINT("axiqspi: XIP TX->0x%x\n", cmd);
     for (int i = s->addr_bytes; i >= 0; --i) {
@@ -1724,6 +1740,7 @@ static MemTxResult axiqspi_xip_read(void *opaque, hwaddr addr, uint64_t *val,
         val8[i] = ssi_transfer(s->spi_bus, 0x00);
         DB_PRINT("axiqspi: XIP RX->0x%x\n", val8[i]);
     }
+    qemu_set_irq(s->cs_lines[0], 1);
 
     return MEMTX_OK;
 }
