@@ -1307,7 +1307,7 @@ static void axiqspi_bus_tx(XlnxAXIQSPI *s)
 
 static void axiqspi_do_reset(XlnxAXIQSPI *s)
 {
-    fifo_reset(&s->rx_fifo);
+    fifo_reset(&s->tx_fifo);
     fifo_reset(&s->rx_fifo);
 
     for (size_t i = 0; i < ARRAY_SIZE(s->reg_info); ++i) {
