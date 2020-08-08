@@ -329,6 +329,7 @@ typedef struct XlnxAXIQSPI {
     uint8_t num_dummies;
     bool is_addr_change_cmd;
     bool is_4b_addressing;
+    bool is_xip_wb_init;
     uint32_t prev_ss;
 
     MemoryRegion xip_mr;
@@ -1665,11 +1666,49 @@ static const MemoryRegionOps axiqspi_ops = {
     },
 };
 
+static void axiqspi_xip_txrx(XlnxAXIQSPI *s, hwaddr addr, uint8_t *val,
+                             unsigned size)
+{
+    qemu_set_irq(s->cs_lines[0], 0);
+    ssi_transfer(s->spi_bus, s->cmd);
+    DB_PRINT("axiqspi: XIP TX->0x%x\n", s->cmd);
+
+    for (int i = s->addr_bytes - 1; i >= 0; --i) {
+        uint8_t shift = i * 8;
+        uint8_t addr_byte = (addr >> shift) & 0xFF;
+        ssi_transfer(s->spi_bus, addr_byte);
+        DB_PRINT("axiqspi: XIP TX->0x%x\n", addr_byte);
+    }
+
+    /*
+     * If a command has dummy bytes, We TX 8 dummy bytes regardless of
+     * command and link state.
+     */
+    if (s->num_dummies) {
+        for (uint8_t i = 0; i < 8; ++i) {
+            ssi_transfer(s->spi_bus, 0x00);
+            DB_PRINT("axiqspi: XIP TX->0x00 dummy\n");
+        }
+    }
+
+    for (uint8_t i = 0; i < size; ++i) {
+        val[i] = ssi_transfer(s->spi_bus, 0x00);
+        DB_PRINT("axiqspi: XIP RX->0x%x\n", val[i]);
+    }
+    qemu_set_irq(s->cs_lines[0], 1);
+}
+
+static void axiqspi_xip_wb_init(XlnxAXIQSPI *s)
+{
+    axiqspi_parse_cmd(s, HIGH_PERFORMANCE_MODE);
+
+    axiqspi_xip_txrx(s, 0, NULL, 0);
+}
+
 static MemTxResult axiqspi_xip_read(void *opaque, hwaddr addr, uint64_t *val,
                                     unsigned size, MemTxAttrs attrs)
 {
     XlnxAXIQSPI *s = XLNX_AXIQSPI(opaque);
-    uint8_t *val8 = (uint8_t *)val;
     uint8_t cmd;
 
     assert(size <= 64);
@@ -1695,6 +1734,13 @@ static MemTxResult axiqspi_xip_read(void *opaque, hwaddr addr, uint64_t *val,
         g_assert_not_reached();
     }
 
+    if (s->conf.spi_mem == SPI_MEM_WINBOND &&
+        s->conf.mode != AXIQSPI_MODE_STD &&
+        !s->is_xip_wb_init) {
+        axiqspi_xip_wb_init(s);
+        s->is_xip_wb_init = true;
+    }
+
     /* Parse to get the number of dummy and addr bytes */
     axiqspi_parse_cmd(s, cmd);
 
@@ -1708,28 +1754,7 @@ static MemTxResult axiqspi_xip_read(void *opaque, hwaddr addr, uint64_t *val,
      * This is because we send data right after we receive it from
      * the SPI flash; meaning the FIFO is always empty.
      */
-    qemu_set_irq(s->cs_lines[0], 0);
-    ssi_transfer(s->spi_bus, cmd);
-    DB_PRINT("axiqspi: XIP TX->0x%x\n", cmd);
-
-    for (int i = s->addr_bytes - 1; i >= 0; --i) {
-        uint8_t shift = i * 8;
-        uint8_t addr_byte = (addr >> shift) & 0xFF;
-        ssi_transfer(s->spi_bus, addr_byte);
-        DB_PRINT("axiqspi: XIP TX->0x%x\n", addr_byte);
-    }
-
-    /* All XIP commands require 8 dummy cycles, so always TX 8 dummy bytes */
-    for (uint8_t i = 0; i < 8; ++i) {
-        ssi_transfer(s->spi_bus, 0x00);
-        DB_PRINT("axiqspi: XIP TX->0x00 dummy\n");
-    }
-
-    for (uint8_t i = 0; i < size; ++i) {
-        val8[i] = ssi_transfer(s->spi_bus, 0x00);
-        DB_PRINT("axiqspi: XIP RX->0x%x\n", val8[i]);
-    }
-    qemu_set_irq(s->cs_lines[0], 1);
+    axiqspi_xip_txrx(s, addr, (uint8_t *)val, size);
 
     return MEMTX_OK;
 }
