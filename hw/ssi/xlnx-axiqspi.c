@@ -332,7 +332,6 @@ typedef struct XlnxAXIQSPI {
     uint32_t prev_ss;
 
     MemoryRegion xip_mr;
-    AddressSpace xip_as;
 
     uint32_t regs[XLNX_AXIQSPI_R_MAX];
     RegisterInfo reg_info[XLNX_AXIQSPI_R_MAX];
@@ -1937,7 +1936,6 @@ static bool axiqspi_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
             name = g_strdup_printf("axiqspi-xip-%d\n", i);
             memory_region_init_io(&s->xip_mr, OBJECT(obj), &axiqspi_xip_ops,
                                   s, name, reg.s[i + 1]);
-            address_space_init(&s->xip_as, &s->xip_mr, name);
             sysbus_init_mmio(sbd, &s->xip_mr);
             g_free(name);
         }
