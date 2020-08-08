@@ -1720,7 +1720,8 @@ static MemTxResult axiqspi_xip_read(void *opaque, hwaddr addr, uint64_t *val,
         DB_PRINT("axiqspi: XIP TX->0x%x\n", addr_byte);
     }
 
-    for (uint8_t i = 0; i < s->num_dummies; ++i) {
+    /* All XIP commands require 8 dummy cycles, so always TX 8 dummy bytes */
+    for (uint8_t i = 0; i < 8; ++i) {
         ssi_transfer(s->spi_bus, 0x00);
         DB_PRINT("axiqspi: XIP TX->0x00 dummy\n");
     }
