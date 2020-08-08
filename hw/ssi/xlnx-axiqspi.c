@@ -1927,18 +1927,18 @@ static bool axiqspi_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
     ObjectClass *klass = object_class_by_name(TYPE_XLNX_AXIQSPI);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
     FDTGenericMMapClass *parent_fmc;
-    uint8_t i;
-    char *name;
 
     parent_fmc = FDT_GENERIC_MMAP_CLASS(object_class_get_parent(klass));
     if (s->conf.xip_mode) {
-        for (i = 0; i < (reg.n - 1); ++i) {
-            name = g_strdup_printf("axiqspi-xip-%d\n", i);
-            memory_region_init_io(&s->xip_mr, OBJECT(obj), &axiqspi_xip_ops,
-                                  s, name, reg.s[i + 1]);
-            sysbus_init_mmio(sbd, &s->xip_mr);
-            g_free(name);
+        if (reg.n != 2) {
+            error_setg(errp, "axiqspi: XIP mode requires 1 region, but "
+                       "device tree specifies %d regions.", reg.n - 1);
+            return false;
         }
+
+        memory_region_init_io(&s->xip_mr, OBJECT(obj), &axiqspi_xip_ops,
+                              s, "axiqspi-xip-region", reg.s[1]);
+        sysbus_init_mmio(sbd, &s->xip_mr);
     }
 
     return parent_fmc ? parent_fmc->parse_reg(obj, reg, errp) : false;
