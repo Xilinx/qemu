@@ -1614,6 +1614,24 @@ static const RegisterAccessInfo axiqspi_regs_info[] = {
     }
 };
 
+static bool axiqspi_xip_check_cpol_cpha(XlnxAXIQSPI *s)
+{
+    bool cpol = !!(ARRAY_FIELD_EX32(s->regs, XIP_CONFIG_REG, CPOL));
+    bool cpha = !!(ARRAY_FIELD_EX32(s->regs, XIP_CONFIG_REG, CPHA));
+
+    return (cpol && cpha) || (!cpol && !cpha);
+}
+
+static void axiqspi_xip_spicr_post_write(RegisterInfo *reg, uint64_t val64)
+{
+    XlnxAXIQSPI *s = XLNX_AXIQSPI(reg->opaque);
+
+    if (!axiqspi_xip_check_cpol_cpha(s)) {
+        qemu_log_mask(LOG_GUEST_ERROR, "axiqspi: CPOL and CPHA error.\n");
+        ARRAY_FIELD_DP32(s->regs, XIP_STATUS_REG, CPOL_CPHA_ERROR, 1);
+    }
+}
+
 static uint64_t axiqspi_xip_spisr_post_read(RegisterInfo *reg, uint64_t val64)
 {
     XlnxAXIQSPI *s = XLNX_AXIQSPI(reg->opaque);
@@ -1627,6 +1645,7 @@ static uint64_t axiqspi_xip_spisr_post_read(RegisterInfo *reg, uint64_t val64)
 static const RegisterAccessInfo axiqspi_xip_regs_info[] = {
     {   .name = "XIP_CONFIG_REG",  .addr = A_XIP_CONFIG_REG,
         .rsvd = 0xfffffffc,
+        .post_write = axiqspi_xip_spicr_post_write,
     },{ .name = "XIP_STATUS_REG",  .addr = A_XIP_STATUS_REG,
         .reset = 0x1,
         .rsvd = 0xffffff70,
@@ -1653,6 +1672,12 @@ static MemTxResult axiqspi_xip_read(void *opaque, hwaddr addr, uint64_t *val,
     uint8_t cmd;
 
     assert(size <= 64);
+
+    if (!axiqspi_xip_check_cpol_cpha(s)) {
+        qemu_log_mask(LOG_GUEST_ERROR, "axiqspi: attempted to read with "
+                      "bad CPOL and CPHA.\n");
+        return MEMTX_ERROR;
+    }
 
     /* These read commands are universal between all supported flashes */
     switch (s->conf.mode) {
@@ -1709,6 +1734,8 @@ static MemTxResult axiqspi_xip_write(void *opaque, hwaddr addr, uint64_t val,
     XlnxAXIQSPI *s = XLNX_AXIQSPI(opaque);
 
     /* XIP mode does not allow writes */
+    qemu_log_mask(LOG_GUEST_ERROR,
+                  "axiqspi: attempted to write in XIP mode\n");
     ARRAY_FIELD_DP32(s->regs, XIP_STATUS_REG, AXI_TRANSACTION_ERROR, 1);
 
     return MEMTX_ERROR;
