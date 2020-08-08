@@ -390,11 +390,8 @@ static bool shared_parse_cmd(XlnxAXIQSPI *s)
     case READ_JEDEC_ID:
     case WRITE_ENABLE:
     case WRITE_DISABLE:
-    case READ_UNIQUE_ID:
     case CHIP_ERASE:
     case BULK_ERASE:
-    case ERASE_RESUME:
-    case ERASE_SUSPEND:
     case READ_STATUS_REG:
     case READ_CONF_REG:
     case WRITE_STATUS_REG:
@@ -431,6 +428,12 @@ static bool shared_parse_cmd(XlnxAXIQSPI *s)
         s->num_dummies = 0;
 
         return true;
+    case READ_UNIQUE_ID:
+    case ERASE_RESUME:
+    case ERASE_SUSPEND:
+        qemu_log_mask(LOG_UNIMP, "Command %x not implemented\n", s->cmd);
+
+        return false;
     default:
         return false;
     }
@@ -439,27 +442,26 @@ static bool shared_parse_cmd(XlnxAXIQSPI *s)
 static bool winbond_parse_cmd(XlnxAXIQSPI *s)
 {
     switch (s->cmd) {
-    case READ_STATUS_REG_2:
-    case WRITE_STATUS_REG_2:
     case WRITE_STATUS_REG:
-    case POWER_DOWN:
-        s->addr_bytes = 0;
-        s->num_dummies = 0;
-
-        return true;
-    case HIGH_PERFORMANCE_MODE:
     case EXIT_HIGH_PERFORMANCE_MODE:
         s->addr_bytes = 0;
-        s->num_dummies = 3;
+        s->num_dummies = 0;
 
         return true;
     case ERASE_32K:
     case SUBSECTOR_ERASE:
     case READ_DEVICE_ID:
+    case HIGH_PERFORMANCE_MODE:
         s->addr_bytes = 3;
         s->num_dummies = 0;
 
         return true;
+    case READ_STATUS_REG_2:
+    case WRITE_STATUS_REG_2:
+    case POWER_DOWN:
+        qemu_log_mask(LOG_UNIMP, "Command %x not implemented\n", s->cmd);
+
+        return false;
     default:
         return false;
     }
@@ -468,23 +470,11 @@ static bool winbond_parse_cmd(XlnxAXIQSPI *s)
 static bool spansion_parse_cmd(XlnxAXIQSPI *s)
 {
     switch (s->cmd) {
-    case CLEAR_STATUS_REG:
     case WRITE_STATUS_REG:
     case READ_CONF_REG:
     case BANK_REGISTER_ACCESS:
-    case BANK_REGISTER_READ:
-    case READ_SECURITY_REGISTER:
-    case WRITE_SECURITY_REGISTER:
-    case PPB_LOCK_BIT_READ:
-    case PPB_LOCK_BIT_WRITE:
-    case PPB_ERASE:
-    case PASSWORD_READ:
-    case PASSWORD_PROGRAM:
-    case PASSWORD_UNLOCK:
     case RESET:
     case MODE_BIT_RESET:
-    case PROGRAM_SUSPEND:
-    case PROGRAM_RESUME:
         s->addr_bytes = 0;
         s->num_dummies = 0;
 
@@ -495,8 +485,6 @@ static bool spansion_parse_cmd(XlnxAXIQSPI *s)
         s->num_dummies = 0;
 
         return true;
-    case SP_OTP_READ:
-    case PROGRAM_OTP:
     case READ_DEVICE_ID:
         s->addr_bytes = 3;
         s->num_dummies = 0;
@@ -518,10 +506,6 @@ static bool spansion_parse_cmd(XlnxAXIQSPI *s)
         s->num_dummies = 4;
 
         return true;
-    case DYB_READ:
-    case DYB_WRITE:
-    case PPB_READ:
-    case PPB_PROGRAM:
     case PAGE_PROGRAM_4B:
     case READ_4B:
     case BLOCK_ERASE_4B:
@@ -535,11 +519,28 @@ static bool spansion_parse_cmd(XlnxAXIQSPI *s)
         s->num_dummies = 3;
 
         return true;
+    case CLEAR_STATUS_REG:
+    case BANK_REGISTER_READ:
+    case READ_SECURITY_REGISTER:
+    case WRITE_SECURITY_REGISTER:
+    case PPB_LOCK_BIT_READ:
+    case PPB_LOCK_BIT_WRITE:
+    case PPB_ERASE:
+    case PASSWORD_READ:
+    case PASSWORD_PROGRAM:
+    case PASSWORD_UNLOCK:
+    case PROGRAM_SUSPEND:
+    case PROGRAM_RESUME:
+    case DYB_READ:
+    case DYB_WRITE:
+    case SP_OTP_READ:
+    case PROGRAM_OTP:
+    case PPB_READ:
+    case PPB_PROGRAM:
     case READ_FLASH_DISCOVERABLE_PARAMS:
-        s->addr_bytes = 3;
-        s->num_dummies = 1;
+        qemu_log_mask(LOG_UNIMP, "Command %x not implemented\n", s->cmd);
 
-        return true;
+        return false;
     default:
         return false;
     }
@@ -549,60 +550,31 @@ static bool micron_parse_cmd(XlnxAXIQSPI *s)
 {
     switch (s->cmd) {
     case WRITE_STATUS_REG:
-    case QUAD_IO_READ_ID:
-    case ERASE_NONVOLATILE_LOCK:
     case READ_NONVOLATILE_CONFIG_REG:
     case READ_VOLATILE_CONFIG_REG:
     case WRITE_VOLATILE_CONFIG_REG:
     case READ_VOLATILE_ENH_CONFIG_REG:
     case WRITE_VOLATILE_ENH_CONFIG_REG:
-    case PASSWORD_PROGRAM:
-    case WRITE_VOLATILE_LOCK_REG:
     case READ_FLAG_STATUS_REG:
-    case CLEAR_STATUS_REG:
-    case WRITE_EXTENDED_ADDR_REG:
-    case READ_EXTENDED_ADDR_REG:
-    case POWER_DOWN:
-    case EXIT_POWER_DOWN:
     case MI_ENTER_QUAD_IO_MODE:
     case EXIT_QUAD_IO_MODE:
-    case READ_GLOBAL_FREEZE_BIT:
-    case WRITE_GLOBAL_FREEZE_BIT:
-    case WRITE_PASSWORD:
-    case UNLOCK_PASSWORD:
-    case READ_LOCK_REG:
-    case WRITE_LOCK_REG:
     case ERASE_32K:
-    case RESET_ENABLE:
     case RESET_MEMORY:
         s->num_dummies = 0;
         s->addr_bytes = 0;
 
         return true;
     case WRITE_NONVOLATILE_CONFIG_REG:
-    case ENTER_4B_ADDR_MODE:
-    case EXIT_4B_ADDR_MODE:
         s->is_addr_change_cmd = true;
         s->num_dummies = 0;
         s->addr_bytes = 0;
 
         return true;
-    case READ_FLASH_DISCOVERABLE_PARAMS:
-    case MI_OTP_READ:
-        s->num_dummies = 1;
-        s->addr_bytes = axiqspi_get_addressing(s);
-
-        return true;
     case DUAL_FAST_PROGRAM:
-    case DUAL_EXTENDED_FAST_PROGRAM:
-    case QUAD_INPUT_FAST_IO:
         s->num_dummies = 0;
         s->addr_bytes = axiqspi_get_addressing(s);
 
         return true;
-    case PROGRAM_OTP:
-    case READ_NONVOLATILE_LOCK:
-    case WRITE_NONVOLATILE_LOCK:
     case DIE_ERASE:
     case SUBSECTOR_ERASE:
         s->num_dummies = 0;
@@ -632,13 +604,41 @@ static bool micron_parse_cmd(XlnxAXIQSPI *s)
     case ERASE_4B:
     case SUBSECTOR_ERASE_4B:
     case READ_4B:
-    case READ_VOLATILE_LOCK_4B:
-    case WRITE_VOLATILE_LOCK_4B:
-    case READ_PASSWORD_4B:
         s->num_dummies = 0;
         s->addr_bytes = 4;
 
         return true;
+    case QUAD_IO_READ_ID:
+    case ERASE_NONVOLATILE_LOCK:
+    case PASSWORD_PROGRAM:
+    case WRITE_VOLATILE_LOCK_REG:
+    case CLEAR_STATUS_REG:
+    case WRITE_EXTENDED_ADDR_REG:
+    case READ_EXTENDED_ADDR_REG:
+    case POWER_DOWN:
+    case EXIT_POWER_DOWN:
+    case READ_GLOBAL_FREEZE_BIT:
+    case WRITE_GLOBAL_FREEZE_BIT:
+    case WRITE_PASSWORD:
+    case UNLOCK_PASSWORD:
+    case READ_LOCK_REG:
+    case WRITE_LOCK_REG:
+    case RESET_ENABLE:
+    case ENTER_4B_ADDR_MODE:
+    case EXIT_4B_ADDR_MODE:
+    case READ_FLASH_DISCOVERABLE_PARAMS:
+    case MI_OTP_READ:
+    case DUAL_EXTENDED_FAST_PROGRAM:
+    case QUAD_INPUT_FAST_IO:
+    case PROGRAM_OTP:
+    case READ_NONVOLATILE_LOCK:
+    case WRITE_NONVOLATILE_LOCK:
+    case READ_VOLATILE_LOCK_4B:
+    case WRITE_VOLATILE_LOCK_4B:
+    case READ_PASSWORD_4B:
+        qemu_log_mask(LOG_UNIMP, "Command %x not implemented\n", s->cmd);
+
+        return false;
     default:
         return false;
     }
@@ -647,35 +647,9 @@ static bool micron_parse_cmd(XlnxAXIQSPI *s)
 static bool macronix_parse_cmd(XlnxAXIQSPI *s)
 {
     switch (s->cmd) {
-    case QUAD_IO_READ_ID:
-    case WRITE_EXTENDED_ADDR_REG:
-    case READ_EXTENDED_ADDR_REG:
-    case RESET_ENABLE:
     case RESET_MEMORY:
-    case PROGRAM_OTP:
-    case PASSWORD_PROGRAM:
     case READ_VOLATILE_CONFIG_REG:
-    case READ_LOCK_REG:
-    case WRITE_LOCK_REG:
-    case READ_STATUS_REG_2:
-    case POWER_DOWN:
-    case CLEAR_STATUS_REG_1:
-    case AUTOBOOT_REG:
-    case WRITE_PASSWORD:
-    case UNLOCK_PASSWORD:
-    case SET_BURST_READ_LENGTH:
-    case ERASE_FAST_BOOT_REGISTER:
     case EXIT_QUAD_IO_MODE:
-    case PROGRAM_ERASE_SUSPEND:
-    case WRITE_PROTECT_SEL:
-    case EXIT_SECURE_OTP:
-    case GANG_BLOCK_LOCK:
-    case GANG_BLOCK_UNLOCK:
-    case WRITE_DATA_PROTECTION_REG_BITS:
-    case WRITE_DATA_PROTECTION_REG:
-    case PPB_ERASE:
-    case READ_SECURITY_REGISTER:
-    case WRITE_SECURITY_REGISTER:
     case BANK_REGISTER_READ:
     case BANK_REGISTER_WRITE:
         s->num_dummies = 0;
@@ -683,16 +657,9 @@ static bool macronix_parse_cmd(XlnxAXIQSPI *s)
 
         return true;
     case WRITE_STATUS_REG:
-    case ENTER_4B_ADDR_MODE:
-    case EXIT_4B_ADDR_MODE:
         s->is_addr_change_cmd = true;
         s->num_dummies = 0;
         s->addr_bytes = 0;
-
-        return true;
-    case READ_FLASH_DISCOVERABLE_PARAMS:
-        s->num_dummies = 1;
-        s->addr_bytes = 3;
 
         return true;
     case READ_4B:
@@ -700,7 +667,6 @@ static bool macronix_parse_cmd(XlnxAXIQSPI *s)
     case READ_QUAD_4B:
     case PAGE_PROGRAM_4B:
     case QUAD_PAGE_PROGRAM_IO_4B:
-    case READ_PASSWORD_4B:
     case ERASE_4B:
         s->num_dummies = 0;
         s->addr_bytes = 4;
@@ -710,7 +676,6 @@ static bool macronix_parse_cmd(XlnxAXIQSPI *s)
     case READ_DEVICE_ID:
     case READ_DATA:
     case QUAD_PAGE_PROGRAM:
-    case OCTAL_WORD_READ_QUAD_IO:
     case ERASE_32K:
     case SUBSECTOR_ERASE_4B:
     case BLOCK_ERASE:
@@ -730,11 +695,41 @@ static bool macronix_parse_cmd(XlnxAXIQSPI *s)
         s->addr_bytes = 4;
 
         return true;
+    case QUAD_IO_READ_ID:
+    case WRITE_EXTENDED_ADDR_REG:
+    case READ_EXTENDED_ADDR_REG:
+    case RESET_ENABLE:
+    case PROGRAM_OTP:
+    case PASSWORD_PROGRAM:
+    case READ_LOCK_REG:
+    case WRITE_LOCK_REG:
+    case READ_STATUS_REG_2:
+    case POWER_DOWN:
+    case CLEAR_STATUS_REG_1:
+    case AUTOBOOT_REG:
+    case WRITE_PASSWORD:
+    case UNLOCK_PASSWORD:
+    case SET_BURST_READ_LENGTH:
+    case ERASE_FAST_BOOT_REGISTER:
+    case PROGRAM_ERASE_SUSPEND:
+    case WRITE_PROTECT_SEL:
+    case EXIT_SECURE_OTP:
+    case GANG_BLOCK_LOCK:
+    case GANG_BLOCK_UNLOCK:
+    case WRITE_DATA_PROTECTION_REG_BITS:
+    case WRITE_DATA_PROTECTION_REG:
+    case PPB_ERASE:
+    case READ_SECURITY_REGISTER:
+    case WRITE_SECURITY_REGISTER:
+    case ENTER_4B_ADDR_MODE:
+    case EXIT_4B_ADDR_MODE:
+    case READ_FLASH_DISCOVERABLE_PARAMS:
+    case READ_PASSWORD_4B:
+    case OCTAL_WORD_READ_QUAD_IO:
     case QUAD_INPUT_FAST_IO:
-        s->num_dummies = 4;
-        s->addr_bytes = 4;
+        qemu_log_mask(LOG_UNIMP, "Command %x not implemented\n", s->cmd);
 
-        return true;
+        return false;
     default:
         return false;
     }
