@@ -1614,13 +1614,24 @@ static const RegisterAccessInfo axiqspi_regs_info[] = {
     }
 };
 
+static uint64_t axiqspi_xip_spisr_post_read(RegisterInfo *reg, uint64_t val64)
+{
+    XlnxAXIQSPI *s = XLNX_AXIQSPI(reg->opaque);
+
+    /* XIP SPISR is brought to reset after every read */
+    register_reset(&s->reg_info[R_XIP_STATUS_REG]);
+
+    return val64;
+}
+
 static const RegisterAccessInfo axiqspi_xip_regs_info[] = {
     {   .name = "XIP_CONFIG_REG",  .addr = A_XIP_CONFIG_REG,
         .rsvd = 0xfffffffc,
     },{ .name = "XIP_STATUS_REG",  .addr = A_XIP_STATUS_REG,
         .reset = 0x1,
         .rsvd = 0xffffff70,
-        .cor = 0x1f,
+        .ro = 0x1f,
+        .post_read = axiqspi_xip_spisr_post_read,
     }
 };
 
