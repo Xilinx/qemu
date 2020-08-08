@@ -1713,7 +1713,7 @@ static MemTxResult axiqspi_xip_read(void *opaque, hwaddr addr, uint64_t *val,
     ssi_transfer(s->spi_bus, cmd);
     DB_PRINT("axiqspi: XIP TX->0x%x\n", cmd);
 
-    for (int i = s->addr_bytes; i >= 0; --i) {
+    for (int i = s->addr_bytes - 1; i >= 0; --i) {
         uint8_t shift = i * 8;
         uint8_t addr_byte = (addr >> shift) & 0xFF;
         ssi_transfer(s->spi_bus, addr_byte);
