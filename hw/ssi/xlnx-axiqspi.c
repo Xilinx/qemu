@@ -768,13 +768,8 @@ static bool axiqspi_parse_cmd(XlnxAXIQSPI *s, uint8_t cmd)
     case SPI_MEM_MACRONIX:
         found = macronix_parse_cmd(s);
         break;
-    /* Fallthrough in case of a misconfiguration */
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "axiqspi: Attempted to parse command "
-                      "for unknown flash type %d.  Using mixed mode parsing\n",
-                      s->conf.spi_mem);
-        found = mixed_parse_cmd(s);
-        break;
+        g_assert_not_reached();
     }
 
     if (found) {
@@ -1295,14 +1290,7 @@ static void axiqspi_bus_tx(XlnxAXIQSPI *s)
             done = axiqspi_bus_tx_data(s);
             break;
         default:
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "axiqspi: State machine reached unknown state %d. "
-                          "Resetting the state machine.\n",
-                          s->state);
-            axiqspi_state_reset(s);
-            done = true;
-
-            break;
+            g_assert_not_reached();
         }
     }
 
