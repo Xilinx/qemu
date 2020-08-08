@@ -1729,10 +1729,18 @@ static bool axiqspi_validate_conf(XlnxAXIQSPI *s, Error **errp)
     }
 
     if (s->conf.fifo_depth) {
-        if (s->conf.fifo_depth != 16 && s->conf.fifo_depth != 256) {
-            error_setg(errp, "axiqspi: FIFO depth can only be  16 or 256, "
-                         "but is %d.", s->conf.fifo_depth);
-            return false;
+        if (s->conf.xip_mode) {
+            if (s->conf.fifo_depth != 64) {
+                error_setg(errp, "axiqspi: FIFO depth must be 64 in XIP mode, "
+                           "but is %d.", s->conf.fifo_depth);
+                return false;
+            }
+        } else {
+            if (s->conf.fifo_depth != 16 && s->conf.fifo_depth != 256) {
+                error_setg(errp, "axiqspi: FIFO depth can only be 16 or 256, "
+                             "but is %d.", s->conf.fifo_depth);
+                return false;
+            }
         }
     }
 
@@ -1807,7 +1815,6 @@ static void axiqspi_realize(DeviceState *dev, Error **errp)
     s->conf.num_cs_mask = MAKE_32BIT_MASK(s->conf.num_cs);
 
     if (s->conf.xip_mode) {
-        s->conf.fifo_depth = 64;
         reg_array =
             register_init_block32(dev, axiqspi_xip_regs_info,
                                   ARRAY_SIZE(axiqspi_xip_regs_info),
