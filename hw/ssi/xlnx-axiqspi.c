@@ -408,8 +408,16 @@ static bool shared_parse_cmd(XlnxAXIQSPI *s)
 
         return true;
     case FAST_READ:
+        s->addr_bytes = axiqspi_get_addressing(s);
+        s->num_dummies = 1;
+
+        return true;
     case FAST_READ_DUAL:
     case FAST_READ_DUAL_IO:
+        s->addr_bytes = axiqspi_get_addressing(s);
+        s->num_dummies = 2;
+
+        return true;
     case FAST_READ_QUAD:
     case FAST_READ_QUAD_IO:
         s->addr_bytes = axiqspi_get_addressing(s);
@@ -493,10 +501,18 @@ static bool spansion_parse_cmd(XlnxAXIQSPI *s)
         s->addr_bytes = 3;
         s->num_dummies = 0;
 
-    case READ_4B:
+        return true;
     case FAST_READ_4B:
+        s->addr_bytes = 4;
+        s->num_dummies = 1;
+
+        return true;
     case FAST_READ_DUAL_4B:
     case FAST_READ_DUAL_IO_4B:
+        s->addr_bytes = 4;
+        s->num_dummies = 2;
+
+        return true;
     case READ_QUAD_4B:
         s->addr_bytes = 4;
         s->num_dummies = 4;
@@ -507,6 +523,7 @@ static bool spansion_parse_cmd(XlnxAXIQSPI *s)
     case PPB_READ:
     case PPB_PROGRAM:
     case PAGE_PROGRAM_4B:
+    case READ_4B:
     case BLOCK_ERASE_4B:
     case QUAD_PAGE_PROGRAM_4B:
         s->addr_bytes = 4;
@@ -520,7 +537,7 @@ static bool spansion_parse_cmd(XlnxAXIQSPI *s)
         return true;
     case READ_FLASH_DISCOVERABLE_PARAMS:
         s->addr_bytes = 3;
-        s->num_dummies = 4;
+        s->num_dummies = 1;
 
         return true;
     default:
@@ -572,7 +589,7 @@ static bool micron_parse_cmd(XlnxAXIQSPI *s)
         return true;
     case READ_FLASH_DISCOVERABLE_PARAMS:
     case MI_OTP_READ:
-        s->num_dummies = 4;
+        s->num_dummies = 1;
         s->addr_bytes = axiqspi_get_addressing(s);
 
         return true;
@@ -593,16 +610,24 @@ static bool micron_parse_cmd(XlnxAXIQSPI *s)
 
         return true;
     case FAST_READ_4B:
+        s->num_dummies = 1;
+        s->addr_bytes = 4;
+
+        return true;
     case FAST_READ_DUAL_4B:
     case FAST_READ_DUAL_IO_4B:
+        s->num_dummies = 2;
+        s->addr_bytes = 4;
+
+        return true;
     case READ_QUAD_4B:
-    case QUAD_PAGE_PROGRAM_IO_4B:
         s->num_dummies = 4;
         s->addr_bytes = 4;
 
         return true;
     case PAGE_PROGRAM_4B:
     case QUAD_PAGE_PROGRAM_4B:
+    case QUAD_PAGE_PROGRAM_IO_4B:
     case BLOCK_ERASE_4B:
     case ERASE_4B:
     case SUBSECTOR_ERASE_4B:
@@ -666,7 +691,7 @@ static bool macronix_parse_cmd(XlnxAXIQSPI *s)
 
         return true;
     case READ_FLASH_DISCOVERABLE_PARAMS:
-        s->num_dummies = 4;
+        s->num_dummies = 1;
         s->addr_bytes = 3;
 
         return true;
@@ -696,7 +721,15 @@ static bool macronix_parse_cmd(XlnxAXIQSPI *s)
 
         return true;
     case FAST_READ_4B:
+        s->num_dummies = 1;
+        s->addr_bytes = 4;
+
+        return true;
     case FAST_READ_DUAL_4B:
+        s->num_dummies = 2;
+        s->addr_bytes = 4;
+
+        return true;
     case QUAD_INPUT_FAST_IO:
         s->num_dummies = 4;
         s->addr_bytes = 4;
