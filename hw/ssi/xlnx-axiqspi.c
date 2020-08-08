@@ -292,7 +292,6 @@ typedef enum {
 
 typedef struct XlnxAXIQSPIConf {
     bool xip_mode;
-
     uint16_t fifo_depth;
     uint8_t transaction_width;
     uint32_t tx_width_mask;
@@ -313,25 +312,23 @@ typedef enum {
 typedef struct XlnxAXIQSPI {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
-
     XlnxAXIQSPIConf conf;
     Fifo tx_fifo;
     Fifo rx_fifo;
     SSIBus *spi_bus;
     qemu_irq *cs_lines;
     qemu_irq irq;
-    bool is_4b_addressing;
 
     AXIQSPIState state;
     AXIQSPILinkState link_state;
     uint8_t addr_bytes_txed;
     uint8_t dummy_bytes_txed;
     size_t bytes_txed;
-
     uint8_t cmd;
     uint8_t addr_bytes;
     uint8_t num_dummies;
     bool is_addr_change_cmd;
+    bool is_4b_addressing;
     uint32_t prev_ss;
 
     MemoryRegion xip_mr;
@@ -1725,12 +1722,14 @@ static MemTxResult axiqspi_xip_read(void *opaque, hwaddr addr, uint64_t *val,
     qemu_set_irq(s->cs_lines[0], 0);
     ssi_transfer(s->spi_bus, cmd);
     DB_PRINT("axiqspi: XIP TX->0x%x\n", cmd);
+
     for (int i = s->addr_bytes; i >= 0; --i) {
         uint8_t shift = i * 8;
         uint8_t addr_byte = (addr >> shift) & 0xFF;
         ssi_transfer(s->spi_bus, addr_byte);
         DB_PRINT("axiqspi: XIP TX->0x%x\n", addr_byte);
     }
+
     for (uint8_t i = 0; i < s->num_dummies; ++i) {
         ssi_transfer(s->spi_bus, 0x00);
         DB_PRINT("axiqspi: XIP TX->0x00 dummy\n");
@@ -1779,7 +1778,7 @@ static bool axiqspi_validate_conf(XlnxAXIQSPI *s, Error **errp)
     if (s->conf.num_cs < AXIQSPI_NUM_CS_MIN ||
         s->conf.num_cs > AXIQSPI_NUM_CS_MAX) {
         error_setg(errp, "axiqspi: Num CS must be between %d and %d.",
-                     AXIQSPI_NUM_CS_MIN, AXIQSPI_NUM_CS_MAX);
+                   AXIQSPI_NUM_CS_MIN, AXIQSPI_NUM_CS_MAX);
         return false;
     }
 
@@ -1793,7 +1792,7 @@ static bool axiqspi_validate_conf(XlnxAXIQSPI *s, Error **errp)
         } else {
             if (s->conf.fifo_depth != 16 && s->conf.fifo_depth != 256) {
                 error_setg(errp, "axiqspi: FIFO depth can only be 16 or 256, "
-                             "but is %d.", s->conf.fifo_depth);
+                           "but is %d.", s->conf.fifo_depth);
                 return false;
             }
         }
@@ -1802,8 +1801,7 @@ static bool axiqspi_validate_conf(XlnxAXIQSPI *s, Error **errp)
     if (s->conf.transaction_width != 8 && s->conf.transaction_width != 16 &&
         s->conf.transaction_width != 32) {
         error_setg(errp, "axiqspi: transaction width must be 8, 16, or "
-                     "32, but is %d.",
-                     s->conf.transaction_width);
+                   "32, but is %d.", s->conf.transaction_width);
         return false;
     }
 
@@ -1812,8 +1810,8 @@ static bool axiqspi_validate_conf(XlnxAXIQSPI *s, Error **errp)
         s->conf.mode == AXIQSPI_MODE_QUAD) {
         if (s->conf.transaction_width != 8) {
             error_setg(errp, "axiqspi: Transaction width must be 8 in "
-                         "dual or quad mode, but is %d.",
-                         s->conf.transaction_width);
+                       "dual or quad mode, but is %d.",
+                       s->conf.transaction_width);
             return false;
         }
 
@@ -1827,7 +1825,7 @@ static bool axiqspi_validate_conf(XlnxAXIQSPI *s, Error **errp)
     if (s->conf.mode != AXIQSPI_MODE_STD) {
         if (s->conf.spi_mem >= SPI_MEM_INVALID) {
             error_setg(errp, "axiqspi: Unknown SPI memory %d, "
-                         "defaulting to mixed memory", s->conf.spi_mem);
+                       "defaulting to mixed memory", s->conf.spi_mem);
             s->conf.spi_mem = SPI_MEM_MIXED;
         }
     }
@@ -1836,7 +1834,7 @@ static bool axiqspi_validate_conf(XlnxAXIQSPI *s, Error **errp)
     if (s->conf.xip_mode) {
         if (s->conf.transaction_width != 8) {
             error_setg(errp, "axiqspi: Transaction width must be 8 in "
-                         "XIP mode, but is %d.", s->conf.transaction_width);
+                       "XIP mode, but is %d.", s->conf.transaction_width);
             return false;
         }
 
@@ -1848,7 +1846,7 @@ static bool axiqspi_validate_conf(XlnxAXIQSPI *s, Error **errp)
 
         if (s->conf.xip_addr_bits != 24 && s->conf.xip_addr_bits != 32) {
             error_setg(errp, "axiqspi: address bits must be 24 or "
-                         "32 in XIP mode, but is %d.", s->conf.xip_addr_bits);
+                       "32 in XIP mode, but is %d.", s->conf.xip_addr_bits);
             return false;
         }
     }
