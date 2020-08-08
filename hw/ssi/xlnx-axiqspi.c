@@ -747,9 +747,8 @@ static bool axiqspi_parse_cmd(XlnxAXIQSPI *s, uint8_t cmd)
     s->is_addr_change_cmd = false;
     s->cmd = cmd;
 
-    /* Mixed memory and shared command handling */
-    if ((s->conf.spi_mem == SPI_MEM_MIXED && mixed_parse_cmd(s)) ||
-        shared_parse_cmd(s)) {
+    /* Shared command handling */
+    if (shared_parse_cmd(s)) {
         s->link_state = shared_get_link_state(cmd);
         return true;
     }
@@ -767,6 +766,9 @@ static bool axiqspi_parse_cmd(XlnxAXIQSPI *s, uint8_t cmd)
         break;
     case SPI_MEM_MACRONIX:
         found = macronix_parse_cmd(s);
+        break;
+    case SPI_MEM_MIXED:
+        found = mixed_parse_cmd(s);
         break;
     default:
         g_assert_not_reached();
