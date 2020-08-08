@@ -1840,6 +1840,16 @@ static bool axiqspi_validate_conf(XlnxAXIQSPI *s, Error **errp)
                        "32 in XIP mode, but is %d.", s->conf.xip_addr_bits);
             return false;
         }
+
+        if (s->conf.xip_addr_bits == 32) {
+            if (s->conf.spi_mem != SPI_MEM_SPANSION &&
+                s->conf.spi_mem != SPI_MEM_MICRON) {
+                error_setg(errp, "axiqspi: XIP 32-bit addressing is only "
+                           "supported on Spansion or Micron memories.");
+                return false;
+
+            }
+        }
     }
 
     return true;
