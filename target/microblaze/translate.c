@@ -1231,6 +1231,8 @@ static void dec_br(DisasContext *dc)
     if (mbar == 2 && dc->imm == 4) {
         uint16_t mbar_imm = dc->rd;
 
+        LOG_DIS("mbar %d\n", mbar_imm);
+
         /* mbar IMM & 16 decodes to sleep.  */
         if (mbar_imm & 16) {
             TCGv_i32 tmp_1 = tcg_const_i32(1);
@@ -1247,7 +1249,6 @@ static void dec_br(DisasContext *dc)
             gen_helper_sleep(cpu_env);
             return;
         }
-        LOG_DIS("mbar %d\n", mbar_imm);
         /* Break the TB.  */
         dc->cpustate_changed = 1;
         return;
