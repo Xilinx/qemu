@@ -36,6 +36,7 @@
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
 #include "cpu.h"
+#include "hw/fdt_generic_util.h"
 
 #ifndef XILINX_APU_CTRL_ERR_DEBUG
 #define XILINX_APU_CTRL_ERR_DEBUG 0
@@ -97,6 +98,9 @@ typedef struct XlnxZynq3APUCtrl {
     qemu_irq irq_imr;
 
     ARMCPU *cpus[MAX_CPUS];
+    qemu_irq acpu_pwrdw[MAX_CPUS];
+
+    uint8_t cpu_pwrdwn_req;
 
     uint32_t regs[APU_CTRL_R_MAX];
     RegisterInfo regs_info[APU_CTRL_R_MAX];
@@ -159,6 +163,7 @@ static void pwrctl_postw(RegisterInfo *reg, uint64_t val64)
 {
     XlnxZynq3APUCtrl *s = XILINX_APU_CTRL(reg->opaque);
     int i;
+    uint32_t new;
 
     if (ARRAY_FIELD_EX32(s->regs, PWRCTL, L2FLUSHREQ)) {
         bool flush_req_ok = true;
@@ -190,6 +195,16 @@ static void pwrctl_postw(RegisterInfo *reg, uint64_t val64)
     if (ARRAY_FIELD_EX32(s->regs, PWRCTL, CLREXMONREQ)) {
         qemu_log_mask(LOG_UNIMP, "%s: CLREXMONREQ unimplemented.\n",
                       DEVICE(s)->id);
+    }
+
+    for (i = 0; i < MAX_CPUS; i++) {
+        new = val64 & (1 << i);
+        /* Check if CPU's CPUPWRDNREQ has changed. If yes, update GPIOs. */
+        if (new != (s->cpu_pwrdwn_req & (1 << i))) {
+            qemu_set_irq(s->acpu_pwrdw[i], !!new);
+        }
+        s->cpu_pwrdwn_req &= ~(1 << i);
+        s->cpu_pwrdwn_req |= new;
     }
 }
 
@@ -250,6 +265,13 @@ static const MemoryRegionOps apu_ctrl_ops = {
     },
 };
 
+static void apu_ctrl_realize(DeviceState *dev, Error **errp)
+{
+    XlnxZynq3APUCtrl *s = XILINX_APU_CTRL(dev);
+
+    qdev_init_gpio_out_named(dev, s->acpu_pwrdw, "acpu-pwrdw", MAX_CPUS);
+}
+
 static void apu_ctrl_init(Object *obj)
 {
     XlnxZynq3APUCtrl *s = XILINX_APU_CTRL(obj);
@@ -282,6 +304,18 @@ static void apu_ctrl_init(Object *obj)
     sysbus_init_irq(sbd, &s->irq_imr);
 }
 
+static const FDTGenericGPIOSet apu_ctrl_controller_gpios[] = {
+    {
+        .names = &fdt_generic_gpio_name_set_gpio,
+        .gpios = (FDTGenericGPIOConnection[]) {
+            {.name = "acpu-pwrdw", .fdt_index = 0, .range = MAX_CPUS},
+            { },
+        },
+    },
+    { },
+};
+
+
 static const VMStateDescription vmstate_apu_ctrl = {
     .name = TYPE_XILINX_APU_CTRL,
     .version_id = 1,
@@ -295,9 +329,12 @@ static const VMStateDescription vmstate_apu_ctrl = {
 static void apu_ctrl_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    FDTGenericGPIOClass *fggc = FDT_GENERIC_GPIO_CLASS(klass);
 
     dc->reset = apu_ctrl_reset;
     dc->vmsd = &vmstate_apu_ctrl;
+    dc->realize = apu_ctrl_realize;
+    fggc->controller_gpios = apu_ctrl_controller_gpios;
 }
 
 static const TypeInfo apu_ctrl_info = {
@@ -306,6 +343,10 @@ static const TypeInfo apu_ctrl_info = {
     .instance_size = sizeof(XlnxZynq3APUCtrl),
     .class_init    = apu_ctrl_class_init,
     .instance_init = apu_ctrl_init,
+    .interfaces    = (InterfaceInfo[]) {
+        { TYPE_FDT_GENERIC_GPIO },
+        { },
+    },
 };
 
 static void apu_ctrl_register_types(void)
