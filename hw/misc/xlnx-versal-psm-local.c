@@ -568,7 +568,7 @@ static void apu_wfi_h(void *opaque, int n, int level)
         ARRAY_FIELD_DP32(s->regs, APU_WFI_STATUS, ACPU0_WFI, !!level);
         break;
     case 1:
-        ARRAY_FIELD_DP32(s->regs, APU_WFI_STATUS, ACPU0_WFI, !!level);
+        ARRAY_FIELD_DP32(s->regs, APU_WFI_STATUS, ACPU1_WFI, !!level);
         break;
     case 4:
         ARRAY_FIELD_DP32(s->regs, APU_WFI_STATUS, L2_WFI, !!level);
