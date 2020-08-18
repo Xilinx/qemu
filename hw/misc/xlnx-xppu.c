@@ -217,7 +217,7 @@ MemTxResult xppu_read_common(void *opaque, XPPU *s, hwaddr addr, uint64_t *val,
     r = &s->regs_info[addr / 4];
 
     if (!r->data) {
-        qemu_log("%s: Decode error: read from %" HWADDR_PRIx "\n",
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Decode error: read from %" HWADDR_PRIx "\n",
                  object_get_canonical_path(OBJECT(s)),
                  addr);
         ARRAY_FIELD_DP32(s->regs, ISR, INV_APB, true);
@@ -241,7 +241,7 @@ MemTxResult xppu_write_common(void *opaque, XPPU *s, hwaddr addr, uint64_t val,
     r = &s->regs_info[addr / 4];
 
     if (!r->data) {
-        qemu_log("%s: Decode error: write to %" HWADDR_PRIx "=%" PRIx64 "\n",
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Decode error: write to %" HWADDR_PRIx "=%" PRIx64 "\n",
                  object_get_canonical_path(OBJECT(s)),
                  addr, val);
         ARRAY_FIELD_DP32(s->regs, ISR, INV_APB, true);
