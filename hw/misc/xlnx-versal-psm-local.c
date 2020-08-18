@@ -221,8 +221,11 @@ typedef struct PSM_LOCAL_REG {
 
     qemu_irq loc_pwr_state[32];
     qemu_irq loc_aux_pwr_state[32];
+    qemu_irq apu_sleep[4];
+    qemu_irq apu_pwrdw_status[4];
 
     bool has_por;
+    uint8_t apu_pwrdw_req;
 
     uint32_t regs[PSM_LOCAL_REG_R_MAX];
     RegisterInfo regs_info[PSM_LOCAL_REG_R_MAX];
@@ -292,8 +295,17 @@ static void update_pwr_status(PSM_LOCAL_REG *s)
 
 static void update_loc_pwr_state(PSM_LOCAL_REG *s)
 {
+    int i;
     PROPAGATE_REG32(s, LOC_PWR_STATE, s->loc_pwr_state);
     PROPAGATE_REG32(s, LOC_AUX_PWR_STATE, s->loc_aux_pwr_state);
+
+    /*
+     * Send apu powerdown signals to intc-redirect
+     */
+    for (i = 0; i < 4; i++) {
+        qemu_set_irq(s->apu_pwrdw_status[i],
+              !(s->regs[R_LOC_PWR_STATE] & (1 << i)));
+    }
 }
 
 static void addr_error_int_update_irq(PSM_LOCAL_REG *s)
@@ -534,6 +546,19 @@ static const MemoryRegionOps psm_local_reg_ops = {
     },
 };
 
+static void update_apu_sleep(PSM_LOCAL_REG *s)
+{
+    int i;
+
+    for (i = 0; i < 4; i++) {
+        if ((s->apu_pwrdw_req &
+            s->regs[R_APU_WFI_STATUS]) &
+            (1 << i)) {
+            qemu_irq_pulse(s->apu_sleep[i]);
+        }
+    }
+}
+
 static void apu_wfi_h(void *opaque, int n, int level)
 {
     PSM_LOCAL_REG *s = XILINX_PSM_LOCAL_REG(opaque);
@@ -551,6 +576,18 @@ static void apu_wfi_h(void *opaque, int n, int level)
     default:
         g_assert_not_reached();
     }
+
+    update_apu_sleep(s);
+}
+
+static void apu_pwrdw_h(void *opaque, int n, int level)
+{
+    PSM_LOCAL_REG *s = XILINX_PSM_LOCAL_REG(opaque);
+
+    s->apu_pwrdw_req &= ~(1 << n);
+    s->apu_pwrdw_req |= (level << n);
+
+    update_apu_sleep(s);
 }
 
 static void psm_local_reg_init(Object *obj)
@@ -594,6 +631,10 @@ static void psm_local_reg_init(Object *obj)
                              "loc-aux-pwr-state", 32);
 
     qdev_init_gpio_in_named(DEVICE(obj), apu_wfi_h, "apu-wfi", 5);
+    qdev_init_gpio_in_named(DEVICE(obj), apu_pwrdw_h, "apu-pwrdw", 4);
+    qdev_init_gpio_out_named(DEVICE(obj), s->apu_sleep, "apu-sleep", 4);
+    qdev_init_gpio_out_named(DEVICE(obj), s->apu_pwrdw_status,
+                             "apu-pwrdw-status", 4);
 }
 
 static const VMStateDescription vmstate_psm_local_reg = {
@@ -624,6 +665,19 @@ static const FDTGenericGPIOSet psm_local_reg_gpios[] = {
         { .name = "apu-wfi", .fdt_index = 24, .range = 5 },
         { .name = "loc-pwr-state", .fdt_index = 32, .range = 32 },
         { .name = "loc-aux-pwr-state", .fdt_index = 64, .range = 32 },
+        { .name = "apu-sleep", .fdt_index = 96, .range = 4 },
+        { .name = "apu-pwrdw-status", .fdt_index = 100, .range = 4 },
+        { },
+      },
+    },
+    { },
+};
+
+static const FDTGenericGPIOSet psm_local_reg_client_gpios[] = {
+    {
+      .names = &fdt_generic_gpio_name_set_gpio,
+      .gpios = (FDTGenericGPIOConnection[]) {
+        { .name = "apu-pwrdw", .fdt_index = 0, .range = 4 },
         { },
       },
     },
@@ -638,6 +692,7 @@ static void psm_local_reg_class_init(ObjectClass *klass, void *data)
     dc->reset = psm_local_reg_reset;
     dc->vmsd = &vmstate_psm_local_reg;
     fggc->controller_gpios = psm_local_reg_gpios;
+    fggc->client_gpios = psm_local_reg_client_gpios;
 }
 
 static const TypeInfo psm_local_reg_info = {
