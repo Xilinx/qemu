@@ -368,6 +368,8 @@ typedef struct RPU {
 
     qemu_irq irq_rpu_1_imr;
     qemu_irq irq_rpu_0_imr;
+    qemu_irq rpu_pwrdw[MAX_RPU];
+    qemu_irq rpu_sleep[MAX_RPU];
 
     bool r5_rst[2];
     qemu_irq halt[2];
@@ -523,12 +525,47 @@ static void rpu_update_gpios(RPU *s)
 
     PROPAGATE_GPIO(RPU_0_CFG, VINITHI, s->vinithi[0]);
     PROPAGATE_GPIO(RPU_1_CFG, VINITHI, s->vinithi[1]);
+
+    /*
+     * Send power down signal
+     */
+    if (s->regs[R_RPU_0_PWRDWN] &
+         (!ARRAY_FIELD_EX32(s->regs, RPU_0_STATUS, NWFIPIPESTOPPED))) {
+        qemu_irq_pulse(s->rpu_sleep[0]);
+    }
+    if (s->regs[R_RPU_1_PWRDWN] &
+         (!ARRAY_FIELD_EX32(s->regs, RPU_1_STATUS, NWFIPIPESTOPPED))) {
+        qemu_irq_pulse(s->rpu_sleep[1]);
+    }
 }
 
 static void rpu_update_gpios_pw(RegisterInfo *reg, uint64_t val64)
 {
     RPU *s = XILINX_VERSAL_RPU(reg->opaque);
     rpu_update_gpios(s);
+}
+
+static void rpu_pwrdwn_postw(RegisterInfo *reg, uint64_t val64)
+{
+    RPU *s = XILINX_VERSAL_RPU(reg->opaque);
+    uint32_t r;
+
+    switch (reg->access->addr) {
+    case A_RPU_0_PWRDWN:
+        r = s->regs[R_RPU_0_PWRDWN];
+        if (!!r) {
+            qemu_set_irq(s->rpu_pwrdw[0], true);
+        }
+        break;
+    case A_RPU_1_PWRDWN:
+        r = s->regs[R_RPU_1_PWRDWN];
+        if (!!r) {
+            qemu_set_irq(s->rpu_pwrdw[1], true);
+        }
+        break;
+    default:
+        g_assert_not_reached();
+    }
 }
 
 static void rpu_update_gic_axprot(RPU *s, bool secure)
@@ -589,6 +626,7 @@ static const RegisterAccessInfo rpu_regs_info[] = {
         .ro = 0x3f,
     },{ .name = "RPU_0_PWRDWN",  .addr = A_RPU_0_PWRDWN,
         .rsvd = 0xfffffffe,
+        .post_write = rpu_pwrdwn_postw,
     },{ .name = "RPU_0_ISR",  .addr = A_RPU_0_ISR,
         .rsvd = 0xfe000000,
         .w1c = 0x1ffffff,
@@ -617,6 +655,7 @@ static const RegisterAccessInfo rpu_regs_info[] = {
         .ro = 0x3f,
     },{ .name = "RPU_1_PWRDWN",  .addr = A_RPU_1_PWRDWN,
         .rsvd = 0xfffffffe,
+        .post_write = rpu_pwrdwn_postw,
     },{ .name = "RPU_1_ISR",  .addr = A_RPU_1_ISR,
         .rsvd = 0xfe000000,
         .w1c = 0x1ffffff,
@@ -677,6 +716,15 @@ static void rpu_wfi_h(void *opaque, int irq, int level)
         g_assert_not_reached();
     }
     rpu_update_gpios(s);
+}
+
+static void rpu_pwr_status_h(void *opaque, int irq, int level)
+{
+    RPU *s = XILINX_VERSAL_RPU(opaque);
+
+    if (!!level) {
+        qemu_set_irq(s->rpu_pwrdw[irq], false);
+    }
 }
 
 static const MemoryRegionOps rpu_ops = {
@@ -831,6 +879,9 @@ static void rpu_init(Object *obj)
     qdev_init_gpio_out_named(dev, s->vinithi, "vinithi", 2);
     qdev_init_gpio_in_named(dev, rpu_rst_h, "rpu-rst", 2);
     qdev_init_gpio_in_named(dev, rpu_wfi_h, "rpu-wfi", 2);
+    qdev_init_gpio_in_named(dev, rpu_pwr_status_h, "rpu-pwr-status", MAX_RPU);
+    qdev_init_gpio_out_named(dev, s->rpu_pwrdw, "rpu-pwrdw", MAX_RPU);
+    qdev_init_gpio_out_named(dev, s->rpu_sleep, "rpu-sleep", MAX_RPU);
 
     for (i = 0; i < MAX_RPU; i++) {
         name = g_strdup_printf("rpu%d", i);
@@ -859,6 +910,8 @@ static const FDTGenericGPIOSet crl_gpios[] = {
         { .name = "halt", .fdt_index = 0, .range = 2 },
         { .name = "rpu-wfi", .fdt_index = 2, .range = 2},
         { .name = "vinithi", .fdt_index = 4, .range = 2 },
+        { .name = "rpu-pwrdw", .fdt_index = 6, .range = MAX_RPU },
+        { .name = "rpu-sleep", .fdt_index = (6 + MAX_RPU), .range = MAX_RPU },
         { },
       },
     },
@@ -870,6 +923,7 @@ static const FDTGenericGPIOSet rpu_client_gpios[] = {
       .names = &fdt_generic_gpio_name_set_gpio,
       .gpios = (FDTGenericGPIOConnection[]) {
         { .name = "rpu-rst", .fdt_index = 0, .range = 2 },
+        { .name = "rpu-pwr-status", .fdt_index = 2, .range = MAX_RPU },
         { },
       },
     },
