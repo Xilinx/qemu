@@ -654,18 +654,23 @@ static void rpu_reset(DeviceState *dev)
     rpu_update_gpios(s);
 }
 
-static void rpu_handle_gpio_in(void *opaque, int irq, int level)
+static void rpu_rst_h(void *opaque, int irq, int level)
+{
+    RPU *s = XILINX_VERSAL_RPU(opaque);
+
+    s->r5_rst[irq] = level;
+    rpu_update_gpios(s);
+}
+
+static void rpu_wfi_h(void *opaque, int irq, int level)
 {
     RPU *s = XILINX_VERSAL_RPU(opaque);
 
     switch (irq) {
-    case 0 ... 1:
-        s->r5_rst[irq] = level;
-        break;
-    case 2:
+    case 0:
         ARRAY_FIELD_DP32(s->regs, RPU_0_STATUS, NWFIPIPESTOPPED, !level);
         break;
-    case 3:
+    case 1:
         ARRAY_FIELD_DP32(s->regs, RPU_1_STATUS, NWFIPIPESTOPPED, !level);
         break;
     default:
@@ -800,6 +805,7 @@ static void rpu_realize(DeviceState *dev, Error **errp)
 static void rpu_init(Object *obj)
 {
     RPU *s = XILINX_VERSAL_RPU(obj);
+    DeviceState *dev = DEVICE(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
     RegisterInfoArray *reg_array;
     unsigned int i;
@@ -821,9 +827,10 @@ static void rpu_init(Object *obj)
     sysbus_init_irq(sbd, &s->irq_rpu_1_imr);
     sysbus_init_irq(sbd, &s->irq_rpu_0_imr);
 
-    qdev_init_gpio_out_named(DEVICE(obj), s->halt, "halt", 2);
-    qdev_init_gpio_out_named(DEVICE(obj), s->vinithi, "vinithi", 2);
-    qdev_init_gpio_in(DEVICE(obj), rpu_handle_gpio_in, 4);
+    qdev_init_gpio_out_named(dev, s->halt, "halt", 2);
+    qdev_init_gpio_out_named(dev, s->vinithi, "vinithi", 2);
+    qdev_init_gpio_in_named(dev, rpu_rst_h, "rpu-rst", 2);
+    qdev_init_gpio_in_named(dev, rpu_wfi_h, "rpu-wfi", 2);
 
     for (i = 0; i < MAX_RPU; i++) {
         name = g_strdup_printf("rpu%d", i);
@@ -850,7 +857,19 @@ static const FDTGenericGPIOSet crl_gpios[] = {
       .names = &fdt_generic_gpio_name_set_gpio,
       .gpios = (FDTGenericGPIOConnection[]) {
         { .name = "halt", .fdt_index = 0, .range = 2 },
+        { .name = "rpu-wfi", .fdt_index = 2, .range = 2},
         { .name = "vinithi", .fdt_index = 4, .range = 2 },
+        { },
+      },
+    },
+    { },
+};
+
+static const FDTGenericGPIOSet rpu_client_gpios[] = {
+    {
+      .names = &fdt_generic_gpio_name_set_gpio,
+      .gpios = (FDTGenericGPIOConnection[]) {
+        { .name = "rpu-rst", .fdt_index = 0, .range = 2 },
         { },
       },
     },
@@ -874,6 +893,7 @@ static void rpu_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_rpu;
     device_class_set_props(dc, rpu_properties);
     fggc->controller_gpios = crl_gpios;
+    fggc->client_gpios = rpu_client_gpios;
 }
 
 static const TypeInfo rpu_info = {
