@@ -95,10 +95,10 @@ static void usb_xhci_pci_realize(struct PCIDevice *dev, Error **errp)
     dev->config[PCI_CACHE_LINE_SIZE] = 0x10;
     dev->config[0x60] = 0x30; /* release number */
 
-    object_property_set_link(OBJECT(&s->xhci), OBJECT(s), "host", NULL);
+    object_property_set_link(OBJECT(&s->xhci), "host", OBJECT(s), NULL);
     s->xhci.intr_update = xhci_pci_intr_update;
     s->xhci.intr_raise = xhci_pci_intr_raise;
-    object_property_set_bool(OBJECT(&s->xhci), true, "realized", &err);
+    object_property_set_bool(OBJECT(&s->xhci), "realized", true, &err);
     if (err) {
         error_propagate(errp, err);
         return;
@@ -175,8 +175,7 @@ static void xhci_instance_init(Object *obj)
      * line, therefore, no need to wait to realize like other devices
      */
     PCI_DEVICE(obj)->cap_present |= QEMU_PCI_CAP_EXPRESS;
-    object_initialize_child(obj, "xhci-core", &s->xhci, sizeof(s->xhci),
-                            TYPE_XHCI, &error_abort, NULL);
+    object_initialize_child(obj, "xhci-core", &s->xhci, TYPE_XHCI);
     qdev_alias_all_properties(DEVICE(&s->xhci), obj);
 }
 

@@ -34,8 +34,8 @@ static void xhci_sysbus_realize(DeviceState *dev, Error **errp)
     XHCISysbusState *s = XHCI_SYSBUS(dev);
     Error *err = NULL;
 
-    object_property_set_link(OBJECT(&s->xhci), OBJECT(s), "host", NULL);
-    object_property_set_bool(OBJECT(&s->xhci), true, "realized", &err);
+    object_property_set_link(OBJECT(&s->xhci), "host", OBJECT(s), NULL);
+    object_property_set_bool(OBJECT(&s->xhci), "realized", true, &err);
     if (err) {
         error_propagate(errp, err);
         return;
@@ -57,8 +57,7 @@ static void xhci_sysbus_instance_init(Object *obj)
 {
     XHCISysbusState *s = XHCI_SYSBUS(obj);
 
-    object_initialize_child(obj, "xhci-core", &s->xhci, sizeof(s->xhci),
-                            TYPE_XHCI, &error_abort, NULL);
+    object_initialize_child(obj, "xhci-core", &s->xhci, TYPE_XHCI);
     qdev_alias_all_properties(DEVICE(&s->xhci), obj);
 
     object_property_add_link(obj, "dma", TYPE_MEMORY_REGION,
