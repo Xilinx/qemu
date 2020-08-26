@@ -812,8 +812,12 @@ static void arm_cpu_set_vinithi(void *opaque, int irq, int level)
 {
     CPUState *cs = opaque;
     ARMCPU *cpu = ARM_CPU(cs);
+    CPUClass *cc = CPU_GET_CLASS(cs);
 
     cpu->env.vinithi = level;
+    if (cs->arch_halt_pin) {
+        cc->set_pc(cs, level ? 0xFFFF0000: 0x0);
+    }
 }
 #endif
 
