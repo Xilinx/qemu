@@ -1456,6 +1456,13 @@ static void error_en_2_postw(RegisterInfo *reg, uint64_t val64)
     set_error_2(s);
 }
 
+static void abi_cntrl_postw(RegisterInfo *reg, uint64_t val64)
+{
+    PMU_GLOBAL *s = XILINX_PMU_GLOBAL(reg->opaque);
+
+    s->regs[R_AIB_STATUS] |= val64;
+}
+
 static void error_status_1_postw(RegisterInfo *reg, uint64_t val64)
 {
     PMU_GLOBAL *s = XILINX_PMU_GLOBAL(reg->opaque);
@@ -1849,6 +1856,7 @@ static const RegisterAccessInfo pmu_global_regs_info[] = {
     },{ .name = "ERROR_EN_2",  .addr = A_ERROR_EN_2,
         .post_write = error_en_2_postw,
     },{ .name = "AIB_CNTRL",  .addr = A_AIB_CNTRL,
+        .post_write = abi_cntrl_postw,
         .rsvd = 0xfffffff0,
     },{ .name = "AIB_STATUS",  .addr = A_AIB_STATUS,
         .rsvd = 0xfffffff0,
@@ -1919,7 +1927,12 @@ static void pmu_global_reset(DeviceState *dev)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        register_reset(&s->regs_info[i]);
+        switch (i) {
+        case R_PERS_GLOB_GEN_STORAGE0...R_PERS_GLOB_GEN_STORAGE7:
+            continue;
+        default:
+            register_reset(&s->regs_info[i]);
+       };
     }
 
     req_pwrdwn_int_update_irq(s);
@@ -1947,9 +1960,10 @@ static void pmu_global_reset(DeviceState *dev)
 static MemTxResult check_addr(PMU_GLOBAL *s, hwaddr addr)
 {
     MemTxResult ret = MEMTX_OK;
+    RegisterInfo *r = &s->regs_info[addr / 4];
 
-    /* Address out of bounds?  */
-    if (addr > A_SAFETY_CHK) {
+    /* Register doesn't exist?  */
+    if (!r->data) {
         s->regs[R_ADDR_ERROR_STATUS] |= R_ADDR_ERROR_STATUS_STATUS_MASK;
         addr_error_int_update_irq(s);
 

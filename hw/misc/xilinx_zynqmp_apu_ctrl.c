@@ -39,10 +39,6 @@
 #include "hw/register.h"
 #include "hw/fdt_generic_util.h"
 
-#ifndef ZYNQMP_APU_ERR_DEBUG
-#define ZYNQMP_APU_ERR_DEBUG 0
-#endif
-
 #define TYPE_ZYNQMP_APU "xlnx.apu"
 
 #define ZYNQMP_APU(obj) \
@@ -284,9 +280,9 @@ static const RegisterAccessInfo zynqmp_apu_regs_info[] = {
         .reset = 0xf000f,
     },{ .name = "SNOOP_CTRL",  .addr = A_SNOOP_CTRL,
     },{ .name = "PWRCTL",  .addr = A_PWRCTL,
+        .post_write = zynqmp_apu_pwrctl_post_write,
     },{ .name = "PWRSTAT",  .addr = A_PWRSTAT,
         .ro = 0x3000f,
-        .post_write = zynqmp_apu_pwrctl_post_write,
     }
 };
 

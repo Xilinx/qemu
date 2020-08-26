@@ -1259,6 +1259,24 @@ static void aux_pwr_state_h(void *opaque, int n, int level)
                                          n, 1, level);
 }
 
+static void pwr_ctrl_h(void *opaque, int n, int level)
+{
+    PSM_GLOBAL_REG *s = XILINX_PSM_GLOBAL_REG(opaque);
+
+    /* Don't clear the fields as they are w1c */
+    s->regs[R_PWR_CTRL_IRQ_STATUS] |= (level << n);
+    pwr_ctrl_irq_update_irq(s);
+}
+
+static void wake_up_req_h(void *opaque, int n, int level)
+{
+    PSM_GLOBAL_REG *s = XILINX_PSM_GLOBAL_REG(opaque);
+
+    /* Don't clear the fields as they are w1c */
+    s->regs[R_WAKEUP_IRQ_STATUS] |= (level << n);
+    wakeup_irq_update_irq(s);
+}
+
 static void psm_global_reg_realize(DeviceState *dev, Error **errp)
 {
     /* Delete this if you don't need it */
@@ -1294,6 +1312,8 @@ static void psm_global_reg_init(Object *obj)
 
     qdev_init_gpio_in_named(DEVICE(obj), pwr_state_h, "pwr-state", 32);
     qdev_init_gpio_in_named(DEVICE(obj), aux_pwr_state_h, "aux-pwr-state", 32);
+    qdev_init_gpio_in_named(DEVICE(obj), pwr_ctrl_h, "pwr-ctrl", 32);
+    qdev_init_gpio_in_named(DEVICE(obj), wake_up_req_h, "wake-up-req", 32);
 }
 
 static const VMStateDescription vmstate_psm_global_reg = {
@@ -1312,6 +1332,18 @@ static const FDTGenericGPIOSet psm_client_gpios[] = {
       .gpios = (FDTGenericGPIOConnection[]) {
         { .name = "pwr-state", .fdt_index = 0, .range = 32 },
         { .name = "aux-pwr-state", .fdt_index = 32, .range = 32 },
+        { .name = "pwr-ctrl", .fdt_index = 64, .range = 32},
+        { },
+      },
+    },
+    { },
+};
+
+static const FDTGenericGPIOSet psm_controller_gpios[] = {
+    {
+      .names = &fdt_generic_gpio_name_set_gpio,
+      .gpios = (FDTGenericGPIOConnection[]) {
+        { .name = "wake-up-req", .fdt_index = 0, .range = 32},
         { },
       },
     },
@@ -1327,6 +1359,7 @@ static void psm_global_reg_class_init(ObjectClass *klass, void *data)
     dc->realize = psm_global_reg_realize;
     dc->vmsd = &vmstate_psm_global_reg;
     fggc->client_gpios = psm_client_gpios;
+    fggc->controller_gpios = psm_controller_gpios;
 }
 
 static const TypeInfo psm_global_reg_info = {

@@ -31,6 +31,7 @@
 #include "qemu/log.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
+#include "hw/arm/linux-boot-if.h"
 
 #include "hw/fdt_generic_util.h"
 
@@ -233,6 +234,7 @@ typedef struct CRF_APB {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
     qemu_irq irq_ir;
+    bool linux_direct_boot;
 
     qemu_irq acpu_rst[APU_MAX_CPU];
     uint32_t regs[R_MAX];
@@ -403,13 +405,25 @@ static void crf_apb_reset(DeviceState *dev)
         register_reset(&s->regs_info[i]);
     }
 
-    /* Set A53's in reset */
-    for (i = 0; i < APU_MAX_CPU; i++) {
-        qemu_set_irq(s->acpu_rst[i], 1);
+    if (!s->linux_direct_boot) {
+        /*
+         * Set A53's in reset
+         */
+        for (i = 0; i < APU_MAX_CPU; i++) {
+            qemu_set_irq(s->acpu_rst[i], 1);
+        }
     }
 
     ir_update_irq(s);
 }
+
+static void crf_linux_boot_if_init(ARMLinuxBootIf *obj, bool secure_boot)
+{
+    CRF_APB *s = XILINX_CRF_APB(obj);
+
+    s->linux_direct_boot = true;
+}
+
 
 static const MemoryRegionOps crf_apb_ops = {
     .read = register_read_memory,
@@ -475,11 +489,13 @@ static void crf_apb_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     FDTGenericGPIOClass *fggc = FDT_GENERIC_GPIO_CLASS(klass);
+    ARMLinuxBootIfClass *albifc = ARM_LINUX_BOOT_IF_CLASS(klass);
 
     dc->reset = crf_apb_reset;
     dc->realize = crf_apb_realize;
     dc->vmsd = &vmstate_crf_apb;
     fggc->controller_gpios = crf_gpios;
+    albifc->arm_linux_init = crf_linux_boot_if_init;
 }
 
 static const TypeInfo crf_apb_info = {
@@ -490,6 +506,7 @@ static const TypeInfo crf_apb_info = {
     .instance_init = crf_apb_init,
     .interfaces    = (InterfaceInfo[]) {
         { TYPE_FDT_GENERIC_GPIO },
+        { TYPE_ARM_LINUX_BOOT_IF },
         { }
     },
 };

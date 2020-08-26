@@ -178,7 +178,7 @@ typedef enum {
     WRITE_ENABLE = 0x06,
     READ_STATUS_REG_2 = 0x07,
     FAST_READ = 0x0B,
-    READ_FAST_4B = 0x0C,
+    FAST_READ_4B = 0x0C,
     PAGE_PROGRAM_4B = 0x12,
     READ_4B = 0x13,
     AUTOBOOT_REG = 0x15,
@@ -203,7 +203,7 @@ typedef enum {
     QUAD_INPUT_FAST_IO = 0x38,
     FAST_READ_DUAL = 0x3B,
     FAST_READ_DUAL_4B = 0x3C,
-    QUAD_FAST_PROGRAM_IO_4B = 0x3E,
+    QUAD_PAGE_PROGRAM_IO_4B = 0x3E,
     PROGRAM_OTP = 0x42,
     READ_UNIQUE_ID = 0x4B,
     SP_OTP_READ = 0x4B,
@@ -248,7 +248,7 @@ typedef enum {
     POWER_DOWN = 0xB9,
     BANK_REGISTER_ACCESS = 0xB9,
     FAST_READ_DUAL_IO = 0xBB,
-    READ_DUAL_IO_4B = 0xBC,
+    FAST_READ_DUAL_IO_4B = 0xBC,
     SET_BURST_READ_LENGTH = 0xC0,
     EXIT_SECURE_OTP = 0xC1,
     DIE_ERASE = 0xC4,
@@ -277,6 +277,7 @@ typedef enum {
     PASSWORD_UNLOCK = 0xE9,
     EXIT_4B_ADDR_MODE = 0xE9,
     FAST_READ_QUAD_IO = 0xEB,
+    FAST_READ_QUAD_IO_4B = 0xEC,
     RESET = 0xF0,
     EXIT_QUAD_IO_MODE = 0xF5,
     MODE_BIT_RESET = 0xFF
@@ -292,7 +293,6 @@ typedef enum {
 
 typedef struct XlnxAXIQSPIConf {
     bool xip_mode;
-
     uint16_t fifo_depth;
     uint8_t transaction_width;
     uint32_t tx_width_mask;
@@ -313,29 +313,27 @@ typedef enum {
 typedef struct XlnxAXIQSPI {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
-
     XlnxAXIQSPIConf conf;
     Fifo tx_fifo;
     Fifo rx_fifo;
     SSIBus *spi_bus;
     qemu_irq *cs_lines;
     qemu_irq irq;
-    bool is_4b_addressing;
 
     AXIQSPIState state;
     AXIQSPILinkState link_state;
     uint8_t addr_bytes_txed;
     uint8_t dummy_bytes_txed;
     size_t bytes_txed;
-
     uint8_t cmd;
     uint8_t addr_bytes;
     uint8_t num_dummies;
     bool is_addr_change_cmd;
+    bool is_4b_addressing;
+    bool is_xip_wb_init;
     uint32_t prev_ss;
 
     MemoryRegion xip_mr;
-    AddressSpace xip_as;
 
     uint32_t regs[XLNX_AXIQSPI_R_MAX];
     RegisterInfo reg_info[XLNX_AXIQSPI_R_MAX];
@@ -392,11 +390,8 @@ static bool shared_parse_cmd(XlnxAXIQSPI *s)
     case READ_JEDEC_ID:
     case WRITE_ENABLE:
     case WRITE_DISABLE:
-    case READ_UNIQUE_ID:
     case CHIP_ERASE:
     case BULK_ERASE:
-    case ERASE_RESUME:
-    case ERASE_SUSPEND:
     case READ_STATUS_REG:
     case READ_CONF_REG:
     case WRITE_STATUS_REG:
@@ -410,8 +405,16 @@ static bool shared_parse_cmd(XlnxAXIQSPI *s)
 
         return true;
     case FAST_READ:
+        s->addr_bytes = axiqspi_get_addressing(s);
+        s->num_dummies = 1;
+
+        return true;
     case FAST_READ_DUAL:
     case FAST_READ_DUAL_IO:
+        s->addr_bytes = axiqspi_get_addressing(s);
+        s->num_dummies = 2;
+
+        return true;
     case FAST_READ_QUAD:
     case FAST_READ_QUAD_IO:
         s->addr_bytes = axiqspi_get_addressing(s);
@@ -425,6 +428,12 @@ static bool shared_parse_cmd(XlnxAXIQSPI *s)
         s->num_dummies = 0;
 
         return true;
+    case READ_UNIQUE_ID:
+    case ERASE_RESUME:
+    case ERASE_SUSPEND:
+        qemu_log_mask(LOG_UNIMP, "Command %x not implemented\n", s->cmd);
+
+        return false;
     default:
         return false;
     }
@@ -433,27 +442,26 @@ static bool shared_parse_cmd(XlnxAXIQSPI *s)
 static bool winbond_parse_cmd(XlnxAXIQSPI *s)
 {
     switch (s->cmd) {
-    case READ_STATUS_REG_2:
-    case WRITE_STATUS_REG_2:
     case WRITE_STATUS_REG:
-    case POWER_DOWN:
-        s->addr_bytes = 0;
-        s->num_dummies = 0;
-
-        return true;
-    case HIGH_PERFORMANCE_MODE:
     case EXIT_HIGH_PERFORMANCE_MODE:
         s->addr_bytes = 0;
-        s->num_dummies = 3;
+        s->num_dummies = 0;
 
         return true;
     case ERASE_32K:
     case SUBSECTOR_ERASE:
     case READ_DEVICE_ID:
+    case HIGH_PERFORMANCE_MODE:
         s->addr_bytes = 3;
         s->num_dummies = 0;
 
         return true;
+    case READ_STATUS_REG_2:
+    case WRITE_STATUS_REG_2:
+    case POWER_DOWN:
+        qemu_log_mask(LOG_UNIMP, "Command %x not implemented\n", s->cmd);
+
+        return false;
     default:
         return false;
     }
@@ -462,23 +470,11 @@ static bool winbond_parse_cmd(XlnxAXIQSPI *s)
 static bool spansion_parse_cmd(XlnxAXIQSPI *s)
 {
     switch (s->cmd) {
-    case CLEAR_STATUS_REG:
     case WRITE_STATUS_REG:
     case READ_CONF_REG:
     case BANK_REGISTER_ACCESS:
-    case BANK_REGISTER_READ:
-    case READ_SECURITY_REGISTER:
-    case WRITE_SECURITY_REGISTER:
-    case PPB_LOCK_BIT_READ:
-    case PPB_LOCK_BIT_WRITE:
-    case PPB_ERASE:
-    case PASSWORD_READ:
-    case PASSWORD_PROGRAM:
-    case PASSWORD_UNLOCK:
     case RESET:
     case MODE_BIT_RESET:
-    case PROGRAM_SUSPEND:
-    case PROGRAM_RESUME:
         s->addr_bytes = 0;
         s->num_dummies = 0;
 
@@ -489,26 +485,29 @@ static bool spansion_parse_cmd(XlnxAXIQSPI *s)
         s->num_dummies = 0;
 
         return true;
-    case SP_OTP_READ:
-    case PROGRAM_OTP:
     case READ_DEVICE_ID:
         s->addr_bytes = 3;
         s->num_dummies = 0;
 
-    case READ_4B:
-    case READ_FAST_4B:
+        return true;
+    case FAST_READ_4B:
+        s->addr_bytes = 4;
+        s->num_dummies = 1;
+
+        return true;
     case FAST_READ_DUAL_4B:
-    case READ_DUAL_IO_4B:
+    case FAST_READ_DUAL_IO_4B:
+        s->addr_bytes = 4;
+        s->num_dummies = 2;
+
+        return true;
     case READ_QUAD_4B:
         s->addr_bytes = 4;
         s->num_dummies = 4;
 
         return true;
-    case DYB_READ:
-    case DYB_WRITE:
-    case PPB_READ:
-    case PPB_PROGRAM:
     case PAGE_PROGRAM_4B:
+    case READ_4B:
     case BLOCK_ERASE_4B:
     case QUAD_PAGE_PROGRAM_4B:
         s->addr_bytes = 4;
@@ -520,11 +519,28 @@ static bool spansion_parse_cmd(XlnxAXIQSPI *s)
         s->num_dummies = 3;
 
         return true;
+    case CLEAR_STATUS_REG:
+    case BANK_REGISTER_READ:
+    case READ_SECURITY_REGISTER:
+    case WRITE_SECURITY_REGISTER:
+    case PPB_LOCK_BIT_READ:
+    case PPB_LOCK_BIT_WRITE:
+    case PPB_ERASE:
+    case PASSWORD_READ:
+    case PASSWORD_PROGRAM:
+    case PASSWORD_UNLOCK:
+    case PROGRAM_SUSPEND:
+    case PROGRAM_RESUME:
+    case DYB_READ:
+    case DYB_WRITE:
+    case SP_OTP_READ:
+    case PROGRAM_OTP:
+    case PPB_READ:
+    case PPB_PROGRAM:
     case READ_FLASH_DISCOVERABLE_PARAMS:
-        s->addr_bytes = 3;
-        s->num_dummies = 4;
+        qemu_log_mask(LOG_UNIMP, "Command %x not implemented\n", s->cmd);
 
-        return true;
+        return false;
     default:
         return false;
     }
@@ -534,88 +550,95 @@ static bool micron_parse_cmd(XlnxAXIQSPI *s)
 {
     switch (s->cmd) {
     case WRITE_STATUS_REG:
-    case QUAD_IO_READ_ID:
-    case ERASE_NONVOLATILE_LOCK:
     case READ_NONVOLATILE_CONFIG_REG:
     case READ_VOLATILE_CONFIG_REG:
     case WRITE_VOLATILE_CONFIG_REG:
     case READ_VOLATILE_ENH_CONFIG_REG:
     case WRITE_VOLATILE_ENH_CONFIG_REG:
-    case PASSWORD_PROGRAM:
-    case WRITE_VOLATILE_LOCK_REG:
     case READ_FLAG_STATUS_REG:
-    case CLEAR_STATUS_REG:
-    case WRITE_EXTENDED_ADDR_REG:
-    case READ_EXTENDED_ADDR_REG:
-    case POWER_DOWN:
-    case EXIT_POWER_DOWN:
     case MI_ENTER_QUAD_IO_MODE:
     case EXIT_QUAD_IO_MODE:
-    case READ_GLOBAL_FREEZE_BIT:
-    case WRITE_GLOBAL_FREEZE_BIT:
-    case WRITE_PASSWORD:
-    case UNLOCK_PASSWORD:
-    case READ_LOCK_REG:
-    case WRITE_LOCK_REG:
     case ERASE_32K:
-    case RESET_ENABLE:
     case RESET_MEMORY:
         s->num_dummies = 0;
         s->addr_bytes = 0;
 
         return true;
     case WRITE_NONVOLATILE_CONFIG_REG:
-    case ENTER_4B_ADDR_MODE:
-    case EXIT_4B_ADDR_MODE:
         s->is_addr_change_cmd = true;
         s->num_dummies = 0;
         s->addr_bytes = 0;
 
         return true;
-    case READ_FLASH_DISCOVERABLE_PARAMS:
-    case MI_OTP_READ:
-        s->num_dummies = 4;
-        s->addr_bytes = axiqspi_get_addressing(s);
-
-        return true;
     case DUAL_FAST_PROGRAM:
-    case DUAL_EXTENDED_FAST_PROGRAM:
-    case QUAD_INPUT_FAST_IO:
         s->num_dummies = 0;
         s->addr_bytes = axiqspi_get_addressing(s);
 
         return true;
-    case PROGRAM_OTP:
-    case READ_NONVOLATILE_LOCK:
-    case WRITE_NONVOLATILE_LOCK:
     case DIE_ERASE:
     case SUBSECTOR_ERASE:
         s->num_dummies = 0;
         s->addr_bytes = axiqspi_get_addressing(s);
 
         return true;
-    case READ_FAST_4B:
+    case FAST_READ_4B:
+        s->num_dummies = 1;
+        s->addr_bytes = 4;
+
+        return true;
     case FAST_READ_DUAL_4B:
-    case READ_DUAL_IO_4B:
+    case FAST_READ_DUAL_IO_4B:
+        s->num_dummies = 2;
+        s->addr_bytes = 4;
+
+        return true;
     case READ_QUAD_4B:
-    case QUAD_FAST_PROGRAM_IO_4B:
         s->num_dummies = 4;
         s->addr_bytes = 4;
 
         return true;
     case PAGE_PROGRAM_4B:
     case QUAD_PAGE_PROGRAM_4B:
+    case QUAD_PAGE_PROGRAM_IO_4B:
     case BLOCK_ERASE_4B:
     case ERASE_4B:
     case SUBSECTOR_ERASE_4B:
     case READ_4B:
-    case READ_VOLATILE_LOCK_4B:
-    case WRITE_VOLATILE_LOCK_4B:
-    case READ_PASSWORD_4B:
         s->num_dummies = 0;
         s->addr_bytes = 4;
 
         return true;
+    case QUAD_IO_READ_ID:
+    case ERASE_NONVOLATILE_LOCK:
+    case PASSWORD_PROGRAM:
+    case WRITE_VOLATILE_LOCK_REG:
+    case CLEAR_STATUS_REG:
+    case WRITE_EXTENDED_ADDR_REG:
+    case READ_EXTENDED_ADDR_REG:
+    case POWER_DOWN:
+    case EXIT_POWER_DOWN:
+    case READ_GLOBAL_FREEZE_BIT:
+    case WRITE_GLOBAL_FREEZE_BIT:
+    case WRITE_PASSWORD:
+    case UNLOCK_PASSWORD:
+    case READ_LOCK_REG:
+    case WRITE_LOCK_REG:
+    case RESET_ENABLE:
+    case ENTER_4B_ADDR_MODE:
+    case EXIT_4B_ADDR_MODE:
+    case READ_FLASH_DISCOVERABLE_PARAMS:
+    case MI_OTP_READ:
+    case DUAL_EXTENDED_FAST_PROGRAM:
+    case QUAD_INPUT_FAST_IO:
+    case PROGRAM_OTP:
+    case READ_NONVOLATILE_LOCK:
+    case WRITE_NONVOLATILE_LOCK:
+    case READ_VOLATILE_LOCK_4B:
+    case WRITE_VOLATILE_LOCK_4B:
+    case READ_PASSWORD_4B:
+        qemu_log_mask(LOG_UNIMP, "Command %x not implemented\n", s->cmd);
+
+        return false;
     default:
         return false;
     }
@@ -624,14 +647,60 @@ static bool micron_parse_cmd(XlnxAXIQSPI *s)
 static bool macronix_parse_cmd(XlnxAXIQSPI *s)
 {
     switch (s->cmd) {
+    case RESET_MEMORY:
+    case READ_VOLATILE_CONFIG_REG:
+    case EXIT_QUAD_IO_MODE:
+    case BANK_REGISTER_READ:
+    case BANK_REGISTER_WRITE:
+        s->num_dummies = 0;
+        s->addr_bytes = 0;
+
+        return true;
+    case WRITE_STATUS_REG:
+        s->is_addr_change_cmd = true;
+        s->num_dummies = 0;
+        s->addr_bytes = 0;
+
+        return true;
+    case READ_4B:
+    case FAST_READ_DUAL_IO_4B:
+    case READ_QUAD_4B:
+    case PAGE_PROGRAM_4B:
+    case QUAD_PAGE_PROGRAM_IO_4B:
+    case ERASE_4B:
+        s->num_dummies = 0;
+        s->addr_bytes = 4;
+
+        return true;
+    case PAGE_PROGRAM:
+    case READ_DEVICE_ID:
+    case READ_DATA:
+    case QUAD_PAGE_PROGRAM:
+    case ERASE_32K:
+    case SUBSECTOR_ERASE_4B:
+    case BLOCK_ERASE:
+    case SUBSECTOR_ERASE:
+    case BLOCK_ERASE_4B:
+        s->num_dummies = 0;
+        s->addr_bytes = axiqspi_get_addressing(s);
+
+        return true;
+    case FAST_READ_4B:
+        s->num_dummies = 1;
+        s->addr_bytes = 4;
+
+        return true;
+    case FAST_READ_DUAL_4B:
+        s->num_dummies = 2;
+        s->addr_bytes = 4;
+
+        return true;
     case QUAD_IO_READ_ID:
     case WRITE_EXTENDED_ADDR_REG:
     case READ_EXTENDED_ADDR_REG:
     case RESET_ENABLE:
-    case RESET_MEMORY:
     case PROGRAM_OTP:
     case PASSWORD_PROGRAM:
-    case READ_VOLATILE_CONFIG_REG:
     case READ_LOCK_REG:
     case WRITE_LOCK_REG:
     case READ_STATUS_REG_2:
@@ -642,7 +711,6 @@ static bool macronix_parse_cmd(XlnxAXIQSPI *s)
     case UNLOCK_PASSWORD:
     case SET_BURST_READ_LENGTH:
     case ERASE_FAST_BOOT_REGISTER:
-    case EXIT_QUAD_IO_MODE:
     case PROGRAM_ERASE_SUSPEND:
     case WRITE_PROTECT_SEL:
     case EXIT_SECURE_OTP:
@@ -653,57 +721,15 @@ static bool macronix_parse_cmd(XlnxAXIQSPI *s)
     case PPB_ERASE:
     case READ_SECURITY_REGISTER:
     case WRITE_SECURITY_REGISTER:
-    case BANK_REGISTER_READ:
-    case BANK_REGISTER_WRITE:
-        s->num_dummies = 0;
-        s->addr_bytes = 0;
-
-        return true;
-    case WRITE_STATUS_REG:
     case ENTER_4B_ADDR_MODE:
     case EXIT_4B_ADDR_MODE:
-        s->is_addr_change_cmd = true;
-        s->num_dummies = 0;
-        s->addr_bytes = 0;
-
-        return true;
     case READ_FLASH_DISCOVERABLE_PARAMS:
-        s->num_dummies = 4;
-        s->addr_bytes = 3;
-
-        return true;
-    case READ_4B:
-    case READ_DUAL_IO_4B:
-    case READ_QUAD_4B:
-    case PAGE_PROGRAM_4B:
-    case QUAD_FAST_PROGRAM_IO_4B:
     case READ_PASSWORD_4B:
-    case ERASE_4B:
-        s->num_dummies = 0;
-        s->addr_bytes = 4;
-
-        return true;
-    case PAGE_PROGRAM:
-    case READ_DEVICE_ID:
-    case READ_DATA:
-    case QUAD_PAGE_PROGRAM:
     case OCTAL_WORD_READ_QUAD_IO:
-    case ERASE_32K:
-    case SUBSECTOR_ERASE_4B:
-    case BLOCK_ERASE:
-    case SUBSECTOR_ERASE:
-    case BLOCK_ERASE_4B:
-        s->num_dummies = 0;
-        s->addr_bytes = axiqspi_get_addressing(s);
-
-        return true;
-    case READ_FAST_4B:
-    case FAST_READ_DUAL_4B:
     case QUAD_INPUT_FAST_IO:
-        s->num_dummies = 4;
-        s->addr_bytes = 4;
+        qemu_log_mask(LOG_UNIMP, "Command %x not implemented\n", s->cmd);
 
-        return true;
+        return false;
     default:
         return false;
     }
@@ -720,12 +746,12 @@ static uint8_t shared_get_link_state(uint8_t cmd)
     case QUAD_PAGE_PROGRAM_4B:
     case QUAD_IO_READ_ID:
     case QUAD_INPUT_FAST_IO:
-    case QUAD_FAST_PROGRAM_IO_4B:
+    case QUAD_PAGE_PROGRAM_IO_4B:
     case OCTAL_WORD_READ_QUAD_IO:
         return LINK_STATE_QUAD;
     case FAST_READ_DUAL:
     case FAST_READ_DUAL_IO:
-    case READ_DUAL_IO_4B:
+    case FAST_READ_DUAL_IO_4B:
     case FAST_READ_DUAL_4B:
     case DUAL_FAST_PROGRAM:
     case DUAL_EXTENDED_FAST_PROGRAM:
@@ -750,9 +776,8 @@ static bool axiqspi_parse_cmd(XlnxAXIQSPI *s, uint8_t cmd)
     s->is_addr_change_cmd = false;
     s->cmd = cmd;
 
-    /* Mixed memory and shared command handling */
-    if ((s->conf.spi_mem == SPI_MEM_MIXED && mixed_parse_cmd(s)) ||
-        shared_parse_cmd(s)) {
+    /* Shared command handling */
+    if (shared_parse_cmd(s)) {
         s->link_state = shared_get_link_state(cmd);
         return true;
     }
@@ -771,13 +796,11 @@ static bool axiqspi_parse_cmd(XlnxAXIQSPI *s, uint8_t cmd)
     case SPI_MEM_MACRONIX:
         found = macronix_parse_cmd(s);
         break;
-    /* Fallthrough in case of a misconfiguration */
-    default:
-        qemu_log_mask(LOG_GUEST_ERROR, "axiqspi: Attempted to parse command "
-                      "for unknown flash type %d.  Using mixed mode parsing\n",
-                      s->conf.spi_mem);
+    case SPI_MEM_MIXED:
         found = mixed_parse_cmd(s);
         break;
+    default:
+        g_assert_not_reached();
     }
 
     if (found) {
@@ -1298,14 +1321,7 @@ static void axiqspi_bus_tx(XlnxAXIQSPI *s)
             done = axiqspi_bus_tx_data(s);
             break;
         default:
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "axiqspi: State machine reached unknown state %d. "
-                          "Resetting the state machine.\n",
-                          s->state);
-            axiqspi_state_reset(s);
-            done = true;
-
-            break;
+            g_assert_not_reached();
         }
     }
 
@@ -1321,7 +1337,7 @@ static void axiqspi_bus_tx(XlnxAXIQSPI *s)
 
 static void axiqspi_do_reset(XlnxAXIQSPI *s)
 {
-    fifo_reset(&s->rx_fifo);
+    fifo_reset(&s->tx_fifo);
     fifo_reset(&s->rx_fifo);
 
     for (size_t i = 0; i < ARRAY_SIZE(s->reg_info); ++i) {
@@ -1332,9 +1348,24 @@ static void axiqspi_do_reset(XlnxAXIQSPI *s)
     axiqspi_update_cs_lines(s);
 }
 
+static void axiqspi_xip_do_reset(XlnxAXIQSPI *s)
+{
+    fifo_reset(&s->rx_fifo);
+
+    for (size_t i = 0; i < ARRAY_SIZE(s->reg_info); ++i) {
+        register_reset(&s->reg_info[i]);
+    }
+}
+
 static void axiqspi_reset(DeviceState *dev)
 {
-    axiqspi_do_reset(XLNX_AXIQSPI(dev));
+    XlnxAXIQSPI *s = XLNX_AXIQSPI(dev);
+
+    if (s->conf.xip_mode) {
+        axiqspi_xip_do_reset(s);
+    } else {
+        axiqspi_do_reset(s);
+    }
 }
 
 static uint64_t axiqspi_srr_pre_write(RegisterInfo *reg, uint64_t val64)
@@ -1614,13 +1645,43 @@ static const RegisterAccessInfo axiqspi_regs_info[] = {
     }
 };
 
+static bool axiqspi_xip_check_cpol_cpha(XlnxAXIQSPI *s)
+{
+    bool cpol = !!(ARRAY_FIELD_EX32(s->regs, XIP_CONFIG_REG, CPOL));
+    bool cpha = !!(ARRAY_FIELD_EX32(s->regs, XIP_CONFIG_REG, CPHA));
+
+    return (cpol && cpha) || (!cpol && !cpha);
+}
+
+static void axiqspi_xip_spicr_post_write(RegisterInfo *reg, uint64_t val64)
+{
+    XlnxAXIQSPI *s = XLNX_AXIQSPI(reg->opaque);
+
+    if (!axiqspi_xip_check_cpol_cpha(s)) {
+        qemu_log_mask(LOG_GUEST_ERROR, "axiqspi: CPOL and CPHA error.\n");
+        ARRAY_FIELD_DP32(s->regs, XIP_STATUS_REG, CPOL_CPHA_ERROR, 1);
+    }
+}
+
+static uint64_t axiqspi_xip_spisr_post_read(RegisterInfo *reg, uint64_t val64)
+{
+    XlnxAXIQSPI *s = XLNX_AXIQSPI(reg->opaque);
+
+    /* XIP SPISR is brought to reset after every read */
+    register_reset(&s->reg_info[R_XIP_STATUS_REG]);
+
+    return val64;
+}
+
 static const RegisterAccessInfo axiqspi_xip_regs_info[] = {
     {   .name = "XIP_CONFIG_REG",  .addr = A_XIP_CONFIG_REG,
         .rsvd = 0xfffffffc,
+        .post_write = axiqspi_xip_spicr_post_write,
     },{ .name = "XIP_STATUS_REG",  .addr = A_XIP_STATUS_REG,
         .reset = 0x1,
         .rsvd = 0xffffff70,
-        .cor = 0x1f,
+        .ro = 0x1f,
+        .post_read = axiqspi_xip_spisr_post_read,
     }
 };
 
@@ -1634,28 +1695,82 @@ static const MemoryRegionOps axiqspi_ops = {
     },
 };
 
+static void axiqspi_xip_txrx(XlnxAXIQSPI *s, hwaddr addr, uint8_t *val,
+                             unsigned size)
+{
+    qemu_set_irq(s->cs_lines[0], 0);
+    ssi_transfer(s->spi_bus, s->cmd);
+    DB_PRINT("axiqspi: XIP TX->0x%x\n", s->cmd);
+
+    for (int i = s->addr_bytes - 1; i >= 0; --i) {
+        uint8_t shift = i * 8;
+        uint8_t addr_byte = (addr >> shift) & 0xFF;
+        ssi_transfer(s->spi_bus, addr_byte);
+        DB_PRINT("axiqspi: XIP TX->0x%x\n", addr_byte);
+    }
+
+    /*
+     * If a command has dummy bytes, We TX 8 dummy bytes regardless of
+     * command and link state.
+     */
+    if (s->num_dummies) {
+        for (uint8_t i = 0; i < 8; ++i) {
+            ssi_transfer(s->spi_bus, 0x00);
+            DB_PRINT("axiqspi: XIP TX->0x00 dummy\n");
+        }
+    }
+
+    for (uint8_t i = 0; i < size; ++i) {
+        val[i] = ssi_transfer(s->spi_bus, 0x00);
+        DB_PRINT("axiqspi: XIP RX->0x%x\n", val[i]);
+    }
+    qemu_set_irq(s->cs_lines[0], 1);
+}
+
+static void axiqspi_xip_wb_init(XlnxAXIQSPI *s)
+{
+    axiqspi_parse_cmd(s, HIGH_PERFORMANCE_MODE);
+
+    axiqspi_xip_txrx(s, 0, NULL, 0);
+}
+
 static MemTxResult axiqspi_xip_read(void *opaque, hwaddr addr, uint64_t *val,
                                     unsigned size, MemTxAttrs attrs)
 {
     XlnxAXIQSPI *s = XLNX_AXIQSPI(opaque);
-    uint8_t *val8 = (uint8_t *)val;
     uint8_t cmd;
+    bool is_4b_cmd = (s->conf.spi_mem == SPI_MEM_SPANSION ||
+                      s->conf.spi_mem == SPI_MEM_MICRON) &&
+                      s->conf.xip_addr_bits == 32;
 
     assert(size <= 64);
+
+    if (!axiqspi_xip_check_cpol_cpha(s)) {
+        qemu_log_mask(LOG_GUEST_ERROR, "axiqspi: attempted to read with "
+                      "bad CPOL and CPHA.\n");
+        return MEMTX_ERROR;
+    }
 
     /* These read commands are universal between all supported flashes */
     switch (s->conf.mode) {
     case AXIQSPI_MODE_STD:
-        cmd = FAST_READ;
+        cmd = is_4b_cmd ? FAST_READ_4B : FAST_READ;
         break;
     case AXIQSPI_MODE_DUAL:
-        cmd = FAST_READ_DUAL_IO;
+        cmd = is_4b_cmd ? FAST_READ_DUAL_IO_4B : FAST_READ_DUAL_IO;
         break;
     case AXIQSPI_MODE_QUAD:
-        cmd = FAST_READ_QUAD_IO;
+        cmd = is_4b_cmd ? FAST_READ_QUAD_IO_4B : FAST_READ_QUAD_IO;
         break;
     default:
         g_assert_not_reached();
+    }
+
+    if (s->conf.spi_mem == SPI_MEM_WINBOND &&
+        s->conf.mode != AXIQSPI_MODE_STD &&
+        !s->is_xip_wb_init) {
+        axiqspi_xip_wb_init(s);
+        s->is_xip_wb_init = true;
     }
 
     /* Parse to get the number of dummy and addr bytes */
@@ -1671,23 +1786,7 @@ static MemTxResult axiqspi_xip_read(void *opaque, hwaddr addr, uint64_t *val,
      * This is because we send data right after we receive it from
      * the SPI flash; meaning the FIFO is always empty.
      */
-    ssi_transfer(s->spi_bus, cmd);
-    DB_PRINT("axiqspi: XIP TX->0x%x\n", cmd);
-    for (int i = s->addr_bytes; i >= 0; --i) {
-        uint8_t shift = i * 8;
-        uint8_t addr_byte = (addr >> shift) & 0xFF;
-        ssi_transfer(s->spi_bus, addr_byte);
-        DB_PRINT("axiqspi: XIP TX->0x%x\n", addr_byte);
-    }
-    for (uint8_t i = 0; i < s->num_dummies; ++i) {
-        ssi_transfer(s->spi_bus, 0x00);
-        DB_PRINT("axiqspi: XIP TX->0x00 dummy\n");
-    }
-
-    for (uint8_t i = 0; i < size; ++i) {
-        val8[i] = ssi_transfer(s->spi_bus, 0x00);
-        DB_PRINT("axiqspi: XIP RX->0x%x\n", val8[i]);
-    }
+    axiqspi_xip_txrx(s, addr, (uint8_t *)val, size);
 
     return MEMTX_OK;
 }
@@ -1698,6 +1797,8 @@ static MemTxResult axiqspi_xip_write(void *opaque, hwaddr addr, uint64_t val,
     XlnxAXIQSPI *s = XLNX_AXIQSPI(opaque);
 
     /* XIP mode does not allow writes */
+    qemu_log_mask(LOG_GUEST_ERROR,
+                  "axiqspi: attempted to write in XIP mode\n");
     ARRAY_FIELD_DP32(s->regs, XIP_STATUS_REG, AXI_TRANSACTION_ERROR, 1);
 
     return MEMTX_ERROR;
@@ -1724,23 +1825,30 @@ static bool axiqspi_validate_conf(XlnxAXIQSPI *s, Error **errp)
     if (s->conf.num_cs < AXIQSPI_NUM_CS_MIN ||
         s->conf.num_cs > AXIQSPI_NUM_CS_MAX) {
         error_setg(errp, "axiqspi: Num CS must be between %d and %d.",
-                     AXIQSPI_NUM_CS_MIN, AXIQSPI_NUM_CS_MAX);
+                   AXIQSPI_NUM_CS_MIN, AXIQSPI_NUM_CS_MAX);
         return false;
     }
 
     if (s->conf.fifo_depth) {
-        if (s->conf.fifo_depth != 16 && s->conf.fifo_depth != 256) {
-            error_setg(errp, "axiqspi: FIFO depth can only be  16 or 256, "
-                         "but is %d.", s->conf.fifo_depth);
-            return false;
+        if (s->conf.xip_mode) {
+            if (s->conf.fifo_depth != 64) {
+                error_setg(errp, "axiqspi: FIFO depth must be 64 in XIP mode, "
+                           "but is %d.", s->conf.fifo_depth);
+                return false;
+            }
+        } else {
+            if (s->conf.fifo_depth != 16 && s->conf.fifo_depth != 256) {
+                error_setg(errp, "axiqspi: FIFO depth can only be 16 or 256, "
+                           "but is %d.", s->conf.fifo_depth);
+                return false;
+            }
         }
     }
 
     if (s->conf.transaction_width != 8 && s->conf.transaction_width != 16 &&
         s->conf.transaction_width != 32) {
         error_setg(errp, "axiqspi: transaction width must be 8, 16, or "
-                     "32, but is %d.",
-                     s->conf.transaction_width);
+                   "32, but is %d.", s->conf.transaction_width);
         return false;
     }
 
@@ -1749,8 +1857,8 @@ static bool axiqspi_validate_conf(XlnxAXIQSPI *s, Error **errp)
         s->conf.mode == AXIQSPI_MODE_QUAD) {
         if (s->conf.transaction_width != 8) {
             error_setg(errp, "axiqspi: Transaction width must be 8 in "
-                         "dual or quad mode, but is %d.",
-                         s->conf.transaction_width);
+                       "dual or quad mode, but is %d.",
+                       s->conf.transaction_width);
             return false;
         }
 
@@ -1764,7 +1872,7 @@ static bool axiqspi_validate_conf(XlnxAXIQSPI *s, Error **errp)
     if (s->conf.mode != AXIQSPI_MODE_STD) {
         if (s->conf.spi_mem >= SPI_MEM_INVALID) {
             error_setg(errp, "axiqspi: Unknown SPI memory %d, "
-                         "defaulting to mixed memory", s->conf.spi_mem);
+                       "defaulting to mixed memory", s->conf.spi_mem);
             s->conf.spi_mem = SPI_MEM_MIXED;
         }
     }
@@ -1773,7 +1881,7 @@ static bool axiqspi_validate_conf(XlnxAXIQSPI *s, Error **errp)
     if (s->conf.xip_mode) {
         if (s->conf.transaction_width != 8) {
             error_setg(errp, "axiqspi: Transaction width must be 8 in "
-                         "XIP mode, but is %d.", s->conf.transaction_width);
+                       "XIP mode, but is %d.", s->conf.transaction_width);
             return false;
         }
 
@@ -1785,8 +1893,18 @@ static bool axiqspi_validate_conf(XlnxAXIQSPI *s, Error **errp)
 
         if (s->conf.xip_addr_bits != 24 && s->conf.xip_addr_bits != 32) {
             error_setg(errp, "axiqspi: address bits must be 24 or "
-                         "32 in XIP mode, but is %d.", s->conf.xip_addr_bits);
+                       "32 in XIP mode, but is %d.", s->conf.xip_addr_bits);
             return false;
+        }
+
+        if (s->conf.xip_addr_bits == 32) {
+            if (s->conf.spi_mem != SPI_MEM_SPANSION &&
+                s->conf.spi_mem != SPI_MEM_MICRON) {
+                error_setg(errp, "axiqspi: XIP 32-bit addressing is only "
+                           "supported on Spansion or Micron memories.");
+                return false;
+
+            }
         }
     }
 
@@ -1807,7 +1925,6 @@ static void axiqspi_realize(DeviceState *dev, Error **errp)
     s->conf.num_cs_mask = MAKE_32BIT_MASK(s->conf.num_cs);
 
     if (s->conf.xip_mode) {
-        s->conf.fifo_depth = 64;
         reg_array =
             register_init_block32(dev, axiqspi_xip_regs_info,
                                   ARRAY_SIZE(axiqspi_xip_regs_info),
@@ -1867,19 +1984,18 @@ static bool axiqspi_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
     ObjectClass *klass = object_class_by_name(TYPE_XLNX_AXIQSPI);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
     FDTGenericMMapClass *parent_fmc;
-    uint8_t i;
-    char *name;
 
     parent_fmc = FDT_GENERIC_MMAP_CLASS(object_class_get_parent(klass));
     if (s->conf.xip_mode) {
-        for (i = 0; i < (reg.n - 1); ++i) {
-            name = g_strdup_printf("axiqspi-xip-%d\n", i);
-            memory_region_init_io(&s->xip_mr, OBJECT(obj), &axiqspi_xip_ops,
-                                  s, name, reg.s[i + 1]);
-            address_space_init(&s->xip_as, &s->xip_mr, name);
-            sysbus_init_mmio(sbd, &s->xip_mr);
-            g_free(name);
+        if (reg.n != 2) {
+            error_setg(errp, "axiqspi: XIP mode requires 1 region, but "
+                       "device tree specifies %d regions.", reg.n - 1);
+            return false;
         }
+
+        memory_region_init_io(&s->xip_mr, OBJECT(obj), &axiqspi_xip_ops,
+                              s, "axiqspi-xip-region", reg.s[1]);
+        sysbus_init_mmio(sbd, &s->xip_mr);
     }
 
     return parent_fmc ? parent_fmc->parse_reg(obj, reg, errp) : false;

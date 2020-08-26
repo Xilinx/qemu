@@ -99,7 +99,7 @@ MemTxResult xmpu_read_common(void *opaque, XMPU *s, hwaddr addr, uint64_t *val,
      * for us to know if it succeeded or failed, so check here as well.
      */
     if (!r->data) {
-        qemu_log("%s: Decode error: read from %" HWADDR_PRIx "\n",
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Decode error: read from %" HWADDR_PRIx "\n",
                  object_get_canonical_path(OBJECT(s)),
                  addr);
         ARRAY_FIELD_DP32(s->regs, ISR, INV_APB, true);
@@ -125,7 +125,7 @@ MemTxResult xmpu_write_common(void *opaque, XMPU *s, hwaddr addr, uint64_t val,
      * for us to know if it succeeded or failed, so check here as well.
      */
     if (!r->data) {
-        qemu_log("%s: Decode error: write to %" HWADDR_PRIx "=%" PRIx64 "\n",
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Decode error: write to %" HWADDR_PRIx "=%" PRIx64 "\n",
                  object_get_canonical_path(OBJECT(s)),
                  addr, val);
         ARRAY_FIELD_DP32(s->regs, ISR, INV_APB, true);
@@ -186,39 +186,12 @@ IOMMUTLBEntry xmpu_master_translate(XMPUMaster *xm, hwaddr addr,
 
     /* Lookup if this address fits a region.  */
     for (i = NR_XMPU_REGIONS - 1; i >= 0; i--) {
-        bool id_match;
-        bool match;
-
         s->decode_region(s, &xr, i);
         if (!xr.config.enable) {
             continue;
         }
 
-        if (xr.start & s->addr_mask) {
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: Bad region start address %" PRIx64 "\n",
-                          s->prefix, xr.start);
-        }
-
-        if (xr.end & s->addr_mask) {
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: Bad region end address %" PRIx64 "\n",
-                           s->prefix, xr.end);
-        }
-
-        if (xr.start < s->addr_mask) {
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: Too low region start address %" PRIx64 "\n",
-                           s->prefix, xr.end);
-        }
-
-        xr.start &= ~s->addr_mask;
-        xr.end &= ~s->addr_mask;
-
-        id_match = (xr.master.mask & xr.master.id) ==
-                       (xr.master.mask & master_id);
-        match = id_match && (addr >= xr.start && addr < xr.end);
-        if (match) {
+        if (s->match(s, &xr, master_id, addr)) {
             nr_matched++;
             xm->curr_region = i;
             /*

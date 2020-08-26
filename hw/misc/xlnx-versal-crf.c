@@ -32,6 +32,7 @@
 #include "qemu/log.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
+#include "hw/arm/linux-boot-if.h"
 
 #include "hw/fdt_generic_util.h"
 
@@ -137,6 +138,7 @@ typedef struct XlnxZynq3Crf {
     qemu_irq rst_sysmon_cfg;
     qemu_irq rst_sysmon_seq;
 
+    bool linux_direct_boot;
     uint32_t regs[CRF_R_MAX];
     RegisterInfo regs_info[CRF_R_MAX];
 } XlnxZynq3Crf;
@@ -180,17 +182,18 @@ static uint64_t ir_disable_prew(RegisterInfo *reg, uint64_t val64)
 
 static void crf_update_gpios(XlnxZynq3Crf *s)
 {
-    PROPAGATE_GPIO(RST_APU, ACPU0, s->rst_acpu[0]);
-    PROPAGATE_GPIO(RST_APU, ACPU1, s->rst_acpu[1]);
-    PROPAGATE_GPIO(RST_APU, ACPU2, s->rst_acpu[2]);
-    PROPAGATE_GPIO(RST_APU, ACPU3, s->rst_acpu[3]);
-    PROPAGATE_GPIO(RST_APU, ACPU_GIC_RESET, s->rst_acpu_gic);
-    PROPAGATE_GPIO(RST_APU, ACPU_L2_RESET, s->rst_acpu_l2);
-    PROPAGATE_GPIO(RST_APU, ACPU0_PWRON, s->rst_acpu_pwron[0]);
-    PROPAGATE_GPIO(RST_APU, ACPU1_PWRON, s->rst_acpu_pwron[1]);
-    PROPAGATE_GPIO(RST_APU, ACPU2_PWRON, s->rst_acpu_pwron[2]);
-    PROPAGATE_GPIO(RST_APU, ACPU3_PWRON, s->rst_acpu_pwron[3]);
-
+    if (!s->linux_direct_boot) {
+        PROPAGATE_GPIO(RST_APU, ACPU0, s->rst_acpu[0]);
+        PROPAGATE_GPIO(RST_APU, ACPU1, s->rst_acpu[1]);
+        PROPAGATE_GPIO(RST_APU, ACPU2, s->rst_acpu[2]);
+        PROPAGATE_GPIO(RST_APU, ACPU3, s->rst_acpu[3]);
+        PROPAGATE_GPIO(RST_APU, ACPU_GIC_RESET, s->rst_acpu_gic);
+        PROPAGATE_GPIO(RST_APU, ACPU_L2_RESET, s->rst_acpu_l2);
+        PROPAGATE_GPIO(RST_APU, ACPU0_PWRON, s->rst_acpu_pwron[0]);
+        PROPAGATE_GPIO(RST_APU, ACPU1_PWRON, s->rst_acpu_pwron[1]);
+        PROPAGATE_GPIO(RST_APU, ACPU2_PWRON, s->rst_acpu_pwron[2]);
+        PROPAGATE_GPIO(RST_APU, ACPU3_PWRON, s->rst_acpu_pwron[3]);
+    }
     PROPAGATE_GPIO(RST_DBG_FPD, RESET, s->rst_dbg_fpd);
     PROPAGATE_GPIO(RST_FPD_SWDT, RESET, s->rst_fpd_swdt);
     PROPAGATE_GPIO(RST_SYSMON, CFG_RST, s->rst_sysmon_cfg);
@@ -273,6 +276,17 @@ static void crf_reset(DeviceState *dev)
     }
     ir_update_irq(s);
     crf_update_gpios(s);
+}
+
+static void crf_linux_boot_if_init(ARMLinuxBootIf *obj, bool secure_boot)
+{
+    XlnxZynq3Crf *s = XILINX_CRF(obj);
+    int i;
+
+    s->linux_direct_boot = true;
+    for (i = 0; i < 4; i++) {
+        qemu_set_irq(s->rst_acpu[i], false);
+    }
 }
 
 static const MemoryRegionOps crf_ops = {
@@ -370,11 +384,13 @@ static void crf_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     FDTGenericGPIOClass *fggc = FDT_GENERIC_GPIO_CLASS(klass);
+    ARMLinuxBootIfClass *albifc = ARM_LINUX_BOOT_IF_CLASS(klass);
 
     dc->reset = crf_reset;
     dc->realize = crf_realize;
     dc->vmsd = &vmstate_crf;
     fggc->controller_gpios = crf_gpios;
+    albifc->arm_linux_init = crf_linux_boot_if_init;
 }
 
 static const TypeInfo crf_info = {
@@ -385,6 +401,7 @@ static const TypeInfo crf_info = {
     .instance_init = crf_init,
     .interfaces = (InterfaceInfo[]) {
         { TYPE_FDT_GENERIC_GPIO },
+        { TYPE_ARM_LINUX_BOOT_IF },
         { }
     },
 };

@@ -223,3 +223,23 @@ void microblaze_load_kernel(MicroBlazeCPU *cpu, hwaddr ddr_base,
     }
     g_free(filename);
 }
+
+
+/*
+ * This is a hack to make allow devices to use TYPE_ARM_LINUX_BOOT_IF
+ * even they don't make sense for microblae emulation.
+ */
+#include "hw/arm/linux-boot-if.h"
+
+static const TypeInfo arm_linux_boot_if_info = {
+    .name = TYPE_ARM_LINUX_BOOT_IF,
+    .parent = TYPE_INTERFACE,
+    .class_size = sizeof(ARMLinuxBootIfClass),
+};
+
+static void arm_linux_boot_register_types(void)
+{
+    type_register_static(&arm_linux_boot_if_info);
+}
+
+type_init(arm_linux_boot_register_types)

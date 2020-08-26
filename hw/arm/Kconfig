@@ -346,6 +346,7 @@ config XLNX_ZYNQMP_ARM
     select XILINX_AXI
     select XILINX_SPIPS
     select XLNX_ZYNQMP
+    select USB_DWC3
 
 config XLNX_VERSAL
     bool
@@ -357,6 +358,7 @@ config XLNX_VERSAL
 config XLNX_VERSAL_ARM
     bool
     select ARM_GIC
+    select USB_DWC3
 
 config FSL_IMX25
     bool
