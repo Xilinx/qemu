@@ -1809,7 +1809,7 @@ static const MemoryRegionOps axiqspi_xip_ops = {
     .write_with_attrs = axiqspi_xip_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
-        .min_access_size = 4,
+        .min_access_size = 1,
         .max_access_size = 4,
     },
 };
