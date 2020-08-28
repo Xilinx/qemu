@@ -1,3 +1,12 @@
 obj-y += translate.o op_helper.o helper.o cpu.o
 obj-y += gdbstub.o
 obj-$(CONFIG_SOFTMMU) += mmu.o
+DECODETREE = $(SRC_PATH)/scripts/decodetree.py
+
+target/microblaze/decode-insns.c.inc: $(SRC_PATH)/target/microblaze/insns.decode $(DECODETREE)
+	$(call quiet-command,\
+	  $(PYTHON) $(DECODETREE) -o $@ $<,\
+	  "GEN", $(TARGET_DIR)$@)
+
+target/microblaze/translate.o: target/microblaze/decode-insns.c.inc
+
