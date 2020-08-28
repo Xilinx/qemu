@@ -238,12 +238,12 @@ typedef struct DynamicMBGDBXMLInfo DynamicMBGDBXMLInfo;
 struct CPUMBState {
     uint32_t debug;
     uint32_t btaken;
-    uint64_t btarget;
+    uint32_t btarget;
     uint32_t bimm;
 
     uint32_t imm;
     uint32_t regs[32];
-    uint64_t pc;
+    uint32_t pc;
     uint64_t msr;
     uint64_t ear;
     uint64_t esr;
