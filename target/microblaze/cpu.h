@@ -244,6 +244,7 @@ struct CPUMBState {
     uint32_t imm;
     uint32_t regs[32];
     uint64_t pc;
+    uint64_t msr;
     uint64_t sregs[14];
     float_status fp_status;
     /* Stack protectors. Yes, it's a hw feature.  */
@@ -375,7 +376,7 @@ static inline void cpu_get_tb_cpu_state(CPUMBState *env, target_ulong *pc,
     *pc = env->pc;
     *cs_base = 0;
     *flags = (env->iflags & IFLAGS_TB_MASK) |
-                 (env->sregs[SR_MSR] & (MSR_UM | MSR_VM | MSR_EE));
+             (env->msr & (MSR_UM | MSR_VM | MSR_EE));
 }
 
 #if !defined(CONFIG_USER_ONLY)
@@ -390,11 +391,11 @@ static inline int cpu_mmu_index(CPUMBState *env, bool ifetch)
     MicroBlazeCPU *cpu = env_archcpu(env);
 
     /* Are we in nommu mode?.  */
-    if (!(env->sregs[SR_MSR] & MSR_VM) || !cpu->cfg.use_mmu) {
+    if (!(env->msr & MSR_VM) || !cpu->cfg.use_mmu) {
         return MMU_NOMMU_IDX;
     }
 
-    if (env->sregs[SR_MSR] & MSR_UM) {
+    if (env->msr & MSR_UM) {
         return MMU_USER_IDX;
     }
     return MMU_KERNEL_IDX;
