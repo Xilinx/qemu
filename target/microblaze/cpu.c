@@ -84,14 +84,14 @@ static void mb_cpu_set_pc(CPUState *cs, vaddr value)
 {
     MicroBlazeCPU *cpu = MICROBLAZE_CPU(cs);
 
-    cpu->env.sregs[SR_PC] = (uint32_t) value;
+    cpu->env.pc = value;
 }
 
 static vaddr mb_cpu_get_pc(CPUState *cs)
 {
     MicroBlazeCPU *cpu = MICROBLAZE_CPU(cs);
 
-    return cpu->env.sregs[SR_PC];
+    return cpu->env.pc;
 }
 
 static bool mb_cpu_has_work(CPUState *cs)
@@ -150,7 +150,7 @@ static void mb_cpu_reset(DeviceState *dev)
     /* Disable stack protector.  */
     env->shr = ~0;
 
-    env->sregs[SR_PC] = cpu->cfg.base_vectors;
+    env->pc = cpu->cfg.base_vectors;
 
 #if defined(CONFIG_USER_ONLY)
     /* start in user mode with interrupts enabled.  */
