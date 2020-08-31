@@ -95,7 +95,7 @@ static const MemoryRegionOps efuse_cache_ops = {
     .write = efuse_cache_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
-        .min_access_size = 4,
+        .min_access_size = 1,
         .max_access_size = 4,
     },
 };
