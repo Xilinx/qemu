@@ -168,10 +168,6 @@ static void mb_cpu_reset(DeviceState *dev)
 #else
     mb_cpu_write_msr(env, 0);
     mmu_init(&env->mmu);
-    env->mmu.c_mmu = 3;
-    env->mmu.c_mmu_tlb_access = 3;
-    env->mmu.c_mmu_zones = 16;
-    env->mmu.c_addr_mask = MAKE_64BIT_MASK(0, cpu->cfg.addr_size);
 
     if (cpu->env.memattr_p) {
         env_tlb(&cpu->env)->memattr[0].attrs = *cpu->env.memattr_p;
@@ -270,6 +266,11 @@ static void mb_cpu_realizefn(DeviceState *dev, Error **errp)
                              16 << 17);
 
     mb_gen_dynamic_xml(cpu);
+
+    cpu->cfg.mmu = 3;
+    cpu->cfg.mmu_tlb_access = 3;
+    cpu->cfg.mmu_zones = 16;
+    cpu->cfg.addr_mask = MAKE_64BIT_MASK(0, cpu->cfg.addr_size);
 
     mcc->parent_realize(dev, errp);
 }

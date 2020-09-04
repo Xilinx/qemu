@@ -310,6 +310,8 @@ struct DynamicMBGDBXMLInfo {
 typedef struct {
     char *version;
 
+    uint64_t addr_mask;
+
     uint32_t base_vectors;
     uint32_t pvr_user2;
     uint32_t pvr_regs[13];
@@ -319,6 +321,9 @@ typedef struct {
     uint8_t use_hw_mul;
     uint8_t pvr_user1;
     uint8_t pvr;
+    uint8_t mmu;
+    uint8_t mmu_tlb_access;
+    uint8_t mmu_zones;
 
     bool stackprot;
     bool use_barrel;
