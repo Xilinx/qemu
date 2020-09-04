@@ -307,6 +307,34 @@ struct DynamicMBGDBXMLInfo {
     char *xml;
 };
 
+/*
+ * Microblaze Configuration Settings
+ */
+typedef struct {
+    bool stackprot;
+    uint32_t base_vectors;
+    uint8_t addr_size;
+    uint8_t use_fpu;
+    uint8_t use_hw_mul;
+    bool use_barrel;
+    bool use_div;
+    bool use_msr_instr;
+    bool use_pcmp_instr;
+    bool use_mmu;
+    bool dcache_writeback;
+    bool endi;
+    bool dopb_bus_exception;
+    bool iopb_bus_exception;
+    bool illegal_opcode_exception;
+    bool opcode_0_illegal;
+    bool div_zero_exception;
+    bool unaligned_exceptions;
+    uint8_t pvr_user1;
+    uint32_t pvr_user2;
+    char *version;
+    uint8_t pvr;
+} MicroBlazeCPUConfig;
+
 /**
  * MicroBlazeCPU:
  * @env: #CPUMBState
@@ -324,31 +352,7 @@ struct MicroBlazeCPU {
     CPUMBState env;
     DynamicMBGDBXMLInfo dyn_xml;
 
-    /* Microblaze Configuration Settings */
-    struct {
-        bool stackprot;
-        uint32_t base_vectors;
-        uint8_t addr_size;
-        uint8_t use_fpu;
-        uint8_t use_hw_mul;
-        bool use_barrel;
-        bool use_div;
-        bool use_msr_instr;
-        bool use_pcmp_instr;
-        bool use_mmu;
-        bool dcache_writeback;
-        bool endi;
-        bool dopb_bus_exception;
-        bool iopb_bus_exception;
-        bool illegal_opcode_exception;
-        bool opcode_0_illegal;
-        bool div_zero_exception;
-        bool unaligned_exceptions;
-        uint8_t pvr_user1;
-        uint32_t pvr_user2;
-        char *version;
-        uint8_t pvr;
-    } cfg;
+    MicroBlazeCPUConfig cfg;
 };
 
 
