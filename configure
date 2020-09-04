@@ -8171,7 +8171,6 @@ case "$target_name" in
     mttcg="yes"
     bflt="yes"
     gdb_xml_files="microblaze-core.xml"
-    echo "TARGET_ABI32=y" >> $config_target_mak
   ;;
   mips|mipsel)
     mttcg="yes"
