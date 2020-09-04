@@ -85,6 +85,16 @@ static void mb_cpu_set_pc(CPUState *cs, vaddr value)
     MicroBlazeCPU *cpu = MICROBLAZE_CPU(cs);
 
     cpu->env.pc = value;
+    /* Ensure D_FLAG and IMM_FLAG are clear for the new PC */
+    cpu->env.iflags = 0;
+}
+
+static void mb_cpu_synchronize_from_tb(CPUState *cs, TranslationBlock *tb)
+{
+    MicroBlazeCPU *cpu = MICROBLAZE_CPU(cs);
+
+    cpu->env.pc = tb->pc;
+    cpu->env.iflags = tb->flags & IFLAGS_TB_MASK;
 }
 
 static vaddr mb_cpu_get_pc(CPUState *cs)
@@ -386,6 +396,7 @@ static void mb_cpu_class_init(ObjectClass *oc, void *data)
     cc->dump_state = mb_cpu_dump_state;
     cc->set_pc = mb_cpu_set_pc;
     cc->get_pc = mb_cpu_get_pc;
+    cc->synchronize_from_tb = mb_cpu_synchronize_from_tb;
     cc->gdb_read_register = mb_cpu_gdb_read_register;
     cc->gdb_write_register = mb_cpu_gdb_write_register;
     cc->tlb_fill = mb_cpu_tlb_fill;
