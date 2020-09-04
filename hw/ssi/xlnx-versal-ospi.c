@@ -1507,6 +1507,10 @@ static void ospi_reset(DeviceState *dev)
     s->rd_ind_op[1].completed = true;
     s->wr_ind_op[0].completed = true;
     s->wr_ind_op[1].completed = true;
+    ARRAY_FIELD_DP32(s->regs, DLL_OBSERVABLE_LOWER_REG,
+           DLL_OBSERVABLE_LOWER_DLL_LOCK_FLD, 1);
+    ARRAY_FIELD_DP32(s->regs, DLL_OBSERVABLE_LOWER_REG,
+           DLL_OBSERVABLE_LOWER_LOOPBACK_LOCK_FLD, 1);
 }
 
 static RegisterAccessInfo ospi_regs_info[] = {

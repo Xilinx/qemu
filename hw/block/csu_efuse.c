@@ -257,6 +257,10 @@ REG32(PPK1_11, 0x10fc)
 #define EFUSE_BISR_START      BIT_POS(32, 0)
 #define EFUSE_BISR_END        BIT_POS(39, 31)
 
+#define EFUSE_USER_CTRL_START BIT_POS(16, 0)
+#define EFUSE_USER_CTRL_END   BIT_POS(16, 16)
+#define EFUSE_USER_CTRL_MASK  ((uint32_t)MAKE_64BIT_MASK(0, 17))
+
 #define EFUSE_PUF_CHASH_START BIT_POS(20, 0)
 #define EFUSE_PUF_CHASH_END   BIT_POS(20, 31)
 #define EFUSE_PUF_MISC_START  BIT_POS(21, 0)
@@ -333,6 +337,8 @@ static void zynqmp_efuse_sync_cache(ZynqMPEFuse *s, unsigned int bit)
     update_tbit_status(s);
 
     /* Sync the various areas.  */
+    s->regs[R_MISC_USER_CTRL] = efuse_get_row(s->efuse, EFUSE_USER_CTRL_START)
+                                & EFUSE_USER_CTRL_MASK;
     s->regs[R_PUF_CHASH] = efuse_get_row(s->efuse, EFUSE_PUF_CHASH_START);
     s->regs[R_PUF_MISC]  = efuse_get_row(s->efuse, EFUSE_PUF_MISC_START);
 

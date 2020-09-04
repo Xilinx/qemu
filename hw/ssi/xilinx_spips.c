@@ -332,7 +332,6 @@ static void xilinx_spips_update_ixr(XilinxSPIPS *s)
             (s->rx_fifo.num >= s->regs[R_RX_THRES] ?
                                     IXR_RX_FIFO_NOT_EMPTY : 0) |
             (fifo8_is_full(&s->tx_fifo) ? IXR_TX_FIFO_FULL : 0) |
-            (fifo8_is_empty(&s->tx_fifo) ? IXR_TX_FIFO_EMPTY : 0) |
             (s->tx_fifo.num < s->regs[R_TX_THRES] ? IXR_TX_FIFO_NOT_FULL : 0);
     }
     int new_irqline = !!(s->regs[R_INTR_MASK] & s->regs[R_INTR_STATUS] &
@@ -1201,7 +1200,7 @@ static void lqspi_load_cache(void *opaque, hwaddr addr)
     uint32_t u_page_save = s->regs[R_LQSPI_STS] & ~LQSPI_CFG_U_PAGE;
 
     if (addr < q->lqspi_cached_addr ||
-            addr > q->lqspi_cached_addr + LQSPI_CACHE_SIZE - 4) {
+            addr >= q->lqspi_cached_addr + LQSPI_CACHE_SIZE) {
         xilinx_qspips_invalidate_mmio_ptr(q);
         s->regs[R_LQSPI_STS] &= ~LQSPI_CFG_U_PAGE;
         s->regs[R_LQSPI_STS] |= slave ? LQSPI_CFG_U_PAGE : 0;
@@ -1266,9 +1265,15 @@ static MemTxResult lqspi_read(void *opaque, hwaddr addr, uint64_t *value,
     XilinxQSPIPS *q = XILINX_QSPIPS(opaque);
 
     if (addr >= q->lqspi_cached_addr &&
-            addr <= q->lqspi_cached_addr + LQSPI_CACHE_SIZE - 4) {
+            addr < q->lqspi_cached_addr + LQSPI_CACHE_SIZE) {
         uint8_t *retp = &q->lqspi_buf[addr - q->lqspi_cached_addr];
-        *value = cpu_to_le32(*(uint32_t *)retp);
+        if (size == 1) {
+            *value = *retp;
+        } else if (size == 2) {
+            *value = cpu_to_le16(*(uint16_t *)retp);
+        } else {
+            *value = cpu_to_le32(*(uint32_t *)retp);
+        }
         DB_PRINT_L(1, "addr: %08" HWADDR_PRIx ", data: %08" PRIx64 "\n",
                    addr, *value);
         return MEMTX_OK;
