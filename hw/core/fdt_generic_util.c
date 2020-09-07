@@ -730,13 +730,10 @@ qemu_irq *fdt_get_irq_info(FDTMachineInfo *fdti, char *node_path, int irq_idx,
 
                 memset(&ret[num_matches], 0, sizeof(*ret));
                 fdt_get_irq_info_from_intc(fdti, &ret[num_matches-1], intc_node_path,
-                                           new_cells, new_intc_cells, 1, &errp);
+                                           new_cells, new_intc_cells, 1, NULL);
                 if (info) {
                    sprintf(info, "%s", intc_node_path);
                    info += strlen(info) + 1;
-                }
-                if (errp) {
-                    goto fail;
                 }
             }
         }
