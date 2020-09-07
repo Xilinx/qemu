@@ -265,6 +265,7 @@ static void aarch64_a72_initfn(Object *obj)
 static void aarch64_a78_initfn(Object *obj)
 {
     ARMCPU *cpu = ARM_CPU(obj);
+    uint64_t t;
 
     cpu->dtb_compatible = "arm,cortex-a78";
     set_feature(&cpu->env, ARM_FEATURE_V8);
@@ -283,7 +284,15 @@ static void aarch64_a78_initfn(Object *obj)
     cpu->isar.mvfr2 = 0x00000043;
     cpu->ctr = 0x8444c004;
     cpu->reset_sctlr = 0x00c50838;
+
+    /* Xilinx: Overrides since some of the new stuff does not work.  */
     cpu->id_pfr0 = 0x00000131;
+    t = cpu->isar.id_aa64pfr0;
+    t = FIELD_DP64(t, ID_AA64PFR0, SVE, 1);
+    t = FIELD_DP64(t, ID_AA64PFR0, FP, 1);
+    t = FIELD_DP64(t, ID_AA64PFR0, ADVSIMD, 1);
+    cpu->isar.id_aa64pfr0 = t;
+
     cpu->id_pfr1 = 0x00011011;
     cpu->isar.id_dfr0 = 0x03010066;
     cpu->id_afr0 = 0x00000000;
@@ -301,9 +310,42 @@ static void aarch64_a78_initfn(Object *obj)
     /* TOP Bit zero until we implement RAS.  */
     cpu->isar.id_aa64pfr0 = 0x01111112;
     cpu->isar.id_aa64pfr1 = 0x00000010;
-    cpu->isar.id_aa64dfr0 = 0x110305408ULL;
+    /* cpu->isar.id_aa64dfr0 = 0x110305408ULL; Unsupported PMcnt features */
+    cpu->isar.id_aa64dfr0 = 0x10305408ULL;
     cpu->isar.id_aa64isar0 = 0x0010100010211120ULL;
+
+    /* Xilinx: Overrides since some of the new stuff does not work.  */
     cpu->isar.id_aa64isar1 = 0x01200031;
+    t = cpu->isar.id_aa64isar0;
+    t = FIELD_DP64(t, ID_AA64ISAR0, AES, 2); /* AES + PMULL */
+    t = FIELD_DP64(t, ID_AA64ISAR0, SHA1, 1);
+    t = FIELD_DP64(t, ID_AA64ISAR0, SHA2, 2); /* SHA512 */
+    t = FIELD_DP64(t, ID_AA64ISAR0, CRC32, 1);
+    t = FIELD_DP64(t, ID_AA64ISAR0, ATOMIC, 0);
+    t = FIELD_DP64(t, ID_AA64ISAR0, RDM, 1);
+    t = FIELD_DP64(t, ID_AA64ISAR0, SHA3, 1);
+    t = FIELD_DP64(t, ID_AA64ISAR0, SM3, 1);
+    t = FIELD_DP64(t, ID_AA64ISAR0, SM4, 1);
+    t = FIELD_DP64(t, ID_AA64ISAR0, DP, 1);
+    t = FIELD_DP64(t, ID_AA64ISAR0, FHM, 1);
+    t = FIELD_DP64(t, ID_AA64ISAR0, TS, 2); /* v8.5-CondM */
+    t = FIELD_DP64(t, ID_AA64ISAR0, RNDR, 1);
+    cpu->isar.id_aa64isar0 = t;
+
+    t = cpu->isar.id_aa64isar1;
+    t = FIELD_DP64(t, ID_AA64ISAR1, DPB, 2);
+    t = FIELD_DP64(t, ID_AA64ISAR1, JSCVT, 0);
+    t = FIELD_DP64(t, ID_AA64ISAR1, FCMA, 0);
+    t = FIELD_DP64(t, ID_AA64ISAR1, APA, 0); /* PAuth, architected only */
+    t = FIELD_DP64(t, ID_AA64ISAR1, API, 0);
+    t = FIELD_DP64(t, ID_AA64ISAR1, GPA, 0);
+    t = FIELD_DP64(t, ID_AA64ISAR1, GPI, 0);
+    t = FIELD_DP64(t, ID_AA64ISAR1, SB, 1);
+    t = FIELD_DP64(t, ID_AA64ISAR1, SPECRES, 1);
+    t = FIELD_DP64(t, ID_AA64ISAR1, FRINTTS, 1);
+    t = FIELD_DP64(t, ID_AA64ISAR1, LRCPC, 0); /* ARMv8.4-RCPC */
+    cpu->isar.id_aa64isar1 = t;
+
     cpu->isar.id_aa64mmfr0 = 0x000101125;
     cpu->isar.dbgdidr = 0x3516d000;
     cpu->clidr = 0x0c300023;
