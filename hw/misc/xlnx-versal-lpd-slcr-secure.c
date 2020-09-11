@@ -34,6 +34,8 @@
 #include "hw/irq.h"
 #include "qemu/log.h"
 
+#include "hw/fdt_generic_util.h"
+
 #ifndef XILINX_LPD_SLCR_SECURE_ERR_DEBUG
 #define XILINX_LPD_SLCR_SECURE_ERR_DEBUG 0
 #endif
@@ -109,6 +111,7 @@ typedef struct LPD_SLCR_SECURE {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
     qemu_irq irq_imr;
+    qemu_irq wire_adma_secure[8];
 
     uint32_t regs[LPD_SLCR_SECURE_R_MAX];
     RegisterInfo regs_info[LPD_SLCR_SECURE_R_MAX];
@@ -156,6 +159,18 @@ static uint64_t itr_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
+static void slcr_adma_postw(RegisterInfo *reg, uint64_t val64)
+{
+    LPD_SLCR_SECURE *s = XILINX_LPD_SLCR_SECURE(reg->opaque);
+    uint32_t offset;
+    uint32_t val = (uint32_t)val64;
+
+    offset = (reg->access->addr - A_SLCR_ADMA0) / reg->data_size;
+    assert(offset <= 7);
+
+    qemu_set_irq(s->wire_adma_secure[offset], !FIELD_EX32(val, SLCR_ADMA0, TZ));
+}
+
 static const RegisterAccessInfo lpd_slcr_secure_regs_info[] = {
     {   .name = "WPROT0",  .addr = A_WPROT0,
         .reset = 0x1,
@@ -192,13 +207,21 @@ static const RegisterAccessInfo lpd_slcr_secure_regs_info[] = {
         .reset = 0x1,
     },{ .name = "SLCR_PSM",  .addr = A_SLCR_PSM,
     },{ .name = "SLCR_ADMA0",  .addr = A_SLCR_ADMA0,
+        .post_write = slcr_adma_postw,
     },{ .name = "SLCR_ADMA1",  .addr = A_SLCR_ADMA1,
+        .post_write = slcr_adma_postw,
     },{ .name = "SLCR_ADMA2",  .addr = A_SLCR_ADMA2,
+        .post_write = slcr_adma_postw,
     },{ .name = "SLCR_ADMA3",  .addr = A_SLCR_ADMA3,
+        .post_write = slcr_adma_postw,
     },{ .name = "SLCR_ADMA4",  .addr = A_SLCR_ADMA4,
+        .post_write = slcr_adma_postw,
     },{ .name = "SLCR_ADMA5",  .addr = A_SLCR_ADMA5,
+        .post_write = slcr_adma_postw,
     },{ .name = "SLCR_ADMA6",  .addr = A_SLCR_ADMA6,
+        .post_write = slcr_adma_postw,
     },{ .name = "SLCR_ADMA7",  .addr = A_SLCR_ADMA7,
+        .post_write = slcr_adma_postw,
     },{ .name = "TZPROT",  .addr = A_TZPROT,
     }
 };
@@ -227,7 +250,12 @@ static const MemoryRegionOps lpd_slcr_secure_ops = {
 
 static void lpd_slcr_secure_realize(DeviceState *dev, Error **errp)
 {
-    /* Delete this if you don't need it */
+    LPD_SLCR_SECURE *s = XILINX_LPD_SLCR_SECURE(dev);
+    uint8_t i;
+
+    for (i = 0; i < ARRAY_SIZE(s->wire_adma_secure); ++i) {
+        qdev_init_gpio_out(dev, &s->wire_adma_secure[i], 1);
+    }
 }
 
 static void lpd_slcr_secure_init(Object *obj)
