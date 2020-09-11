@@ -77,6 +77,7 @@ common-obj-$(CONFIG_XLNX_VERSAL) += xlnx-xmpu.o
 common-obj-$(CONFIG_XLNX_VERSAL) += xlnx-versal-xppu.o
 common-obj-$(CONFIG_XLNX_VERSAL) += xlnx-xppu.o
 common-obj-$(CONFIG_XLNX_VERSAL) += xlnx-versal-fpd-slcr-secure.o
+common-obj-$(CONFIG_XLNX_VERSAL) += xlnx-versal-lpd-slcr-secure.o
 common-obj-$(CONFIG_XLNX_VERSAL) += xlnx-versal-fpd-slcr.o
 common-obj-$(CONFIG_XLNX_VERSAL) += xlnx-versal-lpd-slcr.o
 
