@@ -345,23 +345,41 @@ static void sd_set_scr(SDState *sd)
 
 static void sd_set_cid(SDState *sd)
 {
-    sd->cid[0] = MID;		/* Fake card manufacturer ID (MID) */
-    sd->cid[1] = OID[0];	/* OEM/Application ID (OID) */
-    sd->cid[2] = OID[1];
-    sd->cid[3] = PNM[0];	/* Fake product name (PNM) */
-    sd->cid[4] = PNM[1];
-    sd->cid[5] = PNM[2];
-    sd->cid[6] = PNM[3];
-    sd->cid[7] = PNM[4];
-    sd->cid[8] = PRV;		/* Fake product revision (PRV) */
-    sd->cid[9] = 0xde;		/* Fake serial number (PSN) */
-    sd->cid[10] = 0xad;
-    sd->cid[11] = 0xbe;
-    sd->cid[12] = 0xef;
-    sd->cid[13] = 0x00 |	/* Manufacture date (MDT) */
-        ((MDT_YR - 2000) / 10);
-    sd->cid[14] = ((MDT_YR % 10) << 4) | MDT_MON;
-    sd->cid[15] = (sd_crc7(sd->cid, 15) << 1) | 1;
+    if (sd->mmc) {
+        sd->cid[0] = MID;
+        sd->cid[1] = 0x1;       /* CBX */
+        sd->cid[2] = OID[0];    /* OEM/Application ID (OID) */
+        sd->cid[3] = PNM[0];    /* Fake product name (PNM) 48bit */
+        sd->cid[4] = PNM[1];
+        sd->cid[5] = PNM[2];
+        sd->cid[6] = PNM[3];
+        sd->cid[7] = PNM[4];
+        sd->cid[8] = 0x0;
+        sd->cid[9] = PRV;        /* Fake product revision (PRV) */
+        sd->cid[10] = 0xde;      /* Fake serial number (PSN) */
+        sd->cid[11] = 0xad;
+        sd->cid[12] = 0xbe;
+        sd->cid[13] = 0xef;
+        sd->cid[14] = ((MDT_YR - 1997) % 0x10); /* MDT */
+    } else {
+        sd->cid[0] = MID;       /* Fake card manufacturer ID (MID) */
+        sd->cid[1] = OID[0];    /* OEM/Application ID (OID) */
+        sd->cid[2] = OID[1];
+        sd->cid[3] = PNM[0];    /* Fake product name (PNM) 40bit */
+        sd->cid[4] = PNM[1];
+        sd->cid[5] = PNM[2];
+        sd->cid[6] = PNM[3];
+        sd->cid[7] = PNM[4];
+        sd->cid[8] = PRV;       /* Fake product revision (PRV) */
+        sd->cid[9] = 0xde;      /* Fake serial number (PSN) */
+        sd->cid[10] = 0xad;
+        sd->cid[11] = 0xbe;
+        sd->cid[12] = 0xef;
+        sd->cid[13] = 0x00 |    /* Manufacture date (MDT) */
+            ((MDT_YR - 2000) / 10);
+        sd->cid[14] = ((MDT_YR % 10) << 4) | MDT_MON;
+   }
+   sd->cid[15] = (sd_crc7(sd->cid, 15) << 1) | 1;
 }
 
 #define HWBLOCK_SHIFT	9			/* 512 bytes */
