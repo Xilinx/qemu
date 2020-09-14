@@ -1617,6 +1617,9 @@ static sd_rsp_type_t sd_app_command(SDState *sd,
         break;
 
     case 41:	/* ACMD41: SD_APP_OP_COND */
+        if (sd->mmc) {
+            break;
+        }
         if (sd->spi) {
             /* SEND_OP_CMD */
             sd->state = sd_transfer_state;
