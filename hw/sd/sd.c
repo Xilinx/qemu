@@ -389,7 +389,7 @@ static void sd_set_csd(SDState *sd, uint64_t size)
     uint32_t wpsize = (1 << (WPGROUP_SHIFT + 1)) - 1;
 
     if (size <= 1 * GiB) { /* Standard Capacity SD */
-        sd->csd[0] = 0x00;	/* CSD structure */
+        sd->csd[0] = sd->mmc ? 0x40 : 0x00;    /* CSD structure */
         sd->csd[1] = 0x26;	/* Data read access-time-1 */
         sd->csd[2] = 0x00;	/* Data read access-time-2 */
         sd->csd[3] = 0x32;      /* Max. data transfer rate: 25 MHz */
