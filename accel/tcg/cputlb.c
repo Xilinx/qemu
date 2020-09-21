@@ -39,6 +39,7 @@
 #ifdef CONFIG_PLUGIN
 #include "qemu/plugin-memory.h"
 #endif
+#include "qemu/etrace.h"
 
 /* DEBUG defines, enable DEBUG_TLB_LOG to log to the CPU_LOG_MMU target */
 /* #define DEBUG_TLB */
@@ -1057,6 +1058,11 @@ static uint64_t io_readx(CPUArchState *env, CPUIOTLBEntry *iotlbentry,
         r = memory_region_dispatch_read(mr, mr_offset, &val, op, iotlbentry->attrs);
     }
 
+    if (qemu_etrace_mask(ETRACE_F_MEM)) {
+        etrace_mem_access(&qemu_etracer, 0, 0,
+                          addr, memop_size(op), MEM_READ, val);
+    }
+
     if (r != MEMTX_OK) {
         hwaddr physaddr = mr_offset +
             section->offset_within_address_space -
@@ -1103,6 +1109,11 @@ static void io_writex(CPUArchState *env, CPUIOTLBEntry *iotlbentry,
                              (void *) &val, memop_size(op), true);
     } else {
         r = memory_region_dispatch_write(mr, mr_offset, val, op, iotlbentry->attrs);
+    }
+
+    if (qemu_etrace_mask(ETRACE_F_MEM)) {
+        etrace_mem_access(&qemu_etracer, 0, 0,
+                          addr, memop_size(op), MEM_WRITE, val);
     }
 
     if (r != MEMTX_OK) {
