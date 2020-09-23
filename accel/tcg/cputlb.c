@@ -1031,7 +1031,11 @@ static uint64_t io_readx(CPUArchState *env, CPUIOTLBEntry *iotlbentry,
     hwaddr mr_offset;
     MemoryRegionSection *section;
     MemoryRegion *mr;
-    uint64_t val;
+    /*
+     * Xilinx: Initialize to 0 because address_space_rw() does no
+     * initialization.
+     */
+    uint64_t val = 0;
     bool locked = false;
     MemTxResult r;
 
