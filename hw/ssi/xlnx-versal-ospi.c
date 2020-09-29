@@ -977,9 +977,11 @@ static void ospi_do_ind_read(OSPI *s)
         set_irq(s, R_IRQ_STATUS_REG_INDRD_SRAM_FULL_FLD_MASK);
     }
 
-    /* Signal completion if done */
-    if (ospi_ind_op_completed(op)) {
-        ospi_ind_rd_completed(s);
+    /* Signal completion if done, unless inside recursion via ospi_dma_read */
+    if (!ARRAY_FIELD_EX32(s->regs, CONFIG_REG, ENB_DMA_IF_FLD) || start_dma) {
+        if (ospi_ind_op_completed(op)) {
+            ospi_ind_rd_completed(s);
+        }
     }
 }
 
