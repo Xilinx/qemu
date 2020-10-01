@@ -760,6 +760,13 @@ static const MemoryRegionOps zdma_ops = {
     },
 };
 
+static void zdma_set_sec(void *opaque, int n, int level)
+{
+    XlnxZDMA *s = XLNX_ZDMA(opaque);
+
+    s->attr.secure = level;
+}
+
 static void zdma_realize(DeviceState *dev, Error **errp)
 {
     XlnxZDMA *s = XLNX_ZDMA(dev);
@@ -787,6 +794,8 @@ static void zdma_realize(DeviceState *dev, Error **errp)
     if (s->attr_ptr) {
         s->attr = *s->attr_ptr;
     }
+
+    qdev_init_gpio_in_named(dev, zdma_set_sec, "memattr-secure", 1);
 }
 
 static void zdma_init(Object *obj)

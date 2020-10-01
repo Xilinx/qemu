@@ -352,23 +352,41 @@ static void sd_set_scr(SDState *sd)
 
 static void sd_set_cid(SDState *sd)
 {
-    sd->cid[0] = MID;		/* Fake card manufacturer ID (MID) */
-    sd->cid[1] = OID[0];	/* OEM/Application ID (OID) */
-    sd->cid[2] = OID[1];
-    sd->cid[3] = PNM[0];	/* Fake product name (PNM) */
-    sd->cid[4] = PNM[1];
-    sd->cid[5] = PNM[2];
-    sd->cid[6] = PNM[3];
-    sd->cid[7] = PNM[4];
-    sd->cid[8] = PRV;		/* Fake product revision (PRV) */
-    sd->cid[9] = 0xde;		/* Fake serial number (PSN) */
-    sd->cid[10] = 0xad;
-    sd->cid[11] = 0xbe;
-    sd->cid[12] = 0xef;
-    sd->cid[13] = 0x00 |	/* Manufacture date (MDT) */
-        ((MDT_YR - 2000) / 10);
-    sd->cid[14] = ((MDT_YR % 10) << 4) | MDT_MON;
-    sd->cid[15] = (sd_crc7(sd->cid, 15) << 1) | 1;
+    if (sd->mmc) {
+        sd->cid[0] = MID;
+        sd->cid[1] = 0x1;       /* CBX */
+        sd->cid[2] = OID[0];    /* OEM/Application ID (OID) */
+        sd->cid[3] = PNM[0];    /* Fake product name (PNM) 48bit */
+        sd->cid[4] = PNM[1];
+        sd->cid[5] = PNM[2];
+        sd->cid[6] = PNM[3];
+        sd->cid[7] = PNM[4];
+        sd->cid[8] = 0x0;
+        sd->cid[9] = PRV;        /* Fake product revision (PRV) */
+        sd->cid[10] = 0xde;      /* Fake serial number (PSN) */
+        sd->cid[11] = 0xad;
+        sd->cid[12] = 0xbe;
+        sd->cid[13] = 0xef;
+        sd->cid[14] = ((MDT_YR - 1997) % 0x10); /* MDT */
+    } else {
+        sd->cid[0] = MID;       /* Fake card manufacturer ID (MID) */
+        sd->cid[1] = OID[0];    /* OEM/Application ID (OID) */
+        sd->cid[2] = OID[1];
+        sd->cid[3] = PNM[0];    /* Fake product name (PNM) 40bit */
+        sd->cid[4] = PNM[1];
+        sd->cid[5] = PNM[2];
+        sd->cid[6] = PNM[3];
+        sd->cid[7] = PNM[4];
+        sd->cid[8] = PRV;       /* Fake product revision (PRV) */
+        sd->cid[9] = 0xde;      /* Fake serial number (PSN) */
+        sd->cid[10] = 0xad;
+        sd->cid[11] = 0xbe;
+        sd->cid[12] = 0xef;
+        sd->cid[13] = 0x00 |    /* Manufacture date (MDT) */
+            ((MDT_YR - 2000) / 10);
+        sd->cid[14] = ((MDT_YR % 10) << 4) | MDT_MON;
+   }
+   sd->cid[15] = (sd_crc7(sd->cid, 15) << 1) | 1;
 }
 
 #define HWBLOCK_SHIFT	9			/* 512 bytes */
@@ -396,7 +414,7 @@ static void sd_set_csd(SDState *sd, uint64_t size)
     uint32_t wpsize = (1 << (WPGROUP_SHIFT + 1)) - 1;
 
     if (size <= 1 * GiB) { /* Standard Capacity SD */
-        sd->csd[0] = 0x00;	/* CSD structure */
+        sd->csd[0] = sd->mmc ? 0x40 : 0x00;    /* CSD structure */
         sd->csd[1] = 0x26;	/* Data read access-time-1 */
         sd->csd[2] = 0x00;	/* Data read access-time-2 */
         sd->csd[3] = 0x32;      /* Max. data transfer rate: 25 MHz */
@@ -1465,6 +1483,7 @@ static sd_rsp_type_t sd_normal_command(SDState *sd, SDRequest req)
 
     /* Erase commands (Class 5) */
     case 32:	/* CMD32:  ERASE_WR_BLK_START */
+    case 35:
         switch (sd->state) {
         case sd_transfer_state:
             sd->erase_start = req.arg;
@@ -1476,6 +1495,7 @@ static sd_rsp_type_t sd_normal_command(SDState *sd, SDRequest req)
         break;
 
     case 33:	/* CMD33:  ERASE_WR_BLK_END */
+    case 36:
         switch (sd->state) {
         case sd_transfer_state:
             sd->erase_end = req.arg;
@@ -1656,6 +1676,9 @@ static sd_rsp_type_t sd_app_command(SDState *sd,
         break;
 
     case 41:	/* ACMD41: SD_APP_OP_COND */
+        if (sd->mmc) {
+            break;
+        }
         if (sd->spi) {
             /* SEND_OP_CMD */
             sd->state = sd_transfer_state;

@@ -493,7 +493,11 @@ static void rp_pt_handover_pkt(RemotePort *s, RemotePortDynPkt *dpkt)
 #ifndef _WIN32
                 int sval;
 
+#ifndef CONFIG_SEM_TIMEDWAIT
+                sval = s->rx_queue.sem.count;
+#else
                 sem_getvalue(&s->rx_queue.sem.sem, &sval);
+#endif
                 qemu_log("semwait: %d rpos=%u wpos=%u\n", sval,
                          s->rx_queue.rpos, s->rx_queue.wpos);
 #endif
