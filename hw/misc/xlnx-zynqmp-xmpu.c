@@ -281,6 +281,12 @@ static void xmpu_decode_region(XMPU *s, XMPURegion *xr, unsigned int region)
 
     xr->start = s->regs[offset + R_R00_START];
     xr->end = s->regs[offset + R_R00_END];
+
+    /* If the start and end addrs are the same, we cover 1 page */
+    if (xr->start == xr->end) {
+        xr->end += (1ULL << s->addr_shift);
+    }
+
     xr->start <<= 12;
     xr->end <<= 12;
 
