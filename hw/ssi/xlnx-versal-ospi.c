@@ -460,12 +460,18 @@ static void set_irq(OSPI *s, uint32_t set_mask)
 }
 
 /*
- * When any of the bits in R_IRQ_STATUS_REG are set, the interrupt output is
+ * 1) When any of the bits in R_IRQ_STATUS_REG are set, the interrupt output is
  * asserted high ([1] Section 2.3.17)
+ * 2) Interrupt enable/disable for each ISR bit is controlled by value of
+ * R_IRQ_MASK_REG ([1] Section 2.3.18)
+ *
+ * 1 & 2 are contradicting statements in the spec, for now we are masking the
+ * interrupt based on R_IRQ_MASK_REG.
  */
 static void ospi_update_irq_line(OSPI *s)
 {
-    qemu_set_irq(s->irq, !!s->regs[R_IRQ_STATUS_REG]);
+    qemu_set_irq(s->irq, !!(s->regs[R_IRQ_STATUS_REG] &
+                            s->regs[R_IRQ_MASK_REG]));
 }
 
 static uint8_t ospi_get_wr_opcode(OSPI *s)

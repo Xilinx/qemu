@@ -349,6 +349,11 @@ static void xmpu_decode_region(XMPU *s, XMPURegion *xr, unsigned int region)
     xr->end |= s->regs[offset + R_R00_END_LO];
     xr->size = xr->end - xr->start;
 
+    /* If the start and end addrs are the same, we cover 1 page */
+    if (xr->start == xr->end) {
+        xr->end += s->addr_mask;
+    }
+
     /* Versal has 8 bytes of padding between R12_END_HI and R12_MASTER */
     if (region == 12) {
         offset += 2;

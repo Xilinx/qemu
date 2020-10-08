@@ -377,6 +377,11 @@ static void xmpu_decode_region(XMPU *s, XMPURegion *xr, unsigned int region)
     xr->end |= s->regs[offset + R_R00_END_LO];
     xr->size = xr->end - xr->start;
 
+    /* If the start and end addrs are the same, we cover 1 page */
+    if (xr->start == xr->end) {
+        xr->end += s->addr_mask;
+    }
+
     xr->master.u32 = s->regs[offset + R_R00_MASTER];
 
     config = s->regs[offset + R_R00_CONFIG];
