@@ -31,6 +31,7 @@
 #include "hw/misc/iomem-cache.h"
 #include "hw/core/cpu.h"
 #include "qemu/option_int.h"
+#include "hw/fdt_generic_util.h"
 
 #define N_CACHE_SZ 2
 #define MAX_UNCACHED_ACCESS_SIZE 4096
@@ -92,7 +93,7 @@ static IOMMUTLBEntry iomem_cache_load_line(IOMemCache *s, hwaddr addr,
 
         l = iommem_cache_alloc_line(s, tag);
 
-        address_space_rw(&s->down_as, tag + s->cfg.offset,
+        address_space_rw(&s->down_as, tag,
                          MEMTXATTRS_UNSPECIFIED, l->data, s->cfg.line_size,
                          is_write);
 
@@ -121,7 +122,7 @@ static void iomem_cache_writeback_line(IOMemCache *s, CacheLine *l)
 
     assert(s->cache.line[l->line_idx].valid);
 
-    address_space_rw(&s->down_as, l->iotlb.iova  + s->cfg.offset,
+    address_space_rw(&s->down_as, l->iotlb.iova,
                      MEMTXATTRS_UNSPECIFIED, l->data, s->cfg.line_size,
                      is_write);
 
@@ -197,12 +198,13 @@ static void iomem_cache_maintenance(IOMemCache *s)
     }
 }
 
-static IOMMUTLBEntry iomem_cache_translate(IOMMUMemoryRegion *mr,
+static IOMMUTLBEntry iomem_cache_translate(IOMMUMemoryRegion *iommu,
                                            hwaddr addr,
                                            IOMMUAccessFlags flags,
                                            int iommu_idx)
 {
-    IOMemCache *s = container_of(mr, IOMemCache, iommu);
+    IOMemCacheRegion *region = container_of(iommu, IOMemCacheRegion, iommu);
+    IOMemCache *s = region->parent;
     IOMMUTLBEntry ret;
     bool locked;
     int cpu_idx;
@@ -220,6 +222,8 @@ static IOMMUTLBEntry iomem_cache_translate(IOMMUMemoryRegion *mr,
 
     cpu_idx = (current_cpu) ? current_cpu->cpu_index : 0;
 
+    /* Use the absolut address with the cache */
+    addr += region->offset;
     ret = iomem_cache_load_line(s, addr, cpu_idx);
 
     qemu_mutex_unlock(&s->mutex);
@@ -232,7 +236,8 @@ static IOMMUTLBEntry iomem_cache_translate(IOMMUMemoryRegion *mr,
 
 static uint64_t iomem_cache_get_min_page_size(IOMMUMemoryRegion *iommu)
 {
-    IOMemCache *s = container_of(iommu, IOMemCache, iommu);
+    IOMemCacheRegion *region = container_of(iommu, IOMemCacheRegion, iommu);
+    IOMemCache *s = region->parent;
 
     return s->cfg.line_size;
 }
@@ -271,9 +276,7 @@ static bool iomem_cache_enable(void)
 
 static void iomem_cache_realize(DeviceState *dev, Error **errp)
 {
-    SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
     IOMemCache *s = IOMEM_CACHE(dev);
-    bool enable_cache;
     CPUState *cpu;
 
     if (s->cfg.line_size == 0) {
@@ -286,18 +289,7 @@ static void iomem_cache_realize(DeviceState *dev, Error **errp)
         return;
     }
 
-    enable_cache = iomem_cache_enable();
-
     s->cfg.num_lines = (s->cfg.cache_size * N_CACHE_SZ) / s->cfg.line_size;
-
-    memory_region_init_iommu(&s->iommu,
-                             sizeof(s->iommu),
-                             TYPE_IOMEM_CACHE_IOMMU,
-                             OBJECT(s),
-                             "iomem-cache-iommu",
-                             s->cfg.downstream_mr_size);
-    memory_region_set_enabled(MEMORY_REGION(&s->iommu), enable_cache);
-    sysbus_init_mmio(sbd, MEMORY_REGION(&s->iommu));
 
     s->ram_ptr = g_malloc(s->cfg.cache_size * N_CACHE_SZ);
 
@@ -334,6 +326,42 @@ static void iomem_cache_iommu_memory_region_class_init(ObjectClass *klass,
     imrc->num_indexes = iomem_cache_num_indexes;
 }
 
+static bool iomem_cache_parse_reg(FDTGenericMMap *obj,
+                                  FDTGenericRegPropInfo reg, Error **errp)
+{
+    IOMemCache *s = IOMEM_CACHE(obj);
+    FDTGenericMMapClass *parent_fmc =
+        FDT_GENERIC_MMAP_CLASS(IOMEM_CACHE_PARENT_CLASS);
+    bool enable_cache = iomem_cache_enable();
+    int i;
+
+    s->region = g_new0(IOMemCacheRegion, reg.n);
+
+    for (i = 0; i < reg.n; ++i) {
+        char *name = g_strdup_printf("iomem-cache-iommu-%d", i);
+
+        memory_region_init_iommu(&s->region[i].iommu,
+                                 sizeof(s->region[i].iommu),
+                                 TYPE_IOMEM_CACHE_IOMMU,
+                                 OBJECT(s),
+                                 name,
+                                 reg.s[i]);
+
+        memory_region_set_enabled(MEMORY_REGION(&s->region[i].iommu),
+                                  enable_cache);
+
+        sysbus_init_mmio(SYS_BUS_DEVICE(obj),
+                         MEMORY_REGION(&s->region[i].iommu));
+
+        s->region[i].offset = reg.a[i];
+        s->region[i].parent = s;
+
+        g_free(name);
+    }
+
+    return parent_fmc ? parent_fmc->parse_reg(obj, reg, errp) : false;
+}
+
 static const TypeInfo iomem_cache_iommu_memory_region_info = {
     .name = TYPE_IOMEM_CACHE_IOMMU,
     .parent = TYPE_IOMMU_MEMORY_REGION,
@@ -341,11 +369,8 @@ static const TypeInfo iomem_cache_iommu_memory_region_info = {
 };
 
 static Property iomem_cache_properties[] = {
-    DEFINE_PROP_UINT64("offset", IOMemCache, cfg.offset, 0x0),
     DEFINE_PROP_UINT32("cache-size", IOMemCache, cfg.cache_size, 32 * MiB),
     DEFINE_PROP_UINT32("line-size", IOMemCache, cfg.line_size, 1024),
-    DEFINE_PROP_UINT32("downstream-mr-size", IOMemCache,
-                       cfg.downstream_mr_size, 2 * GiB),
     DEFINE_PROP_LINK("downstream-mr", IOMemCache, down_mr,
                      TYPE_MEMORY_REGION, MemoryRegion *),
     DEFINE_PROP_END_OF_LIST(),
@@ -353,10 +378,12 @@ static Property iomem_cache_properties[] = {
 
 static void iomem_class_init(ObjectClass *klass, void * data)
 {
+    FDTGenericMMapClass *fmc = FDT_GENERIC_MMAP_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     device_class_set_props(dc, iomem_cache_properties);
     dc->realize = iomem_cache_realize;
+    fmc->parse_reg = iomem_cache_parse_reg;
 }
 
 static const TypeInfo iomem_cache_info = {
@@ -364,6 +391,10 @@ static const TypeInfo iomem_cache_info = {
     .name = TYPE_IOMEM_CACHE,
     .instance_size = sizeof(IOMemCache),
     .class_init = iomem_class_init,
+    .interfaces = (InterfaceInfo[]) {
+        { TYPE_FDT_GENERIC_MMAP },
+        { },
+    },
 };
 
 static void memory_register_types(void)

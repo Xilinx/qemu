@@ -32,6 +32,8 @@
 
 #define IOMEM_CACHE(obj) \
         OBJECT_CHECK(IOMemCache, (obj), TYPE_IOMEM_CACHE)
+#define IOMEM_CACHE_PARENT_CLASS \
+    object_class_get_parent(object_class_by_name(TYPE_IOMEM_CACHE))
 
 #define MAX_CPU_INDEX 20
 
@@ -42,10 +44,20 @@ typedef struct CacheLine {
     uint8_t *data;
 } CacheLine;
 
+typedef struct IOMemCache IOMemCache;
+
+typedef struct IOMemCacheRegion {
+    IOMemCache *parent;
+
+    IOMMUMemoryRegion iommu;
+
+    uint64_t offset;
+} IOMemCacheRegion;
+
 typedef struct IOMemCache {
     SysBusDevice parent_obj;
 
-    IOMMUMemoryRegion iommu;
+    IOMemCacheRegion *region;
 
     /* RAM address space and memory region (for cached acceses) */
     AddressSpace as_ram;
@@ -77,8 +89,6 @@ typedef struct IOMemCache {
         uint32_t cache_size;
         uint32_t num_lines;
         uint32_t line_size;
-        uint64_t offset;
-        uint32_t downstream_mr_size;
     } cfg;
 
 } IOMemCache;
