@@ -366,6 +366,11 @@ static ObjectClass *mb_cpu_class_by_name(const char *cpu_model)
     return object_class_by_name(TYPE_MICROBLAZE_CPU);
 }
 
+static gchar *mb_gdb_arch_name(CPUState *cs)
+{
+    return g_strdup("microblaze");
+}
+
 static void mb_cpu_class_init(ObjectClass *oc, void *data)
 {
 #ifndef CONFIG_USER_ONLY
@@ -400,6 +405,7 @@ static void mb_cpu_class_init(ObjectClass *oc, void *data)
     cc->gdb_num_core_regs = 32 + 27;
     cc->gdb_get_dynamic_xml = mb_gdb_get_dynamic_xml;
     cc->gdb_core_xml_file = "microblaze-core.xml";
+    cc->gdb_arch_name = mb_gdb_arch_name;
 
 #ifndef CONFIG_USER_ONLY
     fggc->controller_gpios = mb_ctrl_gpios;
