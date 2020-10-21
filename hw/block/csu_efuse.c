@@ -519,7 +519,7 @@ static void zynqmp_efuse_rd_addr_postw(RegisterInfo *reg, uint64_t val64)
         [14] = COL_MASK(0, 31), [15] = COL_MASK(0, 31),
 
         /* XilSKey - XSK_ZYNQMP_EFUSEPS_MISC_USR_CTRL_ROW */
-        [16] = COL_MASK(0, 0) | COL_MASK(10, 16),
+        [16] = COL_MASK(0, 7) | COL_MASK(10, 16),
 
         /* XilSKey - XSK_ZYNQMP_EFUSEPS_PBR_BOOT_ERR_ROW */
         [17] = COL_MASK(0, 2),
