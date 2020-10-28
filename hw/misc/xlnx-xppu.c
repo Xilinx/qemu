@@ -161,10 +161,6 @@ bool xppu_ap_check(XPPU *s, MemTxAttrs attr, bool rw, uint32_t apl)
         uint32_t val32, mid, mask;
         bool readonly;
 
-        if (!extract32(apl, i, 1)) {
-            continue;
-        }
-
         val32 = s->regs[R_MASTER_ID00 + i];
         mid = FIELD_EX32(val32, MASTER_ID00, MID);
         readonly = FIELD_EX32(val32, MASTER_ID00, MIDR);
@@ -175,6 +171,10 @@ bool xppu_ap_check(XPPU *s, MemTxAttrs attr, bool rw, uint32_t apl)
         }
 
         mid_match = true;
+
+        if (!extract32(apl, i, 1)) {
+            continue;
+        }
 
         /* Check MID parity.  */
         if (check_mid_parity(s, val32) == false) {

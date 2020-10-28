@@ -34,31 +34,31 @@
   <reg name="r29" bitsize="32"/>
   <reg name="r30" bitsize="32"/>
   <reg name="r31" bitsize="32"/>
-  <reg name="pc" bitsize="32" type="code_ptr"/>
-  <reg name="msr" bitsize="32"/>
-  <reg name="ear" bitsize="32"/>
-  <reg name="esr" bitsize="32"/>
-  <reg name="fsr" bitsize="32"/>
-  <reg name="btr" bitsize="32"/>
-  <reg name="pvr0" bitsize="32"/>
-  <reg name="pvr1" bitsize="32"/>
-  <reg name="pvr2" bitsize="32"/>
-  <reg name="pvr3" bitsize="32"/>
-  <reg name="pvr4" bitsize="32"/>
-  <reg name="pvr5" bitsize="32"/>
-  <reg name="pvr6" bitsize="32"/>
-  <reg name="pvr7" bitsize="32"/>
-  <reg name="pvr8" bitsize="32"/>
-  <reg name="pvr9" bitsize="32"/>
-  <reg name="pvr10" bitsize="32"/>
-  <reg name="pvr11" bitsize="32"/>
-  <reg name="edr" bitsize="32"/>
-  <reg name="pid" bitsize="32"/>
-  <reg name="zpr" bitsize="32"/>
-  <reg name="tlbx" bitsize="32"/>
-  <reg name="tlbsx" bitsize="32"/>
-  <reg name="tlblo" bitsize="32"/>
-  <reg name="tlbhi" bitsize="32"/>
+  <reg name="rpc" bitsize="32" type="code_ptr"/>
+  <reg name="rmsr" bitsize="32"/>
+  <reg name="rear" bitsize="32"/>
+  <reg name="resr" bitsize="32"/>
+  <reg name="rfsr" bitsize="32"/>
+  <reg name="rbtr" bitsize="32"/>
+  <reg name="rpvr0" bitsize="32"/>
+  <reg name="rpvr1" bitsize="32"/>
+  <reg name="rpvr2" bitsize="32"/>
+  <reg name="rpvr3" bitsize="32"/>
+  <reg name="rpvr4" bitsize="32"/>
+  <reg name="rpvr5" bitsize="32"/>
+  <reg name="rpvr6" bitsize="32"/>
+  <reg name="rpvr7" bitsize="32"/>
+  <reg name="rpvr8" bitsize="32"/>
+  <reg name="rpvr9" bitsize="32"/>
+  <reg name="rpvr10" bitsize="32"/>
+  <reg name="rpvr11" bitsize="32"/>
+  <reg name="redr" bitsize="32"/>
+  <reg name="rpid" bitsize="32"/>
+  <reg name="rzpr" bitsize="32"/>
+  <reg name="rtlbx" bitsize="32"/>
+  <reg name="rtlbsx" bitsize="32"/>
+  <reg name="rtlblo" bitsize="32"/>
+  <reg name="rtlbhi" bitsize="32"/>
   <reg name="slr" bitsize="32"/>
   <reg name="shr" bitsize="32"/>
 </feature>
