@@ -25,6 +25,8 @@
 #define XLNX_IOMEM_CACHE_H
 
 #include "hw/sysbus.h"
+#include "hw/core/cpu.h"
+#include "hw/ptimer.h"
 
 #define TYPE_IOMEM_CACHE "iomem-cache"
 #define TYPE_IOMEM_CACHE_IOMMU \
@@ -43,6 +45,15 @@ typedef struct CacheLine {
     int line_idx;
     uint8_t *data;
 } CacheLine;
+
+typedef struct IOMemCacheWrBuf {
+    uint8_t data[8 * KiB];
+    hwaddr start;
+    hwaddr len;
+    hwaddr max_len;
+    ptimer_state *timer;
+    QemuMutex mutex;
+} IOMemCacheWrBuf;
 
 typedef struct IOMemCache IOMemCache;
 
@@ -63,6 +74,10 @@ typedef struct IOMemCache {
     AddressSpace as_ram;
     MemoryRegion mr_ram;
     uint8_t *ram_ptr;
+
+    /* Uncached address space and memory region */
+    AddressSpace down_as_uncached;
+    MemoryRegion down_mr_uncached;
 
     /* DMA address space and memory region */
     AddressSpace down_as;
@@ -85,14 +100,21 @@ typedef struct IOMemCache {
 
     QemuMutex mutex;
 
+    /* Write buffer */
+    IOMemCacheWrBuf wbuf;
+
     struct {
         uint32_t cache_size;
         uint32_t num_lines;
         uint32_t line_size;
+
+        /* If set all memory will be treated as cacheable. */
+        bool cache_all;
     } cfg;
 
 } IOMemCache;
 
+void cpu_clean_inv_one(CPUState *cpu, run_on_cpu_data d);
 void tlb_flush(CPUState *cpu);
 
 #endif

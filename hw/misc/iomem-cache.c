@@ -23,10 +23,15 @@
  */
 #include "qemu/osdep.h"
 #include "qemu/main-loop.h"
+#include "hw/irq.h"
 #include "hw/sysbus.h"
+#include "migration/vmstate.h"
+#include "hw/qdev-core.h"
 #include "hw/qdev-properties.h"
+#include "qemu/log.h"
 #include "exec/address-spaces.h"
 #include "qapi/error.h"
+#include "qemu/bitops.h"
 #include "qemu/units.h"
 #include "hw/misc/iomem-cache.h"
 #include "hw/core/cpu.h"
@@ -38,7 +43,189 @@
 
 enum {
     CACHED_INDEX,
+    UNCACHED_INDEX,
+    LOADER_INDEX,
     NUM_INDEX
+};
+
+/* The strong symbol resides inside target/<arch> */
+run_on_cpu_func __attribute__((weak)) cache_inv_callback;
+static IOMemCache *m_c;
+
+static void flush_write_buffer(IOMemCache *s)
+{
+    address_space_rw(&s->down_as, s->wbuf.start,
+                     MEMTXATTRS_UNSPECIFIED, &s->wbuf.data[0],
+                     s->wbuf.len, true);
+    s->wbuf.start = 0;
+    s->wbuf.len = 0;
+}
+
+static void release_write_buffer(void *opaque)
+{
+    IOMemCache *s = (IOMemCache *) opaque;
+
+    qemu_mutex_lock(&s->wbuf.mutex);
+
+    if (s->wbuf.len) {
+        flush_write_buffer(s);
+    }
+
+    qemu_mutex_unlock(&s->wbuf.mutex);
+}
+
+static bool in_range(hwaddr start, hwaddr len, hwaddr addr)
+{
+    return addr >= start && addr < (start + len);
+}
+
+static bool use_writebuffer(hwaddr wbuf_start, hwaddr wbuf_len,
+                     hwaddr addr, hwaddr len)
+{
+    return (addr == (wbuf_start + wbuf_len)) || (wbuf_start == (addr + len)) ||
+        in_range(wbuf_start, wbuf_len, addr) || in_range(addr, len, wbuf_start);
+}
+
+static void iomem_cache_uncached_access(MemoryTransaction *tr)
+{
+    IOMemCache *s = tr->opaque;
+    uint8_t *data;
+    int i;
+
+    if (tr->rw && tr->attr.requester_id == 0 && tr->size > 8) {
+        address_space_rw(&s->down_as, tr->addr,
+                         MEMTXATTRS_UNSPECIFIED, tr->data.p8, tr->size,
+                         tr->rw);
+        return;
+
+    }
+
+    qemu_mutex_lock(&s->wbuf.mutex);
+
+    if (tr->rw && tr->attr.requester_id != 0) {
+
+        if (s->wbuf.len &&
+            !use_writebuffer(s->wbuf.start, s->wbuf.len,
+                             tr->addr, tr->size)) {
+            flush_write_buffer(s);
+        }
+
+        if (!s->wbuf.len) {
+            s->wbuf.start = tr->addr;
+            s->wbuf.len = tr->size;
+
+            /* Data up to 8 bytes is passed as values. */
+            if (tr->size <= 8) {
+                for (i = 0; i < tr->size; i++) {
+                    s->wbuf.data[i] = tr->data.u64 >> (i * 8);
+                }
+            } else {
+                memcpy(&s->wbuf.data[0], tr->data.p8, tr->size);
+            }
+        } else {
+            IOMemCacheWrBuf new_wbuf;
+            uint32_t offset_wb;
+            uint32_t offset_tr;
+
+            new_wbuf.start = MIN(s->wbuf.start, tr->addr);
+
+            new_wbuf.len = s->wbuf.len + tr->size;
+            if (s->wbuf.start == tr->addr) {
+                new_wbuf.len = MAX(s->wbuf.len, tr->size);
+            } else if (in_range(s->wbuf.start, s->wbuf.len, tr->addr)) {
+                new_wbuf.len -= ((s->wbuf.start + s->wbuf.len) - tr->addr);
+            } else if (in_range(tr->addr, tr->size, s->wbuf.start)) {
+                new_wbuf.len -= ((tr->addr + tr->size) - s->wbuf.start);
+            }
+
+            if (s->wbuf.start == tr->addr) {
+                offset_wb = 0;
+                offset_tr = 0;
+            } else if (s->wbuf.start > tr->addr) {
+                offset_wb = s->wbuf.start - tr->addr;
+                offset_tr = 0;
+            } else {
+                offset_wb = 0;
+                offset_tr = tr->addr - s->wbuf.start;
+            }
+
+            memcpy(&new_wbuf.data[offset_wb], &s->wbuf.data[0], s->wbuf.len);
+
+            /* Data up to 8 bytes is passed as values. */
+            if (tr->size <= 8) {
+                for (i = 0; i < tr->size; i++) {
+                    new_wbuf.data[offset_tr + i] = tr->data.u64 >> (i * 8);
+                }
+            } else {
+                memcpy(&new_wbuf.data[offset_tr], tr->data.p8, tr->size);
+            }
+
+            s->wbuf.start = new_wbuf.start;
+            s->wbuf.len = new_wbuf.len;
+            memcpy(&s->wbuf.data[0], &new_wbuf.data[0], s->wbuf.len);
+
+            if (s->wbuf.len > s->wbuf.max_len) {
+                s->wbuf.max_len = s->wbuf.len;
+            }
+        }
+
+        if (s->wbuf.len >= MAX_UNCACHED_ACCESS_SIZE) {
+            flush_write_buffer(s);
+        } else {
+            ptimer_transaction_begin(s->wbuf.timer);
+            ptimer_set_count(s->wbuf.timer, 10 * 1000 * 1000);
+            ptimer_run(s->wbuf.timer, 1);
+            ptimer_transaction_commit(s->wbuf.timer);
+        }
+
+        qemu_mutex_unlock(&s->wbuf.mutex);
+        return;
+
+    } else if (tr->attr.requester_id != 0) {
+
+        /* Reading, flush out the buffer */
+        if (s->wbuf.len) {
+            flush_write_buffer(s);
+        }
+    }
+    qemu_mutex_unlock(&s->wbuf.mutex);
+
+    data = g_malloc(tr->size);
+
+    if (tr->rw) {
+        /* Data up to 8 bytes is passed as values. */
+        if (tr->size <= 8) {
+            for (i = 0; i < tr->size; i++) {
+                data[i] = tr->data.u64 >> (i * 8);
+            }
+        } else {
+            memcpy(data, tr->data.p8, tr->size);
+        }
+    }
+
+    address_space_rw(&s->down_as, tr->addr,
+                     MEMTXATTRS_UNSPECIFIED, data, tr->size,
+                     tr->rw);
+
+    if (!tr->rw) {
+        /* Data up to 8 bytes is return as values. */
+        if (tr->size <= 8) {
+            for (i = 0; i < tr->size; i++) {
+                tr->data.u64 |= data[i] << (i * 8);
+            }
+        } else {
+            memcpy(tr->data.p8, data, tr->size);
+        }
+    }
+
+    g_free(data);
+}
+
+static const MemoryRegionOps uncached_ops = {
+    .access = iomem_cache_uncached_access,
+    .valid.max_access_size = MAX_UNCACHED_ACCESS_SIZE,
+    .impl.unaligned = false,
+    .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
 static CacheLine *iommem_cache_alloc_line(IOMemCache *s, hwaddr tag)
@@ -111,6 +298,8 @@ static IOMMUTLBEntry iomem_cache_load_line(IOMemCache *s, hwaddr addr,
                             (gpointer) tag) == NULL) {
         *cpu_l = *l;
         g_hash_table_insert(s->cpu_cache[cpu_idx].table, (gpointer) tag, cpu_l);
+    } else {
+        g_free(cpu_l);
     }
 
     return l->iotlb;
@@ -198,6 +387,52 @@ static void iomem_cache_maintenance(IOMemCache *s)
     }
 }
 
+void cpu_clean_inv_one(CPUState *cpu, run_on_cpu_data d)
+{
+    int cpu_idx = cpu->cpu_index;
+    IOMemCache *s = m_c;
+
+    assert(qemu_cpu_is_self(cpu));
+
+    qemu_mutex_lock(&s->mutex);
+
+    if (g_hash_table_size(s->cpu_cache[cpu_idx].table) > 0) {
+        tlb_flush(cpu);
+        g_hash_table_remove_all(s->cpu_cache[cpu_idx].table);
+    }
+
+    if (g_hash_table_size(s->cache.table) > 0) {
+        GHashTableIter iter;
+        CacheLine *l;
+
+        g_hash_table_iter_init(&iter, s->cache.table);
+
+        while (g_hash_table_iter_next(&iter, NULL, (void **)&l)) {
+            hwaddr tag = l->iotlb.iova;
+
+            /* Writeback if none of the cpus has the cache line */
+            if (!in_cpu_cache(s, tag)) {
+                iomem_cache_writeback_line(s, l);
+
+                /* Calls g_free on the l */
+                g_hash_table_iter_remove(&iter);
+            }
+        }
+    }
+
+    /* Rerun if the cache is still not completly flushed out */
+    if (g_hash_table_size(s->cache.table) > 0) {
+        CPUState *tmp_cpu;
+        CPU_FOREACH(tmp_cpu) {
+            async_safe_run_on_cpu(tmp_cpu,
+                                  cpu_clean_inv_one,
+                                  RUN_ON_CPU_NULL);
+       }
+    }
+
+    qemu_mutex_unlock(&s->mutex);
+}
+
 static IOMMUTLBEntry iomem_cache_translate(IOMMUMemoryRegion *iommu,
                                            hwaddr addr,
                                            IOMMUAccessFlags flags,
@@ -205,9 +440,24 @@ static IOMMUTLBEntry iomem_cache_translate(IOMMUMemoryRegion *iommu,
 {
     IOMemCacheRegion *region = container_of(iommu, IOMemCacheRegion, iommu);
     IOMemCache *s = region->parent;
+    hwaddr tag = addr & ~(s->cfg.line_size - 1);
     IOMMUTLBEntry ret;
+    bool addr_in_cache;
     bool locked;
     int cpu_idx;
+
+    /* Generic loader */
+    if (iommu_idx == LOADER_INDEX) {
+        ret = (IOMMUTLBEntry) {
+            .target_as = &s->down_as,
+            .iova = 0x0,
+            .translated_addr = tag,
+            .addr_mask = ~0,
+            .perm = IOMMU_RW,
+        };
+
+        return ret;
+    }
 
     locked = qemu_mutex_iothread_locked();
 
@@ -216,6 +466,36 @@ static IOMMUTLBEntry iomem_cache_translate(IOMMUMemoryRegion *iommu,
     }
 
     qemu_mutex_lock(&s->mutex);
+
+    /* Uncached */
+    addr_in_cache =
+        (g_hash_table_lookup(s->cache.table, (gpointer) tag)) ? true : false;
+
+    if (iommu_idx == UNCACHED_INDEX && addr_in_cache) {
+        /*
+         * Mismatched memory attributes, handle the access as a write buffer
+         * and schedule a flush of the complete cache.
+         */
+        CPUState *tmp_cpu;
+
+        CPU_FOREACH(tmp_cpu) {
+           async_safe_run_on_cpu(tmp_cpu,
+                                 cpu_clean_inv_one,
+                                 RUN_ON_CPU_NULL);
+        }
+
+    } else if (iommu_idx == UNCACHED_INDEX) {
+
+        ret = (IOMMUTLBEntry) {
+            .target_as = &s->down_as_uncached,
+            .iova = tag,
+            .translated_addr = tag,
+            .addr_mask = (s->cfg.line_size - 1),
+            .perm = IOMMU_RW,
+        };
+
+        goto done;
+    }
 
     /* Cached */
     iomem_cache_maintenance(s);
@@ -226,6 +506,7 @@ static IOMMUTLBEntry iomem_cache_translate(IOMMUMemoryRegion *iommu,
     addr += region->offset;
     ret = iomem_cache_load_line(s, addr, cpu_idx);
 
+done:
     qemu_mutex_unlock(&s->mutex);
 
     if (locked) {
@@ -245,7 +526,16 @@ static uint64_t iomem_cache_get_min_page_size(IOMMUMemoryRegion *iommu)
 static int iomem_cache_attrs_to_index(IOMMUMemoryRegion *iommu,
                                       MemTxAttrs attrs)
 {
-    return CACHED_INDEX;
+    IOMemCacheRegion *region = container_of(iommu, IOMemCacheRegion, iommu);
+    IOMemCache *s = region->parent;
+
+    if (attrs.requester_id == 0) {
+        return LOADER_INDEX;
+    }
+    if (s->cfg.cache_all) {
+        return CACHED_INDEX;
+    }
+    return (attrs.cache) ? CACHED_INDEX : UNCACHED_INDEX;
 }
 
 static int iomem_cache_num_indexes(IOMMUMemoryRegion *iommu)
@@ -268,6 +558,21 @@ static void iomem_cache_realize(DeviceState *dev, Error **errp)
         return;
     }
 
+    if (m_c != NULL) {
+        error_setg(errp, "Only one IOMemCache supported");
+        return;
+    }
+
+    /*
+     * Enable cache maintenance instructions in the cpu when to respect the
+     * cacheable attribute of the memory transactions
+     */
+    if (s->cfg.cache_all == false) {
+        cache_inv_callback = cpu_clean_inv_one;
+    }
+
+    m_c = s;
+
     s->cfg.num_lines = (s->cfg.cache_size * N_CACHE_SZ) / s->cfg.line_size;
 
     s->ram_ptr = g_malloc(s->cfg.cache_size * N_CACHE_SZ);
@@ -278,6 +583,12 @@ static void iomem_cache_realize(DeviceState *dev, Error **errp)
                                s->ram_ptr);
 
     address_space_init(&s->as_ram, &s->mr_ram, "mr_ram");
+
+    memory_region_init_io(&s->down_mr_uncached, OBJECT(s), &uncached_ops, s,
+                          "iomem-cache-uc", ~0);
+
+    address_space_init(&s->down_as_uncached, &s->down_mr_uncached,
+                       "iomem-cache-as-uc");
 
     address_space_init(&s->down_as, s->down_mr, "iomem-cache-dma");
 
@@ -292,6 +603,13 @@ static void iomem_cache_realize(DeviceState *dev, Error **errp)
     }
 
     qemu_mutex_init(&s->mutex);
+
+    s->wbuf.timer = ptimer_init(release_write_buffer, s, PTIMER_POLICY_DEFAULT);
+    qemu_mutex_init(&s->wbuf.mutex);
+
+    ptimer_transaction_begin(s->wbuf.timer);
+    ptimer_set_freq(s->wbuf.timer, 1000 * 1000);
+    ptimer_transaction_commit(s->wbuf.timer);
 }
 
 static void iomem_cache_iommu_memory_region_class_init(ObjectClass *klass,
@@ -348,6 +666,7 @@ static const TypeInfo iomem_cache_iommu_memory_region_info = {
 static Property iomem_cache_properties[] = {
     DEFINE_PROP_UINT32("cache-size", IOMemCache, cfg.cache_size, 32 * MiB),
     DEFINE_PROP_UINT32("line-size", IOMemCache, cfg.line_size, 1024),
+    DEFINE_PROP_BOOL("cache-all", IOMemCache, cfg.cache_all, true),
     DEFINE_PROP_LINK("downstream-mr", IOMemCache, down_mr,
                      TYPE_MEMORY_REGION, MemoryRegion *),
     DEFINE_PROP_END_OF_LIST(),
