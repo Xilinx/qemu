@@ -89,6 +89,10 @@ typedef struct IOMemCache {
 
         /* Track allocated */
         GHashTable *table;
+
+        uint32_t num_lines;
+        uint32_t line_size;
+
         uint32_t num_allocated;
         uint32_t max_allocated;
     } cache;
@@ -105,7 +109,6 @@ typedef struct IOMemCache {
 
     struct {
         uint32_t cache_size;
-        uint32_t num_lines;
         uint32_t line_size;
 
         /* If set all memory will be treated as cacheable. */

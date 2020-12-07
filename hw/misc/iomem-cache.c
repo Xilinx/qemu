@@ -38,6 +38,7 @@
 #include "qemu/option_int.h"
 #include "hw/fdt_generic_util.h"
 
+#define MIN_CACHE_LINE_SZ 1024
 #define N_CACHE_SZ 2
 #define MAX_UNCACHED_ACCESS_SIZE 4096
 
@@ -232,15 +233,15 @@ static CacheLine *iommem_cache_alloc_line(IOMemCache *s, hwaddr tag)
 {
     int line_idx = 0;
 
-    for (; line_idx < s->cfg.num_lines; line_idx++) {
+    for (; line_idx < s->cache.num_lines; line_idx++) {
         if (s->cache.line[line_idx].valid == false) {
             break;
         }
     }
 
-    if (line_idx < s->cfg.num_lines) {
+    if (line_idx < s->cache.num_lines) {
         CacheLine *l = g_new0(CacheLine, 1);
-        hwaddr ram_offset = line_idx * s->cfg.line_size;
+        hwaddr ram_offset = line_idx * s->cache.line_size;
 
         /* Line has been taken */
         s->cache.line[line_idx].valid = true;
@@ -250,10 +251,10 @@ static CacheLine *iommem_cache_alloc_line(IOMemCache *s, hwaddr tag)
             .target_as = &s->as_ram,
             .iova = tag,
             .translated_addr = ram_offset,
-            .addr_mask = (s->cfg.line_size - 1),
+            .addr_mask = (s->cache.line_size - 1),
             .perm = IOMMU_RW,
         };
-        l->data = &s->ram_ptr[line_idx * s->cfg.line_size];
+        l->data = &s->ram_ptr[line_idx * s->cache.line_size];
 
         s->cache.num_allocated++;
 
@@ -271,7 +272,7 @@ static CacheLine *iommem_cache_alloc_line(IOMemCache *s, hwaddr tag)
 static IOMMUTLBEntry iomem_cache_load_line(IOMemCache *s, hwaddr addr,
                                            int cpu_idx)
 {
-    hwaddr tag = addr & ~(s->cfg.line_size - 1);
+    hwaddr tag = addr & ~(s->cache.line_size - 1);
     CacheLine *cpu_l = g_new0(CacheLine, 1);
     CacheLine *l = g_hash_table_lookup(s->cache.table, (gpointer) tag);
 
@@ -280,9 +281,13 @@ static IOMMUTLBEntry iomem_cache_load_line(IOMemCache *s, hwaddr addr,
 
         l = iommem_cache_alloc_line(s, tag);
 
-        address_space_rw(&s->down_as, tag,
-                         MEMTXATTRS_UNSPECIFIED, l->data, s->cfg.line_size,
-                         is_write);
+        for (int i = 0; (i * s->cfg.line_size) < s->cache.line_size; i++) {
+            hwaddr addr = tag + i * s->cfg.line_size;
+            void *data = l->data + i * s->cfg.line_size;
+
+            address_space_rw(&s->down_as, addr, MEMTXATTRS_UNSPECIFIED,
+                             data, s->cfg.line_size, is_write);
+        }
 
         l->valid = true;
         g_hash_table_insert(s->cache.table, (gpointer) tag, l);
@@ -311,9 +316,13 @@ static void iomem_cache_writeback_line(IOMemCache *s, CacheLine *l)
 
     assert(s->cache.line[l->line_idx].valid);
 
-    address_space_rw(&s->down_as, l->iotlb.iova,
-                     MEMTXATTRS_UNSPECIFIED, l->data, s->cfg.line_size,
-                     is_write);
+    for (int i = 0; (i * s->cfg.line_size) < s->cache.line_size; i++) {
+        hwaddr addr = l->iotlb.iova + i * s->cfg.line_size;
+        void *data = l->data + i * s->cfg.line_size;
+
+        address_space_rw(&s->down_as, addr, MEMTXATTRS_UNSPECIFIED,
+                         data, s->cfg.line_size, is_write);
+    }
 
     s->cache.line[l->line_idx].valid = false;
     assert(s->cache.num_allocated > 0);
@@ -339,7 +348,7 @@ static void iomem_cache_flush(CPUState *cpu, run_on_cpu_data d)
 
     num_lines = g_hash_table_size(s->cache.table);
 
-    if (num_lines > (s->cfg.num_lines / N_CACHE_SZ)) {
+    if (num_lines > (s->cache.num_lines / N_CACHE_SZ)) {
         int cpu_idx = cpu->cpu_index;
         GHashTableIter iter;
         CacheLine *l;
@@ -362,7 +371,7 @@ static void iomem_cache_flush(CPUState *cpu, run_on_cpu_data d)
                 g_hash_table_iter_remove(&iter);
 
                 if (g_hash_table_size(s->cache.table) <=
-                    ((s->cfg.num_lines / N_CACHE_SZ) / 2)) {
+                    ((s->cache.num_lines / N_CACHE_SZ) / 2)) {
                     break;
                 }
             }
@@ -376,7 +385,7 @@ static void iomem_cache_maintenance(IOMemCache *s)
 {
     int num_lines = g_hash_table_size(s->cache.table);
 
-    if (num_lines > (s->cfg.num_lines / N_CACHE_SZ)) {
+    if (num_lines > (s->cache.num_lines / N_CACHE_SZ)) {
         CPUState *tmp_cpu;
 
         CPU_FOREACH(tmp_cpu) {
@@ -440,7 +449,7 @@ static IOMMUTLBEntry iomem_cache_translate(IOMMUMemoryRegion *iommu,
 {
     IOMemCacheRegion *region = container_of(iommu, IOMemCacheRegion, iommu);
     IOMemCache *s = region->parent;
-    hwaddr tag = addr & ~(s->cfg.line_size - 1);
+    hwaddr tag = addr & ~(s->cache.line_size - 1);
     IOMMUTLBEntry ret;
     bool addr_in_cache;
     bool locked;
@@ -490,7 +499,7 @@ static IOMMUTLBEntry iomem_cache_translate(IOMMUMemoryRegion *iommu,
             .target_as = &s->down_as_uncached,
             .iova = tag,
             .translated_addr = tag,
-            .addr_mask = (s->cfg.line_size - 1),
+            .addr_mask = (s->cache.line_size - 1),
             .perm = IOMMU_RW,
         };
 
@@ -520,7 +529,7 @@ static uint64_t iomem_cache_get_min_page_size(IOMMUMemoryRegion *iommu)
     IOMemCacheRegion *region = container_of(iommu, IOMemCacheRegion, iommu);
     IOMemCache *s = region->parent;
 
-    return s->cfg.line_size;
+    return s->cache.line_size;
 }
 
 static int iomem_cache_attrs_to_index(IOMMUMemoryRegion *iommu,
@@ -573,7 +582,8 @@ static void iomem_cache_realize(DeviceState *dev, Error **errp)
 
     m_c = s;
 
-    s->cfg.num_lines = (s->cfg.cache_size * N_CACHE_SZ) / s->cfg.line_size;
+    s->cache.line_size = MAX(s->cfg.line_size, MIN_CACHE_LINE_SZ);
+    s->cache.num_lines = (s->cfg.cache_size * N_CACHE_SZ) / s->cache.line_size;
 
     s->ram_ptr = g_malloc(s->cfg.cache_size * N_CACHE_SZ);
 
@@ -592,7 +602,7 @@ static void iomem_cache_realize(DeviceState *dev, Error **errp)
 
     address_space_init(&s->down_as, s->down_mr, "iomem-cache-dma");
 
-    s->cache.line = g_new0(CacheLine, s->cfg.num_lines);
+    s->cache.line = g_new0(CacheLine, s->cache.num_lines);
     s->cache.table = g_hash_table_new_full(NULL, NULL, NULL, g_free);
 
     CPU_FOREACH(cpu) {
