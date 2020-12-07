@@ -45,6 +45,15 @@ typedef struct MemTxAttrs {
     unsigned int requester_id:16;
     /* Invert endianness for this page */
     unsigned int byte_swap:1;
+
+    /* XILINX: More details for interconnect emulation.  */
+    /* Memory access may be buffered and early acked.  */
+    unsigned int buffer:1;
+    /* Memory access may be split, merged or otherwise modified.  */
+    unsigned int modify:1;
+    /* Memory access may be cached.  */
+    unsigned int cache:1;
+
     /*
      * The following are target-specific page-table bits.  These are not
      * related to actual memory transactions at all.  However, this structure
