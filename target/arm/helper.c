@@ -10441,8 +10441,14 @@ static uint32_t arm_ldl_ptw(CPUState *cs, hwaddr addr, bool is_secure,
     MemTxResult result = MEMTX_OK;
     AddressSpace *as;
     uint32_t data;
+    /* XILINX: Propagate the cacheable attribute of PTW memory accesses */
+    TCR *tcr = regime_tcr(env, mmu_idx);
 
     attrs.secure = is_secure;
+    if ((tcr->raw_tcr & TTBCR_ORGN0) != 0 ||
+         (tcr->raw_tcr & TTBCR_IRGN0) != 0) {
+        attrs.cache = 1;
+    }
     as = arm_addressspace(cs, attrs);
     addr = S1_ptw_translate(env, mmu_idx, addr, attrs, fi);
     if (fi->s1ptw) {
@@ -10470,9 +10476,16 @@ static uint64_t arm_ldq_ptw(CPUState *cs, hwaddr addr, bool is_secure,
     MemTxResult result = MEMTX_OK;
     AddressSpace *as;
     uint64_t data;
+    /* XILINX: Propagate the cacheable attribute of PTW memory accesses */
+    TCR *tcr = regime_tcr(env, mmu_idx);
 
     attrs.secure = is_secure;
     attrs = env_tlb(env)->memattr[attrs.secure].attrs;
+    if ((tcr->raw_tcr & TTBCR_ORGN0) != 0 ||
+         (tcr->raw_tcr & TTBCR_IRGN0) != 0) {
+        attrs.cache = 1;
+    }
+
     as = arm_addressspace(cs, attrs);
     addr = S1_ptw_translate(env, mmu_idx, addr, attrs, fi);
     if (fi->s1ptw) {
