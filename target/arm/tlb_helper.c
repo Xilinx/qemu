@@ -144,6 +144,39 @@ void arm_cpu_do_transaction_failed(CPUState *cs, hwaddr physaddr,
     arm_deliver_fault(cpu, addr, access_type, mmu_idx, &fi);
 }
 
+/*
+ * Map ARMCacheAttrs into MemTxAttrs.
+ */
+static void map_cacheattrs(uint64_t addr,
+                           MemTxAttrs *attrs, ARMCacheAttrs *cacheattrs)
+{
+    uint8_t mair_high = cacheattrs->attrs >> 4;
+    uint8_t mair_low =  cacheattrs->attrs & 0xf;
+
+    if (mair_high) {
+        /*
+         * Memory:
+         * We're only looking for cacheability, not the WB/WT hints.
+         */
+        if (cacheattrs->shareability == 2 && mair_high != 4) {
+            /* Outer.  */
+            attrs->cache = 1;
+        } else if (cacheattrs->shareability == 3 && mair_low != 4) {
+            /* Inner.  */
+            attrs->cache = 1;
+        }
+    } else {
+        /*
+         * Device:
+         * We ignore Early ACK and Reordering bits.
+         */
+        if (mair_low == 12) {
+            /* Device GRE.  */
+            attrs->buffer = 1;
+            attrs->modify = 1;
+        }
+    }
+}
 #endif /* !defined(CONFIG_USER_ONLY) */
 
 bool arm_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
@@ -192,6 +225,9 @@ bool arm_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
         if (cpu_isar_feature(aa64_mte, cpu) && cacheattrs.attrs == 0xf0) {
             arm_tlb_mte_tagged(&attrs) = true;
         }
+
+        /* Map cache attributes into memory attributes.  */
+        map_cacheattrs(phys_addr, &attrs, &cacheattrs);
 
         tlb_set_page_with_attrs(cs, address, phys_addr, attrs,
                                 prot, mmu_idx, page_size);
