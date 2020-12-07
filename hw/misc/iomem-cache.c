@@ -253,27 +253,6 @@ static int iomem_cache_num_indexes(IOMMUMemoryRegion *iommu)
     return NUM_INDEX;
 }
 
-static bool iomem_cache_enable(void)
-{
-    QemuOpts *opts = qemu_find_opts_singleton("memory");
-    char *memstr = NULL;
-    QemuOpt *opt;
-
-    QTAILQ_FOREACH(opt, &opts->head, next) {
-        if (strcmp(opt->name, "size") != 0) {
-            continue;
-        }
-        memstr = opt->str;
-        break;
-    }
-
-    if (memstr && strlen(memstr) == 1 && memstr[0] == '0') {
-        return true;
-    }
-
-    return false;
-}
-
 static void iomem_cache_realize(DeviceState *dev, Error **errp)
 {
     IOMemCache *s = IOMEM_CACHE(dev);
@@ -332,7 +311,6 @@ static bool iomem_cache_parse_reg(FDTGenericMMap *obj,
     IOMemCache *s = IOMEM_CACHE(obj);
     FDTGenericMMapClass *parent_fmc =
         FDT_GENERIC_MMAP_CLASS(IOMEM_CACHE_PARENT_CLASS);
-    bool enable_cache = iomem_cache_enable();
     int i;
 
     s->region = g_new0(IOMemCacheRegion, reg.n);
@@ -347,8 +325,7 @@ static bool iomem_cache_parse_reg(FDTGenericMMap *obj,
                                  name,
                                  reg.s[i]);
 
-        memory_region_set_enabled(MEMORY_REGION(&s->region[i].iommu),
-                                  enable_cache);
+        memory_region_set_enabled(MEMORY_REGION(&s->region[i].iommu), 1);
 
         sysbus_init_mmio(SYS_BUS_DEVICE(obj),
                          MEMORY_REGION(&s->region[i].iommu));
