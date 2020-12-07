@@ -1850,6 +1850,10 @@ static void handle_sys(DisasContext *s, uint32_t insn, bool isread,
     /* Handle special cases first */
     switch (ri->type & ~(ARM_CP_FLAG_MASK & ~ARM_CP_SPECIAL)) {
     case ARM_CP_NOP:
+        /* XILINX: cache maintenance support. */
+        if (generate_cache_maintenance(ri)) {
+            gen_helper_clean_inv_cache(cpu_env);
+        }
         return;
     case ARM_CP_NZCV:
         tcg_rt = cpu_reg(s, rt);

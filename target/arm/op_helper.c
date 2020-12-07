@@ -346,6 +346,62 @@ void HELPER(wfe)(CPUARMState *env)
     }
 }
 
+/*
+ * XILINX: cache maintenance support, default is to keep the cache
+ * maintenance instructions as nops. Enable cache maintenance by
+ * installing a cache_inv_callback function to be called when executing
+ * the instructions.
+ */
+run_on_cpu_func cache_inv_callback;
+bool generate_cache_maintenance(const ARMCPRegInfo *ri)
+{
+    const ARMCPRegInfo cache_maintenance[] = {
+        { .name = "DC_IVAC",
+          .opc0 = 1, .opc1 = 0, .crn = 7, .crm = 6, .opc2 = 1 },
+        { .name = "DC_ISW",
+          .opc0 = 1, .opc1 = 0, .crn = 7, .crm = 6, .opc2 = 2 },
+        { .name = "DC_CVAC",
+          .opc0 = 1, .opc1 = 3, .crn = 7, .crm = 10, .opc2 = 1 },
+        { .name = "DC_CSW",
+          .opc0 = 1, .opc1 = 0, .crn = 7, .crm = 10, .opc2 = 2 },
+        { .name = "DC_CIVAC",
+          .opc0 = 1, .opc1 = 3, .crn = 7, .crm = 14, .opc2 = 1 },
+        { .name = "DC_CISW",
+          .opc0 = 1, .opc1 = 0, .crn = 7, .crm = 14, .opc2 = 2 }
+    };
+
+    if (cache_inv_callback == NULL) {
+        return false;
+    }
+
+    /* Only generate the cache maintenance call in ARM_CP_STATE_AA64 state */
+    if (ri->state != ARM_CP_STATE_AA64) {
+        return false;
+    }
+
+    for (int i = 0; i < ARRAY_SIZE(cache_maintenance); i++) {
+        const ARMCPRegInfo *tmp = &cache_maintenance[i];
+
+        if (ri->opc0 == tmp->opc0 && ri->opc1 == tmp->opc1 &&
+            ri->crn == tmp->crn && ri->crm == tmp->crm &&
+            ri->opc2 == tmp->opc2) {
+            return true;
+        }
+    }
+
+    return false;
+}
+void HELPER(clean_inv_cache)(CPUARMState *env)
+{
+    CPUState *cpu;
+
+    assert(cache_inv_callback);
+
+    CPU_FOREACH(cpu) {
+        async_safe_run_on_cpu(cpu, cache_inv_callback, RUN_ON_CPU_NULL);
+    }
+}
+
 static void cpu_unhalt(CPUState *cpu, run_on_cpu_data data)
 {
     assert(qemu_mutex_iothread_locked());
