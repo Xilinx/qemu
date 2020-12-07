@@ -1693,7 +1693,8 @@ TranslationBlock *tb_gen_code(CPUState *cpu,
     if (phys_pc == -1) {
         /* Generate a temporary TB with 1 insn in it */
         cflags &= ~CF_COUNT_MASK;
-        cflags |= CF_NOCACHE | 1;
+        /* XILINX. Allow prefetching more than 1 inst from MMIO */
+        cflags |= CF_NOCACHE;
     }
 
     cflags &= ~CF_CLUSTER_MASK;
