@@ -844,7 +844,12 @@ void tlb_set_page_with_attrs(CPUState *cpu, target_ulong vaddr,
      * through properties. Needed for the IOMMU parts.
      */
     CPUIOTLBEntry *attr = &env_tlb(env)->memattr[attrs.secure];
-    attrs = attr->attrs;
+    if (attrs.cache) {
+        attrs = attr->attrs;
+        attrs.cache = 1;
+    } else {
+        attrs = attr->attrs;
+    }
     assert_cpu_is_self(cpu);
 
     if (size <= TARGET_PAGE_SIZE) {
