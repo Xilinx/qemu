@@ -240,6 +240,12 @@ typedef struct DynamicMBGDBXMLInfo DynamicMBGDBXMLInfo;
 
 #define TARGET_INSN_START_EXTRA_WORDS 1
 
+/* use-non-secure property masks */
+#define USE_NON_SECURE_M_AXI_DP_MASK 0x1
+#define USE_NON_SECURE_M_AXI_IP_MASK 0x2
+#define USE_NON_SECURE_M_AXI_DC_MASK 0x4
+#define USE_NON_SECURE_M_AXI_IC_MASK 0x8
+
 struct CPUMBState {
     uint32_t bvalue;   /* TCG temporary, only valid during a TB */
     uint32_t btarget;  /* Full resolved branch destination */
@@ -331,6 +337,7 @@ typedef struct {
     bool use_msr_instr;
     bool use_pcmp_instr;
     bool use_mmu;
+    uint8_t use_non_secure;
     bool dcache_writeback;
     bool endi;
     bool dopb_bus_exception;
@@ -353,6 +360,11 @@ struct MicroBlazeCPU {
 
     /*< public >*/
     qemu_irq mb_sleep;
+
+    bool ns_axi_dp;
+    bool ns_axi_ip;
+    bool ns_axi_dc;
+    bool ns_axi_ic;
 
     CPUNegativeOffsetState neg;
     CPUMBState env;
