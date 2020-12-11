@@ -203,7 +203,10 @@ static void mb_cpu_reset(DeviceState *dev)
     mmu_init(&env->mmu);
 
     if (cpu->env.memattr_p) {
-        env_tlb(&cpu->env)->memattr[0].attrs = *cpu->env.memattr_p;
+        env_tlb(&cpu->env)->memattr[MEM_ATTR_NS].attrs = *cpu->env.memattr_p;
+        env_tlb(&cpu->env)->memattr[MEM_ATTR_NS].attrs.secure = false;
+        env_tlb(&cpu->env)->memattr[MEM_ATTR_SEC].attrs = *cpu->env.memattr_p;
+        env_tlb(&cpu->env)->memattr[MEM_ATTR_SEC].attrs.secure = true;
     }
 #endif
 }

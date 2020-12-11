@@ -230,7 +230,9 @@ typedef struct DynamicMBGDBXMLInfo DynamicMBGDBXMLInfo;
 #define CC_EQ  0
 
 #undef NB_MEM_ATTR
-#define NB_MEM_ATTR     1
+#define NB_MEM_ATTR     2
+#define MEM_ATTR_NS 0
+#define MEM_ATTR_SEC 1
 
 #define STREAM_EXCEPTION (1 << 0)
 #define STREAM_ATOMIC    (1 << 1)
