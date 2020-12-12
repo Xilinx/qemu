@@ -137,6 +137,7 @@ REG32(ADDR_MSB, 0x28)
 #define INT_ALL_DST     ((~(INT_RSVD)) & (~(R_INT_STATUS_MEM_DONE_MASK)))
 
 #define CTRL2_RSVD      (~((1 << 28) - 1))
+#define SIZE_MASK       ((1 << 29) - 1)
 
 typedef struct ZynqMPCSUDMA {
     SysBusDevice busdev;
@@ -151,7 +152,9 @@ typedef struct ZynqMPCSUDMA {
     ptimer_state *src_timer;
 
     bool is_dst;
+    bool byte_align;
     uint16_t width;
+    uint32_t r_size_last_word_mask;
 
     StreamCanPushNotifyFn notify;
     void *notify_opaque;
@@ -174,19 +177,30 @@ static bool dmach_is_paused(ZynqMPCSUDMA *s)
 
 static bool dmach_get_eop(ZynqMPCSUDMA *s)
 {
-    return s->regs[R_SIZE] & 1;
+    return !!(s->regs[R_SIZE] & s->r_size_last_word_mask);
 }
 
 static uint32_t dmach_get_size(ZynqMPCSUDMA *s)
 {
-    return s->regs[R_SIZE] & ~3;
+    uint32_t ret;
+
+    if (s->byte_align) {
+        ret = s->regs[R_SIZE];
+    } else {
+        ret = s->regs[R_SIZE] & ~3;
+    }
+
+    ret &= SIZE_MASK;
+    return ret;
 }
 
 static void dmach_set_size(ZynqMPCSUDMA *s, uint32_t size)
 {
-    assert((size & 3) == 0);
-
-    s->regs[R_SIZE] &= 1;
+    size &= SIZE_MASK;
+    if (!s->byte_align) {
+        assert((size & 3) == 0);
+    }
+    s->regs[R_SIZE] &= s->r_size_last_word_mask;
     s->regs[R_SIZE] |= size;
 }
 
@@ -225,8 +239,10 @@ static void dmach_advance(ZynqMPCSUDMA *s, unsigned int len)
 {
     uint32_t size = dmach_get_size(s);
 
-    /* Has to be 32bit aligned.  */
-    assert((len & 3) == 0);
+    if (!s->byte_align) {
+        /* Has to be 32bit aligned.  */
+        assert((len & 3) == 0);
+    }
     assert(len <= size);
 
     if (!dmach_burst_is_fixed(s)) {
@@ -258,8 +274,10 @@ static void dmach_data_process(ZynqMPCSUDMA *s, uint8_t *buf, unsigned int len)
         return;
     }
 
-    /* buf might not be 32bit aligned... slooow.  */
-    assert((len & 3) == 0);
+    if (!s->byte_align) {
+        /* buf might not be 32bit aligned... slooow.  */
+        assert((len & 3) == 0);
+    }
     /* FIXME: move me to bitops.c for global reusability */
     for (i = 0; i < len; i += 4) {
         uint8_t *b = &buf[i];
@@ -643,6 +661,12 @@ static void zynqmp_csu_dma_realize(DeviceState *dev, Error **errp)
         s->attr = MEMORY_TRANSACTION_ATTR(
                       object_new(TYPE_MEMORY_TRANSACTION_ATTR));
     }
+
+    /*
+     * If byte alignment is enabled last word control bit is moved
+     * to bit 29.
+     */
+    s->r_size_last_word_mask = 1 << (s->byte_align ? 29 : 0);
 }
 
 static void zynqmp_csu_dma_init(Object *obj)
@@ -693,6 +717,7 @@ static const VMStateDescription vmstate_zynqmp_csu_dma = {
 static Property zynqmp_csu_dma_properties [] = {
     DEFINE_PROP_BOOL("is-dst", ZynqMPCSUDMA, is_dst, false),
     DEFINE_PROP_UINT16("dma-width", ZynqMPCSUDMA, width, 4),
+    DEFINE_PROP_BOOL("byte-align", ZynqMPCSUDMA, byte_align, false),
     DEFINE_PROP_END_OF_LIST(),
 };
 
