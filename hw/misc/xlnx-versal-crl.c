@@ -250,6 +250,7 @@ typedef struct Zynq3CRL {
     MemoryRegion iomem;
     qemu_irq irq_ir;
 
+    bool por_done;
     qemu_irq rst_adma;
     qemu_irq rst_gem[2];
     qemu_irq rst_spare;
@@ -274,6 +275,7 @@ typedef struct Zynq3CRL {
     qemu_irq rst_fpd_srst;
     qemu_irq psm_sleep;
     qemu_irq psm_wakeup;
+    qemu_irq psm_reset;
     qemu_irq rst_cpu_r5[2];
 
     uint32_t regs[CRL_R_MAX];
@@ -356,6 +358,10 @@ static void crl_update_gpios(Zynq3CRL *s)
     PROPAGATE_GPIO(RST_FPD, SRST, s->rst_fpd_srst);
 
     val = ARRAY_FIELD_EX32(s->regs, PSM_RST_MODE, WAKEUP);
+    if (val && !s->por_done) {
+        s->por_done = true;
+        qemu_set_irq(s->psm_reset, 0);
+    }
     qemu_set_irq(s->psm_sleep, !val);
     qemu_set_irq(s->psm_wakeup, val);
 }
@@ -619,6 +625,7 @@ static void crl_init(Object *obj)
     qdev_init_gpio_out_named(DEVICE(obj), &s->psm_sleep, "psm-sleep", 1);
     qdev_init_gpio_out_named(DEVICE(obj), &s->psm_wakeup, "psm-wakeup", 1);
     qdev_init_gpio_out_named(DEVICE(obj), s->rst_cpu_r5, "rst-cpu-r5", 2);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->psm_reset, "psm-rst", 1);
 }
 
 static const VMStateDescription vmstate_crl = {
@@ -660,6 +667,7 @@ static const FDTGenericGPIOSet crl_gpios[] = {
         { .name = "psm-sleep", .fdt_index = 30, .range = 1 },
         { .name = "psm-wakeup", .fdt_index = 31, .range = 1 },
         { .name = "rst-cpu-r5", .fdt_index = 32, .range = 2 },
+        { .name = "psm-rst", .fdt_index = 34, .range = 1 },
         { },
       },
     },
