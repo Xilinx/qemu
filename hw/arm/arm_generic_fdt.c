@@ -620,9 +620,9 @@ static void arm_generic_fdt_machine_init(MachineClass *mc)
     mc->desc = "ARM device tree driven machine model";
     mc->init = arm_generic_fdt_init;
     mc->ignore_memory_transaction_failures = true;
-    /* 4 A53s and 2 R5s */
-    mc->max_cpus = 6;
-    mc->default_cpus = 6;
+    /* X A53s and 2 R5s */
+    mc->max_cpus = 64;
+    mc->default_cpus = 64;
 }
 
 static void arm_generic_fdt_7000_machine_init(MachineClass *mc)
