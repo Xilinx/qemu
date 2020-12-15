@@ -286,14 +286,14 @@ static void aarch64_a78_initfn(Object *obj)
     cpu->reset_sctlr = 0x00c50838;
 
     /* Xilinx: Overrides since some of the new stuff does not work.  */
-    cpu->id_pfr0 = 0x00000131;
+    cpu->isar.id_pfr0 = 0x00000131;
     t = cpu->isar.id_aa64pfr0;
     t = FIELD_DP64(t, ID_AA64PFR0, SVE, 1);
     t = FIELD_DP64(t, ID_AA64PFR0, FP, 1);
     t = FIELD_DP64(t, ID_AA64PFR0, ADVSIMD, 1);
     cpu->isar.id_aa64pfr0 = t;
 
-    cpu->id_pfr1 = 0x00011011;
+    cpu->isar.id_pfr1 = 0x00011011;
     cpu->isar.id_dfr0 = 0x03010066;
     cpu->id_afr0 = 0x00000000;
     cpu->isar.id_mmfr0 = 0x10201105;

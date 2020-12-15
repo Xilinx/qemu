@@ -123,6 +123,10 @@ softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL_PMC', if_true: files(
   'pmc_sbi.c',
   'sss-pmc.c'))
 
+softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL', if_true: files(
+  'xlnx-versal-psx-crf.c'
+))
+
 softmmu_ss.add(when: 'CONFIG_XILINX_AXI', if_true: files('stream-fifo.c'))
 softmmu_ss.add(when: 'CONFIG_ZYNQ', if_true: files('i2c-dev-dummy.c'))
 softmmu_ss.add(when: 'CONFIG_M24CXX', if_true: files('sodimm-spd.c'))
