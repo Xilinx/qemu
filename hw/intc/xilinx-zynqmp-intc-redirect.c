@@ -41,18 +41,18 @@
 #define XILINX_ZYNQMP_INTC_REDIRECT(obj) \
      OBJECT_CHECK(INTCRedirect, (obj), TYPE_XILINX_ZYNQMP_INTC_REDIRECT)
 
-#define NUM_LINES_FROM_GIC  4
+#define NUM_LINES_FROM_GIC  64
 
 typedef struct INTCRedirect {
     /* private */
     DeviceState parent;
     /* public */
 
-    qemu_irq cpu_out[4];
+    qemu_irq cpu_out[NUM_LINES_FROM_GIC];
     qemu_irq pmu_out;
 
     bool cpu_pwrdwn_en;
-    uint8_t irq_in;
+    uint64_t irq_in;
 
 } INTCRedirect;
 
@@ -70,7 +70,7 @@ static void intc_redirect_update_irqs(void *opaque)
 
     /* Always propagate IRQs between GIC and APU.  */
     for (i = 0; i < NUM_LINES_FROM_GIC; i++) {
-        qemu_set_irq(s->cpu_out[i], !!(s->irq_in & (1 << i)));
+        qemu_set_irq(s->cpu_out[i], !!(s->irq_in & (1U << i)));
     }
 }
 
@@ -95,8 +95,9 @@ static void intc_redirect_init(Object *obj)
     INTCRedirect *s = XILINX_ZYNQMP_INTC_REDIRECT(obj);
     DeviceState *dev = DEVICE(obj);
 
-    qdev_init_gpio_in_named(dev, intc_redirect_in_from_gic, "gic_in", 4);
-    qdev_init_gpio_out_named(dev, s->cpu_out, "cpu_out", 4);
+    qdev_init_gpio_in_named(dev, intc_redirect_in_from_gic, "gic_in",
+                            NUM_LINES_FROM_GIC);
+    qdev_init_gpio_out_named(dev, s->cpu_out, "cpu_out", NUM_LINES_FROM_GIC);
     qdev_init_gpio_out_named(dev, &s->pmu_out, "pmu_out", 1);
     qdev_init_gpio_in_named(dev, intc_redirect_pwr_cntrl_enable,
                             "cpu_pwrdwn_en", 1);
@@ -123,7 +124,7 @@ static const FDTGenericGPIOSet intc_redirect_client_gpios[] = {
     {
         .names = &fdt_generic_gpio_name_set_interrupts,
         .gpios = (FDTGenericGPIOConnection[]) {
-            { .name = "cpu_out",        .range = 4 },
+            { .name = "cpu_out",        .range = NUM_LINES_FROM_GIC },
             { },
         },
     },
@@ -141,7 +142,7 @@ static const FDTGenericGPIOSet intc_redirect_controller_gpios[] = {
     {
         .names = &fdt_generic_gpio_name_set_interrupts,
         .gpios = (FDTGenericGPIOConnection[]) {
-            { .name = "gic_in",        .range = 4 },
+            { .name = "gic_in",        .range = NUM_LINES_FROM_GIC },
             { },
         },
     },
