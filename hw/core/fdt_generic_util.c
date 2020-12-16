@@ -1240,7 +1240,9 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
 
         /* FIXME: handle generically using accessors and stuff */
         if (!strcmp(p->type, "uint8") || !strcmp(p->type, "uint16") ||
-                !strcmp(p->type, "uint32") || !strcmp(p->type, "uint64")) {
+                !strcmp(p->type, "uint32") || !strcmp(p->type, "uint64") ||
+                !strcmp(p->type, "int8") || !strcmp(p->type, "int16") ||
+                !strcmp(p->type, "int32") || !strcmp(p->type, "int64")) {
             object_property_set_int(OBJECT(dev), propname, get_int_be(val, len), &error_abort);
             DB_PRINT_NP(0, "set property %s to %#llx\n", propname,
                         (unsigned long long)get_int_be(val, len));
