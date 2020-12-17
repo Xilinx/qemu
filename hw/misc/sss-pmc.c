@@ -25,7 +25,7 @@ typedef enum {
     DMA1,
     PTPI,
     AES,
-    SHA,
+    SHA0,
     SBI,
     PZM,
     PMC_NUM_REMOTES
@@ -38,7 +38,7 @@ static const char *pmc_sss_remote_names[] = {
     [DMA1] = "dma1",
     [PTPI] = "ptpi",
     [AES] = "aes",
-    [SHA] = "sha",
+    [SHA0] = "sha",
     [SBI] = "sbi",
     [PZM] = "pzm",
 };
@@ -48,7 +48,7 @@ static const uint32_t pmc_sss_population[] = {
     [DMA1] = (1 << DMA1) | (1 << AES) | (1 << SBI) | (1 << PZM),
     [PTPI] = (1 << DMA0) | (1 << DMA1),
     [AES] = (1 << DMA0) | (1 << DMA1),
-    [SHA] = (1 << DMA0) | (1 << DMA1),
+    [SHA0] = (1 << DMA0) | (1 << DMA1),
     [SBI] = (1 << DMA0) | (1 << DMA1),
     [NO_REMOTE] = 0,
 };
@@ -58,7 +58,7 @@ static const int r_pmc_cfg_sss_shifts[] = {
     [DMA1] = 4,
     [PTPI] = 8,
     [AES] = 12,
-    [SHA] = 16,
+    [SHA0] = 16,
     [SBI] = 20,
     [PZM] = -1,
 };
@@ -68,18 +68,18 @@ static const uint8_t r_pmc_cfg_sss_encodings[] = {
     [DMA1] = DMA1,
     [PTPI] = PTPI,
     [AES] = AES,
-    [SHA] = SHA,
+    [SHA0] = SHA0,
     [SBI] = SBI,
     [PZM] = PZM,
 };
 
 /* Remote Encodings
-                 DMA0  DMA1  PTPI  AES   SHA   SBI   PZM    NONE*/
+                 DMA0  DMA1  PTPI  AES   SHA0   SBI   PZM    NONE*/
 #define DMA0_MAP {0xD,  0xFF, 0xFF, 0x6,  0xFF, 0xB,  0x3,   0xFF}
 #define DMA1_MAP {0xFF, 0x9,  0xFF, 0x7,  0xFF, 0xE,  0x4,   0xFF}
 #define PTPI_MAP {0xD,  0xA,  0xFF, 0xFF, 0xFF, 0xFF, 0xFF,  0xFF}
 #define AES_MAP  {0xE,  0x5,  0xFF, 0xFF, 0xFF, 0xFF, 0xFF,  0xFF}
-#define SHA_MAP  {0xC,  0x7,  0xFF, 0xFF, 0xFF, 0xFF, 0xFF,  0xFF}
+#define SHA0_MAP  {0xC,  0x7,  0xFF, 0xFF, 0xFF, 0xFF, 0xFF,  0xFF}
 #define SBI_MAP  {0x5,  0xB,  0xFF, 0xFF, 0xFF, 0xFF, 0xFF,  0xFF}
 
 static const uint8_t pmc_sss_cfg_mapping[][PMC_NUM_REMOTES + 1] = {
@@ -87,7 +87,7 @@ static const uint8_t pmc_sss_cfg_mapping[][PMC_NUM_REMOTES + 1] = {
     [DMA1] = DMA1_MAP,
     [PTPI] = PTPI_MAP,
     [AES]  = AES_MAP,
-    [SHA]  = SHA_MAP,
+    [SHA0] = SHA0_MAP,
     [SBI]  = SBI_MAP,
 };
 
