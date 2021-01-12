@@ -943,6 +943,7 @@ typedef struct PMX_IOU_SLCR {
     qemu_irq irq_intiou_pmx_slv_apb_err_imr;
     qemu_irq irq_imr;
     qemu_irq irq_intiou_pmx_slv_axi_err_imr;
+    qemu_irq sd_emmc_sel[2];
 
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
@@ -1170,6 +1171,30 @@ static uint64_t intiou_pmx_slv_axi_err_itr_prew(RegisterInfo *reg,
     return 0;
 }
 
+static uint64_t emmc_ctrl_reg_prew(RegisterInfo *reg, uint64_t val64)
+{
+    PMX_IOU_SLCR *s = XILINX_PMX_IOU_SLCR(reg->opaque);
+    uint32_t prev = ARRAY_FIELD_EX32(s->regs, EMMC_CTRL_REG, SD0_EMMC_SEL);
+
+    if (prev != (val64 & R_EMMC_CTRL_REG_SD0_EMMC_SEL_MASK)) {
+        qemu_set_irq(s->sd_emmc_sel[0], !!val64);
+    }
+
+    return val64;
+}
+
+static uint64_t sd1_ctrl_reg_prew(RegisterInfo *reg, uint64_t val64)
+{
+    PMX_IOU_SLCR *s = XILINX_PMX_IOU_SLCR(reg->opaque);
+    uint32_t prev = ARRAY_FIELD_EX32(s->regs, SD1_CTRL_REG, SD1_EMMC_SEL);
+
+    if (prev != (val64 & R_SD1_CTRL_REG_SD1_EMMC_SEL_MASK)) {
+        qemu_set_irq(s->sd_emmc_sel[1], !!val64);
+    }
+
+    return val64;
+}
+
 static const RegisterAccessInfo pmx_iou_slcr_regs_info[] = {
     {   .name = "MIO_PIN_0",  .addr = A_MIO_PIN_0,
         .rsvd = 0xfffffc01,
@@ -1325,6 +1350,7 @@ static const RegisterAccessInfo pmx_iou_slcr_regs_info[] = {
         .rsvd = 0xfffffff8,
     },{ .name = "EMMC_CTRL_REG",  .addr = A_EMMC_CTRL_REG,
         .rsvd = 0xfffffffe,
+        .pre_write = emmc_ctrl_reg_prew,
     },{ .name = "EMMC_CONFIG_REG1",  .addr = A_EMMC_CONFIG_REG1,
         .reset = 0x3250,
         .rsvd = 0xffff8000,
@@ -1381,6 +1407,7 @@ static const RegisterAccessInfo pmx_iou_slcr_regs_info[] = {
         .rsvd = 0xfffffffc,
     },{ .name = "SD1_CTRL_REG",  .addr = A_SD1_CTRL_REG,
         .rsvd = 0xfffffffe,
+        .pre_write = sd1_ctrl_reg_prew,
     },{ .name = "SD1_CONFIG_REG1",  .addr = A_SD1_CONFIG_REG1,
         .reset = 0x3250,
         .rsvd = 0xffff8000,
@@ -1615,7 +1642,9 @@ static const MemoryRegionOps pmx_iou_slcr_ops = {
 
 static void pmx_iou_slcr_realize(DeviceState *dev, Error **errp)
 {
-    /* Delete this if you don't need it */
+    PMX_IOU_SLCR *s = XILINX_PMX_IOU_SLCR(dev);
+
+    qdev_init_gpio_out(dev, s->sd_emmc_sel, 2);
 }
 
 static void pmx_iou_slcr_init(Object *obj)
