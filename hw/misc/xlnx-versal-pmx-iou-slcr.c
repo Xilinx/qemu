@@ -944,6 +944,8 @@ typedef struct PMX_IOU_SLCR {
     qemu_irq irq_imr;
     qemu_irq irq_intiou_pmx_slv_axi_err_imr;
     qemu_irq sd_emmc_sel[2];
+    qemu_irq qspi_ospi_mux_sel;
+    qemu_irq ospi_mux_sel;
 
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
@@ -1190,6 +1192,30 @@ static uint64_t sd1_ctrl_reg_prew(RegisterInfo *reg, uint64_t val64)
 
     if (prev != (val64 & R_SD1_CTRL_REG_SD1_EMMC_SEL_MASK)) {
         qemu_set_irq(s->sd_emmc_sel[1], !!val64);
+    }
+
+    return val64;
+}
+
+static uint64_t ospi_qspi_iou_axi_mux_sel_prew(RegisterInfo *reg,
+                                               uint64_t val64)
+{
+    PMX_IOU_SLCR *s = XILINX_PMX_IOU_SLCR(reg->opaque);
+    uint32_t val32 = (uint32_t) val64;
+    uint8_t ospi_mux_sel = FIELD_EX32(val32, OSPI_QSPI_IOU_AXI_MUX_SEL,
+                                      OSPI_MUX_SEL);
+    uint8_t qspi_ospi_mux_sel = FIELD_EX32(val32, OSPI_QSPI_IOU_AXI_MUX_SEL,
+                                      QSPI_OSPI_MUX_SEL);
+
+    if (ospi_mux_sel !=
+        ARRAY_FIELD_EX32(s->regs, OSPI_QSPI_IOU_AXI_MUX_SEL, OSPI_MUX_SEL)) {
+        qemu_set_irq(s->ospi_mux_sel, !!ospi_mux_sel);
+    }
+
+    if (qspi_ospi_mux_sel !=
+        ARRAY_FIELD_EX32(s->regs, OSPI_QSPI_IOU_AXI_MUX_SEL,
+                         QSPI_OSPI_MUX_SEL)) {
+        qemu_set_irq(s->qspi_ospi_mux_sel, !!qspi_ospi_mux_sel);
     }
 
     return val64;
@@ -1468,6 +1494,7 @@ static const RegisterAccessInfo pmx_iou_slcr_regs_info[] = {
         .addr = A_OSPI_QSPI_IOU_AXI_MUX_SEL,
         .reset = 0x1,
         .rsvd = 0xfffffffc,
+        .pre_write = ospi_qspi_iou_axi_mux_sel_prew,
     },{ .name = "QSPI_IOU_COHERENT_CTRL",  .addr = A_QSPI_IOU_COHERENT_CTRL,
         .rsvd = 0xfffffff0,
     },{ .name = "QSPI_IOU_INTERCONNECT_ROUTE",
@@ -1645,6 +1672,8 @@ static void pmx_iou_slcr_realize(DeviceState *dev, Error **errp)
     PMX_IOU_SLCR *s = XILINX_PMX_IOU_SLCR(dev);
 
     qdev_init_gpio_out(dev, s->sd_emmc_sel, 2);
+    qdev_init_gpio_out(dev, &s->qspi_ospi_mux_sel, 1);
+    qdev_init_gpio_out(dev, &s->ospi_mux_sel, 1);
 }
 
 static void pmx_iou_slcr_init(Object *obj)
