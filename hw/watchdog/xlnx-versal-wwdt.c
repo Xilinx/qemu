@@ -195,6 +195,7 @@ static void gwdt_time_elapsed(void *opaque)
         qemu_set_irq(s->wwdt_reset, 1);
         break;
     case 2:
+    case 3:
         /* Lines stay the same, value in GWS field stays the same */
         break;
     default:
