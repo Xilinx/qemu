@@ -176,6 +176,18 @@ static void gwdt_update_irq(WWDT *s)
     qemu_set_irq(s->gwdt_ws1, irq);
 }
 
+static uint32_t gwdt_reload_val(WWDT *s)
+{
+    return s->regs[R_GWDT_OFFSET_REG];
+}
+
+static uint64_t gwdt_next_trigger(WWDT *s)
+{
+    uint32_t clk_ns = 1000000000 / s->pclk;
+    return (clk_ns * gwdt_reload_val(s)) +
+            qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+}
+
 static void gwdt_time_elapsed(void *opaque)
 {
     WWDT *s = XLNX_WWDT(opaque);
@@ -201,18 +213,8 @@ static void gwdt_time_elapsed(void *opaque)
     default:
         g_assert_not_reached();
     }
-}
 
-static uint32_t gwdt_reload_val(WWDT *s)
-{
-    return s->regs[R_GWDT_OFFSET_REG];
-}
-
-static uint64_t gwdt_next_trigger(WWDT *s)
-{
-    uint32_t clk_ns = 1000000000 / s->pclk;
-    return (clk_ns * gwdt_reload_val(s)) +
-            qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+    timer_mod(s->gwdt_timer, gwdt_next_trigger(s));
 }
 
 static void gwdt_refresh_reg_postw(RegisterInfo *reg, uint64_t val64)
