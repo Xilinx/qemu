@@ -237,6 +237,8 @@ static void gwdt_cntrl_status_reg_postw(RegisterInfo *reg, uint64_t val64)
         timer_mod(s->gwdt_timer, gwdt_next_trigger(s));
     } else {
         timer_del(s->gwdt_timer);
+        ARRAY_FIELD_DP32(s->regs, GWDT_CNTRL_STATUS_REG, GWS, 0);
+        gwdt_update_irq(s);
     }
 }
 
