@@ -185,6 +185,10 @@ REG32(EFUSE_TEST_CTRL, 0x100)
 
 #define EFUSE_TBIT_POS(A_)          (BIT_POS_OF(A_) >= BIT_POS(0, 28))
 
+#define EFUSE_ANCHOR_ROW            (0)
+#define EFUSE_ANCHOR_3_COL          (27)
+#define EFUSE_ANCHOR_1_COL          (1)
+
 #define EFUSE_AES_KEY_START         BIT_POS(12, 0)
 #define EFUSE_AES_KEY_END           BIT_POS(19, 31)
 #define EFUSE_USER_KEY_0_START      BIT_POS(20, 0)
@@ -292,6 +296,32 @@ static void efuse_status_tbits_sync(EFUSE_CTRL *s)
     val = FIELD_DP32(val, STATUS, EFUSE_2_TBIT, !!(check & (1 << 2)));
 
     s->regs[R_STATUS] = val;
+}
+
+static void efuse_anchor_bits_check(EFUSE_CTRL *s)
+{
+    unsigned page;
+
+    if (!s->efuse || !s->efuse->init_tbits) {
+        return;
+    }
+
+    for (page = 0; page <= s->efuse->efuse_nr; page++) {
+        uint32_t row = 0, bit;
+
+        row = FIELD_DP32(row, EFUSE_PGM_ADDR, PAGE, page);
+        row = FIELD_DP32(row, EFUSE_PGM_ADDR, ROW, EFUSE_ANCHOR_ROW);
+
+        bit = FIELD_DP32(row, EFUSE_PGM_ADDR, COLUMN, EFUSE_ANCHOR_3_COL);
+        if (!efuse_get_bit(s->efuse, bit)) {
+            efuse_set_bit(s->efuse, bit);
+        }
+
+        bit = FIELD_DP32(row, EFUSE_PGM_ADDR, COLUMN, EFUSE_ANCHOR_1_COL);
+        if (!efuse_get_bit(s->efuse, bit)) {
+            efuse_set_bit(s->efuse, bit);
+        }
+    }
 }
 
 static void efuse_key_crc_check(RegisterInfo *reg, uint32_t crc,
@@ -673,6 +703,7 @@ static void efuse_ctrl_reset(DeviceState *dev)
         efuse_ctrl_register_reset(&s->regs_info[i]);
     }
 
+    efuse_anchor_bits_check(s);
     efuse_data_sync(s);
     efuse_imr_update_irq(s);
 }
