@@ -306,7 +306,7 @@ static void efuse_anchor_bits_check(EFUSE_CTRL *s)
         return;
     }
 
-    for (page = 0; page <= s->efuse->efuse_nr; page++) {
+    for (page = 0; page < s->efuse->efuse_nr; page++) {
         uint32_t row = 0, bit;
 
         row = FIELD_DP32(row, EFUSE_PGM_ADDR, PAGE, page);
