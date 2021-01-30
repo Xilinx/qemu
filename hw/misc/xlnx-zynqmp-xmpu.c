@@ -786,13 +786,18 @@ static const MemoryRegionOps zero_ops = {
 static void xmpu_realize(DeviceState *dev, Error **errp)
 {
     XMPU *s = XILINX_XMPU(dev);
+    uint8_t i;
 
     s->prefix = object_get_canonical_path(OBJECT(dev));
     s->addr_shift = s->cfg.align ? 20 : 12;
     s->addr_mask = (1ULL << s->addr_shift) - 1;
     s->decode_region = xmpu_decode_region;
     s->match = xmpu_match;
-    s->masters[0].parent = s;
+    for (i = 0; i < ARRAY_SIZE(s->masters); ++i) {
+        s->masters[i].parent = s;
+        /* Master 0 parent MR is iniitalized by DTS object property link. */
+        s->masters[i].parent_mr = s->masters[0].parent_mr;
+    }
 }
 
 static void xmpu_init(Object *obj)
