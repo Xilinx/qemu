@@ -30,9 +30,12 @@
 #include "hw/irq.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
+#include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
+
+#include <math.h>
 
 #ifndef PMC_SYSMON_ERR_DEBUG
 #define PMC_SYSMON_ERR_DEBUG 0
@@ -3362,6 +3365,28 @@ static int int_compare(int a, int b)
     }
 }
 
+static void chomp_zero(char *s)
+{
+    char *p;
+
+    p = s + strlen(s);
+    while (p > s) {
+        p--;
+        switch (p[0]) {
+        case '0':
+            break;
+        case '.':
+            p--;  /* fall through to also strip '.' */
+        default:
+            p[1] = '\0';
+            return;
+        }
+    }
+
+    /* Leave at least 1 untrimmed */
+    s[1] = '\0';
+}
+
 static int q8_7_int(uint32_t q)
 {
     struct {
@@ -3370,6 +3395,18 @@ static int q8_7_int(uint32_t q)
 
     s.q = (int)q;
     return s.q;
+}
+
+static void q8_7_str(uint32_t q, char *out, size_t len)
+{
+    int i = q8_7_int(q);
+
+    /*
+     * Last binary digit is 1/128 = 0.0078125, i.e., the
+     * fraction has maximum of 7 decimal digits.
+     */
+    snprintf(out, len, "%.7f", Q8_7_F_INT(i));
+    chomp_zero(out);
 }
 
 static uint32_t q8_7_from_int(int i)
@@ -3429,6 +3466,18 @@ static int mfp19_int(uint32_t f)
     e = (f & MFP19_E_MASK) >> MFP19_E_SHIFT;
 
     return q << e;
+}
+
+static void mfp19_str(uint32_t f, char *out, size_t len)
+{
+    int i = mfp19_int(f);  /* q4.16 */
+
+    /*
+     * Last binary digit is 1/(1<<16) = 0.0000152587890625, i.e., the
+     * fraction has maximum of 16 decimal digits.
+     */
+    snprintf(out, len, "%.16f", MFP19_F_INT(i));
+    chomp_zero(out);
 }
 
 static bool mfp19_same_signess(uint32_t f1, uint32_t f2)
@@ -8081,6 +8130,127 @@ static void pmc_sysmon_init(Object *obj)
     sysbus_init_irq(sbd, &s->irq_1);
 }
 
+static void pmc_sysmon_temp_prop_get(Object *obj, Visitor *v,
+                                     const char *name, void *opaque,
+                                     Error **errp)
+{
+    PMCSysMon *s = PMC_SYSMON(obj);
+    unsigned tid = (uintptr_t)opaque;
+    unsigned reg = pmc_sysmon_temp_sat_reg(tid);
+    char str[32], *p = str;
+
+    q8_7_str(s->regs[reg], str, sizeof(str));
+    visit_type_str(v, name, &p, errp);
+}
+
+static void pmc_sysmon_volt_prop_get(Object *obj, Visitor *v,
+                                     const char *name, void *opaque,
+                                     Error **errp)
+{
+    PMCSysMon *s = PMC_SYSMON(obj);
+    unsigned vid = (uintptr_t)opaque;
+    unsigned reg = R_SUPPLY(vid);
+    char str[32], *p = str;
+
+    mfp19_str(s->regs[reg], str, sizeof(str));
+    visit_type_str(v, name, &p, errp);
+}
+
+static void pmc_sysmon_temp_prop_set(Object *obj, Visitor *v,
+                                     const char *name, void *opaque,
+                                     Error **errp)
+{
+    PMCSysMon *s = PMC_SYSMON(obj);
+    unsigned tid = (uintptr_t)opaque;
+
+    double val;
+    uint32_t q;
+
+    visit_type_number(v, name, &val, errp);
+    if (*errp) {
+        return;
+    }
+
+    if (val < Q8_7_F_MIN || val > Q8_7_F_MAX) {
+        error_setg(errp,
+                   "Temperature value (%.17g degC) out of range [%.17g, %.17g]",
+                   val, Q8_7_F_MIN, Q8_7_F_MAX);
+        return;
+    }
+
+    q = q8_7_from_float(val);
+    pmc_sysmon_temp_set(s, tid, q);
+}
+
+static void pmc_sysmon_volt_prop_set(Object *obj, Visitor *v,
+                                     const char *name, void *opaque,
+                                     Error **errp)
+{
+    PMCSysMon *s = PMC_SYSMON(obj);
+    unsigned vid = (uintptr_t)opaque;
+
+    double val;
+    uint32_t mfp;
+
+    visit_type_number(v, name, &val, errp);
+    if (*errp) {
+        return;
+    }
+
+    if (val < MFP19_F_MIN || val > MFP19_F_UMAX) {
+        error_setg(errp, "Voltage value (%.17g) out of range [%.17g, %.17g]",
+                   val, MFP19_F_MIN, MFP19_F_UMAX);
+        return;
+    }
+
+    mfp = mfp19_from_float(val);
+    pmc_sysmon_volt_set(s, vid, mfp);
+}
+
+static void pmc_sysmon_temp_prop_add(ObjectClass *klass)
+{
+    unsigned tid;
+
+    for (tid = 0; tid < R_TEMP_SAT_COUNT; tid++) {
+        static const char type[] = "Celsius:signed-fixed-point-decimal";
+        static const char desc[] = "Satellite temperature";
+        void *opaque = (void *)(uintptr_t)tid;
+
+        char name[32];
+
+        /* Notational-wise, TEMP_SATn is 1-based */
+        snprintf(name, sizeof(name), "temp_sat[%u]", (tid + 1));
+        object_class_property_add(klass, name, type,
+                                  pmc_sysmon_temp_prop_get,
+                                  pmc_sysmon_temp_prop_set,
+                                  NULL, opaque);
+
+        object_class_property_set_description(klass, name, desc);
+    }
+}
+
+static void pmc_sysmon_volt_prop_add(ObjectClass *klass)
+{
+    unsigned vid;
+
+    for (vid = 0; vid < R_SUPPLY_COUNT; vid++) {
+        static const char type[] = "Volt:signed-fixed-point-decimal";
+        static const char desc[] = "Satellite supply in volts";
+        void *opaque = (void *)(uintptr_t)vid;
+
+        char name[32];
+
+        /* Notational-wise, SUPPLYn is 0-based */
+        snprintf(name, sizeof(name), "supply[%u]", vid);
+        object_class_property_add(klass, name, type,
+                                  pmc_sysmon_volt_prop_get,
+                                  pmc_sysmon_volt_prop_set,
+                                  NULL, opaque);
+
+        object_class_property_set_description(klass, name, desc);
+    }
+}
+
 static const VMStateDescription vmstate_pmc_sysmon = {
     .name = TYPE_PMC_SYSMON,
     .version_id = 1,
@@ -8098,6 +8268,10 @@ static void pmc_sysmon_class_init(ObjectClass *klass, void *data)
     dc->reset = pmc_sysmon_reset;
     dc->realize = pmc_sysmon_realize;
     dc->vmsd = &vmstate_pmc_sysmon;
+
+    /* Support temp & volt injection by the 'qom-set' HMP */
+    pmc_sysmon_temp_prop_add(klass);
+    pmc_sysmon_volt_prop_add(klass);
 
     /* Sanity-check number format conversion */
     assert_number_formats();
