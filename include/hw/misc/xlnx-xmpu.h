@@ -76,6 +76,7 @@ typedef struct XMPUMaster {
     AddressSpace *parent_as;
     MemoryRegion *parent_mr;
     uint64_t size;
+    uint64_t base;
 
     MemoryRegion mr;
     IOMMUMemoryRegion iommu;

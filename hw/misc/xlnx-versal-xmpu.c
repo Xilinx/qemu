@@ -799,8 +799,8 @@ static MemTxResult zero_read(void *opaque, hwaddr addr, uint64_t *pdata,
         status = MEMTX_OK;
     } else {
         if (!(s->regs[R_ISR] & (7 << 1))) {
-            s->regs[R_ERR_STATUS1_HI] = (addr + s->cfg.base) >> 32;
-            s->regs[R_ERR_STATUS1_LO] = (addr + s->cfg.base) & 0xFFFFFFFF;
+            s->regs[R_ERR_STATUS1_HI] = (addr + xm->base) >> 32;
+            s->regs[R_ERR_STATUS1_LO] = (addr + xm->base) & 0xFFFFFFFF;
         }
         ARRAY_FIELD_DP32(s->regs, ERR_STATUS2, AXI_ID, attr.requester_id);
         if (sec_vio) {
@@ -835,8 +835,8 @@ static MemTxResult zero_write(void *opaque, hwaddr addr, uint64_t value,
         status = MEMTX_OK;
     } else {
         if (!(s->regs[R_ISR] & (7 << 1))) {
-            s->regs[R_ERR_STATUS1_HI] = (addr + s->cfg.base) >> 32;
-            s->regs[R_ERR_STATUS1_LO] = (addr + s->cfg.base) & 0xFFFFFFFF;
+            s->regs[R_ERR_STATUS1_HI] = (addr + xm->base) >> 32;
+            s->regs[R_ERR_STATUS1_LO] = (addr + xm->base) & 0xFFFFFFFF;
         }
         ARRAY_FIELD_DP32(s->regs, ERR_STATUS2, AXI_ID, attr.requester_id);
         if (sec_vio) {

@@ -182,7 +182,7 @@ IOMMUTLBEntry xmpu_master_translate(XMPUMaster *xm, hwaddr addr,
     }
 
     /* Convert to an absolute address to simplify the compare logic.  */
-    addr += s->cfg.base;
+    addr += xm->base;
 
     /* Lookup if this address fits a region.  */
     for (i = NR_XMPU_REGIONS - 1; i >= 0; i--) {
@@ -321,17 +321,27 @@ bool xmpu_parse_reg_common(XMPU *s, const char *tn, const char *iommu_tn,
     FDTGenericMMapClass *parent_fmc;
     char *name;
     unsigned int i, mid;
+    uint64_t prot_base;
 
     parent_fmc = FDT_GENERIC_MMAP_CLASS(object_class_get_parent(klass));
 
     for (i = 0; i < (reg.n - 1); i++) {
         mid = i;
+        s->masters[mid].base = reg.a[i + 1];
+
+        if (s->cfg.base > reg.a[i + 1]) {
+            error_setg(errp, "xmpu: Memory region base address 0x%"PRIx64
+                       "cannot be higher than subregion 0x%"PRIx64,
+                       s->cfg.base, reg.a[i + 1]);
+            return false;
+        }
+        prot_base = reg.a[i + 1] - s->cfg.base;
 
         /* Create the read/write address space */
         name = g_strdup_printf("xmpu-down-rw-master%d", mid);
         memory_region_init_alias(&s->masters[mid].down.rw.mr, OBJECT(s),
                                  name, s->protected_mr,
-                                 0, UINT64_MAX);
+                                 prot_base, reg.s[i + 1]);
         address_space_init(&s->masters[mid].down.rw.as,
                            &s->masters[mid].down.rw.mr, name);
         g_free(name);
@@ -340,7 +350,7 @@ bool xmpu_parse_reg_common(XMPU *s, const char *tn, const char *iommu_tn,
         name = g_strdup_printf("xmpu-down-ro-master%d", mid);
         memory_region_init_alias(&s->masters[mid].down.ro.mr, OBJECT(s),
                                  name, s->protected_mr,
-                                 0, UINT64_MAX);
+                                 prot_base, reg.s[i + 1]);
         memory_region_set_readonly(&s->masters[mid].down.ro.mr, true);
         address_space_init(&s->masters[mid].down.ro.as,
                            &s->masters[mid].down.ro.mr, name);
@@ -350,7 +360,7 @@ bool xmpu_parse_reg_common(XMPU *s, const char *tn, const char *iommu_tn,
         name = g_strdup_printf("xmpu-down-none-master\n");
         memory_region_init_io(&s->masters[mid].down.none.mr, OBJECT(s),
                               zero_ops, &s->masters[mid],
-                              name, UINT64_MAX);
+                              name, reg.s[i + 1]);
         address_space_init(&s->masters[mid].down.none.as,
                            &s->masters[mid].down.none.mr, name);
         g_free(name);
@@ -368,7 +378,7 @@ bool xmpu_parse_reg_common(XMPU *s, const char *tn, const char *iommu_tn,
         g_free(name);
 
         name = g_strdup_printf("xmpu-mr-%d\n", mid);
-        memory_region_init(&s->masters[mid].mr, OBJECT(s), name, UINT64_MAX);
+        memory_region_init(&s->masters[mid].mr, OBJECT(s), name, reg.s[i + 1]);
 
         memory_region_add_subregion_overlap(&s->masters[mid].mr,
                                             0, &s->masters[mid].down.rw.mr, 0);

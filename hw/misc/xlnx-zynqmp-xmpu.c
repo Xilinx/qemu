@@ -710,7 +710,7 @@ static MemTxResult zero_read(void *opaque, hwaddr addr, uint64_t *pdata,
         dma_memory_read(&xm->down.rw.as, addr, &value, size);
     } else {
         if (!(s->regs[R_ISR] & (7 << 1))) {
-            s->regs[R_ERR_STATUS1] = (addr + s->cfg.base) >> 12;
+            s->regs[R_ERR_STATUS1] = (addr + xm->base) >> 12;
         }
         if (poisoncfg) {
             AddressSpace *as = xm->parent_as;
@@ -749,7 +749,7 @@ static MemTxResult zero_write(void *opaque, hwaddr addr, uint64_t value,
         dma_memory_write(&xm->down.rw.as, addr, &value, size);
     } else {
         if (!(s->regs[R_ISR] & (7 << 1))) {
-            s->regs[R_ERR_STATUS1] = (addr + s->cfg.base) >> 12;
+            s->regs[R_ERR_STATUS1] = (addr + xm->base) >> 12;
         }
         if (poisoncfg) {
             AddressSpace *as = xm->parent_as;
