@@ -30,6 +30,7 @@
 #include "hw/irq.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
+#include "qemu/error-report.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
 
@@ -3225,15 +3226,363 @@ REG32(SSC_MEASURE_IF, 0x4000)
 
 #define PMC_SYSMON_R_MAX (R_SSC_MEASURE_IF + 1)
 
+/* Multi-word, bit-per-channel */
+#define CHANNEL_WORD(_I)        ((_I) / 32)
+#define CHANNEL_MASK(_I)        (1U << ((_I) % 32))
+#define CHANNEL_BIT(_RA, _I)    (!!((_RA)[CHANNEL_WORD(_I)] & CHANNEL_MASK(_I)))
+#define CHANNEL_ID(_B, _R)      (((_R) - (_B)) * 32)
+
+/* Access voltage registers by channel id */
+#define R_SUPPLY(_I)            (R_SUPPLY0 + (_I))
+#define R_SUPPLY_MIN(_I)        (R_SUPPLY0_MIN + (_I))
+#define R_SUPPLY_MAX(_I)        (R_SUPPLY0_MAX + (_I))
+#define R_SUPPLY_TH_LOWER(_I)   (R_SUPPLY0_TH_LOWER + (_I))
+#define R_SUPPLY_TH_UPPER(_I)   (R_SUPPLY0_TH_UPPER + (_I))
+#define R_SUPPLY_AVGCALC(_I)    (R_SUPPLY0_AVGCALC + (_I))
+#define R_SUPPLY_ISR_MASK(_I)   (R_REG_ISR_ALARM0_MASK << ((_I) / 32))
+
+/* Modified floating point for voltages */
+#define MFP19_UNSIGNED(_E, _M) \
+    (((((_E) + MFP19_E_OFFSET) << MFP19_E_SHIFT) & MFP19_E_MASK) | \
+     ((_M) & MFP19_MANTISSA_MASK))
+
+#define MFP19_SIGNED(_E, _M) \
+    (MFP19_UNSIGNED(_E, _M) | MFP19_SIGNED_MASK)
+
+#define MFP19_IS_SIGNED(_F) \
+    (!!((_F) & MFP19_SIGNED_MASK))
+
+#define MFP19_SCALE(_F) \
+    (((_F) & MFP19_SCALE_MASK) >> MFP19_SCALE_SHIFT)
+
+
+enum PMCSysMon_const {
+    R_REG_PCSR_LOCK_UNLOCK_CODE = 0xF9E8D7C6,
+
+    R_TEMP_SAT_FIRST = R_TEMP_SAT1,
+    R_TEMP_SAT_LAST  = R_TEMP_SAT62,
+    R_TEMP_SAT_COUNT = 64, /* plus TEMP_FPD and TEMP_LPD */
+
+    R_SUPPLY_COUNT   = (R_SUPPLY159 + 1 - R_SUPPLY0),
+
+    /* Q8.7 signed fixed-point, for temperature */
+    Q8_7_SGN_MASK = 0x8000,
+    Q8_7_MASK     = 0xFFFF,
+    Q8_7_MIN      = 0x8000,
+    Q8_7_MAX      = 0x7FFF,
+
+    /* 19-bit modified floating (no hidden bit) for volts */
+    MFP19_MANTISSA_WIDTH = 16,
+    MFP19_MANTISSA_MASK  = (1 << MFP19_MANTISSA_WIDTH) - 1,
+
+    MFP19_SIGNED_SHIFT = MFP19_MANTISSA_WIDTH,
+    MFP19_SIGNED_MASK  = (1 << MFP19_SIGNED_SHIFT),
+
+    MFP19_E_SHIFT = MFP19_SIGNED_SHIFT + 1,
+    MFP19_E_MASK  = (3 << MFP19_E_SHIFT),
+
+    MFP19_MASK = (1 << (MFP19_E_SHIFT + 2)) - 1,
+
+    MFP19_SCALE_SHIFT = MFP19_SIGNED_SHIFT,
+    MFP19_SCALE_MASK  = (MFP19_E_MASK | MFP19_SIGNED_MASK),
+
+    MFP19_E_OFFSET = 16,
+    MFP19_UMIN = 0,
+    MFP19_MIN  = MFP19_SIGNED(-13, 0x8000),
+    MFP19_MAX  = MFP19_SIGNED(-13, 0x7FFF),
+    MFP19_UMAX = MFP19_UNSIGNED(-13, 0xFFFF),
+};
+
+/* Widened Q8.7 of various types */
+#define Q8_7_I_MIN      ((int)(int16_t)Q8_7_MIN)
+#define Q8_7_I_MAX      ((int)(int16_t)Q8_7_MAX)
+
+#define Q8_7_F_INT(_I)  ((double)(_I) / (1 << 7))
+#define Q8_7_F_MIN      Q8_7_F_INT(Q8_7_I_MIN)
+#define Q8_7_F_MAX      Q8_7_F_INT(Q8_7_I_MAX)
+
+/* Widened MFP19 and Q4.16 of various types */
+#define MFP19_I_UMIN    ((int)0)
+#define MFP19_I_MIN     ((int)-4 << 16)
+#define MFP19_I_MAX     ((int)(MFP19_MAX & MFP19_MANTISSA_MASK) << 3)
+#define MFP19_I_UMAX    ((int)(MFP19_UMAX & MFP19_MANTISSA_MASK) << 3)
+
+#define MFP19_F_INT(_I) ((double)(_I) / (1 << 16))
+#define MFP19_F_MIN     MFP19_F_INT(MFP19_I_MIN)
+#define MFP19_F_MAX     MFP19_F_INT(MFP19_I_MAX)
+#define MFP19_F_UMAX    MFP19_F_INT(MFP19_I_UMAX)
+
+typedef struct PMCSysMon_TempAcc {
+    uint32_t count:4;   /* samples collected in accum so far */
+    int32_t  accum:28;  /* sum of 15 signed Q8.7 values */
+} PMCSysMon_TempAcc;
+
 typedef struct PMCSysMon {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
     qemu_irq irq_0;
     qemu_irq irq_1;
+    uint32_t events;
+    uint32_t reg_prev_value;
+
+    /*
+     * Signed Q15.16 accumulators to avoid repeated encoding
+     * and decoding of R_SUPPLYn_AVGCALC.
+     */
+    int volt_acc[R_SUPPLY_COUNT];
+
+    /*
+     * Temperature accumulators, unlike R_SUPPLYn_AVGCALC,
+     * are not visible to software.
+     */
+    PMCSysMon_TempAcc temp_sat_acc[R_TEMP_SAT_COUNT];
+    uint32_t temp_min_min;
+    uint32_t temp_min_max;
+
+    /*
+     * Flag to track 'is defined yet' state of min/max, such
+     * that the first sample will be min and max.
+     */
+    bool temp_min_max_ready;
+    uint32_t volt_min_max_ready[(R_SUPPLY_COUNT + 31) / 32];
 
     uint32_t regs[PMC_SYSMON_R_MAX];
     RegisterInfo regs_info[PMC_SYSMON_R_MAX];
 } PMCSysMon;
+
+static int int_compare(int a, int b)
+{
+    if (a < b) {
+        return -1;
+    }
+    if (a > b) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
+static int q8_7_int(uint32_t q)
+{
+    struct {
+        int q:16;
+    } s;
+
+    s.q = (int)q;
+    return s.q;
+}
+
+static uint32_t q8_7_from_int(int i)
+{
+    /* Saturate if out of range */
+    if (i < Q8_7_I_MIN) {
+        return Q8_7_MIN;
+    }
+    if (i > Q8_7_I_MAX) {
+        return Q8_7_MAX;
+    }
+
+    return i & Q8_7_MASK;
+}
+
+static uint32_t q8_7_from_float(double v)
+{
+    uint32_t q;
+
+    /* Saturate if out of range */
+    if (v < Q8_7_F_MIN) {
+        return Q8_7_MIN;
+    }
+    if (v > Q8_7_F_MAX) {
+        return Q8_7_MAX;
+    }
+
+    q = (uint32_t)(round(v * (1 << 7)));
+
+    return q & Q8_7_MASK;
+}
+
+static int q8_7_compare(uint32_t q1, uint32_t q2)
+{
+    return int_compare(q8_7_int(q1), q8_7_int(q2));
+}
+
+static int mfp19_int(uint32_t f)
+{
+    /* FP19 to signed Q4.16, signed-extended to 32-bit int */
+    union {
+        signed int s:MFP19_MANTISSA_WIDTH;
+        unsigned int u:MFP19_MANTISSA_WIDTH;
+    } m;
+
+    int q;
+    int e;
+
+    m.u = f & MFP19_MANTISSA_MASK;
+
+    if (f & MFP19_SIGNED_MASK) {
+        q = m.s;  /* sign-extended */
+    } else {
+        q = m.u;  /* zero-extended */
+    }
+
+    e = (f & MFP19_E_MASK) >> MFP19_E_SHIFT;
+
+    return q << e;
+}
+
+static bool mfp19_same_signess(uint32_t f1, uint32_t f2)
+{
+    return MFP19_IS_SIGNED(f1) == MFP19_IS_SIGNED(f2);
+}
+
+static int mfp19_compare(uint32_t f1, uint32_t f2)
+{
+    return int_compare(mfp19_int(f1), mfp19_int(f2));
+}
+
+static uint32_t mfp19_unsigned(int q)
+{
+    /* Convert unsigned Q3.16 to unsigned FP19 */
+    int e, i;
+
+    static const uint8_t shift[] = {
+        /*            qqq.rrrr_rrrr_rrrr_rrrr                 */
+        [0] = 0,  /*  000.mmmm_mmmm_mmmm_mmmm - no drops      */
+        [1] = 1,  /*  001.mmmm_mmmm_mmmm_mmmT - 1 LSB dropped */
+        [2] = 2,  /*  010.mmmm_mmmm_mmmm_mmTT - 2 LSB dropped */
+        [3] = 2,  /*  011.mmmm_mmmm_mmmm_mmTT                 */
+        [4] = 3,  /*  100.mmmm_mmmm_mmmm_mTTT - 3 LSB dropped */
+        [5] = 3,  /*  101.mmmm_mmmm_mmmm_mTTT                 */
+        [6] = 3,  /*  110.mmmm_mmmm_mmmm_mTTT                 */
+        [7] = 3,  /*  111.mmmm_mmmm_mmmm_mTTT                 */
+    };
+
+    /* saturated if out of range */
+    if (q <= 0) {
+        return MFP19_UMIN;
+    }
+    if (q > MFP19_I_UMAX) {
+        return MFP19_UMAX;
+    }
+
+    i = (q >> 16) & 7;
+    e = shift[i];
+    return MFP19_UNSIGNED((e - MFP19_E_OFFSET), (q >> e));
+}
+
+static uint32_t mfp19_signed(int q)
+{
+    /* Convert signed Q4.16 to signed FP19 */
+    int e, i;
+    uint32_t m, f;
+
+    /*
+     * Optimal E to preserve mantissa sign bit and precision for
+     * negative q, i.e., the '1' left of most-significant '0' is
+     * the mantissa sign bit.
+     */
+    static const uint8_t shift[] = {
+        /*     <sign:1>_qqq.rrrr_rrrr_rrrr_rrrr                  */
+        [15] = 0,  /* 1_111.1_mmm_mmmm_mmmm_mmmm - no drops      */
+        [14] = 1,  /* 1_111.0_mmm_mmmm_mmmm_mmmT - 1 LSB dropped */
+        [13] = 2,  /* 1_110.1_mmm_mmmm_mmmm_mmTT - 2 LSB dropped */
+        [12] = 2,  /* 1_110.0_mmm_mmmm_mmmm_mmTT                 */
+        [11] = 3,  /* 1_101.1_mmm_mmmm_mmmm_mTTT - 3 LSB dropped */
+        [10] = 3,  /* 1_101.0_mmm_mmmm_mmmm_mTTT                 */
+        [9]  = 3,  /* 1_100.1_mmm_mmmm_mmmm_mTTT                 */
+        [8]  = 3,  /* 1_100.0_mmm_mmmm_mmmm_mTTT                 */
+
+        [7]  = 4,  /* 1_011.1_mmm_mmmm_mmmm_TTTT - out of range  */
+        [6]  = 4,  /* 1_011.0_mmm_mmmm_mmmm_TTTT                 */
+        [5]  = 4,  /* 1_010.1_mmm_mmmm_mmmm_TTTT                 */
+        [4]  = 4,  /* 1_010.0_mmm_mmmm_mmmm_TTTT                 */
+        [3]  = 4,  /* 1_001.1_mmm_mmmm_mmmm_TTTT                 */
+        [2]  = 4,  /* 1_001.0_mmm_mmmm_mmmm_TTTT                 */
+        [1]  = 4,  /* 1_000.1_mmm_mmmm_mmmm_TTTT                 */
+        [0]  = 4,  /* 1_000.0_mmm_mmmm_mmmm_TTTT                 */
+    };
+
+    /* saturated if out of range */
+    if (q >= MFP19_I_MAX) {
+        return MFP19_MAX;
+    }
+    if (q <= MFP19_I_MIN) {
+        return MFP19_MIN;
+    }
+
+    /* bipolar 0 */
+    if (q == 0) {
+        return MFP19_SIGNED(-MFP19_E_OFFSET, 0);
+    }
+
+    /*
+     * Positive is mostly the same as unsigned, with format-code
+     * added and possibly scale adjusted to avoid mantissa overflow.
+     */
+    if (q > 0) {
+        f = mfp19_unsigned(q);
+        m = f & MFP19_MANTISSA_MASK;
+        if (m > (MFP19_MAX & MFP19_MANTISSA_MASK)) {
+            e = (f & MFP19_E_MASK) + (1 << MFP19_E_SHIFT);
+            f = e | (m >> 1);
+        }
+
+        f |= MFP19_SIGNED_MASK;
+    } else {
+        i = (q >> 15) & 15;
+        e = shift[i];
+        assert(e <= 3);
+
+        m = (q >> e) & MFP19_MANTISSA_MASK;
+        assert(m >> (MFP19_MANTISSA_WIDTH - 1));
+
+        f = MFP19_SIGNED((e - MFP19_E_OFFSET), m);
+    }
+
+    return f;
+}
+
+static uint32_t mfp19_from_int(int q, uint32_t template)
+{
+    return MFP19_IS_SIGNED(template) ? mfp19_signed(q) : mfp19_unsigned(q);
+}
+
+static uint32_t mfp19_from_float(double v)
+{
+    uint32_t q;
+
+    /* Saturate if out of range */
+    if (v < MFP19_F_MIN) {
+        return MFP19_MIN;
+    }
+    if (v > MFP19_F_UMAX) {
+        return MFP19_UMAX;
+    }
+
+    /* Convert to q4.16 */
+    q = (uint32_t)(round(v * (1 << 16)));
+
+    if (v <= MFP19_F_MAX) {
+        return mfp19_signed(q);
+    } else {
+        return mfp19_unsigned(q);
+    }
+}
+
+static void assert_number_formats(void)
+{
+    /* Sanity-check the constants and format conversion */
+    assert(Q8_7_I_MIN == q8_7_int(Q8_7_MIN));
+    assert(Q8_7_I_MAX == q8_7_int(Q8_7_MAX));
+
+    assert(MFP19_I_MIN  == mfp19_int(MFP19_MIN));
+    assert(MFP19_I_MAX  == mfp19_int(MFP19_MAX));
+    assert(MFP19_I_UMAX == mfp19_int(MFP19_UMAX));
+
+    assert(MFP19_MAX  == mfp19_signed(MFP19_I_MAX));
+    assert(MFP19_UMAX == mfp19_unsigned(MFP19_I_UMAX));
+}
 
 static void reg_isr_update_irq(PMCSysMon *s)
 {
@@ -3242,6 +3591,574 @@ static void reg_isr_update_irq(PMCSysMon *s)
 
     qemu_set_irq(s->irq_0, !!pending_0);
     qemu_set_irq(s->irq_1, !!pending_1);
+}
+
+static uint64_t reg_isr_prew(RegisterInfo *reg, uint64_t val64)
+{
+    PMCSysMon *s = PMC_SYSMON(reg->opaque);
+
+    /* Status remains stuck-at-1 as long as events not cleared */
+    return val64 | s->events;
+}
+
+static void pmc_sysmon_event_clear(PMCSysMon *s, uint32_t isr_mask)
+{
+    s->events &= ~isr_mask;
+}
+
+static void pmc_sysmon_event_set(PMCSysMon *s, uint32_t isr_mask)
+{
+    s->events |= isr_mask;
+
+    if (!(s->regs[R_REG_ISR] & isr_mask)) {
+        s->regs[R_REG_ISR] |= isr_mask;
+        reg_isr_update_irq(s);
+    }
+}
+
+static uint32_t pmc_sysmon_temp_min_min(PMCSysMon *s)
+{
+    if (ARRAY_FIELD_EX32(s->regs, CONFIG0, RESERVED2)) {
+        return s->temp_min_max;
+    } else {
+        return s->temp_min_min;
+    }
+}
+
+static void pmc_sysmon_temp_update_alarm(PMCSysMon *s,
+                                         uint32_t isr_mask, uint32_t mode_mask,
+                                         uint32_t r_th_lo, uint32_t r_th_hi)
+{
+    int th_lo = q8_7_int(s->regs[r_th_lo]);
+    int th_hi = q8_7_int(s->regs[r_th_hi]);
+    int t_min;
+
+    bool windowed = !(s->regs[R_ALARM_CONFIG] & mode_mask);
+
+    if (q8_7_int(s->regs[R_DEVICE_TEMP_MAX]) > th_hi) {
+        pmc_sysmon_event_set(s, isr_mask);        /* too hot! */
+        return;
+    }
+
+    /* The mode controls the <t_min, th_lo> relationship */
+    t_min = q8_7_int(pmc_sysmon_temp_min_min(s));
+
+    if (windowed) {
+        /* [th_lo, th_hi] is the only acceptable range */
+        if (t_min >= th_lo) {
+            pmc_sysmon_event_clear(s, isr_mask);  /* comfy! */
+        } else {
+            pmc_sysmon_event_set(s, isr_mask);    /* too cold! */
+        }
+    } else {
+        /*
+         * [th_lo, th_hi] is a hysteresis range, i.e.,
+         * 1. There is no alarm until t_max > th_hi; then,
+         * 2. Alarm remains set until t_min < th_lo.
+         */
+        if (!(s->events & isr_mask)) {
+            pmc_sysmon_event_clear(s, isr_mask);  /* getting hot but ok */
+        } else if (t_min >= th_lo) {
+            pmc_sysmon_event_set(s, isr_mask);    /* need to cool down more */
+        } else {
+            pmc_sysmon_event_clear(s, isr_mask);  /* has cooled down */
+        }
+    }
+}
+
+static void pmc_sysmon_temp_update_dev_alarm(PMCSysMon *s)
+{
+    pmc_sysmon_temp_update_alarm(s,
+                                 R_REG_ISR_TEMP_MASK,
+                                 R_ALARM_CONFIG_DEV_ALARM_MODE_MASK,
+                                 R_DEVICE_TEMP_TH_LOWER,
+                                 R_DEVICE_TEMP_TH_UPPER);
+}
+
+static void pmc_sysmon_temp_update_ot_alarm(PMCSysMon *s)
+{
+    pmc_sysmon_temp_update_alarm(s,
+                                 R_REG_ISR_OT_MASK,
+                                 R_ALARM_CONFIG_OT_ALARM_MODE_MASK,
+                                 R_OT_TEMP_TH_LOWER,
+                                 R_OT_TEMP_TH_UPPER);
+}
+
+static void pmc_sysmon_temp_update_alarms(PMCSysMon *s)
+{
+    pmc_sysmon_temp_update_dev_alarm(s);
+    pmc_sysmon_temp_update_ot_alarm(s);
+}
+
+static bool pmc_sysmon_temp_set_min(uint32_t *reg, uint32_t val)
+{
+    if (q8_7_compare(*reg, val) > 0) {
+        *reg = val & Q8_7_MASK;
+        return true;
+    }
+
+    return false;
+}
+
+static bool pmc_sysmon_temp_set_max(uint32_t *reg, uint32_t val)
+{
+    if (q8_7_compare(*reg, val) < 0) {
+        *reg = val & Q8_7_MASK;
+        return true;
+    }
+
+    return false;
+}
+
+static void pmc_sysmon_temp_init_min_max(PMCSysMon *s, uint32_t val)
+{
+    s->regs[R_DEVICE_TEMP_MIN] = val;
+    s->regs[R_DEVICE_TEMP_MAX] = val;
+    s->regs[R_DEVICE_TEMP_MAX_MAX] = val;
+    s->temp_min_min = val;
+    s->temp_min_max = val;
+
+    s->temp_min_max_ready = true;
+}
+
+static bool pmc_sysmon_temp_update_min_max(PMCSysMon *s, uint32_t val)
+{
+    bool changed = false;
+    uint32_t t_min;
+
+    if (!s->temp_min_max_ready) {
+        pmc_sysmon_temp_init_min_max(s, val);
+        return true;
+    }
+
+    changed |= pmc_sysmon_temp_set_min(&s->regs[R_DEVICE_TEMP_MIN], val);
+    changed |= pmc_sysmon_temp_set_max(&s->regs[R_DEVICE_TEMP_MAX], val);
+
+    pmc_sysmon_temp_set_max(&s->regs[R_DEVICE_TEMP_MAX_MAX],
+                            s->regs[R_DEVICE_TEMP_MAX]);
+
+    t_min = pmc_sysmon_temp_min_min(s);
+    pmc_sysmon_temp_set_min(&s->temp_min_min, s->regs[R_DEVICE_TEMP_MIN]);
+    pmc_sysmon_temp_set_min(&s->temp_min_max, s->regs[R_DEVICE_TEMP_MAX]);
+    changed |= (t_min != pmc_sysmon_temp_min_min(s));
+
+    return changed;
+}
+
+static void pmc_sysmon_temp_reset_min_max(PMCSysMon *s)
+{
+    s->temp_min_max_ready = false;
+    s->temp_min_min = Q8_7_MIN;
+    s->temp_min_max = Q8_7_MIN;
+    s->regs[R_DEVICE_TEMP_MIN_MIN] = Q8_7_MIN;
+    s->regs[R_DEVICE_TEMP_MAX_MAX] = Q8_7_MAX;
+
+    pmc_sysmon_event_clear(s, R_REG_ISR_TEMP_MASK);
+    pmc_sysmon_event_clear(s, R_REG_ISR_OT_MASK);
+}
+
+static unsigned pmc_sysmon_temp_sat_reg(unsigned tid)
+{
+    assert(tid < R_TEMP_SAT_COUNT);
+
+    switch (tid) {
+    case 63:
+        return R_TEMP_LPD;
+    case 62:
+        return R_TEMP_FPD;
+    default:
+        return R_TEMP_SAT_FIRST + tid;
+    }
+}
+
+static unsigned pmc_sysmon_temp_sat_avg_count(PMCSysMon *s)
+{
+    unsigned avg_cnt = ARRAY_FIELD_EX32(s->regs, CONFIG0, TEMP_AVERAGE);
+
+    /* Force invalid count to 1 to simplify dependency */
+    switch (avg_cnt) {
+    case 1:
+    case 2:
+    case 4:
+    case 8:
+        avg_cnt *= 2;
+        break;
+    case 0:
+    default:
+        avg_cnt = 1;
+    }
+
+    return avg_cnt;
+}
+
+static void pmc_sysmon_temp_sat_reset_avg(PMCSysMon *s, unsigned tid)
+{
+    assert(tid < R_TEMP_SAT_COUNT);
+
+    s->temp_sat_acc[tid].accum = 0;
+    s->temp_sat_acc[tid].count = 0;
+}
+
+static void pmc_sysmon_temp_sat_avg(PMCSysMon *s, unsigned tid, uint32_t val)
+{
+    unsigned reg, avg_cnt, run_cnt;
+    bool avg_en;
+    PMCSysMon_TempAcc *avg_acc;
+
+    reg = pmc_sysmon_temp_sat_reg(tid);
+    avg_cnt = pmc_sysmon_temp_sat_avg_count(s);
+
+    avg_en = (avg_cnt > 1) && CHANNEL_BIT(&s->regs[R_EN_AVG_REG8], tid);
+
+    if (!avg_en) {
+        s->regs[reg] = val;  /* avg. disabled or sample of 1 */
+        return;
+    }
+
+    avg_acc = &s->temp_sat_acc[tid];
+    avg_acc->accum += q8_7_int(val);
+
+    run_cnt = avg_acc->count + 1;
+    if (run_cnt < avg_cnt) {
+        avg_acc->count = run_cnt;
+    } else {
+        /* Enough accumulated; reset for next round */
+        int avg = avg_acc->accum / run_cnt;
+
+        s->regs[reg] = q8_7_from_int(avg);
+        pmc_sysmon_temp_sat_reset_avg(s, tid);
+    }
+}
+
+static void pmc_sysmon_temp_set(PMCSysMon *s, unsigned tid, uint32_t val)
+{
+    val &= Q8_7_MASK;
+
+    pmc_sysmon_temp_sat_avg(s, tid, val);
+
+    if (pmc_sysmon_temp_update_min_max(s, val)) {
+        pmc_sysmon_temp_update_alarms(s);
+    }
+}
+
+static void pmc_sysmon_temp_dev_th_postw(RegisterInfo *reg, uint64_t val64)
+{
+    PMCSysMon *s = PMC_SYSMON(reg->opaque);
+    pmc_sysmon_temp_update_dev_alarm(s);
+}
+
+static void pmc_sysmon_temp_ot_th_postw(RegisterInfo *reg, uint64_t val64)
+{
+    PMCSysMon *s = PMC_SYSMON(reg->opaque);
+    pmc_sysmon_temp_update_ot_alarm(s);
+}
+
+static void pmc_sysmon_temp_alarm_config_postw(RegisterInfo *reg,
+                                               uint64_t val64)
+{
+    PMCSysMon *s = PMC_SYSMON(reg->opaque);
+    uint32_t changed = s->reg_prev_value ^ val64;
+
+    if (FIELD_EX32(changed, ALARM_CONFIG, DEV_ALARM_MODE)) {
+        pmc_sysmon_temp_update_dev_alarm(s);
+    }
+    if (FIELD_EX32(changed, ALARM_CONFIG, OT_ALARM_MODE)) {
+        pmc_sysmon_temp_update_ot_alarm(s);
+    }
+}
+
+static void pmc_sysmon_temp_en_avg_reg_postw(RegisterInfo *reg, uint64_t val64)
+{
+    PMCSysMon *s = PMC_SYSMON(reg->opaque);
+    unsigned nr = reg->access->addr / 4;
+    uint32_t changed = s->reg_prev_value ^ val64;
+
+    unsigned tid;
+
+    for (tid = CHANNEL_ID(R_EN_AVG_REG8, nr); changed; changed >>= 1, tid++) {
+        if (changed & 1) {
+            pmc_sysmon_temp_sat_reset_avg(s, tid);
+        }
+    }
+}
+
+static uint64_t pmc_sysmon_temp_min_min_postr(RegisterInfo *reg, uint64_t val)
+{
+    PMCSysMon *s = PMC_SYSMON(reg->opaque);
+
+    val = pmc_sysmon_temp_min_min(s);
+    s->regs[R_DEVICE_TEMP_MIN_MIN] = val;
+
+    return val;
+}
+
+static uint32_t pmc_sysmon_volt_set_bit(PMCSysMon *s, unsigned r0,
+                                        unsigned vid)
+{
+    unsigned nr = CHANNEL_WORD(vid);
+    uint32_t bm = CHANNEL_MASK(vid);
+
+    s->regs[r0 + nr] |= bm;
+
+    return s->regs[r0 + nr];
+}
+
+static uint32_t pmc_sysmon_volt_clear_bit(PMCSysMon *s, unsigned r0,
+                                          unsigned vid)
+{
+    unsigned nr = CHANNEL_WORD(vid);
+    uint32_t bm = CHANNEL_MASK(vid);
+
+    s->regs[r0 + nr] &= ~bm;
+
+    return s->regs[r0 + nr];
+}
+
+static bool pmc_sysmon_volt_get_bit(PMCSysMon *s, unsigned r0, unsigned vid)
+{
+    unsigned nr = CHANNEL_WORD(vid);
+    uint32_t bm = CHANNEL_MASK(vid);
+
+    return !!(s->regs[r0 + nr] & bm);
+}
+
+static void pmc_sysmon_volt_clear_alarm(PMCSysMon *s, unsigned vid)
+{
+    uint32_t isr = R_SUPPLY_ISR_MASK(vid);
+
+    if (pmc_sysmon_volt_clear_bit(s, R_ALARM_FLAG0, vid)) {
+        pmc_sysmon_event_set(s, isr);
+    } else {
+        pmc_sysmon_event_clear(s, isr);
+    }
+}
+
+static void pmc_sysmon_volt_set_alarm(PMCSysMon *s, unsigned vid)
+{
+    bool enabled = pmc_sysmon_volt_get_bit(s, R_ALARM_REG0, vid);
+
+    if (enabled) {
+        uint32_t isr = R_SUPPLY_ISR_MASK(vid);
+
+        pmc_sysmon_volt_set_bit(s, R_ALARM_FLAG0, vid);
+        pmc_sysmon_event_set(s, isr);
+    } else {
+        pmc_sysmon_volt_clear_alarm(s, vid);
+    }
+}
+
+static void pmc_sysmon_volt_set_new(PMCSysMon *s, unsigned vid)
+{
+    pmc_sysmon_volt_set_bit(s, R_NEW_DATA_FLAG0, vid);
+
+    if (vid == ARRAY_FIELD_EX32(s->regs, NEW_DATA_INT_SRC, ADDR_ID0)) {
+        pmc_sysmon_event_set(s, R_REG_ISR_NEW_DATA0_MASK);
+    }
+    if (vid == ARRAY_FIELD_EX32(s->regs, NEW_DATA_INT_SRC, ADDR_ID1)) {
+        pmc_sysmon_event_set(s, R_REG_ISR_NEW_DATA1_MASK);
+    }
+    if (vid == ARRAY_FIELD_EX32(s->regs, NEW_DATA_INT_SRC, ADDR_ID2)) {
+        pmc_sysmon_event_set(s, R_REG_ISR_NEW_DATA2_MASK);
+    }
+    if (vid == ARRAY_FIELD_EX32(s->regs, NEW_DATA_INT_SRC, ADDR_ID3)) {
+        pmc_sysmon_event_set(s, R_REG_ISR_NEW_DATA3_MASK);
+    }
+}
+
+static void pmc_sysmon_volt_set_min(uint32_t *reg, uint32_t val)
+{
+    if (mfp19_compare(*reg, val) > 0) {
+        *reg = val & MFP19_MASK;
+    }
+}
+
+static void pmc_sysmon_volt_set_max(uint32_t *reg, uint32_t val)
+{
+    if (mfp19_compare(*reg, val) < 0) {
+        *reg = val & MFP19_MASK;
+    }
+}
+
+static void pmc_sysmon_volt_update_min_max(PMCSysMon *s, unsigned vid,
+                                           uint32_t val)
+{
+    uint32_t *r_min = &s->regs[R_SUPPLY_MIN(vid)];
+    uint32_t *r_max = &s->regs[R_SUPPLY_MAX(vid)];
+    uint32_t *ready = &s->volt_min_max_ready[CHANNEL_WORD(vid)];
+    uint32_t  ready_mask = CHANNEL_MASK(vid);
+
+    if (!(*ready & ready_mask)) {
+        *ready |= ready_mask;
+        *r_min = val;
+        *r_max = val;
+        return;
+    }
+
+    /* Alway reinit if format changed */
+    if (mfp19_same_signess(*r_min, val)) {
+        pmc_sysmon_volt_set_min(r_min, val);
+    } else {
+        *r_min = val;
+    }
+
+    if (mfp19_same_signess(*r_max, val)) {
+        pmc_sysmon_volt_set_max(r_max, val);
+    } else {
+        *r_max = val;
+    }
+}
+
+static void pmc_sysmon_volt_reset_min_max(PMCSysMon *s)
+{
+    unsigned vid;
+
+    memset(s->volt_min_max_ready, 0, sizeof(s->volt_min_max_ready));
+
+    for (vid = 0; vid < R_SUPPLY_COUNT; vid++) {
+        s->regs[R_SUPPLY_MIN(vid)] = MFP19_MIN;
+        s->regs[R_SUPPLY_MAX(vid)] = MFP19_MAX;
+        pmc_sysmon_volt_clear_alarm(s, vid);
+    }
+}
+
+static unsigned pmc_sysmon_volt_avg_count(PMCSysMon *s)
+{
+    unsigned avg_cnt = ARRAY_FIELD_EX32(s->regs, CONFIG0, AVERAGE);
+
+    /* Force invalid count to 1 to simplify dependency */
+    switch (avg_cnt) {
+    case 1:
+    case 2:
+    case 4:
+    case 8:
+        avg_cnt *= 2;
+        break;
+    case 0:
+    default:
+        avg_cnt = 1;
+    }
+
+    return avg_cnt;
+}
+
+static void pmc_sysmon_volt_reset_avg(PMCSysMon *s, unsigned vid)
+{
+    s->regs[R_SUPPLY_AVGCALC(vid)] = 0;
+}
+
+static bool pmc_sysmon_volt_avg(PMCSysMon *s, unsigned vid, uint32_t val)
+{
+    uint32_t *reg = &s->regs[R_SUPPLY(vid)];
+    uint32_t run = s->regs[R_SUPPLY_AVGCALC(vid)];
+    unsigned avg_cnt, run_cnt;
+    bool avg_en;
+
+    avg_cnt = pmc_sysmon_volt_avg_count(s);
+    avg_en = (avg_cnt > 1) && CHANNEL_BIT(&s->regs[R_EN_AVG_REG0], vid);
+
+    if (!avg_en) {
+        *reg = val;   /* avg. disabled or sample of 1 */
+        return true;
+    }
+
+    s->volt_acc[vid] += mfp19_int(val);
+
+    run_cnt = FIELD_EX32(run, SUPPLY0_AVGCALC, SCOUNT) + 1;
+    if (run_cnt < avg_cnt) {
+        /* Report intermediate status */
+        val = mfp19_from_int(s->volt_acc[vid], val);
+        run = FIELD_DP32(run, SUPPLY0_AVGCALC, RAVG, val);
+        run = FIELD_DP32(run, SUPPLY0_AVGCALC, SCOUNT, run_cnt);
+    } else {
+        /* Enough accumulated; reset for next round */
+        val = mfp19_from_int((s->volt_acc[vid] / run_cnt), val);
+        *reg = val;
+        run = 0;
+    }
+
+    /* Update avg-run status */
+    s->regs[R_SUPPLY_AVGCALC(vid)] = run;
+
+    return !run;
+}
+
+static void pmc_sysmon_volt_set(PMCSysMon *s, unsigned vid, uint32_t val)
+{
+    unsigned scale;
+    uint32_t *th_lo, *th_hi;
+    int volt;
+
+    assert(vid < R_SUPPLY_COUNT);
+    val &= MFP19_MASK;
+
+    /* Update R_SUPPLYn; done if no new avg result yet */
+    if (!pmc_sysmon_volt_avg(s, vid, val)) {
+        return;
+    }
+
+    /* Apply new avg result */
+    val = s->regs[R_SUPPLY(vid)];
+    volt = mfp19_int(val);
+    scale = MFP19_SCALE(val);
+
+    /* Update NEW_DATA_FLAGn and NEW_DATA_INT_SRC */
+    pmc_sysmon_volt_set_new(s, vid);
+
+    /* Update min/max and alarm */
+    pmc_sysmon_volt_update_min_max(s, vid, val);
+
+    /* Update val_ro field of R_SUPPLYn_TH_LOWER/_UPPER */
+    th_lo = &s->regs[R_SUPPLY_TH_LOWER(vid)];
+    th_hi = &s->regs[R_SUPPLY_TH_UPPER(vid)];
+
+    *th_lo = FIELD_DP32(*th_lo, SUPPLY0_TH_LOWER, VAL_RO, scale);
+    *th_hi = FIELD_DP32(*th_hi, SUPPLY0_TH_UPPER, VAL_RO, scale);
+
+    if (volt < mfp19_int(*th_lo) || volt > mfp19_int(*th_hi)) {
+        pmc_sysmon_volt_set_alarm(s, vid);
+    } else {
+        pmc_sysmon_volt_clear_alarm(s, vid);
+    }
+}
+
+static void pmc_sysmon_volt_en_avg_reg_postw(RegisterInfo *reg, uint64_t val64)
+{
+    PMCSysMon *s = PMC_SYSMON(reg->opaque);
+    unsigned nr = reg->access->addr / 4;
+    uint32_t changed = s->reg_prev_value ^ val64;
+
+    unsigned vid;
+
+    for (vid = CHANNEL_ID(R_EN_AVG_REG0, nr); changed; changed >>= 1, vid++) {
+        if (changed & 1) {
+            pmc_sysmon_volt_reset_avg(s, vid);
+        }
+    }
+}
+
+static void pmc_sysmon_alarm_reg_postw(RegisterInfo *reg, uint64_t val64)
+{
+    PMCSysMon *s = PMC_SYSMON(reg->opaque);
+    uint32_t changed = s->reg_prev_value ^ val64;
+    hwaddr addr = reg->access->addr;
+    unsigned nr, vid;
+
+    if (!changed) {
+        return;
+    }
+
+    assert(addr >= A_ALARM_REG0 && addr <= A_ALARM_REG4);
+    nr = (addr - A_ALARM_REG0) / 4;
+
+    vid = nr * 32;
+    do {
+        if (changed & 1) {
+            pmc_sysmon_volt_set_alarm(s, vid);
+        }
+
+        vid++;
+        changed >>= 1;
+    } while (changed);
 }
 
 static uint64_t reg_itr_prew(RegisterInfo *reg, uint64_t val64)
@@ -3304,10 +4221,131 @@ static uint64_t reg_ier0_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
+static uint64_t pmc_sysmon_pcsr_control_prew(RegisterInfo *reg, uint64_t val64)
+{
+    PMCSysMon *s = PMC_SYSMON(reg->opaque);
+    uint32_t enb_mask = s->regs[R_REG_PCSR_MASK];
+    uint32_t val;
+
+    /* Disabled bits cannot be updated */
+    val = ~enb_mask & s->regs[R_REG_PCSR_CONTROL];
+
+    /* Inject modifiable bits */
+    val |= enb_mask & val64;
+
+    /* Defer control behavior to postw for TEST_SAFE enforcement */
+    return val;
+}
+
+static void pmc_sysmon_pcsr_control_postw(RegisterInfo *reg, uint64_t val64)
+{
+    PMCSysMon *s = PMC_SYSMON(reg->opaque);
+
+    s->regs[R_REG_PCSR_MASK] = 0; /* mask cleared on any write to control */
+
+    if (ARRAY_FIELD_EX32(s->regs, REG_PCSR_CONTROL, TEST_SAFE)) {
+        return; /* Skip control if under test */
+    }
+
+    return;
+}
+
+static void pmc_sysmon_config0_postw(RegisterInfo *reg, uint64_t val64)
+{
+    PMCSysMon *s = PMC_SYSMON(reg->opaque);
+    uint32_t changed = s->reg_prev_value ^ val64;
+
+    /* Issue warning for illegal values */
+    switch (ARRAY_FIELD_EX32(s->regs, CONFIG0, TEMP_AVERAGE)) {
+    case 0:
+    case 1:
+    case 2:
+    case 4:
+    case 8:
+        break;
+    default:
+        warn_report("%s: CONFIG0.temp_average:%u: invalid value!",
+                    object_get_canonical_path(OBJECT(s)), (uint32_t)val64);
+    }
+
+    switch (ARRAY_FIELD_EX32(s->regs, CONFIG0, AVERAGE)) {
+    case 0:
+    case 1:
+    case 2:
+    case 4:
+    case 8:
+        break;
+    default:
+        warn_report("%s: CONFIG0.average:%u: invalid value!",
+                    object_get_canonical_path(OBJECT(s)), (uint32_t)val64);
+    }
+
+    /* Re-compare if temp lower-bound source changed */
+    if (FIELD_EX32(changed, CONFIG0, RESERVED2)) {
+        pmc_sysmon_temp_update_alarms(s);
+    }
+
+    /* Reset averaging if config changed */
+    if (FIELD_EX32(changed, CONFIG0, TEMP_AVERAGE)) {
+        unsigned tid;
+
+        for (tid = 0; tid < R_TEMP_SAT_COUNT; tid++) {
+            pmc_sysmon_temp_sat_reset_avg(s, tid);
+        }
+    }
+    if (FIELD_EX32(changed, CONFIG0, AVERAGE)) {
+        unsigned vid;
+
+        for (vid = 0; vid < R_SUPPLY_COUNT; vid++) {
+            pmc_sysmon_volt_reset_avg(s, vid);
+        }
+    }
+}
+
+static void pmc_sysmon_status_reset_postw(RegisterInfo *reg, uint64_t val64)
+{
+    PMCSysMon *s = PMC_SYSMON(reg->opaque);
+
+    if (ARRAY_FIELD_EX32(s->regs, STATUS_RESET, SUPPLY)) {
+        pmc_sysmon_volt_reset_min_max(s);
+    }
+
+    if (ARRAY_FIELD_EX32(s->regs, STATUS_RESET, DEVICE_TEMP)) {
+        pmc_sysmon_temp_reset_min_max(s);
+    }
+}
+
+static void pmc_sysmon_status_enable_postw(RegisterInfo *reg, uint64_t val64)
+{
+    PMCSysMon *s = PMC_SYSMON(reg->opaque);
+    unsigned nr;
+
+    /* Disable also resets counters */
+    if (!ARRAY_FIELD_EX32(s->regs, STATUS_ENABLE, PACKETS)) {
+        for (nr = R_AXI_PACKETS0; nr <= R_AXI_PACKETS2; nr++) {
+            s->regs[nr] = 0;
+        }
+        for (nr = R_MEAS_PACKETS0; nr <= R_MEAS_PACKETS4; nr++) {
+            s->regs[nr] = 0;
+        }
+    }
+}
+
+static uint64_t pmc_sysmon_save_prev_value_prew(RegisterInfo *reg, uint64_t val)
+{
+    /* Capture pre-existing value for detecting change in post-write */
+    PMCSysMon *s = PMC_SYSMON(reg->opaque);
+
+    s->reg_prev_value = s->regs[reg->access->addr / 4];
+    return val;
+}
+
 static const RegisterAccessInfo pmc_sysmon_regs_info[] = {
     {   .name = "REG_PCSR_MASK",  .addr = A_REG_PCSR_MASK,
     },{ .name = "REG_PCSR_CONTROL",  .addr = A_REG_PCSR_CONTROL,
         .reset = 0x1fe,
+        .pre_write = pmc_sysmon_pcsr_control_prew,
+        .post_write = pmc_sysmon_pcsr_control_postw,
     },{ .name = "REG_PCSR_STATUS",  .addr = A_REG_PCSR_STATUS,
         .reset = 0x1,
         .rsvd = 0xffffc000,
@@ -3319,6 +4357,7 @@ static const RegisterAccessInfo pmc_sysmon_regs_info[] = {
         .pre_write = reg_itr_prew,
     },{ .name = "REG_ISR",  .addr = A_REG_ISR,
         .w1c = 0xffffffff,
+        .pre_write = reg_isr_prew,
         .post_write = reg_isr_postw,
     },{ .name = "REG_IMR0",  .addr = A_REG_IMR0,
         .reset = 0xffffffff,
@@ -3340,6 +4379,8 @@ static const RegisterAccessInfo pmc_sysmon_regs_info[] = {
     },{ .name = "CONFIG0",  .addr = A_CONFIG0,
         .rsvd = 0xf03c0000,
         .ro = 0x3c0000,
+        .pre_write = pmc_sysmon_save_prev_value_prew,
+        .post_write = pmc_sysmon_config0_postw,
     },{ .name = "TOKEN_MNGR",  .addr = A_TOKEN_MNGR,
         .rsvd = 0xffe00000,
     },{ .name = "VREF_SSC_COUNT1",  .addr = A_VREF_SSC_COUNT1,
@@ -5009,11 +6050,23 @@ static const RegisterAccessInfo pmc_sysmon_regs_info[] = {
         .rsvd = 0xfff80000,
         .ro = 0x7ffff,
     },{ .name = "ALARM_REG0",  .addr = A_ALARM_REG0,
+        .pre_write = pmc_sysmon_save_prev_value_prew,
+        .post_write = pmc_sysmon_alarm_reg_postw,
     },{ .name = "ALARM_REG1",  .addr = A_ALARM_REG1,
+        .pre_write = pmc_sysmon_save_prev_value_prew,
+        .post_write = pmc_sysmon_alarm_reg_postw,
     },{ .name = "ALARM_REG2",  .addr = A_ALARM_REG2,
+        .pre_write = pmc_sysmon_save_prev_value_prew,
+        .post_write = pmc_sysmon_alarm_reg_postw,
     },{ .name = "ALARM_REG3",  .addr = A_ALARM_REG3,
+        .pre_write = pmc_sysmon_save_prev_value_prew,
+        .post_write = pmc_sysmon_alarm_reg_postw,
     },{ .name = "ALARM_REG4",  .addr = A_ALARM_REG4,
+        .pre_write = pmc_sysmon_save_prev_value_prew,
+        .post_write = pmc_sysmon_alarm_reg_postw,
     },{ .name = "EN_AVG_REG0",  .addr = A_EN_AVG_REG0,
+        .pre_write = pmc_sysmon_save_prev_value_prew,
+        .post_write = pmc_sysmon_volt_en_avg_reg_postw,
     },{ .name = "EN_AVG_REG1",  .addr = A_EN_AVG_REG1,
     },{ .name = "EN_AVG_REG2",  .addr = A_EN_AVG_REG2,
     },{ .name = "EN_AVG_REG3",  .addr = A_EN_AVG_REG3,
@@ -5021,15 +6074,19 @@ static const RegisterAccessInfo pmc_sysmon_regs_info[] = {
     },{ .name = "DEVICE_TEMP_TH_LOWER",  .addr = A_DEVICE_TEMP_TH_LOWER,
         .reset = 0x8000,
         .rsvd = 0xffff0000,
+        .post_write = pmc_sysmon_temp_dev_th_postw,
     },{ .name = "DEVICE_TEMP_TH_UPPER",  .addr = A_DEVICE_TEMP_TH_UPPER,
         .reset = 0x7fff,
         .rsvd = 0xffff0000,
+        .post_write = pmc_sysmon_temp_dev_th_postw,
     },{ .name = "OT_TEMP_TH_LOWER",  .addr = A_OT_TEMP_TH_LOWER,
         .reset = 0x8000,
+        .post_write = pmc_sysmon_temp_ot_th_postw,
         .rsvd = 0xffff0000,
     },{ .name = "OT_TEMP_TH_UPPER",  .addr = A_OT_TEMP_TH_UPPER,
         .reset = 0x3e80,
         .rsvd = 0xffff0000,
+        .post_write = pmc_sysmon_temp_ot_th_postw,
     },{ .name = "SUPPLY0_TH_LOWER",  .addr = A_SUPPLY0_TH_LOWER,
         .rsvd = 0xfff80000,
         .ro = 0x70000,
@@ -5993,18 +7050,22 @@ static const RegisterAccessInfo pmc_sysmon_regs_info[] = {
     },{ .name = "NEW_DATA_INT_SRC",  .addr = A_NEW_DATA_INT_SRC,
     },{ .name = "ALARM_CONFIG",  .addr = A_ALARM_CONFIG,
         .rsvd = 0xfffffffc,
+        .pre_write = pmc_sysmon_save_prev_value_prew,
+        .post_write = pmc_sysmon_temp_alarm_config_postw,
     },{ .name = "I2C_STATUS",  .addr = A_I2C_STATUS,
         .ro = 0x3,
     },{ .name = "DEVICE_TEMP_MIN_MIN",  .addr = A_DEVICE_TEMP_MIN_MIN,
         .reset = 0x7fff,
         .rsvd = 0xffff0000,
         .ro = 0xffff,
+        .post_read = pmc_sysmon_temp_min_min_postr,
     },{ .name = "DEVICE_TEMP_MAX_MAX",  .addr = A_DEVICE_TEMP_MAX_MAX,
         .reset = 0x8000,
         .rsvd = 0xffff0000,
         .ro = 0xffff,
     },{ .name = "STATUS_RESET",  .addr = A_STATUS_RESET,
         .rsvd = 0xfffffffc,
+        .post_write = pmc_sysmon_status_reset_postw,
     },{ .name = "GREF_STATUS",  .addr = A_GREF_STATUS,
         .rsvd = 0xffffffe0,
         .ro = 0x1f,
@@ -6890,7 +7951,11 @@ static const RegisterAccessInfo pmc_sysmon_regs_info[] = {
         .rsvd = 0xffff0000,
         .ro = 0xffff,
     },{ .name = "EN_AVG_REG8",  .addr = A_EN_AVG_REG8,
+        .pre_write = pmc_sysmon_save_prev_value_prew,
+        .post_write = pmc_sysmon_temp_en_avg_reg_postw,
     },{ .name = "EN_AVG_REG9",  .addr = A_EN_AVG_REG9,
+        .pre_write = pmc_sysmon_save_prev_value_prew,
+        .post_write = pmc_sysmon_temp_en_avg_reg_postw,
     },{ .name = "SECURE_EFUSE_RDATA_LOW",  .addr = A_SECURE_EFUSE_RDATA_LOW,
         .ro = 0xffffffff,
     },{ .name = "SECURE_EFUSE_RDATA_HIGH",  .addr = A_SECURE_EFUSE_RDATA_HIGH,
@@ -6924,10 +7989,48 @@ static const RegisterAccessInfo pmc_sysmon_regs_info[] = {
         .ro = 0x3ff,
     },{ .name = "STATUS_ENABLE",  .addr = A_STATUS_ENABLE,
         .rsvd = 0xfffffffe,
+        .post_write = pmc_sysmon_status_enable_postw,
     },{ .name = "SSC_MEASURE_IF",  .addr = A_SSC_MEASURE_IF,
         .rsvd = 0xe0000000,
     }
 };
+
+static void pmc_sysmon_reg_write(void *opaque, hwaddr addr, uint64_t data,
+                                 unsigned size)
+{
+    RegisterInfoArray *reg_array = opaque;
+    PMCSysMon *s = PMC_SYSMON(reg_array->r[0]->opaque);
+    unsigned nr;
+
+    /* Enforce write-lock protection */
+    if ((addr == A_REG_PCSR_LOCK) && size == 4) {
+        if (data == R_REG_PCSR_LOCK_UNLOCK_CODE) {
+            data = 0;
+        } else {
+            data = R_REG_PCSR_LOCK_STATE_MASK;
+        }
+    } else if (ARRAY_FIELD_EX32(s->regs, REG_PCSR_LOCK, STATE)) {
+        info_report("%s: addr:0x%x: PCSR_LOCK engaged! Write discarded!",
+                    object_get_canonical_path(OBJECT(s)), (uint32_t)addr);
+        return;
+    }
+
+    register_write_memory(opaque, addr, data, size);
+
+    /*
+     * Handle post-write action in a maintainable way for the large
+     * number of registers with identical post-write behavior.
+     */
+    nr = addr / 4;
+    switch (nr) {
+    case R_SUPPLY0_TH_LOWER ... R_SUPPLY159_TH_LOWER:
+        pmc_sysmon_volt_set_alarm(s, (nr - R_SUPPLY0_TH_LOWER));
+        break;
+    case R_SUPPLY0_TH_UPPER ... R_SUPPLY159_TH_UPPER:
+        pmc_sysmon_volt_set_alarm(s, (nr - R_SUPPLY0_TH_UPPER));
+        break;
+    }
+}
 
 static void pmc_sysmon_reset(DeviceState *dev)
 {
@@ -6943,7 +8046,7 @@ static void pmc_sysmon_reset(DeviceState *dev)
 
 static const MemoryRegionOps pmc_sysmon_ops = {
     .read = register_read_memory,
-    .write = register_write_memory,
+    .write = pmc_sysmon_reg_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
@@ -6995,6 +8098,9 @@ static void pmc_sysmon_class_init(ObjectClass *klass, void *data)
     dc->reset = pmc_sysmon_reset;
     dc->realize = pmc_sysmon_realize;
     dc->vmsd = &vmstate_pmc_sysmon;
+
+    /* Sanity-check number format conversion */
+    assert_number_formats();
 }
 
 static const TypeInfo pmc_sysmon_info = {
