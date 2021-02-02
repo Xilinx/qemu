@@ -1354,11 +1354,9 @@ void arm_cpu_post_init(Object *obj)
     }
 
 #ifndef CONFIG_USER_ONLY
-    if (arm_feature(&cpu->env, ARM_FEATURE_V7)) {
-        object_property_add(obj, "memattr-secure", "bool",
-                            NULL, arm_cpu_set_memattr_secure,
-                            NULL, NULL);
-    }
+    object_property_add(obj, "memattr-secure", "bool",
+                        NULL, arm_cpu_set_memattr_secure,
+                        NULL, NULL);
 #endif
 
 #ifndef CONFIG_USER_ONLY
