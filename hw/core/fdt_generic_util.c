@@ -1072,6 +1072,28 @@ static void fdt_init_qdev_array_prop(Object *obj, QEMUDevtreeProp *prop)
     }
 }
 
+#ifdef _WIN32
+static void fdt_prop_override(char *node_path,
+                              QEMUDevtreeProp *props,
+                              QEMUDevtreeProp *prop,
+                              const char *prefix,
+                              const char *propname)
+{
+    char *pfxPropname = g_strdup_printf("%s-%s", prefix, propname);
+    QEMUDevtreeProp *pp;
+
+    pp = qemu_devtree_prop_search(props, pfxPropname);
+    if (pp) {
+        g_free(prop->value);
+        prop->len = pp->len;
+        prop->value = g_memdup(pp->value, pp->len);
+        DB_PRINT_NP(1, "Found %s property match: %s\n",
+                    prefix, pfxPropname);
+    }
+    g_free(pfxPropname);
+}
+#endif
+
 static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
 {
     Object *dev, *parent;
@@ -1190,17 +1212,7 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
         void *val;
         ObjectProperty *p = NULL;
 #ifdef _WIN32
-        QEMUDevtreeProp *wp;
-        char *winPropname = g_strdup_printf("windows-%s", propname);
-        wp = qemu_devtree_prop_search(props, winPropname);
-        if (wp) {
-            g_free(prop->value);
-            prop->len = wp->len;
-            prop->value = g_memdup(wp->value, wp->len);
-            DB_PRINT_NP(1, "Found windows property match: %s\n",
-                        winPropname);
-        }
-        g_free(winPropname);
+        fdt_prop_override(node_path, props, prop, "windows", propname);
 #endif
 
         val = prop->value;
