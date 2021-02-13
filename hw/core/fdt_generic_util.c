@@ -1072,7 +1072,6 @@ static void fdt_init_qdev_array_prop(Object *obj, QEMUDevtreeProp *prop)
     }
 }
 
-#ifdef _WIN32
 static void fdt_prop_override(char *node_path,
                               QEMUDevtreeProp *props,
                               QEMUDevtreeProp *prop,
@@ -1092,12 +1091,12 @@ static void fdt_prop_override(char *node_path,
     }
     g_free(pfxPropname);
 }
-#endif
 
 static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
 {
     Object *dev, *parent;
     char *dev_type = NULL;
+    bool is_direct_linux;
     int is_intc;
     Error *errp = NULL;
     int i, j;
@@ -1116,6 +1115,10 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
         return 1;
     }
     DB_PRINT_NP(1, "matched compat %s\n", compat);
+
+    /* Are we doing a direct Linux boot? */
+    is_direct_linux = object_property_get_bool(OBJECT(qdev_get_machine()),
+                                               "linux", NULL);
 
     /* Do this super early so fdt_generic_num_cpus is correct ASAP */
     if (object_dynamic_cast(dev, TYPE_CPU)) {
@@ -1214,6 +1217,14 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
 #ifdef _WIN32
         fdt_prop_override(node_path, props, prop, "windows", propname);
 #endif
+        if (is_direct_linux) {
+            /*
+             * We use a short lnx name because device-tree props have a max
+             * length of 30 characters. We already break that limit if using
+             * direct-linux-start-powered-off, for example.
+             */
+            fdt_prop_override(node_path, props, prop, "direct-lnx", propname);
+        }
 
         val = prop->value;
         len = prop->len;
