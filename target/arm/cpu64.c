@@ -35,6 +35,130 @@
 
 
 #ifndef CONFIG_USER_ONLY
+static uint64_t dsu_clustercfr_read(CPUARMState *env, const ARMCPRegInfo *ri)
+{
+    ARMCPU *cpu = env_archcpu(env);
+    uint64_t r;
+
+    r = cpu->core_count - 1;
+
+    /* Have L3, SCU L3, ACP and Periph port.  */
+    r |= 1 << 12;
+    r |= 1 << 11;
+    r |= 1 << 8;
+    r |= 1 << 4;
+
+    /* Split mode only.  */
+    r |= 1 << 30;
+
+    /* One thread per core.  */
+    r |= (cpu->core_count - 1) << 24;
+
+    return r;
+}
+
+static uint64_t dsu_clusterpwrstat_read(CPUARMState *env,
+                                        const ARMCPRegInfo *ri)
+{
+    /* FIXME: Do we need to wire these to power controller?  */
+    return env->cp15.dsu.clusterpwrdn | 0xf0;
+}
+
+static void dsu_clusterectrl_write(CPUARMState *env, const ARMCPRegInfo *ri,
+                                   uint64_t value)
+{
+    env->cp15.dsu.clusterectrl = value & 0x479f;
+}
+
+static void dsu_clusterpwrctrl_write(CPUARMState *env, const ARMCPRegInfo *ri,
+                                     uint64_t value)
+{
+    env->cp15.dsu.clusterpwrctrl = value & 0xf7;
+}
+
+static void dsu_clusterpwrdn_write(CPUARMState *env, const ARMCPRegInfo *ri,
+                                   uint64_t value)
+{
+    env->cp15.dsu.clusterpwrdn = value & 0x3;
+}
+
+static void dsu_clusterthreadsidovr_write(CPUARMState *env,
+                                          const ARMCPRegInfo *ri,
+                                          uint64_t value)
+{
+    env->cp15.dsu.clusterthreadsidovr = value & 0x70007;
+}
+#endif
+
+static const ARMCPRegInfo dsu_cp_reginfo[] = {
+#ifndef CONFIG_USER_ONLY
+    { .name = "CLUSTERCFR_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 3, .opc2 = 0,
+      .type = ARM_CP_NO_RAW, .access = PL1_R, .readfn = dsu_clustercfr_read },
+    { .name = "CLUSTERIDR_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 3, .opc2 = 1,
+      .type = ARM_CP_CONST, .access = PL1_R, .resetvalue = 0x11 }, /* r1p1 */
+    { .name = "CLUSTERREVIDR_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 3, .opc2 = 2,
+      .type = ARM_CP_CONST, .access = PL1_R },
+    { .name = "CLUSTERACTRL_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 3, .opc2 = 3,
+      .type = ARM_CP_NO_RAW, .access = PL1_RW,
+      .readfn = arm_cp_read_zero, .writefn = arm_cp_write_ignore },
+    { .name = "CLUSTERECTRL_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 3, .opc2 = 4,
+      .access = PL1_RW, .writefn = dsu_clusterectrl_write,
+      .fieldoffset = offsetof(CPUARMState, cp15.dsu.clusterectrl) },
+    { .name = "CLUSTERPWRCTRL_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 3, .opc2 = 5,
+      .access = PL1_RW, .writefn = dsu_clusterpwrctrl_write,
+      .fieldoffset = offsetof(CPUARMState, cp15.dsu.clusterpwrctrl) },
+    { .name = "CLUSTERPWRDN_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 3, .opc2 = 6,
+      .access = PL1_RW, .writefn = dsu_clusterpwrdn_write,
+      .fieldoffset = offsetof(CPUARMState, cp15.dsu.clusterpwrdn) },
+    { .name = "CLUSTERPWRSTAT_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 3, .opc2 = 7,
+      .type = ARM_CP_NO_RAW, .access = PL1_R,
+      .readfn = dsu_clusterpwrstat_read },
+
+    { .name = "CLUSTERTHREADSID_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 4, .opc2 = 0,
+      .type = ARM_CP_NO_RAW, .access = PL1_RW,
+      .readfn = arm_cp_read_zero, .writefn = arm_cp_write_ignore },
+    { .name = "CLUSTERACPSID_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 4, .opc2 = 1,
+      .type = ARM_CP_NO_RAW, .access = PL1_RW,
+      .readfn = arm_cp_read_zero, .writefn = arm_cp_write_ignore },
+    { .name = "CLUSTERSTASHSID_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 4, .opc2 = 2,
+      .type = ARM_CP_NO_RAW, .access = PL1_RW,
+      .readfn = arm_cp_read_zero, .writefn = arm_cp_write_ignore },
+    { .name = "CLUSTERPARTCR_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 4, .opc2 = 3,
+      .access = PL1_RW,
+      .fieldoffset = offsetof(CPUARMState, cp15.dsu.clusterpartcr) },
+    { .name = "CLUSTERBUSQOS_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 4, .opc2 = 4,
+      .access = PL1_RW,
+      .fieldoffset = offsetof(CPUARMState, cp15.dsu.clusterbusqos) },
+    { .name = "CLUSTERL3HIT_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 4, .opc2 = 5,
+      .type = ARM_CP_NO_RAW, .access = PL1_RW,
+      .readfn = arm_cp_read_zero, .writefn = arm_cp_write_ignore },
+    { .name = "CLUSTERL3MISS_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 4, .opc2 = 6,
+      .type = ARM_CP_NO_RAW, .access = PL1_RW,
+      .readfn = arm_cp_read_zero, .writefn = arm_cp_write_ignore },
+    { .name = "CLUSTERTHREADSIDOVR_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 4, .opc2 = 7,
+      .access = PL1_RW, .writefn = dsu_clusterthreadsidovr_write,
+      .fieldoffset = offsetof(CPUARMState, cp15.dsu.clusterthreadsidovr) },
+#endif
+    REGINFO_SENTINEL
+};
+
+#ifndef CONFIG_USER_ONLY
 static uint64_t a57_a53_l2ctlr_read(CPUARMState *env, const ARMCPRegInfo *ri)
 {
     ARMCPU *cpu = env_archcpu(env);
@@ -357,6 +481,7 @@ static void aarch64_a78_initfn(Object *obj)
     cpu->gic_vpribits = 5;
     cpu->gic_vprebits = 5;
     define_arm_cp_regs(cpu, cortex_a72_a57_a53_cp_reginfo);
+    define_arm_cp_regs(cpu, dsu_cp_reginfo);
 
     /* Xilinx FIXUPs.  */
     /* These indicate the BP hardening and KPTI aren't needed.  */

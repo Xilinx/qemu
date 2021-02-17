@@ -526,6 +526,16 @@ typedef struct CPUARMState {
         uint64_t tfsr_el[4]; /* tfsre0_el1 is index 0.  */
         uint64_t gcr_el1;
         uint64_t rgsr_el1;
+
+        /* DynamIQ Shared Unit (DSU) Registers.  */
+        struct {
+            uint64_t clusterectrl;
+            uint64_t clusterpwrctrl;
+            uint64_t clusterpwrdn;
+            uint64_t clusterpartcr;
+            uint64_t clusterbusqos;
+            uint64_t clusterthreadsidovr;
+        } dsu;
     } cp15;
 
     struct {
