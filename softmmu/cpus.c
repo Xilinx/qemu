@@ -216,7 +216,7 @@ static int64_t cpu_get_icount_raw_locked(void)
 
     if (cpu && cpu->running) {
         if (!cpu->can_do_io) {
-            qemu_log("Bad icount read\n");
+            qemu_log_mask(LOG_UNIMP, "Bad icount read\n");
         }
         /* Take into account what has run */
         cpu_update_icount_locked(cpu);
