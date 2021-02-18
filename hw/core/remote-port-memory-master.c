@@ -15,6 +15,7 @@
 #include "hw/sysbus.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
+#include "trace.h"
 
 #include "hw/remote-port-proto.h"
 #include "hw/remote-port.h"
@@ -87,6 +88,9 @@ void rp_mm_access(RemotePort *rp, uint32_t rp_dev,
     len = rp_encode_busaccess(peer, &pay.pkt, &in);
     len += tr->rw ? tr->size : 0;
 
+    trace_remote_port_memory_master_tx_busaccess(rp_cmd_to_string(in.cmd),
+        in.id, in.flags, in.dev, in.addr, in.size, in.attr);
+
     rp_rsp_mutex_lock(rp);
     rp_write(rp, (void *) &pay, len);
 
@@ -107,6 +111,11 @@ void rp_mm_access(RemotePort *rp, uint32_t rp_dev,
             memcpy(tr->data.p8, data, tr->size);
         }
     }
+
+    trace_remote_port_memory_master_rx_busaccess(
+        rp_cmd_to_string(rsp->pkt->hdr.cmd), rsp->pkt->hdr.id,
+        rsp->pkt->hdr.flags, rsp->pkt->hdr.dev, rsp->pkt->busaccess.addr,
+        rsp->pkt->busaccess.len, rsp->pkt->busaccess.attributes);
 
     rp_resp_slot_done(rp, rsp_slot);
     rp_rsp_mutex_unlock(rp);
