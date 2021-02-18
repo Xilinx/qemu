@@ -19,6 +19,7 @@
 #include "hw/sysbus.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
+#include "trace.h"
 
 #include "hw/remote-port-proto.h"
 #include "hw/remote-port-device.h"
@@ -90,6 +91,10 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
         qemu_hexdump((const char *)data, stderr, ": write: ",
                      pkt->busaccess.len);
     }
+    trace_remote_port_memory_slave_rx_busaccess(rp_cmd_to_string(pkt->hdr.cmd),
+        pkt->hdr.id, pkt->hdr.flags, pkt->hdr.dev, pkt->busaccess.addr,
+        pkt->busaccess.len, pkt->busaccess.attributes);
+
     s->attr.secure = !!(pkt->busaccess.attributes & RP_BUS_ATTR_SECURE);
     s->attr.requester_id = pkt->busaccess.master_id;
 
@@ -114,6 +119,9 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
     enclen = rp_encode_busaccess(s->peer, &s->rsp.pkt->busaccess_ext_base,
                                  &in);
     assert(enclen <= pktlen);
+
+    trace_remote_port_memory_slave_tx_busaccess(rp_cmd_to_string(in.cmd),
+        in.id, in.flags, in.dev, in.addr, in.size, in.attr);
 
     rp_write(s->rp, (void *)s->rsp.pkt, enclen);
 }
