@@ -33,6 +33,7 @@
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
 #include "hw/remote-port-device.h"
+#include "trace.h"
 
 #ifndef REMOTE_PORT_STREAM_ERR_DEBUG
 #define REMOTE_PORT_STREAM_ERR_DEBUG 0
@@ -88,6 +89,8 @@ static void rp_stream_notify(void *opaque)
                                      &rsp.pkt->busaccess_ext_base,
                                      &in);
         assert(enclen <= pktlen);
+        trace_remote_port_stream_tx_busaccess(rp_cmd_to_string(in.cmd),
+            in.id, in.flags, in.dev, in.addr, in.size, in.attr);
 
         rp_write(s->rp, (void *)rsp.pkt, pktlen);
     }
@@ -96,6 +99,10 @@ static void rp_stream_notify(void *opaque)
 static void rp_stream_write(RemotePortDevice *obj, struct rp_pkt *pkt)
 {
     RemotePortStream *s = REMOTE_PORT_STREAM(obj);
+
+    trace_remote_port_stream_rx_busaccess(rp_cmd_to_string(pkt->hdr.cmd),
+        pkt->hdr.id, pkt->hdr.flags, pkt->hdr.dev, pkt->busaccess.addr,
+        pkt->busaccess.len, pkt->busaccess.attributes);
 
     assert(pkt->busaccess.width == 0);
     assert(pkt->busaccess.stream_width == pkt->busaccess.len);
@@ -154,11 +161,20 @@ static size_t rp_stream_stream_push(StreamSlave *obj, uint8_t *buf,
     in.stream_width = s->stream_width;
     enclen = rp_encode_busaccess(rp_get_peer(s->rp), &pkt, &in);
 
+    trace_remote_port_stream_tx_busaccess(rp_cmd_to_string(in.cmd),
+        in.id, in.flags, in.dev, in.addr, in.size, in.attr);
+
     rp_rsp_mutex_lock(s->rp);
     rp_write(s->rp, (void *) &pkt, enclen);
     rp_write(s->rp, buf, len);
     rsp = rp_wait_resp(s->rp);
     assert(rsp.pkt->hdr.id == be32_to_cpu(pkt.hdr.id));
+
+    trace_remote_port_stream_rx_busaccess(
+        rp_cmd_to_string(rsp.pkt->hdr.cmd), rsp.pkt->hdr.id,
+        rsp.pkt->hdr.flags, rsp.pkt->hdr.dev, rsp.pkt->busaccess.addr,
+        rsp.pkt->busaccess.len, rsp.pkt->busaccess.attributes);
+
     rp_dpkt_invalidate(&rsp);
     rp_rsp_mutex_unlock(s->rp);
     rp_restart_sync_timer(s->rp);
