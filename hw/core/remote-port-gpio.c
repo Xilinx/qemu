@@ -16,6 +16,7 @@
 #include "hw/qdev-core.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
+#include "trace.h"
 
 #include "hw/fdt_generic_util.h"
 
@@ -46,6 +47,8 @@ static void rp_gpio_handler(void *opaque, int irq, int level)
     len = rp_encode_interrupt_f(id, s->rp_dev, &pkt.interrupt, clk,
                               irq, 0, level, flags);
 
+    trace_remote_port_gpio_tx_interrupt(id, flags, s->rp_dev, 0, irq, level);
+
     if (s->peer->caps.wire_posted_updates && !s->posted_updates) {
         rp_rsp_mutex_lock(s->rp);
     }
@@ -56,9 +59,15 @@ static void rp_gpio_handler(void *opaque, int irq, int level)
      * not respond.  */
     if (s->peer->caps.wire_posted_updates && !s->posted_updates) {
         RemotePortRespSlot *rsp_slot;
+        struct rp_pkt_interrupt *intr;
 
         rsp_slot = rp_dev_wait_resp(s->rp, s->rp_dev, id);
         assert(rsp_slot->rsp.pkt->hdr.id == id);
+
+        intr = &rsp_slot->rsp.pkt->interrupt;
+        trace_remote_port_gpio_rx_interrupt(intr->hdr.id, intr->hdr.flags,
+            intr->hdr.dev, intr->vector, intr->line, intr->val);
+
         rp_resp_slot_done(s->rp, rsp_slot);
         rp_rsp_mutex_unlock(s->rp);
     }
@@ -67,6 +76,10 @@ static void rp_gpio_handler(void *opaque, int irq, int level)
 static void rp_gpio_interrupt(RemotePortDevice *rpdev, struct rp_pkt *pkt)
 {
     RemotePortGPIO *s = REMOTE_PORT_GPIO(rpdev);
+
+    trace_remote_port_gpio_rx_interrupt(pkt->hdr.id, pkt->hdr.flags,
+        pkt->hdr.dev, pkt->interrupt.vector, pkt->interrupt.line,
+        pkt->interrupt.val);
 
     qemu_set_irq(s->gpio_out[pkt->interrupt.line], pkt->interrupt.val);
 
@@ -84,6 +97,11 @@ static void rp_gpio_interrupt(RemotePortDevice *rpdev, struct rp_pkt *pkt)
                                     pkt->interrupt.vector,
                                     pkt->interrupt.val,
                                     pkt->hdr.flags | RP_PKT_FLAGS_response);
+
+        trace_remote_port_gpio_tx_interrupt(pkt->hdr.id,
+            pkt->hdr.flags | RP_PKT_FLAGS_response, pkt->hdr.dev,
+            pkt->interrupt.vector, pkt->interrupt.line, pkt->interrupt.val);
+
         rp_write(s->rp, (void *)rsp.pkt, len);
     }
 }
