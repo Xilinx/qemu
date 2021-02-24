@@ -207,6 +207,15 @@ static void resettable_phase_exit(Object *obj, void *opaque, ResetType type)
             rc->phases.exit(obj);
         }
         s->count = 0;
+    } else {
+        /*
+         * Xilinx: With resets being controlled by GPIOs, it's possible for a
+         * device to be held in reset by a GPIO then reset again by other means.
+         * The resettable API doesn't expect this, so we end up with a higher
+         * than expected count, and no way to call the device's enter/hold/exit
+         * reset functions with the extra reset count.
+         */
+        --s->count;
     }
     s->exit_phase_in_progress = false;
     trace_resettable_phase_exit_end(obj, obj_typename, s->count);

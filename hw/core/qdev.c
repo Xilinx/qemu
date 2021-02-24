@@ -1200,6 +1200,15 @@ static void device_phases_reset(DeviceState *dev)
 {
     ResettableClass *rc = RESETTABLE_GET_CLASS(dev);
 
+    /*
+     * Xilinx: Controlling resets through GPIOs means that we should check if a
+     * device is already held in reset by other means, instead of forcing it out
+     * of reset.
+     */
+    if (resettable_is_in_reset(OBJECT(dev))) {
+        return;
+    }
+
     if (rc->phases.enter) {
         rc->phases.enter(OBJECT(dev), RESET_TYPE_COLD);
     }
