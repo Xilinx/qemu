@@ -37,6 +37,7 @@
 #include "migration/vmstate.h"
 
 #include "hw/fdt_generic_util.h"
+#include "hw/qdev-core.h"
 
 //#define DEBUG_UNASSIGNED
 
@@ -561,6 +562,15 @@ static MemTxResult memory_region_write_with_attrs_accessor(MemoryRegion *mr,
     return mr->ops->write_with_attrs(mr->opaque, addr, tmp, size, attrs);
 }
 
+/* Xilinx: Checks qdev reset GPIO level */
+static bool memory_owner_is_in_reset(MemoryRegion *mr)
+{
+    if (object_dynamic_cast(mr->owner, TYPE_DEVICE)) {
+        return DEVICE(mr->owner)->reset_level;
+    }
+    return false;
+}
+
 static MemTxResult access_with_adjusted_size(hwaddr addr,
                                       uint64_t *value,
                                       unsigned size,
@@ -587,6 +597,18 @@ static MemTxResult access_with_adjusted_size(hwaddr addr,
     }
     if (!access_size_max) {
         access_size_max = 4;
+    }
+
+    /*
+     * Xilinx: If devices are held in reset, we should allow the access and warn
+     * the user of what they're doing.
+     * We allow the access to avoid breaking compatibility with flows that do
+     * not bring devices out of reset.
+     */
+    if (memory_owner_is_in_reset(mr)) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Accessing 0x%" HWADDR_PRIx" when "
+                      "held in reset.\n",
+                      object_get_canonical_path(OBJECT(mr->owner)), addr);
     }
 
     /* FIXME: support unaligned access? */
