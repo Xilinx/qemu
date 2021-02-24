@@ -1103,6 +1103,8 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
     QEMUDevtreeProp *prop, *props;
     char parent_node_path[DT_PATH_LENGTH];
     const FDTGenericGPIOSet *gpio_set = NULL;
+    /* Allocate a large number and assert if something goes over */
+    FDTGenericGPIOSet tmp_gpio_set[64];
     FDTGenericGPIOClass *fggc = NULL;
 
     if (!compat) {
@@ -1604,6 +1606,29 @@ exit_reg_parse:
     if (object_dynamic_cast(dev, TYPE_FDT_GENERIC_GPIO)) {
         fggc = FDT_GENERIC_GPIO_GET_CLASS(dev);
         gpio_set = fggc->client_gpios;
+
+        /*
+         * Add default GPIOs to the client GPIOs so the device has access to
+         * reset, power, and halt control.
+         */
+        if (gpio_set) {
+            size_t gpio_cnt = 0;
+            const FDTGenericGPIOSet *p_gpio;
+
+            for (p_gpio = gpio_set; p_gpio->names; p_gpio++) {
+                assert(gpio_cnt < ARRAY_SIZE(tmp_gpio_set));
+                tmp_gpio_set[gpio_cnt] = *p_gpio;
+                gpio_cnt++;
+            }
+
+            for (p_gpio = default_gpio_sets; p_gpio->names; p_gpio++) {
+                assert(gpio_cnt < ARRAY_SIZE(tmp_gpio_set));
+                tmp_gpio_set[gpio_cnt] = *p_gpio;
+                gpio_cnt++;
+            }
+
+            gpio_set = tmp_gpio_set;
+        }
     }
 
     if (!gpio_set) {
