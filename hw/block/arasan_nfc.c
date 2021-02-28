@@ -88,7 +88,7 @@ REG32(MEMORY_ADDR_2, 0x08)
 REG32(CMD, 0x0C)
     FIELD(CMD, CMD1, 0, 8)
     FIELD(CMD, CMD2, 8, 8)
-    FIELD(CMD, PAGE_SIZE, 23, 3)
+    FIELD(CMD, PAGE_SIZE_KEY, 23, 3)
     FIELD(CMD, DMA_EN, 26, 2)
     /* deviated from TRM name as its overly long and typod */
     FIELD(CMD, NUM_ADDR_CYCLES, 28, 3)
@@ -270,9 +270,8 @@ static void arasan_nfc_ecc_init(ArasanNFCState *s)
 
 static void arasan_nfc_ecc_digest(ArasanNFCState *s, uint8_t data)
 {
-    uint32_t page_size = arasan_nfc_page_size_lookup[ARRAY_FIELD_EX32(s->regs,
-                                                                      CMD,
-                                                                   PAGE_SIZE)];
+    unsigned page_size_key = ARRAY_FIELD_EX32(s->regs, CMD, PAGE_SIZE_KEY);
+    uint32_t page_size = arasan_nfc_page_size_lookup[page_size_key];
     int ecc_bytes_per_subpage = ARRAY_FIELD_EX32(s->regs, ECC, ECC_SIZE) /
                                 (page_size / ECC_CODEWORD_SIZE);
 
@@ -744,7 +743,7 @@ static const RegisterAccessInfo arasan_nfc_regs_info[] = {
             .post_write = arasan_nfc_update_state_pw,
     },{ .name = "CMD",                      .addr = A_CMD,
             .rsvd = R_CMD_RSVD,
-            .reset = 0x2 << R_CMD_PAGE_SIZE_SHIFT,
+            .reset = 0x2 << R_CMD_PAGE_SIZE_KEY_SHIFT,
     },{ .name = "Program",                  .addr = A_PGRAM,
             .rsvd = R_PGRAM_RSVD,
             .pre_write = r_program_pre_write,
