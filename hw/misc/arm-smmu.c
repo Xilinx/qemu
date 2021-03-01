@@ -91,8 +91,8 @@ REG32(SMMU_SCR1, 0x4)
     FIELD(SMMU_SCR1, GEFRO, 25, 1)
     FIELD(SMMU_SCR1, GASRAE, 24, 1)
     FIELD(SMMU_SCR1, NSNUMIRPTO, 16, 8)
-    FIELD(SMMU_SCR1, NSNUMSMRGO, 8, 6)
-    FIELD(SMMU_SCR1, NSNUMCBO, 0, 5)
+    FIELD(SMMU_SCR1, NSNUMSMRGO, 8, 8)
+    FIELD(SMMU_SCR1, NSNUMCBO, 0, 8)
 REG32(SMMU_SACR, 0x10)
     FIELD(SMMU_SACR, NORMALIZE, 27, 1)
     FIELD(SMMU_SACR, CACHE_LOCK, 26, 1)
@@ -2076,6 +2076,8 @@ static void smmu500_reset(DeviceState *dev)
     ARRAY_FIELD_DP32(s->regs, SMMU_SIDR0, NUMSMRG, s->cfg.num_smr);
     ARRAY_FIELD_DP32(s->regs, SMMU_SIDR1, NUMCB, s->cfg.num_cb);
     ARRAY_FIELD_DP32(s->regs, SMMU_SIDR1, NUMPAGENDXB, num_pages_log2 - 1);
+    ARRAY_FIELD_DP32(s->regs, SMMU_SCR1, NSNUMCBO, s->cfg.num_cb);
+    ARRAY_FIELD_DP32(s->regs, SMMU_SCR1, NSNUMSMRGO, s->cfg.num_smr);
     s->regs[R_SMMU_TBU_PWR_STATUS] = (1 << s->num_tbu) - 1;
 }
 
