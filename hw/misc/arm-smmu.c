@@ -1083,6 +1083,7 @@ struct SMMU {
         uint16_t num_smr;
         uint16_t num_cb;
         uint16_t num_pages;
+        uint8_t version;
     } cfg;
 
     RegisterAccessInfo *rai_smr;
@@ -2078,6 +2079,7 @@ static void smmu500_reset(DeviceState *dev)
     ARRAY_FIELD_DP32(s->regs, SMMU_SIDR1, NUMPAGENDXB, num_pages_log2 - 1);
     ARRAY_FIELD_DP32(s->regs, SMMU_SCR1, NSNUMCBO, s->cfg.num_cb);
     ARRAY_FIELD_DP32(s->regs, SMMU_SCR1, NSNUMSMRGO, s->cfg.num_smr);
+    s->regs[R_SMMU_SIDR7] = s->cfg.version;
     s->regs[R_SMMU_TBU_PWR_STATUS] = (1 << s->num_tbu) - 1;
 }
 
@@ -2320,6 +2322,7 @@ static Property smmu_properties[] = {
     DEFINE_PROP_UINT16("num-smr", SMMU, cfg.num_smr, 48),
     DEFINE_PROP_UINT16("num-cb", SMMU, cfg.num_cb, 16),
     DEFINE_PROP_UINT16("num-pages", SMMU, cfg.num_pages, 16),
+    DEFINE_PROP_UINT8("version", SMMU, cfg.version, 0x21),
     DEFINE_PROP_END_OF_LIST(),
 };
 
