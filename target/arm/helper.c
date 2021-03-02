@@ -3926,6 +3926,29 @@ static void pmsav7_rgnr_write(CPUARMState *env, const ARMCPRegInfo *ri,
     raw_write(env, ri, value);
 }
 
+static const ARMCPRegInfo pmsav8_cp_reginfo[] = {
+    /* Reset for all these registers is handled in arm_cpu_reset(),
+     * because the PMSAv8 is also used by M-profile CPUs, which do
+     * not register cpregs but still need the state to be reset.
+     */
+    { .name = "PRSEL", .cp = 15, .crn = 6, .opc1 = 0, .crm = 2, .opc2 = 1,
+      .access = PL1_RW, .type = ARM_CP_NO_RAW,
+      .fieldoffset = offsetof(CPUARMState, pmsav7.rnr[M_REG_NS]),
+      .writefn = pmsav7_rgnr_write,
+      .resetfn = arm_cp_reset_ignore },
+    { .name = "PRBAR", .cp = 15, .crn = 6, .opc1 = 0, .crm = 3, .opc2 = 0,
+      .access = PL1_RW, .type = ARM_CP_NO_RAW,
+      .fieldoffset = offsetof(CPUARMState, pmsav8.rbar),
+      .readfn = pmsav7_read, .writefn = pmsav7_write,
+      .resetfn = arm_cp_reset_ignore },
+    { .name = "PRLAR", .cp = 15, .crn = 6, .opc1 = 0, .crm = 3, .opc2 = 1,
+      .access = PL1_RW, .type = ARM_CP_NO_RAW,
+      .fieldoffset = offsetof(CPUARMState, pmsav8.rlar),
+      .readfn = pmsav7_read, .writefn = pmsav7_write,
+      .resetfn = arm_cp_reset_ignore },
+    REGINFO_SENTINEL
+};
+
 static const ARMCPRegInfo pmsav7_cp_reginfo[] = {
     /* Reset for all these registers is handled in arm_cpu_reset(),
      * because the PMSAv7 is also used by M-profile CPUs, which do
@@ -8348,7 +8371,10 @@ void register_cp_regs_for_features(ARMCPU *cpu)
     }
 
     if (arm_feature(env, ARM_FEATURE_PMSA)) {
-        if (arm_feature(env, ARM_FEATURE_V6)) {
+        if (arm_feature(env, ARM_FEATURE_V8)) {
+            define_arm_cp_regs(cpu, vmsa_pmsa_cp_reginfo);
+            define_arm_cp_regs(cpu, pmsav8_cp_reginfo);
+        } else if (arm_feature(env, ARM_FEATURE_V6)) {
             /* PMSAv6 not implemented */
             assert(arm_feature(env, ARM_FEATURE_V7));
             define_arm_cp_regs(cpu, vmsa_pmsa_cp_reginfo);
