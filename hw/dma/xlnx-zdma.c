@@ -43,6 +43,9 @@
 REG32(ZDMA_ERR_CTRL, 0x0)
     FIELD(ZDMA_ERR_CTRL, APB_ERR_RES, 0, 1)
 REG32(ZDMA_CH_ISR, 0x100)
+    FIELD(ZDMA_CH_ISR, LINK_LIST_PERR, 14, 1)
+    FIELD(ZDMA_CH_ISR, FREE_LIST_PERR, 13, 1)
+    FIELD(ZDMA_CH_ISR, WRBUF_PERR, 12, 1)
     FIELD(ZDMA_CH_ISR, DMA_PAUSE, 11, 1)
     FIELD(ZDMA_CH_ISR, DMA_DONE, 10, 1)
     FIELD(ZDMA_CH_ISR, AXI_WR_DATA, 9, 1)
@@ -56,6 +59,9 @@ REG32(ZDMA_CH_ISR, 0x100)
     FIELD(ZDMA_CH_ISR, SRC_DSCR_DONE, 1, 1)
     FIELD(ZDMA_CH_ISR, INV_APB, 0, 1)
 REG32(ZDMA_CH_IMR, 0x104)
+    FIELD(ZDMA_CH_IMR, LINK_LIST_PERR, 14, 1)
+    FIELD(ZDMA_CH_IMR, FREE_LIST_PERR, 13, 1)
+    FIELD(ZDMA_CH_IMR, WRBUF_PERR, 12, 1)
     FIELD(ZDMA_CH_IMR, DMA_PAUSE, 11, 1)
     FIELD(ZDMA_CH_IMR, DMA_DONE, 10, 1)
     FIELD(ZDMA_CH_IMR, AXI_WR_DATA, 9, 1)
@@ -69,6 +75,9 @@ REG32(ZDMA_CH_IMR, 0x104)
     FIELD(ZDMA_CH_IMR, SRC_DSCR_DONE, 1, 1)
     FIELD(ZDMA_CH_IMR, INV_APB, 0, 1)
 REG32(ZDMA_CH_IEN, 0x108)
+    FIELD(ZDMA_CH_IEN, LINK_LIST_PERR, 14, 1)
+    FIELD(ZDMA_CH_IEN, FREE_LIST_PERR, 13, 1)
+    FIELD(ZDMA_CH_IEN, WRBUF_PERR, 12, 1)
     FIELD(ZDMA_CH_IEN, DMA_PAUSE, 11, 1)
     FIELD(ZDMA_CH_IEN, DMA_DONE, 10, 1)
     FIELD(ZDMA_CH_IEN, AXI_WR_DATA, 9, 1)
@@ -82,6 +91,9 @@ REG32(ZDMA_CH_IEN, 0x108)
     FIELD(ZDMA_CH_IEN, SRC_DSCR_DONE, 1, 1)
     FIELD(ZDMA_CH_IEN, INV_APB, 0, 1)
 REG32(ZDMA_CH_IDS, 0x10c)
+    FIELD(ZDMA_CH_IDS, LINK_LIST_PERR, 14, 1)
+    FIELD(ZDMA_CH_IDS, FREE_LIST_PERR, 13, 1)
+    FIELD(ZDMA_CH_IDS, WRBUF_PERR, 12, 1)
     FIELD(ZDMA_CH_IDS, DMA_PAUSE, 11, 1)
     FIELD(ZDMA_CH_IDS, DMA_DONE, 10, 1)
     FIELD(ZDMA_CH_IDS, AXI_WR_DATA, 9, 1)
@@ -206,6 +218,14 @@ enum {
     AXI_BURST_INCR  = 1,
 };
 
+static inline uint32_t zdma_non_parity_mask(XlnxZDMA *s,  uint32_t val)
+{
+    if (!s->cfg.has_parity) {
+        val &= 0xfff;
+    }
+    return val;
+}
+
 static void zdma_ch_imr_update_irq(XlnxZDMA *s)
 {
     bool pending;
@@ -235,6 +255,8 @@ static uint64_t zdma_ch_ids_prew(RegisterInfo *reg, uint64_t val64)
 {
     XlnxZDMA *s = XLNX_ZDMA(reg->opaque);
     uint32_t val = val64;
+
+    val = zdma_non_parity_mask(s, val);
 
     s->regs[R_ZDMA_CH_IMR] |= val;
     zdma_ch_imr_update_irq(s);
@@ -597,18 +619,18 @@ static RegisterAccessInfo zdma_regs_info[] = {
     {   .name = "ZDMA_ERR_CTRL",  .addr = A_ZDMA_ERR_CTRL,
         .rsvd = 0xfffffffe,
     },{ .name = "ZDMA_CH_ISR",  .addr = A_ZDMA_CH_ISR,
-        .rsvd = 0xfffff000,
-        .w1c = 0xfff,
+        .rsvd = 0xffff8000,
+        .w1c = 0x7fff,
         .post_write = zdma_ch_isr_postw,
     },{ .name = "ZDMA_CH_IMR",  .addr = A_ZDMA_CH_IMR,
-        .reset = 0xfff,
-        .rsvd = 0xfffff000,
-        .ro = 0xfff,
+        .reset = 0x7fff,
+        .rsvd = 0xffff8000,
+        .ro = 0x7fff,
     },{ .name = "ZDMA_CH_IEN",  .addr = A_ZDMA_CH_IEN,
-        .rsvd = 0xfffff000,
+        .rsvd = 0xffff8000,
         .pre_write = zdma_ch_ien_prew,
     },{ .name = "ZDMA_CH_IDS",  .addr = A_ZDMA_CH_IDS,
-        .rsvd = 0xfffff000,
+        .rsvd = 0xffff8000,
         .pre_write = zdma_ch_ids_prew,
     },{ .name = "ZDMA_CH_CTRL0",  .addr = A_ZDMA_CH_CTRL0,
         .reset = 0x80,
@@ -709,6 +731,8 @@ static void zdma_reset(DeviceState *dev)
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
         register_reset(&s->regs_info[i]);
     }
+
+    s->regs[R_ZDMA_CH_IMR] = zdma_non_parity_mask(s, s->regs[R_ZDMA_CH_IMR]);
 
     zdma_ch_imr_update_irq(s);
 }
@@ -834,6 +858,7 @@ static const VMStateDescription vmstate_zdma = {
 
 static Property zdma_props[] = {
     DEFINE_PROP_UINT32("bus-width", XlnxZDMA, cfg.bus_width, 64),
+    DEFINE_PROP_BOOL("has-parity", XlnxZDMA, cfg.has_parity, 0),
     DEFINE_PROP_END_OF_LIST(),
 };
 
