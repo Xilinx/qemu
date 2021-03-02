@@ -763,11 +763,9 @@ static void cortex_r52_initfn(Object *obj)
  */
     set_feature(&cpu->env, ARM_FEATURE_MPIDR);
     set_feature(&cpu->env, ARM_FEATURE_EL2);
-/*
- * Needs cleanup for V8 (assumes V7 in QEMU)
- *    set_feature(&cpu->env, ARM_FEATURE_PMSA);
- */
+    set_feature(&cpu->env, ARM_FEATURE_PMSA);
     set_feature(&cpu->env, ARM_FEATURE_PMU);
+    cpu->pmsav7_dregion = 16;
     cpu->midr = 0x411fd132; /* r1p2 */
     cpu->id_pfr0 = 0x0131;
     cpu->id_pfr1 = 0x001;
