@@ -767,8 +767,8 @@ static void cortex_r52_initfn(Object *obj)
     set_feature(&cpu->env, ARM_FEATURE_PMU);
     cpu->pmsav7_dregion = 16;
     cpu->midr = 0x411fd132; /* r1p2 */
-    cpu->id_pfr0 = 0x0131;
-    cpu->id_pfr1 = 0x001;
+    cpu->isar.id_pfr0 = 0x0131;
+    cpu->isar.id_pfr1 = 0x001;
     cpu->isar.id_dfr0 = 0x010400;
     cpu->id_afr0 = 0x0;
     /* FIXME: Enable ARMv8-R PMSA.  */
