@@ -59,6 +59,7 @@ MemTxResult rp_mm_access(RemotePort *rp, uint32_t rp_dev,
     struct rp_encode_busaccess_in in = {0};
     int i;
     int len;
+    MemTxResult ret;
 
     DB_PRINT_L(0, "addr: %" HWADDR_PRIx " data: %" PRIx64 "\n",
                addr, tr->data.u64);
@@ -100,6 +101,18 @@ MemTxResult rp_mm_access(RemotePort *rp, uint32_t rp_dev,
     /* We dont support out of order answers yet.  */
     assert(rsp->pkt->hdr.id == in.id);
 
+    switch (rp_get_busaccess_response(rsp->pkt)) {
+    case RP_RESP_OK:
+        ret = MEMTX_OK;
+        break;
+    case RP_RESP_ADDR_ERROR:
+        ret = MEMTX_DECODE_ERROR;
+        break;
+    default:
+        ret = MEMTX_ERROR;
+        break;
+    }
+
     if (!tr->rw) {
         data = rp_busaccess_rx_dataptr(peer, &rsp->pkt->busaccess_ext_base);
         /* Data up to 8 bytes is return as values.  */
@@ -138,7 +151,7 @@ MemTxResult rp_mm_access(RemotePort *rp, uint32_t rp_dev,
     /* Reads are sync-points, roll the sync timer.  */
     rp_restart_sync_timer(rp);
     DB_PRINT_L(1, "\n");
-    return MEMTX_OK;
+    return ret;
 }
 
 static MemTxResult rp_access(MemoryTransaction *tr)

@@ -39,14 +39,15 @@
 } while (0);
 
 /* Slow path dealing with odd stuff like byte-enables.  */
-static void process_data_slow(RemotePortMemorySlave *s,
-                              struct rp_pkt *pkt,
-                              DMADirection dir,
-                              uint8_t *data, uint8_t *byte_en)
+static MemTxResult process_data_slow(RemotePortMemorySlave *s,
+                                     struct rp_pkt *pkt,
+                                     DMADirection dir,
+                                     uint8_t *data, uint8_t *byte_en)
 {
     unsigned int i;
     unsigned int byte_en_len = pkt->busaccess_ext_base.byte_enable_len;
     unsigned int sw = pkt->busaccess.stream_width;
+    MemTxResult ret = MEMTX_OK;
 
     assert(sw);
 
@@ -55,9 +56,15 @@ static void process_data_slow(RemotePortMemorySlave *s,
             continue;
         }
 
-        dma_memory_rw_attr(&s->as, pkt->busaccess.addr + i % sw, data + i,
-                           1, dir, s->attr);
+        ret = dma_memory_rw_attr(&s->as, pkt->busaccess.addr + i % sw,
+                                 data + i, 1, dir, s->attr);
+
+        if (ret != MEMTX_OK) {
+            break;
+        }
     }
+
+    return ret;
 }
 
 static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
@@ -69,6 +76,7 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
     int64_t delay;
     uint8_t *data = NULL;
     uint8_t *byte_en;
+    MemTxResult ret;
 
     byte_en = rp_busaccess_byte_en_ptr(s->peer, &pkt->busaccess_ext_base);
 
@@ -99,10 +107,10 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
     s->attr.requester_id = pkt->busaccess.master_id;
 
     if (byte_en || pkt->busaccess.stream_width != pkt->busaccess.len) {
-        process_data_slow(s, pkt, dir, data, byte_en);
+        ret = process_data_slow(s, pkt, dir, data, byte_en);
     } else {
-        dma_memory_rw_attr(&s->as, pkt->busaccess.addr, data,
-                           pkt->busaccess.len, dir, s->attr);
+        ret = dma_memory_rw_attr(&s->as, pkt->busaccess.addr, data,
+                                 pkt->busaccess.len, dir, s->attr);
     }
     if (dir == DMA_DIRECTION_TO_DEVICE && REMOTE_PORT_DEBUG_LEVEL > 0) {
         DB_PRINT_L(0, "address: %" PRIx64 "\n", pkt->busaccess.addr);
@@ -116,6 +124,19 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
 
     rp_encode_busaccess_in_rsp_init(&in, pkt);
     in.clk = pkt->busaccess.timestamp + delay;
+
+    switch (ret) {
+    case MEMTX_ERROR:
+        in.attr |= RP_RESP_BUS_GENERIC_ERROR << RP_BUS_RESP_SHIFT;
+        break;
+    case MEMTX_DECODE_ERROR:
+        in.attr |= RP_RESP_ADDR_ERROR << RP_BUS_RESP_SHIFT;
+        break;
+    default:
+        /* MEMTX_OK maps to RP_RESP_OK. */
+        break;
+    }
+
     enclen = rp_encode_busaccess(s->peer, &s->rsp.pkt->busaccess_ext_base,
                                  &in);
     assert(enclen <= pktlen);
