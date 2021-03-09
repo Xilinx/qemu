@@ -173,7 +173,7 @@ static inline void iommu_notifier_init(IOMMUNotifier *n, IOMMUNotify fn,
  */
 struct MemoryRegionOps {
     /* FIXME: Remove */
-    void (*access)(MemoryTransaction *tr);
+    MemTxResult (*access)(MemoryTransaction *tr);
 
     /* Read from the memory region. @addr is relative to @mr; @size is
      * in bytes. */

@@ -100,12 +100,12 @@ struct RemotePortPCIDevice {
     struct rp_peer_state *peer;
 };
 
-static void rp_io_access(MemoryTransaction *tr)
+static MemTxResult rp_io_access(MemoryTransaction *tr)
 {
     RemotePortMap *map = tr->opaque;
     RemotePortPCIDevice *s = map->parent;
 
-    rp_mm_access(s->rp, map->rp_dev, s->peer, tr, true, 0);
+    return rp_mm_access(s->rp, map->rp_dev, s->peer, tr, true, 0);
 }
 
 static const MemoryRegionOps rp_ops = {

@@ -438,6 +438,7 @@ static MemTxResult memory_region_read_accessor_attr(MemoryRegion *mr,
                                                     MemTxAttrs attrs)
 {
     MemoryTransaction tr = {{0}};
+    MemTxResult ret;
 
     if (mr->flush_coalesced_mmio) {
         qemu_flush_coalesced_mmio_buffer();
@@ -447,10 +448,10 @@ static MemTxResult memory_region_read_accessor_attr(MemoryRegion *mr,
     tr.addr = addr;
     tr.size = size;
     tr.attr = attrs;
-    mr->ops->access(&tr);
+    ret = mr->ops->access(&tr);
     *value |= (tr.data.u64 & mask) << shift;
 
-    return MEMTX_OK;
+    return ret;
 }
 
 static MemTxResult  memory_region_read_accessor(MemoryRegion *mr,
@@ -518,9 +519,7 @@ static MemTxResult memory_region_write_accessor_attr(MemoryRegion *mr,
     tr.attr = attrs;
     tr.data.u64 = (*value >> shift) & mask;
     trace_memory_region_ops_write(get_cpu_index(), mr, tr.addr, tr.data.u64, tr.size);
-    mr->ops->access(&tr);
-
-    return MEMTX_OK;
+    return mr->ops->access(&tr);
 }
 
 static MemTxResult memory_region_write_accessor(MemoryRegion *mr,

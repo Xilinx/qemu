@@ -87,18 +87,17 @@ static bool use_writebuffer(hwaddr wbuf_start, hwaddr wbuf_len,
         in_range(wbuf_start, wbuf_len, addr) || in_range(addr, len, wbuf_start);
 }
 
-static void iomem_cache_uncached_access(MemoryTransaction *tr)
+static MemTxResult iomem_cache_uncached_access(MemoryTransaction *tr)
 {
     IOMemCache *s = tr->opaque;
     uint8_t *data;
     int i;
+    MemTxResult ret = MEMTX_OK;
 
     if (tr->rw && tr->attr.requester_id == 0 && tr->size > 8) {
-        address_space_rw(&s->down_as, tr->addr,
-                         MEMTXATTRS_UNSPECIFIED, tr->data.p8, tr->size,
-                         tr->rw);
-        return;
-
+        return address_space_rw(&s->down_as, tr->addr,
+                                MEMTXATTRS_UNSPECIFIED, tr->data.p8, tr->size,
+                                tr->rw);
     }
 
     qemu_mutex_lock(&s->wbuf.mutex);
@@ -180,7 +179,7 @@ static void iomem_cache_uncached_access(MemoryTransaction *tr)
         }
 
         qemu_mutex_unlock(&s->wbuf.mutex);
-        return;
+        return ret;
 
     } else if (tr->attr.requester_id != 0) {
 
@@ -204,9 +203,9 @@ static void iomem_cache_uncached_access(MemoryTransaction *tr)
         }
     }
 
-    address_space_rw(&s->down_as, tr->addr,
-                     MEMTXATTRS_UNSPECIFIED, data, tr->size,
-                     tr->rw);
+    ret = address_space_rw(&s->down_as, tr->addr,
+                           MEMTXATTRS_UNSPECIFIED, data, tr->size,
+                           tr->rw);
 
     if (!tr->rw) {
         /* Data up to 8 bytes is return as values. */
@@ -220,6 +219,7 @@ static void iomem_cache_uncached_access(MemoryTransaction *tr)
     }
 
     g_free(data);
+    return ret;
 }
 
 static const MemoryRegionOps uncached_ops = {

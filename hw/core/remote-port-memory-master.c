@@ -43,10 +43,10 @@
 
 #define RP_MAX_ACCESS_SIZE 4096
 
-void rp_mm_access(RemotePort *rp, uint32_t rp_dev,
-                  struct rp_peer_state *peer,
-                  MemoryTransaction *tr,
-                  bool relative, uint64_t offset)
+MemTxResult rp_mm_access(RemotePort *rp, uint32_t rp_dev,
+                         struct rp_peer_state *peer,
+                         MemoryTransaction *tr,
+                         bool relative, uint64_t offset)
 {
     uint64_t addr = tr->addr;
     RemotePortRespSlot *rsp_slot;
@@ -138,14 +138,16 @@ void rp_mm_access(RemotePort *rp, uint32_t rp_dev,
     /* Reads are sync-points, roll the sync timer.  */
     rp_restart_sync_timer(rp);
     DB_PRINT_L(1, "\n");
+    return MEMTX_OK;
 }
 
-static void rp_access(MemoryTransaction *tr)
+static MemTxResult rp_access(MemoryTransaction *tr)
 {
     RemotePortMap *map = tr->opaque;
     RemotePortMemoryMaster *s = map->parent;
 
-    rp_mm_access(s->rp, s->rp_dev, s->peer, tr, s->relative, map->offset);
+    return rp_mm_access(s->rp, s->rp_dev, s->peer, tr, s->relative,
+                        map->offset);
 }
 
 static const MemoryRegionOps rp_ops_template = {

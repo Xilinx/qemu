@@ -157,7 +157,7 @@ static void arm_gen_timer_reset(DeviceState *dev)
     s->enabled = false;
 }
 
-static void arm_gen_timer_access(MemoryTransaction *tr)
+static MemTxResult arm_gen_timer_access(MemoryTransaction *tr)
 {
     MemTxAttrs attr = tr->attr;
     void *opaque = tr->opaque;
@@ -171,7 +171,7 @@ static void arm_gen_timer_access(MemoryTransaction *tr)
         qemu_log_mask(LOG_GUEST_ERROR,
                       "Non secure writes to the system timestamp generator " \
                       "are invalid\n");
-        return;
+        return MEMTX_ERROR;
     }
 
     if (is_write) {
@@ -179,6 +179,8 @@ static void arm_gen_timer_access(MemoryTransaction *tr)
     } else {
         tr->data.u64 = register_read_memory(opaque, addr, size);
     }
+
+    return MEMTX_OK;
 }
 
 static const MemoryRegionOps arm_gen_timer_ops = {
