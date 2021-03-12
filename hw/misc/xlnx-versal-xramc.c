@@ -180,6 +180,10 @@ static void xram_ctrl_realize(DeviceState *dev, Error **errp)
         return;
     }
 
+    if (!s->cfg.alloc_ram) {
+        return;
+    }
+
     memory_region_init_ram(&s->ram, OBJECT(s),
                            object_get_canonical_path_component(OBJECT(s)),
                            s->cfg.size, &error_fatal);
@@ -219,6 +223,7 @@ static const VMStateDescription vmstate_xram_ctrl = {
 };
 
 static Property xram_ctrl_properties[] = {
+    DEFINE_PROP_BOOL("alloc-ram", XlnxXramCtrl, cfg.alloc_ram, true),
     DEFINE_PROP_UINT64("size", XlnxXramCtrl, cfg.size, 1 * MiB),
     DEFINE_PROP_END_OF_LIST(),
 };

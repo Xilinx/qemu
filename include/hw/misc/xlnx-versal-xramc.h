@@ -86,6 +86,7 @@ typedef struct XlnxXramCtrl {
     qemu_irq irq;
 
     struct {
+        bool alloc_ram;
         uint64_t size;
         unsigned int encoded_size;
     } cfg;
