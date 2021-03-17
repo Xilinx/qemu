@@ -250,6 +250,15 @@ static memory_info init_memory(void *fdt, ram_addr_t ram_size, bool zynq_7000)
     ram_addr_t start_addr;
     int mem_offset = 0;
 
+    if (zynq_7000) {
+        if (!qemu_devtree_node_by_compatible(fdt, node_path,
+                                             "arm,cortex-a9-gic")) {
+            qemu_fdt_setprop_cell(fdt, node_path, "num-priority-bits", 5);
+        } else {
+            warn_report("%s(): Unable to find GIC", __func__);
+        }
+    }
+
     /* Find a memory node or add new one if needed */
     while (qemu_devtree_get_node_by_name(fdt, node_path, "memory")) {
         qemu_fdt_add_subnode(fdt, "/memory@0");
@@ -262,10 +271,6 @@ static memory_info init_memory(void *fdt, ram_addr_t ram_size, bool zynq_7000)
         qemu_fdt_setprop_cells(fdt, "/memory", "qemu,ram", 1);
     }
 
-    if (zynq_7000) {
-        qemu_fdt_setprop_cell(fdt, "/amba/interrupt-controller@f8f01000",
-                              "num-priority-bits", 5);
-    }
     /* Instantiate peripherals from the FDT.  */
     fdti = fdt_generic_create_machine(fdt, NULL);
 
