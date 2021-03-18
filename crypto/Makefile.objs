@@ -1,4 +1,5 @@
 crypto-obj-y = init.o
+crypto-obj-y += keccak_sponge.o
 crypto-obj-y += hash.o
 crypto-obj-$(CONFIG_NETTLE) += hash-nettle.o
 crypto-obj-$(if $(CONFIG_NETTLE),n,$(CONFIG_GCRYPT)) += hash-gcrypt.o
