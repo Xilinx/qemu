@@ -176,15 +176,13 @@ static void m24cxx_realize(DeviceState *dev, Error **errp)
 {
     M24CXXState *s = M24CXX(dev);
     I2CSlave *i2c = I2C_SLAVE(dev);
-    DriveInfo *dinfo = drive_get_next(IF_MTD);
 
     i2c->address_range = m24cxx_uses_i2c_addr(s) ? s->size >> 8 : 1;
     s->num_addr_bytes = s->size >> 11 ? 2 : 1;
     s->storage = g_new0(uint8_t, DIV_ROUND_UP(s->size, BDRV_SECTOR_SIZE) *
                                               BDRV_SECTOR_SIZE);
 
-    if (dinfo) {
-        s->blk = dinfo ? blk_by_legacy_dinfo(dinfo) : NULL;
+    if (s->blk) {
         /* FIXME: Move to late init */
         if (blk_pread(s->blk, 0, s->storage,
                       s->size) < 0) {
