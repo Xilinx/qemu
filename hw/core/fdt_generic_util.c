@@ -845,7 +845,6 @@ static bool fdt_attach_blockdev(FDTMachineInfo *fdti,
                                 char *node_path, Object *dev)
 {
     static const char propname[] = "blockdev-node-name";
-    BlockBackend *bdev = NULL;
     char *label;
 
     /* Inspect FDT node for blockdev-only binding */
@@ -868,21 +867,11 @@ static bool fdt_attach_blockdev(FDTMachineInfo *fdti,
         goto ret;
     }
 
-    bdev = blk_by_name(label);
-    if (!bdev) {
+    if (!bdrv_find_node(label)) {
         goto ret;
     }
 
-    if (blk_legacy_dinfo(bdev)) {
-        error_setg(&error_abort,
-                   "FDT-node '%s': property '%s' = \"%s\" matched to"
-                   " a '-drive' option. Must use -blockdev instead.",
-                   node_path, propname, label);
-        goto ret;
-    }
-
-    qdev_prop_set_drive(DEVICE(dev), "drive", bdev);
-
+    object_property_set_str(OBJECT(dev), "drive", label, NULL);
  ret:
     g_free(label);
     return true;
