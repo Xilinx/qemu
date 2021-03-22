@@ -218,6 +218,7 @@ static const VMStateDescription vmstate_m24cxx = {
 static Property m24cxx_properties[] = {
     DEFINE_PROP_UINT16("size", M24CXXState, size, 1024),
     DEFINE_PROP_DRIVE("drive", M24CXXState, blk),
+    DEFINE_PROP_UINT16("version", M24CXXState, version, 1),
     DEFINE_PROP_END_OF_LIST(),
 };
 
