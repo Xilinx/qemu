@@ -187,7 +187,7 @@ static void m24cxx_realize(DeviceState *dev, Error **errp)
         s->blk = dinfo ? blk_by_legacy_dinfo(dinfo) : NULL;
         /* FIXME: Move to late init */
         if (blk_pread(s->blk, 0, s->storage,
-                      DIV_ROUND_UP(s->size, BDRV_SECTOR_SIZE)) < 0) {
+                      s->size) < 0) {
             error_setg(errp, "Failed to initialize I2C EEPROM!\n");
             return;
         }
