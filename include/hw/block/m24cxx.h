@@ -1,5 +1,6 @@
 #ifndef M24CXX__H
 #define M24CXX__H
+#include "hw/i2c/i2c.h"
 
 typedef enum {
     STOPPED,
