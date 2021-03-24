@@ -44,7 +44,6 @@
 #include "qemu/config-file.h"
 #include "block/block.h"
 #include "hw/ssi/ssi.h"
-#include "hw/block/m24cxx.h"
 #include "hw/boards.h"
 #include "qemu/option.h"
 #include "hw/qdev-properties.h"
@@ -1430,33 +1429,6 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
          */
         if (object_dynamic_cast(dev, TYPE_SSI_SLAVE)) {
             fdt_attach_drive(fdti, node_path, dev, IF_MTD);
-        }
-
-        if (object_dynamic_cast(dev, TYPE_M24CXX)) {
-            char *blockdev_name = NULL;
-            uint16_t version = object_property_get_int(OBJECT(dev), "version",
-                                                       NULL);
-            switch (version) {
-            case 0:
-                fdt_attach_drive(fdti, node_path, dev, IF_MTD);
-                break;
-            case 1:
-                blockdev_name = qemu_fdt_getprop_string(fdti->fdt, node_path,
-                                "blockdev-node-name", 0, false, NULL);
-                if (!blockdev_name) {
-                    blockdev_name = qemu_devtree_get_node_name(fdti->fdt,
-                                                               node_path);
-                    substitute_char(blockdev_name, '@', '-');
-                    qemu_fdt_setprop_string(fdti->fdt, node_path,
-                                            "blockdev-node-name",
-                                            blockdev_name);
-                }
-                g_free(blockdev_name);
-                fdt_attach_blockdev(fdti, node_path, dev);
-                break;
-            default:
-               g_assert_not_reached();
-            };
         }
 
         /* Regular TYPE_DEVICE houskeeping */
