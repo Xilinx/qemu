@@ -195,6 +195,8 @@ static void rp_pci_realize(PCIDevice *pci_dev, Error **errp)
     /* The remote peer may want to snoop on CFG writes.  */
     pci_dev->config_write = rp_pci_write_config;
 
+    pcie_endpoint_cap_init(pci_dev, 0);
+
     if (s->cfg.msi) {
         msi_init(pci_dev, 0x60, 1, true, false, &error_fatal);
     }
@@ -330,7 +332,7 @@ static const TypeInfo rp_info = {
     .class_init    = rp_pci_class_init,
     .interfaces    = (InterfaceInfo[]) {
         { TYPE_REMOTE_PORT_DEVICE },
-        { INTERFACE_CONVENTIONAL_PCI_DEVICE },
+        { INTERFACE_PCIE_DEVICE },
         { },
     },
 };
