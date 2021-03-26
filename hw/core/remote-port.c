@@ -277,6 +277,7 @@ static void rp_say_hello(RemotePort *s)
         CAP_BUSACCESS_EXT_BASE,
         CAP_BUSACCESS_EXT_BYTE_EN,
         CAP_WIRE_POSTED_UPDATES,
+        CAP_ATS,
     };
     size_t len;
 
