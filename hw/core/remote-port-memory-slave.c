@@ -77,6 +77,7 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
     uint8_t *data = NULL;
     uint8_t *byte_en;
     MemTxResult ret;
+    AddressSpace *as = NULL;
 
     byte_en = rp_busaccess_byte_en_ptr(s->peer, &pkt->busaccess_ext_base);
 
@@ -106,12 +107,30 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
     s->attr.secure = !!(pkt->busaccess.attributes & RP_BUS_ATTR_SECURE);
     s->attr.requester_id = pkt->busaccess.master_id;
 
-    if (byte_en || pkt->busaccess.stream_width != pkt->busaccess.len) {
-        ret = process_data_slow(s, pkt, dir, data, byte_en);
+    if (pkt->busaccess.attributes & RP_BUS_ATTR_PHYS_ADDR) {
+        if (s->ats_cache) {
+            IOMMUTLBEntry *iotlb =
+                rp_ats_cache_lookup_translation(s->ats_cache,
+                                                pkt->busaccess.addr,
+                                                pkt->busaccess.len);
+            if (iotlb) {
+                as = iotlb->target_as;
+            }
+        }
     } else {
-        ret = dma_memory_rw_attr(&s->as, pkt->busaccess.addr, data,
-                                 pkt->busaccess.len, dir, s->attr);
+        as = &s->as;
     }
+    if (as) {
+        if (byte_en || pkt->busaccess.stream_width != pkt->busaccess.len) {
+            ret = process_data_slow(s, pkt, dir, data, byte_en);
+        } else {
+            ret = dma_memory_rw_attr(as, pkt->busaccess.addr, data,
+                                 pkt->busaccess.len, dir, s->attr);
+        }
+    } else {
+        ret = MEMTX_ERROR;
+    }
+
     if (dir == DMA_DIRECTION_TO_DEVICE && REMOTE_PORT_DEBUG_LEVEL > 0) {
         DB_PRINT_L(0, "address: %" PRIx64 "\n", pkt->busaccess.addr);
         qemu_hexdump((const char *)data, stderr, ": read: ",
@@ -177,6 +196,10 @@ static void rp_memory_slave_init(Object *obj)
                              OBJ_PROP_LINK_STRONG);
     object_property_add_link(obj, "mr", TYPE_MEMORY_REGION,
                              (Object **)&rpms->mr,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
+    object_property_add_link(obj, "rp-ats-cache", TYPE_REMOTE_PORT_ATS_CACHE,
+                             (Object **)&rpms->ats_cache,
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_STRONG);
 }
