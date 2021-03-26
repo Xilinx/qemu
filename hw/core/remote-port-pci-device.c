@@ -21,6 +21,7 @@
 
 #include "hw/remote-port.h"
 #include "hw/remote-port-device.h"
+#include "hw/remote-port-ats.h"
 #include "hw/remote-port-memory-master.h"
 #include "hw/remote-port-memory-slave.h"
 
@@ -59,12 +60,14 @@
  * 3            DMA from the End-point towards us.
  * 4 - 9        Reserved
  * 10 - 20      IO or Memory Mapped BARs (6 + 4 reserved)
+ * 21           ATS
  */
 #define RPDEV_PCI_CONFIG        0
 #define RPDEV_PCI_LEGACY_IRQ    1
 #define RPDEV_PCI_MESSAGES      2
 #define RPDEV_PCI_DMA           3
 #define RPDEV_PCI_BAR_BASE     10
+#define RPDEV_PCI_ATS          21
 
 typedef struct RemotePortPCIDevice RemotePortPCIDevice;
 
@@ -73,6 +76,7 @@ struct RemotePortPCIDevice {
     PCIDevice parent_obj;
 
     RemotePortMemorySlave *rp_dma;
+    RemotePortATS *rp_ats;
 
     /*< public >*/
     RemotePortMap *maps;
@@ -95,6 +99,7 @@ struct RemotePortPCIDevice {
 
         bool msi;
         bool msix;
+        bool ats;
     } cfg;
     struct RemotePort *rp;
     struct rp_peer_state *peer;
@@ -200,6 +205,9 @@ static void rp_pci_realize(PCIDevice *pci_dev, Error **errp)
     if (s->cfg.msi) {
         msi_init(pci_dev, 0x60, 1, true, false, &error_fatal);
     }
+    if (s->cfg.ats) {
+        pcie_ats_init(pci_dev, 256);
+    }
 
     /* Create and hook up the BARs.  */
     s->maps = g_new0(typeof(*s->maps), s->cfg.nr_io_bars + s->cfg.nr_mm_bars);
@@ -225,11 +233,20 @@ static void rp_pci_realize(PCIDevice *pci_dev, Error **errp)
         msix_vector_use(pci_dev, 0);
     }
 
+    as = pci_get_address_space(pci_dev);
+
+    /* Setup ATS */
+    rp_device_attach(OBJECT(s->rp), OBJECT(s->rp_ats), 0,
+                            s->cfg.rp_dev + RPDEV_PCI_ATS, &error_abort);
+    object_property_set_link(OBJECT(s->rp_ats), "mr", OBJECT(as->root),
+                             &error_abort);
+    object_property_set_bool(OBJECT(s->rp_ats), "realized", true, &error_abort);
+
     /* Setup the DMA dev.  */
     rp_device_attach(OBJECT(s->rp), OBJECT(s->rp_dma), 0,
                             s->cfg.rp_dev + RPDEV_PCI_DMA, &error_abort);
-
-    as = pci_get_address_space(pci_dev);
+    object_property_set_link(OBJECT(s->rp_dma), "rp-ats-cache",
+                             OBJECT(s->rp_ats), &error_abort);
     object_property_set_link(OBJECT(s->rp_dma), "mr", OBJECT(as->root), &error_abort);
 
     object_property_set_bool(OBJECT(s->rp_dma), "realized", true, &error_abort);
@@ -269,6 +286,11 @@ static void rp_pci_init(Object *obj)
     object_property_add_child(obj, "rp-dma", tmp_obj);
     /* add_child will grant us another ref, free the initial one.  */
     object_unref(tmp_obj);
+
+    tmp_obj = object_new(TYPE_REMOTE_PORT_ATS);
+    s->rp_ats = REMOTE_PORT_ATS(tmp_obj);
+    object_property_add_child(obj, "rp-ats", tmp_obj);
+    object_unref(tmp_obj);
 }
 
 static Property rp_properties[] = {
@@ -299,6 +321,7 @@ static Property rp_properties[] = {
                      cfg.remote_config, false),
     DEFINE_PROP_BOOL("msi", RemotePortPCIDevice, cfg.msi, false),
     DEFINE_PROP_BOOL("msix", RemotePortPCIDevice, cfg.msix, false),
+    DEFINE_PROP_BOOL("ats", RemotePortPCIDevice, cfg.ats, false),
 
     /* These are read-only.  */
     DEFINE_PROP_UINT32("nr-devs", RemotePortPCIDevice, cfg.nr_devs, 20),
