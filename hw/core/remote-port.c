@@ -596,6 +596,8 @@ static bool rp_pt_process_pkt(RemotePort *s, RemotePortDynPkt *dpkt)
     case RP_CMD_read:
     case RP_CMD_write:
     case RP_CMD_interrupt:
+    case RP_CMD_ats_req:
+    case RP_CMD_ats_inv:
         rp_pt_handover_pkt(s, dpkt);
         break;
     default:
