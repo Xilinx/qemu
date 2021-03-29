@@ -59,6 +59,7 @@ typedef struct XilinxGPI {
     } cfg;
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
+    RegisterInfo regs_info_en;
     const char *prefix;
 } XilinxGPI;
 
@@ -108,8 +109,19 @@ static void ien_handler(void *opaque, int n, int level)
     }
 }
 
+static void gpi_en_postw(RegisterInfo *reg, uint64_t val64)
+{
+    XilinxGPI *s = XILINX_IO_MODULE_GPI(reg->opaque);
+
+    update_irq(s);
+}
+
 static const RegisterAccessInfo gpi_regs_info[] = {
     { .name = "GPI", .addr = A_IOM_GPI, .ro = ~0 },
+};
+
+static const RegisterAccessInfo gpi_en_regs_info[] = {
+    { .name = "GPI_ENABLE", .addr = 0, .post_write = gpi_en_postw },
 };
 
 static void iom_gpi_reset(DeviceState *dev)
@@ -165,6 +177,15 @@ static void xlx_iom_init(Object *obj)
                                 0x0,
                                 &reg_array->mem);
     sysbus_init_mmio(sbd, &s->iomem);
+
+    reg_array =
+        register_init_block32(DEVICE(obj), gpi_en_regs_info,
+                              ARRAY_SIZE(gpi_en_regs_info),
+                              &s->regs_info_en, &s->ien,
+                              &iom_gpi_ops,
+                              XILINX_IO_MODULE_GPI_ERR_DEBUG,
+                              4);
+    sysbus_init_mmio(sbd, &reg_array->mem);
     sysbus_init_irq(sbd, &s->parent_irq);
 }
 
