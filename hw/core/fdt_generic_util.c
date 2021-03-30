@@ -44,6 +44,7 @@
 #include "qemu/config-file.h"
 #include "block/block.h"
 #include "hw/ssi/ssi.h"
+#include "hw/block/m24cxx.h"
 #include "hw/boards.h"
 #include "qemu/option.h"
 #include "hw/qdev-properties.h"
@@ -877,6 +878,25 @@ static bool fdt_attach_blockdev(FDTMachineInfo *fdti,
     return true;
 }
 
+static void fdt_attach_blockdev_noname(FDTMachineInfo *fdti,
+                                char *node_path, Object *dev)
+{
+    char *blockdev_name = NULL;
+
+    blockdev_name = qemu_fdt_getprop_string(fdti->fdt, node_path,
+                    "blockdev-node-name", 0, false, NULL);
+    if (!blockdev_name) {
+        blockdev_name = qemu_devtree_get_node_name(fdti->fdt,
+                                                   node_path);
+        substitute_char(blockdev_name, '@', '-');
+        qemu_fdt_setprop_string(fdti->fdt, node_path,
+                                "blockdev-node-name",
+                                blockdev_name);
+    }
+    g_free(blockdev_name);
+    fdt_attach_blockdev(fdti, node_path, dev);
+}
+
 static void fdt_attach_drive(FDTMachineInfo *fdti, char *node_path,
                              Object *dev, BlockInterfaceType drive_type)
 {
@@ -1427,8 +1447,35 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
         /* We also need to externally connect drives. Let's try to do that
          * here.
          */
-        if (object_dynamic_cast(dev, TYPE_SSI_SLAVE)) {
-            fdt_attach_drive(fdti, node_path, dev, IF_MTD);
+        if (object_property_find(OBJECT(dev), "drive", NULL)) {
+            uint32_t *use_blkdev = NULL;
+            use_blkdev =  qemu_fdt_getprop(fdti->fdt, node_path,
+                                             "use-blockdev", NULL,
+                                             false, NULL);
+            if (use_blkdev && *use_blkdev) {
+                fdt_attach_blockdev_noname(fdti, node_path, dev);
+            } else {
+                /*
+                 *  Remove these after we fully convert to blockdev based
+                 *  drive binding.
+                 */
+                if (object_dynamic_cast(dev, TYPE_SSI_SLAVE)) {
+                    fdt_attach_drive(fdti, node_path, dev, IF_MTD);
+                }
+                /*
+                 * Restrict EEPROM's to use blockdev, this keeps qemu backward
+                 * compatible with older dtb's. If we want to fallback to old
+                 * usage of drive index, set prop use-blockdev = <0>.
+                 */
+                if (object_dynamic_cast(dev, TYPE_M24CXX)) {
+                    if (use_blkdev && !(*use_blkdev)) {
+                        fdt_attach_drive(fdti, node_path, dev, IF_MTD);
+                    } else {
+                        fdt_attach_blockdev_noname(fdti, node_path, dev);
+                    }
+                }
+            }
+            g_free(use_blkdev);
         }
 
         /* Regular TYPE_DEVICE houskeeping */
