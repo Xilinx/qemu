@@ -472,10 +472,10 @@ static void aarch64_a78_initfn(Object *obj)
 
     cpu->isar.id_aa64mmfr0 = 0x000101125;
     cpu->isar.dbgdidr = 0x3516d000;
-    cpu->clidr = 0x0c300023;
-    cpu->ccsidr[0] = 0x701fe00a; /* 32KB L1 dcache */
-    cpu->ccsidr[1] = 0x201fe012; /* 48KB L1 icache */
-    cpu->ccsidr[2] = 0x707fe07a; /* 1MB L2 cache */
+    cpu->clidr = 0x10400023;
+    cpu->ccsidr[0] = 0x701fe01a; /* 64KB L1 dcache */
+    cpu->ccsidr[1] = 0x201fe01a; /* 64KB L1 icache */
+    cpu->ccsidr[2] = 0x707fe03a; /* 512K L2 cache */
     cpu->dcz_blocksize = 4; /* 64 bytes */
     cpu->gic_num_lrs = 4;
     cpu->gic_vpribits = 5;
