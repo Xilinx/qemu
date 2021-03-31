@@ -59,6 +59,9 @@
 #define ARRAY_FIELD_EX32(regs, reg, field)                                \
     FIELD_EX32((regs)[R_ ## reg], reg, field)
 
+#define ARRAY_FIELD_EX64(regs, reg, field)                                \
+    FIELD_EX64((regs)[R_ ## reg], reg, field)
+
 /* Deposit a register field.
  * Assigning values larger then the target field will result in
  * compilation warnings.
@@ -99,5 +102,8 @@
 /* Deposit a field to array of registers.  */
 #define ARRAY_FIELD_DP32(regs, reg, field, val)                           \
     (regs)[R_ ## reg] = FIELD_DP32((regs)[R_ ## reg], reg, field, val);
+
+#define ARRAY_FIELD_DP64(regs, reg, field, val)                           \
+    (regs)[R_ ## reg] = FIELD_DP64((regs)[R_ ## reg], reg, field, val);
 
 #endif
