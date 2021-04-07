@@ -1083,7 +1083,8 @@ static void update_rx_sequential(XlnxVersalCANFDState *s,
                 uint32_t ext_afir_id_masked = FIELD_EX32(afir_id_masked,
                                                          AFIR_REGISTER,
                                                          AIID_EXT);
-                bool ext_ide = FIELD_EX32(frame->can_id, AFIR_REGISTER, AIIDE);
+                bool ext_ide = FIELD_EX32(s->regs[R_AFMR_REGISTER + 2 * i],
+                                          AFMR_REGISTER, AMIDE);
 
                 if (std_msg_id_masked == std_afir_id_masked) {
                     if (ext_ide) {
