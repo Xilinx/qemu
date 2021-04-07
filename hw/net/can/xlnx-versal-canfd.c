@@ -1069,16 +1069,38 @@ static void update_rx_sequential(XlnxVersalCANFDState *s,
 
         for (i = 0; i < 32; i++) {
             if (acceptance_filter_status & 0x1) {
-                uint32_t id_masked = s->regs[R_AFMR_REGISTER + i] &
-                                     frame->can_id;
-                uint32_t filter_id_masked = s->regs[R_AFIR_REGISTER + i] &
-                                            s->regs[R_AFMR_REGISTER + i];
+                uint32_t msg_id_masked = s->regs[R_AFMR_REGISTER + 2 * i] &
+                                         frame->can_id;
+                uint32_t afir_id_masked = s->regs[R_AFIR_REGISTER + 2 * i] &
+                                          s->regs[R_AFMR_REGISTER + 2 * i];
+                uint16_t std_msg_id_masked = FIELD_EX32(msg_id_masked,
+                                                        AFIR_REGISTER, AIID);
+                uint16_t std_afir_id_masked = FIELD_EX32(afir_id_masked,
+                                                         AFIR_REGISTER, AIID);
+                uint32_t ext_msg_id_masked = FIELD_EX32(msg_id_masked,
+                                                        AFIR_REGISTER,
+                                                        AIID_EXT);
+                uint32_t ext_afir_id_masked = FIELD_EX32(afir_id_masked,
+                                                         AFIR_REGISTER,
+                                                         AIID_EXT);
+                bool ext_ide = FIELD_EX32(frame->can_id, AFIR_REGISTER, AIIDE);
 
-                if (id_masked == filter_id_masked) {
-                    filter_pass = true;
-                    filter_index = i;
+                if (std_msg_id_masked == std_afir_id_masked) {
+                    if (ext_ide) {
+                        /* Extended message ID message. */
+                        if (ext_msg_id_masked == ext_afir_id_masked) {
+                            filter_pass = true;
+                            filter_index = i;
 
-                    break;
+                            break;
+                        }
+                    } else {
+                        /* Standard message ID. */
+                        filter_pass = true;
+                        filter_index = i;
+
+                        break;
+                    }
                 }
             }
             acceptance_filter_status >>= 1;
