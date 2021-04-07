@@ -920,7 +920,8 @@ static void regs2frame(XlnxVersalCANFDState *s, qemu_can_frame *frame,
          */
 
         if (dlc_value > 8) {
-            frame->can_dlc = 8;
+            frame->can_dlc = dlc_value;
+            dlc_value = 8;
             DB_PRINT(s, "Maximum DLC value for Classic CAN frame can be 8."
                      "Only 8 byte data will be sent.\n");
         } else {
@@ -930,7 +931,7 @@ static void regs2frame(XlnxVersalCANFDState *s, qemu_can_frame *frame,
         for (i = 0; i < 4 ; i++) {
             val = 8 * i;
 
-            for (j = 0; j < frame->can_dlc; j++) {
+            for (j = 0; j < dlc_value; j++) {
                 frame->data[i + 4 * j] = ((s->regs[reg_num + 2 + j] >> val) &
                                            0xFF);
             }
@@ -1008,20 +1009,27 @@ static void store_rx_sequential(XlnxVersalCANFDState *s,
         }
         s->regs[store_location] = frame->can_id;
 
-        if (frame->can_dlc > 7) {
+        if (frame->flags == QEMU_CAN_FRMF_TYPE_FD) {
             is_canfd_frame = true;
 
             for (i = 0; i < ARRAY_SIZE(canfd_dlc_array); i++) {
                 if (canfd_dlc_array[i] == frame->can_dlc) {
                     dlc = 8 + i;
                 }
+
+            dlc_reg_val = FIELD_DP32(0, RB_DLC_REGISTER, DLC, dlc);
             }
         } else {
             is_canfd_frame = false;
-            dlc = frame->can_dlc;
+            if (frame->can_dlc > 8) {
+                dlc = 8;
+            } else {
+                dlc = frame->can_dlc;
+            }
+
+            dlc_reg_val = FIELD_DP32(0, RB_DLC_REGISTER, DLC, frame->can_dlc);
         }
 
-        dlc_reg_val = FIELD_DP32(0, RB_DLC_REGISTER, DLC, dlc);
         dlc_reg_val |= FIELD_DP32(0, RB_DLC_REGISTER, FDF, is_canfd_frame);
         dlc_reg_val |= FIELD_DP32(0, RB_DLC_REGISTER, TIMESTAMP, rx_timestamp);
         dlc_reg_val |= FIELD_DP32(0, RB_DLC_REGISTER, MATCHED_FILTER_INDEX,
