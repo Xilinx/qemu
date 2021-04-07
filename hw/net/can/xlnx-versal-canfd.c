@@ -1411,11 +1411,11 @@ static uint64_t canfd_tx_fifo_status_prew(RegisterInfo *reg, uint64_t val64)
 {
     XlnxVersalCANFDState *s = XILINX_CANFD(reg->opaque);
     uint32_t val = val64;
-    uint8_t read_ind;
+    uint8_t read_ind = 0;
     uint8_t fill_ind = ARRAY_FIELD_EX32(s->regs, TX_EVENT_FIFO_STATUS_REGISTER,
                                         TXE_FL);
 
-    if (FIELD_EX32(val, TX_EVENT_FIFO_STATUS_REGISTER, TXE_IRI) && !fill_ind) {
+    if (FIELD_EX32(val, TX_EVENT_FIFO_STATUS_REGISTER, TXE_IRI) && fill_ind) {
         read_ind = ARRAY_FIELD_EX32(s->regs, TX_EVENT_FIFO_STATUS_REGISTER,
                                     TXE_RI) + 1;
 
@@ -1424,7 +1424,7 @@ static uint64_t canfd_tx_fifo_status_prew(RegisterInfo *reg, uint64_t val64)
         }
 
         /*
-         * Increase the fill level by 1 and decrease the fill level by 1.
+         * Increase the read index by 1 and decrease the fill level by 1.
          */
         ARRAY_FIELD_DP32(s->regs, TX_EVENT_FIFO_STATUS_REGISTER, TXE_RI,
                          read_ind);
@@ -1439,26 +1439,39 @@ static uint64_t canfd_rx_fifo_status_prew(RegisterInfo *reg, uint64_t val64)
 {
     XlnxVersalCANFDState *s = XILINX_CANFD(reg->opaque);
     uint32_t val = val64;
-    uint8_t read_ind;
+    uint8_t read_ind = 0;
+    uint8_t fill_ind = 0;
 
     if (FIELD_EX32(val, RX_FIFO_STATUS_REGISTER, IRI)) {
-        read_ind = FIELD_EX32(val, RX_FIFO_STATUS_REGISTER, RI) + 1;
+        /* FL index is zero, setting IRI bit has no effect. */
+        if (FIELD_EX32(val, RX_FIFO_STATUS_REGISTER, FL) != 0) {
+            read_ind = FIELD_EX32(val, RX_FIFO_STATUS_REGISTER, RI) + 1;
 
-        if (read_ind > s->cfg.rx0_fifo - 1) {
-            read_ind = 0;
+            if (read_ind > s->cfg.rx0_fifo - 1) {
+                read_ind = 0;
+            }
+
+            fill_ind = FIELD_EX32(val, RX_FIFO_STATUS_REGISTER, FL) - 1;
+
+            ARRAY_FIELD_DP32(s->regs, RX_FIFO_STATUS_REGISTER, RI, read_ind);
+            ARRAY_FIELD_DP32(s->regs, RX_FIFO_STATUS_REGISTER, FL, fill_ind);
         }
-
-        ARRAY_FIELD_DP32(s->regs, RX_FIFO_STATUS_REGISTER, RI, read_ind);
     }
 
     if (FIELD_EX32(val, RX_FIFO_STATUS_REGISTER, IRI_1)) {
-        read_ind = FIELD_EX32(val, RX_FIFO_STATUS_REGISTER, RI_1) + 1;
+        /* FL_1 index is zero, setting IRI_1 bit has no effect. */
+        if (FIELD_EX32(val, RX_FIFO_STATUS_REGISTER, FL_1) != 0) {
+            read_ind = FIELD_EX32(val, RX_FIFO_STATUS_REGISTER, RI_1) + 1;
 
-        if (read_ind > s->cfg.rx1_fifo - 1) {
-            read_ind = 0;
+            if (read_ind > s->cfg.rx1_fifo - 1) {
+                read_ind = 0;
+            }
+
+            fill_ind = FIELD_EX32(val, RX_FIFO_STATUS_REGISTER, FL_1) - 1;
+
+            ARRAY_FIELD_DP32(s->regs, RX_FIFO_STATUS_REGISTER, RI_1, read_ind);
+            ARRAY_FIELD_DP32(s->regs, RX_FIFO_STATUS_REGISTER, FL_1, fill_ind);
         }
-
-        ARRAY_FIELD_DP32(s->regs, RX_FIFO_STATUS_REGISTER, RI_1, read_ind);
     }
 
     return s->regs[R_RX_FIFO_STATUS_REGISTER];
