@@ -83,4 +83,10 @@ typedef struct XlnxVersalCANFDState {
 
 } XlnxVersalCANFDState;
 
+typedef struct txid_list {
+    uint32_t can_id;
+    uint32_t reg_num;
+    struct txid_list   *next;
+} txid_list;
+
 #endif

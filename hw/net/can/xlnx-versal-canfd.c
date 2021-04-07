@@ -864,12 +864,11 @@ static void canfd_exit_sleep_mode(XlnxVersalCANFDState *s)
 }
 
 static void regs2frame(XlnxVersalCANFDState *s, qemu_can_frame *frame,
-                       uint32_t reg_id)
+                       uint32_t reg_num)
 {
     uint32_t i = 0;
     uint32_t j = 0;
     uint32_t val = 0;
-    uint32_t reg_num = R_TB_ID_REGISTER + (NUM_REGS_PER_MSG_SPACE * reg_id);
     uint32_t dlc_reg_val = s->regs[reg_num + 1];
     uint32_t dlc_value = FIELD_EX32(dlc_reg_val, TB0_DLC_REGISTER, DLC);
 
@@ -1150,13 +1149,12 @@ static bool tx_ready_check(XlnxVersalCANFDState *s)
     return true;
 }
 
-static void tx_fifo_stamp(XlnxVersalCANFDState *s, uint32_t reg_num)
+static void tx_fifo_stamp(XlnxVersalCANFDState *s, uint32_t tb0_regid)
 {
     /*
      * If EFC bit in DLC message is set. This means we will store the
      * event of this transmitted message with time stamp.
      */
-    uint32_t tb0_regid = R_TB_ID_REGISTER + (NUM_REGS_PER_MSG_SPACE * reg_num);
     uint32_t dlc_reg_val = 0;
 
     if (FIELD_EX32(s->regs[tb0_regid + 1], TB0_DLC_REGISTER, EFC)) {
@@ -1205,53 +1203,117 @@ static void tx_fifo_stamp(XlnxVersalCANFDState *s, uint32_t reg_num)
     }
 }
 
+static void add_id(txid_list **start, uint32_t can_id, uint32_t reg_num)
+{
+    txid_list *temp = (txid_list *)malloc(sizeof(txid_list));
+
+    if (temp == NULL) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Couldn't allocate memory\n",
+                      __func__);
+        return;
+    }
+
+    temp->can_id = can_id;
+    temp->reg_num = reg_num;
+    temp->next = *start;
+
+    *start = temp;
+}
+
+static void swap_ids(txid_list *first, txid_list *second)
+{
+    uint32_t temp_can_id = first->can_id;
+    uint32_t temp_reg_num = first->reg_num;
+
+    first->can_id = second->can_id;
+    first->reg_num = second->reg_num;
+    second->can_id = temp_can_id;
+    second->reg_num = temp_reg_num;
+}
+
+/* Sort the data to sent in ascending order. */
+static void sort_by_id(XlnxVersalCANFDState *s, txid_list **start)
+{
+    uint8_t i = 0;
+    bool swapped = true;
+
+    uint32_t reg_num = 0;
+    uint32_t reg_ready = s->regs[R_TX_BUFFER_READY_REQUEST_REGISTER];
+
+    /* First find the messages which are ready for transaction. */
+    for (i = 0; i < s->cfg.tx_fifo; i++) {
+        if (reg_ready) {
+            reg_num = R_TB_ID_REGISTER + (NUM_REGS_PER_MSG_SPACE * i);
+            add_id(start, s->regs[reg_num], reg_num);
+        }
+
+        reg_ready >>= 1;
+        s->regs[R_TX_BUFFER_READY_REQUEST_REGISTER] &= ~(1 << i);
+        s->regs[R_TX_BUFFER_CANCEL_REQUEST_REGISTER] &= ~(1 << i);
+    }
+
+    /* If no data or only one tx data, no need to sort the ids. */
+    if (*start == NULL || (*start)->next == NULL) {
+        return;
+    }
+
+    txid_list *temp_a, *temp_b = NULL;
+
+    while (swapped) {
+        swapped = false;
+        temp_a = *start;
+
+        while (temp_a->next != temp_b) {
+            if (temp_a->can_id > temp_a->next->can_id) {
+                swap_ids(temp_a, temp_a->next);
+                swapped = true;
+            } else if (temp_a->can_id == temp_a->next->can_id) {
+                /*
+                 * If two IDs are same we sort them by their index. Lowest index
+                 * will be transmitted first.
+                 */
+                if (temp_a->reg_num > temp_a->next->reg_num) {
+                    swap_ids(temp_a, temp_a->next);
+                    swapped = true;
+                }
+            }
+
+            temp_a = temp_a->next;
+        }
+
+        temp_b = temp_a;
+    }
+}
+
 static void transfer_data(XlnxVersalCANFDState *s)
 {
     bool canfd_tx = tx_ready_check(s);
 
     if (canfd_tx) {
         qemu_can_frame frame;
+        txid_list *start = NULL;
 
-        uint32_t reg_ready = s->regs[R_TX_BUFFER_READY_REQUEST_REGISTER];
-        uint32_t i = 0;
+        sort_by_id(s, &start);
 
         if (ARRAY_FIELD_EX32(s->regs, STATUS_REGISTER, LBACK)) {
-            for (i = 0; i < s->cfg.tx_fifo ; i++) {
-                s->tx_busy_bit = i;
+            while (start != NULL) {
+                regs2frame(s, &frame, start->reg_num);
+                update_rx_sequential(s, &frame);
+                tx_fifo_stamp(s, start->reg_num);
 
-                if (reg_ready & 0x1) {
-                    regs2frame(s, &frame, i);
-                    update_rx_sequential(s, &frame);
-                    tx_fifo_stamp(s, i);
-
-                    s->regs[R_TX_BUFFER_READY_REQUEST_REGISTER] &= ~(1 << i);
-                    s->regs[R_TX_BUFFER_CANCEL_REQUEST_REGISTER] &= ~(1 << i);
-               }
-
-                reg_ready >>= 1;
+                start = start->next;
             }
 
             ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, RXOK, 1);
         } else {
-            for (i = 0; i < s->cfg.tx_fifo ; i++) {
-                s->tx_busy_bit = i;
+            while (start != NULL) {
+                regs2frame(s, &frame, start->reg_num);
+                DB_PRINT(s, "sending data from XlnxVersalCANFDState\n");
 
-                /*
-                 * TODO: Message with lowest ID should be transmitted first.
-                 */
+                can_bus_client_send(&s->bus_client, &frame, 1);
+                tx_fifo_stamp(s, start->reg_num);
 
-                if (reg_ready & 0x1) {
-                    regs2frame(s, &frame, i);
-                    DB_PRINT(s, "sending data from XlnxVersalCANFDState\n");
-
-                    can_bus_client_send(&s->bus_client, &frame, 1);
-                    tx_fifo_stamp(s, i);
-
-                    s->regs[R_TX_BUFFER_READY_REQUEST_REGISTER] &= ~(1 << i);
-                    s->regs[R_TX_BUFFER_CANCEL_REQUEST_REGISTER] &= ~(1 << i);
-                }
-
-                reg_ready >>= 1;
+                start = start->next;
             }
 
             ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, TXRRS, 1);
@@ -1264,6 +1326,7 @@ static void transfer_data(XlnxVersalCANFDState *s)
         s->tx_busy_bit = 0;
 
         ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, TXOK, 1);
+        free(start);
     } else {
         DB_PRINT(s, "XlnxVersalCANFDState is not enabled for data transfer\n");
     }
