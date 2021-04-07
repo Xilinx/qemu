@@ -812,6 +812,9 @@ static void update_status_register_mode_bits(XlnxVersalCANFDState *s)
                          wakeup_irq_val);
     }
 
+    /* Put the CANFD in error active state. */
+    ARRAY_FIELD_DP32(s->regs, STATUS_REGISTER, ESTAT, 1);
+
     canfd_update_irq(s);
 }
 
