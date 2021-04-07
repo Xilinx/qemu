@@ -1111,7 +1111,7 @@ static void update_rx_sequential(XlnxVersalCANFDState *s,
         DB_PRINT(s, "Message didn't pass through any filter. "
                  "Discarding the message\n");
     } else {
-        if (filter_index < filter_partition) {
+        if (filter_index <= filter_partition) {
             fill_level = ARRAY_FIELD_EX32(s->regs, RX_FIFO_STATUS_REGISTER, FL);
             read_index = ARRAY_FIELD_EX32(s->regs, RX_FIFO_STATUS_REGISTER, RI);
             uint8_t store_index = read_index + fill_level;
