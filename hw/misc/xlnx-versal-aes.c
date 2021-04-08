@@ -1240,8 +1240,6 @@ static void aes_realize(DeviceState *dev, Error **errp)
     /* Set device keys to user-provided values */
     xlnx_aes_k256_get_provided(OBJECT(s), "family-key-id",
                                NULL, &s->family_key.key, NULL);
-    xlnx_aes_k256_get_provided(OBJECT(s), "puf-key-id",
-                               NULL, &s->puf_key.key, NULL);
 }
 
 static void pmc_init_key_sink(Zynq3AES *s,
