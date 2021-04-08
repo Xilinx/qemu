@@ -429,7 +429,6 @@ static void versal_pufkey_to_id(const Versal_PufKey *key, Versal_PUFExtra *info)
 static void versal_pufkey_export(const Versal_PufKey *be,
                                  ZynqMPAESKeySink *sink, Versal_PUFExtra *info)
 {
-    size_t i;
     Versal_PufKey key;
 
     /* Derive the ID from the key */
@@ -443,14 +442,8 @@ static void versal_pufkey_export(const Versal_PufKey *be,
         /* Don't reveal the puf-key to keysink if id only */
         memset(&key, 0, sizeof(key));
     } else {
-        /*
-         * Key-sink expects:
-         * 1. Each 32-bit in cpu endian; yet,
-         * 2. The order of 8 32b-words in big endian.
-         */
-        for (i = 0; i < ARRAY_SIZE(key.u32); i++) {
-            key.u32[i] = be32_to_cpu(be->u32[i]);
-        }
+        /* Dispatch key to PUF keysink */
+        xlnx_aes_k256_swap32(&key.u8, &be->u8);
     }
 
     zynqmp_aes_key_update(sink, key.u8, sizeof(key.u8));
