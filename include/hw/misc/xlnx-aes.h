@@ -81,5 +81,7 @@ int xlnx_aes_k256_get_provided(Object *obj, const char *id_prop,
                                const char *default_xd,
                                uint8_t (*key)[32], Error **errp);
 uint32_t xlnx_aes_k256_crc(const uint32_t *k256, unsigned zpad_cnt);
+void xlnx_aes_k256_swap32(uint8_t (*dst)[32], const uint8_t (*src)[32]);
+bool xlnx_aes_k256_is_zero(const uint8_t (*key)[32]);
 
 #endif

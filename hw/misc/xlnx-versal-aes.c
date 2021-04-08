@@ -512,7 +512,12 @@ static void xlx_aes_load_key(Zynq3AES *s, int len)
         key.u8 = s->bh_key_red.key;
         break;
     case KEY_SEL_FAMILY_KEY:
-        hw_error("%s: Unsupported AES Key source FAMILY_KEY\n", s->prefix);
+        if (xlnx_aes_k256_is_zero(&s->family_key.key)) {
+            hw_error("%s: AES Key source FAMILY_KEY: key value missing.\n",
+                     s->prefix);
+        }
+        key.u8 = s->family_key.key;
+        be_adj = 0;  /* for zynqmp_aes_key_update() compatibility */
         break;
     default:
         hw_error("%s: Unsupported AES Key source %d\n", s->prefix, src);
@@ -1237,9 +1242,16 @@ static void aes_realize(DeviceState *dev, Error **errp)
     qdev_init_gpio_in_named(dev, efuse_key_lock_update, "efuse-key-lock", 1);
     qdev_init_gpio_in_named(dev, user_key_lock_update, "user-key-lock", 8);
 
-    /* Set device keys to user-provided values */
+    /*
+     * Retrieve preset key from 'secret' object and place it in
+     * byte order expected by xlx_aes_load_key().  Default to
+     * zero to detect missing value.
+     */
     xlnx_aes_k256_get_provided(OBJECT(s), "family-key-id",
-                               NULL, &s->family_key.key, NULL);
+                               "00000000" "00000000" "00000000" "00000000"
+                               "00000000" "00000000" "00000000" "00000000",
+                               &s->family_key.key, NULL);
+    xlnx_aes_k256_swap32(&s->family_key.key, &s->family_key.key);
 }
 
 static void pmc_init_key_sink(Zynq3AES *s,

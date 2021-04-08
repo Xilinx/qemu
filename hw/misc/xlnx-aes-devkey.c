@@ -228,3 +228,47 @@ uint32_t xlnx_aes_k256_crc(const uint32_t *k256, unsigned zpad_cnt)
 
     return crc;
 }
+
+void xlnx_aes_k256_swap32(uint8_t (*dst)[32], const uint8_t (*src)[32])
+{
+    /*
+     * Convert each group of 32 bits,
+     *  From: byte-order used by Xilinx embeddedsw to specify hex-string key
+     *        (same as hex-string key parsed by xlnx_aes_k256_get_provided()).
+     *  Into: byte-order used by zynqmp_aes_key_update()
+     *
+     * zynqmp_aes_key_update() expects:
+     * 1. Each 32-bit in cpu endian; yet,
+     * 2. The order of 8 32b-words in big endian.
+     */
+    unsigned i;
+    const void *dp = dst, *sp = src;
+
+    /* Ok to be 'in-place' swap.  Not ok to be partial overlap. */
+    if (dp != sp) {
+        const void *de = &(*dst)[31];
+        const void *se = &(*src)[31];
+
+        assert(de < sp || se < dp);
+    }
+
+    for (i = 0; i < 32; i += 4) {
+        uint32_t v;
+
+        v = ldl_be_p(&(*src)[i]);
+        stl_he_p(&(*dst)[i], v);
+    }
+}
+
+bool xlnx_aes_k256_is_zero(const uint8_t (*key)[32])
+{
+    const uint8_t *p = &(*key)[0];
+    uint64_t q0, q1, q2, q3;
+
+    q0 = ldq_he_p(p);
+    q1 = ldq_he_p(p + 8);
+    q2 = ldq_he_p(p + 16);
+    q3 = ldq_he_p(p + 24);
+
+    return !(q0 | q1 | q2 | q3);
+}
