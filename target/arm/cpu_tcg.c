@@ -752,6 +752,32 @@ static void cortex_r5f_initfn(Object *obj)
     cpu->isar.mvfr1 = 0x00000011;
 }
 
+#ifndef CONFIG_USER_ONLY
+static uint64_t v8r_buildopt_read(CPUARMState *env, const ARMCPRegInfo *ri)
+{
+    ARMCPU *cpu = env_archcpu(env);
+    uint64_t r;
+
+    r = cpu->core_count - 1;
+
+    /* 1 GIC.  */
+    r |= 1 << 8;
+
+    /* Signal integrity protection.  */
+    r |= 1 << 28;
+
+    /* Split/Lock configuration.  */
+    r |= 2 << 30;
+    return r;
+}
+
+static const ARMCPRegInfo cortexr52_cp_reginfo[] = {
+    { .name = "BUILDOPT", .cp = 15, .opc1 = 0, .crn = 15, .crm = 2, .opc2 = 0,
+      .type = ARM_CP_NO_RAW, .access = PL1_R, .readfn = v8r_buildopt_read },
+    REGINFO_SENTINEL
+};
+#endif
+
 static void cortex_r52_initfn(Object *obj)
 {
     ARMCPU *cpu = ARM_CPU(obj);
@@ -768,11 +794,12 @@ static void cortex_r52_initfn(Object *obj)
     cpu->pmsav7_dregion = 16;
     cpu->midr = 0x411fd132; /* r1p2 */
     cpu->isar.id_pfr0 = 0x0131;
-    cpu->isar.id_pfr1 = 0x001;
+    /* FIXME: Update for GICv3, Generic timers and EL2.  */
+    /* cpu->id_pfr1 = 0x10111001; */
+    cpu->isar.id_pfr1 = 0x00100001;
     cpu->isar.id_dfr0 = 0x010400;
     cpu->id_afr0 = 0x0;
-    /* FIXME: Enable ARMv8-R PMSA.  */
-    cpu->isar.id_mmfr0 = 0x00210030;
+    cpu->isar.id_mmfr0 = 0x00211040;
     cpu->isar.id_mmfr1 = 0x00000000;
     cpu->isar.id_mmfr2 = 0x01200000;
     cpu->isar.id_mmfr3 = 0x0211;
@@ -794,6 +821,9 @@ static void cortex_r52_initfn(Object *obj)
     cpu->tcmtr = 0x80000003;
 
     define_arm_cp_regs(cpu, cortexr5_cp_reginfo);
+#ifndef CONFIG_USER_ONLY
+    define_arm_cp_regs(cpu, cortexr52_cp_reginfo);
+#endif
     /* From r5f.  */
     cpu->isar.mvfr0 = 0x10110221;
     cpu->isar.mvfr1 = 0x00000011;
