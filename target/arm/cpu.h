@@ -1023,6 +1023,8 @@ struct ARMCPU {
     uint64_t rvbar;
     int pe;
 
+    uint32_t tcmtr;
+
     /* Configurable aspects of GIC cpu interface (which is part of the CPU) */
     int gic_num_lrs; /* number of list registers */
     int gic_vpribits; /* number of virtual priority bits */

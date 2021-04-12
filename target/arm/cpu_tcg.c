@@ -790,6 +790,9 @@ static void cortex_r52_initfn(Object *obj)
     cpu->gic_vpribits = 5;
     cpu->gic_vprebits = 5;
 
+    /* Has TCM A and B.  */
+    cpu->tcmtr = 0x80000003;
+
     define_arm_cp_regs(cpu, cortexr5_cp_reginfo);
     /* From r5f.  */
     cpu->isar.mvfr0 = 0x10110221;
