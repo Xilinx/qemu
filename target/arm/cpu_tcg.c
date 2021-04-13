@@ -794,9 +794,9 @@ static void cortex_r52_initfn(Object *obj)
     cpu->pmsav7_dregion = 16;
     cpu->midr = 0x411fd132; /* r1p2 */
     cpu->isar.id_pfr0 = 0x0131;
-    /* FIXME: Update for GICv3, Generic timers and EL2.  */
+    /* FIXME: Update for GICv3 and Generic timers.  */
     /* cpu->id_pfr1 = 0x10111001; */
-    cpu->isar.id_pfr1 = 0x00100001;
+    cpu->isar.id_pfr1 = 0x00101001;
     cpu->isar.id_dfr0 = 0x010400;
     cpu->id_afr0 = 0x0;
     cpu->isar.id_mmfr0 = 0x00211040;
