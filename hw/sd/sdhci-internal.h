@@ -46,7 +46,7 @@
 #define SDHC_TRNS_ACMD23               0x0008 /* since v3 */
 #define SDHC_TRNS_READ                 0x0010
 #define SDHC_TRNS_MULTI                0x0020
-#define SDHC_TRNMOD_MASK               0x0037
+#define SDHC_TRNMOD_MASK               0x003F
 
 /* R/W Command Register 0x0 */
 #define SDHC_CMDREG                    0x0E

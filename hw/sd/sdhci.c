@@ -327,6 +327,17 @@ static void sdhci_poweron_reset(DeviceState *dev)
     }
 }
 
+static void sdhci_send_cmd23(SDHCIState *s)
+{
+    SDRequest request;
+    uint8_t response[16];
+    request.cmd = 23;
+    request.arg = s->sdmasysad;
+    trace_sdhci_send_command(request.cmd, request.arg);
+    sdbus_do_command(&s->sdbus, &request, response);
+    s->rspreg[3] = ldl_be_p(response);
+}
+
 static void sdhci_data_transfer(void *opaque);
 
 static void sdhci_send_command(SDHCIState *s)
@@ -340,6 +351,10 @@ static void sdhci_send_command(SDHCIState *s)
     request.cmd = s->cmdreg >> 8;
     request.arg = s->argument;
 
+    if ((request.cmd == 18 || request.cmd == 25) &&
+        (s->trnmod & SDHC_TRNS_ACMD23)) {
+        sdhci_send_cmd23(s);
+    }
     trace_sdhci_send_command(request.cmd, request.arg);
     rlen = sdbus_do_command(&s->sdbus, &request, response);
 
