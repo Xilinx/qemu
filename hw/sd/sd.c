@@ -1160,14 +1160,13 @@ static sd_rsp_type_t sd_normal_command(SDState *sd, SDRequest req)
                 mmc_function_switch(sd, req.arg);
                 sd->state = sd_transfer_state;
                 return sd_r1b;
+            } else {
+                sd_function_switch(sd, req.arg);
+                sd->state = sd_sendingdata_state;
+                sd->data_start = 0;
+                sd->data_offset = 0;
+                return sd_r1;
             }
-
-            sd_function_switch(sd, req.arg);
-            sd->state = sd_sendingdata_state;
-            sd->data_start = 0;
-            sd->data_offset = 0;
-            return sd_r1;
-
         default:
             break;
         }
@@ -2271,6 +2270,9 @@ uint8_t sd_read_data(SDState *sd)
         break;
 
     case 21:    /* CMD21: SEND_TUNNING_BLOCK (MMC) */
+        if (sd->data_offset >= MMC_TUNING_BLOCK_SIZE - 1) {
+            sd->state = sd_transfer_state;
+        }
         if (sd->ext_csd[EXCSD_BUS_WIDTH_OFFSET] & BUS_WIDTH_8_MASK) {
             ret = mmc_tunning_block_pattern[sd->data_offset++];
         } else {
@@ -2279,9 +2281,6 @@ uint8_t sd_read_data(SDState *sd)
              */
             ret = mmc_tunning_block_pattern[sd->data_offset++] & 0x0F;
             ret |= (mmc_tunning_block_pattern[sd->data_offset++] & 0x0F) << 4;
-        }
-        if (sd->data_offset >= MMC_TUNING_BLOCK_SIZE - 1) {
-            sd->state = sd_transfer_state;
         }
         break;
 
