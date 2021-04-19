@@ -335,8 +335,9 @@ static void sd_ocr_powerup(void *opaque)
     /* card power-up OK */
     sd->ocr = FIELD_DP32(sd->ocr, OCR, CARD_POWER_UP, 1);
 
-    if (!sd->mmc && sd->size > SDSC_MAX_CAPACITY) {
-        sd->ocr = FIELD_DP32(sd->ocr, OCR, CARD_CAPACITY, 1);
+    if (sd->size > SDSC_MAX_CAPACITY) {
+        sd->ocr = sd->mmc ? FIELD_DP32(sd->ocr, EMMC_OCR, ACCESS_MODE, 0x2) :
+                  FIELD_DP32(sd->ocr, OCR, CARD_CAPACITY, 1);
     }
 }
 
