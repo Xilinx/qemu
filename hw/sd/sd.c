@@ -1211,35 +1211,37 @@ static sd_rsp_type_t sd_normal_command(SDState *sd, SDRequest req)
         }
         break;
 
-    case 8:	/* CMD8:   SEND_IF_COND */
+    case 8:    /* CMD8:   SEND_IF_COND / SEND_EXT_CSD */
         if (sd->mmc) {
-            if (sd->state != sd_transfer_state) {
+            switch (sd->state) {
+            case sd_transfer_state:
+                /* MMC : Sends the EXT_CSD register as a Block of data */
+                sd->state = sd_sendingdata_state;
+                memcpy(sd->data, sd->ext_csd, sizeof(sd->ext_csd));
+                sd->data_start = addr;
+                sd->data_offset = 0;
+                return sd_r1;
+            default:
                 break;
             }
-            sd->state = sd_sendingdata_state;
-            memcpy(sd->data, sd->ext_csd, 512);
-            sd->data_start = 0;
-            sd->data_offset = 0;
-            return sd_r1;
-        }
+        } else {
+            if (sd->spec_version < SD_PHY_SPECv2_00_VERS) {
+                break;
+            }
+            if (sd->state != sd_idle_state) {
+                break;
+            }
+            sd->vhs = 0;
 
-        if (sd->spec_version < SD_PHY_SPECv2_00_VERS) {
-            break;
-        }
-        if (sd->state != sd_idle_state) {
-            break;
-        }
-        sd->vhs = 0;
+            /* No response if not exactly one VHS bit is set.  */
+            if (!(req.arg >> 8) || (req.arg >> (ctz32(req.arg & ~0xff) + 1))) {
+                return sd->spi ? sd_r7 : sd_r0;
+            }
 
-        /* No response if not exactly one VHS bit is set.  */
-        if (!(req.arg >> 8) || (req.arg >> (ctz32(req.arg & ~0xff) + 1))) {
-            return sd->spi ? sd_r7 : sd_r0;
+            /* Accept.  */
+            sd->vhs = req.arg;
+            return sd_r7;
         }
-
-        /* Accept.  */
-        sd->vhs = req.arg;
-        return sd_r7;
-
     case 9:	/* CMD9:   SEND_CSD */
         switch (sd->state) {
         case sd_standby_state:
@@ -2206,11 +2208,9 @@ uint8_t sd_read_data(SDState *sd)
             sd->state = sd_transfer_state;
         break;
 
-    case 8:    /* CMD8:   SEND_EXT_CSD */
-        assert(sd->mmc);
+    case 8:     /* CMD8: SEND_EXT_CSD on MMC */
         ret = sd->data[sd->data_offset++];
-
-        if (sd->data_offset >= 512) {
+        if (sd->data_offset >= sizeof(sd->ext_csd)) {
             sd->state = sd_transfer_state;
         }
         break;
