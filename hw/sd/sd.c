@@ -295,6 +295,15 @@ FIELD(OCR, UHS_II_CARD,                29,  1) /* Only UHS-II */
 FIELD(OCR, CARD_CAPACITY,              30,  1) /* 0:SDSC, 1:SDHC/SDXC */
 FIELD(OCR, CARD_POWER_UP,              31,  1)
 
+/*
+ * eMMC OCR register
+ */
+FIELD(EMMC_OCR, VDD_WINDOW_0,  7, 1)
+FIELD(EMMC_OCR, VDD_WINDOW_1,  8, 7)
+FIELD(EMMC_OCR, VDD_WINDOW_2, 15, 9)
+FIELD(EMMC_OCR, ACCESS_MODE,  29, 2)
+FIELD(EMMC_OCR, POWER_UP,     31, 1)
+
 #define ACMD41_ENQUIRY_MASK     0x00ffffff
 #define ACMD41_R3_MASK          (R_OCR_VDD_VOLTAGE_WIN_HI_MASK \
                                | R_OCR_ACCEPT_SWITCH_1V8_MASK \
@@ -304,8 +313,16 @@ FIELD(OCR, CARD_POWER_UP,              31,  1)
 
 static void sd_set_ocr(SDState *sd)
 {
-    /* All voltages OK */
-    sd->ocr = R_OCR_VDD_VOLTAGE_WIN_HI_MASK;
+    if (sd->mmc) {
+        /*
+         * Dual Voltage eMMC card
+         */
+        sd->ocr = R_EMMC_OCR_VDD_WINDOW_0_MASK |
+                  R_EMMC_OCR_VDD_WINDOW_2_MASK;
+    } else {
+        /* All voltages OK */
+        sd->ocr = R_OCR_VDD_VOLTAGE_WIN_HI_MASK;
+    }
 }
 
 static void sd_ocr_powerup(void *opaque)
@@ -555,7 +572,11 @@ static void sd_response_r1_make(SDState *sd, uint8_t *response)
 
 static void sd_response_r3_make(SDState *sd, uint8_t *response)
 {
-    stl_be_p(response, sd->ocr & ACMD41_R3_MASK);
+    if (sd->mmc) {
+        stl_be_p(response, sd->ocr);
+    } else {
+        stl_be_p(response, sd->ocr & ACMD41_R3_MASK);
+    }
 }
 
 static void sd_response_r6_make(SDState *sd, uint8_t *response)
