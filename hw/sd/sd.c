@@ -488,7 +488,11 @@ static void sd_set_csd(SDState *sd, uint64_t size)
 
 static void sd_set_rca(SDState *sd, uint32_t val)
 {
-    sd->rca = val;
+    if (sd->mmc) {
+        sd->rca = val;
+    } else {
+        sd->rca += 0x4567;
+    }
 }
 
 FIELD(CSR, AKE_SEQ_ERROR,               3,  1)
@@ -1078,10 +1082,8 @@ static sd_rsp_type_t sd_normal_command(SDState *sd, SDRequest req)
         case sd_identification_state:
         case sd_standby_state:
             sd->state = sd_standby_state;
-            sd_set_rca(sd, sd->mmc ? extract32(req.arg, 16, 16) :
-                       0x4567);
+            sd_set_rca(sd, req.arg >> 16);
             return sd->mmc ? sd_r1 : sd_r6;
-
         default:
             break;
         }
