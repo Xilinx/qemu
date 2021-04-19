@@ -435,7 +435,7 @@ static void sd_set_ext_csd(SDState *sd, uint64_t size)
     sd->ext_csd[EXT_CSD_SEC_ERASE_MULT] = 0x96; /* Secure erase support */
     sd->ext_csd[EXT_CSD_SEC_TRIM_MULT] = 0x96; /* Secure TRIM multiplier */
     sd->ext_csd[EXT_CSD_BOOT_INFO] = 0x7; /* Boot information */
-    sd->ext_csd[EXT_CSD_BOOT_MULT] = 0x8; /* Boot partition size. 128KB unit */
+    sd->ext_csd[EXT_CSD_BOOT_MULT] = 0x0; /* Boot partition size. 128KB unit */
     sd->ext_csd[EXT_CSD_ACC_SIZE] = 0x6; /* Access size */
     sd->ext_csd[EXT_CSD_HC_ERASE_GRP_SIZE] = 0x4; /* HC Erase unit size */
     sd->ext_csd[EXT_CSD_ERASE_TIMEOUT_MULT] = 0x1; /* HC erase timeout */
@@ -461,7 +461,7 @@ static void sd_set_ext_csd(SDState *sd, uint64_t size)
     sd->ext_csd[EXT_CSD_CARD_TYPE] = 0xFF; /* Card type */
     sd->ext_csd[EXT_CSD_STRUCTURE] = 0x2; /* CSD Structure version */
     sd->ext_csd[EXT_CSD_REV] = 0x5; /* Extended CSD revision */
-    sd->ext_csd[EXT_CSD_RPMB_MULT] = 0x1; /* RPMB size */
+    sd->ext_csd[EXT_CSD_RPMB_MULT] = 0x0; /* RPMB size */
     sd->ext_csd[EXT_CSD_PARTITION_SUPPORT] = 0x3; /* Partinioning support */
     sd->ext_csd[159] = 0x00; /* Max enhanced area size */
     sd->ext_csd[158] = 0x00; /* ... */
