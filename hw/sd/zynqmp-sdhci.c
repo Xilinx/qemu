@@ -145,6 +145,7 @@ static void zynqmp_sdhci_realize(DeviceState *dev, Error **errp)
     }
 
     if (di_mmc) {
+        qdev_prop_set_uint8(carddev_sd, "spec_version", SD_PHY_SPECv3_01_VERS);
         qdev_prop_set_drive(carddev_sd, "drive", blk_by_legacy_dinfo(di_mmc));
         object_property_set_bool(OBJECT(carddev_sd), "mmc", true, &error_fatal);
         s->is_mmc = true;
