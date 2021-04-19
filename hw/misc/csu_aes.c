@@ -141,7 +141,6 @@ struct ZynqMPCSUAES {
     bool aes_busy;
 
     bool key_loaded;
-    uint32_t data_count;
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
 
@@ -173,9 +172,6 @@ struct ZynqMPCSUAES {
     void *notify_opaque;
     /* Debug only */
     const char *prefix;
-    /* AES needs blocks of 16 bytes.  */
-    uint8_t buf[16];
-    uint8_t bufpos;
 };
 
 /* Xilinx wrapper logic.
@@ -188,51 +184,9 @@ static int xlx_aes_push_data(ZynqMPCSUAES *s,
                              bool last_word , int lw_len,
                              uint8_t *outbuf, int *outlen)
 {
-    uint8_t *wbuf = data8x;
-    int wlen = len;
-    int rlen = len;
-
-//    printf("%s len=%d eop=%d\n", __func__, len, last_word);
-    /* 16 bytes write buffer.  */
-    if (s->aes->state != PAYLOAD && (s->bufpos || wlen < 16)) {
-        unsigned int tocopy = MIN(16 - s->bufpos, wlen);
-
-        memcpy(s->buf + s->bufpos, wbuf, tocopy);
-        s->bufpos += tocopy;
-        rlen = tocopy;
-        assert(s->bufpos <= 16);
-
-        /* Full block?  */
-        if (s->bufpos == 16 || last_word) {
-            last_word = (tocopy == wlen) && last_word;
-            wbuf = s->buf;
-            wlen = s->bufpos;
-            s->bufpos = 0;
-        } else {
-            return tocopy;
-        }
-    }
-
-    /* End the AAD phase after the 16 bytes of IV.  */
-    if (s->data_count < 16) {
-        int plen = MIN(16 - s->data_count, wlen);
-        s->data_count += plen;
-        last_word = s->data_count == 16;
-
-        xlnx_aes_push_data(s->aes, wbuf, plen,
-                             last_word, 4, NULL, NULL);
-        return plen;
-    }
-
-    s->data_count += wlen;
-    /* FIXME: Encryption of more than 256 might be HW limited??  */
-    if (s->aes->encrypt && s->data_count > 32) {
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: encryption of more than 256 bits!\n", s->prefix);
-    }
-    xlnx_aes_push_data(s->aes, wbuf, wlen, last_word, lw_len,
-                         outbuf, outlen);
-    return rlen;
+    /* ZynqMP does not support AAD */
+    return xlnx_aes_push_data(s->aes, data8x, len, false, last_word, lw_len,
+                              outbuf, outlen);
 }
 
 static uint32_t shift_in_u32(uint32_t *a, unsigned int size, uint32_t data)
@@ -447,7 +401,6 @@ static void xlx_aes_reset(DeviceState *dev)
 
     qemu_irq_pulse(s->aes_rst);
     s->key_loaded = false;
-    s->data_count = 0;
 
     s->in_reset = false;
 }
@@ -469,7 +422,6 @@ static void xlx_aes_write(void *opaque, hwaddr addr, uint64_t value,
         break;
     case R_AES_START_MSG:
         if (value) {
-            s->data_count = 0;
             xlnx_aes_start_message(s->aes,
                          s->regs[R_AES_CFG] & R_AES_CFG_ENCRYPT_DECRYPT_N_MASK);
         }
@@ -597,8 +549,6 @@ static const VMStateDescription vmstate_aes = {
     .minimum_version_id = 1,
     .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
-        VMSTATE_UINT8_ARRAY(buf, ZynqMPCSUAES, 16),
-        VMSTATE_UINT8(bufpos, ZynqMPCSUAES),
         VMSTATE_UINT32_ARRAY(regs, ZynqMPCSUAES, R_MAX),
         VMSTATE_END_OF_LIST(),
     }

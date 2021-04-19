@@ -32,35 +32,9 @@
 
 #define TYPE_XLNX_AES "xlnx-aes"
 
-typedef struct XlnxAES {
-    DeviceState parent_obj;
-    gcm_context gcm_ctx;
-    const char *prefix;
-    qemu_irq s_done;
-    qemu_irq s_busy;
-
-    /* Fields from here to the end will be autoreset to zero
-       at reset.  */
-    int32_t state;
-    bool encrypt;
-    bool tag_ok;
-    bool key_zeroed;
-
-    /* inp ready not directly derived from state because
-       we will add delayed inp_ready handling at some point.  */
-    bool inp_ready;
-    uint32_t iv[4];
-    uint32_t tag[4];
-    uint32_t key[8];
-    uint16_t keylen;
-} XlnxAES;
-
 enum XlnxAESState {
     IDLE,
-    IV0,
-    IV1,
-    IV2,
-    IV3,
+    IV,
     AAD,
     PAYLOAD,
     TAG0,
@@ -69,14 +43,46 @@ enum XlnxAESState {
     TAG3
 };
 
+typedef struct XlnxAES {
+    DeviceState parent_obj;
+    gcm_context gcm_ctx;
+    const char *prefix;
+    qemu_irq s_done;
+    qemu_irq s_busy;
+
+    /* Fields from here to the end will be autoreset to zero at reset. */
+    enum XlnxAESState state;
+    bool encrypt;
+    bool tag_ok;
+    bool key_zeroed;
+
+    /* inp ready not directly derived from state because
+       we will add delayed inp_ready handling at some point.  */
+    bool inp_ready;
+
+    /* Once ended, aad-feed must end until next start of message */
+    bool aad_ready;
+
+    /* 16-byte packing is needed for stream-push of IV and AAD. */
+    unsigned pack_next;
+    union {
+        uint8_t u8[16];
+        uint32_t u32[4];
+    } pack_buf;
+    uint32_t iv[4];
+    uint32_t tag[4];
+    uint32_t key[8];
+    uint16_t keylen;
+} XlnxAES;
+
 void xlnx_aes_write_key(XlnxAES *s, unsigned int pos, uint32_t val);
 void xlnx_aes_load_key(XlnxAES *s, int len);
 void xlnx_aes_key_zero(XlnxAES *s);
 void xlnx_aes_start_message(XlnxAES *s, bool encrypt);
 int xlnx_aes_push_data(XlnxAES *s,
-                                uint8_t *data8, int len,
-                                bool last_word , int lw_len,
-                                uint8_t *outbuf, int *outlen);
+                       const uint8_t *data8, unsigned len,
+                       bool is_aad, bool last_word, int lw_len,
+                       uint8_t *outbuf, int *outlen);
 int xlnx_aes_k256_get_provided(Object *obj, const char *id_prop,
                                const char *default_xd,
                                uint8_t (*key)[32], Error **errp);

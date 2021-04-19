@@ -303,7 +303,6 @@ struct Zynq3AES {
     XlnxAES *aes;
     uint32_t device_key[8];
     bool key_loaded;
-    uint32_t data_count;
 
     PMCKeySink bbram_key;
     PMCKeySink bbram_key_red;
@@ -333,9 +332,6 @@ struct Zynq3AES {
 
     /* Debug only */
     const char *prefix;
-    /* AES needs blocks of 16 bytes.  */
-    uint8_t buf[16];
-    uint8_t bufpos;
 
     /* GCM residual handling */
     uint8_t gcm_tag[16];
@@ -597,7 +593,6 @@ static void aes_start_msg_postw(RegisterInfo *reg, uint64_t val)
     Zynq3AES *s = XILINX_AES(reg->opaque);
     if (val) {
         s->gcm_len = 0;
-        s->data_count = 0;
         xlnx_aes_start_message(s->aes,
                      s->regs[R_AES_MODE] & R_AES_MODE_ENC_DEC_N_MASK);
     }
@@ -934,7 +929,6 @@ static void aes_reset(DeviceState *dev)
     aes_imr_update_irq(s);
     s->key_loaded = false;
     s->gcm_len = 0;
-    s->data_count = 0;
     s->key_dec_done = false;
     s->inSoftRst = false;
 }
@@ -977,51 +971,8 @@ static int xlx_aes_push_data(Zynq3AES *s,
                              bool last_word , int lw_len,
                              uint8_t *outbuf, int *outlen)
 {
-    uint8_t *wbuf = data8x;
-    int wlen = len;
-    int rlen = len;
-
-    /*  printf("%s len=%d eop=%d\n", __func__, len, last_word); */
-    /* 16 bytes write buffer.  */
-    if (s->aes->state != PAYLOAD && (s->bufpos || wlen < 16)) {
-        unsigned int tocopy = MIN(16 - s->bufpos, wlen);
-
-        memcpy(s->buf + s->bufpos, wbuf, tocopy);
-        s->bufpos += tocopy;
-        rlen = tocopy;
-        assert(s->bufpos <= 16);
-
-        /* Full block?  */
-        if (s->bufpos == 16 || last_word) {
-            last_word = (tocopy == wlen) && last_word;
-            wbuf = s->buf;
-            wlen = s->bufpos;
-            s->bufpos = 0;
-        } else {
-            return tocopy;
-        }
-    }
-
-    /* End the AAD phase after the 16 bytes of IV.  */
-    if (s->data_count < 16) {
-        int plen = MIN(16 - s->data_count, wlen);
-        s->data_count += plen;
-        last_word = !s->regs[R_AES_AAD];
-
-        xlnx_aes_push_data(s->aes, wbuf, plen,
-                             last_word, 4, NULL, NULL);
-        return plen;
-    }
-
-    s->data_count += wlen;
-    /* FIXME: Encryption of more than 256 might be HW limited??  */
-    if (s->aes->encrypt && s->data_count > 32) {
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: encryption of more than 256 bits!\n", s->prefix);
-    }
-    xlnx_aes_push_data(s->aes, wbuf, wlen, last_word, lw_len,
-                         outbuf, outlen);
-    return rlen;
+    return xlnx_aes_push_data(s->aes, data8x, len, !!s->regs[R_AES_AAD],
+                              last_word, lw_len, outbuf, outlen);
 }
 
 static uint32_t shift_in_u32(uint32_t *a, unsigned int size, uint32_t data)

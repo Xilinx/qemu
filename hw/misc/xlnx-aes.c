@@ -55,15 +55,14 @@
         } \
     } while (0)
 
+#define XLNX_AES_PACKED_LEN  sizeof(((XlnxAES *)0)->pack_buf.u8)
+
 /* This implements a model of the Xlnx AES unit.  */
 static const char *aes_state2str(enum XlnxAESState state)
 {
     static const char *state2str[] = {
         [IDLE] = "IDLE",
-        [IV0] = "IV0",
-        [IV1] = "IV1",
-        [IV2] = "IV2",
-        [IV3] = "IV3",
+        [IV] = "IV",
         [AAD] = "AAD",
         [PAYLOAD] = "PAYLOAD",
         [TAG0] = "TAG0",
@@ -98,6 +97,10 @@ static void xlnx_aes_set_state(XlnxAES *s, enum XlnxAESState state)
         s->inp_ready = 1;
     } else {
         s->inp_ready = 0;
+    }
+
+    if (state == AAD) {
+        s->aad_ready = true;
     }
 }
 
@@ -139,16 +142,9 @@ void xlnx_aes_key_zero(XlnxAES *s)
     s->key_zeroed = 1;
 }
 
-static void xlnx_aes_push_iv(XlnxAES *s, uint32_t v)
+static void xlnx_aes_load_iv(XlnxAES *s)
 {
-    if (s->state < IV0 || s->state > IV3) {
-        xlnx_check_state(s, IV0, "Loading IV");
-        return;
-    }
-    s->iv[s->state - IV0] = v;
-    xlnx_aes_set_state(s, s->state + 1);
-
-    if (s->state == AAD) {
+    if (s->state == IV) {
         unsigned int keylen = s->keylen;
         int r, i;
 
@@ -172,6 +168,158 @@ static void xlnx_aes_push_iv(XlnxAES *s, uint32_t v)
     }
 }
 
+static bool xlnx_aes_pack_empty(XlnxAES *s)
+{
+    return s->pack_next == 0;
+}
+
+static bool xlnx_aes_pack_full(XlnxAES *s)
+{
+    return s->pack_next >= XLNX_AES_PACKED_LEN;
+}
+
+static bool xlnx_aes_pack_pad0(XlnxAES *s)
+{
+    /* Pad the packing buffer only if not empty and not full */
+    int pad = XLNX_AES_PACKED_LEN - s->pack_next;
+
+    if (pad > 0 && pad < XLNX_AES_PACKED_LEN) {
+        memset(&s->pack_buf.u8[s->pack_next], 0, pad);
+        s->pack_next = XLNX_AES_PACKED_LEN;
+
+        return true;
+    } else {
+        return xlnx_aes_pack_full(s);
+    }
+}
+
+static unsigned int xlnx_aes_pack_push(XlnxAES *s, const void *data,
+                                       unsigned len, bool last_word)
+{
+    unsigned next, plen;
+
+    assert(s->state != PAYLOAD); /* PAYLOAD not subject to packing */
+
+    if (!len) {
+        return 0;
+    }
+
+    next = s->pack_next;
+    assert(next < XLNX_AES_PACKED_LEN);
+
+    plen = MIN(len, XLNX_AES_PACKED_LEN - next);
+
+    memcpy(&s->pack_buf.u8[next], data, plen);
+    s->pack_next = next + plen;
+
+    /*
+     * Trigger padding if having packed end-of-message byte.
+     * 1/ To pad shortened IV
+     * 2/ To pad shortened TAG (on decrypt)
+     * 3/ To pad AAD (on encrypt) to multiple of block-size (16 bytes)
+     */
+    if (plen == len && last_word) {
+        xlnx_aes_pack_pad0(s);
+    }
+
+    return plen;
+}
+
+static unsigned xlnx_aes_load_aad(XlnxAES *s, const void *data, unsigned len)
+{
+    assert(s->aad_ready);
+
+    /* Auto-reset packing if sourced from packer */
+    if ((const void *)&s->pack_buf == data) {
+        len = s->pack_next;
+        s->pack_next = 0;
+    }
+
+    /* An empty or partial block stops aad */
+    if (!len) {
+        s->aad_ready = false;
+        return 0;
+    }
+
+    if (len & 15) {
+        s->aad_ready = false;
+    }
+
+    gcm_push_aad(&s->gcm_ctx, data, len);
+    return len;
+}
+
+static unsigned xlnx_aes_push_aad(XlnxAES *s, const uint8_t *data,
+                                  const unsigned len, bool is_aad, void *outbuf)
+{
+    unsigned pos = 0, blen;
+
+    assert(!xlnx_check_state(s, AAD, "Loading AAD"));
+
+    if (!is_aad) {
+        /*
+         * data is actual payload. Thus, AAD phase has ended,
+         * and residual AAD from earlier push(es) must be flused.
+         */
+        xlnx_aes_load_aad(s, &s->pack_buf, 0);
+
+        /* None consumed; pass all given data to PAYLOAD state */
+        xlnx_aes_set_state(s, PAYLOAD);
+        return 0;
+    }
+
+    /* The entire AAD goes straight through.  */
+    memcpy(outbuf, data, len);
+
+    if (!xlnx_aes_pack_empty(s)) {
+        /* Combine with AAD from earlier pushes into a block */
+        pos = xlnx_aes_pack_push(s, data, len, false);
+
+        /* A partially packed buffer is not ready to be loaded yet */
+        if (!xlnx_aes_pack_full(s)) {
+            assert(pos == len);
+            return len;
+        }
+
+        xlnx_aes_load_aad(s, &s->pack_buf, 0);
+        assert(xlnx_aes_pack_empty(s));
+    }
+
+    /* Sink more AAD by the blocks */
+    blen = QEMU_ALIGN_DOWN(len, XLNX_AES_PACKED_LEN);
+    if (blen) {
+        pos += xlnx_aes_load_aad(s, &data[pos], blen);
+    }
+
+    /* Collect AAD tail into the empty packing buffer */
+    pos += xlnx_aes_pack_push(s, &data[pos], (len - pos), false);
+
+    /* All data should have been consumed */
+    assert(pos == len);
+    return len;
+}
+
+static unsigned xlnx_aes_push_iv(XlnxAES *s, const void *data,
+                                 unsigned len, bool last_word)
+{
+    int pos;
+
+    assert(!xlnx_check_state(s, IV, "Loading IV"));
+
+    /* Collect 16 bytes as IV */
+    pos = xlnx_aes_pack_push(s, data, len, last_word);
+
+    if (xlnx_aes_pack_full(s)) {
+        memcpy(s->iv, &s->pack_buf, sizeof(s->iv));
+        s->pack_next = 0;
+
+        xlnx_aes_load_iv(s);
+        xlnx_aes_set_state(s, AAD);
+    }
+
+    return pos;
+}
+
 void xlnx_aes_start_message(XlnxAES *s, bool encrypt)
 {
     if (xlnx_check_state(s, IDLE, "Start message")) {
@@ -180,7 +328,8 @@ void xlnx_aes_start_message(XlnxAES *s, bool encrypt)
         qemu_set_irq(s->s_busy, false);
     }
     /* Loading IV.  */
-    xlnx_aes_set_state(s, IV0);
+    xlnx_aes_set_state(s, IV);
+    s->pack_next = 0;
     s->encrypt = encrypt;
     s->tag_ok = 0;
 
@@ -197,37 +346,32 @@ static void xlnx_aes_done(XlnxAES *s)
 
 /* Length is in bytes.  */
 int xlnx_aes_push_data(XlnxAES *s,
-                                uint8_t *data8, int len,
-                                bool last_word , int lw_len,
-                                uint8_t *outbuf, int *outlen)
+                       const uint8_t *data8, unsigned len,
+                       bool is_aad, bool last_word, int lw_len,
+                       uint8_t *outbuf, int *outlen)
 {
-    int pos = 0, opos = 0, plen;
+    unsigned pos = 0, opos = 0, plen;
     uint32_t v32;
 
+    assert(!last_word || lw_len == 0 || lw_len == 4);
     qemu_set_irq(s->s_busy, true);
 
     while (pos < len) {
+        plen = len - pos;
         switch (s->state) {
         case IDLE:
             qemu_log_mask(LOG_GUEST_ERROR, "AES: Data while idle\n");
             return len;
-        case IV0...IV3:
-            /* Slow.  */
-            memcpy(&v32, data8 + pos, 4);
-            xlnx_aes_push_iv(s, v32);
-            pos += 4;
+        case IV:
+            pos += xlnx_aes_push_iv(s, &data8[pos], plen, last_word);
             break;
         case AAD:
-            plen = len - pos;
-            gcm_push_aad(&s->gcm_ctx, &data8[pos], plen);
-            /* AAD goes straight through.  */
-            memcpy(outbuf + opos, &data8[pos], plen);
-
+            plen = xlnx_aes_push_aad(s, &data8[pos], plen, is_aad,
+                                     outbuf + opos);
             pos += plen;
             opos += plen;
             break;
         case PAYLOAD:
-            plen = len - pos;
             gcm_push_data(&s->gcm_ctx, s->encrypt ? AES_ENCRYPT : AES_DECRYPT,
                           outbuf + opos, &data8[pos], plen);
             pos += plen;
@@ -262,18 +406,18 @@ int xlnx_aes_push_data(XlnxAES *s,
         }
     }
 
-    if (last_word) {
-        /* Only supported value at the moment.  */
-        assert(lw_len == 0 || lw_len == 4);
-        xlnx_aes_set_state(s, s->state + 1);
-        qemu_set_irq(s->s_busy, false);
-    }
-
-    /* Emit tag with last word of payload.  */
-    if (s->state == TAG0 && s->encrypt) {
-        gcm_emit_tag(&s->gcm_ctx, outbuf + opos, 16);
-        opos += 16;
-        xlnx_aes_done(s);
+    /* 'last_word' is honored only for PAYLOAD phase */
+    if (last_word && s->state == PAYLOAD) {
+        if (s->encrypt) {
+            /* Emit tag on end-of-message */
+            gcm_emit_tag(&s->gcm_ctx, outbuf + opos, 16);
+            opos += 16;
+            xlnx_aes_done(s);
+        } else {
+            /* Receive 16-byte TAG to compare with calculated */
+            xlnx_aes_set_state(s, TAG0);
+            qemu_set_irq(s->s_busy, false);
+        }
     }
 
 done:
