@@ -785,8 +785,6 @@ static void update_status_register_mode_bits(XlnxVersalCANFDState *s)
     bool wakeup_irq_val = (sleep_mode == 0) && sleep_status;
     /* Sleep interrupt bit. */
     bool sleep_irq_val = sleep_mode && (sleep_status == 0);
-    bool canfd_normal_mode =
-                        ARRAY_FIELD_EX32(s->regs, STATUS_REGISTER, NORMAL);
 
     /* Clear previous core mode status bits. */
     ARRAY_FIELD_DP32(s->regs, STATUS_REGISTER, LBACK, 0);
@@ -801,8 +799,7 @@ static void update_status_register_mode_bits(XlnxVersalCANFDState *s)
         ARRAY_FIELD_DP32(s->regs, STATUS_REGISTER, SLEEP, 1);
         ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, SLP,
                          sleep_irq_val);
-    } else if (ARRAY_FIELD_EX32(s->regs, MODE_SELECT_REGISTER, SNOOP) &
-               canfd_normal_mode) {
+    } else if (ARRAY_FIELD_EX32(s->regs, MODE_SELECT_REGISTER, SNOOP)) {
         ARRAY_FIELD_DP32(s->regs, STATUS_REGISTER, SNOOP, 1);
     } else {
         /* If all bits are zero, XlnxVersalCANFDState is set in normal mode. */
