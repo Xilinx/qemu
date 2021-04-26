@@ -6,11 +6,14 @@
 # See the COPYING file in the top-level directory.
 #
 
-import qmp
 import json
 import ast
 import readline
 import sys
+import os
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'python'))
+from qemu import qmp
 
 def die(cause):
     sys.stderr.write('error: %s\n' % cause)
@@ -23,13 +26,13 @@ class FaultInjectionFramework(qmp.QEMUMonitorProtocol):
 
     def print_v(self, msg, level):
         if level <= self.verbose:
-            print msg
+            print(msg)
 
     def print_qemu_version(self):
         version = self._greeting['QMP']['version']['qemu']
-        print 'Connected to QEMU %d.%d.%d\n' % (version['major'],
+        print('Connected to QEMU %d.%d.%d\n' % (version['major'],
                                                 version['minor'],
-                                                version['micro'])
+                                                version['micro']))
 
     def __init__(self, address, verbose = 0):
         self.verbose = verbose
@@ -170,31 +173,31 @@ class FaultInjectionFramework(qmp.QEMUMonitorProtocol):
         self.send(qmpcmd)
 
     def help(self):
-        print "\nFault Injection Framework Commands"
-        print "==================================\n"
-        print "cont()"
-        print " * Resume the simulation when the Virtual Machine is stopped.\n"
-        print "run()"
-        print " * Start the simulation when the notify are set.\n"
-        print "notify(time_ns, cb)"
-        print " * Notify the callback cb in guest time time_ns.\n"
-        print "write(address, value, size, cpu, debug)"
-        print " * Write @value of size @size at @address from @cpu."
-        print " * @cpu can be either a qom path or the cpu id.\n"
-        print " * set @debug to True to make a write transaction with"
-        print " * debug attributes enabled"
-        print "read(address, size, cpu)"
-        print " * Read a value of size @size at @address from @cpu."
-        print " * @cpu can be either a qom path or the cpu id."
-        print " * Returns the value.\n"
-        print "get_qom_property(path, property)"
-        print " * Get a qom property."
-        print " * Returns the qom property named @property in @path.\n"
-        print "set_qom_property(path, property, value)"
-        print " * Set the property named @property in @path with @value.\n"
-        print "set_gpio(path, gpio, num, value)"
-        print " * Set the gpio named @gpio number @num in @path with the @val."
-        print " * @val is a boolean.\n"
+        print("\nFault Injection Framework Commands")
+        print("==================================\n")
+        print("cont()")
+        print(" * Resume the simulation when the Virtual Machine is stopped.\n")
+        print("run()")
+        print(" * Start the simulation when the notify are set.\n")
+        print("notify(time_ns, cb)")
+        print(" * Notify the callback cb in guest time time_ns.\n")
+        print("write(address, value, size, cpu, debug)")
+        print(" * Write @value of size @size at @address from @cpu.")
+        print(" * @cpu can be either a qom path or the cpu id.\n")
+        print(" * set @debug to True to make a write transaction with")
+        print(" * debug attributes enabled")
+        print("read(address, size, cpu)")
+        print(" * Read a value of size @size at @address from @cpu.")
+        print(" * @cpu can be either a qom path or the cpu id.")
+        print(" * Returns the value.\n")
+        print("get_qom_property(path, property)")
+        print(" * Get a qom property.")
+        print(" * Returns the qom property named @property in @path.\n")
+        print("set_qom_property(path, property, value)")
+        print(" * Set the property named @property in @path with @value.\n")
+        print("set_gpio(path, gpio, num, value)")
+        print(" * Set the gpio named @gpio number @num in @path with the @val.")
+        print(" * @val is a boolean.\n")
 
     def __get_address(self, arg):
         """
