@@ -501,12 +501,38 @@ static bool versal_pufhd_mem_regen(const Versal_PUFRegen *data,
     return versal_pufkey_from_buf(hd.h.u32, sizeof(hd), c_hash, key);
 }
 
+static bool versal_pufhd_buf_regen(Versal_PUFRegen *data,
+                                   uint32_t *c_hash, Versal_PufKey *key)
+{
+    Versal_RegisPUF *hd;
+    bool ret;
+
+    hd = (Versal_RegisPUF *)data->buf.pufhd;
+    data->buf.pufhd = NULL;
+
+    ret = versal_pufkey_from_buf(hd->h.u32, sizeof(*hd), c_hash, key);
+    g_free(hd);
+
+    return ret;
+}
+
 bool versal_pufhd_regen(Versal_PUFRegen *data, ZynqMPAESKeySink *keysink)
 {
     Versal_PufKey  key;
     uint32_t c_hash;
 
     switch (data->source) {
+    case Versal_PUFRegen_BUF:
+        if (!data->buf.wcnt) {
+            g_free(data->buf.pufhd);
+            data->buf.wcnt = sizeof(Versal_RegisPUF) / 4;
+            data->buf.pufhd = g_malloc0(data->buf.wcnt * 4);
+            return true;
+        }
+        if (!versal_pufhd_buf_regen(data, &c_hash, &key)) {
+            goto regen_failed;
+        }
+        break;
     case Versal_PUFRegen_EFUSE:
         if (!versal_pufhd_efuse_regen(data, &c_hash, &key)) {
             goto regen_failed;
@@ -541,8 +567,7 @@ Versal_PUFHD *versal_pufhd_new(ZynqMPAESKeySink *puf_keysink, bool is_12k)
     Versal_RegisPUF *pd;
     Versal_PUFHD *s;
 
-    s = g_malloc(sizeof(*s));
-    memset(s, 0, sizeof(*s));
+    s = g_malloc0(sizeof(*s));
 
     s->keysink = puf_keysink;
 

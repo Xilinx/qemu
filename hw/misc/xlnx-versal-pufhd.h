@@ -42,6 +42,7 @@ typedef struct {
     enum {
         Versal_PUFRegen_EFUSE,      /* helper-data from efuse */
         Versal_PUFRegen_MEM,        /* helper-data from guest memory */
+        Versal_PUFRegen_BUF,        /* helper-data from host memory */
     } source;
 
     union {
@@ -54,6 +55,10 @@ typedef struct {
             MemTxAttrs attr;
             hwaddr addr;
         } mem;
+        struct {
+            uint32_t *pufhd;
+            unsigned  wcnt;
+        } buf;
     };
 
     Versal_PUFExtra info;
