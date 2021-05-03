@@ -210,6 +210,8 @@ typedef struct PSX_RPU_CLUSTER {
     qemu_irq halt[CORE_COUNT];
     qemu_irq thumb[CORE_COUNT];
 
+    uint32_t axis_base;
+    MemoryRegion *tcm_mr;
     ARMCPU *cpus[CORE_COUNT];
     uint32_t regs[PSX_RPU_CLUSTER_R_MAX];
     RegisterInfo regs_info[PSX_RPU_CLUSTER_R_MAX];
@@ -366,6 +368,25 @@ static void vectable_base_postw(RegisterInfo *reg, uint64_t val64)
     }
 }
 
+static void cluster_axis_postw(RegisterInfo *reg, uint64_t val64)
+{
+    PSX_RPU_CLUSTER *s = XILINX_PSX_RPU_CLUSTER(reg->opaque);
+    uint32_t val = val64;
+    uint32_t addr;
+    MemoryRegionSection section;
+
+    if (!s->tcm_mr) {
+        return;
+    }
+
+    section = memory_region_find(s->tcm_mr, 0, 0x400000);
+    addr = section.offset_within_address_space;
+    addr &= 0xFFFFFF;
+    addr |= val & R_CLUSTER_AXIS_TCM_BASE_MASK;
+    memory_region_set_address(s->tcm_mr, addr);
+    memory_region_unref(section.mr);
+}
+
 static const RegisterAccessInfo psx_rpu_cluster_regs_info[] = {
     {   .name = "CORE_0_CFG0",  .addr = A_CORE_0_CFG0,
         .reset = 0x10,
@@ -478,6 +499,7 @@ static const RegisterAccessInfo psx_rpu_cluster_regs_info[] = {
         .ro = 0x100,
     },{ .name = "CLUSTER_AXIS",  .addr = A_CLUSTER_AXIS,
         .rsvd = 0xffffff,
+        .post_write = cluster_axis_postw,
     },{ .name = "CLUSTER_PERIPH",  .addr = A_CLUSTER_PERIPH,
         .reset = 0xf9000000,
         .rsvd = 0xfff,
@@ -538,8 +560,15 @@ static void psx_rpu_cluster_reset_enter(Object *obj, ResetType type)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        register_reset(&s->regs_info[i]);
+        switch (i) {
+        case R_CLUSTER_AXIS:
+            continue;
+        default:
+            register_reset(&s->regs_info[i]);
+        };
     }
+    s->regs[R_CLUSTER_AXIS] = s->axis_base &
+                              R_CLUSTER_AXIS_TCM_BASE_MASK;
 }
 
 static void psx_rpu_cluster_reset_hold(Object *obj)
@@ -583,6 +612,7 @@ static void psx_rpu_cluster_init(Object *obj)
     PSX_RPU_CLUSTER *s = XILINX_PSX_RPU_CLUSTER(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
     RegisterInfoArray *reg_array;
+    char *prop_name;
     int i;
 
     memory_region_init(&s->iomem, obj, TYPE_XILINX_PSX_RPU_CLUSTER,
@@ -603,13 +633,20 @@ static void psx_rpu_cluster_init(Object *obj)
     sysbus_init_irq(sbd, &s->irq_core_1_imr);
 
     for (i = 0; i < CORE_COUNT; ++i) {
-        char *prop_name = g_strdup_printf("cpu%d", i);
+        prop_name = g_strdup_printf("cpu%d", i);
         object_property_add_link(obj, prop_name, TYPE_ARM_CPU,
                              (Object **)&s->cpus[i],
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_STRONG);
         g_free(prop_name);
     }
+
+    prop_name = g_strdup_printf("tcm-mr");
+    object_property_add_link(obj, prop_name, TYPE_MEMORY_REGION,
+                             (Object **)&s->tcm_mr,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
+    g_free(prop_name);
 }
 
 static const FDTGenericGPIOSet psx_rpu_cluster_cntrl_gpio[] = {
@@ -645,6 +682,12 @@ static const VMStateDescription vmstate_psx_rpu_cluster = {
     }
 };
 
+static Property psx_rpu_cluster_prop[] = {
+    DEFINE_PROP_UINT32("axis-base", PSX_RPU_CLUSTER, axis_base,
+                       0xFF000000),
+    DEFINE_PROP_END_OF_LIST(),
+};
+
 static void psx_rpu_cluster_class_init(ObjectClass *klass, void *data)
 {
     ResettableClass *rc = RESETTABLE_CLASS(klass);
@@ -657,6 +700,7 @@ static void psx_rpu_cluster_class_init(ObjectClass *klass, void *data)
     rc->phases.hold = psx_rpu_cluster_reset_hold;
     fggc->controller_gpios = psx_rpu_cluster_cntrl_gpio;
     fggc->client_gpios = psx_rpu_cluster_client_gpio;
+    device_class_set_props(dc, psx_rpu_cluster_prop);
 }
 
 static const TypeInfo psx_rpu_cluster_info = {
