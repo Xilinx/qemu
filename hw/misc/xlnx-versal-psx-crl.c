@@ -30,6 +30,7 @@
 #include "qemu/bitops.h"
 #include "qemu/log.h"
 #include "migration/vmstate.h"
+#include "hw/irq.h"
 
 #ifndef XILINX_PSX_CRL_ERR_DEBUG
 #define XILINX_PSX_CRL_ERR_DEBUG 0
@@ -252,9 +253,25 @@ typedef struct PSX_CRL {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
 
+    qemu_irq rpu_rst[4];
     uint32_t regs[PSX_CRL_R_MAX];
     RegisterInfo regs_info[PSX_CRL_R_MAX];
 } PSX_CRL;
+
+#define PROPAGATE_GPIO(reg, f, irq) { \
+    bool val = ARRAY_FIELD_EX32(s->regs, reg, f); \
+    qemu_set_irq(irq, val); \
+}
+
+static void rst_rpu_postw(RegisterInfo *reg, uint64_t val)
+{
+    PSX_CRL *s = XILINX_PSX_CRL(reg->opaque);
+
+    PROPAGATE_GPIO(RST_RPU, CORE0A_RESET, s->rpu_rst[0]);
+    PROPAGATE_GPIO(RST_RPU, CORE1A_RESET, s->rpu_rst[1]);
+    PROPAGATE_GPIO(RST_RPU, CORE0B_RESET, s->rpu_rst[2]);
+    PROPAGATE_GPIO(RST_RPU, CORE1B_RESET, s->rpu_rst[3]);
+}
 
 static const RegisterAccessInfo psx_crl_regs_info[] = {
     {   .name = "ERR_CTRL",  .addr = A_ERR_CTRL,
@@ -354,6 +371,7 @@ static const RegisterAccessInfo psx_crl_regs_info[] = {
     },{ .name = "RST_RPU",  .addr = A_RST_RPU,
         .reset = 0x3f0f0f,
         .rsvd = 0xffc0f0f0,
+        .post_write = rst_rpu_postw,
     },{ .name = "RST_ADMA",  .addr = A_RST_ADMA,
         .reset = 0x1,
     },{ .name = "RST_GEM0",  .addr = A_RST_GEM0,
@@ -424,7 +442,9 @@ static const MemoryRegionOps psx_crl_ops = {
 
 static void psx_crl_realize(DeviceState *dev, Error **errp)
 {
-    /* Delete this if you don't need it */
+    PSX_CRL *s = XILINX_PSX_CRL(dev);
+
+    qdev_init_gpio_out(dev, s->rpu_rst, 4);
 }
 
 static void psx_crl_init(Object *obj)
