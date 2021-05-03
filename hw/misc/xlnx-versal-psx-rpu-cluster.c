@@ -316,6 +316,7 @@ static void rpu_update_gpios(PSX_RPU_CLUSTER *s)
     int i;
     bool ncpuhalt[CORE_COUNT];
     bool use_thumb[CORE_COUNT];
+    bool slsplit = ARRAY_FIELD_EX32(s->regs, CLUSTER_CFG, SLSPLIT);
 
     ncpuhalt[0] = ARRAY_FIELD_EX32(s->regs, CORE_0_CFG0, CPUHALT);
     ncpuhalt[1] = ARRAY_FIELD_EX32(s->regs, CORE_1_CFG0, CPUHALT);
@@ -327,6 +328,9 @@ static void rpu_update_gpios(PSX_RPU_CLUSTER *s)
     use_thumb[1] = ARRAY_FIELD_EX32(s->regs, CORE_1_CFG1, THUMBEXCEPTIONS);
 
     for (i = 0; i < CORE_COUNT; i++) {
+        if (!slsplit && (i != 0)) {
+            ncpuhalt[i] = true;
+        }
         qemu_set_irq(s->halt[i],
                      s->rpu_rst[i] | ncpuhalt[i]);
         qemu_set_irq(s->thumb[i], use_thumb[i]);
