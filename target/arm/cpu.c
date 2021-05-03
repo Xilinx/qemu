@@ -1378,7 +1378,7 @@ void arm_cpu_post_init(Object *obj)
         qdev_property_add_static(DEVICE(obj), &arm_cpu_reset_hivecs_property);
     }
 
-    if (arm_feature(&cpu->env, ARM_FEATURE_AARCH64)) {
+    if (arm_feature(&cpu->env, ARM_FEATURE_V8)) {
         object_property_add(obj, "rvbar", "uint64",
                             arm_cpu_get_rvbar,
                             arm_cpu_set_rvbar,
