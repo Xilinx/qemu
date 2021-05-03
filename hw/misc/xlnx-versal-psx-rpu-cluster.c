@@ -33,6 +33,8 @@
 #include "hw/irq.h"
 #include "qapi/error.h"
 #include "hw/fdt_generic_util.h"
+#include "cpu.h"
+#include "hw/qdev-properties.h"
 
 #ifndef XILINX_PSX_RPU_CLUSTER_ERR_DEBUG
 #define XILINX_PSX_RPU_CLUSTER_ERR_DEBUG 0
@@ -208,6 +210,7 @@ typedef struct PSX_RPU_CLUSTER {
     qemu_irq halt[CORE_COUNT];
     qemu_irq thumb[CORE_COUNT];
 
+    ARMCPU *cpus[CORE_COUNT];
     uint32_t regs[PSX_RPU_CLUSTER_R_MAX];
     RegisterInfo regs_info[PSX_RPU_CLUSTER_R_MAX];
 } PSX_RPU_CLUSTER;
@@ -337,6 +340,28 @@ static void core_cfg_postw(RegisterInfo *reg, uint64_t val)
     rpu_update_gpios(s);
 }
 
+static void vectable_base_postw(RegisterInfo *reg, uint64_t val64)
+{
+    PSX_RPU_CLUSTER *s = XILINX_PSX_RPU_CLUSTER(reg->opaque);
+    int cpu_num;
+
+    switch (reg->access->addr) {
+    case A_CORE_0_VECTABLE:
+        cpu_num = 0;
+        break;
+    case A_CORE_1_VECTABLE:
+        cpu_num = 1;
+        break;
+    default:
+        g_assert_not_reached();
+    };
+
+    if (s->cpus[cpu_num]) {
+        object_property_set_int(OBJECT(s->cpus[cpu_num]), "rvbar",
+                                val64, &error_abort);
+    }
+}
+
 static const RegisterAccessInfo psx_rpu_cluster_regs_info[] = {
     {   .name = "CORE_0_CFG0",  .addr = A_CORE_0_CFG0,
         .reset = 0x10,
@@ -347,6 +372,7 @@ static const RegisterAccessInfo psx_rpu_cluster_regs_info[] = {
         .post_write = core_cfg_postw,
     },{ .name = "CORE_0_VECTABLE",  .addr = A_CORE_0_VECTABLE,
         .rsvd = 0x1f,
+        .post_write = vectable_base_postw,
     },{ .name = "CORE_0_PRIMERRIDX",  .addr = A_CORE_0_PRIMERRIDX,
         .rsvd = 0xfe000000,
         .ro = 0x1ffffff,
@@ -399,6 +425,7 @@ static const RegisterAccessInfo psx_rpu_cluster_regs_info[] = {
         .post_write = core_cfg_postw,
     },{ .name = "CORE_1_VECTABLE",  .addr = A_CORE_1_VECTABLE,
         .rsvd = 0x1f,
+        .post_write = vectable_base_postw,
     },{ .name = "CORE_1_PRIMERRIDX",  .addr = A_CORE_1_PRIMERRIDX,
         .rsvd = 0xfe000000,
         .ro = 0x1ffffff,
@@ -552,6 +579,7 @@ static void psx_rpu_cluster_init(Object *obj)
     PSX_RPU_CLUSTER *s = XILINX_PSX_RPU_CLUSTER(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
     RegisterInfoArray *reg_array;
+    int i;
 
     memory_region_init(&s->iomem, obj, TYPE_XILINX_PSX_RPU_CLUSTER,
                        PSX_RPU_CLUSTER_R_MAX * 4);
@@ -569,6 +597,15 @@ static void psx_rpu_cluster_init(Object *obj)
     sysbus_init_irq(sbd, &s->irq_core_0_imr);
     sysbus_init_irq(sbd, &s->irq_rpu_imr);
     sysbus_init_irq(sbd, &s->irq_core_1_imr);
+
+    for (i = 0; i < CORE_COUNT; ++i) {
+        char *prop_name = g_strdup_printf("cpu%d", i);
+        object_property_add_link(obj, prop_name, TYPE_ARM_CPU,
+                             (Object **)&s->cpus[i],
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
+        g_free(prop_name);
+    }
 }
 
 static const FDTGenericGPIOSet psx_rpu_cluster_cntrl_gpio[] = {
