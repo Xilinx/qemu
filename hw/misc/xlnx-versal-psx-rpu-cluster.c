@@ -31,6 +31,8 @@
 #include "qemu/log.h"
 #include "migration/vmstate.h"
 #include "hw/irq.h"
+#include "qapi/error.h"
+#include "hw/fdt_generic_util.h"
 
 #ifndef XILINX_PSX_RPU_CLUSTER_ERR_DEBUG
 #define XILINX_PSX_RPU_CLUSTER_ERR_DEBUG 0
@@ -193,12 +195,18 @@ REG32(RPU_PCIL_ERR, 0x1100)
 
 #define PSX_RPU_CLUSTER_R_MAX (R_RPU_PCIL_ERR + 1)
 
+#define CORE_COUNT 2
+
 typedef struct PSX_RPU_CLUSTER {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
     qemu_irq irq_core_0_imr;
     qemu_irq irq_rpu_imr;
     qemu_irq irq_core_1_imr;
+
+    bool rpu_rst[CORE_COUNT];
+    qemu_irq halt[CORE_COUNT];
+    qemu_irq thumb[CORE_COUNT];
 
     uint32_t regs[PSX_RPU_CLUSTER_R_MAX];
     RegisterInfo regs_info[PSX_RPU_CLUSTER_R_MAX];
@@ -300,12 +308,43 @@ static uint64_t core_1_ids_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
+static void rpu_update_gpios(PSX_RPU_CLUSTER *s)
+{
+    int i;
+    bool ncpuhalt[CORE_COUNT];
+    bool use_thumb[CORE_COUNT];
+
+    ncpuhalt[0] = ARRAY_FIELD_EX32(s->regs, CORE_0_CFG0, CPUHALT);
+    ncpuhalt[1] = ARRAY_FIELD_EX32(s->regs, CORE_1_CFG0, CPUHALT);
+
+    /*
+     * CFG1 properties
+     */
+    use_thumb[0] = ARRAY_FIELD_EX32(s->regs, CORE_0_CFG1, THUMBEXCEPTIONS);
+    use_thumb[1] = ARRAY_FIELD_EX32(s->regs, CORE_1_CFG1, THUMBEXCEPTIONS);
+
+    for (i = 0; i < CORE_COUNT; i++) {
+        qemu_set_irq(s->halt[i],
+                     s->rpu_rst[i] | ncpuhalt[i]);
+        qemu_set_irq(s->thumb[i], use_thumb[i]);
+    }
+}
+
+static void core_cfg_postw(RegisterInfo *reg, uint64_t val)
+{
+    PSX_RPU_CLUSTER *s = XILINX_PSX_RPU_CLUSTER(reg->opaque);
+
+    rpu_update_gpios(s);
+}
+
 static const RegisterAccessInfo psx_rpu_cluster_regs_info[] = {
     {   .name = "CORE_0_CFG0",  .addr = A_CORE_0_CFG0,
         .reset = 0x10,
         .rsvd = 0xffffffce,
+        .post_write = core_cfg_postw,
     },{ .name = "CORE_0_CFG1",  .addr = A_CORE_0_CFG1,
         .rsvd = 0xfffffeee,
+        .post_write = core_cfg_postw,
     },{ .name = "CORE_0_VECTABLE",  .addr = A_CORE_0_VECTABLE,
         .rsvd = 0x1f,
     },{ .name = "CORE_0_PRIMERRIDX",  .addr = A_CORE_0_PRIMERRIDX,
@@ -354,8 +393,10 @@ static const RegisterAccessInfo psx_rpu_cluster_regs_info[] = {
     },{ .name = "CORE_1_CFG0",  .addr = A_CORE_1_CFG0,
         .reset = 0x10,
         .rsvd = 0xffffffce,
+        .post_write = core_cfg_postw,
     },{ .name = "CORE_1_CFG1",  .addr = A_CORE_1_CFG1,
         .rsvd = 0xfffffeee,
+        .post_write = core_cfg_postw,
     },{ .name = "CORE_1_VECTABLE",  .addr = A_CORE_1_VECTABLE,
         .rsvd = 0x1f,
     },{ .name = "CORE_1_PRIMERRIDX",  .addr = A_CORE_1_PRIMERRIDX,
@@ -489,9 +530,21 @@ static const MemoryRegionOps psx_rpu_cluster_ops = {
     },
 };
 
+static void rpu_core_rst_handler(void *opaque, int irq, int level)
+{
+     PSX_RPU_CLUSTER *s = XILINX_PSX_RPU_CLUSTER(opaque);
+
+     s->rpu_rst[irq] = level;
+     rpu_update_gpios(s);
+}
+
 static void psx_rpu_cluster_realize(DeviceState *dev, Error **errp)
 {
-    /* Delete this if you don't need it */
+    PSX_RPU_CLUSTER *s = XILINX_PSX_RPU_CLUSTER(dev);
+
+    qdev_init_gpio_in_named(dev, rpu_core_rst_handler, "rst", CORE_COUNT);
+    qdev_init_gpio_out_named(dev, s->halt, "halt", CORE_COUNT);
+    qdev_init_gpio_out_named(dev, s->thumb, "thumb", CORE_COUNT);
 }
 
 static void psx_rpu_cluster_init(Object *obj)
@@ -518,6 +571,29 @@ static void psx_rpu_cluster_init(Object *obj)
     sysbus_init_irq(sbd, &s->irq_core_1_imr);
 }
 
+static const FDTGenericGPIOSet psx_rpu_cluster_cntrl_gpio[] = {
+    {
+      .names = &fdt_generic_gpio_name_set_gpio,
+      .gpios = (FDTGenericGPIOConnection[]) {
+        { .name = "halt", .fdt_index = 0, .range = 2},
+        { .name = "thumb", .fdt_index = 2, .range = 2},
+        { },
+      },
+    },
+    { },
+};
+
+static const FDTGenericGPIOSet psx_rpu_cluster_client_gpio[] = {
+    {
+      .names = &fdt_generic_gpio_name_set_gpio,
+      .gpios = (FDTGenericGPIOConnection[]) {
+        { .name = "rst", .fdt_index = 0, .range = 2},
+        { },
+      },
+    },
+    { },
+};
+
 static const VMStateDescription vmstate_psx_rpu_cluster = {
     .name = TYPE_XILINX_PSX_RPU_CLUSTER,
     .version_id = 1,
@@ -532,11 +608,14 @@ static void psx_rpu_cluster_class_init(ObjectClass *klass, void *data)
 {
     ResettableClass *rc = RESETTABLE_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
+    FDTGenericGPIOClass *fggc = FDT_GENERIC_GPIO_CLASS(klass);
 
     dc->realize = psx_rpu_cluster_realize;
     dc->vmsd = &vmstate_psx_rpu_cluster;
     rc->phases.enter = psx_rpu_cluster_reset_enter;
     rc->phases.hold = psx_rpu_cluster_reset_hold;
+    fggc->controller_gpios = psx_rpu_cluster_cntrl_gpio;
+    fggc->client_gpios = psx_rpu_cluster_client_gpio;
 }
 
 static const TypeInfo psx_rpu_cluster_info = {
@@ -545,6 +624,10 @@ static const TypeInfo psx_rpu_cluster_info = {
     .instance_size = sizeof(PSX_RPU_CLUSTER),
     .class_init    = psx_rpu_cluster_class_init,
     .instance_init = psx_rpu_cluster_init,
+    .interfaces = (InterfaceInfo[]) {
+        { TYPE_FDT_GENERIC_GPIO },
+        { }
+    },
 };
 
 static void psx_rpu_cluster_register_types(void)
