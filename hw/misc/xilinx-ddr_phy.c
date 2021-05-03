@@ -4210,6 +4210,13 @@ static const RegisterAccessInfo ddr_phy_regs_info[] = {
     },{ .name = "DX0RSR3",  .addr = A_DX0RSR3,
         .ro = 0xffffffff,
     },{ .name = "DX0GSR0",  .addr = A_DX0GSR0,
+        .reset = R_DX0GSR0_DPLOCK_MASK
+               | R_DX0GSR0_WLDONE_MASK
+               | R_DX0GSR0_WLCAL_MASK
+               | R_DX0GSR0_GDQSCAL_MASK
+               | R_DX0GSR0_RDQSNCAL_MASK
+               | R_DX0GSR0_RDQSCAL_MASK
+               | R_DX0GSR0_WDQCAL_MASK,
         .ro = 0xffffffff,
     },{ .name = "DX0GSR1",  .addr = A_DX0GSR1,
         .ro = 0xffffffff,
@@ -4276,6 +4283,13 @@ static const RegisterAccessInfo ddr_phy_regs_info[] = {
     },{ .name = "DX1RSR3",  .addr = A_DX1RSR3,
         .ro = 0xffffffff,
     },{ .name = "DX1GSR0",  .addr = A_DX1GSR0,
+        .reset = R_DX1GSR0_DPLOCK_MASK
+               | R_DX1GSR0_WLDONE_MASK
+               | R_DX1GSR0_WLCAL_MASK
+               | R_DX1GSR0_GDQSCAL_MASK
+               | R_DX1GSR0_RDQSNCAL_MASK
+               | R_DX1GSR0_RDQSCAL_MASK
+               | R_DX1GSR0_WDQCAL_MASK,
         .ro = 0xffffffff,
     },{ .name = "DX1GSR1",  .addr = A_DX1GSR1,
         .ro = 0xffffffff,
@@ -4342,6 +4356,13 @@ static const RegisterAccessInfo ddr_phy_regs_info[] = {
     },{ .name = "DX2RSR3",  .addr = A_DX2RSR3,
         .ro = 0xffffffff,
     },{ .name = "DX2GSR0",  .addr = A_DX2GSR0,
+        .reset = R_DX2GSR0_DPLOCK_MASK
+               | R_DX2GSR0_WLDONE_MASK
+               | R_DX2GSR0_WLCAL_MASK
+               | R_DX2GSR0_GDQSCAL_MASK
+               | R_DX2GSR0_RDQSNCAL_MASK
+               | R_DX2GSR0_RDQSCAL_MASK
+               | R_DX2GSR0_WDQCAL_MASK,
         .ro = 0xffffffff,
     },{ .name = "DX2GSR1",  .addr = A_DX2GSR1,
         .ro = 0xffffffff,
@@ -4408,6 +4429,13 @@ static const RegisterAccessInfo ddr_phy_regs_info[] = {
     },{ .name = "DX3RSR3",  .addr = A_DX3RSR3,
         .ro = 0xffffffff,
     },{ .name = "DX3GSR0",  .addr = A_DX3GSR0,
+        .reset = R_DX3GSR0_DPLOCK_MASK
+               | R_DX3GSR0_WLDONE_MASK
+               | R_DX3GSR0_WLCAL_MASK
+               | R_DX3GSR0_GDQSCAL_MASK
+               | R_DX3GSR0_RDQSNCAL_MASK
+               | R_DX3GSR0_RDQSCAL_MASK
+               | R_DX3GSR0_WDQCAL_MASK,
         .ro = 0xffffffff,
     },{ .name = "DX3GSR1",  .addr = A_DX3GSR1,
         .ro = 0xffffffff,
@@ -4474,6 +4502,13 @@ static const RegisterAccessInfo ddr_phy_regs_info[] = {
     },{ .name = "DX4RSR3",  .addr = A_DX4RSR3,
         .ro = 0xffffffff,
     },{ .name = "DX4GSR0",  .addr = A_DX4GSR0,
+        .reset = R_DX4GSR0_DPLOCK_MASK
+               | R_DX4GSR0_WLDONE_MASK
+               | R_DX4GSR0_WLCAL_MASK
+               | R_DX4GSR0_GDQSCAL_MASK
+               | R_DX4GSR0_RDQSNCAL_MASK
+               | R_DX4GSR0_RDQSCAL_MASK
+               | R_DX4GSR0_WDQCAL_MASK,
         .ro = 0xffffffff,
     },{ .name = "DX4GSR1",  .addr = A_DX4GSR1,
         .ro = 0xffffffff,
@@ -4540,6 +4575,13 @@ static const RegisterAccessInfo ddr_phy_regs_info[] = {
     },{ .name = "DX5RSR3",  .addr = A_DX5RSR3,
         .ro = 0xffffffff,
     },{ .name = "DX5GSR0",  .addr = A_DX5GSR0,
+        .reset = R_DX5GSR0_DPLOCK_MASK
+               | R_DX5GSR0_WLDONE_MASK
+               | R_DX5GSR0_WLCAL_MASK
+               | R_DX5GSR0_GDQSCAL_MASK
+               | R_DX5GSR0_RDQSNCAL_MASK
+               | R_DX5GSR0_RDQSCAL_MASK
+               | R_DX5GSR0_WDQCAL_MASK,
         .ro = 0xffffffff,
     },{ .name = "DX5GSR1",  .addr = A_DX5GSR1,
         .ro = 0xffffffff,
@@ -4606,6 +4648,13 @@ static const RegisterAccessInfo ddr_phy_regs_info[] = {
     },{ .name = "DX6RSR3",  .addr = A_DX6RSR3,
         .ro = 0xffffffff,
     },{ .name = "DX6GSR0",  .addr = A_DX6GSR0,
+        .reset = R_DX6GSR0_DPLOCK_MASK
+               | R_DX6GSR0_WLDONE_MASK
+               | R_DX6GSR0_WLCAL_MASK
+               | R_DX6GSR0_GDQSCAL_MASK
+               | R_DX6GSR0_RDQSNCAL_MASK
+               | R_DX6GSR0_RDQSCAL_MASK
+               | R_DX6GSR0_WDQCAL_MASK,
         .ro = 0xffffffff,
     },{ .name = "DX6GSR1",  .addr = A_DX6GSR1,
         .ro = 0xffffffff,
@@ -4672,6 +4721,13 @@ static const RegisterAccessInfo ddr_phy_regs_info[] = {
     },{ .name = "DX7RSR3",  .addr = A_DX7RSR3,
         .ro = 0xffffffff,
     },{ .name = "DX7GSR0",  .addr = A_DX7GSR0,
+        .reset = R_DX7GSR0_DPLOCK_MASK
+               | R_DX7GSR0_WLDONE_MASK
+               | R_DX7GSR0_WLCAL_MASK
+               | R_DX7GSR0_GDQSCAL_MASK
+               | R_DX7GSR0_RDQSNCAL_MASK
+               | R_DX7GSR0_RDQSCAL_MASK
+               | R_DX7GSR0_WDQCAL_MASK,
         .ro = 0xffffffff,
     },{ .name = "DX7GSR1",  .addr = A_DX7GSR1,
         .ro = 0xffffffff,
@@ -4738,6 +4794,13 @@ static const RegisterAccessInfo ddr_phy_regs_info[] = {
     },{ .name = "DX8RSR3",  .addr = A_DX8RSR3,
         .ro = 0xffffffff,
     },{ .name = "DX8GSR0",  .addr = A_DX8GSR0,
+        .reset = R_DX8GSR0_DPLOCK_MASK
+               | R_DX8GSR0_WLDONE_MASK
+               | R_DX8GSR0_WLCAL_MASK
+               | R_DX8GSR0_GDQSCAL_MASK
+               | R_DX8GSR0_RDQSNCAL_MASK
+               | R_DX8GSR0_RDQSCAL_MASK
+               | R_DX8GSR0_WDQCAL_MASK,
         .ro = 0xffffffff,
     },{ .name = "DX8GSR1",  .addr = A_DX8GSR1,
         .ro = 0xffffffff,
