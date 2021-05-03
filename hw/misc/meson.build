@@ -123,6 +123,10 @@ softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL_PMC', if_true: files(
   'pmc_sbi.c',
   'sss-pmc.c'))
 
+specific_ss.add(when: 'CONFIG_XLNX_ZYNQMP_ARM', if_true: files(
+  'xlnx-versal-psx-rpu-cluster.c',
+))
+
 softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL', if_true: files(
   'arm-cmn600ae.c',
   'xlnx-versal-psx-crf.c'
