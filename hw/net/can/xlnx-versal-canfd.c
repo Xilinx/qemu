@@ -1251,8 +1251,8 @@ static void tx_fifo_stamp(XlnxVersalCANFDState *s, uint32_t tb0_regid)
                                  read_index);
             }
 
-            if (store_index > s->cfg.rx1_fifo - 1) {
-                store_index -= s->cfg.rx1_fifo - 1;
+            if (store_index > s->cfg.tx_fifo - 1) {
+                store_index -= s->cfg.tx_fifo - 1;
             }
 
             uint32_t tx_event_reg0_id = R_TXE_FIFO_TB_ID_REGISTER +
