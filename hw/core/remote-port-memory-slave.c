@@ -19,6 +19,7 @@
 #include "hw/sysbus.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
+#include "qemu/error-report.h"
 #include "trace.h"
 
 #include "hw/remote-port-proto.h"
@@ -68,6 +69,26 @@ static MemTxResult process_data_slow(RemotePortMemorySlave *s,
     return ret;
 }
 
+static AddressSpace *get_as_for_phys_busaccess(RemotePortMemorySlave *s,
+                                               struct rp_pkt *pkt)
+{
+    if (s->ats_cache) {
+        IOMMUTLBEntry *iotlb =
+            rp_ats_cache_lookup_translation(s->ats_cache,
+                                            pkt->busaccess.addr,
+                                            pkt->busaccess.len);
+        if (iotlb) {
+            /* Return the matching address space found. */
+            return iotlb->target_as;
+        }
+    }
+    /* Emit a warning on errors since this really should not happen. */
+    warn_report("Physical address error detected (range address: 0x%"
+                HWADDR_PRIx ", len: 0x%" PRIx32 " contains untranslated "
+                "addresses)", pkt->busaccess.addr, pkt->busaccess.len);
+    return NULL;
+}
+
 static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
                       DMADirection dir)
 {
@@ -78,7 +99,7 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
     uint8_t *data = NULL;
     uint8_t *byte_en;
     MemTxResult ret;
-    AddressSpace *as = NULL;
+    AddressSpace *as;
 
     byte_en = rp_busaccess_byte_en_ptr(s->peer, &pkt->busaccess_ext_base);
 
@@ -109,15 +130,7 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
     s->attr.requester_id = pkt->busaccess.master_id;
 
     if (pkt->busaccess.attributes & RP_BUS_ATTR_PHYS_ADDR) {
-        if (s->ats_cache) {
-            IOMMUTLBEntry *iotlb =
-                rp_ats_cache_lookup_translation(s->ats_cache,
-                                                pkt->busaccess.addr,
-                                                pkt->busaccess.len);
-            if (iotlb) {
-                as = iotlb->target_as;
-            }
-        }
+        as = get_as_for_phys_busaccess(s, pkt);
     } else {
         as = &s->as;
     }
