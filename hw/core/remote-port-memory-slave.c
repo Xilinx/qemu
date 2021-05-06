@@ -40,6 +40,7 @@
 
 /* Slow path dealing with odd stuff like byte-enables.  */
 static MemTxResult process_data_slow(RemotePortMemorySlave *s,
+                                     AddressSpace *as,
                                      struct rp_pkt *pkt,
                                      DMADirection dir,
                                      uint8_t *data, uint8_t *byte_en)
@@ -56,7 +57,7 @@ static MemTxResult process_data_slow(RemotePortMemorySlave *s,
             continue;
         }
 
-        ret = dma_memory_rw_attr(&s->as, pkt->busaccess.addr + i % sw,
+        ret = dma_memory_rw_attr(as, pkt->busaccess.addr + i % sw,
                                  data + i, 1, dir, s->attr);
 
         if (ret != MEMTX_OK) {
@@ -122,7 +123,7 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
     }
     if (as) {
         if (byte_en || pkt->busaccess.stream_width != pkt->busaccess.len) {
-            ret = process_data_slow(s, pkt, dir, data, byte_en);
+            ret = process_data_slow(s, as, pkt, dir, data, byte_en);
         } else {
             ret = dma_memory_rw_attr(as, pkt->busaccess.addr, data,
                                  pkt->busaccess.len, dir, s->attr);
