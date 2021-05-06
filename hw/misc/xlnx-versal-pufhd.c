@@ -443,7 +443,7 @@ static void versal_pufkey_export(const Versal_PufKey *be,
         memset(&key, 0, sizeof(key));
     } else {
         /* Dispatch key to PUF keysink */
-        xlnx_aes_k256_swap32(&key.u8, &be->u8);
+        xlnx_aes_k256_swap32(key.u8, be->u8);
     }
 
     zynqmp_aes_key_update(sink, key.u8, sizeof(key.u8));
@@ -459,7 +459,7 @@ static void versal_pufkey_import(Versal_PUFHD *s)
      * The value is given and stored as big-endian in s->key.
      */
     xlnx_aes_k256_get_provided(versal_pufkey_parent(s->keysink), "puf-key-id",
-                               NULL, &s->key.u8, &error_abort);
+                               NULL, s->key.u8, &error_abort);
 }
 
 static bool versal_pufhd_efuse_regen(const Versal_PUFRegen *data,

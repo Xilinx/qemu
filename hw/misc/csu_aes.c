@@ -488,7 +488,7 @@ static void aes_realize(DeviceState *dev, Error **errp)
 
     /* Set device keys to user-provided values */
     xlnx_aes_k256_get_provided(OBJECT(s), "family-key-id",
-                               NULL, &s->family_key.key, NULL);
+                               NULL, s->family_key.key, NULL);
 }
 
 static void csu_devkey_sink_init(ZynqMPCSUAES *s,

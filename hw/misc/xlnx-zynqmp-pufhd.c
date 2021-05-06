@@ -433,7 +433,7 @@ static void zynqmp_pufkey_import(Zynqmp_PUFHD *s)
      * The value is given and stored as big-endian in s->key.
      */
     xlnx_aes_k256_get_provided(zynqmp_pufkey_parent(s->keysink), "puf-key-id",
-                               NULL, &s->key.u8, &error_abort);
+                               NULL, s->key.u8, &error_abort);
 }
 
 static void zynqmp_pufkey_export(const Zynqmp_PUFKey *be,

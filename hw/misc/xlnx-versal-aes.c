@@ -508,7 +508,7 @@ static void xlx_aes_load_key(Zynq3AES *s, int len)
         key.u8 = s->bh_key_red.key;
         break;
     case KEY_SEL_FAMILY_KEY:
-        if (xlnx_aes_k256_is_zero(&s->family_key.key)) {
+        if (xlnx_aes_k256_is_zero(s->family_key.key)) {
             hw_error("%s: AES Key source FAMILY_KEY: key value missing.\n",
                      s->prefix);
         }
@@ -1201,8 +1201,8 @@ static void aes_realize(DeviceState *dev, Error **errp)
     xlnx_aes_k256_get_provided(OBJECT(s), "family-key-id",
                                "00000000" "00000000" "00000000" "00000000"
                                "00000000" "00000000" "00000000" "00000000",
-                               &s->family_key.key, NULL);
-    xlnx_aes_k256_swap32(&s->family_key.key, &s->family_key.key);
+                               s->family_key.key, NULL);
+    xlnx_aes_k256_swap32(s->family_key.key, s->family_key.key);
 }
 
 static void pmc_init_key_sink(Zynq3AES *s,

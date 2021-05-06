@@ -26,8 +26,7 @@
 #include "crypto/secret.h"
 #include "hw/misc/xlnx-aes.h"
 
-static int xlnx_aes_k256_xtob(const char *xs, uint8_t (*key)[256 / 8],
-                              Error **errp)
+static int xlnx_aes_k256_xtob(const char *xs, uint8_t key[32], Error **errp)
 {
     unsigned i;
 
@@ -52,7 +51,7 @@ static int xlnx_aes_k256_xtob(const char *xs, uint8_t (*key)[256 / 8],
             k8 = (k8 << 4) | (x & 15);
         }
 
-        (*key)[i / 2] = k8;
+        key[i / 2] = k8;
     }
 
     return 0;
@@ -102,9 +101,9 @@ static char *xlnx_aes_k256_get_secret(Object *obj, const char *id_prop,
     return data;
 }
 
-int xlnx_aes_k256_get_provided(Object *obj, const char *id_prop,
-                               const char *given_default,
-                               uint8_t (*key)[256 / 8], Error **errp)
+int xlnx_aes_k256_get_provided_i(Object *obj, const char *id_prop,
+                                 const char *given_default,
+                                 uint8_t key[32], Error **errp)
 {
     static const char builtin_default[] =
         /* A pattern with all 32 bytes being unique */
@@ -229,7 +228,7 @@ uint32_t xlnx_aes_k256_crc(const uint32_t *k256, unsigned zpad_cnt)
     return crc;
 }
 
-void xlnx_aes_k256_swap32(uint8_t (*dst)[32], const uint8_t (*src)[32])
+void xlnx_aes_k256_swap32_i(uint8_t dst[32], const uint8_t src[32])
 {
     /*
      * Convert each group of 32 bits,
@@ -246,8 +245,8 @@ void xlnx_aes_k256_swap32(uint8_t (*dst)[32], const uint8_t (*src)[32])
 
     /* Ok to be 'in-place' swap.  Not ok to be partial overlap. */
     if (dp != sp) {
-        const void *de = &(*dst)[31];
-        const void *se = &(*src)[31];
+        const void *de = &dst[31];
+        const void *se = &src[31];
 
         assert(de < sp || se < dp);
     }
@@ -255,20 +254,19 @@ void xlnx_aes_k256_swap32(uint8_t (*dst)[32], const uint8_t (*src)[32])
     for (i = 0; i < 32; i += 4) {
         uint32_t v;
 
-        v = ldl_be_p(&(*src)[i]);
-        stl_he_p(&(*dst)[i], v);
+        v = ldl_be_p(&src[i]);
+        stl_he_p(&dst[i], v);
     }
 }
 
-bool xlnx_aes_k256_is_zero(const uint8_t (*key)[32])
+bool xlnx_aes_k256_is_zero_i(const uint8_t key[32])
 {
-    const uint8_t *p = &(*key)[0];
     uint64_t q0, q1, q2, q3;
 
-    q0 = ldq_he_p(p);
-    q1 = ldq_he_p(p + 8);
-    q2 = ldq_he_p(p + 16);
-    q3 = ldq_he_p(p + 24);
+    q0 = ldq_he_p(key);
+    q1 = ldq_he_p(key + 8);
+    q2 = ldq_he_p(key + 16);
+    q3 = ldq_he_p(key + 24);
 
     return !(q0 | q1 | q2 | q3);
 }

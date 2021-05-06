@@ -83,11 +83,38 @@ int xlnx_aes_push_data(XlnxAES *s,
                        const uint8_t *data8, unsigned len,
                        bool is_aad, bool last_word, int lw_len,
                        uint8_t *outbuf, int *outlen);
-int xlnx_aes_k256_get_provided(Object *obj, const char *id_prop,
-                               const char *default_xd,
-                               uint8_t (*key)[32], Error **errp);
 uint32_t xlnx_aes_k256_crc(const uint32_t *k256, unsigned zpad_cnt);
-void xlnx_aes_k256_swap32(uint8_t (*dst)[32], const uint8_t (*src)[32]);
-bool xlnx_aes_k256_is_zero(const uint8_t (*key)[32]);
+
+/*
+ * Wrap calls with statement expression macros to do build-time
+ * type-checking 'key' as a 32-byte fixed-length array.
+ */
+#define XLNX_AES_K256_TYPE_CHECK(x) \
+    QEMU_BUILD_BUG_MSG((sizeof(x) != 32 || ARRAY_SIZE(x) != 32), \
+                       #x " is not a 32-byte array")
+
+#define xlnx_aes_k256_get_provided(_O, _ID, _D, _K, _E) ({              \
+            XLNX_AES_K256_TYPE_CHECK(_K);                               \
+            xlnx_aes_k256_get_provided_i((_O), (_ID), (_D), (_K), (_E)); \
+        })
+
+int xlnx_aes_k256_get_provided_i(Object *obj, const char *id_prop,
+                                 const char *default_xd,
+                                 uint8_t key[32], Error **errp);
+
+#define xlnx_aes_k256_swap32(_DK, _SK) ({           \
+            XLNX_AES_K256_TYPE_CHECK(_DK);          \
+            XLNX_AES_K256_TYPE_CHECK(_SK);          \
+            xlnx_aes_k256_swap32_i((_DK), (_SK));   \
+        })
+
+void xlnx_aes_k256_swap32_i(uint8_t dst[32], const uint8_t src[32]);
+
+#define xlnx_aes_k256_is_zero(_K) ({                \
+            XLNX_AES_K256_TYPE_CHECK(_K);           \
+            xlnx_aes_k256_is_zero_i((_K));          \
+        })
+
+bool xlnx_aes_k256_is_zero_i(const uint8_t key[32]);
 
 #endif
