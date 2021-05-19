@@ -817,8 +817,8 @@ static void cortex_r52_initfn(Object *obj)
     cpu->gic_vpribits = 5;
     cpu->gic_vprebits = 5;
 
-    /* Has TCM A and B.  */
-    cpu->tcmtr = 0x80000003;
+    /* Has TCM A, B & C.  */
+    cpu->tcmtr = 0x80000007;
 
     define_arm_cp_regs(cpu, cortexr5_cp_reginfo);
 #ifndef CONFIG_USER_ONLY
