@@ -171,6 +171,7 @@ AVR TCG CPUs
 M: Michael Rolnik <mrolnik@gmail.com>
 R: Sarah Harris <S.E.Harris@kent.ac.uk>
 S: Maintained
+F: docs/system/target-avr.rst
 F: gdb-xml/avr-cpu.xml
 F: target/avr/
 F: tests/acceptance/machine_avr6.py
@@ -1855,10 +1856,12 @@ F: include/hw/virtio/virtio-mem.h
 
 nvme
 M: Keith Busch <kbusch@kernel.org>
+M: Klaus Jensen <its@irrelevant.dk>
 L: qemu-block@nongnu.org
 S: Supported
 F: hw/block/nvme*
 F: tests/qtest/nvme-test.c
+T: git git://git.infradead.org/qemu-nvme.git nvme-next
 
 megasas
 M: Hannes Reinecke <hare@suse.com>
