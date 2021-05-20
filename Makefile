@@ -289,28 +289,28 @@ KEYCODEMAP_GEN = $(SRC_PATH)/ui/keycodemapdb/tools/keymap-gen
 KEYCODEMAP_CSV = $(SRC_PATH)/ui/keycodemapdb/data/keymaps.csv
 
 KEYCODEMAP_FILES = \
-		 ui/input-keymap-atset1-to-qcode.c \
-		 ui/input-keymap-linux-to-qcode.c \
-		 ui/input-keymap-qcode-to-atset1.c \
-		 ui/input-keymap-qcode-to-atset2.c \
-		 ui/input-keymap-qcode-to-atset3.c \
-		 ui/input-keymap-qcode-to-linux.c \
-		 ui/input-keymap-qcode-to-qnum.c \
-		 ui/input-keymap-qcode-to-sun.c \
-		 ui/input-keymap-qnum-to-qcode.c \
-		 ui/input-keymap-usb-to-qcode.c \
-		 ui/input-keymap-win32-to-qcode.c \
-		 ui/input-keymap-x11-to-qcode.c \
-		 ui/input-keymap-xorgevdev-to-qcode.c \
-		 ui/input-keymap-xorgkbd-to-qcode.c \
-		 ui/input-keymap-xorgxquartz-to-qcode.c \
-		 ui/input-keymap-xorgxwin-to-qcode.c \
-		 ui/input-keymap-osx-to-qcode.c \
+		 ui/input-keymap-atset1-to-qcode.c.inc \
+		 ui/input-keymap-linux-to-qcode.c.inc \
+		 ui/input-keymap-qcode-to-atset1.c.inc \
+		 ui/input-keymap-qcode-to-atset2.c.inc \
+		 ui/input-keymap-qcode-to-atset3.c.inc \
+		 ui/input-keymap-qcode-to-linux.c.inc \
+		 ui/input-keymap-qcode-to-qnum.c.inc \
+		 ui/input-keymap-qcode-to-sun.c.inc \
+		 ui/input-keymap-qnum-to-qcode.c.inc \
+		 ui/input-keymap-usb-to-qcode.c.inc \
+		 ui/input-keymap-win32-to-qcode.c.inc \
+		 ui/input-keymap-x11-to-qcode.c.inc \
+		 ui/input-keymap-xorgevdev-to-qcode.c.inc \
+		 ui/input-keymap-xorgkbd-to-qcode.c.inc \
+		 ui/input-keymap-xorgxquartz-to-qcode.c.inc \
+		 ui/input-keymap-xorgxwin-to-qcode.c.inc \
+		 ui/input-keymap-osx-to-qcode.c.inc \
 		 $(NULL)
 
 generated-files-$(CONFIG_SOFTMMU) += $(KEYCODEMAP_FILES)
 
-ui/input-keymap-%.c: $(KEYCODEMAP_GEN) $(KEYCODEMAP_CSV) $(SRC_PATH)/ui/Makefile.objs
+ui/input-keymap-%.c.inc: $(KEYCODEMAP_GEN) $(KEYCODEMAP_CSV) $(SRC_PATH)/ui/Makefile.objs
 	$(call quiet-command,\
 	    stem=$* && src=$${stem%-to-*} dst=$${stem#*-to-} && \
 	    test -e $(KEYCODEMAP_GEN) && \
@@ -1188,16 +1188,16 @@ installer: $(INSTALLER)
 
 INSTDIR=/tmp/qemu-nsis
 
-$(INSTALLER): install-doc $(SRC_PATH)/qemu.nsi
-	$(MAKE) install prefix=${INSTDIR}
+$(INSTALLER): $(SRC_PATH)/qemu.nsi
+	$(MAKE) install DESTDIR=${INSTDIR}
 ifdef SIGNCODE
-	(cd ${INSTDIR}; \
+	(cd ${INSTDIR}/${bindir}; \
          for i in *.exe; do \
            $(SIGNCODE) $${i}; \
          done \
         )
 endif # SIGNCODE
-	(cd ${INSTDIR}; \
+	(cd ${INSTDIR}/${bindir}; \
          for i in qemu-system-*.exe; do \
            arch=$${i%.exe}; \
            arch=$${arch#qemu-system-}; \
@@ -1206,11 +1206,11 @@ endif # SIGNCODE
            echo File \"\$${BINDIR}\\$$i\"; \
            echo SectionEnd; \
          done \
-        ) >${INSTDIR}/system-emulations.nsh
+        ) >${INSTDIR}/${bindir}/system-emulations.nsh
 	makensis $(nsisflags) \
                 $(if $(BUILD_DOCS),-DCONFIG_DOCUMENTATION="y") \
                 $(if $(CONFIG_GTK),-DCONFIG_GTK="y") \
-                -DBINDIR="${INSTDIR}" \
+                -DBINDIR="${INSTDIR}/${bindir}" \
                 $(if $(DLL_PATH),-DDLLDIR="$(DLL_PATH)") \
                 -DSRCDIR="$(SRC_PATH)" \
                 -DOUTFILE="$(INSTALLER)" \
