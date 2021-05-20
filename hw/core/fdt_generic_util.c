@@ -1324,10 +1324,15 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
                      */
                     MemoryRegion *alias_mr;
                     int offset = len / 2;
+                    int region = 0;
+
+                    if (len > 4) {
+                        region = get_int_be(val + offset, len - offset);
+                    }
+
                     alias_mr =
                         sysbus_mmio_get_region(SYS_BUS_DEVICE(linked_dev),
-                                               get_int_be(val + offset,
-                                                          len - offset));
+                                               region);
 
                     object_property_set_link(OBJECT(dev), propname, OBJECT(alias_mr), &error_abort);
 
