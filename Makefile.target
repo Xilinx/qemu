@@ -158,12 +158,8 @@ endif #CONFIG_BSD_USER
 ifdef CONFIG_SOFTMMU
 obj-y += softmmu/
 obj-y += gdbstub.o
-obj-y += dump/
 obj-y += hw/
-obj-y += monitor/
 obj-y += qapi/
-obj-y += injection.o
-obj-y += migration/ram.o
 LIBS := $(libs_softmmu) $(LIBS)
 
 # Temporary until emulators are linked by Meson
