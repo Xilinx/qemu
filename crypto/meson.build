@@ -13,7 +13,7 @@ crypto_ss.add(files(
   'ivgen-plain.c',
   'ivgen-plain64.c',
   'ivgen.c',
-  'keccak-sponge.c',
+  'keccak_sponge.c',
   'pbkdf.c',
   'secret_common.c',
   'secret.c',
