@@ -32,7 +32,7 @@
 #include "hw/boards.h"
 #include "hw/qdev-properties.h"
 #include "hw/core/cpu-exec-gpio.h"
-#include "trace-root.h"
+#include "trace/trace-root.h"
 #include "qemu/plugin.h"
 
 CPUInterruptHandler cpu_interrupt_handler;
