@@ -793,7 +793,7 @@ static inline target_ulong tcg_get_insn_start_param(TCGOp *op, int arg)
     return tcg_get_insn_param(op, arg);
 #else
     return tcg_get_insn_param(op, arg * 2) |
-           (tcg_get_insn_param(op, arg * 2 + 1) << 32);
+           ((uint64_t)tcg_get_insn_param(op, arg * 2 + 1) << 32);
 #endif
 }
 

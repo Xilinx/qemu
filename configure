@@ -432,7 +432,7 @@ vde=""
 vnc_sasl="auto"
 vnc_jpeg="auto"
 vnc_png="auto"
-xkbcommon=""
+xkbcommon="auto"
 xen=""
 xen_ctrl_version=""
 xen_pci_passthrough=""
@@ -495,6 +495,7 @@ trace_file="trace"
 spice=""
 rbd=""
 smartcard=""
+u2f="auto"
 libusb=""
 usb_redir=""
 opengl=""
@@ -568,6 +569,7 @@ rng_none="no"
 secret_keyring=""
 libdaxctl=""
 meson=""
+ninja=""
 skip_meson=no
 gettext=""
 
@@ -857,6 +859,7 @@ MINGW32*)
     audio_drv_list=""
   fi
   supported_os="yes"
+  pie="no"
 ;;
 GNU/kFreeBSD)
   bsd="yes"
@@ -1050,6 +1053,8 @@ for opt do
   --skip-meson) skip_meson=yes
   ;;
   --meson=*) meson="$optarg"
+  ;;
+  --ninja=*) ninja="$optarg"
   ;;
   --smbd=*) smbd="$optarg"
   ;;
@@ -1416,6 +1421,10 @@ for opt do
   ;;
   --enable-smartcard) smartcard="yes"
   ;;
+  --disable-u2f) u2f="disabled"
+  ;;
+  --enable-u2f) u2f="enabled"
+  ;;
   --disable-libusb) libusb="no"
   ;;
   --enable-libusb) libusb="yes"
@@ -1636,9 +1645,9 @@ for opt do
   ;;
   --disable-libpmem) libpmem=no
   ;;
-  --enable-xkbcommon) xkbcommon=yes
+  --enable-xkbcommon) xkbcommon="enabled"
   ;;
-  --disable-xkbcommon) xkbcommon=no
+  --disable-xkbcommon) xkbcommon="disabled"
   ;;
   --enable-plugins) plugins="yes"
   ;;
@@ -1824,6 +1833,7 @@ Advanced options (experts only):
   --python=PYTHON          use specified python [$python]
   --sphinx-build=SPHINX    use specified sphinx-build [$sphinx_build]
   --meson=MESON            use specified meson [$meson]
+  --ninja=NINJA            use specified ninja [$ninja]
   --smbd=SMBD              use specified smbd [$smbd]
   --with-git=GIT           use specified git [$git]
   --static                 enable static build [$static]
@@ -1945,6 +1955,7 @@ disabled with --disable-FEATURE, default is enabled if available:
   libiscsi        iscsi support
   libnfs          nfs support
   smartcard       smartcard support (libcacard)
+  u2f             U2F support (u2f-emu)
   libusb          libusb (for usb passthrough)
   live-block-migration   Block migration in the main migration stream
   usb-redir       usb network redirection support
@@ -2062,6 +2073,16 @@ case "$meson" in
     *) meson=$(command -v meson) ;;
 esac
 
+# Probe for ninja (used for compdb)
+
+if test -z "$ninja"; then
+    for c in ninja ninja-build samu; do
+        if has $c; then
+            ninja=$(command -v "$c")
+            break
+        fi
+    done
+fi
 
 # Check that the C compiler works. Doing this here before testing
 # the host CPU ensures that we had a valid CC to autodetect the
@@ -3452,22 +3473,6 @@ EOF
 fi
 
 ##########################################
-# xkbcommon probe
-if test "$xkbcommon" != "no" ; then
-  if $pkg_config xkbcommon --exists; then
-    xkbcommon_cflags=$($pkg_config xkbcommon --cflags)
-    xkbcommon_libs=$($pkg_config xkbcommon --libs)
-    xkbcommon=yes
-  else
-    if test "$xkbcommon" = "yes" ; then
-      feature_not_found "xkbcommon" "Install libxkbcommon-devel"
-    fi
-    xkbcommon=no
-  fi
-fi
-
-
-##########################################
 # xfsctl() probe, used for file-posix.c
 if test "$xfs" != "no" ; then
   cat > $TMPC << EOF
@@ -3941,20 +3946,6 @@ if test "$modules" = yes; then
     if test "$shacmd" = ""; then
         error_exit "one of the checksum commands is required to enable modules: $shacmd_probe"
     fi
-fi
-
-##########################################
-# pixman support probe
-
-if test "$softmmu" = "no"; then
-  pixman_cflags=
-  pixman_libs=
-elif $pkg_config --atleast-version=0.21.8 pixman-1 > /dev/null 2>&1; then
-  pixman_cflags=$($pkg_config --cflags pixman-1)
-  pixman_libs=$($pkg_config --libs pixman-1)
-else
-  error_exit "pixman >= 0.21.8 not present." \
-      "Please install the pixman devel package."
 fi
 
 ##########################################
@@ -6670,8 +6661,8 @@ echo_version() {
     fi
 }
 
-# prepend pixman and ftd flags after all config tests are done
-QEMU_CFLAGS="$pixman_cflags $fdt_cflags $QEMU_CFLAGS"
+# prepend ftd flags after all config tests are done
+QEMU_CFLAGS="$fdt_cflags $QEMU_CFLAGS"
 QEMU_LDFLAGS="$fdt_ldflags $QEMU_LDFLAGS"
 
 config_host_mak="config-host.mak"
@@ -6833,11 +6824,6 @@ if test "$audio_win_int" = "yes" ; then
 fi
 echo "CONFIG_BDRV_RW_WHITELIST=$block_drv_rw_whitelist" >> $config_host_mak
 echo "CONFIG_BDRV_RO_WHITELIST=$block_drv_ro_whitelist" >> $config_host_mak
-if test "$xkbcommon" = "yes" ; then
-  echo "CONFIG_XKBCOMMON=y" >> $config_host_mak
-  echo "XKBCOMMON_CFLAGS=$xkbcommon_cflags" >> $config_host_mak
-  echo "XKBCOMMON_LIBS=$xkbcommon_libs" >> $config_host_mak
-fi
 if test "$xfs" = "yes" ; then
   echo "CONFIG_XFS=y" >> $config_host_mak
 fi
@@ -7496,6 +7482,7 @@ fi
 
 if test "$libdaxctl" = "yes" ; then
   echo "CONFIG_LIBDAXCTL=y" >> $config_host_mak
+  echo "LIBDAXCTL_LIBS=$libdaxctl_libs" >> $config_host_mak
 fi
 
 if test "$bochs" = "yes" ; then
@@ -8084,9 +8071,6 @@ fi
 
 done # for target in $targets
 
-echo "PIXMAN_CFLAGS=$pixman_cflags" >> $config_host_mak
-echo "PIXMAN_LIBS=$pixman_libs" >> $config_host_mak
-
 if [ "$fdt" = "git" ]; then
   subdirs="$subdirs dtc"
 fi
@@ -8129,7 +8113,7 @@ DIRS="$DIRS roms/seabios"
 LINKS="Makefile"
 LINKS="$LINKS tests/tcg/lm32/Makefile"
 LINKS="$LINKS tests/tcg/Makefile.target"
-LINKS="$LINKS pc-bios/optionrom/Makefile pc-bios/keymaps"
+LINKS="$LINKS pc-bios/optionrom/Makefile"
 LINKS="$LINKS pc-bios/s390-ccw/Makefile"
 LINKS="$LINKS roms/seabios/Makefile"
 LINKS="$LINKS pc-bios/qemu-icon.bmp"
@@ -8242,7 +8226,7 @@ fi
 mv $cross config-meson.cross
 
 rm -rf meson-private meson-info meson-logs
-NINJA=$PWD/ninjatool $meson setup \
+NINJA=${ninja:-$PWD/ninjatool} $meson setup \
         --prefix "${pre_prefix}$prefix" \
         --libdir "${pre_prefix}$libdir" \
         --libexecdir "${pre_prefix}$libexecdir" \
@@ -8260,7 +8244,7 @@ NINJA=$PWD/ninjatool $meson setup \
         -Db_coverage=$(if test "$gcov" = yes; then echo true; else echo false; fi) \
 	-Dsdl=$sdl -Dsdl_image=$sdl_image \
 	-Dvnc=$vnc -Dvnc_sasl=$vnc_sasl -Dvnc_jpeg=$vnc_jpeg -Dvnc_png=$vnc_png \
-	-Dgettext=$gettext \
+	-Dgettext=$gettext -Dxkbcommon=$xkbcommon -Du2f=$u2f\
         $cross_arg \
         "$PWD" "$source_path"
 

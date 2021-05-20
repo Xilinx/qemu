@@ -37,12 +37,7 @@
 
 /* is_jmp field values */
 #define DISAS_JUMP    DISAS_TARGET_0 /* only pc was modified dynamically */
-#define DISAS_EXIT    DISAS_TARGET_1 /* all cpu state modified dynamically */
-
-/* cpu state besides pc was modified dynamically; update pc to next */
-#define DISAS_EXIT_NEXT DISAS_TARGET_2
-/* cpu state besides pc was modified dynamically; update pc to btarget */
-#define DISAS_EXIT_JUMP DISAS_TARGET_3
+#define DISAS_UPDATE  DISAS_TARGET_1 /* cpu state was modified dynamically */
 
 static TCGv_i32 cpu_R[32];
 static TCGv_i32 cpu_pc;
@@ -60,7 +55,7 @@ static TCGv_i32 cpu_res_val;
 /* This is the state at translation time.  */
 typedef struct DisasContext {
     DisasContextBase base;
-    const MicroBlazeCPUConfig *cfg;
+    MicroBlazeCPU *cpu;
 
     /* TCG op of the current insn_start.  */
     TCGOp *insn_start;
@@ -70,6 +65,7 @@ typedef struct DisasContext {
 
     /* Decoder.  */
     uint32_t ext_imm;
+    unsigned int cpustate_changed;
     unsigned int tb_flags;
     unsigned int tb_flags_to_set;
     int mem_index;
@@ -95,8 +91,8 @@ static int typeb_imm(DisasContext *dc, int x)
 static void t_sync_flags(DisasContext *dc)
 {
     /* Synch the tb dependent flags between translator and runtime.  */
-    if ((dc->tb_flags ^ dc->base.tb->flags) & IFLAGS_TB_MASK) {
-        tcg_gen_movi_i32(cpu_iflags, dc->tb_flags & IFLAGS_TB_MASK);
+    if ((dc->tb_flags ^ dc->base.tb->flags) & ~MSR_TB_MASK) {
+        tcg_gen_movi_i32(cpu_iflags, dc->tb_flags & ~MSR_TB_MASK);
     }
 }
 
@@ -147,7 +143,7 @@ static void gen_goto_tb(DisasContext *dc, int n, target_ulong dest)
         tcg_gen_exit_tb(dc->base.tb, n);
     } else {
         tcg_gen_movi_i32(cpu_pc, dest);
-        tcg_gen_lookup_and_goto_ptr();
+        tcg_gen_exit_tb(NULL, 0);
     }
     dc->base.is_jmp = DISAS_NORETURN;
 }
@@ -159,7 +155,7 @@ static void gen_goto_tb(DisasContext *dc, int n, target_ulong dest)
 static bool trap_illegal(DisasContext *dc, bool cond)
 {
     if (cond && (dc->tb_flags & MSR_EE)
-        && dc->cfg->illegal_opcode_exception) {
+        && dc->cpu->cfg.illegal_opcode_exception) {
         gen_raise_hw_excp(dc, ESR_EC_ILLEGAL_OP);
     }
     return cond;
@@ -177,21 +173,6 @@ static bool trap_userspace(DisasContext *dc, bool cond)
         gen_raise_hw_excp(dc, ESR_EC_PRIVINSN);
     }
     return cond_user;
-}
-
-/*
- * Return true, and log an error, if the current insn is
- * within a delay slot.
- */
-static bool invalid_delay_slot(DisasContext *dc, const char *insn_type)
-{
-    if (dc->tb_flags & D_FLAG) {
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "Invalid insn in delay slot: %s at %08x\n",
-                      insn_type, (uint32_t)dc->base.pc_next);
-        return true;
-    }
-    return false;
 }
 
 static TCGv_i32 reg_for_read(DisasContext *dc, int reg)
@@ -291,7 +272,7 @@ static bool do_typeb_val(DisasContext *dc, arg_typeb *arg, bool side_effects,
 
 #define DO_TYPEA_CFG(NAME, CFG, SE, FN) \
     static bool trans_##NAME(DisasContext *dc, arg_typea *a) \
-    { return dc->cfg->CFG && do_typea(dc, a, SE, FN); }
+    { return dc->cpu->cfg.CFG && do_typea(dc, a, SE, FN); }
 
 #define DO_TYPEA0(NAME, SE, FN) \
     static bool trans_##NAME(DisasContext *dc, arg_typea0 *a) \
@@ -299,7 +280,7 @@ static bool do_typeb_val(DisasContext *dc, arg_typeb *arg, bool side_effects,
 
 #define DO_TYPEA0_CFG(NAME, CFG, SE, FN) \
     static bool trans_##NAME(DisasContext *dc, arg_typea0 *a) \
-    { return dc->cfg->CFG && do_typea0(dc, a, SE, FN); }
+    { return dc->cpu->cfg.CFG && do_typea0(dc, a, SE, FN); }
 
 #define DO_TYPEBI(NAME, SE, FNI) \
     static bool trans_##NAME(DisasContext *dc, arg_typeb *a) \
@@ -307,7 +288,7 @@ static bool do_typeb_val(DisasContext *dc, arg_typeb *arg, bool side_effects,
 
 #define DO_TYPEBI_CFG(NAME, CFG, SE, FNI) \
     static bool trans_##NAME(DisasContext *dc, arg_typeb *a) \
-    { return dc->cfg->CFG && do_typeb_imm(dc, a, SE, FNI); }
+    { return dc->cpu->cfg.CFG && do_typeb_imm(dc, a, SE, FNI); }
 
 #define DO_TYPEBV(NAME, SE, FN) \
     static bool trans_##NAME(DisasContext *dc, arg_typeb *a) \
@@ -515,9 +496,6 @@ DO_TYPEA_CFG(idivu, use_div, true, gen_idivu)
 
 static bool trans_imm(DisasContext *dc, arg_imm *arg)
 {
-    if (invalid_delay_slot(dc, "imm")) {
-        return true;
-    }
     dc->ext_imm = arg->imm << 16;
     tcg_gen_movi_i32(cpu_imm, dc->ext_imm);
     dc->tb_flags_to_set = IMM_FLAG;
@@ -683,7 +661,7 @@ static TCGv compute_ldst_addr_typea(DisasContext *dc, int ra, int rb)
         tcg_gen_movi_tl(ret, 0);
     }
 
-    if ((ra == 1 || rb == 1) && dc->cfg->stackprot) {
+    if ((ra == 1 || rb == 1) && dc->cpu->cfg.stackprot) {
         gen_helper_stackprot(cpu_env, ret);
     }
     return ret;
@@ -703,7 +681,7 @@ static TCGv compute_ldst_addr_typeb(DisasContext *dc, int ra, int imm)
         tcg_gen_movi_tl(ret, (uint32_t)imm);
     }
 
-    if (ra == 1 && dc->cfg->stackprot) {
+    if (ra == 1 && dc->cpu->cfg.stackprot) {
         gen_helper_stackprot(cpu_env, ret);
     }
     return ret;
@@ -712,7 +690,7 @@ static TCGv compute_ldst_addr_typeb(DisasContext *dc, int ra, int imm)
 #ifndef CONFIG_USER_ONLY
 static TCGv compute_ldst_addr_ea(DisasContext *dc, int ra, int rb)
 {
-    int addr_size = dc->cfg->addr_size;
+    int addr_size = dc->cpu->cfg.addr_size;
     TCGv ret = tcg_temp_new();
 
     if (addr_size == 32 || ra == 0) {
@@ -772,7 +750,7 @@ static bool do_load(DisasContext *dc, int rd, TCGv addr, MemOp mop,
 
     if (size > MO_8 &&
         (dc->tb_flags & MSR_EE) &&
-        dc->cfg->unaligned_exceptions) {
+        dc->cpu->cfg.unaligned_exceptions) {
         record_unaligned_ess(dc, rd, size, false);
         mop |= MO_ALIGN;
     }
@@ -918,7 +896,7 @@ static bool do_store(DisasContext *dc, int rd, TCGv addr, MemOp mop,
 
     if (size > MO_8 &&
         (dc->tb_flags & MSR_EE) &&
-        dc->cfg->unaligned_exceptions) {
+        dc->cpu->cfg.unaligned_exceptions) {
         record_unaligned_ess(dc, rd, size, true);
         mop |= MO_ALIGN;
     }
@@ -1085,9 +1063,6 @@ static bool do_branch(DisasContext *dc, int dest_rb, int dest_imm,
 {
     uint32_t add_pc;
 
-    if (invalid_delay_slot(dc, "branch")) {
-        return true;
-    }
     if (delay) {
         setup_dslot(dc, dest_rb < 0);
     }
@@ -1127,9 +1102,6 @@ static bool do_bcc(DisasContext *dc, int dest_rb, int dest_imm,
 {
     TCGv_i32 zero, next;
 
-    if (invalid_delay_slot(dc, "bcc")) {
-        return true;
-    }
     if (delay) {
         setup_dslot(dc, dest_rb < 0);
     }
@@ -1182,10 +1154,6 @@ static bool trans_brk(DisasContext *dc, arg_typea_br *arg)
     if (trap_userspace(dc, true)) {
         return true;
     }
-    if (invalid_delay_slot(dc, "brk")) {
-        return true;
-    }
-
     tcg_gen_mov_i32(cpu_pc, reg_for_read(dc, arg->rb));
     if (arg->rd) {
         tcg_gen_movi_i32(cpu_R[arg->rd], dc->base.pc_next);
@@ -1193,7 +1161,7 @@ static bool trans_brk(DisasContext *dc, arg_typea_br *arg)
     tcg_gen_ori_i32(cpu_msr, cpu_msr, MSR_BIP);
     tcg_gen_movi_tl(cpu_res_addr, -1);
 
-    dc->base.is_jmp = DISAS_EXIT;
+    dc->base.is_jmp = DISAS_UPDATE;
     return true;
 }
 
@@ -1204,10 +1172,6 @@ static bool trans_brki(DisasContext *dc, arg_typeb_br *arg)
     if (trap_userspace(dc, imm != 0x8 && imm != 0x18)) {
         return true;
     }
-    if (invalid_delay_slot(dc, "brki")) {
-        return true;
-    }
-
     tcg_gen_movi_i32(cpu_pc, imm);
     if (arg->rd) {
         tcg_gen_movi_i32(cpu_R[arg->rd], dc->base.pc_next);
@@ -1238,7 +1202,7 @@ static bool trans_brki(DisasContext *dc, arg_typeb_br *arg)
                          ~(MSR_VMS | MSR_UMS | MSR_VM | MSR_UM));
     }
     tcg_gen_ori_i32(cpu_msr, cpu_msr, msr_to_set);
-    dc->base.is_jmp = DISAS_EXIT;
+    dc->base.is_jmp = DISAS_UPDATE;
 #endif
 
     return true;
@@ -1248,11 +1212,6 @@ static bool trans_mbar(DisasContext *dc, arg_mbar *arg)
 {
     int mbar_imm = arg->imm;
 
-    /* Note that mbar is a specialized branch instruction. */
-    if (invalid_delay_slot(dc, "mbar")) {
-        return true;
-    }
-
     /* Data access memory barrier.  */
     if ((mbar_imm & 2) == 0) {
         tcg_gen_mb(TCG_BAR_SC | TCG_MO_ALL);
@@ -1260,6 +1219,8 @@ static bool trans_mbar(DisasContext *dc, arg_mbar *arg)
 
     /* Sleep. */
     if (mbar_imm & 16) {
+        TCGv_i32 tmp_1;
+
         if (trap_userspace(dc, true)) {
             /* Sleep is a privileged instruction.  */
             return true;
@@ -1267,10 +1228,15 @@ static bool trans_mbar(DisasContext *dc, arg_mbar *arg)
 
         t_sync_flags(dc);
 
+        tmp_1 = tcg_const_i32(1);
+        tcg_gen_st_i32(tmp_1, cpu_env,
+                       -offsetof(MicroBlazeCPU, env)
+                       +offsetof(CPUState, halted));
+        tcg_temp_free_i32(tmp_1);
+
         tcg_gen_movi_i32(cpu_pc, dc->base.pc_next + 4);
-        dc->base.is_jmp = DISAS_EXIT;
-        gen_helper_sleep(cpu_env);
-        return true;
+
+        gen_raise_exception(dc, EXCP_HLT);
     }
 
     /*
@@ -1284,7 +1250,7 @@ static bool trans_mbar(DisasContext *dc, arg_mbar *arg)
      *
      * Therefore, choose to end the TB always.
      */
-    dc->base.is_jmp = DISAS_EXIT_NEXT;
+    dc->cpustate_changed = 1;
     return true;
 }
 
@@ -1293,10 +1259,6 @@ static bool do_rts(DisasContext *dc, arg_typeb_bc *arg, int to_set)
     if (trap_userspace(dc, to_set)) {
         return true;
     }
-    if (invalid_delay_slot(dc, "rts")) {
-        return true;
-    }
-
     dc->tb_flags_to_set |= to_set;
     setup_dslot(dc, true);
 
@@ -1318,7 +1280,7 @@ DO_RTS(rtsd, 0)
 static bool trans_zero(DisasContext *dc, arg_zero *arg)
 {
     /* If opcode_0_illegal, trap.  */
-    if (dc->cfg->opcode_0_illegal) {
+    if (dc->cpu->cfg.opcode_0_illegal) {
         trap_illegal(dc, true);
         return true;
     }
@@ -1339,6 +1301,19 @@ static void msr_read(DisasContext *dc, TCGv_i32 d)
     tcg_gen_or_i32(d, cpu_msr, t);
     tcg_temp_free_i32(t);
 }
+
+#ifndef CONFIG_USER_ONLY
+static void msr_write(DisasContext *dc, TCGv_i32 v)
+{
+    dc->cpustate_changed = 1;
+
+    /* Install MSR_C.  */
+    tcg_gen_extract_i32(cpu_msr_c, v, 2, 1);
+
+    /* Clear MSR_C and MSR_CC; MSR_PVR is not writable, and is always clear. */
+    tcg_gen_andi_i32(cpu_msr, v, ~(MSR_C | MSR_CC | MSR_PVR));
+}
+#endif
 
 static bool do_msrclrset(DisasContext *dc, arg_type_msr *arg, bool set)
 {
@@ -1372,7 +1347,7 @@ static bool do_msrclrset(DisasContext *dc, arg_type_msr *arg, bool set)
         } else {
             tcg_gen_andi_i32(cpu_msr, cpu_msr, ~imm);
         }
-        dc->base.is_jmp = DISAS_EXIT_NEXT;
+        dc->cpustate_changed = 1;
     }
     return true;
 }
@@ -1405,13 +1380,7 @@ static bool trans_mts(DisasContext *dc, arg_mts *arg)
     TCGv_i32 src = reg_for_read(dc, arg->ra);
     switch (arg->rs) {
     case SR_MSR:
-        /* Install MSR_C.  */
-        tcg_gen_extract_i32(cpu_msr_c, src, 2, 1);
-        /*
-         * Clear MSR_C and MSR_CC;
-         * MSR_PVR is not writable, and is always clear.
-         */
-        tcg_gen_andi_i32(cpu_msr, src, ~(MSR_C | MSR_CC | MSR_PVR));
+        msr_write(dc, src);
         break;
     case SR_FSR:
         tcg_gen_st_i32(src, cpu_env, offsetof(CPUMBState, fsr));
@@ -1443,7 +1412,7 @@ static bool trans_mts(DisasContext *dc, arg_mts *arg)
         qemu_log_mask(LOG_GUEST_ERROR, "Invalid mts reg 0x%x\n", arg->rs);
         return true;
     }
-    dc->base.is_jmp = DISAS_EXIT_NEXT;
+    dc->cpustate_changed = 1;
     return true;
 #endif
 }
@@ -1553,6 +1522,7 @@ static void do_rti(DisasContext *dc)
     tcg_gen_or_i32(cpu_msr, cpu_msr, tmp);
 
     tcg_temp_free_i32(tmp);
+    dc->tb_flags &= ~DRTI_FLAG;
 }
 
 static void do_rtb(DisasContext *dc)
@@ -1565,6 +1535,7 @@ static void do_rtb(DisasContext *dc)
     tcg_gen_or_i32(cpu_msr, cpu_msr, tmp);
 
     tcg_temp_free_i32(tmp);
+    dc->tb_flags &= ~DRTB_FLAG;
 }
 
 static void do_rte(DisasContext *dc)
@@ -1578,6 +1549,7 @@ static void do_rte(DisasContext *dc)
     tcg_gen_or_i32(cpu_msr, cpu_msr, tmp);
 
     tcg_temp_free_i32(tmp);
+    dc->tb_flags &= ~DRTE_FLAG;
 }
 
 /* Insns connected to FSL or AXI stream attached devices.  */
@@ -1651,8 +1623,9 @@ static void mb_tr_init_disas_context(DisasContextBase *dcb, CPUState *cs)
     MicroBlazeCPU *cpu = MICROBLAZE_CPU(cs);
     int bound;
 
-    dc->cfg = &cpu->cfg;
+    dc->cpu = cpu;
     dc->tb_flags = dc->base.tb->flags;
+    dc->cpustate_changed = 0;
     dc->ext_imm = dc->base.tb->cs_base;
     dc->r0 = NULL;
     dc->r0_set = false;
@@ -1728,47 +1701,20 @@ static void mb_tr_translate_insn(DisasContextBase *dcb, CPUState *cs)
     dc->base.pc_next += 4;
 
     if (dc->jmp_cond != TCG_COND_NEVER && !(dc->tb_flags & D_FLAG)) {
-        /*
-         * Finish any return-from branch.
-         */
-        uint32_t rt_ibe = dc->tb_flags & (DRTI_FLAG | DRTB_FLAG | DRTE_FLAG);
-        if (unlikely(rt_ibe != 0)) {
-            dc->tb_flags &= ~(DRTI_FLAG | DRTB_FLAG | DRTE_FLAG);
-            if (rt_ibe & DRTI_FLAG) {
-                do_rti(dc);
-            } else if (rt_ibe & DRTB_FLAG) {
-                do_rtb(dc);
-            } else {
-                do_rte(dc);
-            }
+        if (dc->tb_flags & DRTI_FLAG) {
+            do_rti(dc);
+        } else if (dc->tb_flags & DRTB_FLAG) {
+            do_rtb(dc);
+        } else if (dc->tb_flags & DRTE_FLAG) {
+            do_rte(dc);
         }
+        dc->base.is_jmp = DISAS_JUMP;
+    }
 
-        /* Complete the branch, ending the TB. */
-        switch (dc->base.is_jmp) {
-        case DISAS_NORETURN:
-            /*
-             * E.g. illegal insn in a delay slot.  We've already exited
-             * and will handle D_FLAG in mb_cpu_do_interrupt.
-             */
-            break;
-        case DISAS_NEXT:
-            /*
-             * Normal insn a delay slot.
-             * However, the return-from-exception type insns should
-             * return to the main loop, as they have adjusted MSR.
-             */
-            dc->base.is_jmp = (rt_ibe ? DISAS_EXIT_JUMP : DISAS_JUMP);
-            break;
-        case DISAS_EXIT_NEXT:
-            /*
-             * E.g. mts insn in a delay slot.  Continue with btarget,
-             * but still return to the main loop.
-             */
-            dc->base.is_jmp = DISAS_EXIT_JUMP;
-            break;
-        default:
-            g_assert_not_reached();
-        }
+    /* Force an exit if the per-tb cpu state has changed.  */
+    if (dc->base.is_jmp == DISAS_NEXT && dc->cpustate_changed) {
+        dc->base.is_jmp = DISAS_UPDATE;
+        tcg_gen_movi_i32(cpu_pc, dc->base.pc_next);
     }
 }
 
@@ -1788,15 +1734,13 @@ static void mb_tr_tb_stop(DisasContextBase *dcb, CPUState *cs)
         gen_goto_tb(dc, 0, dc->base.pc_next);
         return;
 
-    case DISAS_EXIT:
-        break;
-    case DISAS_EXIT_NEXT:
-        tcg_gen_movi_i32(cpu_pc, dc->base.pc_next);
-        break;
-    case DISAS_EXIT_JUMP:
-        tcg_gen_mov_i32(cpu_pc, cpu_btarget);
-        tcg_gen_discard_i32(cpu_btarget);
-        break;
+    case DISAS_UPDATE:
+        if (unlikely(cs->singlestep_enabled)) {
+            gen_raise_exception(dc, EXCP_DEBUG);
+        } else {
+            tcg_gen_exit_tb(NULL, 0);
+        }
+        return;
 
     case DISAS_JUMP:
         if (dc->jmp_dest != -1 && !cs->singlestep_enabled) {
@@ -1831,19 +1775,12 @@ static void mb_tr_tb_stop(DisasContextBase *dcb, CPUState *cs)
         if (unlikely(cs->singlestep_enabled)) {
             gen_raise_exception(dc, EXCP_DEBUG);
         } else {
-            tcg_gen_lookup_and_goto_ptr();
+            tcg_gen_exit_tb(NULL, 0);
         }
         return;
 
     default:
         g_assert_not_reached();
-    }
-
-    /* Finish DISAS_EXIT_* */
-    if (unlikely(cs->singlestep_enabled)) {
-        gen_raise_exception(dc, EXCP_DEBUG);
-    } else {
-        tcg_gen_exit_tb(NULL, 0);
     }
 }
 
@@ -1911,6 +1848,11 @@ void mb_cpu_dump_state(CPUState *cs, FILE *f, int flags)
                  "ear=0x" TARGET_FMT_lx " slr=0x%x shr=0x%x\n",
                  env->esr, env->fsr, env->btr, env->edr,
                  env->ear, env->slr, env->shr);
+
+    for (i = 0; i < 12; i++) {
+        qemu_fprintf(f, "rpvr%-2d=%08x%c",
+                     i, cpu->cfg.pvr_regs[i], i % 4 == 3 ? '\n' : ' ');
+    }
 
     for (i = 0; i < 32; i++) {
         qemu_fprintf(f, "r%2.2d=%08x%c",
