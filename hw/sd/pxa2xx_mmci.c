@@ -476,15 +476,12 @@ static const MemoryRegionOps pxa2xx_mmci_ops = {
 
 PXA2xxMMCIState *pxa2xx_mmci_init(MemoryRegion *sysmem,
                 hwaddr base,
-                BlockBackend *blk, qemu_irq irq,
-                qemu_irq rx_dma, qemu_irq tx_dma)
+                qemu_irq irq, qemu_irq rx_dma, qemu_irq tx_dma)
 {
-    DeviceState *dev, *carddev;
+    DeviceState *dev;
     SysBusDevice *sbd;
-    PXA2xxMMCIState *s;
 
     dev = qdev_new(TYPE_PXA2XX_MMCI);
-    s = PXA2XX_MMCI(dev);
     sbd = SYS_BUS_DEVICE(dev);
     sysbus_mmio_map(sbd, 0, base);
     sysbus_connect_irq(sbd, 0, irq);
@@ -492,13 +489,7 @@ PXA2xxMMCIState *pxa2xx_mmci_init(MemoryRegion *sysmem,
     qdev_connect_gpio_out_named(dev, "tx-dma", 0, tx_dma);
     sysbus_realize_and_unref(sbd, &error_fatal);
 
-    /* Create and plug in the sd card */
-    carddev = qdev_new(TYPE_SD_CARD);
-    qdev_prop_set_drive_err(carddev, "drive", blk, &error_fatal);
-    qdev_realize_and_unref(carddev, qdev_get_child_bus(dev, "sd-bus"),
-                           &error_fatal);
-
-    return s;
+    return PXA2XX_MMCI(dev);
 }
 
 static void pxa2xx_mmci_set_inserted(DeviceState *dev, bool inserted)
