@@ -27,14 +27,12 @@ vnc_ss.add(files(
   'vnc-ws.c',
   'vnc-jobs.c',
 ))
-vnc_ss.add(zlib)
-vnc_ss.add(when: 'CONFIG_VNC_SASL', if_true: [files('vnc-auth-sasl.c'), sasl])
-softmmu_ss.add_all(when: 'CONFIG_VNC', if_true: vnc_ss)
-softmmu_ss.add(when: 'CONFIG_VNC', if_false: files('vnc-stubs.c'))
+vnc_ss.add(zlib, png, jpeg)
+vnc_ss.add(when: sasl, if_true: files('vnc-auth-sasl.c'))
+softmmu_ss.add_all(when: vnc, if_true: vnc_ss)
+softmmu_ss.add(when: vnc, if_false: files('vnc-stubs.c'))
 softmmu_ss.add(when: [opengl, 'CONFIG_OPENGL'], if_true: files('shader.c', 'console-gl.c', 'egl-helpers.c', 'egl-context.c'))
 softmmu_ss.add(when: [opengl, 'CONFIG_OPENGL_DMABUF'], if_true: files('egl-headless.c'))
-softmmu_ss.add(when: 'CONFIG_VNC_PNG', if_true: png)
-softmmu_ss.add(when: 'CONFIG_VNC_JPEG', if_true: jpeg)
 
 ui_modules = {}
 
@@ -55,11 +53,11 @@ if config_host.has_key('CONFIG_GTK') and config_host.has_key('CONFIG_VTE')
   ui_modules += {'gtk' : gtk_ss}
 endif
 
-if config_host.has_key('CONFIG_SDL')
+if sdl.found()
   softmmu_ss.add(when: 'CONFIG_WIN32', if_true: files('win32-kbd-hook.c'))
 
   sdl_ss = ss.source_set()
-  sdl_ss.add(pixman, glib, files(
+  sdl_ss.add(sdl, sdl_image, pixman, glib, files(
     'sdl2-2d.c',
     'sdl2-input.c',
     'sdl2.c',

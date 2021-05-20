@@ -1,0 +1,218 @@
+softmmu_ss.add(when: 'CONFIG_CLOCK', if_true: files(
+  'fixed-clock.c', 'zynq-pll.c'))
+
+softmmu_ss.add(when: 'CONFIG_XLNX_ZYNQMP', if_true: files(
+  'csu_core.c',
+  'sss.c',
+  'sss-csu.c',
+  'csu_pcap.c',
+  'xilinx_zynqmp_ocmc.c',
+  'zynqmp-iou-slcr.c',
+  'xlnx-lpd-slcr-secure.c',
+  'xlnx-lpd-gpv.c',
+  'xlnx-zynqmp-boot.c',
+  'xlnx-zynqmp-xmpu.c',
+  'xlnx-xmpu.c',
+  'xlnx-zynqmp-xppu.c',
+  'xlnx-xppu.c',
+  'xilinx_zynqmp_pmu_local.c',
+  'xilinx_zynqmp_pmu_global.c',
+  'xilinx_zynqmp_crf.c',
+  'xilinx_zynqmp_crl.c',
+  'xilinx_zynqmp_ams.c',
+  'xilinx_zynqmp_sysmon.c',
+  'mem_ctrl.c',
+  'xlnx-versal-pmc-analog.c',
+  'test_component.c',
+  'xilinx-smmu_reg.c',
+  'arm-smmu.c',
+  'arm-cci400.c',
+  'xilinx-ddrc.c',
+  'xilinx-ddr_phy.c',
+  'xilinx-serdes.c',
+  'reset-dev.c',
+  'reset-domain.c',
+))
+
+softmmu_ss.add(when: 'CONFIG_XLNX_ZYNQMP_CSU', if_true: files(
+  'csu_sha3.c',
+  'ipcores-rsa5-4k.c',
+  'csu_rsa5_4k.c',
+  'xlnx-versal-ecdsa-rsa.c',
+  'csu_aes.c',
+  'zynqmp_aes_key.c',
+  'xlnx-aes.c',
+  'xlnx-aes-devkey.c',
+  'xlnx-zynqmp-pufhd.c',
+  'xlnx-zynqmp-pufop.c',
+  'xlnx-bbram-ctrl.c'
+))
+
+specific_ss.add(when: 'CONFIG_XLNX_ZYNQMP_ARM', if_true: files(
+  'xilinx-lpd-slcr.c',
+  'xilinx_zynqmp_apu_ctrl.c',
+  'xilinx_zynqmp_rpu_ctrl.c',
+  'xlnx-versal-apu-ctrl.c'
+))
+
+softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL', if_true: files(
+  'xlnx-versal-psm-local.c',
+  'xlnx-versal-psm-global.c',
+  'xlnx-versal-ddrmc-ub.c',
+  'xlnx-versal-ddrmc-main.c',
+  'xlnx-versal-ddrmc-noc.c',
+  'xlnx-versal-afi-fm.c',
+  'xlnx-versal-rpu.c',
+  'xlnx-versal-cci_reg.c',
+  'xlnx-versal-cci500.c',
+  'xlnx-versal-noc-ncrb.c',
+  'xlnx-versal-cpm-crcpm.c',
+  'xlnx-versal-cpm-pcsr.c',
+  'xlnx-versal-ddrmc-xmpu.c',
+  'xlnx-versal-lpd-iou-slcr.c',
+  'xlnx-versal-xmpu.c',
+  'xlnx-versal-xppu.c',
+  'xlnx-versal-fpd-slcr-secure.c',
+  'xlnx-versal-lpd-slcr-secure.c',
+  'xlnx-versal-fpd-slcr.c',
+  'xlnx-versal-lpd-slcr.c',
+  'xlnx-xmpu.c',
+  'xlnx-xppu.c',
+  'iomem-cache.c'
+))
+
+softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL_PMC', if_true: files(
+  'xlnx-versal-pmc-clk-rst.c',
+  'xlnx-versal-pmc-global.c',
+  'xlnx-versal-pmc-iou-slcr.c',
+  'xlnx-versal-pmc-int.c',
+  'xlnx-versal-pmc-tap.c',
+  'xlnx-versal-pmc-sysmon.c',
+  'xlnx-versal-pmc-pzm.c',
+  'xlnx-versal-pmc-tamper.c',
+  'xlnx-versal-cfu.c',
+  'xlnx-versal-trng.c',
+  'xlnx-versal-crf.c',
+  'xlnx-versal-crl.c',
+  'xlnx-versal-noc-nmu.c',
+  'xlnx-versal-noc-nsu.c',
+  'xlnx-versal-noc-nps.c',
+  'xlnx-versal-noc-npi-dev.c',
+  'xlnx-versal-noc-nir.c',
+  'xlnx-versal-me-npi.c',
+  'xlnx-versal-gty-npi.c',
+  'xlnx-versal-xpio-dci.c',
+  'xlnx-versal-cmt-xpll.c',
+  'xlnx-versal-cmt-dpll.c',
+  'xlnx-versal-cmt-mmcm.c',
+  'xlnx-versal-aes.c',
+  'xlnx-versal-pufop.c',
+  'xlnx-versal-pufhd.c',
+  'pmc_sbi.c',
+  'sss-pmc.c'))
+
+softmmu_ss.add(when: 'CONFIG_XILINX_AXI', if_true: files('stream-fifo.c'))
+softmmu_ss.add(when: 'CONFIG_ZYNQ', if_true: files('i2c-dev-dummy.c'))
+softmmu_ss.add(when: 'CONFIG_M24CXX', if_true: files('sodimm-spd.c'))
+softmmu_ss.add(files('gpio-mr-mux.c'))
+
+softmmu_ss.add(when: 'CONFIG_SI57X', if_true: files('si57x.c'))
+softmmu_ss.add(when: 'CONFIG_APPLESMC', if_true: files('applesmc.c'))
+softmmu_ss.add(when: 'CONFIG_EDU', if_true: files('edu.c'))
+softmmu_ss.add(when: 'CONFIG_FW_CFG_DMA', if_true: files('vmcoreinfo.c'))
+softmmu_ss.add(when: 'CONFIG_ISA_DEBUG', if_true: files('debugexit.c'))
+softmmu_ss.add(when: 'CONFIG_ISA_TESTDEV', if_true: files('pc-testdev.c'))
+softmmu_ss.add(when: 'CONFIG_MAX111X', if_true: files('max111x.c'))
+softmmu_ss.add(when: 'CONFIG_PCA9552', if_true: files('pca9552.c'))
+softmmu_ss.add(when: 'CONFIG_PCI_TESTDEV', if_true: files('pci-testdev.c'))
+softmmu_ss.add(when: 'CONFIG_SGA', if_true: files('sga.c'))
+softmmu_ss.add(when: 'CONFIG_TMP105', if_true: files('tmp105.c'))
+softmmu_ss.add(when: 'CONFIG_TMP421', if_true: files('tmp421.c'))
+softmmu_ss.add(when: 'CONFIG_UNIMP', if_true: files('unimp.c'))
+softmmu_ss.add(when: 'CONFIG_EMPTY_SLOT', if_true: files('empty_slot.c'))
+
+# ARM devices
+softmmu_ss.add(when: 'CONFIG_PL310', if_true: files('arm_l2x0.c'))
+softmmu_ss.add(when: 'CONFIG_INTEGRATOR_DEBUG', if_true: files('arm_integrator_debug.c'))
+softmmu_ss.add(when: 'CONFIG_A9SCU', if_true: files('a9scu.c'))
+softmmu_ss.add(when: 'CONFIG_ARM11SCU', if_true: files('arm11scu.c'))
+
+# Mac devices
+softmmu_ss.add(when: 'CONFIG_MOS6522', if_true: files('mos6522.c'))
+
+# PKUnity SoC devices
+softmmu_ss.add(when: 'CONFIG_PUV3', if_true: files('puv3_pm.c'))
+
+subdir('macio')
+
+softmmu_ss.add(when: 'CONFIG_IVSHMEM_DEVICE', if_true: files('ivshmem.c'))
+
+softmmu_ss.add(when: 'CONFIG_ALLWINNER_H3', if_true: files('allwinner-h3-ccu.c'))
+specific_ss.add(when: 'CONFIG_ALLWINNER_H3', if_true: files('allwinner-cpucfg.c'))
+softmmu_ss.add(when: 'CONFIG_ALLWINNER_H3', if_true: files('allwinner-h3-dramc.c'))
+softmmu_ss.add(when: 'CONFIG_ALLWINNER_H3', if_true: files('allwinner-h3-sysctrl.c'))
+softmmu_ss.add(when: 'CONFIG_ALLWINNER_H3', if_true: files('allwinner-sid.c'))
+softmmu_ss.add(when: 'CONFIG_REALVIEW', if_true: files('arm_sysctl.c'))
+softmmu_ss.add(when: 'CONFIG_NSERIES', if_true: files('cbus.c'))
+softmmu_ss.add(when: 'CONFIG_ECCMEMCTL', if_true: files('eccmemctl.c'))
+softmmu_ss.add(when: 'CONFIG_EXYNOS4', if_true: files('exynos4210_pmu.c', 'exynos4210_clk.c', 'exynos4210_rng.c'))
+softmmu_ss.add(when: 'CONFIG_IMX', if_true: files(
+  'imx25_ccm.c',
+  'imx31_ccm.c',
+  'imx6_ccm.c',
+  'imx6ul_ccm.c',
+  'imx7_ccm.c',
+  'imx7_gpr.c',
+  'imx7_snvs.c',
+  'imx_ccm.c',
+  'imx_rngc.c',
+))
+softmmu_ss.add(when: 'CONFIG_MILKYMIST', if_true: files('milkymist-hpdmc.c', 'milkymist-pfpu.c'))
+softmmu_ss.add(when: 'CONFIG_MAINSTONE', if_true: files('mst_fpga.c'))
+softmmu_ss.add(when: 'CONFIG_OMAP', if_true: files(
+  'omap_clk.c',
+  'omap_gpmc.c',
+  'omap_l4.c',
+  'omap_sdrc.c',
+  'omap_tap.c',
+))
+softmmu_ss.add(when: 'CONFIG_RASPI', if_true: files(
+  'bcm2835_mbox.c',
+  'bcm2835_mphi.c',
+  'bcm2835_property.c',
+  'bcm2835_rng.c',
+  'bcm2835_thermal.c',
+))
+softmmu_ss.add(when: 'CONFIG_SLAVIO', if_true: files('slavio_misc.c'))
+softmmu_ss.add(when: 'CONFIG_ZYNQ', if_true: files('zynq_slcr.c', 'zynq-xadc.c'))
+softmmu_ss.add(when: 'CONFIG_STM32F2XX_SYSCFG', if_true: files('stm32f2xx_syscfg.c'))
+softmmu_ss.add(when: 'CONFIG_STM32F4XX_SYSCFG', if_true: files('stm32f4xx_syscfg.c'))
+softmmu_ss.add(when: 'CONFIG_STM32F4XX_EXTI', if_true: files('stm32f4xx_exti.c'))
+softmmu_ss.add(when: 'CONFIG_MPS2_FPGAIO', if_true: files('mps2-fpgaio.c'))
+softmmu_ss.add(when: 'CONFIG_MPS2_SCC', if_true: files('mps2-scc.c'))
+
+softmmu_ss.add(when: 'CONFIG_TZ_MPC', if_true: files('tz-mpc.c'))
+softmmu_ss.add(when: 'CONFIG_TZ_MSC', if_true: files('tz-msc.c'))
+softmmu_ss.add(when: 'CONFIG_TZ_PPC', if_true: files('tz-ppc.c'))
+softmmu_ss.add(when: 'CONFIG_IOTKIT_SECCTL', if_true: files('iotkit-secctl.c'))
+softmmu_ss.add(when: 'CONFIG_IOTKIT_SYSINFO', if_true: files('iotkit-sysinfo.c'))
+softmmu_ss.add(when: 'CONFIG_ARMSSE_CPUID', if_true: files('armsse-cpuid.c'))
+softmmu_ss.add(when: 'CONFIG_ARMSSE_MHU', if_true: files('armsse-mhu.c'))
+
+softmmu_ss.add(when: 'CONFIG_PVPANIC', if_true: files('pvpanic.c'))
+softmmu_ss.add(when: 'CONFIG_AUX', if_true: files('auxbus.c'))
+softmmu_ss.add(when: 'CONFIG_ASPEED_SOC', if_true: files('aspeed_scu.c', 'aspeed_sdmc.c', 'aspeed_xdma.c'))
+softmmu_ss.add(when: 'CONFIG_MSF2', if_true: files('msf2-sysreg.c'))
+softmmu_ss.add(when: 'CONFIG_NRF51_SOC', if_true: files('nrf51_rng.c'))
+
+softmmu_ss.add(when: 'CONFIG_GRLIB', if_true: files('grlib_ahb_apb_pnp.c'))
+
+specific_ss.add(when: 'CONFIG_AVR_POWER', if_true: files('avr_power.c'))
+
+specific_ss.add(when: 'CONFIG_IMX', if_true: files('imx6_src.c'))
+specific_ss.add(when: 'CONFIG_IOTKIT_SYSCTL', if_true: files('iotkit-sysctl.c'))
+
+specific_ss.add(when: 'CONFIG_MAC_VIA', if_true: files('mac_via.c'))
+
+specific_ss.add(when: 'CONFIG_MIPS_CPS', if_true: files('mips_cmgcr.c', 'mips_cpc.c'))
+specific_ss.add(when: 'CONFIG_MIPS_ITU', if_true: files('mips_itu.c'))
