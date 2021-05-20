@@ -987,6 +987,7 @@ Property cpu_common_props[] = {
 #endif
     DEFINE_PROP_BOOL("halt", CPUState, reset_pin, false),
     DEFINE_PROP_STRING("gdb-id", CPUState, gdb_id),
+    DEFINE_PROP_BOOL("start-powered-off", CPUState, start_powered_off, false),
     DEFINE_PROP_END_OF_LIST(),
 };
 
