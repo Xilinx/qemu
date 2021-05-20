@@ -206,9 +206,8 @@ static void arm_cpu_reset(DeviceState *dev)
     env->vfp.xregs[ARM_VFP_MVFR1] = cpu->isar.mvfr1;
     env->vfp.xregs[ARM_VFP_MVFR2] = cpu->isar.mvfr2;
 
-    cpu->power_state = s->start_powered_off || s->arch_halt_pin ?
+    cpu->power_state = s->start_powered_off || s->halt_pin || s->arch_halt_pin ?
                            PSCI_OFF : PSCI_ON;
-    s->halted = s->start_powered_off || s->halt_pin || s->arch_halt_pin;
 
     /* Reset value of SCTLR_V is controlled by input signal VINITHI.  */
     env->cp15.sctlr_ns &= ~SCTLR_V;
