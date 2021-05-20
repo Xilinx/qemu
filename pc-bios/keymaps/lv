@@ -725,7 +725,7 @@ XF86Reload 0xe7
 
 # evdev 212 (0xd4): no evdev -> QKeyCode mapping (xkb keysym XF86WebCam)
 
-# evdev 213 (0xd5): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+# evdev 213 (0xd5): no evdev -> QKeyCode mapping (xkb keysym XF86AudioPreset)
 
 # evdev 214 (0xd6): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
 
@@ -786,15 +786,643 @@ XF86AudioMedia 0xed
 
 # evdev 242 (0xf2): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
 
-# evdev 243 (0xf3): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+# evdev 243 (0xf3): no evdev -> QKeyCode mapping (xkb keysym XF86MonBrightnessCycle)
 
 # evdev 244 (0xf4): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
 
 # evdev 245 (0xf5): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
 
-# evdev 246 (0xf6): no evdev -> QKeyCode mapping (xkb keysym Invalid)
+# evdev 246 (0xf6): no evdev -> QKeyCode mapping (xkb keysym XF86WWAN)
 
-# evdev 247 (0xf7): no evdev -> QKeyCode mapping (xkb keysym Invalid)
+# evdev 247 (0xf7): no evdev -> QKeyCode mapping (xkb keysym XF86RFKill)
+
+# evdev 248 (0xf8): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 249 (0xf9): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 250 (0xfa): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 251 (0xfb): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 252 (0xfc): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 253 (0xfd): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 254 (0xfe): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 255 (0xff): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 256 (0x100): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 257 (0x101): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 258 (0x102): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 259 (0x103): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 260 (0x104): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 261 (0x105): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 262 (0x106): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 263 (0x107): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 264 (0x108): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 265 (0x109): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 266 (0x10a): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 267 (0x10b): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 268 (0x10c): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 269 (0x10d): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 270 (0x10e): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 271 (0x10f): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 272 (0x110): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 273 (0x111): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 274 (0x112): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 275 (0x113): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 276 (0x114): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 277 (0x115): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 278 (0x116): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 279 (0x117): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 280 (0x118): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 281 (0x119): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 282 (0x11a): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 283 (0x11b): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 284 (0x11c): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 285 (0x11d): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 286 (0x11e): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 287 (0x11f): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 288 (0x120): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 289 (0x121): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 290 (0x122): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 291 (0x123): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 292 (0x124): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 293 (0x125): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 294 (0x126): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 295 (0x127): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 296 (0x128): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 297 (0x129): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 298 (0x12a): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 299 (0x12b): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 300 (0x12c): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 301 (0x12d): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 302 (0x12e): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 303 (0x12f): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 304 (0x130): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 305 (0x131): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 306 (0x132): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 307 (0x133): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 308 (0x134): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 309 (0x135): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 310 (0x136): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 311 (0x137): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 312 (0x138): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 313 (0x139): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 314 (0x13a): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 315 (0x13b): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 316 (0x13c): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 317 (0x13d): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 318 (0x13e): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 319 (0x13f): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 320 (0x140): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 321 (0x141): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 322 (0x142): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 323 (0x143): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 324 (0x144): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 325 (0x145): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 326 (0x146): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 327 (0x147): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 328 (0x148): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 329 (0x149): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 330 (0x14a): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 331 (0x14b): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 332 (0x14c): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 333 (0x14d): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 334 (0x14e): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 335 (0x14f): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 336 (0x150): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 337 (0x151): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 338 (0x152): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 339 (0x153): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 340 (0x154): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 341 (0x155): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 342 (0x156): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 343 (0x157): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 344 (0x158): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 345 (0x159): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 346 (0x15a): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 347 (0x15b): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 348 (0x15c): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 349 (0x15d): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 350 (0x15e): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 351 (0x15f): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 352 (0x160): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 353 (0x161): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 354 (0x162): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 355 (0x163): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 356 (0x164): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 357 (0x165): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 358 (0x166): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 359 (0x167): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 360 (0x168): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 361 (0x169): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 362 (0x16a): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 363 (0x16b): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 364 (0x16c): no evdev -> QKeyCode mapping (xkb keysym XF86Favorites)
+
+# evdev 365 (0x16d): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 366 (0x16e): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 367 (0x16f): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 368 (0x170): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 369 (0x171): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 370 (0x172): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 371 (0x173): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 372 (0x174): no evdev -> QKeyCode mapping (xkb keysym Invalid)
+
+# evdev 373 (0x175): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 374 (0x176): no evdev -> QKeyCode mapping (xkb keysym XF86Keyboard)
+
+# evdev 375 (0x177): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 376 (0x178): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 377 (0x179): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 378 (0x17a): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 379 (0x17b): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 380 (0x17c): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 381 (0x17d): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 382 (0x17e): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 383 (0x17f): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 384 (0x180): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 385 (0x181): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 386 (0x182): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 387 (0x183): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 388 (0x184): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 389 (0x185): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 390 (0x186): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 391 (0x187): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 392 (0x188): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 393 (0x189): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 394 (0x18a): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 395 (0x18b): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 396 (0x18c): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 397 (0x18d): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 398 (0x18e): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 399 (0x18f): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 400 (0x190): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 401 (0x191): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 402 (0x192): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 403 (0x193): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 404 (0x194): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 405 (0x195): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 406 (0x196): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 407 (0x197): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 408 (0x198): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 409 (0x199): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 410 (0x19a): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 411 (0x19b): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 412 (0x19c): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 413 (0x19d): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 414 (0x19e): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 415 (0x19f): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 416 (0x1a0): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 417 (0x1a1): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 418 (0x1a2): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 419 (0x1a3): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 420 (0x1a4): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 421 (0x1a5): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 422 (0x1a6): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 423 (0x1a7): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 424 (0x1a8): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 425 (0x1a9): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 426 (0x1aa): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 427 (0x1ab): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 428 (0x1ac): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 429 (0x1ad): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 430 (0x1ae): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 431 (0x1af): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 432 (0x1b0): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 433 (0x1b1): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 434 (0x1b2): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 435 (0x1b3): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 436 (0x1b4): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 437 (0x1b5): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 438 (0x1b6): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 439 (0x1b7): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 440 (0x1b8): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 441 (0x1b9): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 442 (0x1ba): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 443 (0x1bb): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 444 (0x1bc): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 445 (0x1bd): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 446 (0x1be): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 447 (0x1bf): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 448 (0x1c0): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 449 (0x1c1): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 450 (0x1c2): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 451 (0x1c3): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 452 (0x1c4): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 453 (0x1c5): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 454 (0x1c6): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 455 (0x1c7): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 456 (0x1c8): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 457 (0x1c9): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 458 (0x1ca): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 459 (0x1cb): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 460 (0x1cc): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 461 (0x1cd): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 462 (0x1ce): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 463 (0x1cf): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 464 (0x1d0): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 465 (0x1d1): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 466 (0x1d2): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 467 (0x1d3): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 468 (0x1d4): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 469 (0x1d5): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 470 (0x1d6): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 471 (0x1d7): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 472 (0x1d8): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 473 (0x1d9): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 474 (0x1da): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 475 (0x1db): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 476 (0x1dc): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 477 (0x1dd): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 478 (0x1de): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 479 (0x1df): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 480 (0x1e0): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 481 (0x1e1): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 482 (0x1e2): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 483 (0x1e3): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 484 (0x1e4): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 485 (0x1e5): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 486 (0x1e6): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 487 (0x1e7): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 488 (0x1e8): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 489 (0x1e9): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 490 (0x1ea): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 491 (0x1eb): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 492 (0x1ec): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 493 (0x1ed): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 494 (0x1ee): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 495 (0x1ef): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 496 (0x1f0): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 497 (0x1f1): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 498 (0x1f2): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 499 (0x1f3): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 500 (0x1f4): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 501 (0x1f5): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 502 (0x1f6): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 503 (0x1f7): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 504 (0x1f8): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 505 (0x1f9): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 506 (0x1fa): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 507 (0x1fb): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 508 (0x1fc): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 509 (0x1fd): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 510 (0x1fe): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 511 (0x1ff): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 512 (0x200): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 513 (0x201): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 514 (0x202): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 515 (0x203): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 516 (0x204): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 517 (0x205): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 518 (0x206): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 519 (0x207): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 520 (0x208): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 521 (0x209): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 522 (0x20a): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 523 (0x20b): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 524 (0x20c): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 525 (0x20d): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 526 (0x20e): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 527 (0x20f): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 528 (0x210): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 529 (0x211): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 530 (0x212): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 531 (0x213): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 532 (0x214): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 533 (0x215): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 534 (0x216): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 535 (0x217): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 536 (0x218): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 537 (0x219): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 538 (0x21a): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 539 (0x21b): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 540 (0x21c): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 541 (0x21d): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 542 (0x21e): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 543 (0x21f): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 544 (0x220): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 545 (0x221): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 546 (0x222): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 547 (0x223): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 548 (0x224): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 549 (0x225): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 550 (0x226): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 551 (0x227): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 552 (0x228): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 553 (0x229): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 554 (0x22a): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 555 (0x22b): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 556 (0x22c): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 557 (0x22d): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 558 (0x22e): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 559 (0x22f): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 560 (0x230): no evdev -> QKeyCode mapping (xkb keysym NoSymbol)
+
+# evdev 561 (0x231): no evdev -> QKeyCode mapping (xkb keysym XF86RotationLockToggle)
 
 #
 # quirks section start

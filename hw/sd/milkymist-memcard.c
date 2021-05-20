@@ -151,11 +151,8 @@ static uint64_t memcard_read(void *opaque, hwaddr addr,
         if (!s->enabled) {
             r = 0xffffffff;
         } else {
-            r = 0;
-            r |= sdbus_read_data(&s->sdbus) << 24;
-            r |= sdbus_read_data(&s->sdbus) << 16;
-            r |= sdbus_read_data(&s->sdbus) << 8;
-            r |= sdbus_read_data(&s->sdbus);
+            sdbus_read_data(&s->sdbus, &r, sizeof(r));
+            be32_to_cpus(&r);
         }
         break;
     case R_CLK2XDIV:
@@ -181,6 +178,7 @@ static void memcard_write(void *opaque, hwaddr addr, uint64_t value,
                           unsigned size)
 {
     MilkymistMemcardState *s = opaque;
+    uint32_t val32;
 
     trace_milkymist_memcard_memory_write(addr, value);
 
@@ -209,10 +207,8 @@ static void memcard_write(void *opaque, hwaddr addr, uint64_t value,
         if (!s->enabled) {
             break;
         }
-        sdbus_write_data(&s->sdbus, (value >> 24) & 0xff);
-        sdbus_write_data(&s->sdbus, (value >> 16) & 0xff);
-        sdbus_write_data(&s->sdbus, (value >> 8) & 0xff);
-        sdbus_write_data(&s->sdbus, value & 0xff);
+        val32 = cpu_to_be32(value);
+        sdbus_write_data(&s->sdbus, &val32, sizeof(val32));
         break;
     case R_ENABLE:
         s->regs[addr] = value;
