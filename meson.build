@@ -4,7 +4,13 @@ project('qemu', ['c'], meson_version: '>=0.55.0',
 
 not_found = dependency('', required: false)
 keyval = import('unstable-keyval')
+ss = import('sourceset')
+
+sh = find_program('sh')
+cc = meson.get_compiler('c')
 config_host = keyval.load(meson.current_build_dir() / 'config-host.mak')
+config_all_disas = keyval.load(meson.current_build_dir() / 'config-all-disas.mak')
+enable_modules = 'CONFIG_MODULES' in config_host
 
 add_project_arguments(config_host['QEMU_CFLAGS'].split(),
                       native: false, language: ['c', 'objc'])
@@ -42,6 +48,653 @@ supported_cpus = ['ppc', 'ppc64', 's390x', 'sparc64', 'riscv32', 'riscv64', 'x86
 
 cpu = host_machine.cpu_family()
 targetos = host_machine.system()
+
+m = cc.find_library('m', required: false)
+util = cc.find_library('util', required: false)
+socket = []
+version_res = []
+coref = []
+iokit = []
+cocoa = []
+hvf = []
+if targetos == 'windows'
+  socket = cc.find_library('ws2_32')
+
+  win = import('windows')
+  version_res = win.compile_resources('version.rc',
+                                      depend_files: files('pc-bios/qemu-nsis.ico'),
+                                      include_directories: include_directories('.'))
+elif targetos == 'darwin'
+  coref = dependency('appleframeworks', modules: 'CoreFoundation')
+  iokit = dependency('appleframeworks', modules: 'IOKit')
+  cocoa = dependency('appleframeworks', modules: 'Cocoa')
+  hvf = dependency('appleframeworks', modules: 'Hypervisor')
+elif targetos == 'sunos'
+  socket = [cc.find_library('socket'),
+            cc.find_library('nsl'),
+            cc.find_library('resolv')]
+elif targetos == 'haiku'
+  socket = [cc.find_library('posix_error_mapper'),
+            cc.find_library('network'),
+            cc.find_library('bsd')]
+endif
+glib = declare_dependency(compile_args: config_host['GLIB_CFLAGS'].split(),
+                          link_args: config_host['GLIB_LIBS'].split())
+gio = not_found
+if 'CONFIG_GIO' in config_host
+  gio = declare_dependency(compile_args: config_host['GIO_CFLAGS'].split(),
+                           link_args: config_host['GIO_LIBS'].split())
+endif
+lttng = not_found
+if 'CONFIG_TRACE_UST' in config_host
+  lttng = declare_dependency(link_args: config_host['LTTNG_UST_LIBS'].split())
+endif
+urcubp = not_found
+if 'CONFIG_TRACE_UST' in config_host
+  urcubp = declare_dependency(link_args: config_host['URCU_BP_LIBS'].split())
+endif
+nettle = not_found
+if 'CONFIG_NETTLE' in config_host
+  nettle = declare_dependency(compile_args: config_host['NETTLE_CFLAGS'].split(),
+                              link_args: config_host['NETTLE_LIBS'].split())
+endif
+gnutls = not_found
+if 'CONFIG_GNUTLS' in config_host
+  gnutls = declare_dependency(compile_args: config_host['GNUTLS_CFLAGS'].split(),
+                              link_args: config_host['GNUTLS_LIBS'].split())
+endif
+pixman = declare_dependency(compile_args: config_host['PIXMAN_CFLAGS'].split(),
+                            link_args: config_host['PIXMAN_LIBS'].split())
+pam = not_found
+if 'CONFIG_AUTH_PAM' in config_host
+  pam = cc.find_library('pam')
+endif
+libaio = cc.find_library('aio', required: false)
+zlib = not_found
+if 'CONFIG_ZLIB' in config_host
+  zlib = declare_dependency(compile_args: config_host['ZLIB_CFLAGS'].split(),
+                            link_args: config_host['ZLIB_LIBS'].split())
+endif
+linux_io_uring = not_found
+if 'CONFIG_LINUX_IO_URING' in config_host
+  linux_io_uring = declare_dependency(compile_args: config_host['LINUX_IO_URING_CFLAGS'].split(),
+                                      link_args: config_host['LINUX_IO_URING_LIBS'].split())
+endif
+libxml2 = not_found
+if 'CONFIG_LIBXML2' in config_host
+  libxml2 = declare_dependency(compile_args: config_host['LIBXML2_CFLAGS'].split(),
+                               link_args: config_host['LIBXML2_LIBS'].split())
+endif
+libnfs = not_found
+if 'CONFIG_LIBNFS' in config_host
+  libnfs = declare_dependency(link_args: config_host['LIBNFS_LIBS'].split())
+endif
+libattr = not_found
+if 'CONFIG_ATTR' in config_host
+  libattr = declare_dependency(link_args: config_host['LIBATTR_LIBS'].split())
+endif
+seccomp = not_found
+if 'CONFIG_SECCOMP' in config_host
+  seccomp = declare_dependency(compile_args: config_host['SECCOMP_CFLAGS'].split(),
+                               link_args: config_host['SECCOMP_LIBS'].split())
+endif
+libcap_ng = not_found
+if 'CONFIG_LIBCAP_NG' in config_host
+  libcap_ng = declare_dependency(link_args: config_host['LIBCAP_NG_LIBS'].split())
+endif
+xkbcommon = not_found
+if 'CONFIG_XKBCOMMON' in config_host
+  xkbcommon = declare_dependency(compile_args: config_host['XKBCOMMON_CFLAGS'].split(),
+                                 link_args: config_host['XKBCOMMON_LIBS'].split())
+endif
+rt = cc.find_library('rt', required: false)
+libmpathpersist = not_found
+if config_host.has_key('CONFIG_MPATH')
+  libmpathpersist = cc.find_library('mpathpersist')
+endif
+libiscsi = not_found
+if 'CONFIG_LIBISCSI' in config_host
+  libiscsi = declare_dependency(compile_args: config_host['LIBISCSI_CFLAGS'].split(),
+                                link_args: config_host['LIBISCSI_LIBS'].split())
+endif
+zstd = not_found
+if 'CONFIG_ZSTD' in config_host
+  zstd = declare_dependency(compile_args: config_host['ZSTD_CFLAGS'].split(),
+                            link_args: config_host['ZSTD_LIBS'].split())
+endif
+gbm = not_found
+if 'CONFIG_GBM' in config_host
+  gbm = declare_dependency(compile_args: config_host['GBM_CFLAGS'].split(),
+                           link_args: config_host['GBM_LIBS'].split())
+endif
+virgl = not_found
+if 'CONFIG_VIRGL' in config_host
+  virgl = declare_dependency(compile_args: config_host['VIRGL_CFLAGS'].split(),
+                             link_args: config_host['VIRGL_LIBS'].split())
+endif
+curl = not_found
+if 'CONFIG_CURL' in config_host
+  curl = declare_dependency(compile_args: config_host['CURL_CFLAGS'].split(),
+                            link_args: config_host['CURL_LIBS'].split())
+endif
+libudev = not_found
+if 'CONFIG_LIBUDEV' in config_host
+  libudev = declare_dependency(link_args: config_host['LIBUDEV_LIBS'].split())
+endif
+rbd = not_found
+if 'CONFIG_RBD' in config_host
+  rbd = declare_dependency(link_args: config_host['RBD_LIBS'].split())
+endif
+glusterfs = not_found
+if 'CONFIG_GLUSTERFS' in config_host
+  glusterfs = declare_dependency(compile_args: config_host['GLUSTERFS_CFLAGS'].split(),
+                                 link_args: config_host['GLUSTERFS_LIBS'].split())
+endif
+libssh = not_found
+if 'CONFIG_LIBSSH' in config_host
+  libssh = declare_dependency(compile_args: config_host['LIBSSH_CFLAGS'].split(),
+                              link_args: config_host['LIBSSH_LIBS'].split())
+endif
+libbzip2 = not_found
+if 'CONFIG_BZIP2' in config_host
+  libbzip2 = declare_dependency(link_args: config_host['BZIP2_LIBS'].split())
+endif
+liblzfse = not_found
+if 'CONFIG_LZFSE' in config_host
+  liblzfse = declare_dependency(link_args: config_host['LZFSE_LIBS'].split())
+endif
+
+create_config = find_program('scripts/create_config')
+minikconf = find_program('scripts/minikconf.py')
+target_dirs = config_host['TARGET_DIRS'].split()
+have_user = false
+have_system = false
+config_devices_mak_list = []
+config_devices_h = {}
+config_target_mak = {}
+kconfig_external_symbols = [
+  'CONFIG_KVM',
+  'CONFIG_XEN',
+  'CONFIG_TPM',
+  'CONFIG_SPICE',
+  'CONFIG_IVSHMEM',
+  'CONFIG_OPENGL',
+  'CONFIG_X11',
+  'CONFIG_VHOST_USER',
+  'CONFIG_VHOST_KERNEL',
+  'CONFIG_VIRTFS',
+  'CONFIG_LINUX',
+  'CONFIG_PVRDMA',
+]
+foreach target : target_dirs
+  have_user = have_user or target.endswith('-user')
+  config_target = keyval.load(meson.current_build_dir() / target / 'config-target.mak') + config_host
+
+  if target.endswith('-softmmu')
+    have_system = true
+
+    base_kconfig = []
+    foreach sym : kconfig_external_symbols
+      if sym in config_target
+        base_kconfig += '@0@=y'.format(sym)
+      endif
+    endforeach
+
+    config_devices_mak = target + '-config-devices.mak'
+    config_devices_mak = configure_file(
+      input: ['default-configs' / target + '.mak', 'Kconfig'],
+      output: config_devices_mak,
+      depfile: config_devices_mak + '.d',
+      capture: true,
+      command: [minikconf, config_host['CONFIG_MINIKCONF_MODE'],
+                config_devices_mak, '@DEPFILE@', '@INPUT@',
+                base_kconfig])
+    config_devices_h += {target: custom_target(
+      target + '-config-devices.h',
+      input: config_devices_mak,
+      output: target + '-config-devices.h',
+      capture: true,
+      command: [create_config, '@INPUT@'])}
+    config_devices_mak_list += config_devices_mak
+    config_target += keyval.load(config_devices_mak)
+  endif
+  config_target_mak += {target: config_target}
+endforeach
+have_tools = 'CONFIG_TOOLS' in config_host
+have_block = have_system or have_tools
+
+grepy = find_program('scripts/grepy.sh')
+# This configuration is used to build files that are shared by
+# multiple binaries, and then extracted out of the "common"
+# static_library target.
+#
+# We do not use all_sources()/all_dependencies(), because it would
+# build literally all source files, including devices only used by
+# targets that are not built for this compilation.  The CONFIG_ALL
+# pseudo symbol replaces it.
+
+if have_system
+  config_all_devices_mak = configure_file(
+    output: 'config-all-devices.mak',
+    input: config_devices_mak_list,
+    capture: true,
+    command: [grepy, '@INPUT@'],
+  )
+  config_all_devices = keyval.load(config_all_devices_mak)
+else
+  config_all_devices = {}
+endif
+config_all = config_all_devices
+config_all += config_host
+config_all += config_all_disas
+config_all += {
+  'CONFIG_XEN': config_host.has_key('CONFIG_XEN_BACKEND'),
+  'CONFIG_SOFTMMU': have_system,
+  'CONFIG_USER_ONLY': have_user,
+  'CONFIG_ALL': true,
+}
+
+# Generators
+
+genh = []
+hxtool = find_program('scripts/hxtool')
+shaderinclude = find_program('scripts/shaderinclude.pl')
+qapi_gen = find_program('scripts/qapi-gen.py')
+qapi_gen_depends = [ meson.source_root() / 'scripts/qapi/__init__.py',
+                     meson.source_root() / 'scripts/qapi/commands.py',
+                     meson.source_root() / 'scripts/qapi/common.py',
+                     meson.source_root() / 'scripts/qapi/doc.py',
+                     meson.source_root() / 'scripts/qapi/error.py',
+                     meson.source_root() / 'scripts/qapi/events.py',
+                     meson.source_root() / 'scripts/qapi/expr.py',
+                     meson.source_root() / 'scripts/qapi/gen.py',
+                     meson.source_root() / 'scripts/qapi/introspect.py',
+                     meson.source_root() / 'scripts/qapi/parser.py',
+                     meson.source_root() / 'scripts/qapi/schema.py',
+                     meson.source_root() / 'scripts/qapi/source.py',
+                     meson.source_root() / 'scripts/qapi/types.py',
+                     meson.source_root() / 'scripts/qapi/visit.py',
+                     meson.source_root() / 'scripts/qapi/common.py',
+                     meson.source_root() / 'scripts/qapi/doc.py',
+                     meson.source_root() / 'scripts/qapi-gen.py'
+]
+
+tracetool = [
+  python, files('scripts/tracetool.py'),
+   '--backend=' + config_host['TRACE_BACKENDS']
+]
+
+qemu_version_cmd = [find_program('scripts/qemu-version.sh'),
+                    meson.current_source_dir(),
+                    config_host['PKGVERSION'], config_host['VERSION']]
+qemu_version = custom_target('qemu-version.h',
+                             output: 'qemu-version.h',
+                             command: qemu_version_cmd,
+                             capture: true,
+                             build_by_default: true,
+                             build_always_stale: true)
+genh += qemu_version
+
+config_host_h = custom_target('config-host.h',
+                              input: meson.current_build_dir() / 'config-host.mak',
+                              output: 'config-host.h',
+                              capture: true,
+                              command: [create_config, '@INPUT@'])
+genh += config_host_h
+
+hxdep = []
+hx_headers = [
+  ['qemu-options.hx', 'qemu-options.def'],
+  ['qemu-img-cmds.hx', 'qemu-img-cmds.h'],
+]
+if have_system
+  hx_headers += [
+    ['hmp-commands.hx', 'hmp-commands.h'],
+    ['hmp-commands-info.hx', 'hmp-commands-info.h'],
+  ]
+endif
+foreach d : hx_headers
+  hxdep += custom_target(d[1],
+                input: files(d[0]),
+                output: d[1],
+                capture: true,
+                build_by_default: true, # to be removed when added to a target
+                command: [hxtool, '-h', '@INPUT0@'])
+endforeach
+genh += hxdep
+
+# Collect sourcesets.
+
+util_ss = ss.source_set()
+stub_ss = ss.source_set()
+trace_ss = ss.source_set()
+block_ss = ss.source_set()
+common_ss = ss.source_set()
+softmmu_ss = ss.source_set()
+user_ss = ss.source_set()
+bsd_user_ss = ss.source_set()
+linux_user_ss = ss.source_set()
+specific_ss = ss.source_set()
+
+modules = {}
+hw_arch = {}
+target_arch = {}
+target_softmmu_arch = {}
+
+###############
+# Trace files #
+###############
+
+trace_events_subdirs = [
+  'accel/kvm',
+  'accel/tcg',
+  'crypto',
+  'monitor',
+]
+if have_user
+  trace_events_subdirs += [ 'linux-user' ]
+endif
+if have_block
+  trace_events_subdirs += [
+    'authz',
+    'block',
+    'io',
+    'nbd',
+    'scsi',
+  ]
+endif
+if have_system
+  trace_events_subdirs += [
+    'audio',
+    'backends',
+    'backends/tpm',
+    'chardev',
+    'hw/9pfs',
+    'hw/acpi',
+    'hw/alpha',
+    'hw/arm',
+    'hw/audio',
+    'hw/block',
+    'hw/block/dataplane',
+    'hw/char',
+    'hw/display',
+    'hw/dma',
+    'hw/hppa',
+    'hw/hyperv',
+    'hw/i2c',
+    'hw/i386',
+    'hw/i386/xen',
+    'hw/ide',
+    'hw/input',
+    'hw/intc',
+    'hw/isa',
+    'hw/mem',
+    'hw/mips',
+    'hw/misc',
+    'hw/misc/macio',
+    'hw/net',
+    'hw/nvram',
+    'hw/pci',
+    'hw/pci-host',
+    'hw/ppc',
+    'hw/rdma',
+    'hw/rdma/vmw',
+    'hw/rtc',
+    'hw/s390x',
+    'hw/scsi',
+    'hw/sd',
+    'hw/sparc',
+    'hw/sparc64',
+    'hw/ssi',
+    'hw/timer',
+    'hw/tpm',
+    'hw/usb',
+    'hw/vfio',
+    'hw/virtio',
+    'hw/watchdog',
+    'hw/xen',
+    'hw/gpio',
+    'hw/riscv',
+    'migration',
+    'net',
+    'ui',
+  ]
+endif
+trace_events_subdirs += [
+  'hw/core',
+  'qapi',
+  'qom',
+  'target/arm',
+  'target/hppa',
+  'target/i386',
+  'target/mips',
+  'target/ppc',
+  'target/riscv',
+  'target/s390x',
+  'target/sparc',
+  'util',
+]
+
+subdir('qapi')
+subdir('qobject')
+subdir('stubs')
+subdir('trace')
+subdir('util')
+subdir('qom')
+subdir('authz')
+subdir('crypto')
+subdir('storage-daemon')
+subdir('ui')
+
+
+if enable_modules
+  libmodulecommon = static_library('module-common', files('module-common.c') + genh, pic: true, c_args: '-DBUILD_DSO')
+  modulecommon = declare_dependency(link_whole: libmodulecommon, compile_args: '-DBUILD_DSO')
+endif
+
+# Build targets from sourcesets
+
+stub_ss = stub_ss.apply(config_all, strict: false)
+
+util_ss.add_all(trace_ss)
+util_ss = util_ss.apply(config_all, strict: false)
+libqemuutil = static_library('qemuutil',
+                             sources: util_ss.sources() + stub_ss.sources() + genh,
+                             dependencies: [util_ss.dependencies(), m, glib, socket])
+qemuutil = declare_dependency(link_with: libqemuutil,
+                              sources: genh + version_res)
+
+subdir('io')
+subdir('chardev')
+subdir('fsdev')
+subdir('target')
+
+block_ss.add(files(
+  'block.c',
+  'blockjob.c',
+  'job.c',
+  'qemu-io-cmds.c',
+))
+block_ss.add(when: 'CONFIG_REPLICATION', if_true: files('replication.c'))
+
+subdir('nbd')
+subdir('scsi')
+subdir('block')
+
+block_mods = []
+softmmu_mods = []
+foreach d, list : modules
+  foreach m, module_ss : list
+    if enable_modules and targetos != 'windows'
+      module_ss = module_ss.apply(config_host, strict: false)
+      sl = static_library(d + '-' + m, [genh, module_ss.sources()],
+                          dependencies: [modulecommon, module_ss.dependencies()], pic: true)
+      if d == 'block'
+        block_mods += sl
+      else
+        softmmu_mods += sl
+      endif
+    else
+      if d == 'block'
+        block_ss.add_all(module_ss)
+      else
+        softmmu_ss.add_all(module_ss)
+      endif
+    endif
+  endforeach
+endforeach
+
+nm = find_program('nm')
+undefsym = find_program('scripts/undefsym.sh')
+block_syms = custom_target('block.syms', output: 'block.syms',
+                             input: [libqemuutil, block_mods],
+                             capture: true,
+                             command: [undefsym, nm, '@INPUT@'])
+qemu_syms = custom_target('qemu.syms', output: 'qemu.syms',
+                             input: [libqemuutil, softmmu_mods],
+                             capture: true,
+                             command: [undefsym, nm, '@INPUT@'])
+
+block_ss = block_ss.apply(config_host, strict: false)
+libblock = static_library('block', block_ss.sources() + genh,
+                          dependencies: block_ss.dependencies(),
+                          link_depends: block_syms,
+                          name_suffix: 'fa',
+                          build_by_default: false)
+
+block = declare_dependency(link_whole: [libblock],
+                           link_args: '@block.syms',
+                           dependencies: [crypto, io])
+
+foreach m : block_mods + softmmu_mods
+  shared_module(m.name(),
+                name_prefix: '',
+                link_whole: m,
+                install: true,
+                install_dir: config_host['qemu_moddir'])
+endforeach
+
+common_ss.add_all(when: 'CONFIG_SOFTMMU', if_true: softmmu_ss)
+common_ss.add_all(when: 'CONFIG_USER_ONLY', if_true: user_ss)
+
+common_all = common_ss.apply(config_all, strict: false)
+common_all = static_library('common',
+                            build_by_default: false,
+                            sources: common_all.sources() + genh,
+                            dependencies: common_all.dependencies(),
+                            name_suffix: 'fa')
+
+foreach target : target_dirs
+  config_target = config_target_mak[target]
+  target_name = config_target['TARGET_NAME']
+  arch = config_target['TARGET_BASE_ARCH']
+  arch_srcs = []
+
+  target_inc = [include_directories('target' / config_target['TARGET_BASE_ARCH'])]
+  if targetos == 'linux'
+    target_inc += include_directories('linux-headers', is_system: true)
+  endif
+  if target.endswith('-softmmu')
+    qemu_target_name = 'qemu-system-' + target_name
+    target_type='system'
+    arch_srcs += config_devices_h[target]
+  else
+    target_type='user'
+    qemu_target_name = 'qemu-' + target_name
+    if 'CONFIG_LINUX_USER' in config_target
+      base_dir = 'linux-user'
+      target_inc += include_directories('linux-user/host/' / config_host['ARCH'])
+    else
+      base_dir = 'bsd-user'
+    endif
+    target_inc += include_directories(
+      base_dir,
+      base_dir / config_target['TARGET_ABI_DIR'],
+    )
+  endif
+
+  target_common = common_ss.apply(config_target, strict: false)
+  objects = common_all.extract_objects(target_common.sources())
+
+  # TODO: Change to generator once obj-y goes away
+  config_target_h = custom_target(target + '-config-target.h',
+                              input: meson.current_build_dir() / target / 'config-target.mak',
+                              output: target + '-config-target.h',
+                              capture: true,
+                              command: [create_config, '@INPUT@'])
+
+  target_specific = specific_ss.apply(config_target, strict: false)
+  arch_srcs += target_specific.sources()
+
+  static_library('qemu-' + target,
+                 sources: arch_srcs + [config_target_h] + genh,
+                 objects: objects,
+                 include_directories: target_inc,
+                 c_args: ['-DNEED_CPU_H',
+                          '-DCONFIG_TARGET="@0@-config-target.h"'.format(target),
+                          '-DCONFIG_DEVICES="@0@-config-devices.h"'.format(target)],
+                 name_suffix: 'fa')
+endforeach
+
+# Other build targets
+
+if 'CONFIG_GUEST_AGENT' in config_host
+  subdir('qga')
+endif
+
+if have_tools
+  qemu_img = executable('qemu-img', [files('qemu-img.c'), hxdep],
+             dependencies: [authz, block, crypto, io, qom, qemuutil], install: true)
+  qemu_io = executable('qemu-io', files('qemu-io.c'),
+             dependencies: [block, qemuutil], install: true)
+  if targetos == 'linux' or targetos == 'sunos' or targetos.endswith('bsd')
+    qemu_nbd = executable('qemu-nbd', files('qemu-nbd.c'),
+               dependencies: [block, qemuutil], install: true)
+  endif
+
+  subdir('contrib/rdmacm-mux')
+  subdir('contrib/elf2dmp')
+
+  if 'CONFIG_XKBCOMMON' in config_host
+    executable('qemu-keymap', files('qemu-keymap.c', 'ui/input-keymap.c'),
+               dependencies: [qemuutil, xkbcommon], install: true)
+  endif
+
+  executable('qemu-edid', files('qemu-edid.c', 'hw/display/edid-generate.c'),
+             dependencies: qemuutil,
+             install: true)
+
+  if 'CONFIG_VHOST_USER' in config_host
+    subdir('contrib/libvhost-user')
+    subdir('contrib/vhost-user-blk')
+    if 'CONFIG_LINUX' in config_host
+      subdir('contrib/vhost-user-gpu')
+    endif
+    subdir('contrib/vhost-user-input')
+    subdir('contrib/vhost-user-scsi')
+  endif
+
+  if targetos == 'linux'
+    executable('qemu-bridge-helper', files('qemu-bridge-helper.c'),
+               dependencies: [qemuutil, libcap_ng],
+               install: true,
+               install_dir: get_option('libexecdir'))
+
+    executable('qemu-pr-helper', files('scsi/qemu-pr-helper.c', 'scsi/utils.c'),
+               dependencies: [authz, crypto, io, qom, qemuutil,
+                              libcap_ng, libudev, libmpathpersist],
+               install: true)
+  endif
+
+  if 'CONFIG_IVSHMEM' in config_host
+    subdir('contrib/ivshmem-client')
+    subdir('contrib/ivshmem-server')
+  endif
+endif
+
+subdir('tools')
+subdir('pc-bios')
+subdir('tests')
 
 summary_info = {}
 summary_info += {'Install prefix':    config_host['prefix']}
