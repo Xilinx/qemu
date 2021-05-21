@@ -27,9 +27,7 @@
 
 #define TYPE_PR_MANAGER_HELPER "pr-manager-helper"
 
-typedef struct PRManagerHelper PRManagerHelper;
-DECLARE_INSTANCE_CHECKER(PRManagerHelper, PR_MANAGER_HELPER,
-                         TYPE_PR_MANAGER_HELPER)
+OBJECT_DECLARE_SIMPLE_TYPE(PRManagerHelper, PR_MANAGER_HELPER)
 
 struct PRManagerHelper {
     /* <private> */
@@ -127,7 +125,7 @@ static int pr_manager_helper_initialize(PRManagerHelper *pr_mgr,
     qio_channel_set_delay(QIO_CHANNEL(sioc), false);
     pr_mgr->ioc = QIO_CHANNEL(sioc);
 
-    /* A simple feature negotation protocol, even though there is
+    /* A simple feature negotiation protocol, even though there is
      * no optional feature right now.
      */
     r = pr_manager_helper_read(pr_mgr, &flags, sizeof(flags), errp);

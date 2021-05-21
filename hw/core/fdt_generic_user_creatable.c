@@ -84,7 +84,7 @@ static QDict *user_creatble_fdt_props_to_qdict(void *fdt,
             continue;   /* Just sanity check */
         }
 
-        klass_prop = object_class_property_find(klass, key, NULL);
+        klass_prop = object_class_property_find(klass, key);
         if (!klass_prop || !klass_prop->set) {
             continue;   /* Not a class property, or non-settable */
         }

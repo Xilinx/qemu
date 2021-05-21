@@ -171,20 +171,17 @@ struct VexpressMachineClass {
     MachineClass parent;
     VEDBoardInfo *daughterboard;
 };
-typedef struct VexpressMachineClass VexpressMachineClass;
 
 struct VexpressMachineState {
     MachineState parent;
     bool secure;
     bool virt;
 };
-typedef struct VexpressMachineState VexpressMachineState;
 
 #define TYPE_VEXPRESS_MACHINE   "vexpress"
 #define TYPE_VEXPRESS_A9_MACHINE   MACHINE_TYPE_NAME("vexpress-a9")
 #define TYPE_VEXPRESS_A15_MACHINE   MACHINE_TYPE_NAME("vexpress-a15")
-DECLARE_OBJ_CHECKERS(VexpressMachineState, VexpressMachineClass,
-                     VEXPRESS_MACHINE, TYPE_VEXPRESS_MACHINE)
+OBJECT_DECLARE_TYPE(VexpressMachineState, VexpressMachineClass, VEXPRESS_MACHINE)
 
 typedef void DBoardInitFn(const VexpressMachineState *machine,
                           ram_addr_t ram_size,
@@ -221,12 +218,12 @@ static void init_cpus(MachineState *ms, const char *cpu_type,
             object_property_set_bool(cpuobj, "has_el3", false, NULL);
         }
         if (!virt) {
-            if (object_property_find(cpuobj, "has_el2", NULL)) {
+            if (object_property_find(cpuobj, "has_el2")) {
                 object_property_set_bool(cpuobj, "has_el2", false, NULL);
             }
         }
 
-        if (object_property_find(cpuobj, "reset-cbar", NULL)) {
+        if (object_property_find(cpuobj, "reset-cbar")) {
             object_property_set_int(cpuobj, "reset-cbar", periphbase,
                                     &error_abort);
         }

@@ -48,7 +48,7 @@ static bool cpu_exec_kick(CPUState *cpu)
         }
 
         if (qemu_clock_get_us(QEMU_CLOCK_HOST) >= poll_stop) {
-            atomic_mb_set(&cpu->thread_kicked, false);
+            qatomic_mb_set(&cpu->thread_kicked, false);
             rc = false;
             break;
         }

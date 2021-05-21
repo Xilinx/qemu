@@ -201,9 +201,7 @@ REG32(DDRIOB, 0xb40)
 #define A9_CPU_RST_CTRL_RST_SHIFT 0
 
 #define TYPE_ZYNQ_SLCR "xilinx,zynq_slcr"
-typedef struct ZynqSLCRState ZynqSLCRState;
-DECLARE_INSTANCE_CHECKER(ZynqSLCRState, ZYNQ_SLCR,
-                         TYPE_ZYNQ_SLCR)
+OBJECT_DECLARE_SIMPLE_TYPE(ZynqSLCRState, ZYNQ_SLCR)
 
 struct ZynqSLCRState {
     SysBusDevice parent_obj;

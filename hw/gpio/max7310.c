@@ -8,9 +8,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "hw/hw.h"
 #include "hw/i2c/i2c.h"
-#include "hw/hw.h"
 #include "hw/irq.h"
 #include "migration/vmstate.h"
 #include "qemu/log.h"
@@ -18,9 +16,7 @@
 #include "qom/object.h"
 
 #define TYPE_MAX7310 "max7310"
-typedef struct MAX7310State MAX7310State;
-DECLARE_INSTANCE_CHECKER(MAX7310State, MAX7310,
-                         TYPE_MAX7310)
+OBJECT_DECLARE_SIMPLE_TYPE(MAX7310State, MAX7310)
 
 struct MAX7310State {
     I2CSlave parent_obj;
@@ -175,8 +171,7 @@ static const VMStateDescription vmstate_max7310 = {
 static void max7310_gpio_set(void *opaque, int line, int level)
 {
     MAX7310State *s = (MAX7310State *) opaque;
-    if (line >= ARRAY_SIZE(s->handler) || line  < 0)
-        hw_error("bad GPIO line");
+    assert(line >= 0 && line < ARRAY_SIZE(s->handler));
 
     if (level)
         s->level |= s->direction & (1 << line);

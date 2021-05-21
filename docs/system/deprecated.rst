@@ -3,10 +3,11 @@ Deprecated features
 
 In general features are intended to be supported indefinitely once
 introduced into QEMU. In the event that a feature needs to be removed,
-it will be listed in this section. The feature will remain functional
-for 2 releases prior to actual removal. Deprecated features may also
-generate warnings on the console when QEMU starts up, or if activated
-via a monitor command, however, this is not a mandatory requirement.
+it will be listed in this section. The feature will remain functional for the
+release in which it was deprecated and one further release. After these two
+releases, the feature is liable to be removed. Deprecated features may also
+generate warnings on the console when QEMU starts up, or if activated via a
+monitor command, however, this is not a mandatory requirement.
 
 Prior to the 2.10.0 release there was no official policy on how
 long features would be deprecated prior to their removal, nor
@@ -47,19 +48,6 @@ The 'file' driver for drives is no longer appropriate for character or host
 devices and will only accept regular files (S_IFREG). The correct driver
 for these file types is 'host_cdrom' or 'host_device' as appropriate.
 
-``-smp`` (invalid topologies) (since 3.1)
-'''''''''''''''''''''''''''''''''''''''''
-
-CPU topology properties should describe whole machine topology including
-possible CPUs.
-
-However, historically it was possible to start QEMU with an incorrect topology
-where *n* <= *sockets* * *cores* * *threads* < *maxcpus*,
-which could lead to an incorrect topology enumeration by the guest.
-Support for invalid topologies will be removed, the user must ensure
-topologies described with -smp include all possible cpus, i.e.
-*sockets* * *cores* * *threads* = *maxcpus*.
-
 ``-vnc acl`` (since 4.0.0)
 ''''''''''''''''''''''''''
 
@@ -79,7 +67,7 @@ Creating sound card devices and vnc without ``audiodev=`` property (since 4.2)
 
 When not using the deprecated legacy audio config, each sound card
 should specify an ``audiodev=`` property.  Additionally, when using
-vnc, you should specify an ``audiodev=`` propery if you plan to
+vnc, you should specify an ``audiodev=`` property if you plan to
 transmit audio through the VNC protocol.
 
 Creating sound card devices using ``-soundhw`` (since 5.1)
@@ -111,7 +99,7 @@ Splitting RAM by default between NUMA nodes has the same issues as ``mem``
 parameter described above with the difference that the role of the user plays
 QEMU using implicit generic or board specific splitting rule.
 Use ``memdev`` with *memory-backend-ram* backend or ``mem`` (if
-it's supported by used machine type) to define mapping explictly instead.
+it's supported by used machine type) to define mapping explicitly instead.
 
 ``-mem-path`` fallback to RAM (since 4.1)
 '''''''''''''''''''''''''''''''''''''''''
@@ -541,10 +529,10 @@ The ``[hub_id name]`` parameter tuple of the 'hostfwd_add' and
 Guest Emulator ISAs
 -------------------
 
-RISC-V ISA privledge specification version 1.09.1 (removed in 5.1)
+RISC-V ISA privilege specification version 1.09.1 (removed in 5.1)
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
-The RISC-V ISA privledge specification version 1.09.1 has been removed.
+The RISC-V ISA privilege specification version 1.09.1 has been removed.
 QEMU supports both the newer version 1.10.0 and the ratified version 1.11.0, these
 should be used instead of the 1.09.1 version.
 
@@ -641,6 +629,19 @@ to achieve the same fake NUMA effect or a properly configured
 New machine versions (since 5.1) will not accept the option but it will still
 work with old machine types. User can check the QAPI schema to see if the legacy
 option is supported by looking at MachineInfo::numa-mem-supported property.
+
+``-smp`` (invalid topologies) (removed 5.2)
+'''''''''''''''''''''''''''''''''''''''''''
+
+CPU topology properties should describe whole machine topology including
+possible CPUs.
+
+However, historically it was possible to start QEMU with an incorrect topology
+where *n* <= *sockets* * *cores* * *threads* < *maxcpus*,
+which could lead to an incorrect topology enumeration by the guest.
+Support for invalid topologies is removed, the user must ensure
+topologies described with -smp include all possible cpus, i.e.
+*sockets* * *cores* * *threads* = *maxcpus*.
 
 Block devices
 -------------

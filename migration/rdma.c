@@ -398,9 +398,7 @@ typedef struct RDMAContext {
 } RDMAContext;
 
 #define TYPE_QIO_CHANNEL_RDMA "qio-channel-rdma"
-typedef struct QIOChannelRDMA QIOChannelRDMA;
-DECLARE_INSTANCE_CHECKER(QIOChannelRDMA, QIO_CHANNEL_RDMA,
-                         TYPE_QIO_CHANNEL_RDMA)
+OBJECT_DECLARE_SIMPLE_TYPE(QIOChannelRDMA, QIO_CHANNEL_RDMA)
 
 
 
@@ -1511,7 +1509,7 @@ static int qemu_rdma_wait_comp_channel(RDMAContext *rdma)
     } else {
         /* This is the source side, we're in a separate thread
          * or destination prior to migration_fd_process_incoming()
-         * after postcopy, the destination also in a seprate thread.
+         * after postcopy, the destination also in a separate thread.
          * we can't yield; so we have to poll the fd.
          * But we need to be able to handle 'cancel' or an error
          * without hanging forever.
@@ -2268,7 +2266,7 @@ static inline int qemu_rdma_buffer_mergable(RDMAContext *rdma,
  *    chunk, then start a new chunk and flush() the old chunk.
  * 3. To keep the hardware busy, we also group chunks into batches
  *    and only require that a batch gets acknowledged in the completion
- *    qeueue instead of each individual chunk.
+ *    queue instead of each individual chunk.
  */
 static int qemu_rdma_write(QEMUFile *f, RDMAContext *rdma,
                            uint64_t block_offset, uint64_t offset,
@@ -2680,7 +2678,7 @@ static ssize_t qio_channel_rdma_writev(QIOChannel *ioc,
     size_t len = 0;
 
     RCU_READ_LOCK_GUARD();
-    rdma = atomic_rcu_read(&rioc->rdmaout);
+    rdma = qatomic_rcu_read(&rioc->rdmaout);
 
     if (!rdma) {
         return -EIO;
@@ -2762,7 +2760,7 @@ static ssize_t qio_channel_rdma_readv(QIOChannel *ioc,
     size_t done = 0;
 
     RCU_READ_LOCK_GUARD();
-    rdma = atomic_rcu_read(&rioc->rdmain);
+    rdma = qatomic_rcu_read(&rioc->rdmain);
 
     if (!rdma) {
         return -EIO;
@@ -2877,9 +2875,9 @@ qio_channel_rdma_source_prepare(GSource *source,
 
     RCU_READ_LOCK_GUARD();
     if (rsource->condition == G_IO_IN) {
-        rdma = atomic_rcu_read(&rsource->rioc->rdmain);
+        rdma = qatomic_rcu_read(&rsource->rioc->rdmain);
     } else {
-        rdma = atomic_rcu_read(&rsource->rioc->rdmaout);
+        rdma = qatomic_rcu_read(&rsource->rioc->rdmaout);
     }
 
     if (!rdma) {
@@ -2904,9 +2902,9 @@ qio_channel_rdma_source_check(GSource *source)
 
     RCU_READ_LOCK_GUARD();
     if (rsource->condition == G_IO_IN) {
-        rdma = atomic_rcu_read(&rsource->rioc->rdmain);
+        rdma = qatomic_rcu_read(&rsource->rioc->rdmain);
     } else {
-        rdma = atomic_rcu_read(&rsource->rioc->rdmaout);
+        rdma = qatomic_rcu_read(&rsource->rioc->rdmaout);
     }
 
     if (!rdma) {
@@ -2934,9 +2932,9 @@ qio_channel_rdma_source_dispatch(GSource *source,
 
     RCU_READ_LOCK_GUARD();
     if (rsource->condition == G_IO_IN) {
-        rdma = atomic_rcu_read(&rsource->rioc->rdmain);
+        rdma = qatomic_rcu_read(&rsource->rioc->rdmain);
     } else {
-        rdma = atomic_rcu_read(&rsource->rioc->rdmaout);
+        rdma = qatomic_rcu_read(&rsource->rioc->rdmaout);
     }
 
     if (!rdma) {
@@ -3037,12 +3035,12 @@ static int qio_channel_rdma_close(QIOChannel *ioc,
 
     rdmain = rioc->rdmain;
     if (rdmain) {
-        atomic_rcu_set(&rioc->rdmain, NULL);
+        qatomic_rcu_set(&rioc->rdmain, NULL);
     }
 
     rdmaout = rioc->rdmaout;
     if (rdmaout) {
-        atomic_rcu_set(&rioc->rdmaout, NULL);
+        qatomic_rcu_set(&rioc->rdmaout, NULL);
     }
 
     rcu->rdmain = rdmain;
@@ -3062,8 +3060,8 @@ qio_channel_rdma_shutdown(QIOChannel *ioc,
 
     RCU_READ_LOCK_GUARD();
 
-    rdmain = atomic_rcu_read(&rioc->rdmain);
-    rdmaout = atomic_rcu_read(&rioc->rdmain);
+    rdmain = qatomic_rcu_read(&rioc->rdmain);
+    rdmaout = qatomic_rcu_read(&rioc->rdmain);
 
     switch (how) {
     case QIO_CHANNEL_SHUTDOWN_READ:
@@ -3133,7 +3131,7 @@ static size_t qemu_rdma_save_page(QEMUFile *f, void *opaque,
     int ret;
 
     RCU_READ_LOCK_GUARD();
-    rdma = atomic_rcu_read(&rioc->rdmaout);
+    rdma = qatomic_rcu_read(&rioc->rdmaout);
 
     if (!rdma) {
         return -EIO;
@@ -3150,7 +3148,7 @@ static size_t qemu_rdma_save_page(QEMUFile *f, void *opaque,
     if (size > 0) {
         /*
          * Add this page to the current 'chunk'. If the chunk
-         * is full, or the page doen't belong to the current chunk,
+         * is full, or the page doesn't belong to the current chunk,
          * an actual RDMA write will occur and a new chunk will be formed.
          */
         ret = qemu_rdma_write(f, rdma, block_offset, offset, size);
@@ -3453,7 +3451,7 @@ static int qemu_rdma_registration_handle(QEMUFile *f, void *opaque)
     int i = 0;
 
     RCU_READ_LOCK_GUARD();
-    rdma = atomic_rcu_read(&rioc->rdmain);
+    rdma = qatomic_rcu_read(&rioc->rdmain);
 
     if (!rdma) {
         return -EIO;
@@ -3716,7 +3714,7 @@ rdma_block_notification_handle(QIOChannelRDMA *rioc, const char *name)
     int found = -1;
 
     RCU_READ_LOCK_GUARD();
-    rdma = atomic_rcu_read(&rioc->rdmain);
+    rdma = qatomic_rcu_read(&rioc->rdmain);
 
     if (!rdma) {
         return -EIO;
@@ -3764,7 +3762,7 @@ static int qemu_rdma_registration_start(QEMUFile *f, void *opaque,
     RDMAContext *rdma;
 
     RCU_READ_LOCK_GUARD();
-    rdma = atomic_rcu_read(&rioc->rdmaout);
+    rdma = qatomic_rcu_read(&rioc->rdmaout);
     if (!rdma) {
         return -EIO;
     }
@@ -3795,7 +3793,7 @@ static int qemu_rdma_registration_stop(QEMUFile *f, void *opaque,
     int ret = 0;
 
     RCU_READ_LOCK_GUARD();
-    rdma = atomic_rcu_read(&rioc->rdmaout);
+    rdma = qatomic_rcu_read(&rioc->rdmaout);
     if (!rdma) {
         return -EIO;
     }
@@ -4103,7 +4101,7 @@ void rdma_start_outgoing_migration(void *opaque,
         goto err;
     }
 
-    /* RDMA postcopy need a seprate queue pair for return path */
+    /* RDMA postcopy need a separate queue pair for return path */
     if (migrate_postcopy()) {
         rdma_return_path = qemu_rdma_data_init(host_port, errp);
 

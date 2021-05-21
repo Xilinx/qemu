@@ -10478,7 +10478,7 @@ static void ppc_cpu_parse_featurestr(const char *type, char *features,
         return;
     }
 
-    if (object_property_find(machine, "max-cpu-compat", NULL)) {
+    if (object_property_find(machine, "max-cpu-compat")) {
         int i;
         char **inpieces;
         char *s = features;
@@ -10960,6 +10960,7 @@ static const TypeInfo ppc_cpu_type_info = {
     .name = TYPE_POWERPC_CPU,
     .parent = TYPE_CPU,
     .instance_size = sizeof(PowerPCCPU),
+    .instance_align = __alignof__(PowerPCCPU),
     .instance_init = ppc_cpu_instance_init,
     .instance_finalize = ppc_cpu_instance_finalize,
     .abstract = true,

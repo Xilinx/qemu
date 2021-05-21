@@ -156,9 +156,7 @@ static const MemoryRegionOps hb_mem_ops = {
 };
 
 #define TYPE_HIGHBANK_REGISTERS "highbank-regs"
-typedef struct HighbankRegsState HighbankRegsState;
-DECLARE_INSTANCE_CHECKER(HighbankRegsState, HIGHBANK_REGISTERS,
-                         TYPE_HIGHBANK_REGISTERS)
+OBJECT_DECLARE_SIMPLE_TYPE(HighbankRegsState, HIGHBANK_REGISTERS)
 
 struct HighbankRegsState {
     /*< private >*/
@@ -278,7 +276,7 @@ static void calxeda_init(MachineState *machine, enum cxmachines machine_id)
                                      &error_abort);
         }
 
-        if (object_property_find(cpuobj, "reset-cbar", NULL)) {
+        if (object_property_find(cpuobj, "reset-cbar")) {
             object_property_set_int(cpuobj, "reset-cbar", MPCORE_PERIPHBASE,
                                     &error_abort);
         }

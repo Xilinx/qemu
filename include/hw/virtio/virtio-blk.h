@@ -22,9 +22,7 @@
 #include "qom/object.h"
 
 #define TYPE_VIRTIO_BLK "virtio-blk-device"
-typedef struct VirtIOBlock VirtIOBlock;
-DECLARE_INSTANCE_CHECKER(VirtIOBlock, VIRTIO_BLK,
-                         TYPE_VIRTIO_BLK)
+OBJECT_DECLARE_SIMPLE_TYPE(VirtIOBlock, VIRTIO_BLK)
 
 /* This is the last element of the write scatter-gather list */
 struct virtio_blk_inhdr
@@ -72,6 +70,8 @@ typedef struct VirtIOBlockReq {
     int64_t sector_num;
     VirtIOBlock *dev;
     VirtQueue *vq;
+    IOVDiscardUndo inhdr_undo;
+    IOVDiscardUndo outhdr_undo;
     struct virtio_blk_inhdr *in;
     struct virtio_blk_outhdr out;
     QEMUIOVector qiov;

@@ -905,7 +905,7 @@ static void fdt_attach_drive(FDTMachineInfo *fdti, char *node_path,
     int di_len = 0;
 
     /* Do nothing if the device is not a block front-end */
-    if (!object_property_find(OBJECT(dev), "drive", NULL)) {
+    if (!object_property_find(OBJECT(dev), "drive")) {
         return;
     }
 
@@ -1205,7 +1205,7 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
     if (global_sync_quantum) {
         ObjectProperty *p;
 
-        p = object_property_find(OBJECT(dev), "sync-quantum", NULL);
+        p = object_property_find(OBJECT(dev), "sync-quantum");
         if (p) {
             object_property_set_int(OBJECT(dev), "sync-quantum", global_sync_quantum, &errp);
         }
@@ -1240,7 +1240,7 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
         val = prop->value;
         len = prop->len;
 
-        p = object_property_find(OBJECT(dev), propname, NULL);
+        p = object_property_find(OBJECT(dev), propname);
         if (p) {
             DB_PRINT_NP(1, "matched property: %s of type %s, len %d\n",
                                             propname, p->type, prop->len);
@@ -1418,8 +1418,8 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
         static int nics;
         const char *short_name = qemu_devtree_get_node_name(fdti->fdt, node_path);
 
-        if (object_property_find(OBJECT(dev), "mac", NULL) &&
-                    object_property_find(OBJECT(dev), "netdev", NULL)) {
+        if (object_property_find(OBJECT(dev), "mac") &&
+                    object_property_find(OBJECT(dev), "netdev")) {
             qdev_set_nic_properties(DEVICE(dev), &nd_table[nics]);
         }
         if (nd_table[nics].instantiated) {
@@ -1452,7 +1452,7 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
         /* We also need to externally connect drives. Let's try to do that
          * here.
          */
-        if (object_property_find(OBJECT(dev), "drive", NULL)) {
+        if (object_property_find(OBJECT(dev), "drive")) {
             uint32_t *use_blkdev = NULL;
             use_blkdev =  qemu_fdt_getprop(fdti->fdt, node_path,
                                              "use-blockdev", NULL,

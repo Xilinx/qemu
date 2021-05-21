@@ -46,10 +46,8 @@ struct GenericLoaderState {
         uint16_t requester_id;
     } attrs;
 };
-typedef struct GenericLoaderState GenericLoaderState;
 
 #define TYPE_GENERIC_LOADER "loader"
-DECLARE_INSTANCE_CHECKER(GenericLoaderState, GENERIC_LOADER,
-                         TYPE_GENERIC_LOADER)
+OBJECT_DECLARE_SIMPLE_TYPE(GenericLoaderState, GENERIC_LOADER)
 
 #endif

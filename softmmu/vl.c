@@ -1328,7 +1328,7 @@ ShutdownCause qemu_reset_requested_get(void)
 
 static int qemu_shutdown_requested(void)
 {
-    return atomic_xchg(&shutdown_requested, SHUTDOWN_CAUSE_NONE);
+    return qatomic_xchg(&shutdown_requested, SHUTDOWN_CAUSE_NONE);
 }
 
 static void qemu_kill_report(void)

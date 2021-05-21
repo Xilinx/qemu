@@ -35,9 +35,7 @@
 /* Primary interrupt controller.  */
 
 #define TYPE_VERSATILE_PB_SIC "versatilepb_sic"
-typedef struct vpb_sic_state vpb_sic_state;
-DECLARE_INSTANCE_CHECKER(vpb_sic_state, VERSATILE_PB_SIC,
-                         TYPE_VERSATILE_PB_SIC)
+OBJECT_DECLARE_SIMPLE_TYPE(vpb_sic_state, VERSATILE_PB_SIC)
 
 struct vpb_sic_state {
     SysBusDevice parent_obj;
@@ -215,7 +213,7 @@ static void versatile_init(MachineState *machine, int board_id)
      * currently support EL3 so the CPU EL3 property is disabled before
      * realization.
      */
-    if (object_property_find(cpuobj, "has_el3", NULL)) {
+    if (object_property_find(cpuobj, "has_el3")) {
         object_property_set_bool(cpuobj, "has_el3", false, &error_fatal);
     }
 

@@ -1940,7 +1940,7 @@ static int canfd_populate_regarray(XlnxVersalCANFDState *s,
             .opaque = OBJECT(s),
         };
 
-        register_init(r);
+        object_initialize((void *)r, sizeof(*r), TYPE_REGISTER);
 
         r_array->r[i + pos] = r;
     }

@@ -2110,7 +2110,8 @@ static int smmu_populate_regarray(SMMU *s,
             .access = &rae[i],
             .opaque = OBJECT(s),
         };
-        register_init(r);
+
+        object_initialize((void *)r, sizeof(*r), TYPE_REGISTER);
 
         r_array->r[i + pos] = r;
     }
