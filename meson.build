@@ -273,8 +273,8 @@ if sdl.found()
                          method: 'pkg-config', static: enable_static)
 else
   if get_option('sdl_image').enabled()
-    error('sdl-image required, but SDL was @0@',
-          get_option('sdl').disabled() ? 'disabled' : 'not found')
+    error('sdl-image required, but SDL was @0@'.format(
+          get_option('sdl').disabled() ? 'disabled' : 'not found'))
   endif
   sdl_image = not_found
 endif
@@ -773,9 +773,9 @@ if have_system
     'hw/watchdog',
     'hw/xen',
     'hw/gpio',
-    'hw/riscv',
     'migration',
     'net',
+    'softmmu',
     'ui',
   ]
 endif

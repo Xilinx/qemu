@@ -34,6 +34,7 @@
 #include "qemu/units.h"
 #include "hw/dma/xlnx_dpdma.h"
 #include "audio/audio.h"
+#include "qom/object.h"
 #include "hw/ptimer.h"
 #include "qemu/main-loop.h"
 
@@ -50,7 +51,7 @@ struct PixmanPlane {
     DisplaySurface *surface;
 };
 
-typedef struct XlnxDPState {
+struct XlnxDPState {
     /*< private >*/
     SysBusDevice parent_obj;
 
@@ -105,9 +106,11 @@ typedef struct XlnxDPState {
     I2CDDCState *edid;
 
     ptimer_state *vblank;
-} XlnxDPState;
+};
+typedef struct XlnxDPState XlnxDPState;
 
 #define TYPE_XLNX_DP "xlnx.v-dp"
-#define XLNX_DP(obj) OBJECT_CHECK(XlnxDPState, (obj), TYPE_XLNX_DP)
+DECLARE_INSTANCE_CHECKER(XlnxDPState, XLNX_DP,
+                         TYPE_XLNX_DP)
 
 #endif

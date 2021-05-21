@@ -119,8 +119,8 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
     }
     if (dir == DMA_DIRECTION_FROM_DEVICE && REMOTE_PORT_DEBUG_LEVEL > 0) {
         DB_PRINT_L(0, "address: %" PRIx64 "\n", pkt->busaccess.addr);
-        qemu_hexdump((const char *)data, stderr, ": write: ",
-                     pkt->busaccess.len);
+        qemu_hexdump(stderr, ": write: ",
+                     (const char *) data, pkt->busaccess.len);
     }
     trace_remote_port_memory_slave_rx_busaccess(rp_cmd_to_string(pkt->hdr.cmd),
         pkt->hdr.id, pkt->hdr.flags, pkt->hdr.dev, pkt->busaccess.addr,
@@ -147,8 +147,8 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
 
     if (dir == DMA_DIRECTION_TO_DEVICE && REMOTE_PORT_DEBUG_LEVEL > 0) {
         DB_PRINT_L(0, "address: %" PRIx64 "\n", pkt->busaccess.addr);
-        qemu_hexdump((const char *)data, stderr, ": read: ",
-                     pkt->busaccess.len);
+        qemu_hexdump(stderr, ": read: ",
+                     (const char *) data, pkt->busaccess.len);
     }
     /* delay here could be set to the annotated cost of doing issuing
        these accesses. QEMU doesn't support this kind of annotations

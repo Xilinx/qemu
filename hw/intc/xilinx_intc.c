@@ -30,6 +30,7 @@
 #include "hw/fdt_generic_util.h"
 #include "hw/irq.h"
 #include "hw/qdev-properties.h"
+#include "qom/object.h"
 
 #define D(x)
 
@@ -44,7 +45,8 @@
 #define R_MAX       8
 
 #define TYPE_XILINX_INTC "xlnx.xps-intc"
-#define XILINX_INTC(obj) OBJECT_CHECK(struct xlx_pic, (obj), TYPE_XILINX_INTC)
+DECLARE_INSTANCE_CHECKER(struct xlx_pic, XILINX_INTC,
+                         TYPE_XILINX_INTC)
 
 struct xlx_pic
 {

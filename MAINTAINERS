@@ -1316,6 +1316,15 @@ F: include/hw/riscv/opentitan.h
 F: include/hw/char/ibex_uart.h
 F: include/hw/intc/ibex_plic.h
 
+Microchip PolarFire SoC Icicle Kit
+M: Bin Meng <bin.meng@windriver.com>
+L: qemu-riscv@nongnu.org
+S: Supported
+F: hw/riscv/microchip_pfsoc.c
+F: hw/char/mchp_pfsoc_mmuart.c
+F: include/hw/riscv/microchip_pfsoc.h
+F: include/hw/char/mchp_pfsoc_mmuart.h
+
 RX Machines
 -----------
 rx-gdbsim
@@ -2422,6 +2431,11 @@ F: qom/
 F: tests/check-qom-interface.c
 F: tests/check-qom-proplist.c
 F: tests/test-qdev-global-props.c
+
+QOM boilerplate conversion script
+M: Eduardo Habkost <ehabkost@redhat.com>
+S: Maintained
+F: scripts/codeconverter/
 
 QMP
 M: Markus Armbruster <armbru@redhat.com>

@@ -1978,7 +1978,7 @@ send_response:
     }
 
 #ifdef DEBUG_SD
-    qemu_hexdump((const char *)response, stderr, "Response", rsplen);
+    qemu_hexdump(stderr, "Response", response, rsplen);
 #endif
 
     return rsplen;

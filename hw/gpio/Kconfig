@@ -13,3 +13,6 @@ config XILINX_IOMODULE_GPI
 
 config XILINX_IOMODULE_GPO
 	bool
+
+config SIFIVE_GPIO
+    bool

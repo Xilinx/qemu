@@ -23,6 +23,7 @@
 #include "hw/qdev-properties.h"
 #include "qemu/module.h"
 #include "qemu/timer.h"
+#include "qom/object.h"
 
 #ifdef CADENCE_TTC_ERR_DEBUG
 #define DB_PRINT(...) do { \
@@ -74,8 +75,9 @@ typedef struct {
 } CadenceTimerState;
 
 #define TYPE_CADENCE_TTC "cadence_ttc"
-#define CADENCE_TTC(obj) \
-    OBJECT_CHECK(CadenceTTCState, (obj), TYPE_CADENCE_TTC)
+typedef struct CadenceTTCState CadenceTTCState;
+DECLARE_INSTANCE_CHECKER(CadenceTTCState, CADENCE_TTC,
+                         TYPE_CADENCE_TTC)
 
 struct CadenceTTCState {
     SysBusDevice parent_obj;

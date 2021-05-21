@@ -390,7 +390,7 @@ static void xlnx_dpdma_dump_descriptor(DPDMADescriptor *desc)
 {
     if (DEBUG_DPDMA) {
         qemu_log("DUMP DESCRIPTOR:\n");
-        qemu_hexdump((char *)desc, stdout, "", sizeof(DPDMADescriptor));
+        qemu_hexdump(stdout, "", desc, sizeof(DPDMADescriptor));
     }
 }
 

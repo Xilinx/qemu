@@ -20,8 +20,9 @@
 
 #include "elf.h"
 #include "hw/qdev-core.h"
+#include "qom/object.h"
 
-typedef struct GenericLoaderState {
+struct GenericLoaderState {
     /* <private> */
     DeviceState parent_obj;
 
@@ -44,10 +45,11 @@ typedef struct GenericLoaderState {
         bool debug;
         uint16_t requester_id;
     } attrs;
-} GenericLoaderState;
+};
+typedef struct GenericLoaderState GenericLoaderState;
 
 #define TYPE_GENERIC_LOADER "loader"
-#define GENERIC_LOADER(obj) OBJECT_CHECK(GenericLoaderState, (obj), \
-                                         TYPE_GENERIC_LOADER)
+DECLARE_INSTANCE_CHECKER(GenericLoaderState, GENERIC_LOADER,
+                         TYPE_GENERIC_LOADER)
 
 #endif

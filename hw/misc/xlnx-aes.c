@@ -391,9 +391,9 @@ int xlnx_aes_push_data(XlnxAES *s,
                 gcm_emit_tag(&s->gcm_ctx, tag, 16);
                 s->tag_ok = memcmp(s->tag, tag, 16) == 0;
                 if (XLNX_AES_ERR_DEBUG) {
-                    qemu_hexdump((void *) s->tag,
-                                 stderr, "expected-tag", 16);
-                    qemu_hexdump((void *) tag, stderr, "tag", 16);
+                    qemu_hexdump(stderr, "expected-tag",
+                                 (void *) s->tag, 16);
+                    qemu_hexdump(stderr, "tag", (void *) tag, 16);
                 }
                 xlnx_aes_done(s);
                 goto done;

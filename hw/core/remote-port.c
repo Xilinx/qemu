@@ -67,7 +67,7 @@ static void syncresp_timer_hit(void *opaque);
 
 static void rp_pkt_dump(const char *prefix, const char *buf, size_t len)
 {
-    qemu_hexdump(buf, stdout, prefix, len);
+    qemu_hexdump(stdout, prefix, buf, len);
 }
 
 uint32_t rp_new_id(RemotePort *s)

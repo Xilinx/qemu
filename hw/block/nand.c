@@ -27,6 +27,7 @@
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "qemu/module.h"
+#include "qom/object.h"
 
 #ifndef NAND_ERR_DEBUG
 #define NAND_ERR_DEBUG 1
@@ -104,8 +105,8 @@ struct NANDFlashState {
 
 #define TYPE_NAND "nand"
 
-#define NAND(obj) \
-    OBJECT_CHECK(NANDFlashState, (obj), TYPE_NAND)
+DECLARE_INSTANCE_CHECKER(NANDFlashState, NAND,
+                         TYPE_NAND)
 
 static void mem_and(uint8_t *dest, const uint8_t *src, size_t n)
 {

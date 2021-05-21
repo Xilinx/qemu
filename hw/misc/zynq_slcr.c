@@ -28,6 +28,7 @@
 #include "qemu/module.h"
 #include "hw/registerfields.h"
 #include "hw/qdev-clock.h"
+#include "qom/object.h"
 
 #ifdef CONFIG_FDT
 #include "qemu/config-file.h"
@@ -200,9 +201,11 @@ REG32(DDRIOB, 0xb40)
 #define A9_CPU_RST_CTRL_RST_SHIFT 0
 
 #define TYPE_ZYNQ_SLCR "xilinx,zynq_slcr"
-#define ZYNQ_SLCR(obj) OBJECT_CHECK(ZynqSLCRState, (obj), TYPE_ZYNQ_SLCR)
+typedef struct ZynqSLCRState ZynqSLCRState;
+DECLARE_INSTANCE_CHECKER(ZynqSLCRState, ZYNQ_SLCR,
+                         TYPE_ZYNQ_SLCR)
 
-typedef struct ZynqSLCRState {
+struct ZynqSLCRState {
     SysBusDevice parent_obj;
 
     MemoryRegion iomem;
@@ -216,7 +219,7 @@ typedef struct ZynqSLCRState {
     Clock *ps_clk;
     Clock *uart0_ref_clk;
     Clock *uart1_ref_clk;
-} ZynqSLCRState;
+};
 
 /* Set up PS7 QSPI MIO registers based on the dtb */
 static void zynq_slcr_set_qspi(ZynqSLCRState *s, void *fdt)

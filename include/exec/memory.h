@@ -35,22 +35,17 @@ extern const char *machine_path;
 #define MAX_PHYS_ADDR            (((hwaddr)1 << MAX_PHYS_ADDR_SPACE_BITS) - 1)
 
 #define TYPE_MEMORY_REGION "qemu:memory-region"
-#define MEMORY_REGION(obj) \
-        OBJECT_CHECK(MemoryRegion, (obj), TYPE_MEMORY_REGION)
+DECLARE_INSTANCE_CHECKER(MemoryRegion, MEMORY_REGION,
+                         TYPE_MEMORY_REGION)
 
 #define TYPE_MEMORY_TRANSACTION_ATTR "qemu:memory-transaction-attr"
 #define MEMORY_TRANSACTION_ATTR(obj) \
         OBJECT_CHECK(MemTxAttrs, (obj), TYPE_MEMORY_TRANSACTION_ATTR)
 
 #define TYPE_IOMMU_MEMORY_REGION "qemu:iommu-memory-region"
-#define IOMMU_MEMORY_REGION(obj) \
-        OBJECT_CHECK(IOMMUMemoryRegion, (obj), TYPE_IOMMU_MEMORY_REGION)
-#define IOMMU_MEMORY_REGION_CLASS(klass) \
-        OBJECT_CLASS_CHECK(IOMMUMemoryRegionClass, (klass), \
-                         TYPE_IOMMU_MEMORY_REGION)
-#define IOMMU_MEMORY_REGION_GET_CLASS(obj) \
-        OBJECT_GET_CLASS(IOMMUMemoryRegionClass, (obj), \
-                         TYPE_IOMMU_MEMORY_REGION)
+typedef struct IOMMUMemoryRegionClass IOMMUMemoryRegionClass;
+DECLARE_OBJ_CHECKERS(IOMMUMemoryRegion, IOMMUMemoryRegionClass,
+                     IOMMU_MEMORY_REGION, TYPE_IOMMU_MEMORY_REGION)
 
 extern bool global_dirty_log;
 
@@ -246,7 +241,7 @@ enum IOMMUMemoryRegionAttr {
     IOMMU_ATTR_SPAPR_TCE_FD
 };
 
-/**
+/*
  * IOMMUMemoryRegionClass:
  *
  * All IOMMU implementations need to subclass TYPE_IOMMU_MEMORY_REGION
@@ -272,7 +267,7 @@ enum IOMMUMemoryRegionAttr {
  * only a single IOMMU index. A more complex IOMMU might have one index
  * for secure transactions and one for non-secure transactions.
  */
-typedef struct IOMMUMemoryRegionClass {
+struct IOMMUMemoryRegionClass {
     /* private */
     MemoryRegionClass parent_class;
 
@@ -387,7 +382,7 @@ typedef struct IOMMUMemoryRegionClass {
      * @iommu: the IOMMUMemoryRegion
      */
     int (*num_indexes)(IOMMUMemoryRegion *iommu);
-} IOMMUMemoryRegionClass;
+};
 
 typedef struct CoalescedMemoryRange CoalescedMemoryRange;
 typedef struct MemoryRegionIoeventfd MemoryRegionIoeventfd;
