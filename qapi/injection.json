@@ -30,7 +30,7 @@
 #
 # Returns: ReadValue, a strucutre with the value read
 #
-# Since 2.6
+# Since: 2.6
 ##
 { 'command': 'read_mem',
   'data': {'addr': 'int', 'size': 'int', '*cpu': 'int', '*qom': 'str'},
@@ -52,7 +52,7 @@
 #
 # Returns: nothing in case of success
 #
-# Since 2.6
+# Since: 2.6
 ##
 { 'command': 'write_mem',
   'data': {'addr': 'int', 'val': 'int', 'size': 'int', '*cpu': 'int',
@@ -68,7 +68,7 @@
 #
 # Returns: nothing in case of success
 #
-# Since 2.6
+# Since: 2.6
 ##
 { 'command': 'trigger_event',
   'data': {'time_ns': 'int', 'event_id': 'int'} }
@@ -95,7 +95,7 @@
 #
 # Returns: nothing in case of success
 #
-# Since 2.6
+# Since: 2.6
 ##
 { 'command': 'inject_gpio',
   'data': {'device_name': 'str', '*gpio': 'str', 'num': 'int', 'val': 'int'} }
