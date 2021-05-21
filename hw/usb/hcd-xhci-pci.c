@@ -6,7 +6,8 @@
  * SPDX-sourceInfo: Based on usb-ohci.c, emulates Renesas NEC USB 3.0
  * SPDX-FileCopyrightText: 2020 Xilinx
  * SPDX-FileContributor: Sai Pavan Boddu <sai.pavan.boddu@xilinx.com>
- * SPDX-sourceInfo: Moved the pci specific content for hcd-xhci.c to hcd-xhci-pci.c
+ * SPDX-sourceInfo: Moved the pci specific content for hcd-xhci.c to
+ *                  hcd-xhci-pci.c
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -42,17 +43,17 @@ static void xhci_pci_intr_update(XHCIState *xhci, int n, bool enable)
     if (!msix_enabled(pci_dev)) {
         return;
     }
-    if (enable == !!s->msix_used[n]) {
+    if (enable == !!xhci->intr[n].msix_used) {
         return;
     }
     if (enable) {
         trace_usb_xhci_irq_msix_use(n);
         msix_vector_use(pci_dev, n);
-        s->msix_used[n] = 1;
+        xhci->intr[n].msix_used = true;
     } else {
         trace_usb_xhci_irq_msix_unuse(n);
         msix_vector_unuse(pci_dev, n);
-        s->msix_used[n] = 0;
+        xhci->intr[n].msix_used = false;
     }
 }
 
@@ -82,6 +83,22 @@ static void xhci_pci_reset(DeviceState *dev)
     XHCIPciState *s = XHCI_PCI(dev);
 
     device_legacy_reset(DEVICE(&s->xhci));
+}
+
+static int xhci_pci_vmstate_post_load(void *opaque, int version_id)
+{
+    XHCIPciState *s = XHCI_PCI(opaque);
+    PCIDevice *pci_dev = PCI_DEVICE(s);
+    int intr;
+
+   for (intr = 0; intr < s->xhci.numintrs; intr++) {
+        if (s->xhci.intr[intr].msix_used) {
+            msix_vector_use(pci_dev, intr);
+        } else {
+            msix_vector_unuse(pci_dev, intr);
+        }
+    }
+   return 0;
 }
 
 static void usb_xhci_pci_realize(struct PCIDevice *dev, Error **errp)
@@ -157,12 +174,13 @@ static void usb_xhci_pci_exit(PCIDevice *dev)
 }
 
 static const VMStateDescription vmstate_xhci_pci = {
-    .name = "xhci-pci",
+    .name = "xhci",
     .version_id = 1,
+    .post_load = xhci_pci_vmstate_post_load,
     .fields = (VMStateField[]) {
         VMSTATE_PCI_DEVICE(parent_obj, XHCIPciState),
         VMSTATE_MSIX(parent_obj, XHCIPciState),
-        VMSTATE_UINT8_ARRAY(msix_used, XHCIPciState, MAXINTRS),
+        VMSTATE_STRUCT(xhci, XHCIPciState, 1, vmstate_xhci, XHCIState),
         VMSTATE_END_OF_LIST()
     }
 };

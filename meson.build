@@ -521,6 +521,7 @@ kconfig_external_symbols = [
   'CONFIG_OPENGL',
   'CONFIG_X11',
   'CONFIG_VHOST_USER',
+  'CONFIG_VHOST_VDPA',
   'CONFIG_VHOST_KERNEL',
   'CONFIG_VIRTFS',
   'CONFIG_LINUX',
@@ -1371,7 +1372,7 @@ summary_info += {'gprof enabled':     config_host.has_key('CONFIG_GPROF')}
 summary_info += {'sparse enabled':    meson.get_compiler('c').cmd_array().contains('cgcc')}
 summary_info += {'strip binaries':    get_option('strip')}
 summary_info += {'profiler':          config_host.has_key('CONFIG_PROFILER')}
-summary_info += {'static build':      config_host.has_key('CONFIG_TOOLS')}
+summary_info += {'static build':      config_host.has_key('CONFIG_STATIC')}
 if targetos == 'darwin'
   summary_info += {'Cocoa support': config_host.has_key('CONFIG_COCOA')}
 endif

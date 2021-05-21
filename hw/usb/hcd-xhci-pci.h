@@ -39,7 +39,6 @@ typedef struct XHCIPciState {
     XHCIState xhci;
     OnOffAuto msi;
     OnOffAuto msix;
-    uint8_t msix_used[MAXINTRS];
 } XHCIPciState;
 
 #endif

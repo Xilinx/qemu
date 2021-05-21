@@ -3418,7 +3418,7 @@ static int usb_xhci_post_load(void *opaque, int version_id)
     dma_addr_t dcbaap, pctx;
     uint32_t slot_ctx[4];
     uint32_t ep_ctx[5];
-    int slotid, epid, state, intr;
+    int slotid, epid, state;
 
     dcbaap = xhci_addr64(xhci->dcbaap_low, xhci->dcbaap_high);
 
@@ -3456,11 +3456,6 @@ static int usb_xhci_post_load(void *opaque, int version_id)
             }
         }
     }
-
-    for (intr = 0; intr < xhci->numintrs; intr++) {
-        xhci_intr_update(xhci, intr);
-    }
-
     return 0;
 }
 
@@ -3527,6 +3522,7 @@ static const VMStateDescription vmstate_xhci_intr = {
         VMSTATE_UINT32(erdp_high,     XHCIInterrupter),
 
         /* state */
+        VMSTATE_BOOL(msix_used,       XHCIInterrupter),
         VMSTATE_BOOL(er_pcs,          XHCIInterrupter),
         VMSTATE_UINT64(er_start,      XHCIInterrupter),
         VMSTATE_UINT32(er_size,       XHCIInterrupter),
@@ -3544,8 +3540,8 @@ static const VMStateDescription vmstate_xhci_intr = {
     }
 };
 
-static const VMStateDescription vmstate_xhci = {
-    .name = "xhci",
+const VMStateDescription vmstate_xhci = {
+    .name = "xhci-core",
     .version_id = 1,
     .post_load = usb_xhci_post_load,
     .fields = (VMStateField[]) {
@@ -3592,7 +3588,6 @@ static void xhci_class_init(ObjectClass *klass, void *data)
     dc->realize = usb_xhci_realize;
     dc->unrealize = usb_xhci_unrealize;
     dc->reset   = xhci_reset;
-    dc->vmsd    = &vmstate_xhci;
     device_class_set_props(dc, xhci_properties);
     dc->user_creatable = false;
 }
