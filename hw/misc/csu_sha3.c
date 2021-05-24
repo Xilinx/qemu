@@ -184,7 +184,7 @@ static void xlx_sha3_emit_digest(ZynqMPCSUSHA3 *s)
     }
 }
 
-static size_t xlx_sha3_stream_push(StreamSlave *obj, uint8_t *buf, size_t len,
+static size_t xlx_sha3_stream_push(StreamSink *obj, uint8_t *buf, size_t len,
                                    bool eop)
 {
     ZynqMPCSUSHA3 *s = ZYNQMP_CSU_SHA3(obj);
@@ -219,7 +219,7 @@ static size_t xlx_sha3_stream_push(StreamSlave *obj, uint8_t *buf, size_t len,
     return len;
 }
 
-static bool xlx_sha3_stream_can_push(StreamSlave *obj,
+static bool xlx_sha3_stream_can_push(StreamSink *obj,
                                     StreamCanPushNotifyFn notify,
                                     void *notify_opaque)
 {
@@ -326,7 +326,7 @@ static const VMStateDescription vmstate_sha3 = {
 static void sha3_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-    StreamSlaveClass *ssc = STREAM_SLAVE_CLASS(klass);
+    StreamSinkClass *ssc = STREAM_SINK_CLASS(klass);
 
     dc->reset = xlx_sha3_reset;
     dc->vmsd = &vmstate_sha3;
@@ -342,7 +342,7 @@ static const TypeInfo sha3_info = {
     .class_init    = sha3_class_init,
     .instance_init = sha3_init,
     .interfaces = (InterfaceInfo[]) {
-        { TYPE_STREAM_SLAVE },
+        { TYPE_STREAM_SINK },
         { }
     }
 };

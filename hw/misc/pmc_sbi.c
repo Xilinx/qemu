@@ -103,7 +103,7 @@ REG32(SBI_ECO, 0x1000)
 typedef struct SlaveBootInt {
     SysBusDevice parent_obj;
 
-    StreamSlave *tx_dev;
+    StreamSink *tx_dev;
     Fifo fifo;
     qemu_irq irq;
     StreamCanPushNotifyFn notify;
@@ -322,7 +322,7 @@ static void ss_stream_out(SlaveBootInt *s)
     }
 }
 
-static bool ss_stream_can_push(StreamSlave *obj,
+static bool ss_stream_can_push(StreamSink *obj,
                 StreamCanPushNotifyFn notify,
                 void *notify_opaque)
 {
@@ -348,7 +348,7 @@ static bool ss_stream_can_push(StreamSlave *obj,
     }
 }
 
-static size_t ss_stream_push(StreamSlave *obj, uint8_t *buf, size_t len,
+static size_t ss_stream_push(StreamSink *obj, uint8_t *buf, size_t len,
                              bool eop)
 {
     SlaveBootInt *s = SBI(obj);
@@ -558,7 +558,7 @@ static void ss_init(Object *obj)
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
     RegisterInfoArray *reg_array;
 
-    object_property_add_link(obj, "stream-connected-sbi", TYPE_STREAM_SLAVE,
+    object_property_add_link(obj, "stream-connected-sbi", TYPE_STREAM_SINK,
                              (Object **)&s->tx_dev,
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_STRONG);
@@ -611,7 +611,7 @@ static Property sbi_props[] = {
 static void ss_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-    StreamSlaveClass *ssc = STREAM_SLAVE_CLASS(klass);
+    StreamSinkClass *ssc = STREAM_SINK_CLASS(klass);
     FDTGenericGPIOClass *fggc = FDT_GENERIC_GPIO_CLASS(klass);
     dc->realize = ss_realize;
     dc->reset = ss_reset;
@@ -629,7 +629,7 @@ static TypeInfo ss_info = {
     .instance_init = ss_init,
     .class_init = ss_class_init,
     .interfaces = (InterfaceInfo[]) {
-        { TYPE_STREAM_SLAVE },
+        { TYPE_STREAM_SINK },
         { TYPE_FDT_GENERIC_GPIO},
         {}
     }

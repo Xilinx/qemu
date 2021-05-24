@@ -292,7 +292,7 @@ struct Zynq3AES {
     bool key_dec_done;
     bool inSoftRst;
 
-    StreamSlave *tx_dev;
+    StreamSink *tx_dev;
     char *family_key_id;
     char *puf_key_id;
 
@@ -1091,7 +1091,7 @@ static void aes_stream_dst_push(Zynq3AES *s, uint8_t *outbuf, int outlen,
     aes_stream_gcm_push(s);
 }
 
-static size_t aes_stream_push(StreamSlave *obj, uint8_t *buf, size_t len,
+static size_t aes_stream_push(StreamSink *obj, uint8_t *buf, size_t len,
                               bool eop)
 {
     Zynq3AES *s = XILINX_AES(obj);
@@ -1135,7 +1135,7 @@ static size_t aes_stream_push(StreamSlave *obj, uint8_t *buf, size_t len,
     return ret;
 }
 
-static bool aes_stream_can_push(StreamSlave *obj,
+static bool aes_stream_can_push(StreamSink *obj,
                                     StreamCanPushNotifyFn notify,
                                     void *notify_opaque)
 {
@@ -1254,7 +1254,7 @@ static void aes_init(Object *obj)
                              (Object **)&s->aes,
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_STRONG);
-    object_property_add_link(obj, "stream-connected-aes", TYPE_STREAM_SLAVE,
+    object_property_add_link(obj, "stream-connected-aes", TYPE_STREAM_SINK,
                              (Object **)&s->tx_dev,
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_STRONG);
@@ -1283,7 +1283,7 @@ static void aes_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     ZynqMPAESKeySinkClass *ksc = ZYNQMP_AES_KEY_SINK_CLASS(klass);
-    StreamSlaveClass *ssc = STREAM_SLAVE_CLASS(klass);
+    StreamSinkClass *ssc = STREAM_SINK_CLASS(klass);
 
     dc->reset = aes_reset;
     dc->realize = aes_realize;
@@ -1309,7 +1309,7 @@ static const TypeInfo aes_info = {
     .instance_init = aes_init,
     .interfaces = (InterfaceInfo[]) {
         { TYPE_ZYNQMP_AES_KEY_SINK },
-        { TYPE_STREAM_SLAVE },
+        { TYPE_STREAM_SINK },
         { }
     }
 };

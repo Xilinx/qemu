@@ -146,9 +146,9 @@ typedef struct ZynqMPCSUDMA {
     MemoryRegion *dma_mr;
     AddressSpace *dma_as;
     qemu_irq irq;
-    StreamSlave *tx_dev;  /* Used as generic StreamSlave */
-    StreamSlave *tx_dev0; /* Used for pmc dma0 */
-    StreamSlave *tx_dev1; /* Used for pmc dma1 */
+    StreamSink *tx_dev;  /* Used as generic StreamSink */
+    StreamSink *tx_dev0; /* Used for pmc dma0 */
+    StreamSink *tx_dev1; /* Used for pmc dma1 */
     ptimer_state *src_timer;
 
     bool is_dst;
@@ -365,7 +365,7 @@ static void zynqmp_csu_dma_reset(DeviceState *dev)
     }
 }
 
-static size_t zynqmp_csu_dma_stream_push(StreamSlave *obj, uint8_t *buf,
+static size_t zynqmp_csu_dma_stream_push(StreamSink *obj, uint8_t *buf,
                                           size_t len, bool eop)
 {
     ZynqMPCSUDMA *s = ZYNQMP_CSU_DMA(obj);
@@ -391,7 +391,7 @@ static size_t zynqmp_csu_dma_stream_push(StreamSlave *obj, uint8_t *buf,
     return btt;
 }
 
-static bool zynqmp_csu_dma_stream_can_push(StreamSlave *obj,
+static bool zynqmp_csu_dma_stream_can_push(StreamSink *obj,
                                             StreamCanPushNotifyFn notify,
                                             void *notify_opaque)
 {
@@ -643,7 +643,7 @@ static void zynqmp_csu_dma_realize(DeviceState *dev, Error **errp)
     if (!s->tx_dev) {
         if (s->tx_dev0 && s->tx_dev1) {
             error_setg(&error_fatal, "zynqmp.csu-dma: Both tx_dev0 & tx_dev1"
-                             " StreamSlaves are defined");
+                             " StreamSinks are defined");
         }
         s->tx_dev = s->tx_dev0 ? s->tx_dev0 :
                                  s->tx_dev1 ? s->tx_dev1 : 0;
@@ -679,15 +679,15 @@ static void zynqmp_csu_dma_init(Object *obj)
 
     sysbus_init_irq(sbd, &s->irq);
 
-    object_property_add_link(obj, "stream-connected-dma", TYPE_STREAM_SLAVE,
+    object_property_add_link(obj, "stream-connected-dma", TYPE_STREAM_SINK,
                              (Object **)&s->tx_dev,
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_STRONG);
-    object_property_add_link(obj, "stream-connected-dma0", TYPE_STREAM_SLAVE,
+    object_property_add_link(obj, "stream-connected-dma0", TYPE_STREAM_SINK,
                              (Object **)&s->tx_dev0,
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_STRONG);
-    object_property_add_link(obj, "stream-connected-dma1", TYPE_STREAM_SLAVE,
+    object_property_add_link(obj, "stream-connected-dma1", TYPE_STREAM_SINK,
                              (Object **)&s->tx_dev1,
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_STRONG);
@@ -724,7 +724,7 @@ static Property zynqmp_csu_dma_properties [] = {
 static void zynqmp_csu_dma_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-    StreamSlaveClass *ssc = STREAM_SLAVE_CLASS(klass);
+    StreamSinkClass *ssc = STREAM_SINK_CLASS(klass);
     DmaCtrlClass *dcc = DMA_CTRL_CLASS(klass);
 
     dc->reset = zynqmp_csu_dma_reset;
@@ -744,7 +744,7 @@ static const TypeInfo zynqmp_csu_dma_info = {
     .class_init    = zynqmp_csu_dma_class_init,
     .instance_init = zynqmp_csu_dma_init,
     .interfaces = (InterfaceInfo[]) {
-        { TYPE_STREAM_SLAVE },
+        { TYPE_STREAM_SINK },
         { TYPE_DMA_CTRL },
         { }
     }

@@ -1466,7 +1466,7 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
                  *  Remove these after we fully convert to blockdev based
                  *  drive binding.
                  */
-                if (object_dynamic_cast(dev, TYPE_SSI_SLAVE)) {
+                if (object_dynamic_cast(dev, TYPE_SSI_PERIPHERAL)) {
                     fdt_attach_drive(fdti, node_path, dev, IF_MTD);
                 }
                 /*

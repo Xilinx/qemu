@@ -53,7 +53,7 @@ struct RemotePortStream {
     uint32_t rp_dev;
     uint16_t stream_width;
 
-    StreamSlave *tx_dev;
+    StreamSink *tx_dev;
 
     StreamCanPushNotifyFn notify;
     void *notify_opaque;
@@ -125,7 +125,7 @@ static void rp_stream_write(RemotePortDevice *obj, struct rp_pkt *pkt)
     }
 }
 
-static bool rp_stream_stream_can_push(StreamSlave *obj,
+static bool rp_stream_stream_can_push(StreamSink *obj,
                                             StreamCanPushNotifyFn notify,
                                             void *notify_opaque)
 {
@@ -139,7 +139,7 @@ static bool rp_stream_stream_can_push(StreamSlave *obj,
     return true;
 }
 
-static size_t rp_stream_stream_push(StreamSlave *obj, uint8_t *buf,
+static size_t rp_stream_stream_push(StreamSink *obj, uint8_t *buf,
                                     size_t len, bool eop)
 {
     RemotePortStream *s = REMOTE_PORT_STREAM(obj);
@@ -185,7 +185,7 @@ static void rp_stream_init(Object *obj)
 {
     RemotePortStream *s = REMOTE_PORT_STREAM(obj);
 
-    object_property_add_link(obj, "axistream-connected", TYPE_STREAM_SLAVE,
+    object_property_add_link(obj, "axistream-connected", TYPE_STREAM_SINK,
                              (Object **)&s->tx_dev,
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_STRONG);
@@ -204,7 +204,7 @@ static Property rp_properties[] = {
 static void rp_stream_class_init(ObjectClass *oc, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
-    StreamSlaveClass *ssc = STREAM_SLAVE_CLASS(oc);
+    StreamSinkClass *ssc = STREAM_SINK_CLASS(oc);
     RemotePortDeviceClass *rpdc = REMOTE_PORT_DEVICE_CLASS(oc);
 
     ssc->push = rp_stream_stream_push;
@@ -220,7 +220,7 @@ static const TypeInfo rp_stream_info = {
     .class_init    = rp_stream_class_init,
     .instance_init = rp_stream_init,
     .interfaces = (InterfaceInfo[]) {
-        { TYPE_STREAM_SLAVE },
+        { TYPE_STREAM_SINK },
         { TYPE_REMOTE_PORT_DEVICE },
         { },
     }

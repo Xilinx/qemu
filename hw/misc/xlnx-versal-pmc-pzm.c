@@ -59,7 +59,7 @@ typedef struct PmcStreamZero {
     SysBusDevice parent_obj;
 
     MemoryRegion iomem;
-    StreamSlave *tx_dev;
+    StreamSink *tx_dev;
 
     StreamCanPushNotifyFn notify;
     void *notify_opaque;
@@ -154,7 +154,7 @@ static void pmc_stream_zero_init(Object *obj)
     memory_region_init_io(&s->iomem, obj, &pmc_stream_zero_mem_ops, obj,
                           TYPE_PMC_STREAM_ZERO, R_MAX * 4);
     sysbus_init_mmio(sbd, &s->iomem);
-    object_property_add_link(obj, "stream-connected-pzm", TYPE_STREAM_SLAVE,
+    object_property_add_link(obj, "stream-connected-pzm", TYPE_STREAM_SINK,
                              (Object **)&s->tx_dev,
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_STRONG);
@@ -170,7 +170,7 @@ static const TypeInfo pmc_stream_zero_info = {
     .class_init = pmc_stream_zero_class_init,
     .instance_init = pmc_stream_zero_init,
     .interfaces = (InterfaceInfo[]) {
-        { TYPE_STREAM_SLAVE },
+        { TYPE_STREAM_SINK },
         { }
     }
 };

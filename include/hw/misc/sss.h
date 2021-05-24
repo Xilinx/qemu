@@ -28,7 +28,7 @@ struct SSSStream {
 struct SSSBase {
     SysBusDevice busdev;
 
-    StreamSlave **tx_devs;
+    StreamSink **tx_devs;
     SSSStream *rx_devs;
 
     uint32_t (*get_sss_regfield)(SSSBase *, int);

@@ -60,7 +60,7 @@ struct StreamFifo {
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
 
-    StreamSlave *tx_dev;
+    StreamSink *tx_dev;
 
     StreamCanPushNotifyFn notify;
     void *notify_opaque;
@@ -87,7 +87,7 @@ static void stream_fifo_notify(void *opaque)
     }
 }
 
-static bool stream_fifo_stream_can_push(StreamSlave *obj,
+static bool stream_fifo_stream_can_push(StreamSink *obj,
                                         StreamCanPushNotifyFn notify,
                                         void *notify_opaque)
 {
@@ -101,7 +101,7 @@ static bool stream_fifo_stream_can_push(StreamSlave *obj,
     return ret;
 }
 
-static size_t stream_fifo_stream_push(StreamSlave *obj, uint8_t *buf,
+static size_t stream_fifo_stream_push(StreamSink *obj, uint8_t *buf,
                                       size_t len, bool eop)
 {
     StreamFifo *s = STREAM_FIFO(obj);
@@ -209,7 +209,7 @@ static void stream_fifo_init(Object *obj)
                                 &reg_array->mem);
     sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->iomem);
 
-    object_property_add_link(obj, "stream-connected", TYPE_STREAM_SLAVE,
+    object_property_add_link(obj, "stream-connected", TYPE_STREAM_SINK,
                              (Object **)&s->tx_dev,
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_STRONG);
@@ -230,7 +230,7 @@ static const VMStateDescription vmstate_stream_fifo = {
 static void stream_fifo_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-    StreamSlaveClass *ssc = STREAM_SLAVE_CLASS(klass);
+    StreamSinkClass *ssc = STREAM_SINK_CLASS(klass);
 
     dc->reset = stream_fifo_reset;
     dc->realize = stream_fifo_realize;
@@ -247,7 +247,7 @@ static const TypeInfo stream_fifo_info = {
     .class_init    = stream_fifo_class_init,
     .instance_init = stream_fifo_init,
     .interfaces = (InterfaceInfo[]) {
-        { TYPE_STREAM_SLAVE },
+        { TYPE_STREAM_SINK },
         { },
     }
 };

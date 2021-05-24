@@ -86,7 +86,7 @@ REG32(PCAP_STATUS, 0x10)
 
 typedef struct ZynqMPCSUPCAP {
     SysBusDevice parent_obj;
-    StreamSlave *tx_dev;
+    StreamSink *tx_dev;
     MemoryRegion iomem;
 
     uint32_t regs[R_MAX];
@@ -166,7 +166,7 @@ static void zynqmp_csu_pcap_reset(DeviceState *dev)
     zynqmp_csu_pcap_notify(s);
 }
 
-static size_t zynqmp_csu_pcap_stream_push(StreamSlave *obj, uint8_t *buf,
+static size_t zynqmp_csu_pcap_stream_push(StreamSink *obj, uint8_t *buf,
                                           size_t len, bool eop)
 {
     ZynqMPCSUPCAP *s = ZYNQMP_CSU_PCAP(obj);
@@ -194,7 +194,7 @@ static void zynqmp_csu_pcap_init(Object *obj)
     RegisterInfoArray *reg_array;
 
     /* Real HW has a link, but no way of initiating this link */
-    object_property_add_link(obj, "stream-connected-pcap", TYPE_STREAM_SLAVE,
+    object_property_add_link(obj, "stream-connected-pcap", TYPE_STREAM_SINK,
                              (Object **)&s->tx_dev,
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_STRONG);
@@ -225,7 +225,7 @@ static const VMStateDescription vmstate_zynqmp_csu_pcap = {
 static void zynqmp_csu_pcap_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-    StreamSlaveClass *ssc = STREAM_SLAVE_CLASS(klass);
+    StreamSinkClass *ssc = STREAM_SINK_CLASS(klass);
 
     dc->reset = zynqmp_csu_pcap_reset;
     dc->vmsd = &vmstate_zynqmp_csu_pcap;
@@ -240,7 +240,7 @@ static const TypeInfo zynqmp_csu_pcap_info = {
     .class_init    = zynqmp_csu_pcap_class_init,
     .instance_init = zynqmp_csu_pcap_init,
     .interfaces = (InterfaceInfo[]) {
-        { TYPE_STREAM_SLAVE },
+        { TYPE_STREAM_SINK },
         { }
     }
 };

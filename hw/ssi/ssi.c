@@ -36,11 +36,11 @@ static const TypeInfo ssi_bus_info = {
 
 static void ssi_cs_default(void *opaque, int n, int level)
 {
-    SSISlave *s = SSI_SLAVE(opaque);
+    SSIPeripheral *s = SSI_PERIPHERAL(opaque);
     bool cs = !!level;
     assert(n == 0);
     if (s->cs != cs) {
-        SSISlaveClass *ssc = SSI_SLAVE_GET_CLASS(s);
+        SSIPeripheralClass *ssc = SSI_PERIPHERAL_GET_CLASS(s);
         if (ssc->set_cs) {
             ssc->set_cs(s, cs);
         }
@@ -48,9 +48,9 @@ static void ssi_cs_default(void *opaque, int n, int level)
     s->cs = cs;
 }
 
-static uint32_t ssi_transfer_raw_default(SSISlave *dev, uint32_t val)
+static uint32_t ssi_transfer_raw_default(SSIPeripheral *dev, uint32_t val)
 {
-    SSISlaveClass *ssc = SSI_SLAVE_GET_CLASS(dev);
+    SSIPeripheralClass *ssc = SSI_PERIPHERAL_GET_CLASS(dev);
 
     if ((dev->cs && ssc->cs_polarity == SSI_CS_HIGH) ||
             (!dev->cs && ssc->cs_polarity == SSI_CS_LOW) ||
@@ -63,8 +63,8 @@ static uint32_t ssi_transfer_raw_default(SSISlave *dev, uint32_t val)
 static bool ssi_slave_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
                                 Error **errp)
 {
-    SSISlave *s = SSI_SLAVE(obj);
-    SSISlaveClass *ssc = SSI_SLAVE_GET_CLASS(s);
+    SSIPeripheral *s = SSI_PERIPHERAL(obj);
+    SSIPeripheralClass *ssc = SSI_PERIPHERAL_GET_CLASS(s);
     DeviceState *parent = DEVICE(reg.parents[0]);
     BusState *parent_bus;
     char bus_name[16];
@@ -98,10 +98,10 @@ static bool ssi_slave_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
     return false;
 }
 
-static void ssi_slave_realize(DeviceState *dev, Error **errp)
+static void ssi_peripheral_realize(DeviceState *dev, Error **errp)
 {
-    SSISlave *s = SSI_SLAVE(dev);
-    SSISlaveClass *ssc = SSI_SLAVE_GET_CLASS(s);
+    SSIPeripheral *s = SSI_PERIPHERAL(dev);
+    SSIPeripheralClass *ssc = SSI_PERIPHERAL_GET_CLASS(s);
 
     if (ssc->transfer_raw == ssi_transfer_raw_default &&
             ssc->cs_polarity != SSI_CS_NONE) {
@@ -111,13 +111,13 @@ static void ssi_slave_realize(DeviceState *dev, Error **errp)
     ssc->realize(s, errp);
 }
 
-static void ssi_slave_class_init(ObjectClass *klass, void *data)
+static void ssi_peripheral_class_init(ObjectClass *klass, void *data)
 {
-    SSISlaveClass *ssc = SSI_SLAVE_CLASS(klass);
+    SSIPeripheralClass *ssc = SSI_PERIPHERAL_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
     FDTGenericMMapClass *fmc = FDT_GENERIC_MMAP_CLASS(klass);
 
-    dc->realize = ssi_slave_realize;
+    dc->realize = ssi_peripheral_realize;
     dc->bus_type = TYPE_SSI_BUS;
     if (!ssc->transfer_raw) {
         ssc->transfer_raw = ssi_transfer_raw_default;
@@ -125,11 +125,11 @@ static void ssi_slave_class_init(ObjectClass *klass, void *data)
     fmc->parse_reg = ssi_slave_parse_reg;
 }
 
-static const TypeInfo ssi_slave_info = {
-    .name = TYPE_SSI_SLAVE,
+static const TypeInfo ssi_peripheral_info = {
+    .name = TYPE_SSI_PERIPHERAL,
     .parent = TYPE_DEVICE,
-    .class_init = ssi_slave_class_init,
-    .class_size = sizeof(SSISlaveClass),
+    .class_init = ssi_peripheral_class_init,
+    .class_size = sizeof(SSIPeripheralClass),
     .interfaces = (InterfaceInfo []) {
         { TYPE_FDT_GENERIC_MMAP },
         {},
@@ -142,7 +142,7 @@ bool ssi_realize_and_unref(DeviceState *dev, SSIBus *bus, Error **errp)
     return qdev_realize_and_unref(dev, &bus->parent_obj, errp);
 }
 
-DeviceState *ssi_create_slave(SSIBus *bus, const char *name)
+DeviceState *ssi_create_peripheral(SSIBus *bus, const char *name)
 {
     DeviceState *dev = qdev_new(name);
 
@@ -161,45 +161,44 @@ uint32_t ssi_transfer(SSIBus *bus, uint32_t val)
 {
     BusState *b = BUS(bus);
     BusChild *kid;
-    SSISlaveClass *ssc;
+    SSIPeripheralClass *ssc;
     uint32_t r = 0;
 
     QTAILQ_FOREACH(kid, &b->children, sibling) {
-        SSISlave *slave = SSI_SLAVE(kid->child);
-        ssc = SSI_SLAVE_GET_CLASS(slave);
-        r |= ssc->transfer_raw(slave, val);
+        SSIPeripheral *peripheral = SSI_PERIPHERAL(kid->child);
+        ssc = SSI_PERIPHERAL_GET_CLASS(peripheral);
+        r |= ssc->transfer_raw(peripheral, val);
     }
 
     return r;
 }
 
-const VMStateDescription vmstate_ssi_slave = {
+const VMStateDescription vmstate_ssi_peripheral = {
     .name = "SSISlave",
     .version_id = 1,
     .minimum_version_id = 1,
     .fields = (VMStateField[]) {
-        VMSTATE_BOOL(cs, SSISlave),
+        VMSTATE_BOOL(cs, SSIPeripheral),
         VMSTATE_END_OF_LIST()
     }
 };
 
-static void ssi_slave_register_types(void)
+static void ssi_peripheral_register_types(void)
 {
     type_register_static(&ssi_bus_info);
-    type_register_static(&ssi_slave_info);
+    type_register_static(&ssi_peripheral_info);
 }
-
-type_init(ssi_slave_register_types)
 
 typedef struct SSIAutoConnectArg {
     qemu_irq **cs_linep;
     SSIBus *bus;
 } SSIAutoConnectArg;
 
-static int ssi_auto_connect_slave(Object *child, void *opaque)
+static int ssi_auto_connect_peripheral(Object *child, void *opaque)
 {
     SSIAutoConnectArg *arg = opaque;
-    SSISlave *dev = (SSISlave *)object_dynamic_cast(child, TYPE_SSI_SLAVE);
+    SSIPeripheral *dev = (SSIPeripheral *)object_dynamic_cast(child,
+                                                          TYPE_SSI_PERIPHERAL);
     qemu_irq cs_line;
 
     if (!dev || qdev_get_parent_bus(DEVICE(dev))) {
@@ -221,5 +220,7 @@ void ssi_auto_connect_slaves(DeviceState *parent, qemu_irq *cs_line,
         .bus = bus
     };
 
-    object_child_foreach(OBJECT(parent), ssi_auto_connect_slave, &arg);
+    object_child_foreach(OBJECT(parent), ssi_auto_connect_peripheral, &arg);
 }
+
+type_init(ssi_peripheral_register_types)

@@ -130,7 +130,7 @@ typedef struct CSUKeySink {
 struct ZynqMPCSUAES {
     SysBusDevice busdev;
     MemoryRegion iomem;
-    StreamSlave *tx_dev;
+    StreamSink *tx_dev;
     char *family_key_id;
     char *puf_key_id;
 
@@ -277,7 +277,7 @@ static void bswap32_buf8(uint8_t *buf, int len)
     }
 }
 
-static size_t xlx_aes_stream_push(StreamSlave *obj, uint8_t *buf, size_t len,
+static size_t xlx_aes_stream_push(StreamSink *obj, uint8_t *buf, size_t len,
                                   bool eop)
 {
     ZynqMPCSUAES *s = ZYNQMP_CSU_AES(obj);
@@ -309,7 +309,7 @@ static size_t xlx_aes_stream_push(StreamSlave *obj, uint8_t *buf, size_t len,
     return ret;
 }
 
-static bool xlx_aes_stream_can_push(StreamSlave *obj,
+static bool xlx_aes_stream_can_push(StreamSink *obj,
                                     StreamCanPushNotifyFn notify,
                                     void *notify_opaque)
 {
@@ -320,7 +320,7 @@ static bool xlx_aes_stream_can_push(StreamSlave *obj,
 static void xlx_aes_write_key(ZynqMPCSUAES *s, unsigned int pos, uint32_t val)
 {
     if (s->inputs.key_decrypt) {
-        xlx_aes_stream_push(STREAM_SLAVE(s), (void *) &val, sizeof val, 0);
+        xlx_aes_stream_push(STREAM_SINK(s), (void *) &val, sizeof val, 0);
     } else {
         xlnx_aes_write_key(s->aes, pos, val);
     }
@@ -557,7 +557,7 @@ static const VMStateDescription vmstate_aes = {
 static Property aes_properties[] = {
     DEFINE_PROP_LINK("stream-connected-aes",
                      ZynqMPCSUAES, tx_dev,
-                     TYPE_STREAM_SLAVE, StreamSlave *),
+                     TYPE_STREAM_SINK, StreamSink *),
     DEFINE_PROP_LINK("aes-core",
                      ZynqMPCSUAES, aes,
                      TYPE_XLNX_AES, XlnxAES *),
@@ -626,7 +626,7 @@ static void aes_select_device_key(ZynqMPAESKeySink *obj, uint8_t *key, size_t le
 static void aes_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-    StreamSlaveClass *ssc = STREAM_SLAVE_CLASS(klass);
+    StreamSinkClass *ssc = STREAM_SINK_CLASS(klass);
     ZynqMPAESKeySinkClass *ksc = ZYNQMP_AES_KEY_SINK_CLASS(klass);
     FDTGenericGPIOClass *fggc = FDT_GENERIC_GPIO_CLASS(klass);
 
@@ -665,7 +665,7 @@ static const TypeInfo aes_info = {
     .class_init    = aes_class_init,
     .instance_init = aes_init,
     .interfaces = (InterfaceInfo[]) {
-        { TYPE_STREAM_SLAVE },
+        { TYPE_STREAM_SINK },
         { TYPE_ZYNQMP_AES_KEY_SINK },
         { TYPE_FDT_GENERIC_GPIO },
         { }

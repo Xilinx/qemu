@@ -202,12 +202,12 @@ static void zynqmp_csu_sss_init(Object *obj)
     p->get_sss_regfield = zynqmp_csu_get_sss_regfield;
 
     p->rx_devs = (SSSStream *) g_new(SSSStream, CSU_NUM_REMOTES);
-    p->tx_devs = (StreamSlave **) g_new0(StreamSlave *, CSU_NUM_REMOTES);
+    p->tx_devs = (StreamSink **) g_new0(StreamSink *, CSU_NUM_REMOTES);
 
     for (remote = 0 ; remote != NO_REMOTE; remote++) {
         name = g_strdup_printf("stream-connected-%s",
                                zynqmp_csu_sss_remote_names[remote]);
-        object_property_add_link(OBJECT(s), name, TYPE_STREAM_SLAVE,
+        object_property_add_link(OBJECT(s), name, TYPE_STREAM_SINK,
                              (Object **)&p->tx_devs[remote],
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_STRONG);

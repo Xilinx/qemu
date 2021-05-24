@@ -87,7 +87,7 @@ sss_lookup_tx_remote(SSSBase *s, int rx_remote)
 }
 
 static bool
-sss_stream_can_push(StreamSlave *obj, StreamCanPushNotifyFn notify,
+sss_stream_can_push(StreamSink *obj, StreamCanPushNotifyFn notify,
                                 void *notify_opaque)
 {
     SSSStream *ss = SSS_STREAM(obj);
@@ -105,7 +105,7 @@ sss_stream_can_push(StreamSlave *obj, StreamCanPushNotifyFn notify,
     return false;
 }
 
-static size_t sss_stream_push(StreamSlave *obj, uint8_t *buf,
+static size_t sss_stream_push(StreamSink *obj, uint8_t *buf,
                               size_t len, bool eop)
 {
     SSSStream *ss = SSS_STREAM(obj);
@@ -119,7 +119,7 @@ static size_t sss_stream_push(StreamSlave *obj, uint8_t *buf,
 
 static void sss_stream_class_init(ObjectClass *klass, void *data)
 {
-    StreamSlaveClass *ssc = STREAM_SLAVE_CLASS(klass);
+    StreamSinkClass *ssc = STREAM_SINK_CLASS(klass);
 
     ssc->push = sss_stream_push;
     ssc->can_push = sss_stream_can_push;
@@ -137,7 +137,7 @@ static const TypeInfo sss_stream_info = {
     .instance_size = sizeof(SSSStream),
     .class_init    = sss_stream_class_init,
     .interfaces = (InterfaceInfo[]) {
-        { TYPE_STREAM_SLAVE },
+        { TYPE_STREAM_SINK },
         { }
     }
 };
