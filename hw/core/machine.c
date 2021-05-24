@@ -912,6 +912,7 @@ static void machine_initfn(Object *obj)
     ms->dump_guest_core = true;
     ms->mem_merge = true;
     ms->enable_graphics = true;
+    ms->kernel_cmdline = g_strdup("");
 
     object_property_add_str(obj, "hw-dtb",
                             machine_get_hw_dtb, machine_set_hw_dtb);
@@ -1146,6 +1147,11 @@ void machine_run_board_init(MachineState *machine)
     ObjectClass *oc = object_class_by_name(machine->cpu_type);
     CPUClass *cc;
 
+    /* This checkpoint is required by replay to separate prior clock
+       reading from the other reads, because timer polling functions query
+       clock values from the log. */
+    replay_checkpoint(CHECKPOINT_INIT);
+
     if (machine->ram_memdev_id) {
         Object *o;
         o = object_resolve_path_type(machine->ram_memdev_id,
@@ -1198,6 +1204,30 @@ void machine_run_board_init(MachineState *machine)
     }
 
     machine_class->init(machine);
+}
+
+static NotifierList machine_init_done_notifiers =
+    NOTIFIER_LIST_INITIALIZER(machine_init_done_notifiers);
+
+bool machine_init_done;
+
+void qemu_add_machine_init_done_notifier(Notifier *notify)
+{
+    notifier_list_add(&machine_init_done_notifiers, notify);
+    if (machine_init_done) {
+        notify->notify(notify, NULL);
+    }
+}
+
+void qemu_remove_machine_init_done_notifier(Notifier *notify)
+{
+    notifier_remove(notify);
+}
+
+void qemu_run_machine_init_done_notifiers(void)
+{
+    machine_init_done = true;
+    notifier_list_notify(&machine_init_done_notifiers, NULL);
 }
 
 static const TypeInfo machine_info = {

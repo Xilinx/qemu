@@ -1434,7 +1434,7 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
          */
         if (!object_dynamic_cast(dev, TYPE_REMOTE_PORT)) {
             /* Connect chardev if we can */
-            if (fdt_serial_ports < serial_max_hds() && serial_hd(fdt_serial_ports)) {
+            if (serial_hd(fdt_serial_ports)) {
                 Chardev *value = (Chardev*) serial_hd(fdt_serial_ports);
                 char *chardev;
 
