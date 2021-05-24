@@ -161,11 +161,19 @@ void fuse_cmdline_help(void)
            "                               allowed (default: 10)\n"
            "    -o posix_lock|no_posix_lock\n"
            "                               enable/disable remote posix lock\n"
-           "                               default: posix_lock\n"
+           "                               default: no_posix_lock\n"
            "    -o readdirplus|no_readdirplus\n"
            "                               enable/disable readirplus\n"
            "                               default: readdirplus except with "
            "cache=none\n"
+           "    -o sandbox=namespace|chroot\n"
+           "                               sandboxing mode:\n"
+           "                               - namespace: mount, pid, and net\n"
+           "                                 namespaces with pivot_root(2)\n"
+           "                                 into shared directory\n"
+           "                               - chroot: chroot(2) into shared\n"
+           "                                 directory (use in containers)\n"
+           "                               default: namespace\n"
            "    -o timeout=<number>        I/O timeout (seconds)\n"
            "                               default: depends on cache= option.\n"
            "    -o writeback|no_writeback  enable/disable writeback cache\n"
@@ -182,6 +190,7 @@ void fuse_cmdline_help(void)
            "                               retain/discard O_DIRECT flags passed down\n"
            "                               to virtiofsd from guest applications.\n"
            "                               default: no_allow_direct_io\n"
+           "    -o announce_submounts      Announce sub-mount points to the guest\n"
            );
 }
 

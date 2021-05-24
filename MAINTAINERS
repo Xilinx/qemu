@@ -755,6 +755,7 @@ L: qemu-arm@nongnu.org
 S: Supported
 F: hw/*/npcm7xx*
 F: include/hw/*/npcm7xx*
+F: tests/qtest/npcm7xx*
 F: pc-bios/npcm7xx_bootrom.bin
 F: roms/vbootrom
 
@@ -1326,8 +1327,14 @@ L: qemu-riscv@nongnu.org
 S: Supported
 F: hw/riscv/microchip_pfsoc.c
 F: hw/char/mchp_pfsoc_mmuart.c
+F: hw/misc/mchp_pfsoc_dmc.c
+F: hw/misc/mchp_pfsoc_ioscb.c
+F: hw/misc/mchp_pfsoc_sysreg.c
 F: include/hw/riscv/microchip_pfsoc.h
 F: include/hw/char/mchp_pfsoc_mmuart.h
+F: include/hw/misc/mchp_pfsoc_dmc.h
+F: include/hw/misc/mchp_pfsoc_ioscb.h
+F: include/hw/misc/mchp_pfsoc_sysreg.h
 
 RX Machines
 -----------
@@ -1435,6 +1442,7 @@ S390 PCI
 M: Matthew Rosato <mjrosato@linux.ibm.com>
 S: Supported
 F: hw/s390x/s390-pci*
+F: include/hw/s390x/s390-pci*
 L: qemu-s390x@nongnu.org
 
 UniCore32 Machines
@@ -1877,6 +1885,7 @@ L: qemu-block@nongnu.org
 S: Supported
 F: hw/block/nvme*
 F: tests/qtest/nvme-test.c
+F: docs/specs/nvme.txt
 T: git git://git.infradead.org/qemu-nvme.git nvme-next
 
 megasas
@@ -1966,6 +1975,12 @@ F: include/hw/acpi/vmgenid.h
 F: docs/specs/vmgenid.txt
 F: tests/qtest/vmgenid-test.c
 F: stubs/vmgenid.c
+
+LED
+M: Philippe Mathieu-Daudé <f4bug@amsat.org>
+S: Maintained
+F: include/hw/misc/led.h
+F: hw/misc/led.c
 
 Unimplemented device
 M: Peter Maydell <peter.maydell@linaro.org>
@@ -2373,11 +2388,18 @@ S: Maintained
 F: include/sysemu/cryptodev*.h
 F: backends/cryptodev*.c
 
+Python library
+M: John Snow <jsnow@redhat.com>
+M: Cleber Rosa <crosa@redhat.com>
+R: Eduardo Habkost <ehabkost@redhat.com>
+S: Maintained
+F: python/
+T: git https://gitlab.com/jsnow/qemu.git python
+
 Python scripts
 M: Eduardo Habkost <ehabkost@redhat.com>
 M: Cleber Rosa <crosa@redhat.com>
 S: Odd fixes
-F: python/qemu/*py
 F: scripts/*.py
 F: tests/*.py
 
@@ -3061,6 +3083,15 @@ M: Stefan Hajnoczi <stefanha@redhat.com>
 L: qemu-block@nongnu.org
 S: Supported
 F: tests/image-fuzzer/
+
+Vhost-user block device backend server
+M: Coiby Xu <Coiby.Xu@gmail.com>
+S: Maintained
+F: block/export/vhost-user-blk-server.c
+F: block/export/vhost-user-blk-server.h
+F: include/qemu/vhost-user-server.h
+F: tests/qtest/libqos/vhost-user-blk.c
+F: util/vhost-user-server.c
 
 Replication
 M: Wen Congyang <wencongyang2@huawei.com>

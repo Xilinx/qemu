@@ -25,6 +25,7 @@
 #include "qapi/error.h"
 #include "qemu/cutils.h"
 #include "sysemu/block-backend.h"
+#include "sysemu/runstate.h" /* for qemu_system_killed() prototype */
 #include "block/block_int.h"
 #include "block/nbd.h"
 #include "qemu/main-loop.h"
@@ -99,6 +100,7 @@ static void usage(const char *name)
 "\n"
 "Exposing part of the image:\n"
 "  -o, --offset=OFFSET       offset into the image\n"
+"  -A, --allocation-depth    expose the allocation depth\n"
 "  -B, --bitmap=NAME         expose a persistent dirty bitmap\n"
 "\n"
 "General purpose options:\n"
@@ -155,7 +157,11 @@ QEMU_COPYRIGHT "\n"
 }
 
 #ifdef CONFIG_POSIX
-static void termsig_handler(int signum)
+/*
+ * The client thread uses SIGTERM to interrupt the server.  A signal
+ * handler ensures that "qemu-nbd -v -c" exits with a nice status code.
+ */
+void qemu_system_killed(int signum, pid_t pid)
 {
     qatomic_cmpxchg(&state, RUNNING, TERMINATE);
     qemu_notify_event();
@@ -519,7 +525,7 @@ int main(int argc, char **argv)
     char *device = NULL;
     QemuOpts *sn_opts = NULL;
     const char *sn_id_or_name = NULL;
-    const char *sopt = "hVb:o:p:rsnc:dvk:e:f:tl:x:T:D:B:L";
+    const char *sopt = "hVb:o:p:rsnc:dvk:e:f:tl:x:T:D:AB:L";
     struct option lopt[] = {
         { "help", no_argument, NULL, 'h' },
         { "version", no_argument, NULL, 'V' },
@@ -528,6 +534,7 @@ int main(int argc, char **argv)
         { "socket", required_argument, NULL, 'k' },
         { "offset", required_argument, NULL, 'o' },
         { "read-only", no_argument, NULL, 'r' },
+        { "allocation-depth", no_argument, NULL, 'A' },
         { "bitmap", required_argument, NULL, 'B' },
         { "connect", required_argument, NULL, 'c' },
         { "disconnect", no_argument, NULL, 'd' },
@@ -569,7 +576,8 @@ int main(int argc, char **argv)
     QDict *options = NULL;
     const char *export_name = NULL; /* defaults to "" later for server mode */
     const char *export_description = NULL;
-    const char *bitmap = NULL;
+    strList *bitmaps = NULL;
+    bool alloc_depth = false;
     const char *tlscredsid = NULL;
     bool imageOpts = false;
     bool writethrough = true;
@@ -582,18 +590,8 @@ int main(int argc, char **argv)
     BlockExportOptions *export_opts;
 
 #ifdef CONFIG_POSIX
-    /*
-     * Exit gracefully on various signals, which includes SIGTERM used
-     * by 'qemu-nbd -v -c'.
-     */
-    struct sigaction sa_sigterm;
-    memset(&sa_sigterm, 0, sizeof(sa_sigterm));
-    sa_sigterm.sa_handler = termsig_handler;
-    sigaction(SIGTERM, &sa_sigterm, NULL);
-    sigaction(SIGINT, &sa_sigterm, NULL);
-    sigaction(SIGHUP, &sa_sigterm, NULL);
-
-    signal(SIGPIPE, SIG_IGN);
+    os_setup_early_signal_handling();
+    os_setup_signal_handling();
 #endif
 
     socket_init();
@@ -694,8 +692,11 @@ int main(int argc, char **argv)
             readonly = true;
             flags &= ~BDRV_O_RDWR;
             break;
+        case 'A':
+            alloc_depth = true;
+            break;
         case 'B':
-            bitmap = optarg;
+            QAPI_LIST_PREPEND(bitmaps, g_strdup(optarg));
             break;
         case 'k':
             sockpath = optarg;
@@ -791,8 +792,8 @@ int main(int argc, char **argv)
             exit(EXIT_FAILURE);
         }
         if (export_name || export_description || dev_offset ||
-            device || disconnect || fmt || sn_id_or_name || bitmap ||
-            seen_aio || seen_discard || seen_cache) {
+            device || disconnect || fmt || sn_id_or_name || bitmaps ||
+            alloc_depth || seen_aio || seen_discard || seen_cache) {
             error_report("List mode is incompatible with per-device settings");
             exit(EXIT_FAILURE);
         }
@@ -1072,12 +1073,14 @@ int main(int argc, char **argv)
         .has_writable       = true,
         .writable           = !readonly,
         .u.nbd = {
-            .has_name           = true,
-            .name               = g_strdup(export_name),
-            .has_description    = !!export_description,
-            .description        = g_strdup(export_description),
-            .has_bitmap         = !!bitmap,
-            .bitmap             = g_strdup(bitmap),
+            .has_name             = true,
+            .name                 = g_strdup(export_name),
+            .has_description      = !!export_description,
+            .description          = g_strdup(export_description),
+            .has_bitmaps          = !!bitmaps,
+            .bitmaps              = bitmaps,
+            .has_allocation_depth = alloc_depth,
+            .allocation_depth     = alloc_depth,
         },
     };
     blk_exp_add(export_opts, &error_fatal);

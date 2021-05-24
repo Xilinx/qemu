@@ -155,6 +155,8 @@ struct TranslationBlock;
  * @disas_set_info: Setup architecture specific components of disassembly info
  * @adjust_watchpoint_address: Perform a target-specific adjustment to an
  * address before attempting to match it against watchpoints.
+ * @deprecation_note: If this CPUClass is deprecated, this field provides
+ *                    related information.
  *
  * Represents a CPU family or model.
  */
@@ -224,6 +226,7 @@ struct CPUClass {
     vaddr (*adjust_watchpoint_address)(CPUState *cpu, vaddr addr, int len);
     void (*tcg_initialize)(void);
 
+    const char *deprecation_note;
     /* Keep non-pointer data at the end to minimize holes.  */
     int gdb_num_core_regs;
     bool gdb_stop_before_watchpoint;
@@ -932,14 +935,6 @@ void cpu_exit(CPUState *cpu);
 void cpu_resume(CPUState *cpu);
 
 /**
- * cpu_remove:
- * @cpu: The CPU to remove.
- *
- * Requests the CPU to be removed.
- */
-void cpu_remove(CPUState *cpu);
-
- /**
  * cpu_remove_sync:
  * @cpu: The CPU to remove.
  *

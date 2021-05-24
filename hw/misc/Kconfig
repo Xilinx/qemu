@@ -93,9 +93,11 @@ config MIPS_ITU
 
 config MPS2_FPGAIO
     bool
+    select LED
 
 config MPS2_SCC
     bool
+    select LED
 
 config TZ_MPC
     bool
@@ -135,12 +137,24 @@ config SI57X
 config UNIMP
     bool
 
+config LED
+    bool
+
 config MAC_VIA
     bool
     select MOS6522
     select ADB
 
 config AVR_POWER
+    bool
+
+config MCHP_PFSOC_DMC
+    bool
+
+config MCHP_PFSOC_IOSCB
+    bool
+
+config MCHP_PFSOC_SYSREG
     bool
 
 config SIFIVE_TEST

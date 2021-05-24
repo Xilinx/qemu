@@ -175,8 +175,8 @@ struct NamedClockList {
 /**
  * DeviceState:
  * @realized: Indicates whether the device has been fully constructed.
- *            When accessed outsize big qemu lock, must be accessed with
- *            atomic_load_acquire()
+ *            When accessed outside big qemu lock, must be accessed with
+ *            qatomic_load_acquire()
  * @reset: ResettableState for the device; handled by Resettable interface.
  *
  * This structure should not be accessed directly.  We declare it here
@@ -458,6 +458,22 @@ void qdev_simple_device_unplug_cb(HotplugHandler *hotplug_dev,
                                   DeviceState *dev, Error **errp);
 void qdev_machine_creation_done(void);
 bool qdev_machine_modified(void);
+
+/**
+ * GpioPolarity: Polarity of a GPIO line
+ *
+ * GPIO lines use either positive (active-high) logic,
+ * or negative (active-low) logic.
+ *
+ * In active-high logic (%GPIO_POLARITY_ACTIVE_HIGH), a pin is
+ * active when the voltage on the pin is high (relative to ground);
+ * whereas in active-low logic (%GPIO_POLARITY_ACTIVE_LOW), a pin
+ * is active when the voltage on the pin is low (or grounded).
+ */
+typedef enum {
+    GPIO_POLARITY_ACTIVE_LOW,
+    GPIO_POLARITY_ACTIVE_HIGH
+} GpioPolarity;
 
 /**
  * qdev_get_gpio_in: Get one of a device's anonymous input GPIO lines

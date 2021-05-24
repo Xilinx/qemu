@@ -63,10 +63,10 @@
             '*max-connections': 'uint32' } }
 
 ##
-# @BlockExportOptionsNbd:
+# @BlockExportOptionsNbdBase:
 #
-# An NBD block export (options shared between nbd-server-add and the NBD branch
-# of block-export-add).
+# An NBD block export (common options shared between nbd-server-add and
+# the NBD branch of block-export-add).
 #
 # @name: Export name. If unspecified, the @device parameter is used as the
 #        export name. (Since 2.12)
@@ -74,32 +74,73 @@
 # @description: Free-form description of the export, up to 4096 bytes.
 #               (Since 5.0)
 #
-# @bitmap: Also export the dirty bitmap reachable from @device, so the
-#          NBD client can use NBD_OPT_SET_META_CONTEXT with
-#          "qemu:dirty-bitmap:NAME" to inspect the bitmap. (since 4.0)
-#
 # Since: 5.0
 ##
+{ 'struct': 'BlockExportOptionsNbdBase',
+  'data': { '*name': 'str', '*description': 'str' } }
+
+##
+# @BlockExportOptionsNbd:
+#
+# An NBD block export (distinct options used in the NBD branch of
+# block-export-add).
+#
+# @bitmaps: Also export each of the named dirty bitmaps reachable from
+#           @device, so the NBD client can use NBD_OPT_SET_META_CONTEXT with
+#           the metadata context name "qemu:dirty-bitmap:BITMAP" to inspect
+#           each bitmap.
+#
+# @allocation-depth: Also export the allocation depth map for @device, so
+#                    the NBD client can use NBD_OPT_SET_META_CONTEXT with
+#                    the metadata context name "qemu:allocation-depth" to
+#                    inspect allocation details. (since 5.2)
+#
+# Since: 5.2
+##
 { 'struct': 'BlockExportOptionsNbd',
-  'data': { '*name': 'str', '*description': 'str',
-            '*bitmap': 'str' } }
+  'base': 'BlockExportOptionsNbdBase',
+  'data': { '*bitmaps': ['str'], '*allocation-depth': 'bool' } }
+
+##
+# @BlockExportOptionsVhostUserBlk:
+#
+# A vhost-user-blk block export.
+#
+# @addr: The vhost-user socket on which to listen. Both 'unix' and 'fd'
+#        SocketAddress types are supported. Passed fds must be UNIX domain
+#        sockets.
+# @logical-block-size: Logical block size in bytes. Defaults to 512 bytes.
+# @num-queues: Number of request virtqueues. Must be greater than 0. Defaults
+#              to 1.
+#
+# Since: 5.2
+##
+{ 'struct': 'BlockExportOptionsVhostUserBlk',
+  'data': { 'addr': 'SocketAddress',
+	    '*logical-block-size': 'size',
+            '*num-queues': 'uint16'} }
 
 ##
 # @NbdServerAddOptions:
 #
-# An NBD block export.
+# An NBD block export, per legacy nbd-server-add command.
 #
 # @device: The device name or node name of the node to be exported
 #
 # @writable: Whether clients should be able to write to the device via the
 #            NBD connection (default false).
 #
+# @bitmap: Also export a single dirty bitmap reachable from @device, so the
+#          NBD client can use NBD_OPT_SET_META_CONTEXT with the metadata
+#          context name "qemu:dirty-bitmap:BITMAP" to inspect the bitmap
+#          (since 4.0).
+#
 # Since: 5.0
 ##
 { 'struct': 'NbdServerAddOptions',
-  'base': 'BlockExportOptionsNbd',
+  'base': 'BlockExportOptionsNbdBase',
   'data': { 'device': 'str',
-            '*writable': 'bool' } }
+            '*writable': 'bool', '*bitmap': 'str' } }
 
 ##
 # @nbd-server-add:
@@ -180,11 +221,12 @@
 # An enumeration of block export types
 #
 # @nbd: NBD export
+# @vhost-user-blk: vhost-user-blk export (since 5.2)
 #
 # Since: 4.2
 ##
 { 'enum': 'BlockExportType',
-  'data': [ 'nbd' ] }
+  'data': [ 'nbd', 'vhost-user-blk' ] }
 
 ##
 # @BlockExportOptions:
@@ -203,17 +245,29 @@
 #                export before completion is signalled. (since: 5.2;
 #                default: false)
 #
+# @iothread: The name of the iothread object where the export will run. The
+#            default is to use the thread currently associated with the
+#            block node. (since: 5.2)
+#
+# @fixed-iothread: True prevents the block node from being moved to another
+#                  thread while the export is active. If true and @iothread is
+#                  given, export creation fails if the block node cannot be
+#                  moved to the iothread. The default is false. (since: 5.2)
+#
 # Since: 4.2
 ##
 { 'union': 'BlockExportOptions',
   'base': { 'type': 'BlockExportType',
             'id': 'str',
+            '*fixed-iothread': 'bool',
+            '*iothread': 'str',
             'node-name': 'str',
             '*writable': 'bool',
             '*writethrough': 'bool' },
   'discriminator': 'type',
   'data': {
-      'nbd': 'BlockExportOptionsNbd'
+      'nbd': 'BlockExportOptionsNbd',
+      'vhost-user-blk': 'BlockExportOptionsVhostUserBlk'
    } }
 
 ##
