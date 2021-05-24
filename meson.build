@@ -10,6 +10,7 @@ else
   keyval = import('unstable-keyval')
 endif
 ss = import('sourceset')
+fs = import('fs')
 
 sh = find_program('sh')
 cc = meson.get_compiler('c')
@@ -40,7 +41,7 @@ have_block = have_system or have_tools
 python = import('python').find_installation()
 
 supported_oses = ['windows', 'freebsd', 'netbsd', 'openbsd', 'darwin', 'sunos', 'linux']
-supported_cpus = ['ppc', 'ppc64', 's390x', 'sparc64', 'riscv32', 'riscv64', 'x86', 'x86_64',
+supported_cpus = ['ppc', 'ppc64', 's390x', 'riscv32', 'riscv64', 'x86', 'x86_64',
   'arm', 'aarch64', 'mips', 'mips64', 'sparc', 'sparc64']
 
 cpu = host_machine.cpu_family()
@@ -58,6 +59,8 @@ elif cpu == 's390x'
   kvm_targets = ['s390x-softmmu']
 elif cpu in ['ppc', 'ppc64']
   kvm_targets = ['ppc-softmmu', 'ppc64-softmmu']
+elif cpu in ['mips', 'mips64']
+  kvm_targets = ['mips-softmmu', 'mipsel-softmmu', 'mips64-softmmu', 'mips64el-softmmu']
 else
   kvm_targets = []
 endif
@@ -102,11 +105,13 @@ if host_machine.system() == 'darwin'
   add_languages('objc', required: false, native: false)
 endif
 
-if 'SPARSE_CFLAGS' in config_host
+sparse = find_program('cgcc', required: get_option('sparse'))
+if sparse.found()
   run_target('sparse',
              command: [find_program('scripts/check_sparse.py'),
-                       config_host['SPARSE_CFLAGS'].split(),
-                       'compile_commands.json'])
+                       'compile_commands.json', sparse.full_path(), '-Wbitwise',
+                       '-Wno-transparent-union', '-Wno-old-initializer',
+                       '-Wno-non-pointer-null'])
 endif
 
 ###########################################
@@ -124,6 +129,7 @@ socket = []
 version_res = []
 coref = []
 iokit = []
+emulator_link_args = []
 cocoa = not_found
 hvf = not_found
 if targetos == 'windows'
@@ -146,6 +152,11 @@ elif targetos == 'haiku'
   socket = [cc.find_library('posix_error_mapper'),
             cc.find_library('network'),
             cc.find_library('bsd')]
+elif targetos == 'openbsd'
+  if not get_option('tcg').disabled() and target_dirs.length() > 0
+    # Disable OpenBSD W^X if available
+    emulator_link_args = cc.get_supported_link_arguments('-Wl,-z,wxneeded')
+  endif
 endif
 
 accelerators = []
@@ -291,11 +302,6 @@ else
   xkbcommon = dependency('xkbcommon', required: get_option('xkbcommon'),
                          method: 'pkg-config', static: enable_static)
 endif
-slirp = not_found
-if config_host.has_key('CONFIG_SLIRP')
-  slirp = declare_dependency(compile_args: config_host['SLIRP_CFLAGS'].split(),
-                             link_args: config_host['SLIRP_LIBS'].split())
-endif
 vde = not_found
 if config_host.has_key('CONFIG_VDE')
   vde = declare_dependency(link_args: config_host['VDE_LIBS'].split())
@@ -315,9 +321,11 @@ if 'CONFIG_LIBJACK' in config_host
   jack = declare_dependency(link_args: config_host['JACK_LIBS'].split())
 endif
 spice = not_found
+spice_headers = not_found
 if 'CONFIG_SPICE' in config_host
   spice = declare_dependency(compile_args: config_host['SPICE_CFLAGS'].split(),
                              link_args: config_host['SPICE_LIBS'].split())
+  spice_headers = declare_dependency(compile_args: config_host['SPICE_CFLAGS'].split())
 endif
 rt = cc.find_library('rt', required: false)
 libdl = not_found
@@ -420,6 +428,74 @@ if targetos == 'linux' and have_tools and not get_option('mpath').disabled()
   endif
 endif
 
+iconv = not_found
+if not get_option('iconv').disabled()
+  libiconv = cc.find_library('iconv',
+                             required: false,
+                             static: enable_static)
+  if libiconv.found()
+    if cc.links('''
+      #include <iconv.h>
+      int main(void) {
+        iconv_t conv = iconv_open("WCHAR_T", "UCS-2");
+        return conv != (iconv_t) -1;
+      }''', dependencies: [libiconv])
+      iconv = declare_dependency(dependencies: [libiconv])
+    endif
+  endif
+endif
+if get_option('iconv').enabled() and not iconv.found()
+  error('Cannot detect iconv API')
+endif
+
+curses = not_found
+if iconv.found() and not get_option('curses').disabled()
+  curses_libname_list = ['ncursesw', 'ncurses', 'cursesw', 'pdcurses']
+  curses_test = '''
+    #include <locale.h>
+    #include <curses.h>
+    #include <wchar.h>
+    int main(void) {
+      wchar_t wch = L'w';
+      setlocale(LC_ALL, "");
+      resize_term(0, 0);
+      addwstr(L"wide chars\n");
+      addnwstr(&wch, 1);
+      add_wch(WACS_DEGREE);
+      return 0;
+    }'''
+  foreach curses_libname : curses_libname_list
+      libcurses = dependency(curses_libname,
+                             required: false,
+                             method: 'pkg-config',
+                             static: enable_static)
+
+      if not libcurses.found()
+        dirs = ['/usr/include/ncursesw']
+        if targetos == 'windows'
+          dirs = []
+        endif
+        libcurses = cc.find_library(curses_libname,
+                                    required: false,
+                                    dirs: dirs,
+                                    static: enable_static)
+      endif
+      if libcurses.found()
+        if cc.links(curses_test, dependencies: [libcurses])
+          curses = declare_dependency(compile_args: '-DNCURSES_WIDECHAR', dependencies: [libcurses])
+          break
+        endif
+      endif
+  endforeach
+endif
+if get_option('curses').enabled() and not curses.found()
+  if not iconv.found()
+    error('Cannot detect iconv API')
+  else
+    error('Cannot detect curses API')
+  endif
+endif
+
 brlapi = not_found
 if 'CONFIG_BRLAPI' in config_host
   brlapi = declare_dependency(link_args: config_host['BRLAPI_LIBS'].split())
@@ -498,16 +574,6 @@ if 'CONFIG_X11' in config_host
   x11 = declare_dependency(compile_args: config_host['X11_CFLAGS'].split(),
                            link_args: config_host['X11_LIBS'].split())
 endif
-curses = not_found
-if 'CONFIG_CURSES' in config_host
-  curses = declare_dependency(compile_args: config_host['CURSES_CFLAGS'].split(),
-                              link_args: config_host['CURSES_LIBS'].split())
-endif
-iconv = not_found
-if 'CONFIG_ICONV' in config_host
-  iconv = declare_dependency(compile_args: config_host['ICONV_CFLAGS'].split(),
-                             link_args: config_host['ICONV_LIBS'].split())
-endif
 vnc = not_found
 png = not_found
 jpeg = not_found
@@ -526,11 +592,6 @@ if get_option('vnc').enabled()
     sasl = declare_dependency(dependencies: sasl,
                               compile_args: '-DSTRUCT_IOVEC_DEFINED')
   endif
-endif
-fdt = not_found
-if 'CONFIG_FDT' in config_host
-  fdt = declare_dependency(compile_args: config_host['FDT_CFLAGS'].split(),
-                           link_args: config_host['FDT_LIBS'].split())
 endif
 snappy = not_found
 if 'CONFIG_SNAPPY' in config_host
@@ -574,11 +635,6 @@ if 'CONFIG_USB_LIBUSB' in config_host
   libusb = declare_dependency(compile_args: config_host['LIBUSB_CFLAGS'].split(),
                               link_args: config_host['LIBUSB_LIBS'].split())
 endif
-capstone = not_found
-if 'CONFIG_CAPSTONE' in config_host
-  capstone = declare_dependency(compile_args: config_host['CAPSTONE_CFLAGS'].split(),
-                                link_args: config_host['CAPSTONE_LIBS'].split())
-endif
 libpmem = not_found
 if 'CONFIG_LIBPMEM' in config_host
   libpmem = declare_dependency(compile_args: config_host['LIBPMEM_CFLAGS'].split(),
@@ -618,12 +674,15 @@ if not has_malloc_trim and get_option('malloc_trim').enabled()
   endif
 endif
 
-# Create config-host.h
+#################
+# config-host.h #
+#################
 
 config_host_data.set('CONFIG_COCOA', cocoa.found())
 config_host_data.set('CONFIG_LIBUDEV', libudev.found())
 config_host_data.set('CONFIG_MPATH', mpathpersist.found())
 config_host_data.set('CONFIG_MPATH_NEW_API', mpathpersist_new_api)
+config_host_data.set('CONFIG_CURSES', curses.found())
 config_host_data.set('CONFIG_SDL', sdl.found())
 config_host_data.set('CONFIG_SDL_IMAGE', sdl_image.found())
 config_host_data.set('CONFIG_VNC', vnc.found())
@@ -663,7 +722,10 @@ foreach k, v: config_host
     config_host_data.set(k, v == 'y' ? 1 : v)
   endif
 endforeach
-genh += configure_file(output: 'config-host.h', configuration: config_host_data)
+
+########################
+# Target configuration #
+########################
 
 minikconf = find_program('scripts/minikconf.py')
 config_all = {}
@@ -721,10 +783,11 @@ kconfig_external_symbols = [
   'CONFIG_LINUX',
   'CONFIG_PVRDMA',
 ]
-ignored = ['TARGET_XML_FILES', 'TARGET_ABI_DIR', 'TARGET_DIRS']
+ignored = [ 'TARGET_XML_FILES', 'TARGET_ABI_DIR', 'TARGET_ARCH' ]
 
 default_targets = 'CONFIG_DEFAULT_TARGETS' in config_host
 actual_target_dirs = []
+fdt_required = []
 foreach target : target_dirs
   config_target = { 'TARGET_NAME': target.split('-')[0] }
   if target.endswith('linux-user')
@@ -774,6 +837,19 @@ foreach target : target_dirs
 
   actual_target_dirs += target
   config_target += keyval.load('default-configs/targets' / target + '.mak')
+  config_target += { 'TARGET_' + config_target['TARGET_ARCH'].to_upper(): 'y' }
+
+  if 'TARGET_NEED_FDT' in config_target
+    fdt_required += target
+  endif
+
+  # Add default keys
+  if 'TARGET_BASE_ARCH' not in config_target
+    config_target += {'TARGET_BASE_ARCH': config_target['TARGET_ARCH']}
+  endif
+  if 'TARGET_ABI_DIR' not in config_target
+    config_target += {'TARGET_ABI_DIR': config_target['TARGET_ARCH']}
+  endif
 
   foreach k, v: disassemblers
     if config_host['ARCH'].startswith(k) or config_target['TARGET_BASE_ARCH'].startswith(k)
@@ -791,6 +867,8 @@ foreach target : target_dirs
     elif ignored.contains(k)
       # do nothing
     elif k == 'TARGET_BASE_ARCH'
+      # Note that TARGET_BASE_ARCH ends up in config-target.h but it is
+      # not used to select files from sourcesets.
       config_target_data.set('TARGET_' + v.to_upper(), 1)
     elif k == 'TARGET_NAME' or k == 'CONFIG_QEMU_INTERP_PREFIX'
       config_target_data.set_quoted(k, v)
@@ -855,7 +933,252 @@ config_all += {
   'CONFIG_ALL': true,
 }
 
-# Generators
+##############
+# Submodules #
+##############
+
+capstone = not_found
+capstone_opt = get_option('capstone')
+if capstone_opt in ['enabled', 'auto', 'system']
+  have_internal = fs.exists(meson.current_source_dir() / 'capstone/Makefile')
+  capstone = dependency('capstone', version: '>=4.0',
+                        static: enable_static, method: 'pkg-config',
+                        required: capstone_opt == 'system' or
+                                  capstone_opt == 'enabled' and not have_internal)
+  if capstone.found()
+    capstone_opt = 'system'
+  elif have_internal
+    capstone_opt = 'internal'
+  else
+    capstone_opt = 'disabled'
+  endif
+endif
+if capstone_opt == 'internal'
+  capstone_data = configuration_data()
+  capstone_data.set('CAPSTONE_USE_SYS_DYN_MEM', '1')
+
+  capstone_files = files(
+    'capstone/cs.c',
+    'capstone/MCInst.c',
+    'capstone/MCInstrDesc.c',
+    'capstone/MCRegisterInfo.c',
+    'capstone/SStream.c',
+    'capstone/utils.c'
+  )
+
+  if 'CONFIG_ARM_DIS' in config_all_disas
+    capstone_data.set('CAPSTONE_HAS_ARM', '1')
+    capstone_files += files(
+      'capstone/arch/ARM/ARMDisassembler.c',
+      'capstone/arch/ARM/ARMInstPrinter.c',
+      'capstone/arch/ARM/ARMMapping.c',
+      'capstone/arch/ARM/ARMModule.c'
+    )
+  endif
+
+  # FIXME: This config entry currently depends on a c++ compiler.
+  # Which is needed for building libvixl, but not for capstone.
+  if 'CONFIG_ARM_A64_DIS' in config_all_disas
+    capstone_data.set('CAPSTONE_HAS_ARM64', '1')
+    capstone_files += files(
+      'capstone/arch/AArch64/AArch64BaseInfo.c',
+      'capstone/arch/AArch64/AArch64Disassembler.c',
+      'capstone/arch/AArch64/AArch64InstPrinter.c',
+      'capstone/arch/AArch64/AArch64Mapping.c',
+      'capstone/arch/AArch64/AArch64Module.c'
+    )
+  endif
+
+  if 'CONFIG_PPC_DIS' in config_all_disas
+    capstone_data.set('CAPSTONE_HAS_POWERPC', '1')
+    capstone_files += files(
+      'capstone/arch/PowerPC/PPCDisassembler.c',
+      'capstone/arch/PowerPC/PPCInstPrinter.c',
+      'capstone/arch/PowerPC/PPCMapping.c',
+      'capstone/arch/PowerPC/PPCModule.c'
+    )
+  endif
+
+  if 'CONFIG_S390_DIS' in config_all_disas
+    capstone_data.set('CAPSTONE_HAS_SYSZ', '1')
+    capstone_files += files(
+      'capstone/arch/SystemZ/SystemZDisassembler.c',
+      'capstone/arch/SystemZ/SystemZInstPrinter.c',
+      'capstone/arch/SystemZ/SystemZMapping.c',
+      'capstone/arch/SystemZ/SystemZModule.c',
+      'capstone/arch/SystemZ/SystemZMCTargetDesc.c'
+    )
+  endif
+
+  if 'CONFIG_I386_DIS' in config_all_disas
+    capstone_data.set('CAPSTONE_HAS_X86', 1)
+    capstone_files += files(
+      'capstone/arch/X86/X86Disassembler.c',
+      'capstone/arch/X86/X86DisassemblerDecoder.c',
+      'capstone/arch/X86/X86ATTInstPrinter.c',
+      'capstone/arch/X86/X86IntelInstPrinter.c',
+      'capstone/arch/X86/X86InstPrinterCommon.c',
+      'capstone/arch/X86/X86Mapping.c',
+      'capstone/arch/X86/X86Module.c'
+    )
+  endif
+
+  configure_file(output: 'capstone-defs.h', configuration: capstone_data)
+
+  capstone_cargs = [
+    # FIXME: There does not seem to be a way to completely replace the c_args
+    # that come from add_project_arguments() -- we can only add to them.
+    # So: disable all warnings with a big hammer.
+    '-Wno-error', '-w',
+
+    # Include all configuration defines via a header file, which will wind up
+    # as a dependency on the object file, and thus changes here will result
+    # in a rebuild.
+    '-include', 'capstone-defs.h'
+  ]
+
+  libcapstone = static_library('capstone',
+                               sources: capstone_files,
+                               c_args: capstone_cargs,
+                               include_directories: 'capstone/include')
+  capstone = declare_dependency(link_with: libcapstone,
+                                include_directories: 'capstone/include/capstone')
+endif
+
+slirp = not_found
+slirp_opt = 'disabled'
+if have_system
+  slirp_opt = get_option('slirp')
+  if slirp_opt in ['enabled', 'auto', 'system']
+    have_internal = fs.exists(meson.current_source_dir() / 'slirp/meson.build')
+    slirp = dependency('slirp', static: enable_static,
+                       method: 'pkg-config',
+                       required: slirp_opt == 'system' or
+                                 slirp_opt == 'enabled' and not have_internal)
+    if slirp.found()
+      slirp_opt = 'system'
+    elif have_internal
+      slirp_opt = 'internal'
+    else
+      slirp_opt = 'disabled'
+    endif
+  endif
+  if slirp_opt == 'internal'
+    slirp_deps = []
+    if targetos == 'windows'
+      slirp_deps = cc.find_library('iphlpapi')
+    endif
+    slirp_conf = configuration_data()
+    slirp_conf.set('SLIRP_MAJOR_VERSION', meson.project_version().split('.')[0])
+    slirp_conf.set('SLIRP_MINOR_VERSION', meson.project_version().split('.')[1])
+    slirp_conf.set('SLIRP_MICRO_VERSION', meson.project_version().split('.')[2])
+    slirp_conf.set_quoted('SLIRP_VERSION_STRING', meson.project_version())
+    slirp_cargs = ['-DG_LOG_DOMAIN="Slirp"']
+    slirp_files = [
+      'slirp/src/arp_table.c',
+      'slirp/src/bootp.c',
+      'slirp/src/cksum.c',
+      'slirp/src/dhcpv6.c',
+      'slirp/src/dnssearch.c',
+      'slirp/src/if.c',
+      'slirp/src/ip6_icmp.c',
+      'slirp/src/ip6_input.c',
+      'slirp/src/ip6_output.c',
+      'slirp/src/ip_icmp.c',
+      'slirp/src/ip_input.c',
+      'slirp/src/ip_output.c',
+      'slirp/src/mbuf.c',
+      'slirp/src/misc.c',
+      'slirp/src/ncsi.c',
+      'slirp/src/ndp_table.c',
+      'slirp/src/sbuf.c',
+      'slirp/src/slirp.c',
+      'slirp/src/socket.c',
+      'slirp/src/state.c',
+      'slirp/src/stream.c',
+      'slirp/src/tcp_input.c',
+      'slirp/src/tcp_output.c',
+      'slirp/src/tcp_subr.c',
+      'slirp/src/tcp_timer.c',
+      'slirp/src/tftp.c',
+      'slirp/src/udp.c',
+      'slirp/src/udp6.c',
+      'slirp/src/util.c',
+      'slirp/src/version.c',
+      'slirp/src/vmstate.c',
+    ]
+
+    configure_file(
+      input : 'slirp/src/libslirp-version.h.in',
+      output : 'libslirp-version.h',
+      configuration: slirp_conf)
+
+    slirp_inc = include_directories('slirp', 'slirp/src')
+    libslirp = static_library('slirp',
+                              sources: slirp_files,
+                              c_args: slirp_cargs,
+                              include_directories: slirp_inc)
+    slirp = declare_dependency(link_with: libslirp,
+                               dependencies: slirp_deps,
+                               include_directories: slirp_inc)
+  endif
+endif
+
+fdt = not_found
+fdt_opt = get_option('fdt')
+if have_system
+  if fdt_opt in ['enabled', 'auto', 'system']
+    have_internal = fs.exists(meson.current_source_dir() / 'dtc/libfdt/Makefile.libfdt')
+    fdt = cc.find_library('fdt', static: enable_static,
+                          required: fdt_opt == 'system' or
+                                    fdt_opt == 'enabled' and not have_internal)
+    if fdt.found() and cc.links('''
+       #include <libfdt.h>
+       #include <libfdt_env.h>
+       int main(void) { fdt_check_full(NULL, 0); return 0; }''',
+         dependencies: fdt)
+      fdt_opt = 'system'
+    elif have_internal
+      fdt_opt = 'internal'
+    else
+      fdt_opt = 'disabled'
+    endif
+  endif
+  if fdt_opt == 'internal'
+    fdt_files = files(
+      'dtc/libfdt/fdt.c',
+      'dtc/libfdt/fdt_ro.c',
+      'dtc/libfdt/fdt_wip.c',
+      'dtc/libfdt/fdt_sw.c',
+      'dtc/libfdt/fdt_rw.c',
+      'dtc/libfdt/fdt_strerror.c',
+      'dtc/libfdt/fdt_empty_tree.c',
+      'dtc/libfdt/fdt_addresses.c',
+      'dtc/libfdt/fdt_overlay.c',
+      'dtc/libfdt/fdt_check.c',
+    )
+
+    fdt_inc = include_directories('dtc/libfdt')
+    libfdt = static_library('fdt',
+                            sources: fdt_files,
+                            include_directories: fdt_inc)
+    fdt = declare_dependency(link_with: libfdt,
+                             include_directories: fdt_inc)
+  endif
+endif
+if not fdt.found() and fdt_required.length() > 0
+  error('fdt not available but required by targets ' + ', '.join(fdt_required))
+endif
+
+config_host_data.set('CONFIG_CAPSTONE', capstone.found())
+config_host_data.set('CONFIG_FDT', fdt.found())
+config_host_data.set('CONFIG_SLIRP', slirp.found())
+
+#####################
+# Generated sources #
+#####################
+
+genh += configure_file(output: 'config-host.h', configuration: config_host_data)
 
 hxtool = find_program('scripts/hxtool')
 shaderinclude = find_program('scripts/shaderinclude.pl')
@@ -930,21 +1253,28 @@ sphinx_extn_depends = [ meson.source_root() / 'docs/sphinx/depfile.py',
                         meson.source_root() / 'docs/sphinx/qmp_lexer.py',
                         qapi_gen_depends ]
 
-# Collect sourcesets.
+###################
+# Collect sources #
+###################
 
-util_ss = ss.source_set()
+authz_ss = ss.source_set()
+blockdev_ss = ss.source_set()
+block_ss = ss.source_set()
+bsd_user_ss = ss.source_set()
+chardev_ss = ss.source_set()
+common_ss = ss.source_set()
+crypto_ss = ss.source_set()
+io_ss = ss.source_set()
+linux_user_ss = ss.source_set()
+qmp_ss = ss.source_set()
+qom_ss = ss.source_set()
+softmmu_ss = ss.source_set()
+specific_fuzz_ss = ss.source_set()
+specific_ss = ss.source_set()
 stub_ss = ss.source_set()
 trace_ss = ss.source_set()
-block_ss = ss.source_set()
-blockdev_ss = ss.source_set()
-qmp_ss = ss.source_set()
-common_ss = ss.source_set()
-softmmu_ss = ss.source_set()
 user_ss = ss.source_set()
-bsd_user_ss = ss.source_set()
-linux_user_ss = ss.source_set()
-specific_ss = ss.source_set()
-specific_fuzz_ss = ss.source_set()
+util_ss = ss.source_set()
 
 modules = {}
 hw_arch = {}
@@ -1063,8 +1393,6 @@ if enable_modules
   modulecommon = declare_dependency(link_whole: libmodulecommon, compile_args: '-DBUILD_DSO')
 endif
 
-# Build targets from sourcesets
-
 stub_ss = stub_ss.apply(config_all, strict: false)
 
 util_ss.add_all(trace_ss)
@@ -1110,17 +1438,7 @@ blockdev_ss.add(files(
 # os-win32.c does not
 blockdev_ss.add(when: 'CONFIG_POSIX', if_true: files('os-posix.c'))
 softmmu_ss.add(when: 'CONFIG_WIN32', if_true: [files('os-win32.c')])
-
 softmmu_ss.add_all(blockdev_ss)
-softmmu_ss.add(files(
-  'bootdevice.c',
-  'dma-helpers.c',
-  'qdev-monitor.c',
-), sdl)
-
-softmmu_ss.add(when: 'CONFIG_TPM', if_true: files('tpm.c'))
-softmmu_ss.add(when: 'CONFIG_SECCOMP', if_true: [files('qemu-seccomp.c'), seccomp])
-softmmu_ss.add(when: ['CONFIG_FDT', fdt],  if_true: [files('device_tree.c')])
 
 common_ss.add(files('cpus-common.c'))
 
@@ -1129,7 +1447,8 @@ subdir('softmmu')
 specific_ss.add(files('etrace.c', 'etrace-gpio.c'))
 specific_ss.add(when: 'CONFIG_SOFTMMU', if_true: files('injection.c'))
 
-specific_ss.add(files('disas.c', 'exec.c', 'gdbstub.c'), capstone, libpmem, libdaxctl)
+common_ss.add(capstone)
+specific_ss.add(files('cpu.c', 'disas.c', 'gdbstub.c'), capstone)
 specific_ss.add(files('exec-vary.c'))
 specific_ss.add(when: 'CONFIG_TCG', if_true: files(
   'fpu/softfloat.c',
@@ -1163,6 +1482,10 @@ specific_ss.add_all(when: 'CONFIG_LINUX_USER', if_true: linux_user_ss)
 # needed for fuzzing binaries
 subdir('tests/qtest/libqos')
 subdir('tests/qtest/fuzz')
+
+########################
+# Library dependencies #
+########################
 
 block_mods = []
 softmmu_mods = []
@@ -1198,6 +1521,47 @@ qemu_syms = custom_target('qemu.syms', output: 'qemu.syms',
                              capture: true,
                              command: [undefsym, nm, '@INPUT@'])
 
+qom_ss = qom_ss.apply(config_host, strict: false)
+libqom = static_library('qom', qom_ss.sources() + genh,
+                        dependencies: [qom_ss.dependencies()],
+                        name_suffix: 'fa')
+
+qom = declare_dependency(link_whole: libqom)
+
+authz_ss = authz_ss.apply(config_host, strict: false)
+libauthz = static_library('authz', authz_ss.sources() + genh,
+                          dependencies: [authz_ss.dependencies()],
+                          name_suffix: 'fa',
+                          build_by_default: false)
+
+authz = declare_dependency(link_whole: libauthz,
+                           dependencies: qom)
+
+crypto_ss = crypto_ss.apply(config_host, strict: false)
+libcrypto = static_library('crypto', crypto_ss.sources() + genh,
+                           dependencies: [crypto_ss.dependencies()],
+                           name_suffix: 'fa',
+                           build_by_default: false)
+
+crypto = declare_dependency(link_whole: libcrypto,
+                            dependencies: [authz, qom])
+
+io_ss = io_ss.apply(config_host, strict: false)
+libio = static_library('io', io_ss.sources() + genh,
+                       dependencies: [io_ss.dependencies()],
+                       link_with: libqemuutil,
+                       name_suffix: 'fa',
+                       build_by_default: false)
+
+io = declare_dependency(link_whole: libio, dependencies: [crypto, qom])
+
+libmigration = static_library('migration', sources: migration_files + genh,
+                              name_suffix: 'fa',
+                              build_by_default: false)
+migration = declare_dependency(link_with: libmigration,
+                               dependencies: [zlib, qom, io])
+softmmu_ss.add(migration)
+
 block_ss = block_ss.apply(config_host, strict: false)
 libblock = static_library('block', block_ss.sources() + genh,
                           dependencies: block_ss.dependencies(),
@@ -1216,6 +1580,22 @@ libqmp = static_library('qmp', qmp_ss.sources() + genh,
                         build_by_default: false)
 
 qmp = declare_dependency(link_whole: [libqmp])
+
+libchardev = static_library('chardev', chardev_ss.sources() + genh,
+                            name_suffix: 'fa',
+                            build_by_default: false)
+
+chardev = declare_dependency(link_whole: libchardev)
+
+libhwcore = static_library('hwcore', sources: hwcore_files + genh,
+                           name_suffix: 'fa',
+                           build_by_default: false)
+hwcore = declare_dependency(link_whole: libhwcore)
+common_ss.add(hwcore)
+
+###########
+# Targets #
+###########
 
 foreach m : block_mods + softmmu_mods
   shared_module(m.name(),
@@ -1250,7 +1630,7 @@ foreach target : target_dirs
   c_args = ['-DNEED_CPU_H',
             '-DCONFIG_TARGET="@0@-config-target.h"'.format(target),
             '-DCONFIG_DEVICES="@0@-config-devices.h"'.format(target)]
-  link_args = []
+  link_args = emulator_link_args
 
   config_target += config_host
   target_inc = [include_directories('target' / config_target['TARGET_BASE_ARCH'])]
@@ -1491,6 +1871,10 @@ if host_machine.system() == 'windows'
   alias_target('installer', nsis)
 endif
 
+#########################
+# Configuration summary #
+#########################
+
 summary_info = {}
 summary_info += {'Install prefix':    config_host['prefix']}
 summary_info += {'BIOS directory':    config_host['qemu_datadir']}
@@ -1523,7 +1907,18 @@ if targetos == 'darwin'
   summary_info += {'Objective-C compiler': meson.get_compiler('objc').cmd_array()[0]}
 endif
 summary_info += {'ARFLAGS':           config_host['ARFLAGS']}
-summary_info += {'CFLAGS':            config_host['CFLAGS']}
+summary_info += {'CFLAGS':            ' '.join(get_option('c_args')
+                                               + ['-O' + get_option('optimization')]
+                                               + (get_option('debug') ? ['-g'] : []))}
+if link_language == 'cpp'
+  summary_info += {'CXXFLAGS':        ' '.join(get_option('cpp_args')
+                                               + ['-O' + get_option('optimization')]
+                                               + (get_option('debug') ? ['-g'] : []))}
+endif
+link_args = get_option(link_language + '_link_args')
+if link_args.length() > 0
+  summary_info += {'LDFLAGS':         ' '.join(link_args)}
+endif
 summary_info += {'QEMU_CFLAGS':       config_host['QEMU_CFLAGS']}
 summary_info += {'QEMU_LDFLAGS':      config_host['QEMU_LDFLAGS']}
 summary_info += {'make':              config_host['MAKE']}
@@ -1531,8 +1926,8 @@ summary_info += {'python':            '@0@ (version: @1@)'.format(python.full_pa
 summary_info += {'sphinx-build':      config_host['SPHINX_BUILD']}
 summary_info += {'genisoimage':       config_host['GENISOIMAGE']}
 # TODO: add back version
-summary_info += {'slirp support':     config_host.has_key('CONFIG_SLIRP')}
-if config_host.has_key('CONFIG_SLIRP')
+summary_info += {'slirp support':     slirp_opt == 'disabled' ? false : slirp_opt}
+if slirp_opt != 'disabled'
   summary_info += {'smbd':            config_host['CONFIG_SMBD_COMMAND']}
 endif
 summary_info += {'module support':    config_host.has_key('CONFIG_MODULES')}
@@ -1543,7 +1938,7 @@ summary_info += {'host CPU':          cpu}
 summary_info += {'host endianness':   build_machine.endian()}
 summary_info += {'target list':       ' '.join(target_dirs)}
 summary_info += {'gprof enabled':     config_host.has_key('CONFIG_GPROF')}
-summary_info += {'sparse enabled':    meson.get_compiler('c').cmd_array().contains('cgcc')}
+summary_info += {'sparse enabled':    sparse.found()}
 summary_info += {'strip binaries':    get_option('strip')}
 summary_info += {'profiler':          config_host.has_key('CONFIG_PROFILER')}
 summary_info += {'static build':      config_host.has_key('CONFIG_STATIC')}
@@ -1574,8 +1969,8 @@ if config_host.has_key('CONFIG_NETTLE')
 endif
 summary_info += {'libtasn1':          config_host.has_key('CONFIG_TASN1')}
 summary_info += {'PAM':               config_host.has_key('CONFIG_AUTH_PAM')}
-summary_info += {'iconv support':     config_host.has_key('CONFIG_ICONV')}
-summary_info += {'curses support':    config_host.has_key('CONFIG_CURSES')}
+summary_info += {'iconv support':     iconv.found()}
+summary_info += {'curses support':    curses.found()}
 # TODO: add back version
 summary_info += {'virgl support':     config_host.has_key('CONFIG_VIRGL')}
 summary_info += {'curl support':      config_host.has_key('CONFIG_CURL')}
@@ -1616,7 +2011,7 @@ endif
 summary_info += {'malloc trim support': has_malloc_trim}
 summary_info += {'RDMA support':      config_host.has_key('CONFIG_RDMA')}
 summary_info += {'PVRDMA support':    config_host.has_key('CONFIG_PVRDMA')}
-summary_info += {'fdt support':       config_host.has_key('CONFIG_FDT')}
+summary_info += {'fdt support':       fdt_opt == 'disabled' ? false : fdt_opt}
 summary_info += {'membarrier':        config_host.has_key('CONFIG_MEMBARRIER')}
 summary_info += {'preadv support':    config_host.has_key('CONFIG_PREADV')}
 summary_info += {'fdatasync':         config_host.has_key('CONFIG_FDATASYNC')}
@@ -1688,7 +2083,7 @@ summary_info += {'vvfat support':     config_host.has_key('CONFIG_VVFAT')}
 summary_info += {'qed support':       config_host.has_key('CONFIG_QED')}
 summary_info += {'parallels support': config_host.has_key('CONFIG_PARALLELS')}
 summary_info += {'sheepdog support':  config_host.has_key('CONFIG_SHEEPDOG')}
-summary_info += {'capstone':          config_host.has_key('CONFIG_CAPSTONE')}
+summary_info += {'capstone':          capstone_opt == 'disabled' ? false : capstone_opt}
 summary_info += {'libpmem support':   config_host.has_key('CONFIG_LIBPMEM')}
 summary_info += {'libdaxctl support': config_host.has_key('CONFIG_LIBDAXCTL')}
 summary_info += {'libudev':           libudev.found()}

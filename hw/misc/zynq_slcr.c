@@ -30,9 +30,7 @@
 #include "hw/qdev-clock.h"
 #include "qom/object.h"
 
-#ifdef CONFIG_FDT
 #include "qemu/config-file.h"
-#endif
 
 #ifndef ZYNQ_SLCR_ERR_DEBUG
 #define ZYNQ_SLCR_ERR_DEBUG 0
@@ -263,7 +261,6 @@ static void zynq_slcr_set_qspi(ZynqSLCRState *s, void *fdt)
 
 static void zynq_slcr_fdt_config(ZynqSLCRState *s)
 {
-#ifdef CONFIG_FDT
     QemuOpts *machine_opts;
     const char *dtb_filename;
     int fdt_size;
@@ -286,8 +283,6 @@ static void zynq_slcr_fdt_config(ZynqSLCRState *s)
     }
 
     zynq_slcr_set_qspi(s, fdt);
-#endif
-
     return;
 }
 

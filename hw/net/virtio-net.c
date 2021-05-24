@@ -817,9 +817,7 @@ static void failover_add_primary(VirtIONet *n, Error **errp)
             "sure primary device has parameter"
             " failover_pair_id=<virtio-net-id>\n");
 }
-    if (err) {
-        error_propagate(errp, err);
-    }
+    error_propagate(errp, err);
 }
 
 static int is_my_primary(void *opaque, QemuOpts *opts, Error **errp)
@@ -873,9 +871,7 @@ static DeviceState *virtio_connect_failover_devices(VirtIONet *n,
         n->primary_device_id = g_strdup(prim_dev->id);
         n->primary_device_opts = prim_dev->opts;
     } else {
-        if (err) {
-            error_propagate(errp, err);
-        }
+        error_propagate(errp, err);
     }
 
     return prim_dev;
@@ -3142,7 +3138,7 @@ static bool failover_replug_primary(VirtIONet *n, Error **errp)
         error_setg(errp, "virtio_net: couldn't find primary bus");
         return false;
     }
-    qdev_set_parent_bus(n->primary_dev, n->primary_bus);
+    qdev_set_parent_bus(n->primary_dev, n->primary_bus, &error_abort);
     n->primary_should_be_hidden = false;
     if (!qemu_opt_set_bool(n->primary_device_opts,
                            "partially_hotplugged", true, errp)) {

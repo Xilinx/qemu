@@ -40,6 +40,7 @@ qapi_all_modules = [
   'pci',
   'qom',
   'rdma',
+  'replay',
   'rocker',
   'run-state',
   'sockets',

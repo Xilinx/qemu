@@ -1183,13 +1183,15 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
             }
 
             if (parent_bus) {
-                qdev_set_parent_bus(DEVICE(dev), BUS(parent_bus));
+                qdev_set_parent_bus(DEVICE(dev), BUS(parent_bus),
+                                    &error_abort);
             }
         }
     } else {
         DB_PRINT_NP(1, "orphaning node\n");
         if (object_dynamic_cast(OBJECT(dev), TYPE_SYS_BUS_DEVICE)) {
-            qdev_set_parent_bus(DEVICE(dev), BUS(sysbus_get_default()));
+            qdev_set_parent_bus(DEVICE(dev), BUS(sysbus_get_default()),
+                                &error_abort);
         }
 
         /* FIXME: Make this go away (centrally) */

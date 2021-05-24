@@ -1,5 +1,5 @@
 arm_ss = ss.source_set()
-arm_ss.add(when: 'CONFIG_FDT', if_true: files(
+arm_ss.add(files(
   'arm_generic_fdt.c',
   'fdt-generic-devices.c'
 ))

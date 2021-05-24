@@ -1,4 +1,4 @@
-TARGET_MICROBLAZE=y
-TARGET_BASE_ARCH=microblaze
+TARGET_ARCH=microblaze
 TARGET_SUPPORTS_MTTCG=y
 TARGET_XML_FILES=gdb-xml/microblaze-core.xml
+TARGET_NEED_FDT=y

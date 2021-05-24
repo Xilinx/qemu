@@ -94,7 +94,7 @@ static bool ssi_slave_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
         snprintf(bus_name, 16, "spi");
         parent_bus = qdev_get_child_bus(parent, bus_name);
     }
-    qdev_set_parent_bus(DEVICE(s), parent_bus);
+    qdev_set_parent_bus(DEVICE(s), parent_bus, &error_abort);
     return false;
 }
 
@@ -207,7 +207,7 @@ static int ssi_auto_connect_slave(Object *child, void *opaque)
     }
 
     cs_line = qdev_get_gpio_in_named(DEVICE(dev), SSI_GPIO_CS, 0);
-    qdev_set_parent_bus(DEVICE(dev), BUS(arg->bus));
+    qdev_set_parent_bus(DEVICE(dev), BUS(arg->bus), &error_abort);
     **arg->cs_linep = cs_line;
     (*arg->cs_linep)++;
     return 0;

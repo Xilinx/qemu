@@ -12,6 +12,7 @@
 #include "sysemu/dma.h"
 #include "chardev/char.h"
 #include "sysemu/cpus.h"
+#include "sysemu/cpu-timers.h"
 #include "hw/sysbus.h"
 #include "hw/hw.h"
 #include "hw/ptimer.h"

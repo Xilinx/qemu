@@ -337,7 +337,8 @@ static bool i2c_slave_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
         return true;
     }
 
-    qdev_set_parent_bus(DEVICE(obj), qdev_get_child_bus(parent, "i2c"));
+    qdev_set_parent_bus(DEVICE(obj), qdev_get_child_bus(parent, "i2c"),
+                        &error_abort);
 
     return false;
 }

@@ -5,6 +5,8 @@ option('docdir', type : 'string', value : 'doc',
 
 option('gettext', type : 'boolean', value : true,
        description: 'Localization of the GTK+ user interface')
+option('sparse', type : 'feature', value : 'auto',
+       description: 'sparse checker')
 
 option('malloc_trim', type : 'feature', value : 'auto',
        description: 'enable libc malloc_trim() for memory optimization')
@@ -30,6 +32,10 @@ option('cocoa', type : 'feature', value : 'auto',
        description: 'Cocoa user interface (macOS only)')
 option('mpath', type : 'feature', value : 'auto',
        description: 'Multipath persistent reservation passthrough')
+option('iconv', type : 'feature', value : 'auto',
+       description: 'Font glyph conversion support')
+option('curses', type : 'feature', value : 'auto',
+       description: 'curses UI')
 option('sdl', type : 'feature', value : 'auto',
        description: 'SDL user interface')
 option('sdl_image', type : 'feature', value : 'auto',
@@ -46,3 +52,13 @@ option('vnc_sasl', type : 'feature', value : 'auto',
        description: 'SASL authentication for VNC server')
 option('xkbcommon', type : 'feature', value : 'auto',
        description: 'xkbcommon support')
+
+option('capstone', type: 'combo', value: 'auto',
+       choices: ['disabled', 'enabled', 'auto', 'system', 'internal'],
+       description: 'Whether and how to find the capstone library')
+option('slirp', type: 'combo', value: 'auto',
+       choices: ['disabled', 'enabled', 'auto', 'system', 'internal'],
+       description: 'Whether and how to find the slirp library')
+option('fdt', type: 'combo', value: 'auto',
+       choices: ['disabled', 'enabled', 'auto', 'system', 'internal'],
+       description: 'Whether and how to find the libfdt library')

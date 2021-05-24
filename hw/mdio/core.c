@@ -26,6 +26,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
 #include "hw/mdio/mdio_slave.h"
@@ -132,7 +133,8 @@ static bool mdio_slave_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
         return true;
     }
 
-    qdev_set_parent_bus(DEVICE(obj), qdev_get_child_bus(parent, "mdio-bus"));
+    qdev_set_parent_bus(DEVICE(obj), qdev_get_child_bus(parent, "mdio-bus"),
+                        &error_abort);
 
     return false;
 }
