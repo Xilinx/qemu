@@ -30,7 +30,7 @@
 #
 # Returns: nothing on success.
 #
-# Since: 0.14.0
+# Since: 0.14
 #
 # Example:
 #
@@ -50,7 +50,7 @@
 #
 # @name: The name of the guest
 #
-# Since: 0.14.0
+# Since: 0.14
 ##
 { 'struct': 'NameInfo', 'data': {'*name': 'str'} }
 
@@ -61,7 +61,7 @@
 #
 # Returns: @NameInfo of the guest
 #
-# Since: 0.14.0
+# Since: 0.14
 #
 # Example:
 #
@@ -135,7 +135,7 @@
 #
 # Stop all guest VCPU execution.
 #
-# Since:  0.14.0
+# Since:  0.14
 #
 # Notes: This function will succeed even if the guest is already in the stopped
 #        state.  In "inmigrate" state, it will ensure that the guest
@@ -155,7 +155,7 @@
 #
 # Resume guest VCPU execution.
 #
-# Since:  0.14.0
+# Since:  0.14
 #
 # Returns:  If successful, nothing
 #
@@ -213,7 +213,7 @@
 #
 # Returns: the output of the command as a string
 #
-# Since: 0.14.0
+# Since: 0.14
 #
 # Notes: This command only exists as a stop-gap.  Its use is highly
 #        discouraged.  The semantics of this command are not
@@ -267,7 +267,7 @@
 # Returns: - Nothing on success.
 #          - If @device is not a valid block device, DeviceNotFound
 #
-# Since: 0.14.0
+# Since: 0.14
 #
 # Example:
 #
@@ -299,7 +299,7 @@
 #
 # Returns: Nothing on success
 #
-# Since: 0.14.0
+# Since: 0.14
 #
 # Notes: If @fdname already exists, the file descriptor assigned to
 #        it will be closed and replaced by the received file
@@ -325,7 +325,7 @@
 #
 # Returns: Nothing on success
 #
-# Since: 0.14.0
+# Since: 0.14
 #
 # Example:
 #
@@ -345,7 +345,7 @@
 # @fd: The file descriptor that was received via SCM rights and
 #      added to the fd set.
 #
-# Since: 1.2.0
+# Since: 1.2
 ##
 { 'struct': 'AddfdInfo', 'data': {'fdset-id': 'int', 'fd': 'int'} }
 
@@ -366,7 +366,7 @@
 #
 #        If @fdset-id is not specified, a new fd set will be created.
 #
-# Since: 1.2.0
+# Since: 1.2
 #
 # Example:
 #
@@ -391,7 +391,7 @@
 # Returns: - Nothing on success
 #          - If @fdset-id or @fd is not found, FdNotFound
 #
-# Since: 1.2.0
+# Since: 1.2
 #
 # Notes: The list of fd sets is shared by all monitor connections.
 #
@@ -415,7 +415,7 @@
 #
 # @opaque: A free-form string that can be used to describe the fd.
 #
-# Since: 1.2.0
+# Since: 1.2
 ##
 { 'struct': 'FdsetFdInfo',
   'data': {'fd': 'int', '*opaque': 'str'} }
@@ -429,7 +429,7 @@
 #
 # @fds: A list of file descriptors that belong to this fd set.
 #
-# Since: 1.2.0
+# Since: 1.2
 ##
 { 'struct': 'FdsetInfo',
   'data': {'fdset-id': 'int', 'fds': ['FdsetFdInfo']} }
@@ -441,7 +441,7 @@
 #
 # Returns: A list of @FdsetInfo
 #
-# Since: 1.2.0
+# Since: 1.2
 #
 # Note: The list of fd sets is shared by all monitor connections.
 #

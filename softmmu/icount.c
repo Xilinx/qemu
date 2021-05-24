@@ -395,7 +395,7 @@ void icount_start_warp_timer(void)
 
 void icount_account_warp_timer(void)
 {
-    if (!icount_enabled() || !icount_sleep) {
+    if (!icount_sleep) {
         return;
     }
 
