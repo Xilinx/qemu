@@ -310,6 +310,13 @@ to build binaries for it.
 ``Icelake-Client`` CPU Models are deprecated. Use ``Icelake-Server`` CPU
 Models instead.
 
+MIPS ``I7200`` CPU Model (since 5.2)
+''''''''''''''''''''''''''''''''''''
+
+The ``I7200`` guest CPU relies on the nanoMIPS ISA, which is deprecated
+(the ISA has never been upstreamed to a compiler toolchain). Therefore
+this CPU is also deprecated.
+
 System emulator devices
 -----------------------
 
@@ -327,12 +334,6 @@ The 'scsi-disk' device is deprecated. Users should use 'scsi-hd' or
 
 System emulator machines
 ------------------------
-
-mips ``r4k`` platform (since 5.0)
-'''''''''''''''''''''''''''''''''
-
-This machine type is very old and unmaintained. Users should use the ``malta``
-machine type instead.
 
 mips ``fulong2e`` machine (since 5.1)
 '''''''''''''''''''''''''''''''''''''
@@ -413,6 +414,13 @@ The ``ppc64abi32`` architecture has a number of issues which regularly
 trip up our CI testing and is suspected to be quite broken. For that
 reason the maintainers strongly suspect no one actually uses it.
 
+MIPS ``I7200`` CPU (since 5.2)
+''''''''''''''''''''''''''''''
+
+The ``I7200`` guest CPU relies on the nanoMIPS ISA, which is deprecated
+(the ISA has never been upstreamed to a compiler toolchain). Therefore
+this CPU is also deprecated.
+
 Related binaries
 ----------------
 
@@ -476,6 +484,15 @@ point to a version that doesn't break runnability guarantees
 versions, aliases will point to newer CPU model versions
 depending on the machine type, so management software must
 resolve CPU model aliases before starting a virtual machine.
+
+Guest Emulator ISAs
+-------------------
+
+nanoMIPS ISA
+''''''''''''
+
+The ``nanoMIPS`` ISA has never been upstreamed to any compiler toolchain.
+As it is hard to generate binaries for it, declare it deprecated.
 
 
 Recently removed features
@@ -575,6 +592,12 @@ System emulator machines
 The version specific Spike machines have been removed in favour of the
 generic ``spike`` machine. If you need to specify an older version of the RISC-V
 spec you can use the ``-cpu rv64gcsu,priv_spec=v1.10.0`` command line argument.
+
+mips ``r4k`` platform (removed in 5.2)
+''''''''''''''''''''''''''''''''''''''
+
+This machine type was very old and unmaintained. Users should use the ``malta``
+machine type instead.
 
 Related binaries
 ----------------

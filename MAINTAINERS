@@ -227,7 +227,7 @@ R: Aleksandar Rikalo <aleksandar.rikalo@syrmia.com>
 S: Odd Fixes
 F: target/mips/
 F: default-configs/*mips*
-F: disas/*mips*
+F: disas/mips.c
 F: docs/system/cpu-models-mips.rst.inc
 F: hw/intc/mips_gic.c
 F: hw/mips/
@@ -239,6 +239,10 @@ F: include/hw/misc/mips_*
 F: include/hw/timer/mips_gictimer.h
 F: tests/tcg/mips/
 K: ^Subject:.*(?i)mips
+
+MIPS TCG CPUs (nanoMIPS ISA)
+S: Orphan
+F: disas/nanomips.*
 
 Moxie TCG CPUs
 M: Anthony Green <green@moxielogic.com>
@@ -289,7 +293,7 @@ F: linux-user/host/riscv64/
 
 RENESAS RX CPUs
 M: Yoshinori Sato <ysato@users.sourceforge.jp>
-S: Maintained
+S: Odd Fixes
 F: target/rx/
 
 S390 TCG CPUs
@@ -1138,12 +1142,6 @@ S: Orphaned
 F: hw/mips/mipssim.c
 F: hw/net/mipsnet.c
 
-R4000
-R: Aurelien Jarno <aurelien@aurel32.net>
-R: Aleksandar Rikalo <aleksandar.rikalo@syrmia.com>
-S: Obsolete
-F: hw/mips/r4k.c
-
 Fuloong 2E
 M: Huacai Chen <chenhc@lemote.com>
 M: Philippe Mathieu-Daudé <f4bug@amsat.org>
@@ -1340,7 +1338,7 @@ RX Machines
 -----------
 rx-gdbsim
 M: Yoshinori Sato <ysato@users.sourceforge.jp>
-S: Maintained
+S: Odd Fixes
 F: docs/system/target-rx.rst
 F: hw/rx/rx-gdbsim.c
 F: tests/acceptance/machine_rx_gdbsim.py
@@ -1350,7 +1348,7 @@ SH4 Machines
 R2D
 M: Yoshinori Sato <ysato@users.sourceforge.jp>
 R: Magnus Damm <magnus.damm@gmail.com>
-S: Maintained
+S: Odd Fixes
 F: hw/sh4/r2d.c
 F: hw/intc/sh_intc.c
 F: include/hw/sh4/sh_intc.h
@@ -1915,6 +1913,7 @@ Rocker
 M: Jiri Pirko <jiri@resnulli.us>
 S: Maintained
 F: hw/net/rocker/
+F: qapi/rocker.json
 F: tests/rocker/
 F: docs/specs/rocker.txt
 
@@ -2083,7 +2082,7 @@ F: docs/*/*xive*
 Renesas peripherals
 M: Yoshinori Sato <ysato@users.sourceforge.jp>
 R: Magnus Damm <magnus.damm@gmail.com>
-S: Maintained
+S: Odd Fixes
 F: hw/char/renesas_sci.c
 F: hw/char/sh_serial.c
 F: hw/timer/renesas_*.c
@@ -2094,7 +2093,7 @@ F: include/hw/timer/renesas_*.h
 
 Renesas RX peripherals
 M: Yoshinori Sato <ysato@users.sourceforge.jp>
-S: Maintained
+S: Odd Fixes
 F: hw/intc/rx_icu.c
 F: hw/rx/
 F: include/hw/intc/rx_icu.h
@@ -2117,6 +2116,7 @@ S: Maintained
 F: audio/
 F: hw/audio/
 F: include/hw/audio/
+F: qapi/audio.json
 F: tests/qtest/ac97-test.c
 F: tests/qtest/es1370-test.c
 F: tests/qtest/intel-hda-test.c
@@ -2496,7 +2496,9 @@ F: monitor/monitor-internal.h
 F: monitor/qmp*
 F: monitor/misc.c
 F: monitor/monitor.c
+F: qapi/control.json
 F: qapi/error.json
+F: qapi/introspect.json
 F: docs/devel/*qmp-*
 F: docs/interop/*qmp-*
 F: scripts/qmp/
@@ -2523,7 +2525,7 @@ R: Thomas Huth <thuth@redhat.com>
 S: Maintained
 F: tests/qtest/fuzz/
 F: scripts/oss-fuzz/
-F: docs/devel/fuzzing.txt
+F: docs/devel/fuzzing.rst
 
 Register API
 M: Alistair Francis <alistair@alistair23.me>
@@ -2557,6 +2559,7 @@ S: Maintained
 F: trace/
 F: trace-events
 F: docs/qemu-option-trace.rst.inc
+F: qapi/trace.json
 F: scripts/tracetool.py
 F: scripts/tracetool/
 F: scripts/qemu-trace-stap*
@@ -2616,6 +2619,7 @@ M: Daniel P. Berrange <berrange@redhat.com>
 S: Maintained
 F: crypto/
 F: include/crypto/
+F: qapi/crypto.json
 F: tests/test-crypto-*
 F: tests/benchmark-crypto-*
 F: tests/crypto-tls-*
@@ -3152,6 +3156,7 @@ S: Maintained
 F: .gitlab-ci.yml
 F: .gitlab-ci.d/crossbuilds.yml
 F: .gitlab-ci.d/*py
+F: scripts/ci/gitlab-pipeline-status
 
 Guest Test Compilation Support
 M: Alex Bennée <alex.bennee@linaro.org>
