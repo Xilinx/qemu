@@ -346,6 +346,13 @@ This machine has been renamed ``fuloong2e``.
 These machine types are very old and likely can not be used for live migration
 from old QEMU versions anymore. A newer machine type should be used instead.
 
+Raspberry Pi ``raspi2`` and ``raspi3`` machines (since 5.2)
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+The Raspberry Pi machines come in various models (A, A+, B, B+). To be able
+to distinguish which model QEMU is implementing, the ``raspi2`` and ``raspi3``
+machines have been renamed ``raspi2b`` and ``raspi3b``.
+
 Device options
 --------------
 
@@ -473,7 +480,7 @@ default configuration.
 
 The CPU model runnability guarantee won't apply anymore to
 existing CPU models.  Management software that needs runnability
-guarantees must resolve the CPU model aliases using te
+guarantees must resolve the CPU model aliases using the
 ``alias-of`` field returned by the ``query-cpu-definitions`` QMP
 command.
 
@@ -660,7 +667,7 @@ Splitting RAM by default between NUMA nodes had the same issues as ``mem``
 parameter with the difference that the role of the user plays QEMU using
 implicit generic or board specific splitting rule.
 Use ``memdev`` with *memory-backend-ram* backend or ``mem`` (if
-it's supported by used machine type) to define mapping explictly instead.
+it's supported by used machine type) to define mapping explicitly instead.
 Users of existing VMs, wishing to preserve the same RAM distribution, should
 configure it explicitly using ``-numa node,memdev`` options. Current RAM
 distribution can be retrieved using HMP command ``info numa`` and if separate

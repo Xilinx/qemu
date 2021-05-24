@@ -352,6 +352,7 @@ config XLNX_ZYNQMP_ARM
     select XILINX_SPIPS
     select XLNX_ZYNQMP
     select USB_DWC3
+    select USB_XHCI_SYSBUS
 
 config XLNX_VERSAL
     bool
@@ -364,6 +365,7 @@ config XLNX_VERSAL_ARM
     bool
     select ARM_GIC
     select USB_DWC3
+    select USB_XHCI_SYSBUS
 
 config NPCM7XX
     bool
