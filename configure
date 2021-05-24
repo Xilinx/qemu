@@ -328,8 +328,8 @@ vhost_net=""
 vhost_crypto=""
 vhost_scsi=""
 vhost_vsock=""
-vhost_user=""
-vhost_user_blk_server=""
+vhost_user="no"
+vhost_user_blk_server="auto"
 vhost_user_fs=""
 kvm="auto"
 hax="auto"
@@ -718,7 +718,6 @@ fi
 case $targetos in
 MINGW32*)
   mingw32="yes"
-  vhost_user="no"
   audio_possible_drivers="dsound sdl"
   if check_include dsound.h; then
     audio_drv_list="dsound"
@@ -790,13 +789,14 @@ SunOS)
 ;;
 Haiku)
   haiku="yes"
-  QEMU_CFLAGS="-DB_USE_POSITIVE_POSIX_ERRORS -DBSD_SOURCE $QEMU_CFLAGS"
+  QEMU_CFLAGS="-DB_USE_POSITIVE_POSIX_ERRORS -D_BSD_SOURCE $QEMU_CFLAGS"
 ;;
 Linux)
   audio_drv_list="try-pa oss"
   audio_possible_drivers="oss alsa sdl pa"
   linux="yes"
   linux_user="yes"
+  vhost_user="yes"
 ;;
 esac
 
@@ -1252,9 +1252,9 @@ for opt do
   ;;
   --enable-vhost-vsock) vhost_vsock="yes"
   ;;
-  --disable-vhost-user-blk-server) vhost_user_blk_server="no"
+  --disable-vhost-user-blk-server) vhost_user_blk_server="disabled"
   ;;
-  --enable-vhost-user-blk-server) vhost_user_blk_server="yes"
+  --enable-vhost-user-blk-server) vhost_user_blk_server="enabled"
   ;;
   --disable-vhost-user-fs) vhost_user_fs="no"
   ;;
@@ -2346,9 +2346,8 @@ fi
 # vhost interdependencies and host support
 
 # vhost backends
-test "$vhost_user" = "" && vhost_user=yes
-if test "$vhost_user" = "yes" && test "$mingw32" = "yes"; then
-  error_exit "vhost-user isn't available on win32"
+if test "$vhost_user" = "yes" && test "$linux" != "yes"; then
+  error_exit "vhost-user is only available on Linux"
 fi
 test "$vhost_vdpa" = "" && vhost_vdpa=$linux
 if test "$vhost_vdpa" = "yes" && test "$linux" != "yes"; then
@@ -2393,12 +2392,6 @@ if test "$vhost_net" = ""; then
   test "$vhost_net_user" = "yes" && vhost_net=yes
   test "$vhost_net_vdpa" = "yes" && vhost_net=yes
   test "$vhost_kernel" = "yes" && vhost_net=yes
-fi
-
-# libvhost-user is Linux-only
-test "$vhost_user_blk_server" = "" && vhost_user_blk_server=$linux
-if test "$vhost_user_blk_server" = "yes" && test "$linux" = "no"; then
-  error_exit "--enable-vhost-user-blk-server is only available on Linux"
 fi
 
 ##########################################
@@ -3517,8 +3510,15 @@ if $pkg_config --atleast-version=$glib_req_ver gio-2.0; then
     # Check that the libraries actually work -- Ubuntu 18.04 ships
     # with pkg-config --static --libs data for gio-2.0 that is missing
     # -lblkid and will give a link error.
-    write_c_skeleton
-    if compile_prog "" "$gio_libs" ; then
+    cat > $TMPC <<EOF
+#include <gio/gio.h>
+int main(void)
+{
+    g_dbus_proxy_new_sync(0, 0, 0, 0, 0, 0, 0, 0);
+    return 0;
+}
+EOF
+    if compile_prog "$gio_cflags" "$gio_libs" ; then
         gio=yes
     else
         gio=no
@@ -5847,7 +5847,7 @@ fi
 roms=
 if { test "$cpu" = "i386" || test "$cpu" = "x86_64"; } && \
         test "$targetos" != "Darwin" && test "$targetos" != "SunOS" && \
-        test "$softmmu" = yes ; then
+        test "$targetos" != "Haiku" && test "$softmmu" = yes ; then
     # Different host OS linkers have different ideas about the name of the ELF
     # emulation. Linux and OpenBSD/amd64 use 'elf_i386'; FreeBSD uses the _fbsd
     # variant; OpenBSD/i386 uses the _obsd variant; and Windows uses i386pe.
@@ -6293,9 +6293,6 @@ if test "$vhost_user" = "yes" ; then
 fi
 if test "$vhost_vdpa" = "yes" ; then
   echo "CONFIG_VHOST_VDPA=y" >> $config_host_mak
-fi
-if test "$vhost_user_blk_server" = "yes" ; then
-  echo "CONFIG_VHOST_USER_BLK_SERVER=y" >> $config_host_mak
 fi
 if test "$vhost_user_fs" = "yes" ; then
   echo "CONFIG_VHOST_USER_FS=y" >> $config_host_mak
@@ -7017,6 +7014,7 @@ NINJA=$ninja $meson setup \
         -Dcapstone=$capstone -Dslirp=$slirp -Dfdt=$fdt \
         -Diconv=$iconv -Dcurses=$curses -Dlibudev=$libudev\
         -Ddocs=$docs -Dsphinx_build=$sphinx_build -Dinstall_blobs=$blobs \
+        -Dvhost_user_blk_server=$vhost_user_blk_server \
         $cross_arg \
         "$PWD" "$source_path"
 

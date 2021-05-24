@@ -8,7 +8,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -1904,7 +1904,9 @@ static void xhci_kick_epctx(XHCIEPContext *epctx, unsigned int streamid)
         streamid = 0;
         xhci_set_ep_state(xhci, epctx, NULL, EP_RUNNING);
     }
-    assert(ring->dequeue != 0);
+    if (!ring->dequeue) {
+        return;
+    }
 
     epctx->kick_active++;
     while (1) {
@@ -3008,14 +3010,17 @@ static void xhci_runtime_write(void *ptr, hwaddr reg,
                                uint64_t val, unsigned size)
 {
     XHCIState *xhci = ptr;
-    int v = (reg - 0x20) / 0x20;
-    XHCIInterrupter *intr = &xhci->intr[v];
+    XHCIInterrupter *intr;
+    int v;
+
     trace_usb_xhci_runtime_write(reg, val);
 
     if (reg < 0x20) {
         trace_usb_xhci_unimplemented("runtime write", reg);
         return;
     }
+    v = (reg - 0x20) / 0x20;
+    intr = &xhci->intr[v];
 
     switch (reg & 0x1f) {
     case 0x00: /* IMAN */
