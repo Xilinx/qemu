@@ -71,12 +71,15 @@ void xmpu_flush(XMPU *s)
     qemu_set_irq(s->enabled_signal, s->enabled);
 
     for (i = 0; i < s->cfg.nr_masters; i++) {
-        IOMMUTLBEntry entry = {
-            .target_as = s->masters[i].parent_as,
-            .iova = 0,
-            .translated_addr = 0,
-            .addr_mask = ~0,
-            .perm = IOMMU_NONE,
+        IOMMUTLBEvent entry = {
+            .type = IOMMU_NOTIFIER_UNMAP,
+            .entry = {
+                .target_as = s->masters[i].parent_as,
+                .iova = 0,
+                .translated_addr = 0,
+                .addr_mask = ~0,
+                .perm = IOMMU_NONE,
+            }
         };
         memory_region_notify_iommu(&s->masters[i].iommu, -1, entry);
         /* Temporary hack.  */

@@ -1433,6 +1433,7 @@ if have_system
     'hw/misc',
     'hw/misc/macio',
     'hw/net',
+    'hw/net/can',
     'hw/nvram',
     'hw/pci',
     'hw/pci-host',
@@ -1475,7 +1476,12 @@ trace_events_subdirs += [
   'util',
 ]
 
-subdir('contrib/libvhost-user')
+vhost_user = not_found
+if 'CONFIG_VHOST_USER' in config_host
+  libvhost_user = subproject('libvhost-user')
+  vhost_user = libvhost_user.get_variable('vhost_user_dep')
+endif
+
 subdir('qapi')
 subdir('qobject')
 subdir('stubs')
