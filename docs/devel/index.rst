@@ -18,6 +18,7 @@ Contents:
    testing
    fuzzing
    control-flow-integrity
+   iomem-cache
    loads-stores
    memory
    migration

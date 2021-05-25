@@ -15,12 +15,13 @@ caching all accesses (the default that maximises execution speed) or to
 respect the cacheable attribute of memory transactions (respecting
 noncacheable accesses).
 
-.. _____________________          ____________________
-   |                    | remote |                    |
-   | QEMU  ___________  |  port  |     _____  SystemC |
-   |      [iomem-cache]-|--------|--->[ DDR ]         |
-   ---------------------          --------------------
+::
 
+    _____________________          ____________________
+    |                    | remote |                    |
+    | QEMU  ___________  |  port  |     _____  SystemC |
+    |      [iomem-cache]-|--------|--->[ DDR ]         |
+    ---------------------          --------------------
 
 Configuration
 --------------------------

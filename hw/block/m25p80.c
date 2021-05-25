@@ -377,6 +377,8 @@ typedef enum {
     OPP4 = 0x84,
     EOPP = 0xc2,
     EOPP4 = 0x8e,
+    RDID_AB = 0xab,
+    AAI_WP = 0xad,
 
     ERASE_4K = 0x20,
     ERASE4_4K = 0x21,
@@ -482,6 +484,7 @@ struct Flash {
     bool reset_enable;
     bool quad_enable;
     bool hpm_enable;
+    bool aai_enable;
     uint8_t ear;
 
     int64_t dirty_page;
@@ -629,6 +632,7 @@ void flash_write8(Flash *s, uint32_t addr, uint8_t data)
 
     if (!s->write_enable) {
         qemu_log_mask(LOG_GUEST_ERROR, "M25P80: write with write protect!\n");
+        return;
     }
 
     if ((prev ^ data) & data) {
@@ -704,9 +708,13 @@ static void complete_collecting_data(Flash *s)
     case PP4_4:
     case OPP:
     case EOPP:
-    case AAI:
     case OPP4:
     case EOPP4:
+        s->state = STATE_PAGE_PROGRAM;
+        break;
+    case AAI_WP:
+        /* AAI programming starts from the even address */
+        s->cur_addr &= ~BIT(0);
         s->state = STATE_PAGE_PROGRAM;
         break;
     case READ:
@@ -847,6 +855,7 @@ static void reset_memory(Flash *s)
     s->write_enable = false;
     s->reset_enable = false;
     s->quad_enable = false;
+    s->aai_enable = false;
 
     switch (get_man(s)) {
     case MAN_NUMONYX:
@@ -1059,6 +1068,11 @@ static void decode_qio_read_cmd(Flash *s)
     s->state = STATE_COLLECTING_DATA;
 }
 
+static bool is_valid_aai_cmd(uint32_t cmd)
+{
+    return cmd == AAI_WP || cmd == WRDI || cmd == RDSR;
+}
+
 static void decode_new_cmd(Flash *s, uint32_t value)
 {
     int i;
@@ -1068,6 +1082,11 @@ static void decode_new_cmd(Flash *s, uint32_t value)
 
     if (value != RESET_MEMORY) {
         s->reset_enable = false;
+    }
+
+    if (get_man(s) == MAN_SST && s->aai_enable && !is_valid_aai_cmd(value)) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "M25P80: Invalid cmd within AAI programming sequence");
     }
 
     switch (value) {
@@ -1218,6 +1237,9 @@ static void decode_new_cmd(Flash *s, uint32_t value)
 
     case WRDI:
         s->write_enable = false;
+        if (get_man(s) == MAN_SST) {
+            s->aai_enable = false;
+        }
         break;
     case WREN:
         s->write_enable = true;
@@ -1228,6 +1250,10 @@ static void decode_new_cmd(Flash *s, uint32_t value)
         if (get_man(s) == MAN_MACRONIX) {
             s->data[0] |= (!!s->quad_enable) << 6;
         }
+        if (get_man(s) == MAN_SST) {
+            s->data[0] |= (!!s->aai_enable) << 6;
+        }
+
         s->pos = 0;
         s->len = 1;
         s->data_read_loop = true;
@@ -1399,6 +1425,24 @@ static void decode_new_cmd(Flash *s, uint32_t value)
     case RSTQIO:
         s->quad_enable = false;
         break;
+    case AAI_WP:
+        if (get_man(s) == MAN_SST) {
+            if (s->write_enable) {
+                if (s->aai_enable) {
+                    s->state = STATE_PAGE_PROGRAM;
+                } else {
+                    s->aai_enable = true;
+                    s->needed_bytes = get_addr_length(s);
+                    s->state = STATE_COLLECTING_DATA;
+                }
+            } else {
+                qemu_log_mask(LOG_GUEST_ERROR,
+                              "M25P80: AAI_WP with write protect\n");
+            }
+        } else {
+            qemu_log_mask(LOG_GUEST_ERROR, "M25P80: Unknown cmd %x\n", value);
+        }
+        break;
     default:
         s->pos = 0;
         s->len = 1;
@@ -1444,6 +1488,17 @@ static uint32_t m25p80_transfer8(SSIPeripheral *ss, uint32_t tx)
         trace_m25p80_page_program(s, s->cur_addr, (uint8_t)tx);
         flash_write8(s, s->cur_addr, (uint8_t)tx);
         s->cur_addr = (s->cur_addr + 1) & (s->size - 1);
+
+        if (get_man(s) == MAN_SST && s->aai_enable && s->cur_addr == 0) {
+            /*
+             * There is no wrap mode during AAI programming once the highest
+             * unprotected memory address is reached. The Write-Enable-Latch
+             * bit is automatically reset, and AAI programming mode aborts.
+             */
+            s->write_enable = false;
+            s->aai_enable = false;
+        }
+
         break;
 
     case STATE_READ:
@@ -1662,6 +1717,24 @@ static const VMStateDescription vmstate_m25p80_hpm_enable = {
     }
 };
 
+static bool m25p80_aai_enable_needed(void *opaque)
+{
+    Flash *s = (Flash *)opaque;
+
+    return s->aai_enable;
+}
+
+static const VMStateDescription vmstate_m25p80_aai_enable = {
+    .name = "m25p80/aai_enable",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = m25p80_aai_enable_needed,
+    .fields = (VMStateField[]) {
+        VMSTATE_BOOL(aai_enable, Flash),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static const VMStateDescription vmstate_m25p80 = {
     .name = "m25p80",
     .version_id = 0,
@@ -1694,6 +1767,7 @@ static const VMStateDescription vmstate_m25p80 = {
         &vmstate_m25p80_data_read_loop,
         &vmstate_m25p80_cfg_large,
         &vmstate_m25p80_hpm_enable,
+        &vmstate_m25p80_aai_enable,
         NULL
     }
 };
