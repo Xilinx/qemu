@@ -1134,6 +1134,7 @@ static sd_rsp_type_t sd_normal_command(SDState *sd, SDRequest req)
             if (!sd->mmc) {
                 break;
             }
+            /* Fallthrough */
         case sd_ready_state:
             sd->state = sd_identification_state;
             return sd_r2_i;
@@ -1244,24 +1245,23 @@ static sd_rsp_type_t sd_normal_command(SDState *sd, SDRequest req)
             default:
                 break;
             }
-        } else {
-            if (sd->spec_version < SD_PHY_SPECv2_00_VERS) {
-                break;
-            }
-            if (sd->state != sd_idle_state) {
-                break;
-            }
-            sd->vhs = 0;
-
-            /* No response if not exactly one VHS bit is set.  */
-            if (!(req.arg >> 8) || (req.arg >> (ctz32(req.arg & ~0xff) + 1))) {
-                return sd->spi ? sd_r7 : sd_r0;
-            }
-
-            /* Accept.  */
-            sd->vhs = req.arg;
-            return sd_r7;
         }
+        if (sd->spec_version < SD_PHY_SPECv2_00_VERS) {
+            break;
+        }
+        if (sd->state != sd_idle_state) {
+            break;
+        }
+        sd->vhs = 0;
+
+        /* No response if not exactly one VHS bit is set.  */
+        if (!(req.arg >> 8) || (req.arg >> (ctz32(req.arg & ~0xff) + 1))) {
+            return sd->spi ? sd_r7 : sd_r0;
+        }
+
+        /* Accept.  */
+        sd->vhs = req.arg;
+        return sd_r7;
     case 9:	/* CMD9:   SEND_CSD */
         switch (sd->state) {
         case sd_standby_state:

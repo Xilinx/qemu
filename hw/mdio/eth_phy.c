@@ -133,6 +133,7 @@ static int eth_phy_write(MDIOSlave *slave, uint8_t req, uint8_t data)
         if (data & PHY_CTRL_RST) {
             eth_phy_reset(DEVICE(phy));
         }
+        /* Fallthrough */
     default:
         phy->regs[regnum] = (phy->regs[regnum] & mask) | (data & ~mask);
         break;

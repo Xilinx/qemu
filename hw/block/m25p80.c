@@ -1093,6 +1093,7 @@ static void decode_new_cmd(Flash *s, uint32_t value)
     case HPM:
         s->needed_bytes = 3;
         s->state = STATE_COLLECTING_DATA;
+        /* Fallthrough */
     case READ:
     case READ4:
         if (get_man(s) != MAN_NUMONYX || numonyx_mode(s) == MODE_STD) {

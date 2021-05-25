@@ -391,6 +391,7 @@ eth_write(void *opaque, hwaddr addr,
                 }
             }
             s->regs[addr] = value;
+            break;
 
         default:
             s->regs[addr] = tswap32(value);

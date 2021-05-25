@@ -463,6 +463,7 @@ static inline void arasan_nfc_update_state(ArasanNFCState *s)
     switch (s->regs[R_PGRAM]) {
     case R_PGRAM_READ:
         arasan_nfc_do_dma(s, true);
+        /* Fallthrough */
     case R_PGRAM_GET_FEATURES:
     case R_PGRAM_READ_PARAMETER_PAGE:
     case R_PGRAM_READ_ID:
