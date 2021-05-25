@@ -24,6 +24,11 @@
 #include "qemu/cutils.h"
 #include "qemu/cacheflush.h"
 #include "cpu.h"
+
+#ifdef CONFIG_TCG
+#include "hw/core/tcg-cpu-ops.h"
+#endif /* CONFIG_TCG */
+
 #include "exec/exec-all.h"
 #include "exec/target_page.h"
 #include "hw/qdev-core.h"
@@ -926,6 +931,7 @@ void cpu_watchpoint_remove_all(CPUState *cpu, int mask)
     }
 }
 
+#ifdef CONFIG_TCG
 /* Return true if this watchpoint address matches the specified
  * access (ie the address range covered by the watchpoint overlaps
  * partially or completely with the address range covered by the
@@ -958,6 +964,80 @@ int cpu_watchpoint_address_matches(CPUState *cpu, vaddr addr, vaddr len)
     }
     return ret;
 }
+
+/* Generate a debug exception if a watchpoint has been hit.  */
+void cpu_check_watchpoint(CPUState *cpu, vaddr addr, vaddr len,
+                          MemTxAttrs attrs, int flags, uintptr_t ra)
+{
+    CPUClass *cc = CPU_GET_CLASS(cpu);
+    CPUWatchpoint *wp;
+
+    assert(tcg_enabled());
+    if (cpu->watchpoint_hit) {
+        /*
+         * We re-entered the check after replacing the TB.
+         * Now raise the debug interrupt so that it will
+         * trigger after the current instruction.
+         */
+        qemu_mutex_lock_iothread();
+        cpu_interrupt(cpu, CPU_INTERRUPT_DEBUG);
+        qemu_mutex_unlock_iothread();
+        return;
+    }
+
+    if (cc->tcg_ops->adjust_watchpoint_address) {
+        /* this is currently used only by ARM BE32 */
+        addr = cc->tcg_ops->adjust_watchpoint_address(cpu, addr, len);
+    }
+    QTAILQ_FOREACH(wp, &cpu->watchpoints, entry) {
+        if (watchpoint_address_matches(wp, addr, len)
+            && (wp->flags & flags)) {
+            if (replay_running_debug()) {
+                /*
+                 * Don't process the watchpoints when we are
+                 * in a reverse debugging operation.
+                 */
+                replay_breakpoint();
+                return;
+            }
+            if (flags == BP_MEM_READ) {
+                wp->flags |= BP_WATCHPOINT_HIT_READ;
+            } else {
+                wp->flags |= BP_WATCHPOINT_HIT_WRITE;
+            }
+            wp->hitaddr = MAX(addr, wp->vaddr);
+            wp->hitattrs = attrs;
+            if (!cpu->watchpoint_hit) {
+                if (wp->flags & BP_CPU && cc->tcg_ops->debug_check_watchpoint &&
+                    !cc->tcg_ops->debug_check_watchpoint(cpu, wp)) {
+                    wp->flags &= ~BP_WATCHPOINT_HIT;
+                    continue;
+                }
+                cpu->watchpoint_hit = wp;
+
+                mmap_lock();
+                tb_check_watchpoint(cpu, ra);
+                if (wp->flags & BP_STOP_BEFORE_ACCESS) {
+                    cpu->exception_index = EXCP_DEBUG;
+                    mmap_unlock();
+                    cpu_loop_exit_restore(cpu, ra);
+                } else {
+                    /* Force execution of one insn next time.  */
+                    cpu->cflags_next_tb = 1 | curr_cflags();
+                    mmap_unlock();
+                    if (ra) {
+                        cpu_restore_state(cpu, ra, true);
+                    }
+                    cpu_loop_exit_noexc(cpu);
+                }
+            }
+        } else {
+            wp->flags &= ~BP_WATCHPOINT_HIT;
+        }
+    }
+}
+
+#endif /* CONFIG_TCG */
 
 /* Called from RCU critical section */
 static RAMBlock *qemu_get_ram_block(ram_addr_t addr)
@@ -1560,6 +1640,7 @@ static void *file_ram_alloc(RAMBlock *block,
                             int fd,
                             bool readonly,
                             bool truncate,
+                            off_t offset,
                             Error **errp)
 {
     void *area;
@@ -1625,7 +1706,8 @@ static void *file_ram_alloc(RAMBlock *block,
     if (area == NULL) {
 #else
     area = qemu_ram_mmap(fd, memory, block->mr->align, readonly,
-                         block->flags & RAM_SHARED, block->flags & RAM_PMEM);
+                         block->flags & RAM_SHARED, block->flags & RAM_PMEM,
+                         offset);
     if (area == MAP_FAILED) {
 #endif
         error_setg_errno(errp, errno,
@@ -2055,8 +2137,8 @@ static void ram_block_add(RAMBlock *new_block, Error **errp, bool shared)
 }
 
 RAMBlock *qemu_ram_alloc_from_fd(ram_addr_t size, MemoryRegion *mr,
-                                 uint32_t ram_flags, int fd, bool readonly,
-                                 Error **errp)
+                                 uint32_t ram_flags, int fd, off_t offset,
+                                 bool readonly, Error **errp)
 {
     RAMBlock *new_block;
     Error *local_err = NULL;
@@ -2110,7 +2192,7 @@ RAMBlock *qemu_ram_alloc_from_fd(ram_addr_t size, MemoryRegion *mr,
     new_block->max_length = size;
     new_block->flags = ram_flags;
     new_block->host = file_ram_alloc(new_block, size, fd, readonly,
-                                     !file_size, errp);
+                                     !file_size, offset, errp);
     if (!new_block->host) {
         g_free(new_block);
         return NULL;
@@ -2141,7 +2223,7 @@ RAMBlock *qemu_ram_alloc_from_file(ram_addr_t size, MemoryRegion *mr,
         return NULL;
     }
 
-    block = qemu_ram_alloc_from_fd(size, mr, ram_flags, fd, readonly, errp);
+    block = qemu_ram_alloc_from_fd(size, mr, ram_flags, fd, 0, readonly, errp);
     if (!block) {
         if (created) {
             unlink(mem_path);
@@ -2475,75 +2557,6 @@ ram_addr_t qemu_ram_addr_from_host(void *ptr)
     }
 
     return block->offset + offset;
-}
-
-/* Generate a debug exception if a watchpoint has been hit.  */
-void cpu_check_watchpoint(CPUState *cpu, vaddr addr, vaddr len,
-                          MemTxAttrs attrs, int flags, uintptr_t ra)
-{
-    CPUClass *cc = CPU_GET_CLASS(cpu);
-    CPUWatchpoint *wp;
-
-    assert(tcg_enabled());
-    if (cpu->watchpoint_hit) {
-        /*
-         * We re-entered the check after replacing the TB.
-         * Now raise the debug interrupt so that it will
-         * trigger after the current instruction.
-         */
-        qemu_mutex_lock_iothread();
-        cpu_interrupt(cpu, CPU_INTERRUPT_DEBUG);
-        qemu_mutex_unlock_iothread();
-        return;
-    }
-
-    addr = cc->adjust_watchpoint_address(cpu, addr, len);
-    QTAILQ_FOREACH(wp, &cpu->watchpoints, entry) {
-        if (watchpoint_address_matches(wp, addr, len)
-            && (wp->flags & flags)) {
-            if (replay_running_debug()) {
-                /*
-                 * Don't process the watchpoints when we are
-                 * in a reverse debugging operation.
-                 */
-                replay_breakpoint();
-                return;
-            }
-            if (flags == BP_MEM_READ) {
-                wp->flags |= BP_WATCHPOINT_HIT_READ;
-            } else {
-                wp->flags |= BP_WATCHPOINT_HIT_WRITE;
-            }
-            wp->hitaddr = MAX(addr, wp->vaddr);
-            wp->hitattrs = attrs;
-            if (!cpu->watchpoint_hit) {
-                if (wp->flags & BP_CPU &&
-                    !cc->debug_check_watchpoint(cpu, wp)) {
-                    wp->flags &= ~BP_WATCHPOINT_HIT;
-                    continue;
-                }
-                cpu->watchpoint_hit = wp;
-
-                mmap_lock();
-                tb_check_watchpoint(cpu, ra);
-                if (wp->flags & BP_STOP_BEFORE_ACCESS) {
-                    cpu->exception_index = EXCP_DEBUG;
-                    mmap_unlock();
-                    cpu_loop_exit_restore(cpu, ra);
-                } else {
-                    /* Force execution of one insn next time.  */
-                    cpu->cflags_next_tb = 1 | curr_cflags();
-                    mmap_unlock();
-                    if (ra) {
-                        cpu_restore_state(cpu, ra, true);
-                    }
-                    cpu_loop_exit_noexc(cpu);
-                }
-            }
-        } else {
-            wp->flags &= ~BP_WATCHPOINT_HIT;
-        }
-    }
 }
 
 static MemTxResult flatview_read(FlatView *fv, hwaddr addr,
@@ -3002,7 +3015,7 @@ MemTxResult flatview_read_continue(FlatView *fv, hwaddr addr,
             }
         } else {
             /* RAM case */
-            fuzz_dma_read_cb(addr, len, mr, false);
+            fuzz_dma_read_cb(addr, len, mr);
             ram_ptr = qemu_ram_ptr_length(mr->ram_block, addr1, &l, false);
             memcpy(buf, ram_ptr, l);
         }
@@ -3367,7 +3380,7 @@ void *address_space_map(AddressSpace *as,
     memory_region_ref(mr);
     *plen = flatview_extend_translation(fv, addr, len, mr, xlat,
                                         l, is_write, attrs);
-    fuzz_dma_read_cb(addr, *plen, mr, is_write);
+    fuzz_dma_read_cb(addr, *plen, mr);
     ptr = qemu_ram_ptr_length(mr->ram_block, xlat, plen, true);
 
     return ptr;

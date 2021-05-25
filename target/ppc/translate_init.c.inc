@@ -1735,6 +1735,16 @@ static void spr_write_e500_l1csr1(DisasContext *ctx, int sprn, int gprn)
     tcg_temp_free(t0);
 }
 
+static void spr_write_e500_l2csr0(DisasContext *ctx, int sprn, int gprn)
+{
+    TCGv t0 = tcg_temp_new();
+
+    tcg_gen_andi_tl(t0, cpu_gpr[gprn],
+                    ~(E500_L2CSR0_L2FI | E500_L2CSR0_L2FL | E500_L2CSR0_L2LFC));
+    gen_store_spr(sprn, t0);
+    tcg_temp_free(t0);
+}
+
 static void spr_write_booke206_mmucsr0(DisasContext *ctx, int sprn, int gprn)
 {
     gen_helper_booke206_tlbflush(cpu_env, cpu_gpr[gprn]);
@@ -5029,6 +5039,12 @@ static void init_proc_e500(CPUPPCState *env, int version)
                  SPR_NOACCESS, SPR_NOACCESS,
                  &spr_read_generic, &spr_write_e500_l1csr1,
                  0x00000000);
+    if (version != fsl_e500v1 && version != fsl_e500v2) {
+        spr_register(env, SPR_Exxx_L2CSR0, "L2CSR0",
+                     SPR_NOACCESS, SPR_NOACCESS,
+                     &spr_read_generic, &spr_write_e500_l2csr0,
+                     0x00000000);
+    }
     spr_register(env, SPR_BOOKE_MCSRR0, "MCSRR0",
                  SPR_NOACCESS, SPR_NOACCESS,
                  &spr_read_generic, &spr_write_generic,
@@ -9907,7 +9923,7 @@ static int gdb_get_float_reg(CPUPPCState *env, GByteArray *buf, int n)
 {
     uint8_t *mem_buf;
     if (n < 32) {
-        gdb_get_float64(buf, *cpu_fpr_ptr(env, n));
+        gdb_get_reg64(buf, *cpu_fpr_ptr(env, n));
         mem_buf = gdb_get_reg_ptr(buf, 8);
         ppc_maybe_bswap_register(env, mem_buf, 8);
         return 8;
@@ -9925,7 +9941,7 @@ static int gdb_set_float_reg(CPUPPCState *env, uint8_t *mem_buf, int n)
 {
     if (n < 32) {
         ppc_maybe_bswap_register(env, mem_buf, 8);
-        *cpu_fpr_ptr(env, n) = ldfq_p(mem_buf);
+        *cpu_fpr_ptr(env, n) = ldq_p(mem_buf);
         return 8;
     }
     if (n == 32) {
@@ -10700,6 +10716,7 @@ static void ppc_cpu_reset(DeviceState *dev)
 }
 
 #ifndef CONFIG_USER_ONLY
+
 static bool ppc_cpu_is_big_endian(CPUState *cs)
 {
     PowerPCCPU *cpu = POWERPC_CPU(cs);
@@ -10710,6 +10727,7 @@ static bool ppc_cpu_is_big_endian(CPUState *cs)
     return !msr_le;
 }
 
+#ifdef CONFIG_TCG
 static void ppc_cpu_exec_enter(CPUState *cs)
 {
     PowerPCCPU *cpu = POWERPC_CPU(cs);
@@ -10731,7 +10749,9 @@ static void ppc_cpu_exec_exit(CPUState *cs)
         vhc->cpu_exec_exit(cpu->vhyp, cpu);
     }
 }
-#endif
+#endif /* CONFIG_TCG */
+
+#endif /* !CONFIG_USER_ONLY */
 
 static void ppc_cpu_instance_init(Object *obj)
 {
@@ -10823,6 +10843,23 @@ static Property ppc_cpu_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
+#ifdef CONFIG_TCG
+#include "hw/core/tcg-cpu-ops.h"
+
+static struct TCGCPUOps ppc_tcg_ops = {
+  .initialize = ppc_translate_init,
+  .cpu_exec_interrupt = ppc_cpu_exec_interrupt,
+  .tlb_fill = ppc_cpu_tlb_fill,
+
+#ifndef CONFIG_USER_ONLY
+  .do_interrupt = ppc_cpu_do_interrupt,
+  .cpu_exec_enter = ppc_cpu_exec_enter,
+  .cpu_exec_exit = ppc_cpu_exec_exit,
+  .do_unaligned_access = ppc_cpu_do_unaligned_access,
+#endif /* !CONFIG_USER_ONLY */
+};
+#endif /* CONFIG_TCG */
+
 static void ppc_cpu_class_init(ObjectClass *oc, void *data)
 {
     PowerPCCPUClass *pcc = POWERPC_CPU_CLASS(oc);
@@ -10841,14 +10878,11 @@ static void ppc_cpu_class_init(ObjectClass *oc, void *data)
 
     cc->class_by_name = ppc_cpu_class_by_name;
     cc->has_work = ppc_cpu_has_work;
-    cc->do_interrupt = ppc_cpu_do_interrupt;
-    cc->cpu_exec_interrupt = ppc_cpu_exec_interrupt;
     cc->dump_state = ppc_cpu_dump_state;
     cc->dump_statistics = ppc_cpu_dump_statistics;
     cc->set_pc = ppc_cpu_set_pc;
     cc->gdb_read_register = ppc_cpu_gdb_read_register;
     cc->gdb_write_register = ppc_cpu_gdb_write_register;
-    cc->do_unaligned_access = ppc_cpu_do_unaligned_access;
 #ifndef CONFIG_USER_ONLY
     cc->get_phys_page_debug = ppc_cpu_get_phys_page_debug;
     cc->vmsd = &vmstate_ppc_cpu;
@@ -10877,18 +10911,13 @@ static void ppc_cpu_class_init(ObjectClass *oc, void *data)
 #ifndef CONFIG_USER_ONLY
     cc->virtio_is_big_endian = ppc_cpu_is_big_endian;
 #endif
-#ifdef CONFIG_TCG
-    cc->tcg_initialize = ppc_translate_init;
-    cc->tlb_fill = ppc_cpu_tlb_fill;
-#endif
-#ifndef CONFIG_USER_ONLY
-    cc->cpu_exec_enter = ppc_cpu_exec_enter;
-    cc->cpu_exec_exit = ppc_cpu_exec_exit;
-#endif
-
     cc->disas_set_info = ppc_disas_set_info;
 
     dc->fw_name = "PowerPC,UNKNOWN";
+
+#ifdef CONFIG_TCG
+    cc->tcg_ops = &ppc_tcg_ops;
+#endif /* CONFIG_TCG */
 }
 
 static const TypeInfo ppc_cpu_type_info = {

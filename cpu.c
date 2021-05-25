@@ -137,12 +137,34 @@ void cpu_exec_reset(CPUState *cpu)
 #endif
 }
 
-void cpu_exec_unrealizefn(CPUState *cpu)
+void cpu_exec_realizefn(CPUState *cpu, Error **errp)
 {
     CPUClass *cc = CPU_GET_CLASS(cpu);
 
-    tlb_destroy(cpu);
-    cpu_list_remove(cpu);
+    cpu_list_add(cpu);
+
+#ifdef CONFIG_TCG
+    /* NB: errp parameter is unused currently */
+    if (tcg_enabled()) {
+        tcg_exec_realizefn(cpu, errp);
+    }
+#endif /* CONFIG_TCG */
+
+#ifdef CONFIG_USER_ONLY
+    assert(cc->vmsd == NULL);
+#else
+    if (qdev_get_vmsd(DEVICE(cpu)) == NULL) {
+        vmstate_register(NULL, cpu->cpu_index, &vmstate_cpu_common, cpu);
+    }
+    if (cc->vmsd != NULL) {
+        vmstate_register(NULL, cpu->cpu_index, cc->vmsd, cpu);
+    }
+#endif /* CONFIG_USER_ONLY */
+}
+
+void cpu_exec_unrealizefn(CPUState *cpu)
+{
+    CPUClass *cc = CPU_GET_CLASS(cpu);
 
 #ifdef CONFIG_USER_ONLY
     assert(cc->vmsd == NULL);
@@ -153,8 +175,15 @@ void cpu_exec_unrealizefn(CPUState *cpu)
     if (qdev_get_vmsd(DEVICE(cpu)) == NULL) {
         vmstate_unregister(NULL, &vmstate_cpu_common, cpu);
     }
-    tcg_iommu_free_notifier_list(cpu);
 #endif
+#ifdef CONFIG_TCG
+    /* NB: errp parameter is unused currently */
+    if (tcg_enabled()) {
+        tcg_exec_unrealizefn(cpu);
+    }
+#endif /* CONFIG_TCG */
+
+    cpu_list_remove(cpu);
 }
 
 void cpu_exec_initfn(CPUState *cpu)
@@ -170,35 +199,6 @@ void cpu_exec_initfn(CPUState *cpu)
     /* Xilinx: The GPIO lines we use */
     qdev_init_gpio_in_named(DEVICE(cpu), cpu_reset_gpio, "reset", 1);
     qdev_init_gpio_in_named(DEVICE(cpu), cpu_halt_gpio, "halt", 1);
-#endif
-}
-
-void cpu_exec_realizefn(CPUState *cpu, Error **errp)
-{
-    CPUClass *cc = CPU_GET_CLASS(cpu);
-    static bool tcg_target_initialized;
-
-    cpu_list_add(cpu);
-
-    if (tcg_enabled() && !tcg_target_initialized) {
-        tcg_target_initialized = true;
-        cc->tcg_initialize();
-    }
-    tlb_init(cpu);
-
-    qemu_plugin_vcpu_init_hook(cpu);
-
-#ifdef CONFIG_USER_ONLY
-    assert(cc->vmsd == NULL);
-#else /* !CONFIG_USER_ONLY */
-    if (qdev_get_vmsd(DEVICE(cpu)) == NULL) {
-        vmstate_register(NULL, cpu->cpu_index, &vmstate_cpu_common, cpu);
-    }
-    if (cc->vmsd != NULL) {
-        vmstate_register(NULL, cpu->cpu_index, cc->vmsd, cpu);
-    }
-
-    tcg_iommu_init_notifier_list(cpu);
 #endif
 }
 

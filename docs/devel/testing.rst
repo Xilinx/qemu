@@ -357,20 +357,6 @@ source and build it.
 
 The full list of tests is printed in the ``make docker`` help.
 
-Tools
------
-
-There are executables that are created to run in a specific Docker environment.
-This makes it easy to write scripts that have heavy or special dependencies,
-but are still very easy to use.
-
-Currently the only tool is ``travis``, which mimics the Travis-CI tests in a
-container. It runs in the ``travis`` image:
-
-.. code::
-
-  make docker-travis@travis
-
 Debugging a Docker test failure
 -------------------------------
 
@@ -765,9 +751,6 @@ and hypothetical example follows:
 
 
   class MultipleMachines(Test):
-      """
-      :avocado: enable
-      """
       def test_multiple_machines(self):
           first_machine = self.get_vm()
           second_machine = self.get_vm()

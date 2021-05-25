@@ -17,7 +17,7 @@
 #include "qemu/queue.h"
 #include "hw/core/cpu.h"
 #include "exec/memattrs.h"
-#include "sysemu/accel.h"
+#include "qemu/accel.h"
 #include "qom/object.h"
 
 #ifdef NEED_CPU_H
@@ -232,22 +232,6 @@ int kvm_has_intx_set_mask(void);
  * Returns: true if KVM supports using kernel generated IRQs from user space
  */
 bool kvm_arm_supports_user_irq(void);
-
-/**
- * kvm_memcrypt_enabled - return boolean indicating whether memory encryption
- *                        is enabled
- * Returns: 1 memory encryption is enabled
- *          0 memory encryption is disabled
- */
-bool kvm_memcrypt_enabled(void);
-
-/**
- * kvm_memcrypt_encrypt_data: encrypt the memory range
- *
- * Return: 1 failed to encrypt the range
- *         0 succesfully encrypted memory region
- */
-int kvm_memcrypt_encrypt_data(uint8_t *ptr, uint64_t len);
 
 
 #ifdef NEED_CPU_H
@@ -556,5 +540,15 @@ int kvm_get_max_memslots(void);
 
 /* Notify resamplefd for EOI of specific interrupts. */
 void kvm_resample_fd_notify(int gsi);
+
+/**
+ * kvm_cpu_check_are_resettable - return whether CPUs can be reset
+ *
+ * Returns: true: CPUs are resettable
+ *          false: CPUs are not resettable
+ */
+bool kvm_cpu_check_are_resettable(void);
+
+bool kvm_arch_cpu_check_are_resettable(void);
 
 #endif

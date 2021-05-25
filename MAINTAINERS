@@ -129,6 +129,7 @@ F: include/exec/helper*.h
 F: include/exec/tb-hash.h
 F: include/sysemu/cpus.h
 F: include/sysemu/tcg.h
+F: include/hw/core/tcg-cpu-ops.h
 
 FPU emulation
 M: Aurelien Jarno <aurelien@aurel32.net>
@@ -186,6 +187,15 @@ F: hw/cris/
 F: include/hw/cris/
 F: tests/tcg/cris/
 F: disas/cris.c
+
+Hexagon TCG CPUs
+M: Taylor Simpson <tsimpson@quicinc.com>
+S: Supported
+F: target/hexagon/
+F: linux-user/hexagon/
+F: tests/tcg/hexagon/
+F: disas/hexagon.c
+F: default-configs/targets/hexagon-linux-user.mak
 
 HPPA (PA-RISC) TCG CPUs
 M: Richard Henderson <richard.henderson@linaro.org>
@@ -280,6 +290,7 @@ F: target/ppc/
 F: hw/ppc/
 F: include/hw/ppc/
 F: disas/ppc.c
+F: tests/acceptance/machine_ppc.py
 
 RISC-V TCG CPUs
 M: Palmer Dabbelt <palmer@dabbelt.com>
@@ -437,8 +448,10 @@ Overall
 M: Richard Henderson <richard.henderson@linaro.org>
 R: Paolo Bonzini <pbonzini@redhat.com>
 S: Maintained
-F: include/sysemu/accel.h
-F: accel/accel.c
+F: include/qemu/accel.h
+F: include/sysemu/accel-ops.h
+F: include/hw/core/accel-cpu.h
+F: accel/accel-*.c
 F: accel/Makefile.objs
 F: accel/stubs/Makefile.objs
 
@@ -1103,6 +1116,8 @@ F: hw/nubus/*
 F: hw/display/macfb.c
 F: hw/block/swim.c
 F: hw/m68k/bootinfo.h
+F: include/standard-headers/asm-m68k/bootinfo.h
+F: include/standard-headers/asm-m68k/bootinfo-mac.h
 F: include/hw/misc/mac_via.h
 F: include/hw/nubus/*
 F: include/hw/display/macfb.h
@@ -1115,6 +1130,7 @@ M: Edgar E. Iglesias <edgar.iglesias@gmail.com>
 S: Maintained
 F: hw/microblaze/petalogix_s3adsp1800_mmu.c
 F: include/hw/char/xilinx_uartlite.h
+F: tests/acceptance/machine_microblaze.py
 
 petalogix_ml605
 M: Edgar E. Iglesias <edgar.iglesias@gmail.com>
@@ -1832,6 +1848,7 @@ F: fsdev/
 F: docs/interop/virtfs-proxy-helper.rst
 F: tests/qtest/virtio-9p-test.c
 T: git https://gitlab.com/gkurz/qemu.git 9p-next
+T: git https://github.com/cschoenebeck/qemu.git 9p.next
 
 virtio-blk
 M: Stefan Hajnoczi <stefanha@redhat.com>
@@ -2333,6 +2350,7 @@ M: Alex Bennée <alex.bennee@linaro.org>
 R: Philippe Mathieu-Daudé <philmd@redhat.com>
 S: Maintained
 F: gdbstub*
+F: include/exec/gdbstub.h
 F: gdb-xml/
 F: tests/tcg/multiarch/gdbstub/
 
@@ -2536,6 +2554,7 @@ F: qapi/qom.json
 F: qapi/qdev.json
 F: scripts/coccinelle/qom-parent-type.cocci
 F: softmmu/qdev-monitor.c
+F: stubs/qdev.c
 F: qom/
 F: tests/check-qom-interface.c
 F: tests/check-qom-proplist.c
@@ -2846,6 +2865,17 @@ F: pc-bios/opensbi-*
 F: .gitlab-ci.d/opensbi.yml
 F: .gitlab-ci.d/opensbi/
 
+Clock framework
+M: Luc Michel <luc@lmichel.fr>
+R: Damien Hedde <damien.hedde@greensocs.com>
+S: Maintained
+F: include/hw/clock.h
+F: include/hw/qdev-clock.h
+F: hw/core/clock.c
+F: hw/core/clock-vmstate.c
+F: hw/core/qdev-clock.c
+F: docs/devel/clocks.rst
+
 Usermode Emulation
 ------------------
 Overall usermode emulation
@@ -2883,6 +2913,7 @@ S: Maintained
 F: docs/devel/tcg-plugins.rst
 F: plugins/
 F: tests/plugin/
+F: tests/acceptance/tcg_plugins.py
 F: contrib/plugins/
 
 AArch64 TCG target
@@ -3194,6 +3225,30 @@ S: Maintained
 F: hw/semihosting/
 F: include/hw/semihosting/
 
+Multi-process QEMU
+M: Elena Ufimtseva <elena.ufimtseva@oracle.com>
+M: Jagannathan Raman <jag.raman@oracle.com>
+M: John G Johnson <john.g.johnson@oracle.com>
+S: Maintained
+F: docs/devel/multi-process.rst
+F: docs/system/multi-process.rst
+F: hw/pci-host/remote.c
+F: include/hw/pci-host/remote.h
+F: hw/remote/machine.c
+F: include/hw/remote/machine.h
+F: hw/remote/mpqemu-link.c
+F: include/hw/remote/mpqemu-link.h
+F: hw/remote/message.c
+F: hw/remote/remote-obj.c
+F: include/hw/remote/memory.h
+F: hw/remote/memory.c
+F: hw/remote/proxy.c
+F: include/hw/remote/proxy.h
+F: hw/remote/proxy-memory-listener.c
+F: include/hw/remote/proxy-memory-listener.h
+F: hw/remote/iohub.c
+F: include/hw/remote/iohub.h
+
 Build and test automation
 -------------------------
 Build and test automation
@@ -3203,13 +3258,11 @@ R: Philippe Mathieu-Daudé <philmd@redhat.com>
 S: Maintained
 F: .github/lockdown.yml
 F: .travis.yml
-F: scripts/travis/
-F: .shippable.yml
+F: scripts/ci/
 F: tests/docker/
 F: tests/vm/
 F: scripts/archive-source.sh
 W: https://travis-ci.org/qemu/qemu
-W: https://app.shippable.com/github/qemu/qemu
 W: http://patchew.org/QEMU/
 
 FreeBSD Hosted Continuous Integration

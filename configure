@@ -198,8 +198,8 @@ has() {
 }
 
 version_ge () {
-    local_ver1=`echo $1 | tr . ' '`
-    local_ver2=`echo $2 | tr . ' '`
+    local_ver1=$(expr "$1" : '\([0-9.]*\)' | tr . ' ')
+    local_ver2=$(echo "$2" | tr . ' ')
     while true; do
         set x $local_ver1
         local_first=${2-0}
@@ -463,6 +463,7 @@ skip_meson=no
 gettext="auto"
 fuse="auto"
 fuse_lseek="auto"
+multiprocess="no"
 
 malloc_trim="auto"
 
@@ -797,6 +798,7 @@ Linux)
   linux="yes"
   linux_user="yes"
   vhost_user=${default_feature:-yes}
+  multiprocess=${default_feature:-yes}
 ;;
 esac
 
@@ -1561,6 +1563,10 @@ for opt do
   ;;
   --disable-fuse-lseek) fuse_lseek="disabled"
   ;;
+  --enable-multiprocess) multiprocess="yes"
+  ;;
+  --disable-multiprocess) multiprocess="no"
+  ;;
   *)
       echo "ERROR: unknown option $opt"
       echo "Try '$0 --help' for more information"
@@ -1769,7 +1775,7 @@ Advanced options (experts only):
   --with-trace-file=NAME   Full PATH,NAME of file to store traces
                            Default:trace-<pid>
   --disable-slirp          disable SLIRP userspace network connectivity
-  --enable-tcg-interpreter enable TCG with bytecode interpreter (TCI)
+  --enable-tcg-interpreter enable TCI (TCG with bytecode interpreter, experimental and slow)
   --enable-malloc-trim     enable libc malloc_trim() for memory optimization
   --oss-lib                path to OSS library
   --cpu=CPU                Build for host CPU [$cpu]
@@ -1913,6 +1919,7 @@ disabled with --disable-FEATURE, default is enabled if available
   libdaxctl       libdaxctl support
   fuse            FUSE block device export
   fuse-lseek      SEEK_HOLE/SEEK_DATA support for FUSE exports
+  multiprocess    Multiprocess QEMU support
 
 NOTE: The object files are built at the place where configure is launched
 EOF
@@ -6087,6 +6094,9 @@ fi
 if test "$have_mlockall" = "yes" ; then
   echo "HAVE_MLOCKALL=y" >> $config_host_mak
 fi
+if test "$multiprocess" = "yes" ; then
+  echo "CONFIG_MULTIPROCESS_ALLOWED=y" >> $config_host_mak
+fi
 if test "$fuzzing" = "yes" ; then
   # If LIB_FUZZING_ENGINE is set, assume we are running on OSS-Fuzz, and the
   # needed CFLAGS have already been provided
@@ -6120,7 +6130,7 @@ fi
 
 if test -n "$gdb_bin"; then
     gdb_version=$($gdb_bin --version | head -n 1)
-    if version_ge ${gdb_version##* } 8.3.1; then
+    if version_ge ${gdb_version##* } 9.1; then
         echo "HAVE_GDB_BIN=$gdb_bin" >> $config_host_mak
     fi
 fi
