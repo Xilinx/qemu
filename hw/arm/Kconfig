@@ -356,6 +356,7 @@ config XLNX_ZYNQMP_ARM
     select XLNX_ZYNQMP
     select USB_DWC3
     select USB_XHCI_SYSBUS
+    select XLNX_ZDMA
 
 config XLNX_VERSAL
     bool
@@ -363,6 +364,8 @@ config XLNX_VERSAL
     select CADENCE
     select VIRTIO_MMIO
     select UNIMP
+    select XLNX_ZDMA
+    select XLNX_ZYNQMP
 
 config XLNX_VERSAL_ARM
     bool
