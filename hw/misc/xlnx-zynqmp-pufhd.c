@@ -394,8 +394,7 @@ static bool zynqmp_pufkey_from_buf(const Zynqmp_PUFRegen *data,
      */
     if (memcmp(hd->magic, Zynqmp_PUFHD_magic, sizeof(hd->magic))) {
         qemu_log("error: ZYNQMP PUF-REGENERATION: "
-                 "Helper-data header is missing magic string '%s'!\n",
-                 Zynqmp_PUFHD_magic);
+                 "Helper-data header is missing magic string!\n");
         return false;
     }
 

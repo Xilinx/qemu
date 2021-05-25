@@ -378,8 +378,7 @@ static bool versal_pufkey_from_buf(const void *base, uint32_t size,
      */
     if (memcmp(hd->magic, Versal_PUFHD_magic, sizeof(hd->magic))) {
         qemu_log("error: Versal PUF-REGENERATION: "
-                 "Helper-data header is missing magic string '%s'!\n",
-                 Versal_PUFHD_magic);
+                 "Helper-data header is missing magic string!\n");
         return false;
     }
 
