@@ -16,13 +16,13 @@ extern bool qemu_uuid_set;
 void qemu_add_exit_notifier(Notifier *notify);
 void qemu_remove_exit_notifier(Notifier *notify);
 
-extern bool machine_init_done;
-
 void qemu_run_machine_init_done_notifiers(void);
 void qemu_add_machine_init_done_notifier(Notifier *notify);
 void qemu_remove_machine_init_done_notifier(Notifier *notify);
 
 void configure_rtc(QemuOpts *opts);
+
+void qemu_init_subsystems(void);
 
 extern int autostart;
 
@@ -44,6 +44,7 @@ extern int alt_grab;
 extern int ctrl_grab;
 extern int graphic_rotate;
 extern int no_shutdown;
+extern int no_reboot;
 extern int old_param;
 extern int boot_menu;
 extern bool boot_strict;

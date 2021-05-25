@@ -191,7 +191,7 @@ static void generic_loader_realize(DeviceState *dev, Error **errp)
      * created. This means we are hot-plugging a device. We need to forefully
      * call the reset function to ensure the operation completes.
      */
-    if (qdev_hotplug) {
+    if (phase_check(PHASE_MACHINE_READY)) {
         generic_loader_reset(dev);
     }
 }
