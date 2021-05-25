@@ -14,5 +14,8 @@ config XILINX_IOMODULE_GPI
 config XILINX_IOMODULE_GPO
 	bool
 
+config GPIO_PWR
+    bool
+
 config SIFIVE_GPIO
     bool
