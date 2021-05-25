@@ -1450,7 +1450,7 @@ static void memory_region_do_set_ram(MemoryRegion *mr)
             g_free(sanitized_name);
         }
         mr->ram_block = qemu_ram_alloc_from_file(int128_get64(mr->size), mr,
-                                                 RAM_SHARED, filename, &error_abort);
+                                                 RAM_SHARED, filename, false, &error_abort);
         g_free(filename);
         break;
     default:
@@ -1914,15 +1914,18 @@ void memory_region_init_ram_from_file(MemoryRegion *mr,
                                       uint64_t align,
                                       uint32_t ram_flags,
                                       const char *path,
+                                      bool readonly,
                                       Error **errp)
 {
     Error *err = NULL;
     memory_region_init(mr, owner, name, size);
     mr->ram = 2;
+    mr->readonly = readonly;
     mr->terminates = true;
     mr->destructor = memory_region_destructor_ram;
     mr->align = align;
-    mr->ram_block = qemu_ram_alloc_from_file(size, mr, ram_flags, path, &err);
+    mr->ram_block = qemu_ram_alloc_from_file(size, mr, ram_flags, path,
+                                             readonly, &err);
     if (err) {
         mr->size = int128_zero();
         object_unparent(OBJECT(mr));
@@ -1945,7 +1948,7 @@ void memory_region_init_ram_from_fd(MemoryRegion *mr,
     mr->destructor = memory_region_destructor_ram;
     mr->ram_block = qemu_ram_alloc_from_fd(size, mr,
                                            share ? RAM_SHARED : 0,
-                                           fd, &err);
+                                           fd, false, &err);
     if (err) {
         mr->size = int128_zero();
         object_unparent(OBJECT(mr));

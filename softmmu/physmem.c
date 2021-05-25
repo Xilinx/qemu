@@ -1483,6 +1483,7 @@ static int64_t get_file_align(int fd)
 
 static int file_ram_open(const char *path,
                          const char *region_name,
+                         bool readonly,
                          bool *created,
                          Error **errp)
 {
@@ -1495,12 +1496,12 @@ static int file_ram_open(const char *path,
     for (;;) {
 #ifdef _WIN32
         fd = _open_osfhandle((intptr_t)CreateFile(path,
-                   GENERIC_READ | GENERIC_WRITE,
+                   GENERIC_READ | readonly ? 0 : GENERIC_WRITE,
                    FILE_SHARE_READ | FILE_SHARE_WRITE,
                    NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL),
                    _O_RDWR);
 #else
-        fd = open(path, O_RDWR);
+        fd = open(path, readonly ? O_RDONLY : O_RDWR);
 #endif
         if (fd >= 0) {
             /* @path names an existing file, use it */
@@ -1557,6 +1558,7 @@ static int file_ram_open(const char *path,
 static void *file_ram_alloc(RAMBlock *block,
                             ram_addr_t memory,
                             int fd,
+                            bool readonly,
                             bool truncate,
                             Error **errp)
 {
@@ -1622,7 +1624,7 @@ static void *file_ram_alloc(RAMBlock *block,
     area = MapViewOfFile(block->hMapFile, FILE_MAP_ALL_ACCESS, 0, 0, 0);
     if (area == NULL) {
 #else
-    area = qemu_ram_mmap(fd, memory, block->mr->align,
+    area = qemu_ram_mmap(fd, memory, block->mr->align, readonly,
                          block->flags & RAM_SHARED, block->flags & RAM_PMEM);
     if (area == MAP_FAILED) {
 #endif
@@ -2053,7 +2055,7 @@ static void ram_block_add(RAMBlock *new_block, Error **errp, bool shared)
 }
 
 RAMBlock *qemu_ram_alloc_from_fd(ram_addr_t size, MemoryRegion *mr,
-                                 uint32_t ram_flags, int fd,
+                                 uint32_t ram_flags, int fd, bool readonly,
                                  Error **errp)
 {
     RAMBlock *new_block;
@@ -2107,7 +2109,8 @@ RAMBlock *qemu_ram_alloc_from_fd(ram_addr_t size, MemoryRegion *mr,
     new_block->used_length = size;
     new_block->max_length = size;
     new_block->flags = ram_flags;
-    new_block->host = file_ram_alloc(new_block, size, fd, !file_size, errp);
+    new_block->host = file_ram_alloc(new_block, size, fd, readonly,
+                                     !file_size, errp);
     if (!new_block->host) {
         g_free(new_block);
         return NULL;
@@ -2126,18 +2129,19 @@ RAMBlock *qemu_ram_alloc_from_fd(ram_addr_t size, MemoryRegion *mr,
 
 RAMBlock *qemu_ram_alloc_from_file(ram_addr_t size, MemoryRegion *mr,
                                    uint32_t ram_flags, const char *mem_path,
-                                   Error **errp)
+                                   bool readonly, Error **errp)
 {
     int fd;
     bool created;
     RAMBlock *block;
 
-    fd = file_ram_open(mem_path, memory_region_name(mr), &created, errp);
+    fd = file_ram_open(mem_path, memory_region_name(mr), readonly, &created,
+                       errp);
     if (fd < 0) {
         return NULL;
     }
 
-    block = qemu_ram_alloc_from_fd(size, mr, ram_flags, fd, errp);
+    block = qemu_ram_alloc_from_fd(size, mr, ram_flags, fd, readonly, errp);
     if (!block) {
         if (created) {
             unlink(mem_path);

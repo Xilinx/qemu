@@ -999,6 +999,7 @@ void memory_region_init_resizeable_ram(MemoryRegion *mr,
  *             - RAM_PMEM: the memory is persistent memory
  *             Other bits are ignored now.
  * @path: the path in which to allocate the RAM.
+ * @readonly: true to open @path for reading, false for read/write.
  * @errp: pointer to Error*, to store an error if it happens.
  *
  * Note that this function does not do anything to cause the data in the
@@ -1011,6 +1012,7 @@ void memory_region_init_ram_from_file(MemoryRegion *mr,
                                       uint64_t align,
                                       uint32_t ram_flags,
                                       const char *path,
+                                      bool readonly,
                                       Error **errp);
 
 /**
