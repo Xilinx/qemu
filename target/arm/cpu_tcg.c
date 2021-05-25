@@ -774,6 +774,18 @@ static uint64_t v8r_buildopt_read(CPUARMState *env, const ARMCPRegInfo *ri)
 static const ARMCPRegInfo cortexr52_cp_reginfo[] = {
     { .name = "BUILDOPT", .cp = 15, .opc1 = 0, .crn = 15, .crm = 2, .opc2 = 0,
       .type = ARM_CP_NO_RAW, .access = PL1_R, .readfn = v8r_buildopt_read },
+    { .name = "IMP_ATCMREGIONR", .cp = 15, .opc1 = 0, .crn = 9, .crm = 1,
+      .opc2 = 0, .type = ARM_CP_OVERRIDE, .access = PL0_RW,
+      .fieldoffset = offsetof(CPUARMState, tcmregion.a),
+      .resetfn = arm_cp_reset_ignore },
+    { .name = "IMP_BTCMREGIONR", .cp = 15, .opc1 = 0, .crn = 9, .crm = 1,
+      .opc2 = 1, .type = ARM_CP_OVERRIDE, .access = PL0_RW,
+      .fieldoffset = offsetof(CPUARMState, tcmregion.b),
+      .resetfn = arm_cp_reset_ignore },
+    { .name = "IMP_CTCMREGIONR", .cp = 15, .opc1 = 0, .crn = 9, .crm = 1,
+      .opc2 = 2, .type = ARM_CP_OVERRIDE, .access = PL0_RW,
+      .fieldoffset = offsetof(CPUARMState, tcmregion.c),
+      .resetfn = arm_cp_reset_ignore },
     REGINFO_SENTINEL
 };
 #endif

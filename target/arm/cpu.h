@@ -748,6 +748,13 @@ typedef struct CPUARMState {
         uint32_t ctrl;
     } sau;
 
+    struct {
+    /* TCM region registers A, B & C */
+    uint32_t a;
+    uint32_t b;
+    uint32_t c;
+    } tcmregion;
+
     void *nvic;
     const struct arm_boot_info *boot_info;
     /* Store GICv3CPUState to access from this struct */
