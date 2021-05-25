@@ -146,7 +146,7 @@ static void bbram_bdrv_read(BBRAMCtrl *s)
 
     assert(s->blk);
 
-    s->blk_ro = blk_is_read_only(s->blk);
+    s->blk_ro = blk_is_writable(s->blk);
     if (s->blk_ro) {
         warn_report("%s: update not saved: backstore is read-only", prefix);
     }

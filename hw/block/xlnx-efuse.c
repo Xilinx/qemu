@@ -327,7 +327,7 @@ static void efuse_realize(DeviceState *dev, Error **errp)
     if (blk) {
         qdev_prop_set_drive(dev, "drive", blk);
 
-        s->blk_ro = blk_is_read_only(s->blk);
+        s->blk_ro = !blk_is_writable(s->blk);
         if (s->blk_ro) {
             warn_report("%s: update not saved: backstore is read-only",
                         object_get_canonical_path(OBJECT(s)));

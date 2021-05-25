@@ -117,7 +117,6 @@ static bool mb_cpu_has_work(CPUState *cs)
 }
 
 #ifndef CONFIG_USER_ONLY
-
 static void mb_cpu_ns_axi_dp(void *opaque, int irq, int level)
 {
     MicroBlazeCPU *cpu = opaque;
