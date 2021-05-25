@@ -1447,14 +1447,10 @@ static void handle_hint(DisasContext *s, uint32_t insn,
             s->base.is_jmp = DISAS_WFE;
         }
         break;
-    case 4: /* SEV */
-        gen_helper_sev(cpu_env);
-        return;
-    case 5: /* SEVL */
-        if (!parallel_cpus) {
-            gen_helper_sevl(cpu_env);
-        }
-        return;
+    case 0b00100: /* SEV */
+    case 0b00101: /* SEVL */
+        /* we treat all as NOP at least for now */
+        break;
     case 0b00111: /* XPACLRI */
         if (s->pauth_active) {
             gen_helper_xpaci(cpu_X[30], cpu_env, cpu_X[30]);
@@ -1533,7 +1529,6 @@ static void handle_hint(DisasContext *s, uint32_t insn,
 static void gen_clrex(DisasContext *s, uint32_t insn)
 {
     tcg_gen_movi_i64(cpu_exclusive_addr, -1);
-    gen_helper_sev(cpu_env);
 }
 
 /* CLREX, DSB, DMB, ISB */

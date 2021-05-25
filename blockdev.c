@@ -1514,13 +1514,13 @@ static void external_snapshot_prepare(BlkActionState *common,
             s->has_snapshot_node_name ? s->snapshot_node_name : NULL;
 
         if (node_name && !snapshot_node_name) {
-            error_setg(errp, "New overlay node name missing");
+            error_setg(errp, "New overlay node-name missing");
             goto out;
         }
 
         if (snapshot_node_name &&
             bdrv_lookup_bs(snapshot_node_name, snapshot_node_name, NULL)) {
-            error_setg(errp, "New overlay node name already in use");
+            error_setg(errp, "New overlay node-name already in use");
             goto out;
         }
 
@@ -3597,13 +3597,14 @@ void qmp_x_blockdev_reopen(BlockdevOptions *options, Error **errp)
 
     /* Check for the selected node name */
     if (!options->has_node_name) {
-        error_setg(errp, "Node name not specified");
+        error_setg(errp, "node-name not specified");
         goto fail;
     }
 
     bs = bdrv_find_node(options->node_name);
     if (!bs) {
-        error_setg(errp, "Cannot find node named '%s'", options->node_name);
+        error_setg(errp, "Failed to find node with node-name='%s'",
+                   options->node_name);
         goto fail;
     }
 
@@ -3634,7 +3635,7 @@ void qmp_blockdev_del(const char *node_name, Error **errp)
 
     bs = bdrv_find_node(node_name);
     if (!bs) {
-        error_setg(errp, "Cannot find node %s", node_name);
+        error_setg(errp, "Failed to find node with node-name='%s'", node_name);
         return;
     }
     if (bdrv_has_blk(bs)) {
@@ -3757,7 +3758,7 @@ void qmp_x_blockdev_set_iothread(const char *node_name, StrOrNull *iothread,
 
     bs = bdrv_find_node(node_name);
     if (!bs) {
-        error_setg(errp, "Cannot find node %s", node_name);
+        error_setg(errp, "Failed to find node with node-name='%s'", node_name);
         return;
     }
 

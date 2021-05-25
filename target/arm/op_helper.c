@@ -331,22 +331,14 @@ void HELPER(wfi)(CPUARMState *env, uint32_t insn_len)
 
 void HELPER(wfe)(CPUARMState *env)
 {
-    CPUState *cs = env_cpu(env);
-    ARMCPU *ac = env_archcpu(env);
-
-    g_assert(!parallel_cpus);
-
-    switch (ac->pe) {
-    case  1:
-        ac->pe = 0;
-        return;
-    case  0:
-        cs->exception_index = EXCP_YIELD;
-        cpu_loop_exit(cs);
-        return;
-    default:
-        g_assert_not_reached();
-    }
+    /* This is a hint instruction that is semantically different
+     * from YIELD even though we currently implement it identically.
+     * Don't actually halt the CPU, just yield back to top
+     * level loop. This is not going into a "low power state"
+     * (ie halting until some event occurs), so we never take
+     * a configurable trap to a different exception level.
+     */
+    HELPER(yield)(env);
 }
 
 /*
@@ -403,37 +395,6 @@ void HELPER(clean_inv_cache)(CPUARMState *env)
     CPU_FOREACH(cpu) {
         async_safe_run_on_cpu(cpu, cache_inv_callback, RUN_ON_CPU_NULL);
     }
-}
-
-static void cpu_unhalt(CPUState *cpu, run_on_cpu_data data)
-{
-    assert(qemu_mutex_iothread_locked());
-    cpu->halted = 0;
-    cpu->exception_index = -1;
-}
-
-void HELPER(sev)(CPUARMState *env)
-{
-    CPUState *cs = env_cpu(env);
-    CPUState *i;
-
-    for (i = first_cpu; i; i = CPU_NEXT(i)) {
-        ARMCPU *ac = ARM_CPU(i);
-        ac->pe = 1;
-        if (i == cs || i->halt_pin || i->reset_pin || i->arch_halt_pin) {
-            continue;
-        }
-        async_run_on_cpu(i, cpu_unhalt, RUN_ON_CPU_NULL);
-    }
-}
-
-void HELPER(sevl)(CPUARMState *env)
-{
-    ARMCPU *ac = env_archcpu(env);
-
-    g_assert(!parallel_cpus);
-
-    ac->pe = 1;
 }
 
 void HELPER(yield)(CPUARMState *env)
