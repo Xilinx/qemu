@@ -136,7 +136,7 @@ typedef struct FlashPartInfo {
 #define VCFG_WRAP_SEQUENTIAL 0x2
 #define NVCFG_XIP_MODE_DISABLED (7 << 9)
 #define NVCFG_XIP_MODE_MASK (7 << 9)
-#define VCFG_XIP_MODE_ENABLED (1 << 3)
+#define VCFG_XIP_MODE_DISABLED (1 << 3)
 #define CFG_DUMMY_CLK_LEN 4
 #define NVCFG_DUMMY_CLK_POS 12
 #define VCFG_DUMMY_CLK_POS 4
@@ -144,9 +144,9 @@ typedef struct FlashPartInfo {
 #define EVCFG_VPP_ACCELERATOR (1 << 3)
 #define EVCFG_RESET_HOLD_ENABLED (1 << 4)
 #define NVCFG_DUAL_IO_MASK (1 << 2)
-#define EVCFG_DUAL_IO_ENABLED (1 << 6)
+#define EVCFG_DUAL_IO_DISABLED (1 << 6)
 #define NVCFG_QUAD_IO_MASK (1 << 3)
-#define EVCFG_QUAD_IO_ENABLED (1 << 7)
+#define EVCFG_QUAD_IO_DISABLED (1 << 7)
 #define NVCFG_4BYTE_ADDR_MASK (1 << 0)
 #define NVCFG_LOWER_SEGMENT_MASK (1 << 1)
 
@@ -431,6 +431,12 @@ typedef enum {
     MAN_GENERIC,
     MAN_MICRON_OCTAL,
 } Manufacturer;
+
+typedef enum {
+    MODE_STD = 0,
+    MODE_DIO = 1,
+    MODE_QIO = 2
+} SPIMode;
 
 #define M25P80_INTERNAL_DATA_BUFFER_SZ 16
 #define MICRON_OCTAL_CFG_SIZE 256
@@ -847,8 +853,8 @@ static void reset_memory(Flash *s)
         s->volatile_cfg |= VCFG_DUMMY;
         s->volatile_cfg |= VCFG_WRAP_SEQUENTIAL;
         if ((s->nonvolatile_cfg & NVCFG_XIP_MODE_MASK)
-                                != NVCFG_XIP_MODE_DISABLED) {
-            s->volatile_cfg |= VCFG_XIP_MODE_ENABLED;
+                                == NVCFG_XIP_MODE_DISABLED) {
+            s->volatile_cfg |= VCFG_XIP_MODE_DISABLED;
         }
         s->volatile_cfg |= deposit32(s->volatile_cfg,
                             VCFG_DUMMY_CLK_POS,
@@ -863,10 +869,10 @@ static void reset_memory(Flash *s)
         s->enh_volatile_cfg |= EVCFG_VPP_ACCELERATOR;
         s->enh_volatile_cfg |= EVCFG_RESET_HOLD_ENABLED;
         if (s->nonvolatile_cfg & NVCFG_DUAL_IO_MASK) {
-            s->enh_volatile_cfg |= EVCFG_DUAL_IO_ENABLED;
+            s->enh_volatile_cfg |= EVCFG_DUAL_IO_DISABLED;
         }
         if (s->nonvolatile_cfg & NVCFG_QUAD_IO_MASK) {
-            s->enh_volatile_cfg |= EVCFG_QUAD_IO_ENABLED;
+            s->enh_volatile_cfg |= EVCFG_QUAD_IO_DISABLED;
         }
         if (!(s->nonvolatile_cfg & NVCFG_4BYTE_ADDR_MASK)) {
             s->four_bytes_address_mode = true;
@@ -903,6 +909,41 @@ static void reset_memory(Flash *s)
     trace_m25p80_reset_done(s);
 }
 
+static uint8_t numonyx_mode(Flash *s)
+{
+    if (!(s->enh_volatile_cfg & EVCFG_QUAD_IO_DISABLED)) {
+        return MODE_QIO;
+    } else if (!(s->enh_volatile_cfg & EVCFG_DUAL_IO_DISABLED)) {
+        return MODE_DIO;
+    } else {
+        return MODE_STD;
+    }
+}
+
+static uint8_t numonyx_extract_cfg_num_dummies(Flash *s)
+{
+    uint8_t num_dummies;
+    uint8_t mode;
+    assert(get_man(s) == MAN_NUMONYX);
+
+    mode = numonyx_mode(s);
+    num_dummies = extract32(s->volatile_cfg, 4, 4);
+
+    if (num_dummies == 0x0 || num_dummies == 0xf) {
+        switch (s->cmd_in_progress) {
+        case QIOR:
+        case QIOR4:
+            num_dummies = 10;
+            break;
+        default:
+            num_dummies = (mode == MODE_QIO) ? 10 : 8;
+            break;
+        }
+    }
+
+    return num_dummies;
+}
+
 static void decode_fast_read_cmd(Flash *s)
 {
     s->needed_bytes = get_addr_length(s);
@@ -912,7 +953,7 @@ static void decode_fast_read_cmd(Flash *s)
         s->needed_bytes += 8;
         break;
     case MAN_NUMONYX:
-        s->needed_bytes += extract32(s->volatile_cfg, 4, 4);
+        s->needed_bytes += numonyx_extract_cfg_num_dummies(s);
         break;
     case MAN_MACRONIX:
         if (extract32(s->volatile_cfg, 6, 2) == 1) {
@@ -954,7 +995,7 @@ static void decode_dio_read_cmd(Flash *s)
                                     );
         break;
     case MAN_NUMONYX:
-        s->needed_bytes += extract32(s->volatile_cfg, 4, 4);
+        s->needed_bytes += numonyx_extract_cfg_num_dummies(s);
         break;
     case MAN_MACRONIX:
         switch (extract32(s->volatile_cfg, 6, 2)) {
@@ -994,7 +1035,7 @@ static void decode_qio_read_cmd(Flash *s)
                                     );
         break;
     case MAN_NUMONYX:
-        s->needed_bytes += extract32(s->volatile_cfg, 4, 4);
+        s->needed_bytes += numonyx_extract_cfg_num_dummies(s);
         break;
     case MAN_MACRONIX:
         switch (extract32(s->volatile_cfg, 6, 2)) {
@@ -1036,14 +1077,8 @@ static void decode_new_cmd(Flash *s, uint32_t value)
     case ERASE4_32K:
     case ERASE_SECTOR:
     case ERASE4_SECTOR:
-    case READ:
-    case READ4:
-    case DPP:
-    case QPP:
-    case QPP_4:
     case PP:
     case PP4:
-    case PP4_4:
     case OPP:
     case OPP4:
     case EOPP:
@@ -1058,6 +1093,42 @@ static void decode_new_cmd(Flash *s, uint32_t value)
     case HPM:
         s->needed_bytes = 3;
         s->state = STATE_COLLECTING_DATA;
+    case READ:
+    case READ4:
+        if (get_man(s) != MAN_NUMONYX || numonyx_mode(s) == MODE_STD) {
+            s->needed_bytes = get_addr_length(s);
+            s->pos = 0;
+            s->len = 0;
+            s->state = STATE_COLLECTING_DATA;
+        } else {
+            qemu_log_mask(LOG_GUEST_ERROR, "M25P80: Cannot execute cmd %x in "
+                          "DIO or QIO mode\n", s->cmd_in_progress);
+        }
+        break;
+    case DPP:
+        if (get_man(s) != MAN_NUMONYX || numonyx_mode(s) != MODE_QIO) {
+            s->needed_bytes = get_addr_length(s);
+            s->pos = 0;
+            s->len = 0;
+            s->state = STATE_COLLECTING_DATA;
+        } else {
+            qemu_log_mask(LOG_GUEST_ERROR, "M25P80: Cannot execute cmd %x in "
+                          "QIO mode\n", s->cmd_in_progress);
+        }
+        break;
+    case QPP:
+    case QPP_4:
+    case PP4_4:
+        if (get_man(s) != MAN_NUMONYX || numonyx_mode(s) != MODE_DIO) {
+            s->needed_bytes = get_addr_length(s);
+            s->pos = 0;
+            s->len = 0;
+            s->state = STATE_COLLECTING_DATA;
+        } else {
+            qemu_log_mask(LOG_GUEST_ERROR, "M25P80: Cannot execute cmd %x in "
+                          "DIO mode\n", s->cmd_in_progress);
+        }
+        break;
 
         break;
     /* do EXIT_HPM if HPM is enabled. Otherwise, do RDID_AB */
@@ -1073,8 +1144,17 @@ static void decode_new_cmd(Flash *s, uint32_t value)
         break;
     case FAST_READ:
     case FAST_READ4:
+        decode_fast_read_cmd(s);
+        break;
     case DOR:
     case DOR4:
+        if (get_man(s) != MAN_NUMONYX || numonyx_mode(s) != MODE_QIO) {
+            decode_fast_read_cmd(s);
+        } else {
+            qemu_log_mask(LOG_GUEST_ERROR, "M25P80: Cannot execute cmd %x in "
+                          "QIO mode\n", s->cmd_in_progress);
+        }
+        break;
     case QOR:
     case QOR4:
     case OOR:
@@ -1083,11 +1163,22 @@ static void decode_new_cmd(Flash *s, uint32_t value)
     case O_FAST_READ:
     case O_FAST_READ4:
         decode_fast_read_cmd(s);
+        if (get_man(s) != MAN_NUMONYX || numonyx_mode(s) != MODE_DIO) {
+            decode_fast_read_cmd(s);
+        } else {
+            qemu_log_mask(LOG_GUEST_ERROR, "M25P80: Cannot execute cmd %x in "
+                          "DIO mode\n", s->cmd_in_progress);
+        }
         break;
 
     case DIOR:
     case DIOR4:
-        decode_dio_read_cmd(s);
+        if (get_man(s) != MAN_NUMONYX || numonyx_mode(s) != MODE_QIO) {
+            decode_dio_read_cmd(s);
+        } else {
+            qemu_log_mask(LOG_GUEST_ERROR, "M25P80: Cannot execute cmd %x in "
+                          "QIO mode\n", s->cmd_in_progress);
+        }
         break;
 
     case QIOR:
@@ -1095,6 +1186,12 @@ static void decode_new_cmd(Flash *s, uint32_t value)
     case OIOR4:
     case OIOR:
         decode_qio_read_cmd(s);
+        if (get_man(s) != MAN_NUMONYX || numonyx_mode(s) != MODE_DIO) {
+            decode_qio_read_cmd(s);
+        } else {
+            qemu_log_mask(LOG_GUEST_ERROR, "M25P80: Cannot execute cmd %x in "
+                          "DIO mode\n", s->cmd_in_progress);
+        }
         break;
 
     case WRSR:
@@ -1147,17 +1244,22 @@ static void decode_new_cmd(Flash *s, uint32_t value)
         break;
 
     case JEDEC_READ:
-        trace_m25p80_populated_jedec(s);
-        for (i = 0; i < s->pi->id_len; i++) {
-            s->data[i] = s->pi->id[i];
-        }
-        for (; i < SPI_NOR_MAX_ID_LEN; i++) {
-            s->data[i] = 0;
-        }
+        if (get_man(s) != MAN_NUMONYX || numonyx_mode(s) == MODE_STD) {
+            trace_m25p80_populated_jedec(s);
+            for (i = 0; i < s->pi->id_len; i++) {
+                s->data[i] = s->pi->id[i];
+            }
+            for (; i < SPI_NOR_MAX_ID_LEN; i++) {
+                s->data[i] = 0;
+            }
 
-        s->len = SPI_NOR_MAX_ID_LEN;
-        s->pos = 0;
-        s->state = STATE_READING_DATA;
+            s->len = SPI_NOR_MAX_ID_LEN;
+            s->pos = 0;
+            s->state = STATE_READING_DATA;
+        } else {
+            qemu_log_mask(LOG_GUEST_ERROR, "M25P80: Cannot execute JEDEC read "
+                          "in DIO or QIO mode\n");
+        }
         break;
 
     case RDCR:
