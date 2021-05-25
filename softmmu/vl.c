@@ -3379,6 +3379,7 @@ void qemu_init(int argc, char **argv, char **envp)
             case QEMU_OPTION_writeconfig:
                 {
                     FILE *fp;
+                    warn_report("-writeconfig is deprecated and will go away without a replacement");
                     if (strcmp(optarg, "-") == 0) {
                         fp = stdout;
                     } else {
