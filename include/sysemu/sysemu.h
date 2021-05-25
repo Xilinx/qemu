@@ -43,8 +43,6 @@ extern int win2k_install_hack;
 extern int alt_grab;
 extern int ctrl_grab;
 extern int graphic_rotate;
-extern int no_shutdown;
-extern int no_reboot;
 extern int old_param;
 extern int boot_menu;
 extern bool boot_strict;
@@ -105,8 +103,6 @@ typedef void QEMUBootSetHandler(void *opaque, const char *boot_order,
                                 Error **errp);
 void qemu_register_boot_set(QEMUBootSetHandler *func, void *opaque);
 void qemu_boot_set(const char *boot_order, Error **errp);
-
-QemuOpts *qemu_get_machine_opts(void);
 
 bool defaults_enabled(void);
 

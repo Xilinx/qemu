@@ -1261,7 +1261,6 @@ void qdev_machine_creation_done(void)
     notifier_list_notify(&machine_init_done_notifiers, NULL);
 
     if (rom_check_and_register_reset() != 0) {
-        error_report("rom check and register reset failed");
         exit(1);
     }
 

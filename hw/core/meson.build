@@ -1,7 +1,6 @@
 # core qdev-related obj files, also used by *-user and unit tests
 hwcore_files = files(
   'bus.c',
-  'fw-path-provider.c',
   'hotplug.c',
   'qdev-properties.c',
   'qdev.c',
@@ -66,6 +65,7 @@ specific_ss.add(when: 'CONFIG_SOFTMMU', if_true: files(
 ))
 
 softmmu_ss.add(files(
+  'fw-path-provider.c',
   'loader.c',
   'machine-hmp-cmds.c',
   'machine.c',
