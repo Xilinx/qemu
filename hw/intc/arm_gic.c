@@ -143,6 +143,8 @@ static inline void gic_get_best_virq(GICState *s, int cpu,
 static inline bool gic_irq_signaling_enabled(GICState *s, int cpu, bool virt,
                                     int group_mask)
 {
+    int cpu_iface = virt ? (cpu + GIC_NCPU) : cpu;
+
     if (!virt && !(s->ctlr & group_mask)) {
         return false;
     }
@@ -151,7 +153,7 @@ static inline bool gic_irq_signaling_enabled(GICState *s, int cpu, bool virt,
         return false;
     }
 
-    if (!(s->cpu_ctlr[cpu] & group_mask)) {
+    if (!(s->cpu_ctlr[cpu_iface] & group_mask)) {
         return false;
     }
 
