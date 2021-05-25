@@ -33,26 +33,9 @@ void translator_loop_temp_check(DisasContextBase *db)
     }
 }
 
-static TCGOp *gen_trace_tb_enter(TranslationBlock *tb)
-{
-    TCGOp *last_pc_op;
-
-    TCGv pc_end = tcg_temp_new();
-
-    /* The last PC value is not known yet */
-    tcg_gen_movi_tl(pc_end, 0xdeadbeef);
-    last_pc_op = tcg_last_op();
-
-    trace_tb_enter_tcg(tcg_ctx->cpu, cpu_env, tb->pc, pc_end);
-    tcg_temp_free(pc_end);
-
-    return last_pc_op;
-}
-
 void translator_loop(const TranslatorOps *ops, DisasContextBase *db,
                      CPUState *cpu, TranslationBlock *tb, int max_insns)
 {
-    TCGOp *trace_pc_end;
     int bp_insn = 0;
     bool plugin_enabled;
 
@@ -73,9 +56,6 @@ void translator_loop(const TranslatorOps *ops, DisasContextBase *db,
 
     /* Start translating.  */
     gen_tb_start(db->tb);
-
-    trace_pc_end = gen_trace_tb_enter(tb);
-
     ops->tb_start(db, cpu);
     tcg_debug_assert(db->is_jmp == DISAS_NEXT);  /* no early exit */
 
@@ -148,9 +128,6 @@ void translator_loop(const TranslatorOps *ops, DisasContextBase *db,
     /* Emit code to exit the TB, as indicated by db->is_jmp.  */
     ops->tb_stop(db, cpu);
     gen_tb_end(db->tb, db->num_insns - bp_insn);
-
-    /* Fixup the last PC value in the tb_enter trace now that we know it */
-    tcg_set_insn_param(trace_pc_end, 1, db->pc_next);
 
     if (plugin_enabled) {
         plugin_gen_tb_end(cpu);
