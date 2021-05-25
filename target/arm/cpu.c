@@ -2403,8 +2403,8 @@ static const ARMCPUInfo arm_cpus[] = {
 
 static Property arm_cpu_properties[] = {
     DEFINE_PROP_UINT32("psci-conduit", ARMCPU, psci_conduit, 0),
-    DEFINE_PROP_UINT32("ctr", ARMCPU, ctr, 0),
-    DEFINE_PROP_UINT32("clidr", ARMCPU, clidr, 0),
+    DEFINE_PROP_UINT64("ctr", ARMCPU, ctr, 0),
+    DEFINE_PROP_UINT64("clidr", ARMCPU, clidr, 0),
     DEFINE_PROP_UINT32("id_pfr0", ARMCPU, isar.id_pfr0, 0),
     DEFINE_PROP_UINT32("id_pfr1", ARMCPU, isar.id_pfr1, 0),
     DEFINE_PROP_UINT64("ccsidr0", ARMCPU, ccsidr[0], 0),
