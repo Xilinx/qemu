@@ -1,9 +1,8 @@
 /*
- * QEMU model of the USB DWC3 host controller emulation.
+ * QEMU model of the VersalUsb2CtrlRegs Register control/Status block for
+ * USB2.0 controller
  *
- * Copyright (c) 2020 Xilinx Inc.
- *
- * Written by Vikram Garhwal<fnu.vikram@xilinx.com>
+ * Copyright (c) 2020 Xilinx Inc. Vikram Garhwal <fnu.vikram@xilinx.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -23,33 +22,24 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#ifndef HCD_DWC3_H
-#define HCD_DWC3_H
 
-#include "hw/usb/hcd-xhci.h"
-#include "hw/usb/hcd-xhci-sysbus.h"
+#ifndef _XLNX_USB2_REGS_H_
+#define _XLNX_USB2_REGS_H_
 
-#define TYPE_USB_DWC3 "usb_dwc3"
+#define TYPE_XILINX_VERSAL_USB2_CTRL_REGS "xlnx.versal-usb2-ctrl-regs"
 
-#define USB_DWC3(obj) \
-     OBJECT_CHECK(USBDWC3, (obj), TYPE_USB_DWC3)
+#define XILINX_VERSAL_USB2_CTRL_REGS(obj) \
+     OBJECT_CHECK(VersalUsb2CtrlRegs, (obj), TYPE_XILINX_VERSAL_USB2_CTRL_REGS)
 
-#define USB_DWC3_R_MAX ((0x530 / 4) + 1)
-#define DWC3_SIZE 0x10000
+#define USB2_REGS_R_MAX ((0x78 / 4) + 1)
 
-typedef struct USBDWC3 {
+typedef struct VersalUsb2CtrlRegs {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
-    XHCISysbusState sysbus_xhci;
+    qemu_irq irq_ir;
 
-    uint32_t regs[USB_DWC3_R_MAX];
-    RegisterInfo regs_info[USB_DWC3_R_MAX];
-
-    struct {
-        uint8_t     mode;
-        uint32_t    dwc_usb3_user;
-    } cfg;
-
-} USBDWC3;
+    uint32_t regs[USB2_REGS_R_MAX];
+    RegisterInfo regs_info[USB2_REGS_R_MAX];
+} VersalUsb2CtrlRegs;
 
 #endif

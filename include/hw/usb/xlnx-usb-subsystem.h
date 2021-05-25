@@ -1,9 +1,7 @@
 /*
- * QEMU model of the USB DWC3 host controller emulation.
+ * QEMU model of the Xilinx usb subsystem
  *
- * Copyright (c) 2020 Xilinx Inc.
- *
- * Written by Vikram Garhwal<fnu.vikram@xilinx.com>
+ * Copyright (c) 2020 Xilinx Inc. Sai Pavan Boddu <sai.pavan.boddu@xilinx.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -23,33 +21,25 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#ifndef HCD_DWC3_H
-#define HCD_DWC3_H
 
-#include "hw/usb/hcd-xhci.h"
-#include "hw/usb/hcd-xhci-sysbus.h"
+#ifndef _XLNX_VERSAL_USB_SUBSYSTEM_H_
+#define _XLNX_VERSAL_USB_SUBSYSTEM_H_
 
-#define TYPE_USB_DWC3 "usb_dwc3"
+#include "hw/usb/xlnx-versal-usb2-ctrl-regs.h"
+#include "hw/usb/hcd-dwc3.h"
 
-#define USB_DWC3(obj) \
-     OBJECT_CHECK(USBDWC3, (obj), TYPE_USB_DWC3)
+#define TYPE_XILINX_VERSAL_USB2 "xlnx.versal-usb2"
 
-#define USB_DWC3_R_MAX ((0x530 / 4) + 1)
-#define DWC3_SIZE 0x10000
+#define VERSAL_USB2(obj) \
+     OBJECT_CHECK(VersalUsb2, (obj), TYPE_XILINX_VERSAL_USB2)
 
-typedef struct USBDWC3 {
+typedef struct VersalUsb2 {
     SysBusDevice parent_obj;
-    MemoryRegion iomem;
-    XHCISysbusState sysbus_xhci;
+    MemoryRegion dwc3_mr;
+    MemoryRegion usb2Ctrl_mr;
 
-    uint32_t regs[USB_DWC3_R_MAX];
-    RegisterInfo regs_info[USB_DWC3_R_MAX];
-
-    struct {
-        uint8_t     mode;
-        uint32_t    dwc_usb3_user;
-    } cfg;
-
-} USBDWC3;
+    VersalUsb2CtrlRegs usb2Ctrl;
+    USBDWC3 dwc3;
+} VersalUsb2;
 
 #endif

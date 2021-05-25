@@ -1,9 +1,12 @@
 /*
  * QEMU model of the USB DWC3 host controller emulation.
  *
- * Copyright (c) 2020 Xilinx Inc.
+ * This model defines global register space of DWC3 controller. Global
+ * registers control the AXI/AHB interfaces properties, external FIFO support
+ * and event count support. All of which are unimplemented at present. We are
+ * only supporting core reset and read of ID register.
  *
- * Written by Vikram Garhwal<fnu.vikram@xilinx.com>
+ * Copyright (c) 2020 Xilinx Inc. Vikram Garhwal<fnu.vikram@xilinx.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -33,6 +36,7 @@
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
 #include "hw/usb/hcd-dwc3.h"
+#include "qapi/error.h"
 
 #ifndef USB_DWC3_ERR_DEBUG
 #define USB_DWC3_ERR_DEBUG 0
@@ -341,7 +345,8 @@ REG32(GFLADJ, 0x530)
     FIELD(GFLADJ, GFLADJ_30MHZ_SDBND_SEL, 7, 1)
     FIELD(GFLADJ, GFLADJ_30MHZ, 0, 6)
 
-static void reset_csr(USBDWC3 *s)
+#define DWC3_GLOBAL_OFFSET 0xC100
+static void reset_csr(USBDWC3 * s)
 {
     int i = 0;
     /*
@@ -349,23 +354,31 @@ static void reset_csr(USBDWC3 *s)
      * GUSB2PHYCFGn registers and GUSB3PIPECTLn registers. We will skip PHY
      * register as we don't implement them.
      */
-    for (i = 0; i < R_GCTL; i++) {
-        register_reset(&s->regs_info[i]);
-    }
-
-    for (i = R_GCTL; i < R_GBUSERRADDRLO; i++) {
-        if (i == R_GUCTL1 || i == R_GPMSTS) {
+    for (i = 0; i < USB_DWC3_R_MAX; i++) {
+        switch (i) {
+        case R_GCTL:
+            break;
+        case R_GSTS:
+            break;
+        case R_GSNPSID:
+            break;
+        case R_GGPIO:
+            break;
+        case R_GUID:
+            break;
+        case R_GUCTL:
+            break;
+        case R_GHWPARAMS0...R_GHWPARAMS7:
+            break;
+        case R_GHWPARAMS8:
+            break;
+        default:
             register_reset(&s->regs_info[i]);
-        } else {
-            continue;
+            break;
         }
     }
 
-    for (i = R_GBUSERRADDRLO; i < USB_DWC3_R_MAX; i++) {
-        register_reset(&s->regs_info[i]);
-    }
-
-    xhci_sysbus_reset(DEVICE(s));
+    xhci_sysbus_reset(DEVICE(&s->sysbus_xhci));
 }
 
 static void usb_dwc3_gctl_postw(RegisterInfo *reg, uint64_t val64)
@@ -387,131 +400,167 @@ static void usb_dwc3_guid_postw(RegisterInfo *reg, uint64_t val64)
 static const RegisterAccessInfo usb_dwc3_regs_info[] = {
     {   .name = "GSBUSCFG0",  .addr = A_GSBUSCFG0,
         .ro = 0xf300,
+        .unimp = 0xffffffff,
     },{ .name = "GSBUSCFG1",  .addr = A_GSBUSCFG1,
         .reset = 0x300,
         .ro = 0xffffe0ff,
+        .unimp = 0xffffffff,
     },{ .name = "GTXTHRCFG",  .addr = A_GTXTHRCFG,
         .ro = 0xd000ffff,
+        .unimp = 0xffffffff,
     },{ .name = "GRXTHRCFG",  .addr = A_GRXTHRCFG,
         .ro = 0xd007e000,
+        .unimp = 0xffffffff,
     },{ .name = "GCTL",  .addr = A_GCTL,
         .reset = 0x30c13004, .post_write = usb_dwc3_gctl_postw,
     },{ .name = "GPMSTS",  .addr = A_GPMSTS,
         .ro = 0xfffffff,
+        .unimp = 0xffffffff,
     },{ .name = "GSTS",  .addr = A_GSTS,
         .reset = 0x7e800000,
         .ro = 0xffffffcf,
         .w1c = 0x30,
+        .unimp = 0xffffffff,
     },{ .name = "GUCTL1",  .addr = A_GUCTL1,
         .reset = 0x198a,
         .ro = 0x7800,
+        .unimp = 0xffffffff,
     },{ .name = "GSNPSID",  .addr = A_GSNPSID,
         .reset = 0x5533330a,
         .ro = 0xffffffff,
     },{ .name = "GGPIO",  .addr = A_GGPIO,
         .ro = 0xffff,
+        .unimp = 0xffffffff,
     },{ .name = "GUID",  .addr = A_GUID,
         .reset = 0x12345678, .post_write = usb_dwc3_guid_postw,
     },{ .name = "GUCTL",  .addr = A_GUCTL,
         .reset = 0x0c808010,
         .ro = 0x1c8000,
+        .unimp = 0xffffffff,
     },{ .name = "GBUSERRADDRLO",  .addr = A_GBUSERRADDRLO,
         .ro = 0xffffffff,
     },{ .name = "GBUSERRADDRHI",  .addr = A_GBUSERRADDRHI,
         .ro = 0xffffffff,
     },{ .name = "GHWPARAMS0",  .addr = A_GHWPARAMS0,
-        .reset = 0x4020404a,
         .ro = 0xffffffff,
     },{ .name = "GHWPARAMS1",  .addr = A_GHWPARAMS1,
-        .reset = 0x222493b,
         .ro = 0xffffffff,
     },{ .name = "GHWPARAMS2",  .addr = A_GHWPARAMS2,
-        .reset = 0x12345678,
         .ro = 0xffffffff,
     },{ .name = "GHWPARAMS3",  .addr = A_GHWPARAMS3,
-        .reset = 0x618c088,
         .ro = 0xffffffff,
     },{ .name = "GHWPARAMS4",  .addr = A_GHWPARAMS4,
-        .reset = 0x47822004,
         .ro = 0xffffffff,
     },{ .name = "GHWPARAMS5",  .addr = A_GHWPARAMS5,
-        .reset = 0x4202088,
         .ro = 0xffffffff,
     },{ .name = "GHWPARAMS6",  .addr = A_GHWPARAMS6,
-        .reset = 0x7850c20,
         .ro = 0xffffffff,
     },{ .name = "GHWPARAMS7",  .addr = A_GHWPARAMS7,
         .ro = 0xffffffff,
     },{ .name = "GDBGFIFOSPACE",  .addr = A_GDBGFIFOSPACE,
         .reset = 0xa0000,
         .ro = 0xfffffe00,
+        .unimp = 0xffffffff,
     },{ .name = "GUCTL2",  .addr = A_GUCTL2,
         .reset = 0x40d,
         .ro = 0x2000,
+        .unimp = 0xffffffff,
     },{ .name = "GUSB2PHYCFG",  .addr = A_GUSB2PHYCFG,
         .reset = 0x40102410,
         .ro = 0x1e014030,
+        .unimp = 0xffffffff,
     },{ .name = "GUSB2I2CCTL",  .addr = A_GUSB2I2CCTL,
         .ro = 0xffffffff,
+        .unimp = 0xffffffff,
     },{ .name = "GUSB2PHYACC_ULPI",  .addr = A_GUSB2PHYACC_ULPI,
         .ro = 0xfd000000,
+        .unimp = 0xffffffff,
     },{ .name = "GTXFIFOSIZ0",  .addr = A_GTXFIFOSIZ0,
         .reset = 0x2c7000a,
+        .unimp = 0xffffffff,
     },{ .name = "GTXFIFOSIZ1",  .addr = A_GTXFIFOSIZ1,
         .reset = 0x2d10103,
+        .unimp = 0xffffffff,
     },{ .name = "GTXFIFOSIZ2",  .addr = A_GTXFIFOSIZ2,
         .reset = 0x3d40103,
+        .unimp = 0xffffffff,
     },{ .name = "GTXFIFOSIZ3",  .addr = A_GTXFIFOSIZ3,
         .reset = 0x4d70083,
+        .unimp = 0xffffffff,
     },{ .name = "GTXFIFOSIZ4",  .addr = A_GTXFIFOSIZ4,
         .reset = 0x55a0083,
+        .unimp = 0xffffffff,
     },{ .name = "GTXFIFOSIZ5",  .addr = A_GTXFIFOSIZ5,
         .reset = 0x5dd0083,
+        .unimp = 0xffffffff,
     },{ .name = "GRXFIFOSIZ0",  .addr = A_GRXFIFOSIZ0,
         .reset = 0x1c20105,
+        .unimp = 0xffffffff,
     },{ .name = "GRXFIFOSIZ1",  .addr = A_GRXFIFOSIZ1,
         .reset = 0x2c70000,
+        .unimp = 0xffffffff,
     },{ .name = "GRXFIFOSIZ2",  .addr = A_GRXFIFOSIZ2,
         .reset = 0x2c70000,
+        .unimp = 0xffffffff,
     },{ .name = "GEVNTADRLO_0",  .addr = A_GEVNTADRLO_0,
+        .unimp = 0xffffffff,
     },{ .name = "GEVNTADRHI_0",  .addr = A_GEVNTADRHI_0,
+        .unimp = 0xffffffff,
     },{ .name = "GEVNTSIZ_0",  .addr = A_GEVNTSIZ_0,
         .ro = 0x7fff0000,
+        .unimp = 0xffffffff,
     },{ .name = "GEVNTCOUNT_0",  .addr = A_GEVNTCOUNT_0,
         .ro = 0x7fff0000,
+        .unimp = 0xffffffff,
     },{ .name = "GEVNTADRLO_1",  .addr = A_GEVNTADRLO_1,
+        .unimp = 0xffffffff,
     },{ .name = "GEVNTADRHI_1",  .addr = A_GEVNTADRHI_1,
+        .unimp = 0xffffffff,
     },{ .name = "GEVNTSIZ_1",  .addr = A_GEVNTSIZ_1,
         .ro = 0x7fff0000,
+        .unimp = 0xffffffff,
     },{ .name = "GEVNTCOUNT_1",  .addr = A_GEVNTCOUNT_1,
         .ro = 0x7fff0000,
+        .unimp = 0xffffffff,
     },{ .name = "GEVNTADRLO_2",  .addr = A_GEVNTADRLO_2,
+        .unimp = 0xffffffff,
     },{ .name = "GEVNTADRHI_2",  .addr = A_GEVNTADRHI_2,
+        .unimp = 0xffffffff,
     },{ .name = "GEVNTSIZ_2",  .addr = A_GEVNTSIZ_2,
         .ro = 0x7fff0000,
+        .unimp = 0xffffffff,
     },{ .name = "GEVNTCOUNT_2",  .addr = A_GEVNTCOUNT_2,
         .ro = 0x7fff0000,
+        .unimp = 0xffffffff,
     },{ .name = "GEVNTADRLO_3",  .addr = A_GEVNTADRLO_3,
+        .unimp = 0xffffffff,
     },{ .name = "GEVNTADRHI_3",  .addr = A_GEVNTADRHI_3,
+        .unimp = 0xffffffff,
     },{ .name = "GEVNTSIZ_3",  .addr = A_GEVNTSIZ_3,
         .ro = 0x7fff0000,
+        .unimp = 0xffffffff,
     },{ .name = "GEVNTCOUNT_3",  .addr = A_GEVNTCOUNT_3,
         .ro = 0x7fff0000,
+        .unimp = 0xffffffff,
     },{ .name = "GHWPARAMS8",  .addr = A_GHWPARAMS8,
-        .reset = 0x478,
         .ro = 0xffffffff,
     },{ .name = "GTXFIFOPRIDEV",  .addr = A_GTXFIFOPRIDEV,
         .ro = 0xffffffc0,
+        .unimp = 0xffffffff,
     },{ .name = "GTXFIFOPRIHST",  .addr = A_GTXFIFOPRIHST,
         .ro = 0xfffffff8,
+        .unimp = 0xffffffff,
     },{ .name = "GRXFIFOPRIHST",  .addr = A_GRXFIFOPRIHST,
         .ro = 0xfffffff8,
+        .unimp = 0xffffffff,
     },{ .name = "GDMAHLRATIO",  .addr = A_GDMAHLRATIO,
         .ro = 0xffffe0e0,
+        .unimp = 0xffffffff,
     },{ .name = "GFLADJ",  .addr = A_GFLADJ,
         .reset = 0xc83f020,
         .rsvd = 0x40,
         .ro = 0x400040,
+        .unimp = 0xffffffff,
     }
 };
 
@@ -521,9 +570,17 @@ static void usb_dwc3_reset(DeviceState *dev)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        register_reset(&s->regs_info[i]);
+        switch (i) {
+        case R_GHWPARAMS0...R_GHWPARAMS7:
+            break;
+        case R_GHWPARAMS8:
+            break;
+        default:
+            register_reset(&s->regs_info[i]);
+        };
     }
-    xhci_sysbus_reset(dev);
+
+    xhci_sysbus_reset(DEVICE(&s->sysbus_xhci));
 }
 
 static const MemoryRegionOps usb_dwc3_ops = {
@@ -536,14 +593,42 @@ static const MemoryRegionOps usb_dwc3_ops = {
     },
 };
 
+static void usb_dwc3_realize(DeviceState *dev, Error **errp)
+{
+    USBDWC3 *s = USB_DWC3(dev);
+    SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
+    Error *err = NULL;
+
+    sysbus_realize(SYS_BUS_DEVICE(&s->sysbus_xhci), &err);
+    if (err) {
+        error_propagate(errp, err);
+        return;
+    }
+
+    memory_region_add_subregion(&s->iomem, 0,
+         sysbus_mmio_get_region(SYS_BUS_DEVICE(&s->sysbus_xhci), 0));
+    sysbus_init_mmio(sbd, &s->iomem);
+
+    /*
+     * Device Configuration
+     */
+    s->regs[R_GHWPARAMS0] = 0x40204048 | s->cfg.mode;
+    s->regs[R_GHWPARAMS1] = 0x222493b;
+    s->regs[R_GHWPARAMS2] = 0x12345678;
+    s->regs[R_GHWPARAMS3] = 0x618c088;
+    s->regs[R_GHWPARAMS4] = 0x47822004;
+    s->regs[R_GHWPARAMS5] = 0x4202088;
+    s->regs[R_GHWPARAMS6] = 0x7850c20;
+    s->regs[R_GHWPARAMS7] = 0x0;
+    s->regs[R_GHWPARAMS8] = 0x478;
+}
+
 static void usb_dwc3_init(Object *obj)
 {
     USBDWC3 *s = USB_DWC3(obj);
-    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
     RegisterInfoArray *reg_array;
-    XHCISysbusState *ss = XHCI_SYSBUS(obj);
 
-    memory_region_init(&s->iomem, obj, TYPE_USB_DWC3, USB_DWC3_R_MAX * 4);
+    memory_region_init(&s->iomem, obj, TYPE_USB_DWC3, DWC3_SIZE);
     reg_array =
         register_init_block32(DEVICE(obj), usb_dwc3_regs_info,
                               ARRAY_SIZE(usb_dwc3_regs_info),
@@ -552,16 +637,27 @@ static void usb_dwc3_init(Object *obj)
                               USB_DWC3_ERR_DEBUG,
                               USB_DWC3_R_MAX * 4);
     memory_region_add_subregion(&s->iomem,
-                                0x0,
+                                DWC3_GLOBAL_OFFSET,
                                 &reg_array->mem);
-    sysbus_init_mmio(sbd, &s->iomem);
+    object_initialize_child(obj, "dwc3-xhci", &s->sysbus_xhci,
+                            TYPE_XHCI_SYSBUS);
+    qdev_alias_all_properties(DEVICE(&s->sysbus_xhci), obj);
+
     s->cfg.mode = HOST_MODE;
-    ss->xhci.numintrs = 4;
-    ss->xhci.numslots = 2;
 }
 
+static const VMStateDescription vmstate_usb_dwc3 = {
+    .name = "usb-dwc3",
+    .version_id = 1,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT32_ARRAY(regs, USBDWC3, USB_DWC3_R_MAX),
+        VMSTATE_UINT8(cfg.mode, USBDWC3),
+        VMSTATE_UINT32(cfg.dwc_usb3_user, USBDWC3),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static Property usb_dwc3_properties[] = {
-    DEFINE_PROP_BOOL("usb2-mode", USBDWC3, cfg.usb2_mode, false),
     DEFINE_PROP_UINT32("DWC_USB3_USERID", USBDWC3, cfg.dwc_usb3_user,
                        0x12345678),
     DEFINE_PROP_END_OF_LIST(),
@@ -572,12 +668,14 @@ static void usb_dwc3_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->reset = usb_dwc3_reset;
+    dc->realize = usb_dwc3_realize;
+    dc->vmsd = &vmstate_usb_dwc3;
     device_class_set_props(dc, usb_dwc3_properties);
 }
 
 static const TypeInfo usb_dwc3_info = {
     .name          = TYPE_USB_DWC3,
-    .parent        = TYPE_XHCI_SYSBUS,
+    .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(USBDWC3),
     .class_init    = usb_dwc3_class_init,
     .instance_init = usb_dwc3_init,
