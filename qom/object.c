@@ -685,6 +685,7 @@ static void object_finalize(void *data)
     object_deinit(obj, ti);
 
     g_assert(obj->ref == 0);
+    g_assert(obj->parent == NULL);
     if (obj->free) {
         obj->free(obj);
     }
@@ -1415,15 +1416,18 @@ char *object_property_get_str(Object *obj, const char *name,
                               Error **errp)
 {
     QObject *ret = object_property_get_qobject(obj, name, errp);
+    QString *qstring;
     char *retval;
 
     if (!ret) {
         return NULL;
     }
-
-    retval = g_strdup(qobject_get_try_str(ret));
-    if (!retval) {
+    qstring = qobject_to(QString, ret);
+    if (!qstring) {
         error_setg(errp, QERR_INVALID_PARAMETER_TYPE, name, "string");
+        retval = NULL;
+    } else {
+        retval = g_strdup(qstring_get_str(qstring));
     }
 
     qobject_unref(ret);

@@ -28,6 +28,7 @@
 #include "hw/block/m24cxx.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
+#include "hw/qdev-properties-system.h"
 
 #ifndef M24CXX_DEBUG
 #define M24CXX_DEBUG 0

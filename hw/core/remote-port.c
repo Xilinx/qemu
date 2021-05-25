@@ -23,6 +23,7 @@
 #include "qemu/error-report.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
+#include "hw/qdev-properties-system.h"
 
 #ifndef _WIN32
 #include <sys/mman.h>

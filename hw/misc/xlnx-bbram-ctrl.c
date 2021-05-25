@@ -35,6 +35,7 @@
 #include "sysemu/block-backend.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
+#include "hw/qdev-properties-system.h"
 
 #include "hw/zynqmp_aes_key.h"
 #include "hw/misc/xlnx-aes.h"

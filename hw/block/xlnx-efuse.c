@@ -42,6 +42,7 @@
 #include "qemu/main-loop.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
+#include "hw/qdev-properties-system.h"
 
 #include "sysemu/block-backend.h"
 #include "hw/zynqmp_aes_key.h"

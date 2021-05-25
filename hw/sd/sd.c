@@ -43,6 +43,7 @@
 #include "qemu/bitmap.h"
 #include "qemu/cutils.h"
 #include "hw/qdev-properties.h"
+#include "hw/qdev-properties-system.h"
 #include "qemu/error-report.h"
 #include "qemu/timer.h"
 #include "qemu/log.h"

@@ -52,6 +52,7 @@
 #include "migration/colo.h"
 #include "hw/boards.h"
 #include "hw/qdev-properties.h"
+#include "hw/qdev-properties-system.h"
 #include "monitor/monitor.h"
 #include "net/announce.h"
 #include "qemu/queue.h"
@@ -2092,6 +2093,12 @@ static bool migrate_prepare(MigrationState *s, bool blk, bool blk_inc,
 
     if (runstate_check(RUN_STATE_INMIGRATE)) {
         error_setg(errp, "Guest is waiting for an incoming migration");
+        return false;
+    }
+
+    if (runstate_check(RUN_STATE_POSTMIGRATE)) {
+        error_setg(errp, "Can't migrate the vm that was paused due to "
+                   "previous migration");
         return false;
     }
 

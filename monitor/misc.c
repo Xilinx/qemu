@@ -136,11 +136,7 @@ char *qmp_human_monitor_command(const char *command_line, bool has_cpu_index,
     handle_hmp_command(&hmp, command_line);
 
     WITH_QEMU_LOCK_GUARD(&hmp.common.mon_lock) {
-        if (qstring_get_length(hmp.common.outbuf) > 0) {
-            output = g_strdup(qstring_get_str(hmp.common.outbuf));
-        } else {
-            output = g_strdup("");
-        }
+        output = g_strdup(hmp.common.outbuf->str);
     }
 
 out:
@@ -492,8 +488,10 @@ static void hmp_singlestep(Monitor *mon, const QDict *qdict)
 static void hmp_gdbserver(Monitor *mon, const QDict *qdict)
 {
     const char *device = qdict_get_try_str(qdict, "device");
-    if (!device)
+    if (!device) {
         device = "tcp::" DEFAULT_GDBSTUB_PORT;
+    }
+
     if (gdbserver_start(device) < 0) {
         monitor_printf(mon, "Could not open gdbserver on device '%s'\n",
                        device);
@@ -559,10 +557,11 @@ static void memory_dump(Monitor *mon, int count, int format, int wsize,
     }
 
     len = wsize * count;
-    if (wsize == 1)
+    if (wsize == 1) {
         line_size = 8;
-    else
+    } else {
         line_size = 16;
+    }
     max_digits = 0;
 
     switch(format) {
@@ -583,10 +582,11 @@ static void memory_dump(Monitor *mon, int count, int format, int wsize,
     }
 
     while (len > 0) {
-        if (is_physical)
+        if (is_physical) {
             monitor_printf(mon, TARGET_FMT_plx ":", addr);
-        else
+        } else {
             monitor_printf(mon, TARGET_FMT_lx ":", (target_ulong)addr);
+        }
         l = len;
         if (l > line_size)
             l = line_size;
@@ -915,7 +915,7 @@ static void hmp_ioport_read(Monitor *mon, const QDict *qdict)
         suffix = 'l';
         break;
     }
-    monitor_printf(mon, "port%c[0x%04x] = %#0*x\n",
+    monitor_printf(mon, "port%c[0x%04x] = 0x%0*x\n",
                    suffix, addr, size * 2, val);
 }
 

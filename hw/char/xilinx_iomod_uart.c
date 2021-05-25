@@ -33,6 +33,7 @@
 #include "sysemu/sysemu.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
+#include "hw/qdev-properties-system.h"
 #include "hw/irq.h"
 
 #ifndef XILINX_IO_MODULE_UART_ERR_DEBUG

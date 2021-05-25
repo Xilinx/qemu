@@ -11,6 +11,7 @@
 #include "chardev/char-fe.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
+#include "hw/qdev-properties-system.h"
 #include "hw/register.h"
 #include "hw/irq.h"
 #include "qemu/fifo.h"

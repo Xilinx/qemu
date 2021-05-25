@@ -31,6 +31,7 @@
 #include "hw/pci/pci_bus.h"
 #include "hw/pci/pci_host.h"
 #include "hw/qdev-properties.h"
+#include "hw/qdev-properties-system.h"
 #include "migration/qemu-file-types.h"
 #include "migration/vmstate.h"
 #include "monitor/monitor.h"
@@ -559,7 +560,7 @@ static int get_pci_config_device(QEMUFile *f, void *pv, size_t size,
 
 /* just put buffer */
 static int put_pci_config_device(QEMUFile *f, void *pv, size_t size,
-                                 const VMStateField *field, QJSON *vmdesc)
+                                 const VMStateField *field, JSONWriter *vmdesc)
 {
     const uint8_t **v = pv;
     assert(size == pci_config_size(container_of(pv, PCIDevice, config)));
@@ -597,7 +598,7 @@ static int get_pci_irq_state(QEMUFile *f, void *pv, size_t size,
 }
 
 static int put_pci_irq_state(QEMUFile *f, void *pv, size_t size,
-                             const VMStateField *field, QJSON *vmdesc)
+                             const VMStateField *field, JSONWriter *vmdesc)
 {
     int i;
     PCIDevice *s = container_of(pv, PCIDevice, irq_state);

@@ -34,6 +34,7 @@
 #include "hw/core/cpu.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
+#include "hw/qdev-properties-system.h"
 #include "sysemu/reset.h"
 #include "sysemu/blockdev.h"
 #include "sysemu/block-backend.h"

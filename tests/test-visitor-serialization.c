@@ -55,7 +55,6 @@ typedef struct PrimitiveType {
         int16_t s16;
         int32_t s32;
         int64_t s64;
-        intmax_t max;
     } value;
     enum PrimitiveTypeKind type;
     const char *description;
@@ -307,25 +306,46 @@ static void test_primitives(gconstpointer opaque)
                      &error_abort);
 
     g_assert(pt_copy != NULL);
-    if (pt->type == PTYPE_STRING) {
+    switch (pt->type) {
+    case PTYPE_STRING:
         g_assert_cmpstr(pt->value.string, ==, pt_copy->value.string);
         g_free((char *)pt_copy->value.string);
-    } else if (pt->type == PTYPE_NUMBER) {
-        GString *double_expected = g_string_new("");
-        GString *double_actual = g_string_new("");
-        /* we serialize with %f for our reference visitors, so rather than fuzzy
-         * floating math to test "equality", just compare the formatted values
-         */
-        g_string_printf(double_expected, "%.6f", pt->value.number);
-        g_string_printf(double_actual, "%.6f", pt_copy->value.number);
-        g_assert_cmpstr(double_actual->str, ==, double_expected->str);
-
-        g_string_free(double_expected, true);
-        g_string_free(double_actual, true);
-    } else if (pt->type == PTYPE_BOOLEAN) {
-        g_assert_cmpint(!!pt->value.max, ==, !!pt->value.max);
-    } else {
-        g_assert_cmpint(pt->value.max, ==, pt_copy->value.max);
+        break;
+    case PTYPE_BOOLEAN:
+        g_assert_cmpint(pt->value.boolean, ==, pt->value.boolean);
+        break;
+    case PTYPE_NUMBER:
+        g_assert_cmpfloat(pt->value.number, ==, pt_copy->value.number);
+        break;
+    case PTYPE_INTEGER:
+        g_assert_cmpint(pt->value.integer, ==, pt_copy->value.integer);
+        break;
+    case PTYPE_U8:
+        g_assert_cmpuint(pt->value.u8, ==, pt_copy->value.u8);
+        break;
+    case PTYPE_U16:
+        g_assert_cmpuint(pt->value.u16, ==, pt_copy->value.u16);
+        break;
+    case PTYPE_U32:
+        g_assert_cmpuint(pt->value.u32, ==, pt_copy->value.u32);
+        break;
+    case PTYPE_U64:
+        g_assert_cmpuint(pt->value.u64, ==, pt_copy->value.u64);
+        break;
+    case PTYPE_S8:
+        g_assert_cmpint(pt->value.s8, ==, pt_copy->value.s8);
+        break;
+    case PTYPE_S16:
+        g_assert_cmpint(pt->value.s16, ==, pt_copy->value.s16);
+        break;
+    case PTYPE_S32:
+        g_assert_cmpint(pt->value.s32, ==, pt_copy->value.s32);
+        break;
+    case PTYPE_S64:
+        g_assert_cmpint(pt->value.s64, ==, pt_copy->value.s64);
+        break;
+    case PTYPE_EOL:
+        g_assert_not_reached();
     }
 
     ops->cleanup(serialize_data);
@@ -703,10 +723,6 @@ static PrimitiveType pt_values[] = {
         .value.boolean = 0,
     },
     /* number tests (double) */
-    /* note: we format these to %.6f before comparing, since that's how
-     * we serialize them and it doesn't make sense to check precision
-     * beyond that.
-     */
     {
         .description = "number_sanity1",
         .type = PTYPE_NUMBER,
@@ -715,7 +731,7 @@ static PrimitiveType pt_values[] = {
     {
         .description = "number_sanity2",
         .type = PTYPE_NUMBER,
-        .value.number = 3.14159265,
+        .value.number = 3.141593,
     },
     {
         .description = "number_min",
@@ -941,15 +957,15 @@ static void qmp_deserialize(void **native_out, void *datap,
                             VisitorFunc visit, Error **errp)
 {
     QmpSerializeData *d = datap;
-    QString *output_json;
+    GString *output_json;
     QObject *obj_orig, *obj;
 
     visit_complete(d->qov, &d->obj);
     obj_orig = d->obj;
     output_json = qobject_to_json(obj_orig);
-    obj = qobject_from_json(qstring_get_str(output_json), &error_abort);
+    obj = qobject_from_json(output_json->str, &error_abort);
 
-    qobject_unref(output_json);
+    g_string_free(output_json, true);
     d->qiv = qobject_input_visitor_new(obj);
     qobject_unref(obj_orig);
     qobject_unref(obj);

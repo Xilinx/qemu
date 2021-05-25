@@ -32,6 +32,7 @@
 #include "qemu/log.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
+#include "hw/qdev-properties-system.h"
 #include "chardev/char.h"
 #include "chardev/char-fe.h"
 

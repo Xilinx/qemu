@@ -3563,10 +3563,10 @@ void qemu_init(int argc, char **argv, char **envp)
         exit(0);
     }
 
-    qemu_init_displays();
     if (!preconfig_requested) {
         qmp_x_exit_preconfig(&error_fatal);
     }
+    qemu_init_displays();
     accel_setup_post(current_machine);
     os_setup_post();
 

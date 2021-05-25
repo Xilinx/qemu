@@ -21,6 +21,7 @@
 #include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/qdev-properties.h"
+#include "hw/qdev-properties-system.h"
 #include "hw/block/flash.h"
 #include "sysemu/block-backend.h"
 #include "migration/vmstate.h"
@@ -152,7 +153,7 @@ static void mem_and(uint8_t *dest, const uint8_t *src, size_t n)
 # define ADDR_SHIFT		16
 # include "nand.c"
 
-/* Information based on Linux drivers/mtd/nand/nand_ids.c */
+/* Information based on Linux drivers/mtd/nand/raw/nand_ids.c */
 static const struct {
     int size;
     int width;
@@ -210,18 +211,10 @@ static const struct {
     [0x6e] = { 1,	8,	8, 4, 0 },
     [0x64] = { 2,	8,	8, 4, 0 },
     [0x6b] = { 4,	8,	9, 4, 0 },
-    [0xe8] = { 1,	8,	8, 4, 0 },
-    [0xec] = { 1,	8,	8, 4, 0 },
-    [0xea] = { 2,	8,	8, 4, 0 },
-    [0xd5] = { 4,	8,	9, 4, 0 },
     [0xe3] = { 4,	8,	9, 4, 0 },
     [0xe5] = { 4,	8,	9, 4, 0 },
     [0xd6] = { 8,	8,	9, 4, 0 },
-
-    [0x39] = { 8,	8,	9, 4, 0 },
     [0xe6] = { 8,	8,	9, 4, 0 },
-    [0x49] = { 8,	16,	9, 4, NAND_BUSWIDTH_16 },
-    [0x59] = { 8,	16,	9, 4, NAND_BUSWIDTH_16 },
 
     [0x33] = { 16,	8,	9, 5, 0 },
     [0x73] = { 16,	8,	9, 5, 0 },

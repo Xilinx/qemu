@@ -35,6 +35,7 @@
 #include "chardev/char-fe.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
+#include "hw/qdev-properties-system.h"
 
 #ifndef XILINX_PMC_TAP_ERR_DEBUG
 #define XILINX_PMC_TAP_ERR_DEBUG 0
