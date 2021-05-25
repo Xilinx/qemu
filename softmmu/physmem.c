@@ -22,10 +22,10 @@
 #include "qapi/error.h"
 
 #include "qemu/cutils.h"
+#include "qemu/cacheflush.h"
 #include "cpu.h"
 #include "exec/exec-all.h"
 #include "exec/target_page.h"
-#include "tcg/tcg.h"
 #include "hw/qdev-core.h"
 #include "hw/qdev-properties.h"
 #include "hw/core/cpu-exec-gpio.h"
@@ -54,7 +54,7 @@
 
 #include "qemu/rcu_queue.h"
 #include "qemu/main-loop.h"
-#include "translate-all.h"
+#include "exec/translate-all.h"
 #include "sysemu/replay.h"
 
 #include "exec/memory-internal.h"
