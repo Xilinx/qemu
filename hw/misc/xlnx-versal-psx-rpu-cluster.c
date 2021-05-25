@@ -571,10 +571,26 @@ static void psx_rpu_cluster_reset_enter(Object *obj, ResetType type)
                               R_CLUSTER_AXIS_TCM_BASE_MASK;
 }
 
+static void r52_tcm_region_set(ARMCPU *cpu)
+{
+    cpu->env.tcmregion.a &= 0x3;
+    cpu->env.tcmregion.b |= (7 << 2);
+
+    cpu->env.tcmregion.b &= 0x3;
+    cpu->env.tcmregion.b |= ((0x10000 >> 13) << 13) | (7 << 2);
+
+    cpu->env.tcmregion.c &= 0x3;
+    cpu->env.tcmregion.c |= ((0x20000 >> 13) << 13) | (7 << 2);
+}
+
 static void psx_rpu_cluster_reset_hold(Object *obj)
 {
     PSX_RPU_CLUSTER *s = XILINX_PSX_RPU_CLUSTER(obj);
+    int i;
 
+    for (i = 0; i < CORE_COUNT; i++) {
+        r52_tcm_region_set(s->cpus[i]);
+    }
     core_0_imr_update_irq(s);
     rpu_imr_update_irq(s);
     core_1_imr_update_irq(s);
@@ -594,6 +610,9 @@ static void rpu_core_rst_handler(void *opaque, int irq, int level)
 {
      PSX_RPU_CLUSTER *s = XILINX_PSX_RPU_CLUSTER(opaque);
 
+     assert(irq < CORE_COUNT);
+
+     r52_tcm_region_set(s->cpus[irq]);
      s->rpu_rst[irq] = level;
      rpu_update_gpios(s);
 }
