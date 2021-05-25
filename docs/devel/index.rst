@@ -29,6 +29,7 @@ Contents:
    secure-coding-practices
    tcg
    tcg-icount
+   tracing
    multi-thread-tcg
    tcg-plugins
    bitops

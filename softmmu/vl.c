@@ -744,7 +744,7 @@ static void realtime_init(void)
 
 static void configure_msg(QemuOpts *opts)
 {
-    error_with_timestamp = qemu_opt_get_bool(opts, "timestamp", false);
+    message_with_timestamp = qemu_opt_get_bool(opts, "timestamp", false);
     error_with_guestname = qemu_opt_get_bool(opts, "guest-name", false);
 }
 
