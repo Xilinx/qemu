@@ -1397,16 +1397,22 @@ R2D
 M: Yoshinori Sato <ysato@users.sourceforge.jp>
 R: Magnus Damm <magnus.damm@gmail.com>
 S: Odd Fixes
+F: hw/char/sh_serial.c
 F: hw/sh4/r2d.c
 F: hw/intc/sh_intc.c
+F: hw/pci-host/sh_pci.c
+F: hw/timer/sh_timer.c
 F: include/hw/sh4/sh_intc.h
 
 Shix
 M: Yoshinori Sato <ysato@users.sourceforge.jp>
 R: Magnus Damm <magnus.damm@gmail.com>
 S: Odd Fixes
+F: hw/block/tc58128.c
+F: hw/char/sh_serial.c
 F: hw/sh4/shix.c
 F: hw/intc/sh_intc.c
+F: hw/timer/sh_timer.c
 F: include/hw/sh4/sh_intc.h
 
 SPARC Machines
@@ -2601,6 +2607,7 @@ S: Maintained
 F: softmmu/qtest.c
 F: accel/qtest/
 F: tests/qtest/
+F: docs/devel/qgraph.rst
 X: tests/qtest/bios-tables-test*
 
 Device Fuzzing
@@ -2896,9 +2903,12 @@ F: thunk.c
 F: accel/tcg/user-exec*.c
 
 BSD user
-S: Orphan
+M: Warner Losh <imp@bsdimp.com>
+R: Kyle Evans <kevans@freebsd.org>
+S: Maintained
 F: bsd-user/
 F: default-configs/targets/*-bsd-user.mak
+T: git https://github.com/qemu-bsd-user/qemu-bsd-user bsd-user-rebase-3.1
 
 Linux user
 M: Laurent Vivier <laurent@vivier.eu>

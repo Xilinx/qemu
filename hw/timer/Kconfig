@@ -39,6 +39,10 @@ config CMSDK_APB_DUALTIMER
 config XILINX_IOMODULE_PIT
 	bool
 
+config SH_TIMER
+    bool
+    select PTIMER
+
 config RENESAS_TMR
     bool
 

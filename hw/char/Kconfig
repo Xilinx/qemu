@@ -53,6 +53,9 @@ config TERMINAL3270
 config XILINX_IOMODULE_UART
 	bool
 
+config SH_SCI
+    bool
+
 config RENESAS_SCI
     bool
 
