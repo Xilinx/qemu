@@ -2,14 +2,14 @@
 # vim: filetype=python
 #
 
-# QAPI fault injection
-{ 'include': 'injection.json' }
-
 ##
 # = Miscellanea
 ##
 
 { 'include': 'common.json' }
+
+# QAPI fault injection
+{ 'include': 'injection.json' }
 
 ##
 # @add_client:

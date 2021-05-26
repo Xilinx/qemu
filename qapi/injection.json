@@ -63,32 +63,32 @@
 #
 # Trigger an event
 #
-# @time_ns:  The event will be triggered at t + time_ns on the guest clock.
-# @event_id: The ID of the event.
+# @time-ns:  The event will be triggered at t + time-ns on the guest clock.
+# @event-id: The ID of the event.
 #
 # Returns: nothing in case of success
 #
 # Since: 2.6
 ##
 { 'command': 'trigger_event',
-  'data': {'time_ns': 'int', 'event_id': 'int'} }
+  'data': {'time-ns': 'int', 'event-id': 'int'} }
 
 ##
 # @FAULT_EVENT:
 #
 # Emitted when a fault event is triggered
 #
-# @event_id: The id of the event which has been triggered
+# @event-id: The id of the event which has been triggered
 #
 # Since: 2.6
 ##
 { 'event': 'FAULT_EVENT',
-  'data': { 'event_id': 'int', 'time_ns': 'int'} }
+  'data': { 'event-id': 'int', 'time-ns': 'int'} }
 
 ##
 # @inject_gpio:
 #
-# @device_name: Path to the device.
+# @device-name: Path to the device.
 # @gpio:        Name of the GPIO will be unnamed-gpio if omitted.
 # @num:         Number of the GPIO line.
 # @val:         Value (boolean) to be set for the GPIO.
@@ -98,5 +98,5 @@
 # Since: 2.6
 ##
 { 'command': 'inject_gpio',
-  'data': {'device_name': 'str', '*gpio': 'str', 'num': 'int', 'val': 'int'} }
+  'data': {'device-name': 'str', '*gpio': 'str', 'num': 'int', 'val': 'int'} }
 
