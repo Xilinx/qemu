@@ -114,7 +114,8 @@ fdt_register_instance_n(i2c_bus_fdt_init, "i2c@6", 6);
 fdt_register_instance_n(i2c_bus_fdt_init, "i2c@7", 7);
 
 static const TypeInfo fdt_qom_aliases [] = {
-    {   .name = "simple-bus",               .parent = "qemu:memory-region"  },
+    {   .name = "qemu:memory-region",       .parent = "memory-region"  },
+    {   .name = "simple-bus",               .parent = "memory-region"  },
 };
 
 static void fdt_generic_register_types(void)

@@ -198,7 +198,7 @@ REG32(DDRIOB, 0xb40)
 #define FPGA_RST_INVERT_BITS 0x0000000F
 #define A9_CPU_RST_CTRL_RST_SHIFT 0
 
-#define TYPE_ZYNQ_SLCR "xilinx,zynq_slcr"
+#define TYPE_ZYNQ_SLCR "xilinx-zynq_slcr"
 OBJECT_DECLARE_SIMPLE_TYPE(ZynqSLCRState, ZYNQ_SLCR)
 
 struct ZynqSLCRState {
