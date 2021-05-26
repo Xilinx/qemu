@@ -4,6 +4,7 @@
 
 static const TypeInfo fdt_qom_aliases [] = {
     {   .name = "arm.cortex-a9-twd-timer",  .parent = "arm_mptimer"         },
+    {   .name = "xlnx.zynq-xadc",           .parent = "xlnx-zynq-xadc"      },
     {   .name = "xlnx.ps7-slcr",            .parent = "xilinx-zynq_slcr"    },
     {   .name = "xlnx.zynq-slcr",           .parent = "xilinx-zynq_slcr"    },
     {   .name = "arm.cortex-a9-gic",        .parent = "arm_gic"             },
