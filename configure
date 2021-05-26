@@ -4784,9 +4784,9 @@ if test "$int128" = "yes"; then
 int main(void)
 {
   unsigned __int128 x = 0, y = 0;
-  y = __atomic_load_16(&x, 0);
-  __atomic_store_16(&x, y, 0);
-  __atomic_compare_exchange_16(&x, &y, x, 0, 0, 0);
+  y = __atomic_load(&x, 0);
+  __atomic_store(&x, y, 0);
+  __atomic_compare_exchange(&x, &y, x, 0, 0, 0);
   return 0;
 }
 EOF
@@ -4892,21 +4892,6 @@ if  test "$plugins" = "yes" &&
       "that are exported to plugins. Unfortunately your linker doesn't " \
       "support the flag (--dynamic-list or -exported_symbols_list) used " \
       "for this purpose. You can't build with --static."
-fi
-
-########################################
-# See if __attribute__((alias)) is supported.
-# This false for Xcode 9, but has been remedied for Xcode 10.
-# Unfortunately, travis uses Xcode 9 by default.
-
-attralias=no
-cat > $TMPC << EOF
-int x = 1;
-extern const int y __attribute__((alias("x")));
-int main(void) { return 0; }
-EOF
-if compile_prog "" "" ; then
-    attralias=yes
 fi
 
 ########################################
@@ -5938,10 +5923,6 @@ fi
 
 if test "$atomic64" = "yes" ; then
   echo "CONFIG_ATOMIC64=y" >> $config_host_mak
-fi
-
-if test "$attralias" = "yes" ; then
-  echo "CONFIG_ATTRIBUTE_ALIAS=y" >> $config_host_mak
 fi
 
 if test "$getauxval" = "yes" ; then
