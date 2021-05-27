@@ -1865,7 +1865,7 @@ TranslationBlock *tb_gen_code(CPUState *cpu,
     if (phys_pc == -1) {
         /* XILINX. Allow prefetching more than 1 inst from MMIO */
         /* Generate a one-shot TB with 1 insn in it */
-        cflags = (cflags & ~CF_COUNT_MASK);
+        cflags = (cflags & ~CF_COUNT_MASK) | CF_LAST_IO;
     }
 
     max_insns = cflags & CF_COUNT_MASK;
