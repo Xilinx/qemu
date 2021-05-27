@@ -291,14 +291,6 @@ void gicv3_init_irqs_and_mmio(GICv3State *s, qemu_irq_handler handler,
         sysbus_init_irq(sbd, &s->cpu[i].parent_vfiq);
     }
 
-#if 0
-    for (i = 0; i < s->num_cpu; i++) {
-        /* Alias onto GICv3s IRQ space.  */
-        qdev_init_gpio_out_named(DEVICE(s),
-                                 &s->maintenance_irq[i], "sysbus-irq", 1);
-    }
-#endif
-
     memory_region_init_io(&s->iomem_dist, OBJECT(s), ops, s,
                           "gicv3_dist", 0x10000);
     sysbus_init_mmio(sbd, &s->iomem_dist);
