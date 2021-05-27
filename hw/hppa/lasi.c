@@ -13,7 +13,6 @@
 #include "qemu/units.h"
 #include "qemu/log.h"
 #include "qapi/error.h"
-#include "cpu.h"
 #include "trace.h"
 #include "hw/irq.h"
 #include "sysemu/sysemu.h"
@@ -23,7 +22,6 @@
 #include "hw/char/parallel.h"
 #include "hw/char/serial.h"
 #include "hw/input/lasips2.h"
-#include "exec/address-spaces.h"
 #include "migration/vmstate.h"
 #include "qom/object.h"
 

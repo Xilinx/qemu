@@ -37,7 +37,6 @@
 #include "hw/boards.h"
 #endif
 #include "sysemu/runstate.h"
-#include "sysemu/sysemu.h"
 #include "sysemu/tcg.h"
 #include "sysemu/hw_accel.h"
 #include "kvm_arm.h"
