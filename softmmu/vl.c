@@ -2046,8 +2046,6 @@ static void set_memory_options(MachineClass *mc)
         exit(EXIT_FAILURE);
     }
 
-    /* store value for the future use */
-    qemu_opt_set_number(opts, "size", ram_size, &error_abort);
     maxram_size = ram_size;
 
     if (qemu_opt_get(opts, "maxmem")) {
@@ -2635,6 +2633,23 @@ void qmp_x_exit_preconfig(Error **errp)
         qmp_cont(NULL);
     }
 }
+
+#ifdef CONFIG_MODULES
+void qemu_load_module_for_opts(const char *group)
+{
+    static bool spice_tried;
+    if (g_str_equal(group, "spice") && !spice_tried) {
+        ui_module_load_one("spice-core");
+        spice_tried = true;
+    }
+
+    static bool iscsi_tried;
+    if (g_str_equal(group, "iscsi") && !iscsi_tried) {
+        block_module_load_one("iscsi");
+        iscsi_tried = true;
+    }
+}
+#endif
 
 void qemu_init(int argc, char **argv, char **envp)
 {
@@ -3411,10 +3426,6 @@ void qemu_init(int argc, char **argv, char **envp)
                 break;
             case QEMU_OPTION_spice:
                 olist = qemu_find_opts_err("spice", NULL);
-                if (!olist) {
-                    ui_module_load_one("spice-core");
-                    olist = qemu_find_opts("spice");
-                }
                 if (!olist) {
                     error_report("spice support is disabled");
                     exit(1);
