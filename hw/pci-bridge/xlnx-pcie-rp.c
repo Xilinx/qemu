@@ -67,6 +67,7 @@ static void xlnx_realize(PCIDevice *d, Error **errp)
     PCIESlot *s = PCIE_SLOT(d);
     int rc;
 
+    pci_config_set_interrupt_pin(d->config, 1);
     pci_bridge_initfn(d, TYPE_PCIE_BUS);
     pcie_port_init_reg(d);
 

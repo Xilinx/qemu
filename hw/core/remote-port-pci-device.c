@@ -206,7 +206,7 @@ static void rp_pci_realize(PCIDevice *pci_dev, Error **errp)
         msi_init(pci_dev, 0x60, 1, true, false, &error_fatal);
     }
     if (s->cfg.ats) {
-        pcie_ats_init(pci_dev, 256);
+        pcie_ats_init(pci_dev, 256, false);
     }
 
     /* Create and hook up the BARs.  */
