@@ -79,6 +79,30 @@ int i2c_bus_busy(I2CBus *bus)
     return !QLIST_EMPTY(&bus->current_devs);
 }
 
+bool i2c_scan_bus(I2CBus *bus, uint8_t address, bool broadcast,
+                  I2CNodeList *current_devs)
+{
+    BusChild *kid;
+
+    QTAILQ_FOREACH(kid, &bus->qbus.children, sibling) {
+        DeviceState *qdev = kid->child;
+        I2CSlave *candidate = I2C_SLAVE(qdev);
+        I2CSlaveClass *sc = I2C_SLAVE_GET_CLASS(candidate);
+
+        if (sc->match_and_add(candidate, address, broadcast, current_devs)) {
+            if (!broadcast) {
+                return true;
+            }
+        }
+    }
+
+    /*
+     * If broadcast was true, and the list was full or empty, return true. If
+     * broadcast was false, return false.
+     */
+    return broadcast;
+}
+
 /* TODO: Make this handle multiple masters.  */
 /*
  * Start or continue an i2c transaction.  When this is called for the
@@ -95,7 +119,6 @@ int i2c_bus_busy(I2CBus *bus)
  */
 int i2c_start_transfer(I2CBus *bus, uint8_t address, int recv)
 {
-    BusChild *kid;
     I2CSlaveClass *sc;
     I2CNode *node;
     bool bus_scanned = false;
@@ -117,33 +140,8 @@ int i2c_start_transfer(I2CBus *bus, uint8_t address, int recv)
      * terminating the previous transaction.
      */
     if (QLIST_EMPTY(&bus->current_devs)) {
-        QTAILQ_FOREACH(kid, &bus->qbus.children, sibling) {
-            DeviceState *qdev = kid->child;
-            I2CSlave *candidate = I2C_SLAVE(qdev);
-            if ((candidate->address <= address &&
-                 address < candidate->address + candidate->address_range) ||
-                (bus->broadcast)) {
-                /* If the device is mux/switch, probe for required slave.
-                 * decode_address probes the requested slave and returns 1
-                 * on failure, and returns 0 if a slave is found (or)
-                 * address mached itself.
-                 */
-                if (candidate->address == 0 && !bus->broadcast) {
-                    sc = I2C_SLAVE_GET_CLASS(candidate);
-                    if (sc->decode_address) {
-                        if (sc->decode_address(candidate, address)) {
-                            continue;
-                        }
-                    }
-                }
-                node = g_malloc(sizeof(struct I2CNode));
-                node->elt = candidate;
-                QLIST_INSERT_HEAD(&bus->current_devs, node, next);
-                if (!bus->broadcast) {
-                    break;
-                }
-            }
-        }
+        /* Disregard whether devices were found. */
+        (void)i2c_scan_bus(bus, address, bus->broadcast, &bus->current_devs);
         bus_scanned = true;
     }
 
@@ -339,7 +337,38 @@ static bool i2c_slave_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
 
     qdev_set_parent_bus(DEVICE(obj), qdev_get_child_bus(parent, "i2c"),
                         &error_abort);
+    return false;
+}
 
+
+static bool i2c_slave_match(I2CSlave *candidate, uint8_t address,
+                            bool broadcast, I2CNodeList *current_devs)
+{
+    I2CNode *node;
+
+    if ((candidate->address <= address &&
+         address < candidate->address + candidate->address_range) ||
+        broadcast) {
+        /* If the device is mux/switch, probe for required slave.
+         * decode_address probes the requested slave and returns 1
+         * on failure, and returns 0 if a slave is found (or)
+         * address mached itself.
+         */
+        if (candidate->address == 0 && !broadcast) {
+            I2CSlaveClass *sc = I2C_SLAVE_GET_CLASS(candidate);
+            if (sc->decode_address) {
+                if (sc->decode_address(candidate, address)) {
+                    return false;
+                }
+            }
+        }
+        node = g_malloc(sizeof(struct I2CNode));
+        node->elt = candidate;
+        QLIST_INSERT_HEAD(current_devs, node, next);
+        return true;
+    }
+
+    /* Not found and not broadcast. */
     return false;
 }
 
@@ -347,10 +376,13 @@ static void i2c_slave_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *k = DEVICE_CLASS(klass);
     FDTGenericMMapClass *fmc = FDT_GENERIC_MMAP_CLASS(klass);
+    I2CSlaveClass *sc = I2C_SLAVE_CLASS(klass);
 
     set_bit(DEVICE_CATEGORY_MISC, k->categories);
     k->bus_type = TYPE_I2C_BUS;
     device_class_set_props(k, i2c_props);
+    sc->match_and_add = i2c_slave_match;
+
     fmc->parse_reg = i2c_slave_parse_reg;
 }
 

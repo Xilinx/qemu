@@ -219,13 +219,18 @@ void migration_object_init(void)
     dirty_bitmap_mig_init();
 }
 
+void migration_cancel(void)
+{
+    migrate_fd_cancel(current_migration);
+}
+
 void migration_shutdown(void)
 {
     /*
      * Cancel the current migration - that will (eventually)
      * stop the migration using this structure
      */
-    migrate_fd_cancel(current_migration);
+    migration_cancel();
     object_unref(OBJECT(current_migration));
 
     /*
@@ -1058,27 +1063,24 @@ static void populate_disk_info(MigrationInfo *info)
 static void fill_source_migration_info(MigrationInfo *info)
 {
     MigrationState *s = migrate_get_current();
+    GSList *cur_blocker = migration_blockers;
 
-    info->blocked = migration_is_blocked(NULL);
-    info->has_blocked_reasons = info->blocked;
     info->blocked_reasons = NULL;
-    if (info->blocked) {
-        GSList *cur_blocker = migration_blockers;
 
-        /*
-         * There are two types of reasons a migration might be blocked;
-         * a) devices marked in VMState as non-migratable, and
-         * b) Explicit migration blockers
-         * We need to add both of them here.
-         */
-        qemu_savevm_non_migratable_list(&info->blocked_reasons);
+    /*
+     * There are two types of reasons a migration might be blocked;
+     * a) devices marked in VMState as non-migratable, and
+     * b) Explicit migration blockers
+     * We need to add both of them here.
+     */
+    qemu_savevm_non_migratable_list(&info->blocked_reasons);
 
-        while (cur_blocker) {
-            QAPI_LIST_PREPEND(info->blocked_reasons,
-                              g_strdup(error_get_pretty(cur_blocker->data)));
-            cur_blocker = g_slist_next(cur_blocker);
-        }
+    while (cur_blocker) {
+        QAPI_LIST_PREPEND(info->blocked_reasons,
+                          g_strdup(error_get_pretty(cur_blocker->data)));
+        cur_blocker = g_slist_next(cur_blocker);
     }
+    info->has_blocked_reasons = info->blocked_reasons != NULL;
 
     switch (s->state) {
     case MIGRATION_STATUS_NONE:
@@ -2295,7 +2297,7 @@ void qmp_migrate(const char *uri, bool has_blk, bool blk,
 
 void qmp_migrate_cancel(Error **errp)
 {
-    migrate_fd_cancel(migrate_get_current());
+    migration_cancel();
 }
 
 void qmp_migrate_continue(MigrationStatus state, Error **errp)
