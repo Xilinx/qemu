@@ -1784,9 +1784,6 @@ SRST
         corresponding ``braille`` chardev automatically beside the
         ``usb-braille`` USB device).
 
-    ``ccid``
-        Smartcard reader device
-
     ``keyboard``
         Standard USB keyboard. Will override the PS/2 keyboard (if present).
 

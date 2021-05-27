@@ -1271,6 +1271,14 @@ static void vblank_hit(void *opaque)
     xlnx_dp_update_irq(s);
 }
 
+static void xlnx_dp_finalize(Object *obj)
+{
+    XlnxDPState *s = XLNX_DP(obj);
+
+    fifo8_destroy(&s->tx_fifo);
+    fifo8_destroy(&s->rx_fifo);
+}
+
 static void xlnx_dp_realize(DeviceState *dev, Error **errp)
 {
     XlnxDPState *s = XLNX_DP(dev);
@@ -1375,6 +1383,7 @@ static const TypeInfo xlnx_dp_info = {
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(XlnxDPState),
     .instance_init = xlnx_dp_init,
+    .instance_finalize = xlnx_dp_finalize,
     .class_init    = xlnx_dp_class_init,
 };
 
