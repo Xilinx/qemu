@@ -37,6 +37,8 @@
 #include "hw/usb/hcd-dwc3.h"
 #include "qapi/error.h"
 
+#include "hw/fdt_generic_util.h"
+
 #ifndef USB_DWC3_ERR_DEBUG
 #define USB_DWC3_ERR_DEBUG 0
 #endif
@@ -645,6 +647,32 @@ static void usb_dwc3_init(Object *obj)
     s->cfg.mode = HOST_MODE;
 }
 
+static bool dwc3_parse_reg(FDTGenericMMap *obj,
+                           FDTGenericRegPropInfo reg, Error **errp)
+{
+    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+
+    /* For backwards compatibility, ignore the first reg map.  */
+    if (reg.n == 2) {
+        MemoryRegion *mr_parent = (MemoryRegion *)
+                object_dynamic_cast(reg.parents[1], TYPE_MEMORY_REGION);
+        if (!mr_parent) {
+            /* evil */
+            mr_parent = get_system_memory();
+        }
+        memory_region_add_subregion_overlap(mr_parent, reg.a[1],
+                    sysbus_mmio_get_region(sbd, 0), reg.p[1]);
+    } else {
+        ObjectClass *klass = object_class_by_name(TYPE_USB_DWC3);
+        FDTGenericMMapClass *parent_fmc;
+
+        parent_fmc = FDT_GENERIC_MMAP_CLASS(object_class_get_parent(klass));
+        return parent_fmc ? parent_fmc->parse_reg(obj, reg, errp) : false;
+    }
+
+    return false;
+}
+
 static const VMStateDescription vmstate_usb_dwc3 = {
     .name = "usb-dwc3",
     .version_id = 1,
@@ -664,7 +692,10 @@ static Property usb_dwc3_properties[] = {
 
 static void usb_dwc3_class_init(ObjectClass *klass, void *data)
 {
+    FDTGenericMMapClass *fmc = FDT_GENERIC_MMAP_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
+
+    fmc->parse_reg = dwc3_parse_reg;
 
     dc->reset = usb_dwc3_reset;
     dc->realize = usb_dwc3_realize;
@@ -678,6 +709,10 @@ static const TypeInfo usb_dwc3_info = {
     .instance_size = sizeof(USBDWC3),
     .class_init    = usb_dwc3_class_init,
     .instance_init = usb_dwc3_init,
+    .interfaces = (InterfaceInfo[]) {
+        { TYPE_FDT_GENERIC_MMAP },
+        { },
+    },
 };
 
 static void usb_dwc3_register_types(void)
