@@ -19,6 +19,7 @@
 #include "qemu/osdep.h"
 #include "qemu/main-loop.h"
 #include "qemu/timer.h"
+#include "qemu/log.h"
 #include "sysemu/tcg.h"
 #include "hw/irq.h"
 
@@ -139,7 +140,14 @@ static void deref_iothread_lock(bool was_unlocked)
     }
 }
 
-#ifdef ARM_CPU
+#ifdef TARGET_ARM
+static void cpu_arch_update_halt(CPUState *cs)
+{
+    ARMCPU *cpu = ARM_CPU(cs);
+
+    cpu->power_state = cs->halt_pin ? PSCI_OFF : PSCI_ON;
+}
+
 static void cpu_reset_pin_activated(CPUState *cs)
 {
     ARMCPU *arm_cpu = ARM_CPU(cs);
@@ -148,6 +156,11 @@ static void cpu_reset_pin_activated(CPUState *cs)
     qemu_set_irq(arm_cpu->wfi, 0);
 }
 #else
+static void cpu_arch_update_halt(CPUState *cs)
+{
+
+}
+
 static inline void cpu_reset_pin_activated(CPUState *cs)
 {
     /* A stub */
@@ -202,6 +215,7 @@ void cpu_halt_gpio(void *opaque, int irq, int level)
     iolock = ensure_iothread_lock();
 
     cpu->halt_pin = level;
+    cpu_arch_update_halt(cpu);
     cpu_exec_pin_update(cpu, cpu->reset_pin); /* TBD: _sync not working */
 
     deref_iothread_lock(iolock);
