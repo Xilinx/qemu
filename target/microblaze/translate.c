@@ -1260,8 +1260,6 @@ static bool trans_mbar(DisasContext *dc, arg_mbar *arg)
 
     /* Sleep. */
     if (mbar_imm & 16) {
-        TCGv_i32 tmp_1;
-
         if (trap_userspace(dc, true)) {
             /* Sleep is a privileged instruction.  */
             return true;
@@ -1269,15 +1267,10 @@ static bool trans_mbar(DisasContext *dc, arg_mbar *arg)
 
         t_sync_flags(dc);
 
-        tmp_1 = tcg_const_i32(1);
-        tcg_gen_st_i32(tmp_1, cpu_env,
-                       -offsetof(MicroBlazeCPU, env)
-                       +offsetof(CPUState, halted));
-        tcg_temp_free_i32(tmp_1);
-
         tcg_gen_movi_i32(cpu_pc, dc->base.pc_next + 4);
-
-        gen_raise_exception(dc, EXCP_HLT);
+        dc->base.is_jmp = DISAS_EXIT;
+        gen_helper_sleep(cpu_env);
+        return true;
     }
 
     /*
