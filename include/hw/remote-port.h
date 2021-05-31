@@ -90,6 +90,7 @@ struct RemotePort {
     const char *remote_prefix;
 
     uint32_t current_id;
+    bool reset_done;
 
 #define REMOTE_PORT_MAX_DEVS 1024
 #define RP_MAX_OUTSTANDING_TRANSACTIONS 32
