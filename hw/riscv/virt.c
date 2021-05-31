@@ -40,6 +40,7 @@
 #include "sysemu/arch_init.h"
 #include "sysemu/device_tree.h"
 #include "sysemu/sysemu.h"
+#include "sysemu/reset.h"
 #include "hw/pci/pci.h"
 #include "hw/pci-host/gpex.h"
 #include "hw/display/ramfb.h"
@@ -516,6 +517,7 @@ static void virt_create_remoteport(MachineState *machine,
     const MemMapEntry *memmap = virt_memmap;
     RISCVVirtState *s = RISCV_VIRT_MACHINE(machine);
     SysBusDevice *sbd;
+    DeviceClass *dc;
     Object *rp_obj;
     Object *rpm_obj;
     Object *rpms_obj;
@@ -551,6 +553,14 @@ static void virt_create_remoteport(MachineState *machine,
     object_property_set_link(rp_obj, "remote-port-dev12", rpirq_obj, &error_abort);
 
     object_property_set_bool(rp_obj, "realized", true, &error_fatal);
+    dc = DEVICE_GET_CLASS(DEVICE(rp_obj));
+    if (dc->reset) {
+        /*
+         * RP adaptors don't connect to busses that reset them,
+         * manually register the handler.
+         */
+        qemu_register_reset((void (*)(void *))dc->reset, rp_obj);
+    }
 
     sysbus_realize(SYS_BUS_DEVICE(rpms_obj), &error_fatal);
     sysbus_realize(SYS_BUS_DEVICE(rpm_obj), &error_fatal);
