@@ -1129,7 +1129,10 @@ static Property xlnx_zynqmp_can_properties[] = {
                        CAN_DEFAULT_CLOCK),
     DEFINE_PROP_LINK("canbus", XlnxZynqMPCANState, canbus, TYPE_CAN_BUS,
                      CanBusState *),
+    /* Backwards compat.  */
     DEFINE_PROP_LINK("canbus0", XlnxZynqMPCANState, canbus, TYPE_CAN_BUS,
+                     CanBusState *),
+    DEFINE_PROP_LINK("canbus1", XlnxZynqMPCANState, canbus, TYPE_CAN_BUS,
                      CanBusState *),
     DEFINE_PROP_END_OF_LIST(),
 };
