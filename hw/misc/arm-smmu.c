@@ -1083,6 +1083,7 @@ struct SMMU {
         uint16_t num_smr;
         uint16_t num_cb;
         uint16_t num_pages;
+        bool ato;
         uint8_t version;
     } cfg;
 
@@ -2074,6 +2075,7 @@ static void smmu500_reset(DeviceState *dev)
         register_reset(&s->regs_info[i]);
     }
 
+    ARRAY_FIELD_DP32(s->regs, SMMU_SIDR0, ATOSNS, s->cfg.ato);
     ARRAY_FIELD_DP32(s->regs, SMMU_SIDR0, NUMSMRG, s->cfg.num_smr);
     ARRAY_FIELD_DP32(s->regs, SMMU_SIDR1, NUMCB, s->cfg.num_cb);
     ARRAY_FIELD_DP32(s->regs, SMMU_SIDR1, NUMPAGENDXB, num_pages_log2 - 1);
@@ -2322,6 +2324,7 @@ static Property smmu_properties[] = {
     DEFINE_PROP_UINT16("num-smr", SMMU, cfg.num_smr, 48),
     DEFINE_PROP_UINT16("num-cb", SMMU, cfg.num_cb, 16),
     DEFINE_PROP_UINT16("num-pages", SMMU, cfg.num_pages, 16),
+    DEFINE_PROP_BOOL("ato", SMMU, cfg.ato, true),
     DEFINE_PROP_UINT8("version", SMMU, cfg.version, 0x21),
     DEFINE_PROP_END_OF_LIST(),
 };
