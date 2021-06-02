@@ -1496,12 +1496,13 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
         goto do_fault;
     }
 
-    /* AP[1] SBO.  */
-    if (!(attrs & (1 << 4))) {
-        D("smmu: AP[1] should be one but set to zero!\n");
-        goto do_fault;
-    }
     if (req->stage == 1) {
+        /* AP[1] SBO.  */
+        if (!(attrs & (1 << 4))) {
+            D("smmu: AP[1] should be one but set to zero!\n");
+            goto do_fault;
+        }
+
         if (attrs & (1 << 5)) {
             /* Write access forbidden */
             if (req->access == IOMMU_WO) {
