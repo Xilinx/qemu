@@ -1483,8 +1483,11 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
         attrs |= extract32(tableattrs, 3, 1) << 5; /* APTable[1] => AP[2] */
         /* The sense of AP[1] vs APTable[0] is reversed, as APTable[0] == 1
          * means "force PL1 access only", which means forcing AP[1] to 0.
+         *
+         * This only applies for multi-regime tables (EL0/EL1) which we don't
+         * support so disable APTable[0] propagation.
          */
-        if (extract32(tableattrs, 2, 1)) {
+        if (0 && extract32(tableattrs, 2, 1)) {
             attrs &= ~(1 << 4);
         }
     }
