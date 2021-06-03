@@ -3,11 +3,14 @@ ppc_ss.add(files(
   'cpu-models.c',
   'cpu.c',
   'cpu_init.c',
-  'dfp_helper.c',
   'excp_helper.c',
-  'fpu_helper.c',
   'gdbstub.c',
   'helper_regs.c',
+))
+
+ppc_ss.add(when: 'CONFIG_TCG', if_true: files(
+  'dfp_helper.c',
+  'fpu_helper.c',
   'int_helper.c',
   'mem_helper.c',
   'misc_helper.c',
@@ -28,6 +31,10 @@ ppc_softmmu_ss.add(files(
   'mmu_helper.c',
   'monitor.c',
 ))
+ppc_softmmu_ss.add(when: 'CONFIG_TCG', if_false: files(
+  'tcg-stub.c'
+))
+
 ppc_softmmu_ss.add(when: 'TARGET_PPC64', if_true: files(
   'compat.c',
   'mmu-book3s-v3.c',

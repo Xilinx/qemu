@@ -47,7 +47,6 @@
 
 /* Include definitions for instructions classes and implementations flags */
 /* #define PPC_DEBUG_DISAS */
-/* #define DO_PPC_STATISTICS */
 
 #ifdef PPC_DEBUG_DISAS
 #  define LOG_DISAS(...) qemu_log_mask(CPU_LOG_TB_IN_ASM, ## __VA_ARGS__)
@@ -217,11 +216,8 @@ struct opc_handler_t {
     uint64_t type2;
     /* handler */
     void (*handler)(DisasContext *ctx);
-#if defined(DO_PPC_STATISTICS) || defined(PPC_DUMP_CPU)
+#if defined(PPC_DUMP_CPU)
     const char *oname;
-#endif
-#if defined(DO_PPC_STATISTICS)
-    uint64_t count;
 #endif
 };
 
@@ -8546,7 +8542,7 @@ static int register_direct_insn(opc_handler_t **ppc_opcodes,
     if (insert_in_table(ppc_opcodes, idx, handler) < 0) {
         printf("*** ERROR: opcode %02x already assigned in main "
                "opcode table\n", idx);
-#if defined(DO_PPC_STATISTICS) || defined(PPC_DUMP_CPU)
+#if defined(PPC_DUMP_CPU)
         printf("           Registered handler '%s' - new handler '%s'\n",
                ppc_opcodes[idx]->oname, handler->oname);
 #endif
@@ -8570,7 +8566,7 @@ static int register_ind_in_table(opc_handler_t **table,
         if (!is_indirect_opcode(table[idx1])) {
             printf("*** ERROR: idx %02x already assigned to a direct "
                    "opcode\n", idx1);
-#if defined(DO_PPC_STATISTICS) || defined(PPC_DUMP_CPU)
+#if defined(PPC_DUMP_CPU)
             printf("           Registered handler '%s' - new handler '%s'\n",
                    ind_table(table[idx1])[idx2]->oname, handler->oname);
 #endif
@@ -8581,7 +8577,7 @@ static int register_ind_in_table(opc_handler_t **table,
         insert_in_table(ind_table(table[idx1]), idx2, handler) < 0) {
         printf("*** ERROR: opcode %02x already assigned in "
                "opcode table %02x\n", idx2, idx1);
-#if defined(DO_PPC_STATISTICS) || defined(PPC_DUMP_CPU)
+#if defined(PPC_DUMP_CPU)
         printf("           Registered handler '%s' - new handler '%s'\n",
                ind_table(table[idx1])[idx2]->oname, handler->oname);
 #endif
@@ -8881,57 +8877,6 @@ int ppc_fixup_cpu(PowerPCCPU *cpu)
     return 0;
 }
 
-
-void ppc_cpu_dump_statistics(CPUState *cs, int flags)
-{
-#if defined(DO_PPC_STATISTICS)
-    PowerPCCPU *cpu = POWERPC_CPU(cs);
-    opc_handler_t **t1, **t2, **t3, *handler;
-    int op1, op2, op3;
-
-    t1 = cpu->env.opcodes;
-    for (op1 = 0; op1 < 64; op1++) {
-        handler = t1[op1];
-        if (is_indirect_opcode(handler)) {
-            t2 = ind_table(handler);
-            for (op2 = 0; op2 < 32; op2++) {
-                handler = t2[op2];
-                if (is_indirect_opcode(handler)) {
-                    t3 = ind_table(handler);
-                    for (op3 = 0; op3 < 32; op3++) {
-                        handler = t3[op3];
-                        if (handler->count == 0) {
-                            continue;
-                        }
-                        qemu_printf("%02x %02x %02x (%02x %04d) %16s: "
-                                    "%016" PRIx64 " %" PRId64 "\n",
-                                    op1, op2, op3, op1, (op3 << 5) | op2,
-                                    handler->oname,
-                                    handler->count, handler->count);
-                    }
-                } else {
-                    if (handler->count == 0) {
-                        continue;
-                    }
-                    qemu_printf("%02x %02x    (%02x %04d) %16s: "
-                                "%016" PRIx64 " %" PRId64 "\n",
-                                op1, op2, op1, op2, handler->oname,
-                                handler->count, handler->count);
-                }
-            }
-        } else {
-            if (handler->count == 0) {
-                continue;
-            }
-            qemu_printf("%02x       (%02x     ) %16s: %016" PRIx64
-                        " %" PRId64 "\n",
-                        op1, op1, handler->oname,
-                        handler->count, handler->count);
-        }
-    }
-#endif
-}
-
 static bool decode_legacy(PowerPCCPU *cpu, DisasContext *ctx, uint32_t insn)
 {
     opc_handler_t **table, *handler;
@@ -9086,10 +9031,6 @@ static void ppc_tr_translate_insn(DisasContextBase *dcbase, CPUState *cs)
     if (!ok) {
         gen_invalid(ctx);
     }
-
-#if defined(DO_PPC_STATISTICS)
-    handler->count++;
-#endif
 
     translator_loop_temp_check(&ctx->base);
 }
