@@ -29,8 +29,6 @@
 #include "qemu/compiler.h"
 #include "qemu/timer.h"
 #include "qemu/rcu.h"
-#include "exec/tb-hash.h"
-#include "exec/tb-lookup.h"
 #include "exec/log.h"
 #include "qemu/main-loop.h"
 #if defined(TARGET_I386) && !defined(CONFIG_USER_ONLY)
@@ -41,6 +39,9 @@
 #include "sysemu/cpu-timers.h"
 #include "sysemu/replay.h"
 #include "qemu/etrace.h"
+#include "tb-hash.h"
+#include "tb-lookup.h"
+#include "tb-context.h"
 #include "internal.h"
 
 /* -icount align implementation. */

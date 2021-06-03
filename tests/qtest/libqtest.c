@@ -1321,6 +1321,9 @@ void qtest_cb_for_every_machine(void (*cb)(const char *machine),
         if (!strncmp("xenfv", mname, 5) || g_str_equal("xenpv", mname)) {
             continue;
         }
+        if (!strncmp("arm-generic-fdt", mname, strlen("arm-generic-fdt"))) {
+            continue;
+        }
         if (!skip_old_versioned || !qtest_is_old_versioned_machine(mname)) {
             cb(mname);
         }
