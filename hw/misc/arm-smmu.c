@@ -1083,6 +1083,7 @@ struct SMMU {
         uint16_t num_smr;
         uint16_t num_cb;
         uint16_t num_pages;
+        bool ato;
         uint8_t version;
     } cfg;
 
@@ -1482,8 +1483,11 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
         attrs |= extract32(tableattrs, 3, 1) << 5; /* APTable[1] => AP[2] */
         /* The sense of AP[1] vs APTable[0] is reversed, as APTable[0] == 1
          * means "force PL1 access only", which means forcing AP[1] to 0.
+         *
+         * This only applies for multi-regime tables (EL0/EL1) which we don't
+         * support so disable APTable[0] propagation.
          */
-        if (extract32(tableattrs, 2, 1)) {
+        if (0 && extract32(tableattrs, 2, 1)) {
             attrs &= ~(1 << 4);
         }
     }
@@ -1495,12 +1499,13 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
         goto do_fault;
     }
 
-    /* AP[1] SBO.  */
-    if (!(attrs & (1 << 4))) {
-        D("smmu: AP[1] should be one but set to zero!\n");
-        goto do_fault;
-    }
     if (req->stage == 1) {
+        /* AP[1] SBO.  */
+        if (!(attrs & (1 << 4))) {
+            D("smmu: AP[1] should be one but set to zero!\n");
+            goto do_fault;
+        }
+
         if (attrs & (1 << 5)) {
             /* Write access forbidden */
             if (req->access == IOMMU_WO) {
@@ -2074,6 +2079,7 @@ static void smmu500_reset(DeviceState *dev)
         register_reset(&s->regs_info[i]);
     }
 
+    ARRAY_FIELD_DP32(s->regs, SMMU_SIDR0, ATOSNS, s->cfg.ato);
     ARRAY_FIELD_DP32(s->regs, SMMU_SIDR0, NUMSMRG, s->cfg.num_smr);
     ARRAY_FIELD_DP32(s->regs, SMMU_SIDR1, NUMCB, s->cfg.num_cb);
     ARRAY_FIELD_DP32(s->regs, SMMU_SIDR1, NUMPAGENDXB, num_pages_log2 - 1);
@@ -2323,6 +2329,7 @@ static Property smmu_properties[] = {
     DEFINE_PROP_UINT16("num-smr", SMMU, cfg.num_smr, 48),
     DEFINE_PROP_UINT16("num-cb", SMMU, cfg.num_cb, 16),
     DEFINE_PROP_UINT16("num-pages", SMMU, cfg.num_pages, 16),
+    DEFINE_PROP_BOOL("ato", SMMU, cfg.ato, true),
     DEFINE_PROP_UINT8("version", SMMU, cfg.version, 0x21),
     DEFINE_PROP_END_OF_LIST(),
 };

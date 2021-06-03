@@ -407,7 +407,27 @@ static const MemoryRegionOps cadence_ttc_ops = {
 
 static void cadence_timer_reset(CadenceTimerState *s)
 {
-   s->reg_count = 0x21;
+    s->reg_count = 0x21;
+    s->reg_clock = 0x0;
+    s->reg_value = 0x0;
+    s->reg_interval = 0x0;
+    s->reg_match[0] = 0x0;
+    s->reg_match[1] = 0x0;
+    s->reg_match[2] = 0x0;
+    s->reg_intr = 0x0;
+    s->reg_intr_en = 0x0;
+    s->reg_event_ctrl = 0x0;
+    s->reg_event = 0x0;
+}
+
+static void cadence_ttc_reset(DeviceState *dev)
+{
+    CadenceTTCState *s = CADENCE_TTC(dev);
+
+    for (uint8_t i = 0; i < ARRAY_SIZE(s->timer); i++) {
+        cadence_timer_reset(&s->timer[i]);
+        cadence_timer_update(&s->timer[i]);
+    }
 }
 
 static void cadence_timer_init(uint32_t freq, CadenceTimerState *s)
@@ -500,6 +520,7 @@ static void cadence_ttc_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
+    dc->reset = cadence_ttc_reset;
     dc->vmsd = &vmstate_cadence_ttc;
     device_class_set_props(dc, cadence_ttc_props);
     dc->realize = cadence_ttc_realize;

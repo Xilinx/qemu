@@ -1296,6 +1296,8 @@ static void gem_transmit(CadenceGEMState *s)
                 if (s->regs[GEM_DMACFG] & GEM_DMACFG_ADDR_64B) {
                     packet_desc_addr = s->regs[GEM_TBQPH];
                     packet_desc_addr <<= 32;
+                } else {
+                    packet_desc_addr = 0;
                 }
                 packet_desc_addr |= gem_get_tx_queue_base_addr(s, q);
             } else {

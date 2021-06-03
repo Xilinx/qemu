@@ -2627,7 +2627,7 @@ void gicv3_init_cpuif(GICv3State *s)
     int i;
 
     for (i = 0; i < s->num_cpu; i++) {
-        ARMCPU *cpu = ARM_CPU(qemu_get_cpu(i));
+        ARMCPU *cpu = ARM_CPU(qemu_get_cpu(s->first_cpu_idx + i));
         GICv3CPUState *cs = &s->cpu[i];
 
         /* Note that we can't just use the GICv3CPUState as an opaque pointer
