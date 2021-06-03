@@ -366,6 +366,7 @@ static void arm_cpu_reset(DeviceState *dev)
         env->regs[14] = 0xffffffff;
 
         env->v7m.vecbase[M_REG_S] = cpu->init_svtor & 0xffffff80;
+        env->v7m.vecbase[M_REG_NS] = cpu->init_nsvtor & 0xffffff80;
 
         /* Load the initial SP and PC from offset 0 and 4 in the vector table */
         vecbase = env->v7m.vecbase[env->v7m.secure];
@@ -1460,6 +1461,15 @@ void arm_cpu_post_init(Object *obj)
                                        &cpu->init_svtor,
                                        OBJ_PROP_FLAG_READWRITE);
     }
+    if (arm_feature(&cpu->env, ARM_FEATURE_M)) {
+        /*
+         * Initial value of the NS VTOR (for cores without the Security
+         * extension, this is the only VTOR)
+         */
+        object_property_add_uint32_ptr(obj, "init-nsvtor",
+                                       &cpu->init_nsvtor,
+                                       OBJ_PROP_FLAG_READWRITE);
+    }
 
     qdev_property_add_static(DEVICE(obj), &arm_cpu_cfgend_property);
 
@@ -1652,6 +1662,7 @@ static void arm_cpu_realizefn(DeviceState *dev, Error **errp)
 
         u = cpu->isar.id_isar6;
         u = FIELD_DP32(u, ID_ISAR6, JSCVT, 0);
+        u = FIELD_DP32(u, ID_ISAR6, BF16, 0);
         cpu->isar.id_isar6 = u;
 
         u = cpu->isar.mvfr0;
@@ -1692,6 +1703,7 @@ static void arm_cpu_realizefn(DeviceState *dev, Error **errp)
 
         t = cpu->isar.id_aa64isar1;
         t = FIELD_DP64(t, ID_AA64ISAR1, FCMA, 0);
+        t = FIELD_DP64(t, ID_AA64ISAR1, BF16, 0);
         t = FIELD_DP64(t, ID_AA64ISAR1, I8MM, 0);
         cpu->isar.id_aa64isar1 = t;
 
@@ -1707,6 +1719,7 @@ static void arm_cpu_realizefn(DeviceState *dev, Error **errp)
         u = cpu->isar.id_isar6;
         u = FIELD_DP32(u, ID_ISAR6, DP, 0);
         u = FIELD_DP32(u, ID_ISAR6, FHM, 0);
+        u = FIELD_DP32(u, ID_ISAR6, BF16, 0);
         u = FIELD_DP32(u, ID_ISAR6, I8MM, 0);
         cpu->isar.id_isar6 = u;
 

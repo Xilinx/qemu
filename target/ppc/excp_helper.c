@@ -70,18 +70,6 @@ static inline void dump_syscall(CPUPPCState *env)
                   ppc_dump_gpr(env, 8), env->nip);
 }
 
-static inline void dump_syscall_vectored(CPUPPCState *env)
-{
-    qemu_log_mask(CPU_LOG_INT, "syscall r0=%016" PRIx64
-                  " r3=%016" PRIx64 " r4=%016" PRIx64 " r5=%016" PRIx64
-                  " r6=%016" PRIx64 " r7=%016" PRIx64 " r8=%016" PRIx64
-                  " nip=" TARGET_FMT_lx "\n",
-                  ppc_dump_gpr(env, 0), ppc_dump_gpr(env, 3),
-                  ppc_dump_gpr(env, 4), ppc_dump_gpr(env, 5),
-                  ppc_dump_gpr(env, 6), ppc_dump_gpr(env, 7),
-                  ppc_dump_gpr(env, 8), env->nip);
-}
-
 static inline void dump_hcall(CPUPPCState *env)
 {
     qemu_log_mask(CPU_LOG_INT, "hypercall r3=%016" PRIx64
@@ -333,7 +321,6 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
     CPUPPCState *env = &cpu->env;
     target_ulong msr, new_msr, vector;
     int srr0, srr1, asrr0, asrr1, lev = -1;
-    bool lpes0;
 
     qemu_log_mask(CPU_LOG_INT, "Raise exception at " TARGET_FMT_lx
                   " => %08x (%02x)\n", env->nip, excp, env->error_code);
@@ -363,27 +350,6 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
      */
     if (env->resume_as_sreset) {
         excp = powerpc_reset_wakeup(cs, env, excp, &msr);
-    }
-
-    /*
-     * Exception targeting modifiers
-     *
-     * LPES0 is supported on POWER7/8/9
-     * LPES1 is not supported (old iSeries mode)
-     *
-     * On anything else, we behave as if LPES0 is 1
-     * (externals don't alter MSR:HV)
-     */
-#if defined(TARGET_PPC64)
-    if (excp_model == POWERPC_EXCP_POWER7 ||
-        excp_model == POWERPC_EXCP_POWER8 ||
-        excp_model == POWERPC_EXCP_POWER9 ||
-        excp_model == POWERPC_EXCP_POWER10) {
-        lpes0 = !!(env->spr[SPR_LPCR] & LPCR_LPES0);
-    } else
-#endif /* defined(TARGET_PPC64) */
-    {
-        lpes0 = true;
     }
 
     /*
@@ -473,7 +439,31 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
         msr |= env->error_code;
         break;
     case POWERPC_EXCP_EXTERNAL:  /* External input                           */
+    {
+        bool lpes0;
+
         cs = CPU(cpu);
+
+        /*
+         * Exception targeting modifiers
+         *
+         * LPES0 is supported on POWER7/8/9
+         * LPES1 is not supported (old iSeries mode)
+         *
+         * On anything else, we behave as if LPES0 is 1
+         * (externals don't alter MSR:HV)
+         */
+#if defined(TARGET_PPC64)
+        if (excp_model == POWERPC_EXCP_POWER7 ||
+            excp_model == POWERPC_EXCP_POWER8 ||
+            excp_model == POWERPC_EXCP_POWER9 ||
+            excp_model == POWERPC_EXCP_POWER10) {
+            lpes0 = !!(env->spr[SPR_LPCR] & LPCR_LPES0);
+        } else
+#endif /* defined(TARGET_PPC64) */
+        {
+            lpes0 = true;
+        }
 
         if (!lpes0) {
             new_msr |= (target_ulong)MSR_HVB;
@@ -486,6 +476,7 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
             env->spr[SPR_BOOKE_EPR] = ldl_phys(cs->as, env->mpic_iack);
         }
         break;
+    }
     case POWERPC_EXCP_ALIGN:     /* Alignment exception                      */
         /* Get rS/rD and rA from faulting opcode */
         /*
@@ -561,7 +552,7 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
         break;
     case POWERPC_EXCP_SYSCALL_VECTORED: /* scv exception                     */
         lev = env->error_code;
-        dump_syscall_vectored(env);
+        dump_syscall(env);
         env->nip += 4;
         new_msr |= env->msr & ((target_ulong)1 << MSR_EE);
         new_msr |= env->msr & ((target_ulong)1 << MSR_RI);
@@ -698,52 +689,20 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
                   "is not implemented yet !\n");
         break;
     case POWERPC_EXCP_IFTLB:     /* Instruction fetch TLB error              */
-        switch (excp_model) {
-        case POWERPC_EXCP_602:
-        case POWERPC_EXCP_603:
-        case POWERPC_EXCP_603E:
-        case POWERPC_EXCP_G2:
-            goto tlb_miss_tgpr;
-        case POWERPC_EXCP_7x5:
-            goto tlb_miss;
-        case POWERPC_EXCP_74xx:
-            goto tlb_miss_74xx;
-        default:
-            cpu_abort(cs, "Invalid instruction TLB miss exception\n");
-            break;
-        }
-        break;
     case POWERPC_EXCP_DLTLB:     /* Data load TLB miss                       */
-        switch (excp_model) {
-        case POWERPC_EXCP_602:
-        case POWERPC_EXCP_603:
-        case POWERPC_EXCP_603E:
-        case POWERPC_EXCP_G2:
-            goto tlb_miss_tgpr;
-        case POWERPC_EXCP_7x5:
-            goto tlb_miss;
-        case POWERPC_EXCP_74xx:
-            goto tlb_miss_74xx;
-        default:
-            cpu_abort(cs, "Invalid data load TLB miss exception\n");
-            break;
-        }
-        break;
     case POWERPC_EXCP_DSTLB:     /* Data store TLB miss                      */
         switch (excp_model) {
         case POWERPC_EXCP_602:
         case POWERPC_EXCP_603:
         case POWERPC_EXCP_603E:
         case POWERPC_EXCP_G2:
-        tlb_miss_tgpr:
             /* Swap temporary saved registers with GPRs */
             if (!(new_msr & ((target_ulong)1 << MSR_TGPR))) {
                 new_msr |= (target_ulong)1 << MSR_TGPR;
                 hreg_swap_gpr_tgpr(env);
             }
-            goto tlb_miss;
+            /* fall through */
         case POWERPC_EXCP_7x5:
-        tlb_miss:
 #if defined(DEBUG_SOFTWARE_TLB)
             if (qemu_log_enabled()) {
                 const char *es;
@@ -778,7 +737,6 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
             msr |= ((env->last_way + 1) & (env->nb_ways - 1)) << 17;
             break;
         case POWERPC_EXCP_74xx:
-        tlb_miss_74xx:
 #if defined(DEBUG_SOFTWARE_TLB)
             if (qemu_log_enabled()) {
                 const char *es;
@@ -808,7 +766,7 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
             msr |= env->error_code; /* key bit */
             break;
         default:
-            cpu_abort(cs, "Invalid data store TLB miss exception\n");
+            cpu_abort(cs, "Invalid TLB miss exception\n");
             break;
         }
         break;
