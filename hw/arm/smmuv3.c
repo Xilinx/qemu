@@ -540,10 +540,9 @@ bad_cd:
  * accordingly). Return 0 otherwise.
  */
 static int smmuv3_decode_config(IOMMUMemoryRegion *mr, SMMUTransCfg *cfg,
-                                SMMUEventInfo *event)
+                                SMMUEventInfo *event, uint32_t sid)
 {
     SMMUDevice *sdev = container_of(mr, SMMUDevice, iommu);
-    uint32_t sid = smmu_get_sid(sdev);
     SMMUv3State *s = sdev->smmu;
     int ret;
     STE ste;
@@ -583,7 +582,8 @@ static int smmuv3_decode_config(IOMMUMemoryRegion *mr, SMMUTransCfg *cfg,
  * decoding under the form of an SMMUTransCfg struct. The hash table is indexed
  * by the SMMUDevice handle.
  */
-static SMMUTransCfg *smmuv3_get_config(SMMUDevice *sdev, SMMUEventInfo *event)
+static SMMUTransCfg *smmuv3_get_config(SMMUDevice *sdev, SMMUEventInfo *event,
+                                       uint32_t sid)
 {
     SMMUv3State *s = sdev->smmu;
     SMMUState *bc = &s->smmu_state;
@@ -592,19 +592,19 @@ static SMMUTransCfg *smmuv3_get_config(SMMUDevice *sdev, SMMUEventInfo *event)
     cfg = g_hash_table_lookup(bc->configs, sdev);
     if (cfg) {
         sdev->cfg_cache_hits++;
-        trace_smmuv3_config_cache_hit(smmu_get_sid(sdev),
+        trace_smmuv3_config_cache_hit(sid,
                             sdev->cfg_cache_hits, sdev->cfg_cache_misses,
                             100 * sdev->cfg_cache_hits /
                             (sdev->cfg_cache_hits + sdev->cfg_cache_misses));
     } else {
         sdev->cfg_cache_misses++;
-        trace_smmuv3_config_cache_miss(smmu_get_sid(sdev),
+        trace_smmuv3_config_cache_miss(sid,
                             sdev->cfg_cache_hits, sdev->cfg_cache_misses,
                             100 * sdev->cfg_cache_hits /
                             (sdev->cfg_cache_hits + sdev->cfg_cache_misses));
         cfg = g_new0(SMMUTransCfg, 1);
 
-        if (!smmuv3_decode_config(&sdev->iommu, cfg, event)) {
+        if (!smmuv3_decode_config(&sdev->iommu, cfg, event, sid)) {
             g_hash_table_insert(bc->configs, sdev, cfg);
         } else {
             g_free(cfg);
@@ -620,12 +620,12 @@ static int smmuv3_attrs_to_index(IOMMUMemoryRegion *mr, MemTxAttrs attrs)
     return (mid << 1) | attrs.secure;
 }
 
-static void smmuv3_flush_config(SMMUDevice *sdev)
+static void smmuv3_flush_config(SMMUDevice *sdev, uint32_t sid)
 {
     SMMUv3State *s = sdev->smmu;
     SMMUState *bc = &s->smmu_state;
 
-    trace_smmuv3_config_cache_inv(smmu_get_sid(sdev));
+    trace_smmuv3_config_cache_inv(sid);
     g_hash_table_remove(bc->configs, sdev);
 }
 
@@ -634,7 +634,7 @@ static IOMMUTLBEntry smmuv3_translate(IOMMUMemoryRegion *mr, hwaddr addr,
 {
     SMMUDevice *sdev = container_of(mr, SMMUDevice, iommu);
     SMMUv3State *s = sdev->smmu;
-    uint32_t sid = sdev->bus ? smmu_get_sid(sdev) : iommu_idx;
+    uint32_t sid = sdev->bus ? smmu_get_sid(sdev) : iommu_idx >> 1;
     SMMUEventInfo event = {.type = SMMU_EVT_NONE,
                            .sid = sid,
                            .inval_ste_allowed = false};
@@ -660,7 +660,7 @@ static IOMMUTLBEntry smmuv3_translate(IOMMUMemoryRegion *mr, hwaddr addr,
         goto epilogue;
     }
 
-    cfg = smmuv3_get_config(sdev, &event);
+    cfg = smmuv3_get_config(sdev, &event, sid);
     if (!cfg) {
         status = SMMU_TRANS_ERROR;
         goto epilogue;
@@ -815,7 +815,7 @@ static void smmuv3_notify_iova(IOMMUMemoryRegion *mr,
 
     if (!tg) {
         SMMUEventInfo event = {.inval_ste_allowed = true};
-        SMMUTransCfg *cfg = smmuv3_get_config(sdev, &event);
+        SMMUTransCfg *cfg = smmuv3_get_config(sdev, &event, 0);
         SMMUTransTableInfo *tt;
 
         if (!cfg) {
@@ -985,7 +985,7 @@ static int smmuv3_cmdq_consume(SMMUv3State *s)
 
             trace_smmuv3_cmdq_cfgi_ste(sid);
             sdev = container_of(mr, SMMUDevice, iommu);
-            smmuv3_flush_config(sdev);
+            smmuv3_flush_config(sdev, 0);
 
             break;
         }
@@ -1027,7 +1027,7 @@ static int smmuv3_cmdq_consume(SMMUv3State *s)
 
             trace_smmuv3_cmdq_cfgi_cd(sid);
             sdev = container_of(mr, SMMUDevice, iommu);
-            smmuv3_flush_config(sdev);
+            smmuv3_flush_config(sdev, 0);
             break;
         }
         case SMMU_CMD_TLBI_NH_ASID:
