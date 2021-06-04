@@ -33,6 +33,8 @@
 #include "smmuv3-internal.h"
 #include "smmu-internal.h"
 
+#include "hw/fdt_generic_util.h"
+
 /**
  * smmuv3_trigger_irq - pulse @irq if enabled and update
  * GERROR register in case of GERROR interrupt
@@ -626,7 +628,7 @@ static IOMMUTLBEntry smmuv3_translate(IOMMUMemoryRegion *mr, hwaddr addr,
 {
     SMMUDevice *sdev = container_of(mr, SMMUDevice, iommu);
     SMMUv3State *s = sdev->smmu;
-    uint32_t sid = smmu_get_sid(sdev);
+    uint32_t sid = sdev->bus ? smmu_get_sid(sdev) : iommu_idx;
     SMMUEventInfo event = {.type = SMMU_EVT_NONE,
                            .sid = sid,
                            .inval_ste_allowed = false};
@@ -1506,8 +1508,39 @@ static void smmuv3_instance_init(Object *obj)
     /* Nothing much to do here as of now */
 }
 
+static bool smmu_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
+                           Error **errp)
+{
+    SMMUState *sys = ARM_SMMU(obj);
+    SMMUv3State *s = ARM_SMMUV3(sys);
+    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+    ObjectClass *klass = object_class_by_name(TYPE_ARM_SMMUV3);
+    FDTGenericMMapClass *parent_fmc;
+    unsigned int i;
+
+    parent_fmc = FDT_GENERIC_MMAP_CLASS(object_class_get_parent(klass));
+
+    for (i = 0; i < (reg.n - 1); i++) {
+        SMMUDevice *sdev;
+        char *name = g_strdup_printf("smmu-tbu%d", i);
+
+        sdev = g_new0(SMMUDevice, 1);
+
+        sdev->smmu = s;
+
+        memory_region_init_iommu(&sdev->iommu, sizeof(sdev->iommu),
+                                 sys->mrtypename,
+                                 OBJECT(s), name, 1ULL << SMMU_MAX_VA_BITS);
+        sysbus_init_mmio(sbd, MEMORY_REGION(&sdev->iommu));
+        g_free(name);
+    }
+
+    return parent_fmc ? parent_fmc->parse_reg(obj, reg, errp) : false;
+}
+
 static void smmuv3_class_init(ObjectClass *klass, void *data)
 {
+    FDTGenericMMapClass *fmc = FDT_GENERIC_MMAP_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
     SMMUv3Class *c = ARM_SMMUV3_CLASS(klass);
 
@@ -1515,6 +1548,8 @@ static void smmuv3_class_init(ObjectClass *klass, void *data)
     device_class_set_parent_reset(dc, smmu_reset, &c->parent_reset);
     c->parent_realize = dc->realize;
     dc->realize = smmu_realize;
+
+    fmc->parse_reg = smmu_parse_reg;
 }
 
 static int smmuv3_notify_flag_changed(IOMMUMemoryRegion *iommu,
@@ -1565,6 +1600,10 @@ static const TypeInfo smmuv3_type_info = {
     .instance_init = smmuv3_instance_init,
     .class_size    = sizeof(SMMUv3Class),
     .class_init    = smmuv3_class_init,
+    .interfaces    = (InterfaceInfo[]) {
+        { TYPE_FDT_GENERIC_MMAP },
+        { },
+    },
 };
 
 static const TypeInfo smmuv3_iommu_memory_region_info = {
