@@ -605,7 +605,9 @@ static SMMUTransCfg *smmuv3_get_config(SMMUDevice *sdev, SMMUEventInfo *event,
         cfg = g_new0(SMMUTransCfg, 1);
 
         if (!smmuv3_decode_config(&sdev->iommu, cfg, event, sid)) {
-            g_hash_table_insert(bc->configs, sdev, cfg);
+            if (sdev->bus) {
+                g_hash_table_insert(bc->configs, sdev, cfg);
+            }
         } else {
             g_free(cfg);
             cfg = NULL;
