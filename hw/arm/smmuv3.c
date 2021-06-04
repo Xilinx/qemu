@@ -614,6 +614,12 @@ static SMMUTransCfg *smmuv3_get_config(SMMUDevice *sdev, SMMUEventInfo *event)
     return cfg;
 }
 
+static int smmuv3_attrs_to_index(IOMMUMemoryRegion *mr, MemTxAttrs attrs)
+{
+    uint16_t mid = attrs.requester_id & 0xffff;
+    return (mid << 1) | attrs.secure;
+}
+
 static void smmuv3_flush_config(SMMUDevice *sdev)
 {
     SMMUv3State *s = sdev->smmu;
@@ -1591,6 +1597,7 @@ static void smmuv3_iommu_memory_region_class_init(ObjectClass *klass,
 
     imrc->translate = smmuv3_translate;
     imrc->notify_flag_changed = smmuv3_notify_flag_changed;
+    imrc->attrs_to_index = smmuv3_attrs_to_index;
 }
 
 static const TypeInfo smmuv3_type_info = {
