@@ -1575,10 +1575,24 @@ static int smmuv3_notify_flag_changed(IOMMUMemoryRegion *iommu,
     }
 
     if (new & IOMMU_NOTIFIER_MAP) {
-        error_setg(errp,
-                   "device %02x.%02x.%x requires iommu MAP notifier which is "
-                   "not currently supported", pci_bus_num(sdev->bus),
-                   PCI_SLOT(sdev->devfn), PCI_FUNC(sdev->devfn));
+        /*
+         * If sdev->bus exists, we're working with a PCI device and can provide
+         * bus information.
+         * Otherwise, tell the user which IOMMU tried to be updated.
+         */
+        if (sdev->bus) {
+            error_setg(errp,
+                       "device %02x.%02x.%x requires iommu MAP notifier which "
+                       "is not currently supported", pci_bus_num(sdev->bus),
+                       PCI_SLOT(sdev->devfn), PCI_FUNC(sdev->devfn));
+
+        } else {
+            error_setg(errp,
+                       "Memory region %s requires IOMMU MAP notifier, which is "
+                       "not currently supported",
+                       memory_region_name(MEMORY_REGION(iommu)));
+        }
+
         return -EINVAL;
     }
 
