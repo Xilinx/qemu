@@ -29,6 +29,8 @@
 
 #define SMMU_MAX_VA_BITS      48
 
+#define SMMU_MAX_TBU          16
+
 /*
  * Page table walk error types
  */
@@ -86,6 +88,7 @@ typedef struct SMMUDevice {
     int                devfn;
     IOMMUMemoryRegion  iommu;
     AddressSpace       as;
+    AddressSpace       as_downstream;
     uint32_t           cfg_cache_hits;
     uint32_t           cfg_cache_misses;
     QLIST_ENTRY(SMMUDevice) next;
@@ -117,6 +120,10 @@ struct SMMUState {
     QLIST_HEAD(, SMMUDevice) devices_with_notifiers;
     uint8_t bus_num;
     PCIBus *primary_bus;
+
+    struct {
+        MemoryRegion *mr;
+    } tbu[SMMU_MAX_TBU];
 };
 
 struct SMMUBaseClass {

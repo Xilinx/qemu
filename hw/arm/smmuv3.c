@@ -22,6 +22,7 @@
 #include "hw/sysbus.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-core.h"
+#include "hw/qdev-properties.h"
 #include "hw/pci/pci.h"
 #include "cpu.h"
 #include "trace.h"
@@ -648,7 +649,7 @@ static IOMMUTLBEntry smmuv3_translate(IOMMUMemoryRegion *mr, hwaddr addr,
     SMMUTransTableInfo *tt;
     SMMUTransCfg *cfg = NULL;
     IOMMUTLBEntry entry = {
-        .target_as = &address_space_memory,
+        .target_as = sdev->bus ? &address_space_memory : &sdev->as,
         .iova = addr,
         .translated_addr = addr,
         .addr_mask = ~(hwaddr)0,
@@ -752,6 +753,7 @@ static IOMMUTLBEntry smmuv3_translate(IOMMUMemoryRegion *mr, hwaddr addr,
         }
         status = SMMU_TRANS_ERROR;
     } else {
+        cached_entry->entry.target_as = sdev->bus ? &address_space_memory : &sdev->as;
         smmu_iotlb_insert(bs, cfg, cached_entry);
         status = SMMU_TRANS_SUCCESS;
     }
@@ -1513,7 +1515,17 @@ static const VMStateDescription vmstate_smmuv3 = {
 
 static void smmuv3_instance_init(Object *obj)
 {
-    /* Nothing much to do here as of now */
+    SMMUState *sys = ARM_SMMU(obj);
+    int i;
+
+    for (i = 0; i < SMMU_MAX_TBU; i++) {
+        char *name = g_strdup_printf("mr-%d", i);
+        object_property_add_link(obj, name, TYPE_MEMORY_REGION,
+                             (Object **)&sys->tbu[i].mr,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
+        g_free(name);
+    }
 }
 
 static bool smmu_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
@@ -1536,6 +1548,9 @@ static bool smmu_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
 
         sdev->smmu = s;
 
+        address_space_init(&sdev->as,
+                           sys->tbu[i].mr ? sys->tbu[i].mr : get_system_memory(),
+                           NULL);
         memory_region_init_iommu(&sdev->iommu, sizeof(sdev->iommu),
                                  sys->mrtypename,
                                  OBJECT(s), name, 1ULL << SMMU_MAX_VA_BITS);
