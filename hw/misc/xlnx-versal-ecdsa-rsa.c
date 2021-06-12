@@ -26,6 +26,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "hw/sysbus.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
@@ -115,6 +116,10 @@ typedef struct ECDSA_RSA {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
     qemu_irq irq_ecdsa_rsa_imr;
+
+    struct {
+        uint32_t ram_nr_words;
+    } cfg;
 
     bool in_reset;
 
@@ -239,6 +244,13 @@ static void ecdsa_rsa_ram_addr_postw(RegisterInfo *reg, uint64_t val64)
     ECDSA_RSA *s = XILINX_ECDSA_RSA(reg->opaque);
     uint32_t val32 = val64;
     uint32_t addr = FIELD_EX32(val32, RAM_ADDR, ADDR);
+
+
+    if (addr >= s->cfg.ram_nr_words) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: invalid RAM address %x!\n",
+                      __func__, addr);
+        return;
+    }
 
     if (FIELD_EX32(val32, RAM_ADDR, WRRD_B)) {
         memcpy(&s->rsa.mem.words[addr].u8[0], &s->rw_buf.u8[0],
@@ -491,6 +503,16 @@ static const MemoryRegionOps ecdsa_rsa_ops = {
     },
 };
 
+static void ecdsa_rsa_realize(DeviceState *dev, Error **errp)
+{
+    ECDSA_RSA *s = XILINX_ECDSA_RSA(dev);
+
+    if (s->cfg.ram_nr_words > ARRAY_SIZE(s->rsa.mem.words)) {
+        error_setg(errp, "RSA: Nr of words %d is larger than MAX %zd",
+                   s->cfg.ram_nr_words, ARRAY_SIZE(s->rsa.mem.words));
+    }
+}
+
 static void ecdsa_rsa_init(Object *obj)
 {
     ECDSA_RSA *s = XILINX_ECDSA_RSA(obj);
@@ -513,6 +535,11 @@ static void ecdsa_rsa_init(Object *obj)
     sysbus_init_irq(sbd, &s->irq_ecdsa_rsa_imr);
 }
 
+static Property ecdsa_rsa_properties[] = {
+    DEFINE_PROP_UINT32("ram-nr-words", ECDSA_RSA, cfg.ram_nr_words, 144),
+    DEFINE_PROP_END_OF_LIST(),
+};
+
 static const VMStateDescription vmstate_ecdsa_rsa = {
     .name = TYPE_XILINX_ECDSA_RSA,
     .version_id = 1,
@@ -529,7 +556,9 @@ static void ecdsa_rsa_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->reset = ecdsa_rsa_reset;
+    dc->realize = ecdsa_rsa_realize;
     dc->vmsd = &vmstate_ecdsa_rsa;
+    device_class_set_props(dc, ecdsa_rsa_properties);
 }
 
 static const TypeInfo ecdsa_rsa_info = {
