@@ -34,7 +34,7 @@
 #define BYTES_PER_WORD (BITS_PER_WORD / 8)
 #define WORDS_PER_REG 22
 #define BYTES_PER_REG (BYTES_PER_WORD * WORDS_PER_REG)
-#define NR_WORDS 144
+#define NR_WORDS 256
 #define RAMSIZE (NR_WORDS * (BITS_PER_WORD / 8))
 
 #define REG_E 0
