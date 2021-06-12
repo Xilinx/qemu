@@ -29,12 +29,12 @@
 
 #include <gcrypt.h>
 
-/* 0x6E + 22 words. Each word is 192 bits.  */
+/* Each word is 192 bits.  */
 #define BITS_PER_WORD 192
 #define BYTES_PER_WORD (BITS_PER_WORD / 8)
 #define WORDS_PER_REG 22
 #define BYTES_PER_REG (BYTES_PER_WORD * WORDS_PER_REG)
-#define NR_WORDS 0x84
+#define NR_WORDS 144
 #define RAMSIZE (NR_WORDS * (BITS_PER_WORD / 8))
 
 #define REG_E 0
@@ -68,7 +68,7 @@ typedef struct IPCoresRSA {
         union {
             uint8_t u8[RAMSIZE];
             uint32_t u32[RAMSIZE / 4];
-            struct word words[0x84];
+            struct word words[NR_WORDS];
             struct reg regs[6];
         };
     } mem;
