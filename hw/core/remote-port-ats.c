@@ -142,9 +142,11 @@ static void rp_ats_cache_insert(RemotePortATS *s,
         IOMMUTLBEntry *iotlb = g_array_index(s->cache, IOMMUTLBEntry *, i);
         hwaddr masked_start = (translated_addr & ~iotlb->addr_mask);
         hwaddr masked_end = ((translated_addr | mask) & ~iotlb->addr_mask);
+        bool spans_region = masked_start < iotlb->translated_addr &&
+                             masked_end > iotlb->translated_addr;
 
         if (masked_start == iotlb->translated_addr ||
-            masked_end == iotlb->translated_addr) {
+            masked_end == iotlb->translated_addr || spans_region) {
             hwaddr masked_iova_start;
             hwaddr masked_iova_end;
 
@@ -164,9 +166,11 @@ static void rp_ats_cache_insert(RemotePortATS *s,
              */
             masked_iova_start = (iova & ~iotlb->addr_mask);
             masked_iova_end = ((iova | mask) & ~iotlb->addr_mask);
+            spans_region = masked_iova_start < iotlb->iova &&
+                            masked_iova_end > iotlb->iova;
 
             if (masked_iova_start == iotlb->iova ||
-                masked_iova_end == iotlb->iova) {
+                masked_iova_end == iotlb->iova || spans_region) {
 
                 if ((iotlb->addr_mask + 1) < (mask + 1)) {
                     g_array_remove_index_fast(s->cache, i);
@@ -256,9 +260,6 @@ static bool ats_translate_address(RemotePortATS *s, struct rp_pkt *pkt,
         }
     }
 
-    if (*phys_len < pkt->ats.len) {
-        return false;
-    }
     if (!(prot & IOMMU_RO)) {
         pkt->ats.attributes &= ~(RP_ATS_ATTR_exec | RP_ATS_ATTR_read);
     }
@@ -276,7 +277,7 @@ static void rp_ats_req(RemotePortDevice *dev, struct rp_pkt *pkt)
     RemotePortATS *s = REMOTE_PORT_ATS(dev);
     size_t pktlen = sizeof(struct rp_pkt_ats);
     hwaddr phys_addr = 0;
-    hwaddr phys_len = pkt->ats.len;
+    hwaddr phys_len = (hwaddr)(-1);
     uint64_t result;
     size_t enclen;
     int64_t delay;
