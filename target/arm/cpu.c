@@ -2330,32 +2330,107 @@ type_init(arm_cpu_register_types)
 
 #ifndef CONFIG_USER_ONLY
 
+static Object *fdt_armv8_timer_get_intc(FDTMachineInfo *fdti, char *node_path)
+{
+    char intc_node_path[DT_PATH_LENGTH];
+    uint32_t intc_phandle;
+    Error *errp = NULL;
+    DeviceState *intc;
+
+    intc_phandle = qemu_fdt_getprop_cell(fdti->fdt, node_path,
+                                         "interrupt-parent",
+                                         0, true, &errp);
+
+    /* There must be an interrupt-parent */
+    if (errp ||
+        qemu_devtree_get_node_by_phandle(fdti->fdt,
+                                         intc_node_path, intc_phandle)) {
+        g_assert_not_reached();
+    }
+
+    while (!fdt_init_has_opaque(fdti, intc_node_path)) {
+        fdt_init_yield(fdti);
+    }
+
+    intc = DEVICE(fdt_init_get_opaque(fdti, intc_node_path));
+
+    while (!intc->realized) {
+        fdt_init_yield(fdti);
+    }
+
+    return OBJECT(intc);
+}
+
 static int armv8_timer_fdt_init(char *node_path, FDTMachineInfo *fdti,
                                 void *priv)
 {
+    Object *intc = fdt_armv8_timer_get_intc(fdti, node_path);
     CPUState *cpu;
     bool map_mode = false;
-    qemu_irq *sec_irqs = fdt_get_irq(fdti, node_path, 0, &map_mode);
-    qemu_irq *ns_irqs = fdt_get_irq(fdti, node_path, 1, &map_mode);
-    qemu_irq *v_irqs = fdt_get_irq(fdti, node_path, 2, &map_mode);
-    qemu_irq *h_irqs = fdt_get_irq(fdti, node_path, 3, &map_mode);
+    qemu_irq *sec_irqs = NULL;
+    qemu_irq *ns_irqs;
+    qemu_irq *v_irqs;
+    qemu_irq *h_irqs;
+    uint32_t first_cpu_idx;
+    uint32_t num_cpu;
+    bool has_sec_ext;
+    Error *err = NULL;
+
+    first_cpu_idx = object_property_get_uint(intc, "first-cpu-idx", &err);
+    if (!err) {
+        num_cpu = object_property_get_uint(intc, "num-cpu", &err);
+        assert(!err);
+        has_sec_ext = object_property_get_bool(intc, "has-security-extensions",
+                                               &err);
+        assert(!err);
+    } else {
+        /*
+         * Connect all CPUs with the ARM_FEATURE_GENERIC_TIMER set for
+         * backwards compatibility when the 'first-cpu-idx' property does not
+         * exist.
+         */
+        num_cpu = 0;
+        has_sec_ext = true;
+    }
+
+    if (has_sec_ext) {
+        sec_irqs = fdt_get_irq(fdti, node_path, 0, &map_mode);
+        ns_irqs = fdt_get_irq(fdti, node_path, 1, &map_mode);
+        v_irqs = fdt_get_irq(fdti, node_path, 2, &map_mode);
+        h_irqs = fdt_get_irq(fdti, node_path, 3, &map_mode);
+    } else {
+        ns_irqs = fdt_get_irq(fdti, node_path, 0, &map_mode);
+        v_irqs = fdt_get_irq(fdti, node_path, 1, &map_mode);
+        h_irqs = fdt_get_irq(fdti, node_path, 2, &map_mode);
+    }
 
     assert(!map_mode); /* not supported for PPI */
 
     for (cpu = first_cpu; cpu; cpu = CPU_NEXT(cpu)) {
         ARMCPU *acpu = ARM_CPU(cpu);
+        bool is_gic_cpu;
 
         if (!arm_feature(&acpu->env, ARM_FEATURE_GENERIC_TIMER)) {
             continue;
         }
-        assert(*sec_irqs);
-        assert(*ns_irqs);
-        assert(*v_irqs);
-        assert(*h_irqs);
-        qdev_connect_gpio_out(DEVICE(acpu), 0, *ns_irqs++);
-        qdev_connect_gpio_out(DEVICE(acpu), 1, *v_irqs++);
-        qdev_connect_gpio_out(DEVICE(acpu), 2, *h_irqs++);
-        qdev_connect_gpio_out(DEVICE(acpu), 3, *sec_irqs++);
+
+        is_gic_cpu = cpu->cpu_index >= first_cpu_idx &&
+                     cpu->cpu_index < (first_cpu_idx + num_cpu);
+
+        if (!num_cpu || is_gic_cpu) {
+
+            assert(*ns_irqs);
+            assert(*v_irqs);
+            assert(*h_irqs);
+            qdev_connect_gpio_out(DEVICE(acpu), 0, *ns_irqs++);
+            qdev_connect_gpio_out(DEVICE(acpu), 1, *v_irqs++);
+            qdev_connect_gpio_out(DEVICE(acpu), 2, *h_irqs++);
+
+            if (has_sec_ext) {
+                assert(*sec_irqs);
+                qdev_connect_gpio_out(DEVICE(acpu), 3, *sec_irqs++);
+            }
+        }
     }
 
     return 0;
