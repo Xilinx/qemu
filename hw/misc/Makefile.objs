@@ -80,6 +80,7 @@ common-obj-$(CONFIG_XLNX_VERSAL) += xlnx-versal-fpd-slcr-secure.o
 common-obj-$(CONFIG_XLNX_VERSAL) += xlnx-versal-lpd-slcr-secure.o
 common-obj-$(CONFIG_XLNX_VERSAL) += xlnx-versal-fpd-slcr.o
 common-obj-$(CONFIG_XLNX_VERSAL) += xlnx-versal-lpd-slcr.o
+common-obj-$(CONFIG_XLNX_VERSAL) += xlnx-versal-lpd-iou-slcr-secure.o
 
 common-obj-$(CONFIG_XLNX_VERSAL) += iomem-cache.o
 
