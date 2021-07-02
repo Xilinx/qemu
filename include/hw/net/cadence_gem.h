@@ -49,7 +49,8 @@ typedef struct CadenceGEMState {
     SysBusDevice parent_obj;
 
     /*< public >*/
-    MemTxAttrs *attr;
+    MemTxAttrs *attr_r;
+    MemTxAttrs *attr_w;
     MemoryRegion iomem;
     MemoryRegion *dma_mr;
     AddressSpace dma_as;
