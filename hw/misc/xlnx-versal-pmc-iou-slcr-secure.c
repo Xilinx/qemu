@@ -79,6 +79,8 @@ typedef struct PMC_IOU_SECURE_SLCR {
 
     MemTxAttrs *memattr_r_sd[2];
     MemTxAttrs *memattr_w_sd[2];
+    MemTxAttrs *memattr_w_qspi;
+    MemTxAttrs *memattr_w_ospi;
 
     uint32_t regs[PMC_IOU_SECURE_SLCR_R_MAX];
     RegisterInfo regs_info[PMC_IOU_SECURE_SLCR_R_MAX];
@@ -164,6 +166,18 @@ static void slcr_memattr_postw(RegisterInfo *reg, uint64_t val64)
             s->memattr_r_sd[1]->user = priv;
         }
         break;
+    case A_IOU_AXI_WPRTCN_QSPI:
+        if (s->memattr_w_qspi) {
+            s->memattr_w_qspi->secure = sec;
+            s->memattr_w_qspi->user = priv;
+        }
+        break;
+    case A_IOU_AXI_WPRTCN_OSPI:
+        if (s->memattr_w_ospi) {
+            s->memattr_w_ospi->secure = sec;
+            s->memattr_w_ospi->user = priv;
+        }
+        break;
     default:
         g_assert_not_reached();
     };
@@ -184,8 +198,10 @@ static const RegisterAccessInfo pmc_iou_secure_slcr_regs_info[] = {
         .post_write = slcr_memattr_postw,
     },{ .name = "IOU_AXI_WPRTCN_QSPI",  .addr = A_IOU_AXI_WPRTCN_QSPI,
         .rsvd = 0xfffffff8,
+        .post_write = slcr_memattr_postw,
     },{ .name = "IOU_AXI_WPRTCN_OSPI",  .addr = A_IOU_AXI_WPRTCN_OSPI,
         .rsvd = 0xfffffff8,
+        .post_write = slcr_memattr_postw,
     },{ .name = "CTRL",  .addr = A_CTRL,
     },{ .name = "ISR",  .addr = A_ISR,
         .w1c = 0x1,
@@ -269,6 +285,16 @@ static void pmc_iou_secure_slcr_init(Object *obj)
     object_property_add_link(obj, "memattr-write-sd1",
                              TYPE_MEMORY_TRANSACTION_ATTR,
                              (Object **)&s->memattr_w_sd[1],
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
+    object_property_add_link(obj, "memattr-write-qspi",
+                             TYPE_MEMORY_TRANSACTION_ATTR,
+                             (Object **)&s->memattr_w_qspi,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
+    object_property_add_link(obj, "memattr-write-ospi",
+                             TYPE_MEMORY_TRANSACTION_ATTR,
+                             (Object **)&s->memattr_w_ospi,
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_STRONG);
 }
