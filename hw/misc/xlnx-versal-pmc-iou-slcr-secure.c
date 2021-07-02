@@ -32,6 +32,7 @@
 #include "qemu/log.h"
 #include "migration/vmstate.h"
 #include "hw/irq.h"
+#include "hw/qdev-properties.h"
 
 #ifndef XILINX_PMC_IOU_SECURE_SLCR_ERR_DEBUG
 #define XILINX_PMC_IOU_SECURE_SLCR_ERR_DEBUG 0
@@ -75,6 +76,9 @@ typedef struct PMC_IOU_SECURE_SLCR {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
     qemu_irq irq_imr;
+
+    MemTxAttrs *memattr_r_sd[2];
+    MemTxAttrs *memattr_w_sd[2];
 
     uint32_t regs[PMC_IOU_SECURE_SLCR_R_MAX];
     RegisterInfo regs_info[PMC_IOU_SECURE_SLCR_R_MAX];
@@ -122,15 +126,62 @@ static uint64_t itr_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
+static void slcr_memattr_postw(RegisterInfo *reg, uint64_t val64)
+{
+    PMC_IOU_SECURE_SLCR *s = XILINX_PMC_IOU_SECURE_SLCR(reg->opaque);
+    uint32_t val = (uint32_t)val64;
+    uint32_t offset;
+    bool sec;
+    bool priv;
+
+    /* Invert secure attribute output so a high output means secure accesss */
+    sec = !(FIELD_EX32(val, IOU_AXI_WPRTCN_SD0, SD0_AXI_AWPROT) & 2);
+    priv = FIELD_EX32(val, IOU_AXI_WPRTCN_SD0, SD0_AXI_AWPROT) & 1;
+
+    offset = (reg->access->addr - A_IOU_AXI_WPRTCN_SD0);
+    switch (offset) {
+    case A_IOU_AXI_WPRTCN_SD0:
+        if (s->memattr_w_sd[0]) {
+            s->memattr_w_sd[0]->secure = sec;
+            s->memattr_w_sd[0]->user = priv;
+        }
+        break;
+    case A_IOU_AXI_RPRTCN_SD0:
+        if (s->memattr_r_sd[0]) {
+            s->memattr_r_sd[0]->secure = sec;
+            s->memattr_r_sd[0]->user = priv;
+        }
+        break;
+    case A_IOU_AXI_WPRTCN_SD1:
+        if (s->memattr_w_sd[1]) {
+            s->memattr_w_sd[1]->secure = sec;
+            s->memattr_w_sd[1]->user = priv;
+        }
+        break;
+    case A_IOU_AXI_RPRTCN_SD1:
+        if (s->memattr_r_sd[1]) {
+            s->memattr_r_sd[1]->secure = sec;
+            s->memattr_r_sd[1]->user = priv;
+        }
+        break;
+    default:
+        g_assert_not_reached();
+    };
+}
+
 static const RegisterAccessInfo pmc_iou_secure_slcr_regs_info[] = {
     {   .name = "IOU_AXI_WPRTCN_SD0",  .addr = A_IOU_AXI_WPRTCN_SD0,
         .rsvd = 0xfffffff8,
+        .post_write = slcr_memattr_postw,
     },{ .name = "IOU_AXI_RPRTCN_SD0",  .addr = A_IOU_AXI_RPRTCN_SD0,
         .rsvd = 0xfffffff8,
+        .post_write = slcr_memattr_postw,
     },{ .name = "IOU_AXI_WPRTCN_SD1",  .addr = A_IOU_AXI_WPRTCN_SD1,
         .rsvd = 0xfffffff8,
+        .post_write = slcr_memattr_postw,
     },{ .name = "IOU_AXI_RPRTCN_SD1",  .addr = A_IOU_AXI_RPRTCN_SD1,
         .rsvd = 0xfffffff8,
+        .post_write = slcr_memattr_postw,
     },{ .name = "IOU_AXI_WPRTCN_QSPI",  .addr = A_IOU_AXI_WPRTCN_QSPI,
         .rsvd = 0xfffffff8,
     },{ .name = "IOU_AXI_WPRTCN_OSPI",  .addr = A_IOU_AXI_WPRTCN_OSPI,
@@ -179,11 +230,6 @@ static const MemoryRegionOps pmc_iou_secure_slcr_ops = {
     },
 };
 
-static void pmc_iou_secure_slcr_realize(DeviceState *dev, Error **errp)
-{
-    /* Delete this if you don't need it */
-}
-
 static void pmc_iou_secure_slcr_init(Object *obj)
 {
     PMC_IOU_SECURE_SLCR *s = XILINX_PMC_IOU_SECURE_SLCR(obj);
@@ -204,6 +250,27 @@ static void pmc_iou_secure_slcr_init(Object *obj)
                                 &reg_array->mem);
     sysbus_init_mmio(sbd, &s->iomem);
     sysbus_init_irq(sbd, &s->irq_imr);
+
+    object_property_add_link(obj, "memattr-sd0",
+                             TYPE_MEMORY_TRANSACTION_ATTR,
+                             (Object **)&s->memattr_r_sd[0],
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
+    object_property_add_link(obj, "memattr-write-sd0",
+                             TYPE_MEMORY_TRANSACTION_ATTR,
+                             (Object **)&s->memattr_w_sd[0],
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
+    object_property_add_link(obj, "memattr-sd1",
+                             TYPE_MEMORY_TRANSACTION_ATTR,
+                             (Object **)&s->memattr_r_sd[1],
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
+    object_property_add_link(obj, "memattr-write-sd1",
+                             TYPE_MEMORY_TRANSACTION_ATTR,
+                             (Object **)&s->memattr_w_sd[1],
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
 }
 
 static const VMStateDescription vmstate_pmc_iou_secure_slcr = {
@@ -222,7 +289,6 @@ static void pmc_iou_secure_slcr_class_init(ObjectClass *klass, void *data)
     ResettableClass *rc = RESETTABLE_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->realize = pmc_iou_secure_slcr_realize;
     dc->vmsd = &vmstate_pmc_iou_secure_slcr;
     rc->phases.enter = pmc_iou_secure_slcr_reset_enter;
     rc->phases.hold = pmc_iou_secure_slcr_reset_hold;
