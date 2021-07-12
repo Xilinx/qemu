@@ -117,4 +117,6 @@ void xlnx_aes_k256_swap32_i(uint8_t dst[32], const uint8_t src[32]);
 
 bool xlnx_aes_k256_is_zero_i(const uint8_t key[32]);
 
+uint32_t xlnx_calc_crc(const uint32_t *data, unsigned data_length);
+
 #endif
