@@ -34,6 +34,7 @@
 #include "qemu/error-report.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
+#include "xlnx-versal-ams.h"
 
 #include <math.h>
 
@@ -41,7 +42,7 @@
 #define PMC_SYSMON_ERR_DEBUG 0
 #endif
 
-#define TYPE_PMC_SYSMON "xlnx.pmc-sysmon"
+#define TYPE_PMC_SYSMON "xlnx,pmc-sysmon"
 
 #define PMC_SYSMON(obj) \
      OBJECT_CHECK(PMCSysMon, (obj), TYPE_PMC_SYSMON)
@@ -3233,6 +3234,9 @@ REG32(SSC_MEASURE_IF, 0x4000)
 #define CHANNEL_WORD(_I)        ((_I) / 32)
 #define CHANNEL_MASK(_I)        (1U << ((_I) % 32))
 #define CHANNEL_BIT(_RA, _I)    (!!((_RA)[CHANNEL_WORD(_I)] & CHANNEL_MASK(_I)))
+#define CHANNEL_BIT_SET(_RA, _I) do { \
+        (_RA)[CHANNEL_WORD(_I)] |= CHANNEL_MASK(_I); \
+    } while (0)
 #define CHANNEL_ID(_B, _R)      (((_R) - (_B)) * 32)
 
 /* Access voltage registers by channel id */
@@ -3265,6 +3269,10 @@ enum PMCSysMon_const {
     R_TEMP_SAT_FIRST = R_TEMP_SAT1,
     R_TEMP_SAT_LAST  = R_TEMP_SAT62,
     R_TEMP_SAT_COUNT = 64, /* plus TEMP_FPD and TEMP_LPD */
+
+    R_VCCINT_SAT_FIRST = R_VCCINT_SAT1,
+    R_VCCINT_SAT_LAST  = R_VCCINT_SAT62,
+    R_VCCINT_SAT_COUNT = (R_VCCINT_SAT_LAST - R_VCCINT_SAT_FIRST + 1),
 
     R_SUPPLY_COUNT   = (R_SUPPLY159 + 1 - R_SUPPLY0),
 
@@ -3313,12 +3321,23 @@ enum PMCSysMon_const {
 #define MFP19_F_INT(_I) ((double)(_I) / (1 << 16))
 #define MFP19_F_MIN     MFP19_F_INT(MFP19_I_MIN)
 #define MFP19_F_MAX     MFP19_F_INT(MFP19_I_MAX)
+#define MFP19_F_UMIN    MFP19_F_INT(MFP19_I_UMIN)
 #define MFP19_F_UMAX    MFP19_F_INT(MFP19_I_UMAX)
 
 typedef struct PMCSysMon_TempAcc {
     uint32_t count:4;   /* samples collected in accum so far */
     int32_t  accum:28;  /* sum of 15 signed Q8.7 values */
 } PMCSysMon_TempAcc;
+
+typedef struct PMCSysMon_MeasInj {
+    union {
+        float flt;
+        uint32_t q8_7;
+    } meas_val;
+    xlnx_ams_sensor_t info;
+    bool by_root_id;
+    QTAILQ_ENTRY(PMCSysMon_MeasInj) link;
+} PMCSysMon_MeasInj;
 
 typedef struct PMCSysMon {
     SysBusDevice parent_obj;
@@ -3327,6 +3346,19 @@ typedef struct PMCSysMon {
     qemu_irq irq_1;
     uint32_t events;
     uint32_t reg_prev_value;
+
+    Object *ams_sat[2];
+    uint32_t ams_sat_ready[1];  /* bit-array, indexed by CHANNEL_xxx macros */
+
+    /*
+     * Measurement injection list pending for playback/replay upon
+     * a satellite transitioning to ready state.
+     *
+     * The replay is necessary because injections given through
+     * property are not usable until guest software has completed
+     * satellite configurations.
+     */
+    QTAILQ_HEAD(, PMCSysMon_MeasInj) meas_injections;
 
     /*
      * Signed Q15.16 accumulators to avoid repeated encoding
@@ -3597,26 +3629,44 @@ static uint32_t mfp19_from_int(int q, uint32_t template)
     return MFP19_IS_SIGNED(template) ? mfp19_signed(q) : mfp19_unsigned(q);
 }
 
-static uint32_t mfp19_from_float(double v)
+static uint32_t mfp19_from_float(double v, bool bipolar, Error **errp)
 {
     uint32_t q;
 
     /* Saturate if out of range */
-    if (v < MFP19_F_MIN) {
-        return MFP19_MIN;
-    }
-    if (v > MFP19_F_UMAX) {
-        return MFP19_UMAX;
+    if (bipolar) {
+        if (v < MFP19_F_MIN) {
+            q = MFP19_MIN;
+            goto e_range;
+        }
+        if (v > MFP19_F_MAX) {
+            q = MFP19_MAX;
+            goto e_range;
+        }
+    } else {
+        if (v <= 0) {
+            q = MFP19_UMIN;
+            goto e_range;
+        }
+        if (v > MFP19_F_UMAX) {
+            q = MFP19_UMAX;
+            goto e_range;
+        }
     }
 
     /* Convert to q4.16 */
     q = (uint32_t)(round(v * (1 << 16)));
+    return bipolar ? mfp19_signed(q) : mfp19_unsigned(q);
 
-    if (v <= MFP19_F_MAX) {
-        return mfp19_signed(q);
-    } else {
-        return mfp19_unsigned(q);
+ e_range:
+    if (errp) {
+        error_setg(errp,
+                   "Voltage value (%.17g) out of range [%.17g, %.17g]", v,
+                   (bipolar ? MFP19_F_MIN : MFP19_F_UMIN),
+                   (bipolar ? MFP19_F_MAX : MFP19_F_UMAX));
     }
+
+    return q;
 }
 
 static void assert_number_formats(void)
@@ -4168,6 +4218,11 @@ static void pmc_sysmon_volt_set(PMCSysMon *s, unsigned vid, uint32_t val)
     } else {
         pmc_sysmon_volt_clear_alarm(s, vid);
     }
+}
+
+static void pmc_sysmon_vccint_set(PMCSysMon *s, unsigned vid, uint32_t val)
+{
+    s->regs[R_VCCINT_SAT1 + vid] = val;
 }
 
 static void pmc_sysmon_volt_en_avg_reg_postw(RegisterInfo *reg, uint64_t val64)
@@ -8105,7 +8160,14 @@ static const MemoryRegionOps pmc_sysmon_ops = {
 
 static void pmc_sysmon_realize(DeviceState *dev, Error **errp)
 {
-    /* Delete this if you don't need it */
+    PMCSysMon *s = PMC_SYSMON(dev);
+    unsigned nr;
+
+    for (nr = 0; nr < ARRAY_SIZE(s->ams_sat); nr++) {
+        if (s->ams_sat[nr]) {
+            xlnx_ams_sat_instance_set(s->ams_sat[nr], nr, OBJECT(s));
+        }
+    }
 }
 
 static void pmc_sysmon_init(Object *obj)
@@ -8113,6 +8175,8 @@ static void pmc_sysmon_init(Object *obj)
     PMCSysMon *s = PMC_SYSMON(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
     RegisterInfoArray *reg_array;
+
+    QTAILQ_INIT(&s->meas_injections);
 
     memory_region_init(&s->iomem, obj, TYPE_PMC_SYSMON, PMC_SYSMON_R_MAX * 4);
     reg_array =
@@ -8128,6 +8192,278 @@ static void pmc_sysmon_init(Object *obj)
     sysbus_init_mmio(sbd, &s->iomem);
     sysbus_init_irq(sbd, &s->irq_0);
     sysbus_init_irq(sbd, &s->irq_1);
+}
+
+static void pmc_sysmon_sat_set_ready(PMCSysMon *s, unsigned instance_id)
+{
+    if (instance_id >= ARRAY_SIZE(s->ams_sat)) {
+        return;
+    }
+    if (!s->ams_sat[instance_id]) {
+        return;
+    }
+
+    CHANNEL_BIT_SET(s->ams_sat_ready, instance_id);
+}
+
+static bool pmc_sysmon_sat_is_ready(PMCSysMon *s, unsigned instance_id)
+{
+    if (instance_id >= ARRAY_SIZE(s->ams_sat)) {
+        return false;
+    }
+
+    if (!s->ams_sat[instance_id]) {
+        return false;
+    }
+
+    return CHANNEL_BIT(s->ams_sat_ready, instance_id);
+}
+
+static bool pmc_sysmon_sat_cfg_by_root_id(PMCSysMon *s, xlnx_ams_sensor_t *si)
+{
+    unsigned nr;
+
+    for (nr = 0; nr < ARRAY_SIZE(s->ams_sat); nr++) {
+        if (pmc_sysmon_sat_is_ready(s, nr)
+            && xlnx_ams_sat_config_by_root_id(s->ams_sat[nr], si)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool pmc_sysmon_sat_cfg_by_spec(PMCSysMon *s, xlnx_ams_sensor_t *si)
+{
+    unsigned nr;
+
+    for (nr = 0; nr < ARRAY_SIZE(s->ams_sat); nr++) {
+        if (pmc_sysmon_sat_is_ready(s, nr)
+            && xlnx_ams_sat_config_by_spec(s->ams_sat[nr], si)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static void pmc_sysmon_set_mfp_meas(PMCSysMon *s,
+                                    const xlnx_ams_sensor_t *si,
+                                    float val, Error **errp)
+{
+    Error *e_local = NULL;
+    uint32_t mfp;
+
+    if (!errp) {
+        errp = &e_local;
+    }
+
+    mfp = mfp19_from_float(val, si->meas_bipolar, errp);
+    if (*errp) {
+        return;
+    }
+
+    if (si->meas_id == XLNX_AMS_SAT_MEAS_TYPE_VCCINT) {
+        pmc_sysmon_vccint_set(s, si->root_id, mfp);
+    } else {
+        pmc_sysmon_volt_set(s, si->root_id, mfp);
+    }
+}
+
+static void pmc_sysmon_play_injections(PMCSysMon *s, unsigned instance_id)
+{
+    unsigned nr, base = 0, stop = ARRAY_SIZE(s->ams_sat);
+    PMCSysMon_MeasInj *item, *next;
+
+    if (instance_id < stop) {
+        if (!pmc_sysmon_sat_is_ready(s, instance_id)) {
+            return;
+        }
+
+        base = instance_id;
+        stop = base + 1;
+    }
+
+    QTAILQ_FOREACH_SAFE(item, &s->meas_injections, link, next) {
+        bool (*get_cfg)(Object *, xlnx_ams_sensor_t *);
+        xlnx_ams_sensor_t *si = &item->info;
+        bool found = false;
+
+        get_cfg = item->by_root_id ? xlnx_ams_sat_config_by_root_id
+                                   : xlnx_ams_sat_config_by_spec;
+
+        for (nr = base; nr < stop; nr++) {
+            if (pmc_sysmon_sat_is_ready(s, nr) && get_cfg(s->ams_sat[nr], si)) {
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
+            continue;  /* Keep it in the list for next replay round */
+        }
+
+        /* Apply the injection then delete from the replay list */
+        if (si->meas_id == XLNX_AMS_SAT_MEAS_TYPE_TSENS) {
+            pmc_sysmon_temp_set(s, si->root_id, item->meas_val.q8_7);
+        } else {
+            pmc_sysmon_set_mfp_meas(s, si, item->meas_val.flt, NULL);
+        }
+
+        QTAILQ_REMOVE(&s->meas_injections, item, link);
+        g_free(item);
+    }
+}
+
+static void pmc_sysmon_defer_injection(PMCSysMon *s,
+                                       const xlnx_ams_sensor_t *si,
+                                       float val, bool by_root_id)
+{
+    PMCSysMon_MeasInj *item;
+
+    item = g_new0(PMCSysMon_MeasInj, 1);
+    item->by_root_id = by_root_id;
+    item->meas_val.flt = val;
+    item->info = *si;
+
+    QTAILQ_INSERT_TAIL(&s->meas_injections, item, link);
+}
+
+static void pmc_sysmon_volt_apply_by_root_id(PMCSysMon *s, unsigned reg,
+                                             float val, Error **errp)
+{
+    xlnx_ams_sensor_t info;
+
+    /*
+     * By-root-id voltage injection is a quick test, useful when
+     * Vivado generated '*_sysmon_satellite.csv' file is available.
+     *
+     * However, it is not a preferred method for QEMU automation
+     * because Vivado may change a sensor's root-id when the design
+     * is modified such as adding or remove other sensors.
+     *
+     * Thus, for QEMU automation, the "by-spec" voltage injection
+     * is preferred because a sensor's spec is stable for a design.
+     */
+    memset(&info, 0, sizeof(info));
+    if (reg >= R_VCCINT_SAT_FIRST && reg <= R_VCCINT_SAT_LAST) {
+        info.meas_id = XLNX_AMS_SAT_MEAS_TYPE_VCCINT;
+        info.root_id = reg - R_VCCINT_SAT_FIRST;
+    } else {
+        info.root_id = reg - R_SUPPLY0;
+    }
+
+    if (!pmc_sysmon_sat_cfg_by_root_id(s, &info)) {
+        /* Add to replay list pending for config by guest */
+        pmc_sysmon_defer_injection(s, &info, val, true);
+        return;
+    }
+
+    pmc_sysmon_set_mfp_meas(s, &info, val, errp);
+}
+
+static void pmc_sysmon_volt_apply_by_spec(PMCSysMon *s, xlnx_ams_sensor_t *si,
+                                          float val, Error **errp)
+{
+    /*
+     * By-spec voltage injection is preferred for QEMU-automation
+     * because a sensor's spec is stable for a design.
+     *
+     * However, there are extra steps required to extract sensor
+     * specs from the ams-satellite devices, because Vivado does
+     * not reveal the info.
+     *
+     * To display the spec and root-id from QEMU monitor, use HMP:
+     *   qom-get pmc_ams_sat@N sensor-cfgs
+     * where N is 0 or 1.
+     *
+     * If Vivado generated '*_sysmon_satellite.csv' file is
+     * available, the root-id can be used to identify the
+     * user-friendly names of the sensors.
+     */
+    if (!pmc_sysmon_sat_cfg_by_spec(s, si)) {
+        /* Add to replay list pending for config by guest */
+        pmc_sysmon_defer_injection(s, si, val, false);
+        return;
+    }
+
+    pmc_sysmon_set_mfp_meas(s, si, val, errp);
+}
+
+static void pmc_sysmon_temp_cfg_prop_get(Object *obj, Visitor *v,
+                                         const char *name, void *opaque,
+                                         Error **errp)
+{
+    PMCSysMon *s = PMC_SYSMON(obj);
+    unsigned tid = (uintptr_t)opaque;
+
+    xlnx_ams_sensor_t info = {
+        .meas_id = XLNX_AMS_SAT_MEAS_TYPE_TSENS,
+        .root_id = tid,
+    };
+
+    char str[32], *p = str;
+
+    if (!pmc_sysmon_sat_cfg_by_root_id(s, &info)) {
+        error_setg(errp, "temp_sat[%u] not configured", tid + 1);
+        return;
+    }
+
+    snprintf(str, sizeof(str), "{ amux:%#x, sat:%u }",
+             info.amux_ctrl, info.instance);
+    visit_type_str(v, name, &p, errp);
+}
+
+static void pmc_sysmon_vccint_cfg_prop_get(Object *obj, Visitor *v,
+                                           const char *name, void *opaque,
+                                           Error **errp)
+{
+    PMCSysMon *s = PMC_SYSMON(obj);
+    unsigned vid = (uintptr_t)opaque - R_VCCINT_SAT_FIRST;
+
+    xlnx_ams_sensor_t info = {
+        .meas_id = XLNX_AMS_SAT_MEAS_TYPE_VCCINT,
+        .root_id = vid,
+    };
+
+    char str[64], *p = str;
+
+    if (!pmc_sysmon_sat_cfg_by_root_id(s, &info)) {
+        error_setg(errp, "vccint_sat[%u] not configured", vid + 1);
+        return;
+    }
+
+    snprintf(str, sizeof(str), "{ amux:%#x, mode:%#x, type:%s, sat:%u }",
+             info.amux_ctrl, info.mode,
+             (info.meas_bipolar ? "bipolar" : "unipolar"), info.instance);
+
+    visit_type_str(v, name, &p, errp);
+}
+
+static void pmc_sysmon_volt_cfg_prop_get(Object *obj, Visitor *v,
+                                         const char *name, void *opaque,
+                                         Error **errp)
+{
+    PMCSysMon *s = PMC_SYSMON(obj);
+    unsigned vid = (uintptr_t)opaque - R_SUPPLY0;
+
+    xlnx_ams_sensor_t info = {
+        .root_id = vid,
+    };
+
+    char str[80], *p = str;
+
+    if (!pmc_sysmon_sat_cfg_by_root_id(s, &info)) {
+        error_setg(errp, "supply[%u] not configured", vid);
+        return;
+    }
+
+    snprintf(str, sizeof(str),
+             "{ sat:%u, amux_mode_sw1_sw0:%02x_%02x_%02x_%02x, type:%s }",
+             info.instance,
+             info.amux_ctrl, info.mode, info.abus_sw1, info.abus_sw0,
+             (info.meas_bipolar ? "bipolar" : "unipolar"));
+    visit_type_str(v, name, &p, errp);
 }
 
 static void pmc_sysmon_temp_prop_get(Object *obj, Visitor *v,
@@ -8148,8 +8484,7 @@ static void pmc_sysmon_volt_prop_get(Object *obj, Visitor *v,
                                      Error **errp)
 {
     PMCSysMon *s = PMC_SYSMON(obj);
-    unsigned vid = (uintptr_t)opaque;
-    unsigned reg = R_SUPPLY(vid);
+    unsigned reg = (uintptr_t)opaque;
     char str[32], *p = str;
 
     mfp19_str(s->regs[reg], str, sizeof(str));
@@ -8187,69 +8522,201 @@ static void pmc_sysmon_volt_prop_set(Object *obj, Visitor *v,
                                      Error **errp)
 {
     PMCSysMon *s = PMC_SYSMON(obj);
-    unsigned vid = (uintptr_t)opaque;
-
+    unsigned reg = (uintptr_t)opaque;
     double val;
-    uint32_t mfp;
 
     visit_type_number(v, name, &val, errp);
     if (*errp) {
         return;
     }
-
-    if (val < MFP19_F_MIN || val > MFP19_F_UMAX) {
-        error_setg(errp, "Voltage value (%.17g) out of range [%.17g, %.17g]",
-                   val, MFP19_F_MIN, MFP19_F_UMAX);
+    if (val < FLT_MIN || val > FLT_MAX) {
+        error_setg(errp, "Voltage value out of range");
         return;
     }
 
-    mfp = mfp19_from_float(val);
-    pmc_sysmon_volt_set(s, vid, mfp);
+    pmc_sysmon_volt_apply_by_root_id(s, reg, (float)val, errp);
+}
+
+static void pmc_sysmon_set_supplies_prop_set(Object *obj, Visitor *v,
+                                             const char *name, void *opaque,
+                                             Error **errp)
+{
+    PMCSysMon *s = PMC_SYSMON(obj);
+    xlnx_ams_sensor_t info;
+    unsigned nr;
+    float val;
+    char *opts, **args;
+
+    visit_type_str(v, name, &opts, errp);
+    if (*errp) {
+        return;
+    }
+
+    args = g_strsplit(opts, ",", -1);
+    for (nr = 0; args[nr]; nr += 2) {
+        unsigned amux, mode, sw1, sw0;
+
+        if (!args[nr + 1]) {
+            error_setg(errp, "Non-even number of args given");
+            return;
+        }
+
+        sscanf(args[nr], "%x_%x_%x_%x", &amux, &mode, &sw1, &sw0);
+        sscanf(args[nr + 1], "%f", &val);
+
+        memset(&info, 0, sizeof(info));
+        info.amux_ctrl = amux;
+        info.mode = mode;
+        info.abus_sw1 = sw1;
+        info.abus_sw0 = sw0;
+
+        pmc_sysmon_volt_apply_by_spec(s, &info, val, errp);
+    }
+
+    g_strfreev(args);
+}
+
+static void pmc_sysmon_set_supplies_prop_get(Object *obj, Visitor *v,
+                                             const char *name, void *opaque,
+                                             Error **errp)
+{
+    PMCSysMon *s = PMC_SYSMON(obj);
+    char empty[] = "<empty>", *p = empty;
+    GString *str;
+    PMCSysMon_MeasInj *item;
+
+    str = g_string_new("");
+
+    /* Show whatever remaining in the replay list */
+    QTAILQ_FOREACH(item, &s->meas_injections, link) {
+        xlnx_ams_sensor_t *si = &item->info;
+
+        g_string_append_printf(str, ",%02x_%02x_%02x_%02x,%.17g",
+                               si->amux_ctrl, si->mode,
+                               si->abus_sw1, si->abus_sw0,
+                               item->meas_val.flt);
+    }
+
+    if (str->str[0] == ',') {
+        p = &str->str[1];
+    }
+    visit_type_str(v, name, &p, errp);
+    g_string_free(str, TRUE);
+}
+
+static void pmc_sysmon_class_prop_add(ObjectClass *klass,
+                                      const char *name,
+                                      const char *type,
+                                      const char *desc,
+                                      ObjectPropertyAccessor *get,
+                                      ObjectPropertyAccessor *set,
+                                      void *opaque)
+{
+    object_class_property_add(klass, name, type, get, set, NULL, opaque);
+    object_class_property_set_description(klass, name, desc);
 }
 
 static void pmc_sysmon_temp_prop_add(ObjectClass *klass)
 {
     unsigned tid;
 
-    for (tid = 0; tid < R_TEMP_SAT_COUNT; tid++) {
-        static const char type[] = "Celsius:signed-fixed-point-decimal";
-        static const char desc[] = "Satellite temperature";
+    static const char type[] = "Celsius:signed-fixed-point-decimal";
+
+    for (tid = 0; tid < R_TEMP_SAT_COUNT - 2; tid++) {
         void *opaque = (void *)(uintptr_t)tid;
 
         char name[32];
 
         /* Notational-wise, TEMP_SATn is 1-based */
         snprintf(name, sizeof(name), "temp_sat[%u]", (tid + 1));
-        object_class_property_add(klass, name, type,
+        pmc_sysmon_class_prop_add(klass, name, type,
+                                  "Satellite temperature",
                                   pmc_sysmon_temp_prop_get,
                                   pmc_sysmon_temp_prop_set,
-                                  NULL, opaque);
+                                  opaque);
 
-        object_class_property_set_description(klass, name, desc);
+        snprintf(name, sizeof(name), "temp_sat[%u]-cfg", (tid + 1));
+        pmc_sysmon_class_prop_add(klass, name, "{amux}:str",
+                                  "Satellite temperature config",
+                                  pmc_sysmon_temp_cfg_prop_get,
+                                  NULL, /* non-settable */
+                                  opaque);
     }
+
+    pmc_sysmon_class_prop_add(klass, "TEMP_FPD", type,
+                              "FPD temperature",
+                              pmc_sysmon_temp_prop_get,
+                              pmc_sysmon_temp_prop_set,
+                              (void *)(uintptr_t)tid++);
+
+    pmc_sysmon_class_prop_add(klass, "TEMP_LPD", type,
+                              "LPD temperature",
+                              pmc_sysmon_temp_prop_get,
+                              pmc_sysmon_temp_prop_set,
+                              (void *)(uintptr_t)tid++);
 }
 
 static void pmc_sysmon_volt_prop_add(ObjectClass *klass)
 {
     unsigned vid;
 
+    static const char type[] = "Volt:signed-fixed-point-decimal";
+
     for (vid = 0; vid < R_SUPPLY_COUNT; vid++) {
-        static const char type[] = "Volt:signed-fixed-point-decimal";
-        static const char desc[] = "Satellite supply in volts";
-        void *opaque = (void *)(uintptr_t)vid;
+        void *opaque = (void *)(uintptr_t)(R_SUPPLY0 + vid);
 
         char name[32];
 
         /* Notational-wise, SUPPLYn is 0-based */
         snprintf(name, sizeof(name), "supply[%u]", vid);
-        object_class_property_add(klass, name, type,
+        pmc_sysmon_class_prop_add(klass, name, type,
+                                  "Satellite supply in volts",
                                   pmc_sysmon_volt_prop_get,
                                   pmc_sysmon_volt_prop_set,
-                                  NULL, opaque);
+                                  opaque);
 
-        object_class_property_set_description(klass, name, desc);
+        snprintf(name, sizeof(name), "supply[%u]-cfg", vid);
+        pmc_sysmon_class_prop_add(klass, name,
+                                  "{amux, mode, sw1, sw0}:str",
+                                  "Satellite supply config",
+                                  pmc_sysmon_volt_cfg_prop_get,
+                                  NULL, /* non-settable */
+                                  opaque);
     }
+
+    for (vid = 0; vid < R_VCCINT_SAT_COUNT; vid++) {
+        void *opaque = (void *)(uintptr_t)(R_VCCINT_SAT_FIRST + vid);
+        char name[32];
+
+        snprintf(name, sizeof(name), "vccint_sat[%u]", (vid + 1));
+        pmc_sysmon_class_prop_add(klass, name, type,
+                                  "Satellite vccint in volts",
+                                  pmc_sysmon_volt_prop_get,
+                                  pmc_sysmon_volt_prop_set,
+                                  opaque);
+
+        snprintf(name, sizeof(name), "vccint_sat[%u]-cfg", (vid + 1));
+        pmc_sysmon_class_prop_add(klass, name, "{amux, mode}:str",
+                                  "Satellite vccint config",
+                                  pmc_sysmon_vccint_cfg_prop_get,
+                                  NULL, /* non-settable */
+                                  opaque);
+    }
+
+    pmc_sysmon_class_prop_add(klass, "set-supplies",
+                              "list of amux_mode_sw1_sw0,volt pairs",
+                              "A comma-separated list of supplies",
+                              pmc_sysmon_set_supplies_prop_get,
+                              pmc_sysmon_set_supplies_prop_set,
+                              NULL);
 }
+
+static Property pmc_sysmon_properties[] = {
+    DEFINE_PROP_LINK("ams-sat0", PMCSysMon, ams_sat[0], TYPE_OBJECT, Object *),
+    DEFINE_PROP_LINK("ams-sat1", PMCSysMon, ams_sat[1], TYPE_OBJECT, Object *),
+
+    DEFINE_PROP_END_OF_LIST(),
+};
 
 static const VMStateDescription vmstate_pmc_sysmon = {
     .name = TYPE_PMC_SYSMON,
@@ -8268,6 +8735,7 @@ static void pmc_sysmon_class_init(ObjectClass *klass, void *data)
     dc->reset = pmc_sysmon_reset;
     dc->realize = pmc_sysmon_realize;
     dc->vmsd = &vmstate_pmc_sysmon;
+    device_class_set_props(dc, pmc_sysmon_properties);
 
     /* Support temp & volt injection by the 'qom-set' HMP */
     pmc_sysmon_temp_prop_add(klass);
@@ -8275,6 +8743,15 @@ static void pmc_sysmon_class_init(ObjectClass *klass, void *data)
 
     /* Sanity-check number format conversion */
     assert_number_formats();
+}
+
+void xlnx_ams_root_sat_config_ready(Object *root, unsigned instance_id)
+{
+    PMCSysMon *s = PMC_SYSMON(root);
+
+    assert(instance_id < ARRAY_SIZE(s->ams_sat));
+    pmc_sysmon_sat_set_ready(s, instance_id);
+    pmc_sysmon_play_injections(s, instance_id);
 }
 
 static const TypeInfo pmc_sysmon_info = {
