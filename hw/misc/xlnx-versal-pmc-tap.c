@@ -57,6 +57,7 @@
 
 
 REG32(IDCODE, 0x0)
+    FIELD(IDCODE, IDCODE, 0, 32)
 REG32(VERSION, 0x4)
     FIELD(VERSION, PLATFORM_VERSION, 28, 4)
     FIELD(VERSION, PLATFORM, 24, 4)
@@ -706,6 +707,7 @@ typedef struct PMC_TAP {
     uint8_t sec_dbg_dis;
     uint32_t slr_type;
     uint32_t payload_received;
+    uint32_t idcode;
     bool auth_data_load;
     bool first_image_done;
     uint32_t regs[R_MAX];
@@ -1853,6 +1855,7 @@ static void pmc_tap_reset(DeviceState *dev)
     s->auth_data_load = 0;
     s->payload_received = 0;
     ARRAY_FIELD_DP32(s->regs, VERSION, PLATFORM, s->platform);
+    ARRAY_FIELD_DP32(s->regs, IDCODE, IDCODE, s->idcode);
     sec_dbg_int_update_irq(s);
     pmc_tap_int_update_irq(s);
 }
@@ -1976,6 +1979,7 @@ static Property pmc_tap_props[] = {
                            PMC_TAP_SLR_TYPE_MONO),
         DEFINE_PROP_UINT8("platform", PMC_TAP, platform,
                           PLATFORM_VERSION_QEMU),
+        DEFINE_PROP_UINT32("idcode", PMC_TAP, idcode, 0),
         DEFINE_PROP_END_OF_LIST(),
 };
 
