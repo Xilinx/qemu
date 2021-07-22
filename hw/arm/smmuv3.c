@@ -1547,6 +1547,7 @@ static bool smmu_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
         sdev = g_new0(SMMUDevice, 1);
 
         sdev->smmu = s;
+        sys->tbu[i].sdev = sdev;
 
         address_space_init(&sdev->as,
                            sys->tbu[i].mr ? sys->tbu[i].mr : get_system_memory(),

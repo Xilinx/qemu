@@ -123,6 +123,7 @@ struct SMMUState {
 
     struct {
         MemoryRegion *mr;
+        SMMUDevice *sdev;
     } tbu[SMMU_MAX_TBU];
 };
 
