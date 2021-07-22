@@ -247,6 +247,7 @@ static void smmuv3_init_regs(SMMUv3State *s)
     s->idr[0] = FIELD_DP32(s->idr[0], IDR0, TTF, 2); /* AArch64 PTW only */
     s->idr[0] = FIELD_DP32(s->idr[0], IDR0, COHACC, 1); /* IO coherent */
     s->idr[0] = FIELD_DP32(s->idr[0], IDR0, ASID16, 1); /* 16-bit ASID */
+    s->idr[0] = FIELD_DP32(s->idr[0], IDR0, ATOS, 1); /* ATOS supported */
     s->idr[0] = FIELD_DP32(s->idr[0], IDR0, TTENDIAN, 2); /* little endian */
     s->idr[0] = FIELD_DP32(s->idr[0], IDR0, STALL_MODEL, 1); /* No stall */
     /* terminated transaction will always be aborted/error returned */
@@ -1097,6 +1098,161 @@ static int smmuv3_cmdq_consume(SMMUv3State *s)
     return 0;
 }
 
+static void smmu_gat_do_fault(SMMUv3State *s, uint8_t code, uint8_t reason)
+{
+    hwaddr pa = FIELD_EX64(s->atos_addr, GATOS_ADDR, ADDR);
+
+    s->atos_par = 0;
+    s->atos_par = FIELD_DP64(s->atos_par, GATOS_PAR, FAULT, 1);
+    s->atos_par = FIELD_DP64(s->atos_par, GATOS_PAR, ADDR, pa);
+    s->atos_par = FIELD_DP64(s->atos_par, GATOS_PAR, FAULTCODE, code);
+    s->atos_par = FIELD_DP64(s->atos_par, GATOS_PAR, REASON, reason);
+}
+
+static void smmu_gat_64(SMMUv3State *s)
+{
+    bool s1;
+    bool s2;
+    bool write;
+    uint8_t type;
+    uint32_t sid;
+    hwaddr va;
+    SMMUTransCfg *cfg;
+    IOMMUAccessFlags perm = IOMMU_NONE;
+    SMMUTLBEntry *cached_entry = NULL;
+    SMMUPTWEventInfo info = {};
+    SMMUDevice *sdev;
+    SMMUEventInfo event = {
+        .type = SMMU_EVT_NONE,
+        .inval_ste_allowed = false
+    };
+    uint8_t fault_reason;
+    uint8_t fault_code = 0;
+    int ret = 0;
+
+    type = FIELD_EX32(s->atos_addr, GATOS_ADDR, TYPE);
+    s1 = type & 0x01;
+    s2 = type & 0x02;
+    write = !FIELD_EX32(s->atos_addr, GATOS_ADDR, RNW);
+
+    /*
+     * GATOS_ADDR.ADDR is [63:12], so shift it to the left 12 to get the
+     * actual addr.
+     */
+    va = FIELD_EX64(s->atos_addr, GATOS_ADDR, ADDR) << 12;
+    sid = FIELD_EX32(s->atos_sid, GATOS_SID, STREAMID);
+
+    perm = write ? IOMMU_RW : IOMMU_RO;
+    event.sid = sid;
+
+    if (s2) {
+        qemu_log_mask(LOG_UNIMP, "Stage 2 translation is not supported.\n");
+        fault_code = ATOS_FAULTCODE_INV_STAGE;
+        fault_reason = 0x00;
+        goto epilogue;
+    }
+
+    /*
+     * HACK: We don't have a way to retrieve non-pcie IOMMU MRs without being
+     * very intrusive, so we're going to grab the first sdev and use that.
+     */
+    sdev = s->smmu_state.tbu[0].sdev;
+
+    cfg = smmuv3_get_config(sdev, &event, sid);
+    if (!cfg) {
+        fault_code = ATOS_FAULTCODE_C_BAD_STREAMID;
+        fault_reason = 0x00;
+        goto epilogue;
+    }
+    if (!cfg->aa64) {
+        qemu_log_mask(LOG_UNIMP, "Only AA64 translation is supported.\n");
+        /*
+         * I don't think there's a valid error associated with this, since this
+         * is a QEMU model limitation, not something based on SMMU IP config or
+         * an SMMU/PT misconfiguration.
+         * We'll just use the misc. error reason with an INTERNAL_ERR code.
+         */
+        fault_code = ATOS_FAULTCODE_INTERNAL_ERR;
+        fault_reason = 0x00;
+        goto epilogue;
+    }
+
+    if (s1) {
+        uint64_t page_mask, aligned_addr;
+        SMMUTransTableInfo *tt;
+
+	tt = select_tt(cfg, va);
+	if (!tt) {
+		fault_code = ATOS_FAULTCODE_F_TRANSLATION;
+		goto epilogue;
+	}
+
+	page_mask = (1ULL << (tt->granule_sz)) - 1;
+	aligned_addr = va & ~page_mask;
+
+        cached_entry = smmu_iotlb_lookup(ARM_SMMU(s), cfg, tt, aligned_addr);
+        if (cached_entry) {
+            fault_reason = 0;
+            if ((perm & IOMMU_WO) && !(cached_entry->entry.perm & IOMMU_WO)) {
+                fault_code = ATOS_FAULTCODE_F_PERMISSION;
+            }
+            goto epilogue;
+        }
+
+        cached_entry = g_new0(SMMUTLBEntry, 1);
+
+        ret = smmu_ptw(cfg, aligned_addr, perm, cached_entry, &info);
+    }
+
+    if (ret) {
+        /* Map info error to fault code. */
+        switch (info.type) {
+        case SMMU_PTW_ERR_WALK_EABT:
+            fault_code = ATOS_FAULTCODE_F_WALK_EABT;
+            break;
+        case SMMU_PTW_ERR_TRANSLATION:
+            fault_code = ATOS_FAULTCODE_F_TRANSLATION;
+            break;
+        case SMMU_PTW_ERR_ADDR_SIZE:
+            fault_code = ATOS_FAULTCODE_F_ADDR_SIZE;
+            break;
+        case SMMU_PTW_ERR_ACCESS:
+            fault_code = ATOS_FAULTCODE_F_ACCESS;
+            break;
+        case SMMU_PTW_ERR_PERMISSION:
+            fault_code = ATOS_FAULTCODE_F_PERMISSION;
+            break;
+        default:
+            g_assert_not_reached();
+        }
+        /*
+         * Fault reason is always 0 unless something happens in S2 translation,
+         * which we don't support.
+         */
+        fault_reason = 0;
+    } else {
+        cached_entry->entry.target_as = sdev->bus ? &address_space_memory : &sdev->as;
+        smmu_iotlb_insert(ARM_SMMU(s), cfg, cached_entry);
+    }
+
+epilogue:
+    if (cached_entry) {
+        s->atos_par = 0;
+        s->atos_par = FIELD_DP64(s->atos_par, GATOS_PAR, ADDR,
+                                 cached_entry->entry.translated_addr +
+                                    (va & cached_entry->entry.addr_mask));
+    }
+
+    if (fault_code) {
+        smmu_gat_do_fault(s, fault_code, fault_reason);
+    }
+}
+
+static void smmu_gat(SMMUv3State *s)
+{
+    smmu_gat_64(s);
+}
+
 static MemTxResult smmu_writell(SMMUv3State *s, hwaddr offset,
                                uint64_t data, MemTxAttrs attrs)
 {
@@ -1123,6 +1279,18 @@ static MemTxResult smmu_writell(SMMUv3State *s, hwaddr offset,
         return MEMTX_OK;
     case A_EVENTQ_IRQ_CFG0:
         s->eventq_irq_cfg0 = data;
+        return MEMTX_OK;
+    case A_GATOS_CTRL:
+        smmu_gat(s);
+        return MEMTX_OK;
+    case A_GATOS_SID:
+        s->atos_sid = data;
+        return MEMTX_OK;
+    case A_GATOS_ADDR:
+        s->atos_addr = data;
+        return MEMTX_OK;
+    case A_GATOS_PAR:
+        /* RO */
         return MEMTX_OK;
     default:
         qemu_log_mask(LOG_UNIMP,
@@ -1229,6 +1397,27 @@ static MemTxResult smmu_writel(SMMUv3State *s, hwaddr offset,
     case A_EVENTQ_IRQ_CFG2:
         s->eventq_irq_cfg2 = data;
         return MEMTX_OK;
+    case A_GATOS_CTRL:
+        smmu_gat(s);
+        return MEMTX_OK;
+    case A_GATOS_SID:
+        s->atos_sid = deposit64(s->atos_sid, 0, 32, data);
+        return MEMTX_OK;
+    case A_GATOS_SID + 4:
+        s->atos_sid = deposit64(s->atos_sid, 32, 32, data);
+        return MEMTX_OK;
+    case A_GATOS_ADDR:
+        s->atos_sid = deposit64(s->atos_addr, 0, 32, data);
+        return MEMTX_OK;
+    case A_GATOS_ADDR + 4:
+        s->atos_sid = deposit64(s->atos_addr, 32, 32, data);
+        return MEMTX_OK;
+    case A_GATOS_PAR:
+        /* RO */
+        return MEMTX_OK;
+    case A_GATOS_PAR + 4:
+        /* RO */
+        return MEMTX_OK;
     default:
         qemu_log_mask(LOG_UNIMP,
                       "%s Unexpected 32-bit access to 0x%"PRIx64" (WI)\n",
@@ -1278,6 +1467,18 @@ static MemTxResult smmu_readll(SMMUv3State *s, hwaddr offset,
         return MEMTX_OK;
     case A_EVENTQ_BASE:
         *data = s->eventq.base;
+        return MEMTX_OK;
+    case A_GATOS_CTRL:
+        *data = s->atos_ctrl;
+        return MEMTX_OK;
+    case A_GATOS_SID:
+        *data = s->atos_sid;
+        return MEMTX_OK;
+    case A_GATOS_ADDR:
+        *data = s->atos_par;
+        return MEMTX_OK;
+    case A_GATOS_PAR:
+        *data = s->atos_par;
         return MEMTX_OK;
     default:
         *data = 0;
@@ -1373,6 +1574,27 @@ static MemTxResult smmu_readl(SMMUv3State *s, hwaddr offset,
         return MEMTX_OK;
     case A_EVENTQ_CONS:
         *data = s->eventq.cons;
+        return MEMTX_OK;
+    case A_GATOS_CTRL:
+        *data = s->atos_ctrl;
+        return MEMTX_OK;
+    case A_GATOS_SID:
+        *data = extract64(s->atos_sid, 0, 32);
+        return MEMTX_OK;
+    case A_GATOS_SID + 4:
+        *data = extract64(s->atos_sid, 32, 32);
+        return MEMTX_OK;
+    case A_GATOS_ADDR:
+        *data = extract64(s->atos_addr, 0, 32);
+        return MEMTX_OK;
+    case A_GATOS_ADDR + 4:
+        *data = extract64(s->atos_addr, 32, 32);
+        return MEMTX_OK;
+    case A_GATOS_PAR:
+        *data = extract64(s->atos_par, 0, 32);
+        return MEMTX_OK;
+    case A_GATOS_PAR + 4:
+        *data = extract64(s->atos_par, 32, 32);
         return MEMTX_OK;
     default:
         *data = 0;
