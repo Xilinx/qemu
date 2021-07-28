@@ -363,8 +363,12 @@ static void vectable_base_postw(RegisterInfo *reg, uint64_t val64)
     };
 
     if (s->cpus[cpu_num]) {
+        CPUClass *cc = CPU_GET_CLASS(s->cpus[cpu_num]);
         object_property_set_int(OBJECT(s->cpus[cpu_num]), "rvbar",
                                 val64, &error_abort);
+        if (s->rpu_rst[cpu_num]) {
+            cc->set_pc(CPU(s->cpus[cpu_num]), val64);
+        }
     }
 }
 
