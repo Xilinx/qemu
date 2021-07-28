@@ -1005,6 +1005,23 @@ static uint64_t req_iso_trig_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
+static uint64_t scan_clear_fpd_prew(RegisterInfo *reg, uint64_t val64)
+{
+    uint32_t val = (uint32_t)val64;
+
+    /*
+     * Do a scan. It's always good.
+     * SCAN_CLEAR_FPD.TRIGGGER is WO, so clear that bit and set the others.
+     */
+    if (FIELD_EX32(val, SCAN_CLEAR_FPD, TRIGGER)) {
+        val = 0;
+        val = FIELD_DP32(val, SCAN_CLEAR_FPD, PASS, 1);
+        val = FIELD_DP32(val, SCAN_CLEAR_FPD, DONE, 1);
+    }
+
+    return val;
+}
+
 static const RegisterAccessInfo psm_global_reg_regs_info[] = {
     {   .name = "GLOBAL_CNTRL",  .addr = A_GLOBAL_CNTRL,
         .reset = 0x8800,
@@ -1211,6 +1228,7 @@ static const RegisterAccessInfo psm_global_reg_regs_info[] = {
     },{ .name = "SCAN_CLEAR_FPD",  .addr = A_SCAN_CLEAR_FPD,
         .rsvd = 0xfffffff8,
         .ro = 0xfffffffe,
+        .pre_write = scan_clear_fpd_prew,
     },{ .name = "SAFETY_CHK",  .addr = A_SAFETY_CHK,
     }
 };
