@@ -37,6 +37,7 @@
 #include "hw/qdev-properties.h"
 #include "qemu/option.h"
 #include "qemu/config-file.h"
+#include "hw/misc/xlnx-versal-pmc.h"
 
 #include "hw/fdt_generic_util.h"
 #include "hw/block/xlnx-efuse.h"
@@ -850,38 +851,7 @@ typedef struct PMC_GLOBAL {
     RegisterInfo regs_info[R_MAX];
 } PMC_GLOBAL;
 
-static void ppu1_update_ctrl(PMC_GLOBAL *s)
-{
-    unsigned int rst_mode;
-    bool wakeup;
-    bool rst;
-
-    wakeup = ARRAY_FIELD_EX32(s->regs, PPU_1_RST_MODE, WAKEUP);
-    rst_mode = ARRAY_FIELD_EX32(s->regs, PPU_1_RST_MODE, RST_MODE);
-    rst = !ARRAY_FIELD_EX32(s->regs, PPU_1_RST, RST_N);
-
-
-    switch (rst_mode) {
-    case 0:
-        /* MB starts executing when released from RESET.  */
-        qemu_set_irq(s->ppu1_rst, rst);
-        break;
-    case 1:
-        /* MB enters sleep when released from RESET.*/
-        /* RST signal can be low only after wakeup is high,
-         * wakeup=0 should not effect the RST signal when RST=0*/
-        if (wakeup || rst) {
-            qemu_set_irq(s->ppu1_rst, rst);
-        }
-        /* Wakeup (i.e halt) signal is updated only when RST=1
-         * So that clearing wakeup bit dosent effect RST signal */
-        qemu_set_irq(s->ppu1_wakeup, rst & wakeup);
-        break;
-    default:
-        qemu_log_mask(LOG_GUEST_ERROR, "Invalid PPU1_RST_MODE %x\n", rst_mode);
-        break;
-    };
-}
+PPU1_UPDATE_CTRL(PMC_GLOBAL)
 
 static void pmc_ppu1_gpi_update_irq(PMC_GLOBAL *s)
 {
