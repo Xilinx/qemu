@@ -516,19 +516,9 @@ static const RegisterAccessInfo pmc_anlg_regs_info[] = {
     },{ .name = "MBIST_MODE",  .addr = A_MBIST_MODE,
         .rsvd = 0xfffffffd,
     },{ .name = "OD_MBIST_DONE",  .addr = A_OD_MBIST_DONE,
-        .reset = R_OD_MBIST_DONE_LPD_IOU_MASK \
-                 | R_OD_MBIST_DONE_LPD_RPU_MASK \
-                 | R_OD_MBIST_DONE_LPD_MASK \
-                 | R_OD_MBIST_DONE_PMC_IOU_MASK \
-                 | R_OD_MBIST_DONE_PMC_MASK,
         .rsvd = 0xc,
         .ro = 0x7f,
     },{ .name = "OD_MBIST_GOOD",  .addr = A_OD_MBIST_GOOD,
-        .reset = R_OD_MBIST_GOOD_LPD_IOU_MASK \
-                 | R_OD_MBIST_GOOD_LPD_RPU_MASK \
-                 | R_OD_MBIST_GOOD_LPD_MASK \
-                 | R_OD_MBIST_GOOD_PMC_IOU_MASK \
-                 | R_OD_MBIST_GOOD_PMC_MASK,
         .rsvd = 0xc,
         .ro = 0x7f,
     },{ .name = "SCAN_CLEAR_TRIGGER",  .addr = A_SCAN_CLEAR_TRIGGER,
