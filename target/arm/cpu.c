@@ -272,7 +272,6 @@ static void arm_cpu_reset(DeviceState *dev)
         } else {
             env->pstate = PSTATE_MODE_EL1h;
         }
-        env->pc = cpu->rvbar;
 #endif
     } else {
 #if defined(CONFIG_USER_ONLY)
@@ -280,6 +279,12 @@ static void arm_cpu_reset(DeviceState *dev)
         env->cp15.cpacr_el1 = deposit64(env->cp15.cpacr_el1, 20, 4, 0xf);
 #endif
     }
+
+#ifndef CONFIG_USER_ONLY
+    if (arm_feature(env, ARM_FEATURE_V8)) {
+        cc->set_pc(s, cpu->rvbar);
+    }
+#endif
 
 #if defined(CONFIG_USER_ONLY)
     env->uncached_cpsr = ARM_CPU_MODE_USR;
