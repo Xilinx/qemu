@@ -318,6 +318,45 @@ static uint64_t pmc_anlg_idr_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
+#define SCAN_CLEAR_TRIG(dev) \
+    if (FIELD_EX32(val, SCAN_CLEAR_TRIGGER, LPD_IOU) &&          \
+        !FIELD_EX32(curr_regval, SCAN_CLEAR_TRIGGER, LPD_IOU)) { \
+        ARRAY_FIELD_DP32(s->regs, SCAN_CLEAR_DONE, LPD_IOU, 1);  \
+        ARRAY_FIELD_DP32(s->regs, SCAN_CLEAR_PASS, LPD_IOU, 1);  \
+    }
+
+static uint64_t pmc_anlg_scan_clear_trigger_prew(RegisterInfo *reg,
+                                                 uint64_t val64)
+{
+    PmcAnalog *s = PMC_ANALOG(reg->opaque);
+    uint32_t val = val64;
+    uint32_t curr_regval;
+
+    if (ARRAY_FIELD_EX32(s->regs, SCAN_CLEAR_LOCK, LOCK)) {
+        qemu_log_mask(LOG_GUEST_ERROR, "Attempted to trigger scan clear when "
+                      "register is locked.\n");
+        return 0;
+    }
+
+    /*
+     * We're not locked, check to see if the user is setting a
+     * scan clear trigger. Scan clears always pass.
+     */
+    curr_regval = s->regs[R_SCAN_CLEAR_TRIGGER];
+
+    if (FIELD_EX32(val, SCAN_CLEAR_TRIGGER, NOC) &&
+        !FIELD_EX32(curr_regval, SCAN_CLEAR_TRIGGER, NOC)) {
+        ARRAY_FIELD_DP32(s->regs, SCAN_CLEAR_DONE, PMC, 1);
+        ARRAY_FIELD_DP32(s->regs, SCAN_CLEAR_PASS, PMC, 1);
+    }
+
+    SCAN_CLEAR_TRIG(LPD);
+    SCAN_CLEAR_TRIG(LPD_RPU);
+    SCAN_CLEAR_TRIG(LPD_IOU);
+
+    return val;
+}
+
 static const RegisterAccessInfo pmc_anlg_regs_info[] = {
     {   .name = "GD_CTRL",  .addr = A_GD_CTRL,
         .rsvd = 0xfc00fc00,
@@ -464,6 +503,7 @@ static const RegisterAccessInfo pmc_anlg_regs_info[] = {
         .ro = 0x7f,
     },{ .name = "SCAN_CLEAR_TRIGGER",  .addr = A_SCAN_CLEAR_TRIGGER,
         .rsvd = 0x8f,
+        .pre_write = pmc_anlg_scan_clear_trigger_prew,
     },{ .name = "SCAN_CLEAR_LOCK",  .addr = A_SCAN_CLEAR_LOCK,
     },{ .name = "SCAN_CLEAR_DONE",  .addr = A_SCAN_CLEAR_DONE,
         .reset = R_SCAN_CLEAR_DONE_LPD_IOU_MASK
