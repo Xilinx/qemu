@@ -276,6 +276,18 @@ static uint64_t cfu_itr_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
+static void cfu_fgcr_postw(RegisterInfo *reg, uint64_t val64)
+{
+    CFU *s = XILINX_CFU_APB(reg->opaque);
+    uint32_t val = (uint32_t)val64;
+
+    /* Do a scan. It always looks good. */
+    if (FIELD_EX32(val, CFU_FGCR, SC_HBC_TRIGGER)) {
+        ARRAY_FIELD_DP32(s->regs, CFU_STATUS, SCAN_CLEAR_PASS, 1);
+        ARRAY_FIELD_DP32(s->regs, CFU_STATUS, SCAN_CLEAR_DONE, 1);
+    }
+}
+
 
 static const RegisterAccessInfo cfu_apb_regs_info[] = {
     {   .name = "CFU_ISR",  .addr = A_CFU_ISR,
@@ -299,6 +311,7 @@ static const RegisterAccessInfo cfu_apb_regs_info[] = {
         .reset = 0x1,
     },{ .name = "CFU_FGCR",  .addr = A_CFU_FGCR,
         .rsvd = 0xffff8000,
+        .post_write = cfu_fgcr_postw,
     },{ .name = "CFU_CTL",  .addr = A_CFU_CTL,
         .rsvd = 0xffff0000,
     },{ .name = "CFU_CRAM_RW",  .addr = A_CFU_CRAM_RW,
