@@ -305,6 +305,7 @@ static int smmu_ptw_64(SMMUTransCfg *cfg,
         uint64_t pte, gpa;
         dma_addr_t pte_addr = baseaddr + offset * sizeof(pte);
         uint8_t ap;
+        bool af;
 
         if (get_pte(baseaddr, offset, &pte, info)) {
                 goto error;
@@ -341,6 +342,12 @@ static int smmu_ptw_64(SMMUTransCfg *cfg,
                                      pte_addr, pte, iova, gpa,
                                      block_size >> 20);
         }
+        af = PTE_AF(pte);
+        if (is_access_fault(af, cfg)) {
+            info->type = SMMU_PTW_ERR_ACCESS;
+            goto error;
+        }
+
         ap = PTE_AP(pte);
         if (is_permission_fault(ap, perm)) {
             info->type = SMMU_PTW_ERR_PERMISSION;

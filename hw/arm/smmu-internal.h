@@ -58,6 +58,11 @@
     ((level == 3) &&                                                    \
      ((pte & ARM_LPAE_PTE_TYPE_MASK) == ARM_LPAE_L3_PTE_TYPE_PAGE))
 
+/* access flag */
+
+#define PTE_AF(pte) \
+    (extract64(pte, 10, 1))
+
 /* access permissions */
 
 #define PTE_AP(pte) \
@@ -65,6 +70,9 @@
 
 #define PTE_APTABLE(pte) \
     (extract64(pte, 61, 2))
+
+#define is_access_fault(af, cfg) \
+    (!cfg->affd && !af)
 
 /*
  * TODO: At the moment all transactions are considered as privileged (EL1)
