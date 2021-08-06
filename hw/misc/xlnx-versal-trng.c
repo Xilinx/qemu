@@ -58,6 +58,8 @@ REG32(STATUS, 0x4)
     FIELD(STATUS, DFT, 1, 1)
     FIELD(STATUS, DONE, 0, 1)
 REG32(CTRL, 0x8)
+    FIELD(CTRL, PERSODISABLE, 10, 1)
+    FIELD(CTRL, SINGLEGENMODE, 9, 1)
     FIELD(CTRL, EUMODE, 8, 1)
     FIELD(CTRL, PRNGMODE, 7, 1)
     FIELD(CTRL, TSTMODE, 6, 1)
@@ -67,6 +69,15 @@ REG32(CTRL, 0x8)
     FIELD(CTRL, TRSSEN, 2, 1)
     FIELD(CTRL, QERTUEN, 1, 1)
     FIELD(CTRL, PRNGSRST, 0, 1)
+REG32(CTRL_2, 0xc)
+    FIELD(CTRL_2, REPCOUNTTESTCUTOFF, 8, 9)
+    FIELD(CTRL_2, RESERVED_7_5, 5, 3)
+    FIELD(CTRL_2, DIT, 0, 5)
+REG32(CTRL_3, 0x10)
+    FIELD(CTRL_3, ADAPTPROPTESTCUTOFF, 8, 10)
+    FIELD(CTRL_3, DLEN, 0, 8)
+REG32(CTRL_4, 0x14)
+    FIELD(CTRL_4, SINGLEBITRAW, 0, 1)
 REG32(EXT_SEED_0, 0x40)
 REG32(EXT_SEED_1, 0x44)
 REG32(EXT_SEED_2, 0x48)
@@ -188,12 +199,13 @@ static void trng_done(TRNG *s)
 
 static inline void trng_reseed(TRNG *s, bool ext)
 {
+    bool pers_disabled = ARRAY_FIELD_EX32(s->regs, CTRL, PERSODISABLE);
     int i;
 
     /* Accumulate the seed regs and the personalization string.  */
     s->seed = 0;
 
-    for (i = 0; i < 12; i++) {
+    for (i = 0; !pers_disabled && i < 12; i++) {
         s->seed += s->regs[R_PER_STRNG_0 + i];
     }
 
@@ -245,6 +257,7 @@ static uint64_t trng_core_out_postr(RegisterInfo *reg, uint64_t val)
 {
     TRNG *s = XILINX_TRNG(reg->opaque);
     uint32_t r = s->out[0];
+    bool oneshot = ARRAY_FIELD_EX32(s->regs, CTRL, SINGLEGENMODE);
     bool start = ARRAY_FIELD_EX32(s->regs, CTRL, PRNGSTART);
     bool rst = ARRAY_FIELD_EX32(s->regs, CTRL, PRNGSRST);
 
@@ -265,7 +278,7 @@ static uint64_t trng_core_out_postr(RegisterInfo *reg, uint64_t val)
 
     /* Automatic mode regenerates new entropy when half the output reg
      * is empty.  */
-    if (start && s->count <= 3) {
+    if (!oneshot && start && s->count <= 3) {
         trng_regen(s);
     }
     return r;
@@ -288,6 +301,11 @@ static RegisterAccessInfo trng_regs_info[] = {
         .ro = 0xfff,
     },{ .name = "CTRL",  .addr = A_CTRL,
         .post_write = trng_ctrl_postw,
+    },{ .name = "CTRL_2",  .addr = A_CTRL_2,
+        .reset = 0x210c,
+    },{ .name = "CTRL_3",  .addr = A_CTRL_3,
+        .reset = 0x26f09,
+    },{ .name = "CTRL_4",  .addr = A_CTRL_4,
     },{ .name = "EXT_SEED_0",  .addr = A_EXT_SEED_0,
     },{ .name = "EXT_SEED_1",  .addr = A_EXT_SEED_1,
     },{ .name = "EXT_SEED_2",  .addr = A_EXT_SEED_2,
