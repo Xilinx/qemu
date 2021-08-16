@@ -73,6 +73,14 @@ REG32(RVBARADDR1L, 0x48)
     FIELD(RVBARADDR1L, ADDR, 2, 30)
 REG32(RVBARADDR1H, 0x4c)
     FIELD(RVBARADDR1H, ADDR, 0, 12)
+REG32(RVBARADDR2L, 0x50)
+    FIELD(RVBARADDR2L, ADDR, 2, 30)
+REG32(RVBARADDR2H, 0x54)
+    FIELD(RVBARADDR2H, ADDR, 0, 12)
+REG32(RVBARADDR3L, 0x58)
+    FIELD(RVBARADDR3L, ADDR, 2, 30)
+REG32(RVBARADDR3H, 0x5c)
+    FIELD(RVBARADDR3H, ADDR, 0, 12)
 REG32(ACE_CTRL, 0x60)
     FIELD(ACE_CTRL, AWQOS, 16, 4)
     FIELD(ACE_CTRL, ARQOS, 0, 4)
@@ -231,6 +239,16 @@ static const RegisterAccessInfo apu_ctrl_regs_info[] = {
         .reset = 0xffff0000,
         .post_write = rvbar_postw,
     },{ .name = "RVBARADDR1H",  .addr = A_RVBARADDR1H,
+        .post_write = rvbar_postw,
+    },{ .name = "RVBARADDR2L",  .addr = A_RVBARADDR2L,
+        .reset = 0xffff0000,
+        .post_write = rvbar_postw,
+    },{ .name = "RVBARADDR2H",  .addr = A_RVBARADDR2H,
+        .post_write = rvbar_postw,
+    },{ .name = "RVBARADDR3L",  .addr = A_RVBARADDR3L,
+        .reset = 0xffff0000,
+        .post_write = rvbar_postw,
+    },{ .name = "RVBARADDR3H",  .addr = A_RVBARADDR3H,
         .post_write = rvbar_postw,
     },{ .name = "ACE_CTRL",  .addr = A_ACE_CTRL,
         .reset = 0xf000f,
