@@ -59,6 +59,11 @@ static void ppu1_update_ctrl(G * s)                                            \
          * So that clearing wakeup bit dosent effect RST signal                \
          */                                                                    \
         qemu_set_irq(s->ppu1_wakeup, rst & wakeup);                            \
+        if (!rst) {                                                            \
+            ARRAY_FIELD_DP32(s->regs,GLOBAL_CNTRL, MB_SLEEP, !wakeup);         \
+        } else {                                                               \
+            ARRAY_FIELD_DP32(s->regs,GLOBAL_CNTRL, MB_SLEEP, 0);               \
+        }                                                                      \
         break;                                                                 \
     default:                                                                   \
         qemu_log_mask(LOG_GUEST_ERROR, "Invalid PPU1_RST_MODE %x\n", rst_mode);\
