@@ -488,7 +488,8 @@ static const RegisterAccessInfo psx_crf_regs_info[] = {
     },{ .name = "APLL2_FRAC_CFG",  .addr = A_APLL2_FRAC_CFG,
         .rsvd = 0x7e330000,
     },{ .name = "PLL_STATUS",  .addr = A_PLL_STATUS,
-        .reset = 0xc,
+        .reset = 0xc | R_PLL_STATUS_APLL2_LOCK_MASK |
+                 R_PLL_STATUS_APLL1_LOCK_MASK,
         .rsvd = 0xf0,
         .ro = 0xf,
     },{ .name = "APLL1_REG0",  .addr = A_APLL1_REG0,

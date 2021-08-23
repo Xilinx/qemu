@@ -290,7 +290,8 @@ static const RegisterAccessInfo psx_crl_regs_info[] = {
         .reset = 0x2000000,
         .rsvd = 0x1801210,
     },{ .name = "PLL_STATUS",  .addr = A_PLL_STATUS,
-        .reset = 0xc,
+        .reset = 0xc | R_PLL_STATUS_FLXPLL_LOCK_MASK |
+                 R_PLL_STATUS_RPLL_LOCK_MASK,
         .rsvd = 0xf0,
         .ro = 0xf,
     },{ .name = "RPLL_TO_XPD_CTRL",  .addr = A_RPLL_TO_XPD_CTRL,
