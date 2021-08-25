@@ -786,6 +786,10 @@ static const ARMCPRegInfo cortexr52_cp_reginfo[] = {
       .opc2 = 2, .type = ARM_CP_OVERRIDE, .access = PL0_RW,
       .fieldoffset = offsetof(CPUARMState, tcmregion.c),
       .resetfn = arm_cp_reset_ignore },
+    { .name = "IMP_BTCTLR", .cp = 15, .opc1 = 1, .crn = 9, .crm = 1,
+      .opc2 = 1, .type = ARM_CP_OVERRIDE, .access = PL1_RW,
+      .fieldoffset = offsetof(CPUARMState, cp15.c9_imp_bpctlr),
+      .resetvalue = 0 },
     REGINFO_SENTINEL
 };
 #endif
