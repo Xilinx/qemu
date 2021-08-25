@@ -421,6 +421,7 @@ typedef struct CPUARMState {
         uint64_t c9_pminten; /* perf monitor interrupt enables */
         uint32_t c9_pmxevtyper; /* perf monitor event type */
         uint32_t c9_imp_bpctlr; /* branch predictor control register */
+        uint32_t c9_imp_memprotctlr; /* memory protection control register */
         union { /* Memory attribute redirection */
             struct {
 #ifdef HOST_WORDS_BIGENDIAN
