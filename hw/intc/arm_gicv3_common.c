@@ -307,12 +307,17 @@ void gicv3_init_irqs_and_mmio(GICv3State *s, qemu_irq_handler handler,
     }
 }
 
+#define FDT_GENERIC_GICV3_TYPE_AFFINITY_ALL 0x01000000U
+#define FDT_GENERIC_GICV3_TYPE_AFFINITY_IDX 0x02000000U
+
 static int arm_gicv3_common_fdt_get_irq(FDTGenericIntc *obj, qemu_irq *irqs,
                                       uint32_t *cells, int ncells, int max,
                                       Error **errp)
 {
     GICv3State *gs = ARM_GICV3_COMMON(obj);
     int cpu = 0;
+    uint32_t qemu_type;
+    uint32_t cpu_mask;
     uint32_t idx;
 
     if (ncells != 3) {
@@ -321,8 +326,9 @@ static int arm_gicv3_common_fdt_get_irq(FDTGenericIntc *obj, qemu_irq *irqs,
         return 0;
     }
     idx = cells[1];
+    qemu_type = cells[0] & 0xff000000;
 
-    switch (cells[0]) {
+    switch (cells[0] & 0x00ffffff) {
     case 0:
         if (idx >= gs->num_irq) {
             error_setg(errp, "ARM GIC SPI has maximum index of %" PRId32 ", "
@@ -337,12 +343,23 @@ static int arm_gicv3_common_fdt_get_irq(FDTGenericIntc *obj, qemu_irq *irqs,
                        "index %" PRId32 " given", idx);
             return 0;
         }
-        for (cpu = 0; cpu < max && cpu < gs->num_cpu; cpu++) {
-            if (cells[2] & 1 << (cpu + 8)) {
+        if (qemu_type == FDT_GENERIC_GICV3_TYPE_AFFINITY_IDX) {
+            cpu = cells[2] >> 8;
+            *irqs = qdev_get_gpio_in(DEVICE(obj),
+                                         gs->num_irq - 16 + idx + cpu * 32);
+            return cpu;
+        }
+
+        cpu_mask = cells[2] >> 8;
+        while ((cpu_mask || qemu_type == FDT_GENERIC_GICV3_TYPE_AFFINITY_ALL)
+               && cpu < max && cpu < gs->num_cpu) {
+            if ((cpu_mask & 1) || qemu_type == FDT_GENERIC_GICV3_TYPE_AFFINITY_ALL) {
                 *irqs = qdev_get_gpio_in(DEVICE(obj),
                                          gs->num_irq - 16 + idx + cpu * 32);
+                irqs++;
             }
-            irqs++;
+            cpu_mask >>= 1;
+            cpu++;
         }
         return cpu;
     default:
