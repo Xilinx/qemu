@@ -32,6 +32,8 @@
 #include "qemu/log.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
+#include "qemu/option.h"
+#include "qemu/config-file.h"
 
 #include "hw/fdt_generic_util.h"
 
@@ -1584,6 +1586,8 @@ static void pmc_global_reset(DeviceState *dev)
     PMC_GLOBAL *s = XILINX_PMC_GLOBAL(dev);
     hwaddr addr;
     unsigned int i;
+    QemuOpts *opts = qemu_find_opts_singleton("boot-opts");
+    uint32_t boot_mode = qemu_opt_get_number(opts, "mode", 0);
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
         if (s->regs_info[i].access) {
@@ -1598,6 +1602,34 @@ static void pmc_global_reset(DeviceState *dev)
             register_reset(&s->regs_info[i]);
         }
     }
+
+    /*
+     * Update Multi-Boot register for
+     * SD0/SD1/SD1_LS and EMMC boot modes;
+     */
+    switch (boot_mode & 0xF) {
+    case 0x3:
+    case 0x5:
+    case 0xe:
+        /*
+         * HACK: Default SD to file system mode
+         */
+        if (!(boot_mode & 0xF000000)) {
+            s->regs[R_PMC_MULTI_BOOT] |=
+                0xF0000000;
+            break;
+        }
+        /*
+         * Fall through and update Multi-boot
+         * for non file system boot.
+         */
+    case 0x6:
+        s->regs[R_PMC_MULTI_BOOT] |=
+            (boot_mode & 0xF0000000);
+        break;
+    default:
+        break;
+    };
 
     ppu1_update_ctrl(s);
     pmc_ppu1_gpi_update_irq(s);
