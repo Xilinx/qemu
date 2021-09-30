@@ -135,6 +135,8 @@ typedef struct TRNG {
     uint32_t count;
     unsigned int seed;
 
+    uint64_t tst_seed[2];
+
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
 } TRNG;
@@ -200,6 +202,7 @@ static void trng_done(TRNG *s)
 static inline void trng_reseed(TRNG *s, bool ext)
 {
     bool pers_disabled = ARRAY_FIELD_EX32(s->regs, CTRL, PERSODISABLE);
+    bool tst = ARRAY_FIELD_EX32(s->regs, CTRL, TSTMODE);
     int i;
 
     /* Accumulate the seed regs and the personalization string.  */
@@ -214,6 +217,19 @@ static inline void trng_reseed(TRNG *s, bool ext)
             s->seed += s->regs[R_EXT_SEED_0 + i];
         }
     }
+
+    if (tst) {
+            uint64_t tst;
+
+            /* Fold the 64-bit test seed into 32 bits.  */
+            tst = s->tst_seed[0] + s->tst_seed[1];
+            tst = tst ^ (tst >> 32);
+            tst &= UINT32_MAX;
+
+            /* Add it into the mix.  */
+            s->seed += (uint32_t) tst;
+    }
+
     srand(s->seed);
 }
 
@@ -251,6 +267,17 @@ static void trng_ctrl_postw(RegisterInfo *reg, uint64_t val64)
         }
         trng_done(s);
     }
+}
+
+static void trng_ctrl4_postw(RegisterInfo *reg, uint64_t val64)
+{
+    TRNG *s = XILINX_TRNG(reg->opaque);
+
+    /* Shift in a single bit.  */
+    s->tst_seed[1] <<= 1;
+    s->tst_seed[1] |= s->tst_seed[0] >> 63;
+    s->tst_seed[0] <<= 1;
+    s->tst_seed[0] |= val64 & 1;
 }
 
 static uint64_t trng_core_out_postr(RegisterInfo *reg, uint64_t val)
@@ -306,6 +333,7 @@ static RegisterAccessInfo trng_regs_info[] = {
     },{ .name = "CTRL_3",  .addr = A_CTRL_3,
         .reset = 0x26f09,
     },{ .name = "CTRL_4",  .addr = A_CTRL_4,
+        .post_write = trng_ctrl4_postw,
     },{ .name = "EXT_SEED_0",  .addr = A_EXT_SEED_0,
     },{ .name = "EXT_SEED_1",  .addr = A_EXT_SEED_1,
     },{ .name = "EXT_SEED_2",  .addr = A_EXT_SEED_2,
