@@ -272,12 +272,22 @@ static void trng_ctrl_postw(RegisterInfo *reg, uint64_t val64)
 static void trng_ctrl4_postw(RegisterInfo *reg, uint64_t val64)
 {
     TRNG *s = XILINX_TRNG(reg->opaque);
+    bool ext = FIELD_EX32(val64, CTRL, PRNGXS);
+    bool tst = ARRAY_FIELD_EX32(s->regs, CTRL, TSTMODE);
+
+    /* Only applies to test mode.  */
+    if (!tst) {
+        return;
+    }
 
     /* Shift in a single bit.  */
     s->tst_seed[1] <<= 1;
     s->tst_seed[1] |= s->tst_seed[0] >> 63;
     s->tst_seed[0] <<= 1;
     s->tst_seed[0] |= val64 & 1;
+
+    trng_reseed(s, ext);
+    trng_regen(s);
 }
 
 static uint64_t trng_core_out_postr(RegisterInfo *reg, uint64_t val)
