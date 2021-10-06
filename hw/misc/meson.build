@@ -86,6 +86,7 @@ softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL_PMC', if_true: files(
   'xlnx-versal-pmc-clk-rst.c',
   'xlnx-versal-pmc-global.c',
   'xlnx-versal-pmc-iou-slcr.c',
+  'xlnx-versal-pmc-iou-slcr-secure.c',
   'xlnx-versal-pmc-int.c',
   'xlnx-versal-pmc-tap.c',
   'xlnx-versal-pmc-sysmon.c',
