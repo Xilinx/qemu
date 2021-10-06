@@ -75,7 +75,6 @@ microblaze_generic_fdt_init(MachineState *machine)
     void *fdt = NULL;
     const char *dtb_arg, *hw_dtb_arg;
     const char *kernel_filename;
-    QemuOpts *machine_opts;
     int fdt_size;
 
     /* for memory node */
@@ -94,12 +93,8 @@ microblaze_generic_fdt_init(MachineState *machine)
     uint32_t n_eth;
     uint32_t prop_val;
 
-    machine_opts = qemu_opts_find(qemu_find_opts("machine"), 0);
-    if (!machine_opts) {
-        goto no_dtb_arg;
-    }
-    dtb_arg = qemu_opt_get(machine_opts, "dtb");
-    hw_dtb_arg = qemu_opt_get(machine_opts, "hw-dtb");
+    dtb_arg = machine->dtb;
+    hw_dtb_arg = machine->hw_dtb;
     if (!dtb_arg && !hw_dtb_arg) {
         goto no_dtb_arg;
     }
@@ -222,7 +217,7 @@ microblaze_generic_fdt_init(MachineState *machine)
 
     fdt_init_destroy_fdti(fdti);
 
-    kernel_filename = qemu_opt_get(machine_opts, "kernel");
+    kernel_filename = machine->kernel_filename;
     if (kernel_filename) {
         microblaze_load_kernel(MICROBLAZE_CPU(first_cpu), ram_kernel_base,
                                ram_kernel_size, machine->initrd_filename, NULL,

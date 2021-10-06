@@ -1022,9 +1022,8 @@ static void arm_setup_direct_kernel_boot(ARMCPU *cpu,
         elf_machine = EM_ARM;
     }
 
-    info->dtb_filename = qemu_opt_get(qemu_find_opts_singleton("machine"), "dtb");
-    is_linux = object_property_get_bool(OBJECT(qdev_get_machine()),
-                                        "linux", NULL);
+    info->dtb_filename = MACHINE(qdev_get_machine())->dtb;
+    is_linux = MACHINE(qdev_get_machine())->is_linux;
 
     if (!info->secondary_cpu_reset_hook) {
         info->secondary_cpu_reset_hook = default_reset_secondary;

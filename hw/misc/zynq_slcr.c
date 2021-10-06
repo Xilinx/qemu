@@ -29,6 +29,7 @@
 #include "hw/registerfields.h"
 #include "hw/qdev-clock.h"
 #include "qom/object.h"
+#include "hw/boards.h"
 
 #include "qemu/config-file.h"
 
@@ -261,18 +262,12 @@ static void zynq_slcr_set_qspi(ZynqSLCRState *s, void *fdt)
 
 static void zynq_slcr_fdt_config(ZynqSLCRState *s)
 {
-    QemuOpts *machine_opts;
     const char *dtb_filename;
     int fdt_size;
     void *fdt = NULL;
 
     /* identify dtb file name from qemu opts */
-    machine_opts = qemu_opts_find(qemu_find_opts("machine"), 0);
-    if (machine_opts) {
-        dtb_filename = qemu_opt_get(machine_opts, "dtb");
-    } else {
-        dtb_filename = NULL;
-    }
+    dtb_filename = MACHINE(qdev_get_machine())->dtb;
 
     if (dtb_filename) {
         fdt = load_device_tree(dtb_filename, &fdt_size);
