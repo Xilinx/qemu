@@ -243,6 +243,7 @@ cross_prefix=""
 audio_drv_list=""
 block_drv_rw_whitelist=""
 block_drv_ro_whitelist=""
+block_drv_whitelist_tools="no"
 host_cc="cc"
 audio_win_int=""
 libs_qga=""
@@ -429,7 +430,7 @@ libxml2="auto"
 debug_mutex="no"
 libpmem="auto"
 default_devices="true"
-plugins="no"
+plugins="$default_feature"
 fuzzing="no"
 rng_none="no"
 secret_keyring="$default_feature"
@@ -708,6 +709,7 @@ MINGW32*)
     audio_drv_list=""
   fi
   supported_os="yes"
+  plugins="no"
   pie="no"
 ;;
 GNU/kFreeBSD)
@@ -1015,6 +1017,10 @@ for opt do
   ;;
   --block-drv-ro-whitelist=*) block_drv_ro_whitelist=$(echo "$optarg" | sed -e 's/,/ /g')
   ;;
+  --enable-block-drv-whitelist-in-tools) block_drv_whitelist_tools="yes"
+  ;;
+  --disable-block-drv-whitelist-in-tools) block_drv_whitelist_tools="no"
+  ;;
   --enable-debug-tcg) debug_tcg="yes"
   ;;
   --disable-debug-tcg) debug_tcg="no"
@@ -1115,6 +1121,7 @@ for opt do
   --enable-cap-ng) cap_ng="enabled"
   ;;
   --disable-tcg) tcg="disabled"
+                 plugins="no"
   ;;
   --enable-tcg) tcg="enabled"
   ;;
@@ -1526,7 +1533,11 @@ for opt do
   ;;
   --disable-xkbcommon) xkbcommon="disabled"
   ;;
-  --enable-plugins) plugins="yes"
+  --enable-plugins) if test "$mingw32" = "yes"; then
+                        error_exit "TCG plugins not currently supported on Windows platforms"
+                    else
+                        plugins="yes"
+                    fi
   ;;
   --disable-plugins) plugins="no"
   ;;
@@ -1579,6 +1590,11 @@ for opt do
   ;;
   esac
 done
+
+# test for any invalid configuration combinations
+if test "$plugins" = "yes" -a "$tcg" = "disabled"; then
+    error_exit "Can't enable plugins on non-TCG builds"
+fi
 
 case $git_submodules_action in
     update|validate)
@@ -1794,10 +1810,12 @@ Advanced options (experts only):
   --block-drv-whitelist=L  Same as --block-drv-rw-whitelist=L
   --block-drv-rw-whitelist=L
                            set block driver read-write whitelist
-                           (affects only QEMU, not qemu-img)
+                           (by default affects only QEMU, not tools like qemu-img)
   --block-drv-ro-whitelist=L
                            set block driver read-only whitelist
-                           (affects only QEMU, not qemu-img)
+                           (by default affects only QEMU, not tools like qemu-img)
+  --enable-block-drv-whitelist-in-tools
+                           use block whitelist also in tools instead of only QEMU
   --enable-trace-backends=B Set trace backend
                            Available backends: $trace_backend_list
   --with-trace-file=NAME   Full PATH,NAME of file to store traces
@@ -2196,10 +2214,15 @@ if test "$modules" = "no" && test "$module_upgrades" = "yes" ; then
   error_exit "Can't enable module-upgrades as Modules are not enabled"
 fi
 
-# Static linking is not possible with modules or PIE
+# Static linking is not possible with plugins, modules or PIE
 if test "$static" = "yes" ; then
   if test "$modules" = "yes" ; then
     error_exit "static and modules are mutually incompatible"
+  fi
+  if test "$plugins" = "yes"; then
+    error_exit "static and plugins are mutually incompatible"
+  else
+    plugins="no"
   fi
 fi
 
@@ -2354,24 +2377,27 @@ feature_not_found() {
 # ---
 # big/little endian test
 cat > $TMPC << EOF
+#include <stdio.h>
 short big_endian[] = { 0x4269, 0x4765, 0x4e64, 0x4961, 0x4e00, 0, };
 short little_endian[] = { 0x694c, 0x7454, 0x654c, 0x6e45, 0x6944, 0x6e41, 0, };
-extern int foo(short *, short *);
-int main(int argc, char *argv[]) {
-    return foo(big_endian, little_endian);
+int main(int argc, char *argv[])
+{
+    return printf("%s %s\n", (char *)big_endian, (char *)little_endian);
 }
 EOF
 
-if compile_object ; then
-    if strings -a $TMPO | grep -q BiGeNdIaN ; then
+if compile_prog ; then
+    if strings -a $TMPE | grep -q BiGeNdIaN ; then
         bigendian="yes"
-    elif strings -a $TMPO | grep -q LiTtLeEnDiAn ; then
+    elif strings -a $TMPE | grep -q LiTtLeEnDiAn ; then
         bigendian="no"
     else
         echo big/little test failed
+        exit 1
     fi
 else
     echo big/little test failed
+    exit 1
 fi
 
 ##########################################
@@ -3094,6 +3120,69 @@ for drv in $audio_drv_list; do
 done
 
 ##########################################
+# plugin linker support probe
+
+if test "$plugins" != "no"; then
+
+    #########################################
+    # See if --dynamic-list is supported by the linker
+
+    ld_dynamic_list="no"
+    cat > $TMPTXT <<EOF
+{
+  foo;
+};
+EOF
+
+        cat > $TMPC <<EOF
+#include <stdio.h>
+void foo(void);
+
+void foo(void)
+{
+  printf("foo\n");
+}
+
+int main(void)
+{
+  foo();
+  return 0;
+}
+EOF
+
+    if compile_prog "" "-Wl,--dynamic-list=$TMPTXT" ; then
+        ld_dynamic_list="yes"
+    fi
+
+    #########################################
+    # See if -exported_symbols_list is supported by the linker
+
+    ld_exported_symbols_list="no"
+    cat > $TMPTXT <<EOF
+  _foo
+EOF
+
+    if compile_prog "" "-Wl,-exported_symbols_list,$TMPTXT" ; then
+        ld_exported_symbols_list="yes"
+    fi
+
+    if test "$ld_dynamic_list" = "no" &&
+       test "$ld_exported_symbols_list" = "no" ; then
+        if test "$plugins" = "yes"; then
+            error_exit \
+                "Plugin support requires dynamic linking and specifying a set of symbols " \
+                "that are exported to plugins. Unfortunately your linker doesn't " \
+                "support the flag (--dynamic-list or -exported_symbols_list) used " \
+                "for this purpose."
+        else
+            plugins="no"
+        fi
+    else
+        plugins="yes"
+    fi
+fi
+
+##########################################
 # glib support probe
 
 glib_req_ver=2.56
@@ -3101,7 +3190,7 @@ glib_modules=gthread-2.0
 if test "$modules" = yes; then
     glib_modules="$glib_modules gmodule-export-2.0"
 fi
-if test "$plugins" = yes; then
+if test "$plugins" = "yes"; then
     glib_modules="$glib_modules gmodule-2.0"
 fi
 
@@ -3926,61 +4015,6 @@ if compile_prog "" "" ; then
   atomic64=yes
 fi
 
-#########################################
-# See if --dynamic-list is supported by the linker
-ld_dynamic_list="no"
-if test "$static" = "no" ; then
-    cat > $TMPTXT <<EOF
-{
-  foo;
-};
-EOF
-
-    cat > $TMPC <<EOF
-#include <stdio.h>
-void foo(void);
-
-void foo(void)
-{
-  printf("foo\n");
-}
-
-int main(void)
-{
-  foo();
-  return 0;
-}
-EOF
-
-    if compile_prog "" "-Wl,--dynamic-list=$TMPTXT" ; then
-        ld_dynamic_list="yes"
-    fi
-fi
-
-#########################################
-# See if -exported_symbols_list is supported by the linker
-
-ld_exported_symbols_list="no"
-if test "$static" = "no" ; then
-    cat > $TMPTXT <<EOF
-  _foo
-EOF
-
-    if compile_prog "" "-Wl,-exported_symbols_list,$TMPTXT" ; then
-        ld_exported_symbols_list="yes"
-    fi
-fi
-
-if  test "$plugins" = "yes" &&
-    test "$ld_dynamic_list" = "no" &&
-    test "$ld_exported_symbols_list" = "no" ; then
-  error_exit \
-      "Plugin support requires dynamic linking and specifying a set of symbols " \
-      "that are exported to plugins. Unfortunately your linker doesn't " \
-      "support the flag (--dynamic-list or -exported_symbols_list) used " \
-      "for this purpose. You can't build with --static."
-fi
-
 ########################################
 # check if getauxval is available.
 
@@ -4561,6 +4595,9 @@ if test "$audio_win_int" = "yes" ; then
 fi
 echo "CONFIG_BDRV_RW_WHITELIST=$block_drv_rw_whitelist" >> $config_host_mak
 echo "CONFIG_BDRV_RO_WHITELIST=$block_drv_ro_whitelist" >> $config_host_mak
+if test "$block_drv_whitelist_tools" = "yes" ; then
+  echo "CONFIG_BDRV_WHITELIST_TOOLS=y" >> $config_host_mak
+fi
 if test "$xfs" = "yes" ; then
   echo "CONFIG_XFS=y" >> $config_host_mak
 fi
