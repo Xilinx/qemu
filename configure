@@ -4446,6 +4446,19 @@ if compile_prog "" "" ; then
 fi
 
 ##########################################
+# check if we have sigev_notify_thread_id
+
+sigev_notify_thread_id=no
+cat > $TMPC << EOF
+#include <stddef.h>
+#include <signal.h>
+int main(void) { return offsetof(struct sigevent, sigev_notify_thread_id); }
+EOF
+if compile_prog "" "" ; then
+    sigev_notify_thread_id=yes
+fi
+
+##########################################
 # check if trace backend exists
 
 $python "$source_path/scripts/tracetool.py" "--backends=$trace_backends" --check-backends  > /dev/null 2> /dev/null
@@ -5429,7 +5442,7 @@ if test "$cpu" = "s390x" ; then
   write_c_skeleton
   compile_prog "-march=z900" ""
   has_z900=$?
-  if [ $has_z900 = 0 ] || compile_prog "-march=z10" ""; then
+  if [ $has_z900 = 0 ] || compile_object "-march=z10 -msoft-float -Werror"; then
     if [ $has_z900 != 0 ]; then
       echo "WARNING: Your compiler does not support the z900!"
       echo "         The s390-ccw bios will only work with guest CPUs >= z10."
@@ -5683,6 +5696,9 @@ fi
 if test "$st_atim" = "yes" ; then
   echo "HAVE_STRUCT_STAT_ST_ATIM=y" >> $config_host_mak
 fi
+if test "$sigev_notify_thread_id" = "yes" ; then
+  echo "HAVE_SIGEV_NOTIFY_THREAD_ID=y" >> $config_host_mak
+fi
 if test "$byteswap_h" = "yes" ; then
   echo "CONFIG_BYTESWAP_H=y" >> $config_host_mak
 fi
@@ -5807,6 +5823,9 @@ if test "$signalfd" = "yes" ; then
 fi
 if test "$optreset" = "yes" ; then
   echo "HAVE_OPTRESET=y" >> $config_host_mak
+fi
+if test "$tcg" = "enabled" -a "$tcg_interpreter" = "true" ; then
+  echo "CONFIG_TCG_INTERPRETER=y" >> $config_host_mak
 fi
 if test "$fdatasync" = "yes" ; then
   echo "CONFIG_FDATASYNC=y" >> $config_host_mak
