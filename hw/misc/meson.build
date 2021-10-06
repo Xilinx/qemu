@@ -68,6 +68,7 @@ softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL', if_true: files(
   'xlnx-versal-noc-ncrb.c',
   'xlnx-versal-cpm-crcpm.c',
   'xlnx-versal-cpm-pcsr.c',
+  'xlnx-versal-cpm-slcr-secure.c',
   'xlnx-versal-ddrmc-xmpu.c',
   'xlnx-versal-lpd-iou-slcr.c',
   'xlnx-versal-xmpu.c',
