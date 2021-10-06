@@ -9,3 +9,11 @@ config TMP421
 config EMC141X
     bool
     depends on I2C
+
+config ADM1272
+    bool
+    depends on I2C
+
+config MAX34451
+    bool
+    depends on I2C
