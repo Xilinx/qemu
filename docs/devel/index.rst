@@ -42,6 +42,7 @@ Contents:
    s390-dasd-ipl
    clocks
    qom
+   modules
    block-coroutine-wrapper
    multi-process
    ebpf_rss
