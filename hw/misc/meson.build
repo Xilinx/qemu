@@ -76,6 +76,7 @@ softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL', if_true: files(
   'xlnx-versal-lpd-slcr-secure.c',
   'xlnx-versal-fpd-slcr.c',
   'xlnx-versal-lpd-slcr.c',
+  'xlnx-versal-lpd-iou-slcr-secure.c',
   'xlnx-xmpu.c',
   'xlnx-xppu.c',
   'iomem-cache.c'
