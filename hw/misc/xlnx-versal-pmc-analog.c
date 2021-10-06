@@ -318,6 +318,74 @@ static uint64_t pmc_anlg_idr_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
+#define SCAN_CLEAR_TRIG(dev) \
+    if (FIELD_EX32(val, SCAN_CLEAR_TRIGGER, LPD_IOU) &&          \
+        !FIELD_EX32(curr_regval, SCAN_CLEAR_TRIGGER, LPD_IOU)) { \
+        ARRAY_FIELD_DP32(s->regs, SCAN_CLEAR_DONE, LPD_IOU, 1);  \
+        ARRAY_FIELD_DP32(s->regs, SCAN_CLEAR_PASS, LPD_IOU, 1);  \
+    }
+
+static uint64_t pmc_anlg_scan_clear_trigger_prew(RegisterInfo *reg,
+                                                 uint64_t val64)
+{
+    PmcAnalog *s = PMC_ANALOG(reg->opaque);
+    uint32_t val = val64;
+    uint32_t curr_regval;
+
+    if (ARRAY_FIELD_EX32(s->regs, SCAN_CLEAR_LOCK, LOCK)) {
+        qemu_log_mask(LOG_GUEST_ERROR, "Attempted to trigger scan clear when "
+                      "register is locked.\n");
+        return 0;
+    }
+
+    /*
+     * We're not locked, check to see if the user is setting a
+     * scan clear trigger. Scan clears always pass.
+     */
+    curr_regval = s->regs[R_SCAN_CLEAR_TRIGGER];
+
+    if (FIELD_EX32(val, SCAN_CLEAR_TRIGGER, NOC) &&
+        !FIELD_EX32(curr_regval, SCAN_CLEAR_TRIGGER, NOC)) {
+        ARRAY_FIELD_DP32(s->regs, SCAN_CLEAR_DONE, PMC, 1);
+        ARRAY_FIELD_DP32(s->regs, SCAN_CLEAR_PASS, PMC, 1);
+    }
+
+    SCAN_CLEAR_TRIG(LPD);
+    SCAN_CLEAR_TRIG(LPD_RPU);
+    SCAN_CLEAR_TRIG(LPD_IOU);
+
+    return val;
+}
+
+#define MBIST_TRIG(dev)                                         \
+    if (FIELD_EX32(val, OD_MBIST_PG_EN, dev) &&                 \
+        !FIELD_EX32(curr_regval, OD_MBIST_PG_EN, dev)) {        \
+        setup = ARRAY_FIELD_EX32(s->regs, OD_MBIST_SETUP, dev); \
+        rst = !ARRAY_FIELD_EX32(s->regs, OD_MBIST_RST, dev);    \
+        if (setup && !rst) {                                    \
+            ARRAY_FIELD_DP32(s->regs, OD_MBIST_DONE, dev, 1);   \
+            ARRAY_FIELD_DP32(s->regs, OD_MBIST_GOOD, dev, 1);   \
+        }                                                       \
+    }
+
+static uint64_t pmc_anlg_od_mbist_pg_en_prew(RegisterInfo *reg, uint64_t val64)
+{
+    PmcAnalog *s = PMC_ANALOG(reg->opaque);
+    uint32_t val = val64;
+    uint32_t curr_regval = s->regs[R_OD_MBIST_PG_EN];
+    bool rst;
+    bool setup;
+
+    /* Trigger MBIST if we're going from 0 -> 1 */
+    MBIST_TRIG(LPD_IOU);
+    MBIST_TRIG(LPD_RPU);
+    MBIST_TRIG(LPD);
+    MBIST_TRIG(PMC_IOU);
+    MBIST_TRIG(PMC);
+
+    return val;
+}
+
 static const RegisterAccessInfo pmc_anlg_regs_info[] = {
     {   .name = "GD_CTRL",  .addr = A_GD_CTRL,
         .rsvd = 0xfc00fc00,
@@ -442,28 +510,20 @@ static const RegisterAccessInfo pmc_anlg_regs_info[] = {
         .rsvd = 0xc,
     },{ .name = "OD_MBIST_PG_EN",  .addr = A_OD_MBIST_PG_EN,
         .rsvd = 0xc,
+        .pre_write = pmc_anlg_od_mbist_pg_en_prew,
     },{ .name = "OD_MBIST_SETUP",  .addr = A_OD_MBIST_SETUP,
         .rsvd = 0xc,
     },{ .name = "MBIST_MODE",  .addr = A_MBIST_MODE,
         .rsvd = 0xfffffffd,
     },{ .name = "OD_MBIST_DONE",  .addr = A_OD_MBIST_DONE,
-        .reset = R_OD_MBIST_DONE_LPD_IOU_MASK \
-                 | R_OD_MBIST_DONE_LPD_RPU_MASK \
-                 | R_OD_MBIST_DONE_LPD_MASK \
-                 | R_OD_MBIST_DONE_PMC_IOU_MASK \
-                 | R_OD_MBIST_DONE_PMC_MASK,
         .rsvd = 0xc,
         .ro = 0x7f,
     },{ .name = "OD_MBIST_GOOD",  .addr = A_OD_MBIST_GOOD,
-        .reset = R_OD_MBIST_GOOD_LPD_IOU_MASK \
-                 | R_OD_MBIST_GOOD_LPD_RPU_MASK \
-                 | R_OD_MBIST_GOOD_LPD_MASK \
-                 | R_OD_MBIST_GOOD_PMC_IOU_MASK \
-                 | R_OD_MBIST_GOOD_PMC_MASK,
         .rsvd = 0xc,
         .ro = 0x7f,
     },{ .name = "SCAN_CLEAR_TRIGGER",  .addr = A_SCAN_CLEAR_TRIGGER,
         .rsvd = 0x8f,
+        .pre_write = pmc_anlg_scan_clear_trigger_prew,
     },{ .name = "SCAN_CLEAR_LOCK",  .addr = A_SCAN_CLEAR_LOCK,
     },{ .name = "SCAN_CLEAR_DONE",  .addr = A_SCAN_CLEAR_DONE,
         .reset = R_SCAN_CLEAR_DONE_LPD_IOU_MASK

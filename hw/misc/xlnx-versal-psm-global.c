@@ -1005,6 +1005,52 @@ static uint64_t req_iso_trig_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
+static uint64_t scan_clear_fpd_prew(RegisterInfo *reg, uint64_t val64)
+{
+    uint32_t val = (uint32_t)val64;
+
+    /*
+     * Do a scan. It's always good.
+     * SCAN_CLEAR_FPD.TRIGGGER is WO, so clear that bit and set the others.
+     */
+    if (FIELD_EX32(val, SCAN_CLEAR_FPD, TRIGGER)) {
+        val = 0;
+        val = FIELD_DP32(val, SCAN_CLEAR_FPD, PASS, 1);
+        val = FIELD_DP32(val, SCAN_CLEAR_FPD, DONE, 1);
+    }
+
+    return val;
+}
+
+#define MBIST_TRIG(dev)                                      \
+    if (FIELD_EX32(val, MBIST_PG_EN, dev) &&                 \
+        !FIELD_EX32(curr_regval, MBIST_PG_EN, dev)) {        \
+        setup = ARRAY_FIELD_EX32(s->regs, MBIST_SETUP, dev); \
+        rst = !ARRAY_FIELD_EX32(s->regs, MBIST_RSTN, dev);   \
+        if (setup && !rst) {                                 \
+            ARRAY_FIELD_DP32(s->regs, MBIST_DONE, dev, 1);   \
+            ARRAY_FIELD_DP32(s->regs, MBIST_GO, dev, 1);     \
+        }                                                    \
+    }
+
+static uint64_t mbist_pg_en_prew(RegisterInfo *reg, uint64_t val64)
+{
+    PSM_GLOBAL_REG *s = XILINX_PSM_GLOBAL_REG(reg->opaque);
+    uint32_t val = val64;
+    uint32_t curr_regval = s->regs[R_MBIST_PG_EN];
+    bool rst;
+    bool setup;
+
+    /* Trigger MBIST if we're going from 0 -> 1 */
+    MBIST_TRIG(INT_FPD);
+    MBIST_TRIG(CCI);
+    MBIST_TRIG(CPU0);
+    MBIST_TRIG(CPU1);
+    MBIST_TRIG(APU);
+
+    return val;
+}
+
 static const RegisterAccessInfo psm_global_reg_regs_info[] = {
     {   .name = "GLOBAL_CNTRL",  .addr = A_GLOBAL_CNTRL,
         .reset = 0x8800,
@@ -1190,6 +1236,7 @@ static const RegisterAccessInfo psm_global_reg_regs_info[] = {
     },{ .name = "MBIST_PG_EN",  .addr = A_MBIST_PG_EN,
         .rsvd = 0xffffffe0,
         .ro = 0xffffffe0,
+        .pre_write = mbist_pg_en_prew,
     },{ .name = "MBIST_SETUP",  .addr = A_MBIST_SETUP,
         .rsvd = 0xffffffe0,
         .ro = 0xffffffe0,
@@ -1211,6 +1258,7 @@ static const RegisterAccessInfo psm_global_reg_regs_info[] = {
     },{ .name = "SCAN_CLEAR_FPD",  .addr = A_SCAN_CLEAR_FPD,
         .rsvd = 0xfffffff8,
         .ro = 0xfffffffe,
+        .pre_write = scan_clear_fpd_prew,
     },{ .name = "SAFETY_CHK",  .addr = A_SAFETY_CHK,
     }
 };
