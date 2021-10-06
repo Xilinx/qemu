@@ -32,6 +32,7 @@
 #include "qemu/log.h"
 #include "migration/vmstate.h"
 #include "hw/irq.h"
+#include "hw/qdev-properties.h"
 
 #ifndef XILINX_LPD_IOU_SECURE_SLCR_ERR_DEBUG
 #define XILINX_LPD_IOU_SECURE_SLCR_ERR_DEBUG 0
@@ -73,6 +74,9 @@ typedef struct LPD_IOU_SECURE_SLCR {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
     qemu_irq irq_imr;
+
+    MemTxAttrs *memattr_r_gem[2];
+    MemTxAttrs *memattr_w_gem[2];
 
     uint32_t regs[LPD_IOU_SECURE_SLCR_R_MAX];
     RegisterInfo regs_info[LPD_IOU_SECURE_SLCR_R_MAX];
@@ -120,15 +124,62 @@ static uint64_t itr_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
+static void slcr_gem_postw(RegisterInfo *reg, uint64_t val64)
+{
+    LPD_IOU_SECURE_SLCR *s = XILINX_LPD_IOU_SECURE_SLCR(reg->opaque);
+    uint32_t val = (uint32_t)val64;
+    uint32_t offset;
+    bool sec;
+    bool priv;
+
+    /* Invert security attribute so it's high when GEM should be secure. */
+    sec = !(FIELD_EX32(val, IOU_AXI_WPRTCN_GEM0, GEM0_AXI_AWPROT) & 2);
+    priv = (FIELD_EX32(val, IOU_AXI_WPRTCN_GEM0, GEM0_AXI_AWPROT) & 1);
+
+    offset = (reg->access->addr - A_IOU_AXI_WPRTCN_GEM0);
+    switch (offset) {
+    case A_IOU_AXI_WPRTCN_GEM0:
+        if (s->memattr_w_gem[0]) {
+            s->memattr_w_gem[0]->secure = sec;
+            s->memattr_w_gem[0]->user = priv;
+        }
+        break;
+    case A_IOU_AXI_RPRTCN_GEM0:
+        if (s->memattr_r_gem[0]) {
+            s->memattr_r_gem[0]->secure = sec;
+            s->memattr_r_gem[0]->user = priv;
+        }
+        break;
+    case A_IOU_AXI_WPRTCN_GEM1:
+        if (s->memattr_w_gem[1]) {
+            s->memattr_w_gem[1]->secure = sec;
+            s->memattr_w_gem[1]->user = priv;
+        }
+        break;
+    case A_IOU_AXI_RPRTCN_GEM1:
+        if (s->memattr_r_gem[1]) {
+            s->memattr_r_gem[1]->secure = sec;
+            s->memattr_r_gem[1]->user = priv;
+        }
+        break;
+    default:
+        g_assert_not_reached();
+    }
+}
+
 static const RegisterAccessInfo lpd_iou_secure_slcr_regs_info[] = {
     {   .name = "IOU_AXI_WPRTCN_GEM0",  .addr = A_IOU_AXI_WPRTCN_GEM0,
         .rsvd = 0xfffffff8,
+        .post_write = slcr_gem_postw,
     },{ .name = "IOU_AXI_RPRTCN_GEM0",  .addr = A_IOU_AXI_RPRTCN_GEM0,
         .rsvd = 0xfffffff8,
+        .post_write = slcr_gem_postw,
     },{ .name = "IOU_AXI_WPRTCN_GEM1",  .addr = A_IOU_AXI_WPRTCN_GEM1,
         .rsvd = 0xfffffff8,
+        .post_write = slcr_gem_postw,
     },{ .name = "IOU_AXI_RPRTCN_GEM1",  .addr = A_IOU_AXI_RPRTCN_GEM1,
         .rsvd = 0xfffffff8,
+        .post_write = slcr_gem_postw,
     },{ .name = "USB2_TZ",  .addr = A_USB2_TZ,
         .reset = 0x1,
     },{ .name = "CTRL",  .addr = A_CTRL,
@@ -175,11 +226,6 @@ static const MemoryRegionOps lpd_iou_secure_slcr_ops = {
     },
 };
 
-static void lpd_iou_secure_slcr_realize(DeviceState *dev, Error **errp)
-{
-    /* Delete this if you don't need it */
-}
-
 static void lpd_iou_secure_slcr_init(Object *obj)
 {
     LPD_IOU_SECURE_SLCR *s = XILINX_LPD_IOU_SECURE_SLCR(obj);
@@ -200,6 +246,27 @@ static void lpd_iou_secure_slcr_init(Object *obj)
                                 &reg_array->mem);
     sysbus_init_mmio(sbd, &s->iomem);
     sysbus_init_irq(sbd, &s->irq_imr);
+
+    object_property_add_link(obj, "memattr-gem0",
+                             TYPE_MEMORY_TRANSACTION_ATTR,
+                             (Object **)&s->memattr_r_gem[0],
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
+    object_property_add_link(obj, "memattr-write-gem0",
+                             TYPE_MEMORY_TRANSACTION_ATTR,
+                             (Object **)&s->memattr_w_gem[0],
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
+    object_property_add_link(obj, "memattr-gem1",
+                             TYPE_MEMORY_TRANSACTION_ATTR,
+                             (Object **)&s->memattr_r_gem[1],
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
+    object_property_add_link(obj, "memattr-write-gem1",
+                             TYPE_MEMORY_TRANSACTION_ATTR,
+                             (Object **)&s->memattr_w_gem[1],
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
 }
 
 static const VMStateDescription vmstate_lpd_iou_secure_slcr = {
@@ -218,7 +285,6 @@ static void lpd_iou_secure_slcr_class_init(ObjectClass *klass, void *data)
     ResettableClass *rc = RESETTABLE_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->realize = lpd_iou_secure_slcr_realize;
     dc->vmsd = &vmstate_lpd_iou_secure_slcr;
     rc->phases.enter = lpd_iou_secure_slcr_reset_enter;
     rc->phases.hold = lpd_iou_secure_slcr_reset_hold;

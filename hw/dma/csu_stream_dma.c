@@ -142,7 +142,8 @@ REG32(ADDR_MSB, 0x28)
 typedef struct ZynqMPCSUDMA {
     SysBusDevice busdev;
     MemoryRegion iomem;
-    MemTxAttrs *attr;
+    MemTxAttrs *attr_r;
+    MemTxAttrs *attr_w;
     MemoryRegion *dma_mr;
     AddressSpace *dma_as;
     qemu_irq irq;
@@ -323,11 +324,11 @@ static void dmach_write(ZynqMPCSUDMA *s, uint8_t *buf, unsigned int len)
         for (i = 0; i < len; i += s->width) {
             unsigned int wlen = MIN(len - i, s->width);
 
-            address_space_rw(s->dma_as, addr, *s->attr, buf, wlen, true);
+            address_space_rw(s->dma_as, addr, *s->attr_w, buf, wlen, true);
             buf += wlen;
         }
     } else {
-        address_space_rw(s->dma_as, addr, *s->attr, buf, len, true);
+        address_space_rw(s->dma_as, addr, *s->attr_w, buf, len, true);
     }
 }
 
@@ -342,10 +343,10 @@ static inline void dmach_read(ZynqMPCSUDMA *s, uint8_t *buf, unsigned int len)
         for (i = 0; i < len; i += s->width) {
             unsigned int rlen = MIN(len - i, s->width);
 
-            address_space_rw(s->dma_as, addr, *s->attr, buf + i, rlen, false);
+            address_space_rw(s->dma_as, addr, *s->attr_r, buf + i, rlen, false);
         }
     } else {
-        address_space_rw(s->dma_as, addr, *s->attr, buf, len, false);
+        address_space_rw(s->dma_as, addr, *s->attr_r, buf, len, false);
     }
     dmach_data_process(s, buf, len);
 }
@@ -657,9 +658,12 @@ static void zynqmp_csu_dma_realize(DeviceState *dev, Error **errp)
         s->dma_as = &address_space_memory;
     }
 
-    if (!s->attr) {
-        s->attr = MEMORY_TRANSACTION_ATTR(
+    if (!s->attr_r) {
+        s->attr_r = MEMORY_TRANSACTION_ATTR(
                       object_new(TYPE_MEMORY_TRANSACTION_ATTR));
+    }
+    if (!s->attr_w) {
+        s->attr_w = s->attr_r;
     }
 
     /*
@@ -696,7 +700,11 @@ static void zynqmp_csu_dma_init(Object *obj)
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_STRONG);
     object_property_add_link(obj, "memattr", TYPE_MEMORY_TRANSACTION_ATTR,
-                             (Object **)&s->attr,
+                             (Object **)&s->attr_r,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
+    object_property_add_link(obj, "memattr-write", TYPE_MEMORY_TRANSACTION_ATTR,
+                             (Object **)&s->attr_w,
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_STRONG);
 

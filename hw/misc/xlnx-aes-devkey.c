@@ -140,12 +140,8 @@ int xlnx_aes_k256_get_provided_i(Object *obj, const char *id_prop,
     return rc;
 }
 
-/*
- * Find AES256 key CRC for bbram and efuse.
- * k256[0]: BBRAM_0 or row_of(EFUSE_AES_START)
- * k256[7]: BBRAM_7 or row_of(EFUSE_AES_END)
- */
-uint32_t xlnx_aes_k256_crc(const uint32_t *k256, unsigned zpad_cnt)
+static uint32_t xlnx_calc_row_crc(uint32_t prev_crc, uint32_t data,
+                                  uint32_t addr)
 {
     /* A table for 7-bit slicing */
     static const uint32_t crc_tab[128] = {
@@ -183,46 +179,79 @@ uint32_t xlnx_aes_k256_crc(const uint32_t *k256, unsigned zpad_cnt)
         0x79b737ba, 0x988c474d, 0xbe2da0a5, 0x5f16d052
     };
 
-    uint32_t crc = 0;
-    unsigned j, k;
-
     /*
-     * BBRAM check has a zero-u32 prepended; see:
-     *  https://github.com/Xilinx/embeddedsw/blob/release-2019.2/lib/sw_services/xilskey/src/xilskey_bbramps_zynqmp.c#L311
-     *
      * eFuse calculation is shown here:
      *  https://github.com/Xilinx/embeddedsw/blob/release-2019.2/lib/sw_services/xilskey/src/xilskey_utils.c#L1496
      *
      * Each u32 word is appended a 5-bit value, for a total of 37 bits; see:
      *  https://github.com/Xilinx/embeddedsw/blob/release-2019.2/lib/sw_services/xilskey/src/xilskey_utils.c#L1356
      */
+    uint32_t crc = prev_crc;
+    const unsigned rshf = 7;
+    const uint32_t im = (1 << rshf) - 1;
+    const uint32_t rm = (1 << (32 - rshf)) - 1;
+    const uint32_t i2 = (1 << 2) - 1;
+    const uint32_t r2 = (1 << 30) - 1;
+
+    unsigned j;
+    uint32_t i, r;
+    uint64_t w;
+
+    w = (uint64_t)(addr) << 32;
+    w |= data;
+
+    /* Feed 35 bits, in 5 rounds, each a slice of 7 bits */
+    for (j = 0; j < 5; j++) {
+        r = rm & (crc >> rshf);
+        i = im & (crc ^ w);
+        crc = crc_tab[i] ^ r;
+
+        w >>= rshf;
+    }
+
+    /* Feed the remaining 2 bits */
+    r = r2 & (crc >> 2);
+    i = i2 & (crc ^ w);
+    crc = crc_tab[i << (rshf - 2)] ^ r;
+
+    return crc;
+}
+
+uint32_t xlnx_calc_crc(const uint32_t *data, unsigned data_length)
+{
+    uint32_t crc = 0;
+    unsigned i;
+
+    i = data_length;
+    while (i--) {
+        uint32_t addr = i + 1;
+
+        crc = xlnx_calc_row_crc(crc, data[i], addr);
+    }
+
+    return crc;
+}
+
+/*
+ * Find AES256 key CRC for bbram and efuse.
+ * k256[0]: BBRAM_0 or row_of(EFUSE_AES_START)
+ * k256[7]: BBRAM_7 or row_of(EFUSE_AES_END)
+ */
+uint32_t xlnx_aes_k256_crc(const uint32_t *k256, unsigned zpad_cnt)
+{
+    uint32_t crc = 0;
+    unsigned k;
+
+    /*
+     * BBRAM check has a zero-u32 prepended; see:
+     *  https://github.com/Xilinx/embeddedsw/blob/release-2019.2/lib/sw_services/xilskey/src/xilskey_bbramps_zynqmp.c#L311
+     */
     k = 8 + zpad_cnt;
     while (k--) {
-        const unsigned rshf = 7;
-        const uint32_t im = (1 << rshf) - 1;
-        const uint32_t rm = (1 << (32 - rshf)) - 1;
-        const uint32_t i2 = (1 << 2) - 1;
-        const uint32_t r2 = (1 << 30) - 1;
+        uint32_t data = k > 7 ? 0 : k256[k];
+        uint32_t addr = k + 1;
 
-        uint32_t i, r;
-        uint64_t w;
-
-        w = (uint64_t)(k + 1) << 32;
-        w |= k > 7 ? 0 : k256[k];
-
-        /* Feed 35 bits, in 5 rounds, each a slice of 7 bits */
-        for (j = 0; j < 5; j++) {
-            r = rm & (crc >> rshf);
-            i = im & (crc ^ w);
-            crc = crc_tab[i] ^ r;
-
-            w >>= rshf;
-        }
-
-        /* Feed the remaining 2 bits */
-        r = r2 & (crc >> 2);
-        i = i2 & (crc ^ w);
-        crc = crc_tab[i << (rshf - 2)] ^ r;
+        crc = xlnx_calc_row_crc(crc, data, addr);
     }
 
     return crc;
