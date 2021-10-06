@@ -3,8 +3,8 @@
 
 #include "hw/i2c/i2c.h"
 
-#define TYPE_PCA9546 "pca9546"
-#define TYPE_PCA9548 "pca9548"
+#define TYPE_PCA9546 "pca9546-upstream"
+#define TYPE_PCA9548 "pca9548-upstream"
 
 /**
  * Retrieves the i2c bus associated with the specified channel on this i2c

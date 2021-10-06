@@ -73,7 +73,7 @@ typedef struct Pca954xClass {
     uint8_t nchans;
 } Pca954xClass;
 
-#define TYPE_PCA954X "pca954x"
+#define TYPE_PCA954X "pca954x-upstream"
 OBJECT_DECLARE_TYPE(Pca954xState, Pca954xClass, PCA954X)
 
 /*
