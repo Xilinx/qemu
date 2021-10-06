@@ -1437,6 +1437,8 @@ typedef struct CPUX86State {
     FPReg fpregs[8];
     /* KVM-only so far */
     uint16_t fpop;
+    uint16_t fpcs;
+    uint16_t fpds;
     uint64_t fpip;
     uint64_t fpdp;
 
@@ -1747,6 +1749,9 @@ struct X86CPU {
 
     /* Enable auto level-increase for all CPUID leaves */
     bool full_cpuid_auto_level;
+
+    /* Only advertise CPUID leaves defined by the vendor */
+    bool vendor_cpuid_only;
 
     /* Enable auto level-increase for Intel Processor Trace leave */
     bool intel_pt_auto_level;
