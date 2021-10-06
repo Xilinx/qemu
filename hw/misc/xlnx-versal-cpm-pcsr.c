@@ -33,7 +33,7 @@
 #include "hw/qdev-properties.h"
 
 #ifndef XILINX_CPM_PCSR_ERR_DEBUG
-#define XILINX_CPM_PCSR_ERR_DEBUG 1
+#define XILINX_CPM_PCSR_ERR_DEBUG 0
 #endif
 
 #define TYPE_XILINX_CPM_PCSR "xlnx.versal_cpm_pcsr"

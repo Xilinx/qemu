@@ -348,6 +348,7 @@ typedef struct {
     bool opcode_0_illegal;
     bool div_zero_exception;
     bool unaligned_exceptions;
+    bool lockstep_slave;
 } MicroBlazeCPUConfig;
 
 /**

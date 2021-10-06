@@ -308,6 +308,9 @@ static void mb_cpu_realizefn(DeviceState *dev, Error **errp)
     cpu->cfg.mmu_zones = 16;
     cpu->cfg.addr_mask = MAKE_64BIT_MASK(0, cpu->cfg.addr_size);
 
+    if (cpu->cfg.lockstep_slave) {
+        cs->reset_pin = true;
+    }
     mcc->parent_realize(dev, errp);
 }
 
@@ -391,6 +394,8 @@ static Property mb_properties[] = {
                      cfg.unaligned_exceptions, false),
     DEFINE_PROP_BOOL("opcode-0x0-illegal", MicroBlazeCPU,
                      cfg.opcode_0_illegal, false),
+    DEFINE_PROP_BOOL("lockstep-slave", MicroBlazeCPU,
+                     cfg.lockstep_slave, false),
     DEFINE_PROP_STRING("version", MicroBlazeCPU, cfg.version),
     DEFINE_PROP_UINT8("pvr", MicroBlazeCPU, cfg.pvr, C_PVR_FULL),
     DEFINE_PROP_UINT8("pvr-user1", MicroBlazeCPU, cfg.pvr_user1, 0),
