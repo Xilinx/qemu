@@ -930,7 +930,7 @@ vnc = not_found
 png = not_found
 jpeg = not_found
 sasl = not_found
-if get_option('vnc').enabled()
+if not get_option('vnc').disabled()
   vnc = declare_dependency() # dummy dependency
   png = dependency('libpng', required: get_option('vnc_png'),
                    method: 'pkg-config', kwargs: static_kwargs)
@@ -2338,9 +2338,9 @@ foreach d, list : modules
         # https://github.com/mesonbuild/meson/pull/8900
         modinfo_files += custom_target(d + '-' + m + '.modinfo',
                                        output: d + '-' + m + '.modinfo',
-                                       input: module_ss.sources(),
+                                       input: module_ss.sources() + genh,
                                        capture: true,
-                                       command: [modinfo_collect, '@INPUT@'])
+                                       command: [modinfo_collect, module_ss.sources()])
       endif
     else
       if d == 'block'
@@ -2376,9 +2376,9 @@ foreach d, list : target_modules
             # FIXME: Should use sl.extract_all_objects(recursive: true) too.
             modinfo_files += custom_target(module_name + '.modinfo',
                                            output: module_name + '.modinfo',
-                                           input: target_module_ss.sources(),
+                                           input: target_module_ss.sources() + genh,
                                            capture: true,
-                                           command: [modinfo_collect, '--target', target, '@INPUT@'])
+                                           command: [modinfo_collect, '--target', target, target_module_ss.sources()])
           endif
         endif
       endforeach
