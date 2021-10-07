@@ -646,6 +646,11 @@ static void usb_dwc3_init(Object *obj)
                             TYPE_XHCI_SYSBUS);
     qdev_alias_all_properties(DEVICE(&s->sysbus_xhci), obj);
 
+    object_property_add_link(obj, "dma", TYPE_MEMORY_REGION,
+                             (Object **)&s->sysbus_xhci.xhci.dma_mr,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
+
     s->cfg.mode = HOST_MODE;
 }
 
