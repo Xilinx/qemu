@@ -600,6 +600,15 @@ static void usb_dwc3_realize(DeviceState *dev, Error **errp)
     SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
     Error *err = NULL;
 
+    /*
+     * Xilinx backwards compatibility:
+     *   1 propagate ID for creating backwards compatible bus names
+     *   2 Set numintrs and numslots (deprecated dtb's do not)
+     */
+    DEVICE(&s->sysbus_xhci)->id = g_strdup(dev->id);
+    s->sysbus_xhci.xhci.numintrs = 4;
+    s->sysbus_xhci.xhci.numslots = 2;
+
     sysbus_realize(SYS_BUS_DEVICE(&s->sysbus_xhci), &err);
     if (err) {
         error_propagate(errp, err);
