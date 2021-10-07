@@ -622,6 +622,8 @@ static void usb_dwc3_realize(DeviceState *dev, Error **errp)
     s->regs[R_GHWPARAMS6] = 0x7850c20;
     s->regs[R_GHWPARAMS7] = 0x0;
     s->regs[R_GHWPARAMS8] = 0x478;
+
+    qdev_pass_gpios(DEVICE(&s->sysbus_xhci), dev, SYSBUS_DEVICE_GPIO_IRQ);
 }
 
 static void usb_dwc3_init(Object *obj)
