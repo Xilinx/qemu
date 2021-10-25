@@ -146,13 +146,20 @@ static void bbram_bdrv_read(BBRAMCtrl *s)
 
     assert(s->blk);
 
-    s->blk_ro = blk_is_writable(s->blk);
+    s->blk_ro = !blk_supports_write_perm(s->blk);
+    if (!s->blk_ro) {
+        int rc;
+
+        rc = blk_set_perm(s->blk,
+                          (BLK_PERM_CONSISTENT_READ | BLK_PERM_WRITE),
+                          BLK_PERM_ALL, NULL);
+        if (rc) {
+            s->blk_ro = true;
+        }
+    }
     if (s->blk_ro) {
         warn_report("%s: update not saved: backstore is read-only", prefix);
     }
-    blk_set_perm(s->blk,
-                 (BLK_PERM_CONSISTENT_READ | (s->blk_ro ? 0 : BLK_PERM_WRITE)),
-                 BLK_PERM_ALL, &error_abort);
 
     rc = blk_pread(s->blk, 0, ram, nr);
     if (rc < 0) {
