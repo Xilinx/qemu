@@ -327,16 +327,21 @@ static void efuse_realize(DeviceState *dev, Error **errp)
     if (blk) {
         qdev_prop_set_drive(dev, "drive", blk);
 
-        s->blk_ro = !blk_is_writable(s->blk);
+        s->blk_ro = !blk_supports_write_perm(s->blk);
+        if (!s->blk_ro) {
+            int rc;
+
+            rc = blk_set_perm(s->blk,
+                              (BLK_PERM_CONSISTENT_READ | BLK_PERM_WRITE),
+                              BLK_PERM_ALL, NULL);
+            if (rc) {
+                s->blk_ro = true;
+            }
+        }
         if (s->blk_ro) {
             warn_report("%s: update not saved: backstore is read-only",
                         object_get_canonical_path(OBJECT(s)));
         }
-        blk_set_perm(s->blk,
-                     (BLK_PERM_CONSISTENT_READ
-                      | (s->blk_ro ? 0 : BLK_PERM_WRITE)), BLK_PERM_ALL,
-                     &error_abort);
-
         if (blk_pread(s->blk, 0, (void *) s->fuse32, nr_bytes) < 0) {
             error_setg(&error_abort, "%s: Unable to read-out contents."
                          "backing file too small? Expecting %" PRIu32" bytes",
