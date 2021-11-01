@@ -570,7 +570,11 @@ static int smmuv3_decode_config(IOMMUMemoryRegion *mr, SMMUTransCfg *cfg,
         return ret;
     }
 
-    return decode_cd(cfg, &cd, event);
+
+    if (cfg->stage == 1) {
+        ret = decode_cd(cfg, &cd, event);
+    }
+    return ret;
 }
 
 /**
