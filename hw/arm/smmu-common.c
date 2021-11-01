@@ -244,6 +244,10 @@ SMMUTransTableInfo *select_tt(SMMUTransCfg *cfg, dma_addr_t iova)
     bool tbi = extract64(iova, 55, 1) ? TBI1(cfg->tbi) : TBI0(cfg->tbi);
     uint8_t tbi_byte = tbi * 8;
 
+    if (cfg->stage == 2) {
+        return &cfg->tt[0];
+    }
+
     if (cfg->tt[0].tsz &&
         !extract64(iova, 64 - cfg->tt[0].tsz, cfg->tt[0].tsz - tbi_byte)) {
         /* there is a ttbr0 region and we are in it (high bits all zero) */
