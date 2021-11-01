@@ -243,6 +243,7 @@ static void smmuv3_init_regs(SMMUv3State *s)
      * IDR0: stage1 only, AArch64 only, coherent access, 16b ASID,
      *       multi-level stream table
      */
+    s->idr[0] = FIELD_DP32(s->idr[0], IDR0, S2P, 1); /* stage 2 supported */
     s->idr[0] = FIELD_DP32(s->idr[0], IDR0, S1P, 1); /* stage 1 supported */
     s->idr[0] = FIELD_DP32(s->idr[0], IDR0, TTF, 2); /* AArch64 PTW only */
     s->idr[0] = FIELD_DP32(s->idr[0], IDR0, COHACC, 1); /* IO coherent */
@@ -351,8 +352,26 @@ static int decode_ste(SMMUv3State *s, SMMUTransCfg *cfg,
     cfg->stage = 1;
 
     if (STE_CFG_S2_ENABLED(config)) {
-        qemu_log_mask(LOG_UNIMP, "SMMUv3 does not support stage 2 yet\n");
-        goto bad_ste;
+        SMMUTransTableInfo *tt = &cfg->tt[0];
+
+        cfg->stage = 2;
+
+        cfg->asid = STE_S2VMID(ste) << 16;
+        cfg->oas = oas2bits(STE_S2PS(ste));
+        cfg->oas = MIN(oas2bits(SMMU_IDR5_OAS), cfg->oas);
+        cfg->affd = STE_S2AFFD(ste);
+        cfg->s2_sl0 = STE_S2SL0(ste);
+
+        tt->tsz = STE_S2T0SZ(ste);
+        if (tt->tsz < 16 || tt->tsz > 39) {
+            goto bad_ste;
+        }
+
+        tt->granule_sz = tg2granule(STE_S2TG(ste), 0);
+        tt->ttb = STE_S2TTB(ste);
+        if (tt->ttb & ~(MAKE_64BIT_MASK(0, cfg->oas))) {
+            goto bad_ste;
+        }
     }
 
     if (STE_S1CDMAX(ste) != 0) {
