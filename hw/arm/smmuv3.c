@@ -346,6 +346,10 @@ static int decode_ste(SMMUv3State *s, SMMUTransCfg *cfg,
         return 0;
     }
 
+    /* we support only those at the moment */
+    cfg->aa64 = true;
+    cfg->stage = 1;
+
     if (STE_CFG_S2_ENABLED(config)) {
         qemu_log_mask(LOG_UNIMP, "SMMUv3 does not support stage 2 yet\n");
         goto bad_ste;
@@ -478,10 +482,6 @@ static int decode_cd(SMMUTransCfg *cfg, CD *cd, SMMUEventInfo *event)
     if (CD_HA(cd) || CD_HD(cd)) {
         goto bad_cd; /* HTTU = 0 */
     }
-
-    /* we support only those at the moment */
-    cfg->aa64 = true;
-    cfg->stage = 1;
 
     cfg->oas = oas2bits(CD_IPS(cd));
     cfg->oas = MIN(oas2bits(SMMU_IDR5_OAS), cfg->oas);
