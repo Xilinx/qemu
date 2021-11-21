@@ -30,7 +30,7 @@ struct etrace_entry32 {
 struct etrace_entry64 {
     uint32_t duration;
     uint64_t start, end;
-};
+} QEMU_PACKED;
 
 enum qemu_etrace_flag {
     ETRACE_F_NONE        = 0,
