@@ -3676,7 +3676,7 @@ void qemu_init(int argc, char **argv, char **envp)
     if (qemu_arg_etrace) {
         qemu_etrace_enabled = etrace_init(&qemu_etracer, qemu_arg_etrace,
                                           qemu_arg_etrace_flags,
-                                          0, 32);
+                                          0, TARGET_LONG_BITS);
         if (!qemu_etrace_enabled) {
             perror(qemu_arg_etrace);
             exit(1);
