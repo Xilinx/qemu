@@ -971,6 +971,10 @@ REG32(ERROR_MANAGEMENT_POR_LOCK, 0x200)
 
 #define PMC_GLOBAL_R_MAX (R_ERROR_MANAGEMENT_POR_LOCK + 1)
 
+#define SLR_SYNC_MASK    (R_PMC_ERR2_STATUS_SSIT_ERR0_MASK | \
+                          R_PMC_ERR2_STATUS_SSIT_ERR1_MASK | \
+                          R_PMC_ERR2_STATUS_SSIT_ERR2_MASK)
+
 typedef struct PmcErrMngmnt {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
@@ -993,6 +997,25 @@ static void err2_postw(RegisterInfo *reg, uint64_t val)
     s->regs[R_PMC_ERR2_STATUS] |= s->pmc_err2_sts;
 }
 
+static uint64_t err2_postr(RegisterInfo *reg, uint64_t val)
+{
+    PmcErrMngmnt *s = XILINX_PMC_GLOBAL(reg->opaque);
+
+    /* Hack:
+     * Master and slave SLR handshake involves waiting for slave
+     * SLR's to move into sync state and then master ack for slaves.
+     *
+     * Both these events need PLM on SLR's, which we don't support
+     * at preset, so simply toggle the pins to get the effect of sync
+     * done.
+     */
+    s->pmc_err2_sts = deposit32(s->pmc_err2_sts,
+                                R_PMC_ERR2_STATUS_SSIT_ERR0_SHIFT, 3,
+                                ((s->pmc_err2_sts ^ SLR_SYNC_MASK) >>
+                                R_PMC_ERR2_STATUS_SSIT_ERR0_SHIFT));
+    return s->pmc_err2_sts;
+}
+
 static const RegisterAccessInfo pmc_global_regs_info[] = {
     {   .name = "PMC_ERR1_STATUS",  .addr = A_PMC_ERR1_STATUS,
         .w1c = 0xffffffff,
@@ -1000,6 +1023,7 @@ static const RegisterAccessInfo pmc_global_regs_info[] = {
     },{ .name = "PMC_ERR2_STATUS",  .addr = A_PMC_ERR2_STATUS,
         .w1c = 0xffffffff,
         .post_write = err2_postw,
+        .post_read = err2_postr,
     },{ .name = "PMC_ERR1_TRIG",  .addr = A_PMC_ERR1_TRIG,
     },{ .name = "PMC_ERR2_TRIG",  .addr = A_PMC_ERR2_TRIG,
     },{ .name = "PMC_ERR_OUT1_MASK",  .addr = A_PMC_ERR_OUT1_MASK,
@@ -1059,6 +1083,7 @@ static void pmc_global_reset(DeviceState *dev)
         register_reset(&s->regs_info[i]);
     }
 
+    s->pmc_err2_sts |= SLR_SYNC_MASK;
 }
 
 static void ssit_err_irq_in(void *opaque, int n, int level)
