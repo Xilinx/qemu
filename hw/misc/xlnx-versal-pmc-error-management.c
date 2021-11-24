@@ -976,14 +976,30 @@ typedef struct PmcErrMngmnt {
     MemoryRegion iomem;
 
     uint32_t regs[PMC_GLOBAL_R_MAX];
+    uint32_t pmc_err1_sts;
+    uint32_t pmc_err2_sts;
     RegisterInfo regs_info[PMC_GLOBAL_R_MAX];
 } PmcErrMngmnt;
+
+static void err1_postw(RegisterInfo *reg, uint64_t val)
+{
+    PmcErrMngmnt *s = XILINX_PMC_GLOBAL(reg->opaque);
+    s->regs[R_PMC_ERR1_STATUS] |= s->pmc_err1_sts;
+}
+
+static void err2_postw(RegisterInfo *reg, uint64_t val)
+{
+    PmcErrMngmnt *s = XILINX_PMC_GLOBAL(reg->opaque);
+    s->regs[R_PMC_ERR2_STATUS] |= s->pmc_err2_sts;
+}
 
 static const RegisterAccessInfo pmc_global_regs_info[] = {
     {   .name = "PMC_ERR1_STATUS",  .addr = A_PMC_ERR1_STATUS,
         .w1c = 0xffffffff,
+        .post_write = err1_postw,
     },{ .name = "PMC_ERR2_STATUS",  .addr = A_PMC_ERR2_STATUS,
         .w1c = 0xffffffff,
+        .post_write = err2_postw,
     },{ .name = "PMC_ERR1_TRIG",  .addr = A_PMC_ERR1_TRIG,
     },{ .name = "PMC_ERR2_TRIG",  .addr = A_PMC_ERR2_TRIG,
     },{ .name = "PMC_ERR_OUT1_MASK",  .addr = A_PMC_ERR_OUT1_MASK,
@@ -1050,15 +1066,17 @@ static void ssit_err_irq_in(void *opaque, int n, int level)
     PmcErrMngmnt *s = XILINX_PMC_GLOBAL(opaque);
 
     if (n <= 2) {
-        s->regs[R_PMC_ERR2_STATUS] = deposit32(s->regs[R_PMC_ERR2_STATUS],
+        s->pmc_err2_sts = deposit32(s->pmc_err2_sts,
                                          R_PMC_ERR2_STATUS_SSIT_ERR0_SHIFT + n,
                                          1, level);
     } else {
         n -= 3;
-        s->regs[R_PMC_ERR1_STATUS] = deposit32(s->regs[R_PMC_ERR1_STATUS],
+        s->pmc_err1_sts = deposit32(s->pmc_err1_sts,
                                          R_PMC_ERR1_STATUS_SSIT_ERR3_SHIFT + n,
                                          1, level);
     }
+    s->regs[R_PMC_ERR2_STATUS] |= s->pmc_err2_sts;
+    s->regs[R_PMC_ERR1_STATUS] |= s->pmc_err1_sts;
 }
 
 static const MemoryRegionOps pmc_global_ops = {
