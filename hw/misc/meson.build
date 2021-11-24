@@ -94,6 +94,7 @@ softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL_PMC', if_true: files(
   'xlnx-versal-ams-sat.c',
   'xlnx-versal-pmc-pzm.c',
   'xlnx-versal-pmc-tamper.c',
+  'xlnx-versal-pmc-error-management.c',
   'xlnx-versal-cfu.c',
   'xlnx-versal-trng.c',
   'xlnx-versal-crf.c',
