@@ -283,7 +283,7 @@ bool etrace_init(struct etracer *t, const char *filename,
     id.version.major = ETRACE_VERSION_MAJOR;
     id.version.minor = ETRACE_VERSION_MINOR;
     id.attr = 0;
-    if (qemu_loglevel_mask(CPU_LOG_TB_NOCHAIN)) {
+    if (!qemu_loglevel_mask(CPU_LOG_TB_NOCHAIN)) {
         id.attr |= ETRACE_INFO_F_TB_CHAINING;
     }
     etrace_write_header(t, TYPE_INFO, 0, sizeof id);
@@ -421,7 +421,7 @@ void etrace_dump_exec(struct etracer *t, unsigned int unit_id,
     }
 
     execache_set_end(t, pos, end);
-    if (!qemu_loglevel_mask(CPU_LOG_TB_NOCHAIN)) {
+    if (qemu_loglevel_mask(CPU_LOG_TB_NOCHAIN)) {
         assert(execache_get_start(t, pos) <= execache_get_end(t, pos));
     }
 
