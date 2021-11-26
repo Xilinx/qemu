@@ -1,5 +1,6 @@
 /*
- * QEMU model of the PMC_GLOBAL This is the database for the PMC Error Management Register Definitions.
+ * QEMU model of the PMC_GLOBAL This is the database for the PMC Error
+ * Management Register Definitions.
  *
  * Copyright (c) 2019 Xilinx Inc.
  *
@@ -1125,7 +1126,8 @@ static void pmc_global_init(Object *obj)
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
     RegisterInfoArray *reg_array;
 
-    memory_region_init(&s->iomem, obj, TYPE_XILINX_PMC_GLOBAL, PMC_GLOBAL_R_MAX * 4);
+    memory_region_init(&s->iomem, obj, TYPE_XILINX_PMC_GLOBAL,
+                       PMC_GLOBAL_R_MAX * 4);
     reg_array =
         register_init_block32(DEVICE(obj), pmc_global_regs_info,
                               ARRAY_SIZE(pmc_global_regs_info),
