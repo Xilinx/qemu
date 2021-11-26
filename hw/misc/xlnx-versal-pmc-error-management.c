@@ -31,6 +31,7 @@
 #include "qemu/bitops.h"
 #include "qemu/log.h"
 #include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 
 #ifndef XILINX_PMC_GLOBAL_ERR_DEBUG
 #define XILINX_PMC_GLOBAL_ERR_DEBUG 0
@@ -983,6 +984,7 @@ typedef struct PmcErrMngmnt {
     uint32_t regs[PMC_GLOBAL_R_MAX];
     uint32_t pmc_err1_sts;
     uint32_t pmc_err2_sts;
+    bool ssit;
     RegisterInfo regs_info[PMC_GLOBAL_R_MAX];
 } PmcErrMngmnt;
 
@@ -1010,10 +1012,12 @@ static uint64_t err2_postr(RegisterInfo *reg, uint64_t val)
      * at preset, so simply toggle the pins to get the effect of sync
      * done.
      */
-    s->pmc_err2_sts = deposit32(s->pmc_err2_sts,
-                                R_PMC_ERR2_STATUS_SSIT_ERR0_SHIFT, 3,
-                                ((s->pmc_err2_sts ^ SLR_SYNC_MASK) >>
-                                R_PMC_ERR2_STATUS_SSIT_ERR0_SHIFT));
+    if (s->ssit) {
+        s->pmc_err2_sts = deposit32(s->pmc_err2_sts,
+                                    R_PMC_ERR2_STATUS_SSIT_ERR0_SHIFT, 3,
+                                    ((s->pmc_err2_sts ^ SLR_SYNC_MASK) >>
+                                    R_PMC_ERR2_STATUS_SSIT_ERR0_SHIFT));
+    }
     return s->pmc_err2_sts;
 }
 
@@ -1084,7 +1088,6 @@ static void pmc_global_reset(DeviceState *dev)
         register_reset(&s->regs_info[i]);
     }
 
-    s->pmc_err2_sts |= SLR_SYNC_MASK;
 }
 
 static void ssit_err_irq_in(void *opaque, int n, int level)
@@ -1141,6 +1144,11 @@ static void pmc_global_init(Object *obj)
     sysbus_init_mmio(sbd, &s->iomem);
 }
 
+static Property err_management_props[] = {
+    DEFINE_PROP_BOOL("ssit", PmcErrMngmnt, ssit, false),
+    DEFINE_PROP_END_OF_LIST(),
+};
+
 static const VMStateDescription vmstate_pmc_global = {
     .name = TYPE_XILINX_PMC_GLOBAL,
     .version_id = 1,
@@ -1158,6 +1166,7 @@ static void pmc_global_class_init(ObjectClass *klass, void *data)
     dc->reset = pmc_global_reset;
     dc->realize = pmc_global_realize;
     dc->vmsd = &vmstate_pmc_global;
+    device_class_set_props(dc, err_management_props);
 }
 
 static const TypeInfo pmc_global_info = {
