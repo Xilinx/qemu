@@ -30,10 +30,12 @@
 #include "hw/irq.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
+#include "qemu/timer.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
+#include "hw/block/xlnx-efuse.h"
 #include "xlnx-versal-ams.h"
 
 #include <math.h>
@@ -3347,6 +3349,10 @@ typedef struct PMCSysMon {
     uint32_t events;
     uint32_t reg_prev_value;
 
+    Object *efuse;
+    QEMUTimer efuse_throttle_timer;
+    uint32_t efuse_throttle_ms;
+
     Object *ams_sat[2];
     uint32_t ams_sat_ready[1];  /* bit-array, indexed by CHANNEL_xxx macros */
 
@@ -4325,33 +4331,105 @@ static uint64_t reg_ier0_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
+static void pmc_sysmon_efuse_data_put(PMCSysMon *s, XlnxEFuseSysmonData *src)
+{
+    s->regs[R_SECURE_EFUSE_RDATA_LOW]  = src->rdata_low;
+    s->regs[R_SECURE_EFUSE_RDATA_HIGH] = src->rdata_high;
+}
+
+static bool pmc_sysmon_efuse_data_xfer(PMCSysMon *s)
+{
+    XlnxEFuseSysmonData data;
+    XlnxEFuseSysmonDataSourceClass *klass = NULL;
+
+    if (s->efuse) {
+        klass = XLNX_EFUSE_SYSMON_DATA_SOURCE_GET_CLASS(s->efuse);
+        if (klass && !klass->get_data) {
+            klass = NULL;
+        }
+    }
+
+    if (klass) {
+        klass->get_data(s->efuse, &data);
+    } else {
+        memset(&data, 0, sizeof(data));
+    }
+
+    /* Skip updating if in test mode */
+    if (!ARRAY_FIELD_EX32(s->regs, REG_PCSR_CONTROL, TEST_SAFE)) {
+        pmc_sysmon_efuse_data_put(s, &data);
+    }
+
+    return !!klass;
+}
+
+static void pmc_sysmon_efuse_xfer_start(PMCSysMon *s)
+{
+    int64_t now_ms = qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL);
+
+    /*
+     * The transfer-completion deferral timer serves 2 purposes:
+     * 1. For continuous-xfer mode, rate-limit the DONE-event
+     *    to avoid interrupt flood.
+     * 2. To provide single-xfer mode, by modeling the real
+     *    hardware behavior that allows software to make the
+     *    START bit transition of 0->1->0 in 2 consecutive
+     *    writes to PCSR_CONTROL.
+     */
+    timer_mod(&s->efuse_throttle_timer, (now_ms + s->efuse_throttle_ms));
+}
+
+static void pmc_sysmon_efuse_xfer_done(void *opaque)
+{
+    PMCSysMon *s = PMC_SYSMON(opaque);
+
+    if (pmc_sysmon_efuse_data_xfer(s)) {
+        ARRAY_FIELD_DP32(s->regs, REG_ISR, SECURE_EFUSE_DONE, 1);
+    } else {
+        ARRAY_FIELD_DP32(s->regs, REG_ISR, SECURE_EFUSE_ERROR, 1);
+    }
+
+    reg_isr_update_irq(s);
+
+    if (ARRAY_FIELD_EX32(s->regs, REG_PCSR_CONTROL, SECURE_EFUSE_START)) {
+        pmc_sysmon_efuse_xfer_start(s);
+    } else {
+        timer_del(&s->efuse_throttle_timer);
+    }
+}
+
 static uint64_t pmc_sysmon_pcsr_control_prew(RegisterInfo *reg, uint64_t val64)
 {
     PMCSysMon *s = PMC_SYSMON(reg->opaque);
     uint32_t enb_mask = s->regs[R_REG_PCSR_MASK];
-    uint32_t val;
+    uint32_t v_old = s->regs[R_REG_PCSR_CONTROL];
+    uint32_t v_new;
 
     /* Disabled bits cannot be updated */
-    val = ~enb_mask & s->regs[R_REG_PCSR_CONTROL];
+    v_new = ~enb_mask & v_old;
 
     /* Inject modifiable bits */
-    val |= enb_mask & val64;
+    v_new |= enb_mask & val64;
 
-    /* Defer control behavior to postw for TEST_SAFE enforcement */
-    return val;
-}
+    s->regs[R_REG_PCSR_CONTROL] = v_new;
 
-static void pmc_sysmon_pcsr_control_postw(RegisterInfo *reg, uint64_t val64)
-{
-    PMCSysMon *s = PMC_SYSMON(reg->opaque);
-
-    s->regs[R_REG_PCSR_MASK] = 0; /* mask cleared on any write to control */
+    /*
+     * Mask cleared on any write to control.
+     * Skip all control if under test.
+     */
+    s->regs[R_REG_PCSR_MASK] = 0;
 
     if (ARRAY_FIELD_EX32(s->regs, REG_PCSR_CONTROL, TEST_SAFE)) {
-        return; /* Skip control if under test */
+        return v_new;
     }
 
-    return;
+    /* Launch secure efuse transfer on 0->1 transition */
+    if (!FIELD_EX32(v_old, REG_PCSR_CONTROL, SECURE_EFUSE_START)
+        && FIELD_EX32(v_new, REG_PCSR_CONTROL, SECURE_EFUSE_START)) {
+        pmc_sysmon_efuse_xfer_start(s);
+    }
+
+    return v_new;
 }
 
 static void pmc_sysmon_config0_postw(RegisterInfo *reg, uint64_t val64)
@@ -4449,7 +4527,6 @@ static const RegisterAccessInfo pmc_sysmon_regs_info[] = {
     },{ .name = "REG_PCSR_CONTROL",  .addr = A_REG_PCSR_CONTROL,
         .reset = 0x1fe,
         .pre_write = pmc_sysmon_pcsr_control_prew,
-        .post_write = pmc_sysmon_pcsr_control_postw,
     },{ .name = "REG_PCSR_STATUS",  .addr = A_REG_PCSR_STATUS,
         .reset = 0x1,
         .rsvd = 0xffffc000,
@@ -8192,6 +8269,9 @@ static void pmc_sysmon_init(Object *obj)
     sysbus_init_mmio(sbd, &s->iomem);
     sysbus_init_irq(sbd, &s->irq_0);
     sysbus_init_irq(sbd, &s->irq_1);
+
+    timer_init_ms(&s->efuse_throttle_timer, QEMU_CLOCK_VIRTUAL,
+                  pmc_sysmon_efuse_xfer_done, s);
 }
 
 static void pmc_sysmon_sat_set_ready(PMCSysMon *s, unsigned instance_id)
@@ -8712,6 +8792,10 @@ static void pmc_sysmon_volt_prop_add(ObjectClass *klass)
 }
 
 static Property pmc_sysmon_properties[] = {
+    DEFINE_PROP_UINT32("efuse-transfer-throttle",
+                       PMCSysMon, efuse_throttle_ms, 200),
+    DEFINE_PROP_LINK("efuse", PMCSysMon, efuse,
+                     TYPE_XLNX_EFUSE_SYSMON_DATA_SOURCE, Object *),
     DEFINE_PROP_LINK("ams-sat0", PMCSysMon, ams_sat[0], TYPE_OBJECT, Object *),
     DEFINE_PROP_LINK("ams-sat1", PMCSysMon, ams_sat[1], TYPE_OBJECT, Object *),
 
@@ -8762,9 +8846,16 @@ static const TypeInfo pmc_sysmon_info = {
     .instance_init = pmc_sysmon_init,
 };
 
+static const TypeInfo pmc_sysmon_efuse_data_source_type = {
+    .parent = TYPE_INTERFACE,
+    .name = TYPE_XLNX_EFUSE_SYSMON_DATA_SOURCE,
+    .class_size = sizeof(XlnxEFuseSysmonDataSourceClass),
+};
+
 static void pmc_sysmon_register_types(void)
 {
     type_register_static(&pmc_sysmon_info);
+    type_register_static(&pmc_sysmon_efuse_data_source_type);
 }
 
 type_init(pmc_sysmon_register_types)
