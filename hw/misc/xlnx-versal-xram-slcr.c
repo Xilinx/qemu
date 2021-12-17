@@ -1597,6 +1597,50 @@ typedef struct XRAM_SLCR {
     RegisterInfo regs_info[XRAM_SLCR_R_MAX];
 } XRAM_SLCR;
 
+static void pwr_up_bank_x(RegisterInfo *reg, uint64_t val)
+{
+    XRAM_SLCR *s = XILINX_XRAM_SLCR(reg->opaque);
+
+    switch (reg->access->addr) {
+    case A_PWR_UP_BANK0:
+        s->regs[R_PWR_STATUS_BANK0] |= val;
+        break;
+    case A_PWR_UP_BANK1:
+        s->regs[R_PWR_STATUS_BANK1] |= val;
+        break;
+    case A_PWR_UP_BANK2:
+        s->regs[R_PWR_STATUS_BANK2] |= val;
+        break;
+    case A_PWR_UP_BANK3:
+        s->regs[R_PWR_STATUS_BANK3] |= val;
+        break;
+    };
+}
+
+static void pwr_down_bank_x(RegisterInfo *reg, uint64_t val)
+{
+    XRAM_SLCR *s = XILINX_XRAM_SLCR(reg->opaque);
+
+    switch (reg->access->addr) {
+    case A_PWR_DOWN_BANK0:
+        s->regs[R_PWR_STATUS_BANK0] &= ~val;
+        s->regs[R_PWR_STATUS_BANK0] &= 0xF;
+        break;
+    case A_PWR_DOWN_BANK1:
+        s->regs[R_PWR_STATUS_BANK1] &= ~val;
+        s->regs[R_PWR_STATUS_BANK1] &= 0xF;
+        break;
+    case A_PWR_DOWN_BANK2:
+        s->regs[R_PWR_STATUS_BANK2] &= ~val;
+        s->regs[R_PWR_STATUS_BANK2] &= 0xF;
+        break;
+    case A_PWR_DOWN_BANK3:
+        s->regs[R_PWR_STATUS_BANK3] &= ~val;
+        s->regs[R_PWR_STATUS_BANK3] &= 0xF;
+        break;
+    };
+}
+
 static const RegisterAccessInfo xram_slcr_regs_info[] = {
     {   .name = "PCSR_MASK",  .addr = A_PCSR_MASK,
     },{ .name = "PCSR_PCR",  .addr = A_PCSR_PCR,
@@ -1621,19 +1665,27 @@ static const RegisterAccessInfo xram_slcr_regs_info[] = {
     },{ .name = "APB_CLK",  .addr = A_APB_CLK,
     },{ .name = "RST",  .addr = A_RST,
     },{ .name = "PWR_UP_BANK0",  .addr = A_PWR_UP_BANK0,
+        .post_write = pwr_up_bank_x,
     },{ .name = "PWR_DOWN_BANK0",  .addr = A_PWR_DOWN_BANK0,
+        .post_write = pwr_down_bank_x,
     },{ .name = "PWR_STATUS_BANK0",  .addr = A_PWR_STATUS_BANK0,
         .ro = 0xf,
     },{ .name = "PWR_UP_BANK1",  .addr = A_PWR_UP_BANK1,
+        .post_write = pwr_up_bank_x,
     },{ .name = "PWR_DOWN_BANK1",  .addr = A_PWR_DOWN_BANK1,
+        .post_write = pwr_down_bank_x,
     },{ .name = "PWR_STATUS_BANK1",  .addr = A_PWR_STATUS_BANK1,
         .ro = 0xf,
     },{ .name = "PWR_UP_BANK2",  .addr = A_PWR_UP_BANK2,
+        .post_write = pwr_up_bank_x,
     },{ .name = "PWR_DOWN_BANK2",  .addr = A_PWR_DOWN_BANK2,
+        .post_write = pwr_down_bank_x,
     },{ .name = "PWR_STATUS_BANK2",  .addr = A_PWR_STATUS_BANK2,
         .ro = 0xf,
     },{ .name = "PWR_UP_BANK3",  .addr = A_PWR_UP_BANK3,
+        .post_write = pwr_up_bank_x,
     },{ .name = "PWR_DOWN_BANK3",  .addr = A_PWR_DOWN_BANK3,
+        .post_write = pwr_down_bank_x,
     },{ .name = "PWR_STATUS_BANK3",  .addr = A_PWR_STATUS_BANK3,
         .ro = 0xf,
     },{ .name = "RETENTION_ENTER_BANK0",  .addr = A_RETENTION_ENTER_BANK0,
