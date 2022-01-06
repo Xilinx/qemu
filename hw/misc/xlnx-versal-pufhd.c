@@ -409,13 +409,15 @@ static Object *versal_pufkey_parent(ZynqMPAESKeySink *sink)
 static void versal_pufkey_to_id(const Versal_PufKey *key, Versal_PUFExtra *info)
 {
     int i, n = ARRAY_SIZE(info->puf_id);
-    char *hash;
+    size_t hash_len = 0;
+    uint8_t *hash;
 
     assert(n == (256 / 32));
 
     /* For simulation, ID is just sha256 of the 256-bit key */
-    qcrypto_hash_digest(QCRYPTO_HASH_ALG_SHA256, (const char *)key->u8,
-                        sizeof(key->u8), &hash, &error_abort);
+    qcrypto_hash_bytes(QCRYPTO_HASH_ALG_SHA256, (const char *)key->u8,
+                       sizeof(key->u8), &hash, &hash_len, &error_abort);
+    assert(n == (hash_len / 4));
 
     /* puf_id[0] is always the least significant word */
     for (i = 0; i < n; i++) {
