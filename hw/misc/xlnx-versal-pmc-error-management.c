@@ -1021,6 +1021,66 @@ static uint64_t err2_postr(RegisterInfo *reg, uint64_t val)
     return s->pmc_err2_sts;
 }
 
+static void pmc_err_int_en(RegisterInfo *reg, uint64_t val)
+{
+    PmcErrMngmnt *s = XILINX_PMC_GLOBAL(reg->opaque);
+    uint32_t val32 = val;
+
+    switch(reg->access->addr) {
+    case A_PMC_ERR_OUT1_EN:
+        s->regs[R_PMC_ERR_OUT1_MASK] &= ~(val32);
+        break;
+    case A_PMC_ERR_OUT2_EN:
+        s->regs[R_PMC_ERR_OUT2_MASK] &= ~(val32);
+        break;
+    case A_PMC_POR1_EN:
+        s->regs[R_PMC_POR1_MASK] &= ~(val32);
+        break;
+    case A_PMC_IRQ1_EN:
+        s->regs[R_PMC_IRQ1_MASK] &= ~(val32);
+        break;
+    case A_PMC_IRQ2_EN:
+        s->regs[R_PMC_IRQ2_MASK] &= ~(val32);
+        break;
+    case A_PMC_SRST1_EN:
+        s->regs[R_PMC_SRST1_MASK] &= ~(val32);
+        break;
+    case A_PMC_SRST2_EN:
+        s->regs[R_PMC_SRST2_MASK] &= ~(val32);
+        break;
+    };
+}
+
+static void pmc_err_int_dis(RegisterInfo *reg, uint64_t val)
+{
+    PmcErrMngmnt *s = XILINX_PMC_GLOBAL(reg->opaque);
+    uint32_t val32 = val;
+
+    switch(reg->access->addr) {
+    case A_PMC_ERR_OUT1_DIS:
+        s->regs[R_PMC_ERR_OUT1_MASK] |= val32;
+        break;
+    case A_PMC_ERR_OUT2_EN:
+        s->regs[R_PMC_ERR_OUT2_MASK] |= val32;
+        break;
+    case A_PMC_POR1_EN:
+        s->regs[R_PMC_POR1_MASK] |= val32;
+        break;
+    case A_PMC_IRQ1_EN:
+        s->regs[R_PMC_IRQ1_MASK] |= val32;
+        break;
+    case A_PMC_IRQ2_EN:
+        s->regs[R_PMC_IRQ2_MASK] |= val32;
+        break;
+    case A_PMC_SRST1_EN:
+        s->regs[R_PMC_SRST1_MASK] |= val32;
+        break;
+    case A_PMC_SRST2_EN:
+        s->regs[R_PMC_SRST2_MASK] |= val32;
+        break;
+    };
+}
+
 static const RegisterAccessInfo pmc_global_regs_info[] = {
     {   .name = "PMC_ERR1_STATUS",  .addr = A_PMC_ERR1_STATUS,
         .w1c = 0xffffffff,
@@ -1035,42 +1095,58 @@ static const RegisterAccessInfo pmc_global_regs_info[] = {
         .reset = 0xffffffff,
         .ro = 0xffffffff,
     },{ .name = "PMC_ERR_OUT1_EN",  .addr = A_PMC_ERR_OUT1_EN,
+        .post_write = pmc_err_int_en,
     },{ .name = "PMC_ERR_OUT1_DIS",  .addr = A_PMC_ERR_OUT1_DIS,
+        .post_write = pmc_err_int_dis,
     },{ .name = "PMC_ERR_OUT2_MASK",  .addr = A_PMC_ERR_OUT2_MASK,
         .reset = 0xffffffff,
         .ro = 0xffffffff,
     },{ .name = "PMC_ERR_OUT2_EN",  .addr = A_PMC_ERR_OUT2_EN,
+        .post_write = pmc_err_int_en,
     },{ .name = "PMC_ERR_OUT2_DIS",  .addr = A_PMC_ERR_OUT2_DIS,
+        .post_write = pmc_err_int_dis,
     },{ .name = "PMC_POR1_MASK",  .addr = A_PMC_POR1_MASK,
         .reset = 0xffffffff,
         .ro = 0xffffffff,
     },{ .name = "PMC_POR1_EN",  .addr = A_PMC_POR1_EN,
+        .post_write = pmc_err_int_en,
     },{ .name = "PMC_POR1_DIS",  .addr = A_PMC_POR1_DIS,
+        .post_write = pmc_err_int_dis,
     },{ .name = "PMC_POR2_MASK",  .addr = A_PMC_POR2_MASK,
         .reset = 0xffffffff,
         .ro = 0xffffffff,
     },{ .name = "PMC_POR2_EN",  .addr = A_PMC_POR2_EN,
+        .post_write = pmc_err_int_en,
     },{ .name = "PMC_POR2_DIS",  .addr = A_PMC_POR2_DIS,
+        .post_write = pmc_err_int_dis,
     },{ .name = "PMC_IRQ1_MASK",  .addr = A_PMC_IRQ1_MASK,
         .reset = 0xffffffff,
         .ro = 0xffffffff,
     },{ .name = "PMC_IRQ1_EN",  .addr = A_PMC_IRQ1_EN,
+        .post_write = pmc_err_int_en,
     },{ .name = "PMC_IRQ1_DIS",  .addr = A_PMC_IRQ1_DIS,
+        .post_write = pmc_err_int_dis,
     },{ .name = "PMC_IRQ2_MASK",  .addr = A_PMC_IRQ2_MASK,
         .reset = 0xffffffff,
         .ro = 0xffffffff,
     },{ .name = "PMC_IRQ2_EN",  .addr = A_PMC_IRQ2_EN,
+        .post_write = pmc_err_int_en,
     },{ .name = "PMC_IRQ2_DIS",  .addr = A_PMC_IRQ2_DIS,
+        .post_write = pmc_err_int_dis,
     },{ .name = "PMC_SRST1_MASK",  .addr = A_PMC_SRST1_MASK,
         .reset = 0xffffffff,
         .ro = 0xffffffff,
     },{ .name = "PMC_SRST1_EN",  .addr = A_PMC_SRST1_EN,
+        .post_write = pmc_err_int_en,
     },{ .name = "PMC_SRST1_DIS",  .addr = A_PMC_SRST1_DIS,
+        .post_write = pmc_err_int_dis,
     },{ .name = "PMC_SRST2_MASK",  .addr = A_PMC_SRST2_MASK,
         .reset = 0xffffffff,
         .ro = 0xffffffff,
     },{ .name = "PMC_SRST2_EN",  .addr = A_PMC_SRST2_EN,
+        .post_write = pmc_err_int_en,
     },{ .name = "PMC_SRST2_DIS",  .addr = A_PMC_SRST2_DIS,
+        .post_write = pmc_err_int_dis,
     },{ .name = "PMC_BOOT_ERR",  .addr = A_PMC_BOOT_ERR,
         .rsvd = 0xc0000000,
         .ro = 0xffffffff,
