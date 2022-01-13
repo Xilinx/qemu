@@ -80,7 +80,8 @@ softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL', if_true: files(
   'xlnx-versal-lpd-iou-slcr-secure.c',
   'xlnx-xmpu.c',
   'xlnx-xppu.c',
-  'iomem-cache.c'
+  'iomem-cache.c',
+  'xlnx-versal-psm-error-management.c'
 ))
 
 softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL_PMC', if_true: files(
