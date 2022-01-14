@@ -601,33 +601,6 @@ typedef struct PSM_GLOBAL_REG {
     RegisterInfo regs_info[PSM_GLOBAL_REG_R_MAX];
 } PSM_GLOBAL_REG;
 
-static void psm_err_int_dis(RegisterInfo *reg, uint64_t val)
-{
-    PSM_GLOBAL_REG *s = XILINX_PSM_GLOBAL_REG(reg->opaque);
-    uint32_t val32 = val;
-
-    switch(reg->access->addr) {
-    case A_PSM_CR_ERR1_DIS:
-        s->regs[R_PSM_CR_ERR1_MASK] &= ~(val32);
-        break;
-    case A_PSM_CR_ERR2_DIS:
-        s->regs[R_PSM_CR_ERR2_MASK] &= ~(val32);
-        break;
-    case A_PSM_NCR_ERR1_DIS:
-        s->regs[R_PSM_NCR_ERR1_MASK] &= ~(val32);
-        break;
-    case A_PSM_NCR_ERR2_DIS:
-        s->regs[R_PSM_NCR_ERR2_MASK] &= ~(val32);
-        break;
-    case A_PSM_IRQ1_DIS:
-        s->regs[R_PSM_IRQ1_MASK] &= ~(val32);
-        break;
-    case A_PSM_IRQ2_DIS:
-        s->regs[R_PSM_IRQ2_MASK] &= ~(val32);
-        break;
-    };
-}
-
 static void psm_err_int_en(RegisterInfo *reg, uint64_t val)
 {
     PSM_GLOBAL_REG *s = XILINX_PSM_GLOBAL_REG(reg->opaque);
@@ -635,21 +608,48 @@ static void psm_err_int_en(RegisterInfo *reg, uint64_t val)
 
     switch(reg->access->addr) {
     case A_PSM_CR_ERR1_EN:
-        s->regs[R_PSM_CR_ERR1_MASK] |= val32;
+        s->regs[R_PSM_CR_ERR1_MASK] &= ~(val32);
         break;
     case A_PSM_CR_ERR2_EN:
-        s->regs[R_PSM_CR_ERR2_MASK] |= val32;
+        s->regs[R_PSM_CR_ERR2_MASK] &= ~(val32);
         break;
     case A_PSM_NCR_ERR1_EN:
-        s->regs[R_PSM_NCR_ERR1_MASK] |= val32;
+        s->regs[R_PSM_NCR_ERR1_MASK] &= ~(val32);
         break;
     case A_PSM_NCR_ERR2_EN:
-        s->regs[R_PSM_NCR_ERR2_MASK] |= val32;
+        s->regs[R_PSM_NCR_ERR2_MASK] &= ~(val32);
         break;
     case A_PSM_IRQ1_EN:
-        s->regs[R_PSM_IRQ1_MASK] |= val32;
+        s->regs[R_PSM_IRQ1_MASK] &= ~(val32);
         break;
     case A_PSM_IRQ2_EN:
+        s->regs[R_PSM_IRQ2_MASK] &= ~(val32);
+        break;
+    };
+}
+
+static void psm_err_int_dis(RegisterInfo *reg, uint64_t val)
+{
+    PSM_GLOBAL_REG *s = XILINX_PSM_GLOBAL_REG(reg->opaque);
+    uint32_t val32 = val;
+
+    switch(reg->access->addr) {
+    case A_PSM_CR_ERR1_DIS:
+        s->regs[R_PSM_CR_ERR1_MASK] |= val32;
+        break;
+    case A_PSM_CR_ERR2_DIS:
+        s->regs[R_PSM_CR_ERR2_MASK] |= val32;
+        break;
+    case A_PSM_NCR_ERR1_DIS:
+        s->regs[R_PSM_NCR_ERR1_MASK] |= val32;
+        break;
+    case A_PSM_NCR_ERR2_DIS:
+        s->regs[R_PSM_NCR_ERR2_MASK] |= val32;
+        break;
+    case A_PSM_IRQ1_DIS:
+        s->regs[R_PSM_IRQ1_MASK] |= val32;
+        break;
+    case A_PSM_IRQ2_DIS:
         s->regs[R_PSM_IRQ2_MASK] |= val32;
         break;
     };
