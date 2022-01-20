@@ -1495,6 +1495,21 @@ static MemTxResult psx_pki_rng_fifo_write(void *opaque, hwaddr addr,
     return MEMTX_OK;
 }
 
+static MemTxResult psx_pki_rng_fifo_access(MemoryTransaction *tr)
+{
+    MemTxResult r;
+
+    if (tr->rw) {
+        r = tr->addr >= PSX_PKI_RNG_CTRLSTAT_OFFSET ?
+            MEMTX_DECODE_ERROR : MEMTX_OK;
+    } else {
+        r = psx_pki_rng_fifo_read(tr->opaque, tr->addr,
+                                  (uint64_t *)tr->data.p8, tr->size, tr->attr);
+    }
+
+    return r;
+}
+
 static bool psx_pki_rng_auto_is_on(XlnxPsxPkiRng *s, hwaddr addr)
 {
     bool auto_check;
@@ -1547,6 +1562,9 @@ static const MemoryRegionOps psx_pki_rng_fifo_ops = {
         .min_access_size = 1,
         .max_access_size = PSX_PKI_RNG_FIFO_READ_SIZE,
     },
+
+    /* Need Xilinx extension to provide mmio size > 8 */
+    .access = psx_pki_rng_fifo_access,
 };
 
 static const MemoryRegionOps psx_pki_rng_regs_ops = {
