@@ -46,6 +46,11 @@
 #define XILINX_CFRAME_REG(obj) \
      OBJECT_CHECK(CFRAME_REG, (obj), TYPE_XILINX_CFRAME_REG)
 
+#define TYPE_XILINX_CFRAME_BCAST_REG "xlnx.cframe-bcast-reg"
+
+#define XILINX_CFRAME_BCAST_REG(obj) \
+     OBJECT_CHECK(CFRAME_BCAST_REG, (obj), TYPE_XILINX_CFRAME_BCAST_REG)
+
 /*
  * The registers in this module are 128 bits wide but it is ok to write
  * and read them through 4 sequential 32 bit accesses (address[3:2] = 0,
@@ -318,6 +323,20 @@ typedef struct CFRAME_REG {
     bool row_configured;
 
 } CFRAME_REG;
+
+typedef struct CFRAME_BCAST_REG {
+    SysBusDevice parent_obj;
+    MemoryRegion iomem_reg;
+    MemoryRegion iomem_fdri;
+
+    /* 128-bit wfifo. */
+    uint32_t wfifo[4];
+
+    struct {
+        XlnxCfiIf *cframe[15];
+    } cfg;
+
+} CFRAME_BCAST_REG;
 
 static void cfrm_imr_update_irq(CFRAME_REG *s)
 {
@@ -854,6 +873,104 @@ static const MemoryRegionOps cframe_reg_fdri_ops = {
     },
 };
 
+static uint64_t cframes_bcast_reg_read(void *opaque, hwaddr addr, unsigned size)
+{
+    qemu_log_mask(LOG_GUEST_ERROR, "%s: Unsupported read from addr=%"
+                  HWADDR_PRIx "\n", __func__, addr);
+    return 0;
+}
+
+static void cframes_bcast_reg_write(void *opaque, hwaddr addr, uint64_t value,
+                      unsigned size)
+{
+    CFRAME_BCAST_REG *s = XILINX_CFRAME_BCAST_REG(opaque);
+    unsigned int idx;
+
+    /* 4 32bit words. */
+    idx = (addr >> 2) & 3;
+
+    s->wfifo[idx] = value;
+
+    /* Writing to the top word triggers the transmit onto CFI. */
+    if (idx == 3) {
+        uint32_t reg_addr = extract32(addr, 4, 6);
+        XlnxCfiPacket pkt = {
+            .reg_addr = reg_addr,
+            .data[0] = s->wfifo[0],
+            .data[1] = s->wfifo[1],
+            .data[2] = s->wfifo[2],
+            .data[3] = s->wfifo[3]
+        };
+
+        for (int i = 0; i < ARRAY_SIZE(s->cfg.cframe); i++) {
+            if (s->cfg.cframe[i]) {
+                xlnx_cfi_transfer_packet(s->cfg.cframe[i], &pkt);
+            }
+        }
+
+        memset(s->wfifo, 0, 4 * sizeof(uint32_t));
+    }
+}
+
+static uint64_t cframes_bcast_fdri_read(void *opaque, hwaddr addr,
+                                        unsigned size)
+{
+    qemu_log_mask(LOG_GUEST_ERROR, "%s: Unsupported read from addr=%"
+                  HWADDR_PRIx "\n", __func__, addr);
+    return 0;
+}
+
+static void cframes_bcast_fdri_write(void *opaque, hwaddr addr, uint64_t value,
+                      unsigned size)
+{
+    CFRAME_BCAST_REG *s = XILINX_CFRAME_BCAST_REG(opaque);
+    unsigned int idx;
+
+    /* 4 32bit words. */
+    idx = (addr >> 2) & 3;
+
+    s->wfifo[idx] = value;
+
+    /* Writing to the top word triggers the transmit onto CFI. */
+    if (idx == 3) {
+        XlnxCfiPacket pkt = {
+            .reg_addr = CFRAME_FDRI,
+            .data[0] = s->wfifo[0],
+            .data[1] = s->wfifo[1],
+            .data[2] = s->wfifo[2],
+            .data[3] = s->wfifo[3]
+        };
+
+        for (int i = 0; i < ARRAY_SIZE(s->cfg.cframe); i++) {
+            if (s->cfg.cframe[i]) {
+                xlnx_cfi_transfer_packet(s->cfg.cframe[i], &pkt);
+            }
+        }
+
+        memset(s->wfifo, 0, 4 * sizeof(uint32_t));
+    }
+}
+
+static const MemoryRegionOps cframes_bcast_reg_reg_ops = {
+    .read = cframes_bcast_reg_read,
+    .write = cframes_bcast_reg_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = {
+        .min_access_size = 4,
+        .max_access_size = 4,
+    },
+};
+
+static const MemoryRegionOps cframes_bcast_reg_fdri_ops = {
+    .read = cframes_bcast_fdri_read,
+    .write = cframes_bcast_fdri_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = {
+        .min_access_size = 4,
+        .max_access_size = 4,
+    },
+};
+
 static void cframe_reg_realize(DeviceState *dev, Error **errp)
 {
     CFRAME_REG *s = XILINX_CFRAME_REG(dev);
@@ -928,6 +1045,54 @@ static Property cframe_regs_props[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
+static void cframe_bcast_reg_init(Object *obj)
+{
+    CFRAME_BCAST_REG *s = XILINX_CFRAME_BCAST_REG(obj);
+    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+
+    memory_region_init_io(&s->iomem_reg, obj, &cframes_bcast_reg_reg_ops, s,
+                          TYPE_XILINX_CFRAME_BCAST_REG, KEYHOLE_STREAM_4K);
+    memory_region_init_io(&s->iomem_fdri, obj, &cframes_bcast_reg_fdri_ops, s,
+                          TYPE_XILINX_CFRAME_BCAST_REG "-fdri",
+                          KEYHOLE_STREAM_4K);
+    sysbus_init_mmio(sbd, &s->iomem_reg);
+    sysbus_init_mmio(sbd, &s->iomem_fdri);
+}
+
+static Property cframe_bcast_regs_props[] = {
+    DEFINE_PROP_LINK("cframe0", CFRAME_BCAST_REG, cfg.cframe[0],
+                     TYPE_XLNX_CFI_IF, XlnxCfiIf *),
+    DEFINE_PROP_LINK("cframe1", CFRAME_BCAST_REG, cfg.cframe[1],
+                     TYPE_XLNX_CFI_IF, XlnxCfiIf *),
+    DEFINE_PROP_LINK("cframe2", CFRAME_BCAST_REG, cfg.cframe[2],
+                     TYPE_XLNX_CFI_IF, XlnxCfiIf *),
+    DEFINE_PROP_LINK("cframe3", CFRAME_BCAST_REG, cfg.cframe[3],
+                     TYPE_XLNX_CFI_IF, XlnxCfiIf *),
+    DEFINE_PROP_LINK("cframe4", CFRAME_BCAST_REG, cfg.cframe[4],
+                     TYPE_XLNX_CFI_IF, XlnxCfiIf *),
+    DEFINE_PROP_LINK("cframe5", CFRAME_BCAST_REG, cfg.cframe[5],
+                     TYPE_XLNX_CFI_IF, XlnxCfiIf *),
+    DEFINE_PROP_LINK("cframe6", CFRAME_BCAST_REG, cfg.cframe[6],
+                     TYPE_XLNX_CFI_IF, XlnxCfiIf *),
+    DEFINE_PROP_LINK("cframe7", CFRAME_BCAST_REG, cfg.cframe[7],
+                     TYPE_XLNX_CFI_IF, XlnxCfiIf *),
+    DEFINE_PROP_LINK("cframe8", CFRAME_BCAST_REG, cfg.cframe[8],
+                     TYPE_XLNX_CFI_IF, XlnxCfiIf *),
+    DEFINE_PROP_LINK("cframe9", CFRAME_BCAST_REG, cfg.cframe[9],
+                     TYPE_XLNX_CFI_IF, XlnxCfiIf *),
+    DEFINE_PROP_LINK("cframe10", CFRAME_BCAST_REG, cfg.cframe[10],
+                     TYPE_XLNX_CFI_IF, XlnxCfiIf *),
+    DEFINE_PROP_LINK("cframe11", CFRAME_BCAST_REG, cfg.cframe[11],
+                     TYPE_XLNX_CFI_IF, XlnxCfiIf *),
+    DEFINE_PROP_LINK("cframe12", CFRAME_BCAST_REG, cfg.cframe[12],
+                     TYPE_XLNX_CFI_IF, XlnxCfiIf *),
+    DEFINE_PROP_LINK("cframe13", CFRAME_BCAST_REG, cfg.cframe[13],
+                     TYPE_XLNX_CFI_IF, XlnxCfiIf *),
+    DEFINE_PROP_LINK("cframe14", CFRAME_BCAST_REG, cfg.cframe[14],
+                     TYPE_XLNX_CFI_IF, XlnxCfiIf *),
+    DEFINE_PROP_END_OF_LIST(),
+};
+
 static void cframe_reg_class_init(ObjectClass *klass, void *data)
 {
     ResettableClass *rc = RESETTABLE_CLASS(klass);
@@ -942,6 +1107,13 @@ static void cframe_reg_class_init(ObjectClass *klass, void *data)
     xcic->cfi_transfer_packet = cframe_reg_cfi_transfer_packet;
 }
 
+static void cframe_bcast_reg_class_init(ObjectClass *klass, void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(klass);
+
+    device_class_set_props(dc, cframe_bcast_regs_props);
+}
+
 static const TypeInfo cframe_reg_info = {
     .name          = TYPE_XILINX_CFRAME_REG,
     .parent        = TYPE_SYS_BUS_DEVICE,
@@ -954,9 +1126,18 @@ static const TypeInfo cframe_reg_info = {
     }
 };
 
+static const TypeInfo cframe_bcast_reg_info = {
+    .name          = TYPE_XILINX_CFRAME_BCAST_REG,
+    .parent        = TYPE_SYS_BUS_DEVICE,
+    .instance_size = sizeof(CFRAME_BCAST_REG),
+    .class_init    = cframe_bcast_reg_class_init,
+    .instance_init = cframe_bcast_reg_init,
+};
+
 static void cframe_reg_register_types(void)
 {
     type_register_static(&cframe_reg_info);
+    type_register_static(&cframe_bcast_reg_info);
 }
 
 type_init(cframe_reg_register_types)
