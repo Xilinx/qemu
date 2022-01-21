@@ -236,6 +236,8 @@ typedef struct CFU {
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
 
+    MemoryRegion iomem_fdro;
+    GArray *fdro_data;
     uint8_t fdri_row_addr;
 
     struct {
@@ -482,6 +484,26 @@ static void cfu_stream_write(void *opaque, hwaddr addr, uint64_t value,
     }
 }
 
+static uint64_t cfu_fdro_read(void *opaque, hwaddr addr, unsigned size)
+{
+    CFU *s = XILINX_CFU_APB(opaque);
+    uint64_t ret = 0;
+
+    if (s->fdro_data->len) {
+        ret = g_array_index(s->fdro_data, uint32_t, 0);
+        g_array_remove_index(s->fdro_data, 0);
+    }
+
+    return ret;
+}
+
+static void cfu_fdro_write(void *opaque, hwaddr addr, uint64_t value,
+                      unsigned size)
+{
+    qemu_log_mask(LOG_GUEST_ERROR, "%s: Unsupported write from addr=%"
+                  HWADDR_PRIx "\n", __func__, addr);
+}
+
 static const MemoryRegionOps cfu_stream_ops = {
     .read = cfu_stream_read,
     .write = cfu_stream_write,
@@ -489,6 +511,16 @@ static const MemoryRegionOps cfu_stream_ops = {
     .valid = {
         .min_access_size = 4,
         .max_access_size = 8,
+    },
+};
+
+static const MemoryRegionOps cfu_fdro_ops = {
+    .read = cfu_fdro_read,
+    .write = cfu_fdro_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = {
+        .min_access_size = 4,
+        .max_access_size = 4,
     },
 };
 
@@ -530,6 +562,18 @@ static void cfu_apb_init(Object *obj)
         g_free(name);
     }
     sysbus_init_irq(sbd, &s->irq_cfu_imr);
+
+    memory_region_init_io(&s->iomem_fdro, obj, &cfu_fdro_ops, s,
+                          TYPE_XILINX_CFU_APB "-fdro", KEYHOLE_STREAM_4K);
+    sysbus_init_mmio(sbd, &s->iomem_fdro);
+    s->fdro_data = g_array_new(FALSE, FALSE, sizeof(uint32_t));
+}
+
+static void cfu_apb_cfi_transfer_packet(XlnxCfiIf *cfi_if, XlnxCfiPacket *pkt)
+{
+    CFU *s = XILINX_CFU_APB(cfi_if);
+
+    g_array_append_vals(s->fdro_data, &pkt->data[0], 4);
 }
 
 static Property cfu_props[] = {
@@ -581,12 +625,13 @@ static const VMStateDescription vmstate_cfu_apb = {
 static void cfu_apb_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    XlnxCfiIfClass *xcic = XLNX_CFI_IF_CLASS(klass);
 
     dc->reset = cfu_apb_reset;
     dc->vmsd = &vmstate_cfu_apb;
     dc->realize = cfu_apb_realize;
     device_class_set_props(dc, cfu_props);
-
+    xcic->cfi_transfer_packet = cfu_apb_cfi_transfer_packet;
 }
 
 static const TypeInfo cfu_apb_info = {
@@ -595,6 +640,10 @@ static const TypeInfo cfu_apb_info = {
     .instance_size = sizeof(CFU),
     .class_init    = cfu_apb_class_init,
     .instance_init = cfu_apb_init,
+    .interfaces = (InterfaceInfo[]) {
+        { TYPE_XLNX_CFI_IF },
+        { }
+    }
 };
 
 static void cfu_apb_register_types(void)
