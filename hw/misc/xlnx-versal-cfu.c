@@ -236,6 +236,7 @@ typedef struct CFU {
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
 
+    MemoryRegion iomem_sfr;
     MemoryRegion iomem_fdro;
     GArray *fdro_data;
     uint8_t fdri_row_addr;
@@ -484,6 +485,39 @@ static void cfu_stream_write(void *opaque, hwaddr addr, uint64_t value,
     }
 }
 
+static uint64_t cfu_sfr_read(void *opaque, hwaddr addr, unsigned size)
+{
+    qemu_log_mask(LOG_GUEST_ERROR, "%s: Unsupported read from addr=%"
+                  HWADDR_PRIx "\n", __func__, addr);
+    return 0;
+}
+
+static void cfu_sfr_write(void *opaque, hwaddr addr, uint64_t value,
+                      unsigned size)
+{
+    CFU *s = XILINX_CFU_APB(opaque);
+    unsigned int idx;
+
+    /* 4 32bit words. */
+    idx = (addr >> 2) & 3;
+
+    s->wfifo[idx] = value;
+
+    /* Writing to the top word triggers the transmit onto CFI. */
+    if (idx == 3) {
+        uint8_t row_addr = extract32(s->wfifo[0], 23, 5);
+        uint32_t frame_addr = extract32(s->wfifo[0], 0, 23);
+        XlnxCfiPacket pkt = { .reg_addr = CFRAME_SFR,
+                              .data[0] = frame_addr };
+
+        cfu_transfer_cfi_packet(s, row_addr, &pkt);
+
+        for (int i = 0; i < ARRAY_SIZE(s->wfifo); i++) {
+            s->wfifo[i] = 0;
+        }
+    }
+}
+
 static uint64_t cfu_fdro_read(void *opaque, hwaddr addr, unsigned size)
 {
     CFU *s = XILINX_CFU_APB(opaque);
@@ -511,6 +545,16 @@ static const MemoryRegionOps cfu_stream_ops = {
     .valid = {
         .min_access_size = 4,
         .max_access_size = 8,
+    },
+};
+
+static const MemoryRegionOps cfu_sfr_ops = {
+    .read = cfu_sfr_read,
+    .write = cfu_sfr_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = {
+        .min_access_size = 4,
+        .max_access_size = 4,
     },
 };
 
@@ -563,6 +607,9 @@ static void cfu_apb_init(Object *obj)
     }
     sysbus_init_irq(sbd, &s->irq_cfu_imr);
 
+    memory_region_init_io(&s->iomem_sfr, obj, &cfu_sfr_ops, s,
+                          TYPE_XILINX_CFU_APB "-sfr", KEYHOLE_STREAM_4K);
+    sysbus_init_mmio(sbd, &s->iomem_sfr);
     memory_region_init_io(&s->iomem_fdro, obj, &cfu_fdro_ops, s,
                           TYPE_XILINX_CFU_APB "-fdro", KEYHOLE_STREAM_4K);
     sysbus_init_mmio(sbd, &s->iomem_fdro);
