@@ -1381,6 +1381,14 @@ static const RegisterAccessInfo pmx_global_regs_info[] = {
     },{ .name = "PWR_SUPPLY_STATUS",  .addr = A_PWR_SUPPLY_STATUS,
         .rsvd = 0xffffff00,
         .ro = 0xffffffff,
+        .reset = R_PWR_SUPPLY_STATUS_VCCINT_RAM_MASK |
+                 R_PWR_SUPPLY_STATUS_VCCINT_PL_MASK |
+                 R_PWR_SUPPLY_STATUS_VCCAUX_MASK |
+                 R_PWR_SUPPLY_STATUS_VCCINT_SOC_MASK |
+                 R_PWR_SUPPLY_STATUS_VCCINT_LPD_MASK |
+                 R_PWR_SUPPLY_STATUS_VCCINT_FPD_MASK |
+                 R_PWR_SUPPLY_STATUS_VCCINT_PMC_MASK |
+                 R_PWR_SUPPLY_STATUS_VCCAUX_PMC_MASK,
     },{ .name = "REQ_PWRUP_STATUS",  .addr = A_REQ_PWRUP_STATUS,
         .rsvd = 0xfffffff8,
         .ro = 0xfffffff8,
