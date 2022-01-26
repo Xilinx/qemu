@@ -382,16 +382,15 @@ static uint64_t cfrm_itr_prew(RegisterInfo *reg, uint64_t val64)
 
 static void cframe_incr_far(CFRAME_REG *s)
 {
-    uint32_t far = ARRAY_FIELD_EX32(s->regs, FAR0, FRAME_ADDR);
+    uint32_t faddr = ARRAY_FIELD_EX32(s->regs, FAR0, FRAME_ADDR);
     uint32_t blktype = ARRAY_FIELD_EX32(s->regs, FAR0, BLOCKTYPE);
 
     assert(blktype <= MAX_BLOCKTYPE);
 
-    far++;
-
-    if (far > s->cfg.blktype_num_frames[blktype]) {
+    faddr++;
+    if (faddr > s->cfg.blktype_num_frames[blktype]) {
         /* Restart from 0 and increment block type */
-        far = 0;
+        faddr = 0;
         blktype++;
 
         assert(blktype <= MAX_BLOCKTYPE);
@@ -399,7 +398,7 @@ static void cframe_incr_far(CFRAME_REG *s)
         ARRAY_FIELD_DP32(s->regs, FAR0, BLOCKTYPE, blktype);
     }
 
-    ARRAY_FIELD_DP32(s->regs, FAR0, FRAME_ADDR, far);
+    ARRAY_FIELD_DP32(s->regs, FAR0, FRAME_ADDR, faddr);
 }
 
 static XlnxCFrame *cframes_get_frame(CFRAME_REG *s, uint32_t addr)
