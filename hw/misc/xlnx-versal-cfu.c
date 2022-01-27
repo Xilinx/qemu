@@ -51,6 +51,11 @@
 #define XILINX_CFU_FDRO(obj) \
      OBJECT_CHECK(CFU_FDRO, (obj), TYPE_XILINX_CFU_FDRO)
 
+#define TYPE_XILINX_CFU_SFR "xlnx,versal-cfu-sfr"
+
+#define XILINX_CFU_SFR(obj) \
+     OBJECT_CHECK(CFU_SFR, (obj), TYPE_XILINX_CFU_SFR)
+
 #define DPRINT(args, ...) \
     do { \
         if (XILINX_CFU_APB_ERR_DEBUG) { \
@@ -258,6 +263,18 @@ typedef struct CFU_FDRO {
 
     GArray *fdro_data;
 } CFU_FDRO;
+
+typedef struct CFU_SFR {
+    SysBusDevice parent_obj;
+    MemoryRegion iomem_sfr;
+
+    /* 128-bit wfifo. */
+    uint32_t wfifo[4];
+
+    struct {
+        CFU *cfu;
+    } cfg;
+} CFU_SFR;
 
 static void cfu_imr_update_irq(CFU *s)
 {
@@ -531,6 +548,41 @@ static void cfu_apb_sfr_write(void *opaque, hwaddr addr, uint64_t value,
     }
 }
 
+static uint64_t cfu_sfr_read(void *opaque, hwaddr addr, unsigned size)
+{
+    qemu_log_mask(LOG_GUEST_ERROR, "%s: Unsupported read from addr=%"
+                  HWADDR_PRIx "\n", __func__, addr);
+    return 0;
+}
+
+static void cfu_sfr_write(void *opaque, hwaddr addr, uint64_t value,
+                      unsigned size)
+{
+    CFU_SFR *s = XILINX_CFU_SFR(opaque);
+    unsigned int idx;
+
+    /* 4 32bit words. */
+    idx = (addr >> 2) & 3;
+
+    s->wfifo[idx] = value;
+
+    /* Writing to the top word triggers the transmit onto CFI. */
+    if (idx == 3) {
+        uint8_t row_addr = extract32(s->wfifo[0], 23, 5);
+        uint32_t frame_addr = extract32(s->wfifo[0], 0, 23);
+        XlnxCfiPacket pkt = { .reg_addr = CFRAME_SFR,
+                              .data[0] = frame_addr };
+
+        if (s->cfg.cfu) {
+            cfu_transfer_cfi_packet(s->cfg.cfu, row_addr, &pkt);
+        }
+
+        for (int i = 0; i < ARRAY_SIZE(s->wfifo); i++) {
+            s->wfifo[i] = 0;
+        }
+    }
+}
+
 static uint64_t cfu_apb_fdro_read(void *opaque, hwaddr addr, unsigned size)
 {
     CFU *s = XILINX_CFU_APB(opaque);
@@ -601,6 +653,16 @@ static const MemoryRegionOps cfu_apb_fdro_ops = {
     },
 };
 
+static const MemoryRegionOps cfu_sfr_ops = {
+    .read = cfu_sfr_read,
+    .write = cfu_sfr_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = {
+        .min_access_size = 4,
+        .max_access_size = 4,
+    },
+};
+
 static const MemoryRegionOps cfu_fdro_ops = {
     .read = cfu_fdro_read,
     .write = cfu_fdro_write,
@@ -656,6 +718,16 @@ static void cfu_apb_init(Object *obj)
                           TYPE_XILINX_CFU_APB "-fdro", KEYHOLE_STREAM_4K);
     sysbus_init_mmio(sbd, &s->iomem_fdro);
     s->fdro_data = g_array_new(FALSE, FALSE, sizeof(uint32_t));
+}
+
+static void cfu_sfr_init(Object *obj)
+{
+    CFU_SFR *s = XILINX_CFU_SFR(obj);
+    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+
+    memory_region_init_io(&s->iomem_sfr, obj, &cfu_sfr_ops, s,
+                          TYPE_XILINX_CFU_SFR, KEYHOLE_STREAM_4K);
+    sysbus_init_mmio(sbd, &s->iomem_sfr);
 }
 
 static void cfu_fdro_init(Object *obj)
@@ -718,6 +790,11 @@ static Property cfu_props[] = {
         DEFINE_PROP_END_OF_LIST(),
 };
 
+static Property cfu_sfr_props[] = {
+        DEFINE_PROP_LINK("cfu", CFU_SFR, cfg.cfu, TYPE_XILINX_CFU_APB, CFU *),
+        DEFINE_PROP_END_OF_LIST(),
+};
+
 static const VMStateDescription vmstate_cfu_apb = {
     .name = TYPE_XILINX_CFU_APB,
     .version_id = 1,
@@ -748,6 +825,13 @@ static void cfu_fdro_class_init(ObjectClass *klass, void *data)
     xcic->cfi_transfer_packet = cfu_fdro_cfi_transfer_packet;
 }
 
+static void cfu_sfr_class_init(ObjectClass *klass, void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(klass);
+
+    device_class_set_props(dc, cfu_sfr_props);
+}
+
 static const TypeInfo cfu_apb_info = {
     .name          = TYPE_XILINX_CFU_APB,
     .parent        = TYPE_SYS_BUS_DEVICE,
@@ -772,10 +856,19 @@ static const TypeInfo cfu_fdro_info = {
     }
 };
 
+static const TypeInfo cfu_sfr_info = {
+    .name          = TYPE_XILINX_CFU_SFR,
+    .parent        = TYPE_SYS_BUS_DEVICE,
+    .instance_size = sizeof(CFU_SFR),
+    .class_init    = cfu_sfr_class_init,
+    .instance_init = cfu_sfr_init,
+};
+
 static void cfu_apb_register_types(void)
 {
     type_register_static(&cfu_apb_info);
     type_register_static(&cfu_fdro_info);
+    type_register_static(&cfu_sfr_info);
 }
 
 type_init(cfu_apb_register_types)
