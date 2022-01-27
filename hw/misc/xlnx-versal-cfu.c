@@ -518,7 +518,7 @@ static void cfu_sfr_write(void *opaque, hwaddr addr, uint64_t value,
     }
 }
 
-static uint64_t cfu_fdro_read(void *opaque, hwaddr addr, unsigned size)
+static uint64_t cfu_apb_fdro_read(void *opaque, hwaddr addr, unsigned size)
 {
     CFU *s = XILINX_CFU_APB(opaque);
     uint64_t ret = 0;
@@ -531,7 +531,7 @@ static uint64_t cfu_fdro_read(void *opaque, hwaddr addr, unsigned size)
     return ret;
 }
 
-static void cfu_fdro_write(void *opaque, hwaddr addr, uint64_t value,
+static void cfu_apb_fdro_write(void *opaque, hwaddr addr, uint64_t value,
                       unsigned size)
 {
     qemu_log_mask(LOG_GUEST_ERROR, "%s: Unsupported write from addr=%"
@@ -558,9 +558,9 @@ static const MemoryRegionOps cfu_sfr_ops = {
     },
 };
 
-static const MemoryRegionOps cfu_fdro_ops = {
-    .read = cfu_fdro_read,
-    .write = cfu_fdro_write,
+static const MemoryRegionOps cfu_apb_fdro_ops = {
+    .read = cfu_apb_fdro_read,
+    .write = cfu_apb_fdro_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
@@ -610,7 +610,7 @@ static void cfu_apb_init(Object *obj)
     memory_region_init_io(&s->iomem_sfr, obj, &cfu_sfr_ops, s,
                           TYPE_XILINX_CFU_APB "-sfr", KEYHOLE_STREAM_4K);
     sysbus_init_mmio(sbd, &s->iomem_sfr);
-    memory_region_init_io(&s->iomem_fdro, obj, &cfu_fdro_ops, s,
+    memory_region_init_io(&s->iomem_fdro, obj, &cfu_apb_fdro_ops, s,
                           TYPE_XILINX_CFU_APB "-fdro", KEYHOLE_STREAM_4K);
     sysbus_init_mmio(sbd, &s->iomem_fdro);
     s->fdro_data = g_array_new(FALSE, FALSE, sizeof(uint32_t));
