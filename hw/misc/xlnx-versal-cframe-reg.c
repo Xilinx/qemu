@@ -317,7 +317,7 @@ typedef struct CFRAME_REG {
     XlnxCFrame new_f;
 
     struct {
-        XlnxCfiIf *cfu;
+        XlnxCfiIf *cfu_fdro;
         uint32_t blktype_num_frames[7];
     } cfg;
     bool row_configured;
@@ -467,8 +467,8 @@ static void cfrm_readout_frames(CFRAME_REG *s, uint32_t start_addr,
                 pkt.data[3] = f->data[i + 3];
             }
 
-            if (s->cfg.cfu) {
-                xlnx_cfi_transfer_packet(s->cfg.cfu, &pkt);
+            if (s->cfg.cfu_fdro) {
+                xlnx_cfi_transfer_packet(s->cfg.cfu_fdro, &pkt);
             }
         }
     }
@@ -1025,7 +1025,10 @@ static const VMStateDescription vmstate_cframe_reg = {
 };
 
 static Property cframe_regs_props[] = {
-    DEFINE_PROP_LINK("cfu", CFRAME_REG, cfg.cfu,
+    /* Kept for backwards compatibility */
+    DEFINE_PROP_LINK("cfu", CFRAME_REG, cfg.cfu_fdro,
+                     TYPE_XLNX_CFI_IF, XlnxCfiIf *),
+    DEFINE_PROP_LINK("cfu-fdro", CFRAME_REG, cfg.cfu_fdro,
                      TYPE_XLNX_CFI_IF, XlnxCfiIf *),
     DEFINE_PROP_UINT32("blktype0-frames", CFRAME_REG,
                        cfg.blktype_num_frames[0], 0),
