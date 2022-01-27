@@ -46,6 +46,11 @@
 #define XILINX_CFU_APB(obj) \
      OBJECT_CHECK(CFU, (obj), TYPE_XILINX_CFU_APB)
 
+#define TYPE_XILINX_CFU_FDRO "xlnx,versal-cfu-fdro"
+
+#define XILINX_CFU_FDRO(obj) \
+     OBJECT_CHECK(CFU_FDRO, (obj), TYPE_XILINX_CFU_FDRO)
+
 #define DPRINT(args, ...) \
     do { \
         if (XILINX_CFU_APB_ERR_DEBUG) { \
@@ -236,6 +241,7 @@ typedef struct CFU {
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
 
+    /* Keept for backwards compatibility */
     MemoryRegion iomem_sfr;
     MemoryRegion iomem_fdro;
     GArray *fdro_data;
@@ -245,6 +251,13 @@ typedef struct CFU {
         XlnxCfiIf *cframe[15];
     } cfg;
 } CFU;
+
+typedef struct CFU_FDRO {
+    SysBusDevice parent_obj;
+    MemoryRegion iomem_fdro;
+
+    GArray *fdro_data;
+} CFU_FDRO;
 
 static void cfu_imr_update_irq(CFU *s)
 {
@@ -538,6 +551,26 @@ static void cfu_apb_fdro_write(void *opaque, hwaddr addr, uint64_t value,
                   HWADDR_PRIx "\n", __func__, addr);
 }
 
+static uint64_t cfu_fdro_read(void *opaque, hwaddr addr, unsigned size)
+{
+    CFU_FDRO *s = XILINX_CFU_FDRO(opaque);
+    uint64_t ret = 0;
+
+    if (s->fdro_data->len) {
+        ret = g_array_index(s->fdro_data, uint32_t, 0);
+        g_array_remove_index(s->fdro_data, 0);
+    }
+
+    return ret;
+}
+
+static void cfu_fdro_write(void *opaque, hwaddr addr, uint64_t value,
+                           unsigned size)
+{
+    qemu_log_mask(LOG_GUEST_ERROR, "%s: Unsupported write from addr=%"
+                  HWADDR_PRIx "\n", __func__, addr);
+}
+
 static const MemoryRegionOps cfu_stream_ops = {
     .read = cfu_stream_read,
     .write = cfu_stream_write,
@@ -561,6 +594,16 @@ static const MemoryRegionOps cfu_apb_sfr_ops = {
 static const MemoryRegionOps cfu_apb_fdro_ops = {
     .read = cfu_apb_fdro_read,
     .write = cfu_apb_fdro_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = {
+        .min_access_size = 4,
+        .max_access_size = 4,
+    },
+};
+
+static const MemoryRegionOps cfu_fdro_ops = {
+    .read = cfu_fdro_read,
+    .write = cfu_fdro_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
@@ -615,9 +658,27 @@ static void cfu_apb_init(Object *obj)
     s->fdro_data = g_array_new(FALSE, FALSE, sizeof(uint32_t));
 }
 
+static void cfu_fdro_init(Object *obj)
+{
+    CFU_FDRO *s = XILINX_CFU_FDRO(obj);
+    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+
+    memory_region_init_io(&s->iomem_fdro, obj, &cfu_fdro_ops, s,
+                          TYPE_XILINX_CFU_FDRO, KEYHOLE_STREAM_4K);
+    sysbus_init_mmio(sbd, &s->iomem_fdro);
+    s->fdro_data = g_array_new(FALSE, FALSE, sizeof(uint32_t));
+}
+
 static void cfu_apb_cfi_transfer_packet(XlnxCfiIf *cfi_if, XlnxCfiPacket *pkt)
 {
     CFU *s = XILINX_CFU_APB(cfi_if);
+
+    g_array_append_vals(s->fdro_data, &pkt->data[0], 4);
+}
+
+static void cfu_fdro_cfi_transfer_packet(XlnxCfiIf *cfi_if, XlnxCfiPacket *pkt)
+{
+    CFU_FDRO *s = XILINX_CFU_FDRO(cfi_if);
 
     g_array_append_vals(s->fdro_data, &pkt->data[0], 4);
 }
@@ -680,6 +741,13 @@ static void cfu_apb_class_init(ObjectClass *klass, void *data)
     xcic->cfi_transfer_packet = cfu_apb_cfi_transfer_packet;
 }
 
+static void cfu_fdro_class_init(ObjectClass *klass, void *data)
+{
+    XlnxCfiIfClass *xcic = XLNX_CFI_IF_CLASS(klass);
+
+    xcic->cfi_transfer_packet = cfu_fdro_cfi_transfer_packet;
+}
+
 static const TypeInfo cfu_apb_info = {
     .name          = TYPE_XILINX_CFU_APB,
     .parent        = TYPE_SYS_BUS_DEVICE,
@@ -692,9 +760,22 @@ static const TypeInfo cfu_apb_info = {
     }
 };
 
+static const TypeInfo cfu_fdro_info = {
+    .name          = TYPE_XILINX_CFU_FDRO,
+    .parent        = TYPE_SYS_BUS_DEVICE,
+    .instance_size = sizeof(CFU_FDRO),
+    .class_init    = cfu_fdro_class_init,
+    .instance_init = cfu_fdro_init,
+    .interfaces = (InterfaceInfo[]) {
+        { TYPE_XLNX_CFI_IF },
+        { }
+    }
+};
+
 static void cfu_apb_register_types(void)
 {
     type_register_static(&cfu_apb_info);
+    type_register_static(&cfu_fdro_info);
 }
 
 type_init(cfu_apb_register_types)
