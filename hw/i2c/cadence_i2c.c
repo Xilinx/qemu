@@ -236,6 +236,9 @@ static void cadence_i2c_do_txrx(void *opaque)
                 DB_PRINT("Nacking last byte of read transaction\n");
                 i2c_nack(s->bus);
                 s->regs[R_ISR] |= ISR_COMP;
+                if (s->regs[R_CONTROL] & CONTROL_HOLD) {
+                    i2c_end_transfer(s->bus);
+                }
             }
         }
         /* fallthrough with no action if fifo full with HOLD==1 */
