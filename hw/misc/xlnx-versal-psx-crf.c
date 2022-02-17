@@ -426,8 +426,8 @@ static uint64_t ir_disable_prew(RegisterInfo *reg, uint64_t val64)
     PROPAGATE_GPIO(RST_APU ## x, CORE0_WARM_RESET, s->rst_acpu[i]);         \
     PROPAGATE_GPIO(RST_APU ## x, CORE1_WARM_RESET, s->rst_acpu[i + 1]);     \
     if (s->cfg.cores_per_cluster >= 4) {                                    \
-        PROPAGATE_GPIO(RST_APU ## x, CORE1_WARM_RESET, s->rst_acpu[i + 2]); \
-        PROPAGATE_GPIO(RST_APU ## x, CORE1_WARM_RESET, s->rst_acpu[i + 3]); \
+        PROPAGATE_GPIO(RST_APU ## x, CORE2_WARM_RESET, s->rst_acpu[i + 2]); \
+        PROPAGATE_GPIO(RST_APU ## x, CORE3_WARM_RESET, s->rst_acpu[i + 3]); \
     }                                                                       \
 } while (0)
 
