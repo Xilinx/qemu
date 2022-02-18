@@ -3348,6 +3348,7 @@ typedef struct PMCSysMon {
     qemu_irq irq_1;
     uint32_t events;
     uint32_t reg_prev_value;
+    uint32_t voltage_read_wo_data[R_SUPPLY_COUNT / 32];
 
     Object *efuse;
     QEMUTimer efuse_throttle_timer;
@@ -3390,6 +3391,9 @@ typedef struct PMCSysMon {
     uint32_t regs[PMC_SYSMON_R_MAX];
     RegisterInfo regs_info[PMC_SYSMON_R_MAX];
 } PMCSysMon;
+
+static void pmc_sysmon_volt_apply_by_root_id(PMCSysMon *s, unsigned reg,
+                                             float val, Error **errp);
 
 static int int_compare(int a, int b)
 {
@@ -4522,6 +4526,26 @@ static uint64_t pmc_sysmon_save_prev_value_prew(RegisterInfo *reg, uint64_t val)
     return val;
 }
 
+static uint64_t new_data_flagx_postr(RegisterInfo *reg, uint64_t val)
+{
+    PMCSysMon *s = PMC_SYSMON(reg->opaque);
+    int r = (reg->access->addr - A_NEW_DATA_FLAG0) / 4;
+    int i;
+
+    if (!val || (s->voltage_read_wo_data[r] > 8)) {
+        if (s->voltage_read_wo_data[r] > 8) {
+            for (i = 0; i < 32 ; i++) {
+                pmc_sysmon_volt_apply_by_root_id(s, R_SUPPLY0 + r * 32 + i,
+                                                (float)1.5, &error_abort);
+            }
+        } else {
+            s->voltage_read_wo_data[r]++;
+        }
+    }
+
+    return s->regs[reg->access->addr / 4];
+}
+
 static const RegisterAccessInfo pmc_sysmon_regs_info[] = {
     {   .name = "REG_PCSR_MASK",  .addr = A_REG_PCSR_MASK,
     },{ .name = "REG_PCSR_CONTROL",  .addr = A_REG_PCSR_CONTROL,
@@ -4600,14 +4624,19 @@ static const RegisterAccessInfo pmc_sysmon_regs_info[] = {
     },{ .name = "REG_IXPCM_MEAS_CONF_1",  .addr = A_REG_IXPCM_MEAS_CONF_1,
     },{ .name = "NEW_DATA_FLAG0",  .addr = A_NEW_DATA_FLAG0,
         .w1c = 0xffffffff,
+        .post_read = new_data_flagx_postr,
     },{ .name = "NEW_DATA_FLAG1",  .addr = A_NEW_DATA_FLAG1,
         .w1c = 0xffffffff,
+        .post_read = new_data_flagx_postr,
     },{ .name = "NEW_DATA_FLAG2",  .addr = A_NEW_DATA_FLAG2,
         .w1c = 0xffffffff,
+        .post_read = new_data_flagx_postr,
     },{ .name = "NEW_DATA_FLAG3",  .addr = A_NEW_DATA_FLAG3,
         .w1c = 0xffffffff,
+        .post_read = new_data_flagx_postr,
     },{ .name = "NEW_DATA_FLAG4",  .addr = A_NEW_DATA_FLAG4,
         .w1c = 0xffffffff,
+        .post_read = new_data_flagx_postr,
     },{ .name = "ALARM_FLAG0",  .addr = A_ALARM_FLAG0,
         .w1c = 0xffffffff,
     },{ .name = "ALARM_FLAG1",  .addr = A_ALARM_FLAG1,
