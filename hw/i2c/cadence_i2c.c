@@ -148,6 +148,8 @@ static inline bool cadence_i2c_has_work(CadenceI2CState *s)
     }
 }
 
+static void cadence_i2c_do_txrx(void *opaque);
+
 static inline void cadence_i2c_update_status(CadenceI2CState *s)
 {
     if (cadence_i2c_has_work(s)) {
@@ -159,6 +161,10 @@ static inline void cadence_i2c_update_status(CadenceI2CState *s)
         delay *= 10; /* 8 bits + ACK/NACK, approximate as 10 cycles/op */
         DB_PRINT("scheduling transfer operation with delay of %lldns\n",
                  (unsigned long long)delay);
+        if (timer_pending(s->transfer_timer)) {
+                timer_del(s->transfer_timer);
+                cadence_i2c_do_txrx(s);
+        }
         timer_mod(s->transfer_timer,
                   qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + delay);
     }
