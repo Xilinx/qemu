@@ -135,6 +135,7 @@ softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL', if_true: files(
   'xlnx-ksb-psmx-global.c',
   'xlnx-ksb-psmx-local.c',
   'xlnx-ksb-psmx-error-management.c',
+  'xlnx-ksb-apu-pcil.c',
 ))
 
 softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL_PMC', if_true: files(
