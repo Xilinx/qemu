@@ -2602,10 +2602,34 @@ static void ipi_reset(DeviceState *dev)
 {
     XlnxVersalIPI *s = XILINX_IPI(dev);
     unsigned int i;
+    int num_agents = s->cfg.num_master_ids / 2;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
         register_reset(&s->regs_info[i]);
+
+        switch (i) {
+        case R_PSM_IMR:
+        case R_PMC_IMR:
+        case R_IPI0_IMR:
+        case R_IPI1_IMR:
+        case R_IPI2_IMR:
+        case R_IPI3_IMR:
+        case R_IPI4_IMR:
+        case R_IPI5_IMR:
+        case R_PMC_NOBUF_IMR:
+        case R_IPI6_IMR:
+        case R_IPI_NOBUF1_IMR:
+        case R_IPI_NOBUF2_IMR:
+        case R_IPI_NOBUF3_IMR:
+        case R_IPI_NOBUF4_IMR:
+        case R_IPI_NOBUF5_IMR:
+        case R_IPI_NOBUF6_IMR:
+            s->regs[i] = (1 << num_agents) - 1;
+            break;
+        };
+
     }
+
     x_update_irq(s);
 }
 
