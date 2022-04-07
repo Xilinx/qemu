@@ -47,16 +47,6 @@
      OBJECT_CHECK(PSX_CRF, (obj), TYPE_XILINX_PSX_CRF)
 
 REG32(ERR_CTRL, 0x0)
-    FIELD(ERR_CTRL, SLVERR_ENABLE, 0, 1)
-REG32(IR_STATUS, 0x4)
-    FIELD(IR_STATUS, ADDR_DECODE_ERR, 0, 1)
-REG32(IR_MASK, 0x8)
-    FIELD(IR_MASK, ADDR_DECODE_ERR, 0, 1)
-REG32(IR_ENABLE, 0xc)
-    FIELD(IR_ENABLE, ADDR_DECODE_ERR, 0, 1)
-REG32(IR_DISABLE, 0x10)
-    FIELD(IR_DISABLE, ADDR_DECODE_ERR, 0, 1)
-REG32(ECO, 0x18)
 REG32(WPROT, 0x1c)
     FIELD(WPROT, ACTIVE, 0, 1)
 REG32(APLL1_CTRL, 0x40)
@@ -72,12 +62,6 @@ REG32(APLL1_CFG, 0x44)
     FIELD(APLL1_CFG, LFHF, 10, 2)
     FIELD(APLL1_CFG, CP, 5, 4)
     FIELD(APLL1_CFG, RES, 0, 4)
-REG32(APLL1_FRAC_CFG, 0x48)
-    FIELD(APLL1_FRAC_CFG, ENABLED, 31, 1)
-    FIELD(APLL1_FRAC_CFG, SEED, 22, 3)
-    FIELD(APLL1_FRAC_CFG, ALGRTHM, 19, 1)
-    FIELD(APLL1_FRAC_CFG, ORDER, 18, 1)
-    FIELD(APLL1_FRAC_CFG, DATA, 0, 16)
 REG32(APLL2_CTRL, 0x50)
     FIELD(APLL2_CTRL, POST_SRC, 24, 3)
     FIELD(APLL2_CTRL, PRE_SRC, 20, 3)
@@ -91,169 +75,11 @@ REG32(APLL2_CFG, 0x54)
     FIELD(APLL2_CFG, LFHF, 10, 2)
     FIELD(APLL2_CFG, CP, 5, 4)
     FIELD(APLL2_CFG, RES, 0, 4)
-REG32(APLL2_FRAC_CFG, 0x58)
-    FIELD(APLL2_FRAC_CFG, ENABLED, 31, 1)
-    FIELD(APLL2_FRAC_CFG, SEED, 22, 3)
-    FIELD(APLL2_FRAC_CFG, ALGRTHM, 19, 1)
-    FIELD(APLL2_FRAC_CFG, ORDER, 18, 1)
-    FIELD(APLL2_FRAC_CFG, DATA, 0, 16)
 REG32(PLL_STATUS, 0x60)
     FIELD(PLL_STATUS, APLL2_STABLE, 3, 1)
     FIELD(PLL_STATUS, APLL1_STABLE, 2, 1)
     FIELD(PLL_STATUS, APLL2_LOCK, 1, 1)
     FIELD(PLL_STATUS, APLL1_LOCK, 0, 1)
-REG32(APLL1_REG0, 0x6c)
-    FIELD(APLL1_REG0, FREQ_COMP, 22, 3)
-    FIELD(APLL1_REG0, LOCK_SAT_HIGH, 12, 10)
-    FIELD(APLL1_REG0, UNLOCK_CNT, 2, 10)
-REG32(APLL1_REG1, 0x70)
-    FIELD(APLL1_REG1, EN_VCO_DIV1, 29, 1)
-    FIELD(APLL1_REG1, EN_VCO_DIV6, 28, 1)
-    FIELD(APLL1_REG1, EN_SYNC_CK_TEST, 27, 1)
-    FIELD(APLL1_REG1, VCO_STARTUP_HYST_DISABLE, 25, 1)
-    FIELD(APLL1_REG1, VCO_STARTUP_ALT_EN, 24, 1)
-    FIELD(APLL1_REG1, VCO_STARTUP_ADJ, 23, 1)
-    FIELD(APLL1_REG1, VCO_KICK_DISABLE, 22, 1)
-    FIELD(APLL1_REG1, VCO_GATE_CCI_B, 21, 1)
-    FIELD(APLL1_REG1, VCO_HIGH_RANGE_EN, 20, 1)
-    FIELD(APLL1_REG1, PFD_STARTUP, 19, 1)
-    FIELD(APLL1_REG1, PFD, 12, 7)
-    FIELD(APLL1_REG1, SEL_SLIPD, 11, 1)
-    FIELD(APLL1_REG1, SENSE_TEST_EN, 10, 1)
-    FIELD(APLL1_REG1, SPARE_ANALOG, 5, 5)
-    FIELD(APLL1_REG1, SPARE_DIGITAL, 0, 5)
-REG32(APLL1_REG2, 0x74)
-    FIELD(APLL1_REG2, SUP_SEL_VCCINT, 28, 1)
-    FIELD(APLL1_REG2, SUP_SEL_VCCAUX, 27, 1)
-    FIELD(APLL1_REG2, SUP_SEL_VBG, 26, 1)
-    FIELD(APLL1_REG2, SUP_SEL_AVDD, 25, 1)
-    FIELD(APLL1_REG2, SUP_SEL_VBGHALF, 24, 1)
-    FIELD(APLL1_REG2, VLF_HIGH_SEL, 18, 2)
-    FIELD(APLL1_REG2, VLF_VALID_SEL, 15, 3)
-    FIELD(APLL1_REG2, VLF_VALID_PWDN, 14, 1)
-    FIELD(APLL1_REG2, VLF_HIGH_PWDN_B, 13, 1)
-    FIELD(APLL1_REG2, LF_LOW_SEL, 12, 1)
-    FIELD(APLL1_REG2, LF_NEN, 10, 2)
-    FIELD(APLL1_REG2, LF_PEN, 8, 2)
-    FIELD(APLL1_REG2, MAN_LF, 4, 3)
-    FIELD(APLL1_REG2, ANALOG_MISC, 0, 4)
-REG32(APLL1_REG3, 0x78)
-    FIELD(APLL1_REG3, REGLPF_RES_SHORT, 24, 1)
-    FIELD(APLL1_REG3, CP_RES_L, 22, 2)
-    FIELD(APLL1_REG3, CP_RES_H, 20, 2)
-    FIELD(APLL1_REG3, CP_OPAMP_BN, 19, 1)
-    FIELD(APLL1_REG3, CP_BIAS_TRIP_SET, 18, 1)
-    FIELD(APLL1_REG3, HVLF_CNT_TEST_EN, 17, 1)
-    FIELD(APLL1_REG3, HVLF_CNT_TEST, 11, 6)
-    FIELD(APLL1_REG3, AVDD_COMP_SET, 8, 3)
-    FIELD(APLL1_REG3, AVDD_VBG_PD, 5, 3)
-    FIELD(APLL1_REG3, AVDD_VBG_SEL, 0, 5)
-REG32(APLL1_REG4, 0x7c)
-    FIELD(APLL1_REG4, FORCE_SENSE_SHORT, 29, 1)
-    FIELD(APLL1_REG4, FRACT_TEST_SEL, 26, 3)
-    FIELD(APLL1_REG4, FRACT_TEST_EN, 25, 1)
-    FIELD(APLL1_REG4, TC_GEN_MODE, 24, 1)
-    FIELD(APLL1_REG4, TESTOUT3_MUX_SEL, 18, 6)
-    FIELD(APLL1_REG4, TESTOUT2_MUX_SEL, 12, 6)
-    FIELD(APLL1_REG4, TESTOUT1_MUX_SEL, 6, 6)
-    FIELD(APLL1_REG4, TESTOUT0_MUX_SEL, 0, 6)
-REG32(APLL1_REG5, 0x80)
-    FIELD(APLL1_REG5, VLF_SWITCH_SEL, 9, 3)
-    FIELD(APLL1_REG5, VCO_SINGLE_BAND_DEFAULT, 8, 1)
-    FIELD(APLL1_REG5, VCO_BAND_MODE, 7, 1)
-    FIELD(APLL1_REG5, VLF_HIGH_EN, 6, 1)
-    FIELD(APLL1_REG5, VLF_SWITCH_PWDN, 5, 1)
-    FIELD(APLL1_REG5, TEST_PLL_CK_SEL, 2, 3)
-    FIELD(APLL1_REG5, FRACT_TEST_CK_SEL, 1, 1)
-    FIELD(APLL1_REG5, FBCLK_PREDIV2, 0, 1)
-REG32(APLL1_REG6, 0x84)
-    FIELD(APLL1_REG6, CONTROL_1, 16, 16)
-    FIELD(APLL1_REG6, CONTROL_0, 0, 16)
-REG32(APLL1_REG7, 0x88)
-    FIELD(APLL1_REG7, CONTROL_3, 16, 16)
-    FIELD(APLL1_REG7, CONTROL_2, 0, 16)
-REG32(APLL1_REG8, 0x90)
-    FIELD(APLL1_REG8, CONTROL_5, 16, 16)
-    FIELD(APLL1_REG8, CONTROL_4, 0, 16)
-REG32(APLL1_REG9, 0x94)
-    FIELD(APLL1_REG9, CONTROL_7, 16, 16)
-    FIELD(APLL1_REG9, CONTROL_6, 0, 16)
-REG32(APLL2_REG0, 0x9c)
-    FIELD(APLL2_REG0, FREQ_COMP, 22, 3)
-    FIELD(APLL2_REG0, LOCK_SAT_HIGH, 12, 10)
-    FIELD(APLL2_REG0, UNLOCK_CNT, 2, 10)
-REG32(APLL2_REG1, 0xa0)
-    FIELD(APLL2_REG1, EN_VCO_DIV1, 29, 1)
-    FIELD(APLL2_REG1, EN_VCO_DIV6, 28, 1)
-    FIELD(APLL2_REG1, EN_SYNC_CK_TEST, 27, 1)
-    FIELD(APLL2_REG1, VCO_STARTUP_HYST_DISABLE, 25, 1)
-    FIELD(APLL2_REG1, VCO_STARTUP_ALT_EN, 24, 1)
-    FIELD(APLL2_REG1, VCO_STARTUP_ADJ, 23, 1)
-    FIELD(APLL2_REG1, VCO_KICK_DISABLE, 22, 1)
-    FIELD(APLL2_REG1, VCO_GATE_CCI_B, 21, 1)
-    FIELD(APLL2_REG1, VCO_HIGH_RANGE_EN, 20, 1)
-    FIELD(APLL2_REG1, PFD_STARTUP, 19, 1)
-    FIELD(APLL2_REG1, PFD, 12, 7)
-    FIELD(APLL2_REG1, SEL_SLIPD, 11, 1)
-    FIELD(APLL2_REG1, SENSE_TEST_EN, 10, 1)
-    FIELD(APLL2_REG1, SPARE_ANALOG, 5, 5)
-    FIELD(APLL2_REG1, SPARE_DIGITAL, 0, 5)
-REG32(APLL2_REG2, 0xa4)
-    FIELD(APLL2_REG2, SUP_SEL_VCCINT, 28, 1)
-    FIELD(APLL2_REG2, SUP_SEL_VCCAUX, 27, 1)
-    FIELD(APLL2_REG2, SUP_SEL_VBG, 26, 1)
-    FIELD(APLL2_REG2, SUP_SEL_AVDD, 25, 1)
-    FIELD(APLL2_REG2, SUP_SEL_VBGHALF, 24, 1)
-    FIELD(APLL2_REG2, VLF_HIGH_SEL, 18, 2)
-    FIELD(APLL2_REG2, VLF_VALID_SEL, 15, 3)
-    FIELD(APLL2_REG2, VLF_VALID_PWDN, 14, 1)
-    FIELD(APLL2_REG2, VLF_HIGH_PWDN_B, 13, 1)
-    FIELD(APLL2_REG2, LF_LOW_SEL, 12, 1)
-    FIELD(APLL2_REG2, LF_NEN, 10, 2)
-    FIELD(APLL2_REG2, LF_PEN, 8, 2)
-    FIELD(APLL2_REG2, MAN_LF, 4, 3)
-    FIELD(APLL2_REG2, ANALOG_MISC, 0, 4)
-REG32(APLL2_REG3, 0xa8)
-    FIELD(APLL2_REG3, REGLPF_RES_SHORT, 24, 1)
-    FIELD(APLL2_REG3, CP_RES_L, 22, 2)
-    FIELD(APLL2_REG3, CP_RES_H, 20, 2)
-    FIELD(APLL2_REG3, CP_OPAMP_BN, 19, 1)
-    FIELD(APLL2_REG3, CP_BIAS_TRIP_SET, 18, 1)
-    FIELD(APLL2_REG3, HVLF_CNT_TEST_EN, 17, 1)
-    FIELD(APLL2_REG3, HVLF_CNT_TEST, 11, 6)
-    FIELD(APLL2_REG3, AVDD_COMP_SET, 8, 3)
-    FIELD(APLL2_REG3, AVDD_VBG_PD, 5, 3)
-    FIELD(APLL2_REG3, AVDD_VBG_SEL, 0, 5)
-REG32(APLL2_REG4, 0xac)
-    FIELD(APLL2_REG4, FORCE_SENSE_SHORT, 29, 1)
-    FIELD(APLL2_REG4, FRACT_TEST_SEL, 26, 3)
-    FIELD(APLL2_REG4, FRACT_TEST_EN, 25, 1)
-    FIELD(APLL2_REG4, TC_GEN_MODE, 24, 1)
-    FIELD(APLL2_REG4, TESTOUT3_MUX_SEL, 18, 6)
-    FIELD(APLL2_REG4, TESTOUT2_MUX_SEL, 12, 6)
-    FIELD(APLL2_REG4, TESTOUT1_MUX_SEL, 6, 6)
-    FIELD(APLL2_REG4, TESTOUT0_MUX_SEL, 0, 6)
-REG32(APLL2_REG5, 0xb0)
-    FIELD(APLL2_REG5, VLF_SWITCH_SEL, 9, 3)
-    FIELD(APLL2_REG5, VCO_SINGLE_BAND_DEFAULT, 8, 1)
-    FIELD(APLL2_REG5, VCO_BAND_MODE, 7, 1)
-    FIELD(APLL2_REG5, VLF_HIGH_EN, 6, 1)
-    FIELD(APLL2_REG5, VLF_SWITCH_PWDN, 5, 1)
-    FIELD(APLL2_REG5, TEST_PLL_CK_SEL, 2, 3)
-    FIELD(APLL2_REG5, FRACT_TEST_CK_SEL, 1, 1)
-    FIELD(APLL2_REG5, FBCLK_PREDIV2, 0, 1)
-REG32(APLL2_REG6, 0xb4)
-    FIELD(APLL2_REG6, CONTROL_1, 16, 16)
-    FIELD(APLL2_REG6, CONTROL_0, 0, 16)
-REG32(APLL2_REG7, 0xb8)
-    FIELD(APLL2_REG7, CONTROL_3, 16, 16)
-    FIELD(APLL2_REG7, CONTROL_2, 0, 16)
-REG32(APLL2_REG8, 0xc0)
-    FIELD(APLL2_REG8, CONTROL_5, 16, 16)
-    FIELD(APLL2_REG8, CONTROL_4, 0, 16)
-REG32(APLL2_REG9, 0xc4)
-    FIELD(APLL2_REG9, CONTROL_7, 16, 16)
-    FIELD(APLL2_REG9, CONTROL_6, 0, 16)
 REG32(FPX_TOP_SWITCH_CTRL, 0x104)
     FIELD(FPX_TOP_SWITCH_CTRL, CLKACT, 25, 1)
     FIELD(FPX_TOP_SWITCH_CTRL, DIVISOR0, 8, 10)
@@ -289,47 +115,62 @@ REG32(DBG_FPX_CTRL, 0x124)
 REG32(PERIPH_CLK_CTRL, 0x128)
     FIELD(PERIPH_CLK_CTRL, DIVISOR0, 8, 10)
     FIELD(PERIPH_CLK_CTRL, SRCSEL, 0, 3)
+REG32(WWDT_PLL_CLK_CTRL, 0x12c)
+    FIELD(WWDT_PLL_CLK_CTRL, DIVISOR0, 8, 10)
+    FIELD(WWDT_PLL_CLK_CTRL, SRCSEL, 0, 3)
+REG32(FPX_PKI_DIV_CLK_CTRL, 0x130)
+    FIELD(FPX_PKI_DIV_CLK_CTRL, DIVISOR0, 8, 10)
+REG32(RCLK_CTRL, 0x134)
+    FIELD(RCLK_CTRL, CLKACT, 14, 12)
+    FIELD(RCLK_CTRL, SELECT, 0, 12)
 REG32(SAFETY_CHK, 0x150)
 REG32(RST_APU0, 0x300)
-    FIELD(RST_APU0, CLUSTER_COLD_RESET, 7, 1)
-    FIELD(RST_APU0, CLUSTER_WARM_RESET, 6, 1)
-    FIELD(RST_APU0, CORE3_WARM_RESET, 5, 1)
-    FIELD(RST_APU0, CORE2_WARM_RESET, 4, 1)
-    FIELD(RST_APU0, CORE1_WARM_RESET, 3, 1)
-    FIELD(RST_APU0, CORE0_WARM_RESET, 2, 1)
+    FIELD(RST_APU0, CLUSTER_COLD_RESET, 9, 1)
+    FIELD(RST_APU0, CLUSTER_WARM_RESET, 8, 1)
+    FIELD(RST_APU0, CORE3_WARM_RESET, 7, 1)
+    FIELD(RST_APU0, CORE2_WARM_RESET, 6, 1)
+    FIELD(RST_APU0, CORE1_WARM_RESET, 5, 1)
+    FIELD(RST_APU0, CORE0_WARM_RESET, 4, 1)
+    FIELD(RST_APU0, CORE3_COLD_RESET, 3, 1)
+    FIELD(RST_APU0, CORE2_COLD_RESET, 2, 1)
     FIELD(RST_APU0, CORE1_COLD_RESET, 1, 1)
     FIELD(RST_APU0, CORE0_COLD_RESET, 0, 1)
 REG32(RST_APU1, 0x304)
-    FIELD(RST_APU1, CLUSTER_COLD_RESET, 7, 1)
-    FIELD(RST_APU1, CLUSTER_WARM_RESET, 6, 1)
-    FIELD(RST_APU1, CORE3_WARM_RESET, 5, 1)
-    FIELD(RST_APU1, CORE2_WARM_RESET, 4, 1)
-    FIELD(RST_APU1, CORE1_WARM_RESET, 3, 1)
-    FIELD(RST_APU1, CORE0_WARM_RESET, 2, 1)
+    FIELD(RST_APU1, CLUSTER_COLD_RESET, 9, 1)
+    FIELD(RST_APU1, CLUSTER_WARM_RESET, 8, 1)
+    FIELD(RST_APU1, CORE3_WARM_RESET, 7, 1)
+    FIELD(RST_APU1, CORE2_WARM_RESET, 6, 1)
+    FIELD(RST_APU1, CORE1_WARM_RESET, 5, 1)
+    FIELD(RST_APU1, CORE0_WARM_RESET, 4, 1)
+    FIELD(RST_APU1, CORE3_COLD_RESET, 3, 1)
+    FIELD(RST_APU1, CORE2_COLD_RESET, 2, 1)
     FIELD(RST_APU1, CORE1_COLD_RESET, 1, 1)
     FIELD(RST_APU1, CORE0_COLD_RESET, 0, 1)
 REG32(RST_APU2, 0x308)
-    FIELD(RST_APU2, CLUSTER_COLD_RESET, 7, 1)
-    FIELD(RST_APU2, CLUSTER_WARM_RESET, 6, 1)
-    FIELD(RST_APU2, CORE3_WARM_RESET, 5, 1)
-    FIELD(RST_APU2, CORE2_WARM_RESET, 4, 1)
-    FIELD(RST_APU2, CORE1_WARM_RESET, 3, 1)
-    FIELD(RST_APU2, CORE0_WARM_RESET, 2, 1)
+    FIELD(RST_APU2, CLUSTER_COLD_RESET, 9, 1)
+    FIELD(RST_APU2, CLUSTER_WARM_RESET, 8, 1)
+    FIELD(RST_APU2, CORE3_WARM_RESET, 7, 1)
+    FIELD(RST_APU2, CORE2_WARM_RESET, 6, 1)
+    FIELD(RST_APU2, CORE1_WARM_RESET, 5, 1)
+    FIELD(RST_APU2, CORE0_WARM_RESET, 4, 1)
+    FIELD(RST_APU2, CORE3_COLD_RESET, 3, 1)
+    FIELD(RST_APU2, CORE2_COLD_RESET, 2, 1)
     FIELD(RST_APU2, CORE1_COLD_RESET, 1, 1)
     FIELD(RST_APU2, CORE0_COLD_RESET, 0, 1)
 REG32(RST_APU3, 0x30c)
-    FIELD(RST_APU3, CLUSTER_COLD_RESET, 7, 1)
-    FIELD(RST_APU3, CLUSTER_WARM_RESET, 6, 1)
-    FIELD(RST_APU3, CORE3_WARM_RESET, 5, 1)
-    FIELD(RST_APU3, CORE2_WARM_RESET, 4, 1)
-    FIELD(RST_APU3, CORE1_WARM_RESET, 3, 1)
-    FIELD(RST_APU3, CORE0_WARM_RESET, 2, 1)
+    FIELD(RST_APU3, CLUSTER_COLD_RESET, 9, 1)
+    FIELD(RST_APU3, CLUSTER_WARM_RESET, 8, 1)
+    FIELD(RST_APU3, CORE3_WARM_RESET, 7, 1)
+    FIELD(RST_APU3, CORE2_WARM_RESET, 6, 1)
+    FIELD(RST_APU3, CORE1_WARM_RESET, 5, 1)
+    FIELD(RST_APU3, CORE0_WARM_RESET, 4, 1)
+    FIELD(RST_APU3, CORE3_COLD_RESET, 3, 1)
+    FIELD(RST_APU3, CORE2_COLD_RESET, 2, 1)
     FIELD(RST_APU3, CORE1_COLD_RESET, 1, 1)
     FIELD(RST_APU3, CORE0_COLD_RESET, 0, 1)
 REG32(RST_DBG_FPX, 0x310)
     FIELD(RST_DBG_FPX, RESET, 0, 1)
 REG32(RST_SYSMON, 0x318)
-    FIELD(RST_SYSMON, SEQ_RST, 1, 1)
     FIELD(RST_SYSMON, CFG_RST, 0, 1)
 REG32(RST_FMU, 0x31c)
     FIELD(RST_FMU, RESET, 0, 1)
@@ -349,6 +190,8 @@ REG32(RST_MMU, 0x324)
     FIELD(RST_MMU, TBU1_RESET, 1, 1)
     FIELD(RST_MMU, TBU0_RESET, 0, 1)
 REG32(RST_CMN, 0x328)
+    FIELD(RST_CMN, RESET_CGL, 2, 1)
+    FIELD(RST_CMN, RESET_CXS, 1, 1)
     FIELD(RST_CMN, RESET, 0, 1)
 REG32(RST_FPX_SWDT0, 0x32c)
     FIELD(RST_FPX_SWDT0, RESET, 0, 1)
@@ -360,8 +203,12 @@ REG32(RST_FPX_SWDT3, 0x338)
     FIELD(RST_FPX_SWDT3, RESET, 0, 1)
 REG32(RST_TIMESTAMP, 0x33c)
     FIELD(RST_TIMESTAMP, RESET, 0, 1)
+REG32(RST_PKI, 0x340)
+    FIELD(RST_PKI, RESET, 0, 1)
+REG32(RST_CPI, 0x344)
+    FIELD(RST_CPI, RESET, 0, 1)
 
-#define PSX_CRF_R_MAX (R_RST_TIMESTAMP + 1)
+#define PSX_CRF_R_MAX (R_RST_CPI + 1)
 
 typedef struct PSX_CRF {
     SysBusDevice parent_obj;
@@ -389,38 +236,6 @@ typedef struct PSX_CRF {
     qemu_set_irq(irq, val); \
 }
 
-static void ir_update_irq(PSX_CRF *s)
-{
-    bool pending = s->regs[R_IR_STATUS] & ~s->regs[R_IR_MASK];
-    qemu_set_irq(s->irq_ir, pending);
-}
-
-static void ir_status_postw(RegisterInfo *reg, uint64_t val64)
-{
-    PSX_CRF *s = XILINX_PSX_CRF(reg->opaque);
-    ir_update_irq(s);
-}
-
-static uint64_t ir_enable_prew(RegisterInfo *reg, uint64_t val64)
-{
-    PSX_CRF *s = XILINX_PSX_CRF(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_IR_MASK] &= ~val;
-    ir_update_irq(s);
-    return 0;
-}
-
-static uint64_t ir_disable_prew(RegisterInfo *reg, uint64_t val64)
-{
-    PSX_CRF *s = XILINX_PSX_CRF(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_IR_MASK] |= val;
-    ir_update_irq(s);
-    return 0;
-}
-
 #define PROPAGATE_RST_CLUSTER(s, x) do {                                    \
     int i = x * s->cfg.cores_per_cluster;                                   \
     PROPAGATE_GPIO(RST_APU ## x, CORE0_WARM_RESET, s->rst_acpu[i]);         \
@@ -442,7 +257,6 @@ static void crf_update_gpios(PSX_CRF *s)
     }
     PROPAGATE_GPIO(RST_DBG_FPX, RESET, s->rst_dbg_fpd);
     PROPAGATE_GPIO(RST_SYSMON, CFG_RST, s->rst_sysmon_cfg);
-    PROPAGATE_GPIO(RST_SYSMON, SEQ_RST, s->rst_sysmon_seq);
 
     PROPAGATE_GPIO(RST_FPX_SWDT0, RESET, s->rst_fpd_swdt[0]);
     PROPAGATE_GPIO(RST_FPX_SWDT1, RESET, s->rst_fpd_swdt[1]);
@@ -459,17 +273,6 @@ static void crf_update_gpios_pw(RegisterInfo *reg, uint64_t val64)
 static const RegisterAccessInfo psx_crf_regs_info[] = {
     {   .name = "ERR_CTRL",  .addr = A_ERR_CTRL,
         .reset = 0x1,
-    },{ .name = "IR_STATUS",  .addr = A_IR_STATUS,
-        .w1c = 0x1,
-        .post_write = ir_status_postw,
-    },{ .name = "IR_MASK",  .addr = A_IR_MASK,
-        .reset = 0x1,
-        .ro = 0x1,
-    },{ .name = "IR_ENABLE",  .addr = A_IR_ENABLE,
-        .pre_write = ir_enable_prew,
-    },{ .name = "IR_DISABLE",  .addr = A_IR_DISABLE,
-        .pre_write = ir_disable_prew,
-    },{ .name = "ECO",  .addr = A_ECO,
     },{ .name = "WPROT",  .addr = A_WPROT,
     },{ .name = "APLL1_CTRL",  .addr = A_APLL1_CTRL,
         .reset = 0x24809,
@@ -477,77 +280,17 @@ static const RegisterAccessInfo psx_crf_regs_info[] = {
     },{ .name = "APLL1_CFG",  .addr = A_APLL1_CFG,
         .reset = 0x2000000,
         .rsvd = 0x1801210,
-    },{ .name = "APLL1_FRAC_CFG",  .addr = A_APLL1_FRAC_CFG,
-        .rsvd = 0x7e330000,
     },{ .name = "APLL2_CTRL",  .addr = A_APLL2_CTRL,
         .reset = 0x24809,
         .rsvd = 0xf88c00f6,
     },{ .name = "APLL2_CFG",  .addr = A_APLL2_CFG,
         .reset = 0x2000000,
         .rsvd = 0x1801210,
-    },{ .name = "APLL2_FRAC_CFG",  .addr = A_APLL2_FRAC_CFG,
-        .rsvd = 0x7e330000,
     },{ .name = "PLL_STATUS",  .addr = A_PLL_STATUS,
         .reset = 0xc | R_PLL_STATUS_APLL2_LOCK_MASK |
                  R_PLL_STATUS_APLL1_LOCK_MASK,
         .rsvd = 0xf0,
         .ro = 0xf,
-    },{ .name = "APLL1_REG0",  .addr = A_APLL1_REG0,
-        .reset = 0xfe9007,
-        .rsvd = 0xfe000003,
-        .ro = 0x3,
-    },{ .name = "APLL1_REG1",  .addr = A_APLL1_REG1,
-        .reset = 0x42b1020,
-        .rsvd = 0xc4000000,
-        .ro = 0x4000000,
-    },{ .name = "APLL1_REG2",  .addr = A_APLL1_REG2,
-        .reset = 0x9aa00,
-        .rsvd = 0xe0f00080,
-        .ro = 0xe00000,
-    },{ .name = "APLL1_REG3",  .addr = A_APLL1_REG3,
-        .reset = 0x1803c9,
-        .rsvd = 0xfe000000,
-    },{ .name = "APLL1_REG4",  .addr = A_APLL1_REG4,
-        .rsvd = 0xc0000000,
-    },{ .name = "APLL1_REG5",  .addr = A_APLL1_REG5,
-        .reset = 0x841,
-        .rsvd = 0xfffff000,
-    },{ .name = "APLL1_REG6",  .addr = A_APLL1_REG6,
-        .reset = 0x7c4df37c,
-    },{ .name = "APLL1_REG7",  .addr = A_APLL1_REG7,
-        .reset = 0xebd8d042,
-    },{ .name = "APLL1_REG8",  .addr = A_APLL1_REG8,
-        .reset = 0xedfbec5f,
-    },{ .name = "APLL1_REG9",  .addr = A_APLL1_REG9,
-        .reset = 0x4428aacd,
-    },{ .name = "APLL2_REG0",  .addr = A_APLL2_REG0,
-        .reset = 0xfe9007,
-        .rsvd = 0xfe000003,
-        .ro = 0x3,
-    },{ .name = "APLL2_REG1",  .addr = A_APLL2_REG1,
-        .reset = 0x42b1020,
-        .rsvd = 0xc4000000,
-        .ro = 0x4000000,
-    },{ .name = "APLL2_REG2",  .addr = A_APLL2_REG2,
-        .reset = 0x9aa00,
-        .rsvd = 0xe0f00080,
-        .ro = 0xe00000,
-    },{ .name = "APLL2_REG3",  .addr = A_APLL2_REG3,
-        .reset = 0x1803c9,
-        .rsvd = 0xfe000000,
-    },{ .name = "APLL2_REG4",  .addr = A_APLL2_REG4,
-        .rsvd = 0xc0000000,
-    },{ .name = "APLL2_REG5",  .addr = A_APLL2_REG5,
-        .reset = 0x841,
-        .rsvd = 0xfffff000,
-    },{ .name = "APLL2_REG6",  .addr = A_APLL2_REG6,
-        .reset = 0x7c4df37c,
-    },{ .name = "APLL2_REG7",  .addr = A_APLL2_REG7,
-        .reset = 0xebd8d042,
-    },{ .name = "APLL2_REG8",  .addr = A_APLL2_REG8,
-        .reset = 0xedfbec5f,
-    },{ .name = "APLL2_REG9",  .addr = A_APLL2_REG9,
-        .reset = 0x4428aacd,
     },{ .name = "FPX_TOP_SWITCH_CTRL",  .addr = A_FPX_TOP_SWITCH_CTRL,
         .reset = 0x2000200,
         .rsvd = 0xfdfc00f8,
@@ -570,27 +313,27 @@ static const RegisterAccessInfo psx_crf_regs_info[] = {
         .reset = 0x500,
         .rsvd = 0xfdfc00f8,
     },{ .name = "DBG_FPX_CTRL",  .addr = A_DBG_FPX_CTRL,
-        .reset = 0x2000300,
+        .reset = 0x300,
         .rsvd = 0xfdfc00f8,
     },{ .name = "PERIPH_CLK_CTRL",  .addr = A_PERIPH_CLK_CTRL,
         .reset = 0x300,
         .rsvd = 0xfffc00f8,
     },{ .name = "SAFETY_CHK",  .addr = A_SAFETY_CHK,
     },{ .name = "RST_APU0",  .addr = A_RST_APU0,
-        .reset = 0xff,
-        .rsvd = 0xff00,
+        .reset = 0x3ff,
+        .rsvd = 0xfc00,
         .post_write = crf_update_gpios_pw,
     },{ .name = "RST_APU1",  .addr = A_RST_APU1,
-        .reset = 0xff,
-        .rsvd = 0xff00,
+        .reset = 0x3ff,
+        .rsvd = 0xfc00,
         .post_write = crf_update_gpios_pw,
     },{ .name = "RST_APU2",  .addr = A_RST_APU2,
-        .reset = 0xff,
-        .rsvd = 0xff00,
+        .reset = 0x3ff,
+        .rsvd = 0xfc00,
         .post_write = crf_update_gpios_pw,
     },{ .name = "RST_APU3",  .addr = A_RST_APU3,
-        .reset = 0xff,
-        .rsvd = 0xff00,
+        .reset = 0x3ff,
+        .rsvd = 0xfc00,
         .post_write = crf_update_gpios_pw,
     },{ .name = "RST_DBG_FPX",  .addr = A_RST_DBG_FPX,
         .reset = 0x1,
@@ -621,6 +364,10 @@ static const RegisterAccessInfo psx_crf_regs_info[] = {
     },{ .name = "RST_TIMESTAMP",  .addr = A_RST_TIMESTAMP,
         .reset = 0x1,
         .post_write = crf_update_gpios_pw,
+    },{ .name = "RST_PKI",  .addr = A_RST_PKI,
+        .reset = 0x1,
+    },{ .name = "RST_CPI",  .addr = A_RST_CPI,
+        .reset = 0x1,
     }
 };
 
@@ -638,7 +385,6 @@ static void psx_crf_reset_hold(Object *obj)
 {
     PSX_CRF *s = XILINX_PSX_CRF(obj);
 
-    ir_update_irq(s);
     crf_update_gpios(s);
 }
 
