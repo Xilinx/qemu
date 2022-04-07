@@ -182,8 +182,10 @@ REG32(WWDT_PLL_CLK_CTRL, 0x1a4)
     FIELD(WWDT_PLL_CLK_CTRL, DIVISOR0, 8, 10)
     FIELD(WWDT_PLL_CLK_CTRL, SRCSEL, 0, 3)
 REG32(RST_RPU, 0x310)
-    FIELD(RST_RPU, B_DBGRST, 21, 1)
-    FIELD(RST_RPU, A_DBGRST, 20, 1)
+    FIELD(RST_RPU, B_GD_RST, 25, 1)
+    FIELD(RST_RPU, A_GD_RST, 24, 1)
+    FIELD(RST_RPU, B_GD_TOP_RST, 23, 1)
+    FIELD(RST_RPU, A_GD_TOP_RST, 22, 1)
     FIELD(RST_RPU, B_DCLS_TOPRESET, 19, 1)
     FIELD(RST_RPU, A_DCLS_TOPRESET, 18, 1)
     FIELD(RST_RPU, B_TOPRESET, 17, 1)
@@ -245,11 +247,15 @@ REG32(RST_SYSMON, 0x36c)
 REG32(RST_FPX, 0x370)
     FIELD(RST_FPX, SRST, 1, 1)
     FIELD(RST_FPX, POR, 0, 1)
+REG32(RST_CPM, 0x374)
+    FIELD(RST_CPM, POR, 0, 1)
 REG32(PSM_RST_MODE, 0x380)
     FIELD(PSM_RST_MODE, WAKEUP, 2, 1)
     FIELD(PSM_RST_MODE, RST_MODE, 0, 2)
+REG32(RST_SWDT1, 0x384)
+    FIELD(RST_SWDT1, RESET, 0, 1)
 
-#define PSX_CRL_R_MAX (R_PSM_RST_MODE + 1)
+#define PSX_CRL_R_MAX (R_RST_SWDT1 + 1)
 
 typedef struct PSX_CRL {
     SysBusDevice parent_obj;
@@ -432,13 +438,13 @@ static const RegisterAccessInfo psx_crl_regs_info[] = {
         .reset = 0x300,
         .rsvd = 0xfdfc00f8,
     },{ .name = "RCLK_CTRL",  .addr = A_RCLK_CTRL,
-        .rsvd = 0xc0c0,
+        .rsvd = 0xc040,
     },{ .name = "WWDT_PLL_CLK_CTRL",  .addr = A_WWDT_PLL_CLK_CTRL,
         .reset = 0xc00,
         .rsvd = 0xfffc00f8,
     },{ .name = "RST_RPU",  .addr = A_RST_RPU,
-        .reset = 0x3f0f0f,
-        .rsvd = 0xffc0f0f0,
+        .reset = 0x3ff0f0f,
+        .rsvd = 0xfc00f0f0,
         .post_write = crl_rst_postw,
     },{ .name = "RST_ADMA",  .addr = A_RST_ADMA,
         .reset = 0x1,
@@ -507,6 +513,8 @@ static const RegisterAccessInfo psx_crl_regs_info[] = {
         .reset = 0x1,
         .rsvd = 0xf8,
         .post_write = crl_rst_postw,
+    },{ .name = "RST_SWDT1",  .addr = A_RST_SWDT1,
+        .reset = 0x1,
     }
 };
 
