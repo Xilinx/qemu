@@ -129,7 +129,9 @@ softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL_PMC', if_true: files(
   'sss-pmc.c'))
 
 specific_ss.add(when: 'CONFIG_XLNX_ZYNQMP_ARM', if_true: files(
-  'xlnx-versal-psx-rpu-cluster.c',
+  'xlnx-ksb-rpu-cluster.c',
+  'xlnx-ksb-rpu-cluster-core0.c',
+  'xlnx-ksb-rpu-cluster-core1.c'
 ))
 
 softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL', if_true: files(
