@@ -36,9 +36,6 @@ softmmu_ss.add(when: 'CONFIG_XLNX_ZYNQMP', if_true: files(
 
 softmmu_ss.add(when: 'CONFIG_XLNX_ZYNQMP_CSU', if_true: files(
   'csu_sha3.c',
-  'ipcores-rsa5-4k.c',
-  'csu_rsa5_4k.c',
-  'xlnx-versal-ecdsa-rsa.c',
   'csu_aes.c',
   'zynqmp_aes_key.c',
   'xlnx-aes.c',
@@ -47,6 +44,14 @@ softmmu_ss.add(when: 'CONFIG_XLNX_ZYNQMP_CSU', if_true: files(
   'xlnx-zynqmp-pufop.c',
   'xlnx-bbram-ctrl.c'
 ))
+
+if gcrypt.found()
+  softmmu_ss.add(when: 'CONFIG_XLNX_ZYNQMP_CSU', if_true: files(
+    'ipcores-rsa5-4k.c',
+    'csu_rsa5_4k.c',
+    'xlnx-versal-ecdsa-rsa.c',
+  ))
+endif
 
 specific_ss.add(when: 'CONFIG_XLNX_ZYNQMP_ARM', if_true: files(
   'xilinx-lpd-slcr.c',
