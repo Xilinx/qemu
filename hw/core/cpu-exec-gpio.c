@@ -136,9 +136,14 @@ void cpu_reset_gpio(void *opaque, int irq, int level)
 {
     CPUState *cpu = CPU(opaque);
     bool iolock;
+    static int lock_count;
 
+    iolock = ensure_iothread_lock();
+
+    g_assert(lock_count == 0);
+    lock_count++;
     if (level == cpu->reset_pin) {
-        return;
+        goto done;
     }
 
     /*
@@ -157,7 +162,6 @@ void cpu_reset_gpio(void *opaque, int irq, int level)
      * Also, order of pin-state update is asymmetrical, depending on
      * assert of deassert.
      */
-    iolock = ensure_iothread_lock();
 
     if (level) {
         cpu->reset_pin = true;
@@ -169,6 +173,8 @@ void cpu_reset_gpio(void *opaque, int irq, int level)
         cpu->reset_pin = false;
     }
 
+done:
+    lock_count--;
     deref_iothread_lock(iolock);
 }
 
