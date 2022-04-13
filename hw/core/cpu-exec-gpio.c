@@ -26,42 +26,6 @@
 #include "cpu.h"
 #include "hw/core/cpu-exec-gpio.h"
 
-static bool cpu_exec_kick(CPUState *cpu)
-{
-    int32_t poll_pause = 10 * 1000;   /* both in usecs */
-    int64_t poll_stop  = 100 * 1000 + qemu_clock_get_us(QEMU_CLOCK_HOST);
-
-    bool rc = false;
-
-    /* More of a hack, especially the need to mimic qemu_cpu_kick_thread() */
-    if (tcg_enabled()) {
-        cpu->thread_kicked = true;
-    }
-    qemu_cpu_kick(cpu);
-
-    /* Need to release iothread lock during polling */
-    qemu_mutex_unlock_iothread();
-
-    for (;;) {
-        if (cpu->thread_kicked == false) {
-            rc = true; /* Don't poll next time */
-            break;
-        }
-
-        if (qemu_clock_get_us(QEMU_CLOCK_HOST) >= poll_stop) {
-            qatomic_mb_set(&cpu->thread_kicked, false);
-            rc = false;
-            break;
-        }
-
-        g_usleep(poll_pause);
-    }
-
-    qemu_mutex_lock_iothread();
-
-    return rc;
-}
-
 static void cpu_exec_ack(CPUState *cpu, run_on_cpu_data arg)
 {
     /* Do nothing; just to get vCPU out of tb-exec loop */
@@ -117,7 +81,8 @@ static void cpu_exec_pin_sync(CPUState *cpu, bool reset_pin)
 
     if ((can_run_on_cpu & cpu_mask) != 0) {
         run_on_cpu(cpu, cpu_exec_ack, RUN_ON_CPU_NULL);
-    } else if (cpu_exec_kick(cpu)) {
+    } else {
+        qemu_cpu_kick(cpu);
         can_run_on_cpu |= cpu_mask;
     }
 }
