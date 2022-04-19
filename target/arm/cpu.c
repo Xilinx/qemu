@@ -479,9 +479,6 @@ static void arm_cpu_reset(DeviceState *dev)
     }
 #endif
 
-    cpu->is_in_wfi = false;
-    qemu_set_irq(cpu->wfi, cpu->is_in_wfi);
-
     hw_breakpoint_update_all(cpu);
     hw_watchpoint_update_all(cpu);
 
@@ -627,7 +624,6 @@ static inline bool arm_excp_unmasked(CPUState *cs, unsigned int excp_idx,
 bool arm_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
 {
     CPUClass *cc = CPU_GET_CLASS(cs);
-    ARMCPU *cpu = ARM_CPU(cs);
     CPUARMState *env = cs->env_ptr;
     uint32_t cur_el = arm_current_el(env);
     bool secure = arm_is_secure(env);
@@ -675,14 +671,6 @@ bool arm_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
     cs->exception_index = excp_idx;
     env->exception.target_el = target_el;
     cc->tcg_ops->do_interrupt(cs);
-
-    /* Xilinx: If we get here we want to make sure that we update the WFI
-     * status to make sure that the PMU knows we are running again.
-     */
-    if (cpu->is_in_wfi) {
-        cpu->is_in_wfi = false;
-        qemu_set_irq(cpu->wfi, 0);
-    }
     return true;
 }
 
