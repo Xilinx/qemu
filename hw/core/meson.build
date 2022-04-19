@@ -35,6 +35,7 @@ common_ss.add(when: 'CONFIG_SERIAL', if_true: files('fdt_generic_devices_serial.
 common_ss.add(when: 'CONFIG_PFLASH_CFI01', if_true: files('fdt_generic_devices_flash.c'))
 common_ss.add(when: 'CONFIG_SSI_M25P80', if_true: files('fdt_generic_devices_ssi_m25p80.c'))
 common_ss.add(when: 'CONFIG_SI57X', if_true: files('fdt_generic_devices_si57x.c'))
+common_ss.add(when: 'CONFIG_SI5341', if_true: files('fdt_generic_devices_si5341.c'))
 common_ss.add(when: 'CONFIG_USB_EHCI_SYSBUS', if_true: files('fdt_generic_devices_usb_ehci_sysbus.c'))
 
 softmmu_ss.add(files(
