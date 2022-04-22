@@ -55,10 +55,10 @@
         qemu_log("%s: " fmt, __func__, ## args); \
     }
 
-#define SI5341_DIE_REV_OFFSET            (0x00)
 /*
- * This one is also accessible on all other pages.
+ * PAGE_OFFSET and DEVICE_READY are accessible from all the pages.
  */
+#define SI5341_DIE_REV_OFFSET            (0x00)
 #define SI5341_PAGE_OFFSET               (0x01)
 #define SI5341_PN_BASE_OFFSET(n)         (0x02 + (n))
 #define SI5341_GRADE_OFFSET              (0x04)
@@ -76,6 +76,7 @@
 #define SI5341_FINC_FDEC_OFFSET          (0x1D)
 #define SI5341_SYNC_PDWN_HR_OFFSET       (0x1E)
 #define SI5341_INPUT_CLK_SEL_OFFSET      (0x21)
+#define SI5341_DEVICE_READY_OFFSET       (0xFE)
 #define SI5341_CLK_OUT_MUX_INV_OFFSET(n) (0x10B + (n) * 0x5)
 #define SI5341_M_NUM_OFFSET(n)           (0x235 + (n))
 #define SI5341_M_DEN_OFFSET(n)           (0x23B + (n))
@@ -120,10 +121,24 @@ typedef struct Si5341 {
     uint8_t default_clock_sel;
 } Si5341State;
 
+/*
+ * Return the register offset within s->regs for the current address, and page.
+ */
+static uint16_t si5341_get_register_offset(Si5341State *s)
+{
+    switch (s->addr) {
+    case SI5341_PAGE_OFFSET:
+    case SI5341_DEVICE_READY_OFFSET:
+        return s->addr;
+    default:
+        return s->current_page * 0x100 + s->addr;
+    }
+}
+
 static uint8_t si5341_read(I2CSlave *i2c)
 {
     Si5341State *s = SI5341(i2c);
-    uint16_t register_address = s->current_page * 0x100 + s->addr;
+    uint16_t register_address = si5341_get_register_offset(s);
 
     DPRINTF("Read from 0x%2.2X, page: 0x%1.1X (0x%2.2x)\n", s->addr,
             s->current_page, s->regs[register_address]);
@@ -163,7 +178,7 @@ static int si5341_write(I2CSlave *i2c, uint8_t data)
     /*
      * Handle other writes.
      */
-    register_address = s->current_page * 0x100 + s->addr;
+    register_address = si5341_get_register_offset(s);
     switch (register_address) {
     case SI5341_DIE_REV_OFFSET:
     case SI5341_PN_BASE_OFFSET(0):
@@ -172,6 +187,7 @@ static int si5341_write(I2CSlave *i2c, uint8_t data)
     case SI5341_DEVICE_REV_OFFSET:
     case SI5341_TEMP_GRADE_OFFSET:
     case SI5341_PKG_ID_OFFSET:
+    case SI5341_DEVICE_READY_OFFSET:
         qemu_log_mask(LOG_GUEST_ERROR,
                       "writing a read only register: 0x%2.2X, page 0x%2.2X\n",
                       s->addr, s->current_page);
@@ -238,6 +254,11 @@ static void si5341_reset(DeviceState *dev)
     s->regs[SI5341_PN_BASE_OFFSET(0)] = 0x41;
     s->regs[SI5341_GRADE_OFFSET] = 0x00;
     s->regs[SI5341_DEVICE_REV_OFFSET] = 0x00;
+
+    /*
+     * Put the device in a READY state.
+     */
+    s->regs[SI5341_DEVICE_READY_OFFSET] = 0x0F;
 
     /*
      * Clock input, can be IN0, IN1, IN2 or XA/XB set from property.
