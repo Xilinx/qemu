@@ -479,6 +479,9 @@ static void arm_cpu_reset(DeviceState *dev)
     }
 #endif
 
+    cpu->is_in_wfi = false;
+    qemu_set_irq(cpu->wfi, cpu->is_in_wfi);
+
     hw_breakpoint_update_all(cpu);
     hw_watchpoint_update_all(cpu);
 
