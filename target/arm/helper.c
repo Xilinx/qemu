@@ -12395,12 +12395,26 @@ bool pmsav8_mpu_lookup(CPUARMState *env, uint32_t address,
 
         for (n = (int)cpu->pmsav7_dregion - 1; n >= 0; n--) {
             /* region search */
-            /* Note that the base address is bits [31:5] from the register
-             * with bits [4:0] all zeroes, but the limit address is bits
-             * [31:5] from the register with bits [4:0] all ones.
-             */
-            uint32_t base = env->pmsav8.rbar[secure][n] & ~0x1f;
-            uint32_t limit = env->pmsav8.rlar[secure][n] | 0x1f;
+            uint32_t mask;
+            uint32_t base;
+            uint32_t limit;
+
+            if (arm_feature(env, ARM_FEATURE_M)) {
+                /* Note that the base address is bits [31:5] from the register
+                 * with bits [4:0] all zeroes, but the limit address is bits
+                 * [31:5] from the register with bits [4:0] all ones.
+                 */
+                 mask = 0x1f;
+            } else {
+                /* On R profile the base address is bits [31:6] from the register
+                 * with bits [5:0] all zeroes, but the limit address is bits
+                 * [31:6] from the register with bits [5:0] all ones.
+                 */
+                mask = 0x3f;
+            }
+
+            base = env->pmsav8.rbar[secure][n] & ~mask;
+            limit = env->pmsav8.rlar[secure][n] | mask;
 
             if (!(env->pmsav8.rlar[secure][n] & 0x1)) {
                 /* Region disabled */
