@@ -84,7 +84,8 @@ softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL', if_true: files(
   'xlnx-versal-psm-error-management.c',
   'xlnx-versal-cpm5-crx.c',
   'xlnx-versal-cpm5-slcr-secure.c',
-  'xlnx-versal-gtyp-npi-slave.c'
+  'xlnx-versal-gtyp-npi-slave.c',
+  'xlnx-versal-vdu-npi.c'
 ))
 
 softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL_PMC', if_true: files(
