@@ -1060,22 +1060,22 @@ static void pmc_err_int_dis(RegisterInfo *reg, uint64_t val)
     case A_PMC_ERR_OUT1_DIS:
         s->regs[R_PMC_ERR_OUT1_MASK] |= val32;
         break;
-    case A_PMC_ERR_OUT2_EN:
+    case A_PMC_ERR_OUT2_DIS:
         s->regs[R_PMC_ERR_OUT2_MASK] |= val32;
         break;
-    case A_PMC_POR1_EN:
+    case A_PMC_POR1_DIS:
         s->regs[R_PMC_POR1_MASK] |= val32;
         break;
-    case A_PMC_IRQ1_EN:
+    case A_PMC_IRQ1_DIS:
         s->regs[R_PMC_IRQ1_MASK] |= val32;
         break;
-    case A_PMC_IRQ2_EN:
+    case A_PMC_IRQ2_DIS:
         s->regs[R_PMC_IRQ2_MASK] |= val32;
         break;
-    case A_PMC_SRST1_EN:
+    case A_PMC_SRST1_DIS:
         s->regs[R_PMC_SRST1_MASK] |= val32;
         break;
-    case A_PMC_SRST2_EN:
+    case A_PMC_SRST2_DIS:
         s->regs[R_PMC_SRST2_MASK] |= val32;
         break;
     };
