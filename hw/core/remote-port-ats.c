@@ -379,7 +379,7 @@ static void rp_ats_class_init(ObjectClass *oc, void *data)
 
 static const TypeInfo rp_ats_info = {
     .name          = TYPE_REMOTE_PORT_ATS,
-    .parent        = TYPE_SYS_BUS_DEVICE,
+    .parent        = TYPE_DEVICE,
     .instance_size = sizeof(RemotePortATS),
     .instance_init = rp_ats_init,
     .class_init    = rp_ats_class_init,
