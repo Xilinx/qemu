@@ -59,6 +59,7 @@ specific_ss.add(when: 'CONFIG_REMOTE_PORT', if_true: files(
 specific_ss.add(when: 'CONFIG_REMOTE_PORT_PCI', if_true: files(
   'remote-port-pci-adaptor.c',
   'remote-port-pci-device.c',
+  'remote-port-pcie-root-port.c',
 ))
 
 specific_ss.add(when: 'CONFIG_SOFTMMU', if_true: files(
