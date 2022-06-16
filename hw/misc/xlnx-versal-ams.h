@@ -7,7 +7,37 @@
 #ifndef XLNX_VERSAL_AMS_H
 #define XLNX_VERSAL_AMS_H
 
-#include "qemu/osdep.h"
+#include "qemu/typedefs.h"
+
+/*
+ * Tamper events are delivered to responder by setting its property
+ * with bits of occurring events
+ */
+#define XLNX_AMS_TAMPER_PROP "tamper-events"
+
+enum {
+    /* Analog (volt and temp) device-tampering events */
+    XLNX_AMS_VOLT_ALARMS_MASK = 255,       /* PMC_SYSMON.REG_ISR.ALARM7..0 */
+    XLNX_AMS_VOLT_0_ALARM_MASK = 1 << 0,
+    XLNX_AMS_VOLT_1_ALARM_MASK = 1 << 1,
+    XLNX_AMS_VOLT_2_ALARM_MASK = 1 << 2,
+    XLNX_AMS_VOLT_3_ALARM_MASK = 1 << 3,
+    XLNX_AMS_VOLT_4_ALARM_MASK = 1 << 4,
+    XLNX_AMS_VOLT_5_ALARM_MASK = 1 << 5,
+    XLNX_AMS_VOLT_6_ALARM_MASK = 1 << 6,
+    XLNX_AMS_VOLT_7_ALARM_MASK = 1 << 7,
+
+    XLNX_AMS_TEMP_ALARM_MASK = 1 << 8,     /* PMC_SYSMON.REG_ISR.(TEMP | OT) */
+
+    XLNX_AMS_VCCINT_GLITCHES_MASK = 3 << 9,/* PMC_ANALOG.GLITCH_DET_STATUS */
+    XLNX_AMS_VCCINT_0_GLITCH_MASK = 1 << 9,
+    XLNX_AMS_VCCINT_1_GLITCH_MASK = 1 << 10,
+
+    /* Digital tampering events */
+    XLNX_AMS_DBG_TAMPER_TRIG_MASK = 1 << 11,
+    XLNX_AMS_MIO_TAMPER_TRIG_MASK = 1 << 12,
+    XLNX_AMS_SW_TAMPER_TRIG_MASK  = 1 << 13,
+};
 
 typedef struct {
     Object *sat;
