@@ -3357,6 +3357,8 @@ typedef struct PMCSysMon {
     Object *ams_sat[2];
     uint32_t ams_sat_ready[1];  /* bit-array, indexed by CHANNEL_xxx macros */
 
+    Object *tamper_sink;
+
     /*
      * Measurement injection list pending for playback/replay upon
      * a satellite transitioning to ready state.
@@ -3710,6 +3712,51 @@ static uint64_t reg_isr_prew(RegisterInfo *reg, uint64_t val64)
     return val64 | s->events;
 }
 
+static void pmc_sysmon_event_tamper(PMCSysMon *s, uint32_t isr_mask)
+{
+    g_autofree Error *err = NULL;
+    uint32_t alarms, events;
+
+    static const uint32_t tamper_map[32] = {
+        [R_REG_ISR_ALARM0_SHIFT] = XLNX_AMS_VOLT_0_ALARM_MASK,
+        [R_REG_ISR_ALARM1_SHIFT] = XLNX_AMS_VOLT_1_ALARM_MASK,
+        [R_REG_ISR_ALARM2_SHIFT] = XLNX_AMS_VOLT_2_ALARM_MASK,
+        [R_REG_ISR_ALARM3_SHIFT] = XLNX_AMS_VOLT_3_ALARM_MASK,
+        [R_REG_ISR_ALARM4_SHIFT] = XLNX_AMS_VOLT_4_ALARM_MASK,
+        [R_REG_ISR_ALARM5_SHIFT] = XLNX_AMS_VOLT_5_ALARM_MASK,
+        [R_REG_ISR_ALARM6_SHIFT] = XLNX_AMS_VOLT_6_ALARM_MASK,
+        [R_REG_ISR_ALARM7_SHIFT] = XLNX_AMS_VOLT_7_ALARM_MASK,
+        [R_REG_ISR_OT_SHIFT]     = XLNX_AMS_TEMP_ALARM_MASK,
+        [R_REG_ISR_TEMP_SHIFT]   = XLNX_AMS_TEMP_ALARM_MASK,
+    };
+
+    if (!s->tamper_sink) {
+        return;
+    }
+
+    for (events = 0, alarms = isr_mask; alarms; ) {
+        uint32_t bit_nr = ctz32(alarms);
+
+        events |= tamper_map[bit_nr];
+        alarms &= ~(1 << bit_nr);
+    }
+
+    if (!events) {
+        return;
+    }
+
+    object_property_set_uint(s->tamper_sink,
+                             XLNX_AMS_TAMPER_PROP, events, &err);
+    if (err) {
+        g_autofree char *p_dev = object_get_canonical_path(OBJECT(s));
+        g_autofree char *p_sink = object_get_canonical_path(s->tamper_sink);
+
+        warn_report("%s: Fail to send alarms 0x%03x as "
+                    "tampering events to %s: %s",
+                    p_dev, isr_mask, p_sink, error_get_pretty(err));
+    }
+}
+
 static void pmc_sysmon_event_clear(PMCSysMon *s, uint32_t isr_mask)
 {
     s->events &= ~isr_mask;
@@ -3717,6 +3764,8 @@ static void pmc_sysmon_event_clear(PMCSysMon *s, uint32_t isr_mask)
 
 static void pmc_sysmon_event_set(PMCSysMon *s, uint32_t isr_mask)
 {
+    pmc_sysmon_event_tamper(s, isr_mask); /* non-maskable */
+
     s->events |= isr_mask;
 
     if (!(s->regs[R_REG_ISR] & isr_mask)) {
@@ -4279,6 +4328,8 @@ static uint64_t reg_itr_prew(RegisterInfo *reg, uint64_t val64)
 {
     PMCSysMon *s = PMC_SYSMON(reg->opaque);
     uint32_t val = val64;
+
+    pmc_sysmon_event_tamper(s, val);
 
     s->regs[R_REG_ISR] |= val;
     reg_isr_update_irq(s);
@@ -8274,6 +8325,13 @@ static void pmc_sysmon_realize(DeviceState *dev, Error **errp)
             xlnx_ams_sat_instance_set(s->ams_sat[nr], nr, OBJECT(s));
         }
     }
+
+    if (!s->tamper_sink) {
+        g_autofree char *p = object_get_canonical_path(OBJECT(s));
+
+        warn_report("%s.tamper-sink: Missing link disables "
+                    "support for alarm events as tampering", p);
+    }
 }
 
 static void pmc_sysmon_init(Object *obj)
@@ -8827,6 +8885,8 @@ static Property pmc_sysmon_properties[] = {
                      TYPE_XLNX_EFUSE_SYSMON_DATA_SOURCE, Object *),
     DEFINE_PROP_LINK("ams-sat0", PMCSysMon, ams_sat[0], TYPE_OBJECT, Object *),
     DEFINE_PROP_LINK("ams-sat1", PMCSysMon, ams_sat[1], TYPE_OBJECT, Object *),
+    DEFINE_PROP_LINK("tamper-sink", PMCSysMon, tamper_sink,
+                     TYPE_OBJECT, Object *),
 
     DEFINE_PROP_END_OF_LIST(),
 };
