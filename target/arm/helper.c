@@ -8644,19 +8644,29 @@ void register_cp_regs_for_features(ARMCPU *cpu)
             assert(arm_feature(env, ARM_FEATURE_CBAR_RO));
             define_arm_cp_regs(cpu, cbar_reginfo);
         } else {
-            ARMCPRegInfo cbar = {
-                .name = "CBAR",
-                .cp = 15, .crn = 15, .crm = 0, .opc1 = 4, .opc2 = 0,
-                .access = PL1_R|PL3_W, .resetvalue = cpu->reset_cbar,
-                .fieldoffset = offsetof(CPUARMState,
-                                        cp15.c15_config_base_address)
-            };
-            if (arm_feature(env, ARM_FEATURE_CBAR_RO)) {
-                cbar.access = PL1_R;
-                cbar.fieldoffset = 0;
-                cbar.type = ARM_CP_CONST;
+            if (arm_feature(env, ARM_FEATURE_V8)) {
+                ARMCPRegInfo cbar = {
+                    .name = "CBAR",
+                    .type = ARM_CP_CONST,
+                    .cp = 15, .crn = 15, .crm = 3, .opc1 = 1, .opc2 = 0,
+                    .access = PL1_R | PL2_R, .resetvalue = cpu->reset_cbar
+                };
+                define_one_arm_cp_reg(cpu, &cbar);
+            } else {
+                ARMCPRegInfo cbar = {
+                    .name = "CBAR",
+                    .cp = 15, .crn = 15, .crm = 0, .opc1 = 4, .opc2 = 0,
+                    .access = PL1_R|PL3_W, .resetvalue = cpu->reset_cbar,
+                    .fieldoffset = offsetof(CPUARMState,
+                                            cp15.c15_config_base_address)
+                };
+                if (arm_feature(env, ARM_FEATURE_CBAR_RO)) {
+                    cbar.access = PL1_R;
+                    cbar.fieldoffset = 0;
+                    cbar.type = ARM_CP_CONST;
+                }
+                define_one_arm_cp_reg(cpu, &cbar);
             }
-            define_one_arm_cp_reg(cpu, &cbar);
         }
     }
 

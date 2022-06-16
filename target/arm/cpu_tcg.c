@@ -808,6 +808,7 @@ static void cortex_r52_initfn(Object *obj)
     set_feature(&cpu->env, ARM_FEATURE_EL2);
     set_feature(&cpu->env, ARM_FEATURE_PMSA);
     set_feature(&cpu->env, ARM_FEATURE_PMU);
+    set_feature(&cpu->env, ARM_FEATURE_CBAR_RO);
     cpu->pmsav7_dregion = 16;
     cpu->midr = 0x411fd132; /* r1p2 */
     cpu->isar.id_pfr0 = 0x0131;
