@@ -48,6 +48,7 @@ DECLARE_CLASS_CHECKERS(XlnxEFuseSysmonDataSourceClass,
 typedef struct XlnxEFuseSysmonData {
     uint32_t rdata_low;
     uint32_t rdata_high;
+    uint32_t glitch_monitor_en:1;
 } XlnxEFuseSysmonData;
 
 struct XlnxEFuseSysmonDataSourceClass {

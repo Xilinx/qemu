@@ -138,6 +138,7 @@ static void efuse_cache_sysmon_data_source(Object *obj,
     /* Must provide data without access screening */
     data->rdata_low = efuse_get_row(s->efuse, (59 * 32));
     data->rdata_high = efuse_get_row(s->efuse, (60 * 32));
+    data->glitch_monitor_en = efuse_get_bit(s->efuse, (40 * 32 + 29));
 }
 
 static void efuse_cache_class_init(ObjectClass *klass, void *data)
