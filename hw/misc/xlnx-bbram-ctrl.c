@@ -563,6 +563,35 @@ static Property bbram_ctrl_props[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
+static void bbram_ctrl_erase_prop_set(Object *obj, Visitor *v,
+                                      const char *name, void *opaque,
+                                      Error **errp)
+{
+    bool do_erase = false;
+
+    visit_type_bool(v, name, &do_erase, errp);
+    if (*errp) {
+        return;
+    }
+
+    if (do_erase) {
+        bbram_zeroize(XILINX_BBRAM_CTRL(obj));
+    }
+}
+
+static void bbram_ctrl_erase_prop_add(ObjectClass *klass)
+{
+    static const char prop_name[] = "erase";
+
+    object_class_property_add(klass, prop_name, "bool",
+                              NULL, /* non-gettable */
+                              bbram_ctrl_erase_prop_set,
+                              NULL, /* nothing to release */
+                              NULL);
+    object_class_property_set_description(klass, prop_name,
+                                          "Set true to erase entire bbram");
+}
+
 static void bbram_ctrl_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -571,6 +600,7 @@ static void bbram_ctrl_class_init(ObjectClass *klass, void *data)
     dc->realize = bbram_ctrl_realize;
     dc->vmsd = &vmstate_bbram_ctrl;
     device_class_set_props(dc, bbram_ctrl_props);
+    bbram_ctrl_erase_prop_add(klass);
 }
 
 static const TypeInfo bbram_ctrl_info = {
