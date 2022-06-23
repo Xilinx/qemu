@@ -699,11 +699,13 @@ void gicv3_redist_send_sgi(GICv3CPUState *cs, int grp, int irq, bool ns)
     /* Update redistributor state for a generated SGI */
     int irqgrp = gicv3_irq_group(cs->gic, cs, irq);
 
-    /* If we are asked for a Secure Group 1 SGI and it's actually
+    /* If we are asked for a Secure/Non-Secure Group 1 SGI and it's actually
      * configured as Secure Group 0 this is OK (subject to the usual
      * NSACR checks).
+     * Ref: GICV3 architecture spec "12.1.10 Use of control registers for SGI
+     * forwarding"
      */
-    if (grp == GICV3_G1 && irqgrp == GICV3_G0) {
+    if ((grp == GICV3_G1NS || grp == GICV3_G1) && irqgrp == GICV3_G0) {
         grp = GICV3_G0;
     }
 
