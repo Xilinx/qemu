@@ -1611,6 +1611,7 @@ static const RegisterAccessInfo pmx_global_regs_info[] = {
     },{ .name = "PL_STATUS",  .addr = A_PL_STATUS,
         .rsvd = 0xfffffffe,
         .ro = 0xffffffff,
+        .reset = R_PL_STATUS_POR_PL_B_MASK,
     },{ .name = "DONE",  .addr = A_DONE,
     },{ .name = "PMC_PL_GPO",  .addr = A_PMC_PL_GPO,
     },{ .name = "PMC_PPU1_GPI",  .addr = A_PMC_PPU1_GPI,
