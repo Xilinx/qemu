@@ -167,7 +167,8 @@ static uint64_t rp_root_port_io_read(void *opaque, hwaddr addr, unsigned size)
         .size = (size < 4) ? size : 4,
     };
 
-    rp_mm_access(p->rp, RPDEV_PCI_BAR_BASE, p->peer, &tr, true, 0);
+    rp_mm_access_with_def_attr(p->rp, RPDEV_PCI_BAR_BASE, p->peer, &tr, true, 0,
+                               RP_BUS_ATTR_IO_ACCESS);
 
     return tr.data.u32;
 }
@@ -183,7 +184,8 @@ static void rp_root_port_io_write(void *opaque, hwaddr addr, uint64_t data,
         .size = (size < 4) ? size : 4,
     };
 
-    rp_mm_access(p->rp, RPDEV_PCI_BAR_BASE, p->peer, &tr, true, 0);
+    rp_mm_access_with_def_attr(p->rp, RPDEV_PCI_BAR_BASE, p->peer, &tr, true, 0,
+                               RP_BUS_ATTR_IO_ACCESS);
 }
 
 static const MemoryRegionOps rp_root_port_mem_ops = {
