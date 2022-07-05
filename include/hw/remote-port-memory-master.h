@@ -48,4 +48,10 @@ MemTxResult rp_mm_access(RemotePort *rp, uint32_t rp_dev,
                          struct rp_peer_state *peer,
                          MemoryTransaction *tr,
                          bool relative, uint64_t offset);
+
+MemTxResult rp_mm_access_with_def_attr(RemotePort *rp, uint32_t rp_dev,
+                                       struct rp_peer_state *peer,
+                                       MemoryTransaction *tr,
+                                       bool relative, uint64_t offset,
+                                       uint32_t def_attr);
 #endif
