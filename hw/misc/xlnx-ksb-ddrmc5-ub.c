@@ -142,6 +142,7 @@ static const RegisterAccessInfo ddrmc5_ub_regs_info[] = {
         .reset = 0x100047e,
         .rsvd = 0xe0e07900,
         .ro = 0xe07900,
+        .post_write = ddrmc_pcsr_ctrl_postw,
     },{ .name = "DDRMC_PCSR_STATUS",  .addr = A_DDRMC_PCSR_STATUS,
         .reset = 0x1 |
                  R_DDRMC_PCSR_STATUS_SCAN_CLEAR_DONE_MASK |
@@ -155,7 +156,6 @@ static const RegisterAccessInfo ddrmc5_ub_regs_info[] = {
                  R_DDRMC_PCSR_STATUS_KAT_PASS_MASK,
         .rsvd = 0xfe00c000,
         .ro = 0x1ffffff,
-        .post_write = ddrmc_pcsr_ctrl_postw,
     },{ .name = "DDRMC_PCSR_LOCK",  .addr = A_DDRMC_PCSR_LOCK,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
