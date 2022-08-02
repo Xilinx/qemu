@@ -145,7 +145,8 @@ softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL', if_true: files(
   'xlnx-ksb-apu-pcil.c',
   'xlnx-ksb-ddrmc5-ub.c',
   'xlnx-hnicx-npi.c',
-  'xlnx-ksb-pmx-error-management.c'
+  'xlnx-ksb-pmx-error-management.c',
+  'xlnx-versal-net-rpu-pcil.c'
 ))
 
 softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL_PMC', if_true: files(
