@@ -1070,7 +1070,7 @@ static void psmx_local_reg_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_psmx_local_reg;
     rc->phases.enter = psmx_local_reg_reset_enter;
     rc->phases.hold = psmx_local_reg_reset_hold;
-    fggc->client_gpios = psmx_local_reg_gpios;
+    fggc->controller_gpios = psmx_local_reg_gpios;
 }
 
 static const TypeInfo psmx_local_reg_info = {
