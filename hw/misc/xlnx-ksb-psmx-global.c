@@ -32,6 +32,7 @@
 #include "qemu/log.h"
 #include "migration/vmstate.h"
 #include "hw/irq.h"
+#include "hw/fdt_generic_util.h"
 
 #ifndef XILINX_PSMX_GLOBAL_REG_ERR_DEBUG
 #define XILINX_PSMX_GLOBAL_REG_ERR_DEBUG 0
@@ -2820,15 +2821,42 @@ static const VMStateDescription vmstate_psmx_global_reg = {
     }
 };
 
+static const FDTGenericGPIOSet psmx_local_reg_gpios[] = {
+    {
+        .names = &fdt_generic_gpio_name_set_gpio,
+        .gpios = (FDTGenericGPIOConnection[]) {
+            { .name = "pwr-state0", .fdt_index = 0, .range = 35 },
+            { .name = "aux-pwr-state", .fdt_index = 35, .range = 32 },
+            { },
+        },
+    },
+    { },
+};
+
+static const FDTGenericGPIOSet psmx_local_controller_gpios[] = {
+    {
+        .names = &fdt_generic_gpio_name_set_gpio,
+        .gpios = (FDTGenericGPIOConnection[]) {
+            { .name = "apu-wfi", .fdt_index = 67, .range = 16 },
+            { .name = "rpu-wfi", .fdt_index = 83, .range = 4 },
+            { },
+        },
+    },
+    { },
+};
+
 static void psmx_global_reg_class_init(ObjectClass *klass, void *data)
 {
     ResettableClass *rc = RESETTABLE_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
+    FDTGenericGPIOClass *fggc = FDT_GENERIC_GPIO_CLASS(klass);
 
     dc->realize = psmx_global_reg_realize;
     dc->vmsd = &vmstate_psmx_global_reg;
     rc->phases.enter = psmx_global_reg_reset_enter;
     rc->phases.hold = psmx_global_reg_reset_hold;
+    fggc->client_gpios = psmx_local_reg_gpios;
+    fggc->controller_gpios = psmx_local_controller_gpios;
 }
 
 static const TypeInfo psmx_global_reg_info = {
@@ -2837,6 +2865,10 @@ static const TypeInfo psmx_global_reg_info = {
     .instance_size = sizeof(PSMX_GLOBAL_REG),
     .class_init    = psmx_global_reg_class_init,
     .instance_init = psmx_global_reg_init,
+    .interfaces    = (InterfaceInfo[]) {
+        { TYPE_FDT_GENERIC_GPIO },
+        { }
+    },
 };
 
 static void psmx_global_reg_register_types(void)
