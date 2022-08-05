@@ -32,6 +32,7 @@
 #include "migration/vmstate.h"
 #include "hw/irq.h"
 #include "hw/fdt_generic_util.h"
+#include "hw/arm/linux-boot-if.h"
 
 #ifndef XILINX_PSMX_LOCAL_REG_ERR_DEBUG
 #define XILINX_PSMX_LOCAL_REG_ERR_DEBUG 0
@@ -470,6 +471,7 @@ typedef struct PSMX_LOCAL_REG {
     qemu_irq loc_pwr_state1[3];
     qemu_irq loc_aux_pwr_state[32];
 
+    bool linux_direct_boot;
     uint32_t regs[PSMX_LOCAL_REG_R_MAX];
     RegisterInfo regs_info[PSMX_LOCAL_REG_R_MAX];
 } PSMX_LOCAL_REG;
@@ -492,52 +494,54 @@ typedef struct PSMX_LOCAL_REG {
 
 static void psmx_update_pwr_status(PSMX_LOCAL_REG *s)
 {
-    /* APU0 */
-    PROPAGATE_FIELD1(s, APU0_CORE0_PWR_CNTRL, PWR_GATES,
-                       APU0_CORE0_PWR_STATUS, PWR_GATES, s->pwr_apu0[0]);
-    PROPAGATE_FIELD1(s, APU0_CORE1_PWR_CNTRL, PWR_GATES,
-                       APU0_CORE1_PWR_STATUS, PWR_GATES, s->pwr_apu0[1]);
-    PROPAGATE_FIELD1(s, APU0_CORE2_PWR_CNTRL, PWR_GATES,
-                       APU0_CORE2_PWR_STATUS, PWR_GATES, s->pwr_apu0[2]);
-    PROPAGATE_FIELD1(s, APU0_CORE3_PWR_CNTRL, PWR_GATES,
-                       APU0_CORE3_PWR_STATUS, PWR_GATES, s->pwr_apu0[3]);
-    /* APU1 */
-    PROPAGATE_FIELD1(s, APU1_CORE0_PWR_CNTRL, PWR_GATES,
-                       APU1_CORE0_PWR_STATUS, PWR_GATES, s->pwr_apu1[0]);
-    PROPAGATE_FIELD1(s, APU1_CORE1_PWR_CNTRL, PWR_GATES,
-                       APU1_CORE1_PWR_STATUS, PWR_GATES, s->pwr_apu1[1]);
-    PROPAGATE_FIELD1(s, APU1_CORE2_PWR_CNTRL, PWR_GATES,
-                       APU1_CORE2_PWR_STATUS, PWR_GATES, s->pwr_apu1[2]);
-    PROPAGATE_FIELD1(s, APU1_CORE3_PWR_CNTRL, PWR_GATES,
-                       APU1_CORE3_PWR_STATUS, PWR_GATES, s->pwr_apu1[3]);
-    /* APU2 */
-    PROPAGATE_FIELD1(s, APU2_CORE0_PWR_CNTRL, PWR_GATES,
-                       APU2_CORE0_PWR_STATUS, PWR_GATES, s->pwr_apu2[0]);
-    PROPAGATE_FIELD1(s, APU2_CORE1_PWR_CNTRL, PWR_GATES,
-                       APU2_CORE1_PWR_STATUS, PWR_GATES, s->pwr_apu2[1]);
-    PROPAGATE_FIELD1(s, APU2_CORE2_PWR_CNTRL, PWR_GATES,
-                       APU2_CORE2_PWR_STATUS, PWR_GATES, s->pwr_apu2[2]);
-    PROPAGATE_FIELD1(s, APU2_CORE3_PWR_CNTRL, PWR_GATES,
-                       APU2_CORE3_PWR_STATUS, PWR_GATES, s->pwr_apu2[3]);
-    /* APU3 */
-    PROPAGATE_FIELD1(s, APU3_CORE0_PWR_CNTRL, PWR_GATES,
-                       APU3_CORE0_PWR_STATUS, PWR_GATES, s->pwr_apu3[0]);
-    PROPAGATE_FIELD1(s, APU3_CORE1_PWR_CNTRL, PWR_GATES,
-                       APU3_CORE1_PWR_STATUS, PWR_GATES, s->pwr_apu3[1]);
-    PROPAGATE_FIELD1(s, APU3_CORE2_PWR_CNTRL, PWR_GATES,
-                       APU3_CORE2_PWR_STATUS, PWR_GATES, s->pwr_apu3[2]);
-    PROPAGATE_FIELD1(s, APU3_CORE3_PWR_CNTRL, PWR_GATES,
-                       APU3_CORE3_PWR_STATUS, PWR_GATES, s->pwr_apu3[3]);
-    /* RPU A */
-    PROPAGATE_FIELD1(s, RPU_A_CORE0_PWR_CNTRL, PWR_GATES,
-                       RPU_A_CORE0_PWR_STATUS, PWR_GATES, s->pwr_rpu_a[0]);
-    PROPAGATE_FIELD1(s, RPU_A_CORE1_PWR_CNTRL, PWR_GATES,
-                       RPU_A_CORE1_PWR_STATUS, PWR_GATES, s->pwr_rpu_a[1]);
-    /* RPU B */
-    PROPAGATE_FIELD1(s, RPU_B_CORE0_PWR_CNTRL, PWR_GATES,
-                       RPU_B_CORE0_PWR_STATUS, PWR_GATES, s->pwr_rpu_b[0]);
-    PROPAGATE_FIELD1(s, RPU_B_CORE1_PWR_CNTRL, PWR_GATES,
-                       RPU_B_CORE1_PWR_STATUS, PWR_GATES, s->pwr_rpu_b[1]);
+    if (!s->linux_direct_boot) {
+        /* APU0 */
+        PROPAGATE_FIELD1(s, APU0_CORE0_PWR_CNTRL, PWR_GATES,
+                           APU0_CORE0_PWR_STATUS, PWR_GATES, s->pwr_apu0[0]);
+        PROPAGATE_FIELD1(s, APU0_CORE1_PWR_CNTRL, PWR_GATES,
+                           APU0_CORE1_PWR_STATUS, PWR_GATES, s->pwr_apu0[1]);
+        PROPAGATE_FIELD1(s, APU0_CORE2_PWR_CNTRL, PWR_GATES,
+                           APU0_CORE2_PWR_STATUS, PWR_GATES, s->pwr_apu0[2]);
+        PROPAGATE_FIELD1(s, APU0_CORE3_PWR_CNTRL, PWR_GATES,
+                           APU0_CORE3_PWR_STATUS, PWR_GATES, s->pwr_apu0[3]);
+        /* APU1 */
+        PROPAGATE_FIELD1(s, APU1_CORE0_PWR_CNTRL, PWR_GATES,
+                           APU1_CORE0_PWR_STATUS, PWR_GATES, s->pwr_apu1[0]);
+        PROPAGATE_FIELD1(s, APU1_CORE1_PWR_CNTRL, PWR_GATES,
+                           APU1_CORE1_PWR_STATUS, PWR_GATES, s->pwr_apu1[1]);
+        PROPAGATE_FIELD1(s, APU1_CORE2_PWR_CNTRL, PWR_GATES,
+                           APU1_CORE2_PWR_STATUS, PWR_GATES, s->pwr_apu1[2]);
+        PROPAGATE_FIELD1(s, APU1_CORE3_PWR_CNTRL, PWR_GATES,
+                           APU1_CORE3_PWR_STATUS, PWR_GATES, s->pwr_apu1[3]);
+        /* APU2 */
+        PROPAGATE_FIELD1(s, APU2_CORE0_PWR_CNTRL, PWR_GATES,
+                           APU2_CORE0_PWR_STATUS, PWR_GATES, s->pwr_apu2[0]);
+        PROPAGATE_FIELD1(s, APU2_CORE1_PWR_CNTRL, PWR_GATES,
+                           APU2_CORE1_PWR_STATUS, PWR_GATES, s->pwr_apu2[1]);
+        PROPAGATE_FIELD1(s, APU2_CORE2_PWR_CNTRL, PWR_GATES,
+                           APU2_CORE2_PWR_STATUS, PWR_GATES, s->pwr_apu2[2]);
+        PROPAGATE_FIELD1(s, APU2_CORE3_PWR_CNTRL, PWR_GATES,
+                           APU2_CORE3_PWR_STATUS, PWR_GATES, s->pwr_apu2[3]);
+        /* APU3 */
+        PROPAGATE_FIELD1(s, APU3_CORE0_PWR_CNTRL, PWR_GATES,
+                           APU3_CORE0_PWR_STATUS, PWR_GATES, s->pwr_apu3[0]);
+        PROPAGATE_FIELD1(s, APU3_CORE1_PWR_CNTRL, PWR_GATES,
+                           APU3_CORE1_PWR_STATUS, PWR_GATES, s->pwr_apu3[1]);
+        PROPAGATE_FIELD1(s, APU3_CORE2_PWR_CNTRL, PWR_GATES,
+                           APU3_CORE2_PWR_STATUS, PWR_GATES, s->pwr_apu3[2]);
+        PROPAGATE_FIELD1(s, APU3_CORE3_PWR_CNTRL, PWR_GATES,
+                           APU3_CORE3_PWR_STATUS, PWR_GATES, s->pwr_apu3[3]);
+        /* RPU A */
+        PROPAGATE_FIELD1(s, RPU_A_CORE0_PWR_CNTRL, PWR_GATES,
+                           RPU_A_CORE0_PWR_STATUS, PWR_GATES, s->pwr_rpu_a[0]);
+        PROPAGATE_FIELD1(s, RPU_A_CORE1_PWR_CNTRL, PWR_GATES,
+                           RPU_A_CORE1_PWR_STATUS, PWR_GATES, s->pwr_rpu_a[1]);
+        /* RPU B */
+        PROPAGATE_FIELD1(s, RPU_B_CORE0_PWR_CNTRL, PWR_GATES,
+                           RPU_B_CORE0_PWR_STATUS, PWR_GATES, s->pwr_rpu_b[0]);
+        PROPAGATE_FIELD1(s, RPU_B_CORE1_PWR_CNTRL, PWR_GATES,
+                           RPU_B_CORE1_PWR_STATUS, PWR_GATES, s->pwr_rpu_b[1]);
+    }
 
     s->regs[R_APU0_DSU_L3_PWR_STATUS] = s->regs[R_APU0_DSU_L3_PWR_CNTRL];
     s->regs[R_APU1_DSU_L3_PWR_STATUS] = s->regs[R_APU1_DSU_L3_PWR_CNTRL];
@@ -980,6 +984,40 @@ static void psmx_local_reg_reset_hold(Object *obj)
     psmx_update_pwr_status(s);
 }
 
+static void psmx_local_linux_boot_if_init(ARMLinuxBootIf *obj, bool secure_boot)
+{
+    PSMX_LOCAL_REG *s = XILINX_PSMX_LOCAL_REG(obj);
+
+    ARRAY_FIELD_DP32(s->regs, APU0_CORE0_PWR_CNTRL, PWR_GATES, 0);
+    ARRAY_FIELD_DP32(s->regs, APU0_CORE1_PWR_CNTRL, PWR_GATES, 0);
+    ARRAY_FIELD_DP32(s->regs, APU0_CORE2_PWR_CNTRL, PWR_GATES, 0);
+    ARRAY_FIELD_DP32(s->regs, APU0_CORE3_PWR_CNTRL, PWR_GATES, 0);
+
+    ARRAY_FIELD_DP32(s->regs, APU1_CORE0_PWR_CNTRL, PWR_GATES, 0);
+    ARRAY_FIELD_DP32(s->regs, APU1_CORE1_PWR_CNTRL, PWR_GATES, 0);
+    ARRAY_FIELD_DP32(s->regs, APU1_CORE2_PWR_CNTRL, PWR_GATES, 0);
+    ARRAY_FIELD_DP32(s->regs, APU1_CORE3_PWR_CNTRL, PWR_GATES, 0);
+
+    ARRAY_FIELD_DP32(s->regs, APU2_CORE0_PWR_CNTRL, PWR_GATES, 0);
+    ARRAY_FIELD_DP32(s->regs, APU2_CORE1_PWR_CNTRL, PWR_GATES, 0);
+    ARRAY_FIELD_DP32(s->regs, APU2_CORE2_PWR_CNTRL, PWR_GATES, 0);
+    ARRAY_FIELD_DP32(s->regs, APU2_CORE3_PWR_CNTRL, PWR_GATES, 0);
+
+    ARRAY_FIELD_DP32(s->regs, APU3_CORE0_PWR_CNTRL, PWR_GATES, 0);
+    ARRAY_FIELD_DP32(s->regs, APU3_CORE1_PWR_CNTRL, PWR_GATES, 0);
+    ARRAY_FIELD_DP32(s->regs, APU3_CORE2_PWR_CNTRL, PWR_GATES, 0);
+    ARRAY_FIELD_DP32(s->regs, APU3_CORE3_PWR_CNTRL, PWR_GATES, 0);
+
+    ARRAY_FIELD_DP32(s->regs, RPU_A_CORE0_PWR_CNTRL, PWR_GATES, 0);
+    ARRAY_FIELD_DP32(s->regs, RPU_A_CORE1_PWR_CNTRL, PWR_GATES, 0);
+
+    ARRAY_FIELD_DP32(s->regs, RPU_B_CORE0_PWR_CNTRL, PWR_GATES, 0);
+    ARRAY_FIELD_DP32(s->regs, RPU_B_CORE1_PWR_CNTRL, PWR_GATES, 0);
+    psmx_update_pwr_status(s);
+
+    s->linux_direct_boot = true;
+}
+
 static const MemoryRegionOps psmx_local_reg_ops = {
     .read = register_read_memory,
     .write = register_write_memory,
@@ -1066,11 +1104,13 @@ static void psmx_local_reg_class_init(ObjectClass *klass, void *data)
     ResettableClass *rc = RESETTABLE_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
     FDTGenericGPIOClass *fggc = FDT_GENERIC_GPIO_CLASS(klass);
+    ARMLinuxBootIfClass *albifc = ARM_LINUX_BOOT_IF_CLASS(klass);
 
     dc->vmsd = &vmstate_psmx_local_reg;
     rc->phases.enter = psmx_local_reg_reset_enter;
     rc->phases.hold = psmx_local_reg_reset_hold;
     fggc->controller_gpios = psmx_local_reg_gpios;
+    albifc->arm_linux_init = psmx_local_linux_boot_if_init;
 }
 
 static const TypeInfo psmx_local_reg_info = {
@@ -1081,6 +1121,7 @@ static const TypeInfo psmx_local_reg_info = {
     .instance_init = psmx_local_reg_init,
     .interfaces    = (InterfaceInfo[]) {
         { TYPE_FDT_GENERIC_GPIO },
+        { TYPE_ARM_LINUX_BOOT_IF },
         { }
     },
 };
