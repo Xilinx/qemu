@@ -129,9 +129,9 @@ softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL_PMC', if_true: files(
   'sss-pmc.c'))
 
 specific_ss.add(when: 'CONFIG_XLNX_ZYNQMP_ARM', if_true: files(
-  'xlnx-ksb-rpu-cluster.c',
-  'xlnx-ksb-rpu-cluster-core0.c',
-  'xlnx-ksb-rpu-cluster-core1.c'
+  'xlnx-versal-net-rpu-cluster.c',
+  'xlnx-versal-net-rpu-cluster-core0.c',
+  'xlnx-versal-net-rpu-cluster-core1.c'
 ))
 
 softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL', if_true: files(
@@ -139,13 +139,13 @@ softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL', if_true: files(
   'xlnx-versal-psx-crf.c',
   'xlnx-versal-psx-crl.c',
   'xlnx-versal-psx-pki-rng.c',
-  'xlnx-ksb-psmx-global.c',
-  'xlnx-ksb-psmx-local.c',
-  'xlnx-ksb-psmx-error-management.c',
-  'xlnx-ksb-apu-pcil.c',
-  'xlnx-ksb-ddrmc5-ub.c',
+  'xlnx-versal-net-psmx-global.c',
+  'xlnx-versal-net-psmx-local.c',
+  'xlnx-versal-net-psmx-error-management.c',
+  'xlnx-versal-net-apu-pcil.c',
+  'xlnx-versal-net-ddrmc5-ub.c',
   'xlnx-hnicx-npi.c',
-  'xlnx-ksb-pmx-error-management.c',
+  'xlnx-pmx-error-management.c',
   'xlnx-versal-net-rpu-pcil.c'
 ))
 
