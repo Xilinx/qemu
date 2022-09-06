@@ -608,7 +608,7 @@ static void ss_init(Object *obj)
 
     name = g_strdup_printf(TYPE_SBI "-keyhole");
     memory_region_init_io(&s->iomem_keyhole, obj, &ss_keyhole_ops, s,
-                          name, 1024 * 1024);
+                          name, 64 * 1024);
     sysbus_init_mmio(sbd, &s->iomem);
     sysbus_init_mmio(sbd, &s->iomem_keyhole);
     g_free(name);
