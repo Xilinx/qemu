@@ -420,6 +420,8 @@ typedef struct CPUARMState {
         uint64_t c9_pmselr; /* perf monitor counter selection register */
         uint64_t c9_pminten; /* perf monitor interrupt enables */
         uint32_t c9_pmxevtyper; /* perf monitor event type */
+        uint32_t c9_imp_bpctlr; /* branch predictor control register */
+        uint32_t c9_imp_memprotctlr; /* memory protection control register */
         union { /* Memory attribute redirection */
             struct {
 #ifdef HOST_WORDS_BIGENDIAN
@@ -526,6 +528,16 @@ typedef struct CPUARMState {
         uint64_t tfsr_el[4]; /* tfsre0_el1 is index 0.  */
         uint64_t gcr_el1;
         uint64_t rgsr_el1;
+
+        /* DynamIQ Shared Unit (DSU) Registers.  */
+        struct {
+            uint64_t clusterectrl;
+            uint64_t clusterpwrctrl;
+            uint64_t clusterpwrdn;
+            uint64_t clusterpartcr;
+            uint64_t clusterbusqos;
+            uint64_t clusterthreadsidovr;
+        } dsu;
     } cp15;
 
     struct {
@@ -737,6 +749,13 @@ typedef struct CPUARMState {
         uint32_t rnr;
         uint32_t ctrl;
     } sau;
+
+    struct {
+    /* TCM region registers A, B & C */
+    uint32_t a;
+    uint32_t b;
+    uint32_t c;
+    } tcmregion;
 
     void *nvic;
     const struct arm_boot_info *boot_info;
@@ -1012,6 +1031,8 @@ struct ARMCPU {
     uint32_t dcz_blocksize;
     uint64_t rvbar;
     int pe;
+
+    uint32_t tcmtr;
 
     /* Configurable aspects of GIC cpu interface (which is part of the CPU) */
     int gic_num_lrs; /* number of list registers */

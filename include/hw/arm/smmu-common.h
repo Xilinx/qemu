@@ -29,6 +29,8 @@
 
 #define SMMU_MAX_VA_BITS      48
 
+#define SMMU_MAX_TBU          16
+
 /*
  * Page table walk error types
  */
@@ -71,10 +73,12 @@ typedef struct SMMUTransCfg {
     bool disabled;             /* smmu is disabled */
     bool bypassed;             /* translation is bypassed */
     bool aborted;              /* translation is aborted */
+    bool affd;                 /* Access Flag Fault Disabled */
     uint64_t ttb;              /* TT base address */
+    uint8_t s2_sl0;            /* S2 Start level */
     uint8_t oas;               /* output address width */
     uint8_t tbi;               /* Top Byte Ignore */
-    uint16_t asid;
+    uint32_t asid;
     SMMUTransTableInfo tt[2];
     uint32_t iotlb_hits;       /* counts IOTLB hits for this asid */
     uint32_t iotlb_misses;     /* counts IOTLB misses for this asid */
@@ -86,6 +90,7 @@ typedef struct SMMUDevice {
     int                devfn;
     IOMMUMemoryRegion  iommu;
     AddressSpace       as;
+    AddressSpace       as_downstream;
     uint32_t           cfg_cache_hits;
     uint32_t           cfg_cache_misses;
     QLIST_ENTRY(SMMUDevice) next;
@@ -117,6 +122,11 @@ struct SMMUState {
     QLIST_HEAD(, SMMUDevice) devices_with_notifiers;
     uint8_t bus_num;
     PCIBus *primary_bus;
+
+    struct {
+        MemoryRegion *mr;
+        SMMUDevice *sdev;
+    } tbu[SMMU_MAX_TBU];
 };
 
 struct SMMUBaseClass {

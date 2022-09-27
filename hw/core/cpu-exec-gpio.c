@@ -21,159 +21,95 @@
 #include "qemu/timer.h"
 #include "qemu/log.h"
 #include "sysemu/tcg.h"
+#include "sysemu/cpus.h"
+#include "sysemu/runstate.h"
 #include "hw/irq.h"
 
 #include "cpu.h"
 #include "hw/core/cpu-exec-gpio.h"
 
-static bool cpu_exec_kick(CPUState *cpu)
+static void cpu_set_off(CPUState *cpu, run_on_cpu_data data)
 {
-    int32_t poll_pause = 10 * 1000;   /* both in usecs */
-    int64_t poll_stop  = 100 * 1000 + qemu_clock_get_us(QEMU_CLOCK_HOST);
+    assert(qemu_mutex_iothread_locked());
 
-    bool rc = false;
+    cpu->halted = 1;
+    cpu->exception_index = EXCP_HLT;
 
-    /* More of a hack, especially the need to mimic qemu_cpu_kick_thread() */
-    if (tcg_enabled()) {
-        cpu->thread_kicked = true;
-    }
-    qemu_cpu_kick(cpu);
-
-    /* Need to release iothread lock during polling */
-    qemu_mutex_unlock_iothread();
-
-    for (;;) {
-        if (cpu->thread_kicked == false) {
-            rc = true; /* Don't poll next time */
-            break;
-        }
-
-        if (qemu_clock_get_us(QEMU_CLOCK_HOST) >= poll_stop) {
-            qatomic_mb_set(&cpu->thread_kicked, false);
-            rc = false;
-            break;
-        }
-
-        g_usleep(poll_pause);
-    }
-
-    qemu_mutex_lock_iothread();
-
-    return rc;
+#ifdef TARGET_ARM
+    ARM_CPU(cpu)->power_state = PSCI_OFF;
+#endif
 }
 
-static void cpu_exec_ack(CPUState *cpu, run_on_cpu_data arg)
+static void cpu_set_on(CPUState *cpu, run_on_cpu_data data)
 {
-    /* Do nothing; just to get vCPU out of tb-exec loop */
+    assert(qemu_mutex_iothread_locked());
+
+    cpu->halted = 0;
+
+#ifdef TARGET_ARM
+    ARM_CPU(cpu)->power_state = PSCI_ON;
+#endif
+}
+
+static void cpu_reset_enter(CPUState *cpu, run_on_cpu_data data)
+{
+#ifdef TARGET_ARM
+    ARMCPU *arm_cpu = ARM_CPU(cpu);
+
+    assert(qemu_mutex_iothread_locked());
+    arm_cpu->is_in_wfi = false;
+    qemu_set_irq(arm_cpu->wfi, 0);
+#endif
+}
+
+static void cpu_reset_exit(CPUState *cpu, run_on_cpu_data data)
+{
+    /* Initialize the cpu we are turning on */
+    cpu_reset(cpu);
 }
 
 static void cpu_exec_pin_update(CPUState *cpu, bool reset_pin)
 {
     bool val = reset_pin || cpu->halt_pin || cpu->arch_halt_pin;
+    bool async = runstate_is_running();
 
-    if (val) {
-        cpu_interrupt(cpu, CPU_INTERRUPT_HALT);
-    } else {
-        cpu_reset_interrupt(cpu, CPU_INTERRUPT_HALT);
-        cpu_interrupt(cpu, CPU_INTERRUPT_EXITTB);
-    }
-
-    cpu->exception_index = -1;
-}
-
-static void cpu_exec_pin_sync(CPUState *cpu, bool reset_pin)
-{
     /*
-     * Wire actors external to the targeted vCPU must wait for
-     * the wire-action to be visible to the vCPU to ensure that
-     * the vCPU has abandoned all staled translation buffers.
+     * When the machine is running, we always queue the reset/halt actions
+     * to run on the per-cpu thread.
      *
-     * The possibility that the target vCPU may not be ready to
-     * process async-work makes the wait non-trivial, because:
-     * 1. run_on_cpu() API does not provide timeout, and
-     * 2. async_run_on_cpu() API does not provide cancel, thus
-     *    could lead to memory leak if the vCPU is indeed not
-     *    ready to process async work.
-     *
-     * The solution is to initially poll for kick acknowledge,
-     * and switching to use run_on_cpu() after vCPU can indeed
-     * acknowledge kicking.
+     * When the machine hasn't started yet, we can't do that because we'll
+     * end up overriding settings done by the machine e.g device loader style
+     * resets and start-powered-off.
      */
-    static uint64_t can_run_on_cpu;
-
-    uint64_t cpu_mask;
-    int cpu_index;
-
-    cpu_exec_pin_update(cpu, reset_pin);
-
-    if (cpu == current_cpu) {
-        return; /* self-acting */
-    }
-
-    cpu_index = cpu->cpu_index;
-    assert(cpu_index >= 0 && cpu_index < 64);
-
-    cpu_mask = (uint64_t)1 << cpu_index;
-
-    if ((can_run_on_cpu & cpu_mask) != 0) {
-        run_on_cpu(cpu, cpu_exec_ack, RUN_ON_CPU_NULL);
-    } else if (cpu_exec_kick(cpu)) {
-        can_run_on_cpu |= cpu_mask;
+    if (val) {
+        if (async) {
+            async_run_on_cpu(cpu, cpu_set_off, RUN_ON_CPU_NULL);
+        } else {
+            cpu_interrupt(cpu, CPU_INTERRUPT_HALT);
+        }
+    } else {
+        if (async) {
+            async_run_on_cpu(cpu, cpu_set_on, RUN_ON_CPU_NULL);
+        } else {
+              /* Enabling the core here will override start-powered-off.  */
+             cpu_reset_interrupt(cpu, CPU_INTERRUPT_HALT);
+             cpu_interrupt(cpu, CPU_INTERRUPT_EXITTB);
+        }
     }
 }
-
-static bool ensure_iothread_lock(void)
-{
-    bool is_unlocked = !qemu_mutex_iothread_locked();
-
-    if (is_unlocked) {
-        qemu_mutex_lock_iothread();
-    }
-
-    return is_unlocked;
-}
-
-static void deref_iothread_lock(bool was_unlocked)
-{
-    if (was_unlocked) {
-        qemu_mutex_unlock_iothread();
-    }
-}
-
-#ifdef TARGET_ARM
-static void cpu_arch_update_halt(CPUState *cs)
-{
-    ARMCPU *cpu = ARM_CPU(cs);
-
-    cpu->power_state = cs->halt_pin ? PSCI_OFF : PSCI_ON;
-}
-
-static void cpu_reset_pin_activated(CPUState *cs)
-{
-    ARMCPU *arm_cpu = ARM_CPU(cs);
-
-    arm_cpu->is_in_wfi = false;
-    qemu_set_irq(arm_cpu->wfi, 0);
-}
-#else
-static void cpu_arch_update_halt(CPUState *cs)
-{
-
-}
-
-static inline void cpu_reset_pin_activated(CPUState *cs)
-{
-    /* A stub */
-}
-#endif
 
 void cpu_reset_gpio(void *opaque, int irq, int level)
 {
     CPUState *cpu = CPU(opaque);
-    bool iolock;
+    static int lock_count;
+    bool async = runstate_is_running();
 
+    assert(qemu_mutex_iothread_locked());
+
+    g_assert(lock_count == 0);
+    lock_count++;
     if (level == cpu->reset_pin) {
-        return;
+        goto done;
     }
 
     /*
@@ -192,42 +128,39 @@ void cpu_reset_gpio(void *opaque, int irq, int level)
      * Also, order of pin-state update is asymmetrical, depending on
      * assert of deassert.
      */
-    iolock = ensure_iothread_lock();
 
+    cpu->reset_pin = level;
     if (level) {
-        cpu->reset_pin = true;
-        cpu_exec_pin_sync(cpu, true);
-        cpu_reset_pin_activated(cpu);
+        if (async) {
+            async_run_on_cpu(cpu, cpu_reset_enter, RUN_ON_CPU_NULL);
+        } else {
+            cpu_reset_enter(cpu, RUN_ON_CPU_NULL);
+        }
+        cpu_exec_pin_update(cpu, cpu->reset_pin);
     } else {
-        cpu_reset(cpu);
-        cpu_exec_pin_sync(cpu, false);
-        cpu->reset_pin = false;
+        if (async) {
+            async_run_on_cpu(cpu, cpu_reset_exit, RUN_ON_CPU_NULL);
+        } else {
+            cpu_reset_exit(cpu, RUN_ON_CPU_NULL);
+        }
+        cpu_exec_pin_update(cpu, cpu->reset_pin);
     }
 
-    deref_iothread_lock(iolock);
+done:
+    lock_count--;
 }
 
 void cpu_halt_gpio(void *opaque, int irq, int level)
 {
     CPUState *cpu = CPU(opaque);
-    bool iolock;
 
-    iolock = ensure_iothread_lock();
-
+    assert(qemu_mutex_iothread_locked());
     cpu->halt_pin = level;
-    cpu_arch_update_halt(cpu);
     cpu_exec_pin_update(cpu, cpu->reset_pin); /* TBD: _sync not working */
-
-    deref_iothread_lock(iolock);
 }
 
 void cpu_halt_update(CPUState *cpu)
 {
-    bool iolock;
-
-    iolock = ensure_iothread_lock();
-
+    assert(qemu_mutex_iothread_locked());
     cpu_exec_pin_update(cpu, cpu->reset_pin); /* TBD: _sync not working */
-
-    deref_iothread_lock(iolock);
 }

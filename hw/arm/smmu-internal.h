@@ -58,6 +58,11 @@
     ((level == 3) &&                                                    \
      ((pte & ARM_LPAE_PTE_TYPE_MASK) == ARM_LPAE_L3_PTE_TYPE_PAGE))
 
+/* access flag */
+
+#define PTE_AF(pte) \
+    (extract64(pte, 10, 1))
+
 /* access permissions */
 
 #define PTE_AP(pte) \
@@ -66,15 +71,43 @@
 #define PTE_APTABLE(pte) \
     (extract64(pte, 61, 2))
 
+#define is_access_fault(af, cfg) \
+    (!cfg->affd && !af)
+
 /*
  * TODO: At the moment all transactions are considered as privileged (EL1)
  * as IOMMU translation callback does not pass user/priv attributes.
  */
-#define is_permission_fault(ap, perm) \
+#define s1_is_permission_fault(ap, perm) \
     (((perm) & IOMMU_WO) && ((ap) & 0x2))
 
-#define PTE_AP_TO_PERM(ap) \
-    (IOMMU_ACCESS_FLAG(true, !((ap) & 0x2)))
+static inline bool is_permission_fault(int stage, uint8_t ap,
+                                       IOMMUAccessFlags perm)
+{
+    if (stage == 1) {
+        return s1_is_permission_fault(ap, perm);
+    } else {
+        if (!(ap & 1) && (perm & IOMMU_RO)) {
+            return true;
+        }
+        if (!(ap & 2) && (perm & IOMMU_WO)) {
+            return true;
+        }
+        return false;
+    }
+}
+
+static inline IOMMUAccessFlags pte_ap_to_perm(int stage, uint8_t ap)
+{
+    IOMMUAccessFlags ret;
+
+    if (stage == 1) {
+        ret = IOMMU_ACCESS_FLAG(true, !((ap) & 0x2));
+    } else {
+        ret = IOMMU_ACCESS_FLAG(ap & 1, ap & 2);
+    }
+    return ret;
+}
 
 /* Level Indexing */
 

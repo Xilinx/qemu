@@ -250,6 +250,7 @@ static memory_info init_memory(void *fdt, ram_addr_t ram_size, bool zynq_7000)
     memory_info kernel_info;
     ram_addr_t start_addr;
     int mem_offset = 0;
+    Error *errp = NULL;
 
     if (zynq_7000) {
         if (!qemu_devtree_node_by_compatible(fdt, node_path,
@@ -276,8 +277,18 @@ static memory_info init_memory(void *fdt, ram_addr_t ram_size, bool zynq_7000)
     fdti = fdt_generic_create_machine(fdt, NULL);
 
     mem_area = MEMORY_REGION(object_resolve_path(node_path, NULL));
-    kernel_info.ram_kernel_base = object_property_get_int(OBJECT(mem_area),
-                                                          "addr", NULL);
+
+    /*
+     * Look for the optional kernel-base prop. If not found fallback to
+     * start of memory.
+     */
+    kernel_info.ram_kernel_base = qemu_fdt_getprop_sized_cell(fdt, "/",
+                                              "kernel-base", 0, 2, &errp);
+    if (errp) {
+        kernel_info.ram_kernel_base = object_property_get_int(OBJECT(mem_area),
+                                                              "addr", NULL);
+    }
+
     kernel_info.ram_kernel_size = object_property_get_int(OBJECT(mem_area),
                                                           "size", NULL);
 

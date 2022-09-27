@@ -30,8 +30,11 @@
 #include "hw/irq.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
+#include "qapi/error.h"
+#include "qemu/error-report.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
+#include "xlnx-versal-ams.h"
 
 #ifndef PMC_ANALOG_ERR_DEBUG
 #define PMC_ANALOG_ERR_DEBUG 0
@@ -281,6 +284,9 @@ typedef struct PmcAnalog {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
     qemu_irq irq_pmc_anlg_imr;
+    qemu_irq irq_glitch_detected;
+
+    Object *tamper_sink;
 
     uint32_t regs[PMC_ANLG_R_MAX];
     RegisterInfo regs_info[PMC_ANLG_R_MAX];
@@ -386,9 +392,132 @@ static uint64_t pmc_anlg_od_mbist_pg_en_prew(RegisterInfo *reg, uint64_t val64)
     return val;
 }
 
+static void pmc_anlg_clear_gd_status(PmcAnalog *s)
+{
+    if (ARRAY_FIELD_EX32(s->regs, GD_CTRL, GD1_RST_STATUS_REG)) {
+        ARRAY_FIELD_DP32(s->regs, GLITCH_DET_STATUS, VCCINT_PMC_1, 0);
+    }
+    if (ARRAY_FIELD_EX32(s->regs, GD_CTRL, GD0_RST_STATUS_REG)) {
+        ARRAY_FIELD_DP32(s->regs, GLITCH_DET_STATUS, VCCINT_PMC_0, 0);
+    }
+}
+
+static void pmc_anlg_tamper_out(PmcAnalog *s, uint32_t events)
+{
+    const char *name = XLNX_AMS_TAMPER_PROP;
+    g_autofree Error *err = NULL;
+
+    if (!events || !s->tamper_sink) {
+        return;
+    }
+
+    object_property_set_uint(s->tamper_sink, name, events, &err);
+    if (err) {
+        g_autofree char *p_dev = object_get_canonical_path(OBJECT(s));
+        g_autofree char *p_qom = object_get_canonical_path(s->tamper_sink);
+
+        warn_report("%s: qom-set %s %s 0x%02x failed: %s", p_dev, p_qom,
+                    name, events, error_get_pretty(err));
+    }
+}
+
+static void pmc_anlg_set_gd_status(PmcAnalog *s, unsigned bits)
+{
+    uint32_t ctrl = s->regs[R_GD_CTRL];
+    uint32_t tamper;
+    unsigned n;
+
+    static const struct gd_mask {
+        uint32_t status;
+        uint32_t dis;
+        uint32_t rst;
+        uint32_t tamper;
+    } gd_mask[] = {
+        [0] = { R_GLITCH_DET_STATUS_VCCINT_PMC_0_MASK,
+                R_GD_CTRL_GD0_EN_GLITCH_DET_B_MASK,
+                R_GD_CTRL_GD0_RST_STATUS_REG_MASK,
+                XLNX_AMS_VCCINT_0_GLITCH_MASK },
+
+        [1] = { R_GLITCH_DET_STATUS_VCCINT_PMC_1_MASK,
+                R_GD_CTRL_GD1_EN_GLITCH_DET_B_MASK,
+                R_GD_CTRL_GD1_RST_STATUS_REG_MASK,
+                XLNX_AMS_VCCINT_1_GLITCH_MASK },
+    };
+
+    for (tamper = 0, n = 0; n < ARRAY_SIZE(gd_mask); n++) {
+        if (!(bits & gd_mask[n].status)) {
+            continue;   /* no glitch */
+        }
+        if (ctrl & gd_mask[n].rst) {
+            continue;   /* detector in reset */
+        }
+        if (ctrl & gd_mask[n].dis) {
+            continue;   /* detector disabled */
+        }
+
+        s->regs[R_GLITCH_DET_STATUS] |= gd_mask[n].status;
+        tamper |= gd_mask[n].tamper;
+    }
+
+    if (tamper) {
+        /* Both outputs are non-maskable */
+        pmc_anlg_tamper_out(s, tamper);
+        qemu_irq_pulse(s->irq_glitch_detected);
+    }
+}
+
+static void pmc_anlg_inject_glitches(PmcAnalog *s)
+{
+    uint32_t ctrl = s->regs[R_GD_CTRL];
+    uint32_t gd;
+    unsigned n;
+
+    static const struct test_mask {
+        uint32_t gd;
+        uint32_t mode;
+        uint32_t sel;
+        uint32_t gen;
+    } test_mask[] = {
+        [0] = { R_GLITCH_DET_STATUS_VCCINT_PMC_0_MASK,
+                R_GD_CTRL_GD0_TEST_GLITCH_SEL_MASK,
+                R_GD_CTRL_GD0_TEST_GLITCH_GEN_MASK,
+                R_GD_CTRL_GD0_GL_DET_TEST_MODE_MASK },
+
+        [1] = { R_GLITCH_DET_STATUS_VCCINT_PMC_1_MASK,
+                R_GD_CTRL_GD1_TEST_GLITCH_SEL_MASK,
+                R_GD_CTRL_GD1_TEST_GLITCH_GEN_MASK,
+                R_GD_CTRL_GD1_GL_DET_TEST_MODE_MASK },
+    };
+
+    for (gd = 0, n = 0; n < ARRAY_SIZE(test_mask); n++) {
+        if (!(ctrl & test_mask[n].gen)) {
+            continue;   /* not injecting */
+        }
+        if (!(ctrl & test_mask[n].mode)) {
+            continue;   /* not in test mode */
+        }
+        if (!(ctrl & test_mask[n].sel)) {
+            continue;   /* test config selected */
+        }
+
+        gd |= test_mask[n].gd;
+    }
+
+    pmc_anlg_set_gd_status(s, gd);
+}
+
+static void pmc_anlg_gd_ctrl_postw(RegisterInfo *reg, uint64_t val64)
+{
+    PmcAnalog *s = PMC_ANALOG(reg->opaque);
+
+    pmc_anlg_clear_gd_status(s);
+    pmc_anlg_inject_glitches(s);
+}
+
 static const RegisterAccessInfo pmc_anlg_regs_info[] = {
     {   .name = "GD_CTRL",  .addr = A_GD_CTRL,
         .rsvd = 0xfc00fc00,
+        .post_write = pmc_anlg_gd_ctrl_postw,
     },{ .name = "GLITCH_DET_STATUS",  .addr = A_GLITCH_DET_STATUS,
         .rsvd = 0xfffffffc,
         .ro = 0x3,
@@ -629,8 +758,17 @@ static void pmc_anlg_init(Object *obj)
                                 0x0,
                                 &reg_array->mem);
     sysbus_init_mmio(sbd, &s->iomem);
-    sysbus_init_irq(sbd, &s->irq_pmc_anlg_imr);
+
+    qdev_init_gpio_out(DEVICE(obj), &s->irq_glitch_detected, 1);
+    qdev_init_gpio_out(DEVICE(obj), &s->irq_pmc_anlg_imr, 1);
 }
+
+static Property pmc_anlg_properties[] = {
+    DEFINE_PROP_LINK("tamper-sink", PmcAnalog, tamper_sink,
+                     TYPE_OBJECT, Object *),
+
+    DEFINE_PROP_END_OF_LIST(),
+};
 
 static const VMStateDescription vmstate_pmc_anlg = {
     .name = TYPE_PMC_ANALOG,
@@ -649,6 +787,8 @@ static void pmc_anlg_class_init(ObjectClass *klass, void *data)
     dc->reset = pmc_anlg_reset;
     dc->realize = pmc_anlg_realize;
     dc->vmsd = &vmstate_pmc_anlg;
+
+    device_class_set_props(dc, pmc_anlg_properties);
 }
 
 static const TypeInfo pmc_anlg_info = {

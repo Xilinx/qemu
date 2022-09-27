@@ -752,6 +752,99 @@ static void cortex_r5f_initfn(Object *obj)
     cpu->isar.mvfr1 = 0x00000011;
 }
 
+#ifndef CONFIG_USER_ONLY
+static uint64_t v8r_buildopt_read(CPUARMState *env, const ARMCPRegInfo *ri)
+{
+    ARMCPU *cpu = env_archcpu(env);
+    uint64_t r;
+
+    r = cpu->core_count - 1;
+
+    /* 1 GIC.  */
+    r |= 1 << 8;
+
+    /* Signal integrity protection.  */
+    r |= 1 << 28;
+
+    /* Split/Lock configuration.  */
+    r |= 2 << 30;
+    return r;
+}
+
+static const ARMCPRegInfo cortexr52_cp_reginfo[] = {
+    { .name = "BUILDOPT", .cp = 15, .opc1 = 0, .crn = 15, .crm = 2, .opc2 = 0,
+      .type = ARM_CP_NO_RAW, .access = PL1_R, .readfn = v8r_buildopt_read },
+    { .name = "IMP_ATCMREGIONR", .cp = 15, .opc1 = 0, .crn = 9, .crm = 1,
+      .opc2 = 0, .type = ARM_CP_OVERRIDE, .access = PL0_RW,
+      .fieldoffset = offsetof(CPUARMState, tcmregion.a),
+      .resetfn = arm_cp_reset_ignore },
+    { .name = "IMP_BTCMREGIONR", .cp = 15, .opc1 = 0, .crn = 9, .crm = 1,
+      .opc2 = 1, .type = ARM_CP_OVERRIDE, .access = PL0_RW,
+      .fieldoffset = offsetof(CPUARMState, tcmregion.b),
+      .resetfn = arm_cp_reset_ignore },
+    { .name = "IMP_CTCMREGIONR", .cp = 15, .opc1 = 0, .crn = 9, .crm = 1,
+      .opc2 = 2, .type = ARM_CP_OVERRIDE, .access = PL0_RW,
+      .fieldoffset = offsetof(CPUARMState, tcmregion.c),
+      .resetfn = arm_cp_reset_ignore },
+    { .name = "IMP_BTCTLR", .cp = 15, .opc1 = 1, .crn = 9, .crm = 1,
+      .opc2 = 1, .type = ARM_CP_OVERRIDE, .access = PL1_RW,
+      .fieldoffset = offsetof(CPUARMState, cp15.c9_imp_bpctlr),
+      .resetvalue = 0 },
+    { .name = "IMP_MEMPROTCTLR", .cp = 15, .opc1 = 1, .crn = 9, .crm = 1,
+      .opc2 = 2, .type = ARM_CP_OVERRIDE, .access = PL1_RW,
+      .fieldoffset = offsetof(CPUARMState, cp15.c9_imp_memprotctlr),
+      .resetvalue = 0 },
+    REGINFO_SENTINEL
+};
+#endif
+
+static void cortex_r52_initfn(Object *obj)
+{
+    ARMCPU *cpu = ARM_CPU(obj);
+
+    set_feature(&cpu->env, ARM_FEATURE_V8);
+    set_feature(&cpu->env, ARM_FEATURE_GENERIC_TIMER);
+    set_feature(&cpu->env, ARM_FEATURE_MPIDR);
+    set_feature(&cpu->env, ARM_FEATURE_EL2);
+    set_feature(&cpu->env, ARM_FEATURE_PMSA);
+    set_feature(&cpu->env, ARM_FEATURE_PMU);
+    set_feature(&cpu->env, ARM_FEATURE_CBAR_RO);
+    cpu->pmsav7_dregion = 16;
+    cpu->midr = 0x411fd132; /* r1p2 */
+    cpu->isar.id_pfr0 = 0x0131;
+    cpu->isar.id_pfr1 = 0x10111001;
+    cpu->isar.id_dfr0 = 0x010400;
+    cpu->id_afr0 = 0x0;
+    cpu->isar.id_mmfr0 = 0x00211040;
+    cpu->isar.id_mmfr1 = 0x00000000;
+    cpu->isar.id_mmfr2 = 0x01200000;
+    cpu->isar.id_mmfr3 = 0x0211;
+    cpu->isar.id_isar0 = 0x02101110;
+    cpu->isar.id_isar1 = 0x13112111;
+    cpu->isar.id_isar2 = 0x21232142;
+    cpu->isar.id_isar3 = 0x01112131;
+    cpu->isar.id_isar4 = 0x00010142;
+    cpu->isar.id_isar5 = 0x10001;
+    cpu->isar.id_isar6 = 0x0;
+    cpu->mp_is_up = true;
+    cpu->pmsav7_dregion = 16;
+
+    cpu->gic_num_lrs = 4;
+    cpu->gic_vpribits = 5;
+    cpu->gic_vprebits = 5;
+
+    /* Has TCM A, B & C.  */
+    cpu->tcmtr = 0x80000007;
+
+    define_arm_cp_regs(cpu, cortexr5_cp_reginfo);
+#ifndef CONFIG_USER_ONLY
+    define_arm_cp_regs(cpu, cortexr52_cp_reginfo);
+#endif
+    /* From r5f.  */
+    cpu->isar.mvfr0 = 0x10110221;
+    cpu->isar.mvfr1 = 0x00000011;
+}
+
 static void ti925t_initfn(Object *obj)
 {
     ARMCPU *cpu = ARM_CPU(obj);
@@ -1061,6 +1154,7 @@ static const ARMCPUInfo arm_tcg_cpus[] = {
                              .class_init = arm_v7m_class_init },
     { .name = "cortex-r5",   .initfn = cortex_r5_initfn },
     { .name = "cortex-r5f",  .initfn = cortex_r5f_initfn },
+    { .name = "cortex-r52",  .initfn = cortex_r52_initfn },
     { .name = "ti925t",      .initfn = ti925t_initfn },
     { .name = "sa1100",      .initfn = sa1100_initfn },
     { .name = "sa1110",      .initfn = sa1110_initfn },

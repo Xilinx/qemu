@@ -16,7 +16,6 @@
 #include "exec/log.h"
 #include "exec/translator.h"
 #include "exec/plugin-gen.h"
-#include "trace-tcg.h"
 #include "sysemu/replay.h"
 
 /* Pairs with tcg_clear_temp_count.

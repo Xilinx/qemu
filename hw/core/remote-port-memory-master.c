@@ -43,10 +43,11 @@
 
 #define RP_MAX_ACCESS_SIZE 4096
 
-MemTxResult rp_mm_access(RemotePort *rp, uint32_t rp_dev,
-                         struct rp_peer_state *peer,
-                         MemoryTransaction *tr,
-                         bool relative, uint64_t offset)
+MemTxResult rp_mm_access_with_def_attr(RemotePort *rp, uint32_t rp_dev,
+                                       struct rp_peer_state *peer,
+                                       MemoryTransaction *tr,
+                                       bool relative, uint64_t offset,
+                                       uint32_t def_attr)
 {
     uint64_t addr = tr->addr;
     RemotePortRespSlot *rsp_slot;
@@ -83,6 +84,7 @@ MemTxResult rp_mm_access(RemotePort *rp, uint32_t rp_dev,
     in.clk = rp_normalized_vmclk(rp);
     in.master_id = tr->attr.requester_id;
     in.addr = addr;
+    in.attr = def_attr;
     in.attr |= tr->attr.secure ? RP_BUS_ATTR_SECURE : 0;
     in.size = tr->size;
     in.stream_width = tr->size;
@@ -152,6 +154,15 @@ MemTxResult rp_mm_access(RemotePort *rp, uint32_t rp_dev,
     rp_restart_sync_timer(rp);
     DB_PRINT_L(1, "\n");
     return ret;
+}
+
+MemTxResult rp_mm_access(RemotePort *rp, uint32_t rp_dev,
+                         struct rp_peer_state *peer,
+                         MemoryTransaction *tr,
+                         bool relative, uint64_t offset)
+{
+    return rp_mm_access_with_def_attr(rp, rp_dev, peer, tr, relative, offset,
+                                      0);
 }
 
 static MemTxResult rp_access(MemoryTransaction *tr)

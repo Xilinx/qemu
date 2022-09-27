@@ -325,6 +325,11 @@ const void *HELPER(lookup_tb_ptr)(CPUArchState *env)
         return tcg_code_gen_epilogue;
     }
 
+    /* Avoid fast lookups when etracing.  */
+    if (qemu_etrace_mask(ETRACE_F_EXEC)) {
+        return tcg_code_gen_epilogue;
+    }
+
     log_cpu_exec(pc, cpu, tb);
 
     return tb->tc.ptr;
@@ -347,13 +352,6 @@ cpu_tb_exec(CPUState *cpu, TranslationBlock *itb, int *tb_exit)
     uintptr_t ret;
     TranslationBlock *last_tb;
     const void *tb_ptr = itb->tc.ptr;
-
-    qemu_log_mask_and_addr(CPU_LOG_EXEC, itb->pc,
-                           "Trace %d: %p ["
-                           TARGET_FMT_lx "/" TARGET_FMT_lx "/%#x] %s\n",
-                           cpu->cpu_index, itb->tc.ptr,
-                           itb->cs_base, itb->pc, itb->flags,
-                           lookup_symbol(itb->pc));
 
     if (qemu_etrace_mask(ETRACE_F_EXEC)) {
         etrace_dump_exec_start(&qemu_etracer, cpu->cpu_index,

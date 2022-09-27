@@ -34,10 +34,12 @@ typedef enum SMMUTranslationStatus {
 /* MMIO Registers */
 
 REG32(IDR0,                0x0)
+    FIELD(IDR0, S2P,         0 , 1)
     FIELD(IDR0, S1P,         1 , 1)
     FIELD(IDR0, TTF,         2 , 2)
     FIELD(IDR0, COHACC,      4 , 1)
     FIELD(IDR0, ASID16,      12, 1)
+    FIELD(IDR0, ATOS,        15, 1)
     FIELD(IDR0, TTENDIAN,    21, 2)
     FIELD(IDR0, STALL_MODEL, 24, 2)
     FIELD(IDR0, TERM_MODEL,  26, 1)
@@ -121,6 +123,54 @@ REG32(EVENTQ_CONS,         0xac)
 #define A_EVENTQ_IRQ_CFG0  0xb0 /* 64b */
 REG32(EVENTQ_IRQ_CFG1,     0xb8)
 REG32(EVENTQ_IRQ_CFG2,     0xbc)
+
+REG32(GATOS_CTRL,          0x100)
+    FIELD(GATOS_CTRL, RUN, 0, 1)
+REG64(GATOS_SID,           0x108)
+    FIELD(GATOS_SID, STREAMID,      0, 31)
+    FIELD(GATOS_SID, SUBSTREAMID,   32, 51)
+    FIELD(GATOS_SID, SSID_VALID,    52, 53)
+REG64(GATOS_ADDR,          0x110)
+    FIELD(GATOS_ADDR, HTTUI, 6, 1)
+    FIELD(GATOS_ADDR, IND,   7, 1)
+    FIELD(GATOS_ADDR, RNW,   8, 1)
+    FIELD(GATOS_ADDR, PNU,   9, 1)
+    FIELD(GATOS_ADDR, TYPE,  10, 2)
+    FIELD(GATOS_ADDR, ADDR,  12, 52)
+REG64(GATOS_PAR,           0x118)
+    FIELD(GATOS_PAR, FAULT,     0, 1)
+    FIELD(GATOS_PAR, ADDR,      12, 40)
+    /* GATOS_PAR.FAULT == 0 */
+    FIELD(GATOS_PAR, SH,        8, 2)
+    FIELD(GATOS_PAR, SIZE,      11, 1)
+    FIELD(GATOS_PAR, ATTR,      56, 8)
+    /* GATOS_PAR.FAULT == 1 */
+    FIELD(GATOS_PAR, REASON,    1, 2)
+    FIELD(GATOS_PAR, FAULTCODE, 4, 8)
+    FIELD(GATOS_PAR, IMPDEF,    60, 4)
+
+
+/* ATOS fault codes */
+typedef enum {
+    ATOS_FAULTCODE_C_BAD_STREAMID    = 0x02,
+    ATOS_FAULTCODE_F_STE_FETCH       = 0x03,
+    ATOS_FAULTCODE_C_BAD_STE         = 0x04,
+    ATOS_FAULTCODE_F_STREAM_DISABLED = 0x06,
+    ATOS_FAULTCODE_C_BAD_SUBSTREAMID = 0x08,
+    ATOS_FAULTCODE_F_CD_FETCH        = 0x09,
+    ATOS_FAULTCODE_C_BAD_CD          = 0x0a,
+    ATOS_FAULTCODE_F_WALK_EABT       = 0x0b,
+    ATOS_FAULTCODE_F_TRANSLATION     = 0x10,
+    ATOS_FAULTCODE_F_ADDR_SIZE       = 0x11,
+    ATOS_FAULTCODE_F_ACCESS          = 0x12,
+    ATOS_FAULTCODE_F_PERMISSION      = 0x13,
+    ATOS_FAULTCODE_F_TLB_CONFLICT    = 0x20,
+    ATOS_FAULTCODE_F_CFG_CONFLICT    = 0x21,
+    ATOS_FAULTCODE_F_VMS_FETCH       = 0x25,
+    ATOS_FAULTCODE_INTERNAL_ERR      = 0xfd,
+    ATOS_FAULTCODE_INV_STAGE         = 0xfe,
+    ATOS_FAULTCODE_INV_REQ           = 0xff,
+} ATOSFaultCode;
 
 #define A_IDREGS           0xfd0
 
@@ -517,6 +567,7 @@ typedef struct CD {
 #define STE_S2TG(x)        extract32((x)->word[5], 14, 2)
 #define STE_S2PS(x)        extract32((x)->word[5], 16, 3)
 #define STE_S2AA64(x)      extract32((x)->word[5], 19, 1)
+#define STE_S2AFFD(x)      extract32((x)->word[5], 21, 1)
 #define STE_S2HD(x)        extract32((x)->word[5], 24, 1)
 #define STE_S2HA(x)        extract32((x)->word[5], 25, 1)
 #define STE_S2S(x)         extract32((x)->word[5], 26, 1)
@@ -587,6 +638,7 @@ static inline int pa_range(STE *ste)
 #define CD_EPD(x, sel)   extract32((x)->word[0], (16 * (sel)) + 14, 1)
 #define CD_ENDI(x)       extract32((x)->word[0], 15, 1)
 #define CD_IPS(x)        extract32((x)->word[1], 0 , 3)
+#define CD_AFFD(x)       extract32((x)->word[1], 3 , 1)
 #define CD_TBI(x)        extract32((x)->word[1], 6 , 2)
 #define CD_HD(x)         extract32((x)->word[1], 10 , 1)
 #define CD_HA(x)         extract32((x)->word[1], 11 , 1)

@@ -64,13 +64,29 @@ SMMUIOTLBKey smmu_get_iotlb_key(uint16_t asid, uint64_t iova,
     return key;
 }
 
+static uint8_t smmu_startlevel(SMMUTransCfg *cfg, int stage,
+                               uint8_t granule_sz, uint8_t inputsize)
+{
+    uint8_t level, stride = granule_sz - 3;
+
+    if (stage == 1) {
+        level = 4 - (inputsize - 4) / stride;
+    } else {
+        level = 3 - cfg->s2_sl0;
+        if (granule_sz == 12) {
+            level = 2 - cfg->s2_sl0;
+        }
+    }
+
+    return level;
+}
+
 SMMUTLBEntry *smmu_iotlb_lookup(SMMUState *bs, SMMUTransCfg *cfg,
                                 SMMUTransTableInfo *tt, hwaddr iova)
 {
     uint8_t tg = (tt->granule_sz - 10) / 2;
     uint8_t inputsize = 64 - tt->tsz;
-    uint8_t stride = tt->granule_sz - 3;
-    uint8_t level = 4 - (inputsize - 4) / stride;
+    uint8_t level = smmu_startlevel(cfg, cfg->stage, tt->granule_sz, inputsize);
     SMMUTLBEntry *entry = NULL;
 
     while (level <= 3) {
@@ -244,6 +260,10 @@ SMMUTransTableInfo *select_tt(SMMUTransCfg *cfg, dma_addr_t iova)
     bool tbi = extract64(iova, 55, 1) ? TBI1(cfg->tbi) : TBI0(cfg->tbi);
     uint8_t tbi_byte = tbi * 8;
 
+    if (cfg->stage == 2) {
+        return &cfg->tt[0];
+    }
+
     if (cfg->tt[0].tsz &&
         !extract64(iova, 64 - cfg->tt[0].tsz, cfg->tt[0].tsz - tbi_byte)) {
         /* there is a ttbr0 region and we are in it (high bits all zero) */
@@ -261,6 +281,49 @@ SMMUTransTableInfo *select_tt(SMMUTransCfg *cfg, dma_addr_t iova)
     }
     /* in the gap between the two regions, this is a Translation fault */
     return NULL;
+}
+
+static bool check_s2_startlevel(bool is_aa64, unsigned int pamax,
+                                unsigned int level,
+                                int inputsize, int stride)
+{
+    if (is_aa64) {
+        switch (stride) {
+        case 13: /* 64KB Pages.  */
+            if (level == 0 || (level == 1 && pamax <= 42)) {
+                return false;
+            }
+            break;
+        case 11: /* 16KB Pages.  */
+            if (level == 0 || (level == 1 && pamax <= 40)) {
+                return false;
+            }
+            break;
+        case 9: /* 4KB Pages.  */
+            if (level == 0 && pamax <= 42) {
+                return false;
+            }
+            break;
+        default:
+            g_assert_not_reached();
+        }
+    } else {
+        const int grainsize = stride + 3;
+        int startsizecheck;
+
+        /* AArch32 only supports 4KB pages. Assert on that.  */
+        assert(stride == 9);
+
+        if (level == 0) {
+            return false;
+        }
+
+        startsizecheck = inputsize - ((3 - level) * stride + grainsize);
+        if (startsizecheck < 1 || startsizecheck > stride + 4) {
+            return false;
+        }
+    }
+    return true;
 }
 
 /**
@@ -293,7 +356,16 @@ static int smmu_ptw_64(SMMUTransCfg *cfg,
     granule_sz = tt->granule_sz;
     stride = granule_sz - 3;
     inputsize = 64 - tt->tsz;
-    level = 4 - (inputsize - 4) / stride;
+
+    level = smmu_startlevel(cfg, stage, granule_sz, inputsize);
+    if (stage == 2) {
+        /* Check validity of level.  */
+        if (!check_s2_startlevel(cfg->aa64, cfg->oas,
+                                  level, inputsize, stride)) {
+            goto error;
+        }
+    }
+
     indexmask = (1ULL << (inputsize - (stride * (4 - level)))) - 1;
     baseaddr = extract64(tt->ttb, 0, 48);
     baseaddr &= ~indexmask;
@@ -305,6 +377,7 @@ static int smmu_ptw_64(SMMUTransCfg *cfg,
         uint64_t pte, gpa;
         dma_addr_t pte_addr = baseaddr + offset * sizeof(pte);
         uint8_t ap;
+        bool af;
 
         if (get_pte(baseaddr, offset, &pte, info)) {
                 goto error;
@@ -321,7 +394,7 @@ static int smmu_ptw_64(SMMUTransCfg *cfg,
         if (is_table_pte(pte, level)) {
             ap = PTE_APTABLE(pte);
 
-            if (is_permission_fault(ap, perm) && !tt->had) {
+            if (cfg->stage == 1 && is_permission_fault(cfg->stage, ap, perm) && !tt->had) {
                 info->type = SMMU_PTW_ERR_PERMISSION;
                 goto error;
             }
@@ -341,8 +414,14 @@ static int smmu_ptw_64(SMMUTransCfg *cfg,
                                      pte_addr, pte, iova, gpa,
                                      block_size >> 20);
         }
+        af = PTE_AF(pte);
+        if (is_access_fault(af, cfg)) {
+            info->type = SMMU_PTW_ERR_ACCESS;
+            goto error;
+        }
+
         ap = PTE_AP(pte);
-        if (is_permission_fault(ap, perm)) {
+        if (is_permission_fault(cfg->stage, ap, perm)) {
             info->type = SMMU_PTW_ERR_PERMISSION;
             goto error;
         }
@@ -350,7 +429,7 @@ static int smmu_ptw_64(SMMUTransCfg *cfg,
         tlbe->entry.translated_addr = gpa;
         tlbe->entry.iova = iova & ~mask;
         tlbe->entry.addr_mask = mask;
-        tlbe->entry.perm = PTE_AP_TO_PERM(ap);
+        tlbe->entry.perm = pte_ap_to_perm(cfg->stage, ap);
         tlbe->level = level;
         tlbe->granule = granule_sz;
         return 0;

@@ -8,6 +8,7 @@ softmmu_ss.add(when: 'CONFIG_ARM_GIC', if_true: files(
   'arm_gicv3_dist.c',
   'arm_gicv3_its_common.c',
   'arm_gicv3_redist.c',
+  'arm_gicv3_its.c',
 ))
 
 softmmu_ss.add(when: 'CONFIG_XILINX_IOMODULE_INTC', if_true: files('xilinx_iomod_intc.c'))

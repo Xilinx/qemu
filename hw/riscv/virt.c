@@ -573,7 +573,7 @@ static void virt_create_remoteport(MachineState *machine,
         qemu_register_reset((void (*)(void *))dc->reset, rp_obj);
     }
 
-    sysbus_realize(SYS_BUS_DEVICE(rpms_obj), &error_fatal);
+    qdev_realize(DEVICE(rpms_obj), NULL, &error_fatal);
     sysbus_realize(SYS_BUS_DEVICE(rpm_obj), &error_fatal);
     sysbus_realize(SYS_BUS_DEVICE(rpirq_obj), &error_fatal);
 

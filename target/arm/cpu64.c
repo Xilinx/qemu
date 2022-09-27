@@ -35,6 +35,130 @@
 
 
 #ifndef CONFIG_USER_ONLY
+static uint64_t dsu_clustercfr_read(CPUARMState *env, const ARMCPRegInfo *ri)
+{
+    ARMCPU *cpu = env_archcpu(env);
+    uint64_t r;
+
+    r = cpu->core_count - 1;
+
+    /* Have L3, SCU L3, ACP and Periph port.  */
+    r |= 1 << 12;
+    r |= 1 << 11;
+    r |= 1 << 8;
+    r |= 1 << 4;
+
+    /* Split mode only.  */
+    r |= 1 << 30;
+
+    /* One thread per core.  */
+    r |= (cpu->core_count - 1) << 24;
+
+    return r;
+}
+
+static uint64_t dsu_clusterpwrstat_read(CPUARMState *env,
+                                        const ARMCPRegInfo *ri)
+{
+    /* FIXME: Do we need to wire these to power controller?  */
+    return env->cp15.dsu.clusterpwrdn | 0xf0;
+}
+
+static void dsu_clusterectrl_write(CPUARMState *env, const ARMCPRegInfo *ri,
+                                   uint64_t value)
+{
+    env->cp15.dsu.clusterectrl = value & 0x479f;
+}
+
+static void dsu_clusterpwrctrl_write(CPUARMState *env, const ARMCPRegInfo *ri,
+                                     uint64_t value)
+{
+    env->cp15.dsu.clusterpwrctrl = value & 0xf7;
+}
+
+static void dsu_clusterpwrdn_write(CPUARMState *env, const ARMCPRegInfo *ri,
+                                   uint64_t value)
+{
+    env->cp15.dsu.clusterpwrdn = value & 0x3;
+}
+
+static void dsu_clusterthreadsidovr_write(CPUARMState *env,
+                                          const ARMCPRegInfo *ri,
+                                          uint64_t value)
+{
+    env->cp15.dsu.clusterthreadsidovr = value & 0x70007;
+}
+#endif
+
+static const ARMCPRegInfo dsu_cp_reginfo[] = {
+#ifndef CONFIG_USER_ONLY
+    { .name = "CLUSTERCFR_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 3, .opc2 = 0,
+      .type = ARM_CP_NO_RAW, .access = PL1_R, .readfn = dsu_clustercfr_read },
+    { .name = "CLUSTERIDR_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 3, .opc2 = 1,
+      .type = ARM_CP_CONST, .access = PL1_R, .resetvalue = 0x11 }, /* r1p1 */
+    { .name = "CLUSTERREVIDR_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 3, .opc2 = 2,
+      .type = ARM_CP_CONST, .access = PL1_R },
+    { .name = "CLUSTERACTRL_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 3, .opc2 = 3,
+      .type = ARM_CP_NO_RAW, .access = PL1_RW,
+      .readfn = arm_cp_read_zero, .writefn = arm_cp_write_ignore },
+    { .name = "CLUSTERECTRL_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 3, .opc2 = 4,
+      .access = PL1_RW, .writefn = dsu_clusterectrl_write,
+      .fieldoffset = offsetof(CPUARMState, cp15.dsu.clusterectrl) },
+    { .name = "CLUSTERPWRCTRL_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 3, .opc2 = 5,
+      .access = PL1_RW, .writefn = dsu_clusterpwrctrl_write,
+      .fieldoffset = offsetof(CPUARMState, cp15.dsu.clusterpwrctrl) },
+    { .name = "CLUSTERPWRDN_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 3, .opc2 = 6,
+      .access = PL1_RW, .writefn = dsu_clusterpwrdn_write,
+      .fieldoffset = offsetof(CPUARMState, cp15.dsu.clusterpwrdn) },
+    { .name = "CLUSTERPWRSTAT_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 3, .opc2 = 7,
+      .type = ARM_CP_NO_RAW, .access = PL1_R,
+      .readfn = dsu_clusterpwrstat_read },
+
+    { .name = "CLUSTERTHREADSID_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 4, .opc2 = 0,
+      .type = ARM_CP_NO_RAW, .access = PL1_RW,
+      .readfn = arm_cp_read_zero, .writefn = arm_cp_write_ignore },
+    { .name = "CLUSTERACPSID_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 4, .opc2 = 1,
+      .type = ARM_CP_NO_RAW, .access = PL1_RW,
+      .readfn = arm_cp_read_zero, .writefn = arm_cp_write_ignore },
+    { .name = "CLUSTERSTASHSID_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 4, .opc2 = 2,
+      .type = ARM_CP_NO_RAW, .access = PL1_RW,
+      .readfn = arm_cp_read_zero, .writefn = arm_cp_write_ignore },
+    { .name = "CLUSTERPARTCR_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 4, .opc2 = 3,
+      .access = PL1_RW,
+      .fieldoffset = offsetof(CPUARMState, cp15.dsu.clusterpartcr) },
+    { .name = "CLUSTERBUSQOS_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 4, .opc2 = 4,
+      .access = PL1_RW,
+      .fieldoffset = offsetof(CPUARMState, cp15.dsu.clusterbusqos) },
+    { .name = "CLUSTERL3HIT_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 4, .opc2 = 5,
+      .type = ARM_CP_NO_RAW, .access = PL1_RW,
+      .readfn = arm_cp_read_zero, .writefn = arm_cp_write_ignore },
+    { .name = "CLUSTERL3MISS_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 4, .opc2 = 6,
+      .type = ARM_CP_NO_RAW, .access = PL1_RW,
+      .readfn = arm_cp_read_zero, .writefn = arm_cp_write_ignore },
+    { .name = "CLUSTERTHREADSIDOVR_EL1", .state = ARM_CP_STATE_BOTH,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 4, .opc2 = 7,
+      .access = PL1_RW, .writefn = dsu_clusterthreadsidovr_write,
+      .fieldoffset = offsetof(CPUARMState, cp15.dsu.clusterthreadsidovr) },
+#endif
+    REGINFO_SENTINEL
+};
+
+#ifndef CONFIG_USER_ONLY
 static uint64_t a57_a53_l2ctlr_read(CPUARMState *env, const ARMCPRegInfo *ri)
 {
     ARMCPU *cpu = env_archcpu(env);
@@ -255,6 +379,109 @@ static void aarch64_a72_initfn(Object *obj)
     cpu->gic_vpribits = 5;
     cpu->gic_vprebits = 5;
     define_arm_cp_regs(cpu, cortex_a72_a57_a53_cp_reginfo);
+
+    /* Xilinx FIXUPs.  */
+    /* These indicate the BP hardening and KPTI aren't needed.  */
+    cpu->isar.id_aa64pfr0 |= (uint64_t)1 << 56; /* BP.  */
+    cpu->isar.id_aa64pfr0 |= (uint64_t)1 << 60; /* KPTI.  */
+}
+
+static void aarch64_a78_initfn(Object *obj)
+{
+    ARMCPU *cpu = ARM_CPU(obj);
+    uint64_t t;
+
+    cpu->dtb_compatible = "arm,cortex-a78";
+    set_feature(&cpu->env, ARM_FEATURE_V8);
+    set_feature(&cpu->env, ARM_FEATURE_NEON);
+    set_feature(&cpu->env, ARM_FEATURE_GENERIC_TIMER);
+    set_feature(&cpu->env, ARM_FEATURE_AARCH64);
+    set_feature(&cpu->env, ARM_FEATURE_CBAR_RO);
+    set_feature(&cpu->env, ARM_FEATURE_EL2);
+    set_feature(&cpu->env, ARM_FEATURE_EL3);
+    set_feature(&cpu->env, ARM_FEATURE_PMU);
+    cpu->midr = 0x410fd421;
+    cpu->revidr = 0x00000000;
+    cpu->reset_fpsid = 0x41034080;
+    cpu->isar.mvfr0 = 0x10110222;
+    cpu->isar.mvfr1 = 0x12111111;
+    cpu->isar.mvfr2 = 0x00000043;
+    cpu->ctr = 0x8444c004;
+    cpu->reset_sctlr = 0x00c50838;
+
+    /* Xilinx: Overrides since some of the new stuff does not work.  */
+    cpu->isar.id_pfr0 = 0x00000131;
+    t = cpu->isar.id_aa64pfr0;
+    t = FIELD_DP64(t, ID_AA64PFR0, SVE, 1);
+    t = FIELD_DP64(t, ID_AA64PFR0, FP, 1);
+    t = FIELD_DP64(t, ID_AA64PFR0, ADVSIMD, 1);
+    cpu->isar.id_aa64pfr0 = t;
+
+    cpu->isar.id_pfr1 = 0x00011011;
+    cpu->isar.id_dfr0 = 0x03010066;
+    cpu->id_afr0 = 0x00000000;
+    cpu->isar.id_mmfr0 = 0x10201105;
+    cpu->isar.id_mmfr1 = 0x40000000;
+    cpu->isar.id_mmfr2 = 0x01260000;
+    cpu->isar.id_mmfr3 = 0x02122211;
+    cpu->isar.id_isar0 = 0x02101110;
+    cpu->isar.id_isar1 = 0x13112111;
+    cpu->isar.id_isar2 = 0x21232042;
+    cpu->isar.id_isar3 = 0x01112131;
+    cpu->isar.id_isar4 = 0x00010142;
+    cpu->isar.id_isar5 = 0x00011121;
+    cpu->isar.id_isar6 = 0x00000010;
+    /* TOP Bit zero until we implement RAS.  */
+    cpu->isar.id_aa64pfr0 = 0x01111112;
+    cpu->isar.id_aa64pfr1 = 0x00000010;
+    /* cpu->isar.id_aa64dfr0 = 0x110305408ULL; Unsupported PMcnt features */
+    cpu->isar.id_aa64dfr0 = 0x10305408ULL;
+    cpu->isar.id_aa64isar0 = 0x0010100010211120ULL;
+
+    /* Xilinx: Overrides since some of the new stuff does not work.  */
+    cpu->isar.id_aa64isar1 = 0x01200031;
+    t = cpu->isar.id_aa64isar0;
+    t = FIELD_DP64(t, ID_AA64ISAR0, AES, 2); /* AES + PMULL */
+    t = FIELD_DP64(t, ID_AA64ISAR0, SHA1, 1);
+    t = FIELD_DP64(t, ID_AA64ISAR0, SHA2, 2); /* SHA512 */
+    t = FIELD_DP64(t, ID_AA64ISAR0, CRC32, 1);
+    t = FIELD_DP64(t, ID_AA64ISAR0, ATOMIC, 0);
+    t = FIELD_DP64(t, ID_AA64ISAR0, RDM, 1);
+    t = FIELD_DP64(t, ID_AA64ISAR0, SHA3, 1);
+    t = FIELD_DP64(t, ID_AA64ISAR0, SM3, 1);
+    t = FIELD_DP64(t, ID_AA64ISAR0, SM4, 1);
+    t = FIELD_DP64(t, ID_AA64ISAR0, DP, 1);
+    t = FIELD_DP64(t, ID_AA64ISAR0, FHM, 1);
+    t = FIELD_DP64(t, ID_AA64ISAR0, TS, 2); /* v8.5-CondM */
+    t = FIELD_DP64(t, ID_AA64ISAR0, RNDR, 1);
+    cpu->isar.id_aa64isar0 = t;
+
+    t = cpu->isar.id_aa64isar1;
+    t = FIELD_DP64(t, ID_AA64ISAR1, DPB, 2);
+    t = FIELD_DP64(t, ID_AA64ISAR1, JSCVT, 0);
+    t = FIELD_DP64(t, ID_AA64ISAR1, FCMA, 0);
+    t = FIELD_DP64(t, ID_AA64ISAR1, APA, 0); /* PAuth, architected only */
+    t = FIELD_DP64(t, ID_AA64ISAR1, API, 0);
+    t = FIELD_DP64(t, ID_AA64ISAR1, GPA, 0);
+    t = FIELD_DP64(t, ID_AA64ISAR1, GPI, 0);
+    t = FIELD_DP64(t, ID_AA64ISAR1, SB, 1);
+    t = FIELD_DP64(t, ID_AA64ISAR1, SPECRES, 1);
+    t = FIELD_DP64(t, ID_AA64ISAR1, FRINTTS, 1);
+    t = FIELD_DP64(t, ID_AA64ISAR1, LRCPC, 0); /* ARMv8.4-RCPC */
+    cpu->isar.id_aa64isar1 = t;
+
+    cpu->isar.id_aa64mmfr0 = 0x000101125;
+    cpu->isar.dbgdidr = 0x3516d000;
+    cpu->clidr = 0x10400023;
+    cpu->ccsidr[0] = 0x701fe01a; /* 64KB L1 dcache */
+    cpu->ccsidr[1] = 0x201fe01a; /* 64KB L1 icache */
+    cpu->ccsidr[2] = 0x707fe03a; /* 512K L2 cache */
+    cpu->dcz_blocksize = 4; /* 64 bytes */
+    cpu->gic_num_lrs = 4;
+    cpu->gic_vpribits = 5;
+    cpu->gic_vprebits = 5;
+    define_arm_cp_regs(cpu, cortex_a72_a57_a53_cp_reginfo);
+    define_arm_cp_regs(cpu, dsu_cp_reginfo);
 
     /* Xilinx FIXUPs.  */
     /* These indicate the BP hardening and KPTI aren't needed.  */
@@ -865,6 +1092,7 @@ static const ARMCPUInfo aarch64_cpus[] = {
     { .name = "cortex-a57",         .initfn = aarch64_a57_initfn },
     { .name = "cortex-a53",         .initfn = aarch64_a53_initfn },
     { .name = "cortex-a72",         .initfn = aarch64_a72_initfn },
+    { .name = "cortex-a78",         .initfn = aarch64_a78_initfn },
     { .name = "max",                .initfn = aarch64_max_initfn },
 };
 

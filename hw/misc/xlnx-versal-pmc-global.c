@@ -30,12 +30,18 @@
 #include "hw/register.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
+#include "qapi/error.h"
+#include "qemu/error-report.h"
 #include "migration/vmstate.h"
+#include "sysemu/runstate.h"
 #include "hw/qdev-properties.h"
 #include "qemu/option.h"
 #include "qemu/config-file.h"
+#include "hw/misc/xlnx-versal-pmc.h"
 
 #include "hw/fdt_generic_util.h"
+#include "hw/block/xlnx-efuse.h"
+#include "xlnx-versal-ams.h"
 
 #ifndef XILINX_PMC_GLOBAL_ERR_DEBUG
 #define XILINX_PMC_GLOBAL_ERR_DEBUG 0
@@ -819,6 +825,7 @@ REG32(POR_LOCK, 0x1204)
     FIELD(POR_LOCK, LOCK, 0, 1)
 
 #define R_MAX (R_POR_LOCK + 1)
+#define R_TAMPER_RESP_MAX (R_TAMPER_RESP_13 - R_TAMPER_RESP_0 + 1)
 
 typedef struct PMC_GLOBAL {
     SysBusDevice parent_obj;
@@ -832,46 +839,19 @@ typedef struct PMC_GLOBAL {
     qemu_irq irq_pmc_pl_irq;
     qemu_irq irq_req_iso_int;
 
-    qemu_irq tamper_reg;
+    qemu_irq tamper_out[R_TAMPER_RESP_MAX];
     qemu_irq ppu1_wakeup;
     qemu_irq ppu1_rst;
+
+    Object *bbram;
+    Object *efuse;
+    AddressSpace tamper_as;
 
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
 } PMC_GLOBAL;
 
-static void ppu1_update_ctrl(PMC_GLOBAL *s)
-{
-    unsigned int rst_mode;
-    bool wakeup;
-    bool rst;
-
-    wakeup = ARRAY_FIELD_EX32(s->regs, PPU_1_RST_MODE, WAKEUP);
-    rst_mode = ARRAY_FIELD_EX32(s->regs, PPU_1_RST_MODE, RST_MODE);
-    rst = !ARRAY_FIELD_EX32(s->regs, PPU_1_RST, RST_N);
-
-
-    switch (rst_mode) {
-    case 0:
-        /* MB starts executing when released from RESET.  */
-        qemu_set_irq(s->ppu1_rst, rst);
-        break;
-    case 1:
-        /* MB enters sleep when released from RESET.*/
-        /* RST signal can be low only after wakeup is high,
-         * wakeup=0 should not effect the RST signal when RST=0*/
-        if (wakeup || rst) {
-            qemu_set_irq(s->ppu1_rst, rst);
-        }
-        /* Wakeup (i.e halt) signal is updated only when RST=1
-         * So that clearing wakeup bit dosent effect RST signal */
-        qemu_set_irq(s->ppu1_wakeup, rst & wakeup);
-        break;
-    default:
-        qemu_log_mask(LOG_GUEST_ERROR, "Invalid PPU1_RST_MODE %x\n", rst_mode);
-        break;
-    };
-}
+PPU1_UPDATE_CTRL(PMC_GLOBAL)
 
 static void pmc_ppu1_gpi_update_irq(PMC_GLOBAL *s)
 {
@@ -1196,10 +1176,198 @@ static void ppu1_rst_x_postw(RegisterInfo *reg, uint64_t val64)
     ppu1_update_ctrl(s);
 }
 
-static void tamper_trig_postw(RegisterInfo *reg, uint64_t val64)
+static bool pmc_global_gd_monitor_enabled(PMC_GLOBAL *s)
 {
-   PMC_GLOBAL *s = XILINX_PMC_GLOBAL(reg->opaque);
-   qemu_irq_pulse(s->tamper_reg);
+    XlnxEFuseSysmonDataSourceClass *klass;
+    XlnxEFuseSysmonData data;
+
+    if (!s->efuse) {
+        g_autofree char *path = object_get_canonical_path(OBJECT(s));
+
+        warn_report("%s: glitch-detect monitor disabled due to missing "
+                    "TYPE_XLNX_EFUSE_SYSMON_DATA_SOURCE.", path);
+
+        return false;
+    }
+
+    klass = XLNX_EFUSE_SYSMON_DATA_SOURCE_GET_CLASS(s->efuse);
+    if (!klass || !klass->get_data) {
+        return false;
+    }
+
+    klass->get_data(s->efuse, &data);
+    return !!data.glitch_monitor_en;
+}
+
+static uint32_t pmc_global_tamper_response(PMC_GLOBAL *s, unsigned slot)
+{
+    hwaddr addr;
+    uint32_t data;
+    MemTxResult rc;
+
+    addr = R_TAMPER_RESP_0 + slot;
+
+    /*
+     * Need to issue an io-read to obtain value from the overlap
+     * region holding the dual-ported R_TAMPER_RESP_ registers.
+     * 'first_cpu->as' is not used to bypass possible blockage
+     * due to SMMU enforcement.
+     *
+     * This can be removed in the future when the dual-port model
+     * is merged into this device.
+     */
+    if (!s->iomem.container || !s->iomem.addr) {
+        return 0;
+    }
+    if (!s->tamper_as.root) {
+        g_autofree char *p = object_get_canonical_path(OBJECT(s));
+        g_autofree char *n = g_strdup_printf("%s-tamper-as", p);
+
+        address_space_init(&s->tamper_as, s->iomem.container, n);
+    }
+
+    addr = s->iomem.addr + addr * 4;
+    rc = address_space_read_full(&s->tamper_as, addr,
+                                 MEMTXATTRS_UNSPECIFIED, &data, 4);
+
+    return rc == MEMTX_OK ? data : 0;
+}
+
+static void pmc_global_tamper_erase_bbram(PMC_GLOBAL *s, unsigned slot)
+{
+    g_autofree Error *err = NULL;
+    g_autofree char *path = object_get_canonical_path(OBJECT(s));
+
+    if (!s->bbram) {
+        warn_report("%s.bbram: Link missing disables "
+                    "TAMPER_RESP_%u.BBRAM_ERASE", path, slot);
+        return;
+    }
+
+    object_property_set_bool(s->bbram, "erase", true, &err);
+    if (err) {
+        g_autofree char *p = object_get_canonical_path(s->bbram);
+
+        warn_report("%s.bbram: Failed to set %s.erase: %s",
+                    path, p, error_get_pretty(err));
+    }
+}
+
+static void pmc_global_tamper_lockdown(PMC_GLOBAL *s, unsigned slot,
+                                       unsigned id)
+{
+    g_autofree char *path = object_get_canonical_path(OBJECT(s));
+
+    warn_report("%s: TAMPER_RESP_%u.SYS_LOCKDOWN_%u not supported yet!",
+                path, slot, id);
+}
+
+static void pmc_global_tamper_shutdown(PMC_GLOBAL *s, unsigned slot)
+{
+    g_autofree char *path = object_get_canonical_path(OBJECT(s));
+
+    info_report("%s: TAMPER_RESP_%u.SYS_RESET triggers system shutdown!",
+                path, slot);
+    qemu_system_shutdown_request(SHUTDOWN_CAUSE_SUBSYSTEM_RESET);
+}
+
+static void pmc_global_tamper_respond(PMC_GLOBAL *s, unsigned slot)
+{
+    qemu_irq irq;
+    uint32_t resp;
+
+    assert(slot < ARRAY_SIZE(s->tamper_out));
+
+    /* Relay to external responder, if one is attached */
+    irq = s->tamper_out[slot];
+    if (qemu_irq_is_connected(irq)) {
+        qemu_irq_pulse(irq);
+        return;
+    }
+
+    /* Otherwise, apply built-in responses */
+    resp = pmc_global_tamper_response(s, slot);
+
+    /* Wipe/lock all selected areas */
+    if (FIELD_EX32(resp, TAMPER_RESP_0, BBRAM_ERASE)) {
+        pmc_global_tamper_erase_bbram(s, slot);
+    }
+
+    if (FIELD_EX32(resp, TAMPER_RESP_0, SYS_LOCKDOWN_1)) {
+        pmc_global_tamper_lockdown(s, slot, 1);
+    }
+
+    if (FIELD_EX32(resp, TAMPER_RESP_0, SYS_LOCKDOWN_0)) {
+        pmc_global_tamper_lockdown(s, slot, 0);
+    }
+
+    /* Halt if selected */
+    if (FIELD_EX32(resp, TAMPER_RESP_0, SYS_RESET)) {
+        pmc_global_tamper_shutdown(s, slot);
+        return;
+    }
+
+    /* Notify if selected */
+    if (FIELD_EX32(resp, TAMPER_RESP_0, SYS_INTERRUPT)) {
+        ARRAY_FIELD_DP32(s->regs, PMC_GLOBAL_ISR, TAMPER_INT, 1);
+        pmc_global_imr_update_irq(s);
+    }
+}
+
+static void pmc_global_tamper_event_set(PMC_GLOBAL *s, uint32_t events)
+{
+    unsigned n;
+
+    static const struct resp_map {
+        unsigned slot;
+        uint32_t event_mask;
+    } resp_map[] = {
+        /* In order of decreasing priority */
+        { R_TAMPER_RESP_13, XLNX_AMS_VCCINT_GLITCHES_MASK },
+        { R_TAMPER_RESP_11, XLNX_AMS_VOLT_7_ALARM_MASK },
+        { R_TAMPER_RESP_10, XLNX_AMS_VOLT_6_ALARM_MASK },
+        { R_TAMPER_RESP_9,  XLNX_AMS_VOLT_5_ALARM_MASK },
+        { R_TAMPER_RESP_8,  XLNX_AMS_VOLT_4_ALARM_MASK },
+        { R_TAMPER_RESP_7,  XLNX_AMS_VOLT_3_ALARM_MASK },
+        { R_TAMPER_RESP_6,  XLNX_AMS_VOLT_2_ALARM_MASK },
+        { R_TAMPER_RESP_5,  XLNX_AMS_VOLT_1_ALARM_MASK },
+        { R_TAMPER_RESP_4,  XLNX_AMS_VOLT_0_ALARM_MASK },
+        { R_TAMPER_RESP_3,  XLNX_AMS_TEMP_ALARM_MASK },
+        { R_TAMPER_RESP_2,  XLNX_AMS_DBG_TAMPER_TRIG_MASK },
+        { R_TAMPER_RESP_1,  XLNX_AMS_MIO_TAMPER_TRIG_MASK },
+        { R_TAMPER_RESP_0,  XLNX_AMS_SW_TAMPER_TRIG_MASK },
+    };
+
+    /*
+     * Respond to event in priority order.
+     */
+    for (n = 0; events && n < ARRAY_SIZE(resp_map); n++) {
+        unsigned id = resp_map[n].slot;
+        uint32_t em = resp_map[n].event_mask;
+
+        if (!(events & em)) {
+            continue;
+        }
+
+        if ((id == R_TAMPER_RESP_13) && !pmc_global_gd_monitor_enabled(s)) {
+            /* Skip if glitch-detection/-monitoring are disabled */
+            continue;
+        }
+
+        pmc_global_tamper_respond(s, (id - R_TAMPER_RESP_0));
+        events &= ~em;
+    }
+}
+
+static uint64_t tamper_trig_prew(RegisterInfo *reg, uint64_t val64)
+{
+    PMC_GLOBAL *s = XILINX_PMC_GLOBAL(reg->opaque);
+
+    if (FIELD_EX32(val64, TAMPER_TRIG, TAMPER)) {
+        pmc_global_tamper_event_set(s, XLNX_AMS_SW_TAMPER_TRIG_MASK);
+    }
+
+    return 0;  /* All bits are write-only */
 }
 
 static RegisterAccessInfo pmc_global_regs_info[] = {
@@ -1366,7 +1534,7 @@ static RegisterAccessInfo pmc_global_regs_info[] = {
     },{ .name = "TAMPER_RESP_13",  .addr = A_TAMPER_RESP_13,
         .rsvd = 0xffffffe0,
     },{ .name = "TAMPER_TRIG",  .addr = A_TAMPER_TRIG,
-        .post_write = tamper_trig_postw,
+        .pre_write = tamper_trig_prew,
     },{ .name = "PPU0_MB_FATAL",  .addr = A_PPU0_MB_FATAL,
         .rsvd = 0xfffffff8,
         .ro = 0xffffffff,
@@ -1675,6 +1843,7 @@ static void pmc_global_init(Object *obj)
     PMC_GLOBAL *s = XILINX_PMC_GLOBAL(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
     RegisterInfoArray *reg_array;
+    unsigned n;
 
     memory_region_init(&s->iomem, obj, TYPE_XILINX_PMC_GLOBAL, R_MAX * 4);
     reg_array =
@@ -1698,15 +1867,49 @@ static void pmc_global_init(Object *obj)
     sysbus_init_irq(sbd, &s->irq_pmc_pl_irq);
     sysbus_init_irq(sbd, &s->irq_pmc_ppu1_gpi);
     sysbus_init_irq(sbd, &s->irq_pmc_global_imr);
+    for (n = 0; n < ARRAY_SIZE(s->tamper_out); n++) {
+        sysbus_init_irq(sbd, &s->tamper_out[n]);
+    }
 
     /* Out signals.  */
-    qdev_init_gpio_out_named(DEVICE(obj), &s->tamper_reg, "tamper_reg", 1);
     qdev_init_gpio_out_named(DEVICE(obj), &s->ppu1_rst, "ppu1_rst", 1);
     qdev_init_gpio_out_named(DEVICE(obj), &s->ppu1_wakeup, "ppu1_wakeup", 1);
 
     /* In signals. */
     qdev_init_gpio_in(DEVICE(obj), pmc_global_isr_set_puf_acc_error, 1);
 }
+
+static void pmc_global_prop_tamper_event_set(Object *obj, Visitor *v,
+                                             const char *name, void *opaque,
+                                             Error **errp)
+{
+    uint32_t events = 0;
+
+    visit_type_uint32(v, name, &events, errp);
+    if (*errp) {
+        return;
+    }
+
+    pmc_global_tamper_event_set(XILINX_PMC_GLOBAL(obj), events);
+}
+
+static void pmc_global_prop_tamper_event_add(ObjectClass *klass)
+{
+    object_class_property_add(klass, XLNX_AMS_TAMPER_PROP, "Bits:uint",
+                              NULL, /* non-gettable */
+                              pmc_global_prop_tamper_event_set,
+                              NULL, /* nothing to release */
+                              NULL);
+    object_class_property_set_description(klass, XLNX_AMS_TAMPER_PROP,
+                                          "Set to trigger tamper events");
+}
+
+static Property pmc_global_properties[] = {
+    DEFINE_PROP_LINK("bbram", PMC_GLOBAL, bbram, TYPE_OBJECT, Object *),
+    DEFINE_PROP_LINK("efuse", PMC_GLOBAL, efuse, TYPE_OBJECT, Object *),
+
+    DEFINE_PROP_END_OF_LIST(),
+};
 
 static const VMStateDescription vmstate_pmc_global = {
     .name = TYPE_XILINX_PMC_GLOBAL,
@@ -1730,8 +1933,8 @@ static const FDTGenericGPIOSet ctrl_gpios[] = {
     {
       .names = &fdt_generic_gpio_name_set_interrupts,
       .gpios = (FDTGenericGPIOConnection[]) {
-        { .name = SYSBUS_DEVICE_GPIO_IRQ, .fdt_index = 0, .range = 8 },
-        { .name = "tamper_reg", .fdt_index = 8 },
+        { .name = SYSBUS_DEVICE_GPIO_IRQ,
+          .fdt_index = 0, .range = 8 + R_TAMPER_RESP_MAX },
         { },
       },
     },
@@ -1747,6 +1950,9 @@ static void pmc_global_class_init(ObjectClass *klass, void *data)
     dc->realize = pmc_global_realize;
     dc->vmsd = &vmstate_pmc_global;
     fggc->controller_gpios = ctrl_gpios;
+
+    device_class_set_props(dc, pmc_global_properties);
+    pmc_global_prop_tamper_event_add(klass);
 }
 
 static const TypeInfo pmc_global_info = {

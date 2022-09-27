@@ -3926,6 +3926,29 @@ static void pmsav7_rgnr_write(CPUARMState *env, const ARMCPRegInfo *ri,
     raw_write(env, ri, value);
 }
 
+static const ARMCPRegInfo pmsav8_cp_reginfo[] = {
+    /* Reset for all these registers is handled in arm_cpu_reset(),
+     * because the PMSAv8 is also used by M-profile CPUs, which do
+     * not register cpregs but still need the state to be reset.
+     */
+    { .name = "PRSEL", .cp = 15, .crn = 6, .opc1 = 0, .crm = 2, .opc2 = 1,
+      .access = PL1_RW, .type = ARM_CP_NO_RAW,
+      .fieldoffset = offsetof(CPUARMState, pmsav7.rnr[M_REG_NS]),
+      .writefn = pmsav7_rgnr_write,
+      .resetfn = arm_cp_reset_ignore },
+    { .name = "PRBAR", .cp = 15, .crn = 6, .opc1 = 0, .crm = 3, .opc2 = 0,
+      .access = PL1_RW, .type = ARM_CP_NO_RAW,
+      .fieldoffset = offsetof(CPUARMState, pmsav8.rbar),
+      .readfn = pmsav7_read, .writefn = pmsav7_write,
+      .resetfn = arm_cp_reset_ignore },
+    { .name = "PRLAR", .cp = 15, .crn = 6, .opc1 = 0, .crm = 3, .opc2 = 1,
+      .access = PL1_RW, .type = ARM_CP_NO_RAW,
+      .fieldoffset = offsetof(CPUARMState, pmsav8.rlar),
+      .readfn = pmsav7_read, .writefn = pmsav7_write,
+      .resetfn = arm_cp_reset_ignore },
+    REGINFO_SENTINEL
+};
+
 static const ARMCPRegInfo pmsav7_cp_reginfo[] = {
     /* Reset for all these registers is handled in arm_cpu_reset(),
      * because the PMSAv7 is also used by M-profile CPUs, which do
@@ -8348,7 +8371,10 @@ void register_cp_regs_for_features(ARMCPU *cpu)
     }
 
     if (arm_feature(env, ARM_FEATURE_PMSA)) {
-        if (arm_feature(env, ARM_FEATURE_V6)) {
+        if (arm_feature(env, ARM_FEATURE_V8)) {
+            define_arm_cp_regs(cpu, vmsa_pmsa_cp_reginfo);
+            define_arm_cp_regs(cpu, pmsav8_cp_reginfo);
+        } else if (arm_feature(env, ARM_FEATURE_V6)) {
             /* PMSAv6 not implemented */
             assert(arm_feature(env, ARM_FEATURE_V7));
             define_arm_cp_regs(cpu, vmsa_pmsa_cp_reginfo);
@@ -8472,7 +8498,7 @@ void register_cp_regs_for_features(ARMCPU *cpu)
               .cp = 15, .crn = 0, .crm = 0, .opc1 = 0, .opc2 = 2,
               .access = PL1_R,
               .accessfn = access_aa32_tid1,
-              .type = ARM_CP_CONST, .resetvalue = 0 },
+              .type = ARM_CP_CONST, .resetvalue = cpu->tcmtr },
             REGINFO_SENTINEL
         };
         /* MIDR opc=4 alias is specific to VMSA < v8 */
@@ -8618,19 +8644,29 @@ void register_cp_regs_for_features(ARMCPU *cpu)
             assert(arm_feature(env, ARM_FEATURE_CBAR_RO));
             define_arm_cp_regs(cpu, cbar_reginfo);
         } else {
-            ARMCPRegInfo cbar = {
-                .name = "CBAR",
-                .cp = 15, .crn = 15, .crm = 0, .opc1 = 4, .opc2 = 0,
-                .access = PL1_R|PL3_W, .resetvalue = cpu->reset_cbar,
-                .fieldoffset = offsetof(CPUARMState,
-                                        cp15.c15_config_base_address)
-            };
-            if (arm_feature(env, ARM_FEATURE_CBAR_RO)) {
-                cbar.access = PL1_R;
-                cbar.fieldoffset = 0;
-                cbar.type = ARM_CP_CONST;
+            if (arm_feature(env, ARM_FEATURE_V8)) {
+                ARMCPRegInfo cbar = {
+                    .name = "CBAR",
+                    .type = ARM_CP_CONST,
+                    .cp = 15, .crn = 15, .crm = 3, .opc1 = 1, .opc2 = 0,
+                    .access = PL1_R | PL2_R, .resetvalue = cpu->reset_cbar
+                };
+                define_one_arm_cp_reg(cpu, &cbar);
+            } else {
+                ARMCPRegInfo cbar = {
+                    .name = "CBAR",
+                    .cp = 15, .crn = 15, .crm = 0, .opc1 = 4, .opc2 = 0,
+                    .access = PL1_R|PL3_W, .resetvalue = cpu->reset_cbar,
+                    .fieldoffset = offsetof(CPUARMState,
+                                            cp15.c15_config_base_address)
+                };
+                if (arm_feature(env, ARM_FEATURE_CBAR_RO)) {
+                    cbar.access = PL1_R;
+                    cbar.fieldoffset = 0;
+                    cbar.type = ARM_CP_CONST;
+                }
+                define_one_arm_cp_reg(cpu, &cbar);
             }
-            define_one_arm_cp_reg(cpu, &cbar);
         }
     }
 
@@ -12369,12 +12405,26 @@ bool pmsav8_mpu_lookup(CPUARMState *env, uint32_t address,
 
         for (n = (int)cpu->pmsav7_dregion - 1; n >= 0; n--) {
             /* region search */
-            /* Note that the base address is bits [31:5] from the register
-             * with bits [4:0] all zeroes, but the limit address is bits
-             * [31:5] from the register with bits [4:0] all ones.
-             */
-            uint32_t base = env->pmsav8.rbar[secure][n] & ~0x1f;
-            uint32_t limit = env->pmsav8.rlar[secure][n] | 0x1f;
+            uint32_t mask;
+            uint32_t base;
+            uint32_t limit;
+
+            if (arm_feature(env, ARM_FEATURE_M)) {
+                /* Note that the base address is bits [31:5] from the register
+                 * with bits [4:0] all zeroes, but the limit address is bits
+                 * [31:5] from the register with bits [4:0] all ones.
+                 */
+                 mask = 0x1f;
+            } else {
+                /* On R profile the base address is bits [31:6] from the register
+                 * with bits [5:0] all zeroes, but the limit address is bits
+                 * [31:6] from the register with bits [5:0] all ones.
+                 */
+                mask = 0x3f;
+            }
+
+            base = env->pmsav8.rbar[secure][n] & ~mask;
+            limit = env->pmsav8.rlar[secure][n] | mask;
 
             if (!(env->pmsav8.rlar[secure][n] & 0x1)) {
                 /* Region disabled */

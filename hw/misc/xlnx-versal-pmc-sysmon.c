@@ -30,10 +30,12 @@
 #include "hw/irq.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
+#include "qemu/timer.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
+#include "hw/block/xlnx-efuse.h"
 #include "xlnx-versal-ams.h"
 
 #include <math.h>
@@ -3346,9 +3348,16 @@ typedef struct PMCSysMon {
     qemu_irq irq_1;
     uint32_t events;
     uint32_t reg_prev_value;
+    uint32_t voltage_read_wo_data[R_SUPPLY_COUNT / 32];
+
+    Object *efuse;
+    QEMUTimer efuse_throttle_timer;
+    uint32_t efuse_throttle_ms;
 
     Object *ams_sat[2];
     uint32_t ams_sat_ready[1];  /* bit-array, indexed by CHANNEL_xxx macros */
+
+    Object *tamper_sink;
 
     /*
      * Measurement injection list pending for playback/replay upon
@@ -3384,6 +3393,9 @@ typedef struct PMCSysMon {
     uint32_t regs[PMC_SYSMON_R_MAX];
     RegisterInfo regs_info[PMC_SYSMON_R_MAX];
 } PMCSysMon;
+
+static void pmc_sysmon_volt_apply_by_root_id(PMCSysMon *s, unsigned reg,
+                                             float val, Error **errp);
 
 static int int_compare(int a, int b)
 {
@@ -3700,6 +3712,51 @@ static uint64_t reg_isr_prew(RegisterInfo *reg, uint64_t val64)
     return val64 | s->events;
 }
 
+static void pmc_sysmon_event_tamper(PMCSysMon *s, uint32_t isr_mask)
+{
+    g_autofree Error *err = NULL;
+    uint32_t alarms, events;
+
+    static const uint32_t tamper_map[32] = {
+        [R_REG_ISR_ALARM0_SHIFT] = XLNX_AMS_VOLT_0_ALARM_MASK,
+        [R_REG_ISR_ALARM1_SHIFT] = XLNX_AMS_VOLT_1_ALARM_MASK,
+        [R_REG_ISR_ALARM2_SHIFT] = XLNX_AMS_VOLT_2_ALARM_MASK,
+        [R_REG_ISR_ALARM3_SHIFT] = XLNX_AMS_VOLT_3_ALARM_MASK,
+        [R_REG_ISR_ALARM4_SHIFT] = XLNX_AMS_VOLT_4_ALARM_MASK,
+        [R_REG_ISR_ALARM5_SHIFT] = XLNX_AMS_VOLT_5_ALARM_MASK,
+        [R_REG_ISR_ALARM6_SHIFT] = XLNX_AMS_VOLT_6_ALARM_MASK,
+        [R_REG_ISR_ALARM7_SHIFT] = XLNX_AMS_VOLT_7_ALARM_MASK,
+        [R_REG_ISR_OT_SHIFT]     = XLNX_AMS_TEMP_ALARM_MASK,
+        [R_REG_ISR_TEMP_SHIFT]   = XLNX_AMS_TEMP_ALARM_MASK,
+    };
+
+    if (!s->tamper_sink) {
+        return;
+    }
+
+    for (events = 0, alarms = isr_mask; alarms; ) {
+        uint32_t bit_nr = ctz32(alarms);
+
+        events |= tamper_map[bit_nr];
+        alarms &= ~(1 << bit_nr);
+    }
+
+    if (!events) {
+        return;
+    }
+
+    object_property_set_uint(s->tamper_sink,
+                             XLNX_AMS_TAMPER_PROP, events, &err);
+    if (err) {
+        g_autofree char *p_dev = object_get_canonical_path(OBJECT(s));
+        g_autofree char *p_sink = object_get_canonical_path(s->tamper_sink);
+
+        warn_report("%s: Fail to send alarms 0x%03x as "
+                    "tampering events to %s: %s",
+                    p_dev, isr_mask, p_sink, error_get_pretty(err));
+    }
+}
+
 static void pmc_sysmon_event_clear(PMCSysMon *s, uint32_t isr_mask)
 {
     s->events &= ~isr_mask;
@@ -3707,6 +3764,8 @@ static void pmc_sysmon_event_clear(PMCSysMon *s, uint32_t isr_mask)
 
 static void pmc_sysmon_event_set(PMCSysMon *s, uint32_t isr_mask)
 {
+    pmc_sysmon_event_tamper(s, isr_mask); /* non-maskable */
+
     s->events |= isr_mask;
 
     if (!(s->regs[R_REG_ISR] & isr_mask)) {
@@ -4270,6 +4329,8 @@ static uint64_t reg_itr_prew(RegisterInfo *reg, uint64_t val64)
     PMCSysMon *s = PMC_SYSMON(reg->opaque);
     uint32_t val = val64;
 
+    pmc_sysmon_event_tamper(s, val);
+
     s->regs[R_REG_ISR] |= val;
     reg_isr_update_irq(s);
     return 0;
@@ -4325,33 +4386,105 @@ static uint64_t reg_ier0_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
+static void pmc_sysmon_efuse_data_put(PMCSysMon *s, XlnxEFuseSysmonData *src)
+{
+    s->regs[R_SECURE_EFUSE_RDATA_LOW]  = src->rdata_low;
+    s->regs[R_SECURE_EFUSE_RDATA_HIGH] = src->rdata_high;
+}
+
+static bool pmc_sysmon_efuse_data_xfer(PMCSysMon *s)
+{
+    XlnxEFuseSysmonData data;
+    XlnxEFuseSysmonDataSourceClass *klass = NULL;
+
+    if (s->efuse) {
+        klass = XLNX_EFUSE_SYSMON_DATA_SOURCE_GET_CLASS(s->efuse);
+        if (klass && !klass->get_data) {
+            klass = NULL;
+        }
+    }
+
+    if (klass) {
+        klass->get_data(s->efuse, &data);
+    } else {
+        memset(&data, 0, sizeof(data));
+    }
+
+    /* Skip updating if in test mode */
+    if (!ARRAY_FIELD_EX32(s->regs, REG_PCSR_CONTROL, TEST_SAFE)) {
+        pmc_sysmon_efuse_data_put(s, &data);
+    }
+
+    return !!klass;
+}
+
+static void pmc_sysmon_efuse_xfer_start(PMCSysMon *s)
+{
+    int64_t now_ms = qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL);
+
+    /*
+     * The transfer-completion deferral timer serves 2 purposes:
+     * 1. For continuous-xfer mode, rate-limit the DONE-event
+     *    to avoid interrupt flood.
+     * 2. To provide single-xfer mode, by modeling the real
+     *    hardware behavior that allows software to make the
+     *    START bit transition of 0->1->0 in 2 consecutive
+     *    writes to PCSR_CONTROL.
+     */
+    timer_mod(&s->efuse_throttle_timer, (now_ms + s->efuse_throttle_ms));
+}
+
+static void pmc_sysmon_efuse_xfer_done(void *opaque)
+{
+    PMCSysMon *s = PMC_SYSMON(opaque);
+
+    if (pmc_sysmon_efuse_data_xfer(s)) {
+        ARRAY_FIELD_DP32(s->regs, REG_ISR, SECURE_EFUSE_DONE, 1);
+    } else {
+        ARRAY_FIELD_DP32(s->regs, REG_ISR, SECURE_EFUSE_ERROR, 1);
+    }
+
+    reg_isr_update_irq(s);
+
+    if (ARRAY_FIELD_EX32(s->regs, REG_PCSR_CONTROL, SECURE_EFUSE_START)) {
+        pmc_sysmon_efuse_xfer_start(s);
+    } else {
+        timer_del(&s->efuse_throttle_timer);
+    }
+}
+
 static uint64_t pmc_sysmon_pcsr_control_prew(RegisterInfo *reg, uint64_t val64)
 {
     PMCSysMon *s = PMC_SYSMON(reg->opaque);
     uint32_t enb_mask = s->regs[R_REG_PCSR_MASK];
-    uint32_t val;
+    uint32_t v_old = s->regs[R_REG_PCSR_CONTROL];
+    uint32_t v_new;
 
     /* Disabled bits cannot be updated */
-    val = ~enb_mask & s->regs[R_REG_PCSR_CONTROL];
+    v_new = ~enb_mask & v_old;
 
     /* Inject modifiable bits */
-    val |= enb_mask & val64;
+    v_new |= enb_mask & val64;
 
-    /* Defer control behavior to postw for TEST_SAFE enforcement */
-    return val;
-}
+    s->regs[R_REG_PCSR_CONTROL] = v_new;
 
-static void pmc_sysmon_pcsr_control_postw(RegisterInfo *reg, uint64_t val64)
-{
-    PMCSysMon *s = PMC_SYSMON(reg->opaque);
-
-    s->regs[R_REG_PCSR_MASK] = 0; /* mask cleared on any write to control */
+    /*
+     * Mask cleared on any write to control.
+     * Skip all control if under test.
+     */
+    s->regs[R_REG_PCSR_MASK] = 0;
 
     if (ARRAY_FIELD_EX32(s->regs, REG_PCSR_CONTROL, TEST_SAFE)) {
-        return; /* Skip control if under test */
+        return v_new;
     }
 
-    return;
+    /* Launch secure efuse transfer on 0->1 transition */
+    if (!FIELD_EX32(v_old, REG_PCSR_CONTROL, SECURE_EFUSE_START)
+        && FIELD_EX32(v_new, REG_PCSR_CONTROL, SECURE_EFUSE_START)) {
+        pmc_sysmon_efuse_xfer_start(s);
+    }
+
+    return v_new;
 }
 
 static void pmc_sysmon_config0_postw(RegisterInfo *reg, uint64_t val64)
@@ -4444,12 +4577,31 @@ static uint64_t pmc_sysmon_save_prev_value_prew(RegisterInfo *reg, uint64_t val)
     return val;
 }
 
+static uint64_t new_data_flagx_postr(RegisterInfo *reg, uint64_t val)
+{
+    PMCSysMon *s = PMC_SYSMON(reg->opaque);
+    int r = (reg->access->addr - A_NEW_DATA_FLAG0) / 4;
+    int i;
+
+    if (!val || (s->voltage_read_wo_data[r] > 8)) {
+        if (s->voltage_read_wo_data[r] > 8) {
+            for (i = 0; i < 32 ; i++) {
+                pmc_sysmon_volt_apply_by_root_id(s, R_SUPPLY0 + r * 32 + i,
+                                                (float)1.5, &error_abort);
+            }
+        } else {
+            s->voltage_read_wo_data[r]++;
+        }
+    }
+
+    return s->regs[reg->access->addr / 4];
+}
+
 static const RegisterAccessInfo pmc_sysmon_regs_info[] = {
     {   .name = "REG_PCSR_MASK",  .addr = A_REG_PCSR_MASK,
     },{ .name = "REG_PCSR_CONTROL",  .addr = A_REG_PCSR_CONTROL,
         .reset = 0x1fe,
         .pre_write = pmc_sysmon_pcsr_control_prew,
-        .post_write = pmc_sysmon_pcsr_control_postw,
     },{ .name = "REG_PCSR_STATUS",  .addr = A_REG_PCSR_STATUS,
         .reset = 0x1,
         .rsvd = 0xffffc000,
@@ -4523,14 +4675,19 @@ static const RegisterAccessInfo pmc_sysmon_regs_info[] = {
     },{ .name = "REG_IXPCM_MEAS_CONF_1",  .addr = A_REG_IXPCM_MEAS_CONF_1,
     },{ .name = "NEW_DATA_FLAG0",  .addr = A_NEW_DATA_FLAG0,
         .w1c = 0xffffffff,
+        .post_read = new_data_flagx_postr,
     },{ .name = "NEW_DATA_FLAG1",  .addr = A_NEW_DATA_FLAG1,
         .w1c = 0xffffffff,
+        .post_read = new_data_flagx_postr,
     },{ .name = "NEW_DATA_FLAG2",  .addr = A_NEW_DATA_FLAG2,
         .w1c = 0xffffffff,
+        .post_read = new_data_flagx_postr,
     },{ .name = "NEW_DATA_FLAG3",  .addr = A_NEW_DATA_FLAG3,
         .w1c = 0xffffffff,
+        .post_read = new_data_flagx_postr,
     },{ .name = "NEW_DATA_FLAG4",  .addr = A_NEW_DATA_FLAG4,
         .w1c = 0xffffffff,
+        .post_read = new_data_flagx_postr,
     },{ .name = "ALARM_FLAG0",  .addr = A_ALARM_FLAG0,
         .w1c = 0xffffffff,
     },{ .name = "ALARM_FLAG1",  .addr = A_ALARM_FLAG1,
@@ -8168,6 +8325,13 @@ static void pmc_sysmon_realize(DeviceState *dev, Error **errp)
             xlnx_ams_sat_instance_set(s->ams_sat[nr], nr, OBJECT(s));
         }
     }
+
+    if (!s->tamper_sink) {
+        g_autofree char *p = object_get_canonical_path(OBJECT(s));
+
+        warn_report("%s.tamper-sink: Missing link disables "
+                    "support for alarm events as tampering", p);
+    }
 }
 
 static void pmc_sysmon_init(Object *obj)
@@ -8192,6 +8356,9 @@ static void pmc_sysmon_init(Object *obj)
     sysbus_init_mmio(sbd, &s->iomem);
     sysbus_init_irq(sbd, &s->irq_0);
     sysbus_init_irq(sbd, &s->irq_1);
+
+    timer_init_ms(&s->efuse_throttle_timer, QEMU_CLOCK_VIRTUAL,
+                  pmc_sysmon_efuse_xfer_done, s);
 }
 
 static void pmc_sysmon_sat_set_ready(PMCSysMon *s, unsigned instance_id)
@@ -8712,8 +8879,14 @@ static void pmc_sysmon_volt_prop_add(ObjectClass *klass)
 }
 
 static Property pmc_sysmon_properties[] = {
+    DEFINE_PROP_UINT32("efuse-transfer-throttle",
+                       PMCSysMon, efuse_throttle_ms, 200),
+    DEFINE_PROP_LINK("efuse", PMCSysMon, efuse,
+                     TYPE_XLNX_EFUSE_SYSMON_DATA_SOURCE, Object *),
     DEFINE_PROP_LINK("ams-sat0", PMCSysMon, ams_sat[0], TYPE_OBJECT, Object *),
     DEFINE_PROP_LINK("ams-sat1", PMCSysMon, ams_sat[1], TYPE_OBJECT, Object *),
+    DEFINE_PROP_LINK("tamper-sink", PMCSysMon, tamper_sink,
+                     TYPE_OBJECT, Object *),
 
     DEFINE_PROP_END_OF_LIST(),
 };
@@ -8762,9 +8935,16 @@ static const TypeInfo pmc_sysmon_info = {
     .instance_init = pmc_sysmon_init,
 };
 
+static const TypeInfo pmc_sysmon_efuse_data_source_type = {
+    .parent = TYPE_INTERFACE,
+    .name = TYPE_XLNX_EFUSE_SYSMON_DATA_SOURCE,
+    .class_size = sizeof(XlnxEFuseSysmonDataSourceClass),
+};
+
 static void pmc_sysmon_register_types(void)
 {
     type_register_static(&pmc_sysmon_info);
+    type_register_static(&pmc_sysmon_efuse_data_source_type);
 }
 
 type_init(pmc_sysmon_register_types)

@@ -976,40 +976,7 @@ static const FDTGenericGPIOSet crp_gpios[] = {
     {
       .names = &fdt_generic_gpio_name_set_gpio,
       .gpios = (FDTGenericGPIOConnection[]) {
-        { .name = "rst-qspi", .fdt_index = 0, .range = 1 },
-        { .name = "rst-ospi", .fdt_index = 1, .range = 1 },
-        /*
-         * To avoid breaking backwards compatibility, we keep
-         * PMC-SRST at index 2 and put SDIO0 and index 8.
-         */
-        { .name = "rst-ps-pmc-srst", .fdt_index = 2, .range = 1 },
-        { .name = "rst-sdio1", .fdt_index = 3, .range = 1 },
-        { .name = "rst-i2c", .fdt_index = 4, .range = 1 },
-        { .name = "rst-gpio", .fdt_index = 5, .range = 1 },
-
-        { .name = "rst-ps-pl-srst", .fdt_index = 6, .range = 1 },
-        { .name = "rst-ps-ps-srst", .fdt_index = 7, .range = 1 },
-        /* SDIO0 at index 8, see above.  */
-        { .name = "rst-sdio0", .fdt_index = 8, .range = 1 },
-        { .name = "rst-ps-pl-por", .fdt_index = 9, .range = 1 },
-        { .name = "rst-ps-ps-por", .fdt_index = 10, .range = 1 },
-        { .name = "rst-ps-pmc-por", .fdt_index = 11, .range = 1 },
-
-        { .name = "rst-nonps-sys3", .fdt_index = 12, .range = 1 },
-        { .name = "rst-nonps-sys2", .fdt_index = 13, .range = 1 },
-        { .name = "rst-nonps-sys1", .fdt_index = 14, .range = 1 },
-        { .name = "rst-nonps-npi", .fdt_index = 15, .range = 1 },
-        { .name = "rst-nonps-noc-por", .fdt_index = 16, .range = 1 },
-        { .name = "rst-nonps-noc", .fdt_index = 17, .range = 1 },
-
-        { .name = "rst-sbi", .fdt_index = 18, .range = 1 },
-        { .name = "rst-pdma", .fdt_index = 19, .range = 2 },
-        { .name = "rst-sysmon-cfg", .fdt_index = 21, .range = 1 },
-        { .name = "rst-sysmon-seq", .fdt_index = 22, .range = 1 },
-        { .name = "rst-pl", .fdt_index = 23, .range = 4 },
-        { .name = "rst-usb", .fdt_index = 27, .range = 1 },
-        { .name = "rst-dbg-reset", .fdt_index = 28, .range = 1 },
-        { .name = "rst-dbg-dpc", .fdt_index = 29, .range = 1 },
+#include "xlnx-versal-pmc-clk-rst-gpio-map.h"
         { },
       },
     },

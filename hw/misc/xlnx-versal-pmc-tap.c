@@ -705,6 +705,7 @@ typedef struct PMC_TAP {
     CharBackend chr;
 
     uint8_t platform;
+    uint8_t pver;
     uint8_t sec_dbg_dis;
     uint32_t slr_type;
     uint32_t payload_received;
@@ -1856,6 +1857,7 @@ static void pmc_tap_reset(DeviceState *dev)
     s->auth_data_load = 0;
     s->payload_received = 0;
     ARRAY_FIELD_DP32(s->regs, VERSION, PLATFORM, s->platform);
+    ARRAY_FIELD_DP32(s->regs, VERSION, PLATFORM_VERSION, s->pver);
     ARRAY_FIELD_DP32(s->regs, IDCODE, IDCODE, s->idcode);
     sec_dbg_int_update_irq(s);
     pmc_tap_int_update_irq(s);
@@ -1980,6 +1982,7 @@ static Property pmc_tap_props[] = {
                            PMC_TAP_SLR_TYPE_MONO),
         DEFINE_PROP_UINT8("platform", PMC_TAP, platform,
                           PLATFORM_VERSION_QEMU),
+        DEFINE_PROP_UINT8("platform-ver", PMC_TAP, pver, 0),
         DEFINE_PROP_UINT32("idcode", PMC_TAP, idcode, 0),
         DEFINE_PROP_END_OF_LIST(),
 };

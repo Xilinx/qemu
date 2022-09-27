@@ -91,9 +91,9 @@ REG32(SBI_ECO, 0x1000)
 
 #define IF_BURST(pnum) \
     (ARRAY_FIELD_EX32(s->regs, SMAP_CTRL, MODE) == SMAP_BURST_MODE && \
-     ARRAY_FIELD_EX32(s->regs, SBI_CTRL, INTERFACE) == SMAP_INTERFACE && \
+    ((ARRAY_FIELD_EX32(s->regs, SBI_CTRL, INTERFACE) == SMAP_INTERFACE) || \
+     (ARRAY_FIELD_EX32(s->regs, SBI_CTRL, INTERFACE) == AXI_SLAVE_INTERFACE)) && \
      (pnum >= (1 << ARRAY_FIELD_EX32(s->regs, SMAP_CTRL, BURST_SIZE)) * 1024))
-
 #define IF_NON_BURST(pnum) \
     ((ARRAY_FIELD_EX32(s->regs, SMAP_CTRL, MODE) == SMAP_NORMAL_MODE) && \
      (pnum >= 4))
@@ -110,6 +110,7 @@ typedef struct SlaveBootInt {
     StreamCanPushNotifyFn notify;
     void *notify_opaque;
     MemoryRegion iomem;
+    MemoryRegion iomem_keyhole;
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
     int BusWidthDetectCounter;
@@ -493,6 +494,25 @@ static void sbi_write(void *opaque, hwaddr addr, uint64_t value,
     smap_data_rdwr(s);
 }
 
+static void ss_keyhole_write(void *opaque, hwaddr addr, uint64_t value,
+                      unsigned size)
+{
+    SlaveBootInt *s = SBI(opaque);
+    uint32_t free = fifo_num_free(&s->fifo);
+
+    if (free >= size) {
+        fifo_push_all(&s->fifo, &value, size);
+        while (stream_can_push(s->tx_dev, ss_stream_notify, s) &&
+              fifo_num_used(&s->fifo)) {
+            ss_stream_notify(s);
+            ARRAY_FIELD_DP32(s->regs, SBI_IRQ_STATUS, DATA_RDY, 1);
+        }
+        DPRINT("%s: Payload of size: %d pending\n", __func__, fifo_num_used(&s->fifo));
+    }
+    ss_update_busy_line(s);
+    sbi_update_irq(s);
+}
+
 static const MemoryRegionOps ss_ops = {
     .read = register_read_memory,
     .write = sbi_write,
@@ -501,6 +521,15 @@ static const MemoryRegionOps ss_ops = {
         .min_access_size = 4,
         .max_access_size = 4
     }
+};
+
+static const MemoryRegionOps ss_keyhole_ops = {
+    .write = ss_keyhole_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = {
+        .min_access_size = 4,
+        .max_access_size = 8,
+    },
 };
 
 static void ss_realize(DeviceState *dev, Error **errp)
@@ -526,7 +555,7 @@ static void ss_realize(DeviceState *dev, Error **errp)
                                  NULL, NULL, s, NULL, true);
     }
 
-    fifo_create8(&s->fifo, 1024 * 4);
+    fifo_create8(&s->fifo, 1024 * 64);
 }
 
 static void ss_reset(DeviceState *dev)
@@ -558,6 +587,7 @@ static void ss_init(Object *obj)
     SlaveBootInt *s = SBI(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
     RegisterInfoArray *reg_array;
+    char *name;
 
     object_property_add_link(obj, "stream-connected-sbi", TYPE_STREAM_SINK,
                              (Object **)&s->tx_dev,
@@ -576,7 +606,12 @@ static void ss_init(Object *obj)
                                 0x0,
                                 &reg_array->mem);
 
+    name = g_strdup_printf(TYPE_SBI "-keyhole");
+    memory_region_init_io(&s->iomem_keyhole, obj, &ss_keyhole_ops, s,
+                          name, 64 * 1024);
     sysbus_init_mmio(sbd, &s->iomem);
+    sysbus_init_mmio(sbd, &s->iomem_keyhole);
+    g_free(name);
     sysbus_init_irq(sbd, &s->irq);
 }
 

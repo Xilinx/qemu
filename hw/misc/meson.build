@@ -36,9 +36,6 @@ softmmu_ss.add(when: 'CONFIG_XLNX_ZYNQMP', if_true: files(
 
 softmmu_ss.add(when: 'CONFIG_XLNX_ZYNQMP_CSU', if_true: files(
   'csu_sha3.c',
-  'ipcores-rsa5-4k.c',
-  'csu_rsa5_4k.c',
-  'xlnx-versal-ecdsa-rsa.c',
   'csu_aes.c',
   'zynqmp_aes_key.c',
   'xlnx-aes.c',
@@ -47,6 +44,14 @@ softmmu_ss.add(when: 'CONFIG_XLNX_ZYNQMP_CSU', if_true: files(
   'xlnx-zynqmp-pufop.c',
   'xlnx-bbram-ctrl.c'
 ))
+
+if gcrypt.found()
+  softmmu_ss.add(when: 'CONFIG_XLNX_ZYNQMP_CSU', if_true: files(
+    'ipcores-rsa5-4k.c',
+    'csu_rsa5_4k.c',
+    'xlnx-versal-ecdsa-rsa.c',
+  ))
+endif
 
 specific_ss.add(when: 'CONFIG_XLNX_ZYNQMP_ARM', if_true: files(
   'xilinx-lpd-slcr.c',
@@ -80,7 +85,12 @@ softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL', if_true: files(
   'xlnx-versal-lpd-iou-slcr-secure.c',
   'xlnx-xmpu.c',
   'xlnx-xppu.c',
-  'iomem-cache.c'
+  'iomem-cache.c',
+  'xlnx-versal-psm-error-management.c',
+  'xlnx-versal-cpm5-crx.c',
+  'xlnx-versal-cpm5-slcr-secure.c',
+  'xlnx-versal-gtyp-npi-slave.c',
+  'xlnx-versal-vdu-npi.c'
 ))
 
 softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL_PMC', if_true: files(
@@ -94,7 +104,10 @@ softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL_PMC', if_true: files(
   'xlnx-versal-ams-sat.c',
   'xlnx-versal-pmc-pzm.c',
   'xlnx-versal-pmc-tamper.c',
+  'xlnx-versal-pmc-error-management.c',
   'xlnx-versal-cfu.c',
+  'xlnx-cfi-if.c',
+  'xlnx-versal-cframe-reg.c',
   'xlnx-versal-trng.c',
   'xlnx-versal-crf.c',
   'xlnx-versal-crl.c',
@@ -114,6 +127,33 @@ softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL_PMC', if_true: files(
   'xlnx-versal-pufhd.c',
   'pmc_sbi.c',
   'sss-pmc.c'))
+
+specific_ss.add(when: 'CONFIG_XLNX_ZYNQMP_ARM', if_true: files(
+  'xlnx-versal-net-rpu-cluster.c',
+  'xlnx-versal-net-rpu-cluster-core0.c',
+  'xlnx-versal-net-rpu-cluster-core1.c'
+))
+
+softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL', if_true: files(
+  'arm-cmn600ae.c',
+  'xlnx-versal-psx-crf.c',
+  'xlnx-versal-psx-crl.c',
+  'xlnx-versal-psx-pki-rng.c',
+  'xlnx-versal-net-psmx-global.c',
+  'xlnx-versal-net-psmx-local.c',
+  'xlnx-versal-net-psmx-error-management.c',
+  'xlnx-versal-net-apu-pcil.c',
+  'xlnx-versal-net-ddrmc5-ub.c',
+  'xlnx-hnicx-npi.c',
+  'xlnx-pmx-error-management.c',
+  'xlnx-versal-net-rpu-pcil.c'
+))
+
+softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL_PMC', if_true: files(
+  'xlnx-versal-pmx-iou-slcr.c',
+  'xlnx-versal-pmx-crp.c',
+  'xlnx-versal-pmx-global.c'
+))
 
 softmmu_ss.add(when: 'CONFIG_XILINX_AXI', if_true: files('stream-fifo.c'))
 softmmu_ss.add(when: 'CONFIG_ZYNQ', if_true: files('i2c-dev-dummy.c'))

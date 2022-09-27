@@ -114,7 +114,7 @@ static void cpm_pcsr_lock_postw(RegisterInfo *reg, uint64_t val)
 
     if (val == 0xf9e8d7c6) {
         s->regs[R_PSR] &= ~R_PSR_PCSRLOCK_MASK;
-    } else if (val == 1) {
+    } else {
         s->regs[R_PSR] |= R_PSR_PCSRLOCK_MASK;
     }
 }

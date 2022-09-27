@@ -123,11 +123,33 @@ static const VMStateDescription vmstate_efuse_cache = {
     }
 };
 
+static void efuse_cache_sysmon_data_source(Object *obj,
+                                           XlnxEFuseSysmonData *data)
+{
+    EFuseCache *s = XILINX_EFUSE_CACHE(obj);
+
+    assert(data);
+    memset(data, 0, sizeof(*data));
+
+    if (!s->efuse) {
+        return;
+    }
+
+    /* Must provide data without access screening */
+    data->rdata_low = efuse_get_row(s->efuse, (59 * 32));
+    data->rdata_high = efuse_get_row(s->efuse, (60 * 32));
+    data->glitch_monitor_en = efuse_get_bit(s->efuse, (40 * 32 + 29));
+}
+
 static void efuse_cache_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    XlnxEFuseSysmonDataSourceClass *esdc;
 
     dc->vmsd = &vmstate_efuse_cache;
+
+    esdc = XLNX_EFUSE_SYSMON_DATA_SOURCE_CLASS(klass);
+    esdc->get_data = efuse_cache_sysmon_data_source;
 }
 
 static const TypeInfo efuse_cache_info = {
@@ -136,6 +158,10 @@ static const TypeInfo efuse_cache_info = {
     .instance_size = sizeof(EFuseCache),
     .class_init    = efuse_cache_class_init,
     .instance_init = efuse_cache_init,
+    .interfaces = (InterfaceInfo[]) {
+        { TYPE_XLNX_EFUSE_SYSMON_DATA_SOURCE },
+        { }
+    }
 };
 
 static void efuse_cache_register_types(void)

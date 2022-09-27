@@ -89,7 +89,7 @@ typedef struct QEMUIRQSharedState {
     int num;
     bool (*merge_fn)(bool *, int);
 /* FIXME: remove artificial limit */
-#define MAX_IRQ_SHARED_INPUTS 128
+#define MAX_IRQ_SHARED_INPUTS 256
     bool inputs[MAX_IRQ_SHARED_INPUTS];
 } QEMUIRQSharedState;
 

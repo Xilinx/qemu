@@ -35,6 +35,7 @@
 #include "hw/qdev-properties-system.h"
 #include "chardev/char.h"
 #include "chardev/char-fe.h"
+#include "hw/misc/xlnx-cfi-if.h"
 
 #ifndef XILINX_CFU_APB_ERR_DEBUG
 #define XILINX_CFU_APB_ERR_DEBUG 0
@@ -44,6 +45,16 @@
 
 #define XILINX_CFU_APB(obj) \
      OBJECT_CHECK(CFU, (obj), TYPE_XILINX_CFU_APB)
+
+#define TYPE_XILINX_CFU_FDRO "xlnx,versal-cfu-fdro"
+
+#define XILINX_CFU_FDRO(obj) \
+     OBJECT_CHECK(CFU_FDRO, (obj), TYPE_XILINX_CFU_FDRO)
+
+#define TYPE_XILINX_CFU_SFR "xlnx,versal-cfu-sfr"
+
+#define XILINX_CFU_SFR(obj) \
+     OBJECT_CHECK(CFU_SFR, (obj), TYPE_XILINX_CFU_SFR)
 
 #define DPRINT(args, ...) \
     do { \
@@ -220,6 +231,7 @@ REG32(CFU_ECO2, 0x11c)
 #define NUM_STREAM 2
 #define KEYHOLE_STREAM_4K 0x1000
 #define KEYHOLE_STREAM_256K 0x40000
+#define CFRAME_BROADCAST_ROW 0x1F
 
 typedef struct CFU {
     SysBusDevice parent_obj;
@@ -233,7 +245,36 @@ typedef struct CFU {
     CharBackend chr;
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
+
+    /* Keept for backwards compatibility */
+    MemoryRegion iomem_sfr;
+    MemoryRegion iomem_fdro;
+    GArray *fdro_data;
+    uint8_t fdri_row_addr;
+
+    struct {
+        XlnxCfiIf *cframe[15];
+    } cfg;
 } CFU;
+
+typedef struct CFU_FDRO {
+    SysBusDevice parent_obj;
+    MemoryRegion iomem_fdro;
+
+    GArray *fdro_data;
+} CFU_FDRO;
+
+typedef struct CFU_SFR {
+    SysBusDevice parent_obj;
+    MemoryRegion iomem_sfr;
+
+    /* 128-bit wfifo. */
+    uint32_t wfifo[4];
+
+    struct {
+        CFU *cfu;
+    } cfg;
+} CFU_SFR;
 
 static void cfu_imr_update_irq(CFU *s)
 {
@@ -372,6 +413,24 @@ static const MemoryRegionOps cfu_apb_ops = {
     },
 };
 
+static void cfu_transfer_cfi_packet(CFU *s, uint8_t row_addr,
+                                    XlnxCfiPacket *pkt)
+{
+    if (row_addr == CFRAME_BROADCAST_ROW) {
+        for (int i = 0; i < ARRAY_SIZE(s->cfg.cframe); i++) {
+            if (s->cfg.cframe[i]) {
+                xlnx_cfi_transfer_packet(s->cfg.cframe[i], pkt);
+            }
+        }
+    } else {
+            assert(row_addr < ARRAY_SIZE(s->cfg.cframe));
+
+            if (s->cfg.cframe[row_addr]) {
+                xlnx_cfi_transfer_packet(s->cfg.cframe[row_addr], pkt);
+            }
+    }
+}
+
 static uint64_t cfu_stream_read(void *opaque, hwaddr addr, unsigned size)
 {
     qemu_log_mask(LOG_GUEST_ERROR, "%s: Unsupported read from addr=%"
@@ -409,10 +468,159 @@ static void cfu_stream_write(void *opaque, hwaddr addr, uint64_t value,
         DPRINT("CFU: pt=%x row=%x reg=%x crc8=%x\n",
                  packet_type, row_addr, reg_addr, crc8);
 
+        /* Compressed bitstreams are not supported yet. */
+        if (ARRAY_FIELD_EX32(s->regs, CFU_CTL, DECOMPRESS) == 0) {
+            if (s->regs[R_CFU_FDRI_CNT]) {
+                XlnxCfiPacket pkt = {
+                    .reg_addr = CFRAME_FDRI,
+                    .data[0] = s->wfifo[0],
+                    .data[1] = s->wfifo[1],
+                    .data[2] = s->wfifo[2],
+                    .data[3] = s->wfifo[3]
+                };
+
+                cfu_transfer_cfi_packet(s, s->fdri_row_addr, &pkt);
+
+                s->regs[R_CFU_FDRI_CNT]--;
+
+            } else if (packet_type == PACKET_TYPE_CFU &&
+                       reg_addr == CFRAME_FDRI) {
+
+                /* Load R_CFU_FDRI_CNT, must be multiple of 25 */
+                s->regs[R_CFU_FDRI_CNT] = s->wfifo[1];
+
+                /* Store target row_addr */
+                s->fdri_row_addr = row_addr;
+
+                if (s->wfifo[1] % 25 != 0) {
+                    qemu_log_mask(LOG_GUEST_ERROR,
+                                  "CFU FDRI_CNT is not loaded with "
+                                  "a multiple of 25 value\n");
+                }
+
+            } else if (packet_type == PACKET_TYPE_CFRAME) {
+                XlnxCfiPacket pkt = {
+                    .reg_addr = reg_addr,
+                    .data[0] = s->wfifo[1],
+                    .data[1] = s->wfifo[2],
+                    .data[2] = s->wfifo[3],
+                };
+                cfu_transfer_cfi_packet(s, row_addr, &pkt);
+            }
+        }
+
         for (i = 0; i < ARRAY_SIZE(s->wfifo); i++) {
-            s->wfifo[0] = 0;
+            s->wfifo[i] = 0;
         }
     }
+}
+
+static uint64_t cfu_apb_sfr_read(void *opaque, hwaddr addr, unsigned size)
+{
+    qemu_log_mask(LOG_GUEST_ERROR, "%s: Unsupported read from addr=%"
+                  HWADDR_PRIx "\n", __func__, addr);
+    return 0;
+}
+
+static void cfu_apb_sfr_write(void *opaque, hwaddr addr, uint64_t value,
+                      unsigned size)
+{
+    CFU *s = XILINX_CFU_APB(opaque);
+    unsigned int idx;
+
+    /* 4 32bit words. */
+    idx = (addr >> 2) & 3;
+
+    s->wfifo[idx] = value;
+
+    /* Writing to the top word triggers the transmit onto CFI. */
+    if (idx == 3) {
+        uint8_t row_addr = extract32(s->wfifo[0], 23, 5);
+        uint32_t frame_addr = extract32(s->wfifo[0], 0, 23);
+        XlnxCfiPacket pkt = { .reg_addr = CFRAME_SFR,
+                              .data[0] = frame_addr };
+
+        cfu_transfer_cfi_packet(s, row_addr, &pkt);
+
+        for (int i = 0; i < ARRAY_SIZE(s->wfifo); i++) {
+            s->wfifo[i] = 0;
+        }
+    }
+}
+
+static uint64_t cfu_sfr_read(void *opaque, hwaddr addr, unsigned size)
+{
+    qemu_log_mask(LOG_GUEST_ERROR, "%s: Unsupported read from addr=%"
+                  HWADDR_PRIx "\n", __func__, addr);
+    return 0;
+}
+
+static void cfu_sfr_write(void *opaque, hwaddr addr, uint64_t value,
+                      unsigned size)
+{
+    CFU_SFR *s = XILINX_CFU_SFR(opaque);
+    unsigned int idx;
+
+    /* 4 32bit words. */
+    idx = (addr >> 2) & 3;
+
+    s->wfifo[idx] = value;
+
+    /* Writing to the top word triggers the transmit onto CFI. */
+    if (idx == 3) {
+        uint8_t row_addr = extract32(s->wfifo[0], 23, 5);
+        uint32_t frame_addr = extract32(s->wfifo[0], 0, 23);
+        XlnxCfiPacket pkt = { .reg_addr = CFRAME_SFR,
+                              .data[0] = frame_addr };
+
+        if (s->cfg.cfu) {
+            cfu_transfer_cfi_packet(s->cfg.cfu, row_addr, &pkt);
+        }
+
+        for (int i = 0; i < ARRAY_SIZE(s->wfifo); i++) {
+            s->wfifo[i] = 0;
+        }
+    }
+}
+
+static uint64_t cfu_apb_fdro_read(void *opaque, hwaddr addr, unsigned size)
+{
+    CFU *s = XILINX_CFU_APB(opaque);
+    uint64_t ret = 0;
+
+    if (s->fdro_data->len) {
+        ret = g_array_index(s->fdro_data, uint32_t, 0);
+        g_array_remove_index(s->fdro_data, 0);
+    }
+
+    return ret;
+}
+
+static void cfu_apb_fdro_write(void *opaque, hwaddr addr, uint64_t value,
+                      unsigned size)
+{
+    qemu_log_mask(LOG_GUEST_ERROR, "%s: Unsupported write from addr=%"
+                  HWADDR_PRIx "\n", __func__, addr);
+}
+
+static uint64_t cfu_fdro_read(void *opaque, hwaddr addr, unsigned size)
+{
+    CFU_FDRO *s = XILINX_CFU_FDRO(opaque);
+    uint64_t ret = 0;
+
+    if (s->fdro_data->len) {
+        ret = g_array_index(s->fdro_data, uint32_t, 0);
+        g_array_remove_index(s->fdro_data, 0);
+    }
+
+    return ret;
+}
+
+static void cfu_fdro_write(void *opaque, hwaddr addr, uint64_t value,
+                           unsigned size)
+{
+    qemu_log_mask(LOG_GUEST_ERROR, "%s: Unsupported write from addr=%"
+                  HWADDR_PRIx "\n", __func__, addr);
 }
 
 static const MemoryRegionOps cfu_stream_ops = {
@@ -422,6 +630,46 @@ static const MemoryRegionOps cfu_stream_ops = {
     .valid = {
         .min_access_size = 4,
         .max_access_size = 8,
+    },
+};
+
+static const MemoryRegionOps cfu_apb_sfr_ops = {
+    .read = cfu_apb_sfr_read,
+    .write = cfu_apb_sfr_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = {
+        .min_access_size = 4,
+        .max_access_size = 4,
+    },
+};
+
+static const MemoryRegionOps cfu_apb_fdro_ops = {
+    .read = cfu_apb_fdro_read,
+    .write = cfu_apb_fdro_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = {
+        .min_access_size = 4,
+        .max_access_size = 4,
+    },
+};
+
+static const MemoryRegionOps cfu_sfr_ops = {
+    .read = cfu_sfr_read,
+    .write = cfu_sfr_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = {
+        .min_access_size = 4,
+        .max_access_size = 4,
+    },
+};
+
+static const MemoryRegionOps cfu_fdro_ops = {
+    .read = cfu_fdro_read,
+    .write = cfu_fdro_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = {
+        .min_access_size = 4,
+        .max_access_size = 4,
     },
 };
 
@@ -463,10 +711,87 @@ static void cfu_apb_init(Object *obj)
         g_free(name);
     }
     sysbus_init_irq(sbd, &s->irq_cfu_imr);
+    memory_region_init_io(&s->iomem_sfr, obj, &cfu_apb_sfr_ops, s,
+                          TYPE_XILINX_CFU_APB "-sfr", KEYHOLE_STREAM_4K);
+    sysbus_init_mmio(sbd, &s->iomem_sfr);
+    memory_region_init_io(&s->iomem_fdro, obj, &cfu_apb_fdro_ops, s,
+                          TYPE_XILINX_CFU_APB "-fdro", KEYHOLE_STREAM_4K);
+    sysbus_init_mmio(sbd, &s->iomem_fdro);
+    s->fdro_data = g_array_new(FALSE, FALSE, sizeof(uint32_t));
+}
+
+static void cfu_sfr_init(Object *obj)
+{
+    CFU_SFR *s = XILINX_CFU_SFR(obj);
+    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+
+    memory_region_init_io(&s->iomem_sfr, obj, &cfu_sfr_ops, s,
+                          TYPE_XILINX_CFU_SFR, KEYHOLE_STREAM_4K);
+    sysbus_init_mmio(sbd, &s->iomem_sfr);
+}
+
+static void cfu_fdro_init(Object *obj)
+{
+    CFU_FDRO *s = XILINX_CFU_FDRO(obj);
+    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+
+    memory_region_init_io(&s->iomem_fdro, obj, &cfu_fdro_ops, s,
+                          TYPE_XILINX_CFU_FDRO, KEYHOLE_STREAM_4K);
+    sysbus_init_mmio(sbd, &s->iomem_fdro);
+    s->fdro_data = g_array_new(FALSE, FALSE, sizeof(uint32_t));
+}
+
+static void cfu_apb_cfi_transfer_packet(XlnxCfiIf *cfi_if, XlnxCfiPacket *pkt)
+{
+    CFU *s = XILINX_CFU_APB(cfi_if);
+
+    g_array_append_vals(s->fdro_data, &pkt->data[0], 4);
+}
+
+static void cfu_fdro_cfi_transfer_packet(XlnxCfiIf *cfi_if, XlnxCfiPacket *pkt)
+{
+    CFU_FDRO *s = XILINX_CFU_FDRO(cfi_if);
+
+    g_array_append_vals(s->fdro_data, &pkt->data[0], 4);
 }
 
 static Property cfu_props[] = {
         DEFINE_PROP_CHR("chardev", CFU, chr),
+        DEFINE_PROP_LINK("cframe0", CFU, cfg.cframe[0],
+                         TYPE_XLNX_CFI_IF, XlnxCfiIf *),
+        DEFINE_PROP_LINK("cframe1", CFU, cfg.cframe[1],
+                         TYPE_XLNX_CFI_IF, XlnxCfiIf *),
+        DEFINE_PROP_LINK("cframe2", CFU, cfg.cframe[2],
+                         TYPE_XLNX_CFI_IF, XlnxCfiIf *),
+        DEFINE_PROP_LINK("cframe3", CFU, cfg.cframe[3],
+                         TYPE_XLNX_CFI_IF, XlnxCfiIf *),
+        DEFINE_PROP_LINK("cframe4", CFU, cfg.cframe[4],
+                         TYPE_XLNX_CFI_IF, XlnxCfiIf *),
+        DEFINE_PROP_LINK("cframe5", CFU, cfg.cframe[5],
+                         TYPE_XLNX_CFI_IF, XlnxCfiIf *),
+        DEFINE_PROP_LINK("cframe6", CFU, cfg.cframe[6],
+                         TYPE_XLNX_CFI_IF, XlnxCfiIf *),
+        DEFINE_PROP_LINK("cframe7", CFU, cfg.cframe[7],
+                         TYPE_XLNX_CFI_IF, XlnxCfiIf *),
+        DEFINE_PROP_LINK("cframe8", CFU, cfg.cframe[8],
+                         TYPE_XLNX_CFI_IF, XlnxCfiIf *),
+        DEFINE_PROP_LINK("cframe9", CFU, cfg.cframe[9],
+                         TYPE_XLNX_CFI_IF, XlnxCfiIf *),
+        DEFINE_PROP_LINK("cframe10", CFU, cfg.cframe[10],
+                         TYPE_XLNX_CFI_IF, XlnxCfiIf *),
+        DEFINE_PROP_LINK("cframe11", CFU, cfg.cframe[11],
+                         TYPE_XLNX_CFI_IF, XlnxCfiIf *),
+        DEFINE_PROP_LINK("cframe12", CFU, cfg.cframe[12],
+                         TYPE_XLNX_CFI_IF, XlnxCfiIf *),
+        DEFINE_PROP_LINK("cframe13", CFU, cfg.cframe[13],
+                         TYPE_XLNX_CFI_IF, XlnxCfiIf *),
+        DEFINE_PROP_LINK("cframe14", CFU, cfg.cframe[14],
+                         TYPE_XLNX_CFI_IF, XlnxCfiIf *),
+        DEFINE_PROP_END_OF_LIST(),
+};
+
+static Property cfu_sfr_props[] = {
+        DEFINE_PROP_LINK("cfu", CFU_SFR, cfg.cfu, TYPE_XILINX_CFU_APB, CFU *),
         DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -484,12 +809,27 @@ static const VMStateDescription vmstate_cfu_apb = {
 static void cfu_apb_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    XlnxCfiIfClass *xcic = XLNX_CFI_IF_CLASS(klass);
 
     dc->reset = cfu_apb_reset;
     dc->vmsd = &vmstate_cfu_apb;
     dc->realize = cfu_apb_realize;
     device_class_set_props(dc, cfu_props);
+    xcic->cfi_transfer_packet = cfu_apb_cfi_transfer_packet;
+}
 
+static void cfu_fdro_class_init(ObjectClass *klass, void *data)
+{
+    XlnxCfiIfClass *xcic = XLNX_CFI_IF_CLASS(klass);
+
+    xcic->cfi_transfer_packet = cfu_fdro_cfi_transfer_packet;
+}
+
+static void cfu_sfr_class_init(ObjectClass *klass, void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(klass);
+
+    device_class_set_props(dc, cfu_sfr_props);
 }
 
 static const TypeInfo cfu_apb_info = {
@@ -498,11 +838,37 @@ static const TypeInfo cfu_apb_info = {
     .instance_size = sizeof(CFU),
     .class_init    = cfu_apb_class_init,
     .instance_init = cfu_apb_init,
+    .interfaces = (InterfaceInfo[]) {
+        { TYPE_XLNX_CFI_IF },
+        { }
+    }
+};
+
+static const TypeInfo cfu_fdro_info = {
+    .name          = TYPE_XILINX_CFU_FDRO,
+    .parent        = TYPE_SYS_BUS_DEVICE,
+    .instance_size = sizeof(CFU_FDRO),
+    .class_init    = cfu_fdro_class_init,
+    .instance_init = cfu_fdro_init,
+    .interfaces = (InterfaceInfo[]) {
+        { TYPE_XLNX_CFI_IF },
+        { }
+    }
+};
+
+static const TypeInfo cfu_sfr_info = {
+    .name          = TYPE_XILINX_CFU_SFR,
+    .parent        = TYPE_SYS_BUS_DEVICE,
+    .instance_size = sizeof(CFU_SFR),
+    .class_init    = cfu_sfr_class_init,
+    .instance_init = cfu_sfr_init,
 };
 
 static void cfu_apb_register_types(void)
 {
     type_register_static(&cfu_apb_info);
+    type_register_static(&cfu_fdro_info);
+    type_register_static(&cfu_sfr_info);
 }
 
 type_init(cfu_apb_register_types)

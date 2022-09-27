@@ -357,6 +357,7 @@ typedef struct RPU {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
     MemoryRegion mr_R5[2];
+    MemoryRegion mr_R5_CoreView[2];
     MemoryRegion mr_R5_alias[2];
     MemoryRegion tcm_A[2];
     MemoryRegion tcm_B[2];
@@ -785,6 +786,11 @@ static void rpu_realize(DeviceState *dev, Error **errp)
                            s->cfg.tcm_size * 6);
         g_free(name);
 
+        name = g_strdup_printf("mr-R5_%d_CoreView", i);
+        memory_region_init_alias(&s->mr_R5_CoreView[i], OBJECT(dev),
+                                 name, &s->mr_R5[i], 0x0, s->cfg.tcm_size * 4);
+        g_free(name);
+
         name = g_strdup_printf("tcm_A%d", i);
         memory_region_init_ram(&s->tcm_A[i], OBJECT(dev),
                                name, s->cfg.tcm_size, &error_fatal);
@@ -810,7 +816,7 @@ static void rpu_realize(DeviceState *dev, Error **errp)
                                  name, &s->mr_R5[i], 0x0, s->cfg.tcm_size * 6);
         g_free(name);
 
-        sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->mr_R5[i]);
+        sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->mr_R5_CoreView[i]);
         sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->mr_R5_alias[i]);
     }
 

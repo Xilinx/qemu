@@ -257,6 +257,7 @@ void gicv3_init_irqs_and_mmio(GICv3State *s, qemu_irq_handler handler,
     SysBusDevice *sbd = SYS_BUS_DEVICE(s);
     int rdist_capacity = 0;
     int i;
+    int cpuidx;
 
     for (i = 0; i < s->nb_redist_regions; i++) {
         rdist_capacity += s->redist_region_count[i];
@@ -295,17 +296,26 @@ void gicv3_init_irqs_and_mmio(GICv3State *s, qemu_irq_handler handler,
                           "gicv3_dist", 0x10000);
     sysbus_init_mmio(sbd, &s->iomem_dist);
 
-    s->iomem_redist = g_new0(MemoryRegion, s->nb_redist_regions);
+    s->redist_regions = g_new0(GICv3RedistRegion, s->nb_redist_regions);
+    cpuidx = 0;
     for (i = 0; i < s->nb_redist_regions; i++) {
         char *name = g_strdup_printf("gicv3_redist_region[%d]", i);
+        GICv3RedistRegion *region = &s->redist_regions[i];
 
-        memory_region_init_io(&s->iomem_redist[i], OBJECT(s),
-                              ops ? &ops[1] : NULL, s, name,
+        region->gic = s;
+        region->cpuidx = cpuidx;
+        cpuidx += s->redist_region_count[i];
+
+        memory_region_init_io(&region->iomem, OBJECT(s),
+                              ops ? &ops[1] : NULL, region, name,
                               s->redist_region_count[i] * GICV3_REDIST_SIZE);
-        sysbus_init_mmio(sbd, &s->iomem_redist[i]);
+        sysbus_init_mmio(sbd, &region->iomem);
         g_free(name);
     }
 }
+
+#define FDT_GENERIC_GICV3_TYPE_AFFINITY_ALL 0x01000000U
+#define FDT_GENERIC_GICV3_TYPE_AFFINITY_IDX 0x02000000U
 
 static int arm_gicv3_common_fdt_get_irq(FDTGenericIntc *obj, qemu_irq *irqs,
                                       uint32_t *cells, int ncells, int max,
@@ -313,6 +323,8 @@ static int arm_gicv3_common_fdt_get_irq(FDTGenericIntc *obj, qemu_irq *irqs,
 {
     GICv3State *gs = ARM_GICV3_COMMON(obj);
     int cpu = 0;
+    uint32_t qemu_type;
+    uint32_t cpu_mask;
     uint32_t idx;
 
     if (ncells != 3) {
@@ -321,8 +333,9 @@ static int arm_gicv3_common_fdt_get_irq(FDTGenericIntc *obj, qemu_irq *irqs,
         return 0;
     }
     idx = cells[1];
+    qemu_type = cells[0] & 0xff000000;
 
-    switch (cells[0]) {
+    switch (cells[0] & 0x00ffffff) {
     case 0:
         if (idx >= gs->num_irq) {
             error_setg(errp, "ARM GIC SPI has maximum index of %" PRId32 ", "
@@ -337,12 +350,23 @@ static int arm_gicv3_common_fdt_get_irq(FDTGenericIntc *obj, qemu_irq *irqs,
                        "index %" PRId32 " given", idx);
             return 0;
         }
-        for (cpu = 0; cpu < max && cpu < gs->num_cpu; cpu++) {
-            if (cells[2] & 1 << (cpu + 8)) {
+        if (qemu_type == FDT_GENERIC_GICV3_TYPE_AFFINITY_IDX) {
+            cpu = cells[2] >> 8;
+            *irqs = qdev_get_gpio_in(DEVICE(obj),
+                                         gs->num_irq - 16 + idx + cpu * 32);
+            return cpu;
+        }
+
+        cpu_mask = cells[2] >> 8;
+        while ((cpu_mask || qemu_type == FDT_GENERIC_GICV3_TYPE_AFFINITY_ALL)
+               && cpu < max && cpu < gs->num_cpu) {
+            if ((cpu_mask & 1) || qemu_type == FDT_GENERIC_GICV3_TYPE_AFFINITY_ALL) {
                 *irqs = qdev_get_gpio_in(DEVICE(obj),
                                          gs->num_irq - 16 + idx + cpu * 32);
+                irqs++;
             }
-            irqs++;
+            cpu_mask >>= 1;
+            cpu++;
         }
         return cpu;
     default:
@@ -392,6 +416,11 @@ static void arm_gicv3_common_realize(DeviceState *dev, Error **errp)
         return;
     }
 
+    if (s->lpi_enable && !s->dma) {
+        error_setg(errp, "Redist-ITS: Guest 'sysmem' reference link not set");
+        return;
+    }
+
     s->cpu = g_new0(GICv3CPUState, s->num_cpu);
 
     for (i = 0; i < s->num_cpu; i++) {
@@ -428,6 +457,10 @@ static void arm_gicv3_common_realize(DeviceState *dev, Error **errp)
             (1 << 24) |
             (i << 8) |
             (last << 4);
+
+        if (s->lpi_enable) {
+            s->cpu[i].gicr_typer |= GICR_TYPER_PLPIS;
+        }
     }
 }
 
@@ -473,6 +506,7 @@ static void arm_gicv3_common_reset(DeviceState *dev)
         memset(cs->gicr_ipriorityr, 0, sizeof(cs->gicr_ipriorityr));
 
         cs->hppi.prio = 0xff;
+        cs->hpplpi.prio = 0xff;
 
         /* State in the CPU interface must *not* be reset here, because it
          * is part of the CPU's reset domain, not the GIC device's.
@@ -541,10 +575,13 @@ static Property arm_gicv3_common_properties[] = {
     DEFINE_PROP_UINT32("num-cpu", GICv3State, num_cpu, 1),
     DEFINE_PROP_UINT32("num-irq", GICv3State, num_irq, 32),
     DEFINE_PROP_UINT32("revision", GICv3State, revision, 3),
+    DEFINE_PROP_BOOL("has-lpi", GICv3State, lpi_enable, 0),
     DEFINE_PROP_BOOL("has-security-extensions", GICv3State, security_extn, 0),
     DEFINE_PROP_ARRAY("redist-region-count", GICv3State, nb_redist_regions,
                       redist_region_count, qdev_prop_uint32, uint32_t),
     DEFINE_PROP_UINT32("first-cpu-idx", GICv3State, first_cpu_idx, 0),
+    DEFINE_PROP_LINK("sysmem", GICv3State, dma, TYPE_MEMORY_REGION,
+                     MemoryRegion *),
     DEFINE_PROP_END_OF_LIST(),
 };
 
