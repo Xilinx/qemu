@@ -895,7 +895,7 @@ static void rp_init(Object *obj)
         char *name = g_strdup_printf("remote-port-dev%d", i);
         object_property_add_link(obj, name, TYPE_REMOTE_PORT_DEVICE,
                              (Object **)&s->devs[i],
-                             qdev_prop_allow_set_link,
+                             object_property_allow_set_link,
                              OBJ_PROP_LINK_STRONG);
         g_free(name);
 
