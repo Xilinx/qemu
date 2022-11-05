@@ -177,6 +177,7 @@ static MemTxResult rp_access(MemoryTransaction *tr)
 static const MemoryRegionOps rp_ops_template = {
     .access = rp_access,
     .valid.max_access_size = RP_MAX_ACCESS_SIZE,
+    .impl.max_access_size = RP_MAX_ACCESS_SIZE,
     .impl.unaligned = false,
     .endianness = DEVICE_LITTLE_ENDIAN,
 };
@@ -209,6 +210,7 @@ static void rp_memory_master_realize(DeviceState *dev, Error **errp)
         s->rp_ops = g_malloc(sizeof *s->rp_ops);
         memcpy(s->rp_ops, &rp_ops_template, sizeof *s->rp_ops);
         s->rp_ops->valid.max_access_size = s->max_access_size;
+        s->rp_ops->impl.max_access_size = s->max_access_size;
 
         s->mmaps = g_new0(typeof(*s->mmaps), s->map_num);
         for (i = 0; i < s->map_num; ++i) {
@@ -245,6 +247,7 @@ static bool rp_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
     s->rp_ops = g_malloc(sizeof *s->rp_ops);
     memcpy(s->rp_ops, &rp_ops_template, sizeof *s->rp_ops);
     s->rp_ops->valid.max_access_size = s->max_access_size;
+    s->rp_ops->impl.max_access_size = s->max_access_size;
 
     s->mmaps = g_new0(typeof(*s->mmaps), reg.n);
     for (i = 0; i < reg.n; ++i) {
