@@ -120,7 +120,7 @@ MemTxResult rp_mm_access_with_def_attr(RemotePort *rp, uint32_t rp_dev,
         /* Data up to 8 bytes is return as values.  */
         if (tr->size <= 8) {
             for (i = 0; i < tr->size; i++) {
-                tr->data.u64 |= data[i] << (i * 8);
+                tr->data.u64 |= ((uint64_t) data[i]) << (i * 8);
             }
         } else {
             memcpy(tr->data.p8, data, tr->size);
