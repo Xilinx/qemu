@@ -55,5 +55,8 @@ config SSE_COUNTER
 config SSE_TIMER
     bool
 
+config STELLARIS_GPTM
+    bool
+
 config AVR_TIMER16
     bool
