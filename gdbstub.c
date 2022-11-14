@@ -3292,7 +3292,7 @@ static bool gdb_accept_socket(int gdb_fd)
 
 static int gdbserver_open_socket(const char *path)
 {
-    struct sockaddr_un sockaddr;
+    struct sockaddr_un sockaddr = {};
     int fd, ret;
 
     fd = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -3321,7 +3321,7 @@ static int gdbserver_open_socket(const char *path)
 
 static bool gdb_accept_tcp(int gdb_fd)
 {
-    struct sockaddr_in sockaddr;
+    struct sockaddr_in sockaddr = {};
     socklen_t len;
     int fd;
 
