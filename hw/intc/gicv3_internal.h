@@ -289,6 +289,8 @@ FIELD(GITS_TYPER, CIL, 36, 1)
 
 #define GITS_IDREGS           0xFFD0
 
+#define ITS_CTLR_ENABLED               (1U)  /* ITS Enabled */
+
 #define GITS_BASER_RO_MASK                  (R_GITS_BASER_ENTRYSIZE_MASK | \
                                               R_GITS_BASER_TYPE_MASK)
 
@@ -354,30 +356,28 @@ FIELD(MAPC, RDBASE, 16, 32)
 #define L2_TABLE_VALID_MASK       CMD_FIELD_VALID_MASK
 #define TABLE_ENTRY_VALID_MASK    (1ULL << 0)
 
+/**
+ * Default features advertised by this version of ITS
+ */
+/* Physical LPIs supported */
+#define GITS_TYPE_PHYSICAL           (1U << 0)
+
 /*
  * 12 bytes Interrupt translation Table Entry size
  * as per Table 5.3 in GICv3 spec
  * ITE Lower 8 Bytes
  *   Bits:    | 49 ... 26 | 25 ... 2 |   1     |   0    |
- *   Values:  |  Doorbell |  IntNum  | IntType |  Valid |
+ *   Values:  |    1023   |  IntNum  | IntType |  Valid |
  * ITE Higher 4 Bytes
  *   Bits:    | 31 ... 16 | 15 ...0 |
  *   Values:  |  vPEID    |  ICID   |
- * (When Doorbell is unused, as it always is in GICv3, it is 1023)
  */
 #define ITS_ITT_ENTRY_SIZE            0xC
-
-FIELD(ITE_L, VALID, 0, 1)
-FIELD(ITE_L, INTTYPE, 1, 1)
-FIELD(ITE_L, INTID, 2, 24)
-FIELD(ITE_L, DOORBELL, 26, 24)
-
-FIELD(ITE_H, ICID, 0, 16)
-FIELD(ITE_H, VPEID, 16, 16)
-
-/* Possible values for ITE_L INTTYPE */
-#define ITE_INTTYPE_VIRTUAL 0
-#define ITE_INTTYPE_PHYSICAL 1
+#define ITE_ENTRY_INTTYPE_SHIFT        1
+#define ITE_ENTRY_INTID_SHIFT          2
+#define ITE_ENTRY_INTID_MASK         MAKE_64BIT_MASK(2, 24)
+#define ITE_ENTRY_INTSP_SHIFT          26
+#define ITE_ENTRY_ICID_MASK          MAKE_64BIT_MASK(0, 16)
 
 /* 16 bits EventId */
 #define ITS_IDBITS                   GICD_TYPER_IDBITS
@@ -393,18 +393,16 @@ FIELD(ITE_H, VPEID, 16, 16)
  * Valid = 1 bit,ITTAddr = 44 bits,Size = 5 bits
  */
 #define GITS_DTE_SIZE                 (0x8ULL)
-
-FIELD(DTE, VALID, 0, 1)
-FIELD(DTE, SIZE, 1, 5)
-FIELD(DTE, ITTADDR, 6, 44)
+#define GITS_DTE_ITTADDR_SHIFT           6
+#define GITS_DTE_ITTADDR_MASK         MAKE_64BIT_MASK(GITS_DTE_ITTADDR_SHIFT, \
+                                                      ITTADDR_LENGTH)
 
 /*
  * 8 bytes Collection Table Entry size
- * Valid = 1 bit, RDBase = 16 bits
+ * Valid = 1 bit,RDBase = 36 bits(considering max RDBASE)
  */
 #define GITS_CTE_SIZE                 (0x8ULL)
-FIELD(CTE, VALID, 0, 1)
-FIELD(CTE, RDBASE, 1, RDBASE_PROCNUM_LENGTH)
+#define GITS_CTE_RDBASE_PROCNUM_MASK  MAKE_64BIT_MASK(1, RDBASE_PROCNUM_LENGTH)
 
 /* Special interrupt IDs */
 #define INTID_SECURE 1020
@@ -465,24 +463,7 @@ void gicv3_dist_set_irq(GICv3State *s, int irq, int level);
 void gicv3_redist_set_irq(GICv3CPUState *cs, int irq, int level);
 void gicv3_redist_process_lpi(GICv3CPUState *cs, int irq, int level);
 void gicv3_redist_lpi_pending(GICv3CPUState *cs, int irq, int level);
-/**
- * gicv3_redist_update_lpi:
- * @cs: GICv3CPUState
- *
- * Scan the LPI pending table and recalculate the highest priority
- * pending LPI and also the overall highest priority pending interrupt.
- */
 void gicv3_redist_update_lpi(GICv3CPUState *cs);
-/**
- * gicv3_redist_update_lpi_only:
- * @cs: GICv3CPUState
- *
- * Scan the LPI pending table and recalculate cs->hpplpi only,
- * without calling gicv3_redist_update() to recalculate the overall
- * highest priority pending interrupt. This should be called after
- * an incoming migration has loaded new state.
- */
-void gicv3_redist_update_lpi_only(GICv3CPUState *cs);
 void gicv3_redist_send_sgi(GICv3CPUState *cs, int grp, int irq, bool ns);
 void gicv3_init_cpuif(GICv3State *s);
 
