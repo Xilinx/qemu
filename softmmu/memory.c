@@ -2139,6 +2139,11 @@ bool memory_region_is_ram_device(MemoryRegion *mr)
     return mr->ram_device;
 }
 
+bool memory_region_is_protected(MemoryRegion *mr)
+{
+    return mr->ram && (mr->ram_block->flags & RAM_PROTECTED);
+}
+
 uint8_t memory_region_get_dirty_log_mask(MemoryRegion *mr)
 {
     uint8_t mask = mr->dirty_log_mask;
@@ -2477,6 +2482,7 @@ static void memory_region_sync_dirty_bitmap(MemoryRegion *mr)
                 }
             }
             flatview_unref(view);
+            trace_memory_region_sync_dirty(mr ? mr->name : "(all)", listener->name, 0);
         } else if (listener->log_sync_global) {
             /*
              * No matter whether MR is specified, what we can do here
@@ -2484,6 +2490,7 @@ static void memory_region_sync_dirty_bitmap(MemoryRegion *mr)
              * sync in a finer granularity.
              */
             listener->log_sync_global(listener);
+            trace_memory_region_sync_dirty(mr ? mr->name : "(all)", listener->name, 1);
         }
     }
 }
