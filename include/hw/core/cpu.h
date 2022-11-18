@@ -1017,6 +1017,7 @@ void QEMU_NORETURN cpu_abort(CPUState *cpu, const char *fmt, ...)
 void cpu_exec_reset(CPUState *cpu);
 
 /* $(top_srcdir)/cpu.c */
+void cpu_class_init_props(DeviceClass *dc);
 void cpu_exec_initfn(CPUState *cpu);
 void cpu_exec_realizefn(CPUState *cpu, Error **errp);
 void cpu_exec_unrealizefn(CPUState *cpu);
