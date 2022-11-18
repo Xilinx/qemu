@@ -188,6 +188,9 @@
 # available during the preconfig state (i.e. when the --preconfig command
 # line option was in use).
 #
+# Features:
+# @unstable: This command is experimental.
+#
 # Since 3.0
 #
 # Returns: nothing
@@ -198,7 +201,8 @@
 # <- { "return": {} }
 #
 ##
-{ 'command': 'x-exit-preconfig', 'allow-preconfig': true }
+{ 'command': 'x-exit-preconfig', 'allow-preconfig': true,
+  'features': [ 'unstable' ] }
 
 ##
 # @human-monitor-command:
