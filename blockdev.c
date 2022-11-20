@@ -303,6 +303,7 @@ int drive_get_max_bus(BlockInterfaceType type)
     return max_bus;
 }
 
+/* Xilinx: keep for fdt_generic */
 /* Get a block device.  This should only be used for single-drive devices
    (e.g. SD/Floppy/MTD).  Multi-disk devices (scsi/ide) should use the
    appropriate bus.  */
