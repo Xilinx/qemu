@@ -358,7 +358,7 @@ static void arm_gicv3_post_load(GICv3State *s)
      * pending interrupt, but don't set IRQ or FIQ lines.
      */
     for (i = 0; i < s->num_cpu; i++) {
-        gicv3_redist_update_lpi(&s->cpu[i]);
+        gicv3_redist_update_lpi_only(&s->cpu[i]);
     }
     gicv3_full_update_noirqset(s);
     /* Repopulate the cache of GICv3CPUState pointers for target CPUs */
