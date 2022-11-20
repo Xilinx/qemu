@@ -385,12 +385,6 @@ static void arm_gic_realize(DeviceState *dev, Error **errp)
     ARMGICv3Class *agc = ARM_GICV3_GET_CLASS(s);
     Error *local_err = NULL;
 
-    agc->parent_realize(dev, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
-        return;
-    }
-
     if (s->nb_redist_regions == 0) {
         /* Xilinx: Backwards compat, we default to 1 region 2 entries.  */
         s->nb_redist_regions = 1;
@@ -402,12 +396,13 @@ static void arm_gic_realize(DeviceState *dev, Error **errp)
             return;
         }
     }
-
-    gicv3_init_irqs_and_mmio(s, gicv3_set_irq, gic_ops, &local_err);
+    agc->parent_realize(dev, &local_err);
     if (local_err) {
         error_propagate(errp, local_err);
         return;
     }
+
+    gicv3_init_irqs_and_mmio(s, gicv3_set_irq, gic_ops);
 
     gicv3_init_cpuif(s);
 }
