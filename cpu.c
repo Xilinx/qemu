@@ -148,12 +148,10 @@ void cpu_exec_realizefn(CPUState *cpu, Error **errp)
     if (!accel_cpu_realizefn(cpu, errp)) {
         return;
     }
-#ifdef CONFIG_TCG
     /* NB: errp parameter is unused currently */
     if (tcg_enabled()) {
         tcg_exec_realizefn(cpu, errp);
     }
-#endif /* CONFIG_TCG */
 
 #ifdef CONFIG_USER_ONLY
     assert(qdev_get_vmsd(DEVICE(cpu)) == NULL ||
@@ -180,12 +178,9 @@ void cpu_exec_unrealizefn(CPUState *cpu)
         vmstate_unregister(NULL, &vmstate_cpu_common, cpu);
     }
 #endif
-#ifdef CONFIG_TCG
-    /* NB: errp parameter is unused currently */
     if (tcg_enabled()) {
         tcg_exec_unrealizefn(cpu);
     }
-#endif /* CONFIG_TCG */
 
     cpu_list_remove(cpu);
 }
