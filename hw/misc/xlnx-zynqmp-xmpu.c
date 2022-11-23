@@ -707,7 +707,7 @@ static MemTxResult zero_read(void *opaque, hwaddr addr, uint64_t *pdata,
     ret.perm = perm;
 
     if (ret.perm & IOMMU_RO) {
-        dma_memory_read(&xm->down.rw.as, addr, &value, size);
+        dma_memory_read(&xm->down.rw.as, addr, &value, size, MEMTXATTRS_UNSPECIFIED);
     } else {
         if (!(s->regs[R_ISR] & (7 << 1))) {
             s->regs[R_ERR_STATUS1] = (addr + xm->base) >> 12;
@@ -716,7 +716,7 @@ static MemTxResult zero_read(void *opaque, hwaddr addr, uint64_t *pdata,
             AddressSpace *as = xm->parent_as;
             addr = (ARRAY_FIELD_EX32(s->regs, POISON, BASE) << 12) |
                     (addr & 0xfff);
-            dma_memory_read(as, addr, &value, size);
+            dma_memory_read(as, addr, &value, size, MEMTXATTRS_UNSPECIFIED);
         }
         ARRAY_FIELD_DP32(s->regs, ERR_STATUS2, AXI_ID, attr.requester_id);
         if (sec_vio) {
@@ -746,7 +746,7 @@ static MemTxResult zero_write(void *opaque, hwaddr addr, uint64_t value,
     ret.perm = perm;
 
     if (ret.perm & IOMMU_WO) {
-        dma_memory_write(&xm->down.rw.as, addr, &value, size);
+        dma_memory_write(&xm->down.rw.as, addr, &value, size, MEMTXATTRS_UNSPECIFIED);
     } else {
         if (!(s->regs[R_ISR] & (7 << 1))) {
             s->regs[R_ERR_STATUS1] = (addr + xm->base) >> 12;
@@ -755,7 +755,7 @@ static MemTxResult zero_write(void *opaque, hwaddr addr, uint64_t value,
             AddressSpace *as = xm->parent_as;
             addr = (ARRAY_FIELD_EX32(s->regs, POISON, BASE) << 12) |
                    (addr & 0xfff);
-            dma_memory_write(as, addr, &value, size);
+            dma_memory_write(as, addr, &value, size, MEMTXATTRS_UNSPECIFIED);
         }
         ARRAY_FIELD_DP32(s->regs, ERR_STATUS2, AXI_ID, attr.requester_id);
         if (sec_vio) {

@@ -1424,7 +1424,7 @@ static void smmu_ptw64(SMMU *s, unsigned int cb, TransReq *req)
             }
             descaddr = s2req.pa;
         }
-        dma_memory_read(&s->dma_as, descaddr, &desc, sizeof(desc));
+        dma_memory_read(&s->dma_as, descaddr, &desc, sizeof(desc), MEMTXATTRS_UNSPECIFIED);
         type = desc & 3;
 
         D_PTW("smmu: S%d L%d va=0x%"PRIx64" gz=%d descaddr=0x%"PRIx64" "

@@ -1091,9 +1091,9 @@ static void xilinx_qspips_write(void *opaque, hwaddr addr,
             while (btt) {
                 uint8_t lqspi_hack_buf[LQSPI_HACK_CHUNK_SIZE];
                 dma_memory_read(q->hack_as, src, lqspi_hack_buf,
-                                LQSPI_HACK_CHUNK_SIZE);
+                                LQSPI_HACK_CHUNK_SIZE, MEMTXATTRS_UNSPECIFIED);
                 dma_memory_write(q->hack_as, dst, lqspi_hack_buf,
-                                 LQSPI_HACK_CHUNK_SIZE);
+                                 LQSPI_HACK_CHUNK_SIZE, MEMTXATTRS_UNSPECIFIED);
                 fprintf(stderr, ".");
                 btt -= LQSPI_HACK_CHUNK_SIZE;
                 src += LQSPI_HACK_CHUNK_SIZE;

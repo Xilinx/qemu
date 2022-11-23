@@ -399,7 +399,7 @@ static inline void arasan_nfc_do_dma(ArasanNFCState *s, bool rnw)
             tmp = fifo_pop8(&s->buffer);
         }
 
-        dma_memory_rw(s->dma_as, s->dma_sar, &tmp, 1, dir);
+        dma_memory_rw(s->dma_as, s->dma_sar, &tmp, 1, dir, MEMTXATTRS_UNSPECIFIED);
 
         if (debug_squelch) {
             DB_PRINT("Doing dma %s with addr %08" PRIx64 " = %02" PRIx8 "\n",
