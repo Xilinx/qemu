@@ -134,11 +134,11 @@ qemu_irq qdev_get_gpio_out(DeviceState *dev, int n)
 }
 
 void qdev_connect_gpio_out_named(DeviceState *dev, const char *name, int n,
-                                 qemu_irq pin)
+                                 qemu_irq input_pin)
 {
     Error *errp = NULL;
     qemu_irq irq;
-    if (!pin) {
+    if (!input_pin) {
         return;
     }
     char *propname = g_strdup_printf("%s[%d]",
@@ -147,12 +147,12 @@ void qdev_connect_gpio_out_named(DeviceState *dev, const char *name, int n,
     irq = (qemu_irq)object_property_get_link(OBJECT(dev), propname, NULL);
     if (irq) {
         char *splitter_name;
-        irq = qemu_irq_split(irq, pin);
+        irq = qemu_irq_split(irq, input_pin);
         /* ugly, be a sure-fire way to get a unique name */
         splitter_name = g_strdup_printf("%s-split-%p", propname, irq);
         object_property_add_child(OBJECT(dev), splitter_name,OBJECT(irq));
     } else {
-        irq = pin;
+        irq = input_pin;
     }
     if (irq  && !OBJECT(irq)->parent) {
         /* We need a name for object_property_set_link to work.  If the
@@ -162,13 +162,13 @@ void qdev_connect_gpio_out_named(DeviceState *dev, const char *name, int n,
          */
         object_property_add_child(container_get(qdev_get_machine(),
                                                 "/unattached"),
-                                  "non-qdev-gpio[*]", OBJECT(pin));
+                                  "non-qdev-gpio[*]", OBJECT(input_pin));
     }
     object_property_set_link(OBJECT(dev), propname, OBJECT(irq), &errp);
     if (errp) {
         qemu_log_mask(LOG_FDT, "FAILED to connect %s.%s <-> %s\n",
                        object_get_canonical_path(OBJECT(dev)), propname,
-                       object_get_canonical_path(OBJECT(pin)));
+                       object_get_canonical_path(OBJECT(input_pin)));
     }
     g_free(propname);
 }
@@ -209,9 +209,9 @@ qemu_irq qdev_intercept_gpio_out(DeviceState *dev, qemu_irq icpt,
     return disconnected;
 }
 
-void qdev_connect_gpio_out(DeviceState *dev, int n, qemu_irq pin)
+void qdev_connect_gpio_out(DeviceState *dev, int n, qemu_irq input_pin)
 {
-    qdev_connect_gpio_out_named(dev, NULL, n, pin);
+    qdev_connect_gpio_out_named(dev, NULL, n, input_pin);
 }
 
 void qdev_pass_gpios(DeviceState *dev, DeviceState *container,
