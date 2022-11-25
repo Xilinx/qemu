@@ -3001,7 +3001,7 @@ static FlatRange *flatview_lookup(FlatView *view, AddrRange addr)
 
 bool memory_region_is_mapped(MemoryRegion *mr)
 {
-    return mr->container ? true : false;
+    return !!mr->container || mr->mapped_via_alias;
 }
 
 /* Same as memory_region_find, but it does not add a reference to the
