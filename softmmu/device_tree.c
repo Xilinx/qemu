@@ -637,7 +637,6 @@ int qemu_fdt_add_subnode(void *fdt, const char *name)
 int qemu_fdt_add_path(void *fdt, const char *path)
 {
     const char *name;
-    const char *p = path;
     int namelen, retval;
     int parent = 0;
 
@@ -645,10 +644,10 @@ int qemu_fdt_add_path(void *fdt, const char *path)
         return -1;
     }
 
-    while (p) {
-        name = p + 1;
-        p = strchr(name, '/');
-        namelen = p != NULL ? p - name : strlen(name);
+    do {
+        name = path + 1;
+        path = strchr(name, '/');
+        namelen = path != NULL ? path - name : strlen(name);
 
         retval = fdt_subnode_offset_namelen(fdt, parent, name, namelen);
         if (retval < 0 && retval != -FDT_ERR_NOTFOUND) {
@@ -665,7 +664,7 @@ int qemu_fdt_add_path(void *fdt, const char *path)
         }
 
         parent = retval;
-    }
+    } while (path);
 
     return retval;
 }
