@@ -61,7 +61,8 @@ void *create_device_tree(int *sizep)
     }
     ret = fdt_open_into(fdt, fdt, *sizep);
     if (ret) {
-        error_report("Unable to copy device tree in memory");
+        error_report("%s: Unable to copy device tree into memory: %s",
+                     __func__, fdt_strerror(ret));
         exit(1);
     }
 
@@ -107,7 +108,8 @@ void *load_device_tree(const char *filename_path, int *sizep)
 
     ret = fdt_open_into(fdt, fdt, dt_size);
     if (ret) {
-        error_report("Unable to copy device tree in memory");
+        error_report("%s: Unable to copy device tree into memory: %s",
+                     __func__, fdt_strerror(ret));
         goto fail;
     }
 
