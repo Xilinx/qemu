@@ -369,7 +369,6 @@ static const VMStateDescription vmstate_ocm = {
     .name = TYPE_XILINX_OCM,
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, OCMC, R_MAX),
         VMSTATE_END_OF_LIST(),

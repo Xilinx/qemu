@@ -206,7 +206,6 @@ static const VMStateDescription vmstate_m24cxx = {
     .name = "m24cxx",
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .pre_save = m24cxx_pre_save,
     .fields = (VMStateField[]) {
         VMSTATE_I2C_SLAVE(i2c, M24CXXState),

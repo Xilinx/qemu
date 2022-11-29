@@ -601,7 +601,6 @@ static const VMStateDescription vmstate_csu_core = {
     .name = TYPE_XLNX_CSU_CORE,
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, CSU, XLNX_CSU_CORE_R_MAX),
         VMSTATE_END_OF_LIST(),

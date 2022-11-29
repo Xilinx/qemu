@@ -714,7 +714,6 @@ static const VMStateDescription vmstate_zynqmp_csu_dma = {
     .name = "zynqmp_csu_dma",
     .version_id = 2,
     .minimum_version_id = 2,
-    .minimum_version_id_old = 2,
     .fields = (VMStateField[]) {
         VMSTATE_PTIMER(src_timer, ZynqMPCSUDMA),
         VMSTATE_UINT32_ARRAY(regs, ZynqMPCSUDMA, R_MAX),

@@ -388,7 +388,6 @@ static const VMStateDescription vmstate_efuse = {
     .name = TYPE_XLNX_EFUSE,
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         VMSTATE_BOOL(programming, XLNXEFuse),
         VMSTATE_PTIMER(timer_ps, XLNXEFuse),

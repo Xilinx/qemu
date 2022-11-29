@@ -362,7 +362,6 @@ static const VMStateDescription vmstate_gic_proxy = {
     .name = TYPE_XILINX_GIC_PROXY,
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, GICProxy, R_MAX),
         VMSTATE_END_OF_LIST(),

@@ -834,7 +834,6 @@ static const VMStateDescription vmstate_lpd_slcr = {
     .name = TYPE_XILINX_LPD_SLCR,
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, LPD_SLCR, R_MAX),
         VMSTATE_END_OF_LIST(),

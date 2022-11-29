@@ -254,7 +254,6 @@ static const VMStateDescription vmstate_xlx_iom = {
     .name = TYPE_XILINX_IO_MODULE_PIT,
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         VMSTATE_END_OF_LIST(),
     }

@@ -547,7 +547,6 @@ static const VMStateDescription vmstate_aes = {
     .name = "zynqmp_csu_aes",
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, ZynqMPCSUAES, R_MAX),
         VMSTATE_END_OF_LIST(),

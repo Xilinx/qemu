@@ -799,7 +799,6 @@ static const VMStateDescription vmstate_cfu_apb = {
     .name = TYPE_XILINX_CFU_APB,
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, CFU, R_MAX),
         VMSTATE_END_OF_LIST(),

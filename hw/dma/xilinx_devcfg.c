@@ -158,7 +158,6 @@ static const VMStateDescription vmstate_xilinx_devcfg_dma_command = {
     .name = "xilinx_devcfg_dma_command",
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32(src_addr, XilinxDevcfgDMACommand),
         VMSTATE_UINT32(dest_addr, XilinxDevcfgDMACommand),
@@ -187,7 +186,6 @@ static const VMStateDescription vmstate_xilinx_devcfg = {
     .name = "xilinx_devcfg",
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         VMSTATE_STRUCT_ARRAY(dma_command_fifo, XilinxDevcfg,
                              DMA_COMMAND_FIFO_LEN, 0,

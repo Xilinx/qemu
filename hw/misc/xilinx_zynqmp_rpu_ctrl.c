@@ -958,7 +958,6 @@ static const VMStateDescription vmstate_rpu = {
     .name = TYPE_XLNX_RPU_CTRL,
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, XlnxZynqMPRPUCtrl, RPU_CTRL_R_MAX),
         VMSTATE_END_OF_LIST(),

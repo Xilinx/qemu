@@ -869,7 +869,6 @@ static const VMStateDescription vmstate_rp = {
     .name = TYPE_REMOTE_PORT,
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         VMSTATE_END_OF_LIST(),
     }

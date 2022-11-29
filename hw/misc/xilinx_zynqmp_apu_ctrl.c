@@ -349,7 +349,6 @@ static const VMStateDescription vmstate_zynqmp_apu = {
     .name = "zynqmp_apu",
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, ZynqMPAPU, R_MAX),
         VMSTATE_END_OF_LIST(),
