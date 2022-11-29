@@ -40,6 +40,7 @@
 #include "sysemu/cpu-timers.h"
 #include "sysemu/cpu-throttle.h"
 #include "timers-state.h"
+#include "qemu/log.h"
 
 /*
  * ICOUNT: Instruction Counter
