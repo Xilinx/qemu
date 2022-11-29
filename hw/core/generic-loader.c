@@ -69,7 +69,7 @@ static void generic_loader_reset(void *opaque)
         attrs.secure = s->attrs.secure;
         attrs.requester_id = s->attrs.requester_id;
 
-        assert(s->data_len < sizeof(s->data));
+        assert(s->data_len <= sizeof(s->data));
         address_space_rw(s->cpu->as, s->addr, attrs, (uint8_t *)&s->data,
                          s->data_len, true);
     }
