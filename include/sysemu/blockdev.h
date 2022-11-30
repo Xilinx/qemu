@@ -13,9 +13,6 @@
 #include "block/block.h"
 #include "qemu/queue.h"
 
-void blockdev_mark_auto_del(BlockBackend *blk);
-void blockdev_auto_del(BlockBackend *blk);
-
 typedef enum {
     IF_DEFAULT = -1,            /* for use with drive_add() only */
     /*
@@ -42,6 +39,16 @@ struct DriveInfo {
  * access it
  */
 extern int next_block_unit[IF_COUNT];
+
+/*
+ * Global state (GS) API. These functions run under the BQL.
+ *
+ * See include/block/block-global-state.h for more information about
+ * the GS API.
+ */
+
+void blockdev_mark_auto_del(BlockBackend *blk);
+void blockdev_auto_del(BlockBackend *blk);
 
 DriveInfo *blk_legacy_dinfo(BlockBackend *blk);
 DriveInfo *blk_set_legacy_dinfo(BlockBackend *blk, DriveInfo *dinfo);
