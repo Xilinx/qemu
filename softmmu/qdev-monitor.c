@@ -1052,6 +1052,13 @@ int qemu_global_option(const char *str)
     if (!opts) {
         return -1;
     }
+    if (!qemu_opt_get(opts, "driver")
+        || !qemu_opt_get(opts, "property")
+        || !qemu_opt_get(opts, "value")) {
+        error_report("options 'driver', 'property', and 'value'"
+                     " are required");
+        return -1;
+    }
 
     return 0;
 }
