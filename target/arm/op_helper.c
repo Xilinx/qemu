@@ -25,6 +25,7 @@
 #include "exec/cpu_ldst.h"
 #include "hw/irq.h"
 #include "sysemu/cpus.h"
+#include "sysemu/cpu-timers.h"
 
 #define SIGNBIT (uint32_t)0x80000000
 #define SIGNBIT64 ((uint64_t)1 << 63)
