@@ -21,6 +21,7 @@
 #include "qemu/osdep.h"
 #include "qemu/qemu-print.h"
 #include "qemu/timer.h"
+#include "qemu/log.h"
 #include "qemu-common.h"
 #include "target/arm/idau.h"
 #include "qemu/module.h"
@@ -274,6 +275,10 @@ static void arm_cpu_reset(DeviceState *dev)
         } else {
             env->pstate = PSTATE_MODE_EL1h;
         }
+
+        /* Sample rvbar at reset.  */
+        env->cp15.rvbar = cpu->rvbar_prop;
+
 #endif
     } else {
 #if defined(CONFIG_USER_ONLY)
@@ -284,7 +289,7 @@ static void arm_cpu_reset(DeviceState *dev)
 
 #ifndef CONFIG_USER_ONLY
     if (arm_feature(env, ARM_FEATURE_V8)) {
-        cc->set_pc(s, cpu->rvbar);
+        cc->set_pc(s, cpu->rvbar_prop);
     }
 #endif
 
@@ -409,6 +414,10 @@ static void arm_cpu_reset(DeviceState *dev)
             initial_msp = ldl_phys(s->as, vecbase);
             initial_pc = ldl_phys(s->as, vecbase + 4);
         }
+
+        qemu_log_mask(CPU_LOG_INT,
+                      "Loaded reset SP 0x%x PC 0x%x from vector table\n",
+                      initial_msp, initial_pc);
 
         env->regs[13] = initial_msp & 0xFFFFFFFC;
         env->regs[15] = initial_pc & ~1;
@@ -1269,32 +1278,6 @@ static Property arm_cpu_reset_cbar_property =
 static Property arm_cpu_reset_hivecs_property =
             DEFINE_PROP_BOOL("reset-hivecs", ARMCPU, reset_hivecs, false);
 
-static void arm_cpu_get_rvbar(Object *obj, Visitor *v,
-                              const char *name, void *opaque,
-                              Error **errp)
-{
-    ARMCPU *cpu = ARM_CPU(obj);
-    Error *local_err = NULL;
-
-    visit_type_uint64(v, name, &cpu->rvbar, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
-    }
-}
-
-static void arm_cpu_set_rvbar(Object *obj, Visitor *v,
-                              const char *name, void *opaque,
-                              Error **errp)
-{
-    ARMCPU *cpu = ARM_CPU(obj);
-    Error *local_err = NULL;
-
-    visit_type_uint64(v, name, &cpu->rvbar, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
-    }
-}
-
 #ifndef CONFIG_USER_ONLY
 static void arm_cpu_set_memattr_secure(Object *obj, Visitor *v,
                                           const char *name, void *opaque,
@@ -1410,10 +1393,9 @@ void arm_cpu_post_init(Object *obj)
     }
 
     if (arm_feature(&cpu->env, ARM_FEATURE_V8)) {
-        object_property_add(obj, "rvbar", "uint64",
-                            arm_cpu_get_rvbar,
-                            arm_cpu_set_rvbar,
-                            NULL, NULL);
+        object_property_add_uint64_ptr(obj, "rvbar",
+                                       &cpu->rvbar_prop,
+                                       OBJ_PROP_FLAG_READWRITE);
     }
 
 #ifndef CONFIG_USER_ONLY

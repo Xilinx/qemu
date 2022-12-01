@@ -455,6 +455,7 @@ typedef struct CPUArchState {
             uint64_t vbar_el[4];
         };
         uint32_t mvbar; /* (monitor) vector base address register */
+        uint64_t rvbar; /* rvbar sampled from rvbar property at reset */
         struct { /* FCSE PID. */
             uint32_t fcseidr_ns;
             uint32_t fcseidr_s;
@@ -1033,7 +1034,7 @@ struct ArchCPU {
 
     /* DCZ blocksize, in log_2(words), ie low 4 bits of DCZID_EL0 */
     uint32_t dcz_blocksize;
-    uint64_t rvbar;
+    uint64_t rvbar_prop; /* Property/input signals.  */
     int pe;
 
     uint32_t tcmtr;
