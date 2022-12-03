@@ -1870,14 +1870,12 @@ static int pmc_tap_can_receive(void *opaque)
     if (s->sec_dbg_dis & SEC_DBG_DIS_MASK) {
         qemu_log_mask(LOG_GUEST_ERROR, "Efuse: Secure Debug disabled as "
                                       "bits are blown");
-        qemu_log_flush();
         return 0;
     } else if ((s->sec_dbg_dis & SEC_LOCK_DBG_DIS_MASK) &
                s->first_image_done) {
         qemu_log_mask(LOG_GUEST_ERROR, "EFUSE: Secure Debug Lock "
                                       "bits are blown, "
                                       "Cannot accept 2nd image");
-        qemu_log_flush();
         return 0;
     }
     return s->auth_data_load ?
