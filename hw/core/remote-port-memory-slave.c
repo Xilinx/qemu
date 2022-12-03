@@ -21,6 +21,7 @@
 #include "hw/qdev-properties.h"
 #include "qemu/error-report.h"
 #include "trace.h"
+#include "qemu/cutils.h"
 
 #include "hw/remote-port-proto.h"
 #include "hw/remote-port-device.h"

@@ -32,6 +32,7 @@
 #include "hw/misc/xlnx-aes.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
+#include "qemu/cutils.h"
 
 #include "hw/fdt_generic_util.h"
 
