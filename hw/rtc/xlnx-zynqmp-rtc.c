@@ -26,7 +26,7 @@
 
 #include "qemu/osdep.h"
 #include <stdint.h>
-#include "qemu-common.h"
+#include "qemu/help-texts.h"
 #include "hw/sysbus.h"
 #include "hw/register.h"
 #include "qemu/bitops.h"

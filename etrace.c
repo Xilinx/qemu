@@ -26,7 +26,7 @@
 #include "qemu/sockets.h"
 #endif
 
-#include "qemu-common.h"
+#include "qemu/help-texts.h"
 #include "qemu/etrace.h"
 #include "qemu/timer.h"
 #include "exec/memory.h"

@@ -1,6 +1,6 @@
 #include "qemu/osdep.h"
 #include "qom/object.h"
-#include "qemu-common.h"
+#include "qemu/help-texts.h"
 
 static const TypeInfo fdt_qom_aliases [] = {
     {   .name = "arm.cortex-a9-twd-timer",  .parent = "arm_mptimer"         },

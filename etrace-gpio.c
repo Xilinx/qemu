@@ -22,7 +22,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
+#include "qemu/help-texts.h"
 #include "cpu.h"
 #include "monitor/monitor.h"
 #include "monitor/qdev.h"

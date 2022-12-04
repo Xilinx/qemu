@@ -1,7 +1,7 @@
 #ifndef REMOTE_PORT_DEVICE_H
 #define REMOTE_PORT_DEVICE_H
 
-#include "qemu-common.h"
+#include "qemu/help-texts.h"
 #include "qom/object.h"
 #include "hw/remote-port-proto.h"
 

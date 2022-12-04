@@ -13,7 +13,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
+#include "qemu/help-texts.h"
 #include "qemu/fifo.h"
 
 static inline void fifo_createxx(Fifo *fifo, uint32_t capacity, int bytes)

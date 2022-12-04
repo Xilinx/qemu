@@ -28,7 +28,7 @@
 #ifndef ETH_PHY_H
 #define ETH_PHY_H
 
-#include "qemu-common.h"
+#include "qemu/help-texts.h"
 
 /* PHY MII Register/Bit Definitions */
 /* PHY Registers defined by IEEE */

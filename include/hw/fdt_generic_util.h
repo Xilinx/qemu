@@ -1,7 +1,7 @@
 #ifndef FDT_GENERIC_UTIL_H
 #define FDT_GENERIC_UTIL_H
 
-#include "qemu-common.h"
+#include "qemu/help-texts.h"
 #include "fdt_generic.h"
 #include "exec/memory.h"
 #include "qom/object.h"
