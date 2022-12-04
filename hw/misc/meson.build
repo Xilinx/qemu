@@ -110,7 +110,7 @@ softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL_PMC', if_true: files(
   'xlnx-versal-cframe-reg.c',
   'xlnx-versal-trng.c',
   'xlnx-versal-crf.c',
-  'xlnx-versal-crl.c',
+  'xlnx-versal-crl-v1.c',
   'xlnx-versal-noc-nmu.c',
   'xlnx-versal-noc-nsu.c',
   'xlnx-versal-noc-nps.c',
@@ -252,6 +252,7 @@ softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL', if_true: files('xlnx-versal-pmc-iou-s
 softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL', if_true: files('xlnx-versal-xram-slcr.c'))
 specific_ss.add(when: 'CONFIG_XLNX_ZYNQMP_ARM', if_true: files('xlnx-zynqmp-crf.c'))
 specific_ss.add(when: 'CONFIG_XLNX_ZYNQMP_ARM', if_true: files('xlnx-zynqmp-apu-ctrl.c'))
+specific_ss.add(when: 'CONFIG_XLNX_VERSAL_ARM', if_true: files('xlnx-versal-crl.c'))
 softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL', if_true: files(
   'xlnx-versal-xramc.c',
   'xlnx-versal-pmc-iou-slcr.c',

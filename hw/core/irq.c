@@ -106,6 +106,7 @@ qemu_irq qemu_irq_invert(qemu_irq irq)
     return qemu_allocate_irq(qemu_notirq, irq, 0);
 }
 
+/* Xilinx */
 static void qemu_splitirq(void *opaque, int line, int level)
 {
     struct IRQState **irq = opaque;

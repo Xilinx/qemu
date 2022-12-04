@@ -46,6 +46,7 @@ void qemu_free_irq(qemu_irq irq);
 /* Returns a new IRQ with opposite polarity.  */
 qemu_irq qemu_irq_invert(qemu_irq irq);
 
+/* Xilinx */
 /* Returns a new IRQ which feeds into both the passed IRQs.
  * It's probably better to use the TYPE_SPLIT_IRQ device instead.
  */
