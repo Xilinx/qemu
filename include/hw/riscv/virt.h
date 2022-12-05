@@ -45,6 +45,8 @@ struct RISCVVirtState {
     MachineState parent;
 
     /*< public >*/
+    Notifier machine_done;
+    DeviceState *platform_bus_dev;
     RISCVHartArrayState soc[VIRT_SOCKETS_MAX];
     DeviceState *irqchip[VIRT_SOCKETS_MAX];
     PFlashCFI01 *flash[2];
@@ -76,6 +78,7 @@ enum {
     VIRT_COSIM,
     VIRT_PCIE_MMIO,
     VIRT_PCIE_PIO,
+    VIRT_PLATFORM_BUS,
     VIRT_PCIE_ECAM
 };
 
@@ -86,8 +89,11 @@ enum {
     VIRTIO_COUNT = 8,
     PCIE_IRQ = 0x20, /* 32 to 35 */
     COSIM_IRQ = 0x30, /* 0x35 - */
-    VIRTIO_NDEV = 0x35 /* Arbitrary maximum number of interrupts */
+    VIRT_PLATFORM_BUS_IRQ = 64, /* 64 to 96 */
+    VIRTIO_NDEV = 96 /* Arbitrary maximum number of interrupts */
 };
+
+#define VIRT_PLATFORM_BUS_NUM_IRQS 32
 
 #define VIRT_IRQCHIP_IPI_MSI 1
 #define VIRT_IRQCHIP_NUM_MSIS 255
