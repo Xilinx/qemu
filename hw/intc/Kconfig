@@ -87,3 +87,6 @@ config GOLDFISH_PIC
 
 config M68K_IRQC
     bool
+
+config NIOS2_VIC
+    bool
