@@ -1245,10 +1245,6 @@ static inline uint64_t useronly_maybe_clean_ptr(uint32_t desc, uint64_t ptr)
     return ptr;
 }
 
-/* XILINX: cache maintenance support */
-bool generate_cache_maintenance(const ARMCPRegInfo *ri);
-void cpu_clean_inv_one(CPUState *cpu, run_on_cpu_data d);
-
 /* Values for M-profile PSR.ECI for MVE insns */
 enum MVEECIState {
     ECI_NONE = 0, /* No completed beats */

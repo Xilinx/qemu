@@ -34,6 +34,7 @@
 #include "hvf_arm.h"
 #include "qapi/visitor.h"
 #include "hw/qdev-properties.h"
+#include "cpregs.h"
 
 
 #ifndef CONFIG_USER_ONLY
@@ -92,8 +93,8 @@ static void dsu_clusterthreadsidovr_write(CPUARMState *env,
 }
 #endif
 
-static const ARMCPRegInfo dsu_cp_reginfo[] = {
 #ifndef CONFIG_USER_ONLY
+static const ARMCPRegInfo dsu_cp_reginfo[] = {
     { .name = "CLUSTERCFR_EL1", .state = ARM_CP_STATE_BOTH,
       .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 3, .opc2 = 0,
       .type = ARM_CP_NO_RAW, .access = PL1_R, .readfn = dsu_clustercfr_read },
@@ -156,9 +157,8 @@ static const ARMCPRegInfo dsu_cp_reginfo[] = {
       .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 4, .opc2 = 7,
       .access = PL1_RW, .writefn = dsu_clusterthreadsidovr_write,
       .fieldoffset = offsetof(CPUARMState, cp15.dsu.clusterthreadsidovr) },
-#endif
-    REGINFO_SENTINEL
 };
+#endif
 
 #ifndef CONFIG_USER_ONLY
 static uint64_t a57_a53_l2ctlr_read(CPUARMState *env, const ARMCPRegInfo *ri)
@@ -214,7 +214,6 @@ static const ARMCPRegInfo cortex_a72_a57_a53_cp_reginfo[] = {
     { .name = "L2MERRSR",
       .cp = 15, .opc1 = 3, .crm = 15,
       .access = PL1_RW, .type = ARM_CP_CONST | ARM_CP_64BIT, .resetvalue = 0 },
-    REGINFO_SENTINEL
 };
 
 static void aarch64_a57_initfn(Object *obj)
@@ -483,7 +482,9 @@ static void aarch64_a78_initfn(Object *obj)
     cpu->gic_vpribits = 5;
     cpu->gic_vprebits = 5;
     define_arm_cp_regs(cpu, cortex_a72_a57_a53_cp_reginfo);
+#ifndef CONFIG_USER_ONLY
     define_arm_cp_regs(cpu, dsu_cp_reginfo);
+#endif
 
     /* Xilinx FIXUPs.  */
     /* These indicate the BP hardening and KPTI aren't needed.  */
