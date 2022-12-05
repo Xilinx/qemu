@@ -704,6 +704,7 @@ static void rp_realize(DeviceState *dev, Error **errp)
 {
     RemotePort *s = REMOTE_PORT(dev);
     int r;
+    g_autoptr(GError) err = NULL;
 
     s->prefix = object_get_canonical_path(OBJECT(dev));
 
@@ -812,17 +813,18 @@ static void rp_realize(DeviceState *dev, Error **errp)
             }
         }
 
-        qemu_set_nonblock(s->event.pipe.read);
+        g_unix_set_fd_nonblocking(s->event.pipe.read, true, &err);
+        g_assert_no_error(err);
         qemu_set_fd_handler(s->event.pipe.read, rp_event_read, NULL, s);
     }
 #else
-    r = qemu_pipe(s->event.pipes);
-    if (r < 0) {
+    if (!g_unix_open_pipe(s->event.pipes, FD_CLOEXEC, NULL)) {
         error_report("%s: Unable to create remort-port internal pipes\n",
                     s->prefix);
         exit(EXIT_FAILURE);
     }
-    qemu_set_nonblock(s->event.pipe.read);
+    g_unix_set_fd_nonblocking(s->event.pipe.read, true, &err);
+    g_assert_no_error(err);
     qemu_set_fd_handler(s->event.pipe.read, rp_event_read, NULL, s);
 #endif
 
