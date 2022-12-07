@@ -2083,7 +2083,7 @@ static void canfd_realize(DeviceState *dev, Error **errp)
 
     /* Allocate a new timer. */
     s->canfd_timer = ptimer_init(xlnx_versal_canfd_ptimer_cb, s,
-                                 PTIMER_POLICY_DEFAULT);
+                                 PTIMER_POLICY_LEGACY);
 
     ptimer_transaction_begin(s->canfd_timer);
 

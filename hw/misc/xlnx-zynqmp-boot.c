@@ -346,7 +346,7 @@ static void zynqmp_boot_realize(DeviceState *dev, Error **errp)
 
     qemu_register_reset_loader(zynqmp_boot_reset, dev);
 
-    s->ptimer = ptimer_init(boot_sequence, s, PTIMER_POLICY_DEFAULT);
+    s->ptimer = ptimer_init(boot_sequence, s, PTIMER_POLICY_LEGACY);
     ptimer_transaction_begin(s->ptimer);
     ptimer_set_freq(s->ptimer, 1000000);
     ptimer_transaction_commit(s->ptimer);

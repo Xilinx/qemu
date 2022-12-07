@@ -358,8 +358,8 @@ static void efuse_realize(DeviceState *dev, Error **errp)
         }
     }
 
-    s->timer_ps = ptimer_init(timer_ps_hit, s, PTIMER_POLICY_DEFAULT);
-    s->timer_pgm = ptimer_init(timer_pgm_hit, s, PTIMER_POLICY_DEFAULT);
+    s->timer_ps = ptimer_init(timer_ps_hit, s, PTIMER_POLICY_LEGACY);
+    s->timer_pgm = ptimer_init(timer_pgm_hit, s, PTIMER_POLICY_LEGACY);
 
     /* Micro-seconds.  */
     ptimer_transaction_begin(s->timer_ps);

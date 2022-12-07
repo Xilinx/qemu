@@ -834,9 +834,9 @@ static void rp_realize(DeviceState *dev, Error **errp)
        change.  */
     s->sync.quantum = s->peer.local_cfg.quantum;
 
-    s->sync.ptimer = ptimer_init(sync_timer_hit, s, PTIMER_POLICY_DEFAULT);
+    s->sync.ptimer = ptimer_init(sync_timer_hit, s, PTIMER_POLICY_LEGACY);
     s->sync.ptimer_resp = ptimer_init(syncresp_timer_hit, s,
-                                      PTIMER_POLICY_DEFAULT);
+                                      PTIMER_POLICY_LEGACY);
 
     /* The Sync-quantum is expressed in nano-seconds.  */
     ptimer_transaction_begin(s->sync.ptimer);

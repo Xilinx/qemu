@@ -649,7 +649,7 @@ static void zynqmp_csu_dma_realize(DeviceState *dev, Error **errp)
         s->tx_dev = s->tx_dev0 ? s->tx_dev0 :
                                  s->tx_dev1 ? s->tx_dev1 : 0;
     }
-    s->src_timer = ptimer_init(src_timeout_hit, s, PTIMER_POLICY_DEFAULT);
+    s->src_timer = ptimer_init(src_timeout_hit, s, PTIMER_POLICY_LEGACY);
 
     if (s->dma_mr) {
         s->dma_as = g_malloc0(sizeof(AddressSpace));

@@ -1320,7 +1320,7 @@ static void xlnx_dp_realize(DeviceState *dev, Error **errp)
                                            &as);
     AUD_set_volume_out(s->amixer_output_stream, 0, 255, 255);
     xlnx_dp_audio_activate(s);
-    s->vblank = ptimer_init(vblank_hit, s, PTIMER_POLICY_DEFAULT);
+    s->vblank = ptimer_init(vblank_hit, s, PTIMER_POLICY_LEGACY);
 
     ptimer_transaction_begin(s->vblank);
     ptimer_set_freq(s->vblank, 30);

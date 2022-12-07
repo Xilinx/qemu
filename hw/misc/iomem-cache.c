@@ -614,7 +614,7 @@ static void iomem_cache_realize(DeviceState *dev, Error **errp)
 
     qemu_mutex_init(&s->mutex);
 
-    s->wbuf.timer = ptimer_init(release_write_buffer, s, PTIMER_POLICY_DEFAULT);
+    s->wbuf.timer = ptimer_init(release_write_buffer, s, PTIMER_POLICY_LEGACY);
     qemu_mutex_init(&s->wbuf.mutex);
 
     ptimer_transaction_begin(s->wbuf.timer);
