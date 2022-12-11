@@ -1095,7 +1095,7 @@ void tcg_exec_unrealizefn(CPUState *cpu)
 
 #ifndef CONFIG_USER_ONLY
 
-void dump_drift_info(GString *buf)
+static void dump_drift_info(GString *buf)
 {
     if (!icount_enabled()) {
         return;
@@ -1138,7 +1138,7 @@ HumanReadableText *qmp_x_query_opcount(Error **errp)
         return NULL;
     }
 
-    dump_opcount_info(buf);
+    tcg_dump_op_count(buf);
 
     return human_readable_text_from_str(buf);
 }
