@@ -143,6 +143,8 @@ static int pca954x_event(I2CSlave *i2c, enum i2c_event event)
                     i2c_nack(s->busses[i]);
                 }
                 break;
+            default:
+                return -1;
             }
         }
     }

@@ -155,6 +155,8 @@ static int m24cxx_event(I2CSlave *i2c, enum i2c_event event)
     case I2C_NACK:
         DB_PRINT("NACKED\n");
         break;
+    default:
+        return -1;
     }
 
     DB_PRINT("transitioning to state %s\n", m24cxx_state_names[s->state]);

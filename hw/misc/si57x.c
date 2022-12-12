@@ -269,6 +269,8 @@ static int si57x_event(I2CSlave *i2c, enum i2c_event event)
     case I2C_NACK:
         s->state = IDEAL;
         break;
+    default:
+        return -1;
     }
 
     return 0;
