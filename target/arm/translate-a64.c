@@ -3142,7 +3142,7 @@ static void disas_ldst_reg_imm9(DisasContext *s, uint32_t insn,
     bool is_store = false;
     bool is_extended = false;
     bool is_unpriv = (idx == 2);
-    bool iss_valid = !is_vector;
+    bool iss_valid;
     bool post_index;
     bool writeback;
     int memidx;
@@ -3194,6 +3194,8 @@ static void disas_ldst_reg_imm9(DisasContext *s, uint32_t insn,
     default:
         g_assert_not_reached();
     }
+
+    iss_valid = !is_vector && !writeback;
 
     if (rn == 31) {
         gen_check_sp_alignment(s);
