@@ -1698,9 +1698,10 @@ static void m25p80_realize(SSIPeripheral *ss, Error **errp)
 
         trace_m25p80_binding(s);
         s->storage = blk_blockalign(s->blk, s->size);
-        if (blk_pread(s->blk, 0, s->storage, s->size) != s->size) {
-            fprintf(stderr, "failed to read the initial flash content");
-            exit(1);
+
+        if (blk_pread(s->blk, 0, s->size, s->storage, 0) < 0) {
+            error_setg(errp, "failed to read the initial flash content");
+            return;
         }
 
     } else {

@@ -257,7 +257,7 @@ static void boot_sequence(void *opaque)
                       sizeof(pmufw_cfg);
         s->cfg_buf = g_new0(uint8_t, s->cfg_size);
         if (s->blk) {
-            blk_pread(s->blk, 0, s->cfg_buf, s->cfg_size);
+            blk_pread(s->blk, 0, s->cfg_size, s->cfg_buf, 0);
         } else {
             memcpy(s->cfg_buf, pmufw_cfg, s->cfg_size);
         }

@@ -135,9 +135,9 @@ static void efuse_sync_bdrv(XLNXEFuse *s, unsigned int bit)
 
     efuse_byte = bit / 8;
 
-    if (blk_pwrite(s->blk, efuse_byte,
+    if (blk_pwrite(s->blk, efuse_byte, 1,
                    ((uint8_t *) s->fuse32) + (efuse_byte ^ bswap_adj),
-                   1, 0) < 0) {
+                   0) < 0) {
         error_report("%s: write error in byte %" PRIu32 ".",
                       __func__, efuse_byte);
     }
@@ -342,7 +342,7 @@ static void efuse_realize(DeviceState *dev, Error **errp)
             warn_report("%s: update not saved: backstore is read-only",
                         object_get_canonical_path(OBJECT(s)));
         }
-        if (blk_pread(s->blk, 0, (void *) s->fuse32, nr_bytes) < 0) {
+        if (blk_pread(s->blk, 0,  nr_bytes, (void *) s->fuse32, 0) < 0) {
             error_setg(&error_abort, "%s: Unable to read-out contents."
                          "backing file too small? Expecting %" PRIu32" bytes",
                           prefix,
