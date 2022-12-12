@@ -1954,27 +1954,21 @@ static void qemu_resolve_machine_memdev(void)
     }
 }
 
-static void parse_memory_options(const char *arg)
+static void parse_memory_options(void)
 {
-    QemuOpts *opts;
+    QemuOpts *opts = qemu_find_opts_singleton("memory");
     QDict *dict, *prop;
     const char *mem_str;
+    Location loc;
 
-    opts = qemu_opts_parse_noisily(qemu_find_opts("memory"), arg, true);
-    if (!opts) {
-        exit(EXIT_FAILURE);
-    }
+    loc_push_none(&loc);
+    qemu_opts_loc_restore(opts);
 
     prop = qdict_new();
 
     if (qemu_opt_get_size(opts, "size", 0) != 0) {
-        mem_str = qemu_opt_get(opts, "size");
-        if (!*mem_str) {
-            error_report("missing 'size' option value");
-            exit(EXIT_FAILURE);
-        }
-
         /* Fix up legacy suffix-less format */
+        mem_str = qemu_opt_get(opts, "size");
         if (g_ascii_isdigit(mem_str[strlen(mem_str) - 1])) {
             g_autofree char *mib_str = g_strdup_printf("%sM", mem_str);
             qdict_put_str(prop, "size", mib_str);
@@ -1994,6 +1988,7 @@ static void parse_memory_options(const char *arg)
     qdict_put(dict, "memory", prop);
     keyval_merge(machine_opts_dict, dict, &error_fatal);
     qobject_unref(dict);
+    loc_pop(&loc);
 }
 
 static void qemu_create_machine(QDict *qdict)
@@ -2060,8 +2055,7 @@ static bool is_qemuopts_group(const char *group)
     if (g_str_equal(group, "object") ||
         g_str_equal(group, "machine") ||
         g_str_equal(group, "smp-opts") ||
-        g_str_equal(group, "boot-opts") ||
-        g_str_equal(group, "memory")) {
+        g_str_equal(group, "boot-opts")) {
         return false;
     }
     return true;
@@ -2085,8 +2079,6 @@ static void qemu_record_config_group(const char *group, QDict *dict,
         machine_merge_property("smp", dict, &error_fatal);
     } else if (g_str_equal(group, "boot-opts")) {
         machine_merge_property("boot", dict, &error_fatal);
-    } else if (g_str_equal(group, "memory")) {
-        machine_merge_property("memory", dict, &error_fatal);
     } else {
         abort();
     }
@@ -2898,7 +2890,10 @@ void qemu_init(int argc, char **argv, char **envp)
                 exit(0);
                 break;
             case QEMU_OPTION_m:
-                parse_memory_options(optarg);
+                opts = qemu_opts_parse_noisily(qemu_find_opts("memory"), optarg, true);
+                if (opts == NULL) {
+                    exit(1);
+                }
                 break;
 #ifdef CONFIG_TPM
             case QEMU_OPTION_tpmdev:
@@ -3542,6 +3537,9 @@ void qemu_init(int argc, char **argv, char **envp)
     replay_configure(icount_opts);
 
     configure_rtc(qemu_find_opts_singleton("rtc"));
+
+    /* Transfer QemuOpts options into machine options */
+    parse_memory_options();
 
     qemu_create_machine(machine_opts_dict);
 
