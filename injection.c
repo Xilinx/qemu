@@ -9,7 +9,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
+#include "qemu/help-texts.h"
 #include "cpu.h"
 #include "qapi/qmp/qerror.h"
 #include "qapi/qmp/qjson.h"

@@ -6,7 +6,7 @@
 #ifndef FDT_GENERIC_H
 #define FDT_GENERIC_H
 
-#include "qemu-common.h"
+#include "qemu/help-texts.h"
 #include "hw/irq.h"
 #include "sysemu/device_tree.h"
 #include "qemu/coroutine.h"

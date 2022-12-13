@@ -77,14 +77,14 @@ void module_allow_arch(const char *arch);
 /**
  * DOC: module info annotation macros
  *
- * `scripts/modinfo-collect.py` will collect module info,
+ * ``scripts/modinfo-collect.py`` will collect module info,
  * using the preprocessor and -DQEMU_MODINFO.
  *
- * `scripts/modinfo-generate.py` will create a module meta-data database
+ * ``scripts/modinfo-generate.py`` will create a module meta-data database
  * from the collected information so qemu knows about module
  * dependencies and QOM objects implemented by modules.
  *
- * See `*.modinfo` and `modinfo.c` in the build directory to check the
+ * See ``*.modinfo`` and ``modinfo.c`` in the build directory to check the
  * script results.
  */
 #ifdef QEMU_MODINFO
@@ -134,6 +134,16 @@ void module_allow_arch(const char *arch);
  * This module registers QemuOpts @name.
  */
 #define module_opts(name) modinfo(opts, name)
+
+/**
+ * module_kconfig
+ *
+ * @name: Kconfig requirement necessary to load the module
+ *
+ * This module requires a core module that should be implemented and
+ * enabled in Kconfig.
+ */
+#define module_kconfig(name) modinfo(kconfig, name)
 
 /*
  * module info database

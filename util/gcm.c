@@ -36,7 +36,7 @@
 #if defined(POLARSSL_GCM_C)
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
+#include "qemu/help-texts.h"
 #include "qemu/gcm.h"
 #include "qemu/log.h"
 

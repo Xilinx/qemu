@@ -15,7 +15,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "libqos/libqos.h"
 #include "qapi/qmp/qdict.h"
 #include "qapi/qmp/qnum.h"
@@ -521,12 +520,12 @@ static void emc_send_verify1(QTestState *qts, const EMCModule *mod, int fd,
 
     /* Check data sent to the backend. */
     recv_len = ~0;
-    ret = qemu_recv(fd, &recv_len, sizeof(recv_len), MSG_DONTWAIT);
+    ret = recv(fd, &recv_len, sizeof(recv_len), MSG_DONTWAIT);
     g_assert_cmpint(ret, == , sizeof(recv_len));
 
     g_assert(wait_socket_readable(fd));
     memset(buffer, 0xff, sizeof(buffer));
-    ret = qemu_recv(fd, buffer, test_size, MSG_DONTWAIT);
+    ret = recv(fd, buffer, test_size, MSG_DONTWAIT);
     g_assert_cmpmem(buffer, ret, test_data, test_size);
 }
 

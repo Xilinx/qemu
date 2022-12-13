@@ -73,6 +73,7 @@ typedef struct SMMUTransCfg {
     bool disabled;             /* smmu is disabled */
     bool bypassed;             /* translation is bypassed */
     bool aborted;              /* translation is aborted */
+    bool record_faults;        /* record fault events */
     bool affd;                 /* Access Flag Fault Disabled */
     uint64_t ttb;              /* TT base address */
     uint8_t s2_sl0;            /* S2 Start level */

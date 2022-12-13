@@ -649,7 +649,7 @@ static void zynqmp_csu_dma_realize(DeviceState *dev, Error **errp)
         s->tx_dev = s->tx_dev0 ? s->tx_dev0 :
                                  s->tx_dev1 ? s->tx_dev1 : 0;
     }
-    s->src_timer = ptimer_init(src_timeout_hit, s, PTIMER_POLICY_DEFAULT);
+    s->src_timer = ptimer_init(src_timeout_hit, s, PTIMER_POLICY_LEGACY);
 
     if (s->dma_mr) {
         s->dma_as = g_malloc0(sizeof(AddressSpace));
@@ -714,7 +714,6 @@ static const VMStateDescription vmstate_zynqmp_csu_dma = {
     .name = "zynqmp_csu_dma",
     .version_id = 2,
     .minimum_version_id = 2,
-    .minimum_version_id_old = 2,
     .fields = (VMStateField[]) {
         VMSTATE_PTIMER(src_timer, ZynqMPCSUDMA),
         VMSTATE_UINT32_ARRAY(regs, ZynqMPCSUDMA, R_MAX),

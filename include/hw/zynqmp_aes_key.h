@@ -26,7 +26,7 @@
 #ifndef ZYNQMP_AES_KEY_H
 #define ZYNQMP_AES_KEY_H
 
-#include "qemu-common.h"
+#include "qemu/help-texts.h"
 #include "qom/object.h"
 
 #define TYPE_ZYNQMP_AES_KEY_SINK "zynqmp-aes-key-sink"

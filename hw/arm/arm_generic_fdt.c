@@ -558,7 +558,6 @@ static void arm_generic_fdt_init(MachineState *machine)
     arm_generic_fdt_binfo.kernel_filename = machine->kernel_filename;
     arm_generic_fdt_binfo.kernel_cmdline = machine->kernel_cmdline;
     arm_generic_fdt_binfo.initrd_filename = machine->initrd_filename;
-    arm_generic_fdt_binfo.nb_cpus = fdt_generic_num_cpus;
     arm_generic_fdt_binfo.write_secondary_boot = arm_write_secondary_boot;
     arm_generic_fdt_binfo.smp_loader_start = SMP_BOOT_ADDR;
     arm_generic_fdt_binfo.smp_bootreg_addr = SMP_BOOTREG_ADDR;

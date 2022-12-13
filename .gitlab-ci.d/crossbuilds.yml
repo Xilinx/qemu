@@ -62,6 +62,8 @@ cross-i386-user:
 cross-i386-tci:
   extends: .cross_accel_build_job
   timeout: 60m
+  needs:
+    job: i386-fedora-cross-container
   variables:
     IMAGE: fedora-i386-cross
     ACCEL: tcg-interpreter
@@ -123,6 +125,25 @@ cross-ppc64el-user:
     job: ppc64el-debian-cross-container
   variables:
     IMAGE: debian-ppc64el-cross
+
+# The riscv64 cross-builds currently use a 'sid' container to get
+# compilers and libraries. Until something more stable is found we
+# allow_failure so as not to block CI.
+cross-riscv64-system:
+  extends: .cross_system_build_job
+  allow_failure: true
+  needs:
+    job: riscv64-debian-cross-container
+  variables:
+    IMAGE: debian-riscv64-cross
+
+cross-riscv64-user:
+  extends: .cross_user_build_job
+  allow_failure: true
+  needs:
+    job: riscv64-debian-cross-container
+  variables:
+    IMAGE: debian-riscv64-cross
 
 cross-s390x-system:
   extends: .cross_system_build_job

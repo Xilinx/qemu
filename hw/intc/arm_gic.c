@@ -1732,6 +1732,7 @@ static MemTxResult gic_cpu_write(GICState *s, int cpu, int offset,
         } else {
             s->apr[regno][cpu] = value;
         }
+        s->running_priority[cpu] = gic_get_prio_from_apr_bits(s, cpu);
         break;
     }
     case 0xe0: case 0xe4: case 0xe8: case 0xec:
@@ -1748,6 +1749,7 @@ static MemTxResult gic_cpu_write(GICState *s, int cpu, int offset,
             return MEMTX_OK;
         }
         s->nsapr[regno][cpu] = value;
+        s->running_priority[cpu] = gic_get_prio_from_apr_bits(s, cpu);
         break;
     }
     /* TODO: Remove the 0x10000 offset together with deprecating map-stride.  */

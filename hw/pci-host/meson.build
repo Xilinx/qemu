@@ -27,6 +27,9 @@ pci_ss.add(when: 'CONFIG_VERSATILE_PCI', if_true: files('versatile.c'))
 pci_ss.add(when: 'CONFIG_XLNX_ZYNQMP', if_true: files('xlnx-nwl-pcie-main.c'))
 pci_ss.add(when: 'CONFIG_XLNX_ZYNQMP', if_true: files('xlnx-nwl-pcie-attrib.c'))
 
+# HPPA devices
+pci_ss.add(when: 'CONFIG_DINO', if_true: files('dino.c'))
+
 softmmu_ss.add_all(when: 'CONFIG_PCI', if_true: pci_ss)
 
 specific_ss.add(when: 'CONFIG_PCI_POWERNV', if_true: files(

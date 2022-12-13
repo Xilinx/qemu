@@ -297,7 +297,6 @@ static const VMStateDescription vmstate_xilinx_axi_pcie = {
     .name = "xlnx.axi-pcie",
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, XilinxAXIPCIE, R_MAX),
         VMSTATE_END_OF_LIST()

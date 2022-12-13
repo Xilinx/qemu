@@ -544,7 +544,6 @@ static const VMStateDescription vmstate_ecdsa_rsa = {
     .name = TYPE_XILINX_ECDSA_RSA,
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, ECDSA_RSA, ECDSA_RSA_R_MAX),
         VMSTATE_END_OF_LIST(),

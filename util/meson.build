@@ -1,5 +1,7 @@
 util_ss.add(files('osdep.c', 'cutils.c', 'unicode.c', 'qemu-timer-common.c'))
-util_ss.add(when: 'CONFIG_ATOMIC64', if_false: files('atomic64.c'))
+if not config_host_data.get('CONFIG_ATOMIC64')
+  util_ss.add(files('atomic64.c'))
+endif
 util_ss.add(when: 'CONFIG_POSIX', if_true: files('aio-posix.c'))
 util_ss.add(when: 'CONFIG_POSIX', if_true: files('fdmon-poll.c'))
 if config_host_data.get('CONFIG_EPOLL_CREATE1')
@@ -9,8 +11,11 @@ util_ss.add(when: linux_io_uring, if_true: files('fdmon-io_uring.c'))
 util_ss.add(when: 'CONFIG_POSIX', if_true: files('compatfd.c'))
 util_ss.add(when: 'CONFIG_POSIX', if_true: files('event_notifier-posix.c'))
 util_ss.add(when: 'CONFIG_POSIX', if_true: files('mmap-alloc.c'))
-util_ss.add(when: 'CONFIG_POSIX', if_true: files('oslib-posix.c'))
-util_ss.add(when: 'CONFIG_POSIX', if_true: [files('qemu-openpty.c'), util])
+freebsd_dep = []
+if targetos == 'freebsd'
+  freebsd_dep = util
+endif
+util_ss.add(when: 'CONFIG_POSIX', if_true: [files('oslib-posix.c'), freebsd_dep])
 util_ss.add(when: 'CONFIG_POSIX', if_true: files('qemu-thread-posix.c'))
 util_ss.add(when: 'CONFIG_POSIX', if_true: files('memfd.c'))
 util_ss.add(when: 'CONFIG_WIN32', if_true: files('aio-win32.c'))
@@ -18,14 +23,15 @@ util_ss.add(when: 'CONFIG_WIN32', if_true: files('event_notifier-win32.c'))
 util_ss.add(when: 'CONFIG_WIN32', if_true: files('oslib-win32.c'))
 util_ss.add(when: 'CONFIG_WIN32', if_true: files('qemu-thread-win32.c'))
 util_ss.add(when: 'CONFIG_WIN32', if_true: winmm)
+util_ss.add(when: 'CONFIG_WIN32', if_true: pathcch)
 util_ss.add(files('envlist.c', 'path.c', 'module.c'))
 util_ss.add(files('host-utils.c'))
 util_ss.add(files('bitmap.c', 'bitops.c'))
 util_ss.add(files('fifo8.c'))
 util_ss.add(files('fifo.c'))
 util_ss.add(files('gcm.c'))
-util_ss.add(files('cacheinfo.c', 'cacheflush.c'))
-util_ss.add(files('error.c', 'qemu-error.c'))
+util_ss.add(files('cacheflush.c'))
+util_ss.add(files('error.c', 'error-report.c'))
 util_ss.add(files('qemu-print.c'))
 util_ss.add(files('id.c'))
 util_ss.add(files('qemu-config.c', 'notify.c'))
@@ -35,9 +41,10 @@ util_ss.add(files('crc32c.c'))
 util_ss.add(files('uuid.c'))
 util_ss.add(files('getauxval.c'))
 util_ss.add(files('rcu.c'))
-util_ss.add(when: 'CONFIG_MEMBARRIER', if_true: files('sys_membarrier.c'))
+if have_membarrier
+  util_ss.add(files('sys_membarrier.c'))
+endif
 util_ss.add(files('log.c'))
-util_ss.add(files('pagesize.c'))
 util_ss.add(files('qdist.c'))
 util_ss.add(files('qht.c'))
 util_ss.add(files('qsp.c'))
@@ -48,6 +55,8 @@ util_ss.add(files('transactions.c'))
 util_ss.add(when: 'CONFIG_POSIX', if_true: files('drm.c'))
 util_ss.add(files('guest-random.c'))
 util_ss.add(files('yank.c'))
+util_ss.add(files('int128.c'))
+util_ss.add(files('memalign.c'))
 
 if have_user
   util_ss.add(files('selfmap.c'))
@@ -55,7 +64,7 @@ endif
 
 if have_system
   util_ss.add(files('crc-ccitt.c'))
-  util_ss.add(when: 'CONFIG_GIO', if_true: [files('dbus.c'), gio])
+  util_ss.add(when: gio, if_true: files('dbus.c'))
   util_ss.add(when: 'CONFIG_LINUX', if_true: files('userfaultfd.c'))
 endif
 
@@ -79,11 +88,15 @@ if have_block
   util_ss.add(files('block-helpers.c'))
   util_ss.add(files('qemu-coroutine-sleep.c'))
   util_ss.add(files('qemu-co-shared-resource.c'))
+  util_ss.add(files('qemu-co-timeout.c'))
   util_ss.add(files('thread-pool.c', 'qemu-timer.c'))
   util_ss.add(files('readline.c'))
   util_ss.add(files('throttle.c'))
   util_ss.add(files('timed-average.c'))
-  util_ss.add(when: 'CONFIG_INOTIFY1', if_true: files('filemonitor-inotify.c'),
-                                        if_false: files('filemonitor-stub.c'))
+  if config_host_data.get('CONFIG_INOTIFY1')
+    util_ss.add(files('filemonitor-inotify.c'))
+  else
+    util_ss.add(files('filemonitor-stub.c'))
+  endif
   util_ss.add(when: 'CONFIG_LINUX', if_true: files('vfio-helpers.c'))
 endif

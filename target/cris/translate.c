@@ -1047,7 +1047,7 @@ static void gen_load64(DisasContext *dc, TCGv_i64 dst, TCGv addr)
         cris_store_direct_jmp(dc);
     }
 
-    tcg_gen_qemu_ld_i64(dst, addr, mem_index, MO_TEQ);
+    tcg_gen_qemu_ld_i64(dst, addr, mem_index, MO_TEUQ);
 }
 
 static void gen_load(DisasContext *dc, TCGv dst, TCGv addr, 
@@ -3249,22 +3249,6 @@ static void cris_tr_tb_stop(DisasContextBase *dcbase, CPUState *cpu)
         }
     }
 
-    if (unlikely(dc->base.singlestep_enabled)) {
-        switch (is_jmp) {
-        case DISAS_TOO_MANY:
-        case DISAS_UPDATE_NEXT:
-            tcg_gen_movi_tl(env_pc, npc);
-            /* fall through */
-        case DISAS_JUMP:
-        case DISAS_UPDATE:
-            t_gen_raise_exception(EXCP_DEBUG);
-            return;
-        default:
-            break;
-        }
-        g_assert_not_reached();
-    }
-
     switch (is_jmp) {
     case DISAS_TOO_MANY:
         gen_goto_tb(dc, 0, npc);
@@ -3284,11 +3268,12 @@ static void cris_tr_tb_stop(DisasContextBase *dcbase, CPUState *cpu)
     }
 }
 
-static void cris_tr_disas_log(const DisasContextBase *dcbase, CPUState *cpu)
+static void cris_tr_disas_log(const DisasContextBase *dcbase,
+                              CPUState *cpu, FILE *logfile)
 {
     if (!DISAS_CRIS) {
-        qemu_log("IN: %s\n", lookup_symbol(dcbase->pc_first));
-        log_target_disas(cpu, dcbase->pc_first, dcbase->tb->size);
+        fprintf(logfile, "IN: %s\n", lookup_symbol(dcbase->pc_first));
+        target_disas(logfile, cpu, dcbase->pc_first, dcbase->tb->size);
     }
 }
 

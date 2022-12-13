@@ -215,7 +215,7 @@ static void xlx_iom_realize(DeviceState *dev, Error **errp)
     s->prefix = object_get_canonical_path(OBJECT(dev));
 
     if (s->cfg.use) {
-        s->ptimer = ptimer_init(pit_timer_hit, s, PTIMER_POLICY_DEFAULT);
+        s->ptimer = ptimer_init(pit_timer_hit, s, PTIMER_POLICY_LEGACY);
         ptimer_transaction_begin(s->ptimer);
         ptimer_set_freq(s->ptimer, s->frequency);
         ptimer_transaction_commit(s->ptimer);
@@ -254,7 +254,6 @@ static const VMStateDescription vmstate_xlx_iom = {
     .name = TYPE_XILINX_IO_MODULE_PIT,
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         VMSTATE_END_OF_LIST(),
     }

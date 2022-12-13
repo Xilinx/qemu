@@ -26,7 +26,7 @@
 #ifndef XLNX_CFI_IF_H
 #define XLNX_CFI_IF_H 1
 
-#include "qemu-common.h"
+#include "qemu/help-texts.h"
 #include "hw/hw.h"
 #include "qom/object.h"
 

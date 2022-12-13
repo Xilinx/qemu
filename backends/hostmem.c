@@ -19,6 +19,7 @@
 #include "qemu/config-file.h"
 #include "qom/object_interfaces.h"
 #include "qemu/mmap-alloc.h"
+#include "qemu/madvise.h"
 
 #ifdef CONFIG_NUMA
 #include <numaif.h>
@@ -273,7 +274,7 @@ static void host_memory_backend_init(Object *obj)
     backend->merge = machine_mem_merge(machine);
     backend->dump = machine_dump_guest_core(machine);
     backend->reserve = true;
-    backend->prealloc_threads = 1;
+    backend->prealloc_threads = machine->smp.cpus;
 }
 
 static void host_memory_backend_post_init(Object *obj)
@@ -318,7 +319,7 @@ size_t host_memory_backend_pagesize(HostMemoryBackend *memdev)
 #else
 size_t host_memory_backend_pagesize(HostMemoryBackend *memdev)
 {
-    return qemu_real_host_page_size;
+    return qemu_real_host_page_size();
 }
 #endif
 

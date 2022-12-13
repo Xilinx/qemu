@@ -25,6 +25,7 @@
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
 #include "hw/qdev-properties-system.h"
+#include "qemu/cutils.h"
 
 #ifndef _WIN32
 #include <sys/mman.h>
@@ -703,6 +704,7 @@ static void rp_realize(DeviceState *dev, Error **errp)
 {
     RemotePort *s = REMOTE_PORT(dev);
     int r;
+    g_autoptr(GError) err = NULL;
 
     s->prefix = object_get_canonical_path(OBJECT(dev));
 
@@ -811,17 +813,18 @@ static void rp_realize(DeviceState *dev, Error **errp)
             }
         }
 
-        qemu_set_nonblock(s->event.pipe.read);
+        g_unix_set_fd_nonblocking(s->event.pipe.read, true, &err);
+        g_assert_no_error(err);
         qemu_set_fd_handler(s->event.pipe.read, rp_event_read, NULL, s);
     }
 #else
-    r = qemu_pipe(s->event.pipes);
-    if (r < 0) {
+    if (!g_unix_open_pipe(s->event.pipes, FD_CLOEXEC, NULL)) {
         error_report("%s: Unable to create remort-port internal pipes\n",
                     s->prefix);
         exit(EXIT_FAILURE);
     }
-    qemu_set_nonblock(s->event.pipe.read);
+    g_unix_set_fd_nonblocking(s->event.pipe.read, true, &err);
+    g_assert_no_error(err);
     qemu_set_fd_handler(s->event.pipe.read, rp_event_read, NULL, s);
 #endif
 
@@ -831,9 +834,9 @@ static void rp_realize(DeviceState *dev, Error **errp)
        change.  */
     s->sync.quantum = s->peer.local_cfg.quantum;
 
-    s->sync.ptimer = ptimer_init(sync_timer_hit, s, PTIMER_POLICY_DEFAULT);
+    s->sync.ptimer = ptimer_init(sync_timer_hit, s, PTIMER_POLICY_LEGACY);
     s->sync.ptimer_resp = ptimer_init(syncresp_timer_hit, s,
-                                      PTIMER_POLICY_DEFAULT);
+                                      PTIMER_POLICY_LEGACY);
 
     /* The Sync-quantum is expressed in nano-seconds.  */
     ptimer_transaction_begin(s->sync.ptimer);
@@ -869,7 +872,6 @@ static const VMStateDescription vmstate_rp = {
     .name = TYPE_REMOTE_PORT,
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         VMSTATE_END_OF_LIST(),
     }

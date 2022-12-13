@@ -31,6 +31,7 @@
 #include "qemu/module.h"
 #include "qemu/option.h"
 #include "qemu/cutils.h"
+#include "qemu/memalign.h"
 #include "crypto.h"
 
 typedef struct BlockCrypto BlockCrypto;
@@ -54,40 +55,40 @@ static int block_crypto_probe_generic(QCryptoBlockFormat format,
 }
 
 
-static ssize_t block_crypto_read_func(QCryptoBlock *block,
-                                      size_t offset,
-                                      uint8_t *buf,
-                                      size_t buflen,
-                                      void *opaque,
-                                      Error **errp)
+static int block_crypto_read_func(QCryptoBlock *block,
+                                  size_t offset,
+                                  uint8_t *buf,
+                                  size_t buflen,
+                                  void *opaque,
+                                  Error **errp)
 {
     BlockDriverState *bs = opaque;
     ssize_t ret;
 
-    ret = bdrv_pread(bs->file, offset, buf, buflen);
+    ret = bdrv_pread(bs->file, offset, buflen, buf, 0);
     if (ret < 0) {
         error_setg_errno(errp, -ret, "Could not read encryption header");
         return ret;
     }
-    return ret;
+    return 0;
 }
 
-static ssize_t block_crypto_write_func(QCryptoBlock *block,
-                                       size_t offset,
-                                       const uint8_t *buf,
-                                       size_t buflen,
-                                       void *opaque,
-                                       Error **errp)
+static int block_crypto_write_func(QCryptoBlock *block,
+                                   size_t offset,
+                                   const uint8_t *buf,
+                                   size_t buflen,
+                                   void *opaque,
+                                   Error **errp)
 {
     BlockDriverState *bs = opaque;
     ssize_t ret;
 
-    ret = bdrv_pwrite(bs->file, offset, buf, buflen);
+    ret = bdrv_pwrite(bs->file, offset, buflen, buf, 0);
     if (ret < 0) {
         error_setg_errno(errp, -ret, "Could not write encryption header");
         return ret;
     }
-    return ret;
+    return 0;
 }
 
 
@@ -98,28 +99,28 @@ struct BlockCryptoCreateData {
 };
 
 
-static ssize_t block_crypto_create_write_func(QCryptoBlock *block,
-                                              size_t offset,
-                                              const uint8_t *buf,
-                                              size_t buflen,
-                                              void *opaque,
-                                              Error **errp)
+static int block_crypto_create_write_func(QCryptoBlock *block,
+                                          size_t offset,
+                                          const uint8_t *buf,
+                                          size_t buflen,
+                                          void *opaque,
+                                          Error **errp)
 {
     struct BlockCryptoCreateData *data = opaque;
     ssize_t ret;
 
-    ret = blk_pwrite(data->blk, offset, buf, buflen, 0);
+    ret = blk_pwrite(data->blk, offset, buflen, buf, 0);
     if (ret < 0) {
         error_setg_errno(errp, -ret, "Could not write encryption header");
         return ret;
     }
-    return ret;
+    return 0;
 }
 
-static ssize_t block_crypto_create_init_func(QCryptoBlock *block,
-                                             size_t headerlen,
-                                             void *opaque,
-                                             Error **errp)
+static int block_crypto_create_init_func(QCryptoBlock *block,
+                                         size_t headerlen,
+                                         void *opaque,
+                                         Error **errp)
 {
     struct BlockCryptoCreateData *data = opaque;
     Error *local_error = NULL;
@@ -138,7 +139,7 @@ static ssize_t block_crypto_create_init_func(QCryptoBlock *block,
                        data->prealloc, 0, &local_error);
 
     if (ret >= 0) {
-        return ret;
+        return 0;
     }
 
 error:
@@ -397,8 +398,8 @@ static int block_crypto_reopen_prepare(BDRVReopenState *state,
 #define BLOCK_CRYPTO_MAX_IO_SIZE (1024 * 1024)
 
 static coroutine_fn int
-block_crypto_co_preadv(BlockDriverState *bs, uint64_t offset, uint64_t bytes,
-                       QEMUIOVector *qiov, int flags)
+block_crypto_co_preadv(BlockDriverState *bs, int64_t offset, int64_t bytes,
+                       QEMUIOVector *qiov, BdrvRequestFlags flags)
 {
     BlockCrypto *crypto = bs->opaque;
     uint64_t cur_bytes; /* number of bytes in current iteration */
@@ -460,8 +461,8 @@ block_crypto_co_preadv(BlockDriverState *bs, uint64_t offset, uint64_t bytes,
 
 
 static coroutine_fn int
-block_crypto_co_pwritev(BlockDriverState *bs, uint64_t offset, uint64_t bytes,
-                        QEMUIOVector *qiov, int flags)
+block_crypto_co_pwritev(BlockDriverState *bs, int64_t offset, int64_t bytes,
+                        QEMUIOVector *qiov, BdrvRequestFlags flags)
 {
     BlockCrypto *crypto = bs->opaque;
     uint64_t cur_bytes; /* number of bytes in current iteration */
@@ -778,36 +779,54 @@ block_crypto_get_specific_info_luks(BlockDriverState *bs, Error **errp)
 }
 
 static int
+block_crypto_amend_prepare(BlockDriverState *bs, Error **errp)
+{
+    BlockCrypto *crypto = bs->opaque;
+    int ret;
+
+    /* apply for exclusive read/write permissions to the underlying file */
+    crypto->updating_keys = true;
+    ret = bdrv_child_refresh_perms(bs, bs->file, errp);
+    if (ret < 0) {
+        /* Well, in this case we will not be updating any keys */
+        crypto->updating_keys = false;
+    }
+    return ret;
+}
+
+static void
+block_crypto_amend_cleanup(BlockDriverState *bs)
+{
+    BlockCrypto *crypto = bs->opaque;
+    Error *errp = NULL;
+
+    /* release exclusive read/write permissions to the underlying file */
+    crypto->updating_keys = false;
+    bdrv_child_refresh_perms(bs, bs->file, &errp);
+
+    if (errp) {
+        error_report_err(errp);
+    }
+}
+
+static int
 block_crypto_amend_options_generic_luks(BlockDriverState *bs,
                                         QCryptoBlockAmendOptions *amend_options,
                                         bool force,
                                         Error **errp)
 {
     BlockCrypto *crypto = bs->opaque;
-    int ret;
 
     assert(crypto);
     assert(crypto->block);
 
-    /* apply for exclusive read/write permissions to the underlying file*/
-    crypto->updating_keys = true;
-    ret = bdrv_child_refresh_perms(bs, bs->file, errp);
-    if (ret) {
-        goto cleanup;
-    }
-
-    ret = qcrypto_block_amend_options(crypto->block,
-                                      block_crypto_read_func,
-                                      block_crypto_write_func,
-                                      bs,
-                                      amend_options,
-                                      force,
-                                      errp);
-cleanup:
-    /* release exclusive read/write permissions to the underlying file*/
-    crypto->updating_keys = false;
-    bdrv_child_refresh_perms(bs, bs->file, errp);
-    return ret;
+    return qcrypto_block_amend_options(crypto->block,
+                                       block_crypto_read_func,
+                                       block_crypto_write_func,
+                                       bs,
+                                       amend_options,
+                                       force,
+                                       errp);
 }
 
 static int
@@ -833,8 +852,16 @@ block_crypto_amend_options_luks(BlockDriverState *bs,
     if (!amend_options) {
         goto cleanup;
     }
+
+    ret = block_crypto_amend_prepare(bs, errp);
+    if (ret) {
+        goto perm_cleanup;
+    }
     ret = block_crypto_amend_options_generic_luks(bs, amend_options,
                                                   force, errp);
+
+perm_cleanup:
+    block_crypto_amend_cleanup(bs);
 cleanup:
     qapi_free_QCryptoBlockAmendOptions(amend_options);
     return ret;
@@ -931,6 +958,8 @@ static BlockDriver bdrv_crypto_luks = {
     .bdrv_get_specific_info = block_crypto_get_specific_info_luks,
     .bdrv_amend_options = block_crypto_amend_options_luks,
     .bdrv_co_amend      = block_crypto_co_amend_luks,
+    .bdrv_amend_pre_run = block_crypto_amend_prepare,
+    .bdrv_amend_clean   = block_crypto_amend_cleanup,
 
     .is_format          = true,
 

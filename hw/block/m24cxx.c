@@ -155,6 +155,8 @@ static int m24cxx_event(I2CSlave *i2c, enum i2c_event event)
     case I2C_NACK:
         DB_PRINT("NACKED\n");
         break;
+    default:
+        return -1;
     }
 
     DB_PRINT("transitioning to state %s\n", m24cxx_state_names[s->state]);
@@ -185,8 +187,7 @@ static void m24cxx_realize(DeviceState *dev, Error **errp)
 
     if (s->blk) {
         /* FIXME: Move to late init */
-        if (blk_pread(s->blk, 0, s->storage,
-                      s->size) < 0) {
+        if (blk_pread(s->blk, 0, s->size, s->storage, 0) < 0) {
             error_setg(errp, "Failed to initialize I2C EEPROM!\n");
             return;
         }
@@ -206,7 +207,6 @@ static const VMStateDescription vmstate_m24cxx = {
     .name = "m24cxx",
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .pre_save = m24cxx_pre_save,
     .fields = (VMStateField[]) {
         VMSTATE_I2C_SLAVE(i2c, M24CXXState),

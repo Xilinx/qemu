@@ -427,7 +427,6 @@ static const VMStateDescription vmstate_trng = {
     .name = TYPE_XILINX_TRNG,
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32_ARRAY(out, TRNG, 7),
         VMSTATE_UINT32_ARRAY(regs, TRNG, R_MAX),

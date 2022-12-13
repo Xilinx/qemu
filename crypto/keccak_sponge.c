@@ -170,7 +170,7 @@ static void
 sha3_absorb(struct sha3_state *state, unsigned length, const uint8_t *data)
 {
     assert((length & 7) == 0);
-#ifdef HOST_WORDS_BIGENDIAN
+#if HOST_BIG_ENDIAN
     {
         uint64_t *p;
         for (p = state->a; length > 0; p++, length -= 8, data += 8) {

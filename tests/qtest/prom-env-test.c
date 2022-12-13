@@ -20,7 +20,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "libqos/libqtest.h"
+#include "libqtest.h"
 #include "libqos/libqos-spapr.h"
 
 #define MAGIC   0xcafec0de
@@ -71,9 +71,11 @@ static void add_tests(const char *machines[])
     char *name;
 
     for (i = 0; machines[i] != NULL; i++) {
-        name = g_strdup_printf("prom-env/%s", machines[i]);
-        qtest_add_data_func(name, machines[i], test_machine);
-        g_free(name);
+        if (qtest_has_machine(machines[i])) {
+            name = g_strdup_printf("prom-env/%s", machines[i]);
+            qtest_add_data_func(name, machines[i], test_machine);
+            g_free(name);
+        }
     }
 }
 

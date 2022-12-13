@@ -161,7 +161,7 @@ static void bbram_bdrv_read(BBRAMCtrl *s)
         warn_report("%s: update not saved: backstore is read-only", prefix);
     }
 
-    rc = blk_pread(s->blk, 0, ram, nr);
+    rc = blk_pread(s->blk, 0, nr, ram, 0);
     if (rc < 0) {
         bbram_bdrv_error(s, rc, g_strdup_printf("read %u bytes", nr));
         error_setg(&error_abort, "%s: Unable to read-out contents."
@@ -198,7 +198,7 @@ static void bbram_bdrv_sync(BBRAMCtrl *s, uint64_t hwaddr)
     }
 
     offset = hwaddr - A_BBRAM_0;
-    rc = blk_pwrite(s->blk, offset, &le32, 4, 0);
+    rc = blk_pwrite(s->blk, offset, 4, &le32, 0);
     if (rc < 0) {
         bbram_bdrv_error(s, rc, g_strdup_printf("write to %u", offset));
     }

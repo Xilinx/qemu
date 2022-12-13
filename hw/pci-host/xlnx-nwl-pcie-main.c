@@ -784,7 +784,6 @@ static const VMStateDescription vmstate_axipcie_main = {
     .name = TYPE_XILINX_AXIPCIE_MAIN,
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, AXIPCIE_MAIN, R_MAX),
         VMSTATE_END_OF_LIST(),

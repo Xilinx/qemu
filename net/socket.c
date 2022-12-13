@@ -27,7 +27,6 @@
 #include "clients.h"
 #include "monitor/monitor.h"
 #include "qapi/error.h"
-#include "qemu-common.h"
 #include "qemu/error-report.h"
 #include "qemu/option.h"
 #include "qemu/sockets.h"
@@ -120,9 +119,9 @@ static ssize_t net_socket_receive_dgram(NetClientState *nc, const uint8_t *buf, 
 
     do {
         if (s->dgram_dst.sin_family != AF_UNIX) {
-            ret = qemu_sendto(s->fd, buf, size, 0,
-                              (struct sockaddr *)&s->dgram_dst,
-                              sizeof(s->dgram_dst));
+            ret = sendto(s->fd, buf, size, 0,
+                         (struct sockaddr *)&s->dgram_dst,
+                         sizeof(s->dgram_dst));
         } else {
             ret = send(s->fd, buf, size, 0);
         }
@@ -163,7 +162,7 @@ static void net_socket_send(void *opaque)
     uint8_t buf1[NET_BUFSIZE];
     const uint8_t *buf;
 
-    size = qemu_recv(s->fd, buf1, sizeof(buf1), 0);
+    size = recv(s->fd, buf1, sizeof(buf1), 0);
     if (size < 0) {
         if (errno != EWOULDBLOCK)
             goto eoc;
@@ -198,7 +197,7 @@ static void net_socket_send_dgram(void *opaque)
     NetSocketState *s = opaque;
     int size;
 
-    size = qemu_recv(s->fd, s->rs.buf, sizeof(s->rs.buf), 0);
+    size = recv(s->fd, s->rs.buf, sizeof(s->rs.buf), 0);
     if (size < 0)
         return;
     if (size == 0) {
@@ -246,7 +245,7 @@ static int net_socket_mcast_create(struct sockaddr_in *mcastaddr,
      * only on posix systems.
      */
     val = 1;
-    ret = qemu_setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &val, sizeof(val));
+    ret = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &val, sizeof(val));
     if (ret < 0) {
         error_setg_errno(errp, errno,
                          "can't set socket option SO_REUSEADDR");
@@ -268,8 +267,8 @@ static int net_socket_mcast_create(struct sockaddr_in *mcastaddr,
         imr.imr_interface.s_addr = htonl(INADDR_ANY);
     }
 
-    ret = qemu_setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP,
-                          &imr, sizeof(struct ip_mreq));
+    ret = setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP,
+                     &imr, sizeof(struct ip_mreq));
     if (ret < 0) {
         error_setg_errno(errp, errno,
                          "can't add socket to multicast group %s",
@@ -279,8 +278,8 @@ static int net_socket_mcast_create(struct sockaddr_in *mcastaddr,
 
     /* Force mcast msgs to loopback (eg. several QEMUs in same host */
     loop = 1;
-    ret = qemu_setsockopt(fd, IPPROTO_IP, IP_MULTICAST_LOOP,
-                          &loop, sizeof(loop));
+    ret = setsockopt(fd, IPPROTO_IP, IP_MULTICAST_LOOP,
+                     &loop, sizeof(loop));
     if (ret < 0) {
         error_setg_errno(errp, errno,
                          "can't force multicast message to loopback");
@@ -289,8 +288,8 @@ static int net_socket_mcast_create(struct sockaddr_in *mcastaddr,
 
     /* If a bind address is given, only send packets from that address */
     if (localaddr != NULL) {
-        ret = qemu_setsockopt(fd, IPPROTO_IP, IP_MULTICAST_IF,
-                              localaddr, sizeof(*localaddr));
+        ret = setsockopt(fd, IPPROTO_IP, IP_MULTICAST_IF,
+                         localaddr, sizeof(*localaddr));
         if (ret < 0) {
             error_setg_errno(errp, errno,
                              "can't set the default network send interface");
@@ -298,7 +297,7 @@ static int net_socket_mcast_create(struct sockaddr_in *mcastaddr,
         }
     }
 
-    qemu_set_nonblock(fd);
+    qemu_socket_set_nonblock(fd);
     return fd;
 fail:
     if (fd >= 0)
@@ -523,7 +522,7 @@ static int net_socket_listen_init(NetClientState *peer,
         error_setg_errno(errp, errno, "can't create stream socket");
         return -1;
     }
-    qemu_set_nonblock(fd);
+    qemu_socket_set_nonblock(fd);
 
     socket_set_fast_reuse(fd);
 
@@ -571,7 +570,7 @@ static int net_socket_connect_init(NetClientState *peer,
         error_setg_errno(errp, errno, "can't create stream socket");
         return -1;
     }
-    qemu_set_nonblock(fd);
+    qemu_socket_set_nonblock(fd);
 
     connected = 0;
     for(;;) {
@@ -689,7 +688,7 @@ static int net_socket_udp_init(NetClientState *peer,
         closesocket(fd);
         return -1;
     }
-    qemu_set_nonblock(fd);
+    qemu_socket_set_nonblock(fd);
 
     s = net_socket_fd_init(peer, model, name, fd, 0, NULL, errp);
     if (!s) {
@@ -731,7 +730,7 @@ int net_init_socket(const Netdev *netdev, const char *name,
         if (fd == -1) {
             return -1;
         }
-        ret = qemu_try_set_nonblock(fd);
+        ret = qemu_socket_try_set_nonblock(fd);
         if (ret < 0) {
             error_setg_errno(errp, -ret, "%s: Can't use file descriptor %d",
                              name, fd);

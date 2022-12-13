@@ -27,6 +27,7 @@
 
 QemuOptsList qemu_semihosting_config_opts = {
     .name = "semihosting-config",
+    .merge_lists = true,
     .implied_opt_name = "enable",
     .head = QTAILQ_HEAD_INITIALIZER(qemu_semihosting_config_opts.head),
     .desc = {
@@ -50,8 +51,7 @@ QemuOptsList qemu_semihosting_config_opts = {
 typedef struct SemihostingConfig {
     bool enabled;
     SemihostingTarget target;
-    Chardev *chardev;
-    const char **argv;
+    char **argv;
     int argc;
     const char *cmdline; /* concatenated argv */
 } SemihostingConfig;
@@ -98,8 +98,8 @@ static int add_semihosting_arg(void *opaque,
     if (strcmp(name, "arg") == 0) {
         s->argc++;
         /* one extra element as g_strjoinv() expects NULL-terminated array */
-        s->argv = g_realloc(s->argv, (s->argc + 1) * sizeof(void *));
-        s->argv[s->argc - 1] = val;
+        s->argv = g_renew(char *, s->argv, s->argc + 1);
+        s->argv[s->argc - 1] = g_strdup(val);
         s->argv[s->argc] = NULL;
     }
     return 0;
@@ -119,11 +119,6 @@ void semihosting_arg_fallback(const char *file, const char *cmd)
         add_semihosting_arg(&semihosting, "arg", cmd_token, NULL);
         cmd_token = strtok(NULL, " ");
     }
-}
-
-Chardev *semihosting_get_chardev(void)
-{
-    return semihosting.chardev;
 }
 
 void qemu_semihosting_enable(void)
@@ -171,16 +166,19 @@ int qemu_semihosting_config_options(const char *optarg)
     return 0;
 }
 
-void qemu_semihosting_connect_chardevs(void)
+/* We had to defer this until chardevs were created */
+void qemu_semihosting_chardev_init(void)
 {
-    /* We had to defer this until chardevs were created */
+    Chardev *chr = NULL;
+
     if (semihost_chardev) {
-        Chardev *chr = qemu_chr_find(semihost_chardev);
+        chr = qemu_chr_find(semihost_chardev);
         if (chr == NULL) {
             error_report("semihosting chardev '%s' not found",
                          semihost_chardev);
             exit(1);
         }
-        semihosting.chardev = chr;
     }
+
+    qemu_semihosting_console_init(chr);
 }

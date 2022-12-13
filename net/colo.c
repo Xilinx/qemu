@@ -46,7 +46,14 @@ int parse_packet_early(Packet *pkt)
     static const uint8_t vlan[] = {0x81, 0x00};
     uint8_t *data = pkt->data + pkt->vnet_hdr_len;
     uint16_t l3_proto;
-    ssize_t l2hdr_len = eth_get_l2_hdr_length(data);
+    ssize_t l2hdr_len;
+
+    if (data == NULL) {
+        trace_colo_proxy_main_vnet_info("This packet is not parsed correctly, "
+                                        "pkt->vnet_hdr_len", pkt->vnet_hdr_len);
+        return 1;
+    }
+    l2hdr_len = eth_get_l2_hdr_length(data);
 
     if (pkt->size < ETH_HLEN + pkt->vnet_hdr_len) {
         trace_colo_proxy_main("pkt->size < ETH_HLEN");
@@ -83,19 +90,26 @@ int parse_packet_early(Packet *pkt)
     return 0;
 }
 
-void extract_ip_and_port(uint32_t tmp_ports, ConnectionKey *key, Packet *pkt)
+void extract_ip_and_port(uint32_t tmp_ports, ConnectionKey *key,
+                         Packet *pkt, bool reverse)
 {
+    if (reverse) {
+        key->src = pkt->ip->ip_dst;
+        key->dst = pkt->ip->ip_src;
+        key->src_port = ntohs(tmp_ports & 0xffff);
+        key->dst_port = ntohs(tmp_ports >> 16);
+    } else {
         key->src = pkt->ip->ip_src;
         key->dst = pkt->ip->ip_dst;
         key->src_port = ntohs(tmp_ports >> 16);
         key->dst_port = ntohs(tmp_ports & 0xffff);
+    }
 }
 
-void fill_connection_key(Packet *pkt, ConnectionKey *key)
+void fill_connection_key(Packet *pkt, ConnectionKey *key, bool reverse)
 {
-    uint32_t tmp_ports;
+    uint32_t tmp_ports = 0;
 
-    memset(key, 0, sizeof(*key));
     key->ip_proto = pkt->ip->ip_p;
 
     switch (key->ip_proto) {
@@ -106,29 +120,15 @@ void fill_connection_key(Packet *pkt, ConnectionKey *key)
     case IPPROTO_SCTP:
     case IPPROTO_UDPLITE:
         tmp_ports = *(uint32_t *)(pkt->transport_header);
-        extract_ip_and_port(tmp_ports, key, pkt);
         break;
     case IPPROTO_AH:
         tmp_ports = *(uint32_t *)(pkt->transport_header + 4);
-        extract_ip_and_port(tmp_ports, key, pkt);
         break;
     default:
         break;
     }
-}
 
-void reverse_connection_key(ConnectionKey *key)
-{
-    struct in_addr tmp_ip;
-    uint16_t tmp_port;
-
-    tmp_ip = key->src;
-    key->src = key->dst;
-    key->dst = tmp_ip;
-
-    tmp_port = key->src_port;
-    key->src_port = key->dst_port;
-    key->dst_port = tmp_port;
+    extract_ip_and_port(tmp_ports, key, pkt, reverse);
 }
 
 Connection *connection_new(ConnectionKey *key)
@@ -225,7 +225,7 @@ Connection *connection_get(GHashTable *connection_track_table,
             /*
              * clear the conn_list
              */
-            while (!g_queue_is_empty(conn_list)) {
+            while (conn_list && !g_queue_is_empty(conn_list)) {
                 connection_destroy(g_queue_pop_head(conn_list));
             }
         }

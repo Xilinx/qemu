@@ -197,10 +197,7 @@ static const struct TCGCPUOps avr_tcg_ops = {
     .synchronize_from_tb = avr_cpu_synchronize_from_tb,
     .cpu_exec_interrupt = avr_cpu_exec_interrupt,
     .tlb_fill = avr_cpu_tlb_fill,
-
-#ifndef CONFIG_USER_ONLY
     .do_interrupt = avr_cpu_do_interrupt,
-#endif /* !CONFIG_USER_ONLY */
 };
 
 static void avr_cpu_class_init(ObjectClass *oc, void *data)
@@ -217,7 +214,6 @@ static void avr_cpu_class_init(ObjectClass *oc, void *data)
     cc->has_work = avr_cpu_has_work;
     cc->dump_state = avr_cpu_dump_state;
     cc->set_pc = avr_cpu_set_pc;
-    cc->memory_rw_debug = avr_cpu_memory_rw_debug;
     dc->vmsd = &vms_avr_cpu;
     cc->sysemu_ops = &avr_sysemu_ops;
     cc->disas_set_info = avr_cpu_disas_set_info;

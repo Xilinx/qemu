@@ -25,9 +25,7 @@
 
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "libqtest-single.h"
-#include "qemu-common.h"
 #include "libqos/pci-pc.h"
 #include "qemu/sockets.h"
 #include "qemu/iov.h"
@@ -91,9 +89,9 @@ static void e1000e_send_verify(QE1000E *d, int *test_sockets, QGuestAllocator *a
     g_assert_cmphex(le32_to_cpu(descr.upper.data) & dsta_dd, ==, dsta_dd);
 
     /* Check data sent to the backend */
-    ret = qemu_recv(test_sockets[0], &recv_len, sizeof(recv_len), 0);
+    ret = recv(test_sockets[0], &recv_len, sizeof(recv_len), 0);
     g_assert_cmpint(ret, == , sizeof(recv_len));
-    ret = qemu_recv(test_sockets[0], buffer, 64, 0);
+    ret = recv(test_sockets[0], buffer, 64, 0);
     g_assert_cmpint(ret, >=, 5);
     g_assert_cmpstr(buffer, == , "TEST");
 
@@ -235,6 +233,12 @@ static void test_e1000e_multiple_transfers(void *obj, void *data,
 static void test_e1000e_hotplug(void *obj, void *data, QGuestAllocator * alloc)
 {
     QTestState *qts = global_qtest;  /* TODO: get rid of global_qtest here */
+    QE1000E_PCI *dev = obj;
+
+    if (dev->pci_dev.bus->not_hotpluggable) {
+        g_test_skip("pci bus does not support hotplug");
+        return;
+    }
 
     qtest_qmp_device_add(qts, "e1000e", "e1000e_net", "{'addr': '0x06'}");
     qpci_unplug_acpi_device_test(qts, "e1000e_net", 0x06);

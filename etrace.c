@@ -26,13 +26,14 @@
 #include "qemu/sockets.h"
 #endif
 
-#include "qemu-common.h"
+#include "qemu/help-texts.h"
 #include "qemu/etrace.h"
 #include "qemu/timer.h"
 #include "exec/memory.h"
 #include "exec/address-spaces.h"
 #include "cpu.h"
 #include "exec/exec-all.h"
+#include "qemu/log.h"
 
 /* Still under development.  */
 #define ETRACE_VERSION_MAJOR 0
@@ -293,7 +294,7 @@ bool etrace_init(struct etracer *t, const char *filename,
     /* FIXME: Pass info about host.  */
     arch.guest.arch_id = arch_id;
     t->arch_bits = arch.guest.arch_bits = arch_bits;
-#ifdef TARGET_WORDS_BIGENDIAN
+#if TARGET_BIG_ENDIAN
     arch.guest.big_endian = 1;
 #endif
     etrace_write_header(t, TYPE_ARCH, 0, sizeof arch);

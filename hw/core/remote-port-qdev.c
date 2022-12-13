@@ -118,7 +118,7 @@ void rp_device_detach(Object *adaptor, Object *dev,
 }
 
 /* Scan for remote-port links to be setup.  */
-bool rp_device_add(QemuOpts *opts, DeviceState *dev, Error **errp)
+bool rp_device_add(const QDict *opts, DeviceState *dev, Error **errp)
 {
     Error *err = NULL;
     Object *adaptor;
@@ -132,7 +132,7 @@ bool rp_device_add(QemuOpts *opts, DeviceState *dev, Error **errp)
      * At the moment, we only support one adaptor per device.
      */
     name = g_strdup_printf("rp-adaptor%d", 0);
-    path = qemu_opt_get(opts, name);
+    path = qdict_get_try_str(opts, name);
     g_free(name);
     if (!path) {
         /* This is not a remote-port device. Treat as success.  */
@@ -153,7 +153,7 @@ bool rp_device_add(QemuOpts *opts, DeviceState *dev, Error **errp)
         const char *dev_nr_str;
 
         name = g_strdup_printf("rp-chan%d", i);
-        dev_nr_str = qemu_opt_get(opts, name);
+        dev_nr_str = qdict_get_try_str(opts, name);
         g_free(name);
 
         if (!dev_nr_str) {

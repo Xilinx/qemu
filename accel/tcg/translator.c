@@ -42,6 +42,15 @@ bool translator_use_goto_tb(DisasContextBase *db, target_ulong dest)
     return ((db->pc_first ^ dest) & TARGET_PAGE_MASK) == 0;
 }
 
+static inline void translator_page_protect(DisasContextBase *dcbase,
+                                           target_ulong pc)
+{
+#ifdef CONFIG_USER_ONLY
+    dcbase->page_protect_end = pc | ~TARGET_PAGE_MASK;
+    page_protect(pc);
+#endif
+}
+
 void translator_loop(const TranslatorOps *ops, DisasContextBase *db,
                      CPUState *cpu, TranslationBlock *tb, int max_insns)
 {
@@ -56,6 +65,7 @@ void translator_loop(const TranslatorOps *ops, DisasContextBase *db,
     db->num_insns = 0;
     db->max_insns = max_insns;
     db->singlestep_enabled = cflags & CF_SINGLE_STEP;
+    translator_page_protect(db, db->pc_next);
 
     ops->init_disas_context(db, cpu);
     tcg_debug_assert(db->is_jmp == DISAS_NEXT);  /* no early exit */
@@ -129,11 +139,42 @@ void translator_loop(const TranslatorOps *ops, DisasContextBase *db,
 #ifdef DEBUG_DISAS
     if (qemu_loglevel_mask(CPU_LOG_TB_IN_ASM)
         && qemu_log_in_addr_range(db->pc_first)) {
-        FILE *logfile = qemu_log_lock();
-        qemu_log("----------------\n");
-        ops->disas_log(db, cpu);
-        qemu_log("\n");
-        qemu_log_unlock(logfile);
+        FILE *logfile = qemu_log_trylock();
+        if (logfile) {
+            fprintf(logfile, "----------------\n");
+            ops->disas_log(db, cpu, logfile);
+            fprintf(logfile, "\n");
+            qemu_log_unlock(logfile);
+        }
     }
 #endif
 }
+
+static inline void translator_maybe_page_protect(DisasContextBase *dcbase,
+                                                 target_ulong pc, size_t len)
+{
+#ifdef CONFIG_USER_ONLY
+    target_ulong end = pc + len - 1;
+
+    if (end > dcbase->page_protect_end) {
+        translator_page_protect(dcbase, end);
+    }
+#endif
+}
+
+#define GEN_TRANSLATOR_LD(fullname, type, load_fn, swap_fn)             \
+    type fullname ## _swap(CPUArchState *env, DisasContextBase *dcbase, \
+                           abi_ptr pc, bool do_swap)                    \
+    {                                                                   \
+        translator_maybe_page_protect(dcbase, pc, sizeof(type));        \
+        type ret = load_fn(env, pc);                                    \
+        if (do_swap) {                                                  \
+            ret = swap_fn(ret);                                         \
+        }                                                               \
+        plugin_insn_append(pc, &ret, sizeof(ret));                      \
+        return ret;                                                     \
+    }
+
+FOR_EACH_TRANSLATOR_LD(GEN_TRANSLATOR_LD)
+
+#undef GEN_TRANSLATOR_LD

@@ -19,6 +19,7 @@
 #include "chardev/char-fe.h"
 #include "exec/ioport.h"
 #include "exec/memory.h"
+#include "hw/qdev-core.h"
 #include "hw/irq.h"
 #include "qemu/accel.h"
 #include "sysemu/cpu-timers.h"
@@ -57,12 +58,12 @@ static FILE *qtest_log_fp;
 static QTest *qtest;
 static GString *inbuf;
 static int irq_levels[MAX_IRQ];
-static qemu_timeval start_time;
+static GTimer *timer;
 static bool qtest_opened;
 static void (*qtest_server_send)(void*, const char*);
 static void *qtest_server_send_opaque;
 
-#define FMT_timeval "%ld.%06ld"
+#define FMT_timeval "%.06f"
 
 /**
  * DOC: QTest Protocol
@@ -263,31 +264,16 @@ static int hex2nib(char ch)
     }
 }
 
-static void qtest_get_time(qemu_timeval *tv)
-{
-    qemu_gettimeofday(tv);
-    tv->tv_sec -= start_time.tv_sec;
-    tv->tv_usec -= start_time.tv_usec;
-    if (tv->tv_usec < 0) {
-        tv->tv_usec += 1000000;
-        tv->tv_sec -= 1;
-    }
-}
-
 static void qtest_send_prefix(CharBackend *chr)
 {
-    qemu_timeval tv;
-
     if (!qtest_log_fp || !qtest_opened) {
         return;
     }
 
-    qtest_get_time(&tv);
-    fprintf(qtest_log_fp, "[S +" FMT_timeval "] ",
-            (long) tv.tv_sec, (long) tv.tv_usec);
+    fprintf(qtest_log_fp, "[S +" FMT_timeval "] ", g_timer_elapsed(timer, NULL));
 }
 
-static void GCC_FMT_ATTR(1, 2) qtest_log_send(const char *fmt, ...)
+static void G_GNUC_PRINTF(1, 2) qtest_log_send(const char *fmt, ...)
 {
     va_list ap;
 
@@ -317,7 +303,7 @@ static void qtest_send(CharBackend *chr, const char *str)
     qtest_server_send(qtest_server_send_opaque, str);
 }
 
-static void GCC_FMT_ATTR(2, 3) qtest_sendf(CharBackend *chr,
+static void G_GNUC_PRINTF(2, 3) qtest_sendf(CharBackend *chr,
                                            const char *fmt, ...)
 {
     va_list ap;
@@ -385,12 +371,9 @@ static void qtest_process_command(CharBackend *chr, gchar **words)
     command = words[0];
 
     if (qtest_log_fp) {
-        qemu_timeval tv;
         int i;
 
-        qtest_get_time(&tv);
-        fprintf(qtest_log_fp, "[R +" FMT_timeval "]",
-                (long) tv.tv_sec, (long) tv.tv_usec);
+        fprintf(qtest_log_fp, "[R +" FMT_timeval "]", g_timer_elapsed(timer, NULL));
         for (i = 0; words[i]; i++) {
             fprintf(qtest_log_fp, " %s", words[i]);
         }
@@ -731,7 +714,7 @@ static void qtest_process_command(CharBackend *chr, gchar **words)
         qtest_send(chr, "OK\n");
     } else if (strcmp(words[0], "endianness") == 0) {
         qtest_send_prefix(chr);
-#if defined(TARGET_WORDS_BIGENDIAN)
+#if TARGET_BIG_ENDIAN
         qtest_sendf(chr, "OK big\n");
 #else
         qtest_sendf(chr, "OK little\n");
@@ -845,21 +828,20 @@ static void qtest_event(void *opaque, QEMUChrEvent event)
         for (i = 0; i < ARRAY_SIZE(irq_levels); i++) {
             irq_levels[i] = 0;
         }
-        qemu_gettimeofday(&start_time);
+
+        g_clear_pointer(&timer, g_timer_destroy);
+        timer = g_timer_new();
         qtest_opened = true;
         if (qtest_log_fp) {
-            fprintf(qtest_log_fp, "[I " FMT_timeval "] OPENED\n",
-                    (long) start_time.tv_sec, (long) start_time.tv_usec);
+            fprintf(qtest_log_fp, "[I " FMT_timeval "] OPENED\n", g_timer_elapsed(timer, NULL));
         }
         break;
     case CHR_EVENT_CLOSED:
         qtest_opened = false;
         if (qtest_log_fp) {
-            qemu_timeval tv;
-            qtest_get_time(&tv);
-            fprintf(qtest_log_fp, "[I +" FMT_timeval "] CLOSED\n",
-                    (long) tv.tv_sec, (long) tv.tv_usec);
+            fprintf(qtest_log_fp, "[I +" FMT_timeval "] CLOSED\n", g_timer_elapsed(timer, NULL));
         }
+        g_clear_pointer(&timer, g_timer_destroy);
         break;
     default:
         break;

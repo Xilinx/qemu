@@ -23,7 +23,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "qemu/datadir.h"
 #include "qemu/units.h"
 #include "hw/irq.h"
@@ -201,6 +200,11 @@ static const TypeInfo pci_bus_info = {
     .class_init = pci_bus_class_init,
 };
 
+static const TypeInfo cxl_interface_info = {
+    .name          = INTERFACE_CXL_DEVICE,
+    .parent        = TYPE_INTERFACE,
+};
+
 static const TypeInfo pcie_interface_info = {
     .name          = INTERFACE_PCIE_DEVICE,
     .parent        = TYPE_INTERFACE,
@@ -224,6 +228,12 @@ static const TypeInfo pcie_bus_info = {
     .class_init = pcie_bus_class_init,
 };
 
+static const TypeInfo cxl_bus_info = {
+    .name       = TYPE_CXL_BUS,
+    .parent     = TYPE_PCIE_BUS,
+    .class_init = pcie_bus_class_init,
+};
+
 static PCIBus *pci_find_bus_nr(PCIBus *bus, int bus_num);
 static void pci_update_mappings(PCIDevice *d);
 static void pci_irq_handler(void *opaque, int irq_num, int level);
@@ -238,6 +248,9 @@ static QLIST_HEAD(, PCIHostState) pci_host_bridges;
 int pci_bar(PCIDevice *d, int reg)
 {
     uint8_t type;
+
+    /* PCIe virtual functions do not have their own BARs */
+    assert(!pci_is_vf(d));
 
     if (reg != PCI_ROM_SLOT)
         return PCI_BASE_ADDRESS_0 + reg * 4;
@@ -304,10 +317,39 @@ void pci_device_deassert_intx(PCIDevice *dev)
     }
 }
 
-static void pci_do_device_reset(PCIDevice *dev)
+static void pci_msi_trigger(PCIDevice *dev, MSIMessage msg)
+{
+    MemTxAttrs attrs = {};
+
+    attrs.requester_id = pci_requester_id(dev);
+    address_space_stl_le(&dev->bus_master_as, msg.address, msg.data,
+                         attrs, NULL);
+}
+
+static void pci_reset_regions(PCIDevice *dev)
 {
     int r;
+    if (pci_is_vf(dev)) {
+        return;
+    }
 
+    for (r = 0; r < PCI_NUM_REGIONS; ++r) {
+        PCIIORegion *region = &dev->io_regions[r];
+        if (!region->size) {
+            continue;
+        }
+
+        if (!(region->type & PCI_BASE_ADDRESS_SPACE_IO) &&
+            region->type & PCI_BASE_ADDRESS_MEM_TYPE_64) {
+            pci_set_quad(dev->config + pci_bar(dev, r), region->type);
+        } else {
+            pci_set_long(dev->config + pci_bar(dev, r), region->type);
+        }
+    }
+}
+
+static void pci_do_device_reset(PCIDevice *dev)
+{
     pci_device_deassert_intx(dev);
     assert(dev->irq_state == 0);
 
@@ -323,19 +365,7 @@ static void pci_do_device_reset(PCIDevice *dev)
                               pci_get_word(dev->wmask + PCI_INTERRUPT_LINE) |
                               pci_get_word(dev->w1cmask + PCI_INTERRUPT_LINE));
     dev->config[PCI_CACHE_LINE_SIZE] = 0x0;
-    for (r = 0; r < PCI_NUM_REGIONS; ++r) {
-        PCIIORegion *region = &dev->io_regions[r];
-        if (!region->size) {
-            continue;
-        }
-
-        if (!(region->type & PCI_BASE_ADDRESS_SPACE_IO) &&
-            region->type & PCI_BASE_ADDRESS_MEM_TYPE_64) {
-            pci_set_quad(dev->config + pci_bar(dev, r), region->type);
-        } else {
-            pci_set_long(dev->config + pci_bar(dev, r), region->type);
-        }
-    }
+    pci_reset_regions(dev);
     pci_update_mappings(dev);
 
     msi_reset(dev);
@@ -432,10 +462,10 @@ bool pci_bus_bypass_iommu(PCIBus *bus)
     return host_bridge->bypass_iommu;
 }
 
-static void pci_root_bus_init(PCIBus *bus, DeviceState *parent,
-                              MemoryRegion *address_space_mem,
-                              MemoryRegion *address_space_io,
-                              uint8_t devfn_min)
+static void pci_root_bus_internal_init(PCIBus *bus, DeviceState *parent,
+                                       MemoryRegion *address_space_mem,
+                                       MemoryRegion *address_space_io,
+                                       uint8_t devfn_min)
 {
     assert(PCI_FUNC(devfn_min) == 0);
     bus->devfn_min = devfn_min;
@@ -460,15 +490,15 @@ bool pci_bus_is_express(PCIBus *bus)
     return object_dynamic_cast(OBJECT(bus), TYPE_PCIE_BUS);
 }
 
-void pci_root_bus_new_inplace(PCIBus *bus, size_t bus_size, DeviceState *parent,
-                              const char *name,
-                              MemoryRegion *address_space_mem,
-                              MemoryRegion *address_space_io,
-                              uint8_t devfn_min, const char *typename)
+void pci_root_bus_init(PCIBus *bus, size_t bus_size, DeviceState *parent,
+                       const char *name,
+                       MemoryRegion *address_space_mem,
+                       MemoryRegion *address_space_io,
+                       uint8_t devfn_min, const char *typename)
 {
-    qbus_create_inplace(bus, bus_size, typename, parent, name);
-    pci_root_bus_init(bus, parent, address_space_mem, address_space_io,
-                      devfn_min);
+    qbus_init(bus, bus_size, typename, parent, name);
+    pci_root_bus_internal_init(bus, parent, address_space_mem,
+                               address_space_io, devfn_min);
 }
 
 PCIBus *pci_root_bus_new(DeviceState *parent, const char *name,
@@ -478,9 +508,9 @@ PCIBus *pci_root_bus_new(DeviceState *parent, const char *name,
 {
     PCIBus *bus;
 
-    bus = PCI_BUS(qbus_create(typename, parent, name));
-    pci_root_bus_init(bus, parent, address_space_mem, address_space_io,
-                      devfn_min);
+    bus = PCI_BUS(qbus_new(typename, parent, name));
+    pci_root_bus_internal_init(bus, parent, address_space_mem,
+                               address_space_io, devfn_min);
     return bus;
 }
 
@@ -885,6 +915,16 @@ static void pci_init_multifunction(PCIBus *bus, PCIDevice *dev, Error **errp)
     }
 
     /*
+     * With SR/IOV and ARI, a device at function 0 need not be a multifunction
+     * device, as it may just be a VF that ended up with function 0 in
+     * the legacy PCI interpretation. Avoid failing in such cases:
+     */
+    if (pci_is_vf(dev) &&
+        dev->exp.sriov_vf.pf->cap_present & QEMU_PCI_CAP_MULTIFUNCTION) {
+        return;
+    }
+
+    /*
      * multifunction bit is interpreted in two ways as follows.
      *   - all functions must set the bit to 1.
      *     Example: Intel X53
@@ -1078,11 +1118,12 @@ static PCIDevice *do_pci_register_device(PCIDevice *pci_dev,
         return NULL;
     } else if (!pci_bus_devfn_available(bus, devfn)) {
         error_setg(errp, "PCI: slot %d function %d not available for %s,"
-                   " in use by %s",
+                   " in use by %s,id=%s",
                    PCI_SLOT(devfn), PCI_FUNC(devfn), name,
-                   bus->devices[devfn]->name);
+                   bus->devices[devfn]->name, bus->devices[devfn]->qdev.id);
         return NULL;
     } else if (dev->hotplugged &&
+               !pci_is_vf(pci_dev) &&
                pci_get_function_0(pci_dev)) {
         error_setg(errp, "PCI: slot %d function 0 already occupied by %s,"
                    " new func %s cannot be exposed to guest.",
@@ -1180,6 +1221,8 @@ static void pci_qdev_unrealize(DeviceState *dev)
 
     pci_device_deassert_intx(pci_dev);
     do_pci_unregister_device(pci_dev);
+
+    pci_dev->msi_trigger = NULL;
 }
 
 void pci_register_bar(PCIDevice *pci_dev, int region_num,
@@ -1191,6 +1234,7 @@ void pci_register_bar(PCIDevice *pci_dev, int region_num,
     pcibus_t size = memory_region_size(memory);
     uint8_t hdr_type;
 
+    assert(!pci_is_vf(pci_dev)); /* VFs must use pcie_sriov_vf_register_bar */
     assert(region_num >= 0);
     assert(region_num < PCI_NUM_REGIONS);
     assert(is_power_of_2(size));
@@ -1294,11 +1338,45 @@ pcibus_t pci_get_bar_addr(PCIDevice *pci_dev, int region_num)
     return pci_dev->io_regions[region_num].addr;
 }
 
-static pcibus_t pci_bar_address(PCIDevice *d,
-                                int reg, uint8_t type, pcibus_t size)
+static pcibus_t pci_config_get_bar_addr(PCIDevice *d, int reg,
+                                        uint8_t type, pcibus_t size)
+{
+    pcibus_t new_addr;
+    if (!pci_is_vf(d)) {
+        int bar = pci_bar(d, reg);
+        if (type & PCI_BASE_ADDRESS_MEM_TYPE_64) {
+            new_addr = pci_get_quad(d->config + bar);
+        } else {
+            new_addr = pci_get_long(d->config + bar);
+        }
+    } else {
+        PCIDevice *pf = d->exp.sriov_vf.pf;
+        uint16_t sriov_cap = pf->exp.sriov_cap;
+        int bar = sriov_cap + PCI_SRIOV_BAR + reg * 4;
+        uint16_t vf_offset =
+            pci_get_word(pf->config + sriov_cap + PCI_SRIOV_VF_OFFSET);
+        uint16_t vf_stride =
+            pci_get_word(pf->config + sriov_cap + PCI_SRIOV_VF_STRIDE);
+        uint32_t vf_num = (d->devfn - (pf->devfn + vf_offset)) / vf_stride;
+
+        if (type & PCI_BASE_ADDRESS_MEM_TYPE_64) {
+            new_addr = pci_get_quad(pf->config + bar);
+        } else {
+            new_addr = pci_get_long(pf->config + bar);
+        }
+        new_addr += vf_num * size;
+    }
+    /* The ROM slot has a specific enable bit, keep it intact */
+    if (reg != PCI_ROM_SLOT) {
+        new_addr &= ~(size - 1);
+    }
+    return new_addr;
+}
+
+pcibus_t pci_bar_address(PCIDevice *d,
+                         int reg, uint8_t type, pcibus_t size)
 {
     pcibus_t new_addr, last_addr;
-    int bar = pci_bar(d, reg);
     uint16_t cmd = pci_get_word(d->config + PCI_COMMAND);
     Object *machine = qdev_get_machine();
     ObjectClass *oc = object_get_class(machine);
@@ -1309,7 +1387,7 @@ static pcibus_t pci_bar_address(PCIDevice *d,
         if (!(cmd & PCI_COMMAND_IO)) {
             return PCI_BAR_UNMAPPED;
         }
-        new_addr = pci_get_long(d->config + bar) & ~(size - 1);
+        new_addr = pci_config_get_bar_addr(d, reg, type, size);
         last_addr = new_addr + size - 1;
         /* Check if 32 bit BAR wraps around explicitly.
          * TODO: make priorities correct and remove this work around.
@@ -1324,11 +1402,7 @@ static pcibus_t pci_bar_address(PCIDevice *d,
     if (!(cmd & PCI_COMMAND_MEMORY)) {
         return PCI_BAR_UNMAPPED;
     }
-    if (type & PCI_BASE_ADDRESS_MEM_TYPE_64) {
-        new_addr = pci_get_quad(d->config + bar);
-    } else {
-        new_addr = pci_get_long(d->config + bar);
-    }
+    new_addr = pci_config_get_bar_addr(d, reg, type, size);
     /* the ROM slot has a specific enable bit */
     if (reg == PCI_ROM_SLOT && !(new_addr & PCI_ROM_ADDRESS_ENABLE)) {
         return PCI_BAR_UNMAPPED;
@@ -1380,6 +1454,9 @@ static void pci_update_mappings(PCIDevice *d)
             continue;
 
         new_addr = pci_bar_address(d, i, r->type, r->size);
+        if (!d->has_power) {
+            new_addr = PCI_BAR_UNMAPPED;
+        }
 
         /* This bar isn't changed */
         if (new_addr == r->addr)
@@ -1387,7 +1464,7 @@ static void pci_update_mappings(PCIDevice *d)
 
         /* now do the real mapping */
         if (r->addr != PCI_BAR_UNMAPPED) {
-            trace_pci_update_mappings_del(d, pci_dev_bus_num(d),
+            trace_pci_update_mappings_del(d->name, pci_dev_bus_num(d),
                                           PCI_SLOT(d->devfn),
                                           PCI_FUNC(d->devfn),
                                           i, r->addr, r->size);
@@ -1395,7 +1472,7 @@ static void pci_update_mappings(PCIDevice *d)
         }
         r->addr = new_addr;
         if (r->addr != PCI_BAR_UNMAPPED) {
-            trace_pci_update_mappings_add(d, pci_dev_bus_num(d),
+            trace_pci_update_mappings_add(d->name, pci_dev_bus_num(d),
                                           PCI_SLOT(d->devfn),
                                           PCI_FUNC(d->devfn),
                                           i, r->addr, r->size);
@@ -1464,12 +1541,13 @@ void pci_default_write_config(PCIDevice *d, uint32_t addr, uint32_t val_in, int 
     if (range_covers_byte(addr, l, PCI_COMMAND)) {
         pci_update_irq_disabled(d, was_irq_disabled);
         memory_region_set_enabled(&d->bus_master_enable_region,
-                                  pci_get_word(d->config + PCI_COMMAND)
-                                    & PCI_COMMAND_MASTER);
+                                  (pci_get_word(d->config + PCI_COMMAND)
+                                   & PCI_COMMAND_MASTER) && d->has_power);
     }
 
     msi_write_config(d, addr, val_in, l);
     msix_write_config(d, addr, val_in, l);
+    pcie_sriov_config_write(d, addr, val_in, l);
 }
 
 /***********************************************************/
@@ -1492,11 +1570,6 @@ static void pci_irq_handler(void *opaque, int irq_num, int level)
     if (pci_irq_disabled(pci_dev))
         return;
     pci_change_irq_level(pci_dev, irq_num, change);
-}
-
-static inline int pci_intx(PCIDevice *pci_dev)
-{
-    return pci_get_byte(pci_dev->config + PCI_INTERRUPT_PIN) - 1;
 }
 
 qemu_irq pci_allocate_irq(PCIDevice *pci_dev)
@@ -1645,7 +1718,7 @@ static const pci_class_desc pci_class_descriptions[] =
     { 0x0902, "Mouse", "mouse"},
     { 0x0A00, "Dock station", "dock", 0x00ff},
     { 0x0B00, "i386 cpu", "cpu", 0x00ff},
-    { 0x0c00, "Fireware contorller", "fireware"},
+    { 0x0c00, "Firewire controller", "firewire"},
     { 0x0c01, "Access bus controller", "access-bus"},
     { 0x0c02, "SSA controller", "ssa"},
     { 0x0c03, "USB controller", "usb"},
@@ -1654,11 +1727,9 @@ static const pci_class_desc pci_class_descriptions[] =
     { 0, NULL}
 };
 
-static void pci_for_each_device_under_bus_reverse(PCIBus *bus,
-                                                  void (*fn)(PCIBus *b,
-                                                             PCIDevice *d,
-                                                             void *opaque),
-                                                  void *opaque)
+void pci_for_each_device_under_bus_reverse(PCIBus *bus,
+                                           pci_bus_dev_fn fn,
+                                           void *opaque)
 {
     PCIDevice *d;
     int devfn;
@@ -1672,8 +1743,7 @@ static void pci_for_each_device_under_bus_reverse(PCIBus *bus,
 }
 
 void pci_for_each_device_reverse(PCIBus *bus, int bus_num,
-                         void (*fn)(PCIBus *b, PCIDevice *d, void *opaque),
-                         void *opaque)
+                                 pci_bus_dev_fn fn, void *opaque)
 {
     bus = pci_find_bus_nr(bus, bus_num);
 
@@ -1682,10 +1752,8 @@ void pci_for_each_device_reverse(PCIBus *bus, int bus_num,
     }
 }
 
-static void pci_for_each_device_under_bus(PCIBus *bus,
-                                          void (*fn)(PCIBus *b, PCIDevice *d,
-                                                     void *opaque),
-                                          void *opaque)
+void pci_for_each_device_under_bus(PCIBus *bus,
+                                   pci_bus_dev_fn fn, void *opaque)
 {
     PCIDevice *d;
     int devfn;
@@ -1699,8 +1767,7 @@ static void pci_for_each_device_under_bus(PCIBus *bus,
 }
 
 void pci_for_each_device(PCIBus *bus, int bus_num,
-                         void (*fn)(PCIBus *b, PCIDevice *d, void *opaque),
-                         void *opaque)
+                         pci_bus_dev_fn fn, void *opaque)
 {
     bus = pci_find_bus_nr(bus, bus_num);
 
@@ -1992,6 +2059,7 @@ PCIDevice *pci_nic_init_nofail(NICInfo *nd, PCIBus *rootbus,
 
 PCIDevice *pci_vga_init(PCIBus *bus)
 {
+    vga_interface_created = true;
     switch (vga_interface_type) {
     case VGA_CIRRUS:
         return pci_create_simple(bus, -1, "cirrus-vga");
@@ -2078,10 +2146,8 @@ static PCIBus *pci_find_bus_nr(PCIBus *bus, int bus_num)
     return NULL;
 }
 
-void pci_for_each_bus_depth_first(PCIBus *bus,
-                                  void *(*begin)(PCIBus *bus, void *parent_state),
-                                  void (*end)(PCIBus *bus, void *state),
-                                  void *parent_state)
+void pci_for_each_bus_depth_first(PCIBus *bus, pci_bus_ret_fn begin,
+                                  pci_bus_fn end, void *parent_state)
 {
     PCIBus *sec;
     void *state;
@@ -2138,6 +2204,10 @@ static void pci_qdev_realize(DeviceState *qdev, Error **errp)
         pci_dev->cap_present |= QEMU_PCI_CAP_EXPRESS;
     }
 
+    if (object_class_dynamic_cast(klass, INTERFACE_CXL_DEVICE)) {
+        pci_dev->cap_present |= QEMU_PCIE_CAP_CXL;
+    }
+
     pci_dev = do_pci_register_device(pci_dev,
                                      object_get_typename(OBJECT(qdev)),
                                      pci_dev->devfn, errp);
@@ -2190,6 +2260,10 @@ static void pci_qdev_realize(DeviceState *qdev, Error **errp)
         pci_qdev_unrealize(DEVICE(pci_dev));
         return;
     }
+
+    pci_set_power(pci_dev, true);
+
+    pci_dev->msi_trigger = pci_msi_trigger;
 }
 
 PCIDevice *pci_new_multifunction(int devfn, bool multifunction,
@@ -2579,15 +2653,15 @@ static char *pci_dev_fw_name(DeviceState *dev, char *buf, int len)
 static char *pcibus_get_fw_dev_path(DeviceState *dev)
 {
     PCIDevice *d = (PCIDevice *)dev;
-    char path[50], name[33];
-    int off;
+    char name[33];
+    int has_func = !!PCI_FUNC(d->devfn);
 
-    off = snprintf(path, sizeof(path), "%s@%x",
-                   pci_dev_fw_name(dev, name, sizeof name),
-                   PCI_SLOT(d->devfn));
-    if (PCI_FUNC(d->devfn))
-        snprintf(path + off, sizeof(path) + off, ",%x", PCI_FUNC(d->devfn));
-    return g_strdup(path);
+    return g_strdup_printf("%s@%x%s%.*x",
+                           pci_dev_fw_name(dev, name, sizeof(name)),
+                           PCI_SLOT(d->devfn),
+                           has_func ? "," : "",
+                           has_func,
+                           PCI_FUNC(d->devfn));
 }
 
 static char *pcibus_get_dev_path(DeviceState *dev)
@@ -2701,7 +2775,9 @@ static void pci_device_class_base_init(ObjectClass *klass, void *data)
             object_class_dynamic_cast(klass, INTERFACE_CONVENTIONAL_PCI_DEVICE);
         ObjectClass *pcie =
             object_class_dynamic_cast(klass, INTERFACE_PCIE_DEVICE);
-        assert(conventional || pcie);
+        ObjectClass *cxl =
+            object_class_dynamic_cast(klass, INTERFACE_CXL_DEVICE);
+        assert(conventional || pcie || cxl);
     }
 }
 
@@ -2861,6 +2937,22 @@ MSIMessage pci_get_msi_message(PCIDevice *dev, int vector)
     return msg;
 }
 
+void pci_set_power(PCIDevice *d, bool state)
+{
+    if (d->has_power == state) {
+        return;
+    }
+
+    d->has_power = state;
+    pci_update_mappings(d);
+    memory_region_set_enabled(&d->bus_master_enable_region,
+                              (pci_get_word(d->config + PCI_COMMAND)
+                               & PCI_COMMAND_MASTER) && d->has_power);
+    if (!d->has_power) {
+        pci_device_reset(d);
+    }
+}
+
 static const TypeInfo pci_device_type_info = {
     .name = TYPE_PCI_DEVICE,
     .parent = TYPE_DEVICE,
@@ -2875,7 +2967,9 @@ static void pci_register_types(void)
 {
     type_register_static(&pci_bus_info);
     type_register_static(&pcie_bus_info);
+    type_register_static(&cxl_bus_info);
     type_register_static(&conventional_pci_interface_info);
+    type_register_static(&cxl_interface_info);
     type_register_static(&pcie_interface_info);
     type_register_static(&pci_device_type_info);
 }

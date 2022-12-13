@@ -8,7 +8,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "libqtest-single.h"
 #include "qemu/iov.h"
 #include "qemu/module.h"
@@ -87,11 +86,11 @@ static void tx_test(QVirtioDevice *dev,
                            QVIRTIO_NET_TIMEOUT_US);
     guest_free(alloc, req_addr);
 
-    ret = qemu_recv(socket, &len, sizeof(len), 0);
+    ret = recv(socket, &len, sizeof(len), 0);
     g_assert_cmpint(ret, ==, sizeof(len));
     len = ntohl(len);
 
-    ret = qemu_recv(socket, buffer, len, 0);
+    ret = recv(socket, buffer, len, 0);
     g_assert_cmpstr(buffer, ==, "TEST");
 }
 
@@ -174,6 +173,11 @@ static void hotplug(void *obj, void *data, QGuestAllocator *t_alloc)
     QTestState *qts = dev->pdev->bus->qts;
     const char *arch = qtest_get_arch();
 
+    if (dev->pdev->bus->not_hotpluggable) {
+        g_test_skip("pci bus does not support hotplug");
+        return;
+    }
+
     qtest_qmp_device_add(qts, "virtio-net-pci", "net1",
                          "{'addr': %s}", stringify(PCI_SLOT_HP));
 
@@ -202,11 +206,11 @@ static void announce_self(void *obj, void *data, QGuestAllocator *t_alloc)
     qobject_unref(rsp);
 
     /* Catch the first packet and make sure it's a RARP */
-    ret = qemu_recv(sv[0], &len, sizeof(len), 0);
+    ret = recv(sv[0], &len, sizeof(len), 0);
     g_assert_cmpint(ret, ==,  sizeof(len));
     len = ntohl(len);
 
-    ret = qemu_recv(sv[0], buffer, len, 0);
+    ret = recv(sv[0], buffer, len, 0);
     g_assert_cmpint(*proto, ==, htons(ETH_P_RARP));
 
     /*
@@ -230,7 +234,7 @@ static void announce_self(void *obj, void *data, QGuestAllocator *t_alloc)
 
     while (true) {
         int saved_err;
-        ret = qemu_recv(sv[0], buffer, 60, MSG_DONTWAIT);
+        ret = recv(sv[0], buffer, 60, MSG_DONTWAIT);
         saved_err = errno;
         now = g_get_monotonic_time();
         g_assert_cmpint(now, <, deadline);
@@ -319,7 +323,7 @@ static void register_virtio_net_test(void)
         .before = virtio_net_test_setup,
     };
 
-    qos_add_test("hotplug", "virtio-pci", hotplug, &opts);
+    qos_add_test("hotplug", "virtio-net-pci", hotplug, &opts);
 #ifndef _WIN32
     qos_add_test("basic", "virtio-net", send_recv_test, &opts);
     qos_add_test("rx_stop_cont", "virtio-net", stop_cont_test, &opts);

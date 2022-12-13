@@ -309,7 +309,6 @@ static const VMStateDescription vmstate_sha3 = {
     .name = "zynqmp_csu_sha3",
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32(ctx.index, ZynqMPCSUSHA3),
         VMSTATE_UINT8_ARRAY(ctx.block, ZynqMPCSUSHA3, SHA3_384_DATA_SIZE),

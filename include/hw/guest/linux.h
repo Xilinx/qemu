@@ -1,6 +1,6 @@
 #ifndef GUEST_LINUX_H
 
-#include "qemu-common.h"
+#include "qemu/help-texts.h"
 #include "qom/object.h"
 
 #define TYPE_LINUX_DEVICE "linux,device"

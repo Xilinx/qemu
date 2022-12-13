@@ -15,6 +15,7 @@
 #include "chardev/char.h"
 #include "chardev/char-fe.h"
 #include "hw/ptimer.h"
+#include "qapi/qmp/qdict.h"
 
 #define TYPE_REMOTE_PORT "remote-port"
 #define REMOTE_PORT(obj) OBJECT_CHECK(RemotePort, (obj), TYPE_REMOTE_PORT)
@@ -129,7 +130,7 @@ bool rp_time_warp_enable(bool en);
  * Function used in qdev-monitor.c to connect remote port devices.
  * Returns teue on success and false on failure.
  */
-bool rp_device_add(QemuOpts *opts, DeviceState *dev, Error **errp);
+bool rp_device_add(const QDict *opts, DeviceState *dev, Error **errp);
 
 static inline void rp_resp_slot_done(RemotePort *s,
                                      RemotePortRespSlot *rsp_slot)

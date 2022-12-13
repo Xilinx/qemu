@@ -26,9 +26,9 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "sysemu/tcg.h"
 #include "sysemu/replay.h"
+#include "sysemu/cpu-timers.h"
 #include "qemu/main-loop.h"
 #include "qemu/guest-random.h"
 #include "exec/exec-all.h"
@@ -97,16 +97,17 @@ static void tcg_accel_ops_init(AccelOpsClass *ops)
         ops->create_vcpu_thread = mttcg_start_vcpu_thread;
         ops->kick_vcpu_thread = mttcg_kick_vcpu_thread;
         ops->handle_interrupt = tcg_handle_interrupt;
-    } else if (icount_enabled()) {
-        ops->create_vcpu_thread = rr_start_vcpu_thread;
-        ops->kick_vcpu_thread = rr_kick_vcpu_thread;
-        ops->handle_interrupt = icount_handle_interrupt;
-        ops->get_virtual_clock = icount_get;
-        ops->get_elapsed_ticks = icount_get;
     } else {
         ops->create_vcpu_thread = rr_start_vcpu_thread;
         ops->kick_vcpu_thread = rr_kick_vcpu_thread;
-        ops->handle_interrupt = tcg_handle_interrupt;
+
+        if (icount_enabled()) {
+            ops->handle_interrupt = icount_handle_interrupt;
+            ops->get_virtual_clock = icount_get;
+            ops->get_elapsed_ticks = icount_get;
+        } else {
+            ops->handle_interrupt = tcg_handle_interrupt;
+        }
     }
 }
 

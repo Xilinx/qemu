@@ -496,8 +496,8 @@ static int xenfb_map_fb(struct XenFB *xenfb)
     n_fbdirs = xenfb->fbpages * mode / 8;
     n_fbdirs = DIV_ROUND_UP(n_fbdirs, XC_PAGE_SIZE);
 
-    pgmfns = g_malloc0(sizeof(xen_pfn_t) * n_fbdirs);
-    fbmfns = g_malloc0(sizeof(xen_pfn_t) * xenfb->fbpages);
+    pgmfns = g_new0(xen_pfn_t, n_fbdirs);
+    fbmfns = g_new0(xen_pfn_t, xenfb->fbpages);
 
     xenfb_copy_mfns(mode, n_fbdirs, pgmfns, pd);
     map = xenforeignmemory_map(xen_fmem, xenfb->c.xendev.dom,
@@ -777,16 +777,24 @@ static void xenfb_update(void *opaque)
     xenfb->up_fullscreen = 0;
 }
 
-static void xenfb_update_interval(void *opaque, uint64_t interval)
+static void xenfb_ui_info(void *opaque, uint32_t idx, QemuUIInfo *info)
 {
     struct XenFB *xenfb = opaque;
+    uint32_t refresh_rate;
 
     if (xenfb->feature_update) {
 #ifdef XENFB_TYPE_REFRESH_PERIOD
         if (xenfb_queue_full(xenfb)) {
             return;
         }
-        xenfb_send_refresh_period(xenfb, interval);
+
+        refresh_rate = info->refresh_rate;
+        if (!refresh_rate) {
+            refresh_rate = 75;
+        }
+
+        /* T = 1 / f = 1 [s*Hz] / f = 1000*1000 [ms*mHz] / f */
+        xenfb_send_refresh_period(xenfb, 1000 * 1000 / refresh_rate);
 #endif
     }
 }
@@ -983,5 +991,5 @@ struct XenDevOps xen_framebuffer_ops = {
 static const GraphicHwOps xenfb_ops = {
     .invalidate  = xenfb_invalidate,
     .gfx_update  = xenfb_update,
-    .update_interval = xenfb_update_interval,
+    .ui_info     = xenfb_ui_info,
 };

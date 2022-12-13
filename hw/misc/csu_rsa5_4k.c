@@ -381,7 +381,6 @@ static const VMStateDescription vmstate_xlx_rsa = {
     .name = TYPE_XILINX_CSU_RSA,
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         VMSTATE_UINT8_ARRAY(rsa.mem.u8, XilinxRSA, RAMSIZE),
         VMSTATE_UINT8_ARRAY(wbuf.u8, XilinxRSA, BYTES_PER_WORD),

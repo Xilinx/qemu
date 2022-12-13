@@ -905,7 +905,6 @@ static const VMStateDescription vmstate_pmu_local = {
     .name = TYPE_XILINX_PMU_LOCAL,
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, PMULocal, PMU_LOCAL_R_MAX),
         VMSTATE_END_OF_LIST(),

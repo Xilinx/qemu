@@ -8,7 +8,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "qemu/datadir.h"
 #include "qemu/error-report.h"
 #include "qapi/error.h"
@@ -481,18 +480,24 @@ static void fdt_add_psci_node(void *fdt)
     }
 
     /*
-     * If /psci node is present in provided DTB, assume that no fixup
-     * is necessary and all PSCI configuration should be taken as-is
+     * A pre-existing /psci node might specify function ID values
+     * that don't match QEMU's PSCI implementation. Delete the whole
+     * node and put our own in instead.
      */
     rc = fdt_path_offset(fdt, "/psci");
     if (rc >= 0) {
-        return;
+        qemu_fdt_nop_node(fdt, "/psci");
     }
 
     qemu_fdt_add_subnode(fdt, "/psci");
-    if (armcpu->psci_version == 2) {
-        const char comp[] = "arm,psci-0.2\0arm,psci";
-        qemu_fdt_setprop(fdt, "/psci", "compatible", comp, sizeof(comp));
+    if (armcpu->psci_version >= QEMU_PSCI_VERSION_0_2) {
+        if (armcpu->psci_version < QEMU_PSCI_VERSION_1_0) {
+            const char comp[] = "arm,psci-0.2\0arm,psci";
+            qemu_fdt_setprop(fdt, "/psci", "compatible", comp, sizeof(comp));
+        } else {
+            const char comp[] = "arm,psci-1.0\0arm,psci-0.2\0arm,psci";
+            qemu_fdt_setprop(fdt, "/psci", "compatible", comp, sizeof(comp));
+        }
 
         cpu_off_fn = QEMU_PSCI_0_2_FN_CPU_OFF;
         if (arm_feature(&armcpu->env, ARM_FEATURE_AARCH64)) {
@@ -601,10 +606,23 @@ int arm_load_dtb(hwaddr addr, const struct arm_boot_info *binfo,
     }
     g_strfreev(node_path);
 
+    /*
+     * We drop all the memory nodes which correspond to empty NUMA nodes
+     * from the device tree, because the Linux NUMA binding document
+     * states they should not be generated. Linux will get the NUMA node
+     * IDs of the empty NUMA nodes from the distance map if they are needed.
+     * This means QEMU users may be obliged to provide command lines which
+     * configure distance maps when the empty NUMA node IDs are needed and
+     * Linux's default distance map isn't sufficient.
+     */
     if (ms->numa_state != NULL && ms->numa_state->num_nodes > 0) {
         mem_base = binfo->loader_start;
         for (i = 0; i < ms->numa_state->num_nodes; i++) {
             mem_len = ms->numa_state->nodes[i].node_mem;
+            if (!mem_len) {
+                continue;
+            }
+
             rc = fdt_add_memory_node(fdt, acells, mem_base,
                                      scells, mem_len, i);
             if (rc < 0) {
@@ -745,7 +763,7 @@ static void do_cpu_reset(void *opaque)
                         env->cp15.scr_el3 |= SCR_ATA;
                     }
                     if (cpu_isar_feature(aa64_sve, cpu)) {
-                        env->cp15.cptr_el[3] |= CPTR_EZ;
+                        env->cp15.cptr_el[3] |= R_CPTR_EL3_EZ_MASK;
                     }
                     /* AArch64 kernels never boot in secure mode */
                     assert(!info->secure_boot);
@@ -796,7 +814,7 @@ static void do_cpu_reset(void *opaque)
                         set_kernel_args(info, as);
                     }
                 }
-            } else {
+            } else if (info->secondary_cpu_reset_hook) {
                 info->secondary_cpu_reset_hook(cpu, info);
             }
         }
@@ -867,7 +885,7 @@ static int do_arm_linux_init(Object *obj, void *opaque)
     return 0;
 }
 
-static int64_t arm_load_elf(struct arm_boot_info *info, uint64_t *pentry,
+static ssize_t arm_load_elf(struct arm_boot_info *info, uint64_t *pentry,
                             uint64_t *lowaddr, uint64_t *highaddr,
                             int elf_machine, AddressSpace *as)
 {
@@ -878,7 +896,7 @@ static int64_t arm_load_elf(struct arm_boot_info *info, uint64_t *pentry,
     } elf_header;
     int data_swab = 0;
     bool big_endian;
-    int64_t ret = -1;
+    ssize_t ret = -1;
     Error *err = NULL;
 
 
@@ -1000,7 +1018,7 @@ static void arm_setup_direct_kernel_boot(ARMCPU *cpu,
     /* Set up for a direct boot of a kernel image file. */
     CPUState *cs;
     AddressSpace *as = arm_boot_address_space(cpu, info);
-    int kernel_size;
+    ssize_t kernel_size;
     int initrd_size;
     int is_linux = 0;
     uint64_t elf_entry;
@@ -1024,16 +1042,6 @@ static void arm_setup_direct_kernel_boot(ARMCPU *cpu,
 
     info->dtb_filename = MACHINE(qdev_get_machine())->dtb;
     is_linux = MACHINE(qdev_get_machine())->is_linux;
-
-    if (!info->secondary_cpu_reset_hook) {
-        info->secondary_cpu_reset_hook = default_reset_secondary;
-    }
-    if (!info->write_secondary_boot) {
-        info->write_secondary_boot = default_write_secondary;
-    }
-
-    if (info->nb_cpus == 0)
-        info->nb_cpus = 1;
 
     /* Assume that raw images are linux kernels, and ELF images are not.  */
     kernel_size = arm_load_elf(info, &elf_entry, &image_low_addr,
@@ -1092,7 +1100,7 @@ static void arm_setup_direct_kernel_boot(ARMCPU *cpu,
 
     if (kernel_size > info->ram_size) {
         error_report("kernel '%s' is too large to fit in RAM "
-                     "(kernel size %d, RAM size %" PRId64 ")",
+                     "(kernel size %zd, RAM size %" PRId64 ")",
                      info->kernel_filename, kernel_size, info->ram_size);
         exit(1);
     }
@@ -1232,9 +1240,6 @@ static void arm_setup_direct_kernel_boot(ARMCPU *cpu,
         write_bootloader("bootloader", info->loader_start,
                          primary_loader, fixupcontext, as);
 
-        if (info->nb_cpus > 1) {
-            info->write_secondary_boot(cpu, info);
-        }
         if (info->write_board_setup) {
             info->write_board_setup(cpu, info);
         }
@@ -1315,6 +1320,9 @@ void arm_load_kernel(ARMCPU *cpu, MachineState *ms, struct arm_boot_info *info)
 {
     CPUState *cs;
     AddressSpace *as = arm_boot_address_space(cpu, info);
+    int boot_el;
+    CPUARMState *env = &cpu->env;
+    int nb_cpus = 0;
 
     /*
      * CPU objects (unlike devices) are not automatically reset on system
@@ -1324,6 +1332,7 @@ void arm_load_kernel(ARMCPU *cpu, MachineState *ms, struct arm_boot_info *info)
      */
     for (cs = first_cpu; cs; cs = CPU_NEXT(cs)) {
         qemu_register_reset(do_cpu_reset, ARM_CPU(cs));
+        nb_cpus++;
     }
 
     /*
@@ -1345,6 +1354,87 @@ void arm_load_kernel(ARMCPU *cpu, MachineState *ms, struct arm_boot_info *info)
         arm_setup_direct_kernel_boot(cpu, info);
     }
 
+    /*
+     * Disable the PSCI conduit if it is set up to target the same
+     * or a lower EL than the one we're going to start the guest code in.
+     * This logic needs to agree with the code in do_cpu_reset() which
+     * decides whether we're going to boot the guest in the highest
+     * supported exception level or in a lower one.
+     */
+
+    /*
+     * If PSCI is enabled, then SMC calls all go to the PSCI handler and
+     * are never emulated to trap into guest code. It therefore does not
+     * make sense for the board to have a setup code fragment that runs
+     * in Secure, because this will probably need to itself issue an SMC of some
+     * kind as part of its operation.
+     */
+    assert(info->psci_conduit == QEMU_PSCI_CONDUIT_DISABLED ||
+           !info->secure_board_setup);
+
+    /* Boot into highest supported EL ... */
+    if (arm_feature(env, ARM_FEATURE_EL3)) {
+        boot_el = 3;
+    } else if (arm_feature(env, ARM_FEATURE_EL2)) {
+        boot_el = 2;
+    } else {
+        boot_el = 1;
+    }
+    /* ...except that if we're booting Linux we adjust the EL we boot into */
+    if (info->is_linux && !info->secure_boot) {
+        boot_el = arm_feature(env, ARM_FEATURE_EL2) ? 2 : 1;
+    }
+
+    if ((info->psci_conduit == QEMU_PSCI_CONDUIT_HVC && boot_el >= 2) ||
+        (info->psci_conduit == QEMU_PSCI_CONDUIT_SMC && boot_el == 3)) {
+        info->psci_conduit = QEMU_PSCI_CONDUIT_DISABLED;
+    }
+
+    if (info->psci_conduit != QEMU_PSCI_CONDUIT_DISABLED) {
+        for (cs = first_cpu; cs; cs = CPU_NEXT(cs)) {
+            Object *cpuobj = OBJECT(cs);
+
+            object_property_set_int(cpuobj, "psci-conduit", info->psci_conduit,
+                                    &error_abort);
+            /*
+             * Secondary CPUs start in PSCI powered-down state. Like the
+             * code in do_cpu_reset(), we assume first_cpu is the primary
+             * CPU.
+             */
+            if (cs != first_cpu) {
+                object_property_set_bool(cpuobj, "start-powered-off", true,
+                                         &error_abort);
+            }
+        }
+    }
+
+    if (info->psci_conduit == QEMU_PSCI_CONDUIT_DISABLED &&
+        info->is_linux && nb_cpus > 1) {
+        /*
+         * We're booting Linux but not using PSCI, so for SMP we need
+         * to write a custom secondary CPU boot loader stub, and arrange
+         * for the secondary CPU reset to make the accompanying initialization.
+         */
+        if (!info->secondary_cpu_reset_hook) {
+            info->secondary_cpu_reset_hook = default_reset_secondary;
+        }
+        if (!info->write_secondary_boot) {
+            info->write_secondary_boot = default_write_secondary;
+        }
+        info->write_secondary_boot(cpu, info);
+    } else {
+        /*
+         * No secondary boot stub; don't use the reset hook that would
+         * have set the CPU up to call it
+         */
+        info->write_secondary_boot = NULL;
+        info->secondary_cpu_reset_hook = NULL;
+    }
+
+    /*
+     * arm_load_dtb() may add a PSCI node so it must be called after we have
+     * decided whether to enable PSCI and set the psci-conduit CPU properties.
+     */
     if (!info->skip_dtb_autoload && have_dtb(info)) {
         if (arm_load_dtb(info->dtb_start, info, info->dtb_limit, as, ms) < 0) {
             exit(1);

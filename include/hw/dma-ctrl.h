@@ -1,7 +1,7 @@
 #ifndef DMA_CTRL_H
 #define DMA_CTRL_H 1
 
-#include "qemu-common.h"
+#include "qemu/help-texts.h"
 #include "hw/hw.h"
 #include "qom/object.h"
 

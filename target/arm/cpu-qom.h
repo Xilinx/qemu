@@ -27,8 +27,7 @@ struct arm_boot_info;
 
 #define TYPE_ARM_CPU "arm-cpu"
 
-OBJECT_DECLARE_TYPE(ARMCPU, ARMCPUClass,
-                    ARM_CPU)
+OBJECT_DECLARE_CPU_TYPE(ARMCPU, ARMCPUClass, ARM_CPU)
 
 #define ARM_CPU_PARENT_CLASS \
     object_class_get_parent(object_class_by_name(TYPE_ARM_CPU))

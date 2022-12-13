@@ -36,7 +36,7 @@ struct MDIOBus *mdio_init_bus(DeviceState *parent, const char *name)
 {
     struct MDIOBus *bus;
 
-    bus = MDIO_BUS(qbus_create(TYPE_MDIO_BUS, parent, name));
+    bus = MDIO_BUS(qbus_new(TYPE_MDIO_BUS, parent, name));
     return bus;
 }
 

@@ -21,11 +21,6 @@
 #include "hw/virtio/vhost-vsock.h"
 #include "monitor/monitor.h"
 
-const int feature_bits[] = {
-    VIRTIO_VSOCK_F_SEQPACKET,
-    VHOST_INVALID_FEATURE_BIT
-};
-
 static void vhost_vsock_get_config(VirtIODevice *vdev, uint8_t *config)
 {
     VHostVSock *vsock = VHOST_VSOCK(vdev);
@@ -113,11 +108,7 @@ static uint64_t vhost_vsock_get_features(VirtIODevice *vdev,
                                          uint64_t requested_features,
                                          Error **errp)
 {
-    VHostVSockCommon *vvc = VHOST_VSOCK_COMMON(vdev);
-
-    virtio_add_feature(&requested_features, VIRTIO_VSOCK_F_SEQPACKET);
-    return vhost_get_features(&vvc->vhost_dev, feature_bits,
-                                requested_features);
+    return vhost_vsock_common_get_features(vdev, requested_features, errp);
 }
 
 static const VMStateDescription vmstate_virtio_vhost_vsock = {
@@ -158,9 +149,8 @@ static void vhost_vsock_device_realize(DeviceState *dev, Error **errp)
             return;
         }
 
-        ret = qemu_try_set_nonblock(vhostfd);
-        if (ret < 0) {
-            error_setg_errno(errp, -ret,
+        if (!g_unix_set_fd_nonblocking(vhostfd, true, NULL)) {
+            error_setg_errno(errp, errno,
                              "vhost-vsock: unable to set non-blocking mode");
             return;
         }
@@ -172,14 +162,22 @@ static void vhost_vsock_device_realize(DeviceState *dev, Error **errp)
             return;
         }
 
-        qemu_set_nonblock(vhostfd);
+        if (!g_unix_set_fd_nonblocking(vhostfd, true, NULL)) {
+            error_setg_errno(errp, errno,
+                             "Failed to set FD nonblocking");
+            return;
+        }
     }
 
-    vhost_vsock_common_realize(vdev, "vhost-vsock");
+    vhost_vsock_common_realize(vdev);
 
     ret = vhost_dev_init(&vvc->vhost_dev, (void *)(uintptr_t)vhostfd,
                          VHOST_BACKEND_TYPE_KERNEL, 0, errp);
     if (ret < 0) {
+        /*
+         * vhostfd is closed by vhost_dev_cleanup, which is called
+         * by vhost_dev_init on initialization error.
+         */
         goto err_virtio;
     }
 
@@ -192,15 +190,10 @@ static void vhost_vsock_device_realize(DeviceState *dev, Error **errp)
     return;
 
 err_vhost_dev:
-    vhost_dev_cleanup(&vvc->vhost_dev);
     /* vhost_dev_cleanup() closes the vhostfd passed to vhost_dev_init() */
-    vhostfd = -1;
+    vhost_dev_cleanup(&vvc->vhost_dev);
 err_virtio:
     vhost_vsock_common_unrealize(vdev);
-    if (vhostfd >= 0) {
-        close(vhostfd);
-    }
-    return;
 }
 
 static void vhost_vsock_device_unrealize(DeviceState *dev)

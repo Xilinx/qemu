@@ -217,7 +217,6 @@ static const VMStateDescription vmstate_arm_gen_timer = {
     .name = TYPE_ARM_GEN_TIMER,
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, ARMGenTimer, R_MAX),
         VMSTATE_END_OF_LIST(),

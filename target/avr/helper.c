@@ -19,6 +19,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/log.h"
 #include "cpu.h"
 #include "hw/core/tcg-cpu-ops.h"
 #include "exec/exec-all.h"
@@ -90,12 +91,6 @@ void avr_cpu_do_interrupt(CPUState *cs)
     env->sregI = 0; /* clear Global Interrupt Flag */
 
     cs->exception_index = -1;
-}
-
-int avr_cpu_memory_rw_debug(CPUState *cs, vaddr addr, uint8_t *buf,
-                            int len, bool is_write)
-{
-    return cpu_memory_rw_debug(cs, addr, buf, len, is_write);
 }
 
 hwaddr avr_cpu_get_phys_page_debug(CPUState *cs, vaddr addr)

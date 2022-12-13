@@ -23,7 +23,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "qemu/cutils.h"
 #include "migration/vmstate.h"
 #include "qapi/error.h"
@@ -40,6 +39,7 @@
 #include "sysemu/cpu-timers.h"
 #include "sysemu/cpu-throttle.h"
 #include "timers-state.h"
+#include "qemu/log.h"
 
 /*
  * ICOUNT: Instruction Counter
@@ -322,7 +322,7 @@ void icount_start_warp_timer(void)
              * to vCPU was processed in advance and vCPU went to sleep.
              * Therefore we have to wake it up for doing someting.
              */
-            if (replay_has_checkpoint()) {
+            if (replay_has_event()) {
                 qemu_clock_notify(QEMU_CLOCK_VIRTUAL);
             }
             return;
@@ -403,6 +403,8 @@ void icount_account_warp_timer(void)
     if (!runstate_is_running()) {
         return;
     }
+
+    replay_async_events();
 
     /* warp clock deterministically in record/replay mode */
     if (!replay_checkpoint(CHECKPOINT_CLOCK_WARP_ACCOUNT)) {
@@ -485,4 +487,12 @@ void icount_configure(QemuOpts *opts, Error **errp)
     timer_mod(timers_state.icount_vm_timer,
                    qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
                    NANOSECONDS_PER_SECOND / 10);
+}
+
+void icount_notify_exit(void)
+{
+    if (icount_enabled() && current_cpu) {
+        qemu_cpu_kick(current_cpu);
+        qemu_clock_notify(QEMU_CLOCK_VIRTUAL);
+    }
 }

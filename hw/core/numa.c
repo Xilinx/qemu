@@ -695,7 +695,7 @@ void numa_complete_configuration(MachineState *ms)
         }
 
         if (!numa_uses_legacy_mem() && mc->default_ram_id) {
-            if (ms->ram_memdev_id) {
+            if (ms->memdev) {
                 error_report("'-machine memory-backend' and '-numa memdev'"
                              " properties are mutually exclusive");
                 exit(1);
@@ -756,6 +756,7 @@ static void numa_stat_memory_devices(NumaNodeMem node_mem[])
     PCDIMMDeviceInfo     *pcdimm_info;
     VirtioPMEMDeviceInfo *vpi;
     VirtioMEMDeviceInfo *vmi;
+    SgxEPCDeviceInfo *se;
 
     for (info = info_list; info; info = info->next) {
         MemoryDeviceInfo *value = info->value;
@@ -780,6 +781,11 @@ static void numa_stat_memory_devices(NumaNodeMem node_mem[])
                 vmi = value->u.virtio_mem.data;
                 node_mem[vmi->node].node_mem += vmi->size;
                 node_mem[vmi->node].node_plugged_mem += vmi->size;
+                break;
+            case MEMORY_DEVICE_INFO_KIND_SGX_EPC:
+                se = value->u.sgx_epc.data;
+                node_mem[se->node].node_mem += se->size;
+                node_mem[se->node].node_plugged_mem = 0;
                 break;
             default:
                 g_assert_not_reached();

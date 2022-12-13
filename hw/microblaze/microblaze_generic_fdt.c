@@ -62,7 +62,7 @@
 
 #define MACHINE_NAME "microblaze-fdt"
 
-#ifdef TARGET_WORDS_BIGENDIAN
+#if TARGET_BIG_ENDIAN
 int endian = 1;
 #else
 int endian;

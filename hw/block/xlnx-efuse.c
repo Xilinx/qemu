@@ -135,9 +135,9 @@ static void efuse_sync_bdrv(XLNXEFuse *s, unsigned int bit)
 
     efuse_byte = bit / 8;
 
-    if (blk_pwrite(s->blk, efuse_byte,
+    if (blk_pwrite(s->blk, efuse_byte, 1,
                    ((uint8_t *) s->fuse32) + (efuse_byte ^ bswap_adj),
-                   1, 0) < 0) {
+                   0) < 0) {
         error_report("%s: write error in byte %" PRIu32 ".",
                       __func__, efuse_byte);
     }
@@ -342,7 +342,7 @@ static void efuse_realize(DeviceState *dev, Error **errp)
             warn_report("%s: update not saved: backstore is read-only",
                         object_get_canonical_path(OBJECT(s)));
         }
-        if (blk_pread(s->blk, 0, (void *) s->fuse32, nr_bytes) < 0) {
+        if (blk_pread(s->blk, 0,  nr_bytes, (void *) s->fuse32, 0) < 0) {
             error_setg(&error_abort, "%s: Unable to read-out contents."
                          "backing file too small? Expecting %" PRIu32" bytes",
                           prefix,
@@ -358,8 +358,8 @@ static void efuse_realize(DeviceState *dev, Error **errp)
         }
     }
 
-    s->timer_ps = ptimer_init(timer_ps_hit, s, PTIMER_POLICY_DEFAULT);
-    s->timer_pgm = ptimer_init(timer_pgm_hit, s, PTIMER_POLICY_DEFAULT);
+    s->timer_ps = ptimer_init(timer_ps_hit, s, PTIMER_POLICY_LEGACY);
+    s->timer_pgm = ptimer_init(timer_pgm_hit, s, PTIMER_POLICY_LEGACY);
 
     /* Micro-seconds.  */
     ptimer_transaction_begin(s->timer_ps);
@@ -388,7 +388,6 @@ static const VMStateDescription vmstate_efuse = {
     .name = TYPE_XLNX_EFUSE,
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         VMSTATE_BOOL(programming, XLNXEFuse),
         VMSTATE_PTIMER(timer_ps, XLNXEFuse),

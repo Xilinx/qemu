@@ -25,7 +25,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "qemu/datadir.h"
 #include "qemu/units.h"
 #include "qapi/error.h"
@@ -83,7 +82,7 @@ static void ppc_heathrow_init(MachineState *machine)
 {
     ram_addr_t ram_size = machine->ram_size;
     const char *bios_name = machine->firmware ?: PROM_FILENAME;
-    const char *boot_device = machine->boot_order;
+    const char *boot_device = machine->boot_config.order;
     PowerPCCPU *cpu = NULL;
     CPUPPCState *env = NULL;
     char *filename;
@@ -272,7 +271,7 @@ static void ppc_heathrow_init(MachineState *machine)
         case PPC_FLAGS_INPUT_6xx:
             /* XXX: we register only 1 output pin for heathrow PIC */
             qdev_connect_gpio_out(pic_dev, 0,
-                ((qemu_irq *)env->irq_inputs)[PPC6xx_INPUT_INT]);
+                              qdev_get_gpio_in(DEVICE(cpu), PPC6xx_INPUT_INT));
             break;
         default:
             error_report("Bus model not supported on OldWorld Mac machine");
@@ -423,7 +422,8 @@ static void heathrow_class_init(ObjectClass *oc, void *data)
     mc->desc = "Heathrow based PowerMAC";
     mc->init = ppc_heathrow_init;
     mc->block_default_type = IF_IDE;
-    mc->max_cpus = MAX_CPUS;
+    /* SMP is not supported currently */
+    mc->max_cpus = 1;
 #ifndef TARGET_PPC64
     mc->is_default = true;
 #endif

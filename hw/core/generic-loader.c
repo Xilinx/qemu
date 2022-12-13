@@ -69,7 +69,7 @@ static void generic_loader_reset(void *opaque)
         attrs.secure = s->attrs.secure;
         attrs.requester_id = s->attrs.requester_id;
 
-        assert(s->data_len < sizeof(s->data));
+        assert(s->data_len <= sizeof(s->data));
         address_space_rw(s->cpu->as, s->addr, attrs, (uint8_t *)&s->data,
                          s->data_len, true);
     }
@@ -80,7 +80,7 @@ static void generic_loader_realize(DeviceState *dev, Error **errp)
     GenericLoaderState *s = GENERIC_LOADER(dev);
     hwaddr entry;
     int big_endian;
-    int size = 0;
+    ssize_t size = 0;
 
     s->set_pc = false;
 
@@ -232,7 +232,7 @@ static void generic_loader_class_init(ObjectClass *klass, void *data)
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 }
 
-static TypeInfo generic_loader_info = {
+static const TypeInfo generic_loader_info = {
     .name = TYPE_GENERIC_LOADER,
     .parent = TYPE_DEVICE,
     .instance_size = sizeof(GenericLoaderState),

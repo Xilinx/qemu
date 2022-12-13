@@ -222,7 +222,6 @@ static const VMStateDescription vmstate_irq_test_comp = {
     .name = TYPE_IRQ_TEST_COMPONENT,
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, IRQTestComponent, R_MAX),
         VMSTATE_END_OF_LIST(),

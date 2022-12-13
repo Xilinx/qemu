@@ -127,6 +127,8 @@ static int i2cWire_event(I2CSlave *slave, enum i2c_event event)
             return 0;
         }
         break;
+    default:
+        return -1;
     }
     s->event = event;
     return 0;

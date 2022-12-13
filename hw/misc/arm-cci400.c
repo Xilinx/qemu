@@ -631,7 +631,6 @@ static const VMStateDescription vmstate_cci400 = {
     .name = TYPE_ARM_CCI400,
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, CCI, CCI400_R_MAX),
         VMSTATE_END_OF_LIST(),

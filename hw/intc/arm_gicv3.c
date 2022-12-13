@@ -1,5 +1,5 @@
 /*
- * ARM Generic Interrupt Controller v3
+ * ARM Generic Interrupt Controller v3 (emulation)
  *
  * Copyright (c) 2015 Huawei.
  * Copyright (c) 2016 Linaro Limited
@@ -168,6 +168,7 @@ static void gicv3_redist_update_noirqset(GICv3CPUState *cs)
     }
 
     if ((cs->gicr_ctlr & GICR_CTLR_ENABLE_LPIS) && cs->gic->lpi_enable &&
+        (cs->gic->gicd_ctlr & GICD_CTLR_EN_GRP1NS) &&
         (cs->hpplpi.prio != 0xff)) {
         if (irqbetter(cs, cs->hpplpi.irq, cs->hpplpi.prio)) {
             cs->hppi.irq = cs->hpplpi.irq;
@@ -370,11 +371,19 @@ static const MemoryRegionOps gic_ops[] = {
         .read_with_attrs = gicv3_dist_read,
         .write_with_attrs = gicv3_dist_write,
         .endianness = DEVICE_NATIVE_ENDIAN,
+        .valid.min_access_size = 1,
+        .valid.max_access_size = 8,
+        .impl.min_access_size = 1,
+        .impl.max_access_size = 8,
     },
     {
         .read_with_attrs = gicv3_redist_read,
         .write_with_attrs = gicv3_redist_write,
         .endianness = DEVICE_NATIVE_ENDIAN,
+        .valid.min_access_size = 1,
+        .valid.max_access_size = 8,
+        .impl.min_access_size = 1,
+        .impl.max_access_size = 8,
     }
 };
 
@@ -384,12 +393,6 @@ static void arm_gic_realize(DeviceState *dev, Error **errp)
     GICv3State *s = ARM_GICV3(dev);
     ARMGICv3Class *agc = ARM_GICV3_GET_CLASS(s);
     Error *local_err = NULL;
-
-    agc->parent_realize(dev, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
-        return;
-    }
 
     if (s->nb_redist_regions == 0) {
         /* Xilinx: Backwards compat, we default to 1 region 2 entries.  */
@@ -402,12 +405,13 @@ static void arm_gic_realize(DeviceState *dev, Error **errp)
             return;
         }
     }
-
-    gicv3_init_irqs_and_mmio(s, gicv3_set_irq, gic_ops, &local_err);
+    agc->parent_realize(dev, &local_err);
     if (local_err) {
         error_propagate(errp, local_err);
         return;
     }
+
+    gicv3_init_irqs_and_mmio(s, gicv3_set_irq, gic_ops);
 
     gicv3_init_cpuif(s);
 }

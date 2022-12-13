@@ -768,7 +768,7 @@ static MemTxResult zero_read(void *opaque, hwaddr addr, uint64_t *pdata,
     ret.perm = perm;
 
     if (ret.perm & IOMMU_RO) {
-        dma_memory_read(&xm->down.rw.as, addr, pdata, size);
+        dma_memory_read(&xm->down.rw.as, addr, pdata, size, MEMTXATTRS_UNSPECIFIED);
         status = MEMTX_OK;
     } else {
         s->regs[R_ERR_ADD_HI] = (addr + s->cfg.base) >> 32;
@@ -803,7 +803,7 @@ static MemTxResult zero_write(void *opaque, hwaddr addr, uint64_t value,
     ret.perm = perm;
 
     if (ret.perm & IOMMU_WO) {
-        dma_memory_write(&xm->down.rw.as, addr, &value, size);
+        dma_memory_write(&xm->down.rw.as, addr, &value, size, MEMTXATTRS_UNSPECIFIED);
         status = MEMTX_OK;
     } else {
         s->regs[R_ERR_ADD_HI] = (addr + s->cfg.base) >> 32;

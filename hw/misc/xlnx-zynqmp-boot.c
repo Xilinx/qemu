@@ -257,7 +257,7 @@ static void boot_sequence(void *opaque)
                       sizeof(pmufw_cfg);
         s->cfg_buf = g_new0(uint8_t, s->cfg_size);
         if (s->blk) {
-            blk_pread(s->blk, 0, s->cfg_buf, s->cfg_size);
+            blk_pread(s->blk, 0, s->cfg_size, s->cfg_buf, 0);
         } else {
             memcpy(s->cfg_buf, pmufw_cfg, s->cfg_size);
         }
@@ -346,7 +346,7 @@ static void zynqmp_boot_realize(DeviceState *dev, Error **errp)
 
     qemu_register_reset_loader(zynqmp_boot_reset, dev);
 
-    s->ptimer = ptimer_init(boot_sequence, s, PTIMER_POLICY_DEFAULT);
+    s->ptimer = ptimer_init(boot_sequence, s, PTIMER_POLICY_LEGACY);
     ptimer_transaction_begin(s->ptimer);
     ptimer_set_freq(s->ptimer, 1000000);
     ptimer_transaction_commit(s->ptimer);
