@@ -958,6 +958,7 @@ static void cortex_r52_initfn(Object *obj)
     cpu->gic_num_lrs = 4;
     cpu->gic_vpribits = 5;
     cpu->gic_vprebits = 5;
+    cpu->gic_pribits = 5;
 
     /* Has TCM A, B & C.  */
     cpu->tcmtr = 0x80000007;
