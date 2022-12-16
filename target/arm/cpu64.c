@@ -465,6 +465,7 @@ static void aarch64_a78_initfn(Object *obj)
     cpu->gic_num_lrs = 4;
     cpu->gic_vpribits = 5;
     cpu->gic_vprebits = 5;
+    cpu->gic_pribits = 5;
     define_cortex_a72_a57_a53_cp_reginfo(cpu);
     define_arm_cp_regs(cpu, cortex_a78_reginfo);
 #ifndef CONFIG_USER_ONLY
