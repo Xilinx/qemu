@@ -55,6 +55,7 @@
 #define QTEST_RUNNING (qtest_enabled() && qtest_driver())
 
 #define ZYNQ7000_MPCORE_PERIPHBASE 0xF8F00000
+#define ZYNQ7000_MPCORE_REV 0x413fc090
 
 #define SMP_BOOT_ADDR 0xfffffff0
 /* Meaningless, but keeps arm boot happy */
@@ -546,6 +547,8 @@ static void arm_generic_fdt_init(MachineState *machine)
                 fdt_get_path(fdt, node_offset, node_path, DT_PATH_LENGTH);
                 qemu_fdt_setprop_cells(fdt, node_path, "reset-cbar",
                                        ZYNQ7000_MPCORE_PERIPHBASE);
+                qemu_fdt_setprop_cells(fdt, node_path, "midr",
+                                       ZYNQ7000_MPCORE_REV);
             }
         } while (node_offset > 0);
     }
