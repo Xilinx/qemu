@@ -1654,14 +1654,15 @@ static void *file_ram_alloc(RAMBlock *block,
                             off_t offset,
                             Error **errp)
 {
-    uint32_t qemu_map_flags;
     void *area;
-
 #ifdef _WIN32
     SYSTEM_INFO SysInfo;
+
     GetSystemInfo(&SysInfo);
     block->page_size = SysInfo.dwPageSize;
 #else
+    uint32_t qemu_map_flags;
+
     block->page_size = qemu_fd_getpagesize(fd);
 #endif
 
