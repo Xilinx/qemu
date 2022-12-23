@@ -72,6 +72,8 @@
 #include "qemu/range.h"
 #ifndef _WIN32
 #include "qemu/mmap-alloc.h"
+#else
+#include <share.h>
 #endif
 
 #include "monitor/monitor.h"
@@ -1586,11 +1588,13 @@ static int file_ram_open(const char *path,
     *created = false;
     for (;;) {
 #ifdef _WIN32
-        fd = _open_osfhandle((intptr_t)CreateFile(path,
-                   GENERIC_READ | readonly ? 0 : GENERIC_WRITE,
-                   FILE_SHARE_READ | FILE_SHARE_WRITE,
-                   NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL),
-                   _O_RDWR);
+        if (_sopen_s(&fd,
+                     path,
+                     readonly ? _O_RDONLY : _O_RDWR,
+                     _SH_DENYNO,
+                     _S_IREAD | (readonly ? 0 : _S_IWRITE)) < 0) {
+            fd = -1;
+        }
 #else
         fd = open(path, readonly ? O_RDONLY : O_RDWR);
 #endif
@@ -1600,7 +1604,17 @@ static int file_ram_open(const char *path,
         }
         if (errno == ENOENT) {
             /* @path names a file that doesn't exist, create it */
+#ifdef _WIN32
+        if (_sopen_s(&fd,
+                     path,
+                     (readonly ? _O_RDONLY : _O_RDWR) | _O_CREAT,
+                     _SH_DENYNO,
+                     _S_IREAD | (readonly ? 0 : _S_IWRITE)) < 0) {
+                fd = -1;
+            }
+#else
             fd = open(path, O_RDWR | O_CREAT | O_EXCL, 0644);
+#endif
             if (fd >= 0) {
                 *created = true;
                 break;
@@ -1620,7 +1634,13 @@ static int file_ram_open(const char *path,
             g_free(sanitized_name);
 
 #ifdef _WIN32
-            fd = _open(_mktemp(filename), _O_CREAT | _O_RDWR);
+            if (_sopen_s(&fd,
+                         _mktemp(filename),
+                         (readonly ? _O_RDONLY : _O_RDWR) | _O_CREAT,
+                         _SH_DENYNO,
+                         _S_IREAD | (readonly ? 0 : _S_IWRITE)) < 0) {
+                fd = -1;
+            }
 #else
             fd = mkstemp(filename);
 #endif
