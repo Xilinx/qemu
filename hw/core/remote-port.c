@@ -704,7 +704,6 @@ static void rp_realize(DeviceState *dev, Error **errp)
 {
     RemotePort *s = REMOTE_PORT(dev);
     int r;
-    g_autoptr(GError) err = NULL;
 
     s->prefix = object_get_canonical_path(OBJECT(dev));
 
@@ -813,8 +812,7 @@ static void rp_realize(DeviceState *dev, Error **errp)
             }
         }
 
-        g_unix_set_fd_nonblocking(s->event.pipe.read, true, &err);
-        g_assert_no_error(err);
+        qemu_socket_set_nonblock(s->event.pipe.read);
         qemu_set_fd_handler(s->event.pipe.read, rp_event_read, NULL, s);
     }
 #else
@@ -823,8 +821,7 @@ static void rp_realize(DeviceState *dev, Error **errp)
                     s->prefix);
         exit(EXIT_FAILURE);
     }
-    g_unix_set_fd_nonblocking(s->event.pipe.read, true, &err);
-    g_assert_no_error(err);
+    qemu_socket_set_nonblock(s->event.pipe.read);
     qemu_set_fd_handler(s->event.pipe.read, rp_event_read, NULL, s);
 #endif
 
