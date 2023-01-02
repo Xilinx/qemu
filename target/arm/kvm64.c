@@ -1375,15 +1375,6 @@ int kvm_arch_get_registers(CPUState *cs)
         ret = kvm_vcpu_ioctl(cs, KVM_GET_ONE_REG, &reg);
         if (ret) {
             return ret;
-        } else {
-            int rd = i << 1;
-#if HOST_BIG_ENDIAN
-            env->vfp.regs[rd + 1] = fp_val[0];
-            env->vfp.regs[rd] = fp_val[1];
-#else
-            env->vfp.regs[rd + 1] = fp_val[1];
-            env->vfp.regs[rd] = fp_val[0];
-#endif
         }
     }
 
