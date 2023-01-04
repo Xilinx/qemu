@@ -134,6 +134,7 @@ static const PhyPartInfo devices[] = {
     { PHYINFO("88e1116r", 0x0141, 0x0e50, 1, 1) },
     { PHYINFO("88e1116",  0x0141, 0x0e50, 1, 1) },
     { PHYINFO("dp83867",  0x2000, 0xa231, 1, 1) },
+    { PHYINFO("dp83826", 0x2000, 0xa131, 1, 1) },
     { PHYINFO("88e1118r", 0x0141, 0x0e10, 1, 1) },
     { PHYINFO("88e1510",  0x0141, 0x0dd0, 1, 1) },
     { PHYINFO("ADIN1300", 0x0283, 0xbc30, 1, 0) }
