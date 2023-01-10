@@ -183,9 +183,11 @@ static uint32_t gwdt_reload_val(WWDT *s)
 
 static uint64_t gwdt_next_trigger(WWDT *s)
 {
-    uint32_t clk_ns = 1000000000 / s->pclk;
-    return (clk_ns * gwdt_reload_val(s)) +
-            qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+    uint64_t next = muldiv64(1000000000,
+                             gwdt_reload_val(s),
+                             s->pclk);
+
+    return next + qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
 }
 
 static void gwdt_time_elapsed(void *opaque)
@@ -288,9 +290,11 @@ static uint32_t wwdt_sst_reload_val(WWDT *s)
 
 static uint64_t wwdt_sst_next_trigger(WWDT *s)
 {
-    uint32_t clk_ns = 1000000000 / s->pclk;
-    return (clk_ns * wwdt_sst_reload_val(s)) +
-            qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+    uint64_t next = muldiv64(1000000000,
+                             wwdt_sst_reload_val(s),
+                             s->pclk);
+
+    return next + qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
 }
 
 static void wwdt_sst_start(WWDT *s)
@@ -380,9 +384,11 @@ static uint32_t wwdt_irq_reload_val(WWDT *s, bool *success)
 
 static uint64_t wwdt_irq_next_trigger(WWDT *s, bool *success)
 {
-    uint32_t clk_ns = 1000000000 / s->pclk;
-    uint32_t reload_val = wwdt_irq_reload_val(s, success);
-    return (clk_ns * reload_val) + qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+    uint64_t next = muldiv64(1000000000,
+                             wwdt_irq_reload_val(s, success),
+                             s->pclk);
+
+    return next + qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
 }
 
 /*
@@ -415,9 +421,11 @@ static uint32_t wwdt_reload_val(WWDT *s)
 
 static uint64_t wwdt_next_trigger(WWDT *s)
 {
-    uint32_t clk_ns = 1000000000 / s->pclk;
-    return (clk_ns * wwdt_reload_val(s)) +
-            qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+    uint64_t next = muldiv64(1000000000,
+                             wwdt_reload_val(s),
+                             s->pclk);
+
+    return next + qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
 }
 
 static void wwdt_qa_gen_token(WWDT *s)
