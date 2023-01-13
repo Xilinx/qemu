@@ -34,6 +34,7 @@
 #include "hw/irq.h"
 #include "hw/misc/xlnx-versal-pmc.h"
 #include "hw/fdt_generic_util.h"
+#include "xlnx-versal-ams.h"
 
 #ifndef XILINX_PMX_GLOBAL_ERR_DEBUG
 #define XILINX_PMX_GLOBAL_ERR_DEBUG 0
@@ -2285,6 +2286,31 @@ static void pmx_global_init(Object *obj)
     qdev_init_gpio_in(DEVICE(obj), pmc_global_isr_set_puf_acc_error, 1);
 }
 
+static void pmx_global_prop_tamper_event_set(Object *obj, Visitor *v,
+                                             const char *name, void *opaque,
+                                             Error **errp)
+{
+    uint32_t events = 0;
+
+    visit_type_uint32(v, name, &events, errp);
+    if (*errp) {
+        return;
+    }
+
+    /* TBD */
+}
+
+static void pmx_global_prop_tamper_event_add(ObjectClass *klass)
+{
+    object_class_property_add(klass, XLNX_AMS_TAMPER_PROP, "Bits:uint",
+                              NULL, /* non-gettable */
+                              pmx_global_prop_tamper_event_set,
+                              NULL, /* nothing to release */
+                              NULL);
+    object_class_property_set_description(klass, XLNX_AMS_TAMPER_PROP,
+                                          "Set to trigger tamper events");
+}
+
 static const VMStateDescription vmstate_pmx_global = {
     .name = TYPE_XILINX_PMX_GLOBAL,
     .version_id = 1,
@@ -2326,6 +2352,8 @@ static void pmx_global_class_init(ObjectClass *klass, void *data)
     rc->phases.enter = pmx_global_reset_enter;
     rc->phases.hold = pmx_global_reset_hold;
     fggc->controller_gpios = pmx_global_gpios;
+
+    pmx_global_prop_tamper_event_add(klass);
 }
 
 static const TypeInfo pmx_global_info = {
