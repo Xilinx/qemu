@@ -46,6 +46,7 @@
      OBJECT_CHECK(GICProxy, (obj), TYPE_XILINX_GIC_PROXY)
 
 #define MAX_INTS            160
+#define MAX_INTS_8_GROUPS   256
 #define GICP_GROUPS         5
 #define MAX_GICP_GROUPS     8
 #define GICP_GROUP_STRIDE   0x14
@@ -60,6 +61,9 @@ REG32(GICP0_IRQ_TRIGGER, 0x10)
     #define R_GICP2_RSVD    0
     #define R_GICP3_RSVD    0x000000ff
     #define R_GICP4_RSVD    0xf0000000
+    #define R_GICP5_RSVD    0x00000000
+    #define R_GICP6_RSVD    0x00000000
+    #define R_GICP7_RSVD    0x00000000
 REG32(GICP_PMU_IRQ_STATUS, 0xa0)
 REG32(GICP_PMU_IRQ_MASK, 0xa4)
 REG32(GICP_PMU_IRQ_ENABLE, 0xa8)
@@ -267,6 +271,40 @@ static RegisterAccessInfo gic_proxy_regs_info[] = {
     }
 };
 
+static RegisterAccessInfo gic_proxy_regs_info_256[] = {
+    GICPN_REG_DEFS(0),
+    GICPN_REG_DEFS(1),
+    GICPN_REG_DEFS(2),
+    GICPN_REG_DEFS(3),
+    GICPN_REG_DEFS(4),
+    GICPN_REG_DEFS(5),
+    GICPN_REG_DEFS(6),
+    GICPN_REG_DEFS(7),
+      { .name = "GICP_PMU_IRQ_STATUS",  .addr = A_GICP_PMU_IRQ_STATUS,
+        .w1c = 0x000000ff,
+        .rsvd = 0xffffffe0,
+        .post_read = gicp_raz_hi24_postr,
+        .post_write = gicp_status_postw,
+    },{ .name = "GICP_PMU_IRQ_MASK",  .addr = A_GICP_PMU_IRQ_MASK,
+        .ro = 0x000000ff,
+        .rsvd = 0xffffffe0,
+        .reset = 0x000000ff,
+        .post_read = gicp_raz_hi24_postr,
+    },{ .name = "GICP_PMU_IRQ_ENABLE",  .addr = A_GICP_PMU_IRQ_ENABLE,
+        .rsvd = 0xffffffe0,
+        .post_read = gicp_wo_postr,
+        .post_write = gicp_enable_postw,
+    },{ .name = "GICP_PMU_IRQ_DISABLE",  .addr = A_GICP_PMU_IRQ_DISABLE,
+        .rsvd = 0xffffffe0,
+        .post_read = gicp_wo_postr,
+        .post_write = gicp_disable_postw,
+    },{ .name = "GICP_PMU_IRQ_TRIGGER",  .addr = A_GICP_PMU_IRQ_TRIGGER,
+        .rsvd = 0xffffffe0,
+        .post_read = gicp_wo_postr,
+        .post_write = gicp_trigger_postw,
+    }
+};
+
 static void gic_proxy_reset(DeviceState *dev)
 {
     GICProxy *s = XILINX_GIC_PROXY(dev);
@@ -308,13 +346,26 @@ static void gic_proxy_realize(DeviceState *dev, Error **errp)
     SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
     RegisterInfoArray *reg_array;
 
-    reg_array =
-        register_init_block32(dev, gic_proxy_regs_info,
-                              ARRAY_SIZE(gic_proxy_regs_info),
-                              s->regs_info, s->regs,
-                              &gic_proxy_ops,
-                              GIC_PROXY_ERR_DEBUG,
-                              R_MAX * 4);
+    if (s->cfg.max_ints == MAX_INTS_8_GROUPS) {
+        reg_array =
+            register_init_block32(dev, gic_proxy_regs_info_256,
+                                  ARRAY_SIZE(gic_proxy_regs_info_256),
+                                  s->regs_info, s->regs,
+                                  &gic_proxy_ops,
+                                  GIC_PROXY_ERR_DEBUG,
+                                  R_MAX * 4);
+    } else if (s->cfg.max_ints == MAX_INTS) {
+        reg_array =
+            register_init_block32(dev, gic_proxy_regs_info,
+                                  ARRAY_SIZE(gic_proxy_regs_info),
+                                  s->regs_info, s->regs,
+                                  &gic_proxy_ops,
+                                  GIC_PROXY_ERR_DEBUG,
+                                  R_MAX * 4);
+    } else {
+        error_setg(errp, "max-ints configuration not supported!");
+        return;
+    }
     memory_region_add_subregion(&s->iomem,
                                 0x0,
                                 &reg_array->mem);
