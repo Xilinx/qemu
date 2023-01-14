@@ -47,6 +47,7 @@
 
 #define MAX_INTS            160
 #define GICP_GROUPS         5
+#define MAX_GICP_GROUPS     8
 #define GICP_GROUP_STRIDE   0x14
 
 REG32(GICP0_IRQ_STATUS, 0x0)
@@ -72,9 +73,14 @@ typedef struct GICProxy {
     MemoryRegion iomem;
     qemu_irq irq;
 
-    uint32_t pinState[GICP_GROUPS];
+    uint32_t pinState[MAX_GICP_GROUPS];
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
+
+    struct {
+        uint32_t gicp_groups;
+        uint32_t max_ints;
+    } cfg;
 } GICProxy;
 
 /* Mask and status registers are needed for checking if interrupt
@@ -113,7 +119,7 @@ static void gicp_status_postw(RegisterInfo *reg, uint64_t val64)
     GICProxy *s = XILINX_GIC_PROXY(reg->opaque);
     unsigned int i;
 
-    for (i = 0; i < GICP_GROUPS; i++) {
+    for (i = 0; i < s->cfg.gicp_groups; i++) {
         gicp_update(s, i);
     }
 }
@@ -296,16 +302,14 @@ static void gic_proxy_set_irq(void *opaque, int irq, int level)
     gicp_update(s, group);
 }
 
-static void gic_proxy_init(Object *obj)
+static void gic_proxy_realize(DeviceState *dev, Error **errp)
 {
-    GICProxy *s = XILINX_GIC_PROXY(obj);
-    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
-    DeviceState *dev = DEVICE(s);
+    GICProxy *s = XILINX_GIC_PROXY(dev);
+    SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
     RegisterInfoArray *reg_array;
 
-    memory_region_init(&s->iomem, obj, TYPE_XILINX_GIC_PROXY, R_MAX * 4);
     reg_array =
-        register_init_block32(DEVICE(obj), gic_proxy_regs_info,
+        register_init_block32(dev, gic_proxy_regs_info,
                               ARRAY_SIZE(gic_proxy_regs_info),
                               s->regs_info, s->regs,
                               &gic_proxy_ops,
@@ -314,6 +318,7 @@ static void gic_proxy_init(Object *obj)
     memory_region_add_subregion(&s->iomem,
                                 0x0,
                                 &reg_array->mem);
+    s->cfg.gicp_groups = s->cfg.max_ints / 32;
 
     /* IRQ grouping:
      * [0..31] - GICP0
@@ -322,17 +327,25 @@ static void gic_proxy_init(Object *obj)
      * [96..127] - GICP3
      * [128..159] - GICP4
      */
-    qdev_init_gpio_in(dev, gic_proxy_set_irq, MAX_INTS);
+    qdev_init_gpio_in(dev, gic_proxy_set_irq, s->cfg.max_ints);
     qdev_init_gpio_out_named(dev, &s->irq, "gicp-irq", 1);
 
     sysbus_init_mmio(sbd, &s->iomem);
     sysbus_init_irq(sbd, &s->irq);
 }
 
+static void gic_proxy_init(Object *obj)
+{
+    GICProxy *s = XILINX_GIC_PROXY(obj);
+
+    memory_region_init(&s->iomem, obj, TYPE_XILINX_GIC_PROXY, R_MAX * 4);
+}
+
 static int gic_proxy_get_irq(FDTGenericIntc *obj, qemu_irq *irqs,
                           uint32_t *cells, int ncells, int max,
                           Error **errp)
 {
+    GICProxy *s = XILINX_GIC_PROXY(obj);
     int idx;
 
     if (ncells != 3) {
@@ -344,9 +357,9 @@ static int gic_proxy_get_irq(FDTGenericIntc *obj, qemu_irq *irqs,
 
     switch (cells[0]) {
     case 0:
-        if (idx >= MAX_INTS) {
+        if (idx >= s->cfg.max_ints) {
             error_setg(errp, "Xilinx GIC Proxy has maximum index of %" PRId32
-                       ", index %" PRId32 " given", MAX_INTS - 1, idx);
+                       ", index %" PRId32 " given", s->cfg.max_ints - 1, idx);
             return 0;
         }
         (*irqs) = qdev_get_gpio_in(DEVICE(obj), cells[1]);
@@ -379,16 +392,23 @@ static const FDTGenericGPIOSet gic_proxy_client_gpios[] = {
     { },
 };
 
+static Property gic_proxy_properties[] = {
+    DEFINE_PROP_UINT32("max-ints", GICProxy, cfg.max_ints, MAX_INTS),
+    DEFINE_PROP_END_OF_LIST(),
+};
+
 static void gic_proxy_class_init(ObjectClass *oc, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
     FDTGenericIntcClass *fgic = FDT_GENERIC_INTC_CLASS(oc);
     FDTGenericGPIOClass *fggc = FDT_GENERIC_GPIO_CLASS(oc);
 
+    dc->realize = gic_proxy_realize;
     dc->reset = gic_proxy_reset;
     dc->vmsd = &vmstate_gic_proxy;
     fgic->get_irq = gic_proxy_get_irq;
     fggc->client_gpios = gic_proxy_client_gpios;
+    device_class_set_props(dc, gic_proxy_properties);
 }
 
 static const TypeInfo gic_proxy_info = {
