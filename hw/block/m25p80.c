@@ -258,7 +258,8 @@ static const FlashPartInfo known_devices[] = {
     { INFO("n25q512a13",  0x20ba20,      0,  64 << 10, 1024, ER_4K) },
     { INFO("m25qu02gcbb", 0x20bb22,      0,  64 << 10, 4096, ER_4K) },
     { INFO("mt35xu01gbba", 0x2c5b1b, 0x104100, 128 << 10, 1024, ER_4K) },
-    { INFO("mt35xu02gbba", 0x2c5b1c,     0, 128 << 10, 2048, ER_4K) },
+    { INFO("mt35xu02gbba", 0x2c5b1c,     0, 128 << 10, 2048, ER_4K),
+      .sfdp_read = m25p80_sfdp_mt35xu02g },
     { INFO("n25q128",     0x20ba18,      0,  64 << 10, 256, 0) },
     { INFO("n25q256a",    0x20ba19,      0,  64 << 10, 512,
            ER_4K | HAS_SR_BP3_BIT6 | HAS_SR_TB),
@@ -872,6 +873,8 @@ static void complete_collecting_data(Flash *s)
                 s->nonvolatile_cfg_large[s->cur_addr] =
                                       s->data[get_addr_length(s)];
             }
+            /* dummy cycles not supported */
+            s->nonvolatile_cfg_large[1] = 0;
         } else {
             s->nonvolatile_cfg = s->data[0] | (s->data[1] << 8);
         }
@@ -882,6 +885,8 @@ static void complete_collecting_data(Flash *s)
                 s->volatile_cfg_large[s->cur_addr] =
                                       s->data[get_addr_length(s)];
             }
+            /* dummy cycles not supported */
+            s->volatile_cfg_large[1] = 0;
         } else {
             s->volatile_cfg = s->data[0];
         }
@@ -1590,7 +1595,10 @@ static void decode_new_cmd(Flash *s, uint32_t value)
         break;
     case RDSFDP:
         if (s->pi->sfdp_read) {
-            s->needed_bytes = get_addr_length(s) + 1; /* SFDP addr + dummy */
+            s->needed_bytes = get_addr_length(s); /* SFDP addr + dummy */
+            if (!(get_man(s) == MAN_MICRON_OCTAL)) {
+                s->needed_bytes += 1;
+            }
             s->pos = 0;
             s->len = 0;
             s->state = STATE_COLLECTING_DATA;
