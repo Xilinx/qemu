@@ -89,6 +89,8 @@ typedef struct NOC_NPI_DEV {
     SysBusDevice parent_obj;
     RegisterInfoArray *reg_array;
     uint64_t map_size;
+    bool custom;
+    uint32_t pcsr_status;
 
     uint32_t regs[NOC_NPI_DEV_R_MAX];
     RegisterInfo regs_info[NOC_NPI_DEV_R_MAX];
@@ -136,9 +138,15 @@ static void noc_npi_dev_reset(DeviceState *dev)
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
         register_reset(&s->regs_info[i]);
     }
+
+    if (s->custom) {
+        qemu_log("%s\n", __func__);
+        s->regs[R_REG_PCSR_STATUS] = s->pcsr_status;
+    }
 }
 
 static uint64_t noc_npi_dev_read(void *opaque, hwaddr addr,
+
                               unsigned size)
 {
      uint32_t offset;
@@ -177,7 +185,7 @@ static void noc_npi_dev_realize(DeviceState *dev, Error **errp)
                               s->regs_info, s->regs,
                               &noc_npi_dev_ops,
                               XILINX_NOC_NPI_DEV_ERR_DEBUG,
-                              s->map_size);
+                              s->custom ? NOC_NPI_DEV_R_MAX * 4 : s->map_size);
     sysbus_init_mmio(sbd, &s->reg_array->mem);
 }
 
@@ -193,6 +201,8 @@ static const VMStateDescription vmstate_noc_npi_dev = {
 
 static Property noc_npi_dev_prop[] = {
     DEFINE_PROP_UINT64("map-size", NOC_NPI_DEV, map_size, 0x2000000),
+    DEFINE_PROP_BOOL("custom", NOC_NPI_DEV, custom, false),
+    DEFINE_PROP_UINT32("pcsr-status", NOC_NPI_DEV, pcsr_status, 0x700d7),
     DEFINE_PROP_END_OF_LIST(),
 };
 
