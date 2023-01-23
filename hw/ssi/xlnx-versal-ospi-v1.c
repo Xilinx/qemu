@@ -1779,7 +1779,7 @@ static bool is_inside_indac_range(OSPI *s, hwaddr addr)
     uint32_t range_end = range_start +
                          (1 << ARRAY_FIELD_EX32(s->regs,
                                            INDIRECT_TRIGGER_ADDR_RANGE_REG,
-                                           IND_RANGE_WIDTH_FLD));
+                                           IND_RANGE_WIDTH_FLD)) * 4;
 
     if (ARRAY_FIELD_EX32(s->regs, CONFIG_REG, ENB_DMA_IF_FLD)) {
         addr += s->regs[R_IND_AHB_ADDR_TRIGGER_REG];
