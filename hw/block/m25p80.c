@@ -365,7 +365,7 @@ typedef enum {
     FAST_READ = 0x0b,
     FAST_READ4 = 0x0c,
     O_FAST_READ = 0x9d,
-    O_FAST_READ4 = 0xfc,
+    O_FAST_READ4 = 0xfd,
     DOR = 0x3b,
     DOR4 = 0x3c,
     QOR = 0x6b,
