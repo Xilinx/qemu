@@ -1758,13 +1758,14 @@ static uint64_t ospi_indac_read(void *opaque, unsigned int size)
 static void ospi_indac_write(void *opaque, uint64_t value, unsigned int size)
 {
     OSPI *s = XILINX_OSPI(opaque);
+    uint32_t req_bytes = s->wr_ind_op->num_bytes - s->wr_ind_op->done_bytes;
 
     if (s->ind_write_disabled) {
         g_assert_not_reached();
     }
 
     if (!ospi_ind_op_completed(s->wr_ind_op)) {
-        ospi_tx_sram_write(s, value, size);
+        ospi_tx_sram_write(s, value, size > req_bytes ? req_bytes : size);
         ospi_do_indirect_write(s);
     } else {
         qemu_log_mask(LOG_GUEST_ERROR,
