@@ -351,6 +351,8 @@ REG32(MODULE_ID_REG, 0xfc)
  */
 #define IND_OPS_DONE_MAX 3
 
+#define MAX_RX_DLL_DELAY 64
+
 typedef enum {
     WREN = 0x6,
     READ = 0x03,
@@ -412,6 +414,7 @@ typedef struct OSPI {
     bool dac_with_indac;
     bool dac_enable;
     bool src_dma_inprog;
+    bool max_tap_dly_suspend;
 
     IndOp rd_ind_op[2];
     IndOp wr_ind_op[2];
@@ -1148,6 +1151,22 @@ static void ospi_stig_fill_membank(OSPI *s)
 static void ospi_stig_cmd_exec(OSPI *s)
 {
     uint8_t inst_code;
+    uint8_t rx_tap;
+
+    if (s->max_tap_dly_suspend) {
+        /*
+         * In order to Support software tuning
+         * we skip cmd execution if max tap delay is configured
+         */
+        rx_tap = ARRAY_FIELD_EX32(s->regs, PHY_CONFIGURATION_REG,
+                                  PHY_CONFIG_RX_DLL_DELAY_FLD);
+        if (rx_tap > MAX_RX_DLL_DELAY) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                 "RX_DLL_DELAY is more than %d, suspend cmd execution",
+                 MAX_RX_DLL_DELAY);
+            goto MAX_TAP_DLY_SUSPEND;
+        }
+    }
 
     /* Reset fifos */
     fifo_reset(&s->tx_fifo);
@@ -1180,6 +1199,7 @@ static void ospi_stig_cmd_exec(OSPI *s)
     ospi_flush_txfifo(s);
     ospi_disable_cs(s);
 
+MAX_TAP_DLY_SUSPEND:
     if (ARRAY_FIELD_EX32(s->regs, FLASH_CMD_CTRL_REG, ENB_READ_DATA_FLD)) {
         if (ARRAY_FIELD_EX32(s->regs,
                              FLASH_CMD_CTRL_REG, STIG_MEM_BANK_EN_FLD)) {
@@ -1489,6 +1509,21 @@ static uint64_t ind_rd_xfer_ctrl_reg_post_read(RegisterInfo *reg,
     return val;
 }
 
+static void phy_config_reg_postw(RegisterInfo *reg, uint64_t val)
+{
+    OSPI *s = XILINX_OSPI(reg->opaque);
+    uint8_t rx_dly = FIELD_EX32(val, PHY_CONFIGURATION_REG,
+                                PHY_CONFIG_RX_DLL_DELAY_FLD);
+    uint8_t tx_dly = FIELD_EX32(val, PHY_CONFIGURATION_REG,
+                                PHY_CONFIG_TX_DLL_DELAY_FLD);
+
+
+    ARRAY_FIELD_DP32(s->regs, DLL_OBSERVABLE_UPPER_REG,
+        DLL_OBSERVABLE__UPPER_RX_DECODER_OUTPUT_FLD, rx_dly / 2);
+    ARRAY_FIELD_DP32(s->regs, DLL_OBSERVABLE_UPPER_REG,
+        DLL_OBSERVABLE_UPPER_TX_DECODER_OUTPUT_FLD, tx_dly / 2);
+}
+
 static uint64_t sram_fill_reg_post_read(RegisterInfo *reg, uint64_t val)
 {
     OSPI *s = XILINX_OSPI(reg->opaque);
@@ -1650,6 +1685,7 @@ static RegisterAccessInfo ospi_regs_info[] = {
         .addr = A_PHY_CONFIGURATION_REG,
         .reset = 0x40000000,
         .ro = 0x1f80ff80,
+        .post_write = phy_config_reg_postw,
     },{ .name = "PHY_MASTER_CONTROL_REG",
         .addr = A_PHY_MASTER_CONTROL_REG,
         .reset = 0x800000,
@@ -1893,6 +1929,7 @@ static const VMStateDescription vmstate_ospi = {
 static Property ospi_properties[] = {
     DEFINE_PROP_BOOL("dac-with-indac", OSPI, dac_with_indac, false),
     DEFINE_PROP_BOOL("indac-write-disabled", OSPI, ind_write_disabled, true),
+    DEFINE_PROP_BOOL("max-tap-dly-suspend", OSPI, max_tap_dly_suspend, true),
     DEFINE_PROP_UINT8("num-cs", OSPI, num_cs, 4),
     DEFINE_PROP_END_OF_LIST(),
 };
