@@ -924,8 +924,9 @@ static void virt_powerdown_req(Notifier *n, void *opaque)
 static void create_gpio_keys(char *fdt, DeviceState *pl061_dev,
                              uint32_t phandle)
 {
-    gpio_key_dev = sysbus_create_simple("gpio-key", -1,
-                                        qdev_get_gpio_in(pl061_dev, 3));
+    gpio_key_dev = qdev_new("gpio-key");
+    qdev_realize_and_unref(gpio_key_dev, NULL, &error_fatal);
+    qdev_connect_gpio_out(gpio_key_dev, 0, qdev_get_gpio_in(pl061_dev, 3));
 
     qemu_fdt_add_subnode(fdt, "/gpio-keys");
     qemu_fdt_setprop_string(fdt, "/gpio-keys", "compatible", "gpio-keys");

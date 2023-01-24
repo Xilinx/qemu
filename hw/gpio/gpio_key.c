@@ -24,7 +24,6 @@
 
 #include "qemu/osdep.h"
 #include "hw/irq.h"
-#include "hw/sysbus.h"
 #include "migration/vmstate.h"
 #include "qemu/module.h"
 #include "qemu/timer.h"
@@ -36,7 +35,7 @@ OBJECT_DECLARE_SIMPLE_TYPE(GPIOKEYState, GPIOKEY)
 #define GPIO_KEY_LATENCY 100 /* 100ms */
 
 struct GPIOKEYState {
-    SysBusDevice parent_obj;
+    DeviceState parent_obj;
 
     bool inverted;
     QEMUTimer *timer;
@@ -83,9 +82,8 @@ static void gpio_key_set_irq(void *opaque, int irq, int level)
 static void gpio_key_realize(DeviceState *dev, Error **errp)
 {
     GPIOKEYState *s = GPIOKEY(dev);
-    SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
 
-    sysbus_init_irq(sbd, &s->irq);
+    qdev_init_gpio_out(dev, &s->irq, 1);
     qdev_init_gpio_in(dev, gpio_key_set_irq, 1);
     s->timer = timer_new_ms(QEMU_CLOCK_VIRTUAL, gpio_key_timer_expired, s);
 }
@@ -107,7 +105,7 @@ static void gpio_key_class_init(ObjectClass *klass, void *data)
 
 static const TypeInfo gpio_key_info = {
     .name          = TYPE_GPIOKEY,
-    .parent        = TYPE_SYS_BUS_DEVICE,
+    .parent        = TYPE_DEVICE,
     .instance_size = sizeof(GPIOKEYState),
     .class_init    = gpio_key_class_init,
 };
