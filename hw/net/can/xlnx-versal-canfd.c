@@ -1375,6 +1375,14 @@ static void transfer_data(XlnxVersalCANFDState *s)
         sort_by_id(s, &start);
 
         if (ARRAY_FIELD_EX32(s->regs, STATUS_REGISTER, LBACK)) {
+            uint32_t rxok = ARRAY_FIELD_EX32(s->regs,
+                                             INTERRUPT_STATUS_REGISTER, RXOK);
+
+            /* 'Or' 1 with rxok if a message is about to be loopbacked */
+            if (start) {
+                rxok = 1;
+            }
+
             while (start != NULL) {
                 regs2frame(s, &frame, start->reg_num);
                 update_rx_sequential(s, &frame);
@@ -1383,7 +1391,7 @@ static void transfer_data(XlnxVersalCANFDState *s)
                 start = start->next;
             }
 
-            ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, RXOK, 1);
+            ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, RXOK, rxok);
         } else {
             while (start != NULL) {
                 regs2frame(s, &frame, start->reg_num);
