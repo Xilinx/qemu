@@ -312,10 +312,11 @@ static uint32_t ocmc_imp_encode_memsize(OCMC *s, uint64_t memsize)
     case 256 * 1024:
         r = 2;
         break;
-    /* 512KB is still to be defined.  */
     case 512 * 1024:
-        qemu_log("%s: WARN: Using an undefined OCM memory size.\n", prefix);
         r = 3;
+        break;
+    case 1024 * 1024:
+        r = 4;
         break;
     default:
         hw_error("%s: Invalid OCM memory size %" PRIu64 " bytes\n",
