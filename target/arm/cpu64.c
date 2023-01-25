@@ -186,6 +186,10 @@ static const ARMCPRegInfo cortex_a78_reginfo[] = {
       .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 1, .opc2 = 1,
       .access = PL1_RW, .type = ARM_CP_CONST,
       .resetvalue = 0 },
+    { .name = "CPUPWRCTLR_EL1", .state = ARM_CP_STATE_AA64,
+      .opc0 = 3, .opc1 = 0, .crn = 15, .crm = 2, .opc2 = 7,
+      .access = PL1_RW, .type = ARM_CP_CONST,
+      .resetvalue = 0 },
 };
 
 static void aarch64_a57_initfn(Object *obj)
