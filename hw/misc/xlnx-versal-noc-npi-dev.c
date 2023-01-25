@@ -140,7 +140,6 @@ static void noc_npi_dev_reset(DeviceState *dev)
     }
 
     if (s->custom) {
-        qemu_log("%s\n", __func__);
         s->regs[R_REG_PCSR_STATUS] = s->pcsr_status;
     }
 }
