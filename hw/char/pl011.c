@@ -81,6 +81,51 @@ static void pl011_update(PL011State *s)
     }
 }
 
+static void pl011_put_fifo(void *opaque, uint32_t value);
+
+static bool pl011_is_loopback(PL011State *s)
+{
+    return !!(s->cr & (1U << 7));
+}
+
+static void pl011_tx_loopback(PL011State *s, uint32_t value)
+{
+    if (pl011_is_loopback(s)) {
+        pl011_put_fifo(s, value);
+    }
+}
+
+static uint32_t pl011_cr_loopback(PL011State *s, bool update)
+{
+    uint32_t cr = s->cr;
+    uint32_t fr = s->flags;
+    uint32_t ri = 1 << 8, dcd = 1 << 2, dsr = 1 << 1, cts = 0;
+    uint32_t out2 = 1 << 13, out1 = 1 << 12, rts = 1 << 11, dtr = 1 << 10;
+
+    if (!pl011_is_loopback(s)) {
+        return fr;
+    }
+
+    fr &= ~(ri | dcd | dsr | cts);
+    fr |= (cr & out2) ?  ri : 0;   /* FR.RI  <= CR.Out2 */
+    fr |= (cr & out1) ? dcd : 0;   /* FR.DCD <= CR.Out1 */
+    fr |= (cr &  rts) ? cts : 0;   /* FR.CTS <= CR.RTS */
+    fr |= (cr &  dtr) ? dsr : 0;   /* FR.DSR <= CR.DTR */
+
+    if (!update) {
+        return fr;
+    }
+
+    s->int_level &= ~(INT_DSR | INT_DCD | INT_CTS | INT_RI);
+    s->int_level |= (fr & dsr) ? INT_DSR : 0;
+    s->int_level |= (fr & dcd) ? INT_DCD : 0;
+    s->int_level |= (fr & cts) ? INT_CTS : 0;
+    s->int_level |= (fr &  ri) ? INT_RI  : 0;
+    pl011_update(s);
+
+    return fr;
+}
+
 static uint64_t pl011_read(void *opaque, hwaddr offset,
                            unsigned size)
 {
@@ -112,7 +157,7 @@ static uint64_t pl011_read(void *opaque, hwaddr offset,
         r = s->rsr;
         break;
     case 6: /* UARTFR */
-        r = s->flags;
+        r = pl011_cr_loopback(s, false);
         break;
     case 8: /* UARTILPR */
         r = s->ilpr;
@@ -207,6 +252,7 @@ static void pl011_write(void *opaque, hwaddr offset,
          * qemu_chr_fe_write and background I/O callbacks */
         qemu_chr_fe_write_all(&s->chr, &ch, 1);
         s->int_level |= PL011_INT_TX;
+        pl011_tx_loopback(s, ch);
         pl011_update(s);
         break;
     case 1: /* UARTRSR/UARTECR */
@@ -241,8 +287,9 @@ static void pl011_write(void *opaque, hwaddr offset,
         pl011_set_read_trigger(s);
         break;
     case 12: /* UARTCR */
-        /* ??? Need to implement the enable and loopback bits.  */
+        /* ??? Need to implement the enable bit.  */
         s->cr = value;
+        pl011_cr_loopback(s, true);
         break;
     case 13: /* UARTIFS */
         s->ifl = value;
