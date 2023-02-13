@@ -134,7 +134,9 @@ system_ss.add(when: 'CONFIG_XLNX_VERSAL_PMC', if_true: files(
 specific_ss.add(when: 'CONFIG_XLNX_ZYNQMP_ARM', if_true: files(
   'xlnx-versal-net-rpu-cluster.c',
   'xlnx-versal-net-rpu-cluster-core0.c',
-  'xlnx-versal-net-rpu-cluster-core1.c'
+  'xlnx-versal-net-rpu-cluster-core1.c',
+  'xlnx-psxc-rpu-cluster-core0.c',
+  'xlnx-psxc-rpu-cluster-core1.c'
 ))
 
 system_ss.add(when: 'CONFIG_XLNX_VERSAL', if_true: files(
