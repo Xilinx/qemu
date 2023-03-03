@@ -10,7 +10,8 @@ system_ss.add(when: 'CONFIG_XLNX_VERSAL_PMC', if_true: files(
   'ufshc-if.c',
   'ufshc.c',
   'ufs-scsi-if.c',
-  'ufs-scsi-core.c'
+  'ufs-scsi-core.c',
+  'ufs-dev.c',
 ))
 
 system_ss.add(when: 'CONFIG_ARASAN_NFC', if_true: files('arasan_nfc.c'))
