@@ -8,6 +8,7 @@ system_ss.add(when: 'CONFIG_PL35X', if_true: files('pl35x.c'))
 
 system_ss.add(when: 'CONFIG_XLNX_VERSAL_PMC', if_true: files(
   'ufshc-if.c',
+  'ufshc.c'
 ))
 
 system_ss.add(when: 'CONFIG_ARASAN_NFC', if_true: files('arasan_nfc.c'))

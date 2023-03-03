@@ -101,3 +101,8 @@ swim_iwmctrl_read(int reg, const char *name, unsigned size, uint64_t value) "reg
 swim_iwmctrl_write(int reg, const char *name, unsigned size, uint64_t value) "reg=%d [%s] size=%u value=0x%"PRIx64
 swim_switch_to_ism(void) "switch from IWM to ISM mode"
 swim_switch_to_iwm(void) "switch from ISM to IWM mode"
+
+# ufshc.c
+ufshc_tr_send(uint8_t tt, uint8_t tag, uint8_t slot) "Request Type = 0x%x Tag = 0x%x Slot = %d"
+ufshc_tr_recv(uint8_t tt, uint8_t tag) "Response Type = 0x%x Tag = 0x%x"
+ufshc_tmr_send(uint8_t tt, uint8_t tag, uint8_t slot) "Request Type = 0x%x Tag = 0x%x Slot = %d"
