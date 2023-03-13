@@ -17,6 +17,8 @@
 #include "hw/irq.h"
 #include "trace.h"
 #include "sysemu/dma.h"
+#include "hw/sysbus.h"
+#include "hw/block/ufs-dev.h"
 
 #ifndef UFSHC_ERR_DEBUG
 #define UFSHC_ERR_DEBUG 0
@@ -25,6 +27,9 @@
 #define TYPE_UFSHC "ufshc"
 #define UFSHC(obj) \
         OBJECT_CHECK(UFSHCState, (obj), TYPE_UFSHC)
+#define TYPE_SYSBUS_UFSHC "ufshc-sysbus"
+#define UFSHC_SYSBUS(obj) \
+        OBJECT_CHECK(UFSHCSysbus, (obj), TYPE_SYSBUS_UFSHC)
 
 #define R_HOST_CAP_REG_OFFSET 0x0
 #define R_HOST_CAP_REG_SIZE (0x20 / 4)
@@ -262,6 +267,15 @@ typedef struct UFSHCState {
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
 } UFSHCState;
+
+typedef struct UFSHCSysbus {
+    SysBusDevice parent;
+
+    UFSHCState ufshc;
+    UFSDev *ufsdev;
+    ufsBus *bus;
+    qemu_irq *irq;
+} UFSHCSysbus;
 
 static inline bool ufshc_is_enable(UFSHCState *s)
 {
@@ -1164,6 +1178,24 @@ static void ufshc_realize(DeviceState *dev, Error **errp)
     g_assert(s->num_tmr_slots <= MAX_TMR);
 }
 
+static void ufshc_sysbus_realize(DeviceState *dev, Error **errp)
+{
+    UFSHCSysbus *s = UFSHC_SYSBUS(dev);
+    SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
+
+    object_property_set_link(OBJECT(s->ufsdev), "ufs-initiator",
+                             OBJECT(&s->ufshc), NULL);
+    qdev_set_parent_bus(DEVICE(s->ufsdev), BUS(s->bus), NULL);
+    object_property_set_link(OBJECT(&s->ufshc), "ufs-target",
+                             OBJECT(s->ufsdev), NULL);
+
+    if (!qdev_realize(DEVICE(&s->ufshc), NULL, errp)) {
+        return;
+    }
+    sysbus_init_mmio(sbd, &s->ufshc.iomem);
+    sysbus_init_irq(sbd, &s->ufshc.irq);
+}
+
 static void ufshc_instance_init(Object *obj)
 {
     UFSHCState *s = UFSHC(obj);
@@ -1183,6 +1215,19 @@ static void ufshc_instance_init(Object *obj)
                              (Object **)&s->ufs_target,
                               qdev_prop_allow_set_link,
                              OBJ_PROP_LINK_STRONG);
+}
+
+static void ufshc_sysbus_instance_init(Object *obj)
+{
+    UFSHCSysbus *s = UFSHC_SYSBUS(obj);
+
+    object_initialize_child(obj, "ufshc-core", &s->ufshc, TYPE_UFSHC);
+    object_property_add_link(obj, "ufs-target", TYPE_UFS_DEV,
+                             (Object **)&s->ufsdev,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
+    qdev_alias_all_properties(DEVICE(&s->ufshc), obj);
+    s->bus = UFS_BUS(qbus_new(TYPE_UFS_BUS, DEVICE(obj), NULL));
 }
 
 static Property ufshc_props[] = {
@@ -1210,6 +1255,21 @@ static void ufshc_class_init(ObjectClass *klass, void *data)
     uc->handle_data = ufshc_receive_data;
 }
 
+static void ufshc_sysbus_class_init(ObjectClass *klass, void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(klass);
+
+    dc->realize = ufshc_sysbus_realize;
+}
+
+static const TypeInfo ufshc_sysbus_info = {
+    .name = TYPE_SYSBUS_UFSHC,
+    .parent = TYPE_SYS_BUS_DEVICE,
+    .instance_size = sizeof(UFSHCSysbus),
+    .class_init = ufshc_sysbus_class_init,
+    .instance_init = ufshc_sysbus_instance_init
+};
+
 static const TypeInfo ufshc_info = {
     .name          = TYPE_UFSHC,
     .parent        = TYPE_DEVICE,
@@ -1225,6 +1285,7 @@ static const TypeInfo ufshc_info = {
 static void ufshc_types(void)
 {
     type_register_static(&ufshc_info);
+    type_register_static(&ufshc_sysbus_info);
 }
 
 type_init(ufshc_types)
