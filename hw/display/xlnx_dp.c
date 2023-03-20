@@ -354,7 +354,7 @@ static inline void xlnx_dp_audio_mix_buffer(XlnxDPState *s)
             s->temp_buffer[i] = (int64_t)(s->audio_buffer_0[i])
                               * xlnx_dp_audio_get_volume(s, 0) / 8192;
         }
-        s->byte_left = s->audio_data_available[0];
+        s->audio_mix_data_available = s->audio_data_available[0];
     } else {
         memset(s->temp_buffer, 0, s->audio_data_available[1] / 2);
     }
@@ -366,40 +366,62 @@ static inline void xlnx_dp_audio_mix_buffer(XlnxDPState *s)
                 s->temp_buffer[i] += (int64_t)(s->audio_buffer_1[i])
                                    * xlnx_dp_audio_get_volume(s, 1) / 8192;
             }
-            s->byte_left = s->audio_data_available[1];
+            s->audio_mix_data_available = s->audio_data_available[1];
         }
     }
 
-    for (i = 0; i < s->byte_left / 2; i++) {
+    for (i = 0; i < s->audio_mix_data_available / 2; i++) {
         s->out_buffer[i] = MAX(-32767, MIN(s->temp_buffer[i], 32767));
     }
 
-    s->data_ptr = 0;
+    s->audio_mix_data_ptr = 0;
+    s->audio_data_available[0] = 0;
+    s->audio_data_available[1] = 0;
+}
+
+/*
+ * Get audio data from the DPDMA channels, to the intermediate audio
+ * buffers (audio_buffer_x).
+ */
+static void xlnx_dp_dma_audio_data(XlnxDPState *s)
+{
+    if (s->audio_data_available[0]) {
+        /*
+         * There are already some datas in the intermediate buffers, get out or
+         * we will overwrite current datas.
+         */
+        return;
+    } else {
+        /* No data in the intermediate buffers, fill them with dpdma.  */
+        s->audio_data_available[0] = xlnx_dpdma_start_operation(s->dpdma,
+                                         DP_AUDIO_DMA_CHANNEL(0),
+                                         true);
+        s->audio_data_available[1] = xlnx_dpdma_start_operation(s->dpdma,
+                                         DP_AUDIO_DMA_CHANNEL(1),
+                                         true);
+    }
 }
 
 static void xlnx_dp_audio_callback(void *opaque, int avail)
 {
     /*
-     * Get some data from the DPDMA and compute these datas.
-     * Then wait for QEMU's audio subsystem to call this callback.
+     * Take the data from the intermediate buffer, mix them and feed them to
+     * the QEMU audio backend.
      */
     XlnxDPState *s = XLNX_DP(opaque);
     size_t written = 0;
 
-    /* If there are already some data don't get more data. */
-    if (s->byte_left == 0) {
-        s->audio_data_available[0] = xlnx_dpdma_start_operation(s->dpdma, 4,
-                                                                  true);
-        s->audio_data_available[1] = xlnx_dpdma_start_operation(s->dpdma, 5,
-                                                                  true);
+    if (!s->audio_mix_data_available) {
+        /* Output buffer is empty, mix some data.  */
         xlnx_dp_audio_mix_buffer(s);
     }
 
     /* Send the buffer through the audio. */
-    if (s->byte_left <= MAX_QEMU_BUFFER_SIZE) {
-        if (s->byte_left != 0) {
+    if (s->audio_mix_data_available <= MAX_QEMU_BUFFER_SIZE) {
+        if (s->audio_mix_data_available != 0) {
             written = AUD_write(s->amixer_output_stream,
-                                &s->out_buffer[s->data_ptr], s->byte_left);
+                                &s->out_buffer[s->audio_mix_data_ptr],
+                                s->audio_mix_data_available);
         } else {
              int len_to_copy;
             /*
@@ -416,10 +438,11 @@ static void xlnx_dp_audio_callback(void *opaque, int avail)
         }
     } else {
         written = AUD_write(s->amixer_output_stream,
-                            &s->out_buffer[s->data_ptr], MAX_QEMU_BUFFER_SIZE);
+                            &s->out_buffer[s->audio_mix_data_ptr],
+                            MAX_QEMU_BUFFER_SIZE);
     }
-    s->byte_left -= written;
-    s->data_ptr += written;
+    s->audio_mix_data_available -= written;
+    s->audio_mix_data_ptr += written;
 }
 
 /*
@@ -1191,6 +1214,12 @@ static void xlnx_dp_update_display(void *opaque)
     xlnx_dpdma_trigger_vsync_irq(s->dpdma);
 
     /*
+     * Get audio data during this period, intermediate buffers will then get
+     * mixed and pushed in the output buffer.
+     */
+    xlnx_dp_dma_audio_data(s);
+
+    /*
      * Trigger the DMA channel.
      */
     if (!xlnx_dpdma_start_operation(s->dpdma, 3, false)) {
@@ -1373,7 +1402,10 @@ static void xlnx_dp_reset(DeviceState *dev)
     s->avbufm_registers[AV_BUF_LIVE_GFX_COMP_SF(2)] = 0x00010101;
 
     memset(s->audio_registers, 0, sizeof(s->audio_registers));
-    s->byte_left = 0;
+    s->audio_mix_data_available = 0;
+    s->audio_data_available[0] = 0;
+    s->audio_data_available[1] = 0;
+
 
     xlnx_dp_aux_clear_rx_fifo(s);
     xlnx_dp_change_graphic_fmt(s);

@@ -85,6 +85,13 @@ struct XlnxDPState {
     struct PixmanPlane v_plane;
     struct PixmanPlane bout_plane;
 
+    /*
+     * The following are the audio related data:
+     *
+     * Audio data are fetched during the display blank period and stored in the
+     * audio_buffer_x buffers, they are then mixed and pushed in the out_buffer.
+     * The audio callback then consumes the resulting out_buffer.
+     */
     QEMUSoundCard aud_card;
     SWVoiceOut *amixer_output_stream;
     int16_t audio_buffer_0[AUD_CHBUF_MAX_DEPTH];
@@ -92,8 +99,8 @@ struct XlnxDPState {
     size_t audio_data_available[2];
     int64_t temp_buffer[AUD_CHBUF_MAX_DEPTH];
     int16_t out_buffer[AUD_CHBUF_MAX_DEPTH];
-    size_t byte_left; /* byte available in out_buffer. */
-    size_t data_ptr;  /* next byte to be sent to QEMU. */
+    size_t audio_mix_data_available;
+    size_t audio_mix_data_ptr;
 
     /* Associated DPDMA controller. */
     XlnxDPDMAState *dpdma;
