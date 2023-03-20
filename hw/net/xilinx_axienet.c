@@ -100,6 +100,10 @@ static unsigned int tdk_read(struct PHY *phy, unsigned int req)
             r |= phy->regs[4] & (15 << 5);
             /* Autoneg support.  */
             r |= 1;
+            /*
+             * PHY Link Status
+             */
+            r |= 1 << 15;
             break;
         case 17:
             /* Marvell PHY on many xilinx boards.  */
