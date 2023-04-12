@@ -1655,6 +1655,8 @@ static void pmx_iou_slcr_reset(DeviceState *dev)
     intiou_pmx_slv_apb_err_imr_update_irq(s);
     imr_update_irq(s);
     intiou_pmx_slv_axi_err_imr_update_irq(s);
+    qemu_set_irq(s->ospi_mux_sel, 0);
+    qemu_set_irq(s->qspi_ospi_mux_sel, 1);
 }
 
 static const MemoryRegionOps pmx_iou_slcr_ops = {
