@@ -175,6 +175,8 @@ static bool efuse_ro_bits_find(XLNXEFuse *s, uint32_t k)
 
 bool efuse_set_bit(XLNXEFuse *s, unsigned int bit)
 {
+    uint32_t set, *row;
+
     if (efuse_ro_bits_find(s, bit)) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: WARN: "
                       "Ignored setting of readonly efuse bit<%u,%u>!\n",
@@ -183,8 +185,13 @@ bool efuse_set_bit(XLNXEFuse *s, unsigned int bit)
         return false;
     }
 
-    s->fuse32[bit / 32] |= 1 << (bit % 32);
-    efuse_sync_bdrv(s, bit);
+    /* Avoid back-end write unless there is a real update */
+    row = &s->fuse32[bit / 32];
+    set = 1 << (bit % 32);
+    if (!(set & *row)) {
+        *row |= set;
+        efuse_sync_bdrv(s, bit);
+    }
     return true;
 }
 
