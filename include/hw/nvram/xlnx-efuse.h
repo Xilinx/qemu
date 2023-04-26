@@ -40,6 +40,7 @@ struct XlnxEFuse {
     uint32_t *fuse32;
 
     DeviceState *dev;
+    uint32_t (*get_u32)(DeviceState *, uint32_t, bool *);
 
     bool init_tbits;
 
@@ -127,6 +128,28 @@ static inline uint32_t xlnx_efuse_get_row(XlnxEFuse *s, unsigned int bit)
         assert(row_idx < (s->efuse_size * s->efuse_nr / 32));
         return s->fuse32[row_idx];
     }
+}
+
+/**
+ * xlnx_efuse_get_u32:
+ * @s: the efuse object
+ * @addr: the 'abstract address' of bit(s) whose containing 32-bit value
+ *        should be returned.
+ * @denied: if non-NLL, returns true if retrieval is denied.
+ *
+ * Returns: a 32-bit word containing the bit(s) at @addr.
+ */
+static inline uint32_t xlnx_efuse_get_u32(XlnxEFuse *s,
+                                          uint32_t addr, bool *denied)
+{
+    if (s && s->fuse32 && s->dev && s->get_u32) {
+        return s->get_u32(s->dev, addr, denied);
+    }
+
+    if (denied) {
+        *denied = true;
+    }
+    return 0;
 }
 
 #endif
