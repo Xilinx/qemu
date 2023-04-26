@@ -72,6 +72,7 @@ typedef struct XLNXEFuse {
     bool blk_ro;
     uint32_t *fuse32;
 
+    uint32_t (*get_u32)(DeviceState *, uint32_t, bool *);
     void (*pgm_done)(DeviceState *dev, bool failed);
     DeviceState *dev;
 
@@ -114,6 +115,20 @@ static inline uint32_t efuse_get_row(XLNXEFuse *s, unsigned int bit)
         assert(row_idx < (s->efuse_size * s->efuse_nr / 32));
         return s->fuse32[row_idx];
     }
+}
+
+/* Return whole row containing bit(s) in the given 'abstract' address */
+static inline uint32_t xlnx_efuse_get_u32(XLNXEFuse *s,
+                                          uint32_t addr, bool *denied)
+{
+    if (s && s->fuse32 && s->dev && s->get_u32) {
+        return s->get_u32(s->dev, addr, denied);
+    }
+
+    if (denied) {
+        *denied = true;
+    }
+    return 0;
 }
 
 #endif
