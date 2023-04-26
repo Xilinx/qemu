@@ -684,6 +684,8 @@ static void efuse_ctrl_register_reset(RegisterInfo *reg)
 
     /* Reset must not trigger some registers' writers */
     switch (reg->access->addr) {
+    case A_EFUSE_PGM_ADDR:
+    case A_EFUSE_RD_ADDR:
     case A_EFUSE_AES_CRC:
     case A_EFUSE_AES_USR_KEY0_CRC:
     case A_EFUSE_AES_USR_KEY1_CRC:
