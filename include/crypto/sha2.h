@@ -65,6 +65,11 @@ sha256_digest(struct sha256_ctx *ctx,
 	      uint8_t *digest);
 
 void
+sha256_digest_no_pad(struct sha256_ctx *ctx,
+                     size_t length,
+                     uint8_t *digest);
+
+void
 sha256_compress(uint32_t *state, const uint8_t *input);
 
 /* SHA224, a truncated SHA256 with different initial state. */

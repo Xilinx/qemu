@@ -375,3 +375,12 @@ sha256_digest(struct sha256_ctx *ctx,
   sha256_write_digest(ctx, length, digest);
   sha256_init(ctx);
 }
+
+void
+sha256_digest_no_pad(struct sha256_ctx *ctx,
+                     size_t length,
+                     uint8_t *digest)
+{
+  _nettle_write_be32(length, digest, ctx->state);
+  sha256_init(ctx);
+}
