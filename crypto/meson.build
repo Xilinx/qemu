@@ -23,6 +23,7 @@ crypto_ss.add(files(
   'tlscredsx509.c',
   'tlssession.c',
   'rsakey.c',
+  'sha2.c',
 ))
 
 if nettle.found()
