@@ -761,6 +761,8 @@ static void zynqmp_efuse_register_reset(RegisterInfo *reg)
 
     /* Reset must not trigger some registers' writers */
     switch (reg->access->addr) {
+    case A_EFUSE_PGM_ADDR:
+    case A_EFUSE_RD_ADDR:
     case A_EFUSE_AES_CRC:
         *(uint32_t *)reg->data = reg->access->reset;
         return;
