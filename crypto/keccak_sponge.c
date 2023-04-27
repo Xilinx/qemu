@@ -221,3 +221,8 @@ void keccak_squeeze(keccak_sponge_t *state, unsigned length, void *digest)
 {
     write_le64(length, digest, state->a);
 }
+
+void keccak_permute(keccak_sponge_t *state)
+{
+    sha3_permute(state);
+}

@@ -17,6 +17,7 @@ typedef struct keccak_sponge {
 
 void keccak_absorb(keccak_sponge_t *state, unsigned length, const void *block);
 void keccak_squeeze(keccak_sponge_t *state, unsigned length, void *digest);
+void keccak_permute(keccak_sponge_t *state);
 
 static inline void keccak_init(keccak_sponge_t *state)
 {
