@@ -31,6 +31,10 @@
 #include "qemu/log.h"
 #include "migration/vmstate.h"
 #include "hw/irq.h"
+#include "hw/hw.h"
+#include "hw/stream.h"
+#include "qapi/error.h"
+#include "crypto/keccak_sponge.h"
 
 #ifndef XILINX_ASU_SHA3_ERR_DEBUG
 #define XILINX_ASU_SHA3_ERR_DEBUG 0
@@ -40,6 +44,23 @@
 
 #define XILINX_ASU_SHA3(obj) \
      OBJECT_CHECK(ASU_SHA3, (obj), TYPE_XILINX_ASU_SHA3)
+
+/* Describe the current state of the crypto model.  */
+enum State {
+    ASU_SHA3_IDLE = 0,
+    ASU_SHA3_RESETING,
+    ASU_SHA3_RUNNING,
+};
+
+enum ASU_SHA_MODE {
+    SHA_MODE_256 = 0,
+    SHA_MODE_384 = 1,
+    SHA_MODE_512 = 2,
+    SHA_MODE_SHAKE256 = 3,
+};
+
+#define ASU_SHA3_MAX_DIGEST_LEN (1088 >> 3)
+#define ASU_SHA3_MAX_BLOCK_SIZE (144)
 
 REG32(SHA_START, 0x0)
     FIELD(SHA_START, VALUE, 0, 1)
@@ -109,9 +130,183 @@ typedef struct ASU_SHA3 {
     MemoryRegion iomem;
     qemu_irq irq_sha_imr;
 
+    uint32_t state;
+    StreamCanPushNotifyFn notify;
+    void *notify_opaque;
+
     uint32_t regs[ASU_SHA3_R_MAX];
     RegisterInfo regs_info[ASU_SHA3_R_MAX];
+
+    /*
+     * Data waiting for a complete block to be received before going in the
+     * keccak sponge.
+     */
+    uint8_t data[ASU_SHA3_MAX_BLOCK_SIZE];
+    /* Current data_ptr withing data[] above.  */
+    uint8_t data_ptr;
+    /* Keccak state.  */
+    keccak_sponge_t sponge;
+    /* Hash algorithm selected when starting.  */
+    uint8_t alg;
 } ASU_SHA3;
+
+static size_t asu_sha3_block_size(ASU_SHA3 *s)
+{
+    switch (s->alg) {
+    case SHA_MODE_256:
+    case SHA_MODE_SHAKE256:
+        return 136;
+    case SHA_MODE_384:
+        return 104;
+    case SHA_MODE_512:
+        return 72;
+    default:
+        return 0;
+    }
+}
+
+static size_t asu_sha3_digest_size(ASU_SHA3 *s)
+{
+    switch (s->alg) {
+    case SHA_MODE_256:
+        return 256 / 8;
+    case SHA_MODE_384:
+        return 384 / 8;
+    case SHA_MODE_512:
+        return 512 / 8;
+    case SHA_MODE_SHAKE256:
+        return 1088 / 8;
+    default:
+        return 0;
+    }
+}
+
+/* Returns padding suffix as described in FIPS202.  */
+static uint8_t asu_sha3_get_padding_suffix(ASU_SHA3 *s)
+{
+    return s->alg == SHA_MODE_SHAKE256 ? 0x1F : 0x06;
+}
+
+static void asu_sha3_log_guest_error(ASU_SHA3 *s,
+                                     const char *fn,
+                                     const char *msg)
+{
+    char *path = object_get_canonical_path(OBJECT(s));
+
+    qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: %s", path, fn, msg);
+    g_free(path);
+}
+
+static void asu_sha3_start_postw(RegisterInfo *reg, uint64_t value)
+{
+    ASU_SHA3 *s = XILINX_ASU_SHA3(reg->opaque);
+
+    if (s->state == ASU_SHA3_RESETING) {
+        /* Don't do anything while reset.  */
+        return;
+    }
+
+    if (!ARRAY_FIELD_EX32(s->regs, SHA_START, VALUE)) {
+        /* Writing zero to that register doesn't have any effect.  */
+        return;
+    }
+
+    /* Start bit is self clearing.  */
+    ARRAY_FIELD_DP32(s->regs, SHA_START, VALUE, false);
+
+    /*
+     * Drop the SHA_DONE bit, driver will need to wait for this one to be set
+     * before reading the digest.
+     */
+    ARRAY_FIELD_DP32(s->regs, SHA_DONE, VALUE, false);
+
+    s->alg = ARRAY_FIELD_EX32(s->regs, SHA_MODE, VALUE);
+
+    switch (s->alg) {
+    case SHA_MODE_256:
+    case SHA_MODE_384:
+    case SHA_MODE_512:
+    case SHA_MODE_SHAKE256:
+        break;
+    default:
+        /*
+         * Unsupported bit-field, throw a guest error, and don't put the
+         * model in RUNNING mode (it won't accept data from the DMA).
+         */
+        asu_sha3_log_guest_error(s, __func__, "wrong SHA_MODE field\n");
+        return;
+    }
+
+    /* Initialize the keccak sponge.  */
+    keccak_init(&s->sponge);
+    /* All is ok.  Indicate the streaming device we can accept data.  */
+    s->state = ASU_SHA3_RUNNING;
+    s->data_ptr = 0;
+}
+
+static void asu_sha3_reset(DeviceState *dev)
+{
+    ASU_SHA3 *s = XILINX_ASU_SHA3(dev);
+    unsigned int i;
+
+    for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
+        register_reset(&s->regs_info[i]);
+    }
+    s->data_ptr = 0;
+}
+
+static void asu_sha3_reset_postw(RegisterInfo *reg, uint64_t value)
+{
+    ASU_SHA3 *s = XILINX_ASU_SHA3(reg->opaque);
+
+    if (ARRAY_FIELD_EX32(s->regs, SHA_RESET, VALUE)) {
+        /* Puts the device in reset mode.  */
+        s->state = ASU_SHA3_RESETING;
+    } else if (s->state == ASU_SHA3_RESETING) {
+        /* 1 -> 0 release from reset mode.  */
+        asu_sha3_reset(DEVICE(s));
+        s->state = ASU_SHA3_IDLE;
+    }
+}
+
+static void asu_sha3_update_digest(ASU_SHA3 *s)
+{
+    uint32_t digest[ASU_SHA3_MAX_DIGEST_LEN >> 2] = {0};
+    size_t digest_len = asu_sha3_digest_size(s);
+    size_t i;
+
+    keccak_squeeze(&s->sponge, digest_len, &digest);
+
+    /* Stored in reverse order.  */
+    for (i = 0; i < digest_len / 4; i++) {
+        s->regs[R_SHA_DIGEST_33 - i] = digest[i];
+    }
+}
+
+static void asu_sha3_next_xof_postw(RegisterInfo *reg, uint64_t value)
+{
+    ASU_SHA3 *s = XILINX_ASU_SHA3(reg->opaque);
+
+    if (!ARRAY_FIELD_EX32(s->regs, SHA_NEXT_XOF, VALUE)) {
+        return;
+    }
+
+    /* User asks 136 additional SHAKE256 digest.  */
+    if (s->alg != SHA_MODE_SHAKE256) {
+        asu_sha3_log_guest_error(s, __func__, "IP expected to be in SHAKE256"
+                                 " mode\n");
+        return;
+    }
+
+    /* It is expected that the digest has been computed.  */
+    keccak_permute(&s->sponge);
+    asu_sha3_update_digest(s);
+    /*
+     * XXX: The SHA_NEXT_XOF bit auto-clear, but it is unsure how the user is
+     *      informed of the availability of new digest.
+     */
+    ARRAY_FIELD_DP32(s->regs, SHA_NEXT_XOF, VALUE, false);
+}
 
 static void sha_imr_update_irq(ASU_SHA3 *s)
 {
@@ -147,11 +342,14 @@ static uint64_t sha_idr_prew(RegisterInfo *reg, uint64_t val64)
 
 static const RegisterAccessInfo asu_sha3_regs_info[] = {
     {   .name = "SHA_START",  .addr = A_SHA_START,
+        .post_write = asu_sha3_start_postw,
     },{ .name = "SHA_RESET",  .addr = A_SHA_RESET,
         .reset = 0x1,
+        .post_write = asu_sha3_reset_postw,
     },{ .name = "SHA_DONE",  .addr = A_SHA_DONE,
         .ro = 0x1,
     },{ .name = "SHA_NEXT_XOF",  .addr = A_SHA_NEXT_XOF,
+        .post_write = asu_sha3_next_xof_postw,
     },{ .name = "SHA_DIGEST_0",  .addr = A_SHA_DIGEST_0,
         .ro = 0xffffffff,
     },{ .name = "SHA_DIGEST_1",  .addr = A_SHA_DIGEST_1,
@@ -236,21 +434,112 @@ static const RegisterAccessInfo asu_sha3_regs_info[] = {
     }
 };
 
-static void asu_sha3_reset_enter(Object *obj, ResetType type)
+static bool asu_sha3_stream_can_push(StreamSink *obj,
+                                     StreamCanPushNotifyFn notify,
+                                     void *notify_opaque)
 {
     ASU_SHA3 *s = XILINX_ASU_SHA3(obj);
-    unsigned int i;
 
-    for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        register_reset(&s->regs_info[i]);
-    }
+    return s->state == ASU_SHA3_RUNNING;
 }
 
-static void asu_sha3_reset_hold(Object *obj)
+/*
+ * Callback from the DMA, consume the data..  Store them in the data[] block
+ * and pass them through to the sponge if a block boundary is crossed.
+ */
+static size_t asu_sha3_stream_push(StreamSink *obj,
+                                   uint8_t *buf,
+                                   size_t len,
+                                   bool eop)
 {
     ASU_SHA3 *s = XILINX_ASU_SHA3(obj);
+    size_t block_size;
+    size_t remaining = len;
+    bool crossed = false;
 
-    sha_imr_update_irq(s);
+    /* Is the crypto block ready to accept data?  */
+    if (s->state != ASU_SHA3_RUNNING) {
+        hw_error("%s: crypto block in bad state %d\n",
+                 object_get_canonical_path(OBJECT(s)), s->state);
+        return 0;
+    }
+
+    block_size = asu_sha3_block_size(s);
+
+    while (remaining) {
+        if (s->data_ptr || (remaining < block_size)) {
+            /*
+             * Either a block has been already started, or not enough data
+             * arrived to complete a block.  In any case s->data[] need to be
+             * used.
+             */
+            if (remaining > block_size - s->data_ptr) {
+                /* Enough data to fill a block, send it to the sponge!  */
+                memcpy(&s->data[s->data_ptr],
+                       &buf[len - remaining],
+                       block_size - s->data_ptr);
+                remaining -= (block_size - s->data_ptr);
+                s->data_ptr = 0;
+                keccak_absorb(&s->sponge, block_size, s->data);
+                crossed = true;
+            } else {
+                /*
+                 * Not enough data remain to complete a block, store it in
+                 * s->data, and wait the next DMA or complete it later with
+                 * autopadding.
+                 */
+                memcpy(&s->data[s->data_ptr], &buf[len - remaining], remaining);
+                s->data_ptr += remaining;
+                remaining = 0;
+            }
+        } else {
+            /*
+             * In this case enough data remains to send a complete block to the
+             * sponge.
+             */
+            keccak_absorb(&s->sponge, block_size, &buf[len - remaining]);
+            remaining -= block_size;
+            crossed = true;
+        }
+    }
+
+    /*
+     * Handle the automatic padding if enabled.  (See FIPS202 hexadecimal form
+     * of SHA-3 padding for byte-aligned messages.)
+     */
+    if (eop && ARRAY_FIELD_EX32(s->regs, SHA_AUTO_PADDING, ENABLE)) {
+        /*
+         * Remaining bytes to pad until the end of the block, 2 cases might
+         * occur:
+         *   * Block is not terminated, then padding is added to fill the block.
+         *   * Block is empty (s->data_ptr == 0) then a complete padding block
+         *     is added.
+         */
+        remaining = block_size - s->data_ptr;
+        /* Zero's part of the padding.  */
+        memset(&s->data[s->data_ptr], 0, remaining);
+        /* Message suffix, taken in account the current algorithm.  */
+        s->data[s->data_ptr] = asu_sha3_get_padding_suffix(s);
+        /* Last byte of the message.  */
+        s->data[block_size - 1] |= 0x80;
+        /* Give the block to the sponge and finalize.  */
+        keccak_absorb(&s->sponge, block_size, s->data);
+        crossed = true;
+        s->data_ptr = 0;
+    }
+
+    if (crossed) {
+        /* If we cross a block boundary, update the digest.  */
+        asu_sha3_update_digest(s);
+    }
+
+    if (eop) {
+        ARRAY_FIELD_DP32(s->regs, SHA_DONE, VALUE, true);
+        ARRAY_FIELD_DP32(s->regs, SHA_ISR, DONE, true);
+        sha_imr_update_irq(s);
+    }
+
+    return len;
 }
 
 static const MemoryRegionOps asu_sha3_ops = {
@@ -262,11 +551,6 @@ static const MemoryRegionOps asu_sha3_ops = {
         .max_access_size = 4,
     },
 };
-
-static void asu_sha3_realize(DeviceState *dev, Error **errp)
-{
-    /* Delete this if you don't need it */
-}
 
 static void asu_sha3_init(Object *obj)
 {
@@ -302,13 +586,14 @@ static const VMStateDescription vmstate_asu_sha3 = {
 
 static void asu_sha3_class_init(ObjectClass *klass, void *data)
 {
-    ResettableClass *rc = RESETTABLE_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
+    StreamSinkClass *ssc = STREAM_SINK_CLASS(klass);
 
-    dc->realize = asu_sha3_realize;
     dc->vmsd = &vmstate_asu_sha3;
-    rc->phases.enter = asu_sha3_reset_enter;
-    rc->phases.hold = asu_sha3_reset_hold;
+    dc->reset = asu_sha3_reset;
+
+    ssc->push = asu_sha3_stream_push;
+    ssc->can_push = asu_sha3_stream_can_push;
 }
 
 static const TypeInfo asu_sha3_info = {
@@ -317,6 +602,10 @@ static const TypeInfo asu_sha3_info = {
     .instance_size = sizeof(ASU_SHA3),
     .class_init    = asu_sha3_class_init,
     .instance_init = asu_sha3_init,
+    .interfaces = (InterfaceInfo[]) {
+        { TYPE_STREAM_SINK },
+        { }
+    }
 };
 
 static void asu_sha3_register_types(void)
