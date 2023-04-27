@@ -32,6 +32,9 @@
 #include "migration/vmstate.h"
 #include "hw/irq.h"
 #include "hw/stream.h"
+#include "hw/hw.h"
+#include "qapi/error.h"
+#include "crypto/sha2.h"
 
 #ifndef XILINX_ASU_SHA2_ERR_DEBUG
 #define XILINX_ASU_SHA2_ERR_DEBUG 0
@@ -41,6 +44,23 @@
 
 #define XILINX_ASU_SHA2(obj) \
      OBJECT_CHECK(ASU_SHA2, (obj), TYPE_XILINX_ASU_SHA2)
+
+/* Describe the current state of the hash block.  */
+enum State {
+    ASU_SHA2_IDLE = 0,
+    ASU_SHA2_RESETING,
+    ASU_SHA2_RUNNING,
+};
+
+enum ASU_SHA_MODE {
+    SHA_MODE_256 = 0,
+    SHA_MODE_384 = 1,
+    SHA_MODE_512 = 2,
+    SHA_MODE_RESERVED = 3,
+};
+
+#define ASU_SHA2_MAX_DIGEST_LEN (512 >> 3)
+#define ASU_SHA2_MAX_BLOCK_SIZE (144)
 
 REG32(SHA_START, 0x0)
     FIELD(SHA_START, VALUE, 0, 1)
@@ -90,9 +110,102 @@ typedef struct ASU_SHA2 {
     MemoryRegion iomem;
     qemu_irq irq_sha_imr;
 
+    uint32_t state;
+
     uint32_t regs[ASU_SHA2_R_MAX];
     RegisterInfo regs_info[ASU_SHA2_R_MAX];
+
+    /* Hash algorithm latched when start was asserted.  */
+    enum ASU_SHA_MODE alg;
+
+    union {
+        struct sha256_ctx sha256;
+        struct sha384_ctx sha384;
+        struct sha512_ctx sha512;
+    } hash_contexts;
 } ASU_SHA2;
+
+static void asu_sha2_log_guest_error(ASU_SHA2 *s,
+                                     const char *fn,
+                                     const char *msg)
+{
+    char *path = object_get_canonical_path(OBJECT(s));
+
+    qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: %s", path, fn, msg);
+    g_free(path);
+}
+
+static void asu_sha2_start_postw(RegisterInfo *reg, uint64_t value)
+{
+    ASU_SHA2 *s = XILINX_ASU_SHA2(reg->opaque);
+
+    if (s->state == ASU_SHA2_RESETING) {
+        /* Don't do anything while reset.  */
+        return;
+    }
+
+    if (!ARRAY_FIELD_EX32(s->regs, SHA_START, VALUE)) {
+        /* Writing zero to that field doesn't have any effect.  */
+        return;
+    }
+
+    /* Start bit is self clearing.  */
+    ARRAY_FIELD_DP32(s->regs, SHA_START, VALUE, false);
+
+    /*
+     * Drop the SHA_DONE bit, driver will need to wait for this one to be set
+     * before reading the digest.
+     */
+    ARRAY_FIELD_DP32(s->regs, SHA_DONE, VALUE, false);
+
+    s->alg = ARRAY_FIELD_EX32(s->regs, SHA_MODE, VALUE);
+
+    switch (s->alg) {
+    case SHA_MODE_256:
+        sha256_init(&s->hash_contexts.sha256);
+        break;
+    case SHA_MODE_384:
+        sha384_init(&s->hash_contexts.sha384);
+        break;
+    case SHA_MODE_512:
+        sha512_init(&s->hash_contexts.sha512);
+        break;
+    default:
+        /*
+         * Unsupported bit-field, throw a guest error, and don't put the model
+         * in RUNNING mode (it won't accept data from the DMA).
+         */
+        asu_sha2_log_guest_error(s, __func__, "wrong SHA_MODE value\n");
+        return;
+    }
+
+    /* All is ok.  Indicate the streaming device we can accept data.  */
+    s->state = ASU_SHA2_RUNNING;
+}
+
+static void asu_sha2_reset(DeviceState *dev)
+{
+    ASU_SHA2 *s = XILINX_ASU_SHA2(dev);
+    unsigned int i;
+
+    for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
+        register_reset(&s->regs_info[i]);
+    }
+}
+
+static void asu_sha2_reset_postw(RegisterInfo *reg, uint64_t value)
+{
+    ASU_SHA2 *s = XILINX_ASU_SHA2(reg->opaque);
+
+    if (ARRAY_FIELD_EX32(s->regs, SHA_RESET, VALUE)) {
+        /* Puts the device in reset mode.  */
+        s->state = ASU_SHA2_RESETING;
+    } else if (s->state == ASU_SHA2_RESETING) {
+        /* 1 -> 0 release from reset mode.  */
+        asu_sha2_reset(DEVICE(s));
+        s->state = ASU_SHA2_IDLE;
+    }
+}
 
 static void sha_imr_update_irq(ASU_SHA2 *s)
 {
@@ -128,8 +241,10 @@ static uint64_t sha_idr_prew(RegisterInfo *reg, uint64_t val64)
 
 static const RegisterAccessInfo asu_sha2_regs_info[] = {
     {   .name = "SHA_START",  .addr = A_SHA_START,
+        .post_write = asu_sha2_start_postw,
     },{ .name = "SHA_RESET",  .addr = A_SHA_RESET,
         .reset = 0x1,
+        .post_write = asu_sha2_reset_postw,
     },{ .name = "SHA_DONE",  .addr = A_SHA_DONE,
         .ro = 0x1,
     },{ .name = "SHA_DIGEST_0",  .addr = A_SHA_DIGEST_0,
@@ -180,23 +295,6 @@ static const RegisterAccessInfo asu_sha2_regs_info[] = {
     }
 };
 
-static void asu_sha2_reset_enter(Object *obj, ResetType type)
-{
-    ASU_SHA2 *s = XILINX_ASU_SHA2(obj);
-    unsigned int i;
-
-    for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        register_reset(&s->regs_info[i]);
-    }
-}
-
-static void asu_sha2_reset_hold(Object *obj)
-{
-    ASU_SHA2 *s = XILINX_ASU_SHA2(obj);
-
-    sha_imr_update_irq(s);
-}
-
 static const MemoryRegionOps asu_sha2_ops = {
     .read = register_read_memory,
     .write = register_write_memory,
@@ -206,11 +304,6 @@ static const MemoryRegionOps asu_sha2_ops = {
         .max_access_size = 4,
     },
 };
-
-static void asu_sha2_realize(DeviceState *dev, Error **errp)
-{
-    /* Delete this if you don't need it */
-}
 
 static void asu_sha2_init(Object *obj)
 {
@@ -238,14 +331,115 @@ static bool asu_sha2_stream_can_push(StreamSink *obj,
                                      StreamCanPushNotifyFn notify,
                                      void *notify_opaque)
 {
-    return false;
+    ASU_SHA2 *s = XILINX_ASU_SHA2(obj);
+
+    return s->state == ASU_SHA2_RUNNING;
 }
 
+static size_t asu_sha2_digest_size(ASU_SHA2 *s)
+{
+    switch (s->alg) {
+    case SHA_MODE_256:
+        return 256 / 8;
+    case SHA_MODE_384:
+        return 384 / 8;
+    case SHA_MODE_512:
+        return 512 / 8;
+    default:
+        return 0;
+    }
+}
+
+static void asu_sha2_update_digest(ASU_SHA2 *s)
+{
+    uint32_t digest[ASU_SHA2_MAX_DIGEST_LEN >> 2] = {0};
+    size_t digest_len = asu_sha2_digest_size(s);
+    size_t i;
+
+    if (ARRAY_FIELD_EX32(s->regs, SHA_AUTO_PADDING, ENABLE)) {
+        switch (s->alg) {
+        case SHA_MODE_256:
+            sha256_digest(&s->hash_contexts.sha256, digest_len,
+                          (uint8_t *)&digest);
+            break;
+        case SHA_MODE_384:
+            sha384_digest(&s->hash_contexts.sha384, digest_len,
+                          (uint8_t *)&digest);
+            break;
+        case SHA_MODE_512:
+            sha512_digest(&s->hash_contexts.sha512, digest_len,
+                          (uint8_t *)&digest);
+            break;
+        default:
+            break;
+        }
+    } else {
+        switch (s->alg) {
+        case SHA_MODE_256:
+            sha256_digest_no_pad(&s->hash_contexts.sha256, digest_len,
+                                 (uint8_t *)&digest);
+            break;
+        case SHA_MODE_384:
+            sha384_digest_no_pad(&s->hash_contexts.sha384, digest_len,
+                                 (uint8_t *)&digest);
+            break;
+        case SHA_MODE_512:
+            sha512_digest_no_pad(&s->hash_contexts.sha512, digest_len,
+                                 (uint8_t *)&digest);
+            break;
+        default:
+            break;
+        }
+    }
+
+    /* Stored in reverse order.  */
+    for (i = 0; i < digest_len / 4; i++) {
+        s->regs[R_SHA_DIGEST_15 - i] = digest[i];
+    }
+}
+
+/*
+ * Callback from the DMA, consume the data..  Store them in data[] block
+ * and pass them through the hash algorithm if a block boundary is crossed.
+ */
 static size_t asu_sha2_stream_push(StreamSink *obj,
                                    uint8_t *buf,
                                    size_t len,
                                    bool eop)
 {
+    ASU_SHA2 *s = XILINX_ASU_SHA2(obj);
+
+    /* Is the crypto block ready to accept data?  */
+    if (s->state != ASU_SHA2_RUNNING) {
+        hw_error("%s: crypto block in bad state %d\n",
+                 object_get_canonical_path(OBJECT(s)), s->state);
+        return 0;
+    }
+
+    switch (s->alg) {
+    case SHA_MODE_256:
+        sha256_update(&s->hash_contexts.sha256, len, buf);
+        break;
+    case SHA_MODE_384:
+        sha384_update(&s->hash_contexts.sha384, len, buf);
+        break;
+    case SHA_MODE_512:
+        sha512_update(&s->hash_contexts.sha512, len, buf);
+        break;
+    default:
+        /* XXX: Shouldn't happen.  */
+        asu_sha2_log_guest_error(s, __func__, "wrong SHA_MODE value\n");
+        return len;
+    }
+
+    if (eop) {
+        /* End of data, handle the padding and updat the digest.  */
+        asu_sha2_update_digest(s);
+        ARRAY_FIELD_DP32(s->regs, SHA_DONE, VALUE, true);
+        ARRAY_FIELD_DP32(s->regs, SHA_ISR, DONE, true);
+        sha_imr_update_irq(s);
+    }
+
     return len;
 }
 
@@ -261,14 +455,11 @@ static const VMStateDescription vmstate_asu_sha2 = {
 
 static void asu_sha2_class_init(ObjectClass *klass, void *data)
 {
-    ResettableClass *rc = RESETTABLE_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
     StreamSinkClass *ssc = STREAM_SINK_CLASS(klass);
 
-    dc->realize = asu_sha2_realize;
     dc->vmsd = &vmstate_asu_sha2;
-    rc->phases.enter = asu_sha2_reset_enter;
-    rc->phases.hold = asu_sha2_reset_hold;
+    dc->reset = asu_sha2_reset;
 
     ssc->push = asu_sha2_stream_push;
     ssc->can_push = asu_sha2_stream_can_push;
