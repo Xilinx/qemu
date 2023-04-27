@@ -292,6 +292,7 @@ system_ss.add(when: 'CONFIG_MPS2_SCC', if_true: files('mps2-scc.c'))
 system_ss.add(when: 'CONFIG_XLNX_VERSAL', if_true: files(
   'xlnx-versal2-asu-global.c',
   'xlnx-versal2-asu-global-pmc.c',
+  'xlnx-versal2-asu-local.c'
 ))
 
 system_ss.add(when: 'CONFIG_TZ_MPC', if_true: files('tz-mpc.c'))
