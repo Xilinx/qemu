@@ -117,6 +117,10 @@ void
 sha512_digest(struct sha512_ctx *ctx,
 	      size_t length,
 	      uint8_t *digest);
+void
+sha512_digest_no_pad(struct sha512_ctx *ctx,
+                     size_t length,
+                     uint8_t *digest);
 
 void
 sha512_compress(uint64_t *state, const uint8_t *input);
@@ -137,6 +141,10 @@ sha384_digest(struct sha512_ctx *ctx,
 	      size_t length,
 	      uint8_t *digest);
 
+void
+sha384_digest_no_pad(struct sha512_ctx *ctx,
+                     size_t length,
+                     uint8_t *digest);
 
 /* SHA512_224 and SHA512_256, two truncated versions of SHA512 
    with different initial states. */

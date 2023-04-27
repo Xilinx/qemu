@@ -440,3 +440,42 @@ sha512_compress(uint64_t *state, const uint8_t *input)
 {
   _nettle_sha512_compress(state, input, K);
 }
+
+void
+sha512_digest_no_pad(struct sha512_ctx *ctx,
+                     size_t length,
+                     uint8_t *digest)
+{
+  unsigned i;
+  unsigned words;
+  unsigned leftover;
+
+  assert(length <= SHA512_DIGEST_SIZE);
+
+  words = length / 8;
+  leftover = length % 8;
+
+  for (i = 0; i < words; i++, digest += 8) {
+    WRITE_UINT64(digest, ctx->state[i]);
+  }
+
+  if (leftover) {
+    /* Truncate to the right size */
+    uint64_t word = ctx->state[i] >> (8 * (8 - leftover));
+
+    do {
+      digest[--leftover] = word & 0xff;
+      word >>= 8;
+    } while (leftover);
+  }
+}
+
+void
+sha384_digest_no_pad(struct sha512_ctx *ctx,
+                     size_t length,
+                     uint8_t *digest)
+{
+  assert(length <= SHA384_DIGEST_SIZE);
+
+  sha512_digest_no_pad(ctx, length, digest);
+}
