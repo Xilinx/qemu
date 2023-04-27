@@ -74,3 +74,22 @@ static void riscv_fdt_machine_init(MachineClass *mc)
 }
 
 DEFINE_MACHINE("riscv-fdt", riscv_fdt_machine_init)
+
+/*
+ * This is a hack for allowing devices to use TYPE_ARM_LINUX_BOOT_IF
+ * even if it might not make sense for riscv emulation.
+ */
+#include "hw/arm/linux-boot-if.h"
+
+static const TypeInfo arm_linux_boot_if_info = {
+    .name = TYPE_ARM_LINUX_BOOT_IF,
+    .parent = TYPE_INTERFACE,
+    .class_size = sizeof(ARMLinuxBootIfClass),
+};
+
+static void arm_linux_boot_register_types(void)
+{
+    type_register_static(&arm_linux_boot_if_info);
+}
+
+type_init(arm_linux_boot_register_types)
