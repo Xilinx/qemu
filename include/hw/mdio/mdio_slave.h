@@ -21,9 +21,9 @@ typedef struct MDIOSlaveClass {
     DeviceClass parent_class;
 
     /* Master to Slave */
-    int (*send)(MDIOSlave *s, uint8_t reg, uint8_t data);
+    int (*send)(MDIOSlave *s, uint8_t reg, uint16_t data);
     /*slave to master */
-    int (*recv)(MDIOSlave *s, uint8_t reg);
+    uint16_t (*recv)(MDIOSlave *s, uint8_t reg);
 } MDIOSlaveClass;
 
 #define TYPE_MDIO_BUS "mdio-bus"
@@ -38,7 +38,7 @@ struct MDIOBus {
 
 struct MDIOBus *mdio_init_bus(DeviceState *parent, const char *name);
 void mdio_set_slave_addr(MDIOSlave *s, uint8_t addr);
-int mdio_send(struct MDIOBus *s, uint8_t addr, uint8_t reg, uint8_t data);
-int mdio_recv(struct MDIOBus *s, uint8_t addr, uint8_t reg);
+int mdio_send(struct MDIOBus *s, uint8_t addr, uint8_t reg, uint16_t data);
+uint16_t mdio_recv(struct MDIOBus *s, uint8_t addr, uint8_t reg);
 
 #endif

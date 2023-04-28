@@ -65,7 +65,7 @@ static MDIOSlave *mdio_find_slave(struct MDIOBus *bus, uint8_t addr)
     return slave;
 }
 
-int mdio_send(struct MDIOBus *bus, uint8_t addr, uint8_t reg, uint8_t data)
+int mdio_send(struct MDIOBus *bus, uint8_t addr, uint8_t reg, uint16_t data)
 {
     MDIOSlave *slave = NULL;
     MDIOSlaveClass *sc;
@@ -89,7 +89,7 @@ int mdio_send(struct MDIOBus *bus, uint8_t addr, uint8_t reg, uint8_t data)
     return -1;
 }
 
-int mdio_recv(struct MDIOBus *bus, uint8_t addr, uint8_t reg)
+uint16_t mdio_recv(struct MDIOBus *bus, uint8_t addr, uint8_t reg)
 {
     MDIOSlave *slave = NULL;
     MDIOSlaveClass *sc;
