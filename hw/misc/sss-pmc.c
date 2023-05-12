@@ -20,6 +20,8 @@
 
 #define TYPE_PMC_SSS "versal,pmc-sss"
 
+#include "sss-asu.h"
+#define TYPE_ASU_SSS "asu-sss"
 
 REG32(CFG, 0x0)
 #define R_MAX (R_CFG + 1)
@@ -38,6 +40,10 @@ struct PMCSSS {
 typedef struct PMCSSSDev {
     PMCSSS parent;
 } PMCSSSDev;
+
+typedef struct ASUSSSDev {
+    PMCSSS parent;
+} ASUSSSDev;
 
 static uint32_t pmc_get_sss_regfield(SSSBase *p, int remote)
 {
@@ -188,6 +194,42 @@ static void pmc_sss_init(Object *obj)
 
 }
 
+static void asu_sss_init(Object *obj)
+{
+    SSSBase *p = SSS_BASE(obj);
+    PMCSSS *s = PMC_SSS(obj);
+    SysBusDevice *sbd = SYS_BUS_DEVICE(s);
+    RegisterInfoArray *reg_array;
+
+    p->sss_population = asu_sss_population;
+    p->r_sss_shifts = r_asu_cfg_sss_shifts;
+    p->r_sss_encodings = r_asu_cfg_sss_encodings;
+    p->num_remotes = ASU_NUM_REMOTES;
+    p->notifys = g_new0(StreamCanPushNotifyFn, ASU_NUM_REMOTES);
+    p->notify_opaques = g_new0(void *, ASU_NUM_REMOTES);
+    p->get_sss_regfield = pmc_get_sss_regfield;
+    p->sss_cfg_mapping = asu_sss_cfg_mapping;
+
+    p->rx_devs = (SSSStream *) g_new(SSSStream, ASU_NUM_REMOTES);
+    p->tx_devs = (StreamSink **) g_new0(StreamSink *, ASU_NUM_REMOTES);
+
+    sss_init(s, asu_sss_remote_names);
+
+    memory_region_init(&s->iomem, OBJECT(s), "asu-stream-switch",
+                       R_MAX * 4);
+
+    reg_array =
+        register_init_block32(DEVICE(s), pmc_sss_regs_info,
+                              ARRAY_SIZE(pmc_sss_regs_info),
+                              s->regs_info, s->regs,
+                              &sss_ops,
+                              PMC_SSS_ERR_DEBUG,
+                              R_MAX * 4);
+
+    memory_region_add_subregion(&s->iomem, 0x0, &reg_array->mem);
+    sysbus_init_mmio(sbd, &s->iomem);
+}
+
 static const VMStateDescription vmstate_pmc_sss = {
     .name = "pmc_sss",
     .version_id = 1,
@@ -221,10 +263,19 @@ static const TypeInfo pmc_sss_info = {
     .instance_init = pmc_sss_init,
 };
 
+static const TypeInfo asu_sss_info = {
+    .name          = TYPE_ASU_SSS,
+    .parent        = TYPE_PMC_SSS_BASE,
+    .instance_size = sizeof(ASUSSSDev),
+    .class_init    = pmc_sss_class_init,
+    .instance_init = asu_sss_init,
+};
+
 static void sss_register_types(void)
 {
     type_register_static(&pmc_sss_base_info);
     type_register_static(&pmc_sss_info);
+    type_register_static(&asu_sss_info);
 }
 
 type_init(sss_register_types)
