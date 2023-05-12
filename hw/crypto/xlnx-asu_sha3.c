@@ -56,7 +56,7 @@ enum ASU_SHA_MODE {
     SHA_MODE_256 = 0,
     SHA_MODE_384 = 1,
     SHA_MODE_512 = 2,
-    SHA_MODE_SHAKE256 = 3,
+    SHA_MODE_SHAKE256 = 4,
 };
 
 #define ASU_SHA3_MAX_DIGEST_LEN (1088 >> 3)
