@@ -11,92 +11,17 @@
 #define PMC_SSS_ERR_DEBUG 0
 #endif
 
+#include "sss-pmc.h"
+
 #define TYPE_PMC_SSS "versal,pmc-sss"
 
 #define PMC_SSS(obj) \
      OBJECT_CHECK(PMCSSS, (obj), TYPE_PMC_SSS)
 
+
 REG32(CFG, 0x0)
 #define R_MAX (R_CFG + 1)
 #define R_PMC_SSS_FIELD_LENGTH 4
-
-typedef enum {
-    DMA0,
-    DMA1,
-    PTPI,
-    AES,
-    SHA0,
-    SBI,
-    PZM,
-    SHA1,
-    PMC_NUM_REMOTES
-} PMCSSSRemote;
-
-#define NO_REMOTE PMC_NUM_REMOTES
-
-static const char *pmc_sss_remote_names[] = {
-    [DMA0] = "dma0",
-    [DMA1] = "dma1",
-    [PTPI] = "ptpi",
-    [AES] = "aes",
-    [SHA0] = "sha",
-    [SBI] = "sbi",
-    [PZM] = "pzm",
-    [SHA1] = "sha1",
-};
-
-static const uint32_t pmc_sss_population[] = {
-    [DMA0] = (1 << DMA0) | (1 << AES) | (1 << SBI) | (1 << PZM),
-    [DMA1] = (1 << DMA1) | (1 << AES) | (1 << SBI) | (1 << PZM),
-    [PTPI] = (1 << DMA0) | (1 << DMA1),
-    [AES] = (1 << DMA0) | (1 << DMA1),
-    [SHA0] = (1 << DMA0) | (1 << DMA1),
-    [SBI] = (1 << DMA0) | (1 << DMA1),
-    [SHA1] = (1 << DMA0) | (1 << DMA1),
-    [NO_REMOTE] = 0,
-};
-
-static const int r_pmc_cfg_sss_shifts[] = {
-    [DMA0] = 0,
-    [DMA1] = 4,
-    [PTPI] = 8,
-    [AES] = 12,
-    [SHA0] = 16,
-    [SBI] = 20,
-    [PZM] = -1,
-    [SHA1] = 24,
-};
-
-static const uint8_t r_pmc_cfg_sss_encodings[] = {
-    [DMA0] = DMA0,
-    [DMA1] = DMA1,
-    [PTPI] = PTPI,
-    [AES] = AES,
-    [SHA0] = SHA0,
-    [SBI] = SBI,
-    [PZM] = PZM,
-    [SHA1] = SHA1,
-};
-
-/* Remote Encodings
-                 DMA0  DMA1  PTPI  AES   SHA0   SBI   PZM    SHA1  NONE*/
-#define DMA0_MAP {0xD,  0xFF, 0xFF, 0x6,  0xFF, 0xB,  0x3,   0xFF, 0xFF}
-#define DMA1_MAP {0xFF, 0x9,  0xFF, 0x7,  0xFF, 0xE,  0x4,   0xFF, 0xFF}
-#define PTPI_MAP {0xD,  0xA,  0xFF, 0xFF, 0xFF, 0xFF, 0xFF,  0xFF, 0xFF}
-#define AES_MAP  {0xE,  0x5,  0xFF, 0xFF, 0xFF, 0xFF, 0xFF,  0xFF, 0xFF}
-#define SHA0_MAP {0xC,  0x7,  0xFF, 0xFF, 0xFF, 0xFF, 0xFF,  0xFF, 0xFF}
-#define SBI_MAP  {0x5,  0xB,  0xFF, 0xFF, 0xFF, 0xFF, 0xFF,  0xFF, 0xFF}
-#define SHA1_MAP {0xA,  0xF,  0xFF, 0xFF, 0xFF, 0xFF, 0xFF,  0xFF, 0xFF}
-
-static const uint8_t pmc_sss_cfg_mapping[][PMC_NUM_REMOTES + 1] = {
-    [DMA0] = DMA0_MAP,
-    [DMA1] = DMA1_MAP,
-    [PTPI] = PTPI_MAP,
-    [AES]  = AES_MAP,
-    [SHA0] = SHA0_MAP,
-    [SBI]  = SBI_MAP,
-    [SHA1] = SHA1_MAP,
-};
 
 typedef struct PMCSSS PMCSSS;
 
@@ -114,10 +39,10 @@ static uint32_t pmc_get_sss_regfield(SSSBase *p, int remote)
     uint32_t reg;
     uint32_t indx;
 
-    reg = extract32(s->regs[R_CFG], r_pmc_cfg_sss_shifts[remote],
+    reg = extract32(s->regs[R_CFG], p->r_sss_shifts[remote],
                       R_PMC_SSS_FIELD_LENGTH);
     for (indx = 0; indx < PMC_NUM_REMOTES; indx++) {
-        if (reg == pmc_sss_cfg_mapping[remote][indx]) {
+        if (reg == p->sss_cfg_mapping[remote][indx]) {
             break;
         }
     }
@@ -158,7 +83,7 @@ static void pmc_sss_realize(DeviceState *dev, Error **errp)
     Error *local_errp = NULL;
     int r;
 
-    for (r = 0; r < NO_REMOTE; ++r) {
+    for (r = 0; r < p->num_remotes; ++r) {
         SSSStream *ss = SSS_STREAM(&p->rx_devs[r]);
 
         object_property_add_link(OBJECT(ss), "sss", TYPE_PMC_SSS,
@@ -211,11 +136,12 @@ static void pmc_sss_init(Object *obj)
     p->notifys = g_new0(StreamCanPushNotifyFn, PMC_NUM_REMOTES);
     p->notify_opaques = g_new0(void *, PMC_NUM_REMOTES);
     p->get_sss_regfield = pmc_get_sss_regfield;
+    p->sss_cfg_mapping = pmc_sss_cfg_mapping;
 
     p->rx_devs = (SSSStream *) g_new(SSSStream, PMC_NUM_REMOTES);
     p->tx_devs = (StreamSink **) g_new0(StreamSink *, PMC_NUM_REMOTES);
 
-    for (remote = 0 ; remote != NO_REMOTE; remote++) {
+    for (remote = 0 ; remote != p->num_remotes; remote++) {
         name = g_strdup_printf("stream-connected-%s",
                                      pmc_sss_remote_names[remote]);
         object_property_add_link(OBJECT(s), name, TYPE_STREAM_SINK,

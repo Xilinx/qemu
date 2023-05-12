@@ -16,6 +16,8 @@
 #define NOT_REMOTE(s) \
     (s->num_remotes)
 
+#define MAX_REMOTE 16
+
 typedef struct SSSBase SSSBase;
 typedef struct SSSStream SSSStream;
 
@@ -38,6 +40,7 @@ struct SSSBase {
     const uint32_t *sss_population;
     const int *r_sss_shifts;
     const uint8_t *r_sss_encodings;
+    const uint8_t (*sss_cfg_mapping)[MAX_REMOTE];
     uint8_t num_remotes;
 };
 
