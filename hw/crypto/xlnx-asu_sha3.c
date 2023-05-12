@@ -473,7 +473,7 @@ static size_t asu_sha3_stream_push(StreamSink *obj,
              * arrived to complete a block.  In any case s->data[] need to be
              * used.
              */
-            if (remaining > block_size - s->data_ptr) {
+            if (remaining >= block_size - s->data_ptr) {
                 /* Enough data to fill a block, send it to the sponge!  */
                 memcpy(&s->data[s->data_ptr],
                        &buf[len - remaining],
