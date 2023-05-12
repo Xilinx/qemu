@@ -13,10 +13,12 @@
 
 #include "sss-pmc.h"
 
-#define TYPE_PMC_SSS "versal,pmc-sss"
+#define TYPE_PMC_SSS_BASE "pmc-sss-base"
 
 #define PMC_SSS(obj) \
-     OBJECT_CHECK(PMCSSS, (obj), TYPE_PMC_SSS)
+     OBJECT_CHECK(PMCSSS, (obj), TYPE_PMC_SSS_BASE)
+
+#define TYPE_PMC_SSS "versal,pmc-sss"
 
 
 REG32(CFG, 0x0)
@@ -32,6 +34,10 @@ struct PMCSSS {
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
 };
+
+typedef struct PMCSSSDev {
+    PMCSSS parent;
+} PMCSSSDev;
 
 static uint32_t pmc_get_sss_regfield(SSSBase *p, int remote)
 {
@@ -86,7 +92,7 @@ static void pmc_sss_realize(DeviceState *dev, Error **errp)
     for (r = 0; r < p->num_remotes; ++r) {
         SSSStream *ss = SSS_STREAM(&p->rx_devs[r]);
 
-        object_property_add_link(OBJECT(ss), "sss", TYPE_PMC_SSS,
+        object_property_add_link(OBJECT(ss), "sss", TYPE_PMC_SSS_BASE,
                              (Object **)&ss->sss,
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_STRONG);
@@ -120,14 +126,37 @@ static void sss_reset(DeviceState *dev)
     sss_notify_all(p);
 }
 
+static void sss_init(PMCSSS *s, const char **remote_names)
+{
+    SSSBase *p = SSS_BASE(s);
+    char *name;
+    int remote;
+
+    for (remote = 0 ; remote != p->num_remotes; remote++) {
+        name = g_strdup_printf("stream-connected-%s",
+                                     remote_names[remote]);
+        object_property_add_link(OBJECT(s), name, TYPE_STREAM_SINK,
+                             (Object **)&p->tx_devs[remote],
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
+        g_free(name);
+        object_initialize(&p->rx_devs[remote], sizeof(SSSStream),
+                          TYPE_SSS_STREAM);
+        name = g_strdup_printf("stream-connected-%s-target",
+                               remote_names[remote]);
+        object_property_add_child(OBJECT(s), name,
+                                 (Object *)&p->rx_devs[remote]);
+        g_free(name);
+    }
+
+}
+
 static void pmc_sss_init(Object *obj)
 {
     SSSBase *p = SSS_BASE(obj);
     PMCSSS *s = PMC_SSS(obj);
-    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+    SysBusDevice *sbd = SYS_BUS_DEVICE(s);
     RegisterInfoArray *reg_array;
-    char *name;
-    int remote;
 
     p->sss_population = pmc_sss_population;
     p->r_sss_shifts = r_pmc_cfg_sss_shifts;
@@ -141,27 +170,13 @@ static void pmc_sss_init(Object *obj)
     p->rx_devs = (SSSStream *) g_new(SSSStream, PMC_NUM_REMOTES);
     p->tx_devs = (StreamSink **) g_new0(StreamSink *, PMC_NUM_REMOTES);
 
-    for (remote = 0 ; remote != p->num_remotes; remote++) {
-        name = g_strdup_printf("stream-connected-%s",
-                                     pmc_sss_remote_names[remote]);
-        object_property_add_link(OBJECT(s), name, TYPE_STREAM_SINK,
-                             (Object **)&p->tx_devs[remote],
-                             qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_STRONG);
-        g_free(name);
-        object_initialize(&p->rx_devs[remote], sizeof(SSSStream),
-                          TYPE_SSS_STREAM);
-        name = g_strdup_printf("stream-connected-%s-target",
-                               pmc_sss_remote_names[remote]);
-        object_property_add_child(OBJECT(s), name,
-                                 (Object *)&p->rx_devs[remote]);
-        g_free(name);
-    }
+    sss_init(s, pmc_sss_remote_names);
 
-    memory_region_init(&s->iomem, obj, "versal.pmc-stream-switch", R_MAX * 4);
+    memory_region_init(&s->iomem, OBJECT(s), "versal.pmc-stream-switch",
+                       R_MAX * 4);
 
     reg_array =
-        register_init_block32(DEVICE(obj), pmc_sss_regs_info,
+        register_init_block32(DEVICE(s), pmc_sss_regs_info,
                               ARRAY_SIZE(pmc_sss_regs_info),
                               s->regs_info, s->regs,
                               &sss_ops,
@@ -170,6 +185,7 @@ static void pmc_sss_init(Object *obj)
 
     memory_region_add_subregion(&s->iomem, 0x0, &reg_array->mem);
     sysbus_init_mmio(sbd, &s->iomem);
+
 }
 
 static const VMStateDescription vmstate_pmc_sss = {
@@ -191,16 +207,23 @@ static void pmc_sss_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_pmc_sss;
 }
 
-static const TypeInfo pmc_sss_info = {
-    .name          = TYPE_PMC_SSS,
+static const TypeInfo pmc_sss_base_info = {
+    .name          = TYPE_PMC_SSS_BASE,
     .parent        = TYPE_SSS_BASE,
     .instance_size = sizeof(PMCSSS),
+};
+
+static const TypeInfo pmc_sss_info = {
+    .name          = TYPE_PMC_SSS,
+    .parent        = TYPE_PMC_SSS_BASE,
+    .instance_size = sizeof(PMCSSSDev),
     .class_init    = pmc_sss_class_init,
     .instance_init = pmc_sss_init,
 };
 
 static void sss_register_types(void)
 {
+    type_register_static(&pmc_sss_base_info);
     type_register_static(&pmc_sss_info);
 }
 
