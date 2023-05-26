@@ -1,0 +1,3924 @@
+/*
+ * Tool-generated fuse tile coordinates of AMD/Xilinx PMX eFuse
+ * logical entities.
+ *
+ * Copyright (c) 2023 Advanced Micro Devices, Inc.
+ *
+ * SPDX-License-Identifier: MIT
+ */
+#ifndef XLNX_PMX_EFUSE_TILE_C_INC_
+#define XLNX_PMX_EFUSE_TILE_C_INC_
+
+/*
+ * Wrapper macros to avoid style checker reporting errors on
+ * defining an initializer list as a macro.
+ *
+ * The style checker simply does not recognize ',' in the context
+ * of a designated initializer for non-aggregate type arrays, so
+ * it is necessary to rely on __VA_ARGS__ to insert comma separators
+ * as a workaround.
+ */
+#define EFUSE_TILE(i, r, b, ...) [i] = { .row = (r), .byte_lane = (b) }
+#define EFUSE_ACL1(r, b, cid)    [(r) * 4 + (b)] = EFUSE_AC_ ## cid
+#define EFUSE_ACL2(cid, func)    [EFUSE_AC_ ## cid] = (func)
+
+#define EFUSE_LIST(...)  __VA_ARGS__
+
+/*
+ * Logical entity tiles
+ */
+#define EFUSE_U32_TILES EFUSE_LIST( \
+    EFUSE_TILE((0x010 / 4),  24, 4, ANLG_TRIM_3), \
+    EFUSE_TILE((0x018 / 4),  94, 5, IP_DISABLE_0), \
+    EFUSE_TILE((0x020 / 4),   4, 1, DNA_0), \
+    EFUSE_TILE((0x024 / 4),   8, 1, DNA_1), \
+    EFUSE_TILE((0x028 / 4),  12, 1, DNA_2), \
+    EFUSE_TILE((0x02c / 4),  16, 1, DNA_3), \
+    EFUSE_TILE((0x090 / 4), 184, 4, ROM_RSVD), \
+    EFUSE_TILE((0x094 / 4),  28, 4, BOOT_ENV_CTRL), \
+    EFUSE_TILE((0x0a0 / 4),  20, 4, MISC_CTRL), \
+    EFUSE_TILE((0x0a4 / 4),  95, 5, PUF_ECC_PUF_CTRL), \
+    EFUSE_TILE((0x0a8 / 4),  93, 5, PUF_CHASH), \
+    EFUSE_TILE((0x0ac / 4),  44, 2, SECURITY_CONTROL), \
+    EFUSE_TILE((0x0b0 / 4),  32, 3, REVOCATION_ID_0), \
+    EFUSE_TILE((0x0b4 / 4),  36, 3, REVOCATION_ID_1), \
+    EFUSE_TILE((0x0b8 / 4),  40, 3, REVOCATION_ID_2), \
+    EFUSE_TILE((0x0bc / 4),  44, 3, REVOCATION_ID_3), \
+    EFUSE_TILE((0x0c0 / 4),  32, 4, REVOCATION_ID_4), \
+    EFUSE_TILE((0x0c4 / 4),  36, 4, REVOCATION_ID_5), \
+    EFUSE_TILE((0x0c8 / 4),  40, 4, REVOCATION_ID_6), \
+    EFUSE_TILE((0x0cc / 4),  44, 4, REVOCATION_ID_7), \
+    EFUSE_TILE((0x0d0 / 4),   1, 5, RO_SWAP_EN), \
+    EFUSE_TILE((0x0e4 / 4),  40, 2, SECURITY_MISC_0), \
+    EFUSE_TILE((0x0e8 / 4),  48, 2, SECURITY_MISC_1), \
+    EFUSE_TILE((0x100 / 4), 160, 3, PPK0_HASH_0), \
+    EFUSE_TILE((0x104 / 4), 164, 3, PPK0_HASH_1), \
+    EFUSE_TILE((0x108 / 4), 168, 3, PPK0_HASH_2), \
+    EFUSE_TILE((0x10c / 4), 172, 3, PPK0_HASH_3), \
+    EFUSE_TILE((0x110 / 4), 176, 3, PPK0_HASH_4), \
+    EFUSE_TILE((0x114 / 4), 180, 3, PPK0_HASH_5), \
+    EFUSE_TILE((0x118 / 4), 184, 3, PPK0_HASH_6), \
+    EFUSE_TILE((0x11c / 4), 188, 3, PPK0_HASH_7), \
+    EFUSE_TILE((0x120 / 4),  96, 4, PPK1_HASH_0), \
+    EFUSE_TILE((0x124 / 4), 100, 4, PPK1_HASH_1), \
+    EFUSE_TILE((0x128 / 4), 104, 4, PPK1_HASH_2), \
+    EFUSE_TILE((0x12c / 4), 108, 4, PPK1_HASH_3), \
+    EFUSE_TILE((0x130 / 4), 112, 4, PPK1_HASH_4), \
+    EFUSE_TILE((0x134 / 4), 116, 4, PPK1_HASH_5), \
+    EFUSE_TILE((0x138 / 4), 120, 4, PPK1_HASH_6), \
+    EFUSE_TILE((0x13c / 4), 124, 4, PPK1_HASH_7), \
+    EFUSE_TILE((0x140 / 4), 128, 4, PPK2_HASH_0), \
+    EFUSE_TILE((0x144 / 4), 132, 4, PPK2_HASH_1), \
+    EFUSE_TILE((0x148 / 4), 136, 4, PPK2_HASH_2), \
+    EFUSE_TILE((0x14c / 4), 140, 4, PPK2_HASH_3), \
+    EFUSE_TILE((0x150 / 4), 144, 4, PPK2_HASH_4), \
+    EFUSE_TILE((0x154 / 4), 148, 4, PPK2_HASH_5), \
+    EFUSE_TILE((0x158 / 4), 152, 4, PPK2_HASH_6), \
+    EFUSE_TILE((0x15c / 4), 156, 4, PPK2_HASH_7), \
+    EFUSE_TILE((0x160 / 4),  82, 5, OFFCHIP_REVOKE_0), \
+    EFUSE_TILE((0x164 / 4),  83, 5, OFFCHIP_REVOKE_1), \
+    EFUSE_TILE((0x168 / 4),  84, 5, OFFCHIP_REVOKE_2), \
+    EFUSE_TILE((0x16c / 4),  85, 5, OFFCHIP_REVOKE_3), \
+    EFUSE_TILE((0x170 / 4),  86, 5, OFFCHIP_REVOKE_4), \
+    EFUSE_TILE((0x174 / 4),  87, 5, OFFCHIP_REVOKE_5), \
+    EFUSE_TILE((0x178 / 4),  88, 5, OFFCHIP_REVOKE_6), \
+    EFUSE_TILE((0x17c / 4),  89, 5, OFFCHIP_REVOKE_7), \
+    EFUSE_TILE((0x180 / 4),  90, 5, METAHEADER_IV_RANGE_0), \
+    EFUSE_TILE((0x184 / 4),  91, 5, METAHEADER_IV_RANGE_1), \
+    EFUSE_TILE((0x188 / 4),  92, 5, METAHEADER_IV_RANGE_2), \
+    EFUSE_TILE((0x1d0 / 4),   4, 2, BLACK_IV_0), \
+    EFUSE_TILE((0x1d4 / 4),   8, 2, BLACK_IV_1), \
+    EFUSE_TILE((0x1d8 / 4),  12, 2, BLACK_IV_2), \
+    EFUSE_TILE((0x1dc / 4),   4, 3, PLM_IV_RANGE_0), \
+    EFUSE_TILE((0x1e0 / 4),   8, 3, PLM_IV_RANGE_1), \
+    EFUSE_TILE((0x1e4 / 4),  12, 3, PLM_IV_RANGE_2), \
+    EFUSE_TILE((0x1e8 / 4),   4, 4, DATA_PARITION_IV_RANGE_0), \
+    EFUSE_TILE((0x1ec / 4),   8, 4, DATA_PARITION_IV_RANGE_1), \
+    EFUSE_TILE((0x1f0 / 4),  12, 4, DATA_PARITION_IV_RANGE_2), \
+    EFUSE_TILE((0x234 / 4),  52, 2, DME_FIPS), \
+    EFUSE_TILE((0x238 / 4),  16, 4, BOOT_MODE_APU_DISABLE), \
+    EFUSE_TILE((0x23c / 4), 188, 4, CRC), \
+    EFUSE_TILE((0x240 / 4),  96, 1, USER_0), \
+    EFUSE_TILE((0x244 / 4), 100, 1, USER_1), \
+    EFUSE_TILE((0x248 / 4), 104, 1, USER_2), \
+    EFUSE_TILE((0x24c / 4), 108, 1, USER_3), \
+    EFUSE_TILE((0x250 / 4), 112, 1, USER_4), \
+    EFUSE_TILE((0x254 / 4), 116, 1, USER_5), \
+    EFUSE_TILE((0x258 / 4), 120, 1, USER_6), \
+    EFUSE_TILE((0x25c / 4), 124, 1, USER_7), \
+    EFUSE_TILE((0x260 / 4), 128, 1, USER_8), \
+    EFUSE_TILE((0x264 / 4), 132, 1, USER_9), \
+    EFUSE_TILE((0x268 / 4), 136, 1, USER_10), \
+    EFUSE_TILE((0x26c / 4), 140, 1, USER_11), \
+    EFUSE_TILE((0x270 / 4), 144, 1, USER_12), \
+    EFUSE_TILE((0x274 / 4), 148, 1, USER_13), \
+    EFUSE_TILE((0x278 / 4), 152, 1, USER_14), \
+    EFUSE_TILE((0x27c / 4), 156, 1, USER_15), \
+    EFUSE_TILE((0x280 / 4), 160, 1, USER_16), \
+    EFUSE_TILE((0x284 / 4), 164, 1, USER_17), \
+    EFUSE_TILE((0x288 / 4), 168, 1, USER_18), \
+    EFUSE_TILE((0x28c / 4), 172, 1, USER_19), \
+    EFUSE_TILE((0x290 / 4), 176, 1, USER_20), \
+    EFUSE_TILE((0x294 / 4), 180, 1, USER_21), \
+    EFUSE_TILE((0x298 / 4), 184, 1, USER_22), \
+    EFUSE_TILE((0x29c / 4), 188, 1, USER_23), \
+    EFUSE_TILE((0x2a0 / 4),  96, 2, USER_24), \
+    EFUSE_TILE((0x2a4 / 4), 100, 2, USER_25), \
+    EFUSE_TILE((0x2a8 / 4), 104, 2, USER_26), \
+    EFUSE_TILE((0x2ac / 4), 108, 2, USER_27), \
+    EFUSE_TILE((0x2b0 / 4), 112, 2, USER_28), \
+    EFUSE_TILE((0x2b4 / 4), 116, 2, USER_29), \
+    EFUSE_TILE((0x2b8 / 4), 120, 2, USER_30), \
+    EFUSE_TILE((0x2bc / 4), 124, 2, USER_31), \
+    EFUSE_TILE((0x2c0 / 4), 128, 2, USER_32), \
+    EFUSE_TILE((0x2c4 / 4), 132, 2, USER_33), \
+    EFUSE_TILE((0x2c8 / 4), 136, 2, USER_34), \
+    EFUSE_TILE((0x2cc / 4), 140, 2, USER_35), \
+    EFUSE_TILE((0x2d0 / 4), 144, 2, USER_36), \
+    EFUSE_TILE((0x2d4 / 4), 148, 2, USER_37), \
+    EFUSE_TILE((0x2d8 / 4), 152, 2, USER_38), \
+    EFUSE_TILE((0x2dc / 4), 156, 2, USER_39), \
+    EFUSE_TILE((0x2e0 / 4), 160, 2, USER_40), \
+    EFUSE_TILE((0x2e4 / 4), 164, 2, USER_41), \
+    EFUSE_TILE((0x2e8 / 4), 168, 2, USER_42), \
+    EFUSE_TILE((0x2ec / 4), 172, 2, USER_43), \
+    EFUSE_TILE((0x2f0 / 4), 176, 2, USER_44), \
+    EFUSE_TILE((0x2f4 / 4), 180, 2, USER_45), \
+    EFUSE_TILE((0x2f8 / 4), 184, 2, USER_46), \
+    EFUSE_TILE((0x2fc / 4), 188, 2, USER_47), \
+    EFUSE_TILE((0x300 / 4), 192, 5, PUF_SYN_0), \
+    EFUSE_TILE((0x304 / 4), 193, 5, PUF_SYN_1), \
+    EFUSE_TILE((0x308 / 4), 194, 5, PUF_SYN_2), \
+    EFUSE_TILE((0x30c / 4), 195, 5, PUF_SYN_3), \
+    EFUSE_TILE((0x310 / 4), 196, 5, PUF_SYN_4), \
+    EFUSE_TILE((0x314 / 4), 197, 5, PUF_SYN_5), \
+    EFUSE_TILE((0x318 / 4), 198, 5, PUF_SYN_6), \
+    EFUSE_TILE((0x31c / 4), 199, 5, PUF_SYN_7), \
+    EFUSE_TILE((0x320 / 4), 200, 5, PUF_SYN_8), \
+    EFUSE_TILE((0x324 / 4), 201, 5, PUF_SYN_9), \
+    EFUSE_TILE((0x328 / 4), 202, 5, PUF_SYN_10), \
+    EFUSE_TILE((0x32c / 4), 203, 5, PUF_SYN_11), \
+    EFUSE_TILE((0x330 / 4), 204, 5, PUF_SYN_12), \
+    EFUSE_TILE((0x334 / 4), 205, 5, PUF_SYN_13), \
+    EFUSE_TILE((0x338 / 4), 206, 5, PUF_SYN_14), \
+    EFUSE_TILE((0x33c / 4), 207, 5, PUF_SYN_15), \
+    EFUSE_TILE((0x340 / 4), 208, 5, PUF_SYN_16), \
+    EFUSE_TILE((0x344 / 4), 209, 5, PUF_SYN_17), \
+    EFUSE_TILE((0x348 / 4), 210, 5, PUF_SYN_18), \
+    EFUSE_TILE((0x34c / 4), 211, 5, PUF_SYN_19), \
+    EFUSE_TILE((0x350 / 4), 212, 5, PUF_SYN_20), \
+    EFUSE_TILE((0x354 / 4), 213, 5, PUF_SYN_21), \
+    EFUSE_TILE((0x358 / 4), 214, 5, PUF_SYN_22), \
+    EFUSE_TILE((0x35c / 4), 215, 5, PUF_SYN_23), \
+    EFUSE_TILE((0x360 / 4), 216, 5, PUF_SYN_24), \
+    EFUSE_TILE((0x364 / 4), 217, 5, PUF_SYN_25), \
+    EFUSE_TILE((0x368 / 4), 218, 5, PUF_SYN_26), \
+    EFUSE_TILE((0x36c / 4), 219, 5, PUF_SYN_27), \
+    EFUSE_TILE((0x370 / 4), 220, 5, PUF_SYN_28), \
+    EFUSE_TILE((0x374 / 4), 221, 5, PUF_SYN_29), \
+    EFUSE_TILE((0x378 / 4), 222, 5, PUF_SYN_30), \
+    EFUSE_TILE((0x37c / 4), 223, 5, PUF_SYN_31), \
+    EFUSE_TILE((0x380 / 4), 224, 5, PUF_SYN_32), \
+    EFUSE_TILE((0x384 / 4), 225, 5, PUF_SYN_33), \
+    EFUSE_TILE((0x388 / 4), 226, 5, PUF_SYN_34), \
+    EFUSE_TILE((0x38c / 4), 227, 5, PUF_SYN_35), \
+    EFUSE_TILE((0x390 / 4), 228, 5, PUF_SYN_36), \
+    EFUSE_TILE((0x394 / 4), 229, 5, PUF_SYN_37), \
+    EFUSE_TILE((0x398 / 4), 230, 5, PUF_SYN_38), \
+    EFUSE_TILE((0x39c / 4), 231, 5, PUF_SYN_39), \
+    EFUSE_TILE((0x3a0 / 4), 232, 5, PUF_SYN_40), \
+    EFUSE_TILE((0x3a4 / 4), 233, 5, PUF_SYN_41), \
+    EFUSE_TILE((0x3a8 / 4), 234, 5, PUF_SYN_42), \
+    EFUSE_TILE((0x3ac / 4), 235, 5, PUF_SYN_43), \
+    EFUSE_TILE((0x3b0 / 4), 236, 5, PUF_SYN_44), \
+    EFUSE_TILE((0x3b4 / 4), 237, 5, PUF_SYN_45), \
+    EFUSE_TILE((0x3b8 / 4), 238, 5, PUF_SYN_46), \
+    EFUSE_TILE((0x3bc / 4), 239, 5, PUF_SYN_47), \
+    EFUSE_TILE((0x3c0 / 4), 240, 5, PUF_SYN_48), \
+    EFUSE_TILE((0x3c4 / 4), 241, 5, PUF_SYN_49), \
+    EFUSE_TILE((0x3c8 / 4), 242, 5, PUF_SYN_50), \
+    EFUSE_TILE((0x3cc / 4), 243, 5, PUF_SYN_51), \
+    EFUSE_TILE((0x3d0 / 4), 244, 5, PUF_SYN_52), \
+    EFUSE_TILE((0x3d4 / 4), 245, 5, PUF_SYN_53), \
+    EFUSE_TILE((0x3d8 / 4), 246, 5, PUF_SYN_54), \
+    EFUSE_TILE((0x3dc / 4), 247, 5, PUF_SYN_55), \
+    EFUSE_TILE((0x3e0 / 4), 248, 5, PUF_SYN_56), \
+    EFUSE_TILE((0x3e4 / 4), 249, 5, PUF_SYN_57), \
+    EFUSE_TILE((0x3e8 / 4), 250, 5, PUF_SYN_58), \
+    EFUSE_TILE((0x3ec / 4), 251, 5, PUF_SYN_59), \
+    EFUSE_TILE((0x3f0 / 4), 252, 5, PUF_SYN_60), \
+    EFUSE_TILE((0x3f4 / 4), 253, 5, PUF_SYN_61), \
+    EFUSE_TILE((0x3f8 / 4), 254, 5, PUF_SYN_62), \
+    EFUSE_TILE((0x3fc / 4), 255, 5, PUF_SYN_63), \
+    EFUSE_TILE((0x400 / 4), 448, 5, PUF_SYN_64), \
+    EFUSE_TILE((0x404 / 4), 449, 5, PUF_SYN_65), \
+    EFUSE_TILE((0x408 / 4), 450, 5, PUF_SYN_66), \
+    EFUSE_TILE((0x40c / 4), 451, 5, PUF_SYN_67), \
+    EFUSE_TILE((0x410 / 4), 452, 5, PUF_SYN_68), \
+    EFUSE_TILE((0x414 / 4), 453, 5, PUF_SYN_69), \
+    EFUSE_TILE((0x418 / 4), 454, 5, PUF_SYN_70), \
+    EFUSE_TILE((0x41c / 4), 455, 5, PUF_SYN_71), \
+    EFUSE_TILE((0x420 / 4), 456, 5, PUF_SYN_72), \
+    EFUSE_TILE((0x424 / 4), 457, 5, PUF_SYN_73), \
+    EFUSE_TILE((0x428 / 4), 458, 5, PUF_SYN_74), \
+    EFUSE_TILE((0x42c / 4), 459, 5, PUF_SYN_75), \
+    EFUSE_TILE((0x430 / 4), 460, 5, PUF_SYN_76), \
+    EFUSE_TILE((0x434 / 4), 461, 5, PUF_SYN_77), \
+    EFUSE_TILE((0x438 / 4), 462, 5, PUF_SYN_78), \
+    EFUSE_TILE((0x43c / 4), 463, 5, PUF_SYN_79), \
+    EFUSE_TILE((0x440 / 4), 464, 5, PUF_SYN_80), \
+    EFUSE_TILE((0x444 / 4), 465, 5, PUF_SYN_81), \
+    EFUSE_TILE((0x448 / 4), 466, 5, PUF_SYN_82), \
+    EFUSE_TILE((0x44c / 4), 467, 5, PUF_SYN_83), \
+    EFUSE_TILE((0x450 / 4), 468, 5, PUF_SYN_84), \
+    EFUSE_TILE((0x454 / 4), 469, 5, PUF_SYN_85), \
+    EFUSE_TILE((0x458 / 4), 470, 5, PUF_SYN_86), \
+    EFUSE_TILE((0x45c / 4), 471, 5, PUF_SYN_87), \
+    EFUSE_TILE((0x460 / 4), 472, 5, PUF_SYN_88), \
+    EFUSE_TILE((0x464 / 4), 473, 5, PUF_SYN_89), \
+    EFUSE_TILE((0x468 / 4), 474, 5, PUF_SYN_90), \
+    EFUSE_TILE((0x46c / 4), 475, 5, PUF_SYN_91), \
+    EFUSE_TILE((0x470 / 4), 476, 5, PUF_SYN_92), \
+    EFUSE_TILE((0x474 / 4), 477, 5, PUF_SYN_93), \
+    EFUSE_TILE((0x478 / 4), 478, 5, PUF_SYN_94), \
+    EFUSE_TILE((0x47c / 4), 479, 5, PUF_SYN_95), \
+    EFUSE_TILE((0x480 / 4), 480, 5, PUF_SYN_96), \
+    EFUSE_TILE((0x484 / 4), 481, 5, PUF_SYN_97), \
+    EFUSE_TILE((0x488 / 4), 482, 5, PUF_SYN_98), \
+    EFUSE_TILE((0x48c / 4), 483, 5, PUF_SYN_99), \
+    EFUSE_TILE((0x490 / 4), 484, 5, PUF_SYN_100), \
+    EFUSE_TILE((0x494 / 4), 485, 5, PUF_SYN_101), \
+    EFUSE_TILE((0x498 / 4), 486, 5, PUF_SYN_102), \
+    EFUSE_TILE((0x49c / 4), 487, 5, PUF_SYN_103), \
+    EFUSE_TILE((0x4a0 / 4), 488, 5, PUF_SYN_104), \
+    EFUSE_TILE((0x4a4 / 4), 489, 5, PUF_SYN_105), \
+    EFUSE_TILE((0x4a8 / 4), 490, 5, PUF_SYN_106), \
+    EFUSE_TILE((0x4ac / 4), 491, 5, PUF_SYN_107), \
+    EFUSE_TILE((0x4b0 / 4), 492, 5, PUF_SYN_108), \
+    EFUSE_TILE((0x4b4 / 4), 493, 5, PUF_SYN_109), \
+    EFUSE_TILE((0x4b8 / 4), 494, 5, PUF_SYN_110), \
+    EFUSE_TILE((0x4bc / 4), 495, 5, PUF_SYN_111), \
+    EFUSE_TILE((0x4c0 / 4), 496, 5, PUF_SYN_112), \
+    EFUSE_TILE((0x4c4 / 4), 497, 5, PUF_SYN_113), \
+    EFUSE_TILE((0x4c8 / 4), 498, 5, PUF_SYN_114), \
+    EFUSE_TILE((0x4cc / 4), 499, 5, PUF_SYN_115), \
+    EFUSE_TILE((0x4d0 / 4), 500, 5, PUF_SYN_116), \
+    EFUSE_TILE((0x4d4 / 4), 501, 5, PUF_SYN_117), \
+    EFUSE_TILE((0x4d8 / 4), 502, 5, PUF_SYN_118), \
+    EFUSE_TILE((0x4dc / 4), 503, 5, PUF_SYN_119), \
+    EFUSE_TILE((0x4e0 / 4), 504, 5, PUF_SYN_120), \
+    EFUSE_TILE((0x4e4 / 4), 505, 5, PUF_SYN_121), \
+    EFUSE_TILE((0x4e8 / 4), 506, 5, PUF_SYN_122), \
+    EFUSE_TILE((0x4ec / 4), 507, 5, PUF_SYN_123), \
+    EFUSE_TILE((0x4f0 / 4), 508, 5, PUF_SYN_124), \
+    EFUSE_TILE((0x4f4 / 4), 509, 5, PUF_SYN_125), \
+    EFUSE_TILE((0x4f8 / 4), 510, 5, PUF_SYN_126))
+
+#define EFUSE_U8_TILES_AES_KEY EFUSE_LIST( \
+    EFUSE_TILE(0,  16, 2), \
+    EFUSE_TILE(1,  17, 2), \
+    EFUSE_TILE(2,  18, 2), \
+    EFUSE_TILE(3,  19, 2), \
+    EFUSE_TILE(4,  20, 2), \
+    EFUSE_TILE(5,  21, 2), \
+    EFUSE_TILE(6,  22, 2), \
+    EFUSE_TILE(7,  23, 2), \
+    EFUSE_TILE(8,  24, 2), \
+    EFUSE_TILE(9,  25, 2), \
+    EFUSE_TILE(10, 26, 2), \
+    EFUSE_TILE(11, 27, 2), \
+    EFUSE_TILE(12, 28, 2), \
+    EFUSE_TILE(13, 29, 2), \
+    EFUSE_TILE(14, 30, 2), \
+    EFUSE_TILE(15, 31, 2), \
+    EFUSE_TILE(16, 16, 3), \
+    EFUSE_TILE(17, 17, 3), \
+    EFUSE_TILE(18, 18, 3), \
+    EFUSE_TILE(19, 19, 3), \
+    EFUSE_TILE(20, 20, 3), \
+    EFUSE_TILE(21, 21, 3), \
+    EFUSE_TILE(22, 22, 3), \
+    EFUSE_TILE(23, 23, 3), \
+    EFUSE_TILE(24, 24, 3), \
+    EFUSE_TILE(25, 25, 3), \
+    EFUSE_TILE(26, 26, 3), \
+    EFUSE_TILE(27, 27, 3), \
+    EFUSE_TILE(28, 28, 3), \
+    EFUSE_TILE(29, 29, 3), \
+    EFUSE_TILE(30, 30, 3), \
+    EFUSE_TILE(31, 31, 3))
+
+#define EFUSE_U8_TILES_USER0_KEY EFUSE_LIST( \
+    EFUSE_TILE(0,  56, 2), \
+    EFUSE_TILE(1,  57, 2), \
+    EFUSE_TILE(2,  58, 2), \
+    EFUSE_TILE(3,  59, 2), \
+    EFUSE_TILE(4,  60, 2), \
+    EFUSE_TILE(5,  61, 2), \
+    EFUSE_TILE(6,  62, 2), \
+    EFUSE_TILE(7,  63, 2), \
+    EFUSE_TILE(8,  66, 2), \
+    EFUSE_TILE(9,  66, 3), \
+    EFUSE_TILE(10, 67, 2), \
+    EFUSE_TILE(11, 67, 3), \
+    EFUSE_TILE(12, 68, 2), \
+    EFUSE_TILE(13, 68, 3), \
+    EFUSE_TILE(14, 69, 2), \
+    EFUSE_TILE(15, 69, 3), \
+    EFUSE_TILE(16, 70, 2), \
+    EFUSE_TILE(17, 70, 3), \
+    EFUSE_TILE(18, 71, 2), \
+    EFUSE_TILE(19, 71, 3), \
+    EFUSE_TILE(20, 72, 2), \
+    EFUSE_TILE(21, 72, 3), \
+    EFUSE_TILE(22, 73, 2), \
+    EFUSE_TILE(23, 73, 3), \
+    EFUSE_TILE(24, 74, 2), \
+    EFUSE_TILE(25, 75, 2), \
+    EFUSE_TILE(26, 76, 2), \
+    EFUSE_TILE(27, 77, 2), \
+    EFUSE_TILE(28, 78, 2), \
+    EFUSE_TILE(29, 79, 2), \
+    EFUSE_TILE(30, 80, 2), \
+    EFUSE_TILE(31, 81, 2))
+
+#define EFUSE_U8_TILES_USER1_KEY EFUSE_LIST( \
+    EFUSE_TILE(0,  48, 3), \
+    EFUSE_TILE(1,  49, 3), \
+    EFUSE_TILE(2,  50, 3), \
+    EFUSE_TILE(3,  51, 3), \
+    EFUSE_TILE(4,  52, 3), \
+    EFUSE_TILE(5,  53, 3), \
+    EFUSE_TILE(6,  54, 3), \
+    EFUSE_TILE(7,  55, 3), \
+    EFUSE_TILE(8,  66, 4), \
+    EFUSE_TILE(9,  67, 4), \
+    EFUSE_TILE(10, 68, 4), \
+    EFUSE_TILE(11, 69, 4), \
+    EFUSE_TILE(12, 70, 4), \
+    EFUSE_TILE(13, 71, 4), \
+    EFUSE_TILE(14, 72, 4), \
+    EFUSE_TILE(15, 73, 4), \
+    EFUSE_TILE(16, 74, 3), \
+    EFUSE_TILE(17, 74, 4), \
+    EFUSE_TILE(18, 75, 3), \
+    EFUSE_TILE(19, 75, 4), \
+    EFUSE_TILE(20, 76, 3), \
+    EFUSE_TILE(21, 76, 4), \
+    EFUSE_TILE(22, 77, 3), \
+    EFUSE_TILE(23, 77, 4), \
+    EFUSE_TILE(24, 78, 3), \
+    EFUSE_TILE(25, 78, 4), \
+    EFUSE_TILE(26, 79, 3), \
+    EFUSE_TILE(27, 79, 4), \
+    EFUSE_TILE(28, 80, 3), \
+    EFUSE_TILE(29, 80, 4), \
+    EFUSE_TILE(30, 81, 3), \
+    EFUSE_TILE(31, 81, 4))
+
+#define EFUSE_U8_TILES_UDS EFUSE_LIST( \
+    EFUSE_TILE(0,  48, 4), \
+    EFUSE_TILE(1,  49, 4), \
+    EFUSE_TILE(2,  50, 4), \
+    EFUSE_TILE(3,  51, 4), \
+    EFUSE_TILE(4,  52, 4), \
+    EFUSE_TILE(5,  53, 4), \
+    EFUSE_TILE(6,  54, 4), \
+    EFUSE_TILE(7,  55, 4), \
+    EFUSE_TILE(8,  56, 3), \
+    EFUSE_TILE(9,  56, 4), \
+    EFUSE_TILE(10, 57, 3), \
+    EFUSE_TILE(11, 57, 4), \
+    EFUSE_TILE(12, 58, 3), \
+    EFUSE_TILE(13, 58, 4), \
+    EFUSE_TILE(14, 59, 3), \
+    EFUSE_TILE(15, 59, 4), \
+    EFUSE_TILE(16, 60, 3), \
+    EFUSE_TILE(17, 60, 4), \
+    EFUSE_TILE(18, 61, 3), \
+    EFUSE_TILE(19, 61, 4), \
+    EFUSE_TILE(20, 62, 3), \
+    EFUSE_TILE(21, 62, 4), \
+    EFUSE_TILE(22, 63, 3), \
+    EFUSE_TILE(23, 63, 4), \
+    EFUSE_TILE(24, 64, 1), \
+    EFUSE_TILE(25, 64, 2), \
+    EFUSE_TILE(26, 64, 3), \
+    EFUSE_TILE(27, 64, 4), \
+    EFUSE_TILE(28, 65, 1), \
+    EFUSE_TILE(29, 65, 2), \
+    EFUSE_TILE(30, 65, 3), \
+    EFUSE_TILE(31, 65, 4), \
+    EFUSE_TILE(32, 66, 1), \
+    EFUSE_TILE(33, 67, 1), \
+    EFUSE_TILE(34, 68, 1), \
+    EFUSE_TILE(35, 69, 1), \
+    EFUSE_TILE(36, 70, 1), \
+    EFUSE_TILE(37, 71, 1), \
+    EFUSE_TILE(38, 72, 1), \
+    EFUSE_TILE(39, 73, 1), \
+    EFUSE_TILE(40, 74, 1), \
+    EFUSE_TILE(41, 75, 1), \
+    EFUSE_TILE(42, 76, 1), \
+    EFUSE_TILE(43, 77, 1), \
+    EFUSE_TILE(44, 78, 1), \
+    EFUSE_TILE(45, 79, 1), \
+    EFUSE_TILE(46, 80, 1), \
+    EFUSE_TILE(47, 81, 1))
+
+/*
+ * Access control's level-1 table initializers
+ */
+#define EFUSE_ACL1_WR_ONLY EFUSE_LIST( \
+    EFUSE_ACL1(16,  1, ALWAYS), \
+    EFUSE_ACL1(16,  2, ALWAYS), \
+    EFUSE_ACL1(17,  1, ALWAYS), \
+    EFUSE_ACL1(17,  2, ALWAYS), \
+    EFUSE_ACL1(18,  1, ALWAYS), \
+    EFUSE_ACL1(18,  2, ALWAYS), \
+    EFUSE_ACL1(19,  1, ALWAYS), \
+    EFUSE_ACL1(19,  2, ALWAYS), \
+    EFUSE_ACL1(20,  1, ALWAYS), \
+    EFUSE_ACL1(20,  2, ALWAYS), \
+    EFUSE_ACL1(21,  1, ALWAYS), \
+    EFUSE_ACL1(21,  2, ALWAYS), \
+    EFUSE_ACL1(22,  1, ALWAYS), \
+    EFUSE_ACL1(22,  2, ALWAYS), \
+    EFUSE_ACL1(23,  1, ALWAYS), \
+    EFUSE_ACL1(23,  2, ALWAYS), \
+    EFUSE_ACL1(24,  1, ALWAYS), \
+    EFUSE_ACL1(24,  2, ALWAYS), \
+    EFUSE_ACL1(25,  1, ALWAYS), \
+    EFUSE_ACL1(25,  2, ALWAYS), \
+    EFUSE_ACL1(26,  1, ALWAYS), \
+    EFUSE_ACL1(26,  2, ALWAYS), \
+    EFUSE_ACL1(27,  1, ALWAYS), \
+    EFUSE_ACL1(27,  2, ALWAYS), \
+    EFUSE_ACL1(28,  1, ALWAYS), \
+    EFUSE_ACL1(28,  2, ALWAYS), \
+    EFUSE_ACL1(29,  1, ALWAYS), \
+    EFUSE_ACL1(29,  2, ALWAYS), \
+    EFUSE_ACL1(30,  1, ALWAYS), \
+    EFUSE_ACL1(30,  2, ALWAYS), \
+    EFUSE_ACL1(31,  1, ALWAYS), \
+    EFUSE_ACL1(31,  2, ALWAYS), \
+    EFUSE_ACL1(48,  2, ALWAYS), \
+    EFUSE_ACL1(48,  3, ALWAYS), \
+    EFUSE_ACL1(49,  2, ALWAYS), \
+    EFUSE_ACL1(49,  3, ALWAYS), \
+    EFUSE_ACL1(50,  2, ALWAYS), \
+    EFUSE_ACL1(50,  3, ALWAYS), \
+    EFUSE_ACL1(51,  2, ALWAYS), \
+    EFUSE_ACL1(51,  3, ALWAYS), \
+    EFUSE_ACL1(52,  2, ALWAYS), \
+    EFUSE_ACL1(52,  3, ALWAYS), \
+    EFUSE_ACL1(53,  2, ALWAYS), \
+    EFUSE_ACL1(53,  3, ALWAYS), \
+    EFUSE_ACL1(54,  2, ALWAYS), \
+    EFUSE_ACL1(54,  3, ALWAYS), \
+    EFUSE_ACL1(55,  2, ALWAYS), \
+    EFUSE_ACL1(55,  3, ALWAYS), \
+    EFUSE_ACL1(56,  1, ALWAYS), \
+    EFUSE_ACL1(56,  2, ALWAYS), \
+    EFUSE_ACL1(56,  3, ALWAYS), \
+    EFUSE_ACL1(57,  1, ALWAYS), \
+    EFUSE_ACL1(57,  2, ALWAYS), \
+    EFUSE_ACL1(57,  3, ALWAYS), \
+    EFUSE_ACL1(58,  1, ALWAYS), \
+    EFUSE_ACL1(58,  2, ALWAYS), \
+    EFUSE_ACL1(58,  3, ALWAYS), \
+    EFUSE_ACL1(59,  1, ALWAYS), \
+    EFUSE_ACL1(59,  2, ALWAYS), \
+    EFUSE_ACL1(59,  3, ALWAYS), \
+    EFUSE_ACL1(60,  1, ALWAYS), \
+    EFUSE_ACL1(60,  2, ALWAYS), \
+    EFUSE_ACL1(60,  3, ALWAYS), \
+    EFUSE_ACL1(61,  1, ALWAYS), \
+    EFUSE_ACL1(61,  2, ALWAYS), \
+    EFUSE_ACL1(61,  3, ALWAYS), \
+    EFUSE_ACL1(62,  1, ALWAYS), \
+    EFUSE_ACL1(62,  2, ALWAYS), \
+    EFUSE_ACL1(62,  3, ALWAYS), \
+    EFUSE_ACL1(63,  1, ALWAYS), \
+    EFUSE_ACL1(63,  2, ALWAYS), \
+    EFUSE_ACL1(63,  3, ALWAYS), \
+    EFUSE_ACL1(64,  0, ALWAYS), \
+    EFUSE_ACL1(64,  1, ALWAYS), \
+    EFUSE_ACL1(64,  2, ALWAYS), \
+    EFUSE_ACL1(64,  3, ALWAYS), \
+    EFUSE_ACL1(65,  0, ALWAYS), \
+    EFUSE_ACL1(65,  1, ALWAYS), \
+    EFUSE_ACL1(65,  2, ALWAYS), \
+    EFUSE_ACL1(65,  3, ALWAYS), \
+    EFUSE_ACL1(66,  0, ALWAYS), \
+    EFUSE_ACL1(66,  1, ALWAYS), \
+    EFUSE_ACL1(66,  2, ALWAYS), \
+    EFUSE_ACL1(66,  3, ALWAYS), \
+    EFUSE_ACL1(67,  0, ALWAYS), \
+    EFUSE_ACL1(67,  1, ALWAYS), \
+    EFUSE_ACL1(67,  2, ALWAYS), \
+    EFUSE_ACL1(67,  3, ALWAYS), \
+    EFUSE_ACL1(68,  0, ALWAYS), \
+    EFUSE_ACL1(68,  1, ALWAYS), \
+    EFUSE_ACL1(68,  2, ALWAYS), \
+    EFUSE_ACL1(68,  3, ALWAYS), \
+    EFUSE_ACL1(69,  0, ALWAYS), \
+    EFUSE_ACL1(69,  1, ALWAYS), \
+    EFUSE_ACL1(69,  2, ALWAYS), \
+    EFUSE_ACL1(69,  3, ALWAYS), \
+    EFUSE_ACL1(70,  0, ALWAYS), \
+    EFUSE_ACL1(70,  1, ALWAYS), \
+    EFUSE_ACL1(70,  2, ALWAYS), \
+    EFUSE_ACL1(70,  3, ALWAYS), \
+    EFUSE_ACL1(71,  0, ALWAYS), \
+    EFUSE_ACL1(71,  1, ALWAYS), \
+    EFUSE_ACL1(71,  2, ALWAYS), \
+    EFUSE_ACL1(71,  3, ALWAYS), \
+    EFUSE_ACL1(72,  0, ALWAYS), \
+    EFUSE_ACL1(72,  1, ALWAYS), \
+    EFUSE_ACL1(72,  2, ALWAYS), \
+    EFUSE_ACL1(72,  3, ALWAYS), \
+    EFUSE_ACL1(73,  0, ALWAYS), \
+    EFUSE_ACL1(73,  1, ALWAYS), \
+    EFUSE_ACL1(73,  2, ALWAYS), \
+    EFUSE_ACL1(73,  3, ALWAYS), \
+    EFUSE_ACL1(74,  0, ALWAYS), \
+    EFUSE_ACL1(74,  1, ALWAYS), \
+    EFUSE_ACL1(74,  2, ALWAYS), \
+    EFUSE_ACL1(74,  3, ALWAYS), \
+    EFUSE_ACL1(75,  0, ALWAYS), \
+    EFUSE_ACL1(75,  1, ALWAYS), \
+    EFUSE_ACL1(75,  2, ALWAYS), \
+    EFUSE_ACL1(75,  3, ALWAYS), \
+    EFUSE_ACL1(76,  0, ALWAYS), \
+    EFUSE_ACL1(76,  1, ALWAYS), \
+    EFUSE_ACL1(76,  2, ALWAYS), \
+    EFUSE_ACL1(76,  3, ALWAYS), \
+    EFUSE_ACL1(77,  0, ALWAYS), \
+    EFUSE_ACL1(77,  1, ALWAYS), \
+    EFUSE_ACL1(77,  2, ALWAYS), \
+    EFUSE_ACL1(77,  3, ALWAYS), \
+    EFUSE_ACL1(78,  0, ALWAYS), \
+    EFUSE_ACL1(78,  1, ALWAYS), \
+    EFUSE_ACL1(78,  2, ALWAYS), \
+    EFUSE_ACL1(78,  3, ALWAYS), \
+    EFUSE_ACL1(79,  0, ALWAYS), \
+    EFUSE_ACL1(79,  1, ALWAYS), \
+    EFUSE_ACL1(79,  2, ALWAYS), \
+    EFUSE_ACL1(79,  3, ALWAYS), \
+    EFUSE_ACL1(80,  0, ALWAYS), \
+    EFUSE_ACL1(80,  1, ALWAYS), \
+    EFUSE_ACL1(80,  2, ALWAYS), \
+    EFUSE_ACL1(80,  3, ALWAYS), \
+    EFUSE_ACL1(81,  0, ALWAYS), \
+    EFUSE_ACL1(81,  1, ALWAYS), \
+    EFUSE_ACL1(81,  2, ALWAYS), \
+    EFUSE_ACL1(81,  3, ALWAYS), \
+    EFUSE_ACL1(96,  0, DME), \
+    EFUSE_ACL1(96,  1, DME), \
+    EFUSE_ACL1(97,  0, DME), \
+    EFUSE_ACL1(97,  1, DME), \
+    EFUSE_ACL1(98,  0, DME), \
+    EFUSE_ACL1(98,  1, DME), \
+    EFUSE_ACL1(99,  0, DME), \
+    EFUSE_ACL1(99,  1, DME), \
+    EFUSE_ACL1(100, 0, DME), \
+    EFUSE_ACL1(100, 1, DME), \
+    EFUSE_ACL1(101, 0, DME), \
+    EFUSE_ACL1(101, 1, DME), \
+    EFUSE_ACL1(102, 0, DME), \
+    EFUSE_ACL1(102, 1, DME), \
+    EFUSE_ACL1(103, 0, DME), \
+    EFUSE_ACL1(103, 1, DME), \
+    EFUSE_ACL1(104, 0, DME), \
+    EFUSE_ACL1(104, 1, DME), \
+    EFUSE_ACL1(105, 0, DME), \
+    EFUSE_ACL1(105, 1, DME), \
+    EFUSE_ACL1(106, 0, DME), \
+    EFUSE_ACL1(106, 1, DME), \
+    EFUSE_ACL1(107, 0, DME), \
+    EFUSE_ACL1(107, 1, DME), \
+    EFUSE_ACL1(108, 0, DME), \
+    EFUSE_ACL1(108, 1, DME), \
+    EFUSE_ACL1(109, 0, DME), \
+    EFUSE_ACL1(109, 1, DME), \
+    EFUSE_ACL1(110, 0, DME), \
+    EFUSE_ACL1(110, 1, DME), \
+    EFUSE_ACL1(111, 0, DME), \
+    EFUSE_ACL1(111, 1, DME), \
+    EFUSE_ACL1(112, 0, DME), \
+    EFUSE_ACL1(112, 1, DME), \
+    EFUSE_ACL1(113, 0, DME), \
+    EFUSE_ACL1(113, 1, DME), \
+    EFUSE_ACL1(114, 0, DME), \
+    EFUSE_ACL1(114, 1, DME), \
+    EFUSE_ACL1(115, 0, DME), \
+    EFUSE_ACL1(115, 1, DME), \
+    EFUSE_ACL1(116, 0, DME), \
+    EFUSE_ACL1(116, 1, DME), \
+    EFUSE_ACL1(117, 0, DME), \
+    EFUSE_ACL1(117, 1, DME), \
+    EFUSE_ACL1(118, 0, DME), \
+    EFUSE_ACL1(118, 1, DME), \
+    EFUSE_ACL1(119, 0, DME), \
+    EFUSE_ACL1(119, 1, DME), \
+    EFUSE_ACL1(120, 0, DME), \
+    EFUSE_ACL1(120, 1, DME), \
+    EFUSE_ACL1(121, 0, DME), \
+    EFUSE_ACL1(121, 1, DME), \
+    EFUSE_ACL1(122, 0, DME), \
+    EFUSE_ACL1(122, 1, DME), \
+    EFUSE_ACL1(123, 0, DME), \
+    EFUSE_ACL1(123, 1, DME), \
+    EFUSE_ACL1(124, 0, DME), \
+    EFUSE_ACL1(124, 1, DME), \
+    EFUSE_ACL1(125, 0, DME), \
+    EFUSE_ACL1(125, 1, DME), \
+    EFUSE_ACL1(126, 0, DME), \
+    EFUSE_ACL1(126, 1, DME), \
+    EFUSE_ACL1(127, 0, DME), \
+    EFUSE_ACL1(127, 1, DME), \
+    EFUSE_ACL1(128, 0, DME), \
+    EFUSE_ACL1(128, 1, DME), \
+    EFUSE_ACL1(129, 0, DME), \
+    EFUSE_ACL1(129, 1, DME), \
+    EFUSE_ACL1(130, 0, DME), \
+    EFUSE_ACL1(130, 1, DME), \
+    EFUSE_ACL1(131, 0, DME), \
+    EFUSE_ACL1(131, 1, DME), \
+    EFUSE_ACL1(132, 0, DME), \
+    EFUSE_ACL1(132, 1, DME), \
+    EFUSE_ACL1(133, 0, DME), \
+    EFUSE_ACL1(133, 1, DME), \
+    EFUSE_ACL1(134, 0, DME), \
+    EFUSE_ACL1(134, 1, DME), \
+    EFUSE_ACL1(135, 0, DME), \
+    EFUSE_ACL1(135, 1, DME), \
+    EFUSE_ACL1(136, 0, DME), \
+    EFUSE_ACL1(136, 1, DME), \
+    EFUSE_ACL1(137, 0, DME), \
+    EFUSE_ACL1(137, 1, DME), \
+    EFUSE_ACL1(138, 0, DME), \
+    EFUSE_ACL1(138, 1, DME), \
+    EFUSE_ACL1(139, 0, DME), \
+    EFUSE_ACL1(139, 1, DME), \
+    EFUSE_ACL1(140, 0, DME), \
+    EFUSE_ACL1(140, 1, DME), \
+    EFUSE_ACL1(141, 0, DME), \
+    EFUSE_ACL1(141, 1, DME), \
+    EFUSE_ACL1(142, 0, DME), \
+    EFUSE_ACL1(142, 1, DME), \
+    EFUSE_ACL1(143, 0, DME), \
+    EFUSE_ACL1(143, 1, DME), \
+    EFUSE_ACL1(144, 0, DME), \
+    EFUSE_ACL1(144, 1, DME), \
+    EFUSE_ACL1(145, 0, DME), \
+    EFUSE_ACL1(145, 1, DME), \
+    EFUSE_ACL1(146, 0, DME), \
+    EFUSE_ACL1(146, 1, DME), \
+    EFUSE_ACL1(147, 0, DME), \
+    EFUSE_ACL1(147, 1, DME), \
+    EFUSE_ACL1(148, 0, DME), \
+    EFUSE_ACL1(148, 1, DME), \
+    EFUSE_ACL1(149, 0, DME), \
+    EFUSE_ACL1(149, 1, DME), \
+    EFUSE_ACL1(150, 0, DME), \
+    EFUSE_ACL1(150, 1, DME), \
+    EFUSE_ACL1(151, 0, DME), \
+    EFUSE_ACL1(151, 1, DME), \
+    EFUSE_ACL1(152, 0, DME), \
+    EFUSE_ACL1(152, 1, DME), \
+    EFUSE_ACL1(153, 0, DME), \
+    EFUSE_ACL1(153, 1, DME), \
+    EFUSE_ACL1(154, 0, DME), \
+    EFUSE_ACL1(154, 1, DME), \
+    EFUSE_ACL1(155, 0, DME), \
+    EFUSE_ACL1(155, 1, DME), \
+    EFUSE_ACL1(156, 0, DME), \
+    EFUSE_ACL1(156, 1, DME), \
+    EFUSE_ACL1(157, 0, DME), \
+    EFUSE_ACL1(157, 1, DME), \
+    EFUSE_ACL1(158, 0, DME), \
+    EFUSE_ACL1(158, 1, DME), \
+    EFUSE_ACL1(159, 0, DME), \
+    EFUSE_ACL1(159, 1, DME), \
+    EFUSE_ACL1(160, 0, DME), \
+    EFUSE_ACL1(160, 1, DME), \
+    EFUSE_ACL1(161, 0, DME), \
+    EFUSE_ACL1(161, 1, DME), \
+    EFUSE_ACL1(162, 0, DME), \
+    EFUSE_ACL1(162, 1, DME), \
+    EFUSE_ACL1(163, 0, DME), \
+    EFUSE_ACL1(163, 1, DME), \
+    EFUSE_ACL1(164, 0, DME), \
+    EFUSE_ACL1(164, 1, DME), \
+    EFUSE_ACL1(165, 0, DME), \
+    EFUSE_ACL1(165, 1, DME), \
+    EFUSE_ACL1(166, 0, DME), \
+    EFUSE_ACL1(166, 1, DME), \
+    EFUSE_ACL1(167, 0, DME), \
+    EFUSE_ACL1(167, 1, DME), \
+    EFUSE_ACL1(168, 0, DME), \
+    EFUSE_ACL1(168, 1, DME), \
+    EFUSE_ACL1(169, 0, DME), \
+    EFUSE_ACL1(169, 1, DME), \
+    EFUSE_ACL1(170, 0, DME), \
+    EFUSE_ACL1(170, 1, DME), \
+    EFUSE_ACL1(171, 0, DME), \
+    EFUSE_ACL1(171, 1, DME), \
+    EFUSE_ACL1(172, 0, DME), \
+    EFUSE_ACL1(172, 1, DME), \
+    EFUSE_ACL1(173, 0, DME), \
+    EFUSE_ACL1(173, 1, DME), \
+    EFUSE_ACL1(174, 0, DME), \
+    EFUSE_ACL1(174, 1, DME), \
+    EFUSE_ACL1(175, 0, DME), \
+    EFUSE_ACL1(175, 1, DME), \
+    EFUSE_ACL1(176, 0, DME), \
+    EFUSE_ACL1(176, 1, DME), \
+    EFUSE_ACL1(177, 0, DME), \
+    EFUSE_ACL1(177, 1, DME), \
+    EFUSE_ACL1(178, 0, DME), \
+    EFUSE_ACL1(178, 1, DME), \
+    EFUSE_ACL1(179, 0, DME), \
+    EFUSE_ACL1(179, 1, DME), \
+    EFUSE_ACL1(180, 0, DME), \
+    EFUSE_ACL1(180, 1, DME), \
+    EFUSE_ACL1(181, 0, DME), \
+    EFUSE_ACL1(181, 1, DME), \
+    EFUSE_ACL1(182, 0, DME), \
+    EFUSE_ACL1(182, 1, DME), \
+    EFUSE_ACL1(183, 0, DME), \
+    EFUSE_ACL1(183, 1, DME), \
+    EFUSE_ACL1(184, 0, DME), \
+    EFUSE_ACL1(184, 1, DME), \
+    EFUSE_ACL1(185, 0, DME), \
+    EFUSE_ACL1(185, 1, DME), \
+    EFUSE_ACL1(186, 0, DME), \
+    EFUSE_ACL1(186, 1, DME), \
+    EFUSE_ACL1(187, 0, DME), \
+    EFUSE_ACL1(187, 1, DME), \
+    EFUSE_ACL1(188, 0, DME), \
+    EFUSE_ACL1(188, 1, DME), \
+    EFUSE_ACL1(189, 0, DME), \
+    EFUSE_ACL1(189, 1, DME), \
+    EFUSE_ACL1(190, 0, DME), \
+    EFUSE_ACL1(190, 1, DME), \
+    EFUSE_ACL1(191, 0, DME), \
+    EFUSE_ACL1(191, 1, DME))
+
+#define EFUSE_ACL1_RD_ONLY EFUSE_LIST( \
+    EFUSE_ACL1(0,   0, FACTORY_ROW0), \
+    EFUSE_ACL1(0,   1, FACTORY_ROW0), \
+    EFUSE_ACL1(0,   2, FACTORY_ROW0), \
+    EFUSE_ACL1(0,   3, FACTORY_ROW0), \
+    EFUSE_ACL1(4,   0, DNA), \
+    EFUSE_ACL1(5,   0, DNA), \
+    EFUSE_ACL1(6,   0, DNA), \
+    EFUSE_ACL1(7,   0, DNA), \
+    EFUSE_ACL1(8,   0, DNA), \
+    EFUSE_ACL1(9,   0, DNA), \
+    EFUSE_ACL1(10,  0, DNA), \
+    EFUSE_ACL1(11,  0, DNA), \
+    EFUSE_ACL1(12,  0, DNA), \
+    EFUSE_ACL1(13,  0, DNA), \
+    EFUSE_ACL1(14,  0, DNA), \
+    EFUSE_ACL1(15,  0, DNA), \
+    EFUSE_ACL1(16,  0, DNA), \
+    EFUSE_ACL1(16,  1, TBIT0_5AB), \
+    EFUSE_ACL1(16,  2, TBIT0_5AB), \
+    EFUSE_ACL1(17,  0, DNA), \
+    EFUSE_ACL1(17,  1, TBIT0_5AB), \
+    EFUSE_ACL1(17,  2, TBIT0_5AB), \
+    EFUSE_ACL1(18,  0, DNA), \
+    EFUSE_ACL1(18,  1, TBIT0_5AB), \
+    EFUSE_ACL1(18,  2, TBIT0_5AB), \
+    EFUSE_ACL1(18,  3, FACTORY), \
+    EFUSE_ACL1(19,  0, DNA), \
+    EFUSE_ACL1(19,  1, TBIT0_5AB), \
+    EFUSE_ACL1(19,  2, TBIT0_5AB), \
+    EFUSE_ACL1(19,  3, FACTORY), \
+    EFUSE_ACL1(20,  0, FACTORY), \
+    EFUSE_ACL1(20,  1, TBIT0_5AB), \
+    EFUSE_ACL1(20,  2, TBIT0_5AB), \
+    EFUSE_ACL1(21,  0, FACTORY), \
+    EFUSE_ACL1(21,  1, TBIT0_5AB), \
+    EFUSE_ACL1(21,  2, TBIT0_5AB), \
+    EFUSE_ACL1(22,  0, FACTORY), \
+    EFUSE_ACL1(22,  1, TBIT0_5AB), \
+    EFUSE_ACL1(22,  2, TBIT0_5AB), \
+    EFUSE_ACL1(23,  0, FACTORY), \
+    EFUSE_ACL1(23,  1, TBIT0_5AB), \
+    EFUSE_ACL1(23,  2, TBIT0_5AB), \
+    EFUSE_ACL1(24,  0, FACTORY), \
+    EFUSE_ACL1(24,  1, TBIT0_5AB), \
+    EFUSE_ACL1(24,  2, TBIT0_5AB), \
+    EFUSE_ACL1(24,  3, 37F), \
+    EFUSE_ACL1(25,  0, FACTORY), \
+    EFUSE_ACL1(25,  1, TBIT0_5AB), \
+    EFUSE_ACL1(25,  2, TBIT0_5AB), \
+    EFUSE_ACL1(25,  3, 37F), \
+    EFUSE_ACL1(26,  0, FACTORY), \
+    EFUSE_ACL1(26,  1, TBIT0_5AB), \
+    EFUSE_ACL1(26,  2, TBIT0_5AB), \
+    EFUSE_ACL1(26,  3, 37F), \
+    EFUSE_ACL1(27,  0, FACTORY), \
+    EFUSE_ACL1(27,  1, TBIT0_5AB), \
+    EFUSE_ACL1(27,  2, TBIT0_5AB), \
+    EFUSE_ACL1(27,  3, 37F), \
+    EFUSE_ACL1(28,  0, FACTORY), \
+    EFUSE_ACL1(28,  1, TBIT0_5AB), \
+    EFUSE_ACL1(28,  2, TBIT0_5AB), \
+    EFUSE_ACL1(28,  3, FACTORY_5EC), \
+    EFUSE_ACL1(29,  0, FACTORY), \
+    EFUSE_ACL1(29,  1, TBIT0_5AB), \
+    EFUSE_ACL1(29,  2, TBIT0_5AB), \
+    EFUSE_ACL1(29,  3, FACTORY_5EC), \
+    EFUSE_ACL1(30,  0, FACTORY), \
+    EFUSE_ACL1(30,  1, TBIT0_5AB), \
+    EFUSE_ACL1(30,  2, TBIT0_5AB), \
+    EFUSE_ACL1(30,  3, FACTORY_5EC), \
+    EFUSE_ACL1(31,  0, FACTORY), \
+    EFUSE_ACL1(31,  1, TBIT0_5AB), \
+    EFUSE_ACL1(31,  2, TBIT0_5AB), \
+    EFUSE_ACL1(31,  3, FACTORY_5EC), \
+    EFUSE_ACL1(32,  0, FACTORY), \
+    EFUSE_ACL1(32,  1, RFSOC), \
+    EFUSE_ACL1(32,  2, TBIT0_REVOKE), \
+    EFUSE_ACL1(32,  3, TBIT0_REVOKE), \
+    EFUSE_ACL1(33,  0, FACTORY), \
+    EFUSE_ACL1(33,  1, RFSOC), \
+    EFUSE_ACL1(33,  2, TBIT0_REVOKE), \
+    EFUSE_ACL1(33,  3, TBIT0_REVOKE), \
+    EFUSE_ACL1(34,  0, FACTORY), \
+    EFUSE_ACL1(34,  1, RFSOC), \
+    EFUSE_ACL1(34,  2, TBIT0_REVOKE), \
+    EFUSE_ACL1(34,  3, TBIT0_REVOKE), \
+    EFUSE_ACL1(35,  0, FACTORY), \
+    EFUSE_ACL1(35,  1, RFSOC), \
+    EFUSE_ACL1(35,  2, TBIT0_REVOKE), \
+    EFUSE_ACL1(35,  3, TBIT0_REVOKE), \
+    EFUSE_ACL1(36,  0, FACTORY), \
+    EFUSE_ACL1(36,  1, RFSOC), \
+    EFUSE_ACL1(36,  2, TBIT0_REVOKE), \
+    EFUSE_ACL1(36,  3, TBIT0_REVOKE), \
+    EFUSE_ACL1(37,  0, FACTORY), \
+    EFUSE_ACL1(37,  1, RFSOC), \
+    EFUSE_ACL1(37,  2, TBIT0_REVOKE), \
+    EFUSE_ACL1(37,  3, TBIT0_REVOKE), \
+    EFUSE_ACL1(38,  0, FACTORY), \
+    EFUSE_ACL1(38,  1, RFSOC), \
+    EFUSE_ACL1(38,  2, TBIT0_REVOKE), \
+    EFUSE_ACL1(38,  3, TBIT0_REVOKE), \
+    EFUSE_ACL1(39,  0, FACTORY), \
+    EFUSE_ACL1(39,  1, RFSOC), \
+    EFUSE_ACL1(39,  2, TBIT0_REVOKE), \
+    EFUSE_ACL1(39,  3, TBIT0_REVOKE), \
+    EFUSE_ACL1(40,  0, FACTORY), \
+    EFUSE_ACL1(40,  2, TBIT0_REVOKE), \
+    EFUSE_ACL1(40,  3, TBIT0_REVOKE), \
+    EFUSE_ACL1(41,  0, FACTORY), \
+    EFUSE_ACL1(41,  2, TBIT0_REVOKE), \
+    EFUSE_ACL1(41,  3, TBIT0_REVOKE), \
+    EFUSE_ACL1(42,  0, FACTORY), \
+    EFUSE_ACL1(42,  2, TBIT0_REVOKE), \
+    EFUSE_ACL1(42,  3, TBIT0_REVOKE), \
+    EFUSE_ACL1(43,  0, FACTORY), \
+    EFUSE_ACL1(43,  2, TBIT0_REVOKE), \
+    EFUSE_ACL1(43,  3, TBIT0_REVOKE), \
+    EFUSE_ACL1(44,  1, TBIT0), \
+    EFUSE_ACL1(44,  2, TBIT0_REVOKE), \
+    EFUSE_ACL1(44,  3, TBIT0_REVOKE), \
+    EFUSE_ACL1(45,  1, TBIT0), \
+    EFUSE_ACL1(45,  2, TBIT0_REVOKE), \
+    EFUSE_ACL1(45,  3, TBIT0_REVOKE), \
+    EFUSE_ACL1(46,  1, TBIT0), \
+    EFUSE_ACL1(46,  2, TBIT0_REVOKE), \
+    EFUSE_ACL1(46,  3, TBIT0_REVOKE), \
+    EFUSE_ACL1(47,  1, TBIT0), \
+    EFUSE_ACL1(47,  2, TBIT0_REVOKE), \
+    EFUSE_ACL1(47,  3, TBIT0_REVOKE), \
+    EFUSE_ACL1(48,  2, TBIT0_5AF), \
+    EFUSE_ACL1(48,  3, TBIT0_58C), \
+    EFUSE_ACL1(49,  2, TBIT0_5AF), \
+    EFUSE_ACL1(49,  3, TBIT0_58C), \
+    EFUSE_ACL1(50,  2, TBIT0_5AF), \
+    EFUSE_ACL1(50,  3, TBIT0_58C), \
+    EFUSE_ACL1(51,  2, TBIT0_5AF), \
+    EFUSE_ACL1(51,  3, TBIT0_58C), \
+    EFUSE_ACL1(52,  2, TBIT0_5AF), \
+    EFUSE_ACL1(52,  3, TBIT0_58C), \
+    EFUSE_ACL1(53,  2, TBIT0_5AF), \
+    EFUSE_ACL1(53,  3, TBIT0_58C), \
+    EFUSE_ACL1(54,  2, TBIT0_5AF), \
+    EFUSE_ACL1(54,  3, TBIT0_58C), \
+    EFUSE_ACL1(55,  2, TBIT0_5AF), \
+    EFUSE_ACL1(55,  3, TBIT0_58C), \
+    EFUSE_ACL1(56,  1, TBIT0_5AD), \
+    EFUSE_ACL1(56,  2, TBIT0_58C), \
+    EFUSE_ACL1(56,  3, TBIT0_58C), \
+    EFUSE_ACL1(57,  1, TBIT0_5AD), \
+    EFUSE_ACL1(57,  2, TBIT0_58C), \
+    EFUSE_ACL1(57,  3, TBIT0_58C), \
+    EFUSE_ACL1(58,  1, TBIT0_5AD), \
+    EFUSE_ACL1(58,  2, TBIT0_58C), \
+    EFUSE_ACL1(58,  3, TBIT0_58C), \
+    EFUSE_ACL1(59,  1, TBIT0_5AD), \
+    EFUSE_ACL1(59,  2, TBIT0_58C), \
+    EFUSE_ACL1(59,  3, TBIT0_58C), \
+    EFUSE_ACL1(60,  1, TBIT0_5AD), \
+    EFUSE_ACL1(60,  2, TBIT0_58C), \
+    EFUSE_ACL1(60,  3, TBIT0_58C), \
+    EFUSE_ACL1(61,  1, TBIT0_5AD), \
+    EFUSE_ACL1(61,  2, TBIT0_58C), \
+    EFUSE_ACL1(61,  3, TBIT0_58C), \
+    EFUSE_ACL1(62,  1, TBIT0_5AD), \
+    EFUSE_ACL1(62,  2, TBIT0_58C), \
+    EFUSE_ACL1(62,  3, TBIT0_58C), \
+    EFUSE_ACL1(63,  1, TBIT0_5AD), \
+    EFUSE_ACL1(63,  2, TBIT0_58C), \
+    EFUSE_ACL1(63,  3, TBIT0_58C), \
+    EFUSE_ACL1(64,  0, TBIT0_58C), \
+    EFUSE_ACL1(64,  1, TBIT0_58C), \
+    EFUSE_ACL1(64,  2, TBIT0_58C), \
+    EFUSE_ACL1(64,  3, TBIT0_58C), \
+    EFUSE_ACL1(65,  0, TBIT0_58C), \
+    EFUSE_ACL1(65,  1, TBIT0_58C), \
+    EFUSE_ACL1(65,  2, TBIT0_58C), \
+    EFUSE_ACL1(65,  3, TBIT0_58C), \
+    EFUSE_ACL1(66,  0, TBIT0_58C), \
+    EFUSE_ACL1(66,  1, TBIT0_5AD), \
+    EFUSE_ACL1(66,  2, TBIT0_5AD), \
+    EFUSE_ACL1(66,  3, TBIT0_5AF), \
+    EFUSE_ACL1(67,  0, TBIT0_58C), \
+    EFUSE_ACL1(67,  1, TBIT0_5AD), \
+    EFUSE_ACL1(67,  2, TBIT0_5AD), \
+    EFUSE_ACL1(67,  3, TBIT0_5AF), \
+    EFUSE_ACL1(68,  0, TBIT0_58C), \
+    EFUSE_ACL1(68,  1, TBIT0_5AD), \
+    EFUSE_ACL1(68,  2, TBIT0_5AD), \
+    EFUSE_ACL1(68,  3, TBIT0_5AF), \
+    EFUSE_ACL1(69,  0, TBIT0_58C), \
+    EFUSE_ACL1(69,  1, TBIT0_5AD), \
+    EFUSE_ACL1(69,  2, TBIT0_5AD), \
+    EFUSE_ACL1(69,  3, TBIT0_5AF), \
+    EFUSE_ACL1(70,  0, TBIT0_58C), \
+    EFUSE_ACL1(70,  1, TBIT0_5AD), \
+    EFUSE_ACL1(70,  2, TBIT0_5AD), \
+    EFUSE_ACL1(70,  3, TBIT0_5AF), \
+    EFUSE_ACL1(71,  0, TBIT0_58C), \
+    EFUSE_ACL1(71,  1, TBIT0_5AD), \
+    EFUSE_ACL1(71,  2, TBIT0_5AD), \
+    EFUSE_ACL1(71,  3, TBIT0_5AF), \
+    EFUSE_ACL1(72,  0, TBIT0_58C), \
+    EFUSE_ACL1(72,  1, TBIT0_5AD), \
+    EFUSE_ACL1(72,  2, TBIT0_5AD), \
+    EFUSE_ACL1(72,  3, TBIT0_5AF), \
+    EFUSE_ACL1(73,  0, TBIT0_58C), \
+    EFUSE_ACL1(73,  1, TBIT0_5AD), \
+    EFUSE_ACL1(73,  2, TBIT0_5AD), \
+    EFUSE_ACL1(73,  3, TBIT0_5AF), \
+    EFUSE_ACL1(74,  0, TBIT0_58C), \
+    EFUSE_ACL1(74,  1, TBIT0_5AD), \
+    EFUSE_ACL1(74,  2, TBIT0_5AF), \
+    EFUSE_ACL1(74,  3, TBIT0_5AF), \
+    EFUSE_ACL1(75,  0, TBIT0_58C), \
+    EFUSE_ACL1(75,  1, TBIT0_5AD), \
+    EFUSE_ACL1(75,  2, TBIT0_5AF), \
+    EFUSE_ACL1(75,  3, TBIT0_5AF), \
+    EFUSE_ACL1(76,  0, TBIT0_58C), \
+    EFUSE_ACL1(76,  1, TBIT0_5AD), \
+    EFUSE_ACL1(76,  2, TBIT0_5AF), \
+    EFUSE_ACL1(76,  3, TBIT0_5AF), \
+    EFUSE_ACL1(77,  0, TBIT0_58C), \
+    EFUSE_ACL1(77,  1, TBIT0_5AD), \
+    EFUSE_ACL1(77,  2, TBIT0_5AF), \
+    EFUSE_ACL1(77,  3, TBIT0_5AF), \
+    EFUSE_ACL1(78,  0, TBIT0_58C), \
+    EFUSE_ACL1(78,  1, TBIT0_5AD), \
+    EFUSE_ACL1(78,  2, TBIT0_5AF), \
+    EFUSE_ACL1(78,  3, TBIT0_5AF), \
+    EFUSE_ACL1(79,  0, TBIT0_58C), \
+    EFUSE_ACL1(79,  1, TBIT0_5AD), \
+    EFUSE_ACL1(79,  2, TBIT0_5AF), \
+    EFUSE_ACL1(79,  3, TBIT0_5AF), \
+    EFUSE_ACL1(80,  0, TBIT0_58C), \
+    EFUSE_ACL1(80,  1, TBIT0_5AD), \
+    EFUSE_ACL1(80,  2, TBIT0_5AF), \
+    EFUSE_ACL1(80,  3, TBIT0_5AF), \
+    EFUSE_ACL1(81,  0, TBIT0_58C), \
+    EFUSE_ACL1(81,  1, TBIT0_5AD), \
+    EFUSE_ACL1(81,  2, TBIT0_5AF), \
+    EFUSE_ACL1(81,  3, TBIT0_5AF), \
+    EFUSE_ACL1(90,  0, FACTORY), \
+    EFUSE_ACL1(90,  1, FACTORY), \
+    EFUSE_ACL1(90,  2, FACTORY), \
+    EFUSE_ACL1(90,  3, FACTORY), \
+    EFUSE_ACL1(91,  0, FACTORY), \
+    EFUSE_ACL1(91,  1, FACTORY), \
+    EFUSE_ACL1(91,  2, FACTORY), \
+    EFUSE_ACL1(91,  3, FACTORY), \
+    EFUSE_ACL1(92,  0, FACTORY), \
+    EFUSE_ACL1(92,  1, FACTORY), \
+    EFUSE_ACL1(92,  2, FACTORY), \
+    EFUSE_ACL1(92,  3, FACTORY), \
+    EFUSE_ACL1(93,  0, TBIT0), \
+    EFUSE_ACL1(93,  1, TBIT0), \
+    EFUSE_ACL1(93,  2, TBIT0), \
+    EFUSE_ACL1(93,  3, TBIT0), \
+    EFUSE_ACL1(94,  0, FACTORY), \
+    EFUSE_ACL1(94,  1, FACTORY), \
+    EFUSE_ACL1(94,  2, FACTORY), \
+    EFUSE_ACL1(94,  3, FACTORY), \
+    EFUSE_ACL1(95,  0, TBIT0), \
+    EFUSE_ACL1(95,  1, TBIT0), \
+    EFUSE_ACL1(95,  2, TBIT0), \
+    EFUSE_ACL1(95,  3, TBIT0), \
+    EFUSE_ACL1(96,  0, DME), \
+    EFUSE_ACL1(96,  1, DME), \
+    EFUSE_ACL1(96,  2, FACTORY), \
+    EFUSE_ACL1(96,  3, TBIT0_58F), \
+    EFUSE_ACL1(97,  0, DME), \
+    EFUSE_ACL1(97,  1, DME), \
+    EFUSE_ACL1(97,  2, FACTORY), \
+    EFUSE_ACL1(97,  3, TBIT0_58F), \
+    EFUSE_ACL1(98,  0, DME), \
+    EFUSE_ACL1(98,  1, DME), \
+    EFUSE_ACL1(98,  2, FACTORY), \
+    EFUSE_ACL1(98,  3, TBIT0_58F), \
+    EFUSE_ACL1(99,  0, DME), \
+    EFUSE_ACL1(99,  1, DME), \
+    EFUSE_ACL1(99,  2, FACTORY), \
+    EFUSE_ACL1(99,  3, TBIT0_58F), \
+    EFUSE_ACL1(100, 0, DME), \
+    EFUSE_ACL1(100, 1, DME), \
+    EFUSE_ACL1(100, 2, FACTORY), \
+    EFUSE_ACL1(100, 3, TBIT0_58F), \
+    EFUSE_ACL1(101, 0, DME), \
+    EFUSE_ACL1(101, 1, DME), \
+    EFUSE_ACL1(101, 2, FACTORY), \
+    EFUSE_ACL1(101, 3, TBIT0_58F), \
+    EFUSE_ACL1(102, 0, DME), \
+    EFUSE_ACL1(102, 1, DME), \
+    EFUSE_ACL1(102, 2, FACTORY), \
+    EFUSE_ACL1(102, 3, TBIT0_58F), \
+    EFUSE_ACL1(103, 0, DME), \
+    EFUSE_ACL1(103, 1, DME), \
+    EFUSE_ACL1(103, 2, FACTORY), \
+    EFUSE_ACL1(103, 3, TBIT0_58F), \
+    EFUSE_ACL1(104, 0, DME), \
+    EFUSE_ACL1(104, 1, DME), \
+    EFUSE_ACL1(104, 2, FACTORY), \
+    EFUSE_ACL1(104, 3, TBIT0_58F), \
+    EFUSE_ACL1(105, 0, DME), \
+    EFUSE_ACL1(105, 1, DME), \
+    EFUSE_ACL1(105, 2, FACTORY), \
+    EFUSE_ACL1(105, 3, TBIT0_58F), \
+    EFUSE_ACL1(106, 0, DME), \
+    EFUSE_ACL1(106, 1, DME), \
+    EFUSE_ACL1(106, 2, FACTORY), \
+    EFUSE_ACL1(106, 3, TBIT0_58F), \
+    EFUSE_ACL1(107, 0, DME), \
+    EFUSE_ACL1(107, 1, DME), \
+    EFUSE_ACL1(107, 2, FACTORY), \
+    EFUSE_ACL1(107, 3, TBIT0_58F), \
+    EFUSE_ACL1(108, 0, DME), \
+    EFUSE_ACL1(108, 1, DME), \
+    EFUSE_ACL1(108, 3, TBIT0_58F), \
+    EFUSE_ACL1(109, 0, DME), \
+    EFUSE_ACL1(109, 1, DME), \
+    EFUSE_ACL1(109, 3, TBIT0_58F), \
+    EFUSE_ACL1(110, 0, DME), \
+    EFUSE_ACL1(110, 1, DME), \
+    EFUSE_ACL1(110, 3, TBIT0_58F), \
+    EFUSE_ACL1(111, 0, DME), \
+    EFUSE_ACL1(111, 1, DME), \
+    EFUSE_ACL1(111, 3, TBIT0_58F), \
+    EFUSE_ACL1(112, 0, DME), \
+    EFUSE_ACL1(112, 1, DME), \
+    EFUSE_ACL1(112, 3, TBIT0_58F), \
+    EFUSE_ACL1(113, 0, DME), \
+    EFUSE_ACL1(113, 1, DME), \
+    EFUSE_ACL1(113, 3, TBIT0_58F), \
+    EFUSE_ACL1(114, 0, DME), \
+    EFUSE_ACL1(114, 1, DME), \
+    EFUSE_ACL1(114, 3, TBIT0_58F), \
+    EFUSE_ACL1(115, 0, DME), \
+    EFUSE_ACL1(115, 1, DME), \
+    EFUSE_ACL1(115, 3, TBIT0_58F), \
+    EFUSE_ACL1(116, 0, DME), \
+    EFUSE_ACL1(116, 1, DME), \
+    EFUSE_ACL1(116, 3, TBIT0_58F), \
+    EFUSE_ACL1(117, 0, DME), \
+    EFUSE_ACL1(117, 1, DME), \
+    EFUSE_ACL1(117, 3, TBIT0_58F), \
+    EFUSE_ACL1(118, 0, DME), \
+    EFUSE_ACL1(118, 1, DME), \
+    EFUSE_ACL1(118, 3, TBIT0_58F), \
+    EFUSE_ACL1(119, 0, DME), \
+    EFUSE_ACL1(119, 1, DME), \
+    EFUSE_ACL1(119, 3, TBIT0_58F), \
+    EFUSE_ACL1(120, 0, DME), \
+    EFUSE_ACL1(120, 1, DME), \
+    EFUSE_ACL1(120, 3, TBIT0_58F), \
+    EFUSE_ACL1(121, 0, DME), \
+    EFUSE_ACL1(121, 1, DME), \
+    EFUSE_ACL1(121, 3, TBIT0_58F), \
+    EFUSE_ACL1(122, 0, DME), \
+    EFUSE_ACL1(122, 1, DME), \
+    EFUSE_ACL1(122, 3, TBIT0_58F), \
+    EFUSE_ACL1(123, 0, DME), \
+    EFUSE_ACL1(123, 1, DME), \
+    EFUSE_ACL1(123, 3, TBIT0_58F), \
+    EFUSE_ACL1(124, 0, DME), \
+    EFUSE_ACL1(124, 1, DME), \
+    EFUSE_ACL1(124, 2, FACTORY), \
+    EFUSE_ACL1(124, 3, TBIT0_58F), \
+    EFUSE_ACL1(125, 0, DME), \
+    EFUSE_ACL1(125, 1, DME), \
+    EFUSE_ACL1(125, 2, FACTORY), \
+    EFUSE_ACL1(125, 3, TBIT0_58F), \
+    EFUSE_ACL1(126, 0, DME), \
+    EFUSE_ACL1(126, 1, DME), \
+    EFUSE_ACL1(126, 2, FACTORY), \
+    EFUSE_ACL1(126, 3, TBIT0_58F), \
+    EFUSE_ACL1(127, 0, DME), \
+    EFUSE_ACL1(127, 1, DME), \
+    EFUSE_ACL1(127, 2, FACTORY), \
+    EFUSE_ACL1(127, 3, TBIT0_58F), \
+    EFUSE_ACL1(128, 0, DME), \
+    EFUSE_ACL1(128, 1, DME), \
+    EFUSE_ACL1(128, 2, FACTORY), \
+    EFUSE_ACL1(128, 3, TBIT0_5A8), \
+    EFUSE_ACL1(129, 0, DME), \
+    EFUSE_ACL1(129, 1, DME), \
+    EFUSE_ACL1(129, 2, FACTORY), \
+    EFUSE_ACL1(129, 3, TBIT0_5A8), \
+    EFUSE_ACL1(130, 0, DME), \
+    EFUSE_ACL1(130, 1, DME), \
+    EFUSE_ACL1(130, 2, FACTORY), \
+    EFUSE_ACL1(130, 3, TBIT0_5A8), \
+    EFUSE_ACL1(131, 0, DME), \
+    EFUSE_ACL1(131, 1, DME), \
+    EFUSE_ACL1(131, 2, FACTORY), \
+    EFUSE_ACL1(131, 3, TBIT0_5A8), \
+    EFUSE_ACL1(132, 0, DME), \
+    EFUSE_ACL1(132, 1, DME), \
+    EFUSE_ACL1(132, 2, FACTORY), \
+    EFUSE_ACL1(132, 3, TBIT0_5A8), \
+    EFUSE_ACL1(133, 0, DME), \
+    EFUSE_ACL1(133, 1, DME), \
+    EFUSE_ACL1(133, 2, FACTORY), \
+    EFUSE_ACL1(133, 3, TBIT0_5A8), \
+    EFUSE_ACL1(134, 0, DME), \
+    EFUSE_ACL1(134, 1, DME), \
+    EFUSE_ACL1(134, 2, FACTORY), \
+    EFUSE_ACL1(134, 3, TBIT0_5A8), \
+    EFUSE_ACL1(135, 0, DME), \
+    EFUSE_ACL1(135, 1, DME), \
+    EFUSE_ACL1(135, 2, FACTORY), \
+    EFUSE_ACL1(135, 3, TBIT0_5A8), \
+    EFUSE_ACL1(136, 0, DME), \
+    EFUSE_ACL1(136, 1, DME), \
+    EFUSE_ACL1(136, 2, FACTORY), \
+    EFUSE_ACL1(136, 3, TBIT0_5A8), \
+    EFUSE_ACL1(137, 0, DME), \
+    EFUSE_ACL1(137, 1, DME), \
+    EFUSE_ACL1(137, 2, FACTORY), \
+    EFUSE_ACL1(137, 3, TBIT0_5A8), \
+    EFUSE_ACL1(138, 0, DME), \
+    EFUSE_ACL1(138, 1, DME), \
+    EFUSE_ACL1(138, 2, FACTORY), \
+    EFUSE_ACL1(138, 3, TBIT0_5A8), \
+    EFUSE_ACL1(139, 0, DME), \
+    EFUSE_ACL1(139, 1, DME), \
+    EFUSE_ACL1(139, 2, FACTORY), \
+    EFUSE_ACL1(139, 3, TBIT0_5A8), \
+    EFUSE_ACL1(140, 0, DME), \
+    EFUSE_ACL1(140, 1, DME), \
+    EFUSE_ACL1(140, 2, FACTORY), \
+    EFUSE_ACL1(140, 3, TBIT0_5A8), \
+    EFUSE_ACL1(141, 0, DME), \
+    EFUSE_ACL1(141, 1, DME), \
+    EFUSE_ACL1(141, 2, FACTORY), \
+    EFUSE_ACL1(141, 3, TBIT0_5A8), \
+    EFUSE_ACL1(142, 0, DME), \
+    EFUSE_ACL1(142, 1, DME), \
+    EFUSE_ACL1(142, 2, FACTORY), \
+    EFUSE_ACL1(142, 3, TBIT0_5A8), \
+    EFUSE_ACL1(143, 0, DME), \
+    EFUSE_ACL1(143, 1, DME), \
+    EFUSE_ACL1(143, 2, FACTORY), \
+    EFUSE_ACL1(143, 3, TBIT0_5A8), \
+    EFUSE_ACL1(144, 0, DME), \
+    EFUSE_ACL1(144, 1, DME), \
+    EFUSE_ACL1(144, 2, FACTORY), \
+    EFUSE_ACL1(144, 3, TBIT0_5A8), \
+    EFUSE_ACL1(145, 0, DME), \
+    EFUSE_ACL1(145, 1, DME), \
+    EFUSE_ACL1(145, 2, FACTORY), \
+    EFUSE_ACL1(145, 3, TBIT0_5A8), \
+    EFUSE_ACL1(146, 0, DME), \
+    EFUSE_ACL1(146, 1, DME), \
+    EFUSE_ACL1(146, 2, FACTORY), \
+    EFUSE_ACL1(146, 3, TBIT0_5A8), \
+    EFUSE_ACL1(147, 0, DME), \
+    EFUSE_ACL1(147, 1, DME), \
+    EFUSE_ACL1(147, 2, FACTORY), \
+    EFUSE_ACL1(147, 3, TBIT0_5A8), \
+    EFUSE_ACL1(148, 0, DME), \
+    EFUSE_ACL1(148, 1, DME), \
+    EFUSE_ACL1(148, 2, FACTORY), \
+    EFUSE_ACL1(148, 3, TBIT0_5A8), \
+    EFUSE_ACL1(149, 0, DME), \
+    EFUSE_ACL1(149, 1, DME), \
+    EFUSE_ACL1(149, 2, FACTORY), \
+    EFUSE_ACL1(149, 3, TBIT0_5A8), \
+    EFUSE_ACL1(150, 0, DME), \
+    EFUSE_ACL1(150, 1, DME), \
+    EFUSE_ACL1(150, 2, FACTORY), \
+    EFUSE_ACL1(150, 3, TBIT0_5A8), \
+    EFUSE_ACL1(151, 0, DME), \
+    EFUSE_ACL1(151, 1, DME), \
+    EFUSE_ACL1(151, 2, FACTORY), \
+    EFUSE_ACL1(151, 3, TBIT0_5A8), \
+    EFUSE_ACL1(152, 0, DME), \
+    EFUSE_ACL1(152, 1, DME), \
+    EFUSE_ACL1(152, 2, FACTORY), \
+    EFUSE_ACL1(152, 3, TBIT0_5A8), \
+    EFUSE_ACL1(153, 0, DME), \
+    EFUSE_ACL1(153, 1, DME), \
+    EFUSE_ACL1(153, 2, FACTORY), \
+    EFUSE_ACL1(153, 3, TBIT0_5A8), \
+    EFUSE_ACL1(154, 0, DME), \
+    EFUSE_ACL1(154, 1, DME), \
+    EFUSE_ACL1(154, 2, FACTORY), \
+    EFUSE_ACL1(154, 3, TBIT0_5A8), \
+    EFUSE_ACL1(155, 0, DME), \
+    EFUSE_ACL1(155, 1, DME), \
+    EFUSE_ACL1(155, 2, FACTORY), \
+    EFUSE_ACL1(155, 3, TBIT0_5A8), \
+    EFUSE_ACL1(156, 0, DME), \
+    EFUSE_ACL1(156, 1, DME), \
+    EFUSE_ACL1(156, 2, FACTORY), \
+    EFUSE_ACL1(156, 3, TBIT0_5A8), \
+    EFUSE_ACL1(157, 0, DME), \
+    EFUSE_ACL1(157, 1, DME), \
+    EFUSE_ACL1(157, 2, FACTORY), \
+    EFUSE_ACL1(157, 3, TBIT0_5A8), \
+    EFUSE_ACL1(158, 0, DME), \
+    EFUSE_ACL1(158, 1, DME), \
+    EFUSE_ACL1(158, 2, FACTORY), \
+    EFUSE_ACL1(158, 3, TBIT0_5A8), \
+    EFUSE_ACL1(159, 0, DME), \
+    EFUSE_ACL1(159, 1, DME), \
+    EFUSE_ACL1(159, 2, FACTORY), \
+    EFUSE_ACL1(159, 3, TBIT0_5A8), \
+    EFUSE_ACL1(160, 0, DME), \
+    EFUSE_ACL1(160, 1, DME), \
+    EFUSE_ACL1(160, 2, TBIT0_58E), \
+    EFUSE_ACL1(160, 3, FACTORY), \
+    EFUSE_ACL1(161, 0, DME), \
+    EFUSE_ACL1(161, 1, DME), \
+    EFUSE_ACL1(161, 2, TBIT0_58E), \
+    EFUSE_ACL1(161, 3, FACTORY), \
+    EFUSE_ACL1(162, 0, DME), \
+    EFUSE_ACL1(162, 1, DME), \
+    EFUSE_ACL1(162, 2, TBIT0_58E), \
+    EFUSE_ACL1(162, 3, FACTORY), \
+    EFUSE_ACL1(163, 0, DME), \
+    EFUSE_ACL1(163, 1, DME), \
+    EFUSE_ACL1(163, 2, TBIT0_58E), \
+    EFUSE_ACL1(163, 3, FACTORY), \
+    EFUSE_ACL1(164, 0, DME), \
+    EFUSE_ACL1(164, 1, DME), \
+    EFUSE_ACL1(164, 2, TBIT0_58E), \
+    EFUSE_ACL1(164, 3, FACTORY), \
+    EFUSE_ACL1(165, 0, DME), \
+    EFUSE_ACL1(165, 1, DME), \
+    EFUSE_ACL1(165, 2, TBIT0_58E), \
+    EFUSE_ACL1(165, 3, FACTORY), \
+    EFUSE_ACL1(166, 0, DME), \
+    EFUSE_ACL1(166, 1, DME), \
+    EFUSE_ACL1(166, 2, TBIT0_58E), \
+    EFUSE_ACL1(166, 3, FACTORY), \
+    EFUSE_ACL1(167, 0, DME), \
+    EFUSE_ACL1(167, 1, DME), \
+    EFUSE_ACL1(167, 2, TBIT0_58E), \
+    EFUSE_ACL1(167, 3, FACTORY), \
+    EFUSE_ACL1(168, 0, DME), \
+    EFUSE_ACL1(168, 1, DME), \
+    EFUSE_ACL1(168, 2, TBIT0_58E), \
+    EFUSE_ACL1(168, 3, FACTORY), \
+    EFUSE_ACL1(169, 0, DME), \
+    EFUSE_ACL1(169, 1, DME), \
+    EFUSE_ACL1(169, 2, TBIT0_58E), \
+    EFUSE_ACL1(169, 3, FACTORY), \
+    EFUSE_ACL1(170, 0, DME), \
+    EFUSE_ACL1(170, 1, DME), \
+    EFUSE_ACL1(170, 2, TBIT0_58E), \
+    EFUSE_ACL1(170, 3, FACTORY), \
+    EFUSE_ACL1(171, 0, DME), \
+    EFUSE_ACL1(171, 1, DME), \
+    EFUSE_ACL1(171, 2, TBIT0_58E), \
+    EFUSE_ACL1(171, 3, FACTORY), \
+    EFUSE_ACL1(172, 0, DME), \
+    EFUSE_ACL1(172, 1, DME), \
+    EFUSE_ACL1(172, 2, TBIT0_58E), \
+    EFUSE_ACL1(172, 3, FACTORY), \
+    EFUSE_ACL1(173, 0, DME), \
+    EFUSE_ACL1(173, 1, DME), \
+    EFUSE_ACL1(173, 2, TBIT0_58E), \
+    EFUSE_ACL1(173, 3, FACTORY), \
+    EFUSE_ACL1(174, 0, DME), \
+    EFUSE_ACL1(174, 1, DME), \
+    EFUSE_ACL1(174, 2, TBIT0_58E), \
+    EFUSE_ACL1(174, 3, FACTORY), \
+    EFUSE_ACL1(175, 0, DME), \
+    EFUSE_ACL1(175, 1, DME), \
+    EFUSE_ACL1(175, 2, TBIT0_58E), \
+    EFUSE_ACL1(175, 3, FACTORY), \
+    EFUSE_ACL1(176, 0, DME), \
+    EFUSE_ACL1(176, 1, DME), \
+    EFUSE_ACL1(176, 2, TBIT0_58E), \
+    EFUSE_ACL1(177, 0, DME), \
+    EFUSE_ACL1(177, 1, DME), \
+    EFUSE_ACL1(177, 2, TBIT0_58E), \
+    EFUSE_ACL1(178, 0, DME), \
+    EFUSE_ACL1(178, 1, DME), \
+    EFUSE_ACL1(178, 2, TBIT0_58E), \
+    EFUSE_ACL1(179, 0, DME), \
+    EFUSE_ACL1(179, 1, DME), \
+    EFUSE_ACL1(179, 2, TBIT0_58E), \
+    EFUSE_ACL1(180, 0, DME), \
+    EFUSE_ACL1(180, 1, DME), \
+    EFUSE_ACL1(180, 2, TBIT0_58E), \
+    EFUSE_ACL1(180, 3, FACTORY), \
+    EFUSE_ACL1(181, 0, DME), \
+    EFUSE_ACL1(181, 1, DME), \
+    EFUSE_ACL1(181, 2, TBIT0_58E), \
+    EFUSE_ACL1(181, 3, FACTORY), \
+    EFUSE_ACL1(182, 0, DME), \
+    EFUSE_ACL1(182, 1, DME), \
+    EFUSE_ACL1(182, 2, TBIT0_58E), \
+    EFUSE_ACL1(182, 3, FACTORY), \
+    EFUSE_ACL1(183, 0, DME), \
+    EFUSE_ACL1(183, 1, DME), \
+    EFUSE_ACL1(183, 2, TBIT0_58E), \
+    EFUSE_ACL1(183, 3, FACTORY), \
+    EFUSE_ACL1(184, 0, DME), \
+    EFUSE_ACL1(184, 1, DME), \
+    EFUSE_ACL1(184, 2, TBIT0_58E), \
+    EFUSE_ACL1(185, 0, DME), \
+    EFUSE_ACL1(185, 1, DME), \
+    EFUSE_ACL1(185, 2, TBIT0_58E), \
+    EFUSE_ACL1(186, 0, DME), \
+    EFUSE_ACL1(186, 1, DME), \
+    EFUSE_ACL1(186, 2, TBIT0_58E), \
+    EFUSE_ACL1(187, 0, DME), \
+    EFUSE_ACL1(187, 1, DME), \
+    EFUSE_ACL1(187, 2, TBIT0_58E), \
+    EFUSE_ACL1(188, 0, DME), \
+    EFUSE_ACL1(188, 1, DME), \
+    EFUSE_ACL1(188, 2, TBIT0_58E), \
+    EFUSE_ACL1(189, 0, DME), \
+    EFUSE_ACL1(189, 1, DME), \
+    EFUSE_ACL1(189, 2, TBIT0_58E), \
+    EFUSE_ACL1(190, 0, DME), \
+    EFUSE_ACL1(190, 1, DME), \
+    EFUSE_ACL1(190, 2, TBIT0_58E), \
+    EFUSE_ACL1(191, 0, DME), \
+    EFUSE_ACL1(191, 1, DME), \
+    EFUSE_ACL1(191, 2, TBIT0_58E), \
+    EFUSE_ACL1(192, 0, TBIT0_5C8), \
+    EFUSE_ACL1(192, 1, TBIT0_5C8), \
+    EFUSE_ACL1(192, 2, TBIT0_5C8), \
+    EFUSE_ACL1(192, 3, TBIT0_5C8), \
+    EFUSE_ACL1(193, 0, TBIT0_5C8), \
+    EFUSE_ACL1(193, 1, TBIT0_5C8), \
+    EFUSE_ACL1(193, 2, TBIT0_5C8), \
+    EFUSE_ACL1(193, 3, TBIT0_5C8), \
+    EFUSE_ACL1(194, 0, TBIT0_5C8), \
+    EFUSE_ACL1(194, 1, TBIT0_5C8), \
+    EFUSE_ACL1(194, 2, TBIT0_5C8), \
+    EFUSE_ACL1(194, 3, TBIT0_5C8), \
+    EFUSE_ACL1(195, 0, TBIT0_5C8), \
+    EFUSE_ACL1(195, 1, TBIT0_5C8), \
+    EFUSE_ACL1(195, 2, TBIT0_5C8), \
+    EFUSE_ACL1(195, 3, TBIT0_5C8), \
+    EFUSE_ACL1(196, 0, TBIT0_5C8), \
+    EFUSE_ACL1(196, 1, TBIT0_5C8), \
+    EFUSE_ACL1(196, 2, TBIT0_5C8), \
+    EFUSE_ACL1(196, 3, TBIT0_5C8), \
+    EFUSE_ACL1(197, 0, TBIT0_5C8), \
+    EFUSE_ACL1(197, 1, TBIT0_5C8), \
+    EFUSE_ACL1(197, 2, TBIT0_5C8), \
+    EFUSE_ACL1(197, 3, TBIT0_5C8), \
+    EFUSE_ACL1(198, 0, TBIT0_5C8), \
+    EFUSE_ACL1(198, 1, TBIT0_5C8), \
+    EFUSE_ACL1(198, 2, TBIT0_5C8), \
+    EFUSE_ACL1(198, 3, TBIT0_5C8), \
+    EFUSE_ACL1(199, 0, TBIT0_5C8), \
+    EFUSE_ACL1(199, 1, TBIT0_5C8), \
+    EFUSE_ACL1(199, 2, TBIT0_5C8), \
+    EFUSE_ACL1(199, 3, TBIT0_5C8), \
+    EFUSE_ACL1(200, 0, TBIT0_5C8), \
+    EFUSE_ACL1(200, 1, TBIT0_5C8), \
+    EFUSE_ACL1(200, 2, TBIT0_5C8), \
+    EFUSE_ACL1(200, 3, TBIT0_5C8), \
+    EFUSE_ACL1(201, 0, TBIT0_5C8), \
+    EFUSE_ACL1(201, 1, TBIT0_5C8), \
+    EFUSE_ACL1(201, 2, TBIT0_5C8), \
+    EFUSE_ACL1(201, 3, TBIT0_5C8), \
+    EFUSE_ACL1(202, 0, TBIT0_5C8), \
+    EFUSE_ACL1(202, 1, TBIT0_5C8), \
+    EFUSE_ACL1(202, 2, TBIT0_5C8), \
+    EFUSE_ACL1(202, 3, TBIT0_5C8), \
+    EFUSE_ACL1(203, 0, TBIT0_5C8), \
+    EFUSE_ACL1(203, 1, TBIT0_5C8), \
+    EFUSE_ACL1(203, 2, TBIT0_5C8), \
+    EFUSE_ACL1(203, 3, TBIT0_5C8), \
+    EFUSE_ACL1(204, 0, TBIT0_5C8), \
+    EFUSE_ACL1(204, 1, TBIT0_5C8), \
+    EFUSE_ACL1(204, 2, TBIT0_5C8), \
+    EFUSE_ACL1(204, 3, TBIT0_5C8), \
+    EFUSE_ACL1(205, 0, TBIT0_5C8), \
+    EFUSE_ACL1(205, 1, TBIT0_5C8), \
+    EFUSE_ACL1(205, 2, TBIT0_5C8), \
+    EFUSE_ACL1(205, 3, TBIT0_5C8), \
+    EFUSE_ACL1(206, 0, TBIT0_5C8), \
+    EFUSE_ACL1(206, 1, TBIT0_5C8), \
+    EFUSE_ACL1(206, 2, TBIT0_5C8), \
+    EFUSE_ACL1(206, 3, TBIT0_5C8), \
+    EFUSE_ACL1(207, 0, TBIT0_5C8), \
+    EFUSE_ACL1(207, 1, TBIT0_5C8), \
+    EFUSE_ACL1(207, 2, TBIT0_5C8), \
+    EFUSE_ACL1(207, 3, TBIT0_5C8), \
+    EFUSE_ACL1(208, 0, TBIT0_5C8), \
+    EFUSE_ACL1(208, 1, TBIT0_5C8), \
+    EFUSE_ACL1(208, 2, TBIT0_5C8), \
+    EFUSE_ACL1(208, 3, TBIT0_5C8), \
+    EFUSE_ACL1(209, 0, TBIT0_5C8), \
+    EFUSE_ACL1(209, 1, TBIT0_5C8), \
+    EFUSE_ACL1(209, 2, TBIT0_5C8), \
+    EFUSE_ACL1(209, 3, TBIT0_5C8), \
+    EFUSE_ACL1(210, 0, TBIT0_5C8), \
+    EFUSE_ACL1(210, 1, TBIT0_5C8), \
+    EFUSE_ACL1(210, 2, TBIT0_5C8), \
+    EFUSE_ACL1(210, 3, TBIT0_5C8), \
+    EFUSE_ACL1(211, 0, TBIT0_5C8), \
+    EFUSE_ACL1(211, 1, TBIT0_5C8), \
+    EFUSE_ACL1(211, 2, TBIT0_5C8), \
+    EFUSE_ACL1(211, 3, TBIT0_5C8), \
+    EFUSE_ACL1(212, 0, TBIT0_5C8), \
+    EFUSE_ACL1(212, 1, TBIT0_5C8), \
+    EFUSE_ACL1(212, 2, TBIT0_5C8), \
+    EFUSE_ACL1(212, 3, TBIT0_5C8), \
+    EFUSE_ACL1(213, 0, TBIT0_5C8), \
+    EFUSE_ACL1(213, 1, TBIT0_5C8), \
+    EFUSE_ACL1(213, 2, TBIT0_5C8), \
+    EFUSE_ACL1(213, 3, TBIT0_5C8), \
+    EFUSE_ACL1(214, 0, TBIT0_5C8), \
+    EFUSE_ACL1(214, 1, TBIT0_5C8), \
+    EFUSE_ACL1(214, 2, TBIT0_5C8), \
+    EFUSE_ACL1(214, 3, TBIT0_5C8), \
+    EFUSE_ACL1(215, 0, TBIT0_5C8), \
+    EFUSE_ACL1(215, 1, TBIT0_5C8), \
+    EFUSE_ACL1(215, 2, TBIT0_5C8), \
+    EFUSE_ACL1(215, 3, TBIT0_5C8), \
+    EFUSE_ACL1(216, 0, TBIT0_5C8), \
+    EFUSE_ACL1(216, 1, TBIT0_5C8), \
+    EFUSE_ACL1(216, 2, TBIT0_5C8), \
+    EFUSE_ACL1(216, 3, TBIT0_5C8), \
+    EFUSE_ACL1(217, 0, TBIT0_5C8), \
+    EFUSE_ACL1(217, 1, TBIT0_5C8), \
+    EFUSE_ACL1(217, 2, TBIT0_5C8), \
+    EFUSE_ACL1(217, 3, TBIT0_5C8), \
+    EFUSE_ACL1(218, 0, TBIT0_5C8), \
+    EFUSE_ACL1(218, 1, TBIT0_5C8), \
+    EFUSE_ACL1(218, 2, TBIT0_5C8), \
+    EFUSE_ACL1(218, 3, TBIT0_5C8), \
+    EFUSE_ACL1(219, 0, TBIT0_5C8), \
+    EFUSE_ACL1(219, 1, TBIT0_5C8), \
+    EFUSE_ACL1(219, 2, TBIT0_5C8), \
+    EFUSE_ACL1(219, 3, TBIT0_5C8), \
+    EFUSE_ACL1(220, 0, TBIT0_5C8), \
+    EFUSE_ACL1(220, 1, TBIT0_5C8), \
+    EFUSE_ACL1(220, 2, TBIT0_5C8), \
+    EFUSE_ACL1(220, 3, TBIT0_5C8), \
+    EFUSE_ACL1(221, 0, TBIT0_5C8), \
+    EFUSE_ACL1(221, 1, TBIT0_5C8), \
+    EFUSE_ACL1(221, 2, TBIT0_5C8), \
+    EFUSE_ACL1(221, 3, TBIT0_5C8), \
+    EFUSE_ACL1(222, 0, TBIT0_5C8), \
+    EFUSE_ACL1(222, 1, TBIT0_5C8), \
+    EFUSE_ACL1(222, 2, TBIT0_5C8), \
+    EFUSE_ACL1(222, 3, TBIT0_5C8), \
+    EFUSE_ACL1(223, 0, TBIT0_5C8), \
+    EFUSE_ACL1(223, 1, TBIT0_5C8), \
+    EFUSE_ACL1(223, 2, TBIT0_5C8), \
+    EFUSE_ACL1(223, 3, TBIT0_5C8), \
+    EFUSE_ACL1(224, 0, TBIT0_5C8), \
+    EFUSE_ACL1(224, 1, TBIT0_5C8), \
+    EFUSE_ACL1(224, 2, TBIT0_5C8), \
+    EFUSE_ACL1(224, 3, TBIT0_5C8), \
+    EFUSE_ACL1(225, 0, TBIT0_5C8), \
+    EFUSE_ACL1(225, 1, TBIT0_5C8), \
+    EFUSE_ACL1(225, 2, TBIT0_5C8), \
+    EFUSE_ACL1(225, 3, TBIT0_5C8), \
+    EFUSE_ACL1(226, 0, TBIT0_5C8), \
+    EFUSE_ACL1(226, 1, TBIT0_5C8), \
+    EFUSE_ACL1(226, 2, TBIT0_5C8), \
+    EFUSE_ACL1(226, 3, TBIT0_5C8), \
+    EFUSE_ACL1(227, 0, TBIT0_5C8), \
+    EFUSE_ACL1(227, 1, TBIT0_5C8), \
+    EFUSE_ACL1(227, 2, TBIT0_5C8), \
+    EFUSE_ACL1(227, 3, TBIT0_5C8), \
+    EFUSE_ACL1(228, 0, TBIT0_5C8), \
+    EFUSE_ACL1(228, 1, TBIT0_5C8), \
+    EFUSE_ACL1(228, 2, TBIT0_5C8), \
+    EFUSE_ACL1(228, 3, TBIT0_5C8), \
+    EFUSE_ACL1(229, 0, TBIT0_5C8), \
+    EFUSE_ACL1(229, 1, TBIT0_5C8), \
+    EFUSE_ACL1(229, 2, TBIT0_5C8), \
+    EFUSE_ACL1(229, 3, TBIT0_5C8), \
+    EFUSE_ACL1(230, 0, TBIT0_5C8), \
+    EFUSE_ACL1(230, 1, TBIT0_5C8), \
+    EFUSE_ACL1(230, 2, TBIT0_5C8), \
+    EFUSE_ACL1(230, 3, TBIT0_5C8), \
+    EFUSE_ACL1(231, 0, TBIT0_5C8), \
+    EFUSE_ACL1(231, 1, TBIT0_5C8), \
+    EFUSE_ACL1(231, 2, TBIT0_5C8), \
+    EFUSE_ACL1(231, 3, TBIT0_5C8), \
+    EFUSE_ACL1(232, 0, TBIT0_5C8), \
+    EFUSE_ACL1(232, 1, TBIT0_5C8), \
+    EFUSE_ACL1(232, 2, TBIT0_5C8), \
+    EFUSE_ACL1(232, 3, TBIT0_5C8), \
+    EFUSE_ACL1(233, 0, TBIT0_5C8), \
+    EFUSE_ACL1(233, 1, TBIT0_5C8), \
+    EFUSE_ACL1(233, 2, TBIT0_5C8), \
+    EFUSE_ACL1(233, 3, TBIT0_5C8), \
+    EFUSE_ACL1(234, 0, TBIT0_5C8), \
+    EFUSE_ACL1(234, 1, TBIT0_5C8), \
+    EFUSE_ACL1(234, 2, TBIT0_5C8), \
+    EFUSE_ACL1(234, 3, TBIT0_5C8), \
+    EFUSE_ACL1(235, 0, TBIT0_5C8), \
+    EFUSE_ACL1(235, 1, TBIT0_5C8), \
+    EFUSE_ACL1(235, 2, TBIT0_5C8), \
+    EFUSE_ACL1(235, 3, TBIT0_5C8), \
+    EFUSE_ACL1(236, 0, TBIT0_5C8), \
+    EFUSE_ACL1(236, 1, TBIT0_5C8), \
+    EFUSE_ACL1(236, 2, TBIT0_5C8), \
+    EFUSE_ACL1(236, 3, TBIT0_5C8), \
+    EFUSE_ACL1(237, 0, TBIT0_5C8), \
+    EFUSE_ACL1(237, 1, TBIT0_5C8), \
+    EFUSE_ACL1(237, 2, TBIT0_5C8), \
+    EFUSE_ACL1(237, 3, TBIT0_5C8), \
+    EFUSE_ACL1(238, 0, TBIT0_5C8), \
+    EFUSE_ACL1(238, 1, TBIT0_5C8), \
+    EFUSE_ACL1(238, 2, TBIT0_5C8), \
+    EFUSE_ACL1(238, 3, TBIT0_5C8), \
+    EFUSE_ACL1(239, 0, TBIT0_5C8), \
+    EFUSE_ACL1(239, 1, TBIT0_5C8), \
+    EFUSE_ACL1(239, 2, TBIT0_5C8), \
+    EFUSE_ACL1(239, 3, TBIT0_5C8), \
+    EFUSE_ACL1(240, 0, TBIT0_5C8), \
+    EFUSE_ACL1(240, 1, TBIT0_5C8), \
+    EFUSE_ACL1(240, 2, TBIT0_5C8), \
+    EFUSE_ACL1(240, 3, TBIT0_5C8), \
+    EFUSE_ACL1(241, 0, TBIT0_5C8), \
+    EFUSE_ACL1(241, 1, TBIT0_5C8), \
+    EFUSE_ACL1(241, 2, TBIT0_5C8), \
+    EFUSE_ACL1(241, 3, TBIT0_5C8), \
+    EFUSE_ACL1(242, 0, TBIT0_5C8), \
+    EFUSE_ACL1(242, 1, TBIT0_5C8), \
+    EFUSE_ACL1(242, 2, TBIT0_5C8), \
+    EFUSE_ACL1(242, 3, TBIT0_5C8), \
+    EFUSE_ACL1(243, 0, TBIT0_5C8), \
+    EFUSE_ACL1(243, 1, TBIT0_5C8), \
+    EFUSE_ACL1(243, 2, TBIT0_5C8), \
+    EFUSE_ACL1(243, 3, TBIT0_5C8), \
+    EFUSE_ACL1(244, 0, TBIT0_5C8), \
+    EFUSE_ACL1(244, 1, TBIT0_5C8), \
+    EFUSE_ACL1(244, 2, TBIT0_5C8), \
+    EFUSE_ACL1(244, 3, TBIT0_5C8), \
+    EFUSE_ACL1(245, 0, TBIT0_5C8), \
+    EFUSE_ACL1(245, 1, TBIT0_5C8), \
+    EFUSE_ACL1(245, 2, TBIT0_5C8), \
+    EFUSE_ACL1(245, 3, TBIT0_5C8), \
+    EFUSE_ACL1(246, 0, TBIT0_5C8), \
+    EFUSE_ACL1(246, 1, TBIT0_5C8), \
+    EFUSE_ACL1(246, 2, TBIT0_5C8), \
+    EFUSE_ACL1(246, 3, TBIT0_5C8), \
+    EFUSE_ACL1(247, 0, TBIT0_5C8), \
+    EFUSE_ACL1(247, 1, TBIT0_5C8), \
+    EFUSE_ACL1(247, 2, TBIT0_5C8), \
+    EFUSE_ACL1(247, 3, TBIT0_5C8), \
+    EFUSE_ACL1(248, 0, TBIT0_5C8), \
+    EFUSE_ACL1(248, 1, TBIT0_5C8), \
+    EFUSE_ACL1(248, 2, TBIT0_5C8), \
+    EFUSE_ACL1(248, 3, TBIT0_5C8), \
+    EFUSE_ACL1(249, 0, TBIT0_5C8), \
+    EFUSE_ACL1(249, 1, TBIT0_5C8), \
+    EFUSE_ACL1(249, 2, TBIT0_5C8), \
+    EFUSE_ACL1(249, 3, TBIT0_5C8), \
+    EFUSE_ACL1(250, 0, TBIT0_5C8), \
+    EFUSE_ACL1(250, 1, TBIT0_5C8), \
+    EFUSE_ACL1(250, 2, TBIT0_5C8), \
+    EFUSE_ACL1(250, 3, TBIT0_5C8), \
+    EFUSE_ACL1(251, 0, TBIT0_5C8), \
+    EFUSE_ACL1(251, 1, TBIT0_5C8), \
+    EFUSE_ACL1(251, 2, TBIT0_5C8), \
+    EFUSE_ACL1(251, 3, TBIT0_5C8), \
+    EFUSE_ACL1(252, 0, TBIT0_5C8), \
+    EFUSE_ACL1(252, 1, TBIT0_5C8), \
+    EFUSE_ACL1(252, 2, TBIT0_5C8), \
+    EFUSE_ACL1(252, 3, TBIT0_5C8), \
+    EFUSE_ACL1(253, 0, TBIT0_5C8), \
+    EFUSE_ACL1(253, 1, TBIT0_5C8), \
+    EFUSE_ACL1(253, 2, TBIT0_5C8), \
+    EFUSE_ACL1(253, 3, TBIT0_5C8), \
+    EFUSE_ACL1(254, 0, TBIT0_5C8), \
+    EFUSE_ACL1(254, 1, TBIT0_5C8), \
+    EFUSE_ACL1(254, 2, TBIT0_5C8), \
+    EFUSE_ACL1(254, 3, TBIT0_5C8), \
+    EFUSE_ACL1(255, 0, TBIT0_5C8), \
+    EFUSE_ACL1(255, 1, TBIT0_5C8), \
+    EFUSE_ACL1(255, 2, TBIT0_5C8), \
+    EFUSE_ACL1(255, 3, TBIT0_5C8), \
+    EFUSE_ACL1(256, 0, FACTORY), \
+    EFUSE_ACL1(256, 1, FACTORY), \
+    EFUSE_ACL1(256, 2, FACTORY), \
+    EFUSE_ACL1(256, 3, FACTORY), \
+    EFUSE_ACL1(257, 0, FACTORY), \
+    EFUSE_ACL1(257, 1, FACTORY), \
+    EFUSE_ACL1(257, 2, FACTORY), \
+    EFUSE_ACL1(257, 3, FACTORY), \
+    EFUSE_ACL1(258, 0, FACTORY), \
+    EFUSE_ACL1(258, 1, FACTORY), \
+    EFUSE_ACL1(258, 2, FACTORY), \
+    EFUSE_ACL1(258, 3, FACTORY), \
+    EFUSE_ACL1(259, 0, FACTORY), \
+    EFUSE_ACL1(259, 1, FACTORY), \
+    EFUSE_ACL1(259, 2, FACTORY), \
+    EFUSE_ACL1(259, 3, FACTORY), \
+    EFUSE_ACL1(260, 0, FACTORY), \
+    EFUSE_ACL1(260, 1, FACTORY), \
+    EFUSE_ACL1(260, 2, FACTORY), \
+    EFUSE_ACL1(260, 3, FACTORY), \
+    EFUSE_ACL1(261, 0, FACTORY), \
+    EFUSE_ACL1(261, 1, FACTORY), \
+    EFUSE_ACL1(261, 2, FACTORY), \
+    EFUSE_ACL1(261, 3, FACTORY), \
+    EFUSE_ACL1(262, 0, FACTORY), \
+    EFUSE_ACL1(262, 1, FACTORY), \
+    EFUSE_ACL1(262, 2, FACTORY), \
+    EFUSE_ACL1(262, 3, FACTORY), \
+    EFUSE_ACL1(263, 0, FACTORY), \
+    EFUSE_ACL1(263, 1, FACTORY), \
+    EFUSE_ACL1(263, 2, FACTORY), \
+    EFUSE_ACL1(263, 3, FACTORY), \
+    EFUSE_ACL1(264, 0, FACTORY), \
+    EFUSE_ACL1(264, 1, FACTORY), \
+    EFUSE_ACL1(264, 2, FACTORY), \
+    EFUSE_ACL1(264, 3, FACTORY), \
+    EFUSE_ACL1(265, 0, FACTORY), \
+    EFUSE_ACL1(265, 1, FACTORY), \
+    EFUSE_ACL1(265, 2, FACTORY), \
+    EFUSE_ACL1(265, 3, FACTORY), \
+    EFUSE_ACL1(266, 0, FACTORY), \
+    EFUSE_ACL1(266, 1, FACTORY), \
+    EFUSE_ACL1(266, 2, FACTORY), \
+    EFUSE_ACL1(266, 3, FACTORY), \
+    EFUSE_ACL1(267, 0, FACTORY), \
+    EFUSE_ACL1(267, 1, FACTORY), \
+    EFUSE_ACL1(267, 2, FACTORY), \
+    EFUSE_ACL1(267, 3, FACTORY), \
+    EFUSE_ACL1(268, 0, FACTORY), \
+    EFUSE_ACL1(268, 1, FACTORY), \
+    EFUSE_ACL1(268, 2, FACTORY), \
+    EFUSE_ACL1(268, 3, FACTORY), \
+    EFUSE_ACL1(269, 0, FACTORY), \
+    EFUSE_ACL1(269, 1, FACTORY), \
+    EFUSE_ACL1(269, 2, FACTORY), \
+    EFUSE_ACL1(269, 3, FACTORY), \
+    EFUSE_ACL1(270, 0, FACTORY), \
+    EFUSE_ACL1(270, 1, FACTORY), \
+    EFUSE_ACL1(270, 2, FACTORY), \
+    EFUSE_ACL1(270, 3, FACTORY), \
+    EFUSE_ACL1(271, 0, FACTORY), \
+    EFUSE_ACL1(271, 1, FACTORY), \
+    EFUSE_ACL1(271, 2, FACTORY), \
+    EFUSE_ACL1(271, 3, FACTORY), \
+    EFUSE_ACL1(272, 0, FACTORY), \
+    EFUSE_ACL1(272, 1, FACTORY), \
+    EFUSE_ACL1(272, 2, FACTORY), \
+    EFUSE_ACL1(272, 3, FACTORY), \
+    EFUSE_ACL1(273, 0, FACTORY), \
+    EFUSE_ACL1(273, 1, FACTORY), \
+    EFUSE_ACL1(273, 2, FACTORY), \
+    EFUSE_ACL1(273, 3, FACTORY), \
+    EFUSE_ACL1(274, 0, FACTORY), \
+    EFUSE_ACL1(274, 1, FACTORY), \
+    EFUSE_ACL1(274, 2, FACTORY), \
+    EFUSE_ACL1(274, 3, FACTORY), \
+    EFUSE_ACL1(275, 0, FACTORY), \
+    EFUSE_ACL1(275, 1, FACTORY), \
+    EFUSE_ACL1(275, 2, FACTORY), \
+    EFUSE_ACL1(275, 3, FACTORY), \
+    EFUSE_ACL1(276, 0, FACTORY), \
+    EFUSE_ACL1(276, 1, FACTORY), \
+    EFUSE_ACL1(276, 2, FACTORY), \
+    EFUSE_ACL1(276, 3, FACTORY), \
+    EFUSE_ACL1(277, 0, FACTORY), \
+    EFUSE_ACL1(277, 1, FACTORY), \
+    EFUSE_ACL1(277, 2, FACTORY), \
+    EFUSE_ACL1(277, 3, FACTORY), \
+    EFUSE_ACL1(278, 0, FACTORY), \
+    EFUSE_ACL1(278, 1, FACTORY), \
+    EFUSE_ACL1(278, 2, FACTORY), \
+    EFUSE_ACL1(278, 3, FACTORY), \
+    EFUSE_ACL1(279, 0, FACTORY), \
+    EFUSE_ACL1(279, 1, FACTORY), \
+    EFUSE_ACL1(279, 2, FACTORY), \
+    EFUSE_ACL1(279, 3, FACTORY), \
+    EFUSE_ACL1(280, 0, FACTORY), \
+    EFUSE_ACL1(280, 1, FACTORY), \
+    EFUSE_ACL1(280, 2, FACTORY), \
+    EFUSE_ACL1(280, 3, FACTORY), \
+    EFUSE_ACL1(281, 0, FACTORY), \
+    EFUSE_ACL1(281, 1, FACTORY), \
+    EFUSE_ACL1(281, 2, FACTORY), \
+    EFUSE_ACL1(281, 3, FACTORY), \
+    EFUSE_ACL1(282, 0, FACTORY), \
+    EFUSE_ACL1(282, 1, FACTORY), \
+    EFUSE_ACL1(282, 2, FACTORY), \
+    EFUSE_ACL1(282, 3, FACTORY), \
+    EFUSE_ACL1(283, 0, FACTORY), \
+    EFUSE_ACL1(283, 1, FACTORY), \
+    EFUSE_ACL1(283, 2, FACTORY), \
+    EFUSE_ACL1(283, 3, FACTORY), \
+    EFUSE_ACL1(284, 0, FACTORY), \
+    EFUSE_ACL1(284, 1, FACTORY), \
+    EFUSE_ACL1(284, 2, FACTORY), \
+    EFUSE_ACL1(284, 3, FACTORY), \
+    EFUSE_ACL1(285, 0, FACTORY), \
+    EFUSE_ACL1(285, 1, FACTORY), \
+    EFUSE_ACL1(285, 2, FACTORY), \
+    EFUSE_ACL1(285, 3, FACTORY), \
+    EFUSE_ACL1(286, 0, FACTORY), \
+    EFUSE_ACL1(286, 1, FACTORY), \
+    EFUSE_ACL1(286, 2, FACTORY), \
+    EFUSE_ACL1(286, 3, FACTORY), \
+    EFUSE_ACL1(287, 0, FACTORY), \
+    EFUSE_ACL1(287, 1, FACTORY), \
+    EFUSE_ACL1(287, 2, FACTORY), \
+    EFUSE_ACL1(287, 3, FACTORY), \
+    EFUSE_ACL1(288, 0, FACTORY), \
+    EFUSE_ACL1(288, 1, FACTORY), \
+    EFUSE_ACL1(288, 2, FACTORY), \
+    EFUSE_ACL1(288, 3, FACTORY), \
+    EFUSE_ACL1(289, 0, FACTORY), \
+    EFUSE_ACL1(289, 1, FACTORY), \
+    EFUSE_ACL1(289, 2, FACTORY), \
+    EFUSE_ACL1(289, 3, FACTORY), \
+    EFUSE_ACL1(290, 0, FACTORY), \
+    EFUSE_ACL1(290, 1, FACTORY), \
+    EFUSE_ACL1(290, 2, FACTORY), \
+    EFUSE_ACL1(290, 3, FACTORY), \
+    EFUSE_ACL1(291, 0, FACTORY), \
+    EFUSE_ACL1(291, 1, FACTORY), \
+    EFUSE_ACL1(291, 2, FACTORY), \
+    EFUSE_ACL1(291, 3, FACTORY), \
+    EFUSE_ACL1(292, 0, FACTORY), \
+    EFUSE_ACL1(292, 1, FACTORY), \
+    EFUSE_ACL1(292, 2, FACTORY), \
+    EFUSE_ACL1(292, 3, FACTORY), \
+    EFUSE_ACL1(293, 0, FACTORY), \
+    EFUSE_ACL1(293, 1, FACTORY), \
+    EFUSE_ACL1(293, 2, FACTORY), \
+    EFUSE_ACL1(293, 3, FACTORY), \
+    EFUSE_ACL1(294, 0, FACTORY), \
+    EFUSE_ACL1(294, 1, FACTORY), \
+    EFUSE_ACL1(294, 2, FACTORY), \
+    EFUSE_ACL1(294, 3, FACTORY), \
+    EFUSE_ACL1(295, 0, FACTORY), \
+    EFUSE_ACL1(295, 1, FACTORY), \
+    EFUSE_ACL1(295, 2, FACTORY), \
+    EFUSE_ACL1(295, 3, FACTORY), \
+    EFUSE_ACL1(296, 0, FACTORY), \
+    EFUSE_ACL1(296, 1, FACTORY), \
+    EFUSE_ACL1(296, 2, FACTORY), \
+    EFUSE_ACL1(296, 3, FACTORY), \
+    EFUSE_ACL1(297, 0, FACTORY), \
+    EFUSE_ACL1(297, 1, FACTORY), \
+    EFUSE_ACL1(297, 2, FACTORY), \
+    EFUSE_ACL1(297, 3, FACTORY), \
+    EFUSE_ACL1(298, 0, FACTORY), \
+    EFUSE_ACL1(298, 1, FACTORY), \
+    EFUSE_ACL1(298, 2, FACTORY), \
+    EFUSE_ACL1(298, 3, FACTORY), \
+    EFUSE_ACL1(299, 0, FACTORY), \
+    EFUSE_ACL1(299, 1, FACTORY), \
+    EFUSE_ACL1(299, 2, FACTORY), \
+    EFUSE_ACL1(299, 3, FACTORY), \
+    EFUSE_ACL1(300, 0, FACTORY), \
+    EFUSE_ACL1(300, 1, FACTORY), \
+    EFUSE_ACL1(300, 2, FACTORY), \
+    EFUSE_ACL1(300, 3, FACTORY), \
+    EFUSE_ACL1(301, 0, FACTORY), \
+    EFUSE_ACL1(301, 1, FACTORY), \
+    EFUSE_ACL1(301, 2, FACTORY), \
+    EFUSE_ACL1(301, 3, FACTORY), \
+    EFUSE_ACL1(302, 0, FACTORY), \
+    EFUSE_ACL1(302, 1, FACTORY), \
+    EFUSE_ACL1(302, 2, FACTORY), \
+    EFUSE_ACL1(302, 3, FACTORY), \
+    EFUSE_ACL1(303, 0, FACTORY), \
+    EFUSE_ACL1(303, 1, FACTORY), \
+    EFUSE_ACL1(303, 2, FACTORY), \
+    EFUSE_ACL1(303, 3, FACTORY), \
+    EFUSE_ACL1(304, 0, FACTORY), \
+    EFUSE_ACL1(304, 1, FACTORY), \
+    EFUSE_ACL1(304, 2, FACTORY), \
+    EFUSE_ACL1(304, 3, FACTORY), \
+    EFUSE_ACL1(305, 0, FACTORY), \
+    EFUSE_ACL1(305, 1, FACTORY), \
+    EFUSE_ACL1(305, 2, FACTORY), \
+    EFUSE_ACL1(305, 3, FACTORY), \
+    EFUSE_ACL1(306, 0, FACTORY), \
+    EFUSE_ACL1(306, 1, FACTORY), \
+    EFUSE_ACL1(306, 2, FACTORY), \
+    EFUSE_ACL1(306, 3, FACTORY), \
+    EFUSE_ACL1(307, 0, FACTORY), \
+    EFUSE_ACL1(307, 1, FACTORY), \
+    EFUSE_ACL1(307, 2, FACTORY), \
+    EFUSE_ACL1(307, 3, FACTORY), \
+    EFUSE_ACL1(308, 0, FACTORY), \
+    EFUSE_ACL1(308, 1, FACTORY), \
+    EFUSE_ACL1(308, 2, FACTORY), \
+    EFUSE_ACL1(308, 3, FACTORY), \
+    EFUSE_ACL1(309, 0, FACTORY), \
+    EFUSE_ACL1(309, 1, FACTORY), \
+    EFUSE_ACL1(309, 2, FACTORY), \
+    EFUSE_ACL1(309, 3, FACTORY), \
+    EFUSE_ACL1(310, 0, FACTORY), \
+    EFUSE_ACL1(310, 1, FACTORY), \
+    EFUSE_ACL1(310, 2, FACTORY), \
+    EFUSE_ACL1(310, 3, FACTORY), \
+    EFUSE_ACL1(311, 0, FACTORY), \
+    EFUSE_ACL1(311, 1, FACTORY), \
+    EFUSE_ACL1(311, 2, FACTORY), \
+    EFUSE_ACL1(311, 3, FACTORY), \
+    EFUSE_ACL1(312, 0, FACTORY), \
+    EFUSE_ACL1(312, 1, FACTORY), \
+    EFUSE_ACL1(312, 2, FACTORY), \
+    EFUSE_ACL1(312, 3, FACTORY), \
+    EFUSE_ACL1(313, 0, FACTORY), \
+    EFUSE_ACL1(313, 1, FACTORY), \
+    EFUSE_ACL1(313, 2, FACTORY), \
+    EFUSE_ACL1(313, 3, FACTORY), \
+    EFUSE_ACL1(314, 0, FACTORY), \
+    EFUSE_ACL1(314, 1, FACTORY), \
+    EFUSE_ACL1(314, 2, FACTORY), \
+    EFUSE_ACL1(314, 3, FACTORY), \
+    EFUSE_ACL1(315, 0, FACTORY), \
+    EFUSE_ACL1(315, 1, FACTORY), \
+    EFUSE_ACL1(315, 2, FACTORY), \
+    EFUSE_ACL1(315, 3, FACTORY), \
+    EFUSE_ACL1(316, 0, FACTORY), \
+    EFUSE_ACL1(316, 1, FACTORY), \
+    EFUSE_ACL1(316, 2, FACTORY), \
+    EFUSE_ACL1(316, 3, FACTORY), \
+    EFUSE_ACL1(317, 0, FACTORY), \
+    EFUSE_ACL1(317, 1, FACTORY), \
+    EFUSE_ACL1(317, 2, FACTORY), \
+    EFUSE_ACL1(317, 3, FACTORY), \
+    EFUSE_ACL1(318, 0, FACTORY), \
+    EFUSE_ACL1(318, 1, FACTORY), \
+    EFUSE_ACL1(318, 2, FACTORY), \
+    EFUSE_ACL1(318, 3, FACTORY), \
+    EFUSE_ACL1(319, 0, FACTORY), \
+    EFUSE_ACL1(319, 1, FACTORY), \
+    EFUSE_ACL1(319, 2, FACTORY), \
+    EFUSE_ACL1(319, 3, FACTORY), \
+    EFUSE_ACL1(320, 0, FACTORY), \
+    EFUSE_ACL1(320, 1, FACTORY), \
+    EFUSE_ACL1(320, 2, FACTORY), \
+    EFUSE_ACL1(320, 3, FACTORY), \
+    EFUSE_ACL1(321, 0, FACTORY), \
+    EFUSE_ACL1(321, 1, FACTORY), \
+    EFUSE_ACL1(321, 2, FACTORY), \
+    EFUSE_ACL1(321, 3, FACTORY), \
+    EFUSE_ACL1(322, 0, FACTORY), \
+    EFUSE_ACL1(322, 1, FACTORY), \
+    EFUSE_ACL1(322, 2, FACTORY), \
+    EFUSE_ACL1(322, 3, FACTORY), \
+    EFUSE_ACL1(323, 0, FACTORY), \
+    EFUSE_ACL1(323, 1, FACTORY), \
+    EFUSE_ACL1(323, 2, FACTORY), \
+    EFUSE_ACL1(323, 3, FACTORY), \
+    EFUSE_ACL1(324, 0, FACTORY), \
+    EFUSE_ACL1(324, 1, FACTORY), \
+    EFUSE_ACL1(324, 2, FACTORY), \
+    EFUSE_ACL1(324, 3, FACTORY), \
+    EFUSE_ACL1(325, 0, FACTORY), \
+    EFUSE_ACL1(325, 1, FACTORY), \
+    EFUSE_ACL1(325, 2, FACTORY), \
+    EFUSE_ACL1(325, 3, FACTORY), \
+    EFUSE_ACL1(326, 0, FACTORY), \
+    EFUSE_ACL1(326, 1, FACTORY), \
+    EFUSE_ACL1(326, 2, FACTORY), \
+    EFUSE_ACL1(326, 3, FACTORY), \
+    EFUSE_ACL1(327, 0, FACTORY), \
+    EFUSE_ACL1(327, 1, FACTORY), \
+    EFUSE_ACL1(327, 2, FACTORY), \
+    EFUSE_ACL1(327, 3, FACTORY), \
+    EFUSE_ACL1(328, 0, FACTORY), \
+    EFUSE_ACL1(328, 1, FACTORY), \
+    EFUSE_ACL1(328, 2, FACTORY), \
+    EFUSE_ACL1(328, 3, FACTORY), \
+    EFUSE_ACL1(329, 0, FACTORY), \
+    EFUSE_ACL1(329, 1, FACTORY), \
+    EFUSE_ACL1(329, 2, FACTORY), \
+    EFUSE_ACL1(329, 3, FACTORY), \
+    EFUSE_ACL1(330, 0, FACTORY), \
+    EFUSE_ACL1(330, 1, FACTORY), \
+    EFUSE_ACL1(330, 2, FACTORY), \
+    EFUSE_ACL1(330, 3, FACTORY), \
+    EFUSE_ACL1(331, 0, FACTORY), \
+    EFUSE_ACL1(331, 1, FACTORY), \
+    EFUSE_ACL1(331, 2, FACTORY), \
+    EFUSE_ACL1(331, 3, FACTORY), \
+    EFUSE_ACL1(332, 0, FACTORY), \
+    EFUSE_ACL1(332, 1, FACTORY), \
+    EFUSE_ACL1(332, 2, FACTORY), \
+    EFUSE_ACL1(332, 3, FACTORY), \
+    EFUSE_ACL1(333, 0, FACTORY), \
+    EFUSE_ACL1(333, 1, FACTORY), \
+    EFUSE_ACL1(333, 2, FACTORY), \
+    EFUSE_ACL1(333, 3, FACTORY), \
+    EFUSE_ACL1(334, 0, FACTORY), \
+    EFUSE_ACL1(334, 1, FACTORY), \
+    EFUSE_ACL1(334, 2, FACTORY), \
+    EFUSE_ACL1(334, 3, FACTORY), \
+    EFUSE_ACL1(335, 0, FACTORY), \
+    EFUSE_ACL1(335, 1, FACTORY), \
+    EFUSE_ACL1(335, 2, FACTORY), \
+    EFUSE_ACL1(335, 3, FACTORY), \
+    EFUSE_ACL1(336, 0, FACTORY), \
+    EFUSE_ACL1(336, 1, FACTORY), \
+    EFUSE_ACL1(336, 2, FACTORY), \
+    EFUSE_ACL1(336, 3, FACTORY), \
+    EFUSE_ACL1(337, 0, FACTORY), \
+    EFUSE_ACL1(337, 1, FACTORY), \
+    EFUSE_ACL1(337, 2, FACTORY), \
+    EFUSE_ACL1(337, 3, FACTORY), \
+    EFUSE_ACL1(338, 0, FACTORY), \
+    EFUSE_ACL1(338, 1, FACTORY), \
+    EFUSE_ACL1(338, 2, FACTORY), \
+    EFUSE_ACL1(338, 3, FACTORY), \
+    EFUSE_ACL1(339, 0, FACTORY), \
+    EFUSE_ACL1(339, 1, FACTORY), \
+    EFUSE_ACL1(339, 2, FACTORY), \
+    EFUSE_ACL1(339, 3, FACTORY), \
+    EFUSE_ACL1(340, 0, FACTORY), \
+    EFUSE_ACL1(340, 1, FACTORY), \
+    EFUSE_ACL1(340, 2, FACTORY), \
+    EFUSE_ACL1(340, 3, FACTORY), \
+    EFUSE_ACL1(341, 0, FACTORY), \
+    EFUSE_ACL1(341, 1, FACTORY), \
+    EFUSE_ACL1(341, 2, FACTORY), \
+    EFUSE_ACL1(341, 3, FACTORY), \
+    EFUSE_ACL1(342, 0, FACTORY), \
+    EFUSE_ACL1(342, 1, FACTORY), \
+    EFUSE_ACL1(342, 2, FACTORY), \
+    EFUSE_ACL1(342, 3, FACTORY), \
+    EFUSE_ACL1(343, 0, FACTORY), \
+    EFUSE_ACL1(343, 1, FACTORY), \
+    EFUSE_ACL1(343, 2, FACTORY), \
+    EFUSE_ACL1(343, 3, FACTORY), \
+    EFUSE_ACL1(344, 0, FACTORY), \
+    EFUSE_ACL1(344, 1, FACTORY), \
+    EFUSE_ACL1(344, 2, FACTORY), \
+    EFUSE_ACL1(344, 3, FACTORY), \
+    EFUSE_ACL1(345, 0, FACTORY), \
+    EFUSE_ACL1(345, 1, FACTORY), \
+    EFUSE_ACL1(345, 2, FACTORY), \
+    EFUSE_ACL1(345, 3, FACTORY), \
+    EFUSE_ACL1(346, 0, FACTORY), \
+    EFUSE_ACL1(346, 1, FACTORY), \
+    EFUSE_ACL1(346, 2, FACTORY), \
+    EFUSE_ACL1(346, 3, FACTORY), \
+    EFUSE_ACL1(347, 0, FACTORY), \
+    EFUSE_ACL1(347, 1, FACTORY), \
+    EFUSE_ACL1(347, 2, FACTORY), \
+    EFUSE_ACL1(347, 3, FACTORY), \
+    EFUSE_ACL1(348, 0, FACTORY), \
+    EFUSE_ACL1(348, 1, FACTORY), \
+    EFUSE_ACL1(348, 2, FACTORY), \
+    EFUSE_ACL1(348, 3, FACTORY), \
+    EFUSE_ACL1(349, 0, FACTORY), \
+    EFUSE_ACL1(349, 1, FACTORY), \
+    EFUSE_ACL1(349, 2, FACTORY), \
+    EFUSE_ACL1(349, 3, FACTORY), \
+    EFUSE_ACL1(350, 0, FACTORY), \
+    EFUSE_ACL1(350, 1, FACTORY), \
+    EFUSE_ACL1(350, 2, FACTORY), \
+    EFUSE_ACL1(350, 3, FACTORY), \
+    EFUSE_ACL1(351, 0, FACTORY), \
+    EFUSE_ACL1(351, 1, FACTORY), \
+    EFUSE_ACL1(351, 2, FACTORY), \
+    EFUSE_ACL1(351, 3, FACTORY), \
+    EFUSE_ACL1(352, 0, FACTORY), \
+    EFUSE_ACL1(352, 1, FACTORY), \
+    EFUSE_ACL1(352, 2, FACTORY), \
+    EFUSE_ACL1(352, 3, FACTORY), \
+    EFUSE_ACL1(353, 0, FACTORY), \
+    EFUSE_ACL1(353, 1, FACTORY), \
+    EFUSE_ACL1(353, 2, FACTORY), \
+    EFUSE_ACL1(353, 3, FACTORY), \
+    EFUSE_ACL1(354, 0, FACTORY), \
+    EFUSE_ACL1(354, 1, FACTORY), \
+    EFUSE_ACL1(354, 2, FACTORY), \
+    EFUSE_ACL1(354, 3, FACTORY), \
+    EFUSE_ACL1(355, 0, FACTORY), \
+    EFUSE_ACL1(355, 1, FACTORY), \
+    EFUSE_ACL1(355, 2, FACTORY), \
+    EFUSE_ACL1(355, 3, FACTORY), \
+    EFUSE_ACL1(356, 0, FACTORY), \
+    EFUSE_ACL1(356, 1, FACTORY), \
+    EFUSE_ACL1(356, 2, FACTORY), \
+    EFUSE_ACL1(356, 3, FACTORY), \
+    EFUSE_ACL1(357, 0, FACTORY), \
+    EFUSE_ACL1(357, 1, FACTORY), \
+    EFUSE_ACL1(357, 2, FACTORY), \
+    EFUSE_ACL1(357, 3, FACTORY), \
+    EFUSE_ACL1(358, 0, FACTORY), \
+    EFUSE_ACL1(358, 1, FACTORY), \
+    EFUSE_ACL1(358, 2, FACTORY), \
+    EFUSE_ACL1(358, 3, FACTORY), \
+    EFUSE_ACL1(359, 0, FACTORY), \
+    EFUSE_ACL1(359, 1, FACTORY), \
+    EFUSE_ACL1(359, 2, FACTORY), \
+    EFUSE_ACL1(359, 3, FACTORY), \
+    EFUSE_ACL1(360, 0, FACTORY), \
+    EFUSE_ACL1(360, 1, FACTORY), \
+    EFUSE_ACL1(360, 2, FACTORY), \
+    EFUSE_ACL1(360, 3, FACTORY), \
+    EFUSE_ACL1(361, 0, FACTORY), \
+    EFUSE_ACL1(361, 1, FACTORY), \
+    EFUSE_ACL1(361, 2, FACTORY), \
+    EFUSE_ACL1(361, 3, FACTORY), \
+    EFUSE_ACL1(362, 0, FACTORY), \
+    EFUSE_ACL1(362, 1, FACTORY), \
+    EFUSE_ACL1(362, 2, FACTORY), \
+    EFUSE_ACL1(362, 3, FACTORY), \
+    EFUSE_ACL1(363, 0, FACTORY), \
+    EFUSE_ACL1(363, 1, FACTORY), \
+    EFUSE_ACL1(363, 2, FACTORY), \
+    EFUSE_ACL1(363, 3, FACTORY), \
+    EFUSE_ACL1(364, 0, FACTORY), \
+    EFUSE_ACL1(364, 1, FACTORY), \
+    EFUSE_ACL1(364, 2, FACTORY), \
+    EFUSE_ACL1(364, 3, FACTORY), \
+    EFUSE_ACL1(365, 0, FACTORY), \
+    EFUSE_ACL1(365, 1, FACTORY), \
+    EFUSE_ACL1(365, 2, FACTORY), \
+    EFUSE_ACL1(365, 3, FACTORY), \
+    EFUSE_ACL1(366, 0, FACTORY), \
+    EFUSE_ACL1(366, 1, FACTORY), \
+    EFUSE_ACL1(366, 2, FACTORY), \
+    EFUSE_ACL1(366, 3, FACTORY), \
+    EFUSE_ACL1(367, 0, FACTORY), \
+    EFUSE_ACL1(367, 1, FACTORY), \
+    EFUSE_ACL1(367, 2, FACTORY), \
+    EFUSE_ACL1(367, 3, FACTORY), \
+    EFUSE_ACL1(368, 0, FACTORY), \
+    EFUSE_ACL1(368, 1, FACTORY), \
+    EFUSE_ACL1(368, 2, FACTORY), \
+    EFUSE_ACL1(368, 3, FACTORY), \
+    EFUSE_ACL1(369, 0, FACTORY), \
+    EFUSE_ACL1(369, 1, FACTORY), \
+    EFUSE_ACL1(369, 2, FACTORY), \
+    EFUSE_ACL1(369, 3, FACTORY), \
+    EFUSE_ACL1(370, 0, FACTORY), \
+    EFUSE_ACL1(370, 1, FACTORY), \
+    EFUSE_ACL1(370, 2, FACTORY), \
+    EFUSE_ACL1(370, 3, FACTORY), \
+    EFUSE_ACL1(371, 0, FACTORY), \
+    EFUSE_ACL1(371, 1, FACTORY), \
+    EFUSE_ACL1(371, 2, FACTORY), \
+    EFUSE_ACL1(371, 3, FACTORY), \
+    EFUSE_ACL1(372, 0, FACTORY), \
+    EFUSE_ACL1(372, 1, FACTORY), \
+    EFUSE_ACL1(372, 2, FACTORY), \
+    EFUSE_ACL1(372, 3, FACTORY), \
+    EFUSE_ACL1(373, 0, FACTORY), \
+    EFUSE_ACL1(373, 1, FACTORY), \
+    EFUSE_ACL1(373, 2, FACTORY), \
+    EFUSE_ACL1(373, 3, FACTORY), \
+    EFUSE_ACL1(374, 0, FACTORY), \
+    EFUSE_ACL1(374, 1, FACTORY), \
+    EFUSE_ACL1(374, 2, FACTORY), \
+    EFUSE_ACL1(374, 3, FACTORY), \
+    EFUSE_ACL1(375, 0, FACTORY), \
+    EFUSE_ACL1(375, 1, FACTORY), \
+    EFUSE_ACL1(375, 2, FACTORY), \
+    EFUSE_ACL1(375, 3, FACTORY), \
+    EFUSE_ACL1(376, 0, FACTORY), \
+    EFUSE_ACL1(376, 1, FACTORY), \
+    EFUSE_ACL1(376, 2, FACTORY), \
+    EFUSE_ACL1(376, 3, FACTORY), \
+    EFUSE_ACL1(377, 0, FACTORY), \
+    EFUSE_ACL1(377, 1, FACTORY), \
+    EFUSE_ACL1(377, 2, FACTORY), \
+    EFUSE_ACL1(377, 3, FACTORY), \
+    EFUSE_ACL1(378, 0, FACTORY), \
+    EFUSE_ACL1(378, 1, FACTORY), \
+    EFUSE_ACL1(378, 2, FACTORY), \
+    EFUSE_ACL1(378, 3, FACTORY), \
+    EFUSE_ACL1(379, 0, FACTORY), \
+    EFUSE_ACL1(379, 1, FACTORY), \
+    EFUSE_ACL1(379, 2, FACTORY), \
+    EFUSE_ACL1(379, 3, FACTORY), \
+    EFUSE_ACL1(380, 0, FACTORY), \
+    EFUSE_ACL1(380, 1, FACTORY), \
+    EFUSE_ACL1(380, 2, FACTORY), \
+    EFUSE_ACL1(380, 3, FACTORY), \
+    EFUSE_ACL1(381, 0, FACTORY), \
+    EFUSE_ACL1(381, 1, FACTORY), \
+    EFUSE_ACL1(381, 2, FACTORY), \
+    EFUSE_ACL1(381, 3, FACTORY), \
+    EFUSE_ACL1(382, 0, FACTORY), \
+    EFUSE_ACL1(382, 1, FACTORY), \
+    EFUSE_ACL1(382, 2, FACTORY), \
+    EFUSE_ACL1(382, 3, FACTORY), \
+    EFUSE_ACL1(383, 0, FACTORY), \
+    EFUSE_ACL1(383, 1, FACTORY), \
+    EFUSE_ACL1(383, 2, FACTORY), \
+    EFUSE_ACL1(383, 3, FACTORY), \
+    EFUSE_ACL1(384, 0, FACTORY), \
+    EFUSE_ACL1(384, 1, FACTORY), \
+    EFUSE_ACL1(384, 2, FACTORY), \
+    EFUSE_ACL1(384, 3, FACTORY), \
+    EFUSE_ACL1(385, 0, FACTORY), \
+    EFUSE_ACL1(385, 1, FACTORY), \
+    EFUSE_ACL1(385, 2, FACTORY), \
+    EFUSE_ACL1(385, 3, FACTORY), \
+    EFUSE_ACL1(386, 0, FACTORY), \
+    EFUSE_ACL1(386, 1, FACTORY), \
+    EFUSE_ACL1(386, 2, FACTORY), \
+    EFUSE_ACL1(386, 3, FACTORY), \
+    EFUSE_ACL1(387, 0, FACTORY), \
+    EFUSE_ACL1(387, 1, FACTORY), \
+    EFUSE_ACL1(387, 2, FACTORY), \
+    EFUSE_ACL1(387, 3, FACTORY), \
+    EFUSE_ACL1(388, 0, FACTORY), \
+    EFUSE_ACL1(388, 1, FACTORY), \
+    EFUSE_ACL1(388, 2, FACTORY), \
+    EFUSE_ACL1(388, 3, FACTORY), \
+    EFUSE_ACL1(389, 0, FACTORY), \
+    EFUSE_ACL1(389, 1, FACTORY), \
+    EFUSE_ACL1(389, 2, FACTORY), \
+    EFUSE_ACL1(389, 3, FACTORY), \
+    EFUSE_ACL1(390, 0, FACTORY), \
+    EFUSE_ACL1(390, 1, FACTORY), \
+    EFUSE_ACL1(390, 2, FACTORY), \
+    EFUSE_ACL1(390, 3, FACTORY), \
+    EFUSE_ACL1(391, 0, FACTORY), \
+    EFUSE_ACL1(391, 1, FACTORY), \
+    EFUSE_ACL1(391, 2, FACTORY), \
+    EFUSE_ACL1(391, 3, FACTORY), \
+    EFUSE_ACL1(392, 0, FACTORY), \
+    EFUSE_ACL1(392, 1, FACTORY), \
+    EFUSE_ACL1(392, 2, FACTORY), \
+    EFUSE_ACL1(392, 3, FACTORY), \
+    EFUSE_ACL1(393, 0, FACTORY), \
+    EFUSE_ACL1(393, 1, FACTORY), \
+    EFUSE_ACL1(393, 2, FACTORY), \
+    EFUSE_ACL1(393, 3, FACTORY), \
+    EFUSE_ACL1(394, 0, FACTORY), \
+    EFUSE_ACL1(394, 1, FACTORY), \
+    EFUSE_ACL1(394, 2, FACTORY), \
+    EFUSE_ACL1(394, 3, FACTORY), \
+    EFUSE_ACL1(395, 0, FACTORY), \
+    EFUSE_ACL1(395, 1, FACTORY), \
+    EFUSE_ACL1(395, 2, FACTORY), \
+    EFUSE_ACL1(395, 3, FACTORY), \
+    EFUSE_ACL1(396, 0, FACTORY), \
+    EFUSE_ACL1(396, 1, FACTORY), \
+    EFUSE_ACL1(396, 2, FACTORY), \
+    EFUSE_ACL1(396, 3, FACTORY), \
+    EFUSE_ACL1(397, 0, FACTORY), \
+    EFUSE_ACL1(397, 1, FACTORY), \
+    EFUSE_ACL1(397, 2, FACTORY), \
+    EFUSE_ACL1(397, 3, FACTORY), \
+    EFUSE_ACL1(398, 0, FACTORY), \
+    EFUSE_ACL1(398, 1, FACTORY), \
+    EFUSE_ACL1(398, 2, FACTORY), \
+    EFUSE_ACL1(398, 3, FACTORY), \
+    EFUSE_ACL1(399, 0, FACTORY), \
+    EFUSE_ACL1(399, 1, FACTORY), \
+    EFUSE_ACL1(399, 2, FACTORY), \
+    EFUSE_ACL1(399, 3, FACTORY), \
+    EFUSE_ACL1(400, 0, FACTORY), \
+    EFUSE_ACL1(400, 1, FACTORY), \
+    EFUSE_ACL1(400, 2, FACTORY), \
+    EFUSE_ACL1(400, 3, FACTORY), \
+    EFUSE_ACL1(401, 0, FACTORY), \
+    EFUSE_ACL1(401, 1, FACTORY), \
+    EFUSE_ACL1(401, 2, FACTORY), \
+    EFUSE_ACL1(401, 3, FACTORY), \
+    EFUSE_ACL1(402, 0, FACTORY), \
+    EFUSE_ACL1(402, 1, FACTORY), \
+    EFUSE_ACL1(402, 2, FACTORY), \
+    EFUSE_ACL1(402, 3, FACTORY), \
+    EFUSE_ACL1(403, 0, FACTORY), \
+    EFUSE_ACL1(403, 1, FACTORY), \
+    EFUSE_ACL1(403, 2, FACTORY), \
+    EFUSE_ACL1(403, 3, FACTORY), \
+    EFUSE_ACL1(404, 0, FACTORY), \
+    EFUSE_ACL1(404, 1, FACTORY), \
+    EFUSE_ACL1(404, 2, FACTORY), \
+    EFUSE_ACL1(404, 3, FACTORY), \
+    EFUSE_ACL1(405, 0, FACTORY), \
+    EFUSE_ACL1(405, 1, FACTORY), \
+    EFUSE_ACL1(405, 2, FACTORY), \
+    EFUSE_ACL1(405, 3, FACTORY), \
+    EFUSE_ACL1(406, 0, FACTORY), \
+    EFUSE_ACL1(406, 1, FACTORY), \
+    EFUSE_ACL1(406, 2, FACTORY), \
+    EFUSE_ACL1(406, 3, FACTORY), \
+    EFUSE_ACL1(407, 0, FACTORY), \
+    EFUSE_ACL1(407, 1, FACTORY), \
+    EFUSE_ACL1(407, 2, FACTORY), \
+    EFUSE_ACL1(407, 3, FACTORY), \
+    EFUSE_ACL1(408, 0, FACTORY), \
+    EFUSE_ACL1(408, 1, FACTORY), \
+    EFUSE_ACL1(408, 2, FACTORY), \
+    EFUSE_ACL1(408, 3, FACTORY), \
+    EFUSE_ACL1(409, 0, FACTORY), \
+    EFUSE_ACL1(409, 1, FACTORY), \
+    EFUSE_ACL1(409, 2, FACTORY), \
+    EFUSE_ACL1(409, 3, FACTORY), \
+    EFUSE_ACL1(410, 0, FACTORY), \
+    EFUSE_ACL1(410, 1, FACTORY), \
+    EFUSE_ACL1(410, 2, FACTORY), \
+    EFUSE_ACL1(410, 3, FACTORY), \
+    EFUSE_ACL1(411, 0, FACTORY), \
+    EFUSE_ACL1(411, 1, FACTORY), \
+    EFUSE_ACL1(411, 2, FACTORY), \
+    EFUSE_ACL1(411, 3, FACTORY), \
+    EFUSE_ACL1(412, 0, FACTORY), \
+    EFUSE_ACL1(412, 1, FACTORY), \
+    EFUSE_ACL1(412, 2, FACTORY), \
+    EFUSE_ACL1(412, 3, FACTORY), \
+    EFUSE_ACL1(413, 0, FACTORY), \
+    EFUSE_ACL1(413, 1, FACTORY), \
+    EFUSE_ACL1(413, 2, FACTORY), \
+    EFUSE_ACL1(413, 3, FACTORY), \
+    EFUSE_ACL1(414, 0, FACTORY), \
+    EFUSE_ACL1(414, 1, FACTORY), \
+    EFUSE_ACL1(414, 2, FACTORY), \
+    EFUSE_ACL1(414, 3, FACTORY), \
+    EFUSE_ACL1(415, 0, FACTORY), \
+    EFUSE_ACL1(415, 1, FACTORY), \
+    EFUSE_ACL1(415, 2, FACTORY), \
+    EFUSE_ACL1(415, 3, FACTORY), \
+    EFUSE_ACL1(416, 0, FACTORY), \
+    EFUSE_ACL1(416, 1, FACTORY), \
+    EFUSE_ACL1(416, 2, FACTORY), \
+    EFUSE_ACL1(416, 3, FACTORY), \
+    EFUSE_ACL1(417, 0, FACTORY), \
+    EFUSE_ACL1(417, 1, FACTORY), \
+    EFUSE_ACL1(417, 2, FACTORY), \
+    EFUSE_ACL1(417, 3, FACTORY), \
+    EFUSE_ACL1(418, 0, FACTORY), \
+    EFUSE_ACL1(418, 1, FACTORY), \
+    EFUSE_ACL1(418, 2, FACTORY), \
+    EFUSE_ACL1(418, 3, FACTORY), \
+    EFUSE_ACL1(419, 0, FACTORY), \
+    EFUSE_ACL1(419, 1, FACTORY), \
+    EFUSE_ACL1(419, 2, FACTORY), \
+    EFUSE_ACL1(419, 3, FACTORY), \
+    EFUSE_ACL1(420, 0, FACTORY), \
+    EFUSE_ACL1(420, 1, FACTORY), \
+    EFUSE_ACL1(420, 2, FACTORY), \
+    EFUSE_ACL1(420, 3, FACTORY), \
+    EFUSE_ACL1(421, 0, FACTORY), \
+    EFUSE_ACL1(421, 1, FACTORY), \
+    EFUSE_ACL1(421, 2, FACTORY), \
+    EFUSE_ACL1(421, 3, FACTORY), \
+    EFUSE_ACL1(422, 0, FACTORY), \
+    EFUSE_ACL1(422, 1, FACTORY), \
+    EFUSE_ACL1(422, 2, FACTORY), \
+    EFUSE_ACL1(422, 3, FACTORY), \
+    EFUSE_ACL1(423, 0, FACTORY), \
+    EFUSE_ACL1(423, 1, FACTORY), \
+    EFUSE_ACL1(423, 2, FACTORY), \
+    EFUSE_ACL1(423, 3, FACTORY), \
+    EFUSE_ACL1(424, 0, FACTORY), \
+    EFUSE_ACL1(424, 1, FACTORY), \
+    EFUSE_ACL1(424, 2, FACTORY), \
+    EFUSE_ACL1(424, 3, FACTORY), \
+    EFUSE_ACL1(425, 0, FACTORY), \
+    EFUSE_ACL1(425, 1, FACTORY), \
+    EFUSE_ACL1(425, 2, FACTORY), \
+    EFUSE_ACL1(425, 3, FACTORY), \
+    EFUSE_ACL1(426, 0, FACTORY), \
+    EFUSE_ACL1(426, 1, FACTORY), \
+    EFUSE_ACL1(426, 2, FACTORY), \
+    EFUSE_ACL1(426, 3, FACTORY), \
+    EFUSE_ACL1(427, 0, FACTORY), \
+    EFUSE_ACL1(427, 1, FACTORY), \
+    EFUSE_ACL1(427, 2, FACTORY), \
+    EFUSE_ACL1(427, 3, FACTORY), \
+    EFUSE_ACL1(428, 0, FACTORY), \
+    EFUSE_ACL1(428, 1, FACTORY), \
+    EFUSE_ACL1(428, 2, FACTORY), \
+    EFUSE_ACL1(428, 3, FACTORY), \
+    EFUSE_ACL1(429, 0, FACTORY), \
+    EFUSE_ACL1(429, 1, FACTORY), \
+    EFUSE_ACL1(429, 2, FACTORY), \
+    EFUSE_ACL1(429, 3, FACTORY), \
+    EFUSE_ACL1(430, 0, FACTORY), \
+    EFUSE_ACL1(430, 1, FACTORY), \
+    EFUSE_ACL1(430, 2, FACTORY), \
+    EFUSE_ACL1(430, 3, FACTORY), \
+    EFUSE_ACL1(431, 0, FACTORY), \
+    EFUSE_ACL1(431, 1, FACTORY), \
+    EFUSE_ACL1(431, 2, FACTORY), \
+    EFUSE_ACL1(431, 3, FACTORY), \
+    EFUSE_ACL1(432, 0, FACTORY), \
+    EFUSE_ACL1(432, 1, FACTORY), \
+    EFUSE_ACL1(432, 2, FACTORY), \
+    EFUSE_ACL1(432, 3, FACTORY), \
+    EFUSE_ACL1(433, 0, FACTORY), \
+    EFUSE_ACL1(433, 1, FACTORY), \
+    EFUSE_ACL1(433, 2, FACTORY), \
+    EFUSE_ACL1(433, 3, FACTORY), \
+    EFUSE_ACL1(434, 0, FACTORY), \
+    EFUSE_ACL1(434, 1, FACTORY), \
+    EFUSE_ACL1(434, 2, FACTORY), \
+    EFUSE_ACL1(434, 3, FACTORY), \
+    EFUSE_ACL1(435, 0, FACTORY), \
+    EFUSE_ACL1(435, 1, FACTORY), \
+    EFUSE_ACL1(435, 2, FACTORY), \
+    EFUSE_ACL1(435, 3, FACTORY), \
+    EFUSE_ACL1(436, 0, FACTORY), \
+    EFUSE_ACL1(436, 1, FACTORY), \
+    EFUSE_ACL1(436, 2, FACTORY), \
+    EFUSE_ACL1(436, 3, FACTORY), \
+    EFUSE_ACL1(437, 0, FACTORY), \
+    EFUSE_ACL1(437, 1, FACTORY), \
+    EFUSE_ACL1(437, 2, FACTORY), \
+    EFUSE_ACL1(437, 3, FACTORY), \
+    EFUSE_ACL1(438, 0, FACTORY), \
+    EFUSE_ACL1(438, 1, FACTORY), \
+    EFUSE_ACL1(438, 2, FACTORY), \
+    EFUSE_ACL1(438, 3, FACTORY), \
+    EFUSE_ACL1(439, 0, FACTORY), \
+    EFUSE_ACL1(439, 1, FACTORY), \
+    EFUSE_ACL1(439, 2, FACTORY), \
+    EFUSE_ACL1(439, 3, FACTORY), \
+    EFUSE_ACL1(440, 0, FACTORY), \
+    EFUSE_ACL1(440, 1, FACTORY), \
+    EFUSE_ACL1(440, 2, FACTORY), \
+    EFUSE_ACL1(440, 3, FACTORY), \
+    EFUSE_ACL1(441, 0, FACTORY), \
+    EFUSE_ACL1(441, 1, FACTORY), \
+    EFUSE_ACL1(441, 2, FACTORY), \
+    EFUSE_ACL1(441, 3, FACTORY), \
+    EFUSE_ACL1(442, 0, FACTORY), \
+    EFUSE_ACL1(442, 1, FACTORY), \
+    EFUSE_ACL1(442, 2, FACTORY), \
+    EFUSE_ACL1(442, 3, FACTORY), \
+    EFUSE_ACL1(443, 0, FACTORY), \
+    EFUSE_ACL1(443, 1, FACTORY), \
+    EFUSE_ACL1(443, 2, FACTORY), \
+    EFUSE_ACL1(443, 3, FACTORY), \
+    EFUSE_ACL1(444, 0, FACTORY), \
+    EFUSE_ACL1(444, 1, FACTORY), \
+    EFUSE_ACL1(444, 2, FACTORY), \
+    EFUSE_ACL1(444, 3, FACTORY), \
+    EFUSE_ACL1(445, 0, FACTORY), \
+    EFUSE_ACL1(445, 1, FACTORY), \
+    EFUSE_ACL1(445, 2, FACTORY), \
+    EFUSE_ACL1(445, 3, FACTORY), \
+    EFUSE_ACL1(446, 0, FACTORY), \
+    EFUSE_ACL1(446, 1, FACTORY), \
+    EFUSE_ACL1(446, 2, FACTORY), \
+    EFUSE_ACL1(446, 3, FACTORY), \
+    EFUSE_ACL1(447, 0, FACTORY), \
+    EFUSE_ACL1(447, 1, FACTORY), \
+    EFUSE_ACL1(447, 2, FACTORY), \
+    EFUSE_ACL1(447, 3, FACTORY), \
+    EFUSE_ACL1(448, 0, TBIT1_5C8), \
+    EFUSE_ACL1(448, 1, TBIT1_5C8), \
+    EFUSE_ACL1(448, 2, TBIT1_5C8), \
+    EFUSE_ACL1(448, 3, TBIT1_5C8), \
+    EFUSE_ACL1(449, 0, TBIT1_5C8), \
+    EFUSE_ACL1(449, 1, TBIT1_5C8), \
+    EFUSE_ACL1(449, 2, TBIT1_5C8), \
+    EFUSE_ACL1(449, 3, TBIT1_5C8), \
+    EFUSE_ACL1(450, 0, TBIT1_5C8), \
+    EFUSE_ACL1(450, 1, TBIT1_5C8), \
+    EFUSE_ACL1(450, 2, TBIT1_5C8), \
+    EFUSE_ACL1(450, 3, TBIT1_5C8), \
+    EFUSE_ACL1(451, 0, TBIT1_5C8), \
+    EFUSE_ACL1(451, 1, TBIT1_5C8), \
+    EFUSE_ACL1(451, 2, TBIT1_5C8), \
+    EFUSE_ACL1(451, 3, TBIT1_5C8), \
+    EFUSE_ACL1(452, 0, TBIT1_5C8), \
+    EFUSE_ACL1(452, 1, TBIT1_5C8), \
+    EFUSE_ACL1(452, 2, TBIT1_5C8), \
+    EFUSE_ACL1(452, 3, TBIT1_5C8), \
+    EFUSE_ACL1(453, 0, TBIT1_5C8), \
+    EFUSE_ACL1(453, 1, TBIT1_5C8), \
+    EFUSE_ACL1(453, 2, TBIT1_5C8), \
+    EFUSE_ACL1(453, 3, TBIT1_5C8), \
+    EFUSE_ACL1(454, 0, TBIT1_5C8), \
+    EFUSE_ACL1(454, 1, TBIT1_5C8), \
+    EFUSE_ACL1(454, 2, TBIT1_5C8), \
+    EFUSE_ACL1(454, 3, TBIT1_5C8), \
+    EFUSE_ACL1(455, 0, TBIT1_5C8), \
+    EFUSE_ACL1(455, 1, TBIT1_5C8), \
+    EFUSE_ACL1(455, 2, TBIT1_5C8), \
+    EFUSE_ACL1(455, 3, TBIT1_5C8), \
+    EFUSE_ACL1(456, 0, TBIT1_5C8), \
+    EFUSE_ACL1(456, 1, TBIT1_5C8), \
+    EFUSE_ACL1(456, 2, TBIT1_5C8), \
+    EFUSE_ACL1(456, 3, TBIT1_5C8), \
+    EFUSE_ACL1(457, 0, TBIT1_5C8), \
+    EFUSE_ACL1(457, 1, TBIT1_5C8), \
+    EFUSE_ACL1(457, 2, TBIT1_5C8), \
+    EFUSE_ACL1(457, 3, TBIT1_5C8), \
+    EFUSE_ACL1(458, 0, TBIT1_5C8), \
+    EFUSE_ACL1(458, 1, TBIT1_5C8), \
+    EFUSE_ACL1(458, 2, TBIT1_5C8), \
+    EFUSE_ACL1(458, 3, TBIT1_5C8), \
+    EFUSE_ACL1(459, 0, TBIT1_5C8), \
+    EFUSE_ACL1(459, 1, TBIT1_5C8), \
+    EFUSE_ACL1(459, 2, TBIT1_5C8), \
+    EFUSE_ACL1(459, 3, TBIT1_5C8), \
+    EFUSE_ACL1(460, 0, TBIT1_5C8), \
+    EFUSE_ACL1(460, 1, TBIT1_5C8), \
+    EFUSE_ACL1(460, 2, TBIT1_5C8), \
+    EFUSE_ACL1(460, 3, TBIT1_5C8), \
+    EFUSE_ACL1(461, 0, TBIT1_5C8), \
+    EFUSE_ACL1(461, 1, TBIT1_5C8), \
+    EFUSE_ACL1(461, 2, TBIT1_5C8), \
+    EFUSE_ACL1(461, 3, TBIT1_5C8), \
+    EFUSE_ACL1(462, 0, TBIT1_5C8), \
+    EFUSE_ACL1(462, 1, TBIT1_5C8), \
+    EFUSE_ACL1(462, 2, TBIT1_5C8), \
+    EFUSE_ACL1(462, 3, TBIT1_5C8), \
+    EFUSE_ACL1(463, 0, TBIT1_5C8), \
+    EFUSE_ACL1(463, 1, TBIT1_5C8), \
+    EFUSE_ACL1(463, 2, TBIT1_5C8), \
+    EFUSE_ACL1(463, 3, TBIT1_5C8), \
+    EFUSE_ACL1(464, 0, TBIT1_5C8), \
+    EFUSE_ACL1(464, 1, TBIT1_5C8), \
+    EFUSE_ACL1(464, 2, TBIT1_5C8), \
+    EFUSE_ACL1(464, 3, TBIT1_5C8), \
+    EFUSE_ACL1(465, 0, TBIT1_5C8), \
+    EFUSE_ACL1(465, 1, TBIT1_5C8), \
+    EFUSE_ACL1(465, 2, TBIT1_5C8), \
+    EFUSE_ACL1(465, 3, TBIT1_5C8), \
+    EFUSE_ACL1(466, 0, TBIT1_5C8), \
+    EFUSE_ACL1(466, 1, TBIT1_5C8), \
+    EFUSE_ACL1(466, 2, TBIT1_5C8), \
+    EFUSE_ACL1(466, 3, TBIT1_5C8), \
+    EFUSE_ACL1(467, 0, TBIT1_5C8), \
+    EFUSE_ACL1(467, 1, TBIT1_5C8), \
+    EFUSE_ACL1(467, 2, TBIT1_5C8), \
+    EFUSE_ACL1(467, 3, TBIT1_5C8), \
+    EFUSE_ACL1(468, 0, TBIT1_5C8), \
+    EFUSE_ACL1(468, 1, TBIT1_5C8), \
+    EFUSE_ACL1(468, 2, TBIT1_5C8), \
+    EFUSE_ACL1(468, 3, TBIT1_5C8), \
+    EFUSE_ACL1(469, 0, TBIT1_5C8), \
+    EFUSE_ACL1(469, 1, TBIT1_5C8), \
+    EFUSE_ACL1(469, 2, TBIT1_5C8), \
+    EFUSE_ACL1(469, 3, TBIT1_5C8), \
+    EFUSE_ACL1(470, 0, TBIT1_5C8), \
+    EFUSE_ACL1(470, 1, TBIT1_5C8), \
+    EFUSE_ACL1(470, 2, TBIT1_5C8), \
+    EFUSE_ACL1(470, 3, TBIT1_5C8), \
+    EFUSE_ACL1(471, 0, TBIT1_5C8), \
+    EFUSE_ACL1(471, 1, TBIT1_5C8), \
+    EFUSE_ACL1(471, 2, TBIT1_5C8), \
+    EFUSE_ACL1(471, 3, TBIT1_5C8), \
+    EFUSE_ACL1(472, 0, TBIT1_5C8), \
+    EFUSE_ACL1(472, 1, TBIT1_5C8), \
+    EFUSE_ACL1(472, 2, TBIT1_5C8), \
+    EFUSE_ACL1(472, 3, TBIT1_5C8), \
+    EFUSE_ACL1(473, 0, TBIT1_5C8), \
+    EFUSE_ACL1(473, 1, TBIT1_5C8), \
+    EFUSE_ACL1(473, 2, TBIT1_5C8), \
+    EFUSE_ACL1(473, 3, TBIT1_5C8), \
+    EFUSE_ACL1(474, 0, TBIT1_5C8), \
+    EFUSE_ACL1(474, 1, TBIT1_5C8), \
+    EFUSE_ACL1(474, 2, TBIT1_5C8), \
+    EFUSE_ACL1(474, 3, TBIT1_5C8), \
+    EFUSE_ACL1(475, 0, TBIT1_5C8), \
+    EFUSE_ACL1(475, 1, TBIT1_5C8), \
+    EFUSE_ACL1(475, 2, TBIT1_5C8), \
+    EFUSE_ACL1(475, 3, TBIT1_5C8), \
+    EFUSE_ACL1(476, 0, TBIT1_5C8), \
+    EFUSE_ACL1(476, 1, TBIT1_5C8), \
+    EFUSE_ACL1(476, 2, TBIT1_5C8), \
+    EFUSE_ACL1(476, 3, TBIT1_5C8), \
+    EFUSE_ACL1(477, 0, TBIT1_5C8), \
+    EFUSE_ACL1(477, 1, TBIT1_5C8), \
+    EFUSE_ACL1(477, 2, TBIT1_5C8), \
+    EFUSE_ACL1(477, 3, TBIT1_5C8), \
+    EFUSE_ACL1(478, 0, TBIT1_5C8), \
+    EFUSE_ACL1(478, 1, TBIT1_5C8), \
+    EFUSE_ACL1(478, 2, TBIT1_5C8), \
+    EFUSE_ACL1(478, 3, TBIT1_5C8), \
+    EFUSE_ACL1(479, 0, TBIT1_5C8), \
+    EFUSE_ACL1(479, 1, TBIT1_5C8), \
+    EFUSE_ACL1(479, 2, TBIT1_5C8), \
+    EFUSE_ACL1(479, 3, TBIT1_5C8), \
+    EFUSE_ACL1(480, 0, TBIT1_5C8), \
+    EFUSE_ACL1(480, 1, TBIT1_5C8), \
+    EFUSE_ACL1(480, 2, TBIT1_5C8), \
+    EFUSE_ACL1(480, 3, TBIT1_5C8), \
+    EFUSE_ACL1(481, 0, TBIT1_5C8), \
+    EFUSE_ACL1(481, 1, TBIT1_5C8), \
+    EFUSE_ACL1(481, 2, TBIT1_5C8), \
+    EFUSE_ACL1(481, 3, TBIT1_5C8), \
+    EFUSE_ACL1(482, 0, TBIT1_5C8), \
+    EFUSE_ACL1(482, 1, TBIT1_5C8), \
+    EFUSE_ACL1(482, 2, TBIT1_5C8), \
+    EFUSE_ACL1(482, 3, TBIT1_5C8), \
+    EFUSE_ACL1(483, 0, TBIT1_5C8), \
+    EFUSE_ACL1(483, 1, TBIT1_5C8), \
+    EFUSE_ACL1(483, 2, TBIT1_5C8), \
+    EFUSE_ACL1(483, 3, TBIT1_5C8), \
+    EFUSE_ACL1(484, 0, TBIT1_5C8), \
+    EFUSE_ACL1(484, 1, TBIT1_5C8), \
+    EFUSE_ACL1(484, 2, TBIT1_5C8), \
+    EFUSE_ACL1(484, 3, TBIT1_5C8), \
+    EFUSE_ACL1(485, 0, TBIT1_5C8), \
+    EFUSE_ACL1(485, 1, TBIT1_5C8), \
+    EFUSE_ACL1(485, 2, TBIT1_5C8), \
+    EFUSE_ACL1(485, 3, TBIT1_5C8), \
+    EFUSE_ACL1(486, 0, TBIT1_5C8), \
+    EFUSE_ACL1(486, 1, TBIT1_5C8), \
+    EFUSE_ACL1(486, 2, TBIT1_5C8), \
+    EFUSE_ACL1(486, 3, TBIT1_5C8), \
+    EFUSE_ACL1(487, 0, TBIT1_5C8), \
+    EFUSE_ACL1(487, 1, TBIT1_5C8), \
+    EFUSE_ACL1(487, 2, TBIT1_5C8), \
+    EFUSE_ACL1(487, 3, TBIT1_5C8), \
+    EFUSE_ACL1(488, 0, TBIT1_5C8), \
+    EFUSE_ACL1(488, 1, TBIT1_5C8), \
+    EFUSE_ACL1(488, 2, TBIT1_5C8), \
+    EFUSE_ACL1(488, 3, TBIT1_5C8), \
+    EFUSE_ACL1(489, 0, TBIT1_5C8), \
+    EFUSE_ACL1(489, 1, TBIT1_5C8), \
+    EFUSE_ACL1(489, 2, TBIT1_5C8), \
+    EFUSE_ACL1(489, 3, TBIT1_5C8), \
+    EFUSE_ACL1(490, 0, TBIT1_5C8), \
+    EFUSE_ACL1(490, 1, TBIT1_5C8), \
+    EFUSE_ACL1(490, 2, TBIT1_5C8), \
+    EFUSE_ACL1(490, 3, TBIT1_5C8), \
+    EFUSE_ACL1(491, 0, TBIT1_5C8), \
+    EFUSE_ACL1(491, 1, TBIT1_5C8), \
+    EFUSE_ACL1(491, 2, TBIT1_5C8), \
+    EFUSE_ACL1(491, 3, TBIT1_5C8), \
+    EFUSE_ACL1(492, 0, TBIT1_5C8), \
+    EFUSE_ACL1(492, 1, TBIT1_5C8), \
+    EFUSE_ACL1(492, 2, TBIT1_5C8), \
+    EFUSE_ACL1(492, 3, TBIT1_5C8), \
+    EFUSE_ACL1(493, 0, TBIT1_5C8), \
+    EFUSE_ACL1(493, 1, TBIT1_5C8), \
+    EFUSE_ACL1(493, 2, TBIT1_5C8), \
+    EFUSE_ACL1(493, 3, TBIT1_5C8), \
+    EFUSE_ACL1(494, 0, TBIT1_5C8), \
+    EFUSE_ACL1(494, 1, TBIT1_5C8), \
+    EFUSE_ACL1(494, 2, TBIT1_5C8), \
+    EFUSE_ACL1(494, 3, TBIT1_5C8), \
+    EFUSE_ACL1(495, 0, TBIT1_5C8), \
+    EFUSE_ACL1(495, 1, TBIT1_5C8), \
+    EFUSE_ACL1(495, 2, TBIT1_5C8), \
+    EFUSE_ACL1(495, 3, TBIT1_5C8), \
+    EFUSE_ACL1(496, 0, TBIT1_5C8), \
+    EFUSE_ACL1(496, 1, TBIT1_5C8), \
+    EFUSE_ACL1(496, 2, TBIT1_5C8), \
+    EFUSE_ACL1(496, 3, TBIT1_5C8), \
+    EFUSE_ACL1(497, 0, TBIT1_5C8), \
+    EFUSE_ACL1(497, 1, TBIT1_5C8), \
+    EFUSE_ACL1(497, 2, TBIT1_5C8), \
+    EFUSE_ACL1(497, 3, TBIT1_5C8), \
+    EFUSE_ACL1(498, 0, TBIT1_5C8), \
+    EFUSE_ACL1(498, 1, TBIT1_5C8), \
+    EFUSE_ACL1(498, 2, TBIT1_5C8), \
+    EFUSE_ACL1(498, 3, TBIT1_5C8), \
+    EFUSE_ACL1(499, 0, TBIT1_5C8), \
+    EFUSE_ACL1(499, 1, TBIT1_5C8), \
+    EFUSE_ACL1(499, 2, TBIT1_5C8), \
+    EFUSE_ACL1(499, 3, TBIT1_5C8), \
+    EFUSE_ACL1(500, 0, TBIT1_5C8), \
+    EFUSE_ACL1(500, 1, TBIT1_5C8), \
+    EFUSE_ACL1(500, 2, TBIT1_5C8), \
+    EFUSE_ACL1(500, 3, TBIT1_5C8), \
+    EFUSE_ACL1(501, 0, TBIT1_5C8), \
+    EFUSE_ACL1(501, 1, TBIT1_5C8), \
+    EFUSE_ACL1(501, 2, TBIT1_5C8), \
+    EFUSE_ACL1(501, 3, TBIT1_5C8), \
+    EFUSE_ACL1(502, 0, TBIT1_5C8), \
+    EFUSE_ACL1(502, 1, TBIT1_5C8), \
+    EFUSE_ACL1(502, 2, TBIT1_5C8), \
+    EFUSE_ACL1(502, 3, TBIT1_5C8), \
+    EFUSE_ACL1(503, 0, TBIT1_5C8), \
+    EFUSE_ACL1(503, 1, TBIT1_5C8), \
+    EFUSE_ACL1(503, 2, TBIT1_5C8), \
+    EFUSE_ACL1(503, 3, TBIT1_5C8), \
+    EFUSE_ACL1(504, 0, TBIT1_5C8), \
+    EFUSE_ACL1(504, 1, TBIT1_5C8), \
+    EFUSE_ACL1(504, 2, TBIT1_5C8), \
+    EFUSE_ACL1(504, 3, TBIT1_5C8), \
+    EFUSE_ACL1(505, 0, TBIT1_5C8), \
+    EFUSE_ACL1(505, 1, TBIT1_5C8), \
+    EFUSE_ACL1(505, 2, TBIT1_5C8), \
+    EFUSE_ACL1(505, 3, TBIT1_5C8), \
+    EFUSE_ACL1(506, 0, TBIT1_5C8), \
+    EFUSE_ACL1(506, 1, TBIT1_5C8), \
+    EFUSE_ACL1(506, 2, TBIT1_5C8), \
+    EFUSE_ACL1(506, 3, TBIT1_5C8), \
+    EFUSE_ACL1(507, 0, TBIT1_5C8), \
+    EFUSE_ACL1(507, 1, TBIT1_5C8), \
+    EFUSE_ACL1(507, 2, TBIT1_5C8), \
+    EFUSE_ACL1(507, 3, TBIT1_5C8), \
+    EFUSE_ACL1(508, 0, TBIT1_5C8), \
+    EFUSE_ACL1(508, 1, TBIT1_5C8), \
+    EFUSE_ACL1(508, 2, TBIT1_5C8), \
+    EFUSE_ACL1(508, 3, TBIT1_5C8), \
+    EFUSE_ACL1(509, 0, TBIT1_5C8), \
+    EFUSE_ACL1(509, 1, TBIT1_5C8), \
+    EFUSE_ACL1(509, 2, TBIT1_5C8), \
+    EFUSE_ACL1(509, 3, TBIT1_5C8), \
+    EFUSE_ACL1(510, 0, TBIT1_5C8), \
+    EFUSE_ACL1(510, 1, TBIT1_5C8), \
+    EFUSE_ACL1(510, 2, TBIT1_5C8), \
+    EFUSE_ACL1(510, 3, TBIT1_5C8), \
+    EFUSE_ACL1(511, 0, TBIT1_5C8), \
+    EFUSE_ACL1(511, 1, TBIT1_5C8), \
+    EFUSE_ACL1(511, 2, TBIT1_5C8), \
+    EFUSE_ACL1(511, 3, TBIT1_5C8), \
+    EFUSE_ACL1(512, 0, FACTORY), \
+    EFUSE_ACL1(512, 1, FACTORY), \
+    EFUSE_ACL1(512, 2, FACTORY), \
+    EFUSE_ACL1(512, 3, FACTORY), \
+    EFUSE_ACL1(513, 0, FACTORY), \
+    EFUSE_ACL1(513, 1, FACTORY), \
+    EFUSE_ACL1(513, 2, FACTORY), \
+    EFUSE_ACL1(513, 3, FACTORY), \
+    EFUSE_ACL1(514, 0, FACTORY), \
+    EFUSE_ACL1(514, 1, FACTORY), \
+    EFUSE_ACL1(514, 2, FACTORY), \
+    EFUSE_ACL1(514, 3, FACTORY), \
+    EFUSE_ACL1(515, 0, FACTORY), \
+    EFUSE_ACL1(515, 1, FACTORY), \
+    EFUSE_ACL1(515, 2, FACTORY), \
+    EFUSE_ACL1(515, 3, FACTORY), \
+    EFUSE_ACL1(516, 0, FACTORY), \
+    EFUSE_ACL1(516, 1, FACTORY), \
+    EFUSE_ACL1(516, 2, FACTORY), \
+    EFUSE_ACL1(516, 3, FACTORY), \
+    EFUSE_ACL1(517, 0, FACTORY), \
+    EFUSE_ACL1(517, 1, FACTORY), \
+    EFUSE_ACL1(517, 2, FACTORY), \
+    EFUSE_ACL1(517, 3, FACTORY), \
+    EFUSE_ACL1(518, 0, FACTORY), \
+    EFUSE_ACL1(518, 1, FACTORY), \
+    EFUSE_ACL1(518, 2, FACTORY), \
+    EFUSE_ACL1(518, 3, FACTORY), \
+    EFUSE_ACL1(519, 0, FACTORY), \
+    EFUSE_ACL1(519, 1, FACTORY), \
+    EFUSE_ACL1(519, 2, FACTORY), \
+    EFUSE_ACL1(519, 3, FACTORY), \
+    EFUSE_ACL1(520, 0, FACTORY), \
+    EFUSE_ACL1(520, 1, FACTORY), \
+    EFUSE_ACL1(520, 2, FACTORY), \
+    EFUSE_ACL1(520, 3, FACTORY), \
+    EFUSE_ACL1(521, 0, FACTORY), \
+    EFUSE_ACL1(521, 1, FACTORY), \
+    EFUSE_ACL1(521, 2, FACTORY), \
+    EFUSE_ACL1(521, 3, FACTORY), \
+    EFUSE_ACL1(522, 0, FACTORY), \
+    EFUSE_ACL1(522, 1, FACTORY), \
+    EFUSE_ACL1(522, 2, FACTORY), \
+    EFUSE_ACL1(522, 3, FACTORY), \
+    EFUSE_ACL1(523, 0, FACTORY), \
+    EFUSE_ACL1(523, 1, FACTORY), \
+    EFUSE_ACL1(523, 2, FACTORY), \
+    EFUSE_ACL1(523, 3, FACTORY), \
+    EFUSE_ACL1(524, 0, FACTORY), \
+    EFUSE_ACL1(524, 1, FACTORY), \
+    EFUSE_ACL1(524, 2, FACTORY), \
+    EFUSE_ACL1(524, 3, FACTORY), \
+    EFUSE_ACL1(525, 0, FACTORY), \
+    EFUSE_ACL1(525, 1, FACTORY), \
+    EFUSE_ACL1(525, 2, FACTORY), \
+    EFUSE_ACL1(525, 3, FACTORY), \
+    EFUSE_ACL1(526, 0, FACTORY), \
+    EFUSE_ACL1(526, 1, FACTORY), \
+    EFUSE_ACL1(526, 2, FACTORY), \
+    EFUSE_ACL1(526, 3, FACTORY), \
+    EFUSE_ACL1(527, 0, FACTORY), \
+    EFUSE_ACL1(527, 1, FACTORY), \
+    EFUSE_ACL1(527, 2, FACTORY), \
+    EFUSE_ACL1(527, 3, FACTORY), \
+    EFUSE_ACL1(528, 0, FACTORY), \
+    EFUSE_ACL1(528, 1, FACTORY), \
+    EFUSE_ACL1(528, 2, FACTORY), \
+    EFUSE_ACL1(528, 3, FACTORY), \
+    EFUSE_ACL1(529, 0, FACTORY), \
+    EFUSE_ACL1(529, 1, FACTORY), \
+    EFUSE_ACL1(529, 2, FACTORY), \
+    EFUSE_ACL1(529, 3, FACTORY), \
+    EFUSE_ACL1(530, 0, FACTORY), \
+    EFUSE_ACL1(530, 1, FACTORY), \
+    EFUSE_ACL1(530, 2, FACTORY), \
+    EFUSE_ACL1(530, 3, FACTORY), \
+    EFUSE_ACL1(531, 0, FACTORY), \
+    EFUSE_ACL1(531, 1, FACTORY), \
+    EFUSE_ACL1(531, 2, FACTORY), \
+    EFUSE_ACL1(531, 3, FACTORY), \
+    EFUSE_ACL1(532, 0, FACTORY), \
+    EFUSE_ACL1(532, 1, FACTORY), \
+    EFUSE_ACL1(532, 2, FACTORY), \
+    EFUSE_ACL1(532, 3, FACTORY), \
+    EFUSE_ACL1(533, 0, FACTORY), \
+    EFUSE_ACL1(533, 1, FACTORY), \
+    EFUSE_ACL1(533, 2, FACTORY), \
+    EFUSE_ACL1(533, 3, FACTORY), \
+    EFUSE_ACL1(534, 0, FACTORY), \
+    EFUSE_ACL1(534, 1, FACTORY), \
+    EFUSE_ACL1(534, 2, FACTORY), \
+    EFUSE_ACL1(534, 3, FACTORY), \
+    EFUSE_ACL1(535, 0, FACTORY), \
+    EFUSE_ACL1(535, 1, FACTORY), \
+    EFUSE_ACL1(535, 2, FACTORY), \
+    EFUSE_ACL1(535, 3, FACTORY), \
+    EFUSE_ACL1(536, 0, FACTORY), \
+    EFUSE_ACL1(536, 1, FACTORY), \
+    EFUSE_ACL1(536, 2, FACTORY), \
+    EFUSE_ACL1(536, 3, FACTORY), \
+    EFUSE_ACL1(537, 0, FACTORY), \
+    EFUSE_ACL1(537, 1, FACTORY), \
+    EFUSE_ACL1(537, 2, FACTORY), \
+    EFUSE_ACL1(537, 3, FACTORY), \
+    EFUSE_ACL1(538, 0, FACTORY), \
+    EFUSE_ACL1(538, 1, FACTORY), \
+    EFUSE_ACL1(538, 2, FACTORY), \
+    EFUSE_ACL1(538, 3, FACTORY), \
+    EFUSE_ACL1(539, 0, FACTORY), \
+    EFUSE_ACL1(539, 1, FACTORY), \
+    EFUSE_ACL1(539, 2, FACTORY), \
+    EFUSE_ACL1(539, 3, FACTORY), \
+    EFUSE_ACL1(540, 0, FACTORY), \
+    EFUSE_ACL1(540, 1, FACTORY), \
+    EFUSE_ACL1(540, 2, FACTORY), \
+    EFUSE_ACL1(540, 3, FACTORY), \
+    EFUSE_ACL1(541, 0, FACTORY), \
+    EFUSE_ACL1(541, 1, FACTORY), \
+    EFUSE_ACL1(541, 2, FACTORY), \
+    EFUSE_ACL1(541, 3, FACTORY), \
+    EFUSE_ACL1(542, 0, FACTORY), \
+    EFUSE_ACL1(542, 1, FACTORY), \
+    EFUSE_ACL1(542, 2, FACTORY), \
+    EFUSE_ACL1(542, 3, FACTORY), \
+    EFUSE_ACL1(543, 0, FACTORY), \
+    EFUSE_ACL1(543, 1, FACTORY), \
+    EFUSE_ACL1(543, 2, FACTORY), \
+    EFUSE_ACL1(543, 3, FACTORY), \
+    EFUSE_ACL1(544, 0, FACTORY), \
+    EFUSE_ACL1(544, 1, FACTORY), \
+    EFUSE_ACL1(544, 2, FACTORY), \
+    EFUSE_ACL1(544, 3, FACTORY), \
+    EFUSE_ACL1(545, 0, FACTORY), \
+    EFUSE_ACL1(545, 1, FACTORY), \
+    EFUSE_ACL1(545, 2, FACTORY), \
+    EFUSE_ACL1(545, 3, FACTORY), \
+    EFUSE_ACL1(546, 0, FACTORY), \
+    EFUSE_ACL1(546, 1, FACTORY), \
+    EFUSE_ACL1(546, 2, FACTORY), \
+    EFUSE_ACL1(546, 3, FACTORY), \
+    EFUSE_ACL1(547, 0, FACTORY), \
+    EFUSE_ACL1(547, 1, FACTORY), \
+    EFUSE_ACL1(547, 2, FACTORY), \
+    EFUSE_ACL1(547, 3, FACTORY), \
+    EFUSE_ACL1(548, 0, FACTORY), \
+    EFUSE_ACL1(548, 1, FACTORY), \
+    EFUSE_ACL1(548, 2, FACTORY), \
+    EFUSE_ACL1(548, 3, FACTORY), \
+    EFUSE_ACL1(549, 0, FACTORY), \
+    EFUSE_ACL1(549, 1, FACTORY), \
+    EFUSE_ACL1(549, 2, FACTORY), \
+    EFUSE_ACL1(549, 3, FACTORY), \
+    EFUSE_ACL1(550, 0, FACTORY), \
+    EFUSE_ACL1(550, 1, FACTORY), \
+    EFUSE_ACL1(550, 2, FACTORY), \
+    EFUSE_ACL1(550, 3, FACTORY), \
+    EFUSE_ACL1(551, 0, FACTORY), \
+    EFUSE_ACL1(551, 1, FACTORY), \
+    EFUSE_ACL1(551, 2, FACTORY), \
+    EFUSE_ACL1(551, 3, FACTORY), \
+    EFUSE_ACL1(552, 0, FACTORY), \
+    EFUSE_ACL1(552, 1, FACTORY), \
+    EFUSE_ACL1(552, 2, FACTORY), \
+    EFUSE_ACL1(552, 3, FACTORY), \
+    EFUSE_ACL1(553, 0, FACTORY), \
+    EFUSE_ACL1(553, 1, FACTORY), \
+    EFUSE_ACL1(553, 2, FACTORY), \
+    EFUSE_ACL1(553, 3, FACTORY), \
+    EFUSE_ACL1(554, 0, FACTORY), \
+    EFUSE_ACL1(554, 1, FACTORY), \
+    EFUSE_ACL1(554, 2, FACTORY), \
+    EFUSE_ACL1(554, 3, FACTORY), \
+    EFUSE_ACL1(555, 0, FACTORY), \
+    EFUSE_ACL1(555, 1, FACTORY), \
+    EFUSE_ACL1(555, 2, FACTORY), \
+    EFUSE_ACL1(555, 3, FACTORY), \
+    EFUSE_ACL1(556, 0, FACTORY), \
+    EFUSE_ACL1(556, 1, FACTORY), \
+    EFUSE_ACL1(556, 2, FACTORY), \
+    EFUSE_ACL1(556, 3, FACTORY), \
+    EFUSE_ACL1(557, 0, FACTORY), \
+    EFUSE_ACL1(557, 1, FACTORY), \
+    EFUSE_ACL1(557, 2, FACTORY), \
+    EFUSE_ACL1(557, 3, FACTORY), \
+    EFUSE_ACL1(558, 0, FACTORY), \
+    EFUSE_ACL1(558, 1, FACTORY), \
+    EFUSE_ACL1(558, 2, FACTORY), \
+    EFUSE_ACL1(558, 3, FACTORY), \
+    EFUSE_ACL1(559, 0, FACTORY), \
+    EFUSE_ACL1(559, 1, FACTORY), \
+    EFUSE_ACL1(559, 2, FACTORY), \
+    EFUSE_ACL1(559, 3, FACTORY), \
+    EFUSE_ACL1(560, 0, FACTORY), \
+    EFUSE_ACL1(560, 1, FACTORY), \
+    EFUSE_ACL1(560, 2, FACTORY), \
+    EFUSE_ACL1(560, 3, FACTORY), \
+    EFUSE_ACL1(561, 0, FACTORY), \
+    EFUSE_ACL1(561, 1, FACTORY), \
+    EFUSE_ACL1(561, 2, FACTORY), \
+    EFUSE_ACL1(561, 3, FACTORY), \
+    EFUSE_ACL1(562, 0, FACTORY), \
+    EFUSE_ACL1(562, 1, FACTORY), \
+    EFUSE_ACL1(562, 2, FACTORY), \
+    EFUSE_ACL1(562, 3, FACTORY), \
+    EFUSE_ACL1(563, 0, FACTORY), \
+    EFUSE_ACL1(563, 1, FACTORY), \
+    EFUSE_ACL1(563, 2, FACTORY), \
+    EFUSE_ACL1(563, 3, FACTORY), \
+    EFUSE_ACL1(564, 0, FACTORY), \
+    EFUSE_ACL1(564, 1, FACTORY), \
+    EFUSE_ACL1(564, 2, FACTORY), \
+    EFUSE_ACL1(564, 3, FACTORY), \
+    EFUSE_ACL1(565, 0, FACTORY), \
+    EFUSE_ACL1(565, 1, FACTORY), \
+    EFUSE_ACL1(565, 2, FACTORY), \
+    EFUSE_ACL1(565, 3, FACTORY), \
+    EFUSE_ACL1(566, 0, FACTORY), \
+    EFUSE_ACL1(566, 1, FACTORY), \
+    EFUSE_ACL1(566, 2, FACTORY), \
+    EFUSE_ACL1(566, 3, FACTORY), \
+    EFUSE_ACL1(567, 0, FACTORY), \
+    EFUSE_ACL1(567, 1, FACTORY), \
+    EFUSE_ACL1(567, 2, FACTORY), \
+    EFUSE_ACL1(567, 3, FACTORY), \
+    EFUSE_ACL1(568, 0, FACTORY), \
+    EFUSE_ACL1(568, 1, FACTORY), \
+    EFUSE_ACL1(568, 2, FACTORY), \
+    EFUSE_ACL1(568, 3, FACTORY), \
+    EFUSE_ACL1(569, 0, FACTORY), \
+    EFUSE_ACL1(569, 1, FACTORY), \
+    EFUSE_ACL1(569, 2, FACTORY), \
+    EFUSE_ACL1(569, 3, FACTORY), \
+    EFUSE_ACL1(570, 0, FACTORY), \
+    EFUSE_ACL1(570, 1, FACTORY), \
+    EFUSE_ACL1(570, 2, FACTORY), \
+    EFUSE_ACL1(570, 3, FACTORY), \
+    EFUSE_ACL1(571, 0, FACTORY), \
+    EFUSE_ACL1(571, 1, FACTORY), \
+    EFUSE_ACL1(571, 2, FACTORY), \
+    EFUSE_ACL1(571, 3, FACTORY), \
+    EFUSE_ACL1(572, 0, FACTORY), \
+    EFUSE_ACL1(572, 1, FACTORY), \
+    EFUSE_ACL1(572, 2, FACTORY), \
+    EFUSE_ACL1(572, 3, FACTORY), \
+    EFUSE_ACL1(573, 0, FACTORY), \
+    EFUSE_ACL1(573, 1, FACTORY), \
+    EFUSE_ACL1(573, 2, FACTORY), \
+    EFUSE_ACL1(573, 3, FACTORY), \
+    EFUSE_ACL1(574, 0, FACTORY), \
+    EFUSE_ACL1(574, 1, FACTORY), \
+    EFUSE_ACL1(574, 2, FACTORY), \
+    EFUSE_ACL1(574, 3, FACTORY), \
+    EFUSE_ACL1(575, 0, FACTORY), \
+    EFUSE_ACL1(575, 1, FACTORY), \
+    EFUSE_ACL1(575, 2, FACTORY), \
+    EFUSE_ACL1(575, 3, FACTORY), \
+    EFUSE_ACL1(576, 0, FACTORY), \
+    EFUSE_ACL1(576, 1, FACTORY), \
+    EFUSE_ACL1(576, 2, FACTORY), \
+    EFUSE_ACL1(576, 3, FACTORY), \
+    EFUSE_ACL1(577, 0, FACTORY), \
+    EFUSE_ACL1(577, 1, FACTORY), \
+    EFUSE_ACL1(577, 2, FACTORY), \
+    EFUSE_ACL1(577, 3, FACTORY), \
+    EFUSE_ACL1(578, 0, FACTORY), \
+    EFUSE_ACL1(578, 1, FACTORY), \
+    EFUSE_ACL1(578, 2, FACTORY), \
+    EFUSE_ACL1(578, 3, FACTORY), \
+    EFUSE_ACL1(579, 0, FACTORY), \
+    EFUSE_ACL1(579, 1, FACTORY), \
+    EFUSE_ACL1(579, 2, FACTORY), \
+    EFUSE_ACL1(579, 3, FACTORY), \
+    EFUSE_ACL1(580, 0, FACTORY), \
+    EFUSE_ACL1(580, 1, FACTORY), \
+    EFUSE_ACL1(580, 2, FACTORY), \
+    EFUSE_ACL1(580, 3, FACTORY), \
+    EFUSE_ACL1(581, 0, FACTORY), \
+    EFUSE_ACL1(581, 1, FACTORY), \
+    EFUSE_ACL1(581, 2, FACTORY), \
+    EFUSE_ACL1(581, 3, FACTORY), \
+    EFUSE_ACL1(582, 0, FACTORY), \
+    EFUSE_ACL1(582, 1, FACTORY), \
+    EFUSE_ACL1(582, 2, FACTORY), \
+    EFUSE_ACL1(582, 3, FACTORY), \
+    EFUSE_ACL1(583, 0, FACTORY), \
+    EFUSE_ACL1(583, 1, FACTORY), \
+    EFUSE_ACL1(583, 2, FACTORY), \
+    EFUSE_ACL1(583, 3, FACTORY), \
+    EFUSE_ACL1(584, 0, FACTORY), \
+    EFUSE_ACL1(584, 1, FACTORY), \
+    EFUSE_ACL1(584, 2, FACTORY), \
+    EFUSE_ACL1(584, 3, FACTORY), \
+    EFUSE_ACL1(585, 0, FACTORY), \
+    EFUSE_ACL1(585, 1, FACTORY), \
+    EFUSE_ACL1(585, 2, FACTORY), \
+    EFUSE_ACL1(585, 3, FACTORY), \
+    EFUSE_ACL1(586, 0, FACTORY), \
+    EFUSE_ACL1(586, 1, FACTORY), \
+    EFUSE_ACL1(586, 2, FACTORY), \
+    EFUSE_ACL1(586, 3, FACTORY), \
+    EFUSE_ACL1(587, 0, FACTORY), \
+    EFUSE_ACL1(587, 1, FACTORY), \
+    EFUSE_ACL1(587, 2, FACTORY), \
+    EFUSE_ACL1(587, 3, FACTORY), \
+    EFUSE_ACL1(588, 0, FACTORY), \
+    EFUSE_ACL1(588, 1, FACTORY), \
+    EFUSE_ACL1(588, 2, FACTORY), \
+    EFUSE_ACL1(588, 3, FACTORY), \
+    EFUSE_ACL1(589, 0, FACTORY), \
+    EFUSE_ACL1(589, 1, FACTORY), \
+    EFUSE_ACL1(589, 2, FACTORY), \
+    EFUSE_ACL1(589, 3, FACTORY), \
+    EFUSE_ACL1(590, 0, FACTORY), \
+    EFUSE_ACL1(590, 1, FACTORY), \
+    EFUSE_ACL1(590, 2, FACTORY), \
+    EFUSE_ACL1(590, 3, FACTORY), \
+    EFUSE_ACL1(591, 0, FACTORY), \
+    EFUSE_ACL1(591, 1, FACTORY), \
+    EFUSE_ACL1(591, 2, FACTORY), \
+    EFUSE_ACL1(591, 3, FACTORY), \
+    EFUSE_ACL1(592, 0, FACTORY), \
+    EFUSE_ACL1(592, 1, FACTORY), \
+    EFUSE_ACL1(592, 2, FACTORY), \
+    EFUSE_ACL1(592, 3, FACTORY), \
+    EFUSE_ACL1(593, 0, FACTORY), \
+    EFUSE_ACL1(593, 1, FACTORY), \
+    EFUSE_ACL1(593, 2, FACTORY), \
+    EFUSE_ACL1(593, 3, FACTORY), \
+    EFUSE_ACL1(594, 0, FACTORY), \
+    EFUSE_ACL1(594, 1, FACTORY), \
+    EFUSE_ACL1(594, 2, FACTORY), \
+    EFUSE_ACL1(594, 3, FACTORY), \
+    EFUSE_ACL1(595, 0, FACTORY), \
+    EFUSE_ACL1(595, 1, FACTORY), \
+    EFUSE_ACL1(595, 2, FACTORY), \
+    EFUSE_ACL1(595, 3, FACTORY), \
+    EFUSE_ACL1(596, 0, FACTORY), \
+    EFUSE_ACL1(596, 1, FACTORY), \
+    EFUSE_ACL1(596, 2, FACTORY), \
+    EFUSE_ACL1(596, 3, FACTORY), \
+    EFUSE_ACL1(597, 0, FACTORY), \
+    EFUSE_ACL1(597, 1, FACTORY), \
+    EFUSE_ACL1(597, 2, FACTORY), \
+    EFUSE_ACL1(597, 3, FACTORY), \
+    EFUSE_ACL1(598, 0, FACTORY), \
+    EFUSE_ACL1(598, 1, FACTORY), \
+    EFUSE_ACL1(598, 2, FACTORY), \
+    EFUSE_ACL1(598, 3, FACTORY), \
+    EFUSE_ACL1(599, 0, FACTORY), \
+    EFUSE_ACL1(599, 1, FACTORY), \
+    EFUSE_ACL1(599, 2, FACTORY), \
+    EFUSE_ACL1(599, 3, FACTORY), \
+    EFUSE_ACL1(600, 0, FACTORY), \
+    EFUSE_ACL1(600, 1, FACTORY), \
+    EFUSE_ACL1(600, 2, FACTORY), \
+    EFUSE_ACL1(600, 3, FACTORY), \
+    EFUSE_ACL1(601, 0, FACTORY), \
+    EFUSE_ACL1(601, 1, FACTORY), \
+    EFUSE_ACL1(601, 2, FACTORY), \
+    EFUSE_ACL1(601, 3, FACTORY), \
+    EFUSE_ACL1(602, 0, FACTORY), \
+    EFUSE_ACL1(602, 1, FACTORY), \
+    EFUSE_ACL1(602, 2, FACTORY), \
+    EFUSE_ACL1(602, 3, FACTORY), \
+    EFUSE_ACL1(603, 0, FACTORY), \
+    EFUSE_ACL1(603, 1, FACTORY), \
+    EFUSE_ACL1(603, 2, FACTORY), \
+    EFUSE_ACL1(603, 3, FACTORY), \
+    EFUSE_ACL1(604, 0, FACTORY), \
+    EFUSE_ACL1(604, 1, FACTORY), \
+    EFUSE_ACL1(604, 2, FACTORY), \
+    EFUSE_ACL1(604, 3, FACTORY), \
+    EFUSE_ACL1(605, 0, FACTORY), \
+    EFUSE_ACL1(605, 1, FACTORY), \
+    EFUSE_ACL1(605, 2, FACTORY), \
+    EFUSE_ACL1(605, 3, FACTORY), \
+    EFUSE_ACL1(606, 0, FACTORY), \
+    EFUSE_ACL1(606, 1, FACTORY), \
+    EFUSE_ACL1(606, 2, FACTORY), \
+    EFUSE_ACL1(606, 3, FACTORY), \
+    EFUSE_ACL1(607, 0, FACTORY), \
+    EFUSE_ACL1(607, 1, FACTORY), \
+    EFUSE_ACL1(607, 2, FACTORY), \
+    EFUSE_ACL1(607, 3, FACTORY), \
+    EFUSE_ACL1(608, 0, FACTORY), \
+    EFUSE_ACL1(608, 1, FACTORY), \
+    EFUSE_ACL1(608, 2, FACTORY), \
+    EFUSE_ACL1(608, 3, FACTORY), \
+    EFUSE_ACL1(609, 0, FACTORY), \
+    EFUSE_ACL1(609, 1, FACTORY), \
+    EFUSE_ACL1(609, 2, FACTORY), \
+    EFUSE_ACL1(609, 3, FACTORY), \
+    EFUSE_ACL1(610, 0, FACTORY), \
+    EFUSE_ACL1(610, 1, FACTORY), \
+    EFUSE_ACL1(610, 2, FACTORY), \
+    EFUSE_ACL1(610, 3, FACTORY), \
+    EFUSE_ACL1(611, 0, FACTORY), \
+    EFUSE_ACL1(611, 1, FACTORY), \
+    EFUSE_ACL1(611, 2, FACTORY), \
+    EFUSE_ACL1(611, 3, FACTORY), \
+    EFUSE_ACL1(612, 0, FACTORY), \
+    EFUSE_ACL1(612, 1, FACTORY), \
+    EFUSE_ACL1(612, 2, FACTORY), \
+    EFUSE_ACL1(612, 3, FACTORY), \
+    EFUSE_ACL1(613, 0, FACTORY), \
+    EFUSE_ACL1(613, 1, FACTORY), \
+    EFUSE_ACL1(613, 2, FACTORY), \
+    EFUSE_ACL1(613, 3, FACTORY), \
+    EFUSE_ACL1(614, 0, FACTORY), \
+    EFUSE_ACL1(614, 1, FACTORY), \
+    EFUSE_ACL1(614, 2, FACTORY), \
+    EFUSE_ACL1(614, 3, FACTORY), \
+    EFUSE_ACL1(615, 0, FACTORY), \
+    EFUSE_ACL1(615, 1, FACTORY), \
+    EFUSE_ACL1(615, 2, FACTORY), \
+    EFUSE_ACL1(615, 3, FACTORY), \
+    EFUSE_ACL1(616, 0, FACTORY), \
+    EFUSE_ACL1(616, 1, FACTORY), \
+    EFUSE_ACL1(616, 2, FACTORY), \
+    EFUSE_ACL1(616, 3, FACTORY), \
+    EFUSE_ACL1(617, 0, FACTORY), \
+    EFUSE_ACL1(617, 1, FACTORY), \
+    EFUSE_ACL1(617, 2, FACTORY), \
+    EFUSE_ACL1(617, 3, FACTORY), \
+    EFUSE_ACL1(618, 0, FACTORY), \
+    EFUSE_ACL1(618, 1, FACTORY), \
+    EFUSE_ACL1(618, 2, FACTORY), \
+    EFUSE_ACL1(618, 3, FACTORY), \
+    EFUSE_ACL1(619, 0, FACTORY), \
+    EFUSE_ACL1(619, 1, FACTORY), \
+    EFUSE_ACL1(619, 2, FACTORY), \
+    EFUSE_ACL1(619, 3, FACTORY), \
+    EFUSE_ACL1(620, 0, FACTORY), \
+    EFUSE_ACL1(620, 1, FACTORY), \
+    EFUSE_ACL1(620, 2, FACTORY), \
+    EFUSE_ACL1(620, 3, FACTORY), \
+    EFUSE_ACL1(621, 0, FACTORY), \
+    EFUSE_ACL1(621, 1, FACTORY), \
+    EFUSE_ACL1(621, 2, FACTORY), \
+    EFUSE_ACL1(621, 3, FACTORY), \
+    EFUSE_ACL1(622, 0, FACTORY), \
+    EFUSE_ACL1(622, 1, FACTORY), \
+    EFUSE_ACL1(622, 2, FACTORY), \
+    EFUSE_ACL1(622, 3, FACTORY), \
+    EFUSE_ACL1(623, 0, FACTORY), \
+    EFUSE_ACL1(623, 1, FACTORY), \
+    EFUSE_ACL1(623, 2, FACTORY), \
+    EFUSE_ACL1(623, 3, FACTORY), \
+    EFUSE_ACL1(624, 0, FACTORY), \
+    EFUSE_ACL1(624, 1, FACTORY), \
+    EFUSE_ACL1(624, 2, FACTORY), \
+    EFUSE_ACL1(624, 3, FACTORY), \
+    EFUSE_ACL1(625, 0, FACTORY), \
+    EFUSE_ACL1(625, 1, FACTORY), \
+    EFUSE_ACL1(625, 2, FACTORY), \
+    EFUSE_ACL1(625, 3, FACTORY), \
+    EFUSE_ACL1(626, 0, FACTORY), \
+    EFUSE_ACL1(626, 1, FACTORY), \
+    EFUSE_ACL1(626, 2, FACTORY), \
+    EFUSE_ACL1(626, 3, FACTORY), \
+    EFUSE_ACL1(627, 0, FACTORY), \
+    EFUSE_ACL1(627, 1, FACTORY), \
+    EFUSE_ACL1(627, 2, FACTORY), \
+    EFUSE_ACL1(627, 3, FACTORY), \
+    EFUSE_ACL1(628, 0, FACTORY), \
+    EFUSE_ACL1(628, 1, FACTORY), \
+    EFUSE_ACL1(628, 2, FACTORY), \
+    EFUSE_ACL1(628, 3, FACTORY), \
+    EFUSE_ACL1(629, 0, FACTORY), \
+    EFUSE_ACL1(629, 1, FACTORY), \
+    EFUSE_ACL1(629, 2, FACTORY), \
+    EFUSE_ACL1(629, 3, FACTORY), \
+    EFUSE_ACL1(630, 0, FACTORY), \
+    EFUSE_ACL1(630, 1, FACTORY), \
+    EFUSE_ACL1(630, 2, FACTORY), \
+    EFUSE_ACL1(630, 3, FACTORY), \
+    EFUSE_ACL1(631, 0, FACTORY), \
+    EFUSE_ACL1(631, 1, FACTORY), \
+    EFUSE_ACL1(631, 2, FACTORY), \
+    EFUSE_ACL1(631, 3, FACTORY), \
+    EFUSE_ACL1(632, 0, FACTORY), \
+    EFUSE_ACL1(632, 1, FACTORY), \
+    EFUSE_ACL1(632, 2, FACTORY), \
+    EFUSE_ACL1(632, 3, FACTORY), \
+    EFUSE_ACL1(633, 0, FACTORY), \
+    EFUSE_ACL1(633, 1, FACTORY), \
+    EFUSE_ACL1(633, 2, FACTORY), \
+    EFUSE_ACL1(633, 3, FACTORY), \
+    EFUSE_ACL1(634, 0, FACTORY), \
+    EFUSE_ACL1(634, 1, FACTORY), \
+    EFUSE_ACL1(634, 2, FACTORY), \
+    EFUSE_ACL1(634, 3, FACTORY), \
+    EFUSE_ACL1(635, 0, FACTORY), \
+    EFUSE_ACL1(635, 1, FACTORY), \
+    EFUSE_ACL1(635, 2, FACTORY), \
+    EFUSE_ACL1(635, 3, FACTORY), \
+    EFUSE_ACL1(636, 0, FACTORY), \
+    EFUSE_ACL1(636, 1, FACTORY), \
+    EFUSE_ACL1(636, 2, FACTORY), \
+    EFUSE_ACL1(636, 3, FACTORY), \
+    EFUSE_ACL1(637, 0, FACTORY), \
+    EFUSE_ACL1(637, 1, FACTORY), \
+    EFUSE_ACL1(637, 2, FACTORY), \
+    EFUSE_ACL1(637, 3, FACTORY), \
+    EFUSE_ACL1(638, 0, FACTORY), \
+    EFUSE_ACL1(638, 1, FACTORY), \
+    EFUSE_ACL1(638, 2, FACTORY), \
+    EFUSE_ACL1(638, 3, FACTORY), \
+    EFUSE_ACL1(639, 0, FACTORY), \
+    EFUSE_ACL1(639, 1, FACTORY), \
+    EFUSE_ACL1(639, 2, FACTORY), \
+    EFUSE_ACL1(639, 3, FACTORY), \
+    EFUSE_ACL1(640, 0, FACTORY), \
+    EFUSE_ACL1(640, 1, FACTORY), \
+    EFUSE_ACL1(640, 2, FACTORY), \
+    EFUSE_ACL1(640, 3, FACTORY), \
+    EFUSE_ACL1(641, 0, FACTORY), \
+    EFUSE_ACL1(641, 1, FACTORY), \
+    EFUSE_ACL1(641, 2, FACTORY), \
+    EFUSE_ACL1(641, 3, FACTORY), \
+    EFUSE_ACL1(642, 0, FACTORY), \
+    EFUSE_ACL1(642, 1, FACTORY), \
+    EFUSE_ACL1(642, 2, FACTORY), \
+    EFUSE_ACL1(642, 3, FACTORY), \
+    EFUSE_ACL1(643, 0, FACTORY), \
+    EFUSE_ACL1(643, 1, FACTORY), \
+    EFUSE_ACL1(643, 2, FACTORY), \
+    EFUSE_ACL1(643, 3, FACTORY), \
+    EFUSE_ACL1(644, 0, FACTORY), \
+    EFUSE_ACL1(644, 1, FACTORY), \
+    EFUSE_ACL1(644, 2, FACTORY), \
+    EFUSE_ACL1(644, 3, FACTORY), \
+    EFUSE_ACL1(645, 0, FACTORY), \
+    EFUSE_ACL1(645, 1, FACTORY), \
+    EFUSE_ACL1(645, 2, FACTORY), \
+    EFUSE_ACL1(645, 3, FACTORY), \
+    EFUSE_ACL1(646, 0, FACTORY), \
+    EFUSE_ACL1(646, 1, FACTORY), \
+    EFUSE_ACL1(646, 2, FACTORY), \
+    EFUSE_ACL1(646, 3, FACTORY), \
+    EFUSE_ACL1(647, 0, FACTORY), \
+    EFUSE_ACL1(647, 1, FACTORY), \
+    EFUSE_ACL1(647, 2, FACTORY), \
+    EFUSE_ACL1(647, 3, FACTORY), \
+    EFUSE_ACL1(648, 0, FACTORY), \
+    EFUSE_ACL1(648, 1, FACTORY), \
+    EFUSE_ACL1(648, 2, FACTORY), \
+    EFUSE_ACL1(648, 3, FACTORY), \
+    EFUSE_ACL1(649, 0, FACTORY), \
+    EFUSE_ACL1(649, 1, FACTORY), \
+    EFUSE_ACL1(649, 2, FACTORY), \
+    EFUSE_ACL1(649, 3, FACTORY), \
+    EFUSE_ACL1(650, 0, FACTORY), \
+    EFUSE_ACL1(650, 1, FACTORY), \
+    EFUSE_ACL1(650, 2, FACTORY), \
+    EFUSE_ACL1(650, 3, FACTORY), \
+    EFUSE_ACL1(651, 0, FACTORY), \
+    EFUSE_ACL1(651, 1, FACTORY), \
+    EFUSE_ACL1(651, 2, FACTORY), \
+    EFUSE_ACL1(651, 3, FACTORY), \
+    EFUSE_ACL1(652, 0, FACTORY), \
+    EFUSE_ACL1(652, 1, FACTORY), \
+    EFUSE_ACL1(652, 2, FACTORY), \
+    EFUSE_ACL1(652, 3, FACTORY), \
+    EFUSE_ACL1(653, 0, FACTORY), \
+    EFUSE_ACL1(653, 1, FACTORY), \
+    EFUSE_ACL1(653, 2, FACTORY), \
+    EFUSE_ACL1(653, 3, FACTORY), \
+    EFUSE_ACL1(654, 0, FACTORY), \
+    EFUSE_ACL1(654, 1, FACTORY), \
+    EFUSE_ACL1(654, 2, FACTORY), \
+    EFUSE_ACL1(654, 3, FACTORY), \
+    EFUSE_ACL1(655, 0, FACTORY), \
+    EFUSE_ACL1(655, 1, FACTORY), \
+    EFUSE_ACL1(655, 2, FACTORY), \
+    EFUSE_ACL1(655, 3, FACTORY), \
+    EFUSE_ACL1(656, 0, FACTORY), \
+    EFUSE_ACL1(656, 1, FACTORY), \
+    EFUSE_ACL1(656, 2, FACTORY), \
+    EFUSE_ACL1(656, 3, FACTORY), \
+    EFUSE_ACL1(657, 0, FACTORY), \
+    EFUSE_ACL1(657, 1, FACTORY), \
+    EFUSE_ACL1(657, 2, FACTORY), \
+    EFUSE_ACL1(657, 3, FACTORY), \
+    EFUSE_ACL1(658, 0, FACTORY), \
+    EFUSE_ACL1(658, 1, FACTORY), \
+    EFUSE_ACL1(658, 2, FACTORY), \
+    EFUSE_ACL1(658, 3, FACTORY), \
+    EFUSE_ACL1(659, 0, FACTORY), \
+    EFUSE_ACL1(659, 1, FACTORY), \
+    EFUSE_ACL1(659, 2, FACTORY), \
+    EFUSE_ACL1(659, 3, FACTORY), \
+    EFUSE_ACL1(660, 0, FACTORY), \
+    EFUSE_ACL1(660, 1, FACTORY), \
+    EFUSE_ACL1(660, 2, FACTORY), \
+    EFUSE_ACL1(660, 3, FACTORY), \
+    EFUSE_ACL1(661, 0, FACTORY), \
+    EFUSE_ACL1(661, 1, FACTORY), \
+    EFUSE_ACL1(661, 2, FACTORY), \
+    EFUSE_ACL1(661, 3, FACTORY), \
+    EFUSE_ACL1(662, 0, FACTORY), \
+    EFUSE_ACL1(662, 1, FACTORY), \
+    EFUSE_ACL1(662, 2, FACTORY), \
+    EFUSE_ACL1(662, 3, FACTORY), \
+    EFUSE_ACL1(663, 0, FACTORY), \
+    EFUSE_ACL1(663, 1, FACTORY), \
+    EFUSE_ACL1(663, 2, FACTORY), \
+    EFUSE_ACL1(663, 3, FACTORY), \
+    EFUSE_ACL1(664, 0, FACTORY), \
+    EFUSE_ACL1(664, 1, FACTORY), \
+    EFUSE_ACL1(664, 2, FACTORY), \
+    EFUSE_ACL1(664, 3, FACTORY), \
+    EFUSE_ACL1(665, 0, FACTORY), \
+    EFUSE_ACL1(665, 1, FACTORY), \
+    EFUSE_ACL1(665, 2, FACTORY), \
+    EFUSE_ACL1(665, 3, FACTORY), \
+    EFUSE_ACL1(666, 0, FACTORY), \
+    EFUSE_ACL1(666, 1, FACTORY), \
+    EFUSE_ACL1(666, 2, FACTORY), \
+    EFUSE_ACL1(666, 3, FACTORY), \
+    EFUSE_ACL1(667, 0, FACTORY), \
+    EFUSE_ACL1(667, 1, FACTORY), \
+    EFUSE_ACL1(667, 2, FACTORY), \
+    EFUSE_ACL1(667, 3, FACTORY), \
+    EFUSE_ACL1(668, 0, FACTORY), \
+    EFUSE_ACL1(668, 1, FACTORY), \
+    EFUSE_ACL1(668, 2, FACTORY), \
+    EFUSE_ACL1(668, 3, FACTORY), \
+    EFUSE_ACL1(669, 0, FACTORY), \
+    EFUSE_ACL1(669, 1, FACTORY), \
+    EFUSE_ACL1(669, 2, FACTORY), \
+    EFUSE_ACL1(669, 3, FACTORY), \
+    EFUSE_ACL1(670, 0, FACTORY), \
+    EFUSE_ACL1(670, 1, FACTORY), \
+    EFUSE_ACL1(670, 2, FACTORY), \
+    EFUSE_ACL1(670, 3, FACTORY), \
+    EFUSE_ACL1(671, 0, FACTORY), \
+    EFUSE_ACL1(671, 1, FACTORY), \
+    EFUSE_ACL1(671, 2, FACTORY), \
+    EFUSE_ACL1(671, 3, FACTORY), \
+    EFUSE_ACL1(672, 0, FACTORY), \
+    EFUSE_ACL1(672, 1, FACTORY), \
+    EFUSE_ACL1(672, 2, FACTORY), \
+    EFUSE_ACL1(672, 3, FACTORY), \
+    EFUSE_ACL1(673, 0, FACTORY), \
+    EFUSE_ACL1(673, 1, FACTORY), \
+    EFUSE_ACL1(673, 2, FACTORY), \
+    EFUSE_ACL1(673, 3, FACTORY), \
+    EFUSE_ACL1(674, 0, FACTORY), \
+    EFUSE_ACL1(674, 1, FACTORY), \
+    EFUSE_ACL1(674, 2, FACTORY), \
+    EFUSE_ACL1(674, 3, FACTORY), \
+    EFUSE_ACL1(675, 0, FACTORY), \
+    EFUSE_ACL1(675, 1, FACTORY), \
+    EFUSE_ACL1(675, 2, FACTORY), \
+    EFUSE_ACL1(675, 3, FACTORY), \
+    EFUSE_ACL1(676, 0, FACTORY), \
+    EFUSE_ACL1(676, 1, FACTORY), \
+    EFUSE_ACL1(676, 2, FACTORY), \
+    EFUSE_ACL1(676, 3, FACTORY), \
+    EFUSE_ACL1(677, 0, FACTORY), \
+    EFUSE_ACL1(677, 1, FACTORY), \
+    EFUSE_ACL1(677, 2, FACTORY), \
+    EFUSE_ACL1(677, 3, FACTORY), \
+    EFUSE_ACL1(678, 0, FACTORY), \
+    EFUSE_ACL1(678, 1, FACTORY), \
+    EFUSE_ACL1(678, 2, FACTORY), \
+    EFUSE_ACL1(678, 3, FACTORY), \
+    EFUSE_ACL1(679, 0, FACTORY), \
+    EFUSE_ACL1(679, 1, FACTORY), \
+    EFUSE_ACL1(679, 2, FACTORY), \
+    EFUSE_ACL1(679, 3, FACTORY), \
+    EFUSE_ACL1(680, 0, FACTORY), \
+    EFUSE_ACL1(680, 1, FACTORY), \
+    EFUSE_ACL1(680, 2, FACTORY), \
+    EFUSE_ACL1(680, 3, FACTORY), \
+    EFUSE_ACL1(681, 0, FACTORY), \
+    EFUSE_ACL1(681, 1, FACTORY), \
+    EFUSE_ACL1(681, 2, FACTORY), \
+    EFUSE_ACL1(681, 3, FACTORY), \
+    EFUSE_ACL1(682, 0, FACTORY), \
+    EFUSE_ACL1(682, 1, FACTORY), \
+    EFUSE_ACL1(682, 2, FACTORY), \
+    EFUSE_ACL1(682, 3, FACTORY), \
+    EFUSE_ACL1(683, 0, FACTORY), \
+    EFUSE_ACL1(683, 1, FACTORY), \
+    EFUSE_ACL1(683, 2, FACTORY), \
+    EFUSE_ACL1(683, 3, FACTORY), \
+    EFUSE_ACL1(684, 0, FACTORY), \
+    EFUSE_ACL1(684, 1, FACTORY), \
+    EFUSE_ACL1(684, 2, FACTORY), \
+    EFUSE_ACL1(684, 3, FACTORY), \
+    EFUSE_ACL1(685, 0, FACTORY), \
+    EFUSE_ACL1(685, 1, FACTORY), \
+    EFUSE_ACL1(685, 2, FACTORY), \
+    EFUSE_ACL1(685, 3, FACTORY), \
+    EFUSE_ACL1(686, 0, FACTORY), \
+    EFUSE_ACL1(686, 1, FACTORY), \
+    EFUSE_ACL1(686, 2, FACTORY), \
+    EFUSE_ACL1(686, 3, FACTORY), \
+    EFUSE_ACL1(687, 0, FACTORY), \
+    EFUSE_ACL1(687, 1, FACTORY), \
+    EFUSE_ACL1(687, 2, FACTORY), \
+    EFUSE_ACL1(687, 3, FACTORY), \
+    EFUSE_ACL1(688, 0, FACTORY), \
+    EFUSE_ACL1(688, 1, FACTORY), \
+    EFUSE_ACL1(688, 2, FACTORY), \
+    EFUSE_ACL1(688, 3, FACTORY), \
+    EFUSE_ACL1(689, 0, FACTORY), \
+    EFUSE_ACL1(689, 1, FACTORY), \
+    EFUSE_ACL1(689, 2, FACTORY), \
+    EFUSE_ACL1(689, 3, FACTORY), \
+    EFUSE_ACL1(690, 0, FACTORY), \
+    EFUSE_ACL1(690, 1, FACTORY), \
+    EFUSE_ACL1(690, 2, FACTORY), \
+    EFUSE_ACL1(690, 3, FACTORY), \
+    EFUSE_ACL1(691, 0, FACTORY), \
+    EFUSE_ACL1(691, 1, FACTORY), \
+    EFUSE_ACL1(691, 2, FACTORY), \
+    EFUSE_ACL1(691, 3, FACTORY), \
+    EFUSE_ACL1(692, 0, FACTORY), \
+    EFUSE_ACL1(692, 1, FACTORY), \
+    EFUSE_ACL1(692, 2, FACTORY), \
+    EFUSE_ACL1(692, 3, FACTORY), \
+    EFUSE_ACL1(693, 0, FACTORY), \
+    EFUSE_ACL1(693, 1, FACTORY), \
+    EFUSE_ACL1(693, 2, FACTORY), \
+    EFUSE_ACL1(693, 3, FACTORY), \
+    EFUSE_ACL1(694, 0, FACTORY), \
+    EFUSE_ACL1(694, 1, FACTORY), \
+    EFUSE_ACL1(694, 2, FACTORY), \
+    EFUSE_ACL1(694, 3, FACTORY), \
+    EFUSE_ACL1(695, 0, FACTORY), \
+    EFUSE_ACL1(695, 1, FACTORY), \
+    EFUSE_ACL1(695, 2, FACTORY), \
+    EFUSE_ACL1(695, 3, FACTORY), \
+    EFUSE_ACL1(696, 0, FACTORY), \
+    EFUSE_ACL1(696, 1, FACTORY), \
+    EFUSE_ACL1(696, 2, FACTORY), \
+    EFUSE_ACL1(696, 3, FACTORY), \
+    EFUSE_ACL1(697, 0, FACTORY), \
+    EFUSE_ACL1(697, 1, FACTORY), \
+    EFUSE_ACL1(697, 2, FACTORY), \
+    EFUSE_ACL1(697, 3, FACTORY), \
+    EFUSE_ACL1(698, 0, FACTORY), \
+    EFUSE_ACL1(698, 1, FACTORY), \
+    EFUSE_ACL1(698, 2, FACTORY), \
+    EFUSE_ACL1(698, 3, FACTORY), \
+    EFUSE_ACL1(699, 0, FACTORY), \
+    EFUSE_ACL1(699, 1, FACTORY), \
+    EFUSE_ACL1(699, 2, FACTORY), \
+    EFUSE_ACL1(699, 3, FACTORY), \
+    EFUSE_ACL1(700, 0, FACTORY), \
+    EFUSE_ACL1(700, 1, FACTORY), \
+    EFUSE_ACL1(700, 2, FACTORY), \
+    EFUSE_ACL1(700, 3, FACTORY), \
+    EFUSE_ACL1(701, 0, FACTORY), \
+    EFUSE_ACL1(701, 1, FACTORY), \
+    EFUSE_ACL1(701, 2, FACTORY), \
+    EFUSE_ACL1(701, 3, FACTORY), \
+    EFUSE_ACL1(702, 0, FACTORY), \
+    EFUSE_ACL1(702, 1, FACTORY), \
+    EFUSE_ACL1(702, 2, FACTORY), \
+    EFUSE_ACL1(702, 3, FACTORY), \
+    EFUSE_ACL1(703, 0, FACTORY), \
+    EFUSE_ACL1(703, 1, FACTORY), \
+    EFUSE_ACL1(703, 2, FACTORY), \
+    EFUSE_ACL1(703, 3, FACTORY), \
+    EFUSE_ACL1(704, 0, FACTORY), \
+    EFUSE_ACL1(704, 1, FACTORY), \
+    EFUSE_ACL1(704, 2, FACTORY), \
+    EFUSE_ACL1(704, 3, FACTORY), \
+    EFUSE_ACL1(705, 0, FACTORY), \
+    EFUSE_ACL1(705, 1, FACTORY), \
+    EFUSE_ACL1(705, 2, FACTORY), \
+    EFUSE_ACL1(705, 3, FACTORY), \
+    EFUSE_ACL1(706, 0, FACTORY), \
+    EFUSE_ACL1(706, 1, FACTORY), \
+    EFUSE_ACL1(706, 2, FACTORY), \
+    EFUSE_ACL1(706, 3, FACTORY), \
+    EFUSE_ACL1(707, 0, FACTORY), \
+    EFUSE_ACL1(707, 1, FACTORY), \
+    EFUSE_ACL1(707, 2, FACTORY), \
+    EFUSE_ACL1(707, 3, FACTORY), \
+    EFUSE_ACL1(708, 0, FACTORY), \
+    EFUSE_ACL1(708, 1, FACTORY), \
+    EFUSE_ACL1(708, 2, FACTORY), \
+    EFUSE_ACL1(708, 3, FACTORY), \
+    EFUSE_ACL1(709, 0, FACTORY), \
+    EFUSE_ACL1(709, 1, FACTORY), \
+    EFUSE_ACL1(709, 2, FACTORY), \
+    EFUSE_ACL1(709, 3, FACTORY), \
+    EFUSE_ACL1(710, 0, FACTORY), \
+    EFUSE_ACL1(710, 1, FACTORY), \
+    EFUSE_ACL1(710, 2, FACTORY), \
+    EFUSE_ACL1(710, 3, FACTORY), \
+    EFUSE_ACL1(711, 0, FACTORY), \
+    EFUSE_ACL1(711, 1, FACTORY), \
+    EFUSE_ACL1(711, 2, FACTORY), \
+    EFUSE_ACL1(711, 3, FACTORY), \
+    EFUSE_ACL1(712, 0, FACTORY), \
+    EFUSE_ACL1(712, 1, FACTORY), \
+    EFUSE_ACL1(712, 2, FACTORY), \
+    EFUSE_ACL1(712, 3, FACTORY), \
+    EFUSE_ACL1(713, 0, FACTORY), \
+    EFUSE_ACL1(713, 1, FACTORY), \
+    EFUSE_ACL1(713, 2, FACTORY), \
+    EFUSE_ACL1(713, 3, FACTORY), \
+    EFUSE_ACL1(714, 0, FACTORY), \
+    EFUSE_ACL1(714, 1, FACTORY), \
+    EFUSE_ACL1(714, 2, FACTORY), \
+    EFUSE_ACL1(714, 3, FACTORY), \
+    EFUSE_ACL1(715, 0, FACTORY), \
+    EFUSE_ACL1(715, 1, FACTORY), \
+    EFUSE_ACL1(715, 2, FACTORY), \
+    EFUSE_ACL1(715, 3, FACTORY), \
+    EFUSE_ACL1(716, 0, FACTORY), \
+    EFUSE_ACL1(716, 1, FACTORY), \
+    EFUSE_ACL1(716, 2, FACTORY), \
+    EFUSE_ACL1(716, 3, FACTORY), \
+    EFUSE_ACL1(717, 0, FACTORY), \
+    EFUSE_ACL1(717, 1, FACTORY), \
+    EFUSE_ACL1(717, 2, FACTORY), \
+    EFUSE_ACL1(717, 3, FACTORY), \
+    EFUSE_ACL1(718, 0, FACTORY), \
+    EFUSE_ACL1(718, 1, FACTORY), \
+    EFUSE_ACL1(718, 2, FACTORY), \
+    EFUSE_ACL1(718, 3, FACTORY), \
+    EFUSE_ACL1(719, 0, FACTORY), \
+    EFUSE_ACL1(719, 1, FACTORY), \
+    EFUSE_ACL1(719, 2, FACTORY), \
+    EFUSE_ACL1(719, 3, FACTORY), \
+    EFUSE_ACL1(720, 0, FACTORY), \
+    EFUSE_ACL1(720, 1, FACTORY), \
+    EFUSE_ACL1(720, 2, FACTORY), \
+    EFUSE_ACL1(720, 3, FACTORY), \
+    EFUSE_ACL1(721, 0, FACTORY), \
+    EFUSE_ACL1(721, 1, FACTORY), \
+    EFUSE_ACL1(721, 2, FACTORY), \
+    EFUSE_ACL1(721, 3, FACTORY), \
+    EFUSE_ACL1(722, 0, FACTORY), \
+    EFUSE_ACL1(722, 1, FACTORY), \
+    EFUSE_ACL1(722, 2, FACTORY), \
+    EFUSE_ACL1(722, 3, FACTORY), \
+    EFUSE_ACL1(723, 0, FACTORY), \
+    EFUSE_ACL1(723, 1, FACTORY), \
+    EFUSE_ACL1(723, 2, FACTORY), \
+    EFUSE_ACL1(723, 3, FACTORY), \
+    EFUSE_ACL1(724, 0, FACTORY), \
+    EFUSE_ACL1(724, 1, FACTORY), \
+    EFUSE_ACL1(724, 2, FACTORY), \
+    EFUSE_ACL1(724, 3, FACTORY), \
+    EFUSE_ACL1(725, 0, FACTORY), \
+    EFUSE_ACL1(725, 1, FACTORY), \
+    EFUSE_ACL1(725, 2, FACTORY), \
+    EFUSE_ACL1(725, 3, FACTORY), \
+    EFUSE_ACL1(726, 0, FACTORY), \
+    EFUSE_ACL1(726, 1, FACTORY), \
+    EFUSE_ACL1(726, 2, FACTORY), \
+    EFUSE_ACL1(726, 3, FACTORY), \
+    EFUSE_ACL1(727, 0, FACTORY), \
+    EFUSE_ACL1(727, 1, FACTORY), \
+    EFUSE_ACL1(727, 2, FACTORY), \
+    EFUSE_ACL1(727, 3, FACTORY), \
+    EFUSE_ACL1(728, 0, FACTORY), \
+    EFUSE_ACL1(728, 1, FACTORY), \
+    EFUSE_ACL1(728, 2, FACTORY), \
+    EFUSE_ACL1(728, 3, FACTORY), \
+    EFUSE_ACL1(729, 0, FACTORY), \
+    EFUSE_ACL1(729, 1, FACTORY), \
+    EFUSE_ACL1(729, 2, FACTORY), \
+    EFUSE_ACL1(729, 3, FACTORY), \
+    EFUSE_ACL1(730, 0, FACTORY), \
+    EFUSE_ACL1(730, 1, FACTORY), \
+    EFUSE_ACL1(730, 2, FACTORY), \
+    EFUSE_ACL1(730, 3, FACTORY), \
+    EFUSE_ACL1(731, 0, FACTORY), \
+    EFUSE_ACL1(731, 1, FACTORY), \
+    EFUSE_ACL1(731, 2, FACTORY), \
+    EFUSE_ACL1(731, 3, FACTORY), \
+    EFUSE_ACL1(732, 0, FACTORY), \
+    EFUSE_ACL1(732, 1, FACTORY), \
+    EFUSE_ACL1(732, 2, FACTORY), \
+    EFUSE_ACL1(732, 3, FACTORY), \
+    EFUSE_ACL1(733, 0, FACTORY), \
+    EFUSE_ACL1(733, 1, FACTORY), \
+    EFUSE_ACL1(733, 2, FACTORY), \
+    EFUSE_ACL1(733, 3, FACTORY), \
+    EFUSE_ACL1(734, 0, FACTORY), \
+    EFUSE_ACL1(734, 1, FACTORY), \
+    EFUSE_ACL1(734, 2, FACTORY), \
+    EFUSE_ACL1(734, 3, FACTORY), \
+    EFUSE_ACL1(735, 0, FACTORY), \
+    EFUSE_ACL1(735, 1, FACTORY), \
+    EFUSE_ACL1(735, 2, FACTORY), \
+    EFUSE_ACL1(735, 3, FACTORY), \
+    EFUSE_ACL1(736, 0, FACTORY), \
+    EFUSE_ACL1(736, 1, FACTORY), \
+    EFUSE_ACL1(736, 2, FACTORY), \
+    EFUSE_ACL1(736, 3, FACTORY), \
+    EFUSE_ACL1(737, 0, FACTORY), \
+    EFUSE_ACL1(737, 1, FACTORY), \
+    EFUSE_ACL1(737, 2, FACTORY), \
+    EFUSE_ACL1(737, 3, FACTORY), \
+    EFUSE_ACL1(738, 0, FACTORY), \
+    EFUSE_ACL1(738, 1, FACTORY), \
+    EFUSE_ACL1(738, 2, FACTORY), \
+    EFUSE_ACL1(738, 3, FACTORY), \
+    EFUSE_ACL1(739, 0, FACTORY), \
+    EFUSE_ACL1(739, 1, FACTORY), \
+    EFUSE_ACL1(739, 2, FACTORY), \
+    EFUSE_ACL1(739, 3, FACTORY), \
+    EFUSE_ACL1(740, 0, FACTORY), \
+    EFUSE_ACL1(740, 1, FACTORY), \
+    EFUSE_ACL1(740, 2, FACTORY), \
+    EFUSE_ACL1(740, 3, FACTORY), \
+    EFUSE_ACL1(741, 0, FACTORY), \
+    EFUSE_ACL1(741, 1, FACTORY), \
+    EFUSE_ACL1(741, 2, FACTORY), \
+    EFUSE_ACL1(741, 3, FACTORY), \
+    EFUSE_ACL1(742, 0, FACTORY), \
+    EFUSE_ACL1(742, 1, FACTORY), \
+    EFUSE_ACL1(742, 2, FACTORY), \
+    EFUSE_ACL1(742, 3, FACTORY), \
+    EFUSE_ACL1(743, 0, FACTORY), \
+    EFUSE_ACL1(743, 1, FACTORY), \
+    EFUSE_ACL1(743, 2, FACTORY), \
+    EFUSE_ACL1(743, 3, FACTORY), \
+    EFUSE_ACL1(744, 0, FACTORY), \
+    EFUSE_ACL1(744, 1, FACTORY), \
+    EFUSE_ACL1(744, 2, FACTORY), \
+    EFUSE_ACL1(744, 3, FACTORY), \
+    EFUSE_ACL1(745, 0, FACTORY), \
+    EFUSE_ACL1(745, 1, FACTORY), \
+    EFUSE_ACL1(745, 2, FACTORY), \
+    EFUSE_ACL1(745, 3, FACTORY), \
+    EFUSE_ACL1(746, 0, FACTORY), \
+    EFUSE_ACL1(746, 1, FACTORY), \
+    EFUSE_ACL1(746, 2, FACTORY), \
+    EFUSE_ACL1(746, 3, FACTORY), \
+    EFUSE_ACL1(747, 0, FACTORY), \
+    EFUSE_ACL1(747, 1, FACTORY), \
+    EFUSE_ACL1(747, 2, FACTORY), \
+    EFUSE_ACL1(747, 3, FACTORY), \
+    EFUSE_ACL1(748, 0, FACTORY), \
+    EFUSE_ACL1(748, 1, FACTORY), \
+    EFUSE_ACL1(748, 2, FACTORY), \
+    EFUSE_ACL1(748, 3, FACTORY), \
+    EFUSE_ACL1(749, 0, FACTORY), \
+    EFUSE_ACL1(749, 1, FACTORY), \
+    EFUSE_ACL1(749, 2, FACTORY), \
+    EFUSE_ACL1(749, 3, FACTORY), \
+    EFUSE_ACL1(750, 0, FACTORY), \
+    EFUSE_ACL1(750, 1, FACTORY), \
+    EFUSE_ACL1(750, 2, FACTORY), \
+    EFUSE_ACL1(750, 3, FACTORY), \
+    EFUSE_ACL1(751, 0, FACTORY), \
+    EFUSE_ACL1(751, 1, FACTORY), \
+    EFUSE_ACL1(751, 2, FACTORY), \
+    EFUSE_ACL1(751, 3, FACTORY), \
+    EFUSE_ACL1(752, 0, FACTORY), \
+    EFUSE_ACL1(752, 1, FACTORY), \
+    EFUSE_ACL1(752, 2, FACTORY), \
+    EFUSE_ACL1(752, 3, FACTORY), \
+    EFUSE_ACL1(753, 0, FACTORY), \
+    EFUSE_ACL1(753, 1, FACTORY), \
+    EFUSE_ACL1(753, 2, FACTORY), \
+    EFUSE_ACL1(753, 3, FACTORY), \
+    EFUSE_ACL1(754, 0, FACTORY), \
+    EFUSE_ACL1(754, 1, FACTORY), \
+    EFUSE_ACL1(754, 2, FACTORY), \
+    EFUSE_ACL1(754, 3, FACTORY), \
+    EFUSE_ACL1(755, 0, FACTORY), \
+    EFUSE_ACL1(755, 1, FACTORY), \
+    EFUSE_ACL1(755, 2, FACTORY), \
+    EFUSE_ACL1(755, 3, FACTORY), \
+    EFUSE_ACL1(756, 0, FACTORY), \
+    EFUSE_ACL1(756, 1, FACTORY), \
+    EFUSE_ACL1(756, 2, FACTORY), \
+    EFUSE_ACL1(756, 3, FACTORY), \
+    EFUSE_ACL1(757, 0, FACTORY), \
+    EFUSE_ACL1(757, 1, FACTORY), \
+    EFUSE_ACL1(757, 2, FACTORY), \
+    EFUSE_ACL1(757, 3, FACTORY), \
+    EFUSE_ACL1(758, 0, FACTORY), \
+    EFUSE_ACL1(758, 1, FACTORY), \
+    EFUSE_ACL1(758, 2, FACTORY), \
+    EFUSE_ACL1(758, 3, FACTORY), \
+    EFUSE_ACL1(759, 0, FACTORY), \
+    EFUSE_ACL1(759, 1, FACTORY), \
+    EFUSE_ACL1(759, 2, FACTORY), \
+    EFUSE_ACL1(759, 3, FACTORY), \
+    EFUSE_ACL1(760, 0, FACTORY), \
+    EFUSE_ACL1(760, 1, FACTORY), \
+    EFUSE_ACL1(760, 2, FACTORY), \
+    EFUSE_ACL1(760, 3, FACTORY), \
+    EFUSE_ACL1(761, 0, FACTORY), \
+    EFUSE_ACL1(761, 1, FACTORY), \
+    EFUSE_ACL1(761, 2, FACTORY), \
+    EFUSE_ACL1(761, 3, FACTORY), \
+    EFUSE_ACL1(762, 0, FACTORY), \
+    EFUSE_ACL1(762, 1, FACTORY), \
+    EFUSE_ACL1(762, 2, FACTORY), \
+    EFUSE_ACL1(762, 3, FACTORY), \
+    EFUSE_ACL1(763, 0, FACTORY), \
+    EFUSE_ACL1(763, 1, FACTORY), \
+    EFUSE_ACL1(763, 2, FACTORY), \
+    EFUSE_ACL1(763, 3, FACTORY), \
+    EFUSE_ACL1(764, 0, FACTORY), \
+    EFUSE_ACL1(764, 1, FACTORY), \
+    EFUSE_ACL1(764, 2, FACTORY), \
+    EFUSE_ACL1(764, 3, FACTORY), \
+    EFUSE_ACL1(765, 0, FACTORY), \
+    EFUSE_ACL1(765, 1, FACTORY), \
+    EFUSE_ACL1(765, 2, FACTORY), \
+    EFUSE_ACL1(765, 3, FACTORY), \
+    EFUSE_ACL1(766, 0, FACTORY), \
+    EFUSE_ACL1(766, 1, FACTORY), \
+    EFUSE_ACL1(766, 2, FACTORY), \
+    EFUSE_ACL1(766, 3, FACTORY), \
+    EFUSE_ACL1(767, 0, FACTORY), \
+    EFUSE_ACL1(767, 1, FACTORY), \
+    EFUSE_ACL1(767, 2, FACTORY), \
+    EFUSE_ACL1(767, 3, FACTORY))
+
+/*
+ * Access control's level-2 table initializers and verifiers
+ */
+#define EFUSE_ACL2_FUNCS EFUSE_LIST( \
+    EFUSE_ACL2(37F, pmx_efuse_ac_37f), \
+    EFUSE_ACL2(TBIT0, pmx_efuse_ac_tbit0), \
+    EFUSE_ACL2(DME, pmx_efuse_ac_dme), \
+    EFUSE_ACL2(DNA, pmx_efuse_ac_dna), \
+    EFUSE_ACL2(FACTORY, pmx_efuse_ac_factory), \
+    EFUSE_ACL2(RFSOC, pmx_efuse_ac_rfsoc), \
+    EFUSE_ACL2(FACTORY_5EC, pmx_efuse_ac_factory_5ec), \
+    EFUSE_ACL2(FACTORY_ROW0, pmx_efuse_ac_factory_row0), \
+    EFUSE_ACL2(TBIT0_58C, pmx_efuse_ac_tbit0_58c), \
+    EFUSE_ACL2(TBIT0_58E, pmx_efuse_ac_tbit0_58e), \
+    EFUSE_ACL2(TBIT0_58F, pmx_efuse_ac_tbit0_58f), \
+    EFUSE_ACL2(TBIT0_5A8, pmx_efuse_ac_tbit0_5a8), \
+    EFUSE_ACL2(TBIT0_5AB, pmx_efuse_ac_tbit0_5ab), \
+    EFUSE_ACL2(TBIT0_5AD, pmx_efuse_ac_tbit0_5ad), \
+    EFUSE_ACL2(TBIT0_5AF, pmx_efuse_ac_tbit0_5af), \
+    EFUSE_ACL2(TBIT0_5C8, pmx_efuse_ac_tbit0_5c8), \
+    EFUSE_ACL2(TBIT0_REVOKE, pmx_efuse_ac_tbit0_revoke), \
+    EFUSE_ACL2(TBIT1_5C8, pmx_efuse_ac_tbit1_5c8))
+
+enum {
+    EFUSE_AC_NEVER = 0,
+    EFUSE_AC_ALWAYS,
+    EFUSE_AC_37F,
+    EFUSE_AC_TBIT0,
+    EFUSE_AC_DME,
+    EFUSE_AC_DNA,
+    EFUSE_AC_FACTORY,
+    EFUSE_AC_RFSOC,
+    EFUSE_AC_FACTORY_5EC,
+    EFUSE_AC_FACTORY_ROW0,
+    EFUSE_AC_TBIT0_58C,
+    EFUSE_AC_TBIT0_58E,
+    EFUSE_AC_TBIT0_58F,
+    EFUSE_AC_TBIT0_5A8,
+    EFUSE_AC_TBIT0_5AB,
+    EFUSE_AC_TBIT0_5AD,
+    EFUSE_AC_TBIT0_5AF,
+    EFUSE_AC_TBIT0_5C8,
+    EFUSE_AC_TBIT0_REVOKE,
+    EFUSE_AC_TBIT1_5C8,
+};
+
+static bool pmx_efuse_ac_37f(XlnxPmxEFuseCtrl *s)
+{
+    return xlnx_efuse_get_bit(s->efuse, 0x37f); /* GLITCH_DET_WR_LK */
+}
+
+static bool pmx_efuse_ac_588(XlnxPmxEFuseCtrl *s)
+{
+    return xlnx_efuse_get_bit(s->efuse, 0x588); /* AES_DIS */
+}
+
+static bool pmx_efuse_ac_58c(XlnxPmxEFuseCtrl *s)
+{
+    return xlnx_efuse_get_bit(s->efuse, 0x58c); /* UDS_WR_LK */
+}
+
+static bool pmx_efuse_ac_58e(XlnxPmxEFuseCtrl *s)
+{
+    return xlnx_efuse_get_bit(s->efuse, 0x58e); /* PPK0_WR_LK */
+}
+
+static bool pmx_efuse_ac_58f(XlnxPmxEFuseCtrl *s)
+{
+    return xlnx_efuse_get_bit(s->efuse, 0x58f); /* PPK1_WR_LK */
+}
+
+static bool pmx_efuse_ac_5a8(XlnxPmxEFuseCtrl *s)
+{
+    return xlnx_efuse_get_bit(s->efuse, 0x5a8); /* PPK2_WR_LK */
+}
+
+static bool pmx_efuse_ac_5a9(XlnxPmxEFuseCtrl *s)
+{
+    return xlnx_efuse_get_bit(s->efuse, 0x5a9); /* AES_CRC_LK_0 */
+}
+
+static bool pmx_efuse_ac_5aa(XlnxPmxEFuseCtrl *s)
+{
+    return xlnx_efuse_get_bit(s->efuse, 0x5aa); /* AES_CRC_LK_1 */
+}
+
+static bool pmx_efuse_ac_5ab(XlnxPmxEFuseCtrl *s)
+{
+    return xlnx_efuse_get_bit(s->efuse, 0x5ab); /* AES_WR_LK */
+}
+
+static bool pmx_efuse_ac_5ac(XlnxPmxEFuseCtrl *s)
+{
+    return xlnx_efuse_get_bit(s->efuse, 0x5ac); /* USER_KEY_0_CRC_LK_0 */
+}
+
+static bool pmx_efuse_ac_5ad(XlnxPmxEFuseCtrl *s)
+{
+    return xlnx_efuse_get_bit(s->efuse, 0x5ad); /* USER_KEY_0_WR_LK */
+}
+
+static bool pmx_efuse_ac_5ae(XlnxPmxEFuseCtrl *s)
+{
+    return xlnx_efuse_get_bit(s->efuse, 0x5ae); /* USER_KEY_1_CRC_LK_0 */
+}
+
+static bool pmx_efuse_ac_5af(XlnxPmxEFuseCtrl *s)
+{
+    return xlnx_efuse_get_bit(s->efuse, 0x5af); /* USER_KEY_1_WR_LK */
+}
+
+static bool pmx_efuse_ac_5c8(XlnxPmxEFuseCtrl *s)
+{
+    return xlnx_efuse_get_bit(s->efuse, 0x5c8); /* PUF_SYN_LK */
+}
+
+static bool pmx_efuse_ac_5ca(XlnxPmxEFuseCtrl *s)
+{
+    return xlnx_efuse_get_bit(s->efuse, 0x5ca); /* PUF_DIS */
+}
+
+static bool pmx_efuse_ac_5ec(XlnxPmxEFuseCtrl *s)
+{
+    return xlnx_efuse_get_bit(s->efuse, 0x5ec); /* BOOT_ENV_WR_LK */
+}
+
+static bool pmx_efuse_ac_tbit1(XlnxPmxEFuseCtrl *s)
+{
+    return !ARRAY_FIELD_EX32(s->regs, STATUS, EFUSE_1_TBIT);
+}
+
+static bool pmx_efuse_ac_tbit0(XlnxPmxEFuseCtrl *s)
+{
+    return !ARRAY_FIELD_EX32(s->regs, STATUS, EFUSE_0_TBIT);
+}
+
+static bool pmx_efuse_ac_revoke(XlnxPmxEFuseCtrl *s)
+{
+    return !!ARRAY_FIELD_EX32(s->regs, EFUSE_PGM_LOCK, REVOCATION_ID_LOCK);
+}
+
+static bool pmx_efuse_ac_dme(XlnxPmxEFuseCtrl *s)
+{
+    return s->ac_dme;
+}
+
+static bool pmx_efuse_ac_dna(XlnxPmxEFuseCtrl *s)
+{
+    return s->ac_dna;
+}
+
+static bool pmx_efuse_ac_factory(XlnxPmxEFuseCtrl *s)
+{
+    return s->ac_factory;
+}
+
+static bool pmx_efuse_ac_rfsoc(XlnxPmxEFuseCtrl *s)
+{
+    return s->ac_rfsoc;
+}
+
+static bool pmx_efuse_ac_row0(XlnxPmxEFuseCtrl *s)
+{
+    return s->ac_row0;
+}
+
+static bool pmx_efuse_ac_factory_5ec(XlnxPmxEFuseCtrl *s)
+{
+    return pmx_efuse_ac_factory(s) || pmx_efuse_ac_5ec(s);
+}
+
+static bool pmx_efuse_ac_factory_row0(XlnxPmxEFuseCtrl *s)
+{
+    return pmx_efuse_ac_factory(s) || pmx_efuse_ac_row0(s);
+}
+
+static bool pmx_efuse_ac_tbit0_58c(XlnxPmxEFuseCtrl *s)
+{
+    return pmx_efuse_ac_tbit0(s) || pmx_efuse_ac_58c(s);
+}
+
+static bool pmx_efuse_ac_tbit0_58e(XlnxPmxEFuseCtrl *s)
+{
+    return pmx_efuse_ac_tbit0(s) || pmx_efuse_ac_58e(s);
+}
+
+static bool pmx_efuse_ac_tbit0_58f(XlnxPmxEFuseCtrl *s)
+{
+    return pmx_efuse_ac_tbit0(s) || pmx_efuse_ac_58f(s);
+}
+
+static bool pmx_efuse_ac_tbit0_5a8(XlnxPmxEFuseCtrl *s)
+{
+    return pmx_efuse_ac_tbit0(s) || pmx_efuse_ac_5a8(s);
+}
+
+static bool pmx_efuse_ac_tbit0_5ab(XlnxPmxEFuseCtrl *s)
+{
+    return pmx_efuse_ac_tbit0(s) || pmx_efuse_ac_5ab(s);
+}
+
+static bool pmx_efuse_ac_tbit0_5ad(XlnxPmxEFuseCtrl *s)
+{
+    return pmx_efuse_ac_tbit0(s) || pmx_efuse_ac_5ad(s);
+}
+
+static bool pmx_efuse_ac_tbit0_5af(XlnxPmxEFuseCtrl *s)
+{
+    return pmx_efuse_ac_tbit0(s) || pmx_efuse_ac_5af(s);
+}
+
+static bool pmx_efuse_ac_tbit0_5c8(XlnxPmxEFuseCtrl *s)
+{
+    return pmx_efuse_ac_tbit0(s) || pmx_efuse_ac_5c8(s);
+}
+
+static bool pmx_efuse_ac_tbit0_revoke(XlnxPmxEFuseCtrl *s)
+{
+    return pmx_efuse_ac_tbit0(s) || pmx_efuse_ac_revoke(s);
+}
+
+static bool pmx_efuse_ac_tbit1_5c8(XlnxPmxEFuseCtrl *s)
+{
+    return pmx_efuse_ac_tbit1(s) || pmx_efuse_ac_5c8(s);
+}
+
+#endif
