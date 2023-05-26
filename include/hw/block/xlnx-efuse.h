@@ -45,6 +45,12 @@ DECLARE_CLASS_CHECKERS(XlnxEFuseSysmonDataSourceClass,
                        XLNX_EFUSE_SYSMON_DATA_SOURCE,
                        TYPE_XLNX_EFUSE_SYSMON_DATA_SOURCE)
 
+typedef struct XlnxEFusePufData {
+    uint32_t puf_dis:1;
+    uint16_t pufsyn_len;
+    uint8_t  pufsyn[0];
+} XlnxEFusePufData;
+
 typedef struct XlnxEFuseSysmonData {
     uint32_t rdata_low;
     uint32_t rdata_high;
@@ -72,6 +78,8 @@ typedef struct XLNXEFuse {
     bool blk_ro;
     uint32_t *fuse32;
 
+    XlnxEFusePufData *(*get_puf)(DeviceState *, uint16_t pufsyn_max);
+    bool (*get_sysmon)(DeviceState *, XlnxEFuseSysmonData *);
     uint32_t (*get_u32)(DeviceState *, uint32_t, bool *);
     void (*pgm_done)(DeviceState *dev, bool failed);
     DeviceState *dev;
@@ -129,6 +137,26 @@ static inline uint32_t xlnx_efuse_get_u32(XLNXEFuse *s,
         *denied = true;
     }
     return 0;
+}
+
+static inline XlnxEFusePufData *xlnx_efuse_get_puf(XLNXEFuse *s,
+                                                   uint16_t pufsyn_max)
+{
+    if (s && s->fuse32 && s->dev && s->get_puf) {
+        return s->get_puf(s->dev, pufsyn_max);
+    } else {
+        return NULL;
+    }
+}
+
+static inline bool xlnx_efuse_get_sysmon(XLNXEFuse *s,
+                                         XlnxEFuseSysmonData *d)
+{
+    if (s && s->fuse32 && s->dev && s->get_sysmon && d) {
+        return s->get_sysmon(s->dev, d);
+    } else {
+        return false;
+    }
 }
 
 #endif
