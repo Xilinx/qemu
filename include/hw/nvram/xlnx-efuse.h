@@ -33,6 +33,18 @@
 #define TYPE_XLNX_EFUSE "xlnx-efuse"
 OBJECT_DECLARE_SIMPLE_TYPE(XlnxEFuse, XLNX_EFUSE);
 
+typedef struct XlnxEFusePufData {
+    uint32_t puf_dis:1;
+    uint16_t pufsyn_len;
+    uint8_t  pufsyn[0];
+} XlnxEFusePufData;
+
+typedef struct XlnxEFuseSysmonData {
+    uint32_t rdata_low;
+    uint32_t rdata_high;
+    uint32_t glitch_monitor_en:1;
+} XlnxEFuseSysmonData;
+
 struct XlnxEFuse {
     DeviceState parent_obj;
     BlockBackend *blk;
@@ -41,6 +53,8 @@ struct XlnxEFuse {
 
     DeviceState *dev;
     uint32_t (*get_u32)(DeviceState *, uint32_t, bool *);
+    bool (*get_sysmon)(DeviceState *, XlnxEFuseSysmonData *);
+    XlnxEFusePufData *(*get_puf)(DeviceState *, uint16_t pufsyn_max);
 
     bool init_tbits;
 
@@ -150,6 +164,43 @@ static inline uint32_t xlnx_efuse_get_u32(XlnxEFuse *s,
         *denied = true;
     }
     return 0;
+}
+
+/**
+ * xlnx_efuse_get_puf:
+ * @s: the efuse object
+ * @pufsyn_max: the upper limit on amount of puf-syn data returned;
+ *              if 0, all stored puf-syn data are returned.
+ *
+ * Return: pointer to a XlnxEFusePufData object, where .pufsyn_len
+ *         indicates the number of returned puf-syn little-endian bytes.
+ *         The caller must release the returned memory.
+ */
+static inline XlnxEFusePufData *xlnx_efuse_get_puf(XlnxEFuse *s,
+                                                   uint16_t pufsyn_max)
+{
+    if (s && s->fuse32 && s->dev && s->get_puf) {
+        return s->get_puf(s->dev, pufsyn_max);
+    } else {
+        return NULL;
+    }
+}
+
+/**
+ * xlnx_efuse_get_sysmon:
+ * @s: the efuse object
+ * @d: pointer to data receiver.
+ *
+ * Returns: false if failed to retrieve the data.
+ */
+static inline bool xlnx_efuse_get_sysmon(XlnxEFuse *s,
+                                         XlnxEFuseSysmonData *d)
+{
+    if (s && s->fuse32 && s->dev && s->get_sysmon && d) {
+        return s->get_sysmon(s->dev, d);
+    } else {
+        return false;
+    }
 }
 
 #endif
