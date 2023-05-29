@@ -190,7 +190,7 @@ static const RegisterAccessInfo hnicx_npi_regs_info[] = {
         .rsvd = 0x6100,
         .ro = 0x6100,
     },{ .name = "REG_PCSR_STATUS",  .addr = A_REG_PCSR_STATUS,
-        .reset = 0x1,
+        .reset = 0xFFFFC0C7,
         .rsvd = 0x38,
         .ro = 0xffffffc7,
         .post_write = reg_pcsr_ctrl_postw,
