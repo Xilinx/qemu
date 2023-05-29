@@ -118,8 +118,12 @@ REG32(REG_PCSR_STATUS, 0x8)
     FIELD(REG_PCSR_STATUS, PCSRLOCK, 0, 1)
 REG32(REG_PCSR_LOCK, 0xc)
     FIELD(REG_PCSR_LOCK, STATE, 0, 1)
+REG32(REG_NPI_CSR_WR_STATUS, 0x208)
+    FIELD(REG_NPI_CSR_WR_STATUS, BVALID, 0, 1)
+REG32(REG_NPI_CSR_RD_STATUS, 0x20c)
+    FIELD(REG_NPI_CSR_RD_STATUS, RVALID, 0, 1)
 
-#define HNICX_NPI_R_MAX (R_REG_PCSR_LOCK + 1)
+#define HNICX_NPI_R_MAX (R_REG_NPI_CSR_RD_STATUS + 1)
 
 typedef struct HNICX_NPI {
     SysBusDevice parent_obj;
@@ -198,6 +202,12 @@ static const RegisterAccessInfo hnicx_npi_regs_info[] = {
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .post_write = reg_pcsr_lock_postw,
+    },{ .name = "REG_NPI_CSR_WR_STATUS",  .addr = A_REG_NPI_CSR_WR_STATUS,
+        .reset = 0x1,
+        .rsvd = 0xfffffff8,
+    },{ .name = "REG_NPI_CSR_RD_STATUS",  .addr = A_REG_NPI_CSR_RD_STATUS,
+        .reset = 0x1,
+        .rsvd = 0xfffffff8,
     }
 };
 
