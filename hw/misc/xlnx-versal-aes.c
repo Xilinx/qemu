@@ -292,6 +292,7 @@ struct Zynq3AES {
     bool aes_done;
     bool key_dec_done;
     bool inSoftRst;
+    bool endianness_swap;
 
     StreamSink *tx_dev;
     char *family_key_id;
@@ -424,10 +425,6 @@ static uint64_t aes_idr_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
-static int xlx_aes_push_data(Zynq3AES *s,
-                             uint8_t *data8x, int len,
-                             bool last_word , int lw_len,
-                             uint8_t *outbuf, int *outlen);
 static void xlx_aes_load_key(Zynq3AES *s, int len)
 {
     unsigned int src, i;
@@ -575,8 +572,8 @@ static void xlx_aes_load_key(Zynq3AES *s, int len)
          */
         bswap32_buf8((uint8_t *)enc_key, len / 8);
         wswap128_buf8((uint8_t *)enc_key, len / 8);
-        xlx_aes_push_data(s, (uint8_t *)enc_key, len / 8, true, 4, outbuf,
-                          &outlen);
+        xlnx_aes_push_data(s->aes, (uint8_t *) enc_key, len / 8,
+                           !!s->regs[R_AES_AAD], true, 4, outbuf, &outlen);
         /* Convert the Key to le */
         bswap32_buf8(outbuf, len / 8);
         for (i = 0; i < len / 32; i++) {
@@ -978,15 +975,6 @@ static void device_key_update(ZynqMPAESKeySink *obj, uint8_t *key, size_t len)
     memcpy(s->device_key, key, len);
 }
 
-static int xlx_aes_push_data(Zynq3AES *s,
-                             uint8_t *data8x, int len,
-                             bool last_word , int lw_len,
-                             uint8_t *outbuf, int *outlen)
-{
-    return xlnx_aes_push_data(s->aes, data8x, len, !!s->regs[R_AES_AAD],
-                              last_word, lw_len, outbuf, outlen);
-}
-
 static uint32_t shift_in_u32(uint32_t *a, unsigned int size, uint32_t data)
 {
     unsigned int i;
@@ -1128,8 +1116,16 @@ static size_t aes_stream_push(StreamSink *obj, uint8_t *buf, size_t len,
     if (!s->regs[R_AES_DATA_ENDIANNESS_SWAP]) {
         wswap128_buf8(buf, len);
     }
-    bswap32_buf8(buf, len);
-    ret = xlx_aes_push_data(s, buf, len, eop, 4, outbuf, &outlen);
+
+    /* New variant of this AES model have an integrated endianness switch after
+     * the DMA.  The negation here comes from the fact that at least one swap
+     * is required since the QEMU gcm block is big endian.  */
+    if (!s->endianness_swap) {
+        bswap32_buf8(buf, len);
+    }
+
+    ret = xlnx_aes_push_data(s->aes, buf, len, !!s->regs[R_AES_AAD],
+                              eop, 4, outbuf, &outlen);
     if (!s->regs[R_AES_DATA_ENDIANNESS_SWAP]) {
         wswap128_buf8(outbuf, outlen);
     }
@@ -1140,7 +1136,13 @@ static size_t aes_stream_push(StreamSink *obj, uint8_t *buf, size_t len,
     if (feedback) {
         xlnx_aes_feedback(s, outbuf, outlen);
     } else {
-        bswap32_buf8(outbuf, outlen);
+        /* Similarily as for the input, the output has an integrated endianness
+         * switch before the DMA.  The negation here comes from the fact that at
+         * least one swap is required since the QEMU gcm block is big
+         * endian.  */
+        if (!s->endianness_swap) {
+            bswap32_buf8(outbuf, outlen);
+        }
         aes_stream_dst_push(s, outbuf, outlen, ret, eop, encrypt);
     }
 
@@ -1289,7 +1291,8 @@ static const VMStateDescription vmstate_aes = {
 static Property aes_properties[] = {
     DEFINE_PROP_STRING("family-key-id", Zynq3AES, family_key_id),
     DEFINE_PROP_STRING("puf-key-id",    Zynq3AES, puf_key_id),
-
+    DEFINE_PROP_BOOL("integrated-endianness-swap", Zynq3AES, endianness_swap,
+                     false),
     DEFINE_PROP_END_OF_LIST(),
 };
 
