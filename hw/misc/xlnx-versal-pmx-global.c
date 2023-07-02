@@ -39,6 +39,7 @@
 #include "hw/misc/xlnx-versal-pmc.h"
 #include "hw/fdt_generic_util.h"
 #include "xlnx-versal-ams.h"
+#include "hw/nvram/xlnx-pmx-efuse.h"
 
 #ifndef XILINX_PMX_GLOBAL_ERR_DEBUG
 #define XILINX_PMX_GLOBAL_ERR_DEBUG 0
@@ -1322,9 +1323,25 @@ static uint64_t req_iso_trig_prew(RegisterInfo *reg, uint64_t val64)
 
 static bool pmx_global_gd_monitor_enabled(PMX_GLOBAL *s)
 {
-    /* FIXME: Whether the glitch detection monitor is enabled or not is from an
-     * efuse.  This will be implemented later.  */
-    return true;
+    XlnxEFuseSysmonDataSourceClass *klass;
+    XlnxEFuseSysmonData data;
+
+    if (!s->efuse) {
+        g_autofree char *path = object_get_canonical_path(OBJECT(s));
+
+        warn_report("%s: glitch-detect monitor disabled due to missing "
+                    "TYPE_XLNX_EFUSE_SYSMON_DATA_SOURCE.", path);
+
+        return false;
+    }
+
+    klass = XLNX_EFUSE_SYSMON_DATA_SOURCE_GET_CLASS(s->efuse);
+    if (!klass || !klass->get_data) {
+        return false;
+    }
+
+    klass->get_data(s->efuse, &data);
+    return !!data.glitch_monitor_en;
 }
 
 static uint32_t pmx_global_tamper_response(PMX_GLOBAL *s, unsigned slot)
