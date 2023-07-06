@@ -673,6 +673,25 @@ static void ufs_dev_receive_sense_data(ufs_scsi_if *ifs, uint8_t *sense,
     }
 }
 
+static QEMUSGList *ufs_dev_get_sgl(ufs_scsi_if *ifs, uint8_t tag, uint8_t lun)
+{
+    UFSDev *s = UFS_DEV(ifs);
+    UFSTaskQ *task = NULL;
+    upiu_pkt *pkt = NULL;
+
+    QTAILQ_FOREACH(task, &s->taskQ, link) {
+        pkt = &task->pkt;
+        if (UPIU_TAG(pkt) == tag) {
+            break;
+        }
+    }
+
+    if (task) {
+        return ufshci_get_sgl(s->ufs_ini, tag);
+    }
+    return NULL;
+}
+
 static void ufsdev_realize(DeviceState *dev, Error **errp)
 {
     UFSDev *s = UFS_DEV(dev);
@@ -895,6 +914,7 @@ static void ufsdev_class_init(ObjectClass *klass, void *data)
      */
     usc->handle_data = ufs_dev_receive_scsi_data;
     usc->handle_sense = ufs_dev_receive_sense_data;
+    usc->get_sgl = ufs_dev_get_sgl;
 }
 
 static const TypeInfo ufsdev_info = {

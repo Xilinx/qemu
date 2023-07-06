@@ -74,6 +74,25 @@ static void ufs_scsi_request_cancelled(SCSIRequest *r)
     scsi_req_unref(r);
 }
 
+static QEMUSGList * ufs_scsi_get_sg(SCSIRequest *r)
+{
+    UFSScsiCore *s = r->hba_private;
+    UFSScsiTask *task = NULL;
+    SCSIRequest *req = NULL;
+
+    QTAILQ_FOREACH(task, &s->taskQ, link) {
+        req = task->req;
+        if (req->tag == r->tag) {
+            break;
+        }
+    }
+    if (task) {
+        return ufs_scsi_if_get_sgl(s->ufs_scsi_ini, req->tag, req->lun);
+    }
+
+    return NULL;
+}
+
 static const struct SCSIBusInfo ufs_scsi_info = {
     .tcq = true,
     .max_target = 1,
@@ -82,6 +101,7 @@ static const struct SCSIBusInfo ufs_scsi_info = {
     .transfer_data = ufs_scsi_transfer_data,
     .complete = ufs_scsi_command_complete,
     .cancel = ufs_scsi_request_cancelled,
+    .get_sg_list = ufs_scsi_get_sg,
 };
 
 static void ufs_scsi_receive(ufs_scsi_if *ifs, void *pkt, uint32_t size,

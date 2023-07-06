@@ -222,6 +222,7 @@ typedef struct tr_info {
     utp_tr_desc desc;
     utp_record rec;
     ufs_prdt *prdt;
+    QEMUSGList sgl;
 } tr_info;
 
 typedef struct tmr_info {
@@ -506,10 +507,27 @@ static void utp_upiu_data_ex(upiu_pkt *pkt, hwaddr upiu_base, void *data)
                     len, false);
 }
 
+static void ufs_prepare_sg_list(UFSHCState *s, tr_info *tr)
+{
+    int i;
+    dma_addr_t addr;
+    dma_addr_t size;
+
+    qemu_sglist_init(&tr->sgl, DEVICE(s), (int) tr->desc.prdtl,
+                     &address_space_memory);
+    trace_ufshc_sgl_list("SGL list:");
+    for(i = 0; i < tr->desc.prdtl; i++) {
+        addr = (dma_addr_t) tr->prdt[i].addrl | ((dma_addr_t) tr->prdt[i].addrh << 32);
+        size = ((tr->prdt[i].size & R_PRDT_DW3_DBC_MASK) | 0x3) + 1;
+        trace_ufshc_sgl_list2((uint64_t) addr, (uint64_t) size);
+        qemu_sglist_add(&tr->sgl, addr, size);
+    }
+}
+
 /*
  * Extract the PRDT table
  */
-static void utp_tr_prdt_ex(tr_info *tr)
+static void utp_tr_prdt_ex(UFSHCState *s, tr_info *tr)
 {
     uint16_t prdtl = tr->desc.prdtl;
     uint64_t ucd_base = utp_tr_get_ucd_base(&tr->desc);
@@ -523,8 +541,13 @@ static void utp_tr_prdt_ex(tr_info *tr)
                         MEMTXATTRS_UNSPECIFIED,
                         tr->prdt, sizeof(ufs_prdt) * prdtl,
                         false);
+        /*
+         *  Prepare QEMU SG list
+         */
+        ufs_prepare_sg_list(s, tr);
     }
-}
+
+ }
 
 static void start_tr_processing(UFSHCState *s)
 {
@@ -557,6 +580,7 @@ static void start_tr_processing(UFSHCState *s)
              * Record the UPIU params to relate the upiu's from target.
              */
             utp_record_req_upiu_param(&tr_upiu, &s->tr_list[i].rec);
+            utp_tr_prdt_ex(s, &s->tr_list[i]);
             /*
              * Send UPIU to target
              */
@@ -571,7 +595,6 @@ static void start_tr_processing(UFSHCState *s)
                 ufshci_send_data(s->ufs_target, ds, dsl, UPIU_TAG(&tr_upiu));
                 g_free(ds);
             }
-            utp_tr_prdt_ex(&s->tr_list[i]);
         }
     }
 }
@@ -888,6 +911,7 @@ static void utr_complete(UFSHCState *s, uint8_t slot)
    ARRAY_FIELD_DP32(s->regs, IS, UTRCS, 1);
    s->regs[R_UTRLDBR] &= ~(1 << slot);
    g_free(s->tr_list[slot].prdt);
+   qemu_sglist_destroy(&s->tr_list[slot].sgl);
    memset(&s->tr_list[slot], 0, sizeof(tr_info));
 }
 
@@ -1140,6 +1164,19 @@ static void ufshc_receive_data(ufshcIF *ifs, void *data, uint16_t len,
     };
 }
 
+static QEMUSGList *ufshc_get_sgl(ufshcIF *ifs, uint8_t task_tag)
+{
+    UFSHCState *s = UFSHC(ifs);
+    uint8_t slot = search_tr_list(s, task_tag);
+
+    if (slot == s->num_tr_slots ||
+        (s->tr_list[slot].desc.prdtl == 0)) {
+        return NULL;
+    }
+
+    return &s->tr_list[slot].sgl;
+}
+
 static void ufshc_reset_enter(Object *obj, ResetType type)
 {
     UFSHCState *s = UFSHC(obj);
@@ -1253,6 +1290,7 @@ static void ufshc_class_init(ObjectClass *klass, void *data)
     rc->phases.enter = ufshc_reset_enter;
     uc->handle_upiu = ufshc_receive_upiu;
     uc->handle_data = ufshc_receive_data;
+    uc->get_sgl = ufshc_get_sgl;
 }
 
 static void ufshc_sysbus_class_init(ObjectClass *klass, void *data)
