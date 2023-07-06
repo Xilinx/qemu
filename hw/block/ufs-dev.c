@@ -79,7 +79,9 @@ static bool ufs_dev_lun_enable(UFSDev *s, uint8_t lun)
         r = false;
         break;
     case 0x0 ... 0x7F:
-        r = !!UFS_REG_R(s->ufsDesc.unit[lun], UNIT_LU_ENABLE);
+        if (lun < s->num_luns) {
+            r = !!UFS_REG_R(s->ufsDesc.unit[lun], UNIT_LU_ENABLE);
+        }
         break;
     };
     return r;
