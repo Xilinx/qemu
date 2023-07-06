@@ -275,6 +275,41 @@ static void ufs_desc_read(UFSDev *s, upiu_pkt *pkt)
             data = s->ufsDesc.unit[index];
         }
         break;
+    case UFS_DEV_STRING:
+        switch (index) {
+        case 0:
+            desc_len = s->ufsDesc.manStr[0];
+            data = s->ufsDesc.manStr;
+            break;
+        case 1:
+            desc_len = s->ufsDesc.prodStr[0];
+            data = s->ufsDesc.prodStr;
+            break;
+        case 2:
+            desc_len = s->ufsDesc.oemIdStr[0];
+            data = s->ufsDesc.oemIdStr;
+            break;
+        case 3:
+            desc_len = s->ufsDesc.serialNumStr[0];
+            data = s->ufsDesc.serialNumStr;
+            break;
+        case 4:
+            desc_len = s->ufsDesc.prodRevLvlStr[0];
+            data = s->ufsDesc.prodRevLvlStr;
+            break;
+        };
+        break;
+    case UFS_DEV_INTERCONNECT:
+        desc_len = s->ufsDesc.interconnect[INTERCONNECT_LENGTH];
+        data = s->ufsDesc.interconnect;
+        break;
+    case UFS_DEV_DEVICE_HEALTH:
+        desc_len = s->ufsDesc.devHealth[DEV_HEALTH_LENGTH];
+        data = s->ufsDesc.devHealth;
+        break;
+    case UFS_DEV_POWER:
+        desc_len = s->ufsDesc.pwrParam[0];
+        data = s->ufsDesc.pwrParam;
     };
 
     if (desc_len) {
@@ -787,6 +822,92 @@ static void ufsdev_realize(DeviceState *dev, Error **errp)
      */
     UFS_REG_W(s->ufsDesc.geo, GOME_LENGTH, UFS_GOME_DESC_SIZE);
     UFS_REG_W(s->ufsDesc.geo, GOME_DESCRIPTOR_IDN, UFS_DEV_GEOMETRY);
+
+    /*
+     * Initialize Interconnect descriptor
+     */
+    UFS_REG_W(s->ufsDesc.interconnect, INTERCONNECT_LENGTH,
+                UFS_INTRCON_DESC_SIZE);
+    UFS_REG_W(s->ufsDesc.interconnect, INTERCONNECT_DESCRIPTOR_IDN,
+                UFS_DEV_INTERCONNECT);
+    UFS_REG_W(s->ufsDesc.interconnect, INTERCONNECT_BCD_UNIPRO_VERSION,
+                0x0180);
+    UFS_REG_W(s->ufsDesc.interconnect, INTERCONNECT_BCD_MPHY_VERSION,
+                0x0410);
+
+    /*
+     * Manufacturer Name String
+     */
+    s->ufsDesc.manStr[0] = UFS_MAN_STR_DESC_SIZE;
+    s->ufsDesc.manStr[1] = UFS_DEV_STRING;
+    UFS_REG_W_2(s->ufsDesc.manStr, 2, 0x0051);  /* Q */
+    UFS_REG_W_2(s->ufsDesc.manStr, 4, 0x0045);  /* E */
+    UFS_REG_W_2(s->ufsDesc.manStr, 6, 0x004d);  /* M */
+    UFS_REG_W_2(s->ufsDesc.manStr, 8, 0x0055);  /* U */
+    UFS_REG_W_2(s->ufsDesc.manStr, 10, 0x0000); /* NULL */
+    UFS_REG_W(s->ufsDesc.device, DEV_MANUFACTURER_NAME, 0);
+
+    /*
+     * Product Name String
+     */
+    s->ufsDesc.prodStr[0] = UFS_PROD_STR_DESC_SIZE;
+    s->ufsDesc.prodStr[1] = UFS_DEV_STRING;
+    UFS_REG_W_2(s->ufsDesc.prodStr, 2, 0x0055);  /* U */
+    UFS_REG_W_2(s->ufsDesc.prodStr, 4, 0x0046);  /* F */
+    UFS_REG_W_2(s->ufsDesc.prodStr, 6, 0x0053);  /* S */
+    UFS_REG_W_2(s->ufsDesc.prodStr, 8, 0x002d);  /* - */
+    UFS_REG_W_2(s->ufsDesc.prodStr, 10, 0x0044); /* D */
+    UFS_REG_W_2(s->ufsDesc.prodStr, 12, 0x0045); /* E */
+    UFS_REG_W_2(s->ufsDesc.prodStr, 14, 0x0056); /* V */
+    UFS_REG_W_2(s->ufsDesc.prodStr, 16, 0x0000);
+    UFS_REG_W(s->ufsDesc.device, DEV_PRODUCT_NAME, 1);
+
+    /*
+     * OEM ID String
+     */
+    s->ufsDesc.oemIdStr[0] = UFS_OEM_ID_STR_SIZE;
+    s->ufsDesc.oemIdStr[1] = UFS_DEV_STRING;
+    s->ufsDesc.oemIdStr[2] = 0;
+    s->ufsDesc.oemIdStr[3] = 0;
+    UFS_REG_W(s->ufsDesc.device, DEV_OEM_ID, 2);
+
+    /*
+     * Serial Number String
+     */
+    s->ufsDesc.oemIdStr[0] = UFS_OEM_ID_STR_SIZE;
+    s->ufsDesc.oemIdStr[1] = UFS_SERIAL_NUM_STR_SIZE;
+    s->ufsDesc.oemIdStr[2] = 0;
+    s->ufsDesc.oemIdStr[3] = 0;
+    UFS_REG_W(s->ufsDesc.device, DEV_SERIAL_NUMBER, 3);
+
+    /*
+     * Product Revision String
+     */
+    s->ufsDesc.prodRevLvlStr[0] = UFS_PROD_REV_LVL_STR_SIZE;
+    s->ufsDesc.prodRevLvlStr[1] = UFS_DEV_STRING;
+    UFS_REG_W_2(s->ufsDesc.prodRevLvlStr, 2, 0x0030);
+    UFS_REG_W_2(s->ufsDesc.prodRevLvlStr, 4, 0x0030);
+    UFS_REG_W_2(s->ufsDesc.prodRevLvlStr, 6, 0x0030);
+    UFS_REG_W_2(s->ufsDesc.prodRevLvlStr, 8, 0x0030);
+    UFS_REG_W_2(s->ufsDesc.prodRevLvlStr, 10, 0x0000);
+    UFS_REG_W(s->ufsDesc.device, DEV_PRODUCT_REVISION_LEVEL, 4);
+
+    /*
+     * Device Health descriptor
+     */
+    s->ufsDesc.devHealth[0] = UFS_DEV_HEALTH_DESC_SIZE;
+    s->ufsDesc.devHealth[1] = UFS_DEV_DEVICE_HEALTH;
+
+    /*
+     * Power Parameter descriptor
+     */
+    s->ufsDesc.pwrParam[0] = UFS_DEV_PWR_PARAM_DESC_SIZE;
+    s->ufsDesc.pwrParam[1] = UFS_DEV_POWER;
+    for (i = 0; i < 16; i++) {
+        UFS_REG_W_2(s->ufsDesc.pwrParam, 2 + i * 2, 0x8096);
+        UFS_REG_W_2(s->ufsDesc.pwrParam, 0x22 + i * 2, 0x0000);
+        UFS_REG_W_2(s->ufsDesc.pwrParam, 0x42 + i * 2, 0x815E);
+    }
 
     /*
      * Configure BOOT LUN A, B based on qdev props

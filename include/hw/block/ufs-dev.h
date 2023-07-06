@@ -29,6 +29,14 @@
     (UFS_DEV_CONFIG_DESC_SIZE + (n * UNIT_DESC_CONFIG_LENGTH))
 #define UFS_UNIT_DESC_SIZE 0x2D
 #define UFS_GOME_DESC_SIZE 0x57
+#define UFS_INTRCON_DESC_SIZE 0x6
+#define UFS_MAN_STR_DESC_SIZE 0x12
+#define UFS_PROD_STR_DESC_SIZE 0x22
+#define UFS_OEM_ID_STR_SIZE 0x4
+#define UFS_SERIAL_NUM_STR_SIZE 0x4
+#define UFS_PROD_REV_LVL_STR_SIZE 0xa
+#define UFS_DEV_HEALTH_DESC_SIZE 0x2d
+#define UFS_DEV_PWR_PARAM_DESC_SIZE 0x62
 
 #define UFS_SEGMENT_SIZE 512
 typedef struct UFSTaskQ {
@@ -77,6 +85,38 @@ typedef struct UFSDev {
          * Unit Desc
          */
         uint8_t *unit[UFS_MAX_LUN];
+        /*
+         * Interconnect Desc
+         */
+        uint8_t interconnect[UFS_INTRCON_DESC_SIZE];
+        /*
+         * Manufacturer String
+         */
+        uint8_t manStr[UFS_MAN_STR_DESC_SIZE];
+        /*
+         * Product Name String
+         */
+        uint8_t prodStr[UFS_PROD_STR_DESC_SIZE];
+        /*
+         * OEM ID String
+         */
+        uint8_t oemIdStr[UFS_OEM_ID_STR_SIZE];
+        /*
+         * Serial Number String
+         */
+        uint8_t serialNumStr[UFS_SERIAL_NUM_STR_SIZE];
+        /*
+         * Product Revision Level String
+         */
+        uint8_t prodRevLvlStr[UFS_PROD_REV_LVL_STR_SIZE];
+        /*
+         * Device Health Desc
+         */
+        uint8_t devHealth[UFS_DEV_HEALTH_DESC_SIZE];
+        /*
+         * Power Parameter Desc
+         */
+        uint8_t pwrParam[UFS_DEV_PWR_PARAM_DESC_SIZE];
     } ufsDesc;
 
     struct {
