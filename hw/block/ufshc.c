@@ -1146,8 +1146,8 @@ static void ufshc_reset_enter(Object *obj, ResetType type)
         register_reset(&s->regs_info[i]);
     }
 
-    ARRAY_FIELD_DP32(s->regs, CAP, NUTRS, s->num_tr_slots);
-    ARRAY_FIELD_DP32(s->regs, CAP, NUTMRS, s->num_tmr_slots);
+    ARRAY_FIELD_DP32(s->regs, CAP, NUTRS, s->num_tr_slots - 1);
+    ARRAY_FIELD_DP32(s->regs, CAP, NUTMRS, s->num_tmr_slots - 1);
     ARRAY_FIELD_DP32(s->regs, CAP, OODDS, s->oods);
     s->regs[R_VER] = s->ufshci_ver;
     ARRAY_FIELD_DP32(s->regs, HCDDID, DC, s->dc);
@@ -1238,7 +1238,7 @@ static Property ufshc_props[] = {
     DEFINE_PROP_UINT8("num-tr-slots", UFSHCState, num_tr_slots, MAX_TR),
     DEFINE_PROP_UINT8("num-tmr-slots", UFSHCState, num_tmr_slots, MAX_TMR),
     DEFINE_PROP_BOOL("oods", UFSHCState, oods, false),
-    DEFINE_PROP_UINT32("ufshci-version", UFSHCState, ufshci_ver, 0x10000),
+    DEFINE_PROP_UINT32("ufshci-version", UFSHCState, ufshci_ver, 0x300),
     DEFINE_PROP_UINT8("hcdid", UFSHCState, hcdid, 0),
     DEFINE_PROP_UINT16("dc", UFSHCState, dc, 0),
     DEFINE_PROP_UINT16("mid", UFSHCState, mid, 0),
