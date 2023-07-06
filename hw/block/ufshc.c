@@ -1156,6 +1156,13 @@ static void ufshc_reset_enter(Object *obj, ResetType type)
     ARRAY_FIELD_DP32(s->regs, HCPMID, PID, s->pid);
 }
 
+static void ufshc_sysbus_reset_enter(Object *obj, ResetType type)
+{
+    UFSHCSysbus *s = UFSHC_SYSBUS(obj);
+
+    ufshc_reset_enter(OBJECT(&s->ufshc), RESET_TYPE_COLD);
+}
+
 static const MemoryRegionOps ufshc_ops = {
     .read = register_read_memory,
     .write = register_write_memory,
@@ -1264,8 +1271,10 @@ static void ufshc_class_init(ObjectClass *klass, void *data)
 static void ufshc_sysbus_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
 
     dc->realize = ufshc_sysbus_realize;
+    rc->phases.enter = ufshc_sysbus_reset_enter;
 }
 
 static const TypeInfo ufshc_sysbus_info = {
