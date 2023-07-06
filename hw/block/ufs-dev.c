@@ -509,7 +509,7 @@ static bool ufs_cmd_process(UFSDev *s, upiu_pkt *pkt)
      * BOOT LUN check
      */
     if (!ufs_dev_lun_enable(s, pkt->hdr.lun)) {
-        return false;
+        qemu_log_mask(LOG_GUEST_ERROR, "Lun %d not enabled!\n", pkt->hdr.lun);
     }
 
     ufs_record_task(s, pkt);
@@ -519,7 +519,7 @@ static bool ufs_cmd_process(UFSDev *s, upiu_pkt *pkt)
         /*
          * Unknown Lun
          */
-        return false;
+        qemu_log_mask(LOG_GUEST_ERROR, "Lun %d invalid!\n", pkt->hdr.lun);
     }
 
     if (s->ufs_scsi_target) {
