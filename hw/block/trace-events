@@ -113,3 +113,6 @@ ufshc_sgl_list2(uint64_t addr, uint64_t size) "\t addr: 0x%lx size: 0x%lx"
 ufsdev_recv_upiu(const char *upiu, uint8_t tag) "Received %s UPIU Tag = 0x%x"
 ufsdev_send_upiu(const char *upiu, uint8_t tag) "Send %s UPIU Tag = 0x%x"
 ufsdev_desc_read(const char *s) "%s"
+
+#unipro.c
+unipro_dme_cmd(uint8_t cmd, uint16_t MIBattr, uint16_t GenSel) "DME cmd = %d MIBattr = 0x%x GenSel = 0x%x"

@@ -172,22 +172,6 @@ REG32(UICCMDARG2, 0x98)
 REG32(UICCMDARG3, 0x9c)
     FIELD(UCMDARG3, ARG3, 0, 32)
 
-typedef enum UICCmd {
-    DME_GET = 0x1,
-    DME_SET,
-    DME_PEER_GET,
-    DME_PEER_SET,
-    DME_POWERON = 0x10,
-    DME_POWEROFF,
-    DME_ENABLE,
-    DME_RESET = 0x14,
-    DME_ENDPOINTRESET,
-    DME_LINKSTARTUP,
-    DME_HIBERNATE_ENTER,
-    DME_HIBERNATE_EXIT,
-    DME_TEST_MODE = 0x1a,
-} UICCmd;
-
 typedef struct utp_record {
     /*
      * Parameters recoreded from
@@ -255,6 +239,7 @@ typedef struct UFSHCState {
     tmr_info tmr_list[MAX_TMR];
 
     ufshcIF *ufs_target;
+    ufshcIF *unipro;
 
     AddressSpace *as;
     /*
@@ -315,43 +300,6 @@ static void ufshc_init(UFSHCState *s)
     ARRAY_FIELD_DP32(s->regs, HCS, UTMRLRDY, t_present);
 }
 
-/*
- * Link StartUP
- * In real scenario linkstartup dosen't happen on a single request,
- * so here we are creating a scenario where link startup will be
- * success only after MIN_LINK_STARTUP_COUNT trails.
- */
-static bool ufshc_link_startup(UFSHCState *s)
-{
-    bool t_present = !!(s->ufs_target);
-    bool status;
-
-    ARRAY_FIELD_DP32(s->regs, IS, ULSS, 1);
-
-    if (s->nLinkStartUp > MIN_LINK_STARTUP_COUNT) {
-        /*
-         * Device presence update
-         */
-        ARRAY_FIELD_DP32(s->regs, HCS, DP, t_present);
-        status = UIC_GEN_ERR_CODE_SUCCESS;
-    } else {
-        ARRAY_FIELD_DP32(s->regs, IS, ULLS, 1);
-        s->nLinkStartUp++;
-        status = UIC_GEN_ERR_CODE_FAILURE;
-    }
-    return status;
-}
-
-static void uic_reg_read(UFSHCState *s)
-{
-    qemu_log_mask(LOG_UNIMP, "DME_GET/DME_PEER_GET not supported!\n");
-}
-
-static void uic_reg_write(UFSHCState *s)
-{
-    qemu_log_mask(LOG_UNIMP, "DME_SET/DME_PEER_SET not supported!\n");
-}
-
 static void hce_post_write(RegisterInfo *reg, uint64_t val)
 {
     UFSHCState *s = UFSHC(reg->opaque);
@@ -366,23 +314,25 @@ static void hce_post_write(RegisterInfo *reg, uint64_t val)
 static void uiccmd_postw(RegisterInfo *reg, uint64_t val)
 {
     UFSHCState *s = UFSHC(reg->opaque);
-    bool status = UIC_GEN_ERR_CODE_SUCCESS;
+    CfgResultCode status = DME_FAILURE;
+    bool t_present = !!(s->ufs_target);
 
-    /*
-     * DME_LINKSTARTUP.req
-     * Set the linkup and UCCS in IS
-     */
+
+    if (val == 0) {
+        return;
+    }
+
+    status = ufshci_dme_cmd(s->unipro, 0xFF & val,
+        extract32(s->regs[R_UICCMDARG1], 16, 16),
+        extract32(s->regs[R_UICCMDARG1], 0, 16),
+        &s->regs[R_UICCMDARG3]);
+
     switch ((uint8_t) val) {
-    case DME_GET:
-    case DME_PEER_GET:
-        uic_reg_read(s);
-        break;
-    case DME_SET:
-    case DME_PEER_SET:
-        uic_reg_write(s);
-        break;
     case DME_POWERON:
     case DME_POWEROFF:
+        if (status == DME_SUCCESS) {
+            ARRAY_FIELD_DP32(s->regs, IS, UPMS, 1);
+        }
         break;
     case DME_RESET:
         break;
@@ -390,11 +340,14 @@ static void uiccmd_postw(RegisterInfo *reg, uint64_t val)
         ARRAY_FIELD_DP32(s->regs, IS, UDEPRI, 1);
         break;
     case DME_LINKSTARTUP:
-        status = ufshc_link_startup(s);
+        if (status == DME_SUCCESS) {
+            ARRAY_FIELD_DP32(s->regs, HCS, DP, t_present);
+        }
         break;
     };
+
     ARRAY_FIELD_DP32(s->regs, IS, UCCS, 1);
-    ARRAY_FIELD_DP32(s->regs, UICCMDARG2, ARG2, status);
+    ARRAY_FIELD_DP32(s->regs, UICCMDARG2, ARG2,(uint8_t) status);
     ufshc_irq_update(s);
 }
 
@@ -1177,6 +1130,13 @@ static QEMUSGList *ufshc_get_sgl(ufshcIF *ifs, uint8_t task_tag)
     return &s->tr_list[slot].sgl;
 }
 
+static void ufshc_set_upmcrs(ufshcIF *ifs, upmcrs status)
+{
+    UFSHCState *s = UFSHC(ifs);
+
+    ARRAY_FIELD_DP32(s->regs, HCS, UPMCRS, status);
+}
+
 static void ufshc_reset_enter(Object *obj, ResetType type)
 {
     UFSHCState *s = UFSHC(obj);
@@ -1252,6 +1212,11 @@ static void ufshc_instance_init(Object *obj)
                              (Object **)&s->ufs_target,
                               qdev_prop_allow_set_link,
                              OBJ_PROP_LINK_STRONG);
+    object_property_add_link(obj, "unipro-mphy", TYPE_UFSHC_IF,
+                             (Object **)&s->unipro,
+                              qdev_prop_allow_set_link,
+                             OBJ_PROP_LINK_STRONG);
+
 }
 
 static void ufshc_sysbus_instance_init(Object *obj)
@@ -1264,6 +1229,8 @@ static void ufshc_sysbus_instance_init(Object *obj)
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_STRONG);
     qdev_alias_all_properties(DEVICE(&s->ufshc), obj);
+    object_property_add_alias(obj, "unipro-mphy", OBJECT(&s->ufshc),
+                                "unipro-mphy");
     s->bus = UFS_BUS(qbus_new(TYPE_UFS_BUS, DEVICE(obj), NULL));
 }
 
@@ -1291,6 +1258,7 @@ static void ufshc_class_init(ObjectClass *klass, void *data)
     uc->handle_upiu = ufshc_receive_upiu;
     uc->handle_data = ufshc_receive_data;
     uc->get_sgl = ufshc_get_sgl;
+    uc->pwr_mode_status = ufshc_set_upmcrs;
 }
 
 static void ufshc_sysbus_class_init(ObjectClass *klass, void *data)

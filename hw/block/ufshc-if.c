@@ -34,6 +34,26 @@ QEMUSGList *ufshci_get_sgl(ufshcIF *ifs, uint8_t task_tag)
     return NULL;
 }
 
+CfgResultCode ufshci_dme_cmd(ufshcIF *ifs, dmeCmd cmd, uint16_t MIBattr,
+                            uint16_t GenSel, uint32_t *data)
+{
+    ufshcIFClass *k = UFSHC_IF_GET_CLASS(ifs);
+
+    if (k->dme_cmd) {
+        return k->dme_cmd(ifs, cmd, MIBattr, GenSel, data);
+    }
+    return DME_FAILURE;
+}
+
+void ufshci_pwr_mode_status(ufshcIF *ifs, upmcrs status)
+{
+    ufshcIFClass *k = UFSHC_IF_GET_CLASS(ifs);
+
+    if (k->pwr_mode_status) {
+        k->pwr_mode_status(ifs, status);
+    }
+}
+
 static const TypeInfo ufshc_if_dev_info = {
     .name          = TYPE_UFSHC_IF,
     .parent        = TYPE_INTERFACE,
