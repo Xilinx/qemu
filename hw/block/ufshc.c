@@ -1230,7 +1230,7 @@ static void ufshc_sysbus_instance_init(Object *obj)
 {
     UFSHCSysbus *s = UFSHC_SYSBUS(obj);
 
-    object_initialize_child(obj, "ufshc-core", &s->ufshc, TYPE_UFSHC);
+    object_initialize_child(obj, "ufshc-target", &s->ufshc, TYPE_UFSHC);
     object_property_add_link(obj, "ufs-target", TYPE_UFS_DEV,
                              (Object **)&s->ufsdev,
                              qdev_prop_allow_set_link_before_realize,
