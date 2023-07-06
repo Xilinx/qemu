@@ -109,12 +109,16 @@ static void ufs_scsi_receive(ufs_scsi_if *ifs, void *pkt, uint32_t size,
 {
     UFSScsiCore *s = UFS_SCSI_CORE(ifs);
     SCSIRequest *req;
+    uint8_t sense[SCSI_SENSE_LEN] = {0};
     SCSIDevice *sDev = scsi_device_find(&s->bus, 0, 0, lun);
     UFSScsiTask *task;
     uint32_t len;
 
     if (!sDev) {
         warn_report("ufs-scsi: lun %d scsi device not attached!", lun);
+        scsi_build_sense(sense ,sense_code_LUN_NOT_SUPPORTED);
+        ufs_scsi_if_handle_sense(s->ufs_scsi_ini, sense,
+                                 SCSI_SENSE_LEN, tag);
         return;
     }
 
