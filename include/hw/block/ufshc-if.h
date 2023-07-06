@@ -13,6 +13,7 @@
 #include "qom/object.h"
 #include "hw/block/ufs-upiu.h"
 #include "hw/qdev-core.h"
+#include "sysemu/dma.h"
 
 #define TYPE_UFSHC_IF "ufshc-if"
 typedef struct ufshcIFClass ufshcIFClass;
@@ -34,6 +35,7 @@ typedef struct ufshcIFClass {
      void (*handle_upiu)(ufshcIF *ifs, upiu_pkt *pkt);
      void (*handle_data)(ufshcIF *ifs, void *data, uint16_t len,
                          uint8_t task_tag);
+     QEMUSGList *(*get_sgl)(ufshcIF *ifs, uint8_t task_tag);
 } ufshcIFClass;
 
 /*
@@ -41,6 +43,7 @@ typedef struct ufshcIFClass {
  */
 void ufshci_send_upiu(ufshcIF *ifs, upiu_pkt *pkt);
 void ufshci_send_data(ufshcIF *ifs, void *data, uint16_t len, uint8_t task_tag);
+QEMUSGList *ufshci_get_sgl(ufshcIF *ifs, uint8_t task_tag);
 
 
 #define TYPE_UFS_BUS "ufs-bus"

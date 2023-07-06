@@ -51,6 +51,15 @@ bool ufs_scsi_read_capacity10(ufs_scsi_if *ifs, uint8_t lun, uint8_t *rbuf)
     return false;
 }
 
+QEMUSGList * ufs_scsi_if_get_sgl(ufs_scsi_if *ifs, uint8_t tag, uint8_t lun)
+{
+    ufs_scsi_if_class *k = UFS_SCSI_IF_GET_CLASS(ifs);
+    if (k->get_sgl) {
+        return k->get_sgl(ifs, tag, lun);
+    }
+    return NULL;
+}
+
 static const TypeInfo ufs_scsi_dev_info = {
     .name          = TYPE_UFS_SCSI_IF,
     .parent        = TYPE_INTERFACE,

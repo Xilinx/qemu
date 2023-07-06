@@ -24,6 +24,16 @@ void ufshci_send_data(ufshcIF *ifs, void *data, uint16_t len, uint8_t task_tag)
     k->handle_data(ifs, data, len, task_tag);
 }
 
+QEMUSGList *ufshci_get_sgl(ufshcIF *ifs, uint8_t task_tag)
+{
+    ufshcIFClass *k = UFSHC_IF_GET_CLASS(ifs);
+
+    if (k->get_sgl) {
+         return k->get_sgl(ifs, task_tag);
+    }
+    return NULL;
+}
+
 static const TypeInfo ufshc_if_dev_info = {
     .name          = TYPE_UFSHC_IF,
     .parent        = TYPE_INTERFACE,
