@@ -1,6 +1,11 @@
+config XLNX_VERSAL2_ASU_AES
+    bool
+    select XLNX_EFUSE_CRC
+
 config XLNX_VERSAL2_ASU_SHA
     bool
 
 config XLNX_VERSAL2_PMC
     bool
     select XLNX_VERSAL2_ASU_SHA
+    select XLNX_VERSAL2_ASU_AES
