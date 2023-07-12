@@ -651,11 +651,15 @@ static void efuse_data_sync(XlnxPmxEFuseCtrl *s)
         uint8_t u8[256 / 8];
         uint32_t u32[256 / 32];
     } key;
+    int i;
 
     pmx_efuse_ac_dme_sync(s);
     efuse_status_tbits_sync(s);
 
     efuse_extract_aes_key_be(s, key.u32);
+    for (i = 0; i < 8; i++) {
+        key.u32[i] = bswap32(key.u32[i]);
+    }
     zynqmp_aes_key_update(s->aes_key_sink, key.u8, sizeof(key.u8));
 
     efuse_extract_user_key_0_be(s, key.u32);
