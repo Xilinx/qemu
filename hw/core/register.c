@@ -59,13 +59,14 @@ static inline uint64_t register_read_val(RegisterInfo *reg)
     return 0; /* unreachable */
 }
 
-static inline uint64_t register_enabled_mask(int data_size, unsigned size)
+static inline uint64_t register_enabled_mask(int ushift, int data_size,
+                                             unsigned size)
 {
     if (data_size < size) {
         size = data_size;
     }
 
-    return MAKE_64BIT_MASK(0, size * 8);
+    return MAKE_64BIT_MASK(ushift * 8, size * 8);
 }
 
 void register_write(RegisterInfo *reg, uint64_t val, uint64_t we,
@@ -183,10 +184,13 @@ void register_write_memory(void *opaque, hwaddr addr,
     RegisterInfo *reg = NULL;
     uint64_t we;
     int i;
+    int ushift = 0;
 
     for (i = 0; i < reg_array->num_elements; i++) {
-        if (reg_array->r[i]->access->addr == addr) {
+        if (reg_array->r[i]->access->addr <= addr &&
+            reg_array->r[i]->access->addr + reg_array->r[i]->data_size > addr) {
             reg = reg_array->r[i];
+            ushift = addr - reg->access->addr;
             break;
         }
     }
@@ -198,7 +202,7 @@ void register_write_memory(void *opaque, hwaddr addr,
     }
 
     /* Generate appropriate write enable mask */
-    we = register_enabled_mask(reg->data_size, size);
+    we = register_enabled_mask(ushift, reg->data_size, size);
 
     register_write(reg, value, we, reg_array->prefix,
                    reg_array->debug);
@@ -224,10 +228,13 @@ MemTxResult register_write_memory_with_attrs(void *opaque, hwaddr addr,
     RegisterInfo *reg = NULL;
     uint64_t we;
     int i;
+    int ushift = 0;
 
     for (i = 0; i < reg_array->num_elements; i++) {
-        if (reg_array->r[i]->access->addr == addr) {
+        if (reg_array->r[i]->access->addr <= addr &&
+            reg_array->r[i]->access->addr + reg_array->r[i]->data_size > addr) {
             reg = reg_array->r[i];
+            ushift = addr - reg->access->addr;
             break;
         }
     }
@@ -244,7 +251,7 @@ MemTxResult register_write_memory_with_attrs(void *opaque, hwaddr addr,
     }
 
     /* Generate appropriate write enable mask */
-    we = register_enabled_mask(reg->data_size, size);
+    we = register_enabled_mask(ushift, reg->data_size, size);
 
     register_write(reg, value, we, reg_array->prefix,
                    reg_array->debug);
@@ -261,10 +268,16 @@ uint64_t register_read_memory(void *opaque, hwaddr addr,
     uint64_t read_val;
     uint64_t re;
     int i;
+    /*
+     * Unaligned address shift
+     */
+    int ushift = 0;
 
     for (i = 0; i < reg_array->num_elements; i++) {
-        if (reg_array->r[i]->access->addr == addr) {
+        if (reg_array->r[i]->access->addr <= addr &&
+            reg_array->r[i]->access->addr + reg_array->r[i]->data_size > addr) {
             reg = reg_array->r[i];
+            ushift = addr - reg->access->addr;
             break;
         }
     }
@@ -276,12 +289,12 @@ uint64_t register_read_memory(void *opaque, hwaddr addr,
     }
 
     /* Generate appropriate read enable mask */
-    re = register_enabled_mask(reg->data_size, size);
+    re = register_enabled_mask(ushift, reg->data_size, size);
 
     read_val = register_read(reg, re, reg_array->prefix,
                              reg_array->debug);
 
-    return extract64(read_val, 0, size * 8);
+    return extract64(read_val, ushift * 8, size * 8);
 }
 
 static RegisterInfoArray *register_init_block(DeviceState *owner,
