@@ -439,7 +439,7 @@ static void xlx_aes_load_key(Zynq3AES *s, int len)
 
     AESKey key = { .u8 = 0 };
     uint8_t zerokey[32] = { 0 };
-    int be_adj = 7;
+    int be_adj = (len / 32) - 1;
 
     src = s->regs[R_AES_KEY_SEL];
 
@@ -526,7 +526,7 @@ static void xlx_aes_load_key(Zynq3AES *s, int len)
          *       byte swapping inside word is done by
          *       xlnx_aes core.
          */
-        for (i = 0; i < 8; i++) {
+        for (i = 0; i < len / 32; i++) {
             xlnx_aes_write_key(s->aes, i , key.u32[i ^ be_adj]);
         }
         xlnx_aes_load_key(s->aes, len);
