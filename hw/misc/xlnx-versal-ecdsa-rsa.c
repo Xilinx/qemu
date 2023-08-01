@@ -41,7 +41,11 @@
 #define XILINX_ECDSA_RSA_ERR_DEBUG 0
 #endif
 
+#ifdef ASU_RSA
+#define TYPE_XILINX_ECDSA_RSA "xlnx.asu-ecdsa-rsa"
+#else
 #define TYPE_XILINX_ECDSA_RSA "xlnx.versal-ecdsa-rsa"
+#endif
 
 #define XILINX_ECDSA_RSA(obj) \
      OBJECT_CHECK(ECDSA_RSA, (obj), TYPE_XILINX_ECDSA_RSA)
@@ -96,12 +100,21 @@ REG32(ECDSA_RSA_IER, 0x50)
 REG32(ECDSA_RSA_IDR, 0x54)
     FIELD(ECDSA_RSA_IDR, SLVERR, 1, 1)
     FIELD(ECDSA_RSA_IDR, DONE, 0, 1)
+#ifndef ASU_RSA
 REG32(RSA_CFG, 0x58)
     FIELD(RSA_CFG, RD_ENDIANNESS, 1, 1)
     FIELD(RSA_CFG, WR_ENDIANNESS, 0, 1)
+#else
+REG32(ECDSA_RSA_ITR, 0x58)
+    FIELD(ECDSA_RSA_ITR, DONE, 0, 1)
+REG32(RSA_CFG, 0x5C)
+    FIELD(RSA_CFG, RD_ENDIANNESS, 1, 1)
+    FIELD(RSA_CFG, WR_ENDIANNESS, 0, 1)
+#endif
 REG32(ECDSA_RSA_ECO, 0x60)
 
 #define ECDSA_RSA_R_MAX (R_ECDSA_RSA_ECO + 1)
+
 
 #define R_CTRL_nop         0x00
 #define R_CTRL_exp         0x01
@@ -462,7 +475,12 @@ static const RegisterAccessInfo ecdsa_rsa_regs_info[] = {
         .pre_write = ecdsa_rsa_ier_prew,
     },{ .name = "ECDSA_RSA_IDR",  .addr = A_ECDSA_RSA_IDR,
         .pre_write = ecdsa_rsa_idr_prew,
-    },{ .name = "RSA_CFG",  .addr = A_RSA_CFG,
+    },
+#ifdef ASU_RSA
+    { .name = "ECDSA_RSA_ITR", .addr = A_ECDSA_RSA_ITR,
+    },
+#endif
+    { .name = "RSA_CFG",  .addr = A_RSA_CFG,
     },{ .name = "ECDSA_RSA_ECO",  .addr = A_ECDSA_RSA_ECO,
     }
 };
