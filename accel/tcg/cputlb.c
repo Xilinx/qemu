@@ -1431,6 +1431,19 @@ static uint64_t io_readx(CPUArchState *env, CPUTLBEntryFull *full,
         if (memory_region_get_iommu(mr)) {
             r = address_space_rw(cpu->as, mr_offset, full->attrs,
                                  (void *) &val, memop_size(op), false);
+            switch(memop_size(op)) {
+            case 8:
+                val = bswap64(val);
+                break;
+            case 4:
+                val = bswap32(val);
+                break;
+            case 2:
+                val = bswap16(val);
+                break;
+            default:
+                break;
+            }
         } else {
             r = memory_region_dispatch_read(mr, mr_offset, &val, op, full->attrs);
         }
@@ -2117,7 +2130,7 @@ static uint64_t do_ld_mmio_beN(CPUArchState *env, CPUTLBEntryFull *full,
     tcg_debug_assert(size > 0 && size <= 8);
     do {
         /* Read aligned pieces up to 8 bytes. */
-        switch ((size | (int)addr) & 7) {
+        switch (size & 7) {
         case 1:
         case 3:
         case 5:
@@ -2402,16 +2415,19 @@ static uint8_t do_ld_1(CPUArchState *env, MMULookupPageData *p, int mmu_idx,
 static uint16_t do_ld_2(CPUArchState *env, MMULookupPageData *p, int mmu_idx,
                         MMUAccessType type, MemOp memop, uintptr_t ra)
 {
-    uint64_t ret;
+    uint16_t ret;
 
     if (unlikely(p->flags & TLB_MMIO)) {
-        return io_readx(env, p->full, mmu_idx, p->addr, ra, type, memop);
-    }
-
-    /* Perform the load host endian, then swap if necessary. */
-    ret = load_atom_2(env, ra, p->haddr, memop);
-    if (memop & MO_BSWAP) {
-        ret = bswap16(ret);
+        ret = do_ld_mmio_beN(env, p->full, 0, p->addr, 2, mmu_idx, type, ra);
+        if ((memop & MO_BSWAP) == MO_LE) {
+            ret = bswap16(ret);
+        }
+    } else {
+        /* Perform the load host endian, then swap if necessary. */
+        ret = load_atom_2(env, ra, p->haddr, memop);
+        if (memop & MO_BSWAP) {
+            ret = bswap16(ret);
+        }
     }
     return ret;
 }
@@ -2422,13 +2438,16 @@ static uint32_t do_ld_4(CPUArchState *env, MMULookupPageData *p, int mmu_idx,
     uint32_t ret;
 
     if (unlikely(p->flags & TLB_MMIO)) {
-        return io_readx(env, p->full, mmu_idx, p->addr, ra, type, memop);
-    }
-
-    /* Perform the load host endian. */
-    ret = load_atom_4(env, ra, p->haddr, memop);
-    if (memop & MO_BSWAP) {
-        ret = bswap32(ret);
+        ret = do_ld_mmio_beN(env, p->full, 0, p->addr, 4, mmu_idx, type, ra);
+        if ((memop & MO_BSWAP) == MO_LE) {
+            ret = bswap32(ret);
+        }
+    } else {
+        /* Perform the load host endian. */
+        ret = load_atom_4(env, ra, p->haddr, memop);
+        if (memop & MO_BSWAP) {
+            ret = bswap32(ret);
+        }
     }
     return ret;
 }
@@ -2439,13 +2458,16 @@ static uint64_t do_ld_8(CPUArchState *env, MMULookupPageData *p, int mmu_idx,
     uint64_t ret;
 
     if (unlikely(p->flags & TLB_MMIO)) {
-        return io_readx(env, p->full, mmu_idx, p->addr, ra, type, memop);
-    }
-
-    /* Perform the load host endian. */
-    ret = load_atom_8(env, ra, p->haddr, memop);
-    if (memop & MO_BSWAP) {
-        ret = bswap64(ret);
+        ret = do_ld_mmio_beN(env, p->full, 0, p->addr, 8, mmu_idx, type, ra);
+        if ((memop & MO_BSWAP) == MO_LE) {
+            ret = bswap64(ret);
+        }
+    } else {
+        /* Perform the load host endian. */
+        ret = load_atom_8(env, ra, p->haddr, memop);
+        if (memop & MO_BSWAP) {
+            ret = bswap64(ret);
+        }
     }
     return ret;
 }
@@ -2593,20 +2615,23 @@ static Int128 do_ld16_mmu(CPUArchState *env, vaddr addr,
     cpu_req_mo(TCG_MO_LD_LD | TCG_MO_ST_LD);
     crosspage = mmu_lookup(env, addr, oi, ra, MMU_DATA_LOAD, &l);
     if (likely(!crosspage)) {
-        /* Perform the load host endian. */
         if (unlikely(l.page[0].flags & TLB_MMIO)) {
             QEMU_IOTHREAD_LOCK_GUARD();
-            a = io_readx(env, l.page[0].full, l.mmu_idx, addr,
-                         ra, MMU_DATA_LOAD, MO_64);
-            b = io_readx(env, l.page[0].full, l.mmu_idx, addr + 8,
-                         ra, MMU_DATA_LOAD, MO_64);
-            ret = int128_make128(HOST_BIG_ENDIAN ? b : a,
-                                 HOST_BIG_ENDIAN ? a : b);
+            a = do_ld_mmio_beN(env, l.page[0].full, 0, addr, 8,
+                               l.mmu_idx, MMU_DATA_LOAD, ra);
+            b = do_ld_mmio_beN(env, l.page[0].full, 0, addr + 8, 8,
+                               l.mmu_idx, MMU_DATA_LOAD, ra);
+            ret = int128_make128(b, a);
+            if ((l.memop & MO_BSWAP) == MO_LE) {
+                ret = bswap128(ret);
+            }
+
         } else {
+            /* Perform the load host endian. */
             ret = load_atom_16(env, ra, l.page[0].haddr, l.memop);
-        }
-        if (l.memop & MO_BSWAP) {
-            ret = bswap128(ret);
+            if (l.memop & MO_BSWAP) {
+                ret = bswap128(ret);
+            }
         }
         return ret;
     }
@@ -2746,7 +2771,7 @@ static uint64_t do_st_mmio_leN(CPUArchState *env, CPUTLBEntryFull *full,
 
     do {
         /* Store aligned pieces up to 8 bytes. */
-        switch ((size | (int)addr) & 7) {
+        switch (size & 7) {
         case 1:
         case 3:
         case 5:
@@ -2907,7 +2932,10 @@ static void do_st_2(CPUArchState *env, MMULookupPageData *p, uint16_t val,
                     int mmu_idx, MemOp memop, uintptr_t ra)
 {
     if (unlikely(p->flags & TLB_MMIO)) {
-        io_writex(env, p->full, mmu_idx, val, p->addr, ra, memop);
+        if ((memop & MO_BSWAP) != MO_LE) {
+            val = bswap16(val);
+        }
+        do_st_mmio_leN(env, p->full, val, p->addr, 2, mmu_idx, ra);
     } else if (unlikely(p->flags & TLB_DISCARD_WRITE)) {
         /* nothing */
     } else {
@@ -2923,7 +2951,10 @@ static void do_st_4(CPUArchState *env, MMULookupPageData *p, uint32_t val,
                     int mmu_idx, MemOp memop, uintptr_t ra)
 {
     if (unlikely(p->flags & TLB_MMIO)) {
-        io_writex(env, p->full, mmu_idx, val, p->addr, ra, memop);
+        if ((memop & MO_BSWAP) != MO_LE) {
+            val = bswap32(val);
+        }
+        do_st_mmio_leN(env, p->full, val, p->addr, 4, mmu_idx, ra);
     } else if (unlikely(p->flags & TLB_DISCARD_WRITE)) {
         /* nothing */
     } else {
@@ -2939,7 +2970,10 @@ static void do_st_8(CPUArchState *env, MMULookupPageData *p, uint64_t val,
                     int mmu_idx, MemOp memop, uintptr_t ra)
 {
     if (unlikely(p->flags & TLB_MMIO)) {
-        io_writex(env, p->full, mmu_idx, val, p->addr, ra, memop);
+        if ((memop & MO_BSWAP) != MO_LE) {
+            val = bswap64(val);
+        }
+        do_st_mmio_leN(env, p->full, val, p->addr, 8, mmu_idx, ra);
     } else if (unlikely(p->flags & TLB_DISCARD_WRITE)) {
         /* nothing */
     } else {
@@ -3062,22 +3096,22 @@ static void do_st16_mmu(CPUArchState *env, vaddr addr, Int128 val,
     cpu_req_mo(TCG_MO_LD_ST | TCG_MO_ST_ST);
     crosspage = mmu_lookup(env, addr, oi, ra, MMU_DATA_STORE, &l);
     if (likely(!crosspage)) {
-        /* Swap to host endian if necessary, then store. */
-        if (l.memop & MO_BSWAP) {
-            val = bswap128(val);
-        }
         if (unlikely(l.page[0].flags & TLB_MMIO)) {
-            QEMU_IOTHREAD_LOCK_GUARD();
-            if (HOST_BIG_ENDIAN) {
-                b = int128_getlo(val), a = int128_gethi(val);
-            } else {
-                a = int128_getlo(val), b = int128_gethi(val);
+            if ((l.memop & MO_BSWAP) != MO_LE) {
+                val = bswap128(val);
             }
-            io_writex(env, l.page[0].full, l.mmu_idx, a, addr, ra, MO_64);
-            io_writex(env, l.page[0].full, l.mmu_idx, b, addr + 8, ra, MO_64);
+            a = int128_getlo(val);
+            b = int128_gethi(val);
+            QEMU_IOTHREAD_LOCK_GUARD();
+            do_st_mmio_leN(env, l.page[0].full, a, addr, 8, l.mmu_idx, ra);
+            do_st_mmio_leN(env, l.page[0].full, b, addr + 8, 8, l.mmu_idx, ra);
         } else if (unlikely(l.page[0].flags & TLB_DISCARD_WRITE)) {
             /* nothing */
         } else {
+            /* Swap to host endian if necessary, then store. */
+            if (l.memop & MO_BSWAP) {
+                val = bswap128(val);
+            }
             store_atom_16(env, ra, l.page[0].haddr, l.memop, val);
         }
         return;
