@@ -32,15 +32,19 @@
 #include "qemu/log.h"
 #include "migration/vmstate.h"
 #include "hw/irq.h"
+#include "hw/misc/xlnx-serbs.h"
+#include "hw/qdev-properties.h"
 
 #ifndef XILINX_INTLPD_CONFIG_ERR_DEBUG
 #define XILINX_INTLPD_CONFIG_ERR_DEBUG 0
 #endif
 
-#define TYPE_XILINX_INTLPD_CONFIG "xlnx.intlpd_config"
+#define TYPE_XILINX_INTLPD_CONFIG "xlnx-intlpd-config"
 
 #define XILINX_INTLPD_CONFIG(obj) \
      OBJECT_CHECK(INTLPD_CONFIG, (obj), TYPE_XILINX_INTLPD_CONFIG)
+
+#define AFIFS_SERBS_ID 1
 
 REG32(IR_STATUS, 0x0)
     FIELD(IR_STATUS, IF_INTLPD_OCM2_AXI_T_MAINTIMEOUT, 31, 1)
@@ -520,6 +524,8 @@ typedef struct INTLPD_CONFIG {
     qemu_irq irq_ir;
     qemu_irq irq_ir_perr;
 
+    xlnx_serbs_if *AFIFSSerbs;
+    int tov;
     uint32_t regs[INTLPD_CONFIG_R_MAX];
     RegisterInfo regs_info[INTLPD_CONFIG_R_MAX];
 } INTLPD_CONFIG;
@@ -597,6 +603,12 @@ static void ir_update_irq(INTLPD_CONFIG *s)
 static void ir_status_postw(RegisterInfo *reg, uint64_t val64)
 {
     INTLPD_CONFIG *s = XILINX_INTLPD_CONFIG(reg->opaque);
+    bool afifs_timeout = ARRAY_FIELD_EX32(s->regs, IR_STATUS,
+                         IF_INTLPD_AFIFSLPD_AXI_T_MAINTIMEOUT);
+
+    if (!afifs_timeout && s->AFIFSSerbs) {
+        xlnx_serbs_if_timeout_set(s->AFIFSSerbs, AFIFS_SERBS_ID, false);
+    }
     ir_update_irq(s);
 }
 
@@ -650,6 +662,16 @@ static uint64_t ir_disable_perr_prew(RegisterInfo *reg, uint64_t val64)
     s->regs[R_IR_MASK_PERR] |= val;
     ir_perr_update_irq(s);
     return 0;
+}
+
+static void intlpd_afifslpd_axi_postw(RegisterInfo *reg, uint64_t val64)
+{
+    INTLPD_CONFIG *s = XILINX_INTLPD_CONFIG(reg->opaque);
+
+    if (s->AFIFSSerbs) {
+        xlnx_serbs_if_timer_config(s->AFIFSSerbs, AFIFS_SERBS_ID, s->tov,
+              ARRAY_FIELD_EX32(s->regs, INTLPD_AFIFSLPD_AXI, MAINEXTEN));
+    }
 }
 
 static const RegisterAccessInfo intlpd_config_regs_info[] = {
@@ -741,6 +763,7 @@ static const RegisterAccessInfo intlpd_config_regs_info[] = {
         .reset = 0x16,
         .rsvd = 0xffffffe0,
         .ro = 0x6,
+        .post_write = intlpd_afifslpd_axi_postw,
     },{ .name = "INTLPD_CPMPCSR_APB",  .addr = A_INTLPD_CPMPCSR_APB,
         .reset = 0x16,
         .rsvd = 0xffffffe0,
@@ -824,6 +847,21 @@ static void intlpd_config_reset_hold(Object *obj)
     ir_perr_update_irq(s);
 }
 
+static void intlpd_afifs_timeout_notify(xlnx_serbs_if *sif, int id, bool level)
+{
+    INTLPD_CONFIG *s = XILINX_INTLPD_CONFIG(sif);
+
+    switch (id) {
+    case AFIFS_SERBS_ID:
+        ARRAY_FIELD_DP32(s->regs, IR_STATUS,
+                     IF_INTLPD_AFIFSLPD_AXI_T_MAINTIMEOUT, level);
+        break;
+    default:
+         g_assert_not_reached();
+    };
+    ir_update_irq(s);
+}
+
 static const MemoryRegionOps intlpd_config_ops = {
     .read = register_read_memory,
     .write = register_write_memory,
@@ -836,7 +874,12 @@ static const MemoryRegionOps intlpd_config_ops = {
 
 static void intlpd_config_realize(DeviceState *dev, Error **errp)
 {
-    /* Delete this if you don't need it */
+    INTLPD_CONFIG *s = XILINX_INTLPD_CONFIG(dev);
+
+    if (s->AFIFSSerbs) {
+        xlnx_serbs_if_timer_config(s->AFIFSSerbs, AFIFS_SERBS_ID, s->tov,
+                                   false);
+    }
 }
 
 static void intlpd_config_init(Object *obj)
@@ -862,6 +905,10 @@ static void intlpd_config_init(Object *obj)
     sysbus_init_irq(sbd, &s->irq_ir_mission1);
     sysbus_init_irq(sbd, &s->irq_ir_mission2);
     sysbus_init_irq(sbd, &s->irq_ir_perr);
+    object_property_add_link(obj, "afifs-serbs", TYPE_XLNX_SERBS_IF,
+                             (Object **)&s->AFIFSSerbs,
+                             qdev_prop_allow_set_link,
+                             OBJ_PROP_LINK_STRONG);
 }
 
 static const VMStateDescription vmstate_intlpd_config = {
@@ -874,15 +921,23 @@ static const VMStateDescription vmstate_intlpd_config = {
     }
 };
 
+static Property intlpd_properties[] = {
+    DEFINE_PROP_INT32("timeout", INTLPD_CONFIG, tov, 0),
+    DEFINE_PROP_END_OF_LIST()
+};
+
 static void intlpd_config_class_init(ObjectClass *klass, void *data)
 {
     ResettableClass *rc = RESETTABLE_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
+    xlnx_serbs_if_class *sc = XLNX_SERBS_IF_CLASS(klass);
 
     dc->realize = intlpd_config_realize;
     dc->vmsd = &vmstate_intlpd_config;
     rc->phases.enter = intlpd_config_reset_enter;
     rc->phases.hold = intlpd_config_reset_hold;
+    device_class_set_props(dc, intlpd_properties);
+    sc->timeout_set = intlpd_afifs_timeout_notify;
 }
 
 static const TypeInfo intlpd_config_info = {
@@ -891,6 +946,10 @@ static const TypeInfo intlpd_config_info = {
     .instance_size = sizeof(INTLPD_CONFIG),
     .class_init    = intlpd_config_class_init,
     .instance_init = intlpd_config_init,
+    .interfaces    = (InterfaceInfo[]) {
+        { TYPE_XLNX_SERBS_IF },
+        { },
+    },
 };
 
 static void intlpd_config_register_types(void)
