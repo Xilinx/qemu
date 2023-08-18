@@ -11,6 +11,7 @@
 #define REMOTE_PORT_MEMORY_MASTER_H
 
 #include "hw/remote-port.h"
+#include "hw/misc/xlnx-serbs.h"
 
 #define TYPE_REMOTE_PORT_MEMORY_MASTER "remote-port-memory-master"
 #define REMOTE_PORT_MEMORY_MASTER(obj) \
@@ -32,6 +33,7 @@ struct RemotePortMemoryMaster {
 
     MemoryRegionOps *rp_ops;
     RemotePortMap *mmaps;
+    xlnx_serbs_if *serbsIf;
 
     /* public */
     uint32_t map_num;
@@ -42,6 +44,9 @@ struct RemotePortMemoryMaster {
     uint32_t max_access_size;
     struct RemotePort *rp;
     struct rp_peer_state *peer;
+    int rp_timeout;
+    int serbs_id;
+    bool rp_timeout_err;
 };
 
 MemTxResult rp_mm_access(RemotePort *rp, uint32_t rp_dev,
