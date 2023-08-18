@@ -168,7 +168,8 @@ static unsigned int rp_has_work(RemotePort *s)
 }
 
 /* Response handling.  */
-RemotePortRespSlot *rp_dev_wait_resp(RemotePort *s, uint32_t dev, uint32_t id)
+RemotePortRespSlot *rp_dev_timed_wait_resp(RemotePort *s, uint32_t dev,
+                                            uint32_t id, int timems)
 {
     int i;
 
@@ -200,10 +201,25 @@ RemotePortRespSlot *rp_dev_wait_resp(RemotePort *s, uint32_t dev, uint32_t id)
             break;
         }
         if (!rp_has_work(s)) {
-            qemu_cond_wait(&s->progress_cond, &s->rsp_mutex);
+            if (timems) {
+                if (!qemu_cond_timedwait(&s->progress_cond, &s->rsp_mutex,
+                                       timems)) {
+                    /*
+                     * TimeOut!
+                     */
+                    break;
+                }
+            } else {
+                qemu_cond_wait(&s->progress_cond, &s->rsp_mutex);
+            }
         }
     }
     return &s->dev_state[dev].rsp_queue[i];
+}
+
+RemotePortRespSlot *rp_dev_wait_resp(RemotePort *s, uint32_t dev, uint32_t id)
+{
+    return rp_dev_timed_wait_resp(s, dev, id, 0);
 }
 
 RemotePortDynPkt rp_wait_resp(RemotePort *s)
