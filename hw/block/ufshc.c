@@ -241,7 +241,7 @@ typedef struct UFSHCState {
     ufshcIF *ufs_target;
     ufshcIF *unipro;
 
-    AddressSpace *as;
+    AddressSpace *dma_as;
     /*
      * Registers
      * Host Controller Capabilities Registers
@@ -260,6 +260,7 @@ typedef struct UFSHCSysbus {
     UFSHCState ufshc;
     UFSDev *ufsdev;
     ufsBus *bus;
+    MemoryRegion *dma_mr;
     qemu_irq *irq;
 } UFSHCSysbus;
 
@@ -415,13 +416,13 @@ static uint32_t sizeof_upiu(uint8_t tt)
     return size;
 }
 
-static void utp_upiu_ex(upiu_pkt *pkt, hwaddr upiu_base)
+static void utp_upiu_ex(UFSHCState *s, upiu_pkt *pkt, hwaddr upiu_base)
 {
     uint8_t tt;
     /*
      * Read UPIU Header
      */
-    address_space_rw(&address_space_memory,
+    address_space_rw(s->dma_as,
                     upiu_base,
                     MEMTXATTRS_UNSPECIFIED,
                     pkt,
@@ -430,7 +431,7 @@ static void utp_upiu_ex(upiu_pkt *pkt, hwaddr upiu_base)
     /*
      * Read rest of the upiu packet
      */
-    address_space_rw(&address_space_memory,
+    address_space_rw(s->dma_as,
                     upiu_base + sizeof(upiu_header),
                     MEMTXATTRS_UNSPECIFIED,
                     (uint8_t *)pkt + sizeof(upiu_header),
@@ -445,7 +446,7 @@ static void utp_record_req_upiu_param(upiu_pkt *pkt, utp_record *r)
     r->task_tag = UPIU_TAG(pkt);
 }
 
-static void utp_upiu_data_ex(upiu_pkt *pkt, hwaddr upiu_base, void *data)
+static void utp_upiu_data_ex(UFSHCState *s, upiu_pkt *pkt, hwaddr upiu_base, void *data)
 {
     uint16_t len;
     uint8_t tt;
@@ -453,7 +454,7 @@ static void utp_upiu_data_ex(upiu_pkt *pkt, hwaddr upiu_base, void *data)
     tt = UPIU_TT(pkt);
     len = UPIU_DSL(pkt);
 
-    address_space_rw(&address_space_memory,
+    address_space_rw(s->dma_as,
                     upiu_base + sizeof_upiu(tt),
                     MEMTXATTRS_UNSPECIFIED,
                     data,
@@ -467,7 +468,7 @@ static void ufs_prepare_sg_list(UFSHCState *s, tr_info *tr)
     dma_addr_t size;
 
     qemu_sglist_init(&tr->sgl, DEVICE(s), (int) tr->desc.prdtl,
-                     &address_space_memory);
+                     s->dma_as);
     trace_ufshc_sgl_list("SGL list:");
     for(i = 0; i < tr->desc.prdtl; i++) {
         addr = (dma_addr_t) tr->prdt[i].addrl | ((dma_addr_t) tr->prdt[i].addrh << 32);
@@ -489,7 +490,7 @@ static void utp_tr_prdt_ex(UFSHCState *s, tr_info *tr)
     if (prdtl) {
         tr->prdt = g_malloc0(sizeof(ufs_prdt) * prdtl);
 
-        address_space_rw(&address_space_memory,
+        address_space_rw(s->dma_as,
                         ucd_base + prdto,
                         MEMTXATTRS_UNSPECIFIED,
                         tr->prdt, sizeof(ufs_prdt) * prdtl,
@@ -527,7 +528,7 @@ static void start_tr_processing(UFSHCState *s)
              */
             ucd_base = le32_to_cpu(s->tr_list[i].desc.ucdba) |
                        ((uint64_t)le32_to_cpu(s->tr_list[i].desc.ucdbau) << 32);
-            utp_upiu_ex(&tr_upiu, ucd_base);
+            utp_upiu_ex(s, &tr_upiu, ucd_base);
             trace_ufshc_tr_send(UPIU_TT(&tr_upiu), UPIU_TAG(&tr_upiu), i);
             /*
              * Record the UPIU params to relate the upiu's from target.
@@ -544,7 +545,7 @@ static void start_tr_processing(UFSHCState *s)
             dsl = UPIU_DSL(&tr_upiu);
             if (dsl != 0) {
                 ds = g_malloc0(dsl);
-                utp_upiu_data_ex(&tr_upiu, ucd_base, ds);
+                utp_upiu_data_ex(s, &tr_upiu, ucd_base, ds);
                 ufshci_send_data(s->ufs_target, ds, dsl, UPIU_TAG(&tr_upiu));
                 g_free(ds);
             }
@@ -580,7 +581,7 @@ static void utrldbr_postw(RegisterInfo *reg, uint64_t val)
     listBase = s->regs[R_UTRLBA] | (((uint64_t)s->regs[R_UTRLBAU]) << 32);
     for (i = 0; i < s->num_tr_slots; i++) {
         if (extract32((uint32_t) val, i, 1)) {
-            address_space_rw(&address_space_memory,
+            address_space_rw(s->dma_as,
                             listBase + (sizeof(utp_tr_desc) * i),
                             MEMTXATTRS_UNSPECIFIED,
                             &s->tr_list[i].desc,
@@ -605,7 +606,7 @@ static void utmrldbr_postw(RegisterInfo *reg, uint64_t val)
     listBase = s->regs[R_UTMRLBA] | (((uint64_t)s->regs[R_UTMRLBAU]) << 32);
     for (i = 0; i < s->num_tmr_slots; i++) {
         if (extract32((uint32_t) val, i, 1)) {
-            address_space_rw(&address_space_memory,
+            address_space_rw(s->dma_as,
                             listBase + (sizeof(utp_tmr_desc) * i),
                             MEMTXATTRS_UNSPECIFIED,
                             &s->tmr_list[i].desc,
@@ -757,7 +758,7 @@ static bool utp_tr_copy_resp(UFSHCState *s, upiu_pkt *resp, uint8_t slot)
         ARRAY_FIELD_DP32((uint32_t *)&s->tr_list[slot].desc, UTP_DW2,
                           OCS, UTP_OCS_MISMATCH_RESPONSE_UPIU_SIZE);
     }
-    address_space_rw(&address_space_memory,
+    address_space_rw(s->dma_as,
                     ucd_base + ruo,
                     MEMTXATTRS_UNSPECIFIED,
                     resp,
@@ -788,7 +789,7 @@ static void utp_tr_copy_resp_data(UFSHCState *s, void *data, uint16_t len,
         ARRAY_FIELD_DP32((uint32_t *)&s->tr_list[slot].desc,
                          UTP_DW2, OCS, UTP_OCS_MISMATCH_RESPONSE_UPIU_SIZE);
     }
-    address_space_rw(&address_space_memory,
+    address_space_rw(s->dma_as,
                     ucd_base + ruo + rSize,
                     MEMTXATTRS_UNSPECIFIED,
                     data,
@@ -856,7 +857,7 @@ static void utr_complete(UFSHCState *s, uint8_t slot)
 {
    hwaddr listBase = s->regs[R_UTRLBA] | (((uint64_t)s->regs[R_UTRLBAU]) << 32);
 
-   address_space_rw(&address_space_memory,
+   address_space_rw(s->dma_as,
                     listBase + (sizeof(utp_tr_desc) * slot),
                     MEMTXATTRS_UNSPECIFIED,
                     &s->tr_list[slot].desc,
@@ -878,7 +879,7 @@ static void utmr_complete(UFSHCState *s, uint8_t slot)
 {
     hwaddr listBase = s->regs[R_UTMRLBA] |
                       (((uint64_t)s->regs[R_UTMRLBAU]) << 32);
-    address_space_rw(&address_space_memory,
+    address_space_rw(s->dma_as,
                     listBase + (sizeof(utp_tmr_desc) * slot),
                     MEMTXATTRS_UNSPECIFIED,
                     &s->tmr_list[slot].desc,
@@ -947,7 +948,7 @@ static bool ufs_tmr_resp_process(UFSHCState *s, upiu_pkt *resp)
         return false;
     }
 
-    address_space_rw(&address_space_memory,
+    address_space_rw(s->dma_as,
                listbase + sizeof(utp_tmr_desc) * slot + UTPTMR_RESP_UPIU_OFFSET,
                MEMTXATTRS_UNSPECIFIED,
                resp,
@@ -1071,7 +1072,7 @@ static void utp_data_in(UFSHCState *s, uint8_t slot, void *data, uint16_t len)
                     ARRAY_FIELD_DP32((uint32_t *)&s->tr_list[slot].desc,
                          UTP_DW2, OCS, UTP_OCS_INVALID_PRDT_ATTRIBUTES);
                 }
-                address_space_rw(&address_space_memory,
+                address_space_rw(s->dma_as,
                                  prdt[i].addrl | ((hwaddr) prdt[i].addrh << 32),
                                  MEMTXATTRS_UNSPECIFIED, (uint8_t *)data + cp,
                                  cp_len,
@@ -1177,7 +1178,6 @@ static void ufshc_realize(DeviceState *dev, Error **errp)
 {
     UFSHCState *s = UFSHC(dev);
 
-    s->as = &address_space_memory;
     g_assert(s->num_tr_slots <= MAX_TR);
     g_assert(s->num_tmr_slots <= MAX_TMR);
 }
@@ -1195,6 +1195,12 @@ static void ufshc_sysbus_realize(DeviceState *dev, Error **errp)
 
     if (!qdev_realize(DEVICE(&s->ufshc), NULL, errp)) {
         return;
+    }
+    if (s->dma_mr) {
+        s->ufshc.dma_as = g_malloc0(sizeof(AddressSpace));
+        address_space_init(s->ufshc.dma_as, s->dma_mr, NULL);
+    } else {
+        s->ufshc.dma_as = &address_space_memory;
     }
     sysbus_init_mmio(sbd, &s->ufshc.iomem);
     sysbus_init_irq(sbd, &s->ufshc.irq);
@@ -1233,6 +1239,10 @@ static void ufshc_sysbus_instance_init(Object *obj)
     object_initialize_child(obj, "ufshc-target", &s->ufshc, TYPE_UFSHC);
     object_property_add_link(obj, "ufs-target", TYPE_UFS_DEV,
                              (Object **)&s->ufsdev,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
+    object_property_add_link(obj, "dma", TYPE_MEMORY_REGION,
+                             (Object **)&s->dma_mr,
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_STRONG);
     qdev_alias_all_properties(DEVICE(&s->ufshc), obj);
