@@ -32,12 +32,12 @@ uint32_t ufs_scsi_if_handle_data(ufs_scsi_if *ifs, uint8_t *data, uint32_t size,
 }
 
 void ufs_scsi_if_handle_sense(ufs_scsi_if *ifs, uint8_t *sense, uint32_t len,
-                              uint8_t tag)
+                              size_t residual, uint8_t tag)
 {
     ufs_scsi_if_class *k = UFS_SCSI_IF_GET_CLASS(ifs);
 
     if (k->handle_sense) {
-        k->handle_sense(ifs, sense, len, tag);
+        k->handle_sense(ifs, sense, len, residual, tag);
     }
 }
 

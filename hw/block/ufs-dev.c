@@ -673,7 +673,7 @@ static uint32_t ufs_dev_receive_scsi_data(ufs_scsi_if *ifs, uint8_t *data,
 }
 
 static void ufs_dev_receive_sense_data(ufs_scsi_if *ifs, uint8_t *sense,
-                                        uint32_t len, uint8_t tag)
+                             uint32_t len, size_t residual, uint8_t tag)
 {
     UFSDev *s = UFS_DEV(ifs);
     UFSTaskQ *task = NULL;
@@ -695,6 +695,14 @@ static void ufs_dev_receive_sense_data(ufs_scsi_if *ifs, uint8_t *sense,
         resp.hdr.lun = pkt->hdr.lun;
         resp.hdr.iid_cmd_type = pkt->hdr.iid_cmd_type;
         resp.hdr.data_seg_len = cpu_to_be16(dsl);
+        resp.resp.res_tran_count = cpu_to_be32(residual);
+        if (residual) {
+            if (pkt->hdr.flags & FLAG_READ) {
+                resp.hdr.flags |= FLAG_OVERFLOW;
+            } else if (pkt->hdr.flags & FLAG_WRITE) {
+                resp.hdr.flags |= FLAG_DATA_OUT_MISMATCH;
+            }
+        }
         /*
          * TODO: Implement residual transfer count
          */

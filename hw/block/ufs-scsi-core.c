@@ -47,7 +47,7 @@ static void ufs_scsi_transfer_data(SCSIRequest *r, uint32_t len)
      }
 }
 
-static void  ufs_scsi_command_complete(SCSIRequest *r, size_t resid)
+static void  ufs_scsi_command_complete(SCSIRequest *r, size_t residual)
 {
     UFSScsiCore *s = r->hba_private;
     UFSScsiTask *task = NULL;
@@ -63,7 +63,7 @@ static void  ufs_scsi_command_complete(SCSIRequest *r, size_t resid)
     if (task) {
         scsi_req_get_sense(req, sense, 18);
         ufs_scsi_if_handle_sense(s->ufs_scsi_ini, sense,
-                                 18, req->tag);
+                                 18, residual, req->tag);
         scsi_req_unref(req);
         QTAILQ_REMOVE(&s->taskQ, task, link);
     }
@@ -118,7 +118,7 @@ static void ufs_scsi_receive(ufs_scsi_if *ifs, void *pkt, uint32_t size,
         warn_report("ufs-scsi: lun %d scsi device not attached!", lun);
         scsi_build_sense(sense ,sense_code_LUN_NOT_SUPPORTED);
         ufs_scsi_if_handle_sense(s->ufs_scsi_ini, sense,
-                                 SCSI_SENSE_LEN, tag);
+                                 SCSI_SENSE_LEN, 0, tag);
         return;
     }
 
