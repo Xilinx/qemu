@@ -50,6 +50,8 @@
 #define XILINX_PMX_GLOBAL(obj) \
      OBJECT_CHECK(PMX_GLOBAL, (obj), TYPE_XILINX_PMX_GLOBAL)
 
+#define TYPE_XILINX_PMXC_GLOBAL "xlnx.pmxc_global"
+
 REG32(GLOBAL_CNTRL, 0x0)
     FIELD(GLOBAL_CNTRL, MB_CLK_EN_FORCE, 18, 1)
     FIELD(GLOBAL_CNTRL, MB_DBG_WAKE, 17, 1)
@@ -992,6 +994,23 @@ REG32(PMX_DOMAIN_ISO_CNTRL, 0x10000)
 #define PMX_GLOBAL_R_MAX (R_PMX_DOMAIN_ISO_CNTRL + 1)
 #define R_TAMPER_RESP_MAX (R_TAMPER_RESP_13 - R_TAMPER_RESP_0 + 1)
 
+REG32(PMXC_ROM_VALIDATION_DIGEST_0, 0x00)
+REG32(PMXC_ROM_VALIDATION_DIGEST_1, 0x04)
+REG32(PMXC_ROM_VALIDATION_DIGEST_2, 0x08)
+REG32(PMXC_ROM_VALIDATION_DIGEST_3, 0x0c)
+REG32(PMXC_ROM_VALIDATION_DIGEST_4, 0x10)
+REG32(PMXC_ROM_VALIDATION_DIGEST_5, 0x14)
+REG32(PMXC_ROM_VALIDATION_DIGEST_6, 0x18)
+REG32(PMXC_ROM_VALIDATION_DIGEST_7, 0x1c)
+REG32(PMXC_ROM_VALIDATION_DIGEST_8, 0x20)
+REG32(PMXC_ROM_VALIDATION_DIGEST_9, 0x24)
+REG32(PMXC_ROM_VALIDATION_DIGEST_10, 0x28)
+REG32(PMXC_ROM_VALIDATION_DIGEST_11, 0x2c)
+REG32(PMXC_ROM_VALIDATION_STATUS, 0x30)
+    FIELD(PMXC_ROM_VALIDATION_STATUS, PASS, 1, 1)
+    FIELD(PMXC_ROM_VALIDATION_STATUS, DONE, 0, 1)
+
+
 typedef struct PMX_GLOBAL {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
@@ -1014,6 +1033,7 @@ typedef struct PMX_GLOBAL {
 
     uint32_t regs[PMX_GLOBAL_R_MAX];
     RegisterInfo regs_info[PMX_GLOBAL_R_MAX];
+    RegisterInfo rom_validation_reg_info[R_PMXC_ROM_VALIDATION_STATUS + 1];
 } PMX_GLOBAL;
 
 PPU1_UPDATE_CTRL(PMX_GLOBAL)
@@ -1538,6 +1558,62 @@ static void ppu1_rst_postw(RegisterInfo *reg, uint64_t val64)
     PMX_GLOBAL *s = XILINX_PMX_GLOBAL(reg->opaque);
     ppu1_update_ctrl(s);
 }
+
+static const RegisterAccessInfo pmxc_rom_validation_info[] = {
+    { .name = "PMXC_ROM_VALIDATION_DIGEST_0",
+        .addr = A_PMXC_ROM_VALIDATION_DIGEST_0,
+        .reset = 0xffffffff,
+        .ro = 0xffffffff,
+    },{ .name = "PMXC_ROM_VALIDATION_DIGEST_1",
+        .addr = A_PMXC_ROM_VALIDATION_DIGEST_1,
+        .reset = 0xffffffff,
+        .ro = 0xffffffff,
+    },{ .name = "PMXC_ROM_VALIDATION_DIGEST_2",
+        .addr = A_PMXC_ROM_VALIDATION_DIGEST_2,
+        .reset = 0xffffffff,
+        .ro = 0xffffffff,
+    },{ .name = "PMXC_ROM_VALIDATION_DIGEST_3",
+        .addr = A_PMXC_ROM_VALIDATION_DIGEST_3,
+        .reset = 0xffffffff,
+        .ro = 0xffffffff,
+    },{ .name = "PMXC_ROM_VALIDATION_DIGEST_4",
+        .addr = A_PMXC_ROM_VALIDATION_DIGEST_4,
+        .reset = 0xffffffff,
+        .ro = 0xffffffff,
+    },{ .name = "PMXC_ROM_VALIDATION_DIGEST_5",
+        .addr = A_PMXC_ROM_VALIDATION_DIGEST_5,
+        .reset = 0xffffffff,
+        .ro = 0xffffffff,
+    },{ .name = "PMXC_ROM_VALIDATION_DIGEST_6",
+        .addr = A_PMXC_ROM_VALIDATION_DIGEST_6,
+        .reset = 0xffffffff,
+        .ro = 0xffffffff,
+    },{ .name = "PMXC_ROM_VALIDATION_DIGEST_7",
+        .addr = A_PMXC_ROM_VALIDATION_DIGEST_7,
+        .reset = 0xffffffff,
+        .ro = 0xffffffff,
+    },{ .name = "PMXC_ROM_VALIDATION_DIGEST_8",
+        .addr = A_PMXC_ROM_VALIDATION_DIGEST_8,
+        .reset = 0xffffffff,
+        .ro = 0xffffffff,
+    },{ .name = "PMXC_ROM_VALIDATION_DIGEST_9",
+        .addr = A_PMXC_ROM_VALIDATION_DIGEST_9,
+        .reset = 0xffffffff,
+        .ro = 0xffffffff,
+    },{ .name = "PMXC_ROM_VALIDATION_DIGEST_10",
+        .addr = A_PMXC_ROM_VALIDATION_DIGEST_10,
+        .reset = 0xffffffff,
+        .ro = 0xffffffff,
+    },{ .name = "PMXC_ROM_VALIDATION_DIGEST_11",
+        .addr = A_PMXC_ROM_VALIDATION_DIGEST_11,
+        .reset = 0xffffffff,
+        .ro = 0xffffffff,
+    },{ .name = "PMXC_ROM_VALIDATION_STATUS",
+        .addr = A_PMXC_ROM_VALIDATION_STATUS,
+        .rsvd = 0xfffffffc,
+        .ro = 0xffffffff,
+    }
+};
 
 static const RegisterAccessInfo pmx_global_regs_info[] = {
     {   .name = "GLOBAL_CNTRL",  .addr = A_GLOBAL_CNTRL,
@@ -2469,6 +2545,23 @@ static void pmx_global_realize(DeviceState *dev, Error **errp)
     /* Delete this if you don't need it */
 }
 
+static void pmxc_global_init(Object *obj)
+{
+    PMX_GLOBAL *s = XILINX_PMX_GLOBAL(obj);
+    RegisterInfoArray *reg_array;
+
+    reg_array =
+        register_init_block32(DEVICE(obj), pmxc_rom_validation_info,
+                     ARRAY_SIZE(pmxc_rom_validation_info),
+                     s->rom_validation_reg_info,
+                     &s->regs[R_ROM_VALIDATION_STATUS],
+                     &pmx_global_ops,
+                     XILINX_PMX_GLOBAL_ERR_DEBUG,
+                     (R_PMXC_ROM_VALIDATION_STATUS + 1) * 4);
+    memory_region_add_subregion_overlap(&s->iomem, A_ROM_VALIDATION_STATUS,
+                    &reg_array->mem, 2);
+}
+
 static void pmx_global_init(Object *obj)
 {
     PMX_GLOBAL *s = XILINX_PMX_GLOBAL(obj);
@@ -2589,6 +2682,12 @@ static void pmx_global_class_init(ObjectClass *klass, void *data)
     pmx_global_prop_tamper_event_add(klass);
 }
 
+static const TypeInfo pmxc_global_info = {
+    .name     = TYPE_XILINX_PMXC_GLOBAL,
+    .parent   = TYPE_XILINX_PMX_GLOBAL,
+    .instance_init = pmxc_global_init,
+};
+
 static const TypeInfo pmx_global_info = {
     .name          = TYPE_XILINX_PMX_GLOBAL,
     .parent        = TYPE_SYS_BUS_DEVICE,
@@ -2604,6 +2703,7 @@ static const TypeInfo pmx_global_info = {
 static void pmx_global_register_types(void)
 {
     type_register_static(&pmx_global_info);
+    type_register_static(&pmxc_global_info);
 }
 
 type_init(pmx_global_register_types)
