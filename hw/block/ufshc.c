@@ -292,6 +292,7 @@ static void ufshc_init(UFSHCState *s)
      * Set HCE &
      * UIC Ready
      */
+    ufshci_dme_cmd(s->unipro, DME_RESET, 0, 0, NULL);
     ARRAY_FIELD_DP32(s->regs, HCE, HCE, 1);
     ARRAY_FIELD_DP32(s->regs, HCS, UCRDY, 1);
     /*

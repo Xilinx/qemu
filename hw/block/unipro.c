@@ -12,6 +12,7 @@
 #include "hw/block/ufshc-if.h"
 #include "unipro.h"
 #include "trace.h"
+#include "hw/irq.h"
 
 #define TYPE_UNIPRO_MPHY "unipro-mphy"
 #define UNIPRO_MPHY(obj) \
@@ -25,6 +26,7 @@ typedef struct UniproMphy {
 
     MemoryRegion iomem;
     ufshcIF *ufshc;
+    qemu_irq dev_rst;
     /*
      * Attributes
      * L1   - M-Tx & M-Rx
@@ -139,10 +141,14 @@ static CfgResultCode unipro_dme_cmd(ufshcIF *ifs, dmeCmd cmd, uint16_t MIBattr,
             ret = pa_reg_access(s, cmd, MIBattr, GenSel, data);
         }
         break;
+    case DME_RESET:
+        qemu_set_irq(s->dev_rst, 0);
+        /*
+         * Fall through
+         */
     case DME_POWERON:
     case DME_POWEROFF:
     case DME_ENABLE:
-    case DME_RESET:
     case DME_ENDPOINTRESET:
     case DME_LINKSTARTUP:
     case DME_HIBERNATE_ENTER:
@@ -154,6 +160,13 @@ static CfgResultCode unipro_dme_cmd(ufshcIF *ifs, dmeCmd cmd, uint16_t MIBattr,
     };
 
     return ret;
+}
+
+static void unipro_reset_enter(Object *obj, ResetType type)
+{
+    UniproMphy *s = UNIPRO_MPHY(obj);
+
+    qemu_set_irq(s->dev_rst, 1);
 }
 
 static void uniproMphy_realize(DeviceState *dev, Error **errp)
@@ -176,6 +189,8 @@ static void uniproMphy_realize(DeviceState *dev, Error **errp)
     ATTR_WRITE(s->L1_5, PA_REMOTEVERINFO, 0x5);
     ATTR_WRITE(s->L1_5, PA_MAXRXHSGEAR, 1);
     ATTR_WRITE(s->L1_5, PA_MAXRXPWMGEAR, 1);
+
+    qdev_init_gpio_out(dev, &s->dev_rst, 1);
 }
 
 static void uniproMphy_init(Object *obj)
@@ -192,9 +207,11 @@ static void uniproMphy_class_init(ObjectClass *klass, void *data)
 {
     ufshcIFClass *uc = UFSHC_IF_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
 
     uc->dme_cmd = unipro_dme_cmd;
     dc->realize = uniproMphy_realize;
+    rc->phases.enter = unipro_reset_enter;
 }
 
 static const TypeInfo uniproMphy_info = {
