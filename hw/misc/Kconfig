@@ -172,6 +172,9 @@ config AUX
 config XLNX_VERSAL_PMC
 	bool
 
+config XLNX_SPARTANUP_PMC
+        bool
+
 config SI57X
 	bool
 

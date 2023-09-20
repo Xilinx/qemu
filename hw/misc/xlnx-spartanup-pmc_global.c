@@ -328,7 +328,7 @@ static const FDTGenericGPIOSet spartanup_pmc_rst_gpios[] = {
     { },
 };
 
-static void spartanup_pmc_global_class_init(ObjectClass *klass, void *data)
+static void spartanup_pmc_global_class_init(ObjectClass *klass, const void *data)
 {
     ResettableClass *rc = RESETTABLE_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
