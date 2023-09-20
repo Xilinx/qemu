@@ -201,11 +201,11 @@ static uint32_t xlnx_csu_dma_read(XlnxCSUDMA *s, uint8_t *buf, uint32_t len)
         for (i = 0; i < len && (result == MEMTX_OK); i += s->width) {
             uint32_t mlen = MIN(len - i, s->width);
 
-            result = address_space_rw(&s->dma_as, addr, s->attr,
+            result = address_space_rw(&s->dma_as, addr, *s->attr_r,
                                       buf + i, mlen, false);
         }
     } else {
-        result = address_space_rw(&s->dma_as, addr, s->attr, buf, len, false);
+        result = address_space_rw(&s->dma_as, addr, *s->attr_r, buf, len, false);
     }
 
     if (result == MEMTX_OK) {
@@ -232,12 +232,12 @@ static uint32_t xlnx_csu_dma_write(XlnxCSUDMA *s, uint8_t *buf, uint32_t len)
         for (i = 0; i < len && (result == MEMTX_OK); i += s->width) {
             uint32_t mlen = MIN(len - i, s->width);
 
-            result = address_space_rw(&s->dma_as, addr, s->attr,
+            result = address_space_rw(&s->dma_as, addr, *s->attr_w,
                                       buf, mlen, true);
             buf += mlen;
         }
     } else {
-        result = address_space_rw(&s->dma_as, addr, s->attr, buf, len, true);
+        result = address_space_rw(&s->dma_as, addr, *s->attr_w, buf, len, true);
     }
 
     if (result != MEMTX_OK) {
@@ -689,7 +689,15 @@ static void xlnx_csu_dma_realize(DeviceState *dev, Error **errp)
     s->src_timer = ptimer_init(xlnx_csu_dma_src_timeout_hit,
                                s, PTIMER_POLICY_LEGACY);
 
-    s->attr = MEMTXATTRS_UNSPECIFIED;
+    if (!s->attr_r) {
+        Object *attr = object_new(TYPE_MEMORY_TRANSACTION_ATTR);
+        s->attr_r = MEMORY_TRANSACTION_ATTR(attr);
+        *s->attr_r = MEMTXATTRS_UNSPECIFIED;
+    }
+
+    if (!s->attr_w) {
+        s->attr_w = s->attr_r;
+    }
 
     s->r_size_last_word = 0;
 }
@@ -764,6 +772,14 @@ static void xlnx_csu_dma_init(Object *obj)
                              OBJ_PROP_LINK_STRONG);
     object_property_add_link(obj, "dma", TYPE_MEMORY_REGION,
                              (Object **)&s->dma_mr,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
+    object_property_add_link(obj, "memattr", TYPE_MEMORY_TRANSACTION_ATTR,
+                             (Object **)&s->attr_r,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
+    object_property_add_link(obj, "memattr-write", TYPE_MEMORY_TRANSACTION_ATTR,
+                             (Object **)&s->attr_w,
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_STRONG);
 }

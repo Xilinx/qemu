@@ -33,7 +33,8 @@
 typedef struct XlnxCSUDMA {
     SysBusDevice busdev;
     MemoryRegion iomem;
-    MemTxAttrs attr;
+    MemTxAttrs *attr_r;
+    MemTxAttrs *attr_w;
     MemoryRegion *dma_mr;
     AddressSpace dma_as;
     qemu_irq irq;
