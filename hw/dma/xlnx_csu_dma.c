@@ -38,9 +38,14 @@
  */
 REG32(ADDR, 0x0)
     FIELD(ADDR, ADDR, 2, 30) /* wo */
+REG32(ADDR_UNALIGNED, 0x0) /* when the DMA allows unaligned accesses */
+    FIELD(ADDR_UNALIGNED, ADDR, 0, 32) /* wo */
 REG32(SIZE, 0x4)
     FIELD(SIZE, SIZE, 2, 27) /* wo */
     FIELD(SIZE, LAST_WORD, 0, 1) /* rw, only exists in SRC */
+REG32(SIZE_UNALIGNED, 0x4) /* when the DMA allows unaligned accesses */
+    FIELD(SIZE_UNALIGNED, SIZE, 0, 29) /* wo */
+    FIELD(SIZE_UNALIGNED, LAST_WORD, 29, 1) /* rw, only exists in SRC */
 REG32(STATUS, 0x8)
     FIELD(STATUS, DONE_CNT, 13, 3) /* wtc */
     FIELD(STATUS, FIFO_LEVEL, 5, 8) /* ro */
@@ -150,15 +155,30 @@ static void xlnx_csu_dma_update_done_cnt(XlnxCSUDMA *s, int a)
 
 static inline void update_crc(XlnxCSUDMA *s, const uint8_t *buf, uint32_t len)
 {
-    g_assert(!s->is_dst);
+    uint32_t leftover = 0;
+    size_t shift = 0;
 
-    g_assert(!(len & 0x3));
-
-    while (len) {
+    while (len >= 4) {
         s->regs[R_CRC] += ldl_he_p(buf);
         buf += 4;
         len -= 4;
     }
+
+    /*
+     * Handle unaligned accesses. The DMA pads missing MSB bytes with 0s for CRC
+     * computation. Once we're here we have at most 3 bytes to read.
+     */
+    while (len) {
+        size_t ld_sz = pow2floor(MIN(2, len));
+
+        leftover |= ldn_he_p(buf, ld_sz) << shift;
+
+        shift += ld_sz;
+        buf += ld_sz;
+        len -= ld_sz;
+    }
+
+    s->regs[R_CRC] += leftover;
 }
 
 static inline void do_byte_swap(XlnxCSUDMA *s, uint8_t *buf, uint32_t len)
@@ -167,6 +187,14 @@ static inline void do_byte_swap(XlnxCSUDMA *s, uint8_t *buf, uint32_t len)
 
     if (!FIELD_EX32(s->regs[R_CTRL], CTRL, ENDIANNESS)) {
         /* byte swapping disabled */
+        return;
+    }
+
+    if (len & 0x3) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "xlnx-csu-dma: endianness swapping on "
+                      "non 32 bits aligned data is undefined behavior\n");
+        /* we choose to skip the swapping */
         return;
     }
 
@@ -325,8 +353,14 @@ static void xlnx_csu_dma_src_notify(void *opaque)
 
 static uint64_t addr_pre_write(RegisterInfo *reg, uint64_t val)
 {
-    /* Address is word aligned */
-    return val & R_ADDR_ADDR_MASK;
+    XlnxCSUDMA *s = XLNX_CSU_DMA(reg->opaque);
+
+    if (s->allow_unaligned) {
+        return val & R_ADDR_UNALIGNED_ADDR_MASK;
+    } else {
+        /* Address is word aligned */
+        return val & R_ADDR_ADDR_MASK;
+    }
 }
 
 static uint64_t size_pre_write(RegisterInfo *reg, uint64_t val)
@@ -339,18 +373,24 @@ static uint64_t size_pre_write(RegisterInfo *reg, uint64_t val)
     }
 
     if (!s->is_dst) {
-        s->r_size_last_word = !!(val & R_SIZE_LAST_WORD_MASK);
+        uint32_t mask = s->allow_unaligned ? R_SIZE_UNALIGNED_LAST_WORD_MASK
+                                           : R_SIZE_LAST_WORD_MASK;
+        s->r_size_last_word = !!(val & mask);
     }
 
     /* Size is word aligned */
-    return val & R_SIZE_SIZE_MASK;
+    return val & (s->allow_unaligned ? R_SIZE_UNALIGNED_SIZE_MASK
+                                     : R_SIZE_SIZE_MASK);
 }
 
 static uint64_t size_post_read(RegisterInfo *reg, uint64_t val)
 {
     XlnxCSUDMA *s = XLNX_CSU_DMA(reg->opaque);
+    int shift = s->allow_unaligned ? R_SIZE_UNALIGNED_LAST_WORD_SHIFT
+                                   : R_SIZE_LAST_WORD_SHIFT;
+    uint32_t last_word = s->r_size_last_word;
 
-    return val | s->r_size_last_word;
+    return val | (last_word << shift);
 }
 
 static void size_post_write(RegisterInfo *reg, uint64_t val)
@@ -581,10 +621,14 @@ static size_t xlnx_csu_dma_stream_push(StreamSink *obj, uint8_t *buf,
 {
     XlnxCSUDMA *s = XLNX_CSU_DMA(obj);
     uint32_t size = s->regs[R_SIZE];
-    uint32_t mlen = MIN(size, len) & (~3); /* Size is word aligned */
+    uint32_t mlen = MIN(size, len);
 
     /* Be called when it's DST */
     assert(s->is_dst);
+
+    if (!s->allow_unaligned) {
+        mlen &= R_SIZE_SIZE_MASK; /* size is word aligned */
+    }
 
     if (size == 0 || len <= 0) {
         return 0;
@@ -728,6 +772,14 @@ static Property xlnx_csu_dma_properties[] = {
      * which channel the device is connected to.
      */
     DEFINE_PROP_BOOL("is-dst", XlnxCSUDMA, is_dst, false),
+    /*
+     * The DMA can either have a 4-bytes alignement constraint on the address
+     * and size registers, or allows unaligned accesses. When byte-align is
+     * false, the accesses are 4 bytes aligned. When true, unaligned accesses
+     * are allowed. In case of a source DMA (is-dst == false), this also means
+     * that the LAST_WORD bit in the size register moves to bit 29.
+     */
+    DEFINE_PROP_BOOL("byte-align", XlnxCSUDMA, allow_unaligned, false),
     DEFINE_PROP_END_OF_LIST(),
 };
 

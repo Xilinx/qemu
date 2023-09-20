@@ -45,6 +45,7 @@ typedef struct XlnxCSUDMA {
 
     uint16_t width;
     bool is_dst;
+    bool allow_unaligned;
     bool r_size_last_word;
 
     StreamCanPushNotifyFn notify;
