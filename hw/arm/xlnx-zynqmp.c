@@ -794,6 +794,10 @@ static void xlnx_zynqmp_realize(DeviceState *dev, Error **errp)
     qdev_realize(DEVICE(&s->qspi_irq_orgate), NULL, &error_fatal);
     qdev_connect_gpio_out(DEVICE(&s->qspi_irq_orgate), 0, gic_spi[QSPI_IRQ]);
 
+    if (!object_property_set_bool(OBJECT(&s->qspi_dma), "is-dst", true, errp)) {
+        return;
+    }
+
     if (!object_property_set_link(OBJECT(&s->qspi_dma), "dma",
                                   OBJECT(system_memory), errp)) {
         return;

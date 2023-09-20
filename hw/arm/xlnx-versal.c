@@ -500,6 +500,9 @@ static void versal_create_ospi(Versal *s, qemu_irq *pic)
                             &s->pmc.iou.ospi.dma_dst,
                             TYPE_XLNX_CSU_DMA);
 
+    object_property_set_bool(OBJECT(&s->pmc.iou.ospi.dma_dst), "is-dst",
+                             true, &error_abort);
+
     object_property_set_link(OBJECT(&s->pmc.iou.ospi.dma_dst),
                             "dma", OBJECT(get_system_memory()),
                              &error_abort);
