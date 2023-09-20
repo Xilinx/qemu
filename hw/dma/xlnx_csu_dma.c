@@ -148,39 +148,6 @@ static void xlnx_csu_dma_update_done_cnt(XlnxCSUDMA *s, int a)
     ARRAY_FIELD_DP32(s->regs, STATUS, DONE_CNT, cnt);
 }
 
-static void xlnx_csu_dma_data_process(XlnxCSUDMA *s, uint8_t *buf, uint32_t len)
-{
-    uint32_t bswap;
-    uint32_t i;
-
-    bswap = s->regs[R_CTRL] & R_CTRL_ENDIANNESS_MASK;
-    if (!bswap) {
-        /* Fast when ENDIANNESS cleared */
-        return;
-    }
-
-    for (i = 0; i < len; i += 4) {
-        uint8_t *b = &buf[i];
-        union {
-            uint8_t u8[4];
-            uint32_t u32;
-        } v = {
-            .u8 = { b[0], b[1], b[2], b[3] }
-        };
-
-        if (bswap) {
-            /*
-             * No point using bswap, we need to writeback
-             * into a potentially unaligned pointer.
-             */
-            b[0] = v.u8[3];
-            b[1] = v.u8[2];
-            b[2] = v.u8[1];
-            b[3] = v.u8[0];
-        }
-    }
-}
-
 static inline void update_crc(XlnxCSUDMA *s, const uint8_t *buf, uint32_t len)
 {
     g_assert(!s->is_dst);
@@ -190,6 +157,24 @@ static inline void update_crc(XlnxCSUDMA *s, const uint8_t *buf, uint32_t len)
     while (len) {
         s->regs[R_CRC] += ldl_he_p(buf);
         buf += 4;
+        len -= 4;
+    }
+}
+
+static inline void do_byte_swap(XlnxCSUDMA *s, uint8_t *buf, uint32_t len)
+{
+    uint32_t *b;
+
+    if (!FIELD_EX32(s->regs[R_CTRL], CTRL, ENDIANNESS)) {
+        /* byte swapping disabled */
+        return;
+    }
+
+    b = (uint32_t *) buf;
+
+    while (len) {
+        bswap32s(b);
+        b++;
         len -= 4;
     }
 }
@@ -220,7 +205,7 @@ static uint32_t xlnx_csu_dma_read(XlnxCSUDMA *s, uint8_t *buf, uint32_t len)
 
     if (result == MEMTX_OK) {
         update_crc(s, buf, len);
-        xlnx_csu_dma_data_process(s, buf, len);
+        do_byte_swap(s, buf, len);
     } else {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad address " HWADDR_FMT_plx
                       " for mem read", __func__, addr);
@@ -236,7 +221,8 @@ static uint32_t xlnx_csu_dma_write(XlnxCSUDMA *s, uint8_t *buf, uint32_t len)
     hwaddr addr = (hwaddr)s->regs[R_ADDR_MSB] << 32 | s->regs[R_ADDR];
     MemTxResult result = MEMTX_OK;
 
-    xlnx_csu_dma_data_process(s, buf, len);
+    do_byte_swap(s, buf, len);
+
     if (xlnx_csu_dma_burst_is_fixed(s)) {
         uint32_t i;
 
