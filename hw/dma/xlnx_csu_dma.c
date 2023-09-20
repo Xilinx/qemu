@@ -639,10 +639,31 @@ static void xlnx_csu_dma_realize(DeviceState *dev, Error **errp)
 {
     XlnxCSUDMA *s = XLNX_CSU_DMA(dev);
     RegisterInfoArray *reg_array;
+    StreamSink * const TX_DEVS[] = { s->tx_dev, s->tx_dev0, s->tx_dev1 };
+    static const char TX_DEVS_NAME[] = { ' ', '0', '1' };
+    QEMU_BUILD_BUG_ON(ARRAY_SIZE(TX_DEVS) != ARRAY_SIZE(TX_DEVS_NAME));
 
-    if (!s->is_dst && !s->tx_dev) {
-        error_setg(errp, "zynqmp.csu-dma: Stream not connected");
-        return;
+    if (!s->is_dst) {
+        size_t i, target = 0;
+
+        for (i = 1; i < ARRAY_SIZE(TX_DEVS); i++) {
+            if (TX_DEVS[i] != NULL) {
+                if (TX_DEVS[target] != NULL) {
+                    error_setg(errp, "zynqmp.csu-dma: both tx_dev%c "
+                               "and tx_dev%c StreamSinks are defined",
+                               TX_DEVS_NAME[target], TX_DEVS_NAME[i]);
+                    return;
+                }
+                target = i;
+            }
+        }
+
+        s->tx_dev = TX_DEVS[target];
+
+        if (s->tx_dev == NULL) {
+            error_setg(errp, "zynqmp.csu-dma: Stream not connected");
+            return;
+        }
     }
 
     if (!s->dma_mr) {
@@ -731,6 +752,14 @@ static void xlnx_csu_dma_init(Object *obj)
 
     object_property_add_link(obj, "stream-connected-dma", TYPE_STREAM_SINK,
                              (Object **)&s->tx_dev,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
+    object_property_add_link(obj, "stream-connected-dma0", TYPE_STREAM_SINK,
+                             (Object **)&s->tx_dev0,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
+    object_property_add_link(obj, "stream-connected-dma1", TYPE_STREAM_SINK,
+                             (Object **)&s->tx_dev1,
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_STRONG);
     object_property_add_link(obj, "dma", TYPE_MEMORY_REGION,

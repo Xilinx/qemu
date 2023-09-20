@@ -38,6 +38,8 @@ typedef struct XlnxCSUDMA {
     AddressSpace dma_as;
     qemu_irq irq;
     StreamSink *tx_dev; /* Used as generic StreamSink */
+    StreamSink *tx_dev0; /* Used for pmc dma0 */
+    StreamSink *tx_dev1; /* Used for pmc dma1 */
     ptimer_state *src_timer;
 
     uint16_t width;
