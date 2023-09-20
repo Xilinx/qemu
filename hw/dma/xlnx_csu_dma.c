@@ -928,9 +928,15 @@ static const TypeInfo xlnx_csu_dma_info = {
     }
 };
 
+static const TypeInfo xlnx_csu_dma_alias_info = {
+    .name   = TYPE_XLNX_CSU_DMA_ALIAS,
+    .parent = TYPE_XLNX_CSU_DMA,
+};
+
 static void xlnx_csu_dma_register_types(void)
 {
     type_register_static(&xlnx_csu_dma_info);
+    type_register_static(&xlnx_csu_dma_alias_info);
 }
 
 type_init(xlnx_csu_dma_register_types)

@@ -57,7 +57,7 @@
 #include "qemu/fifo8.h"
 #include "hw/dma/xlnx_csu_dma.h"
 
-#define TYPE_XILINX_VERSAL_OSPI "xlnx-versal-ospi"
+#define TYPE_XILINX_VERSAL_OSPI "xlnx.versal-ospi"
 
 OBJECT_DECLARE_SIMPLE_TYPE(XlnxVersalOspi, XILINX_VERSAL_OSPI)
 
