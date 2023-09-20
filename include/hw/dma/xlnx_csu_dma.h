@@ -28,7 +28,7 @@
 
 #define TYPE_XLNX_CSU_DMA "xlnx.csu_dma"
 
-#define XLNX_CSU_DMA_R_MAX (0x2c / 4)
+#define XLNX_CSU_DMA_R_MAX (0x38 / 4)
 
 typedef struct XlnxCSUDMA {
     SysBusDevice busdev;

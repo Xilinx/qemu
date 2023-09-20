@@ -105,6 +105,9 @@ REG32(CTRL2, 0x24)
     FIELD(CTRL2, MAX_OUTS_CMDS, 0, 4) /* rw, reset: 0x8 */
 REG32(ADDR_MSB, 0x28)
     FIELD(ADDR_MSB, ADDR_MSB, 0, 17) /* wo */
+REG32(CRC1, 0x2c) /* on 128 bits DMAs */
+REG32(CRC2, 0x30)
+REG32(CRC3, 0x34)
 
 #define R_CTRL_TIMEOUT_VAL_RESET    (0xFFE)
 #define R_CTRL_FIFO_THRESH_RESET    (0x80)
@@ -153,7 +156,7 @@ static void xlnx_csu_dma_update_done_cnt(XlnxCSUDMA *s, int a)
     ARRAY_FIELD_DP32(s->regs, STATUS, DONE_CNT, cnt);
 }
 
-static inline void update_crc(XlnxCSUDMA *s, const uint8_t *buf, uint32_t len)
+static inline void update_crc_32(XlnxCSUDMA *s, const uint8_t *buf, uint32_t len)
 {
     uint32_t leftover = 0;
     size_t shift = 0;
@@ -179,6 +182,69 @@ static inline void update_crc(XlnxCSUDMA *s, const uint8_t *buf, uint32_t len)
     }
 
     s->regs[R_CRC] += leftover;
+}
+
+static inline void update_crc_128(XlnxCSUDMA *s, const uint8_t *buf,
+                                  uint32_t len)
+{
+    Int128 crc;
+    Int128 leftover = int128_zero();
+    uint64_t lo, hi;
+    size_t shift = 0;
+
+    crc = int128_make128(s->regs[R_CRC1], s->regs[R_CRC3]);
+    crc = int128_lshift(crc, 32);
+    crc = int128_or(crc, int128_make128(s->regs[R_CRC], s->regs[R_CRC2]));
+
+    while (len >= 16) {
+        Int128 d;
+
+        d = int128_make128(ldq_he_p(buf), ldq_he_p(buf + 8));
+
+        int128_addto(&crc, d);
+        buf += 16;
+        len -= 16;
+    }
+
+    while (len) {
+        Int128 d;
+        size_t ld_sz = pow2floor(MIN(8, len));
+
+        d = int128_make64(ldn_he_p(buf, ld_sz));
+        d = int128_lshift(d, shift);
+        leftover = int128_or(leftover, d);
+
+        shift += ld_sz;
+        buf += ld_sz;
+        len -= ld_sz;
+    }
+
+    int128_addto(&crc, leftover);
+
+    lo = int128_getlo(crc);
+    hi = int128_gethi(crc);
+    s->regs[R_CRC] = lo & UINT32_MAX;
+    s->regs[R_CRC1] = lo >> 32;
+    s->regs[R_CRC2] = hi & UINT32_MAX;
+    s->regs[R_CRC3] = hi >> 32;
+}
+
+static void update_crc(XlnxCSUDMA *s, const uint8_t *buf, uint32_t len)
+{
+    g_assert(!s->is_dst);
+
+    switch (s->width) {
+    case 4:
+        update_crc_32(s, buf, len);
+        break;
+
+    case 16:
+        update_crc_128(s, buf, len);
+        break;
+
+    default:
+        g_assert_not_reached();
+    }
 }
 
 static inline void do_byte_swap(XlnxCSUDMA *s, uint8_t *buf, uint32_t len)
@@ -586,6 +652,15 @@ static const RegisterAccessInfo *xlnx_csu_dma_regs_info[] = {
             .name = #NAME "_ADDR_MSB",                                        \
             .addr = A_ADDR_MSB,                                               \
             .pre_write = addr_msb_pre_write                                   \
+        }, {                                                                  \
+            .name = #NAME "_CRC1",                                            \
+            .addr = A_CRC1,                                                   \
+        }, {                                                                  \
+            .name = #NAME "_CRC2",                                            \
+            .addr = A_CRC2,                                                   \
+        }, {                                                                  \
+            .name = #NAME "_CRC3",                                            \
+            .addr = A_CRC3,                                                   \
         }                                                                     \
     }
 
@@ -684,6 +759,12 @@ static void xlnx_csu_dma_realize(DeviceState *dev, Error **errp)
     static const char TX_DEVS_NAME[] = { ' ', '0', '1' };
     QEMU_BUILD_BUG_ON(ARRAY_SIZE(TX_DEVS) != ARRAY_SIZE(TX_DEVS_NAME));
 
+    if (s->width != 4 && s->width != 16) {
+        error_setg(errp, TYPE_XLNX_CSU_DMA ": unsupported value for "
+                         "`width' property");
+        return;
+    }
+
     if (!s->is_dst) {
         size_t i, target = 0;
 
@@ -762,7 +843,8 @@ static Property xlnx_csu_dma_properties[] = {
      * Ref PG021, Stream Data Width:
      * Data width in bits of the AXI S2MM AXI4-Stream Data bus.
      * This value must be equal or less than the Memory Map Data Width.
-     * Valid values are 1, 2, 4, 8, 16, 64 and 128.
+     * Valid values are 4 and 16. When set to 16, the DMA will expose 4 32 bits
+     * CRC registers instead of one.
      * "dma-width" is the byte value of the "Stream Data Width".
      */
     DEFINE_PROP_UINT16("dma-width", XlnxCSUDMA, width, 4),
