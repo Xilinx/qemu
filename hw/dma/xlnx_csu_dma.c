@@ -154,7 +154,7 @@ static void xlnx_csu_dma_data_process(XlnxCSUDMA *s, uint8_t *buf, uint32_t len)
     uint32_t i;
 
     bswap = s->regs[R_CTRL] & R_CTRL_ENDIANNESS_MASK;
-    if (s->is_dst && !bswap) {
+    if (!bswap) {
         /* Fast when ENDIANNESS cleared */
         return;
     }
@@ -168,9 +168,6 @@ static void xlnx_csu_dma_data_process(XlnxCSUDMA *s, uint8_t *buf, uint32_t len)
             .u8 = { b[0], b[1], b[2], b[3] }
         };
 
-        if (!s->is_dst) {
-            s->regs[R_CRC] += v.u32;
-        }
         if (bswap) {
             /*
              * No point using bswap, we need to writeback
@@ -181,6 +178,19 @@ static void xlnx_csu_dma_data_process(XlnxCSUDMA *s, uint8_t *buf, uint32_t len)
             b[2] = v.u8[1];
             b[3] = v.u8[0];
         }
+    }
+}
+
+static inline void update_crc(XlnxCSUDMA *s, const uint8_t *buf, uint32_t len)
+{
+    g_assert(!s->is_dst);
+
+    g_assert(!(len & 0x3));
+
+    while (len) {
+        s->regs[R_CRC] += ldl_he_p(buf);
+        buf += 4;
+        len -= 4;
     }
 }
 
@@ -209,6 +219,7 @@ static uint32_t xlnx_csu_dma_read(XlnxCSUDMA *s, uint8_t *buf, uint32_t len)
     }
 
     if (result == MEMTX_OK) {
+        update_crc(s, buf, len);
         xlnx_csu_dma_data_process(s, buf, len);
     } else {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad address " HWADDR_FMT_plx
