@@ -36,7 +36,6 @@
 #include "hw/irq.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
-#include "hw/dma-ctrl.h"
 
 #include "sysemu/dma.h"
 #include "hw/ssi/ssi.h"

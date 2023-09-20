@@ -38,7 +38,6 @@ system_ss.add(when: 'CONFIG_XILINX_AXI', if_true: files('stream.c'))
 system_ss.add(when: 'CONFIG_PLATFORM_BUS', if_true: files('sysbus-fdt.c'))
 
 common_ss.add(when: 'CONFIG_XILINX_AXI', if_true: files(
-  'dma-ctrl.c',
   'fdt_generic_devices_xilinx_axi.c'))
 
 common_ss.add(when: 'CONFIG_XILINX_SPIPS', if_true: files('fdt_generic_devices_xilinx_spips.c'))
