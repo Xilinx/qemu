@@ -762,7 +762,7 @@ static Property xlnx_csu_dma_properties[] = {
      * Ref PG021, Stream Data Width:
      * Data width in bits of the AXI S2MM AXI4-Stream Data bus.
      * This value must be equal or less than the Memory Map Data Width.
-     * Valid values are 8, 16, 32, 64, 128, 512 and 1024.
+     * Valid values are 1, 2, 4, 8, 16, 64 and 128.
      * "dma-width" is the byte value of the "Stream Data Width".
      */
     DEFINE_PROP_UINT16("dma-width", XlnxCSUDMA, width, 4),
