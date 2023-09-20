@@ -1735,14 +1735,11 @@ static void ospi_update_dac_status(void *opaque, int n, int level)
 static void xlnx_versal_ospi_realize(DeviceState *dev, Error **errp)
 {
     XlnxVersalOspi *s = XILINX_VERSAL_OSPI(dev);
-    SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
 
     s->num_cs = 4;
     s->spi = ssi_create_bus(dev, "spi0");
     s->cs_lines = g_new0(qemu_irq, s->num_cs);
-    for (int i = 0; i < s->num_cs; ++i) {
-        sysbus_init_irq(sbd, &s->cs_lines[i]);
-    }
+    qdev_init_gpio_out(dev, s->cs_lines, s->num_cs);
 
     fifo8_create(&s->rx_fifo, RXFF_SZ);
     fifo8_create(&s->tx_fifo, TXFF_SZ);
@@ -1781,7 +1778,7 @@ static void xlnx_versal_ospi_init(Object *obj)
                              object_property_allow_set_link,
                              OBJ_PROP_LINK_STRONG);
 
-    qdev_init_gpio_in_named(dev, ospi_update_dac_status, "ospi-mux-sel", 1);
+    qdev_init_gpio_in(dev, ospi_update_dac_status, 1);
 }
 
 static const VMStateDescription vmstate_ind_op = {
