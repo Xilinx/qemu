@@ -364,7 +364,18 @@ static XlnxSha3CommonAlg asu_sha3_get_algorithm(XlnxSha3Common *common)
 {
     ASU_SHA3 *s = XILINX_ASU_SHA3(common);
 
-    return ARRAY_FIELD_EX32(s->regs, SHA_MODE, VALUE);
+    switch (ARRAY_FIELD_EX32(s->regs, SHA_MODE, VALUE)) {
+    case 0:
+        return SHA_MODE_256;
+    case 1:
+        return SHA_MODE_384;
+    case 2:
+        return SHA_MODE_512;
+    case 4:
+        return SHA_MODE_SHAKE256;
+    default:
+        return SHA_MODE_UNIMPLEMENTED;
+    }
 }
 
 static const MemoryRegionOps asu_sha3_ops = {

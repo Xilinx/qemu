@@ -35,10 +35,11 @@ OBJECT_DECLARE_TYPE(XlnxSha3Common, XlnxSha3CommonClass, XLNX_SHA3_COMMON)
 #define XLNX_SHA3_COMMON_MAX_BLOCK_SIZE (144)
 
 enum XlnxSha3CommonAlg {
-    SHA_MODE_256 = 0,
-    SHA_MODE_384 = 1,
-    SHA_MODE_512 = 2,
-    SHA_MODE_SHAKE256 = 4,
+    SHA_MODE_UNIMPLEMENTED,
+    SHA_MODE_256,
+    SHA_MODE_384,
+    SHA_MODE_512,
+    SHA_MODE_SHAKE256,
 };
 typedef enum XlnxSha3CommonAlg XlnxSha3CommonAlg;
 
