@@ -7,6 +7,10 @@ system_ss.add(when: 'CONFIG_XLNX_VERSAL2_ASU_AES', if_true: files(
   'xlnx-asu-aes.c',
 ))
 
+system_ss.add(when: 'CONFIG_XLNX_SHA3_COMMON', if_true: files(
+  'xlnx-sha3-common.c',
+))
+
 if gcrypt.found()
   system_ss.add(when: 'CONFIG_XLNX_VERSAL2_ASU_AES', if_true: files(
     'xlnx-asu-aes-gcrypt.c',
