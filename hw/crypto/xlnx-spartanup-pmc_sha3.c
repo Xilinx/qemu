@@ -15,6 +15,7 @@
 #include "qemu/log.h"
 #include "migration/vmstate.h"
 #include "hw/irq.h"
+#include "hw/crypto/xlnx-sha3-common.h"
 
 #ifndef XILINX_SPARTANUP_PMC_SHA3_ERR_DEBUG
 #define XILINX_SPARTANUP_PMC_SHA3_ERR_DEBUG 0
@@ -24,6 +25,8 @@
 
 #define XILINX_SPARTANUP_PMC_SHA3(obj) \
      OBJECT_CHECK(SPARTANUP_PMC_SHA3, (obj), TYPE_XILINX_SPARTANUP_PMC_SHA3)
+
+#define SPARTANUP_PMC_SHA3_MAX_DIGEST_LEN (256 >> 3)
 
 REG32(SHA_START, 0x0)
     FIELD(SHA_START, VALUE, 0, 1)
@@ -57,13 +60,81 @@ REG32(SHA_ITR, 0xc4)
 #define SPARTANUP_PMC_SHA3_R_MAX (R_SHA_ITR + 1)
 
 typedef struct SPARTANUP_PMC_SHA3 {
-    SysBusDevice parent_obj;
+    XlnxSha3Common parent_obj;
     MemoryRegion iomem;
     qemu_irq irq_sha_imr;
+    bool reseting;
 
     uint32_t regs[SPARTANUP_PMC_SHA3_R_MAX];
     RegisterInfo regs_info[SPARTANUP_PMC_SHA3_R_MAX];
 } SPARTANUP_PMC_SHA3;
+
+static void spartanup_pmc_sha3_start_postw(RegisterInfo *reg, uint64_t value)
+{
+    SPARTANUP_PMC_SHA3 *s = XILINX_SPARTANUP_PMC_SHA3(reg->opaque);
+    XlnxSha3Common *common = XLNX_SHA3_COMMON(s);
+
+    if (s->reseting) {
+        /* Don't do anything during reset.  */
+        return;
+    }
+
+    if (!ARRAY_FIELD_EX32(s->regs, SHA_START, VALUE)) {
+        /* Writing zero to that register doesn't have any effect.  */
+        return;
+    }
+
+    /* Start bit is self clearing.  */
+    ARRAY_FIELD_DP32(s->regs, SHA_START, VALUE, false);
+
+    /*
+     * Drop the SHA_DONE bit, driver will need to wait for this one to be set
+     * before reading the digest.
+     */
+    ARRAY_FIELD_DP32(s->regs, SHA_DONE, VALUE, false);
+
+    /*
+     * Start the SHA3 common block, so it will accept DMA streams and start
+     * computing hashes.
+     */
+    xlnx_sha3_common_start(common);
+}
+
+static void spartanup_pmc_sha3_reset(DeviceState *dev)
+{
+    SPARTANUP_PMC_SHA3 *s = XILINX_SPARTANUP_PMC_SHA3(dev);
+    unsigned int i;
+
+    for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
+        /*
+         * Reset from the bus, will as a side effect call
+         * asu_sha3_reset_postw.  Avoid infinite recursion here.
+         */
+        if (!s->reseting || (i != R_SHA_RESET)) {
+            register_reset(&s->regs_info[i]);
+        } else {
+            s->regs[R_SHA_RESET] = 0x1;
+        }
+    }
+}
+
+static void spartanup_pmc_sha3_reset_postw(RegisterInfo *reg, uint64_t value)
+{
+    SPARTANUP_PMC_SHA3 *s = XILINX_SPARTANUP_PMC_SHA3(reg->opaque);
+    XlnxSha3Common *common = XLNX_SHA3_COMMON(s);
+
+    /* Pass the reset signal to the SHA3 common block.  */
+    xlnx_sha3_common_reset(common, ARRAY_FIELD_EX32(s->regs, SHA_RESET, VALUE));
+
+    if (ARRAY_FIELD_EX32(s->regs, SHA_RESET, VALUE)) {
+        /* Puts the device in reset mode.  */
+        s->reseting = true;
+        spartanup_pmc_sha3_reset(DEVICE(s));
+    } else if (s->reseting) {
+        /* 1 -> 0 release from reset mode.  */
+        s->reseting = false;
+    }
+}
 
 static void sha_imr_update_irq(SPARTANUP_PMC_SHA3 *s)
 {
@@ -109,8 +180,10 @@ static uint64_t sha_itr_prew(RegisterInfo *reg, uint64_t val64)
 
 static const RegisterAccessInfo spartanup_pmc_sha3_regs_info[] = {
     {   .name = "SHA_START",  .addr = A_SHA_START,
+        .post_write = spartanup_pmc_sha3_start_postw,
     },{ .name = "SHA_RESET",  .addr = A_SHA_RESET,
         .reset = 0x1,
+        .post_write = spartanup_pmc_sha3_reset_postw,
     },{ .name = "SHA_DONE",  .addr = A_SHA_DONE,
         .ro = 0x1,
     },{ .name = "SHA_DIGEST_0",  .addr = A_SHA_DIGEST_0,
@@ -146,21 +219,50 @@ static const RegisterAccessInfo spartanup_pmc_sha3_regs_info[] = {
     }
 };
 
-static void spartanup_pmc_sha3_reset_enter(Object *obj, ResetType type)
+static bool spartanup_pmc_sha3_autopadding_enabled(XlnxSha3Common *common)
 {
-    SPARTANUP_PMC_SHA3 *s = XILINX_SPARTANUP_PMC_SHA3(obj);
-    unsigned int i;
+    SPARTANUP_PMC_SHA3 *s = XILINX_SPARTANUP_PMC_SHA3(common);
 
-    for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        register_reset(&s->regs_info[i]);
+    return (ARRAY_FIELD_EX32(s->regs, SHA_AUTO_PADDING, ENABLE) != 0);
+}
+
+static void spartanup_pmc_sha3_handle_end_of_packet(XlnxSha3Common *common)
+{
+    SPARTANUP_PMC_SHA3 *s = XILINX_SPARTANUP_PMC_SHA3(common);
+
+    /* The SHA3 model got an end of packet.  */
+    ARRAY_FIELD_DP32(s->regs, SHA_DONE, VALUE, true);
+    ARRAY_FIELD_DP32(s->regs, SHA_ISR, DONE, true);
+    sha_imr_update_irq(s);
+}
+
+static void spartanup_pmc_sha3_write_digest(XlnxSha3Common *common, uint32_t *digest,
+                                   size_t size)
+{
+    SPARTANUP_PMC_SHA3 *s = XILINX_SPARTANUP_PMC_SHA3(common);
+    size_t i;
+
+    /* Sanity check that the digest fits in the destination.  */
+    assert(size <= SPARTANUP_PMC_SHA3_MAX_DIGEST_LEN);
+    /* Stored in reverse order.  */
+    for (i = 0; i < size / 4; i++) {
+        s->regs[R_SHA_DIGEST_7 - i] = digest[i];
     }
 }
 
-static void spartanup_pmc_sha3_reset_hold(Object *obj, ResetType type)
+static XlnxSha3CommonAlg spartanup_pmc_sha3_get_algorithm(XlnxSha3Common *common)
 {
-    SPARTANUP_PMC_SHA3 *s = XILINX_SPARTANUP_PMC_SHA3(obj);
+    SPARTANUP_PMC_SHA3 *s = XILINX_SPARTANUP_PMC_SHA3(common);
 
-    sha_imr_update_irq(s);
+    switch (ARRAY_FIELD_EX32(s->regs, SHA_MODE, VALUE)) {
+    case 0:
+        return SHA_MODE_256;
+    case 1:
+        return SHA_MODE_SHAKE256_256;
+    default:
+        g_assert_not_reached();
+        break;
+    }
 }
 
 static const MemoryRegionOps spartanup_pmc_sha3_ops = {
@@ -172,11 +274,6 @@ static const MemoryRegionOps spartanup_pmc_sha3_ops = {
         .max_access_size = 4,
     },
 };
-
-static void spartanup_pmc_sha3_realize(DeviceState *dev, Error **errp)
-{
-    /* Delete this if you don't need it */
-}
 
 static void spartanup_pmc_sha3_init(Object *obj)
 {
@@ -212,18 +309,19 @@ static const VMStateDescription vmstate_spartanup_pmc_sha3 = {
 
 static void spartanup_pmc_sha3_class_init(ObjectClass *klass, const void *data)
 {
-    ResettableClass *rc = RESETTABLE_CLASS(klass);
+    XlnxSha3CommonClass *cc = XLNX_SHA3_COMMON_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->realize = spartanup_pmc_sha3_realize;
+    cc->is_autopadding_enabled = spartanup_pmc_sha3_autopadding_enabled;
+    cc->end_of_packet_notifier = spartanup_pmc_sha3_handle_end_of_packet;
+    cc->write_digest = spartanup_pmc_sha3_write_digest;
+    cc->get_algorithm = spartanup_pmc_sha3_get_algorithm;
     dc->vmsd = &vmstate_spartanup_pmc_sha3;
-    rc->phases.enter = spartanup_pmc_sha3_reset_enter;
-    rc->phases.hold = spartanup_pmc_sha3_reset_hold;
 }
 
 static const TypeInfo spartanup_pmc_sha3_info = {
     .name          = TYPE_XILINX_SPARTANUP_PMC_SHA3,
-    .parent        = TYPE_SYS_BUS_DEVICE,
+    .parent        = TYPE_XLNX_SHA3_COMMON,
     .instance_size = sizeof(SPARTANUP_PMC_SHA3),
     .class_init    = spartanup_pmc_sha3_class_init,
     .instance_init = spartanup_pmc_sha3_init,
