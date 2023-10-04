@@ -40,6 +40,7 @@ enum XlnxSha3CommonAlg {
     SHA_MODE_384,
     SHA_MODE_512,
     SHA_MODE_SHAKE256,
+    SHA_MODE_SHAKE256_256,
 };
 typedef enum XlnxSha3CommonAlg XlnxSha3CommonAlg;
 

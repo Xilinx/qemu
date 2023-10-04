@@ -85,6 +85,7 @@ static size_t xlnx_sha3_common_block_size(XlnxSha3Common *s)
     switch (s->alg) {
     case SHA_MODE_256:
     case SHA_MODE_SHAKE256:
+    case SHA_MODE_SHAKE256_256:
         return 136;
     case SHA_MODE_384:
         return 104;
@@ -99,6 +100,7 @@ static size_t xlnx_sha3_common_digest_size(XlnxSha3Common *s)
 {
     switch (s->alg) {
     case SHA_MODE_256:
+    case SHA_MODE_SHAKE256_256:
         return 256 / 8;
     case SHA_MODE_384:
         return 384 / 8;
@@ -114,7 +116,13 @@ static size_t xlnx_sha3_common_digest_size(XlnxSha3Common *s)
 /* Returns padding suffix as described in FIPS202.  */
 static uint8_t xlnx_sha3_common_get_padding_suffix(XlnxSha3Common *s)
 {
-    return s->alg == SHA_MODE_SHAKE256 ? 0x1F : 0x06;
+    switch (s->alg) {
+    case SHA_MODE_SHAKE256:
+    case SHA_MODE_SHAKE256_256:
+        return 0x1f;
+    default:
+        return 0x06;
+    }
 }
 
 static void xlnx_sha3_common_log_guest_error(XlnxSha3Common *s,
@@ -141,6 +149,7 @@ void xlnx_sha3_common_start(XlnxSha3Common *s)
     case SHA_MODE_384:
     case SHA_MODE_512:
     case SHA_MODE_SHAKE256:
+    case SHA_MODE_SHAKE256_256:
         break;
     default:
         /*
