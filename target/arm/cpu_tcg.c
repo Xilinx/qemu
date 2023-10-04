@@ -921,6 +921,10 @@ static const ARMCPRegInfo cortexr52_cp_reginfo[] = {
       .opc2 = 2, .type = ARM_CP_OVERRIDE, .access = PL1_RW,
       .fieldoffset = offsetof(CPUARMState, cp15.c9_imp_memprotctlr),
       .resetvalue = 0 },
+    { .name = "IMP_PERIPHPREGIONR", .cp = 15, .opc1 = 0, .crn = 15, .crm = 0,
+      .opc2 = 0, .type = ARM_CP_OVERRIDE, .access = PL0_RW,
+      .fieldoffset = offsetof(CPUARMState, cp15.c15_imp_periphpregionr),
+      .resetvalue = 0 },
 };
 #endif
 
