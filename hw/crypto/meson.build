@@ -14,3 +14,7 @@ system_ss.add(when: 'CONFIG_XLNX_VERSAL2_ASU_AES', if_true: files(
 system_ss.add(when: 'CONFIG_XLNX_SHA3_COMMON', if_true: files(
   'xlnx-sha3-common.c',
 ))
+
+system_ss.add(when: 'CONFIG_XLNX_SPARTANUP_PMC_SHA3', if_true: files(
+  'xlnx-spartanup-pmc_sha3.c',
+))

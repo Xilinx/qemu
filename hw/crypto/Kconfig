@@ -5,6 +5,10 @@ config XLNX_VERSAL2_ASU_AES
 config XLNX_SHA3_COMMON
     bool
 
+config XLNX_SPARTANUP_PMC_SHA3
+    bool
+    select XLNX_SHA3_COMMON
+
 config XLNX_VERSAL2_ASU_SHA
     bool
     select XLNX_SHA3_COMMON

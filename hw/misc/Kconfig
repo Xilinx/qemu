@@ -173,7 +173,8 @@ config XLNX_VERSAL_PMC
 	bool
 
 config XLNX_SPARTANUP_PMC
-        bool
+    bool
+    select XLNX_SPARTANUP_PMC_SHA3
 
 config SI57X
 	bool
