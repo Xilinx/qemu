@@ -543,6 +543,8 @@ typedef struct CPUArchState {
             uint64_t clusterbusqos;
             uint64_t clusterthreadsidovr;
         } dsu;
+
+        uint32_t c15_imp_periphpregionr; /* LLP region config */
     } cp15;
 
     struct {
