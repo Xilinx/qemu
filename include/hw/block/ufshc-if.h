@@ -57,7 +57,7 @@ typedef enum {
 } CfgResultCode;
 
 typedef enum {
-    PWR_OK          = 0x0,
+    PWR_OKAY        = 0x0,
     PWR_LOCAL       = 0x01,
     PWR_REMOTE      = 0x02,
     PWR_BUSY        = 0x03,
