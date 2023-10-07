@@ -1717,7 +1717,7 @@ static void gem_init(Object *obj)
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_STRONG);
     object_property_add_link(obj, "mdio", TYPE_MDIO, (Object **)&s->mdio,
-                             qdev_prop_allow_set_link,
+                             object_property_allow_set_link,
                              OBJ_PROP_LINK_STRONG);
 }
 

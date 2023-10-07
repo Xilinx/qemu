@@ -533,7 +533,7 @@ static void rp_root_port_init(Object *obj)
     /* Remote port setup */
     object_property_add_link(obj, "rp-adaptor0", "remote-port",
                              (Object **)&s->rp,
-                             qdev_prop_allow_set_link,
+                             object_property_allow_set_link,
                              OBJ_PROP_LINK_STRONG);
 
     /* IO configuration setup */
