@@ -1049,7 +1049,7 @@ static ssize_t gem_receive(NetClientState *nc, const uint8_t *buf, size_t size)
     unsigned   rxbufsize, bytes_to_copy;
     unsigned   rxbuf_offset;
     uint8_t   *rxbuf_ptr;
-    bool first_desc = true;
+    bool first_desc = true, copied = false;
     int maf;
     int q = 0;
 
@@ -1102,6 +1102,18 @@ static ssize_t gem_receive(NetClientState *nc, const uint8_t *buf, size_t size)
         size = 60;
     }
 
+    if (FIELD_EX32(s->regs[R_NWCFG], NWCFG, RECV_CSUM_OFFLOAD_EN)) {
+        memcpy(s->rx_packet, buf, size);
+        net_checksum_calculate(s->rx_packet, size, CSUM_ALL);
+
+        if (memcmp(s->rx_packet, buf, size)) {
+            /* drop */
+            return size;
+        }
+
+        copied = true;
+    }
+
     /* Strip of FCS field ? (usually yes) */
     if (FIELD_EX32(s->regs[R_NWCFG], NWCFG, FCS_REMOVE)) {
         rxbuf_ptr = (void *)buf;
@@ -1116,7 +1128,10 @@ static ssize_t gem_receive(NetClientState *nc, const uint8_t *buf, size_t size)
          * We must try and calculate one.
          */
 
-        memcpy(s->rx_packet, buf, size);
+        if (!copied) {
+            memcpy(s->rx_packet, buf, size);
+        }
+
         memset(s->rx_packet + size, 0, MAX_FRAME_SIZE - size);
         rxbuf_ptr = s->rx_packet;
         crc_val = cpu_to_le32(crc32(0, s->rx_packet, MAX(size, 60)));
