@@ -31,6 +31,20 @@
 #include "hw/qdev-properties.h"
 #include "hw/mdio/mdio_slave.h"
 #include "hw/fdt_generic_util.h"
+#include "trace.h"
+
+const char *mdio_frame_op_str(const MDIOFrame *f)
+{
+    static const char *OP_STR[] = {
+        [MDIO_OP_READ] = "read",
+        [MDIO_OP_WRITE] = "write",
+        [MDIO_OP_ADDR] = "address",
+        [MDIO_OP_READ_POST_INCR] = "read post incr",
+    };
+
+    g_assert(f->op >= 0 && f->op < ARRAY_SIZE(OP_STR));
+    return OP_STR[f->op];
+}
 
 struct MDIOBus *mdio_init_bus(DeviceState *parent, const char *name)
 {
@@ -85,6 +99,14 @@ void mdio_transfer(MDIOBus *bus, MDIOFrame *frame)
     }
 
     sc->transfer(slave, frame);
+
+    if (frame->st == MDIO_ST_CLAUSE_22) {
+        trace_mdio_transfer_clause22(mdio_frame_op_str(frame), frame->addr0,
+                                     frame->addr1, frame->data);
+    } else {
+        trace_mdio_transfer_clause45(mdio_frame_op_str(frame), frame->addr0,
+                                     frame->addr1, frame->data);
+    }
 }
 
 static Property mdio_props[] = {

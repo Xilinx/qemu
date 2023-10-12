@@ -72,6 +72,8 @@ struct MDIOBus *mdio_init_bus(DeviceState *parent, const char *name);
 void mdio_set_slave_addr(MDIOSlave *s, uint8_t addr);
 void mdio_transfer(MDIOBus *s, MDIOFrame *frame);
 
+const char *mdio_frame_op_str(const MDIOFrame *f);
+
 static inline bool mdio_frame_is_read(const MDIOFrame *f)
 {
     return f->op >= MDIO_OP_READ;
