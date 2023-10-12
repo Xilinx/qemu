@@ -113,6 +113,28 @@ uint16_t mdio_recv(struct MDIOBus *bus, uint8_t addr, uint8_t reg)
     return -1;
 }
 
+void mdio_transfer(MDIOBus *bus, MDIOFrame *frame)
+{
+    MDIOSlave *slave;
+    MDIOSlaveClass *sc;
+
+    slave = mdio_find_slave(bus, frame->addr0);
+
+    if (!slave) {
+        frame->data = 0xffff;
+        return;
+    }
+
+    sc = MDIO_SLAVE_GET_CLASS(slave);
+
+    if (!sc->transfer) {
+        frame->data = 0xffff;
+        return;
+    }
+
+    sc->transfer(slave, frame);
+}
+
 static Property mdio_props[] = {
     DEFINE_PROP_UINT8("reg", MDIOSlave, addr, 0),
     DEFINE_PROP_END_OF_LIST(),
