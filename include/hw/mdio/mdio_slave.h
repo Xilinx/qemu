@@ -40,11 +40,6 @@ typedef struct MDIOSlave {
 typedef struct MDIOSlaveClass {
     DeviceClass parent_class;
 
-    /* Master to Slave */
-    int (*send)(MDIOSlave *s, uint8_t reg, uint16_t data);
-    /*slave to master */
-    uint16_t (*recv)(MDIOSlave *s, uint8_t reg);
-
     void (*transfer)(MDIOSlave *s, MDIOFrame *frame);
 } MDIOSlaveClass;
 

@@ -69,6 +69,13 @@ int mdio_send(struct MDIOBus *bus, uint8_t addr, uint8_t reg, uint16_t data)
 {
     MDIOSlave *slave = NULL;
     MDIOSlaveClass *sc;
+    MDIOFrame frame = {
+        .st = MDIO_ST_CLAUSE_22,
+        .op = MDIO_OP_WRITE,
+        .addr0 = addr,
+        .addr1 = reg,
+        .data = data
+    };
 
     if ((bus->cur_addr != addr) || !bus->cur_slave) {
         slave = mdio_find_slave(bus, addr);
@@ -83,9 +90,12 @@ int mdio_send(struct MDIOBus *bus, uint8_t addr, uint8_t reg, uint16_t data)
     }
 
     sc = MDIO_SLAVE_GET_CLASS(slave);
-    if (sc->send) {
-        return sc->send(slave, reg, data);
+
+    if (sc->transfer) {
+        sc->transfer(slave, &frame);
+        return 0;
     }
+
     return -1;
 }
 
@@ -93,6 +103,12 @@ uint16_t mdio_recv(struct MDIOBus *bus, uint8_t addr, uint8_t reg)
 {
     MDIOSlave *slave = NULL;
     MDIOSlaveClass *sc;
+    MDIOFrame frame = {
+        .st = MDIO_ST_CLAUSE_22,
+        .op = MDIO_OP_READ,
+        .addr0 = addr,
+        .addr1 = reg,
+    };
 
     if ((bus->cur_addr != addr) || !bus->cur_slave) {
         slave = mdio_find_slave(bus, addr);
@@ -107,9 +123,12 @@ uint16_t mdio_recv(struct MDIOBus *bus, uint8_t addr, uint8_t reg)
     }
 
     sc = MDIO_SLAVE_GET_CLASS(slave);
-    if (sc->recv) {
-        return sc->recv(slave, reg);
+
+    if (sc->transfer) {
+        sc->transfer(slave, &frame);
+        return frame.data;
     }
+
     return -1;
 }
 

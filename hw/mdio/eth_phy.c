@@ -180,8 +180,6 @@ static void eth_phy_class_init(ObjectClass *klass, void *data)
 {
     MDIOSlaveClass *sc = MDIO_SLAVE_CLASS(klass);
 
-    sc->send = eth_phy_write;
-    sc->recv = eth_phy_read;
     sc->transfer = eth_phy_mdio_transfer;
 }
 
