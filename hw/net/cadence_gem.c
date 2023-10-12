@@ -78,6 +78,7 @@ REG32(NWCTRL, 0x0) /* Network Control reg */
     FIELD(NWCTRL, SEL_MII_ON_RGMII, 28, 1)
     FIELD(NWCTRL, TWO_PT_FIVE_GIG, 29, 1)
     FIELD(NWCTRL, IFG_EATS_QAV_CREDIT, 30, 1)
+    FIELD(NWCTRL, ENABLE_HS_MAC, 31, 1)
 
 REG32(NWCFG, 0x4) /* Network Config reg */
     FIELD(NWCFG, SPEED, 0, 1)
@@ -348,8 +349,6 @@ REG32(TYPE2_COMPARE_0_WORD_1, 0x704)
     FIELD(TYPE2_COMPARE_0_WORD_1, COMPARE_VLAN_ID, 10, 1)
 
 /*****************************************/
-
-
 
 /* Marvell PHY definitions */
 #define BOARD_PHY_ADDRESS    0 /* PHY address we will emulate a device at */
