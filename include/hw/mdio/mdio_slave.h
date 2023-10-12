@@ -60,4 +60,9 @@ uint16_t mdio_recv(struct MDIOBus *s, uint8_t addr, uint8_t reg);
 
 void mdio_transfer(MDIOBus *s, MDIOFrame *frame);
 
+static inline bool mdio_frame_is_read(const MDIOFrame *f)
+{
+    return f->op >= MDIO_OP_READ;
+}
+
 #endif
