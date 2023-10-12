@@ -338,6 +338,17 @@ static void common_access(ExtPhy *s, MDIOFrame *frame, uint16_t addr)
     }
 }
 
+static inline void set_frame_phy_status(ExtPhy *s, MDIOFrame *frame)
+{
+    frame->phy_status.present = true;
+    frame->phy_status.local_loopback = FIELD_EX16(s->pma_pmd.ctrl1,
+                                                  PMA_PMD_CTRL1,
+                                                  LOCAL_LOOPBACK);
+    frame->phy_status.remote_loopback = FIELD_EX16(s->pma_pmd.ctrl1,
+                                                   PMA_PMD_CTRL1,
+                                                   REMOTE_LOOPBACK);
+}
+
 static void ext_phy_mdio_transfer(MDIOSlave *slave, MDIOFrame *frame)
 {
     ExtPhy *s = EXT_PHY(slave);
@@ -345,12 +356,12 @@ static void ext_phy_mdio_transfer(MDIOSlave *slave, MDIOFrame *frame)
     uint16_t addr;
 
     if (frame->st == MDIO_ST_CLAUSE_22) {
-        frame->data = 0xffff;
+        mdio_frame_invalid_dst(frame);
         return;
     }
 
     if (frame->addr1 >= EXT_PHY_NUM_MMD) {
-        frame->data = 0;
+        mdio_frame_invalid_dst(frame);
         return;
     }
 
@@ -359,9 +370,7 @@ static void ext_phy_mdio_transfer(MDIOSlave *slave, MDIOFrame *frame)
 
     if (!MMD_ACCESS_FN[mmd].read) {
         /* MMD not implemented */
-        if (mdio_frame_is_read(frame)) {
-            frame->data = 0;
-        }
+        mdio_frame_invalid_dst(frame);
         return;
     }
 
@@ -382,6 +391,8 @@ static void ext_phy_mdio_transfer(MDIOSlave *slave, MDIOFrame *frame)
     if (frame->op == MDIO_OP_READ_POST_INCR && addr < UINT16_MAX) {
         s->latched_addr[mmd]++;
     }
+
+    set_frame_phy_status(s, frame);
 }
 
 static void ext_phy_reset(DeviceState *dev)

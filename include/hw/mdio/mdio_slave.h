@@ -29,6 +29,21 @@ typedef struct MDIOFrame {
     uint8_t addr0; /* clause 22: PHY address, clause 45: port address */
     uint8_t addr1; /* clause 22: reg address, clause 45: device address */
     uint16_t data;
+
+    /*
+     * Returned by the PHY that handled the frame. As of today, the data stream
+     * does not go through the PHY. The MAC directly interfaces with the QEMU
+     * net API to send/receive Ethernet frames. As a result it needs a way to
+     * know the PHY link status to correctly take into account the PHY
+     * configuration (link status, loopback, ...). This could go away if the
+     * PHY was effectively placed on the data path between the MAC and the rest
+     * of the world.
+     */
+    struct {
+        bool present; /* A PHY succesfully handled the frame */
+        bool local_loopback;
+        bool remote_loopback;
+    } phy_status;
 } MDIOFrame;
 
 typedef struct MDIOSlave {
@@ -63,6 +78,12 @@ void mdio_transfer(MDIOBus *s, MDIOFrame *frame);
 static inline bool mdio_frame_is_read(const MDIOFrame *f)
 {
     return f->op >= MDIO_OP_READ;
+}
+
+static inline void mdio_frame_invalid_dst(MDIOFrame *f)
+{
+    f->data = 0xffff;
+    f->phy_status.present = false;
 }
 
 #endif

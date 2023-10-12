@@ -89,6 +89,7 @@
 #define M(X) (uint16_t) (1 << X)
 
 #define PHY_CTRL_RST            0x8000 /* PHY reset command */
+#define PHY_CTRL_LOOPBACK       0x4000
 #define PHY_CTRL_ANEG_RST       0x0200 /* Autonegotiation reset command */
 
 /* PHY Advertisement control and remote capability registers (same bitfields) */

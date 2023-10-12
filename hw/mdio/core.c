@@ -140,14 +140,14 @@ void mdio_transfer(MDIOBus *bus, MDIOFrame *frame)
     slave = mdio_find_slave(bus, frame->addr0);
 
     if (!slave) {
-        frame->data = 0xffff;
+        mdio_frame_invalid_dst(frame);
         return;
     }
 
     sc = MDIO_SLAVE_GET_CLASS(slave);
 
     if (!sc->transfer) {
-        frame->data = 0xffff;
+        mdio_frame_invalid_dst(frame);
         return;
     }
 

@@ -141,10 +141,20 @@ static int eth_phy_write(MDIOSlave *slave, uint8_t req, uint16_t data)
     return 0;
 }
 
+static inline void set_frame_phy_status(MDIOSlave *slave, MDIOFrame *frame)
+{
+    EthPhy *phy = ETHPHY(slave);
+
+    frame->phy_status.present = true;
+    frame->phy_status.local_loopback =
+        !!(phy->regs[PHY_CTRL] & PHY_CTRL_LOOPBACK);
+    frame->phy_status.remote_loopback = false;
+}
+
 static void eth_phy_mdio_transfer(MDIOSlave *slave, MDIOFrame *frame)
 {
     if (frame->st != MDIO_ST_CLAUSE_22) {
-        frame->data = 0xffff;
+        mdio_frame_invalid_dst(frame);
         return;
     }
 
@@ -159,8 +169,11 @@ static void eth_phy_mdio_transfer(MDIOSlave *slave, MDIOFrame *frame)
 
     default:
         /* Other operations are not supported by clause 22 */
-        frame->data = 0xffff;
+        mdio_frame_invalid_dst(frame);
+        return;
     }
+
+    set_frame_phy_status(slave, frame);
 }
 
 static void eth_phy_init(Object *Obj)
