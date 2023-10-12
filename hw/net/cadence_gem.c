@@ -1486,9 +1486,7 @@ static void gem_reset(DeviceState *d)
         s->sar_active[i] = false;
     }
 
-    if (s->mdio) {
-        phy_update_link(s);
-    } else {
+    if (!s->mdio) {
         gem_phy_reset(s);
     }
 
@@ -1750,7 +1748,11 @@ static void gem_set_link(NetClientState *nc)
     CadenceGEMState *s = qemu_get_nic_opaque(nc);
 
     DB_PRINT("\n");
-    phy_update_link(s);
+
+    if (!s->mdio) {
+        phy_update_link(s);
+    }
+
     gem_update_int_status(s);
 }
 
