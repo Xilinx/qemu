@@ -1532,27 +1532,6 @@ static void gem_phy_write(CadenceGEMState *s, unsigned reg_num, uint16_t val)
     s->phy_regs[reg_num] = val;
 }
 
-static void gem_phy_loopback_setup(CadenceGEMState *s, unsigned reg_num,
-                                   uint16_t val)
-{
-    assert(s->mdio);
-
-    switch (reg_num) {
-    case PHY_REG_CONTROL:
-        if (val & PHY_REG_CONTROL_RST) {
-            /* Phy reset */
-            s->phy_loop = 0;
-        }
-        if (val & PHY_REG_CONTROL_LOOP) {
-            DB_PRINT("PHY placed in loopback\n");
-            s->phy_loop = 1;
-        } else {
-            s->phy_loop = 0;
-        }
-        break;
-    }
-}
-
 static inline void gem_internal_phy_access(CadenceGEMState *s)
 {
     uint32_t val = s->regs[R_PHYMNTNC];
@@ -1603,7 +1582,9 @@ static inline void gem_mdio_access(CadenceGEMState *s)
                                          PHYMNTNC, DATA, frame.data);
     }
 
-    gem_phy_loopback_setup(s, frame.addr1, frame.data);
+    if (frame.phy_status.present) {
+        s->phy_loop = frame.phy_status.local_loopback;
+    }
 }
 
 static void gem_handle_phy_access(CadenceGEMState *s)
