@@ -35,10 +35,6 @@
 typedef struct MDIO {
     SysBusDevice parent_obj;
 
-    uint16_t (*read)(struct MDIO *bus, uint8_t addr, uint8_t req);
-    void (*write)(struct MDIO *bus, uint8_t addr, uint8_t req,
-                  uint16_t data);
-
     struct MDIOBus *bus;
 } MDIO;
 

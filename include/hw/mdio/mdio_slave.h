@@ -70,9 +70,6 @@ typedef struct MDIOBus {
 
 struct MDIOBus *mdio_init_bus(DeviceState *parent, const char *name);
 void mdio_set_slave_addr(MDIOSlave *s, uint8_t addr);
-int mdio_send(struct MDIOBus *s, uint8_t addr, uint8_t reg, uint16_t data);
-uint16_t mdio_recv(struct MDIOBus *s, uint8_t addr, uint8_t reg);
-
 void mdio_transfer(MDIOBus *s, MDIOFrame *frame);
 
 static inline bool mdio_frame_is_read(const MDIOFrame *f)

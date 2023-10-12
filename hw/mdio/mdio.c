@@ -48,30 +48,6 @@
         } \
     } while (0)
 
-static uint16_t mdio_read_req(struct MDIO *s, uint8_t addr, uint8_t reg)
-{
-    uint16_t val;
-
-    val = mdio_recv(s->bus, addr, reg);
-    DPRINT("slave %d reg %d<- 0x%x\n", addr, reg, val);
-    return val;
-}
-
-static void mdio_write_req(struct MDIO *s, uint8_t addr, uint8_t reg,
-                           uint16_t data)
-{
-     mdio_send(s->bus, addr, reg, data);
-     DPRINT("slave %d reg %d<- 0x%x\n", addr, reg, data);
-}
-
-static void mdio_init(Object *obj)
-{
-    MDIO *s = MDIO(obj);
-
-    s->read = mdio_read_req;
-    s->write = mdio_write_req;
-}
-
 static void mdio_realize(DeviceState *dev, Error **errp)
 {
     MDIO *s = MDIO(dev);
@@ -96,7 +72,6 @@ static const TypeInfo mdio_info = {
     .instance_size = sizeof(MDIO),
     .class_size = sizeof(MDIOClass),
     .class_init = mdio_class_init,
-    .instance_init = mdio_init,
 };
 
 static void mdio_register_types(void)
