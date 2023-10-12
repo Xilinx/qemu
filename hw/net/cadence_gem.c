@@ -37,6 +37,7 @@
 #include "net/checksum.h"
 #include "net/eth.h"
 #include "exec/address-spaces.h"
+#include "hw/mdio/mdio_slave.h"
 
 #define CADENCE_GEM_ERR_DEBUG 0
 #define DB_PRINT(...) do {\
