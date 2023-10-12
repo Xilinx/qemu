@@ -1553,37 +1553,19 @@ static void gem_phy_loopback_setup(CadenceGEMState *s, unsigned reg_num,
     }
 }
 
-static void gem_handle_phy_access(CadenceGEMState *s)
+static inline void gem_internal_phy_access(CadenceGEMState *s)
 {
     uint32_t val = s->regs[R_PHYMNTNC];
     uint32_t phy_addr, reg_num;
 
     phy_addr = FIELD_EX32(val, PHYMNTNC, PHY_ADDR);
-    reg_num = FIELD_EX32(val, PHYMNTNC, REG_ADDR);
-
-    if (s->mdio) {
-        switch (FIELD_EX32(val, PHYMNTNC, OP)) {
-        case MDIO_OP_READ:
-            s->regs[R_PHYMNTNC] = FIELD_DP32(val, PHYMNTNC, DATA,
-                s->mdio->read(s->mdio, phy_addr, reg_num));
-            break;
-        case MDIO_OP_WRITE:
-            gem_phy_loopback_setup(s, reg_num, val);
-            s->mdio->write(s->mdio, phy_addr, reg_num, val);
-            break;
-        default:
-            break;
-        }
-        return;
-    }
 
     if (phy_addr != s->phy_addr && phy_addr != 0) {
-        /* no phy at this address */
-        if (FIELD_EX32(val, PHYMNTNC, OP) == MDIO_OP_READ) {
-            s->regs[R_PHYMNTNC] = FIELD_DP32(val, PHYMNTNC, DATA, 0xffff);
-        }
+        s->regs[R_PHYMNTNC] = FIELD_DP32(val, PHYMNTNC, DATA, 0xffff);
         return;
     }
+
+    reg_num = FIELD_EX32(val, PHYMNTNC, REG_ADDR);
 
     switch (FIELD_EX32(val, PHYMNTNC, OP)) {
     case MDIO_OP_READ:
@@ -1597,6 +1579,42 @@ static void gem_handle_phy_access(CadenceGEMState *s)
 
     default:
         break; /* only clause 22 operations are supported */
+    }
+}
+
+static inline void gem_mdio_access(CadenceGEMState *s)
+{
+    uint32_t val = s->regs[R_PHYMNTNC];
+    uint32_t phy_addr, reg_num;
+    uint16_t data;
+
+    phy_addr = FIELD_EX32(val, PHYMNTNC, PHY_ADDR);
+    reg_num = FIELD_EX32(val, PHYMNTNC, REG_ADDR);
+
+    switch (FIELD_EX32(val, PHYMNTNC, OP)) {
+    case MDIO_OP_READ:
+        data = s->mdio->read(s->mdio, phy_addr, reg_num);
+        s->regs[R_PHYMNTNC] = FIELD_DP32(val, PHYMNTNC, DATA, data);
+        break;
+
+    case MDIO_OP_WRITE:
+        data = FIELD_EX32(val, PHYMNTNC, DATA);
+        s->mdio->write(s->mdio, phy_addr, reg_num, data);
+        break;
+
+    default:
+        return;
+    }
+
+    gem_phy_loopback_setup(s, reg_num, data);
+}
+
+static void gem_handle_phy_access(CadenceGEMState *s)
+{
+    if (s->mdio) {
+        gem_mdio_access(s);
+    } else {
+        gem_internal_phy_access(s);
     }
 }
 
