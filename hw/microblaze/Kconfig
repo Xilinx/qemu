@@ -21,4 +21,5 @@ config XLNX_ZYNQMP_PMU
     select XLNX_ZYNQMP
 
 config XLNX_ZYNQMP_CSU
-	bool
+    bool
+    select XLNX_BBRAM
