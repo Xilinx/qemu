@@ -87,6 +87,31 @@ static bool bbram_pgm_enabled(XlnxBBRam *s)
     return ARRAY_FIELD_EX32(s->regs, BBRAM_STATUS, PGM_MODE) != 0;
 }
 
+static void bbram_aes_sync(XlnxBBRam *s)
+{
+    uint8_t end;
+    uint8_t i;
+    enum {
+        U256_U8 = 256 / 8,
+        U256_U32 = 256 / 32,
+    };
+    union {
+        uint8_t u8[U256_U8];
+        uint32_t u32[U256_U32];
+    } key;
+
+    if (!s->aes) {
+        return;
+    }
+
+    end = U256_U32 - 1;
+    for (i = 0; i <= end; ++i) {
+        key.u32[end - i] = s->regs[R_BBRAM_0 + i];
+    }
+
+    zynqmp_aes_key_update(s->aes, key.u8, U256_U8);
+}
+
 static void bbram_bdrv_error(XlnxBBRam *s, int rc, gchar *detail)
 {
     Error *errp = NULL;
@@ -191,6 +216,7 @@ static void bbram_zeroize(XlnxBBRam *s)
     int nr = RAM_MAX - (s->bbram8_wo ? 0 : 4); /* only wo bbram8 is cleared */
 
     memset(&s->regs[R_BBRAM_0], 0, nr);
+    bbram_aes_sync(s);
     bbram_bdrv_zero(s);
 }
 
@@ -272,6 +298,7 @@ static void bbram_key_postw(RegisterInfo *reg, uint64_t val64)
     XlnxBBRam *s = XLNX_BBRAM(reg->opaque);
 
     bbram_bdrv_sync(s, reg->access->addr);
+    bbram_aes_sync(s);
 }
 
 static uint64_t bbram_wo_postr(RegisterInfo *reg, uint64_t val)
@@ -427,6 +454,7 @@ static void bbram_ctrl_reset(DeviceState *dev)
         }
     }
 
+    bbram_aes_sync(s);
     bbram_update_irq(s);
 }
 
@@ -539,6 +567,8 @@ static const VMStateDescription vmstate_bbram_ctrl = {
 static Property bbram_ctrl_props[] = {
     DEFINE_PROP("drive", XlnxBBRam, blk, bbram_prop_drive, BlockBackend *),
     DEFINE_PROP("erase", XlnxBBRam, ext_erase, bbram_prop_erase, bool),
+    DEFINE_PROP_LINK("zynqmp-aes-key-sink-bbram", XlnxBBRam, aes,
+                     TYPE_ZYNQMP_AES_KEY_SINK, ZynqMPAESKeySink *),
     DEFINE_PROP_UINT32("crc-zpads", XlnxBBRam, crc_zpads, 1),
     DEFINE_PROP_END_OF_LIST(),
 };

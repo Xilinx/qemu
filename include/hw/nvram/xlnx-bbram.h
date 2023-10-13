@@ -31,6 +31,7 @@
 #include "hw/irq.h"
 #include "hw/sysbus.h"
 #include "hw/register.h"
+#include "hw/zynqmp_aes_key.h"
 
 #define RMAX_XLNX_BBRAM ((0x4c / 4) + 1)
 
@@ -42,6 +43,7 @@ struct XlnxBBRam {
     qemu_irq irq_bbram;
 
     BlockBackend *blk;
+    ZynqMPAESKeySink *aes;
 
     uint32_t crc_zpads;
     bool bbram8_wo;
