@@ -220,9 +220,9 @@ static void bbram_pgm_mode_postw(RegisterInfo *reg, uint64_t val64)
 
     if (val == BBRAM_PGM_MAGIC) {
         bbram_zeroize(s);
-
-        /* The status bit is cleared only by POR */
         ARRAY_FIELD_DP32(s->regs, BBRAM_STATUS, PGM_MODE, 1);
+    } else {
+        ARRAY_FIELD_DP32(s->regs, BBRAM_STATUS, PGM_MODE, 0);
     }
 }
 
@@ -288,7 +288,7 @@ static uint64_t bbram_r8_postr(RegisterInfo *reg, uint64_t val)
 
 static bool bbram_r8_readonly(XlnxBBRam *s)
 {
-    return !bbram_pgm_enabled(s) || bbram_msw_locked(s);
+    return s->bbram8_wo ? !bbram_pgm_enabled(s) : bbram_msw_locked(s);
 }
 
 static uint64_t bbram_r8_prew(RegisterInfo *reg, uint64_t val64)
