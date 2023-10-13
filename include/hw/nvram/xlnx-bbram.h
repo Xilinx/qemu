@@ -46,6 +46,7 @@ struct XlnxBBRam {
     uint32_t crc_zpads;
     bool bbram8_wo;
     bool blk_ro;
+    bool ext_erase;
 
     uint32_t regs[RMAX_XLNX_BBRAM];
     RegisterInfo regs_info[RMAX_XLNX_BBRAM];
