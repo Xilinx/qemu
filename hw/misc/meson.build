@@ -42,7 +42,6 @@ softmmu_ss.add(when: 'CONFIG_XLNX_ZYNQMP_CSU', if_true: files(
   'xlnx-aes-devkey.c',
   'xlnx-zynqmp-pufhd.c',
   'xlnx-zynqmp-pufop.c',
-  'xlnx-bbram-ctrl.c'
 ))
 
 if gcrypt.found()
