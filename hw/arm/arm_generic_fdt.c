@@ -345,6 +345,10 @@ static memory_info init_memory(void *fdt, ram_addr_t ram_size, bool zynq_7000)
                     continue;
                 }
 
+                mem_area = MEMORY_REGION(
+                                    object_resolve_path(mem_node_path, NULL));
+                vmstate_register_ram(mem_area, NULL);
+
                 DB_PRINT(0, "Found top level memory region %s\n",
                          mem_node_path);
                 size_cells = qemu_fdt_getprop_cell(fdt, mem_node_path,
@@ -392,7 +396,7 @@ static memory_info init_memory(void *fdt, ram_addr_t ram_size, bool zynq_7000)
                     MemoryRegion *ram_region = g_new(MemoryRegion, 1);
                     const char *region_name;
                     uint64_t region_start, region_size;
-                    int container_offset, container_phandle, ram_prop;
+                    int container_offset, container_phandle;
 
                     fdt_get_path(fdt, mem_offset, mem_node_path,
                                  DT_PATH_LENGTH);
@@ -432,12 +436,8 @@ static memory_info init_memory(void *fdt, ram_addr_t ram_size, bool zynq_7000)
                     container = MEMORY_REGION(
                                         object_resolve_path(node_path, NULL));
 
-                    ram_prop = qemu_fdt_getprop_cell(fdt, mem_node_path,
-                                                     "qemu,ram", 0,
-                                                     0, NULL);
-                    memory_region_init(ram_region, NULL, region_name,
-                                           region_size);
-                    object_property_set_int(OBJECT(ram_region), "ram", ram_prop, &error_abort);
+                    memory_region_init_ram(ram_region, NULL, region_name,
+                                           region_size, &error_abort);
                     memory_region_add_subregion(container, region_start,
                                                 ram_region);
                 }
