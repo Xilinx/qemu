@@ -326,7 +326,9 @@ static void efuse_realize(DeviceState *dev, Error **errp)
     unsigned int nr_bytes;
     const char *prefix = object_get_canonical_path(OBJECT(dev));
 
-    dinfo = drive_get_next(IF_PFLASH);
+    /* Temporary hack until migration to -blockdev */
+    dinfo = drive_get_by_index(IF_PFLASH,
+                               s->efuse_size >= 8192 ? 1 : 3);
     blk = dinfo ? blk_by_legacy_dinfo(dinfo) : NULL;
 
     nr_bytes = ROUND_UP((s->efuse_nr * s->efuse_size) / 8, 4);
