@@ -46,6 +46,10 @@ OBJECT_DECLARE_TYPE(TRNG, TRNGClass, XILINX_TRNG)
 
 OBJECT_DECLARE_SIMPLE_TYPE(pmcTRNG, VERSAL_TRNG)
 
+#define TYPE_ASU_TRNG "xlnx-asu-trng"
+
+OBJECT_DECLARE_SIMPLE_TYPE(asuTRNG, ASU_TRNG)
+
 /*
  * TRNG1-8-MP32 regsisters
  */
@@ -132,9 +136,46 @@ REG32(TRNG_IDR, 0xec)
     FIELD(TRNG_IDR, CORE_INT, 0, 1)
 REG32(SLV_ERR_CTRL, 0xf0)
     FIELD(SLV_ERR_CTRL, ENABLE, 0, 1)
+/*
+ * ASU registers
+ */
+REG32(ASU_INTR_STS, 0x0)
+    FIELD(ASU_INTR_STS, TRNG_FULL, 16, 1)
+    FIELD(ASU_INTR_STS, TRNG_AC, 8, 1)
+    FIELD(ASU_INTR_STS, TRNG_INT, 0, 1)
+REG32(ASU_INTR_EN, 0x4)
+    FIELD(ASU_INTR_EN, TRNG_FULL, 16, 1)
+    FIELD(ASU_INTR_EN, TRNG_AC, 8, 1)
+    FIELD(ASU_INTR_EN, TRNG_INT, 0, 1)
+REG32(ASU_INTR_DIS, 0x8)
+    FIELD(ASU_INTR_DIS, TRNG_FULL, 16, 1)
+    FIELD(ASU_INTR_DIS, TRNG_AC, 8, 1)
+    FIELD(ASU_INTR_DIS, TRNG_INT, 0, 1)
+REG32(ASU_INTR_MASK, 0xc)
+    FIELD(ASU_INTR_MASK, TRNG_FULL, 16, 1)
+    FIELD(ASU_INTR_MASK, TRNG_AC, 8, 1)
+    FIELD(ASU_INTR_MASK, TRNG_INT, 0, 1)
+REG32(ASU_INTR_TRIG, 0x10)
+    FIELD(ASU_INTR_TRIG, TRNG_FULL, 16, 1)
+    FIELD(ASU_INTR_TRIG, TRNG_AC, 8, 1)
+    FIELD(ASU_INTR_TRIG, TRNG_INT, 0, 1)
+REG32(ASU_ECO, 0x14)
+REG32(ASU_NRN_AVAIL, 0x18)
+    FIELD(ASU_NRN_AVAIL, NUM, 0, 5)
+REG32(ASU_RESET, 0x1c)
+    FIELD(ASU_RESET, VAL, 0, 1)
+REG32(ASU_OSC_EN, 0x20)
+    FIELD(ASU_OSC_EN, VAL, 0, 1)
+REG32(ASU_AUTOPROC, 0x28)
+    FIELD(ASU_AUTOPROC, CODE, 0, 1)
+REG32(ASU_TRNG_SLV_ERR_CTRL, 0x30)
+    FIELD(ASU_TRNG_SLV_ERR_CTRL, ENABLE, 0, 1)
+REG32(ASU_TRNG_XRESP, 0x34)
+    FIELD(ASU_TRNG_XRESP, XRESP, 0, 2)
 
 #define R_TRNG_MAX (R_CORE_OUTPUT + 1)
 #define R_PMC_TRNG_MAX ((R_SLV_ERR_CTRL - R_RESET) + 1)
+#define R_ASU_TRNG_MAX (R_ASU_TRNG_XRESP + 1)
 #define R_MAX (0x100 / 4)
 
 typedef struct TRNG {
@@ -165,6 +206,13 @@ typedef struct pmcTRNG {
 
     RegisterInfo pmc_regs_info[R_PMC_TRNG_MAX];
 } pmcTRNG;
+
+typedef struct asuTRNG {
+    TRNG parent;
+
+    uint32_t regs[R_ASU_TRNG_MAX];
+    RegisterInfo asu_regs_info[R_ASU_TRNG_MAX];
+} asuTRNG;
 
 static void trng_imr_update_irq(TRNG *s)
 {
@@ -417,6 +465,83 @@ static RegisterAccessInfo pmc_trng_regs_info[] = {
     }
 };
 
+static void intr_update_irq(asuTRNG *s)
+{
+    TRNG *p = XILINX_TRNG(s);
+    bool pending = s->regs[R_ASU_INTR_STS] & ~s->regs[R_ASU_INTR_MASK];
+    qemu_set_irq(p->irq_int_imr, pending);
+}
+
+static void intr_sts_postw(RegisterInfo *reg, uint64_t val64)
+{
+    asuTRNG *s = ASU_TRNG(reg->opaque);
+    intr_update_irq(s);
+}
+
+static uint64_t intr_en_prew(RegisterInfo *reg, uint64_t val64)
+{
+    asuTRNG *s = ASU_TRNG(reg->opaque);
+    uint32_t val = val64;
+
+    s->regs[R_ASU_INTR_MASK] &= ~val;
+    intr_update_irq(s);
+    return 0;
+}
+
+static uint64_t intr_dis_prew(RegisterInfo *reg, uint64_t val64)
+{
+    asuTRNG *s = ASU_TRNG(reg->opaque);
+    uint32_t val = val64;
+
+    s->regs[R_ASU_INTR_MASK] |= val;
+    intr_update_irq(s);
+    return 0;
+}
+
+static uint64_t intr_trig_prew(RegisterInfo *reg, uint64_t val64)
+{
+    asuTRNG *s = ASU_TRNG(reg->opaque);
+    uint32_t val = val64;
+
+    s->regs[R_ASU_INTR_STS] |= val;
+    intr_update_irq(s);
+    return 0;
+}
+
+static RegisterAccessInfo asu_trng_regs_info[] = {
+    {   .name = "ASU_INTR_STS",  .addr = A_ASU_INTR_STS,
+        .rsvd = 0xfffefefe,
+        .w1c = 0x10101,
+        .post_write = intr_sts_postw,
+    },{ .name = "ASU_INTR_EN",  .addr = A_ASU_INTR_EN,
+        .rsvd = 0xfffefefe,
+        .ro = 0xfffefefe,
+        .pre_write = intr_en_prew,
+    },{ .name = "ASU_INTR_DIS",  .addr = A_ASU_INTR_DIS,
+        .rsvd = 0xfffefefe,
+        .ro = 0xfffefefe,
+        .pre_write = intr_dis_prew,
+    },{ .name = "ASU_INTR_MASK",  .addr = A_ASU_INTR_MASK,
+        .rsvd = 0xfffefefe,
+        .ro = 0xffffffff,
+    },{ .name = "ASU_INTR_TRIG",  .addr = A_ASU_INTR_TRIG,
+        .rsvd = 0xfffefefe,
+        .ro = 0xfffefefe,
+        .pre_write = intr_trig_prew,
+    },{ .name = "ASU_ECO",  .addr = A_ASU_ECO,
+    },{ .name = "ASU_NRN_AVAIL",  .addr = A_ASU_NRN_AVAIL,
+        .ro = 0x1f,
+    },{ .name = "ASU_RESET",  .addr = A_ASU_RESET,
+        .reset = 0x1,
+    },{ .name = "ASU_OSC_EN",  .addr = A_ASU_OSC_EN,
+    },{ .name = "ASU_AUTOPROC",  .addr = A_ASU_AUTOPROC,
+    },{ .name = "ASU_TRNG_SLV_ERR_CTRL",  .addr = A_ASU_TRNG_SLV_ERR_CTRL,
+        .reset = 0x1,
+    },{ .name = "ASU_TRNG_XRESP",  .addr = A_ASU_TRNG_XRESP,
+        .reset = 0x2,
+    }
+};
+
 static uint64_t pmc_trng_read(void *opaque, hwaddr addr,
                               unsigned size)
 {
@@ -492,6 +617,23 @@ static void versal_trng_init(Object *obj)
     memory_region_add_subregion(&p->iomem, A_RESET, &reg_array->mem);
 }
 
+static void asu_trng_init(Object *obj)
+{
+    TRNG *p = XILINX_TRNG(obj);
+    asuTRNG *s = ASU_TRNG(obj);
+    RegisterInfoArray *reg_array;
+
+    reg_array =
+        register_init_block32(DEVICE(obj), asu_trng_regs_info,
+                              ARRAY_SIZE(asu_trng_regs_info),
+                              s->asu_regs_info, s->regs,
+                              &trng_ops,
+                              XILINX_TRNG_ERR_DEBUG,
+                              (R_ASU_TRNG_MAX) * 4);
+    memory_region_add_subregion(&p->iomem, 0, &reg_array->mem);
+
+}
+
 static const VMStateDescription vmstate_trng = {
     .name = TYPE_XILINX_TRNG,
     .version_id = 1,
@@ -514,6 +656,14 @@ static void trng_class_init(ObjectClass *klass, void *data)
     tc->trng_offset = 0;
 }
 
+static void asu_trng_class_init(ObjectClass *klass, void *data)
+{
+    TRNGClass *tc = XILINX_TRNG_CLASS(klass);
+
+    trng_class_init(klass, data);
+    tc->trng_offset = 0x1000;
+}
+
 static const TypeInfo trng_info = {
     .name          = TYPE_XILINX_TRNG,
     .parent        = TYPE_SYS_BUS_DEVICE,
@@ -530,11 +680,19 @@ static const TypeInfo versal_trng_info = {
     .instance_init = versal_trng_init,
 };
 
+static const TypeInfo asu_trng_info = {
+    .name           = TYPE_ASU_TRNG,
+    .parent         = TYPE_XILINX_TRNG,
+    .instance_size  = sizeof(asuTRNG),
+    .instance_init  = asu_trng_init,
+    .class_init     = asu_trng_class_init,
+};
 
 static void trng_register_types(void)
 {
     type_register_static(&trng_info);
     type_register_static(&versal_trng_info);
+    type_register_static(&asu_trng_info);
 }
 
 type_init(trng_register_types)
