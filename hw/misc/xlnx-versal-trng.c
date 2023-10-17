@@ -316,7 +316,7 @@ static inline void trng_regen(TRNG *s)
     }
 
     s->count = ARRAY_SIZE(s->out);
-    ARRAY_FIELD_DP32(s->regs, STATUS, QCNT, s->count);
+    ARRAY_FIELD_DP32(s->regs, STATUS, QCNT, MIN(4, s->count));
 }
 
 static void trng_ctrl_postw(RegisterInfo *reg, uint64_t val64)
@@ -384,7 +384,7 @@ static uint64_t trng_core_out_postr(RegisterInfo *reg, uint64_t val)
     /* Shift.  */
     memmove(&s->out[0], &s->out[1], sizeof s->out - sizeof s->out[0]);
     s->count--;
-    ARRAY_FIELD_DP32(s->regs, STATUS, QCNT, s->count);
+    ARRAY_FIELD_DP32(s->regs, STATUS, QCNT, MIN(4, s->count));
 
     /* Automatic mode regenerates new entropy when half the output reg
      * is empty.  */
