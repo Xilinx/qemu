@@ -38,11 +38,17 @@
 #define XILINX_TRNG_ERR_DEBUG 0
 #endif
 
-#define TYPE_XILINX_TRNG "xlnx.versal-trng"
+#define TYPE_XILINX_TRNG "xlnx.trng"
 
-#define XILINX_TRNG(obj) \
-     OBJECT_CHECK(TRNG, (obj), TYPE_XILINX_TRNG)
+OBJECT_DECLARE_TYPE(TRNG, TRNGClass, XILINX_TRNG)
 
+#define TYPE_VERSAL_TRNG "xlnx.versal-trng"
+
+OBJECT_DECLARE_SIMPLE_TYPE(pmcTRNG, VERSAL_TRNG)
+
+/*
+ * TRNG1-8-MP32 regsisters
+ */
 REG32(INT_CTRL, 0x0)
     FIELD(INT_CTRL, CERTF_RST, 5, 1)
     FIELD(INT_CTRL, DTF_RST, 4, 1)
@@ -103,6 +109,11 @@ REG32(PER_STRNG_9, 0xa4)
 REG32(PER_STRNG_10, 0xa8)
 REG32(PER_STRNG_11, 0xac)
 REG32(CORE_OUTPUT, 0xc0)
+/*
+ * End of TRNG1-8-MP32 regs
+ * ***
+ * PMC specific registers
+ */
 REG32(RESET, 0xd0)
     FIELD(RESET, VAL, 0, 1)
 REG32(OSC_EN, 0xd4)
@@ -122,7 +133,9 @@ REG32(TRNG_IDR, 0xec)
 REG32(SLV_ERR_CTRL, 0xf0)
     FIELD(SLV_ERR_CTRL, ENABLE, 0, 1)
 
-#define R_MAX (R_SLV_ERR_CTRL + 1)
+#define R_TRNG_MAX (R_CORE_OUTPUT + 1)
+#define R_PMC_TRNG_MAX ((R_SLV_ERR_CTRL - R_RESET) + 1)
+#define R_MAX (0x100 / 4)
 
 typedef struct TRNG {
     SysBusDevice parent_obj;
@@ -138,8 +151,20 @@ typedef struct TRNG {
     uint64_t tst_seed[2];
 
     uint32_t regs[R_MAX];
-    RegisterInfo regs_info[R_MAX];
+    RegisterInfo regs_info[R_TRNG_MAX];
 } TRNG;
+
+typedef struct TRNGClass {
+    SysBusDeviceClass parent_class;
+
+    uint32_t trng_offset;
+} TRNGClass;
+
+typedef struct pmcTRNG {
+    TRNG parent;
+
+    RegisterInfo pmc_regs_info[R_PMC_TRNG_MAX];
+} pmcTRNG;
 
 static void trng_imr_update_irq(TRNG *s)
 {
@@ -371,7 +396,11 @@ static RegisterAccessInfo trng_regs_info[] = {
     },{ .name = "CORE_OUTPUT",  .addr = A_CORE_OUTPUT,
         .ro = 0xffffffff,
         .post_read = trng_core_out_postr,
-    },{ .name = "RESET",  .addr = A_RESET,
+    },
+};
+
+static RegisterAccessInfo pmc_trng_regs_info[] = {
+    { .name = "RESET",  .addr = A_RESET,
         .reset = 0x1,
     },{ .name = "OSC_EN",  .addr = A_OSC_EN,
     },{ .name = "TRNG_ISR",  .addr = A_TRNG_ISR,
@@ -388,9 +417,31 @@ static RegisterAccessInfo trng_regs_info[] = {
     }
 };
 
+static uint64_t pmc_trng_read(void *opaque, hwaddr addr,
+                              unsigned size)
+{
+    return register_read_memory(opaque, addr + A_RESET, size);
+}
+
+static void pmc_trng_write(void *opaque, hwaddr addr,
+                            uint64_t value, unsigned size)
+{
+    register_write_memory(opaque, addr + A_RESET, value, size);
+}
+
 static const MemoryRegionOps trng_ops = {
     .read = register_read_memory,
     .write = register_write_memory,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = {
+        .min_access_size = 4,
+        .max_access_size = 4,
+    },
+};
+
+static const MemoryRegionOps pmc_trng_imp_ops = {
+    .read = pmc_trng_read,
+    .write = pmc_trng_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
@@ -408,8 +459,9 @@ static void trng_init(Object *obj)
     TRNG *s = XILINX_TRNG(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
     RegisterInfoArray *reg_array;
+    TRNGClass *tc = XILINX_TRNG_GET_CLASS(obj);
 
-    memory_region_init(&s->iomem, obj, TYPE_XILINX_TRNG, R_MAX * 4);
+    memory_region_init(&s->iomem, obj, TYPE_XILINX_TRNG, 0x10000);
 
     reg_array =
         register_init_block32(DEVICE(obj), trng_regs_info,
@@ -417,10 +469,27 @@ static void trng_init(Object *obj)
                               s->regs_info, s->regs,
                               &trng_ops,
                               XILINX_TRNG_ERR_DEBUG,
-                              R_MAX * 4);
-    memory_region_add_subregion(&s->iomem, 0x0, &reg_array->mem);
+                              R_TRNG_MAX * 4);
+    memory_region_add_subregion(&s->iomem, tc->trng_offset, &reg_array->mem);
+
     sysbus_init_mmio(sbd, &s->iomem);
     sysbus_init_irq(sbd, &s->irq_int_imr);
+}
+
+static void versal_trng_init(Object *obj)
+{
+    TRNG *p = XILINX_TRNG(obj);
+    pmcTRNG *s = VERSAL_TRNG(obj);
+    RegisterInfoArray *reg_array;
+
+    reg_array =
+        register_init_block32(DEVICE(obj), pmc_trng_regs_info,
+                              ARRAY_SIZE(pmc_trng_regs_info),
+                              s->pmc_regs_info, &p->regs[R_RESET],
+                              &pmc_trng_imp_ops,
+                              XILINX_TRNG_ERR_DEBUG,
+                              (R_PMC_TRNG_MAX) * 4);
+    memory_region_add_subregion(&p->iomem, A_RESET, &reg_array->mem);
 }
 
 static const VMStateDescription vmstate_trng = {
@@ -437,23 +506,35 @@ static const VMStateDescription vmstate_trng = {
 static void trng_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    TRNGClass *tc = XILINX_TRNG_CLASS(klass);
 
     dc->reset = trng_reset;
     dc->realize = trng_realize;
     dc->vmsd = &vmstate_trng;
+    tc->trng_offset = 0;
 }
 
 static const TypeInfo trng_info = {
     .name          = TYPE_XILINX_TRNG,
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(TRNG),
+    .class_size    = sizeof(TRNGClass),
     .class_init    = trng_class_init,
     .instance_init = trng_init,
 };
 
+static const TypeInfo versal_trng_info = {
+    .name          = TYPE_VERSAL_TRNG,
+    .parent        = TYPE_XILINX_TRNG,
+    .instance_size = sizeof(pmcTRNG),
+    .instance_init = versal_trng_init,
+};
+
+
 static void trng_register_types(void)
 {
     type_register_static(&trng_info);
+    type_register_static(&versal_trng_info);
 }
 
 type_init(trng_register_types)
