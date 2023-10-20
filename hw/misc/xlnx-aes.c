@@ -408,7 +408,7 @@ int xlnx_aes_push_data(XlnxAES *s,
     }
 
     /* 'last_word' is honored only for PAYLOAD phase */
-    if (last_word && s->state == PAYLOAD) {
+    if (last_word && ((s->state == AAD && is_aad) || s->state == PAYLOAD)) {
         if (s->encrypt) {
             /* Emit tag on end-of-message */
             gcm_emit_tag(&s->gcm_ctx, outbuf + opos, 16);
