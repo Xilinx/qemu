@@ -340,10 +340,6 @@ static void zynqmp_efuse_sync_cache(XlnxZynqMPEFuse *s, unsigned int bit)
 
     cache_sync_u32(s, R_DNA_0, EFUSE_DNA_START, EFUSE_DNA_END, bit);
 
-    if (bit < EFUSE_AES_START) {
-        return;
-    }
-
     cache_sync_u32(s, R_ROM_RSVD, EFUSE_ROM_START, EFUSE_ROM_END, bit);
     cache_sync_u32(s, R_IPDISABLE, EFUSE_IPDIS_START, EFUSE_IPDIS_END, bit);
     cache_sync_u32(s, R_USER_0, EFUSE_USER_START, EFUSE_USER_END, bit);
