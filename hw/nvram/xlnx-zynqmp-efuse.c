@@ -255,6 +255,17 @@ REG32(PPK1_11, 0x10fc)
 #define EFUSE_PPK1_START      BIT_POS(52, 0)
 #define EFUSE_PPK1_END        BIT_POS(63, 31)
 
+/*
+ * PUF info, see
+ *  https://github.com/Xilinx/embeddedsw/blob/xlnx_rel_v2023.1/lib/sw_services/xilskey/src/include/xilskey_eps_zynqmp.h#L103
+ *  https://github.com/Xilinx/embeddedsw/blob/xlnx_rel_v2023.1/lib/sw_services/xilskey/src/include/xilskey_eps_zynqmp_puf.h
+ */
+#define EFUSE_PUF_AUX           BIT_POS(21, 0)
+#define EFUSE_PUF_SYN_INVALID   BIT_POS(21, 29)
+#define EFUSE_PUF_REGIS_DISABLE BIT_POS(21, 31)
+#define EFUSE_PUF_HD_START      BIT_POS(64, 0)
+#define EFUSE_PUF_HD_BYTES      (140)
+
 #define EFUSE_CACHE_FLD(s, reg, field) \
     ARRAY_FIELD_DP32((s)->regs, reg, field, \
                      (xlnx_efuse_get_row((s->efuse), EFUSE_ ## field) \
@@ -725,7 +736,7 @@ static RegisterAccessInfo zynqmp_efuse_regs_info[] = {
         .ro = 0xffffffff,
     },{ .name = "PPK1_11",  .addr = A_PPK1_11,
         .ro = 0xffffffff,
-    }
+    },
 };
 
 static void zynqmp_efuse_reg_write(void *opaque, hwaddr addr,
@@ -795,6 +806,40 @@ static void zynqmp_efuse_reset(DeviceState *dev)
     zynqmp_efuse_update_irq(s);
 }
 
+static XlnxEFusePufData *zynqmp_efuse_get_puf(DeviceState *dev,
+                                              uint16_t pufsyn_max)
+{
+    XlnxZynqMPEFuse *s = XLNX_ZYNQMP_EFUSE(dev);
+    unsigned pd_max = EFUSE_PUF_HD_BYTES;
+    unsigned pd_b0 = EFUSE_PUF_HD_START;
+    unsigned pd_nr, nr;
+    XlnxEFusePufData *pd;
+
+    /*
+     * Check to make sure PUF helper-data in eFUSE has not been
+     * marked as invalidated.
+     */
+    if (xlnx_efuse_get_bit(s->efuse, EFUSE_PUF_SYN_INVALID)) {
+        pd_max = 0;
+    } else if (pd_max > pufsyn_max && pufsyn_max) {
+        pd_max = pufsyn_max;
+    }
+
+    /* Allocate space for multiple of rows to simplify data fetch */
+    pd_nr = DIV_ROUND_UP(pd_max, 4);
+    pd = g_malloc0(offsetof(XlnxEFusePufData, pufsyn) + 4 * pd_nr);
+
+    pd->puf_dis = xlnx_efuse_get_bit(s->efuse, EFUSE_PUF_REGIS_DISABLE);
+    pd->puf_aux = xlnx_efuse_get_row(s->efuse, EFUSE_PUF_AUX) & 0x00FFFFFF;
+    pd->puf_chash = xlnx_efuse_get_row(s->efuse, EFUSE_PUF_CHASH_START);
+    pd->pufsyn_len = pd_max;
+    for (nr = 0; nr < pd_nr; nr++) {
+        pd->pufsyn[nr] = xlnx_efuse_get_row(s->efuse, (pd_b0 + nr * 32));
+    }
+
+    return pd;
+}
+
 static void zynqmp_efuse_realize(DeviceState *dev, Error **errp)
 {
     XlnxZynqMPEFuse *s = XLNX_ZYNQMP_EFUSE(dev);
@@ -807,7 +852,9 @@ static void zynqmp_efuse_realize(DeviceState *dev, Error **errp)
         return;
     }
 
+    /* Bind methods */
     s->efuse->dev = dev;
+    s->efuse->get_puf = zynqmp_efuse_get_puf;
 }
 
 static void zynqmp_efuse_init(Object *obj)
