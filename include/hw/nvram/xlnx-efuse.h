@@ -35,8 +35,10 @@ OBJECT_DECLARE_SIMPLE_TYPE(XlnxEFuse, XLNX_EFUSE);
 
 typedef struct XlnxEFusePufData {
     uint32_t puf_dis:1;
-    uint16_t pufsyn_len;
-    uint8_t  pufsyn[0];
+    uint32_t puf_aux;
+    uint32_t puf_chash;
+    uint16_t pufsyn_len; /* 0: efuse marked SYN block as invalid */
+    uint32_t pufsyn[0];
 } XlnxEFusePufData;
 
 typedef struct XlnxEFuseSysmonData {
@@ -169,7 +171,7 @@ static inline uint32_t xlnx_efuse_get_u32(XlnxEFuse *s,
 /**
  * xlnx_efuse_get_puf:
  * @s: the efuse object
- * @pufsyn_max: the upper limit on amount of puf-syn data returned;
+ * @pufsyn_max: the upper limit on bytes of puf-syn data returned;
  *              if 0, all stored puf-syn data are returned.
  *
  * Return: pointer to a XlnxEFusePufData object, where .pufsyn_len
