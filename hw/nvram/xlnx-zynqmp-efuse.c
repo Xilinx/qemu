@@ -310,6 +310,20 @@ static void cache_sync_u32(XlnxZynqMPEFuse *s, unsigned int r_start,
  */
 static void zynqmp_efuse_sync_cache(XlnxZynqMPEFuse *s, unsigned int bit)
 {
+    if (s->aes_key_sink) {
+        union {
+            uint8_t u8[256 / 8];
+            uint32_t u32[256 / 32];
+        } key;
+        int i;
+
+        for (i = 0; i < 8; i++) {
+            key.u32[7 - i] = xlnx_efuse_get_row(s->efuse,
+                                                (EFUSE_AES_START + i * 32));
+        }
+        zynqmp_aes_key_update(s->aes_key_sink, key.u8, sizeof(key.u8));
+    }
+
     EFUSE_CACHE_BIT(s, SEC_CTRL, AES_RDLK);
     EFUSE_CACHE_BIT(s, SEC_CTRL, AES_WRLK);
     EFUSE_CACHE_BIT(s, SEC_CTRL, ENC_ONLY);
@@ -828,6 +842,9 @@ static Property zynqmp_efuse_props[] = {
     DEFINE_PROP_LINK("efuse",
                      XlnxZynqMPEFuse, efuse,
                      TYPE_XLNX_EFUSE, XlnxEFuse *),
+    DEFINE_PROP_LINK("zynqmp-aes-key-sink-efuses",
+                     XlnxZynqMPEFuse, aes_key_sink,
+                     TYPE_ZYNQMP_AES_KEY_SINK, ZynqMPAESKeySink *),
 
     DEFINE_PROP_END_OF_LIST(),
 };
