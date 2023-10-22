@@ -23,3 +23,4 @@ config XLNX_ZYNQMP_PMU
 config XLNX_ZYNQMP_CSU
     bool
     select XLNX_BBRAM
+    select XLNX_EFUSE_ZYNQMP
