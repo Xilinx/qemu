@@ -187,6 +187,7 @@ REG32(EFUSE_TEST_CTRL, 0x100)
 #define EFUSE_RD_BLOCKED_END        EFUSE_USER_KEY_1_END
 
 #define EFUSE_GLITCH_DET_WR_LK      BIT_POS(4, 31)
+#define EFUSE_GD_ROM_MONITOR_EN     BIT_POS(40, 29)
 #define EFUSE_PPK0_WR_LK            BIT_POS(43, 6)
 #define EFUSE_PPK1_WR_LK            BIT_POS(43, 7)
 #define EFUSE_PPK2_WR_LK            BIT_POS(43, 8)
@@ -199,6 +200,14 @@ REG32(EFUSE_TEST_CTRL, 0x100)
 
 #define EFUSE_PGM_LOCKED_START      BIT_POS(44, 0)
 #define EFUSE_PGM_LOCKED_END        BIT_POS(51, 31)
+
+#define EFUSE_SYSMON_RDATA0_START   BIT_POS(59, 0)
+#define EFUSE_SYSMON_RDATA1_START   BIT_POS(60, 0)
+
+#define EFUSE_PUF_AUX               BIT_POS(41, 0)
+#define EFUSE_PUF_CHASH             BIT_POS(42, 0)
+#define EFUSE_PUF_SYN_INVALID       BIT_POS(164, 30)
+#define EFUSE_PUF_REGEN_DISABLE     BIT_POS(164, 31)
 
 #define EFUSE_PUF_PAGE              (2)
 #define EFUSE_PUF_SYN_START         BIT_POS(129, 0)
@@ -513,8 +522,7 @@ static void efuse_rd_addr_postw(RegisterInfo *reg, uint64_t val64)
      * Note: model must NEVER clear the RD_ERROR bit; it is
      *       up to guest to do so (or by reset).
      */
-    s->regs[R_EFUSE_RD_DATA] = xlnx_versal_efuse_read_row(s->efuse,
-                                                          bit, &denied);
+    s->regs[R_EFUSE_RD_DATA] = xlnx_efuse_get_u32(s->efuse, bit, &denied);
     if (denied) {
         g_autofree char *path = object_get_canonical_path(OBJECT(s));
 
@@ -719,6 +727,76 @@ static const MemoryRegionOps efuse_ctrl_ops = {
     },
 };
 
+static uint32_t efuse_get_u32(DeviceState *dev, uint32_t bit, bool *denied)
+{
+    XlnxVersalEFuseCtrl *s = XLNX_VERSAL_EFUSE_CTRL(dev);
+    bool dummy;
+
+    if (!denied) {
+        denied = &dummy;
+    }
+
+    if (bit >= EFUSE_RD_BLOCKED_START && bit <= EFUSE_RD_BLOCKED_END) {
+        *denied = true;
+        return 0;
+    }
+
+    *denied = false;
+    return xlnx_efuse_get_row(s->efuse, bit);
+}
+
+static XlnxEFusePufData *efuse_get_puf(DeviceState *dev,
+                                       uint16_t pufsyn_max)
+{
+    XlnxVersalEFuseCtrl *s = XLNX_VERSAL_EFUSE_CTRL(dev);
+    unsigned pd_nbits = EFUSE_PUF_SYN_END + 1 - EFUSE_PUF_SYN_START;
+    unsigned pd_max = DIV_ROUND_UP(pd_nbits, 8);
+    unsigned pd_b0 = EFUSE_PUF_PAGE * 256 * 32 + EFUSE_PUF_SYN_START;
+    unsigned pd_nr, nr;
+    XlnxEFusePufData *pd;
+
+    /*
+     * Check to make sure PUF helper-data in eFUSE has not been
+     * marked as invalidated.
+     */
+    if (xlnx_efuse_get_bit(s->efuse, EFUSE_PUF_SYN_INVALID)) {
+        pd_max = 0;
+    } else if (pd_max > pufsyn_max && pufsyn_max) {
+        pd_max = pufsyn_max;
+    }
+
+    /* Allocate space for multiple of rows to simplify data fetch */
+    pd_nr = DIV_ROUND_UP(pd_max, 4);
+    pd = g_malloc0(offsetof(XlnxEFusePufData, pufsyn) + 4 * pd_nr);
+
+    pd->puf_dis = xlnx_efuse_get_bit(s->efuse, EFUSE_PUF_REGEN_DISABLE);
+    pd->puf_aux = xlnx_efuse_get_row(s->efuse, EFUSE_PUF_AUX);
+    pd->puf_chash = xlnx_efuse_get_row(s->efuse, EFUSE_PUF_CHASH);
+    pd->pufsyn_len = pd_max;
+    for (nr = 0; nr < pd_nr; nr++) {
+        pd->pufsyn[nr] = xlnx_efuse_get_row(s->efuse, (pd_b0 + nr * 32));
+    }
+
+    return pd;
+}
+
+static bool efuse_get_sysmon(DeviceState *dev,
+                             XlnxEFuseSysmonData *data)
+{
+    XlnxVersalEFuseCtrl *s = XLNX_VERSAL_EFUSE_CTRL(dev);
+
+    assert(data);
+    memset(data, 0, sizeof(*data));
+
+    /* Must provide data without access screening */
+    data->rdata_low = xlnx_efuse_get_row(s->efuse, EFUSE_SYSMON_RDATA0_START);
+    data->rdata_high = xlnx_efuse_get_row(s->efuse, EFUSE_SYSMON_RDATA1_START);
+    data->glitch_monitor_en = xlnx_efuse_get_bit(s->efuse,
+                                                 EFUSE_GD_ROM_MONITOR_EN);
+
+    return true;
+}
+
 static void efuse_ctrl_realize(DeviceState *dev, Error **errp)
 {
     XlnxVersalEFuseCtrl *s = XLNX_VERSAL_EFUSE_CTRL(dev);
@@ -743,6 +821,12 @@ static void efuse_ctrl_realize(DeviceState *dev, Error **errp)
     }
 
     efuse_lk_spec_sort(s);
+
+    /* Bind method(s) */
+    s->efuse->dev = dev;
+    s->efuse->get_u32 = efuse_get_u32;
+    s->efuse->get_puf = efuse_get_puf;
+    s->efuse->get_sysmon = efuse_get_sysmon;
 }
 
 static void efuse_ctrl_init(Object *obj)
@@ -818,24 +902,3 @@ static void efuse_ctrl_register_types(void)
 }
 
 type_init(efuse_ctrl_register_types)
-
-/*
- * Retrieve a row, with unreadable bits returned as 0.
- */
-uint32_t xlnx_versal_efuse_read_row(XlnxEFuse *efuse,
-                                    uint32_t bit, bool *denied)
-{
-    bool dummy;
-
-    if (!denied) {
-        denied = &dummy;
-    }
-
-    if (bit >= EFUSE_RD_BLOCKED_START && bit <= EFUSE_RD_BLOCKED_END) {
-        *denied = true;
-        return 0;
-    }
-
-    *denied = false;
-    return xlnx_efuse_get_row(efuse, bit);
-}

@@ -40,10 +40,10 @@ static uint64_t efuse_cache_read(void *opaque, hwaddr addr, unsigned size)
 
     assert(w0 == w1 || (w0 + 32) == w1);
 
-    ret = xlnx_versal_efuse_read_row(s->efuse, w1, NULL);
+    ret = xlnx_efuse_get_u32(s->efuse, w1, NULL);
     if (w0 < w1) {
         ret <<= 32;
-        ret |= xlnx_versal_efuse_read_row(s->efuse, w0, NULL);
+        ret |= xlnx_efuse_get_u32(s->efuse, w0, NULL);
     }
 
     /* If 'addr' unaligned, the guest is always assumed to be little-endian. */

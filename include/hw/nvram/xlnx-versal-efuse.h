@@ -59,14 +59,4 @@ struct XlnxVersalEFuseCache {
     XlnxEFuse *efuse;
 };
 
-/**
- * xlnx_versal_efuse_read_row:
- * @s: the efuse object
- * @bit: the bit-address within the 32-bit row to be read
- * @denied: if non-NULL, to receive true if the row is write-only
- *
- * Returns: the 32-bit word containing address @bit; 0 if @denies is true
- */
-uint32_t xlnx_versal_efuse_read_row(XlnxEFuse *s, uint32_t bit, bool *denied);
-
 #endif
