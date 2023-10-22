@@ -190,19 +190,31 @@ static inline XlnxEFusePufData *xlnx_efuse_get_puf(XlnxEFuse *s,
 
 /**
  * xlnx_efuse_get_sysmon:
- * @s: the efuse object
+ * @s: the efuse object.
  * @d: pointer to data receiver.
+ *
+ * If @s is NULL but @d is not, return true with data all 0s, to
+ * handle use cases where a linkage to an efuse object is optional.
  *
  * Returns: false if failed to retrieve the data.
  */
 static inline bool xlnx_efuse_get_sysmon(XlnxEFuse *s,
                                          XlnxEFuseSysmonData *d)
 {
-    if (s && s->fuse32 && s->dev && s->get_sysmon && d) {
-        return s->get_sysmon(s->dev, d);
-    } else {
-        return false;
+    bool rc = false;
+
+    if (!s && d) {
+        memset(d, 0, sizeof(*d));
+        return true;
     }
+
+    if (s->fuse32 && s->dev && s->get_sysmon && d) {
+        rc = s->get_sysmon(s->dev, d);
+    }
+    if (!rc && d) {
+        memset(d, 0, sizeof(*d));
+    }
+    return rc;
 }
 
 #endif
