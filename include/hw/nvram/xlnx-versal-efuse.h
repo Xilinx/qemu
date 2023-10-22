@@ -25,6 +25,7 @@
 #include "hw/irq.h"
 #include "hw/sysbus.h"
 #include "hw/register.h"
+#include "hw/zynqmp_aes_key.h"
 #include "hw/nvram/xlnx-efuse.h"
 
 #define XLNX_VERSAL_EFUSE_CTRL_R_MAX ((0x100 / 4) + 1)
@@ -40,6 +41,9 @@ struct XlnxVersalEFuseCtrl {
     qemu_irq irq_efuse_imr;
 
     XlnxEFuse *efuse;
+    ZynqMPAESKeySink *aes_key_sink;
+    ZynqMPAESKeySink *usr_key0_sink;
+    ZynqMPAESKeySink *usr_key1_sink;
 
     void *extra_pg0_lock_spec;      /* Opaque property */
     uint32_t extra_pg0_lock_n16;

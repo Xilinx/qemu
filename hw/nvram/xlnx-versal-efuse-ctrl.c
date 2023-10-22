@@ -314,9 +314,45 @@ static void efuse_key_crc_check(RegisterInfo *reg, uint32_t crc,
     s->regs[R_STATUS] = r ^ pass_mask;
 }
 
+static void efuse_key_sync(XlnxVersalEFuseCtrl *s, unsigned start_bit)
+{
+    ZynqMPAESKeySink *ks;
+    union {
+        uint8_t u8[256 / 8];
+        uint32_t u32[256 / 32];
+    } key;
+    int i;
+
+    switch (start_bit) {
+    case EFUSE_AES_KEY_START:
+        ks = s->aes_key_sink;
+        break;
+    case EFUSE_USER_KEY_0_START:
+        ks = s->usr_key0_sink;
+        break;
+    case EFUSE_USER_KEY_1_START:
+        ks = s->usr_key1_sink;
+        break;
+    default:
+        return;
+    }
+
+    if (!ks) {
+        return;
+    }
+
+    for (i = 0; i < 8; i++) {
+        key.u32[7 - i] = xlnx_efuse_get_row(s->efuse, (start_bit + i * 32));
+    }
+    zynqmp_aes_key_update(ks, key.u8, sizeof(key.u8));
+}
+
 static void efuse_data_sync(XlnxVersalEFuseCtrl *s)
 {
     efuse_status_tbits_sync(s);
+    efuse_key_sync(s, EFUSE_AES_KEY_START);
+    efuse_key_sync(s, EFUSE_USER_KEY_0_START);
+    efuse_key_sync(s, EFUSE_USER_KEY_1_START);
 }
 
 static int efuse_lk_spec_cmp(const void *a, const void *b)
@@ -744,6 +780,16 @@ static Property efuse_ctrl_props[] = {
     DEFINE_PROP_ARRAY("pg0-lock",
                       XlnxVersalEFuseCtrl, extra_pg0_lock_n16,
                       extra_pg0_lock_spec, qdev_prop_uint16, uint16_t),
+
+    DEFINE_PROP_LINK("zynqmp-aes-key-sink-efuses",
+                     XlnxVersalEFuseCtrl, aes_key_sink,
+                     TYPE_ZYNQMP_AES_KEY_SINK, ZynqMPAESKeySink *),
+    DEFINE_PROP_LINK("zynqmp-aes-key-sink-efuses-user0",
+                     XlnxVersalEFuseCtrl, usr_key0_sink,
+                     TYPE_ZYNQMP_AES_KEY_SINK, ZynqMPAESKeySink *),
+    DEFINE_PROP_LINK("zynqmp-aes-key-sink-efuses-user1",
+                     XlnxVersalEFuseCtrl, usr_key1_sink,
+                     TYPE_ZYNQMP_AES_KEY_SINK, ZynqMPAESKeySink *),
 
     DEFINE_PROP_END_OF_LIST(),
 };
