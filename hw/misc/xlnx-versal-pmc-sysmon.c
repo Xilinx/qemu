@@ -35,7 +35,9 @@
 #include "qemu/error-report.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
-#include "hw/block/xlnx-efuse.h"
+#include "hw/nvram/xlnx-efuse.h"
+#include "hw/nvram/xlnx-versal-efuse.h"
+#include "hw/nvram/xlnx-pmx-efuse.h"
 #include "xlnx-versal-ams.h"
 
 #include <math.h>
@@ -4395,27 +4397,28 @@ static void pmc_sysmon_efuse_data_put(PMCSysMon *s, XlnxEFuseSysmonData *src)
 static bool pmc_sysmon_efuse_data_xfer(PMCSysMon *s)
 {
     XlnxEFuseSysmonData data;
-    XlnxEFuseSysmonDataSourceClass *klass = NULL;
+    XlnxEFuse *efuse;
+    bool rc;
 
-    if (s->efuse) {
-        klass = XLNX_EFUSE_SYSMON_DATA_SOURCE_GET_CLASS(s->efuse);
-        if (klass && !klass->get_data) {
-            klass = NULL;
+    /* Check for older DTS releases */
+    efuse = (XlnxEFuse *)object_dynamic_cast(s->efuse, TYPE_XLNX_EFUSE);
+    if (!efuse) {
+        Object *o = object_dynamic_cast(s->efuse, TYPE_XLNX_PMX_EFUSE_CACHE);
+        if (o) {
+            efuse = XLNX_PMX_EFUSE_CACHE(o)->efuse;
+        } else if (s->efuse) {
+            efuse = XLNX_VERSAL_EFUSE_CACHE(s->efuse)->efuse;
         }
     }
 
-    if (klass) {
-        klass->get_data(s->efuse, &data);
-    } else {
-        memset(&data, 0, sizeof(data));
-    }
+    rc = xlnx_efuse_get_sysmon(efuse, &data);
 
     /* Skip updating if in test mode */
     if (!ARRAY_FIELD_EX32(s->regs, REG_PCSR_CONTROL, TEST_SAFE)) {
         pmc_sysmon_efuse_data_put(s, &data);
     }
 
-    return !!klass;
+    return rc; /* status only if in test mode */
 }
 
 static void pmc_sysmon_efuse_xfer_start(PMCSysMon *s)
@@ -8881,8 +8884,7 @@ static void pmc_sysmon_volt_prop_add(ObjectClass *klass)
 static Property pmc_sysmon_properties[] = {
     DEFINE_PROP_UINT32("efuse-transfer-throttle",
                        PMCSysMon, efuse_throttle_ms, 200),
-    DEFINE_PROP_LINK("efuse", PMCSysMon, efuse,
-                     TYPE_XLNX_EFUSE_SYSMON_DATA_SOURCE, Object *),
+    DEFINE_PROP_LINK("efuse", PMCSysMon, efuse, TYPE_OBJECT, Object *),
     DEFINE_PROP_LINK("ams-sat0", PMCSysMon, ams_sat[0], TYPE_OBJECT, Object *),
     DEFINE_PROP_LINK("ams-sat1", PMCSysMon, ams_sat[1], TYPE_OBJECT, Object *),
     DEFINE_PROP_LINK("tamper-sink", PMCSysMon, tamper_sink,
@@ -8935,16 +8937,9 @@ static const TypeInfo pmc_sysmon_info = {
     .instance_init = pmc_sysmon_init,
 };
 
-static const TypeInfo pmc_sysmon_efuse_data_source_type = {
-    .parent = TYPE_INTERFACE,
-    .name = TYPE_XLNX_EFUSE_SYSMON_DATA_SOURCE,
-    .class_size = sizeof(XlnxEFuseSysmonDataSourceClass),
-};
-
 static void pmc_sysmon_register_types(void)
 {
     type_register_static(&pmc_sysmon_info);
-    type_register_static(&pmc_sysmon_efuse_data_source_type);
 }
 
 type_init(pmc_sysmon_register_types)
