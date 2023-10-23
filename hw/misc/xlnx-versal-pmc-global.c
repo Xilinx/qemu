@@ -40,7 +40,8 @@
 #include "hw/misc/xlnx-versal-pmc.h"
 
 #include "hw/fdt_generic_util.h"
-#include "hw/block/xlnx-efuse.h"
+#include "hw/nvram/xlnx-efuse.h"
+#include "hw/nvram/xlnx-versal-efuse.h"
 #include "xlnx-versal-ams.h"
 
 #ifndef XILINX_PMC_GLOBAL_ERR_DEBUG
@@ -1178,7 +1179,7 @@ static void ppu1_rst_x_postw(RegisterInfo *reg, uint64_t val64)
 
 static bool pmc_global_gd_monitor_enabled(PMC_GLOBAL *s)
 {
-    XlnxEFuseSysmonDataSourceClass *klass;
+    XlnxEFuse *efuse;
     XlnxEFuseSysmonData data;
 
     if (!s->efuse) {
@@ -1190,13 +1191,17 @@ static bool pmc_global_gd_monitor_enabled(PMC_GLOBAL *s)
         return false;
     }
 
-    klass = XLNX_EFUSE_SYSMON_DATA_SOURCE_GET_CLASS(s->efuse);
-    if (!klass || !klass->get_data) {
-        return false;
+    /* Check for older DTS releases */
+    efuse = (XlnxEFuse *)object_dynamic_cast(s->efuse, TYPE_XLNX_EFUSE);
+    if (!efuse) {
+        efuse = XLNX_VERSAL_EFUSE_CACHE(s->efuse)->efuse;
     }
 
-    klass->get_data(s->efuse, &data);
-    return !!data.glitch_monitor_en;
+    if (xlnx_efuse_get_sysmon(efuse, &data)) {
+        return !!data.glitch_monitor_en;
+    } else {
+        return false;
+    }
 }
 
 static uint32_t pmc_global_tamper_response(PMC_GLOBAL *s, unsigned slot)
