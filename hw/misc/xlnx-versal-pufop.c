@@ -92,26 +92,6 @@ REG32(PUF_ID_7, 0x4c)
 #define SIZEOF_PUF_ID     (4 * (R_PUF_ID_7 - R_PUF_ID_0 + 1))
 
 /*
- * Various locations in eFUSE related to PUF, for calling
- * efuse_get_row().
- *
- * See:
- *  https://github.com/Xilinx/embeddedsw/blob/release-2020.1/lib/sw_services/xilnvm/src/xnvm_efuse_hw.h
- */
-enum {
-    VERSAL_EFUSE_PUF_ECC_23_0_ROW = 164,
-    VERSAL_EFUSE_PUF_CTRL_BIT0 = VERSAL_EFUSE_PUF_ECC_23_0_ROW * 32,
-    VERSAL_EFUSE_PUF_SYN_INVALID = VERSAL_EFUSE_PUF_CTRL_BIT0 + 30,
-    VERSAL_EFUSE_PUF_REGEN_DISABLE = VERSAL_EFUSE_PUF_CTRL_BIT0 + 31,
-
-    VERSAL_EFUSE_PUF_AUX_ROW = 41,
-    VERSAL_EFUSE_PUF_CHASH_ROW = 42,
-
-    VERSAL_EFUSE_PUF_SYN_PAGE_ROW = 512,
-    VERSAL_EFUSE_PUF_SYN_START_ROW = 129,
-};
-
-/*
  * API Definition for XilPuf's XPUF_PMC_GLOBAL_PUF_ list of registers.
  *
  * See also:
@@ -143,7 +123,7 @@ typedef struct Versal_PUFOP {
     MemoryRegion iomem;
 
     ZynqMPAESKeySink *puf_keysink;
-    XLNXEFuse *efuse;
+    XlnxEFuse *efuse;
 
     qemu_irq err_out;
 
@@ -241,8 +221,22 @@ static void versal_pufop_regis_done(Versal_PUFOP *s,
 
 static bool versal_pufop_regen_efuse(Versal_PUFOP *s, Versal_PUFRegen *hd)
 {
+    g_autofree XlnxEFusePufData *pd = NULL;
+
+    if (!s->efuse) {
+        qemu_log("warning: PUF-REGENERATION: eFUSE not connected.\n");
+        return false;
+    }
+
+    /* Get flags only */
+    pd = xlnx_efuse_get_puf(s->efuse, 1);
+    if (!pd) {
+        qemu_log("warning: PUF-REGENERATION: eFUSE data not available.\n");
+        return false;
+    }
+
     /* Enforce regeneration policy as stated in eFUSE */
-    if (efuse_get_bit(s->efuse, VERSAL_EFUSE_PUF_REGEN_DISABLE)) {
+    if (pd->puf_dis) {
         qemu_log("warning: PUF-REGENERATION: eFUSE PUF_REGEN_DISABLE: 1\n");
         return false;
     }
@@ -250,22 +244,16 @@ static bool versal_pufop_regen_efuse(Versal_PUFOP *s, Versal_PUFRegen *hd)
     /*
      * Check to make sure PUF helper-data in eFUSE has not been
      * marked as invalidated.
-     *
-     * As expected by XilSKey, regen PUF-op service always use
-     * PUF helper-data from eFUSE.
      */
-    if (efuse_get_bit(s->efuse, VERSAL_EFUSE_PUF_SYN_INVALID)) {
+    if (!pd->pufsyn_len) {
         qemu_log("warning: PUF-REGENERATION: eFUSE PUF_SYN_INVALID: 1\n");
         return false;
     }
 
     hd->source = Versal_PUFRegen_EFUSE;
     hd->efuse.dev = s->efuse;
-    hd->efuse.base_row = VERSAL_EFUSE_PUF_SYN_PAGE_ROW
-                         + VERSAL_EFUSE_PUF_SYN_START_ROW;
-
-    hd->info.aux = efuse_get_row(s->efuse, VERSAL_EFUSE_PUF_AUX_ROW);
-    hd->info.c_hash = efuse_get_row(s->efuse, VERSAL_EFUSE_PUF_CHASH_ROW);
+    hd->info.aux = pd->puf_aux;
+    hd->info.c_hash = pd->puf_chash;
 
     return true;
 }
@@ -480,7 +468,7 @@ static const VMStateDescription vmstate_versal_pufop = {
 static Property versal_pufop_props[] = {
     DEFINE_PROP_LINK("efuse",
                      Versal_PUFOP, efuse,
-                     TYPE_XLNX_EFUSE, XLNXEFuse *),
+                     TYPE_XLNX_EFUSE, XlnxEFuse *),
 
     DEFINE_PROP_LINK("zynqmp-aes-key-sink-puf",
                      Versal_PUFOP, puf_keysink,

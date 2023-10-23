@@ -26,7 +26,7 @@
 
 #include "qemu/osdep.h"
 #include "exec/address-spaces.h"
-#include "hw/block/xlnx-efuse.h"
+#include "hw/nvram/xlnx-efuse.h"
 #include "hw/zynqmp_aes_key.h"
 
 typedef struct Versal_PUFHD Versal_PUFHD; /* Opaque */
@@ -47,8 +47,7 @@ typedef struct {
 
     union {
         struct {
-            XLNXEFuse *dev;
-            uint32_t  base_row;
+            XlnxEFuse *dev;
         } efuse;
         struct {
             AddressSpace *as;

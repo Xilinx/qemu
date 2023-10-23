@@ -269,7 +269,7 @@ typedef union Versal_PufKey {
 
 typedef struct Versal_PUFHD {
     ZynqMPAESKeySink *keysink;
-    XLNXEFuse *efuse;
+    XlnxEFuse *efuse;
     qemu_irq *acc_err;
 
     Versal_PufKey key;  /* In byte-wise big-endian */
@@ -466,18 +466,21 @@ static void versal_pufkey_import(Versal_PUFHD *s)
 static bool versal_pufhd_efuse_regen(const Versal_PUFRegen *data,
                                      uint32_t *c_hash, Versal_PufKey *key)
 {
-    uint32_t nr = data->efuse.base_row;
+    g_autofree XlnxEFusePufData *pd = NULL;
+    uint32_t nr = 0;
     uint32_t *hd_u32, *hd_e32;
     Versal_EFusePUF hd;
 
     /* Only need a small portion from the start of the fake helper-data. */
+    pd = xlnx_efuse_get_puf(data->efuse.dev, sizeof(hd) + 4);
+    if (!pd) {
+        return false;
+    }
+
     hd_u32 = hd.h.u32;
     hd_e32 = (uint32_t *)(&hd + 1);
     do {
-        uint32_t curr;
-
-        curr = efuse_get_row(data->efuse.dev, nr * 32);
-        nr++;
+        uint32_t curr = pd->pufsyn[nr++];
 
         *hd_u32 = cpu_to_le32(curr);
         hd_u32++;
