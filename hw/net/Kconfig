@@ -92,6 +92,7 @@ config IMX_FEC
 
 config CADENCE
     bool
+    select MDIO
 
 config STELLARIS_ENET
     bool

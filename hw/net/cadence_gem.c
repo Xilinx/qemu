@@ -1585,28 +1585,25 @@ static inline void gem_internal_phy_access(CadenceGEMState *s)
 static inline void gem_mdio_access(CadenceGEMState *s)
 {
     uint32_t val = s->regs[R_PHYMNTNC];
-    uint32_t phy_addr, reg_num;
-    uint16_t data;
+    MDIOFrame frame = {
+        .st = FIELD_EX32(val, PHYMNTNC, ST),
+        .op = FIELD_EX32(val, PHYMNTNC, OP),
+        .addr0 = FIELD_EX32(val, PHYMNTNC, PHY_ADDR),
+        .addr1 = FIELD_EX32(val, PHYMNTNC, REG_ADDR),
+    };
 
-    phy_addr = FIELD_EX32(val, PHYMNTNC, PHY_ADDR);
-    reg_num = FIELD_EX32(val, PHYMNTNC, REG_ADDR);
-
-    switch (FIELD_EX32(val, PHYMNTNC, OP)) {
-    case MDIO_OP_READ:
-        data = s->mdio->read(s->mdio, phy_addr, reg_num);
-        s->regs[R_PHYMNTNC] = FIELD_DP32(val, PHYMNTNC, DATA, data);
-        break;
-
-    case MDIO_OP_WRITE:
-        data = FIELD_EX32(val, PHYMNTNC, DATA);
-        s->mdio->write(s->mdio, phy_addr, reg_num, data);
-        break;
-
-    default:
-        return;
+    if (!mdio_frame_is_read(&frame)) {
+        frame.data = FIELD_EX32(val, PHYMNTNC, DATA);
     }
 
-    gem_phy_loopback_setup(s, reg_num, data);
+    mdio_transfer(s->mdio->bus, &frame);
+
+    if (mdio_frame_is_read(&frame)) {
+        s->regs[R_PHYMNTNC] = FIELD_DP32(s->regs[R_PHYMNTNC],
+                                         PHYMNTNC, DATA, frame.data);
+    }
+
+    gem_phy_loopback_setup(s, frame.addr1, frame.data);
 }
 
 static void gem_handle_phy_access(CadenceGEMState *s)
