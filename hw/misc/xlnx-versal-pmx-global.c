@@ -1323,7 +1323,7 @@ static uint64_t req_iso_trig_prew(RegisterInfo *reg, uint64_t val64)
 
 static bool pmx_global_gd_monitor_enabled(PMX_GLOBAL *s)
 {
-    XlnxEFuseSysmonDataSourceClass *klass;
+    XlnxEFuse *efuse;
     XlnxEFuseSysmonData data;
 
     if (!s->efuse) {
@@ -1335,13 +1335,17 @@ static bool pmx_global_gd_monitor_enabled(PMX_GLOBAL *s)
         return false;
     }
 
-    klass = XLNX_EFUSE_SYSMON_DATA_SOURCE_GET_CLASS(s->efuse);
-    if (!klass || !klass->get_data) {
-        return false;
+    /* Check for older DTS releases */
+    efuse = (XlnxEFuse *)object_dynamic_cast(s->efuse, TYPE_XLNX_EFUSE);
+    if (!efuse) {
+        efuse = XLNX_PMX_EFUSE_CACHE(s->efuse)->efuse;
     }
 
-    klass->get_data(s->efuse, &data);
-    return !!data.glitch_monitor_en;
+    if (xlnx_efuse_get_sysmon(efuse, &data)) {
+        return !!data.glitch_monitor_en;
+    } else {
+        return false;
+    }
 }
 
 static uint32_t pmx_global_tamper_response(PMX_GLOBAL *s, unsigned slot)

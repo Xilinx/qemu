@@ -10,14 +10,7 @@
 #include "hw/sysbus.h"
 #include "hw/register.h"
 #include "hw/zynqmp_aes_key.h"
-/*=== Temporary hack until integrated with upstream hw/nvram/xlnx-efuse.h */
-#include "hw/block/xlnx-efuse.h"
-#define XlnxEFuse XLNXEFuse
-#define xlnx_efuse_get_row(e, b) efuse_get_row((e), (b))
-#define xlnx_efuse_get_bit(e, b) efuse_get_bit((e), (b))
-#define xlnx_efuse_set_bit(e, b) efuse_set_bit((e), (b))
-#define xlnx_efuse_tbits_check(e) efuse_tbits_check(e)
-/*---*/
+#include "hw/nvram/xlnx-efuse.h"
 
 #ifndef XLNX_PMX_EFUSE_CTRL_R_MAX
 #define XLNX_PMX_EFUSE_CTRL_R_MAX  (1 + (0x70 / 4))

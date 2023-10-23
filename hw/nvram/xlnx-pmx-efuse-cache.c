@@ -78,16 +78,6 @@ static void pmx_efuse_cache_realize(DeviceState *dev, Error **errp)
     }
 }
 
-static void pmx_efuse_cache_sysmon_data_source(Object *obj,
-                                               XlnxEFuseSysmonData *data)
-{
-    XlnxPmxEFuseCache *s = XLNX_PMX_EFUSE_CACHE(obj);
-
-    if (!xlnx_efuse_get_sysmon(s->efuse, data) && data) {
-        memset(data, 0, sizeof(*data));
-    }
-}
-
 static void pmx_efuse_cache_init(Object *obj)
 {
     XlnxPmxEFuseCache *s = XLNX_PMX_EFUSE_CACHE(obj);
@@ -109,13 +99,9 @@ static Property pmx_efuse_cache_props[] = {
 static void pmx_efuse_cache_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-    XlnxEFuseSysmonDataSourceClass *esdc;
 
     dc->realize = pmx_efuse_cache_realize;
     device_class_set_props(dc, pmx_efuse_cache_props);
-
-    esdc = XLNX_EFUSE_SYSMON_DATA_SOURCE_CLASS(klass);
-    esdc->get_data = pmx_efuse_cache_sysmon_data_source;
 }
 
 static const TypeInfo pmx_efuse_cache_info = {
@@ -124,10 +110,6 @@ static const TypeInfo pmx_efuse_cache_info = {
     .instance_size = sizeof(XlnxPmxEFuseCache),
     .class_init    = pmx_efuse_cache_class_init,
     .instance_init = pmx_efuse_cache_init,
-    .interfaces = (InterfaceInfo[]) {
-        { TYPE_XLNX_EFUSE_SYSMON_DATA_SOURCE },
-        { }
-    }
 };
 
 static void pmx_efuse_cache_register_types(void)
