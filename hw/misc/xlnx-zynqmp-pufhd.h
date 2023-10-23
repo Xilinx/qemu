@@ -25,7 +25,7 @@
 #define XLNX_ZYNQMP_PUFSYN_H
 
 #include "qemu/osdep.h"
-#include "hw/block/xlnx-efuse.h"
+#include "hw/nvram/xlnx-efuse.h"
 #include "hw/zynqmp_aes_key.h"
 
 /*
@@ -59,8 +59,7 @@ typedef struct Zynqmp_PUFRegen {
 
     union {
         struct {
-            XLNXEFuse *dev;
-            uint32_t  base_row;
+            XlnxEFuse *dev;
         } efuse;
         struct {
             const uint8_t *base;

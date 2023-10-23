@@ -77,25 +77,6 @@ REG32(PUF_WORD, 0x18)
 #define R_MAX  (R_PUF_WORD + 1)
 
 /*
- * The starting row of PUF Helper-data in eFUSE, for calling
- * efuse_get_row().
- *
- * Per UG-1085 (v2.1, Aug 21, 2019, p.282), it is the 1st row
- * of page 2. Also, each page has 64 rows.
- *
- * In csu_fuse.c::zynqmp_efuse_rd_addr_postw(), the model
- * translates 'page 2' into 'page 1'.
- */
-#define ZYNQMP_PUFHD_EFUSE_BASE_ROW         (64)
-
-/*
- * Also, must enforce PUF operation policies specified by
- * the following bits from eFUSE (see same UG-1085, p.277):
- */
-#define ZYNQMP_EFUSE_PUF_SYN_INVALID        (21 * 32 + 29)
-#define ZYNQMP_EFUSE_PUF_REGISTER_DISABLE   (21 * 32 + 31)
-
-/*
  * Model object.
  */
 typedef struct Zynqmp_PUFOP {
@@ -103,7 +84,7 @@ typedef struct Zynqmp_PUFOP {
     MemoryRegion iomem;
 
     ZynqMPAESKeySink *puf_keysink;
-    XLNXEFuse *efuse;
+    XlnxEFuse *efuse;
 
     DeviceState *puf_acc_err_sink;
     qemu_irq err_out;
@@ -116,8 +97,16 @@ typedef struct Zynqmp_PUFOP {
 
 static void zynqmp_pufop_regis_start(Zynqmp_PUFOP *s)
 {
-    /* Enforce registration policy as stated in eFUSE */
-    if (efuse_get_bit(s->efuse, ZYNQMP_EFUSE_PUF_REGISTER_DISABLE)) {
+    g_autofree XlnxEFusePufData *pd = NULL;
+
+    /*
+     * Enforce registration policy as stated in eFUSE.
+     *
+     * Be permissive if eFUSE data are unavailable by allowing registration
+     * running in QEMU to proceed.
+     */
+    pd = xlnx_efuse_get_puf(s->efuse, 1);
+    if (pd && pd->puf_dis) {
         qemu_log("warning: PUF-REGISTRATION: eFUSE PUF_REGISTER_DISABLE: 1\n");
         goto inval_request;
     }
@@ -156,6 +145,19 @@ static void zynqmp_pufop_regis_start(Zynqmp_PUFOP *s)
 static void zynqmp_pufop_regen_start(Zynqmp_PUFOP *s)
 {
     Zynqmp_PUFRegen hd_src;
+    g_autofree XlnxEFusePufData *pd = NULL;
+
+    if (!s->efuse) {
+        qemu_log("warning: PUF-REGENERATION: eFUSE not connected.\n");
+        goto err_out;
+    }
+
+    /* Get flags only */
+    pd = xlnx_efuse_get_puf(s->efuse, 1);
+    if (!pd) {
+        qemu_log("warning: PUF-REGENERATION: eFUSE data not available.\n");
+        goto err_out;
+    }
 
     /*
      * Check to make sure PUF helper-data in eFUSE has not been
@@ -164,7 +166,7 @@ static void zynqmp_pufop_regen_start(Zynqmp_PUFOP *s)
      * As expected by XilSKey, regen PUF-op service always use
      * PUF helper-data from eFUSE.
      */
-    if (efuse_get_bit(s->efuse, ZYNQMP_EFUSE_PUF_SYN_INVALID)) {
+    if (!pd->pufsyn_len) {
         qemu_log("warning: PUF-REGENERATION: eFUSE PUF_SYN_INVALID: 1\n");
         goto err_out;
     }
@@ -179,7 +181,6 @@ static void zynqmp_pufop_regen_start(Zynqmp_PUFOP *s)
     memset(&hd_src, 0, sizeof(hd_src));
     hd_src.source = Zynqmp_PUFRegen_EFUSE;
     hd_src.efuse.dev = s->efuse;
-    hd_src.efuse.base_row = ZYNQMP_PUFHD_EFUSE_BASE_ROW;
 
     if (!zynqmp_pufhd_regen(&hd_src, s->puf_keysink, NULL)) {
         goto err_out;
@@ -338,7 +339,7 @@ static const VMStateDescription zynqmp_pufop_vmstate = {
 static Property zynqmp_pufop_props[] = {
     DEFINE_PROP_LINK("efuse",
                      Zynqmp_PUFOP, efuse,
-                     TYPE_XLNX_EFUSE, XLNXEFuse *),
+                     TYPE_XLNX_EFUSE, XlnxEFuse *),
 
     DEFINE_PROP_LINK("zynqmp-aes-key-sink-puf",
                      Zynqmp_PUFOP, puf_keysink,

@@ -285,7 +285,7 @@ typedef union Zynqmp_PUFKey {
 
 typedef struct Zynqmp_PUFHD {
     ZynqMPAESKeySink *keysink;
-    XLNXEFuse *efuse;
+    XlnxEFuse *efuse;
     qemu_irq *acc_err;
 
     Zynqmp_PUFKey key;  /* In byte-wise big-endian */
@@ -465,7 +465,8 @@ static void zynqmp_pufkey_export(const Zynqmp_PUFKey *be,
 static bool zynqmp_pufhd_efuse_regen(const Zynqmp_PUFRegen *data,
                                      uint32_t *c_hash, Zynqmp_PUFKey *key)
 {
-    uint32_t nr = data->efuse.base_row;
+    g_autofree XlnxEFusePufData *pd = NULL;
+    uint32_t nr = 0;
     uint32_t *hd_u32, *hd_e32;
     uint8_t *hd_u8, *hd_e8;
     Zynqmp_EFusePUF hd;
@@ -512,13 +513,18 @@ static bool zynqmp_pufhd_efuse_regen(const Zynqmp_PUFRegen *data,
      */
     uint32_t prev, curr;
 
+    pd = xlnx_efuse_get_puf(data->efuse.dev, sizeof(hd) + 4);
+    if (!pd) {
+        return false;
+    }
+
     hd_u8 = hd.h.u8;
     hd_e8 = hd.h.u8 + sizeof(hd.h);
-    curr = efuse_get_row(data->efuse.dev, nr * 32);
+    curr = pd->pufsyn[nr];
     do {
         nr++;
         prev = curr;
-        curr = efuse_get_row(data->efuse.dev, nr * 32);
+        curr = pd->pufsyn[nr];
 
         hd_u8[2] = 255 & prev;
         hd_u8[3] = 255 & (prev >>  8);
@@ -530,7 +536,7 @@ static bool zynqmp_pufhd_efuse_regen(const Zynqmp_PUFRegen *data,
     hd_u32 = (uint32_t *)hd_e8;
     hd_e32 = (uint32_t *)(&hd + 1);
     do {
-        curr = efuse_get_row(data->efuse.dev, nr * 32);
+        curr = pd->pufsyn[nr];
         nr++;
 
         *hd_u32 = cpu_to_le32(curr);
@@ -633,7 +639,7 @@ void zynqmp_pufhd_next(Zynqmp_PUFHD *s, uint32_t *word, uint32_t *status)
      *
      * The 32-bit C-Hash presented in PUF_WORD must be in machine-endian.
      *
-     * Push the Also, push the key out upon returning the last word.
+     * Also, push the key out upon returning the last word.
      */
     if (next < s->pufhd_fills) {
         *word = s->pufhd_data.h.u32[next];
