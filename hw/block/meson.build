@@ -5,15 +5,6 @@ softmmu_ss.add(files(
 ))
 
 softmmu_ss.add(when: 'CONFIG_PL35X', if_true: files('pl35x.c'))
-softmmu_ss.add(when: 'CONFIG_XLNX_ZYNQMP_CSU', if_true: files(
-  'csu_efuse.c',
-  'xlnx-efuse.c'
-))
-
-softmmu_ss.add(when: 'CONFIG_XLNX_VERSAL_PMC', if_true: files(
-  'xlnx-versal-pmc-efuse-cache.c',
-  'xlnx-versal-pmc-efuse-ctrl.c',
-))
 
 softmmu_ss.add(when: 'CONFIG_ARASAN_NFC', if_true: files('arasan_nfc.c'))
 softmmu_ss.add(when: 'CONFIG_M24CXX', if_true: files('m24cxx.c'))
