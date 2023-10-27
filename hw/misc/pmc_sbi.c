@@ -113,7 +113,7 @@ typedef struct SlaveBootInt {
     MemoryRegion iomem_keyhole;
     uint32_t regs[R_MAX];
     RegisterInfo regs_info[R_MAX];
-    int BusWidthDetectCounter;
+    int bus_width_detect_counter;
 
     /* Select Map */
     uint8_t cs;           /* active low */
@@ -401,12 +401,12 @@ static void ss_sbi_receive(void *opaque, const uint8_t *buf, int size)
     SlaveBootInt *s = SBI(opaque);
     uint32_t free = fifo_num_free(&s->fifo);
 
-    while (s->BusWidthDetectCounter < 16) {
+    while (s->bus_width_detect_counter < 16) {
         /* First 16 bytes are used by harware for input port width
          * detection. We dont need to do that, so discard without
          * copying them to buffer
          */
-        s->BusWidthDetectCounter++;
+        s->bus_width_detect_counter++;
         buf++;
         size--;
         if (!size) {
