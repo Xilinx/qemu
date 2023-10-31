@@ -34,3 +34,7 @@ config XLNX_EFUSE_ZYNQMP
 config XLNX_BBRAM
     bool
     select XLNX_EFUSE_CRC
+
+config XLNX_SPARTANUP_PMC_EFUSE
+    bool
+    select XLNX_EFUSE

@@ -20,6 +20,8 @@ system_ss.add(when: 'CONFIG_XLNX_EFUSE_VERSAL', if_true: files(
 system_ss.add(when: 'CONFIG_XLNX_EFUSE_ZYNQMP', if_true: files(
                                                    'xlnx-zynqmp-efuse.c'))
 system_ss.add(when: 'CONFIG_XLNX_BBRAM', if_true: files('xlnx-bbram.c'))
+system_ss.add(when: 'CONFIG_XLNX_SPARTANUP_PMC_EFUSE',
+		     if_true: files('xlnx-spartanup-pmc-efuse.c'))
 
 specific_ss.add(when: 'CONFIG_PSERIES', if_true: files('spapr_nvram.c'))
 specific_ss.add(when: 'CONFIG_ACPI', if_true: files('fw_cfg-acpi.c'))
