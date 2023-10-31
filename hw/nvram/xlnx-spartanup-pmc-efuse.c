@@ -15,6 +15,13 @@
 #include "qemu/log.h"
 #include "migration/vmstate.h"
 #include "hw/irq.h"
+#include "hw/zynqmp_aes_key.h"
+#include "hw/misc/xlnx-aes.h"
+#include "hw/nvram/xlnx-efuse.h"
+
+#include "qapi/error.h"
+#include "qemu/error-report.h"
+#include "hw/qdev-properties.h"
 
 #ifndef XILINX_SPARTANUP_PMC_EFUSE_ERR_DEBUG
 #define XILINX_SPARTANUP_PMC_EFUSE_ERR_DEBUG 0
@@ -178,19 +185,256 @@ typedef struct SPARTANUP_PMC_EFUSE {
     MemoryRegion iomem;
     qemu_irq irq_efuse_imr;
 
+    XlnxEFuse *efuse;
+    ZynqMPAESKeySink *aes_key_sink;
+
     uint32_t regs[SPARTANUP_PMC_EFUSE_R_MAX];
     RegisterInfo regs_info[SPARTANUP_PMC_EFUSE_R_MAX];
 } SPARTANUP_PMC_EFUSE;
 
+
+/* Cache <-> eFuse correspondance.  */
+/* @row_addr: address of the first bit of the row.  */
+typedef struct XlnxSpartanupPmcEfuseMap {
+    size_t reg_addr;
+    size_t reg_shift;
+    size_t row_addr;
+    size_t col_idx;
+    size_t sz;
+} XlnxSpartanupPmcEfuseMap;
+
+static const XlnxSpartanupPmcEfuseMap spartanup_pmc_efuse_cache_map[] = {
+    { R_DNA_0,  0,   2 << 5, 0, 8 },
+    { R_DNA_0,  8,   3 << 5, 0, 8 },
+    { R_DNA_0,  16,  4 << 5, 0, 8 },
+    { R_DNA_0,  24,  5 << 5, 0, 8 },
+    { R_DNA_1,  0,   6 << 5, 0, 8 },
+    { R_DNA_1,  8,   7 << 5, 0, 8 },
+    { R_DNA_1,  16,  8 << 5, 0, 8 },
+    { R_DNA_1,  24,  9 << 5, 0, 8 },
+    { R_DNA_2,  0,  10 << 5, 0, 8 },
+    { R_DNA_2,  8,  11 << 5, 0, 8 },
+    { R_DNA_2,  16, 12 << 5, 0, 8 },
+    { R_DNA_2,  24, 13 << 5, 0, 8 },
+    { R_USER_0, 0,  21 << 5, 8, 8 },
+    { R_USER_0, 8,  22 << 5, 8, 8 },
+    { R_USER_0, 16, 23 << 5, 8, 8 },
+    { R_USER_0, 24, 24 << 5, 8, 8 },
+    /* XXX: USER_1 to USER_5 fuses are not found in the spec, ignore them.  */
+    { R_SYSMON_0,  0, 16 << 5, 8, 8 },
+    { R_SYSMON_0,  8, 17 << 5, 8, 8 },
+    { R_SYSMON_0, 16, 18 << 5, 8, 8 },
+    { R_SYSMON_0, 24, 19 << 5, 8, 8 },
+    { R_SYSMON_1,  0, 20 << 5, 8, 4 },
+    /* XXX: Missing SEC_LOCK, DTF_DIS fuses.  */
+    { R_SEC_CTRL,  5, 58 << 5, 28, 1 },     /* JTAG_DIS.   */
+    /* XXX: Missing BBRAM_DIS, ENC_ONLY fuses.  */
+    /* XXX: Missing SPK_ID fuses.  */
+    { R_PPK0_0,    0, 26 << 5,  8, 8},
+    { R_PPK0_0,    8, 27 << 5,  8, 8},
+    { R_PPK0_0,   16, 28 << 5,  8, 8},
+    { R_PPK0_0,   24, 29 << 5,  8, 8},
+    { R_PPK0_1,    0, 30 << 5,  8, 8},
+    { R_PPK0_1,    8, 31 << 5,  8, 8},
+    { R_PPK0_1,   16, 32 << 5,  8, 8},
+    { R_PPK0_1,   24, 33 << 5,  8, 8},
+    { R_PPK0_2,    0, 34 << 5,  8, 8},
+    { R_PPK0_2,    8, 35 << 5,  8, 8},
+    { R_PPK0_2,   16, 36 << 5,  8, 8},
+    { R_PPK0_2,   24, 37 << 5,  8, 8},
+    { R_PPK0_3,    0, 38 << 5,  8, 8},
+    { R_PPK0_3,    8, 39 << 5,  8, 8},
+    { R_PPK0_3,   16, 40 << 5,  8, 8},
+    { R_PPK0_3,   24, 41 << 5,  8, 8},
+    { R_PPK0_4,    0, 42 << 5,  8, 8},
+    { R_PPK0_4,    8, 43 << 5,  8, 8},
+    { R_PPK0_4,   16, 44 << 5,  8, 8},
+    { R_PPK0_4,   24, 45 << 5,  8, 8},
+    { R_PPK0_5,    0, 46 << 5,  8, 8},
+    { R_PPK0_5,    8, 47 << 5,  8, 8},
+    { R_PPK0_5,   16, 48 << 5,  8, 8},
+    { R_PPK0_5,   24, 49 << 5,  8, 8},
+    { R_PPK0_6,    0, 50 << 5,  8, 8},
+    { R_PPK0_6,    8, 51 << 5,  8, 8},
+    { R_PPK0_6,   16, 52 << 5,  8, 8},
+    { R_PPK0_6,   24, 53 << 5,  8, 8},
+    { R_PPK0_7,    0, 54 << 5,  8, 8},
+    { R_PPK0_7,    8, 55 << 5,  8, 8},
+    { R_PPK0_7,   16, 56 << 5,  8, 8},
+    { R_PPK0_7,   24, 57 << 5,  8, 8},
+    { R_PPK1_0,    0, 26 << 5, 16, 8},
+    { R_PPK1_0,    8, 27 << 5, 16, 8},
+    { R_PPK1_0,   16, 28 << 5, 16, 8},
+    { R_PPK1_0,   24, 29 << 5, 16, 8},
+    { R_PPK1_1,    0, 30 << 5, 16, 8},
+    { R_PPK1_1,    8, 31 << 5, 16, 8},
+    { R_PPK1_1,   16, 32 << 5, 16, 8},
+    { R_PPK1_1,   24, 33 << 5, 16, 8},
+    { R_PPK1_2,    0, 34 << 5, 16, 8},
+    { R_PPK1_2,    8, 35 << 5, 16, 8},
+    { R_PPK1_2,   16, 36 << 5, 16, 8},
+    { R_PPK1_2,   24, 37 << 5, 16, 8},
+    { R_PPK1_3,    0, 38 << 5, 16, 8},
+    { R_PPK1_3,    8, 39 << 5, 16, 8},
+    { R_PPK1_3,   16, 40 << 5, 16, 8},
+    { R_PPK1_3,   24, 41 << 5, 16, 8},
+    { R_PPK1_4,    0, 42 << 5, 16, 8},
+    { R_PPK1_4,    8, 43 << 5, 16, 8},
+    { R_PPK1_4,   16, 44 << 5, 16, 8},
+    { R_PPK1_4,   24, 45 << 5, 16, 8},
+    { R_PPK1_5,    0, 46 << 5, 16, 8},
+    { R_PPK1_5,    8, 47 << 5, 16, 8},
+    { R_PPK1_5,   16, 48 << 5, 16, 8},
+    { R_PPK1_5,   24, 49 << 5, 16, 8},
+    { R_PPK1_6,    0, 50 << 5, 16, 8},
+    { R_PPK1_6,    8, 51 << 5, 16, 8},
+    { R_PPK1_6,   16, 52 << 5, 16, 8},
+    { R_PPK1_6,   24, 53 << 5, 16, 8},
+    { R_PPK1_7,    0, 54 << 5, 16, 8},
+    { R_PPK1_7,    8, 55 << 5, 16, 8},
+    { R_PPK1_7,   16, 56 << 5, 16, 8},
+    { R_PPK1_7,   24, 57 << 5, 16, 8},
+    { R_TRIM_RAM_0,   0,  2 << 5, 16, 8},
+    { R_TRIM_RAM_0,   8,  3 << 5, 16, 8},
+    { R_TRIM_RAM_0,  16,  4 << 5, 16, 8},
+    { R_TRIM_RAM_0,  24,  5 << 5, 16, 8},
+    { R_TRIM_RAM_1,   0,  6 << 5, 16, 8},
+    { R_TRIM_RAM_1,   8,  7 << 5, 16, 8},
+    { R_TRIM_RAM_1,  16,  8 << 5, 16, 8},
+    { R_TRIM_RAM_1,  24,  9 << 5, 16, 8},
+    { R_TRIM_RAM_2,   0, 10 << 5, 16, 8},
+    { R_TRIM_RAM_2,   8, 11 << 5, 16, 8},
+    { R_TRIM_RAM_2,  16, 12 << 5, 16, 8},
+    { R_TRIM_RAM_2,  24, 13 << 5, 16, 8},
+    { R_TRIM_RAM_3,   0, 14 << 5, 16, 8},
+    { R_TRIM_RAM_3,   8, 15 << 5, 16, 8},
+    { R_TRIM_RAM_3,  16, 16 << 5, 16, 8},
+    { R_TRIM_RAM_3,  24, 17 << 5, 16, 8},
+    { R_TRIM_RAM_4,   0, 18 << 5, 16, 8},
+    { R_TRIM_RAM_4,   8, 19 << 5, 16, 8},
+    { R_TRIM_RAM_4,  16, 20 << 5, 16, 8},
+    { R_TRIM_RAM_4,  24, 21 << 5, 16, 8},
+    { R_TRIM_RAM_5,   0, 22 << 5, 16, 8},
+    { R_TRIM_RAM_5,   8, 23 << 5, 16, 8},
+    { R_TRIM_RAM_5,  16, 24 << 5, 16, 8},
+    { R_TRIM_RAM_5,  24, 25 << 5, 16, 8},
+    { R_TRIM_RAM_6,   0,  2 << 5, 24, 8},
+    { R_TRIM_RAM_6,   8,  3 << 5, 24, 8},
+    { R_TRIM_RAM_6,  16,  4 << 5, 24, 8},
+    { R_TRIM_RAM_6,  24,  5 << 5, 24, 8},
+    { R_TRIM_RAM_7,   0,  6 << 5, 24, 8},
+    { R_TRIM_RAM_7,   8,  7 << 5, 24, 8},
+    { R_TRIM_RAM_7,  16,  8 << 5, 24, 8},
+    { R_TRIM_RAM_7,  24,  9 << 5, 24, 8},
+    { R_TRIM_RAM_8,   0, 10 << 5, 24, 8},
+    { R_TRIM_RAM_8,   8, 11 << 5, 24, 8},
+    { R_TRIM_RAM_8,  16, 12 << 5, 24, 8},
+    { R_TRIM_RAM_8,  24, 13 << 5, 24, 8},
+    { R_TRIM_RAM_9,   0, 14 << 5, 24, 8},
+    { R_TRIM_RAM_9,   8, 15 << 5, 24, 8},
+    { R_TRIM_RAM_9,  16, 16 << 5, 24, 8},
+    { R_TRIM_RAM_9,  24, 17 << 5, 24, 8},
+    { R_TRIM_RAM_10,  0, 18 << 5, 24, 8},
+    { R_TRIM_RAM_10,  8, 19 << 5, 24, 8},
+    { R_TRIM_RAM_10, 16, 20 << 5, 24, 8},
+    { R_TRIM_RAM_10, 24, 21 << 5, 24, 8},
+    { R_TRIM_RAM_11,  0, 22 << 5, 24, 8},
+    { R_TRIM_RAM_11,  8, 23 << 5, 24, 8},
+    { R_TRIM_RAM_11, 16, 24 << 5, 24, 8},
+    { R_TRIM_RAM_11, 24, 25 << 5, 24, 8},
+    { R_TRIM_ANLG_0,   0,  2 << 5, 8, 8},
+    { R_TRIM_ANLG_0,   8,  3 << 5, 8, 8},
+    { R_TRIM_ANLG_0,  16,  4 << 5, 8, 8},
+    { R_TRIM_ANLG_0,  24,  5 << 5, 8, 8},
+    { R_TRIM_ANLG_1,   0,  6 << 5, 8, 8},
+    { R_TRIM_ANLG_1,   8,  7 << 5, 8, 8},
+    { R_TRIM_ANLG_1,  16,  8 << 5, 8, 8},
+    { R_TRIM_ANLG_1,  24,  9 << 5, 8, 8},
+    { R_TRIM_ANLG_2,   0, 10 << 5, 8, 8},
+    { R_TRIM_ANLG_2,   8, 11 << 5, 8, 8},
+    { R_TRIM_ANLG_2,  16, 12 << 5, 8, 8},
+    { R_TRIM_ANLG_2,  24, 13 << 5, 8, 8},
+    { R_TRIM_ANLG_3,   0, 14 << 5, 8, 8},
+    { R_TRIM_ANLG_3,   8, 15 << 5, 8, 5},
+    /* XXX: Missing SPK_REVO_ID fuses.  */
+    { R_AES_RANGES_0,   0,  58 << 5,  0, 8},
+    { R_AES_RANGES_0,   8,  59 << 5,  0, 8},
+    { R_AES_RANGES_0,  16,  60 << 5,  0, 8},
+    { R_AES_RANGES_0,  24,  61 << 5,  0, 8},
+    { R_AES_RANGES_1,   0,  58 << 5,  8, 8},
+    { R_AES_RANGES_1,   8,  59 << 5,  8, 8},
+    { R_AES_RANGES_1,  16,  60 << 5,  8, 8},
+    { R_AES_RANGES_1,  24,  61 << 5,  8, 8},
+    { R_AES_RANGES_2,   0,  58 << 5, 16, 8},
+    { R_AES_RANGES_2,   8,  59 << 5, 16, 8},
+    { R_AES_RANGES_2,  16,  60 << 5, 16, 8},
+    { R_AES_RANGES_2,  24,  61 << 5, 16, 8},
+    { R_AES_REVO_ID,    0,  60 << 5, 24, 8},
+};
+
+static const size_t spartanup_pmc_cache_map_size =
+    sizeof(spartanup_pmc_efuse_cache_map) / sizeof(spartanup_pmc_efuse_cache_map[0]);
+
+#define SPARTANUP_PMC_EFUSE_AES_ROW_ADDR(k) ((26 + k) << 5)
+#define SPARTANUP_PMC_EFUSE_AES_KEY_LEN (256 >> 3)
+
+static void spartanup_pmc_efuse_get_aes_key(SPARTANUP_PMC_EFUSE *s, uint8_t *key)
+{
+    size_t i;
+
+    for (i = 0; i < SPARTANUP_PMC_EFUSE_AES_KEY_LEN; i++) {
+        key[i] = (uint8_t)xlnx_efuse_get_row(s->efuse,
+                                             SPARTANUP_PMC_EFUSE_AES_ROW_ADDR(i));
+    }
+}
+
+static void spartanup_pmc_efuse_key_sync(SPARTANUP_PMC_EFUSE *s)
+{
+    uint8_t key[256 >> 3];
+
+    /* First of all check that the AES key is enabled.  */
+    if (!ARRAY_FIELD_EX32(s->regs, STATUS, EFUSE_0_TBIT)) {
+        return;
+    }
+    spartanup_pmc_efuse_get_aes_key(s, key);
+    zynqmp_aes_key_update(s->aes_key_sink, key, sizeof(key));
+}
+
+/* Synchronize the cache registers with what's present in the eFuse.  */
+static void spartanup_pmc_efuse_cache_sync(SPARTANUP_PMC_EFUSE *s)
+{
+    uint32_t field;
+    size_t i;
+    const XlnxSpartanupPmcEfuseMap *l;
+
+    for (i = 0; i < spartanup_pmc_cache_map_size; i++) {
+        l = &spartanup_pmc_efuse_cache_map[i];
+        field = extract32(xlnx_efuse_get_row(s->efuse, l->row_addr),
+                          l->col_idx, l->sz);
+        s->regs[l->reg_addr] = deposit32(s->regs[l->reg_addr],
+                                         l->reg_shift,
+                                         l->sz,
+                                         field);
+    }
+}
+
+static void spartanup_pmc_efuse_tbit_update(SPARTANUP_PMC_EFUSE *s)
+{
+    ARRAY_FIELD_DP32(s->regs, STATUS, EFUSE_0_TBIT,
+                     xlnx_efuse_tbits_check(s->efuse));
+}
+
 static void efuse_imr_update_irq(SPARTANUP_PMC_EFUSE *s)
 {
     bool pending = s->regs[R_EFUSE_ISR] & ~s->regs[R_EFUSE_IMR];
+
     qemu_set_irq(s->irq_efuse_imr, pending);
 }
 
 static void efuse_isr_postw(RegisterInfo *reg, uint64_t val64)
 {
     SPARTANUP_PMC_EFUSE *s = XILINX_SPARTANUP_PMC_EFUSE(reg->opaque);
+
     efuse_imr_update_irq(s);
 }
 
@@ -214,16 +458,108 @@ static uint64_t efuse_idr_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
+/*
+ * XXX: The lock register is modeled, but it doesn't have any effects.  It
+ *      should prevent the user to write anything anywhere, which is not the
+ *      case here.
+ */
+static uint64_t spartanup_pmc_efuse_wr_lock_prew(RegisterInfo *reg, uint64_t val)
+{
+    return (val == 0xDF0D ? 0 : 1);
+}
+
+static uint64_t spartanup_pmc_efuse_cache_load_prew(RegisterInfo *reg, uint64_t val)
+{
+    SPARTANUP_PMC_EFUSE *s = XILINX_SPARTANUP_PMC_EFUSE(reg->opaque);
+
+    if (val & R_EFUSE_CACHE_LOAD_LOAD_MASK) {
+        spartanup_pmc_efuse_cache_sync(s);
+
+        ARRAY_FIELD_DP32(s->regs, STATUS, CACHE_DONE, 1);
+        efuse_imr_update_irq(s);
+    }
+    return 0;
+}
+
+/*
+ * XXX: We don't know yet which eFuse are writable or not, this needs to be
+ *      reworked a bit when everything will be known.
+ */
+static void spartanup_pmc_efuse_pgm_addr_postw(RegisterInfo *reg, uint64_t val)
+{
+    SPARTANUP_PMC_EFUSE *s = XILINX_SPARTANUP_PMC_EFUSE(reg->opaque);
+
+    s->regs[R_EFUSE_PGM_ADDR] = 0;
+    if (ARRAY_FIELD_EX32(s->regs, CFG, PGM_EN)
+        && xlnx_efuse_set_bit(s->efuse, val)) {
+        spartanup_pmc_efuse_cache_sync(s);
+        spartanup_pmc_efuse_tbit_update(s);
+        spartanup_pmc_efuse_key_sync(s);
+    } else {
+        ARRAY_FIELD_DP32(s->regs, EFUSE_ISR, PGM_ERROR, 1);
+    }
+
+    ARRAY_FIELD_DP32(s->regs, EFUSE_ISR, PGM_DONE, 1);
+    efuse_imr_update_irq(s);
+}
+
+/*
+ * XXX: We don't know yet which eFuse are readable or not, this needs to be
+ *      reworked a bit when everything will be known.
+ */
+static void spartanup_pmc_efuse_rd_addr_postw(RegisterInfo *reg, uint64_t val)
+{
+    SPARTANUP_PMC_EFUSE *s = XILINX_SPARTANUP_PMC_EFUSE(reg->opaque);
+
+    s->regs[R_EFUSE_RD_ADDR] = 0;
+    s->regs[R_EFUSE_RD_DATA] = xlnx_efuse_get_row(s->efuse,
+                                             ARRAY_FIELD_EX32(s->regs,
+                                                              EFUSE_RD_ADDR,
+                                                              ROW) << 5);
+    ARRAY_FIELD_DP32(s->regs, EFUSE_ISR, RD_DONE, 1);
+    efuse_imr_update_irq(s);
+}
+
+static void spartanup_pmc_efuse_aes_crc_postw(RegisterInfo *reg, uint64_t val)
+{
+    SPARTANUP_PMC_EFUSE *s = XILINX_SPARTANUP_PMC_EFUSE(reg->opaque);
+    uint8_t key[256 >> 3];
+
+    s->regs[R_EFUSE_AES_CRC] = 0;
+
+    /*
+     * XXX: Documentation say that AES_RD_LK could disable the CRC
+     *      check.  Unfortunately this fuse is not present.
+     */
+
+    /* Keys are disabled, when tbits pattern is wrong.  */
+    if (!ARRAY_FIELD_EX32(s->regs, STATUS, EFUSE_0_TBIT)) {
+        return;
+    }
+
+    spartanup_pmc_efuse_get_aes_key(s, key);
+    ARRAY_FIELD_DP32(s->regs, STATUS, AES_CRC_DONE, 1);
+
+    if (val != xlnx_aes_k256_crc((uint32_t *)key, 0)) {
+        ARRAY_FIELD_DP32(s->regs, STATUS, AES_CRC_PASS, 1);
+    } else {
+        ARRAY_FIELD_DP32(s->regs, STATUS, AES_CRC_PASS, 0);
+    }
+}
+
 static const RegisterAccessInfo spartanup_pmc_efuse_regs_info[] = {
     {   .name = "WR_LOCK",  .addr = A_WR_LOCK,
         .reset = 0x1,
+        .pre_write = spartanup_pmc_efuse_wr_lock_prew,
     },{ .name = "CFG",  .addr = A_CFG,
     },{ .name = "STATUS",  .addr = A_STATUS,
         .rsvd = 0x8,
         .ro = 0xff,
     },{ .name = "EFUSE_PGM_ADDR",  .addr = A_EFUSE_PGM_ADDR,
+        .post_write = spartanup_pmc_efuse_pgm_addr_postw,
     },{ .name = "EFUSE_RD_ADDR",  .addr = A_EFUSE_RD_ADDR,
         .rsvd = 0x1f,
+        .post_write = spartanup_pmc_efuse_rd_addr_postw,
     },{ .name = "EFUSE_RD_DATA",  .addr = A_EFUSE_RD_DATA,
         .ro = 0xffffffff,
     },{ .name = "TPGM",  .addr = A_TPGM,
@@ -251,8 +587,10 @@ static const RegisterAccessInfo spartanup_pmc_efuse_regs_info[] = {
         .rsvd = 0x7fffffe0,
         .pre_write = efuse_idr_prew,
     },{ .name = "EFUSE_CACHE_LOAD",  .addr = A_EFUSE_CACHE_LOAD,
+        .pre_write = spartanup_pmc_efuse_cache_load_prew,
     },{ .name = "EFUSE_PGM_LOCK",  .addr = A_EFUSE_PGM_LOCK,
     },{ .name = "EFUSE_AES_CRC",  .addr = A_EFUSE_AES_CRC,
+        .post_write = spartanup_pmc_efuse_aes_crc_postw,
     },{ .name = "EFUSE_ECO",  .addr = A_EFUSE_ECO,
     },{ .name = "DNA_0",  .addr = A_DNA_0,
         .ro = 0xffffffff,
@@ -371,8 +709,29 @@ static void spartanup_pmc_efuse_reset_enter(Object *obj, ResetType type)
     unsigned int i;
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        register_reset(&s->regs_info[i]);
+        if (s->regs_info[i].access) {
+            switch (s->regs_info[i].access->addr) {
+            case A_EFUSE_AES_CRC:
+            case A_EFUSE_RD_ADDR:
+            case A_EFUSE_PGM_ADDR:
+                *(uint32_t *)s->regs_info[i].data =
+                    s->regs_info[i].access->reset;
+                break;
+            default:
+                register_reset(&s->regs_info[i]);
+                break;
+            }
+        } else {
+            register_reset(&s->regs_info[i]);
+        }
     }
+
+    /* Update the cache registers with the eFuse.  */
+    spartanup_pmc_efuse_cache_sync(s);
+    /* Update the TBIT check status.  */
+    spartanup_pmc_efuse_tbit_update(s);
+    /* Send the AES key.  */
+    spartanup_pmc_efuse_key_sync(s);
 }
 
 static void spartanup_pmc_efuse_reset_hold(Object *obj, ResetType type)
@@ -394,7 +753,18 @@ static const MemoryRegionOps spartanup_pmc_efuse_ops = {
 
 static void spartanup_pmc_efuse_realize(DeviceState *dev, Error **errp)
 {
-    /* Delete this if you don't need it */
+    SPARTANUP_PMC_EFUSE *s = XILINX_SPARTANUP_PMC_EFUSE(dev);
+    g_autofree char *prefix = object_get_canonical_path(OBJECT(dev));
+
+    if (!s->efuse) {
+        error_setg(errp, "%s: no XLNX-EFUSE provided", prefix);
+        return;
+    }
+
+    if (!s->aes_key_sink) {
+        error_setg(errp, "%s: eFuse AES key sink not connected", prefix);
+        return;
+    }
 }
 
 static void spartanup_pmc_efuse_init(Object *obj)
@@ -429,6 +799,15 @@ static const VMStateDescription vmstate_spartanup_pmc_efuse = {
     }
 };
 
+static const Property spartanup_pmc_efuse_props[] = {
+    DEFINE_PROP_LINK("efuse",
+                     SPARTANUP_PMC_EFUSE, efuse,
+                     TYPE_XLNX_EFUSE, XlnxEFuse *),
+    DEFINE_PROP_LINK("aes-key-sink-efuses",
+                     SPARTANUP_PMC_EFUSE, aes_key_sink,
+                     TYPE_ZYNQMP_AES_KEY_SINK, ZynqMPAESKeySink *),
+};
+
 static void spartanup_pmc_efuse_class_init(ObjectClass *klass, const void *data)
 {
     ResettableClass *rc = RESETTABLE_CLASS(klass);
@@ -438,6 +817,7 @@ static void spartanup_pmc_efuse_class_init(ObjectClass *klass, const void *data)
     dc->vmsd = &vmstate_spartanup_pmc_efuse;
     rc->phases.enter = spartanup_pmc_efuse_reset_enter;
     rc->phases.hold = spartanup_pmc_efuse_reset_hold;
+    device_class_set_props(dc, spartanup_pmc_efuse_props);
 }
 
 static const TypeInfo spartanup_pmc_efuse_info = {
