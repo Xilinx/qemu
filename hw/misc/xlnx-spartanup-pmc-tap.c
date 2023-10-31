@@ -15,6 +15,7 @@
 #include "qemu/log.h"
 #include "migration/vmstate.h"
 #include "hw/irq.h"
+#include "hw/qdev-properties.h"
 
 #ifndef XILINX_SPARTANUP_PMC_TAP_ERR_DEBUG
 #define XILINX_SPARTANUP_PMC_TAP_ERR_DEBUG 0
@@ -26,6 +27,7 @@
      OBJECT_CHECK(SPARTANUP_PMC_TAP, (obj), TYPE_XILINX_SPARTANUP_PMC_TAP)
 
 REG32(IDCODE, 0x0)
+    FIELD(IDCODE, IDCODE, 0, 32)
 REG32(VERSION, 0x4)
     FIELD(VERSION, PS_VERSION, 8, 8)
     FIELD(VERSION, PMC_VERSION, 0, 8)
@@ -216,12 +218,15 @@ REG32(PMC_TAP_LOCK, 0x11000)
     FIELD(PMC_TAP_LOCK, TAP_LOCK_N, 0, 1)
 
 #define SPARTANUP_PMC_TAP_R_MAX (R_PMC_TAP_LOCK + 1)
+#define SPARTANUP_PMC_TAP_VERSION_ES1 0x10
 
 typedef struct SPARTANUP_PMC_TAP {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
     qemu_irq irq_pmc_tap_int;
 
+    uint32_t idcode;
+    uint32_t spartanup_pmc_version;
     uint32_t regs[SPARTANUP_PMC_TAP_R_MAX];
     RegisterInfo regs_info[SPARTANUP_PMC_TAP_R_MAX];
 } SPARTANUP_PMC_TAP;
@@ -314,6 +319,9 @@ static void spartanup_pmc_tap_reset_enter(Object *obj, ResetType type)
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
         register_reset(&s->regs_info[i]);
     }
+
+    ARRAY_FIELD_DP32(s->regs, IDCODE, IDCODE, s->idcode);
+    ARRAY_FIELD_DP32(s->regs, VERSION, PMC_VERSION, s->spartanup_pmc_version);
 }
 
 static void spartanup_pmc_tap_reset_hold(Object *obj, ResetType type)
@@ -370,6 +378,12 @@ static const VMStateDescription vmstate_spartanup_pmc_tap = {
     }
 };
 
+static const Property spartanup_pmc_tap_props[] = {
+        DEFINE_PROP_UINT32("idcode", SPARTANUP_PMC_TAP, idcode, 0),
+        DEFINE_PROP_UINT32("pmc-version", SPARTANUP_PMC_TAP, spartanup_pmc_version,
+                           SPARTANUP_PMC_TAP_VERSION_ES1),
+};
+
 static void spartanup_pmc_tap_class_init(ObjectClass *klass, const void *data)
 {
     ResettableClass *rc = RESETTABLE_CLASS(klass);
@@ -379,6 +393,7 @@ static void spartanup_pmc_tap_class_init(ObjectClass *klass, const void *data)
     dc->vmsd = &vmstate_spartanup_pmc_tap;
     rc->phases.enter = spartanup_pmc_tap_reset_enter;
     rc->phases.hold = spartanup_pmc_tap_reset_hold;
+    device_class_set_props(dc, spartanup_pmc_tap_props);
 }
 
 static const TypeInfo spartanup_pmc_tap_info = {
