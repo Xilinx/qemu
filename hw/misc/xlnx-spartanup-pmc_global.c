@@ -197,6 +197,8 @@ typedef struct SPARTANUP_PMC_GLOBAL {
     qemu_irq rst_ospi;
     qemu_irq rst_sbi;
     qemu_irq rst_spare;
+    qemu_irq rst_ccu;
+    qemu_irq rst_puf;
 
     uint32_t regs[SPARTANUP_PMC_GLOBAL_R_MAX];
     RegisterInfo regs_info[SPARTANUP_PMC_GLOBAL_R_MAX];
@@ -325,6 +327,20 @@ static void spartanup_pmc_global_rst_sbi_postw(RegisterInfo *reg, uint64_t val)
     PROPAGATE_GPIO(RST_SBI, RESET, s->rst_sbi);
 }
 
+static void spartanup_pmc_global_rst_ccu_postw(RegisterInfo *reg, uint64_t val)
+{
+    SPARTANUP_PMC_GLOBAL *s = XILINX_SPARTANUP_PMC_GLOBAL(reg->opaque);
+
+    PROPAGATE_GPIO(RST_CCU, RESET, s->rst_ccu);
+}
+
+static void spartanup_pmc_global_rst_puf_postw(RegisterInfo *reg, uint64_t val)
+{
+    SPARTANUP_PMC_GLOBAL *s = XILINX_SPARTANUP_PMC_GLOBAL(reg->opaque);
+
+    PROPAGATE_GPIO(RST_PUF, RESET, s->rst_puf);
+}
+
 static void spartanup_pmc_global_rst_spare_postw(RegisterInfo *reg, uint64_t val)
 {
     SPARTANUP_PMC_GLOBAL *s = XILINX_SPARTANUP_PMC_GLOBAL(reg->opaque);
@@ -360,8 +376,10 @@ static const RegisterAccessInfo spartanup_pmc_global_regs_info[] = {
         .reset = 0x1,
         .post_write = spartanup_pmc_global_rst_sbi_postw,
     },{ .name = "RST_CCU",  .addr = A_RST_CCU,
+        .post_write = spartanup_pmc_global_rst_ccu_postw,
     },{ .name = "RST_PUF",  .addr = A_RST_PUF,
         .reset = 0x1,
+        .post_write = spartanup_pmc_global_rst_puf_postw,
     },{ .name = "RESET_REASON",  .addr = A_RESET_REASON,
         .reset = 0x1,
         .rsvd = 0xfffffff8,
@@ -589,6 +607,8 @@ static void spartanup_pmc_global_init(Object *obj)
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_dma, "rst-dma", 1);
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_ospi, "rst-ospi", 1);
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_sbi, "rst-sbi", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_ccu, "rst-ccu", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->rst_puf, "rst-puf", 1);
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_spare, "rst-spare", 1);
 }
 
@@ -609,7 +629,9 @@ static const FDTGenericGPIOSet spartanup_pmc_rst_gpios[] = {
             { .name = "rst-dma", .fdt_index = 0, .range = 1 },
             { .name = "rst-ospi", .fdt_index = 1, .range = 1 },
             { .name = "rst-sbi", .fdt_index = 2, .range = 1 },
-            { .name = "rst-spare", .fdt_index = 3, .range = 1 },
+            { .name = "rst-ccu", .fdt_index = 3, .range = 1 },
+            { .name = "rst-puf", .fdt_index = 4, .range = 1 },
+            { .name = "rst-spare", .fdt_index = 5, .range = 1 },
             { },
         },
     },
