@@ -132,6 +132,10 @@ system_ss.add(when: 'CONFIG_XLNX_SPARTANUP_PMC', if_true: files(
   'xlnx-spartanup-pmc_global.c',
 ))
 
+system_ss.add(when: 'CONFIG_XLNX_SPARTANUP_PMC_TAP', if_true: files(
+  'xlnx-spartanup-pmc-tap.c',
+))
+
 specific_ss.add(when: 'CONFIG_XLNX_ZYNQMP_ARM', if_true: files(
   'xlnx-versal-net-rpu-cluster.c',
   'xilinx-psxc-rpu-cluster-core.c'

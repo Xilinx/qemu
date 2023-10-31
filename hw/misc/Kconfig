@@ -172,9 +172,13 @@ config AUX
 config XLNX_VERSAL_PMC
 	bool
 
+config XLNX_SPARTANUP_PMC_TAP
+    bool
+
 config XLNX_SPARTANUP_PMC
     bool
     select XLNX_SPARTANUP_PMC_SHA3
+    select XLNX_SPARTANUP_PMC_TAP
 
 config SI57X
 	bool
