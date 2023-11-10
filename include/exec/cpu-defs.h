@@ -148,12 +148,22 @@ typedef struct CPUTLBEntryFull {
      *     + the offset within the target MemoryRegion (otherwise)
      */
     hwaddr xlat_section;
-    MemTxAttrs attrs;
-} CPUTLBEntryFull;
 
-#ifndef NB_MEM_ATTR
-#define NB_MEM_ATTR 2
-#endif
+    /*
+     * @phys_addr contains the physical address in the address space
+     * given by cpu_asidx_from_attrs(cpu, @attrs).
+     */
+    hwaddr phys_addr;
+
+    /* @attrs contains the memory transaction attributes for the page. */
+    MemTxAttrs attrs;
+
+    /* @prot contains the complete protections for the page. */
+    uint8_t prot;
+
+    /* @lg_page_size contains the log2 of the page size. */
+    uint8_t lg_page_size;
+} CPUTLBEntryFull;
 
 /*
  * Data elements that are per MMU mode, minus the bits accessed by
@@ -221,9 +231,15 @@ typedef struct CPUTLBCommon {
  * negative offsets are at the end of the struct.
  */
 
+/* Xilinx specific */
+#ifndef NB_MEM_ATTR
+#define NB_MEM_ATTR 2
+#endif
+
 typedef struct CPUTLB {
     CPUTLBCommon c;
     CPUTLBEntryFull memattr[NB_MEM_ATTR];
+#undef NB_MEM_ATTR
     CPUTLBDesc d[NB_MMU_MODES];
     CPUTLBDescFast f[NB_MMU_MODES];
 } CPUTLB;
