@@ -73,7 +73,11 @@ static vaddr arm_cpu_get_pc(CPUState *cs)
     ARMCPU *cpu = ARM_CPU(cs);
     CPUARMState *env = &cpu->env;
 
-   return is_a64(env) ? env->pc : env->regs[15];
+    if (is_a64(env)) {
+        return env->pc;
+    } else {
+        return env->regs[15];
+    }
 }
 
 #ifdef CONFIG_TCG
