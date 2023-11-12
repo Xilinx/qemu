@@ -434,7 +434,7 @@ cpu_tb_exec(CPUState *cpu, TranslationBlock *itb, int *tb_exit)
 
     if (qemu_etrace_mask(ETRACE_F_EXEC)) {
         etrace_dump_exec_start(&qemu_etracer, cpu->cpu_index,
-                               itb->pc);
+                               log_pc(cpu, itb));
     }
 
     if (qemu_loglevel_mask(CPU_LOG_TB_CPU | CPU_LOG_EXEC)) {
@@ -1060,6 +1060,9 @@ int cpu_exec(CPUState *cpu)
                 target_ulong cs_base, pc;
                 uint32_t flags;
 
+#if TARGET_TB_PCREL
+                cpu_get_tb_cpu_state(env, &pc, &cs_base, &flags);
+#else
                 if (tb_exit) {
                     /* TB early exit, ask for CPU state.  */
                     cpu_get_tb_cpu_state(env, &pc, &cs_base, &flags);
@@ -1067,6 +1070,7 @@ int cpu_exec(CPUState *cpu)
                     /* TB didn't exit, assume we ran all of it.  */
                     pc = tb->pc + tb->size;
                 }
+#endif
                 etrace_dump_exec_end(&qemu_etracer,
                                      cpu->cpu_index, pc);
             }
