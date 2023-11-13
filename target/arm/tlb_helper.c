@@ -265,10 +265,6 @@ bool arm_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
             res.f.phys_addr &= TARGET_PAGE_MASK;
             address &= TARGET_PAGE_MASK;
         }
-        /* Notice and record tagged memory. */
-        if (cpu_isar_feature(aa64_mte, cpu) && res.cacheattrs.attrs == 0xf0) {
-            arm_tlb_mte_tagged(&res.f.attrs) = true;
-        }
 
         /* Map cache attributes into memory attributes.  */
         map_cacheattrs(res.f.phys_addr, &res.f.attrs, &res.cacheattrs);
