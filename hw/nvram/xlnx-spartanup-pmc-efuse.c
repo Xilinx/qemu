@@ -486,6 +486,16 @@ static uint64_t efuse_idr_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
+static uint64_t efuse_itr_prew(RegisterInfo *reg, uint64_t val64)
+{
+    SPARTANUP_PMC_EFUSE *s = XILINX_SPARTANUP_PMC_EFUSE(reg->opaque);
+    uint32_t val = val64;
+
+    s->regs[R_EFUSE_ISR] |= val;
+    efuse_imr_update_irq(s);
+    return 0;
+}
+
 /*
  * XXX: The lock register is modeled, but it doesn't have any effects.  It
  *      should prevent the user to write anything anywhere, which is not the
@@ -616,6 +626,7 @@ static const RegisterAccessInfo spartanup_pmc_efuse_regs_info[] = {
         .pre_write = efuse_idr_prew,
     },{ .name = "EFUSE_ITR",  .addr = A_EFUSE_ITR,
         .rsvd = 0x7fffffe0,
+        .pre_write = efuse_itr_prew,
     },{ .name = "EFUSE_CACHE_LOAD",  .addr = A_EFUSE_CACHE_LOAD,
         .pre_write = spartanup_pmc_efuse_cache_load_prew,
     },{ .name = "EFUSE_PGM_LOCK",  .addr = A_EFUSE_PGM_LOCK,
