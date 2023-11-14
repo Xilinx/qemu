@@ -384,7 +384,18 @@ static const XlnxSpartanupPmcEfuseMap spartanup_pmc_efuse_cache_map[] = {
     { R_TRIM_ANLG_2,  24, 13 << 5, 8, 8},
     { R_TRIM_ANLG_3,   0, 14 << 5, 8, 8},
     { R_TRIM_ANLG_3,   8, 15 << 5, 8, 5},
-    /* XXX: Missing SPK_REVO_ID fuses.  */
+    { R_SPK_REVO_ID_0,  0, 14 << 5, 0, 8},
+    { R_SPK_REVO_ID_0,  8, 15 << 5, 0, 8},
+    { R_SPK_REVO_ID_0, 16, 16 << 5, 0, 8},
+    { R_SPK_REVO_ID_0, 24, 17 << 5, 0, 8},
+    { R_SPK_REVO_ID_1,  0, 18 << 5, 0, 8},
+    { R_SPK_REVO_ID_1,  8, 19 << 5, 0, 8},
+    { R_SPK_REVO_ID_1, 16, 20 << 5, 0, 8},
+    { R_SPK_REVO_ID_1, 24, 21 << 5, 0, 8},
+    { R_SPK_REVO_ID_2,  0, 22 << 5, 0, 8},
+    { R_SPK_REVO_ID_2,  8, 23 << 5, 0, 8},
+    { R_SPK_REVO_ID_2, 16, 24 << 5, 0, 8},
+    { R_SPK_REVO_ID_2, 24, 25 << 5, 0, 8},
     { R_AES_RANGES_0,   0,  58 << 5,  0, 8},
     { R_AES_RANGES_0,   8,  59 << 5,  0, 8},
     { R_AES_RANGES_0,  16,  60 << 5,  0, 8},
@@ -397,7 +408,7 @@ static const XlnxSpartanupPmcEfuseMap spartanup_pmc_efuse_cache_map[] = {
     { R_AES_RANGES_2,   8,  59 << 5, 16, 8},
     { R_AES_RANGES_2,  16,  60 << 5, 16, 8},
     { R_AES_RANGES_2,  24,  61 << 5, 16, 8},
-    { R_AES_REVO_ID,    0,  60 << 5, 24, 8},
+    { R_AES_REVO_ID,    0,  62 << 5, 16, 8},
 };
 
 static const size_t spartanup_pmc_cache_map_size =
