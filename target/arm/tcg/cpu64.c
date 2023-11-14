@@ -392,8 +392,12 @@ static void aarch64_a78_initfn(Object *obj)
 
     /* Xilinx FIXUPs.  */
     /* These indicate the BP hardening and KPTI aren't needed.  */
+    cpu->isar.id_aa64pfr0 |= (uint64_t)1 << 28; /* RAS.  */
     cpu->isar.id_aa64pfr0 |= (uint64_t)1 << 56; /* BP.  */
     cpu->isar.id_aa64pfr0 |= (uint64_t)1 << 60; /* KPTI.  */
+
+    cpu->isar.id_aa64mmfr1 |= (uint64_t)2 << 20; /* PAN */
+    cpu->isar.id_aa64mmfr1 |= (uint64_t)1 << 8; /* VHE */
 }
 
 
