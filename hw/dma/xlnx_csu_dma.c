@@ -442,6 +442,11 @@ static uint64_t size_pre_write(RegisterInfo *reg, uint64_t val)
                           "%s: Starting DMA while already running.\n",
                           __func__);
         }
+
+        if (!s->is_dst) {
+            /* Abort the precedent packet.  */
+            stream_abort(s->tx_dev);
+        }
     }
 
     if (!s->is_dst) {
