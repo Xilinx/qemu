@@ -1102,6 +1102,12 @@ static size_t aes_stream_push(StreamSink *obj, uint8_t *buf, size_t len,
     bool encrypt;
     size_t ret;
 
+    if (!s->aes->inp_ready) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: data are pushed but the model isn't"
+                      " ready to accept them: these are dropped.", __func__);
+        return len;
+    }
+
     /* When encrypting, we need to be prepared to receive the 16 byte tag.  */
     encrypt = s->aes->encrypt;
     if (encrypt && len > (sizeof(outbuf) - 16)) {
@@ -1149,15 +1155,6 @@ static size_t aes_stream_push(StreamSink *obj, uint8_t *buf, size_t len,
     /* printf("%s len=%zd ret=%zd outlen=%d eop=%d\n",
            __func__, len, ret, outlen, eop); */
     return ret;
-}
-
-static bool aes_stream_can_push(StreamSink *obj,
-                                    StreamCanPushNotifyFn notify,
-                                    void *notify_opaque)
-{
-    Zynq3AES *s = XILINX_AES(obj);
-    /* printf("%s: %d\n", __func__, s->aes.inp_ready); */
-    return s->aes->inp_ready;
 }
 
 static void efuse_key_lock_update(void *opaque, int n, int level)
@@ -1309,7 +1306,6 @@ static void aes_class_init(ObjectClass *klass, void *data)
     ksc->update = device_key_update;
 
     ssc->push = aes_stream_push;
-    ssc->can_push = aes_stream_can_push;
 }
 
 static void pmc_key_sink_class_init(ObjectClass *klass, void *data)
