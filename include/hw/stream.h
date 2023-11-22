@@ -40,6 +40,13 @@ struct StreamSinkClass {
      * @eop: End of packet flag
      */
     size_t (*push)(StreamSink *obj, unsigned char *buf, size_t len, bool eop);
+
+    /**
+     * abort - abort a current packet in a Stream sink.  This tells the Stream
+     * sink to abort the current packet.
+     * @obj: Stream sink to declare packet abort to.
+     */
+    void (*abort)(StreamSink *obj);
 };
 
 size_t
@@ -48,6 +55,9 @@ stream_push(StreamSink *sink, uint8_t *buf, size_t len, bool eop);
 bool
 stream_can_push(StreamSink *sink, StreamCanPushNotifyFn notify,
                 void *notify_opaque);
+
+void
+stream_abort(StreamSink *sink);
 
 
 #endif /* STREAM_H */
