@@ -190,9 +190,15 @@ static size_t xlx_sha3_stream_push(StreamSink *obj, uint8_t *buf, size_t len,
     ZynqMPCSUSHA3 *s = ZYNQMP_CSU_SHA3(obj);
     unsigned int excess_len;
 
+    /*
+     * This IP doesn't support handling backpressure, any data received while
+     * the IP isn't listening will be dropped.
+     */
     if (s->state != RUNNING) {
-        hw_error("%s: Data in bad state %d\n", s->prefix, s->state);
-        return 0;
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: data received while the device"
+                      " isn't ready to accept them: these are dropped.",
+                      __func__);
+        return len;
     }
 
     excess_len = (s->data_count + len) % SHA3_BLOCK_SIZE;
@@ -216,15 +222,8 @@ static size_t xlx_sha3_stream_push(StreamSink *obj, uint8_t *buf, size_t len,
     if (eop) {
         ARRAY_FIELD_DP32(s->regs, SHA_DONE, SHA_DONE, true);
     }
-    return len;
-}
 
-static bool xlx_sha3_stream_can_push(StreamSink *obj,
-                                    StreamCanPushNotifyFn notify,
-                                    void *notify_opaque)
-{
-    ZynqMPCSUSHA3 *s = ZYNQMP_CSU_SHA3(obj);
-    return s->state == RUNNING;
+    return len;
 }
 
 static void xlx_sha3_reset(DeviceState *dev)
@@ -332,7 +331,6 @@ static void sha3_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_sha3;
 
     ssc->push = xlx_sha3_stream_push;
-    ssc->can_push = xlx_sha3_stream_can_push;
 }
 
 static const TypeInfo sha3_info = {
