@@ -432,7 +432,9 @@ static uint64_t addr_pre_write(RegisterInfo *reg, uint64_t val)
 static uint64_t size_pre_write(RegisterInfo *reg, uint64_t val)
 {
     XlnxCSUDMA *s = XLNX_CSU_DMA(reg->opaque);
-    uint64_t size = val & R_SIZE_SIZE_MASK;
+    uint64_t size = val & (s->allow_unaligned
+                           ? R_SIZE_UNALIGNED_SIZE_MASK
+                           : R_SIZE_SIZE_MASK);
 
     if (s->regs[R_SIZE] != 0) {
         if (size || s->is_dst) {
