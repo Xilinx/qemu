@@ -268,6 +268,7 @@ static const RegisterAccessInfo spartanup_pmc_tap_regs_info[] = {
         .ro = 0xffffffff,
     },{ .name = "VERSION",  .addr = A_VERSION,
         .ro = 0xffffffff,
+        .reset = 0x03000000,
     },{ .name = "USERCODE",  .addr = A_USERCODE,
     },{ .name = "PMC_TAP_INT_STATUS",  .addr = A_PMC_TAP_INT_STATUS,
         .rsvd = 0x18,
