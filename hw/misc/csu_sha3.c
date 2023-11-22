@@ -236,6 +236,7 @@ static void xlx_sha3_reset(DeviceState *dev)
         register_reset(&s->regs_info[i]);
     }
     s->data_count = 0;
+    s->ctx.index = 0;
 }
 
 static void xlx_sha3_write(void *opaque, hwaddr addr, uint64_t value,
