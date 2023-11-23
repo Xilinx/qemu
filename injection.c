@@ -40,11 +40,10 @@ static QEMUTimer *timer;
     if (DEBUG_FAULT_INJECTION) {                                               \
         qemu_log("fault_injection: " fmt , ## __VA_ARGS__);                    \
     }                                                                          \
-} while (0);
+} while (0)
 
 void qmp_write_mem(int64_t addr, int64_t val, int64_t size, bool has_cpu,
-                   int64_t cpu, bool has_qom, const char *qom, bool debug,
-                   Error **errp)
+                   int64_t cpu, const char *qom, bool debug, Error **errp)
 {
     int cpu_id = 0;
     Object *obj;
@@ -52,7 +51,7 @@ void qmp_write_mem(int64_t addr, int64_t val, int64_t size, bool has_cpu,
     MemTxAttrs attrs = MEMTXATTRS_UNSPECIFIED;
 
     attrs.debug = debug;
-    if (has_qom) {
+    if (qom) {
         obj = object_resolve_path(qom, NULL);
         s = (CPUState *)object_dynamic_cast(obj, TYPE_CPU);
         if (s) {
@@ -82,7 +81,7 @@ void qmp_write_mem(int64_t addr, int64_t val, int64_t size, bool has_cpu,
 }
 
 ReadValue *qmp_read_mem(int64_t addr, int64_t size, bool has_cpu, int64_t cpu,
-                     bool has_qom, const char *qom, Error **errp)
+                        const char *qom, Error **errp)
 {
     ReadValue *ret = g_new0(ReadValue, 1);
     int cpu_id = 0;
@@ -91,7 +90,7 @@ ReadValue *qmp_read_mem(int64_t addr, int64_t size, bool has_cpu, int64_t cpu,
 
     ret->value = 0;
 
-    if (has_qom) {
+    if (qom) {
         obj = object_resolve_path(qom, NULL);
         s = (CPUState *)object_dynamic_cast(obj, TYPE_CPU);
         if (s) {
@@ -185,7 +184,7 @@ void qmp_trigger_event(int64_t time_ns, int64_t event_id, Error **errp)
     mod_next_event_timer();
 }
 
-void qmp_inject_gpio(const char *device_name, bool has_gpio, const char *gpio,
+void qmp_inject_gpio(const char *device_name, const char *gpio,
                      int64_t num, int64_t val, Error **errp)
 {
     DeviceState *dev;
@@ -197,9 +196,9 @@ void qmp_inject_gpio(const char *device_name, bool has_gpio, const char *gpio,
         return;
     }
 
-    irq = qdev_get_gpio_in_named(dev, has_gpio ? gpio : NULL, num);
+    irq = qdev_get_gpio_in_named(dev, gpio ? gpio : NULL, num);
     if (!irq) {
-        error_setg(errp, "GPIO '%s' doesn't exists", has_gpio ? gpio : "unnammed");
+        error_setg(errp, "GPIO '%s' doesn't exists", gpio ? gpio : "unnammed");
         return;
     }
 
