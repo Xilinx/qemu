@@ -1462,7 +1462,7 @@ static uint64_t gem_read(void *opaque, hwaddr offset, unsigned size)
 {
     CadenceGEMState *s;
     uint32_t retval;
-    s = (CadenceGEMState *)opaque;
+    s = opaque;
 
     offset >>= 2;
     retval = s->regs[offset];
