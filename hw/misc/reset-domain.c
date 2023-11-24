@@ -44,6 +44,29 @@ typedef struct ResetDomain {
     MemoryRegion *mr[MAX_RESET_MR];
 } ResetDomain;
 
+static int qdev_reset_one(DeviceState *dev, void *opaque)
+{
+    DeviceClass *klass = DEVICE_GET_CLASS(dev);
+    if (klass->reset) {
+        klass->reset(dev);
+    }
+    return 0;
+}
+
+static int qbus_reset_one(BusState *bus, void *opaque)
+{
+    BusClass *bc = BUS_GET_CLASS(bus);
+    if (bc->reset) {
+        bc->reset(bus);
+    }
+    return 0;
+}
+
+static void qdev_reset_all(DeviceState *dev)
+{
+    qdev_walk_children(dev, NULL, NULL, qdev_reset_one, qbus_reset_one, NULL);
+}
+
 static void reset_mr(ResetDomain *s, MemoryRegion *mr, int level)
 {
     Object *obj_owner;
