@@ -730,6 +730,11 @@ static void efuse_data_sync(XlnxPmxEFuseCtrl *s)
     pmx_efuse_ac_dme_sync(s);
     efuse_status_tbits_sync(s);
 
+    /*
+     * HACK:
+     * Need bswap32 as pmc aes needs words in big-endian order and
+     * bytes with-in words as little-endian.
+     */
     efuse_extract_aes_key_be(s, key.u32);
     for (i = 0; i < 8; i++) {
         key.u32[i] = bswap32(key.u32[i]);
@@ -737,9 +742,15 @@ static void efuse_data_sync(XlnxPmxEFuseCtrl *s)
     zynqmp_aes_key_update(s->aes_key_sink, key.u8, sizeof(key.u8));
 
     efuse_extract_user_key_0_be(s, key.u32);
+    for (i = 0; i < 8; i++) {
+        key.u32[i] = bswap32(key.u32[i]);
+    }
     zynqmp_aes_key_update(s->usr_key0_sink, key.u8, sizeof(key.u8));
 
     efuse_extract_user_key_1_be(s, key.u32);
+    for (i = 0; i < 8; i++) {
+        key.u32[i] = bswap32(key.u32[i]);
+    }
     zynqmp_aes_key_update(s->usr_key1_sink, key.u8, sizeof(key.u8));
     xlnx_efuse_extidcode_check(s->efuse, 0xBC0);
 }
