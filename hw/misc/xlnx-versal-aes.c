@@ -476,9 +476,11 @@ static void xlx_aes_load_key(Zynq3AES *s, int len)
         break;
     case KEY_SEL_EFUSE_USR_KEY0:
         key.u8 = efuse_locked ? zerokey : s->efuse_user_key[0].key;
+        be_adj = 0;  /* due to zynqmp compatibility */
         break;
     case KEY_SEL_EFUSE_USR_KEY1:
         key.u8 = efuse_locked ? zerokey : s->efuse_user_key[1].key;
+        be_adj = 0;  /* due to zynqmp compatibility */
         break;
     case KEY_SEL_EFUSE_USR_RD_KEY0:
         key.u8 = s->efuse_user_key_red[0].key;
