@@ -633,6 +633,32 @@ static void rv32_imafcu_nommu_cpu_init(Object *obj)
     cpu->cfg.ext_zicsr = true;
     cpu->cfg.pmp = true;
 }
+
+#ifndef CONFIG_USER_ONLY
+static uint64_t mb_v_rdtime(void *opaque)
+{
+    CPURISCVState *env = &RISCV_CPU(opaque)->env;
+    uint32_t time, timeh;
+
+    csr_ops[CSR_MCYCLE].read(env, CSR_MCYCLE, &time);
+    csr_ops[CSR_MCYCLEH].read(env, CSR_MCYCLEH, &timeh);
+    return (uint64_t) timeh << 32 | time;
+}
+#endif
+
+static void rv32_microblaze_v_cpu_init(Object *obj)
+{
+#ifndef CONFIG_USER_ONLY
+    CPURISCVState *env = &RISCV_CPU(obj)->env;
+#endif
+    RISCVCPU *cpu = RISCV_CPU(obj);
+
+    rv32_base_cpu_init(obj);
+#ifndef CONFIG_USER_ONLY
+    riscv_cpu_set_rdtime_fn(env, mb_v_rdtime, obj);
+#endif
+    cpu->cfg.mmu = false;
+}
 #endif
 
 static ObjectClass *riscv_cpu_class_by_name(const char *cpu_model)
@@ -1852,6 +1878,7 @@ static const TypeInfo riscv_cpu_type_infos[] = {
     DEFINE_CPU(TYPE_RISCV_CPU_SIFIVE_E31,       rv32_sifive_e_cpu_init),
     DEFINE_CPU(TYPE_RISCV_CPU_SIFIVE_E34,       rv32_imafcu_nommu_cpu_init),
     DEFINE_CPU(TYPE_RISCV_CPU_SIFIVE_U34,       rv32_sifive_u_cpu_init),
+    DEFINE_DYNAMIC_CPU(TYPE_RISCV_CPU_MICROBLAZE_V,     rv32_microblaze_v_cpu_init),
 #elif defined(TARGET_RISCV64)
     DEFINE_DYNAMIC_CPU(TYPE_RISCV_CPU_BASE64,   rv64_base_cpu_init),
     DEFINE_CPU(TYPE_RISCV_CPU_SIFIVE_E51,       rv64_sifive_e_cpu_init),
