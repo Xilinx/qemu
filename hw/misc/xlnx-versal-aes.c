@@ -51,12 +51,16 @@
 
 #define TYPE_XILINX_AES "xlnx,versal-aes"
 #define TYPE_XILINX_PMC_KEY_SINK "xlnx.pmc-key-sink"
+#define TYPE_PMXC_AES "xlnx-pmxc-aes"
 
 #define XILINX_AES(obj) \
      OBJECT_CHECK(Zynq3AES, (obj), TYPE_XILINX_AES)
 
 #define XILINX_PMC_KEY_SINK(obj) \
      OBJECT_CHECK(PMCKeySink, (obj), TYPE_XILINX_PMC_KEY_SINK)
+
+#define PMXC_AES(obj) \
+     OBJECT_CHECK(pmxc_aes, (obj), TYPE_PMXC_AES)
 
 #define DPRINT(fmt, args...) do { \
         if (XILINX_AES_ERR_DEBUG) { \
@@ -275,6 +279,18 @@ REG32(AES_IDR, 0x220)
 
 #define R_MAX (R_AES_IDR + 1)
 
+REG32(AES_KTE_GO, 0x234)
+    FIELD(AES_KTE_GO, VAL, 0, 1)
+REG32(AES_KTE_RESTART, 0x238)
+    FIELD(AES_KTE_RESTART, VAL, 0, 1)
+REG32(AES_KTE_DONE, 0x23c)
+    FIELD(AES_KTE_DONE, VAL, 0, 1)
+REG32(AES_KTE_CNT, 0x240)
+    FIELD(AES_KTE_CNT, VAL, 0, 3)
+
+#define PMXC_EXTENDED ((R_AES_KTE_CNT - R_AES_KTE_GO) + 1)
+#define PMXC_R_MAX  (R_AES_KTE_CNT + 1)
+
 typedef struct Zynq3AES Zynq3AES;
 
 typedef struct PMCKeySink {
@@ -298,8 +314,8 @@ struct Zynq3AES {
     char *family_key_id;
     char *puf_key_id;
 
-    uint32_t regs[R_MAX];
-    RegisterInfo regs_info[R_MAX];
+    uint32_t regs[PMXC_R_MAX];
+    RegisterInfo regs_info[PMXC_R_MAX];
 
     qemu_irq aes_rst;
     XlnxAES *aes;
@@ -341,6 +357,12 @@ struct Zynq3AES {
     uint8_t gcm_len;
     bool gcm_push_eop;
 };
+
+typedef struct pmxc_aes {
+    Zynq3AES parent;
+
+    MemoryRegion pmxc_iomem;
+} pmxc_aes;
 
 static void bswap32_buf8(uint8_t *buf, int len)
 {
@@ -837,6 +859,17 @@ static RegisterAccessInfo aes_regs_info[] = {
         .pre_write = aes_ier_prew,
     },{ .name = "AES_IDR",  .addr = A_AES_IDR,
         .pre_write = aes_idr_prew,
+    },
+};
+
+
+static RegisterAccessInfo pmxc_aes_regs_info[] = {
+    { .name = "AES_KTE_GO",  .addr = A_AES_KTE_GO,
+    },{ .name = "AES_KTE_RESTART",  .addr = A_AES_KTE_RESTART,
+    },{ .name = "AES_KTE_DONE",  .addr = A_AES_KTE_DONE,
+        .ro = 0x1,
+    },{ .name = "AES_KTE_CNT",  .addr = A_AES_KTE_CNT,
+        .ro = 0x7,
     }
 };
 
@@ -945,6 +978,27 @@ static void aes_reset(DeviceState *dev)
 static const MemoryRegionOps aes_ops = {
     .read = aes_reg_read,
     .write = aes_reg_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = {
+        .min_access_size = 4,
+        .max_access_size = 4,
+    },
+};
+
+static uint64_t pmxc_aes_read(void *opaque, hwaddr addr, unsigned size)
+{
+    return register_read_memory(opaque, A_AES_KTE_GO + addr, size);
+}
+
+static void pmxc_aes_write(void *opaque, hwaddr addr, uint64_t data,
+                          unsigned size)
+{
+    register_write_memory(opaque, A_AES_KTE_GO + addr, data, size);
+}
+
+static const MemoryRegionOps pmxc_aes_ops = {
+    .read = pmxc_aes_read,
+    .write = pmxc_aes_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
@@ -1275,12 +1329,30 @@ static void aes_init(Object *obj)
     sysbus_init_irq(sbd, &s->irq_aes_imr);
 }
 
+static void pmxc_aes_init(Object *obj)
+{
+    RegisterInfoArray *reg_array;
+    Zynq3AES *p = XILINX_AES(obj);
+
+    memory_region_set_size(&p->iomem, PMXC_R_MAX * 4);
+
+    reg_array =
+        register_init_block32(DEVICE(obj), pmxc_aes_regs_info,
+                              ARRAY_SIZE(pmxc_aes_regs_info),
+                              p->regs_info, p->regs,
+                              &pmxc_aes_ops,
+                              XILINX_AES_ERR_DEBUG,
+                              PMXC_EXTENDED * 4);
+
+    memory_region_add_subregion(&p->iomem, A_AES_KTE_GO, &reg_array->mem);
+}
+
 static const VMStateDescription vmstate_aes = {
     .name = TYPE_XILINX_AES,
     .version_id = 1,
     .minimum_version_id = 1,
     .fields = (VMStateField[]) {
-        VMSTATE_UINT32_ARRAY(regs, Zynq3AES, R_MAX),
+        VMSTATE_UINT32_ARRAY(regs, Zynq3AES, PMXC_R_MAX),
         VMSTATE_END_OF_LIST(),
     }
 };
@@ -1338,11 +1410,18 @@ static const TypeInfo pmc_key_sink_info = {
     }
 };
 
+static const TypeInfo pmxc_aes_info = {
+    .name          = TYPE_PMXC_AES,
+    .parent        = TYPE_XILINX_AES,
+    .instance_size = sizeof(pmxc_aes),
+    .instance_init = pmxc_aes_init,
+};
 
 static void aes_register_types(void)
 {
     type_register_static(&aes_info);
     type_register_static(&pmc_key_sink_info);
+    type_register_static(&pmxc_aes_info);
 }
 
 type_init(aes_register_types)
