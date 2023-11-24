@@ -12,6 +12,7 @@
 #include "hw/sysbus.h"
 #include "hw/register.h"
 #include "hw/stream.h"
+#include "hw/crypto/xlnx-pmxc-key-transfer.h"
 
 #define TYPE_XLNX_ASU_AES "xlnx.asu_aes"
 OBJECT_DECLARE_SIMPLE_TYPE(XlnxAsuAes, XLNX_ASU_AES);
@@ -24,7 +25,6 @@ OBJECT_DECLARE_SIMPLE_TYPE(XlnxAsuAes, XLNX_ASU_AES);
 typedef struct XlnxAsuAes {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
-    qemu_irq irq_kt;
     qemu_irq irq_kv_interrupt;
     qemu_irq irq_aes_interrupt;
 
@@ -107,6 +107,7 @@ typedef struct XlnxAsuAes {
     uint32_t kv[ASU_AES_KV_R_MAX];
     RegisterInfo kv_regs_info[ASU_AES_KV_R_MAX];
 
+    pmxcKT *pmxc_aes;
     /* Controller */
     uint32_t regs[ASU_AES_R_MAX];
     RegisterInfo regs_info[ASU_AES_R_MAX];

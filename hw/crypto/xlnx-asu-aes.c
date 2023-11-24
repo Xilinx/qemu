@@ -517,8 +517,6 @@ static void asu_aes_kt_set_done(XlnxAsuAes *s)
 {
     ARRAY_FIELD_DP32(s->kv, KV_INTERRUPT_STATUS, KT_DONE, 1);
     asu_aes_update_kv_irq(s);
-
-    qemu_irq_pulse(s->irq_kt); /* masked in external device */
 }
 
 static void *asu_aes_kt_efuse_ukey(XlnxAsuAes *s, unsigned nr, void *alt)
@@ -596,7 +594,35 @@ static void asu_aes_kt_launch(XlnxAsuAes *s)
     ASU_AES_KZERO(kp[0]);
     ASU_AES_KZERO(kp[1]);
     ASU_AES_KZERO(kp[2]);
-    asu_aes_kt_set_done(s);
+    pmxc_kt_asu_ready(s->pmxc_aes, 1);
+}
+
+static void asu_aes_int_pmxc_kt_done(pmxcKT *kt, bool done)
+{
+    XlnxAsuAes *s = XLNX_ASU_AES(kt);
+
+    ARRAY_FIELD_DP32(s->kv, KV_INTERRUPT_STATUS, KT_DONE, done);
+    asu_aes_update_kv_irq(s);
+}
+
+static void asu_aes_int_receive_key(pmxcKT *kt, uint8_t n, uint8_t *key,
+                                    size_t len)
+{
+    XlnxAsuAes *s = XLNX_ASU_AES(kt);
+
+    switch (n) {
+    case 0:
+        ASU_AES_KCOPY(s->puf_key, key);
+        break;
+    case 1:
+        ASU_AES_KCOPY(asu_aes_kt_efuse_ukey(s, 0, NULL), key);
+        break;
+    case 2:
+        ASU_AES_KCOPY(asu_aes_kt_efuse_ukey(s, 1, NULL), key);
+        break;
+    default:
+        g_assert_not_reached();
+    };
 }
 
 static void asu_aes_load_le_key(XlnxAsuAes *s, const uint32_t *reg)
@@ -1899,10 +1925,7 @@ static void asu_aes_init(Object *obj)
 
     /* To bus interrupt controller */
     sysbus_init_irq(sbd, &s->irq_aes_interrupt);
-    sysbus_init_irq(sbd, &s->irq_kt);
-
-    /* To other device(s) */
-    qdev_init_gpio_out(DEVICE(obj), &s->irq_kv_interrupt, 1);
+    sysbus_init_irq(sbd, &s->irq_kv_interrupt);
 }
 
 #define ASU_AES_ARRAY_VMS(n) \
@@ -1934,7 +1957,9 @@ static Property asu_aes_properties[] = {
     DEFINE_PROP_LINK("stream-connected-aes",
                      XlnxAsuAes, out.dev,
                      TYPE_STREAM_SINK, StreamSink *),
-
+    DEFINE_PROP_LINK("pmxc-aes", XlnxAsuAes,
+                    pmxc_aes, TYPE_PMXC_KEY_TRANSFER,
+                    pmxcKT *),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -1942,6 +1967,7 @@ static void asu_aes_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     StreamSinkClass *ssc = STREAM_SINK_CLASS(klass);
+    pmxcKTClass *ktc = PMXC_KT_CLASS(klass);
 
     dc->realize = asu_aes_realize;
     dc->reset = asu_aes_reset;
@@ -1950,6 +1976,9 @@ static void asu_aes_class_init(ObjectClass *klass, void *data)
 
     ssc->push = asu_aes_stream_sink;
     ssc->can_push = asu_aes_stream_sink_ready;
+
+    ktc->done = asu_aes_int_pmxc_kt_done;
+    ktc->send_key = asu_aes_int_receive_key;
 }
 
 static const TypeInfo asu_aes_info = {
@@ -1961,6 +1990,7 @@ static const TypeInfo asu_aes_info = {
     .instance_finalize = asu_aes_finalize,
     .interfaces = (InterfaceInfo[]) {
         { TYPE_STREAM_SINK },
+        { TYPE_PMXC_KEY_TRANSFER },
         { }
     }
 };
