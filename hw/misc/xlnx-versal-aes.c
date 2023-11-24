@@ -44,6 +44,7 @@
 #include "hw/zynqmp_aes_key.h"
 #include "hw/fdt_generic_util.h"
 #include "hw/misc/xlnx-aes.h"
+#include "hw/crypto/xlnx-pmxc-key-transfer.h"
 
 #ifndef XILINX_AES_ERR_DEBUG
 #define XILINX_AES_ERR_DEBUG 0
@@ -362,6 +363,8 @@ typedef struct pmxc_aes {
     Zynq3AES parent;
 
     MemoryRegion pmxc_iomem;
+    pmxcKT *asu;
+    bool asu_aes_ready;
 } pmxc_aes;
 
 static void bswap32_buf8(uint8_t *buf, int len)
@@ -862,9 +865,57 @@ static RegisterAccessInfo aes_regs_info[] = {
     },
 };
 
+static void pmxc_aes_kt(pmxc_aes *s)
+{
+    Zynq3AES *p = XILINX_AES(s);
+    uint8_t key[32];
+
+    unsigned int klen = 256 / 8;
+
+    bool go = ARRAY_FIELD_EX32(p->regs, AES_KTE_GO, VAL);
+    bool done = ARRAY_FIELD_EX32(p->regs, AES_KTE_DONE, VAL);
+
+    if (go && s->asu_aes_ready) {
+        /*
+         * ASU is read and GO bit is set.
+         * And start key transfer in big-endian.
+         */
+
+        memcpy(key, p->puf_key.key, klen);
+        bswap32_buf8(key, klen);
+        pmxc_kt_send_key(s->asu, 0, key, klen);
+        memcpy(key, p->efuse_user_key[0].key, klen);
+        bswap32_buf8(key, klen);
+        pmxc_kt_send_key(s->asu, 1, key, klen);
+        memcpy(key, p->efuse_user_key[1].key, klen);
+        bswap32_buf8(key, klen);
+        pmxc_kt_send_key(s->asu, 2, key, klen);
+        /*
+         * Set Done bit.
+         */
+        ARRAY_FIELD_DP32(p->regs, AES_KTE_DONE, VAL, 1);
+        ARRAY_FIELD_DP32(p->regs, AES_KTE_CNT, VAL, 0x6);
+        pmxc_kt_done(s->asu, 1);
+    } else if (!go && done) {
+        /*
+         * GO bit is cleared after Done
+         */
+        ARRAY_FIELD_DP32(p->regs, AES_KTE_DONE, VAL, 0);
+        ARRAY_FIELD_DP32(p->regs, AES_KTE_CNT, VAL, 0);
+        pmxc_kt_done(s->asu, 0);
+    }
+}
+
+static void  pmxc_aes_kte_go_postw(RegisterInfo *reg, uint64_t val64)
+{
+    pmxc_aes *s = PMXC_AES(reg->opaque);
+
+    pmxc_aes_kt(s);
+}
 
 static RegisterAccessInfo pmxc_aes_regs_info[] = {
     { .name = "AES_KTE_GO",  .addr = A_AES_KTE_GO,
+      .post_write = pmxc_aes_kte_go_postw,
     },{ .name = "AES_KTE_RESTART",  .addr = A_AES_KTE_RESTART,
     },{ .name = "AES_KTE_DONE",  .addr = A_AES_KTE_DONE,
         .ro = 0x1,
@@ -1286,6 +1337,14 @@ static void pmc_init_key_sink(Zynq3AES *s,
     ks->tmr = s;
 }
 
+static void pmxc_asu_state(pmxcKT *kt, bool ready)
+{
+    pmxc_aes *s = PMXC_AES(kt);
+
+    s->asu_aes_ready = ready;
+    pmxc_aes_kt(s);
+}
+
 static void aes_init(Object *obj)
 {
     Zynq3AES *s = XILINX_AES(obj);
@@ -1362,6 +1421,8 @@ static Property aes_properties[] = {
     DEFINE_PROP_STRING("puf-key-id",    Zynq3AES, puf_key_id),
     DEFINE_PROP_BOOL("integrated-endianness-swap", Zynq3AES, endianness_swap,
                      false),
+    DEFINE_PROP_LINK("asu-aes", pmxc_aes, asu, TYPE_PMXC_KEY_TRANSFER,
+                     pmxcKT *),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -1378,6 +1439,13 @@ static void aes_class_init(ObjectClass *klass, void *data)
     ksc->update = device_key_update;
 
     ssc->push = aes_stream_push;
+}
+
+static void pmxc_aes_class_init(ObjectClass *klass, void *data)
+{
+    pmxcKTClass *ktc = PMXC_KT_CLASS(klass);
+
+    ktc->asu_ready = pmxc_asu_state;
 }
 
 static void pmc_key_sink_class_init(ObjectClass *klass, void *data)
@@ -1415,6 +1483,11 @@ static const TypeInfo pmxc_aes_info = {
     .parent        = TYPE_XILINX_AES,
     .instance_size = sizeof(pmxc_aes),
     .instance_init = pmxc_aes_init,
+    .class_init    = pmxc_aes_class_init,
+    .interfaces    = (InterfaceInfo[]) {
+        { TYPE_PMXC_KEY_TRANSFER },
+        { }
+    }
 };
 
 static void aes_register_types(void)
