@@ -134,7 +134,6 @@ static void xlnx_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
-    k->is_bridge = 1;
     k->config_write = xlnx_write_config;
     k->realize = xlnx_realize;
     k->exit = xlnx_exitfn;
