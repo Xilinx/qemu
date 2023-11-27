@@ -1367,7 +1367,7 @@ sdhci_write(void *opaque, hwaddr offset, uint64_t val, unsigned size)
                        value >> shift, value >> shift);
 }
 
-static const MemoryRegionOps sdhci_mmio_ops = {
+static const MemoryRegionOps sdhci_mmio_le_ops = {
     .read = sdhci_read,
     .write = sdhci_write,
     .valid = {
@@ -1376,6 +1376,21 @@ static const MemoryRegionOps sdhci_mmio_ops = {
         .unaligned = false
     },
     .endianness = DEVICE_LITTLE_ENDIAN,
+};
+
+static const MemoryRegionOps sdhci_mmio_be_ops = {
+    .read = sdhci_read,
+    .write = sdhci_write,
+    .impl = {
+        .min_access_size = 4,
+        .max_access_size = 4,
+    },
+    .valid = {
+        .min_access_size = 1,
+        .max_access_size = 4,
+        .unaligned = false
+    },
+    .endianness = DEVICE_BIG_ENDIAN,
 };
 
 static void sdhci_init_readonly_registers(SDHCIState *s, Error **errp)
@@ -1406,8 +1421,6 @@ void sdhci_initfn(SDHCIState *s)
     s->insert_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, sdhci_raise_insertion_irq, s);
     s->transfer_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, sdhci_data_transfer, s);
 
-    s->io_ops = &sdhci_mmio_ops;
-
     object_property_add_link(OBJECT(s), "memattr",
                              TYPE_MEMORY_TRANSACTION_ATTR,
                              (Object **)&s->memattr_r,
@@ -1433,10 +1446,23 @@ void sdhci_common_realize(SDHCIState *s, Error **errp)
 {
     ERRP_GUARD();
 
+    switch (s->endianness) {
+    case DEVICE_LITTLE_ENDIAN:
+        s->io_ops = &sdhci_mmio_le_ops;
+        break;
+    case DEVICE_BIG_ENDIAN:
+        s->io_ops = &sdhci_mmio_be_ops;
+        break;
+    default:
+        error_setg(errp, "Incorrect endianness");
+        return;
+    }
+
     sdhci_init_readonly_registers(s, errp);
     if (*errp) {
         return;
     }
+
     s->buf_maxsz = sdhci_get_fifolen(s);
     s->fifo_buffer = g_malloc0(s->buf_maxsz);
 
