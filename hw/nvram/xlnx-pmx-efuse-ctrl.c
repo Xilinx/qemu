@@ -667,6 +667,7 @@ static void efuse_data_sync(XlnxPmxEFuseCtrl *s)
 
     efuse_extract_user_key_1_be(s, key.u32);
     zynqmp_aes_key_update(s->usr_key1_sink, key.u8, sizeof(key.u8));
+    xlnx_efuse_extidcode_check(s->efuse, 0xBC0);
 }
 
 static uint64_t efuse_cache_load_prew(RegisterInfo *reg, uint64_t val64)

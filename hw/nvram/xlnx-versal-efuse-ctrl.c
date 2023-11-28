@@ -362,6 +362,7 @@ static void efuse_data_sync(XlnxVersalEFuseCtrl *s)
     efuse_key_sync(s, EFUSE_AES_KEY_START);
     efuse_key_sync(s, EFUSE_USER_KEY_0_START);
     efuse_key_sync(s, EFUSE_USER_KEY_1_START);
+    xlnx_efuse_extidcode_check(s->efuse, 0xc0);
 }
 
 static int efuse_lk_spec_cmp(const void *a, const void *b)
