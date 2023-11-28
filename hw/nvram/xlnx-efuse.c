@@ -40,6 +40,8 @@
 #define TBIT3_OFFSET     31
 #define TBITS_PATTERN    (0x0AU << TBIT0_OFFSET)
 #define TBITS_MASK       (0x0FU << TBIT0_OFFSET)
+#define EXTIDCODE_MASK   0x07FFC000
+#define EXTIDCODE_SHIFT  14
 
 bool xlnx_efuse_get_bit(XlnxEFuse *s, unsigned int bit)
 {
@@ -202,6 +204,17 @@ uint32_t xlnx_efuse_tbits_check(XlnxEFuse *s)
     return check;
 }
 
+void xlnx_efuse_extidcode_check(XlnxEFuse *s, uint32_t offset)
+{
+    if ((s->extidcode < 0) ||
+       (s->fuse32[offset / 32] & EXTIDCODE_MASK)) {
+        return;
+    }
+
+    s->fuse32[offset / 32] &= ~EXTIDCODE_MASK;
+    s->fuse32[offset / 32] |= s->extidcode << EXTIDCODE_SHIFT;
+}
+
 static void efuse_realize(DeviceState *dev, Error **errp)
 {
     XlnxEFuse *s = XLNX_EFUSE(dev);
@@ -263,6 +276,7 @@ static Property efuse_properties[] = {
     DEFINE_PROP_UINT8("efuse-nr", XlnxEFuse, efuse_nr, 3),
     DEFINE_PROP_UINT32("efuse-size", XlnxEFuse, efuse_size, 64 * 32),
     DEFINE_PROP_BOOL("init-factory-tbits", XlnxEFuse, init_tbits, true),
+    DEFINE_PROP_INT32("init-factory-extidcode", XlnxEFuse, extidcode, -1),
     DEFINE_PROP_ARRAY("read-only", XlnxEFuse, ro_bits_cnt, ro_bits,
                       qdev_prop_uint32, uint32_t),
     DEFINE_PROP_END_OF_LIST(),

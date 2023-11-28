@@ -65,6 +65,7 @@ struct XlnxEFuse {
 
     uint32_t *ro_bits;
     uint32_t ro_bits_cnt;
+    int extidcode;
 };
 
 /**
@@ -125,6 +126,18 @@ bool xlnx_efuse_k256_check(XlnxEFuse *s, uint32_t crc, unsigned start);
  * group has a valid pattern.
  */
 uint32_t xlnx_efuse_tbits_check(XlnxEFuse *s);
+
+/**
+ * xlnx_efuse_extidcode_check:
+ * @s: the efuse object
+ * @offset: start offset of extidcode
+ *
+ * This function programms exidcode read from "init-factory-extidcode"
+ * property if the field is not programmed already.
+ *
+ */
+void xlnx_efuse_extidcode_check(XlnxEFuse *s, uint32_t offset);
+
 
 /**
  * xlnx_efuse_get_row:
