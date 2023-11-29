@@ -175,8 +175,12 @@ config XLNX_VERSAL_PMC
 config XLNX_SPARTANUP_PMC_TAP
     bool
 
+config XLNX_SPARTANUP_PMC_CCU_APB
+    bool
+
 config XLNX_SPARTANUP_PMC
     bool
+    select XLNX_SPARTANUP_PMC_CCU_APB
     select XLNX_SPARTANUP_PMC_SHA3
     select XLNX_SPARTANUP_PMC_TAP
 
