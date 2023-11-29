@@ -1761,12 +1761,33 @@ static inline void update_usx_status(CadenceGEMState *s)
 
     sta = FIELD_DP32(0, USX_STATUS, BLOCK_LOCK,
                      FIELD_EX32(ctrl, USX_CTRL, SIGNAL_OK));
+    sta = FIELD_DP32(sta, USX_STATUS, AN_COMPLETE,
+                     FIELD_EX32(ctrl, USX_CTRL, AN_ENABLE));
 
     if ((~s->regs[R_USX_STATUS] & sta) & R_USX_STATUS_BLOCK_LOCK_MASK) {
         gem_set_usx_irq(s, R_USX_IRQ_STATUS_BLOCK_LOCKED_MASK);
     }
 
     s->regs[R_USX_STATUS] = sta;
+}
+
+static void restart_usx_an(CadenceGEMState *s)
+{
+    uint32_t ctrl = s->regs[R_USX_CTRL];
+
+    if (!s->has_usxgmii) {
+        return;
+    }
+
+    if (!FIELD_EX32(ctrl, USX_CTRL, AN_ENABLE)) {
+        return;
+    }
+
+    /* Mirror what the guest advertized */
+    s->regs[R_USX_AN_LP] = s->regs[R_USX_AN_ADV];
+
+    gem_set_usx_irq(s, R_USX_IRQ_STATUS_USXGMII_NEW_LINK_INFO_MASK
+                     | R_USX_IRQ_STATUS_USXGMII_LINK_STS_UPD_MASK);
 }
 
 /*
@@ -1811,6 +1832,7 @@ static void gem_write(void *opaque, hwaddr offset, uint64_t val,
 {
     CadenceGEMState *s = (CadenceGEMState *)opaque;
     uint32_t readonly;
+    uint32_t prev;
     int i;
 
     DB_PRINT("offset: 0x%04x write: 0x%08x ", (unsigned)offset, (unsigned)val);
@@ -1820,6 +1842,8 @@ static void gem_write(void *opaque, hwaddr offset, uint64_t val,
     val &= ~(s->regs_ro[offset]);
     /* Preserve (only) bits which are read only and wtc in register */
     readonly = s->regs[offset] & (s->regs_ro[offset] | s->regs_w1c[offset]);
+
+    prev = s->regs[offset];
 
     /* Copy register write to backing store */
     s->regs[offset] = (val & ~s->regs_w1c[offset]) | readonly;
@@ -1903,6 +1927,12 @@ static void gem_write(void *opaque, hwaddr offset, uint64_t val,
         break;
     case R_USX_CTRL:
         update_usx_status(s);
+
+        if ((~prev & val)
+            & (R_USX_CTRL_AN_RESTART_MASK | R_USX_CTRL_AN_ENABLE_MASK)) {
+            /* AN enable or restart rising edge */
+            restart_usx_an(s);
+        }
         break;
     case R_USX_IRQ_ENABLE:
         if (s->has_usxgmii) {
@@ -1936,6 +1966,7 @@ static void gem_set_link(NetClientState *nc)
     }
 
     gem_update_int_status(s);
+    restart_usx_an(s);
 }
 
 static NetClientInfo net_gem_info = {
