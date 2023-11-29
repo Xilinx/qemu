@@ -15,6 +15,7 @@
 #include "qemu/log.h"
 #include "migration/vmstate.h"
 #include "hw/irq.h"
+#include "hw/fdt_generic_util.h"
 
 #ifndef XILINX_CCU_APB_ERR_DEBUG
 #define XILINX_CCU_APB_ERR_DEBUG 0
@@ -193,10 +194,20 @@ typedef struct CCU_APB {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
     qemu_irq irq_ccu_imr;
+    qemu_irq init_b;
 
     uint32_t regs[CCU_APB_R_MAX];
     RegisterInfo regs_info[CCU_APB_R_MAX];
 } CCU_APB;
+
+static void ccu_apb_reset_registers(CCU_APB *s)
+{
+    unsigned int i;
+
+    for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
+        register_reset(&s->regs_info[i]);
+    }
+}
 
 static void ccu_imr_update_irq(CCU_APB *s)
 {
@@ -240,6 +251,63 @@ static uint64_t ccu_itr_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
+#define PROPAGATE_GPIO(reg, f, irq) { \
+    bool val_ = ARRAY_FIELD_EX32(s->regs, reg, f); \
+    qemu_set_irq(irq, val_); \
+}
+
+static bool ccu_write_locked(CCU_APB *s)
+{
+    return ARRAY_FIELD_EX32(s->regs, CCU_PROTECT, ACTIVE);
+}
+
+static uint32_t ccu_locked_masked_reg(CCU_APB *s, size_t offset, uint32_t val)
+{
+    uint32_t mask = s->regs[R_CCU_MASK];
+
+    /* Writing those register clears the mask.  */
+    s->regs[R_CCU_MASK] = 0;
+    if (ccu_write_locked(s) || !mask) {
+        return s->regs[offset];
+    } else {
+        return (val & mask) | (s->regs[offset] & ~mask);
+    }
+}
+
+static uint64_t ccu_ctrl_prew(RegisterInfo *reg, uint64_t val)
+{
+    const uint32_t ccu_ctrl_rwso_mask = 0x00000045;
+    CCU_APB *s = XILINX_CCU_APB(reg->opaque);
+
+    /* Bits 0, 2, 6 can only be set.  */
+    return ccu_locked_masked_reg(XILINX_CCU_APB(reg->opaque),
+                                 R_CCU_CTRL, val) |
+        (s->regs[R_CCU_CTRL] & ccu_ctrl_rwso_mask);
+}
+
+static uint64_t ccu_command_prew(RegisterInfo *reg, uint64_t val)
+{
+    CCU_APB *s = XILINX_CCU_APB(reg->opaque);
+
+    /* Write protection.  */
+    return ccu_write_locked(s) ? s->regs[R_COMMAND] : val;
+}
+
+static void ccu_command_postw(RegisterInfo *reg, uint64_t val)
+{
+    CCU_APB *s = XILINX_CCU_APB(reg->opaque);
+
+    /* If write locked, don't do anything.  */
+    if (ccu_write_locked(s)) {
+        return;
+    }
+
+    if (ARRAY_FIELD_EX32(s->regs, COMMAND, CFG_LOCAL_RESET)) {
+        ccu_apb_reset_registers(s);
+        return;
+    }
+}
+
 static const RegisterAccessInfo ccu_apb_regs_info[] = {
     {   .name = "CCU_ISR",  .addr = A_CCU_ISR,
         .rsvd = 0xffffff00,
@@ -263,8 +331,11 @@ static const RegisterAccessInfo ccu_apb_regs_info[] = {
     },{ .name = "CCU_MASK",  .addr = A_CCU_MASK,
     },{ .name = "CCU_CTRL",  .addr = A_CCU_CTRL,
         .rsvd = 0xffffff00,
+        .pre_write = ccu_ctrl_prew,
     },{ .name = "COMMAND",  .addr = A_COMMAND,
         .rsvd = 0xfffffff0,
+        .pre_write = ccu_command_prew,
+        .post_write = ccu_command_postw,
     },{ .name = "CFG_CRC",  .addr = A_CFG_CRC,
         .ro = 0xffffffff,
     },{ .name = "CFG_FAR",  .addr = A_CFG_FAR,
@@ -300,11 +371,8 @@ static const RegisterAccessInfo ccu_apb_regs_info[] = {
 static void ccu_apb_reset_enter(Object *obj, ResetType type)
 {
     CCU_APB *s = XILINX_CCU_APB(obj);
-    unsigned int i;
 
-    for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        register_reset(&s->regs_info[i]);
-    }
+    ccu_apb_reset_registers(s);
 }
 
 static void ccu_apb_reset_hold(Object *obj, ResetType type)
@@ -348,6 +416,8 @@ static void ccu_apb_init(Object *obj)
                                 &reg_array->mem);
     sysbus_init_mmio(sbd, &s->iomem);
     sysbus_init_irq(sbd, &s->irq_ccu_imr);
+
+    qdev_init_gpio_out_named(DEVICE(obj), &s->init_b, "init_b", 1);
 }
 
 static const VMStateDescription vmstate_ccu_apb = {
@@ -360,15 +430,28 @@ static const VMStateDescription vmstate_ccu_apb = {
     }
 };
 
+static const FDTGenericGPIOSet ccu_apb_gpios[] = {
+    {
+        .names = &fdt_generic_gpio_name_set_gpio,
+        .gpios = (FDTGenericGPIOConnection[]) {
+            { .name = "init_b", .fdt_index = 0, .range = 1 },
+            { },
+        },
+    },
+    { },
+};
+
 static void ccu_apb_class_init(ObjectClass *klass, const void *data)
 {
     ResettableClass *rc = RESETTABLE_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
+    FDTGenericGPIOClass *fggc = FDT_GENERIC_GPIO_CLASS(klass);
 
     dc->realize = ccu_apb_realize;
     dc->vmsd = &vmstate_ccu_apb;
     rc->phases.enter = ccu_apb_reset_enter;
     rc->phases.hold = ccu_apb_reset_hold;
+    fggc->controller_gpios = ccu_apb_gpios;
 }
 
 static const TypeInfo ccu_apb_info = {
@@ -377,6 +460,10 @@ static const TypeInfo ccu_apb_info = {
     .instance_size = sizeof(CCU_APB),
     .class_init    = ccu_apb_class_init,
     .instance_init = ccu_apb_init,
+    .interfaces = (InterfaceInfo[]) {
+        { TYPE_FDT_GENERIC_GPIO },
+        { }
+    },
 };
 
 static void ccu_apb_register_types(void)
