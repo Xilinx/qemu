@@ -1863,6 +1863,16 @@ static void gem_write(void *opaque, hwaddr offset, uint64_t val,
     case R_PHYMNTNC:
         gem_handle_phy_access(s);
         break;
+    case R_USX_IRQ_ENABLE:
+        if (s->has_usxgmii) {
+            s->regs[R_USX_IRQ_MASK] &= ~val;
+        }
+        break;
+    case R_USX_IRQ_DISABLE:
+        if (s->has_usxgmii) {
+            s->regs[R_USX_IRQ_MASK] |= val;
+        }
+        break;
     }
 
     DB_PRINT("newval: 0x%08x\n", s->regs[offset]);
