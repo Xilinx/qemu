@@ -349,6 +349,82 @@ REG32(TYPE2_COMPARE_0_WORD_1, 0x704)
     FIELD(TYPE2_COMPARE_0_WORD_1, DISABLE_MASK, 9, 1)
     FIELD(TYPE2_COMPARE_0_WORD_1, COMPARE_VLAN_ID, 10, 1)
 
+REG32(USX_CTRL, 0xa80)
+    FIELD(USX_CTRL, SIGNAL_OK, 0, 1)
+    FIELD(USX_CTRL, TX_DATAPATH_EN, 1, 1)
+    FIELD(USX_CTRL, RX_SYNC_RESET, 2, 1)
+    FIELD(USX_CTRL, FEC_EN, 4, 1)
+    FIELD(USX_CTRL, TX_SCR_BYPASS, 8, 1)
+    FIELD(USX_CTRL, RX_SCR_BYPASS, 9, 1)
+    FIELD(USX_CTRL, TX_POL_INVERT, 10, 1)
+    FIELD(USX_CTRL, RX_POL_INVERT, 11, 1)
+    FIELD(USX_CTRL, SERDES_RATE, 12, 2)
+    FIELD(USX_CTRL, USX_SPEED, 14, 3)
+    FIELD(USX_CTRL, AN_MIRROR_EN, 19, 1)
+    FIELD(USX_CTRL, AN_OS_CODE, 20, 8)
+    FIELD(USX_CTRL, AN_TX_TYPE, 28, 2)
+    FIELD(USX_CTRL, AN_RESTART, 30, 1)
+    FIELD(USX_CTRL, AN_ENABLE, 31, 1)
+
+REG32(USX_TEST_CTRL, 0xa84)
+    FIELD(USX_TEST_CTRL, MII_LPBK_EN, 0, 1)
+    FIELD(USX_TEST_CTRL, SCR_LPBK_EN, 1, 1)
+    FIELD(USX_TEST_CTRL, TX_TST_EN, 4, 1)
+    FIELD(USX_TEST_CTRL, TX_SCR_IDLE_EN, 5, 1)
+    FIELD(USX_TEST_CTRL, TX_TST_DAT_SEL, 6, 1)
+    FIELD(USX_TEST_CTRL, TX_PRBS9_EN, 8, 1)
+    FIELD(USX_TEST_CTRL, TX_PRBS31_EN, 9, 1)
+    FIELD(USX_TEST_CTRL, TX_SQW_EN, 12, 1)
+    FIELD(USX_TEST_CTRL, RX_TST_EN, 16, 1)
+    FIELD(USX_TEST_CTRL, RX_SCR_IDLE_EN, 17, 1)
+    FIELD(USX_TEST_CTRL, RX_TST_DAT_SEL, 18, 1)
+    FIELD(USX_TEST_CTRL, RX_PRBS9_EN, 20, 1)
+    FIELD(USX_TEST_CTRL, RX_PRBS31_EN, 21, 1)
+
+REG32(USX_STATUS, 0xa88)
+    FIELD(USX_STATUS, BLOCK_LOCK, 0, 1)
+    FIELD(USX_STATUS, AN_COMPLETE, 1, 1)
+    FIELD(USX_STATUS, RX_FAULT, 27, 1)
+    FIELD(USX_STATUS, TX_FAULT, 28, 1)
+    FIELD(USX_STATUS, HI_BIT_ERROR, 29, 1)
+    FIELD(USX_STATUS, CTC_O_U_FLOW, 31, 1)
+
+REG32(USX_DESIGNCFG, 0xa8c)
+    FIELD(USX_DESIGNCFG, HAS_USX, 0, 1)
+    FIELD(USX_DESIGNCFG, HAS_FEC, 1, 1)
+    FIELD(USX_DESIGNCFG, HAS_FEC_ERR_IND, 2, 1)
+    FIELD(USX_DESIGNCFG, HAS_CTC, 3, 1)
+    FIELD(USX_DESIGNCFG, HAS_GB, 4, 1)
+    FIELD(USX_DESIGNCFG, SIMPLIFY_TX_CLK, 5, 1)
+    FIELD(USX_DESIGNCFG, ASF_ENABLE, 6, 1)
+
+REG32(USX_IRQ_STATUS, 0xae0)
+    FIELD(USX_IRQ_STATUS, USXGMII_NEW_LINK_INFO, 25, 1)
+    FIELD(USX_IRQ_STATUS, USXGMII_LINK_STS_UPD, 24, 1)
+    FIELD(USX_IRQ_STATUS, FEC_CORRECTABLE_ERROR, 20, 1)
+    FIELD(USX_IRQ_STATUS, FEC_UNCORRECTABLE_ERROR, 16, 1)
+    FIELD(USX_IRQ_STATUS, BLOCK_LOCKED, 8, 1)
+    FIELD(USX_IRQ_STATUS, HI_BIT_ERROR, 3, 1)
+    FIELD(USX_IRQ_STATUS, BUFFER_ERROR, 1, 1)
+
+REG32(USX_IRQ_ENABLE, 0xae4)
+REG32(USX_IRQ_DISABLE, 0xae8)
+REG32(USX_IRQ_MASK, 0xaec)
+
+REG32(USX_LINK_TIMER, 0xaf0)
+    FIELD(USX_LINK_TIMER, PRESCALE, 0, 14)
+    FIELD(USX_LINK_TIMER, VALUE, 16, 5)
+
+REG32(USX_AN_ADV, 0xaf4)
+    FIELD(USX_AN_ADV, VAL, 0, 16)
+
+REG32(USX_AN_LP, 0xaf8)
+    FIELD(USX_AN_LP, VAL, 0, 16)
+
+REG32(USX_REV, 0xafc)
+    FIELD(UXV_REV, REV, 0, 16)
+    FIELD(UXV_REV, ID, 16, 12)
+    FIELD(UXV_REV, FIX, 28, 4)
 /*****************************************/
 
 /* Marvell PHY definitions */
@@ -604,6 +680,33 @@ static void gem_init_register_masks(CadenceGEMState *s)
     s->regs_ro[R_ISR]      = 0xFFFFFFFF;
     s->regs_ro[R_IMR]      = 0xFFFFFFFF;
     s->regs_ro[R_MODID]    = 0xFFFFFFFF;
+
+    if (s->has_usxgmii) {
+        s->regs_ro[R_USX_CTRL] = 0x000600e8;
+        s->regs_ro[R_USX_STATUS] = 0xFFFFFFFF;
+        s->regs_ro[R_USX_DESIGNCFG] = 0xFFFFFFFF;
+        s->regs_ro[R_USX_REV] = 0xFFFFFFFF;
+        s->regs_ro[R_USX_IRQ_STATUS] = 0xfceefef5;
+        s->regs_ro[R_USX_IRQ_ENABLE] = 0xfceefef5;
+        s->regs_ro[R_USX_IRQ_DISABLE] = 0xfceefef5;
+        s->regs_ro[R_USX_IRQ_MASK] = 0xffffffff;
+        s->regs_ro[R_USX_LINK_TIMER] = 0xffe0c000;
+        s->regs_ro[R_USX_AN_ADV] = 0xffff0000;
+        s->regs_ro[R_USX_AN_LP] = 0xffff0000;
+    } else {
+        s->regs_ro[R_USX_CTRL] = 0xffffffff;
+        s->regs_ro[R_USX_STATUS] = 0xffffffff;
+        s->regs_ro[R_USX_DESIGNCFG] = 0xffffffff;
+        s->regs_ro[R_USX_REV] = 0xffffffff;
+        s->regs_ro[R_USX_IRQ_STATUS] = 0xffffffff;
+        s->regs_ro[R_USX_IRQ_ENABLE] = 0xffffffff;
+        s->regs_ro[R_USX_IRQ_DISABLE] = 0xffffffff;
+        s->regs_ro[R_USX_IRQ_MASK] = 0xffffffff;
+        s->regs_ro[R_USX_LINK_TIMER] = 0xffffffff;
+        s->regs_ro[R_USX_AN_ADV] = 0xffffffff;
+        s->regs_ro[R_USX_AN_LP] = 0xffffffff;
+    }
+
     for (i = 0; i < s->num_priority_queues; i++) {
         s->regs_ro[R_INT_Q1_STATUS + i] = 0xFFFFFFFF;
         s->regs_ro[R_INT_Q1_ENABLE + i] = 0xFFFFF319;
@@ -623,11 +726,21 @@ static void gem_init_register_masks(CadenceGEMState *s)
     s->regs_w1c[R_TXSTATUS] = 0x000001F7;
     s->regs_w1c[R_RXSTATUS] = 0x0000000F;
 
+    if (s->has_usxgmii) {
+        s->regs_w1c[R_USX_IRQ_STATUS] = 0x0311010a;
+    }
+
     /* Mask of register bits which are write only */
     memset(&s->regs_wo[0], 0, sizeof(s->regs_wo));
     s->regs_wo[R_NWCTRL]   = 0x00073E60;
     s->regs_wo[R_IER]      = 0x07FFFFFF;
     s->regs_wo[R_IDR]      = 0x07FFFFFF;
+
+    if (s->has_usxgmii) {
+        s->regs_wo[R_USX_IRQ_ENABLE] = 0x0311010a;
+        s->regs_wo[R_USX_IRQ_DISABLE] = 0x0311010a;
+    }
+
     for (i = 0; i < s->num_priority_queues; i++) {
         s->regs_wo[R_INT_Q1_ENABLE + i] = 0x00000CE6;
         s->regs_wo[R_INT_Q1_DISABLE + i] = 0x00000CE6;
@@ -1487,6 +1600,13 @@ static void gem_reset(DeviceState *d)
     s->regs[R_INT_Q1_MASK] = 0x00000CE6;
     s->regs[R_JUMBO_MAX_LEN] = s->jumbo_max_len;
 
+    if (s->has_usxgmii) {
+        s->regs[R_USX_CTRL] = 0x00311004;
+        s->regs[R_USX_DESIGNCFG] = 0x00000033;
+        s->regs[R_USX_LINK_TIMER] = 0x000a3d09;
+        s->regs[R_USX_REV] = 0x03800100;
+    }
+
     if (s->num_priority_queues > 1) {
         queues_mask = MAKE_64BIT_MASK(1, s->num_priority_queues - 1);
         s->regs[R_DESCONF6] |= queues_mask;
@@ -1780,6 +1900,7 @@ static void gem_realize(DeviceState *dev, Error **errp)
     CadenceGEMState *s = CADENCE_GEM(dev);
     int i;
 
+    gem_init_register_masks(s);
     address_space_init(&s->dma_as,
                        s->dma_mr ? s->dma_mr : get_system_memory(), "dma");
 
@@ -1830,7 +1951,6 @@ static void gem_init(Object *obj)
 
     DB_PRINT("\n");
 
-    gem_init_register_masks(s);
     memory_region_init_io(&s->iomem, OBJECT(s), &gem_ops, s,
                           "enet", sizeof(s->regs));
 
@@ -1880,6 +2000,8 @@ static Property gem_properties[] = {
                        jumbo_max_len, 10240),
     DEFINE_PROP_LINK("dma", CadenceGEMState, dma_mr,
                      TYPE_MEMORY_REGION, MemoryRegion *),
+    DEFINE_PROP_BOOL("has-usxgmii", CadenceGEMState,
+                     has_usxgmii, false),
     DEFINE_PROP_END_OF_LIST(),
 };
 
