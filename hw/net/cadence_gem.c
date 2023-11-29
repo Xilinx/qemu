@@ -1405,6 +1405,14 @@ static void gem_transmit_updatestats(CadenceGEMState *s, const uint8_t *packet,
     }
 }
 
+static inline bool loopback_enabled(CadenceGEMState *s)
+{
+    return s->phy_loop
+        || FIELD_EX32(s->regs[R_NWCTRL], NWCTRL, LOOPBACK_LOCAL)
+        || FIELD_EX32(s->regs[R_USX_TEST_CTRL], USX_TEST_CTRL, MII_LPBK_EN)
+        || FIELD_EX32(s->regs[R_USX_TEST_CTRL], USX_TEST_CTRL, SCR_LPBK_EN);
+}
+
 /*
  * gem_transmit:
  * Fish packets out of the descriptor ring and feed them to QEMU
@@ -1518,8 +1526,7 @@ static void gem_transmit(CadenceGEMState *s)
                 gem_transmit_updatestats(s, s->tx_packet, total_bytes);
 
                 /* Send the packet somewhere */
-                if (s->phy_loop || FIELD_EX32(s->regs[R_NWCTRL], NWCTRL,
-                                              LOOPBACK_LOCAL)) {
+                if (loopback_enabled(s)) {
                     qemu_receive_packet(qemu_get_queue(s->nic), s->tx_packet,
                                         total_bytes);
                 } else {
