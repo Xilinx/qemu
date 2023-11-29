@@ -200,9 +200,18 @@ typedef struct SPARTANUP_PMC_GLOBAL {
     qemu_irq rst_ccu;
     qemu_irq rst_puf;
 
+    int init_b;
     uint32_t regs[SPARTANUP_PMC_GLOBAL_R_MAX];
     RegisterInfo regs_info[SPARTANUP_PMC_GLOBAL_R_MAX];
 } SPARTANUP_PMC_GLOBAL;
+
+static void spartanup_pmc_init_b_update(void *opaque, int n, int level)
+{
+    SPARTANUP_PMC_GLOBAL *s = XILINX_SPARTANUP_PMC_GLOBAL(opaque);
+
+    s->init_b = level;
+    ARRAY_FIELD_DP32(s->regs, PINS_STATUS, INIT_B, s->init_b ? 1 : 0);
+}
 
 static void spartanup_pmc_err0_update_irq(SPARTANUP_PMC_GLOBAL *s)
 {
@@ -510,6 +519,8 @@ static void spartanup_pmc_global_reset_enter(Object *obj, ResetType type)
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
         register_reset(&s->regs_info[i]);
     }
+
+    ARRAY_FIELD_DP32(s->regs, PINS_STATUS, INIT_B, s->init_b ? 1 : 0);
 }
 
 static const MemoryRegionOps spartanup_pmc_global_ops = {
@@ -610,6 +621,7 @@ static void spartanup_pmc_global_init(Object *obj)
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_ccu, "rst-ccu", 1);
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_puf, "rst-puf", 1);
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_spare, "rst-spare", 1);
+    qdev_init_gpio_in_named(DEVICE(obj), spartanup_pmc_init_b_update, "init_b", 1);
 }
 
 static const VMStateDescription vmstate_spartanup_pmc_global = {
@@ -638,6 +650,17 @@ static const FDTGenericGPIOSet spartanup_pmc_rst_gpios[] = {
     { },
 };
 
+static const FDTGenericGPIOSet spartanup_pmc_status_pin_gpios[] = {
+    {
+        .names = &fdt_generic_gpio_name_set_gpio,
+        .gpios = (FDTGenericGPIOConnection[]) {
+            { .name = "init_b", .fdt_index = 6, .range = 1 },
+            { },
+        },
+    },
+    { },
+};
+
 static void spartanup_pmc_global_class_init(ObjectClass *klass, const void *data)
 {
     ResettableClass *rc = RESETTABLE_CLASS(klass);
@@ -647,6 +670,7 @@ static void spartanup_pmc_global_class_init(ObjectClass *klass, const void *data
     dc->vmsd = &vmstate_spartanup_pmc_global;
     dc->realize = spartanup_pmc_global_sss_realize;
     rc->phases.enter = spartanup_pmc_global_reset_enter;
+    fggc->client_gpios = spartanup_pmc_status_pin_gpios;
     fggc->controller_gpios = spartanup_pmc_rst_gpios;
 }
 
