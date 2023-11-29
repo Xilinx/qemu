@@ -650,6 +650,21 @@ static uint32_t gem_get_max_buf_len(CadenceGEMState *s, bool tx)
     return size;
 }
 
+/*
+ * gem_update_int_status:
+ * Raise or lower interrupt based on current status.
+ */
+static void gem_update_int_status(CadenceGEMState *s)
+{
+    int i;
+
+    qemu_set_irq(s->irq[0], !!s->regs[R_ISR]);
+
+    for (i = 1; i < s->num_priority_queues; ++i) {
+        qemu_set_irq(s->irq[i], !!s->regs[R_INT_Q1_STATUS + i - 1]);
+    }
+}
+
 static void gem_set_isr(CadenceGEMState *s, int q, uint32_t flag)
 {
     if (q == 0) {
@@ -657,6 +672,18 @@ static void gem_set_isr(CadenceGEMState *s, int q, uint32_t flag)
     } else {
         s->regs[R_INT_Q1_STATUS + q - 1] |= flag &
                                       ~(s->regs[R_INT_Q1_MASK + q - 1]);
+    }
+}
+
+static void gem_set_usx_irq(CadenceGEMState *s, uint32_t irq)
+{
+    uint32_t mask = irq & ~(s->regs[R_USX_IRQ_MASK]);
+
+    if (mask) {
+        s->regs[R_USX_IRQ_STATUS] |= mask;
+
+        gem_set_isr(s, 0, R_ISR_USXGMII_INT_MASK);
+        gem_update_int_status(s);
     }
 }
 
@@ -804,21 +831,6 @@ static bool gem_can_receive(NetClientState *nc)
         DB_PRINT("can receive\n");
     }
     return true;
-}
-
-/*
- * gem_update_int_status:
- * Raise or lower interrupt based on current status.
- */
-static void gem_update_int_status(CadenceGEMState *s)
-{
-    int i;
-
-    qemu_set_irq(s->irq[0], !!s->regs[R_ISR]);
-
-    for (i = 1; i < s->num_priority_queues; ++i) {
-        qemu_set_irq(s->irq[i], !!s->regs[R_INT_Q1_STATUS + i - 1]);
-    }
 }
 
 /*
@@ -1731,6 +1743,25 @@ static void gem_handle_phy_access(CadenceGEMState *s)
     }
 }
 
+static inline void update_usx_status(CadenceGEMState *s)
+{
+    uint32_t ctrl = s->regs[R_USX_CTRL];
+    uint32_t sta;
+
+    if (!s->has_usxgmii) {
+        return;
+    }
+
+    sta = FIELD_DP32(0, USX_STATUS, BLOCK_LOCK,
+                     FIELD_EX32(ctrl, USX_CTRL, SIGNAL_OK));
+
+    if ((~s->regs[R_USX_STATUS] & sta) & R_USX_STATUS_BLOCK_LOCK_MASK) {
+        gem_set_usx_irq(s, R_USX_IRQ_STATUS_BLOCK_LOCKED_MASK);
+    }
+
+    s->regs[R_USX_STATUS] = sta;
+}
+
 /*
  * gem_read32:
  * Read a GEM register.
@@ -1862,6 +1893,9 @@ static void gem_write(void *opaque, hwaddr offset, uint64_t val,
         break;
     case R_PHYMNTNC:
         gem_handle_phy_access(s);
+        break;
+    case R_USX_CTRL:
+        update_usx_status(s);
         break;
     case R_USX_IRQ_ENABLE:
         if (s->has_usxgmii) {
