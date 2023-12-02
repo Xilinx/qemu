@@ -62,7 +62,7 @@ static int uart16550_fdt_init(char *node_path, FDTMachineInfo *fdti,
 
     irqline = *fdt_get_irq_info(fdti, node_path, 0, irq_info, &map_mode);
     assert(!map_mode);
-    DB_PRINT_NP(0, "UART16550a: baseaddr: 0x" TARGET_FMT_plx
+    DB_PRINT_NP(0, "UART16550a: baseaddr: 0x" HWADDR_FMT_plx
                 ", irq: %s, baud %d\n", base, irq_info, baudrate);
 
     /* it_shift = 2, reg-shift in DTS - for Xilnx IP is hardcoded */
