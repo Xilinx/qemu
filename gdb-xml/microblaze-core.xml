@@ -1,8 +1,13 @@
 <?xml version="1.0"?>
+<!-- Copyright (C) 2008 Free Software Foundation, Inc.
+
+     Copying and distribution of this file, with or without modification,
+     are permitted in any medium without royalty provided the copyright
+     notice and this notice are preserved.  -->
 
 <!DOCTYPE feature SYSTEM "gdb-target.dtd">
 <feature name="org.gnu.gdb.microblaze.core">
-  <reg name="r0" bitsize="32"/>
+  <reg name="r0" bitsize="32" regnum="0"/>
   <reg name="r1" bitsize="32" type="data_ptr"/>
   <reg name="r2" bitsize="32"/>
   <reg name="r3" bitsize="32"/>
@@ -59,6 +64,4 @@
   <reg name="rtlbsx" bitsize="32"/>
   <reg name="rtlblo" bitsize="32"/>
   <reg name="rtlbhi" bitsize="32"/>
-  <reg name="slr" bitsize="32"/>
-  <reg name="shr" bitsize="32"/>
 </feature>
