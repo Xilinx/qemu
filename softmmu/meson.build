@@ -25,7 +25,9 @@ softmmu_ss.add(files(
   'qdev-monitor.c',
   'rtc.c',
   'runstate-action.c',
+  'runstate-hmp-cmds.c',
   'runstate.c',
+  'tpm-hmp-cmds.c',
 ), sdl, libpmem, libdaxctl)
 
 if have_tpm
