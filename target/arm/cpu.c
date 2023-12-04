@@ -581,11 +581,15 @@ static void arm_cpu_reset_hold(Object *obj)
     }
 #endif
 
+    if (tcg_enabled()) {
+        hw_breakpoint_update_all(cpu);
+        hw_watchpoint_update_all(cpu);
+
+        arm_rebuild_hflags(env);
+    }
+
     cpu->is_in_wfi = false;
     qemu_set_irq(cpu->wfi, cpu->is_in_wfi);
-
-    hw_breakpoint_update_all(cpu);
-    hw_watchpoint_update_all(cpu);
 
 #ifndef CONFIG_USER_ONLY
     if (cpu->env.memattr_ns) {
@@ -606,8 +610,6 @@ static void arm_cpu_reset_hold(Object *obj)
         arm_cpu_set_irq(cpu, i, cpu->env.irq_wires[i]);
     }
 #endif
-
-    arm_rebuild_hflags(env);
 }
 
 #if defined(CONFIG_TCG) && !defined(CONFIG_USER_ONLY)
