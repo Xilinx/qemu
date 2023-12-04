@@ -184,7 +184,7 @@ static bool tb_lookup_cmp(const void *p, const void *d)
     const TranslationBlock *tb = p;
     const struct tb_desc *desc = d;
 
-    if ((TARGET_TB_PCREL || tb_pc(tb) == desc->pc) &&
+    if ((tb_cflags(tb) & CF_PCREL || tb->pc == desc->pc) &&
         tb_page_addr0(tb) == desc->page_addr0 &&
         tb->cs_base == desc->cs_base &&
         tb->flags == desc->flags &&
@@ -236,7 +236,7 @@ static TranslationBlock *tb_htable_lookup(CPUState *cpu, target_ulong pc,
         return NULL;
     }
     desc.page_addr0 = phys_pc;
-    h = tb_hash_func(phys_pc, (TARGET_TB_PCREL ? 0 : pc),
+    h = tb_hash_func(phys_pc, (cflags & CF_PCREL ? 0 : pc),
                      flags, cflags, *cpu->trace_dstate);
     return qht_lookup_custom(&tb_ctx.htable, &desc, h, tb_lookup_cmp);
 }
@@ -255,21 +255,46 @@ static inline TranslationBlock *tb_lookup(CPUState *cpu, target_ulong pc,
 
     hash = tb_jmp_cache_hash_func(pc);
     jc = cpu->tb_jmp_cache;
-    tb = tb_jmp_cache_get_tb(jc, hash);
 
-    if (likely(tb &&
-               tb_jmp_cache_get_pc(jc, hash, tb) == pc &&
-               tb->cs_base == cs_base &&
-               tb->flags == flags &&
-               tb->trace_vcpu_dstate == *cpu->trace_dstate &&
-               tb_cflags(tb) == cflags)) {
-        return tb;
+    if (cflags & CF_PCREL) {
+        /* Use acquire to ensure current load of pc from jc. */
+        tb =  qatomic_load_acquire(&jc->array[hash].tb);
+
+        if (likely(tb &&
+                   jc->array[hash].pc == pc &&
+                   tb->cs_base == cs_base &&
+                   tb->flags == flags &&
+                   tb->trace_vcpu_dstate == *cpu->trace_dstate &&
+                   tb_cflags(tb) == cflags)) {
+            return tb;
+        }
+        tb = tb_htable_lookup(cpu, pc, cs_base, flags, cflags);
+        if (tb == NULL) {
+            return NULL;
+        }
+        jc->array[hash].pc = pc;
+        /* Use store_release on tb to ensure pc is written first. */
+        qatomic_store_release(&jc->array[hash].tb, tb);
+    } else {
+        /* Use rcu_read to ensure current load of pc from *tb. */
+        tb = qatomic_rcu_read(&jc->array[hash].tb);
+
+        if (likely(tb &&
+                   tb->pc == pc &&
+                   tb->cs_base == cs_base &&
+                   tb->flags == flags &&
+                   tb->trace_vcpu_dstate == *cpu->trace_dstate &&
+                   tb_cflags(tb) == cflags)) {
+            return tb;
+        }
+        tb = tb_htable_lookup(cpu, pc, cs_base, flags, cflags);
+        if (tb == NULL) {
+            return NULL;
+        }
+        /* Use the pc value already stored in tb->pc. */
+        qatomic_set(&jc->array[hash].tb, tb);
     }
-    tb = tb_htable_lookup(cpu, pc, cs_base, flags, cflags);
-    if (tb == NULL) {
-        return NULL;
-    }
-    tb_jmp_cache_set(jc, hash, tb, pc);
+
     return tb;
 }
 
@@ -468,9 +493,9 @@ cpu_tb_exec(CPUState *cpu, TranslationBlock *itb, int *tb_exit)
         if (cc->tcg_ops->synchronize_from_tb) {
             cc->tcg_ops->synchronize_from_tb(cpu, last_tb);
         } else {
-            assert(!TARGET_TB_PCREL);
+            tcg_debug_assert(!(tb_cflags(last_tb) & CF_PCREL));
             assert(cc->set_pc);
-            cc->set_pc(cpu, tb_pc(last_tb));
+            cc->set_pc(cpu, last_tb->pc);
         }
         if (qemu_loglevel_mask(CPU_LOG_EXEC)) {
             target_ulong pc = log_pc(cpu, last_tb);
@@ -976,7 +1001,8 @@ cpu_exec_loop(CPUState *cpu, SyncClocks *sc)
                  * for the fast lookup
                  */
                 h = tb_jmp_cache_hash_func(pc);
-                tb_jmp_cache_set(cpu->tb_jmp_cache, h, tb, pc);
+                /* Use the pc value already stored in tb->pc. */
+                qatomic_set(&cpu->tb_jmp_cache->array[h].tb, tb);
             }
 
 #ifndef CONFIG_USER_ONLY
@@ -1002,17 +1028,18 @@ cpu_exec_loop(CPUState *cpu, SyncClocks *sc)
                 target_ulong cs_base, pc;
                 uint32_t flags;
 
-#if TARGET_TB_PCREL
-                cpu_get_tb_cpu_state(env, &pc, &cs_base, &flags);
-#else
-                if (tb_exit) {
-                    /* TB early exit, ask for CPU state.  */
+                if (tb_cflags(tb) & CF_PCREL) {
                     cpu_get_tb_cpu_state(env, &pc, &cs_base, &flags);
                 } else {
-                    /* TB didn't exit, assume we ran all of it.  */
-                    pc = tb->pc + tb->size;
+                    if (tb_exit) {
+                        /* TB early exit, ask for CPU state.  */
+                        cpu_get_tb_cpu_state(env, &pc, &cs_base, &flags);
+                    } else {
+                        /* TB didn't exit, assume we ran all of it.  */
+                        pc = tb->pc + tb->size;
+                    }
                 }
-#endif
+
                 etrace_dump_exec_end(&qemu_etracer,
                                      cpu->cpu_index, pc);
             }
