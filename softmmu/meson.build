@@ -10,7 +10,8 @@ specific_ss.add(when: 'CONFIG_SOFTMMU', if_true: [files(
 )])
 
 specific_ss.add(when: ['CONFIG_SOFTMMU', 'CONFIG_TCG'], if_true: [files(
-  'icount.c'
+  'icount.c',
+  'watchpoint.c',
 )])
 
 softmmu_ss.add(files(
