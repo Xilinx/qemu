@@ -23,6 +23,8 @@
  *
  * Return 0 on success, non-zero on error.
  */
+/* Xilinx */
+#if 0
 static int blk_pread_nonzeroes(BlockBackend *blk, hwaddr size, void *buf)
 {
     int ret;
@@ -39,8 +41,7 @@ static int blk_pread_nonzeroes(BlockBackend *blk, hwaddr size, void *buf)
             return ret;
         }
         if (!(ret & BDRV_BLOCK_ZERO)) {
-            ret = bdrv_pread(bs->file, offset, bytes,
-                             (uint8_t *) buf + offset, 0);
+            ret = blk_pread(blk, offset, bytes, (uint8_t *) buf + offset, 0);
             if (ret < 0) {
                 return ret;
             }
@@ -48,6 +49,7 @@ static int blk_pread_nonzeroes(BlockBackend *blk, hwaddr size, void *buf)
         offset += bytes;
     }
 }
+#endif
 
 /*
  * Read the entire contents of @blk into @buf.
@@ -88,7 +90,8 @@ bool blk_check_size_and_read_all(BlockBackend *blk, void *buf, hwaddr size,
      * block device and read only on demand.
      */
     assert(size <= BDRV_REQUEST_MAX_BYTES);
-    ret = blk_pread_nonzeroes(blk, size, buf);
+    /* Xilinx */
+    ret = blk_pread(blk, 0, size, buf, 0);
     if (ret < 0) {
         error_setg_errno(errp, -ret, "can't read block backend");
         return false;
