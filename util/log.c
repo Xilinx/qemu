@@ -500,7 +500,7 @@ const QEMULogItem qemu_log_items[] = {
     { DEV_LOG_SPI_DEV, "spi-dev", "enable SPI device logs." },
 
 #ifdef CONFIG_PLUGIN
-    { CPU_LOG_PLUGIN, "plugin", "output from TCG plugins\n"},
+    { CPU_LOG_PLUGIN, "plugin", "output from TCG plugins"},
 #endif
     { LOG_STRACE, "strace",
       "log every user-mode syscall, its input, and its result" },
