@@ -4470,7 +4470,7 @@ static uint64_t midr_read(CPUARMState *env, const ARMCPRegInfo *ri)
 uint64_t mpidr_read_val(CPUARMState *env)
 {
     ARMCPU *cpu = env_archcpu(env);
-    uint64_t mpidr = cpu->mp_affinity;
+    uint64_t mpidr = cpu->mp_affinity | cpu->mpidr_feat;
 
     if (arm_feature(env, ARM_FEATURE_V7MP)) {
         mpidr |= (1U << 31);

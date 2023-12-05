@@ -1104,6 +1104,7 @@ struct ArchCPU {
     uint64_t id_aa64afr1;
     uint64_t clidr;
     uint64_t mp_affinity; /* MP ID without feature bits */
+    uint64_t mpidr_feat; /* MPIDR feature bits */
     /* The elements of this array are the CCSIDR values for each cache,
      * in the order L1DCache, L1ICache, L2DCache, L2ICache, etc.
      */
@@ -1222,6 +1223,7 @@ void arm_cpu_post_init(Object *obj);
 #define ARM64_AFFINITY_MASK \
     (ARM_AFF0_MASK | ARM_AFF1_MASK | ARM_AFF2_MASK | ARM_AFF3_MASK)
 #define ARM64_AFFINITY_INVALID (~ARM64_AFFINITY_MASK)
+#define ARM_MPIDR_FEATURE (1ull << 24) /* MT */
 
 uint64_t arm_cpu_mp_affinity(int idx, uint8_t clustersz);
 

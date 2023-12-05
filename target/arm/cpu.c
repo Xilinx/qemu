@@ -2263,8 +2263,13 @@ static void arm_cpu_realizefn(DeviceState *dev, Error **errp)
      * so these bits always RAZ.
      */
     if (cpu->mp_affinity == ARM64_AFFINITY_INVALID) {
+        cpu->mpidr_feat = 0;
         cpu->mp_affinity = arm_cpu_mp_affinity(cs->cpu_index,
                                                ARM_DEFAULT_CPUS_PER_CLUSTER);
+    } else {
+        /* Split supported feature bits and plain affinity value */
+        cpu->mpidr_feat = cpu->mp_affinity & ARM_MPIDR_FEATURE;
+        cpu->mp_affinity &= ARM64_AFFINITY_MASK;
     }
 
     if (cpu->reset_hivecs) {
