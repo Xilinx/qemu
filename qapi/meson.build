@@ -31,6 +31,7 @@ qapi_all_modules = [
   'compat',
   'control',
   'crypto',
+  'cxl',
   'dump',
   'error',
   'introspect',
@@ -57,6 +58,7 @@ if have_system
   qapi_all_modules += [
     'acpi',
     'audio',
+    'cryptodev',
     'qdev',
     'pci',
     'rdma',
