@@ -1647,7 +1647,7 @@ SRST
 
     .. parsed-literal::
 
-        |qemu_system_x86| -drive file=a -drive file=b"
+        |qemu_system_x86| -drive file=a -drive file=b
 
     is interpreted like:
 
