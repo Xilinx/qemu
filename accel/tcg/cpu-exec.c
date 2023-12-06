@@ -470,6 +470,7 @@ cpu_tb_exec(CPUState *cpu, TranslationBlock *itb, int *tb_exit)
     qemu_thread_jit_execute();
     ret = tcg_qemu_tb_exec(env, tb_ptr);
     cpu->can_do_io = 1;
+    qemu_plugin_disable_mem_helpers(cpu);
     /*
      * TODO: Delay swapping back to the read-write region of the TB
      * until we actually need to modify the TB.  The read-only copy,
@@ -537,7 +538,6 @@ static void cpu_exec_exit(CPUState *cpu)
     if (cc->tcg_ops->cpu_exec_exit) {
         cc->tcg_ops->cpu_exec_exit(cpu);
     }
-    QEMU_PLUGIN_ASSERT(cpu->plugin_mem_cbs == NULL);
 }
 
 void cpu_exec_step_atomic(CPUState *cpu)
@@ -591,7 +591,6 @@ void cpu_exec_step_atomic(CPUState *cpu)
             qemu_mutex_unlock_iothread();
         }
         assert_no_pages_locked();
-        qemu_plugin_disable_mem_helpers(cpu);
     }
 
     /*
@@ -1046,7 +1045,6 @@ cpu_exec_loop(CPUState *cpu, SyncClocks *sc)
 
             qemu_etracer.exec_start_valid = false;
 
-            QEMU_PLUGIN_ASSERT(cpu->plugin_mem_cbs == NULL);
             /* Try to align the host and virtual clocks
                if the guest is in advance */
             align_clocks(sc, cpu);
@@ -1081,7 +1079,6 @@ static int cpu_exec_setjmp(CPUState *cpu, SyncClocks *sc)
             cpu_get_tb_cpu_state(env, &pc, &cs_base, &flags);
             etrace_dump_exec_end(&qemu_etracer, cpu->cpu_index, pc);
         }
-        qemu_plugin_disable_mem_helpers(cpu);
 
         assert_no_pages_locked();
     }
