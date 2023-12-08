@@ -69,7 +69,7 @@ static const MemoryRegionOps pmx_efuse_cache_ops = {
 
 static void pmx_efuse_cache_realize(DeviceState *dev, Error **errp)
 {
-    XlnxPmxEFuseCtrl *s = XLNX_PMX_EFUSE_CTRL(dev);
+    XlnxPmxEFuseCache *s = XLNX_PMX_EFUSE_CACHE(dev);
     g_autofree char *path = object_get_canonical_path(OBJECT(s));
 
     if (!s->efuse) {
