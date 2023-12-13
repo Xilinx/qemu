@@ -13,3 +13,4 @@ generated from in-code annotations to function prototypes.
    memory
    modules
    ui
+   zoned-storage
