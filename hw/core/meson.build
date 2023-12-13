@@ -85,6 +85,7 @@ softmmu_ss.add(files(
   'fw-path-provider.c',
   'loader.c',
   'machine-hmp-cmds.c',
+  'machine-qmp-cmds.c',
   'machine.c',
   'nmi.c',
   'null-machine.c',
@@ -94,8 +95,4 @@ softmmu_ss.add(files(
   'sysbus.c',
   'vm-change-state-handler.c',
   'clock-vmstate.c',
-))
-
-specific_ss.add(when: 'CONFIG_SOFTMMU', if_true: files(
-  'machine-qmp-cmds.c',
 ))
