@@ -3156,9 +3156,6 @@ subdir('softmmu')
 specific_ss.add(files('etrace.c', 'etrace-gpio.c'))
 specific_ss.add(when: 'CONFIG_SOFTMMU', if_true: files('injection.c'))
 
-common_ss.add(capstone)
-specific_ss.add(files('disas.c'), capstone)
-
 # Work around a gcc bug/misfeature wherein constant propagation looks
 # through an alias:
 #   https://gcc.gnu.org/bugzilla/show_bug.cgi?id=99696
