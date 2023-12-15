@@ -44,6 +44,7 @@ struct RAMBlock {
 #ifdef _WIN32
     HANDLE hMapFile;
 #endif
+    uint64_t fd_offset;
     size_t page_size;
     /* dirty bitmap used during migration */
     unsigned long *bmap;
