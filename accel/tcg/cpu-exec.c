@@ -308,7 +308,6 @@ static void log_cpu_exec(target_ulong pc, CPUState *cpu,
                       cpu->cpu_index, tb->tc.ptr, tb->cs_base, pc,
                       tb->flags, tb->cflags, lookup_symbol(pc));
 
-#if defined(DEBUG_DISAS)
         if (qemu_loglevel_mask(CPU_LOG_TB_CPU)) {
             FILE *logfile = qemu_log_trylock();
             if (logfile) {
@@ -324,7 +323,6 @@ static void log_cpu_exec(target_ulong pc, CPUState *cpu,
                 qemu_log_unlock(logfile);
             }
         }
-#endif /* DEBUG_DISAS */
     }
 }
 
