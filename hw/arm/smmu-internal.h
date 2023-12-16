@@ -58,11 +58,6 @@
     ((level == 3) &&                                                    \
      ((pte & ARM_LPAE_PTE_TYPE_MASK) == ARM_LPAE_L3_PTE_TYPE_PAGE))
 
-/* access flag */
-
-#define PTE_AF(pte) \
-    (extract64(pte, 10, 1))
-
 /* access permissions */
 
 #define PTE_AP(pte) \
@@ -71,43 +66,20 @@
 #define PTE_APTABLE(pte) \
     (extract64(pte, 61, 2))
 
-#define is_access_fault(af, cfg) \
-    (!cfg->affd && !af)
-
+#define PTE_AF(pte) \
+    (extract64(pte, 10, 1))
 /*
  * TODO: At the moment all transactions are considered as privileged (EL1)
  * as IOMMU translation callback does not pass user/priv attributes.
  */
-#define s1_is_permission_fault(ap, perm) \
+#define is_permission_fault(ap, perm) \
     (((perm) & IOMMU_WO) && ((ap) & 0x2))
 
-static inline bool is_permission_fault(int stage, uint8_t ap,
-                                       IOMMUAccessFlags perm)
-{
-    if (stage == 1) {
-        return s1_is_permission_fault(ap, perm);
-    } else {
-        if (!(ap & 1) && (perm & IOMMU_RO)) {
-            return true;
-        }
-        if (!(ap & 2) && (perm & IOMMU_WO)) {
-            return true;
-        }
-        return false;
-    }
-}
+#define is_permission_fault_s2(s2ap, perm) \
+    (!(((s2ap) & (perm)) == (perm)))
 
-static inline IOMMUAccessFlags pte_ap_to_perm(int stage, uint8_t ap)
-{
-    IOMMUAccessFlags ret;
-
-    if (stage == 1) {
-        ret = IOMMU_ACCESS_FLAG(true, !((ap) & 0x2));
-    } else {
-        ret = IOMMU_ACCESS_FLAG(ap & 1, ap & 2);
-    }
-    return ret;
-}
+#define PTE_AP_TO_PERM(ap) \
+    (IOMMU_ACCESS_FLAG(true, !((ap) & 0x2)))
 
 /* Level Indexing */
 
@@ -129,10 +101,42 @@ uint64_t iova_level_offset(uint64_t iova, int inputsize,
             MAKE_64BIT_MASK(0, gsz - 3);
 }
 
+/* FEAT_LPA2 and FEAT_TTST are not implemented. */
+static inline int get_start_level(int sl0 , int granule_sz)
+{
+    /* ARM DDI0487I.a: Table D8-12. */
+    if (granule_sz == 12) {
+        return 2 - sl0;
+    }
+    /* ARM DDI0487I.a: Table D8-22 and Table D8-31. */
+    return 3 - sl0;
+}
+
+/*
+ * Index in a concatenated first level stage-2 page table.
+ * ARM DDI0487I.a: D8.2.2 Concatenated translation tables.
+ */
+static inline int pgd_concat_idx(int start_level, int granule_sz,
+                                 dma_addr_t ipa)
+{
+    uint64_t ret;
+    /*
+     * Get the number of bits handled by next levels, then any extra bits in
+     * the address should index the concatenated tables. This relation can be
+     * deduced from tables in ARM DDI0487I.a: D8.2.7-9
+     */
+    int shift =  level_shift(start_level - 1, granule_sz);
+
+    ret = ipa >> shift;
+    return ret;
+}
+
 #define SMMU_IOTLB_ASID(key) ((key).asid)
+#define SMMU_IOTLB_VMID(key) ((key).vmid)
 
 typedef struct SMMUIOTLBPageInvInfo {
     int asid;
+    int vmid;
     uint64_t iova;
     uint64_t mask;
 } SMMUIOTLBPageInvInfo;
