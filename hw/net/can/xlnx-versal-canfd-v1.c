@@ -1,12 +1,9 @@
 /*
  * QEMU model of the Xilinx Versal CANFD device.
  *
- * This implementation is based on the following datasheet:
- * https://docs.xilinx.com/v/u/2.0-English/pg223-canfd
+ * Copyright (c) 2020 Xilinx Inc.
  *
- * Copyright (c) 2023 Advanced Micro Devices, Inc.
- *
- * Written-by: Vikram Garhwal <vikram.garhwal@amd.com>
+ * Written-by: Vikram Garhwal<fnu.vikram@xilinx.com>
  *
  * Based on QEMU CANFD Device emulation implemented by Jin Yang, Deniz Eren and
  * Pavel Pisa
@@ -38,12 +35,29 @@
 #include "qemu/bitops.h"
 #include "qemu/log.h"
 #include "qemu/cutils.h"
+#include "sysemu/sysemu.h"
 #include "qemu/event_notifier.h"
 #include "hw/qdev-properties.h"
 #include "qom/object_interfaces.h"
 #include "migration/vmstate.h"
-#include "hw/net/xlnx-versal-canfd.h"
-#include "trace.h"
+#include "hw/register.h"
+#include "hw/ptimer.h"
+#include "net/can_emu.h"
+#include "hw/qdev-clock.h"
+
+#ifndef XILINX_CANFD_ERR_DEBUG
+#define XILINX_CANFD_ERR_DEBUG 0
+#endif
+
+#define DB_PRINT(dev, ...) do { \
+    if (XILINX_CANFD_ERR_DEBUG) { \
+        g_autofree char *path = object_get_canonical_path(OBJECT(dev)); \
+        qemu_log("%s: %s", path, ## __VA_ARGS__); \
+    } \
+} while (0)
+
+/* To avoid the build issues on Windows machines. */
+#undef ERROR
 
 REG32(SOFTWARE_RESET_REGISTER, 0x0)
     FIELD(SOFTWARE_RESET_REGISTER, CEN, 1, 1)
@@ -104,12 +118,7 @@ REG32(INTERRUPT_STATUS_REGISTER, 0x1c)
     FIELD(INTERRUPT_STATUS_REGISTER, WKUP, 11, 1)
     FIELD(INTERRUPT_STATUS_REGISTER, SLP, 10, 1)
     FIELD(INTERRUPT_STATUS_REGISTER, BSOFF, 9, 1)
-    /*
-     * In the original HW description below bit is named as ERROR but an ERROR
-     * field name collides with a macro in Windows build. To avoid Windows build
-     * failures, the bit is renamed to ERROR_BIT.
-     */
-    FIELD(INTERRUPT_STATUS_REGISTER, ERROR_BIT, 8, 1)
+    FIELD(INTERRUPT_STATUS_REGISTER, ERROR, 8, 1)
     FIELD(INTERRUPT_STATUS_REGISTER, RXFOFLW, 6, 1)
     FIELD(INTERRUPT_STATUS_REGISTER, TSCNT_OFLW, 5, 1)
     FIELD(INTERRUPT_STATUS_REGISTER, RXOK, 4, 1)
@@ -678,13 +687,69 @@ REG32(RB_DW15_REGISTER_1, 0x4144)
     FIELD(RB_DW15_REGISTER_1, DATA_BYTES62, 8, 8)
     FIELD(RB_DW15_REGISTER_1, DATA_BYTES63, 0, 8)
 
+#define TYPE_XILINX_CANFD "xlnx.versal-canfd"
+
+#define XILINX_CANFD(obj) \
+     OBJECT_CHECK(XlnxVersalCANFDState, (obj), TYPE_XILINX_CANFD)
+
+#define NUM_REGS_PER_MSG_SPACE 18
+#define MAX_NUM_RX             64
+#define CANFD_TIMER_MAX        0XFFFFUL
+#define CANFD_DEFAULT_CLOCK    (24 * 1000 * 1000)
+
+/* 0x4144/4 + 1 + (64 - 1) * 18 + 1. */
+#define XLNX_VERSAL_CANFD_R_MAX (0x4144 / 4  + \
+                    ((MAX_NUM_RX - 1) * NUM_REGS_PER_MSG_SPACE) + 1)
+
+typedef struct XlnxVersalCANFDState {
+    SysBusDevice            parent_obj;
+    MemoryRegion            iomem;
+
+    qemu_irq                irq_canfd_int;
+    qemu_irq                irq_addr_err;
+
+    RegisterInfo            reg_info[XLNX_VERSAL_CANFD_R_MAX];
+    RegisterAccessInfo      *tx_regs;
+    RegisterAccessInfo      *rx0_regs;
+    RegisterAccessInfo      *rx1_regs;
+    RegisterAccessInfo      *af_regs;
+    RegisterAccessInfo      *txe_regs;
+    RegisterAccessInfo      *rx_mailbox_regs;
+    RegisterAccessInfo      *af_mask_regs_mailbox;
+
+    uint32_t                regs[XLNX_VERSAL_CANFD_R_MAX];
+    uint8_t                 tx_busy_bit;
+    uint8_t                 modes;
+
+    ptimer_state            *canfd_timer;
+
+    CanBusClientState       bus_client;
+    CanBusState             *canfdbus;
+
+    struct {
+        uint8_t             ctrl_idx;
+        uint8_t             rx0_fifo;
+        uint8_t             rx1_fifo;
+        uint8_t             tx_fifo;
+        bool                enable_rx_fifo1;
+        uint32_t            ext_clk_freq;
+   } cfg;
+
+} XlnxVersalCANFDState;
+
+typedef struct txid_list {
+    uint32_t can_id;
+    uint32_t reg_num;
+    struct txid_list   *next;
+} txid_list;
+
+
 static uint8_t canfd_dlc_array[8] = {8, 12, 16, 20, 24, 32, 48, 64};
 
 static void canfd_update_irq(XlnxVersalCANFDState *s)
 {
     unsigned int irq = s->regs[R_INTERRUPT_STATUS_REGISTER] &
                         s->regs[R_INTERRUPT_ENABLE_REGISTER];
-    g_autofree char *path = object_get_canonical_path(OBJECT(s));
 
     /* RX watermark interrupts. */
     if (ARRAY_FIELD_EX32(s->regs, RX_FIFO_STATUS_REGISTER, FL) >
@@ -702,9 +767,6 @@ static void canfd_update_irq(XlnxVersalCANFDState *s)
         ARRAY_FIELD_EX32(s->regs, TX_EVENT_FIFO_WATERMARK_REGISTER, TXE_FWM)) {
         ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, TXEWMFLL, 1);
     }
-
-    trace_xlnx_canfd_update_irq(path, s->regs[R_INTERRUPT_STATUS_REGISTER],
-                                s->regs[R_INTERRUPT_ENABLE_REGISTER], irq);
 
     qemu_set_irq(s->irq_canfd_int, irq);
 }
@@ -741,7 +803,7 @@ static void canfd_config_reset(XlnxVersalCANFDState *s)
 
     unsigned int i;
 
-    /* Reset all the configuration registers. */
+    /* Reset all the configuration register. */
     for (i = 0; i < R_RX_FIFO_WATERMARK_REGISTER; ++i) {
         register_reset(&s->reg_info[i]);
     }
@@ -760,7 +822,7 @@ static void canfd_config_mode(XlnxVersalCANFDState *s)
     ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, WKUP, 0);
     ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, SLP, 0);
     ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, BSOFF, 0);
-    ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, ERROR_BIT, 0);
+    ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, ERROR, 0);
     ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, RXFOFLW, 0);
     ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, RXFOFLW_1, 0);
     ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, RXOK, 0);
@@ -780,9 +842,9 @@ static void update_status_register_mode_bits(XlnxVersalCANFDState *s)
     bool sleep_status = ARRAY_FIELD_EX32(s->regs, STATUS_REGISTER, SLEEP);
     bool sleep_mode = ARRAY_FIELD_EX32(s->regs, MODE_SELECT_REGISTER, SLEEP);
     /* Wake up interrupt bit. */
-    bool wakeup_irq_val = !sleep_mode && sleep_status;
+    bool wakeup_irq_val = (sleep_mode == 0) && sleep_status;
     /* Sleep interrupt bit. */
-    bool sleep_irq_val = sleep_mode && !sleep_status;
+    bool sleep_irq_val = sleep_mode && (sleep_status == 0);
 
     /* Clear previous core mode status bits. */
     ARRAY_FIELD_DP32(s->regs, STATUS_REGISTER, LBACK, 0);
@@ -828,9 +890,9 @@ static uint64_t canfd_msr_pre_write(RegisterInfo *reg, uint64_t val64)
                  FIELD_EX32(val, MODE_SELECT_REGISTER, SNOOP);
 
     if (multi_mode > 1) {
-        qemu_log_mask(LOG_GUEST_ERROR, "Attempting to configure several modes"
-                      " simultaneously. One mode will be selected according to"
-                      " their priority: LBACK > SLEEP > SNOOP.\n");
+        qemu_log_mask(LOG_GUEST_ERROR, "Attempting to configure several modes "
+                      "simultaneously. One mode will be selected according to "
+                      "their priority: LBACK > SLEEP > SNOOP.\n");
     }
 
     if (ARRAY_FIELD_EX32(s->regs, SOFTWARE_RESET_REGISTER, CEN) == 0) {
@@ -842,11 +904,11 @@ static uint64_t canfd_msr_pre_write(RegisterInfo *reg, uint64_t val64)
         ARRAY_FIELD_DP32(s->regs, MODE_SELECT_REGISTER, SLEEP, sleep_mode_bit);
 
         if (FIELD_EX32(val, MODE_SELECT_REGISTER, LBACK)) {
-            qemu_log_mask(LOG_GUEST_ERROR, "Attempting to set LBACK mode"
-                          " without setting CEN bit as 0\n");
+            qemu_log_mask(LOG_GUEST_ERROR, "Attempting to set LBACK mode "
+                          "without setting CEN bit as 0\n");
         } else if (FIELD_EX32(val, MODE_SELECT_REGISTER, SNOOP)) {
-            qemu_log_mask(LOG_GUEST_ERROR, "Attempting to set SNOOP mode"
-                          " without setting CEN bit as 0\n");
+            qemu_log_mask(LOG_GUEST_ERROR, "Attempting to set SNOOP mode "
+                          "without setting CEN bit as 0\n");
         }
 
         update_status_register_mode_bits(s);
@@ -867,15 +929,8 @@ static void regs2frame(XlnxVersalCANFDState *s, qemu_can_frame *frame,
     uint32_t i = 0;
     uint32_t j = 0;
     uint32_t val = 0;
-    uint32_t dlc_reg_val = 0;
-    uint32_t dlc_value = 0;
-
-    /* Check that reg_num should be within TX register space. */
-    assert(reg_num <= R_TB_ID_REGISTER + (NUM_REGS_PER_MSG_SPACE *
-                                          s->cfg.tx_fifo));
-
-    dlc_reg_val = s->regs[reg_num + 1];
-    dlc_value = FIELD_EX32(dlc_reg_val, TB0_DLC_REGISTER, DLC);
+    uint32_t dlc_reg_val = s->regs[reg_num + 1];
+    uint32_t dlc_value = FIELD_EX32(dlc_reg_val, TB0_DLC_REGISTER, DLC);
 
     frame->can_id = s->regs[reg_num];
 
@@ -903,8 +958,16 @@ static void regs2frame(XlnxVersalCANFDState *s, qemu_can_frame *frame,
         if (dlc_value < 8) {
             frame->can_dlc = dlc_value;
         } else {
-            assert((dlc_value - 8) < ARRAY_SIZE(canfd_dlc_array));
             frame->can_dlc = canfd_dlc_array[dlc_value - 8];
+        }
+
+        for (i = 0; i < 4 ; i++) {
+            val = 8 * i;
+
+            for (j = 0; j < frame->can_dlc / 4; j++) {
+                frame->data[i + 4 * j] = ((s->regs[reg_num + 2 + j] >> val) &
+                                           0xFF);
+            }
         }
     } else {
         /*
@@ -917,34 +980,45 @@ static void regs2frame(XlnxVersalCANFDState *s, qemu_can_frame *frame,
          */
 
         if (dlc_value > 8) {
-            frame->can_dlc = 8;
-            qemu_log_mask(LOG_GUEST_ERROR, "Maximum DLC value for Classic CAN"
-                          " frame is 8. Only 8 byte data will be sent.\n");
+            frame->can_dlc = dlc_value;
+            dlc_value = 8;
+            DB_PRINT(s, "Maximum DLC value for Classic CAN frame can be 8."
+                     "Only 8 byte data will be sent.\n");
         } else {
             frame->can_dlc = dlc_value;
         }
-    }
 
-    for (j = 0; j < frame->can_dlc; j++) {
-        val = 8 * i;
+        for (i = 0; i < 4 ; i++) {
+            val = 8 * i;
 
-        frame->data[j] = extract32(s->regs[reg_num + 2 + (j / 4)], val, 8);
-        i++;
-
-        if (i % 4 == 0) {
-            i = 0;
+            for (j = 0; j < dlc_value; j++) {
+                frame->data[i + 4 * j] = ((s->regs[reg_num + 2 + j] >> val) &
+                                           0xFF);
+            }
         }
     }
 }
 
 static void process_cancellation_requests(XlnxVersalCANFDState *s)
 {
-    uint32_t clear_mask = s->regs[R_TX_BUFFER_READY_REQUEST_REGISTER] &
-                                 s->regs[R_TX_BUFFER_CANCEL_REQUEST_REGISTER];
+    int i;
+    uint32_t val = s->regs[R_TX_BUFFER_READY_REQUEST_REGISTER];
+    uint32_t cancel_val = s->regs[R_TX_BUFFER_CANCEL_REQUEST_REGISTER];
 
-    s->regs[R_TX_BUFFER_READY_REQUEST_REGISTER] &= ~clear_mask;
-    s->regs[R_TX_BUFFER_CANCEL_REQUEST_REGISTER] &= ~clear_mask;
+    for (i = 0; i < 32; i++) {
 
+        if ((val & 0x1) && (cancel_val & 0x1)) {
+            s->regs[R_TX_BUFFER_READY_REQUEST_REGISTER] &= ~(1 << i);
+            s->regs[R_TX_BUFFER_CANCEL_REQUEST_REGISTER] &= ~(1 << i);
+
+            ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, TXCRS, 1);
+        } else {
+            DB_PRINT(s, "Data Tx going on for requested cancellation bit\n");
+        }
+
+        val >>= 1;
+        cancel_val >>= 1;
+    }
     canfd_update_irq(s);
 }
 
@@ -956,8 +1030,7 @@ static void store_rx_sequential(XlnxVersalCANFDState *s,
 {
     int i;
     bool is_canfd_frame;
-    uint8_t dlc = frame->can_dlc;
-    uint8_t rx_reg_num = 0;
+    uint8_t dlc = 0;
     uint32_t dlc_reg_val = 0;
     uint32_t data_reg_val = 0;
 
@@ -966,7 +1039,7 @@ static void store_rx_sequential(XlnxVersalCANFDState *s,
         g_autofree char *path = object_get_canonical_path(OBJECT(s));
 
         qemu_log_mask(LOG_GUEST_ERROR, "%s: RX%d Buffer is full. Discarding the"
-                      " message\n", path, rx_fifo_id);
+                      "message\n", path, rx_fifo_id);
 
         /* Set the corresponding RF buffer overflow interrupt. */
         if (rx_fifo_id == 0) {
@@ -985,41 +1058,36 @@ static void store_rx_sequential(XlnxVersalCANFDState *s,
                              rx_timestamp);
         }
 
+        DB_PRINT(s, "Storing the data for XlnxVersalCANFDState\n");
+
         if (rx_fifo_id == 0) {
             ARRAY_FIELD_DP32(s->regs, RX_FIFO_STATUS_REGISTER, FL,
                              fill_level + 1);
-            assert(store_location <=
-                              R_RB_ID_REGISTER + (s->cfg.rx0_fifo *
-                                                  NUM_REGS_PER_MSG_SPACE));
         } else {
             ARRAY_FIELD_DP32(s->regs, RX_FIFO_STATUS_REGISTER, FL_1,
                              fill_level + 1);
-            assert(store_location <=
-                              R_RB_ID_REGISTER_1 + (s->cfg.rx1_fifo *
-                                                    NUM_REGS_PER_MSG_SPACE));
         }
-
         s->regs[store_location] = frame->can_id;
-
-        dlc = frame->can_dlc;
 
         if (frame->flags == QEMU_CAN_FRMF_TYPE_FD) {
             is_canfd_frame = true;
 
-            /* Store dlc value in Xilinx specific format. */
             for (i = 0; i < ARRAY_SIZE(canfd_dlc_array); i++) {
                 if (canfd_dlc_array[i] == frame->can_dlc) {
-                    dlc_reg_val = FIELD_DP32(0, RB_DLC_REGISTER, DLC, 8 + i);
+                    dlc = 8 + i;
                 }
+
+            dlc_reg_val = FIELD_DP32(0, RB_DLC_REGISTER, DLC, dlc);
             }
         } else {
             is_canfd_frame = false;
-
             if (frame->can_dlc > 8) {
                 dlc = 8;
+            } else {
+                dlc = frame->can_dlc;
             }
 
-            dlc_reg_val = FIELD_DP32(0, RB_DLC_REGISTER, DLC, dlc);
+            dlc_reg_val = FIELD_DP32(0, RB_DLC_REGISTER, DLC, frame->can_dlc);
         }
 
         dlc_reg_val |= FIELD_DP32(0, RB_DLC_REGISTER, FDF, is_canfd_frame);
@@ -1028,43 +1096,17 @@ static void store_rx_sequential(XlnxVersalCANFDState *s,
                                   filter_index);
         s->regs[store_location + 1] = dlc_reg_val;
 
-        for (i = 0; i < dlc; i++) {
-            /* Register size is 4 byte but frame->data each is 1 byte. */
-            switch (i % 4) {
-            case 0:
-                rx_reg_num = i / 4;
-
-                data_reg_val = FIELD_DP32(0, RB_DW0_REGISTER, DATA_BYTES3,
-                                          frame->data[i]);
-                break;
-            case 1:
-                data_reg_val |= FIELD_DP32(0, RB_DW0_REGISTER, DATA_BYTES2,
-                                           frame->data[i]);
-                break;
-            case 2:
-                data_reg_val |= FIELD_DP32(0, RB_DW0_REGISTER, DATA_BYTES1,
-                                           frame->data[i]);
-                break;
-            case 3:
-                data_reg_val |= FIELD_DP32(0, RB_DW0_REGISTER, DATA_BYTES0,
-                                           frame->data[i]);
-                /*
-                 * Last Bytes data which means we have all 4 bytes ready to
-                 * store in one rx regs.
-                 */
-                s->regs[store_location + rx_reg_num + 2] = data_reg_val;
-                break;
-            }
+        for (i = 0; i <= dlc; i++) {
+            data_reg_val = FIELD_DP32(0, RB_DW0_REGISTER, DATA_BYTES3,
+                                      frame->data[4 * i]);
+            data_reg_val |= FIELD_DP32(0, RB_DW0_REGISTER, DATA_BYTES2,
+                                       frame->data[4 * i + 1]);
+            data_reg_val |= FIELD_DP32(0, RB_DW0_REGISTER, DATA_BYTES1,
+                                       frame->data[4 * i + 2]);
+            data_reg_val |= FIELD_DP32(0, RB_DW0_REGISTER, DATA_BYTES0,
+                                       frame->data[4 * i + 3]);
+            s->regs[store_location + i + 2] = data_reg_val;
         }
-
-        if (i % 4) {
-            /*
-             * In case DLC is not multiplier of 4, data is not saved to RX FIFO
-             * in above switch case. Store the remaining bytes here.
-             */
-            s->regs[store_location + rx_reg_num + 2] = data_reg_val;
-        }
-
         /* set the interrupt as RXOK. */
         ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, RXOK, 1);
     }
@@ -1081,13 +1123,15 @@ static void update_rx_sequential(XlnxVersalCANFDState *s,
     uint32_t store_location;
     uint32_t fill_level;
     uint32_t read_index;
-    uint8_t store_index = 0;
-    g_autofree char *path = NULL;
+
     /*
      * If all UAF bits are set to 0, then received messages are not stored
      * in the RX buffers.
      */
-    if (s->regs[R_ACCEPTANCE_FILTER_CONTROL_REGISTER]) {
+    if (!s->regs[R_ACCEPTANCE_FILTER_CONTROL_REGISTER]) {
+        DB_PRINT(s, "No acceptance filter is set. Received messages will not be"
+                 "stored.\n");
+    } else {
         uint32_t acceptance_filter_status =
                                 s->regs[R_ACCEPTANCE_FILTER_CONTROL_REGISTER];
 
@@ -1133,15 +1177,13 @@ static void update_rx_sequential(XlnxVersalCANFDState *s,
     }
 
     if (!filter_pass) {
-        path = object_get_canonical_path(OBJECT(s));
-
-        trace_xlnx_canfd_rx_fifo_filter_reject(path, frame->can_id,
-                                               frame->can_dlc);
+        DB_PRINT(s, "Message didn't pass through any filter. "
+                 "Discarding the message\n");
     } else {
         if (filter_index <= filter_partition) {
             fill_level = ARRAY_FIELD_EX32(s->regs, RX_FIFO_STATUS_REGISTER, FL);
             read_index = ARRAY_FIELD_EX32(s->regs, RX_FIFO_STATUS_REGISTER, RI);
-            store_index = read_index + fill_level;
+            uint8_t store_index = read_index + fill_level;
 
             if (read_index == s->cfg.rx0_fifo - 1) {
                 /*
@@ -1169,7 +1211,7 @@ static void update_rx_sequential(XlnxVersalCANFDState *s,
                                           FL_1);
             read_index = ARRAY_FIELD_EX32(s->regs, RX_FIFO_STATUS_REGISTER,
                                           RI_1);
-            store_index = read_index + fill_level;
+            uint8_t store_index = read_index + fill_level;
 
             if (read_index == s->cfg.rx1_fifo - 1) {
                 /*
@@ -1193,10 +1235,6 @@ static void update_rx_sequential(XlnxVersalCANFDState *s,
                                 filter_index);
         }
 
-        path = object_get_canonical_path(OBJECT(s));
-
-        trace_xlnx_canfd_rx_data(path, frame->can_id, frame->can_dlc,
-                                 frame->flags);
         canfd_update_irq(s);
     }
 }
@@ -1237,7 +1275,7 @@ static bool tx_ready_check(XlnxVersalCANFDState *s)
 static void tx_fifo_stamp(XlnxVersalCANFDState *s, uint32_t tb0_regid)
 {
     /*
-     * If EFC bit in DLC message is set, this means we will store the
+     * If EFC bit in DLC message is set. This means we will store the
      * event of this transmitted message with time stamp.
      */
     uint32_t dlc_reg_val = 0;
@@ -1260,8 +1298,7 @@ static void tx_fifo_stamp(XlnxVersalCANFDState *s, uint32_t tb0_regid)
         uint8_t store_index = fill_level + read_index;
 
         if ((fill_level) > s->cfg.tx_fifo - 1) {
-            qemu_log_mask(LOG_GUEST_ERROR, "TX Event Buffer is full."
-                          " Discarding the message\n");
+            DB_PRINT(s, "TX Event Buffer is full. Discarding the message\n");
             ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, TXEOFLW, 1);
         } else {
             if (read_index == s->cfg.tx_fifo - 1) {
@@ -1278,12 +1315,10 @@ static void tx_fifo_stamp(XlnxVersalCANFDState *s, uint32_t tb0_regid)
                 store_index -= s->cfg.tx_fifo - 1;
             }
 
-            assert(store_index < s->cfg.tx_fifo);
-
             uint32_t tx_event_reg0_id = R_TXE_FIFO_TB_ID_REGISTER +
                                         (store_index * 2);
 
-            /* Store message ID in TX event register. */
+            /* Store message ID in TX event register*/
             s->regs[tx_event_reg0_id] = s->regs[tb0_regid];
 
             uint16_t tx_timestamp = CANFD_TIMER_MAX -
@@ -1307,91 +1342,126 @@ static void tx_fifo_stamp(XlnxVersalCANFDState *s, uint32_t tb0_regid)
     }
 }
 
-static gint g_cmp_ids(gconstpointer data1, gconstpointer data2)
+static void add_id(txid_list **start, uint32_t can_id, uint32_t reg_num)
 {
-    tx_ready_reg_info *tx_reg_1 = (tx_ready_reg_info *) data1;
-    tx_ready_reg_info *tx_reg_2 = (tx_ready_reg_info *) data2;
+    txid_list *temp = (txid_list *)malloc(sizeof(txid_list));
 
-    return tx_reg_1->can_id - tx_reg_2->can_id;
-}
-
-static void free_list(GSList *list)
-{
-    GSList *iterator = NULL;
-
-    for (iterator = list; iterator != NULL; iterator = iterator->next) {
-        g_free((tx_ready_reg_info *)iterator->data);
+    if (temp == NULL) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Couldn't allocate memory\n",
+                      __func__);
+        return;
     }
 
-    g_slist_free(list);
+    temp->can_id = can_id;
+    temp->reg_num = reg_num;
+    temp->next = *start;
 
-    return;
+    *start = temp;
 }
 
-static GSList *prepare_tx_data(XlnxVersalCANFDState *s)
+static void swap_ids(txid_list *first, txid_list *second)
+{
+    uint32_t temp_can_id = first->can_id;
+    uint32_t temp_reg_num = first->reg_num;
+
+    first->can_id = second->can_id;
+    first->reg_num = second->reg_num;
+    second->can_id = temp_can_id;
+    second->reg_num = temp_reg_num;
+}
+
+/* Sort the data to sent in ascending order. */
+static void sort_by_id(XlnxVersalCANFDState *s, txid_list **start)
 {
     uint8_t i = 0;
-    GSList *list = NULL;
+    bool swapped = true;
+
     uint32_t reg_num = 0;
     uint32_t reg_ready = s->regs[R_TX_BUFFER_READY_REQUEST_REGISTER];
 
-    /* First find the messages which are ready for transmission. */
+    /* First find the messages which are ready for transaction. */
     for (i = 0; i < s->cfg.tx_fifo; i++) {
-        if (reg_ready & 1) {
+        if (reg_ready) {
             reg_num = R_TB_ID_REGISTER + (NUM_REGS_PER_MSG_SPACE * i);
-            tx_ready_reg_info *temp = g_new(tx_ready_reg_info, 1);
-
-            temp->can_id = s->regs[reg_num];
-            temp->reg_num = reg_num;
-            list = g_slist_prepend(list, temp);
-            list = g_slist_sort(list, g_cmp_ids);
+            add_id(start, s->regs[reg_num], reg_num);
         }
 
         reg_ready >>= 1;
+        s->regs[R_TX_BUFFER_READY_REQUEST_REGISTER] &= ~(1 << i);
+        s->regs[R_TX_BUFFER_CANCEL_REQUEST_REGISTER] &= ~(1 << i);
     }
 
-    s->regs[R_TX_BUFFER_READY_REQUEST_REGISTER] = 0;
-    s->regs[R_TX_BUFFER_CANCEL_REQUEST_REGISTER] = 0;
+    /* If no data or only one tx data, no need to sort the ids. */
+    if (*start == NULL || (*start)->next == NULL) {
+        return;
+    }
 
-    return list;
+    txid_list *temp_a, *temp_b = NULL;
+
+    while (swapped) {
+        swapped = false;
+        temp_a = *start;
+
+        while (temp_a->next != temp_b) {
+            if (temp_a->can_id > temp_a->next->can_id) {
+                swap_ids(temp_a, temp_a->next);
+                swapped = true;
+            } else if (temp_a->can_id == temp_a->next->can_id) {
+                /*
+                 * If two IDs are same we sort them by their index. Lowest index
+                 * will be transmitted first.
+                 */
+                if (temp_a->reg_num > temp_a->next->reg_num) {
+                    swap_ids(temp_a, temp_a->next);
+                    swapped = true;
+                }
+            }
+
+            temp_a = temp_a->next;
+        }
+
+        temp_b = temp_a;
+    }
 }
 
 static void transfer_data(XlnxVersalCANFDState *s)
 {
     bool canfd_tx = tx_ready_check(s);
-    GSList *list, *iterator = NULL;
-    qemu_can_frame frame;
 
-    if (!canfd_tx) {
-        g_autofree char *path = object_get_canonical_path(OBJECT(s));
+    if (canfd_tx) {
+        qemu_can_frame frame;
+        txid_list *start = NULL;
 
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Controller not enabled for data"
-                      " transfer\n", path);
-        return;
-    }
-
-    list = prepare_tx_data(s);
-    if (list == NULL) {
-        return;
-    }
-
-    for (iterator = list; iterator != NULL; iterator = iterator->next) {
-        regs2frame(s, &frame,
-                   ((tx_ready_reg_info *)iterator->data)->reg_num);
+        sort_by_id(s, &start);
 
         if (ARRAY_FIELD_EX32(s->regs, STATUS_REGISTER, LBACK)) {
-            update_rx_sequential(s, &frame);
-            tx_fifo_stamp(s, ((tx_ready_reg_info *)iterator->data)->reg_num);
+            uint32_t rxok = ARRAY_FIELD_EX32(s->regs,
+                                             INTERRUPT_STATUS_REGISTER, RXOK);
 
-            ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, RXOK, 1);
+            /* 'Or' 1 with rxok if a message is about to be loopbacked */
+            if (start) {
+                rxok = 1;
+            }
+
+            while (start != NULL) {
+                regs2frame(s, &frame, start->reg_num);
+                update_rx_sequential(s, &frame);
+                tx_fifo_stamp(s, start->reg_num);
+
+                start = start->next;
+            }
+
+            ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, RXOK, rxok);
         } else {
-            g_autofree char *path = object_get_canonical_path(OBJECT(s));
+            while (start != NULL) {
+                regs2frame(s, &frame, start->reg_num);
+                DB_PRINT(s, "sending data from XlnxVersalCANFDState\n");
 
-            trace_xlnx_canfd_tx_data(path, frame.can_id, frame.can_dlc,
-                                     frame.flags);
-            can_bus_client_send(&s->bus_client, &frame, 1);
-            tx_fifo_stamp(s,
-                          ((tx_ready_reg_info *)iterator->data)->reg_num);
+                can_bus_client_send(&s->bus_client, &frame, 1);
+                tx_fifo_stamp(s, start->reg_num);
+
+                start = start->next;
+            }
 
             ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, TXRRS, 1);
 
@@ -1399,10 +1469,14 @@ static void transfer_data(XlnxVersalCANFDState *s)
                 canfd_exit_sleep_mode(s);
             }
         }
-    }
 
-    ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, TXOK, 1);
-    free_list(list);
+        s->tx_busy_bit = 0;
+
+        ARRAY_FIELD_DP32(s->regs, INTERRUPT_STATUS_REGISTER, TXOK, 1);
+        free(start);
+    } else {
+        DB_PRINT(s, "XlnxVersalCANFDState is not enabled for data transfer\n");
+    }
 
     canfd_update_irq(s);
 }
@@ -1416,9 +1490,7 @@ static uint64_t canfd_srr_pre_write(RegisterInfo *reg, uint64_t val64)
                      FIELD_EX32(val, SOFTWARE_RESET_REGISTER, CEN));
 
     if (FIELD_EX32(val, SOFTWARE_RESET_REGISTER, SRST)) {
-        g_autofree char *path = object_get_canonical_path(OBJECT(s));
-
-        trace_xlnx_canfd_reset(path, val64);
+        DB_PRINT(s, "Resetting XlnxVersalCANFDState\n");
 
         /* First, core will do software reset then will enter in config mode. */
         canfd_config_reset(s);
@@ -1455,7 +1527,7 @@ static uint64_t filter_mask(RegisterInfo *reg, uint64_t val64)
     } else {
         g_autofree char *path = object_get_canonical_path(OBJECT(s));
 
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Acceptance filter %d not enabled\n",
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Acceptance filter %dnot enabled\n",
                       path, filter_offset + 1);
     }
 
@@ -1572,10 +1644,8 @@ static uint64_t canfd_trr_reg_prew(RegisterInfo *reg, uint64_t val64)
     XlnxVersalCANFDState *s = XILINX_CANFD(reg->opaque);
 
     if (ARRAY_FIELD_EX32(s->regs, MODE_SELECT_REGISTER, SNOOP)) {
-        g_autofree char *path = object_get_canonical_path(OBJECT(s));
-
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Controller is in SNOOP mode."
-                      " tx_ready_register will stay in reset mode\n", path);
+        DB_PRINT(s, "CANFD is in SNOOP mode. tx_ready_register will stay in"
+                 "reset mode\n");
         return 0;
     } else {
         return val64;
@@ -1819,15 +1889,36 @@ static void canfd_reset(DeviceState *dev)
     ptimer_transaction_commit(s->canfd_timer);
 }
 
+static void display_message(XlnxVersalCANFDState *s,
+                            const qemu_can_frame *frame)
+{
+    uint8_t i;
+    g_autofree char *path = object_get_canonical_path(OBJECT(s));
+
+    qemu_log("%s: 0x%x [0x%x] ", path, frame->can_id, frame->can_dlc);
+
+    for (i = 0; i < frame->can_dlc; i++) {
+        qemu_log("0x%x ", frame->data[i]);
+    }
+
+    qemu_log("\n");
+}
+
 static bool can_xilinx_canfd_receive(CanBusClientState *client)
 {
     XlnxVersalCANFDState *s = container_of(client, XlnxVersalCANFDState,
                                            bus_client);
 
-    bool reset_state = ARRAY_FIELD_EX32(s->regs, SOFTWARE_RESET_REGISTER, SRST);
-    bool can_enabled = ARRAY_FIELD_EX32(s->regs, SOFTWARE_RESET_REGISTER, CEN);
-
-    return !reset_state && can_enabled;
+    if (ARRAY_FIELD_EX32(s->regs, SOFTWARE_RESET_REGISTER, SRST)) {
+        DB_PRINT(s, "XlnxVersalCANFDState Controller is reset\n");
+        return false;
+    } else if ((ARRAY_FIELD_EX32(s->regs, SOFTWARE_RESET_REGISTER, CEN)) == 0) {
+        DB_PRINT(s, "XlnxVersalCANFDState is diabled."
+                 " All messages will be discarded\n");
+        return false;
+    } else {
+        return true;
+    }
 }
 
 static ssize_t canfd_xilinx_receive(CanBusClientState *client,
@@ -1838,20 +1929,27 @@ static ssize_t canfd_xilinx_receive(CanBusClientState *client,
                                            bus_client);
     const qemu_can_frame *frame = buf;
 
-    assert(buf_size > 0);
+    /* Update the status register that we are receiving message*/
+    ARRAY_FIELD_DP32(s->regs, STATUS_REGISTER, BBSY, 1);
+
+    if (buf_size <= 0) {
+        DB_PRINT(s, "Junk data received on XlnxVersalCANFDState bus\n");
+        return 0;
+    }
+
+    if (XILINX_CANFD_ERR_DEBUG) {
+        display_message(s, frame);
+    }
 
     if (ARRAY_FIELD_EX32(s->regs, STATUS_REGISTER, LBACK)) {
         /*
          * XlnxVersalCANFDState will not participate in normal bus communication
          * and does not receive any messages transmitted by other CAN nodes.
          */
-        return 1;
-    }
+        DB_PRINT(s, "XlnxVersalCANFDState is in loopback mode."
+                 " It will not receive data.\n");
 
-    /* Update the status register that we are receiving message. */
-    ARRAY_FIELD_DP32(s->regs, STATUS_REGISTER, BBSY, 1);
-
-    if (ARRAY_FIELD_EX32(s->regs, STATUS_REGISTER, SNOOP)) {
+    } else if (ARRAY_FIELD_EX32(s->regs, STATUS_REGISTER, SNOOP)) {
         /* Snoop Mode: Just keep the data. no response back. */
         update_rx_sequential(s, frame);
     } else {
@@ -1881,7 +1979,10 @@ static int xlnx_canfd_connect_to_bus(XlnxVersalCANFDState *s,
 {
     s->bus_client.info = &canfd_xilinx_bus_client_info;
 
-    return can_bus_insert_client(bus, &s->bus_client);
+    if (can_bus_insert_client(bus, &s->bus_client) < 0) {
+        return -1;
+    }
+    return 0;
 }
 
 #define NUM_REG_PER_AF      ARRAY_SIZE(canfd_af_regs)
@@ -1900,7 +2001,7 @@ static int canfd_populate_regarray(XlnxVersalCANFDState *s,
         int index = rae[i].addr / 4;
         RegisterInfo *r = &s->reg_info[index];
 
-        object_initialize(r, sizeof(*r), TYPE_REGISTER);
+        object_initialize((void *)r, sizeof(*r), TYPE_REGISTER);
 
         *r = (RegisterInfo) {
             .data = &s->regs[index],
@@ -1935,6 +2036,16 @@ static void canfd_create_rai(RegisterAccessInfo *rai_array,
             rai_array[i + pos].addr = addr + pos * 4;
         }
     }
+}
+
+static void canfd_finalize(Object *obj)
+{
+    XlnxVersalCANFDState *s = XILINX_CANFD(obj);
+    g_free(s->tx_regs);
+    g_free(s->rx0_regs);
+    g_free(s->af_regs);
+    g_free(s->txe_regs);
+    g_free(s->rx1_regs);
 }
 
 static RegisterInfoArray *canfd_create_regarray(XlnxVersalCANFDState *s)
@@ -1988,6 +2099,7 @@ static RegisterInfoArray *canfd_create_regarray(XlnxVersalCANFDState *s)
     r_array = g_new0(RegisterInfoArray, 1);
     r_array->r = g_new0(RegisterInfo * , num_regs);
     r_array->num_elements = num_regs;
+    r_array->debug = XILINX_CANFD_ERR_DEBUG;
     r_array->prefix = device_prefix;
 
     pos = canfd_populate_regarray(s, r_array, pos,
@@ -2032,13 +2144,14 @@ static void canfd_realize(DeviceState *dev, Error **errp)
             return;
         }
 
+    } else {
+        /* If no bus is set. */
+        DB_PRINT(s, "Canfdbus property is not set for XlnxVersalCANFDState\n");
     }
 
     /* Allocate a new timer. */
     s->canfd_timer = ptimer_init(xlnx_versal_canfd_ptimer_cb, s,
-                                 PTIMER_POLICY_WRAP_AFTER_ONE_PERIOD |
-                                 PTIMER_POLICY_TRIGGER_ONLY_ON_DECREMENT |
-                                 PTIMER_POLICY_NO_IMMEDIATE_RELOAD);
+                                 PTIMER_POLICY_LEGACY);
 
     ptimer_transaction_begin(s->canfd_timer);
 
@@ -2097,6 +2210,7 @@ static const TypeInfo canfd_info = {
     .instance_size = sizeof(XlnxVersalCANFDState),
     .class_init    = canfd_class_init,
     .instance_init = canfd_init,
+    .instance_finalize = canfd_finalize,
 };
 
 static void canfd_register_types(void)
