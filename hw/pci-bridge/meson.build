@@ -13,6 +13,6 @@ pci_ss.add(when: 'CONFIG_XLNX_ZYNQMP', if_true: files('xlnx-pcie-rp.c'))
 # Sun4u
 pci_ss.add(when: 'CONFIG_SIMBA', if_true: files('simba.c'))
 
-softmmu_ss.add_all(when: 'CONFIG_PCI', if_true: pci_ss)
+system_ss.add_all(when: 'CONFIG_PCI', if_true: pci_ss)
 
-softmmu_ss.add(when: 'CONFIG_ALL', if_true: files('pci_expander_bridge_stubs.c'))
+system_ss.add(when: 'CONFIG_ALL', if_true: files('pci_expander_bridge_stubs.c'))

@@ -8,13 +8,28 @@
  * atomic primitive is meant to provide.
  */
 
-#ifndef AARCH64_ATOMIC128_LDST_H
-#define AARCH64_ATOMIC128_LDST_H
+#ifndef X86_64_ATOMIC128_LDST_H
+#define X86_64_ATOMIC128_LDST_H
 
-/* Xilinx */
+/* Xilinx: keep the union but use the generic host atomic */
+#ifdef CONFIG_INT128_TYPE
+#include <immintrin.h>
+typedef union {
+    __m128i v;
+    __int128_t i;
+    Int128 s;
+} X86Int128Union;
+#endif
 #if 0
 #include "host/cpuinfo.h"
 #include "tcg/debug-assert.h"
+#include <immintrin.h>
+
+typedef union {
+    __m128i v;
+    __int128_t i;
+    Int128 s;
+} X86Int128Union;
 
 /*
  * Through clang 16, with -mcx16, __atomic_load_n is incorrectly
@@ -26,10 +41,10 @@
 
 static inline Int128 atomic16_read_ro(const Int128 *ptr)
 {
-    Int128Alias r;
+    X86Int128Union r;
 
     tcg_debug_assert(HAVE_ATOMIC128_RO);
-    asm("vmovdqa %1, %0" : "=x" (r.i) : "m" (*ptr));
+    asm("vmovdqa %1, %0" : "=x" (r.v) : "m" (*ptr));
 
     return r.s;
 }
@@ -37,10 +52,10 @@ static inline Int128 atomic16_read_ro(const Int128 *ptr)
 static inline Int128 atomic16_read_rw(Int128 *ptr)
 {
     __int128_t *ptr_align = __builtin_assume_aligned(ptr, 16);
-    Int128Alias r;
+    X86Int128Union r;
 
     if (HAVE_ATOMIC128_RO) {
-        asm("vmovdqa %1, %0" : "=x" (r.i) : "m" (*ptr_align));
+        asm("vmovdqa %1, %0" : "=x" (r.v) : "m" (*ptr_align));
     } else {
         r.i = __sync_val_compare_and_swap_16(ptr_align, 0, 0);
     }
@@ -50,10 +65,10 @@ static inline Int128 atomic16_read_rw(Int128 *ptr)
 static inline void atomic16_set(Int128 *ptr, Int128 val)
 {
     __int128_t *ptr_align = __builtin_assume_aligned(ptr, 16);
-    Int128Alias new = { .s = val };
+    X86Int128Union new = { .s = val };
 
     if (HAVE_ATOMIC128_RO) {
-        asm("vmovdqa %1, %0" : "=m"(*ptr_align) : "x" (new.i));
+        asm("vmovdqa %1, %0" : "=m"(*ptr_align) : "x" (new.v));
     } else {
         __int128_t old;
         do {
@@ -66,4 +81,4 @@ static inline void atomic16_set(Int128 *ptr, Int128 val)
 #include "host/include/generic/host/atomic128-ldst.h"
 #endif
 
-#endif /* AARCH64_ATOMIC128_LDST_H */
+#endif /* X86_64_ATOMIC128_LDST_H */
