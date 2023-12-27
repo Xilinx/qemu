@@ -31,10 +31,6 @@
 #include "qemu/sys_membarrier.h"
 #include "qemu/coroutine-tls.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /*
  * Important !
  *
@@ -91,7 +87,10 @@ static inline void rcu_read_lock(void)
     ctr = qatomic_read(&rcu_gp_ctr);
     qatomic_set(&p_rcu_reader->ctr, ctr);
 
-    /* Write p_rcu_reader->ctr before reading RCU-protected pointers.  */
+    /*
+     * Read rcu_gp_ptr and write p_rcu_reader->ctr before reading
+     * RCU-protected pointers.
+     */
     smp_mb_placeholder();
 }
 
@@ -195,9 +194,5 @@ G_DEFINE_AUTOPTR_CLEANUP_FUNC(RCUReadAuto, rcu_read_auto_unlock)
  */
 void rcu_add_force_rcu_notifier(Notifier *n);
 void rcu_remove_force_rcu_notifier(Notifier *n);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* QEMU_RCU_H */

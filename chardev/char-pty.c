@@ -93,9 +93,7 @@ static void pty_chr_update_read_handler(Chardev *chr)
     pfd.fd = fioc->fd;
     pfd.events = G_IO_OUT;
     pfd.revents = 0;
-    do {
-        rc = g_poll(&pfd, 1, 0);
-    } while (rc == -1 && errno == EINTR);
+    rc = RETRY_ON_EINTR(g_poll(&pfd, 1, 0));
     assert(rc >= 0);
 
     if (pfd.revents & G_IO_HUP) {
@@ -336,7 +334,7 @@ static void char_pty_open(Chardev *chr,
     s = PTY_CHARDEV(chr);
     s->ioc = QIO_CHANNEL(qio_channel_file_new_fd(master_fd));
     name = g_strdup_printf("chardev-pty-%s", chr->label);
-    qio_channel_set_name(QIO_CHANNEL(s->ioc), name);
+    qio_channel_set_name(s->ioc, name);
     g_free(name);
     s->timer_src = NULL;
     *be_opened = false;

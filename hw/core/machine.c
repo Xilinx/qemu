@@ -12,7 +12,7 @@
 
 #include "qemu/osdep.h"
 #include "qemu/option.h"
-#include "qapi/qmp/qerror.h"
+#include "qemu/accel.h"
 #include "sysemu/replay.h"
 #include "qemu/units.h"
 #include "hw/boards.h"
@@ -38,7 +38,28 @@
 #include "exec/confidential-guest-support.h"
 #include "hw/virtio/virtio.h"
 #include "hw/virtio/virtio-pci.h"
-#include "qom/object_interfaces.h"
+
+GlobalProperty hw_compat_8_0[] = {
+    { "migration", "multifd-flush-after-each-section", "on"},
+    { TYPE_PCI_DEVICE, "x-pcie-ari-nextfn-1", "on" },
+};
+const size_t hw_compat_8_0_len = G_N_ELEMENTS(hw_compat_8_0);
+
+GlobalProperty hw_compat_7_2[] = {
+    { "e1000e", "migrate-timadj", "off" },
+    { "virtio-mem", "x-early-migration", "false" },
+    { "migration", "x-preempt-pre-7-2", "true" },
+    { TYPE_PCI_DEVICE, "x-pcie-err-unc-mask", "off" },
+};
+const size_t hw_compat_7_2_len = G_N_ELEMENTS(hw_compat_7_2);
+
+GlobalProperty hw_compat_7_1[] = {
+    { "virtio-device", "queue_reset", "false" },
+    { "virtio-rng-pci", "vectors", "0" },
+    { "virtio-rng-pci-transitional", "vectors", "0" },
+    { "virtio-rng-pci-non-transitional", "vectors", "0" },
+};
+const size_t hw_compat_7_1_len = G_N_ELEMENTS(hw_compat_7_1);
 
 GlobalProperty hw_compat_7_0[] = {
     { "arm-gicv3-common", "force-8-bit-prio", "on" },
@@ -578,11 +599,10 @@ static void machine_get_mem(Object *obj, Visitor *v, const char *name,
 static void machine_set_mem(Object *obj, Visitor *v, const char *name,
                             void *opaque, Error **errp)
 {
+    ERRP_GUARD();
     MachineState *ms = MACHINE(obj);
     MachineClass *mc = MACHINE_GET_CLASS(obj);
     MemorySizeConfiguration *mem;
-
-    ERRP_GUARD();
 
     if (!visit_type_MemorySizeConfiguration(v, name, &mem, errp)) {
         return;
@@ -708,7 +728,6 @@ HotpluggableCPUList *machine_query_hotpluggable_cpus(MachineState *machine)
 
         cpu = machine->possible_cpus->cpus[i].cpu;
         if (cpu) {
-            cpu_item->has_qom_path = true;
             cpu_item->qom_path = object_get_canonical_path(cpu);
         }
         QAPI_LIST_PREPEND(head, cpu_item);
@@ -897,8 +916,7 @@ static void machine_copy_boot_config(MachineState *ms, BootConfiguration *config
 
     machine_free_boot_config(ms);
     ms->boot_config = *config;
-    if (!config->has_order) {
-        ms->boot_config.has_order = true;
+    if (!config->order) {
         ms->boot_config.order = g_strdup(machine_class->default_boot_order);
     }
 }
@@ -913,13 +931,13 @@ static void machine_set_boot(Object *obj, Visitor *v, const char *name,
     if (!visit_type_BootConfiguration(v, name, &config, errp)) {
         return;
     }
-    if (config->has_order) {
+    if (config->order) {
         validate_bootdevices(config->order, errp);
         if (*errp) {
             goto out_free;
         }
     }
-    if (config->has_once) {
+    if (config->once) {
         validate_bootdevices(config->once, errp);
         if (*errp) {
             goto out_free;
@@ -1210,9 +1228,7 @@ static void numa_validate_initiator(NumaState *numa_state)
 
     for (i = 0; i < numa_state->num_nodes; i++) {
         if (numa_info[i].initiator == MAX_NODES) {
-            error_report("The initiator of NUMA node %d is missing, use "
-                         "'-numa node,initiator' option to declare it", i);
-            exit(1);
+            continue;
         }
 
         if (!numa_info[numa_info[i].initiator].present) {
@@ -1282,6 +1298,45 @@ static void machine_numa_finish_cpu_init(MachineState *machine)
                     "mappings is obsoleted and will be removed in future");
     }
     g_string_free(s, true);
+}
+
+static void validate_cpu_cluster_to_numa_boundary(MachineState *ms)
+{
+    MachineClass *mc = MACHINE_GET_CLASS(ms);
+    NumaState *state = ms->numa_state;
+    const CPUArchIdList *possible_cpus = mc->possible_cpu_arch_ids(ms);
+    const CPUArchId *cpus = possible_cpus->cpus;
+    int i, j;
+
+    if (state->num_nodes <= 1 || possible_cpus->len <= 1) {
+        return;
+    }
+
+    /*
+     * The Linux scheduling domain can't be parsed when the multiple CPUs
+     * in one cluster have been associated with different NUMA nodes. However,
+     * it's fine to associate one NUMA node with CPUs in different clusters.
+     */
+    for (i = 0; i < possible_cpus->len; i++) {
+        for (j = i + 1; j < possible_cpus->len; j++) {
+            if (cpus[i].props.has_socket_id &&
+                cpus[i].props.has_cluster_id &&
+                cpus[i].props.has_node_id &&
+                cpus[j].props.has_socket_id &&
+                cpus[j].props.has_cluster_id &&
+                cpus[j].props.has_node_id &&
+                cpus[i].props.socket_id == cpus[j].props.socket_id &&
+                cpus[i].props.cluster_id == cpus[j].props.cluster_id &&
+                cpus[i].props.node_id != cpus[j].props.node_id) {
+                warn_report("CPU-%d and CPU-%d in socket-%" PRId64 "-cluster-%" PRId64
+                             " have been associated with node-%" PRId64 " and node-%" PRId64
+                             " respectively. It can cause OSes like Linux to"
+                             " misbehave", i, j, cpus[i].props.socket_id,
+                             cpus[i].props.cluster_id, cpus[i].props.node_id,
+                             cpus[j].props.node_id);
+            }
+        }
+    }
 }
 
 MemoryRegion *machine_consume_memdev(MachineState *machine,
@@ -1360,6 +1415,14 @@ void machine_run_board_init(MachineState *machine, const char *mem_path, Error *
         }
     } else if (machine_class->default_ram_id && machine->ram_size &&
                numa_uses_legacy_mem()) {
+        if (object_property_find(object_get_objects_root(),
+                                 machine_class->default_ram_id)) {
+            error_setg(errp, "object name '%s' is reserved for the default"
+                " RAM backend, it can't be used for any other purposes."
+                " Change the object's 'id' to something else",
+                machine_class->default_ram_id);
+            return;
+        }
         if (!create_default_memdev(current_machine, mem_path, errp)) {
             return;
         }
@@ -1369,6 +1432,9 @@ void machine_run_board_init(MachineState *machine, const char *mem_path, Error *
         numa_complete_configuration(machine);
         if (machine->numa_state->num_nodes) {
             machine_numa_finish_cpu_init(machine);
+            if (machine_class->cpu_cluster_has_numa_boundary) {
+                validate_cpu_cluster_to_numa_boundary(machine);
+            }
         }
     }
 
@@ -1458,7 +1524,7 @@ void qdev_machine_creation_done(void)
 {
     cpu_synchronize_all_post_init();
 
-    if (current_machine->boot_config.has_once) {
+    if (current_machine->boot_config.once) {
         qemu_boot_set(current_machine->boot_config.once, &error_fatal);
         qemu_register_reset(restore_boot_order, g_strdup(current_machine->boot_config.order));
     }

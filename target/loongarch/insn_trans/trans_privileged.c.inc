@@ -99,13 +99,7 @@ static const CSRInfo csr_info[] = {
     CSR_OFF(PWCH),
     CSR_OFF(STLBPS),
     CSR_OFF(RVACFG),
-    [LOONGARCH_CSR_CPUID] = {
-        .offset = (int)offsetof(CPUState, cpu_index)
-                  - (int)offsetof(LoongArchCPU, env),
-        .flags = CSRFL_READONLY,
-        .readfn = NULL,
-        .writefn = NULL
-    },
+    CSR_OFF_FUNCS(CPUID, CSRFL_READONLY, gen_helper_csrrd_cpuid, NULL),
     CSR_OFF_FLAGS(PRCFG1, CSRFL_READONLY),
     CSR_OFF_FLAGS(PRCFG2, CSRFL_READONLY),
     CSR_OFF_FLAGS(PRCFG3, CSRFL_READONLY),
@@ -159,7 +153,7 @@ static const CSRInfo csr_info[] = {
 
 static bool check_plv(DisasContext *ctx)
 {
-    if (ctx->base.tb->flags == MMU_USER_IDX) {
+    if (ctx->plv == MMU_PLV_USER) {
         generate_exception(ctx, EXCCODE_IPE);
         return true;
     }
@@ -185,9 +179,7 @@ static bool check_csr_flags(DisasContext *ctx, const CSRInfo *csr, bool write)
     if ((csr->flags & CSRFL_READONLY) && write) {
         return false;
     }
-    if ((csr->flags & CSRFL_IO) &&
-        (tb_cflags(ctx->base.tb) & CF_USE_ICOUNT)) {
-        gen_io_start();
+    if ((csr->flags & CSRFL_IO) && translator_io_start(&ctx->base)) {
         ctx->base.is_jmp = DISAS_EXIT_UPDATE;
     } else if ((csr->flags & CSRFL_EXITTB) && write) {
         ctx->base.is_jmp = DISAS_EXIT_UPDATE;
@@ -243,7 +235,7 @@ static bool trans_csrwr(DisasContext *ctx, arg_csrwr *a)
         dest = gpr_dst(ctx, a->rd, EXT_NONE);
         csr->writefn(dest, cpu_env, src1);
     } else {
-        dest = temp_new(ctx);
+        dest = tcg_temp_new();
         tcg_gen_ld_tl(dest, cpu_env, csr->offset);
         tcg_gen_st_tl(src1, cpu_env, csr->offset);
     }
@@ -291,10 +283,6 @@ static bool trans_csrxchg(DisasContext *ctx, arg_csrxchg *a)
         tcg_gen_st_tl(newv, cpu_env, csr->offset);
     }
     gen_set_gpr(a->rd, oldv, EXT_NONE);
-
-    tcg_temp_free(temp);
-    tcg_temp_free(newv);
-    tcg_temp_free(oldv);
     return true;
 }
 
@@ -335,7 +323,7 @@ TRANS(iocsrwr_d, gen_iocsrwr, gen_helper_iocsrwr_d)
 
 static void check_mmu_idx(DisasContext *ctx)
 {
-    if (ctx->mem_idx != MMU_DA_IDX) {
+    if (ctx->mem_idx != MMU_IDX_DA) {
         tcg_gen_movi_tl(cpu_pc, ctx->base.pc_next + 4);
         ctx->base.is_jmp = DISAS_EXIT;
     }

@@ -63,9 +63,6 @@ extern int nb_option_roms;
 extern const char *prom_envs[MAX_PROM_ENVS];
 extern unsigned int nb_prom_envs;
 
-/* pcie aer error injection */
-void hmp_pcie_aer_inject_error(Monitor *mon, const QDict *qdict);
-
 /* serial ports */
 
 /* Return the Chardev for serial port i, or NULL if none */
@@ -104,7 +101,7 @@ void qemu_boot_set(const char *boot_order, Error **errp);
 
 bool defaults_enabled(void);
 
-void qemu_init(int argc, char **argv, char **envp);
+void qemu_init(int argc, char **argv);
 int qemu_main_loop(void);
 void qemu_cleanup(void);
 

@@ -190,8 +190,8 @@ enum {
     TB_FLAGS_SKIP = 2,
 };
 
-static inline void cpu_get_tb_cpu_state(CPUAVRState *env, target_ulong *pc,
-                                        target_ulong *cs_base, uint32_t *pflags)
+static inline void cpu_get_tb_cpu_state(CPUAVRState *env, vaddr *pc,
+                                        uint64_t *cs_base, uint32_t *pflags)
 {
     uint32_t flags = 0;
 
@@ -215,8 +215,7 @@ static inline int cpu_interrupts_enabled(CPUAVRState *env)
 
 static inline uint8_t cpu_get_sreg(CPUAVRState *env)
 {
-    uint8_t sreg;
-    sreg = (env->sregC) << 0
+    return (env->sregC) << 0
          | (env->sregZ) << 1
          | (env->sregN) << 2
          | (env->sregV) << 3
@@ -224,7 +223,6 @@ static inline uint8_t cpu_get_sreg(CPUAVRState *env)
          | (env->sregH) << 5
          | (env->sregT) << 6
          | (env->sregI) << 7;
-    return sreg;
 }
 
 static inline void cpu_set_sreg(CPUAVRState *env, uint8_t sreg)

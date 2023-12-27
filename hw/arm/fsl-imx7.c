@@ -219,9 +219,19 @@ static void fsl_imx7_realize(DeviceState *dev, Error **errp)
             FSL_IMX7_GPT4_ADDR,
         };
 
+        static const int FSL_IMX7_GPTn_IRQ[FSL_IMX7_NUM_GPTS] = {
+            FSL_IMX7_GPT1_IRQ,
+            FSL_IMX7_GPT2_IRQ,
+            FSL_IMX7_GPT3_IRQ,
+            FSL_IMX7_GPT4_IRQ,
+        };
+
         s->gpt[i].ccm = IMX_CCM(&s->ccm);
         sysbus_realize(SYS_BUS_DEVICE(&s->gpt[i]), &error_abort);
         sysbus_mmio_map(SYS_BUS_DEVICE(&s->gpt[i]), 0, FSL_IMX7_GPTn_ADDR[i]);
+        sysbus_connect_irq(SYS_BUS_DEVICE(&s->gpt[i]), 0,
+                           qdev_get_gpio_in(DEVICE(&s->a7mpcore),
+                                            FSL_IMX7_GPTn_IRQ[i]));
     }
 
     for (i = 0; i < FSL_IMX7_NUM_GPIOS; i++) {
@@ -235,8 +245,37 @@ static void fsl_imx7_realize(DeviceState *dev, Error **errp)
             FSL_IMX7_GPIO7_ADDR,
         };
 
+        static const int FSL_IMX7_GPIOn_LOW_IRQ[FSL_IMX7_NUM_GPIOS] = {
+            FSL_IMX7_GPIO1_LOW_IRQ,
+            FSL_IMX7_GPIO2_LOW_IRQ,
+            FSL_IMX7_GPIO3_LOW_IRQ,
+            FSL_IMX7_GPIO4_LOW_IRQ,
+            FSL_IMX7_GPIO5_LOW_IRQ,
+            FSL_IMX7_GPIO6_LOW_IRQ,
+            FSL_IMX7_GPIO7_LOW_IRQ,
+        };
+
+        static const int FSL_IMX7_GPIOn_HIGH_IRQ[FSL_IMX7_NUM_GPIOS] = {
+            FSL_IMX7_GPIO1_HIGH_IRQ,
+            FSL_IMX7_GPIO2_HIGH_IRQ,
+            FSL_IMX7_GPIO3_HIGH_IRQ,
+            FSL_IMX7_GPIO4_HIGH_IRQ,
+            FSL_IMX7_GPIO5_HIGH_IRQ,
+            FSL_IMX7_GPIO6_HIGH_IRQ,
+            FSL_IMX7_GPIO7_HIGH_IRQ,
+        };
+
         sysbus_realize(SYS_BUS_DEVICE(&s->gpio[i]), &error_abort);
-        sysbus_mmio_map(SYS_BUS_DEVICE(&s->gpio[i]), 0, FSL_IMX7_GPIOn_ADDR[i]);
+        sysbus_mmio_map(SYS_BUS_DEVICE(&s->gpio[i]), 0,
+                        FSL_IMX7_GPIOn_ADDR[i]);
+
+        sysbus_connect_irq(SYS_BUS_DEVICE(&s->gpio[i]), 0,
+                           qdev_get_gpio_in(DEVICE(&s->a7mpcore),
+                                            FSL_IMX7_GPIOn_LOW_IRQ[i]));
+
+        sysbus_connect_irq(SYS_BUS_DEVICE(&s->gpio[i]), 1,
+                           qdev_get_gpio_in(DEVICE(&s->a7mpcore),
+                                            FSL_IMX7_GPIOn_HIGH_IRQ[i]));
     }
 
     /*
@@ -356,7 +395,23 @@ static void fsl_imx7_realize(DeviceState *dev, Error **errp)
 
     /*
      * Ethernet
+     *
+     * We must use two loops since phy_connected affects the other interface
+     * and we have to set all properties before calling sysbus_realize().
      */
+    for (i = 0; i < FSL_IMX7_NUM_ETHS; i++) {
+        object_property_set_bool(OBJECT(&s->eth[i]), "phy-connected",
+                                 s->phy_connected[i], &error_abort);
+        /*
+         * If the MDIO bus on this controller is not connected, assume the
+         * other controller provides support for it.
+         */
+        if (!s->phy_connected[i]) {
+            object_property_set_link(OBJECT(&s->eth[1 - i]), "phy-consumer",
+                                     OBJECT(&s->eth[i]), &error_abort);
+        }
+    }
+
     for (i = 0; i < FSL_IMX7_NUM_ETHS; i++) {
         static const hwaddr FSL_IMX7_ENETn_ADDR[FSL_IMX7_NUM_ETHS] = {
             FSL_IMX7_ENET1_ADDR,
@@ -562,6 +617,10 @@ static void fsl_imx7_realize(DeviceState *dev, Error **errp)
 static Property fsl_imx7_properties[] = {
     DEFINE_PROP_UINT32("fec1-phy-num", FslIMX7State, phy_num[0], 0),
     DEFINE_PROP_UINT32("fec2-phy-num", FslIMX7State, phy_num[1], 1),
+    DEFINE_PROP_BOOL("fec1-phy-connected", FslIMX7State, phy_connected[0],
+                     true),
+    DEFINE_PROP_BOOL("fec2-phy-connected", FslIMX7State, phy_connected[1],
+                     true),
     DEFINE_PROP_END_OF_LIST(),
 };
 

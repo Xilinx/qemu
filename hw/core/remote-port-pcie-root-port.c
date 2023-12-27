@@ -28,7 +28,7 @@
 #include "qemu/log.h"
 #include "qapi/qmp/qerror.h"
 #include "qapi/error.h"
-#include "hw/pci/pci.h"
+#include "hw/pci/pci_device.h"
 #include "hw/pci/msi.h"
 #include "hw/pci/msix.h"
 #include "hw/pci/pci_ids.h"
@@ -486,6 +486,7 @@ static void rp_root_port_realize(DeviceState *d, Error **errp)
     PCIHostState *hs = PCI_HOST_BRIDGE(BUS(root_bus)->parent);
     PCIExpressHost *peh = PCIE_HOST_BRIDGE(hs);
     Error *local_err = NULL;
+    DeviceClass *rpdc = NULL;
 
     if (!pci_bus_is_root(root_bus) ||
         !object_dynamic_cast(OBJECT(root_bus), TYPE_PCIE_BUS)) {
@@ -519,7 +520,10 @@ static void rp_root_port_realize(DeviceState *d, Error **errp)
     memory_region_add_subregion(&br->address_space_mem, 0,
                                 &port->address_space_mem);
 
-    device_legacy_reset(DEVICE(port->rp));
+    rpdc = DEVICE_GET_CLASS(DEVICE(port->rp));
+    if (rpdc->reset) {
+        rpdc->reset(DEVICE(port->rp));
+    }
     port->peer = rp_get_peer(port->rp);
 
     port->machine_done.notify = rp_root_port_machine_done;

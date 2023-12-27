@@ -27,6 +27,7 @@ bool kvm_allowed;
 bool kvm_readonly_mem_allowed;
 bool kvm_ioeventfd_any_length_allowed;
 bool kvm_msi_use_devid;
+bool kvm_direct_msi_allowed;
 
 void kvm_flush_coalesced_mmio_buffer(void)
 {
@@ -44,27 +45,6 @@ bool kvm_has_sync_mmu(void)
 int kvm_has_many_ioeventfds(void)
 {
     return 0;
-}
-
-int kvm_update_guest_debug(CPUState *cpu, unsigned long reinject_trap)
-{
-    return -ENOSYS;
-}
-
-int kvm_insert_breakpoint(CPUState *cpu, target_ulong addr,
-                          target_ulong len, int type)
-{
-    return -EINVAL;
-}
-
-int kvm_remove_breakpoint(CPUState *cpu, target_ulong addr,
-                          target_ulong len, int type)
-{
-    return -EINVAL;
-}
-
-void kvm_remove_all_breakpoints(CPUState *cpu)
-{
 }
 
 int kvm_on_sigbus_vcpu(CPUState *cpu, int code, void *addr)

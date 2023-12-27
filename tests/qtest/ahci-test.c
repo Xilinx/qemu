@@ -36,17 +36,14 @@
 #include "hw/pci/pci_ids.h"
 #include "hw/pci/pci_regs.h"
 
-/* TODO actually test the results and get rid of this */
-#define qmp_discard_response(s, ...) qobject_unref(qtest_qmp(s, __VA_ARGS__))
-
 /* Test images sizes in MB */
 #define TEST_IMAGE_SIZE_MB_LARGE (200 * 1024)
 #define TEST_IMAGE_SIZE_MB_SMALL 64
 
 /*** Globals ***/
-static char tmp_path[] = "/tmp/qtest.XXXXXX";
-static char debug_path[] = "/tmp/qtest-blkdebug.XXXXXX";
-static char mig_socket[] = "/tmp/qtest-migration.XXXXXX";
+static char *tmp_path;
+static char *debug_path;
+static char *mig_socket;
 static bool ahci_pedantic;
 static const char *imgfmt;
 static unsigned test_image_size_mb;
@@ -154,6 +151,7 @@ static void ahci_migrate(AHCIQState *from, AHCIQState *to, const char *uri)
 /**
  * Start a Q35 machine and bookmark a handle to the AHCI device.
  */
+G_GNUC_PRINTF(1, 0)
 static AHCIQState *ahci_vboot(const char *cli, va_list ap)
 {
     AHCIQState *s;
@@ -171,6 +169,7 @@ static AHCIQState *ahci_vboot(const char *cli, va_list ap)
 /**
  * Start a Q35 machine and bookmark a handle to the AHCI device.
  */
+G_GNUC_PRINTF(1, 2)
 static AHCIQState *ahci_boot(const char *cli, ...)
 {
     AHCIQState *s;
@@ -209,6 +208,7 @@ static void ahci_shutdown(AHCIQState *ahci)
  * Boot and fully enable the HBA device.
  * @see ahci_boot, ahci_pci_enable and ahci_hba_enable.
  */
+G_GNUC_PRINTF(1, 2)
 static AHCIQState *ahci_boot_and_enable(const char *cli, ...)
 {
     AHCIQState *ahci;
@@ -1437,10 +1437,10 @@ static void test_ncq_simple(void)
 
 static int prepare_iso(size_t size, unsigned char **buf, char **name)
 {
-    char cdrom_path[] = "/tmp/qtest.iso.XXXXXX";
+    g_autofree char *cdrom_path = NULL;
     unsigned char *patt;
     ssize_t ret;
-    int fd = mkstemp(cdrom_path);
+    int fd = g_file_open_tmp("qtest.iso.XXXXXX", &cdrom_path, NULL);
 
     g_assert(fd != -1);
     g_assert(buf);
@@ -1592,9 +1592,9 @@ static void test_atapi_tray(void)
     rsp = qtest_qmp_receive(ahci->parent->qts);
     qobject_unref(rsp);
 
-    qmp_discard_response(ahci->parent->qts,
-                         "{'execute': 'blockdev-remove-medium', "
-                         "'arguments': {'id': 'cd0'}}");
+    qtest_qmp_assert_success(ahci->parent->qts,
+                             "{'execute': 'blockdev-remove-medium', "
+                             "'arguments': {'id': 'cd0'}}");
 
     /* Test the tray without a medium */
     ahci_atapi_load(ahci, port);
@@ -1604,16 +1604,18 @@ static void test_atapi_tray(void)
     atapi_wait_tray(ahci, true);
 
     /* Re-insert media */
-    qmp_discard_response(ahci->parent->qts,
-                         "{'execute': 'blockdev-add', "
-                         "'arguments': {'node-name': 'node0', "
-                                        "'driver': 'raw', "
-                                        "'file': { 'driver': 'file', "
-                                                  "'filename': %s }}}", iso);
-    qmp_discard_response(ahci->parent->qts,
-                         "{'execute': 'blockdev-insert-medium',"
-                         "'arguments': { 'id': 'cd0', "
-                                         "'node-name': 'node0' }}");
+    qtest_qmp_assert_success(
+        ahci->parent->qts,
+        "{'execute': 'blockdev-add', "
+        "'arguments': {'node-name': 'node0', "
+                      "'driver': 'raw', "
+                      "'file': { 'driver': 'file', "
+                                "'filename': %s }}}", iso);
+    qtest_qmp_assert_success(
+        ahci->parent->qts,
+        "{'execute': 'blockdev-insert-medium',"
+        "'arguments': { 'id': 'cd0', "
+                       "'node-name': 'node0' }}");
 
     /* Again, the event shows up first */
     qtest_qmp_send(ahci->parent->qts, "{'execute': 'blockdev-close-tray', "
@@ -1833,7 +1835,7 @@ static void create_ahci_io_test(enum IOMode type, enum AddrMode addr,
 
 int main(int argc, char **argv)
 {
-    const char *arch;
+    const char *arch, *base;
     int ret;
     int fd;
     int c;
@@ -1871,8 +1873,22 @@ int main(int argc, char **argv)
         return 0;
     }
 
+    /*
+     * "base" stores the starting point where we create temporary files.
+     *
+     * On Windows, this is set to the relative path of current working
+     * directory, because the absolute path causes the blkdebug filename
+     * parser fail to parse "blkdebug:path/to/config:path/to/image".
+     */
+#ifndef _WIN32
+    base = g_get_tmp_dir();
+#else
+    base = ".";
+#endif
+
     /* Create a temporary image */
-    fd = mkstemp(tmp_path);
+    tmp_path = g_strdup_printf("%s/qtest.XXXXXX", base);
+    fd = g_mkstemp(tmp_path);
     g_assert(fd >= 0);
     if (have_qemu_img()) {
         imgfmt = "qcow2";
@@ -1889,12 +1905,13 @@ int main(int argc, char **argv)
     close(fd);
 
     /* Create temporary blkdebug instructions */
-    fd = mkstemp(debug_path);
+    debug_path = g_strdup_printf("%s/qtest-blkdebug.XXXXXX", base);
+    fd = g_mkstemp(debug_path);
     g_assert(fd >= 0);
     close(fd);
 
     /* Reserve a hollow file to use as a socket for migration tests */
-    fd = mkstemp(mig_socket);
+    fd = g_file_open_tmp("qtest-migration.XXXXXX", &mig_socket, NULL);
     g_assert(fd >= 0);
     close(fd);
 
@@ -1947,8 +1964,11 @@ int main(int argc, char **argv)
 
     /* Cleanup */
     unlink(tmp_path);
+    g_free(tmp_path);
     unlink(debug_path);
+    g_free(debug_path);
     unlink(mig_socket);
+    g_free(mig_socket);
 
     return ret;
 }

@@ -35,7 +35,7 @@
 #define MMU_PHYS_IDX     4
 #define TARGET_INSN_START_EXTRA_WORDS 1
 
-/* Hardware exceptions, interupts, faults, and traps.  */
+/* Hardware exceptions, interrupts, faults, and traps.  */
 #define EXCP_HPMC                1  /* high priority machine check */
 #define EXCP_POWER_FAIL          2
 #define EXCP_RC                  3  /* recovery counter */
@@ -168,6 +168,9 @@ typedef struct {
 } hppa_tlb_entry;
 
 typedef struct CPUArchState {
+    target_ureg iaoq_f;      /* front */
+    target_ureg iaoq_b;      /* back, aka next instruction */
+
     target_ureg gr[32];
     uint64_t fr[32];
     uint64_t sr[8];          /* stored shifted into place for gva */
@@ -186,8 +189,6 @@ typedef struct CPUArchState {
     target_ureg psw_cb;      /* in least significant bit of next nibble */
     target_ureg psw_cb_msb;  /* boolean */
 
-    target_ureg iaoq_f;      /* front */
-    target_ureg iaoq_b;      /* back, aka next instruction */
     uint64_t iasq_f;
     uint64_t iasq_b;
 
@@ -268,16 +269,15 @@ static inline target_ulong hppa_form_gva(CPUHPPAState *env, uint64_t spc,
 #define TB_FLAG_PRIV_SHIFT  8
 #define TB_FLAG_UNALIGN     0x400
 
-static inline void cpu_get_tb_cpu_state(CPUHPPAState *env, target_ulong *pc,
-                                        target_ulong *cs_base,
-                                        uint32_t *pflags)
+static inline void cpu_get_tb_cpu_state(CPUHPPAState *env, vaddr *pc,
+                                        uint64_t *cs_base, uint32_t *pflags)
 {
     uint32_t flags = env->psw_n * PSW_N;
 
     /* TB lookup assumes that PC contains the complete virtual address.
        If we leave space+offset separate, we'll get ITLB misses to an
        incomplete virtual address.  This also means that we must separate
-       out current cpu priviledge from the low bits of IAOQ_F.  */
+       out current cpu privilege from the low bits of IAOQ_F.  */
 #ifdef CONFIG_USER_ONLY
     *pc = env->iaoq_f & -4;
     *cs_base = env->iaoq_b & -4;
@@ -322,11 +322,11 @@ static inline void cpu_hppa_change_prot_id(CPUHPPAState *env) { }
 void cpu_hppa_change_prot_id(CPUHPPAState *env);
 #endif
 
-hwaddr hppa_cpu_get_phys_page_debug(CPUState *cs, vaddr addr);
 int hppa_cpu_gdb_read_register(CPUState *cpu, GByteArray *buf, int reg);
 int hppa_cpu_gdb_write_register(CPUState *cpu, uint8_t *buf, int reg);
 void hppa_cpu_dump_state(CPUState *cs, FILE *f, int);
 #ifndef CONFIG_USER_ONLY
+hwaddr hppa_cpu_get_phys_page_debug(CPUState *cs, vaddr addr);
 bool hppa_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
                        MMUAccessType access_type, int mmu_idx,
                        bool probe, uintptr_t retaddr);

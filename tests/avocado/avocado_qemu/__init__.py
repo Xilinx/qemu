@@ -229,7 +229,7 @@ def exec_command_and_wait_for_pattern(test, command,
 class QemuBaseTest(avocado.Test):
 
     # default timeout for all tests, can be overridden
-    timeout = 900
+    timeout = 120
 
     def _get_unique_tag_val(self, tag_name):
         """
@@ -274,6 +274,10 @@ class QemuSystemTest(QemuBaseTest):
 
         super().setUp('qemu-system-')
 
+        accel_required = self._get_unique_tag_val('accel')
+        if accel_required:
+            self.require_accelerator(accel_required)
+
         self.machine = self.params.get('machine',
                                        default=self._get_unique_tag_val('machine'))
 
@@ -299,8 +303,24 @@ class QemuSystemTest(QemuBaseTest):
             self.cancel("%s accelerator does not seem to be "
                         "available" % accelerator)
 
+    def require_netdev(self, netdevname):
+        netdevhelp = run_cmd([self.qemu_bin,
+                             '-M', 'none', '-netdev', 'help'])[0];
+        if netdevhelp.find('\n' + netdevname + '\n') < 0:
+            self.cancel('no support for user networking')
+
+    def require_multiprocess(self):
+        """
+        Test for the presence of the x-pci-proxy-dev which is required
+        to support multiprocess.
+        """
+        devhelp = run_cmd([self.qemu_bin,
+                           '-M', 'none', '-device', 'help'])[0];
+        if devhelp.find('x-pci-proxy-dev') < 0:
+            self.cancel('no support for multiprocess device emulation')
+
     def _new_vm(self, name, *args):
-        self._sd = tempfile.TemporaryDirectory(prefix="avo_qemu_sock_")
+        self._sd = tempfile.TemporaryDirectory(prefix="qemu_")
         vm = QEMUMachine(self.qemu_bin, base_temp_dir=self.workdir,
                          sock_dir=self._sd.name, log_dir=self.logdir)
         self.log.debug('QEMUMachine "%s" created', name)
@@ -309,6 +329,19 @@ class QemuSystemTest(QemuBaseTest):
         if args:
             vm.add_args(*args)
         return vm
+
+    def get_qemu_img(self):
+        self.log.debug('Looking for and selecting a qemu-img binary')
+
+        # If qemu-img has been built, use it, otherwise the system wide one
+        # will be used.
+        qemu_img = os.path.join(BUILD_DIR, 'qemu-img')
+        if not os.path.exists(qemu_img):
+            qemu_img = find_command('qemu-img', False)
+        if qemu_img is False:
+            self.cancel('Could not find "qemu-img"')
+
+        return qemu_img
 
     @property
     def vm(self):
@@ -411,6 +444,14 @@ class LinuxSSHMixIn:
                          f'Guest command failed: {command}')
         return stdout_lines, stderr_lines
 
+    def ssh_command_output_contains(self, cmd, exp):
+        stdout, _ = self.ssh_command(cmd)
+        for line in stdout:
+            if exp in line:
+                break
+        else:
+            self.fail('"%s" output does not contain "%s"' % (cmd, exp))
+
 class LinuxDistro:
     """Represents a Linux distribution
 
@@ -512,7 +553,7 @@ class LinuxDistro:
 class LinuxTest(LinuxSSHMixIn, QemuSystemTest):
     """Facilitates having a cloud-image Linux based available.
 
-    For tests that indent to interact with guests, this is a better choice
+    For tests that intend to interact with guests, this is a better choice
     to start with than the more vanilla `QemuSystemTest` class.
     """
 
@@ -550,6 +591,7 @@ class LinuxTest(LinuxSSHMixIn, QemuSystemTest):
 
     def setUp(self, ssh_pubkey=None, network_device_type='virtio-net'):
         super().setUp()
+        self.require_netdev('user')
         self._set_distro()
         self.vm.add_args('-smp', self.smp)
         self.vm.add_args('-m', self.memory)
@@ -573,17 +615,9 @@ class LinuxTest(LinuxSSHMixIn, QemuSystemTest):
         return (ssh_public_key, ssh_private_key)
 
     def download_boot(self):
-        self.log.debug('Looking for and selecting a qemu-img binary to be '
-                       'used to create the bootable snapshot image')
-        # If qemu-img has been built, use it, otherwise the system wide one
-        # will be used.  If none is available, the test will cancel.
-        qemu_img = os.path.join(BUILD_DIR, 'qemu-img')
-        if not os.path.exists(qemu_img):
-            qemu_img = find_command('qemu-img', False)
-        if qemu_img is False:
-            self.cancel('Could not find "qemu-img", which is required to '
-                        'create the bootable image')
-        vmimage.QEMU_IMG = qemu_img
+        # Set the qemu-img binary.
+        # If none is available, the test will cancel.
+        vmimage.QEMU_IMG = super().get_qemu_img()
 
         self.log.info('Downloading/preparing boot image')
         # Fedora 31 only provides ppc64le images

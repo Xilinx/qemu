@@ -17,14 +17,15 @@
 #include "sysemu/kvm.h"
 #include "sysemu/tcg.h"
 #include "qapi/error.h"
+#include "qemu/error-report.h"
 #include "qapi/visitor.h"
 #include "qemu/module.h"
 #include "qemu/hw-version.h"
 #include "qemu/qemu-print.h"
 #ifndef CONFIG_USER_ONLY
 #include "sysemu/sysemu.h"
+#include "target/s390x/kvm/pv.h"
 #endif
-#include "hw/s390x/pv.h"
 
 #define CPUDEF_INIT(_type, _gen, _ec_ga, _mha_pow, _hmfai, _name, _desc) \
     {                                                                    \
@@ -236,6 +237,7 @@ bool s390_has_feat(S390Feat feat)
         return 0;
     }
 
+#ifndef CONFIG_USER_ONLY
     if (s390_is_pv()) {
         switch (feat) {
         case S390_FEAT_DIAG_318:
@@ -259,6 +261,7 @@ bool s390_has_feat(S390Feat feat)
             break;
         }
     }
+#endif
     return test_bit(feat, cpu->model->features);
 }
 
@@ -604,8 +607,8 @@ void s390_realize_cpu_model(CPUState *cs, Error **errp)
 #if !defined(CONFIG_USER_ONLY)
     cpu->env.cpuid = s390_cpuid_from_cpu_model(cpu->model);
     if (tcg_enabled()) {
-        /* basic mode, write the cpu address into the first 4 bit of the ID */
-        cpu->env.cpuid = deposit64(cpu->env.cpuid, 54, 4, cpu->env.core_id);
+        cpu->env.cpuid = deposit64(cpu->env.cpuid, CPU_PHYS_ADDR_SHIFT,
+                                   CPU_PHYS_ADDR_BITS, cpu->env.core_id);
     }
 #endif
 }
@@ -972,7 +975,7 @@ static void register_types(void)
 
     init_ignored_base_feat();
 
-    /* init all bitmaps from gnerated data initially */
+    /* init all bitmaps from generated data initially */
     s390_init_feat_bitmap(qemu_max_init, qemu_max_cpu_feat);
     for (i = 0; i < ARRAY_SIZE(s390_cpu_defs); i++) {
         s390_init_feat_bitmap(s390_cpu_defs[i].base_init,

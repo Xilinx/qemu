@@ -170,8 +170,8 @@ static int get_physical_address(CPULoongArchState *env, hwaddr *physical,
                                 int *prot, target_ulong address,
                                 MMUAccessType access_type, int mmu_idx)
 {
-    int user_mode = mmu_idx == MMU_USER_IDX;
-    int kernel_mode = mmu_idx == MMU_KERNEL_IDX;
+    int user_mode = mmu_idx == MMU_IDX_USER;
+    int kernel_mode = mmu_idx == MMU_IDX_KERNEL;
     uint32_t plv, base_c, base_v;
     int64_t addr_high;
     uint8_t da = FIELD_EX64(env->CSR_CRMD, CSR_CRMD, DA);
@@ -185,10 +185,10 @@ static int get_physical_address(CPULoongArchState *env, hwaddr *physical,
     }
 
     plv = kernel_mode | (user_mode << R_CSR_DMW_PLV3_SHIFT);
-    base_v = address >> TARGET_VIRT_ADDR_SPACE_BITS;
+    base_v = address >> R_CSR_DMW_VSEG_SHIFT;
     /* Check direct map window */
     for (int i = 0; i < 4; i++) {
-        base_c = env->CSR_DMW[i] >> TARGET_VIRT_ADDR_SPACE_BITS;
+        base_c = FIELD_EX64(env->CSR_DMW[i], CSR_DMW, VSEG);
         if ((plv & env->CSR_DMW[i]) && (base_c == base_v)) {
             *physical = dmw_va2pa(address);
             *prot = PAGE_READ | PAGE_WRITE | PAGE_EXEC;
@@ -229,7 +229,8 @@ static void raise_mmu_exception(CPULoongArchState *env, target_ulong address,
     switch (tlb_error) {
     default:
     case TLBRET_BADADDR:
-        cs->exception_index = EXCCODE_ADEM;
+        cs->exception_index = access_type == MMU_INST_FETCH
+                              ? EXCCODE_ADEF : EXCCODE_ADEM;
         break;
     case TLBRET_NOMATCH:
         /* No TLB match for a mapped address */
@@ -643,7 +644,7 @@ bool loongarch_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
     CPULoongArchState *env = &cpu->env;
     hwaddr physical;
     int prot;
-    int ret = TLBRET_BADADDR;
+    int ret;
 
     /* Data access */
     ret = get_physical_address(env, &physical, &prot, address,
@@ -654,7 +655,7 @@ bool loongarch_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
                      physical & TARGET_PAGE_MASK, prot,
                      mmu_idx, TARGET_PAGE_SIZE);
         qemu_log_mask(CPU_LOG_MMU,
-                      "%s address=%" VADDR_PRIx " physical " TARGET_FMT_plx
+                      "%s address=%" VADDR_PRIx " physical " HWADDR_FMT_plx
                       " prot %d\n", __func__, address, physical, prot);
         return true;
     } else {

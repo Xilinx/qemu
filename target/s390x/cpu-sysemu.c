@@ -21,6 +21,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/error-report.h"
 #include "qapi/error.h"
 #include "cpu.h"
 #include "s390x-internal.h"
@@ -32,7 +33,7 @@
 #include "qapi/qapi-visit-run-state.h"
 #include "sysemu/hw_accel.h"
 
-#include "hw/s390x/pv.h"
+#include "target/s390x/kvm/pv.h"
 #include "hw/boards.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/tcg.h"

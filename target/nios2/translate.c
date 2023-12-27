@@ -32,8 +32,12 @@
 #include "exec/cpu_ldst.h"
 #include "exec/translator.h"
 #include "qemu/qemu-print.h"
-#include "exec/gen-icount.h"
 #include "semihosting/semihost.h"
+
+#define HELPER_H "helper.h"
+#include "exec/helper-info.c.inc"
+#undef  HELPER_H
+
 
 /* is_jmp field values */
 #define DISAS_UPDATE  DISAS_TARGET_1 /* cpu state was modified dynamically */
@@ -233,7 +237,6 @@ static void gen_jumpr(DisasContext *dc, int regno, bool is_call)
 
     tcg_gen_andi_tl(test, dest, 3);
     tcg_gen_brcondi_tl(TCG_COND_NE, test, 0, l);
-    tcg_temp_free(test);
 
     tcg_gen_mov_tl(cpu_pc, dest);
     if (is_call) {
@@ -299,8 +302,12 @@ static void gen_ldx(DisasContext *dc, uint32_t code, uint32_t flags)
     TCGv data = dest_gpr(dc, instr.b);
 
     tcg_gen_addi_tl(addr, load_gpr(dc, instr.a), instr.imm16.s);
+#ifdef CONFIG_USER_ONLY
+    flags |= MO_UNALN;
+#else
+    flags |= MO_ALIGN;
+#endif
     tcg_gen_qemu_ld_tl(data, addr, dc->mem_idx, flags);
-    tcg_temp_free(addr);
 }
 
 /* Store instructions */
@@ -311,8 +318,12 @@ static void gen_stx(DisasContext *dc, uint32_t code, uint32_t flags)
 
     TCGv addr = tcg_temp_new();
     tcg_gen_addi_tl(addr, load_gpr(dc, instr.a), instr.imm16.s);
+#ifdef CONFIG_USER_ONLY
+    flags |= MO_UNALN;
+#else
+    flags |= MO_ALIGN;
+#endif
     tcg_gen_qemu_st_tl(val, addr, dc->mem_idx, flags);
-    tcg_temp_free(addr);
 }
 
 /* Branch instructions */
@@ -425,19 +436,19 @@ static const Nios2Instruction i_type_instructions[] = {
     INSTRUCTION_FLG(gen_cmpxxsi, TCG_COND_GE),        /* cmpgei */
     INSTRUCTION_ILLEGAL(),
     INSTRUCTION_ILLEGAL(),
-    INSTRUCTION_FLG(gen_ldx, MO_UW),                  /* ldhu */
+    INSTRUCTION_FLG(gen_ldx, MO_TEUW),                /* ldhu */
     INSTRUCTION(andi),                                /* andi */
-    INSTRUCTION_FLG(gen_stx, MO_UW),                  /* sth */
+    INSTRUCTION_FLG(gen_stx, MO_TEUW),                /* sth */
     INSTRUCTION_FLG(gen_bxx, TCG_COND_GE),            /* bge */
-    INSTRUCTION_FLG(gen_ldx, MO_SW),                  /* ldh */
+    INSTRUCTION_FLG(gen_ldx, MO_TESW),                /* ldh */
     INSTRUCTION_FLG(gen_cmpxxsi, TCG_COND_LT),        /* cmplti */
     INSTRUCTION_ILLEGAL(),
     INSTRUCTION_ILLEGAL(),
     INSTRUCTION_NOP(),                                /* initda */
     INSTRUCTION(ori),                                 /* ori */
-    INSTRUCTION_FLG(gen_stx, MO_UL),                  /* stw */
+    INSTRUCTION_FLG(gen_stx, MO_TEUL),                /* stw */
     INSTRUCTION_FLG(gen_bxx, TCG_COND_LT),            /* blt */
-    INSTRUCTION_FLG(gen_ldx, MO_UL),                  /* ldw */
+    INSTRUCTION_FLG(gen_ldx, MO_TEUL),                /* ldw */
     INSTRUCTION_FLG(gen_cmpxxsi, TCG_COND_NE),        /* cmpnei */
     INSTRUCTION_ILLEGAL(),
     INSTRUCTION_ILLEGAL(),
@@ -457,19 +468,19 @@ static const Nios2Instruction i_type_instructions[] = {
     INSTRUCTION_FLG(gen_cmpxxui, TCG_COND_GEU),       /* cmpgeui */
     INSTRUCTION_ILLEGAL(),
     INSTRUCTION_ILLEGAL(),
-    INSTRUCTION_FLG(gen_ldx, MO_UW),                  /* ldhuio */
+    INSTRUCTION_FLG(gen_ldx, MO_TEUW),                /* ldhuio */
     INSTRUCTION(andhi),                               /* andhi */
-    INSTRUCTION_FLG(gen_stx, MO_UW),                  /* sthio */
+    INSTRUCTION_FLG(gen_stx, MO_TEUW),                /* sthio */
     INSTRUCTION_FLG(gen_bxx, TCG_COND_GEU),           /* bgeu */
-    INSTRUCTION_FLG(gen_ldx, MO_SW),                  /* ldhio */
+    INSTRUCTION_FLG(gen_ldx, MO_TESW),                /* ldhio */
     INSTRUCTION_FLG(gen_cmpxxui, TCG_COND_LTU),       /* cmpltui */
     INSTRUCTION_ILLEGAL(),
     INSTRUCTION_UNIMPLEMENTED(),                      /* custom */
     INSTRUCTION_NOP(),                                /* initd */
     INSTRUCTION(orhi),                                /* orhi */
-    INSTRUCTION_FLG(gen_stx, MO_SL),                  /* stwio */
+    INSTRUCTION_FLG(gen_stx, MO_TESL),                /* stwio */
     INSTRUCTION_FLG(gen_bxx, TCG_COND_LTU),           /* bltu */
-    INSTRUCTION_FLG(gen_ldx, MO_UL),                  /* ldwio */
+    INSTRUCTION_FLG(gen_ldx, MO_TEUL),                /* ldwio */
     INSTRUCTION(rdprs),                               /* rdprs */
     INSTRUCTION_ILLEGAL(),
     INSTRUCTION_FLG(handle_r_type_instr, 0),          /* R-Type */
@@ -500,7 +511,6 @@ static void eret(DisasContext *dc, uint32_t code, uint32_t flags)
         TCGv tmp = tcg_temp_new();
         tcg_gen_ld_tl(tmp, cpu_env, offsetof(CPUNios2State, ctrl[CR_ESTATUS]));
         gen_helper_eret(cpu_env, tmp, load_gpr(dc, R_EA));
-        tcg_temp_free(tmp);
     } else {
         gen_helper_eret(cpu_env, load_gpr(dc, R_SSTATUS), load_gpr(dc, R_EA));
     }
@@ -530,7 +540,6 @@ static void bret(DisasContext *dc, uint32_t code, uint32_t flags)
     TCGv tmp = tcg_temp_new();
     tcg_gen_ld_tl(tmp, cpu_env, offsetof(CPUNios2State, ctrl[CR_BSTATUS]));
     gen_helper_eret(cpu_env, tmp, load_gpr(dc, R_BA));
-    tcg_temp_free(tmp);
 
     dc->base.is_jmp = DISAS_NORETURN;
 #endif
@@ -597,8 +606,6 @@ static void rdctl(DisasContext *dc, uint32_t code, uint32_t flags)
         tcg_gen_ld_tl(t1, cpu_env, offsetof(CPUNios2State, ctrl[CR_IPENDING]));
         tcg_gen_ld_tl(t2, cpu_env, offsetof(CPUNios2State, ctrl[CR_IENABLE]));
         tcg_gen_and_tl(dest, t1, t2);
-        tcg_temp_free(t1);
-        tcg_temp_free(t2);
         break;
     default:
         tcg_gen_ld_tl(dest, cpu_env,
@@ -662,11 +669,9 @@ static void wrctl(DisasContext *dc, uint32_t code, uint32_t flags)
                 tcg_gen_ld_tl(o, cpu_env, ofs);
                 tcg_gen_andi_tl(o, o, ro);
                 tcg_gen_or_tl(n, n, o);
-                tcg_temp_free(o);
             }
 
             tcg_gen_st_tl(n, cpu_env, ofs);
-            tcg_temp_free(n);
         }
         break;
     }
@@ -753,7 +758,6 @@ static void do_rr_mul_high(DisasContext *dc, uint32_t insn, GenFn4 *fn)
 
     fn(discard, dest_gpr(dc, instr.c),
        load_gpr(dc, instr.a), load_gpr(dc, instr.b));
-    tcg_temp_free(discard);
 }
 
 #define gen_rr_mul_high(fname, insn)                                        \
@@ -771,7 +775,6 @@ static void do_rr_shift(DisasContext *dc, uint32_t insn, GenFn3 *fn)
 
     tcg_gen_andi_tl(sh, load_gpr(dc, instr.b), 31);
     fn(dest_gpr(dc, instr.c), load_gpr(dc, instr.a), sh);
-    tcg_temp_free(sh);
 }
 
 #define gen_rr_shift(fname, insn)                                           \
@@ -817,8 +820,9 @@ static void gen_break(DisasContext *dc, uint32_t code, uint32_t flags)
 {
 #ifndef CONFIG_USER_ONLY
     /* The semihosting instruction is "break 1".  */
+    bool is_user = FIELD_EX32(dc->tb_flags, TBFLAGS, U);
     R_TYPE(instr, code);
-    if (semihosting_enabled() && instr.imm5 == 1) {
+    if (semihosting_enabled(is_user) && instr.imm5 == 1) {
         t_gen_helper_raise_exception(dc, EXCP_SEMIHOST);
         return;
     }
@@ -937,8 +941,6 @@ static const char * const cr_regnames[NUM_CR_REGS] = {
 };
 #endif
 
-#include "exec/gen-icount.h"
-
 /* generate intermediate code for basic block 'tb'.  */
 static void nios2_tr_init_disas_context(DisasContextBase *dcbase, CPUState *cs)
 {
@@ -991,10 +993,6 @@ static void nios2_tr_translate_insn(DisasContextBase *dcbase, CPUState *cs)
 
     instr = &i_type_instructions[op];
     instr->handler(dc, code, instr->flags);
-
-    if (dc->sink) {
-        tcg_temp_free(dc->sink);
-    }
 }
 
 static void nios2_tr_tb_stop(DisasContextBase *dcbase, CPUState *cs)
@@ -1038,10 +1036,11 @@ static const TranslatorOps nios2_tr_ops = {
     .disas_log          = nios2_tr_disas_log,
 };
 
-void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
+void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int *max_insns,
+                           target_ulong pc, void *host_pc)
 {
     DisasContext dc;
-    translator_loop(&nios2_tr_ops, &dc.base, cs, tb, max_insns);
+    translator_loop(cs, tb, max_insns, pc, host_pc, &nios2_tr_ops, &dc.base);
 }
 
 void nios2_cpu_dump_state(CPUState *cs, FILE *f, int flags)
@@ -1107,10 +1106,4 @@ void nios2_tcg_init(void)
 
     cpu_pc = tcg_global_mem_new(cpu_env,
                                 offsetof(CPUNios2State, pc), "pc");
-}
-
-void restore_state_to_opc(CPUNios2State *env, TranslationBlock *tb,
-                          target_ulong *data)
-{
-    env->pc = data[0];
 }

@@ -244,7 +244,6 @@ static VncServerInfo *vnc_server_info_get(VncDisplay *vd)
     info = g_malloc0(sizeof(*info));
     vnc_init_basic_info_from_server_addr(vd->listener->sioc[0],
                                          qapi_VncServerInfo_base(info), &err);
-    info->has_auth = true;
     info->auth = g_strdup(vnc_auth_name(vd));
     if (err) {
         qapi_free_VncServerInfo(info);
@@ -263,13 +262,10 @@ static void vnc_client_cache_auth(VncState *client)
     if (client->tls) {
         client->info->x509_dname =
             qcrypto_tls_session_get_peer_name(client->tls);
-        client->info->has_x509_dname =
-            client->info->x509_dname != NULL;
     }
 #ifdef CONFIG_VNC_SASL
     if (client->sasl.conn &&
         client->sasl.username) {
-        client->info->has_sasl_username = true;
         client->info->sasl_username = g_strdup(client->sasl.username);
     }
 #endif
@@ -341,11 +337,9 @@ static VncClientInfo *qmp_query_vnc_client(const VncState *client)
 
     if (client->tls) {
         info->x509_dname = qcrypto_tls_session_get_peer_name(client->tls);
-        info->has_x509_dname = info->x509_dname != NULL;
     }
 #ifdef CONFIG_VNC_SASL
     if (client->sasl.conn && client->sasl.username) {
-        info->has_sasl_username = true;
         info->sasl_username = g_strdup(client->sasl.username);
     }
 #endif
@@ -426,11 +420,8 @@ VncInfo *qmp_query_vnc(Error **errp)
             abort();
         }
 
-        info->has_host = true;
-        info->has_service = true;
         info->has_family = true;
 
-        info->has_auth = true;
         info->auth = g_strdup(vnc_auth_name(vd));
     }
 
@@ -568,7 +559,6 @@ VncInfo2List *qmp_query_vnc_servers(Error **errp)
         if (vd->dcl.con) {
             dev = DEVICE(object_property_get_link(OBJECT(vd->dcl.con),
                                                   "device", &error_abort));
-            info->has_display = true;
             info->display = g_strdup(dev->id);
         }
         for (i = 0; vd->listener != NULL && i < vd->listener->nsioc; i++) {
@@ -998,10 +988,10 @@ static void vnc_mouse_set(DisplayChangeListener *dcl,
 
 static int vnc_cursor_define(VncState *vs)
 {
-    QEMUCursor *c = vs->vd->cursor;
+    QEMUCursor *c = qemu_console_get_cursor(vs->vd->dcl.con);
     int isize;
 
-    if (!vs->vd->cursor) {
+    if (!c) {
         return -1;
     }
 
@@ -1039,11 +1029,7 @@ static void vnc_dpy_cursor_define(DisplayChangeListener *dcl,
     VncDisplay *vd = container_of(dcl, VncDisplay, dcl);
     VncState *vs;
 
-    cursor_put(vd->cursor);
     g_free(vd->cursor_mask);
-
-    vd->cursor = c;
-    cursor_get(vd->cursor);
     vd->cursor_msize = cursor_get_mono_bpl(c) * c->height;
     vd->cursor_mask = g_malloc0(vd->cursor_msize);
     cursor_get_mono_mask(c, 0, vd->cursor_mask);
@@ -2442,8 +2428,8 @@ static int protocol_client_msg(VncState *vs, uint8_t *data, size_t len)
         if (len == 1) {
             return 8;
         }
+        uint32_t dlen = abs(read_s32(data, 4));
         if (len == 8) {
-            uint32_t dlen = abs(read_s32(data, 4));
             if (dlen > (1 << 20)) {
                 error_report("vnc: client_cut_text msg payload has %u bytes"
                              " which exceeds our limit of 1MB.", dlen);
@@ -2456,8 +2442,13 @@ static int protocol_client_msg(VncState *vs, uint8_t *data, size_t len)
         }
 
         if (read_s32(data, 4) < 0) {
-            vnc_client_cut_text_ext(vs, abs(read_s32(data, 4)),
-                                    read_u32(data, 8), data + 12);
+            if (dlen < 4) {
+                error_report("vnc: malformed payload (header less than 4 bytes)"
+                             " in extended clipboard pseudo-encoding.");
+                vnc_client_error(vs);
+                break;
+            }
+            vnc_client_cut_text_ext(vs, dlen, read_u32(data, 8), data + 12);
             break;
         }
         vnc_client_cut_text(vs, read_u32(data, 4), data + 8);
@@ -3080,7 +3071,7 @@ static void vnc_rect_updated(VncDisplay *vd, int x, int y, struct timeval * tv)
 
     rect = vnc_stat_rect(vd, x, y);
     if (rect->updated) {
-        return ;
+        return;
     }
     rect->times[rect->idx] = *tv;
     rect->idx = (rect->idx + 1) % ARRAY_SIZE(rect->times);
@@ -3737,7 +3728,7 @@ static int vnc_display_get_address(const char *addrstr,
     } else {
         const char *port;
         size_t hostlen;
-        unsigned long long baseport = 0;
+        uint64_t baseport = 0;
         InetSocketAddress *inet;
 
         port = strrchr(addrstr, ':');
@@ -3760,7 +3751,7 @@ static int vnc_display_get_address(const char *addrstr,
 
         addr->type = SOCKET_ADDRESS_TYPE_INET;
         inet = &addr->u.inet;
-        if (addrstr[0] == '[' && addrstr[hostlen - 1] == ']') {
+        if (hostlen && addrstr[0] == '[' && addrstr[hostlen - 1] == ']') {
             inet->host = g_strndup(addrstr + 1, hostlen - 2);
         } else {
             inet->host = g_strndup(addrstr, hostlen);
@@ -3785,7 +3776,7 @@ static int vnc_display_get_address(const char *addrstr,
             }
         } else {
             int offset = reverse ? 0 : 5900;
-            if (parse_uint_full(port, &baseport, 10) < 0) {
+            if (parse_uint_full(port, 10, &baseport) < 0) {
                 error_setg(errp, "can't convert to a number: %s", port);
                 goto cleanup;
             }

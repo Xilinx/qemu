@@ -86,4 +86,6 @@ struct ARMGICClass {
     qemu_irq_handler irq_handler;
 };
 
+const char *gic_class_name(void);
+
 #endif

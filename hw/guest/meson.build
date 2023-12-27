@@ -1,1 +1,1 @@
-softmmu_ss.add(files('linux.c'))
+system_ss.add(files('linux.c'))

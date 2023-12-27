@@ -663,6 +663,8 @@ static void vfio_msi_enable(VFIOPCIDevice *vdev)
 
     vfio_disable_interrupts(vdev);
 
+    vdev->nr_vectors = msi_nr_vectors_allocated(&vdev->pdev);
+retry:
     /*
      * Setting vector notifiers needs to enable route for each vector.
      * Deferring to commit the KVM routes once rather than per vector
@@ -670,8 +672,6 @@ static void vfio_msi_enable(VFIOPCIDevice *vdev)
      */
     vfio_prepare_kvm_msi_virq_batch(vdev);
 
-    vdev->nr_vectors = msi_nr_vectors_allocated(&vdev->pdev);
-retry:
     vdev->msi_vectors = g_new0(VFIOMSIVector, vdev->nr_vectors);
 
     for (i = 0; i < vdev->nr_vectors; i++) {
@@ -1752,9 +1752,11 @@ static void vfio_bars_finalize(VFIOPCIDevice *vdev)
 
         vfio_bar_quirk_finalize(vdev, i);
         vfio_region_finalize(&bar->region);
-        if (bar->size) {
+        if (bar->mr) {
+            assert(bar->size);
             object_unparent(OBJECT(bar->mr));
             g_free(bar->mr);
+            bar->mr = NULL;
         }
     }
 
@@ -1824,6 +1826,81 @@ static void vfio_add_emulated_long(VFIOPCIDevice *vdev, int pos,
     vfio_set_long_bits(vdev->pdev.config + pos, val, mask);
     vfio_set_long_bits(vdev->pdev.wmask + pos, ~mask, mask);
     vfio_set_long_bits(vdev->emulated_config_bits + pos, mask, mask);
+}
+
+static void vfio_pci_enable_rp_atomics(VFIOPCIDevice *vdev)
+{
+    struct vfio_device_info_cap_pci_atomic_comp *cap;
+    g_autofree struct vfio_device_info *info = NULL;
+    PCIBus *bus = pci_get_bus(&vdev->pdev);
+    PCIDevice *parent = bus->parent_dev;
+    struct vfio_info_cap_header *hdr;
+    uint32_t mask = 0;
+    uint8_t *pos;
+
+    /*
+     * PCIe Atomic Ops completer support is only added automatically for single
+     * function devices downstream of a root port supporting DEVCAP2.  Support
+     * is added during realize and, if added, removed during device exit.  The
+     * single function requirement avoids conflicting requirements should a
+     * slot be composed of multiple devices with differing capabilities.
+     */
+    if (pci_bus_is_root(bus) || !parent || !parent->exp.exp_cap ||
+        pcie_cap_get_type(parent) != PCI_EXP_TYPE_ROOT_PORT ||
+        pcie_cap_get_version(parent) != PCI_EXP_FLAGS_VER2 ||
+        vdev->pdev.devfn ||
+        vdev->pdev.cap_present & QEMU_PCI_CAP_MULTIFUNCTION) {
+        return;
+    }
+
+    pos = parent->config + parent->exp.exp_cap + PCI_EXP_DEVCAP2;
+
+    /* Abort if there'a already an Atomic Ops configuration on the root port */
+    if (pci_get_long(pos) & (PCI_EXP_DEVCAP2_ATOMIC_COMP32 |
+                             PCI_EXP_DEVCAP2_ATOMIC_COMP64 |
+                             PCI_EXP_DEVCAP2_ATOMIC_COMP128)) {
+        return;
+    }
+
+    info = vfio_get_device_info(vdev->vbasedev.fd);
+    if (!info) {
+        return;
+    }
+
+    hdr = vfio_get_device_info_cap(info, VFIO_DEVICE_INFO_CAP_PCI_ATOMIC_COMP);
+    if (!hdr) {
+        return;
+    }
+
+    cap = (void *)hdr;
+    if (cap->flags & VFIO_PCI_ATOMIC_COMP32) {
+        mask |= PCI_EXP_DEVCAP2_ATOMIC_COMP32;
+    }
+    if (cap->flags & VFIO_PCI_ATOMIC_COMP64) {
+        mask |= PCI_EXP_DEVCAP2_ATOMIC_COMP64;
+    }
+    if (cap->flags & VFIO_PCI_ATOMIC_COMP128) {
+        mask |= PCI_EXP_DEVCAP2_ATOMIC_COMP128;
+    }
+
+    if (!mask) {
+        return;
+    }
+
+    pci_long_test_and_set_mask(pos, mask);
+    vdev->clear_parent_atomics_on_exit = true;
+}
+
+static void vfio_pci_disable_rp_atomics(VFIOPCIDevice *vdev)
+{
+    if (vdev->clear_parent_atomics_on_exit) {
+        PCIDevice *parent = pci_get_bus(&vdev->pdev)->parent_dev;
+        uint8_t *pos = parent->config + parent->exp.exp_cap + PCI_EXP_DEVCAP2;
+
+        pci_long_test_and_clear_mask(pos, PCI_EXP_DEVCAP2_ATOMIC_COMP32 |
+                                          PCI_EXP_DEVCAP2_ATOMIC_COMP64 |
+                                          PCI_EXP_DEVCAP2_ATOMIC_COMP128);
+    }
 }
 
 static int vfio_setup_pcie_cap(VFIOPCIDevice *vdev, int pos, uint8_t size,
@@ -1929,6 +2006,8 @@ static int vfio_setup_pcie_cap(VFIOPCIDevice *vdev, int pos, uint8_t size,
                            QEMU_PCI_EXP_LNKCAP_MLS(QEMU_PCI_EXP_LNK_2_5GT), ~0);
             vfio_add_emulated_word(vdev, pos + PCI_EXP_LNKCTL, 0, ~0);
         }
+
+        vfio_pci_enable_rp_atomics(vdev);
     }
 
     /*
@@ -2066,6 +2145,54 @@ static int vfio_add_std_cap(VFIOPCIDevice *vdev, uint8_t pos, Error **errp)
     return 0;
 }
 
+static int vfio_setup_rebar_ecap(VFIOPCIDevice *vdev, uint16_t pos)
+{
+    uint32_t ctrl;
+    int i, nbar;
+
+    ctrl = pci_get_long(vdev->pdev.config + pos + PCI_REBAR_CTRL);
+    nbar = (ctrl & PCI_REBAR_CTRL_NBAR_MASK) >> PCI_REBAR_CTRL_NBAR_SHIFT;
+
+    for (i = 0; i < nbar; i++) {
+        uint32_t cap;
+        int size;
+
+        ctrl = pci_get_long(vdev->pdev.config + pos + PCI_REBAR_CTRL + (i * 8));
+        size = (ctrl & PCI_REBAR_CTRL_BAR_SIZE) >> PCI_REBAR_CTRL_BAR_SHIFT;
+
+        /* The cap register reports sizes 1MB to 128TB, with 4 reserved bits */
+        cap = size <= 27 ? 1U << (size + 4) : 0;
+
+        /*
+         * The PCIe spec (v6.0.1, 7.8.6) requires HW to support at least one
+         * size in the range 1MB to 512GB.  We intend to mask all sizes except
+         * the one currently enabled in the size field, therefore if it's
+         * outside the range, hide the whole capability as this virtualization
+         * trick won't work.  If >512GB resizable BARs start to appear, we
+         * might need an opt-in or reservation scheme in the kernel.
+         */
+        if (!(cap & PCI_REBAR_CAP_SIZES)) {
+            return -EINVAL;
+        }
+
+        /* Hide all sizes reported in the ctrl reg per above requirement. */
+        ctrl &= (PCI_REBAR_CTRL_BAR_SIZE |
+                 PCI_REBAR_CTRL_NBAR_MASK |
+                 PCI_REBAR_CTRL_BAR_IDX);
+
+        /*
+         * The BAR size field is RW, however we've mangled the capability
+         * register such that we only report a single size, ie. the current
+         * BAR size.  A write of an unsupported value is undefined, therefore
+         * the register field is essentially RO.
+         */
+        vfio_add_emulated_long(vdev, pos + PCI_REBAR_CAP + (i * 8), cap, ~0);
+        vfio_add_emulated_long(vdev, pos + PCI_REBAR_CTRL + (i * 8), ctrl, ~0);
+    }
+
+    return 0;
+}
+
 static void vfio_add_ext_cap(VFIOPCIDevice *vdev)
 {
     PCIDevice *pdev = &vdev->pdev;
@@ -2139,8 +2266,12 @@ static void vfio_add_ext_cap(VFIOPCIDevice *vdev)
         case 0: /* kernel masked capability */
         case PCI_EXT_CAP_ID_SRIOV: /* Read-only VF BARs confuse OVMF */
         case PCI_EXT_CAP_ID_ARI: /* XXX Needs next function virtualization */
-        case PCI_EXT_CAP_ID_REBAR: /* Can't expose read-only */
             trace_vfio_add_ext_cap_dropped(vdev->vbasedev.name, cap_id, next);
+            break;
+        case PCI_EXT_CAP_ID_REBAR:
+            if (!vfio_setup_rebar_ecap(vdev, next)) {
+                pcie_add_capability(pdev, cap_id, cap_ver, next, size);
+            }
             break;
         default:
             pcie_add_capability(pdev, cap_id, cap_ver, next, size);
@@ -2856,6 +2987,8 @@ static void vfio_realize(PCIDevice *pdev, Error **errp)
     int groupid;
     int i, ret;
     bool is_mdev;
+    char uuid[UUID_FMT_LEN];
+    char *name;
 
     if (!vbasedev->sysfsdev) {
         if (!(~vdev->host.domain || ~vdev->host.bus ||
@@ -2936,7 +3069,15 @@ static void vfio_realize(PCIDevice *pdev, Error **errp)
         goto error;
     }
 
-    ret = vfio_get_device(group, vbasedev->name, vbasedev, errp);
+    if (!qemu_uuid_is_null(&vdev->vf_token)) {
+        qemu_uuid_unparse(&vdev->vf_token, uuid);
+        name = g_strdup_printf("%s vf_token=%s", vbasedev->name, uuid);
+    } else {
+        name = g_strdup(vbasedev->name);
+    }
+
+    ret = vfio_get_device(group, name, vbasedev, errp);
+    g_free(name);
     if (ret) {
         vfio_put_group(group);
         goto error;
@@ -3145,9 +3286,8 @@ static void vfio_realize(PCIDevice *pdev, Error **errp)
     }
 
     if (!pdev->failover_pair_id) {
-        ret = vfio_migration_probe(vbasedev, errp);
-        if (ret) {
-            error_report("%s: Migration disabled", vbasedev->name);
+        if (!vfio_migration_realize(vbasedev, errp)) {
+            goto out_deregister;
         }
     }
 
@@ -3158,8 +3298,16 @@ static void vfio_realize(PCIDevice *pdev, Error **errp)
     return;
 
 out_deregister:
+    if (vdev->interrupt == VFIO_INT_INTx) {
+        vfio_intx_disable(vdev);
+    }
     pci_device_set_intx_routing_notifier(&vdev->pdev, NULL);
-    kvm_irqchip_remove_change_notifier(&vdev->irqchip_change_notifier);
+    if (vdev->irqchip_change_notifier.notify) {
+        kvm_irqchip_remove_change_notifier(&vdev->irqchip_change_notifier);
+    }
+    if (vdev->intx.mmap_timer) {
+        timer_free(vdev->intx.mmap_timer);
+    }
 out_teardown:
     vfio_teardown_msi(vdev);
     vfio_bars_exit(vdev);
@@ -3202,8 +3350,9 @@ static void vfio_exitfn(PCIDevice *pdev)
         timer_free(vdev->intx.mmap_timer);
     }
     vfio_teardown_msi(vdev);
+    vfio_pci_disable_rp_atomics(vdev);
     vfio_bars_exit(vdev);
-    vfio_migration_finalize(&vdev->vbasedev);
+    vfio_migration_exit(&vdev->vbasedev);
 }
 
 static void vfio_pci_reset(DeviceState *dev)
@@ -3267,6 +3416,7 @@ static void vfio_instance_init(Object *obj)
 
 static Property vfio_pci_dev_properties[] = {
     DEFINE_PROP_PCI_HOST_DEVADDR("host", VFIOPCIDevice, host),
+    DEFINE_PROP_UUID_NODEFAULT("vf-token", VFIOPCIDevice, vf_token),
     DEFINE_PROP_STRING("sysfsdev", VFIOPCIDevice, vbasedev.sysfsdev),
     DEFINE_PROP_ON_OFF_AUTO("x-pre-copy-dirty-page-tracking", VFIOPCIDevice,
                             vbasedev.pre_copy_dirty_page_tracking,
@@ -3283,8 +3433,8 @@ static Property vfio_pci_dev_properties[] = {
                     VFIO_FEATURE_ENABLE_REQ_BIT, true),
     DEFINE_PROP_BIT("x-igd-opregion", VFIOPCIDevice, features,
                     VFIO_FEATURE_ENABLE_IGD_OPREGION_BIT, false),
-    DEFINE_PROP_BOOL("x-enable-migration", VFIOPCIDevice,
-                     vbasedev.enable_migration, false),
+    DEFINE_PROP_ON_OFF_AUTO("enable-migration", VFIOPCIDevice,
+                            vbasedev.enable_migration, ON_OFF_AUTO_AUTO),
     DEFINE_PROP_BOOL("x-no-mmap", VFIOPCIDevice, vbasedev.no_mmap, false),
     DEFINE_PROP_BOOL("x-balloon-allowed", VFIOPCIDevice,
                      vbasedev.ram_block_discard_allowed, false),

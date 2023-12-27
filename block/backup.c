@@ -20,8 +20,8 @@
 #include "block/blockjob_int.h"
 #include "block/block_backup.h"
 #include "block/block-copy.h"
+#include "block/dirty-bitmap.h"
 #include "qapi/error.h"
-#include "qapi/qmp/qerror.h"
 #include "qemu/cutils.h"
 #include "sysemu/block-backend.h"
 #include "qemu/bitmap.h"
@@ -269,7 +269,10 @@ static int coroutine_fn backup_run(Job *job, Error **errp)
                 return -ECANCELED;
             }
 
+            /* rdlock protects the subsequent call to bdrv_is_allocated() */
+            bdrv_graph_co_rdlock();
             ret = block_copy_reset_unallocated(s->bcs, offset, &count);
+            bdrv_graph_co_rdunlock();
             if (ret < 0) {
                 return ret;
             }
@@ -309,7 +312,7 @@ static void coroutine_fn backup_pause(Job *job)
     }
 }
 
-static void coroutine_fn backup_set_speed(BlockJob *job, int64_t speed)
+static void backup_set_speed(BlockJob *job, int64_t speed)
 {
     BackupBlockJob *s = container_of(job, BackupBlockJob, common);
 

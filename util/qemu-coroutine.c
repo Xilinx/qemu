@@ -16,7 +16,6 @@
 #include "trace.h"
 #include "qemu/thread.h"
 #include "qemu/atomic.h"
-#include "qemu/coroutine.h"
 #include "qemu/coroutine_int.h"
 #include "qemu/coroutine-tls.h"
 #include "block/aio.h"
@@ -128,9 +127,13 @@ void qemu_aio_coroutine_enter(AioContext *ctx, Coroutine *co)
         Coroutine *to = QSIMPLEQ_FIRST(&pending);
         CoroutineAction ret;
 
-        /* Cannot rely on the read barrier for to in aio_co_wake(), as there are
-         * callers outside of aio_co_wake() */
-        const char *scheduled = qatomic_mb_read(&to->scheduled);
+        /*
+         * Read to before to->scheduled; pairs with qatomic_cmpxchg in
+         * qemu_co_sleep(), aio_co_schedule() etc.
+         */
+        smp_read_barrier_depends();
+
+        const char *scheduled = qatomic_read(&to->scheduled);
 
         QSIMPLEQ_REMOVE_HEAD(&pending, co_queue_next);
 
@@ -213,7 +216,7 @@ bool qemu_coroutine_entered(Coroutine *co)
     return co->caller;
 }
 
-AioContext *coroutine_fn qemu_coroutine_get_aio_context(Coroutine *co)
+AioContext *qemu_coroutine_get_aio_context(Coroutine *co)
 {
     return co->ctx;
 }

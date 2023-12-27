@@ -24,7 +24,9 @@
 #ifndef BLOCK_GLOBAL_STATE_H
 #define BLOCK_GLOBAL_STATE_H
 
-#include "block-common.h"
+#include "block/block-common.h"
+#include "qemu/coroutine.h"
+#include "qemu/transactions.h"
 
 /*
  * Global state (GS) API. These functions run under the BQL.
@@ -55,9 +57,16 @@ BlockDriver *bdrv_find_protocol(const char *filename,
                                 bool allow_protocol_prefix,
                                 Error **errp);
 BlockDriver *bdrv_find_format(const char *format_name);
-int bdrv_create(BlockDriver *drv, const char* filename,
-                QemuOpts *opts, Error **errp);
-int bdrv_create_file(const char *filename, QemuOpts *opts, Error **errp);
+
+int coroutine_fn GRAPH_UNLOCKED
+bdrv_co_create(BlockDriver *drv, const char *filename, QemuOpts *opts,
+               Error **errp);
+
+int co_wrapper bdrv_create(BlockDriver *drv, const char *filename,
+                           QemuOpts *opts, Error **errp);
+
+int coroutine_fn GRAPH_UNLOCKED
+bdrv_co_create_file(const char *filename, QemuOpts *opts, Error **errp);
 
 BlockDriverState *bdrv_new(void);
 int bdrv_append(BlockDriverState *bs_new, BlockDriverState *bs_top,
@@ -70,19 +79,42 @@ BlockDriverState *bdrv_insert_node(BlockDriverState *bs, QDict *node_options,
                                    int flags, Error **errp);
 int bdrv_drop_filter(BlockDriverState *bs, Error **errp);
 
-BdrvChild *bdrv_open_child(const char *filename,
-                           QDict *options, const char *bdref_key,
-                           BlockDriverState *parent,
-                           const BdrvChildClass *child_class,
-                           BdrvChildRole child_role,
-                           bool allow_none, Error **errp);
-BlockDriverState *bdrv_open_blockdev_ref(BlockdevRef *ref, Error **errp);
+BdrvChild * no_coroutine_fn
+bdrv_open_child(const char *filename, QDict *options, const char *bdref_key,
+                BlockDriverState *parent, const BdrvChildClass *child_class,
+                BdrvChildRole child_role, bool allow_none, Error **errp);
+
+BdrvChild * coroutine_fn no_co_wrapper
+bdrv_co_open_child(const char *filename, QDict *options, const char *bdref_key,
+                BlockDriverState *parent, const BdrvChildClass *child_class,
+                BdrvChildRole child_role, bool allow_none, Error **errp);
+
+int bdrv_open_file_child(const char *filename,
+                         QDict *options, const char *bdref_key,
+                         BlockDriverState *parent, Error **errp);
+
+BlockDriverState * no_coroutine_fn
+bdrv_open_blockdev_ref(BlockdevRef *ref, Error **errp);
+
+BlockDriverState * coroutine_fn no_co_wrapper
+bdrv_co_open_blockdev_ref(BlockdevRef *ref, Error **errp);
+
 int bdrv_set_backing_hd(BlockDriverState *bs, BlockDriverState *backing_hd,
                         Error **errp);
+int bdrv_set_backing_hd_drained(BlockDriverState *bs,
+                                BlockDriverState *backing_hd,
+                                Error **errp);
 int bdrv_open_backing_file(BlockDriverState *bs, QDict *parent_options,
                            const char *bdref_key, Error **errp);
-BlockDriverState *bdrv_open(const char *filename, const char *reference,
-                            QDict *options, int flags, Error **errp);
+
+BlockDriverState * no_coroutine_fn
+bdrv_open(const char *filename, const char *reference, QDict *options,
+          int flags, Error **errp);
+
+BlockDriverState * coroutine_fn no_co_wrapper
+bdrv_co_open(const char *filename, const char *reference,
+             QDict *options, int flags, Error **errp);
+
 BlockDriverState *bdrv_new_open_driver_opts(BlockDriver *drv,
                                             const char *node_name,
                                             QDict *options, int flags,
@@ -101,7 +133,10 @@ int bdrv_reopen_set_read_only(BlockDriverState *bs, bool read_only,
 BlockDriverState *bdrv_find_backing_image(BlockDriverState *bs,
                                           const char *backing_file);
 void bdrv_refresh_filename(BlockDriverState *bs);
-void bdrv_refresh_limits(BlockDriverState *bs, Transaction *tran, Error **errp);
+
+void GRAPH_RDLOCK
+bdrv_refresh_limits(BlockDriverState *bs, Transaction *tran, Error **errp);
+
 int bdrv_commit(BlockDriverState *bs);
 int bdrv_make_empty(BdrvChild *c, Error **errp);
 int bdrv_change_backing_file(BlockDriverState *bs, const char *backing_file,
@@ -131,16 +166,22 @@ int bdrv_amend_options(BlockDriverState *bs_new, QemuOpts *opts,
                        Error **errp);
 
 /* check if a named node can be replaced when doing drive-mirror */
-BlockDriverState *check_to_replace_node(BlockDriverState *parent_bs,
-                                        const char *node_name, Error **errp);
+BlockDriverState * GRAPH_RDLOCK
+check_to_replace_node(BlockDriverState *parent_bs, const char *node_name,
+                      Error **errp);
 
-int bdrv_activate(BlockDriverState *bs, Error **errp);
+int no_coroutine_fn bdrv_activate(BlockDriverState *bs, Error **errp);
+
+int coroutine_fn no_co_wrapper
+bdrv_co_activate(BlockDriverState *bs, Error **errp);
+
 void bdrv_activate_all(Error **errp);
 int bdrv_inactivate_all(void);
 
 int bdrv_flush_all(void);
 void bdrv_close_all(void);
 void bdrv_drain_all_begin(void);
+void bdrv_drain_all_begin_nopoll(void);
 void bdrv_drain_all_end(void);
 void bdrv_drain_all(void);
 
@@ -181,7 +222,8 @@ void bdrv_img_create(const char *filename, const char *fmt,
                      bool quiet, Error **errp);
 
 void bdrv_ref(BlockDriverState *bs);
-void bdrv_unref(BlockDriverState *bs);
+void no_coroutine_fn bdrv_unref(BlockDriverState *bs);
+void coroutine_fn no_co_wrapper bdrv_co_unref(BlockDriverState *bs);
 void bdrv_unref_child(BlockDriverState *parent, BdrvChild *child);
 BdrvChild *bdrv_attach_child(BlockDriverState *parent_bs,
                              BlockDriverState *child_bs,
@@ -217,17 +259,11 @@ void coroutine_fn bdrv_co_lock(BlockDriverState *bs);
  */
 void coroutine_fn bdrv_co_unlock(BlockDriverState *bs);
 
-void bdrv_set_aio_context_ignore(BlockDriverState *bs,
-                                 AioContext *new_context, GSList **ignore);
-int bdrv_try_set_aio_context(BlockDriverState *bs, AioContext *ctx,
-                             Error **errp);
-int bdrv_child_try_set_aio_context(BlockDriverState *bs, AioContext *ctx,
-                                   BdrvChild *ignore_child, Error **errp);
-bool bdrv_child_can_set_aio_context(BdrvChild *c, AioContext *ctx,
-                                    GSList **ignore, Error **errp);
-bool bdrv_can_set_aio_context(BlockDriverState *bs, AioContext *ctx,
-                              GSList **ignore, Error **errp);
-AioContext *bdrv_child_get_parent_aio_context(BdrvChild *c);
+bool bdrv_child_change_aio_context(BdrvChild *c, AioContext *ctx,
+                                   GHashTable *visited, Transaction *tran,
+                                   Error **errp);
+int bdrv_try_change_aio_context(BlockDriverState *bs, AioContext *ctx,
+                                BdrvChild *ignore_child, Error **errp);
 
 int bdrv_probe_blocksizes(BlockDriverState *bs, BlockSizes *bsz);
 int bdrv_probe_geometry(BlockDriverState *bs, HDGeometry *geo);
@@ -243,9 +279,15 @@ void bdrv_del_child(BlockDriverState *parent, BdrvChild *child, Error **errp);
  * Register/unregister a buffer for I/O. For example, VFIO drivers are
  * interested to know the memory areas that would later be used for I/O, so
  * that they can prepare IOMMU mapping etc., to get better performance.
+ *
+ * Buffers must not overlap and they must be unregistered with the same <host,
+ * size> values that they were registered with.
+ *
+ * Returns: true on success, false on failure
  */
-void bdrv_register_buf(BlockDriverState *bs, void *host, size_t size);
-void bdrv_unregister_buf(BlockDriverState *bs, void *host);
+bool bdrv_register_buf(BlockDriverState *bs, void *host, size_t size,
+                       Error **errp);
+void bdrv_unregister_buf(BlockDriverState *bs, void *host, size_t size);
 
 void bdrv_cancel_in_flight(BlockDriverState *bs);
 

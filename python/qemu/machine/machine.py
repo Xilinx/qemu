@@ -131,7 +131,7 @@ class QEMUMachine:
                  drain_console: bool = False,
                  console_log: Optional[str] = None,
                  log_dir: Optional[str] = None,
-                 qmp_timer: Optional[float] = None):
+                 qmp_timer: Optional[float] = 30):
         '''
         Initialize a QEMUMachine
 
@@ -157,18 +157,14 @@ class QEMUMachine:
         self._wrapper = wrapper
         self._qmp_timer = qmp_timer
 
-        self._name = name or f"qemu-{os.getpid()}-{id(self):02x}"
+        self._name = name or f"{id(self):x}"
+        self._sock_pair: Optional[Tuple[socket.socket, socket.socket]] = None
         self._temp_dir: Optional[str] = None
         self._base_temp_dir = base_temp_dir
         self._sock_dir = sock_dir
         self._log_dir = log_dir
 
-        if monitor_address is not None:
-            self._monitor_address = monitor_address
-        else:
-            self._monitor_address = os.path.join(
-                self.sock_dir, f"{self._name}-monitor.sock"
-            )
+        self._monitor_address = monitor_address
 
         self._console_log_path = console_log
         if self._console_log_path:
@@ -192,7 +188,7 @@ class QEMUMachine:
         self._console_set = False
         self._console_device_type: Optional[str] = None
         self._console_address = os.path.join(
-            self.sock_dir, f"{self._name}-console.sock"
+            self.sock_dir, f"{self._name}.con"
         )
         self._console_socket: Optional[socket.socket] = None
         self._remove_files: List[str] = []
@@ -303,7 +299,11 @@ class QEMUMachine:
         args = ['-display', 'none', '-vga', 'none']
 
         if self._qmp_set:
-            if isinstance(self._monitor_address, tuple):
+            if self._sock_pair:
+                fd = self._sock_pair[0].fileno()
+                os.set_inheritable(fd, True)
+                moncdev = f"socket,id=mon,fd={fd}"
+            elif isinstance(self._monitor_address, tuple):
                 moncdev = "socket,id=mon,host={},port={}".format(
                     *self._monitor_address
                 )
@@ -337,11 +337,18 @@ class QEMUMachine:
             self._remove_files.append(self._console_address)
 
         if self._qmp_set:
+            if self._monitor_address is None:
+                self._sock_pair = socket.socketpair()
+                sock = self._sock_pair[1]
             if isinstance(self._monitor_address, str):
                 self._remove_files.append(self._monitor_address)
+
+            sock_or_addr = self._monitor_address or sock
+            assert sock_or_addr is not None
+
             self._qmp_connection = QEMUMonitorProtocol(
-                self._monitor_address,
-                server=True,
+                sock_or_addr,
+                server=bool(self._monitor_address),
                 nickname=self._name
             )
 
@@ -360,8 +367,13 @@ class QEMUMachine:
         ))
 
     def _post_launch(self) -> None:
+        if self._sock_pair:
+            self._sock_pair[0].close()
         if self._qmp_connection:
-            self._qmp.accept(self._qmp_timer)
+            if self._sock_pair:
+                self._qmp.connect()
+            else:
+                self._qmp.accept(self._qmp_timer)
 
     def _close_qemu_log_file(self) -> None:
         if self._qemu_log_file is not None:
@@ -373,6 +385,7 @@ class QEMUMachine:
         Called to cleanup the VM instance after the process has exited.
         May also be called after a failed launch.
         """
+        LOG.debug("Cleaning up after VM process")
         try:
             self._close_qmp_connection()
         except Exception as err:  # pylint: disable=broad-except
@@ -497,6 +510,7 @@ class QEMUMachine:
         # for QEMU to exit, while QEMU is waiting for the socket to
         # become writable.
         if self._console_socket is not None:
+            LOG.debug("Closing console socket")
             self._console_socket.close()
             self._console_socket = None
 
@@ -507,6 +521,7 @@ class QEMUMachine:
         :raise subprocess.Timeout: When timeout is exceeds 60 seconds
             waiting for the QEMU process to terminate.
         """
+        LOG.debug("Performing hard shutdown")
         self._early_cleanup()
         self._subp.kill()
         self._subp.wait(timeout=60)
@@ -523,7 +538,17 @@ class QEMUMachine:
         :raise subprocess.TimeoutExpired: When timeout is exceeded waiting for
             the QEMU process to terminate.
         """
+        LOG.debug("Attempting graceful termination")
+
         self._early_cleanup()
+
+        if self._quit_issued:
+            LOG.debug(
+                "Anticipating QEMU termination due to prior 'quit' command, "
+                "or explicit call to wait()"
+            )
+        else:
+            LOG.debug("Politely asking QEMU to terminate")
 
         if self._qmp_connection:
             try:
@@ -534,8 +559,18 @@ class QEMUMachine:
             finally:
                 # Regardless, we want to quiesce the connection.
                 self._close_qmp_connection()
+        elif not self._quit_issued:
+            LOG.debug(
+                "Not anticipating QEMU quit and no QMP connection present, "
+                "issuing SIGTERM"
+            )
+            self._subp.terminate()
 
         # May raise subprocess.TimeoutExpired
+        LOG.debug(
+            "Waiting (timeout=%s) for QEMU process (pid=%s) to terminate",
+            timeout, self._subp.pid
+        )
         self._subp.wait(timeout=timeout)
 
     def _do_shutdown(self, timeout: Optional[int]) -> None:
@@ -553,6 +588,10 @@ class QEMUMachine:
         try:
             self._soft_shutdown(timeout)
         except Exception as exc:
+            if isinstance(exc, subprocess.TimeoutExpired):
+                LOG.debug("Timed out waiting for QEMU process to exit")
+            LOG.debug("Graceful shutdown failed", exc_info=True)
+            LOG.debug("Falling back to hard shutdown")
             self._hard_shutdown()
             raise AbnormalShutdown("Could not perform graceful shutdown") \
                 from exc
@@ -574,6 +613,10 @@ class QEMUMachine:
         """
         if not self._launched:
             return
+
+        LOG.debug("Shutting down VM appliance; timeout=%s", timeout)
+        if hard:
+            LOG.debug("Caller requests immediate termination of QEMU process.")
 
         try:
             if hard:

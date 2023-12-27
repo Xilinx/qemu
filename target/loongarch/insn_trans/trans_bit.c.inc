@@ -27,26 +27,34 @@ static void gen_bytepick_d(TCGv dest, TCGv src1, TCGv src2, target_long sa)
     tcg_gen_extract2_i64(dest, src1, src2, (64 - sa * 8));
 }
 
-static void gen_bstrins(TCGv dest, TCGv src1,
-                        unsigned int ls, unsigned int len)
+static bool gen_bstrins(DisasContext *ctx, arg_rr_ms_ls *a,
+                        DisasExtend dst_ext)
 {
-    tcg_gen_deposit_tl(dest, dest, src1, ls, len);
-}
-
-static bool gen_rr_ms_ls(DisasContext *ctx, arg_rr_ms_ls *a,
-                         DisasExtend src_ext, DisasExtend dst_ext,
-                         void (*func)(TCGv, TCGv, unsigned int, unsigned int))
-{
-    TCGv dest = gpr_dst(ctx, a->rd, dst_ext);
-    TCGv src1 = gpr_src(ctx, a->rj, src_ext);
+    TCGv src1 = gpr_src(ctx, a->rd, EXT_NONE);
+    TCGv src2 = gpr_src(ctx, a->rj, EXT_NONE);
+    TCGv dest = gpr_dst(ctx, a->rd, EXT_NONE);
 
     if (a->ls > a->ms) {
         return false;
     }
 
-    func(dest, src1, a->ls, a->ms - a->ls + 1);
+    tcg_gen_deposit_tl(dest, src1, src2, a->ls, a->ms - a->ls + 1);
     gen_set_gpr(a->rd, dest, dst_ext);
+    return true;
+}
 
+static bool gen_bstrpick(DisasContext *ctx, arg_rr_ms_ls *a,
+                         DisasExtend dst_ext)
+{
+    TCGv dest = gpr_dst(ctx, a->rd, EXT_NONE);
+    TCGv src1 = gpr_src(ctx, a->rj, EXT_NONE);
+
+    if (a->ls > a->ms) {
+        return false;
+    }
+
+    tcg_gen_extract_tl(dest, src1, a->ls, a->ms - a->ls + 1);
+    gen_set_gpr(a->rd, dest, dst_ext);
     return true;
 }
 
@@ -114,9 +122,6 @@ static void gen_revb_2h(TCGv dest, TCGv src1)
     tcg_gen_and_tl(t1, src1, mask);
     tcg_gen_shli_tl(t1, t1, 8);
     tcg_gen_or_tl(dest, t0, t1);
-
-    tcg_temp_free(t0);
-    tcg_temp_free(t1);
 }
 
 static void gen_revb_4h(TCGv dest, TCGv src1)
@@ -130,9 +135,6 @@ static void gen_revb_4h(TCGv dest, TCGv src1)
     tcg_gen_and_tl(t1, src1, mask);
     tcg_gen_shli_tl(t1, t1, 8);
     tcg_gen_or_tl(dest, t0, t1);
-
-    tcg_temp_free(t0);
-    tcg_temp_free(t1);
 }
 
 static void gen_revh_2w(TCGv dest, TCGv src1)
@@ -146,9 +148,6 @@ static void gen_revh_2w(TCGv dest, TCGv src1)
     tcg_gen_and_i64(t0, t0, mask);
     tcg_gen_shli_i64(t1, t1, 16);
     tcg_gen_or_i64(dest, t1, t0);
-
-    tcg_temp_free_i64(t0);
-    tcg_temp_free_i64(t1);
 }
 
 static void gen_revh_d(TCGv dest, TCGv src1)
@@ -163,9 +162,6 @@ static void gen_revh_d(TCGv dest, TCGv src1)
     tcg_gen_shli_tl(t0, t0, 16);
     tcg_gen_or_tl(t0, t0, t1);
     tcg_gen_rotri_tl(dest, t0, 32);
-
-    tcg_temp_free(t0);
-    tcg_temp_free(t1);
 }
 
 static void gen_maskeqz(TCGv dest, TCGv src1, TCGv src2)
@@ -206,7 +202,7 @@ TRANS(maskeqz, gen_rrr, EXT_NONE, EXT_NONE, EXT_NONE, gen_maskeqz)
 TRANS(masknez, gen_rrr, EXT_NONE, EXT_NONE, EXT_NONE, gen_masknez)
 TRANS(bytepick_w, gen_rrr_sa, EXT_NONE, EXT_NONE, gen_bytepick_w)
 TRANS(bytepick_d, gen_rrr_sa, EXT_NONE, EXT_NONE, gen_bytepick_d)
-TRANS(bstrins_w, gen_rr_ms_ls, EXT_NONE, EXT_NONE, gen_bstrins)
-TRANS(bstrins_d, gen_rr_ms_ls, EXT_NONE, EXT_NONE, gen_bstrins)
-TRANS(bstrpick_w, gen_rr_ms_ls, EXT_NONE, EXT_SIGN, tcg_gen_extract_tl)
-TRANS(bstrpick_d, gen_rr_ms_ls, EXT_NONE, EXT_NONE, tcg_gen_extract_tl)
+TRANS(bstrins_w, gen_bstrins, EXT_SIGN)
+TRANS(bstrins_d, gen_bstrins, EXT_NONE)
+TRANS(bstrpick_w, gen_bstrpick, EXT_SIGN)
+TRANS(bstrpick_d, gen_bstrpick, EXT_NONE)

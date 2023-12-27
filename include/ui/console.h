@@ -4,8 +4,8 @@
 #include "ui/qemu-pixman.h"
 #include "qom/object.h"
 #include "qemu/notify.h"
-#include "qemu/error-report.h"
 #include "qapi/qapi-types-ui.h"
+#include "ui/input.h"
 
 #ifdef CONFIG_OPENGL
 # include <epoxy/gl.h>
@@ -65,11 +65,12 @@ void qemu_remove_led_event_handler(QEMUPutLEDEntry *entry);
 
 void kbd_put_ledstate(int ledstate);
 
-void hmp_mouse_set(Monitor *mon, const QDict *qdict);
+bool qemu_mouse_set(int index, Error **errp);
 
 /* keysym is a unicode code except for special keys (see QEMU_KEY_xxx
    constants) */
 #define QEMU_KEY_ESC1(c) ((c) | 0xe100)
+#define QEMU_KEY_TAB        0x0009
 #define QEMU_KEY_BACKSPACE  0x007f
 #define QEMU_KEY_UP         QEMU_KEY_ESC1('A')
 #define QEMU_KEY_DOWN       QEMU_KEY_ESC1('B')
@@ -95,6 +96,20 @@ bool kbd_put_qcode_console(QemuConsole *s, int qcode, bool ctrl);
 void kbd_put_string_console(QemuConsole *s, const char *str, int len);
 void kbd_put_keysym(int keysym);
 
+/* Touch devices */
+typedef struct touch_slot {
+    int x;
+    int y;
+    int tracking_id;
+} touch_slot;
+
+void console_handle_touch_event(QemuConsole *con,
+                                struct touch_slot touch_slots[INPUT_EVENT_SLOTS_MAX],
+                                uint64_t num_slot,
+                                int width, int height,
+                                double x, double y,
+                                InputMultiTouchType type,
+                                Error **errp);
 /* consoles */
 
 #define TYPE_QEMU_CONSOLE "qemu-console"
@@ -117,6 +132,7 @@ typedef struct ScanoutTexture {
     uint32_t y;
     uint32_t width;
     uint32_t height;
+    void *d3d_tex2d;
 } ScanoutTexture;
 
 typedef struct DisplaySurface {
@@ -127,6 +143,10 @@ typedef struct DisplaySurface {
     GLenum glformat;
     GLenum gltype;
     GLuint texture;
+#endif
+#ifdef WIN32
+    HANDLE handle;
+    uint32_t handle_offset;
 #endif
 } DisplaySurface;
 
@@ -144,15 +164,15 @@ typedef struct QemuUIInfo {
 
 /* cursor data format is 32bit RGBA */
 typedef struct QEMUCursor {
-    int                 width, height;
+    uint16_t            width, height;
     int                 hot_x, hot_y;
     int                 refcount;
     uint32_t            data[];
 } QEMUCursor;
 
-QEMUCursor *cursor_alloc(int width, int height);
-void cursor_get(QEMUCursor *c);
-void cursor_put(QEMUCursor *c);
+QEMUCursor *cursor_alloc(uint16_t width, uint16_t height);
+QEMUCursor *cursor_ref(QEMUCursor *c);
+void cursor_unref(QEMUCursor *c);
 QEMUCursor *cursor_builtin_hidden(void);
 QEMUCursor *cursor_builtin_left_ptr(void);
 void cursor_print_ascii_art(QEMUCursor *c, const char *prefix);
@@ -181,8 +201,8 @@ typedef struct QemuDmaBuf {
     uint32_t  texture;
     uint32_t  x;
     uint32_t  y;
-    uint32_t  scanout_width;
-    uint32_t  scanout_height;
+    uint32_t  backing_width;
+    uint32_t  backing_height;
     bool      y0_top;
     void      *sync;
     int       fence_fd;
@@ -251,7 +271,8 @@ typedef struct DisplayChangeListenerOps {
                                    uint32_t backing_width,
                                    uint32_t backing_height,
                                    uint32_t x, uint32_t y,
-                                   uint32_t w, uint32_t h);
+                                   uint32_t w, uint32_t h,
+                                   void *d3d_tex2d);
     /* optional (default to true if has dpy_gl_scanout_dmabuf) */
     bool (*dpy_has_dmabuf)(DisplayChangeListener *dcl);
     /* optional */
@@ -314,6 +335,10 @@ DisplaySurface *qemu_create_displaysurface_from(int width, int height,
 DisplaySurface *qemu_create_displaysurface_pixman(pixman_image_t *image);
 DisplaySurface *qemu_create_placeholder_surface(int w, int h,
                                                 const char *msg);
+#ifdef WIN32
+void qemu_displaysurface_win32_set_handle(DisplaySurface *surface,
+                                          HANDLE h, uint32_t offset);
+#endif
 PixelFormat qemu_default_pixelformat(int bpp);
 
 DisplaySurface *qemu_create_displaysurface(int width, int height);
@@ -355,7 +380,8 @@ void dpy_gl_scanout_disable(QemuConsole *con);
 void dpy_gl_scanout_texture(QemuConsole *con,
                             uint32_t backing_id, bool backing_y_0_top,
                             uint32_t backing_width, uint32_t backing_height,
-                            uint32_t x, uint32_t y, uint32_t w, uint32_t h);
+                            uint32_t x, uint32_t y, uint32_t w, uint32_t h,
+                            void *d3d_tex2d);
 void dpy_gl_scanout_dmabuf(QemuConsole *con,
                            QemuDmaBuf *dmabuf);
 void dpy_gl_cursor_dmabuf(QemuConsole *con, QemuDmaBuf *dmabuf,
@@ -459,6 +485,7 @@ QemuConsole *qemu_console_lookup_by_device(DeviceState *dev, uint32_t head);
 QemuConsole *qemu_console_lookup_by_device_name(const char *device_id,
                                                 uint32_t head, Error **errp);
 QemuConsole *qemu_console_lookup_unused(void);
+QEMUCursor *qemu_console_get_cursor(QemuConsole *con);
 bool qemu_console_is_visible(QemuConsole *con);
 bool qemu_console_is_graphic(QemuConsole *con);
 bool qemu_console_is_fixedsize(QemuConsole *con);

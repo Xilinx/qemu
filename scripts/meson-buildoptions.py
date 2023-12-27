@@ -35,6 +35,8 @@ SKIP_OPTIONS = {
 OPTION_NAMES = {
     "b_coverage": "gcov",
     "b_lto": "lto",
+    "coroutine_backend": "with-coroutine",
+    "debug": "debug-info",
     "malloc": "enable-malloc",
     "pkgversion": "with-pkgversion",
     "qemu_firmwarepath": "firmwarepath",
@@ -46,6 +48,7 @@ BUILTIN_OPTIONS = {
     "b_coverage",
     "b_lto",
     "datadir",
+    "debug",
     "includedir",
     "libdir",
     "libexecdir",
@@ -61,7 +64,10 @@ LINE_WIDTH = 76
 
 # Convert the default value of an option to the string used in
 # the help message
-def value_to_help(value):
+def get_help(opt):
+    if opt["name"] == "libdir":
+        return 'system default'
+    value = opt["value"]
     if isinstance(value, list):
         return ",".join(value)
     if isinstance(value, bool):
@@ -88,7 +94,7 @@ def sh_print(line=""):
 def help_line(left, opt, indent, long):
     right = f'{opt["description"]}'
     if long:
-        value = value_to_help(opt["value"])
+        value = get_help(opt)
         if value != "auto" and value != "":
             right += f" [{value}]"
     if "choices" in opt and long:

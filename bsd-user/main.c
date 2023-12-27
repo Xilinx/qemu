@@ -18,12 +18,10 @@
  *  along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <sys/types.h>
-#include <sys/time.h>
+#include "qemu/osdep.h"
 #include <sys/resource.h>
 #include <sys/sysctl.h>
 
-#include "qemu/osdep.h"
 #include "qemu/help-texts.h"
 #include "qemu/units.h"
 #include "qemu/accel.h"
@@ -46,11 +44,12 @@
 #include "trace/control.h"
 #include "crypto/init.h"
 #include "qemu/guest-random.h"
+#include "gdbstub/user.h"
 
 #include "host-os.h"
 #include "target_arch_cpu.h"
 
-int singlestep;
+static bool opt_one_insn_per_tb;
 uintptr_t guest_base;
 bool have_guest_base;
 /*
@@ -69,13 +68,9 @@ bool have_guest_base;
 # if HOST_LONG_BITS > TARGET_VIRT_ADDR_SPACE_BITS
 #  if TARGET_VIRT_ADDR_SPACE_BITS == 32 && \
       (TARGET_LONG_BITS == 32 || defined(TARGET_ABI32))
-/*
- * There are a number of places where we assign reserved_va to a variable
- * of type abi_ulong and expect it to fit.  Avoid the last page.
- */
-#   define MAX_RESERVED_VA  (0xfffffffful & TARGET_PAGE_MASK)
+#   define MAX_RESERVED_VA  0xfffffffful
 #  else
-#   define MAX_RESERVED_VA  (1ul << TARGET_VIRT_ADDR_SPACE_BITS)
+#   define MAX_RESERVED_VA  ((1ul << TARGET_VIRT_ADDR_SPACE_BITS) - 1)
 #  endif
 # else
 #  define MAX_RESERVED_VA  0
@@ -167,7 +162,8 @@ static void usage(void)
            "-d item1[,...]    enable logging of specified items\n"
            "                  (use '-d help' for a list of log items)\n"
            "-D logfile        write logs to 'logfile' (default stderr)\n"
-           "-singlestep       always run in singlestep mode\n"
+           "-one-insn-per-tb  run with one guest instruction per emulated TB\n"
+           "-singlestep       deprecated synonym for -one-insn-per-tb\n"
            "-strace           log system calls\n"
            "-trace            [[enable=]<pattern>][,events=<file>][,file=<file>]\n"
            "                  specify tracing options\n"
@@ -299,8 +295,16 @@ int main(int argc, char **argv)
 
     envlist = envlist_create();
 
-    /* add current environment into the list */
+    /*
+     * add current environment into the list
+     * envlist_setenv adds to the front of the list; to preserve environ
+     * order add from back to front
+     */
     for (wrk = environ; *wrk != NULL; wrk++) {
+        continue;
+    }
+    while (wrk != environ) {
+        wrk--;
         (void) envlist_setenv(envlist, *wrk);
     }
 
@@ -390,8 +394,8 @@ int main(int argc, char **argv)
             (void) envlist_unsetenv(envlist, "LD_PRELOAD");
         } else if (!strcmp(r, "seed")) {
             seed_optarg = optarg;
-        } else if (!strcmp(r, "singlestep")) {
-            singlestep = 1;
+        } else if (!strcmp(r, "singlestep") || !strcmp(r, "one-insn-per-tb")) {
+            opt_one_insn_per_tb = true;
         } else if (!strcmp(r, "strace")) {
             do_strace = 1;
         } else if (!strcmp(r, "trace")) {
@@ -449,9 +453,12 @@ int main(int argc, char **argv)
 
     /* init tcg before creating CPUs and to get qemu_host_page_size */
     {
-        AccelClass *ac = ACCEL_GET_CLASS(current_accel());
+        AccelState *accel = current_accel();
+        AccelClass *ac = ACCEL_GET_CLASS(accel);
 
         accel_init_interfaces(ac);
+        object_property_set_bool(OBJECT(accel), "one-insn-per-tb",
+                                 opt_one_insn_per_tb, &error_abort);
         ac->init_machine(NULL);
     }
     cpu = cpu_create(cpu_type);
@@ -465,10 +472,6 @@ int main(int argc, char **argv)
 
     target_environ = envlist_to_environ(envlist, NULL);
     envlist_free(envlist);
-
-    if (reserved_va) {
-            mmap_next_start = reserved_va;
-    }
 
     {
         Error *err = NULL;
@@ -487,7 +490,49 @@ int main(int argc, char **argv)
      * Now that page sizes are configured we can do
      * proper page alignment for guest_base.
      */
-    guest_base = HOST_PAGE_ALIGN(guest_base);
+    if (have_guest_base) {
+        if (guest_base & ~qemu_host_page_mask) {
+            error_report("Selected guest base not host page aligned");
+            exit(1);
+        }
+    }
+
+    /*
+     * If reserving host virtual address space, do so now.
+     * Combined with '-B', ensure that the chosen range is free.
+     */
+    if (reserved_va) {
+        void *p;
+
+        if (have_guest_base) {
+            p = mmap((void *)guest_base, reserved_va + 1, PROT_NONE,
+                     MAP_ANON | MAP_PRIVATE | MAP_FIXED | MAP_EXCL, -1, 0);
+        } else {
+            p = mmap(NULL, reserved_va + 1, PROT_NONE,
+                     MAP_ANON | MAP_PRIVATE, -1, 0);
+        }
+        if (p == MAP_FAILED) {
+            const char *err = strerror(errno);
+            char *sz = size_to_str(reserved_va + 1);
+
+            if (have_guest_base) {
+                error_report("Cannot allocate %s bytes at -B %p for guest "
+                             "address space: %s", sz, (void *)guest_base, err);
+            } else {
+                error_report("Cannot allocate %s bytes for guest "
+                             "address space: %s", sz, err);
+            }
+            exit(1);
+        }
+        guest_base = (uintptr_t)p;
+        have_guest_base = true;
+
+        /* Ensure that mmap_next_start is within range. */
+        if (reserved_va <= mmap_next_start) {
+            mmap_next_start = (reserved_va / 4 * 3)
+                              & TARGET_PAGE_MASK & qemu_host_page_mask;
+        }
+    }
 
     if (loader_exec(filename, argv + optind, target_environ, regs, info,
                     &bprm) != 0) {

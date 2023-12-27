@@ -25,7 +25,9 @@
 
 #include "qemu/osdep.h"
 #include <dirent.h>
+#include <glib/gstdio.h>
 #include "qapi/error.h"
+#include "block/block-io.h"
 #include "block/block_int.h"
 #include "block/qdict.h"
 #include "qemu/module.h"
@@ -499,7 +501,7 @@ static bool valid_filename(const unsigned char *name)
               (c >= 'A' && c <= 'Z') ||
               (c >= 'a' && c <= 'z') ||
               c > 127 ||
-              strchr("$%'-_@~`!(){}^#&.+,;=[]", c) != NULL))
+              strchr(" $%'-_@~`!(){}^#&.+,;=[]", c) != NULL))
         {
             return false;
         }
@@ -1051,7 +1053,7 @@ static BDRVVVFATState *vvv = NULL;
 #endif
 
 static int enable_write_target(BlockDriverState *bs, Error **errp);
-static int is_consistent(BDRVVVFATState *s);
+static int coroutine_fn is_consistent(BDRVVVFATState *s);
 
 static QemuOptsList runtime_opts = {
     .name = "vvfat",
@@ -1467,8 +1469,8 @@ static void print_mapping(const mapping_t* mapping)
 }
 #endif
 
-static int vvfat_read(BlockDriverState *bs, int64_t sector_num,
-                    uint8_t *buf, int nb_sectors)
+static int coroutine_fn GRAPH_RDLOCK
+vvfat_read(BlockDriverState *bs, int64_t sector_num, uint8_t *buf, int nb_sectors)
 {
     BDRVVVFATState *s = bs->opaque;
     int i;
@@ -1488,8 +1490,8 @@ static int vvfat_read(BlockDriverState *bs, int64_t sector_num,
                 DLOG(fprintf(stderr, "sectors %" PRId64 "+%" PRId64
                              " allocated\n", sector_num,
                              n >> BDRV_SECTOR_BITS));
-                if (bdrv_pread(s->qcow, sector_num * BDRV_SECTOR_SIZE, n,
-                               buf + i * 0x200, 0) < 0) {
+                if (bdrv_co_pread(s->qcow, sector_num * BDRV_SECTOR_SIZE, n,
+                                  buf + i * 0x200, 0) < 0) {
                     return -1;
                 }
                 i += (n >> BDRV_SECTOR_BITS) - 1;
@@ -1530,7 +1532,7 @@ static int vvfat_read(BlockDriverState *bs, int64_t sector_num,
     return 0;
 }
 
-static int coroutine_fn
+static int coroutine_fn GRAPH_RDLOCK
 vvfat_co_preadv(BlockDriverState *bs, int64_t offset, int64_t bytes,
                 QEMUIOVector *qiov, BdrvRequestFlags flags)
 {
@@ -1794,8 +1796,8 @@ static inline uint32_t modified_fat_get(BDRVVVFATState* s,
     }
 }
 
-static inline bool cluster_was_modified(BDRVVVFATState *s,
-                                        uint32_t cluster_num)
+static inline bool coroutine_fn GRAPH_RDLOCK
+cluster_was_modified(BDRVVVFATState *s, uint32_t cluster_num)
 {
     int was_modified = 0;
     int i;
@@ -1850,8 +1852,8 @@ typedef enum {
  * Further, the files/directories handled by this function are
  * assumed to be *not* deleted (and *only* those).
  */
-static uint32_t get_cluster_count_for_direntry(BDRVVVFATState* s,
-        direntry_t* direntry, const char* path)
+static uint32_t coroutine_fn GRAPH_RDLOCK
+get_cluster_count_for_direntry(BDRVVVFATState* s, direntry_t* direntry, const char* path)
 {
     /*
      * This is a little bit tricky:
@@ -1977,9 +1979,9 @@ static uint32_t get_cluster_count_for_direntry(BDRVVVFATState* s,
                         if (res) {
                             return -1;
                         }
-                        res = bdrv_pwrite(s->qcow, offset * BDRV_SECTOR_SIZE,
-                                          BDRV_SECTOR_SIZE, s->cluster_buffer,
-                                          0);
+                        res = bdrv_co_pwrite(s->qcow, offset * BDRV_SECTOR_SIZE,
+                                             BDRV_SECTOR_SIZE, s->cluster_buffer,
+                                             0);
                         if (res < 0) {
                             return -2;
                         }
@@ -2009,8 +2011,8 @@ static uint32_t get_cluster_count_for_direntry(BDRVVVFATState* s,
  * It returns 0 upon inconsistency or error, and the number of clusters
  * used by the directory, its subdirectories and their files.
  */
-static int check_directory_consistency(BDRVVVFATState *s,
-        int cluster_num, const char* path)
+static int coroutine_fn GRAPH_RDLOCK
+check_directory_consistency(BDRVVVFATState *s, int cluster_num, const char* path)
 {
     int ret = 0;
     unsigned char* cluster = g_malloc(s->cluster_size);
@@ -2136,7 +2138,8 @@ DLOG(fprintf(stderr, "check direntry %d:\n", i); print_direntry(direntries + i))
 }
 
 /* returns 1 on success */
-static int is_consistent(BDRVVVFATState* s)
+static int coroutine_fn GRAPH_RDLOCK
+is_consistent(BDRVVVFATState* s)
 {
     int i, check;
     int used_clusters_count = 0;
@@ -2412,8 +2415,8 @@ static int commit_mappings(BDRVVVFATState* s,
     return 0;
 }
 
-static int commit_direntries(BDRVVVFATState* s,
-        int dir_index, int parent_mapping_index)
+static int coroutine_fn GRAPH_RDLOCK
+commit_direntries(BDRVVVFATState* s, int dir_index, int parent_mapping_index)
 {
     direntry_t* direntry = array_get(&(s->directory), dir_index);
     uint32_t first_cluster = dir_index == 0 ? 0 : begin_of_direntry(direntry);
@@ -2502,8 +2505,8 @@ static int commit_direntries(BDRVVVFATState* s,
 
 /* commit one file (adjust contents, adjust mapping),
    return first_mapping_index */
-static int commit_one_file(BDRVVVFATState* s,
-        int dir_index, uint32_t offset)
+static int coroutine_fn GRAPH_RDLOCK
+commit_one_file(BDRVVVFATState* s, int dir_index, uint32_t offset)
 {
     direntry_t* direntry = array_get(&(s->directory), dir_index);
     uint32_t c = begin_of_direntry(direntry);
@@ -2726,13 +2729,9 @@ static int handle_renames_and_mkdirs(BDRVVVFATState* s)
             mapping_t* mapping;
             int j, parent_path_len;
 
-#ifdef __MINGW32__
-            if (mkdir(commit->path))
+            if (g_mkdir(commit->path, 0755)) {
                 return -5;
-#else
-            if (mkdir(commit->path, 0755))
-                return -5;
-#endif
+            }
 
             mapping = insert_mapping(s, commit->param.mkdir.cluster,
                     commit->param.mkdir.cluster + 1);
@@ -2772,7 +2771,7 @@ static int handle_renames_and_mkdirs(BDRVVVFATState* s)
 /*
  * TODO: make sure that the short name is not matching *another* file
  */
-static int handle_commits(BDRVVVFATState* s)
+static int coroutine_fn GRAPH_RDLOCK handle_commits(BDRVVVFATState* s)
 {
     int i, fail = 0;
 
@@ -2786,13 +2785,10 @@ static int handle_commits(BDRVVVFATState* s)
             fail = -2;
             break;
         case ACTION_WRITEOUT: {
-#ifndef NDEBUG
-            /* these variables are only used by assert() below */
             direntry_t* entry = array_get(&(s->directory),
                     commit->param.writeout.dir_index);
             uint32_t begin = begin_of_direntry(entry);
             mapping_t* mapping = find_mapping_for_cluster(s, begin);
-#endif
 
             assert(mapping);
             assert(mapping->begin == begin);
@@ -2918,7 +2914,7 @@ static int handle_deletes(BDRVVVFATState* s)
  * - recurse direntries from root (using bs->bdrv_pread)
  * - delete files corresponding to mappings marked as deleted
  */
-static int do_commit(BDRVVVFATState* s)
+static int coroutine_fn GRAPH_RDLOCK do_commit(BDRVVVFATState* s)
 {
     int ret = 0;
 
@@ -2968,7 +2964,7 @@ DLOG(checkpoint());
     return 0;
 }
 
-static int try_commit(BDRVVVFATState* s)
+static int coroutine_fn GRAPH_RDLOCK try_commit(BDRVVVFATState* s)
 {
     vvfat_close_current_file(s);
 DLOG(checkpoint());
@@ -2977,8 +2973,9 @@ DLOG(checkpoint());
     return do_commit(s);
 }
 
-static int vvfat_write(BlockDriverState *bs, int64_t sector_num,
-                    const uint8_t *buf, int nb_sectors)
+static int coroutine_fn GRAPH_RDLOCK
+vvfat_write(BlockDriverState *bs, int64_t sector_num,
+            const uint8_t *buf, int nb_sectors)
 {
     BDRVVVFATState *s = bs->opaque;
     int i, ret;
@@ -2993,11 +2990,35 @@ DLOG(checkpoint());
 
     vvfat_close_current_file(s);
 
+    if (sector_num == s->offset_to_bootsector && nb_sectors == 1) {
+        /*
+         * Write on bootsector. Allow only changing the reserved1 field,
+         * used to mark volume dirtiness
+         */
+        unsigned char *bootsector = s->first_sectors
+                                    + s->offset_to_bootsector * 0x200;
+        /*
+         * LATER TODO: if FAT32, this is wrong (see init_directories(),
+         * which always creates a FAT16 bootsector)
+         */
+        const int reserved1_offset = offsetof(bootsector_t, u.fat16.reserved1);
+
+        for (i = 0; i < 0x200; i++) {
+            if (i != reserved1_offset && bootsector[i] != buf[i]) {
+                fprintf(stderr, "Tried to write to protected bootsector\n");
+                return -1;
+            }
+        }
+
+        /* Update bootsector with the only updatable byte, and return success */
+        bootsector[reserved1_offset] = buf[reserved1_offset];
+        return 0;
+    }
+
     /*
      * Some sanity checks:
      * - do not allow writing to the boot sector
      */
-
     if (sector_num < s->offset_to_fat)
         return -1;
 
@@ -3063,8 +3084,8 @@ DLOG(checkpoint());
      * Use qcow backend. Commit later.
      */
 DLOG(fprintf(stderr, "Write to qcow backend: %d + %d\n", (int)sector_num, nb_sectors));
-    ret = bdrv_pwrite(s->qcow, sector_num * BDRV_SECTOR_SIZE,
-                      nb_sectors * BDRV_SECTOR_SIZE, buf, 0);
+    ret = bdrv_co_pwrite(s->qcow, sector_num * BDRV_SECTOR_SIZE,
+                         nb_sectors * BDRV_SECTOR_SIZE, buf, 0);
     if (ret < 0) {
         fprintf(stderr, "Error writing to qcow backend\n");
         return ret;
@@ -3084,7 +3105,7 @@ DLOG(checkpoint());
     return 0;
 }
 
-static int coroutine_fn
+static int coroutine_fn GRAPH_RDLOCK
 vvfat_co_pwritev(BlockDriverState *bs, int64_t offset, int64_t bytes,
                  QEMUIOVector *qiov, BdrvRequestFlags flags)
 {
@@ -3146,10 +3167,9 @@ static int enable_write_target(BlockDriverState *bs, Error **errp)
 
     array_init(&(s->commits), sizeof(commit_t));
 
-    s->qcow_filename = g_malloc(PATH_MAX);
-    ret = get_tmp_filename(s->qcow_filename, PATH_MAX);
-    if (ret < 0) {
-        error_setg_errno(errp, -ret, "can't create temporary file");
+    s->qcow_filename = create_tmp_file(errp);
+    if (!s->qcow_filename) {
+        ret = -ENOENT;
         goto err;
     }
 

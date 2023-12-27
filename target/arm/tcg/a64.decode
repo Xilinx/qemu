@@ -1,0 +1,232 @@
+# AArch64 A64 allowed instruction decoding
+#
+#  Copyright (c) 2023 Linaro, Ltd
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; either
+# version 2.1 of the License, or (at your option) any later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; if not, see <http://www.gnu.org/licenses/>.
+
+#
+# This file is processed by scripts/decodetree.py
+#
+
+&r               rn
+&ri              rd imm
+&rri_sf          rd rn imm sf
+&i               imm
+
+
+### Data Processing - Immediate
+
+# PC-rel addressing
+
+%imm_pcrel      5:s19 29:2
+@pcrel          . .. ..... ................... rd:5     &ri imm=%imm_pcrel
+
+ADR             0 .. 10000 ................... .....    @pcrel
+ADRP            1 .. 10000 ................... .....    @pcrel
+
+# Add/subtract (immediate)
+
+%imm12_sh12     10:12 !function=shl_12
+@addsub_imm     sf:1 .. ...... . imm:12 rn:5 rd:5
+@addsub_imm12   sf:1 .. ...... . ............ rn:5 rd:5 imm=%imm12_sh12
+
+ADD_i           . 00 100010 0 ............ ..... .....  @addsub_imm
+ADD_i           . 00 100010 1 ............ ..... .....  @addsub_imm12
+ADDS_i          . 01 100010 0 ............ ..... .....  @addsub_imm
+ADDS_i          . 01 100010 1 ............ ..... .....  @addsub_imm12
+
+SUB_i           . 10 100010 0 ............ ..... .....  @addsub_imm
+SUB_i           . 10 100010 1 ............ ..... .....  @addsub_imm12
+SUBS_i          . 11 100010 0 ............ ..... .....  @addsub_imm
+SUBS_i          . 11 100010 1 ............ ..... .....  @addsub_imm12
+
+# Add/subtract (immediate with tags)
+
+&rri_tag        rd rn uimm6 uimm4
+@addsub_imm_tag . .. ...... . uimm6:6 .. uimm4:4 rn:5 rd:5 &rri_tag
+
+ADDG_i          1 00 100011 0 ...... 00 .... ..... ..... @addsub_imm_tag
+SUBG_i          1 10 100011 0 ...... 00 .... ..... ..... @addsub_imm_tag
+
+# Logical (immediate)
+
+&rri_log        rd rn sf dbm
+@logic_imm_64   1 .. ...... dbm:13 rn:5 rd:5            &rri_log sf=1
+@logic_imm_32   0 .. ...... 0 dbm:12 rn:5 rd:5          &rri_log sf=0
+
+AND_i           . 00 100100 . ...... ...... ..... ..... @logic_imm_64
+AND_i           . 00 100100 . ...... ...... ..... ..... @logic_imm_32
+ORR_i           . 01 100100 . ...... ...... ..... ..... @logic_imm_64
+ORR_i           . 01 100100 . ...... ...... ..... ..... @logic_imm_32
+EOR_i           . 10 100100 . ...... ...... ..... ..... @logic_imm_64
+EOR_i           . 10 100100 . ...... ...... ..... ..... @logic_imm_32
+ANDS_i          . 11 100100 . ...... ...... ..... ..... @logic_imm_64
+ANDS_i          . 11 100100 . ...... ...... ..... ..... @logic_imm_32
+
+# Move wide (immediate)
+
+&movw           rd sf imm hw
+@movw_64        1 .. ...... hw:2   imm:16 rd:5          &movw sf=1
+@movw_32        0 .. ...... 0 hw:1 imm:16 rd:5          &movw sf=0
+
+MOVN            . 00 100101 .. ................ .....   @movw_64
+MOVN            . 00 100101 .. ................ .....   @movw_32
+MOVZ            . 10 100101 .. ................ .....   @movw_64
+MOVZ            . 10 100101 .. ................ .....   @movw_32
+MOVK            . 11 100101 .. ................ .....   @movw_64
+MOVK            . 11 100101 .. ................ .....   @movw_32
+
+# Bitfield
+
+&bitfield       rd rn sf immr imms
+@bitfield_64    1 .. ...... 1 immr:6 imms:6 rn:5 rd:5      &bitfield sf=1
+@bitfield_32    0 .. ...... 0 0 immr:5 0 imms:5 rn:5 rd:5  &bitfield sf=0
+
+SBFM            . 00 100110 . ...... ...... ..... ..... @bitfield_64
+SBFM            . 00 100110 . ...... ...... ..... ..... @bitfield_32
+BFM             . 01 100110 . ...... ...... ..... ..... @bitfield_64
+BFM             . 01 100110 . ...... ...... ..... ..... @bitfield_32
+UBFM            . 10 100110 . ...... ...... ..... ..... @bitfield_64
+UBFM            . 10 100110 . ...... ...... ..... ..... @bitfield_32
+
+# Extract
+
+&extract        rd rn rm imm sf
+
+EXTR            1 00 100111 1 0 rm:5 imm:6 rn:5 rd:5     &extract sf=1
+EXTR            0 00 100111 0 0 rm:5 0 imm:5 rn:5 rd:5   &extract sf=0
+
+# Branches
+
+%imm26   0:s26 !function=times_4
+@branch         . ..... .......................... &i imm=%imm26
+
+B               0 00101 .......................... @branch
+BL              1 00101 .......................... @branch
+
+%imm19   5:s19 !function=times_4
+&cbz     rt imm sf nz
+
+CBZ             sf:1 011010 nz:1 ................... rt:5 &cbz imm=%imm19
+
+%imm14     5:s14 !function=times_4
+%imm31_19  31:1 19:5
+&tbz       rt imm nz bitpos
+
+TBZ             . 011011 nz:1 ..... .............. rt:5 &tbz  imm=%imm14 bitpos=%imm31_19
+
+B_cond          0101010 0 ................... 0 cond:4 imm=%imm19
+
+BR              1101011 0000 11111 000000 rn:5 00000 &r
+BLR             1101011 0001 11111 000000 rn:5 00000 &r
+RET             1101011 0010 11111 000000 rn:5 00000 &r
+
+&braz       rn m
+BRAZ            1101011 0000 11111 00001 m:1 rn:5 11111 &braz   # BRAAZ, BRABZ
+BLRAZ           1101011 0001 11111 00001 m:1 rn:5 11111 &braz   # BLRAAZ, BLRABZ
+
+&reta       m
+RETA            1101011 0010 11111 00001 m:1 11111 11111 &reta  # RETAA, RETAB
+
+&bra        rn rm m
+BRA             1101011 1000 11111 00001 m:1 rn:5 rm:5 &bra # BRAA, BRAB
+BLRA            1101011 1001 11111 00001 m:1 rn:5 rm:5 &bra # BLRAA, BLRAB
+
+ERET            1101011 0100 11111 000000 11111 00000
+ERETA           1101011 0100 11111 00001 m:1 11111 11111 &reta  # ERETAA, ERETAB
+
+# We don't need to decode DRPS because it always UNDEFs except when
+# the processor is in halting debug state (which we don't implement).
+# The pattern is listed here as documentation.
+# DRPS            1101011 0101 11111 000000 11111 00000
+
+# Hint instruction group
+{
+  [
+    YIELD       1101 0101 0000 0011 0010 0000 001 11111
+    WFE         1101 0101 0000 0011 0010 0000 010 11111
+    WFI         1101 0101 0000 0011 0010 0000 011 11111
+    # We implement WFE to never block, so our SEV/SEVL are NOPs
+    # SEV       1101 0101 0000 0011 0010 0000 100 11111
+    # SEVL      1101 0101 0000 0011 0010 0000 101 11111
+    # Our DGL is a NOP because we don't merge memory accesses anyway.
+    # DGL       1101 0101 0000 0011 0010 0000 110 11111
+    XPACLRI     1101 0101 0000 0011 0010 0000 111 11111
+    PACIA1716   1101 0101 0000 0011 0010 0001 000 11111
+    PACIB1716   1101 0101 0000 0011 0010 0001 010 11111
+    AUTIA1716   1101 0101 0000 0011 0010 0001 100 11111
+    AUTIB1716   1101 0101 0000 0011 0010 0001 110 11111
+    ESB         1101 0101 0000 0011 0010 0010 000 11111
+    PACIAZ      1101 0101 0000 0011 0010 0011 000 11111
+    PACIASP     1101 0101 0000 0011 0010 0011 001 11111
+    PACIBZ      1101 0101 0000 0011 0010 0011 010 11111
+    PACIBSP     1101 0101 0000 0011 0010 0011 011 11111
+    AUTIAZ      1101 0101 0000 0011 0010 0011 100 11111
+    AUTIASP     1101 0101 0000 0011 0010 0011 101 11111
+    AUTIBZ      1101 0101 0000 0011 0010 0011 110 11111
+    AUTIBSP     1101 0101 0000 0011 0010 0011 111 11111
+  ]
+  # The canonical NOP has CRm == op2 == 0, but all of the space
+  # that isn't specifically allocated to an instruction must NOP
+  NOP           1101 0101 0000 0011 0010 ---- --- 11111
+}
+
+# Barriers
+
+CLREX           1101 0101 0000 0011 0011 ---- 010 11111
+DSB_DMB         1101 0101 0000 0011 0011 domain:2 types:2 10- 11111
+ISB             1101 0101 0000 0011 0011 ---- 110 11111
+SB              1101 0101 0000 0011 0011 0000 111 11111
+
+# PSTATE
+
+CFINV           1101 0101 0000 0 000 0100 0000 000 11111
+XAFLAG          1101 0101 0000 0 000 0100 0000 001 11111
+AXFLAG          1101 0101 0000 0 000 0100 0000 010 11111
+
+# These are architecturally all "MSR (immediate)"; we decode the destination
+# register too because there is no commonality in our implementation.
+@msr_i          .... .... .... . ... .... imm:4 ... .....
+MSR_i_UAO       1101 0101 0000 0 000 0100 .... 011 11111 @msr_i
+MSR_i_PAN       1101 0101 0000 0 000 0100 .... 100 11111 @msr_i
+MSR_i_SPSEL     1101 0101 0000 0 000 0100 .... 101 11111 @msr_i
+MSR_i_SBSS      1101 0101 0000 0 011 0100 .... 001 11111 @msr_i
+MSR_i_DIT       1101 0101 0000 0 011 0100 .... 010 11111 @msr_i
+MSR_i_TCO       1101 0101 0000 0 011 0100 .... 100 11111 @msr_i
+MSR_i_DAIFSET   1101 0101 0000 0 011 0100 .... 110 11111 @msr_i
+MSR_i_DAIFCLEAR 1101 0101 0000 0 011 0100 .... 111 11111 @msr_i
+MSR_i_SVCR      1101 0101 0000 0 011 0100 0 mask:2 imm:1 011 11111
+
+# MRS, MSR (register), SYS, SYSL. These are all essentially the
+# same instruction as far as QEMU is concerned.
+# NB: op0 is bits [20:19], but op0=0b00 is other insns, so we have
+# to hand-decode it.
+SYS             1101 0101 00 l:1 01 op1:3 crn:4 crm:4 op2:3 rt:5 op0=1
+SYS             1101 0101 00 l:1 10 op1:3 crn:4 crm:4 op2:3 rt:5 op0=2
+SYS             1101 0101 00 l:1 11 op1:3 crn:4 crm:4 op2:3 rt:5 op0=3
+
+# Exception generation
+
+@i16            .... .... ... imm:16           ... .. &i
+SVC             1101 0100 000 ................ 000 01 @i16
+HVC             1101 0100 000 ................ 000 10 @i16
+SMC             1101 0100 000 ................ 000 11 @i16
+BRK             1101 0100 001 ................ 000 00 @i16
+HLT             1101 0100 010 ................ 000 00 @i16
+# These insns always UNDEF unless in halting debug state, which
+# we don't implement. So we don't need to decode them. The patterns
+# are listed here as documentation.
+# DCPS1         1101 0100 101 ................ 000 01 @i16
+# DCPS2         1101 0100 101 ................ 000 10 @i16
+# DCPS3         1101 0100 101 ................ 000 11 @i16

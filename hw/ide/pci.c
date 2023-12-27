@@ -24,6 +24,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "hw/irq.h"
 #include "hw/pci/pci.h"
 #include "migration/vmstate.h"
 #include "sysemu/dma.h"
@@ -102,6 +103,12 @@ const MemoryRegionOps pci_ide_data_le_ops = {
     .write = pci_ide_data_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
 };
+
+static IDEState *bmdma_active_if(BMDMAState *bmdma)
+{
+    assert(bmdma->bus->retry_unit != (uint8_t)-1);
+    return bmdma->bus->ifs + bmdma->bus->retry_unit;
+}
 
 static void bmdma_start_dma(const IDEDMA *dma, IDEState *s,
                             BlockCompletionFunc *dma_cb)
@@ -295,7 +302,7 @@ void bmdma_cmd_writeb(BMDMAState *bm, uint32_t val)
     /* Ignore writes to SSBM if it keeps the old value */
     if ((val & BM_CMD_START) != (bm->cmd & BM_CMD_START)) {
         if (!(val & BM_CMD_START)) {
-            ide_cancel_dma_sync(idebus_active_if(bm->bus));
+            ide_cancel_dma_sync(ide_bus_active_if(bm->bus));
             bm->status &= ~BM_STATUS_DMAING;
         } else {
             bm->cur_addr = bm->addr;
@@ -309,6 +316,12 @@ void bmdma_cmd_writeb(BMDMAState *bm, uint32_t val)
     }
 
     bm->cmd = val & 0x09;
+}
+
+void bmdma_status_writeb(BMDMAState *bm, uint32_t val)
+{
+    bm->status = (val & 0x60) | (bm->status & BM_STATUS_DMAING)
+                 | (bm->status & ~val & (BM_STATUS_ERROR | BM_STATUS_INT));
 }
 
 static uint64_t bmdma_addr_read(void *opaque, hwaddr addr,
@@ -488,7 +501,7 @@ void pci_ide_create_devs(PCIDevice *dev)
     ide_drive_get(hd_table, ARRAY_SIZE(hd_table));
     for (i = 0; i < 4; i++) {
         if (hd_table[i]) {
-            ide_create_drive(d->bus + bus[i], unit[i], hd_table[i]);
+            ide_bus_create_drive(d->bus + bus[i], unit[i], hd_table[i]);
         }
     }
 }
@@ -512,13 +525,23 @@ void bmdma_init(IDEBus *bus, BMDMAState *bm, PCIIDEState *d)
     bus->dma = &bm->dma;
     bm->irq = bus->irq;
     bus->irq = qemu_allocate_irq(bmdma_irq, bm, 0);
+    bm->bus = bus;
     bm->pci_dev = d;
+}
+
+static void pci_ide_init(Object *obj)
+{
+    PCIIDEState *d = PCI_IDE(obj);
+
+    qdev_init_gpio_out_named(DEVICE(d), d->isa_irq, "isa-irq",
+                             ARRAY_SIZE(d->isa_irq));
 }
 
 static const TypeInfo pci_ide_type_info = {
     .name = TYPE_PCI_IDE,
     .parent = TYPE_PCI_DEVICE,
     .instance_size = sizeof(PCIIDEState),
+    .instance_init = pci_ide_init,
     .abstract = true,
     .interfaces = (InterfaceInfo[]) {
         { INTERFACE_CONVENTIONAL_PCI_DEVICE },

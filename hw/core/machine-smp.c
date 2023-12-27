@@ -20,6 +20,8 @@
 #include "qemu/osdep.h"
 #include "hw/boards.h"
 #include "qapi/error.h"
+#include "qemu/error-report.h"
+
 
 /*
  * Report information of a machine's supported CPU topology hierarchy.
@@ -158,6 +160,8 @@ void machine_parse_smp_config(MachineState *ms,
     ms->smp.threads = threads;
     ms->smp.max_cpus = maxcpus;
 
+    mc->smp_props.has_clusters = config->has_clusters;
+
     /* sanity-check of the computed topology */
     if (sockets * dies * clusters * cores * threads != maxcpus) {
         g_autofree char *topo_msg = cpu_hierarchy_to_string(ms);
@@ -192,4 +196,14 @@ void machine_parse_smp_config(MachineState *ms,
                    mc->name, mc->max_cpus);
         return;
     }
+}
+
+unsigned int machine_topo_get_cores_per_socket(const MachineState *ms)
+{
+    return ms->smp.cores * ms->smp.clusters * ms->smp.dies;
+}
+
+unsigned int machine_topo_get_threads_per_socket(const MachineState *ms)
+{
+    return ms->smp.threads * machine_topo_get_cores_per_socket(ms);
 }

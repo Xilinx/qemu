@@ -40,42 +40,29 @@
 static void cpu_ppc_tb_stop (CPUPPCState *env);
 static void cpu_ppc_tb_start (CPUPPCState *env);
 
-void ppc_set_irq(PowerPCCPU *cpu, int n_IRQ, int level)
+void ppc_set_irq(PowerPCCPU *cpu, int irq, int level)
 {
-    CPUState *cs = CPU(cpu);
     CPUPPCState *env = &cpu->env;
     unsigned int old_pending;
-    bool locked = false;
 
     /* We may already have the BQL if coming from the reset path */
-    if (!qemu_mutex_iothread_locked()) {
-        locked = true;
-        qemu_mutex_lock_iothread();
-    }
+    QEMU_IOTHREAD_LOCK_GUARD();
 
     old_pending = env->pending_interrupts;
 
     if (level) {
-        env->pending_interrupts |= 1 << n_IRQ;
-        cpu_interrupt(cs, CPU_INTERRUPT_HARD);
+        env->pending_interrupts |= irq;
     } else {
-        env->pending_interrupts &= ~(1 << n_IRQ);
-        if (env->pending_interrupts == 0) {
-            cpu_reset_interrupt(cs, CPU_INTERRUPT_HARD);
-        }
+        env->pending_interrupts &= ~irq;
     }
 
     if (old_pending != env->pending_interrupts) {
-        kvmppc_set_interrupt(cpu, n_IRQ, level);
+        ppc_maybe_interrupt(env);
+        kvmppc_set_interrupt(cpu, irq, level);
     }
 
-
-    trace_ppc_irq_set_exit(env, n_IRQ, level, env->pending_interrupts,
+    trace_ppc_irq_set_exit(env, irq, level, env->pending_interrupts,
                            CPU(cpu)->interrupt_request);
-
-    if (locked) {
-        qemu_mutex_unlock_iothread();
-    }
 }
 
 /* PowerPC 6xx / 7xx internal IRQ controller */
@@ -548,23 +535,24 @@ static inline void cpu_ppc_store_tb(ppc_tb_t *tb_env, uint64_t vmclk,
 void cpu_ppc_store_tbl (CPUPPCState *env, uint32_t value)
 {
     ppc_tb_t *tb_env = env->tb_env;
+    int64_t clock = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
     uint64_t tb;
 
-    tb = cpu_ppc_get_tb(tb_env, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL), tb_env->tb_offset);
+    tb = cpu_ppc_get_tb(tb_env, clock, tb_env->tb_offset);
     tb &= 0xFFFFFFFF00000000ULL;
-    cpu_ppc_store_tb(tb_env, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL),
-                     &tb_env->tb_offset, tb | (uint64_t)value);
+    cpu_ppc_store_tb(tb_env, clock, &tb_env->tb_offset, tb | (uint64_t)value);
 }
 
 static inline void _cpu_ppc_store_tbu(CPUPPCState *env, uint32_t value)
 {
     ppc_tb_t *tb_env = env->tb_env;
+    int64_t clock = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
     uint64_t tb;
 
-    tb = cpu_ppc_get_tb(tb_env, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL), tb_env->tb_offset);
+    tb = cpu_ppc_get_tb(tb_env, clock, tb_env->tb_offset);
     tb &= 0x00000000FFFFFFFFULL;
-    cpu_ppc_store_tb(tb_env, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL),
-                     &tb_env->tb_offset, ((uint64_t)value << 32) | tb);
+    cpu_ppc_store_tb(tb_env, clock, &tb_env->tb_offset,
+                     ((uint64_t)value << 32) | tb);
 }
 
 void cpu_ppc_store_tbu (CPUPPCState *env, uint32_t value)
@@ -597,23 +585,24 @@ uint32_t cpu_ppc_load_atbu (CPUPPCState *env)
 void cpu_ppc_store_atbl (CPUPPCState *env, uint32_t value)
 {
     ppc_tb_t *tb_env = env->tb_env;
+    int64_t clock = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
     uint64_t tb;
 
-    tb = cpu_ppc_get_tb(tb_env, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL), tb_env->atb_offset);
+    tb = cpu_ppc_get_tb(tb_env, clock, tb_env->atb_offset);
     tb &= 0xFFFFFFFF00000000ULL;
-    cpu_ppc_store_tb(tb_env, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL),
-                     &tb_env->atb_offset, tb | (uint64_t)value);
+    cpu_ppc_store_tb(tb_env, clock, &tb_env->atb_offset, tb | (uint64_t)value);
 }
 
 void cpu_ppc_store_atbu (CPUPPCState *env, uint32_t value)
 {
     ppc_tb_t *tb_env = env->tb_env;
+    int64_t clock = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
     uint64_t tb;
 
-    tb = cpu_ppc_get_tb(tb_env, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL), tb_env->atb_offset);
+    tb = cpu_ppc_get_tb(tb_env, clock, tb_env->atb_offset);
     tb &= 0x00000000FFFFFFFFULL;
-    cpu_ppc_store_tb(tb_env, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL),
-                     &tb_env->atb_offset, ((uint64_t)value << 32) | tb);
+    cpu_ppc_store_tb(tb_env, clock, &tb_env->atb_offset,
+                     ((uint64_t)value << 32) | tb);
 }
 
 uint64_t cpu_ppc_load_vtb(CPUPPCState *env)
@@ -635,14 +624,13 @@ void cpu_ppc_store_vtb(CPUPPCState *env, uint64_t value)
 void cpu_ppc_store_tbu40(CPUPPCState *env, uint64_t value)
 {
     ppc_tb_t *tb_env = env->tb_env;
+    int64_t clock = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
     uint64_t tb;
 
-    tb = cpu_ppc_get_tb(tb_env, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL),
-                        tb_env->tb_offset);
+    tb = cpu_ppc_get_tb(tb_env, clock, tb_env->tb_offset);
     tb &= 0xFFFFFFUL;
     tb |= (value & ~0xFFFFFFUL);
-    cpu_ppc_store_tb(tb_env, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL),
-                     &tb_env->tb_offset, tb);
+    cpu_ppc_store_tb(tb_env, clock, &tb_env->tb_offset, tb);
 }
 
 static void cpu_ppc_tb_stop (CPUPPCState *env)
@@ -801,8 +789,8 @@ static void __cpu_ppc_store_decr(PowerPCCPU *cpu, uint64_t *nextp,
                                  QEMUTimer *timer,
                                  void (*raise_excp)(void *),
                                  void (*lower_excp)(PowerPCCPU *),
-                                 target_ulong decr, target_ulong value,
-                                 int nr_bits)
+                                 uint32_t flags, target_ulong decr,
+                                 target_ulong value, int nr_bits)
 {
     CPUPPCState *env = &cpu->env;
     ppc_tb_t *tb_env = env->tb_env;
@@ -811,6 +799,8 @@ static void __cpu_ppc_store_decr(PowerPCCPU *cpu, uint64_t *nextp,
     int64_t signed_decr;
 
     /* Truncate value to decr_width and sign extend for simplicity */
+    value = extract64(value, 0, nr_bits);
+    decr = extract64(decr, 0, nr_bits);
     signed_value = sextract64(value, 0, nr_bits);
     signed_decr = sextract64(decr, 0, nr_bits);
 
@@ -822,11 +812,7 @@ static void __cpu_ppc_store_decr(PowerPCCPU *cpu, uint64_t *nextp,
     }
 
     /*
-     * Going from 2 -> 1, 1 -> 0 or 0 -> -1 is the event to generate a DEC
-     * interrupt.
-     *
-     * If we get a really small DEC value, we can assume that by the time we
-     * handled it we should inject an interrupt already.
+     * Going from 1 -> 0 or 0 -> -1 is the event to generate a DEC interrupt.
      *
      * On MSB level based DEC implementations the MSB always means the interrupt
      * is pending, so raise it on those.
@@ -834,16 +820,15 @@ static void __cpu_ppc_store_decr(PowerPCCPU *cpu, uint64_t *nextp,
      * On MSB edge based DEC implementations the MSB going from 0 -> 1 triggers
      * an edge interrupt, so raise it here too.
      */
-    if ((value < 3) ||
-        ((tb_env->flags & PPC_DECR_UNDERFLOW_LEVEL) && signed_value < 0) ||
-        ((tb_env->flags & PPC_DECR_UNDERFLOW_TRIGGERED) && signed_value < 0
+    if (((flags & PPC_DECR_UNDERFLOW_LEVEL) && signed_value < 0) ||
+        ((flags & PPC_DECR_UNDERFLOW_TRIGGERED) && signed_value < 0
           && signed_decr >= 0)) {
         (*raise_excp)(cpu);
         return;
     }
 
     /* On MSB level based systems a 0 for the MSB stops interrupt delivery */
-    if (signed_value >= 0 && (tb_env->flags & PPC_DECR_UNDERFLOW_LEVEL)) {
+    if (signed_value >= 0 && (flags & PPC_DECR_UNDERFLOW_LEVEL)) {
         (*lower_excp)(cpu);
     }
 
@@ -862,8 +847,8 @@ static inline void _cpu_ppc_store_decr(PowerPCCPU *cpu, target_ulong decr,
     ppc_tb_t *tb_env = cpu->env.tb_env;
 
     __cpu_ppc_store_decr(cpu, &tb_env->decr_next, tb_env->decr_timer,
-                         tb_env->decr_timer->cb, &cpu_ppc_decr_lower, decr,
-                         value, nr_bits);
+                         tb_env->decr_timer->cb, &cpu_ppc_decr_lower,
+                         tb_env->flags, decr, value, nr_bits);
 }
 
 void cpu_ppc_store_decr(CPUPPCState *env, target_ulong value)
@@ -892,8 +877,10 @@ static inline void _cpu_ppc_store_hdecr(PowerPCCPU *cpu, target_ulong hdecr,
     ppc_tb_t *tb_env = cpu->env.tb_env;
 
     if (tb_env->hdecr_timer != NULL) {
+        /* HDECR (Book3S 64bit) is edge-based, not level like DECR */
         __cpu_ppc_store_decr(cpu, &tb_env->hdecr_next, tb_env->hdecr_timer,
                              tb_env->hdecr_timer->cb, &cpu_ppc_hdecr_lower,
+                             PPC_DECR_UNDERFLOW_TRIGGERED,
                              hdecr, value, nr_bits);
     }
 }
@@ -1450,6 +1437,12 @@ int ppc_cpu_pir(PowerPCCPU *cpu)
 {
     CPUPPCState *env = &cpu->env;
     return env->spr_cb[SPR_PIR].default_value;
+}
+
+int ppc_cpu_tir(PowerPCCPU *cpu)
+{
+    CPUPPCState *env = &cpu->env;
+    return env->spr_cb[SPR_TIR].default_value;
 }
 
 PowerPCCPU *ppc_get_vcpu_by_pir(int pir)

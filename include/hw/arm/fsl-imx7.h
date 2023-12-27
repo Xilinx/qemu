@@ -32,7 +32,6 @@
 #include "hw/timer/imx_gpt.h"
 #include "hw/timer/imx_epit.h"
 #include "hw/i2c/imx_i2c.h"
-#include "hw/gpio/imx_gpio.h"
 #include "hw/sd/sdhci.h"
 #include "hw/ssi/imx_spi.h"
 #include "hw/net/imx_fec.h"
@@ -83,6 +82,7 @@ struct FslIMX7State {
     ChipideaState      usb[FSL_IMX7_NUM_USBS];
     DesignwarePCIEHost pcie;
     uint32_t           phy_num[FSL_IMX7_NUM_ETHS];
+    bool               phy_connected[FSL_IMX7_NUM_ETHS];
 };
 
 enum FslIMX7MemoryMap {
@@ -165,7 +165,7 @@ enum FslIMX7MemoryMap {
      * Some versions of the reference manual claim that UART2 is @
      * 0x30870000, but experiments with HW + DT files in upstream
      * Linux kernel show that not to be true and that block is
-     * acutally located @ 0x30890000
+     * actually located @ 0x30890000
      */
     FSL_IMX7_UART2_ADDR           = 0x30890000,
     FSL_IMX7_UART3_ADDR           = 0x30880000,
@@ -234,6 +234,26 @@ enum FslIMX7IRQs {
     FSL_IMX7_USB1_IRQ     = 43,
     FSL_IMX7_USB2_IRQ     = 42,
     FSL_IMX7_USB3_IRQ     = 40,
+
+    FSL_IMX7_GPT1_IRQ     = 55,
+    FSL_IMX7_GPT2_IRQ     = 54,
+    FSL_IMX7_GPT3_IRQ     = 53,
+    FSL_IMX7_GPT4_IRQ     = 52,
+
+    FSL_IMX7_GPIO1_LOW_IRQ  = 64,
+    FSL_IMX7_GPIO1_HIGH_IRQ = 65,
+    FSL_IMX7_GPIO2_LOW_IRQ  = 66,
+    FSL_IMX7_GPIO2_HIGH_IRQ = 67,
+    FSL_IMX7_GPIO3_LOW_IRQ  = 68,
+    FSL_IMX7_GPIO3_HIGH_IRQ = 69,
+    FSL_IMX7_GPIO4_LOW_IRQ  = 70,
+    FSL_IMX7_GPIO4_HIGH_IRQ = 71,
+    FSL_IMX7_GPIO5_LOW_IRQ  = 72,
+    FSL_IMX7_GPIO5_HIGH_IRQ = 73,
+    FSL_IMX7_GPIO6_LOW_IRQ  = 74,
+    FSL_IMX7_GPIO6_HIGH_IRQ = 75,
+    FSL_IMX7_GPIO7_LOW_IRQ  = 76,
+    FSL_IMX7_GPIO7_HIGH_IRQ = 77,
 
     FSL_IMX7_WDOG1_IRQ    = 78,
     FSL_IMX7_WDOG2_IRQ    = 79,

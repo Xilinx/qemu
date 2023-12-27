@@ -34,6 +34,7 @@
 #include "sysemu/hw_accel.h"
 #include "exec/cpu-common.h"
 #include "qemu/thread.h"
+#include "qemu/main-loop.h"
 #include "qemu/plugin.h"
 #include "sysemu/cpus.h"
 #include "qemu/guest-random.h"
@@ -354,7 +355,7 @@ static void qemu_init_sigbus(void)
 
     /*
      * ALERT: when modifying this, take care that SIGBUS forwarding in
-     * os_mem_prealloc() will continue working as expected.
+     * qemu_prealloc_mem() will continue working as expected.
      */
     memset(&action, 0, sizeof(action));
     action.sa_flags = SA_SIGINFO;
@@ -404,7 +405,7 @@ static void qemu_cpu_stop(CPUState *cpu, bool exit)
 
 void qemu_wait_io_event_common(CPUState *cpu)
 {
-    qatomic_mb_set(&cpu->thread_kicked, false);
+    qatomic_set_mb(&cpu->thread_kicked, false);
     if (cpu->stop) {
         qemu_cpu_stop(cpu, false);
     }
@@ -437,18 +438,19 @@ void qemu_wait_io_event(CPUState *cpu)
 
 void cpus_kick_thread(CPUState *cpu)
 {
-#ifndef _WIN32
-    int err;
-
     if (cpu->thread_kicked) {
         return;
     }
     cpu->thread_kicked = true;
-    err = pthread_kill(cpu->thread->thread, SIG_IPI);
+
+#ifndef _WIN32
+    int err = pthread_kill(cpu->thread->thread, SIG_IPI);
     if (err && err != ESRCH) {
         fprintf(stderr, "qemu:%s: %s", __func__, strerror(err));
         exit(1);
     }
+#else
+    qemu_sem_post(&cpu->sem);
 #endif
 }
 
@@ -615,6 +617,13 @@ void cpus_register_accel(const AccelOpsClass *ops)
     assert(ops != NULL);
     assert(ops->create_vcpu_thread != NULL); /* mandatory */
     cpus_accel = ops;
+}
+
+const AccelOpsClass *cpus_get_accel(void)
+{
+    /* broken if we call this early */
+    assert(cpus_accel);
+    return cpus_accel;
 }
 
 void qemu_init_vcpu(CPUState *cpu)

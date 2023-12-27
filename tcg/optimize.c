@@ -25,7 +25,7 @@
 
 #include "qemu/osdep.h"
 #include "qemu/int128.h"
-#include "tcg/tcg-op.h"
+#include "tcg/tcg-op-common.h"
 #include "tcg-internal.h"
 
 #define CASE_OP_32_64(x)                        \
@@ -190,7 +190,7 @@ static TCGTemp *find_better_copy(TCGContext *s, TCGTemp *ts)
         } else if (i->kind > ts->kind) {
             if (i->kind == TEMP_GLOBAL) {
                 g = i;
-            } else if (i->kind == TEMP_LOCAL) {
+            } else if (i->kind == TEMP_TB) {
                 l = i;
             }
         }
@@ -453,9 +453,7 @@ static uint64_t do_constant_folding_2(TCGOpcode op, uint64_t x, uint64_t y)
         return (uint64_t)x % ((uint64_t)y ? : 1);
 
     default:
-        fprintf(stderr,
-                "Unrecognized operation %d in do_constant_folding.\n", op);
-        tcg_abort();
+        g_assert_not_reached();
     }
 }
 
@@ -493,7 +491,7 @@ static bool do_constant_folding_cond_32(uint32_t x, uint32_t y, TCGCond c)
     case TCG_COND_GTU:
         return x > y;
     default:
-        tcg_abort();
+        g_assert_not_reached();
     }
 }
 
@@ -521,7 +519,7 @@ static bool do_constant_folding_cond_64(uint64_t x, uint64_t y, TCGCond c)
     case TCG_COND_GTU:
         return x > y;
     default:
-        tcg_abort();
+        g_assert_not_reached();
     }
 }
 
@@ -541,7 +539,7 @@ static bool do_constant_folding_cond_eq(TCGCond c)
     case TCG_COND_EQ:
         return 1;
     default:
-        tcg_abort();
+        g_assert_not_reached();
     }
 }
 
@@ -667,9 +665,7 @@ static void init_arguments(OptContext *ctx, TCGOp *op, int nb_args)
 {
     for (int i = 0; i < nb_args; i++) {
         TCGTemp *ts = arg_temp(op->args[i]);
-        if (ts) {
-            init_ts_info(ctx, ts);
-        }
+        init_ts_info(ctx, ts);
     }
 }
 
@@ -680,7 +676,7 @@ static void copy_propagate(OptContext *ctx, TCGOp *op,
 
     for (int i = nb_oargs; i < nb_oargs + nb_iargs; i++) {
         TCGTemp *ts = arg_temp(op->args[i]);
-        if (ts && ts_is_copy(ts)) {
+        if (ts_is_copy(ts)) {
             op->args[i] = temp_arg(find_better_copy(s, ts));
         }
     }
@@ -962,7 +958,7 @@ static bool fold_addsub2(OptContext *ctx, TCGOp *op, bool add)
         rh = op->args[1];
 
         /* The proper opcode is supplied by tcg_opt_gen_mov. */
-        op2 = tcg_op_insert_before(ctx->tcg, op, 0);
+        op2 = tcg_op_insert_before(ctx->tcg, op, 0, 2);
 
         tcg_opt_gen_movi(ctx, op, rl, al);
         tcg_opt_gen_movi(ctx, op2, rh, ah);
@@ -1613,7 +1609,7 @@ static bool fold_multiply2(OptContext *ctx, TCGOp *op)
         rh = op->args[1];
 
         /* The proper opcode is supplied by tcg_opt_gen_mov. */
-        op2 = tcg_op_insert_before(ctx->tcg, op, 0);
+        op2 = tcg_op_insert_before(ctx->tcg, op, 0, 2);
 
         tcg_opt_gen_movi(ctx, op, rl, l);
         tcg_opt_gen_movi(ctx, op2, rh, h);
@@ -2188,13 +2184,22 @@ void tcg_optimize(TCGContext *s)
         CASE_OP_32_64_VEC(orc):
             done = fold_orc(&ctx, op);
             break;
-        case INDEX_op_qemu_ld_i32:
-        case INDEX_op_qemu_ld_i64:
+        case INDEX_op_qemu_ld_a32_i32:
+        case INDEX_op_qemu_ld_a64_i32:
+        case INDEX_op_qemu_ld_a32_i64:
+        case INDEX_op_qemu_ld_a64_i64:
+        case INDEX_op_qemu_ld_a32_i128:
+        case INDEX_op_qemu_ld_a64_i128:
             done = fold_qemu_ld(&ctx, op);
             break;
-        case INDEX_op_qemu_st_i32:
-        case INDEX_op_qemu_st8_i32:
-        case INDEX_op_qemu_st_i64:
+        case INDEX_op_qemu_st8_a32_i32:
+        case INDEX_op_qemu_st8_a64_i32:
+        case INDEX_op_qemu_st_a32_i32:
+        case INDEX_op_qemu_st_a64_i32:
+        case INDEX_op_qemu_st_a32_i64:
+        case INDEX_op_qemu_st_a64_i64:
+        case INDEX_op_qemu_st_a32_i128:
+        case INDEX_op_qemu_st_a64_i128:
             done = fold_qemu_st(&ctx, op);
             break;
         CASE_OP_32_64(rem):

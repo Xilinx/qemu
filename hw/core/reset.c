@@ -33,6 +33,7 @@ typedef struct QEMUResetEntry {
     QTAILQ_ENTRY(QEMUResetEntry) entry;
     QEMUResetHandler *func;
     void *opaque;
+    bool skip_on_snapshot_load;
 } QEMUResetEntry;
 
 static QTAILQ_HEAD(, QEMUResetEntry) reset_handlers =
@@ -64,6 +65,16 @@ void qemu_register_reset(QEMUResetHandler *func, void *opaque)
     REGISTER_RESET_LIST(&reset_handlers, func, opaque);
 }
 
+void qemu_register_reset_nosnapshotload(QEMUResetHandler *func, void *opaque)
+{
+    QEMUResetEntry *re = g_new0(QEMUResetEntry, 1);
+
+    re->func = func;
+    re->opaque = opaque;
+    re->skip_on_snapshot_load = true;
+    QTAILQ_INSERT_TAIL(&reset_handlers, re, entry);
+}
+
 void qemu_unregister_reset(QEMUResetHandler *func, void *opaque)
 {
     UNREGISTER_RESET_LIST(&reset_handlers, func, opaque);
@@ -79,12 +90,16 @@ void qemu_unregister_reset_loader(QEMUResetHandler *func, void *opaque)
     UNREGISTER_RESET_LIST(&loader_handlers, func, opaque);
 }
 
-void qemu_devices_reset(void)
+void qemu_devices_reset(ShutdownCause reason)
 {
     QEMUResetEntry *re, *nre;
 
     /* reset all devices */
     QTAILQ_FOREACH_SAFE(re, &reset_handlers, entry, nre) {
+        if (reason == SHUTDOWN_CAUSE_SNAPSHOT_LOAD &&
+            re->skip_on_snapshot_load) {
+            continue;
+        }
         if (re->func) {
             re->func(re->opaque);
         }

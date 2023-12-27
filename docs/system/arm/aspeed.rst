@@ -24,6 +24,8 @@ AST2500 SoC based machines :
 - ``sonorapass-bmc``       OCP SonoraPass BMC
 - ``fp5280g2-bmc``         Inspur FP5280G2 BMC
 - ``g220a-bmc``            Bytedance G220A BMC
+- ``yosemitev2-bmc``       Facebook YosemiteV2 BMC
+- ``tiogapass-bmc``        Facebook Tiogapass BMC
 
 AST2600 SoC based machines :
 
@@ -120,6 +122,11 @@ Options specific to Aspeed machines are :
 
  * ``spi-model`` to change the SPI Flash model.
 
+ * ``bmc-console`` to change the default console device. Most of the
+   machines use the ``UART5`` device for a boot console, which is
+   mapped on ``/dev/ttyS4`` under Linux, but it is not always the
+   case.
+
 For instance, to start the ``ast2500-evb`` machine with a different
 FMC chip and a bigger (64M) SPI chip, use :
 
@@ -127,6 +134,12 @@ FMC chip and a bigger (64M) SPI chip, use :
 
   -M ast2500-evb,fmc-model=mx25l25635e,spi-model=mx66u51235f
 
+To change the boot console and use device ``UART3`` (``/dev/ttyS2``
+under Linux), use :
+
+.. code-block:: bash
+
+  -M ast2500-evb,bmc-console=uart3
 
 Aspeed minibmc family boards (``ast1030-evb``)
 ==================================================================

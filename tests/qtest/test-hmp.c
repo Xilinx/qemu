@@ -56,6 +56,7 @@ static const char *hmp_cmds[] = {
     "o /w 0 0x1234",
     "object_add memory-backend-ram,id=mem1,size=256M",
     "object_del mem1",
+    "one-insn-per-tb on",
     "pmemsave 0 4096 \"/dev/null\"",
     "p $pc + 8",
     "qom-list /",
@@ -151,7 +152,7 @@ int main(int argc, char **argv)
 {
     char *v_env = getenv("V");
 
-    if (v_env && *v_env >= '2') {
+    if (v_env && atoi(v_env) >= 2) {
         verbose = true;
     }
 

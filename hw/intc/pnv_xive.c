@@ -18,6 +18,7 @@
 #include "monitor/monitor.h"
 #include "hw/ppc/fdt.h"
 #include "hw/ppc/pnv.h"
+#include "hw/ppc/pnv_chip.h"
 #include "hw/ppc/pnv_core.h"
 #include "hw/ppc/pnv_xscom.h"
 #include "hw/ppc/pnv_xive.h"
@@ -476,6 +477,16 @@ static int pnv_xive_match_nvt(XivePresenter *xptr, uint8_t format,
     }
 
     return count;
+}
+
+static uint32_t pnv_xive_presenter_get_config(XivePresenter *xptr)
+{
+    uint32_t cfg = 0;
+
+    /* TIMA GEN1 is all P9 knows */
+    cfg |= XIVE_PRESENTER_GEN1_TIMA_OS;
+
+    return cfg;
 }
 
 static uint8_t pnv_xive_get_block_id(XiveRouter *xrtr)
@@ -1990,6 +2001,7 @@ static void pnv_xive_class_init(ObjectClass *klass, void *data)
 
     xnc->notify = pnv_xive_notify;
     xpc->match_nvt  = pnv_xive_match_nvt;
+    xpc->get_config = pnv_xive_presenter_get_config;
 };
 
 static const TypeInfo pnv_xive_info = {

@@ -26,7 +26,6 @@
 #include "s390x-internal.h"
 #include "kvm/kvm_s390x.h"
 #include "sysemu/kvm.h"
-#include "sysemu/reset.h"
 #include "qemu/module.h"
 #include "trace.h"
 #include "qapi/qapi-types-machine.h"
@@ -35,9 +34,32 @@
 #include "fpu/softfloat-helpers.h"
 #include "disas/capstone.h"
 #include "sysemu/tcg.h"
+#ifndef CONFIG_USER_ONLY
+#include "sysemu/reset.h"
+#endif
 
 #define CR0_RESET       0xE0UL
 #define CR14_RESET      0xC2000000UL;
+
+#ifndef CONFIG_USER_ONLY
+static bool is_early_exception_psw(uint64_t mask, uint64_t addr)
+{
+    if (mask & PSW_MASK_RESERVED) {
+        return true;
+    }
+
+    switch (mask & (PSW_MASK_32 | PSW_MASK_64)) {
+    case 0:
+        return addr & ~0xffffffULL;
+    case PSW_MASK_32:
+        return addr & ~0x7fffffffULL;
+    case PSW_MASK_32 | PSW_MASK_64:
+        return false;
+    default: /* PSW_MASK_64 */
+        return true;
+    }
+}
+#endif
 
 void s390_cpu_set_psw(CPUS390XState *env, uint64_t mask, uint64_t addr)
 {
@@ -55,6 +77,12 @@ void s390_cpu_set_psw(CPUS390XState *env, uint64_t mask, uint64_t addr)
     env->cc_op = (mask >> 44) & 3;
 
 #ifndef CONFIG_USER_ONLY
+    if (is_early_exception_psw(mask, addr)) {
+        env->int_pgm_ilen = 0;
+        trigger_pgm_exception(env, PGM_SPECIFICATION);
+        return;
+    }
+
     if ((old_mask ^ mask) & PSW_MASK_PER) {
         s390_cpu_recompute_watchpoints(env_cpu(env));
     }
@@ -88,6 +116,13 @@ static void s390_cpu_set_pc(CPUState *cs, vaddr value)
     cpu->env.psw.addr = value;
 }
 
+static vaddr s390_cpu_get_pc(CPUState *cs)
+{
+    S390CPU *cpu = S390_CPU(cs);
+
+    return cpu->env.psw.addr;
+}
+
 static bool s390_cpu_has_work(CPUState *cs)
 {
     S390CPU *cpu = S390_CPU(cs);
@@ -103,6 +138,13 @@ static bool s390_cpu_has_work(CPUState *cs)
     }
 
     return s390_cpu_has_int(cpu);
+}
+
+static void s390_query_cpu_fast(CPUState *cpu, CpuInfoFast *value)
+{
+    S390CPU *s390_cpu = S390_CPU(cpu);
+
+    value->u.s390x.cpu_state = s390_cpu->env.cpu_state;
 }
 
 /* S390CPUClass::reset() */
@@ -265,6 +307,7 @@ static void s390_cpu_reset_full(DeviceState *dev)
 
 static const struct TCGCPUOps s390_tcg_ops = {
     .initialize = s390x_translate_init,
+    .restore_state_to_opc = s390x_restore_state_to_opc,
 
 #ifdef CONFIG_USER_ONLY
     .record_sigsegv = s390_cpu_record_sigsegv,
@@ -296,7 +339,9 @@ static void s390_cpu_class_init(ObjectClass *oc, void *data)
     cc->class_by_name = s390_cpu_class_by_name,
     cc->has_work = s390_cpu_has_work;
     cc->dump_state = s390_cpu_dump_state;
+    cc->query_cpu_fast = s390_query_cpu_fast;
     cc->set_pc = s390_cpu_set_pc;
+    cc->get_pc = s390_cpu_get_pc;
     cc->gdb_read_register = s390_cpu_gdb_read_register;
     cc->gdb_write_register = s390_cpu_gdb_write_register;
 #ifndef CONFIG_USER_ONLY

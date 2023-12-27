@@ -21,13 +21,10 @@
 #define TRICORE_CPU_H
 
 #include "cpu-qom.h"
+#include "hw/registerfields.h"
 #include "exec/cpu-defs.h"
 #include "qemu/cpu-float.h"
 #include "tricore-defs.h"
-
-struct tricore_boot_info;
-
-typedef struct tricore_def_t tricore_def_t;
 
 typedef struct CPUArchState {
     /* GPR Register */
@@ -179,16 +176,9 @@ typedef struct CPUArchState {
     uint32_t M3CNT;
     /* Floating Point Registers */
     float_status fp_status;
-    /* QEMU */
-    int error_code;
-    uint32_t hflags;    /* CPU State */
 
     /* Internal CPU feature flags.  */
     uint64_t features;
-
-    const tricore_def_t *cpu_model;
-    void *irq[8];
-    struct QEMUTimer *timer; /* Internal timer */
 } CPUTriCoreState;
 
 /**
@@ -210,13 +200,33 @@ struct ArchCPU {
 hwaddr tricore_cpu_get_phys_page_debug(CPUState *cpu, vaddr addr);
 void tricore_cpu_dump_state(CPUState *cpu, FILE *f, int flags);
 
+FIELD(PCXI, PCPN_13, 24, 8)
+FIELD(PCXI, PCPN_161, 22, 8)
+FIELD(PCXI, PIE_13, 23, 1)
+FIELD(PCXI, PIE_161, 21, 1)
+FIELD(PCXI, UL_13, 22, 1)
+FIELD(PCXI, UL_161, 20, 1)
+FIELD(PCXI, PCXS, 16, 4)
+FIELD(PCXI, PCXO, 0, 16)
+uint32_t pcxi_get_ul(CPUTriCoreState *env);
+uint32_t pcxi_get_pie(CPUTriCoreState *env);
+uint32_t pcxi_get_pcpn(CPUTriCoreState *env);
+uint32_t pcxi_get_pcxs(CPUTriCoreState *env);
+uint32_t pcxi_get_pcxo(CPUTriCoreState *env);
+void pcxi_set_ul(CPUTriCoreState *env, uint32_t val);
+void pcxi_set_pie(CPUTriCoreState *env, uint32_t val);
+void pcxi_set_pcpn(CPUTriCoreState *env, uint32_t val);
 
-#define MASK_PCXI_PCPN 0xff000000
-#define MASK_PCXI_PIE_1_3  0x00800000
-#define MASK_PCXI_PIE_1_6  0x00200000
-#define MASK_PCXI_UL   0x00400000
-#define MASK_PCXI_PCXS 0x000f0000
-#define MASK_PCXI_PCXO 0x0000ffff
+FIELD(ICR, IE_161, 15, 1)
+FIELD(ICR, IE_13, 8, 1)
+FIELD(ICR, PIPN, 16, 8)
+FIELD(ICR, CCPN, 0, 8)
+
+uint32_t icr_get_ie(CPUTriCoreState *env);
+uint32_t icr_get_ccpn(CPUTriCoreState *env);
+
+void icr_set_ccpn(CPUTriCoreState *env, uint32_t val);
+void icr_set_ie(CPUTriCoreState *env, uint32_t val);
 
 #define MASK_PSW_USB 0xff000000
 #define MASK_USB_C   0x80000000
@@ -239,10 +249,6 @@ void tricore_cpu_dump_state(CPUState *cpu, FILE *f, int flags);
 #define MASK_CPUID_MOD_32B 0x0000ff00
 #define MASK_CPUID_REV     0x000000ff
 
-#define MASK_ICR_PIPN 0x00ff0000
-#define MASK_ICR_IE_1_3   0x00000100
-#define MASK_ICR_IE_1_6   0x00008000
-#define MASK_ICR_CCPN 0x000000ff
 
 #define MASK_FCX_FCXS 0x000f0000
 #define MASK_FCX_FCXO 0x0000ffff
@@ -257,19 +263,21 @@ void tricore_cpu_dump_state(CPUState *cpu, FILE *f, int flags);
 #define MASK_DBGSR_PEVT 0x40
 #define MASK_DBGSR_EVTSRC 0x1f00
 
-#define TRICORE_HFLAG_KUU     0x3
-#define TRICORE_HFLAG_UM0     0x00002 /* user mode-0 flag          */
-#define TRICORE_HFLAG_UM1     0x00001 /* user mode-1 flag          */
-#define TRICORE_HFLAG_SM      0x00000 /* kernel mode flag          */
+enum tricore_priv_levels {
+    TRICORE_PRIV_UM0 = 0x0, /* user mode-0 flag */
+    TRICORE_PRIV_UM1 = 0x1, /* user mode-1 flag */
+    TRICORE_PRIV_SM  = 0x2, /* kernel mode flag */
+};
 
 enum tricore_features {
     TRICORE_FEATURE_13,
     TRICORE_FEATURE_131,
     TRICORE_FEATURE_16,
     TRICORE_FEATURE_161,
+    TRICORE_FEATURE_162,
 };
 
-static inline int tricore_feature(CPUTriCoreState *env, int feature)
+static inline int tricore_has_feature(CPUTriCoreState *env, int feature)
 {
     return (env->features & (1ULL << feature)) != 0;
 }
@@ -371,15 +379,21 @@ static inline int cpu_mmu_index(CPUTriCoreState *env, bool ifetch)
 
 #include "exec/cpu-all.h"
 
+FIELD(TB_FLAGS, PRIV, 0, 2)
+
 void cpu_state_reset(CPUTriCoreState *s);
 void tricore_tcg_init(void);
 
-static inline void cpu_get_tb_cpu_state(CPUTriCoreState *env, target_ulong *pc,
-                                        target_ulong *cs_base, uint32_t *flags)
+static inline void cpu_get_tb_cpu_state(CPUTriCoreState *env, vaddr *pc,
+                                        uint64_t *cs_base, uint32_t *flags)
 {
+    uint32_t new_flags = 0;
     *pc = env->PC;
     *cs_base = 0;
-    *flags = 0;
+
+    new_flags |= FIELD_DP32(new_flags, TB_FLAGS, PRIV,
+            extract32(env->PSW, 10, 2));
+    *flags = new_flags;
 }
 
 #define TRICORE_CPU_TYPE_SUFFIX "-" TYPE_TRICORE_CPU

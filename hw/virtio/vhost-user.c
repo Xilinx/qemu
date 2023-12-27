@@ -11,6 +11,7 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "hw/virtio/vhost.h"
+#include "hw/virtio/virtio-crypto.h"
 #include "hw/virtio/vhost-user.h"
 #include "hw/virtio/vhost-backend.h"
 #include "hw/virtio/virtio.h"
@@ -21,6 +22,7 @@
 #include "qemu/error-report.h"
 #include "qemu/main-loop.h"
 #include "qemu/sockets.h"
+#include "sysemu/runstate.h"
 #include "sysemu/cryptodev.h"
 #include "migration/migration.h"
 #include "migration/postcopy-ram.h"
@@ -39,19 +41,9 @@
 
 #define VHOST_MEMORY_BASELINE_NREGIONS    8
 #define VHOST_USER_F_PROTOCOL_FEATURES 30
-#define VHOST_USER_SLAVE_MAX_FDS     8
+#define VHOST_USER_BACKEND_MAX_FDS     8
 
-/*
- * Set maximum number of RAM slots supported to
- * the maximum number supported by the target
- * hardware plaform.
- */
-#if defined(TARGET_X86) || defined(TARGET_X86_64) || \
-    defined(TARGET_ARM) || defined(TARGET_ARM_64)
-#include "hw/acpi/acpi.h"
-#define VHOST_USER_MAX_RAM_SLOTS ACPI_MAX_RAM_SLOTS
-
-#elif defined(TARGET_PPC) || defined(TARGET_PPC64)
+#if defined(TARGET_PPC) || defined(TARGET_PPC64)
 #include "hw/ppc/spapr.h"
 #define VHOST_USER_MAX_RAM_SLOTS SPAPR_MAX_RAM_SLOTS
 
@@ -70,17 +62,18 @@ enum VhostUserProtocolFeature {
     VHOST_USER_PROTOCOL_F_RARP = 2,
     VHOST_USER_PROTOCOL_F_REPLY_ACK = 3,
     VHOST_USER_PROTOCOL_F_NET_MTU = 4,
-    VHOST_USER_PROTOCOL_F_SLAVE_REQ = 5,
+    VHOST_USER_PROTOCOL_F_BACKEND_REQ = 5,
     VHOST_USER_PROTOCOL_F_CROSS_ENDIAN = 6,
     VHOST_USER_PROTOCOL_F_CRYPTO_SESSION = 7,
     VHOST_USER_PROTOCOL_F_PAGEFAULT = 8,
     VHOST_USER_PROTOCOL_F_CONFIG = 9,
-    VHOST_USER_PROTOCOL_F_SLAVE_SEND_FD = 10,
+    VHOST_USER_PROTOCOL_F_BACKEND_SEND_FD = 10,
     VHOST_USER_PROTOCOL_F_HOST_NOTIFIER = 11,
     VHOST_USER_PROTOCOL_F_INFLIGHT_SHMFD = 12,
     VHOST_USER_PROTOCOL_F_RESET_DEVICE = 13,
     /* Feature 14 reserved for VHOST_USER_PROTOCOL_F_INBAND_NOTIFICATIONS. */
     VHOST_USER_PROTOCOL_F_CONFIGURE_MEM_SLOTS = 15,
+    VHOST_USER_PROTOCOL_F_STATUS = 16,
     VHOST_USER_PROTOCOL_F_MAX
 };
 
@@ -108,7 +101,7 @@ typedef enum VhostUserRequest {
     VHOST_USER_SET_VRING_ENABLE = 18,
     VHOST_USER_SEND_RARP = 19,
     VHOST_USER_NET_SET_MTU = 20,
-    VHOST_USER_SET_SLAVE_REQ_FD = 21,
+    VHOST_USER_SET_BACKEND_REQ_FD = 21,
     VHOST_USER_IOTLB_MSG = 22,
     VHOST_USER_SET_VRING_ENDIAN = 23,
     VHOST_USER_GET_CONFIG = 24,
@@ -126,16 +119,18 @@ typedef enum VhostUserRequest {
     VHOST_USER_GET_MAX_MEM_SLOTS = 36,
     VHOST_USER_ADD_MEM_REG = 37,
     VHOST_USER_REM_MEM_REG = 38,
+    VHOST_USER_SET_STATUS = 39,
+    VHOST_USER_GET_STATUS = 40,
     VHOST_USER_MAX
 } VhostUserRequest;
 
-typedef enum VhostUserSlaveRequest {
-    VHOST_USER_SLAVE_NONE = 0,
-    VHOST_USER_SLAVE_IOTLB_MSG = 1,
-    VHOST_USER_SLAVE_CONFIG_CHANGE_MSG = 2,
-    VHOST_USER_SLAVE_VRING_HOST_NOTIFIER_MSG = 3,
-    VHOST_USER_SLAVE_MAX
-}  VhostUserSlaveRequest;
+typedef enum VhostUserBackendRequest {
+    VHOST_USER_BACKEND_NONE = 0,
+    VHOST_USER_BACKEND_IOTLB_MSG = 1,
+    VHOST_USER_BACKEND_CONFIG_CHANGE_MSG = 2,
+    VHOST_USER_BACKEND_VRING_HOST_NOTIFIER_MSG = 3,
+    VHOST_USER_BACKEND_MAX
+}  VhostUserBackendRequest;
 
 typedef struct VhostUserMemoryRegion {
     uint64_t guest_phys_addr;
@@ -169,13 +164,24 @@ typedef struct VhostUserConfig {
 
 #define VHOST_CRYPTO_SYM_HMAC_MAX_KEY_LEN    512
 #define VHOST_CRYPTO_SYM_CIPHER_MAX_KEY_LEN  64
+#define VHOST_CRYPTO_ASYM_MAX_KEY_LEN  1024
 
 typedef struct VhostUserCryptoSession {
+    uint64_t op_code;
+    union {
+        struct {
+            CryptoDevBackendSymSessionInfo session_setup_data;
+            uint8_t key[VHOST_CRYPTO_SYM_CIPHER_MAX_KEY_LEN];
+            uint8_t auth_key[VHOST_CRYPTO_SYM_HMAC_MAX_KEY_LEN];
+        } sym;
+        struct {
+            CryptoDevBackendAsymSessionInfo session_setup_data;
+            uint8_t key[VHOST_CRYPTO_ASYM_MAX_KEY_LEN];
+        } asym;
+    } u;
+
     /* session id for success, -1 on errors */
     int64_t session_id;
-    CryptoDevBackendSymSessionInfo session_setup_data;
-    uint8_t key[VHOST_CRYPTO_SYM_CIPHER_MAX_KEY_LEN];
-    uint8_t auth_key[VHOST_CRYPTO_SYM_HMAC_MAX_KEY_LEN];
 } VhostUserCryptoSession;
 
 static VhostUserConfig c __attribute__ ((unused));
@@ -200,7 +206,7 @@ typedef struct {
     VhostUserRequest request;
 
 #define VHOST_USER_VERSION_MASK     (0x3)
-#define VHOST_USER_REPLY_MASK       (0x1<<2)
+#define VHOST_USER_REPLY_MASK       (0x1 << 2)
 #define VHOST_USER_NEED_REPLY_MASK  (0x1 << 3)
     uint32_t flags;
     uint32_t size; /* the following payload size */
@@ -208,7 +214,7 @@ typedef struct {
 
 typedef union {
 #define VHOST_USER_VRING_IDX_MASK   (0xff)
-#define VHOST_USER_VRING_NOFD_MASK  (0x1<<8)
+#define VHOST_USER_VRING_NOFD_MASK  (0x1 << 8)
         uint64_t u64;
         struct vhost_vring_state state;
         struct vhost_vring_addr addr;
@@ -239,8 +245,8 @@ struct vhost_user {
     struct vhost_dev *dev;
     /* Shared between vhost devs of the same virtio device */
     VhostUserState *user;
-    QIOChannel *slave_ioc;
-    GSource *slave_src;
+    QIOChannel *backend_ioc;
+    GSource *backend_src;
     NotifierWithReturn postcopy_notifier;
     struct PostCopyFD  postcopy_fd;
     uint64_t           postcopy_client_bases[VHOST_USER_MAX_RAM_SLOTS];
@@ -248,7 +254,8 @@ struct vhost_user {
     size_t             region_rb_len;
     /* RAMBlock associated with a given region */
     RAMBlock         **region_rb;
-    /* The offset from the start of the RAMBlock to the start of the
+    /*
+     * The offset from the start of the RAMBlock to the start of the
      * vhost region.
      */
     ram_addr_t        *region_rb_offset;
@@ -300,19 +307,8 @@ static int vhost_user_read_header(struct vhost_dev *dev, VhostUserMsg *msg)
     return 0;
 }
 
-struct vhost_user_read_cb_data {
-    struct vhost_dev *dev;
-    VhostUserMsg *msg;
-    GMainLoop *loop;
-    int ret;
-};
-
-static gboolean vhost_user_read_cb(void *do_not_use, GIOCondition condition,
-                                   gpointer opaque)
+static int vhost_user_read(struct vhost_dev *dev, VhostUserMsg *msg)
 {
-    struct vhost_user_read_cb_data *data = opaque;
-    struct vhost_dev *dev = data->dev;
-    VhostUserMsg *msg = data->msg;
     struct vhost_user *u = dev->opaque;
     CharBackend *chr = u->user->chr;
     uint8_t *p = (uint8_t *) msg;
@@ -320,8 +316,7 @@ static gboolean vhost_user_read_cb(void *do_not_use, GIOCondition condition,
 
     r = vhost_user_read_header(dev, msg);
     if (r < 0) {
-        data->ret = r;
-        goto end;
+        return r;
     }
 
     /* validate message size is sane */
@@ -329,8 +324,7 @@ static gboolean vhost_user_read_cb(void *do_not_use, GIOCondition condition,
         error_report("Failed to read msg header."
                 " Size %d exceeds the maximum %zu.", msg->hdr.size,
                 VHOST_USER_PAYLOAD_SIZE);
-        data->ret = -EPROTO;
-        goto end;
+        return -EPROTO;
     }
 
     if (msg->hdr.size) {
@@ -341,84 +335,11 @@ static gboolean vhost_user_read_cb(void *do_not_use, GIOCondition condition,
             int saved_errno = errno;
             error_report("Failed to read msg payload."
                          " Read %d instead of %d.", r, msg->hdr.size);
-            data->ret = r < 0 ? -saved_errno : -EIO;
-            goto end;
+            return r < 0 ? -saved_errno : -EIO;
         }
     }
 
-end:
-    g_main_loop_quit(data->loop);
-    return G_SOURCE_REMOVE;
-}
-
-static gboolean slave_read(QIOChannel *ioc, GIOCondition condition,
-                           gpointer opaque);
-
-/*
- * This updates the read handler to use a new event loop context.
- * Event sources are removed from the previous context : this ensures
- * that events detected in the previous context are purged. They will
- * be re-detected and processed in the new context.
- */
-static void slave_update_read_handler(struct vhost_dev *dev,
-                                      GMainContext *ctxt)
-{
-    struct vhost_user *u = dev->opaque;
-
-    if (!u->slave_ioc) {
-        return;
-    }
-
-    if (u->slave_src) {
-        g_source_destroy(u->slave_src);
-        g_source_unref(u->slave_src);
-    }
-
-    u->slave_src = qio_channel_add_watch_source(u->slave_ioc,
-                                                G_IO_IN | G_IO_HUP,
-                                                slave_read, dev, NULL,
-                                                ctxt);
-}
-
-static int vhost_user_read(struct vhost_dev *dev, VhostUserMsg *msg)
-{
-    struct vhost_user *u = dev->opaque;
-    CharBackend *chr = u->user->chr;
-    GMainContext *prev_ctxt = chr->chr->gcontext;
-    GMainContext *ctxt = g_main_context_new();
-    GMainLoop *loop = g_main_loop_new(ctxt, FALSE);
-    struct vhost_user_read_cb_data data = {
-        .dev = dev,
-        .loop = loop,
-        .msg = msg,
-        .ret = 0
-    };
-
-    /*
-     * We want to be able to monitor the slave channel fd while waiting
-     * for chr I/O. This requires an event loop, but we can't nest the
-     * one to which chr is currently attached : its fd handlers might not
-     * be prepared for re-entrancy. So we create a new one and switch chr
-     * to use it.
-     */
-    slave_update_read_handler(dev, ctxt);
-    qemu_chr_be_update_read_handlers(chr->chr, ctxt);
-    qemu_chr_fe_add_watch(chr, G_IO_IN | G_IO_HUP, vhost_user_read_cb, &data);
-
-    g_main_loop_run(loop);
-
-    /*
-     * Restore the previous event loop context. This also destroys/recreates
-     * event sources : this guarantees that all pending events in the original
-     * context that have been processed by the nested loop are purged.
-     */
-    qemu_chr_be_update_read_handlers(chr->chr, prev_ctxt);
-    slave_update_read_handler(dev, NULL);
-
-    g_main_loop_unref(loop);
-    g_main_context_unref(ctxt);
-
-    return data.ret;
+    return 0;
 }
 
 static int process_message_reply(struct vhost_dev *dev,
@@ -446,7 +367,7 @@ static int process_message_reply(struct vhost_dev *dev,
     return msg_reply.payload.u64 ? -EIO : 0;
 }
 
-static bool vhost_user_one_time_request(VhostUserRequest request)
+static bool vhost_user_per_device_request(VhostUserRequest request)
 {
     switch (request) {
     case VHOST_USER_SET_OWNER:
@@ -454,6 +375,9 @@ static bool vhost_user_one_time_request(VhostUserRequest request)
     case VHOST_USER_SET_MEM_TABLE:
     case VHOST_USER_GET_QUEUE_NUM:
     case VHOST_USER_NET_SET_MTU:
+    case VHOST_USER_RESET_DEVICE:
+    case VHOST_USER_ADD_MEM_REG:
+    case VHOST_USER_REM_MEM_REG:
         return true;
     default:
         return false;
@@ -469,11 +393,17 @@ static int vhost_user_write(struct vhost_dev *dev, VhostUserMsg *msg,
     int ret, size = VHOST_USER_HDR_SIZE + msg->hdr.size;
 
     /*
-     * For non-vring specific requests, like VHOST_USER_SET_MEM_TABLE,
-     * we just need send it once in the first time. For later such
-     * request, we just ignore it.
+     * Some devices, like virtio-scsi, are implemented as a single vhost_dev,
+     * while others, like virtio-net, contain multiple vhost_devs. For
+     * operations such as configuring device memory mappings or issuing device
+     * resets, which affect the whole device instead of individual VQs,
+     * vhost-user messages should only be sent once.
+     * 
+     * Devices with multiple vhost_devs are given an associated dev->vq_index
+     * so per_device requests are only sent if vq_index is 0.
      */
-    if (vhost_user_one_time_request(msg->hdr.request) && dev->vq_index != 0) {
+    if (vhost_user_per_device_request(msg->hdr.request)
+        && dev->vq_index != 0) {
         msg->hdr.flags &= ~VHOST_USER_NEED_REPLY_MASK;
         return 0;
     }
@@ -522,6 +452,11 @@ static int vhost_user_set_log_base(struct vhost_dev *dev, uint64_t base,
         .hdr.size = sizeof(msg.payload.log),
     };
 
+    /* Send only once with first queue pair */
+    if (dev->vq_index != 0) {
+        return 0;
+    }
+
     if (shmfd && log->fd != -1) {
         fds[fd_num++] = log->fd;
     }
@@ -557,6 +492,7 @@ static MemoryRegion *vhost_user_get_mr_data(uint64_t addr, ram_addr_t *offset,
     assert((uintptr_t)addr == addr);
     mr = memory_region_from_host((void *)(uintptr_t)addr, offset);
     *fd = memory_region_get_fd(mr);
+    *offset += mr->ram_block->fd_offset;
 
     return mr;
 }
@@ -1327,7 +1263,7 @@ static int vhost_user_get_u64(struct vhost_dev *dev, int request, uint64_t *u64)
         .hdr.flags = VHOST_USER_VERSION,
     };
 
-    if (vhost_user_one_time_request(request) && dev->vq_index != 0) {
+    if (vhost_user_per_device_request(request) && dev->vq_index != 0) {
         return 0;
     }
 
@@ -1451,6 +1387,43 @@ static int vhost_user_set_u64(struct vhost_dev *dev, int request, uint64_t u64,
     return 0;
 }
 
+static int vhost_user_set_status(struct vhost_dev *dev, uint8_t status)
+{
+    return vhost_user_set_u64(dev, VHOST_USER_SET_STATUS, status, false);
+}
+
+static int vhost_user_get_status(struct vhost_dev *dev, uint8_t *status)
+{
+    uint64_t value;
+    int ret;
+
+    ret = vhost_user_get_u64(dev, VHOST_USER_GET_STATUS, &value);
+    if (ret < 0) {
+        return ret;
+    }
+    *status = value;
+
+    return 0;
+}
+
+static int vhost_user_add_status(struct vhost_dev *dev, uint8_t status)
+{
+    uint8_t s;
+    int ret;
+
+    ret = vhost_user_get_status(dev, &s);
+    if (ret < 0) {
+        return ret;
+    }
+
+    if ((s & status) == status) {
+        return 0;
+    }
+    s |= status;
+
+    return vhost_user_set_status(dev, s);
+}
+
 static int vhost_user_set_features(struct vhost_dev *dev,
                                    uint64_t features)
 {
@@ -1459,9 +1432,26 @@ static int vhost_user_set_features(struct vhost_dev *dev,
      * backend is actually logging changes
      */
     bool log_enabled = features & (0x1ULL << VHOST_F_LOG_ALL);
+    int ret;
 
-    return vhost_user_set_u64(dev, VHOST_USER_SET_FEATURES, features,
+    /*
+     * We need to include any extra backend only feature bits that
+     * might be needed by our device. Currently this includes the
+     * VHOST_USER_F_PROTOCOL_FEATURES bit for enabling protocol
+     * features.
+     */
+    ret = vhost_user_set_u64(dev, VHOST_USER_SET_FEATURES,
+                              features | dev->backend_features,
                               log_enabled);
+
+    if (virtio_has_feature(dev->protocol_features,
+                           VHOST_USER_PROTOCOL_F_STATUS)) {
+        if (!ret) {
+            return vhost_user_add_status(dev, VIRTIO_CONFIG_S_FEATURES_OK);
+        }
+    }
+
+    return ret;
 }
 
 static int vhost_user_set_protocol_features(struct vhost_dev *dev,
@@ -1512,7 +1502,7 @@ static int vhost_user_reset_device(struct vhost_dev *dev)
     return vhost_user_write(dev, &msg, NULL, 0);
 }
 
-static int vhost_user_slave_handle_config_change(struct vhost_dev *dev)
+static int vhost_user_backend_handle_config_change(struct vhost_dev *dev)
 {
     if (!dev->config_ops || !dev->config_ops->vhost_dev_config_notifier) {
         return -ENOSYS;
@@ -1535,6 +1525,11 @@ static VhostUserHostNotifier *fetch_or_create_notifier(VhostUserState *u,
 
     n = g_ptr_array_index(u->notifiers, idx);
     if (!n) {
+        /*
+         * In case notification arrive out-of-order,
+         * make room for current index.
+         */
+        g_ptr_array_remove_index(u->notifiers, idx);
         n = g_new0(VhostUserHostNotifier, 1);
         n->idx = idx;
         g_ptr_array_insert(u->notifiers, idx, n);
@@ -1544,7 +1539,7 @@ static VhostUserHostNotifier *fetch_or_create_notifier(VhostUserState *u,
     return n;
 }
 
-static int vhost_user_slave_handle_vring_host_notifier(struct vhost_dev *dev,
+static int vhost_user_backend_handle_vring_host_notifier(struct vhost_dev *dev,
                                                        VhostUserVringArea *area,
                                                        int fd)
 {
@@ -1606,16 +1601,16 @@ static int vhost_user_slave_handle_vring_host_notifier(struct vhost_dev *dev,
     return 0;
 }
 
-static void close_slave_channel(struct vhost_user *u)
+static void close_backend_channel(struct vhost_user *u)
 {
-    g_source_destroy(u->slave_src);
-    g_source_unref(u->slave_src);
-    u->slave_src = NULL;
-    object_unref(OBJECT(u->slave_ioc));
-    u->slave_ioc = NULL;
+    g_source_destroy(u->backend_src);
+    g_source_unref(u->backend_src);
+    u->backend_src = NULL;
+    object_unref(OBJECT(u->backend_ioc));
+    u->backend_ioc = NULL;
 }
 
-static gboolean slave_read(QIOChannel *ioc, GIOCondition condition,
+static gboolean backend_read(QIOChannel *ioc, GIOCondition condition,
                            gpointer opaque)
 {
     struct vhost_dev *dev = opaque;
@@ -1653,14 +1648,14 @@ static gboolean slave_read(QIOChannel *ioc, GIOCondition condition,
     }
 
     switch (hdr.request) {
-    case VHOST_USER_SLAVE_IOTLB_MSG:
+    case VHOST_USER_BACKEND_IOTLB_MSG:
         ret = vhost_backend_handle_iotlb_msg(dev, &payload.iotlb);
         break;
-    case VHOST_USER_SLAVE_CONFIG_CHANGE_MSG :
-        ret = vhost_user_slave_handle_config_change(dev);
+    case VHOST_USER_BACKEND_CONFIG_CHANGE_MSG:
+        ret = vhost_user_backend_handle_config_change(dev);
         break;
-    case VHOST_USER_SLAVE_VRING_HOST_NOTIFIER_MSG:
-        ret = vhost_user_slave_handle_vring_host_notifier(dev, &payload.area,
+    case VHOST_USER_BACKEND_VRING_HOST_NOTIFIER_MSG:
+        ret = vhost_user_backend_handle_vring_host_notifier(dev, &payload.area,
                                                           fd ? fd[0] : -1);
         break;
     default:
@@ -1696,7 +1691,7 @@ static gboolean slave_read(QIOChannel *ioc, GIOCondition condition,
     goto fdcleanup;
 
 err:
-    close_slave_channel(u);
+    close_backend_channel(u);
     rc = G_SOURCE_REMOVE;
 
 fdcleanup:
@@ -1708,10 +1703,10 @@ fdcleanup:
     return rc;
 }
 
-static int vhost_setup_slave_channel(struct vhost_dev *dev)
+static int vhost_setup_backend_channel(struct vhost_dev *dev)
 {
     VhostUserMsg msg = {
-        .hdr.request = VHOST_USER_SET_SLAVE_REQ_FD,
+        .hdr.request = VHOST_USER_SET_BACKEND_REQ_FD,
         .hdr.flags = VHOST_USER_VERSION,
     };
     struct vhost_user *u = dev->opaque;
@@ -1722,11 +1717,11 @@ static int vhost_setup_slave_channel(struct vhost_dev *dev)
     QIOChannel *ioc;
 
     if (!virtio_has_feature(dev->protocol_features,
-                            VHOST_USER_PROTOCOL_F_SLAVE_REQ)) {
+                            VHOST_USER_PROTOCOL_F_BACKEND_REQ)) {
         return 0;
     }
 
-    if (socketpair(PF_UNIX, SOCK_STREAM, 0, sv) == -1) {
+    if (qemu_socketpair(PF_UNIX, SOCK_STREAM, 0, sv) == -1) {
         int saved_errno = errno;
         error_report("socketpair() failed");
         return -saved_errno;
@@ -1737,8 +1732,10 @@ static int vhost_setup_slave_channel(struct vhost_dev *dev)
         error_report_err(local_err);
         return -ECONNREFUSED;
     }
-    u->slave_ioc = ioc;
-    slave_update_read_handler(dev, NULL);
+    u->backend_ioc = ioc;
+    u->backend_src = qio_channel_add_watch_source(u->backend_ioc,
+                                                G_IO_IN | G_IO_HUP,
+                                                backend_read, dev, NULL, NULL);
 
     if (reply_supported) {
         msg.hdr.flags |= VHOST_USER_NEED_REPLY_MASK;
@@ -1756,7 +1753,7 @@ static int vhost_setup_slave_channel(struct vhost_dev *dev)
 out:
     close(sv[1]);
     if (ret) {
-        close_slave_channel(u);
+        close_backend_channel(u);
     }
 
     return ret;
@@ -2044,8 +2041,8 @@ static int vhost_user_backend_init(struct vhost_dev *dev, void *opaque,
         } else {
             if (virtio_has_feature(protocol_features,
                                    VHOST_USER_PROTOCOL_F_CONFIG)) {
-                warn_reportf_err(*errp, "vhost-user backend supports "
-                                 "VHOST_USER_PROTOCOL_F_CONFIG but QEMU does not.");
+                warn_report("vhost-user backend supports "
+                            "VHOST_USER_PROTOCOL_F_CONFIG but QEMU does not.");
                 protocol_features &= ~(1ULL << VHOST_USER_PROTOCOL_F_CONFIG);
             }
         }
@@ -2078,11 +2075,11 @@ static int vhost_user_backend_init(struct vhost_dev *dev, void *opaque,
 
         if (virtio_has_feature(features, VIRTIO_F_IOMMU_PLATFORM) &&
                 !(virtio_has_feature(dev->protocol_features,
-                    VHOST_USER_PROTOCOL_F_SLAVE_REQ) &&
+                    VHOST_USER_PROTOCOL_F_BACKEND_REQ) &&
                  virtio_has_feature(dev->protocol_features,
                     VHOST_USER_PROTOCOL_F_REPLY_ACK))) {
             error_setg(errp, "IOMMU support requires reply-ack and "
-                       "slave-req protocol features.");
+                       "backend-req protocol features.");
             return -EINVAL;
         }
 
@@ -2118,7 +2115,7 @@ static int vhost_user_backend_init(struct vhost_dev *dev, void *opaque,
     }
 
     if (dev->vq_index == 0) {
-        err = vhost_setup_slave_channel(dev);
+        err = vhost_setup_backend_channel(dev);
         if (err < 0) {
             error_setg_errno(errp, EPROTO, "vhost_backend_init failed");
             return -EPROTO;
@@ -2148,8 +2145,8 @@ static int vhost_user_backend_cleanup(struct vhost_dev *dev)
         close(u->postcopy_fd.fd);
         u->postcopy_fd.handler = NULL;
     }
-    if (u->slave_ioc) {
-        close_slave_channel(u);
+    if (u->backend_ioc) {
+        close_backend_channel(u);
     }
     g_free(u->region_rb);
     u->region_rb = NULL;
@@ -2245,7 +2242,7 @@ static int vhost_user_net_set_mtu(struct vhost_dev *dev, uint16_t mtu)
         return ret;
     }
 
-    /* If reply_ack supported, slave has to ack specified MTU is valid */
+    /* If reply_ack supported, backend has to ack specified MTU is valid */
     if (reply_supported) {
         return process_message_reply(dev, &msg);
     }
@@ -2379,7 +2376,7 @@ static int vhost_user_crypto_create_session(struct vhost_dev *dev,
     int ret;
     bool crypto_session = virtio_has_feature(dev->protocol_features,
                                        VHOST_USER_PROTOCOL_F_CRYPTO_SESSION);
-    CryptoDevBackendSymSessionInfo *sess_info = session_info;
+    CryptoDevBackendSessionInfo *backend_info = session_info;
     VhostUserMsg msg = {
         .hdr.request = VHOST_USER_CREATE_CRYPTO_SESSION,
         .hdr.flags = VHOST_USER_VERSION,
@@ -2393,16 +2390,53 @@ static int vhost_user_crypto_create_session(struct vhost_dev *dev,
         return -ENOTSUP;
     }
 
-    memcpy(&msg.payload.session.session_setup_data, sess_info,
-              sizeof(CryptoDevBackendSymSessionInfo));
-    if (sess_info->key_len) {
-        memcpy(&msg.payload.session.key, sess_info->cipher_key,
-               sess_info->key_len);
+    if (backend_info->op_code == VIRTIO_CRYPTO_AKCIPHER_CREATE_SESSION) {
+        CryptoDevBackendAsymSessionInfo *sess = &backend_info->u.asym_sess_info;
+        size_t keylen;
+
+        memcpy(&msg.payload.session.u.asym.session_setup_data, sess,
+               sizeof(CryptoDevBackendAsymSessionInfo));
+        if (sess->keylen) {
+            keylen = sizeof(msg.payload.session.u.asym.key);
+            if (sess->keylen > keylen) {
+                error_report("Unsupported asymmetric key size");
+                return -ENOTSUP;
+            }
+
+            memcpy(&msg.payload.session.u.asym.key, sess->key,
+                   sess->keylen);
+        }
+    } else {
+        CryptoDevBackendSymSessionInfo *sess = &backend_info->u.sym_sess_info;
+        size_t keylen;
+
+        memcpy(&msg.payload.session.u.sym.session_setup_data, sess,
+               sizeof(CryptoDevBackendSymSessionInfo));
+        if (sess->key_len) {
+            keylen = sizeof(msg.payload.session.u.sym.key);
+            if (sess->key_len > keylen) {
+                error_report("Unsupported cipher key size");
+                return -ENOTSUP;
+            }
+
+            memcpy(&msg.payload.session.u.sym.key, sess->cipher_key,
+                   sess->key_len);
+        }
+
+        if (sess->auth_key_len > 0) {
+            keylen = sizeof(msg.payload.session.u.sym.auth_key);
+            if (sess->auth_key_len > keylen) {
+                error_report("Unsupported auth key size");
+                return -ENOTSUP;
+            }
+
+            memcpy(&msg.payload.session.u.sym.auth_key, sess->auth_key,
+                   sess->auth_key_len);
+        }
     }
-    if (sess_info->auth_key_len > 0) {
-        memcpy(&msg.payload.session.auth_key, sess_info->auth_key,
-               sess_info->auth_key_len);
-    }
+
+    msg.payload.session.op_code = backend_info->op_code;
+    msg.payload.session.session_id = backend_info->session_id;
     ret = vhost_user_write(dev, &msg, NULL, 0);
     if (ret < 0) {
         error_report("vhost_user_write() return %d, create session failed",
@@ -2469,11 +2503,7 @@ vhost_user_crypto_close_session(struct vhost_dev *dev, uint64_t session_id)
 static bool vhost_user_mem_section_filter(struct vhost_dev *dev,
                                           MemoryRegionSection *section)
 {
-    bool result;
-
-    result = memory_region_get_fd(section->mr) >= 0;
-
-    return result;
+    return memory_region_get_fd(section->mr) >= 0;
 }
 
 static int vhost_user_get_inflight_fd(struct vhost_dev *dev,
@@ -2607,6 +2637,110 @@ void vhost_user_cleanup(VhostUserState *user)
     user->chr = NULL;
 }
 
+
+typedef struct {
+    vu_async_close_fn cb;
+    DeviceState *dev;
+    CharBackend *cd;
+    struct vhost_dev *vhost;
+} VhostAsyncCallback;
+
+static void vhost_user_async_close_bh(void *opaque)
+{
+    VhostAsyncCallback *data = opaque;
+    struct vhost_dev *vhost = data->vhost;
+
+    /*
+     * If the vhost_dev has been cleared in the meantime there is
+     * nothing left to do as some other path has completed the
+     * cleanup.
+     */
+    if (vhost->vdev) {
+        data->cb(data->dev);
+    }
+
+    g_free(data);
+}
+
+/*
+ * We only schedule the work if the machine is running. If suspended
+ * we want to keep all the in-flight data as is for migration
+ * purposes.
+ */
+void vhost_user_async_close(DeviceState *d,
+                            CharBackend *chardev, struct vhost_dev *vhost,
+                            vu_async_close_fn cb)
+{
+    if (!runstate_check(RUN_STATE_SHUTDOWN)) {
+        /*
+         * A close event may happen during a read/write, but vhost
+         * code assumes the vhost_dev remains setup, so delay the
+         * stop & clear.
+         */
+        AioContext *ctx = qemu_get_current_aio_context();
+        VhostAsyncCallback *data = g_new0(VhostAsyncCallback, 1);
+
+        /* Save data for the callback */
+        data->cb = cb;
+        data->dev = d;
+        data->cd = chardev;
+        data->vhost = vhost;
+
+        /* Disable any further notifications on the chardev */
+        qemu_chr_fe_set_handlers(chardev,
+                                 NULL, NULL, NULL, NULL, NULL, NULL,
+                                 false);
+
+        aio_bh_schedule_oneshot(ctx, vhost_user_async_close_bh, data);
+
+        /*
+         * Move vhost device to the stopped state. The vhost-user device
+         * will be clean up and disconnected in BH. This can be useful in
+         * the vhost migration code. If disconnect was caught there is an
+         * option for the general vhost code to get the dev state without
+         * knowing its type (in this case vhost-user).
+         *
+         * Note if the vhost device is fully cleared by the time we
+         * execute the bottom half we won't continue with the cleanup.
+         */
+        vhost->started = false;
+    }
+}
+
+static int vhost_user_dev_start(struct vhost_dev *dev, bool started)
+{
+    if (!virtio_has_feature(dev->protocol_features,
+                            VHOST_USER_PROTOCOL_F_STATUS)) {
+        return 0;
+    }
+
+    /* Set device status only for last queue pair */
+    if (dev->vq_index + dev->nvqs != dev->vq_index_end) {
+        return 0;
+    }
+
+    if (started) {
+        return vhost_user_add_status(dev, VIRTIO_CONFIG_S_ACKNOWLEDGE |
+                                          VIRTIO_CONFIG_S_DRIVER |
+                                          VIRTIO_CONFIG_S_DRIVER_OK);
+    } else {
+        return 0;
+    }
+}
+
+static void vhost_user_reset_status(struct vhost_dev *dev)
+{
+    /* Set device status only for last queue pair */
+    if (dev->vq_index + dev->nvqs != dev->vq_index_end) {
+        return;
+    }
+
+    if (virtio_has_feature(dev->protocol_features,
+                           VHOST_USER_PROTOCOL_F_STATUS)) {
+        vhost_user_set_status(dev, 0);
+    }
+}
+
 const VhostOps user_ops = {
         .backend_type = VHOST_BACKEND_TYPE_USER,
         .vhost_backend_init = vhost_user_backend_init,
@@ -2641,4 +2775,6 @@ const VhostOps user_ops = {
         .vhost_backend_mem_section_filter = vhost_user_mem_section_filter,
         .vhost_get_inflight_fd = vhost_user_get_inflight_fd,
         .vhost_set_inflight_fd = vhost_user_set_inflight_fd,
+        .vhost_dev_start = vhost_user_dev_start,
+        .vhost_reset_status = vhost_user_reset_status,
 };

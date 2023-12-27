@@ -145,6 +145,13 @@ static void ppc_radix64_raise_hsi(PowerPCCPU *cpu, MMUAccessType access_type,
     CPUState *cs = CPU(cpu);
     CPUPPCState *env = &cpu->env;
 
+    env->error_code = 0;
+    if (cause & DSISR_PRTABLE_FAULT) {
+        /* HDSI PRTABLE_FAULT gets the originating access type in error_code */
+        env->error_code = access_type;
+        access_type = MMU_DATA_LOAD;
+    }
+
     qemu_log_mask(CPU_LOG_MMU, "%s for %s @0x%"VADDR_PRIx" 0x%"
                   HWADDR_PRIx" cause %08x\n",
                   __func__, access_str(access_type),
@@ -166,7 +173,6 @@ static void ppc_radix64_raise_hsi(PowerPCCPU *cpu, MMUAccessType access_type,
         env->spr[SPR_HDSISR] = cause;
         env->spr[SPR_HDAR] = eaddr;
         env->spr[SPR_ASDR] = g_raddr;
-        env->error_code = 0;
         break;
     default:
         g_assert_not_reached();
@@ -238,6 +244,8 @@ static void ppc_radix64_set_rc(PowerPCCPU *cpu, MMUAccessType access_type,
 
 static bool ppc_radix64_is_valid_level(int level, int psize, uint64_t nls)
 {
+    bool ret;
+
     /*
      * Check if this is a valid level, according to POWER9 and POWER10
      * Processor User's Manuals, sections 4.10.4.1 and 5.10.6.1, respectively:
@@ -249,16 +257,25 @@ static bool ppc_radix64_is_valid_level(int level, int psize, uint64_t nls)
      */
     switch (level) {
     case 0:     /* Root Page Dir */
-        return psize == 52 && nls == 13;
+        ret = psize == 52 && nls == 13;
+        break;
     case 1:
     case 2:
-        return nls == 9;
+        ret = nls == 9;
+        break;
     case 3:
-        return nls == 9 || nls == 5;
+        ret = nls == 9 || nls == 5;
+        break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "invalid radix level: %d\n", level);
-        return false;
+        ret = false;
     }
+
+    if (unlikely(!ret)) {
+        qemu_log_mask(LOG_GUEST_ERROR, "invalid radix configuration: "
+                      "level %d size %d nls %"PRIu64"\n",
+                      level, psize, nls);
+    }
+    return ret;
 }
 
 static int ppc_radix64_next_level(AddressSpace *as, vaddr eaddr,
@@ -358,16 +375,25 @@ static bool validate_pate(PowerPCCPU *cpu, uint64_t lpid, ppc_v3_pate_t *pate)
 }
 
 static int ppc_radix64_partition_scoped_xlate(PowerPCCPU *cpu,
-                                              MMUAccessType access_type,
+                                              MMUAccessType orig_access_type,
                                               vaddr eaddr, hwaddr g_raddr,
                                               ppc_v3_pate_t pate,
                                               hwaddr *h_raddr, int *h_prot,
                                               int *h_page_size, bool pde_addr,
                                               int mmu_idx, bool guest_visible)
 {
+    MMUAccessType access_type = orig_access_type;
     int fault_cause = 0;
     hwaddr pte_addr;
     uint64_t pte;
+
+    if (pde_addr) {
+        /*
+         * Translation of process-scoped tables/directories is performed as
+         * a read-access.
+         */
+        access_type = MMU_DATA_LOAD;
+    }
 
     qemu_log_mask(CPU_LOG_MMU, "%s for %s @0x%"VADDR_PRIx
                   " mmu_idx %u 0x%"HWADDR_PRIx"\n",
@@ -385,7 +411,8 @@ static int ppc_radix64_partition_scoped_xlate(PowerPCCPU *cpu,
             fault_cause |= DSISR_PRTABLE_FAULT;
         }
         if (guest_visible) {
-            ppc_radix64_raise_hsi(cpu, access_type, eaddr, g_raddr, fault_cause);
+            ppc_radix64_raise_hsi(cpu, orig_access_type,
+                                  eaddr, g_raddr, fault_cause);
         }
         return 1;
     }
@@ -466,10 +493,10 @@ static int ppc_radix64_process_scoped_xlate(PowerPCCPU *cpu,
          * is only used to translate the effective addresses of the
          * process table entries.
          */
-        ret = ppc_radix64_partition_scoped_xlate(cpu, 0, eaddr, prtbe_addr,
-                                                 pate, &h_raddr, &h_prot,
-                                                 &h_page_size, true,
-            /* mmu_idx is 5 because we're translating from hypervisor scope */
+        /* mmu_idx is 5 because we're translating from hypervisor scope */
+        ret = ppc_radix64_partition_scoped_xlate(cpu, access_type, eaddr,
+                                                 prtbe_addr, pate, &h_raddr,
+                                                 &h_prot, &h_page_size, true,
                                                  5, guest_visible);
         if (ret) {
             return ret;
@@ -508,22 +535,24 @@ static int ppc_radix64_process_scoped_xlate(PowerPCCPU *cpu,
          * translation
          */
         do {
-            ret = ppc_radix64_partition_scoped_xlate(cpu, 0, eaddr, pte_addr,
-                                                     pate, &h_raddr, &h_prot,
-                                                     &h_page_size, true,
             /* mmu_idx is 5 because we're translating from hypervisor scope */
-                                                     5, guest_visible);
+            ret = ppc_radix64_partition_scoped_xlate(cpu, access_type, eaddr,
+                                                     pte_addr, pate, &h_raddr,
+                                                     &h_prot, &h_page_size,
+                                                     true, 5, guest_visible);
             if (ret) {
                 return ret;
             }
 
             if (!ppc_radix64_is_valid_level(level++, *g_page_size, nls)) {
                 fault_cause |= DSISR_R_BADCONFIG;
-                return 1;
+                ret = 1;
+            } else {
+                ret = ppc_radix64_next_level(cs->as, eaddr & R_EADDR_MASK,
+                                             &h_raddr, &nls, g_page_size,
+                                             &pte, &fault_cause);
             }
 
-            ret = ppc_radix64_next_level(cs->as, eaddr & R_EADDR_MASK, &h_raddr,
-                                         &nls, g_page_size, &pte, &fault_cause);
             if (ret) {
                 /* No valid pte */
                 if (guest_visible) {

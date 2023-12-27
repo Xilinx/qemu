@@ -21,10 +21,6 @@ static void post_load_update_msr(CPUPPCState *env)
      */
     env->msr ^= env->msr_mask & ~((1ULL << MSR_TGPR) | MSR_HVB);
     ppc_store_msr(env, msr);
-
-    if (tcg_enabled()) {
-        pmu_update_summaries(env);
-    }
 }
 
 static int get_avr(QEMUFile *f, void *pv, size_t size,
@@ -234,7 +230,7 @@ static bool pvr_match(PowerPCCPU *cpu, uint32_t pvr)
     if (pvr == pcc->pvr) {
         return true;
     }
-    return pcc->pvr_match(pcc, pvr);
+    return pcc->pvr_match(pcc, pvr, true);
 }
 
 static int cpu_post_load(void *opaque, int version_id)
@@ -316,6 +312,10 @@ static int cpu_post_load(void *opaque, int version_id)
     }
 
     post_load_update_msr(env);
+
+    if (tcg_enabled()) {
+        pmu_mmcr01_updated(env);
+    }
 
     return 0;
 }

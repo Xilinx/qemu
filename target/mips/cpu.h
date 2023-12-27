@@ -3,6 +3,9 @@
 
 #include "cpu-qom.h"
 #include "exec/cpu-defs.h"
+#ifndef CONFIG_USER_ONLY
+#include "exec/memory.h"
+#endif
 #include "fpu/softfloat-types.h"
 #include "hw/clock.h"
 #include "mips-defs.h"
@@ -980,6 +983,7 @@ typedef struct CPUArchState {
 #define CP0C6_DATAPREF        0
     int32_t CP0_Config7;
     int64_t CP0_Config7_rw_bitmask;
+#define CP0C7_WII          31
 #define CP0C7_NAPCGEN       2
 #define CP0C7_UNIMUEN       1
 #define CP0C7_VFPUCGEN      0
@@ -1067,6 +1071,33 @@ typedef struct CPUArchState {
  */
     int32_t CP0_DESAVE;
     target_ulong CP0_KScratch[MIPS_KSCRATCH_NUM];
+/*
+ * Loongson CSR CPUCFG registers
+ */
+    uint32_t lcsr_cpucfg1;
+#define CPUCFG1_FP     0
+#define CPUCFG1_FPREV  1
+#define CPUCFG1_MMI    4
+#define CPUCFG1_MSA1   5
+#define CPUCFG1_MSA2   6
+#define CPUCFG1_LSLDR0 16
+#define CPUCFG1_LSPERF 17
+#define CPUCFG1_LSPERFX 18
+#define CPUCFG1_LSSYNCI 19
+#define CPUCFG1_LLEXC   20
+#define CPUCFG1_SCRAND  21
+#define CPUCFG1_MUALP   25
+#define CPUCFG1_KMUALEN 26
+#define CPUCFG1_ITLBT   27
+#define CPUCFG1_SFBP    29
+#define CPUCFG1_CDMAP   30
+    uint32_t lcsr_cpucfg2;
+#define CPUCFG2_LEXT1   0
+#define CPUCFG2_LEXT2   1
+#define CPUCFG2_LEXT3   2
+#define CPUCFG2_LSPW    3
+#define CPUCFG2_LCSRP   27
+#define CPUCFG2_LDISBLIKELY 28
 
     /* We waste some space so we can handle shadow registers like TCs. */
     TCState tcs[MIPS_SHADOW_SET_MAX];
@@ -1155,12 +1186,18 @@ typedef struct CPUArchState {
     void *irq[8];
     struct MIPSITUState *itu;
     MemoryRegion *itc_tag; /* ITC Configuration Tags */
+
+    /* Loongson IOCSR memory */
+    struct {
+        AddressSpace as;
+        MemoryRegion mr;
+    } iocsr;
 #endif
 
     const mips_def_t *cpu_model;
     QEMUTimer *timer; /* Internal timer */
+    Clock *count_clock; /* CP0_Count clock */
     target_ulong exception_base; /* ExceptionBase input to the core */
-    uint64_t cp0_count_ns; /* CP0_Count clock period (in nanoseconds) */
 } CPUMIPSState;
 
 /**
@@ -1177,6 +1214,7 @@ struct ArchCPU {
     /*< public >*/
 
     Clock *clock;
+    Clock *count_div; /* Divider for CP0_Count clock */
     CPUNegativeOffsetState neg;
     CPUMIPSState env;
 };
@@ -1279,6 +1317,12 @@ static inline bool ase_msa_available(CPUMIPSState *env)
     return env->CP0_Config3 & (1 << CP0C3_MSAP);
 }
 
+/* Check presence of Loongson CSR instructions */
+static inline bool ase_lcsr_available(CPUMIPSState *env)
+{
+    return env->lcsr_cpucfg2 & (1 << CPUCFG2_LCSRP);
+}
+
 /* Check presence of multi-threading ASE implementation */
 static inline bool ase_mt_available(CPUMIPSState *env)
 {
@@ -1296,11 +1340,8 @@ void cpu_set_exception_base(int vp_index, target_ulong address);
 uint64_t cpu_mips_kseg0_to_phys(void *opaque, uint64_t addr);
 uint64_t cpu_mips_phys_to_kseg0(void *opaque, uint64_t addr);
 
-uint64_t cpu_mips_kvm_um_phys_to_kseg0(void *opaque, uint64_t addr);
 uint64_t cpu_mips_kseg1_to_phys(void *opaque, uint64_t addr);
 uint64_t cpu_mips_phys_to_kseg1(void *opaque, uint64_t addr);
-bool mips_um_ksegs_enabled(void);
-void mips_um_ksegs_enable(void);
 
 #if !defined(CONFIG_USER_ONLY)
 
@@ -1315,8 +1356,8 @@ void itc_reconfigure(struct MIPSITUState *tag);
 /* helper.c */
 target_ulong exception_resume_pc(CPUMIPSState *env);
 
-static inline void cpu_get_tb_cpu_state(CPUMIPSState *env, target_ulong *pc,
-                                        target_ulong *cs_base, uint32_t *flags)
+static inline void cpu_get_tb_cpu_state(CPUMIPSState *env, vaddr *pc,
+                                        uint64_t *cs_base, uint32_t *flags)
 {
     *pc = env->active_tc.PC;
     *cs_base = 0;

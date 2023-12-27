@@ -12,7 +12,7 @@
 #include "qemu/log.h"
 #include "qapi/qmp/qerror.h"
 #include "qapi/error.h"
-#include "hw/pci/pci.h"
+#include "hw/pci/pci_device.h"
 #include "hw/pci/msi.h"
 #include "hw/pci/msix.h"
 #include "hw/sysbus.h"
@@ -115,6 +115,7 @@ static MemTxResult rp_io_access(MemoryTransaction *tr)
 
 static const MemoryRegionOps rp_ops = {
     .access = rp_io_access,
+    .valid.unaligned = true,
     .endianness = DEVICE_LITTLE_ENDIAN,
 };
 

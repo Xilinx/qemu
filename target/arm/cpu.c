@@ -26,7 +26,6 @@
 #include "target/arm/idau.h"
 #include "qemu/module.h"
 #include "qapi/error.h"
-#include "qapi/visitor.h"
 #include "cpu.h"
 #ifdef CONFIG_TCG
 #include "hw/core/tcg-cpu-ops.h"
@@ -37,7 +36,10 @@
 #if !defined(CONFIG_USER_ONLY)
 #include "hw/loader.h"
 #include "hw/boards.h"
-#endif
+#ifdef CONFIG_TCG
+#include "hw/intc/armv7m_nvic.h"
+#endif /* CONFIG_TCG */
+#endif /* !CONFIG_USER_ONLY */
 #include "sysemu/runstate.h"
 #include "sysemu/tcg.h"
 #include "sysemu/qtest.h"
@@ -73,24 +75,54 @@ static vaddr arm_cpu_get_pc(CPUState *cs)
     ARMCPU *cpu = ARM_CPU(cs);
     CPUARMState *env = &cpu->env;
 
-   return is_a64(env) ? env->pc : env->regs[15];
+    if (is_a64(env)) {
+        return env->pc;
+    } else {
+        return env->regs[15];
+    }
 }
 
 #ifdef CONFIG_TCG
 void arm_cpu_synchronize_from_tb(CPUState *cs,
                                  const TranslationBlock *tb)
 {
-    ARMCPU *cpu = ARM_CPU(cs);
-    CPUARMState *env = &cpu->env;
+    /* The program counter is always up to date with CF_PCREL. */
+    if (!(tb_cflags(tb) & CF_PCREL)) {
+        CPUARMState *env = cs->env_ptr;
+        /*
+         * It's OK to look at env for the current mode here, because it's
+         * never possible for an AArch64 TB to chain to an AArch32 TB.
+         */
+        if (is_a64(env)) {
+            env->pc = tb->pc;
+        } else {
+            env->regs[15] = tb->pc;
+        }
+    }
+}
 
-    /*
-     * It's OK to look at env for the current mode here, because it's
-     * never possible for an AArch64 TB to chain to an AArch32 TB.
-     */
+void arm_restore_state_to_opc(CPUState *cs,
+                              const TranslationBlock *tb,
+                              const uint64_t *data)
+{
+    CPUARMState *env = cs->env_ptr;
+
     if (is_a64(env)) {
-        env->pc = tb->pc;
+        if (tb_cflags(tb) & CF_PCREL) {
+            env->pc = (env->pc & TARGET_PAGE_MASK) | data[0];
+        } else {
+            env->pc = data[0];
+        }
+        env->condexec_bits = 0;
+        env->exception.syndrome = data[2] << ARM_INSN_START_WORD2_SHIFT;
     } else {
-        env->regs[15] = tb->pc;
+        if (tb_cflags(tb) & CF_PCREL) {
+            env->regs[15] = (env->regs[15] & TARGET_PAGE_MASK) | data[0];
+        } else {
+            env->regs[15] = data[0];
+        }
+        env->condexec_bits = data[1];
+        env->exception.syndrome = data[2] << ARM_INSN_START_WORD2_SHIFT;
     }
 }
 #endif /* CONFIG_TCG */
@@ -191,9 +223,9 @@ static void cp_reg_check_reset(gpointer key, gpointer value,  gpointer opaque)
     assert(oldvalue == newvalue);
 }
 
-static void arm_cpu_reset(DeviceState *dev)
+static void arm_cpu_reset_hold(Object *obj)
 {
-    CPUState *s = CPU(dev);
+    CPUState *s = CPU(obj);
     ARMCPU *cpu = ARM_CPU(s);
     ARMCPUClass *acc = ARM_CPU_GET_CLASS(cpu);
     CPUARMState *env = &cpu->env;
@@ -203,7 +235,9 @@ static void arm_cpu_reset(DeviceState *dev)
     int i;
 #endif
 
-    acc->parent_reset(dev);
+    if (acc->parent_phases.hold) {
+        acc->parent_phases.hold(obj);
+    }
 
     memset(env, 0, offsetof(CPUARMState, end_reset_fields));
 
@@ -286,6 +320,8 @@ static void arm_cpu_reset(DeviceState *dev)
          * This is not yet exposed from the Linux kernel in any way.
          */
         env->cp15.sctlr_el[1] |= SCTLR_TSCXT;
+        /* Disable access to Debug Communication Channel (DCC). */
+        env->cp15.mdscr_el1 |= 1 << 12;
 #else
         /* Reset into the highest available EL */
         if (arm_feature(env, ARM_FEATURE_EL3)) {
@@ -308,6 +344,10 @@ static void arm_cpu_reset(DeviceState *dev)
         env->cp15.cpacr_el1 = FIELD_DP64(env->cp15.cpacr_el1,
                                          CPACR, CP11, 3);
 #endif
+        if (arm_feature(env, ARM_FEATURE_V8)) {
+            env->cp15.rvbar = cpu->rvbar_prop;
+            env->regs[15] = cpu->rvbar_prop;
+        }
     }
 
 #ifndef CONFIG_USER_ONLY
@@ -492,6 +532,14 @@ static void arm_cpu_reset(DeviceState *dev)
                        sizeof(*env->pmsav7.dracr) * cpu->pmsav7_dregion);
             }
         }
+
+        if (cpu->pmsav8r_hdregion > 0) {
+            memset(env->pmsav8.hprbar, 0,
+                   sizeof(*env->pmsav8.hprbar) * cpu->pmsav8r_hdregion);
+            memset(env->pmsav8.hprlar, 0,
+                   sizeof(*env->pmsav8.hprlar) * cpu->pmsav8r_hdregion);
+        }
+
         env->pmsav7.rnr[M_REG_NS] = 0;
         env->pmsav7.rnr[M_REG_S] = 0;
         env->pmsav8.mair0[M_REG_NS] = 0;
@@ -535,11 +583,15 @@ static void arm_cpu_reset(DeviceState *dev)
     }
 #endif
 
+    if (tcg_enabled()) {
+        hw_breakpoint_update_all(cpu);
+        hw_watchpoint_update_all(cpu);
+
+        arm_rebuild_hflags(env);
+    }
+
     cpu->is_in_wfi = false;
     qemu_set_irq(cpu->wfi, cpu->is_in_wfi);
-
-    hw_breakpoint_update_all(cpu);
-    hw_watchpoint_update_all(cpu);
 
 #ifndef CONFIG_USER_ONLY
     if (cpu->env.memattr_ns) {
@@ -560,11 +612,9 @@ static void arm_cpu_reset(DeviceState *dev)
         arm_cpu_set_irq(cpu, i, cpu->env.irq_wires[i]);
     }
 #endif
-
-    arm_rebuild_hflags(env);
 }
 
-#ifndef CONFIG_USER_ONLY
+#if defined(CONFIG_TCG) && !defined(CONFIG_USER_ONLY)
 
 static inline bool arm_excp_unmasked(CPUState *cs, unsigned int excp_idx,
                                      unsigned int target_el,
@@ -623,14 +673,24 @@ static inline bool arm_excp_unmasked(CPUState *cs, unsigned int excp_idx,
     if ((target_el > cur_el) && (target_el != 1)) {
         /* Exceptions targeting a higher EL may not be maskable */
         if (arm_feature(env, ARM_FEATURE_AARCH64)) {
-            /*
-             * 64-bit masking rules are simple: exceptions to EL3
-             * can't be masked, and exceptions to EL2 can only be
-             * masked from Secure state. The HCR and SCR settings
-             * don't affect the masking logic, only the interrupt routing.
-             */
-            if (target_el == 3 || !secure || (env->cp15.scr_el3 & SCR_EEL2)) {
+            switch (target_el) {
+            case 2:
+                /*
+                 * According to ARM DDI 0487H.a, an interrupt can be masked
+                 * when HCR_E2H and HCR_TGE are both set regardless of the
+                 * current Security state. Note that we need to revisit this
+                 * part again once we need to support NMI.
+                 */
+                if ((hcr_el2 & (HCR_E2H | HCR_TGE)) != (HCR_E2H | HCR_TGE)) {
+                        unmasked = true;
+                }
+                break;
+            case 3:
+                /* Interrupt cannot be masked when the target EL is 3 */
                 unmasked = true;
+                break;
+            default:
+                g_assert_not_reached();
             }
         } else {
             /*
@@ -682,7 +742,7 @@ static inline bool arm_excp_unmasked(CPUState *cs, unsigned int excp_idx,
     }
 
     /*
-     * The PSTATE bits only mask the interrupt if we have not overriden the
+     * The PSTATE bits only mask the interrupt if we have not overridden the
      * ability above.
      */
     return unmasked || pstate_unmasked;
@@ -751,7 +811,8 @@ static bool arm_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
     cc->tcg_ops->do_interrupt(cs);
     return true;
 }
-#endif /* !CONFIG_USER_ONLY */
+
+#endif /* CONFIG_TCG && !CONFIG_USER_ONLY */
 
 void arm_cpu_update_virq(ARMCPU *cpu)
 {
@@ -1004,7 +1065,7 @@ static void aarch64_cpu_dump_state(CPUState *cs, FILE *f, int flags)
     ARMCPU *cpu = ARM_CPU(cs);
     CPUARMState *env = &cpu->env;
     uint32_t psr = pstate_read(env);
-    int i;
+    int i, j;
     int el = arm_current_el(env);
     const char *ns_status;
     bool sve;
@@ -1063,7 +1124,7 @@ static void aarch64_cpu_dump_state(CPUState *cs, FILE *f, int flags)
     }
 
     if (sve) {
-        int j, zcr_len = sve_vqm1_for_el(env, el);
+        int zcr_len = sve_vqm1_for_el(env, el);
 
         for (i = 0; i <= FFR_PRED_NUM; i++) {
             bool eol;
@@ -1103,32 +1164,24 @@ static void aarch64_cpu_dump_state(CPUState *cs, FILE *f, int flags)
             }
         }
 
-        for (i = 0; i < 32; i++) {
-            if (zcr_len == 0) {
+        if (zcr_len == 0) {
+            /*
+             * With vl=16, there are only 37 columns per register,
+             * so output two registers per line.
+             */
+            for (i = 0; i < 32; i++) {
                 qemu_fprintf(f, "Z%02d=%016" PRIx64 ":%016" PRIx64 "%s",
                              i, env->vfp.zregs[i].d[1],
                              env->vfp.zregs[i].d[0], i & 1 ? "\n" : " ");
-            } else if (zcr_len == 1) {
-                qemu_fprintf(f, "Z%02d=%016" PRIx64 ":%016" PRIx64
-                             ":%016" PRIx64 ":%016" PRIx64 "\n",
-                             i, env->vfp.zregs[i].d[3], env->vfp.zregs[i].d[2],
-                             env->vfp.zregs[i].d[1], env->vfp.zregs[i].d[0]);
-            } else {
+            }
+        } else {
+            for (i = 0; i < 32; i++) {
+                qemu_fprintf(f, "Z%02d=", i);
                 for (j = zcr_len; j >= 0; j--) {
-                    bool odd = (zcr_len - j) % 2 != 0;
-                    if (j == zcr_len) {
-                        qemu_fprintf(f, "Z%02d[%x-%x]=", i, j, j - 1);
-                    } else if (!odd) {
-                        if (j > 0) {
-                            qemu_fprintf(f, "   [%x-%x]=", j, j - 1);
-                        } else {
-                            qemu_fprintf(f, "     [%x]=", j);
-                        }
-                    }
                     qemu_fprintf(f, "%016" PRIx64 ":%016" PRIx64 "%s",
                                  env->vfp.zregs[i].d[j * 2 + 1],
-                                 env->vfp.zregs[i].d[j * 2],
-                                 odd || j == 0 ? "\n" : ":");
+                                 env->vfp.zregs[i].d[j * 2 + 0],
+                                 j ? ":" : "\n");
                 }
             }
         }
@@ -1137,6 +1190,24 @@ static void aarch64_cpu_dump_state(CPUState *cs, FILE *f, int flags)
             uint64_t *q = aa64_vfp_qreg(env, i);
             qemu_fprintf(f, "Q%02d=%016" PRIx64 ":%016" PRIx64 "%s",
                          i, q[1], q[0], (i & 1 ? "\n" : " "));
+        }
+    }
+
+    if (cpu_isar_feature(aa64_sme, cpu) &&
+        FIELD_EX64(env->svcr, SVCR, ZA) &&
+        sme_exception_el(env, el) == 0) {
+        int zcr_len = sve_vqm1_for_el_sm(env, el, true);
+        int svl = (zcr_len + 1) * 16;
+        int svl_lg10 = svl < 100 ? 2 : 3;
+
+        for (i = 0; i < svl; i++) {
+            qemu_fprintf(f, "ZA[%0*d]=", svl_lg10, i);
+            for (j = zcr_len; j >= 0; --j) {
+                qemu_fprintf(f, "%016" PRIx64 ":%016" PRIx64 "%c",
+                             env->zarray[i].d[2 * j + 1],
+                             env->zarray[i].d[2 * j],
+                             j ? ':' : '\n');
+            }
         }
     }
 }
@@ -1360,6 +1431,9 @@ static Property arm_cpu_cfgend_property =
 static Property arm_cpu_has_vfp_property =
             DEFINE_PROP_BOOL("vfp", ARMCPU, has_vfp, true);
 
+static Property arm_cpu_has_vfp_d32_property =
+            DEFINE_PROP_BOOL("vfp-d32", ARMCPU, has_vfp_d32, true);
+
 static Property arm_cpu_has_neon_property =
             DEFINE_PROP_BOOL("neon", ARMCPU, has_neon, true);
 
@@ -1488,12 +1562,30 @@ void arm_cpu_post_init(Object *obj)
      * KVM does not currently allow us to lie to the guest about its
      * ID/feature registers, so the guest always sees what the host has.
      */
-    if (arm_feature(&cpu->env, ARM_FEATURE_AARCH64)
-        ? cpu_isar_feature(aa64_fp_simd, cpu)
-        : cpu_isar_feature(aa32_vfp, cpu)) {
+    if (arm_feature(&cpu->env, ARM_FEATURE_AARCH64)) {
+        if (cpu_isar_feature(aa64_fp_simd, cpu)) {
+            cpu->has_vfp = true;
+            cpu->has_vfp_d32 = true;
+            if (tcg_enabled() || qtest_enabled()) {
+                qdev_property_add_static(DEVICE(obj),
+                                         &arm_cpu_has_vfp_property);
+            }
+        }
+    } else if (cpu_isar_feature(aa32_vfp, cpu)) {
         cpu->has_vfp = true;
-        if (!kvm_enabled()) {
-            qdev_property_add_static(DEVICE(obj), &arm_cpu_has_vfp_property);
+        if (cpu_isar_feature(aa32_simd_r32, cpu)) {
+            cpu->has_vfp_d32 = true;
+            /*
+             * The permitted values of the SIMDReg bits [3:0] on
+             * Armv8-A are either 0b0000 and 0b0010. On such CPUs,
+             * make sure that has_vfp_d32 can not be set to false.
+             */
+            if ((tcg_enabled() || qtest_enabled())
+                && !(arm_feature(&cpu->env, ARM_FEATURE_V8)
+                     && !arm_feature(&cpu->env, ARM_FEATURE_M))) {
+                qdev_property_add_static(DEVICE(obj),
+                                         &arm_cpu_has_vfp_d32_property);
+            }
         }
     }
 
@@ -1649,6 +1741,11 @@ static void arm_cpu_realizefn(DeviceState *dev, Error **errp)
     Error *local_err = NULL;
     bool no_aa32 = false;
 
+    /* Use pc-relative instructions in system-mode */
+#ifndef CONFIG_USER_ONLY
+    cs->tcg_cflags |= CF_PCREL;
+#endif
+
     /* If we needed to query the host kernel for the CPU features
      * then it's possible that might have failed in the initfn, but
      * this is the first point where we can report it.
@@ -1748,6 +1845,17 @@ static void arm_cpu_realizefn(DeviceState *dev, Error **errp)
         return;
     }
 
+#ifdef CONFIG_USER_ONLY
+    /*
+     * User mode relies on IC IVAU instructions to catch modification of
+     * dual-mapped code.
+     *
+     * Clear CTR_EL0.DIC to ensure that software that honors these flags uses
+     * IC IVAU even if the emulated processor does not normally require it.
+     */
+    cpu->ctr = FIELD_DP64(cpu->ctr, CTR_EL0, DIC, 0);
+#endif
+
     if (arm_feature(env, ARM_FEATURE_AARCH64) &&
         cpu->has_vfp != cpu->has_neon) {
         /*
@@ -1757,6 +1865,19 @@ static void arm_cpu_realizefn(DeviceState *dev, Error **errp)
         error_setg(errp,
                    "AArch64 CPUs must have both VFP and Neon or neither");
         return;
+    }
+
+    if (cpu->has_vfp_d32 != cpu->has_neon) {
+        error_setg(errp, "ARM CPUs must have both VFP-D32 and Neon or neither");
+        return;
+    }
+
+   if (!cpu->has_vfp_d32) {
+        uint32_t u;
+
+        u = cpu->isar.mvfr0;
+        u = FIELD_DP32(u, MVFR0, SIMDREG, 1); /* 16 registers */
+        cpu->isar.mvfr0 = u;
     }
 
     if (!cpu->has_vfp) {
@@ -2042,6 +2163,10 @@ static void arm_cpu_realizefn(DeviceState *dev, Error **errp)
         cpu->isar.id_dfr0 = FIELD_DP32(cpu->isar.id_dfr0, ID_DFR0, COPSDBG, 0);
         cpu->isar.id_aa64pfr0 = FIELD_DP64(cpu->isar.id_aa64pfr0,
                                            ID_AA64PFR0, EL3, 0);
+
+        /* Disable the realm management extension, which requires EL3. */
+        cpu->isar.id_aa64pfr0 = FIELD_DP64(cpu->isar.id_aa64pfr0,
+                                           ID_AA64PFR0, RME, 0);
     }
 
     if (!cpu->has_el2) {
@@ -2095,23 +2220,47 @@ static void arm_cpu_realizefn(DeviceState *dev, Error **errp)
 
     if (tcg_enabled()) {
         /*
-         * Don't report the Statistical Profiling Extension in the ID
-         * registers, because TCG doesn't implement it yet (not even a
-         * minimal stub version) and guests will fall over when they
-         * try to access the non-existent system registers for it.
+         * Don't report some architectural features in the ID registers
+         * where TCG does not yet implement it (not even a minimal
+         * stub version). This avoids guests falling over when they
+         * try to access the non-existent system registers for them.
          */
+        /* FEAT_SPE (Statistical Profiling Extension) */
         cpu->isar.id_aa64dfr0 =
             FIELD_DP64(cpu->isar.id_aa64dfr0, ID_AA64DFR0, PMSVER, 0);
+        /* FEAT_TRF (Self-hosted Trace Extension) */
+        cpu->isar.id_aa64dfr0 =
+            FIELD_DP64(cpu->isar.id_aa64dfr0, ID_AA64DFR0, TRACEFILT, 0);
+        cpu->isar.id_dfr0 =
+            FIELD_DP32(cpu->isar.id_dfr0, ID_DFR0, TRACEFILT, 0);
+        /* Trace Macrocell system register access */
+        cpu->isar.id_aa64dfr0 =
+            FIELD_DP64(cpu->isar.id_aa64dfr0, ID_AA64DFR0, TRACEVER, 0);
+        cpu->isar.id_dfr0 =
+            FIELD_DP32(cpu->isar.id_dfr0, ID_DFR0, COPTRC, 0);
+        /* Memory mapped trace */
+        cpu->isar.id_dfr0 =
+            FIELD_DP32(cpu->isar.id_dfr0, ID_DFR0, MMAPTRC, 0);
+        /* FEAT_AMU (Activity Monitors Extension) */
+        cpu->isar.id_aa64pfr0 =
+            FIELD_DP64(cpu->isar.id_aa64pfr0, ID_AA64PFR0, AMU, 0);
+        cpu->isar.id_pfr0 =
+            FIELD_DP32(cpu->isar.id_pfr0, ID_PFR0, AMU, 0);
+        /* FEAT_MPAM (Memory Partitioning and Monitoring Extension) */
+        cpu->isar.id_aa64pfr0 =
+            FIELD_DP64(cpu->isar.id_aa64pfr0, ID_AA64PFR0, MPAM, 0);
+        /* FEAT_NV (Nested Virtualization) */
+        cpu->isar.id_aa64mmfr2 =
+            FIELD_DP64(cpu->isar.id_aa64mmfr2, ID_AA64MMFR2, NV, 0);
     }
 
     /* MPU can be configured out of a PMSA CPU either by setting has-mpu
      * to false or by setting pmsav7-dregion to 0.
      */
-    if (!cpu->has_mpu) {
-        cpu->pmsav7_dregion = 0;
-    }
-    if (cpu->pmsav7_dregion == 0) {
+    if (!cpu->has_mpu || cpu->pmsav7_dregion == 0) {
         cpu->has_mpu = false;
+        cpu->pmsav7_dregion = 0;
+        cpu->pmsav8r_hdregion = 0;
     }
 
     if (arm_feature(env, ARM_FEATURE_PMSA) &&
@@ -2137,6 +2286,19 @@ static void arm_cpu_realizefn(DeviceState *dev, Error **errp)
                 env->pmsav7.drsr = g_new0(uint32_t, nr);
                 env->pmsav7.dracr = g_new0(uint32_t, nr);
             }
+        }
+
+        if (cpu->pmsav8r_hdregion > 0xff) {
+            error_setg(errp, "PMSAv8 MPU EL2 #regions invalid %" PRIu32,
+                              cpu->pmsav8r_hdregion);
+            return;
+        }
+
+        if (cpu->pmsav8r_hdregion) {
+            env->pmsav8.hprbar = g_new0(uint32_t,
+                                        cpu->pmsav8r_hdregion);
+            env->pmsav8.hprlar = g_new0(uint32_t,
+                                        cpu->pmsav8r_hdregion);
         }
     }
 
@@ -2334,6 +2496,7 @@ static const struct TCGCPUOps arm_tcg_ops = {
     .initialize = arm_translate_init,
     .synchronize_from_tb = arm_cpu_synchronize_from_tb,
     .debug_excp_handler = arm_debug_excp_handler,
+    .restore_state_to_opc = arm_restore_state_to_opc,
 
 #ifdef CONFIG_USER_ONLY
     .record_sigsegv = arm_cpu_record_sigsegv,
@@ -2356,6 +2519,7 @@ static void arm_cpu_class_init(ObjectClass *oc, void *data)
     ARMCPUClass *acc = ARM_CPU_CLASS(oc);
     CPUClass *cc = CPU_CLASS(acc);
     DeviceClass *dc = DEVICE_CLASS(oc);
+    ResettableClass *rc = RESETTABLE_CLASS(oc);
 
     device_class_set_parent_realize(dc, arm_cpu_realizefn,
                                     &acc->parent_realize);
@@ -2363,7 +2527,9 @@ static void arm_cpu_class_init(ObjectClass *oc, void *data)
     dc->pwr_cntrl = arm_cpu_pwr_cntrl;
 
     device_class_set_props(dc, arm_cpu_properties);
-    device_class_set_parent_reset(dc, arm_cpu_reset, &acc->parent_reset);
+
+    resettable_class_set_parent_phases(rc, NULL, arm_cpu_reset_hold, NULL,
+                                       &acc->parent_phases);
 
     cc->class_by_name = arm_cpu_class_by_name;
     cc->has_work = arm_cpu_has_work;

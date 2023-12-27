@@ -33,7 +33,6 @@
 #include "qemu/units.h"
 #include "qemu/option.h"
 #include "monitor/qdev.h"
-#include "qapi/error.h"
 #include "hw/sysbus.h"
 #include "hw/arm/boot.h"
 #include "hw/arm/primecell.h"
@@ -47,8 +46,10 @@
 #include "sysemu/numa.h"
 #include "sysemu/runstate.h"
 #include "sysemu/tpm.h"
+#include "sysemu/tcg.h"
 #include "sysemu/kvm.h"
 #include "sysemu/hvf.h"
+#include "sysemu/qtest.h"
 #include "hw/loader.h"
 #include "qapi/error.h"
 #include "qemu/bitops.h"
@@ -62,6 +63,7 @@
 #include "hw/arm/fdt.h"
 #include "hw/intc/arm_gic.h"
 #include "hw/intc/arm_gicv3_common.h"
+#include "hw/intc/arm_gicv3_its_common.h"
 #include "hw/irq.h"
 #include "kvm_arm.h"
 #include "hw/firmware/smbios.h"
@@ -71,11 +73,10 @@
 #include "hw/arm/smmuv3.h"
 #include "hw/acpi/acpi.h"
 #include "target/arm/internals.h"
-#include "hw/mem/memory-device.h"
 #include "hw/mem/pc-dimm.h"
 #include "hw/mem/nvdimm.h"
 #include "hw/acpi/generic_event_device.h"
-#include "hw/virtio/virtio-mem-pci.h"
+#include "hw/virtio/virtio-md-pci.h"
 #include "hw/virtio/virtio-iommu.h"
 #include "hw/char/pl011.h"
 #include "qemu/guest-random.h"
@@ -174,6 +175,12 @@ static const MemMapEntry base_memmap[] = {
  * Note the extended_memmap is sized so that it eventually also includes the
  * base_memmap entries (VIRT_HIGH_GIC_REDIST2 index is greater than the last
  * index of base_memmap).
+ *
+ * The memory map for these Highmem IO Regions can be in legacy or compact
+ * layout, depending on 'compact-highmem' property. With legacy layout, the
+ * PA space for one specific region is always reserved, even if the region
+ * has been disabled or doesn't fit into the PA space. However, the PA space
+ * for the region won't be reserved in these circumstances with compact layout.
  */
 static MemMapEntry extended_memmap[] = {
     /* Additional 64 MB redist region (can contain up to 512 redistributors) */
@@ -197,14 +204,19 @@ static const int a15irqmap[] = {
 };
 
 static const char *valid_cpus[] = {
+#ifdef CONFIG_TCG
     ARM_CPU_TYPE_NAME("cortex-a7"),
     ARM_CPU_TYPE_NAME("cortex-a15"),
-    ARM_CPU_TYPE_NAME("cortex-a53"),
-    ARM_CPU_TYPE_NAME("cortex-a57"),
+    ARM_CPU_TYPE_NAME("cortex-a35"),
+    ARM_CPU_TYPE_NAME("cortex-a55"),
     ARM_CPU_TYPE_NAME("cortex-a72"),
     ARM_CPU_TYPE_NAME("cortex-a76"),
     ARM_CPU_TYPE_NAME("a64fx"),
     ARM_CPU_TYPE_NAME("neoverse-n1"),
+    ARM_CPU_TYPE_NAME("neoverse-v1"),
+#endif
+    ARM_CPU_TYPE_NAME("cortex-a53"),
+    ARM_CPU_TYPE_NAME("cortex-a57"),
     ARM_CPU_TYPE_NAME("host"),
     ARM_CPU_TYPE_NAME("max"),
 };
@@ -252,6 +264,7 @@ static void create_fdt(VirtMachineState *vms)
     qemu_fdt_setprop_string(fdt, "/", "compatible", "linux,dummy-virt");
     qemu_fdt_setprop_cell(fdt, "/", "#address-cells", 0x2);
     qemu_fdt_setprop_cell(fdt, "/", "#size-cells", 0x2);
+    qemu_fdt_setprop_string(fdt, "/", "model", "linux,dummy-virt");
 
     /* /chosen must exist for load_dtb to fill in necessary properties later */
     qemu_fdt_add_subnode(fdt, "/chosen");
@@ -486,6 +499,7 @@ static void fdt_add_its_gic_node(VirtMachineState *vms)
     qemu_fdt_setprop_string(ms->fdt, nodename, "compatible",
                             "arm,gic-v3-its");
     qemu_fdt_setprop(ms->fdt, nodename, "msi-controller", NULL, 0);
+    qemu_fdt_setprop_cell(ms->fdt, nodename, "#msi-cells", 1);
     qemu_fdt_setprop_sized_cells(ms->fdt, nodename, "reg",
                                  2, vms->memmap[VIRT_GIC_ITS].base,
                                  2, vms->memmap[VIRT_GIC_ITS].size);
@@ -1334,7 +1348,7 @@ static void create_smmu(const VirtMachineState *vms,
         return;
     }
 
-    dev = qdev_new("arm-smmuv3");
+    dev = qdev_new(TYPE_ARM_SMMUV3);
 
     object_property_set_link(OBJECT(dev), "primary-bus", OBJECT(bus),
                              &error_abort);
@@ -1359,8 +1373,6 @@ static void create_smmu(const VirtMachineState *vms,
     qemu_fdt_setprop(ms->fdt, node, "interrupt-names", irq_names,
                      sizeof(irq_names));
 
-    qemu_fdt_setprop_cell(ms->fdt, node, "clocks", vms->clock_phandle);
-    qemu_fdt_setprop_string(ms->fdt, node, "clock-names", "apb_pclk");
     qemu_fdt_setprop(ms->fdt, node, "dma-coherent", NULL, 0);
 
     qemu_fdt_setprop_cell(ms->fdt, node, "#iommu-cells", 1);
@@ -1371,14 +1383,15 @@ static void create_smmu(const VirtMachineState *vms,
 
 static void create_virtio_iommu_dt_bindings(VirtMachineState *vms)
 {
-    const char compat[] = "virtio,pci-iommu";
+    const char compat[] = "virtio,pci-iommu\0pci1af4,1057";
     uint16_t bdf = vms->virtio_iommu_bdf;
     MachineState *ms = MACHINE(vms);
     char *node;
 
     vms->iommu_phandle = qemu_fdt_alloc_phandle(ms->fdt);
 
-    node = g_strdup_printf("%s/virtio_iommu@%d", vms->pciehb_nodename, bdf);
+    node = g_strdup_printf("%s/virtio_iommu@%x,%x", vms->pciehb_nodename,
+                           PCI_SLOT(bdf), PCI_FUNC(bdf));
     qemu_fdt_add_subnode(ms->fdt, node);
     qemu_fdt_setprop(ms->fdt, node, "compatible", compat, sizeof(compat));
     qemu_fdt_setprop_sized_cells(ms->fdt, node, "reg",
@@ -1415,6 +1428,7 @@ static void create_pcie(VirtMachineState *vms)
     int i, ecam_id;
     PCIHostState *pci;
     MachineState *ms = MACHINE(vms);
+    MachineClass *mc = MACHINE_GET_CLASS(ms);
 
     dev = qdev_new(TYPE_GPEX_HOST);
     sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
@@ -1465,13 +1479,7 @@ static void create_pcie(VirtMachineState *vms)
     vms->bus = pci->bus;
     if (vms->bus) {
         for (i = 0; i < nb_nics; i++) {
-            NICInfo *nd = &nd_table[i];
-
-            if (!nd->model) {
-                nd->model = g_strdup("virtio");
-            }
-
-            pci_nic_init_nofail(nd, pci->bus, nd->model, NULL);
+            pci_nic_init_nofail(&nd_table[i], pci->bus, mc->default_nic, NULL);
         }
     }
 
@@ -1488,8 +1496,8 @@ static void create_pcie(VirtMachineState *vms)
     qemu_fdt_setprop(ms->fdt, nodename, "dma-coherent", NULL, 0);
 
     if (vms->msi_phandle) {
-        qemu_fdt_setprop_cells(ms->fdt, nodename, "msi-parent",
-                               vms->msi_phandle);
+        qemu_fdt_setprop_cells(ms->fdt, nodename, "msi-map",
+                               0, vms->msi_phandle, 0, 0x10000);
     }
 
     qemu_fdt_setprop_sized_cells(ms->fdt, nodename, "reg",
@@ -1607,9 +1615,11 @@ static void *machvirt_dtb(const struct arm_boot_info *binfo, int *fdt_size)
 static void virt_build_smbios(VirtMachineState *vms)
 {
     MachineClass *mc = MACHINE_GET_CLASS(vms);
+    MachineState *ms = MACHINE(vms);
     VirtMachineClass *vmc = VIRT_MACHINE_GET_CLASS(vms);
     uint8_t *smbios_tables, *smbios_anchor;
     size_t smbios_tables_len, smbios_anchor_len;
+    struct smbios_phys_mem_area mem_array;
     const char *product = "QEMU Virtual Machine";
 
     if (kvm_enabled()) {
@@ -1620,7 +1630,11 @@ static void virt_build_smbios(VirtMachineState *vms)
                         vmc->smbios_old_sys_ver ? "1.0" : mc->name, false,
                         true, SMBIOS_ENTRY_POINT_TYPE_64);
 
-    smbios_get_tables(MACHINE(vms), NULL, 0,
+    /* build the array of physical mem area from base_memmap */
+    mem_array.address = vms->memmap[VIRT_MEM].base;
+    mem_array.length = ms->ram_size;
+
+    smbios_get_tables(ms, &mem_array, 1,
                       &smbios_tables, &smbios_tables_len,
                       &smbios_anchor, &smbios_anchor_len,
                       &error_fatal);
@@ -1689,6 +1703,58 @@ static uint64_t virt_cpu_mp_affinity(VirtMachineState *vms, int idx)
     return arm_cpu_mp_affinity(idx, clustersz);
 }
 
+static inline bool *virt_get_high_memmap_enabled(VirtMachineState *vms,
+                                                 int index)
+{
+    bool *enabled_array[] = {
+        &vms->highmem_redists,
+        &vms->highmem_ecam,
+        &vms->highmem_mmio,
+    };
+
+    assert(ARRAY_SIZE(extended_memmap) - VIRT_LOWMEMMAP_LAST ==
+           ARRAY_SIZE(enabled_array));
+    assert(index - VIRT_LOWMEMMAP_LAST < ARRAY_SIZE(enabled_array));
+
+    return enabled_array[index - VIRT_LOWMEMMAP_LAST];
+}
+
+static void virt_set_high_memmap(VirtMachineState *vms,
+                                 hwaddr base, int pa_bits)
+{
+    hwaddr region_base, region_size;
+    bool *region_enabled, fits;
+    int i;
+
+    for (i = VIRT_LOWMEMMAP_LAST; i < ARRAY_SIZE(extended_memmap); i++) {
+        region_enabled = virt_get_high_memmap_enabled(vms, i);
+        region_base = ROUND_UP(base, extended_memmap[i].size);
+        region_size = extended_memmap[i].size;
+
+        vms->memmap[i].base = region_base;
+        vms->memmap[i].size = region_size;
+
+        /*
+         * Check each device to see if it fits in the PA space,
+         * moving highest_gpa as we go. For compatibility, move
+         * highest_gpa for disabled fitting devices as well, if
+         * the compact layout has been disabled.
+         *
+         * For each device that doesn't fit, disable it.
+         */
+        fits = (region_base + region_size) <= BIT_ULL(pa_bits);
+        *region_enabled &= fits;
+        if (vms->highmem_compact && !*region_enabled) {
+            continue;
+        }
+
+        base = region_base + region_size;
+        if (fits) {
+            vms->highest_gpa = base - 1;
+        }
+    }
+}
+
 static void virt_set_memmap(VirtMachineState *vms, int pa_bits)
 {
     MachineState *ms = MACHINE(vms);
@@ -1744,46 +1810,89 @@ static void virt_set_memmap(VirtMachineState *vms, int pa_bits)
     /* We know for sure that at least the memory fits in the PA space */
     vms->highest_gpa = memtop - 1;
 
-    for (i = VIRT_LOWMEMMAP_LAST; i < ARRAY_SIZE(extended_memmap); i++) {
-        hwaddr size = extended_memmap[i].size;
-        bool fits;
-
-        base = ROUND_UP(base, size);
-        vms->memmap[i].base = base;
-        vms->memmap[i].size = size;
-
-        /*
-         * Check each device to see if they fit in the PA space,
-         * moving highest_gpa as we go.
-         *
-         * For each device that doesn't fit, disable it.
-         */
-        fits = (base + size) <= BIT_ULL(pa_bits);
-        if (fits) {
-            vms->highest_gpa = base + size - 1;
-        }
-
-        switch (i) {
-        case VIRT_HIGH_GIC_REDIST2:
-            vms->highmem_redists &= fits;
-            break;
-        case VIRT_HIGH_PCIE_ECAM:
-            vms->highmem_ecam &= fits;
-            break;
-        case VIRT_HIGH_PCIE_MMIO:
-            vms->highmem_mmio &= fits;
-            break;
-        }
-
-        base += size;
-    }
+    virt_set_high_memmap(vms, base, pa_bits);
 
     if (device_memory_size > 0) {
-        ms->device_memory = g_malloc0(sizeof(*ms->device_memory));
-        ms->device_memory->base = device_memory_base;
-        memory_region_init(&ms->device_memory->mr, OBJECT(vms),
-                           "device-memory", device_memory_size);
+        machine_memory_devices_init(ms, device_memory_base, device_memory_size);
     }
+}
+
+static VirtGICType finalize_gic_version_do(const char *accel_name,
+                                           VirtGICType gic_version,
+                                           int gics_supported,
+                                           unsigned int max_cpus)
+{
+    /* Convert host/max/nosel to GIC version number */
+    switch (gic_version) {
+    case VIRT_GIC_VERSION_HOST:
+        if (!kvm_enabled()) {
+            error_report("gic-version=host requires KVM");
+            exit(1);
+        }
+
+        /* For KVM, gic-version=host means gic-version=max */
+        return finalize_gic_version_do(accel_name, VIRT_GIC_VERSION_MAX,
+                                       gics_supported, max_cpus);
+    case VIRT_GIC_VERSION_MAX:
+        if (gics_supported & VIRT_GIC_VERSION_4_MASK) {
+            gic_version = VIRT_GIC_VERSION_4;
+        } else if (gics_supported & VIRT_GIC_VERSION_3_MASK) {
+            gic_version = VIRT_GIC_VERSION_3;
+        } else {
+            gic_version = VIRT_GIC_VERSION_2;
+        }
+        break;
+    case VIRT_GIC_VERSION_NOSEL:
+        if ((gics_supported & VIRT_GIC_VERSION_2_MASK) &&
+            max_cpus <= GIC_NCPU) {
+            gic_version = VIRT_GIC_VERSION_2;
+        } else if (gics_supported & VIRT_GIC_VERSION_3_MASK) {
+            /*
+             * in case the host does not support v2 emulation or
+             * the end-user requested more than 8 VCPUs we now default
+             * to v3. In any case defaulting to v2 would be broken.
+             */
+            gic_version = VIRT_GIC_VERSION_3;
+        } else if (max_cpus > GIC_NCPU) {
+            error_report("%s only supports GICv2 emulation but more than 8 "
+                         "vcpus are requested", accel_name);
+            exit(1);
+        }
+        break;
+    case VIRT_GIC_VERSION_2:
+    case VIRT_GIC_VERSION_3:
+    case VIRT_GIC_VERSION_4:
+        break;
+    }
+
+    /* Check chosen version is effectively supported */
+    switch (gic_version) {
+    case VIRT_GIC_VERSION_2:
+        if (!(gics_supported & VIRT_GIC_VERSION_2_MASK)) {
+            error_report("%s does not support GICv2 emulation", accel_name);
+            exit(1);
+        }
+        break;
+    case VIRT_GIC_VERSION_3:
+        if (!(gics_supported & VIRT_GIC_VERSION_3_MASK)) {
+            error_report("%s does not support GICv3 emulation", accel_name);
+            exit(1);
+        }
+        break;
+    case VIRT_GIC_VERSION_4:
+        if (!(gics_supported & VIRT_GIC_VERSION_4_MASK)) {
+            error_report("%s does not support GICv4 emulation, is virtualization=on?",
+                         accel_name);
+            exit(1);
+        }
+        break;
+    default:
+        error_report("logic error in finalize_gic_version");
+        exit(1);
+        break;
+    }
+
+    return gic_version;
 }
 
 /*
@@ -1794,118 +1903,49 @@ static void virt_set_memmap(VirtMachineState *vms, int pa_bits)
  */
 static void finalize_gic_version(VirtMachineState *vms)
 {
+    const char *accel_name = current_accel_name();
     unsigned int max_cpus = MACHINE(vms)->smp.max_cpus;
+    int gics_supported = 0;
 
-    if (kvm_enabled()) {
-        int probe_bitmap;
+    /* Determine which GIC versions the current environment supports */
+    if (kvm_enabled() && kvm_irqchip_in_kernel()) {
+        int probe_bitmap = kvm_arm_vgic_probe();
 
-        if (!kvm_irqchip_in_kernel()) {
-            switch (vms->gic_version) {
-            case VIRT_GIC_VERSION_HOST:
-                warn_report(
-                    "gic-version=host not relevant with kernel-irqchip=off "
-                     "as only userspace GICv2 is supported. Using v2 ...");
-                return;
-            case VIRT_GIC_VERSION_MAX:
-            case VIRT_GIC_VERSION_NOSEL:
-                vms->gic_version = VIRT_GIC_VERSION_2;
-                return;
-            case VIRT_GIC_VERSION_2:
-                return;
-            case VIRT_GIC_VERSION_3:
-                error_report(
-                    "gic-version=3 is not supported with kernel-irqchip=off");
-                exit(1);
-            case VIRT_GIC_VERSION_4:
-                error_report(
-                    "gic-version=4 is not supported with kernel-irqchip=off");
-                exit(1);
-            }
-        }
-
-        probe_bitmap = kvm_arm_vgic_probe();
         if (!probe_bitmap) {
             error_report("Unable to determine GIC version supported by host");
             exit(1);
         }
 
-        switch (vms->gic_version) {
-        case VIRT_GIC_VERSION_HOST:
-        case VIRT_GIC_VERSION_MAX:
-            if (probe_bitmap & KVM_ARM_VGIC_V3) {
-                vms->gic_version = VIRT_GIC_VERSION_3;
-            } else {
-                vms->gic_version = VIRT_GIC_VERSION_2;
-            }
-            return;
-        case VIRT_GIC_VERSION_NOSEL:
-            if ((probe_bitmap & KVM_ARM_VGIC_V2) && max_cpus <= GIC_NCPU) {
-                vms->gic_version = VIRT_GIC_VERSION_2;
-            } else if (probe_bitmap & KVM_ARM_VGIC_V3) {
-                /*
-                 * in case the host does not support v2 in-kernel emulation or
-                 * the end-user requested more than 8 VCPUs we now default
-                 * to v3. In any case defaulting to v2 would be broken.
-                 */
-                vms->gic_version = VIRT_GIC_VERSION_3;
-            } else if (max_cpus > GIC_NCPU) {
-                error_report("host only supports in-kernel GICv2 emulation "
-                             "but more than 8 vcpus are requested");
-                exit(1);
-            }
-            break;
-        case VIRT_GIC_VERSION_2:
-        case VIRT_GIC_VERSION_3:
-            break;
-        case VIRT_GIC_VERSION_4:
-            error_report("gic-version=4 is not supported with KVM");
-            exit(1);
+        if (probe_bitmap & KVM_ARM_VGIC_V2) {
+            gics_supported |= VIRT_GIC_VERSION_2_MASK;
         }
-
-        /* Check chosen version is effectively supported by the host */
-        if (vms->gic_version == VIRT_GIC_VERSION_2 &&
-            !(probe_bitmap & KVM_ARM_VGIC_V2)) {
-            error_report("host does not support in-kernel GICv2 emulation");
-            exit(1);
-        } else if (vms->gic_version == VIRT_GIC_VERSION_3 &&
-                   !(probe_bitmap & KVM_ARM_VGIC_V3)) {
-            error_report("host does not support in-kernel GICv3 emulation");
-            exit(1);
+        if (probe_bitmap & KVM_ARM_VGIC_V3) {
+            gics_supported |= VIRT_GIC_VERSION_3_MASK;
         }
-        return;
-    }
-
-    /* TCG mode */
-    switch (vms->gic_version) {
-    case VIRT_GIC_VERSION_NOSEL:
-        vms->gic_version = VIRT_GIC_VERSION_2;
-        break;
-    case VIRT_GIC_VERSION_MAX:
+    } else if (kvm_enabled() && !kvm_irqchip_in_kernel()) {
+        /* KVM w/o kernel irqchip can only deal with GICv2 */
+        gics_supported |= VIRT_GIC_VERSION_2_MASK;
+        accel_name = "KVM with kernel-irqchip=off";
+    } else if (tcg_enabled() || hvf_enabled() || qtest_enabled())  {
+        gics_supported |= VIRT_GIC_VERSION_2_MASK;
         if (module_object_class_by_name("arm-gicv3")) {
-            /* CONFIG_ARM_GICV3_TCG was set */
+            gics_supported |= VIRT_GIC_VERSION_3_MASK;
             if (vms->virt) {
                 /* GICv4 only makes sense if CPU has EL2 */
-                vms->gic_version = VIRT_GIC_VERSION_4;
-            } else {
-                vms->gic_version = VIRT_GIC_VERSION_3;
+                gics_supported |= VIRT_GIC_VERSION_4_MASK;
             }
-        } else {
-            vms->gic_version = VIRT_GIC_VERSION_2;
         }
-        break;
-    case VIRT_GIC_VERSION_HOST:
-        error_report("gic-version=host requires KVM");
+    } else {
+        error_report("Unsupported accelerator, can not determine GIC support");
         exit(1);
-    case VIRT_GIC_VERSION_4:
-        if (!vms->virt) {
-            error_report("gic-version=4 requires virtualization enabled");
-            exit(1);
-        }
-        break;
-    case VIRT_GIC_VERSION_2:
-    case VIRT_GIC_VERSION_3:
-        break;
     }
+
+    /*
+     * Then convert helpers like host/max to concrete GIC versions and ensure
+     * the desired version is supported
+     */
+    vms->gic_version = finalize_gic_version_do(accel_name, vms->gic_version,
+                                               gics_supported, max_cpus);
 }
 
 /*
@@ -2008,7 +2048,7 @@ static void machvirt_init(MachineState *machine)
         int pa_bits;
 
         /*
-         * Instanciate a temporary CPU object to find out about what
+         * Instantiate a temporary CPU object to find out about what
          * we are about to deal with. Once this is done, get rid of
          * the object.
          */
@@ -2069,35 +2109,41 @@ static void machvirt_init(MachineState *machine)
     if (vms->gic_version == VIRT_GIC_VERSION_2) {
         virt_max_cpus = GIC_NCPU;
     } else {
-        virt_max_cpus = virt_redist_capacity(vms, VIRT_GIC_REDIST) +
-            virt_redist_capacity(vms, VIRT_HIGH_GIC_REDIST2);
+        virt_max_cpus = virt_redist_capacity(vms, VIRT_GIC_REDIST);
+        if (vms->highmem_redists) {
+            virt_max_cpus += virt_redist_capacity(vms, VIRT_HIGH_GIC_REDIST2);
+        }
     }
 
     if (max_cpus > virt_max_cpus) {
         error_report("Number of SMP CPUs requested (%d) exceeds max CPUs "
                      "supported by machine 'mach-virt' (%d)",
                      max_cpus, virt_max_cpus);
+        if (vms->gic_version != VIRT_GIC_VERSION_2 && !vms->highmem_redists) {
+            error_printf("Try 'highmem-redists=on' for more CPUs\n");
+        }
+
         exit(1);
     }
 
     if (vms->secure && (kvm_enabled() || hvf_enabled())) {
         error_report("mach-virt: %s does not support providing "
                      "Security extensions (TrustZone) to the guest CPU",
-                     kvm_enabled() ? "KVM" : "HVF");
+                     current_accel_name());
         exit(1);
     }
 
     if (vms->virt && (kvm_enabled() || hvf_enabled())) {
         error_report("mach-virt: %s does not support providing "
                      "Virtualization extensions to the guest CPU",
-                     kvm_enabled() ? "KVM" : "HVF");
+                     current_accel_name());
         exit(1);
     }
 
     if (vms->mte && (kvm_enabled() || hvf_enabled())) {
         error_report("mach-virt: %s does not support providing "
                      "MTE to the guest CPU",
-                     kvm_enabled() ? "KVM" : "HVF");
+                     current_accel_name());
         exit(1);
     }
 
@@ -2208,10 +2254,6 @@ static void machvirt_init(MachineState *machine)
 
     memory_region_add_subregion(sysmem, vms->memmap[VIRT_MEM].base,
                                 machine->ram);
-    if (machine->device_memory) {
-        memory_region_add_subregion(sysmem, machine->device_memory->base,
-                                    &machine->device_memory->mr);
-    }
 
     virt_flash_fdt(vms, sysmem, secure_sysmem ?: sysmem);
 
@@ -2330,6 +2372,63 @@ static void virt_set_highmem(Object *obj, bool value, Error **errp)
 
     vms->highmem = value;
 }
+
+static bool virt_get_compact_highmem(Object *obj, Error **errp)
+{
+    VirtMachineState *vms = VIRT_MACHINE(obj);
+
+    return vms->highmem_compact;
+}
+
+static void virt_set_compact_highmem(Object *obj, bool value, Error **errp)
+{
+    VirtMachineState *vms = VIRT_MACHINE(obj);
+
+    vms->highmem_compact = value;
+}
+
+static bool virt_get_highmem_redists(Object *obj, Error **errp)
+{
+    VirtMachineState *vms = VIRT_MACHINE(obj);
+
+    return vms->highmem_redists;
+}
+
+static void virt_set_highmem_redists(Object *obj, bool value, Error **errp)
+{
+    VirtMachineState *vms = VIRT_MACHINE(obj);
+
+    vms->highmem_redists = value;
+}
+
+static bool virt_get_highmem_ecam(Object *obj, Error **errp)
+{
+    VirtMachineState *vms = VIRT_MACHINE(obj);
+
+    return vms->highmem_ecam;
+}
+
+static void virt_set_highmem_ecam(Object *obj, bool value, Error **errp)
+{
+    VirtMachineState *vms = VIRT_MACHINE(obj);
+
+    vms->highmem_ecam = value;
+}
+
+static bool virt_get_highmem_mmio(Object *obj, Error **errp)
+{
+    VirtMachineState *vms = VIRT_MACHINE(obj);
+
+    return vms->highmem_mmio;
+}
+
+static void virt_set_highmem_mmio(Object *obj, bool value, Error **errp)
+{
+    VirtMachineState *vms = VIRT_MACHINE(obj);
+
+    vms->highmem_mmio = value;
+}
+
 
 static bool virt_get_its(Object *obj, Error **errp)
 {
@@ -2634,64 +2733,6 @@ static void virt_memory_plug(HotplugHandler *hotplug_dev,
                          dev, &error_abort);
 }
 
-static void virt_virtio_md_pci_pre_plug(HotplugHandler *hotplug_dev,
-                                        DeviceState *dev, Error **errp)
-{
-    HotplugHandler *hotplug_dev2 = qdev_get_bus_hotplug_handler(dev);
-    Error *local_err = NULL;
-
-    if (!hotplug_dev2 && dev->hotplugged) {
-        /*
-         * Without a bus hotplug handler, we cannot control the plug/unplug
-         * order. We should never reach this point when hotplugging on ARM.
-         * However, it's nice to add a safety net, similar to what we have
-         * on x86.
-         */
-        error_setg(errp, "hotplug of virtio based memory devices not supported"
-                   " on this bus.");
-        return;
-    }
-    /*
-     * First, see if we can plug this memory device at all. If that
-     * succeeds, branch of to the actual hotplug handler.
-     */
-    memory_device_pre_plug(MEMORY_DEVICE(dev), MACHINE(hotplug_dev), NULL,
-                           &local_err);
-    if (!local_err && hotplug_dev2) {
-        hotplug_handler_pre_plug(hotplug_dev2, dev, &local_err);
-    }
-    error_propagate(errp, local_err);
-}
-
-static void virt_virtio_md_pci_plug(HotplugHandler *hotplug_dev,
-                                    DeviceState *dev, Error **errp)
-{
-    HotplugHandler *hotplug_dev2 = qdev_get_bus_hotplug_handler(dev);
-    Error *local_err = NULL;
-
-    /*
-     * Plug the memory device first and then branch off to the actual
-     * hotplug handler. If that one fails, we can easily undo the memory
-     * device bits.
-     */
-    memory_device_plug(MEMORY_DEVICE(dev), MACHINE(hotplug_dev));
-    if (hotplug_dev2) {
-        hotplug_handler_plug(hotplug_dev2, dev, &local_err);
-        if (local_err) {
-            memory_device_unplug(MEMORY_DEVICE(dev), MACHINE(hotplug_dev));
-        }
-    }
-    error_propagate(errp, local_err);
-}
-
-static void virt_virtio_md_pci_unplug_request(HotplugHandler *hotplug_dev,
-                                              DeviceState *dev, Error **errp)
-{
-    /* We don't support hot unplug of virtio based memory devices */
-    error_setg(errp, "virtio based memory devices cannot be unplugged.");
-}
-
-
 static void virt_machine_device_pre_plug_cb(HotplugHandler *hotplug_dev,
                                             DeviceState *dev, Error **errp)
 {
@@ -2699,8 +2740,8 @@ static void virt_machine_device_pre_plug_cb(HotplugHandler *hotplug_dev,
 
     if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
         virt_memory_pre_plug(hotplug_dev, dev, errp);
-    } else if (object_dynamic_cast(OBJECT(dev), TYPE_VIRTIO_MEM_PCI)) {
-        virt_virtio_md_pci_pre_plug(hotplug_dev, dev, errp);
+    } else if (object_dynamic_cast(OBJECT(dev), TYPE_VIRTIO_MD_PCI)) {
+        virtio_md_pci_pre_plug(VIRTIO_MD_PCI(dev), MACHINE(hotplug_dev), errp);
     } else if (object_dynamic_cast(OBJECT(dev), TYPE_VIRTIO_IOMMU_PCI)) {
         hwaddr db_start = 0, db_end = 0;
         char *resv_prop_str;
@@ -2749,12 +2790,11 @@ static void virt_machine_device_plug_cb(HotplugHandler *hotplug_dev,
                                      SYS_BUS_DEVICE(dev));
         }
     }
+
     if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
         virt_memory_plug(hotplug_dev, dev, errp);
-    }
-
-    if (object_dynamic_cast(OBJECT(dev), TYPE_VIRTIO_MEM_PCI)) {
-        virt_virtio_md_pci_plug(hotplug_dev, dev, errp);
+    } else if (object_dynamic_cast(OBJECT(dev), TYPE_VIRTIO_MD_PCI)) {
+        virtio_md_pci_plug(VIRTIO_MD_PCI(dev), MACHINE(hotplug_dev), errp);
     }
 
     if (object_dynamic_cast(OBJECT(dev), TYPE_VIRTIO_IOMMU_PCI)) {
@@ -2770,24 +2810,20 @@ static void virt_dimm_unplug_request(HotplugHandler *hotplug_dev,
                                      DeviceState *dev, Error **errp)
 {
     VirtMachineState *vms = VIRT_MACHINE(hotplug_dev);
-    Error *local_err = NULL;
 
     if (!vms->acpi_dev) {
-        error_setg(&local_err,
+        error_setg(errp,
                    "memory hotplug is not enabled: missing acpi-ged device");
-        goto out;
+        return;
     }
 
     if (object_dynamic_cast(OBJECT(dev), TYPE_NVDIMM)) {
-        error_setg(&local_err,
-                   "nvdimm device hot unplug is not supported yet.");
-        goto out;
+        error_setg(errp, "nvdimm device hot unplug is not supported yet.");
+        return;
     }
 
     hotplug_handler_unplug_request(HOTPLUG_HANDLER(vms->acpi_dev), dev,
-                                   &local_err);
-out:
-    error_propagate(errp, local_err);
+                                   errp);
 }
 
 static void virt_dimm_unplug(HotplugHandler *hotplug_dev,
@@ -2813,8 +2849,9 @@ static void virt_machine_device_unplug_request_cb(HotplugHandler *hotplug_dev,
 {
     if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
         virt_dimm_unplug_request(hotplug_dev, dev, errp);
-    } else if (object_dynamic_cast(OBJECT(dev), TYPE_VIRTIO_MEM_PCI)) {
-        virt_virtio_md_pci_unplug_request(hotplug_dev, dev, errp);
+    } else if (object_dynamic_cast(OBJECT(dev), TYPE_VIRTIO_MD_PCI)) {
+        virtio_md_pci_unplug_request(VIRTIO_MD_PCI(dev), MACHINE(hotplug_dev),
+                                     errp);
     } else {
         error_setg(errp, "device unplug request for unsupported device"
                    " type: %s", object_get_typename(OBJECT(dev)));
@@ -2826,6 +2863,8 @@ static void virt_machine_device_unplug_cb(HotplugHandler *hotplug_dev,
 {
     if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
         virt_dimm_unplug(hotplug_dev, dev, errp);
+    } else if (object_dynamic_cast(OBJECT(dev), TYPE_VIRTIO_MD_PCI)) {
+        virtio_md_pci_unplug(VIRTIO_MD_PCI(dev), MACHINE(hotplug_dev), errp);
     } else {
         error_setg(errp, "virt: device unplug for unsupported device"
                    " type: %s", object_get_typename(OBJECT(dev)));
@@ -2839,7 +2878,7 @@ static HotplugHandler *virt_machine_get_hotplug_handler(MachineState *machine,
 
     if (device_is_dynamic_sysbus(mc, dev) ||
         object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM) ||
-        object_dynamic_cast(OBJECT(dev), TYPE_VIRTIO_MEM_PCI) ||
+        object_dynamic_cast(OBJECT(dev), TYPE_VIRTIO_MD_PCI) ||
         object_dynamic_cast(OBJECT(dev), TYPE_VIRTIO_IOMMU_PCI)) {
         return HOTPLUG_HANDLER(machine);
     }
@@ -2910,7 +2949,11 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
     mc->minimum_page_bits = 12;
     mc->possible_cpu_arch_ids = virt_possible_cpu_arch_ids;
     mc->cpu_index_to_instance_props = virt_cpu_index_to_props;
+#ifdef CONFIG_TCG
     mc->default_cpu_type = ARM_CPU_TYPE_NAME("cortex-a15");
+#else
+    mc->default_cpu_type = ARM_CPU_TYPE_NAME("max");
+#endif
     mc->get_default_cpu_node_id = virt_get_default_cpu_node_id;
     mc->kvm_type = virt_kvm_type;
     assert(!mc->get_hotplug_handler);
@@ -2923,7 +2966,10 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
     mc->smp_props.clusters_supported = true;
     mc->auto_enable_numa_with_memhp = true;
     mc->auto_enable_numa_with_memdev = true;
+    /* platform instead of architectural choice */
+    mc->cpu_cluster_has_numa_boundary = true;
     mc->default_ram_id = "mach-virt.ram";
+    mc->default_nic = "virtio-net-pci";
 
     object_class_property_add(oc, "acpi", "OnOffAuto",
         virt_get_acpi, virt_set_acpi,
@@ -2948,6 +2994,35 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
     object_class_property_set_description(oc, "highmem",
                                           "Set on/off to enable/disable using "
                                           "physical address space above 32 bits");
+
+    object_class_property_add_bool(oc, "compact-highmem",
+                                   virt_get_compact_highmem,
+                                   virt_set_compact_highmem);
+    object_class_property_set_description(oc, "compact-highmem",
+                                          "Set on/off to enable/disable compact "
+                                          "layout for high memory regions");
+
+    object_class_property_add_bool(oc, "highmem-redists",
+                                   virt_get_highmem_redists,
+                                   virt_set_highmem_redists);
+    object_class_property_set_description(oc, "highmem-redists",
+                                          "Set on/off to enable/disable high "
+                                          "memory region for GICv3 or GICv4 "
+                                          "redistributor");
+
+    object_class_property_add_bool(oc, "highmem-ecam",
+                                   virt_get_highmem_ecam,
+                                   virt_set_highmem_ecam);
+    object_class_property_set_description(oc, "highmem-ecam",
+                                          "Set on/off to enable/disable high "
+                                          "memory region for PCI ECAM");
+
+    object_class_property_add_bool(oc, "highmem-mmio",
+                                   virt_get_highmem_mmio,
+                                   virt_set_highmem_mmio);
+    object_class_property_set_description(oc, "highmem-mmio",
+                                          "Set on/off to enable/disable high "
+                                          "memory region for PCI MMIO");
 
     object_class_property_add_str(oc, "gic-version", virt_get_gic_version,
                                   virt_set_gic_version);
@@ -3033,6 +3108,7 @@ static void virt_instance_init(Object *obj)
 
     /* High memory is enabled by default */
     vms->highmem = true;
+    vms->highmem_compact = !vmc->no_highmem_compact;
     vms->gic_version = VIRT_GIC_VERSION_NOSEL;
 
     vms->highmem_ecam = !vmc->no_highmem_ecam;
@@ -3095,10 +3171,35 @@ static void machvirt_machine_init(void)
 }
 type_init(machvirt_machine_init);
 
-static void virt_machine_7_1_options(MachineClass *mc)
+static void virt_machine_8_1_options(MachineClass *mc)
 {
 }
-DEFINE_VIRT_MACHINE_AS_LATEST(7, 1)
+DEFINE_VIRT_MACHINE_AS_LATEST(8, 1)
+
+static void virt_machine_8_0_options(MachineClass *mc)
+{
+    virt_machine_8_1_options(mc);
+    compat_props_add(mc->compat_props, hw_compat_8_0, hw_compat_8_0_len);
+}
+DEFINE_VIRT_MACHINE(8, 0)
+
+static void virt_machine_7_2_options(MachineClass *mc)
+{
+    virt_machine_8_0_options(mc);
+    compat_props_add(mc->compat_props, hw_compat_7_2, hw_compat_7_2_len);
+}
+DEFINE_VIRT_MACHINE(7, 2)
+
+static void virt_machine_7_1_options(MachineClass *mc)
+{
+    VirtMachineClass *vmc = VIRT_MACHINE_CLASS(OBJECT_CLASS(mc));
+
+    virt_machine_7_2_options(mc);
+    compat_props_add(mc->compat_props, hw_compat_7_1, hw_compat_7_1_len);
+    /* Compact layout for high memory regions was introduced with 7.2 */
+    vmc->no_highmem_compact = true;
+}
+DEFINE_VIRT_MACHINE(7, 1)
 
 static void virt_machine_7_0_options(MachineClass *mc)
 {

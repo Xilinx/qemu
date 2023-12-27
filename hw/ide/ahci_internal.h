@@ -26,7 +26,7 @@
 
 #include "hw/ide/ahci.h"
 #include "hw/ide/internal.h"
-#include "hw/pci/pci.h"
+#include "hw/pci/pci_device.h"
 
 #define AHCI_MEM_BAR_SIZE         0x1000
 #define AHCI_MAX_PORTS            32
@@ -321,6 +321,7 @@ struct AHCIDevice {
     bool init_d2h_sent;
     AHCICmdHdr *cur_cmd;
     NCQTransferState ncq_tfs[AHCI_MAX_CMDS];
+    MemReentrancyGuard mem_reentrancy_guard;
 };
 
 struct AHCIPCIState {

@@ -29,10 +29,11 @@
 #include "qemu/log.h"
 #include "hw/loader.h"
 #include "trace.h"
-#include "hw/pci/pci.h"
+#include "hw/pci/pci_device.h"
 #include "hw/qdev-properties.h"
 #include "migration/vmstate.h"
 #include "qom/object.h"
+#include "ui/console.h"
 
 #undef VERBOSE
 #define HW_RECT_ACCEL
@@ -549,12 +550,12 @@ static inline void vmsvga_cursor_define(struct vmsvga_state_s *s,
     default:
         fprintf(stderr, "%s: unhandled bpp %d, using fallback cursor\n",
                 __func__, c->bpp);
-        cursor_put(qc);
+        cursor_unref(qc);
         qc = cursor_builtin_left_ptr();
     }
 
     dpy_cursor_define(s->vga.con, qc);
-    cursor_put(qc);
+    cursor_unref(qc);
 }
 #endif
 

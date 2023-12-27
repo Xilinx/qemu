@@ -20,6 +20,20 @@ they were first deprecated in the 2.10.0 release.
 What follows is a list of all features currently marked as
 deprecated.
 
+Build options
+-------------
+
+``gprof`` builds (since 8.0)
+''''''''''''''''''''''''''''
+
+The ``--enable-gprof`` configure setting relies on compiler
+instrumentation to gather its data which can distort the generated
+profile. As other non-instrumenting tools are available that give a
+more holistic view of the system with non-instrumented binaries we are
+deprecating the build option and no longer defend it in CI. The
+``--enable-gcov`` build option remains for analysis test case
+coverage.
+
 System emulator command line arguments
 --------------------------------------
 
@@ -39,12 +53,6 @@ should specify an ``audiodev=`` property.  Additionally, when using
 vnc, you should specify an ``audiodev=`` property if you plan to
 transmit audio through the VNC protocol.
 
-``-chardev`` backend aliases ``tty`` and ``parport`` (since 6.0)
-''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-
-``tty`` and ``parport`` are aliases that will be removed. Instead, the
-actual backend names ``serial`` and ``parallel`` should be used.
-
 Short-form boolean options (since 6.0)
 ''''''''''''''''''''''''''''''''''''''
 
@@ -57,34 +65,6 @@ and will cause a warning.
 
 The replacement for the ``nodelay`` short-form boolean option is ``nodelay=on``
 rather than ``delay=off``.
-
-Userspace local APIC with KVM (x86, since 6.0)
-''''''''''''''''''''''''''''''''''''''''''''''
-
-Using ``-M kernel-irqchip=off`` with x86 machine types that include a local
-APIC is deprecated.  The ``split`` setting is supported, as is using
-``-M kernel-irqchip=off`` with the ISA PC machine type.
-
-hexadecimal sizes with scaling multipliers (since 6.0)
-''''''''''''''''''''''''''''''''''''''''''''''''''''''
-
-Input parameters that take a size value should only use a size suffix
-(such as 'k' or 'M') when the base is written in decimal, and not when
-the value is hexadecimal.  That is, '0x20M' is deprecated, and should
-be written either as '32M' or as '0x2000000'.
-
-``-spice password=string`` (since 6.0)
-''''''''''''''''''''''''''''''''''''''
-
-This option is insecure because the SPICE password remains visible in
-the process listing. This is replaced by the new ``password-secret``
-option which lets the password be securely provided on the command
-line using a ``secret`` object instance.
-
-``-watchdog`` (since 6.2)
-'''''''''''''''''''''''''
-
-Use ``-device`` instead.
 
 ``-smp`` ("parameter=0" SMP configurations) (since 6.2)
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''
@@ -113,12 +93,50 @@ as short-form boolean values, and passed to plugins as ``arg_name=on``.
 However, short-form booleans are deprecated and full explicit ``arg_name=on``
 form is preferred.
 
-``-drive if=none`` for the sifive_u OTP device (since 6.2)
-''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+``-no-hpet`` (since 8.0)
+''''''''''''''''''''''''
 
-Using ``-drive if=none`` to configure the OTP device of the sifive_u
-RISC-V machine is deprecated. Use ``-drive if=pflash`` instead.
+The HPET setting has been turned into a machine property.
+Use ``-machine hpet=off`` instead.
 
+``-no-acpi`` (since 8.0)
+''''''''''''''''''''''''
+
+The ``-no-acpi`` setting has been turned into a machine property.
+Use ``-machine acpi=off`` instead.
+
+``-accel hax`` (since 8.0)
+''''''''''''''''''''''''''
+
+The HAXM project has been retired (see https://github.com/intel/haxm#status).
+Use "whpx" (on Windows) or "hvf" (on macOS) instead.
+
+``-async-teardown`` (since 8.1)
+'''''''''''''''''''''''''''''''
+
+Use ``-run-with async-teardown=on`` instead.
+
+``-chroot`` (since 8.1)
+'''''''''''''''''''''''
+
+Use ``-run-with chroot=dir`` instead.
+
+``-singlestep`` (since 8.1)
+'''''''''''''''''''''''''''
+
+The ``-singlestep`` option has been turned into an accelerator property,
+and given a name that better reflects what it actually does.
+Use ``-accel tcg,one-insn-per-tb=on`` instead.
+
+User-mode emulator command line arguments
+-----------------------------------------
+
+``-singlestep`` (since 8.1)
+'''''''''''''''''''''''''''
+
+The ``-singlestep`` option has been given a name that better reflects
+what it actually does. For both linux-user and bsd-user, use the
+new ``-one-insn-per-tb`` option instead.
 
 QEMU Machine Protocol (QMP) commands
 ------------------------------------
@@ -191,56 +209,79 @@ accepted incorrect commands will return an error. Users should make sure that
 all arguments passed to ``device_add`` are consistent with the documented
 property types.
 
-``query-sgx`` return value member ``section-size`` (since 7.0)
-''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+``StatusInfo`` member ``singlestep`` (since 8.1)
+''''''''''''''''''''''''''''''''''''''''''''''''
 
-Member ``section-size`` in return value elements with meta-type ``uint64`` is
-deprecated.  Use ``sections`` instead.
+The ``singlestep`` member of the ``StatusInfo`` returned from the
+``query-status`` command is deprecated. This member has a confusing
+name and it never did what the documentation claimed or what its name
+suggests. We do not believe that anybody is actually using the
+information provided in this member.
 
+The information it reports is whether the TCG JIT is in "one
+instruction per translated block" mode (which can be set on the
+command line or via the HMP, but not via QMP). The information remains
+available via the HMP 'info jit' command.
 
-``query-sgx-capabilities`` return value member ``section-size`` (since 7.0)
-'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-
-Member ``section-size`` in return value elements with meta-type ``uint64`` is
-deprecated.  Use ``sections`` instead.
-
-System accelerators
--------------------
-
-MIPS ``Trap-and-Emul`` KVM support (since 6.0)
-''''''''''''''''''''''''''''''''''''''''''''''
-
-The MIPS ``Trap-and-Emul`` KVM host and guest support has been removed
-from Linux upstream kernel, declare it deprecated.
-
-QEMU API (QAPI) events
-----------------------
+QEMU Machine Protocol (QMP) events
+----------------------------------
 
 ``MEM_UNPLUG_ERROR`` (since 6.2)
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
 Use the more generic event ``DEVICE_UNPLUG_GUEST_ERROR`` instead.
 
+``vcpu`` trace events (since 8.1)
+'''''''''''''''''''''''''''''''''
+
+The ability to instrument QEMU helper functions with vCPU-aware trace
+points was removed in 7.0. However QMP still exposed the vcpu
+parameter. This argument has now been deprecated and the remaining
+remaining trace points that used it are selected just by name.
+
+Human Monitor Protocol (HMP) commands
+-------------------------------------
+
+``singlestep`` (since 8.1)
+''''''''''''''''''''''''''
+
+The ``singlestep`` command has been replaced by the ``one-insn-per-tb``
+command, which has the same behaviour but a less misleading name.
+
+Host Architectures
+------------------
+
+BE MIPS (since 7.2)
+'''''''''''''''''''
+
+As Debian 10 ("Buster") moved into LTS the big endian 32 bit version of
+MIPS moved out of support making it hard to maintain our
+cross-compilation CI tests of the architecture. As we no longer have
+CI coverage support may bitrot away before the deprecation process
+completes. The little endian variants of MIPS (both 32 and 64 bit) are
+still a supported host architecture.
+
+System emulation on 32-bit x86 hosts (since 8.0)
+''''''''''''''''''''''''''''''''''''''''''''''''
+
+Support for 32-bit x86 host deployments is increasingly uncommon in mainstream
+OS distributions given the widespread availability of 64-bit x86 hardware.
+The QEMU project no longer considers 32-bit x86 support for system emulation to
+be an effective use of its limited resources, and thus intends to discontinue
+it. Since all recent x86 hardware from the past >10 years is capable of the
+64-bit x86 extensions, a corresponding 64-bit OS should be used instead.
+
 
 System emulator machines
 ------------------------
 
-Arm ``virt`` machine ``dtb-kaslr-seed`` property
-''''''''''''''''''''''''''''''''''''''''''''''''
+Arm ``virt`` machine ``dtb-kaslr-seed`` property (since 7.1)
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
 The ``dtb-kaslr-seed`` property on the ``virt`` board has been
 deprecated; use the new name ``dtb-randomness`` instead. The new name
 better reflects the way this property affects all random data within
 the device tree blob, not just the ``kaslr-seed`` node.
-
-PPC 405 ``taihu`` machine (since 7.0)
-'''''''''''''''''''''''''''''''''''''
-
-The PPC 405 CPU is a system-on-a-chip, so all 405 machines are very similar,
-except for some external periphery. However, the periphery of the ``taihu``
-machine is hardly emulated at all (e.g. neither the LCD nor the USB part had
-been implemented), so there is not much value added by this board. Use the
-``ref405ep`` machine instead.
 
 ``pc-i440fx-1.4`` up to ``pc-i440fx-1.7`` (since 7.0)
 '''''''''''''''''''''''''''''''''''''''''''''''''''''
@@ -284,15 +325,6 @@ full SCSI support.  Use virtio-scsi instead when SCSI passthrough is required.
 Note this also applies to ``-device virtio-blk-pci,scsi=on|off``, which is an
 alias.
 
-``-device sga`` (since 6.2)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The ``sga`` device loads an option ROM for x86 targets which enables
-SeaBIOS to send messages to the serial console. SeaBIOS 1.11.0 onwards
-contains native support for this feature and thus use of the option
-ROM approach is obsolete. The native SeaBIOS support can be activated
-by using ``-machine graphics=off``.
-
 ``-device nvme-ns,eui64-default=on|off`` (since 7.1)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -307,6 +339,37 @@ The ``nvme`` device originally used a PCI Vendor/Device Identifier combination
 from Intel that was not properly allocated. Since version 5.2, the controller
 has used a properly allocated identifier. Deprecate the ``use-intel-id``
 machine compatibility parameter.
+
+``-device cxl-type3,memdev=xxxx`` (since 8.0)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The ``cxl-type3`` device initially only used a single memory backend.  With
+the addition of volatile memory support, it is now necessary to distinguish
+between persistent and volatile memory backends.  As such, memdev is deprecated
+in favor of persistent-memdev.
+
+``-fsdev proxy`` and ``-virtfs proxy`` (since 8.1)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The 9p ``proxy`` filesystem backend driver has been deprecated and will be
+removed (along with its proxy helper daemon) in a future version of QEMU. Please
+use ``-fsdev local`` or ``-virtfs local`` for using the 9p ``local`` filesystem
+backend, or alternatively consider deploying virtiofsd instead.
+
+The 9p ``proxy`` backend was originally developed as an alternative to the 9p
+``local`` backend. The idea was to enhance security by dispatching actual low
+level filesystem operations from 9p server (QEMU process) over to a separate
+process (the virtfs-proxy-helper binary). However this alternative never gained
+momentum. The proxy backend is much slower than the local backend, hasn't seen
+any development in years, and showed to be less secure, especially due to the
+fact that its helper daemon must be run as root, whereas with the local backend
+QEMU is typically run as unprivileged user and allows to tighten behaviour by
+mapping permissions et al by using its 'mapped' security model option.
+
+Nowadays it would make sense to reimplement the ``proxy`` backend by using
+QEMU's ``vhost`` feature, which would eliminate the high latency costs under
+which the 9p ``proxy`` backend currently suffers. However as of to date nobody
+has indicated plans for such kind of reimplementation unfortunately.
 
 
 Block device options
@@ -333,6 +396,14 @@ Example of legacy encoding::
 The above, converted to the current supported format::
 
   json:{"file.driver":"rbd", "file.pool":"rbd", "file.image":"name"}
+
+``iscsi,password=xxx`` (since 8.0)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Specifying the iSCSI password in plain text on the command line using the
+``password`` option is insecure. The ``password-secret`` option should be
+used instead, to refer to a ``--object secret...`` instance that provides
+a password via a file, or encrypted.
 
 Backwards compatibility
 -----------------------
@@ -363,19 +434,30 @@ versions, aliases will point to newer CPU model versions
 depending on the machine type, so management software must
 resolve CPU model aliases before starting a virtual machine.
 
-Tools
------
+QEMU guest agent
+----------------
 
-virtiofsd
-'''''''''
+``--blacklist`` command line option (since 7.2)
+'''''''''''''''''''''''''''''''''''''''''''''''
 
-There is a new Rust implementation of ``virtiofsd`` at
-``https://gitlab.com/virtio-fs/virtiofsd``;
-since this is now marked stable, new development should be done on that
-rather than the existing C version in the QEMU tree.
-The C version will still accept fixes and patches that
-are already in development for the moment, but will eventually
-be deleted from this tree.
-New deployments should use the Rust version, and existing systems
-should consider moving to it.  The command line and feature set
-is very close and moving should be simple.
+``--blacklist`` has been replaced by ``--block-rpcs`` (which is a better
+wording for what this option does). The short form ``-b`` still stays
+the same and thus is the preferred way for scripts that should run with
+both, older and future versions of QEMU.
+
+``blacklist`` config file option (since 7.2)
+''''''''''''''''''''''''''''''''''''''''''''
+
+The ``blacklist`` config file option has been renamed to ``block-rpcs``
+(to be in sync with the renaming of the corresponding command line
+option).
+
+Migration
+---------
+
+``skipped`` MigrationStats field (since 8.1)
+''''''''''''''''''''''''''''''''''''''''''''
+
+``skipped`` field in Migration stats has been deprecated.  It hasn't
+been used for more than 10 years.
+

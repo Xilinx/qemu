@@ -3,6 +3,7 @@ packages:
  - alsa
  - bash
  - bc
+ - bison
  - brlapi
  - bzip2
  - bzip2-libs
@@ -19,13 +20,15 @@ packages:
  - diffutils
  - dtrace
  - findutils
+ - flex
  - fuse3
  - g++
  - gcc
+ - gcc-native
  - gcovr
  - gettext
- - genisoimage
  - glib2
+ - glib2-native
  - glib2-static
  - glusterfs
  - gnutls
@@ -70,6 +73,7 @@ packages:
  - llvm
  - lttng-ust
  - lzo
+ - mtools
  - netcat
  - nettle
  - ninja
@@ -80,8 +84,8 @@ packages:
  - ncursesw
  - pam
  - pcre-static
- - perl
  - pixman
+ - pipewire
  - pkg-config
  - pulseaudio
  - python3
@@ -98,6 +102,8 @@ packages:
  - sdl2-image
  - sed
  - snappy
+ - sndio
+ - socat
  - sparse
  - spice-protocol
  - spice-server
@@ -106,12 +112,13 @@ packages:
  - tar
  - tesseract
  - tesseract-eng
- - texinfo
  - usbredir
  - virglrenderer
  - vte
  - which
  - xen
  - xfsprogs
+ - xorriso
+ - zstdtools
  - zlib
  - zlib-static

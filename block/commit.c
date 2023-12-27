@@ -18,7 +18,6 @@
 #include "block/block_int.h"
 #include "block/blockjob_int.h"
 #include "qapi/error.h"
-#include "qapi/qmp/qerror.h"
 #include "qemu/ratelimit.h"
 #include "qemu/memalign.h"
 #include "sysemu/block-backend.h"
@@ -117,25 +116,24 @@ static int coroutine_fn commit_run(Job *job, Error **errp)
 {
     CommitBlockJob *s = container_of(job, CommitBlockJob, common.job);
     int64_t offset;
-    uint64_t delay_ns = 0;
     int ret = 0;
     int64_t n = 0; /* bytes */
     QEMU_AUTO_VFREE void *buf = NULL;
     int64_t len, base_len;
 
-    len = blk_getlength(s->top);
+    len = blk_co_getlength(s->top);
     if (len < 0) {
         return len;
     }
     job_progress_set_remaining(&s->common.job, len);
 
-    base_len = blk_getlength(s->base);
+    base_len = blk_co_getlength(s->base);
     if (base_len < 0) {
         return base_len;
     }
 
     if (base_len < len) {
-        ret = blk_truncate(s->base, len, false, PREALLOC_MODE_OFF, 0, NULL);
+        ret = blk_co_truncate(s->base, len, false, PREALLOC_MODE_OFF, 0, NULL);
         if (ret) {
             return ret;
         }
@@ -150,13 +148,13 @@ static int coroutine_fn commit_run(Job *job, Error **errp)
         /* Note that even when no rate limit is applied we need to yield
          * with no pending I/O here so that bdrv_drain_all() returns.
          */
-        job_sleep_ns(&s->common.job, delay_ns);
+        block_job_ratelimit_sleep(&s->common);
         if (job_is_cancelled(&s->common.job)) {
             break;
         }
         /* Copy if allocated above the base */
-        ret = bdrv_is_allocated_above(blk_bs(s->top), s->base_overlay, true,
-                                      offset, COMMIT_BUFFER_SIZE, &n);
+        ret = blk_co_is_allocated_above(s->top, s->base_overlay, true,
+                                        offset, COMMIT_BUFFER_SIZE, &n);
         copy = (ret > 0);
         trace_commit_one_iteration(s, offset, n, ret);
         if (copy) {
@@ -185,9 +183,7 @@ static int coroutine_fn commit_run(Job *job, Error **errp)
         job_progress_update(&s->common.job, n);
 
         if (copy) {
-            delay_ns = block_job_ratelimit_get_delay(&s->common, n);
-        } else {
-            delay_ns = 0;
+            block_job_ratelimit_processed_bytes(&s->common, n);
         }
     }
 
@@ -207,8 +203,9 @@ static const BlockJobDriver commit_job_driver = {
     },
 };
 
-static int coroutine_fn bdrv_commit_top_preadv(BlockDriverState *bs,
-    int64_t offset, int64_t bytes, QEMUIOVector *qiov, BdrvRequestFlags flags)
+static int coroutine_fn GRAPH_RDLOCK
+bdrv_commit_top_preadv(BlockDriverState *bs, int64_t offset, int64_t bytes,
+                       QEMUIOVector *qiov, BdrvRequestFlags flags)
 {
     return bdrv_co_preadv(bs->backing, offset, bytes, qiov, flags);
 }
@@ -238,6 +235,7 @@ static BlockDriver bdrv_commit_top = {
     .bdrv_child_perm            = bdrv_commit_top_child_perm,
 
     .is_filter                  = true,
+    .filtered_child_is_backing  = true,
 };
 
 void commit_start(const char *job_id, BlockDriverState *bs,

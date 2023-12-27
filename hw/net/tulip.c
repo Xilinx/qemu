@@ -9,7 +9,7 @@
 #include "qemu/osdep.h"
 #include "qemu/log.h"
 #include "hw/irq.h"
-#include "hw/pci/pci.h"
+#include "hw/pci/pci_device.h"
 #include "hw/qdev-properties.h"
 #include "hw/nvram/eeprom93xx.h"
 #include "migration/vmstate.h"
@@ -70,7 +70,7 @@ static const VMStateDescription vmstate_pci_tulip = {
 static void tulip_desc_read(TULIPState *s, hwaddr p,
         struct tulip_descriptor *desc)
 {
-    const MemTxAttrs attrs = MEMTXATTRS_UNSPECIFIED;
+    const MemTxAttrs attrs = { .memory = true };
 
     if (s->csr[0] & CSR0_DBO) {
         ldl_be_pci_dma(&s->dev, p, &desc->status, attrs);
@@ -88,7 +88,7 @@ static void tulip_desc_read(TULIPState *s, hwaddr p,
 static void tulip_desc_write(TULIPState *s, hwaddr p,
         struct tulip_descriptor *desc)
 {
-    const MemTxAttrs attrs = MEMTXATTRS_UNSPECIFIED;
+    const MemTxAttrs attrs = { .memory = true };
 
     if (s->csr[0] & CSR0_DBO) {
         stl_be_pci_dma(&s->dev, p, desc->status, attrs);
@@ -870,11 +870,10 @@ static const MemoryRegionOps tulip_ops = {
 
 static void tulip_idblock_crc(TULIPState *s, uint16_t *srom)
 {
-    int word, n;
+    int word;
     int bit;
     unsigned char bitval, crc;
     const int len = 9;
-    n = 0;
     crc = -1;
 
     for (word = 0; word < len; word++) {
@@ -887,7 +886,6 @@ static void tulip_idblock_crc(TULIPState *s, uint16_t *srom)
                 srom[len - 1] = (srom[len - 1] & 0xff00) | (unsigned short)crc;
                 break;
             }
-            n++;
             bitval = ((srom[word] >> bit) & 1) ^ ((crc >> 7) & 1);
             crc = crc << 1;
             if (bitval == 1) {

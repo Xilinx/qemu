@@ -94,7 +94,7 @@ static uint64_t pl35x_read(void *opaque, hwaddr addr,
         }
         break;
     default:
-        DB_PRINT("Unimplemented SMC read access reg=" TARGET_FMT_plx "\n",
+        DB_PRINT("Unimplemented SMC read access reg=" HWADDR_FMT_plx "\n",
                  addr * 4);
         break;
     }
@@ -107,7 +107,7 @@ static void pl35x_write(void *opaque, hwaddr addr, uint64_t value64,
     DB_PRINT("addr=%x v=%x\n", (unsigned)addr, (unsigned)value64);
     addr >>= 2;
     /* FIXME: implement */
-    DB_PRINT("Unimplemented SMC write access reg=" TARGET_FMT_plx "\n",
+    DB_PRINT("Unimplemented SMC write access reg=" HWADDR_FMT_plx "\n",
                  addr * 4);
 }
 

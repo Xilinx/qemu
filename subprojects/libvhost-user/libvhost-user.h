@@ -39,7 +39,7 @@
 #define VHOST_USER_HDR_SIZE offsetof(VhostUserMsg, payload.u64)
 
 typedef enum VhostSetConfigType {
-    VHOST_SET_CONFIG_TYPE_MASTER = 0,
+    VHOST_SET_CONFIG_TYPE_FRONTEND = 0,
     VHOST_SET_CONFIG_TYPE_MIGRATION = 1,
 } VhostSetConfigType;
 
@@ -54,12 +54,12 @@ enum VhostUserProtocolFeature {
     VHOST_USER_PROTOCOL_F_RARP = 2,
     VHOST_USER_PROTOCOL_F_REPLY_ACK = 3,
     VHOST_USER_PROTOCOL_F_NET_MTU = 4,
-    VHOST_USER_PROTOCOL_F_SLAVE_REQ = 5,
+    VHOST_USER_PROTOCOL_F_BACKEND_REQ = 5,
     VHOST_USER_PROTOCOL_F_CROSS_ENDIAN = 6,
     VHOST_USER_PROTOCOL_F_CRYPTO_SESSION = 7,
     VHOST_USER_PROTOCOL_F_PAGEFAULT = 8,
     VHOST_USER_PROTOCOL_F_CONFIG = 9,
-    VHOST_USER_PROTOCOL_F_SLAVE_SEND_FD = 10,
+    VHOST_USER_PROTOCOL_F_BACKEND_SEND_FD = 10,
     VHOST_USER_PROTOCOL_F_HOST_NOTIFIER = 11,
     VHOST_USER_PROTOCOL_F_INFLIGHT_SHMFD = 12,
     VHOST_USER_PROTOCOL_F_INBAND_NOTIFICATIONS = 14,
@@ -92,7 +92,7 @@ typedef enum VhostUserRequest {
     VHOST_USER_SET_VRING_ENABLE = 18,
     VHOST_USER_SEND_RARP = 19,
     VHOST_USER_NET_SET_MTU = 20,
-    VHOST_USER_SET_SLAVE_REQ_FD = 21,
+    VHOST_USER_SET_BACKEND_REQ_FD = 21,
     VHOST_USER_IOTLB_MSG = 22,
     VHOST_USER_SET_VRING_ENDIAN = 23,
     VHOST_USER_GET_CONFIG = 24,
@@ -112,15 +112,15 @@ typedef enum VhostUserRequest {
     VHOST_USER_MAX
 } VhostUserRequest;
 
-typedef enum VhostUserSlaveRequest {
-    VHOST_USER_SLAVE_NONE = 0,
-    VHOST_USER_SLAVE_IOTLB_MSG = 1,
-    VHOST_USER_SLAVE_CONFIG_CHANGE_MSG = 2,
-    VHOST_USER_SLAVE_VRING_HOST_NOTIFIER_MSG = 3,
-    VHOST_USER_SLAVE_VRING_CALL = 4,
-    VHOST_USER_SLAVE_VRING_ERR = 5,
-    VHOST_USER_SLAVE_MAX
-}  VhostUserSlaveRequest;
+typedef enum VhostUserBackendRequest {
+    VHOST_USER_BACKEND_NONE = 0,
+    VHOST_USER_BACKEND_IOTLB_MSG = 1,
+    VHOST_USER_BACKEND_CONFIG_CHANGE_MSG = 2,
+    VHOST_USER_BACKEND_VRING_HOST_NOTIFIER_MSG = 3,
+    VHOST_USER_BACKEND_VRING_CALL = 4,
+    VHOST_USER_BACKEND_VRING_ERR = 5,
+    VHOST_USER_BACKEND_MAX
+}  VhostUserBackendRequest;
 
 typedef struct VhostUserMemoryRegion {
     uint64_t guest_phys_addr;
@@ -296,8 +296,10 @@ typedef struct VuVirtqInflight {
      * Zero value indicates a vm reset happened. */
     uint16_t version;
 
-    /* The size of VuDescStateSplit array. It's equal to the virtqueue
-     * size. Slave could get it from queue size field of VhostUserInflight. */
+    /*
+     * The size of VuDescStateSplit array. It's equal to the virtqueue size.
+     * Backend could get it from queue size field of VhostUserInflight.
+     */
     uint16_t desc_num;
 
     /* The head of list that track the last batch of used descriptors. */
@@ -343,7 +345,7 @@ typedef struct VuVirtq {
     /* Notification enabled? */
     bool notification;
 
-    int inuse;
+    unsigned int inuse;
 
     vu_queue_handler_cb handler;
 
@@ -384,9 +386,9 @@ struct VuDev {
     VuVirtq *vq;
     VuDevInflightInfo inflight_info;
     int log_call_fd;
-    /* Must be held while using slave_fd */
-    pthread_mutex_t slave_mutex;
-    int slave_fd;
+    /* Must be held while using backend_fd */
+    pthread_mutex_t backend_mutex;
+    int backend_fd;
     uint64_t log_size;
     uint8_t *log_table;
     uint64_t features;
@@ -445,7 +447,7 @@ typedef struct VuVirtqElement {
  * vu_init:
  * @dev: a VuDev context
  * @max_queues: maximum number of virtqueues
- * @socket: the socket connected to vhost-user master
+ * @socket: the socket connected to vhost-user frontend
  * @panic: a panic callback
  * @set_watch: a set_watch callback
  * @remove_watch: a remove_watch callback
@@ -584,6 +586,8 @@ bool vu_queue_empty(VuDev *dev, VuVirtq *vq);
  * Request to notify the queue via callfd (skipped if unnecessary)
  */
 void vu_queue_notify(VuDev *dev, VuVirtq *vq);
+
+void vu_config_change_msg(VuDev *dev);
 
 /**
  * vu_queue_notify_sync:

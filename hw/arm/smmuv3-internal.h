@@ -40,6 +40,7 @@ REG32(IDR0,                0x0)
     FIELD(IDR0, COHACC,      4 , 1)
     FIELD(IDR0, ASID16,      12, 1)
     FIELD(IDR0, ATOS,        15, 1)
+    FIELD(IDR0, VMID16,      18, 1)
     FIELD(IDR0, TTENDIAN,    21, 2)
     FIELD(IDR0, STALL_MODEL, 24, 2)
     FIELD(IDR0, TERM_MODEL,  26, 1)
@@ -81,6 +82,13 @@ REG32(CR0ACK,              0x24)
 REG32(CR1,                 0x28)
 REG32(CR2,                 0x2c)
 REG32(STATUSR,             0x40)
+REG32(GBPA,                0x44)
+    FIELD(GBPA, ABORT,        20, 1)
+    FIELD(GBPA, UPDATE,       31, 1)
+
+/* Use incoming. */
+#define SMMU_GBPA_RESET_VAL 0x1000
+
 REG32(IRQ_CTRL,            0x50)
     FIELD(IRQ_CTRL, GERROR_IRQEN,        0, 1)
     FIELD(IRQ_CTRL, PRI_IRQEN,           1, 1)
@@ -567,10 +575,13 @@ typedef struct CD {
 #define STE_S2TG(x)        extract32((x)->word[5], 14, 2)
 #define STE_S2PS(x)        extract32((x)->word[5], 16, 3)
 #define STE_S2AA64(x)      extract32((x)->word[5], 19, 1)
+#define STE_S2ENDI(x)      extract32((x)->word[5], 20, 1)
 #define STE_S2AFFD(x)      extract32((x)->word[5], 21, 1)
-#define STE_S2HD(x)        extract32((x)->word[5], 24, 1)
-#define STE_S2HA(x)        extract32((x)->word[5], 25, 1)
-#define STE_S2S(x)         extract32((x)->word[5], 26, 1)
+#define STE_S2HD(x)        extract32((x)->word[5], 23, 1)
+#define STE_S2HA(x)        extract32((x)->word[5], 24, 1)
+#define STE_S2S(x)         extract32((x)->word[5], 25, 1)
+#define STE_S2R(x)         extract32((x)->word[5], 26, 1)
+
 #define STE_CTXPTR(x)                                           \
     ({                                                          \
         unsigned long addr;                                     \
@@ -638,7 +649,6 @@ static inline int pa_range(STE *ste)
 #define CD_EPD(x, sel)   extract32((x)->word[0], (16 * (sel)) + 14, 1)
 #define CD_ENDI(x)       extract32((x)->word[0], 15, 1)
 #define CD_IPS(x)        extract32((x)->word[1], 0 , 3)
-#define CD_AFFD(x)       extract32((x)->word[1], 3 , 1)
 #define CD_TBI(x)        extract32((x)->word[1], 6 , 2)
 #define CD_HD(x)         extract32((x)->word[1], 10 , 1)
 #define CD_HA(x)         extract32((x)->word[1], 11 , 1)

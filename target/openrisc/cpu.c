@@ -22,6 +22,8 @@
 #include "qemu/qemu-print.h"
 #include "cpu.h"
 #include "exec/exec-all.h"
+#include "fpu/softfloat-helpers.h"
+#include "tcg/tcg.h"
 
 static void openrisc_cpu_set_pc(CPUState *cs, vaddr value)
 {
@@ -31,14 +33,34 @@ static void openrisc_cpu_set_pc(CPUState *cs, vaddr value)
     cpu->env.dflag = 0;
 }
 
+static vaddr openrisc_cpu_get_pc(CPUState *cs)
+{
+    OpenRISCCPU *cpu = OPENRISC_CPU(cs);
+
+    return cpu->env.pc;
+}
+
 static void openrisc_cpu_synchronize_from_tb(CPUState *cs,
                                              const TranslationBlock *tb)
 {
     OpenRISCCPU *cpu = OPENRISC_CPU(cs);
 
+    tcg_debug_assert(!(cs->tcg_cflags & CF_PCREL));
     cpu->env.pc = tb->pc;
 }
 
+static void openrisc_restore_state_to_opc(CPUState *cs,
+                                          const TranslationBlock *tb,
+                                          const uint64_t *data)
+{
+    OpenRISCCPU *cpu = OPENRISC_CPU(cs);
+
+    cpu->env.pc = data[0];
+    cpu->env.dflag = data[1] & 1;
+    if (data[1] & 2) {
+        cpu->env.ppc = cpu->env.pc - 4;
+    }
+}
 
 static bool openrisc_cpu_has_work(CPUState *cs)
 {
@@ -51,13 +73,15 @@ static void openrisc_disas_set_info(CPUState *cpu, disassemble_info *info)
     info->print_insn = print_insn_or1k;
 }
 
-static void openrisc_cpu_reset(DeviceState *dev)
+static void openrisc_cpu_reset_hold(Object *obj)
 {
-    CPUState *s = CPU(dev);
+    CPUState *s = CPU(obj);
     OpenRISCCPU *cpu = OPENRISC_CPU(s);
     OpenRISCCPUClass *occ = OPENRISC_CPU_GET_CLASS(cpu);
 
-    occ->parent_reset(dev);
+    if (occ->parent_phases.hold) {
+        occ->parent_phases.hold(obj);
+    }
 
     memset(&cpu->env, 0, offsetof(CPUOpenRISCState, end_reset_fields));
 
@@ -66,6 +90,9 @@ static void openrisc_cpu_reset(DeviceState *dev)
     cpu->env.lock_addr = -1;
     s->exception_index = -1;
     cpu_set_fpcsr(&cpu->env, 0);
+
+    set_float_detect_tininess(float_tininess_before_rounding,
+                              &cpu->env.fp_status);
 
 #ifndef CONFIG_USER_ONLY
     cpu->env.picmr = 0x00000000;
@@ -98,7 +125,6 @@ static void openrisc_cpu_set_irq(void *opaque, int irq, int level)
         cpu_interrupt(cs, CPU_INTERRUPT_HARD);
     } else {
         cpu_reset_interrupt(cs, CPU_INTERRUPT_HARD);
-        cpu->env.picsr = 0;
     }
 }
 #endif
@@ -197,6 +223,7 @@ static const struct SysemuCPUOps openrisc_sysemu_ops = {
 static const struct TCGCPUOps openrisc_tcg_ops = {
     .initialize = openrisc_translate_init,
     .synchronize_from_tb = openrisc_cpu_synchronize_from_tb,
+    .restore_state_to_opc = openrisc_restore_state_to_opc,
 
 #ifndef CONFIG_USER_ONLY
     .tlb_fill = openrisc_cpu_tlb_fill,
@@ -210,15 +237,18 @@ static void openrisc_cpu_class_init(ObjectClass *oc, void *data)
     OpenRISCCPUClass *occ = OPENRISC_CPU_CLASS(oc);
     CPUClass *cc = CPU_CLASS(occ);
     DeviceClass *dc = DEVICE_CLASS(oc);
+    ResettableClass *rc = RESETTABLE_CLASS(oc);
 
     device_class_set_parent_realize(dc, openrisc_cpu_realizefn,
                                     &occ->parent_realize);
-    device_class_set_parent_reset(dc, openrisc_cpu_reset, &occ->parent_reset);
+    resettable_class_set_parent_phases(rc, NULL, openrisc_cpu_reset_hold, NULL,
+                                       &occ->parent_phases);
 
     cc->class_by_name = openrisc_cpu_class_by_name;
     cc->has_work = openrisc_cpu_has_work;
     cc->dump_state = openrisc_cpu_dump_state;
     cc->set_pc = openrisc_cpu_set_pc;
+    cc->get_pc = openrisc_cpu_get_pc;
     cc->gdb_read_register = openrisc_cpu_gdb_read_register;
     cc->gdb_write_register = openrisc_cpu_gdb_write_register;
 #ifndef CONFIG_USER_ONLY

@@ -14,7 +14,7 @@
 #include "qapi/error.h"
 #include "qemu/guest-random.h"
 #include "crypto/random.h"
-#include "sysemu/replay.h"
+#include "exec/replay-core.h"
 
 
 static __thread GRand *thread_rand;
@@ -89,8 +89,8 @@ void qemu_guest_random_seed_thread_part2(uint64_t seed)
 
 int qemu_guest_random_seed_main(const char *optarg, Error **errp)
 {
-    unsigned long long seed;
-    if (parse_uint_full(optarg, &seed, 0)) {
+    uint64_t seed;
+    if (parse_uint_full(optarg, 0, &seed)) {
         error_setg(errp, "Invalid seed number: %s", optarg);
         return -1;
     } else {

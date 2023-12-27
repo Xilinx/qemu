@@ -15,7 +15,7 @@
 #include "hw/pci/pcie_port.h"
 #include "qapi/error.h"
 
-typedef struct CXLDownStreamPort {
+typedef struct CXLDownstreamPort {
     /*< private >*/
     PCIESlot parent_obj;
 
@@ -217,7 +217,6 @@ static void cxl_dsp_class_init(ObjectClass *oc, void *data)
     DeviceClass *dc = DEVICE_CLASS(oc);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(oc);
 
-    k->is_bridge = true;
     k->config_write = cxl_dsp_config_write;
     k->realize = cxl_dsp_realize;
     k->exit = cxl_dsp_exitfn;

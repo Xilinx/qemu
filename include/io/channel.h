@@ -22,7 +22,7 @@
 #define QIO_CHANNEL_H
 
 #include "qom/object.h"
-#include "qemu/coroutine.h"
+#include "qemu/coroutine-core.h"
 #include "block/aio.h"
 
 #define TYPE_QIO_CHANNEL "qio-channel"
@@ -34,6 +34,8 @@ OBJECT_DECLARE_TYPE(QIOChannel, QIOChannelClass,
 
 #define QIO_CHANNEL_WRITE_FLAG_ZERO_COPY 0x1
 
+#define QIO_CHANNEL_READ_FLAG_MSG_PEEK 0x1
+
 typedef enum QIOChannelFeature QIOChannelFeature;
 
 enum QIOChannelFeature {
@@ -41,6 +43,7 @@ enum QIOChannelFeature {
     QIO_CHANNEL_FEATURE_SHUTDOWN,
     QIO_CHANNEL_FEATURE_LISTEN,
     QIO_CHANNEL_FEATURE_WRITE_ZERO_COPY,
+    QIO_CHANNEL_FEATURE_READ_MSG_PEEK,
 };
 
 
@@ -114,6 +117,7 @@ struct QIOChannelClass {
                         size_t niov,
                         int **fds,
                         size_t *nfds,
+                        int flags,
                         Error **errp);
     int (*io_close)(QIOChannel *ioc,
                     Error **errp);
@@ -188,6 +192,7 @@ void qio_channel_set_name(QIOChannel *ioc,
  * @niov: the length of the @iov array
  * @fds: pointer to an array that will received file handles
  * @nfds: pointer filled with number of elements in @fds on return
+ * @flags: read flags (QIO_CHANNEL_READ_FLAG_*)
  * @errp: pointer to a NULL-initialized error object
  *
  * Read data from the IO channel, storing it in the
@@ -224,6 +229,7 @@ ssize_t qio_channel_readv_full(QIOChannel *ioc,
                                size_t niov,
                                int **fds,
                                size_t *nfds,
+                               int flags,
                                Error **errp);
 
 
@@ -295,10 +301,10 @@ ssize_t qio_channel_writev_full(QIOChannel *ioc,
  * Returns: 1 if all bytes were read, 0 if end-of-file
  *          occurs without data, or -1 on error
  */
-int qio_channel_readv_all_eof(QIOChannel *ioc,
-                              const struct iovec *iov,
-                              size_t niov,
-                              Error **errp);
+int coroutine_mixed_fn qio_channel_readv_all_eof(QIOChannel *ioc,
+                                                 const struct iovec *iov,
+                                                 size_t niov,
+                                                 Error **errp);
 
 /**
  * qio_channel_readv_all:
@@ -322,10 +328,10 @@ int qio_channel_readv_all_eof(QIOChannel *ioc,
  *
  * Returns: 0 if all bytes were read, or -1 on error
  */
-int qio_channel_readv_all(QIOChannel *ioc,
-                          const struct iovec *iov,
-                          size_t niov,
-                          Error **errp);
+int coroutine_mixed_fn qio_channel_readv_all(QIOChannel *ioc,
+                                             const struct iovec *iov,
+                                             size_t niov,
+                                             Error **errp);
 
 
 /**
@@ -347,10 +353,10 @@ int qio_channel_readv_all(QIOChannel *ioc,
  *
  * Returns: 0 if all bytes were written, or -1 on error
  */
-int qio_channel_writev_all(QIOChannel *ioc,
-                           const struct iovec *iov,
-                           size_t niov,
-                           Error **erp);
+int coroutine_mixed_fn qio_channel_writev_all(QIOChannel *ioc,
+                                              const struct iovec *iov,
+                                              size_t niov,
+                                              Error **errp);
 
 /**
  * qio_channel_readv:
@@ -431,10 +437,10 @@ ssize_t qio_channel_write(QIOChannel *ioc,
  * Returns: 1 if all bytes were read, 0 if end-of-file occurs
  *          without data, or -1 on error
  */
-int qio_channel_read_all_eof(QIOChannel *ioc,
-                             char *buf,
-                             size_t buflen,
-                             Error **errp);
+int coroutine_mixed_fn qio_channel_read_all_eof(QIOChannel *ioc,
+                                                char *buf,
+                                                size_t buflen,
+                                                Error **errp);
 
 /**
  * qio_channel_read_all:
@@ -451,10 +457,10 @@ int qio_channel_read_all_eof(QIOChannel *ioc,
  *
  * Returns: 0 if all bytes were read, or -1 on error
  */
-int qio_channel_read_all(QIOChannel *ioc,
-                         char *buf,
-                         size_t buflen,
-                         Error **errp);
+int coroutine_mixed_fn qio_channel_read_all(QIOChannel *ioc,
+                                            char *buf,
+                                            size_t buflen,
+                                            Error **errp);
 
 /**
  * qio_channel_write_all:
@@ -470,10 +476,10 @@ int qio_channel_read_all(QIOChannel *ioc,
  *
  * Returns: 0 if all bytes were written, or -1 on error
  */
-int qio_channel_write_all(QIOChannel *ioc,
-                          const char *buf,
-                          size_t buflen,
-                          Error **errp);
+int coroutine_mixed_fn qio_channel_write_all(QIOChannel *ioc,
+                                             const char *buf,
+                                             size_t buflen,
+                                             Error **errp);
 
 /**
  * qio_channel_set_blocking:
@@ -752,6 +758,16 @@ void coroutine_fn qio_channel_yield(QIOChannel *ioc,
                                     GIOCondition condition);
 
 /**
+ * qio_channel_wake_read:
+ * @ioc: the channel object
+ *
+ * If qio_channel_yield() is currently waiting for the channel to become
+ * readable, interrupt it and reenter immediately. This function is safe to call
+ * from any thread.
+ */
+void qio_channel_wake_read(QIOChannel *ioc);
+
+/**
  * qio_channel_wait:
  * @ioc: the channel object
  * @condition: the I/O condition to wait for
@@ -806,11 +822,11 @@ void qio_channel_set_aio_fd_handler(QIOChannel *ioc,
  *          occurs without data, or -1 on error
  */
 
-int qio_channel_readv_full_all_eof(QIOChannel *ioc,
-                                   const struct iovec *iov,
-                                   size_t niov,
-                                   int **fds, size_t *nfds,
-                                   Error **errp);
+int coroutine_mixed_fn qio_channel_readv_full_all_eof(QIOChannel *ioc,
+                                                      const struct iovec *iov,
+                                                      size_t niov,
+                                                      int **fds, size_t *nfds,
+                                                      Error **errp);
 
 /**
  * qio_channel_readv_full_all:
@@ -832,11 +848,11 @@ int qio_channel_readv_full_all_eof(QIOChannel *ioc,
  * Returns: 0 if all bytes were read, or -1 on error
  */
 
-int qio_channel_readv_full_all(QIOChannel *ioc,
-                               const struct iovec *iov,
-                               size_t niov,
-                               int **fds, size_t *nfds,
-                               Error **errp);
+int coroutine_mixed_fn qio_channel_readv_full_all(QIOChannel *ioc,
+                                                  const struct iovec *iov,
+                                                  size_t niov,
+                                                  int **fds, size_t *nfds,
+                                                  Error **errp);
 
 /**
  * qio_channel_writev_full_all:
@@ -866,11 +882,11 @@ int qio_channel_readv_full_all(QIOChannel *ioc,
  * Returns: 0 if all bytes were written, or -1 on error
  */
 
-int qio_channel_writev_full_all(QIOChannel *ioc,
-                                const struct iovec *iov,
-                                size_t niov,
-                                int *fds, size_t nfds,
-                                int flags, Error **errp);
+int coroutine_mixed_fn qio_channel_writev_full_all(QIOChannel *ioc,
+                                                   const struct iovec *iov,
+                                                   size_t niov,
+                                                   int *fds, size_t nfds,
+                                                   int flags, Error **errp);
 
 /**
  * qio_channel_flush:

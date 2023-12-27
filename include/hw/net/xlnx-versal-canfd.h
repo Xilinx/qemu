@@ -1,9 +1,9 @@
 /*
- * QEMU model of the Xilinx Versal CANFD device.
+ * QEMU model of the Xilinx Versal CANFD Controller.
  *
- * Copyright (c) 2020 Xilinx Inc.
+ * Copyright (c) 2023 Advanced Micro Devices, Inc.
  *
- * Written-by: Vikram Garhwal<fnu.vikram@xilinx.com>
+ * Written-by: Vikram Garhwal<vikram.garhwal@amd.com>
  * Based on QEMU CANFD Device emulation implemented by Jin Yang, Deniz Eren and
  * Pavel Pisa.
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -33,18 +33,17 @@
 #include "net/can_emu.h"
 #include "hw/qdev-clock.h"
 
-#define TYPE_XILINX_CANFD "xlnx.versal-canfd"
+#define TYPE_XILINX_CANFD "xlnx-versal-canfd"
 
-#define XILINX_CANFD(obj) \
-     OBJECT_CHECK(XlnxVersalCANFDState, (obj), TYPE_XILINX_CANFD)
+OBJECT_DECLARE_SIMPLE_TYPE(XlnxVersalCANFDState, XILINX_CANFD)
 
-#define NUM_REGS_PER_MSG_SPACE 18
+#define NUM_REGS_PER_MSG_SPACE 18 /* 1 ID + 1 DLC + 16 Data(DW0 - DW15) regs. */
 #define MAX_NUM_RX             64
-#define CANFD_TIMER_MAX        0XFFFFUL
-#define CANFD_DEFAULT_CLOCK    (24 * 1000 * 1000)
+#define OFFSET_RX1_DW15        (0x4144 / 4)
+#define CANFD_TIMER_MAX        0xFFFFUL
+#define CANFD_DEFAULT_CLOCK    (25 * 1000 * 1000)
 
-/* 0x4144/4 + 1 + (64 - 1) * 18 + 1. */
-#define XLNX_VERSAL_CANFD_R_MAX (0x4144 / 4  + \
+#define XLNX_VERSAL_CANFD_R_MAX (OFFSET_RX1_DW15 + \
                     ((MAX_NUM_RX - 1) * NUM_REGS_PER_MSG_SPACE) + 1)
 
 typedef struct XlnxVersalCANFDState {
@@ -64,8 +63,6 @@ typedef struct XlnxVersalCANFDState {
     RegisterAccessInfo      *af_mask_regs_mailbox;
 
     uint32_t                regs[XLNX_VERSAL_CANFD_R_MAX];
-    uint8_t                 tx_busy_bit;
-    uint8_t                 modes;
 
     ptimer_state            *canfd_timer;
 
@@ -73,7 +70,6 @@ typedef struct XlnxVersalCANFDState {
     CanBusState             *canfdbus;
 
     struct {
-        uint8_t             ctrl_idx;
         uint8_t             rx0_fifo;
         uint8_t             rx1_fifo;
         uint8_t             tx_fifo;
@@ -83,10 +79,9 @@ typedef struct XlnxVersalCANFDState {
 
 } XlnxVersalCANFDState;
 
-typedef struct txid_list {
+typedef struct tx_ready_reg_info {
     uint32_t can_id;
     uint32_t reg_num;
-    struct txid_list   *next;
-} txid_list;
+} tx_ready_reg_info;
 
 #endif

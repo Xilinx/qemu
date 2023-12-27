@@ -67,12 +67,30 @@ uint32_t ppc_get_vscr(CPUPPCState *env)
     return env->vscr | (sat << VSCR_SAT);
 }
 
+void ppc_set_cr(CPUPPCState *env, uint64_t cr)
+{
+    for (int i = 7; i >= 0; i--) {
+        env->crf[i] = cr & 0xf;
+        cr >>= 4;
+    }
+}
+
+uint64_t ppc_get_cr(const CPUPPCState *env)
+{
+    uint64_t cr = 0;
+    for (int i = 0; i < 8; i++) {
+        cr |= (env->crf[i] & 0xf) << (4 * (7 - i));
+    }
+    return cr;
+}
+
 /* GDBstub can read and write MSR... */
 void ppc_store_msr(CPUPPCState *env, target_ulong value)
 {
     hreg_store_msr(env, value, 0);
 }
 
+#if !defined(CONFIG_USER_ONLY)
 void ppc_store_lpcr(PowerPCCPU *cpu, target_ulong val)
 {
     PowerPCCPUClass *pcc = POWERPC_CPU_GET_CLASS(cpu);
@@ -81,7 +99,10 @@ void ppc_store_lpcr(PowerPCCPU *cpu, target_ulong val)
     env->spr[SPR_LPCR] = val & pcc->lpcr_mask;
     /* The gtse bit affects hflags */
     hreg_compute_hflags(env);
+
+    ppc_maybe_interrupt(env);
 }
+#endif
 
 static inline void fpscr_set_rounding_mode(CPUPPCState *env)
 {
@@ -120,6 +141,8 @@ void ppc_store_fpscr(CPUPPCState *env, target_ulong val)
         val |= FP_FEX;
     }
     env->fpscr = val;
+    env->fp_status.rebias_overflow  = (FP_OE & env->fpscr) ? true : false;
+    env->fp_status.rebias_underflow = (FP_UE & env->fpscr) ? true : false;
     if (tcg_enabled()) {
         fpscr_set_rounding_mode(env);
     }

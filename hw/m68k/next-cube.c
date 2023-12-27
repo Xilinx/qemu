@@ -24,6 +24,7 @@
 #include "hw/block/fdc.h"
 #include "hw/qdev-properties.h"
 #include "qapi/error.h"
+#include "qemu/error-report.h"
 #include "ui/console.h"
 #include "target/m68k/cpu.h"
 #include "migration/vmstate.h"
@@ -733,7 +734,7 @@ static void next_irq(void *opaque, int number, int level)
     M68kCPU *cpu = s->cpu;
     int shift = 0;
 
-    /* first switch sets interupt status */
+    /* first switch sets interrupt status */
     /* DPRINTF("IRQ %i\n",number); */
     switch (number) {
     /* level 3 - floppy, kbd/mouse, power, ether rx/tx, scsi, clock */

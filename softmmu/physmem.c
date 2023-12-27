@@ -23,6 +23,7 @@
 
 #include "qemu/cutils.h"
 #include "qemu/cacheflush.h"
+#include "qemu/hbitmap.h"
 #include "qemu/madvise.h"
 
 #ifdef CONFIG_TCG
@@ -868,197 +869,6 @@ AddressSpace *cpu_get_address_space(CPUState *cpu, int asidx)
     return cpu->cpu_ases[asidx].as;
 }
 
-/* Add a watchpoint.  */
-int cpu_watchpoint_insert(CPUState *cpu, vaddr addr, vaddr len,
-                          int flags, CPUWatchpoint **watchpoint)
-{
-    CPUWatchpoint *wp;
-    vaddr in_page;
-
-    /* forbid ranges which are empty or run off the end of the address space */
-    if (len == 0 || (addr + len - 1) < addr) {
-        error_report("tried to set invalid watchpoint at %"
-                     VADDR_PRIx ", len=%" VADDR_PRIu, addr, len);
-        return -EINVAL;
-    }
-    wp = g_malloc(sizeof(*wp));
-
-    wp->vaddr = addr;
-    wp->len = len;
-    wp->flags = flags;
-
-    /* keep all GDB-injected watchpoints in front */
-    if (flags & BP_GDB) {
-        QTAILQ_INSERT_HEAD(&cpu->watchpoints, wp, entry);
-    } else {
-        QTAILQ_INSERT_TAIL(&cpu->watchpoints, wp, entry);
-    }
-
-    in_page = -(addr | TARGET_PAGE_MASK);
-    if (len <= in_page) {
-        tlb_flush_page(cpu, addr);
-    } else {
-        tlb_flush(cpu);
-    }
-
-    if (watchpoint)
-        *watchpoint = wp;
-    return 0;
-}
-
-/* Remove a specific watchpoint.  */
-int cpu_watchpoint_remove(CPUState *cpu, vaddr addr, vaddr len,
-                          int flags)
-{
-    CPUWatchpoint *wp;
-
-    QTAILQ_FOREACH(wp, &cpu->watchpoints, entry) {
-        if (addr == wp->vaddr && len == wp->len
-                && flags == (wp->flags & ~BP_WATCHPOINT_HIT)) {
-            cpu_watchpoint_remove_by_ref(cpu, wp);
-            return 0;
-        }
-    }
-    return -ENOENT;
-}
-
-/* Remove a specific watchpoint by reference.  */
-void cpu_watchpoint_remove_by_ref(CPUState *cpu, CPUWatchpoint *watchpoint)
-{
-    QTAILQ_REMOVE(&cpu->watchpoints, watchpoint, entry);
-
-    tlb_flush_page(cpu, watchpoint->vaddr);
-
-    g_free(watchpoint);
-}
-
-/* Remove all matching watchpoints.  */
-void cpu_watchpoint_remove_all(CPUState *cpu, int mask)
-{
-    CPUWatchpoint *wp, *next;
-
-    QTAILQ_FOREACH_SAFE(wp, &cpu->watchpoints, entry, next) {
-        if (wp->flags & mask) {
-            cpu_watchpoint_remove_by_ref(cpu, wp);
-        }
-    }
-}
-
-#ifdef CONFIG_TCG
-/* Return true if this watchpoint address matches the specified
- * access (ie the address range covered by the watchpoint overlaps
- * partially or completely with the address range covered by the
- * access).
- */
-static inline bool watchpoint_address_matches(CPUWatchpoint *wp,
-                                              vaddr addr, vaddr len)
-{
-    /* We know the lengths are non-zero, but a little caution is
-     * required to avoid errors in the case where the range ends
-     * exactly at the top of the address space and so addr + len
-     * wraps round to zero.
-     */
-    vaddr wpend = wp->vaddr + wp->len - 1;
-    vaddr addrend = addr + len - 1;
-
-    return !(addr > wpend || wp->vaddr > addrend);
-}
-
-/* Return flags for watchpoints that match addr + prot.  */
-int cpu_watchpoint_address_matches(CPUState *cpu, vaddr addr, vaddr len)
-{
-    CPUWatchpoint *wp;
-    int ret = 0;
-
-    QTAILQ_FOREACH(wp, &cpu->watchpoints, entry) {
-        if (watchpoint_address_matches(wp, addr, len)) {
-            ret |= wp->flags;
-        }
-    }
-    return ret;
-}
-
-/* Generate a debug exception if a watchpoint has been hit.  */
-void cpu_check_watchpoint(CPUState *cpu, vaddr addr, vaddr len,
-                          MemTxAttrs attrs, int flags, uintptr_t ra)
-{
-    CPUClass *cc = CPU_GET_CLASS(cpu);
-    CPUWatchpoint *wp;
-
-    assert(tcg_enabled());
-    if (cpu->watchpoint_hit) {
-        /*
-         * We re-entered the check after replacing the TB.
-         * Now raise the debug interrupt so that it will
-         * trigger after the current instruction.
-         */
-        qemu_mutex_lock_iothread();
-        cpu_interrupt(cpu, CPU_INTERRUPT_DEBUG);
-        qemu_mutex_unlock_iothread();
-        return;
-    }
-
-    if (cc->tcg_ops->adjust_watchpoint_address) {
-        /* this is currently used only by ARM BE32 */
-        addr = cc->tcg_ops->adjust_watchpoint_address(cpu, addr, len);
-    }
-    QTAILQ_FOREACH(wp, &cpu->watchpoints, entry) {
-        if (watchpoint_address_matches(wp, addr, len)
-            && (wp->flags & flags)) {
-            if (replay_running_debug()) {
-                /*
-                 * replay_breakpoint reads icount.
-                 * Force recompile to succeed, because icount may
-                 * be read only at the end of the block.
-                 */
-                if (!cpu->can_do_io) {
-                    /* Force execution of one insn next time.  */
-                    cpu->cflags_next_tb = 1 | CF_LAST_IO | CF_NOIRQ | curr_cflags(cpu);
-                    cpu_loop_exit_restore(cpu, ra);
-                }
-                /*
-                 * Don't process the watchpoints when we are
-                 * in a reverse debugging operation.
-                 */
-                replay_breakpoint();
-                return;
-            }
-            if (flags == BP_MEM_READ) {
-                wp->flags |= BP_WATCHPOINT_HIT_READ;
-            } else {
-                wp->flags |= BP_WATCHPOINT_HIT_WRITE;
-            }
-            wp->hitaddr = MAX(addr, wp->vaddr);
-            wp->hitattrs = attrs;
-
-            if (wp->flags & BP_CPU && cc->tcg_ops->debug_check_watchpoint &&
-                !cc->tcg_ops->debug_check_watchpoint(cpu, wp)) {
-                wp->flags &= ~BP_WATCHPOINT_HIT;
-                continue;
-            }
-            cpu->watchpoint_hit = wp;
-
-            mmap_lock();
-            /* This call also restores vCPU state */
-            tb_check_watchpoint(cpu, ra);
-            if (wp->flags & BP_STOP_BEFORE_ACCESS) {
-                cpu->exception_index = EXCP_DEBUG;
-                mmap_unlock();
-                cpu_loop_exit(cpu);
-            } else {
-                /* Force execution of one insn next time.  */
-                cpu->cflags_next_tb = 1 | CF_LAST_IO | CF_NOIRQ | curr_cflags(cpu);
-                mmap_unlock();
-                cpu_loop_exit_noexc(cpu);
-            }
-        } else {
-            wp->flags &= ~BP_WATCHPOINT_HIT;
-        }
-    }
-}
-
-#endif /* CONFIG_TCG */
-
 /* Called from RCU critical section */
 static RAMBlock *qemu_get_ram_block(ram_addr_t addr)
 {
@@ -1404,28 +1214,27 @@ GString *ram_block_format(void)
     GString *buf = g_string_new("");
 
     RCU_READ_LOCK_GUARD();
-    g_string_append_printf(buf, "%24s %8s  %18s %18s %18s\n",
-                           "Block Name", "PSize", "Offset", "Used", "Total");
+    g_string_append_printf(buf, "%24s %8s  %18s %18s %18s %18s %3s\n",
+                           "Block Name", "PSize", "Offset", "Used", "Total",
+                           "HVA", "RO");
+
     RAMBLOCK_FOREACH(block) {
         psize = size_to_str(block->page_size);
         g_string_append_printf(buf, "%24s %8s  0x%016" PRIx64 " 0x%016" PRIx64
-                               " 0x%016" PRIx64 "\n", block->idstr, psize,
+                               " 0x%016" PRIx64 " 0x%016" PRIx64 " %3s\n",
+                               block->idstr, psize,
                                (uint64_t)block->offset,
                                (uint64_t)block->used_length,
-                               (uint64_t)block->max_length);
+                               (uint64_t)block->max_length,
+                               (uint64_t)(uintptr_t)block->host,
+                               block->mr->readonly ? "ro" : "rw");
+
         g_free(psize);
     }
 
     return buf;
 }
 
-#ifdef __linux__
-/*
- * FIXME TOCTTOU: this iterates over memory backends' mem-path, which
- * may or may not name the same files / on the same filesystem now as
- * when we actually open and map them.  Iterate over the file
- * descriptors instead, and use qemu_fd_getpagesize().
- */
 static int find_min_backend_pagesize(Object *obj, void *opaque)
 {
     long *hpsize_min = opaque;
@@ -1479,16 +1288,6 @@ long qemu_maxrampagesize(void)
     object_child_foreach(memdev_root, find_max_backend_pagesize, &pagesize);
     return pagesize;
 }
-#else
-long qemu_minrampagesize(void)
-{
-    return qemu_real_host_page_size();
-}
-long qemu_maxrampagesize(void)
-{
-    return qemu_real_host_page_size();
-}
-#endif
 
 static int64_t get_file_size(int fd)
 {
@@ -1695,6 +1494,11 @@ static void *file_ram_alloc(RAMBlock *block,
         error_setg(errp, "alignment 0x%" PRIx64
                    " must be a power of two", block->mr->align);
         return NULL;
+    } else if (offset % block->page_size) {
+        error_setg(errp, "offset 0x%" PRIx64
+                   " must be multiples of page size 0x%zx",
+                   offset, block->page_size);
+        return NULL;
     }
     block->mr->align = MAX(block->page_size, block->mr->align);
 #if defined(__s390x__)
@@ -1726,7 +1530,7 @@ static void *file_ram_alloc(RAMBlock *block,
      * those labels. Therefore, extending the non-empty backend file
      * is disabled as well.
      */
-    if (truncate && ftruncate(fd, memory)) {
+    if (truncate && ftruncate(fd, offset + memory)) {
         perror("ftruncate");
     }
 
@@ -1751,6 +1555,7 @@ static void *file_ram_alloc(RAMBlock *block,
     }
 
     block->fd = fd;
+    block->fd_offset = offset;
     return area;
 }
 
@@ -1896,6 +1701,16 @@ void qemu_ram_set_migratable(RAMBlock *rb)
 void qemu_ram_unset_migratable(RAMBlock *rb)
 {
     rb->flags &= ~RAM_MIGRATABLE;
+}
+
+bool qemu_ram_is_named_file(RAMBlock *rb)
+{
+    return rb->flags & RAM_NAMED_FILE;
+}
+
+int qemu_ram_get_fd(RAMBlock *rb)
+{
+    return rb->fd;
 }
 
 /* Called with iothread lock held.  */
@@ -2202,7 +2017,7 @@ RAMBlock *qemu_ram_alloc_from_fd(ram_addr_t size, MemoryRegion *mr,
 
     /* Just support these ram flags by now. */
     assert((ram_flags & ~(RAM_SHARED | RAM_PMEM | RAM_NORESERVE |
-                          RAM_PROTECTED)) == 0);
+                          RAM_PROTECTED | RAM_NAMED_FILE)) == 0);
 
     if (xen_enabled()) {
         error_setg(errp, "-mem-path not supported with Xen");
@@ -2217,7 +2032,7 @@ RAMBlock *qemu_ram_alloc_from_fd(ram_addr_t size, MemoryRegion *mr,
 
     size = HOST_PAGE_ALIGN(size);
     file_size = get_file_size(fd);
-    if (file_size > 0 && file_size < size) {
+    if (file_size > offset && file_size < (offset + size)) {
         error_setg(errp, "backing store size 0x%" PRIx64
                    " does not match 'size' option 0x" RAM_ADDR_FMT,
                    file_size, size);
@@ -2257,7 +2072,7 @@ RAMBlock *qemu_ram_alloc_from_fd(ram_addr_t size, MemoryRegion *mr,
 
 RAMBlock *qemu_ram_alloc_from_file(ram_addr_t size, MemoryRegion *mr,
                                    uint32_t ram_flags, const char *mem_path,
-                                   bool readonly, Error **errp)
+                                   off_t offset, bool readonly, Error **errp)
 {
     int fd;
     bool created;
@@ -2269,7 +2084,8 @@ RAMBlock *qemu_ram_alloc_from_file(ram_addr_t size, MemoryRegion *mr,
         return NULL;
     }
 
-    block = qemu_ram_alloc_from_fd(size, mr, ram_flags, fd, 0, readonly, errp);
+    block = qemu_ram_alloc_from_fd(size, mr, ram_flags, fd, offset, readonly,
+                                   errp);
     if (!block) {
         if (created) {
             unlink(mem_path);
@@ -2410,7 +2226,7 @@ void qemu_ram_remap(ram_addr_t addr, ram_addr_t length)
                 flags |= block->flags & RAM_NORESERVE ? MAP_NORESERVE : 0;
                 if (block->fd >= 0) {
                     area = mmap(vaddr, length, PROT_READ | PROT_WRITE,
-                                flags, block->fd, offset);
+                                flags, block->fd, offset + block->fd_offset);
                 } else {
                     flags |= MAP_ANONYMOUS;
                     area = mmap(vaddr, length, PROT_READ | PROT_WRITE,
@@ -2599,6 +2415,18 @@ ram_addr_t qemu_ram_addr_from_host(void *ptr)
     return block->offset + offset;
 }
 
+ram_addr_t qemu_ram_addr_from_host_nofail(void *ptr)
+{
+    ram_addr_t ram_addr;
+
+    ram_addr = qemu_ram_addr_from_host(ptr);
+    if (ram_addr == RAM_ADDR_INVALID) {
+        error_report("Bad ram pointer %p", ptr);
+        abort();
+    }
+    return ram_addr;
+}
+
 static MemTxResult flatview_read(FlatView *fv, hwaddr addr,
                                  MemTxAttrs attrs, void *buf, hwaddr len);
 static MemTxResult flatview_write(FlatView *fv, hwaddr addr, MemTxAttrs attrs,
@@ -2614,7 +2442,7 @@ static MemTxResult subpage_read(void *opaque, hwaddr addr, uint64_t *data,
     MemTxResult res;
 
 #if defined(DEBUG_SUBPAGE)
-    printf("%s: subpage %p len %u addr " TARGET_FMT_plx "\n", __func__,
+    printf("%s: subpage %p len %u addr " HWADDR_FMT_plx "\n", __func__,
            subpage, len, addr);
 #endif
     res = flatview_read(subpage->fv, addr + subpage->base, attrs, buf, len);
@@ -2632,7 +2460,7 @@ static MemTxResult subpage_write(void *opaque, hwaddr addr,
     uint8_t buf[8];
 
 #if defined(DEBUG_SUBPAGE)
-    printf("%s: subpage %p len %u addr " TARGET_FMT_plx
+    printf("%s: subpage %p len %u addr " HWADDR_FMT_plx
            " value %"PRIx64"\n",
            __func__, subpage, len, addr, value);
 #endif
@@ -2646,7 +2474,7 @@ static bool subpage_accepts(void *opaque, hwaddr addr,
 {
     subpage_t *subpage = opaque;
 #if defined(DEBUG_SUBPAGE)
-    printf("%s: subpage %p %c len %u addr " TARGET_FMT_plx "\n",
+    printf("%s: subpage %p %c len %u addr " HWADDR_FMT_plx "\n",
            __func__, subpage, is_write ? 'w' : 'r', len, addr);
 #endif
 
@@ -2662,6 +2490,7 @@ static const MemoryRegionOps subpage_ops = {
     .valid.min_access_size = 1,
     .valid.max_access_size = 8,
     .valid.accepts = subpage_accepts,
+    .valid.unaligned = true,
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
@@ -2697,7 +2526,7 @@ static subpage_t *subpage_init(FlatView *fv, hwaddr base)
                           NULL, TARGET_PAGE_SIZE);
     mmio->iomem.subpage = true;
 #if defined(DEBUG_SUBPAGE)
-    printf("%s: %p base " TARGET_FMT_plx " len %08x\n", __func__,
+    printf("%s: %p base " HWADDR_FMT_plx " len %08x\n", __func__,
            mmio, base, TARGET_PAGE_SIZE);
 #endif
 
@@ -2874,7 +2703,7 @@ static void invalidate_and_set_dirty(MemoryRegion *mr, hwaddr addr,
     }
     if (dirty_log_mask & (1 << DIRTY_MEMORY_CODE)) {
         assert(tcg_enabled());
-        tb_invalidate_phys_range(addr, addr + length);
+        tb_invalidate_phys_range(addr, addr + length - 1);
         dirty_log_mask &= ~(1 << DIRTY_MEMORY_CODE);
     }
     cpu_physical_memory_set_dirty_range(addr, length, dirty_log_mask);
@@ -3006,7 +2835,7 @@ static MemTxResult flatview_write_continue(FlatView *fv, hwaddr addr,
         } else {
             /* RAM case */
             ram_ptr = qemu_ram_ptr_length(mr->ram_block, addr1, &l, false);
-            memcpy(ram_ptr, buf, l);
+            memmove(ram_ptr, buf, l);
             invalidate_and_set_dirty(mr, addr1, l);
         }
 
@@ -3316,6 +3145,8 @@ void cpu_register_map_client(QEMUBH *bh)
     qemu_mutex_lock(&map_client_list_lock);
     client->bh = bh;
     QLIST_INSERT_HEAD(&map_client_list, client, link);
+    /* Write map_client_list before reading in_use.  */
+    smp_mb();
     if (!qatomic_read(&bounce.in_use)) {
         cpu_notify_map_clients_locked();
     }
@@ -3435,7 +3266,6 @@ void *address_space_map(AddressSpace *as,
     hwaddr len = *plen;
     hwaddr l, xlat;
     MemoryRegion *mr;
-    void *ptr;
     FlatView *fv;
 
     if (len == 0) {
@@ -3474,9 +3304,7 @@ void *address_space_map(AddressSpace *as,
     *plen = flatview_extend_translation(fv, addr, len, mr, xlat,
                                         l, is_write, attrs);
     fuzz_dma_read_cb(addr, *plen, mr);
-    ptr = qemu_ram_ptr_length(mr->ram_block, xlat, plen, true);
-
-    return ptr;
+    return qemu_ram_ptr_length(mr->ram_block, xlat, plen, true);
 }
 
 /* Unmaps a memory region previously mapped by address_space_map().
@@ -3508,7 +3336,8 @@ void address_space_unmap(AddressSpace *as, void *buffer, hwaddr len,
     qemu_vfree(bounce.buffer);
     bounce.buffer = NULL;
     memory_region_unref(bounce.mr);
-    qatomic_mb_set(&bounce.in_use, false);
+    /* Clear in_use before reading map_client_list.  */
+    qatomic_set_mb(&bounce.in_use, false);
     cpu_notify_map_clients();
 }
 
@@ -3558,7 +3387,7 @@ int64_t address_space_cache_init(MemoryRegionCache *cache,
      * cache->xlat and the end of the section.
      */
     diff = int128_sub(cache->mrs.size,
-		      int128_make64(cache->xlat - cache->mrs.offset_within_region));
+                      int128_make64(cache->xlat - cache->mrs.offset_within_region));
     l = int128_get64(int128_min(diff, int128_make64(l)));
 
     mr = cache->mrs.mr;
@@ -3730,6 +3559,11 @@ size_t qemu_target_page_size(void)
     return TARGET_PAGE_SIZE;
 }
 
+int qemu_target_page_mask(void)
+{
+    return TARGET_PAGE_MASK;
+}
+
 int qemu_target_page_bits(void)
 {
     return TARGET_PAGE_BITS;
@@ -3740,19 +3574,28 @@ int qemu_target_page_bits_min(void)
     return TARGET_PAGE_BITS_MIN;
 }
 
+/* Convert target pages to MiB (2**20). */
+size_t qemu_target_pages_to_MiB(size_t pages)
+{
+    int page_bits = TARGET_PAGE_BITS;
+
+    /* So far, the largest (non-huge) page size is 64k, i.e. 16 bits. */
+    g_assert(page_bits < 20);
+
+    return pages >> (20 - page_bits);
+}
+
 bool cpu_physical_memory_is_io(hwaddr phys_addr)
 {
     MemoryRegion*mr;
     hwaddr l = 1;
-    bool res;
 
     RCU_READ_LOCK_GUARD();
     mr = address_space_translate(&address_space_memory,
                                  phys_addr, &phys_addr, &l, false,
                                  MEMTXATTRS_UNSPECIFIED);
 
-    res = !(memory_region_is_ram(mr) || memory_region_is_romd(mr));
-    return res;
+    return !(memory_region_is_ram(mr) || memory_region_is_romd(mr));
 }
 
 int qemu_ram_foreach_block(RAMBlockIterFunc func, void *opaque)
@@ -3813,6 +3656,24 @@ int ram_block_discard_range(RAMBlock *rb, uint64_t start, size_t length)
              * so a userfault will trigger.
              */
 #ifdef CONFIG_FALLOCATE_PUNCH_HOLE
+            /*
+             * We'll discard data from the actual file, even though we only
+             * have a MAP_PRIVATE mapping, possibly messing with other
+             * MAP_PRIVATE/MAP_SHARED mappings. There is no easy way to
+             * change that behavior whithout violating the promised
+             * semantics of ram_block_discard_range().
+             *
+             * Only warn, because it works as long as nobody else uses that
+             * file.
+             */
+            if (!qemu_ram_is_shared(rb)) {
+                warn_report_once("ram_block_discard_range: Discarding RAM"
+                                 " in private file mappings is possibly"
+                                 " dangerous, because it will modify the"
+                                 " underlying file and will affect other"
+                                 " users of the file");
+            }
+
             ret = fallocate(rb->fd, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE,
                             start, length);
             if (ret) {
@@ -3907,11 +3768,11 @@ void mtree_print_dispatch(AddressSpaceDispatch *d, MemoryRegion *root)
         const char *names[] = { " [unassigned]", " [not dirty]",
                                 " [ROM]", " [watch]" };
 
-        qemu_printf("      #%d @" TARGET_FMT_plx ".." TARGET_FMT_plx
+        qemu_printf("      #%d @" HWADDR_FMT_plx ".." HWADDR_FMT_plx
                     " %s%s%s%s%s",
             i,
             s->offset_within_address_space,
-            s->offset_within_address_space + MR_SIZE(s->mr->size),
+            s->offset_within_address_space + MR_SIZE(s->size),
             s->mr->name ? s->mr->name : "(noname)",
             i < ARRAY_SIZE(names) ? names[i] : "",
             s->mr == root ? " [ROOT]" : "",

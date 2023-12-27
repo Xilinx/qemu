@@ -19,6 +19,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "block/aio-wait.h"
 #include "io/channel.h"
 #include "qapi/error.h"
 #include "qemu/main-loop.h"
@@ -52,6 +53,7 @@ ssize_t qio_channel_readv_full(QIOChannel *ioc,
                                size_t niov,
                                int **fds,
                                size_t *nfds,
+                               int flags,
                                Error **errp)
 {
     QIOChannelClass *klass = QIO_CHANNEL_GET_CLASS(ioc);
@@ -63,7 +65,14 @@ ssize_t qio_channel_readv_full(QIOChannel *ioc,
         return -1;
     }
 
-    return klass->io_readv(ioc, iov, niov, fds, nfds, errp);
+    if ((flags & QIO_CHANNEL_READ_FLAG_MSG_PEEK) &&
+        !qio_channel_has_feature(ioc, QIO_CHANNEL_FEATURE_READ_MSG_PEEK)) {
+        error_setg_errno(errp, EINVAL,
+                         "Channel does not support peek read");
+        return -1;
+    }
+
+    return klass->io_readv(ioc, iov, niov, fds, nfds, flags, errp);
 }
 
 
@@ -101,27 +110,27 @@ ssize_t qio_channel_writev_full(QIOChannel *ioc,
 }
 
 
-int qio_channel_readv_all_eof(QIOChannel *ioc,
-                              const struct iovec *iov,
-                              size_t niov,
-                              Error **errp)
+int coroutine_mixed_fn qio_channel_readv_all_eof(QIOChannel *ioc,
+                                                 const struct iovec *iov,
+                                                 size_t niov,
+                                                 Error **errp)
 {
     return qio_channel_readv_full_all_eof(ioc, iov, niov, NULL, NULL, errp);
 }
 
-int qio_channel_readv_all(QIOChannel *ioc,
-                          const struct iovec *iov,
-                          size_t niov,
-                          Error **errp)
+int coroutine_mixed_fn qio_channel_readv_all(QIOChannel *ioc,
+                                             const struct iovec *iov,
+                                             size_t niov,
+                                             Error **errp)
 {
     return qio_channel_readv_full_all(ioc, iov, niov, NULL, NULL, errp);
 }
 
-int qio_channel_readv_full_all_eof(QIOChannel *ioc,
-                                   const struct iovec *iov,
-                                   size_t niov,
-                                   int **fds, size_t *nfds,
-                                   Error **errp)
+int coroutine_mixed_fn qio_channel_readv_full_all_eof(QIOChannel *ioc,
+                                                      const struct iovec *iov,
+                                                      size_t niov,
+                                                      int **fds, size_t *nfds,
+                                                      Error **errp)
 {
     int ret = -1;
     struct iovec *local_iov = g_new(struct iovec, niov);
@@ -146,7 +155,7 @@ int qio_channel_readv_full_all_eof(QIOChannel *ioc,
     while ((nlocal_iov > 0) || local_fds) {
         ssize_t len;
         len = qio_channel_readv_full(ioc, local_iov, nlocal_iov, local_fds,
-                                     local_nfds, errp);
+                                     local_nfds, 0, errp);
         if (len == QIO_CHANNEL_ERR_BLOCK) {
             if (qemu_in_coroutine()) {
                 qio_channel_yield(ioc, G_IO_IN);
@@ -207,11 +216,11 @@ next_iter:
     return ret;
 }
 
-int qio_channel_readv_full_all(QIOChannel *ioc,
-                               const struct iovec *iov,
-                               size_t niov,
-                               int **fds, size_t *nfds,
-                               Error **errp)
+int coroutine_mixed_fn qio_channel_readv_full_all(QIOChannel *ioc,
+                                                  const struct iovec *iov,
+                                                  size_t niov,
+                                                  int **fds, size_t *nfds,
+                                                  Error **errp)
 {
     int ret = qio_channel_readv_full_all_eof(ioc, iov, niov, fds, nfds, errp);
 
@@ -226,19 +235,19 @@ int qio_channel_readv_full_all(QIOChannel *ioc,
     return ret;
 }
 
-int qio_channel_writev_all(QIOChannel *ioc,
-                           const struct iovec *iov,
-                           size_t niov,
-                           Error **errp)
+int coroutine_mixed_fn qio_channel_writev_all(QIOChannel *ioc,
+                                              const struct iovec *iov,
+                                              size_t niov,
+                                              Error **errp)
 {
     return qio_channel_writev_full_all(ioc, iov, niov, NULL, 0, 0, errp);
 }
 
-int qio_channel_writev_full_all(QIOChannel *ioc,
-                                const struct iovec *iov,
-                                size_t niov,
-                                int *fds, size_t nfds,
-                                int flags, Error **errp)
+int coroutine_mixed_fn qio_channel_writev_full_all(QIOChannel *ioc,
+                                                   const struct iovec *iov,
+                                                   size_t niov,
+                                                   int *fds, size_t nfds,
+                                                   int flags, Error **errp)
 {
     int ret = -1;
     struct iovec *local_iov = g_new(struct iovec, niov);
@@ -284,7 +293,7 @@ ssize_t qio_channel_readv(QIOChannel *ioc,
                           size_t niov,
                           Error **errp)
 {
-    return qio_channel_readv_full(ioc, iov, niov, NULL, NULL, errp);
+    return qio_channel_readv_full(ioc, iov, niov, NULL, NULL, 0, errp);
 }
 
 
@@ -303,7 +312,7 @@ ssize_t qio_channel_read(QIOChannel *ioc,
                          Error **errp)
 {
     struct iovec iov = { .iov_base = buf, .iov_len = buflen };
-    return qio_channel_readv_full(ioc, &iov, 1, NULL, NULL, errp);
+    return qio_channel_readv_full(ioc, &iov, 1, NULL, NULL, 0, errp);
 }
 
 
@@ -317,30 +326,30 @@ ssize_t qio_channel_write(QIOChannel *ioc,
 }
 
 
-int qio_channel_read_all_eof(QIOChannel *ioc,
-                             char *buf,
-                             size_t buflen,
-                             Error **errp)
+int coroutine_mixed_fn qio_channel_read_all_eof(QIOChannel *ioc,
+                                                char *buf,
+                                                size_t buflen,
+                                                Error **errp)
 {
     struct iovec iov = { .iov_base = buf, .iov_len = buflen };
     return qio_channel_readv_all_eof(ioc, &iov, 1, errp);
 }
 
 
-int qio_channel_read_all(QIOChannel *ioc,
-                         char *buf,
-                         size_t buflen,
-                         Error **errp)
+int coroutine_mixed_fn qio_channel_read_all(QIOChannel *ioc,
+                                            char *buf,
+                                            size_t buflen,
+                                            Error **errp)
 {
     struct iovec iov = { .iov_base = buf, .iov_len = buflen };
     return qio_channel_readv_all(ioc, &iov, 1, errp);
 }
 
 
-int qio_channel_write_all(QIOChannel *ioc,
-                          const char *buf,
-                          size_t buflen,
-                          Error **errp)
+int coroutine_mixed_fn qio_channel_write_all(QIOChannel *ioc,
+                                             const char *buf,
+                                             size_t buflen,
+                                             Error **errp)
 {
     struct iovec iov = { .iov_base = (char *)buf, .iov_len = buflen };
     return qio_channel_writev_all(ioc, &iov, 1, errp);
@@ -506,7 +515,11 @@ int qio_channel_flush(QIOChannel *ioc,
 static void qio_channel_restart_read(void *opaque)
 {
     QIOChannel *ioc = opaque;
-    Coroutine *co = ioc->read_coroutine;
+    Coroutine *co = qatomic_xchg(&ioc->read_coroutine, NULL);
+
+    if (!co) {
+        return;
+    }
 
     /* Assert that aio_co_wake() reenters the coroutine directly */
     assert(qemu_get_current_aio_context() ==
@@ -517,7 +530,11 @@ static void qio_channel_restart_read(void *opaque)
 static void qio_channel_restart_write(void *opaque)
 {
     QIOChannel *ioc = opaque;
-    Coroutine *co = ioc->write_coroutine;
+    Coroutine *co = qatomic_xchg(&ioc->write_coroutine, NULL);
+
+    if (!co) {
+        return;
+    }
 
     /* Assert that aio_co_wake() reenters the coroutine directly */
     assert(qemu_get_current_aio_context() ==
@@ -560,7 +577,11 @@ void qio_channel_detach_aio_context(QIOChannel *ioc)
 void coroutine_fn qio_channel_yield(QIOChannel *ioc,
                                     GIOCondition condition)
 {
+    AioContext *ioc_ctx = ioc->ctx ?: qemu_get_aio_context();
+
     assert(qemu_in_coroutine());
+    assert(in_aio_context_home_thread(ioc_ctx));
+
     if (condition == G_IO_IN) {
         assert(!ioc->read_coroutine);
         ioc->read_coroutine = qemu_coroutine_self();
@@ -572,18 +593,26 @@ void coroutine_fn qio_channel_yield(QIOChannel *ioc,
     }
     qio_channel_set_aio_fd_handlers(ioc);
     qemu_coroutine_yield();
+    assert(in_aio_context_home_thread(ioc_ctx));
 
     /* Allow interrupting the operation by reentering the coroutine other than
      * through the aio_fd_handlers. */
-    if (condition == G_IO_IN && ioc->read_coroutine) {
-        ioc->read_coroutine = NULL;
+    if (condition == G_IO_IN) {
+        assert(ioc->read_coroutine == NULL);
         qio_channel_set_aio_fd_handlers(ioc);
-    } else if (condition == G_IO_OUT && ioc->write_coroutine) {
-        ioc->write_coroutine = NULL;
+    } else if (condition == G_IO_OUT) {
+        assert(ioc->write_coroutine == NULL);
         qio_channel_set_aio_fd_handlers(ioc);
     }
 }
 
+void qio_channel_wake_read(QIOChannel *ioc)
+{
+    Coroutine *co = qatomic_xchg(&ioc->read_coroutine, NULL);
+    if (co) {
+        aio_co_wake(co);
+    }
+}
 
 static gboolean qio_channel_wait_complete(QIOChannel *ioc,
                                           GIOCondition condition,

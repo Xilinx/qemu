@@ -562,6 +562,7 @@ void etrace_note_write(struct etracer *t, unsigned int unit_id,
     etrace_write(t, buf, len);
 }
 
+G_GNUC_PRINTF(2, 3)
 int etrace_note_fprintf(FILE *fp,
                         const char *fmt, ...)
 {

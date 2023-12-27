@@ -1,5 +1,12 @@
 # See docs/devel/tracing.rst for syntax documentation.
 
+# allwinner-wdt.c
+allwinner_wdt_read(uint64_t offset, uint64_t data, unsigned size) "Allwinner watchdog read: offset 0x%" PRIx64 " data 0x%" PRIx64 " size %u"
+allwinner_wdt_write(uint64_t offset, uint64_t data, unsigned size) "Allwinner watchdog write: offset 0x%" PRIx64 " data 0x%" PRIx64 " size %u"
+allwinner_wdt_reset_enter(void) "Allwinner watchdog: reset"
+allwinner_wdt_update_timer(uint8_t count) "Allwinner watchdog: count %" PRIu8
+allwinner_wdt_expired(bool enabled, bool reset_enabled) "Allwinner watchdog: enabled %u reset_enabled %u"
+
 # cmsdk-apb-watchdog.c
 cmsdk_apb_watchdog_read(uint64_t offset, uint64_t data, unsigned size) "CMSDK APB watchdog read: offset 0x%" PRIx64 " data 0x%" PRIx64 " size %u"
 cmsdk_apb_watchdog_write(uint64_t offset, uint64_t data, unsigned size) "CMSDK APB watchdog write: offset 0x%" PRIx64 " data 0x%" PRIx64 " size %u"
@@ -16,3 +23,7 @@ spapr_watchdog_stop(uint64_t num, uint64_t ret) "num=%" PRIu64 " ret=%" PRId64
 spapr_watchdog_query(uint64_t caps) "caps=0x%" PRIx64
 spapr_watchdog_query_lpm(uint64_t caps) "caps=0x%" PRIx64
 spapr_watchdog_expired(uint64_t num, unsigned action) "num=%" PRIu64 " action=%u"
+
+# watchdog.c
+watchdog_perform_action(unsigned int action) "action=%u"
+watchdog_set_action(unsigned int action) "action=%u"
