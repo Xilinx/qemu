@@ -1060,24 +1060,20 @@ cpu_exec_loop(CPUState *cpu, SyncClocks *sc)
 
             if (qemu_etrace_mask(ETRACE_F_EXEC)) {
                 CPUArchState *env = (CPUArchState *)cpu->env_ptr;
-                vaddr pc;
+                vaddr pc_end;
                 uint64_t cs_base;
                 uint32_t flags;
 
-                if (tb_cflags(tb) & CF_PCREL) {
-                    cpu_get_tb_cpu_state(env, &pc, &cs_base, &flags);
+                if (tb_exit) {
+                    /* TB early exit, ask for CPU state.  */
+                    cpu_get_tb_cpu_state(env, &pc_end, &cs_base, &flags);
                 } else {
-                    if (tb_exit) {
-                        /* TB early exit, ask for CPU state.  */
-                        cpu_get_tb_cpu_state(env, &pc, &cs_base, &flags);
-                    } else {
-                        /* TB didn't exit, assume we ran all of it.  */
-                        pc = tb->pc + tb->size;
-                    }
+                    /* TB didn't exit, assume we ran all of it.  */
+                    pc_end = pc + tb->size;
                 }
 
                 etrace_dump_exec_end(&qemu_etracer,
-                                     cpu->cpu_index, pc);
+                                     cpu->cpu_index, pc_end);
             }
 
             qemu_etracer.exec_start_valid = false;
