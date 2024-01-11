@@ -50,6 +50,11 @@ static void xhci_sysbus_realize(DeviceState *dev, Error **errp)
         s->xhci.as = &address_space_memory;
     }
 
+    if (!s->xhci.attrs) {
+        s->xhci.attrs = g_new(MemTxAttrs, 1);
+        *s->xhci.attrs = MEMTXATTRS_UNSPECIFIED;
+    }
+
     sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->xhci.mem);
 }
 

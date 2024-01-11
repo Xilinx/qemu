@@ -181,6 +181,7 @@ typedef struct XHCIState {
     MemoryRegion mem;
     MemoryRegion *dma_mr;
     AddressSpace *as;
+    MemTxAttrs *attrs;
     MemoryRegion mem_cap;
     MemoryRegion mem_oper;
     MemoryRegion mem_runtime;

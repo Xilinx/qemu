@@ -659,6 +659,10 @@ static void usb_dwc3_init(Object *obj)
                              (Object **)&s->sysbus_xhci.xhci.dma_mr,
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_STRONG);
+    object_property_add_link(obj, "memattr", TYPE_MEMORY_TRANSACTION_ATTR,
+                             (Object **)&s->sysbus_xhci.xhci.attrs,
+                             qdev_prop_allow_set_link_before_realize,
+                             OBJ_PROP_LINK_STRONG);
 
     s->cfg.mode = HOST_MODE;
 }
