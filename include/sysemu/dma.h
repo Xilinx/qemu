@@ -41,6 +41,7 @@ struct QEMUSGList {
     dma_addr_t size;
     DeviceState *dev;
     AddressSpace *as;
+    MemTxAttrs attrs;
 };
 
 static inline void dma_barrier(AddressSpace *as, DMADirection dir)

@@ -34,6 +34,7 @@ void qemu_sglist_init(QEMUSGList *qsg, DeviceState *dev, int alloc_hint,
     qsg->nalloc = alloc_hint;
     qsg->size = 0;
     qsg->as = as;
+    qsg->attrs = MEMTXATTRS_UNSPECIFIED;
     qsg->dev = dev;
     object_ref(OBJECT(dev));
 }
