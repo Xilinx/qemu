@@ -229,6 +229,8 @@ typedef struct PSX_CRF {
     bool linux_direct_boot;
     uint32_t regs[PSX_CRF_R_MAX];
     RegisterInfo regs_info[PSX_CRF_R_MAX];
+
+    bool in_reset_enter;
 } PSX_CRF;
 
 #define PROPAGATE_GPIO(reg, f, irq) { \
@@ -248,6 +250,14 @@ typedef struct PSX_CRF {
 
 static void crf_update_gpios(PSX_CRF *s)
 {
+    /*
+     * It is forbidden by the API to have effect on other devices while in reset
+     * enter.
+     */
+    if (s->in_reset_enter) {
+        return;
+    }
+
     if (!s->linux_direct_boot) {
         PROPAGATE_RST_CLUSTER(s, 0);
         PROPAGATE_RST_CLUSTER(s, 1);
@@ -376,15 +386,20 @@ static void psx_crf_reset_enter(Object *obj, ResetType type)
     PSX_CRF *s = XILINX_PSX_CRF(obj);
     unsigned int i;
 
+    s->in_reset_enter = true;
+
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
         register_reset(&s->regs_info[i]);
     }
+
+    s->in_reset_enter = false;
 }
 
 static void psx_crf_reset_hold(Object *obj)
 {
     PSX_CRF *s = XILINX_PSX_CRF(obj);
 
+    /* Now GPIO can be updated.  */
     crf_update_gpios(s);
 }
 
