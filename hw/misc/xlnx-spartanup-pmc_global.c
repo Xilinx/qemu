@@ -19,6 +19,7 @@
 #include "hw/fdt_generic_util.h"
 #include "qapi/error.h"
 #include "hw/misc/sss.h"
+#include "system/runstate.h"
 
 #ifndef XILINX_SPARTANUP_PMC_GLOBAL_ERR_DEBUG
 #define XILINX_SPARTANUP_PMC_GLOBAL_ERR_DEBUG 0
@@ -201,6 +202,7 @@ typedef struct SPARTANUP_PMC_GLOBAL {
     qemu_irq rst_puf;
 
     int init_b;
+    bool soft_reset;
     uint32_t regs[SPARTANUP_PMC_GLOBAL_R_MAX];
     RegisterInfo regs_info[SPARTANUP_PMC_GLOBAL_R_MAX];
 } SPARTANUP_PMC_GLOBAL;
@@ -308,6 +310,18 @@ static uint32_t spartanup_pmc_global_get_sss_regfield(SSSBase *p, int remote)
                      R_SSS_CONFIG_FIELD_LENGTH);
 }
 
+static void spartanup_pmc_global_reset_spartanup_pmc_postw(RegisterInfo *reg,
+            uint64_t val)
+{
+    SPARTANUP_PMC_GLOBAL *s = XILINX_SPARTANUP_PMC_GLOBAL(reg->opaque);
+
+    if (ARRAY_FIELD_EX32(s->regs, RST_SPARTANUP_PMC, SOFT_RESET)) {
+        /* Somebody is trying to soft reset the device.  */
+        s->soft_reset = true;
+        qemu_system_reset_request(SHUTDOWN_CAUSE_GUEST_RESET);
+    }
+}
+
 /* Reset related register.  */
 
 #define PROPAGATE_GPIO(reg, f, irq) { \
@@ -374,7 +388,9 @@ static const RegisterAccessInfo spartanup_pmc_global_regs_info[] = {
         .rsvd = 0xfdffc0fe,
     },{ .name = "EFUSE_CLK_CTRL",  .addr = A_EFUSE_CLK_CTRL,
         .rsvd = 0xfffffffe,
-    },{ .name = "RST_SPARTANUP_PMC",  .addr = A_RST_SPARTANUP_PMC,
+    },{ .name = "RST_SPARTANUP_PMC",
+        .addr = A_RST_SPARTANUP_PMC,
+        .post_write = spartanup_pmc_global_reset_spartanup_pmc_postw,
     },{ .name = "RST_DMA",  .addr = A_RST_DMA,
         .reset = 0x1,
         .post_write = spartanup_pmc_global_rst_dma_postw,
@@ -516,11 +532,35 @@ static void spartanup_pmc_global_reset_enter(Object *obj, ResetType type)
     SPARTANUP_PMC_GLOBAL *s = XILINX_SPARTANUP_PMC_GLOBAL(obj);
     unsigned int i;
 
+    s->regs[R_LAST_RESET_REASON] = s->regs[R_RESET_REASON];
+    ARRAY_FIELD_DP32(s->regs, RESET_REASON, SW_SRST, s->soft_reset ? 1 : 0);
+    ARRAY_FIELD_DP32(s->regs, RESET_REASON, EXTERNAL_POR,
+                     s->soft_reset ? 0 : 1);
+
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        register_reset(&s->regs_info[i]);
+        switch (i) {
+        case R_RESET_REASON:
+        case R_LAST_RESET_REASON:
+            /*
+             * LAST_RESET_REASON take it's value from RESET_REASON, and
+             * RESET_REASON change depending the kind of reset which is
+             * happening.  This is handled above.
+             */
+            break;
+        case R_PERS_GLOB_GEN_STORAGE0 ... R_PERS_GLOB_GEN_STORAGE7:
+            /* Those one are only reset with POR.  */
+            if (!s->soft_reset) {
+                register_reset(&s->regs_info[i]);
+            }
+            break;
+        default:
+            register_reset(&s->regs_info[i]);
+            break;
+        }
     }
 
     ARRAY_FIELD_DP32(s->regs, PINS_STATUS, INIT_B, s->init_b ? 1 : 0);
+    s->soft_reset = false;
 }
 
 static const MemoryRegionOps spartanup_pmc_global_ops = {
@@ -622,6 +662,14 @@ static void spartanup_pmc_global_init(Object *obj)
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_puf, "rst-puf", 1);
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_spare, "rst-spare", 1);
     qdev_init_gpio_in_named(DEVICE(obj), spartanup_pmc_init_b_update, "init_b", 1);
+
+    s->soft_reset = false;
+    /*
+     * Give an initial value here for RESET_REASON register, so the
+     * LAST_RESET_REASON register can be correctly reset in the reset_enter
+     * callback.
+     */
+    ARRAY_FIELD_DP32(s->regs, RESET_REASON, EXTERNAL_POR, 1);
 }
 
 static const VMStateDescription vmstate_spartanup_pmc_global = {
