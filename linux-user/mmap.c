@@ -23,6 +23,7 @@
 #include "user-internals.h"
 #include "user-mmap.h"
 #include "target_mman.h"
+#include "mmap-fixed.h"
 
 static pthread_mutex_t mmap_mutex = PTHREAD_MUTEX_INITIALIZER;
 static __thread int mmap_lock_count;
@@ -260,9 +261,9 @@ static bool mmap_frag(abi_ulong real_start, abi_ulong start, abi_ulong last,
          * outside of the fragment we need to map.  Allocate a new host
          * page to cover, discarding whatever else may have been present.
          */
-        void *p = mmap(host_start, qemu_host_page_size,
-                       target_to_host_prot(prot),
-                       flags | MAP_ANONYMOUS, -1, 0);
+        void *p = mmap_fixed_noreplace(host_start, qemu_host_page_size,
+                                       target_to_host_prot(prot),
+                                       flags | MAP_ANONYMOUS, -1, 0);
         if (p != host_start) {
             if (p != MAP_FAILED) {
                 munmap(p, qemu_host_page_size);
@@ -361,8 +362,9 @@ abi_ulong mmap_find_vma(abi_ulong start, abi_ulong size, abi_ulong align)
          *  - mremap() with MREMAP_FIXED flag
          *  - shmat() with SHM_REMAP flag
          */
-        ptr = mmap(g2h_untagged(addr), size, PROT_NONE,
-                   MAP_ANONYMOUS | MAP_PRIVATE | MAP_NORESERVE, -1, 0);
+        ptr = mmap_fixed_noreplace(g2h_untagged(addr), size, PROT_NONE,
+                                   MAP_ANONYMOUS | MAP_PRIVATE | MAP_NORESERVE,
+                                   -1, 0);
 
         /* ENOMEM, if host address space has no memory */
         if (ptr == MAP_FAILED) {
@@ -556,16 +558,16 @@ abi_long target_mmap(abi_ulong start, abi_ulong len, int target_prot,
          * especially important if qemu_host_page_size >
          * qemu_real_host_page_size.
          */
-        p = mmap(g2h_untagged(start), host_len, host_prot,
-                 flags | MAP_FIXED | MAP_ANONYMOUS, -1, 0);
+        p = mmap_fixed_noreplace(g2h_untagged(start), host_len, host_prot,
+                                 flags | MAP_FIXED | MAP_ANONYMOUS, -1, 0);
         if (p == MAP_FAILED) {
             goto fail;
         }
         /* update start so that it points to the file position at 'offset' */
         host_start = (uintptr_t)p;
         if (!(flags & MAP_ANONYMOUS)) {
-            p = mmap(g2h_untagged(start), len, host_prot,
-                     flags | MAP_FIXED, fd, host_offset);
+            p = mmap_fixed_noreplace(g2h_untagged(start), len, host_prot,
+                                     flags | MAP_FIXED, fd, host_offset);
             if (p == MAP_FAILED) {
                 munmap(g2h_untagged(start), host_len);
                 goto fail;
@@ -690,8 +692,9 @@ abi_long target_mmap(abi_ulong start, abi_ulong len, int target_prot,
             len1 = real_last - real_start + 1;
             want_p = g2h_untagged(real_start);
 
-            p = mmap(want_p, len1, target_to_host_prot(target_prot),
-                     flags, fd, offset1);
+            p = mmap_fixed_noreplace(want_p, len1,
+                                     target_to_host_prot(target_prot),
+                                     flags, fd, offset1);
             if (p != want_p) {
                 if (p != MAP_FAILED) {
                     munmap(p, len1);
@@ -792,9 +795,9 @@ static void mmap_reserve_or_unmap(abi_ulong start, abi_ulong len)
     host_start = g2h_untagged(real_start);
 
     if (reserved_va) {
-        void *ptr = mmap(host_start, real_len, PROT_NONE,
-                         MAP_FIXED | MAP_ANONYMOUS
-                         | MAP_PRIVATE | MAP_NORESERVE, -1, 0);
+        void *ptr = mmap_fixed_noreplace(host_start, real_len, PROT_NONE,
+                                         MAP_FIXED | MAP_ANONYMOUS
+                                         | MAP_PRIVATE | MAP_NORESERVE, -1, 0);
         assert(ptr == host_start);
     } else {
         int ret = munmap(host_start, real_len);

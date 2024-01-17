@@ -14,6 +14,7 @@ linux_user_ss.add(files(
   'linuxload.c',
   'main.c',
   'mmap.c',
+  'mmap-fixed.c',
   'signal.c',
   'strace.c',
   'syscall.c',

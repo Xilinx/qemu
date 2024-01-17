@@ -22,6 +22,7 @@
 #include "qemu/error-report.h"
 #include "target_signal.h"
 #include "accel/tcg/debuginfo.h"
+#include "mmap-fixed.h"
 
 #ifdef _ARCH_PPC64
 #undef ARCH_DLINFO
@@ -2517,9 +2518,9 @@ static abi_ulong create_elf_tables(abi_ulong p, int argc, int envc,
 static int pgb_try_mmap(uintptr_t addr, uintptr_t addr_last, bool keep)
 {
     size_t size = addr_last - addr + 1;
-    void *p = mmap((void *)addr, size, PROT_NONE,
-                   MAP_ANONYMOUS | MAP_PRIVATE |
-                   MAP_NORESERVE | MAP_FIXED_NOREPLACE, -1, 0);
+    void *p = mmap_fixed_noreplace((void *)addr, size, PROT_NONE,
+                                   MAP_ANONYMOUS | MAP_PRIVATE |
+                                   MAP_NORESERVE | MAP_FIXED_NOREPLACE, -1, 0);
     int ret;
 
     if (p == MAP_FAILED) {
