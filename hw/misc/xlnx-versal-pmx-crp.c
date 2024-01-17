@@ -449,6 +449,8 @@ typedef struct PMX_CRP {
 
     uint32_t regs[PMX_CRP_R_MAX];
     RegisterInfo regs_info[PMX_CRP_R_MAX];
+
+    bool in_reset_enter;
 } PMX_CRP;
 
 static void clkmon_update_irq(PMX_CRP *s)
@@ -523,6 +525,14 @@ static void boot_mode_user_postw(RegisterInfo *reg, uint64_t val64)
 
 static void crp_update_gpios(PMX_CRP *s)
 {
+    /*
+     * As per API documentation: don't propagate RESETs while in reset
+     * enter.  Or odd things might happen.
+     */
+    if (s->in_reset_enter) {
+        return;
+    }
+
     PROPAGATE_GPIO(RST_QSPI, RESET, s->rst_qspi);
     PROPAGATE_GPIO(RST_OSPI, RESET, s->rst_ospi);
     PROPAGATE_GPIO(RST_SDIO0, RESET, s->rst_sdio[0]);
@@ -822,6 +832,8 @@ static void pmx_crp_reset_enter(Object *obj, ResetType type)
     uint32_t boot_mode = qemu_opt_get_number(opts, "mode", 0);
     unsigned int i;
 
+    s->in_reset_enter = true;
+
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
         if (!s->regs_info[i].access) {
             continue;
@@ -838,6 +850,8 @@ static void pmx_crp_reset_enter(Object *obj, ResetType type)
     s->regs[R_LAST_RESET_REASON] = s->regs[R_RESET_REASON];
     s->regs[R_BOOT_MODE_POR] = boot_mode;
     update_boot_mode_user(s);
+
+    s->in_reset_enter = false;
 }
 
 static void pmx_crp_reset_hold(Object *obj)
