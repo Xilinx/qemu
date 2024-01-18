@@ -16,6 +16,8 @@
 #include "migration/vmstate.h"
 #include "hw/irq.h"
 #include "hw/fdt_generic_util.h"
+#include "chardev/char-fe.h"
+#include "hw/qdev-properties-system.h"
 
 #ifndef XILINX_CCU_APB_ERR_DEBUG
 #define XILINX_CCU_APB_ERR_DEBUG 0
@@ -190,12 +192,18 @@ REG32(CFG_CTL1, 0x134)
 
 #define CCU_APB_R_MAX (0x13c / 4 + 1)
 
+/* Stream size for both STREAM regions.  */
+#define CCU_APB_STREAM_SIZE 0x10000
+
 typedef struct CCU_APB {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
+    MemoryRegion rd_stream;
+    MemoryRegion wr_stream;
     qemu_irq irq_ccu_imr;
     qemu_irq init_b;
 
+    CharFrontend chr;
     uint32_t regs[CCU_APB_R_MAX];
     RegisterInfo regs_info[CCU_APB_R_MAX];
 } CCU_APB;
@@ -392,10 +400,38 @@ static const MemoryRegionOps ccu_apb_ops = {
     },
 };
 
-static void ccu_apb_realize(DeviceState *dev, Error **errp)
+static uint64_t ccu_apb_stream_read(void *opaque, hwaddr addr, unsigned size)
 {
-    /* Delete this if you don't need it */
+    /* Not implemented yet.  */
+    qemu_log_mask(LOG_UNIMP, "%s: Read unimplemented\n", __func__);
+    return 0;
 }
+
+static void ccu_apb_stream_write(void *opaque, hwaddr addr, uint64_t value,
+                                 unsigned size)
+{
+    CCU_APB *s = XILINX_CCU_APB(opaque);
+
+    /*
+     * Getting back the configuration is not modelled.  So don't model the
+     * frame either, instead the whole thing is written to a character device
+     * for debugging purpose.
+     */
+    if (qemu_chr_fe_get_driver(&s->chr)) {
+        qemu_chr_fe_printf(&s->chr, "%08x\n", (unsigned int)value);
+        qemu_chr_fe_printf(&s->chr, "\n");
+    }
+}
+
+static const MemoryRegionOps ccu_apb_stream_ops = {
+    .read = ccu_apb_stream_read,
+    .write = ccu_apb_stream_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = {
+        .min_access_size = 4,
+        .max_access_size = 4,
+    },
+};
 
 static void ccu_apb_init(Object *obj)
 {
@@ -415,10 +451,24 @@ static void ccu_apb_init(Object *obj)
                                 0x0,
                                 &reg_array->mem);
     sysbus_init_mmio(sbd, &s->iomem);
+
+    memory_region_init_io(&s->rd_stream, obj, &ccu_apb_stream_ops, s,
+                          TYPE_XILINX_CCU_APB "-rd-stream",
+                          CCU_APB_STREAM_SIZE);
+    sysbus_init_mmio(sbd, &s->rd_stream);
+    memory_region_init_io(&s->wr_stream, obj, &ccu_apb_stream_ops, s,
+                          TYPE_XILINX_CCU_APB "-wr-stream",
+                          CCU_APB_STREAM_SIZE);
+    sysbus_init_mmio(sbd, &s->wr_stream);
+
     sysbus_init_irq(sbd, &s->irq_ccu_imr);
 
     qdev_init_gpio_out_named(DEVICE(obj), &s->init_b, "init_b", 1);
 }
+
+static const Property ccu_apb_props[] = {
+        DEFINE_PROP_CHR("chardev", CCU_APB, chr),
+};
 
 static const VMStateDescription vmstate_ccu_apb = {
     .name = TYPE_XILINX_CCU_APB,
@@ -447,8 +497,8 @@ static void ccu_apb_class_init(ObjectClass *klass, const void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     FDTGenericGPIOClass *fggc = FDT_GENERIC_GPIO_CLASS(klass);
 
-    dc->realize = ccu_apb_realize;
     dc->vmsd = &vmstate_ccu_apb;
+    device_class_set_props(dc, ccu_apb_props);
     rc->phases.enter = ccu_apb_reset_enter;
     rc->phases.hold = ccu_apb_reset_hold;
     fggc->controller_gpios = ccu_apb_gpios;
