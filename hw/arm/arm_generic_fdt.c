@@ -213,6 +213,13 @@ static char *zynq7000_qspi_flash_node_clone(void *fdt)
             char *compat_str = NULL;
             compat_str = qemu_fdt_getprop(fdt, child_flash[0],
                                           "compatible", NULL, false, NULL);
+            int lenp = 0;
+            void *pm = qemu_fdt_getprop(fdt, child_flash[0],
+                                        "parallel-memories", &lenp, 0, NULL);
+            if (pm && lenp) {
+                qspi_is_dual = 1;
+                g_free(pm);
+            }
         /* Attach Default flash node to bus 1 */
         val[0] = 0;
         val[1] = 0;
