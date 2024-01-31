@@ -2437,6 +2437,7 @@ static Property arm_cpu_properties[] = {
     DEFINE_PROP_UINT64("ccsidr0", ARMCPU, ccsidr[0], 0),
     DEFINE_PROP_UINT64("ccsidr1", ARMCPU, ccsidr[1], 0),
     DEFINE_PROP_UINT64("midr", ARMCPU, midr, 0),
+    DEFINE_PROP_UINT32("revidr", ARMCPU, revidr, 0),
     DEFINE_PROP_UINT64("mp-affinity", ARMCPU,
                         mp_affinity, ARM64_AFFINITY_INVALID),
     DEFINE_PROP_INT32("node-id", ARMCPU, node_id, CPU_UNSET_NUMA_NODE_ID),
