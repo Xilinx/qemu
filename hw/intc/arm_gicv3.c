@@ -203,7 +203,17 @@ static void gicv3_redist_update_noirqset(GICv3CPUState *cs)
 void gicv3_redist_update(GICv3CPUState *cs)
 {
     gicv3_redist_update_noirqset(cs);
-    gicv3_cpuif_update(cs);
+
+    if (cs->gicr_waker) {
+        /*
+         * The CPU interface is in quiescent state, that emits a
+         * WakeRequest.
+         */
+        qemu_set_irq(cs->wake_request, 1);
+    } else {
+        qemu_set_irq(cs->wake_request, 0);
+        gicv3_cpuif_update(cs);
+    }
 }
 
 /* Update the GIC status after state in the distributor has
