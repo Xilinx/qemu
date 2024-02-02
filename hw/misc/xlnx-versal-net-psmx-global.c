@@ -2744,6 +2744,15 @@ static void rpu_pwrdwn_req(void *opaque, int n, int level)
     pwr_ctrl1_irq_update_irq(s);
 }
 
+static void rpu_wakeup_req(void *opaque, int n, int level)
+{
+    PSMX_GLOBAL_REG *s = XILINX_PSMX_GLOBAL_REG(opaque);
+
+    s->regs[R_WAKEUP1_IRQ_STATUS] |= (level ? 1 : 0)
+        << (R_WAKEUP1_IRQ_STATUS_RPU_A_CORE0_SHIFT + n);
+    wakeup1_irq_update_irq(s);
+}
+
 static void psmx_global_reg_reset_enter(Object *obj, ResetType type)
 {
     PSMX_GLOBAL_REG *s = XILINX_PSMX_GLOBAL_REG(obj);
@@ -2818,6 +2827,7 @@ static void psmx_global_reg_init(Object *obj)
     qdev_init_gpio_in_named(DEVICE(obj), pwr_state_h, "pwr-state0", 35);
     qdev_init_gpio_in_named(DEVICE(obj), aux_pwr_state_h, "aux-pwr-state", 32);
     qdev_init_gpio_in_named(DEVICE(obj), rpu_pwrdwn_req, "rpu-pwrdwn-req", 4);
+    qdev_init_gpio_in_named(DEVICE(obj), rpu_wakeup_req, "rpu-wakeup-req", 4);
     qdev_init_gpio_in_named(DEVICE(obj), apu_standby_h, "apu-wfi", 16);
     qdev_init_gpio_in_named(DEVICE(obj), rpu_standby_h, "rpu-wfi", 4);
 }
@@ -2839,6 +2849,7 @@ static const FDTGenericGPIOSet psmx_global_reg_gpios[] = {
             { .name = "pwr-state0", .fdt_index = 0, .range = 35 },
             { .name = "aux-pwr-state", .fdt_index = 35, .range = 32 },
             { .name = "rpu-pwrdwn-req", .fdt_index = 67, .range = 4},
+            { .name = "rpu-wakeup-req", .fdt_index = 71, .range = 4},
             { },
         },
     },
