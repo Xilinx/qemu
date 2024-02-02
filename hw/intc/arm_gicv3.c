@@ -437,6 +437,17 @@ static const FDTGenericGPIOSet arm_gicv3_client_gpios[] = {
     { },
 };
 
+static const FDTGenericGPIOSet arm_gicv3_controller_gpios[] = {
+    {
+        .names = &fdt_generic_gpio_name_set_gpio,
+        .gpios = (FDTGenericGPIOConnection[]) {
+            { .name = "wake-request", .range = ARM_GICV3_MAX_WAKE_REQUEST },
+            { },
+        },
+    },
+    { },
+};
+
 static void arm_gicv3_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -446,6 +457,7 @@ static void arm_gicv3_class_init(ObjectClass *klass, void *data)
 
     agcc->post_load = arm_gicv3_post_load;
     fggc->client_gpios = arm_gicv3_client_gpios;
+    fggc->controller_gpios = arm_gicv3_controller_gpios;
     device_class_set_parent_realize(dc, arm_gic_realize, &agc->parent_realize);
 }
 

@@ -73,6 +73,12 @@
 #define GIC_BIT_MASK(nr) (1U << ((nr) % 32))
 #define GIC_BIT_WORD(nr) ((nr) / 32)
 
+/*
+ * XXX: for now since there are no easy way of specifying the maximum number
+ * of GPIO set dynamically, hardcode that to 32 (but it might be more).
+ */
+#define ARM_GICV3_MAX_WAKE_REQUEST 32
+
 static inline void gic_bmp_set_bit(int nr, uint32_t *addr)
 {
     uint32_t mask = GIC_BIT_MASK(nr);
