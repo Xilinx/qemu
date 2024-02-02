@@ -163,10 +163,17 @@ struct DeviceClass {
     DeviceRealize realize;
     DeviceUnrealize unrealize;
 
-    /* callbacks for setting of power state */
+    /**
+     * @pwr_cntrl: XLNX - gpio callback to update DeviceState.ps member(s)
+     */
     void (*pwr_cntrl)(void *opaque, int n, int level);
+    /**
+     * @hlt_cntrl: XLNX - gpio callback to update DeviceState.ps member(s)
+     */
     void (*hlt_cntrl)(void *opaque, int n, int level);
-    /* reset control */
+    /**
+     * @rst_cntrl: XLNX - gpio callback to update DeviceState.reset_level
+     */
     void (*rst_cntrl)(void *opaque, int n, int level);
 
     /**
@@ -305,8 +312,20 @@ struct DeviceState {
      */
     MemReentrancyGuard mem_reentrancy_guard;
 
-    /* Xilinx: Remove  */
+    /**
+     * @ps: XLNX - the device power state.
+     *
+     * Is the device power on or off?
+     * Is the device active, halting, or halted?
+     */
     PowerState ps;
+    /**
+     * @reset_level: XLNX - a list of reset signals into the device.
+     *
+     * Keep track of possibly 1 or more reset signals controlling
+     * the device; change of any one input will cause the device
+     * to reset.
+     */
     uint64_t reset_level;
 };
 
