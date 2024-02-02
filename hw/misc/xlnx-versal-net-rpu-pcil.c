@@ -32,6 +32,7 @@
 #include "qemu/log.h"
 #include "migration/vmstate.h"
 #include "hw/irq.h"
+#include "hw/fdt_generic_util.h"
 
 #ifndef XILINX_RPU_PCIL_ERR_DEBUG
 #define XILINX_RPU_PCIL_ERR_DEBUG 0
@@ -152,6 +153,7 @@ REG32(RPU_PCIL_PSM_IDS, 0x800c)
     FIELD(RPU_PCIL_PSM_IDS, WFI0_A, 0, 1)
 
 #define RPU_PCIL_R_MAX (R_RPU_PCIL_PSM_IDS + 1)
+#define RPU_PCIL_MAX_RPU 4
 
 typedef struct RPU_PCIL {
     SysBusDevice parent_obj;
@@ -161,6 +163,7 @@ typedef struct RPU_PCIL {
     qemu_irq irq_rpu_pcil_b1;
     qemu_irq irq_rpu_pcil_a1;
     qemu_irq irq_rpu_pcil_psm;
+    qemu_irq rpu_powerdown_request[RPU_PCIL_MAX_RPU];
 
     uint32_t regs[RPU_PCIL_R_MAX];
     RegisterInfo regs_info[RPU_PCIL_R_MAX];
@@ -381,6 +384,28 @@ static void rpu_pcil_pr_postw(RegisterInfo *reg, uint64_t val64)
     }
 }
 
+#define PROPAGATE_GPIO(reg, f, irq) {             \
+    bool val = ARRAY_FIELD_EX32(s->regs, reg, f); \
+        qemu_set_irq(irq, val);                   \
+}
+
+static void rpu_pcil_pwrdwn_update(RPU_PCIL *s)
+{
+    PROPAGATE_GPIO(RPU_PCIL_A0_PWRDWN, EN, s->rpu_powerdown_request[0]);
+    PROPAGATE_GPIO(RPU_PCIL_A1_PWRDWN, EN, s->rpu_powerdown_request[1]);
+    PROPAGATE_GPIO(RPU_PCIL_B0_PWRDWN, EN, s->rpu_powerdown_request[2]);
+    PROPAGATE_GPIO(RPU_PCIL_B1_PWRDWN, EN, s->rpu_powerdown_request[3]);
+}
+
+static void rpu_pcil_pwrdwn_postw(RegisterInfo *reg, uint64_t val64)
+{
+    RPU_PCIL *s = XILINX_RPU_PCIL(reg->opaque);
+
+    if (!resettable_is_in_reset(OBJECT(s))) {
+        rpu_pcil_pwrdwn_update(s);
+    }
+}
+
 static const RegisterAccessInfo rpu_pcil_regs_info[] = {
     {   .name = "RPU_PCIL_A0_ISR",  .addr = A_RPU_PCIL_A0_ISR,
         .rsvd = 0xfffffffe,
@@ -406,6 +431,7 @@ static const RegisterAccessInfo rpu_pcil_regs_info[] = {
         .ro = 0x303,
     },{ .name = "RPU_PCIL_A0_PWRDWN",  .addr = A_RPU_PCIL_A0_PWRDWN,
         .rsvd = 0xfffffffe,
+        .post_write = rpu_pcil_pwrdwn_postw,
     },{ .name = "RPU_PCIL_A1_ISR",  .addr = A_RPU_PCIL_A1_ISR,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
@@ -430,6 +456,7 @@ static const RegisterAccessInfo rpu_pcil_regs_info[] = {
         .ro = 0x303,
     },{ .name = "RPU_PCIL_A1_PWRDWN",  .addr = A_RPU_PCIL_A1_PWRDWN,
         .rsvd = 0xfffffffe,
+        .post_write = rpu_pcil_pwrdwn_postw,
     },{ .name = "RPU_PCIL_B0_ISR",  .addr = A_RPU_PCIL_B0_ISR,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
@@ -454,6 +481,7 @@ static const RegisterAccessInfo rpu_pcil_regs_info[] = {
         .ro = 0x303,
     },{ .name = "RPU_PCIL_B0_PWRDWN",  .addr = A_RPU_PCIL_B0_PWRDWN,
         .rsvd = 0xfffffffe,
+        .post_write = rpu_pcil_pwrdwn_postw,
     },{ .name = "RPU_PCIL_B1_ISR",  .addr = A_RPU_PCIL_B1_ISR,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
@@ -478,6 +506,7 @@ static const RegisterAccessInfo rpu_pcil_regs_info[] = {
         .ro = 0x303,
     },{ .name = "RPU_PCIL_B1_PWRDWN",  .addr = A_RPU_PCIL_B1_PWRDWN,
         .rsvd = 0xfffffffe,
+        .post_write = rpu_pcil_pwrdwn_postw,
     },{ .name = "RPU_PCIL_PSM_STANDBY",  .addr = A_RPU_PCIL_PSM_STANDBY,
         .reset = 0x55,
         .rsvd = 0xffffff00,
@@ -515,6 +544,7 @@ static void rpu_pcil_reset_hold(Object *obj)
     rpu_pcil_b1_update_irq(s);
     rpu_pcil_a1_update_irq(s);
     rpu_pcil_psm_update_irq(s);
+    rpu_pcil_pwrdwn_update(s);
 }
 
 static const MemoryRegionOps rpu_pcil_ops = {
@@ -551,6 +581,8 @@ static void rpu_pcil_init(Object *obj)
     sysbus_init_irq(sbd, &s->irq_rpu_pcil_b1);
     sysbus_init_irq(sbd, &s->irq_rpu_pcil_a1);
     sysbus_init_irq(sbd, &s->irq_rpu_pcil_psm);
+    qdev_init_gpio_out_named(DEVICE(obj), s->rpu_powerdown_request,
+                             "rpu-pwrdwn-req", 4);
 }
 
 static const VMStateDescription vmstate_rpu_pcil = {
@@ -563,14 +595,27 @@ static const VMStateDescription vmstate_rpu_pcil = {
     }
 };
 
+static const FDTGenericGPIOSet rpu_pcil_gpios[] = {
+    {
+        .names = &fdt_generic_gpio_name_set_gpio,
+        .gpios = (FDTGenericGPIOConnection[]) {
+            { .name = "rpu-pwrdwn-req", .fdt_index = 0, .range = 4},
+            { },
+        },
+    },
+    { },
+};
+
 static void rpu_pcil_class_init(ObjectClass *klass, void *data)
 {
     ResettableClass *rc = RESETTABLE_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
+    FDTGenericGPIOClass *fggc = FDT_GENERIC_GPIO_CLASS(klass);
 
     dc->vmsd = &vmstate_rpu_pcil;
     rc->phases.enter = rpu_pcil_reset_enter;
     rc->phases.hold = rpu_pcil_reset_hold;
+    fggc->controller_gpios = rpu_pcil_gpios;
 }
 
 static const TypeInfo rpu_pcil_info = {
@@ -579,6 +624,10 @@ static const TypeInfo rpu_pcil_info = {
     .instance_size = sizeof(RPU_PCIL),
     .class_init    = rpu_pcil_class_init,
     .instance_init = rpu_pcil_init,
+    .interfaces = (InterfaceInfo[]) {
+        { TYPE_FDT_GENERIC_GPIO },
+        { }
+    },
 };
 
 static void rpu_pcil_register_types(void)
