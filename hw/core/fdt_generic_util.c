@@ -1739,9 +1739,10 @@ exit_reg_parse:
 
             if (c) {
                 uint16_t range = c->range ? c->range : 1;
-                while ((c->fdt_index > i || c->fdt_index + range <= i)
+                while (((c->fdt_index > i) || ((c->fdt_index + range) <= i))
                        && c->name) {
                     c++;
+                    range = c->range ? c->range : 1;
                 }
                 named_idx = i - c->fdt_index;
                 gpio_name = c->name;
