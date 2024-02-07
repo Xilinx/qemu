@@ -1,7 +1,8 @@
 /*
  * Tiny device allowing reset of all devices mapped to a given MR.
  *
- * Copyright (c) 2018 Xilinx Inc
+ * Copyright (C) 2018-2022, Xilinx, Inc.
+ * Copyright (C) 2022-2024, Advanced Micro Devices, Inc.#include "qemu/osdep.h"
  * Written by Edgar E. Iglesias <edgar.iglesias@xilinx.com>
  *
  * This code is licensed under the GNU GPL.
@@ -71,7 +72,7 @@ static void reset_mr(ResetDomain *s, MemoryRegion *mr, int level)
 {
     Object *obj_owner;
     DeviceState *dev_owner;
-    const MemoryRegion *submr;
+    MemoryRegion *submr;
 
     QTAILQ_FOREACH(submr, &mr->subregions, subregions_link) {
         if (submr->alias) {
@@ -83,15 +84,23 @@ static void reset_mr(ResetDomain *s, MemoryRegion *mr, int level)
             }
             continue;
         }
-        obj_owner = memory_region_owner((MemoryRegion *)submr);
+        obj_owner = memory_region_owner(submr);
+
+        if (!QTAILQ_EMPTY(&submr->subregions)) {
+            DPRINT("Recurse MR %s (%p)\n",
+                   memory_region_name(submr), submr);
+            reset_mr(s, submr, level + 1);
+        }
+
         if (!object_dynamic_cast(obj_owner, TYPE_DEVICE)) {
             /* Cannot reset non-device objects.  */
             continue;
         }
 
         dev_owner = DEVICE(obj_owner);
-        DPRINT("MR %s RESET owner %s\n",
-               memory_region_name(submr), dev_owner->id);
+        DPRINT("MR %s (%p) RESET owner %s\n",
+               memory_region_name(submr), submr,
+               dev_owner->id);
         qdev_reset_all(dev_owner);
     }
 }
