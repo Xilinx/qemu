@@ -36,32 +36,13 @@
 
 #include "hw/fdt_generic_util.h"
 
-#include "hw/sd/sd.h"
-#include "hw/sd/sdhci.h"
 #include "qapi/error.h"
 #include "sdhci-internal.h"
+#include "hw/sd/zynqmp-sdhci.h"
 
 #ifndef ZYNQMP_SDHCI_ERR_DEBUG
 #define ZYNQMP_SDHCI_ERR_DEBUG 0
 #endif
-
-#define TYPE_ZYNQMP_SDHCI "xilinx.zynqmp-sdhci"
-
-#define ZYNQMP_SDHCI(obj) \
-     OBJECT_CHECK(ZynqMPSDHCIState, (obj), TYPE_ZYNQMP_SDHCI)
-
-#define ZYNQMP_SDHCI_PARENT_CLASS \
-    object_class_get_parent(object_class_by_name(TYPE_ZYNQMP_SDHCI))
-
-typedef struct ZynqMPSDHCIState {
-    /*< private >*/
-    SDHCIState parent_obj;
-
-    /*< public >*/
-    SDState *card;
-    uint8_t drive_index;
-    bool is_mmc;
-} ZynqMPSDHCIState;
 
 static void zynqmp_sdhci_slottype_handler(void *opaque, int n, int level)
 {
