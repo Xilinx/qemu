@@ -1969,7 +1969,7 @@ REG32(IPI_NOBUF6_IDR, 0xb501c)
 #define IPI_R_MAX (R_IPI_NOBUF6_IDR + 1)
 
 #define VERSAL_NUM_MASTER_IDS 20
-#define KSB_NUM_MASTER_IDS    32
+#define VERSAL_NET_NUM_MASTER_IDS    32
 
 typedef struct XlnxVersalIPI {
     SysBusDevice parent_obj;
@@ -2638,7 +2638,7 @@ static void ipi_realize(DeviceState *dev, Error **errp)
     XlnxVersalIPI *s = XILINX_IPI(dev);
 
     if (s->cfg.num_master_ids != VERSAL_NUM_MASTER_IDS &&
-        s->cfg.num_master_ids != KSB_NUM_MASTER_IDS) {
+        s->cfg.num_master_ids != VERSAL_NET_NUM_MASTER_IDS) {
         error_setg(errp, "Number of master IDs error");
     }
 }
