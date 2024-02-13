@@ -302,7 +302,7 @@ void xppu_init_common(XPPU *s, Object *obj, const char *tn,
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
     RegisterInfoArray *reg_array;
 
-    memory_region_init_io(&s->iomem, obj, ops, s, tn, 0x10000);
+    memory_region_init(&s->iomem, obj, tn, 0x10000);
     memory_region_init_io(&s->perm_ram_iomem, obj, pr_ops, s, tn, 0xE000);
     reg_array =
         register_init_block32(DEVICE(obj), regs_info,
