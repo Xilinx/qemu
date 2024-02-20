@@ -93,6 +93,28 @@ typedef struct UFS_REG {
     RegisterInfo regs_info[UFS_REG_R_MAX];
 } UFS_REG;
 
+static void ufs_phy_rst_postw(RegisterInfo *reg, uint64_t val)
+{
+    UFS_REG *s = XILINX_UFS_REG(reg->opaque);
+    uint32_t csr = s->regs[R_SRAM_CSR];
+    bool level = !!val;
+
+    if (s->dev_rst == 1 && level == 0)  {
+        if (csr & R_SRAM_CSR_SRAM_BYPASS_MASK) {
+            if (!(csr & R_SRAM_CSR_SRAM_INIT_DONE_MASK)) {
+                ARRAY_FIELD_DP32(s->regs, SRAM_CSR, SRAM_INIT_DONE, 1);
+            } else {
+                qemu_log_mask(LOG_UNIMP,
+                              "UFS External ROM load not-supported");
+            }
+        } else {
+            qemu_log_mask(LOG_UNIMP,
+                         "Override of SRAM not supported");
+        }
+    }
+    s->dev_rst = level;
+}
+
 static const RegisterAccessInfo ufs_reg_regs_info[] = {
     {   .name = "LA_GPO_0",  .addr = A_LA_GPO_0,
         .ro = 0xffffffff,
@@ -134,33 +156,13 @@ static const RegisterAccessInfo ufs_reg_regs_info[] = {
     },{ .name = "PHY_RESET", .addr = A_PHY_RESET,
         .rsvd = 0xfffffffe,
         .reset = 0x1,
+        .post_write = ufs_phy_rst_postw,
     },{ .name = "TX_RX_CONFIG_RDY_SIGNAL_MON",
         .addr = A_TX_RX_CONFIG_RDY_SIGNAL_MON,
         .rsvd = 0xfffffff0,
         .reset = 0x0,
    }
 };
-
-static void ufs_dev_rst_status(void *opaque, int n, int level)
-{
-    UFS_REG *s = XILINX_UFS_REG(opaque);
-    uint32_t csr = s->regs[R_SRAM_CSR];
-
-    if (s->dev_rst == 1 && level == 0)  {
-        if (csr & R_SRAM_CSR_SRAM_BYPASS_MASK) {
-            if (!(csr & R_SRAM_CSR_SRAM_INIT_DONE_MASK)) {
-                ARRAY_FIELD_DP32(s->regs, SRAM_CSR, SRAM_INIT_DONE, 1);
-            } else {
-                qemu_log_mask(LOG_UNIMP,
-                              "UFS External ROM load not-supported");
-            }
-        } else {
-            qemu_log_mask(LOG_UNIMP,
-                         "Override of SRAM not supported");
-        }
-    }
-    s->dev_rst = level;
-}
 
 static void ufs_reg_reset_enter(Object *obj, ResetType type)
 {
@@ -170,6 +172,7 @@ static void ufs_reg_reset_enter(Object *obj, ResetType type)
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
         register_reset(&s->regs_info[i]);
     }
+    s->dev_rst = 1;
 }
 
 static const MemoryRegionOps ufs_reg_ops = {
@@ -181,11 +184,6 @@ static const MemoryRegionOps ufs_reg_ops = {
         .max_access_size = 4,
     },
 };
-
-static void ufs_reg_realize(DeviceState *dev, Error **errp)
-{
-    qdev_init_gpio_in(dev, ufs_dev_rst_status, 1);
-}
 
 static void ufs_reg_init(Object *obj)
 {
@@ -222,7 +220,6 @@ static void ufs_reg_class_init(ObjectClass *klass, void *data)
     ResettableClass *rc = RESETTABLE_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->realize = ufs_reg_realize;
     dc->vmsd = &vmstate_ufs_reg;
     rc->phases.enter = ufs_reg_reset_enter;
 }
