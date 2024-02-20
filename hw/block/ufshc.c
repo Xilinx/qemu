@@ -103,6 +103,9 @@ REG32(IE, 0x24)
     FIELD(IE, UDEPRI, 1, 1)
     FIELD(IE, UTRCS, 0, 1)
 REG32(HCS, 0x30)
+    FIELD(HCS, TTAGUTPE, 16, 8)
+    FIELD(HCS, UTPEC, 12, 4)
+    FIELD(HCS, CCS, 11, 1)
     FIELD(HCS, UPMCRS, 8, 3)
     FIELD(HCS, DEI, 5, 1)
     FIELD(HCS, HEI, 4, 1)
@@ -300,6 +303,7 @@ static void ufshc_init(UFSHCState *s)
      */
     ARRAY_FIELD_DP32(s->regs, HCS, UTRLRDY, t_present);
     ARRAY_FIELD_DP32(s->regs, HCS, UTMRLRDY, t_present);
+    ARRAY_FIELD_DP32(s->regs, HCS, CCS, !t_present);
 }
 
 static void hce_post_write(RegisterInfo *reg, uint64_t val)
