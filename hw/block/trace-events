@@ -116,3 +116,4 @@ ufsdev_desc_read(const char *s) "%s"
 
 #unipro.c
 unipro_dme_cmd(uint8_t cmd, uint16_t MIBattr, uint16_t GenSel) "DME cmd = %d MIBattr = 0x%x GenSel = 0x%x"
+unipro_offset_invalid(uint16_t off, uint8_t lID) "offset 0x%x for Layer %d"

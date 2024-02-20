@@ -41,6 +41,7 @@ typedef struct UniproMphy {
     uint8_t L2[0x70];
     uint8_t L3[0x30];
     uint8_t L4[0x30];
+    uint8_t dme[0x100];
 } UniproMphy;
 
 
@@ -108,7 +109,8 @@ static CfgResultCode unipro_dme_cmd(ufshcIF *ifs, dmeCmd cmd, uint16_t MIBattr,
                    LayerID == 1 ? s->L1_5:
                    LayerID == 2 ? s->L2:
                    LayerID == 3 ? s->L3:
-                   LayerID == 4 ? s->L4: NULL;
+                   LayerID == 4 ? s->L4 :
+                   LayerID == 5 ? s->dme : NULL;
     CfgResultCode ret = DME_FAILURE;
 
     if (reg == NULL) {
@@ -125,7 +127,20 @@ static CfgResultCode unipro_dme_cmd(ufshcIF *ifs, dmeCmd cmd, uint16_t MIBattr,
             ret = pa_reg_access(s, cmd, MIBattr, GenSel, data);
             break;
         case 0:
-        case 2 ... 4:
+        case 2 ... 5:
+            if (offset > (LayerID == 0 ? sizeof(s->L1) :
+                          LayerID == 1 ? sizeof(s->L1_5) :
+                          LayerID == 2 ? sizeof(s->L2) :
+                          LayerID == 3 ? sizeof(s->L3) :
+                          LayerID == 4 ? sizeof(s->L4) :
+                          LayerID == 5 ? sizeof(s->dme) : 0)) {
+                /*
+                 * Layer offset might be invalid.
+                 * TODO: Need to report failure.
+                 */
+                trace_unipro_offset_invalid(offset, LayerID);
+                return DME_SUCCESS;
+            }
             if (cmd == DME_GET) {
                 *data = cpu_to_le32(reg[offset]);
             } else {
