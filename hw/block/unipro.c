@@ -103,7 +103,7 @@ static CfgResultCode unipro_dme_cmd(ufshcIF *ifs, dmeCmd cmd, uint16_t MIBattr,
                                     uint16_t GenSel, uint32_t *data)
 {
     UniproMphy *s = UNIPRO_MPHY(ifs);
-    uint8_t LayerID = (0xF000 & MIBattr) >> 12;
+    uint8_t LayerID = (0x7000 & MIBattr) >> 12;
     uint16_t offset = 0xFFF & MIBattr;
     uint8_t *reg = LayerID == 0 ? s->L1:
                    LayerID == 1 ? s->L1_5:
