@@ -73,8 +73,16 @@ REG32(SRAM_CSR, 0x4c)
     FIELD(SRAM_CSR, SRAM_BYPASS, 2, 1)
     FIELD(SRAM_CSR, SRAM_EXT_LD_DONE, 1, 1)
     FIELD(SRAM_CSR, SRAM_INIT_DONE, 0, 1)
+REG32(PHY_RESET, 0x50)
+    FIELD(PHY_RESET, PHY_RESET, 0, 1)
+REG32(TX_RX_CONFIG_RDY_SIGNAL_MON, 0x54)
+    FIELD(TX_RX_CONFIG_RDY_SIGNAL_MON, TX_CFGRDYN_0, 0, 1)
+    FIELD(TX_RX_CONFIG_RDY_SIGNAL_MON, TX_CFGRDYN_1, 1, 1)
+    FIELD(TX_RX_CONFIG_RDY_SIGNAL_MON, RX_CFGRDYN_0, 2, 1)
+    FIELD(TX_RX_CONFIG_RDY_SIGNAL_MON, RX_CFGRDYN_1, 3, 1)
 
-#define UFS_REG_R_MAX (R_SRAM_CSR + 1)
+
+#define UFS_REG_R_MAX (R_TX_RX_CONFIG_RDY_SIGNAL_MON + 1)
 
 typedef struct UFS_REG {
     SysBusDevice parent_obj;
@@ -123,7 +131,14 @@ static const RegisterAccessInfo ufs_reg_regs_info[] = {
     },{ .name = "SRAM_CSR",  .addr = A_SRAM_CSR,
         .rsvd = 0xfffffff0,
         .ro = 0xfffffff1,
-    }
+    },{ .name = "PHY_RESET", .addr = A_PHY_RESET,
+        .rsvd = 0xfffffffe,
+        .reset = 0x1,
+    },{ .name = "TX_RX_CONFIG_RDY_SIGNAL_MON",
+        .addr = A_TX_RX_CONFIG_RDY_SIGNAL_MON,
+        .rsvd = 0xfffffff0,
+        .reset = 0x0,
+   }
 };
 
 static void ufs_dev_rst_status(void *opaque, int n, int level)
