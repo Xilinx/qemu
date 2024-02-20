@@ -778,6 +778,13 @@ typedef struct PMC_IOU_SLCR {
     RegisterInfo regs_info[R_MAX];
 } PMC_IOU_SLCR;
 
+static void pw_state_req_postw(RegisterInfo *reg, uint64_t val)
+{
+    PMC_IOU_SLCR *s = XILINX_PMC_IOU_SLCR(reg->opaque);
+
+    s->regs[R_CUR_PWR_ST] = val & 0x3;
+}
+
 static void parity_imr_update_irq(PMC_IOU_SLCR *s)
 {
     bool pending = s->regs[R_PARITY_ISR] & ~s->regs[R_PARITY_IMR];
@@ -1313,6 +1320,7 @@ static RegisterAccessInfo pmc_iou_slcr_regs_info[] = {
         .ro = 0x1,
     },{ .name = "PW_STATE_REQ",  .addr = A_PW_STATE_REQ,
         .rsvd = 0xfffffffc,
+        .post_write = pw_state_req_postw,
     },{ .name = "HOST_U2_PORT_DISABLE",  .addr = A_HOST_U2_PORT_DISABLE,
         .rsvd = 0xfffffffe,
     },{ .name = "DBG_U2PMU",  .addr = A_DBG_U2PMU,
