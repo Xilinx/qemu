@@ -1141,6 +1141,7 @@ static void ufshc_set_upmcrs(ufshcIF *ifs, upmcrs status)
     UFSHCState *s = UFSHC(ifs);
 
     ARRAY_FIELD_DP32(s->regs, HCS, UPMCRS, status);
+    ARRAY_FIELD_DP32(s->regs, IS, UPMS, !!(status < PWR_BUSY));
 }
 
 static void ufshc_reset_enter(Object *obj, ResetType type)
