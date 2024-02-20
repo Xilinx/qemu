@@ -86,6 +86,7 @@ enum SDCardStates {
     sd_receivingdata_state,
     sd_programming_state,
     sd_disconnect_state,
+    sd_sleep_state,
 };
 
 struct SDState {
@@ -160,6 +161,7 @@ static const char *sd_state_name(enum SDCardStates state)
         [sd_receivingdata_state]    = "receivingdata",
         [sd_programming_state]      = "programming",
         [sd_disconnect_state]       = "disconnect",
+        [sd_sleep_state]            = "sleep",
     };
     if (state == sd_inactive_state) {
         return "inactive";
@@ -1206,8 +1208,24 @@ static sd_rsp_type_t sd_normal_command(SDState *sd, SDRequest req)
         }
         break;
 
-    case 5: /* CMD5: reserved for SDIO cards */
-        return sd_illegal;
+    case 5: /* CMD5:    SLEEP/AWAKE */
+        switch (sd->state) {
+        case sd_sleep_state:
+            if (!extract32(req.arg, 15, 1)) {
+                sd->state = sd_standby_state;
+            }
+            return sd_r1b;
+
+        case sd_standby_state:
+            if (extract32(req.arg, 15, 1)) {
+                sd->state = sd_sleep_state;
+            }
+            return sd_r1b;
+
+        default:
+            break;
+        }
+        break;
 
     case 6:  /* CMD6:   SWITCH_FUNCTION */
         switch (sd->mode) {
