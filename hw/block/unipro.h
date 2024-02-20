@@ -26,6 +26,7 @@
 #define TX_LCC_SEQUENCER            0x0032
 #define TX_MIN_ACTIVATETIME         0x0033
 #define TX_PWM_G6_G7_SYNC_LENGTH        0x0034
+#define TX_FSM_STATE                0x0041
 #define TX_REFCLKFREQ               0x00EB
 #define TX_CFGCLKFREQVAL            0x00EC
 #define CFGEXTRATTR             0x00F0
@@ -54,6 +55,7 @@
 #define RXDIRECTCTRL2               0x00C7
 #define ENARXDIRECTCFG3             0x00F3
 #define RXCALCTRL               0x00B4
+#define RX_FSM_STATE            0x00c1
 #define ENARXDIRECTCFG2             0x00F4
 #define CFGRXOVR4               0x00E9
 #define RXSQCTRL                0x00B5

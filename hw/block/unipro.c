@@ -204,6 +204,8 @@ static void uniproMphy_realize(DeviceState *dev, Error **errp)
     ATTR_WRITE(s->L1_5, PA_REMOTEVERINFO, 0x5);
     ATTR_WRITE(s->L1_5, PA_MAXRXHSGEAR, 1);
     ATTR_WRITE(s->L1_5, PA_MAXRXPWMGEAR, 1);
+    ATTR_WRITE(s->L1, TX_FSM_STATE, 1);
+    ATTR_WRITE(s->L1, RX_FSM_STATE, 1);
 
     qdev_init_gpio_out(dev, &s->dev_rst, 1);
 }
