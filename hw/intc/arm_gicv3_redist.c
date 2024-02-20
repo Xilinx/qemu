@@ -504,7 +504,7 @@ static MemTxResult gicr_writel(GICv3CPUState *cs, hwaddr offset,
          */
         value &= GICR_WAKER_ProcessorSleep;
         if (value & GICR_WAKER_ProcessorSleep) {
-            value |= GICR_WAKER_ChildrenAsleep;
+            value |= GICR_WAKER_ChildrenAsleep | GICR_WAKER_Quiescent;
         }
         cs->gicr_waker = value;
         gicv3_redist_update(cs);

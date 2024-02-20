@@ -133,6 +133,7 @@
 
 #define GICR_WAKER_ProcessorSleep    (1U << 1)
 #define GICR_WAKER_ChildrenAsleep    (1U << 2)
+#define GICR_WAKER_Quiescent         (1U << 31)
 
 FIELD(GICR_PROPBASER, IDBITS, 0, 5)
 FIELD(GICR_PROPBASER, INNERCACHE, 7, 3)
