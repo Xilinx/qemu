@@ -557,7 +557,18 @@ static void xlx_aes_load_key(Zynq3AES *s, int len)
             DPRINT("Invalid KEY_DEC_SEL\n");
             dec_key.u8 = zerokey;
         };
-        memcpy(enc_key, key.u8, len / 8);
+
+        if (!be_adj) {
+            /*
+             * Encrypted key is from eFUSE/BBRAM
+             * Convert to little-endian
+             */
+            for (i = 0; i < len / 32; i++) {
+                enc_key[i] = key.u32[i ^ (len / 32 - 1)];
+            }
+        } else {
+            memcpy(enc_key, key.u8, len / 8);
+        }
         /* grey/black key is formated LE for every 128 bit.
          * convert it BE for our purpose
          */
