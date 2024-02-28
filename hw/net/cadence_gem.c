@@ -1605,7 +1605,7 @@ static void gem_reset(DeviceState *d)
     /* Set post reset register values */
     memset(&s->regs[0], 0, sizeof(s->regs));
     s->regs[R_NWCFG] = 0x00080000;
-    s->regs[R_NWSTATUS] = 0x00000006;
+    s->regs[R_NWSTATUS] = 0x00000004;
     s->regs[R_DMACFG] = 0x00020784;
     s->regs[R_IMR] = 0x07ffffff;
     s->regs[R_TXPAUSE] = 0x0000ffff;
