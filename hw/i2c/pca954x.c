@@ -54,11 +54,15 @@ static void pca954x_reset(DeviceState *dev)
     PCA954XState *s = PCA954X(dev);
     I2CSlave *i2cs =  I2C_SLAVE(dev);
 
-    /* Switch decodes the enitre address range, trample any previously set
-     * values for address and range
-     */
-    i2cs->address = 0;
-    i2cs->address_range = 0x80;
+    if (i2cs->address_range == 1) {
+        /* Switch decodes the entire address range, trample any previously set
+         * values for address and range and save our local address.
+         */
+        s->chip_addr = i2cs->address;
+        s->chip_addr |= s->chip_addr_lsb & 0x7;
+        i2cs->address = 0;
+        i2cs->address_range = 0x80;
+    }
 
     s->control_reg = 0;
     s->active_lanes = 0;
@@ -158,8 +162,7 @@ static int pca954x_decode_address(I2CSlave *i2c, uint8_t address)
     int i;
     uint8_t channel_status = 0;
 
-    s->control_decoded = address ==
-                    (PCA954X_CONTROL_ADDR | (s->chip_enable & 0x7));
+    s->control_decoded = (address == s->chip_addr);
 
     if (s->control_decoded) {
         return 0;
@@ -216,7 +219,7 @@ static void pca954x_realize(DeviceState *dev, Error **errp)
 
 static const VMStateDescription vmstate_PCA954X = {
     .name = "pca954x",
-    .version_id = 1,
+    .version_id = 2,
     .fields = (VMStateField[]) {
         VMSTATE_I2C_SLAVE(i2c, PCA954XState),
         VMSTATE_UINT8(control_reg, PCA954XState),
@@ -224,15 +227,17 @@ static const VMStateDescription vmstate_PCA954X = {
         VMSTATE_UINT8(active_lanes, PCA954XState),
         VMSTATE_UINT8(lanes, PCA954XState),
         VMSTATE_BOOL(mux, PCA954XState),
+        VMSTATE_UINT8(chip_addr, PCA954XState),
         VMSTATE_END_OF_LIST()
     }
 };
 
 static Property pca954x_properties[] = {
-    /* These could be GPIOs, but the application is rare, just let machine model
-     * tie them with props
+    /*
+     * This property is deprecated and is kept for DTB retro-compatibility.
+     * Don't use it.
      */
-    DEFINE_PROP_UINT8("chip-enable", PCA954XState, chip_enable, 0),
+    DEFINE_PROP_UINT8("chip-enable", PCA954XState, chip_addr_lsb, 0),
     DEFINE_PROP_END_OF_LIST(),
 };
 

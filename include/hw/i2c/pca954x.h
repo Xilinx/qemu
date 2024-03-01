@@ -3,7 +3,6 @@
 
 #include "hw/i2c/i2c.h"
 #define MAX_I2C_BUSES 8
-#define PCA954X_CONTROL_ADDR 0x74
 
 typedef struct pca954x_type {
     const char *name;
@@ -29,7 +28,8 @@ typedef struct {
 
     bool mux;
     uint8_t lanes;
-    uint8_t chip_enable; /*property */
+    uint8_t chip_addr;
+    uint8_t chip_addr_lsb; /* Deprecated */
 } PCA954XState;
 
 #define TYPE_PCA954X "pca954x"
