@@ -406,6 +406,15 @@ static void rpu_pcil_pwrdwn_postw(RegisterInfo *reg, uint64_t val64)
     }
 }
 
+static void rpu_standby_wfi(void *opaque, int n, int level)
+{
+    RPU_PCIL *s = XILINX_RPU_PCIL(opaque);
+
+    s->regs[R_RPU_PCIL_PSM_STANDBY] |= (level ? 1 : 0)
+        << (R_RPU_PCIL_PSM_STANDBY_WFI0_A_SHIFT + 2 * n);
+    rpu_pcil_psm_update_irq(s);
+}
+
 static const RegisterAccessInfo rpu_pcil_regs_info[] = {
     {   .name = "RPU_PCIL_A0_ISR",  .addr = A_RPU_PCIL_A0_ISR,
         .rsvd = 0xfffffffe,
@@ -583,6 +592,7 @@ static void rpu_pcil_init(Object *obj)
     sysbus_init_irq(sbd, &s->irq_rpu_pcil_psm);
     qdev_init_gpio_out_named(DEVICE(obj), s->rpu_powerdown_request,
                              "rpu-pwrdwn-req", 4);
+    qdev_init_gpio_in_named(DEVICE(obj), rpu_standby_wfi, "rpu-standby-wfi", 4);
 }
 
 static const VMStateDescription vmstate_rpu_pcil = {
@@ -595,11 +605,13 @@ static const VMStateDescription vmstate_rpu_pcil = {
     }
 };
 
-static const FDTGenericGPIOSet rpu_pcil_gpios[] = {
+static const FDTGenericGPIOSet rpu_pcil_controller_gpios[] = {
     {
         .names = &fdt_generic_gpio_name_set_gpio,
         .gpios = (FDTGenericGPIOConnection[]) {
             { .name = "rpu-pwrdwn-req", .fdt_index = 0, .range = 4},
+            /* WFI STANDBY inputs from RPU cores.  */
+            { .name = "rpu-standby-wfi", .fdt_index = 4, .range = 4},
             { },
         },
     },
@@ -615,7 +627,7 @@ static void rpu_pcil_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_rpu_pcil;
     rc->phases.enter = rpu_pcil_reset_enter;
     rc->phases.hold = rpu_pcil_reset_hold;
-    fggc->controller_gpios = rpu_pcil_gpios;
+    fggc->controller_gpios = rpu_pcil_controller_gpios;
 }
 
 static const TypeInfo rpu_pcil_info = {
