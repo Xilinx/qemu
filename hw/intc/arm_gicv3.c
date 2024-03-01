@@ -196,6 +196,20 @@ static void gicv3_redist_update_noirqset(GICv3CPUState *cs)
     }
 }
 
+static void gicv3_update_cpuif_or_emit_wake_request(GICv3CPUState *cs)
+{
+    if (cs->gicr_waker) {
+        /*
+         * The CPU interface is in quiescent state, that emits a WakeRequest
+         * when there is a pending IRQ.
+         */
+        qemu_set_irq(cs->wake_request, cs->hppi.prio != 0xff);
+    } else {
+        qemu_set_irq(cs->wake_request, 0);
+        gicv3_cpuif_update(cs);
+    }
+}
+
 /* Update the GIC status after state in a redistributor or
  * CPU interface has changed, and inform the CPU i/f of
  * its new highest priority pending interrupt.
@@ -203,17 +217,7 @@ static void gicv3_redist_update_noirqset(GICv3CPUState *cs)
 void gicv3_redist_update(GICv3CPUState *cs)
 {
     gicv3_redist_update_noirqset(cs);
-
-    if (cs->gicr_waker) {
-        /*
-         * The CPU interface is in quiescent state, that emits a
-         * WakeRequest.
-         */
-        qemu_set_irq(cs->wake_request, 1);
-    } else {
-        qemu_set_irq(cs->wake_request, 0);
-        gicv3_cpuif_update(cs);
-    }
+    gicv3_update_cpuif_or_emit_wake_request(cs);
 }
 
 /* Update the GIC status after state in the distributor has
@@ -292,7 +296,7 @@ void gicv3_update(GICv3State *s, int start, int len)
 
     gicv3_update_noirqset(s, start, len);
     for (i = 0; i < s->num_cpu; i++) {
-        gicv3_cpuif_update(&s->cpu[i]);
+        gicv3_update_cpuif_or_emit_wake_request(&s->cpu[i]);
     }
 }
 
@@ -328,7 +332,7 @@ void gicv3_full_update(GICv3State *s)
 
     gicv3_full_update_noirqset(s);
     for (i = 0; i < s->num_cpu; i++) {
-        gicv3_cpuif_update(&s->cpu[i]);
+        gicv3_update_cpuif_or_emit_wake_request(&s->cpu[i]);
     }
 }
 
