@@ -260,6 +260,7 @@ static const FlashPartInfo known_devices[] = {
     { INFO("n25q256a13",  0x20ba19,      0,  64 << 10, 512, ER_4K),
       .sfdp_read = m25p80_sfdp_n25q256a },
     { INFO("n25q512a11",  0x20bb20,      0,  64 << 10, 1024, ER_4K) },
+    { INFO6("mt25qu512a", 0x20bb20, 0x104400, 64 << 10, 1024, ER_4K) },
     { INFO("n25q512a13",  0x20ba20,      0,  64 << 10, 1024, ER_4K) },
     { INFO("m25qu02gcbb", 0x20bb22,      0,  64 << 10, 4096, ER_4K) },
     { INFO("mt35xu01gbba", 0x2c5b1b, 0x104100, 128 << 10, 1024, ER_4K),
