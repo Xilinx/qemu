@@ -212,11 +212,6 @@ static void pca954x_init(Object *obj)
     }
 }
 
-static void pca954x_realize(DeviceState *dev, Error **errp)
-{
-    /* Dummy */
-}
-
 static const VMStateDescription vmstate_PCA954X = {
     .name = "pca954x",
     .version_id = 2,
@@ -252,7 +247,6 @@ static void pca954x_class_init(ObjectClass *klass, void *data)
     k->send = pca954x_send;
     k->decode_address = pca954x_decode_address;
 
-    dc->realize = pca954x_realize;
     dc->reset = pca954x_reset;
     dc->vmsd = &vmstate_PCA954X;
     device_class_set_props(dc, pca954x_properties);
