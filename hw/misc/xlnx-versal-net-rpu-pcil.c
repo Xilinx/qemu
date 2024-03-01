@@ -167,6 +167,7 @@ typedef struct RPU_PCIL {
 
     uint32_t regs[RPU_PCIL_R_MAX];
     RegisterInfo regs_info[RPU_PCIL_R_MAX];
+    uint32_t rpu_standby_state[RPU_PCIL_MAX_RPU];
 } RPU_PCIL;
 
 static void rpu_pcil_a0_update_irq(RPU_PCIL *s)
@@ -384,17 +385,39 @@ static void rpu_pcil_pr_postw(RegisterInfo *reg, uint64_t val64)
     }
 }
 
-#define PROPAGATE_GPIO(reg, f, irq) {             \
-    bool val = ARRAY_FIELD_EX32(s->regs, reg, f); \
-        qemu_set_irq(irq, val);                   \
+#define R_RPU_PCIL_PWRDWN(rpu)                                 \
+    ((rpu) == 3) ? R_RPU_PCIL_B1_PWRDWN :                      \
+    ((rpu) == 2) ? R_RPU_PCIL_B0_PWRDWN :                      \
+    ((rpu) == 1) ? R_RPU_PCIL_A1_PWRDWN : R_RPU_PCIL_A0_PWRDWN
+
+static uint32_t rpu_pcil_addr_to_rpu(uint32_t addr)
+{
+    addr = addr >> 2;
+
+    if (addr >= R_RPU_PCIL_B1_ISR) {
+        return 3;
+    }
+
+    if (addr >= R_RPU_PCIL_B0_ISR) {
+        return 2;
+    }
+
+    if (addr >= R_RPU_PCIL_A1_ISR) {
+        return 1;
+    }
+
+    return 0;
 }
 
-static void rpu_pcil_pwrdwn_update(RPU_PCIL *s)
+static void rpu_pcil_pwrdwn_update(RPU_PCIL *s, uint32_t rpu)
 {
-    PROPAGATE_GPIO(RPU_PCIL_A0_PWRDWN, EN, s->rpu_powerdown_request[0]);
-    PROPAGATE_GPIO(RPU_PCIL_A1_PWRDWN, EN, s->rpu_powerdown_request[1]);
-    PROPAGATE_GPIO(RPU_PCIL_B0_PWRDWN, EN, s->rpu_powerdown_request[2]);
-    PROPAGATE_GPIO(RPU_PCIL_B1_PWRDWN, EN, s->rpu_powerdown_request[3]);
+    int level;
+
+    assert(rpu < RPU_PCIL_MAX_RPU);
+    level = extract32(s->regs[R_RPU_PCIL_PWRDWN(rpu)],
+                      R_RPU_PCIL_A0_PWRDWN_EN_SHIFT,
+                      1) && s->rpu_standby_state[rpu];
+    qemu_set_irq(s->rpu_powerdown_request[rpu], level);
 }
 
 static void rpu_pcil_pwrdwn_postw(RegisterInfo *reg, uint64_t val64)
@@ -402,7 +425,7 @@ static void rpu_pcil_pwrdwn_postw(RegisterInfo *reg, uint64_t val64)
     RPU_PCIL *s = XILINX_RPU_PCIL(reg->opaque);
 
     if (!resettable_is_in_reset(OBJECT(s))) {
-        rpu_pcil_pwrdwn_update(s);
+        rpu_pcil_pwrdwn_update(s, rpu_pcil_addr_to_rpu(reg->access->addr));
     }
 }
 
@@ -410,9 +433,16 @@ static void rpu_standby_wfi(void *opaque, int n, int level)
 {
     RPU_PCIL *s = XILINX_RPU_PCIL(opaque);
 
+    /*
+     * NOTE that PSM_STANDBY is a sticky version of the rpu-standby-wfi
+     * signals, while @rpu_standby_state reflects the current state of them and
+     * can be used in order to update the powerdown-request signals.
+     */
+    s->rpu_standby_state[n] = level;
     s->regs[R_RPU_PCIL_PSM_STANDBY] |= (level ? 1 : 0)
         << (R_RPU_PCIL_PSM_STANDBY_WFI0_A_SHIFT + 2 * n);
     rpu_pcil_psm_update_irq(s);
+    rpu_pcil_pwrdwn_update(s, n);
 }
 
 static const RegisterAccessInfo rpu_pcil_regs_info[] = {
@@ -553,7 +583,10 @@ static void rpu_pcil_reset_hold(Object *obj)
     rpu_pcil_b1_update_irq(s);
     rpu_pcil_a1_update_irq(s);
     rpu_pcil_psm_update_irq(s);
-    rpu_pcil_pwrdwn_update(s);
+    rpu_pcil_pwrdwn_update(s, 0);
+    rpu_pcil_pwrdwn_update(s, 1);
+    rpu_pcil_pwrdwn_update(s, 2);
+    rpu_pcil_pwrdwn_update(s, 3);
 }
 
 static const MemoryRegionOps rpu_pcil_ops = {
@@ -609,6 +642,7 @@ static const FDTGenericGPIOSet rpu_pcil_controller_gpios[] = {
     {
         .names = &fdt_generic_gpio_name_set_gpio,
         .gpios = (FDTGenericGPIOConnection[]) {
+            /* RPU powerdown request outputs to PSMX global.  */
             { .name = "rpu-pwrdwn-req", .fdt_index = 0, .range = 4},
             /* WFI STANDBY inputs from RPU cores.  */
             { .name = "rpu-standby-wfi", .fdt_index = 4, .range = 4},
