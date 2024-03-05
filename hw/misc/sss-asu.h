@@ -28,6 +28,7 @@ typedef enum {
     ASU_SHA2,
     ASU_SHA3,
     ASU_PLI,
+    ASU_DMA1,
     ASU_NUM_REMOTES
 } ASUSSSRemote;
 
@@ -37,15 +38,18 @@ static const char *asu_sss_remote_names[] = {
     [ASU_SHA2] = "sha2",
     [ASU_SHA3] = "sha3",
     [ASU_PLI]  = "pli",
+    [ASU_DMA1] = "dma1"
 };
 
 static const uint32_t asu_sss_population[] = {
     [ASU_DMA0] = (1 << ASU_DMA0) | (1 << ASU_AES) | (1 << ASU_SHA2) |
                  (1 << ASU_SHA3),
-    [ASU_AES]  = (1 << ASU_DMA0) | (1 << ASU_PLI),
-    [ASU_SHA2] = (1 << ASU_DMA0) | (1 << ASU_PLI),
-    [ASU_SHA3] = (1 << ASU_DMA0) | (1 << ASU_PLI),
-    [ASU_PLI]  = (1 << ASU_DMA0) | (1 << ASU_AES),
+    [ASU_AES]  = (1 << ASU_DMA0) | (1 << ASU_PLI) | (1 << ASU_DMA1),
+    [ASU_SHA2] = (1 << ASU_DMA0) | (1 << ASU_PLI) | (1 << ASU_DMA1),
+    [ASU_SHA3] = (1 << ASU_DMA0) | (1 << ASU_PLI) | (1 << ASU_DMA1),
+    [ASU_PLI]  = (1 << ASU_DMA0) | (1 << ASU_AES) | (1 << ASU_DMA1),
+    [ASU_DMA1] = (1 << ASU_DMA1) | (1 << ASU_AES) | (1 << ASU_SHA2) |
+                 (1 << ASU_SHA3),
     [ASU_NUM_REMOTES] = 0,
 };
 
@@ -55,6 +59,7 @@ static const int r_asu_cfg_sss_shifts[] = {
     [ASU_SHA2] = 8,
     [ASU_SHA3] = 12,
     [ASU_PLI]  = 16,
+    [ASU_DMA1] = 20,
 };
 
 static const uint8_t r_asu_cfg_sss_encodings[] = {
@@ -63,17 +68,19 @@ static const uint8_t r_asu_cfg_sss_encodings[] = {
     [ASU_SHA2] = ASU_SHA2,
     [ASU_SHA3] = ASU_SHA3,
     [ASU_PLI]  = ASU_PLI,
+    [ASU_DMA1] = ASU_DMA1,
 };
 
 /*
  * Remote Encodings:
- *                   DMA0   AES   SHA2  SHA3  PLI   NONE
+ *                   DMA0   AES   SHA2  SHA3  PLI   DMA1  NONE
  */
-#define ASU_DMA0_MAP {0x05, 0x09, 0xFF, 0xFF, 0x0a, 0xFF}
-#define ASU_AES_MAP  {0x05, 0xFF, 0xFF, 0xFF, 0x0a, 0xFF}
-#define ASU_SHA2_MAP {0x05, 0xFF, 0xFF, 0xFF, 0x0a, 0xFF}
-#define ASU_SHA3_MAP {0x05, 0xFF, 0xFF, 0xFF, 0x0a, 0xFF}
-#define ASU_PLI_MAP  {0x05, 0x09, 0xFF, 0xFF, 0xFF, 0xFF}
+#define ASU_DMA0_MAP {0x05, 0x09, 0xFF, 0xFF, 0x0a, 0xFF, 0xFF}
+#define ASU_AES_MAP  {0x05, 0xFF, 0xFF, 0xFF, 0x0a, 0x0C, 0xFF}
+#define ASU_SHA2_MAP {0x05, 0xFF, 0xFF, 0xFF, 0x0a, 0x0C, 0xFF}
+#define ASU_SHA3_MAP {0x05, 0xFF, 0xFF, 0xFF, 0x0a, 0x0C, 0xFF}
+#define ASU_PLI_MAP  {0x05, 0x09, 0xFF, 0xFF, 0xFF, 0x0C, 0xFF}
+#define ASU_DMA1_MAP {0xFF, 0x09, 0xFF, 0xFF, 0x0a, 0x0C, 0xFF}
 
 static const uint8_t asu_sss_cfg_mapping[][MAX_REMOTE] = {
     [ASU_DMA0] = ASU_DMA0_MAP,
@@ -81,4 +88,5 @@ static const uint8_t asu_sss_cfg_mapping[][MAX_REMOTE] = {
     [ASU_SHA2] = ASU_SHA2_MAP,
     [ASU_SHA3] = ASU_SHA3_MAP,
     [ASU_PLI]  = ASU_PLI_MAP,
+    [ASU_DMA1] = ASU_DMA1_MAP,
 };
