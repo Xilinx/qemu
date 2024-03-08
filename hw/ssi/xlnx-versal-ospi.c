@@ -1686,7 +1686,7 @@ static bool ospi_is_indac_active(XlnxVersalOspi *s)
      * When dac and indac cannot be active at the same time,
      * return true when dac is disabled.
      */
-    return s->dac_with_indac || !s->dac_enable;
+    return !ARRAY_FIELD_EX32(s->regs, CONFIG_REG, ENB_DIR_ACC_CTLR_FLD);
 }
 
 static uint64_t ospi_dac_read(void *opaque, hwaddr addr, unsigned int size)
