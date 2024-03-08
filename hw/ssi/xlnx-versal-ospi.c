@@ -1853,7 +1853,7 @@ static const VMStateDescription vmstate_xlnx_versal_ospi = {
 };
 
 static Property xlnx_versal_ospi_properties[] = {
-    DEFINE_PROP_BOOL("dac-with-indac", XlnxVersalOspi, dac_with_indac, false),
+    DEFINE_PROP_BOOL("dac-with-indac", XlnxVersalOspi, dac_with_indac, true),
     DEFINE_PROP_BOOL("indac-write-disabled", XlnxVersalOspi,
                     ind_write_disabled, false),
     DEFINE_PROP_BOOL("max-tap-dly-suspend", XlnxVersalOspi,
