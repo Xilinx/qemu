@@ -326,6 +326,7 @@ REG32(MODULE_ID_REG, 0xfc)
  * is 2 bits, which can record max of 3 indac operations.
  */
 #define IND_OPS_DONE_MAX 3
+#define MAX_RX_DLL_DELAY 64
 
 typedef enum {
     WREN = 0x6,
@@ -1014,6 +1015,22 @@ static void ospi_stig_fill_membank(XlnxVersalOspi *s)
 static void ospi_stig_cmd_exec(XlnxVersalOspi *s)
 {
     uint8_t inst_code;
+      uint8_t rx_tap;
+
+    if (s->max_tap_dly_suspend) {
+        /*
+         * In order to Support software tuning
+         * we skip cmd execution if max tap delay is configured
+         */
+        rx_tap = ARRAY_FIELD_EX32(s->regs, PHY_CONFIGURATION_REG,
+                                  PHY_CONFIG_RX_DLL_DELAY_FLD);
+        if (rx_tap > MAX_RX_DLL_DELAY) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                 "RX_DLL_DELAY is more than %d, suspend cmd execution",
+                 MAX_RX_DLL_DELAY);
+            goto MAX_TAP_DLY_SUSPEND;
+        }
+    }
 
     /* Reset fifos */
     fifo8_reset(&s->tx_fifo);
@@ -1046,6 +1063,7 @@ static void ospi_stig_cmd_exec(XlnxVersalOspi *s)
     ospi_flush_txfifo(s);
     ospi_disable_cs(s);
 
+    MAX_TAP_DLY_SUSPEND:
     if (ARRAY_FIELD_EX32(s->regs, FLASH_CMD_CTRL_REG, ENB_READ_DATA_FLD)) {
         if (ARRAY_FIELD_EX32(s->regs,
                              FLASH_CMD_CTRL_REG, STIG_MEM_BANK_EN_FLD)) {
@@ -1364,6 +1382,22 @@ static uint64_t ind_rd_xfer_ctrl_reg_post_read(RegisterInfo *reg,
     return val;
 }
 
+static void phy_config_reg_postw(RegisterInfo *reg, uint64_t val)
+{
+    XlnxVersalOspi *s = XILINX_VERSAL_OSPI(reg->opaque);
+    uint8_t rx_dly = FIELD_EX32(val, PHY_CONFIGURATION_REG,
+                                PHY_CONFIG_RX_DLL_DELAY_FLD);
+    uint8_t tx_dly = FIELD_EX32(val, PHY_CONFIGURATION_REG,
+                                PHY_CONFIG_TX_DLL_DELAY_FLD);
+
+
+    ARRAY_FIELD_DP32(s->regs, DLL_OBSERVABLE_UPPER_REG,
+        DLL_OBSERVABLE__UPPER_RX_DECODER_OUTPUT_FLD, rx_dly / 2);
+    ARRAY_FIELD_DP32(s->regs, DLL_OBSERVABLE_UPPER_REG,
+        DLL_OBSERVABLE_UPPER_TX_DECODER_OUTPUT_FLD, tx_dly / 2);
+}
+
+
 static uint64_t sram_fill_reg_post_read(RegisterInfo *reg, uint64_t val)
 {
     XlnxVersalOspi *s = XILINX_VERSAL_OSPI(reg->opaque);
@@ -1543,6 +1577,7 @@ static RegisterAccessInfo ospi_regs_info[] = {
         .addr = A_PHY_CONFIGURATION_REG,
         .reset = 0x40000000,
         .ro = 0x1f80ff80,
+        .post_write = phy_config_reg_postw,
     },{ .name = "PHY_MASTER_CONTROL_REG",
         .addr = A_PHY_MASTER_CONTROL_REG,
         .reset = 0x800000,
@@ -1820,7 +1855,9 @@ static const VMStateDescription vmstate_xlnx_versal_ospi = {
 static Property xlnx_versal_ospi_properties[] = {
     DEFINE_PROP_BOOL("dac-with-indac", XlnxVersalOspi, dac_with_indac, false),
     DEFINE_PROP_BOOL("indac-write-disabled", XlnxVersalOspi,
-                     ind_write_disabled, false),
+                    ind_write_disabled, false),
+    DEFINE_PROP_BOOL("max-tap-dly-suspend", XlnxVersalOspi,
+                    max_tap_dly_suspend, true),
     DEFINE_PROP_END_OF_LIST(),
 };
 

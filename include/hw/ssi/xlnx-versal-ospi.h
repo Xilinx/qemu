@@ -97,6 +97,7 @@ struct XlnxVersalOspi {
     bool dac_with_indac;
     bool dac_enable;
     bool src_dma_inprog;
+    bool max_tap_dly_suspend;
 
     IndOp rd_ind_op[2];
     IndOp wr_ind_op[2];
