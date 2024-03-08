@@ -1673,7 +1673,7 @@ static bool is_inside_indac_range(XlnxVersalOspi *s, hwaddr addr)
     range_end = range_start +
                 (1 << ARRAY_FIELD_EX32(s->regs,
                                        INDIRECT_TRIGGER_ADDR_RANGE_REG,
-                                       IND_RANGE_WIDTH_FLD));
+                                       IND_RANGE_WIDTH_FLD)) * 4;
 
     addr += s->regs[R_IND_AHB_ADDR_TRIGGER_REG] & 0xF0000000;
 
