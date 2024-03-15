@@ -39,6 +39,12 @@
 #define UFS_DEV_PWR_PARAM_DESC_SIZE 0x62
 
 #define UFS_SEGMENT_SIZE 512
+
+#define UFS_WLUN_REPORT_LUNS 0x81
+#define UFS_WLUN_UFS_DEVICE  0xD0
+#define UFS_WLUN_BOOT        0xB0
+#define UFS_WLUN_RPMB        0xc4
+
 typedef struct UFSTaskQ {
     upiu_pkt pkt;
     uint32_t data_offset;
@@ -65,6 +71,8 @@ typedef struct UFSDev {
     uint8_t BootLUA;
     uint8_t BootLUB;
     uint8_t devInitDone;
+    uint8_t *report_lun_ids;
+    uint8_t report_lun_len;
 
     QTAILQ_HEAD(, UFSTaskQ) taskQ;
     struct {

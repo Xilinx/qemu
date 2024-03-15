@@ -17,6 +17,8 @@
 #include "ufs-utp.h"
 #include "qemu/coroutine.h"
 #include "ufs-dev-desc.h"
+#include "scsi/constants.h"
+#include "qemu/cutils.h"
 
 /*
  * map_lun
@@ -41,8 +43,6 @@ static uint8_t ufs_dev_map_lun(UFSDev *s, uint8_t lun)
     case 0x81:
     case 0xD0:
     case 0xC4:
-        r = 0xFF;
-        break;
     case 0 ... 0x7F:
         r = lun;
     };
@@ -76,7 +76,7 @@ static bool ufs_dev_lun_enable(UFSDev *s, uint8_t lun)
     case 0x81:
     case 0xD0:
     case 0xC4:
-        r = false;
+        r = true;
         break;
     case 0x0 ... 0x7F:
         if (lun < s->num_luns) {
@@ -501,6 +501,123 @@ static void ufs_query_process_data(UFSDev *s, upiu_pkt *pkt, uint16_t len,
     };
 }
 
+static int encode_wlun_inquiry(uint8_t *resp_buf, uint8_t *cbd)
+{
+    uint8_t page_code;
+    int i = 0;
+    int page_start;
+
+    resp_buf[i++] = 0x1e;
+    if (cbd[1]) { /* vpd */
+        page_code = cbd[2];
+        resp_buf[i++] = cbd[2];
+        resp_buf[i++] = 0;
+        resp_buf[i++] = 0;
+        page_start = i;
+        switch (page_code) {
+        case 0:
+            resp_buf[i++] = 0; /* Supported VPD Pages */
+            resp_buf[i++] = 0x87; /* mode page policy */
+            break;
+        case 0x87:
+            resp_buf[i++] = 0x3f; /*applies to all mode pages and subpages */
+            resp_buf[i++] = 0xff;
+            resp_buf[i++] = 0x0; /* shared */
+            resp_buf[i++] = 0x0;
+            break;
+        default:
+            return -1;
+        };
+        resp_buf[page_start - 1] = page_start - i;
+    } else {
+        resp_buf[i++] = 0;
+        resp_buf[i++] = 0x6;
+        resp_buf[i++] = 0x2;
+        resp_buf[i++] = 31;
+        resp_buf[i++] = 0;
+        resp_buf[i++] = 0;
+        resp_buf[i++] = 0x2;
+        strpadcpy((char *)&resp_buf[i], 8, "QEMU", ' ');
+        i += 8;
+        strpadcpy((char *)&resp_buf[i], 16, "QEMU UFS", ' ');
+        i += 16;
+        memset(&resp_buf[i], 0, 4);
+        i += 4;
+    }
+    return i;
+}
+
+static int encode_wlun_report_luns(UFSDev *s, uint8_t *resp_buf)
+{
+    int i;
+
+    resp_buf[0] = s->report_lun_len * 8;
+    for (i = 0; i < s->report_lun_len; i++) {
+        resp_buf[8 + (i * 8) + 1] = s->report_lun_ids[i];
+    }
+
+    return s->report_lun_len * 8 + 8;
+}
+
+static void ufs_cmd_wlun(UFSDev *s, upiu_pkt *pkt)
+{
+    /*
+     * INQUIRY
+     * REQUEST SENSE
+     * TEST UNIT READY
+     * REPORT LUNS
+     */
+    uint8_t scsi_op = ((uint8_t *)pkt->cmd.cbd)[0];
+    upiu_pkt r = UPIU_RESP;
+    uint8_t data[1024] = {0};
+    int len = 0;
+
+    trace_ufsdev_wlun_cmd(UPIU_LUN(pkt), scsi_op);
+    switch (scsi_op) {
+    case INQUIRY:
+        len = encode_wlun_inquiry(&data[SCSI_SENSE_LEN],
+                                  (uint8_t *)pkt->cmd.cbd);
+        break;
+    case REQUEST_SENSE:
+    case TEST_UNIT_READY:
+    case START_STOP:
+        break;
+    case REPORT_LUNS:
+        len = encode_wlun_report_luns(s, &data[SCSI_SENSE_LEN]);
+        break;
+    default:
+        /*
+         * Invalid command
+         */
+        len = -2;
+        break;
+    };
+
+    r.hdr.lun = UPIU_LUN(pkt);
+    r.hdr.task_tag = UPIU_TAG(pkt);
+
+    if (len >= 0) {
+        len += scsi_build_sense_buf(data, SCSI_SENSE_LEN,
+                                    SENSE_CODE(NO_SENSE), true);
+        r.hdr.data_seg_len = cpu_to_be16((uint16_t) len);
+        r.hdr.status = GOOD;
+    } else {
+        if (len == -1) {
+            len += scsi_build_sense_buf(data, SCSI_SENSE_LEN,
+                                    SENSE_CODE(INVALID_OPCODE), true);
+        } else if (len == -2) {
+            len += scsi_build_sense_buf(data, SCSI_SENSE_LEN,
+                                    SENSE_CODE(INVALID_FIELD), true);
+        }
+        r.hdr.status = CHECK_CONDITION;
+    }
+
+    ufshci_send_upiu(s->ufs_ini, &r);
+    if (len > 0) {
+        ufshci_send_data(s->ufs_ini, data, len, UPIU_TAG(pkt));
+    }
+}
+
 static bool ufs_cmd_process(UFSDev *s, upiu_pkt *pkt)
 {
     uint8_t lun;
@@ -522,12 +639,20 @@ static bool ufs_cmd_process(UFSDev *s, upiu_pkt *pkt)
         qemu_log_mask(LOG_GUEST_ERROR, "Lun %d invalid!\n", pkt->hdr.lun);
     }
 
-    if (s->ufs_scsi_target) {
-        ufs_scsi_if_handle_scsi(s->ufs_scsi_target, (void *)pkt->cmd.cbd,
-                           UPIU_CMD_CDB_SIZE, pkt->hdr.task_tag, lun);
-    } else {
-        return false;
-    }
+    switch (lun) {
+    case UFS_WLUN_REPORT_LUNS:
+    case UFS_WLUN_UFS_DEVICE:
+    case UFS_WLUN_RPMB:
+        ufs_cmd_wlun(s, pkt);
+        break;
+    default:
+        if (s->ufs_scsi_target) {
+            ufs_scsi_if_handle_scsi(s->ufs_scsi_target, (void *)pkt->cmd.cbd,
+                               UPIU_CMD_CDB_SIZE, pkt->hdr.task_tag, lun);
+        } else {
+            return false;
+        }
+    };
     return true;
 }
 
@@ -931,6 +1056,7 @@ static void ufsdev_realize(DeviceState *dev, Error **errp)
       &s->ufsDesc.config[s->BootLUB / 8][CONFIG_UNIT_OFFSET(s->BootLUB % 8)],
       CONFIG_BOOT_LUN_ID, 2);
 
+    s->report_lun_ids = g_malloc0(s->num_luns);
     QTAILQ_INIT(&s->taskQ);
 }
 
@@ -943,6 +1069,7 @@ static void ufsdev_unrealize(DeviceState *dev)
     g_free(s->ufsDesc.config[2]);
     g_free(s->ufsDesc.config[1]);
     g_free(s->ufsDesc.config[0]);
+    g_free(s->report_lun_ids);
 
     for (i = 0; i < s->num_luns; i++) {
         g_free(s->ufsDesc.unit[i]);
@@ -991,6 +1118,7 @@ static void ufsdev_reset_enter(Object *obj, ResetType type)
 
             UFS_REG_W(s->ufsDesc.unit[i], UNIT_ERASE_BLOCK_SIZE, 1);
             raw_size += num_alloc * UFS_SEGMENT_SIZE;
+            s->report_lun_ids[s->report_lun_len++] = i;
         }
     }
     UFS_REG_W(s->ufsDesc.geo, GOME_TOTAL_RAW_DEVICE_CAPACITY, raw_size);
