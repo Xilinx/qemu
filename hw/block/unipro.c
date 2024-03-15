@@ -122,6 +122,8 @@ static CfgResultCode unipro_dme_cmd(ufshcIF *ifs, dmeCmd cmd, uint16_t MIBattr,
     switch (cmd) {
     case DME_GET:
     case DME_SET:
+    case DME_PEER_GET:
+    case DME_PEER_SET:
         switch (LayerID) {
         case 1:
             ret = pa_reg_access(s, cmd, MIBattr, GenSel, data);
@@ -149,12 +151,6 @@ static CfgResultCode unipro_dme_cmd(ufshcIF *ifs, dmeCmd cmd, uint16_t MIBattr,
             ret = DME_SUCCESS;
             break;
         };
-        break;
-    case DME_PEER_GET:
-    case DME_PEER_SET:
-        if (LayerID == 1) {
-            ret = pa_reg_access(s, cmd, MIBattr, GenSel, data);
-        }
         break;
     case DME_RESET:
         qemu_set_irq(s->dev_rst, 0);
@@ -206,6 +202,8 @@ static void uniproMphy_realize(DeviceState *dev, Error **errp)
     ATTR_WRITE(s->L1_5, PA_MAXRXPWMGEAR, 1);
     ATTR_WRITE(s->L1, TX_FSM_STATE, 1);
     ATTR_WRITE(s->L1, RX_FSM_STATE, 1);
+    ATTR_WRITE(s->dme, VS_POWERSTATE, 2);
+    ATTR_WRITE(s->L4, T_CONNECTIONSTATE, 1);
 
     qdev_init_gpio_out(dev, &s->dev_rst, 1);
 }
