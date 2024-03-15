@@ -278,7 +278,7 @@ static void ufshc_irq_update(UFSHCState *s)
      * TODO:
      * Add Interrupt Aggregation logic
      */
-    qemu_set_irq(s->irq, s->regs[R_IS] & s->regs[R_IE]);
+    qemu_set_irq(s->irq, !!(s->regs[R_IS] & s->regs[R_IE]));
 }
 
 static void ufshc_init(UFSHCState *s)
@@ -304,6 +304,13 @@ static void ufshc_init(UFSHCState *s)
     ARRAY_FIELD_DP32(s->regs, HCS, UTRLRDY, t_present);
     ARRAY_FIELD_DP32(s->regs, HCS, UTMRLRDY, t_present);
     ARRAY_FIELD_DP32(s->regs, HCS, CCS, !t_present);
+}
+
+static void is_post_write(RegisterInfo *reg, uint64_t val)
+{
+    UFSHCState *s = UFSHC(reg->opaque);
+
+    ufshc_irq_update(s);
 }
 
 static void hce_post_write(RegisterInfo *reg, uint64_t val)
@@ -684,6 +691,7 @@ static const RegisterAccessInfo ufshc_reg_info[] = {
     },{  .name = "IS", .addr = A_IS,
          .w1c = 0x30fff,
          .ro = 0xffcf000,
+         .post_write = is_post_write,
     },{  .name = "IE", .addr = A_IE,
          .ro = 0xffcf000,
     },{  .name = "HCS", .addr = A_HCS,
@@ -872,6 +880,7 @@ static void utr_complete(UFSHCState *s, uint8_t slot)
    g_free(s->tr_list[slot].prdt);
    qemu_sglist_destroy(&s->tr_list[slot].sgl);
    memset(&s->tr_list[slot], 0, sizeof(tr_info));
+   ufshc_irq_update(s);
 }
 
 /*
@@ -892,6 +901,7 @@ static void utmr_complete(UFSHCState *s, uint8_t slot)
     ARRAY_FIELD_DP32(s->regs, IS, UTMRCS, 1);
     s->regs[R_UTMRLDBR] &= ~(1 << slot);
     memset(&s->tmr_list[slot], 0, sizeof(tmr_info));
+    ufshc_irq_update(s);
 }
 
 /*
@@ -1142,6 +1152,7 @@ static void ufshc_set_upmcrs(ufshcIF *ifs, upmcrs status)
 
     ARRAY_FIELD_DP32(s->regs, HCS, UPMCRS, status);
     ARRAY_FIELD_DP32(s->regs, IS, UPMS, !!(status < PWR_BUSY));
+    ufshc_irq_update(s);
 }
 
 static void ufshc_reset_enter(Object *obj, ResetType type)
