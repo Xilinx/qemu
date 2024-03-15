@@ -270,12 +270,19 @@ static void ufs_desc_read(UFSDev *s, upiu_pkt *pkt)
         break;
     case UFS_DEV_UNIT:
         trace_ufsdev_desc_read("Unit desc");
-        if (index >= s->num_luns) {
-            UFS_REG_W(&resp, UPIU_HDR_RESPONSE, QUERY_RESP_INVALID_INDEX);
-        } else {
-            desc_len = s->ufsDesc.unit[index][UNIT_LENGTH];
-            data = s->ufsDesc.unit[index];
-        }
+        switch (index) {
+        case UFS_WLUN_RPMB:
+            desc_len = s->ufsDesc.rpmbUnit[UNIT_LENGTH];
+            data = s->ufsDesc.rpmbUnit;
+            break;
+        default:
+            if (index >= s->num_luns) {
+                UFS_REG_W(&resp, UPIU_HDR_RESPONSE, QUERY_RESP_INVALID_INDEX);
+            } else {
+                desc_len = s->ufsDesc.unit[index][UNIT_LENGTH];
+                data = s->ufsDesc.unit[index];
+            }
+        };
         break;
     case UFS_DEV_STRING:
         switch (index) {
@@ -938,6 +945,11 @@ static void ufsdev_realize(DeviceState *dev, Error **errp)
         UFS_REG_W(s->ufsDesc.unit[i], UNIT_LENGTH, UFS_UNIT_DESC_SIZE);
         UFS_REG_W(s->ufsDesc.unit[i], UNIT_DESCRIPTOR_IDN, UFS_DEV_UNIT);
     }
+
+    UFS_REG_W(s->ufsDesc.rpmbUnit, UNIT_UNIT_INDEX, UFS_WLUN_RPMB);
+    UFS_REG_W(s->ufsDesc.rpmbUnit, UNIT_LENGTH, UFS_UNIT_DESC_SIZE);
+    UFS_REG_W(s->ufsDesc.rpmbUnit, UNIT_DESCRIPTOR_IDN, UFS_DEV_UNIT);
+    UFS_REG_W(s->ufsDesc.rpmbUnit, UNIT_LU_ENABLE, 0);
 
     /*
      * Initialize Device Descriptor

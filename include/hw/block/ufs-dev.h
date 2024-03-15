@@ -94,6 +94,10 @@ typedef struct UFSDev {
          */
         uint8_t *unit[UFS_MAX_LUN];
         /*
+         * RPMB Unit Desc
+         */
+        uint8_t rpmbUnit[UFS_UNIT_DESC_SIZE];
+        /*
          * Interconnect Desc
          */
         uint8_t interconnect[UFS_INTRCON_DESC_SIZE];
