@@ -151,6 +151,8 @@ typedef struct FlashPartInfo {
 #define EVCFG_QUAD_IO_DISABLED (1 << 7)
 #define NVCFG_4BYTE_ADDR_MASK (1 << 0)
 #define NVCFG_LOWER_SEGMENT_MASK (1 << 1)
+#define VCFG_IO_MODE_OCTAL_DDR_DQS 0xE7
+#define VCFG_IO_MODE_OCTAL_DDR 0xC7
 
 /* Numonyx (Micron) Flag Status Register macros */
 #define FSR_4BYTE_ADDR_MODE_ENABLED 0x1
@@ -747,6 +749,11 @@ static inline int get_addr_length(Flash *s)
    case DIOR4:
        return 4;
    default:
+       if (get_man(s) == MAN_MICRON_OCTAL &&
+          ((s->volatile_cfg_large[0] == VCFG_IO_MODE_OCTAL_DDR_DQS) ||
+          (s->volatile_cfg_large[0] == VCFG_IO_MODE_OCTAL_DDR))) {
+            return 4;
+       }
        return s->four_bytes_address_mode ? 4 : 3;
    }
 }
