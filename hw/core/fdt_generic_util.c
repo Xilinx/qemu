@@ -281,6 +281,7 @@ static void fdt_init_node(void *args)
             }
 
             if (!fdt_init_qdev(node_path, fdti, compat)) {
+                check_compat("postinit:", compat, node_path, fdti);
                 goto exit;
             }
 
