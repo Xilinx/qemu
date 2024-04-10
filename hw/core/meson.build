@@ -49,6 +49,7 @@ common_ss.add(when: 'CONFIG_SSI_M25P80', if_true: files('fdt_generic_devices_ssi
 common_ss.add(when: 'CONFIG_SI57X', if_true: files('fdt_generic_devices_si57x.c'))
 common_ss.add(when: 'CONFIG_SI5341', if_true: files('fdt_generic_devices_si5341.c'))
 common_ss.add(when: 'CONFIG_USB_EHCI_SYSBUS', if_true: files('fdt_generic_devices_usb_ehci_sysbus.c'))
+common_ss.add(when: 'CONFIG_ETHPHY', if_true: files('fdt_generic_devices_eth_phy.c'))
 
 system_ss.add(files(
   'fdt_generic.c',
