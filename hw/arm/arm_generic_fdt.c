@@ -173,6 +173,35 @@ static int zynq7000_mdio_phy_create(char *node_path, FDTMachineInfo *fdti,
     return 0;
 }
 
+static int zynq7000_gem_post_init(char *node_path, FDTMachineInfo *fdti,
+                                 void *opaque)
+{
+    uint32_t *phy_handle = NULL;
+    char *phy_node_path = NULL;
+    char *phy_compat = NULL;
+
+    phy_handle = qemu_fdt_getprop(fdti->fdt, node_path, "phy-handle",
+                                  NULL, false, NULL);
+    if (phy_handle) {
+        phy_node_path = g_new0(char, DT_PATH_LENGTH);
+        qemu_devtree_get_node_by_phandle(fdti->fdt, phy_node_path,
+                                     be32_to_cpu(*phy_handle));
+
+        phy_compat = qemu_fdt_getprop(fdti->fdt, phy_node_path, "compatible",
+                                      NULL, false, NULL);
+        if (!phy_compat) {
+            /*
+             * Compatible not found, so create a phy manually
+             */
+            zynq7000_mdio_phy_create(phy_node_path, fdti, opaque);
+        }
+        g_free(phy_compat);
+        g_free(phy_handle);
+        g_free(phy_node_path);
+    }
+    return 0;
+}
+
 #define ZYNQ7000_QSPI_DUMMY_NAME "/ps7-qspi-dummy@0"
 
 static char *zynq7000_qspi_flash_node_clone(void *fdt)
@@ -628,8 +657,11 @@ static void arm_generic_fdt_7000_init(MachineState *machine)
     dev = qdev_new("mdio");
     /* Add MDIO Connect Call back */
     add_to_inst_bind_table(zynq7000_mdio_phy_connect, "mdio", dev);
-    add_to_compat_table(zynq7000_mdio_phy_create, "device_type:ethernet-phy",
-                        dev);
+    add_to_compat_table(zynq7000_gem_post_init, "postinit:cdns,gem", dev);
+    /*
+     * For backward compatiblity
+     */
+    add_to_compat_table(zynq7000_gem_post_init, "postinit:cdns,zynq-gem", dev);
     sysbus_realize(SYS_BUS_DEVICE(dev), &error_fatal);
 
     arm_generic_fdt_init(machine);
