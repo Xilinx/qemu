@@ -240,14 +240,10 @@ static void spartanup_pmc_sha3_write_digest(XlnxSha3Common *common, uint32_t *di
                                    size_t size)
 {
     SPARTANUP_PMC_SHA3 *s = XILINX_SPARTANUP_PMC_SHA3(common);
-    size_t i;
 
     /* Sanity check that the digest fits in the destination.  */
     assert(size <= SPARTANUP_PMC_SHA3_MAX_DIGEST_LEN);
-    /* Stored in reverse order.  */
-    for (i = 0; i < size / 4; i++) {
-        s->regs[R_SHA_DIGEST_7 - i] = digest[i];
-    }
+    memcpy(&s->regs[R_SHA_DIGEST_0], digest, size);
 }
 
 static XlnxSha3CommonAlg spartanup_pmc_sha3_get_algorithm(XlnxSha3Common *common)
