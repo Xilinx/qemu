@@ -918,7 +918,7 @@ static void ufsdev_realize(DeviceState *dev, Error **errp)
      * Also includes Unit Descriptor
      */
     for (i = s->num_luns - 1; i; i -= i % 8 ? i % 8 : 8) {
-        j = i % 8 ? i % 8 : 8;
+        j = i % 8 ? (i % 8) + 1 : 8;
         UFS_REG_W(s->ufsDesc.config[i / 8], CONFIG_LENGTH,
                   UFS_DEV_CONFIG_DESC_SIZE +
                   j * UNIT_DESC_CONFIG_LENGTH);
