@@ -407,7 +407,8 @@ static const XlnxSpartanupPmcEfuseMap spartanup_pmc_efuse_cache_map[] = {
 static const size_t spartanup_pmc_cache_map_size =
     sizeof(spartanup_pmc_efuse_cache_map) / sizeof(spartanup_pmc_efuse_cache_map[0]);
 
-#define SPARTANUP_PMC_EFUSE_AES_ROW_ADDR(k) ((26 + k) << 5)
+#define SPARTANUP_PMC_EFUSE_AES_ROW_ADDR(k) ((32 + k) << 5)
+#define SPARTANUP_PMC_EFUSE_AES_COL_OFFSET 16
 #define SPARTANUP_PMC_EFUSE_AES_KEY_LEN (256 >> 3)
 
 static void spartanup_pmc_efuse_get_aes_key(SPARTANUP_PMC_EFUSE *s, uint8_t *key)
@@ -415,8 +416,9 @@ static void spartanup_pmc_efuse_get_aes_key(SPARTANUP_PMC_EFUSE *s, uint8_t *key
     size_t i;
 
     for (i = 0; i < SPARTANUP_PMC_EFUSE_AES_KEY_LEN; i++) {
-        key[i] = (uint8_t)xlnx_efuse_get_row(s->efuse,
-                                             SPARTANUP_PMC_EFUSE_AES_ROW_ADDR(i));
+        key[i] = (uint8_t)(xlnx_efuse_get_row(s->efuse,
+                                             SPARTANUP_PMC_EFUSE_AES_ROW_ADDR(i)) >>
+                                             SPARTANUP_PMC_EFUSE_AES_COL_OFFSET);
     }
 }
 
