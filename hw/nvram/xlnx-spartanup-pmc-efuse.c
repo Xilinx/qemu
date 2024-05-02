@@ -106,68 +106,37 @@ REG32(DNA_1, 0x1010)
 REG32(DNA_2, 0x1014)
 REG32(IPDISABLE, 0x1018)
 REG32(USER_0, 0x1020)
-REG32(USER_1, 0x1024)
-REG32(USER_2, 0x1028)
-REG32(USER_3, 0x102c)
-REG32(USER_4, 0x1030)
-REG32(USER_5, 0x1034)
-REG32(SYSMON_0, 0x1038)
-REG32(SYSMON_1, 0x103c)
-    FIELD(SYSMON_1, UNUSED_3104, 4, 28)
-    FIELD(SYSMON_1, SYSMON, 0, 4)
-REG32(MISC_USER_CTRL, 0x1040)
-    FIELD(MISC_USER_CTRL, UNUSED31, 31, 1)
-    FIELD(MISC_USER_CTRL, UNUSED30, 30, 1)
-    FIELD(MISC_USER_CTRL, UNUSED29, 29, 1)
-    FIELD(MISC_USER_CTRL, UNUSED28, 28, 1)
-    FIELD(MISC_USER_CTRL, UNUSED27, 27, 1)
-    FIELD(MISC_USER_CTRL, UNUSED26, 26, 1)
-    FIELD(MISC_USER_CTRL, UNUSED25, 25, 1)
-    FIELD(MISC_USER_CTRL, UNUSED24, 24, 1)
-    FIELD(MISC_USER_CTRL, UNUSED23, 23, 1)
-    FIELD(MISC_USER_CTRL, UNUSED22, 22, 1)
-    FIELD(MISC_USER_CTRL, UNUSED21, 21, 1)
-    FIELD(MISC_USER_CTRL, UNUSED20, 20, 1)
-    FIELD(MISC_USER_CTRL, UNUSED19, 19, 1)
-    FIELD(MISC_USER_CTRL, UNUSED18, 18, 1)
-    FIELD(MISC_USER_CTRL, UNUSED17, 17, 1)
-    FIELD(MISC_USER_CTRL, UNUSED_70, 0, 11)
-REG32(SEC_CTRL, 0x1058)
-    FIELD(SEC_CTRL, SEC_LOCK, 10, 1)
-    FIELD(SEC_CTRL, UNUSED, 7, 3)
-    FIELD(SEC_CTRL, DFT_DIS, 6, 1)
-    FIELD(SEC_CTRL, JTAG_DIS, 5, 1)
-    FIELD(SEC_CTRL, BBRAM_DIS, 3, 1)
-    FIELD(SEC_CTRL, ENC_ONLY, 2, 1)
-REG32(SPK_ID, 0x105c)
-REG32(PPK0_0, 0x10a0)
-REG32(PPK0_1, 0x10a4)
-REG32(PPK0_2, 0x10a8)
-REG32(PPK0_3, 0x10ac)
-REG32(PPK0_4, 0x10b0)
-REG32(PPK0_5, 0x10b4)
-REG32(PPK0_6, 0x10b8)
-REG32(PPK0_7, 0x10bc)
-REG32(PPK1_0, 0x10c0)
-REG32(PPK1_1, 0x10c4)
-REG32(PPK1_2, 0x10c8)
-REG32(PPK1_3, 0x10cc)
-REG32(PPK1_4, 0x10d0)
-REG32(PPK1_5, 0x10d4)
-REG32(PPK1_6, 0x10d8)
-REG32(PPK1_7, 0x10dc)
-REG32(TRIM_RAM_0, 0x10e0)
-REG32(TRIM_RAM_1, 0x10e4)
-REG32(TRIM_RAM_2, 0x10e8)
-REG32(TRIM_RAM_3, 0x10ec)
-REG32(TRIM_RAM_4, 0x10f0)
-REG32(TRIM_RAM_5, 0x10f4)
-REG32(TRIM_RAM_6, 0x10f8)
-REG32(TRIM_RAM_7, 0x10fc)
-REG32(TRIM_RAM_8, 0x1100)
-REG32(TRIM_RAM_9, 0x1104)
-REG32(TRIM_RAM_10, 0x1108)
-REG32(TRIM_RAM_11, 0x110c)
+REG32(EFUSE_CRC, 0x1044)
+REG32(EFUSE_UNUSED18_UNUSED, 0x1048)
+REG32(EFUSE_UNUSED19_UNUSED, 0x104c)
+REG32(PPK1_0, 0x10a0)
+REG32(PPK1_1, 0x10a4)
+REG32(PPK1_2, 0x10a8)
+REG32(PPK1_3, 0x10ac)
+REG32(PPK1_4, 0x10b0)
+REG32(PPK1_5, 0x10b4)
+REG32(PPK1_6, 0x10b8)
+REG32(PPK1_7, 0x10bc)
+REG32(PPK2_0, 0x10c0)
+REG32(PPK2_1, 0x10c4)
+REG32(PPK2_2, 0x10c8)
+REG32(PPK2_3, 0x10cc)
+REG32(PPK2_4, 0x10d0)
+REG32(PPK2_5, 0x10d4)
+REG32(PPK2_6, 0x10d8)
+REG32(PPK2_7, 0x10dc)
+REG32(BURAM_REPAIR_0, 0x10e0)
+REG32(BURAM_REPAIR_1, 0x10e4)
+REG32(BURAM_REPAIR_2, 0x10e8)
+REG32(BURAM_REPAIR_3, 0x10ec)
+REG32(BURAM_REPAIR_4, 0x10f0)
+REG32(BURAM_REPAIR_5, 0x10f4)
+REG32(BURAM_REPAIR_6, 0x10f8)
+REG32(BURAM_REPAIR_7, 0x10fc)
+REG32(BURAM_REPAIR_8, 0x1100)
+REG32(BURAM_REPAIR_9, 0x1104)
+REG32(BURAM_REPAIR_10, 0x1108)
+REG32(BURAM_REPAIR_11, 0x110c)
 REG32(TRIM_ANLG_0, 0x1110)
     FIELD(TRIM_ANLG_0, OSC_GAIN_CORE, 28, 4)
     FIELD(TRIM_ANLG_0, VBG_GAIN_SEL, 21, 7)
@@ -178,7 +147,7 @@ REG32(TRIM_ANLG_1, 0x1114)
     FIELD(TRIM_ANLG_1, VGG_TRIM_TOP0, 29, 3)
     FIELD(TRIM_ANLG_1, VGG_FLAT_SEL, 22, 7)
     FIELD(TRIM_ANLG_1, VGG_NEG_GAIN_SEL, 15, 7)
-    FIELD(TRIM_ANLG_1, VGG_NEG_SEL, 9, 6)
+    FIELD(TRIM_ANLG_1, VGG_GAIN_SEL, 9, 6)
     FIELD(TRIM_ANLG_1, OSC_GAIN_CORE, 0, 9)
 REG32(TRIM_ANLG_2, 0x1118)
     FIELD(TRIM_ANLG_2, VGG_TRIM_TOP8, 29, 3)
@@ -196,17 +165,29 @@ REG32(TRIM_ANLG_3, 0x111c)
     FIELD(TRIM_ANLG_3, VGG_TRIM_BOT1, 5, 4)
     FIELD(TRIM_ANLG_3, VGG_TRIM_BOT0, 1, 4)
     FIELD(TRIM_ANLG_3, VGG_TRIM_TOP8, 0, 1)
-REG32(SPK_REVO_ID_0, 0x1120)
-REG32(SPK_REVO_ID_1, 0x1124)
-REG32(SPK_REVO_ID_2, 0x1128)
-REG32(AES_RANGES_0, 0x112c)
-REG32(AES_RANGES_1, 0x1130)
-REG32(AES_RANGES_2, 0x1134)
-REG32(AES_REVO_ID, 0x1138)
-    FIELD(AES_REVO_ID, UNUSED_3108, 8, 24)
-    FIELD(AES_REVO_ID, AES_REVO_ID, 0, 8)
+REG32(TRIM_ANLG_4, 0x1120)
+    FIELD(TRIM_ANLG_4, SYSMON_EFUSE, 0, 17)
+REG32(SPK_REVO_ID_0, 0x1124)
+REG32(SPK_REVO_ID_1, 0x1128)
+REG32(SPK_REVO_ID_2, 0x112c)
+REG32(AES_RANGES_0, 0x1130)
+REG32(AES_RANGES_1, 0x1134)
+REG32(AES_RANGES_2, 0x1138)
+REG32(AES_REVO_ID, 0x113c)
+    FIELD(AES_REVO_ID, AES_REVO_ID, 0, 16)
+REG32(DEC_EFUSE_ONLY, 0x1140)
+    FIELD(DEC_EFUSE_ONLY, DEC_EFUSE_ONLY, 0, 16)
+REG32(BLACK_KEY_IV_0, 0x1144)
+REG32(BLACK_KEY_IV_1, 0x1148)
+REG32(BLACK_KEY_IV_2, 0x114c)
+REG32(EFUSE_CRC_EN, 0x1150)
+    FIELD(EFUSE_CRC_EN, RMA_ENABLE_1, 5, 1)
+    FIELD(EFUSE_CRC_EN, RMA_DISABLE_1, 4, 1)
+    FIELD(EFUSE_CRC_EN, LCKDOWN, 3, 1)
+    FIELD(EFUSE_CRC_EN, DFT_DISABLE, 1, 2)
+    FIELD(EFUSE_CRC_EN, EFUSE_CRC_EN, 0, 1)
 
-#define SPARTANUP_PMC_EFUSE_R_MAX (R_AES_REVO_ID + 1)
+#define SPARTANUP_PMC_EFUSE_R_MAX (R_EFUSE_CRC_EN + 1)
 
 typedef struct SPARTANUP_PMC_EFUSE {
     SysBusDevice parent_obj;
@@ -232,183 +213,195 @@ typedef struct XlnxSpartanupPmcEfuseMap {
 } XlnxSpartanupPmcEfuseMap;
 
 static const XlnxSpartanupPmcEfuseMap spartanup_pmc_efuse_cache_map[] = {
-    { R_DNA_0,  0,   2 << 5, 0, 8 },
-    { R_DNA_0,  8,   3 << 5, 0, 8 },
-    { R_DNA_0,  16,  4 << 5, 0, 8 },
-    { R_DNA_0,  24,  5 << 5, 0, 8 },
-    { R_DNA_1,  0,   6 << 5, 0, 8 },
-    { R_DNA_1,  8,   7 << 5, 0, 8 },
-    { R_DNA_1,  16,  8 << 5, 0, 8 },
-    { R_DNA_1,  24,  9 << 5, 0, 8 },
-    { R_DNA_2,  0,  10 << 5, 0, 8 },
-    { R_DNA_2,  8,  11 << 5, 0, 8 },
-    { R_DNA_2,  16, 12 << 5, 0, 8 },
-    { R_DNA_2,  24, 13 << 5, 0, 8 },
-    { R_USER_0, 0,  21 << 5, 8, 8 },
-    { R_USER_0, 8,  22 << 5, 8, 8 },
-    { R_USER_0, 16, 23 << 5, 8, 8 },
-    { R_USER_0, 24, 24 << 5, 8, 8 },
-    /* XXX: USER_1 to USER_5 fuses are not found in the spec, ignore them.  */
-    { R_SYSMON_0,  0, 16 << 5, 8, 8 },
-    { R_SYSMON_0,  8, 17 << 5, 8, 8 },
-    { R_SYSMON_0, 16, 18 << 5, 8, 8 },
-    { R_SYSMON_0, 24, 19 << 5, 8, 8 },
-    { R_SYSMON_1,  0, 20 << 5, 8, 4 },
-    /* XXX: Missing SEC_LOCK, DTF_DIS fuses.  */
-    { R_SEC_CTRL,  5, 58 << 5, 28, 1 },     /* JTAG_DIS.   */
-    /* XXX: Missing BBRAM_DIS, ENC_ONLY fuses.  */
-    /* XXX: Missing SPK_ID fuses.  */
-    { R_PPK0_0,    0, 26 << 5,  8, 8},
-    { R_PPK0_0,    8, 27 << 5,  8, 8},
-    { R_PPK0_0,   16, 28 << 5,  8, 8},
-    { R_PPK0_0,   24, 29 << 5,  8, 8},
-    { R_PPK0_1,    0, 30 << 5,  8, 8},
-    { R_PPK0_1,    8, 31 << 5,  8, 8},
-    { R_PPK0_1,   16, 32 << 5,  8, 8},
-    { R_PPK0_1,   24, 33 << 5,  8, 8},
-    { R_PPK0_2,    0, 34 << 5,  8, 8},
-    { R_PPK0_2,    8, 35 << 5,  8, 8},
-    { R_PPK0_2,   16, 36 << 5,  8, 8},
-    { R_PPK0_2,   24, 37 << 5,  8, 8},
-    { R_PPK0_3,    0, 38 << 5,  8, 8},
-    { R_PPK0_3,    8, 39 << 5,  8, 8},
-    { R_PPK0_3,   16, 40 << 5,  8, 8},
-    { R_PPK0_3,   24, 41 << 5,  8, 8},
-    { R_PPK0_4,    0, 42 << 5,  8, 8},
-    { R_PPK0_4,    8, 43 << 5,  8, 8},
-    { R_PPK0_4,   16, 44 << 5,  8, 8},
-    { R_PPK0_4,   24, 45 << 5,  8, 8},
-    { R_PPK0_5,    0, 46 << 5,  8, 8},
-    { R_PPK0_5,    8, 47 << 5,  8, 8},
-    { R_PPK0_5,   16, 48 << 5,  8, 8},
-    { R_PPK0_5,   24, 49 << 5,  8, 8},
-    { R_PPK0_6,    0, 50 << 5,  8, 8},
-    { R_PPK0_6,    8, 51 << 5,  8, 8},
-    { R_PPK0_6,   16, 52 << 5,  8, 8},
-    { R_PPK0_6,   24, 53 << 5,  8, 8},
-    { R_PPK0_7,    0, 54 << 5,  8, 8},
-    { R_PPK0_7,    8, 55 << 5,  8, 8},
-    { R_PPK0_7,   16, 56 << 5,  8, 8},
-    { R_PPK0_7,   24, 57 << 5,  8, 8},
-    { R_PPK1_0,    0, 26 << 5, 16, 8},
-    { R_PPK1_0,    8, 27 << 5, 16, 8},
-    { R_PPK1_0,   16, 28 << 5, 16, 8},
-    { R_PPK1_0,   24, 29 << 5, 16, 8},
-    { R_PPK1_1,    0, 30 << 5, 16, 8},
-    { R_PPK1_1,    8, 31 << 5, 16, 8},
-    { R_PPK1_1,   16, 32 << 5, 16, 8},
-    { R_PPK1_1,   24, 33 << 5, 16, 8},
-    { R_PPK1_2,    0, 34 << 5, 16, 8},
-    { R_PPK1_2,    8, 35 << 5, 16, 8},
-    { R_PPK1_2,   16, 36 << 5, 16, 8},
-    { R_PPK1_2,   24, 37 << 5, 16, 8},
-    { R_PPK1_3,    0, 38 << 5, 16, 8},
-    { R_PPK1_3,    8, 39 << 5, 16, 8},
-    { R_PPK1_3,   16, 40 << 5, 16, 8},
-    { R_PPK1_3,   24, 41 << 5, 16, 8},
-    { R_PPK1_4,    0, 42 << 5, 16, 8},
-    { R_PPK1_4,    8, 43 << 5, 16, 8},
-    { R_PPK1_4,   16, 44 << 5, 16, 8},
-    { R_PPK1_4,   24, 45 << 5, 16, 8},
-    { R_PPK1_5,    0, 46 << 5, 16, 8},
-    { R_PPK1_5,    8, 47 << 5, 16, 8},
-    { R_PPK1_5,   16, 48 << 5, 16, 8},
-    { R_PPK1_5,   24, 49 << 5, 16, 8},
-    { R_PPK1_6,    0, 50 << 5, 16, 8},
-    { R_PPK1_6,    8, 51 << 5, 16, 8},
-    { R_PPK1_6,   16, 52 << 5, 16, 8},
-    { R_PPK1_6,   24, 53 << 5, 16, 8},
-    { R_PPK1_7,    0, 54 << 5, 16, 8},
-    { R_PPK1_7,    8, 55 << 5, 16, 8},
-    { R_PPK1_7,   16, 56 << 5, 16, 8},
-    { R_PPK1_7,   24, 57 << 5, 16, 8},
-    { R_TRIM_RAM_0,   0,  2 << 5, 16, 8},
-    { R_TRIM_RAM_0,   8,  3 << 5, 16, 8},
-    { R_TRIM_RAM_0,  16,  4 << 5, 16, 8},
-    { R_TRIM_RAM_0,  24,  5 << 5, 16, 8},
-    { R_TRIM_RAM_1,   0,  6 << 5, 16, 8},
-    { R_TRIM_RAM_1,   8,  7 << 5, 16, 8},
-    { R_TRIM_RAM_1,  16,  8 << 5, 16, 8},
-    { R_TRIM_RAM_1,  24,  9 << 5, 16, 8},
-    { R_TRIM_RAM_2,   0, 10 << 5, 16, 8},
-    { R_TRIM_RAM_2,   8, 11 << 5, 16, 8},
-    { R_TRIM_RAM_2,  16, 12 << 5, 16, 8},
-    { R_TRIM_RAM_2,  24, 13 << 5, 16, 8},
-    { R_TRIM_RAM_3,   0, 14 << 5, 16, 8},
-    { R_TRIM_RAM_3,   8, 15 << 5, 16, 8},
-    { R_TRIM_RAM_3,  16, 16 << 5, 16, 8},
-    { R_TRIM_RAM_3,  24, 17 << 5, 16, 8},
-    { R_TRIM_RAM_4,   0, 18 << 5, 16, 8},
-    { R_TRIM_RAM_4,   8, 19 << 5, 16, 8},
-    { R_TRIM_RAM_4,  16, 20 << 5, 16, 8},
-    { R_TRIM_RAM_4,  24, 21 << 5, 16, 8},
-    { R_TRIM_RAM_5,   0, 22 << 5, 16, 8},
-    { R_TRIM_RAM_5,   8, 23 << 5, 16, 8},
-    { R_TRIM_RAM_5,  16, 24 << 5, 16, 8},
-    { R_TRIM_RAM_5,  24, 25 << 5, 16, 8},
-    { R_TRIM_RAM_6,   0,  2 << 5, 24, 8},
-    { R_TRIM_RAM_6,   8,  3 << 5, 24, 8},
-    { R_TRIM_RAM_6,  16,  4 << 5, 24, 8},
-    { R_TRIM_RAM_6,  24,  5 << 5, 24, 8},
-    { R_TRIM_RAM_7,   0,  6 << 5, 24, 8},
-    { R_TRIM_RAM_7,   8,  7 << 5, 24, 8},
-    { R_TRIM_RAM_7,  16,  8 << 5, 24, 8},
-    { R_TRIM_RAM_7,  24,  9 << 5, 24, 8},
-    { R_TRIM_RAM_8,   0, 10 << 5, 24, 8},
-    { R_TRIM_RAM_8,   8, 11 << 5, 24, 8},
-    { R_TRIM_RAM_8,  16, 12 << 5, 24, 8},
-    { R_TRIM_RAM_8,  24, 13 << 5, 24, 8},
-    { R_TRIM_RAM_9,   0, 14 << 5, 24, 8},
-    { R_TRIM_RAM_9,   8, 15 << 5, 24, 8},
-    { R_TRIM_RAM_9,  16, 16 << 5, 24, 8},
-    { R_TRIM_RAM_9,  24, 17 << 5, 24, 8},
-    { R_TRIM_RAM_10,  0, 18 << 5, 24, 8},
-    { R_TRIM_RAM_10,  8, 19 << 5, 24, 8},
-    { R_TRIM_RAM_10, 16, 20 << 5, 24, 8},
-    { R_TRIM_RAM_10, 24, 21 << 5, 24, 8},
-    { R_TRIM_RAM_11,  0, 22 << 5, 24, 8},
-    { R_TRIM_RAM_11,  8, 23 << 5, 24, 8},
-    { R_TRIM_RAM_11, 16, 24 << 5, 24, 8},
-    { R_TRIM_RAM_11, 24, 25 << 5, 24, 8},
-    { R_TRIM_ANLG_0,   0,  2 << 5, 8, 8},
-    { R_TRIM_ANLG_0,   8,  3 << 5, 8, 8},
-    { R_TRIM_ANLG_0,  16,  4 << 5, 8, 8},
-    { R_TRIM_ANLG_0,  24,  5 << 5, 8, 8},
-    { R_TRIM_ANLG_1,   0,  6 << 5, 8, 8},
-    { R_TRIM_ANLG_1,   8,  7 << 5, 8, 8},
-    { R_TRIM_ANLG_1,  16,  8 << 5, 8, 8},
-    { R_TRIM_ANLG_1,  24,  9 << 5, 8, 8},
-    { R_TRIM_ANLG_2,   0, 10 << 5, 8, 8},
-    { R_TRIM_ANLG_2,   8, 11 << 5, 8, 8},
-    { R_TRIM_ANLG_2,  16, 12 << 5, 8, 8},
-    { R_TRIM_ANLG_2,  24, 13 << 5, 8, 8},
-    { R_TRIM_ANLG_3,   0, 14 << 5, 8, 8},
-    { R_TRIM_ANLG_3,   8, 15 << 5, 8, 5},
-    { R_SPK_REVO_ID_0,  0, 14 << 5, 0, 8},
-    { R_SPK_REVO_ID_0,  8, 15 << 5, 0, 8},
-    { R_SPK_REVO_ID_0, 16, 16 << 5, 0, 8},
-    { R_SPK_REVO_ID_0, 24, 17 << 5, 0, 8},
-    { R_SPK_REVO_ID_1,  0, 18 << 5, 0, 8},
-    { R_SPK_REVO_ID_1,  8, 19 << 5, 0, 8},
-    { R_SPK_REVO_ID_1, 16, 20 << 5, 0, 8},
-    { R_SPK_REVO_ID_1, 24, 21 << 5, 0, 8},
-    { R_SPK_REVO_ID_2,  0, 22 << 5, 0, 8},
-    { R_SPK_REVO_ID_2,  8, 23 << 5, 0, 8},
-    { R_SPK_REVO_ID_2, 16, 24 << 5, 0, 8},
-    { R_SPK_REVO_ID_2, 24, 25 << 5, 0, 8},
-    { R_AES_RANGES_0,   0,  58 << 5,  0, 8},
-    { R_AES_RANGES_0,   8,  59 << 5,  0, 8},
-    { R_AES_RANGES_0,  16,  60 << 5,  0, 8},
-    { R_AES_RANGES_0,  24,  61 << 5,  0, 8},
-    { R_AES_RANGES_1,   0,  58 << 5,  8, 8},
-    { R_AES_RANGES_1,   8,  59 << 5,  8, 8},
-    { R_AES_RANGES_1,  16,  60 << 5,  8, 8},
-    { R_AES_RANGES_1,  24,  61 << 5,  8, 8},
-    { R_AES_RANGES_2,   0,  58 << 5, 16, 8},
-    { R_AES_RANGES_2,   8,  59 << 5, 16, 8},
-    { R_AES_RANGES_2,  16,  60 << 5, 16, 8},
-    { R_AES_RANGES_2,  24,  61 << 5, 16, 8},
-    { R_AES_REVO_ID,    0,  62 << 5, 16, 8},
+    { R_DNA_0,  0,  19 << 5, 8, 8 },
+    { R_DNA_0,  8,  20 << 5, 8, 8 },
+    { R_DNA_0,  16, 21 << 5, 8, 8 },
+    { R_DNA_0,  24, 22 << 5, 8, 8 },
+    { R_DNA_1,  0,  23 << 5, 8, 8 },
+    { R_DNA_1,  8,  24 << 5, 8, 8 },
+    { R_DNA_1,  16, 25 << 5, 8, 8 },
+    { R_DNA_1,  24, 26 << 5, 8, 8 },
+    { R_DNA_2,  0,  27 << 5, 8, 8 },
+    { R_DNA_2,  8,  28 << 5, 8, 8 },
+    { R_DNA_2,  16, 29 << 5, 8, 8 },
+    { R_DNA_2,  24, 30 << 5, 8, 8 },
+    { R_USER_0, 0,  60 << 5, 24, 8 },
+    { R_USER_0, 8,  61 << 5, 24, 8 },
+    { R_USER_0, 16, 62 << 5, 24, 8 },
+    { R_USER_0, 24, 63 << 5, 24, 8 },
+    { R_EFUSE_CRC,  0, 52 << 5, 8, 8 },
+    { R_EFUSE_CRC,  8, 53 << 5, 8, 8 },
+    { R_EFUSE_CRC, 16, 54 << 5, 8, 8 },
+    { R_EFUSE_CRC, 24, 55 << 5, 8, 8 },
+    { R_EFUSE_UNUSED18_UNUSED,  0, 56 << 5, 8, 8 },
+    { R_EFUSE_UNUSED18_UNUSED,  8, 57 << 5, 8, 8 },
+    { R_EFUSE_UNUSED18_UNUSED, 16, 58 << 5, 8, 8 },
+    { R_EFUSE_UNUSED18_UNUSED, 24, 59 << 5, 8, 8 },
+    { R_EFUSE_UNUSED19_UNUSED,  0, 60 << 5, 8, 8 },
+    { R_EFUSE_UNUSED19_UNUSED,  8, 61 << 5, 8, 8 },
+    { R_EFUSE_UNUSED19_UNUSED, 16, 62 << 5, 8, 8 },
+    { R_EFUSE_UNUSED19_UNUSED, 24, 63 << 5, 8, 8 },
+    { R_PPK1_0,    0,  1 << 5,  0, 8},
+    { R_PPK1_0,    8,  2 << 5,  0, 8},
+    { R_PPK1_0,   16,  3 << 5,  0, 8},
+    { R_PPK1_0,   24,  4 << 5,  0, 8},
+    { R_PPK1_1,    0,  5 << 5,  0, 8},
+    { R_PPK1_1,    8,  6 << 5,  0, 8},
+    { R_PPK1_1,   16,  7 << 5,  0, 8},
+    { R_PPK1_1,   24,  8 << 5,  0, 8},
+    { R_PPK1_2,    0,  9 << 5,  0, 8},
+    { R_PPK1_2,    8, 10 << 5,  0, 8},
+    { R_PPK1_2,   16, 11 << 5,  0, 8},
+    { R_PPK1_2,   24, 12 << 5,  0, 8},
+    { R_PPK1_3,    0, 13 << 5,  0, 8},
+    { R_PPK1_3,    8, 14 << 5,  0, 8},
+    { R_PPK1_3,   16, 15 << 5,  0, 8},
+    { R_PPK1_3,   24, 16 << 5,  0, 8},
+    { R_PPK1_4,    0, 17 << 5,  0, 8},
+    { R_PPK1_4,    8, 18 << 5,  0, 8},
+    { R_PPK1_4,   16, 19 << 5,  0, 8},
+    { R_PPK1_4,   24, 20 << 5,  0, 8},
+    { R_PPK1_5,    0, 21 << 5,  0, 8},
+    { R_PPK1_5,    8, 22 << 5,  0, 8},
+    { R_PPK1_5,   16, 23 << 5,  0, 8},
+    { R_PPK1_5,   24, 24 << 5,  0, 8},
+    { R_PPK1_6,    0, 25 << 5,  0, 8},
+    { R_PPK1_6,    8, 26 << 5,  0, 8},
+    { R_PPK1_6,   16, 27 << 5,  0, 8},
+    { R_PPK1_6,   24, 28 << 5,  0, 8},
+    { R_PPK1_7,    0, 29 << 5,  0, 8},
+    { R_PPK1_7,    8, 30 << 5,  0, 8},
+    { R_PPK1_7,   16, 31 << 5,  0, 8},
+    { R_PPK1_7,   24, 32 << 5,  0, 8},
+    { R_PPK2_0,    0,  4 << 5, 24, 8},
+    { R_PPK2_0,    8,  5 << 5, 24, 8},
+    { R_PPK2_0,   16,  6 << 5, 24, 8},
+    { R_PPK2_0,   24,  7 << 5, 24, 8},
+    { R_PPK2_1,    0,  8 << 5, 24, 8},
+    { R_PPK2_1,    8,  9 << 5, 24, 8},
+    { R_PPK2_1,   16, 10 << 5, 24, 8},
+    { R_PPK2_1,   24, 11 << 5, 24, 8},
+    { R_PPK2_2,    0, 12 << 5, 24, 8},
+    { R_PPK2_2,    8, 13 << 5, 24, 8},
+    { R_PPK2_2,   16, 14 << 5, 24, 8},
+    { R_PPK2_2,   24, 15 << 5, 24, 8},
+    { R_PPK2_3,    0, 16 << 5, 24, 8},
+    { R_PPK2_3,    8, 17 << 5, 24, 8},
+    { R_PPK2_3,   16, 18 << 5, 24, 8},
+    { R_PPK2_3,   24, 19 << 5, 24, 8},
+    { R_PPK2_4,    0, 20 << 5, 24, 8},
+    { R_PPK2_4,    8, 21 << 5, 24, 8},
+    { R_PPK2_4,   16, 22 << 5, 24, 8},
+    { R_PPK2_4,   24, 23 << 5, 24, 8},
+    { R_PPK2_5,    0, 24 << 5, 24, 8},
+    { R_PPK2_5,    8, 25 << 5, 24, 8},
+    { R_PPK2_5,   16, 26 << 5, 24, 8},
+    { R_PPK2_5,   24, 27 << 5, 24, 8},
+    { R_PPK2_6,    0, 28 << 5, 24, 8},
+    { R_PPK2_6,    8, 29 << 5, 24, 8},
+    { R_PPK2_6,   16, 30 << 5, 24, 8},
+    { R_PPK2_6,   24, 31 << 5, 24, 8},
+    { R_PPK2_7,    0, 32 << 5, 24, 8},
+    { R_PPK2_7,    8, 33 << 5, 24, 8},
+    { R_PPK2_7,   16, 34 << 5, 24, 8},
+    { R_PPK2_7,   24, 35 << 5, 24, 8},
+    { R_BURAM_REPAIR_0,   0, 33 << 5, 0, 8},
+    { R_BURAM_REPAIR_0,   8, 34 << 5, 0, 8},
+    { R_BURAM_REPAIR_0,  16, 35 << 5, 0, 8},
+    { R_BURAM_REPAIR_0,  24, 36 << 5, 0, 8},
+    { R_BURAM_REPAIR_1,   0, 37 << 5, 0, 8},
+    { R_BURAM_REPAIR_1,   8, 38 << 5, 0, 8},
+    { R_BURAM_REPAIR_1,  16, 39 << 5, 0, 8},
+    { R_BURAM_REPAIR_1,  24, 40 << 5, 0, 8},
+    { R_BURAM_REPAIR_2,   0, 41 << 5, 0, 8},
+    { R_BURAM_REPAIR_2,   8, 42 << 5, 0, 8},
+    { R_BURAM_REPAIR_2,  16, 43 << 5, 0, 8},
+    { R_BURAM_REPAIR_2,  24, 44 << 5, 0, 8},
+    { R_BURAM_REPAIR_3,   0, 45 << 5, 0, 8},
+    { R_BURAM_REPAIR_3,   8, 46 << 5, 0, 8},
+    { R_BURAM_REPAIR_3,  16, 47 << 5, 0, 8},
+    { R_BURAM_REPAIR_3,  24, 48 << 5, 0, 8},
+    { R_BURAM_REPAIR_4,   0, 49 << 5, 0, 8},
+    { R_BURAM_REPAIR_4,   8, 50 << 5, 0, 8},
+    { R_BURAM_REPAIR_4,  16, 51 << 5, 0, 8},
+    { R_BURAM_REPAIR_4,  24, 52 << 5, 0, 8},
+    { R_BURAM_REPAIR_5,   0, 53 << 5, 0, 8},
+    { R_BURAM_REPAIR_5,   8, 54 << 5, 0, 8},
+    { R_BURAM_REPAIR_5,  16, 55 << 5, 0, 8},
+    { R_BURAM_REPAIR_5,  24, 56 << 5, 0, 8},
+    { R_BURAM_REPAIR_6,   0, 57 << 5, 0, 8},
+    { R_BURAM_REPAIR_6,   8, 58 << 5, 0, 8},
+    { R_BURAM_REPAIR_6,  16, 59 << 5, 0, 8},
+    { R_BURAM_REPAIR_6,  24, 60 << 5, 0, 8},
+    { R_BURAM_REPAIR_7,   0, 61 << 5, 0, 8},
+    { R_BURAM_REPAIR_7,   8, 62 << 5, 0, 8},
+    { R_BURAM_REPAIR_7,  16, 63 << 5, 0, 8},
+    { R_BURAM_REPAIR_7,  24, 31 << 5, 8, 8},
+    { R_BURAM_REPAIR_8,   0, 32 << 5, 8, 8},
+    { R_BURAM_REPAIR_8,   8, 33 << 5, 8, 8},
+    { R_BURAM_REPAIR_8,  16, 34 << 5, 8, 8},
+    { R_BURAM_REPAIR_8,  24, 35 << 5, 8, 8},
+    { R_BURAM_REPAIR_9,   0, 36 << 5, 8, 8},
+    { R_BURAM_REPAIR_9,   8, 37 << 5, 8, 8},
+    { R_BURAM_REPAIR_9,  16, 38 << 5, 8, 8},
+    { R_BURAM_REPAIR_9,  24, 39 << 5, 8, 8},
+    { R_BURAM_REPAIR_10,  0, 40 << 5, 8, 8},
+    { R_BURAM_REPAIR_10,  8, 41 << 5, 8, 8},
+    { R_BURAM_REPAIR_10, 16, 42 << 5, 8, 8},
+    { R_BURAM_REPAIR_10, 24, 43 << 5, 8, 8},
+    { R_BURAM_REPAIR_11,  0, 44 << 5, 8, 8},
+    { R_BURAM_REPAIR_11,  8, 45 << 5, 8, 8},
+    { R_BURAM_REPAIR_11, 16, 46 << 5, 8, 8},
+    { R_BURAM_REPAIR_11, 24, 47 << 5, 8, 8},
+    { R_TRIM_ANLG_0,   0, 0 << 5, 8, 8},
+    { R_TRIM_ANLG_0,   8, 1 << 5, 8, 8},
+    { R_TRIM_ANLG_0,  16, 2 << 5, 8, 8},
+    { R_TRIM_ANLG_0,  24, 3 << 5, 8, 8},
+    { R_TRIM_ANLG_1,   0, 4 << 5, 8, 8},
+    { R_TRIM_ANLG_1,   8, 5 << 5, 8, 8},
+    { R_TRIM_ANLG_1,  16, 6 << 5, 8, 8},
+    { R_TRIM_ANLG_1,  24, 7 << 5, 8, 8},
+    { R_TRIM_ANLG_2,   0, 8 << 5, 8, 8},
+    { R_TRIM_ANLG_2,   8, 9 << 5, 8, 8},
+    { R_TRIM_ANLG_2,  16, 10 << 5, 8, 8},
+    { R_TRIM_ANLG_2,  24, 11 << 5, 8, 8},
+    { R_TRIM_ANLG_3,   0, 12 << 5, 8, 8},
+    { R_TRIM_ANLG_3,   8, 13 << 5, 8, 8},
+    { R_TRIM_ANLG_3,  16, 14 << 5, 8, 8},
+    { R_TRIM_ANLG_3,  24, 15 << 5, 8, 8},
+    { R_TRIM_ANLG_4,   0, 16 << 5, 8, 8},
+    { R_TRIM_ANLG_4,   8, 17 << 5, 8, 8},
+    { R_TRIM_ANLG_4,  16, 18 << 5, 8, 1},
+    { R_SPK_REVO_ID_0,  0, 48 << 5, 24, 8},
+    { R_SPK_REVO_ID_0,  8, 49 << 5, 24, 8},
+    { R_SPK_REVO_ID_0, 16, 50 << 5, 24, 8},
+    { R_SPK_REVO_ID_0, 24, 51 << 5, 24, 8},
+    { R_SPK_REVO_ID_1,  0, 52 << 5, 24, 8},
+    { R_SPK_REVO_ID_1,  8, 53 << 5, 24, 8},
+    { R_SPK_REVO_ID_1, 16, 54 << 5, 24, 8},
+    { R_SPK_REVO_ID_1, 24, 55 << 5, 24, 8},
+    { R_SPK_REVO_ID_2,  0, 56 << 5, 24, 8},
+    { R_SPK_REVO_ID_2,  8, 57 << 5, 24, 8},
+    { R_SPK_REVO_ID_2, 16, 58 << 5, 24, 8},
+    { R_SPK_REVO_ID_2, 24, 59 << 5, 24, 8},
+    { R_AES_RANGES_0,   0,  36 << 5, 24, 8},
+    { R_AES_RANGES_0,   8,  37 << 5, 24, 8},
+    { R_AES_RANGES_0,  16,  38 << 5, 24, 8},
+    { R_AES_RANGES_0,  24,  39 << 5, 24, 8},
+    { R_AES_RANGES_1,   0,  40 << 5, 24, 8},
+    { R_AES_RANGES_1,   8,  41 << 5, 24, 8},
+    { R_AES_RANGES_1,  16,  42 << 5, 24, 8},
+    { R_AES_RANGES_1,  24,  43 << 5, 24, 8},
+    { R_AES_RANGES_2,   0,  44 << 5, 24, 8},
+    { R_AES_RANGES_2,   8,  45 << 5, 24, 8},
+    { R_AES_RANGES_2,  16,  46 << 5, 24, 8},
+    { R_AES_RANGES_2,  24,  47 << 5, 24, 8},
+    { R_DEC_EFUSE_ONLY, 0,  48 << 5,  8, 8},
+    { R_DEC_EFUSE_ONLY, 8,  49 << 5,  8, 8},
+    { R_EFUSE_CRC_EN,   0,   1 << 5, 24, 1},
+    { R_EFUSE_CRC_EN,   1,   1 << 5, 25, 2},
+    { R_EFUSE_CRC_EN,   3,   1 << 5, 27, 1},
+    { R_EFUSE_CRC_EN,   4,   1 << 5, 28, 2},
 };
 
 static const size_t spartanup_pmc_cache_map_size =
@@ -612,15 +605,14 @@ static const RegisterAccessInfo spartanup_pmc_efuse_regs_info[] = {
     },{ .name = "EFUSE_RD_DATA",  .addr = A_EFUSE_RD_DATA,
         .ro = 0xffffffff,
     },{ .name = "TPGM",  .addr = A_TPGM,
-        .reset = 0x2710,
     },{ .name = "TRD",  .addr = A_TRD,
-        .reset = 0x2c,
+        .reset = 0x1b,
     },{ .name = "TSU_H_PS",  .addr = A_TSU_H_PS,
-        .reset = 0x14,
+        .reset = 0xff,
     },{ .name = "TSU_H_PS_CS",  .addr = A_TSU_H_PS_CS,
-        .reset = 0xe,
+        .reset = 0xb,
     },{ .name = "TSU_H_CS",  .addr = A_TSU_H_CS,
-        .reset = 0x9,
+        .reset = 0x7,
     },{ .name = "EFUSE_ISR",  .addr = A_EFUSE_ISR,
         .rsvd = 0x7fffffe0,
         .w1c = 0x8000001f,
@@ -651,44 +643,15 @@ static const RegisterAccessInfo spartanup_pmc_efuse_regs_info[] = {
     },{ .name = "DNA_2",  .addr = A_DNA_2,
         .ro = 0xffffffff,
     },{ .name = "IPDISABLE",  .addr = A_IPDISABLE,
+        .rsvd = 0xffffffff,
         .ro = 0xffffffff,
     },{ .name = "USER_0",  .addr = A_USER_0,
         .ro = 0xffffffff,
-    },{ .name = "USER_1",  .addr = A_USER_1,
+    },{ .name = "EFUSE_CRC",  .addr = A_EFUSE_CRC,
         .ro = 0xffffffff,
-    },{ .name = "USER_2",  .addr = A_USER_2,
+    },{ .name = "EFUSE_UNUSED18_UNUSED",  .addr = A_EFUSE_UNUSED18_UNUSED,
         .ro = 0xffffffff,
-    },{ .name = "USER_3",  .addr = A_USER_3,
-        .ro = 0xffffffff,
-    },{ .name = "USER_4",  .addr = A_USER_4,
-        .ro = 0xffffffff,
-    },{ .name = "USER_5",  .addr = A_USER_5,
-        .ro = 0xffffffff,
-    },{ .name = "SYSMON_0",  .addr = A_SYSMON_0,
-        .ro = 0xffffffff,
-    },{ .name = "SYSMON_1",  .addr = A_SYSMON_1,
-        .ro = 0xffffffff,
-    },{ .name = "MISC_USER_CTRL",  .addr = A_MISC_USER_CTRL,
-        .ro = 0xffffffff,
-    },{ .name = "SEC_CTRL",  .addr = A_SEC_CTRL,
-        .ro = 0x7ec,
-    },{ .name = "SPK_ID",  .addr = A_SPK_ID,
-        .ro = 0xffffffff,
-    },{ .name = "PPK0_0",  .addr = A_PPK0_0,
-        .ro = 0xffffffff,
-    },{ .name = "PPK0_1",  .addr = A_PPK0_1,
-        .ro = 0xffffffff,
-    },{ .name = "PPK0_2",  .addr = A_PPK0_2,
-        .ro = 0xffffffff,
-    },{ .name = "PPK0_3",  .addr = A_PPK0_3,
-        .ro = 0xffffffff,
-    },{ .name = "PPK0_4",  .addr = A_PPK0_4,
-        .ro = 0xffffffff,
-    },{ .name = "PPK0_5",  .addr = A_PPK0_5,
-        .ro = 0xffffffff,
-    },{ .name = "PPK0_6",  .addr = A_PPK0_6,
-        .ro = 0xffffffff,
-    },{ .name = "PPK0_7",  .addr = A_PPK0_7,
+    },{ .name = "EFUSE_UNUSED19_UNUSED",  .addr = A_EFUSE_UNUSED19_UNUSED,
         .ro = 0xffffffff,
     },{ .name = "PPK1_0",  .addr = A_PPK1_0,
         .ro = 0xffffffff,
@@ -706,34 +669,57 @@ static const RegisterAccessInfo spartanup_pmc_efuse_regs_info[] = {
         .ro = 0xffffffff,
     },{ .name = "PPK1_7",  .addr = A_PPK1_7,
         .ro = 0xffffffff,
-    },{ .name = "TRIM_RAM_0",  .addr = A_TRIM_RAM_0,
+    },{ .name = "PPK2_0",  .addr = A_PPK2_0,
         .ro = 0xffffffff,
-    },{ .name = "TRIM_RAM_1",  .addr = A_TRIM_RAM_1,
+    },{ .name = "PPK2_1",  .addr = A_PPK2_1,
         .ro = 0xffffffff,
-    },{ .name = "TRIM_RAM_2",  .addr = A_TRIM_RAM_2,
+    },{ .name = "PPK2_2",  .addr = A_PPK2_2,
         .ro = 0xffffffff,
-    },{ .name = "TRIM_RAM_3",  .addr = A_TRIM_RAM_3,
+    },{ .name = "PPK2_3",  .addr = A_PPK2_3,
         .ro = 0xffffffff,
-    },{ .name = "TRIM_RAM_4",  .addr = A_TRIM_RAM_4,
+    },{ .name = "PPK2_4",  .addr = A_PPK2_4,
         .ro = 0xffffffff,
-    },{ .name = "TRIM_RAM_5",  .addr = A_TRIM_RAM_5,
+    },{ .name = "PPK2_5",  .addr = A_PPK2_5,
         .ro = 0xffffffff,
-    },{ .name = "TRIM_RAM_6",  .addr = A_TRIM_RAM_6,
+    },{ .name = "PPK2_6",  .addr = A_PPK2_6,
         .ro = 0xffffffff,
-    },{ .name = "TRIM_RAM_7",  .addr = A_TRIM_RAM_7,
+    },{ .name = "PPK2_7",  .addr = A_PPK2_7,
         .ro = 0xffffffff,
-    },{ .name = "TRIM_RAM_8",  .addr = A_TRIM_RAM_8,
+    },{ .name = "BURAM_REPAIR_0",  .addr = A_BURAM_REPAIR_0,
         .ro = 0xffffffff,
-    },{ .name = "TRIM_RAM_9",  .addr = A_TRIM_RAM_9,
+    },{ .name = "BURAM_REPAIR_1",  .addr = A_BURAM_REPAIR_1,
         .ro = 0xffffffff,
-    },{ .name = "TRIM_RAM_10",  .addr = A_TRIM_RAM_10,
+    },{ .name = "BURAM_REPAIR_2",  .addr = A_BURAM_REPAIR_2,
         .ro = 0xffffffff,
-    },{ .name = "TRIM_RAM_11",  .addr = A_TRIM_RAM_11,
+    },{ .name = "BURAM_REPAIR_3",  .addr = A_BURAM_REPAIR_3,
+        .ro = 0xffffffff,
+    },{ .name = "BURAM_REPAIR_4",  .addr = A_BURAM_REPAIR_4,
+        .ro = 0xffffffff,
+    },{ .name = "BURAM_REPAIR_5",  .addr = A_BURAM_REPAIR_5,
+        .ro = 0xffffffff,
+    },{ .name = "BURAM_REPAIR_6",  .addr = A_BURAM_REPAIR_6,
+        .ro = 0xffffffff,
+    },{ .name = "BURAM_REPAIR_7",  .addr = A_BURAM_REPAIR_7,
+        .ro = 0xffffffff,
+    },{ .name = "BURAM_REPAIR_8",  .addr = A_BURAM_REPAIR_8,
+        .ro = 0xffffffff,
+    },{ .name = "BURAM_REPAIR_9",  .addr = A_BURAM_REPAIR_9,
+        .ro = 0xffffffff,
+    },{ .name = "BURAM_REPAIR_10",  .addr = A_BURAM_REPAIR_10,
+        .ro = 0xffffffff,
+    },{ .name = "BURAM_REPAIR_11",  .addr = A_BURAM_REPAIR_11,
         .ro = 0xffffffff,
     },{ .name = "TRIM_ANLG_0",  .addr = A_TRIM_ANLG_0,
+        .ro = 0xffffffff,
     },{ .name = "TRIM_ANLG_1",  .addr = A_TRIM_ANLG_1,
+        .ro = 0xffffffff,
     },{ .name = "TRIM_ANLG_2",  .addr = A_TRIM_ANLG_2,
+        .ro = 0xffffffff,
     },{ .name = "TRIM_ANLG_3",  .addr = A_TRIM_ANLG_3,
+        .ro = 0xffffffff,
+    },{ .name = "TRIM_ANLG_4",  .addr = A_TRIM_ANLG_4,
+        .rsvd = 0xfffe0000,
+        .ro = 0x1ffff,
     },{ .name = "SPK_REVO_ID_0",  .addr = A_SPK_REVO_ID_0,
         .ro = 0xffffffff,
     },{ .name = "SPK_REVO_ID_1",  .addr = A_SPK_REVO_ID_1,
@@ -747,6 +733,18 @@ static const RegisterAccessInfo spartanup_pmc_efuse_regs_info[] = {
     },{ .name = "AES_RANGES_2",  .addr = A_AES_RANGES_2,
         .ro = 0xffffffff,
     },{ .name = "AES_REVO_ID",  .addr = A_AES_REVO_ID,
+        .rsvd = 0xffff0000,
+        .ro = 0xffffffff,
+    },{ .name = "DEC_EFUSE_ONLY",  .addr = A_DEC_EFUSE_ONLY,
+        .ro = 0xffff,
+    },{ .name = "BLACK_KEY_IV_0",  .addr = A_BLACK_KEY_IV_0,
+        .ro = 0xffffffff,
+    },{ .name = "BLACK_KEY_IV_1",  .addr = A_BLACK_KEY_IV_1,
+        .ro = 0xffffffff,
+    },{ .name = "BLACK_KEY_IV_2",  .addr = A_BLACK_KEY_IV_2,
+        .ro = 0xffffffff,
+    },{ .name = "EFUSE_CRC_EN",  .addr = A_EFUSE_CRC_EN,
+        .rsvd = 0xffffffc0,
         .ro = 0xffffffff,
     }
 };
