@@ -59,13 +59,23 @@ REG32(RST_CCU, 0x60)
 REG32(RST_PUF, 0x64)
     FIELD(RST_PUF, RESET, 0, 1)
 REG32(RESET_REASON, 0x70)
+    FIELD(RESET_REASON, JTAG_TAP_SRST, 3, 1)
     FIELD(RESET_REASON, ERR_SRST, 2, 1)
     FIELD(RESET_REASON, SW_SRST, 1, 1)
     FIELD(RESET_REASON, EXTERNAL_POR, 0, 1)
 REG32(LAST_RESET_REASON, 0x74)
+    FIELD(LAST_RESET_REASON, JTAG_TAP_SRST, 3, 1)
     FIELD(LAST_RESET_REASON, ERR_SRST, 2, 1)
     FIELD(LAST_RESET_REASON, SW_SRST, 1, 1)
     FIELD(LAST_RESET_REASON, EXTERNAL_POR, 0, 1)
+REG32(BOOT_MODE_POR, 0x78)
+    FIELD(BOOT_MODE_POR, BOOT_MODE2, 8, 4)
+    FIELD(BOOT_MODE_POR, BOOT_MODE1, 4, 4)
+    FIELD(BOOT_MODE_POR, BOOT_MODE0, 0, 4)
+REG32(BOOT_MODE_USER, 0x7c)
+    FIELD(BOOT_MODE_USER, ALT_BOOT_MODE, 12, 3)
+    FIELD(BOOT_MODE_USER, USE_ALT, 8, 1)
+    FIELD(BOOT_MODE_USER, BOOT_MODE, 0, 4)
 REG32(RST_SPARE, 0x8c)
     FIELD(RST_SPARE, RESET, 0, 1)
 REG32(SSS_CONFIG, 0x90)
@@ -114,18 +124,24 @@ REG32(PMC_BOOT_ERR, 0x14c)
 REG32(BH_IMG_ATTR, 0x150)
     FIELD(BH_IMG_ATTR, HASHING, 8, 2)
     FIELD(BH_IMG_ATTR, PUF_HD, 6, 2)
-REG32(PMC_FW_AUTH_HASH_0, 0x154)
-REG32(PMC_FW_AUTH_HASH_1, 0x158)
-REG32(PMC_FW_AUTH_HASH_2, 0x15c)
-REG32(PMC_FW_AUTH_HASH_3, 0x160)
-REG32(PMC_FW_AUTH_HASH_4, 0x164)
-REG32(PMC_FW_AUTH_HASH_5, 0x168)
-REG32(PMC_FW_AUTH_HASH_6, 0x16c)
-REG32(PMC_FW_AUTH_HASH_7, 0x170)
-REG32(PMC_FW_AUTH_HASH_8, 0x174)
-REG32(PMC_FW_AUTH_HASH_9, 0x178)
-REG32(PMC_FW_AUTH_HASH_10, 0x17c)
-REG32(PMC_FW_AUTH_HASH_11, 0x180)
+REG32(PMC_FW_ERROR, 0x154)
+    FIELD(PMC_FW_ERROR, NCR_FLAG, 31, 1)
+    FIELD(PMC_FW_ERROR, CR_FLAG, 30, 1)
+    FIELD(PMC_FW_ERROR, DATA, 0, 30)
+REG32(PMC_FW_STATUS, 0x158)
+REG32(PMC_FW_DATA, 0x15c)
+REG32(PMC_FW_AUTH_HASH_0, 0x160)
+REG32(PMC_FW_AUTH_HASH_1, 0x164)
+REG32(PMC_FW_AUTH_HASH_2, 0x168)
+REG32(PMC_FW_AUTH_HASH_3, 0x16c)
+REG32(PMC_FW_AUTH_HASH_4, 0x170)
+REG32(PMC_FW_AUTH_HASH_5, 0x174)
+REG32(PMC_FW_AUTH_HASH_6, 0x178)
+REG32(PMC_FW_AUTH_HASH_7, 0x17c)
+REG32(PMC_FW_AUTH_HASH_8, 0x180)
+REG32(PMC_FW_AUTH_HASH_9, 0x184)
+REG32(PMC_FW_AUTH_HASH_10, 0x18c)
+REG32(PMC_FW_AUTH_HASH_11, 0x190)
 REG32(ROM_VALIDATION_DIGEST0, 0x250)
 REG32(ROM_VALIDATION_DIGEST1, 0x254)
 REG32(ROM_VALIDATION_DIGEST2, 0x258)
@@ -139,61 +155,24 @@ REG32(ROM_VALIDATION_DIGEST9, 0x274)
 REG32(ROM_VALIDATION_DIGEST10, 0x278)
 REG32(ROM_VALIDATION_DIGEST11, 0x27c)
 REG32(ROM_VALIDATION_STATUS, 0x284)
-    FIELD(ROM_VALIDATION_STATUS, ROM_VALID_FSM_ERROR, 3, 1)
     FIELD(ROM_VALIDATION_STATUS, ROM_VALID_FAIL, 2, 1)
     FIELD(ROM_VALIDATION_STATUS, ROM_VALID_PASS, 1, 1)
     FIELD(ROM_VALIDATION_STATUS, ROM_VALID_DONE, 0, 1)
 REG32(ROM_VALIDATION_CONTROL, 0x288)
     FIELD(ROM_VALIDATION_CONTROL, ROM_VALID_OVRD, 0, 1)
-REG32(SPARTANUP_PMC_ERR0_STATUS, 0x300)
-    FIELD(SPARTANUP_PMC_ERR0_STATUS, SBI_IRQ, 6, 1)
-    FIELD(SPARTANUP_PMC_ERR0_STATUS, PMC_TAP_IRQ, 5, 1)
-    FIELD(SPARTANUP_PMC_ERR0_STATUS, OSPI_IRQ, 4, 1)
-    FIELD(SPARTANUP_PMC_ERR0_STATUS, CCU_ISR_IRQ, 3, 1)
-    FIELD(SPARTANUP_PMC_ERR0_STATUS, SSS_ERR, 2, 1)
-    FIELD(SPARTANUP_PMC_ERR0_STATUS, DMA_IRQ, 1, 1)
-    FIELD(SPARTANUP_PMC_ERR0_STATUS, AES_IRQ, 0, 1)
-REG32(SPARTANUP_PMC_ERR0_MASK, 0x304)
-    FIELD(SPARTANUP_PMC_ERR0_MASK, SBI_IRQ, 6, 1)
-    FIELD(SPARTANUP_PMC_ERR0_MASK, PMC_TAP_IRQ, 5, 1)
-    FIELD(SPARTANUP_PMC_ERR0_MASK, OSPI_IRQ, 4, 1)
-    FIELD(SPARTANUP_PMC_ERR0_MASK, CCU_ISR_IRQ, 3, 1)
-    FIELD(SPARTANUP_PMC_ERR0_MASK, SSS_ERR, 2, 1)
-    FIELD(SPARTANUP_PMC_ERR0_MASK, DMA_IRQ, 1, 1)
-    FIELD(SPARTANUP_PMC_ERR0_MASK, AES_IRQ, 0, 1)
-REG32(SPARTANUP_PMC_ERR0_ENABLE, 0x308)
-    FIELD(SPARTANUP_PMC_ERR0_ENABLE, SBI_IRQ, 6, 1)
-    FIELD(SPARTANUP_PMC_ERR0_ENABLE, PMC_TAP_IRQ, 5, 1)
-    FIELD(SPARTANUP_PMC_ERR0_ENABLE, OSPI_IRQ, 4, 1)
-    FIELD(SPARTANUP_PMC_ERR0_ENABLE, CCU_ISR_IRQ, 3, 1)
-    FIELD(SPARTANUP_PMC_ERR0_ENABLE, SSS_ERR, 2, 1)
-    FIELD(SPARTANUP_PMC_ERR0_ENABLE, DMA_IRQ, 1, 1)
-    FIELD(SPARTANUP_PMC_ERR0_ENABLE, AES_IRQ, 0, 1)
-REG32(SPARTANUP_PMC_ERR0_DISABLE, 0x30c)
-    FIELD(SPARTANUP_PMC_ERR0_DISABLE, SBI_IRQ, 6, 1)
-    FIELD(SPARTANUP_PMC_ERR0_DISABLE, PMC_TAP_IRQ, 5, 1)
-    FIELD(SPARTANUP_PMC_ERR0_DISABLE, OSPI_IRQ, 4, 1)
-    FIELD(SPARTANUP_PMC_ERR0_DISABLE, CCU_ISR_IRQ, 3, 1)
-    FIELD(SPARTANUP_PMC_ERR0_DISABLE, SSS_ERR, 2, 1)
-    FIELD(SPARTANUP_PMC_ERR0_DISABLE, DMA_IRQ, 1, 1)
-    FIELD(SPARTANUP_PMC_ERR0_DISABLE, AES_IRQ, 0, 1)
-REG32(SPARTANUP_PMC_ERR0_TRIGGER, 0x310)
-    FIELD(SPARTANUP_PMC_ERR0_TRIGGER, SBI_IRQ, 6, 1)
-    FIELD(SPARTANUP_PMC_ERR0_TRIGGER, PMC_TAP_IRQ, 5, 1)
-    FIELD(SPARTANUP_PMC_ERR0_TRIGGER, OSPI_IRQ, 4, 1)
-    FIELD(SPARTANUP_PMC_ERR0_TRIGGER, CCU_ISR_IRQ, 3, 1)
-    FIELD(SPARTANUP_PMC_ERR0_TRIGGER, SSS_ERR, 2, 1)
-    FIELD(SPARTANUP_PMC_ERR0_TRIGGER, DMA_IRQ, 1, 1)
-    FIELD(SPARTANUP_PMC_ERR0_TRIGGER, AES_IRQ, 0, 1)
 REG32(SAFETY_CHK, 0x550)
+REG32(PL_AXI_CONFIG, 0x800)
+    FIELD(PL_AXI_CONFIG, PL_AXI_INTF_EN, 0, 1)
+REG32(PL_AXI_STATUS, 0x804)
+    FIELD(PL_AXI_STATUS, ISO_ACCESS_DETECT, 1, 1)
+    FIELD(PL_AXI_STATUS, PENDING_TRANS, 0, 1)
 
-#define SPARTANUP_PMC_GLOBAL_R_MAX (R_SAFETY_CHK + 1)
+#define SPARTANUP_PMC_GLOBAL_R_MAX (R_PL_AXI_STATUS + 1)
 #define R_SSS_CONFIG_FIELD_LENGTH 4
 
 typedef struct SPARTANUP_PMC_GLOBAL {
     SSSBase parent;
     MemoryRegion iomem;
-    qemu_irq irq_spartanup_pmc_err0;
     qemu_irq rst_dma;
     qemu_irq rst_ospi;
     qemu_irq rst_sbi;
@@ -213,52 +192,6 @@ static void spartanup_pmc_init_b_update(void *opaque, int n, int level)
 
     s->init_b = level;
     ARRAY_FIELD_DP32(s->regs, PINS_STATUS, INIT_B, s->init_b ? 1 : 0);
-}
-
-static void spartanup_pmc_err0_update_irq(SPARTANUP_PMC_GLOBAL *s)
-{
-    bool pending = s->regs[R_SPARTANUP_PMC_ERR0_STATUS]
-                   & ~s->regs[R_SPARTANUP_PMC_ERR0_MASK];
-    qemu_set_irq(s->irq_spartanup_pmc_err0, pending);
-}
-
-static void spartanup_pmc_err0_status_postw(RegisterInfo *reg, uint64_t val64)
-{
-    SPARTANUP_PMC_GLOBAL *s = XILINX_SPARTANUP_PMC_GLOBAL(reg->opaque);
-    spartanup_pmc_err0_update_irq(s);
-}
-
-static uint64_t spartanup_pmc_err0_enable_prew(RegisterInfo *reg,
-                                                 uint64_t val64)
-{
-    SPARTANUP_PMC_GLOBAL *s = XILINX_SPARTANUP_PMC_GLOBAL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_SPARTANUP_PMC_ERR0_MASK] &= ~val;
-    spartanup_pmc_err0_update_irq(s);
-    return 0;
-}
-
-static uint64_t spartanup_pmc_err0_disable_prew(RegisterInfo *reg,
-                                                  uint64_t val64)
-{
-    SPARTANUP_PMC_GLOBAL *s = XILINX_SPARTANUP_PMC_GLOBAL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_SPARTANUP_PMC_ERR0_MASK] |= val;
-    spartanup_pmc_err0_update_irq(s);
-    return 0;
-}
-
-static uint64_t spartanup_pmc_err0_trigger_prew(RegisterInfo *reg,
-                                                  uint64_t val64)
-{
-    SPARTANUP_PMC_GLOBAL *s = XILINX_SPARTANUP_PMC_GLOBAL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_SPARTANUP_PMC_ERR0_STATUS] |= val;
-    spartanup_pmc_err0_update_irq(s);
-    return 0;
 }
 
 /* Secure Stream Switch related implementation.  */
@@ -407,12 +340,18 @@ static const RegisterAccessInfo spartanup_pmc_global_regs_info[] = {
         .post_write = spartanup_pmc_global_rst_puf_postw,
     },{ .name = "RESET_REASON",  .addr = A_RESET_REASON,
         .reset = 0x1,
-        .rsvd = 0xfffffff8,
-        .w1c = 0x7,
+        .rsvd = 0xfffffff0,
+        .w1c = 0xf,
     },{ .name = "LAST_RESET_REASON",  .addr = A_LAST_RESET_REASON,
         .reset = 0x1,
-        .rsvd = 0xfffffff8,
-        .ro = 0x7,
+        .rsvd = 0xfffffff0,
+        .ro = 0xf,
+    },{ .name = "BOOT_MODE_POR",  .addr = A_BOOT_MODE_POR,
+        .rsvd = 0xf000,
+        .ro = 0xfff,
+    },{ .name = "BOOT_MODE_USER",  .addr = A_BOOT_MODE_USER,
+        .rsvd = 0xf0ef0,
+        .ro = 0xf,
     },{ .name = "RST_SPARE",  .addr = A_RST_SPARE,
         .reset = 0x1,
         .post_write = spartanup_pmc_global_rst_spare_postw,
@@ -449,6 +388,9 @@ static const RegisterAccessInfo spartanup_pmc_global_regs_info[] = {
     },{ .name = "PMC_BOOT_ERR",  .addr = A_PMC_BOOT_ERR,
     },{ .name = "BH_IMG_ATTR",  .addr = A_BH_IMG_ATTR,
         .rsvd = 0xfffffc3f,
+    },{ .name = "PMC_FW_ERROR",  .addr = A_PMC_FW_ERROR,
+    },{ .name = "PMC_FW_STATUS",  .addr = A_PMC_FW_STATUS,
+    },{ .name = "PMC_FW_DATA",  .addr = A_PMC_FW_DATA,
     },{ .name = "PMC_FW_AUTH_HASH_0",  .addr = A_PMC_FW_AUTH_HASH_0,
         .reset = 0xffffffff,
     },{ .name = "PMC_FW_AUTH_HASH_1",  .addr = A_PMC_FW_AUTH_HASH_1,
@@ -498,32 +440,17 @@ static const RegisterAccessInfo spartanup_pmc_global_regs_info[] = {
     },{ .name = "ROM_VALIDATION_DIGEST11",  .addr = A_ROM_VALIDATION_DIGEST11,
         .ro = 0xffffffff,
     },{ .name = "ROM_VALIDATION_STATUS",  .addr = A_ROM_VALIDATION_STATUS,
-        .rsvd = 0xfffffff0,
-        .ro = 0xf,
+        .rsvd = 0xfffffff8,
+        .ro = 0x7,
     },{ .name = "ROM_VALIDATION_CONTROL",  .addr = A_ROM_VALIDATION_CONTROL,
         .rsvd = 0xfffffffe,
-    },{ .name = "SPARTANUP_PMC_ERR0_STATUS",
-        .addr = A_SPARTANUP_PMC_ERR0_STATUS,
-        .rsvd = 0xffffff80,
-        .w1c = 0x7f,
-        .post_write = spartanup_pmc_err0_status_postw,
-    },{ .name = "SPARTANUP_PMC_ERR0_MASK",  .addr = A_SPARTANUP_PMC_ERR0_MASK,
-        .reset = 0x7f,
-        .rsvd = 0xffffff80,
-        .ro = 0x7f,
-    },{ .name = "SPARTANUP_PMC_ERR0_ENABLE",
-        .addr = A_SPARTANUP_PMC_ERR0_ENABLE,
-        .rsvd = 0xffffff80,
-        .pre_write = spartanup_pmc_err0_enable_prew,
-    },{ .name = "SPARTANUP_PMC_ERR0_DISABLE",
-        .addr = A_SPARTANUP_PMC_ERR0_DISABLE,
-        .rsvd = 0xffffff80,
-        .pre_write = spartanup_pmc_err0_disable_prew,
-    },{ .name = "SPARTANUP_PMC_ERR0_TRIGGER",
-        .addr = A_SPARTANUP_PMC_ERR0_TRIGGER,
-        .rsvd = 0xffffff80,
-        .pre_write = spartanup_pmc_err0_trigger_prew,
     },{ .name = "SAFETY_CHK",  .addr = A_SAFETY_CHK,
+    },{ .name = "PL_AXI_CONFIG",  .addr = A_PL_AXI_CONFIG,
+        .reset = 0x1,
+        .rsvd = 0xfffffffe,
+    },{ .name = "PL_AXI_STATUS",  .addr = A_PL_AXI_STATUS,
+        .rsvd = 0xfffffffc,
+        .ro = 0x3,
     }
 };
 
@@ -653,7 +580,6 @@ static void spartanup_pmc_global_init(Object *obj)
                                 0x0,
                                 &reg_array->mem);
     sysbus_init_mmio(sbd, &s->iomem);
-    sysbus_init_irq(sbd, &s->irq_spartanup_pmc_err0);
 
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_dma, "rst-dma", 1);
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_ospi, "rst-ospi", 1);
