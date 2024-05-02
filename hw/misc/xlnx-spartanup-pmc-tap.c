@@ -59,7 +59,7 @@ REG32(FSM_STATUS, 0x2c)
 REG32(CURR_INST_0, 0x30)
     FIELD(CURR_INST_0, STATUS, 31, 1)
     FIELD(CURR_INST_0, UNUSED_30, 30, 1)
-    FIELD(CURR_INST_0, UNUSED_29, 29, 1)
+    FIELD(CURR_INST_0, FW_STATUS, 29, 1)
     FIELD(CURR_INST_0, MONITOR_DRP, 28, 1)
     FIELD(CURR_INST_0, MDM_DBG, 27, 1)
     FIELD(CURR_INST_0, UNUSED_26, 26, 1)
@@ -77,7 +77,7 @@ REG32(CURR_INST_0, 0x30)
     FIELD(CURR_INST_0, UNUSED_14, 14, 1)
     FIELD(CURR_INST_0, UNUSED_13, 13, 1)
     FIELD(CURR_INST_0, UNUSED_12, 12, 1)
-    FIELD(CURR_INST_0, UNUSED_11, 11, 1)
+    FIELD(CURR_INST_0, JPROG, 11, 1)
     FIELD(CURR_INST_0, HIGHZ, 10, 1)
     FIELD(CURR_INST_0, IDCODE, 9, 1)
     FIELD(CURR_INST_0, USERCODE, 8, 1)
@@ -132,23 +132,33 @@ REG32(JTAG_STATUS_0, 0x38)
     FIELD(JTAG_STATUS_0, CRP_STATUS, 17, 3)
     FIELD(JTAG_STATUS_0, MDM_DIS, 16, 1)
     FIELD(JTAG_STATUS_0, BOOT_MODE, 12, 3)
+    FIELD(JTAG_STATUS_0, MEM_CLEAR_DONE, 9, 1)
+    FIELD(JTAG_STATUS_0, MEM_CLEAR_PASS, 8, 1)
     FIELD(JTAG_STATUS_0, AES_KEY_ZERO, 7, 1)
-    FIELD(JTAG_STATUS_0, BBRAM_KEY_ZERO, 6, 1)
     FIELD(JTAG_STATUS_0, SMAP_BUSW, 4, 2)
     FIELD(JTAG_STATUS_0, SBI_JTAG, 3, 1)
     FIELD(JTAG_STATUS_0, SBI_BUSY, 2, 1)
     FIELD(JTAG_STATUS_0, TIE_LOW, 1, 1)
     FIELD(JTAG_STATUS_0, TIE_HIGH, 0, 1)
 REG32(JTAG_STATUS_1, 0x3c)
+    FIELD(JTAG_STATUS_1, INIT_COMPLETE, 14, 1)
+    FIELD(JTAG_STATUS_1, DCI_LOCK, 13, 1)
+    FIELD(JTAG_STATUS_1, PLL_LOCK, 12, 1)
+    FIELD(JTAG_STATUS_1, EOS, 11, 1)
+    FIELD(JTAG_STATUS_1, GWE, 10, 1)
+    FIELD(JTAG_STATUS_1, GTS_CFG, 9, 1)
+    FIELD(JTAG_STATUS_1, GHIGH, 8, 1)
     FIELD(JTAG_STATUS_1, PUDC_B, 4, 1)
     FIELD(JTAG_STATUS_1, IJTAG_ENABLED, 3, 1)
     FIELD(JTAG_STATUS_1, DONE, 2, 1)
     FIELD(JTAG_STATUS_1, JRDBK_ERROR, 1, 1)
     FIELD(JTAG_STATUS_1, JCFG_ERROR, 0, 1)
+REG32(JPROG_CTRL, 0x40)
+    FIELD(JPROG_CTRL, FORCE_JTAG_MODE_CLEAR, 0, 1)
 REG32(INST_MASK_0, 0x10000)
     FIELD(INST_MASK_0, STATUS, 31, 1)
     FIELD(INST_MASK_0, UNUSED_30, 30, 1)
-    FIELD(INST_MASK_0, UNUSED_29, 29, 1)
+    FIELD(INST_MASK_0, FW_STATUS, 29, 1)
     FIELD(INST_MASK_0, MONITOR_DRP, 28, 1)
     FIELD(INST_MASK_0, MDM_DBG, 27, 1)
     FIELD(INST_MASK_0, UNUSED_26, 26, 1)
@@ -166,7 +176,7 @@ REG32(INST_MASK_0, 0x10000)
     FIELD(INST_MASK_0, UNUSED_14, 14, 1)
     FIELD(INST_MASK_0, UNUSED_13, 13, 1)
     FIELD(INST_MASK_0, UNUSED_12, 12, 1)
-    FIELD(INST_MASK_0, UNUSED_11, 11, 1)
+    FIELD(INST_MASK_0, JPROG, 11, 1)
     FIELD(INST_MASK_0, HIGHZ, 10, 1)
     FIELD(INST_MASK_0, IDCODE, 9, 1)
     FIELD(INST_MASK_0, USERCODE, 8, 1)
@@ -296,13 +306,16 @@ static const RegisterAccessInfo spartanup_pmc_tap_regs_info[] = {
         .ro = 0xffffffff,
     },{ .name = "JTAG_STATUS_0",  .addr = A_JTAG_STATUS_0,
         .reset = 0x1,
-        .rsvd = 0x8f00,
+        .rsvd = 0x8c40,
         .ro = 0xffffffff,
     },{ .name = "JTAG_STATUS_1",  .addr = A_JTAG_STATUS_1,
-        .rsvd = 0xffffffe0,
+        .rsvd = 0xffff80e0,
         .ro = 0xffffffff,
+    },{ .name = "JPROG_CTRL",  .addr = A_JPROG_CTRL,
+        .rsvd = 0xfffffffe,
+        .ro = 0xfffffffe,
     },{ .name = "INST_MASK_0",  .addr = A_INST_MASK_0,
-        .reset = 0x7ffff8fd,
+        .reset = 0x5ffff0dd,
     },{ .name = "INST_MASK_1",  .addr = A_INST_MASK_1,
         .reset = 0xffbffbf,
     },{ .name = "TAP_SECURITY",  .addr = A_TAP_SECURITY,
@@ -323,6 +336,10 @@ static void spartanup_pmc_tap_reset_enter(Object *obj, ResetType type)
 
     ARRAY_FIELD_DP32(s->regs, IDCODE, IDCODE, s->idcode);
     ARRAY_FIELD_DP32(s->regs, VERSION, PMC_VERSION, s->spartanup_pmc_version);
+    ARRAY_FIELD_DP32(s->regs, JTAG_STATUS_0, PMC_SCAN_CLEAR_DONE, 1);
+    ARRAY_FIELD_DP32(s->regs, JTAG_STATUS_0, PMC_SCAN_CLEAR_PASS, 1);
+    ARRAY_FIELD_DP32(s->regs, JTAG_STATUS_0, MEM_CLEAR_DONE, 1);
+    ARRAY_FIELD_DP32(s->regs, JTAG_STATUS_0, MEM_CLEAR_PASS, 1);
 }
 
 static void spartanup_pmc_tap_reset_hold(Object *obj, ResetType type)
