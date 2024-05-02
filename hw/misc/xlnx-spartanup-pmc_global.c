@@ -179,6 +179,8 @@ typedef struct SPARTANUP_PMC_GLOBAL {
     qemu_irq rst_spare;
     qemu_irq rst_ccu;
     qemu_irq rst_puf;
+    qemu_irq efuse_key_lock;
+    qemu_irq family_key_lock;
 
     int init_b;
     bool soft_reset;
@@ -304,6 +306,20 @@ static void spartanup_pmc_global_rst_spare_postw(RegisterInfo *reg, uint64_t val
     PROPAGATE_GPIO(RST_SPARE, RESET, s->rst_spare);
 }
 
+static void efuse_key_lock_postw(RegisterInfo *reg, uint64_t val)
+{
+    SPARTANUP_PMC_GLOBAL *s = XILINX_SPARTANUP_PMC_GLOBAL(reg->opaque);
+
+    qemu_set_irq(s->efuse_key_lock, val == 0xFFFFFFFF ? 0 : 1);
+}
+
+static void family_key_lock_postw(RegisterInfo *reg, uint64_t val)
+{
+    SPARTANUP_PMC_GLOBAL *s = XILINX_SPARTANUP_PMC_GLOBAL(reg->opaque);
+
+    qemu_set_irq(s->family_key_lock, val == 0xFFFFFFFF ? 0 : 1);
+}
+
 static const RegisterAccessInfo spartanup_pmc_global_regs_info[] = {
     {   .name = "ERR_CTRL",  .addr = A_ERR_CTRL,
         .reset = 0x1,
@@ -380,7 +396,9 @@ static const RegisterAccessInfo spartanup_pmc_global_regs_info[] = {
         .rsvd = 0xfffffff0,
     },{ .name = "PMC_MULTI_BOOT",  .addr = A_PMC_MULTI_BOOT,
     },{ .name = "EFUSE_KEY_LOCK",  .addr = A_EFUSE_KEY_LOCK,
+        .post_write = efuse_key_lock_postw
     },{ .name = "FAMILY_KEY_LOCK",  .addr = A_FAMILY_KEY_LOCK,
+        .post_write = family_key_lock_postw,
     },{ .name = "MB_MODE",  .addr = A_MB_MODE,
     },{ .name = "ROM_STATE",  .addr = A_ROM_STATE,
     },{ .name = "AUTH_STATUS",  .addr = A_AUTH_STATUS,
@@ -587,6 +605,10 @@ static void spartanup_pmc_global_init(Object *obj)
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_ccu, "rst-ccu", 1);
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_puf, "rst-puf", 1);
     qdev_init_gpio_out_named(DEVICE(obj), &s->rst_spare, "rst-spare", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->efuse_key_lock,
+                                    "efuse-key-lock", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->family_key_lock,
+                             "family-key-lock", 1);
     qdev_init_gpio_in_named(DEVICE(obj), spartanup_pmc_init_b_update, "init_b", 1);
 
     s->soft_reset = false;
@@ -618,6 +640,8 @@ static const FDTGenericGPIOSet spartanup_pmc_rst_gpios[] = {
             { .name = "rst-ccu", .fdt_index = 3, .range = 1 },
             { .name = "rst-puf", .fdt_index = 4, .range = 1 },
             { .name = "rst-spare", .fdt_index = 5, .range = 1 },
+            { .name = "efuse-key-lock", .fdt_index = 50, .range = 1},
+            { .name = "family-key-lock", .fdt_index = 51, .range = 1},
             { },
         },
     },
