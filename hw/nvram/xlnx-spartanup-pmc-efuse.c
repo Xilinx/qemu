@@ -415,23 +415,39 @@ static void spartanup_pmc_efuse_get_aes_key(SPARTANUP_PMC_EFUSE *s, uint8_t *key
 {
     size_t i;
 
+    /*
+     *  Big-Endian format
+     */
     for (i = 0; i < SPARTANUP_PMC_EFUSE_AES_KEY_LEN; i++) {
-        key[i] = (uint8_t)(xlnx_efuse_get_row(s->efuse,
-                                             SPARTANUP_PMC_EFUSE_AES_ROW_ADDR(i)) >>
-                                             SPARTANUP_PMC_EFUSE_AES_COL_OFFSET);
+        key[i ^ (SPARTANUP_PMC_EFUSE_AES_KEY_LEN - 1)] =
+                                         (uint8_t)(xlnx_efuse_get_row(s->efuse,
+                                         SPARTANUP_PMC_EFUSE_AES_ROW_ADDR(i)) >>
+                                         SPARTANUP_PMC_EFUSE_AES_COL_OFFSET);
     }
 }
 
 static void spartanup_pmc_efuse_key_sync(SPARTANUP_PMC_EFUSE *s)
 {
-    uint8_t key[256 >> 3];
+    union {
+        uint8_t u8[256 / 8];
+        uint32_t u32[256 / 32];
+    } key;
+    int i;
 
     /* First of all check that the AES key is enabled.  */
     if (!ARRAY_FIELD_EX32(s->regs, STATUS, EFUSE_0_TBIT)) {
         return;
     }
-    spartanup_pmc_efuse_get_aes_key(s, key);
-    zynqmp_aes_key_update(s->aes_key_sink, key, sizeof(key));
+    spartanup_pmc_efuse_get_aes_key(s, key.u8);
+    /*
+     * TODO: Remove this when versal-aes accepts big-endian only.
+     * versal-aes model expects words in big-endian and bytes within
+     * words to be little-endian.
+     */
+    for (i = 0; i < 8; i++) {
+        key.u32[i] = bswap32(key.u32[i]);
+    }
+    zynqmp_aes_key_update(s->aes_key_sink, key.u8, sizeof(key.u8));
 }
 
 /* Synchronize the cache registers with what's present in the eFuse.  */
@@ -851,7 +867,7 @@ static const Property spartanup_pmc_efuse_props[] = {
     DEFINE_PROP_LINK("efuse",
                      SPARTANUP_PMC_EFUSE, efuse,
                      TYPE_XLNX_EFUSE, XlnxEFuse *),
-    DEFINE_PROP_LINK("aes-key-sink-efuses",
+    DEFINE_PROP_LINK("zynqmp-aes-key-sink-efuses",
                      SPARTANUP_PMC_EFUSE, aes_key_sink,
                      TYPE_ZYNQMP_AES_KEY_SINK, ZynqMPAESKeySink *),
 };
