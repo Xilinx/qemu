@@ -821,7 +821,7 @@ static const MemoryRegionOps spartanup_pmc_efuse_ops = {
     .write = register_write_memory,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
-        .min_access_size = 4,
+        .min_access_size = 1,
         .max_access_size = 4,
     },
 };
