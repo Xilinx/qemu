@@ -513,6 +513,16 @@ static void ss_keyhole_write(void *opaque, hwaddr addr, uint64_t value,
     sbi_update_irq(s);
 }
 
+static uint64_t ss_keyhole_read(void *opaque, hwaddr addr,
+                     unsigned size)
+{
+    /*
+     * Key-hole read un-implemented
+     */
+    qemu_log_mask(LOG_UNIMP, "sbi Keyhole read not supported");
+    return 0;
+}
+
 static const MemoryRegionOps ss_ops = {
     .read = register_read_memory,
     .write = sbi_write,
@@ -525,6 +535,7 @@ static const MemoryRegionOps ss_ops = {
 
 static const MemoryRegionOps ss_keyhole_ops = {
     .write = ss_keyhole_write,
+    .read = ss_keyhole_read,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
