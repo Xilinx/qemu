@@ -370,10 +370,15 @@ static int ss_sbi_can_receive(void *opaque)
     uint32_t num = fifo_num_free(&s->fifo);
     uint32_t recvb = 0;
 
-    if (s->cs || s->rdwr) {
+    if (s->cs || s->rdwr || num == 0) {
         /* Data lines are in tristate when cs is high or
-         * Master is in Read back mode
+         * Master is in Read back mode or
+         * FIFO is full
          * */
+        if (num == 0) {
+            ss_stream_notify(s);
+            sbi_update_irq(s);
+        }
         return 0;
     }
 
@@ -431,6 +436,16 @@ static void ss_sbi_receive(void *opaque, const uint8_t *buf, int size)
     ss_update_busy_line(s);
     sbi_update_irq(s);
 }
+
+static void ss_sbi_char_event_handler(void *opaque, QEMUChrEvent event)
+{
+    SlaveBootInt *s = SBI(opaque);
+
+    if (event == CHR_EVENT_OPENED) {
+        s->bus_width_detect_counter = 0;
+    }
+}
+
 /***/
 
 static void smap_update(void *opaque, int n, int level)
@@ -563,7 +578,8 @@ static void ss_realize(DeviceState *dev, Error **errp)
         DPRINT("SBI interface not connected\n");
     } else {
         qemu_chr_fe_set_handlers(&s->chr, ss_sbi_can_receive, ss_sbi_receive,
-                                 NULL, NULL, s, NULL, true);
+                                 ss_sbi_char_event_handler,
+                                 NULL, s, NULL, true);
     }
 
     fifo_create8(&s->fifo, 1024 * 64);
