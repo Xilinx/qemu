@@ -747,12 +747,12 @@ static void ospi_ind_read(XlnxVersalOspi *s, uint32_t flash_addr, uint32_t len)
     fifo8_reset(&s->rx_fifo);
 
     /* transmit second part (data) */
-    for (i = 0; i < len; ++i) {
+    for (i = 0; i < len && !fifo8_is_full(&s->tx_fifo); ++i) {
         fifo8_push(&s->tx_fifo, 0);
     }
     ospi_flush_txfifo(s);
 
-    for (i = 0; i < len; ++i) {
+    for (i = 0; i < len && !fifo8_is_full(&s->rx_sram); ++i) {
         fifo8_push(&s->rx_sram, fifo8_pop(&s->rx_fifo));
     }
 
@@ -843,7 +843,14 @@ static void ospi_do_ind_read(XlnxVersalOspi *s)
         end_b = next_b + fifo8_num_free(&s->rx_sram);
         end_b = MIN(end_b, ind_op_end_byte(op));
 
-        len = end_b - next_b;
+        if (end_b < next_b) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "Wrong flash-addr:0x%x & length:0x%x",
+                           op->flash_addr, op->num_bytes);
+            len = fifo8_num_free(&s->rx_sram);
+        } else {
+            len = end_b - next_b;
+        }
         ospi_ind_read(s, next_b, len);
         ind_op_advance(op, len);
 
