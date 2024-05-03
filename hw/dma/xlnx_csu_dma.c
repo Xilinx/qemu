@@ -581,6 +581,12 @@ static MemTxResult xlnx_csu_dma_class_read(XlnxCSUDMA *s, hwaddr addr,
     RegisterInfo *reg = &s->regs_info[R_SIZE];
     uint64_t we = MAKE_64BIT_MASK(0, 4 * 8);
 
+    if (s->regs[R_STATUS] & R_STATUS_BUSY_MASK) {
+        /*
+         * DMA in progress
+         */
+        return MEMTX_ERROR;
+    }
     s->regs[R_ADDR] = addr;
     s->regs[R_ADDR_MSB] = (uint64_t)addr >> 32;
 
