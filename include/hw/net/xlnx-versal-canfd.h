@@ -33,7 +33,7 @@
 #include "net/can_emu.h"
 #include "hw/qdev-clock.h"
 
-#define TYPE_XILINX_CANFD "xlnx-versal-canfd"
+#define TYPE_XILINX_CANFD "xlnx.versal-canfd"
 
 OBJECT_DECLARE_SIMPLE_TYPE(XlnxVersalCANFDState, XILINX_CANFD)
 
