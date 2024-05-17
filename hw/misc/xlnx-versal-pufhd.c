@@ -362,7 +362,7 @@ static bool versal_pufkey_from_efuse(const Versal_EFusePUF *ed, uint32_t size,
 }
 
 static bool versal_pufkey_from_buf(const void *base, uint32_t size,
-                                   uint32_t *c_hash, Versal_PufKey *key)
+                     uint32_t *c_hash, Versal_PufKey *key, bool alwaysUncomp)
 {
     const Versal_CommPUF *hd = base;
 
@@ -383,16 +383,20 @@ static bool versal_pufkey_from_buf(const void *base, uint32_t size,
         return false;
     }
 
-    switch (hd->x00c_ascii_012) {
-    case '\n':
+    if (alwaysUncomp) {
         return versal_pufkey_from_regis(base, size, c_hash, key);
-    case 0:
-        return versal_pufkey_from_efuse(base, size, c_hash, key);
-    default:
-        qemu_log("error: Versal PUF-REGENERATION: "
-                 "Helper-data header type-tag invalid: %#x\n",
-                 hd->x00c_ascii_012);
-        return false;
+    } else {
+        switch (hd->x00c_ascii_012) {
+        case '\n':
+            return versal_pufkey_from_regis(base, size, c_hash, key);
+        case 0:
+            return versal_pufkey_from_efuse(base, size, c_hash, key);
+        default:
+            qemu_log("error: Versal PUF-REGENERATION: "
+                     "Helper-data header type-tag invalid: 0x%x\n",
+                     hd->x00c_ascii_012);
+            return false;
+        }
     }
 }
 
@@ -487,7 +491,7 @@ static bool versal_pufhd_efuse_regen(const Versal_PUFRegen *data,
         hd_u32++;
     } while (hd_u32 < hd_e32);
 
-    return versal_pufkey_from_buf(hd.h.u32, sizeof(hd), c_hash, key);
+    return versal_pufkey_from_buf(hd.h.u32, sizeof(hd), c_hash, key, false);
 }
 
 static bool versal_pufhd_mem_regen(const Versal_PUFRegen *data,
@@ -503,7 +507,7 @@ static bool versal_pufhd_mem_regen(const Versal_PUFRegen *data,
         return false;
     }
 
-    return versal_pufkey_from_buf(hd.h.u32, sizeof(hd), c_hash, key);
+    return versal_pufkey_from_buf(hd.h.u32, sizeof(hd), c_hash, key, false);
 }
 
 static bool versal_pufhd_buf_regen(Versal_PUFRegen *data,
@@ -515,7 +519,7 @@ static bool versal_pufhd_buf_regen(Versal_PUFRegen *data,
     hd = (Versal_RegisPUF *)data->buf.pufhd;
     data->buf.pufhd = NULL;
 
-    ret = versal_pufkey_from_buf(hd->h.u32, sizeof(*hd), c_hash, key);
+    ret = versal_pufkey_from_buf(hd->h.u32, sizeof(*hd), c_hash, key, true);
     g_free(hd);
 
     return ret;
