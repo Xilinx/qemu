@@ -663,8 +663,14 @@ static void aes_key_clear_postw(RegisterInfo *reg, uint64_t val)
         case R_AES_KEY_CLEAR_KUP_KEY_MASK:
             key = &s->kup_key.key[0];
             break;
-        case R_AES_KEY_CLEAR_USER_KEY_0_MASK ...
-             R_AES_KEY_CLEAR_USER_KEY_1_MASK:
+        case R_AES_KEY_CLEAR_USER_KEY_0_MASK:
+        case R_AES_KEY_CLEAR_USER_KEY_1_MASK:
+        case R_AES_KEY_CLEAR_USER_KEY_2_MASK:
+        case R_AES_KEY_CLEAR_USER_KEY_3_MASK:
+        case R_AES_KEY_CLEAR_USER_KEY_4_MASK:
+        case R_AES_KEY_CLEAR_USER_KEY_5_MASK:
+        case R_AES_KEY_CLEAR_USER_KEY_6_MASK:
+        case R_AES_KEY_CLEAR_USER_KEY_7_MASK:
             key = s->user_key[i - R_AES_KEY_CLEAR_USER_KEY_0_SHIFT];
                 break;
         case R_AES_KEY_CLEAR_EFUSE_KEY_MASK:
