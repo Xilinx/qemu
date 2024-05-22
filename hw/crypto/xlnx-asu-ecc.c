@@ -185,6 +185,72 @@ static inline bool buffer_is_zero(const uint8_t *buf, size_t len)
     return true;
 }
 
+static void do_op_sign(XilinxAsuEccState *s)
+{
+    g_autoptr(QCryptoEcdsa) ecdsa;
+    QCryptoEcdsaCurve curve;
+    QCryptoEcdsaStatus ret;
+    size_t len;
+    uint8_t *p, *sig_r, *sig_s;
+
+    curve = get_curve(s);
+    len = get_curve_data_len(s);
+
+    ecdsa = qcrypto_ecdsa_new(curve);
+
+
+    p = get_mem_ptr(s, MEM_SIG_GEN_D_OFFSET, len);
+    ret = qcrypto_ecdsa_set_priv_key(ecdsa, p, len, NULL);
+    if (ret != QCRYPTO_ECDSA_OK) {
+        set_status_term_code(s, DEFAULT_ERROR);
+        return;
+    }
+
+    p = get_mem_ptr(s, MEM_SIG_GEN_K_OFFSET, len);
+    ret = qcrypto_ecdsa_set_random(ecdsa, p, len, NULL);
+    if (ret != QCRYPTO_ECDSA_OK) {
+        set_status_term_code(s, DEFAULT_ERROR);
+        return;
+    }
+
+    p = get_mem_ptr(s, MEM_SIG_GEN_Z_OFFSET, len);
+    ret = qcrypto_ecdsa_set_hash(ecdsa, p, len, NULL);
+    if (ret != QCRYPTO_ECDSA_OK) {
+        /*
+         * This one is not supposed to fail. There is no constraint on the hash
+         * value.
+         */
+        set_status_term_code(s, DEFAULT_ERROR);
+        return;
+    }
+
+    ret = qcrypto_ecdsa_sign(ecdsa, NULL);
+    if (ret != QCRYPTO_ECDSA_OK) {
+        /*
+         * We can't know for sure whether R or S was 0. Arbitrarily choose R.
+         * In any case it means that K is inappropriate.
+         */
+        set_status_term_code(s, ASU_ECC_R_ZERO);
+        return;
+
+    }
+
+    sig_r = get_mem_ptr(s, MEM_SIG_GEN_R_OFFSET, len);
+    sig_s = get_mem_ptr(s, MEM_SIG_GEN_S_OFFSET, len);
+
+    ret = qcrypto_ecdsa_get_sig(ecdsa, sig_r, len, sig_s, len, NULL);
+    if (ret != QCRYPTO_ECDSA_OK) {
+        /*
+         * This one is not supposed to fail. If the signature operation
+         * succeeded, R and S should be available.
+         */
+        set_status_term_code(s, DEFAULT_ERROR);
+        return;
+    }
+
+    set_status_term_code(s, ASU_ECC_SUCCESS);
+}
+
 static void do_op_sign_verif(XilinxAsuEccState *s)
 {
     g_autoptr(QCryptoEcdsa) ecdsa;
@@ -317,6 +383,10 @@ static void write_ctrl(XilinxAsuEccState *s, uint32_t val)
     switch (opcode) {
     case ASU_ECC_OP_SIG_VERIF:
         do_op_sign_verif(s);
+        break;
+
+    case ASU_ECC_OP_SIG_GEN:
+        do_op_sign(s);
         break;
 
     default:
