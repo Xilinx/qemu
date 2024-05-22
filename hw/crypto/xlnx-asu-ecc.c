@@ -185,6 +185,48 @@ static inline bool buffer_is_zero(const uint8_t *buf, size_t len)
     return true;
 }
 
+static void do_op_pub_key_gen(XilinxAsuEccState *s)
+{
+    g_autoptr(QCryptoEcdsa) ecdsa;
+    QCryptoEcdsaCurve curve;
+    QCryptoEcdsaStatus ret;
+    size_t len;
+    uint8_t *p, *pub_x, *pub_y;
+
+    curve = get_curve(s);
+    len = get_curve_data_len(s);
+
+    ecdsa = qcrypto_ecdsa_new(curve);
+
+    p = get_mem_ptr(s, MEM_PUB_KEY_GEN_D_OFFSET, len);
+    ret = qcrypto_ecdsa_set_priv_key(ecdsa, p, len, NULL);
+
+    if (ret != QCRYPTO_ECDSA_OK) {
+        set_status_term_code(s, DEFAULT_ERROR);
+        return;
+    }
+
+    ret = qcrypto_ecdsa_compute_pub_key(ecdsa, NULL);
+
+    if (ret != QCRYPTO_ECDSA_OK) {
+        set_status_term_code(s, DEFAULT_ERROR);
+        return;
+    }
+
+    pub_x = get_mem_ptr(s, MEM_PUB_KEY_GEN_X_OFFSET, len);
+    pub_y = get_mem_ptr(s, MEM_PUB_KEY_GEN_Y_OFFSET, len);
+
+    ret = qcrypto_ecdsa_get_pub_key(ecdsa, pub_x, len, pub_y, len, NULL);
+
+    if (ret != QCRYPTO_ECDSA_OK) {
+        set_status_term_code(s, DEFAULT_ERROR);
+        return;
+    }
+
+    set_status_term_code(s, ASU_ECC_SUCCESS);
+}
+
+
 static void do_op_sign(XilinxAsuEccState *s)
 {
     g_autoptr(QCryptoEcdsa) ecdsa;
@@ -383,6 +425,10 @@ static void write_ctrl(XilinxAsuEccState *s, uint32_t val)
     switch (opcode) {
     case ASU_ECC_OP_SIG_VERIF:
         do_op_sign_verif(s);
+        break;
+
+    case ASU_ECC_OP_PUB_KEY_GEN:
+        do_op_pub_key_gen(s);
         break;
 
     case ASU_ECC_OP_SIG_GEN:
