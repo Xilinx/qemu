@@ -185,6 +185,62 @@ static inline bool buffer_is_zero(const uint8_t *buf, size_t len)
     return true;
 }
 
+static void do_op_pub_key_valid(XilinxAsuEccState *s)
+{
+    g_autoptr(QCryptoEcdsa) ecdsa;
+    QCryptoEcdsaCurve curve;
+    size_t len;
+    uint8_t *pub_x, *pub_y;
+
+    curve = get_curve(s);
+    len = get_curve_data_len(s);
+
+    ecdsa = qcrypto_ecdsa_new(curve);
+
+    pub_x = get_mem_ptr(s, MEM_PUB_KEY_VALID_X_OFFSET, len);
+
+    if (buffer_is_zero(pub_x, len)) {
+        set_status_term_code(s, ASU_ECC_QX_ZERO);
+        return;
+    }
+
+    pub_y = get_mem_ptr(s, MEM_PUB_KEY_VALID_Y_OFFSET, len);
+
+    if (buffer_is_zero(pub_y, len)) {
+        set_status_term_code(s, ASU_ECC_QY_ZERO);
+        return;
+    }
+
+    switch (qcrypto_ecdsa_set_pub_key(ecdsa, pub_x, len, pub_y, len, NULL)) {
+    case QCRYPTO_ECDSA_OK:
+        set_status_term_code(s, ASU_ECC_SUCCESS);
+        break;
+
+    case QCRYPTO_ECDSA_PUB_KEY_NOT_ON_CURVE:
+        set_status_term_code(s, ASU_ECC_Q_NOT_ON_CURVE);
+        break;
+
+    case QCRYPTO_ECDSA_PUB_KEY_PROJ_AT_INF:
+        set_status_term_code(s, ASU_ECC_Q_BAD_ORDER);
+        break;
+
+    case QCRYPTO_ECDSA_PUB_KEY_X_OUT_OF_RANGE:
+        set_status_term_code(s, ASU_ECC_QX_GT_N_1);
+        break;
+
+    case QCRYPTO_ECDSA_PUB_KEY_Y_OUT_OF_RANGE:
+        set_status_term_code(s, ASU_ECC_QY_GT_N_1);
+        break;
+
+    case QCRYPTO_ECDSA_UNKNOWN_ERROR:
+        set_status_term_code(s, DEFAULT_ERROR);
+        break;
+
+    default:
+        g_assert_not_reached();
+    }
+}
+
 static void do_op_pub_key_gen(XilinxAsuEccState *s)
 {
     g_autoptr(QCryptoEcdsa) ecdsa;
@@ -425,6 +481,10 @@ static void write_ctrl(XilinxAsuEccState *s, uint32_t val)
     switch (opcode) {
     case ASU_ECC_OP_SIG_VERIF:
         do_op_sign_verif(s);
+        break;
+
+    case ASU_ECC_OP_PUB_KEY_VALID:
+        do_op_pub_key_valid(s);
         break;
 
     case ASU_ECC_OP_PUB_KEY_GEN:
