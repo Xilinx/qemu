@@ -1,0 +1,4 @@
+# xilinx-asu-ecc.c
+xilinx_asu_ecc_read(uint64_t addr, uint64_t data, unsigned int size) "addr 0x%" PRIx64 ", data 0x%" PRIx64 ", size %u"
+xilinx_asu_ecc_write(uint64_t addr, uint64_t data, unsigned int size) "addr 0x%" PRIx64 ", data 0x%" PRIx64 ", size %u"
+
