@@ -384,20 +384,64 @@ static QCryptoEcdsaStatus gcrypt_ecdsa_get_sig(QCryptoEcdsa *ecdsa,
     return QCRYPTO_ECDSA_OK;
 }
 
-static QCryptoEcdsaStatus gcrypt_ecdsa_sign(QCryptoEcdsa *ecdsa, Error **errp)
+/*
+ * Perform a ECDSA signing operation using libgcrypt primitives, effectively
+ * reimplementing the signing operation. This implementation is not
+ * cryptographicaly secure by any mean. Specifically, nothing is done to
+ * mitigate timing attacks.
+ *
+ * This function is used when libgcrypt is too old (<1.10) to support user
+ * provided k value.
+ */
+static QCryptoEcdsaStatus do_sign_inline(QCryptoEcdsa *ecdsa,
+                                         Error **errp)
+{
+    QCryptoEcdsaGcrypt *priv = get_priv(ecdsa);
+    g_auto(gcry_mpi_t) k_1 = NULL, x = NULL, n = NULL;
+    g_auto(gcry_mpi_point_t) g = NULL, kxg = NULL;
+
+    g = gcry_mpi_ec_get_point("g", priv->ctx, 0);
+    n = gcry_mpi_ec_get_mpi("n", priv->ctx, 0);
+
+    g_assert(priv->k);
+
+    /* kxg = k * G */
+    kxg = gcry_mpi_point_new(0);
+    gcry_mpi_ec_mul(kxg, priv->k, g, priv->ctx);
+
+    /* (x, _) = kxg */
+    x = gcry_mpi_new(0);
+    if (gcry_mpi_ec_get_affine(x, NULL, kxg, priv->ctx)) {
+        return QCRYPTO_ECDSA_UNKNOWN_ERROR;
+    }
+
+    /* r = x mod n */
+    if (!priv->r) {
+        priv->r = gcry_mpi_new(0);
+    }
+    gcry_mpi_mod(priv->r, x, n);
+
+    /* k_1 = k^-1 mod n */
+    k_1 = gcry_mpi_new(0);
+    if (!gcry_mpi_invm(k_1, priv->k, n)) {
+        return QCRYPTO_ECDSA_UNKNOWN_ERROR;
+    }
+
+    /* s = priv->k^-1 * (hash + r * d) mod n */
+    if (!priv->s) {
+        priv->s = gcry_mpi_new(0);
+    }
+    gcry_mpi_mulm(priv->s, priv->r, priv->d, n);
+    gcry_mpi_addm(priv->s, priv->s, priv->h, n);
+    gcry_mpi_mulm(priv->s, k_1, priv->s, n);
+
+    return QCRYPTO_ECDSA_OK;
+}
+
+static QCryptoEcdsaStatus do_sign_gcrypt(QCryptoEcdsa *ecdsa, Error **errp)
 {
     g_auto(gcry_sexp_t) digest_sexp = NULL, key_sexp = NULL, sig_sexp = NULL;
     QCryptoEcdsaGcrypt *priv = get_priv(ecdsa);
-
-    if (!priv->h) {
-        error_setg(errp, "hash not set");
-        return QCRYPTO_ECDSA_HASH_NOT_AVAILABLE;
-    }
-
-    if (!priv->d) {
-        error_setg(errp, "private key not set");
-        return QCRYPTO_ECDSA_PRIV_KEY_NOT_AVAILABLE;
-    }
 
     if (priv->k) {
         GCRYPT_NO_FAIL(gcry_sexp_build(&digest_sexp, NULL,
@@ -425,6 +469,27 @@ static QCryptoEcdsaStatus gcrypt_ecdsa_sign(QCryptoEcdsa *ecdsa, Error **errp)
     }
 
     return QCRYPTO_ECDSA_OK;
+}
+
+static QCryptoEcdsaStatus gcrypt_ecdsa_sign(QCryptoEcdsa *ecdsa, Error **errp)
+{
+    QCryptoEcdsaGcrypt *priv = get_priv(ecdsa);
+
+    if (!priv->h) {
+        error_setg(errp, "hash not set");
+        return QCRYPTO_ECDSA_HASH_NOT_AVAILABLE;
+    }
+
+    if (!priv->d) {
+        error_setg(errp, "private key not set");
+        return QCRYPTO_ECDSA_PRIV_KEY_NOT_AVAILABLE;
+    }
+
+    if (priv->k && (!gcry_check_version("1.10.0"))) {
+        return do_sign_inline(ecdsa, errp);
+    } else {
+        return do_sign_gcrypt(ecdsa, errp);
+    }
 }
 
 static QCryptoEcdsaStatus gcrypt_ecdsa_verify(QCryptoEcdsa *ecdsa, Error **errp)
