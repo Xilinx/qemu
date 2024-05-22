@@ -7,6 +7,7 @@ crypto_ss.add(files(
   'block.c',
   'cipher.c',
   'der.c',
+  'ecdsa.c',
   'hash.c',
   'hmac.c',
   'ivgen-essiv.c',
@@ -52,12 +53,15 @@ endif
 
 system_ss.add(when: gnutls, if_true: files('tls-cipher-suites.c'))
 
+crypto_ss.add(gcrypt, files('ecdsa-stub.c'))
+
 util_ss.add(files(
   'aes.c',
   'clmul.c',
   'init.c',
   'sm4.c',
 ))
+
 if gnutls.found()
   util_ss.add(gnutls)
 endif
