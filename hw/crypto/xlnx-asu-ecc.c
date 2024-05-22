@@ -102,6 +102,12 @@ REG32(MEM_LAST, 0x34c)
 #define MEM_PUB_KEY_GEN_Y_OFFSET 0xc0
 
 
+/*
+ * About error reporting: the hardware does not expose an appropriate error
+ * code for all error conditions. Let's use a common error code in those cases.
+ */
+static const enum AsuEccTerminationCode DEFAULT_ERROR = ASU_ECC_BAD_OPCODE;
+
 static void update_irq(XilinxAsuEccState *s)
 {
     bool sta;
@@ -138,10 +144,151 @@ static void disable_irq(XilinxAsuEccState *s, uint32_t mask)
     update_irq(s);
 }
 
+static inline QCryptoEcdsaCurve get_curve(XilinxAsuEccState *s)
+{
+    return (s->ctrl & R_CTRL_CURVE_MASK)
+        ? QCRYPTO_ECDSA_NIST_P384
+        : QCRYPTO_ECDSA_NIST_P256;
+}
+
+static inline size_t get_curve_data_len(XilinxAsuEccState *s)
+{
+    return qcrypto_ecdsa_get_curve_data_size(get_curve(s));
+}
+
+static inline uint8_t *get_mem_ptr(XilinxAsuEccState *s, size_t offset,
+                                   size_t len)
+{
+    uint8_t *p = (uint8_t *) s->mem;
+
+    g_assert((offset + len) <= sizeof(s->mem));
+
+    return p + offset;
+}
+
 static inline void set_status_term_code(XilinxAsuEccState *s,
                                         enum AsuEccTerminationCode code)
 {
     s->status = FIELD_DP32(s->status, STATUS, TERMINATION_CODE, code);
+}
+
+static inline bool buffer_is_zero(const uint8_t *buf, size_t len)
+{
+    size_t i;
+
+    for (i = 0; i < len; i++) {
+        if (buf[i]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static void do_op_sign_verif(XilinxAsuEccState *s)
+{
+    g_autoptr(QCryptoEcdsa) ecdsa;
+    QCryptoEcdsaCurve curve;
+    size_t len;
+    uint8_t *p, *sig_r, *sig_s, *pub_x, *pub_y;
+    QCryptoEcdsaStatus ret;
+
+    curve = get_curve(s);
+    len = get_curve_data_len(s);
+
+    ecdsa = qcrypto_ecdsa_new(curve);
+
+    p = get_mem_ptr(s, MEM_SIG_VERIF_Z_OFFSET, len);
+    ret = qcrypto_ecdsa_set_hash(ecdsa, p, len, NULL);
+    if (ret != QCRYPTO_ECDSA_OK) {
+        /*
+         * This one is not supposed to fail. There is no constraint on the hash
+         * value.
+         */
+        set_status_term_code(s, DEFAULT_ERROR);
+        return;
+    }
+
+    sig_r = get_mem_ptr(s, MEM_SIG_VERIF_R_OFFSET, len);
+
+    if (buffer_is_zero(sig_r, len)) {
+        set_status_term_code(s, ASU_ECC_R_ZERO);
+        return;
+    }
+
+    sig_s = get_mem_ptr(s, MEM_SIG_VERIF_S_OFFSET, len);
+
+    if (buffer_is_zero(sig_s, len)) {
+        set_status_term_code(s, ASU_ECC_S_ZERO);
+        return;
+    }
+
+    ret = qcrypto_ecdsa_set_sig(ecdsa, sig_r, len, sig_s, len, NULL);
+
+    if (ret == QCRYPTO_ECDSA_SIG_R_OUT_OF_RANGE) {
+        set_status_term_code(s, ASU_ECC_R_GT_N_1);
+        return;
+    }
+
+    if (ret == QCRYPTO_ECDSA_SIG_S_OUT_OF_RANGE) {
+        set_status_term_code(s, ASU_ECC_S_GT_N_1);
+        return;
+    }
+
+    pub_x = get_mem_ptr(s, MEM_SIG_VERIF_X_OFFSET, len);
+
+    if (buffer_is_zero(pub_x, len)) {
+        set_status_term_code(s, ASU_ECC_QX_ZERO);
+        return;
+    }
+
+    pub_y = get_mem_ptr(s, MEM_SIG_VERIF_Y_OFFSET, len);
+
+    if (buffer_is_zero(pub_y, len)) {
+        set_status_term_code(s, ASU_ECC_QY_ZERO);
+        return;
+    }
+
+    switch (qcrypto_ecdsa_set_pub_key(ecdsa, pub_x, len, pub_y, len, NULL)) {
+    case QCRYPTO_ECDSA_OK:
+        break;
+
+    case QCRYPTO_ECDSA_PUB_KEY_X_OUT_OF_RANGE:
+        set_status_term_code(s, ASU_ECC_QX_GT_N_1);
+        return;
+
+    case QCRYPTO_ECDSA_PUB_KEY_Y_OUT_OF_RANGE:
+        set_status_term_code(s, ASU_ECC_QY_GT_N_1);
+        return;
+
+    case QCRYPTO_ECDSA_PUB_KEY_NOT_ON_CURVE:
+        set_status_term_code(s, ASU_ECC_Q_NOT_ON_CURVE);
+        return;
+
+    case QCRYPTO_ECDSA_UNKNOWN_ERROR:
+        set_status_term_code(s, DEFAULT_ERROR);
+        return;
+
+    default:
+        g_assert_not_reached();
+    }
+
+    switch (qcrypto_ecdsa_verify(ecdsa, NULL)) {
+    case QCRYPTO_ECDSA_OK:
+        set_status_term_code(s, ASU_ECC_SUCCESS);
+        break;
+
+    case QCRYPTO_ECDSA_SIG_MISMATCH:
+        set_status_term_code(s, ASU_ECC_SIG_MISMATCH);
+        break;
+
+    case QCRYPTO_ECDSA_UNKNOWN_ERROR:
+        set_status_term_code(s, DEFAULT_ERROR);
+        break;
+
+    default:
+        g_assert_not_reached();
+    }
 }
 
 static void write_ctrl(XilinxAsuEccState *s, uint32_t val)
@@ -168,6 +315,10 @@ static void write_ctrl(XilinxAsuEccState *s, uint32_t val)
     }
 
     switch (opcode) {
+    case ASU_ECC_OP_SIG_VERIF:
+        do_op_sign_verif(s);
+        break;
+
     default:
         set_status_term_code(s, ASU_ECC_BAD_OPCODE);
         return;
