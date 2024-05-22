@@ -53,7 +53,11 @@ endif
 
 system_ss.add(when: gnutls, if_true: files('tls-cipher-suites.c'))
 
-crypto_ss.add(gcrypt, files('ecdsa-stub.c'))
+if gcrypt.found()
+  crypto_ss.add(gcrypt, files('ecdsa-gcrypt.c'))
+else
+  crypto_ss.add(gcrypt, files('ecdsa-stub.c'))
+endif
 
 util_ss.add(files(
   'aes.c',
