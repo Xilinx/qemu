@@ -155,6 +155,7 @@ system_ss.add(when: 'CONFIG_XLNX_VERSAL', if_true: files(
 
 system_ss.add(when: 'CONFIG_XLNX_VERSAL_PMC', if_true: files(
   'xlnx-prng-impl-non-crypto.c',
+  'xlnx-trng1-r2.c',
   'xlnx-versal-pmx-iou-slcr.c',
   'xlnx-versal-pmx-iou-secure-slcr.c',
   'xlnx-versal-pmx-crp.c',
