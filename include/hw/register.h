@@ -151,6 +151,36 @@ void register_reset(RegisterInfo *reg);
 void register_init(RegisterInfo *reg);
 
 /**
+ * Return data from an 8-bit register.
+ * @reg: Register to read from
+ */
+
+static inline uint8_t register_data_8(RegisterInfo *reg)
+{
+    return *(uint8_t *)(reg->data);
+}
+
+/**
+ * Return data from a 32-bit register.
+ * @reg: Register to read from
+ */
+
+static inline uint32_t register_data_32(RegisterInfo *reg)
+{
+    return *(uint32_t *)(reg->data);
+}
+
+/**
+ * Return data from a 64-bit register.
+ * @reg: Register to read from
+ */
+
+static inline uint64_t register_data_64(RegisterInfo *reg)
+{
+    return *(uint64_t *)(reg->data);
+}
+
+/**
  * Memory API MMIO write handler that will write to a Register API register.
  * @opaque: RegisterInfo to write to
  * @addr: Address to write
