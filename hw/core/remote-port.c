@@ -391,12 +391,20 @@ static char *rp_autocreate_chardesc(RemotePort *s, bool server)
 
 static Chardev *rp_autocreate_chardev(RemotePort *s, char *name)
 {
-    Chardev *chr;
+    Chardev *chr = NULL;
     char *chardesc;
+    char *s_path;
+    int r;
 
-    chardesc = rp_autocreate_chardesc(s, false);
-    chr = qemu_chr_new_noreplay(name, chardesc, false, NULL);
-    free(chardesc);
+    r = asprintf(&s_path, "%s/qemu-rport-%s", machine_path,
+                 rp_sanitize_prefix(s));
+    assert(r > 0);
+    if (g_file_test(s_path, G_FILE_TEST_EXISTS)) {
+        chardesc = rp_autocreate_chardesc(s, false);
+        chr = qemu_chr_new_noreplay(name, chardesc, false, NULL);
+        free(chardesc);
+    }
+    free(s_path);
 
     if (!chr) {
         chardesc = rp_autocreate_chardesc(s, true);
