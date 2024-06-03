@@ -773,7 +773,7 @@ static const RegisterAccessInfo pmx_crp_regs_info[] = {
         .pre_write = rst_ps_prew,
         .post_write = crp_update_gpios_pw,
     },{ .name = "RST_NONPS",  .addr = A_RST_NONPS,
-        .reset = 0x77,
+        .reset = 0x00,
         .rsvd = 0x88,
         .post_write = crp_update_gpios_pw,
     },{ .name = "RST_SBI",  .addr = A_RST_SBI,
