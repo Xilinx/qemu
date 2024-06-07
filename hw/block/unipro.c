@@ -237,6 +237,7 @@ static const TypeInfo uniproMphy_info = {
     .instance_init = uniproMphy_init,
     .interfaces = (InterfaceInfo[]) {
         { TYPE_UFSHC_IF },
+        { },
     },
 };
 
