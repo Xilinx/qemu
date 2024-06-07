@@ -487,12 +487,17 @@ char *qemu_fdt_getprop_string(void *fdt, const char*node_path,
         prop += diff;
         cell--;
     }
+
+    if (!len) {
+        return NULL;
+    }
+
     if (!*(char *)prop) {
         error_setg(errp, "%s: Couldn't get %s/%s: %s", __func__,
                   node_path, property, fdt_strerror(len));
         return NULL;
     }
-    return len ? prop : NULL;
+    return prop;
 }
 
 uint32_t qemu_fdt_getprop_cell(void *fdt, const char *node_path,
