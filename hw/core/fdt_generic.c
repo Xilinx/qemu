@@ -175,39 +175,39 @@ int fdt_init_has_opaque(FDTMachineInfo *fdti, char *node_path)
 
 static void *fdt_init_add_cpu_cluster(FDTMachineInfo *fdti, char *compat)
 {
-	static int i = 0;
-	FDTCPUCluster *cl = g_malloc0(sizeof(*cl));
-	char *name = g_strdup_printf("cluster%d", i);
-	Object *obj;
+    static int i;
+    FDTCPUCluster *cl = g_malloc0(sizeof(*cl));
+    char *name = g_strdup_printf("cluster%d", i);
+    Object *obj;
 
-	obj = object_new(TYPE_CPU_CLUSTER);
-	object_property_add_child(object_get_root(), name, OBJECT(obj));
-	qdev_prop_set_uint32(DEVICE(obj), "cluster-id", i++);
+    obj = object_new(TYPE_CPU_CLUSTER);
+    object_property_add_child(object_get_root(), name, OBJECT(obj));
+    qdev_prop_set_uint32(DEVICE(obj), "cluster-id", i++);
 
-	cl->cpu_type = g_strdup(compat);
-	cl->cpu_cluster = obj;
-	cl->next = fdti->clusters;
+    cl->cpu_type = g_strdup(compat);
+    cl->cpu_cluster = obj;
+    cl->next = fdti->clusters;
 
-	fdti->clusters = cl;
+    fdti->clusters = cl;
 
-	g_free(name);
+    g_free(name);
 
-	return obj;
+    return obj;
 }
 
 void *fdt_init_get_cpu_cluster(FDTMachineInfo *fdti, char *compat)
 {
-	FDTCPUCluster *cl = fdti->clusters;
+    FDTCPUCluster *cl = fdti->clusters;
 
-	while (cl) {
-		if (!strcmp(compat, cl->cpu_type)) {
-			return cl->cpu_cluster;
-		}
-		cl = cl->next;
-	}
+    while (cl) {
+        if (!strcmp(compat, cl->cpu_type)) {
+            return cl->cpu_cluster;
+        }
+        cl = cl->next;
+    }
 
-	/* No cluster found so create and return a new one */
-	return fdt_init_add_cpu_cluster(fdti, compat);
+    /* No cluster found so create and return a new one */
+    return fdt_init_add_cpu_cluster(fdti, compat);
 }
 
 void *fdt_init_get_opaque(FDTMachineInfo *fdti, char *node_path)
@@ -238,8 +238,8 @@ void fdt_init_destroy_fdti(FDTMachineInfo *fdti)
     FDTDevOpaque *dp;
 
     while (cl) {
-	FDTCPUCluster *tmp = cl;
-	cl = cl->next;
+        FDTCPUCluster *tmp = cl;
+        cl = cl->next;
         g_free(tmp->cpu_type);
         g_free(tmp);
     }
