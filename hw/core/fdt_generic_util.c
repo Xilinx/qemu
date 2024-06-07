@@ -50,6 +50,7 @@
 #include "hw/boards.h"
 #include "qemu/option.h"
 #include "hw/qdev-properties.h"
+#include "hw/cpu/cluster.h"
 
 #ifndef FDT_GENERIC_UTIL_ERR_DEBUG
 #define FDT_GENERIC_UTIL_ERR_DEBUG 3
@@ -1170,11 +1171,13 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
     while (!fdt_init_has_opaque(fdti, parent_node_path)) {
         fdt_init_yield(fdti);
     }
+
+    parent = fdt_init_get_opaque(fdti, parent_node_path);
+
     if (object_dynamic_cast(dev, TYPE_CPU)) {
-	parent = fdt_init_get_cpu_cluster(fdti, compat);
-    } else {
-        parent = fdt_init_get_opaque(fdti, parent_node_path);
+        parent = fdt_init_get_cpu_cluster(fdti, parent, compat);
     }
+
     if (dev->parent) {
         DB_PRINT_NP(0, "Node already parented - skipping node\n");
     } else if (parent) {
@@ -1535,8 +1538,17 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
         /* Regular TYPE_DEVICE houskeeping */
         DB_PRINT_NP(0, "Short naming node: %s\n", short_name);
         (DEVICE(dev))->id = g_strdup(short_name);
-        object_property_set_bool(OBJECT(dev), "realized", true, &error_fatal);
-        qemu_register_reset((void (*)(void *))dc->reset, dev);
+
+        if (object_dynamic_cast(dev, TYPE_CPU_CLUSTER)) {
+            /*
+             * CPU clusters must be realized at the end to make sure all child
+             * CPUs are parented.
+             */
+            fdt_init_register_user_cpu_cluster(fdti, OBJECT(dev));
+        } else {
+            object_property_set_bool(OBJECT(dev), "realized", true, &error_fatal);
+            qemu_register_reset((void (*)(void *))dc->reset, dev);
+        }
     }
 
     if (object_dynamic_cast(dev, TYPE_SYS_BUS_DEVICE) ||

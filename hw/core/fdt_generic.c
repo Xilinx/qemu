@@ -173,16 +173,42 @@ int fdt_init_has_opaque(FDTMachineInfo *fdti, char *node_path)
     return 0;
 }
 
-static void *fdt_init_add_cpu_cluster(FDTMachineInfo *fdti, char *compat)
+static int get_next_cpu_cluster_id(void)
 {
     static int i;
+
+    return i++;
+}
+
+void fdt_init_register_user_cpu_cluster(FDTMachineInfo *fdti, Object *cluster)
+{
+    int i = get_next_cpu_cluster_id();
+    DeviceState *dev = DEVICE(cluster);
+    FDTCPUCluster *cl;
+
+    qdev_prop_set_uint32(dev, "cluster-id", i);
+
+    cl = g_new0(FDTCPUCluster, 1);
+    cl->cpu_cluster = cluster;
+    cl->next = fdti->clusters;
+    cl->user = true;
+
+    fdti->clusters = cl;
+
+    DB_PRINT(0, "%s: Registered user-defined cpu cluster with id %d\n",
+             object_get_canonical_path(cluster), i);
+}
+
+static void *fdt_init_add_cpu_cluster(FDTMachineInfo *fdti, char *compat)
+{
     FDTCPUCluster *cl = g_malloc0(sizeof(*cl));
+    int i = get_next_cpu_cluster_id();
     char *name = g_strdup_printf("cluster%d", i);
     Object *obj;
 
     obj = object_new(TYPE_CPU_CLUSTER);
     object_property_add_child(object_get_root(), name, OBJECT(obj));
-    qdev_prop_set_uint32(DEVICE(obj), "cluster-id", i++);
+    qdev_prop_set_uint32(DEVICE(obj), "cluster-id", i);
 
     cl->cpu_type = g_strdup(compat);
     cl->cpu_cluster = obj;
@@ -195,12 +221,17 @@ static void *fdt_init_add_cpu_cluster(FDTMachineInfo *fdti, char *compat)
     return obj;
 }
 
-void *fdt_init_get_cpu_cluster(FDTMachineInfo *fdti, char *compat)
+void *fdt_init_get_cpu_cluster(FDTMachineInfo *fdti, Object *parent, char *compat)
 {
     FDTCPUCluster *cl = fdti->clusters;
 
+    if (object_dynamic_cast(parent, TYPE_CPU_CLUSTER)) {
+        /* The direct parent of this CPU is a CPU cluster. Use it. */
+        return parent;
+    }
+
     while (cl) {
-        if (!strcmp(compat, cl->cpu_type)) {
+        if (!cl->user && !strcmp(compat, cl->cpu_type)) {
             return cl->cpu_cluster;
         }
         cl = cl->next;

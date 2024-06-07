@@ -23,6 +23,7 @@ typedef struct FDTCPUCluster {
     char *cpu_type;
     void *cpu_cluster;
     void *next;
+    bool user;
 } FDTCPUCluster;
 
 typedef struct FDTIRQConnection {
@@ -93,7 +94,8 @@ void fdt_init_set_opaque(FDTMachineInfo *fdti, char *node_path, void *opaque);
 int fdt_init_has_opaque(FDTMachineInfo *fdti, char *node_path);
 void *fdt_init_get_opaque(FDTMachineInfo *fdti, char *node_path);
 
-void *fdt_init_get_cpu_cluster(FDTMachineInfo *fdti, char *compat);
+void *fdt_init_get_cpu_cluster(FDTMachineInfo *fdti, Object *parent, char *compat);
+void fdt_init_register_user_cpu_cluster(FDTMachineInfo *fdti, Object *cluster);
 
 /* statically register a FDTInitFn as being associate with a compatibility */
 
