@@ -69,6 +69,8 @@ static void riscv_fdt_machine_init(MachineClass *mc)
 {
     mc->desc = "RISC-V flat device tree driven machine model";
     mc->init = riscv_fdt_init;
+    mc->max_cpus = 64;
+    mc->default_cpus = 64;
 }
 
 DEFINE_MACHINE("riscv-fdt", riscv_fdt_machine_init)
