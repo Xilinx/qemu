@@ -457,15 +457,38 @@ static Property sifive_plic_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
+static int sifive_plic_fdt_get_irq(FDTGenericIntc *obj, qemu_irq *irqs,
+                                   uint32_t *cells, int ncells, int max,
+                                   Error **errp)
+{
+    *irqs = qdev_get_gpio_in(DEVICE(obj), cells[0]);
+    return 1;
+}
+
+static const FDTGenericGPIOSet sifive_plic_client_gpios[] = {
+    {
+        .names = &fdt_generic_gpio_name_set_interrupts,
+        .gpios = (FDTGenericGPIOConnection []) {
+            { .range = 256 },
+            { },
+        },
+    },
+    { },
+};
+
 static void sifive_plic_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    FDTGenericIntcClass *fgic = FDT_GENERIC_INTC_CLASS(klass);
+    FDTGenericGPIOClass *fggc = FDT_GENERIC_GPIO_CLASS(klass);
     FDTGenericHelperClass *fghc = FDT_GENERIC_HELPER_CLASS(klass);
 
     dc->reset = sifive_plic_reset;
     device_class_set_props(dc, sifive_plic_properties);
     dc->realize = sifive_plic_realize;
     dc->vmsd = &vmstate_sifive_plic;
+    fgic->get_irq = sifive_plic_fdt_get_irq;
+    fggc->client_gpios = sifive_plic_client_gpios;
     fghc->ready_to_realize = sifive_plic_ready_to_realize;
 }
 
@@ -475,6 +498,8 @@ static const TypeInfo sifive_plic_info = {
     .instance_size = sizeof(SiFivePLICState),
     .class_init    = sifive_plic_class_init,
     .interfaces    = (InterfaceInfo []) {
+        { TYPE_FDT_GENERIC_INTC },
+        { TYPE_FDT_GENERIC_GPIO },
         { TYPE_FDT_GENERIC_HELPER },
         { },
     },
