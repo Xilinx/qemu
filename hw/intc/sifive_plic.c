@@ -31,6 +31,7 @@
 #include "migration/vmstate.h"
 #include "hw/irq.h"
 #include "sysemu/kvm.h"
+#include "hw/fdt_generic_util.h"
 
 static bool addr_between(uint32_t addr, uint32_t base, uint32_t num)
 {
@@ -402,6 +403,22 @@ static void sifive_plic_realize(DeviceState *dev, Error **errp)
     msi_nonbroken = true;
 }
 
+static bool sifive_plic_ready_to_realize(DeviceState *dev)
+{
+    SiFivePLICState *s = SIFIVE_PLIC(dev);
+    size_t i;
+
+    parse_hart_config(s);
+
+    for (i = 0; i < s->num_harts; i++) {
+        if (qemu_get_cpu(s->hartid_base + i) == NULL) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 static const VMStateDescription vmstate_sifive_plic = {
     .name = "riscv_sifive_plic",
     .version_id = 1,
@@ -443,11 +460,13 @@ static Property sifive_plic_properties[] = {
 static void sifive_plic_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    FDTGenericHelperClass *fghc = FDT_GENERIC_HELPER_CLASS(klass);
 
     dc->reset = sifive_plic_reset;
     device_class_set_props(dc, sifive_plic_properties);
     dc->realize = sifive_plic_realize;
     dc->vmsd = &vmstate_sifive_plic;
+    fghc->ready_to_realize = sifive_plic_ready_to_realize;
 }
 
 static const TypeInfo sifive_plic_info = {
@@ -455,6 +474,10 @@ static const TypeInfo sifive_plic_info = {
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(SiFivePLICState),
     .class_init    = sifive_plic_class_init,
+    .interfaces    = (InterfaceInfo []) {
+        { TYPE_FDT_GENERIC_HELPER },
+        { },
+    },
 };
 
 static void sifive_plic_register_types(void)
