@@ -2118,6 +2118,50 @@ static void cpu_get_marchid(Object *obj, Visitor *v, const char *name,
     visit_type_bool(v, name, &value, errp);
 }
 
+#ifndef CONFIG_USER_ONLY
+static void cpu_set_mhartid(Object *obj, Visitor *v, const char *name,
+                            void *opaque, Error **errp)
+{
+    RISCVCPU *cpu = RISCV_CPU(obj);
+    uint64_t value, invalid_val;
+    uint32_t mxlen = 0;
+
+    if (!visit_type_uint64(v, name, &value, errp)) {
+        return;
+    }
+
+    switch (riscv_cpu_mxl(&cpu->env)) {
+    case MXL_RV32:
+        mxlen = 32;
+        break;
+    case MXL_RV64:
+    case MXL_RV128:
+        mxlen = 64;
+        break;
+    default:
+        g_assert_not_reached();
+    }
+
+    invalid_val = 1LL << (mxlen - 1);
+
+    if (value == invalid_val) {
+        error_setg(errp, "Unable to set mhartid with MSB (%u) bit set "
+                         "and the remaining bits zero", mxlen);
+        return;
+    }
+
+    cpu->env.mhartid = value;
+}
+
+static void cpu_get_mhartid(Object *obj, Visitor *v, const char *name,
+                            void *opaque, Error **errp)
+{
+    bool value = RISCV_CPU(obj)->env.mhartid;
+
+    visit_type_bool(v, name, &value, errp);
+}
+#endif /* !CONFIG_USER_ONLY */
+
 static void riscv_cpu_class_init(ObjectClass *c, void *data)
 {
     RISCVCPUClass *mcc = RISCV_CPU_CLASS(c);
@@ -2157,6 +2201,11 @@ static void riscv_cpu_class_init(ObjectClass *c, void *data)
 
     object_class_property_add(c, "marchid", "uint64", cpu_get_marchid,
                               cpu_set_marchid, NULL, NULL);
+
+#ifndef CONFIG_USER_ONLY
+    object_class_property_add(c, "mhartid", "uint64", cpu_get_mhartid,
+                              cpu_set_mhartid, NULL, NULL);
+#endif /* !CONFIG_USER_ONLY */
 
     device_class_set_props(dc, riscv_cpu_properties);
 }
