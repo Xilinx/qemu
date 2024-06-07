@@ -260,4 +260,24 @@ typedef struct FDTGenericPropsClass {
     void (*set_props)(Object *obj, Error **errp);
 } FDTGenericPropsClass;
 
+
+#define TYPE_FDT_GENERIC_HELPER "fdt-generic-helper"
+
+#define FDT_GENERIC_HELPER_CLASS(klass) \
+    OBJECT_CLASS_CHECK(FDTGenericHelperClass, (klass), \
+                       TYPE_FDT_GENERIC_HELPER)
+#define FDT_GENERIC_HELPER_GET_CLASS(obj) \
+    OBJECT_GET_CLASS(FDTGenericHelperClass, (obj), \
+                     TYPE_FDT_GENERIC_HELPER)
+
+typedef struct FDTGenericHelperClass {
+    /*< private >*/
+    InterfaceClass parent_class;
+
+    /*< public >*/
+
+    /* Return true if the device is ready to be realized */
+    bool (*ready_to_realize)(DeviceState *dev);
+} FDTGenericHelperClass;
+
 #endif /* FDT_GENERIC_UTIL_H */

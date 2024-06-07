@@ -1129,6 +1129,23 @@ static void fdt_prop_override(char *node_path,
     g_free(pfxPropname);
 }
 
+static bool ready_to_realize(DeviceState *dev)
+{
+    FDTGenericHelperClass *fghc;
+
+    if (!object_dynamic_cast(OBJECT(dev), TYPE_FDT_GENERIC_HELPER)) {
+        return true;
+    }
+
+    fghc = FDT_GENERIC_HELPER_GET_CLASS(dev);
+
+    if (!fghc->ready_to_realize) {
+        return true;
+    }
+
+    return fghc->ready_to_realize(dev);
+}
+
 static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
 {
     Object *dev, *parent;
@@ -1546,6 +1563,10 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
              */
             fdt_init_register_user_cpu_cluster(fdti, OBJECT(dev));
         } else {
+            while (!ready_to_realize(DEVICE(dev))) {
+                fdt_init_yield(fdti);
+            }
+
             object_property_set_bool(OBJECT(dev), "realized", true, &error_fatal);
             qemu_register_reset((void (*)(void *))dc->reset, dev);
         }
@@ -1826,12 +1847,19 @@ static const TypeInfo fdt_generic_props_info = {
     .class_size = sizeof(FDTGenericPropsClass),
 };
 
+static const TypeInfo fdt_generic_helper_info = {
+    .name          = TYPE_FDT_GENERIC_HELPER,
+    .parent        = TYPE_INTERFACE,
+    .class_size = sizeof(FDTGenericHelperClass),
+};
+
 static void fdt_generic_intc_register_types(void)
 {
     type_register_static(&fdt_generic_intc_info);
     type_register_static(&fdt_generic_mmap_info);
     type_register_static(&fdt_generic_gpio_info);
     type_register_static(&fdt_generic_props_info);
+    type_register_static(&fdt_generic_helper_info);
 }
 
 type_init(fdt_generic_intc_register_types)
