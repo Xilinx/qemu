@@ -600,6 +600,12 @@ static void dcc_write(CPUARMState *env, const ARMCPRegInfo *ri,
                         uint64_t value)
 {
     putchar(value);
+    fflush(stdout);
+}
+
+static uint64_t dcc_read(CPUARMState *env, const ARMCPRegInfo *ri)
+{
+    return 0;
 }
 
 static void oslar_write(CPUARMState *env, const ARMCPRegInfo *ri,
@@ -718,9 +724,17 @@ static const ARMCPRegInfo debug_cp_reginfo[] = {
       .cp = 14, .opc0 = 2, .opc1 = 0, .crn = 0, .crm = 2, .opc2 = 0,
       .access = PL1_RW, .accessfn = access_tda,
       .type = ARM_CP_NOP },
-    { .name = "DBGDTRTX_EL0", .state = ARM_CP_STATE_AA64,
-      .opc0 = 2, .opc1 = 3, .crn = 0, .crm = 5, .opc2 = 0,
-      .access = PL0_W, .writefn = dcc_write, .type = ARM_CP_NO_RAW },
+    { .name = "DBGDTR_EL0", .state = ARM_CP_STATE_AA64,
+       .opc0 = 2, .opc1 = 3, .crn = 0, .crm = 5, .opc2 = 0,
+       .access = PL0_RW, .writefn = dcc_write,  /* Xilinx */
+       .readfn = dcc_read,
+       .resetvalue = 0 },
+    /* DBGDTRTXint/DBGDTRRXint depend on direction */
+    { .name = "DBGDTRint", .state = ARM_CP_STATE_AA32, .cp = 14,
+      .opc1 = 0, .crn = 0, .crm = 5, .opc2 = 0,
+      .access = PL0_RW, .writefn = dcc_write,  /* Xilinx */
+      .readfn = dcc_read,
+      .resetvalue = 0 },
 };
 
 static const ARMCPRegInfo debug_lpae_cp_reginfo[] = {
