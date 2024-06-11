@@ -21,12 +21,16 @@
 #define XILINX_SPARTANUP_PMC_SHA3_ERR_DEBUG 0
 #endif
 
-#define TYPE_XILINX_SPARTANUP_PMC_SHA3 "xlnx.spartanup-pmc_sha3"
+/* Newer version, with bigger digest and SHA384.  */
+#define TYPE_XILINX_SPARTANUP_PMC_SHA3_V2 "xlnx.spartanup-pmc_sha3_v2"
+#define XILINX_SPARTANUP_PMC_SHA3_V2(obj) \
+     OBJECT_CHECK(SPARTANUP_PMC_SHA3, (obj), TYPE_XILINX_SPARTANUP_PMC_SHA3_V2)
 
+#define TYPE_XILINX_SPARTANUP_PMC_SHA3 "xlnx.spartanup-pmc_sha3"
 #define XILINX_SPARTANUP_PMC_SHA3(obj) \
      OBJECT_CHECK(SPARTANUP_PMC_SHA3, (obj), TYPE_XILINX_SPARTANUP_PMC_SHA3)
 
-#define SPARTANUP_PMC_SHA3_MAX_DIGEST_LEN (256 >> 3)
+#define SPARTANUP_PMC_SHA3_MAX_DIGEST_LEN (384 >> 3)
 
 REG32(SHA_START, 0x0)
     FIELD(SHA_START, VALUE, 0, 1)
@@ -42,8 +46,14 @@ REG32(SHA_DIGEST_4, 0x20)
 REG32(SHA_DIGEST_5, 0x24)
 REG32(SHA_DIGEST_6, 0x28)
 REG32(SHA_DIGEST_7, 0x2c)
+/* 8..11 only in V2.  */
+REG32(SHA_DIGEST_8, 0x30)
+REG32(SHA_DIGEST_9, 0x34)
+REG32(SHA_DIGEST_10, 0x38)
+REG32(SHA_DIGEST_11, 0x3c)
+/* VALUE is 2bits in V2, 1bit in V1.  */
 REG32(SHA_MODE, 0xa0)
-    FIELD(SHA_MODE, VALUE, 0, 1)
+    FIELD(SHA_MODE, VALUE, 0, 2)
 REG32(SHA_AUTO_PADDING, 0xa4)
     FIELD(SHA_AUTO_PADDING, ENABLE, 0, 1)
 REG32(SHA_ISR, 0xb4)
@@ -178,6 +188,14 @@ static uint64_t sha_itr_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
+static uint64_t spartanup_pmc_sha3_mode_prew(RegisterInfo *reg, uint64_t val64)
+{
+    /* This register is 1bit wide on V1, and 2bit wide on V2.  */
+    return object_dynamic_cast(reg->opaque, TYPE_XILINX_SPARTANUP_PMC_SHA3_V2)
+        ? val64
+        : val64 & 0x1;
+}
+
 static const RegisterAccessInfo spartanup_pmc_sha3_regs_info[] = {
     {   .name = "SHA_START",  .addr = A_SHA_START,
         .post_write = spartanup_pmc_sha3_start_postw,
@@ -202,7 +220,16 @@ static const RegisterAccessInfo spartanup_pmc_sha3_regs_info[] = {
         .ro = 0xffffffff,
     },{ .name = "SHA_DIGEST_7",  .addr = A_SHA_DIGEST_7,
         .ro = 0xffffffff,
+    },{ .name = "SHA_DIGEST_8",  .addr = A_SHA_DIGEST_8,
+        .ro = 0xffffffff,
+    },{ .name = "SHA_DIGEST_9",  .addr = A_SHA_DIGEST_9,
+        .ro = 0xffffffff,
+    },{ .name = "SHA_DIGEST_10",  .addr = A_SHA_DIGEST_10,
+        .ro = 0xffffffff,
+    },{ .name = "SHA_DIGEST_11",  .addr = A_SHA_DIGEST_11,
+        .ro = 0xffffffff,
     },{ .name = "SHA_MODE",  .addr = A_SHA_MODE,
+        .pre_write = spartanup_pmc_sha3_mode_prew,
     },{ .name = "SHA_AUTO_PADDING",  .addr = A_SHA_AUTO_PADDING,
     },{ .name = "SHA_ISR",  .addr = A_SHA_ISR,
         .w1c = 0x1,
@@ -255,6 +282,8 @@ static XlnxSha3CommonAlg spartanup_pmc_sha3_get_algorithm(XlnxSha3Common *common
         return SHA_MODE_256;
     case 1:
         return SHA_MODE_SHAKE256_256;
+    case 2:
+        return SHA_MODE_384;
     default:
         g_assert_not_reached();
         break;
@@ -323,9 +352,18 @@ static const TypeInfo spartanup_pmc_sha3_info = {
     .instance_init = spartanup_pmc_sha3_init,
 };
 
+static const TypeInfo spartanup_pmc_sha3_v2_info = {
+    .name          = TYPE_XILINX_SPARTANUP_PMC_SHA3_V2,
+    .parent        = TYPE_XILINX_SPARTANUP_PMC_SHA3,
+    .instance_size = sizeof(SPARTANUP_PMC_SHA3),
+    .class_init    = spartanup_pmc_sha3_class_init,
+    .instance_init = spartanup_pmc_sha3_init,
+};
+
 static void spartanup_pmc_sha3_register_types(void)
 {
     type_register_static(&spartanup_pmc_sha3_info);
+    type_register_static(&spartanup_pmc_sha3_v2_info);
 }
 
 type_init(spartanup_pmc_sha3_register_types)
