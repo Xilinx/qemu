@@ -512,15 +512,13 @@ static int encode_wlun_inquiry(uint8_t *resp_buf, uint8_t *cbd)
 {
     uint8_t page_code;
     int i = 0;
-    int page_start;
 
-    resp_buf[i++] = 0x1e;
+    resp_buf[i++] = TYPE_WLUN;
     if (cbd[1]) { /* vpd */
         page_code = cbd[2];
         resp_buf[i++] = cbd[2];
         resp_buf[i++] = 0;
         resp_buf[i++] = 0;
-        page_start = i;
         switch (page_code) {
         case 0:
             resp_buf[i++] = 0; /* Supported VPD Pages */
@@ -535,7 +533,12 @@ static int encode_wlun_inquiry(uint8_t *resp_buf, uint8_t *cbd)
         default:
             return -1;
         };
-        resp_buf[page_start - 1] = page_start - i;
+        /*
+         * Page Size
+         * size = n - 3,
+         * n = last offset of page i.e i - 1
+         */
+        resp_buf[3] = i - 4;
     } else {
         resp_buf[i++] = 0;
         resp_buf[i++] = 0x6;
@@ -576,13 +579,16 @@ static void ufs_cmd_wlun(UFSDev *s, upiu_pkt *pkt)
      */
     uint8_t scsi_op = ((uint8_t *)pkt->cmd.cbd)[0];
     upiu_pkt r = UPIU_RESP;
+    upiu_pkt in = UPIU_DATA_IN;
     uint8_t data[1024] = {0};
+    uint8_t sense[20] = {0};
     int len = 0;
+    int sense_len = 0;
 
     trace_ufsdev_wlun_cmd(UPIU_LUN(pkt), scsi_op);
     switch (scsi_op) {
     case INQUIRY:
-        len = encode_wlun_inquiry(&data[SCSI_SENSE_LEN],
+        len = encode_wlun_inquiry(data,
                                   (uint8_t *)pkt->cmd.cbd);
         break;
     case REQUEST_SENSE:
@@ -590,7 +596,7 @@ static void ufs_cmd_wlun(UFSDev *s, upiu_pkt *pkt)
     case START_STOP:
         break;
     case REPORT_LUNS:
-        len = encode_wlun_report_luns(s, &data[SCSI_SENSE_LEN]);
+        len = encode_wlun_report_luns(s, data);
         break;
     default:
         /*
@@ -600,29 +606,36 @@ static void ufs_cmd_wlun(UFSDev *s, upiu_pkt *pkt)
         break;
     };
 
-    r.hdr.lun = UPIU_LUN(pkt);
-    r.hdr.task_tag = UPIU_TAG(pkt);
-
     if (len >= 0) {
-        len += scsi_build_sense_buf(data, SCSI_SENSE_LEN,
+        len = MIN(lduw_be_p(&((uint8_t *) pkt->cmd.cbd)[3]), len);
+        in.hdr.lun = UPIU_LUN(pkt);
+        in.hdr.task_tag = UPIU_TAG(pkt);
+        in.hdr.data_seg_len = cpu_to_be16((uint16_t) len);
+        in.data.data_offset = 0;
+        in.data.data_trns_count = cpu_to_be32((uint32_t) len);
+        ufshci_send_upiu(s->ufs_ini, &in);
+        ufshci_send_data(s->ufs_ini, data, len, UPIU_TAG(pkt));
+
+        sense_len = scsi_build_sense_buf(sense + 2, SCSI_SENSE_LEN,
                                     SENSE_CODE(NO_SENSE), true);
-        r.hdr.data_seg_len = cpu_to_be16((uint16_t) len);
+        r.hdr.data_seg_len = cpu_to_be16((uint16_t) sense_len + 2);
         r.hdr.status = GOOD;
     } else {
         if (len == -1) {
-            len += scsi_build_sense_buf(data, SCSI_SENSE_LEN,
+            sense_len = scsi_build_sense_buf(sense + 2, SCSI_SENSE_LEN,
                                     SENSE_CODE(INVALID_OPCODE), true);
         } else if (len == -2) {
-            len += scsi_build_sense_buf(data, SCSI_SENSE_LEN,
+            sense_len = scsi_build_sense_buf(sense + 2, SCSI_SENSE_LEN,
                                     SENSE_CODE(INVALID_FIELD), true);
         }
+        r.hdr.data_seg_len = cpu_to_be16((uint16_t) sense_len + 2);
         r.hdr.status = CHECK_CONDITION;
     }
-
+    *(uint16_t *)(&sense[0]) = cpu_to_be16(sense_len);
+    r.hdr.lun = UPIU_LUN(pkt);
+    r.hdr.task_tag = UPIU_TAG(pkt);
     ufshci_send_upiu(s->ufs_ini, &r);
-    if (len > 0) {
-        ufshci_send_data(s->ufs_ini, data, len, UPIU_TAG(pkt));
-    }
+    ufshci_send_data(s->ufs_ini, sense, sense_len + 2, UPIU_TAG(pkt));
 }
 
 static bool ufs_cmd_process(UFSDev *s, upiu_pkt *pkt)
