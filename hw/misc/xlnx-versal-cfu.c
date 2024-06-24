@@ -352,8 +352,16 @@ static void cfu_fgcr_postw(RegisterInfo *reg, uint64_t val64)
         ARRAY_FIELD_DP32(s->regs, CFU_STATUS, SCAN_CLEAR_PASS, 1);
         ARRAY_FIELD_DP32(s->regs, CFU_STATUS, SCAN_CLEAR_DONE, 1);
     }
-}
 
+    ARRAY_FIELD_DP32(s->regs, CFU_STATUS, GHIGH_B_ISHIGH,
+                     FIELD_EX32(val, CFU_FGCR, GHIGH_B));
+    ARRAY_FIELD_DP32(s->regs, CFU_STATUS, GHIGH_B_ISLOW,
+                     !FIELD_EX32(val, CFU_FGCR, GHIGH_B));
+    ARRAY_FIELD_DP32(s->regs, CFU_STATUS, GMC_B_ISHIGH,
+                     FIELD_EX32(val, CFU_FGCR, GMC_B));
+    ARRAY_FIELD_DP32(s->regs, CFU_STATUS, GMC_B_ISLOW,
+                     !FIELD_EX32(val, CFU_FGCR, GMC_B));
+}
 
 static const RegisterAccessInfo cfu_apb_regs_info[] = {
     {   .name = "CFU_ISR",  .addr = A_CFU_ISR,
