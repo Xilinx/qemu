@@ -318,6 +318,30 @@ static uint64_t cfu_itr_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
+static uint64_t masked_reg_prew(RegisterInfo *reg, uint64_t val64)
+{
+    CFU *s = XILINX_CFU_APB(reg->opaque);
+    uint32_t val = (uint32_t)val64;
+    uint32_t old_val = *(uint32_t *) reg->data;
+    uint32_t mask = s->regs[R_CFU_MASK];
+
+    s->regs[R_CFU_MASK] = 0;
+
+    return (val & mask) | (old_val & ~mask);
+}
+
+static uint64_t protected_and_masked_reg_prew(RegisterInfo *reg, uint64_t val64)
+{
+    CFU *s = XILINX_CFU_APB(reg->opaque);
+    uint32_t old_val = *(uint32_t *) reg->data;
+
+    if (ARRAY_FIELD_EX32(s->regs, CFU_PROTECT, ACTIVE)) {
+        return old_val;
+    }
+
+    return masked_reg_prew(reg, val64);
+}
+
 static void cfu_fgcr_postw(RegisterInfo *reg, uint64_t val64)
 {
     CFU *s = XILINX_CFU_APB(reg->opaque);
@@ -353,9 +377,11 @@ static const RegisterAccessInfo cfu_apb_regs_info[] = {
         .reset = 0x1,
     },{ .name = "CFU_FGCR",  .addr = A_CFU_FGCR,
         .rsvd = 0xffff8000,
+        .pre_write = protected_and_masked_reg_prew,
         .post_write = cfu_fgcr_postw,
     },{ .name = "CFU_CTL",  .addr = A_CFU_CTL,
         .rsvd = 0xffff0000,
+        .pre_write = masked_reg_prew,
     },{ .name = "CFU_CRAM_RW",  .addr = A_CFU_CRAM_RW,
         .reset = 0x401f7d9,
         .rsvd = 0xf8000000,
