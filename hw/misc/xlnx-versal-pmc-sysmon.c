@@ -3234,7 +3234,12 @@ REG32(SSC_MEASURE_IF, 0x4000)
 
 #define PMC_SYSMON_R_MAX (R_SSC_MEASURE_IF + 1)
 
-/* Multi-word, bit-per-channel */
+/*
+ * Multi-word, bit-per-channel.
+ *
+ * Similar to bit-array support in qemu/bitops.h but operating in
+ * uint32_t (instead of 'unsigned long') elements of MMIO registers.
+ */
 #define CHANNEL_WORD(_I)        ((_I) / 32)
 #define CHANNEL_MASK(_I)        (1U << ((_I) % 32))
 #define CHANNEL_BIT(_RA, _I)    (!!((_RA)[CHANNEL_WORD(_I)] & CHANNEL_MASK(_I)))
@@ -3356,8 +3361,12 @@ typedef struct PMCSysMon {
     QEMUTimer efuse_throttle_timer;
     uint32_t efuse_throttle_ms;
 
-    Object *ams_sat[2];
-    uint32_t ams_sat_ready[1];  /* bit-array, indexed by CHANNEL_xxx macros */
+    Object *ams_sat0;        /* For backward compatibility */
+    Object *ams_sat1;
+
+    Object  **ams_sat;       /* An array, with NULL hole(s) possibile */
+    uint32_t *ams_sat_ready; /* bit-array, indexed by CHANNEL_xxx macros */
+    uint32_t  ams_sat_len;
 
     Object *tamper_sink;
 
@@ -8323,7 +8332,20 @@ static void pmc_sysmon_realize(DeviceState *dev, Error **errp)
     PMCSysMon *s = PMC_SYSMON(dev);
     unsigned nr;
 
-    for (nr = 0; nr < ARRAY_SIZE(s->ams_sat); nr++) {
+    if (!s->ams_sat || !s->ams_sat_len) {
+        /* Legacy binding */
+        g_free(s->ams_sat);
+
+        s->ams_sat_len = 2;
+        s->ams_sat = g_malloc0(s->ams_sat_len * sizeof(Object *));
+        s->ams_sat[0] = s->ams_sat0;
+        s->ams_sat[1] = s->ams_sat1;
+    }
+
+    nr = CHANNEL_WORD(s->ams_sat_len - 1) + 1;
+    s->ams_sat_ready = g_malloc0(nr * sizeof(uint32_t));
+
+    for (nr = 0; nr < s->ams_sat_len; nr++) {
         if (s->ams_sat[nr]) {
             xlnx_ams_sat_instance_set(s->ams_sat[nr], nr, OBJECT(s));
         }
@@ -8335,6 +8357,14 @@ static void pmc_sysmon_realize(DeviceState *dev, Error **errp)
         warn_report("%s.tamper-sink: Missing link disables "
                     "support for alarm events as tampering", p);
     }
+}
+
+static void pmc_sysmon_finalize(Object *obj)
+{
+    PMCSysMon *s = PMC_SYSMON(obj);
+
+    g_free(s->ams_sat);
+    g_free(s->ams_sat_ready);
 }
 
 static void pmc_sysmon_init(Object *obj)
@@ -8366,7 +8396,7 @@ static void pmc_sysmon_init(Object *obj)
 
 static void pmc_sysmon_sat_set_ready(PMCSysMon *s, unsigned instance_id)
 {
-    if (instance_id >= ARRAY_SIZE(s->ams_sat)) {
+    if (instance_id >= s->ams_sat_len) {
         return;
     }
     if (!s->ams_sat[instance_id]) {
@@ -8378,7 +8408,7 @@ static void pmc_sysmon_sat_set_ready(PMCSysMon *s, unsigned instance_id)
 
 static bool pmc_sysmon_sat_is_ready(PMCSysMon *s, unsigned instance_id)
 {
-    if (instance_id >= ARRAY_SIZE(s->ams_sat)) {
+    if (instance_id >= s->ams_sat_len) {
         return false;
     }
 
@@ -8393,7 +8423,7 @@ static bool pmc_sysmon_sat_cfg_by_root_id(PMCSysMon *s, xlnx_ams_sensor_t *si)
 {
     unsigned nr;
 
-    for (nr = 0; nr < ARRAY_SIZE(s->ams_sat); nr++) {
+    for (nr = 0; nr < s->ams_sat_len; nr++) {
         if (pmc_sysmon_sat_is_ready(s, nr)
             && xlnx_ams_sat_config_by_root_id(s->ams_sat[nr], si)) {
             return true;
@@ -8407,7 +8437,7 @@ static bool pmc_sysmon_sat_cfg_by_spec(PMCSysMon *s, xlnx_ams_sensor_t *si)
 {
     unsigned nr;
 
-    for (nr = 0; nr < ARRAY_SIZE(s->ams_sat); nr++) {
+    for (nr = 0; nr < s->ams_sat_len; nr++) {
         if (pmc_sysmon_sat_is_ready(s, nr)
             && xlnx_ams_sat_config_by_spec(s->ams_sat[nr], si)) {
             return true;
@@ -8442,7 +8472,7 @@ static void pmc_sysmon_set_mfp_meas(PMCSysMon *s,
 
 static void pmc_sysmon_play_injections(PMCSysMon *s, unsigned instance_id)
 {
-    unsigned nr, base = 0, stop = ARRAY_SIZE(s->ams_sat);
+    unsigned nr, base = 0, stop = s->ams_sat_len;
     PMCSysMon_MeasInj *item, *next;
 
     if (instance_id < stop) {
@@ -8885,8 +8915,10 @@ static Property pmc_sysmon_properties[] = {
     DEFINE_PROP_UINT32("efuse-transfer-throttle",
                        PMCSysMon, efuse_throttle_ms, 200),
     DEFINE_PROP_LINK("efuse", PMCSysMon, efuse, TYPE_OBJECT, Object *),
-    DEFINE_PROP_LINK("ams-sat0", PMCSysMon, ams_sat[0], TYPE_OBJECT, Object *),
-    DEFINE_PROP_LINK("ams-sat1", PMCSysMon, ams_sat[1], TYPE_OBJECT, Object *),
+    DEFINE_PROP_LINK("ams-sat0", PMCSysMon, ams_sat0, TYPE_OBJECT, Object *),
+    DEFINE_PROP_LINK("ams-sat1", PMCSysMon, ams_sat1, TYPE_OBJECT, Object *),
+    DEFINE_PROP_ARRAY("ams-sats", PMCSysMon, ams_sat_len, ams_sat,
+                      qdev_prop_link, Object *),
     DEFINE_PROP_LINK("tamper-sink", PMCSysMon, tamper_sink,
                      TYPE_OBJECT, Object *),
 
@@ -8924,7 +8956,7 @@ void xlnx_ams_root_sat_config_ready(Object *root, unsigned instance_id)
 {
     PMCSysMon *s = PMC_SYSMON(root);
 
-    assert(instance_id < ARRAY_SIZE(s->ams_sat));
+    assert(instance_id < s->ams_sat_len);
     pmc_sysmon_sat_set_ready(s, instance_id);
     pmc_sysmon_play_injections(s, instance_id);
 }
@@ -8935,6 +8967,7 @@ static const TypeInfo pmc_sysmon_info = {
     .instance_size = sizeof(PMCSysMon),
     .class_init    = pmc_sysmon_class_init,
     .instance_init = pmc_sysmon_init,
+    .instance_finalize = pmc_sysmon_finalize,
 };
 
 static void pmc_sysmon_register_types(void)
