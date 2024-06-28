@@ -1642,8 +1642,6 @@
 #
 # Takes a synchronous snapshot of a block device.
 #
-# For the arguments, see the documentation of BlockdevSnapshotSync.
-#
 # Returns:
 #     - nothing on success
 #     - If @device is not a valid block device, DeviceNotFound
@@ -1672,8 +1670,6 @@
 # 'overlay'. Additionally, if 'node' is associated with a block
 # device, the block device changes to using 'overlay' as its new
 # active image.
-#
-# For the arguments, see the documentation of BlockdevSnapshot.
 #
 # Features:
 #
@@ -5973,9 +5969,6 @@
 # format of the image used supports it.  If the name is an empty
 # string, or a snapshot with name already exists, the operation will
 # fail.
-#
-# For the arguments, see the documentation of
-# BlockdevSnapshotInternal.
 #
 # Returns:
 #     - nothing on success
