@@ -195,7 +195,10 @@ static void trng_int_ctrl_postw(RegisterInfo *reg, uint64_t val64)
 
 static void trng_done(TRNG *s)
 {
-    ARRAY_FIELD_DP32(s->regs, STATUS, DONE, true);
+    ARRAY_FIELD_DP32(s->regs, STATUS, DONE, 1);
+    if (ARRAY_FIELD_EX32(s->regs, INT_CTRL, DONE_EN)) {
+        ARRAY_FIELD_DP32(s->regs, TRNG_ISR, CORE_INT, 1);
+    }
     trng_imr_update_irq(s);
 }
 
@@ -244,6 +247,7 @@ static inline void trng_regen(TRNG *s)
 
     s->count = ARRAY_SIZE(s->out);
     ARRAY_FIELD_DP32(s->regs, STATUS, QCNT, MIN(4, s->count));
+    trng_done(s);
 }
 
 static void trng_ctrl_postw(RegisterInfo *reg, uint64_t val64)
@@ -251,6 +255,7 @@ static void trng_ctrl_postw(RegisterInfo *reg, uint64_t val64)
     TRNG *s = XILINX_TRNG(reg->opaque);
     bool start = FIELD_EX32(val64, CTRL, PRNGSTART);
     bool mode = FIELD_EX32(val64, CTRL, PRNGMODE);
+    bool eu_mode = FIELD_EX32(val64, CTRL, EUMODE) ;
     bool ext = FIELD_EX32(val64, CTRL, PRNGXS);
     bool rst = FIELD_EX32(val64, CTRL, PRNGSRST);
 
@@ -259,12 +264,12 @@ static void trng_ctrl_postw(RegisterInfo *reg, uint64_t val64)
         return;
     }
 
-    if (start) {
-        if (mode) {
-            trng_regen(s);
-        } else {
-            trng_reseed(s, ext);
-        }
+    if (eu_mode) {
+        trng_regen(s);
+    } else if (start && mode) {
+        trng_regen(s);
+    } else if (start && !mode) {
+        trng_reseed(s, ext);
         trng_done(s);
     }
 }
