@@ -31,10 +31,14 @@
 #include "qemu/log.h"
 #include "migration/vmstate.h"
 #include "hw/irq.h"
+#include "hw/fdt_generic_util.h"
 
 #ifndef XILINX_APU_PCIL_ERR_DEBUG
 #define XILINX_APU_PCIL_ERR_DEBUG 0
 #endif
+
+#define APU_PCIL_MAX_CLUSTER 4
+#define APU_PCIL_MAX_CORE 16
 
 #define TYPE_XILINX_APU_PCIL "xlnx.apu_pcil"
 
@@ -676,148 +680,239 @@ REG32(APU_PCIL_ERR, 0xf100)
 typedef struct APU_PCIL {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
-    qemu_irq irq_cluster_3_imr_power;
-    qemu_irq irq_core_9_imr_wake;
-    qemu_irq irq_core_6_imr_power;
-    qemu_irq irq_cluster_dbg_imr_pwrup_req;
-    qemu_irq irq_core_0_imr_wake;
-    qemu_irq irq_core_15_imr_power;
-    qemu_irq irq_cluster_2_imr_power;
-    qemu_irq irq_core_14_imr_power;
-    qemu_irq irq_core_0_imr_power;
-    qemu_irq irq_core_2_imr_power;
-    qemu_irq irq_core_dbg_imr_pwrup_req;
-    qemu_irq irq_core_4_imr_power;
-    qemu_irq irq_core_1_imr_power;
-    qemu_irq irq_core_3_imr_power;
-    qemu_irq irq_core_13_imr_power;
-    qemu_irq irq_cluster_0_imr_power;
-    qemu_irq irq_core_14_imr_wake;
-    qemu_irq irq_core_3_imr_wake;
-    qemu_irq irq_core_7_imr_wake;
-    qemu_irq irq_core_12_imr_power;
-    qemu_irq irq_core_5_imr_power;
-    qemu_irq irq_cluster_2_imr_wake;
-    qemu_irq irq_core_12_imr_wake;
-    qemu_irq irq_core_11_imr_wake;
-    qemu_irq irq_core_5_imr_wake;
-    qemu_irq irq_core_2_imr_wake;
-    qemu_irq irq_core_8_imr_wake;
-    qemu_irq irq_core_1_imr_wake;
-    qemu_irq irq_cluster_3_imr_wake;
-    qemu_irq irq_cluster_0_imr_wake;
+
+    qemu_irq irq_cluster_power[APU_PCIL_MAX_CLUSTER];
+    qemu_irq irq_cluster_wakeup[APU_PCIL_MAX_CLUSTER];
+
+    qemu_irq irq_core_power[APU_PCIL_MAX_CORE];
+    qemu_irq irq_core_wakeup[APU_PCIL_MAX_CORE];
+
     qemu_irq irq_apu_pcil_imr;
-    qemu_irq irq_cluster_1_imr_wake;
-    qemu_irq irq_core_7_imr_power;
-    qemu_irq irq_core_10_imr_wake;
-    qemu_irq irq_core_9_imr_power;
-    qemu_irq irq_core_6_imr_wake;
-    qemu_irq irq_cluster_1_imr_power;
-    qemu_irq irq_core_15_imr_wake;
-    qemu_irq irq_core_4_imr_wake;
-    qemu_irq irq_core_11_imr_power;
-    qemu_irq irq_core_8_imr_power;
-    qemu_irq irq_core_10_imr_power;
-    qemu_irq irq_core_13_imr_wake;
+    qemu_irq irq_cluster_dbg_imr_pwrup_req;
+    qemu_irq irq_core_dbg_imr_pwrup_req;
 
     uint32_t regs[APU_PCIL_R_MAX];
     RegisterInfo regs_info[APU_PCIL_R_MAX];
 } APU_PCIL;
 
-static void cluster_3_imr_power_update_irq(APU_PCIL *s)
+static void update_cluster_power_irq(APU_PCIL *s, size_t cluster)
 {
-    bool pending = s->regs[R_CLUSTER_3_ISR_POWER] &
-                   ~s->regs[R_CLUSTER_3_IMR_POWER];
-    qemu_set_irq(s->irq_cluster_3_imr_power, pending);
+    size_t stride = R_CLUSTER_1_ISR_POWER - R_CLUSTER_0_ISR_POWER;
+    bool pending = s->regs[R_CLUSTER_0_ISR_POWER + cluster * stride] &
+                   ~s->regs[R_CLUSTER_0_IMR_POWER + cluster * stride];
+
+    qemu_set_irq(s->irq_cluster_power[cluster], pending);
 }
 
-static void cluster_3_isr_power_postw(RegisterInfo *reg, uint64_t val64)
+static void cluster_n_isr_power_postw(RegisterInfo *reg, uint64_t val64)
 {
     APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    cluster_3_imr_power_update_irq(s);
-}
-
-static uint64_t cluster_3_ien_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
+    size_t idx = reg->access->addr / sizeof(uint32_t);
+    size_t cluster;
     uint32_t val = val64;
 
-    s->regs[R_CLUSTER_3_IMR_POWER] &= ~val;
-    cluster_3_imr_power_update_irq(s);
+    cluster = idx - R_CLUSTER_0_ISR_POWER;
+    cluster /= R_CLUSTER_1_ISR_POWER - R_CLUSTER_0_ISR_POWER;
+
+
+    s->regs[idx] &= ~val;
+    update_cluster_power_irq(s, cluster);
+}
+
+static uint64_t cluster_n_ien_power_prew(RegisterInfo *reg, uint64_t val64)
+{
+    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
+    size_t idx = reg->access->addr / sizeof(uint32_t);
+    size_t mask_idx = idx - R_CLUSTER_0_IEN_POWER + R_CLUSTER_0_IMR_POWER;
+    size_t cluster;
+    uint32_t val = val64;
+
+    cluster = idx - R_CLUSTER_0_IEN_POWER;
+    cluster /= R_CLUSTER_1_ISR_POWER - R_CLUSTER_0_ISR_POWER;
+
+    s->regs[mask_idx] &= ~val;
+    update_cluster_power_irq(s, cluster);
     return 0;
 }
 
-static uint64_t cluster_3_ids_power_prew(RegisterInfo *reg, uint64_t val64)
+static uint64_t cluster_n_ids_power_prew(RegisterInfo *reg, uint64_t val64)
 {
     APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
+    size_t idx = reg->access->addr / sizeof(uint32_t);
+    size_t mask_idx = idx - R_CLUSTER_0_IDS_POWER + R_CLUSTER_0_IMR_POWER;
+    size_t cluster;
     uint32_t val = val64;
 
-    s->regs[R_CLUSTER_3_IMR_POWER] |= val;
-    cluster_3_imr_power_update_irq(s);
+    cluster = idx - R_CLUSTER_0_IDS_POWER;
+    cluster /= R_CLUSTER_1_ISR_POWER - R_CLUSTER_0_ISR_POWER;
+
+    s->regs[mask_idx] |= val;
+    update_cluster_power_irq(s, cluster);
     return 0;
 }
 
-static void core_9_imr_wake_update_irq(APU_PCIL *s)
+static void update_cluster_wake_irq(APU_PCIL *s, size_t cluster)
 {
-    bool pending = s->regs[R_CORE_9_ISR_WAKE] & ~s->regs[R_CORE_9_IMR_WAKE];
-    qemu_set_irq(s->irq_core_9_imr_wake, pending);
+    size_t stride = R_CLUSTER_1_ISR_WAKE - R_CLUSTER_0_ISR_WAKE;
+    bool pending = s->regs[R_CLUSTER_0_ISR_WAKE + cluster * stride] &
+                   ~s->regs[R_CLUSTER_0_IMR_WAKE + cluster * stride];
+
+    qemu_set_irq(s->irq_cluster_wakeup[cluster], pending);
 }
 
-static void core_9_isr_wake_postw(RegisterInfo *reg, uint64_t val64)
+static void cluster_n_isr_wake_postw(RegisterInfo *reg, uint64_t val64)
 {
     APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    core_9_imr_wake_update_irq(s);
-}
-
-static uint64_t core_9_ien_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
+    size_t idx = reg->access->addr / sizeof(uint32_t);
+    size_t cluster;
     uint32_t val = val64;
 
-    s->regs[R_CORE_9_IMR_WAKE] &= ~val;
-    core_9_imr_wake_update_irq(s);
+    cluster = idx - R_CLUSTER_0_ISR_WAKE;
+    cluster /= R_CLUSTER_1_ISR_WAKE - R_CLUSTER_0_ISR_WAKE;
+
+    s->regs[idx] &= ~val;
+    update_cluster_wake_irq(s, cluster);
+}
+
+static uint64_t cluster_n_ien_wake_prew(RegisterInfo *reg, uint64_t val64)
+{
+    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
+    size_t idx = reg->access->addr / sizeof(uint32_t);
+    size_t mask_idx = idx - R_CLUSTER_0_IEN_WAKE + R_CLUSTER_0_IMR_WAKE;
+    size_t cluster;
+    uint32_t val = val64;
+
+    cluster = idx - R_CLUSTER_0_IEN_WAKE;
+    cluster /= R_CLUSTER_1_ISR_WAKE - R_CLUSTER_0_ISR_WAKE;
+
+    s->regs[mask_idx] &= ~val;
+    update_cluster_wake_irq(s, cluster);
     return 0;
 }
 
-static uint64_t core_9_ids_wake_prew(RegisterInfo *reg, uint64_t val64)
+static uint64_t cluster_n_ids_wake_prew(RegisterInfo *reg, uint64_t val64)
 {
     APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
+    size_t idx = reg->access->addr / sizeof(uint32_t);
+    size_t mask_idx = idx - R_CLUSTER_0_IDS_WAKE + R_CLUSTER_0_IMR_WAKE;
+    size_t cluster;
     uint32_t val = val64;
 
-    s->regs[R_CORE_9_IMR_WAKE] |= val;
-    core_9_imr_wake_update_irq(s);
+    cluster = idx - R_CLUSTER_0_IDS_WAKE;
+    cluster /= R_CLUSTER_1_ISR_WAKE - R_CLUSTER_0_ISR_WAKE;
+
+    s->regs[mask_idx] |= val;
+    update_cluster_wake_irq(s, cluster);
     return 0;
 }
 
-static void core_6_imr_power_update_irq(APU_PCIL *s)
+static void update_core_power_irq(APU_PCIL *s, size_t core)
 {
-    bool pending = s->regs[R_CORE_6_ISR_POWER] & ~s->regs[R_CORE_6_IMR_POWER];
-    qemu_set_irq(s->irq_core_6_imr_power, pending);
+    size_t stride = R_CORE_1_ISR_POWER - R_CORE_0_ISR_POWER;
+    bool pending = s->regs[R_CORE_0_ISR_POWER + core * stride] &
+                   ~s->regs[R_CORE_0_IMR_POWER + core * stride];
+
+    qemu_set_irq(s->irq_core_power[core], pending);
 }
 
-static void core_6_isr_power_postw(RegisterInfo *reg, uint64_t val64)
+static void core_n_isr_power_postw(RegisterInfo *reg, uint64_t val64)
 {
     APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    core_6_imr_power_update_irq(s);
-}
-
-static uint64_t core_6_ien_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
+    size_t idx = reg->access->addr / sizeof(uint32_t);
+    size_t core;
     uint32_t val = val64;
 
-    s->regs[R_CORE_6_IMR_POWER] &= ~val;
-    core_6_imr_power_update_irq(s);
+    core = idx - R_CORE_0_ISR_POWER;
+    core /= R_CORE_1_ISR_POWER - R_CORE_0_ISR_POWER;
+
+    s->regs[idx] &= ~val;
+    update_core_power_irq(s, core);
+}
+
+static uint64_t core_n_ien_power_prew(RegisterInfo *reg, uint64_t val64)
+{
+    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
+    size_t idx = reg->access->addr / sizeof(uint32_t);
+    size_t mask_idx = idx - R_CORE_0_IEN_POWER + R_CORE_0_IMR_POWER;
+    size_t core;
+    uint32_t val = val64;
+
+    core = idx - R_CORE_0_IEN_POWER;
+    core /= R_CORE_1_ISR_POWER - R_CORE_0_ISR_POWER;
+
+    s->regs[mask_idx] &= ~val;
+    update_core_power_irq(s, core);
     return 0;
 }
 
-static uint64_t core_6_ids_power_prew(RegisterInfo *reg, uint64_t val64)
+static uint64_t core_n_ids_power_prew(RegisterInfo *reg, uint64_t val64)
 {
     APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
+    size_t idx = reg->access->addr / sizeof(uint32_t);
+    size_t mask_idx = idx - R_CORE_0_IDS_POWER + R_CORE_0_IMR_POWER;
+    size_t core;
     uint32_t val = val64;
 
-    s->regs[R_CORE_6_IMR_POWER] |= val;
-    core_6_imr_power_update_irq(s);
+    core = idx - R_CORE_0_IDS_POWER;
+    core /= R_CORE_1_ISR_POWER - R_CORE_0_ISR_POWER;
+
+    s->regs[mask_idx] |= val;
+    update_core_power_irq(s, core);
+    return 0;
+}
+
+static void update_core_wake_irq(APU_PCIL *s, size_t core)
+{
+    size_t stride = R_CORE_1_ISR_WAKE - R_CORE_0_ISR_WAKE;
+    bool pending = s->regs[R_CORE_0_ISR_WAKE + core * stride] &
+                   ~s->regs[R_CORE_0_IMR_WAKE + core * stride];
+
+    qemu_set_irq(s->irq_core_wakeup[core], pending);
+}
+
+static void core_n_isr_wake_postw(RegisterInfo *reg, uint64_t val64)
+{
+    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
+    size_t idx = reg->access->addr / sizeof(uint32_t);
+    size_t core;
+    uint32_t val = val64;
+
+    core = idx - R_CORE_0_ISR_WAKE;
+    core /= R_CORE_1_ISR_WAKE - R_CORE_0_ISR_WAKE;
+
+    s->regs[idx] &= ~val;
+    update_core_wake_irq(s, core);
+}
+
+static uint64_t core_n_ien_wake_prew(RegisterInfo *reg, uint64_t val64)
+{
+    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
+    size_t idx = reg->access->addr / sizeof(uint32_t);
+    size_t mask_idx = idx - R_CORE_0_IEN_WAKE + R_CORE_0_IMR_WAKE;
+    size_t core;
+    uint32_t val = val64;
+
+    core = idx - R_CORE_0_IEN_WAKE;
+    core /= R_CORE_1_ISR_WAKE - R_CORE_0_ISR_WAKE;
+
+    s->regs[mask_idx] &= ~val;
+    update_core_wake_irq(s, core);
+    return 0;
+}
+
+static uint64_t core_n_ids_wake_prew(RegisterInfo *reg, uint64_t val64)
+{
+    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
+    size_t idx = reg->access->addr / sizeof(uint32_t);
+    size_t mask_idx = idx - R_CORE_0_IDS_WAKE + R_CORE_0_IMR_WAKE;
+    size_t core;
+    uint32_t val = val64;
+
+    core = idx - R_CORE_0_IDS_WAKE;
+    core /= R_CORE_1_ISR_WAKE - R_CORE_0_ISR_WAKE;
+
+    s->regs[mask_idx] |= val;
+    update_core_wake_irq(s, core);
     return 0;
 }
 
@@ -856,199 +951,6 @@ static uint64_t cluster_dbg_ids_pwrup_req_prew(RegisterInfo *reg,
     return 0;
 }
 
-static void core_0_imr_wake_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CORE_0_ISR_WAKE] & ~s->regs[R_CORE_0_IMR_WAKE];
-    qemu_set_irq(s->irq_core_0_imr_wake, pending);
-}
-
-static void core_0_isr_wake_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    core_0_imr_wake_update_irq(s);
-}
-
-static uint64_t core_0_ien_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_0_IMR_WAKE] &= ~val;
-    core_0_imr_wake_update_irq(s);
-    return 0;
-}
-
-static uint64_t core_0_ids_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_0_IMR_WAKE] |= val;
-    core_0_imr_wake_update_irq(s);
-    return 0;
-}
-
-static void core_15_imr_power_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CORE_15_ISR_POWER] & ~s->regs[R_CORE_15_IMR_POWER];
-    qemu_set_irq(s->irq_core_15_imr_power, pending);
-}
-
-static void core_15_isr_power_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    core_15_imr_power_update_irq(s);
-}
-
-static uint64_t core_15_ien_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_15_IMR_POWER] &= ~val;
-    core_15_imr_power_update_irq(s);
-    return 0;
-}
-
-static uint64_t core_15_ids_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_15_IMR_POWER] |= val;
-    core_15_imr_power_update_irq(s);
-    return 0;
-}
-
-static void cluster_2_imr_power_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CLUSTER_2_ISR_POWER] &
-                   ~s->regs[R_CLUSTER_2_IMR_POWER];
-    qemu_set_irq(s->irq_cluster_2_imr_power, pending);
-}
-
-static void cluster_2_isr_power_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    cluster_2_imr_power_update_irq(s);
-}
-
-static uint64_t cluster_2_ien_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CLUSTER_2_IMR_POWER] &= ~val;
-    cluster_2_imr_power_update_irq(s);
-    return 0;
-}
-
-static uint64_t cluster_2_ids_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CLUSTER_2_IMR_POWER] |= val;
-    cluster_2_imr_power_update_irq(s);
-    return 0;
-}
-
-static void core_14_imr_power_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CORE_14_ISR_POWER] & ~s->regs[R_CORE_14_IMR_POWER];
-    qemu_set_irq(s->irq_core_14_imr_power, pending);
-}
-
-static void core_14_isr_power_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    core_14_imr_power_update_irq(s);
-}
-
-static uint64_t core_14_ien_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_14_IMR_POWER] &= ~val;
-    core_14_imr_power_update_irq(s);
-    return 0;
-}
-
-static uint64_t core_14_ids_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_14_IMR_POWER] |= val;
-    core_14_imr_power_update_irq(s);
-    return 0;
-}
-
-static void core_0_imr_power_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CORE_0_ISR_POWER] & ~s->regs[R_CORE_0_IMR_POWER];
-    qemu_set_irq(s->irq_core_0_imr_power, pending);
-}
-
-static void core_0_isr_power_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    core_0_imr_power_update_irq(s);
-}
-
-static uint64_t core_0_ien_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_0_IMR_POWER] &= ~val;
-    core_0_imr_power_update_irq(s);
-    return 0;
-}
-
-static uint64_t core_0_ids_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_0_IMR_POWER] |= val;
-    core_0_imr_power_update_irq(s);
-    return 0;
-}
-
-static void core_2_imr_power_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CORE_2_ISR_POWER] & ~s->regs[R_CORE_2_IMR_POWER];
-    qemu_set_irq(s->irq_core_2_imr_power, pending);
-}
-
-static void core_2_isr_power_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    core_2_imr_power_update_irq(s);
-}
-
-static uint64_t core_2_ien_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_2_IMR_POWER] &= ~val;
-    core_2_imr_power_update_irq(s);
-    return 0;
-}
-
-static uint64_t core_2_ids_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_2_IMR_POWER] |= val;
-    core_2_imr_power_update_irq(s);
-    return 0;
-}
-
 static void core_dbg_imr_pwrup_req_update_irq(APU_PCIL *s)
 {
     bool pending = s->regs[R_CORE_DBG_ISR_PWRUP_REQ] &
@@ -1082,618 +984,6 @@ static uint64_t core_dbg_ids_pwrup_req_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
-static void core_4_imr_power_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CORE_4_ISR_POWER] & ~s->regs[R_CORE_4_IMR_POWER];
-    qemu_set_irq(s->irq_core_4_imr_power, pending);
-}
-
-static void core_4_isr_power_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    core_4_imr_power_update_irq(s);
-}
-
-static uint64_t core_4_ien_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_4_IMR_POWER] &= ~val;
-    core_4_imr_power_update_irq(s);
-    return 0;
-}
-
-static uint64_t core_4_ids_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_4_IMR_POWER] |= val;
-    core_4_imr_power_update_irq(s);
-    return 0;
-}
-
-static void core_1_imr_power_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CORE_1_ISR_POWER] & ~s->regs[R_CORE_1_IMR_POWER];
-    qemu_set_irq(s->irq_core_1_imr_power, pending);
-}
-
-static void core_1_isr_power_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    core_1_imr_power_update_irq(s);
-}
-
-static uint64_t core_1_ien_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_1_IMR_POWER] &= ~val;
-    core_1_imr_power_update_irq(s);
-    return 0;
-}
-
-static uint64_t core_1_ids_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_1_IMR_POWER] |= val;
-    core_1_imr_power_update_irq(s);
-    return 0;
-}
-
-static void core_3_imr_power_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CORE_3_ISR_POWER] & ~s->regs[R_CORE_3_IMR_POWER];
-    qemu_set_irq(s->irq_core_3_imr_power, pending);
-}
-
-static void core_3_isr_power_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    core_3_imr_power_update_irq(s);
-}
-
-static uint64_t core_3_ien_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_3_IMR_POWER] &= ~val;
-    core_3_imr_power_update_irq(s);
-    return 0;
-}
-
-static uint64_t core_3_ids_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_3_IMR_POWER] |= val;
-    core_3_imr_power_update_irq(s);
-    return 0;
-}
-
-static void core_13_imr_power_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CORE_13_ISR_POWER] & ~s->regs[R_CORE_13_IMR_POWER];
-    qemu_set_irq(s->irq_core_13_imr_power, pending);
-}
-
-static void core_13_isr_power_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    core_13_imr_power_update_irq(s);
-}
-
-static uint64_t core_13_ien_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_13_IMR_POWER] &= ~val;
-    core_13_imr_power_update_irq(s);
-    return 0;
-}
-
-static uint64_t core_13_ids_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_13_IMR_POWER] |= val;
-    core_13_imr_power_update_irq(s);
-    return 0;
-}
-
-static void cluster_0_imr_power_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CLUSTER_0_ISR_POWER] &
-                   ~s->regs[R_CLUSTER_0_IMR_POWER];
-    qemu_set_irq(s->irq_cluster_0_imr_power, pending);
-}
-
-static void cluster_0_isr_power_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    cluster_0_imr_power_update_irq(s);
-}
-
-static uint64_t cluster_0_ien_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CLUSTER_0_IMR_POWER] &= ~val;
-    cluster_0_imr_power_update_irq(s);
-    return 0;
-}
-
-static uint64_t cluster_0_ids_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CLUSTER_0_IMR_POWER] |= val;
-    cluster_0_imr_power_update_irq(s);
-    return 0;
-}
-
-static void core_14_imr_wake_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CORE_14_ISR_WAKE] & ~s->regs[R_CORE_14_IMR_WAKE];
-    qemu_set_irq(s->irq_core_14_imr_wake, pending);
-}
-
-static void core_14_isr_wake_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    core_14_imr_wake_update_irq(s);
-}
-
-static uint64_t core_14_ien_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_14_IMR_WAKE] &= ~val;
-    core_14_imr_wake_update_irq(s);
-    return 0;
-}
-
-static uint64_t core_14_ids_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_14_IMR_WAKE] |= val;
-    core_14_imr_wake_update_irq(s);
-    return 0;
-}
-
-static void core_3_imr_wake_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CORE_3_ISR_WAKE] & ~s->regs[R_CORE_3_IMR_WAKE];
-    qemu_set_irq(s->irq_core_3_imr_wake, pending);
-}
-
-static void core_3_isr_wake_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    core_3_imr_wake_update_irq(s);
-}
-
-static uint64_t core_3_ien_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_3_IMR_WAKE] &= ~val;
-    core_3_imr_wake_update_irq(s);
-    return 0;
-}
-
-static uint64_t core_3_ids_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_3_IMR_WAKE] |= val;
-    core_3_imr_wake_update_irq(s);
-    return 0;
-}
-
-static void core_7_imr_wake_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CORE_7_ISR_WAKE] & ~s->regs[R_CORE_7_IMR_WAKE];
-    qemu_set_irq(s->irq_core_7_imr_wake, pending);
-}
-
-static void core_7_isr_wake_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    core_7_imr_wake_update_irq(s);
-}
-
-static uint64_t core_7_ien_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_7_IMR_WAKE] &= ~val;
-    core_7_imr_wake_update_irq(s);
-    return 0;
-}
-
-static uint64_t core_7_ids_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_7_IMR_WAKE] |= val;
-    core_7_imr_wake_update_irq(s);
-    return 0;
-}
-
-static void core_12_imr_power_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CORE_12_ISR_POWER] & ~s->regs[R_CORE_12_IMR_POWER];
-    qemu_set_irq(s->irq_core_12_imr_power, pending);
-}
-
-static void core_12_isr_power_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    core_12_imr_power_update_irq(s);
-}
-
-static uint64_t core_12_ien_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_12_IMR_POWER] &= ~val;
-    core_12_imr_power_update_irq(s);
-    return 0;
-}
-
-static uint64_t core_12_ids_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_12_IMR_POWER] |= val;
-    core_12_imr_power_update_irq(s);
-    return 0;
-}
-
-static void core_5_imr_power_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CORE_5_ISR_POWER] & ~s->regs[R_CORE_5_IMR_POWER];
-    qemu_set_irq(s->irq_core_5_imr_power, pending);
-}
-
-static void core_5_isr_power_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    core_5_imr_power_update_irq(s);
-}
-
-static uint64_t core_5_ien_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_5_IMR_POWER] &= ~val;
-    core_5_imr_power_update_irq(s);
-    return 0;
-}
-
-static uint64_t core_5_ids_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_5_IMR_POWER] |= val;
-    core_5_imr_power_update_irq(s);
-    return 0;
-}
-
-static void cluster_2_imr_wake_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CLUSTER_2_ISR_WAKE] &
-                   ~s->regs[R_CLUSTER_2_IMR_WAKE];
-    qemu_set_irq(s->irq_cluster_2_imr_wake, pending);
-}
-
-static void cluster_2_isr_wake_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    cluster_2_imr_wake_update_irq(s);
-}
-
-static uint64_t cluster_2_ien_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CLUSTER_2_IMR_WAKE] &= ~val;
-    cluster_2_imr_wake_update_irq(s);
-    return 0;
-}
-
-static uint64_t cluster_2_ids_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CLUSTER_2_IMR_WAKE] |= val;
-    cluster_2_imr_wake_update_irq(s);
-    return 0;
-}
-
-static void core_12_imr_wake_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CORE_12_ISR_WAKE] & ~s->regs[R_CORE_12_IMR_WAKE];
-    qemu_set_irq(s->irq_core_12_imr_wake, pending);
-}
-
-static void core_12_isr_wake_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    core_12_imr_wake_update_irq(s);
-}
-
-static uint64_t core_12_ien_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_12_IMR_WAKE] &= ~val;
-    core_12_imr_wake_update_irq(s);
-    return 0;
-}
-
-static uint64_t core_12_ids_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_12_IMR_WAKE] |= val;
-    core_12_imr_wake_update_irq(s);
-    return 0;
-}
-
-static void core_11_imr_wake_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CORE_11_ISR_WAKE] & ~s->regs[R_CORE_11_IMR_WAKE];
-    qemu_set_irq(s->irq_core_11_imr_wake, pending);
-}
-
-static void core_11_isr_wake_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    core_11_imr_wake_update_irq(s);
-}
-
-static uint64_t core_11_ien_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_11_IMR_WAKE] &= ~val;
-    core_11_imr_wake_update_irq(s);
-    return 0;
-}
-
-static uint64_t core_11_ids_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_11_IMR_WAKE] |= val;
-    core_11_imr_wake_update_irq(s);
-    return 0;
-}
-
-static void core_5_imr_wake_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CORE_5_ISR_WAKE] & ~s->regs[R_CORE_5_IMR_WAKE];
-    qemu_set_irq(s->irq_core_5_imr_wake, pending);
-}
-
-static void core_5_isr_wake_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    core_5_imr_wake_update_irq(s);
-}
-
-static uint64_t core_5_ien_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_5_IMR_WAKE] &= ~val;
-    core_5_imr_wake_update_irq(s);
-    return 0;
-}
-
-static uint64_t core_5_ids_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_5_IMR_WAKE] |= val;
-    core_5_imr_wake_update_irq(s);
-    return 0;
-}
-
-static void core_2_imr_wake_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CORE_2_ISR_WAKE] & ~s->regs[R_CORE_2_IMR_WAKE];
-    qemu_set_irq(s->irq_core_2_imr_wake, pending);
-}
-
-static void core_2_isr_wake_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    core_2_imr_wake_update_irq(s);
-}
-
-static uint64_t core_2_ien_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_2_IMR_WAKE] &= ~val;
-    core_2_imr_wake_update_irq(s);
-    return 0;
-}
-
-static uint64_t core_2_ids_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_2_IMR_WAKE] |= val;
-    core_2_imr_wake_update_irq(s);
-    return 0;
-}
-
-static void core_8_imr_wake_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CORE_8_ISR_WAKE] & ~s->regs[R_CORE_8_IMR_WAKE];
-    qemu_set_irq(s->irq_core_8_imr_wake, pending);
-}
-
-static void core_8_isr_wake_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    core_8_imr_wake_update_irq(s);
-}
-
-static uint64_t core_8_ien_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_8_IMR_WAKE] &= ~val;
-    core_8_imr_wake_update_irq(s);
-    return 0;
-}
-
-static uint64_t core_8_ids_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_8_IMR_WAKE] |= val;
-    core_8_imr_wake_update_irq(s);
-    return 0;
-}
-
-static void core_1_imr_wake_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CORE_1_ISR_WAKE] & ~s->regs[R_CORE_1_IMR_WAKE];
-    qemu_set_irq(s->irq_core_1_imr_wake, pending);
-}
-
-static void core_1_isr_wake_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    core_1_imr_wake_update_irq(s);
-}
-
-static uint64_t core_1_ien_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_1_IMR_WAKE] &= ~val;
-    core_1_imr_wake_update_irq(s);
-    return 0;
-}
-
-static uint64_t core_1_ids_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_1_IMR_WAKE] |= val;
-    core_1_imr_wake_update_irq(s);
-    return 0;
-}
-
-static void cluster_3_imr_wake_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CLUSTER_3_ISR_WAKE] &
-                   ~s->regs[R_CLUSTER_3_IMR_WAKE];
-    qemu_set_irq(s->irq_cluster_3_imr_wake, pending);
-}
-
-static void cluster_3_isr_wake_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    cluster_3_imr_wake_update_irq(s);
-}
-
-static uint64_t cluster_3_ien_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CLUSTER_3_IMR_WAKE] &= ~val;
-    cluster_3_imr_wake_update_irq(s);
-    return 0;
-}
-
-static uint64_t cluster_3_ids_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CLUSTER_3_IMR_WAKE] |= val;
-    cluster_3_imr_wake_update_irq(s);
-    return 0;
-}
-
-static void cluster_0_imr_wake_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CLUSTER_0_ISR_WAKE] &
-                   ~s->regs[R_CLUSTER_0_IMR_WAKE];
-    qemu_set_irq(s->irq_cluster_0_imr_wake, pending);
-}
-
-static void cluster_0_isr_wake_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    cluster_0_imr_wake_update_irq(s);
-}
-
-static uint64_t cluster_0_ien_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CLUSTER_0_IMR_WAKE] &= ~val;
-    cluster_0_imr_wake_update_irq(s);
-    return 0;
-}
-
-static uint64_t cluster_0_ids_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CLUSTER_0_IMR_WAKE] |= val;
-    cluster_0_imr_wake_update_irq(s);
-    return 0;
-}
-
 static void apu_pcil_imr_update_irq(APU_PCIL *s)
 {
     bool pending = s->regs[R_APU_PCIL_ISR] & ~s->regs[R_APU_PCIL_IMR];
@@ -1723,392 +1013,6 @@ static uint64_t apu_pcil_ids_prew(RegisterInfo *reg, uint64_t val64)
 
     s->regs[R_APU_PCIL_IMR] |= val;
     apu_pcil_imr_update_irq(s);
-    return 0;
-}
-
-static void cluster_1_imr_wake_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CLUSTER_1_ISR_WAKE] &
-                   ~s->regs[R_CLUSTER_1_IMR_WAKE];
-    qemu_set_irq(s->irq_cluster_1_imr_wake, pending);
-}
-
-static void cluster_1_isr_wake_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    cluster_1_imr_wake_update_irq(s);
-}
-
-static uint64_t cluster_1_ien_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CLUSTER_1_IMR_WAKE] &= ~val;
-    cluster_1_imr_wake_update_irq(s);
-    return 0;
-}
-
-static uint64_t cluster_1_ids_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CLUSTER_1_IMR_WAKE] |= val;
-    cluster_1_imr_wake_update_irq(s);
-    return 0;
-}
-
-static void core_7_imr_power_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CORE_7_ISR_POWER] & ~s->regs[R_CORE_7_IMR_POWER];
-    qemu_set_irq(s->irq_core_7_imr_power, pending);
-}
-
-static void core_7_isr_power_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    core_7_imr_power_update_irq(s);
-}
-
-static uint64_t core_7_ien_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_7_IMR_POWER] &= ~val;
-    core_7_imr_power_update_irq(s);
-    return 0;
-}
-
-static uint64_t core_7_ids_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_7_IMR_POWER] |= val;
-    core_7_imr_power_update_irq(s);
-    return 0;
-}
-
-static void core_10_imr_wake_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CORE_10_ISR_WAKE] & ~s->regs[R_CORE_10_IMR_WAKE];
-    qemu_set_irq(s->irq_core_10_imr_wake, pending);
-}
-
-static void core_10_isr_wake_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    core_10_imr_wake_update_irq(s);
-}
-
-static uint64_t core_10_ien_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_10_IMR_WAKE] &= ~val;
-    core_10_imr_wake_update_irq(s);
-    return 0;
-}
-
-static uint64_t core_10_ids_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_10_IMR_WAKE] |= val;
-    core_10_imr_wake_update_irq(s);
-    return 0;
-}
-
-static void core_9_imr_power_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CORE_9_ISR_POWER] & ~s->regs[R_CORE_9_IMR_POWER];
-    qemu_set_irq(s->irq_core_9_imr_power, pending);
-}
-
-static void core_9_isr_power_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    core_9_imr_power_update_irq(s);
-}
-
-static uint64_t core_9_ien_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_9_IMR_POWER] &= ~val;
-    core_9_imr_power_update_irq(s);
-    return 0;
-}
-
-static uint64_t core_9_ids_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_9_IMR_POWER] |= val;
-    core_9_imr_power_update_irq(s);
-    return 0;
-}
-
-static void core_6_imr_wake_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CORE_6_ISR_WAKE] & ~s->regs[R_CORE_6_IMR_WAKE];
-    qemu_set_irq(s->irq_core_6_imr_wake, pending);
-}
-
-static void core_6_isr_wake_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    core_6_imr_wake_update_irq(s);
-}
-
-static uint64_t core_6_ien_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_6_IMR_WAKE] &= ~val;
-    core_6_imr_wake_update_irq(s);
-    return 0;
-}
-
-static uint64_t core_6_ids_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_6_IMR_WAKE] |= val;
-    core_6_imr_wake_update_irq(s);
-    return 0;
-}
-
-static void cluster_1_imr_power_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CLUSTER_1_ISR_POWER] &
-                   ~s->regs[R_CLUSTER_1_IMR_POWER];
-    qemu_set_irq(s->irq_cluster_1_imr_power, pending);
-}
-
-static void cluster_1_isr_power_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    cluster_1_imr_power_update_irq(s);
-}
-
-static uint64_t cluster_1_ien_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CLUSTER_1_IMR_POWER] &= ~val;
-    cluster_1_imr_power_update_irq(s);
-    return 0;
-}
-
-static uint64_t cluster_1_ids_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CLUSTER_1_IMR_POWER] |= val;
-    cluster_1_imr_power_update_irq(s);
-    return 0;
-}
-
-static void core_15_imr_wake_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CORE_15_ISR_WAKE] & ~s->regs[R_CORE_15_IMR_WAKE];
-    qemu_set_irq(s->irq_core_15_imr_wake, pending);
-}
-
-static void core_15_isr_wake_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    core_15_imr_wake_update_irq(s);
-}
-
-static uint64_t core_15_ien_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_15_IMR_WAKE] &= ~val;
-    core_15_imr_wake_update_irq(s);
-    return 0;
-}
-
-static uint64_t core_15_ids_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_15_IMR_WAKE] |= val;
-    core_15_imr_wake_update_irq(s);
-    return 0;
-}
-
-static void core_4_imr_wake_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CORE_4_ISR_WAKE] & ~s->regs[R_CORE_4_IMR_WAKE];
-    qemu_set_irq(s->irq_core_4_imr_wake, pending);
-}
-
-static void core_4_isr_wake_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    core_4_imr_wake_update_irq(s);
-}
-
-static uint64_t core_4_ien_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_4_IMR_WAKE] &= ~val;
-    core_4_imr_wake_update_irq(s);
-    return 0;
-}
-
-static uint64_t core_4_ids_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_4_IMR_WAKE] |= val;
-    core_4_imr_wake_update_irq(s);
-    return 0;
-}
-
-static void core_11_imr_power_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CORE_11_ISR_POWER] & ~s->regs[R_CORE_11_IMR_POWER];
-    qemu_set_irq(s->irq_core_11_imr_power, pending);
-}
-
-static void core_11_isr_power_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    core_11_imr_power_update_irq(s);
-}
-
-static uint64_t core_11_ien_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_11_IMR_POWER] &= ~val;
-    core_11_imr_power_update_irq(s);
-    return 0;
-}
-
-static uint64_t core_11_ids_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_11_IMR_POWER] |= val;
-    core_11_imr_power_update_irq(s);
-    return 0;
-}
-
-static void core_8_imr_power_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CORE_8_ISR_POWER] & ~s->regs[R_CORE_8_IMR_POWER];
-    qemu_set_irq(s->irq_core_8_imr_power, pending);
-}
-
-static void core_8_isr_power_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    core_8_imr_power_update_irq(s);
-}
-
-static uint64_t core_8_ien_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_8_IMR_POWER] &= ~val;
-    core_8_imr_power_update_irq(s);
-    return 0;
-}
-
-static uint64_t core_8_ids_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_8_IMR_POWER] |= val;
-    core_8_imr_power_update_irq(s);
-    return 0;
-}
-
-static void core_10_imr_power_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CORE_10_ISR_POWER] & ~s->regs[R_CORE_10_IMR_POWER];
-    qemu_set_irq(s->irq_core_10_imr_power, pending);
-}
-
-static void core_10_isr_power_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    core_10_imr_power_update_irq(s);
-}
-
-static uint64_t core_10_ien_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_10_IMR_POWER] &= ~val;
-    core_10_imr_power_update_irq(s);
-    return 0;
-}
-
-static uint64_t core_10_ids_power_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_10_IMR_POWER] |= val;
-    core_10_imr_power_update_irq(s);
-    return 0;
-}
-
-static void core_13_imr_wake_update_irq(APU_PCIL *s)
-{
-    bool pending = s->regs[R_CORE_13_ISR_WAKE] & ~s->regs[R_CORE_13_IMR_WAKE];
-    qemu_set_irq(s->irq_core_13_imr_wake, pending);
-}
-
-static void core_13_isr_wake_postw(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    core_13_imr_wake_update_irq(s);
-}
-
-static uint64_t core_13_ien_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_13_IMR_WAKE] &= ~val;
-    core_13_imr_wake_update_irq(s);
-    return 0;
-}
-
-static uint64_t core_13_ids_wake_prew(RegisterInfo *reg, uint64_t val64)
-{
-    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t val = val64;
-
-    s->regs[R_CORE_13_IMR_WAKE] |= val;
-    core_13_imr_wake_update_irq(s);
     return 0;
 }
 
@@ -2154,31 +1058,31 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
     },{ .name = "CORE_0_ISR_POWER",  .addr = A_CORE_0_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = core_0_isr_power_postw,
+        .post_write = core_n_isr_power_postw,
     },{ .name = "CORE_0_IMR_POWER",  .addr = A_CORE_0_IMR_POWER,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CORE_0_IEN_POWER",  .addr = A_CORE_0_IEN_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = core_0_ien_power_prew,
+        .pre_write = core_n_ien_power_prew,
     },{ .name = "CORE_0_IDS_POWER",  .addr = A_CORE_0_IDS_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = core_0_ids_power_prew,
+        .pre_write = core_n_ids_power_prew,
     },{ .name = "CORE_0_ISR_WAKE",  .addr = A_CORE_0_ISR_WAKE,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = core_0_isr_wake_postw,
+        .post_write = core_n_isr_wake_postw,
     },{ .name = "CORE_0_IMR_WAKE",  .addr = A_CORE_0_IMR_WAKE,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CORE_0_IEN_WAKE",  .addr = A_CORE_0_IEN_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = core_0_ien_wake_prew,
+        .pre_write = core_n_ien_wake_prew,
     },{ .name = "CORE_0_IDS_WAKE",  .addr = A_CORE_0_IDS_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = core_0_ids_wake_prew,
+        .pre_write = core_n_ids_wake_prew,
     },{ .name = "CORE_1_PWRDWN",  .addr = A_CORE_1_PWRDWN,
         .rsvd = 0xfffffffe,
     },{ .name = "CORE_1_PREQ",  .addr = A_CORE_1_PREQ,
@@ -2192,31 +1096,31 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
     },{ .name = "CORE_1_ISR_POWER",  .addr = A_CORE_1_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = core_1_isr_power_postw,
+        .post_write = core_n_isr_power_postw,
     },{ .name = "CORE_1_IMR_POWER",  .addr = A_CORE_1_IMR_POWER,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CORE_1_IEN_POWER",  .addr = A_CORE_1_IEN_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = core_1_ien_power_prew,
+        .pre_write = core_n_ien_power_prew,
     },{ .name = "CORE_1_IDS_POWER",  .addr = A_CORE_1_IDS_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = core_1_ids_power_prew,
+        .pre_write = core_n_ids_power_prew,
     },{ .name = "CORE_1_ISR_WAKE",  .addr = A_CORE_1_ISR_WAKE,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = core_1_isr_wake_postw,
+        .post_write = core_n_isr_wake_postw,
     },{ .name = "CORE_1_IMR_WAKE",  .addr = A_CORE_1_IMR_WAKE,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CORE_1_IEN_WAKE",  .addr = A_CORE_1_IEN_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = core_1_ien_wake_prew,
+        .pre_write = core_n_ien_wake_prew,
     },{ .name = "CORE_1_IDS_WAKE",  .addr = A_CORE_1_IDS_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = core_1_ids_wake_prew,
+        .pre_write = core_n_ids_wake_prew,
     },{ .name = "CORE_2_PWRDWN",  .addr = A_CORE_2_PWRDWN,
         .rsvd = 0xfffffffe,
     },{ .name = "CORE_2_PREQ",  .addr = A_CORE_2_PREQ,
@@ -2230,31 +1134,31 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
     },{ .name = "CORE_2_ISR_POWER",  .addr = A_CORE_2_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = core_2_isr_power_postw,
+        .post_write = core_n_isr_power_postw,
     },{ .name = "CORE_2_IMR_POWER",  .addr = A_CORE_2_IMR_POWER,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CORE_2_IEN_POWER",  .addr = A_CORE_2_IEN_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = core_2_ien_power_prew,
+        .pre_write = core_n_ien_power_prew,
     },{ .name = "CORE_2_IDS_POWER",  .addr = A_CORE_2_IDS_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = core_2_ids_power_prew,
+        .pre_write = core_n_ids_power_prew,
     },{ .name = "CORE_2_ISR_WAKE",  .addr = A_CORE_2_ISR_WAKE,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = core_2_isr_wake_postw,
+        .post_write = core_n_isr_wake_postw,
     },{ .name = "CORE_2_IMR_WAKE",  .addr = A_CORE_2_IMR_WAKE,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CORE_2_IEN_WAKE",  .addr = A_CORE_2_IEN_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = core_2_ien_wake_prew,
+        .pre_write = core_n_ien_wake_prew,
     },{ .name = "CORE_2_IDS_WAKE",  .addr = A_CORE_2_IDS_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = core_2_ids_wake_prew,
+        .pre_write = core_n_ids_wake_prew,
     },{ .name = "CORE_3_PWRDWN",  .addr = A_CORE_3_PWRDWN,
         .rsvd = 0xfffffffe,
     },{ .name = "CORE_3_PREQ",  .addr = A_CORE_3_PREQ,
@@ -2268,31 +1172,31 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
     },{ .name = "CORE_3_ISR_POWER",  .addr = A_CORE_3_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = core_3_isr_power_postw,
+        .post_write = core_n_isr_power_postw,
     },{ .name = "CORE_3_IMR_POWER",  .addr = A_CORE_3_IMR_POWER,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CORE_3_IEN_POWER",  .addr = A_CORE_3_IEN_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = core_3_ien_power_prew,
+        .pre_write = core_n_ien_power_prew,
     },{ .name = "CORE_3_IDS_POWER",  .addr = A_CORE_3_IDS_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = core_3_ids_power_prew,
+        .pre_write = core_n_ids_power_prew,
     },{ .name = "CORE_3_ISR_WAKE",  .addr = A_CORE_3_ISR_WAKE,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = core_3_isr_wake_postw,
+        .post_write = core_n_isr_wake_postw,
     },{ .name = "CORE_3_IMR_WAKE",  .addr = A_CORE_3_IMR_WAKE,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CORE_3_IEN_WAKE",  .addr = A_CORE_3_IEN_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = core_3_ien_wake_prew,
+        .pre_write = core_n_ien_wake_prew,
     },{ .name = "CORE_3_IDS_WAKE",  .addr = A_CORE_3_IDS_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = core_3_ids_wake_prew,
+        .pre_write = core_n_ids_wake_prew,
     },{ .name = "CORE_4_PWRDWN",  .addr = A_CORE_4_PWRDWN,
         .rsvd = 0xfffffffe,
     },{ .name = "CORE_4_PREQ",  .addr = A_CORE_4_PREQ,
@@ -2306,31 +1210,31 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
     },{ .name = "CORE_4_ISR_POWER",  .addr = A_CORE_4_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = core_4_isr_power_postw,
+        .post_write = core_n_isr_power_postw,
     },{ .name = "CORE_4_IMR_POWER",  .addr = A_CORE_4_IMR_POWER,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CORE_4_IEN_POWER",  .addr = A_CORE_4_IEN_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = core_4_ien_power_prew,
+        .pre_write = core_n_ien_power_prew,
     },{ .name = "CORE_4_IDS_POWER",  .addr = A_CORE_4_IDS_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = core_4_ids_power_prew,
+        .pre_write = core_n_ids_power_prew,
     },{ .name = "CORE_4_ISR_WAKE",  .addr = A_CORE_4_ISR_WAKE,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = core_4_isr_wake_postw,
+        .post_write = core_n_isr_wake_postw,
     },{ .name = "CORE_4_IMR_WAKE",  .addr = A_CORE_4_IMR_WAKE,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CORE_4_IEN_WAKE",  .addr = A_CORE_4_IEN_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = core_4_ien_wake_prew,
+        .pre_write = core_n_ien_wake_prew,
     },{ .name = "CORE_4_IDS_WAKE",  .addr = A_CORE_4_IDS_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = core_4_ids_wake_prew,
+        .pre_write = core_n_ids_wake_prew,
     },{ .name = "CORE_5_PWRDWN",  .addr = A_CORE_5_PWRDWN,
         .rsvd = 0xfffffffe,
     },{ .name = "CORE_5_PREQ",  .addr = A_CORE_5_PREQ,
@@ -2344,31 +1248,31 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
     },{ .name = "CORE_5_ISR_POWER",  .addr = A_CORE_5_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = core_5_isr_power_postw,
+        .post_write = core_n_isr_power_postw,
     },{ .name = "CORE_5_IMR_POWER",  .addr = A_CORE_5_IMR_POWER,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CORE_5_IEN_POWER",  .addr = A_CORE_5_IEN_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = core_5_ien_power_prew,
+        .pre_write = core_n_ien_power_prew,
     },{ .name = "CORE_5_IDS_POWER",  .addr = A_CORE_5_IDS_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = core_5_ids_power_prew,
+        .pre_write = core_n_ids_power_prew,
     },{ .name = "CORE_5_ISR_WAKE",  .addr = A_CORE_5_ISR_WAKE,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = core_5_isr_wake_postw,
+        .post_write = core_n_isr_wake_postw,
     },{ .name = "CORE_5_IMR_WAKE",  .addr = A_CORE_5_IMR_WAKE,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CORE_5_IEN_WAKE",  .addr = A_CORE_5_IEN_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = core_5_ien_wake_prew,
+        .pre_write = core_n_ien_wake_prew,
     },{ .name = "CORE_5_IDS_WAKE",  .addr = A_CORE_5_IDS_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = core_5_ids_wake_prew,
+        .pre_write = core_n_ids_wake_prew,
     },{ .name = "CORE_6_PWRDWN",  .addr = A_CORE_6_PWRDWN,
         .rsvd = 0xfffffffe,
     },{ .name = "CORE_6_PREQ",  .addr = A_CORE_6_PREQ,
@@ -2382,31 +1286,31 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
     },{ .name = "CORE_6_ISR_POWER",  .addr = A_CORE_6_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = core_6_isr_power_postw,
+        .post_write = core_n_isr_power_postw,
     },{ .name = "CORE_6_IMR_POWER",  .addr = A_CORE_6_IMR_POWER,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CORE_6_IEN_POWER",  .addr = A_CORE_6_IEN_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = core_6_ien_power_prew,
+        .pre_write = core_n_ien_power_prew,
     },{ .name = "CORE_6_IDS_POWER",  .addr = A_CORE_6_IDS_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = core_6_ids_power_prew,
+        .pre_write = core_n_ids_power_prew,
     },{ .name = "CORE_6_ISR_WAKE",  .addr = A_CORE_6_ISR_WAKE,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = core_6_isr_wake_postw,
+        .post_write = core_n_isr_wake_postw,
     },{ .name = "CORE_6_IMR_WAKE",  .addr = A_CORE_6_IMR_WAKE,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CORE_6_IEN_WAKE",  .addr = A_CORE_6_IEN_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = core_6_ien_wake_prew,
+        .pre_write = core_n_ien_wake_prew,
     },{ .name = "CORE_6_IDS_WAKE",  .addr = A_CORE_6_IDS_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = core_6_ids_wake_prew,
+        .pre_write = core_n_ids_wake_prew,
     },{ .name = "CORE_7_PWRDWN",  .addr = A_CORE_7_PWRDWN,
         .rsvd = 0xfffffffe,
     },{ .name = "CORE_7_PREQ",  .addr = A_CORE_7_PREQ,
@@ -2420,31 +1324,31 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
     },{ .name = "CORE_7_ISR_POWER",  .addr = A_CORE_7_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = core_7_isr_power_postw,
+        .post_write = core_n_isr_power_postw,
     },{ .name = "CORE_7_IMR_POWER",  .addr = A_CORE_7_IMR_POWER,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CORE_7_IEN_POWER",  .addr = A_CORE_7_IEN_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = core_7_ien_power_prew,
+        .pre_write = core_n_ien_power_prew,
     },{ .name = "CORE_7_IDS_POWER",  .addr = A_CORE_7_IDS_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = core_7_ids_power_prew,
+        .pre_write = core_n_ids_power_prew,
     },{ .name = "CORE_7_ISR_WAKE",  .addr = A_CORE_7_ISR_WAKE,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = core_7_isr_wake_postw,
+        .post_write = core_n_isr_wake_postw,
     },{ .name = "CORE_7_IMR_WAKE",  .addr = A_CORE_7_IMR_WAKE,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CORE_7_IEN_WAKE",  .addr = A_CORE_7_IEN_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = core_7_ien_wake_prew,
+        .pre_write = core_n_ien_wake_prew,
     },{ .name = "CORE_7_IDS_WAKE",  .addr = A_CORE_7_IDS_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = core_7_ids_wake_prew,
+        .pre_write = core_n_ids_wake_prew,
     },{ .name = "CORE_8_PWRDWN",  .addr = A_CORE_8_PWRDWN,
         .rsvd = 0xfffffffe,
     },{ .name = "CORE_8_PREQ",  .addr = A_CORE_8_PREQ,
@@ -2458,31 +1362,31 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
     },{ .name = "CORE_8_ISR_POWER",  .addr = A_CORE_8_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = core_8_isr_power_postw,
+        .post_write = core_n_isr_power_postw,
     },{ .name = "CORE_8_IMR_POWER",  .addr = A_CORE_8_IMR_POWER,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CORE_8_IEN_POWER",  .addr = A_CORE_8_IEN_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = core_8_ien_power_prew,
+        .pre_write = core_n_ien_power_prew,
     },{ .name = "CORE_8_IDS_POWER",  .addr = A_CORE_8_IDS_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = core_8_ids_power_prew,
+        .pre_write = core_n_ids_power_prew,
     },{ .name = "CORE_8_ISR_WAKE",  .addr = A_CORE_8_ISR_WAKE,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = core_8_isr_wake_postw,
+        .post_write = core_n_isr_wake_postw,
     },{ .name = "CORE_8_IMR_WAKE",  .addr = A_CORE_8_IMR_WAKE,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CORE_8_IEN_WAKE",  .addr = A_CORE_8_IEN_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = core_8_ien_wake_prew,
+        .pre_write = core_n_ien_wake_prew,
     },{ .name = "CORE_8_IDS_WAKE",  .addr = A_CORE_8_IDS_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = core_8_ids_wake_prew,
+        .pre_write = core_n_ids_wake_prew,
     },{ .name = "CORE_9_PWRDWN",  .addr = A_CORE_9_PWRDWN,
         .rsvd = 0xfffffffe,
     },{ .name = "CORE_9_PREQ",  .addr = A_CORE_9_PREQ,
@@ -2496,31 +1400,31 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
     },{ .name = "CORE_9_ISR_POWER",  .addr = A_CORE_9_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = core_9_isr_power_postw,
+        .post_write = core_n_isr_power_postw,
     },{ .name = "CORE_9_IMR_POWER",  .addr = A_CORE_9_IMR_POWER,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CORE_9_IEN_POWER",  .addr = A_CORE_9_IEN_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = core_9_ien_power_prew,
+        .pre_write = core_n_ien_power_prew,
     },{ .name = "CORE_9_IDS_POWER",  .addr = A_CORE_9_IDS_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = core_9_ids_power_prew,
+        .pre_write = core_n_ids_power_prew,
     },{ .name = "CORE_9_ISR_WAKE",  .addr = A_CORE_9_ISR_WAKE,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = core_9_isr_wake_postw,
+        .post_write = core_n_isr_wake_postw,
     },{ .name = "CORE_9_IMR_WAKE",  .addr = A_CORE_9_IMR_WAKE,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CORE_9_IEN_WAKE",  .addr = A_CORE_9_IEN_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = core_9_ien_wake_prew,
+        .pre_write = core_n_ien_wake_prew,
     },{ .name = "CORE_9_IDS_WAKE",  .addr = A_CORE_9_IDS_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = core_9_ids_wake_prew,
+        .pre_write = core_n_ids_wake_prew,
     },{ .name = "CORE_10_PWRDWN",  .addr = A_CORE_10_PWRDWN,
         .rsvd = 0xfffffffe,
     },{ .name = "CORE_10_PREQ",  .addr = A_CORE_10_PREQ,
@@ -2534,31 +1438,31 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
     },{ .name = "CORE_10_ISR_POWER",  .addr = A_CORE_10_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = core_10_isr_power_postw,
+        .post_write = core_n_isr_power_postw,
     },{ .name = "CORE_10_IMR_POWER",  .addr = A_CORE_10_IMR_POWER,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CORE_10_IEN_POWER",  .addr = A_CORE_10_IEN_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = core_10_ien_power_prew,
+        .pre_write = core_n_ien_power_prew,
     },{ .name = "CORE_10_IDS_POWER",  .addr = A_CORE_10_IDS_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = core_10_ids_power_prew,
+        .pre_write = core_n_ids_power_prew,
     },{ .name = "CORE_10_ISR_WAKE",  .addr = A_CORE_10_ISR_WAKE,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = core_10_isr_wake_postw,
+        .post_write = core_n_isr_wake_postw,
     },{ .name = "CORE_10_IMR_WAKE",  .addr = A_CORE_10_IMR_WAKE,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CORE_10_IEN_WAKE",  .addr = A_CORE_10_IEN_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = core_10_ien_wake_prew,
+        .pre_write = core_n_ien_wake_prew,
     },{ .name = "CORE_10_IDS_WAKE",  .addr = A_CORE_10_IDS_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = core_10_ids_wake_prew,
+        .pre_write = core_n_ids_wake_prew,
     },{ .name = "CORE_11_PWRDWN",  .addr = A_CORE_11_PWRDWN,
         .rsvd = 0xfffffffe,
     },{ .name = "CORE_11_PREQ",  .addr = A_CORE_11_PREQ,
@@ -2572,31 +1476,31 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
     },{ .name = "CORE_11_ISR_POWER",  .addr = A_CORE_11_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = core_11_isr_power_postw,
+        .post_write = core_n_isr_power_postw,
     },{ .name = "CORE_11_IMR_POWER",  .addr = A_CORE_11_IMR_POWER,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CORE_11_IEN_POWER",  .addr = A_CORE_11_IEN_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = core_11_ien_power_prew,
+        .pre_write = core_n_ien_power_prew,
     },{ .name = "CORE_11_IDS_POWER",  .addr = A_CORE_11_IDS_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = core_11_ids_power_prew,
+        .pre_write = core_n_ids_power_prew,
     },{ .name = "CORE_11_ISR_WAKE",  .addr = A_CORE_11_ISR_WAKE,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = core_11_isr_wake_postw,
+        .post_write = core_n_isr_wake_postw,
     },{ .name = "CORE_11_IMR_WAKE",  .addr = A_CORE_11_IMR_WAKE,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CORE_11_IEN_WAKE",  .addr = A_CORE_11_IEN_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = core_11_ien_wake_prew,
+        .pre_write = core_n_ien_wake_prew,
     },{ .name = "CORE_11_IDS_WAKE",  .addr = A_CORE_11_IDS_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = core_11_ids_wake_prew,
+        .pre_write = core_n_ids_wake_prew,
     },{ .name = "CORE_12_PWRDWN",  .addr = A_CORE_12_PWRDWN,
         .rsvd = 0xfffffffe,
     },{ .name = "CORE_12_PREQ",  .addr = A_CORE_12_PREQ,
@@ -2610,31 +1514,31 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
     },{ .name = "CORE_12_ISR_POWER",  .addr = A_CORE_12_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = core_12_isr_power_postw,
+        .post_write = core_n_isr_power_postw,
     },{ .name = "CORE_12_IMR_POWER",  .addr = A_CORE_12_IMR_POWER,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CORE_12_IEN_POWER",  .addr = A_CORE_12_IEN_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = core_12_ien_power_prew,
+        .pre_write = core_n_ien_power_prew,
     },{ .name = "CORE_12_IDS_POWER",  .addr = A_CORE_12_IDS_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = core_12_ids_power_prew,
+        .pre_write = core_n_ids_power_prew,
     },{ .name = "CORE_12_ISR_WAKE",  .addr = A_CORE_12_ISR_WAKE,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = core_12_isr_wake_postw,
+        .post_write = core_n_isr_wake_postw,
     },{ .name = "CORE_12_IMR_WAKE",  .addr = A_CORE_12_IMR_WAKE,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CORE_12_IEN_WAKE",  .addr = A_CORE_12_IEN_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = core_12_ien_wake_prew,
+        .pre_write = core_n_ien_wake_prew,
     },{ .name = "CORE_12_IDS_WAKE",  .addr = A_CORE_12_IDS_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = core_12_ids_wake_prew,
+        .pre_write = core_n_ids_wake_prew,
     },{ .name = "CORE_13_PWRDWN",  .addr = A_CORE_13_PWRDWN,
         .rsvd = 0xfffffffe,
     },{ .name = "CORE_13_PREQ",  .addr = A_CORE_13_PREQ,
@@ -2648,31 +1552,31 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
     },{ .name = "CORE_13_ISR_POWER",  .addr = A_CORE_13_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = core_13_isr_power_postw,
+        .post_write = core_n_isr_power_postw,
     },{ .name = "CORE_13_IMR_POWER",  .addr = A_CORE_13_IMR_POWER,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CORE_13_IEN_POWER",  .addr = A_CORE_13_IEN_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = core_13_ien_power_prew,
+        .pre_write = core_n_ien_power_prew,
     },{ .name = "CORE_13_IDS_POWER",  .addr = A_CORE_13_IDS_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = core_13_ids_power_prew,
+        .pre_write = core_n_ids_power_prew,
     },{ .name = "CORE_13_ISR_WAKE",  .addr = A_CORE_13_ISR_WAKE,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = core_13_isr_wake_postw,
+        .post_write = core_n_isr_wake_postw,
     },{ .name = "CORE_13_IMR_WAKE",  .addr = A_CORE_13_IMR_WAKE,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CORE_13_IEN_WAKE",  .addr = A_CORE_13_IEN_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = core_13_ien_wake_prew,
+        .pre_write = core_n_ien_wake_prew,
     },{ .name = "CORE_13_IDS_WAKE",  .addr = A_CORE_13_IDS_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = core_13_ids_wake_prew,
+        .pre_write = core_n_ids_wake_prew,
     },{ .name = "CORE_14_PWRDWN",  .addr = A_CORE_14_PWRDWN,
         .rsvd = 0xfffffffe,
     },{ .name = "CORE_14_PREQ",  .addr = A_CORE_14_PREQ,
@@ -2686,31 +1590,31 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
     },{ .name = "CORE_14_ISR_POWER",  .addr = A_CORE_14_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = core_14_isr_power_postw,
+        .post_write = core_n_isr_power_postw,
     },{ .name = "CORE_14_IMR_POWER",  .addr = A_CORE_14_IMR_POWER,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CORE_14_IEN_POWER",  .addr = A_CORE_14_IEN_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = core_14_ien_power_prew,
+        .pre_write = core_n_ien_power_prew,
     },{ .name = "CORE_14_IDS_POWER",  .addr = A_CORE_14_IDS_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = core_14_ids_power_prew,
+        .pre_write = core_n_ids_power_prew,
     },{ .name = "CORE_14_ISR_WAKE",  .addr = A_CORE_14_ISR_WAKE,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = core_14_isr_wake_postw,
+        .post_write = core_n_isr_wake_postw,
     },{ .name = "CORE_14_IMR_WAKE",  .addr = A_CORE_14_IMR_WAKE,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CORE_14_IEN_WAKE",  .addr = A_CORE_14_IEN_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = core_14_ien_wake_prew,
+        .pre_write = core_n_ien_wake_prew,
     },{ .name = "CORE_14_IDS_WAKE",  .addr = A_CORE_14_IDS_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = core_14_ids_wake_prew,
+        .pre_write = core_n_ids_wake_prew,
     },{ .name = "CORE_15_PWRDWN",  .addr = A_CORE_15_PWRDWN,
         .rsvd = 0xfffffffe,
     },{ .name = "CORE_15_PREQ",  .addr = A_CORE_15_PREQ,
@@ -2724,31 +1628,31 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
     },{ .name = "CORE_15_ISR_POWER",  .addr = A_CORE_15_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = core_15_isr_power_postw,
+        .post_write = core_n_isr_power_postw,
     },{ .name = "CORE_15_IMR_POWER",  .addr = A_CORE_15_IMR_POWER,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CORE_15_IEN_POWER",  .addr = A_CORE_15_IEN_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = core_15_ien_power_prew,
+        .pre_write = core_n_ien_power_prew,
     },{ .name = "CORE_15_IDS_POWER",  .addr = A_CORE_15_IDS_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = core_15_ids_power_prew,
+        .pre_write = core_n_ids_power_prew,
     },{ .name = "CORE_15_ISR_WAKE",  .addr = A_CORE_15_ISR_WAKE,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = core_15_isr_wake_postw,
+        .post_write = core_n_isr_wake_postw,
     },{ .name = "CORE_15_IMR_WAKE",  .addr = A_CORE_15_IMR_WAKE,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CORE_15_IEN_WAKE",  .addr = A_CORE_15_IEN_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = core_15_ien_wake_prew,
+        .pre_write = core_n_ien_wake_prew,
     },{ .name = "CORE_15_IDS_WAKE",  .addr = A_CORE_15_IDS_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = core_15_ids_wake_prew,
+        .pre_write = core_n_ids_wake_prew,
     },{ .name = "CORE_DBG_ISR_PWRUP_REQ",  .addr = A_CORE_DBG_ISR_PWRUP_REQ,
         .rsvd = 0xffff0000,
         .w1c = 0xffff,
@@ -2790,31 +1694,31 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
     },{ .name = "CLUSTER_0_ISR_POWER",  .addr = A_CLUSTER_0_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = cluster_0_isr_power_postw,
+        .post_write = cluster_n_isr_power_postw,
     },{ .name = "CLUSTER_0_IMR_POWER",  .addr = A_CLUSTER_0_IMR_POWER,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CLUSTER_0_IEN_POWER",  .addr = A_CLUSTER_0_IEN_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = cluster_0_ien_power_prew,
+        .pre_write = cluster_n_ien_power_prew,
     },{ .name = "CLUSTER_0_IDS_POWER",  .addr = A_CLUSTER_0_IDS_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = cluster_0_ids_power_prew,
+        .pre_write = cluster_n_ids_power_prew,
     },{ .name = "CLUSTER_0_ISR_WAKE",  .addr = A_CLUSTER_0_ISR_WAKE,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = cluster_0_isr_wake_postw,
+        .post_write = cluster_n_isr_wake_postw,
     },{ .name = "CLUSTER_0_IMR_WAKE",  .addr = A_CLUSTER_0_IMR_WAKE,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CLUSTER_0_IEN_WAKE",  .addr = A_CLUSTER_0_IEN_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = cluster_0_ien_wake_prew,
+        .pre_write = cluster_n_ien_wake_prew,
     },{ .name = "CLUSTER_0_IDS_WAKE",  .addr = A_CLUSTER_0_IDS_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = cluster_0_ids_wake_prew,
+        .pre_write = cluster_n_ids_wake_prew,
     },{ .name = "CLUSTER_1_PREQ",  .addr = A_CLUSTER_1_PREQ,
         .rsvd = 0xfffffffe,
         .post_write = cluster_x_preq_postw,
@@ -2826,31 +1730,31 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
     },{ .name = "CLUSTER_1_ISR_POWER",  .addr = A_CLUSTER_1_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = cluster_1_isr_power_postw,
+        .post_write = cluster_n_isr_power_postw,
     },{ .name = "CLUSTER_1_IMR_POWER",  .addr = A_CLUSTER_1_IMR_POWER,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CLUSTER_1_IEN_POWER",  .addr = A_CLUSTER_1_IEN_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = cluster_1_ien_power_prew,
+        .pre_write = cluster_n_ien_power_prew,
     },{ .name = "CLUSTER_1_IDS_POWER",  .addr = A_CLUSTER_1_IDS_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = cluster_1_ids_power_prew,
+        .pre_write = cluster_n_ids_power_prew,
     },{ .name = "CLUSTER_1_ISR_WAKE",  .addr = A_CLUSTER_1_ISR_WAKE,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = cluster_1_isr_wake_postw,
+        .post_write = cluster_n_isr_wake_postw,
     },{ .name = "CLUSTER_1_IMR_WAKE",  .addr = A_CLUSTER_1_IMR_WAKE,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CLUSTER_1_IEN_WAKE",  .addr = A_CLUSTER_1_IEN_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = cluster_1_ien_wake_prew,
+        .pre_write = cluster_n_ien_wake_prew,
     },{ .name = "CLUSTER_1_IDS_WAKE",  .addr = A_CLUSTER_1_IDS_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = cluster_1_ids_wake_prew,
+        .pre_write = cluster_n_ids_wake_prew,
     },{ .name = "CLUSTER_2_PREQ",  .addr = A_CLUSTER_2_PREQ,
         .rsvd = 0xfffffffe,
         .post_write = cluster_x_preq_postw,
@@ -2862,31 +1766,31 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
     },{ .name = "CLUSTER_2_ISR_POWER",  .addr = A_CLUSTER_2_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = cluster_2_isr_power_postw,
+        .post_write = cluster_n_isr_power_postw,
     },{ .name = "CLUSTER_2_IMR_POWER",  .addr = A_CLUSTER_2_IMR_POWER,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CLUSTER_2_IEN_POWER",  .addr = A_CLUSTER_2_IEN_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = cluster_2_ien_power_prew,
+        .pre_write = cluster_n_ien_power_prew,
     },{ .name = "CLUSTER_2_IDS_POWER",  .addr = A_CLUSTER_2_IDS_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = cluster_2_ids_power_prew,
+        .pre_write = cluster_n_ids_power_prew,
     },{ .name = "CLUSTER_2_ISR_WAKE",  .addr = A_CLUSTER_2_ISR_WAKE,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = cluster_2_isr_wake_postw,
+        .post_write = cluster_n_isr_wake_postw,
     },{ .name = "CLUSTER_2_IMR_WAKE",  .addr = A_CLUSTER_2_IMR_WAKE,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CLUSTER_2_IEN_WAKE",  .addr = A_CLUSTER_2_IEN_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = cluster_2_ien_wake_prew,
+        .pre_write = cluster_n_ien_wake_prew,
     },{ .name = "CLUSTER_2_IDS_WAKE",  .addr = A_CLUSTER_2_IDS_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = cluster_2_ids_wake_prew,
+        .pre_write = cluster_n_ids_wake_prew,
     },{ .name = "CLUSTER_3_PREQ",  .addr = A_CLUSTER_3_PREQ,
         .rsvd = 0xfffffffe,
         .post_write = cluster_x_preq_postw,
@@ -2898,31 +1802,31 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
     },{ .name = "CLUSTER_3_ISR_POWER",  .addr = A_CLUSTER_3_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = cluster_3_isr_power_postw,
+        .post_write = cluster_n_isr_power_postw,
     },{ .name = "CLUSTER_3_IMR_POWER",  .addr = A_CLUSTER_3_IMR_POWER,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CLUSTER_3_IEN_POWER",  .addr = A_CLUSTER_3_IEN_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = cluster_3_ien_power_prew,
+        .pre_write = cluster_n_ien_power_prew,
     },{ .name = "CLUSTER_3_IDS_POWER",  .addr = A_CLUSTER_3_IDS_POWER,
         .rsvd = 0xfffffffe,
-        .pre_write = cluster_3_ids_power_prew,
+        .pre_write = cluster_n_ids_power_prew,
     },{ .name = "CLUSTER_3_ISR_WAKE",  .addr = A_CLUSTER_3_ISR_WAKE,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
-        .post_write = cluster_3_isr_wake_postw,
+        .post_write = cluster_n_isr_wake_postw,
     },{ .name = "CLUSTER_3_IMR_WAKE",  .addr = A_CLUSTER_3_IMR_WAKE,
         .reset = 0x1,
         .rsvd = 0xfffffffe,
         .ro = 0x1,
     },{ .name = "CLUSTER_3_IEN_WAKE",  .addr = A_CLUSTER_3_IEN_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = cluster_3_ien_wake_prew,
+        .pre_write = cluster_n_ien_wake_prew,
     },{ .name = "CLUSTER_3_IDS_WAKE",  .addr = A_CLUSTER_3_IDS_WAKE,
         .rsvd = 0xfffffffe,
-        .pre_write = cluster_3_ids_wake_prew,
+        .pre_write = cluster_n_ids_wake_prew,
     },{ .name = "APU_PCIL_ISR",  .addr = A_APU_PCIL_ISR,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
@@ -2956,50 +1860,21 @@ static void apu_pcil_reset_enter(Object *obj, ResetType type)
 static void apu_pcil_reset_hold(Object *obj)
 {
     APU_PCIL *s = XILINX_APU_PCIL(obj);
+    size_t i;
 
-    cluster_3_imr_power_update_irq(s);
-    core_9_imr_wake_update_irq(s);
-    core_6_imr_power_update_irq(s);
+    for (i = 0; i < APU_PCIL_MAX_CLUSTER; i++) {
+        update_cluster_power_irq(s, i);
+        update_cluster_wake_irq(s, i);
+    }
+
+    for (i = 0; i < APU_PCIL_MAX_CORE; i++) {
+        update_core_power_irq(s, i);
+        update_core_wake_irq(s, i);
+    }
+
     cluster_dbg_imr_pwrup_req_update_irq(s);
-    core_0_imr_wake_update_irq(s);
-    core_15_imr_power_update_irq(s);
-    cluster_2_imr_power_update_irq(s);
-    core_14_imr_power_update_irq(s);
-    core_0_imr_power_update_irq(s);
-    core_2_imr_power_update_irq(s);
     core_dbg_imr_pwrup_req_update_irq(s);
-    core_4_imr_power_update_irq(s);
-    core_1_imr_power_update_irq(s);
-    core_3_imr_power_update_irq(s);
-    core_13_imr_power_update_irq(s);
-    cluster_0_imr_power_update_irq(s);
-    core_14_imr_wake_update_irq(s);
-    core_3_imr_wake_update_irq(s);
-    core_7_imr_wake_update_irq(s);
-    core_12_imr_power_update_irq(s);
-    core_5_imr_power_update_irq(s);
-    cluster_2_imr_wake_update_irq(s);
-    core_12_imr_wake_update_irq(s);
-    core_11_imr_wake_update_irq(s);
-    core_5_imr_wake_update_irq(s);
-    core_2_imr_wake_update_irq(s);
-    core_8_imr_wake_update_irq(s);
-    core_1_imr_wake_update_irq(s);
-    cluster_3_imr_wake_update_irq(s);
-    cluster_0_imr_wake_update_irq(s);
     apu_pcil_imr_update_irq(s);
-    cluster_1_imr_wake_update_irq(s);
-    core_7_imr_power_update_irq(s);
-    core_10_imr_wake_update_irq(s);
-    core_9_imr_power_update_irq(s);
-    core_6_imr_wake_update_irq(s);
-    cluster_1_imr_power_update_irq(s);
-    core_15_imr_wake_update_irq(s);
-    core_4_imr_wake_update_irq(s);
-    core_11_imr_power_update_irq(s);
-    core_8_imr_power_update_irq(s);
-    core_10_imr_power_update_irq(s);
-    core_13_imr_wake_update_irq(s);
 }
 
 static const MemoryRegionOps apu_pcil_ops = {
@@ -3014,7 +1889,29 @@ static const MemoryRegionOps apu_pcil_ops = {
 
 static void apu_pcil_realize(DeviceState *dev, Error **errp)
 {
-    /* Delete this if you don't need it */
+    APU_PCIL *s = XILINX_APU_PCIL(dev);
+    SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
+    size_t i;
+
+    for (i = 0; i < APU_PCIL_MAX_CLUSTER; i++) {
+        sysbus_init_irq(sbd, &s->irq_cluster_power[i]);
+    }
+
+    for (i = 0; i < APU_PCIL_MAX_CLUSTER; i++) {
+        sysbus_init_irq(sbd, &s->irq_cluster_wakeup[i]);
+    }
+
+    for (i = 0; i < APU_PCIL_MAX_CORE; i++) {
+        sysbus_init_irq(sbd, &s->irq_core_power[i]);
+    }
+
+    for (i = 0; i < APU_PCIL_MAX_CORE; i++) {
+        sysbus_init_irq(sbd, &s->irq_core_wakeup[i]);
+    }
+
+    sysbus_init_irq(sbd, &s->irq_cluster_dbg_imr_pwrup_req);
+    sysbus_init_irq(sbd, &s->irq_core_dbg_imr_pwrup_req);
+    sysbus_init_irq(sbd, &s->irq_apu_pcil_imr);
 }
 
 static void apu_pcil_init(Object *obj)
@@ -3036,49 +1933,6 @@ static void apu_pcil_init(Object *obj)
                                 0x0,
                                 &reg_array->mem);
     sysbus_init_mmio(sbd, &s->iomem);
-    sysbus_init_irq(sbd, &s->irq_cluster_3_imr_power);
-    sysbus_init_irq(sbd, &s->irq_core_9_imr_wake);
-    sysbus_init_irq(sbd, &s->irq_core_6_imr_power);
-    sysbus_init_irq(sbd, &s->irq_cluster_dbg_imr_pwrup_req);
-    sysbus_init_irq(sbd, &s->irq_core_0_imr_wake);
-    sysbus_init_irq(sbd, &s->irq_core_15_imr_power);
-    sysbus_init_irq(sbd, &s->irq_cluster_2_imr_power);
-    sysbus_init_irq(sbd, &s->irq_core_14_imr_power);
-    sysbus_init_irq(sbd, &s->irq_core_0_imr_power);
-    sysbus_init_irq(sbd, &s->irq_core_2_imr_power);
-    sysbus_init_irq(sbd, &s->irq_core_dbg_imr_pwrup_req);
-    sysbus_init_irq(sbd, &s->irq_core_4_imr_power);
-    sysbus_init_irq(sbd, &s->irq_core_1_imr_power);
-    sysbus_init_irq(sbd, &s->irq_core_3_imr_power);
-    sysbus_init_irq(sbd, &s->irq_core_13_imr_power);
-    sysbus_init_irq(sbd, &s->irq_cluster_0_imr_power);
-    sysbus_init_irq(sbd, &s->irq_core_14_imr_wake);
-    sysbus_init_irq(sbd, &s->irq_core_3_imr_wake);
-    sysbus_init_irq(sbd, &s->irq_core_7_imr_wake);
-    sysbus_init_irq(sbd, &s->irq_core_12_imr_power);
-    sysbus_init_irq(sbd, &s->irq_core_5_imr_power);
-    sysbus_init_irq(sbd, &s->irq_cluster_2_imr_wake);
-    sysbus_init_irq(sbd, &s->irq_core_12_imr_wake);
-    sysbus_init_irq(sbd, &s->irq_core_11_imr_wake);
-    sysbus_init_irq(sbd, &s->irq_core_5_imr_wake);
-    sysbus_init_irq(sbd, &s->irq_core_2_imr_wake);
-    sysbus_init_irq(sbd, &s->irq_core_8_imr_wake);
-    sysbus_init_irq(sbd, &s->irq_core_1_imr_wake);
-    sysbus_init_irq(sbd, &s->irq_cluster_3_imr_wake);
-    sysbus_init_irq(sbd, &s->irq_cluster_0_imr_wake);
-    sysbus_init_irq(sbd, &s->irq_apu_pcil_imr);
-    sysbus_init_irq(sbd, &s->irq_cluster_1_imr_wake);
-    sysbus_init_irq(sbd, &s->irq_core_7_imr_power);
-    sysbus_init_irq(sbd, &s->irq_core_10_imr_wake);
-    sysbus_init_irq(sbd, &s->irq_core_9_imr_power);
-    sysbus_init_irq(sbd, &s->irq_core_6_imr_wake);
-    sysbus_init_irq(sbd, &s->irq_cluster_1_imr_power);
-    sysbus_init_irq(sbd, &s->irq_core_15_imr_wake);
-    sysbus_init_irq(sbd, &s->irq_core_4_imr_wake);
-    sysbus_init_irq(sbd, &s->irq_core_11_imr_power);
-    sysbus_init_irq(sbd, &s->irq_core_8_imr_power);
-    sysbus_init_irq(sbd, &s->irq_core_10_imr_power);
-    sysbus_init_irq(sbd, &s->irq_core_13_imr_wake);
 }
 
 static const VMStateDescription vmstate_apu_pcil = {
@@ -3091,15 +1945,31 @@ static const VMStateDescription vmstate_apu_pcil = {
     }
 };
 
+static const FDTGenericGPIOSet apu_pcil_gpios[] = {
+    {
+        .names = &fdt_generic_gpio_name_set_gpio,
+        .gpios = (FDTGenericGPIOConnection[]) {
+            {
+                .name = SYSBUS_DEVICE_GPIO_IRQ,
+                .fdt_index = 0,
+                .range = APU_PCIL_MAX_CLUSTER * 2 + APU_PCIL_MAX_CORE * 2 },
+            { },
+        }
+    },
+    { },
+};
+
 static void apu_pcil_class_init(ObjectClass *klass, void *data)
 {
     ResettableClass *rc = RESETTABLE_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
+    FDTGenericGPIOClass *fggc = FDT_GENERIC_GPIO_CLASS(klass);
 
     dc->realize = apu_pcil_realize;
     dc->vmsd = &vmstate_apu_pcil;
     rc->phases.enter = apu_pcil_reset_enter;
     rc->phases.hold = apu_pcil_reset_hold;
+    fggc->client_gpios = apu_pcil_gpios;
 }
 
 static const TypeInfo apu_pcil_info = {
@@ -3108,6 +1978,10 @@ static const TypeInfo apu_pcil_info = {
     .instance_size = sizeof(APU_PCIL),
     .class_init    = apu_pcil_class_init,
     .instance_init = apu_pcil_init,
+    .interfaces    = (InterfaceInfo[]) {
+        { TYPE_FDT_GENERIC_GPIO },
+        { }
+    },
 };
 
 static void apu_pcil_register_types(void)
