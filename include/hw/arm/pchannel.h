@@ -24,6 +24,9 @@ DECLARE_CLASS_CHECKERS(ARMPChannelIfClass, ARM_PCHANNEL_IF,
 
 typedef struct ARMPChannelIf ARMPChannelIf;
 
+#define TYPE_ARM_PCHANNEL_DUMMY "arm-pchannel-dummy"
+OBJECT_DECLARE_SIMPLE_TYPE(ARMPChannelDummyState, ARM_PCHANNEL_DUMMY)
+
 struct ARMPChannelIfClass {
     InterfaceClass parent_class;
 
@@ -61,5 +64,16 @@ static inline uint32_t pchannel_get_current_state(ARMPChannelIf *obj)
 
     return klass->get_current_state(obj);
 }
+
+struct ARMPChannelDummyState {
+    DeviceState parent_obj;
+
+    uint32_t pstate;
+
+    uint32_t reset_pstate;
+    uint32_t pstate_on;
+    uint32_t pactive_on;
+    uint32_t pactive_off;
+};
 
 #endif
