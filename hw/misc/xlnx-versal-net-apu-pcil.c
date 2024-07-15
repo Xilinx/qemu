@@ -34,6 +34,8 @@
 #include "hw/qdev-properties.h"
 #include "hw/irq.h"
 #include "hw/fdt_generic_util.h"
+#include "hw/arm/pchannel.h"
+#include "trace.h"
 
 #ifndef XILINX_APU_PCIL_ERR_DEBUG
 #define XILINX_APU_PCIL_ERR_DEBUG 0
@@ -708,6 +710,8 @@ typedef struct APU_PCIL {
 
     uint32_t cluster_mask;
     uint32_t core_mask;
+
+    ARMPChannelIf *core_pchan[APU_PCIL_MAX_CORE];
 } APU_PCIL;
 
 static void update_cluster_power_irq(APU_PCIL *s, size_t cluster)
@@ -1118,18 +1122,112 @@ static uint64_t apu_pcil_ids_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
+static void update_core_pchannel(APU_PCIL *s, size_t preq_idx)
+{
+    const size_t PSTATE_IDX = preq_idx + R_CORE_0_PSTATE - R_CORE_0_PREQ;
+    const size_t PACTIVE_IDX = preq_idx + R_CORE_0_PACTIVE - R_CORE_0_PREQ;
+    const size_t ISR_POWER_IDX = preq_idx + R_CORE_0_ISR_POWER - R_CORE_0_PREQ;
+    const size_t ISR_WAKE_IDX = preq_idx + R_CORE_0_ISR_WAKE - R_CORE_0_PREQ;
+    const uint32_t PSTATE_ON = 8;
+
+    uint32_t preq = s->regs[preq_idx];
+    size_t core_idx = preq_idx / (R_CORE_1_PREQ - R_CORE_0_PREQ);
+    bool prev_on, new_on, request_accepted;
+    uint32_t pactive, pstate, new_pstate;
+
+    if (!((1 << core_idx) & s->core_mask)) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      TYPE_XILINX_APU_PCIL ": invalid core %zu\n",
+                      core_idx);
+        return;
+    }
+
+    if (!FIELD_EX32(preq, CORE_0_PREQ, PREQ)) {
+        return;
+    }
+
+    /*
+     * As a simplification we consider the following PSTATE values for the
+     * core:
+     *   0b001000: ON
+     *   anything else: OFF
+     */
+
+    pactive = pchannel_get_current_state(s->core_pchan[core_idx]);
+    pstate = FIELD_EX32(s->regs[PSTATE_IDX], CORE_0_PSTATE, PSTATE);
+
+    prev_on = pactive == PSTATE_ON;
+
+    request_accepted = pchannel_request_state_change(s->core_pchan[core_idx],
+                                                     pstate);
+
+    new_pstate = pchannel_get_current_state(s->core_pchan[core_idx]);
+    new_on = new_pstate == PSTATE_ON;
+
+    pactive = FIELD_DP32(pactive, CORE_0_PACTIVE, PACTIVE, new_pstate);
+    pactive = FIELD_DP32(pactive, CORE_0_PACTIVE, PACCEPT, request_accepted);
+    pactive = FIELD_DP32(pactive, CORE_0_PACTIVE, PDENY, !request_accepted);
+    s->regs[PACTIVE_IDX] = pactive;
+
+    trace_xlnx_versal_net_apu_pcil_core_request_pstate_change(core_idx,
+                                                              pstate,
+                                                              request_accepted);
+    if (!request_accepted) {
+        return;
+    }
+
+    if (prev_on == new_on) {
+        return;
+    }
+
+    /* trigger corresponding IRQs */
+    if (new_on) {
+        s->regs[ISR_WAKE_IDX] =
+            FIELD_DP32(s->regs[ISR_WAKE_IDX],
+                       CORE_0_ISR_WAKE, WAKE, 1);
+        update_core_wake_irq(s, core_idx);
+    } else {
+        s->regs[ISR_POWER_IDX] =
+            FIELD_DP32(s->regs[ISR_POWER_IDX],
+                       CORE_0_ISR_POWER, POWER_DOWN, 1);
+        update_core_power_irq(s, core_idx);
+    }
+}
+
 static void core_x_preq_postw(RegisterInfo *reg, uint64_t val64)
 {
     APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
     size_t idx = reg->access->addr / 4;
 
-    if (val64) {
-        /* Validation not implemented
-         * set it true until we implement all requests
-         */
-        s->regs[idx + R_CORE_0_PACTIVE - R_CORE_0_PREQ] |=
-                R_CORE_0_PACTIVE_PACCEPT_MASK;
+    update_core_pchannel(s, idx);
+}
+
+static void core_x_pstate_postw(RegisterInfo *reg, uint64_t val64)
+{
+    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
+    size_t idx = reg->access->addr / 4;
+
+    update_core_pchannel(s, idx - R_CORE_0_PSTATE + R_CORE_0_PREQ);
+}
+
+static uint64_t core_x_pactive_postr(RegisterInfo *reg, uint64_t val64)
+{
+    APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
+    size_t idx = reg->access->addr / 4;
+    size_t core_idx = idx / (R_CORE_1_PACTIVE - R_CORE_0_PACTIVE);
+    uint32_t pstate;
+
+    if (!((1 << core_idx) & s->core_mask)) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      TYPE_XILINX_APU_PCIL ": invalid core %zu\n",
+                      core_idx);
+        return 0;
     }
+
+    pstate = pchannel_get_current_state(s->core_pchan[core_idx]);
+    trace_xlnx_versal_net_apu_pcil_core_read_current_pstate(core_idx, pstate);
+
+    return FIELD_DP32(val64, CORE_0_PACTIVE, PACTIVE, pstate);
 }
 
 static void cluster_x_preq_postw(RegisterInfo *reg, uint64_t val64)
@@ -1154,9 +1252,11 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
         .post_write = core_x_preq_postw,
     },{ .name = "CORE_0_PSTATE",  .addr = A_CORE_0_PSTATE,
         .rsvd = 0xffffffc0,
+        .post_write = core_x_pstate_postw,
     },{ .name = "CORE_0_PACTIVE",  .addr = A_CORE_0_PACTIVE,
         .rsvd = 0xfcfc0000,
         .ro = 0x303ffff,
+        .post_read = core_x_pactive_postr,
     },{ .name = "CORE_0_ISR_POWER",  .addr = A_CORE_0_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
@@ -1192,9 +1292,11 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
         .post_write = core_x_preq_postw,
     },{ .name = "CORE_1_PSTATE",  .addr = A_CORE_1_PSTATE,
         .rsvd = 0xffffffc0,
+        .post_write = core_x_pstate_postw,
     },{ .name = "CORE_1_PACTIVE",  .addr = A_CORE_1_PACTIVE,
         .rsvd = 0xfcfc0000,
         .ro = 0x303ffff,
+        .post_read = core_x_pactive_postr,
     },{ .name = "CORE_1_ISR_POWER",  .addr = A_CORE_1_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
@@ -1230,9 +1332,11 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
         .post_write = core_x_preq_postw,
     },{ .name = "CORE_2_PSTATE",  .addr = A_CORE_2_PSTATE,
         .rsvd = 0xffffffc0,
+        .post_write = core_x_pstate_postw,
     },{ .name = "CORE_2_PACTIVE",  .addr = A_CORE_2_PACTIVE,
         .rsvd = 0xfcfc0000,
         .ro = 0x303ffff,
+        .post_read = core_x_pactive_postr,
     },{ .name = "CORE_2_ISR_POWER",  .addr = A_CORE_2_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
@@ -1268,9 +1372,11 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
         .post_write = core_x_preq_postw,
     },{ .name = "CORE_3_PSTATE",  .addr = A_CORE_3_PSTATE,
         .rsvd = 0xffffffc0,
+        .post_write = core_x_pstate_postw,
     },{ .name = "CORE_3_PACTIVE",  .addr = A_CORE_3_PACTIVE,
         .rsvd = 0xfcfc0000,
         .ro = 0x303ffff,
+        .post_read = core_x_pactive_postr,
     },{ .name = "CORE_3_ISR_POWER",  .addr = A_CORE_3_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
@@ -1306,9 +1412,11 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
         .post_write = core_x_preq_postw,
     },{ .name = "CORE_4_PSTATE",  .addr = A_CORE_4_PSTATE,
         .rsvd = 0xffffffc0,
+        .post_write = core_x_pstate_postw,
     },{ .name = "CORE_4_PACTIVE",  .addr = A_CORE_4_PACTIVE,
         .rsvd = 0xfcfc0000,
         .ro = 0x303ffff,
+        .post_read = core_x_pactive_postr,
     },{ .name = "CORE_4_ISR_POWER",  .addr = A_CORE_4_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
@@ -1344,9 +1452,11 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
         .post_write = core_x_preq_postw,
     },{ .name = "CORE_5_PSTATE",  .addr = A_CORE_5_PSTATE,
         .rsvd = 0xffffffc0,
+        .post_write = core_x_pstate_postw,
     },{ .name = "CORE_5_PACTIVE",  .addr = A_CORE_5_PACTIVE,
         .rsvd = 0xfcfc0000,
         .ro = 0x303ffff,
+        .post_read = core_x_pactive_postr,
     },{ .name = "CORE_5_ISR_POWER",  .addr = A_CORE_5_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
@@ -1382,9 +1492,11 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
         .post_write = core_x_preq_postw,
     },{ .name = "CORE_6_PSTATE",  .addr = A_CORE_6_PSTATE,
         .rsvd = 0xffffffc0,
+        .post_write = core_x_pstate_postw,
     },{ .name = "CORE_6_PACTIVE",  .addr = A_CORE_6_PACTIVE,
         .rsvd = 0xfcfc0000,
         .ro = 0x303ffff,
+        .post_read = core_x_pactive_postr,
     },{ .name = "CORE_6_ISR_POWER",  .addr = A_CORE_6_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
@@ -1420,9 +1532,11 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
         .post_write = core_x_preq_postw,
     },{ .name = "CORE_7_PSTATE",  .addr = A_CORE_7_PSTATE,
         .rsvd = 0xffffffc0,
+        .post_write = core_x_pstate_postw,
     },{ .name = "CORE_7_PACTIVE",  .addr = A_CORE_7_PACTIVE,
         .rsvd = 0xfcfc0000,
         .ro = 0x303ffff,
+        .post_read = core_x_pactive_postr,
     },{ .name = "CORE_7_ISR_POWER",  .addr = A_CORE_7_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
@@ -1458,9 +1572,11 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
         .post_write = core_x_preq_postw,
     },{ .name = "CORE_8_PSTATE",  .addr = A_CORE_8_PSTATE,
         .rsvd = 0xffffffc0,
+        .post_write = core_x_pstate_postw,
     },{ .name = "CORE_8_PACTIVE",  .addr = A_CORE_8_PACTIVE,
         .rsvd = 0xfcfc0000,
         .ro = 0x303ffff,
+        .post_read = core_x_pactive_postr,
     },{ .name = "CORE_8_ISR_POWER",  .addr = A_CORE_8_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
@@ -1496,9 +1612,11 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
         .post_write = core_x_preq_postw,
     },{ .name = "CORE_9_PSTATE",  .addr = A_CORE_9_PSTATE,
         .rsvd = 0xffffffc0,
+        .post_write = core_x_pstate_postw,
     },{ .name = "CORE_9_PACTIVE",  .addr = A_CORE_9_PACTIVE,
         .rsvd = 0xfcfc0000,
         .ro = 0x303ffff,
+        .post_read = core_x_pactive_postr,
     },{ .name = "CORE_9_ISR_POWER",  .addr = A_CORE_9_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
@@ -1534,9 +1652,11 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
         .post_write = core_x_preq_postw,
     },{ .name = "CORE_10_PSTATE",  .addr = A_CORE_10_PSTATE,
         .rsvd = 0xffffffc0,
+        .post_write = core_x_pstate_postw,
     },{ .name = "CORE_10_PACTIVE",  .addr = A_CORE_10_PACTIVE,
         .rsvd = 0xfcfc0000,
         .ro = 0x303ffff,
+        .post_read = core_x_pactive_postr,
     },{ .name = "CORE_10_ISR_POWER",  .addr = A_CORE_10_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
@@ -1572,9 +1692,11 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
         .post_write = core_x_preq_postw,
     },{ .name = "CORE_11_PSTATE",  .addr = A_CORE_11_PSTATE,
         .rsvd = 0xffffffc0,
+        .post_write = core_x_pstate_postw,
     },{ .name = "CORE_11_PACTIVE",  .addr = A_CORE_11_PACTIVE,
         .rsvd = 0xfcfc0000,
         .ro = 0x303ffff,
+        .post_read = core_x_pactive_postr,
     },{ .name = "CORE_11_ISR_POWER",  .addr = A_CORE_11_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
@@ -1610,9 +1732,11 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
         .post_write = core_x_preq_postw,
     },{ .name = "CORE_12_PSTATE",  .addr = A_CORE_12_PSTATE,
         .rsvd = 0xffffffc0,
+        .post_write = core_x_pstate_postw,
     },{ .name = "CORE_12_PACTIVE",  .addr = A_CORE_12_PACTIVE,
         .rsvd = 0xfcfc0000,
         .ro = 0x303ffff,
+        .post_read = core_x_pactive_postr,
     },{ .name = "CORE_12_ISR_POWER",  .addr = A_CORE_12_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
@@ -1648,9 +1772,11 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
         .post_write = core_x_preq_postw,
     },{ .name = "CORE_13_PSTATE",  .addr = A_CORE_13_PSTATE,
         .rsvd = 0xffffffc0,
+        .post_write = core_x_pstate_postw,
     },{ .name = "CORE_13_PACTIVE",  .addr = A_CORE_13_PACTIVE,
         .rsvd = 0xfcfc0000,
         .ro = 0x303ffff,
+        .post_read = core_x_pactive_postr,
     },{ .name = "CORE_13_ISR_POWER",  .addr = A_CORE_13_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
@@ -1686,9 +1812,11 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
         .post_write = core_x_preq_postw,
     },{ .name = "CORE_14_PSTATE",  .addr = A_CORE_14_PSTATE,
         .rsvd = 0xffffffc0,
+        .post_write = core_x_pstate_postw,
     },{ .name = "CORE_14_PACTIVE",  .addr = A_CORE_14_PACTIVE,
         .rsvd = 0xfcfc0000,
         .ro = 0x303ffff,
+        .post_read = core_x_pactive_postr,
     },{ .name = "CORE_14_ISR_POWER",  .addr = A_CORE_14_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
@@ -1724,9 +1852,11 @@ static const RegisterAccessInfo apu_pcil_regs_info[] = {
         .post_write = core_x_preq_postw,
     },{ .name = "CORE_15_PSTATE",  .addr = A_CORE_15_PSTATE,
         .rsvd = 0xffffffc0,
+        .post_write = core_x_pstate_postw,
     },{ .name = "CORE_15_PACTIVE",  .addr = A_CORE_15_PACTIVE,
         .rsvd = 0xfcfc0000,
         .ro = 0x303ffff,
+        .post_read = core_x_pactive_postr,
     },{ .name = "CORE_15_ISR_POWER",  .addr = A_CORE_15_ISR_POWER,
         .rsvd = 0xfffffffe,
         .w1c = 0x1,
@@ -2068,6 +2198,38 @@ static Property apu_pcil_properties[] = {
                        (1 << APU_PCIL_MAX_CLUSTER) - 1),
     DEFINE_PROP_UINT32("core-mask", APU_PCIL, core_mask,
                        (1 << APU_PCIL_MAX_CORE) - 1),
+    DEFINE_PROP_LINK("core-0", APU_PCIL, core_pchan[0],
+                     TYPE_ARM_PCHANNEL_IF, ARMPChannelIf *),
+    DEFINE_PROP_LINK("core-1", APU_PCIL, core_pchan[1],
+                     TYPE_ARM_PCHANNEL_IF, ARMPChannelIf *),
+    DEFINE_PROP_LINK("core-2", APU_PCIL, core_pchan[2],
+                     TYPE_ARM_PCHANNEL_IF, ARMPChannelIf *),
+    DEFINE_PROP_LINK("core-3", APU_PCIL, core_pchan[3],
+                     TYPE_ARM_PCHANNEL_IF, ARMPChannelIf *),
+    DEFINE_PROP_LINK("core-4", APU_PCIL, core_pchan[4],
+                     TYPE_ARM_PCHANNEL_IF, ARMPChannelIf *),
+    DEFINE_PROP_LINK("core-5", APU_PCIL, core_pchan[5],
+                     TYPE_ARM_PCHANNEL_IF, ARMPChannelIf *),
+    DEFINE_PROP_LINK("core-6", APU_PCIL, core_pchan[6],
+                     TYPE_ARM_PCHANNEL_IF, ARMPChannelIf *),
+    DEFINE_PROP_LINK("core-7", APU_PCIL, core_pchan[7],
+                     TYPE_ARM_PCHANNEL_IF, ARMPChannelIf *),
+    DEFINE_PROP_LINK("core-8", APU_PCIL, core_pchan[8],
+                     TYPE_ARM_PCHANNEL_IF, ARMPChannelIf *),
+    DEFINE_PROP_LINK("core-9", APU_PCIL, core_pchan[9],
+                     TYPE_ARM_PCHANNEL_IF, ARMPChannelIf *),
+    DEFINE_PROP_LINK("core-10", APU_PCIL, core_pchan[10],
+                     TYPE_ARM_PCHANNEL_IF, ARMPChannelIf *),
+    DEFINE_PROP_LINK("core-11", APU_PCIL, core_pchan[11],
+                     TYPE_ARM_PCHANNEL_IF, ARMPChannelIf *),
+    DEFINE_PROP_LINK("core-12", APU_PCIL, core_pchan[12],
+                     TYPE_ARM_PCHANNEL_IF, ARMPChannelIf *),
+    DEFINE_PROP_LINK("core-13", APU_PCIL, core_pchan[13],
+                     TYPE_ARM_PCHANNEL_IF, ARMPChannelIf *),
+    DEFINE_PROP_LINK("core-14", APU_PCIL, core_pchan[14],
+                     TYPE_ARM_PCHANNEL_IF, ARMPChannelIf *),
+    DEFINE_PROP_LINK("core-15", APU_PCIL, core_pchan[15],
+                     TYPE_ARM_PCHANNEL_IF, ARMPChannelIf *),
     DEFINE_PROP_END_OF_LIST(),
 };
 
