@@ -42,6 +42,7 @@
 #endif
 
 #define TYPE_XILINX_PMX_ANLG "xlnx.pmx_anlg"
+#define TYPE_XILINX_PMXC_ANLG "xlnx.pmxc_anlg"
 
 #define XILINX_PMX_ANLG(obj) \
      OBJECT_CHECK(PMX_ANLG, (obj), TYPE_XILINX_PMX_ANLG)
@@ -189,6 +190,78 @@ REG32(LBIST_LPD_RPU_MISR_2, 0x20258)
 
 #define PMX_ANLG_R_MAX (R_LBIST_LPD_RPU_MISR_2 + 1)
 
+REG32(PMXC_MEM_CLEAR_TRIGGER, 0x20100)
+    FIELD(PMXC_MEM_CLEAR_TRIGGER, LPD_ASU, 14, 1)
+    FIELD(PMXC_MEM_CLEAR_TRIGGER, LPD_RPU_E, 13, 1)
+    FIELD(PMXC_MEM_CLEAR_TRIGGER, LPD_RPU_D, 12, 1)
+    FIELD(PMXC_MEM_CLEAR_TRIGGER, LPD_RPU_C, 11, 1)
+    FIELD(PMXC_MEM_CLEAR_TRIGGER, LPD_RPU_B, 10, 1)
+    FIELD(PMXC_MEM_CLEAR_TRIGGER, LPD_RPU_A, 9, 1)
+    FIELD(PMXC_MEM_CLEAR_TRIGGER, LPD_IOU, 6, 1)
+    FIELD(PMXC_MEM_CLEAR_TRIGGER, LPD_RPU, 5, 1)
+    FIELD(PMXC_MEM_CLEAR_TRIGGER, LPD, 4, 1)
+    FIELD(PMXC_MEM_CLEAR_TRIGGER, PMC_IOU, 1, 1)
+    FIELD(PMXC_MEM_CLEAR_TRIGGER, PMC, 0, 1)
+REG32(PMXC_MEM_CLEAR_DONE, 0x20110)
+    FIELD(PMXC_MEM_CLEAR_DONE, LPD_ASU, 14, 1)
+    FIELD(PMXC_MEM_CLEAR_DONE, LPD_RPU_E, 13, 1)
+    FIELD(PMXC_MEM_CLEAR_DONE, LPD_RPU_D, 12, 1)
+    FIELD(PMXC_MEM_CLEAR_DONE, LPD_RPU_C, 11, 1)
+    FIELD(PMXC_MEM_CLEAR_DONE, LPD_RPU_B, 10, 1)
+    FIELD(PMXC_MEM_CLEAR_DONE, LPD_RPU_A, 9, 1)
+    FIELD(PMXC_MEM_CLEAR_DONE, LPD_IOU, 6, 1)
+    FIELD(PMXC_MEM_CLEAR_DONE, LPD_RPU, 5, 1)
+    FIELD(PMXC_MEM_CLEAR_DONE, LPD, 4, 1)
+    FIELD(PMXC_MEM_CLEAR_DONE, PMC_IOU, 1, 1)
+    FIELD(PMXC_MEM_CLEAR_DONE, PMC, 0, 1)
+REG32(PMXC_MEM_CLEAR_PASS, 0x20114)
+    FIELD(PMXC_MEM_CLEAR_PASS, LPD_ASU, 14, 1)
+    FIELD(PMXC_MEM_CLEAR_PASS, LPD_RPU_E, 13, 1)
+    FIELD(PMXC_MEM_CLEAR_PASS, LPD_RPU_D, 12, 1)
+    FIELD(PMXC_MEM_CLEAR_PASS, LPD_RPU_C, 11, 1)
+    FIELD(PMXC_MEM_CLEAR_PASS, LPD_RPU_B, 10, 1)
+    FIELD(PMXC_MEM_CLEAR_PASS, LPD_RPU_A, 9, 1)
+    FIELD(PMXC_MEM_CLEAR_PASS, LPD_IOU, 6, 1)
+    FIELD(PMXC_MEM_CLEAR_PASS, LPD_RPU, 5, 1)
+    FIELD(PMXC_MEM_CLEAR_PASS, LPD, 4, 1)
+    FIELD(PMXC_MEM_CLEAR_PASS, PMC_IOU, 1, 1)
+    FIELD(PMXC_MEM_CLEAR_PASS, PMC, 0, 1)
+REG32(PMXC_SCAN_CLEAR_TRIGGER, 0x20120)
+    FIELD(PMXC_SCAN_CLEAR_TRIGGER, LPD_ASU, 14, 1)
+    FIELD(PMXC_SCAN_CLEAR_TRIGGER, LPD_RPU_E, 13, 1)
+    FIELD(PMXC_SCAN_CLEAR_TRIGGER, LPD_RPU_D, 12, 1)
+    FIELD(PMXC_SCAN_CLEAR_TRIGGER, LPD_RPU_C, 11, 1)
+    FIELD(PMXC_SCAN_CLEAR_TRIGGER, LPD_RPU_B, 10, 1)
+    FIELD(PMXC_SCAN_CLEAR_TRIGGER, LPD_RPU_A, 9, 1)
+    FIELD(PMXC_SCAN_CLEAR_TRIGGER, NOC, 8, 1)
+    FIELD(PMXC_SCAN_CLEAR_TRIGGER, LPD_IOU, 6, 1)
+    FIELD(PMXC_SCAN_CLEAR_TRIGGER, LPD_RPU, 5, 1)
+    FIELD(PMXC_SCAN_CLEAR_TRIGGER, LPD, 4, 1)
+REG32(PMXC_SCAN_CLEAR_LOCK, 0x20124)
+    FIELD(PMXC_SCAN_CLEAR_LOCK, LOCK, 0, 1)
+REG32(PMXC_SCAN_CLEAR_DONE, 0x20128)
+    FIELD(PMXC_SCAN_CLEAR_DONE, LPD_ASU, 14, 1)
+    FIELD(PMXC_SCAN_CLEAR_DONE, LPD_RPU_E, 13, 1)
+    FIELD(PMXC_SCAN_CLEAR_DONE, LPD_RPU_D, 12, 1)
+    FIELD(PMXC_SCAN_CLEAR_DONE, LPD_RPU_C, 11, 1)
+    FIELD(PMXC_SCAN_CLEAR_DONE, LPD_RPU_B, 10, 1)
+    FIELD(PMXC_SCAN_CLEAR_DONE, LPD_RPU_A, 9, 1)
+    FIELD(PMXC_SCAN_CLEAR_DONE, LPD_IOU, 6, 1)
+    FIELD(PMXC_SCAN_CLEAR_DONE, LPD_RPU, 5, 1)
+    FIELD(PMXC_SCAN_CLEAR_DONE, LPD, 4, 1)
+    FIELD(PMXC_SCAN_CLEAR_DONE, PMC, 0, 1)
+REG32(PMXC_SCAN_CLEAR_PASS, 0x2012c)
+    FIELD(PMXC_SCAN_CLEAR_PASS, LPD_ASU, 14, 1)
+    FIELD(PMXC_SCAN_CLEAR_PASS, LPD_RPU_E, 13, 1)
+    FIELD(PMXC_SCAN_CLEAR_PASS, LPD_RPU_D, 12, 1)
+    FIELD(PMXC_SCAN_CLEAR_PASS, LPD_RPU_C, 11, 1)
+    FIELD(PMXC_SCAN_CLEAR_PASS, LPD_RPU_B, 10, 1)
+    FIELD(PMXC_SCAN_CLEAR_PASS, LPD_RPU_A, 9, 1)
+    FIELD(PMXC_SCAN_CLEAR_PASS, LPD_IOU, 6, 1)
+    FIELD(PMXC_SCAN_CLEAR_PASS, LPD_RPU, 5, 1)
+    FIELD(PMXC_SCAN_CLEAR_PASS, LPD, 4, 1)
+    FIELD(PMXC_SCAN_CLEAR_PASS, PMC, 0, 1)
+
 typedef struct PMX_ANLG {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
@@ -247,8 +320,13 @@ static void mem_clear_trigger_postw(RegisterInfo *reg, uint64_t val64)
 {
     PMX_ANLG *s = XILINX_PMX_ANLG(reg->opaque);
 
-    s->regs[R_MEM_CLEAR_DONE] |= s->regs[R_MEM_CLEAR_TRIGGER];
-    s->regs[R_MEM_CLEAR_PASS] |= s->regs[R_MEM_CLEAR_TRIGGER];
+    if (object_dynamic_cast(OBJECT(s), TYPE_XILINX_PMXC_ANLG)) {
+        s->regs[R_PMXC_MEM_CLEAR_DONE] |= s->regs[R_PMXC_MEM_CLEAR_TRIGGER];
+        s->regs[R_PMXC_MEM_CLEAR_PASS] |= s->regs[R_PMXC_MEM_CLEAR_TRIGGER];
+    } else {
+        s->regs[R_MEM_CLEAR_DONE] |= s->regs[R_MEM_CLEAR_TRIGGER];
+        s->regs[R_MEM_CLEAR_PASS] |= s->regs[R_MEM_CLEAR_TRIGGER];
+    }
 }
 
 static void scan_clear_trigger_postw(RegisterInfo *reg, uint64_t val64)
@@ -256,20 +334,42 @@ static void scan_clear_trigger_postw(RegisterInfo *reg, uint64_t val64)
     PMX_ANLG *s = XILINX_PMX_ANLG(reg->opaque);
 
     s->regs[R_SCAN_CLEAR_DONE] |=
-               ARRAY_FIELD_EX32(s->regs, SCAN_CLEAR_TRIGGER, LPD) <<
-               R_SCAN_CLEAR_DONE_LPD_SHIFT;
+            ARRAY_FIELD_EX32(s->regs, SCAN_CLEAR_TRIGGER, LPD) <<
+            R_SCAN_CLEAR_DONE_LPD_SHIFT;
     s->regs[R_SCAN_CLEAR_DONE] |=
-               ARRAY_FIELD_EX32(s->regs, SCAN_CLEAR_TRIGGER, LPD_RPU) <<
-               R_SCAN_CLEAR_DONE_LPD_RPU_SHIFT;
+            ARRAY_FIELD_EX32(s->regs, SCAN_CLEAR_TRIGGER, LPD_RPU) <<
+            R_SCAN_CLEAR_DONE_LPD_RPU_SHIFT;
     s->regs[R_SCAN_CLEAR_DONE] |=
-               ARRAY_FIELD_EX32(s->regs, SCAN_CLEAR_TRIGGER, LPD_IOU) <<
-               R_SCAN_CLEAR_DONE_LPD_IOU_SHIFT;
-    s->regs[R_SCAN_CLEAR_DONE] |=
-               ARRAY_FIELD_EX32(s->regs, SCAN_CLEAR_TRIGGER, LPD_RPU_A) <<
-               R_SCAN_CLEAR_DONE_LPD_RPU_A_SHIFT;
-    s->regs[R_SCAN_CLEAR_DONE] |=
-               ARRAY_FIELD_EX32(s->regs, SCAN_CLEAR_TRIGGER, LPD_RPU_B) <<
-               R_SCAN_CLEAR_DONE_LPD_RPU_B_SHIFT;
+            ARRAY_FIELD_EX32(s->regs, SCAN_CLEAR_TRIGGER, LPD_IOU) <<
+            R_SCAN_CLEAR_DONE_LPD_IOU_SHIFT;
+
+    if (object_dynamic_cast(OBJECT(s), TYPE_XILINX_PMXC_ANLG)) {
+        s->regs[R_PMXC_SCAN_CLEAR_DONE] |=
+                ARRAY_FIELD_EX32(s->regs, PMXC_SCAN_CLEAR_TRIGGER, LPD_RPU_A) <<
+                R_PMXC_SCAN_CLEAR_DONE_LPD_RPU_A_SHIFT;
+        s->regs[R_PMXC_SCAN_CLEAR_DONE] |=
+                ARRAY_FIELD_EX32(s->regs, PMXC_SCAN_CLEAR_TRIGGER, LPD_RPU_B) <<
+                R_PMXC_SCAN_CLEAR_DONE_LPD_RPU_B_SHIFT;
+        s->regs[R_PMXC_SCAN_CLEAR_DONE] |=
+                ARRAY_FIELD_EX32(s->regs, PMXC_SCAN_CLEAR_TRIGGER, LPD_RPU_C) <<
+                R_PMXC_SCAN_CLEAR_DONE_LPD_RPU_C_SHIFT;
+        s->regs[R_PMXC_SCAN_CLEAR_DONE] |=
+                ARRAY_FIELD_EX32(s->regs, PMXC_SCAN_CLEAR_TRIGGER, LPD_RPU_D) <<
+                R_PMXC_SCAN_CLEAR_DONE_LPD_RPU_D_SHIFT;
+        s->regs[R_PMXC_SCAN_CLEAR_DONE] |=
+                ARRAY_FIELD_EX32(s->regs, PMXC_SCAN_CLEAR_TRIGGER, LPD_RPU_E) <<
+                R_PMXC_SCAN_CLEAR_DONE_LPD_RPU_E_SHIFT;
+        s->regs[R_PMXC_SCAN_CLEAR_DONE] |=
+                ARRAY_FIELD_EX32(s->regs, PMXC_SCAN_CLEAR_TRIGGER, LPD_ASU) <<
+                R_PMXC_SCAN_CLEAR_DONE_LPD_ASU_SHIFT;
+    } else {
+        s->regs[R_SCAN_CLEAR_DONE] |=
+                ARRAY_FIELD_EX32(s->regs, SCAN_CLEAR_TRIGGER, LPD_RPU_A) <<
+                R_SCAN_CLEAR_DONE_LPD_RPU_A_SHIFT;
+        s->regs[R_SCAN_CLEAR_DONE] |=
+                ARRAY_FIELD_EX32(s->regs, SCAN_CLEAR_TRIGGER, LPD_RPU_B) <<
+                R_SCAN_CLEAR_DONE_LPD_RPU_B_SHIFT;
+    }
     s->regs[R_SCAN_CLEAR_DONE] |=
                ARRAY_FIELD_EX32(s->regs, SCAN_CLEAR_TRIGGER, NOC) <<
                R_SCAN_CLEAR_DONE_PMC_SHIFT;
@@ -283,12 +383,34 @@ static void scan_clear_trigger_postw(RegisterInfo *reg, uint64_t val64)
     s->regs[R_SCAN_CLEAR_PASS] |=
                ARRAY_FIELD_EX32(s->regs, SCAN_CLEAR_TRIGGER, LPD_IOU) <<
                R_SCAN_CLEAR_PASS_LPD_IOU_SHIFT;
-    s->regs[R_SCAN_CLEAR_PASS] |=
-               ARRAY_FIELD_EX32(s->regs, SCAN_CLEAR_TRIGGER, LPD_RPU_A) <<
-               R_SCAN_CLEAR_PASS_LPD_RPU_A_SHIFT;
-    s->regs[R_SCAN_CLEAR_PASS] |=
-               ARRAY_FIELD_EX32(s->regs, SCAN_CLEAR_TRIGGER, LPD_RPU_B) <<
-               R_SCAN_CLEAR_PASS_LPD_RPU_B_SHIFT;
+
+    if (object_dynamic_cast(OBJECT(s), TYPE_XILINX_PMXC_ANLG)) {
+        s->regs[R_PMXC_SCAN_CLEAR_PASS] |=
+                ARRAY_FIELD_EX32(s->regs, PMXC_SCAN_CLEAR_TRIGGER, LPD_RPU_A) <<
+                R_PMXC_SCAN_CLEAR_PASS_LPD_RPU_A_SHIFT;
+        s->regs[R_PMXC_SCAN_CLEAR_PASS] |=
+                ARRAY_FIELD_EX32(s->regs, PMXC_SCAN_CLEAR_TRIGGER, LPD_RPU_B) <<
+                R_PMXC_SCAN_CLEAR_PASS_LPD_RPU_B_SHIFT;
+        s->regs[R_PMXC_SCAN_CLEAR_PASS] |=
+                ARRAY_FIELD_EX32(s->regs, PMXC_SCAN_CLEAR_TRIGGER, LPD_RPU_C) <<
+                R_PMXC_SCAN_CLEAR_PASS_LPD_RPU_C_SHIFT;
+        s->regs[R_PMXC_SCAN_CLEAR_PASS] |=
+                ARRAY_FIELD_EX32(s->regs, PMXC_SCAN_CLEAR_TRIGGER, LPD_RPU_D) <<
+                R_PMXC_SCAN_CLEAR_PASS_LPD_RPU_D_SHIFT;
+        s->regs[R_PMXC_SCAN_CLEAR_PASS] |=
+                ARRAY_FIELD_EX32(s->regs, PMXC_SCAN_CLEAR_TRIGGER, LPD_RPU_E) <<
+                R_PMXC_SCAN_CLEAR_PASS_LPD_RPU_E_SHIFT;
+        s->regs[R_PMXC_SCAN_CLEAR_PASS] |=
+                ARRAY_FIELD_EX32(s->regs, PMXC_SCAN_CLEAR_TRIGGER, LPD_ASU) <<
+                R_PMXC_SCAN_CLEAR_PASS_LPD_ASU_SHIFT;
+    } else {
+        s->regs[R_SCAN_CLEAR_PASS] |=
+                ARRAY_FIELD_EX32(s->regs, SCAN_CLEAR_TRIGGER, LPD_RPU_A) <<
+                R_SCAN_CLEAR_PASS_LPD_RPU_A_SHIFT;
+        s->regs[R_SCAN_CLEAR_PASS] |=
+                ARRAY_FIELD_EX32(s->regs, SCAN_CLEAR_TRIGGER, LPD_RPU_B) <<
+                R_SCAN_CLEAR_PASS_LPD_RPU_B_SHIFT;
+    }
     s->regs[R_SCAN_CLEAR_PASS] |=
                ARRAY_FIELD_EX32(s->regs, SCAN_CLEAR_TRIGGER, NOC) <<
                R_SCAN_CLEAR_PASS_PMC_SHIFT;
@@ -518,6 +640,37 @@ static const RegisterAccessInfo pmx_anlg_regs_info[] = {
     }
 };
 
+#define PMXC_ADDR(x) (x - A_PMXC_MEM_CLEAR_TRIGGER)
+static const RegisterAccessInfo pmxc_anlg_regs_info[] = {
+    {   .name = "PMXC_MEM_CLEAR_TRIGGER",
+        .addr = PMXC_ADDR(A_PMXC_MEM_CLEAR_TRIGGER),
+        .rsvd = 0x18c,
+        .post_write = mem_clear_trigger_postw,
+    },{ .name = "PMXC_MEM_CLEAR_DONE",
+        .addr = PMXC_ADDR(A_PMXC_MEM_CLEAR_DONE),
+        .rsvd = 0x18c,
+        .ro = 0xffff,
+    },{ .name = "PMXC_MEM_CLEAR_PASS",
+        .addr = PMXC_ADDR(A_PMXC_MEM_CLEAR_PASS),
+        .rsvd = 0x18c,
+        .ro = 0xffff,
+    },{ .name = "PMXC_SCAN_CLEAR_TRIGGER",
+        .addr = PMXC_ADDR(A_PMXC_SCAN_CLEAR_TRIGGER),
+        .rsvd = 0x8f,
+        .post_write = scan_clear_trigger_postw,
+    },{ .name = "PMXC_SCAN_CLEAR_LOCK",
+        .addr = PMXC_ADDR(A_PMXC_SCAN_CLEAR_LOCK),
+    },{ .name = "PMXC_SCAN_CLEAR_DONE",
+        .addr = PMXC_ADDR(A_PMXC_SCAN_CLEAR_DONE),
+        .rsvd = 0x1018e,
+        .ro = 0x1ffff,
+    },{ .name = "PMXC_SCAN_CLEAR_PASS",
+        .addr = PMXC_ADDR(A_PMXC_SCAN_CLEAR_PASS),
+        .rsvd = 0x1018e,
+        .ro = 0x1ffff,
+    }
+};
+
 static void pmx_anlg_reset_enter(Object *obj, ResetType type)
 {
     PMX_ANLG *s = XILINX_PMX_ANLG(obj);
@@ -544,6 +697,23 @@ static const MemoryRegionOps pmx_anlg_ops = {
         .max_access_size = 4,
     },
 };
+
+static void pmxc_anlg_init(Object *obj)
+{
+    PMX_ANLG *s = XILINX_PMX_ANLG(obj);
+    RegisterInfoArray *reg_array;
+
+    reg_array =
+        register_init_block32(DEVICE(obj), pmxc_anlg_regs_info,
+                              ARRAY_SIZE(pmxc_anlg_regs_info),
+                              &s->regs_info[R_PMXC_MEM_CLEAR_TRIGGER],
+                              &s->regs[R_PMXC_MEM_CLEAR_TRIGGER],
+                              &pmx_anlg_ops, XILINX_PMX_ANLG_ERR_DEBUG,
+                              (R_PMXC_SCAN_CLEAR_PASS -
+                               R_PMXC_MEM_CLEAR_TRIGGER) * 4);
+    memory_region_add_subregion_overlap(&s->iomem, A_MEM_CLEAR_TRIGGER,
+                                        &reg_array->mem, 1);
+}
 
 static void pmx_anlg_init(Object *obj)
 {
@@ -597,6 +767,12 @@ static void pmx_anlg_class_init(ObjectClass *klass, void *data)
     device_class_set_props(dc, pmx_anlg_properties);
 }
 
+static const TypeInfo pmxc_anlg_info = {
+    .name           = TYPE_XILINX_PMXC_ANLG,
+    .parent         = TYPE_XILINX_PMX_ANLG,
+    .instance_init  = pmxc_anlg_init,
+};
+
 static const TypeInfo pmx_anlg_info = {
     .name          = TYPE_XILINX_PMX_ANLG,
     .parent        = TYPE_SYS_BUS_DEVICE,
@@ -608,6 +784,7 @@ static const TypeInfo pmx_anlg_info = {
 static void pmx_anlg_register_types(void)
 {
     type_register_static(&pmx_anlg_info);
+    type_register_static(&pmxc_anlg_info);
 }
 
 type_init(pmx_anlg_register_types)
