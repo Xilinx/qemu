@@ -7175,6 +7175,18 @@ static void update_pwr_reset_irq(XlnxPsxcLpxSlcr *s)
     qemu_set_irq(s->pwr_reset_irq, sta);
 }
 
+static void update_rpu_pcil_wfi_irq(XlnxPsxcLpxSlcr *s)
+{
+    /*
+     * This IRQ does not go out of the SLCR. It directly maps to the
+     * RPU_STANDBY bit in the PWR_RST_IRQ_STATUS register.
+     */
+    if (irq_is_pending(&s->rpu_pcil_wfi_irq)) {
+        s->pwr_rst_irq.status |= R_PWR_RST_IRQ_STATUS_RPU_STANDBY_MASK;
+        update_pwr_reset_irq(s);
+    }
+}
+
 static void update_core_pwr(const XlnxPsxcLpxSlcr *s, size_t idx)
 {
     const XlnxPsxcLpxSlcrCorePowerCtrl *pwr_ctrl = &s->core_pwr[idx];
@@ -7183,6 +7195,34 @@ static void update_core_pwr(const XlnxPsxcLpxSlcr *s, size_t idx)
 
     trace_xlnx_psxc_lpx_slcr_update_core_power(idx, pwr);
     qemu_set_irq(pwr_ctrl->pwr, pwr);
+}
+
+static void apu_standby_handler(void *opaque, int n, int level)
+{
+    XlnxPsxcLpxSlcr *s = XILINX_PSXC_LPX_SLCR(opaque);
+
+    if (!level) {
+        return;
+    }
+
+    s->pwr_rst_irq.status |= R_PWR_RST_IRQ_STATUS_APU_STANDBY_MASK;
+    update_pwr_reset_irq(s);
+}
+
+static void rpu_standby_handler(void *opaque, int n, int level)
+{
+    XlnxPsxcLpxSlcr *s = XILINX_PSXC_LPX_SLCR(opaque);
+
+    if (!level) {
+        return;
+    }
+
+    /*
+     * bit (n * 2) is wfi event of core n, while bit (n * 2) + 1 is for wfe
+     * event.
+     */
+    s->rpu_pcil_wfi_irq.status |= (1 << (n * 2));
+    update_rpu_pcil_wfi_irq(s);
 }
 
 static void apu_cluster_pchan_wakeup_handler(void *opaque, int n, int level)
@@ -7473,6 +7513,11 @@ static uint64_t psxc_lpx_slcr_read(void *opaque, hwaddr offset,
         ret = core_pwr_ctrl_read(s, offset - A_APU0_CORE0_PWR_CNTRL_REG0);
         break;
 
+    case A_RPU_PCIL_PSM_STANDBY ... A_RPU_PCIL_PSM_IDS:
+        ret = irq_reg_read(&s->rpu_pcil_wfi_irq,
+                           offset - A_RPU_PCIL_PSM_STANDBY);
+        break;
+
     default:
         ret = 0;
     }
@@ -7548,6 +7593,13 @@ static void psxc_lpx_slcr_write(void *opaque, hwaddr offset,
         core_pwr_ctrl_write(s, offset - A_APU0_CORE0_PWR_CNTRL_REG0, value);
         break;
 
+    case A_RPU_PCIL_PSM_STANDBY ... A_RPU_PCIL_PSM_IDS:
+        if (irq_reg_write(&s->rpu_pcil_wfi_irq,
+                          offset - A_RPU_PCIL_PSM_STANDBY, value)) {
+            update_rpu_pcil_wfi_irq(s);
+        }
+        break;
+
     default:
         break;
     }
@@ -7596,6 +7648,8 @@ static void psxc_lpx_slcr_reset_enter(Object *obj, ResetType type)
     s->req_pwrdwn0_irq.mask = REQ_PWRDWN0_INT_MASK_RESET_VAL;
     s->req_pwrdwn1_irq.status = REQ_PWRDWN1_STATUS_RESET_VAL;
     s->req_pwrdwn1_irq.mask = REQ_PWRDWN0_INT_MASK_RESET_VAL;
+    s->rpu_pcil_wfi_irq.status = RPU_PCIL_PSM_STANDBY_RESET_VAL;
+    s->rpu_pcil_wfi_irq.mask = RPU_PCIL_PSM_IMR_RESET_VAL;
 
     for (i = 0; i < ARRAY_SIZE(s->core_pwr); i++) {
         core_pwr_ctrl_reset(&s->core_pwr[i]);
@@ -7611,6 +7665,7 @@ static void psxc_lpx_slcr_reset_hold(Object *obj)
     update_rpu_tcm_pwr(s);
     update_gem_pwr(s);
     update_pwr_reset_irq(s);
+    update_rpu_pcil_wfi_irq(s);
 
     for (i = 0; i < ARRAY_SIZE(s->core_pwr); i++) {
         update_core_pwr(s, i);
@@ -7636,6 +7691,8 @@ static void psxc_lpx_slcr_realize(DeviceState *dev, Error **errp)
 
     sysbus_init_irq(sbd, &s->pwr_reset_irq);
 
+    qdev_init_gpio_in_named(dev, apu_standby_handler, "apu-wfi", 8);
+    qdev_init_gpio_in_named(dev, rpu_standby_handler, "rpu-wfi", 8);
     qdev_init_gpio_in_named(dev, apu_cluster_pchan_poweroff_handler,
                             "apu-cluster-pchan-poweroff", 4);
     qdev_init_gpio_in_named(dev, apu_cluster_pchan_wakeup_handler,
@@ -7706,6 +7763,8 @@ static const VMStateDescription vmstate_psxc_lpx_slcr = {
                        vmstate_irq, XlnxPsxcLpxSlcrIrq),
         VMSTATE_STRUCT(req_pwrdwn1_irq, XlnxPsxcLpxSlcr, 1,
                        vmstate_irq, XlnxPsxcLpxSlcrIrq),
+        VMSTATE_STRUCT(rpu_pcil_wfi_irq, XlnxPsxcLpxSlcr, 1,
+                       vmstate_irq, XlnxPsxcLpxSlcrIrq),
         VMSTATE_END_OF_LIST(),
     }
 };
@@ -7720,6 +7779,8 @@ static const FDTGenericGPIOSet psxc_lpx_slcr_gpios[] = {
             { .name = "pwr-gem", .fdt_index = 44, .range = 2 },
 
             /* inputs */
+            { .name = "apu-wfi", .fdt_index = 64, .range = 8 },
+            { .name = "rpu-wfi", .fdt_index = 72, .range = 8 },
             { .name = "apu-cluster-pchan-poweroff", .fdt_index = 80,
               .range = 4 },
             { .name = "apu-cluster-pchan-wakeup", .fdt_index = 84, .range = 4 },

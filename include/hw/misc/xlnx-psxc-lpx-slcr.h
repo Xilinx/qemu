@@ -75,6 +75,7 @@ typedef struct XlnxPsxcLpxSlcr {
     XlnxPsxcLpxSlcrIrq req_pwrup1_irq;
     XlnxPsxcLpxSlcrIrq req_pwrdwn0_irq;
     XlnxPsxcLpxSlcrIrq req_pwrdwn1_irq;
+    XlnxPsxcLpxSlcrIrq rpu_pcil_wfi_irq;
 } XlnxPsxcLpxSlcr;
 
 #endif
