@@ -31,6 +31,7 @@
 #include "qemu/log.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
+#include "hw/arm/linux-boot-if.h"
 #include "hw/fdt_generic_util.h"
 #include "hw/misc/xlnx-psxc-lpx-slcr.h"
 #include "trace.h"
@@ -7763,9 +7764,15 @@ static const MemoryRegionOps psxc_lpx_slcr_ops = {
     },
 };
 
-static void core_pwr_ctrl_reset(XlnxPsxcLpxSlcrCorePowerCtrl *pwr_ctrl)
+static void core_pwr_ctrl_reset(XlnxPsxcLpxSlcrCorePowerCtrl *pwr_ctrl,
+                                bool linux_boot)
 {
-    pwr_ctrl->reg0 = APU0_CORE0_PWR_CNTRL_REG0_RESET_VAL;
+    if (linux_boot) {
+        pwr_ctrl->reg0 = 0; /* reset with the core powered off */
+    } else {
+        pwr_ctrl->reg0 = APU0_CORE0_PWR_CNTRL_REG0_RESET_VAL;
+    }
+
     pwr_ctrl->reg1 = APU0_CORE0_PWR_CNTRL_REG1_RESET_VAL;
     pwr_ctrl->reg2 = APU0_CORE0_PWR_CNTRL_REG2_RESET_VAL;
     pwr_ctrl->wprot = APU0_CORE0_PWR_CNTRL_WPROT_RESET_VAL;
@@ -7813,7 +7820,7 @@ static void psxc_lpx_slcr_reset_enter(Object *obj, ResetType type)
     }
 
     for (i = 0; i < ARRAY_SIZE(s->core_pwr); i++) {
-        core_pwr_ctrl_reset(&s->core_pwr[i]);
+        core_pwr_ctrl_reset(&s->core_pwr[i], s->linux_boot);
     }
 }
 
@@ -7909,6 +7916,14 @@ static void psxc_lpx_slcr_realize(DeviceState *dev, Error **errp)
             }
         }
     }
+}
+
+static void psxc_lpx_slcr_linux_boot_if_init(ARMLinuxBootIf *obj,
+                                             bool secure_boot)
+{
+    XlnxPsxcLpxSlcr *s = XILINX_PSXC_LPX_SLCR(obj);
+
+    s->linux_boot = true;
 }
 
 static void psxc_lpx_slcr_init(Object *obj)
@@ -8046,6 +8061,7 @@ static void psxc_lpx_slcr_class_init(ObjectClass *klass, void *data)
     ResettableClass *rc = RESETTABLE_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
     FDTGenericGPIOClass *fggc = FDT_GENERIC_GPIO_CLASS(klass);
+    ARMLinuxBootIfClass *albifc = ARM_LINUX_BOOT_IF_CLASS(klass);
 
     dc->realize = psxc_lpx_slcr_realize;
     dc->vmsd = &vmstate_psxc_lpx_slcr;
@@ -8053,6 +8069,7 @@ static void psxc_lpx_slcr_class_init(ObjectClass *klass, void *data)
     rc->phases.hold = psxc_lpx_slcr_reset_hold;
     rc->phases.exit = psxc_lpx_slcr_reset_exit;
     device_class_set_props(dc, psxc_lpx_slcr_properties);
+    albifc->arm_linux_init = psxc_lpx_slcr_linux_boot_if_init;
     fggc->controller_gpios = psxc_lpx_slcr_gpios;
 }
 
@@ -8063,6 +8080,7 @@ static const TypeInfo psxc_lpx_slcr_info = {
     .class_init    = psxc_lpx_slcr_class_init,
     .instance_init = psxc_lpx_slcr_init,
     .interfaces    = (InterfaceInfo[]) {
+        { TYPE_ARM_LINUX_BOOT_IF },
         { TYPE_FDT_GENERIC_GPIO },
         { }
     },

@@ -88,6 +88,7 @@ typedef struct XlnxPsxcLpxSlcr {
     XlnxPsxcLpxSlcrIrq rpu_pcil_wfi_irq;
 
     uint32_t num_rpu;
+    bool linux_boot;
 } XlnxPsxcLpxSlcr;
 
 #endif
