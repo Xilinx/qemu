@@ -7833,6 +7833,37 @@ static void psxc_lpx_slcr_reset_hold(Object *obj)
     }
 }
 
+static void psxc_lpx_slcr_reset_exit(Object *obj)
+{
+    XlnxPsxcLpxSlcr *s = XILINX_PSXC_LPX_SLCR(obj);
+    size_t i;
+
+    for (i = 0; i < s->num_rpu; i++) {
+        if (object_dynamic_cast(OBJECT(s->rpu_pcil_pchan[i].iface),
+                                TYPE_ARM_PCHANNEL_DUMMY)) {
+            device_cold_reset(DEVICE(s->rpu_pcil_pchan[i].iface));
+        }
+    }
+}
+
+static inline void stub_pchannel_iface(ARMPChannelIf **iface, Error **errp)
+{
+    DeviceState *stub;
+
+    stub = qdev_new(TYPE_ARM_PCHANNEL_DUMMY);
+    qdev_prop_set_uint32(stub, "pstate-on", 0x0);
+    qdev_prop_set_uint32(stub, "pstate-reset-val", 0x0); /* ON */
+    qdev_prop_set_uint32(stub, "pactive-on", 0x2);
+    qdev_prop_set_uint32(stub, "pactive-off", 0x0);
+    qdev_realize(stub, NULL, errp);
+
+    if (*errp) {
+        return;
+    }
+
+    *iface = ARM_PCHANNEL_IF(stub);
+}
+
 static void psxc_lpx_slcr_realize(DeviceState *dev, Error **errp)
 {
     XlnxPsxcLpxSlcr *s = XILINX_PSXC_LPX_SLCR(dev);
@@ -7868,6 +7899,16 @@ static void psxc_lpx_slcr_realize(DeviceState *dev, Error **errp)
                             "apu-core-pchan-poweroff", 8);
     qdev_init_gpio_in_named(dev, apu_core_pchan_wakeup_handler,
                             "apu-core-pchan-wakeup", 8);
+
+    for (i = 0; i < s->num_rpu; i++) {
+        if (s->rpu_pcil_pchan[i].iface == NULL) {
+            stub_pchannel_iface(&s->rpu_pcil_pchan[i].iface, errp);
+
+            if (*errp) {
+                return;
+            }
+        }
+    }
 }
 
 static void psxc_lpx_slcr_init(Object *obj)
@@ -8010,6 +8051,7 @@ static void psxc_lpx_slcr_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_psxc_lpx_slcr;
     rc->phases.enter = psxc_lpx_slcr_reset_enter;
     rc->phases.hold = psxc_lpx_slcr_reset_hold;
+    rc->phases.exit = psxc_lpx_slcr_reset_exit;
     device_class_set_props(dc, psxc_lpx_slcr_properties);
     fggc->controller_gpios = psxc_lpx_slcr_gpios;
 }
