@@ -36,6 +36,15 @@
 
 #define PSXC_LPX_SLCR_MMIO_SIZE 0x600f4
 
+typedef struct XlnxPsxcLpxSlcrCorePowerCtrl {
+    qemu_irq pwr;
+
+    uint32_t reg0;
+    uint32_t reg1;
+    uint32_t reg2;
+    uint32_t wprot;
+} XlnxPsxcLpxSlcrCorePowerCtrl;
+
 typedef struct XlnxPsxcLpxSlcr {
     SysBusDevice parent_obj;
 
@@ -44,6 +53,8 @@ typedef struct XlnxPsxcLpxSlcr {
     qemu_irq ocm_pwr[16];
     qemu_irq rpu_tcm_pwr[10];
     qemu_irq gem_pwr[2];
+
+    XlnxPsxcLpxSlcrCorePowerCtrl core_pwr[18];
 
     uint32_t ocm_pwr_ctrl;
     uint32_t rpu_tcm_pwr_ctrl;

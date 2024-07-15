@@ -7154,6 +7154,122 @@ static void update_gem_pwr(XlnxPsxcLpxSlcr *s)
     qemu_set_irq(s->gem_pwr[1], extract32(s->gem_pwr_ctrl, 8, 1));
 }
 
+static void update_core_pwr(const XlnxPsxcLpxSlcr *s, size_t idx)
+{
+    const XlnxPsxcLpxSlcrCorePowerCtrl *pwr_ctrl = &s->core_pwr[idx];
+    bool pwr = FIELD_EX32(pwr_ctrl->reg0,
+                          APU0_CORE0_PWR_CNTRL_REG0, POWERUP_REQ);
+
+    trace_xlnx_psxc_lpx_slcr_update_core_power(idx, pwr);
+    qemu_set_irq(pwr_ctrl->pwr, pwr);
+}
+
+static uint32_t core_pwr_ctrl_read(const XlnxPsxcLpxSlcr *s, hwaddr offset)
+{
+    const size_t stride = A_APU0_CORE1_PWR_CNTRL_REG0
+        - A_APU0_CORE0_PWR_CNTRL_REG0;
+    size_t core_idx;
+    size_t reg;
+    const XlnxPsxcLpxSlcrCorePowerCtrl *pwr_ctrl;
+    uint32_t ret;
+    bool powered_up;
+
+    core_idx = offset / stride;
+    reg = offset % stride;
+    reg += A_APU0_CORE0_PWR_CNTRL_REG0;
+
+    g_assert(core_idx < ARRAY_SIZE(s->core_pwr));
+    pwr_ctrl = &s->core_pwr[core_idx];
+
+    powered_up = FIELD_EX32(pwr_ctrl->reg0,
+                            APU0_CORE0_PWR_CNTRL_REG0, POWERUP_REQ);
+
+    switch (reg) {
+    case A_APU0_CORE0_PWR_CNTRL_REG0:
+        ret = pwr_ctrl->reg0;
+        break;
+
+    case A_APU0_CORE0_PWR_CNTRL_REG1:
+        ret = pwr_ctrl->reg1;
+        break;
+
+    case A_APU0_CORE0_PWR_CNTRL_REG2:
+        ret = pwr_ctrl->reg2;
+        break;
+
+    case A_APU0_CORE0_PWR_CNTRL_STS:
+        /* always advertize power good */
+        ret = FIELD_DP32(0, APU0_CORE0_PWR_CNTRL_STS, PRDY, 0xf);
+        ret = FIELD_DP32(ret, APU0_CORE0_PWR_CNTRL_STS, PGE, 0xf);
+
+        /* 0: isolation enabled */
+        ret = FIELD_DP32(ret, APU0_CORE0_PWR_CNTRL_STS, ISOLATION, powered_up);
+
+        /* 0: clock enabled, 1: clock gated */
+        ret = FIELD_DP32(ret, APU0_CORE0_PWR_CNTRL_STS, CLOCK_EN, 0);
+
+        /* 0: reset released */
+        ret = FIELD_DP32(ret, APU0_CORE0_PWR_CNTRL_STS, RESET_GATE, 0);
+
+        ret = FIELD_DP32(ret, APU0_CORE0_PWR_CNTRL_STS, PWRUP_ACK_REG,
+                         powered_up);
+
+        ret = FIELD_DP32(ret, APU0_CORE0_PWR_CNTRL_STS, ISLAND_PWRUP_ERR, 0);
+        break;
+
+    case A_APU0_CORE0_PWR_CNTRL_WPROT:
+        ret = pwr_ctrl->wprot;
+        break;
+
+    default:
+        ret = 0;
+    }
+
+    return ret;
+}
+
+static void core_pwr_ctrl_write(XlnxPsxcLpxSlcr *s, hwaddr offset, uint32_t val)
+{
+    const size_t stride = A_APU0_CORE1_PWR_CNTRL_REG0
+        - A_APU0_CORE0_PWR_CNTRL_REG0;
+    size_t core_idx;
+    size_t reg;
+    XlnxPsxcLpxSlcrCorePowerCtrl *pwr_ctrl;
+
+    core_idx = offset / stride;
+    reg = offset % stride;
+    reg += A_APU0_CORE0_PWR_CNTRL_REG0;
+
+    g_assert(core_idx < ARRAY_SIZE(s->core_pwr));
+    pwr_ctrl = &s->core_pwr[core_idx];
+
+    if ((reg != A_APU0_CORE0_PWR_CNTRL_WPROT) && pwr_ctrl->wprot) {
+        return;
+    }
+
+    switch (reg) {
+    case A_APU0_CORE0_PWR_CNTRL_REG0:
+        pwr_ctrl->reg0 = val & APU0_CORE0_PWR_CNTRL_REG0_WRITE_MASK;
+        update_core_pwr(s, core_idx);
+        break;
+
+    case A_APU0_CORE0_PWR_CNTRL_REG1:
+        pwr_ctrl->reg1 = val & APU0_CORE0_PWR_CNTRL_REG1_WRITE_MASK;
+        break;
+
+    case A_APU0_CORE0_PWR_CNTRL_REG2:
+        pwr_ctrl->reg2 = val & APU0_CORE0_PWR_CNTRL_REG2_WRITE_MASK;
+        break;
+
+    case A_APU0_CORE0_PWR_CNTRL_STS:
+        /* ro */
+        break;
+
+    case A_APU0_CORE0_PWR_CNTRL_WPROT:
+        pwr_ctrl->wprot = val & APU0_CORE0_PWR_CNTRL_WPROT_WRITE_MASK;
+        break;
+    }
+}
 
 static uint64_t psxc_lpx_slcr_read(void *opaque, hwaddr offset,
                                    unsigned int size)
@@ -7175,6 +7291,10 @@ static uint64_t psxc_lpx_slcr_read(void *opaque, hwaddr offset,
     case A_GEM_PWR_CNTRL:
     case A_GEM_PWR_STATUS:
         ret = s->gem_pwr_ctrl;
+        break;
+
+    case A_APU0_CORE0_PWR_CNTRL_REG0 ... A_RPU4_CORE1_PWR_CNTRL_WPROT:
+        ret = core_pwr_ctrl_read(s, offset - A_APU0_CORE0_PWR_CNTRL_REG0);
         break;
 
     default:
@@ -7208,6 +7328,10 @@ static void psxc_lpx_slcr_write(void *opaque, hwaddr offset,
         update_gem_pwr(s);
         break;
 
+    case A_APU0_CORE0_PWR_CNTRL_REG0 ... A_RPU4_CORE1_PWR_CNTRL_WPROT:
+        core_pwr_ctrl_write(s, offset - A_APU0_CORE0_PWR_CNTRL_REG0, value);
+        break;
+
     default:
         break;
     }
@@ -7223,27 +7347,46 @@ static const MemoryRegionOps psxc_lpx_slcr_ops = {
     },
 };
 
+static void core_pwr_ctrl_reset(XlnxPsxcLpxSlcrCorePowerCtrl *pwr_ctrl)
+{
+    pwr_ctrl->reg0 = APU0_CORE0_PWR_CNTRL_REG0_RESET_VAL;
+    pwr_ctrl->reg1 = APU0_CORE0_PWR_CNTRL_REG1_RESET_VAL;
+    pwr_ctrl->reg2 = APU0_CORE0_PWR_CNTRL_REG2_RESET_VAL;
+    pwr_ctrl->wprot = APU0_CORE0_PWR_CNTRL_WPROT_RESET_VAL;
+}
+
 static void psxc_lpx_slcr_reset_enter(Object *obj, ResetType type)
 {
     XlnxPsxcLpxSlcr *s = XILINX_PSXC_LPX_SLCR(obj);
+    size_t i;
 
     s->ocm_pwr_ctrl = OCM_PWR_CNTRL_RESET_VAL;
     s->rpu_tcm_pwr_ctrl = RPU_TCM_PWR_CNTRL_RESET_VAL;
     s->gem_pwr_ctrl = GEM_PWR_CNTRL_RESET_VAL;
+
+    for (i = 0; i < ARRAY_SIZE(s->core_pwr); i++) {
+        core_pwr_ctrl_reset(&s->core_pwr[i]);
+    }
 }
 
 static void psxc_lpx_slcr_reset_hold(Object *obj)
 {
     XlnxPsxcLpxSlcr *s = XILINX_PSXC_LPX_SLCR(obj);
+    size_t i;
 
     update_ocm_pwr(s);
     update_rpu_tcm_pwr(s);
     update_gem_pwr(s);
+
+    for (i = 0; i < ARRAY_SIZE(s->core_pwr); i++) {
+        update_core_pwr(s, i);
+    }
 }
 
 static void psxc_lpx_slcr_realize(DeviceState *dev, Error **errp)
 {
     XlnxPsxcLpxSlcr *s = XILINX_PSXC_LPX_SLCR(dev);
+    size_t i;
 
     qdev_init_gpio_out_named(dev, s->ocm_pwr, "pwr-ocm",
                              ARRAY_SIZE(s->ocm_pwr));
@@ -7251,6 +7394,10 @@ static void psxc_lpx_slcr_realize(DeviceState *dev, Error **errp)
                              ARRAY_SIZE(s->rpu_tcm_pwr));
     qdev_init_gpio_out_named(dev, s->gem_pwr, "pwr-gem",
                              ARRAY_SIZE(s->gem_pwr));
+
+    for (i = 0; i < ARRAY_SIZE(s->core_pwr); i++) {
+        qdev_init_gpio_out_named(dev, &s->core_pwr[i].pwr, "pwr-cpu", 1);
+    }
 }
 
 static void psxc_lpx_slcr_init(Object *obj)
@@ -7263,6 +7410,19 @@ static void psxc_lpx_slcr_init(Object *obj)
     sysbus_init_mmio(sbd, &s->iomem);
 }
 
+static const VMStateDescription vmstate_core_pwr = {
+    .name = TYPE_XILINX_PSXC_LPX_SLCR "-core-pwr",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT32(reg0, XlnxPsxcLpxSlcrCorePowerCtrl),
+        VMSTATE_UINT32(reg1, XlnxPsxcLpxSlcrCorePowerCtrl),
+        VMSTATE_UINT32(reg2, XlnxPsxcLpxSlcrCorePowerCtrl),
+        VMSTATE_UINT32(wprot, XlnxPsxcLpxSlcrCorePowerCtrl),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static const VMStateDescription vmstate_psxc_lpx_slcr = {
     .name = TYPE_XILINX_PSXC_LPX_SLCR,
     .version_id = 1,
@@ -7271,6 +7431,8 @@ static const VMStateDescription vmstate_psxc_lpx_slcr = {
         VMSTATE_UINT32(ocm_pwr_ctrl, XlnxPsxcLpxSlcr),
         VMSTATE_UINT32(rpu_tcm_pwr_ctrl, XlnxPsxcLpxSlcr),
         VMSTATE_UINT32(gem_pwr_ctrl, XlnxPsxcLpxSlcr),
+        VMSTATE_STRUCT_ARRAY(core_pwr, XlnxPsxcLpxSlcr, 18, 1,
+                             vmstate_core_pwr, XlnxPsxcLpxSlcrCorePowerCtrl),
         VMSTATE_END_OF_LIST(),
     }
 };
@@ -7279,6 +7441,7 @@ static const FDTGenericGPIOSet psxc_lpx_slcr_gpios[] = {
     {
         .names = &fdt_generic_gpio_name_set_gpio,
         .gpios = (FDTGenericGPIOConnection[]) {
+            { .name = "pwr-cpu", .fdt_index = 0, .range = 18 },
             { .name = "pwr-ocm", .fdt_index = 18, .range = 16 },
             { .name = "pwr-rpu-tcm", .fdt_index = 34, .range = 10 },
             { .name = "pwr-gem", .fdt_index = 44, .range = 2 },
