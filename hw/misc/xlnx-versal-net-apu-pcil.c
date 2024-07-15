@@ -1121,13 +1121,13 @@ static uint64_t apu_pcil_ids_prew(RegisterInfo *reg, uint64_t val64)
 static void core_x_preq_postw(RegisterInfo *reg, uint64_t val64)
 {
     APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t blk_offset = reg->access->addr / 4 - 1;
+    size_t idx = reg->access->addr / 4;
 
     if (val64) {
         /* Validation not implemented
-         * set it true untill we implement all requests
+         * set it true until we implement all requests
          */
-        s->regs[blk_offset + R_CORE_0_PACTIVE] |=
+        s->regs[idx + R_CORE_0_PACTIVE - R_CORE_0_PREQ] |=
                 R_CORE_0_PACTIVE_PACCEPT_MASK;
     }
 }
@@ -1135,14 +1135,14 @@ static void core_x_preq_postw(RegisterInfo *reg, uint64_t val64)
 static void cluster_x_preq_postw(RegisterInfo *reg, uint64_t val64)
 {
     APU_PCIL *s = XILINX_APU_PCIL(reg->opaque);
-    uint32_t blk_offset = reg->access->addr / 4 - 1;
+    uint32_t idx = reg->access->addr / 4;
 
     if (val64) {
         /* Validation not implemented
-         * set it true untill we implement all requests
+         * set it true until we implement all requests
          */
-        s->regs[blk_offset + R_CORE_0_PACTIVE] |=
-                R_CORE_0_PACTIVE_PACCEPT_MASK;
+        s->regs[idx + R_CLUSTER_0_PACTIVE - R_CLUSTER_0_PREQ] |=
+                R_CLUSTER_0_PACTIVE_PACCEPT_MASK;
     }
 }
 
