@@ -25,11 +25,13 @@
  */
 
 #include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "hw/sysbus.h"
 #include "hw/register.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
 #include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 #include "hw/irq.h"
 #include "hw/fdt_generic_util.h"
 
@@ -39,6 +41,16 @@
 
 #define APU_PCIL_MAX_CLUSTER 4
 #define APU_PCIL_MAX_CORE 16
+
+#define FOREACH_BIT_IN_MASK(mask_, tmp_, i_) \
+    for (tmp_ = (mask_) >> ctz32(mask_), i_ = ctz32(mask_); \
+         tmp_ != 0; \
+         i_++, tmp_ >>= 1, i_ += ctz32(tmp_), tmp_ >>= ctz32(tmp_))
+
+#define FOREACH_CLUSTER(s_, tmp_, i_) \
+    FOREACH_BIT_IN_MASK((s_)->cluster_mask, tmp_, i_)
+#define FOREACH_CORE(s_, tmp_, i_) \
+    FOREACH_BIT_IN_MASK((s_)->core_mask, tmp_, i_)
 
 #define TYPE_XILINX_APU_PCIL "xlnx.apu_pcil"
 
@@ -693,6 +705,9 @@ typedef struct APU_PCIL {
 
     uint32_t regs[APU_PCIL_R_MAX];
     RegisterInfo regs_info[APU_PCIL_R_MAX];
+
+    uint32_t cluster_mask;
+    uint32_t core_mask;
 } APU_PCIL;
 
 static void update_cluster_power_irq(APU_PCIL *s, size_t cluster)
@@ -701,6 +716,7 @@ static void update_cluster_power_irq(APU_PCIL *s, size_t cluster)
     bool pending = s->regs[R_CLUSTER_0_ISR_POWER + cluster * stride] &
                    ~s->regs[R_CLUSTER_0_IMR_POWER + cluster * stride];
 
+    g_assert((1 << cluster) & s->cluster_mask);
     qemu_set_irq(s->irq_cluster_power[cluster], pending);
 }
 
@@ -714,6 +730,12 @@ static void cluster_n_isr_power_postw(RegisterInfo *reg, uint64_t val64)
     cluster = idx - R_CLUSTER_0_ISR_POWER;
     cluster /= R_CLUSTER_1_ISR_POWER - R_CLUSTER_0_ISR_POWER;
 
+    if (!((1 << cluster) & s->cluster_mask)) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      TYPE_XILINX_APU_PCIL ": invalid cluster %zu\n",
+                      cluster);
+        return;
+    }
 
     s->regs[idx] &= ~val;
     update_cluster_power_irq(s, cluster);
@@ -729,6 +751,13 @@ static uint64_t cluster_n_ien_power_prew(RegisterInfo *reg, uint64_t val64)
 
     cluster = idx - R_CLUSTER_0_IEN_POWER;
     cluster /= R_CLUSTER_1_ISR_POWER - R_CLUSTER_0_ISR_POWER;
+
+    if (!((1 << cluster) & s->cluster_mask)) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      TYPE_XILINX_APU_PCIL ": invalid cluster %zu\n",
+                      cluster);
+        return 0;
+    }
 
     s->regs[mask_idx] &= ~val;
     update_cluster_power_irq(s, cluster);
@@ -746,6 +775,13 @@ static uint64_t cluster_n_ids_power_prew(RegisterInfo *reg, uint64_t val64)
     cluster = idx - R_CLUSTER_0_IDS_POWER;
     cluster /= R_CLUSTER_1_ISR_POWER - R_CLUSTER_0_ISR_POWER;
 
+    if (!((1 << cluster) & s->cluster_mask)) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      TYPE_XILINX_APU_PCIL ": invalid cluster %zu\n",
+                      cluster);
+        return 0;
+    }
+
     s->regs[mask_idx] |= val;
     update_cluster_power_irq(s, cluster);
     return 0;
@@ -757,6 +793,7 @@ static void update_cluster_wake_irq(APU_PCIL *s, size_t cluster)
     bool pending = s->regs[R_CLUSTER_0_ISR_WAKE + cluster * stride] &
                    ~s->regs[R_CLUSTER_0_IMR_WAKE + cluster * stride];
 
+    g_assert((1 << cluster) & s->cluster_mask);
     qemu_set_irq(s->irq_cluster_wakeup[cluster], pending);
 }
 
@@ -769,6 +806,13 @@ static void cluster_n_isr_wake_postw(RegisterInfo *reg, uint64_t val64)
 
     cluster = idx - R_CLUSTER_0_ISR_WAKE;
     cluster /= R_CLUSTER_1_ISR_WAKE - R_CLUSTER_0_ISR_WAKE;
+
+    if (!((1 << cluster) & s->cluster_mask)) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      TYPE_XILINX_APU_PCIL ": invalid cluster %zu\n",
+                      cluster);
+        return;
+    }
 
     s->regs[idx] &= ~val;
     update_cluster_wake_irq(s, cluster);
@@ -784,6 +828,13 @@ static uint64_t cluster_n_ien_wake_prew(RegisterInfo *reg, uint64_t val64)
 
     cluster = idx - R_CLUSTER_0_IEN_WAKE;
     cluster /= R_CLUSTER_1_ISR_WAKE - R_CLUSTER_0_ISR_WAKE;
+
+    if (!((1 << cluster) & s->cluster_mask)) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      TYPE_XILINX_APU_PCIL ": invalid cluster %zu\n",
+                      cluster);
+        return 0;
+    }
 
     s->regs[mask_idx] &= ~val;
     update_cluster_wake_irq(s, cluster);
@@ -801,6 +852,13 @@ static uint64_t cluster_n_ids_wake_prew(RegisterInfo *reg, uint64_t val64)
     cluster = idx - R_CLUSTER_0_IDS_WAKE;
     cluster /= R_CLUSTER_1_ISR_WAKE - R_CLUSTER_0_ISR_WAKE;
 
+    if (!((1 << cluster) & s->cluster_mask)) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      TYPE_XILINX_APU_PCIL ": invalid cluster %zu\n",
+                      cluster);
+        return 0;
+    }
+
     s->regs[mask_idx] |= val;
     update_cluster_wake_irq(s, cluster);
     return 0;
@@ -812,6 +870,7 @@ static void update_core_power_irq(APU_PCIL *s, size_t core)
     bool pending = s->regs[R_CORE_0_ISR_POWER + core * stride] &
                    ~s->regs[R_CORE_0_IMR_POWER + core * stride];
 
+    g_assert((1 << core) & s->core_mask);
     qemu_set_irq(s->irq_core_power[core], pending);
 }
 
@@ -824,6 +883,13 @@ static void core_n_isr_power_postw(RegisterInfo *reg, uint64_t val64)
 
     core = idx - R_CORE_0_ISR_POWER;
     core /= R_CORE_1_ISR_POWER - R_CORE_0_ISR_POWER;
+
+    if (!((1 << core) & s->core_mask)) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      TYPE_XILINX_APU_PCIL ": invalid core %zu\n",
+                      core);
+        return;
+    }
 
     s->regs[idx] &= ~val;
     update_core_power_irq(s, core);
@@ -839,6 +905,13 @@ static uint64_t core_n_ien_power_prew(RegisterInfo *reg, uint64_t val64)
 
     core = idx - R_CORE_0_IEN_POWER;
     core /= R_CORE_1_ISR_POWER - R_CORE_0_ISR_POWER;
+
+    if (!((1 << core) & s->core_mask)) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      TYPE_XILINX_APU_PCIL ": invalid core %zu\n",
+                      core);
+        return 0;
+    }
 
     s->regs[mask_idx] &= ~val;
     update_core_power_irq(s, core);
@@ -856,6 +929,13 @@ static uint64_t core_n_ids_power_prew(RegisterInfo *reg, uint64_t val64)
     core = idx - R_CORE_0_IDS_POWER;
     core /= R_CORE_1_ISR_POWER - R_CORE_0_ISR_POWER;
 
+    if (!((1 << core) & s->core_mask)) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      TYPE_XILINX_APU_PCIL ": invalid core %zu\n",
+                      core);
+        return 0;
+    }
+
     s->regs[mask_idx] |= val;
     update_core_power_irq(s, core);
     return 0;
@@ -867,6 +947,7 @@ static void update_core_wake_irq(APU_PCIL *s, size_t core)
     bool pending = s->regs[R_CORE_0_ISR_WAKE + core * stride] &
                    ~s->regs[R_CORE_0_IMR_WAKE + core * stride];
 
+    g_assert((1 << core) & s->core_mask);
     qemu_set_irq(s->irq_core_wakeup[core], pending);
 }
 
@@ -879,6 +960,13 @@ static void core_n_isr_wake_postw(RegisterInfo *reg, uint64_t val64)
 
     core = idx - R_CORE_0_ISR_WAKE;
     core /= R_CORE_1_ISR_WAKE - R_CORE_0_ISR_WAKE;
+
+    if (!((1 << core) & s->core_mask)) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      TYPE_XILINX_APU_PCIL ": invalid core %zu\n",
+                      core);
+        return;
+    }
 
     s->regs[idx] &= ~val;
     update_core_wake_irq(s, core);
@@ -895,6 +983,13 @@ static uint64_t core_n_ien_wake_prew(RegisterInfo *reg, uint64_t val64)
     core = idx - R_CORE_0_IEN_WAKE;
     core /= R_CORE_1_ISR_WAKE - R_CORE_0_ISR_WAKE;
 
+    if (!((1 << core) & s->core_mask)) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      TYPE_XILINX_APU_PCIL ": invalid core %zu\n",
+                      core);
+        return 0;
+    }
+
     s->regs[mask_idx] &= ~val;
     update_core_wake_irq(s, core);
     return 0;
@@ -910,6 +1005,13 @@ static uint64_t core_n_ids_wake_prew(RegisterInfo *reg, uint64_t val64)
 
     core = idx - R_CORE_0_IDS_WAKE;
     core /= R_CORE_1_ISR_WAKE - R_CORE_0_ISR_WAKE;
+
+    if (!((1 << core) & s->core_mask)) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      TYPE_XILINX_APU_PCIL ": invalid core %zu\n",
+                      core);
+        return 0;
+    }
 
     s->regs[mask_idx] |= val;
     update_core_wake_irq(s, core);
@@ -1861,13 +1963,14 @@ static void apu_pcil_reset_hold(Object *obj)
 {
     APU_PCIL *s = XILINX_APU_PCIL(obj);
     size_t i;
+    uint32_t mask;
 
-    for (i = 0; i < APU_PCIL_MAX_CLUSTER; i++) {
+    FOREACH_CLUSTER(s, mask, i) {
         update_cluster_power_irq(s, i);
         update_cluster_wake_irq(s, i);
     }
 
-    for (i = 0; i < APU_PCIL_MAX_CORE; i++) {
+    FOREACH_CORE(s, mask, i) {
         update_core_power_irq(s, i);
         update_core_wake_irq(s, i);
     }
@@ -1892,20 +1995,35 @@ static void apu_pcil_realize(DeviceState *dev, Error **errp)
     APU_PCIL *s = XILINX_APU_PCIL(dev);
     SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
     size_t i;
+    uint32_t mask;
 
-    for (i = 0; i < APU_PCIL_MAX_CLUSTER; i++) {
+    if (s->cluster_mask >= (1 << APU_PCIL_MAX_CLUSTER)) {
+        error_setg(errp, "requested 0x%" PRIx32 " cluster mask "
+                   "exceeds maximum %u",
+                   s->cluster_mask, APU_PCIL_MAX_CLUSTER);
+        return;
+    }
+
+    if (s->core_mask >= (1 << APU_PCIL_MAX_CORE)) {
+        error_setg(errp, "requested 0x%" PRIx32 " core mask "
+                   "exceeds maximum %u",
+                   s->core_mask, APU_PCIL_MAX_CORE);
+        return;
+    }
+
+    FOREACH_CLUSTER(s, mask, i) {
         sysbus_init_irq(sbd, &s->irq_cluster_power[i]);
     }
 
-    for (i = 0; i < APU_PCIL_MAX_CLUSTER; i++) {
+    FOREACH_CLUSTER(s, mask, i) {
         sysbus_init_irq(sbd, &s->irq_cluster_wakeup[i]);
     }
 
-    for (i = 0; i < APU_PCIL_MAX_CORE; i++) {
+    FOREACH_CORE(s, mask, i) {
         sysbus_init_irq(sbd, &s->irq_core_power[i]);
     }
 
-    for (i = 0; i < APU_PCIL_MAX_CORE; i++) {
+    FOREACH_CORE(s, mask, i) {
         sysbus_init_irq(sbd, &s->irq_core_wakeup[i]);
     }
 
@@ -1945,6 +2063,14 @@ static const VMStateDescription vmstate_apu_pcil = {
     }
 };
 
+static Property apu_pcil_properties[] = {
+    DEFINE_PROP_UINT32("cluster-mask", APU_PCIL, cluster_mask,
+                       (1 << APU_PCIL_MAX_CLUSTER) - 1),
+    DEFINE_PROP_UINT32("core-mask", APU_PCIL, core_mask,
+                       (1 << APU_PCIL_MAX_CORE) - 1),
+    DEFINE_PROP_END_OF_LIST(),
+};
+
 static const FDTGenericGPIOSet apu_pcil_gpios[] = {
     {
         .names = &fdt_generic_gpio_name_set_gpio,
@@ -1969,6 +2095,7 @@ static void apu_pcil_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_apu_pcil;
     rc->phases.enter = apu_pcil_reset_enter;
     rc->phases.hold = apu_pcil_reset_hold;
+    device_class_set_props(dc, apu_pcil_properties);
     fggc->client_gpios = apu_pcil_gpios;
 }
 
