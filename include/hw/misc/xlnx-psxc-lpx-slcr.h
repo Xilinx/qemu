@@ -45,6 +45,11 @@ typedef struct XlnxPsxcLpxSlcrCorePowerCtrl {
     uint32_t wprot;
 } XlnxPsxcLpxSlcrCorePowerCtrl;
 
+typedef struct XlnxPsxcLpxSlcrIrq {
+    uint32_t status;
+    uint32_t mask;
+} XlnxPsxcLpxSlcrIrq;
+
 typedef struct XlnxPsxcLpxSlcr {
     SysBusDevice parent_obj;
 
@@ -54,11 +59,18 @@ typedef struct XlnxPsxcLpxSlcr {
     qemu_irq rpu_tcm_pwr[10];
     qemu_irq gem_pwr[2];
 
+    qemu_irq pwr_reset_irq;
+
     XlnxPsxcLpxSlcrCorePowerCtrl core_pwr[18];
 
     uint32_t ocm_pwr_ctrl;
     uint32_t rpu_tcm_pwr_ctrl;
     uint32_t gem_pwr_ctrl;
+
+    XlnxPsxcLpxSlcrIrq req_pwrup0_irq;
+    XlnxPsxcLpxSlcrIrq req_pwrup1_irq;
+    XlnxPsxcLpxSlcrIrq req_pwrdwn0_irq;
+    XlnxPsxcLpxSlcrIrq req_pwrdwn1_irq;
 } XlnxPsxcLpxSlcr;
 
 #endif

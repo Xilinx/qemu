@@ -7154,6 +7154,23 @@ static void update_gem_pwr(XlnxPsxcLpxSlcr *s)
     qemu_set_irq(s->gem_pwr[1], extract32(s->gem_pwr_ctrl, 8, 1));
 }
 
+static inline bool irq_is_pending(XlnxPsxcLpxSlcrIrq *irq)
+{
+    return !!(irq->status & ~irq->mask);
+}
+
+static void update_pwr_reset_irq(XlnxPsxcLpxSlcr *s)
+{
+    bool sta;
+
+    sta = irq_is_pending(&s->req_pwrup0_irq)
+        || irq_is_pending(&s->req_pwrup1_irq)
+        || irq_is_pending(&s->req_pwrdwn0_irq)
+        || irq_is_pending(&s->req_pwrdwn1_irq);
+
+    qemu_set_irq(s->pwr_reset_irq, sta);
+}
+
 static void update_core_pwr(const XlnxPsxcLpxSlcr *s, size_t idx)
 {
     const XlnxPsxcLpxSlcrCorePowerCtrl *pwr_ctrl = &s->core_pwr[idx];
@@ -7271,6 +7288,71 @@ static void core_pwr_ctrl_write(XlnxPsxcLpxSlcr *s, hwaddr offset, uint32_t val)
     }
 }
 
+static uint32_t irq_reg_read(XlnxPsxcLpxSlcrIrq *irq,
+                             size_t offset)
+{
+    uint32_t ret;
+
+    switch (offset + A_WAKEUP0_IRQ_STATUS) {
+    case A_WAKEUP0_IRQ_STATUS:
+        ret = irq->status;
+        break;
+
+    case A_WAKEUP0_IRQ_MASK:
+        ret = irq->mask;
+        break;
+
+    default:
+        /* wo */
+        ret = 0;
+    }
+
+    return ret;
+}
+
+
+static bool irq_reg_write(XlnxPsxcLpxSlcrIrq *irq,
+                          size_t offset, uint32_t value)
+{
+    switch (offset + A_WAKEUP0_IRQ_STATUS) {
+    case A_WAKEUP0_IRQ_STATUS:
+        irq->status &= ~value;
+        break;
+
+    case A_WAKEUP0_IRQ_EN:
+        irq->mask &= ~value;
+        break;
+
+    case A_WAKEUP0_IRQ_DIS:
+        irq->mask |= value;
+        break;
+
+    case A_WAKEUP0_IRQ_TRIG:
+        irq->status |= value;
+        break;
+
+    default:
+        /* ro */
+        return false;
+    }
+
+    return true;
+}
+
+static uint32_t pwr_reset_irq_read(XlnxPsxcLpxSlcr *s, XlnxPsxcLpxSlcrIrq *irq,
+                                   size_t offset)
+{
+    return irq_reg_read(irq, offset);
+}
+
+static void pwr_reset_irq_write(XlnxPsxcLpxSlcr *s, XlnxPsxcLpxSlcrIrq *irq,
+                                size_t offset, uint32_t value)
+{
+    if (irq_reg_write(irq, offset, value)) {
+        update_pwr_reset_irq(s);
+    }
+}
+
 static uint64_t psxc_lpx_slcr_read(void *opaque, hwaddr offset,
                                    unsigned int size)
 {
@@ -7292,6 +7374,27 @@ static uint64_t psxc_lpx_slcr_read(void *opaque, hwaddr offset,
     case A_GEM_PWR_STATUS:
         ret = s->gem_pwr_ctrl;
         break;
+
+    case A_REQ_PWRUP0_STATUS ... A_REQ_PWRUP0_TRIG:
+        ret = pwr_reset_irq_read(s, &s->req_pwrup0_irq,
+                                 offset - A_REQ_PWRUP0_STATUS);
+        break;
+
+    case A_REQ_PWRUP1_STATUS ... A_REQ_PWRUP1_TRIG:
+        ret = pwr_reset_irq_read(s, &s->req_pwrup1_irq,
+                                 offset - A_REQ_PWRUP1_STATUS);
+        break;
+
+    case A_REQ_PWRDWN0_STATUS ... A_REQ_PWRDWN0_TRIG:
+        ret = pwr_reset_irq_read(s, &s->req_pwrdwn0_irq,
+                                 offset - A_REQ_PWRDWN0_STATUS);
+        break;
+
+    case A_REQ_PWRDWN1_STATUS ... A_REQ_PWRDWN1_TRIG:
+        ret = pwr_reset_irq_read(s, &s->req_pwrdwn1_irq,
+                                 offset - A_REQ_PWRDWN1_STATUS);
+        break;
+
 
     case A_APU0_CORE0_PWR_CNTRL_REG0 ... A_RPU4_CORE1_PWR_CNTRL_WPROT:
         ret = core_pwr_ctrl_read(s, offset - A_APU0_CORE0_PWR_CNTRL_REG0);
@@ -7326,6 +7429,26 @@ static void psxc_lpx_slcr_write(void *opaque, hwaddr offset,
     case A_GEM_PWR_CNTRL:
         s->gem_pwr_ctrl = value & GEM_PWR_CNTRL_WRITE_MASK;
         update_gem_pwr(s);
+        break;
+
+    case A_REQ_PWRUP0_STATUS ... A_REQ_PWRUP0_TRIG:
+        pwr_reset_irq_write(s, &s->req_pwrup0_irq,
+                            offset - A_REQ_PWRUP0_STATUS, value);
+        break;
+
+    case A_REQ_PWRUP1_STATUS ... A_REQ_PWRUP1_TRIG:
+        pwr_reset_irq_write(s, &s->req_pwrup1_irq,
+                            offset - A_REQ_PWRUP1_STATUS, value);
+        break;
+
+    case A_REQ_PWRDWN0_STATUS ... A_REQ_PWRDWN0_TRIG:
+        pwr_reset_irq_write(s, &s->req_pwrdwn0_irq,
+                            offset - A_REQ_PWRDWN0_STATUS, value);
+        break;
+
+    case A_REQ_PWRDWN1_STATUS ... A_REQ_PWRDWN1_TRIG:
+        pwr_reset_irq_write(s, &s->req_pwrdwn1_irq,
+                            offset - A_REQ_PWRDWN1_STATUS, value);
         break;
 
     case A_APU0_CORE0_PWR_CNTRL_REG0 ... A_RPU4_CORE1_PWR_CNTRL_WPROT:
@@ -7364,6 +7487,15 @@ static void psxc_lpx_slcr_reset_enter(Object *obj, ResetType type)
     s->rpu_tcm_pwr_ctrl = RPU_TCM_PWR_CNTRL_RESET_VAL;
     s->gem_pwr_ctrl = GEM_PWR_CNTRL_RESET_VAL;
 
+    s->req_pwrup0_irq.status = REQ_PWRUP0_STATUS_RESET_VAL;
+    s->req_pwrup0_irq.mask = REQ_PWRUP0_INT_MASK_RESET_VAL;
+    s->req_pwrup1_irq.status = REQ_PWRUP1_STATUS_RESET_VAL;
+    s->req_pwrup1_irq.mask = REQ_PWRUP0_INT_MASK_RESET_VAL;
+    s->req_pwrdwn0_irq.status = REQ_PWRDWN0_STATUS_RESET_VAL;
+    s->req_pwrdwn0_irq.mask = REQ_PWRDWN0_INT_MASK_RESET_VAL;
+    s->req_pwrdwn1_irq.status = REQ_PWRDWN1_STATUS_RESET_VAL;
+    s->req_pwrdwn1_irq.mask = REQ_PWRDWN0_INT_MASK_RESET_VAL;
+
     for (i = 0; i < ARRAY_SIZE(s->core_pwr); i++) {
         core_pwr_ctrl_reset(&s->core_pwr[i]);
     }
@@ -7377,6 +7509,7 @@ static void psxc_lpx_slcr_reset_hold(Object *obj)
     update_ocm_pwr(s);
     update_rpu_tcm_pwr(s);
     update_gem_pwr(s);
+    update_pwr_reset_irq(s);
 
     for (i = 0; i < ARRAY_SIZE(s->core_pwr); i++) {
         update_core_pwr(s, i);
@@ -7386,6 +7519,7 @@ static void psxc_lpx_slcr_reset_hold(Object *obj)
 static void psxc_lpx_slcr_realize(DeviceState *dev, Error **errp)
 {
     XlnxPsxcLpxSlcr *s = XILINX_PSXC_LPX_SLCR(dev);
+    SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
     size_t i;
 
     qdev_init_gpio_out_named(dev, s->ocm_pwr, "pwr-ocm",
@@ -7398,6 +7532,8 @@ static void psxc_lpx_slcr_realize(DeviceState *dev, Error **errp)
     for (i = 0; i < ARRAY_SIZE(s->core_pwr); i++) {
         qdev_init_gpio_out_named(dev, &s->core_pwr[i].pwr, "pwr-cpu", 1);
     }
+
+    sysbus_init_irq(sbd, &s->pwr_reset_irq);
 }
 
 static void psxc_lpx_slcr_init(Object *obj)
@@ -7423,6 +7559,17 @@ static const VMStateDescription vmstate_core_pwr = {
     }
 };
 
+static const VMStateDescription vmstate_irq = {
+    .name = TYPE_XILINX_PSXC_LPX_SLCR "-irq",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT32(status, XlnxPsxcLpxSlcrIrq),
+        VMSTATE_UINT32(mask, XlnxPsxcLpxSlcrIrq),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static const VMStateDescription vmstate_psxc_lpx_slcr = {
     .name = TYPE_XILINX_PSXC_LPX_SLCR,
     .version_id = 1,
@@ -7433,6 +7580,14 @@ static const VMStateDescription vmstate_psxc_lpx_slcr = {
         VMSTATE_UINT32(gem_pwr_ctrl, XlnxPsxcLpxSlcr),
         VMSTATE_STRUCT_ARRAY(core_pwr, XlnxPsxcLpxSlcr, 18, 1,
                              vmstate_core_pwr, XlnxPsxcLpxSlcrCorePowerCtrl),
+        VMSTATE_STRUCT(req_pwrup0_irq, XlnxPsxcLpxSlcr, 1,
+                       vmstate_irq, XlnxPsxcLpxSlcrIrq),
+        VMSTATE_STRUCT(req_pwrup1_irq, XlnxPsxcLpxSlcr, 1,
+                       vmstate_irq, XlnxPsxcLpxSlcrIrq),
+        VMSTATE_STRUCT(req_pwrdwn0_irq, XlnxPsxcLpxSlcr, 1,
+                       vmstate_irq, XlnxPsxcLpxSlcrIrq),
+        VMSTATE_STRUCT(req_pwrdwn1_irq, XlnxPsxcLpxSlcr, 1,
+                       vmstate_irq, XlnxPsxcLpxSlcrIrq),
         VMSTATE_END_OF_LIST(),
     }
 };
