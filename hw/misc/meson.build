@@ -154,7 +154,8 @@ system_ss.add(when: 'CONFIG_XLNX_VERSAL', if_true: files(
   'xlnx-hnicx-npi.c',
   'xlnx-pmx-error-management.c',
   'xlnx-versal-net-rpu-pcil.c',
-  'xlnx-versal-net-pmx-anlg.c'
+  'xlnx-versal-net-pmx-anlg.c',
+  'xlnx-psxc-lpx-slcr.c'
 ))
 
 system_ss.add(when: 'CONFIG_XLNX_VERSAL_PMC', if_true: files(

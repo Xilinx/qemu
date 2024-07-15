@@ -328,3 +328,7 @@ iosb_write(int reg, uint64_t value, unsigned int size) "reg=0x%x value=0x%"PRIx6
 # xlnx-versal-net-apu-pcil.c
 xlnx_versal_net_apu_pcil_core_request_pstate_change(size_t core, uint32_t new_pactive, bool success) "core %zu, new pactive: 0x%08x, success: %d"
 xlnx_versal_net_apu_pcil_core_read_current_pstate(size_t core, uint32_t pactive) "core %zu, pactive: 0x%08x"
+
+# xlnx-psxc-lpx-slcr.c
+xlnx_psxc_lpx_slcr_read(uint64_t offset, uint64_t value) "offset:0x%" PRIx64 ", value:0x%" PRIx64
+xlnx_psxc_lpx_slcr_write(uint64_t offset, uint64_t value) "offset:0x%" PRIx64 ", value:0x%" PRIx64
