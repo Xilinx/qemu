@@ -28,6 +28,7 @@
 #include "internals.h"
 #include "cpu-features.h"
 #include "cpregs.h"
+#include "hw/arm/pchannel.h"
 
 static uint64_t make_ccsidr64(unsigned assoc, unsigned linesize,
                               unsigned cachesize)
@@ -398,6 +399,38 @@ static void aarch64_a78_initfn(Object *obj)
 
     cpu->isar.id_aa64mmfr1 |= (uint64_t)2 << 20; /* PAN */
     cpu->isar.id_aa64mmfr1 |= (uint64_t)1 << 8; /* VHE */
+}
+
+static const uint32_t PCHANNEL_AARCH64_A78_ON_STATE = 0x8;
+static const uint32_t PCHANNEL_AARCH64_A78_OFF_STATE = 0x0;
+
+static bool cortex_a78_pchan_request_state_change(ARMPChannelIf *obj,
+                                                  uint32_t new_state)
+{
+    ARMCPU *cpu = ARM_CPU(obj);
+
+    cpu->power_state = (new_state == PCHANNEL_AARCH64_A78_ON_STATE)
+        ? PSCI_ON : PSCI_OFF;
+
+    return true;
+}
+
+static uint32_t cortex_a78_pchan_get_current_state(ARMPChannelIf *obj)
+{
+    ARMCPU *cpu = ARM_CPU(obj);
+
+    return (cpu->power_state == PSCI_ON) ? PCHANNEL_AARCH64_A78_ON_STATE
+                                         : PCHANNEL_AARCH64_A78_OFF_STATE;
+}
+
+static void aarch64_a78_class_init(ObjectClass *oc, void *data)
+{
+    ARMCPUClass *acc = ARM_CPU_CLASS(oc);
+    ARMPChannelIfClass *apcic = ARM_PCHANNEL_IF_CLASS(oc);
+
+    acc->info = data;
+    apcic->request_state_change = cortex_a78_pchan_request_state_change;
+    apcic->get_current_state = cortex_a78_pchan_get_current_state;
 }
 
 
@@ -1535,7 +1568,8 @@ static const ARMCPUInfo aarch64_cpus[] = {
     { .name = "cortex-a55",         .initfn = aarch64_a55_initfn },
     { .name = "cortex-a72",         .initfn = aarch64_a72_initfn },
     { .name = "cortex-a76",         .initfn = aarch64_a76_initfn },
-    { .name = "cortex-a78",         .initfn = aarch64_a78_initfn },
+    { .name = "cortex-a78",         .initfn = aarch64_a78_initfn,
+                                    .class_init = aarch64_a78_class_init },
     { .name = "cortex-a710",        .initfn = aarch64_a710_initfn },
     { .name = "a64fx",              .initfn = aarch64_a64fx_initfn },
     { .name = "neoverse-n1",        .initfn = aarch64_neoverse_n1_initfn },

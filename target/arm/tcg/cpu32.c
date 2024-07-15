@@ -13,6 +13,7 @@
 #include "hw/core/tcg-cpu-ops.h"
 #include "internals.h"
 #include "target/arm/idau.h"
+#include "hw/arm/pchannel.h"
 #if !defined(CONFIG_USER_ONLY)
 #include "hw/boards.h"
 #endif
@@ -927,6 +928,39 @@ static void cortex_r52_initfn(Object *obj)
 #ifndef CONFIG_USER_ONLY
     define_arm_cp_regs(cpu, cortexr52_cp_reginfo);
 #endif
+
+}
+
+static bool cortex_r52_pchan_request_state_change(ARMPChannelIf *obj,
+                                                  uint32_t new_state)
+{
+    static const uint32_t PSTATE_RUNNING = 0x0;
+    ARMCPU *cpu = ARM_CPU(obj);
+
+    cpu->power_state = (new_state == PSTATE_RUNNING)
+        ? PSCI_ON : PSCI_OFF;
+
+    return true;
+}
+
+static uint32_t cortex_r52_pchan_get_current_state(ARMPChannelIf *obj)
+{
+    static const uint32_t PACTIVE_SHUTDOWN = 0x0;
+    static const uint32_t PACTIVE_RUNNING = 0x2;
+    ARMCPU *cpu = ARM_CPU(obj);
+
+    return (cpu->power_state == PSCI_ON) ? PACTIVE_RUNNING
+                                         : PACTIVE_SHUTDOWN;
+}
+
+static void cortex_r52_class_init(ObjectClass *oc, void *data)
+{
+    ARMCPUClass *acc = ARM_CPU_CLASS(oc);
+    ARMPChannelIfClass *apcic = ARM_PCHANNEL_IF_CLASS(oc);
+
+    acc->info = data;
+    apcic->request_state_change = cortex_r52_pchan_request_state_change;
+    apcic->get_current_state = cortex_r52_pchan_get_current_state;
 }
 
 static void cortex_r5f_initfn(Object *obj)
@@ -1234,7 +1268,8 @@ static const ARMCPUInfo arm_tcg_cpus[] = {
                              .class_init = arm_v7m_class_init },
     { .name = "cortex-r5",   .initfn = cortex_r5_initfn },
     { .name = "cortex-r5f",  .initfn = cortex_r5f_initfn },
-    { .name = "cortex-r52",  .initfn = cortex_r52_initfn },
+    { .name = "cortex-r52",  .initfn = cortex_r52_initfn,
+                             .class_init = cortex_r52_class_init },
     { .name = "ti925t",      .initfn = ti925t_initfn },
     { .name = "sa1100",      .initfn = sa1100_initfn },
     { .name = "sa1110",      .initfn = sa1110_initfn },
