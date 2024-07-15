@@ -28,6 +28,7 @@
 
 #include "hw/sysbus.h"
 #include "hw/irq.h"
+#include "hw/arm/pchannel.h"
 
 #define TYPE_XILINX_PSXC_LPX_SLCR "xlnx.psxc-lpx-slcr"
 
@@ -50,6 +51,14 @@ typedef struct XlnxPsxcLpxSlcrIrq {
     uint32_t mask;
 } XlnxPsxcLpxSlcrIrq;
 
+typedef struct XlnxPsxcLpxSlcrRpuPChannel {
+    XlnxPsxcLpxSlcrIrq irq; /* IRQ when PACTIVE[1] is set (core on) */
+    ARMPChannelIf *iface;
+    bool preq;
+    uint32_t pstate;
+    uint32_t pactive;
+} XlnxPsxcLpxSlcrRpuPChannel;
+
 typedef struct XlnxPsxcLpxSlcr {
     SysBusDevice parent_obj;
 
@@ -62,6 +71,7 @@ typedef struct XlnxPsxcLpxSlcr {
     qemu_irq pwr_reset_irq;
 
     XlnxPsxcLpxSlcrCorePowerCtrl core_pwr[18];
+    XlnxPsxcLpxSlcrRpuPChannel rpu_pcil_pchan[10];
 
     uint32_t ocm_pwr_ctrl;
     uint32_t rpu_tcm_pwr_ctrl;
@@ -76,6 +86,8 @@ typedef struct XlnxPsxcLpxSlcr {
     XlnxPsxcLpxSlcrIrq req_pwrdwn0_irq;
     XlnxPsxcLpxSlcrIrq req_pwrdwn1_irq;
     XlnxPsxcLpxSlcrIrq rpu_pcil_wfi_irq;
+
+    uint32_t num_rpu;
 } XlnxPsxcLpxSlcr;
 
 #endif

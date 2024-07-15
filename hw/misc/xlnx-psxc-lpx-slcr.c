@@ -24,11 +24,13 @@
  */
 
 #include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "hw/register.h"
 #include "hw/resettable.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
 #include "migration/vmstate.h"
+#include "hw/qdev-properties.h"
 #include "hw/fdt_generic_util.h"
 #include "hw/misc/xlnx-psxc-lpx-slcr.h"
 #include "trace.h"
@@ -7187,6 +7189,21 @@ static void update_rpu_pcil_wfi_irq(XlnxPsxcLpxSlcr *s)
     }
 }
 
+static void update_rpu_pcil_pchan_irq(XlnxPsxcLpxSlcr *s, size_t idx)
+{
+    XlnxPsxcLpxSlcrRpuPChannel *chan = &s->rpu_pcil_pchan[idx];
+
+    /*
+     * This IRQ does not go out of the SLCR. It directly maps to the WAKEUP1
+     * register LSBs.
+     */
+    if (irq_is_pending(&chan->irq)) {
+        s->wakeup1_irq.status |=
+            1 << (R_WAKEUP1_IRQ_STATUS_RPU_A_CORE0_SHIFT + idx);
+        update_pwr_reset_irq(s);
+    }
+}
+
 static void update_core_pwr(const XlnxPsxcLpxSlcr *s, size_t idx)
 {
     const XlnxPsxcLpxSlcrCorePowerCtrl *pwr_ctrl = &s->core_pwr[idx];
@@ -7446,6 +7463,129 @@ static void pwr_reset_irq_write(XlnxPsxcLpxSlcr *s, XlnxPsxcLpxSlcrIrq *irq,
     }
 }
 
+static uint32_t rpu_pcil_pchannel_read(XlnxPsxcLpxSlcr *s, size_t offset)
+{
+    const size_t stride = A_RPU_PCIL_A1_ISR - A_RPU_PCIL_A0_ISR;
+    size_t idx, reg;
+    XlnxPsxcLpxSlcrRpuPChannel *pchan;
+    uint32_t ret;
+
+    idx = offset / stride;
+    reg = offset % stride;
+
+    if (idx >= s->num_rpu) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      TYPE_XILINX_PSXC_LPX_SLCR ": access to RPU_PCIL register"
+                      "for non-existant RPU %zu\n", idx);
+        return 0;
+    }
+
+    pchan = &s->rpu_pcil_pchan[idx];
+
+    switch (reg + A_RPU_PCIL_A0_ISR) {
+    case A_RPU_PCIL_A0_ISR ... A_RPU_PCIL_A0_IDS:
+        ret = irq_reg_read(&pchan->irq, reg);
+        break;
+
+    case A_RPU_PCIL_A0_PR:
+        ret = pchan->preq;
+        break;
+
+    case A_RPU_PCIL_A0_PS:
+        ret = pchan->pstate;
+        break;
+
+    case A_RPU_PCIL_A0_PA:
+        ret = FIELD_DP32(0, RPU_PCIL_A0_PA, PACTIVE,
+                         pchannel_get_current_state(pchan->iface));
+        trace_xlnx_psxc_lpx_slcr_rpu_read_current_pstate(idx, ret);
+        ret |= pchan->pactive; /* paccept and pdeny bits */
+        break;
+
+    default:
+        ret = 0;
+        break;
+    }
+
+    return ret;
+}
+
+static void update_rpu_pcil_pchannel(XlnxPsxcLpxSlcr *s, size_t idx)
+{
+    XlnxPsxcLpxSlcrRpuPChannel *pchan = &s->rpu_pcil_pchan[idx];
+    const uint32_t R52_PSTATE_RUNNING = 0x2;
+
+    if (pchan->preq) {
+        uint32_t pstate;
+        bool success;
+
+        success = pchannel_request_state_change(pchan->iface, pchan->pstate);
+        trace_xlnx_psxc_lpx_slcr_rpu_request_pstate_change(idx, pchan->pstate,
+                                                           success);
+
+        pchan->pactive = FIELD_DP32(pchan->pactive, RPU_PCIL_A0_PA,
+                                    PACCEPT, success);
+        pchan->pactive = FIELD_DP32(pchan->pactive, RPU_PCIL_A0_PA,
+                                    PDENY, !success);
+
+        pstate = pchannel_get_current_state(pchan->iface);
+
+        if (pstate != R52_PSTATE_RUNNING) {
+            return;
+        }
+
+        pchan->irq.status = FIELD_DP32(pchan->irq.status, RPU_PCIL_A0_ISR,
+                                       PACTIVE1, 1);
+
+        update_rpu_pcil_pchan_irq(s, idx);
+    }
+}
+
+static void rpu_pcil_pchannel_write(XlnxPsxcLpxSlcr *s,
+                                    size_t offset, uint32_t value)
+{
+    const size_t stride = A_RPU_PCIL_A1_ISR - A_RPU_PCIL_A0_ISR;
+    size_t idx, reg;
+    XlnxPsxcLpxSlcrRpuPChannel *pchan;
+
+    idx = offset / stride;
+    reg = offset % stride;
+
+    if (idx >= s->num_rpu) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      TYPE_XILINX_PSXC_LPX_SLCR ": access to RPU_PCIL register"
+                      "for non-existant RPU %zu\n", idx);
+        return;
+    }
+
+    pchan = &s->rpu_pcil_pchan[idx];
+
+    switch (reg + A_RPU_PCIL_A0_ISR) {
+    case A_RPU_PCIL_A0_ISR ... A_RPU_PCIL_A0_IDS:
+        if (irq_reg_write(&pchan->irq, reg, value)) {
+            update_rpu_pcil_pchan_irq(s, idx);
+        }
+        break;
+
+    case A_RPU_PCIL_A0_PR:
+        pchan->preq = value & RPU_PCIL_A0_PR_WRITE_MASK;
+        update_rpu_pcil_pchannel(s, idx);
+        break;
+
+    case A_RPU_PCIL_A0_PS:
+        pchan->pstate = value & RPU_PCIL_A0_PS_WRITE_MASK;
+        update_rpu_pcil_pchannel(s, idx);
+        break;
+
+    case A_RPU_PCIL_A0_PA:
+        /* ro */
+        break;
+
+    default:
+        break;
+    }
+}
+
 static uint64_t psxc_lpx_slcr_read(void *opaque, hwaddr offset,
                                    unsigned int size)
 {
@@ -7511,6 +7651,10 @@ static uint64_t psxc_lpx_slcr_read(void *opaque, hwaddr offset,
 
     case A_APU0_CORE0_PWR_CNTRL_REG0 ... A_RPU4_CORE1_PWR_CNTRL_WPROT:
         ret = core_pwr_ctrl_read(s, offset - A_APU0_CORE0_PWR_CNTRL_REG0);
+        break;
+
+    case A_RPU_PCIL_A0_ISR ... A_RPU_PCIL_E1_PA:
+        ret = rpu_pcil_pchannel_read(s, offset - A_RPU_PCIL_A0_ISR);
         break;
 
     case A_RPU_PCIL_PSM_STANDBY ... A_RPU_PCIL_PSM_IDS:
@@ -7593,6 +7737,10 @@ static void psxc_lpx_slcr_write(void *opaque, hwaddr offset,
         core_pwr_ctrl_write(s, offset - A_APU0_CORE0_PWR_CNTRL_REG0, value);
         break;
 
+    case A_RPU_PCIL_A0_ISR ... A_RPU_PCIL_E1_PA:
+        rpu_pcil_pchannel_write(s, offset - A_RPU_PCIL_A0_ISR, value);
+        break;
+
     case A_RPU_PCIL_PSM_STANDBY ... A_RPU_PCIL_PSM_IDS:
         if (irq_reg_write(&s->rpu_pcil_wfi_irq,
                           offset - A_RPU_PCIL_PSM_STANDBY, value)) {
@@ -7623,6 +7771,15 @@ static void core_pwr_ctrl_reset(XlnxPsxcLpxSlcrCorePowerCtrl *pwr_ctrl)
     pwr_ctrl->wprot = APU0_CORE0_PWR_CNTRL_WPROT_RESET_VAL;
 }
 
+static void rpu_pcil_pchan_reset(XlnxPsxcLpxSlcrRpuPChannel *pchan)
+{
+    pchan->irq.status = RPU_PCIL_A0_ISR_RESET_VAL;
+    pchan->irq.mask = RPU_PCIL_A0_IMR_RESET_VAL;
+    pchan->preq = RPU_PCIL_A0_PR_RESET_VAL;
+    pchan->pstate = RPU_PCIL_A0_PS_RESET_VAL;
+    pchan->pactive = RPU_PCIL_A0_PA_RESET_VAL;
+}
+
 static void psxc_lpx_slcr_reset_enter(Object *obj, ResetType type)
 {
     XlnxPsxcLpxSlcr *s = XILINX_PSXC_LPX_SLCR(obj);
@@ -7651,6 +7808,10 @@ static void psxc_lpx_slcr_reset_enter(Object *obj, ResetType type)
     s->rpu_pcil_wfi_irq.status = RPU_PCIL_PSM_STANDBY_RESET_VAL;
     s->rpu_pcil_wfi_irq.mask = RPU_PCIL_PSM_IMR_RESET_VAL;
 
+    for (i = 0; i < s->num_rpu; i++) {
+        rpu_pcil_pchan_reset(&s->rpu_pcil_pchan[i]);
+    }
+
     for (i = 0; i < ARRAY_SIZE(s->core_pwr); i++) {
         core_pwr_ctrl_reset(&s->core_pwr[i]);
     }
@@ -7677,6 +7838,12 @@ static void psxc_lpx_slcr_realize(DeviceState *dev, Error **errp)
     XlnxPsxcLpxSlcr *s = XILINX_PSXC_LPX_SLCR(dev);
     SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
     size_t i;
+
+    if (s->num_rpu > ARRAY_SIZE(s->rpu_pcil_pchan)) {
+        error_setg(errp, TYPE_XILINX_PSXC_LPX_SLCR
+                   ": Invalid number of RPUs %" PRIu32, s->num_rpu);
+        return;
+    }
 
     qdev_init_gpio_out_named(dev, s->ocm_pwr, "pwr-ocm",
                              ARRAY_SIZE(s->ocm_pwr));
@@ -7737,6 +7904,20 @@ static const VMStateDescription vmstate_irq = {
     }
 };
 
+static const VMStateDescription vmstate_rpu_pchannel = {
+    .name = TYPE_XILINX_PSXC_LPX_SLCR "-rpu-pchannel",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (VMStateField[]) {
+        VMSTATE_STRUCT(irq, XlnxPsxcLpxSlcrRpuPChannel, 1,
+                       vmstate_irq, XlnxPsxcLpxSlcrIrq),
+        VMSTATE_BOOL(preq, XlnxPsxcLpxSlcrRpuPChannel),
+        VMSTATE_UINT32(pstate, XlnxPsxcLpxSlcrRpuPChannel),
+        VMSTATE_UINT32(pactive, XlnxPsxcLpxSlcrRpuPChannel),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static const VMStateDescription vmstate_psxc_lpx_slcr = {
     .name = TYPE_XILINX_PSXC_LPX_SLCR,
     .version_id = 1,
@@ -7765,8 +7946,35 @@ static const VMStateDescription vmstate_psxc_lpx_slcr = {
                        vmstate_irq, XlnxPsxcLpxSlcrIrq),
         VMSTATE_STRUCT(rpu_pcil_wfi_irq, XlnxPsxcLpxSlcr, 1,
                        vmstate_irq, XlnxPsxcLpxSlcrIrq),
+        VMSTATE_STRUCT_ARRAY(rpu_pcil_pchan, XlnxPsxcLpxSlcr, 10, 1,
+                             vmstate_rpu_pchannel, XlnxPsxcLpxSlcrRpuPChannel),
         VMSTATE_END_OF_LIST(),
     }
+};
+
+static Property psxc_lpx_slcr_properties[] = {
+    DEFINE_PROP_UINT32("num-rpu", XlnxPsxcLpxSlcr, num_rpu, 10),
+    DEFINE_PROP_LINK("core-0", XlnxPsxcLpxSlcr, rpu_pcil_pchan[0].iface,
+                     TYPE_ARM_PCHANNEL_IF, ARMPChannelIf *),
+    DEFINE_PROP_LINK("core-1", XlnxPsxcLpxSlcr, rpu_pcil_pchan[1].iface,
+                     TYPE_ARM_PCHANNEL_IF, ARMPChannelIf *),
+    DEFINE_PROP_LINK("core-2", XlnxPsxcLpxSlcr, rpu_pcil_pchan[2].iface,
+                     TYPE_ARM_PCHANNEL_IF, ARMPChannelIf *),
+    DEFINE_PROP_LINK("core-3", XlnxPsxcLpxSlcr, rpu_pcil_pchan[3].iface,
+                     TYPE_ARM_PCHANNEL_IF, ARMPChannelIf *),
+    DEFINE_PROP_LINK("core-4", XlnxPsxcLpxSlcr, rpu_pcil_pchan[4].iface,
+                     TYPE_ARM_PCHANNEL_IF, ARMPChannelIf *),
+    DEFINE_PROP_LINK("core-5", XlnxPsxcLpxSlcr, rpu_pcil_pchan[5].iface,
+                     TYPE_ARM_PCHANNEL_IF, ARMPChannelIf *),
+    DEFINE_PROP_LINK("core-6", XlnxPsxcLpxSlcr, rpu_pcil_pchan[6].iface,
+                     TYPE_ARM_PCHANNEL_IF, ARMPChannelIf *),
+    DEFINE_PROP_LINK("core-7", XlnxPsxcLpxSlcr, rpu_pcil_pchan[7].iface,
+                     TYPE_ARM_PCHANNEL_IF, ARMPChannelIf *),
+    DEFINE_PROP_LINK("core-8", XlnxPsxcLpxSlcr, rpu_pcil_pchan[8].iface,
+                     TYPE_ARM_PCHANNEL_IF, ARMPChannelIf *),
+    DEFINE_PROP_LINK("core-9", XlnxPsxcLpxSlcr, rpu_pcil_pchan[9].iface,
+                     TYPE_ARM_PCHANNEL_IF, ARMPChannelIf *),
+    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const FDTGenericGPIOSet psxc_lpx_slcr_gpios[] = {
@@ -7802,6 +8010,7 @@ static void psxc_lpx_slcr_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_psxc_lpx_slcr;
     rc->phases.enter = psxc_lpx_slcr_reset_enter;
     rc->phases.hold = psxc_lpx_slcr_reset_hold;
+    device_class_set_props(dc, psxc_lpx_slcr_properties);
     fggc->controller_gpios = psxc_lpx_slcr_gpios;
 }
 

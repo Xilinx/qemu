@@ -333,3 +333,5 @@ xlnx_versal_net_apu_pcil_core_read_current_pstate(size_t core, uint32_t pactive)
 xlnx_psxc_lpx_slcr_read(uint64_t offset, uint64_t value) "offset:0x%" PRIx64 ", value:0x%" PRIx64
 xlnx_psxc_lpx_slcr_write(uint64_t offset, uint64_t value) "offset:0x%" PRIx64 ", value:0x%" PRIx64
 xlnx_psxc_lpx_slcr_update_core_power(size_t core, bool status) "core %zu, power: %d"
+xlnx_psxc_lpx_slcr_rpu_request_pstate_change(size_t core, uint32_t new_pactive, bool success) "core %zu, new pactive: 0x%08x, success: %d"
+xlnx_psxc_lpx_slcr_rpu_read_current_pstate(size_t core, uint32_t pactive) "core %zu, pactive: 0x%08x"
