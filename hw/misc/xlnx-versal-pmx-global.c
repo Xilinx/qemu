@@ -994,6 +994,106 @@ REG32(PMX_DOMAIN_ISO_CNTRL, 0x10000)
 #define PMX_GLOBAL_R_MAX (R_PMX_DOMAIN_ISO_CNTRL + 1)
 #define R_TAMPER_RESP_MAX (R_TAMPER_RESP_13 - R_TAMPER_RESP_0 + 1)
 
+/* pmxc only registers, starting at offset 0x5800 */
+REG32(MULTI_SOCKET_SMID, 0)
+    FIELD(MULTI_SOCKET_SMID, ENABLE, 0, 1)
+REG32(PMC_AUX_PWR_STATE_0, 0x900)
+    FIELD(PMC_AUX_PWR_STATE_0, APU_3_CORE_1, 29, 1)
+    FIELD(PMC_AUX_PWR_STATE_0, APU_3_CORE_0, 28, 1)
+    FIELD(PMC_AUX_PWR_STATE_0, APU_2_CORE_1, 25, 1)
+    FIELD(PMC_AUX_PWR_STATE_0, APU_2_CORE_0, 24, 1)
+    FIELD(PMC_AUX_PWR_STATE_0, APU_1_CORE_1, 21, 1)
+    FIELD(PMC_AUX_PWR_STATE_0, APU_1_CORE_0, 20, 1)
+    FIELD(PMC_AUX_PWR_STATE_0, APU_0_CORE_1, 17, 1)
+    FIELD(PMC_AUX_PWR_STATE_0, APU_0_CORE_0, 16, 1)
+    FIELD(PMC_AUX_PWR_STATE_0, RPU_A_CORE_1, 9, 1)
+    FIELD(PMC_AUX_PWR_STATE_0, RPU_A_CORE_0, 8, 1)
+    FIELD(PMC_AUX_PWR_STATE_0, RPU_B_CORE_1, 7, 1)
+    FIELD(PMC_AUX_PWR_STATE_0, RPU_B_CORE_0, 6, 1)
+    FIELD(PMC_AUX_PWR_STATE_0, RPU_C_CORE_1, 5, 1)
+    FIELD(PMC_AUX_PWR_STATE_0, RPU_C_CORE_0, 4, 1)
+    FIELD(PMC_AUX_PWR_STATE_0, RPU_D_CORE_1, 3, 1)
+    FIELD(PMC_AUX_PWR_STATE_0, RPU_D_CORE_0, 2, 1)
+    FIELD(PMC_AUX_PWR_STATE_0, RPU_E_CORE_1, 1, 1)
+    FIELD(PMC_AUX_PWR_STATE_0, RPU_E_CORE_0, 0, 1)
+REG32(PMC_AUX_PWR_STATE_1, 0x904)
+    FIELD(PMC_AUX_PWR_STATE_1, OCM_B3_I3, 31, 1)
+    FIELD(PMC_AUX_PWR_STATE_1, OCM_B3_I2, 30, 1)
+    FIELD(PMC_AUX_PWR_STATE_1, OCM_B3_I1, 29, 1)
+    FIELD(PMC_AUX_PWR_STATE_1, OCM_B3_I0, 28, 1)
+    FIELD(PMC_AUX_PWR_STATE_1, OCM_B2_I3, 27, 1)
+    FIELD(PMC_AUX_PWR_STATE_1, OCM_B2_I2, 26, 1)
+    FIELD(PMC_AUX_PWR_STATE_1, OCM_B2_I1, 25, 1)
+    FIELD(PMC_AUX_PWR_STATE_1, OCM_B2_I0, 24, 1)
+    FIELD(PMC_AUX_PWR_STATE_1, OCM_B1_I3, 23, 1)
+    FIELD(PMC_AUX_PWR_STATE_1, OCM_B1_I2, 22, 1)
+    FIELD(PMC_AUX_PWR_STATE_1, OCM_B1_I1, 21, 1)
+    FIELD(PMC_AUX_PWR_STATE_1, OCM_B1_I0, 20, 1)
+    FIELD(PMC_AUX_PWR_STATE_1, OCM_B0_I3, 19, 1)
+    FIELD(PMC_AUX_PWR_STATE_1, OCM_B0_I2, 18, 1)
+    FIELD(PMC_AUX_PWR_STATE_1, OCM_B0_I1, 17, 1)
+    FIELD(PMC_AUX_PWR_STATE_1, OCM_B0_I0, 16, 1)
+    FIELD(PMC_AUX_PWR_STATE_1, RPU_TCM_A_1, 9, 1)
+    FIELD(PMC_AUX_PWR_STATE_1, RPU_TCM_A_0, 8, 1)
+    FIELD(PMC_AUX_PWR_STATE_1, RPU_TCM_B_1, 7, 1)
+    FIELD(PMC_AUX_PWR_STATE_1, RPU_TCM_B_0, 6, 1)
+    FIELD(PMC_AUX_PWR_STATE_1, RPU_TCM_C_1, 5, 1)
+    FIELD(PMC_AUX_PWR_STATE_1, RPU_TCM_C_0, 4, 1)
+    FIELD(PMC_AUX_PWR_STATE_1, RPU_TCM_D_1, 3, 1)
+    FIELD(PMC_AUX_PWR_STATE_1, RPU_TCM_D_0, 2, 1)
+    FIELD(PMC_AUX_PWR_STATE_1, RPU_TCM_E_1, 1, 1)
+    FIELD(PMC_AUX_PWR_STATE_1, RPU_TCM_E_0, 0, 1)
+REG32(PMC_AUX_PWR_STATE_2, 0x908)
+    FIELD(PMC_AUX_PWR_STATE_2, FP, 2, 1)
+    FIELD(PMC_AUX_PWR_STATE_2, GEM_1, 1, 1)
+    FIELD(PMC_AUX_PWR_STATE_2, GEM_0, 0, 1)
+REG32(PMC_AUX_EM_PWR_STATE_0, 0x910)
+    FIELD(PMC_AUX_EM_PWR_STATE_0, APU_3_CORE_1, 29, 1)
+    FIELD(PMC_AUX_EM_PWR_STATE_0, APU_3_CORE_0, 28, 1)
+    FIELD(PMC_AUX_EM_PWR_STATE_0, APU_2_CORE_1, 25, 1)
+    FIELD(PMC_AUX_EM_PWR_STATE_0, APU_2_CORE_0, 24, 1)
+    FIELD(PMC_AUX_EM_PWR_STATE_0, APU_1_CORE_1, 21, 1)
+    FIELD(PMC_AUX_EM_PWR_STATE_0, APU_1_CORE_0, 20, 1)
+    FIELD(PMC_AUX_EM_PWR_STATE_0, APU_0_CORE_1, 17, 1)
+    FIELD(PMC_AUX_EM_PWR_STATE_0, APU_0_CORE_0, 16, 1)
+    FIELD(PMC_AUX_EM_PWR_STATE_0, RPU_A_CORE_1, 9, 1)
+    FIELD(PMC_AUX_EM_PWR_STATE_0, RPU_A_CORE_0, 8, 1)
+    FIELD(PMC_AUX_EM_PWR_STATE_0, RPU_B_CORE_1, 7, 1)
+    FIELD(PMC_AUX_EM_PWR_STATE_0, RPU_B_CORE_0, 6, 1)
+    FIELD(PMC_AUX_EM_PWR_STATE_0, RPU_C_CORE_1, 5, 1)
+    FIELD(PMC_AUX_EM_PWR_STATE_0, RPU_C_CORE_0, 4, 1)
+    FIELD(PMC_AUX_EM_PWR_STATE_0, RPU_D_CORE_1, 3, 1)
+    FIELD(PMC_AUX_EM_PWR_STATE_0, RPU_D_CORE_0, 2, 1)
+    FIELD(PMC_AUX_EM_PWR_STATE_0, RPU_E_CORE_1, 1, 1)
+    FIELD(PMC_AUX_EM_PWR_STATE_0, RPU_E_CORE_0, 0, 1)
+REG32(PMC_AUX_RT_PWR_STATE_0, 0x918)
+    FIELD(PMC_AUX_RT_PWR_STATE_0, OCM_B3_I3, 31, 1)
+    FIELD(PMC_AUX_RT_PWR_STATE_0, OCM_B3_I2, 30, 1)
+    FIELD(PMC_AUX_RT_PWR_STATE_0, OCM_B3_I1, 29, 1)
+    FIELD(PMC_AUX_RT_PWR_STATE_0, OCM_B3_I0, 28, 1)
+    FIELD(PMC_AUX_RT_PWR_STATE_0, OCM_B2_I3, 27, 1)
+    FIELD(PMC_AUX_RT_PWR_STATE_0, OCM_B2_I2, 26, 1)
+    FIELD(PMC_AUX_RT_PWR_STATE_0, OCM_B2_I1, 25, 1)
+    FIELD(PMC_AUX_RT_PWR_STATE_0, OCM_B2_I0, 24, 1)
+    FIELD(PMC_AUX_RT_PWR_STATE_0, OCM_B1_I3, 23, 1)
+    FIELD(PMC_AUX_RT_PWR_STATE_0, OCM_B1_I2, 22, 1)
+    FIELD(PMC_AUX_RT_PWR_STATE_0, OCM_B1_I1, 21, 1)
+    FIELD(PMC_AUX_RT_PWR_STATE_0, OCM_B1_I0, 20, 1)
+    FIELD(PMC_AUX_RT_PWR_STATE_0, OCM_B0_I3, 19, 1)
+    FIELD(PMC_AUX_RT_PWR_STATE_0, OCM_B0_I2, 18, 1)
+    FIELD(PMC_AUX_RT_PWR_STATE_0, OCM_B0_I1, 17, 1)
+    FIELD(PMC_AUX_RT_PWR_STATE_0, OCM_B0_I0, 16, 1)
+    FIELD(PMC_AUX_RT_PWR_STATE_0, RPU_TCM_A_1, 9, 1)
+    FIELD(PMC_AUX_RT_PWR_STATE_0, RPU_TCM_A_0, 8, 1)
+    FIELD(PMC_AUX_RT_PWR_STATE_0, RPU_TCM_B_1, 7, 1)
+    FIELD(PMC_AUX_RT_PWR_STATE_0, RPU_TCM_B_0, 6, 1)
+    FIELD(PMC_AUX_RT_PWR_STATE_0, RPU_TCM_C_1, 5, 1)
+    FIELD(PMC_AUX_RT_PWR_STATE_0, RPU_TCM_C_0, 4, 1)
+    FIELD(PMC_AUX_RT_PWR_STATE_0, RPU_TCM_D_1, 3, 1)
+    FIELD(PMC_AUX_RT_PWR_STATE_0, RPU_TCM_D_0, 2, 1)
+    FIELD(PMC_AUX_RT_PWR_STATE_0, RPU_TCM_E_1, 1, 1)
+    FIELD(PMC_AUX_RT_PWR_STATE_0, RPU_TCM_E_0, 0, 1)
+
 REG32(PMXC_ROM_VALIDATION_DIGEST_0, 0x00)
 REG32(PMXC_ROM_VALIDATION_DIGEST_1, 0x04)
 REG32(PMXC_ROM_VALIDATION_DIGEST_2, 0x08)
@@ -1010,6 +1110,129 @@ REG32(PMXC_ROM_VALIDATION_STATUS, 0x30)
     FIELD(PMXC_ROM_VALIDATION_STATUS, PASS, 1, 1)
     FIELD(PMXC_ROM_VALIDATION_STATUS, DONE, 0, 1)
 
+/* pmxc only registers, starting at offset 0x10000 */
+REG32(DOMAIN_ISO_CNTRL, 0x0)
+    FIELD(DOMAIN_ISO_CNTRL, VCCAUX_VCCRAM, 18, 1)
+    FIELD(DOMAIN_ISO_CNTRL, VCCRAM_SOC, 17, 1)
+    FIELD(DOMAIN_ISO_CNTRL, VCCAUX_SOC, 16, 1)
+    FIELD(DOMAIN_ISO_CNTRL, PL_SOC, 15, 1)
+    FIELD(DOMAIN_ISO_CNTRL, PMC_SOC_NPI, 13, 1)
+    FIELD(DOMAIN_ISO_CNTRL, PMC_PL_CFRAME, 10, 1)
+    FIELD(DOMAIN_ISO_CNTRL, PMC_LPD, 9, 1)
+    FIELD(DOMAIN_ISO_CNTRL, PMC_LPD_DFX, 8, 1)
+    FIELD(DOMAIN_ISO_CNTRL, LPD_PL, 6, 1)
+    FIELD(DOMAIN_ISO_CNTRL, LPD_PL_TEST, 5, 1)
+    FIELD(DOMAIN_ISO_CNTRL, FPD_SOC, 2, 1)
+    FIELD(DOMAIN_ISO_CNTRL, FPD_PL, 1, 1)
+    FIELD(DOMAIN_ISO_CNTRL, FPD_PL_TEST, 0, 1)
+REG32(PUDC_B_OVERRIDE, 0x4)
+    FIELD(PUDC_B_OVERRIDE, VAL, 0, 1)
+REG32(PMC_FW_ERR, 0x100)
+    FIELD(PMC_FW_ERR, NCR_FLAG, 31, 1)
+    FIELD(PMC_FW_ERR, CR_FLAG, 30, 1)
+    FIELD(PMC_FW_ERR, DATA, 0, 30)
+REG32(PPU1_PRIVATE_POR_LOCK, 0x200)
+    FIELD(PPU1_PRIVATE_POR_LOCK, LOCK, 0, 1)
+REG32(PMC_DFX_CNTRL, 0x2000)
+    FIELD(PMC_DFX_CNTRL, SSSS_LOCKOUT, 0, 1)
+REG32(PMC_MSTR_PWR_STATE_0, 0x2100)
+    FIELD(PMC_MSTR_PWR_STATE_0, APU_3_CORE_1, 29, 1)
+    FIELD(PMC_MSTR_PWR_STATE_0, APU_3_CORE_0, 28, 1)
+    FIELD(PMC_MSTR_PWR_STATE_0, APU_2_CORE_1, 25, 1)
+    FIELD(PMC_MSTR_PWR_STATE_0, APU_2_CORE_0, 24, 1)
+    FIELD(PMC_MSTR_PWR_STATE_0, APU_1_CORE_1, 21, 1)
+    FIELD(PMC_MSTR_PWR_STATE_0, APU_1_CORE_0, 20, 1)
+    FIELD(PMC_MSTR_PWR_STATE_0, APU_0_CORE_1, 17, 1)
+    FIELD(PMC_MSTR_PWR_STATE_0, APU_0_CORE_0, 16, 1)
+    FIELD(PMC_MSTR_PWR_STATE_0, RPU_A_CORE_1, 9, 1)
+    FIELD(PMC_MSTR_PWR_STATE_0, RPU_A_CORE_0, 8, 1)
+    FIELD(PMC_MSTR_PWR_STATE_0, RPU_B_CORE_1, 7, 1)
+    FIELD(PMC_MSTR_PWR_STATE_0, RPU_B_CORE_0, 6, 1)
+    FIELD(PMC_MSTR_PWR_STATE_0, RPU_C_CORE_1, 5, 1)
+    FIELD(PMC_MSTR_PWR_STATE_0, RPU_C_CORE_0, 4, 1)
+    FIELD(PMC_MSTR_PWR_STATE_0, RPU_D_CORE_1, 3, 1)
+    FIELD(PMC_MSTR_PWR_STATE_0, RPU_D_CORE_0, 2, 1)
+    FIELD(PMC_MSTR_PWR_STATE_0, RPU_E_CORE_1, 1, 1)
+    FIELD(PMC_MSTR_PWR_STATE_0, RPU_E_CORE_0, 0, 1)
+REG32(PMC_MSTR_PWR_STATE_1, 0x2104)
+    FIELD(PMC_MSTR_PWR_STATE_1, OCM_B3_I3, 31, 1)
+    FIELD(PMC_MSTR_PWR_STATE_1, OCM_B3_I2, 30, 1)
+    FIELD(PMC_MSTR_PWR_STATE_1, OCM_B3_I1, 29, 1)
+    FIELD(PMC_MSTR_PWR_STATE_1, OCM_B3_I0, 28, 1)
+    FIELD(PMC_MSTR_PWR_STATE_1, OCM_B2_I3, 27, 1)
+    FIELD(PMC_MSTR_PWR_STATE_1, OCM_B2_I2, 26, 1)
+    FIELD(PMC_MSTR_PWR_STATE_1, OCM_B2_I1, 25, 1)
+    FIELD(PMC_MSTR_PWR_STATE_1, OCM_B2_I0, 24, 1)
+    FIELD(PMC_MSTR_PWR_STATE_1, OCM_B1_I3, 23, 1)
+    FIELD(PMC_MSTR_PWR_STATE_1, OCM_B1_I2, 22, 1)
+    FIELD(PMC_MSTR_PWR_STATE_1, OCM_B1_I1, 21, 1)
+    FIELD(PMC_MSTR_PWR_STATE_1, OCM_B1_I0, 20, 1)
+    FIELD(PMC_MSTR_PWR_STATE_1, OCM_B0_I3, 19, 1)
+    FIELD(PMC_MSTR_PWR_STATE_1, OCM_B0_I2, 18, 1)
+    FIELD(PMC_MSTR_PWR_STATE_1, OCM_B0_I1, 17, 1)
+    FIELD(PMC_MSTR_PWR_STATE_1, OCM_B0_I0, 16, 1)
+    FIELD(PMC_MSTR_PWR_STATE_1, RPU_TCM_A_1, 9, 1)
+    FIELD(PMC_MSTR_PWR_STATE_1, RPU_TCM_A_0, 8, 1)
+    FIELD(PMC_MSTR_PWR_STATE_1, RPU_TCM_B_1, 7, 1)
+    FIELD(PMC_MSTR_PWR_STATE_1, RPU_TCM_B_0, 6, 1)
+    FIELD(PMC_MSTR_PWR_STATE_1, RPU_TCM_C_1, 5, 1)
+    FIELD(PMC_MSTR_PWR_STATE_1, RPU_TCM_C_0, 4, 1)
+    FIELD(PMC_MSTR_PWR_STATE_1, RPU_TCM_D_1, 3, 1)
+    FIELD(PMC_MSTR_PWR_STATE_1, RPU_TCM_D_0, 2, 1)
+    FIELD(PMC_MSTR_PWR_STATE_1, RPU_TCM_E_1, 1, 1)
+    FIELD(PMC_MSTR_PWR_STATE_1, RPU_TCM_E_0, 0, 1)
+REG32(PMC_MSTR_PWR_STATE_2, 0x2108)
+    FIELD(PMC_MSTR_PWR_STATE_2, FP, 2, 1)
+    FIELD(PMC_MSTR_PWR_STATE_2, GEM_1, 1, 1)
+    FIELD(PMC_MSTR_PWR_STATE_2, GEM_0, 0, 1)
+REG32(PMC_MSTR_EM_PWR_STATE_0, 0x2110)
+    FIELD(PMC_MSTR_EM_PWR_STATE_0, APU_3_CORE_1, 29, 1)
+    FIELD(PMC_MSTR_EM_PWR_STATE_0, APU_3_CORE_0, 28, 1)
+    FIELD(PMC_MSTR_EM_PWR_STATE_0, APU_2_CORE_1, 25, 1)
+    FIELD(PMC_MSTR_EM_PWR_STATE_0, APU_2_CORE_0, 24, 1)
+    FIELD(PMC_MSTR_EM_PWR_STATE_0, APU_1_CORE_1, 21, 1)
+    FIELD(PMC_MSTR_EM_PWR_STATE_0, APU_1_CORE_0, 20, 1)
+    FIELD(PMC_MSTR_EM_PWR_STATE_0, APU_0_CORE_1, 17, 1)
+    FIELD(PMC_MSTR_EM_PWR_STATE_0, APU_0_CORE_0, 16, 1)
+    FIELD(PMC_MSTR_EM_PWR_STATE_0, RPU_A_CORE_1, 9, 1)
+    FIELD(PMC_MSTR_EM_PWR_STATE_0, RPU_A_CORE_0, 8, 1)
+    FIELD(PMC_MSTR_EM_PWR_STATE_0, RPU_B_CORE_1, 7, 1)
+    FIELD(PMC_MSTR_EM_PWR_STATE_0, RPU_B_CORE_0, 6, 1)
+    FIELD(PMC_MSTR_EM_PWR_STATE_0, RPU_C_CORE_1, 5, 1)
+    FIELD(PMC_MSTR_EM_PWR_STATE_0, RPU_C_CORE_0, 4, 1)
+    FIELD(PMC_MSTR_EM_PWR_STATE_0, RPU_D_CORE_1, 3, 1)
+    FIELD(PMC_MSTR_EM_PWR_STATE_0, RPU_D_CORE_0, 2, 1)
+    FIELD(PMC_MSTR_EM_PWR_STATE_0, RPU_E_CORE_1, 1, 1)
+    FIELD(PMC_MSTR_EM_PWR_STATE_0, RPU_E_CORE_0, 0, 1)
+REG32(PMC_MSTR_RT_PWR_STATE_0, 0x2118)
+    FIELD(PMC_MSTR_RT_PWR_STATE_0, OCM_B3_I3, 31, 1)
+    FIELD(PMC_MSTR_RT_PWR_STATE_0, OCM_B3_I2, 30, 1)
+    FIELD(PMC_MSTR_RT_PWR_STATE_0, OCM_B3_I1, 29, 1)
+    FIELD(PMC_MSTR_RT_PWR_STATE_0, OCM_B3_I0, 28, 1)
+    FIELD(PMC_MSTR_RT_PWR_STATE_0, OCM_B2_I3, 27, 1)
+    FIELD(PMC_MSTR_RT_PWR_STATE_0, OCM_B2_I2, 26, 1)
+    FIELD(PMC_MSTR_RT_PWR_STATE_0, OCM_B2_I1, 25, 1)
+    FIELD(PMC_MSTR_RT_PWR_STATE_0, OCM_B2_I0, 24, 1)
+    FIELD(PMC_MSTR_RT_PWR_STATE_0, OCM_B1_I3, 23, 1)
+    FIELD(PMC_MSTR_RT_PWR_STATE_0, OCM_B1_I2, 22, 1)
+    FIELD(PMC_MSTR_RT_PWR_STATE_0, OCM_B1_I1, 21, 1)
+    FIELD(PMC_MSTR_RT_PWR_STATE_0, OCM_B1_I0, 20, 1)
+    FIELD(PMC_MSTR_RT_PWR_STATE_0, OCM_B0_I3, 19, 1)
+    FIELD(PMC_MSTR_RT_PWR_STATE_0, OCM_B0_I2, 18, 1)
+    FIELD(PMC_MSTR_RT_PWR_STATE_0, OCM_B0_I1, 17, 1)
+    FIELD(PMC_MSTR_RT_PWR_STATE_0, OCM_B0_I0, 16, 1)
+    FIELD(PMC_MSTR_RT_PWR_STATE_0, RPU_TCM_A_1, 9, 1)
+    FIELD(PMC_MSTR_RT_PWR_STATE_0, RPU_TCM_A_0, 8, 1)
+    FIELD(PMC_MSTR_RT_PWR_STATE_0, RPU_TCM_B_1, 7, 1)
+    FIELD(PMC_MSTR_RT_PWR_STATE_0, RPU_TCM_B_0, 6, 1)
+    FIELD(PMC_MSTR_RT_PWR_STATE_0, RPU_TCM_C_1, 5, 1)
+    FIELD(PMC_MSTR_RT_PWR_STATE_0, RPU_TCM_C_0, 4, 1)
+    FIELD(PMC_MSTR_RT_PWR_STATE_0, RPU_TCM_D_1, 3, 1)
+    FIELD(PMC_MSTR_RT_PWR_STATE_0, RPU_TCM_D_0, 2, 1)
+    FIELD(PMC_MSTR_RT_PWR_STATE_0, RPU_TCM_E_1, 1, 1)
+    FIELD(PMC_MSTR_RT_PWR_STATE_0, RPU_TCM_E_0, 0, 1)
+
+#define PMX_GLOBAL_MMIO_SIZE 0x40000
 
 typedef struct PMX_GLOBAL {
     SysBusDevice parent_obj;
@@ -1034,6 +1257,12 @@ typedef struct PMX_GLOBAL {
     uint32_t regs[PMX_GLOBAL_R_MAX];
     RegisterInfo regs_info[PMX_GLOBAL_R_MAX];
     RegisterInfo rom_validation_reg_info[R_PMXC_ROM_VALIDATION_STATUS + 1];
+
+    uint32_t regs_from_0x5800[R_PMC_AUX_RT_PWR_STATE_0 + 1];
+    RegisterInfo regs_from_0x5800_info[R_PMC_AUX_RT_PWR_STATE_0 + 1];
+
+    uint32_t regs_from_0x10000[R_PMC_MSTR_RT_PWR_STATE_0 + 1];
+    RegisterInfo regs_from_0x10000_info[R_PMC_MSTR_RT_PWR_STATE_0 + 1];
 } PMX_GLOBAL;
 
 PPU1_UPDATE_CTRL(PMX_GLOBAL)
@@ -1559,6 +1788,18 @@ static void ppu1_rst_postw(RegisterInfo *reg, uint64_t val64)
     ppu1_update_ctrl(s);
 }
 
+static void shadowed_mstr_pwr_regs(RegisterInfo *reg, uint64_t val64)
+{
+    PMX_GLOBAL *s = XILINX_PMX_GLOBAL(reg->opaque);
+    hwaddr offset = reg->access->addr / 4;
+    hwaddr shadow_offset;
+
+    shadow_offset = offset - R_PMC_MSTR_PWR_STATE_0;
+    shadow_offset += R_PMC_AUX_PWR_STATE_0;
+
+    s->regs_from_0x5800[shadow_offset] = s->regs_from_0x10000[offset];
+}
+
 static const RegisterAccessInfo pmxc_rom_validation_info[] = {
     { .name = "PMXC_ROM_VALIDATION_DIGEST_0",
         .addr = A_PMXC_ROM_VALIDATION_DIGEST_0,
@@ -1612,6 +1853,60 @@ static const RegisterAccessInfo pmxc_rom_validation_info[] = {
         .addr = A_PMXC_ROM_VALIDATION_STATUS,
         .rsvd = 0xfffffffc,
         .ro = 0xffffffff,
+    }
+};
+
+static const RegisterAccessInfo pmxc_global_from_0x5800[] = {
+    {   .name = "MULTI_SOCKET_SMID",  .addr = A_MULTI_SOCKET_SMID,
+    },{ .name = "PMC_AUX_PWR_STATE_0",  .addr = A_PMC_AUX_PWR_STATE_0,
+        .reset = 0x333303ff,
+        .rsvd = 0xccccfc00,
+        .ro = 0xffffffff,
+    },{ .name = "PMC_AUX_PWR_STATE_1",  .addr = A_PMC_AUX_PWR_STATE_1,
+        .reset = 0xffff03ff,
+        .rsvd = 0xfc00,
+        .ro = 0xffffffff,
+    },{ .name = "PMC_AUX_PWR_STATE_2",  .addr = A_PMC_AUX_PWR_STATE_2,
+        .reset = 0x7,
+        .rsvd = 0xfffffff8,
+        .ro = 0xffffffff,
+    },{ .name = "PMC_AUX_EM_PWR_STATE_0",  .addr = A_PMC_AUX_EM_PWR_STATE_0,
+        .rsvd = 0xccccfc00,
+        .ro = 0xffffffff,
+    },{ .name = "PMC_AUX_RT_PWR_STATE_0",  .addr = A_PMC_AUX_RT_PWR_STATE_0,
+        .rsvd = 0xfc00,
+        .ro = 0xffffffff,
+    }
+};
+
+static const RegisterAccessInfo pmxc_global_from_0x10000[] = {
+    {   .name = "DOMAIN_ISO_CNTRL",  .addr = A_DOMAIN_ISO_CNTRL,
+        .reset = 0xfffff,
+        .rsvd = 0xfff80018,
+        .ro = 0xfff80018,
+    },{ .name = "PUDC_B_OVERRIDE",  .addr = A_PUDC_B_OVERRIDE,
+        .rsvd = 0xfffffffe,
+    },{ .name = "PMC_FW_ERR",  .addr = A_PMC_FW_ERR,
+    },{ .name = "PPU1_PRIVATE_POR_LOCK",  .addr = A_PPU1_PRIVATE_POR_LOCK,
+    },{ .name = "PMC_DFX_CNTRL",  .addr = A_PMC_DFX_CNTRL,
+    },{ .name = "PMC_MSTR_PWR_STATE_0",  .addr = A_PMC_MSTR_PWR_STATE_0,
+        .reset = 0x333303ff,
+        .rsvd = 0xccccfc00,
+        .post_write = shadowed_mstr_pwr_regs,
+    },{ .name = "PMC_MSTR_PWR_STATE_1",  .addr = A_PMC_MSTR_PWR_STATE_1,
+        .reset = 0xffff03ff,
+        .rsvd = 0xfc00,
+        .post_write = shadowed_mstr_pwr_regs,
+    },{ .name = "PMC_MSTR_PWR_STATE_2",  .addr = A_PMC_MSTR_PWR_STATE_2,
+        .reset = 0x7,
+        .rsvd = 0xfffffff8,
+        .post_write = shadowed_mstr_pwr_regs,
+    },{ .name = "PMC_MSTR_EM_PWR_STATE_0",  .addr = A_PMC_MSTR_EM_PWR_STATE_0,
+        .rsvd = 0xccccfc00,
+        .post_write = shadowed_mstr_pwr_regs,
+    },{ .name = "PMC_MSTR_RT_PWR_STATE_0",  .addr = A_PMC_MSTR_RT_PWR_STATE_0,
+        .rsvd = 0xfc00,
+        .post_write = shadowed_mstr_pwr_regs,
     }
 };
 
@@ -2499,6 +2794,18 @@ static void pmx_global_reset_enter(Object *obj, ResetType type)
             register_reset(&s->regs_info[i]);
         }
     }
+
+    for (i = 0; i < ARRAY_SIZE(s->rom_validation_reg_info); i++) {
+        register_reset(&s->rom_validation_reg_info[i]);
+    }
+
+    for (i = 0; i < ARRAY_SIZE(s->regs_from_0x5800); i++) {
+        register_reset(&s->regs_from_0x5800_info[i]);
+    }
+
+    for (i = 0; i < ARRAY_SIZE(s->regs_from_0x10000); i++) {
+        register_reset(&s->regs_from_0x10000_info[i]);
+    }
 }
 
 static void pmx_global_reset_hold(Object *obj)
@@ -2560,6 +2867,26 @@ static void pmxc_global_init(Object *obj)
                      (R_PMXC_ROM_VALIDATION_STATUS + 1) * 4);
     memory_region_add_subregion_overlap(&s->iomem, A_ROM_VALIDATION_STATUS,
                     &reg_array->mem, 2);
+
+    reg_array = register_init_block32(DEVICE(obj), pmxc_global_from_0x5800,
+                                      ARRAY_SIZE(pmxc_global_from_0x5800),
+                                      s->regs_from_0x5800_info,
+                                      s->regs_from_0x5800,
+                                      &pmx_global_ops,
+                                      XILINX_PMX_GLOBAL_ERR_DEBUG,
+                                      A_PMC_AUX_RT_PWR_STATE_0 + 4);
+    memory_region_add_subregion_overlap(&s->iomem, 0x5800,
+                                        &reg_array->mem, 2);
+
+    reg_array = register_init_block32(DEVICE(obj), pmxc_global_from_0x10000,
+                                      ARRAY_SIZE(pmxc_global_from_0x10000),
+                                      s->regs_from_0x10000_info,
+                                      s->regs_from_0x10000,
+                                      &pmx_global_ops,
+                                      XILINX_PMX_GLOBAL_ERR_DEBUG,
+                                      A_PMC_MSTR_RT_PWR_STATE_0 + 4);
+    memory_region_add_subregion_overlap(&s->iomem, 0x10000,
+                                        &reg_array->mem, 2);
 }
 
 static void pmx_global_init(Object *obj)
@@ -2570,7 +2897,7 @@ static void pmx_global_init(Object *obj)
     unsigned n;
 
     memory_region_init(&s->iomem, obj, TYPE_XILINX_PMX_GLOBAL,
-                       PMX_GLOBAL_R_MAX * 4);
+                       PMX_GLOBAL_MMIO_SIZE);
     reg_array =
         register_init_block32(DEVICE(obj), pmx_global_regs_info,
                               ARRAY_SIZE(pmx_global_regs_info),
