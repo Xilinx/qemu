@@ -2110,6 +2110,20 @@ static void apu_pcil_reset_hold(Object *obj)
     apu_pcil_imr_update_irq(s);
 }
 
+static void apu_pcil_reset_exit(Object *obj)
+{
+    APU_PCIL *s = XILINX_APU_PCIL(obj);
+    size_t i;
+    uint32_t mask;
+
+    FOREACH_CORE(s, mask, i) {
+        if (object_dynamic_cast(OBJECT(s->core_pchan[i]),
+                                TYPE_ARM_PCHANNEL_DUMMY)) {
+            device_cold_reset(DEVICE(s->core_pchan[i]));
+        }
+    }
+}
+
 static const MemoryRegionOps apu_pcil_ops = {
     .read = register_read_memory,
     .write = register_write_memory,
@@ -2119,6 +2133,26 @@ static const MemoryRegionOps apu_pcil_ops = {
         .max_access_size = 4,
     },
 };
+
+static inline void stub_pchannel_iface(Object *obj, ARMPChannelIf **iface,
+                                       Error **errp)
+{
+    DeviceState *stub;
+
+    stub = qdev_new(TYPE_ARM_PCHANNEL_DUMMY);
+    object_property_add_child(obj, "pstate-stub[*]", OBJECT(stub));
+    qdev_prop_set_uint32(stub, "pstate-on", 0x8); /* ON */
+    qdev_prop_set_uint32(stub, "pstate-reset-val", 0x8);
+    qdev_prop_set_uint32(stub, "pactive-on", 0x8);
+    qdev_prop_set_uint32(stub, "pactive-off", 0x0);
+    qdev_realize(stub, NULL, errp);
+
+    if (*errp) {
+        return;
+    }
+
+    *iface = ARM_PCHANNEL_IF(stub);
+}
 
 static void apu_pcil_realize(DeviceState *dev, Error **errp)
 {
@@ -2155,6 +2189,14 @@ static void apu_pcil_realize(DeviceState *dev, Error **errp)
 
     FOREACH_CORE(s, mask, i) {
         sysbus_init_irq(sbd, &s->irq_core_wakeup[i]);
+
+        if (s->core_pchan[i] == NULL) {
+            stub_pchannel_iface(OBJECT(dev), &s->core_pchan[i], errp);
+
+            if (*errp) {
+                return;
+            }
+        }
     }
 
     sysbus_init_irq(sbd, &s->irq_cluster_dbg_imr_pwrup_req);
@@ -2257,6 +2299,7 @@ static void apu_pcil_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_apu_pcil;
     rc->phases.enter = apu_pcil_reset_enter;
     rc->phases.hold = apu_pcil_reset_hold;
+    rc->phases.exit = apu_pcil_reset_exit;
     device_class_set_props(dc, apu_pcil_properties);
     fggc->client_gpios = apu_pcil_gpios;
 }
