@@ -40,6 +40,14 @@ typedef struct XlnxPsxcLpxSlcr {
     SysBusDevice parent_obj;
 
     MemoryRegion iomem;
+
+    qemu_irq ocm_pwr[16];
+    qemu_irq rpu_tcm_pwr[10];
+    qemu_irq gem_pwr[2];
+
+    uint32_t ocm_pwr_ctrl;
+    uint32_t rpu_tcm_pwr_ctrl;
+    uint32_t gem_pwr_ctrl;
 } XlnxPsxcLpxSlcr;
 
 #endif

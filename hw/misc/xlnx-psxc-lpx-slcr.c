@@ -29,6 +29,7 @@
 #include "qemu/bitops.h"
 #include "qemu/log.h"
 #include "migration/vmstate.h"
+#include "hw/fdt_generic_util.h"
 #include "hw/misc/xlnx-psxc-lpx-slcr.h"
 #include "trace.h"
 
@@ -7123,24 +7124,93 @@ REG32(REQ_ISO_INT_DIS, 0x000600ec)
 
 REG32(REQ_ISO_TRIG, 0x000600f0)
 
+static void update_ocm_pwr(XlnxPsxcLpxSlcr *s)
+{
+    size_t i;
 
+    for (i = 0; i < ARRAY_SIZE(s->ocm_pwr); i++) {
+        size_t bank = i / 4;
+        size_t island = i % 4;
+        bool sta = extract32(s->ocm_pwr_ctrl, bank * 8 + island, 1);
 
+        qemu_set_irq(s->ocm_pwr[i], sta);
+    }
+}
 
+static void update_rpu_tcm_pwr(XlnxPsxcLpxSlcr *s)
+{
+    size_t i;
 
+    for (i = 0; i < ARRAY_SIZE(s->rpu_tcm_pwr); i++) {
+        bool sta = extract32(s->rpu_tcm_pwr_ctrl, i, 1);
 
+        qemu_set_irq(s->rpu_tcm_pwr[i], sta);
+    }
+}
+
+static void update_gem_pwr(XlnxPsxcLpxSlcr *s)
+{
+    qemu_set_irq(s->gem_pwr[0], extract32(s->gem_pwr_ctrl, 0, 1));
+    qemu_set_irq(s->gem_pwr[1], extract32(s->gem_pwr_ctrl, 8, 1));
+}
 
 
 static uint64_t psxc_lpx_slcr_read(void *opaque, hwaddr offset,
                                    unsigned int size)
 {
-    trace_xlnx_psxc_lpx_slcr_read(offset, 0);
-    return 0;
+    XlnxPsxcLpxSlcr *s = XILINX_PSXC_LPX_SLCR(opaque);
+    uint32_t ret;
+
+    switch (offset) {
+    case A_OCM_PWR_CNTRL:
+    case A_OCM_PWR_STATUS:
+        ret = s->ocm_pwr_ctrl;
+        break;
+
+    case A_RPU_TCM_PWR_CNTRL:
+    case A_RPU_TCM_PWR_STATUS:
+        ret = s->rpu_tcm_pwr_ctrl;
+        break;
+
+    case A_GEM_PWR_CNTRL:
+    case A_GEM_PWR_STATUS:
+        ret = s->gem_pwr_ctrl;
+        break;
+
+    default:
+        ret = 0;
+    }
+
+    trace_xlnx_psxc_lpx_slcr_read(offset, ret);
+    return ret;
 }
 
 static void psxc_lpx_slcr_write(void *opaque, hwaddr offset,
                                 uint64_t value, unsigned int size)
 {
+    XlnxPsxcLpxSlcr *s = XILINX_PSXC_LPX_SLCR(opaque);
+
     trace_xlnx_psxc_lpx_slcr_write(offset, value);
+
+    switch (offset) {
+    case A_OCM_PWR_CNTRL:
+        s->ocm_pwr_ctrl = value & OCM_PWR_CNTRL_WRITE_MASK;
+        update_ocm_pwr(s);
+        break;
+
+    case A_RPU_TCM_PWR_CNTRL:
+        s->rpu_tcm_pwr_ctrl = value & RPU_TCM_PWR_CNTRL_WRITE_MASK;
+        update_rpu_tcm_pwr(s);
+        break;
+
+    case A_GEM_PWR_CNTRL:
+        s->gem_pwr_ctrl = value & GEM_PWR_CNTRL_WRITE_MASK;
+        update_gem_pwr(s);
+        break;
+
+    default:
+        break;
+    }
 }
 
 static const MemoryRegionOps psxc_lpx_slcr_ops = {
@@ -7155,15 +7225,32 @@ static const MemoryRegionOps psxc_lpx_slcr_ops = {
 
 static void psxc_lpx_slcr_reset_enter(Object *obj, ResetType type)
 {
+    XlnxPsxcLpxSlcr *s = XILINX_PSXC_LPX_SLCR(obj);
+
+    s->ocm_pwr_ctrl = OCM_PWR_CNTRL_RESET_VAL;
+    s->rpu_tcm_pwr_ctrl = RPU_TCM_PWR_CNTRL_RESET_VAL;
+    s->gem_pwr_ctrl = GEM_PWR_CNTRL_RESET_VAL;
 }
 
 static void psxc_lpx_slcr_reset_hold(Object *obj)
 {
+    XlnxPsxcLpxSlcr *s = XILINX_PSXC_LPX_SLCR(obj);
+
+    update_ocm_pwr(s);
+    update_rpu_tcm_pwr(s);
+    update_gem_pwr(s);
 }
 
 static void psxc_lpx_slcr_realize(DeviceState *dev, Error **errp)
 {
-    /* Delete this if you don't need it */
+    XlnxPsxcLpxSlcr *s = XILINX_PSXC_LPX_SLCR(dev);
+
+    qdev_init_gpio_out_named(dev, s->ocm_pwr, "pwr-ocm",
+                             ARRAY_SIZE(s->ocm_pwr));
+    qdev_init_gpio_out_named(dev, s->rpu_tcm_pwr, "pwr-rpu-tcm",
+                             ARRAY_SIZE(s->rpu_tcm_pwr));
+    qdev_init_gpio_out_named(dev, s->gem_pwr, "pwr-gem",
+                             ARRAY_SIZE(s->gem_pwr));
 }
 
 static void psxc_lpx_slcr_init(Object *obj)
@@ -7181,19 +7268,37 @@ static const VMStateDescription vmstate_psxc_lpx_slcr = {
     .version_id = 1,
     .minimum_version_id = 1,
     .fields = (VMStateField[]) {
+        VMSTATE_UINT32(ocm_pwr_ctrl, XlnxPsxcLpxSlcr),
+        VMSTATE_UINT32(rpu_tcm_pwr_ctrl, XlnxPsxcLpxSlcr),
+        VMSTATE_UINT32(gem_pwr_ctrl, XlnxPsxcLpxSlcr),
         VMSTATE_END_OF_LIST(),
     }
+};
+
+static const FDTGenericGPIOSet psxc_lpx_slcr_gpios[] = {
+    {
+        .names = &fdt_generic_gpio_name_set_gpio,
+        .gpios = (FDTGenericGPIOConnection[]) {
+            { .name = "pwr-ocm", .fdt_index = 18, .range = 16 },
+            { .name = "pwr-rpu-tcm", .fdt_index = 34, .range = 10 },
+            { .name = "pwr-gem", .fdt_index = 44, .range = 2 },
+            { },
+        }
+    },
+    { },
 };
 
 static void psxc_lpx_slcr_class_init(ObjectClass *klass, void *data)
 {
     ResettableClass *rc = RESETTABLE_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
+    FDTGenericGPIOClass *fggc = FDT_GENERIC_GPIO_CLASS(klass);
 
     dc->realize = psxc_lpx_slcr_realize;
     dc->vmsd = &vmstate_psxc_lpx_slcr;
     rc->phases.enter = psxc_lpx_slcr_reset_enter;
     rc->phases.hold = psxc_lpx_slcr_reset_hold;
+    fggc->controller_gpios = psxc_lpx_slcr_gpios;
 }
 
 static const TypeInfo psxc_lpx_slcr_info = {
@@ -7202,6 +7307,10 @@ static const TypeInfo psxc_lpx_slcr_info = {
     .instance_size = sizeof(XlnxPsxcLpxSlcr),
     .class_init    = psxc_lpx_slcr_class_init,
     .instance_init = psxc_lpx_slcr_init,
+    .interfaces    = (InterfaceInfo[]) {
+        { TYPE_FDT_GENERIC_GPIO },
+        { }
+    },
 };
 
 static void psxc_lpx_slcr_register_types(void)
