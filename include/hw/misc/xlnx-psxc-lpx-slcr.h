@@ -70,6 +70,7 @@ typedef struct XlnxPsxcLpxSlcr {
     XlnxPsxcLpxSlcrIrq wakeup0_irq;
     XlnxPsxcLpxSlcrIrq wakeup1_irq;
     XlnxPsxcLpxSlcrIrq power_dwn_irq;
+    XlnxPsxcLpxSlcrIrq pwr_rst_irq;
     XlnxPsxcLpxSlcrIrq req_pwrup0_irq;
     XlnxPsxcLpxSlcrIrq req_pwrup1_irq;
     XlnxPsxcLpxSlcrIrq req_pwrdwn0_irq;

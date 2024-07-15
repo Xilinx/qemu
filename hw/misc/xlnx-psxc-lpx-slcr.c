@@ -7166,6 +7166,7 @@ static void update_pwr_reset_irq(XlnxPsxcLpxSlcr *s)
     sta = irq_is_pending(&s->wakeup0_irq)
         || irq_is_pending(&s->wakeup1_irq)
         || irq_is_pending(&s->power_dwn_irq)
+        || irq_is_pending(&s->pwr_rst_irq)
         || irq_is_pending(&s->req_pwrup0_irq)
         || irq_is_pending(&s->req_pwrup1_irq)
         || irq_is_pending(&s->req_pwrdwn0_irq)
@@ -7442,6 +7443,11 @@ static uint64_t psxc_lpx_slcr_read(void *opaque, hwaddr offset,
                                  offset - A_POWER_DWN_IRQ_STATUS);
         break;
 
+    case A_PWR_RST_IRQ_STATUS ... A_PWR_RST_IRQ_TRIG:
+        ret = pwr_reset_irq_read(s, &s->pwr_rst_irq,
+                                 offset - A_PWR_RST_IRQ_STATUS);
+        break;
+
     case A_REQ_PWRUP0_STATUS ... A_REQ_PWRUP0_TRIG:
         ret = pwr_reset_irq_read(s, &s->req_pwrup0_irq,
                                  offset - A_REQ_PWRUP0_STATUS);
@@ -7513,6 +7519,11 @@ static void psxc_lpx_slcr_write(void *opaque, hwaddr offset,
                             offset - A_POWER_DWN_IRQ_STATUS, value);
         break;
 
+    case A_PWR_RST_IRQ_STATUS ... A_PWR_RST_IRQ_TRIG:
+        pwr_reset_irq_write(s, &s->pwr_rst_irq,
+                            offset - A_PWR_RST_IRQ_STATUS, value);
+        break;
+
     case A_REQ_PWRUP0_STATUS ... A_REQ_PWRUP0_TRIG:
         pwr_reset_irq_write(s, &s->req_pwrup0_irq,
                             offset - A_REQ_PWRUP0_STATUS, value);
@@ -7575,6 +7586,8 @@ static void psxc_lpx_slcr_reset_enter(Object *obj, ResetType type)
     s->wakeup1_irq.mask = WAKEUP0_IRQ_MASK_RESET_VAL;
     s->power_dwn_irq.status = POWER_DWN_IRQ_STATUS_RESET_VAL;
     s->power_dwn_irq.mask = WAKEUP0_IRQ_MASK_RESET_VAL;
+    s->pwr_rst_irq.status = PWR_RST_IRQ_STATUS_RESET_VAL;
+    s->pwr_rst_irq.mask = WAKEUP0_IRQ_MASK_RESET_VAL;
     s->req_pwrup0_irq.status = REQ_PWRUP0_STATUS_RESET_VAL;
     s->req_pwrup0_irq.mask = REQ_PWRUP0_INT_MASK_RESET_VAL;
     s->req_pwrup1_irq.status = REQ_PWRUP1_STATUS_RESET_VAL;
@@ -7682,6 +7695,8 @@ static const VMStateDescription vmstate_psxc_lpx_slcr = {
         VMSTATE_STRUCT(wakeup1_irq, XlnxPsxcLpxSlcr, 1,
                        vmstate_irq, XlnxPsxcLpxSlcrIrq),
         VMSTATE_STRUCT(power_dwn_irq, XlnxPsxcLpxSlcr, 1,
+                       vmstate_irq, XlnxPsxcLpxSlcrIrq),
+        VMSTATE_STRUCT(pwr_rst_irq, XlnxPsxcLpxSlcr, 1,
                        vmstate_irq, XlnxPsxcLpxSlcrIrq),
         VMSTATE_STRUCT(req_pwrup0_irq, XlnxPsxcLpxSlcr, 1,
                        vmstate_irq, XlnxPsxcLpxSlcrIrq),
