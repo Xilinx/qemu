@@ -67,6 +67,9 @@ typedef struct XlnxPsxcLpxSlcr {
     uint32_t rpu_tcm_pwr_ctrl;
     uint32_t gem_pwr_ctrl;
 
+    XlnxPsxcLpxSlcrIrq wakeup0_irq;
+    XlnxPsxcLpxSlcrIrq wakeup1_irq;
+    XlnxPsxcLpxSlcrIrq power_dwn_irq;
     XlnxPsxcLpxSlcrIrq req_pwrup0_irq;
     XlnxPsxcLpxSlcrIrq req_pwrup1_irq;
     XlnxPsxcLpxSlcrIrq req_pwrdwn0_irq;

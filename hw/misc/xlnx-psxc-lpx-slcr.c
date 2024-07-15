@@ -7163,7 +7163,10 @@ static void update_pwr_reset_irq(XlnxPsxcLpxSlcr *s)
 {
     bool sta;
 
-    sta = irq_is_pending(&s->req_pwrup0_irq)
+    sta = irq_is_pending(&s->wakeup0_irq)
+        || irq_is_pending(&s->wakeup1_irq)
+        || irq_is_pending(&s->power_dwn_irq)
+        || irq_is_pending(&s->req_pwrup0_irq)
         || irq_is_pending(&s->req_pwrup1_irq)
         || irq_is_pending(&s->req_pwrdwn0_irq)
         || irq_is_pending(&s->req_pwrdwn1_irq);
@@ -7179,6 +7182,55 @@ static void update_core_pwr(const XlnxPsxcLpxSlcr *s, size_t idx)
 
     trace_xlnx_psxc_lpx_slcr_update_core_power(idx, pwr);
     qemu_set_irq(pwr_ctrl->pwr, pwr);
+}
+
+static void apu_cluster_pchan_wakeup_handler(void *opaque, int n, int level)
+{
+    XlnxPsxcLpxSlcr *s = XILINX_PSXC_LPX_SLCR(opaque);
+
+    if (!level) {
+        return;
+    }
+
+    s->wakeup0_irq.status |= R_WAKEUP0_IRQ_STATUS_APU0_CLUSTER_MASK << n;
+    update_pwr_reset_irq(s);
+}
+
+static void apu_cluster_pchan_poweroff_handler(void *opaque, int n, int level)
+{
+    XlnxPsxcLpxSlcr *s = XILINX_PSXC_LPX_SLCR(opaque);
+
+    if (!level) {
+        return;
+    }
+
+    s->power_dwn_irq.status |= R_POWER_DWN_IRQ_STATUS_APU0_CLUSTER_MASK << n;
+    update_pwr_reset_irq(s);
+}
+
+static void apu_core_pchan_wakeup_handler(void *opaque, int n, int level)
+{
+    XlnxPsxcLpxSlcr *s = XILINX_PSXC_LPX_SLCR(opaque);
+
+    if (!level) {
+        return;
+    }
+
+    s->wakeup0_irq.status |= R_WAKEUP0_IRQ_STATUS_APU0_CORE0_MASK << n;
+    update_pwr_reset_irq(s);
+}
+
+static void apu_core_pchan_poweroff_handler(void *opaque, int n, int level)
+{
+    XlnxPsxcLpxSlcr *s = XILINX_PSXC_LPX_SLCR(opaque);
+
+    if (!level) {
+        return;
+    }
+
+    s->power_dwn_irq.status |=
+        R_POWER_DWN_IRQ_STATUS_APU0_CORE0_PWRDWN_MASK << n;
+    update_pwr_reset_irq(s);
 }
 
 static uint32_t core_pwr_ctrl_read(const XlnxPsxcLpxSlcr *s, hwaddr offset)
@@ -7375,6 +7427,21 @@ static uint64_t psxc_lpx_slcr_read(void *opaque, hwaddr offset,
         ret = s->gem_pwr_ctrl;
         break;
 
+    case A_WAKEUP0_IRQ_STATUS ... A_WAKEUP0_IRQ_TRIG:
+        ret = pwr_reset_irq_read(s, &s->wakeup0_irq,
+                                 offset - A_WAKEUP0_IRQ_STATUS);
+        break;
+
+    case A_WAKEUP1_IRQ_STATUS ... A_WAKEUP1_IRQ_TRIG:
+        ret = pwr_reset_irq_read(s, &s->wakeup1_irq,
+                                 offset - A_WAKEUP1_IRQ_STATUS);
+        break;
+
+    case A_POWER_DWN_IRQ_STATUS ... A_POWER_DWN_IRQ_TRIG:
+        ret = pwr_reset_irq_read(s, &s->power_dwn_irq,
+                                 offset - A_POWER_DWN_IRQ_STATUS);
+        break;
+
     case A_REQ_PWRUP0_STATUS ... A_REQ_PWRUP0_TRIG:
         ret = pwr_reset_irq_read(s, &s->req_pwrup0_irq,
                                  offset - A_REQ_PWRUP0_STATUS);
@@ -7429,6 +7496,21 @@ static void psxc_lpx_slcr_write(void *opaque, hwaddr offset,
     case A_GEM_PWR_CNTRL:
         s->gem_pwr_ctrl = value & GEM_PWR_CNTRL_WRITE_MASK;
         update_gem_pwr(s);
+        break;
+
+    case A_WAKEUP0_IRQ_STATUS ... A_WAKEUP0_IRQ_TRIG:
+        pwr_reset_irq_write(s, &s->wakeup0_irq,
+                            offset - A_WAKEUP0_IRQ_STATUS, value);
+        break;
+
+    case A_WAKEUP1_IRQ_STATUS ... A_WAKEUP1_IRQ_TRIG:
+        pwr_reset_irq_write(s, &s->wakeup1_irq,
+                            offset - A_WAKEUP1_IRQ_STATUS, value);
+        break;
+
+    case A_POWER_DWN_IRQ_STATUS ... A_POWER_DWN_IRQ_TRIG:
+        pwr_reset_irq_write(s, &s->power_dwn_irq,
+                            offset - A_POWER_DWN_IRQ_STATUS, value);
         break;
 
     case A_REQ_PWRUP0_STATUS ... A_REQ_PWRUP0_TRIG:
@@ -7487,6 +7569,12 @@ static void psxc_lpx_slcr_reset_enter(Object *obj, ResetType type)
     s->rpu_tcm_pwr_ctrl = RPU_TCM_PWR_CNTRL_RESET_VAL;
     s->gem_pwr_ctrl = GEM_PWR_CNTRL_RESET_VAL;
 
+    s->wakeup0_irq.status = WAKEUP0_IRQ_STATUS_RESET_VAL;
+    s->wakeup0_irq.mask = WAKEUP0_IRQ_MASK_RESET_VAL;
+    s->wakeup1_irq.status = WAKEUP1_IRQ_STATUS_RESET_VAL;
+    s->wakeup1_irq.mask = WAKEUP0_IRQ_MASK_RESET_VAL;
+    s->power_dwn_irq.status = POWER_DWN_IRQ_STATUS_RESET_VAL;
+    s->power_dwn_irq.mask = WAKEUP0_IRQ_MASK_RESET_VAL;
     s->req_pwrup0_irq.status = REQ_PWRUP0_STATUS_RESET_VAL;
     s->req_pwrup0_irq.mask = REQ_PWRUP0_INT_MASK_RESET_VAL;
     s->req_pwrup1_irq.status = REQ_PWRUP1_STATUS_RESET_VAL;
@@ -7534,6 +7622,15 @@ static void psxc_lpx_slcr_realize(DeviceState *dev, Error **errp)
     }
 
     sysbus_init_irq(sbd, &s->pwr_reset_irq);
+
+    qdev_init_gpio_in_named(dev, apu_cluster_pchan_poweroff_handler,
+                            "apu-cluster-pchan-poweroff", 4);
+    qdev_init_gpio_in_named(dev, apu_cluster_pchan_wakeup_handler,
+                            "apu-cluster-pchan-wakeup", 4);
+    qdev_init_gpio_in_named(dev, apu_core_pchan_poweroff_handler,
+                            "apu-core-pchan-poweroff", 8);
+    qdev_init_gpio_in_named(dev, apu_core_pchan_wakeup_handler,
+                            "apu-core-pchan-wakeup", 8);
 }
 
 static void psxc_lpx_slcr_init(Object *obj)
@@ -7580,6 +7677,12 @@ static const VMStateDescription vmstate_psxc_lpx_slcr = {
         VMSTATE_UINT32(gem_pwr_ctrl, XlnxPsxcLpxSlcr),
         VMSTATE_STRUCT_ARRAY(core_pwr, XlnxPsxcLpxSlcr, 18, 1,
                              vmstate_core_pwr, XlnxPsxcLpxSlcrCorePowerCtrl),
+        VMSTATE_STRUCT(wakeup0_irq, XlnxPsxcLpxSlcr, 1,
+                       vmstate_irq, XlnxPsxcLpxSlcrIrq),
+        VMSTATE_STRUCT(wakeup1_irq, XlnxPsxcLpxSlcr, 1,
+                       vmstate_irq, XlnxPsxcLpxSlcrIrq),
+        VMSTATE_STRUCT(power_dwn_irq, XlnxPsxcLpxSlcr, 1,
+                       vmstate_irq, XlnxPsxcLpxSlcrIrq),
         VMSTATE_STRUCT(req_pwrup0_irq, XlnxPsxcLpxSlcr, 1,
                        vmstate_irq, XlnxPsxcLpxSlcrIrq),
         VMSTATE_STRUCT(req_pwrup1_irq, XlnxPsxcLpxSlcr, 1,
@@ -7600,6 +7703,13 @@ static const FDTGenericGPIOSet psxc_lpx_slcr_gpios[] = {
             { .name = "pwr-ocm", .fdt_index = 18, .range = 16 },
             { .name = "pwr-rpu-tcm", .fdt_index = 34, .range = 10 },
             { .name = "pwr-gem", .fdt_index = 44, .range = 2 },
+
+            /* inputs */
+            { .name = "apu-cluster-pchan-poweroff", .fdt_index = 80,
+              .range = 4 },
+            { .name = "apu-cluster-pchan-wakeup", .fdt_index = 84, .range = 4 },
+            { .name = "apu-core-pchan-poweroff", .fdt_index = 88, .range = 8 },
+            { .name = "apu-core-pchan-wakeup", .fdt_index = 96, .range = 8 },
             { },
         }
     },
