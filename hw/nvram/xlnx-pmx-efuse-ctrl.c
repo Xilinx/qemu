@@ -218,6 +218,13 @@ static XlnxPmxEfuseTile pmx_efuse_u32[] = {
 };
 
 /*
+ * Uncached 64-bit sysmon data u8 tiles (i.e., each tile has only 8 bits).
+ */
+static XlnxPmxEfuseTile pmx_efuse_u8_sysmon_rd64[] = {
+    EFUSE_U8_TILES_SYSMON_RD64,
+};
+
+/*
  * Write-only u8 arrays.
  *
  * pmx-efuse-ctrl can, and only can, report their calculated CRC.
@@ -310,6 +317,23 @@ static bool pmx_efuse_ac_writable(XlnxPmxEFuseCtrl *s, unsigned bit)
     return !rd_only;
 }
 
+static bool pmx_efuse_tile_is_u32(XlnxPmxEfuseTile *tile, size_t tcnt)
+{
+    XlnxPmxEfuseTile *upper = pmx_efuse_u32 + (ARRAY_SIZE(pmx_efuse_u32) - 1);
+    XlnxPmxEfuseTile *lower = pmx_efuse_u32;
+    XlnxPmxEfuseTile *last  = tile + tcnt - 1;
+
+    g_assert(tcnt > 0);
+
+    if (lower <= tile && last <= upper) {
+        return true;
+    }
+
+    /* Partial overlap is a bug */
+    g_assert(tile > upper || last < lower);
+    return false;
+}
+
 static uint32_t pmx_efuse_tile_read_mask(XlnxPmxEfuseTile *tile,
                                          XlnxPmxEFuseCtrl *s)
 {
@@ -354,6 +378,9 @@ static uint32_t pmx_efuse_tile_get_u32(XlnxPmxEfuseTile *tile, XlnxEFuse *efuse)
         return efuse->fuse32[r0];
     }
 
+    /* For now, only supports u32 tiles */
+    g_assert(pmx_efuse_tile_is_u32(tile, 1));
+
     /* Retrieve the 4x8bit tile */
     for (u32 = 0, rn = 4; rn-- > 0;) {
         uint8_t u8 = efuse->fuse32[r0 + rn] >> lsb_lane;
@@ -364,10 +391,57 @@ static uint32_t pmx_efuse_tile_get_u32(XlnxPmxEfuseTile *tile, XlnxEFuse *efuse)
     return u32;
 }
 
+static void pmx_efuse_tile_get_le32(XlnxPmxEfuseTile *tile, size_t tile_cnt,
+                                    void *d, size_t len, XlnxEFuse *efuse)
+{
+    unsigned i, bcnt;
+    uint32_t v32;
+
+    g_assert(tile && tile_cnt);
+
+    for (i = 0, bcnt = 0; bcnt < ROUND_DOWN(len, 4); ) {
+        v32 = pmx_efuse_tile_get_u32(&tile[i], efuse);
+        stl_le_p(d + bcnt, v32);
+        bcnt += 4;
+
+        i++;
+        if (i >= tile_cnt) {
+            /* 0-pad output on most-significant end if insufficient tiles */
+            memset(d + bcnt, 0, (len - bcnt));
+            return;
+        }
+    }
+
+    if (bcnt >= len) {
+        return;
+    }
+
+    /* Copy only 1, 2, or 3 least-significant bytes. */
+    g_assert(i < tile_cnt);
+    v32 = pmx_efuse_tile_get_u32(&tile[i], efuse);
+
+    switch (len - bcnt) {
+    case 1:
+        stb_p(d + bcnt, v32);
+        break;
+    case 2:
+        stw_le_p(d + bcnt, v32);
+        break;
+    case 3:
+        st24_le_p(d + bcnt, v32);
+        break;
+    default:
+        g_assert_not_reached();
+    }
+}
+
 static uint32_t pmx_efuse_tile_get_u8(XlnxPmxEfuseTile *tile, XlnxEFuse *efuse)
 {
     unsigned lsb_lane = 8 * (tile->byte_lane - 1);
     uint32_t row_word = efuse->fuse32[tile->row];
+
+    /* For now, does not support u32 tiles */
+    g_assert(!pmx_efuse_tile_is_u32(tile, 1));
 
     return 255 & (row_word >> lsb_lane);
 }
@@ -450,7 +524,7 @@ static bool pmx_efuse_in_dme_mode(XlnxEFuse *efuse)
     };
 
     XlnxPmxEfuseTile *tile = &pmx_efuse_u32[DME_FIPS_CACHE_ADDR / 4];
-    unsigned u32 = pmx_efuse_tile_get_u8(tile, efuse);
+    unsigned u32 = pmx_efuse_tile_get_u32(tile, efuse);
 
     return !!(u32 & 0xF);
 }
@@ -936,8 +1010,8 @@ static XlnxEFusePufData *pmx_efuse_get_puf(DeviceState *dev,
     pd = g_malloc0(offsetof(XlnxEFusePufData, pufsyn) + pd_max);
     pd->puf_dis = pmx_efuse_ac_5ca(s);
     pd->pufsyn_len = pd_max;
-    pmx_efuse_tile_get_le(&pmx_efuse_u32[pd_r0], pd_nr,
-                          pd->pufsyn, pd_max, s->efuse);
+    pmx_efuse_tile_get_le32(&pmx_efuse_u32[pd_r0], pd_nr,
+                            pd->pufsyn, pd_max, s->efuse);
 
     return pd;
 }
@@ -946,16 +1020,18 @@ static bool pmx_efuse_get_sysmon(DeviceState *dev,
                                  XlnxEFuseSysmonData *data)
 {
     XlnxPmxEFuseCtrl *s = XLNX_PMX_EFUSE_CTRL(dev);
-    XlnxPmxEfuseTile tile_lo = { .row = 32, .byte_lane = 3 };
-    XlnxPmxEfuseTile tile_hi = { .row = 36, .byte_lane = 3 };
     unsigned gd_en_bit = 23 * 32 + 29;
+    uint8_t rd64[sizeof(uint64_t)];
 
     assert(data);
     memset(data, 0, sizeof(*data));
 
     /* Fetch data with access-control bypassed */
-    data->rdata_low = pmx_efuse_tile_get_u32(&tile_lo, s->efuse);
-    data->rdata_high = pmx_efuse_tile_get_u32(&tile_hi, s->efuse);
+    pmx_efuse_tile_get_le(pmx_efuse_u8_sysmon_rd64,
+                          ARRAY_SIZE(pmx_efuse_u8_sysmon_rd64),
+                          rd64, sizeof(rd64), s->efuse);
+    data->rdata_low = ldl_le_p(rd64);
+    data->rdata_high = ldl_le_p(rd64 + 4);
     data->glitch_monitor_en = xlnx_efuse_get_bit(s->efuse, gd_en_bit);
 
     return true;

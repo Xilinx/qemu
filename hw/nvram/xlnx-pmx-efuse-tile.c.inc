@@ -274,6 +274,16 @@
     EFUSE_TILE((0x4f4 / 4), 509, 5, PUF_SYN_125), \
     EFUSE_TILE((0x4f8 / 4), 510, 5, PUF_SYN_126))
 
+#define EFUSE_U8_TILES_SYSMON_RD64 EFUSE_LIST( \
+    EFUSE_TILE(0, 32, 2), \
+    EFUSE_TILE(1, 33, 2), \
+    EFUSE_TILE(2, 34, 2), \
+    EFUSE_TILE(3, 35, 2), \
+    EFUSE_TILE(4, 36, 2), \
+    EFUSE_TILE(5, 37, 2), \
+    EFUSE_TILE(6, 38, 2), \
+    EFUSE_TILE(7, 39, 2))
+
 #define EFUSE_U8_TILES_AES_KEY EFUSE_LIST( \
     EFUSE_TILE(0,  16, 2), \
     EFUSE_TILE(1,  17, 2), \
