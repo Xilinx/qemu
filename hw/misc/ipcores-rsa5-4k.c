@@ -129,7 +129,8 @@ static void load_mpi(gcry_mpi_t d, struct reg *s, unsigned int len)
 }
 
 /* Store from MPI into reg.  */
-static void store_mpi(struct reg *d, gcry_mpi_t s, unsigned int len)
+static void store_mpi_word(IPCoresRSA *s, size_t word, gcry_mpi_t a,
+                           unsigned int len)
 {
     unsigned char *buf, *cbuf;
     size_t writelen;
@@ -137,7 +138,7 @@ static void store_mpi(struct reg *d, gcry_mpi_t s, unsigned int len)
     int i;
     int pos;
 
-    gcry_mpi_aprint(GCRYMPI_FMT_STD, &buf, &buflen, s);
+    gcry_mpi_aprint(GCRYMPI_FMT_STD, &buf, &buflen, a);
     cbuf = buf;
 
     /* Remove insignificant top zero bytes.  */
@@ -161,18 +162,24 @@ static void store_mpi(struct reg *d, gcry_mpi_t s, unsigned int len)
     writelen = buflen > len ? len : buflen;
     pos = 0;
     for (i = writelen - 1; i >= 0; i--) {
-        d->u8[pos] = cbuf[i];
+        s->mem.words[word].u8[pos] = cbuf[i];
         pos++;
     }
 
     /* Zero the left-over.  */
     if (writelen < len) {
         for (i = writelen; i < len; i++) {
-            d->u8[pos++] = 0;
+            s->mem.words[word].u8[pos++] = 0;
         }
     }
 
     free(buf);
+}
+
+static void store_mpi_reg(IPCoresRSA *s, size_t reg, gcry_mpi_t a,
+                          unsigned int len)
+{
+    store_mpi_word(s, reg * WORDS_PER_REG, a, len);
 }
 
 static void rsa_update_r_inv(IPCoresRSA *s, gcry_mpi_t m2)
@@ -368,7 +375,7 @@ int rsa_do_bin_mont(IPCoresRSA *s,
 
     D(show_mpi("Result", r));
 
-    store_mpi((struct reg *) &s->mem.words[r_addr], r, bytelen);
+    store_mpi_word(s, r_addr, r, bytelen);
 
     gcry_mpi_release(a);
     gcry_mpi_release(b);
@@ -437,7 +444,7 @@ int rsa_do_gf_mod(IPCoresRSA *s,
 done:
     D(show_mpi("Result", r));
 
-    store_mpi((struct reg *) &s->mem.words[r_addr], r, bytelen);
+    store_mpi_word(s, r_addr, r, bytelen);
 
     gcry_mpi_release(a);
     gcry_mpi_release(b);
@@ -471,7 +478,7 @@ int rsa_do_xor(IPCoresRSA *s,
 
     bin_xor(bytelen * 8, r, a, b);
     D(show_mpi("Result", r));
-    store_mpi((struct reg *) &s->mem.words[r_addr], r, bytelen);
+    store_mpi_word(s, r_addr, r, bytelen);
 
     gcry_mpi_release(a);
     gcry_mpi_release(b);
@@ -507,7 +514,7 @@ int rsa_do_add(IPCoresRSA *s,
     D(show_mpi("Result", r));
     mpi_to_unsigned(r, bytelen);
 
-    store_mpi((struct reg *) &s->mem.words[r_addr], r, bytelen);
+    store_mpi_word(s, r_addr, r, bytelen);
 
     gcry_mpi_release(a);
     gcry_mpi_release(b);
@@ -543,7 +550,7 @@ int rsa_do_sub(IPCoresRSA *s,
     D(show_mpi("Result", r));
     mpi_to_unsigned(r, bytelen);
 
-    store_mpi((struct reg *) &s->mem.words[r_addr], r, bytelen);
+    store_mpi_word(s, r_addr, r, bytelen);
 
     gcry_mpi_release(a);
     gcry_mpi_release(b);
@@ -578,7 +585,7 @@ int rsa_do_mod_addr(IPCoresRSA *s,
     D(show_mpi("Result", r));
     mpi_to_unsigned(r, bytelen);
 
-    store_mpi((struct reg *) &s->mem.words[r_addr], r, bytelen);
+    store_mpi_word(s, r_addr, r, bytelen);
 
     gcry_mpi_release(a);
     gcry_mpi_release(b);
@@ -649,7 +656,7 @@ int rsa_do_montmul(IPCoresRSA *s,
 
     mpi_to_unsigned(r, bytelen);
     D(show_mpi("Result", r));
-    store_mpi((struct reg *) &s->mem.words[r_addr], r, bytelen);
+    store_mpi_word(s, r_addr, r, bytelen);
 
 out:
     gcry_mpi_release(a);
@@ -703,11 +710,11 @@ int rsa_do_exp(IPCoresRSA *s, unsigned int bitlen, unsigned int digits)
                   MIN_RSA_EXP_LEN / 8 : bytelen + 2 * 4;
     D(show_mpi("Result", r));
     mpi_to_unsigned(r, bytelen);
-    store_mpi(&s->mem.regs[REG_Y], r, bytelen);
+    store_mpi_reg(s, REG_Y, r, bytelen);
 
     /* Clear X, real HW will modify it.  */
     gcry_mpi_set_ui(r, 1);
-    store_mpi(&s->mem.regs[REG_X], r, bytelen);
+    store_mpi_reg(s, REG_X, r, bytelen);
 
     gcry_mpi_release(x);
     gcry_mpi_release(m);
@@ -783,7 +790,7 @@ int rsa_do_mod(IPCoresRSA *s, unsigned int bitlen, unsigned int digits)
 
     gcry_mpi_mod(r, y, m);
     gcry_mpi_lshift(r, r, mpos + s->exp_result_shift);
-    store_mpi(&s->mem.regs[REG_Y], r, MAX_LEN / 8);
+    store_mpi_reg(s, REG_Y, r, MAX_LEN / 8);
 
     gcry_mpi_release(y);
     gcry_mpi_release(m);
@@ -813,7 +820,7 @@ int rsa_do_rrmod(IPCoresRSA *s, unsigned int bitlen, unsigned int digits)
 
     D(show_mpi("M", m));
     D(show_mpi("Result Y", r));
-    store_mpi(&s->mem.regs[REG_Y], r, MAX_LEN / 8);
+    store_mpi_reg(s, REG_Y, r, MAX_LEN / 8);
 
     gcry_mpi_release(m);
     gcry_mpi_release(r);
@@ -846,10 +853,11 @@ int rsa_do_mul(IPCoresRSA *s, unsigned int bitlen, unsigned int digits)
     gcry_mpi_add(r, r, x);
 
     /* Write back the result.  */
-    store_mpi(&s->mem.regs[REG_MUL_RESULT], r, 528);
+    store_mpi_reg(s, REG_MUL_RESULT, r, 528);
 
     gcry_mpi_release(x);
     gcry_mpi_release(y);
     gcry_mpi_release(r);
     return RSA_NO_ERROR;
 }
+
