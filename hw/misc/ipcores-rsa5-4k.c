@@ -173,6 +173,8 @@ static void store_mpi_word(IPCoresRSA *s, size_t word, gcry_mpi_t a,
         }
     }
 
+    rsa_mem_dirty(s, word, len / BYTES_PER_WORD);
+
     free(buf);
 }
 
@@ -182,13 +184,21 @@ static void store_mpi_reg(IPCoresRSA *s, size_t reg, gcry_mpi_t a,
     store_mpi_word(s, reg * WORDS_PER_REG, a, len);
 }
 
+void rsa_invalidate_r_inv(IPCoresRSA *s)
+{
+    gcry_mpi_release(s->r_inv);
+    s->r_inv = NULL;
+}
+
 static void rsa_update_r_inv(IPCoresRSA *s, gcry_mpi_t m2)
 {
     unsigned int bytelen;
 
-    if (!s->r_inv) {
-        s->r_inv = gcry_mpi_new(0);
+    if (s->r_inv) {
+        return;
     }
+
+    s->r_inv = gcry_mpi_new(0);
 
     bytelen = (s->mont_digit + 1) * 4;
 
@@ -196,8 +206,18 @@ static void rsa_update_r_inv(IPCoresRSA *s, gcry_mpi_t m2)
     gcry_mpi_lshift(s->r_inv, s->r_inv, bytelen * 8);
 
     if (!gcry_mpi_invm(s->r_inv, s->r_inv, m2)) {
-        gcry_mpi_release(s->r_inv);
-        s->r_inv = NULL;
+        rsa_invalidate_r_inv(s);
+    }
+}
+
+void rsa_mem_dirty(IPCoresRSA *s, size_t addr, size_t sz)
+{
+    size_t m2_start = s->m2_addr * WORDS_PER_REG;
+    size_t m2_end = m2_start + s->mont_digit / 6;
+
+    if (((addr >= m2_start) && (addr < m2_end))
+        || ((addr + sz > m2_start) && (addr + sz <= m2_end))) {
+        rsa_invalidate_r_inv(s);
     }
 }
 
@@ -625,7 +645,11 @@ int rsa_do_montmul(IPCoresRSA *s,
              s->mul_pass ? bytelen : 4);
     load_mpi(m2, (struct reg *) &s->mem.words[m2_addr], bytelen);
 
-    if (s->mul_pass) {
+    if (s->mul_pass && !s->r_inv) {
+        /*
+         * r^-1 mod m2 is costly to compute. Keep it cached as long as m2 and
+         * the number of digits do not change.
+         */
         rsa_update_r_inv(s, m2);
 
         if (!s->r_inv) {

@@ -143,3 +143,5 @@ int rsa_do_exppre(IPCoresRSA *s, unsigned int bitlen,
 int rsa_do_mod(IPCoresRSA *s, unsigned int bitlen, unsigned int digits);
 int rsa_do_rrmod(IPCoresRSA *s, unsigned int bitlen, unsigned int digits);
 int rsa_do_mul(IPCoresRSA *s, unsigned int bitlen, unsigned int digits);
+void rsa_invalidate_r_inv(IPCoresRSA *s);
+void rsa_mem_dirty(IPCoresRSA *s, size_t word_addr, size_t len);

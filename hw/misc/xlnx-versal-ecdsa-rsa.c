@@ -290,6 +290,8 @@ static void ecdsa_rsa_ram_addr_postw(RegisterInfo *reg, uint64_t val64)
         memcpy(&s->rsa.mem.words[addr].u8[0], &s->rw_buf.u8[0],
                sizeof s->rw_buf.u8);
         s->rsa.word_def[addr] = true;
+
+        rsa_mem_dirty(&s->rsa, addr, 1);
     } else {
         memcpy(&s->rw_buf.u8[0], &s->rsa.mem.words[addr].u8[0],
                sizeof s->rw_buf.u8);
@@ -501,6 +503,8 @@ static void ecdsa_rsa_update_r_inv(RegisterInfo *reg, uint64_t val64)
 
     s->rsa.m2_addr = ARRAY_FIELD_EX32(s->regs, CFG3, MONT_MOD);
     s->rsa.mont_digit = ARRAY_FIELD_EX32(s->regs, CFG1, MONT_DIGIT);
+
+    rsa_invalidate_r_inv(&s->rsa);
 }
 
 static const RegisterAccessInfo ecdsa_rsa_regs_info[] = {
