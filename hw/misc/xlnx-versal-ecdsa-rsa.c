@@ -86,6 +86,7 @@ REG32(CFG5, 0x3c)
     FIELD(CFG5, NO_GROUPS, 0, 5)
 REG32(RESET, 0x40)
     FIELD(RESET, RESET, 0, 1)
+#ifndef ASU_RSA
 REG32(APB_SLAVE_ERR_CTRL, 0x44)
     FIELD(APB_SLAVE_ERR_CTRL, ENABLE, 0, 1)
 REG32(ECDSA_RSA_ISR, 0x48)
@@ -100,17 +101,25 @@ REG32(ECDSA_RSA_IER, 0x50)
 REG32(ECDSA_RSA_IDR, 0x54)
     FIELD(ECDSA_RSA_IDR, SLVERR, 1, 1)
     FIELD(ECDSA_RSA_IDR, DONE, 0, 1)
-#ifndef ASU_RSA
+#else
+REG32(ECDSA_RSA_ISR, 0x44)
+    FIELD(ECDSA_RSA_ISR, SLVERR, 1, 1)
+    FIELD(ECDSA_RSA_ISR, DONE, 0, 1)
+REG32(ECDSA_RSA_IMR, 0x48)
+    FIELD(ECDSA_RSA_IMR, SLVERR, 1, 1)
+    FIELD(ECDSA_RSA_IMR, DONE, 0, 1)
+REG32(ECDSA_RSA_IER, 0x4c)
+    FIELD(ECDSA_RSA_IER, SLVERR, 1, 1)
+    FIELD(ECDSA_RSA_IER, DONE, 0, 1)
+REG32(ECDSA_RSA_IDR, 0x50)
+    FIELD(ECDSA_RSA_IDR, SLVERR, 1, 1)
+    FIELD(ECDSA_RSA_IDR, DONE, 0, 1)
+REG32(ECDSA_RSA_ITR, 0x54)
+    FIELD(ECDSA_RSA_ITR, DONE, 0, 1)
+#endif
 REG32(RSA_CFG, 0x58)
     FIELD(RSA_CFG, RD_ENDIANNESS, 1, 1)
     FIELD(RSA_CFG, WR_ENDIANNESS, 0, 1)
-#else
-REG32(ECDSA_RSA_ITR, 0x58)
-    FIELD(ECDSA_RSA_ITR, DONE, 0, 1)
-REG32(RSA_CFG, 0x5C)
-    FIELD(RSA_CFG, RD_ENDIANNESS, 1, 1)
-    FIELD(RSA_CFG, WR_ENDIANNESS, 0, 1)
-#endif
 REG32(ECDSA_RSA_ECO, 0x60)
 
 #define ECDSA_RSA_R_MAX (R_ECDSA_RSA_ECO + 1)
@@ -464,7 +473,9 @@ static const RegisterAccessInfo ecdsa_rsa_regs_info[] = {
     },{ .name = "RESET",  .addr = A_RESET,
         .reset = 0x1,
         .post_write = ecdsa_rsa_reset_postw,
+#ifndef ASU_RSA
     },{ .name = "APB_SLAVE_ERR_CTRL",  .addr = A_APB_SLAVE_ERR_CTRL,
+#endif
     },{ .name = "ECDSA_RSA_ISR",  .addr = A_ECDSA_RSA_ISR,
         .w1c = 0x3,
         .post_write = ecdsa_rsa_isr_postw,
