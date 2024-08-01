@@ -493,6 +493,14 @@ static void ecdsa_rsa_reset_postw(RegisterInfo *reg, uint64_t val64)
     }
 }
 
+static void ecdsa_rsa_update_r_inv(RegisterInfo *reg, uint64_t val64)
+{
+    ECDSA_RSA *s = XILINX_ECDSA_RSA(reg->opaque);
+
+    s->rsa.m2_addr = ARRAY_FIELD_EX32(s->regs, CFG3, MONT_MOD);
+    s->rsa.mont_digit = ARRAY_FIELD_EX32(s->regs, CFG1, MONT_DIGIT);
+}
+
 static const RegisterAccessInfo ecdsa_rsa_regs_info[] = {
     {   .name = "RAM_DATA",  .addr = A_RAM_DATA,
         .post_read = ecdsa_rsa_ram_data_postr,
@@ -510,8 +518,10 @@ static const RegisterAccessInfo ecdsa_rsa_regs_info[] = {
     },{ .name = "KEY_LENGTH",  .addr = A_KEY_LENGTH,
     },{ .name = "CFG0",  .addr = A_CFG0,
     },{ .name = "CFG1",  .addr = A_CFG1,
+        .post_write = ecdsa_rsa_update_r_inv,
     },{ .name = "CFG2",  .addr = A_CFG2,
     },{ .name = "CFG3",  .addr = A_CFG3,
+        .post_write = ecdsa_rsa_update_r_inv,
     },{ .name = "CFG4",  .addr = A_CFG4,
     },{ .name = "CFG5",  .addr = A_CFG5,
     },{ .name = "RESET",  .addr = A_RESET,

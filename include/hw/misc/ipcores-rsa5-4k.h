@@ -78,6 +78,10 @@ typedef struct IPCoresRSA {
 
     /* Used to track if words have defined values or not.  */
     unsigned char word_def[NR_WORDS];
+
+    unsigned int mont_digit;
+    unsigned int m2_addr;
+    gcry_mpi_t r_inv;
 } IPCoresRSA;
 
 #define RSA_NO_ERROR        0
@@ -94,6 +98,7 @@ static inline void rsa_set_minv(IPCoresRSA *s, uint32_t minv)
 
 static inline void rsa_reset(IPCoresRSA *s)
 {
+    gcry_mpi_release(s->r_inv);
     memset(s, 0, sizeof *s);
 }
 

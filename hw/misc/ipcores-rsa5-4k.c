@@ -175,6 +175,25 @@ static void store_mpi(struct reg *d, gcry_mpi_t s, unsigned int len)
     free(buf);
 }
 
+static void rsa_update_r_inv(IPCoresRSA *s, gcry_mpi_t m2)
+{
+    unsigned int bytelen;
+
+    if (!s->r_inv) {
+        s->r_inv = gcry_mpi_new(0);
+    }
+
+    bytelen = (s->mont_digit + 1) * 4;
+
+    gcry_mpi_set_ui(s->r_inv, 1);
+    gcry_mpi_lshift(s->r_inv, s->r_inv, bytelen * 8);
+
+    if (!gcry_mpi_invm(s->r_inv, s->r_inv, m2)) {
+        gcry_mpi_release(s->r_inv);
+        s->r_inv = NULL;
+    }
+}
+
 int rsa_do_nop(IPCoresRSA *s, unsigned int bitlen, unsigned int digits)
 {
     return RSA_NO_ERROR;
@@ -572,23 +591,31 @@ int rsa_do_montmul(IPCoresRSA *s,
                    unsigned int r_addr, unsigned int m2_addr,
                    unsigned int digits)
 {
-    gcry_mpi_t a, b, m2, q, c, r;
+    gcry_mpi_t a, b, m2, r;
     unsigned int bytelen;
     int ret = RSA_NO_ERROR;
-    int i;
 
     bytelen = (digits + 1) * 4;
 
     a = gcry_mpi_new(bytelen * 8);
     b = gcry_mpi_new(bytelen * 8);
     m2 = gcry_mpi_new(bytelen * 8);
-    q = gcry_mpi_new(bytelen * 8);
-    c = gcry_mpi_new(bytelen * 8);
     r = gcry_mpi_new(bytelen * 8);
 
     load_mpi(a, (struct reg *) &s->mem.words[a_addr], bytelen);
     load_mpi(b, (struct reg *) &s->mem.words[b_addr], bytelen);
     load_mpi(m2, (struct reg *) &s->mem.words[m2_addr], bytelen);
+
+    rsa_update_r_inv(s, m2);
+
+    if (!s->r_inv) {
+        /*
+         * r^-1 mod m2 does not exist. This means that r and m2 are not
+         * co-prime (m2 is even). This is an invalid configuration.
+         */
+        ret = RSA_ZERO_MODULO;
+        goto out;
+    }
 
     D(show_mpi("a", a));
     D(show_mpi("b", b));
@@ -596,31 +623,18 @@ int rsa_do_montmul(IPCoresRSA *s,
 
     mpi_to_signed(a, bytelen);
     mpi_to_signed(b, bytelen);
+    gcry_mpi_mul(r, a, b);
 
-    gcry_mpi_mul(c, a, b);
-    gcry_mpi_lshift(c, c, 32);
-    for (i = 0; i < digits + 2; i++) {
-        gcry_mpi_set_ui(r, 1);
-        gcry_mpi_lshift(r, r, 32);
+    gcry_mpi_mulm(r, r, s->r_inv, m2);
 
-        gcry_mpi_rshift(q, c, i * 32);
-        gcry_mpi_mod(q, q, r);
-
-        gcry_mpi_lshift(r, m2, i * 32);
-        gcry_mpi_mul(r, q, r);
-        gcry_mpi_add(c, c, r);
-    }
-
-    gcry_mpi_rshift(r, c, (digits + 2) * 32);
     mpi_to_unsigned(r, bytelen);
     D(show_mpi("Result", r));
     store_mpi((struct reg *) &s->mem.words[r_addr], r, bytelen);
 
+out:
     gcry_mpi_release(a);
     gcry_mpi_release(b);
     gcry_mpi_release(m2);
-    gcry_mpi_release(q);
-    gcry_mpi_release(c);
     gcry_mpi_release(r);
     return ret;
 }
