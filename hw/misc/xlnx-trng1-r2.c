@@ -194,6 +194,12 @@ static bool xlnx_trng1r2_is_autoproc(XlnxTRng1r2 *s)
     return s->autoproc_ctrl;
 }
 
+static void xlnx_trng1r2_autoproc_update(XlnxTRng1r2 *s, uint32_t ctrl)
+{
+    s->autoproc_ctrl = ctrl;
+    s->regs[R_CTRL] = ctrl;
+}
+
 static size_t xlnx_trng1r2_ent_bcnt(XlnxTRng1r2 *s)
 {
     return 16 * (1 + ARRAY_FIELD_EX32(s->regs, CONF1, DLEN));
@@ -601,7 +607,6 @@ static void xlnx_trng1r2_sreset(XlnxTRng1r2 *s)
     xlnx_trng1r2_ent_reset(s);
     xlnx_trng1r2_set_wcnt(s, 0);
 
-    s->autoproc_ctrl = 0;
     s->regs[R_STATUS] = 0;
 
     s->int_status = 0;
@@ -770,6 +775,9 @@ static bool xlnx_trng1r2_regs_blocked(XlnxTRng1r2 *s, bool wr, hwaddr addr)
     case A_CONF1:
     case A_TSTENT:
         return false;
+    case A_CTRL:
+        /* Writes not blocked unless autoproc is actually running */
+        return s->autoproc_ctrl == s->regs[R_CTRL];
     default:
         return true;
     }
@@ -838,24 +846,15 @@ static const MemoryRegionOps xlnx_trng1r2_ops = {
     },
 };
 
-static void xlnx_trng1r2_autoproc_enter(XlnxTRng1r2 *s, uint32_t seeding_ctrl)
+static void xlnx_trng1r2_autoproc_sync(XlnxTRng1r2 *s)
 {
-    /* Keep only relevant bits */
-    seeding_ctrl &= R_CTRL_PERSODISABLE_MASK |
-                    R_CTRL_TSTMODE_MASK |
-                    R_CTRL_PRNGXS_MASK |
-                    R_CTRL_TRSSEN_MASK |
-                    R_CTRL_PRNGSTART_MASK;
-
-    if (s->autoproc_ctrl == seeding_ctrl) {
-        return; /* No change, so keep running as is */
+    /* No op if already synced or not in autoproc mode */
+    if (s->autoproc_ctrl == s->regs[R_CTRL] || !xlnx_trng1r2_is_autoproc(s)) {
+        return;
     }
 
-    /* Reset and reseed as requested */
-    xlnx_trng1r2_sreset(s);
-
-    s->autoproc_ctrl = seeding_ctrl;
-    s->regs[R_CTRL] = seeding_ctrl;
+    /* Launch or restore autoproc mode */
+    xlnx_trng1r2_autoproc_update(s, s->autoproc_ctrl);
     xlnx_trng1r2_ctrl_on_start(s);
 
     /*
@@ -869,15 +868,35 @@ static void xlnx_trng1r2_autoproc_enter(XlnxTRng1r2 *s, uint32_t seeding_ctrl)
     }
 }
 
+static void xlnx_trng1r2_autoproc_enter(XlnxTRng1r2 *s, uint32_t seeding_ctrl)
+{
+    g_assert(seeding_ctrl);
+
+    if (s->autoproc_ctrl == seeding_ctrl) {
+        return; /* No change, so keep running as is */
+    }
+    s->autoproc_ctrl = seeding_ctrl;
+
+    /* Reset and reseed as requested */
+    xlnx_trng1r2_sreset(s);
+    xlnx_trng1r2_autoproc_sync(s);
+}
+
 static void xlnx_trng1r2_autoproc_leave(XlnxTRng1r2 *s)
 {
-    s->autoproc_ctrl = 0;
-    s->regs[R_CTRL] = 0;
+    xlnx_trng1r2_autoproc_update(s, 0);
     xlnx_trng1r2_sreset(s);
 }
 
 static void xlnx_trng1r2_autoproc(XlnxTRng1r2 *s, uint32_t seeding_ctrl)
 {
+    /* Keep only relevant bits */
+    seeding_ctrl &= R_CTRL_PERSODISABLE_MASK |
+                    R_CTRL_TSTMODE_MASK |
+                    R_CTRL_PRNGXS_MASK |
+                    R_CTRL_TRSSEN_MASK |
+                    R_CTRL_PRNGSTART_MASK;
+
     if (seeding_ctrl) {
         xlnx_trng1r2_autoproc_enter(s, seeding_ctrl);
     } else {
@@ -887,6 +906,19 @@ static void xlnx_trng1r2_autoproc(XlnxTRng1r2 *s, uint32_t seeding_ctrl)
 
 static void xlnx_trng1r2_get_data(XlnxTRng1r2 *s, void *out, size_t bcnt)
 {
+    /*
+     * Restoration of a disrupted autoproc mode has to be deferred
+     * as late as possible, because software uses reads-after-writes
+     * matching to ascertain its full control over the device and
+     * to confirm success of a reset.
+     *
+     * If reads-after-writes fail to match, software would completely
+     * reset and deactivate the entire device.
+     *
+     * So, here is the latest possible place to restore autoproc mode.
+     */
+    xlnx_trng1r2_autoproc_sync(s);
+
     while (bcnt >= 4) {
         stl_he_p(out, xlnx_trng1r2_core_output(s));
         out += 4;
