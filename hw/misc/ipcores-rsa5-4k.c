@@ -603,18 +603,32 @@ int rsa_do_montmul(IPCoresRSA *s,
     r = gcry_mpi_new(bytelen * 8);
 
     load_mpi(a, (struct reg *) &s->mem.words[a_addr], bytelen);
-    load_mpi(b, (struct reg *) &s->mem.words[b_addr], bytelen);
+
+    /*
+     * When the core configuration is set to 0 multiplication passes, only 32
+     * bits of the b operand are considered. Note that this parameter (and
+     * others such as qsel and groups) really configures the core hardware
+     * multiplier behaviour. The only "special" value we support here is
+     * 'passes' equal 0, which we interpret as "perform a bytelen * 32 bits
+     * standard multiplication" (no Montgomery reduction). When this parameter
+     * is not 0, the core configuration is supposed correct to perform a
+     * Montgomery multiplication of size bytelen * bytelen.
+     */
+    load_mpi(b, (struct reg *) &s->mem.words[b_addr],
+             s->mul_pass ? bytelen : 4);
     load_mpi(m2, (struct reg *) &s->mem.words[m2_addr], bytelen);
 
-    rsa_update_r_inv(s, m2);
+    if (s->mul_pass) {
+        rsa_update_r_inv(s, m2);
 
-    if (!s->r_inv) {
-        /*
-         * r^-1 mod m2 does not exist. This means that r and m2 are not
-         * co-prime (m2 is even). This is an invalid configuration.
-         */
-        ret = RSA_ZERO_MODULO;
-        goto out;
+        if (!s->r_inv) {
+            /*
+             * r^-1 mod m2 does not exist. This means that r and m2 are not
+             * co-prime (m2 is even). This is an invalid configuration.
+             */
+            ret = RSA_ZERO_MODULO;
+            goto out;
+        }
     }
 
     D(show_mpi("a", a));
@@ -625,7 +639,13 @@ int rsa_do_montmul(IPCoresRSA *s,
     mpi_to_signed(b, bytelen);
     gcry_mpi_mul(r, a, b);
 
-    gcry_mpi_mulm(r, r, s->r_inv, m2);
+    /*
+     * When multiplication passes is set to 0, no Montgomery reduction occurs.
+     * The operation becomes a classical bytelen * 4 bytes multiplication.
+     */
+    if (s->mul_pass) {
+        gcry_mpi_mulm(r, r, s->r_inv, m2);
+    }
 
     mpi_to_unsigned(r, bytelen);
     D(show_mpi("Result", r));

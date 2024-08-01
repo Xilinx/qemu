@@ -79,6 +79,7 @@ typedef struct IPCoresRSA {
     /* Used to track if words have defined values or not.  */
     unsigned char word_def[NR_WORDS];
 
+    unsigned int mul_pass;
     unsigned int mont_digit;
     unsigned int m2_addr;
     gcry_mpi_t r_inv;

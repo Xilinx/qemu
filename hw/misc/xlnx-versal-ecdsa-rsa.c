@@ -437,6 +437,8 @@ static void ecdsa_rsa_ctrl_postw(RegisterInfo *reg, uint64_t val64)
     unsigned int m2_loc = ARRAY_FIELD_EX32(s->regs, CFG3, MONT_MOD);
     int err;
 
+    s->rsa.mul_pass = ARRAY_FIELD_EX32(s->regs, CFG0, MULTI_PASS);
+
     if (clr_data_buf) {
         memset(&s->rw_buf.u8[0], 0, sizeof s->rw_buf.u8);
     }
