@@ -335,3 +335,8 @@ xlnx_psxc_lpx_slcr_write(uint64_t offset, uint64_t value) "offset:0x%" PRIx64 ",
 xlnx_psxc_lpx_slcr_update_core_power(size_t core, bool status) "core %zu, power: %d"
 xlnx_psxc_lpx_slcr_rpu_request_pstate_change(size_t core, uint32_t new_pactive, bool success) "core %zu, new pactive: 0x%08x, success: %d"
 xlnx_psxc_lpx_slcr_rpu_read_current_pstate(size_t core, uint32_t pactive) "core %zu, pactive: 0x%08x"
+
+# xlnx-versal-ecdsa-rsa.c
+xlnx_versal_ecdsa_rsa_exec_opcode(const char *insn) "%s"
+xlnx_versal_ecdsa_rsa_exec_ucode(unsigned int word, int pc, const char *op, int len, unsigned int r, unsigned int a, unsigned int b) "%02x:%02x: %s_%d 0x%x <- 0x%x, 0x%x"
+xlnx_versal_ecdsa_rsa_exec_stop(unsigned int word, int pc) " %02x:%02x: stop"

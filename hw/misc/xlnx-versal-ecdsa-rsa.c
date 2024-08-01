@@ -34,6 +34,7 @@
 #include "hw/irq.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
+#include "trace.h"
 
 #include "hw/misc/ipcores-rsa5-4k.h"
 
@@ -167,6 +168,17 @@ static ALUFunc alu_ops[] = {
     [R_CTRL_exppre] = rsa_do_exppre,
 };
 
+static const char *OPCODE_STR[] = {
+    [R_CTRL_nop] = "nop",
+    [R_CTRL_exp] = "exp",
+    [R_CTRL_mod] = "mod",
+    [R_CTRL_mul] = "mult",
+    [R_CTRL_rrmod] = "RR mod N",
+    [R_CTRL_exppre] = "exp(RR mod N)",
+    [R_CTRL_exec] = "exec",
+    [R_CTRL_reserved] = "reserved"
+};
+
 static void ecdsa_rsa_imr_update_irq(ECDSA_RSA *s)
 {
     bool pending;
@@ -291,6 +303,22 @@ static void ecdsa_rsa_run_microcode(ECDSA_RSA *s,
                                     unsigned int m2_loc,
                                     bool binary)
 {
+    const char *BIN_INSN_STR[] = {
+        [0] = "stop", [1] = "bin-montmul", [2] = "xor", [3] = "xor",
+        [4] = "gf-mod", [5] = "undef-5", [6] = "undef-6", [7] = "undef-7",
+        [8] = "undef-8", [9] = "undef-9", [10] = "undef-10",
+        [11] = "undef-11", [12] = "undef-12", [13] = "undef-13",
+        [14] = "undef-14", [15] = "undef-15",
+    };
+
+    const char *INSN_STR[] = {
+        [0] = "stop", [1] = "montmul", [2] = "add", [3] = "sub",
+        [4] = "mod", [5] = "undef-5", [6] = "undef-6", [7] = "undef-7",
+        [8] = "undef-8", [9] = "undef-9", [10] = "undef-10",
+        [11] = "undef-11", [12] = "undef-12", [13] = "undef-13",
+        [14] = "undef-14", [15] = "undef-15",
+    };
+
     unsigned int word = start_word;
     int pc = (BITS_PER_WORD / 16) - 1;
     struct {
@@ -307,6 +335,21 @@ static void ecdsa_rsa_run_microcode(ECDSA_RSA *s,
         insn.args[1] = extract32(ir, 4, 4);
         insn.args[0] = extract32(ir, 8, 4);
         insn.opcode = extract32(ir, 12, 4);
+
+        if (insn.opcode != 0) {
+            const char *insn_str = binary
+                ? BIN_INSN_STR[insn.opcode]
+                : INSN_STR[insn.opcode];
+
+            trace_xlnx_versal_ecdsa_rsa_exec_ucode(word, pc,
+                                                   insn_str,
+                                                   digits * 4 * 8,
+                                                   insn.result * loc_size,
+                                                   insn.args[0] * loc_size,
+                                                   insn.args[1] * loc_size);
+        } else {
+            trace_xlnx_versal_ecdsa_rsa_exec_stop(word, pc);
+        }
 
         switch (insn.opcode) {
         case 0:
@@ -414,6 +457,7 @@ static void ecdsa_rsa_ctrl_postw(RegisterInfo *reg, uint64_t val64)
     ARRAY_FIELD_DP32(s->regs, STATUS, ERROR, 0);
 
     if (op <= R_CTRL_exppre) {
+        trace_xlnx_versal_ecdsa_rsa_exec_opcode(OPCODE_STR[op]);
         err = alu_ops[op](&s->rsa, bitlen, digits);
     } else {
         ecdsa_rsa_run_microcode(s, start_addr, digits,
