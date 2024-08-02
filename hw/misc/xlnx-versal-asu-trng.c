@@ -336,11 +336,8 @@ static void asu_trng_realize(DeviceState *dev, Error **errp)
     object_property_set_bool(OBJECT(&s->trng), "realized", true, errp);
 }
 
-static MemoryRegion *asu_trng_mr_rename(MemoryRegion *mr,
-                                        const char *bn, const char *suffix)
+static MemoryRegion *asu_trng_mr_rename(MemoryRegion *mr, const char *new_name)
 {
-    g_autofree char *new_name = g_strjoin(NULL, bn, suffix, NULL);
-
     /* Save enough to call memory_region_init_io */
     const void *ops = mr->ops;
     void *opaque = mr->opaque;
@@ -376,7 +373,6 @@ static void asu_trng_init(Object *obj)
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
     RegisterInfoArray *reg_array;
     MemoryRegion *ctl_mr, *rng_mr;
-    const char *mrn_base;
     uint64_t io_sz;
 
     reg_array =
@@ -390,9 +386,8 @@ static void asu_trng_init(Object *obj)
     ctl_mr = &reg_array->mem;
     rng_mr = asu_trng_init_generator(s);
 
-    mrn_base = memory_region_name(ctl_mr);
-    ctl_mr = asu_trng_mr_rename(ctl_mr, mrn_base, "-ctl");
-    rng_mr = asu_trng_mr_rename(rng_mr, mrn_base, "-rng");
+    ctl_mr = asu_trng_mr_rename(ctl_mr, TYPE_XLNX_ASU_TRNG "-ctl");
+    rng_mr = asu_trng_mr_rename(rng_mr, TYPE_XLNX_ASU_TRNG "-rng");
 
     io_sz = A_ASU_TRNG_RNG + memory_region_size(rng_mr);
     memory_region_init_io(&s->iomem, obj, &asu_trng_autoproc_ops,
