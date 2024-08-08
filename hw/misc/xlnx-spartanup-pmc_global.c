@@ -138,10 +138,9 @@ REG32(PMC_FW_AUTH_HASH_4, 0x170)
 REG32(PMC_FW_AUTH_HASH_5, 0x174)
 REG32(PMC_FW_AUTH_HASH_6, 0x178)
 REG32(PMC_FW_AUTH_HASH_7, 0x17c)
-REG32(PMC_FW_AUTH_HASH_8, 0x180)
-REG32(PMC_FW_AUTH_HASH_9, 0x184)
-REG32(PMC_FW_AUTH_HASH_10, 0x18c)
-REG32(PMC_FW_AUTH_HASH_11, 0x190)
+REG32(SPARTANUP_PMC_CRYPTO_DIS, 0x240)
+    FIELD(SPARTANUP_PMC_CRYPTO_DIS, SHA3, 1, 1)
+    FIELD(SPARTANUP_PMC_CRYPTO_DIS, AES, 0, 1)
 REG32(ROM_VALIDATION_DIGEST0, 0x250)
 REG32(ROM_VALIDATION_DIGEST1, 0x254)
 REG32(ROM_VALIDATION_DIGEST2, 0x258)
@@ -435,14 +434,7 @@ static const RegisterAccessInfo spartanup_pmc_global_regs_info[] = {
         .reset = 0xffffffff,
     },{ .name = "PMC_FW_AUTH_HASH_7",  .addr = A_PMC_FW_AUTH_HASH_7,
         .reset = 0xffffffff,
-    },{ .name = "PMC_FW_AUTH_HASH_8",  .addr = A_PMC_FW_AUTH_HASH_8,
-        .reset = 0xffffffff,
-    },{ .name = "PMC_FW_AUTH_HASH_9",  .addr = A_PMC_FW_AUTH_HASH_9,
-        .reset = 0xffffffff,
-    },{ .name = "PMC_FW_AUTH_HASH_10",  .addr = A_PMC_FW_AUTH_HASH_10,
-        .reset = 0xffffffff,
-    },{ .name = "PMC_FW_AUTH_HASH_11",  .addr = A_PMC_FW_AUTH_HASH_11,
-        .reset = 0xffffffff,
+    },{ .name = "SPARTANUP_PMC_CRYPTO_DIS",  .addr = A_SPARTANUP_PMC_CRYPTO_DIS,
     },{ .name = "ROM_VALIDATION_DIGEST0",  .addr = A_ROM_VALIDATION_DIGEST0,
         .ro = 0xffffffff,
     },{ .name = "ROM_VALIDATION_DIGEST1",  .addr = A_ROM_VALIDATION_DIGEST1,
