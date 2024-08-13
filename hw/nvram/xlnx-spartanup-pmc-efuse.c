@@ -594,7 +594,16 @@ static void spartanup_pmc_efuse_rd_addr_postw(RegisterInfo *reg, uint64_t val)
 static void spartanup_pmc_efuse_aes_crc_postw(RegisterInfo *reg, uint64_t val)
 {
     SPARTANUP_PMC_EFUSE *s = XILINX_SPARTANUP_PMC_EFUSE(reg->opaque);
-    uint8_t key[256 >> 3];
+    union {
+        uint8_t u8[256 / 8];
+        uint32_t u32[256 / 32];
+    } key;
+    union {
+        uint8_t u8[256 / 8];
+        uint32_t u32[256 / 32];
+    } key_le;
+
+    int i;
 
     s->regs[R_EFUSE_AES_CRC] = 0;
 
@@ -608,10 +617,14 @@ static void spartanup_pmc_efuse_aes_crc_postw(RegisterInfo *reg, uint64_t val)
         return;
     }
 
-    spartanup_pmc_efuse_get_aes_key(s, key);
+    spartanup_pmc_efuse_get_aes_key(s, key.u8);
+    for (i = 0; i < 8; i++) {
+        key_le.u32[i ^ 7] = bswap32(key.u32[i]);
+    }
+
     ARRAY_FIELD_DP32(s->regs, STATUS, AES_CRC_DONE, 1);
 
-    if (val != xlnx_aes_k256_crc((uint32_t *)key, 0)) {
+    if (val != xlnx_aes_k256_crc(key_le.u32, 0)) {
         ARRAY_FIELD_DP32(s->regs, STATUS, AES_CRC_PASS, 0);
     } else {
         ARRAY_FIELD_DP32(s->regs, STATUS, AES_CRC_PASS, 1);
