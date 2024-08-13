@@ -612,9 +612,9 @@ static void spartanup_pmc_efuse_aes_crc_postw(RegisterInfo *reg, uint64_t val)
     ARRAY_FIELD_DP32(s->regs, STATUS, AES_CRC_DONE, 1);
 
     if (val != xlnx_aes_k256_crc((uint32_t *)key, 0)) {
-        ARRAY_FIELD_DP32(s->regs, STATUS, AES_CRC_PASS, 1);
-    } else {
         ARRAY_FIELD_DP32(s->regs, STATUS, AES_CRC_PASS, 0);
+    } else {
+        ARRAY_FIELD_DP32(s->regs, STATUS, AES_CRC_PASS, 1);
     }
 }
 
