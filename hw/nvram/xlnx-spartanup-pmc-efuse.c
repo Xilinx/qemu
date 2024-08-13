@@ -584,7 +584,7 @@ static void spartanup_pmc_efuse_rd_addr_postw(RegisterInfo *reg, uint64_t val)
 
     s->regs[R_EFUSE_RD_ADDR] = 0;
     s->regs[R_EFUSE_RD_DATA] = xlnx_efuse_get_row(s->efuse,
-                                             ARRAY_FIELD_EX32(s->regs,
+                                                  FIELD_EX32(val,
                                                               EFUSE_RD_ADDR,
                                                               ROW) << 5);
     ARRAY_FIELD_DP32(s->regs, EFUSE_ISR, RD_DONE, 1);
