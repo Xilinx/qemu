@@ -29,6 +29,7 @@
 #include "hw/register.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
+#include "hw/irq.h"
 #include "migration/vmstate.h"
 
 #ifndef XILINX_PMXC_ERR_DEBUG
@@ -1268,6 +1269,7 @@ REG32(ERROR_MANAGEMENT_POR_LOCK, 0x200)
 typedef struct PMXC_ERR {
     SysBusDevice parent_obj;
     MemoryRegion iomem;
+    qemu_irq irq;
 
     uint32_t regs[PMXC_ERR_R_MAX];
     RegisterInfo regs_info[PMXC_ERR_R_MAX];
@@ -1363,6 +1365,46 @@ static void pmxc_err_int_dis(RegisterInfo *reg, uint64_t val)
     };
 }
 
+static void pmxc_err_update(PMXC_ERR *s)
+{
+    qemu_set_irq(s->irq, !!(
+                               (~(s->regs[R_PMC_IRQ1_MASK]) &
+                               s->regs[R_PMC_ERR1_STATUS]) ||
+                               (~(s->regs[R_PMC_IRQ2_MASK]) &
+                               s->regs[R_PMC_ERR2_STATUS]) ||
+                               (~(s->regs[R_PMC_IRQ3_MASK]) &
+                               s->regs[R_PMC_ERR3_STATUS])
+                               ));
+
+}
+
+static uint64_t pmxc_err1_trig_prew(RegisterInfo *reg, uint64_t val)
+{
+    PMXC_ERR *s = XILINX_PMXC_ERR(reg->opaque);
+
+    s->regs[R_PMC_ERR1_STATUS] |= val;
+    pmxc_err_update(s);
+    return 0;
+}
+
+static uint64_t pmxc_err2_trig_prew(RegisterInfo *reg, uint64_t val)
+{
+    PMXC_ERR *s = XILINX_PMXC_ERR(reg->opaque);
+
+    s->regs[R_PMC_ERR2_STATUS] |= val;
+    pmxc_err_update(s);
+    return 0;
+}
+
+static uint64_t pmxc_err3_trig_prew(RegisterInfo *reg, uint64_t val)
+{
+    PMXC_ERR *s = XILINX_PMXC_ERR(reg->opaque);
+
+    s->regs[R_PMC_ERR3_STATUS] |= val;
+    pmxc_err_update(s);
+    return 0;
+}
+
 static const RegisterAccessInfo pmxc_global_regs_info[] = {
     {   .name = "PMC_ERR1_STATUS",  .addr = A_PMC_ERR1_STATUS,
         .rsvd = 0x300,
@@ -1374,9 +1416,12 @@ static const RegisterAccessInfo pmxc_global_regs_info[] = {
         .w1c = 0xffffffff,
     },{ .name = "PMC_ERR1_TRIG",  .addr = A_PMC_ERR1_TRIG,
         .rsvd = 0x300,
+        .pre_write = pmxc_err1_trig_prew,
     },{ .name = "PMC_ERR2_TRIG",  .addr = A_PMC_ERR2_TRIG,
+        .pre_write = pmxc_err2_trig_prew,
     },{ .name = "PMC_ERR3_TRIG",  .addr = A_PMC_ERR3_TRIG,
         .rsvd = 0xfe000000,
+        .pre_write = pmxc_err3_trig_prew,
     },{ .name = "PMC_ERR_OUT1_MASK",  .addr = A_PMC_ERR_OUT1_MASK,
         .reset = 0xffffffff,
         .rsvd = 0x300,
@@ -1532,6 +1577,7 @@ static void pmxc_global_init(Object *obj)
                                 0x0,
                                 &reg_array->mem);
     sysbus_init_mmio(sbd, &s->iomem);
+    sysbus_init_irq(sbd, &s->irq);
 }
 
 static const VMStateDescription vmstate_pmxc_global = {
