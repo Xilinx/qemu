@@ -1548,6 +1548,14 @@ static void pmxc_global_reset_enter(Object *obj, ResetType type)
     }
 }
 
+static void pmx_analog_tamper(void *opaque, int n, int level)
+{
+    PMXC_ERR *s = XILINX_PMXC_ERR(opaque);
+
+    ARRAY_FIELD_DP32(s->regs, PMC_ERR2_STATUS, PMC_APB, level);
+    pmxc_err_update(s);
+}
+
 static const MemoryRegionOps pmxc_global_ops = {
     .read = register_read_memory,
     .write = register_write_memory,
@@ -1576,6 +1584,7 @@ static void pmxc_global_init(Object *obj)
     memory_region_add_subregion(&s->iomem,
                                 0x0,
                                 &reg_array->mem);
+    qdev_init_gpio_in(DEVICE(obj), pmx_analog_tamper, 1);
     sysbus_init_mmio(sbd, &s->iomem);
     sysbus_init_irq(sbd, &s->irq);
 }

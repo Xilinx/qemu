@@ -2926,6 +2926,8 @@ static void pmx_global_init(Object *obj)
     /* Out signals.  */
     qdev_init_gpio_out_named(DEVICE(obj), &s->ppu1_rst, "ppu1_rst", 1);
     qdev_init_gpio_out_named(DEVICE(obj), &s->ppu1_wakeup, "ppu1_wakeup", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &s->irq_pmc_global_imr,
+                             "pmc_global_err", 1);
 
     /* In signals. */
     qdev_init_gpio_in(DEVICE(obj), pmc_global_isr_set_puf_acc_error, 1);
@@ -2979,6 +2981,7 @@ static const FDTGenericGPIOSet pmx_global_gpios[] = {
       .gpios = (FDTGenericGPIOConnection[]) {
         { .name = "ppu1_rst", .fdt_index = 1 },
         { .name = "ppu1_wakeup", .fdt_index = 2 },
+        { .name = "pmc_global_err", .fdt_index = 3},
         { },
       },
     },
