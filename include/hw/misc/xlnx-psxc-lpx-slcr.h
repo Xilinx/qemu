@@ -36,6 +36,7 @@
      OBJECT_CHECK(XlnxPsxcLpxSlcr, (obj), TYPE_XILINX_PSXC_LPX_SLCR)
 
 #define PSXC_LPX_SLCR_MMIO_SIZE 0x600f4
+#define EAM_REG_MAX (0x210 / 4)
 
 typedef struct XlnxPsxcLpxSlcrCorePowerCtrl {
     qemu_irq pwr;
@@ -89,6 +90,8 @@ typedef struct XlnxPsxcLpxSlcr {
     XlnxPsxcLpxSlcrIrq req_pwrdwn1_irq;
     XlnxPsxcLpxSlcrIrq rpu_pcil_wfi_irq;
 
+    qemu_irq eam_err[4];
+    uint32_t eam_regs[EAM_REG_MAX];
     uint32_t num_rpu;
     bool linux_boot;
 } XlnxPsxcLpxSlcr;

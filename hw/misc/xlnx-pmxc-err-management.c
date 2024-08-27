@@ -1405,15 +1405,24 @@ static uint64_t pmxc_err3_trig_prew(RegisterInfo *reg, uint64_t val)
     return 0;
 }
 
+static void pmxc_err_status_postw(RegisterInfo *reg, uint64_t val)
+{
+    PMXC_ERR *s = XILINX_PMXC_ERR(reg->opaque);
+    pmxc_err_update(s);
+}
+
 static const RegisterAccessInfo pmxc_global_regs_info[] = {
     {   .name = "PMC_ERR1_STATUS",  .addr = A_PMC_ERR1_STATUS,
         .rsvd = 0x300,
         .w1c = 0xffffffff,
+        .post_write = pmxc_err_status_postw,
     },{ .name = "PMC_ERR2_STATUS",  .addr = A_PMC_ERR2_STATUS,
         .w1c = 0xffffffff,
+        .post_write = pmxc_err_status_postw,
     },{ .name = "PMC_ERR3_STATUS",  .addr = A_PMC_ERR3_STATUS,
         .rsvd = 0xfe000000,
         .w1c = 0xffffffff,
+        .post_write = pmxc_err_status_postw,
     },{ .name = "PMC_ERR1_TRIG",  .addr = A_PMC_ERR1_TRIG,
         .rsvd = 0x300,
         .pre_write = pmxc_err1_trig_prew,
@@ -1556,6 +1565,14 @@ static void pmx_analog_tamper(void *opaque, int n, int level)
     pmxc_err_update(s);
 }
 
+static void pmx_eam_err(void *opaque, int n, int level)
+{
+    PMXC_ERR *s = XILINX_PMXC_ERR(opaque);
+
+    s->regs[R_PMC_ERR3_STATUS] |=
+           level << (n - 1 + R_PMC_ERR3_STATUS_PSX_EAM_E0_SHIFT);
+}
+
 static const MemoryRegionOps pmxc_global_ops = {
     .read = register_read_memory,
     .write = register_write_memory,
@@ -1585,6 +1602,7 @@ static void pmxc_global_init(Object *obj)
                                 0x0,
                                 &reg_array->mem);
     qdev_init_gpio_in(DEVICE(obj), pmx_analog_tamper, 1);
+    qdev_init_gpio_in(DEVICE(obj), pmx_eam_err, 4);
     sysbus_init_mmio(sbd, &s->iomem);
     sysbus_init_irq(sbd, &s->irq);
 }

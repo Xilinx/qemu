@@ -2159,6 +2159,11 @@ REG32(EAM_ERR3_STATUS, 0x0004000c)
     FIELD(EAM_ERR3_STATUS, SRC0, 0, 1)
 #define EAM_ERR3_STATUS_RESET_VAL 0x0
 
+REG32(EAM_ERR0_TRIG, 0x40020)
+REG32(EAM_ERR1_TRIG, 0x40024)
+REG32(EAM_ERR2_TRIG, 0x40028)
+REG32(EAM_ERR3_TRIG, 0x4002C)
+
 REG32(EAM_PMC0_ERR0_MASK, 0x00040040)
     FIELD(EAM_PMC0_ERR0_MASK, SRC31, 31, 1)
     FIELD(EAM_PMC0_ERR0_MASK, SRC30, 30, 1)
@@ -7128,6 +7133,8 @@ REG32(REQ_ISO_INT_DIS, 0x000600ec)
 #define REQ_ISO_INT_DIS_RESET_VAL 0x0
 
 REG32(REQ_ISO_TRIG, 0x000600f0)
+#define EAM_REG_ADDR(x) (x - A_EAM_ERR0_STATUS)
+#define R_EAM(x) (EAM_REG_ADDR(A_ ## x) / 4)
 
 static void update_ocm_pwr(XlnxPsxcLpxSlcr *s)
 {
@@ -7589,6 +7596,39 @@ static void rpu_pcil_pchannel_write(XlnxPsxcLpxSlcr *s,
     }
 }
 
+static void pmxc_lpd_eam_err_update(XlnxPsxcLpxSlcr *s)
+{
+    bool err_group;
+
+    err_group =
+        !!((s->eam_regs[0] & (~s->eam_regs[R_EAM(EAM_PMC0_ERR0_MASK)])) |
+           (s->eam_regs[1] & (~s->eam_regs[R_EAM(EAM_PMC0_ERR1_MASK)])) |
+           (s->eam_regs[2] & (~s->eam_regs[R_EAM(EAM_PMC0_ERR2_MASK)])) |
+           (s->eam_regs[3] & (~s->eam_regs[R_EAM(EAM_PMC0_ERR3_MASK)])));
+    qemu_set_irq(s->eam_err[0], err_group);
+
+    err_group =
+        !!((s->eam_regs[0] & (~s->eam_regs[R_EAM(EAM_PMC1_ERR0_MASK)])) |
+           (s->eam_regs[1] & (~s->eam_regs[R_EAM(EAM_PMC1_ERR1_MASK)])) |
+           (s->eam_regs[2] & (~s->eam_regs[R_EAM(EAM_PMC1_ERR2_MASK)])) |
+           (s->eam_regs[3] & (~s->eam_regs[R_EAM(EAM_PMC1_ERR3_MASK)])));
+    qemu_set_irq(s->eam_err[1], err_group);
+
+    err_group =
+        !!((s->eam_regs[0] & (~s->eam_regs[R_EAM(EAM_PMC2_ERR0_MASK)])) |
+           (s->eam_regs[1] & (~s->eam_regs[R_EAM(EAM_PMC2_ERR1_MASK)])) |
+           (s->eam_regs[2] & (~s->eam_regs[R_EAM(EAM_PMC2_ERR2_MASK)])) |
+           (s->eam_regs[3] & (~s->eam_regs[R_EAM(EAM_PMC2_ERR3_MASK)])));
+    qemu_set_irq(s->eam_err[2], err_group);
+
+    err_group =
+        !!((s->eam_regs[0] & (~s->eam_regs[R_EAM(EAM_PMC3_ERR0_MASK)])) |
+           (s->eam_regs[1] & (~s->eam_regs[R_EAM(EAM_PMC3_ERR1_MASK)])) |
+           (s->eam_regs[2] & (~s->eam_regs[R_EAM(EAM_PMC3_ERR2_MASK)])) |
+           (s->eam_regs[3] & (~s->eam_regs[R_EAM(EAM_PMC3_ERR3_MASK)])));
+    qemu_set_irq(s->eam_err[3], err_group);
+}
+
 static uint64_t psxc_lpx_slcr_read(void *opaque, hwaddr offset,
                                    unsigned int size)
 {
@@ -7673,6 +7713,18 @@ static uint64_t psxc_lpx_slcr_read(void *opaque, hwaddr offset,
     case A_RPU_PCIL_PSM_STANDBY ... A_RPU_PCIL_PSM_IDS:
         ret = irq_reg_read(&s->rpu_pcil_wfi_irq,
                            offset - A_RPU_PCIL_PSM_STANDBY);
+        break;
+
+    case A_EAM_ERR0_STATUS ... A_EAM_ERR3_STATUS:
+        ret = s->eam_regs[EAM_REG_ADDR(offset) / 4];
+        break;
+
+    case A_EAM_PMC0_ERR0_MASK ... A_EAM_PMC0_ERR3_MASK:
+    case A_EAM_PMC1_ERR0_MASK ... A_EAM_PMC1_ERR3_MASK:
+    case A_EAM_PMC2_ERR0_MASK ... A_EAM_PMC2_ERR3_MASK:
+    case A_EAM_PMC3_ERR0_MASK ... A_EAM_PMC3_ERR3_MASK:
+    case A_EAM_ASU_ERR0_MASK ... A_EAM_ASU_ERR3_MASK:
+        ret = s->eam_regs[EAM_REG_ADDR(offset) / 4];
         break;
 
     default:
@@ -7768,7 +7820,30 @@ static void psxc_lpx_slcr_write(void *opaque, hwaddr offset,
             update_rpu_pcil_wfi_irq(s);
         }
         break;
-
+    case A_EAM_ERR0_STATUS ... A_EAM_ERR3_STATUS:
+        s->eam_regs[EAM_REG_ADDR(offset) / 4] &= ~value;
+        pmxc_lpd_eam_err_update(s);
+        break;
+    case A_EAM_ERR0_TRIG ...  A_EAM_ERR3_TRIG:
+        s->eam_regs[(EAM_REG_ADDR(offset) - 0x20) / 4] = value;
+        pmxc_lpd_eam_err_update(s);
+        break;
+    case A_EAM_PMC0_ERR0_EN ... A_EAM_PMC0_ERR3_EN:
+    case A_EAM_PMC1_ERR0_EN ... A_EAM_PMC1_ERR3_EN:
+    case A_EAM_PMC2_ERR0_EN ... A_EAM_PMC2_ERR3_EN:
+    case A_EAM_PMC3_ERR0_EN ... A_EAM_PMC3_ERR3_EN:
+    case A_EAM_ASU_ERR0_EN ... A_EAM_ASU_ERR3_EN:
+        s->eam_regs[(EAM_REG_ADDR(offset) - 0x20) / 4] &= ~value;
+        pmxc_lpd_eam_err_update(s);
+        break;
+    case A_EAM_PMC0_ERR0_DIS ... A_EAM_PMC0_ERR3_DIS:
+    case A_EAM_PMC1_ERR0_DIS ... A_EAM_PMC1_ERR3_DIS:
+    case A_EAM_PMC2_ERR0_DIS ... A_EAM_PMC2_ERR3_DIS:
+    case A_EAM_PMC3_ERR0_DIS ... A_EAM_PMC3_ERR3_DIS:
+    case A_EAM_ASU_ERR0_DIS ... A_EAM_ASU_ERR3_DIS:
+        s->eam_regs[(EAM_REG_ADDR(offset) - 0x40) / 4] |= value;
+        pmxc_lpd_eam_err_update(s);
+        break;
     default:
         break;
     }
@@ -7915,6 +7990,8 @@ static void psxc_lpx_slcr_realize(DeviceState *dev, Error **errp)
     for (i = 0; i < ARRAY_SIZE(s->core_pwr); i++) {
         qdev_init_gpio_out_named(dev, &s->core_pwr[i].pwr, "pwr-cpu", 1);
     }
+
+    qdev_init_gpio_out_named(dev, s->eam_err, "eam-err", 4);
 
     sysbus_init_irq(sbd, &s->pwr_reset_irq);
 
@@ -8063,6 +8140,7 @@ static const FDTGenericGPIOSet psxc_lpx_slcr_gpios[] = {
             { .name = "pwr-ocm", .fdt_index = 18, .range = 16 },
             { .name = "pwr-rpu-tcm", .fdt_index = 34, .range = 10 },
             { .name = "pwr-gem", .fdt_index = 44, .range = 2 },
+            { .name = "eam-err", .fdt_index = 46, .range = 4},
 
             /* inputs */
             { .name = "apu-wfi", .fdt_index = 64, .range = 8 },
