@@ -949,6 +949,22 @@ static uint64_t int_pmc_mission_itr_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
+static uint64_t axi_slave_switch_rst_postw(RegisterInfo *reg, uint64_t val64)
+{
+    PMC_INT_REGS *s = XILINX_PMC_INT_REGS(reg->opaque);
+    uint32_t val = val64;
+
+    if (!(val & R_NPI_AXI_RAW_RST_N_MASK)) {
+        val = s->regs[R_NPI_AXI];
+    }
+    if (val & R_NPI_AXI_POWER_IDLEREQ_MASK) {
+        val |= R_NPI_AXI_POWER_IDLEACK_MASK | R_NPI_AXI_POWER_IDLE_MASK;
+    } else {
+        val &= ~(R_NPI_AXI_POWER_IDLEACK_MASK | R_NPI_AXI_POWER_IDLE_MASK);
+    }
+    return val;
+}
+
 static const RegisterAccessInfo pmc_int_regs_regs_info[] = {
     {   .name = "IR_STATUS",  .addr = A_IR_STATUS,
         .rsvd = 0xffffffe0,
@@ -1082,42 +1098,52 @@ static const RegisterAccessInfo pmc_int_regs_regs_info[] = {
         .reset = 0x16,
         .rsvd = 0xffffffe0,
         .ro = 0x6,
+        .pre_write = axi_slave_switch_rst_postw,
     },{ .name = "PMCOCM_AXI",  .addr = A_PMCOCM_AXI,
         .reset = 0x16,
         .rsvd = 0xffffffe0,
         .ro = 0x6,
+        .pre_write = axi_slave_switch_rst_postw,
     },{ .name = "PPU1MDMSHD_AXI",  .addr = A_PPU1MDMSHD_AXI,
         .reset = 0x16,
         .rsvd = 0xffffffe0,
         .ro = 0x6,
+        .pre_write = axi_slave_switch_rst_postw,
     },{ .name = "SBI_AXI",  .addr = A_SBI_AXI,
         .reset = 0x16,
         .rsvd = 0xffffffe0,
         .ro = 0x6,
+        .pre_write = axi_slave_switch_rst_postw,
     },{ .name = "PMC_NOC_AXI0",  .addr = A_PMC_NOC_AXI0,
         .reset = 0x16,
         .rsvd = 0xffffffe0,
         .ro = 0x6,
+        .pre_write = axi_slave_switch_rst_postw,
     },{ .name = "PMC_PS_AXI0",  .addr = A_PMC_PS_AXI0,
         .reset = 0x16,
         .rsvd = 0xffffffe0,
         .ro = 0x6,
+        .pre_write = axi_slave_switch_rst_postw,
     },{ .name = "SYSMONROOT_APB",  .addr = A_SYSMONROOT_APB,
         .reset = 0x16,
         .rsvd = 0xffffffe0,
         .ro = 0x6,
+        .pre_write = axi_slave_switch_rst_postw,
     },{ .name = "CFU_APB",  .addr = A_CFU_APB,
         .reset = 0x16,
         .rsvd = 0xffffffe0,
         .ro = 0x6,
+        .pre_write = axi_slave_switch_rst_postw,
     },{ .name = "PMCGLOBALREG_APB",  .addr = A_PMCGLOBALREG_APB,
         .reset = 0x16,
         .rsvd = 0xffffffe0,
         .ro = 0x6,
+        .pre_write = axi_slave_switch_rst_postw,
     },{ .name = "RTC_APB",  .addr = A_RTC_APB,
         .reset = 0x16,
         .rsvd = 0xffffffe0,
         .ro = 0x6,
+        .pre_write = axi_slave_switch_rst_postw,
     },{ .name = "PMC_TZ_CTRL",  .addr = A_PMC_TZ_CTRL,
         .reset = 0xffffffff,
         .rsvd = 0xffc00000,
