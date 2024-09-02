@@ -607,7 +607,7 @@ static void usb_dwc3_realize(DeviceState *dev, Error **errp)
      */
     DEVICE(&s->sysbus_xhci)->id = g_strdup(dev->id);
     s->sysbus_xhci.xhci.numintrs = 4;
-    s->sysbus_xhci.xhci.numslots = 2;
+    s->sysbus_xhci.xhci.numslots = 64;
 
     sysbus_realize(SYS_BUS_DEVICE(&s->sysbus_xhci), &err);
     if (err) {
