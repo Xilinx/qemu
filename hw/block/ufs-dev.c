@@ -438,7 +438,7 @@ static void ufs_desc_write(UFSDev *s, upiu_pkt *pkt, uint16_t len,
     };
     if (len == 0) {
         qemu_log_mask(LOG_GUEST_ERROR, "Write request with len == 0 received");
-    } else if (desc && !(desc_len != len)) {
+    } else if (desc && (desc_len != len)) {
         /*
          * Error: Valid IDN but Invalid LENGTH
          */
@@ -758,7 +758,7 @@ static void ufs_dev_receive_data(ufshcIF *ifs, void *data, uint16_t len,
         }
     }
     if (task) {
-        switch (UPIU_TAG(pkt)) {
+        switch (UPIU_TT(pkt)) {
         case TRNS_DATA_OUT:
             break;
         case TRNS_QUERY_REQ:
