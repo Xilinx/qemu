@@ -1480,6 +1480,7 @@ bool xlnx_ams_sat_config_by_root_id(Object *sat, xlnx_ams_sensor_t *si)
     nr = si->meas_id;
     memset(si, 0, sizeof(*si));
     si->meas_id = nr;
+    si->root_id = key;
     return false;
 }
 
