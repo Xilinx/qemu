@@ -3400,8 +3400,11 @@ typedef struct PMCSysMon {
      * are not visible to software.
      */
     PMCSysMon_TempAcc temp_sat_acc[R_TEMP_SAT_COUNT];
+    uint32_t temp_sat_set[CHANNEL_WCNT(R_TEMP_SAT_COUNT)];
     uint32_t temp_min_min;
     uint32_t temp_min_max;
+    unsigned temp_min_tid;
+    unsigned temp_max_tid;
 
     /*
      * Flag to track 'is defined yet' state of min/max, such
@@ -3813,6 +3816,11 @@ static void pmc_sysmon_temp_update_alarm(PMCSysMon *s,
 
     bool windowed = !(s->regs[R_ALARM_CONFIG] & mode_mask);
 
+    /* Suppress alarm until min/max has been established */
+    if (!s->temp_min_max_ready) {
+        return;
+    }
+
     if (q8_7_int(s->regs[R_DEVICE_TEMP_MAX]) > th_hi) {
         pmc_sysmon_event_set(s, isr_mask);        /* too hot! */
         return;
@@ -3888,10 +3896,103 @@ static bool pmc_sysmon_temp_set_max(uint32_t *reg, uint32_t val)
     return false;
 }
 
-static void pmc_sysmon_temp_init_min_max(PMCSysMon *s, uint32_t val)
+static unsigned pmc_sysmon_temp_sat_reg(unsigned tid)
+{
+    assert(tid < R_TEMP_SAT_COUNT);
+
+    switch (tid) {
+    case R_TEMP_LPD_TID:
+        return R_TEMP_LPD;
+    case R_TEMP_FPD_TID:
+        return R_TEMP_FPD;
+    default:
+        return R_TEMP_SAT_FIRST + tid;
+    }
+}
+
+static void pmc_sysmon_temp_refresh_device(PMCSysMon *s)
+{
+    uint32_t *r_min = &s->regs[R_DEVICE_TEMP_MIN];
+    uint32_t *r_max = &s->regs[R_DEVICE_TEMP_MAX];
+    unsigned tid;
+
+    *r_min = Q8_7_MAX;
+    *r_max = Q8_7_MIN;
+    for (tid = 0; tid < R_TEMP_SAT_COUNT; tid++) {
+        unsigned nr;
+        uint32_t sv;
+
+        if (!CHANNEL_BIT(s->temp_sat_set, tid)) {
+            continue; /* measurement unavailable */
+        }
+
+        nr = pmc_sysmon_temp_sat_reg(tid);
+        sv = s->regs[nr];
+        if (pmc_sysmon_temp_set_min(r_min, sv)) {
+            s->temp_min_tid = tid;
+        }
+        if (pmc_sysmon_temp_set_max(r_max, sv)) {
+            s->temp_max_tid = tid;
+        }
+    }
+}
+
+static bool pmc_sysmon_temp_update_device(PMCSysMon *s,
+                                          unsigned tid, uint32_t val)
+{
+    bool changed = false;
+    bool refresh = false;
+
+    /*
+     * In real hardware, R_DEVICE_TEMP_MIN/_MAX are actually refreshed
+     * at the end of each report cycle, where all satellites report
+     * their temperature measurements.  That is:
+     *   _TEMP_MIN = min(all measurements reported in a cycle)
+     *   _TEMP_MAX = max(all measurements reported in a cycle)
+     *
+     * However, the periodic report cycles are not modelled here to
+     * avoid unreliable periodic timer. Instead, once a temp-sat is
+     * set, the injected measurement is considered unchanged for all
+     * subsequent cycles.
+     *
+     * So, simulate the refresh with minimal overhead by tracking
+     * the TIDs of the current extremes:
+     * 1/ If the given <tid, val> alters an extreme, it is taken as
+     *    the new extreme.
+     * 2/ If the given <tid, val> does not alter an extreme AND
+     *    the <tid> is not the same as that of the "current" extreme,
+     *    nothing changes, and all is good.
+     * 3/ If the given <tid, val> does not alter an extreme BUT
+     *    the <tid> is the same as that of the "current" extreme,
+     *    it means there is a change of coolest/hottest spots. Thus,
+     *    a full re-sort takes place to find the new extremes.
+     */
+    if (pmc_sysmon_temp_set_min(&s->regs[R_DEVICE_TEMP_MIN], val)) {
+        changed |= true;
+        refresh |= s->temp_min_tid == tid;
+        s->temp_min_tid = tid;
+    }
+    if (pmc_sysmon_temp_set_max(&s->regs[R_DEVICE_TEMP_MAX], val)) {
+        changed |= true;
+        refresh |= s->temp_max_tid == tid;
+        s->temp_max_tid = tid;
+    }
+
+    if (refresh) {
+        pmc_sysmon_temp_refresh_device(s);
+    }
+
+    return changed;
+}
+
+static void pmc_sysmon_temp_init_min_max(PMCSysMon *s,
+                                         unsigned tid, uint32_t val)
 {
     s->regs[R_DEVICE_TEMP_MIN] = val;
     s->regs[R_DEVICE_TEMP_MAX] = val;
+    s->temp_min_tid = tid;
+    s->temp_max_tid = tid;
+
     s->regs[R_DEVICE_TEMP_MAX_MAX] = val;
     s->temp_min_min = val;
     s->temp_min_max = val;
@@ -3899,18 +4000,18 @@ static void pmc_sysmon_temp_init_min_max(PMCSysMon *s, uint32_t val)
     s->temp_min_max_ready = true;
 }
 
-static bool pmc_sysmon_temp_update_min_max(PMCSysMon *s, uint32_t val)
+static bool pmc_sysmon_temp_update_min_max(PMCSysMon *s,
+                                           unsigned tid, uint32_t val)
 {
     bool changed = false;
     uint32_t t_min;
 
     if (!s->temp_min_max_ready) {
-        pmc_sysmon_temp_init_min_max(s, val);
+        pmc_sysmon_temp_init_min_max(s, tid, val);
         return true;
     }
 
-    changed |= pmc_sysmon_temp_set_min(&s->regs[R_DEVICE_TEMP_MIN], val);
-    changed |= pmc_sysmon_temp_set_max(&s->regs[R_DEVICE_TEMP_MAX], val);
+    changed |= pmc_sysmon_temp_update_device(s, tid, val);
 
     pmc_sysmon_temp_set_max(&s->regs[R_DEVICE_TEMP_MAX_MAX],
                             s->regs[R_DEVICE_TEMP_MAX]);
@@ -3926,27 +4027,13 @@ static bool pmc_sysmon_temp_update_min_max(PMCSysMon *s, uint32_t val)
 static void pmc_sysmon_temp_reset_min_max(PMCSysMon *s)
 {
     s->temp_min_max_ready = false;
-    s->temp_min_min = Q8_7_MIN;
-    s->temp_min_max = Q8_7_MIN;
-    s->regs[R_DEVICE_TEMP_MIN_MIN] = Q8_7_MIN;
-    s->regs[R_DEVICE_TEMP_MAX_MAX] = Q8_7_MAX;
+    s->temp_min_min = Q8_7_MAX;
+    s->temp_min_max = Q8_7_MAX;
+    s->regs[R_DEVICE_TEMP_MIN_MIN] = Q8_7_MAX;
+    s->regs[R_DEVICE_TEMP_MAX_MAX] = Q8_7_MIN;
 
     pmc_sysmon_event_clear(s, R_REG_ISR_TEMP_MASK);
     pmc_sysmon_event_clear(s, R_REG_ISR_OT_MASK);
-}
-
-static unsigned pmc_sysmon_temp_sat_reg(unsigned tid)
-{
-    assert(tid < R_TEMP_SAT_COUNT);
-
-    switch (tid) {
-    case R_TEMP_LPD_TID:
-        return R_TEMP_LPD;
-    case R_TEMP_FPD_TID:
-        return R_TEMP_FPD;
-    default:
-        return R_TEMP_SAT_FIRST + tid;
-    }
 }
 
 static unsigned pmc_sysmon_temp_sat_avg_count(PMCSysMon *s)
@@ -3977,19 +4064,30 @@ static void pmc_sysmon_temp_sat_reset_avg(PMCSysMon *s, unsigned tid)
     s->temp_sat_acc[tid].count = 0;
 }
 
+static void pmc_sysmon_temp_sat_set(PMCSysMon *s, unsigned tid, uint32_t val)
+{
+    unsigned reg = pmc_sysmon_temp_sat_reg(tid);
+
+    s->regs[reg] = val;
+    CHANNEL_BIT_SET(s->temp_sat_set, tid);
+
+    if (pmc_sysmon_temp_update_min_max(s, tid, val)) {
+        pmc_sysmon_temp_update_alarms(s);
+    }
+}
+
 static void pmc_sysmon_temp_sat_avg(PMCSysMon *s, unsigned tid, uint32_t val)
 {
-    unsigned reg, avg_cnt, run_cnt;
+    unsigned avg_cnt, run_cnt;
     bool avg_en;
     PMCSysMon_TempAcc *avg_acc;
 
-    reg = pmc_sysmon_temp_sat_reg(tid);
     avg_cnt = pmc_sysmon_temp_sat_avg_count(s);
 
     avg_en = (avg_cnt > 1) && CHANNEL_BIT(&s->regs[R_EN_AVG_REG8], tid);
 
     if (!avg_en) {
-        s->regs[reg] = val;  /* avg. disabled or sample of 1 */
+        pmc_sysmon_temp_sat_set(s, tid, val); /* avg. disabled or sample of 1 */
         return;
     }
 
@@ -4003,7 +4101,8 @@ static void pmc_sysmon_temp_sat_avg(PMCSysMon *s, unsigned tid, uint32_t val)
         /* Enough accumulated; reset for next round */
         int avg = avg_acc->accum / run_cnt;
 
-        s->regs[reg] = q8_7_from_int(avg);
+        val = q8_7_from_int(avg);
+        pmc_sysmon_temp_sat_set(s, tid, val);
         pmc_sysmon_temp_sat_reset_avg(s, tid);
     }
 }
@@ -4013,10 +4112,6 @@ static void pmc_sysmon_temp_set(PMCSysMon *s, unsigned tid, uint32_t val)
     val &= Q8_7_MASK;
 
     pmc_sysmon_temp_sat_avg(s, tid, val);
-
-    if (pmc_sysmon_temp_update_min_max(s, val)) {
-        pmc_sysmon_temp_update_alarms(s);
-    }
 }
 
 static void pmc_sysmon_temp_dev_th_postw(RegisterInfo *reg, uint64_t val64)
@@ -8706,8 +8801,10 @@ static void pmc_sysmon_reset_hold(Object *dev)
     reg_isr_update_irq(s);
 
     memset(s->ams_sat_ready, 0, CHANNEL_BCNT(s->ams_sat_len));
+    memset(s->temp_sat_set, 0, sizeof(s->temp_sat_set));
 
     pmc_sysmon_rewnd_injections(s);
+    pmc_sysmon_temp_reset_min_max(s);
 }
 
 static void pmc_sysmon_reset_exit(Object *dev)
