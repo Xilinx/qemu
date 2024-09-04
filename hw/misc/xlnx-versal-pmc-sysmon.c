@@ -3248,6 +3248,10 @@ REG32(SSC_MEASURE_IF, 0x4000)
     } while (0)
 #define CHANNEL_ID(_B, _R)      (((_R) - (_B)) * 32)
 
+/* Size, in bytes, of WORD array needed to host '_N' bits */
+#define CHANNEL_WCNT(_N)        (CHANNEL_WORD((_N) - 1) + 1)
+#define CHANNEL_BCNT(_N)        (CHANNEL_WCNT(_N) * sizeof(uint32_t))
+
 /* Access voltage registers by channel id */
 #define R_SUPPLY(_I)            (R_SUPPLY0 + (_I))
 #define R_SUPPLY_MIN(_I)        (R_SUPPLY0_MIN + (_I))
@@ -3278,10 +3282,14 @@ enum PMCSysMon_const {
     R_TEMP_SAT_FIRST = R_TEMP_SAT1,
     R_TEMP_SAT_LAST  = R_TEMP_SAT62,
     R_TEMP_SAT_COUNT = 64, /* plus TEMP_FPD and TEMP_LPD */
+    R_TEMP_FPD_TID   = 62,
+    R_TEMP_LPD_TID   = 63,
 
     R_VCCINT_SAT_FIRST = R_VCCINT_SAT1,
     R_VCCINT_SAT_LAST  = R_VCCINT_SAT62,
     R_VCCINT_SAT_COUNT = (R_VCCINT_SAT_LAST - R_VCCINT_SAT_FIRST + 1),
+    R_VCCINT_FPD_VID   = 62,
+    R_VCCINT_LPD_VID   = 63,
 
     R_SUPPLY_COUNT   = (R_SUPPLY159 + 1 - R_SUPPLY0),
 
@@ -3345,6 +3353,7 @@ typedef struct PMCSysMon_MeasInj {
     } meas_val;
     xlnx_ams_sensor_t info;
     bool by_root_id;
+    bool played;
     QTAILQ_ENTRY(PMCSysMon_MeasInj) link;
 } PMCSysMon_MeasInj;
 
@@ -3399,7 +3408,7 @@ typedef struct PMCSysMon {
      * that the first sample will be min and max.
      */
     bool temp_min_max_ready;
-    uint32_t volt_min_max_ready[(R_SUPPLY_COUNT + 31) / 32];
+    uint32_t volt_min_max_ready[CHANNEL_WCNT(R_SUPPLY_COUNT)];
 
     uint32_t regs[PMC_SYSMON_R_MAX];
     RegisterInfo regs_info[PMC_SYSMON_R_MAX];
@@ -3931,9 +3940,9 @@ static unsigned pmc_sysmon_temp_sat_reg(unsigned tid)
     assert(tid < R_TEMP_SAT_COUNT);
 
     switch (tid) {
-    case 63:
+    case R_TEMP_LPD_TID:
         return R_TEMP_LPD;
-    case 62:
+    case R_TEMP_FPD_TID:
         return R_TEMP_FPD;
     default:
         return R_TEMP_SAT_FIRST + tid;
@@ -8305,18 +8314,6 @@ static void pmc_sysmon_reg_write(void *opaque, hwaddr addr, uint64_t data,
     }
 }
 
-static void pmc_sysmon_reset(DeviceState *dev)
-{
-    PMCSysMon *s = PMC_SYSMON(dev);
-    unsigned int i;
-
-    for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        register_reset(&s->regs_info[i]);
-    }
-
-    reg_isr_update_irq(s);
-}
-
 static const MemoryRegionOps pmc_sysmon_ops = {
     .read = register_read_memory,
     .write = pmc_sysmon_reg_write,
@@ -8342,8 +8339,7 @@ static void pmc_sysmon_realize(DeviceState *dev, Error **errp)
         s->ams_sat[1] = s->ams_sat1;
     }
 
-    nr = CHANNEL_WORD(s->ams_sat_len - 1) + 1;
-    s->ams_sat_ready = g_malloc0(nr * sizeof(uint32_t));
+    s->ams_sat_ready = g_malloc0(CHANNEL_BCNT(s->ams_sat_len));
 
     for (nr = 0; nr < s->ams_sat_len; nr++) {
         if (s->ams_sat[nr]) {
@@ -8362,6 +8358,12 @@ static void pmc_sysmon_realize(DeviceState *dev, Error **errp)
 static void pmc_sysmon_finalize(Object *obj)
 {
     PMCSysMon *s = PMC_SYSMON(obj);
+    PMCSysMon_MeasInj *item, *next;
+
+    QTAILQ_FOREACH_SAFE(item, &s->meas_injections, link, next) {
+        QTAILQ_REMOVE(&s->meas_injections, item, link);
+        g_free(item);
+    }
 
     g_free(s->ams_sat);
     g_free(s->ams_sat_ready);
@@ -8423,6 +8425,30 @@ static bool pmc_sysmon_sat_cfg_by_root_id(PMCSysMon *s, xlnx_ams_sensor_t *si)
 {
     unsigned nr;
 
+    /* Non-configurable sensors are already available */
+    switch (si->meas_id) {
+    case XLNX_AMS_SAT_MEAS_TYPE_TSENS:
+        switch (si->root_id) {
+        case R_TEMP_FPD_TID:
+        case R_TEMP_LPD_TID:
+            si->amux_ctrl = 0;
+            si->mode = 0;
+            si->meas_bipolar = 1;
+            return true;
+        }
+        break;
+    case XLNX_AMS_SAT_MEAS_TYPE_VCCINT:
+        switch (si->root_id) {
+        case R_VCCINT_FPD_VID:
+        case R_VCCINT_LPD_VID:
+            si->amux_ctrl = 0;
+            si->mode = 0;
+            si->meas_bipolar = 0;
+            return true;
+        }
+        break;
+    }
+
     for (nr = 0; nr < s->ams_sat_len; nr++) {
         if (pmc_sysmon_sat_is_ready(s, nr)
             && xlnx_ams_sat_config_by_root_id(s->ams_sat[nr], si)) {
@@ -8470,10 +8496,24 @@ static void pmc_sysmon_set_mfp_meas(PMCSysMon *s,
     }
 }
 
+static void pmc_sysmon_play_measurement(PMCSysMon *s, PMCSysMon_MeasInj *meas)
+{
+    xlnx_ams_sensor_t *si = &meas->info;
+
+    /* Apply the injection then mark it as played */
+    if (si->meas_id == XLNX_AMS_SAT_MEAS_TYPE_TSENS) {
+        pmc_sysmon_temp_set(s, si->root_id, meas->meas_val.q8_7);
+    } else {
+        pmc_sysmon_set_mfp_meas(s, si, meas->meas_val.flt, NULL);
+    }
+
+    meas->played = true;
+}
+
 static void pmc_sysmon_play_injections(PMCSysMon *s, unsigned instance_id)
 {
     unsigned nr, base = 0, stop = s->ams_sat_len;
-    PMCSysMon_MeasInj *item, *next;
+    PMCSysMon_MeasInj *item;
 
     if (instance_id < stop) {
         if (!pmc_sysmon_sat_is_ready(s, instance_id)) {
@@ -8484,55 +8524,98 @@ static void pmc_sysmon_play_injections(PMCSysMon *s, unsigned instance_id)
         stop = base + 1;
     }
 
-    QTAILQ_FOREACH_SAFE(item, &s->meas_injections, link, next) {
+    QTAILQ_FOREACH(item, &s->meas_injections, link) {
         bool (*get_cfg)(Object *, xlnx_ams_sensor_t *);
         xlnx_ams_sensor_t *si = &item->info;
-        bool found = false;
+
+        if (item->played) {
+            continue;  /* Skip it to avoid duplicate replay */
+        }
 
         get_cfg = item->by_root_id ? xlnx_ams_sat_config_by_root_id
                                    : xlnx_ams_sat_config_by_spec;
 
         for (nr = base; nr < stop; nr++) {
             if (pmc_sysmon_sat_is_ready(s, nr) && get_cfg(s->ams_sat[nr], si)) {
-                found = true;
+                pmc_sysmon_play_measurement(s, item);
                 break;
             }
         }
-
-        if (!found) {
-            continue;  /* Keep it in the list for next replay round */
-        }
-
-        /* Apply the injection then delete from the replay list */
-        if (si->meas_id == XLNX_AMS_SAT_MEAS_TYPE_TSENS) {
-            pmc_sysmon_temp_set(s, si->root_id, item->meas_val.q8_7);
-        } else {
-            pmc_sysmon_set_mfp_meas(s, si, item->meas_val.flt, NULL);
-        }
-
-        QTAILQ_REMOVE(&s->meas_injections, item, link);
-        g_free(item);
     }
 }
 
-static void pmc_sysmon_defer_injection(PMCSysMon *s,
-                                       const xlnx_ams_sensor_t *si,
-                                       float val, bool by_root_id)
+static void pmc_sysmon_rewnd_injections(PMCSysMon *s)
 {
     PMCSysMon_MeasInj *item;
 
+    QTAILQ_FOREACH(item, &s->meas_injections, link) {
+        item->played = false;
+    }
+}
+
+static void pmc_sysmon_store_injection(PMCSysMon *s,
+                                       const xlnx_ams_sensor_t *si,
+                                       float val, bool by_root_id, bool played)
+{
+    PMCSysMon_MeasInj *item;
+
+    /*
+     * Store only injections made before SYSMON is realized, and
+     * treat those injections as "initial" measurements, i.e., values
+     * to be played/replayed upon a satellite's 1st activation after
+     * a reset.
+     *
+     * On the other hand, don't store injections made after SYSMON is
+     * realized, because:
+     * 1/ After post-reset's 1st activation, guest software may choose
+     *    to completely reconfig some or all sensors, and
+     * 2/ Post-realized injections are expected to match the reconfigured
+     *    sensors, and potentially mismatch to initial configs used for
+     *    post-reset's 1st activation, and
+     * 3/ There is no reliable way to decide when to replay those
+     *    injections intended for reconfigured sensors.
+     */
+    if (qdev_is_realized(DEVICE(s))) {
+        return;
+    }
+
     item = g_new0(PMCSysMon_MeasInj, 1);
+    item->played = played;
     item->by_root_id = by_root_id;
-    item->meas_val.flt = val;
+    if (si->meas_id == XLNX_AMS_SAT_MEAS_TYPE_TSENS) {
+        item->meas_val.q8_7 = q8_7_from_float(val);
+    } else {
+        item->meas_val.flt = val;
+    }
     item->info = *si;
 
     QTAILQ_INSERT_TAIL(&s->meas_injections, item, link);
+}
+
+static void pmc_sysmon_temp_apply_by_root_id(PMCSysMon *s, unsigned tid,
+                                             float val, Error **errp)
+{
+    bool played = false;
+    xlnx_ams_sensor_t info = {
+        .meas_id = XLNX_AMS_SAT_MEAS_TYPE_TSENS,
+        .root_id = tid,
+    };
+
+    if (pmc_sysmon_sat_cfg_by_root_id(s, &info)) {
+        uint32_t q = q8_7_from_float(val);
+
+        pmc_sysmon_temp_set(s, tid, q);
+        played = true;
+    }
+
+    pmc_sysmon_store_injection(s, &info, val, true, played);
 }
 
 static void pmc_sysmon_volt_apply_by_root_id(PMCSysMon *s, unsigned reg,
                                              float val, Error **errp)
 {
     xlnx_ams_sensor_t info;
+    bool played = false;
 
     /*
      * By-root-id voltage injection is a quick test, useful when
@@ -8553,18 +8636,20 @@ static void pmc_sysmon_volt_apply_by_root_id(PMCSysMon *s, unsigned reg,
         info.root_id = reg - R_SUPPLY0;
     }
 
-    if (!pmc_sysmon_sat_cfg_by_root_id(s, &info)) {
-        /* Add to replay list pending for config by guest */
-        pmc_sysmon_defer_injection(s, &info, val, true);
-        return;
+    if (pmc_sysmon_sat_cfg_by_root_id(s, &info)) {
+        pmc_sysmon_set_mfp_meas(s, &info, val, errp);
+        played = errp && !*errp;
     }
 
-    pmc_sysmon_set_mfp_meas(s, &info, val, errp);
+    /* Save it for replay */
+    pmc_sysmon_store_injection(s, &info, val, true, played);
 }
 
 static void pmc_sysmon_volt_apply_by_spec(PMCSysMon *s, xlnx_ams_sensor_t *si,
                                           float val, Error **errp)
 {
+    bool played = false;
+
     /*
      * By-spec voltage injection is preferred for QEMU-automation
      * because a sensor's spec is stable for a design.
@@ -8581,13 +8666,51 @@ static void pmc_sysmon_volt_apply_by_spec(PMCSysMon *s, xlnx_ams_sensor_t *si,
      * available, the root-id can be used to identify the
      * user-friendly names of the sensors.
      */
-    if (!pmc_sysmon_sat_cfg_by_spec(s, si)) {
-        /* Add to replay list pending for config by guest */
-        pmc_sysmon_defer_injection(s, si, val, false);
-        return;
+    if (pmc_sysmon_sat_cfg_by_spec(s, si)) {
+        pmc_sysmon_set_mfp_meas(s, si, val, errp);
+        played = errp && !*errp;
     }
 
-    pmc_sysmon_set_mfp_meas(s, si, val, errp);
+    /* Save it for replay */
+    pmc_sysmon_store_injection(s, si, val, false, played);
+}
+
+static void pmc_sysmon_reset_hold(Object *dev)
+{
+    PMCSysMon *s = PMC_SYSMON(dev);
+    unsigned int i;
+
+    for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
+        register_reset(&s->regs_info[i]);
+    }
+
+    reg_isr_update_irq(s);
+
+    memset(s->ams_sat_ready, 0, CHANNEL_BCNT(s->ams_sat_len));
+
+    pmc_sysmon_rewnd_injections(s);
+}
+
+static void pmc_sysmon_reset_exit(Object *dev)
+{
+    PMCSysMon *s = PMC_SYSMON(dev);
+    PMCSysMon_MeasInj *item;
+
+    /*
+     * Play measurements for non-configurable sensors, if any, by
+     * their root ids
+     */
+    QTAILQ_FOREACH(item, &s->meas_injections, link) {
+        xlnx_ams_sensor_t *si = &item->info;
+
+        if (!item->by_root_id) {
+            continue;
+        }
+
+        if (pmc_sysmon_sat_cfg_by_root_id(s, si)) {
+            pmc_sysmon_play_measurement(s, item);
+        }
+    }
 }
 
 static void pmc_sysmon_temp_cfg_prop_get(Object *obj, Visitor *v,
@@ -8699,7 +8822,6 @@ static void pmc_sysmon_temp_prop_set(Object *obj, Visitor *v,
     unsigned tid = (uintptr_t)opaque;
 
     double val;
-    uint32_t q;
 
     visit_type_number(v, name, &val, errp);
     if (*errp) {
@@ -8713,8 +8835,7 @@ static void pmc_sysmon_temp_prop_set(Object *obj, Visitor *v,
         return;
     }
 
-    q = q8_7_from_float(val);
-    pmc_sysmon_temp_set(s, tid, q);
+    pmc_sysmon_temp_apply_by_root_id(s, tid, val, errp);
 }
 
 static void pmc_sysmon_volt_prop_set(Object *obj, Visitor *v,
@@ -8822,6 +8943,14 @@ static void pmc_sysmon_temp_prop_add(ObjectClass *klass)
 
     static const char type[] = "Celsius:signed-fixed-point-decimal";
 
+    /*
+     * There is one, and only one, temp sensor in each satellite, whose
+     * root-id, n (as in TEMP_SATn), is configurable.
+     *
+     * However, there is no reliable way to specify a temp sensor other
+     * than the root-id. So, only set-by-root-id is supported, where each
+     * satellite temp's root-id displayed by temp_sat[*]-cfg.
+     */
     for (tid = 0; tid < R_TEMP_SAT_COUNT - 2; tid++) {
         void *opaque = (void *)(uintptr_t)tid;
 
@@ -8884,6 +9013,14 @@ static void pmc_sysmon_volt_prop_add(ObjectClass *klass)
                                   opaque);
     }
 
+    /*
+     * There is one, and only one, vccint sensor in each satellite, whose
+     * root-id, n (as in VCCINT_SATn), is configurable.
+     *
+     * However, there is no reliable way to specify a vccint sensor other
+     * than the root-id. So, only set-by-root-id is supported, where each
+     * satellite vccint's root-id displayed by vccint_sat[*]-cfg.
+     */
     for (vid = 0; vid < R_VCCINT_SAT_COUNT; vid++) {
         void *opaque = (void *)(uintptr_t)(R_VCCINT_SAT_FIRST + vid);
         char name[32];
@@ -8938,8 +9075,11 @@ static const VMStateDescription vmstate_pmc_sysmon = {
 static void pmc_sysmon_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
 
-    dc->reset = pmc_sysmon_reset;
+    rc->phases.hold = pmc_sysmon_reset_hold;
+    rc->phases.exit = pmc_sysmon_reset_exit;
+
     dc->realize = pmc_sysmon_realize;
     dc->vmsd = &vmstate_pmc_sysmon;
     device_class_set_props(dc, pmc_sysmon_properties);
