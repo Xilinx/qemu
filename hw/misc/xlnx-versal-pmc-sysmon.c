@@ -4301,7 +4301,16 @@ static void pmc_sysmon_volt_set(PMCSysMon *s, unsigned vid, uint32_t val)
 
 static void pmc_sysmon_vccint_set(PMCSysMon *s, unsigned vid, uint32_t val)
 {
-    s->regs[R_VCCINT_SAT1 + vid] = val;
+    switch (vid) {
+    case R_VCCINT_FPD_VID:
+        s->regs[R_VCCINT_FPD] = val;
+        break;
+    case R_VCCINT_LPD_VID:
+        s->regs[R_VCCINT_LPD] = val;
+        break;
+    default:
+        s->regs[R_VCCINT_SAT1 + vid] = val;
+    }
 }
 
 static void pmc_sysmon_volt_en_avg_reg_postw(RegisterInfo *reg, uint64_t val64)
@@ -8629,10 +8638,20 @@ static void pmc_sysmon_volt_apply_by_root_id(PMCSysMon *s, unsigned reg,
      * is preferred because a sensor's spec is stable for a design.
      */
     memset(&info, 0, sizeof(info));
-    if (reg >= R_VCCINT_SAT_FIRST && reg <= R_VCCINT_SAT_LAST) {
+    switch (reg) {
+    case R_VCCINT_FPD:
+        info.meas_id = XLNX_AMS_SAT_MEAS_TYPE_VCCINT;
+        info.root_id = R_VCCINT_FPD_VID;
+        break;
+    case R_VCCINT_LPD:
+        info.meas_id = XLNX_AMS_SAT_MEAS_TYPE_VCCINT;
+        info.root_id = R_VCCINT_LPD_VID;
+        break;
+    case R_VCCINT_SAT_FIRST ... R_VCCINT_SAT_LAST:
         info.meas_id = XLNX_AMS_SAT_MEAS_TYPE_VCCINT;
         info.root_id = reg - R_VCCINT_SAT_FIRST;
-    } else {
+        break;
+    default:
         info.root_id = reg - R_SUPPLY0;
     }
 
@@ -9039,6 +9058,18 @@ static void pmc_sysmon_volt_prop_add(ObjectClass *klass)
                                   NULL, /* non-settable */
                                   opaque);
     }
+
+    pmc_sysmon_class_prop_add(klass, "VCCINT_FPD", type,
+                              "PS FPD vccint in volts",
+                              pmc_sysmon_volt_prop_get,
+                              pmc_sysmon_volt_prop_set,
+                              (void *)(uintptr_t)R_VCCINT_FPD);
+
+    pmc_sysmon_class_prop_add(klass, "VCCINT_LPD", type,
+                              "PS LPD vccint in volts",
+                              pmc_sysmon_volt_prop_get,
+                              pmc_sysmon_volt_prop_set,
+                              (void *)(uintptr_t)R_VCCINT_LPD);
 
     pmc_sysmon_class_prop_add(klass, "set-supplies",
                               "list of amux_mode_sw1_sw0,volt pairs",
