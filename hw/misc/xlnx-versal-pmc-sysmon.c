@@ -3341,6 +3341,8 @@ enum PMCSysMon_const {
 #define MFP19_F_UMIN    MFP19_F_INT(MFP19_I_UMIN)
 #define MFP19_F_UMAX    MFP19_F_INT(MFP19_I_UMAX)
 
+#define PROP_MEAS_FILE  "measurement-file"
+
 typedef struct PMCSysMon_TempAcc {
     uint32_t count:4;   /* samples collected in accum so far */
     int32_t  accum:28;  /* sum of 15 signed Q8.7 values */
@@ -3378,6 +3380,8 @@ typedef struct PMCSysMon {
     uint32_t  ams_sat_len;
 
     Object *tamper_sink;
+
+    char *meas_file;         /* Defer set by -global option */
 
     /*
      * Measurement injection list pending for playback/replay upon
@@ -8457,6 +8461,13 @@ static void pmc_sysmon_realize(DeviceState *dev, Error **errp)
         warn_report("%s.tamper-sink: Missing link disables "
                     "support for alarm events as tampering", p);
     }
+
+    if (s->meas_file) {
+        /* Play set by -global */
+        object_property_parse(OBJECT(s), PROP_MEAS_FILE, s->meas_file, errp);
+        g_free(s->meas_file);
+        s->meas_file = NULL;
+    }
 }
 
 static void pmc_sysmon_finalize(Object *obj)
@@ -9041,6 +9052,129 @@ static void pmc_sysmon_set_supplies_prop_get(Object *obj, Visitor *v,
     g_string_free(str, TRUE);
 }
 
+static void pmc_sysmon_measurement_file_inj(Object *obj, const gchar *line,
+                                            const char *prefix, size_t ln_num)
+{
+    g_auto(GStrv) words = NULL;
+    const char *emsg = NULL;
+    Error *qerr = NULL;
+    size_t k, t;
+
+    union {
+        gchar *words[5];  /* qom-get PATH PROP VAL <End-of-cmd> */
+        struct {
+            gchar *hmp;
+            gchar *path;
+            gchar *prop;
+            gchar *value;
+            gchar *end;
+        };
+    } tok;
+
+    g_assert(obj);
+
+    /* Collect words, with multiple in-between spaces skipped */
+    memset(&tok, 0, sizeof(tok));
+    words = g_strsplit_set(line, " \t", -1);
+    for (t = 0, k = 0; words[k] && (t < ARRAY_SIZE(tok.words)); k++) {
+        if (strlen(words[k])) {
+            tok.words[t++] = words[k];
+        }
+    }
+
+    /*
+     * Silently ignore other HMP cmds to allow same file played to
+     * other objects having similar feature.
+     *
+     * Silently ignore target-object other than self, to:
+     * 1. Prevent this becoming a backdoor to execute arbitary qom-set,
+     * 2. Allow same file played to other objects having similar feature.
+     */
+    if (!tok.hmp) {
+        return;
+    }
+    if (strcmp(tok.hmp, "qom-set")) {
+        return;
+    }
+    if (tok.path) {
+        Object *o = object_resolve_path(tok.path, NULL);
+
+        if (o != obj) {
+            return;
+        }
+    }
+
+    if (!tok.value) {
+        emsg = "Insufficient parameters";
+        goto bad_cmd;
+    }
+    if (tok.end) {
+        emsg = "Too many parameters";
+        goto bad_cmd;
+    }
+
+    /* Execute qom-set */
+    object_property_parse(obj, tok.prop, tok.value, &qerr);
+    if (qerr) {
+        emsg = error_get_pretty(qerr);
+        goto bad_cmd;
+    }
+
+    /* Success! */
+    return;
+
+ bad_cmd:
+    warn_report("%s:%zu: %s.", prefix, ln_num, emsg);
+    error_free(qerr);
+}
+
+static void pmc_sysmon_measurement_file_set(Object *obj, Visitor *v,
+                                            const char *name, void *opaque,
+                                            Error **errp)
+{
+    g_autofree char *prefix = object_get_canonical_path(obj);
+    g_autofree char *fname = NULL;
+    g_autoptr(GError) ferr = NULL;
+    g_auto(GStrv) lines = NULL;
+    gchar *text = NULL;
+    size_t i;
+
+    if (!visit_type_str(v, name, &fname, errp)) {
+        return;
+    }
+
+    if (!prefix) {
+        /* Defer set by -global until realize phase */
+        PMCSysMon *s = PMC_SYSMON(obj);
+
+        g_free(s->meas_file);
+        s->meas_file = fname;
+        fname = NULL;
+        return;
+    }
+
+    text = prefix;
+    prefix = g_strdup_printf("%s." PROP_MEAS_FILE "=%s", prefix, fname);
+    g_free(text);
+
+    if (!g_file_get_contents(fname, &text, NULL, &ferr)) {
+        error_setg(errp, "%s: %s", prefix, ferr->message);
+        return;
+    }
+
+    lines = g_strsplit(text, "\n", -1);
+    g_free(text);
+
+    for (i = 0; lines[i] != NULL; i++) {
+        gchar *line = lines[i];
+
+        g_strstrip(line);
+        if (strlen(line)) {
+            pmc_sysmon_measurement_file_inj(obj, line, prefix, i);
+        }
+    }
+}
+
 static void pmc_sysmon_class_prop_add(ObjectClass *klass,
                                       const char *name,
                                       const char *type,
@@ -9176,6 +9310,15 @@ static void pmc_sysmon_volt_prop_add(ObjectClass *klass)
                               NULL);
 }
 
+static void pmc_sysmon_file_prop_add(ObjectClass *klass)
+{
+    pmc_sysmon_class_prop_add(klass, PROP_MEAS_FILE, "file-path",
+                              "lines of qom-set HMP commands",
+                              NULL, /* no get */
+                              pmc_sysmon_measurement_file_set,
+                              NULL);
+}
+
 static Property pmc_sysmon_properties[] = {
     DEFINE_PROP_UINT32("efuse-transfer-throttle",
                        PMCSysMon, efuse_throttle_ms, 200),
@@ -9215,6 +9358,7 @@ static void pmc_sysmon_class_init(ObjectClass *klass, void *data)
     /* Support temp & volt injection by the 'qom-set' HMP */
     pmc_sysmon_temp_prop_add(klass);
     pmc_sysmon_volt_prop_add(klass);
+    pmc_sysmon_file_prop_add(klass);
 
     /* Sanity-check number format conversion */
     assert_number_formats();
