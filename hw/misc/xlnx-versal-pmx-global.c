@@ -974,8 +974,22 @@ REG32(DEV_AK_PUBLIC_X_PARITY, 0x5740)
 REG32(DEV_AK_PUBLIC_Y_PARITY, 0x5744)
     FIELD(DEV_AK_PUBLIC_Y_PARITY, ERROR, 12, 1)
     FIELD(DEV_AK_PUBLIC_Y_PARITY, VAL, 0, 12)
+REG32(PMX_DOMAIN_ISO_CNTRL, 0x10000)
+    FIELD(PMX_DOMAIN_ISO_CNTRL, VCCAUX_VCCRAM, 18, 1)
+    FIELD(PMX_DOMAIN_ISO_CNTRL, VCCRAM_SOC, 17, 1)
+    FIELD(PMX_DOMAIN_ISO_CNTRL, VCCAUX_SOC, 16, 1)
+    FIELD(PMX_DOMAIN_ISO_CNTRL, PL_SOC, 15, 1)
+    FIELD(PMX_DOMAIN_ISO_CNTRL, PMC_SOC_NPI, 13, 1)
+    FIELD(PMX_DOMAIN_ISO_CNTRL, PMC_PL_CFRAME, 10, 1)
+    FIELD(PMX_DOMAIN_ISO_CNTRL, PMC_LPD, 9, 1)
+    FIELD(PMX_DOMAIN_ISO_CNTRL, PMC_LPD_DFX, 8, 1)
+    FIELD(PMX_DOMAIN_ISO_CNTRL, LPD_PL, 6, 1)
+    FIELD(PMX_DOMAIN_ISO_CNTRL, LPD_PL_TEST, 5, 1)
+    FIELD(PMX_DOMAIN_ISO_CNTRL, FPD_SOC, 2, 1)
+    FIELD(PMX_DOMAIN_ISO_CNTRL, FPD_PL, 1, 1)
+    FIELD(PMX_DOMAIN_ISO_CNTRL, FPD_PL_TEST, 0, 1)
 
-#define PMX_GLOBAL_R_MAX (R_DEV_AK_PUBLIC_Y_PARITY + 1)
+#define PMX_GLOBAL_R_MAX (R_PMX_DOMAIN_ISO_CNTRL + 1)
 #define R_TAMPER_RESP_MAX (R_TAMPER_RESP_13 - R_TAMPER_RESP_0 + 1)
 
 typedef struct PMX_GLOBAL {
@@ -2381,6 +2395,10 @@ static const RegisterAccessInfo pmx_global_regs_info[] = {
         .ro = 0x1fff,
     },{ .name = "DEV_AK_PUBLIC_Y_PARITY",  .addr = A_DEV_AK_PUBLIC_Y_PARITY,
         .ro = 0x1fff,
+    },{ .name = "PMX_DOMAIN_ISO_CNTRL",  .addr = A_PMX_DOMAIN_ISO_CNTRL,
+        .reset = 0xfffff,
+        .rsvd = 0xfff80018,
+        .ro = 0xfff80018,
     }
 };
 
@@ -2399,6 +2417,7 @@ static void pmx_global_reset_enter(Object *obj, ResetType type)
         switch (addr) {
         case A_PMC_MULTI_BOOT:
         case A_PERS_GLOB_GEN_STORAGE0...A_PERS_GLOB_GEN_STORAGE4:
+        case A_PMX_DOMAIN_ISO_CNTRL:
             continue;
         default:
             register_reset(&s->regs_info[i]);
