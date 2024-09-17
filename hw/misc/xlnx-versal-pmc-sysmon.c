@@ -3246,6 +3246,9 @@ REG32(SSC_MEASURE_IF, 0x4000)
 #define CHANNEL_BIT_SET(_RA, _I) do { \
         (_RA)[CHANNEL_WORD(_I)] |= CHANNEL_MASK(_I); \
     } while (0)
+#define CHANNEL_BIT_CLR(_RA, _I) do { \
+        (_RA)[CHANNEL_WORD(_I)] &= ~CHANNEL_MASK(_I); \
+    } while (0)
 #define CHANNEL_ID(_B, _R)      (((_R) - (_B)) * 32)
 
 /* Size, in bytes, of WORD array needed to host '_N' bits */
@@ -3373,7 +3376,6 @@ typedef struct PMCSysMon {
     qemu_irq irq_1;
     uint32_t events;
     uint32_t reg_prev_value;
-    uint32_t voltage_read_wo_data[R_SUPPLY_COUNT / 32];
 
     Object *efuse;
     QEMUTimer efuse_throttle_timer;
@@ -3404,6 +3406,13 @@ typedef struct PMCSysMon {
     QTAILQ_HEAD(, PMCSysMon_MeasInj) meas_injections;
 
     /*
+     * A FIFO for simulation of periodic refresh of NEW_DATA_FLAG{0..4}
+     * without the use of unreliable timer, with [0][] being sticky state.
+     * See pmc_sysmon_new_data_flagx_prew() for detail.
+     */
+    uint32_t ndf_fifo[3][CHANNEL_WORD(R_SUPPLY_COUNT)];
+
+    /*
      * Signed Q15.16 accumulators to avoid repeated encoding
      * and decoding of R_SUPPLYn_AVGCALC.
      */
@@ -3432,8 +3441,6 @@ typedef struct PMCSysMon {
 } PMCSysMon;
 
 static void pmc_sysmon_init_measurements(PMCSysMon *s, unsigned instance_id);
-static void pmc_sysmon_volt_apply_by_root_id(PMCSysMon *s, unsigned reg,
-                                             float val, Error **errp);
 
 static int int_compare(int a, int b)
 {
@@ -4276,21 +4283,86 @@ static void pmc_sysmon_volt_set_alarm(PMCSysMon *s, unsigned vid)
     }
 }
 
-static void pmc_sysmon_volt_set_new(PMCSysMon *s, unsigned vid)
+static void pmc_sysmon_volt_event_new(PMCSysMon *s, unsigned vid, bool set)
 {
-    pmc_sysmon_volt_set_bit(s, R_NEW_DATA_FLAG0, vid);
+    void (*event_update)(PMCSysMon *s, uint32_t isr_mask);
+
+    event_update = set ? pmc_sysmon_event_set : pmc_sysmon_event_clear;
 
     if (vid == ARRAY_FIELD_EX32(s->regs, NEW_DATA_INT_SRC, ADDR_ID0)) {
-        pmc_sysmon_event_set(s, R_REG_ISR_NEW_DATA0_MASK);
+        event_update(s, R_REG_ISR_NEW_DATA0_MASK);
     }
     if (vid == ARRAY_FIELD_EX32(s->regs, NEW_DATA_INT_SRC, ADDR_ID1)) {
-        pmc_sysmon_event_set(s, R_REG_ISR_NEW_DATA1_MASK);
+        event_update(s, R_REG_ISR_NEW_DATA1_MASK);
     }
     if (vid == ARRAY_FIELD_EX32(s->regs, NEW_DATA_INT_SRC, ADDR_ID2)) {
-        pmc_sysmon_event_set(s, R_REG_ISR_NEW_DATA2_MASK);
+        event_update(s, R_REG_ISR_NEW_DATA2_MASK);
     }
     if (vid == ARRAY_FIELD_EX32(s->regs, NEW_DATA_INT_SRC, ADDR_ID3)) {
-        pmc_sysmon_event_set(s, R_REG_ISR_NEW_DATA3_MASK);
+        event_update(s, R_REG_ISR_NEW_DATA3_MASK);
+    }
+}
+
+static void pmc_sysmon_volt_set_new(PMCSysMon *s, unsigned vid)
+{
+    size_t nr;
+
+    /*
+     * Flood a '1' to all rows of NDF fifo.
+     * See comments in pmc_sysmon_new_data_flagx_prew() for detail.
+     */
+    for (nr = 0; nr < ARRAY_SIZE(s->ndf_fifo); nr++) {
+        CHANNEL_BIT_SET(s->ndf_fifo[nr], vid);
+    }
+    pmc_sysmon_volt_set_bit(s, R_NEW_DATA_FLAG0, vid);
+    pmc_sysmon_volt_event_new(s, vid, true);
+}
+
+static void pmc_sysmon_volt_clear_new(PMCSysMon *s, unsigned vid)
+{
+    size_t nr;
+
+    /*
+     * Flood a '0' to all but row 0 of NDF fifo.
+     * See comments in pmc_sysmon_new_data_flagx_prew() for detail.
+     */
+    for (nr = 1; nr < ARRAY_SIZE(s->ndf_fifo); nr++) {
+        CHANNEL_BIT_CLR(s->ndf_fifo[nr], vid);
+    }
+    pmc_sysmon_volt_clear_bit(s, R_NEW_DATA_FLAG0, vid);
+    pmc_sysmon_volt_event_new(s, vid, false);
+}
+
+static void pmc_sysmon_volt_shift_new(PMCSysMon *s, unsigned col)
+{
+    uint32_t *reg = &s->regs[R_NEW_DATA_FLAG0 + col];
+    uint32_t to_0s = *reg, to_1s = *reg;
+    uint32_t *row;
+    int nr;
+
+    /*
+     * Each read shifts the corresponding 32-bit column of the NDF FIFO,
+     * with shifted out data captured in NEW_DATA_FLAG[col] register, i.e.,
+     *     [0][col] => [1][col] => [2][col] => NEW_DATA_FLAG[col]
+     * (with [0][col] remaining intact in each shift).
+     *
+     * See pmc_sysmon_new_data_flagx_prew() for detail.
+     */
+    for (row = reg, nr = ARRAY_SIZE(s->ndf_fifo); nr--; ) {
+        *row = s->ndf_fifo[nr][col];
+        row = &s->ndf_fifo[nr][col];
+    }
+
+    /* Any change from 1->0 is a bug */
+    to_0s = to_0s & ~(*reg);
+    g_assert(!to_0s);
+
+    /* Raise event for those changed from 0->1 */
+    to_1s = ~to_1s & *reg;
+    for (nr = 32 * col; to_1s; to_1s >>= 1, nr++) {
+        if (to_1s & 1) {
+            pmc_sysmon_volt_event_new(s, nr, true);
+        }
     }
 }
 
@@ -4825,21 +4897,66 @@ static uint64_t pmc_sysmon_save_prev_value_prew(RegisterInfo *reg, uint64_t val)
 static uint64_t new_data_flagx_postr(RegisterInfo *reg, uint64_t val)
 {
     PMCSysMon *s = PMC_SYSMON(reg->opaque);
-    int r = (reg->access->addr - A_NEW_DATA_FLAG0) / 4;
-    int i;
+    unsigned col = (reg->access->addr - A_NEW_DATA_FLAG0) / 4;
 
-    if (!val || (s->voltage_read_wo_data[r] > 8)) {
-        if (s->voltage_read_wo_data[r] > 8) {
-            for (i = 0; i < 32 ; i++) {
-                pmc_sysmon_volt_apply_by_root_id(s, R_SUPPLY0 + r * 32 + i,
-                                                (float)1.5, &error_abort);
-            }
-        } else {
-            s->voltage_read_wo_data[r]++;
+    pmc_sysmon_volt_shift_new(s, col);
+    return val;
+}
+
+static uint64_t pmc_sysmon_new_data_flagx_prew(RegisterInfo *reg, uint64_t val)
+{
+    PMCSysMon *s = PMC_SYSMON(reg->opaque);
+    unsigned col = (reg->access->addr - A_NEW_DATA_FLAG0) / 4;
+    unsigned vid;
+    uint32_t v32;
+
+    /*
+     * This is write-1-to-clear register.
+     *
+     * In real hardware, after a write clears a bit (which corresponding
+     * to a VID), the bit will be set again when the satellite configured
+     * with the VID reports a new measurement in the next round of periodic
+     * report cycle.
+     *
+     * In this simulator, a measurement, once set, is considered sticky,
+     * i.e., the same value will be reported in the SUPPLYn register
+     * until a new value is applied. In other words, once a NEW_DATA_FLAGx
+     * bit is cleared, there will be no new measurement report to set the
+     * bit again unless a measurement value is externally injected.
+     *
+     * One potential solution is to use a QEMU timer to simulate the cyclical
+     * reports. However, the use of such a timer is very sensitive to host
+     * loading and thus unreliable.  In particular, the sensitivity is quite
+     * noticeable if the guest software runs in polling mode, by polling
+     * NEW_DATA_FLAG{0..4} registers.
+     *
+     * The chosen solution is to use each polling read as a trigger to
+     * set the cleared bit again. But, it is important to model the
+     * typically observation in real hardware, where once a write clears
+     * a bit, an immediately following read (or 2) shall see the bit clear.
+     *
+     * To make sure the polling reads can observe more than 1 time of the
+     * bit being cleared, a FIFO is used to delay the recovery of the
+     * bit's '1' state:
+     * 1. When a NEW_DATA_FLAG{0..4} is read, the FIFO is shifted by 1
+     *    layer.
+     * 2. When a measurement is applied, the VID's bit is set to '1' in
+     *    all layers of the FIFO, so the bit is always observed to be '1'
+     *    in all subsequent reads of NEW_DATA_FLAG{0..4}.
+     * 3. When the the VID's bit is cleared upon NEW_DATA_FLAG{0..4} being
+     *    written, the VID's bit is set to '0' in all but last layers of
+     *    the FIFO.
+     *
+     * Thus, guest software will be able to observe the VID's bit in '0'
+     * for N reads, where N is the number of layers in FIFO.
+     */
+    for (vid = 32 * col, v32 = val; v32; v32 >>= 1, vid++) {
+        if (v32 & 1) {
+            pmc_sysmon_volt_clear_new(s, vid);
         }
     }
 
-    return s->regs[reg->access->addr / 4];
+    return s->regs[R_NEW_DATA_FLAG0 + col];
 }
 
 static const RegisterAccessInfo pmc_sysmon_regs_info[] = {
@@ -4919,19 +5036,19 @@ static const RegisterAccessInfo pmc_sysmon_regs_info[] = {
     },{ .name = "REG_IXPCM_MEAS_CONF_0",  .addr = A_REG_IXPCM_MEAS_CONF_0,
     },{ .name = "REG_IXPCM_MEAS_CONF_1",  .addr = A_REG_IXPCM_MEAS_CONF_1,
     },{ .name = "NEW_DATA_FLAG0",  .addr = A_NEW_DATA_FLAG0,
-        .w1c = 0xffffffff,
+        .pre_write = pmc_sysmon_new_data_flagx_prew,
         .post_read = new_data_flagx_postr,
     },{ .name = "NEW_DATA_FLAG1",  .addr = A_NEW_DATA_FLAG1,
-        .w1c = 0xffffffff,
+        .pre_write = pmc_sysmon_new_data_flagx_prew,
         .post_read = new_data_flagx_postr,
     },{ .name = "NEW_DATA_FLAG2",  .addr = A_NEW_DATA_FLAG2,
-        .w1c = 0xffffffff,
+        .pre_write = pmc_sysmon_new_data_flagx_prew,
         .post_read = new_data_flagx_postr,
     },{ .name = "NEW_DATA_FLAG3",  .addr = A_NEW_DATA_FLAG3,
-        .w1c = 0xffffffff,
+        .pre_write = pmc_sysmon_new_data_flagx_prew,
         .post_read = new_data_flagx_postr,
     },{ .name = "NEW_DATA_FLAG4",  .addr = A_NEW_DATA_FLAG4,
-        .w1c = 0xffffffff,
+        .pre_write = pmc_sysmon_new_data_flagx_prew,
         .post_read = new_data_flagx_postr,
     },{ .name = "ALARM_FLAG0",  .addr = A_ALARM_FLAG0,
         .w1c = 0xffffffff,
@@ -9021,6 +9138,7 @@ static void pmc_sysmon_reset_hold(Object *dev)
 
     memset(s->ams_sat_ready, 0, CHANNEL_BCNT(s->ams_sat_len));
     memset(s->temp_sat_set, 0, sizeof(s->temp_sat_set));
+    memset(s->ndf_fifo, 0, sizeof(s->ndf_fifo));
 
     pmc_sysmon_rewnd_injections(s);
     pmc_sysmon_temp_reset_min_max(s);
