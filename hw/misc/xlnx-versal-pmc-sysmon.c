@@ -3412,6 +3412,10 @@ typedef struct PMCSysMon {
      */
     uint32_t ndf_fifo[3][CHANNEL_WORD(R_SUPPLY_COUNT)];
 
+    /* One timer for each VID configured in NEW_DATA_INT_SRC. */
+    QEMUTimer ndf_tick[4];
+    uint32_t  ndf_tick_ms;
+
     /*
      * Signed Q15.16 accumulators to avoid repeated encoding
      * and decoding of R_SUPPLYn_AVGCALC.
@@ -4283,6 +4287,48 @@ static void pmc_sysmon_volt_set_alarm(PMCSysMon *s, unsigned vid)
     }
 }
 
+static unsigned pmc_sysmon_volt_event_new_vid(PMCSysMon *s, unsigned event_id)
+{
+    unsigned id_shift = event_id * R_NEW_DATA_INT_SRC_ADDR_ID1_SHIFT;
+    uint32_t pool = s->regs[R_NEW_DATA_INT_SRC];
+
+    g_assert(id_shift <= 24);
+    pool >>= id_shift;
+
+    return FIELD_EX32(pool, NEW_DATA_INT_SRC, ADDR_ID0);
+}
+
+static int pmc_sysmon_volt_event_new_id(PMCSysMon *s, unsigned vid)
+{
+    unsigned i;
+
+    for (i = 0; i < ARRAY_SIZE(s->ndf_tick); i++) {
+        if (pmc_sysmon_volt_event_new_vid(s, i) == vid) {
+            return (int)i;
+        }
+    }
+
+    return -1;
+}
+
+static void pmc_sysmon_volt_event_new_sched(PMCSysMon *s, unsigned vid, bool on)
+{
+    int event_id = pmc_sysmon_volt_event_new_id(s, vid);
+
+    /* Do nothing if vid is not in the event pool */
+    if (event_id < 0) {
+        return;
+    }
+
+    /* Always stop the timer, just in case the kicker is not needed for on */
+    timer_del(&s->ndf_tick[event_id]);
+
+    /* Schedule its kicker only if measurement has applied to VID */
+    if (on && CHANNEL_BIT(s->ndf_fifo[0], vid)) {
+        timer_mod(&s->ndf_tick[event_id], s->ndf_tick_ms);
+    }
+}
+
 static void pmc_sysmon_volt_event_new(PMCSysMon *s, unsigned vid, bool set)
 {
     void (*event_update)(PMCSysMon *s, uint32_t isr_mask);
@@ -4361,9 +4407,51 @@ static void pmc_sysmon_volt_shift_new(PMCSysMon *s, unsigned col)
     to_1s = ~to_1s & *reg;
     for (nr = 32 * col; to_1s; to_1s >>= 1, nr++) {
         if (to_1s & 1) {
+            pmc_sysmon_volt_event_new_sched(s, nr, false);
             pmc_sysmon_volt_event_new(s, nr, true);
         }
     }
+}
+
+static void pmc_sysmon_volt_kick_new(void *opaque, unsigned event_id)
+{
+    PMCSysMon *s = PMC_SYSMON(opaque);
+    unsigned vid = pmc_sysmon_volt_event_new_vid(s, event_id);
+
+    timer_del(&s->ndf_tick[event_id]);
+
+    /* Do nothing if no measurement has applied to VID yet */
+    if (!CHANNEL_BIT(s->ndf_fifo[0], vid)) {
+        return;
+    }
+
+    /* Do nothing if the '1' state has already recovered */
+    if (CHANNEL_BIT(&s->regs[R_NEW_DATA_FLAG0], vid)) {
+        return;
+    }
+
+    /* Fast-track recovery of the '1' state to its NEW_DATA_FLAG */
+    pmc_sysmon_volt_set_new(s, vid);
+}
+
+static void pmc_sysmon_volt_kick_new_0(void *opaque)
+{
+    pmc_sysmon_volt_kick_new(opaque, 0);
+}
+
+static void pmc_sysmon_volt_kick_new_1(void *opaque)
+{
+    pmc_sysmon_volt_kick_new(opaque, 1);
+}
+
+static void pmc_sysmon_volt_kick_new_2(void *opaque)
+{
+    pmc_sysmon_volt_kick_new(opaque, 2);
+}
+
+static void pmc_sysmon_volt_kick_new_3(void *opaque)
+{
+    pmc_sysmon_volt_kick_new(opaque, 3);
 }
 
 static void pmc_sysmon_volt_set_min(uint32_t *reg, uint32_t val)
@@ -4949,10 +5037,15 @@ static uint64_t pmc_sysmon_new_data_flagx_prew(RegisterInfo *reg, uint64_t val)
      *
      * Thus, guest software will be able to observe the VID's bit in '0'
      * for N reads, where N is the number of layers in FIFO.
+     *
+     * In addition to support polling, this also needs to support event
+     * driven, where software waits for interrupt from a VID placed into
+     * NEW_DATA_INT_SRC. In this mode, the use of timer is unavoidable.
      */
     for (vid = 32 * col, v32 = val; v32; v32 >>= 1, vid++) {
         if (v32 & 1) {
             pmc_sysmon_volt_clear_new(s, vid);
+            pmc_sysmon_volt_event_new_sched(s, vid, true);
         }
     }
 
@@ -8707,6 +8800,11 @@ static void pmc_sysmon_finalize(Object *obj)
 {
     PMCSysMon *s = PMC_SYSMON(obj);
     PMCSysMon_MeasInj *item, *next;
+    size_t i;
+
+    for (i = 0; i < ARRAY_SIZE(s->ndf_tick); i++) {
+        timer_free(&s->ndf_tick[i]);
+    }
 
     QTAILQ_FOREACH_SAFE(item, &s->meas_injections, link, next) {
         QTAILQ_REMOVE(&s->meas_injections, item, link);
@@ -8722,6 +8820,19 @@ static void pmc_sysmon_init(Object *obj)
     PMCSysMon *s = PMC_SYSMON(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
     RegisterInfoArray *reg_array;
+    size_t i;
+
+    for (i = 0; i < ARRAY_SIZE(s->ndf_tick); i++) {
+        static QEMUTimerCB * const kicker[ARRAY_SIZE(s->ndf_tick)] = {
+            pmc_sysmon_volt_kick_new_0,
+            pmc_sysmon_volt_kick_new_1,
+            pmc_sysmon_volt_kick_new_2,
+            pmc_sysmon_volt_kick_new_3,
+        };
+
+        g_assert(kicker[i]);
+        timer_init_ms(&s->ndf_tick[i], QEMU_CLOCK_VIRTUAL, kicker[i], s);
+    }
 
     QTAILQ_INIT(&s->meas_injections);
     s->default_volt = 1.5;
@@ -9671,6 +9782,7 @@ static void pmc_sysmon_file_prop_add(ObjectClass *klass)
 
 static Property pmc_sysmon_properties[] = {
     DEFINE_PROP_INT32("default-celsius", PMCSysMon, default_celsius, 25),
+    DEFINE_PROP_UINT32("new-data-flag-timer", PMCSysMon, ndf_tick_ms, 200),
     DEFINE_PROP_UINT32("efuse-transfer-throttle",
                        PMCSysMon, efuse_throttle_ms, 200),
     DEFINE_PROP_LINK("efuse", PMCSysMon, efuse, TYPE_OBJECT, Object *),
