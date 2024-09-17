@@ -366,6 +366,10 @@ REG32(USER_SEQ7, 0x520)
     FIELD(USER_SEQ7, SEQ_CH30, 16, 8)
     FIELD(USER_SEQ7, SEQ_CH29, 8, 8)
     FIELD(USER_SEQ7, SEQ_CH28, 0, 8)
+    SHARED_FIELD(USER_SEQ_CH_NEXT, 8, 8)
+    SHARED_FIELD(USER_SEQ_CH_SLEEP_MODE, 7, 1)
+    SHARED_FIELD(USER_SEQ_CH_END_OF_SEQ, 6, 1)
+    SHARED_FIELD(USER_SEQ_CH_MEAS_ID, 0, 6)
 REG32(MEASURE0_CONFIG, 0x524)
     FIELD(MEASURE0_CONFIG, ADDR_ID, 22, 8)
     FIELD(MEASURE0_CONFIG, MODE, 20, 2)
@@ -791,6 +795,17 @@ static void ams_sat_deep_sleep_update(AMS_SAT *s, bool on)
     }
 }
 
+static bool ams_sat_is_running(AMS_SAT *s)
+{
+    uint32_t pcsr = s->regs[R_REG_PCSR_CONTROL];
+
+    pcsr &= R_REG_PCSR_CONTROL_HOLDSTATE_MASK |
+            R_REG_PCSR_CONTROL_INITSTATE_MASK |
+            R_REG_PCSR_CONTROL_PCOMPLETE_MASK;
+
+    return pcsr == R_REG_PCSR_CONTROL_PCOMPLETE_MASK;
+}
+
 static uint64_t ams_sat_pcsr_control_prew(RegisterInfo *reg, uint64_t val64)
 {
     AMS_SAT *s = XLNX_AMS_SAT(reg->opaque);
@@ -830,8 +845,13 @@ static uint64_t ams_sat_pcsr_control_prew(RegisterInfo *reg, uint64_t val64)
 
     /* Apply actions meaningful only when bits changed from 1 to 0 */
     to_0s = old_val & ~new_val;
-    if (FIELD_EX32(to_0s, REG_PCSR_CONTROL, HOLDSTATE)) {
-        xlnx_ams_root_sat_config_ready(s->ams_root, s->instance);
+    if (FIELD_EX32(to_0s, REG_PCSR_CONTROL, HOLDSTATE) ||
+        FIELD_EX32(to_0s, REG_PCSR_CONTROL, INITSTATE) ||
+        FIELD_EX32(to_1s, REG_PCSR_CONTROL, PCOMPLETE)) {
+        /* All these bits must be in the right state */
+        if (ams_sat_is_running(s)) {
+            xlnx_ams_root_sat_config_ready(s->ams_root, s->instance);
+        }
     }
 
     /* Apply actions for bits based on newly written value */
@@ -1215,7 +1235,45 @@ static void xlnx_ams_sat_init(Object *obj)
     sysbus_init_irq(sbd, &s->irq_1);
 }
 
-static void ams_sat_fill_sensor_info(AMS_SAT *s, xlnx_ams_sensor_t *si)
+static bool ams_sat_sensor_enabled(AMS_SAT *s, const xlnx_ams_sensor_t *si)
+{
+    size_t nr;
+
+    if (!ams_sat_is_running(s)) {
+        return false;
+    }
+
+    switch (si->meas_id) {
+    case XLNX_AMS_SAT_MEAS_TYPE_TSENS:
+        return ARRAY_FIELD_EX32(s->regs, SYS_SEQ_CONFIG, TSENS);
+    case XLNX_AMS_SAT_MEAS_TYPE_VCCINT:
+        return ARRAY_FIELD_EX32(s->regs, SYS_SEQ_CONFIG, VCCINT);
+    }
+
+    /*
+     * Scan for sensor's inclusion in the measuring sequencer, where
+     * each word selects up to 4 sensors.
+     */
+    assert(si->meas_id <= AMS_SAT_VOLT_MEAS_LAST_SLOT);
+    for (nr = R_USER_SEQ0; nr <= R_USER_SEQ7; nr++) {
+        uint32_t seq = s->regs[nr];
+        size_t i;
+
+        for (i = 0; i < 4; i++, seq >>= USER_SEQ_CH_NEXT_SHIFT) {
+            if (SHARED_FIELD_EX32(seq, USER_SEQ_CH_MEAS_ID) == si->meas_id) {
+                return true;
+            }
+            if (SHARED_FIELD_EX32(seq, USER_SEQ_CH_END_OF_SEQ)) {
+                return false; /* End of sequencing list */
+            }
+        }
+    }
+
+    /* Voltage sensor excluded from sequencing list */
+    return false;
+}
+
+static bool ams_sat_fill_sensor_info(AMS_SAT *s, xlnx_ams_sensor_t *si)
 {
     uint32_t cfg;
 
@@ -1230,7 +1288,7 @@ static void ams_sat_fill_sensor_info(AMS_SAT *s, xlnx_ams_sensor_t *si)
         si->abus_sw0 = 0;
         si->mode = 0;
         si->meas_bipolar = 1;
-        return;
+        return ams_sat_sensor_enabled(s, si);
     case XLNX_AMS_SAT_MEAS_TYPE_VCCINT:
         cfg = s->regs[R_VCCINT_MEAS_CONFIG];
         si->root_id = FIELD_EX32(cfg, VCCINT_MEAS_CONFIG, ADDR_ID);
@@ -1264,6 +1322,8 @@ static void ams_sat_fill_sensor_info(AMS_SAT *s, xlnx_ams_sensor_t *si)
         si->meas_bipolar = 0;
         break;
     }
+
+    return ams_sat_sensor_enabled(s, si);
 }
 
 static gint ams_sat_meas_cfgs_prop_sorter(gconstpointer a, gconstpointer b)
@@ -1416,11 +1476,9 @@ bool xlnx_ams_sat_config_by_spec(Object *sat, xlnx_ams_sensor_t *si)
 
     switch (si->meas_id) {
     case XLNX_AMS_SAT_MEAS_TYPE_TSENS:
-        ams_sat_fill_sensor_info(s, si);
-        return true;
+        return ams_sat_fill_sensor_info(s, si);
     case XLNX_AMS_SAT_MEAS_TYPE_VCCINT:
-        ams_sat_fill_sensor_info(s, si);
-        return true;
+        return ams_sat_fill_sensor_info(s, si);
     }
 
     key = FIELD_DP32(key, MEASURE0_CONFIG, AMUX_CTRL, si->amux_ctrl);
@@ -1435,8 +1493,7 @@ bool xlnx_ams_sat_config_by_spec(Object *sat, xlnx_ams_sensor_t *si)
     }
 
     si->meas_id = nr - R_MEASURE0_CONFIG;
-    ams_sat_fill_sensor_info(s, si);
-    return true;
+    return ams_sat_fill_sensor_info(s, si);
 }
 
 bool xlnx_ams_sat_config_by_root_id(Object *sat, xlnx_ams_sensor_t *si)
@@ -1454,13 +1511,13 @@ bool xlnx_ams_sat_config_by_root_id(Object *sat, xlnx_ams_sensor_t *si)
         if (FIELD_EX32(val, TSENS_MEAS_CONFIG, ADDR_ID) != key) {
             goto not_found;
         }
-        goto found;
+        return ams_sat_fill_sensor_info(s, si);
     case XLNX_AMS_SAT_MEAS_TYPE_VCCINT:
         val = s->regs[R_VCCINT_MEAS_CONFIG];
         if (FIELD_EX32(val, VCCINT_MEAS_CONFIG, ADDR_ID) != key) {
             goto not_found;
         }
-        goto found;
+        return ams_sat_fill_sensor_info(s, si);
     }
 
     for (nr = R_MEASURE0_CONFIG;
@@ -1472,8 +1529,19 @@ bool xlnx_ams_sat_config_by_root_id(Object *sat, xlnx_ams_sensor_t *si)
 
     si->meas_id = nr - R_MEASURE0_CONFIG;
 
- found:
-    ams_sat_fill_sensor_info(s, si);
+    /*
+     * Root-id of 0 is same as reset value and thus ambiguous, so
+     * consider it not found if the sensor is not selected in the
+     * sequencer.
+     */
+    if (!ams_sat_fill_sensor_info(s, si)) {
+        if (si->root_id == 0) {
+            goto not_found;
+        }
+
+        return false;
+    }
+
     return true;
 
  not_found:
