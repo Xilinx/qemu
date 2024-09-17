@@ -3314,9 +3314,16 @@ enum PMCSysMon_const {
     MFP19_SCALE_SHIFT = MFP19_SIGNED_SHIFT,
     MFP19_SCALE_MASK  = (MFP19_E_MASK | MFP19_SIGNED_MASK),
 
+    /*
+     * Mantissa 0 of all exponents are values of 0 in MFP19. To
+     * differentiate 'register set to 0' from reset value of a
+     * register, model 0 as mantissa 0 with smallest non-zero
+     * exponent and/or sign.
+     */
     MFP19_E_OFFSET = 16,
-    MFP19_UMIN = 0,
+    MFP19_UMIN = MFP19_UNSIGNED(-15, 0),
     MFP19_MIN  = MFP19_SIGNED(-13, 0x8000),
+    MFP19_SGN0 = MFP19_SIGNED(-16, 0),
     MFP19_MAX  = MFP19_SIGNED(-13, 0x7FFF),
     MFP19_UMAX = MFP19_UNSIGNED(-13, 0xFFFF),
 };
@@ -3633,7 +3640,7 @@ static uint32_t mfp19_signed(int q)
 
     /* bipolar 0 */
     if (q == 0) {
-        return MFP19_SIGNED(-MFP19_E_OFFSET, 0);
+        return MFP19_SGN0;
     }
 
     /*
@@ -3693,8 +3700,10 @@ static uint32_t mfp19_from_float(double v, bool bipolar, Error **errp)
         }
     }
 
-    /* Convert to q4.16 */
+    /* Convert float to q4.16 */
     q = (uint32_t)(round(v * (1 << 16)));
+
+    /* Then, convert q4.16 to MFP19 */
     return bipolar ? mfp19_signed(q) : mfp19_unsigned(q);
 
  e_range:
