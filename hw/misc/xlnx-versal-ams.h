@@ -83,4 +83,14 @@ bool xlnx_ams_sat_config_by_spec(Object *sat, xlnx_ams_sensor_t *si);
  */
 bool xlnx_ams_sat_config_by_root_id(Object *sat, xlnx_ams_sensor_t *si);
 
+/*
+ * Return a list of configs for enabled sensors from the satellite.
+ *
+ * Return NULL if satellite is not yet ready.
+ * Return 0-length array if satellite does not have any enabled sensors.
+ *
+ * The returned array shall be freed by caller.
+ */
+GArray *xlnx_ams_sat_config_list(Object *sat);
+
 #endif

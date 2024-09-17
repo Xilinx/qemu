@@ -1552,6 +1552,53 @@ bool xlnx_ams_sat_config_by_root_id(Object *sat, xlnx_ams_sensor_t *si)
     return false;
 }
 
+GArray *xlnx_ams_sat_config_list(Object *sat)
+{
+    AMS_SAT *s = XLNX_AMS_SAT(sat);
+    xlnx_ams_sensor_t info;
+    GArray *list;
+    unsigned nr;
+
+    if (!ams_sat_is_running(s)) {
+        return NULL;
+    }
+
+    list = g_array_new(FALSE, FALSE, sizeof(xlnx_ams_sensor_t));
+
+    for (nr = R_USER_SEQ0; nr <= R_USER_SEQ7; nr++) {
+        uint32_t seq = s->regs[nr];
+        size_t i;
+
+        for (i = 0; i < 4; i++, seq >>= USER_SEQ_CH_NEXT_SHIFT) {
+            info.meas_id = SHARED_FIELD_EX32(seq, USER_SEQ_CH_MEAS_ID);
+
+            if (info.meas_id <= AMS_SAT_VOLT_MEAS_LAST_SLOT
+                && ams_sat_fill_sensor_info(s, &info)) {
+                g_array_append_val(list, info);
+            }
+
+            if (SHARED_FIELD_EX32(seq, USER_SEQ_CH_END_OF_SEQ)) {
+                nr = R_USER_SEQ7; /* Force end of iteration */
+                break;
+            }
+        }
+    }
+
+    g_array_sort(list, ams_sat_meas_cfgs_prop_sorter);
+
+    info.meas_id = XLNX_AMS_SAT_MEAS_TYPE_VCCINT;
+    if (ams_sat_fill_sensor_info(s, &info)) {
+        g_array_append_val(list, info);
+    }
+
+    info.meas_id = XLNX_AMS_SAT_MEAS_TYPE_TSENS;
+    if (ams_sat_fill_sensor_info(s, &info)) {
+        g_array_append_val(list, info);
+    }
+
+    return list;
+}
+
 static const TypeInfo xlnx_ams_sat_info = {
     .name          = TYPE_XLNX_AMS_SAT,
     .parent        = TYPE_SYS_BUS_DEVICE,
