@@ -4594,35 +4594,34 @@ static void pmc_sysmon_efuse_xfer_done(void *opaque)
 static uint64_t pmc_sysmon_pcsr_control_prew(RegisterInfo *reg, uint64_t val64)
 {
     PMCSysMon *s = PMC_SYSMON(reg->opaque);
-    uint32_t enb_mask = s->regs[R_REG_PCSR_MASK];
-    uint32_t v_old = s->regs[R_REG_PCSR_CONTROL];
-    uint32_t v_new;
+    uint32_t wr_mask, new_val, old_val;
+    uint32_t to_1s;
 
-    /* Disabled bits cannot be updated */
-    v_new = ~enb_mask & v_old;
-
-    /* Inject modifiable bits */
-    v_new |= enb_mask & val64;
-
-    s->regs[R_REG_PCSR_CONTROL] = v_new;
-
-    /*
-     * Mask cleared on any write to control.
-     * Skip all control if under test.
-     */
+    /* Capture mask, because any write to control clears it */
+    wr_mask = s->regs[R_REG_PCSR_MASK];
     s->regs[R_REG_PCSR_MASK] = 0;
 
-    if (ARRAY_FIELD_EX32(s->regs, REG_PCSR_CONTROL, TEST_SAFE)) {
-        return v_new;
+    /* Control bits blocked by mask cannot be updated */
+    old_val = s->regs[R_REG_PCSR_CONTROL];
+    new_val = val64;
+    new_val = (~wr_mask & old_val) | (wr_mask & new_val);
+
+    /* Save value for applying actions */
+    s->regs[R_REG_PCSR_CONTROL] = new_val;
+
+    /* If under test, skip control behavior */
+    if (FIELD_EX32(new_val, REG_PCSR_CONTROL, TEST_SAFE)) {
+        return new_val;
     }
 
-    /* Launch secure efuse transfer on 0->1 transition */
-    if (!FIELD_EX32(v_old, REG_PCSR_CONTROL, SECURE_EFUSE_START)
-        && FIELD_EX32(v_new, REG_PCSR_CONTROL, SECURE_EFUSE_START)) {
+    /* Apply actions meaningful only when bits changed from 0 to 1 */
+    to_1s = ~old_val & new_val;
+
+    if (FIELD_EX32(to_1s, REG_PCSR_CONTROL, SECURE_EFUSE_START)) {
         pmc_sysmon_efuse_xfer_start(s);
     }
 
-    return v_new;
+    return s->regs[R_REG_PCSR_CONTROL];
 }
 
 static void pmc_sysmon_config0_postw(RegisterInfo *reg, uint64_t val64)
