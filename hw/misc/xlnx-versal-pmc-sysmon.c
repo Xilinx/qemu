@@ -3390,6 +3390,9 @@ typedef struct PMCSysMon {
 
     char *meas_file;         /* Defer set by -global option */
 
+    double default_volt;
+    int32_t default_celsius;
+
     /*
      * Measurement injection list pending for playback/replay upon
      * a satellite transitioning to ready state.
@@ -3428,6 +3431,7 @@ typedef struct PMCSysMon {
     RegisterInfo regs_info[PMC_SYSMON_R_MAX];
 } PMCSysMon;
 
+static void pmc_sysmon_init_measurements(PMCSysMon *s, unsigned instance_id);
 static void pmc_sysmon_volt_apply_by_root_id(PMCSysMon *s, unsigned reg,
                                              float val, Error **errp);
 
@@ -3746,6 +3750,16 @@ static uint64_t reg_isr_prew(RegisterInfo *reg, uint64_t val64)
 
     /* Status remains stuck-at-1 as long as events not cleared */
     return val64 | s->events;
+}
+
+static bool pmc_sysmon_root_is_running(PMCSysMon *s)
+{
+    uint32_t pcsr = s->regs[R_REG_PCSR_CONTROL];
+
+    pcsr &= R_REG_PCSR_CONTROL_INITSTATE_MASK |
+            R_REG_PCSR_CONTROL_PCOMPLETE_MASK;
+
+    return pcsr == R_REG_PCSR_CONTROL_PCOMPLETE_MASK;
 }
 
 static void pmc_sysmon_event_tamper(PMCSysMon *s, uint32_t isr_mask)
@@ -4127,6 +4141,35 @@ static void pmc_sysmon_temp_set(PMCSysMon *s, unsigned tid, uint32_t val)
     pmc_sysmon_temp_sat_avg(s, tid, val);
 }
 
+static void pmc_sysmon_temp_infer(PMCSysMon *s, const xlnx_ams_sensor_t *si)
+{
+    int lo_int, hi_int;
+    uint32_t t_q8_7;
+
+    g_assert(si->meas_id == XLNX_AMS_SAT_MEAS_TYPE_TSENS);
+
+    /*
+     * Use mid-point between _TEMP_TH_LOWER/_UPPER if they
+     * have been configured; otherwise, use default.
+     */
+    lo_int = q8_7_int(s->regs[R_DEVICE_TEMP_TH_LOWER]);
+    hi_int = q8_7_int(s->regs[R_DEVICE_TEMP_TH_UPPER]);
+
+    if (lo_int >= hi_int) {
+        /* If dev-temp is not configured, try ot-temp */
+        lo_int = q8_7_int(s->regs[R_OT_TEMP_TH_LOWER]);
+        hi_int = q8_7_int(s->regs[R_OT_TEMP_TH_UPPER]);
+    }
+
+    if (lo_int >= hi_int) {
+        t_q8_7 = q8_7_from_float((double)s->default_celsius);
+    } else {
+        t_q8_7 = q8_7_from_int((lo_int + hi_int) / 2);
+    }
+
+    pmc_sysmon_temp_set(s, si->root_id, t_q8_7);
+}
+
 static void pmc_sysmon_temp_dev_th_postw(RegisterInfo *reg, uint64_t val64)
 {
     PMCSysMon *s = PMC_SYSMON(reg->opaque);
@@ -4407,6 +4450,54 @@ static void pmc_sysmon_volt_set(PMCSysMon *s, unsigned vid, uint32_t val)
     }
 }
 
+static void pmc_sysmon_volt_infer(PMCSysMon *s, const xlnx_ams_sensor_t *si)
+{
+    /* Use mid-point between SUPPLYn_TH_LOWER/_UPPER, scale -16 */
+    unsigned vid = si->root_id;
+    uint32_t v_mfp19;
+
+    g_assert(vid < R_SUPPLY_COUNT);
+
+    /*
+     * Can infer from threshold only if alarm is enabled.  Otherwise,
+     * there is no other ways to find out and have to use the default
+     * value instead.
+     */
+    if (!CHANNEL_BIT(&s->regs[R_ALARM_REG0], vid)) {
+        v_mfp19 = mfp19_from_float(s->default_volt, si->meas_bipolar, NULL);
+    } else {
+        uint32_t lo_mfp19, hi_mfp19;
+        int lo_q4_16, hi_q4_16, v_q4_16;
+
+        /* Only the mantissa fields of threshold-regs are guest-writable */
+        lo_mfp19 = s->regs[R_SUPPLY_TH_LOWER(vid)] & MFP19_MANTISSA_MASK;
+        hi_mfp19 = s->regs[R_SUPPLY_TH_UPPER(vid)] & MFP19_MANTISSA_MASK;
+
+        /* Use scale of 0, with sign-ness from sensor-info */
+        if (si->meas_bipolar) {
+            lo_mfp19 = MFP19_SIGNED(-16, lo_mfp19);
+            hi_mfp19 = MFP19_SIGNED(-16, hi_mfp19);
+        } else {
+            lo_mfp19 = MFP19_UNSIGNED(-16, lo_mfp19);
+            hi_mfp19 = MFP19_UNSIGNED(-16, hi_mfp19);
+        }
+
+        /* Use Q4.16 to find the mid-point */
+        lo_q4_16 = mfp19_int(lo_mfp19);
+        hi_q4_16 = mfp19_int(hi_mfp19);
+        v_q4_16  = (lo_q4_16 + hi_q4_16) / 2;
+
+        if (si->meas_bipolar) {
+            v_mfp19 = mfp19_signed(v_q4_16);
+        } else {
+            v_mfp19 = mfp19_unsigned(v_q4_16);
+        }
+    }
+
+    /* Now set it */
+    pmc_sysmon_volt_set(s, vid, v_mfp19);
+}
+
 static void pmc_sysmon_vccint_set(PMCSysMon *s, unsigned vid, uint32_t val)
 {
     switch (vid) {
@@ -4419,6 +4510,17 @@ static void pmc_sysmon_vccint_set(PMCSysMon *s, unsigned vid, uint32_t val)
     default:
         s->regs[R_VCCINT_SAT1 + vid] = val;
     }
+}
+
+static void pmc_sysmon_vccint_infer(PMCSysMon *s, const xlnx_ams_sensor_t *si)
+{
+    uint32_t v_mfp19;
+
+    g_assert(si->meas_id == XLNX_AMS_SAT_MEAS_TYPE_VCCINT);
+
+    /* TBD. There isn't a good way to infer vccint value */
+    v_mfp19 = mfp19_from_float(s->default_volt, false, NULL);
+    pmc_sysmon_vccint_set(s, si->root_id, v_mfp19);
 }
 
 static void pmc_sysmon_volt_en_avg_reg_postw(RegisterInfo *reg, uint64_t val64)
@@ -4595,7 +4697,7 @@ static uint64_t pmc_sysmon_pcsr_control_prew(RegisterInfo *reg, uint64_t val64)
 {
     PMCSysMon *s = PMC_SYSMON(reg->opaque);
     uint32_t wr_mask, new_val, old_val;
-    uint32_t to_1s;
+    uint32_t to_1s, to_0s;
 
     /* Capture mask, because any write to control clears it */
     wr_mask = s->regs[R_REG_PCSR_MASK];
@@ -4619,6 +4721,12 @@ static uint64_t pmc_sysmon_pcsr_control_prew(RegisterInfo *reg, uint64_t val64)
 
     if (FIELD_EX32(to_1s, REG_PCSR_CONTROL, SECURE_EFUSE_START)) {
         pmc_sysmon_efuse_xfer_start(s);
+    }
+
+    to_0s = old_val & ~new_val;
+    if (FIELD_EX32(to_0s, REG_PCSR_CONTROL, INITSTATE) ||
+        FIELD_EX32(to_1s, REG_PCSR_CONTROL, PCOMPLETE)) {
+        pmc_sysmon_init_measurements(s, s->ams_sat_len);
     }
 
     return s->regs[R_REG_PCSR_CONTROL];
@@ -8499,6 +8607,7 @@ static void pmc_sysmon_init(Object *obj)
     RegisterInfoArray *reg_array;
 
     QTAILQ_INIT(&s->meas_injections);
+    s->default_volt = 1.5;
 
     memory_region_init(&s->iomem, obj, TYPE_PMC_SYSMON, PMC_SYSMON_R_MAX * 4);
     reg_array =
@@ -8638,6 +8747,8 @@ static void pmc_sysmon_play_injections(PMCSysMon *s, unsigned instance_id)
     unsigned nr, base = 0, stop = s->ams_sat_len;
     PMCSysMon_MeasInj *item;
 
+    g_assert(pmc_sysmon_root_is_running(s));
+
     if (instance_id < stop) {
         if (!pmc_sysmon_sat_is_ready(s, instance_id)) {
             return;
@@ -8713,6 +8824,95 @@ static void pmc_sysmon_store_injection(PMCSysMon *s,
     item->info = *si;
 
     QTAILQ_INSERT_TAIL(&s->meas_injections, item, link);
+}
+
+static void pmc_sysmon_root_infer(PMCSysMon *s)
+{
+    xlnx_ams_sensor_t info = {0};
+    unsigned i;
+
+    static const unsigned tid[] = {R_TEMP_LPD_TID, R_TEMP_FPD_TID};
+    static const unsigned vid[] = {R_VCCINT_LPD_VID, R_VCCINT_FPD_VID};
+
+    for (i = 0; i < ARRAY_SIZE(tid); i++) {
+        info.meas_id = XLNX_AMS_SAT_MEAS_TYPE_TSENS;
+        info.root_id = tid[i];
+        pmc_sysmon_temp_infer(s, &info);
+    }
+
+    for (i = 0; i < ARRAY_SIZE(tid); i++) {
+        info.meas_id = XLNX_AMS_SAT_MEAS_TYPE_VCCINT;
+        info.root_id = vid[i];
+        pmc_sysmon_volt_infer(s, &info);
+    }
+}
+
+static void pmc_sysmon_play_inferred(PMCSysMon *s, unsigned instance_id)
+{
+    unsigned nr, base, stop;
+
+    g_assert(pmc_sysmon_root_is_running(s));
+
+    if (instance_id >= s->ams_sat_len) {
+        /* Infer all sensors */
+        pmc_sysmon_root_infer(s);
+        base = 0;
+        stop = s->ams_sat_len;
+    } else if (pmc_sysmon_sat_is_ready(s, instance_id)) {
+        /* Infer sensors from one satelllite */
+        base = instance_id;
+        stop = base + 1;
+    } else {
+        return; /* Requested satellite is not ready */
+    }
+
+    for (nr = base; nr < stop; nr++) {
+        g_autoptr(GArray) si_list = NULL;
+        size_t i;
+
+        if (!pmc_sysmon_sat_is_ready(s, nr)) {
+            continue;
+        }
+
+        si_list = xlnx_ams_sat_config_list(s->ams_sat[nr]);
+        if (!si_list) {
+            continue;
+        }
+
+        for (i = 0; i < si_list->len; i++) {
+            xlnx_ams_sensor_t *si;
+
+            si = &g_array_index(si_list, xlnx_ams_sensor_t, i);
+            switch (si->meas_id) {
+            case XLNX_AMS_SAT_MEAS_TYPE_TSENS:
+                pmc_sysmon_temp_infer(s, si);
+                break;
+            case XLNX_AMS_SAT_MEAS_TYPE_VCCINT:
+                pmc_sysmon_vccint_infer(s, si);
+                break;
+            default:
+                pmc_sysmon_volt_infer(s, si);
+            }
+        }
+    }
+}
+
+static void pmc_sysmon_init_measurements(PMCSysMon *s, unsigned instance_id)
+{
+    /*
+     * Vivado-generated cdo.bin typically configures alarm thresholds
+     * just before activating the root and after activating all attached
+     * satelllites.
+     *
+     * Thus, to avoid raising alarms erroneously due to unconfigured
+     * thresholds, measurements must not applied unless the root is running.
+     */
+    if (!pmc_sysmon_root_is_running(s)) {
+        return;
+    }
+
+    pmc_sysmon_play_inferred(s, instance_id);
+    pmc_sysmon_play_injections(s, instance_id);
 }
 
 static void pmc_sysmon_temp_apply_by_root_id(PMCSysMon *s, unsigned tid,
@@ -9060,6 +9260,24 @@ static void pmc_sysmon_set_supplies_prop_get(Object *obj, Visitor *v,
     g_string_free(str, TRUE);
 }
 
+static void pmc_sysmon_default_volt_prop_set(Object *obj, Visitor *v,
+                                             const char *name, void *opaque,
+                                             Error **errp)
+{
+    PMCSysMon *s = PMC_SYSMON(obj);
+
+    visit_type_number(v, name, &s->default_volt, errp);
+}
+
+static void pmc_sysmon_default_volt_prop_get(Object *obj, Visitor *v,
+                                             const char *name, void *opaque,
+                                             Error **errp)
+{
+    PMCSysMon *s = PMC_SYSMON(obj);
+
+    visit_type_number(v, name, &s->default_volt, errp);
+}
+
 static void pmc_sysmon_measurement_file_inj(Object *obj, const gchar *line,
                                             const char *prefix, size_t ln_num)
 {
@@ -9316,6 +9534,12 @@ static void pmc_sysmon_volt_prop_add(ObjectClass *klass)
                               pmc_sysmon_set_supplies_prop_get,
                               pmc_sysmon_set_supplies_prop_set,
                               NULL);
+
+    pmc_sysmon_class_prop_add(klass, "default-voltage", type,
+                              "Default measurement value of a voltage sensor",
+                              pmc_sysmon_default_volt_prop_get,
+                              pmc_sysmon_default_volt_prop_set,
+                              NULL);
 }
 
 static void pmc_sysmon_file_prop_add(ObjectClass *klass)
@@ -9328,6 +9552,7 @@ static void pmc_sysmon_file_prop_add(ObjectClass *klass)
 }
 
 static Property pmc_sysmon_properties[] = {
+    DEFINE_PROP_INT32("default-celsius", PMCSysMon, default_celsius, 25),
     DEFINE_PROP_UINT32("efuse-transfer-throttle",
                        PMCSysMon, efuse_throttle_ms, 200),
     DEFINE_PROP_LINK("efuse", PMCSysMon, efuse, TYPE_OBJECT, Object *),
@@ -9378,7 +9603,7 @@ void xlnx_ams_root_sat_config_ready(Object *root, unsigned instance_id)
 
     assert(instance_id < s->ams_sat_len);
     pmc_sysmon_sat_set_ready(s, instance_id);
-    pmc_sysmon_play_injections(s, instance_id);
+    pmc_sysmon_init_measurements(s, instance_id);
 }
 
 static const TypeInfo pmc_sysmon_info = {
