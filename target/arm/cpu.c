@@ -1420,6 +1420,7 @@ uint64_t arm_cpu_mp_affinity(int idx, uint8_t clustersz)
     return (Aff1 << ARM_AFF1_SHIFT) | Aff0;
 }
 
+#ifndef CONFIG_USER_ONLY
 static uint32_t pchannel_get_current_state_unimp(ARMPChannelIf *obj)
 {
     return 0;
@@ -1430,6 +1431,7 @@ static bool pchannel_request_state_change_unimp(ARMPChannelIf *obj,
 {
     return false;
 }
+#endif
 
 static void arm_cpu_initfn(Object *obj)
 {
@@ -2687,7 +2689,9 @@ static void arm_cpu_class_init(ObjectClass *oc, void *data)
     CPUClass *cc = CPU_CLASS(acc);
     DeviceClass *dc = DEVICE_CLASS(oc);
     ResettableClass *rc = RESETTABLE_CLASS(oc);
+#ifndef CONFIG_USER_ONLY
     ARMPChannelIfClass *apcic = ARM_PCHANNEL_IF_CLASS(oc);
+#endif
 
     device_class_set_parent_realize(dc, arm_cpu_realizefn,
                                     &acc->parent_realize);
@@ -2722,8 +2726,10 @@ static void arm_cpu_class_init(ObjectClass *oc, void *data)
     cc->tcg_ops = &arm_tcg_ops;
 #endif /* CONFIG_TCG */
 
+#ifndef CONFIG_USER_ONLY
     apcic->get_current_state = pchannel_get_current_state_unimp;
     apcic->request_state_change = pchannel_request_state_change_unimp;
+#endif
 }
 
 static void arm_cpu_instance_init(Object *obj)
@@ -2767,10 +2773,12 @@ static const TypeInfo arm_cpu_type_info = {
     .abstract = true,
     .class_size = sizeof(ARMCPUClass),
     .class_init = arm_cpu_class_init,
+#ifndef CONFIG_USER_ONLY
     .interfaces = (InterfaceInfo []) {
         { TYPE_ARM_PCHANNEL_IF },
         { },
     },
+#endif
 };
 
 static void arm_cpu_register_types(void)
