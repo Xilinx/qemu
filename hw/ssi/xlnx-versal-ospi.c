@@ -1761,9 +1761,11 @@ static const MemoryRegionOps ospi_dac_ops = {
     .read = ospi_dac_read,
     .write = ospi_dac_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
+    .impl.min_access_size = 4,
+    .impl.max_access_size = 8,
     .valid = {
         .min_access_size = 4,
-        .max_access_size = 4,
+        .max_access_size = 8,
     },
 };
 
