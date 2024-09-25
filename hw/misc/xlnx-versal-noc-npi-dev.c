@@ -130,6 +130,17 @@ static const RegisterAccessInfo noc_npi_dev_regs_info[] = {
     }
 };
 
+static const RegisterAccessInfo noc_npi_dev_custom_regs_info[] = {
+    {   .name = "REG_PCSR_MASK",  .addr = A_REG_PCSR_MASK,
+    },{ .name = "REG_PCSR_CONTROL",  .addr = A_REG_PCSR_CONTROL,
+        .reset = 0x1000000,
+    },{ .name = "REG_PCSR_STATUS",  .addr = A_REG_PCSR_STATUS,
+    },{ .name = "REG_PCSR_LOCK",  .addr = A_REG_PCSR_LOCK,
+        .reset = 0x1,
+        .post_write = noc_npi_dev_lock_postw
+    }
+};
+
 static void noc_npi_dev_reset(DeviceState *dev)
 {
     NOC_NPI_DEV *s = XILINX_NOC_NPI_DEV(dev);
@@ -178,13 +189,23 @@ static void noc_npi_dev_realize(DeviceState *dev, Error **errp)
     NOC_NPI_DEV *s = XILINX_NOC_NPI_DEV(dev);
     SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
 
-    s->reg_array =
+    if (s->custom) {
+        s->reg_array =
+        register_init_block32(dev, noc_npi_dev_custom_regs_info,
+                              ARRAY_SIZE(noc_npi_dev_custom_regs_info),
+                              s->regs_info, s->regs,
+                              &noc_npi_dev_ops,
+                              XILINX_NOC_NPI_DEV_ERR_DEBUG,
+                              s->custom ? NOC_NPI_DEV_R_MAX * 4 : s->map_size);
+    } else {
+        s->reg_array =
         register_init_block32(dev, noc_npi_dev_regs_info,
                               ARRAY_SIZE(noc_npi_dev_regs_info),
                               s->regs_info, s->regs,
                               &noc_npi_dev_ops,
                               XILINX_NOC_NPI_DEV_ERR_DEBUG,
                               s->custom ? NOC_NPI_DEV_R_MAX * 4 : s->map_size);
+    }
     sysbus_init_mmio(sbd, &s->reg_array->mem);
 }
 
