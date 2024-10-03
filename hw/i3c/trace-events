@@ -43,3 +43,10 @@ mock_target_handle_ccc_read(uint32_t num_read, uint32_t num_to_read) "I3C mock t
 mock_target_new_ccc(uint8_t ccc) "I3C mock target handle CCC 0x%" PRIx8
 mock_target_handle_ccc_write(uint32_t num_sent, uint32_t num_to_send) "I3C mock target send %" PRId32 "/%" PRId32 " bytes"
 mock_target_do_ibi(uint8_t address, bool is_recv) "I3C mock target IBI with address 0x%" PRIx8 " RnW=%d"
+
+# remote-i3c.c
+remote_i3c_recv(const char *name, uint32_t num_read, uint32_t num_to_read) "Remote I3C '%s' read %" PRId32 "/%" PRId32 " bytes"
+remote_i3c_send(const char *name, uint32_t num_sent, bool is_ccc) "Remote I3C '%s' send %" PRId32 " bytes, is_ccc=%d"
+remote_i3c_ccc_read(const char *name, uint32_t num_read, uint32_t num_to_read) "Remote I3C '%s' CCC read %" PRId32 "/%" PRId32 " bytes"
+remote_i3c_event(const char *name, uint8_t event) "Remote I3C '%s' event 0x%" PRIx8
+remote_i3c_do_ibi(const char *name, uint8_t addr, bool is_recv) "Remote I3C '%s' IBI with addr 0x%" PRIx8 " RnW=%d"
