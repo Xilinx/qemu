@@ -570,7 +570,7 @@ static inline bool dwc_i3c_device_target_is_i2c(DwcI3CDevice *s,
 static uint8_t dwc_i3c_device_target_addr(DwcI3CDevice *s,
                                              uint16_t offset)
 {
-    if (offset > s->max_targets) {
+    if (offset > s->cfg.num_devices) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: Device addr table offset %d out of "
                       "bounds\n", object_get_canonical_path(OBJECT(s)), offset);
         /* If we're out of bounds, return an address of 0. */
@@ -1443,7 +1443,7 @@ static void dwc_i3c_device_update_char_table(DwcI3CDevice *s,
                                                 uint8_t bcr, uint8_t dcr,
                                                 uint8_t addr)
 {
-    if (offset > s->max_targets) {
+    if (offset > s->cfg.num_devices) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: Device char table offset %d out of "
                       "bounds\n", object_get_canonical_path(OBJECT(s)), offset);
         /* If we're out of bounds, do nothing. */
@@ -1799,7 +1799,26 @@ static void dwc_i3c_device_realize(DeviceState *dev, Error **errp)
 
 static Property dwc_i3c_device_properties[] = {
     DEFINE_PROP_UINT8("device-id", DwcI3CDevice, id, 0),
-    DEFINE_PROP_UINT8("max-targets", DwcI3CDevice, max_targets, 6),
+    /*
+     * Role Configuration
+     */
+    DEFINE_PROP_UINT8("device-role", DwcI3CDevice, cfg.device_role, 0x3),
+    /*
+     * Queues and Interfaces Parameters
+     */
+    DEFINE_PROP_UINT8("buf-lvl-sel", DwcI3CDevice, cfg.buf_lvl_sel, 0x3),
+    /*
+     * Master Configuration Parameters
+     */
+    DEFINE_PROP_UINT8("num-devices", DwcI3CDevice, cfg.num_devices, 8),
+    DEFINE_PROP_UINT8("ibi-buf-lvl-sel", DwcI3CDevice,
+                      cfg.ibi_buf_lvl_sel, 0x3),
+    /*
+     * Slave Configuration Parameters
+     */
+    DEFINE_PROP_BOOL("slv-ibi", DwcI3CDevice, cfg.slv_ibi, false),
+    DEFINE_PROP_UINT16("slv-dflt-mwl", DwcI3CDevice, cfg.slv_mwl, 0xFF),
+    DEFINE_PROP_UINT16("slv-dflt-mrl", DwcI3CDevice, cfg.slv_mrl, 0xFF),
     DEFINE_PROP_END_OF_LIST(),
 };
 
