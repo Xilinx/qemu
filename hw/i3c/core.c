@@ -290,7 +290,7 @@ static int i3c_target_handle_ccc_write(I3CTarget *t, const uint8_t *data,
          * address.
          */
         if (t->ccc_byte_offset == 8) {
-            printf("%s: assigning address %d\n", __func__, *data);
+            trace_i3c_target_entdaa(*data);
             t->address = *data;
             t->da_valid = true;
             t->in_ccc = false;
