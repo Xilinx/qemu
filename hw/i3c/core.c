@@ -21,6 +21,7 @@
 #include "hw/i3c/i3c.h"
 #include "hw/hotplug.h"
 #include "hw/qdev-properties.h"
+#include "hw/fdt_generic_util.h"
 
 static Property i3c_props[] = {
     DEFINE_PROP_UINT8("static-address", struct I3CTarget, static_address, 0),
@@ -628,12 +629,44 @@ I2CSlave *legacy_i2c_device_create_simple(I3CBus *bus, const char *name,
     return dev;
 }
 
+static bool i3c_target_parse_reg(FDTGenericMMap *obj,
+                                 FDTGenericRegPropInfo reg,
+                                 Error **errp)
+{
+    DeviceState *parent = (DeviceState *)object_dynamic_cast(reg.parents[0],
+                                         TYPE_DEVICE);
+
+    if (!parent) {
+        return false;
+    }
+
+    if (!parent->realized) {
+        return true;
+    }
+
+    if (object_dynamic_cast(OBJECT(obj), TYPE_I2C_SLAVE)) {
+        qdev_set_parent_bus(DEVICE(obj),
+                            qdev_get_child_bus(parent, "i3c-legacy-i2c"),
+                            errp);
+    } else if (object_dynamic_cast(OBJECT(obj), TYPE_I3C_TARGET)) {
+        qdev_set_parent_bus(DEVICE(obj),
+                            qdev_get_child_bus(parent, "i3c"), errp);
+    } else {
+        qemu_log_mask(LOG_FDT, "invalid device %s placed on i3c bus",
+                      qdev_get_dev_path(DEVICE(obj)));
+        g_assert_not_reached();
+    }
+    return false;
+}
+
 static void i3c_target_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *k = DEVICE_CLASS(klass);
+    FDTGenericMMapClass *fmc = FDT_GENERIC_MMAP_CLASS(klass);
     set_bit(DEVICE_CATEGORY_MISC, k->categories);
     k->bus_type = TYPE_I3C_BUS;
     device_class_set_props(k, i3c_props);
+    fmc->parse_reg = i3c_target_parse_reg;
 }
 
 static const TypeInfo i3c_target_type_info = {
@@ -643,6 +676,10 @@ static const TypeInfo i3c_target_type_info = {
     .abstract = true,
     .class_size = sizeof(I3CTargetClass),
     .class_init = i3c_target_class_init,
+    .interfaces = (InterfaceInfo []) {
+        { TYPE_FDT_GENERIC_MMAP },
+        { },
+    },
 };
 
 static void i3c_register_types(void)
