@@ -259,22 +259,30 @@ REG32(SLAVE_CONFIG,                 0xec)
     FIELD(SLAVE_CONFIG, DMA_EN,     0, 1)
     FIELD(SLAVE_CONFIG, HJ_CAP,     0, 1)
     FIELD(SLAVE_CONFIG, CLK_PERIOD, 2, 14)
-/* Device characteristic table fields */
-REG32(DEVICE_CHARACTERISTIC_TABLE_LOC1, 0x200)
-REG32(DEVICE_CHARACTERISTIC_TABLE_LOC_SECONDARY, 0x200)
-    FIELD(DEVICE_CHARACTERISTIC_TABLE_LOC_SECONDARY, DYNAMIC_ADDR, 0, 8)
-    FIELD(DEVICE_CHARACTERISTIC_TABLE_LOC_SECONDARY, DCR, 8, 8)
-    FIELD(DEVICE_CHARACTERISTIC_TABLE_LOC_SECONDARY, BCR, 16, 8)
-    FIELD(DEVICE_CHARACTERISTIC_TABLE_LOC_SECONDARY, STATIC_ADDR, 24, 8)
-REG32(DEVICE_CHARACTERISTIC_TABLE_LOC2, 0x204)
+/*
+ * Device characteristic table fields
+ * Offset of Char table is pointed by DEV_CHAR_TABLE_POINTER
+ * reg.
+ */
+#define R_DEV_CHAR_TBL(s)  \
+        (ARRAY_FIELD_EX32(s->regs, DEV_CHAR_TABLE_POINTER, \
+                          P_DEV_CHAR_TABLE_START_ADDR) >> 2)
+REG32(DEVICE_CHARACTERISTIC_TABLE_LOC1, 0x0)
+REG32(DEVICE_CHARACTERISTIC_TABLE_LOC2, 0x4)
     FIELD(DEVICE_CHARACTERISTIC_TABLE_LOC2, MSB_PID, 0, 16)
-REG32(DEVICE_CHARACTERISTIC_TABLE_LOC3, 0x208)
+REG32(DEVICE_CHARACTERISTIC_TABLE_LOC3, 0x8)
     FIELD(DEVICE_CHARACTERISTIC_TABLE_LOC3, DCR, 0, 8)
     FIELD(DEVICE_CHARACTERISTIC_TABLE_LOC3, BCR, 8, 8)
-REG32(DEVICE_CHARACTERISTIC_TABLE_LOC4, 0x20c)
+REG32(DEVICE_CHARACTERISTIC_TABLE_LOC4, 0xc)
     FIELD(DEVICE_CHARACTERISTIC_TABLE_LOC4, DEV_DYNAMIC_ADDR, 0, 8)
-/* Dev addr table fields */
-REG32(DEVICE_ADDR_TABLE_LOC1, 0x280)
+/*
+ * Dev addr table fields
+ * Offset of Address-table is pointed by DEVICE_ADDR_TABLE_POINTER
+ * reg.
+ */
+#define R_DEV_ADDR_TBL(s) \
+        (ARRAY_FIELD_EX32(s->regs, DEVICE_ADDR_TABLE_POINTER, ADDR) >> 2)
+REG32(DEVICE_ADDR_TABLE_LOC1, 0x0)
     FIELD(DEVICE_ADDR_TABLE_LOC1, DEV_STATIC_ADDR, 0, 7)
     FIELD(DEVICE_ADDR_TABLE_LOC1, IBI_PEC_EN, 11, 1)
     FIELD(DEVICE_ADDR_TABLE_LOC1, IBI_WITH_DATA, 12, 1)
@@ -554,7 +562,7 @@ static inline void dwc_i3c_device_ctrl_w(DwcI3CDevice *s,
 static inline bool dwc_i3c_device_target_is_i2c(DwcI3CDevice *s,
                                                    uint16_t offset)
 {
-    uint16_t dev_index = R_DEVICE_ADDR_TABLE_LOC1 + offset;
+    uint16_t dev_index = R_DEV_ADDR_TBL(s) + offset;
     return FIELD_EX32(s->regs[dev_index], DEVICE_ADDR_TABLE_LOC1,
                    LEGACY_I2C_DEVICE);
 }
@@ -569,7 +577,7 @@ static uint8_t dwc_i3c_device_target_addr(DwcI3CDevice *s,
         return 0;
     }
 
-    uint16_t dev_index = R_DEVICE_ADDR_TABLE_LOC1 + offset;
+    uint16_t dev_index = R_DEV_ADDR_TBL(s) + offset;
     /* I2C devices use a static address. */
     if (dwc_i3c_device_target_is_i2c(s, offset)) {
         return FIELD_EX32(s->regs[dev_index], DEVICE_ADDR_TABLE_LOC1,
@@ -640,7 +648,7 @@ static int dwc_i3c_device_handle_ctlr_req(DwcI3CDevice *s, uint8_t addr)
         return -1;
     }
 
-    table_offset += R_DEVICE_ADDR_TABLE_LOC1;
+    table_offset += R_DEV_ADDR_TBL(s);
     if (FIELD_EX32(s->regs[table_offset], DEVICE_ADDR_TABLE_LOC1, MR_REJECT)) {
         s->ibi_data.ibi_queue_status = FIELD_DP32(s->ibi_data.ibi_queue_status,
                                                   IBI_QUEUE_STATUS,
@@ -667,7 +675,7 @@ static int dwc_i3c_device_handle_targ_irq(DwcI3CDevice *s, uint8_t addr)
         return -1;
     }
 
-    table_offset += R_DEVICE_ADDR_TABLE_LOC1;
+    table_offset += R_DEV_ADDR_TBL(s);
     if (FIELD_EX32(s->regs[table_offset], DEVICE_ADDR_TABLE_LOC1, SIR_REJECT)) {
         s->ibi_data.ibi_queue_status = FIELD_DP32(s->ibi_data.ibi_queue_status,
                                                   IBI_QUEUE_STATUS,
@@ -1443,8 +1451,7 @@ static void dwc_i3c_device_update_char_table(DwcI3CDevice *s,
     }
 
     /* Each char table index is 128 bits apart. */
-    uint16_t dev_index = R_DEVICE_CHARACTERISTIC_TABLE_LOC1 + offset *
-                                                            sizeof(uint32_t);
+    uint16_t dev_index = R_DEV_CHAR_TBL(s) + offset * sizeof(uint32_t);
     s->regs[dev_index] = pid & 0xffffffff;
     pid >>= 32;
     s->regs[dev_index + 1] = FIELD_DP32(s->regs[dev_index + 1],
