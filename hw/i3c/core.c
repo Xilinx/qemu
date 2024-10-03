@@ -286,6 +286,7 @@ static int i3c_target_handle_ccc_write(I3CTarget *t, const uint8_t *data,
          * address.
          */
         if (t->ccc_byte_offset == 8) {
+            printf("%s: assigning address %d\n", __func__, *data);
             t->address = *data;
             t->in_ccc = false;
             t->curr_ccc = 0;

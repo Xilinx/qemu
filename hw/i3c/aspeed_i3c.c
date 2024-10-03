@@ -646,7 +646,7 @@ static uint8_t aspeed_i3c_device_target_addr(AspeedI3CDevice *s,
                           DEV_STATIC_ADDR);
     }
     return FIELD_EX32(s->regs[dev_index], DEVICE_ADDR_TABLE_LOC1,
-                      DEV_DYNAMIC_ADDR);
+                      DEV_DYNAMIC_ADDR) & 0x7f;
 }
 
 static int aspeed_i3c_device_addr_table_index_from_addr(AspeedI3CDevice *s,
