@@ -21,6 +21,17 @@
 #include "hw/i3c/remote-i3c.h"
 #include "hw/i3c/aspeed_i3c.h"
 
+/* Xilinx */
+#define AspeedI3CTransferCmd  DwcI3CTransferCmd
+#define AspeedI3CTransferArg  DwcI3CTransferArg
+#define AspeedI3CTransferArg  DwcI3CTransferArg
+#define AspeedI3CCmdQueueData DwcI3CCmdQueueData
+
+#define ASPEED_I3C_RESP_QUEUE_ERR_NONE   DWC_I3C_RESP_QUEUE_ERR_NONE
+#define ASPEED_I3C_CMD_ATTR_TRANSFER_CMD DWC_I3C_CMD_ATTR_TRANSFER_CMD
+#define ASPEED_I3C_CMD_ATTR_TRANSFER_ARG DWC_I3C_CMD_ATTR_TRANSFER_ARG
+#define ASPEED_I3C_RX_QUEUE_CAPACITY     DWC_I3C_RX_QUEUE_CAPACITY
+
 /* Starting address of the AST2600 I3C block. */
 #define ASPEED_I3C_BASE 0x1e7a0000
 /* Offset to the first controller in the block. */
