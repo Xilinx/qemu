@@ -17,6 +17,8 @@
 #include "qapi/error.h"
 #include "migration/vmstate.h"
 #include "trace.h"
+#include "hw/i3c/i3c.h"
+#include "hw/irq.h"
 
 /* I3C Controller Registers */
 REG32(I3C1_REG0, 0x10)
@@ -412,6 +414,46 @@ static const uint32_t ast2600_i3c_device_ro[ASPEED_I3C_DEVICE_NR_REGS] = {
     [R_SLAVE_CONFIG]                = 0xffffffff,
 };
 
+static void aspeed_i3c_device_update_irq(AspeedI3CDevice *s)
+{
+    bool level = !!(s->regs[R_INTR_SIGNAL_EN] & s->regs[R_INTR_STATUS]);
+    qemu_set_irq(s->irq, level);
+}
+
+static uint32_t aspeed_i3c_device_intr_status_r(AspeedI3CDevice *s)
+{
+    /* Only return the status whose corresponding EN bits are set. */
+    return s->regs[R_INTR_STATUS] & s->regs[R_INTR_STATUS_EN];
+}
+
+static void aspeed_i3c_device_intr_status_w(AspeedI3CDevice *s, uint32_t val)
+{
+    /* INTR_STATUS[13:5] is w1c, other bits are RO. */
+    val &= 0x3fe0;
+    s->regs[R_INTR_STATUS] &= ~val;
+
+    aspeed_i3c_device_update_irq(s);
+}
+
+static void aspeed_i3c_device_intr_status_en_w(AspeedI3CDevice *s, uint32_t val)
+{
+    s->regs[R_INTR_STATUS_EN] = val;
+    aspeed_i3c_device_update_irq(s);
+}
+
+static void aspeed_i3c_device_intr_signal_en_w(AspeedI3CDevice *s, uint32_t val)
+{
+    s->regs[R_INTR_SIGNAL_EN] = val;
+    aspeed_i3c_device_update_irq(s);
+}
+
+static void aspeed_i3c_device_intr_force_w(AspeedI3CDevice *s, uint32_t val)
+{
+    /* INTR_FORCE is WO, just set the corresponding INTR_STATUS bits. */
+    s->regs[R_INTR_STATUS] = val;
+    aspeed_i3c_device_update_irq(s);
+}
+
 static uint64_t aspeed_i3c_device_read(void *opaque, hwaddr offset,
                                        unsigned size)
 {
@@ -425,6 +467,9 @@ static uint64_t aspeed_i3c_device_read(void *opaque, hwaddr offset,
     case R_RESET_CTRL:
     case R_INTR_FORCE:
         value = 0;
+        break;
+    case R_INTR_STATUS:
+        value = aspeed_i3c_device_intr_status_r(s);
         break;
     default:
         value = s->regs[addr];
@@ -469,6 +514,18 @@ static void aspeed_i3c_device_write(void *opaque, hwaddr offset,
     case R_RX_TX_DATA_PORT:
         break;
     case R_RESET_CTRL:
+        break;
+    case R_INTR_STATUS:
+        aspeed_i3c_device_intr_status_w(s, val32);
+        break;
+    case R_INTR_STATUS_EN:
+        aspeed_i3c_device_intr_status_en_w(s, val32);
+        break;
+    case R_INTR_SIGNAL_EN:
+        aspeed_i3c_device_intr_signal_en_w(s, val32);
+        break;
+    case R_INTR_FORCE:
+        aspeed_i3c_device_intr_force_w(s, val32);
         break;
     default:
         s->regs[addr] = val32;
