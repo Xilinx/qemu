@@ -205,6 +205,7 @@ REG32(PRESENT_STATE,                0x54)
     FIELD(PRESENT_STATE, CM_TFR_STATUS,         8, 6)
     FIELD(PRESENT_STATE, CM_TFR_ST_STATUS,      16, 6)
     FIELD(PRESENT_STATE, CMD_TID,               24, 4)
+    FIELD(PRESENT_STATE, CONTROLLER_IDLE,       28, 1)
 REG32(CCC_DEVICE_STATUS,            0x58)
     FIELD(CCC_DEVICE_STATUS, PENDING_INTR,      0, 4)
     FIELD(CCC_DEVICE_STATUS, PROTOCOL_ERR,      4, 2)
@@ -1151,6 +1152,16 @@ static uint64_t dwc_i3c_device_read(void *opaque, hwaddr offset,
     case R_RESET_CTRL:
     case R_INTR_FORCE:
         value = 0;
+        break;
+    case R_PRESENT_STATE:
+        value = s->regs[addr];
+        value |= fifo32_is_empty(&s->cmd_queue) &
+                 fifo32_is_empty(&s->resp_queue) &
+                 fifo32_is_empty(&s->tx_queue) &
+                 fifo32_is_empty(&s->rx_queue) &
+                 fifo32_is_empty(&s->ibi_queue)
+                 ? 1 <<
+                 R_PRESENT_STATE_CONTROLLER_IDLE_SHIFT : 0;
         break;
     case R_IBI_QUEUE_DATA:
         value = dwc_i3c_device_ibi_queue_r(s);
