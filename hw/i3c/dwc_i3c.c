@@ -1936,8 +1936,8 @@ static uint32_t device_i3c_target_rx(I3CTarget *i3c, uint8_t *data,
 
     cmd_data_len = dwc_i3c_device_cmd_num_tx_bytes(s->target.tx_arg);
 
-    if (cmd_data_len) {
-        return -1;
+    if (!cmd_data_len) {
+        return 0;
     }
 
     send = MIN(num_to_read, cmd_data_len - s->target.tr_bytes);
@@ -1949,8 +1949,11 @@ static uint32_t device_i3c_target_rx(I3CTarget *i3c, uint8_t *data,
         }
     } else {
         for (i = 0; i < send; i++) {
-            if (fifo8_is_empty(&s->tx_queue.fifo)) {
+            if (!fifo8_is_empty(&s->tx_queue.fifo)) {
                 data[i] = fifo8_pop(&s->tx_queue.fifo);
+             } else {
+                send = i;
+                break;
              }
         }
     }
