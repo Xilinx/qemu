@@ -1069,7 +1069,17 @@ static uint32_t dwc_i3c_device_pop_rx(DwcI3CDevice *s)
         return 0;
     }
 
-    uint32_t val = fifo32_pop(&s->rx_queue);
+    uint32_t val = 0;
+    int i = 0;
+
+    if (fifo8_num_used(&s->rx_queue.fifo) <= 3) {
+        while (!fifo8_is_empty(&s->rx_queue.fifo)) {
+            val |= fifo8_pop(&s->rx_queue.fifo) << i * 8;
+            i++;
+        }
+    } else {
+        val = fifo32_pop(&s->rx_queue);
+    }
     ARRAY_FIELD_DP32(s->regs, DATA_BUFFER_STATUS_LEVEL, RX_BUF_BLR,
                      fifo32_num_used(&s->rx_queue));
 
