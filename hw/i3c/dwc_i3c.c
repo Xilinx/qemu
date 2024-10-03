@@ -249,8 +249,18 @@ REG32(SLV_INTR_REQ,                 0x8c)
     FIELD(SLV_INTR_REQ, SIR_CTRL, 1, 2)
     FIELD(SLV_INTR_REQ, MIR,      3, 1)
     FIELD(SLV_INTR_REQ, IBI_STS,  8, 2)
+    FIELD(SLV_INTR_REQ, MDB, 8, 8)
+    FIELD(SLV_INTR_REQ, SIR_DATA_LEN, 16, 8)
 REG32(SLV_TSX_SYMBL_TIMING,         0x90)
     FIELD(SLV_TSX_SYMBL_TIMING, SLV_TSX_SYMBL_CNT, 0, 6)
+REG32(SLV_SIR_DATA,                 0x94)
+    FIELD(SLV_SIR_DATA, SIR_DATA_BYTE0,  0, 8)
+    FIELD(SLV_SIR_DATA, SIR_DATA_BYTE1,  8, 8)
+    FIELD(SLV_SIR_DATA, SIR_DATA_BYTE2, 16, 8)
+    FIELD(SLV_SIR_DATA, SIR_DATA_BYTE3, 24, 8)
+REG32(SLV_IBI_RESP,                 0x98)
+    FIELD(SLV_IBI_RESP, IBI_STS, 0, 2)
+    FIELD(SLV_IBI_RESP, SIR_RESP_DATA_LENGTH, 8, 16)
 REG32(DEVICE_CTRL_EXTENDED,         0xb0)
     FIELD(DEVICE_CTRL_EXTENDED, MODE, 0, 2)
     FIELD(DEVICE_CTRL_EXTENDED, REQMST_ACK_CTRL, 3, 1)
@@ -432,7 +442,8 @@ static inline uint8_t dwc_i3c_device_ibi_slice_size(DwcI3CDevice *s)
 
 static inline bool dwc_i3c_device_role_master(DwcI3CDevice *s)
 {
-    return s->cfg.device_role <= DR_SECONDARY_MASTER;
+    return s->cfg.device_role <= DR_SECONDARY_MASTER &&
+           s->cur_master;
 }
 
 static uint16_t dwc_i3c_device_cmd_num_tx_bytes(DwcI3CCmdQueueData arg)
@@ -582,34 +593,53 @@ static int dwc_i3c_device_recv_data(DwcI3CDevice *s, bool is_i2c,
     return ret;
 }
 
+static void dwc_i3c_target_hj_req(DwcI3CDevice *s)
+{
+    if (ARRAY_FIELD_EX32(s->regs, SLV_EVENT_CTRL, HOT_JOIN_INTERRUPT) &&
+        !ARRAY_FIELD_EX32(s->regs, PRESENT_STATE, CURRENT_MASTER) &&
+        s->i3c_target &&
+        !s->i3c_target->da_valid) {
+        /*
+         * Issue HJ
+         */
+        trace_dwc_i3c_target_ibi("HJ", s->i3c_target->address);
+        if (i3c_target_send_ibi(s->i3c_target, I3C_HJ_ADDR, 0)) {
+            trace_dwc_i3c_target_ibi("HJ Nacked", s->i3c_target->address);
+        }
+        i3c_target_ibi_finish(s->i3c_target, 0);
+    }
+}
+
 static inline void dwc_i3c_device_ctrl_w(DwcI3CDevice *s,
                                                    uint32_t val)
 {
-    /*
-     * If the user is setting I3C_RESUME, the controller was halted.
-     * Try and resume execution and leave the bit cleared.
-     */
-    if (FIELD_EX32(val, DEVICE_CTRL, I3C_RESUME)) {
-        dwc_i3c_device_cmd_queue_execute(s);
-        val = FIELD_DP32(val, DEVICE_CTRL, I3C_RESUME, 0);
+    if (FIELD_EX32(val, DEVICE_CTRL, I3C_EN)) {
+        dwc_i3c_target_hj_req(s);
+        /*
+         * If the user is setting I3C_RESUME, the controller was halted.
+         * Try and resume execution and leave the bit cleared.
+         */
+        if (FIELD_EX32(val, DEVICE_CTRL, I3C_RESUME)) {
+            dwc_i3c_device_cmd_queue_execute(s);
+            val = FIELD_DP32(val, DEVICE_CTRL, I3C_RESUME, 0);
+        }
+        /*
+         * I3C_ABORT being set sends an I3C STOP. It's cleared when the STOP is
+         * sent.
+         */
+        if (FIELD_EX32(val, DEVICE_CTRL, I3C_ABORT)) {
+            dwc_i3c_device_end_transfer(s, /*is_i2c=*/true);
+            dwc_i3c_device_end_transfer(s, /*is_i2c=*/false);
+            val = FIELD_DP32(val, DEVICE_CTRL, I3C_ABORT, 0);
+            ARRAY_FIELD_DP32(s->regs, INTR_STATUS, TRANSFER_ABORT, 1);
+            dwc_i3c_device_update_irq(s);
+        }
+        /* Update present state. */
+        ARRAY_FIELD_DP32(s->regs, PRESENT_STATE, CM_TFR_ST_STATUS,
+                         DWC_I3C_TRANSFER_STATE_IDLE);
+        ARRAY_FIELD_DP32(s->regs, PRESENT_STATE, CM_TFR_STATUS,
+                         DWC_I3C_TRANSFER_STATUS_IDLE);
     }
-    /*
-     * I3C_ABORT being set sends an I3C STOP. It's cleared when the STOP is
-     * sent.
-     */
-    if (FIELD_EX32(val, DEVICE_CTRL, I3C_ABORT)) {
-        dwc_i3c_device_end_transfer(s, /*is_i2c=*/true);
-        dwc_i3c_device_end_transfer(s, /*is_i2c=*/false);
-        val = FIELD_DP32(val, DEVICE_CTRL, I3C_ABORT, 0);
-        ARRAY_FIELD_DP32(s->regs, INTR_STATUS, TRANSFER_ABORT, 1);
-        dwc_i3c_device_update_irq(s);
-    }
-    /* Update present state. */
-    ARRAY_FIELD_DP32(s->regs, PRESENT_STATE, CM_TFR_ST_STATUS,
-                     DWC_I3C_TRANSFER_STATE_IDLE);
-    ARRAY_FIELD_DP32(s->regs, PRESENT_STATE, CM_TFR_STATUS,
-                     DWC_I3C_TRANSFER_STATUS_IDLE);
-
     s->regs[R_DEVICE_CTRL] = val;
 }
 
@@ -1033,6 +1063,7 @@ static void dwc_i3c_device_reset(DeviceState *dev)
                      s->cfg.slv_static_addr_en);
     ARRAY_FIELD_DP32(s->regs, DEVICE_ADDR, STATIC_ADDR,
                      s->cfg.slv_static_addr);
+    ARRAY_FIELD_DP32(s->regs, PRESENT_STATE, CURRENT_MASTER, s->cur_master);
     dwc_i3c_device_cmd_queue_reset(s);
     dwc_i3c_device_resp_queue_reset(s);
     dwc_i3c_device_ibi_queue_reset(s);
@@ -1807,6 +1838,111 @@ static void dwc_i3c_device_cmd_queue_port_w(DwcI3CDevice *s, uint32_t val)
     }
 }
 
+static void dwc_i3c_device_slv_intr_req_w(DwcI3CDevice *s, uint32_t val)
+{
+    int res;
+    int len, n;
+    uint8_t payload;
+
+    s->regs[R_SLV_INTR_REQ] = val;
+
+    if (!s->cfg.slv_ibi) {
+        return;
+    }
+
+    if (FIELD_EX32(val, SLV_INTR_REQ, SIR)) {
+        ARRAY_FIELD_DP32(s->regs, SLV_INTR_REQ, IBI_STS, 0x0);
+           /*
+            * master mode
+            */
+        if ((s->cur_master) ||
+            /*
+             * Master has disable SIR
+             */
+            (!ARRAY_FIELD_EX32(s->regs, SLV_EVENT_CTRL, SLV_INTERRUPT)) ||
+            /*
+             * No valid DA assigned
+             */
+            (!s->i3c_target || !s->i3c_target->da_valid)) {
+
+            ARRAY_FIELD_DP32(s->regs, SLV_INTR_REQ, IBI_STS, 0x3);
+        } else {
+            trace_dwc_i3c_target_ibi("SIR", s->i3c_target->address);
+            res = i3c_target_send_ibi(s->i3c_target, s->cfg.slv_ibi_data ?
+                                          FIELD_EX32(val, SLV_INTR_REQ, MDB) :
+                                          s->i3c_target->address, true);
+            /*
+             * Max IBI Payload 4.
+             */
+            len = MIN(FIELD_EX32(val, SLV_INTR_REQ, SIR_DATA_LEN), 4);
+
+            if (!res) {
+                if (s->cfg.slv_ibi_data) {
+                    for (n = 0; !res && n < len; n++) {
+                        payload = extract32(s->regs[R_SLV_SIR_DATA], n * 8, 8);
+                        res = i3c_target_send_ibi_bytes(s->i3c_target,
+                                                        payload);
+                    }
+                }
+                if (!res) {
+                    ARRAY_FIELD_DP32(s->regs, SLV_INTR_REQ, IBI_STS, 0x1);
+                    ARRAY_FIELD_DP32(s->regs, SLV_IBI_RESP,
+                                     SIR_RESP_DATA_LENGTH, 0);
+                } else {
+                    /*
+                     * Payload failed
+                     */
+                    ARRAY_FIELD_DP32(s->regs, SLV_IBI_RESP, IBI_STS, 2);
+                    ARRAY_FIELD_DP32(s->regs, SLV_IBI_RESP,
+                                     SIR_RESP_DATA_LENGTH, len - (n - 1));
+                    qemu_log_mask(LOG_GUEST_ERROR,
+                                  "SIR IBI master early termination\n");
+                }
+            } else {
+                /*
+                 * IBI Failed
+                 */
+                ARRAY_FIELD_DP32(s->regs, SLV_IBI_RESP, IBI_STS, 2);
+                ARRAY_FIELD_DP32(s->regs, SLV_IBI_RESP, SIR_RESP_DATA_LENGTH,
+                                 len);
+                trace_dwc_i3c_target_ibi("SIR Nacked", s->i3c_target->address);
+            }
+            i3c_target_ibi_finish(s->i3c_target, 0);
+        }
+        ARRAY_FIELD_DP32(s->regs, SLV_INTR_REQ, SIR, 0);
+        ARRAY_FIELD_DP32(s->regs, INTR_STATUS, IBI_UPDATED, 1);
+    }
+
+    if (FIELD_EX32(val, SLV_INTR_REQ, MIR)) {
+        ARRAY_FIELD_DP32(s->regs, SLV_INTR_REQ, IBI_STS, 0x0);
+            /*
+             * Already master
+             */
+        if ((ARRAY_FIELD_EX32(s->regs, PRESENT_STATE, CURRENT_MASTER)) ||
+            /*
+             * MR disabled by master
+             */
+            (!ARRAY_FIELD_EX32(s->regs, SLV_EVENT_CTRL, MASTER_INTERRUPT)) ||
+            /*
+             * No valid DA assigned
+             */
+            (!s->i3c_target || !s->i3c_target->da_valid)) {
+            ARRAY_FIELD_DP32(s->regs, SLV_INTR_REQ, IBI_STS, 0x3);
+        } else {
+            trace_dwc_i3c_target_ibi("CR", s->i3c_target->address);
+            if (!i3c_target_send_ibi(s->i3c_target,
+                                     s->i3c_target->address, 0)) {
+                i3c_target_ibi_finish(s->i3c_target, 0);
+                ARRAY_FIELD_DP32(s->regs, SLV_INTR_REQ, IBI_STS, 1);
+             } else {
+                 trace_dwc_i3c_target_ibi("CR Nacked", s->i3c_target->address);
+             }
+        }
+        ARRAY_FIELD_DP32(s->regs, SLV_INTR_REQ, MIR, 0);
+        ARRAY_FIELD_DP32(s->regs, INTR_STATUS, IBI_UPDATED, 1);
+    }
+}
+
 static void dwc_i3c_device_write(void *opaque, hwaddr offset,
                                     uint64_t value, unsigned size)
 {
@@ -1862,6 +1998,9 @@ static void dwc_i3c_device_write(void *opaque, hwaddr offset,
         break;
     case R_INTR_FORCE:
         dwc_i3c_device_intr_force_w(s, val32);
+        break;
+    case R_SLV_INTR_REQ:
+        dwc_i3c_device_slv_intr_req_w(s, val32);
         break;
     default:
         s->regs[addr] = val32;
@@ -2223,6 +2362,7 @@ static void dwc_i3c_device_realize(DeviceState *dev, Error **errp)
 
 static Property dwc_i3c_device_properties[] = {
     DEFINE_PROP_UINT8("device-id", DwcI3CDevice, id, 0),
+    DEFINE_PROP_BOOL("current-master", DwcI3CDevice, cur_master, true),
     /*
      * Role Configuration
      */
@@ -2241,7 +2381,8 @@ static Property dwc_i3c_device_properties[] = {
     /*
      * Slave Configuration Parameters
      */
-    DEFINE_PROP_BOOL("slv-ibi", DwcI3CDevice, cfg.slv_ibi, false),
+    DEFINE_PROP_BOOL("slv-ibi", DwcI3CDevice, cfg.slv_ibi, true),
+    DEFINE_PROP_BOOL("slv-ibi-data", DwcI3CDevice, cfg.slv_ibi_data, false),
     DEFINE_PROP_UINT16("slv-dflt-mwl", DwcI3CDevice, cfg.slv_mwl, 0xFF),
     DEFINE_PROP_UINT16("slv-dflt-mrl", DwcI3CDevice, cfg.slv_mrl, 0xFF),
     DEFINE_PROP_BOOL("slave-static-addr-en", DwcI3CDevice,

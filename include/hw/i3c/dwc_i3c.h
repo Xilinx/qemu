@@ -175,6 +175,7 @@ typedef struct DwcI3CDevice {
     MemoryRegion mr;
     qemu_irq irq;
     I3CBus *bus;
+    bool cur_master;
 
     Fifo32 cmd_queue;
     Fifo32 resp_queue;
@@ -188,6 +189,7 @@ typedef struct DwcI3CDevice {
         uint8_t num_devices;
         uint8_t ibi_buf_lvl_sel;
         bool slv_ibi;
+        bool slv_ibi_data;
         uint16_t slv_mwl;
         uint16_t slv_mrl;
         bool slv_static_addr_en;
