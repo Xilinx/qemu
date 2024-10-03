@@ -140,6 +140,7 @@ struct I3CTarget {
     uint8_t dcr;
     uint8_t bcr;
     uint64_t pid;
+    bool da_valid;
 
     /* CCC State tracking. */
     I3CCCC curr_ccc;
