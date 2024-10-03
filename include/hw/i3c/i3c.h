@@ -29,6 +29,8 @@ typedef enum I3CEvent {
     I3C_START_SEND,
     I3C_STOP,
     I3C_NACK,
+    I3C_CCC_WR,
+    I3C_CCC_RD,
 } I3CEvent;
 
 typedef enum I3CCCC {

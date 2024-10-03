@@ -178,6 +178,9 @@ static int i3c_do_start_transfer(I3CBus *bus, uint8_t address,
         bus->broadcast = false;
     }
 
+    if (bus->in_ccc) {
+        event = event == I3C_START_RECV ? I3C_CCC_RD : I3C_CCC_WR;
+    }
     /* No one responded to the address, NACK it. */
     if (!i3c_scan_bus(bus, address)) {
         return -1;
