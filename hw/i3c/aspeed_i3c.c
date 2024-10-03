@@ -938,6 +938,108 @@ static void aspeed_i3c_device_intr_force_w(AspeedI3CDevice *s, uint32_t val)
     aspeed_i3c_device_update_irq(s);
 }
 
+static void aspeed_i3c_device_cmd_queue_reset(AspeedI3CDevice *s)
+{
+    fifo32_reset(&s->cmd_queue);
+
+    ARRAY_FIELD_DP32(s->regs, QUEUE_STATUS_LEVEL, CMD_QUEUE_EMPTY_LOC,
+                     fifo32_num_free(&s->cmd_queue));
+    uint8_t empty_threshold = ARRAY_FIELD_EX32(s->regs, QUEUE_THLD_CTRL,
+                                               CMD_BUF_EMPTY_THLD);
+    if (fifo32_num_free(&s->cmd_queue) >= empty_threshold) {
+        ARRAY_FIELD_DP32(s->regs, INTR_STATUS, CMD_QUEUE_RDY, 1);
+        aspeed_i3c_device_update_irq(s);
+    };
+}
+
+static void aspeed_i3c_device_resp_queue_reset(AspeedI3CDevice *s)
+{
+    fifo32_reset(&s->resp_queue);
+
+    ARRAY_FIELD_DP32(s->regs, QUEUE_STATUS_LEVEL, RESP_BUF_BLR,
+                     fifo32_num_used(&s->resp_queue));
+    /*
+     * This interrupt will always be cleared because the threshold is a minimum
+     * of 1 and the queue size is 0.
+     */
+    ARRAY_FIELD_DP32(s->regs, INTR_STATUS, RESP_RDY, 0);
+    aspeed_i3c_device_update_irq(s);
+}
+
+static void aspeed_i3c_device_ibi_queue_reset(AspeedI3CDevice *s)
+{
+    fifo32_reset(&s->ibi_queue);
+
+    ARRAY_FIELD_DP32(s->regs, QUEUE_STATUS_LEVEL, IBI_BUF_BLR,
+                     fifo32_num_used(&s->resp_queue));
+    /*
+     * This interrupt will always be cleared because the threshold is a minimum
+     * of 1 and the queue size is 0.
+     */
+    ARRAY_FIELD_DP32(s->regs, INTR_STATUS, IBI_THLD, 0);
+    aspeed_i3c_device_update_irq(s);
+}
+
+static void aspeed_i3c_device_tx_queue_reset(AspeedI3CDevice *s)
+{
+    fifo32_reset(&s->tx_queue);
+
+    ARRAY_FIELD_DP32(s->regs, DATA_BUFFER_STATUS_LEVEL, TX_BUF_EMPTY_LOC,
+                     fifo32_num_free(&s->tx_queue));
+    /* TX buf is empty, so this interrupt will always be set. */
+    ARRAY_FIELD_DP32(s->regs, INTR_STATUS, TX_THLD, 1);
+    aspeed_i3c_device_update_irq(s);
+}
+
+static void aspeed_i3c_device_rx_queue_reset(AspeedI3CDevice *s)
+{
+    fifo32_reset(&s->rx_queue);
+
+    ARRAY_FIELD_DP32(s->regs, DATA_BUFFER_STATUS_LEVEL, RX_BUF_BLR,
+                     fifo32_num_used(&s->resp_queue));
+    /*
+     * This interrupt will always be cleared because the threshold is a minimum
+     * of 1 and the queue size is 0.
+     */
+    ARRAY_FIELD_DP32(s->regs, INTR_STATUS, RX_THLD, 0);
+    aspeed_i3c_device_update_irq(s);
+}
+
+static void aspeed_i3c_device_reset(DeviceState *dev)
+{
+    AspeedI3CDevice *s = ASPEED_I3C_DEVICE(dev);
+    trace_aspeed_i3c_device_reset(s->id);
+
+    memcpy(s->regs, ast2600_i3c_device_resets, sizeof(s->regs));
+    aspeed_i3c_device_cmd_queue_reset(s);
+    aspeed_i3c_device_resp_queue_reset(s);
+    aspeed_i3c_device_ibi_queue_reset(s);
+    aspeed_i3c_device_tx_queue_reset(s);
+    aspeed_i3c_device_rx_queue_reset(s);
+}
+
+static void aspeed_i3c_device_reset_ctrl_w(AspeedI3CDevice *s, uint32_t val)
+{
+    if (FIELD_EX32(val, RESET_CTRL, CORE_RESET)) {
+        aspeed_i3c_device_reset(DEVICE(s));
+    }
+    if (FIELD_EX32(val, RESET_CTRL, CMD_QUEUE_RESET)) {
+        aspeed_i3c_device_cmd_queue_reset(s);
+    }
+    if (FIELD_EX32(val, RESET_CTRL, RESP_QUEUE_RESET)) {
+        aspeed_i3c_device_resp_queue_reset(s);
+    }
+    if (FIELD_EX32(val, RESET_CTRL, TX_BUF_RESET)) {
+        aspeed_i3c_device_tx_queue_reset(s);
+    }
+    if (FIELD_EX32(val, RESET_CTRL, RX_BUF_RESET)) {
+        aspeed_i3c_device_rx_queue_reset(s);
+    }
+    if (FIELD_EX32(val, RESET_CTRL, IBI_QUEUE_RESET)) {
+        aspeed_i3c_device_ibi_queue_reset(s);
+    }
+}
+
 static uint32_t aspeed_i3c_device_pop_rx(AspeedI3CDevice *s)
 {
     if (fifo32_is_empty(&s->rx_queue)) {
@@ -1693,6 +1795,7 @@ static void aspeed_i3c_device_write(void *opaque, hwaddr offset,
         aspeed_i3c_device_cmd_queue_port_w(s, val32);
         break;
     case R_RESET_CTRL:
+        aspeed_i3c_device_reset_ctrl_w(s, val32);
         break;
     case R_INTR_STATUS:
         aspeed_i3c_device_intr_status_w(s, val32);
@@ -1727,13 +1830,6 @@ static const MemoryRegionOps aspeed_i3c_device_ops = {
     .write = aspeed_i3c_device_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
 };
-
-static void aspeed_i3c_device_reset(DeviceState *dev)
-{
-    AspeedI3CDevice *s = ASPEED_I3C_DEVICE(dev);
-
-    memcpy(s->regs, ast2600_i3c_device_resets, sizeof(s->regs));
-}
 
 static void aspeed_i3c_device_realize(DeviceState *dev, Error **errp)
 {
