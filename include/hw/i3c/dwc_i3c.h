@@ -16,6 +16,7 @@
 #include "hw/sysbus.h"
 
 #define TYPE_DWC_I3C "dwc.i3c"
+#define TYPE_DWC_I3C_TARGET "dwc.i3c-target"
 
 #define DWC_I3C_NR_REGS (0x300 >> 2)
 
@@ -189,7 +190,17 @@ typedef struct DwcI3CDevice {
         bool slv_ibi;
         uint16_t slv_mwl;
         uint16_t slv_mrl;
+        bool slv_static_addr_en;
+        uint8_t slv_static_addr;
     } cfg;
+    I3CTarget *i3c_target;
+
+    struct {
+        I3CEvent curr_event;
+        uint32_t tr_bytes;
+        DwcI3CCmdQueueData tx_cmd;
+        DwcI3CCmdQueueData tx_arg;
+   } target;
 
     /* Temporary storage for IBI data. */
     DwcI3CDeviceIBIData ibi_data;
@@ -197,4 +208,10 @@ typedef struct DwcI3CDevice {
     uint32_t regs[DWC_I3C_NR_REGS];
 } DwcI3CDevice;
 
+OBJECT_DECLARE_SIMPLE_TYPE(DwcI3CTarget, DWC_I3C_TARGET)
+typedef struct DwcI3CTarget {
+    I3CTarget parent;
+
+    DwcI3CDevice *dwc_i3c;
+} DwcI3CTarget;
 #endif

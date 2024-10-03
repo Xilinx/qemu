@@ -94,6 +94,7 @@ REG32(RESPONSE_QUEUE_PORT,          0x10)
     FIELD(RESPONSE_QUEUE_PORT, DL, 0, 16)
     FIELD(RESPONSE_QUEUE_PORT, CCCT, 16, 8)
     FIELD(RESPONSE_QUEUE_PORT, TID, 24, 4)
+    FIELD(RESPONSE_QUEUE_PORT, RX_RSP, 27, 1)
     FIELD(RESPONSE_QUEUE_PORT, ERR_STATUS, 28, 4)
 REG32(RX_TX_DATA_PORT,              0x14)
 REG32(IBI_QUEUE_STATUS,             0x18)
@@ -222,7 +223,9 @@ REG32(DEV_CHAR_TABLE_POINTER,       0x60)
     FIELD(DEV_CHAR_TABLE_POINTER, PRESENT_DEV_CHAR_TABLE_INDEX, 19, 3)
 REG32(VENDOR_SPECIFIC_REG_POINTER,  0x6c)
     FIELD(VENDOR_SPECIFIC_REG_POINTER, P_VENDOR_REG_START_ADDR, 0, 16)
-REG32(SLV_MIPI_PID_VALUE,           0x70)
+REG32(SLV_MIPI_ID_VALUE,           0x70)
+    FIELD(SLV_MIPI_ID_VALUE, SLV_PROV_ID_SEL, 0, 1)
+    FIELD(SLV_MIPI_ID_VALUE, SLV_MIPI_MFG_ID, 1, 15)
 REG32(SLV_PID_VALUE,                0x74)
     FIELD(SLV_PID_VALUE, SLV_PID_DCR, 0, 12)
     FIELD(SLV_PID_VALUE, SLV_INST_ID, 12, 4)
@@ -236,6 +239,9 @@ REG32(SLV_MAX_LEN,                  0x7c)
     FIELD(SLV_MAX_LEN, MRL, 16, 16)
 REG32(MAX_READ_TURNAROUND,          0x80)
 REG32(MAX_DATA_SPEED,               0x84)
+    FIELD(MAX_DATA_SPEED, MXDS_MAX_WR_SPEED, 0, 3)
+    FIELD(MAX_DATA_SPEED, MXDS_MAX_RD_SPEED, 8, 3)
+    FIELD(MAX_DATA_SPEED, MXDS_CLK_DATA_TURN, 16, 3)
 REG32(SLV_DEBUG_STATUS,             0x88)
 REG32(SLV_INTR_REQ,                 0x8c)
     FIELD(SLV_INTR_REQ, SIR,      0, 1)
@@ -423,6 +429,39 @@ static inline uint8_t dwc_i3c_device_ibi_slice_size(DwcI3CDevice *s)
     return ibi_slice_size;
 }
 
+static inline bool dwc_i3c_device_role_master(DwcI3CDevice *s)
+{
+    return s->cfg.device_role == DR_MASTER_ONLY;
+}
+
+static uint16_t dwc_i3c_device_cmd_num_tx_bytes(DwcI3CCmdQueueData arg)
+{
+    uint8_t bs;
+    uint16_t data_len = 0;
+    if (arg.transfer_cmd.cmd_attr == DWC_I3C_CMD_ATTR_SHORT_DATA_ARG) {
+        bs = arg.short_arg.byte_strb;
+        switch (bs) {
+        case 0x7:
+            data_len = 3;
+            break;
+        case 0x3:
+            data_len = 2;
+            break;
+        case 0x1:
+            data_len = 1;
+            break;
+        case 0:
+            break;
+        default:
+            qemu_log_mask(LOG_GUEST_ERROR, "Invalid byte strobe 0x%x\n", bs);
+            break;
+        };
+    } else {
+      data_len = arg.transfer_arg.data_len;
+    }
+    return data_len;
+}
+
 static void dwc_i3c_device_update_irq(DwcI3CDevice *s)
 {
     bool level = !!(s->regs[R_INTR_SIGNAL_EN] & s->regs[R_INTR_STATUS]);
@@ -571,6 +610,18 @@ static inline void dwc_i3c_device_ctrl_w(DwcI3CDevice *s,
                      DWC_I3C_TRANSFER_STATUS_IDLE);
 
     s->regs[R_DEVICE_CTRL] = val;
+}
+
+static void dwc_i3c_device_addr_w(DwcI3CDevice *s, uint32_t val)
+{
+    s->regs[R_DEVICE_ADDR] = val;
+    s->cfg.slv_static_addr_en = FIELD_EX32(val, DEVICE_ADDR, STATIC_ADDR_VALID);
+
+    if (s->cfg.slv_static_addr_en &&
+        s->cfg.device_role > DR_PROG_MASTER_SLAVE && s->i3c_target) {
+        s->i3c_target->static_address = FIELD_EX32(val, DEVICE_ADDR,
+                                        STATIC_ADDR);
+    }
 }
 
 static inline bool dwc_i3c_device_target_is_i2c(DwcI3CDevice *s,
@@ -977,6 +1028,10 @@ static void dwc_i3c_device_reset(DeviceState *dev)
                                       PRESENT_DEV_CHAR_TABLE_INDEX) +
                      ARRAY_FIELD_EX32(s->regs, DEV_CHAR_TABLE_POINTER,
                                       DEV_CHAR_TABLE_DEPTH) * 4);
+    ARRAY_FIELD_DP32(s->regs, DEVICE_ADDR, STATIC_ADDR_VALID,
+                     s->cfg.slv_static_addr_en);
+    ARRAY_FIELD_DP32(s->regs, DEVICE_ADDR, STATIC_ADDR,
+                     s->cfg.slv_static_addr);
     dwc_i3c_device_cmd_queue_reset(s);
     dwc_i3c_device_resp_queue_reset(s);
     dwc_i3c_device_ibi_queue_reset(s);
@@ -1112,10 +1167,12 @@ static uint64_t dwc_i3c_device_read(void *opaque, hwaddr offset,
 static void dwc_i3c_device_resp_queue_push(DwcI3CDevice *s,
                                               uint8_t err, uint8_t tid,
                                               uint8_t ccc_type,
-                                              uint16_t data_len)
+                                              uint16_t data_len,
+                                              bool rx_rsp)
 {
     uint32_t val = 0;
     val = FIELD_DP32(val, RESPONSE_QUEUE_PORT, ERR_STATUS, err);
+    val = FIELD_DP32(val, RESPONSE_QUEUE_PORT, RX_RSP, rx_rsp);
     val = FIELD_DP32(val, RESPONSE_QUEUE_PORT, TID, tid);
     val = FIELD_DP32(val, RESPONSE_QUEUE_PORT, CCCT, ccc_type);
     val = FIELD_DP32(val, RESPONSE_QUEUE_PORT, DL, data_len);
@@ -1273,7 +1330,7 @@ transfer_done:
          * transfers.
          */
         dwc_i3c_device_resp_queue_push(s, err, cmd.tid, /*ccc_type=*/0,
-                                          /*data_len=*/0);
+                                          /*data_len=*/0, /*rx_rxp*/0);
     }
 }
 
@@ -1422,7 +1479,7 @@ transfer_done:
                                                           bytes_transferred;
         /* CCCT is always 0 in controller mode. */
         dwc_i3c_device_resp_queue_push(s, err, cmd.tid, /*ccc_type=*/0,
-                                          data_len);
+                                          data_len, 0);
     }
 
     dwc_i3c_device_update_irq(s);
@@ -1589,7 +1646,7 @@ transfer_done:
      */
     if (cmd.roc) {
         dwc_i3c_device_resp_queue_push(s, err, cmd.tid, /*ccc_type=*/0,
-                                         cmd.dev_count - i);
+                                         cmd.dev_count - i, 0);
     }
 }
 
@@ -1619,6 +1676,20 @@ static uint32_t dwc_i3c_device_cmd_queue_pop(DwcI3CDevice *s)
     return val;
 }
 
+static int dwc_i3c_device_cmd_queue_invalid(DwcI3CDevice *s)
+{
+   /*
+     * We only start executing when a command is passed into the FIFO.
+     * We expect there to be a multiple of 2 items in the queue. The first item
+     * should be an argument to a command, and the command should be the second
+     * item.
+     */
+    if (fifo32_num_used(&s->cmd_queue) & 1) {
+        return 1;
+    }
+    return 0;
+}
+
 static void dwc_i3c_device_cmd_queue_execute(DwcI3CDevice *s)
 {
     ARRAY_FIELD_DP32(s->regs, PRESENT_STATE, CM_TFR_ST_STATUS,
@@ -1627,17 +1698,10 @@ static void dwc_i3c_device_cmd_queue_execute(DwcI3CDevice *s)
         return;
     }
 
-    /*
-     * We only start executing when a command is passed into the FIFO.
-     * We expect there to be a multiple of 2 items in the queue. The first item
-     * should be an argument to a command, and the command should be the second
-     * item.
-     */
-    if (fifo32_num_used(&s->cmd_queue) & 1) {
+    if (dwc_i3c_device_cmd_queue_invalid(s)) {
         return;
     }
-
-    while (!fifo32_is_empty(&s->cmd_queue)) {
+     while (!fifo32_is_empty(&s->cmd_queue)) {
         DwcI3CCmdQueueData arg;
         arg.word = dwc_i3c_device_cmd_queue_pop(s);
         DwcI3CCmdQueueData cmd;
@@ -1705,7 +1769,9 @@ static void dwc_i3c_device_cmd_queue_port_w(DwcI3CDevice *s, uint32_t val)
     case DWC_I3C_CMD_ATTR_TRANSFER_CMD:
     case DWC_I3C_CMD_ATTR_ADDR_ASSIGN_CMD:
         dwc_i3c_device_cmd_queue_push(s, val);
-        dwc_i3c_device_cmd_queue_execute(s);
+        if (dwc_i3c_device_role_master(s)) {
+            dwc_i3c_device_cmd_queue_execute(s);
+        }
         break;
     /* If we get an argument just push it. */
     case DWC_I3C_CMD_ATTR_TRANSFER_ARG:
@@ -1739,7 +1805,6 @@ static void dwc_i3c_device_write(void *opaque, hwaddr offset,
     case R_CCC_DEVICE_STATUS:
     case R_DEVICE_ADDR_TABLE_POINTER:
     case R_VENDOR_SPECIFIC_REG_POINTER:
-    case R_SLV_CHAR_CTRL:
     case R_SLV_MAX_LEN:
     case R_MAX_READ_TURNAROUND:
     case R_I3C_VER_ID:
@@ -1752,6 +1817,9 @@ static void dwc_i3c_device_write(void *opaque, hwaddr offset,
         break;
     case R_DEVICE_CTRL:
         dwc_i3c_device_ctrl_w(s, val32);
+        break;
+    case R_DEVICE_ADDR:
+        dwc_i3c_device_addr_w(s, val32);
         break;
     case R_RX_TX_DATA_PORT:
         dwc_i3c_device_push_tx(s, val32);
@@ -1778,6 +1846,301 @@ static void dwc_i3c_device_write(void *opaque, hwaddr offset,
         s->regs[addr] = val32;
         break;
     }
+}
+
+static int dwc_i3c_target_event(I3CTarget *i3c, enum I3CEvent event)
+{
+    DwcI3CTarget *ss = DWC_I3C_TARGET(i3c);
+    DwcI3CDevice *s = ss->dwc_i3c;
+    uint8_t thld;
+
+    switch (event) {
+    case I3C_START_SEND:
+        thld = ARRAY_FIELD_EX32(s->regs, DATA_BUFFER_THLD_CTRL, RX_START_THLD);
+        thld = 1 << (thld + 1);
+        thld = thld == 2 ? 1 : thld;
+        if (fifo32_num_free(&s->rx_queue) * 4 < thld) {
+            /*
+             *  Receive buf space if not sufficent w.r.t RX_START_THLD
+             */
+            return -1;
+        }
+        s->target.curr_event = event;
+        break;
+    case I3C_START_RECV:
+        if (dwc_i3c_device_cmd_queue_invalid(s)) {
+            return -1;
+        }
+        s->target.tx_arg.word = dwc_i3c_device_cmd_queue_pop(s);
+        s->target.tx_cmd.word = dwc_i3c_device_cmd_queue_pop(s);
+        s->target.curr_event = event;
+        break;
+    case I3C_STOP:
+        if (s->target.curr_event == I3C_START_SEND) {
+            dwc_i3c_device_resp_queue_push(s, 0, 0, 0,
+                             s->target.tr_bytes, true);
+            s->target.tr_bytes = 0;
+        } else if (s->target.curr_event == I3C_START_RECV) {
+            dwc_i3c_device_resp_queue_push(s, 0,
+                s->target.tx_cmd.transfer_cmd.tid, 0,
+                dwc_i3c_device_cmd_num_tx_bytes(s->target.tx_arg) -
+                s->target.tr_bytes, false);
+            s->target.tr_bytes = 0;
+            s->target.tx_cmd.word = 0;
+            s->target.tx_arg.word = 0;
+        }
+        s->target.curr_event = event;
+        break;
+    case I3C_NACK:
+    case I3C_CCC_WR:
+    case I3C_CCC_RD:
+        break;
+    };
+    return 0;
+}
+
+static uint32_t device_i3c_target_rx(I3CTarget *i3c, uint8_t *data,
+                                     uint32_t num_to_read)
+{
+    DwcI3CTarget *ss = DWC_I3C_TARGET(i3c);
+    DwcI3CDevice *s = ss->dwc_i3c;
+    uint16_t cmd_data_len = 0;
+    uint32_t send;
+    int i, j;
+    bool sdap = s->target.tx_cmd.transfer_cmd.sdap;
+    uint8_t thld = ARRAY_FIELD_EX32(s->regs, DATA_BUFFER_THLD_CTRL,
+                                    TX_START_THLD);
+    thld = 1 << (thld + 1);
+    thld = thld == 2 ? 1 : thld;
+
+    cmd_data_len = dwc_i3c_device_cmd_num_tx_bytes(s->target.tx_arg);
+
+    if (cmd_data_len) {
+        return -1;
+    }
+
+    send = MIN(num_to_read, cmd_data_len - s->target.tr_bytes);
+    if (sdap) {
+        for (j = 0, i = s->target.tr_bytes; i < send; i++, j++) {
+            data[j] = i == 0 ? s->target.tx_arg.short_arg.byte0 :
+                      i == 1 ? s->target.tx_arg.short_arg.byte1 :
+                      i == 2 ? s->target.tx_arg.short_arg.byte2 : 0;
+        }
+    } else {
+        for (i = 0; i < send; i++) {
+            if (fifo8_is_empty(&s->tx_queue.fifo)) {
+                data[i] = fifo8_pop(&s->tx_queue.fifo);
+             }
+        }
+    }
+
+    if (fifo8_num_free(&s->tx_queue.fifo) >= thld) {
+        ARRAY_FIELD_DP32(s->regs, INTR_STATUS, TX_THLD, 1);
+    }
+
+    s->target.tr_bytes += send;
+    dwc_i3c_device_update_irq(s);
+    return send;
+}
+
+static int device_i3c_target_tx(I3CTarget *i3c, const uint8_t *data,
+                                uint32_t num_to_send, uint32_t *num_sent)
+{
+    DwcI3CTarget *ss = DWC_I3C_TARGET(i3c);
+    DwcI3CDevice *s = ss->dwc_i3c;
+    unsigned int recv = num_to_send;
+    uint8_t thld = ARRAY_FIELD_EX32(s->regs, DATA_BUFFER_THLD_CTRL,
+                                    RX_START_THLD);
+    thld = 1 << (thld + 1);
+    thld = thld == 2 ? 1 : thld;
+
+    if (fifo8_num_free(&s->rx_queue.fifo) < num_to_send) {
+        recv = fifo8_num_free(&s->rx_queue.fifo);
+    }
+
+    fifo8_push_all(&s->rx_queue.fifo, data, recv);
+    s->target.tr_bytes += recv;
+
+    if (fifo8_num_used(&s->rx_queue.fifo) >= thld) {
+        ARRAY_FIELD_DP32(s->regs, INTR_STATUS, RX_THLD, 1);
+    }
+
+    *num_sent = recv;
+    dwc_i3c_device_update_irq(s);
+    return 0;
+}
+
+static int device_i3c_target_ccc_read(I3CTarget *i3c, uint8_t *data,
+                                      uint32_t num_to_read, uint32_t *num_read)
+{
+    DwcI3CTarget *ss = DWC_I3C_TARGET(i3c);
+    DwcI3CDevice *s = ss->dwc_i3c;
+
+    switch (i3c->curr_ccc) {
+    case I3C_CCCD_GETSTATUS:
+        if (i3c->ccc_byte_offset == 1 && num_to_read == 2) {
+            data[0] = (s->regs[R_CCC_DEVICE_STATUS] & 0xFF00) >> 8;
+            data[1] = s->regs[R_CCC_DEVICE_STATUS] & 0xFF;
+            *num_read = 2;
+        }
+        break;
+    case I3C_CCCD_GETMXDS:
+        data[0] = ARRAY_FIELD_EX32(s->regs, MAX_DATA_SPEED, MXDS_MAX_WR_SPEED);
+        data[1] = ARRAY_FIELD_EX32(s->regs, MAX_DATA_SPEED, MXDS_MAX_RD_SPEED);
+        *num_read = 2;
+        if (num_to_read == 3) {
+            data[2] = ARRAY_FIELD_EX32(s->regs, MAX_DATA_SPEED,
+                                       MXDS_CLK_DATA_TURN);
+            *num_read = 3;
+        }
+        break;
+    case I3C_CCCD_GETMRL:
+        data[0] = ARRAY_FIELD_EX32(s->regs, SLV_MAX_LEN, MRL) >> 8;
+        data[1] = ARRAY_FIELD_EX32(s->regs, SLV_MAX_LEN, MRL) & 0xFF;
+        *num_read = 2;
+        break;
+    case I3C_CCCD_GETMWL:
+        data[0] = ARRAY_FIELD_EX32(s->regs, SLV_MAX_LEN, MWL) >> 8;
+        data[1] = ARRAY_FIELD_EX32(s->regs, SLV_MAX_LEN, MWL) & 0xFF;
+        *num_read = 2;
+        break;
+    case I3C_CCCD_GETPID:
+    case I3C_CCCD_GETBCR:
+        break;
+    case I3C_CCCD_GETCAPS:
+        data[0] = ARRAY_FIELD_EX32(s->regs, SLV_CHAR_CTRL, HDR_CAP);
+        *num_read = 1;
+        break;
+    case I3C_CCC_DEFTGTS:
+    case I3C_CCCD_GETACCCR:
+    case I3C_CCC_ENEC:
+        break;
+    default:
+        break;
+    };
+    dwc_i3c_device_update_irq(s);
+    return 0;
+}
+
+#define CCC_BC_CHECK(bytes_rec, ccc_offset)                         \
+    if (bytes_rec <= ccc_offset) {                                  \
+        qemu_log_mask(LOG_GUEST_ERROR, "Broadcast CCC should have"  \
+                      " followup data");                            \
+        return -1;                                                  \
+    }
+
+static int device_i3c_target_ccc_write(I3CTarget *i3c, const uint8_t *data,
+                                       uint32_t num_to_send,
+                                       uint32_t *num_sent)
+{
+    DwcI3CTarget *ss = DWC_I3C_TARGET(i3c);
+    DwcI3CDevice *s = ss->dwc_i3c;
+
+    switch (i3c->curr_ccc) {
+    case I3C_CCC_ENEC:
+        i3c->ccc_byte_offset++;
+        *num_sent = 1;
+        CCC_BC_CHECK(num_to_send, i3c->ccc_byte_offset)
+        /*
+         * fall through
+         */
+    case I3C_CCCD_ENEC:
+        if (i3c->ccc_byte_offset == 1) {
+            s->regs[R_SLV_EVENT_CTRL] |= data[*num_sent] & 0xF;
+            *num_sent += 1;
+            i3c->ccc_byte_offset++;
+        }
+        break;
+    case I3C_CCC_DISEC:
+        i3c->ccc_byte_offset++;
+        *num_sent = 1;
+        CCC_BC_CHECK(num_to_send, i3c->ccc_byte_offset)
+       /*
+        * fall through
+        */
+    case I3C_CCCD_DISEC:
+        s->regs[R_SLV_EVENT_CTRL] &= ~((uint32_t)(data[*num_sent] & 0xF));
+        *num_sent += 1;
+        i3c->ccc_byte_offset++;
+        break;
+    case I3C_CCCD_SETDASA:
+        if (!s->cfg.slv_static_addr_en) {
+            return -1;
+        }
+       /*
+        * Fall through
+        */
+    case I3C_CCCD_SETNEWDA:
+    case I3C_CCC_ENTDAA:
+        ARRAY_FIELD_DP32(s->regs, DEVICE_ADDR, DYNAMIC_ADDR_VALID, 1);
+        ARRAY_FIELD_DP32(s->regs, DEVICE_ADDR, DYNAMIC_ADDR, i3c->address);
+        ARRAY_FIELD_DP32(s->regs, INTR_STATUS, DYN_ADDR_ASSGN, 1);
+        break;
+    case I3C_CCC_RSTDAA:
+        ARRAY_FIELD_DP32(s->regs, DEVICE_ADDR, DYNAMIC_ADDR_VALID, 0);
+        ARRAY_FIELD_DP32(s->regs, DEVICE_ADDR, DYNAMIC_ADDR, 0);
+        ARRAY_FIELD_DP32(s->regs, INTR_STATUS, DYN_ADDR_ASSGN, 0);
+        break;
+    case I3C_CCC_ENTHDR0:
+        *num_sent = 1;
+        i3c->ccc_byte_offset++;
+        if (!dwc_i3c_device_has_hdr_ddr(s)) {
+            return -1;
+        }
+        break;
+    case I3C_CCC_ENTHDR1:
+    case I3C_CCC_ENTHDR2:
+        *num_sent = 1;
+        i3c->ccc_byte_offset++;
+        if (!dwc_i3c_device_has_hdr_ts(s)) {
+            return -1;
+        }
+        break;
+    case I3C_CCC_SETMRL:
+        i3c->ccc_byte_offset++;
+        *num_sent = 1;
+        CCC_BC_CHECK(num_to_send, i3c->ccc_byte_offset)
+        /*
+         * Fall through
+         */
+    case I3C_CCCD_SETMRL:
+        /*
+         * 0: mrl msb
+         * 1: mrl lsb
+         * 2: ibi size (optional)
+         */
+        ARRAY_FIELD_DP32(s->regs, SLV_MAX_LEN, MRL,
+                          (data[*num_sent] << 8 | data[*num_sent + 1]));
+        *num_sent += 2;
+        break;
+    case I3C_CCC_SETMWL:
+        i3c->ccc_byte_offset++;
+        *num_sent = 1;
+        CCC_BC_CHECK(num_to_send, i3c->ccc_byte_offset)
+        /*
+         * Fall through
+         */
+    case I3C_CCCD_SETMWL:
+        ARRAY_FIELD_DP32(s->regs, SLV_MAX_LEN, MWL,
+                         (data[*num_sent] << 8 | data[*num_sent + 1]));
+        *num_sent += 2;
+        break;
+    case I3C_CCC_ENTAS0:
+    case I3C_CCCD_ENTAS0:
+    case I3C_CCC_ENTAS1:
+    case I3C_CCCD_ENTAS1:
+    case I3C_CCC_ENTAS2:
+    case I3C_CCCD_ENTAS2:
+    case I3C_CCC_ENTAS3:
+    case I3C_CCCD_ENTAS3:
+        *num_sent = 1;
+        i3c->ccc_byte_offset++;
+        break;
+    default:
+        break;
+    };
+    dwc_i3c_device_update_irq(s);
+    return 0;
 }
 
 static const VMStateDescription dwc_i3c_device_vmstate = {
@@ -1815,12 +2178,23 @@ static void dwc_i3c_device_realize(DeviceState *dev, Error **errp)
     /* Arbitrarily large enough to not be an issue. */
     fifo8_create(&s->ibi_data.ibi_intermediate_queue,
                   DWC_I3C_IBI_QUEUE_CAPACITY * 8);
+    sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->mr);
 
-    s->bus = i3c_init_bus(DEVICE(s), name);
-    I3CBusClass *bc = I3C_BUS_GET_CLASS(s->bus);
-    bc->ibi_handle = dwc_i3c_device_ibi_handle;
-    bc->ibi_recv = dwc_i3c_device_ibi_recv;
-    bc->ibi_finish = dwc_i3c_device_ibi_finish;
+    if (s->cfg.device_role <= DR_SECONDARY_MASTER) {
+        /*
+         * AMD: Fix bus name for "i3c", which makes reg parser
+         * simple.
+         */
+        s->bus = i3c_init_bus(DEVICE(s), "i3c");
+        I3CBusClass *bc = I3C_BUS_GET_CLASS(s->bus);
+        bc->ibi_handle = dwc_i3c_device_ibi_handle;
+        bc->ibi_recv = dwc_i3c_device_ibi_recv;
+        bc->ibi_finish = dwc_i3c_device_ibi_finish;
+    }
+
+    if (s->cfg.device_role == DR_SLAVE_ONLY) {
+        g_assert(s->i3c_target);
+    }
 }
 
 static Property dwc_i3c_device_properties[] = {
@@ -1846,6 +2220,18 @@ static Property dwc_i3c_device_properties[] = {
     DEFINE_PROP_BOOL("slv-ibi", DwcI3CDevice, cfg.slv_ibi, false),
     DEFINE_PROP_UINT16("slv-dflt-mwl", DwcI3CDevice, cfg.slv_mwl, 0xFF),
     DEFINE_PROP_UINT16("slv-dflt-mrl", DwcI3CDevice, cfg.slv_mrl, 0xFF),
+    DEFINE_PROP_BOOL("slave-static-addr-en", DwcI3CDevice,
+                     cfg.slv_static_addr_en, false),
+    DEFINE_PROP_UINT8("slave-static-addr", DwcI3CDevice,
+                      cfg.slv_static_addr, 0x0),
+    DEFINE_PROP_LINK("i3c-target", DwcI3CDevice, i3c_target,
+                     TYPE_I3C_TARGET, I3CTarget *),
+    DEFINE_PROP_END_OF_LIST(),
+};
+
+static Property dwc_i3c_target_properties[] = {
+    DEFINE_PROP_LINK("dwc-i3c-device", DwcI3CTarget, dwc_i3c,
+                     TYPE_DWC_I3C, DwcI3CDevice *),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -1860,6 +2246,20 @@ static void dwc_i3c_device_class_init(ObjectClass *klass, void *data)
     dc->vmsd = &dwc_i3c_device_vmstate;
 }
 
+static void dwc_i3c_device_target_class_init(ObjectClass *klass, void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(klass);
+    I3CTargetClass *k = I3C_TARGET_CLASS(klass);
+
+    dc->desc = "DWC I3C Target";
+    k->event = dwc_i3c_target_event;
+    k->recv = device_i3c_target_rx;
+    k->send = device_i3c_target_tx;
+    k->handle_ccc_read = device_i3c_target_ccc_read;
+    k->handle_ccc_write = device_i3c_target_ccc_write;
+    device_class_set_props(dc, dwc_i3c_target_properties);
+}
+
 static const TypeInfo dwc_i3c_device_info = {
     .name = TYPE_DWC_I3C,
     .parent = TYPE_SYS_BUS_DEVICE,
@@ -1867,9 +2267,17 @@ static const TypeInfo dwc_i3c_device_info = {
     .class_init = dwc_i3c_device_class_init,
 };
 
+static const TypeInfo dwc_i3c_device_target_info = {
+    .name = TYPE_DWC_I3C_TARGET,
+    .parent = TYPE_I3C_TARGET,
+    .instance_size = sizeof(DwcI3CTarget),
+    .class_init = dwc_i3c_device_target_class_init,
+};
+
 static void dwc_i3c_register_types(void)
 {
     type_register_static(&dwc_i3c_device_info);
+    type_register_static(&dwc_i3c_device_target_info);
 }
 
 type_init(dwc_i3c_register_types);
