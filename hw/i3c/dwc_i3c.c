@@ -1067,6 +1067,17 @@ static void dwc_i3c_device_reset(DeviceState *dev)
     ARRAY_FIELD_DP32(s->regs, DEVICE_ADDR, STATIC_ADDR,
                      s->cfg.slv_static_addr);
     ARRAY_FIELD_DP32(s->regs, PRESENT_STATE, CURRENT_MASTER, s->cur_master);
+    if (s->cfg.device_role > DR_MASTER_ONLY  &&
+        s->cfg.device_role <= DR_SECONDARY_MASTER) {
+        /*
+         * Update Slave BCR
+         */
+        ARRAY_FIELD_DP32(s->regs, SLV_CHAR_CTRL, BCR, s->cfg.slv_ibi << 1 |
+                         s->cfg.slv_ibi_data << 2);
+        if (s->i3c_target) {
+            s->i3c_target->bcr = ARRAY_FIELD_EX32(s->regs, SLV_CHAR_CTRL, BCR);
+        }
+    }
     dwc_i3c_device_cmd_queue_reset(s);
     dwc_i3c_device_resp_queue_reset(s);
     dwc_i3c_device_ibi_queue_reset(s);
@@ -2346,7 +2357,8 @@ static void dwc_i3c_device_realize(DeviceState *dev, Error **errp)
                   DWC_I3C_IBI_QUEUE_CAPACITY * 8);
     sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->mr);
 
-    if (s->cfg.device_role <= DR_SECONDARY_MASTER) {
+    if (s->cfg.device_role >= DR_MASTER_ONLY  &&
+        s->cfg.device_role <= DR_SECONDARY_MASTER) {
         /*
          * AMD: Fix bus name for "i3c", which makes reg parser
          * simple.
