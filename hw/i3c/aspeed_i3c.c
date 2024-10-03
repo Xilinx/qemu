@@ -441,10 +441,11 @@ static void aspeed_i3c_device_write(void *opaque, hwaddr offset,
 {
     AspeedI3CDevice *s = ASPEED_I3C_DEVICE(opaque);
     uint32_t addr = offset >> 2;
+    uint32_t val32 = (uint32_t)value;
 
     trace_aspeed_i3c_device_write(s->id, offset, value);
 
-    value &= ~ast2600_i3c_device_ro[addr];
+    val32 &= ~ast2600_i3c_device_ro[addr];
     switch (addr) {
     case R_HW_CAPABILITY:
     case R_RESPONSE_QUEUE_PORT:
@@ -470,7 +471,7 @@ static void aspeed_i3c_device_write(void *opaque, hwaddr offset,
     case R_RESET_CTRL:
         break;
     default:
-        s->regs[addr] = value;
+        s->regs[addr] = val32;
         break;
     }
 }
