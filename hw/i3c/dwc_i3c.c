@@ -432,7 +432,7 @@ static inline uint8_t dwc_i3c_device_ibi_slice_size(DwcI3CDevice *s)
 
 static inline bool dwc_i3c_device_role_master(DwcI3CDevice *s)
 {
-    return s->cfg.device_role == DR_MASTER_ONLY;
+    return s->cfg.device_role <= DR_SECONDARY_MASTER;
 }
 
 static uint16_t dwc_i3c_device_cmd_num_tx_bytes(DwcI3CCmdQueueData arg)
