@@ -888,7 +888,9 @@ static int aspeed_i3c_device_ibi_finish(I3CBus *bus)
     AspeedI3CDevice *s = ASPEED_I3C_DEVICE(bus->qbus.parent);
     bool nack_and_disable_hj = ARRAY_FIELD_EX32(s->regs, DEVICE_CTRL,
                                                 HOT_JOIN_ACK_NACK_CTRL);
-    if (nack_and_disable_hj || s->ibi_data.send_direct_disec) {
+
+    if (s->ibi_data.disec_byte == DISEC_HJ &&
+        (nack_and_disable_hj || s->ibi_data.send_direct_disec)) {
         aspeed_i3c_device_send_disec(s);
     }
     aspeed_i3c_device_ibi_queue_push(s);
