@@ -18,7 +18,7 @@ dwc_i3c_device_push_rx(uint32_t deviceid, uint32_t data) "I3C Dev[%u] push 0x%" 
 dwc_i3c_device_transfer_ccc(uint32_t deviceid, uint8_t ccc) "I3C Dev[%u] transfer CCC 0x%" PRIx8
 dwc_i3c_device_cmd_queue_execute(uint32_t deviceid, uint32_t cmd, uint32_t arg) "I3C Dev[%u] execute command 0x%" PRIx32 " arg 0x%" PRIx32
 dwc_i3c_device_cmd_queue_push(uint32_t deviceid, uint32_t data) "I3C Dev[%u] push 0x%" PRIx32 " to cmd queue"
-
+dwc_i3c_target_ibi(const char *s, uint8_t addr) "I3C Target IBI %s add: %d"
 # core.c
 i3c_target_event(uint8_t address, uint8_t event) "I3C target 0x%" PRIx8 " event 0x%" PRIx8
 i3c_target_handle_ccc(uint8_t address, uint8_t ccc) "I3C target 0x%" PRIx8 " handling CCC 0x%" PRIx8
