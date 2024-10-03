@@ -27,6 +27,7 @@ OBJECT_DECLARE_TYPE(AspeedI3CState, AspeedI3CClass, ASPEED_I3C)
 #define ASPEED_I3C_RESP_QUEUE_CAPACITY 0x10
 #define ASPEED_I3C_TX_QUEUE_CAPACITY   0x40
 #define ASPEED_I3C_RX_QUEUE_CAPACITY   0x40
+#define ASPEED_I3C_IBI_QUEUE_CAPACITY  0x10
 
 /* From datasheet. */
 #define ASPEED_I3C_CMD_ATTR_TRANSFER_CMD 0
@@ -146,6 +147,28 @@ typedef union AspeedI3CCmdQueueData {
     AspeedI3CAddrAssignCmd addr_assign_cmd;
 } AspeedI3CCmdQueueData;
 
+/*
+ * When we receive an IBI with data, we need to store it temporarily until
+ * the target is finished sending data. Then we can set the IBI queue status
+ * appropriately.
+ */
+typedef struct AspeedI3CDeviceIBIData {
+    /* Do we notify the user that an IBI was NACKed? */
+    bool notify_ibi_nack;
+    /* Intermediate storage of IBI_QUEUE_STATUS. */
+    uint32_t ibi_queue_status;
+    /* Temporary buffer to store IBI data from the target. */
+    Fifo8 ibi_intermediate_queue;
+    /* The address we should send a CCC_DISEC to. */
+    uint8_t disec_addr;
+    /* The byte we should send along with the CCC_DISEC. */
+    uint8_t disec_byte;
+    /* Should we send a direct DISEC CCC? (As opposed to global). */
+    bool send_direct_disec;
+    /* Was this IBI NACKed? */
+    bool ibi_nacked;
+} AspeedI3CDeviceIBIData;
+
 OBJECT_DECLARE_SIMPLE_TYPE(AspeedI3CDevice, ASPEED_I3C_DEVICE)
 typedef struct AspeedI3CDevice {
     /* <private> */
@@ -160,6 +183,10 @@ typedef struct AspeedI3CDevice {
     Fifo32 resp_queue;
     Fifo32 tx_queue;
     Fifo32 rx_queue;
+    Fifo32 ibi_queue;
+
+    /* Temporary storage for IBI data. */
+    AspeedI3CDeviceIBIData ibi_data;
 
     uint8_t id;
     uint32_t regs[ASPEED_I3C_DEVICE_NR_REGS];
