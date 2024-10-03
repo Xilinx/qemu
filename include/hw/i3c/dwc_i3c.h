@@ -181,9 +181,18 @@ typedef struct DwcI3CDevice {
     Fifo32 rx_queue;
     Fifo32 ibi_queue;
 
+    struct {
+        uint8_t device_role;
+        uint8_t buf_lvl_sel;
+        uint8_t num_devices;
+        uint8_t ibi_buf_lvl_sel;
+        bool slv_ibi;
+        uint16_t slv_mwl;
+        uint16_t slv_mrl;
+    } cfg;
+
     /* Temporary storage for IBI data. */
     DwcI3CDeviceIBIData ibi_data;
-    uint8_t max_targets;
     uint8_t id;
     uint32_t regs[DWC_I3C_NR_REGS];
 } DwcI3CDevice;
