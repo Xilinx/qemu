@@ -319,8 +319,7 @@ static const uint32_t ast2600_i3c_device_resets[DWC_I3C_NR_REGS] = {
     [R_PRESENT_STATE]               = 0x00000003,
     [R_I3C_VER_ID]                  = 0x3130302a,
     [R_I3C_VER_TYPE]                = 0x6c633033,
-    [R_DEVICE_ADDR_TABLE_POINTER]   = 0x00080280,
-    [R_DEV_CHAR_TABLE_POINTER]      = 0x00020200,
+    [R_DEV_CHAR_TABLE_POINTER]      = 0x00000200,
     [R_SLV_CHAR_CTRL]               = 0x00010000,
     [A_VENDOR_SPECIFIC_REG_POINTER] = 0x000000b0,
     [R_SLV_MAX_LEN]                 = 0x00ff00ff,
@@ -968,6 +967,16 @@ static void dwc_i3c_device_reset(DeviceState *dev)
     memcpy(s->regs, ast2600_i3c_device_resets, sizeof(s->regs));
     ARRAY_FIELD_DP32(s->regs, HW_CAPABILITY,  DEVICE_ROLE_CONFIG,
                      s->cfg.device_role);
+    ARRAY_FIELD_DP32(s->regs, DEV_CHAR_TABLE_POINTER, DEV_CHAR_TABLE_DEPTH,
+                     (s->cfg.device_role < DR_SLAVE_ONLY ?
+                      s->cfg.num_devices * 4 : s->cfg.num_devices));
+    ARRAY_FIELD_DP32(s->regs, DEVICE_ADDR_TABLE_POINTER, DEPTH,
+                     s->cfg.num_devices);
+    ARRAY_FIELD_DP32(s->regs, DEVICE_ADDR_TABLE_POINTER, ADDR,
+                     ARRAY_FIELD_EX32(s->regs, DEV_CHAR_TABLE_POINTER,
+                                      PRESENT_DEV_CHAR_TABLE_INDEX) +
+                     ARRAY_FIELD_EX32(s->regs, DEV_CHAR_TABLE_POINTER,
+                                      DEV_CHAR_TABLE_DEPTH) * 4);
     dwc_i3c_device_cmd_queue_reset(s);
     dwc_i3c_device_resp_queue_reset(s);
     dwc_i3c_device_ibi_queue_reset(s);
