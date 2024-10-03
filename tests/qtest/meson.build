@@ -193,6 +193,7 @@ qtests_npcm7xx = \
 qtests_aspeed = \
   ['aspeed_hace-test',
    'aspeed_smc-test',
+   'remote-i3c-test',
    'aspeed_gpio-test']
 qtests_arm = \
   (config_all_devices.has_key('CONFIG_MPS2') ? ['sse-timer-test'] : []) + \
