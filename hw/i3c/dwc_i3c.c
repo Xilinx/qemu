@@ -761,6 +761,7 @@ static int dwc_i3c_device_handle_ctlr_req(DwcI3CDevice *s, uint8_t addr)
 
 static int dwc_i3c_device_handle_targ_irq(DwcI3CDevice *s, uint8_t addr)
 {
+    int sir_rej_offset = 0;
     if (ARRAY_FIELD_EX32(s->regs, IBI_QUEUE_CTRL, NOTIFY_REJECTED_SLAVE_IRQ)) {
         s->ibi_data.notify_ibi_nack = true;
     }
@@ -771,8 +772,10 @@ static int dwc_i3c_device_handle_targ_irq(DwcI3CDevice *s, uint8_t addr)
         return -1;
     }
 
+    sir_rej_offset = ((addr & 0x1F) + (((addr >> 5) & 0x3))) % 32;
     table_offset += R_DEV_ADDR_TBL(s);
-    if (FIELD_EX32(s->regs[table_offset], DEVICE_ADDR_TABLE_LOC1, SIR_REJECT)) {
+    if (FIELD_EX32(s->regs[table_offset], DEVICE_ADDR_TABLE_LOC1, SIR_REJECT) ||
+        extract32(s->regs[R_IBI_SIR_REQ_REJECT], sir_rej_offset, 1)) {
         s->ibi_data.ibi_queue_status = FIELD_DP32(s->ibi_data.ibi_queue_status,
                                                   IBI_QUEUE_STATUS,
                                                   IBI_STATUS, 1);
@@ -923,8 +926,8 @@ static int dwc_i3c_device_ibi_finish(I3CBus *bus)
     bool nack_and_disable_hj = ARRAY_FIELD_EX32(s->regs, DEVICE_CTRL,
                                                 HOT_JOIN_ACK_NACK_CTRL);
 
-    if (s->ibi_data.disec_byte == DISEC_HJ &&
-        (nack_and_disable_hj || s->ibi_data.send_direct_disec)) {
+    if ((s->ibi_data.disec_byte == DISEC_HJ && nack_and_disable_hj) ||
+         s->ibi_data.send_direct_disec) {
         dwc_i3c_device_send_disec(s);
     }
     dwc_i3c_device_ibi_queue_push(s);
