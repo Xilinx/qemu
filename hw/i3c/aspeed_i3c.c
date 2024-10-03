@@ -340,6 +340,8 @@ REG32(DEVICE_ADDR_TABLE_LOC1, 0x280)
     FIELD(DEVICE_ADDR_TABLE_LOC1, DEV_NACK_RETRY_CNT, 29, 2)
     FIELD(DEVICE_ADDR_TABLE_LOC1, LEGACY_I2C_DEVICE, 31, 1)
 
+static void aspeed_i3c_device_cmd_queue_execute(AspeedI3CDevice *s);
+
 static const uint32_t ast2600_i3c_controller_ro[ASPEED_I3C_DEVICE_NR_REGS] = {
     [R_I3C1_REG0]                   = 0xfc000000,
     [R_I3C1_REG1]                   = 0xfff00000,
@@ -586,6 +588,37 @@ static int aspeed_i3c_device_recv_data(AspeedI3CDevice *s, bool is_i2c,
     trace_aspeed_i3c_device_recv_data(s->id, *num_read);
 
     return ret;
+}
+
+static inline void aspeed_i3c_device_ctrl_w(AspeedI3CDevice *s,
+                                                   uint32_t val)
+{
+    /*
+     * If the user is setting I3C_RESUME, the controller was halted.
+     * Try and resume execution and leave the bit cleared.
+     */
+    if (FIELD_EX32(val, DEVICE_CTRL, I3C_RESUME)) {
+        aspeed_i3c_device_cmd_queue_execute(s);
+        val = FIELD_DP32(val, DEVICE_CTRL, I3C_RESUME, 0);
+    }
+    /*
+     * I3C_ABORT being set sends an I3C STOP. It's cleared when the STOP is
+     * sent.
+     */
+    if (FIELD_EX32(val, DEVICE_CTRL, I3C_ABORT)) {
+        aspeed_i3c_device_end_transfer(s, /*is_i2c=*/true);
+        aspeed_i3c_device_end_transfer(s, /*is_i2c=*/false);
+        val = FIELD_DP32(val, DEVICE_CTRL, I3C_ABORT, 0);
+        ARRAY_FIELD_DP32(s->regs, INTR_STATUS, TRANSFER_ABORT, 1);
+        aspeed_i3c_device_update_irq(s);
+    }
+    /* Update present state. */
+    ARRAY_FIELD_DP32(s->regs, PRESENT_STATE, CM_TFR_ST_STATUS,
+                     ASPEED_I3C_TRANSFER_STATE_IDLE);
+    ARRAY_FIELD_DP32(s->regs, PRESENT_STATE, CM_TFR_STATUS,
+                     ASPEED_I3C_TRANSFER_STATUS_IDLE);
+
+    s->regs[R_DEVICE_CTRL] = val;
 }
 
 static inline bool aspeed_i3c_device_target_is_i2c(AspeedI3CDevice *s,
@@ -1649,6 +1682,9 @@ static void aspeed_i3c_device_write(void *opaque, hwaddr offset,
                       "%s: write to readonly register[0x%02" HWADDR_PRIx
                       "] = 0x%08" PRIx64 "\n",
                       __func__, offset, value);
+        break;
+    case R_DEVICE_CTRL:
+        aspeed_i3c_device_ctrl_w(s, val32);
         break;
     case R_RX_TX_DATA_PORT:
         aspeed_i3c_device_push_tx(s, val32);
