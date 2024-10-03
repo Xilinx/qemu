@@ -552,6 +552,7 @@ config ASPEED_SOC
     select FTGMAC100
     select I2C
     select I3C
+    select I3C_DEVICES
     select DPS310
     select PCA9552
     select SERIAL
