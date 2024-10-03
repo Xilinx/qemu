@@ -29,6 +29,15 @@
 #define DISEC_CR 0x02
 #define DISEC_INT 0x01
 
+/*
+ * Device Roles
+ */
+#define DR_MASTER_ONLY 1
+#define DR_PROG_MASTER_SLAVE 2
+#define DR_SECONDARY_MASTER 3
+#define DR_SLAVE_ONLY 4
+
+
 /* I3C Device Registers */
 REG32(DEVICE_CTRL,                  0x00)
     FIELD(DEVICE_CTRL, I3C_BROADCAST_ADDR_INC,    0, 1)
@@ -46,9 +55,14 @@ REG32(DEVICE_ADDR,                  0x04)
     FIELD(DEVICE_ADDR, DYNAMIC_ADDR,        16, 7)
     FIELD(DEVICE_ADDR, DYNAMIC_ADDR_VALID,  15, 1)
 REG32(HW_CAPABILITY,                0x08)
-    FIELD(HW_CAPABILITY, ENTDAA,  0, 1)
+    FIELD(HW_CAPABILITY, DEVICE_ROLE_CONFIG, 0, 3)
     FIELD(HW_CAPABILITY, HDR_DDR, 3, 1)
     FIELD(HW_CAPABILITY, HDR_TS,  4, 1)
+    FIELD(HW_CAPABILITY, CLOCK_PERIOD, 5, 6)
+    FIELD(HW_CAPABILITY, HDR_TX_CLOCK_PERIOD, 11, 6)
+    FIELD(HW_CAPABILITY, DMA_EN, 17, 1)
+    FIELD(HW_CAPABILITY, SLV_HJ_CAP, 18, 1)
+    FIELD(HW_CAPABILITY, SLV_IBI_CAP, 19, 1)
 REG32(COMMAND_QUEUE_PORT,           0x0c)
     FIELD(COMMAND_QUEUE_PORT, CMD_ATTR, 0, 3)
     /* Transfer command structure */
@@ -296,7 +310,7 @@ REG32(DEVICE_ADDR_TABLE_LOC1, 0x0)
 static void dwc_i3c_device_cmd_queue_execute(DwcI3CDevice *s);
 
 static const uint32_t ast2600_i3c_device_resets[DWC_I3C_NR_REGS] = {
-    [R_HW_CAPABILITY]               = 0x000e00bf,
+    [R_HW_CAPABILITY]               = 0x000e00b8,
     [R_QUEUE_THLD_CTRL]             = 0x01000101,
     [R_DATA_BUFFER_THLD_CTRL]       = 0x01010100,
     [R_SLV_EVENT_CTRL]              = 0x0000000b,
@@ -364,7 +378,8 @@ static const uint32_t ast2600_i3c_device_ro[DWC_I3C_NR_REGS] = {
 
 static inline bool dwc_i3c_device_has_entdaa(DwcI3CDevice *s)
 {
-    return ARRAY_FIELD_EX32(s->regs, HW_CAPABILITY, ENTDAA);
+    return ARRAY_FIELD_EX32(s->regs, HW_CAPABILITY, DEVICE_ROLE_CONFIG) <
+                            DR_SLAVE_ONLY;
 }
 
 static inline bool dwc_i3c_device_has_hdr_ts(DwcI3CDevice *s)
@@ -951,6 +966,8 @@ static void dwc_i3c_device_reset(DeviceState *dev)
     trace_dwc_i3c_device_reset(s->id);
 
     memcpy(s->regs, ast2600_i3c_device_resets, sizeof(s->regs));
+    ARRAY_FIELD_DP32(s->regs, HW_CAPABILITY,  DEVICE_ROLE_CONFIG,
+                     s->cfg.device_role);
     dwc_i3c_device_cmd_queue_reset(s);
     dwc_i3c_device_resp_queue_reset(s);
     dwc_i3c_device_ibi_queue_reset(s);
@@ -1802,7 +1819,8 @@ static Property dwc_i3c_device_properties[] = {
     /*
      * Role Configuration
      */
-    DEFINE_PROP_UINT8("device-role", DwcI3CDevice, cfg.device_role, 0x3),
+    DEFINE_PROP_UINT8("device-role", DwcI3CDevice, cfg.device_role,
+                      DR_SECONDARY_MASTER),
     /*
      * Queues and Interfaces Parameters
      */
