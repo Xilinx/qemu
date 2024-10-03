@@ -84,7 +84,7 @@ bool i3c_bus_busy(I3CBus *bus)
 bool i3c_target_match(I3CBus *bus, I3CTarget *target, uint8_t address)
 {
     /* Once a target has a dynamic address, it only responds to that. */
-    uint8_t targ_addr = target->address ? target->address :
+    uint8_t targ_addr = target->da_valid ? target->address :
                                           target->static_address;
 
     if (bus->in_entdaa) {
@@ -99,12 +99,12 @@ bool i3c_target_match(I3CBus *bus, I3CTarget *target, uint8_t address)
          * Targets should only ACK ENTDAA broadcasts if they have no dynamic
          * address.
          */
-        if (target->address == 0) {
+        if (!target->da_valid) {
             I3CNode *node = g_new(struct I3CNode, 1);
             node->target = target;
             QLIST_INSERT_HEAD(&bus->current_devs, node, next);
         }
-        return target->address == 0;
+        return !target->da_valid;
     }
 
     if ((targ_addr == address) || bus->broadcast) {
@@ -291,6 +291,7 @@ static int i3c_target_handle_ccc_write(I3CTarget *t, const uint8_t *data,
         if (t->ccc_byte_offset == 8) {
             printf("%s: assigning address %d\n", __func__, *data);
             t->address = *data;
+            t->da_valid = true;
             t->in_ccc = false;
             t->curr_ccc = 0;
             t->ccc_byte_offset = 0;
@@ -299,12 +300,15 @@ static int i3c_target_handle_ccc_write(I3CTarget *t, const uint8_t *data,
         break;
     case I3C_CCCD_SETDASA:
         t->address = t->static_address;
+        t->da_valid = true;
         break;
     case I3C_CCC_SETAASA:
         t->address = t->static_address;
+        t->da_valid = true;
         break;
     case I3C_CCC_RSTDAA:
         t->address = 0;
+        t->da_valid = false;
         break;
     case I3C_CCCD_SETNEWDA:
         /* If this isn't the CCC byte, it's our new address. */
