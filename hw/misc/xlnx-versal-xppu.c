@@ -330,7 +330,7 @@ static const RegisterAccessInfo xppu_regs_info[] = {
 
 static inline void xppu_reset_masterid(XPPU *s, size_t i)
 {
-    static const uint32_t pmc_mid_resets[] = {
+    static const uint32_t pmc_mid_resets[20] = {
         0x03ff0238,
         0x83ff0200,
         0x03ff0204,
@@ -342,9 +342,15 @@ static inline void xppu_reset_masterid(XPPU *s, size_t i)
         0x83ff0247
     };
 
+    const uint32_t *reset_values = NULL;
+
     if (s->region == XPPU_REGION_PMC || s->region == XPPU_REGION_PMC_NPI) {
         /* PMC and PMC NPI XPPUs have different MID resets than LPD XPPU */
-        s->regs[i] = pmc_mid_resets[i - R_MASTER_ID00];
+        reset_values = pmc_mid_resets;
+    }
+
+    if (reset_values && reset_values[i - R_MASTER_ID00]) {
+        s->regs[i] = reset_values[i - R_MASTER_ID00];
     } else {
         register_reset(&s->regs_info[i]);
     }
@@ -376,8 +382,7 @@ static void xppu_reset(DeviceState *dev)
             } else {
                 register_reset(&s->regs_info[i]);
             }
-        } else if ((i >= R_MASTER_ID00 && i <= R_MASTER_ID05) ||
-                    i == R_MASTER_ID08) {
+        } else if (i >= R_MASTER_ID00 && i <= R_MASTER_ID19) {
             xppu_reset_masterid(s, i);
         /* Everything else can be reset normally */
         } else {
