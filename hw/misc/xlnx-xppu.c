@@ -139,8 +139,10 @@ void update_mrs(XPPU *s)
     bool xppu_enabled = ARRAY_FIELD_EX32(s->regs, CTRL, ENABLE);
     unsigned int i;
 
-    for (i = 0; i < s->num_ap; i++) {
-        memory_region_set_enabled(&s->ap[i].iomem, xppu_enabled);
+    for (i = 0; i < NUM_GRANULE; i++) {
+        if (s->ap[i].parent) {
+            memory_region_set_enabled(&s->ap[i].iomem, xppu_enabled);
+        }
     }
 }
 
@@ -325,28 +327,56 @@ void xppu_init_common(XPPU *s, Object *obj, const char *tn,
 }
 
 bool xppu_parse_reg_common(XPPU *s, const char *tn, FDTGenericRegPropInfo reg,
-                           FDTGenericMMap *obj, const XPPUApertureInfo *ap_info,
+                           FDTGenericMMap *obj, bool has_32b_aperture,
                            const MemoryRegionOps *ap_ops, Error **errp)
 {
+    static const char *APERTURE_STR[] = {
+        [GRANULE_32B] = "32b",
+        [GRANULE_64K] = "64k",
+        [GRANULE_1M] = "1m",
+        [GRANULE_512M] = "512m",
+    };
+    static const uint64_t APERTURE_MASK[] = {
+        [GRANULE_32B] = 0x7f << 5,  /* 32B, bits 11:05.  */
+        [GRANULE_64K] = 0xff << 16, /* 64K, bits 23:16.  */
+        [GRANULE_1M] = 0x0f << 20, /* 1MB, bits 23:20.  */
+        [GRANULE_512M] = 0, /* No extraction.  */
+    };
+    static const unsigned int APERTURE_SHIFT[] = {
+        [GRANULE_32B] = 5,  /* 32B, bits 11:05.  */
+        [GRANULE_64K] = 16, /* 64K, bits 23:16.  */
+        [GRANULE_1M] = 20, /* 1MB, bits 23:20.  */
+        [GRANULE_512M] = 0, /* No extraction.  */
+    };
+    static const uint32_t APERPERM_OFFSET[] = {
+        [GRANULE_32B] = 0x100,
+        [GRANULE_64K] = 0x0,
+        [GRANULE_1M] = 0x180,
+        [GRANULE_512M] = 0x190,
+    };
+
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
     ObjectClass *klass = object_class_by_name(tn);
     FDTGenericMMapClass *parent_fmc;
+    XPPUGranule ap;
     unsigned int i;
     char *name;
 
+    ap = has_32b_aperture ? GRANULE_32B : GRANULE_64K;
     parent_fmc = FDT_GENERIC_MMAP_CLASS(object_class_get_parent(klass));
-    for (i = 0; i < (reg.n - 1) && i < s->num_ap; i++) {
-        s->ap[i].parent = s;
-        s->ap[i].granule = ap_info->granules[i];
-        s->ap[i].base = ap_info->bases[i];
-        s->ap[i].extract_mask = ap_info->masks[i];
-        s->ap[i].extract_shift = ap_info->shifts[i];
-        s->ap[i].ram_base = ap_info->ram_bases[i];
 
-        name = g_strdup_printf("xppu-mr-%d\n", i);
-        memory_region_init_io(&s->ap[i].iomem, OBJECT(obj),
-                              ap_ops, &s->ap[i], name, reg.s[i + 1]);
-        sysbus_init_mmio(sbd, &s->ap[i].iomem);
+    for (i = 1; i < reg.n && ap < NUM_GRANULE; i++, ap++) {
+        s->ap[ap].parent = s;
+        s->ap[ap].granule = ap;
+        s->ap[ap].base = reg.a[i];
+        s->ap[ap].extract_mask = APERTURE_MASK[ap];
+        s->ap[ap].extract_shift = APERTURE_SHIFT[ap];
+        s->ap[ap].ram_base = APERPERM_OFFSET[ap];
+
+        name = g_strdup_printf("xppu-mr-%s\n", APERTURE_STR[ap]);
+        memory_region_init_io(&s->ap[ap].iomem, OBJECT(obj),
+                              ap_ops, &s->ap[ap], name, reg.s[i]);
+        sysbus_init_mmio(sbd, &s->ap[ap].iomem);
         g_free(name);
     }
 

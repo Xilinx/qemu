@@ -361,27 +361,9 @@ static void xppu_reset(DeviceState *dev)
     XPPU *s = XILINX_XPPU(dev);
     unsigned int i;
 
-    static const uint32_t pmc_base_resets[] = {
-        0xf1000000,
-        0xf0000000,
-        0xc0000000
-    };
-    static const uint32_t pmc_npi_base_resets[] = {
-        0xf6000000,
-        0xf7000000,
-        0x0
-    };
-
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
-        /* PMC and PMC NPI XPPUs have different bases than LPD XPPU */
         if (i >= R_BASE_64KB && i <= R_BASE_512MB) {
-            if (s->region == XPPU_REGION_PMC) {
-                s->regs[i] = pmc_base_resets[(i - R_BASE_64KB)];
-            } else if (s->region == XPPU_REGION_PMC_NPI) {
-                s->regs[i] = pmc_npi_base_resets[(i - R_BASE_64KB)];
-            } else {
-                register_reset(&s->regs_info[i]);
-            }
+            s->regs[i] = s->ap[i - R_BASE_64KB + 1].base;
         } else if (i >= R_MASTER_ID00 && i <= R_MASTER_ID19) {
             xppu_reset_masterid(s, i);
         /* Everything else can be reset normally */
@@ -576,22 +558,6 @@ static void xppu_init(Object *obj)
 {
     XPPU *s = XILINX_XPPU(obj);
 
-    switch (s->region) {
-    case XPPU_REGION_LPD:
-    case XPPU_REGION_PMC:
-        s->num_ap = 3;
-        break;
-    case XPPU_REGION_PMC_NPI:
-        s->num_ap = 2;
-        break;
-    default:
-        qemu_log_mask(LOG_GUEST_ERROR, "Unknown XPPU region %d\n",
-                      s->region);
-        s->num_ap = 0;
-        break;
-    }
-    s->ap = g_new(XPPUAperture, s->num_ap);
-
     xppu_init_common(s, obj, TYPE_XILINX_XPPU, &xppu_ops, &xppu_perm_ram_ops,
                      xppu_regs_info, ARRAY_SIZE(xppu_regs_info));
 }
@@ -600,75 +566,9 @@ static bool xppu_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
                            Error **errp)
 {
     XPPU *s = XILINX_XPPU(obj);
-    bool found = true;
-    XPPUApertureInfo ap_info;
 
-    static const XPPUGranule granules[] = {
-        GRANULE_64K,
-        GRANULE_1M,
-        GRANULE_512M
-    };
-    static const uint64_t xppu_lpd_bases[] = {
-        0xff000000,
-        0xfe000000,
-        0xe0000000,
-    };
-    static const uint64_t xppu_pmc_bases[] = {
-        0xf1000000,
-        0xf0000000,
-        0xc0000000,
-    };
-    static const uint64_t xppu_pmc_npi_bases[] = {
-        0xf6000000,
-        0xf7000000
-    };
-    static const uint64_t masks[] = {
-        0xff << 16, /* 64K, bits 23:16.  */
-        0x0f << 20, /* 1MB, bits 23:20.  */
-        0, /* No extraction.  */
-    };
-    static const unsigned int shifts[] = {
-        16, /* 64K, bits 23:16.  */
-        20, /* 1MB, bits 23:20.  */
-        0, /* No extraction.  */
-    };
-    static const uint32_t ram_bases[] = {
-        0x0,
-        0x180,
-        0x190,
-    };
-
-    ap_info.masks = masks;
-    ap_info.shifts = shifts;
-    ap_info.ram_bases = ram_bases;
-    ap_info.granules = granules;
-    switch (s->region) {
-    case XPPU_REGION_LPD:
-        ap_info.bases = xppu_lpd_bases;
-
-        break;
-    case XPPU_REGION_PMC:
-        ap_info.bases = xppu_pmc_bases;
-
-        break;
-    case XPPU_REGION_PMC_NPI:
-        ap_info.bases = xppu_pmc_npi_bases;
-
-        break;
-    default:
-        qemu_log("%s: Could not find information for XPPU region %d\n",
-                 object_get_canonical_path(OBJECT(s)), s->region);
-        found = false;
-
-        break;
-    }
-
-    if (found) {
-        return xppu_parse_reg_common(s, TYPE_XILINX_XPPU, reg, obj, &ap_info,
-                                     &xppu_ap_ops, errp);
-    }
-
-    return false;
+    return xppu_parse_reg_common(s, TYPE_XILINX_XPPU, reg, obj, false,
+                                 &xppu_ap_ops, errp);
 }
 
 static const VMStateDescription vmstate_xppu = {
@@ -682,7 +582,11 @@ static const VMStateDescription vmstate_xppu = {
 };
 
 static Property xppu_properties[] = {
-    DEFINE_PROP_UINT8("region", XPPU, region, XPPU_REGION_LPD),
+    /*
+     * This property is deprecated. Apertures configuration is now done using
+     * the reg property.
+     */
+    DEFINE_PROP_UINT8("region", XPPU, region, XPPU_REGION_PARAM_BASED),
     DEFINE_PROP_END_OF_LIST(),
 };
 

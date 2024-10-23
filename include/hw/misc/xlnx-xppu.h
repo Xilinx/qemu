@@ -210,7 +210,9 @@ do { printf(fmt, ## __VA_ARGS__); } while (0)
 typedef enum {
     XPPU_REGION_LPD = 0,
     XPPU_REGION_PMC = 1,
-    XPPU_REGION_PMC_NPI = 2
+    XPPU_REGION_PMC_NPI = 2,
+
+    XPPU_REGION_PARAM_BASED = 255
 } XPPURegion;
 
 typedef enum {
@@ -218,6 +220,8 @@ typedef enum {
     GRANULE_64K,
     GRANULE_1M,
     GRANULE_512M,
+
+    NUM_GRANULE
 } XPPUGranule;
 
 typedef struct {
@@ -253,7 +257,7 @@ struct XPPU {
     MemoryRegion *mr;
     AddressSpace as;
 
-    XPPUAperture *ap;
+    XPPUAperture ap[NUM_GRANULE];
     uint8_t num_ap;
 
     uint32_t perm_ram[NR_APL_ENTRIES];
@@ -279,7 +283,7 @@ MemTxResult xppu_perm_ram_write_common(XPPU *s, hwaddr addr, uint64_t val,
 MemTxResult xppu_perm_ram_read_common(XPPU *s, hwaddr addr, uint64_t *val,
                                       unsigned size, MemTxAttrs attr);
 bool xppu_parse_reg_common(XPPU *s, const char *tn, FDTGenericRegPropInfo reg,
-                           FDTGenericMMap *obj, const XPPUApertureInfo *ap_info,
+                           FDTGenericMMap *obj, bool has_32b_aperture,
                            const MemoryRegionOps *ap_ops, Error **errp);
 void xppu_init_common(XPPU *s, Object *obj, const char *tn,
                       const MemoryRegionOps *ops,

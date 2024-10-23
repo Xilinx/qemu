@@ -412,9 +412,6 @@ static void xppu_init(Object *obj)
 {
     XPPU *s = XILINX_XPPU(obj);
 
-    s->num_ap = 4;
-    s->ap = g_new(XPPUAperture, s->num_ap);
-
     xppu_init_common(s, obj, TYPE_XILINX_XPPU, &xppu_ops, &xppu_perm_ram_ops,
                      xppu_regs_info, ARRAY_SIZE(xppu_regs_info));
 }
@@ -423,46 +420,8 @@ static bool xppu_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
                            Error **errp)
 {
     XPPU *s = XILINX_XPPU(obj);
-    XPPUApertureInfo ap_info;
 
-    static const XPPUGranule granules[] = {
-        GRANULE_32B,
-        GRANULE_64K,
-        GRANULE_1M,
-        GRANULE_512M
-    };
-    static const uint64_t bases[] = {
-        0xff990000,
-        0xff000000,
-        0xfe000000,
-        0xc0000000,
-    };
-    static const uint64_t masks[] = {
-        0x7f << 5,  /* 32B, bits 11:05.  */
-        0xff << 16, /* 64K, bits 23:16.  */
-        0x0f << 20, /* 1MB, bits 23:20.  */
-        0, /* No extraction.  */
-    };
-    static const unsigned int shifts[] = {
-        5,  /* 32B, bits 11:05.  */
-        16, /* 64K, bits 23:16.  */
-        20, /* 1MB, bits 23:20.  */
-        0, /* No extraction.  */
-    };
-    static const uint32_t ram_bases[] = {
-        0x100,
-        0x0,
-        0x180,
-        0x190,
-    };
-
-    ap_info.masks = masks;
-    ap_info.shifts = shifts;
-    ap_info.ram_bases = ram_bases;
-    ap_info.granules = granules;
-    ap_info.bases = bases;
-
-    return xppu_parse_reg_common(s, TYPE_XILINX_XPPU, reg, obj, &ap_info,
+    return xppu_parse_reg_common(s, TYPE_XILINX_XPPU, reg, obj, true,
                                  &xppu_ap_ops, errp);
 }
 
