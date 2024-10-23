@@ -330,6 +330,10 @@ static const RegisterAccessInfo xppu_regs_info[] = {
 
 static inline void xppu_reset_masterid(XPPU *s, size_t i)
 {
+    /*
+     * Keep this for retro-compatibility with the deprectated "region" QOM
+     * property
+     */
     static const uint32_t pmc_mid_resets[20] = {
         0x03ff0238,
         0x83ff0200,
@@ -347,6 +351,8 @@ static inline void xppu_reset_masterid(XPPU *s, size_t i)
     if (s->region == XPPU_REGION_PMC || s->region == XPPU_REGION_PMC_NPI) {
         /* PMC and PMC NPI XPPUs have different MID resets than LPD XPPU */
         reset_values = pmc_mid_resets;
+    } else if (s->region == XPPU_REGION_PARAM_BASED) {
+        reset_values = s->master_id_reset_val;
     }
 
     if (reset_values && reset_values[i - R_MASTER_ID00]) {
@@ -587,6 +593,47 @@ static Property xppu_properties[] = {
      * the reg property.
      */
     DEFINE_PROP_UINT8("region", XPPU, region, XPPU_REGION_PARAM_BASED),
+
+    DEFINE_PROP_UINT32("master-id00-reset-val", XPPU,
+                       master_id_reset_val[0], 0),
+    DEFINE_PROP_UINT32("master-id01-reset-val", XPPU,
+                       master_id_reset_val[1], 0),
+    DEFINE_PROP_UINT32("master-id02-reset-val", XPPU,
+                       master_id_reset_val[2], 0),
+    DEFINE_PROP_UINT32("master-id03-reset-val", XPPU,
+                       master_id_reset_val[3], 0),
+    DEFINE_PROP_UINT32("master-id04-reset-val", XPPU,
+                       master_id_reset_val[4], 0),
+    DEFINE_PROP_UINT32("master-id05-reset-val", XPPU,
+                       master_id_reset_val[5], 0),
+    DEFINE_PROP_UINT32("master-id06-reset-val", XPPU,
+                       master_id_reset_val[6], 0),
+    DEFINE_PROP_UINT32("master-id07-reset-val", XPPU,
+                       master_id_reset_val[7], 0),
+    DEFINE_PROP_UINT32("master-id08-reset-val", XPPU,
+                       master_id_reset_val[8], 0),
+    DEFINE_PROP_UINT32("master-id09-reset-val", XPPU,
+                       master_id_reset_val[9], 0),
+    DEFINE_PROP_UINT32("master-id10-reset-val", XPPU,
+                       master_id_reset_val[10], 0),
+    DEFINE_PROP_UINT32("master-id11-reset-val", XPPU,
+                       master_id_reset_val[11], 0),
+    DEFINE_PROP_UINT32("master-id12-reset-val", XPPU,
+                       master_id_reset_val[12], 0),
+    DEFINE_PROP_UINT32("master-id13-reset-val", XPPU,
+                       master_id_reset_val[13], 0),
+    DEFINE_PROP_UINT32("master-id14-reset-val", XPPU,
+                       master_id_reset_val[14], 0),
+    DEFINE_PROP_UINT32("master-id15-reset-val", XPPU,
+                       master_id_reset_val[15], 0),
+    DEFINE_PROP_UINT32("master-id16-reset-val", XPPU,
+                       master_id_reset_val[16], 0),
+    DEFINE_PROP_UINT32("master-id17-reset-val", XPPU,
+                       master_id_reset_val[17], 0),
+    DEFINE_PROP_UINT32("master-id18-reset-val", XPPU,
+                       master_id_reset_val[18], 0),
+    DEFINE_PROP_UINT32("master-id19-reset-val", XPPU,
+                       master_id_reset_val[19], 0),
     DEFINE_PROP_END_OF_LIST(),
 };
 

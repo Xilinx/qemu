@@ -265,6 +265,7 @@ struct XPPU {
     uint32_t regs[XPPU_R_MAX];
     RegisterInfo regs_info[XPPU_R_MAX];
     uint8_t region;
+    uint32_t master_id_reset_val[20];
 };
 
 bool parity32(uint32_t v);
