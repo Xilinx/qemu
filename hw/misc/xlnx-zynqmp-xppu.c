@@ -28,12 +28,8 @@
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
 #include "hw/register.h"
-#include "qemu/bitops.h"
-#include "sysemu/dma.h"
-#include "qapi/error.h"
-#include "qemu/log.h"
+#include "exec/address-spaces.h"
 #include "migration/vmstate.h"
-#include "hw/qdev-properties.h"
 
 #include "hw/fdt_generic_util.h"
 #include "hw/misc/xlnx-xppu.h"
