@@ -328,6 +328,28 @@ static const RegisterAccessInfo xppu_regs_info[] = {
     }
 };
 
+static inline void xppu_reset_masterid(XPPU *s, size_t i)
+{
+    static const uint32_t pmc_mid_resets[] = {
+        0x03ff0238,
+        0x83ff0200,
+        0x03ff0204,
+        0x83f00260,
+        0x83ff0260,
+        0x03ff0261,
+        0x0,
+        0x0,
+        0x83ff0247
+    };
+
+    if (s->region == XPPU_REGION_PMC || s->region == XPPU_REGION_PMC_NPI) {
+        /* PMC and PMC NPI XPPUs have different MID resets than LPD XPPU */
+        s->regs[i] = pmc_mid_resets[i - R_MASTER_ID00];
+    } else {
+        register_reset(&s->regs_info[i]);
+    }
+}
+
 static void xppu_reset(DeviceState *dev)
 {
     XPPU *s = XILINX_XPPU(dev);
@@ -343,17 +365,6 @@ static void xppu_reset(DeviceState *dev)
         0xf7000000,
         0x0
     };
-    static const uint32_t pmc_mid_resets[] = {
-        0x03ff0238,
-        0x83ff0200,
-        0x03ff0204,
-        0x83f00260,
-        0x83ff0260,
-        0x03ff0261,
-        0x0,
-        0x0,
-        0x83ff0247
-    };
 
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
         /* PMC and PMC NPI XPPUs have different bases than LPD XPPU */
@@ -365,14 +376,9 @@ static void xppu_reset(DeviceState *dev)
             } else {
                 register_reset(&s->regs_info[i]);
             }
-        /* PMC and PMC NPI XPPUs have different MID resets than LPD XPPU */
         } else if ((i >= R_MASTER_ID00 && i <= R_MASTER_ID05) ||
                     i == R_MASTER_ID08) {
-            if (s->region != XPPU_REGION_LPD) {
-                s->regs[i] = pmc_mid_resets[i - R_MASTER_ID00];
-            } else {
-                register_reset(&s->regs_info[i]);
-            }
+            xppu_reset_masterid(s, i);
         /* Everything else can be reset normally */
         } else {
             register_reset(&s->regs_info[i]);
