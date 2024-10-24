@@ -103,6 +103,13 @@ bool i3c_target_match(I3CBus *bus, I3CTarget *target, uint8_t address)
         if (!target->da_valid) {
             I3CNode *node = g_new(struct I3CNode, 1);
             node->target = target;
+            /*
+             * In a repeated start condition condition
+             * controller will not send CCC command so just
+             * set this here.
+             */
+            target->curr_ccc = I3C_CCC_ENTDAA;
+            target->in_ccc = true;
             QLIST_INSERT_HEAD(&bus->current_devs, node, next);
         }
         return !target->da_valid;
@@ -293,9 +300,6 @@ static int i3c_target_handle_ccc_write(I3CTarget *t, const uint8_t *data,
             trace_i3c_target_entdaa(*data);
             t->address = *data;
             t->da_valid = true;
-            t->in_ccc = false;
-            t->curr_ccc = 0;
-            t->ccc_byte_offset = 0;
             *num_sent = 1;
         }
         break;
