@@ -118,6 +118,15 @@ bool i3c_target_match(I3CBus *bus, I3CTarget *target, uint8_t address)
     if ((targ_addr == address) || bus->broadcast) {
         I3CNode *node = g_new(struct I3CNode, 1);
         node->target = target;
+        if (bus->in_ccc) {
+            /*
+             * In a repeated start condition condition
+             * controller will not send CCC command so just
+             * set this here.
+             */
+            target->in_ccc = true;
+            target->curr_ccc = bus->ccc;
+        }
         QLIST_INSERT_HEAD(&bus->current_devs, node, next);
         return true;
     }
