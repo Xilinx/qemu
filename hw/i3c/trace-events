@@ -25,7 +25,7 @@ i3c_target_handle_ccc(uint8_t address, uint8_t ccc) "I3C target 0x%" PRIx8 " han
 i3c_target_send_ibi(uint8_t address, bool is_recv) "I3C target IBI address 0x%" PRIx8 " RnW=%d"
 i3c_target_send_ibi_bytes(uint8_t byte) "I3C target IBI byte 0x%" PRIx8
 i3c_target_ibi_finish(void) "I3C target IBI finish"
-i3c_target_entdaa(uint8_t addr) "Assigned addr: 0x%x" PRIx8
+i3c_target_entdaa(uint8_t addr) "Assigned addr: 0x%" PRIx8
 i3c_start_transfer(uint8_t address, bool is_recv) "I3C START with address 0x%" PRIx8 " is_recv=%d"
 i3c_end_transfer(void) "I3C transfer done"
 i3c_send(uint32_t num_sent, uint32_t num_to_send, bool ack) "I3C send %" PRId32 "/%" PRId32 " bytes, ack=%d"
