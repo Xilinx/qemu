@@ -58,6 +58,8 @@ typedef enum {
     REMOTE_I3C_HANDLE_CCC_WRITE = 7,
     REMOTE_I3C_HANDLE_CCC_READ = 8,
     REMOTE_I3C_IBI = 9,
+    REMOTE_I3C_START_CCC_WRITE = 10,
+    REMOTE_I3C_START_CCC_READ = 11,
     /* Sent from remote target to us. */
     REMOTE_I3C_IBI_ACK = 0xc0,
     REMOTE_I3C_IBI_NACK = 0xc1,

@@ -189,11 +189,9 @@ static int remote_i3c_event(I3CTarget *t, enum I3CEvent event)
     uint8_t type;
     trace_remote_i3c_event(i3c->cfg.name, event);
     switch (event) {
-    case I3C_CCC_RD:
     case I3C_START_RECV:
         type = REMOTE_I3C_START_RECV;
         break;
-    case I3C_CCC_WR:
     case I3C_START_SEND:
         type = REMOTE_I3C_START_SEND;
         break;
@@ -202,6 +200,12 @@ static int remote_i3c_event(I3CTarget *t, enum I3CEvent event)
         break;
     case I3C_NACK:
         type = REMOTE_I3C_NACK;
+        break;
+    case I3C_CCC_RD:
+        type = REMOTE_I3C_START_CCC_READ;
+        break;
+    case I3C_CCC_WR:
+        type = REMOTE_I3C_START_CCC_WRITE;
         break;
     default:
         qemu_log_mask(LOG_GUEST_ERROR, "%s-%s: Unknown I3C event %d\n",
