@@ -619,7 +619,8 @@ static inline void dwc_i3c_device_ctrl_w(DwcI3CDevice *s,
          * If the user is setting I3C_RESUME, the controller was halted.
          * Try and resume execution and leave the bit cleared.
          */
-        if (FIELD_EX32(val, DEVICE_CTRL, I3C_RESUME)) {
+        if (dwc_i3c_device_role_master(s) &&
+            FIELD_EX32(val, DEVICE_CTRL, I3C_RESUME)) {
             dwc_i3c_device_cmd_queue_execute(s);
             val = FIELD_DP32(val, DEVICE_CTRL, I3C_RESUME, 0);
         }
