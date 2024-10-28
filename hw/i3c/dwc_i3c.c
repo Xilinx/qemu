@@ -1854,6 +1854,15 @@ static void dwc_i3c_device_cmd_queue_port_w(DwcI3CDevice *s, uint32_t val)
     }
 }
 
+static void dwc_i3c_device_update_ibi_sts(DwcI3CDevice *s, uint8_t val)
+{
+    if (s->cfg.slv_ibi_data) {
+        ARRAY_FIELD_DP32(s->regs, SLV_IBI_RESP, IBI_STS, val);
+    } else {
+        ARRAY_FIELD_DP32(s->regs, SLV_INTR_REQ, IBI_STS, val);
+    }
+}
+
 static void dwc_i3c_device_slv_intr_req_w(DwcI3CDevice *s, uint32_t val)
 {
     int res;
@@ -1867,7 +1876,7 @@ static void dwc_i3c_device_slv_intr_req_w(DwcI3CDevice *s, uint32_t val)
     }
 
     if (FIELD_EX32(val, SLV_INTR_REQ, SIR)) {
-        ARRAY_FIELD_DP32(s->regs, SLV_INTR_REQ, IBI_STS, 0x0);
+        dwc_i3c_device_update_ibi_sts(s, 0x0);
            /*
             * master mode
             */
@@ -1881,7 +1890,7 @@ static void dwc_i3c_device_slv_intr_req_w(DwcI3CDevice *s, uint32_t val)
              */
             (!s->i3c_target || !s->i3c_target->da_valid)) {
 
-            ARRAY_FIELD_DP32(s->regs, SLV_INTR_REQ, IBI_STS, 0x3);
+            dwc_i3c_device_update_ibi_sts(s, 0x3);
         } else {
             trace_dwc_i3c_target_ibi("SIR", s->i3c_target->address);
             res = i3c_target_send_ibi(s->i3c_target, s->cfg.slv_ibi_data ?
@@ -1901,14 +1910,14 @@ static void dwc_i3c_device_slv_intr_req_w(DwcI3CDevice *s, uint32_t val)
                     }
                 }
                 if (!res) {
-                    ARRAY_FIELD_DP32(s->regs, SLV_INTR_REQ, IBI_STS, 0x1);
+                    dwc_i3c_device_update_ibi_sts(s, 0x1);
                     ARRAY_FIELD_DP32(s->regs, SLV_IBI_RESP,
                                      SIR_RESP_DATA_LENGTH, 0);
                 } else {
                     /*
                      * Payload failed
                      */
-                    ARRAY_FIELD_DP32(s->regs, SLV_IBI_RESP, IBI_STS, 2);
+                    dwc_i3c_device_update_ibi_sts(s, 0x2);
                     ARRAY_FIELD_DP32(s->regs, SLV_IBI_RESP,
                                      SIR_RESP_DATA_LENGTH, len - (n - 1));
                     qemu_log_mask(LOG_GUEST_ERROR,
@@ -1918,7 +1927,7 @@ static void dwc_i3c_device_slv_intr_req_w(DwcI3CDevice *s, uint32_t val)
                 /*
                  * IBI Failed
                  */
-                ARRAY_FIELD_DP32(s->regs, SLV_IBI_RESP, IBI_STS, 2);
+                dwc_i3c_device_update_ibi_sts(s, 0x2);
                 ARRAY_FIELD_DP32(s->regs, SLV_IBI_RESP, SIR_RESP_DATA_LENGTH,
                                  len);
                 trace_dwc_i3c_target_ibi("SIR Nacked", s->i3c_target->address);
@@ -1930,7 +1939,7 @@ static void dwc_i3c_device_slv_intr_req_w(DwcI3CDevice *s, uint32_t val)
     }
 
     if (FIELD_EX32(val, SLV_INTR_REQ, MIR)) {
-        ARRAY_FIELD_DP32(s->regs, SLV_INTR_REQ, IBI_STS, 0x0);
+        dwc_i3c_device_update_ibi_sts(s, 0);
             /*
              * Already master
              */
@@ -1943,13 +1952,13 @@ static void dwc_i3c_device_slv_intr_req_w(DwcI3CDevice *s, uint32_t val)
              * No valid DA assigned
              */
             (!s->i3c_target || !s->i3c_target->da_valid)) {
-            ARRAY_FIELD_DP32(s->regs, SLV_INTR_REQ, IBI_STS, 0x3);
+            dwc_i3c_device_update_ibi_sts(s, 0x3);
         } else {
             trace_dwc_i3c_target_ibi("CR", s->i3c_target->address);
             if (!i3c_target_send_ibi(s->i3c_target,
                                      s->i3c_target->address, 0)) {
                 i3c_target_ibi_finish(s->i3c_target, 0);
-                ARRAY_FIELD_DP32(s->regs, SLV_INTR_REQ, IBI_STS, 1);
+                dwc_i3c_device_update_ibi_sts(s, 1);
              } else {
                  trace_dwc_i3c_target_ibi("CR Nacked", s->i3c_target->address);
              }
