@@ -1958,6 +1958,22 @@ static void dwc_i3c_device_slv_intr_req_w(DwcI3CDevice *s, uint32_t val)
     }
 }
 
+static void dwc_i3c_device_slv_pid_update(DwcI3CDevice *s, uint32_t val,
+                                          uint32_t addr)
+{
+    if (s->i3c_target == NULL) {
+        return;
+    }
+    switch (addr) {
+    case R_SLV_MIPI_ID_VALUE:
+        s->i3c_target->pid = deposit64(s->i3c_target->pid, 32, 16, val);
+        break;
+    case R_SLV_PID_VALUE:
+        s->i3c_target->pid = deposit64(s->i3c_target->pid, 0, 32, val);
+        break;
+    }
+}
+
 static void dwc_i3c_device_write(void *opaque, hwaddr offset,
                                     uint64_t value, unsigned size)
 {
@@ -2013,6 +2029,10 @@ static void dwc_i3c_device_write(void *opaque, hwaddr offset,
         break;
     case R_INTR_FORCE:
         dwc_i3c_device_intr_force_w(s, val32);
+        break;
+    case R_SLV_MIPI_ID_VALUE:
+    case R_SLV_PID_VALUE:
+        dwc_i3c_device_slv_pid_update(s, val32, addr);
         break;
     case R_SLV_INTR_REQ:
         dwc_i3c_device_slv_intr_req_w(s, val32);
