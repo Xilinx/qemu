@@ -1075,6 +1075,7 @@ static void dwc_i3c_device_reset(DeviceState *dev)
         ARRAY_FIELD_DP32(s->regs, SLV_CHAR_CTRL, BCR, s->cfg.slv_ibi << 1 |
                          s->cfg.slv_ibi_data << 2);
         if (s->i3c_target) {
+            s->target.curr_event = 0xFF;
             s->i3c_target->bcr = ARRAY_FIELD_EX32(s->regs, SLV_CHAR_CTRL, BCR);
         }
     }
