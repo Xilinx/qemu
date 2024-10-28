@@ -2248,6 +2248,8 @@ static int device_i3c_target_ccc_write(I3CTarget *i3c, const uint8_t *data,
             s->regs[R_SLV_EVENT_CTRL] |= data[*num_sent] & 0xF;
             *num_sent += 1;
             i3c->ccc_byte_offset++;
+        } else {
+            i3c->ccc_byte_offset++;
         }
         break;
     case I3C_CCC_DISEC:
