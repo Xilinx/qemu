@@ -82,11 +82,16 @@ bool i3c_bus_busy(I3CBus *bus)
     return !QLIST_EMPTY(&bus->current_devs);
 }
 
+static int i3c_target_handle_ccc_write(I3CTarget *t, const uint8_t *data,
+                                      uint32_t num_to_send, uint32_t *num_sent);
+
 bool i3c_target_match(I3CBus *bus, I3CTarget *target, uint8_t address)
 {
     /* Once a target has a dynamic address, it only responds to that. */
     uint8_t targ_addr = target->da_valid ? target->address :
                                           target->static_address;
+    uint8_t cur_ccc;
+    uint32_t num_sent = 0;
 
     if (bus->in_entdaa) {
         if (address != I3C_BROADCAST) {
@@ -108,8 +113,8 @@ bool i3c_target_match(I3CBus *bus, I3CTarget *target, uint8_t address)
              * controller will not send CCC command so just
              * set this here.
              */
-            target->curr_ccc = I3C_CCC_ENTDAA;
-            target->in_ccc = true;
+            cur_ccc = I3C_CCC_ENTDAA;
+            i3c_target_handle_ccc_write(target, &cur_ccc, 1, &num_sent);
             QLIST_INSERT_HEAD(&bus->current_devs, node, next);
         }
         return !target->da_valid;
@@ -124,8 +129,10 @@ bool i3c_target_match(I3CBus *bus, I3CTarget *target, uint8_t address)
              * controller will not send CCC command so just
              * set this here.
              */
-            target->in_ccc = true;
-            target->curr_ccc = bus->ccc;
+            if (!target->in_ccc) {
+                cur_ccc = bus->ccc;
+                i3c_target_handle_ccc_write(target, &cur_ccc, 1, &num_sent);
+            }
         }
         QLIST_INSERT_HEAD(&bus->current_devs, node, next);
         return true;
@@ -253,7 +260,7 @@ void i3c_end_transfer(I3CBus *bus)
      * and not everyone who previously participated, we send the STOP to all
      * children.
      */
-    if (bus->in_entdaa) {
+    if (bus->in_ccc) {
         BusChild *child;
 
         QTAILQ_FOREACH(child, &bus->qbus.children, sibling) {
