@@ -46,6 +46,8 @@
 #include "hw/boards.h"
 #include "hw/qdev-properties.h"
 #include "hw/cpu/cluster.h"
+#include "hw/clock.h"
+#include "hw/qdev-clock.h"
 
 #ifndef FDT_GENERIC_UTIL_ERR_DEBUG
 #define FDT_GENERIC_UTIL_ERR_DEBUG 3
@@ -1342,6 +1344,152 @@ static bool ready_to_realize(DeviceState *dev)
     return fghc->ready_to_realize(dev);
 }
 
+static void dev_connect_clocks(char *node_path, FDTMachineInfo *fdti,
+                               DeviceState *dev)
+{
+    /* Clock handling within the device tree.  */
+    Error *err = NULL;
+    int cell_idx, clk_name_cell_idx = 0;
+    uint32_t c;
+
+    /* Iterate over all cells of the node `clocks' property */
+    for (cell_idx = 0,
+         c = qemu_fdt_getprop_cell(fdti->fdt, node_path, "clocks",
+                                   cell_idx, false, &err);
+         !err;
+         cell_idx++,
+         c = qemu_fdt_getprop_cell(fdti->fdt, node_path, "clocks",
+                                   cell_idx, false, &err))
+    {
+        const char *consumer_clk_name;
+        char provider_node_path[DT_PATH_LENGTH];
+        uint32_t provider_cells_count;
+        uint32_t provider_clk_idx;
+        char *provider_clk_name;
+        Error *provider_err = NULL;
+        Object *provider;
+        Clock *provider_clk;
+        bool continue_after_provider_resolution = false;
+
+        consumer_clk_name = qemu_fdt_getprop_string(fdti->fdt, node_path,
+                                                    "clock-names",
+                                                    clk_name_cell_idx++,
+                                                    false, &err);
+        if (err) {
+            DB_PRINT_NP(1, "missing clock-names cell for clocks cell "
+                        "index %d\n", cell_idx);
+            break;
+        }
+
+        if (qdev_get_clock_in(dev, consumer_clk_name) == NULL) {
+            DB_PRINT_NP(1, "input clock `%s' not found on device\n",
+                        consumer_clk_name);
+            /*
+             * Don't continue just now. Let it run after #clock-cells
+             * resolution on the provider so that we know how much cells we
+             * must skip on the consumer.
+             */
+            continue_after_provider_resolution = true;
+        }
+
+        /*
+         * Get the provider node path, from the phandle discovered above.
+         */
+        if (qemu_devtree_get_node_by_phandle(fdti->fdt,
+                                             provider_node_path, c)) {
+            DB_PRINT_NP(1, "clock provider with phandle "
+                        "%" PRIu32 " not found\n", c);
+            continue;
+        }
+
+        /* Now get the number of cells required for that provider.  */
+        provider_cells_count = qemu_fdt_getprop_cell(fdti->fdt,
+                                                     provider_node_path,
+                                                     "#clock-cells", 0,
+                                                     false, &provider_err);
+
+        if (provider_err) {
+            DB_PRINT_NP(1, "missing #clock-cells for clock provider %s\n",
+                        provider_node_path);
+            continue;
+        }
+
+        if (provider_cells_count == 0) {
+            provider_clk_idx = 0;
+        } else if (provider_cells_count == 1) {
+            cell_idx++;
+            provider_clk_idx = qemu_fdt_getprop_cell(fdti->fdt, node_path,
+                                                     "clocks", cell_idx,
+                                                     false, &err);
+
+            if (err) {
+                DB_PRINT_NP(1, "`clocks' property too short "
+                            "(provider has `#clock-cells = <1>')\n");
+                break;
+            }
+        } else {
+            DB_PRINT_NP(1, "unsupported #clock-cells value for "
+                        "clock provider %s\n", provider_node_path);
+            continue;
+        }
+
+        if (continue_after_provider_resolution) {
+            continue;
+        }
+
+        /*
+         * Wait until we get the device associated with the provider_phandle.
+         */
+        while (!fdt_init_has_opaque(fdti, provider_node_path)) {
+            fdt_init_yield(fdti);
+        }
+        provider = OBJECT(fdt_init_get_opaque(fdti, provider_node_path));
+
+        if (object_dynamic_cast(provider, TYPE_CLOCK)) {
+            provider_clk = CLOCK(provider);
+
+            DB_PRINT_NP(1, "connecting fixed-clock %s to clock input %s:%s\n",
+                        provider_node_path,
+                        node_path, consumer_clk_name);
+        } else if (object_dynamic_cast(provider, TYPE_DEVICE)) {
+            provider_clk_name = qemu_fdt_getprop_string(fdti->fdt,
+                                                        provider_node_path,
+                                                        "clock-output-names",
+                                                        provider_clk_idx,
+                                                        false, &provider_err);
+
+            if (provider_err) {
+                DB_PRINT_NP(1, "clock index %" PRIu32 " not found for clock "
+                            "provider %s. Its `clock-output-names' property is "
+                            "either missing or too short\n",
+                            provider_clk_idx, provider_node_path);
+                continue;
+            }
+
+            provider_clk = qdev_get_clock_out(DEVICE(provider),
+                                              provider_clk_name);
+
+            if (provider_clk == NULL) {
+                DB_PRINT_NP(1, "output clock `%s' not found on device %s\n",
+                            provider_clk_name, provider_node_path);
+                continue;
+            }
+
+            DB_PRINT_NP(1, "connecting clock output %s:%s to clock "
+                        "input %s:%s\n",
+                        provider_node_path, provider_clk_name,
+                        node_path, consumer_clk_name);
+        } else {
+            DB_PRINT_NP(1, "clock provider %s is not a device nor a clock\n",
+                        provider_node_path);
+            continue;
+        }
+
+        /* perform the connection */
+        qdev_connect_clock_in(dev, consumer_clk_name, provider_clk);
+    }
+}
+
 static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
 {
     Object *dev, *parent;
@@ -1693,6 +1841,9 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
             }
             g_free(use_blkdev);
         }
+
+        /* Clocks connection. Must be done before realize */
+        dev_connect_clocks(node_path, fdti, DEVICE(dev));
 
         /* Regular TYPE_DEVICE houskeeping */
         DB_PRINT_NP(0, "Short naming node: %s\n", short_name);
