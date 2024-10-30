@@ -186,12 +186,6 @@ static const FDTGenericGPIONameSet fdt_generic_gpio_name_set_gpio = {
     .names_propname = "gpio-names",
 };
 
-static const FDTGenericGPIONameSet fdt_generic_gpio_name_set_clock = {
-    .propname = "clocks",
-    .cells_propname = "#clock-cells",
-    .names_propname = "clock-names",
-};
-
 static const FDTGenericGPIONameSet fdt_generic_gpio_name_set_interrupts = {
     .propname = "interrupts-extended",
     .cells_propname = "#interrupt-cells",
@@ -218,7 +212,6 @@ static const FDTGenericGPIOSet default_gpio_sets [] = {
         { .name = "pwr_cntrl", .fdt_index = 0, .range = 1 },
       },
     },
-    { .names = &fdt_generic_gpio_name_set_clock },
     { .names = &fdt_generic_gpio_name_set_interrupts },
     { },
 };
