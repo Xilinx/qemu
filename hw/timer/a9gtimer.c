@@ -33,7 +33,6 @@
 #include "qemu/module.h"
 #include "hw/core/cpu.h"
 
-#include "hw/fdt_generic_util.h"
 #include "hw/fdt_generic_devices.h"
 
 #ifndef A9_GTIMER_ERR_DEBUG
@@ -275,14 +274,6 @@ static const MemoryRegionOps a9_gtimer_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
-static void a9_gtimer_clock_handler(void *opaque, int n, int level)
-{
-    A9GTimerState *s = A9_GTIMER(opaque);
-
-    assert(n == 0);
-    s->freq_hz = level;
-}
-
 static void a9_gtimer_reset(DeviceState *dev)
 {
     A9GTimerState *s = A9_GTIMER(dev);
@@ -331,8 +322,6 @@ static void a9_gtimer_realize(DeviceState *dev, Error **errp)
                               "a9gtimer per cpu", 0x20);
         sysbus_init_mmio(sbd, &gtb->iomem);
     }
-
-    qdev_init_gpio_in_named(dev, a9_gtimer_clock_handler, "clock", 1);
 }
 
 static bool vmstate_a9_gtimer_control_needed(void *opaque)
@@ -385,17 +374,6 @@ static const VMStateDescription vmstate_a9_gtimer = {
     }
 };
 
-static const FDTGenericGPIOSet a9_gtimer_client_gpios [] = {
-    {
-        .names = &fdt_generic_gpio_name_set_clock,
-        .gpios = (FDTGenericGPIOConnection []) {
-            { . name = "clock",     .fdt_index = 0 },
-            { },
-        },
-    },
-    { },
-};
-
 static Property a9_gtimer_properties[] = {
     DEFINE_PROP_UINT32("num-cpu", A9GTimerState, num_cpu, 0),
     DEFINE_PROP_UINT32("clock-frequency", A9GTimerState, freq_hz, 100000000),
@@ -405,13 +383,11 @@ static Property a9_gtimer_properties[] = {
 static void a9_gtimer_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-    FDTGenericGPIOClass *fggc = FDT_GENERIC_GPIO_CLASS(klass);
 
     dc->realize = a9_gtimer_realize;
     dc->vmsd = &vmstate_a9_gtimer;
     dc->reset = a9_gtimer_reset;
     device_class_set_props(dc, a9_gtimer_properties);
-    fggc->client_gpios = a9_gtimer_client_gpios;
 }
 
 static const TypeInfo a9_gtimer_info = {
@@ -419,10 +395,6 @@ static const TypeInfo a9_gtimer_info = {
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(A9GTimerState),
     .class_init    = a9_gtimer_class_init,
-    .interfaces    = (InterfaceInfo[]) {
-        { TYPE_FDT_GENERIC_GPIO },
-        { },
-    },
 };
 
 static void a9_gtimer_register_types(void)
