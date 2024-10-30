@@ -165,7 +165,7 @@ static int user_creatable_fdt_init(char *node_path, FDTMachineInfo *fdti,
 }
 
 fdt_register_compatibility_opaque(user_creatable_fdt_init,
-                                  "compatible:secret", 1,
+                                  "compatible:secret",
                                   (char *)"secret");
 
 /*

@@ -704,7 +704,7 @@ static void arm_generic_fdt_dep_machine_init(MachineClass *mc)
 }
 
 fdt_register_compatibility_opaque(pflash_cfi01_fdt_init,
-                                  "compatibile:cfi-flash", 0, NULL);
+                                  "compatibile:cfi-flash", NULL);
 
 DEFINE_MACHINE(GENERAL_MACHINE_NAME, arm_generic_fdt_machine_init)
 DEFINE_MACHINE(ZYNQ7000_MACHINE_NAME, arm_generic_fdt_7000_machine_init)

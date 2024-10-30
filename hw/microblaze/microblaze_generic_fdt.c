@@ -245,7 +245,7 @@ static void microblaze_generic_fdt_plnx_machine_init(MachineClass *mc)
 }
 
 fdt_register_compatibility_opaque(pflash_cfi01_fdt_init, "compatible:cfi-flash",
-                                  0, &endian);
+                                  &endian);
 
 DEFINE_MACHINE(MACHINE_NAME, microblaze_generic_fdt_machine_init)
 DEFINE_MACHINE(MACHINE_NAME "-plnx", microblaze_generic_fdt_plnx_machine_init)

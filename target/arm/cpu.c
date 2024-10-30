@@ -2863,8 +2863,8 @@ static int armv8_timer_fdt_init(char *node_path, FDTMachineInfo *fdti,
     return 0;
 }
 
-fdt_register_compatibility_n(armv8_timer_fdt_init,
-                             "compatible:arm,armv8-timer", 13);
+fdt_register_compatibility(armv8_timer_fdt_init,
+                           "compatible:arm,armv8-timer");
 
 #endif
 

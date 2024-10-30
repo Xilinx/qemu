@@ -71,5 +71,5 @@ static int uart16550_fdt_init(char *node_path, FDTMachineInfo *fdti,
     return 0;
 }
 
-fdt_register_compatibility_n(uart16550_fdt_init, "compatible:ns16550", 0);
-fdt_register_compatibility_n(uart16550_fdt_init, "compatible:ns16550a", 1);
+fdt_register_compatibility(uart16550_fdt_init, "compatible:ns16550");
+fdt_register_compatibility(uart16550_fdt_init, "compatible:ns16550a");

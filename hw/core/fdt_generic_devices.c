@@ -84,34 +84,34 @@ fdt_register_compatibility(sysmem_fdt_init, "compatible:qemu:system-memory");
 
 static const void *null;
 
-fdt_register_compatibility_n(null, "compatible:marvell,88e1111", 1);
-fdt_register_compatibility_n(null, "compatible:arm,pl310-cache", 2);
-fdt_register_compatibility_n(null, "compatible:xlnx,ps7-cortexa9-1.00.a", 3);
-fdt_register_compatibility_n(null, "compatible:xlnx,zynq_remoteproc", 4);
-fdt_register_compatibility_n(null, "compatible:xlnx,ps7-smcc-1.00.a", 5);
-fdt_register_compatibility_n(null, "compatible:xlnx,ps7-smc", 6);
-fdt_register_compatibility_n(null, "compatible:xlnx,ps7-nand-1.00.a", 7);
-fdt_register_compatibility_n(null, "compatible:xlnx,ps7-ram-1.00.a", 8);
-fdt_register_compatibility_n(null, "compatible:xlnx,ps7-ocm", 9);
-fdt_register_compatibility_n(null, "compatible:marvell,88e1118r", 10);
-fdt_register_compatibility_n(null, "compatible:xlnx,ps7-clkc", 11);
-fdt_register_compatibility_n(null, "compatible:xlnx,ps7-ddrc", 12);
-fdt_register_compatibility_n(null, "compatible:xlnx,ps7-scuc-1.00.a", 13);
-fdt_register_compatibility_n(null, "compatible:fixed-clock", 14);
-fdt_register_compatibility_n(null, "compatible:xlnx,pinctrl-zynq", 15);
-fdt_register_compatibility_n(null, "compatible:ulpi-phy", 16);
-fdt_register_compatibility_n(null, "compatible:xlnx,zynq-efuse", 17);
-fdt_register_compatibility_n(null, "compatible:qemu:memory-region-spec", 18);
-fdt_register_compatibility_n(null, "compatible:shared-dma-pool", 19);
+fdt_register_compatibility(null, "compatible:marvell,88e1111");
+fdt_register_compatibility(null, "compatible:arm,pl310-cache");
+fdt_register_compatibility(null, "compatible:xlnx,ps7-cortexa9-1.00.a");
+fdt_register_compatibility(null, "compatible:xlnx,zynq_remoteproc");
+fdt_register_compatibility(null, "compatible:xlnx,ps7-smcc-1.00.a");
+fdt_register_compatibility(null, "compatible:xlnx,ps7-smc");
+fdt_register_compatibility(null, "compatible:xlnx,ps7-nand-1.00.a");
+fdt_register_compatibility(null, "compatible:xlnx,ps7-ram-1.00.a");
+fdt_register_compatibility(null, "compatible:xlnx,ps7-ocm");
+fdt_register_compatibility(null, "compatible:marvell,88e1118r");
+fdt_register_compatibility(null, "compatible:xlnx,ps7-clkc");
+fdt_register_compatibility(null, "compatible:xlnx,ps7-ddrc");
+fdt_register_compatibility(null, "compatible:xlnx,ps7-scuc-1.00.a");
+fdt_register_compatibility(null, "compatible:fixed-clock");
+fdt_register_compatibility(null, "compatible:xlnx,pinctrl-zynq");
+fdt_register_compatibility(null, "compatible:ulpi-phy");
+fdt_register_compatibility(null, "compatible:xlnx,zynq-efuse");
+fdt_register_compatibility(null, "compatible:qemu:memory-region-spec");
+fdt_register_compatibility(null, "compatible:shared-dma-pool");
 
-fdt_register_instance_n(i2c_bus_fdt_init, "i2c@0", 0);
-fdt_register_instance_n(i2c_bus_fdt_init, "i2c@1", 1);
-fdt_register_instance_n(i2c_bus_fdt_init, "i2c@2", 2);
-fdt_register_instance_n(i2c_bus_fdt_init, "i2c@3", 3);
-fdt_register_instance_n(i2c_bus_fdt_init, "i2c@4", 4);
-fdt_register_instance_n(i2c_bus_fdt_init, "i2c@5", 5);
-fdt_register_instance_n(i2c_bus_fdt_init, "i2c@6", 6);
-fdt_register_instance_n(i2c_bus_fdt_init, "i2c@7", 7);
+fdt_register_instance(i2c_bus_fdt_init, "i2c@0");
+fdt_register_instance(i2c_bus_fdt_init, "i2c@1");
+fdt_register_instance(i2c_bus_fdt_init, "i2c@2");
+fdt_register_instance(i2c_bus_fdt_init, "i2c@3");
+fdt_register_instance(i2c_bus_fdt_init, "i2c@4");
+fdt_register_instance(i2c_bus_fdt_init, "i2c@5");
+fdt_register_instance(i2c_bus_fdt_init, "i2c@6");
+fdt_register_instance(i2c_bus_fdt_init, "i2c@7");
 
 static const TypeInfo fdt_qom_aliases [] = {
     {   .name = "qemu:memory-region",       .parent = "memory-region"  },

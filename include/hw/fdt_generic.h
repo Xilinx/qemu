@@ -99,28 +99,22 @@ void fdt_init_register_user_cpu_cluster(FDTMachineInfo *fdti, Object *cluster);
 
 /* statically register a FDTInitFn as being associate with a compatibility */
 
-#define fdt_register_compatibility_opaque(function, compat, n, opaque) \
+#define fdt_register_compatibility_opaque(function, compat, opaque) \
 static void __attribute__((constructor)) \
-function ## n ## _register_imp(void) { \
+glue(glue(function, __COUNTER__), _register_imp)(void) { \
     add_to_compat_table(function, compat, opaque); \
 }
 
-#define fdt_register_compatibility_n(function, compat, n) \
-fdt_register_compatibility_opaque(function, compat, n, NULL)
-
 #define fdt_register_compatibility(function, compat) \
-fdt_register_compatibility_n(function, compat, 0)
+fdt_register_compatibility_opaque(function, compat, NULL)
 
-#define fdt_register_instance_opaque(function, inst, n, opaque) \
+#define fdt_register_instance_opaque(function, inst, opaque) \
 static void __attribute__((constructor)) \
-function ## n ## _register_imp(void) { \
+glue(glue(function, __COUNTER__), _register_imp)(void) { \
     add_to_inst_bind_table(function, inst, opaque); \
 }
 
-#define fdt_register_instance_n(function, inst, n) \
-fdt_register_instance_opaque(function, inst, n, NULL)
-
 #define fdt_register_instance(function, inst) \
-fdt_register_instance_n(function, inst, 0)
+fdt_register_instance_opaque(function, inst, NULL)
 
 #endif /* FDT_GENERIC_H */
