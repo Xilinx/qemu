@@ -5,6 +5,7 @@
 #include "qemu/log.h"
 
 #include "hw/qdev-core.h"
+#include "hw/clock.h"
 
 /* FIXME: This file should go away. When these devices are properly QOMified
  * then these FDT creations should happen automatically without need for these
@@ -74,6 +75,47 @@ static int sysmem_fdt_init(char *node_path, FDTMachineInfo *fdti,
 
 fdt_register_compatibility(sysmem_fdt_init, "compatible:qemu:system-memory");
 
+static int fixed_clock_init(char *node_path, FDTMachineInfo *fdti,
+                            void *opaque)
+{
+    uint32_t freq;
+    Error *err = NULL;
+    Clock *clk;
+    char parent_node_path[DT_PATH_LENGTH];
+    Object *parent;
+    int ret;
+
+    freq = qemu_fdt_getprop_cell(fdti->fdt, node_path, "clock-frequency",
+                                 0, false, &err);
+
+    if (err) {
+        DB_PRINT_NP(0, "missing `clock-frequency' property, defaulting to 0\n");
+        freq = 0;
+    }
+
+    ret = qemu_devtree_getparent(fdti->fdt, parent_node_path, node_path);
+    g_assert(!ret);
+
+    while (!fdt_init_has_opaque(fdti, parent_node_path)) {
+        fdt_init_yield(fdti);
+    }
+
+    parent = fdt_init_get_opaque(fdti, parent_node_path);
+
+    if (parent == NULL) {
+        parent = qdev_get_machine();
+    }
+
+    clk = clock_new(parent, qemu_devtree_get_node_name(fdti->fdt, node_path));
+    clock_set_hz(clk, freq);
+
+    DB_PRINT_NP(0, "created fixed-clock with %" PRIu32 " Hz frequency\n", freq);
+    fdt_init_set_opaque(fdti, node_path, clk);
+    return 0;
+}
+
+fdt_register_compatibility(fixed_clock_init, "compatible:fixed-clock");
+
 static const void *null;
 
 fdt_register_compatibility(null, "compatible:marvell,88e1111");
@@ -89,7 +131,6 @@ fdt_register_compatibility(null, "compatible:marvell,88e1118r");
 fdt_register_compatibility(null, "compatible:xlnx,ps7-clkc");
 fdt_register_compatibility(null, "compatible:xlnx,ps7-ddrc");
 fdt_register_compatibility(null, "compatible:xlnx,ps7-scuc-1.00.a");
-fdt_register_compatibility(null, "compatible:fixed-clock");
 fdt_register_compatibility(null, "compatible:xlnx,pinctrl-zynq");
 fdt_register_compatibility(null, "compatible:ulpi-phy");
 fdt_register_compatibility(null, "compatible:xlnx,zynq-efuse");
