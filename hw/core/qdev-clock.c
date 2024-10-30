@@ -165,9 +165,7 @@ Clock *qdev_get_clock_in(DeviceState *dev, const char *name)
 
     ncl = qdev_get_clocklist(dev, name);
     if (!ncl) {
-        error_report("Can not find clock-in '%s' for device type '%s'",
-                     name, object_get_typename(OBJECT(dev)));
-        abort();
+        return NULL;
     }
     assert(!ncl->output);
 
@@ -182,9 +180,7 @@ Clock *qdev_get_clock_out(DeviceState *dev, const char *name)
 
     ncl = qdev_get_clocklist(dev, name);
     if (!ncl) {
-        error_report("Can not find clock-out '%s' for device type '%s'",
-                     name, object_get_typename(OBJECT(dev)));
-        abort();
+        return NULL;
     }
     assert(ncl->output);
 
@@ -207,6 +203,15 @@ Clock *qdev_alias_clock(DeviceState *dev, const char *name,
 
 void qdev_connect_clock_in(DeviceState *dev, const char *name, Clock *source)
 {
+    Clock *in;
+
     assert(!dev->realized);
-    clock_set_source(qdev_get_clock_in(dev, name), source);
+
+    in = qdev_get_clock_in(dev, name);
+
+    if (in == NULL) {
+        return;
+    }
+
+    clock_set_source(in, source);
 }
