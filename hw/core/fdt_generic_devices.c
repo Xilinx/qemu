@@ -1,17 +1,9 @@
 #include "qemu/osdep.h"
-#include "hw/fdt_generic_util.h"
 #include "hw/fdt_generic_devices.h"
 #include "qom/object.h"
-#include "sysemu/blockdev.h"
-#include "exec/memory.h"
 #include "exec/address-spaces.h"
 #include "qemu/log.h"
-#include "qapi/error.h"
-#include "chardev/char.h"
-#include "qemu/coroutine.h"
 
-#include "hw/char/serial.h"
-#include "hw/block/flash.h"
 #include "hw/qdev-core.h"
 
 /* FIXME: This file should go away. When these devices are properly QOMified
