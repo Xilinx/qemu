@@ -16,21 +16,21 @@
  */
 
 #ifndef FDT_GENERIC_UTIL_ERR_DEBUG
-#define FDT_GENERIC_UTIL_ERR_DEBUG 0
+#define FDT_GENERIC_UTIL_ERR_DEBUG 1
 #endif
 #define DB_PRINT(lvl, ...) do { \
     if (FDT_GENERIC_UTIL_ERR_DEBUG > (lvl)) { \
-        qemu_log_mask(lvl, ": %s: ", __func__); \
-        qemu_log_mask(lvl, ## __VA_ARGS__); \
+        qemu_log_mask(LOG_FDT, ": %s: ", __func__); \
+        qemu_log_mask(LOG_FDT, ## __VA_ARGS__); \
     } \
-} while (0);
+} while (0)
 
 #define DB_PRINT_NP(lvl, ...) do { \
     if (FDT_GENERIC_UTIL_ERR_DEBUG > (lvl)) { \
-        qemu_log_mask(lvl, "%s", node_path); \
+        qemu_log_mask(LOG_FDT, "%s", node_path); \
         DB_PRINT((lvl), ## __VA_ARGS__); \
     } \
-} while (0);
+} while (0)
 
 int fdt_generic_num_cpus;
 
