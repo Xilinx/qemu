@@ -1666,7 +1666,7 @@ static void dwc_i3c_device_addr_assign_cmd(DwcI3CDevice *s,
         } target_info;
 
         /* If this fails, there was no one left to ENTDAA. */
-        if (dwc_i3c_device_send_start(s, I3C_BROADCAST, /*is_recv=*/false,
+        if (dwc_i3c_device_send_start(s, I3C_BROADCAST, /*is_recv=*/true,
                                          /*is_i2c=*/false)) {
             err = DWC_I3C_RESP_QUEUE_ERR_BROADCAST_NACK;
             break;
