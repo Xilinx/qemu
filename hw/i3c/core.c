@@ -46,7 +46,6 @@ static const TypeInfo i3c_bus_info = {
     .name = TYPE_I3C_BUS,
     .parent = TYPE_BUS,
     .instance_size = sizeof(I3CBus),
-    .class_size = sizeof(I3CBusClass),
     .class_init = i3c_class_init,
     .interfaces = (InterfaceInfo[]) {
         { TYPE_HOTPLUG_HANDLER },
@@ -522,25 +521,22 @@ void i3c_nack(I3CBus *bus)
 int i3c_target_send_ibi(I3CTarget *t, uint8_t addr, bool is_recv)
 {
     I3CBus *bus = I3C_BUS(t->qdev.parent_bus);
-    I3CBusClass *bc = I3C_BUS_GET_CLASS(bus);
     trace_i3c_target_send_ibi(addr, is_recv);
-    return bc->ibi_handle(bus, t, addr, is_recv);
+    return bus->ibi_handle(bus, t, addr, is_recv);
 }
 
 int i3c_target_send_ibi_bytes(I3CTarget *t, uint8_t data)
 {
     I3CBus *bus = I3C_BUS(t->qdev.parent_bus);
-    I3CBusClass *bc = I3C_BUS_GET_CLASS(bus);
     trace_i3c_target_send_ibi_bytes(data);
-    return bc->ibi_recv(bus, data);
+    return bus->ibi_recv(bus, data);
 }
 
 int i3c_target_ibi_finish(I3CTarget *t, uint8_t data)
 {
     I3CBus *bus = I3C_BUS(t->qdev.parent_bus);
-    I3CBusClass *bc = I3C_BUS_GET_CLASS(bus);
     trace_i3c_target_ibi_finish();
-    return bc->ibi_finish(bus);
+    return bus->ibi_finish(bus);
 }
 
 static bool i3c_addr_is_rsvd(uint8_t addr)

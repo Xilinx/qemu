@@ -2392,15 +2392,10 @@ static void dwc_i3c_device_realize(DeviceState *dev, Error **errp)
 
     if (s->cfg.device_role >= DR_MASTER_ONLY  &&
         s->cfg.device_role <= DR_SECONDARY_MASTER) {
-        /*
-         * AMD: Fix bus name for "i3c", which makes reg parser
-         * simple.
-         */
-        s->bus = i3c_init_bus(DEVICE(s), "i3c");
-        I3CBusClass *bc = I3C_BUS_GET_CLASS(s->bus);
-        bc->ibi_handle = dwc_i3c_device_ibi_handle;
-        bc->ibi_recv = dwc_i3c_device_ibi_recv;
-        bc->ibi_finish = dwc_i3c_device_ibi_finish;
+        s->bus = i3c_init_bus(DEVICE(s), dev->id);
+        s->bus->ibi_handle = dwc_i3c_device_ibi_handle;
+        s->bus->ibi_recv = dwc_i3c_device_ibi_recv;
+        s->bus->ibi_finish = dwc_i3c_device_ibi_finish;
     }
 
     if (s->cfg.device_role == DR_SLAVE_ONLY) {
