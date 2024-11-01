@@ -172,10 +172,6 @@ struct I3CBus {
     bool in_ccc;
     bool in_entdaa;
     uint8_t saved_address;
-};
-
-struct I3CBusClass {
-    DeviceClass parent;
 
     /* Handle an incoming IBI request from a target */
     int (*ibi_handle) (I3CBus *bus, I3CTarget *target, uint8_t addr,
