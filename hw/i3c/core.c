@@ -271,16 +271,16 @@ void i3c_end_transfer(I3CBus *bus)
                 i3c_target_event(t, I3C_STOP);
             }
         }
-    } else {
-        QLIST_FOREACH_SAFE(node, &bus->current_devs, next, next) {
-            I3CTarget *t = node->target;
-            tc = I3C_TARGET_GET_CLASS(t);
-            if (tc->event) {
-                i3c_target_event(t, I3C_STOP);
-            }
-            QLIST_REMOVE(node, next);
-            g_free(node);
+    }
+
+    QLIST_FOREACH_SAFE(node, &bus->current_devs, next, next) {
+        I3CTarget *t = node->target;
+        tc = I3C_TARGET_GET_CLASS(t);
+        if (tc->event && !bus->in_ccc) {
+            i3c_target_event(t, I3C_STOP);
         }
+        QLIST_REMOVE(node, next);
+        g_free(node);
     }
     bus->broadcast = false;
     bus->in_entdaa = false;
