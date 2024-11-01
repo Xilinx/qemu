@@ -655,6 +655,7 @@ static bool i3c_target_parse_reg(FDTGenericMMap *obj,
 {
     DeviceState *parent = (DeviceState *)object_dynamic_cast(reg.parents[0],
                                          TYPE_DEVICE);
+    char *s;
 
     if (!parent) {
         return false;
@@ -665,12 +666,14 @@ static bool i3c_target_parse_reg(FDTGenericMMap *obj,
     }
 
     if (object_dynamic_cast(OBJECT(obj), TYPE_I2C_SLAVE)) {
+        s = g_strdup_printf("%s-legacy-i2c", parent->id);
         qdev_set_parent_bus(DEVICE(obj),
-                            qdev_get_child_bus(parent, "i3c-legacy-i2c"),
+                            qdev_get_child_bus(parent, s),
                             errp);
+        g_free(s);
     } else if (object_dynamic_cast(OBJECT(obj), TYPE_I3C_TARGET)) {
         qdev_set_parent_bus(DEVICE(obj),
-                            qdev_get_child_bus(parent, "i3c"), errp);
+                            qdev_get_child_bus(parent, parent->id), errp);
     } else {
         qemu_log_mask(LOG_FDT, "invalid device %s placed on i3c bus",
                       qdev_get_dev_path(DEVICE(obj)));
