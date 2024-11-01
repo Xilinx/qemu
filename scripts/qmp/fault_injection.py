@@ -79,8 +79,8 @@ class FaultInjectionFramework(qmp.QEMUMonitorProtocol):
                 self.print_v(ev, 2)
                 if ev['event'] == 'FAULT_EVENT':
                     data = ev['data']
-                    self.qemu_time = data['time_ns'];
-                    self.callback[data['event_id']]()
+                    self.qemu_time = data['time-ns'];
+                    self.callback[data['event-id']]()
                     self.cont()
                 elif ev['event'] == 'SHUTDOWN':
                     shutdown_evt = True
@@ -100,8 +100,8 @@ class FaultInjectionFramework(qmp.QEMUMonitorProtocol):
         self.callback[elt] = cb
         self.time_print('Notify %s in %sns' % (cb, time_ns))
         qmpcmd = {'execute': 'trigger_event',
-                  'arguments': {'event_id': elt,
-                                'time_ns': time_ns}}
+                  'arguments': {'event-id': elt,
+                                'time-ns': time_ns}}
         self.send(qmpcmd)
 
     def write(self, address, value, size, cpu, debug = False):
