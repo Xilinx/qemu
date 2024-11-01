@@ -2099,6 +2099,7 @@ static int dwc_i3c_target_event(I3CTarget *i3c, enum I3CEvent event)
     case I3C_NACK:
     case I3C_CCC_WR:
     case I3C_CCC_RD:
+        s->target.curr_event = event;
         break;
     };
     return 0;
