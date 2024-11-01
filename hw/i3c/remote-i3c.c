@@ -156,17 +156,10 @@ static int remote_i3c_handle_ccc_read(I3CTarget *t, uint8_t *data,
 {
     RemoteI3C *i3c = REMOTE_I3C(t);
     uint8_t type = REMOTE_I3C_HANDLE_CCC_READ;
+    uint32_t num_to_read_le = cpu_to_le32(num_to_read);
 
-    switch (t->curr_ccc) {
-    case I3C_CCC_ENTDAA:
-    case I3C_CCCD_GETPID:
-    case I3C_CCCD_GETBCR:
-    case I3C_CCCD_GETDCR:
-        return 0;
-    default:
-        break;
-    }
     qemu_chr_fe_write_all(&i3c->chr, &type, 1);
+    qemu_chr_fe_write_all(&i3c->chr, (uint8_t *) &num_to_read_le, 4);
     /*
      * The response will first contain the size of the packet, as a LE uint32.
      */
