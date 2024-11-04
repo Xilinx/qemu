@@ -580,14 +580,10 @@ static uint64_t rst_ps_prew(RegisterInfo *reg, uint64_t val64)
 
     ARRAY_FIELD_DP32(s->regs, RESET_REASON, SW_SYS,
                 ARRAY_FIELD_EX32(s->regs, RESET_REASON, SW_SYS) |
-                !!(val & (R_RST_PS_PMC_SRST_MASK |
-                          R_RST_PS_PS_SRST_MASK |
-                          R_RST_PS_PL_SRST_MASK)));
+                !!(val & (R_RST_PS_PMC_SRST_MASK)));
     ARRAY_FIELD_DP32(s->regs, RESET_REASON, SW_POR,
                 ARRAY_FIELD_EX32(s->regs, RESET_REASON, SW_POR) |
-                !!(val & (R_RST_PS_PMC_POR_MASK |
-                          R_RST_PS_PS_POR_MASK |
-                          R_RST_PS_PL_POR_MASK)));
+                !!(val & (R_RST_PS_PMC_POR_MASK)));
     return val64;
 }
 
