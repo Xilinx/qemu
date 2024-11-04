@@ -2788,6 +2788,7 @@ static void pmx_global_reset_enter(Object *obj, ResetType type)
         switch (addr) {
         case A_PMC_MULTI_BOOT:
         case A_PERS_GLOB_GEN_STORAGE0...A_PERS_GLOB_GEN_STORAGE4:
+        case A_PERS_GLOB_GEN_STORAGE5...A_PERS_GLOB_GEN_STORAGE7:
         case A_PMX_DOMAIN_ISO_CNTRL:
             continue;
         default:
