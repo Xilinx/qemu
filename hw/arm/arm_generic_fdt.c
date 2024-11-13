@@ -634,14 +634,45 @@ static void arm_generic_fdt_7000_init(MachineState *machine)
     sysbus_mmio_map(busdev, 0, ZYNQ7000_MPCORE_PERIPHBASE);
 }
 
+static bool get_ignore_memory_transaction_failures(Object *obj, Error **errp)
+{
+    MachineClass *mc = MACHINE_GET_CLASS(obj);
+
+    return mc->ignore_memory_transaction_failures;
+}
+
+static void set_ignore_memory_transaction_failures(Object *obj, bool value,
+                                                   Error **errp)
+{
+    MachineClass *mc = MACHINE_GET_CLASS(obj);
+
+    mc->ignore_memory_transaction_failures = value;
+}
+
 static void arm_generic_fdt_machine_init(MachineClass *mc)
 {
     mc->desc = "ARM device tree driven machine model";
     mc->init = arm_generic_fdt_init;
-    mc->ignore_memory_transaction_failures = true;
     /* X A53s and 2 R5s */
     mc->max_cpus = 64;
     mc->default_cpus = 64;
+
+    /*
+     * Historically, this machine set the ignore_memory_transaction_failures
+     * flag unconditionally. This does not match real hardware behavior and the
+     * ultimate goal here is to get rid of it. As this is an intrusive and
+     * breaking change for a lot of workloads, this property is introduced to
+     * help do the transition. For now it is still true by default. The next
+     * step is to turn it off by default.
+     */
+    mc->ignore_memory_transaction_failures = true;
+    object_class_property_add_bool(OBJECT_CLASS(mc), "ignore-mem-tx-failures",
+                                   get_ignore_memory_transaction_failures,
+                                   set_ignore_memory_transaction_failures);
+    object_class_property_set_description(OBJECT_CLASS(mc),
+                                          "ignore-mem-tx-failures",
+                                          "Ignore memory transaction failures "
+                                          "(default: on)");
 }
 
 static void arm_generic_fdt_7000_machine_init(MachineClass *mc)
