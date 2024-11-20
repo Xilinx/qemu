@@ -5932,6 +5932,7 @@ REG32(MEM_CLEAR_TRIGGER, 0x00050900)
     FIELD(MEM_CLEAR_TRIGGER, APU1_CORE0, 4, 1)
     FIELD(MEM_CLEAR_TRIGGER, APU0_CORE1, 1, 1)
     FIELD(MEM_CLEAR_TRIGGER, APU0_CORE0, 0, 1)
+#define MEM_CLEAR_TRIGGER_WRITE_MASK 0xf3f3333
 #define MEM_CLEAR_TRIGGER_RESET_VAL 0x0
 
 REG32(MEM_CLEAR_DONE, 0x00050904)
@@ -7594,6 +7595,10 @@ static uint64_t psxc_lpx_slcr_read(void *opaque, hwaddr offset,
     uint32_t ret;
 
     switch (offset) {
+    case A_MEM_CLEAR_PASS:
+    case A_MEM_CLEAR_DONE:
+        ret = s->mem_clear_done_pass;
+        break;
     case A_OCM_PWR_CNTRL:
     case A_OCM_PWR_STATUS:
         ret = s->ocm_pwr_ctrl;
@@ -7679,6 +7684,10 @@ static void psxc_lpx_slcr_write(void *opaque, hwaddr offset,
     trace_xlnx_psxc_lpx_slcr_write(offset, value);
 
     switch (offset) {
+    case A_MEM_CLEAR_TRIGGER:
+        s->mem_clear_done_pass |= value & MEM_CLEAR_TRIGGER_WRITE_MASK;
+        break;
+
     case A_OCM_PWR_CNTRL:
         s->ocm_pwr_ctrl = value & OCM_PWR_CNTRL_WRITE_MASK;
         update_ocm_pwr(s);
@@ -7814,6 +7823,7 @@ static void psxc_lpx_slcr_reset_enter(Object *obj, ResetType type)
     s->req_pwrdwn1_irq.mask = REQ_PWRDWN0_INT_MASK_RESET_VAL;
     s->rpu_pcil_wfi_irq.status = RPU_PCIL_PSM_STANDBY_RESET_VAL;
     s->rpu_pcil_wfi_irq.mask = RPU_PCIL_PSM_IMR_RESET_VAL;
+    s->mem_clear_done_pass = MEM_CLEAR_DONE_RESET_VAL;
 
     for (i = 0; i < s->num_rpu; i++) {
         rpu_pcil_pchan_reset(&s->rpu_pcil_pchan[i]);
