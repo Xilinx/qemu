@@ -77,6 +77,7 @@ typedef struct XlnxPsxcLpxSlcr {
     uint32_t rpu_tcm_pwr_ctrl;
     uint32_t gem_pwr_ctrl;
     uint32_t mem_clear_done_pass;
+    uint32_t scan_clear_done_pass;
 
     XlnxPsxcLpxSlcrIrq wakeup0_irq;
     XlnxPsxcLpxSlcrIrq wakeup1_irq;
