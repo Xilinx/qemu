@@ -1883,19 +1883,24 @@ static void dwc_i3c_device_update_ibi_sts(DwcI3CDevice *s, uint8_t val)
     }
 }
 
-static void dwc_i3c_device_slv_intr_req_w(DwcI3CDevice *s, uint32_t val)
+static void dwc_i3c_target_ibi_update(void *opaque)
 {
+    DwcI3CDevice *s = opaque;
     int res;
     int len, n;
     uint8_t payload;
 
-    s->regs[R_SLV_INTR_REQ] = val;
-
-    if (!s->cfg.slv_ibi) {
+    if (s->i3c_target == NULL || !s->cfg.slv_ibi) {
         return;
     }
 
-    if (FIELD_EX32(val, SLV_INTR_REQ, SIR)) {
+    if (i3c_target_check_bus_busy(s->i3c_target)) {
+        ptimer_set_limit(s->ibi_ptimer, 200000, 1);
+        ptimer_run(s->ibi_ptimer, 1);
+        return;
+    }
+
+    if (FIELD_EX32(s->regs[R_SLV_INTR_REQ], SLV_INTR_REQ, SIR)) {
         dwc_i3c_device_update_ibi_sts(s, 0x0);
            /*
             * master mode
@@ -1913,13 +1918,20 @@ static void dwc_i3c_device_slv_intr_req_w(DwcI3CDevice *s, uint32_t val)
             dwc_i3c_device_update_ibi_sts(s, 0x3);
         } else {
             trace_dwc_i3c_target_ibi("SIR", s->i3c_target->address);
-            res = i3c_target_send_ibi(s->i3c_target, s->cfg.slv_ibi_data ?
-                                          FIELD_EX32(val, SLV_INTR_REQ, MDB) :
-                                          s->i3c_target->address, true);
+            res = i3c_target_send_ibi(s->i3c_target, s->i3c_target->address,
+                                      true);
+            if (s->cfg.slv_ibi_data) {
+                /*
+                 * Send mandatory data byte.
+                 */
+                i3c_target_send_ibi_bytes(s->i3c_target,
+                      FIELD_EX32(s->regs[R_SLV_INTR_REQ], SLV_INTR_REQ, MDB));
+            }
             /*
              * Max IBI Payload 4.
              */
-            len = MIN(FIELD_EX32(val, SLV_INTR_REQ, SIR_DATA_LEN), 4);
+            len = MIN(FIELD_EX32(s->regs[R_SLV_INTR_REQ], SLV_INTR_REQ,
+                                 SIR_DATA_LEN), 4);
 
             if (!res) {
                 if (s->cfg.slv_ibi_data) {
@@ -1958,7 +1970,7 @@ static void dwc_i3c_device_slv_intr_req_w(DwcI3CDevice *s, uint32_t val)
         ARRAY_FIELD_DP32(s->regs, INTR_STATUS, IBI_UPDATED, 1);
     }
 
-    if (FIELD_EX32(val, SLV_INTR_REQ, MIR)) {
+    if (FIELD_EX32(s->regs[R_SLV_INTR_REQ], SLV_INTR_REQ, MIR)) {
         dwc_i3c_device_update_ibi_sts(s, 0);
             /*
              * Already master
@@ -1986,6 +1998,15 @@ static void dwc_i3c_device_slv_intr_req_w(DwcI3CDevice *s, uint32_t val)
         ARRAY_FIELD_DP32(s->regs, SLV_INTR_REQ, MIR, 0);
         ARRAY_FIELD_DP32(s->regs, INTR_STATUS, IBI_UPDATED, 1);
     }
+}
+
+static void dwc_i3c_device_slv_intr_req_w(DwcI3CDevice *s, uint32_t val)
+{
+    s->regs[R_SLV_INTR_REQ] = val;
+
+    ptimer_transaction_begin(s->ibi_ptimer);
+    dwc_i3c_target_ibi_update(s);
+    ptimer_transaction_commit(s->ibi_ptimer);
 }
 
 static void dwc_i3c_device_slv_pid_update(DwcI3CDevice *s, uint32_t val,
@@ -2422,6 +2443,12 @@ static void dwc_i3c_device_realize(DeviceState *dev, Error **errp)
     if (s->cfg.device_role == DR_SLAVE_ONLY) {
         g_assert(s->i3c_target);
     }
+
+    s->ibi_ptimer = ptimer_init(dwc_i3c_target_ibi_update, s,
+                            PTIMER_POLICY_WRAP_AFTER_ONE_PERIOD);
+    ptimer_transaction_begin(s->ibi_ptimer);
+    ptimer_set_freq(s->ibi_ptimer, 1000000);
+    ptimer_transaction_commit(s->ibi_ptimer);
 }
 
 static Property dwc_i3c_device_properties[] = {
