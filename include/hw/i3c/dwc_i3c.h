@@ -14,6 +14,7 @@
 #include "qemu/fifo32.h"
 #include "hw/i3c/i3c.h"
 #include "hw/sysbus.h"
+#include "hw/ptimer.h"
 
 #define TYPE_DWC_I3C "dwc.i3c"
 #define TYPE_DWC_I3C_TARGET "dwc.i3c-target"
@@ -204,6 +205,7 @@ typedef struct DwcI3CDevice {
         DwcI3CCmdQueueData tx_arg;
    } target;
 
+    ptimer_state *ibi_ptimer;
     /* Temporary storage for IBI data. */
     DwcI3CDeviceIBIData ibi_data;
     uint8_t id;

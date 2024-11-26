@@ -232,6 +232,7 @@ bool i3c_target_match(I3CBus *bus, I3CTarget *target, uint8_t address);
 int i3c_target_send_ibi(I3CTarget *t, uint8_t addr, bool is_recv);
 int i3c_target_send_ibi_bytes(I3CTarget *t, uint8_t data);
 int i3c_target_ibi_finish(I3CTarget *t, uint8_t data);
+int i3c_target_check_bus_busy(I3CTarget *t);
 
 /*
  * Legacy I2C functions.
