@@ -166,6 +166,11 @@ static int remote_i3c_handle_ccc_read(I3CTarget *t, uint8_t *data,
     qemu_chr_fe_read_all(&i3c->chr, (uint8_t *)num_read, 4);
     *num_read = le32_to_cpu(*num_read);
     qemu_chr_fe_read_all(&i3c->chr, data, *num_read);
+    if (t->curr_ccc == I3C_CCC_ENTDAA) {
+        memcpy(&t->pid, data, 6);
+        t->bcr = data[6];
+        t->dcr = data[7];
+    }
     trace_remote_i3c_ccc_read(i3c->cfg.name, *num_read, num_to_read);
 
     return 0;
