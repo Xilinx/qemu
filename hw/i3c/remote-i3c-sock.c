@@ -40,6 +40,7 @@ typedef struct {
     Fifo8 ibi_fifo;
     uint32_t in_event;
     uint32_t data_size;
+    uint8_t slave_da;
     I3CBus *bus;
 } I3CSoc;
 
@@ -90,13 +91,13 @@ static void i3c_soc_chr_receive(void *opaque, const uint8_t *buf, int size)
     case REMOTE_I3C_START_RECV:
         if (i3c_bus_busy(s->bus)) {
             /* repeated start */
-            i3c_start_recv(s->bus, 0);
+            i3c_start_recv(s->bus, s->slave_da);
         }
         s->in_event = 0;
         break;
     case REMOTE_I3C_RECV:
        if (!i3c_bus_busy(s->bus)) {
-            i3c_start_recv(s->bus, 0);
+            i3c_start_recv(s->bus, s->slave_da);
         }
         s->data_size = 4;
         s->in_event = I3C_SOC_RECV_STAGE2;
@@ -116,7 +117,7 @@ static void i3c_soc_chr_receive(void *opaque, const uint8_t *buf, int size)
         if (i3c_bus_busy(s->bus)) {
             /* repeated start */
             i3c_start_recv(s->bus,
-                    CCC_IS_DIRECT(s->bus->ccc) ? 0 : 0x7e);
+                    CCC_IS_DIRECT(s->bus->ccc) ? s->slave_da : 0x7e);
         }
         s->in_event = 0;
         break;
@@ -132,19 +133,22 @@ static void i3c_soc_chr_receive(void *opaque, const uint8_t *buf, int size)
     case REMOTE_I3C_START_SEND:
         if (i3c_bus_busy(s->bus)) {
             /* repeated start */
-            i3c_start_send(s->bus, 0);
+            i3c_start_send(s->bus, s->slave_da);
         }
         s->in_event = 0;
         break;
     case REMOTE_I3C_SEND:
        if (!i3c_bus_busy(s->bus)) {
-            i3c_start_send(s->bus, 0);
+            i3c_start_send(s->bus, s->slave_da);
         }
         s->data_size = 4;
         s->in_event = I3C_SOC_SEND_STAGE2;
         break;
     case I3C_SOC_SEND_STAGE3:
     case I3C_SOC_HANDLE_CCC_WRITE_STAGE3:
+        if (s->bus->in_entdaa) {
+            s->slave_da = buf[0];
+        }
         i3c_send(s->bus, buf, s->data_size, &ret);
         s->in_event = 0;
         break;
@@ -153,7 +157,7 @@ static void i3c_soc_chr_receive(void *opaque, const uint8_t *buf, int size)
         if (i3c_bus_busy(s->bus)) {
             /* repeated start */
             i3c_start_send(s->bus,
-                    CCC_IS_DIRECT(s->bus->ccc) ? 0 : 0x7e);
+                    CCC_IS_DIRECT(s->bus->ccc) ? s->slave_da : 0x7e);
         }
         s->in_event = 0;
         break;
