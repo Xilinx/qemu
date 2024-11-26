@@ -1675,9 +1675,11 @@ static void dwc_i3c_device_addr_assign_cmd(DwcI3CDevice *s,
     for (i = 0; i < cmd.dev_count; i++) {
         uint8_t addr = dwc_i3c_device_target_addr(s, cmd.dev_index + i);
         union {
-            uint64_t pid:48;
-            uint8_t bcr;
-            uint8_t dcr;
+            struct {
+                uint64_t pid:48;
+                uint8_t bcr;
+                uint8_t dcr;
+            } field;
             uint32_t w[2];
             uint8_t b[8];
         } target_info;
@@ -1712,8 +1714,9 @@ static void dwc_i3c_device_addr_assign_cmd(DwcI3CDevice *s,
             break;
         }
         dwc_i3c_device_update_char_table(s, cmd.dev_index + i,
-                                            target_info.pid, target_info.bcr,
-                                            target_info.dcr, addr);
+                                            target_info.field.pid,
+                                            target_info.field.bcr,
+                                            target_info.field.dcr, addr);
 
         /* Push the PID, BCR, and DCR to the RX queue. */
         dwc_i3c_device_push_rx(s, target_info.w[0]);
