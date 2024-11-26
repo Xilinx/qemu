@@ -195,6 +195,7 @@ typedef struct DwcI3CDevice {
         uint16_t slv_mrl;
         bool slv_static_addr_en;
         uint8_t slv_static_addr;
+        bool ibi_has_data;
     } cfg;
     I3CTarget *i3c_target;
 
