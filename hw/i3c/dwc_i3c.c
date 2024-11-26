@@ -841,6 +841,16 @@ static void dwc_i3c_device_ibi_queue_push(DwcI3CDevice *s)
     } ibi_data = {
         .val32 = 0
     };
+    uint8_t i, j;
+
+    /*
+     * num slices is zero but queue has some data so push that out
+     * as single slice
+     */
+    if (fifo8_num_used(&s->ibi_data.ibi_intermediate_queue) % ibi_slice_size) {
+        num_slices += 1;
+        ibi_status_count += 1;
+    }
 
     /* The report was suppressed, do nothing. */
     if (s->ibi_data.ibi_nacked && !s->ibi_data.notify_ibi_nack) {
@@ -860,7 +870,7 @@ static void dwc_i3c_device_ibi_queue_push(DwcI3CDevice *s)
         ibi_status_count = 1;
     }
 
-    for (uint8_t i = 0; i < num_slices; i++) {
+    for (i = 0; i < num_slices; i++) {
         /* If this is the last slice, set LAST_STATUS. */
         if (fifo8_num_used(&s->ibi_data.ibi_intermediate_queue) <
             ibi_slice_size) {
@@ -880,7 +890,7 @@ static void dwc_i3c_device_ibi_queue_push(DwcI3CDevice *s)
         /* Push the IBI status header. */
         fifo32_push(&s->ibi_queue, s->ibi_data.ibi_queue_status);
         /* Move each IBI byte into a 32-bit word and push it into the queue. */
-        for (uint8_t j = 0; j < ibi_slice_size; ++j) {
+        for (j = 0; j < ibi_slice_size; ++j) {
             if (fifo8_is_empty(&s->ibi_data.ibi_intermediate_queue)) {
                 break;
             }
@@ -893,7 +903,7 @@ static void dwc_i3c_device_ibi_queue_push(DwcI3CDevice *s)
             }
         }
         /* If the data isn't 32-bit aligned, push the leftover bytes. */
-        if (ibi_slice_size & 0x03) {
+        if (j & 0x03) {
             fifo32_push(&s->ibi_queue, ibi_data.val32);
         }
 
