@@ -1078,9 +1078,8 @@ static void dwc_i3c_device_reset(DeviceState *dev)
                      s->cfg.num_devices);
     ARRAY_FIELD_DP32(s->regs, DEVICE_ADDR_TABLE_POINTER, ADDR,
                      ARRAY_FIELD_EX32(s->regs, DEV_CHAR_TABLE_POINTER,
-                                      PRESENT_DEV_CHAR_TABLE_INDEX) +
-                     ARRAY_FIELD_EX32(s->regs, DEV_CHAR_TABLE_POINTER,
-                                      DEV_CHAR_TABLE_DEPTH) * 4);
+                                      P_DEV_CHAR_TABLE_START_ADDR) +
+                     ((s->cfg.num_devices + 1) * 4 * 4));
     ARRAY_FIELD_DP32(s->regs, DEVICE_ADDR, STATIC_ADDR_VALID,
                      s->cfg.slv_static_addr_en);
     ARRAY_FIELD_DP32(s->regs, DEVICE_ADDR, STATIC_ADDR,
