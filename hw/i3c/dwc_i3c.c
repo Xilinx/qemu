@@ -819,7 +819,8 @@ static int dwc_i3c_device_ibi_handle(I3CBus *bus, I3CTarget *target,
 static int dwc_i3c_device_ibi_recv(I3CBus *bus, uint8_t data)
 {
     DwcI3CDevice *s = DWC_I3C(bus->qbus.parent);
-    if (fifo8_is_full(&s->ibi_data.ibi_intermediate_queue)) {
+    if (fifo8_is_full(&s->ibi_data.ibi_intermediate_queue) &&
+        !s->cfg.ibi_has_data) {
         return -1;
     }
 
@@ -2469,6 +2470,7 @@ static Property dwc_i3c_device_properties[] = {
     DEFINE_PROP_UINT8("num-devices", DwcI3CDevice, cfg.num_devices, 8),
     DEFINE_PROP_UINT8("ibi-buf-lvl-sel", DwcI3CDevice,
                       cfg.ibi_buf_lvl_sel, 0x3),
+    DEFINE_PROP_BOOL("ibi-has-data", DwcI3CDevice, cfg.ibi_has_data, false),
     /*
      * Slave Configuration Parameters
      */
