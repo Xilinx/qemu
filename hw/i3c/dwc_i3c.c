@@ -281,11 +281,12 @@ REG32(BUS_IDLE_TIMING,              0xd8)
     FIELD(BUS_IDLE_TIMING, BUS_IDLE_TIME, 0, 20)
 REG32(I3C_VER_ID,                   0xe0)
 REG32(I3C_VER_TYPE,                 0xe4)
-REG32(EXTENDED_CAPABILITY,          0xe8)
-    FIELD(EXTENDED_CAPABILITY, APP_IF_MODE,       0, 2)
-    FIELD(EXTENDED_CAPABILITY, APP_IF_DATA_WIDTH, 2, 2)
-    FIELD(EXTENDED_CAPABILITY, OPERATION_MODE,    4, 2)
-    FIELD(EXTENDED_CAPABILITY, CLK_PERIOD,        8, 6)
+REG32(QUEUE_SIZE_CAPABILITY,          0xe8)
+    FIELD(QUEUE_SIZE_CAPABILITY, TX_BUF_SIZE, 0, 4)
+    FIELD(QUEUE_SIZE_CAPABILITY, RX_BUF_SIZE, 4, 4)
+    FIELD(QUEUE_SIZE_CAPABILITY, CMD_BUF_SIZE, 8, 4)
+    FIELD(QUEUE_SIZE_CAPABILITY, RESP_BUF_SIZE, 12, 4)
+    FIELD(QUEUE_SIZE_CAPABILITY, IBI_BUF_SIZE, 16, 4)
 REG32(SLAVE_CONFIG,                 0xec)
     FIELD(SLAVE_CONFIG, DMA_EN,     0, 1)
     FIELD(SLAVE_CONFIG, HJ_CAP,     0, 1)
@@ -349,7 +350,6 @@ static const uint32_t ast2600_i3c_device_resets[DWC_I3C_NR_REGS] = {
     [R_SCL_EXT_TERMN_LCNT_TIMING]   = 0x00300000,
     [R_BUS_FREE_TIMING]             = 0x00200020,
     [R_BUS_IDLE_TIMING]             = 0x00000020,
-    [R_EXTENDED_CAPABILITY]         = 0x00000239,
     [R_SLAVE_CONFIG]                = 0x00000023,
 };
 
@@ -388,7 +388,7 @@ static const uint32_t ast2600_i3c_device_ro[DWC_I3C_NR_REGS] = {
     [R_SCL_I2C_FMP_TIMING]          = 0xff000000,
     [R_SCL_EXT_TERMN_LCNT_TIMING]   = 0x0000fff0,
     [R_BUS_IDLE_TIMING]             = 0xfff00000,
-    [R_EXTENDED_CAPABILITY]         = 0xffffffff,
+    [R_QUEUE_SIZE_CAPABILITY]         = 0xffffffff,
     [R_SLAVE_CONFIG]                = 0xffffffff,
 };
 
@@ -1053,6 +1053,14 @@ static void dwc_i3c_device_reset(DeviceState *dev)
     memcpy(s->regs, ast2600_i3c_device_resets, sizeof(s->regs));
     ARRAY_FIELD_DP32(s->regs, HW_CAPABILITY,  DEVICE_ROLE_CONFIG,
                      s->cfg.device_role);
+    /*
+     * Buffer level selection: Maximum
+     */
+    ARRAY_FIELD_DP32(s->regs, QUEUE_SIZE_CAPABILITY, TX_BUF_SIZE, 5);
+    ARRAY_FIELD_DP32(s->regs, QUEUE_SIZE_CAPABILITY, RX_BUF_SIZE, 5);
+    ARRAY_FIELD_DP32(s->regs, QUEUE_SIZE_CAPABILITY, CMD_BUF_SIZE, 3);
+    ARRAY_FIELD_DP32(s->regs, QUEUE_SIZE_CAPABILITY, RESP_BUF_SIZE, 3);
+    ARRAY_FIELD_DP32(s->regs, QUEUE_SIZE_CAPABILITY, IBI_BUF_SIZE, 3);
     ARRAY_FIELD_DP32(s->regs, DEV_CHAR_TABLE_POINTER, DEV_CHAR_TABLE_DEPTH,
                      (s->cfg.device_role < DR_SLAVE_ONLY ?
                       s->cfg.num_devices * 4 : s->cfg.num_devices));
@@ -2007,7 +2015,7 @@ static void dwc_i3c_device_write(void *opaque, hwaddr offset,
     case R_MAX_READ_TURNAROUND:
     case R_I3C_VER_ID:
     case R_I3C_VER_TYPE:
-    case R_EXTENDED_CAPABILITY:
+    case R_QUEUE_SIZE_CAPABILITY:
         qemu_log_mask(LOG_GUEST_ERROR,
                       "%s: write to readonly register[0x%02" HWADDR_PRIx
                       "] = 0x%08" PRIx64 "\n",
