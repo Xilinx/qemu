@@ -460,6 +460,11 @@ static uint64_t xilinx_asu_kv_read(void *opaque, hwaddr addr,
         ret = s->key_size;
         break;
 
+    case A_KEY_MASK_0 ... A_KEY_MASK_7:
+        idx = (addr - A_KEY_MASK_0) / sizeof(uint32_t);
+        ret = bswap32(s->key_mask[idx]);
+        break;
+
     case A_KEY_LOCK_0 ... A_KEY_LOCK_7:
         idx = XILINX_ASU_KV_USER_0 + (addr - A_KEY_LOCK_0) / sizeof(uint32_t);
         ret = FIELD_DP32(0, KEY_LOCK_0, VALUE, key_is_locked(s, idx));
@@ -535,6 +540,11 @@ static void xilinx_asu_kv_write(void *opaque, hwaddr addr, uint64_t value,
 
     case A_AES_USER_SEL_CRC_VALUE:
         do_crc_check(s, value);
+        break;
+
+    case A_KEY_MASK_0 ... A_KEY_MASK_7:
+        idx = (addr - A_KEY_MASK_0) / sizeof(uint32_t);
+        s->key_mask[ARRAY_SIZE(s->key_mask) - (idx + 1)] = bswap32(value);
         break;
 
     case A_KEY_LOCK_0 ... A_KEY_LOCK_7:
@@ -631,6 +641,12 @@ static size_t get_selected_key(XilinxAsuKvState *s, uint8_t *buf, size_t len)
                    get_selected_key_storage(s), get_current_key_size(s));
 }
 
+static size_t get_key_mask(XilinxAsuKvState *s, uint8_t *buf, size_t len)
+{
+    return get_key(buf, len,
+                   (uint8_t *)s->key_mask, get_current_key_size(s));
+}
+
 static void pmxc_key_xfer_recv_key(PmxcKeyXferIf *kt, uint8_t n, uint8_t *key,
                                    size_t len)
 {
@@ -713,6 +729,7 @@ static void xilinx_asu_kv_reset_enter(Object *obj, ResetType type)
     XilinxAsuKvState *s = XILINX_ASU_KV(obj);
 
     memset(s->key, 0, sizeof(s->key));
+    memset(s->key_mask, 0, sizeof(s->key_mask));
     s->key_sel = 0;
     s->key_size = ASU_KV_256BITS;
     s->efuse_0_cfg = 0;
@@ -760,6 +777,7 @@ static void xilinx_asu_kv_class_init(ObjectClass *klass, void *data)
     rc->phases.enter = xilinx_asu_kv_reset_enter;
     rc->phases.hold = xilinx_asu_kv_reset_hold;
     xakc->get_selected_key = get_selected_key;
+    xakc->get_key_mask = get_key_mask;
     pktc->send_key = pmxc_key_xfer_recv_key;
     pktc->done = pmxc_key_xfer_done;
     device_class_set_props(dc, xilinx_asu_kv_properties);
