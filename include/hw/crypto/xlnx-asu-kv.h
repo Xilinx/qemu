@@ -66,6 +66,8 @@ struct XilinxAsuKvState {
     uint32_t efuse_0_cfg;
     uint32_t efuse_1_cfg;
 
+    uint32_t key_sel;
+    uint32_t key_size;
     uint32_t crc_key_sel;
     uint32_t crc_status;
 
@@ -82,6 +84,16 @@ struct XilinxAsuKvState {
 
 struct XilinxAsuKvClass {
     SysBusDeviceClass parent_class;
+
+    size_t (*get_selected_key)(XilinxAsuKvState *s, uint8_t *key, size_t len);
 };
+
+static inline size_t xilinx_asu_kv_get_selected_key(XilinxAsuKvState *s,
+                                                    uint8_t *key, size_t len)
+{
+    XilinxAsuKvClass *c = XILINX_ASU_KV_GET_CLASS(s);
+
+    return c->get_selected_key(s, key, len);
+}
 
 #endif
