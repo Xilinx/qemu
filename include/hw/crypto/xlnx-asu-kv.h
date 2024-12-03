@@ -33,8 +33,35 @@ OBJECT_DECLARE_TYPE(XilinxAsuKvState, XilinxAsuKvClass, XILINX_ASU_KV)
 
 #define XILINX_ASU_KV_MMIO_LEN 0x1bc
 
+typedef enum XilinxAsuKvKeyId {
+    XILINX_ASU_KV_USER_0,
+    XILINX_ASU_KV_USER_1,
+    XILINX_ASU_KV_USER_2,
+    XILINX_ASU_KV_USER_3,
+    XILINX_ASU_KV_USER_4,
+    XILINX_ASU_KV_USER_5,
+    XILINX_ASU_KV_USER_6,
+    XILINX_ASU_KV_USER_7,
+    XILINX_ASU_KV_EFUSE_0,
+    XILINX_ASU_KV_EFUSE_1,
+    XILINX_ASU_KV_EFUSE_BLACK_0,
+    XILINX_ASU_KV_EFUSE_BLACK_1,
+    XILINX_ASU_KV_PUF,
+
+    XILINX_ASU_KV_NUM_KEYS
+} XilinxAsuKvKeyId;
+
+typedef struct XilinxAsuKvKey {
+    uint32_t val[8];
+    uint32_t flags; /* zeroized or set, locked, crc checked */
+} XilinxAsuKvKey;
+
+typedef struct XilinxAsuAesState XilinxAsuAesState;
+
 struct XilinxAsuKvState {
     SysBusDevice parent_obj;
+
+    XilinxAsuKvKey key[XILINX_ASU_KV_NUM_KEYS];
 
     MemoryRegion iomem;
     qemu_irq irq;

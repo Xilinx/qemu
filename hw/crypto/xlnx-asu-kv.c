@@ -142,6 +142,104 @@ REG32(KV_ADDR_ERROR_ENABLE, 0x1b4)
 REG32(KV_ADDR_ERROR_DISABLE, 0x1b8)
 REG32(KV_ADDR_ERROR_TRIGGER, 0x1bc)
 
+/* Key flags */
+enum {
+    ASU_KV_KEY_SET = 1u << 0,
+    ASU_KV_KEY_LOCKED = 1u << 1,
+    ASU_KV_KEY_CRC_CHECKED = 1u << 2,
+};
+
+static const char *ASU_KV_KEY_STR[] = {
+    [XILINX_ASU_KV_USER_0] = "user-0",
+    [XILINX_ASU_KV_USER_1] = "user-1",
+    [XILINX_ASU_KV_USER_2] = "user-2",
+    [XILINX_ASU_KV_USER_3] = "user-3",
+    [XILINX_ASU_KV_USER_4] = "user-4",
+    [XILINX_ASU_KV_USER_5] = "user-5",
+    [XILINX_ASU_KV_USER_6] = "user-6",
+    [XILINX_ASU_KV_USER_7] = "user-7",
+    [XILINX_ASU_KV_EFUSE_0] = "efuse-0",
+    [XILINX_ASU_KV_EFUSE_1] = "efuse-1",
+    [XILINX_ASU_KV_EFUSE_BLACK_0] = "efuse-black-0",
+    [XILINX_ASU_KV_EFUSE_BLACK_1] = "efuse-black-1",
+    [XILINX_ASU_KV_PUF] = "puf",
+};
+
+static inline bool key_is_locked(const XilinxAsuKvState *s, size_t idx)
+{
+    g_assert(idx < XILINX_ASU_KV_EFUSE_0);
+    return !!(s->key[idx].flags & ASU_KV_KEY_LOCKED);
+}
+
+static inline void key_set_locked(XilinxAsuKvState *s, size_t idx)
+{
+    g_assert(idx < XILINX_ASU_KV_EFUSE_0);
+    s->key[idx].flags |= ASU_KV_KEY_LOCKED;
+}
+
+static inline bool key_is_cleared(const XilinxAsuKvState *s, size_t idx)
+{
+    return !(s->key[idx].flags & ASU_KV_KEY_SET);
+}
+
+static inline void key_clear(XilinxAsuKvState *s, size_t idx)
+{
+    /*
+     * Clear the flags as well. A key clear operation unlocks the key and
+     * clears the CRC checked status.
+     */
+    memset(&s->key[idx], 0, sizeof(s->key[idx]));
+}
+
+static inline void key_mark_set(XilinxAsuKvState *s, size_t idx)
+{
+    g_assert(!(s->key[idx].flags & ASU_KV_KEY_LOCKED));
+
+    /* clear CRC_CHECKED flag if set. (LOCKED is unset for sure) */
+    s->key[idx].flags = ASU_KV_KEY_SET;
+}
+
+static inline bool key_is_crc_checked(const XilinxAsuKvState *s, size_t idx)
+{
+    return !!(s->key[idx].flags & ASU_KV_KEY_CRC_CHECKED);
+}
+
+static inline void key_set_crc_checked(XilinxAsuKvState *s, size_t idx)
+{
+    s->key[idx].flags |= ASU_KV_KEY_CRC_CHECKED;
+}
+
+static void user_key_write(XilinxAsuKvState *s, hwaddr addr,
+                           uint32_t value)
+{
+    const size_t STRIDE = A_USER_KEY_1_0 - A_USER_KEY_0_0;
+    size_t key_idx, sub_idx;
+
+    if (addr >= A_USER_KEY_3_0) {
+        /* workaround the buggy register map */
+        addr -= 0x10;
+    }
+
+    key_idx = (addr - A_USER_KEY_0_0) / STRIDE;
+    key_idx += XILINX_ASU_KV_USER_0;
+    sub_idx = (addr - A_USER_KEY_0_0) % STRIDE;
+    sub_idx /= sizeof(uint32_t);
+
+    if (key_is_locked(s, key_idx)) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      TYPE_XILINX_ASU_KV ": trying to write to locked key "
+                      "%zu\n", key_idx);
+        return;
+    }
+
+    /* store the key in big endian. This is how the AES model expects it. */
+    sub_idx = ARRAY_SIZE(s->key[key_idx].val) - (sub_idx + 1);
+    s->key[key_idx].val[sub_idx] = bswap32(value);
+
+    key_mark_set(s, key_idx);
+    trace_xilinx_asu_kv_write_key(ASU_KV_KEY_STR[key_idx]);
+}
+
 static uint64_t xilinx_asu_kv_read(void *opaque, hwaddr addr,
                                    unsigned int size)
 {
@@ -175,9 +273,15 @@ static uint64_t xilinx_asu_kv_read(void *opaque, hwaddr addr,
 static void xilinx_asu_kv_write(void *opaque, hwaddr addr, uint64_t value,
                                 unsigned int size)
 {
+    XilinxAsuKvState *s = XILINX_ASU_KV(opaque);
+
     trace_xilinx_asu_kv_write(addr, value, size);
 
     switch (addr) {
+    case A_USER_KEY_0_0 ... A_USER_KEY_7_7:
+        user_key_write(s, addr, value);
+        break;
+
     case A_AES_USER_KEY_CRC_STATUS:
     case A_KEY_ZEROED_STATUS:
     case A_KV_INTERRUPT_MASK:
@@ -207,6 +311,9 @@ static const MemoryRegionOps xilinx_asu_kv_ops = {
 
 static void xilinx_asu_kv_reset_enter(Object *obj, ResetType type)
 {
+    XilinxAsuKvState *s = XILINX_ASU_KV(obj);
+
+    memset(s->key, 0, sizeof(s->key));
 }
 
 static void xilinx_asu_kv_reset_hold(Object *obj)
