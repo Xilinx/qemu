@@ -332,6 +332,7 @@ static uint64_t xilinx_asu_kv_read(void *opaque, hwaddr addr,
 {
     XilinxAsuKvState *s = XILINX_ASU_KV(opaque);
     uint64_t ret;
+    size_t idx;
 
     switch (addr) {
     case A_KEY_ZEROED_STATUS:
@@ -344,6 +345,11 @@ static uint64_t xilinx_asu_kv_read(void *opaque, hwaddr addr,
 
     case A_AES_USER_KEY_CRC_STATUS:
         ret = s->crc_status;
+        break;
+
+    case A_KEY_LOCK_0 ... A_KEY_LOCK_7:
+        idx = XILINX_ASU_KV_USER_0 + (addr - A_KEY_LOCK_0) / sizeof(uint32_t);
+        ret = FIELD_DP32(0, KEY_LOCK_0, VALUE, key_is_locked(s, idx));
         break;
 
     case A_USER_KEY_0_0 ... A_USER_KEY_7_7:
@@ -374,6 +380,7 @@ static void xilinx_asu_kv_write(void *opaque, hwaddr addr, uint64_t value,
                                 unsigned int size)
 {
     XilinxAsuKvState *s = XILINX_ASU_KV(opaque);
+    size_t idx;
 
     trace_xilinx_asu_kv_write(addr, value, size);
 
@@ -391,6 +398,15 @@ static void xilinx_asu_kv_write(void *opaque, hwaddr addr, uint64_t value,
 
     case A_AES_USER_SEL_CRC_VALUE:
         do_crc_check(s, value);
+        break;
+
+    case A_KEY_LOCK_0 ... A_KEY_LOCK_7:
+        idx = XILINX_ASU_KV_USER_0 + (addr - A_KEY_LOCK_0) / sizeof(uint32_t);
+
+        if (value & R_KEY_LOCK_0_VALUE_MASK) {
+            key_set_locked(s, idx);
+            trace_xilinx_asu_kv_lock_key(ASU_KV_KEY_STR[idx]);
+        }
         break;
 
     case A_USER_KEY_0_0 ... A_USER_KEY_7_7:
