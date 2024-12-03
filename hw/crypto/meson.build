@@ -5,6 +5,7 @@ system_ss.add(when: 'CONFIG_XLNX_VERSAL2_ASU_SHA', if_true: files(
 
 system_ss.add(when: 'CONFIG_XLNX_VERSAL2_ASU_AES', if_true: files(
   'xlnx-asu-aes.c',
+  'xlnx-asu-kv.c',
   'xlnx-pmxc-key-transfer.c',
   'xlnx-asu-ecc.c',
 ))

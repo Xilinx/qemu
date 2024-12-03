@@ -2,3 +2,6 @@
 xilinx_asu_ecc_read(uint64_t addr, uint64_t data, unsigned int size) "addr 0x%" PRIx64 ", data 0x%" PRIx64 ", size %u"
 xilinx_asu_ecc_write(uint64_t addr, uint64_t data, unsigned int size) "addr 0x%" PRIx64 ", data 0x%" PRIx64 ", size %u"
 
+# xlnx-asu-kv.c
+xilinx_asu_kv_read(uint64_t addr, uint64_t value, unsigned int size) "addr: 0x%" PRIx64 " value: 0x%" PRIx64 " size: %u"
+xilinx_asu_kv_write(uint64_t addr, uint64_t value, unsigned int size) "addr: 0x%" PRIx64 " value: 0x%" PRIx64 " size: %u"
