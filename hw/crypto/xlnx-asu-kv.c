@@ -240,12 +240,75 @@ static void user_key_write(XilinxAsuKvState *s, hwaddr addr,
     trace_xilinx_asu_kv_write_key(ASU_KV_KEY_STR[key_idx]);
 }
 
+static void do_key_clearing(XilinxAsuKvState *s, uint32_t value)
+{
+    static const size_t KEY_MAPPING[] = {
+        [XILINX_ASU_KV_USER_0] = R_AES_KEY_CLEAR_USER_KEY_0_SHIFT,
+        [XILINX_ASU_KV_USER_1] = R_AES_KEY_CLEAR_USER_KEY_1_SHIFT,
+        [XILINX_ASU_KV_USER_2] = R_AES_KEY_CLEAR_USER_KEY_2_SHIFT,
+        [XILINX_ASU_KV_USER_3] = R_AES_KEY_CLEAR_USER_KEY_3_SHIFT,
+        [XILINX_ASU_KV_USER_4] = R_AES_KEY_CLEAR_USER_KEY_4_SHIFT,
+        [XILINX_ASU_KV_USER_5] = R_AES_KEY_CLEAR_USER_KEY_5_SHIFT,
+        [XILINX_ASU_KV_USER_6] = R_AES_KEY_CLEAR_USER_KEY_6_SHIFT,
+        [XILINX_ASU_KV_USER_7] = R_AES_KEY_CLEAR_USER_KEY_7_SHIFT,
+        [XILINX_ASU_KV_EFUSE_0] = R_AES_KEY_CLEAR_EFUSE_KEY_RED_0_SHIFT,
+        [XILINX_ASU_KV_EFUSE_1] = R_AES_KEY_CLEAR_EFUSE_KEY_RED_1_SHIFT,
+        [XILINX_ASU_KV_EFUSE_BLACK_0] = R_AES_KEY_CLEAR_EFUSE_KEY_0_SHIFT,
+        [XILINX_ASU_KV_EFUSE_BLACK_1] = R_AES_KEY_CLEAR_EFUSE_KEY_1_SHIFT,
+        [XILINX_ASU_KV_PUF] = R_AES_KEY_CLEAR_PUF_KEY_SHIFT,
+    };
+
+    size_t i;
+
+    for (i = 0; i < ARRAY_SIZE(KEY_MAPPING); i++) {
+        if ((1 << KEY_MAPPING[i]) & value) {
+            trace_xilinx_asu_kv_clear_key(ASU_KV_KEY_STR[i]);
+            key_clear(s, i);
+        }
+    }
+}
+
+static uint32_t get_key_clear_status(XilinxAsuKvState *s)
+{
+    static const size_t KEY_MAPPING[] = {
+        [XILINX_ASU_KV_USER_0] = R_KEY_ZEROED_STATUS_USER_KEY_0_MASK,
+        [XILINX_ASU_KV_USER_1] = R_KEY_ZEROED_STATUS_USER_KEY_1_MASK,
+        [XILINX_ASU_KV_USER_2] = R_KEY_ZEROED_STATUS_USER_KEY_2_MASK,
+        [XILINX_ASU_KV_USER_3] = R_KEY_ZEROED_STATUS_USER_KEY_3_MASK,
+        [XILINX_ASU_KV_USER_4] = R_KEY_ZEROED_STATUS_USER_KEY_4_MASK,
+        [XILINX_ASU_KV_USER_5] = R_KEY_ZEROED_STATUS_USER_KEY_5_MASK,
+        [XILINX_ASU_KV_USER_6] = R_KEY_ZEROED_STATUS_USER_KEY_6_MASK,
+        [XILINX_ASU_KV_USER_7] = R_KEY_ZEROED_STATUS_USER_KEY_7_MASK,
+        [XILINX_ASU_KV_EFUSE_0] = R_KEY_ZEROED_STATUS_EFUSE_KEY_RED_0_MASK,
+        [XILINX_ASU_KV_EFUSE_1] = R_KEY_ZEROED_STATUS_EFUSE_KEY_RED_1_MASK,
+        [XILINX_ASU_KV_EFUSE_BLACK_0] = R_KEY_ZEROED_STATUS_EFUSE_KEY_0_MASK,
+        [XILINX_ASU_KV_EFUSE_BLACK_1] = R_KEY_ZEROED_STATUS_EFUSE_KEY_1_MASK,
+        [XILINX_ASU_KV_PUF] = R_KEY_ZEROED_STATUS_PUF_KEY_MASK,
+    };
+
+    uint32_t ret = 0;
+    size_t i;
+
+    for (i = 0; i < ARRAY_SIZE(KEY_MAPPING); i++) {
+        if (key_is_cleared(s, i)) {
+            ret |= KEY_MAPPING[i];
+        }
+    }
+
+    return ret;
+}
+
 static uint64_t xilinx_asu_kv_read(void *opaque, hwaddr addr,
                                    unsigned int size)
 {
+    XilinxAsuKvState *s = XILINX_ASU_KV(opaque);
     uint64_t ret;
 
     switch (addr) {
+    case A_KEY_ZEROED_STATUS:
+        ret = get_key_clear_status(s);
+        break;
+
     case A_USER_KEY_0_0 ... A_USER_KEY_7_7:
     case A_AES_KEY_CLEAR:
     case A_KV_INTERRUPT_ENABLE:
@@ -278,6 +341,10 @@ static void xilinx_asu_kv_write(void *opaque, hwaddr addr, uint64_t value,
     trace_xilinx_asu_kv_write(addr, value, size);
 
     switch (addr) {
+    case A_AES_KEY_CLEAR:
+        do_key_clearing(s, value);
+        break;
+
     case A_USER_KEY_0_0 ... A_USER_KEY_7_7:
         user_key_write(s, addr, value);
         break;
