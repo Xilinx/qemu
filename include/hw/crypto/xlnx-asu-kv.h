@@ -69,9 +69,12 @@ struct XilinxAsuKvState {
 
     uint32_t key_sel;
     uint32_t key_size;
+    uint32_t dec_key_sel;
+    uint32_t dec_key_size;
     uint32_t crc_key_sel;
     uint32_t crc_status;
 
+    bool key_dec_mode;
     bool asu_pmc_key_xfer_ready;
 
     bool irq_mask;
@@ -88,6 +91,9 @@ struct XilinxAsuKvClass {
 
     size_t (*get_selected_key)(XilinxAsuKvState *s, uint8_t *key, size_t len);
     size_t (*get_key_mask)(XilinxAsuKvState *s, uint8_t *key_mask, size_t len);
+    size_t (*get_to_be_dec_key)(XilinxAsuKvState *s, uint8_t *key, size_t len);
+    void (*set_decrypted_key)(XilinxAsuKvState *s, const uint8_t *key,
+                              size_t len);
 };
 
 static inline size_t xilinx_asu_kv_get_selected_key(XilinxAsuKvState *s,
@@ -104,6 +110,23 @@ static inline size_t xilinx_asu_kv_get_key_mask(XilinxAsuKvState *s,
     XilinxAsuKvClass *c = XILINX_ASU_KV_GET_CLASS(s);
 
     return c->get_key_mask(s, key_mask, len);
+}
+
+static inline size_t xilinx_asu_kv_get_to_be_dev_key(XilinxAsuKvState *s,
+                                                     uint8_t *key, size_t len)
+{
+    XilinxAsuKvClass *c = XILINX_ASU_KV_GET_CLASS(s);
+
+    return c->get_to_be_dec_key(s, key, len);
+}
+
+static inline void xilinx_asu_kv_set_decrypted_key(XilinxAsuKvState *s,
+                                                   const uint8_t *key,
+                                                   size_t len)
+{
+    XilinxAsuKvClass *c = XILINX_ASU_KV_GET_CLASS(s);
+
+    c->set_decrypted_key(s, key, len);
 }
 
 #endif

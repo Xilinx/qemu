@@ -258,6 +258,26 @@ static inline size_t get_current_key_size(const XilinxAsuKvState *s)
     }
 }
 
+static inline size_t get_to_be_dec_key_size(const XilinxAsuKvState *s)
+{
+    unsigned int key_size = FIELD_EX32(s->dec_key_size,
+                                       AES_KEY_TO_BE_DEC_SIZE, SELECT);
+
+    switch (key_size) {
+    case ASU_KV_128BITS:
+        return 16;
+
+    case ASU_KV_256BITS:
+        return 32;
+
+    default:
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      TYPE_XILINX_ASU_KV ": invalid AES_KEY_TO_BE_DEC_SIZE "
+                      "value %u\n", key_size);
+        return 0;
+    }
+}
+
 static inline uint8_t *get_selected_key_storage(const XilinxAsuKvState *s)
 {
     uint32_t key_sel = FIELD_EX32(s->key_sel, AES_KEY_SEL, SRC);
@@ -295,6 +315,41 @@ static inline uint8_t *get_selected_key_storage(const XilinxAsuKvState *s)
     }
 
     return (uint8_t *) s->key[key_idx].val;
+}
+
+static inline uint8_t *get_to_be_dec_key_storage(XilinxAsuKvState *s,
+                                                 bool red)
+{
+    uint32_t key_sel = FIELD_EX32(s->dec_key_sel, AES_KEY_TO_BE_DEC_SEL, SRC);
+    XilinxAsuKvKeyId key;
+
+    switch (key_sel) {
+    case ASU_KV_MAGIC_EFUSE_0:
+        if (red) {
+            key_mark_set(s, XILINX_ASU_KV_EFUSE_0);
+            key = XILINX_ASU_KV_EFUSE_0;
+        } else {
+            key = XILINX_ASU_KV_EFUSE_BLACK_0;
+        }
+        break;
+
+    case ASU_KV_MAGIC_EFUSE_1:
+        if (red) {
+            key_mark_set(s, XILINX_ASU_KV_EFUSE_1);
+            key = XILINX_ASU_KV_EFUSE_1;
+        } else {
+            key = XILINX_ASU_KV_EFUSE_BLACK_1;
+        }
+        break;
+
+    default:
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      TYPE_XILINX_ASU_KV ": invalid AES_KEY_TO_BE_DEC_SEL "
+                      "value %" PRIx32 "\n", key_sel);
+        return NULL;
+    }
+
+    return (uint8_t *) s->key[key].val;
 }
 
 static inline void update_irq(XilinxAsuKvState *s)
@@ -456,8 +511,16 @@ static uint64_t xilinx_asu_kv_read(void *opaque, hwaddr addr,
         ret = s->crc_status;
         break;
 
+    case A_AES_KEY_TO_BE_DEC_SEL:
+        ret = s->dec_key_sel;
+        break;
+
     case A_AES_KEY_SIZE:
         ret = s->key_size;
+        break;
+
+    case A_AES_KEY_TO_BE_DEC_SIZE:
+        ret = s->dec_key_size;
         break;
 
     case A_KEY_MASK_0 ... A_KEY_MASK_7:
@@ -542,6 +605,10 @@ static void xilinx_asu_kv_write(void *opaque, hwaddr addr, uint64_t value,
         do_crc_check(s, value);
         break;
 
+    case A_AES_KEY_TO_BE_DEC_SEL:
+        s->dec_key_sel = value;
+        break;
+
     case A_KEY_MASK_0 ... A_KEY_MASK_7:
         idx = (addr - A_KEY_MASK_0) / sizeof(uint32_t);
         s->key_mask[ARRAY_SIZE(s->key_mask) - (idx + 1)] = bswap32(value);
@@ -562,6 +629,16 @@ static void xilinx_asu_kv_write(void *opaque, hwaddr addr, uint64_t value,
 
     case A_AES_KEY_SIZE:
         s->key_size = value;
+        break;
+
+    case A_AES_KEY_TO_BE_DEC_SIZE:
+        s->dec_key_size = value;
+        break;
+
+    case A_AES_KEY_DEC_MODE:
+        if (value == 0xffffffff) {
+            s->key_dec_mode = true;
+        }
         break;
 
     case A_ASU_PMC_KEY_TRANSFER_READY:
@@ -645,6 +722,46 @@ static size_t get_key_mask(XilinxAsuKvState *s, uint8_t *buf, size_t len)
 {
     return get_key(buf, len,
                    (uint8_t *)s->key_mask, get_current_key_size(s));
+}
+
+static size_t get_to_be_dec_key(XilinxAsuKvState *s, uint8_t *buf, size_t len)
+{
+    if (!s->key_dec_mode) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      TYPE_XILINX_ASU_KV ": asu-aes triggered a key "
+                      "decryption operation while the vault is not in "
+                      "key decryption mode\n");
+        /* return a zero key */
+        return get_key(buf, len, NULL, 0);
+    }
+
+    return get_key(buf, len,
+                   get_to_be_dec_key_storage(s, false),
+                   get_to_be_dec_key_size(s));
+}
+
+static void set_decrypted_key(XilinxAsuKvState *s, const uint8_t *buf,
+                              size_t len)
+{
+    uint8_t *key;
+    size_t key_size;
+
+    if (!s->key_dec_mode) {
+        return;
+    }
+
+    key = get_to_be_dec_key_storage(s, true);
+    key_size = get_to_be_dec_key_size(s);
+
+    g_assert(len == key_size);
+
+    if (key == NULL) {
+        return;
+    }
+
+    memcpy(key, buf, len);
+
+    s->key_dec_mode = false;
 }
 
 static void pmxc_key_xfer_recv_key(PmxcKeyXferIf *kt, uint8_t n, uint8_t *key,
@@ -732,6 +849,8 @@ static void xilinx_asu_kv_reset_enter(Object *obj, ResetType type)
     memset(s->key_mask, 0, sizeof(s->key_mask));
     s->key_sel = 0;
     s->key_size = ASU_KV_256BITS;
+    s->dec_key_sel = 0;
+    s->dec_key_size = ASU_KV_256BITS;
     s->efuse_0_cfg = 0;
     s->efuse_1_cfg = 0;
     s->crc_key_sel = 0;
@@ -778,6 +897,8 @@ static void xilinx_asu_kv_class_init(ObjectClass *klass, void *data)
     rc->phases.hold = xilinx_asu_kv_reset_hold;
     xakc->get_selected_key = get_selected_key;
     xakc->get_key_mask = get_key_mask;
+    xakc->get_to_be_dec_key = get_to_be_dec_key;
+    xakc->set_decrypted_key = set_decrypted_key;
     pktc->send_key = pmxc_key_xfer_recv_key;
     pktc->done = pmxc_key_xfer_done;
     device_class_set_props(dc, xilinx_asu_kv_properties);
