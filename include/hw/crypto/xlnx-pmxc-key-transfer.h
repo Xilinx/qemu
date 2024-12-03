@@ -1,39 +1,37 @@
 /*
- * QEMU model of the PMXC Key Transfer.
+ * PMXC Key Transfer interface.
  *
  * Copyright (c) 2023 Advanced Micro Devices, Inc.
  *
  * SPDX-License-Identifier: MIT
  */
 
-#ifndef XLNX_PMXC_KT_H
-#define XLNX_PMXC_KT_H
+#ifndef XLNX_PMXC_KEY_XFER_IF_H
+#define XLNX_PMXC_KEY_XFER_IF_H
 
 #include "qom/object.h"
-#include "qemu/osdep.h"
 
-#define TYPE_PMXC_KEY_TRANSFER "xlnx-pmxc-kt"
-typedef struct pmxcKTClass pmxcKTClass;
-DECLARE_CLASS_CHECKERS(pmxcKTClass, PMXC_KT, TYPE_PMXC_KEY_TRANSFER)
+#define TYPE_PMXC_KEY_XFER_IF "xlnx-pmxc-key-xfer-if"
+typedef struct PmxcKeyXferIfClass PmxcKeyXferIfClass;
+DECLARE_CLASS_CHECKERS(PmxcKeyXferIfClass, PMXC_KEY_XFER_IF,
+                       TYPE_PMXC_KEY_XFER_IF)
 
-#define PMXC_KT(obj) \
-        INTERFACE_CHECK(pmxcKT, (obj), TYPE_PMXC_KEY_TRANSFER)
+#define PMXC_KEY_XFER_IF(obj) \
+        INTERFACE_CHECK(PmxcKeyXferIf, (obj), TYPE_PMXC_KEY_XFER_IF)
 
-typedef struct pmxcKT {
-     Object Parent;
-} pmxcKT;
+typedef struct PmxcKeyXferIf PmxcKeyXferIf;
 
-typedef struct pmxcKTClass {
+typedef struct PmxcKeyXferIfClass {
     InterfaceClass parent;
 
     /* asu aes */
-    void (*asu_ready)(pmxcKT *kt, bool ready);
+    void (*asu_ready)(PmxcKeyXferIf *kt, bool ready);
     /* pmxc aes */
-    void (*done)(pmxcKT *kt, bool done);
-    void (*send_key)(pmxcKT *kt, uint8_t n, uint8_t *key, size_t len);
-} pmxcKTClass;
+    void (*done)(PmxcKeyXferIf *kt, bool done);
+    void (*send_key)(PmxcKeyXferIf *kt, uint8_t n, uint8_t *key, size_t len);
+} PmxcKeyXferIfClass;
 
-void pmxc_kt_asu_ready(pmxcKT *kt, bool ready);
-void pmxc_kt_done(pmxcKT *kt, bool done);
-void pmxc_kt_send_key(pmxcKT *kt, uint8_t n, uint8_t *key, size_t len);
+void pmxc_kt_asu_ready(PmxcKeyXferIf *kt, bool ready);
+void pmxc_kt_done(PmxcKeyXferIf *kt, bool done);
+void pmxc_kt_send_key(PmxcKeyXferIf *kt, uint8_t n, uint8_t *key, size_t len);
 #endif

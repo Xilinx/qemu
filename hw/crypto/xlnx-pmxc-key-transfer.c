@@ -9,27 +9,27 @@
 #include "qemu/osdep.h"
 #include "hw/crypto/xlnx-pmxc-key-transfer.h"
 
-void pmxc_kt_asu_ready(pmxcKT *kt, bool rdy)
+void pmxc_kt_asu_ready(PmxcKeyXferIf *kt, bool rdy)
 {
-    pmxcKTClass *k = PMXC_KT_GET_CLASS(kt);
+    PmxcKeyXferIfClass *k = PMXC_KEY_XFER_IF_GET_CLASS(kt);
 
     if (k->asu_ready) {
         k->asu_ready(kt, rdy);
     }
 }
 
-void pmxc_kt_done(pmxcKT *kt, bool done)
+void pmxc_kt_done(PmxcKeyXferIf *kt, bool done)
 {
-    pmxcKTClass *k = PMXC_KT_GET_CLASS(kt);
+    PmxcKeyXferIfClass *k = PMXC_KEY_XFER_IF_GET_CLASS(kt);
 
     if (k->done) {
         k->done(kt, done);
     }
 }
 
-void pmxc_kt_send_key(pmxcKT *kt, uint8_t n, uint8_t *key, size_t len)
+void pmxc_kt_send_key(PmxcKeyXferIf *kt, uint8_t n, uint8_t *key, size_t len)
 {
-    pmxcKTClass *k = PMXC_KT_GET_CLASS(kt);
+    PmxcKeyXferIfClass *k = PMXC_KEY_XFER_IF_GET_CLASS(kt);
 
     if (k->send_key) {
         k->send_key(kt, n, key, len);
@@ -37,9 +37,9 @@ void pmxc_kt_send_key(pmxcKT *kt, uint8_t n, uint8_t *key, size_t len)
 }
 
 static const TypeInfo pmxc_kt_info = {
-    .name          = TYPE_PMXC_KEY_TRANSFER,
+    .name          = TYPE_PMXC_KEY_XFER_IF,
     .parent        = TYPE_INTERFACE,
-    .class_size    = sizeof(pmxcKTClass),
+    .class_size    = sizeof(PmxcKeyXferIfClass),
 };
 
 static void pmxc_kt_types(void)

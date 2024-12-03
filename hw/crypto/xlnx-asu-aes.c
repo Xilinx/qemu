@@ -597,7 +597,7 @@ static void asu_aes_kt_launch(XlnxAsuAes *s)
     pmxc_kt_asu_ready(s->pmxc_aes, 1);
 }
 
-static void asu_aes_int_pmxc_kt_done(pmxcKT *kt, bool done)
+static void asu_aes_int_pmxc_kt_done(PmxcKeyXferIf *kt, bool done)
 {
     XlnxAsuAes *s = XLNX_ASU_AES(kt);
 
@@ -605,7 +605,7 @@ static void asu_aes_int_pmxc_kt_done(pmxcKT *kt, bool done)
     asu_aes_update_kv_irq(s);
 }
 
-static void asu_aes_int_receive_key(pmxcKT *kt, uint8_t n, uint8_t *key,
+static void asu_aes_int_receive_key(PmxcKeyXferIf *kt, uint8_t n, uint8_t *key,
                                     size_t len)
 {
     XlnxAsuAes *s = XLNX_ASU_AES(kt);
@@ -1958,8 +1958,8 @@ static Property asu_aes_properties[] = {
                      XlnxAsuAes, out.dev,
                      TYPE_STREAM_SINK, StreamSink *),
     DEFINE_PROP_LINK("pmxc-aes", XlnxAsuAes,
-                    pmxc_aes, TYPE_PMXC_KEY_TRANSFER,
-                    pmxcKT *),
+                    pmxc_aes, TYPE_PMXC_KEY_XFER_IF,
+                    PmxcKeyXferIf *),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -1967,7 +1967,7 @@ static void asu_aes_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     StreamSinkClass *ssc = STREAM_SINK_CLASS(klass);
-    pmxcKTClass *ktc = PMXC_KT_CLASS(klass);
+    PmxcKeyXferIfClass *ktc = PMXC_KEY_XFER_IF_CLASS(klass);
 
     dc->realize = asu_aes_realize;
     dc->reset = asu_aes_reset;
@@ -1990,7 +1990,7 @@ static const TypeInfo asu_aes_info = {
     .instance_finalize = asu_aes_finalize,
     .interfaces = (InterfaceInfo[]) {
         { TYPE_STREAM_SINK },
-        { TYPE_PMXC_KEY_TRANSFER },
+        { TYPE_PMXC_KEY_XFER_IF },
         { }
     }
 };

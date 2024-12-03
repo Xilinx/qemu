@@ -363,7 +363,7 @@ typedef struct pmxc_aes {
     Zynq3AES parent;
 
     MemoryRegion pmxc_iomem;
-    pmxcKT *asu;
+    PmxcKeyXferIf *asu;
     bool asu_aes_ready;
 } pmxc_aes;
 
@@ -1345,7 +1345,7 @@ static void pmc_init_key_sink(Zynq3AES *s,
     ks->tmr = s;
 }
 
-static void pmxc_asu_state(pmxcKT *kt, bool ready)
+static void pmxc_asu_state(PmxcKeyXferIf *kt, bool ready)
 {
     pmxc_aes *s = PMXC_AES(kt);
 
@@ -1429,8 +1429,8 @@ static Property aes_properties[] = {
     DEFINE_PROP_STRING("puf-key-id",    Zynq3AES, puf_key_id),
     DEFINE_PROP_BOOL("integrated-endianness-swap", Zynq3AES, endianness_swap,
                      false),
-    DEFINE_PROP_LINK("asu-aes", pmxc_aes, asu, TYPE_PMXC_KEY_TRANSFER,
-                     pmxcKT *),
+    DEFINE_PROP_LINK("asu-aes", pmxc_aes, asu, TYPE_PMXC_KEY_XFER_IF,
+                     PmxcKeyXferIf *),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -1451,7 +1451,7 @@ static void aes_class_init(ObjectClass *klass, void *data)
 
 static void pmxc_aes_class_init(ObjectClass *klass, void *data)
 {
-    pmxcKTClass *ktc = PMXC_KT_CLASS(klass);
+    PmxcKeyXferIfClass *ktc = PMXC_KEY_XFER_IF_CLASS(klass);
 
     ktc->asu_ready = pmxc_asu_state;
 }
@@ -1493,7 +1493,7 @@ static const TypeInfo pmxc_aes_info = {
     .instance_init = pmxc_aes_init,
     .class_init    = pmxc_aes_class_init,
     .interfaces    = (InterfaceInfo[]) {
-        { TYPE_PMXC_KEY_TRANSFER },
+        { TYPE_PMXC_KEY_XFER_IF },
         { }
     }
 };

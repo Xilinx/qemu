@@ -107,7 +107,7 @@ typedef struct XlnxAsuAes {
     uint32_t kv[ASU_AES_KV_R_MAX];
     RegisterInfo kv_regs_info[ASU_AES_KV_R_MAX];
 
-    pmxcKT *pmxc_aes;
+    PmxcKeyXferIf *pmxc_aes;
     /* Controller */
     uint32_t regs[ASU_AES_R_MAX];
     RegisterInfo regs_info[ASU_AES_R_MAX];
