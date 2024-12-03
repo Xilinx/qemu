@@ -28,6 +28,7 @@
 #include "hw/irq.h"
 #include "hw/qdev-properties.h"
 #include "hw/crypto/xlnx-asu-kv.h"
+#include "hw/nvram/xlnx-efuse.h"
 #include "trace.h"
 
 REG32(AES_KEY_SEL, 0x0)
@@ -298,6 +299,34 @@ static uint32_t get_key_clear_status(XilinxAsuKvState *s)
     return ret;
 }
 
+static void do_crc_check(XilinxAsuKvState *s, uint32_t crc)
+{
+    size_t key_idx = XILINX_ASU_KV_USER_0 + s->crc_key_sel;
+    uint32_t ref_crc;
+    uint32_t le_key[8];
+
+    g_assert(key_idx <= XILINX_ASU_KV_USER_7);
+
+    s->crc_status = R_AES_USER_KEY_CRC_STATUS_DONE_MASK;
+
+    if (key_is_crc_checked(s, key_idx)) {
+        /* only one CRC computation allowed for a given key */
+        return;
+    }
+
+    key_set_crc_checked(s, key_idx);
+
+    /* the CRC computation function expects a little-endian key */
+    for (size_t i = 0; i < ARRAY_SIZE(le_key); i++) {
+        le_key[i] = bswap32(s->key[key_idx].val[ARRAY_SIZE(le_key) - (i + 1)]);
+    }
+
+    ref_crc = xlnx_efuse_calc_crc(le_key, ARRAY_SIZE(le_key), 0);
+
+    s->crc_status = FIELD_DP32(s->crc_status, AES_USER_KEY_CRC_STATUS,
+                               PASS, crc == ref_crc);
+}
+
 static uint64_t xilinx_asu_kv_read(void *opaque, hwaddr addr,
                                    unsigned int size)
 {
@@ -307,6 +336,14 @@ static uint64_t xilinx_asu_kv_read(void *opaque, hwaddr addr,
     switch (addr) {
     case A_KEY_ZEROED_STATUS:
         ret = get_key_clear_status(s);
+        break;
+
+    case A_AES_USER_SEL_CRC:
+        ret = s->crc_key_sel;
+        break;
+
+    case A_AES_USER_KEY_CRC_STATUS:
+        ret = s->crc_status;
         break;
 
     case A_USER_KEY_0_0 ... A_USER_KEY_7_7:
@@ -345,6 +382,17 @@ static void xilinx_asu_kv_write(void *opaque, hwaddr addr, uint64_t value,
         do_key_clearing(s, value);
         break;
 
+    case A_AES_USER_SEL_CRC:
+        s->crc_key_sel = value & AES_USER_SEL_CRC_WRITE_MASK;
+
+        /* writing to this reg clears the done bit in CRC_STATUS */
+        s->crc_status = 0;
+        break;
+
+    case A_AES_USER_SEL_CRC_VALUE:
+        do_crc_check(s, value);
+        break;
+
     case A_USER_KEY_0_0 ... A_USER_KEY_7_7:
         user_key_write(s, addr, value);
         break;
@@ -381,6 +429,8 @@ static void xilinx_asu_kv_reset_enter(Object *obj, ResetType type)
     XilinxAsuKvState *s = XILINX_ASU_KV(obj);
 
     memset(s->key, 0, sizeof(s->key));
+    s->crc_key_sel = 0;
+    s->crc_status = 0;
 }
 
 static void xilinx_asu_kv_reset_hold(Object *obj)

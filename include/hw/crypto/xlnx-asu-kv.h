@@ -63,6 +63,9 @@ struct XilinxAsuKvState {
 
     XilinxAsuKvKey key[XILINX_ASU_KV_NUM_KEYS];
 
+    uint32_t crc_key_sel;
+    uint32_t crc_status;
+
     MemoryRegion iomem;
     qemu_irq irq;
 };
