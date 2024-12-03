@@ -66,6 +66,9 @@ struct XilinxAsuKvState {
     uint32_t crc_key_sel;
     uint32_t crc_status;
 
+    bool irq_mask;
+    bool irq_sta;
+
     MemoryRegion iomem;
     qemu_irq irq;
 };

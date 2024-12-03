@@ -210,6 +210,24 @@ static inline void key_set_crc_checked(XilinxAsuKvState *s, size_t idx)
     s->key[idx].flags |= ASU_KV_KEY_CRC_CHECKED;
 }
 
+static inline void update_irq(XilinxAsuKvState *s)
+{
+    qemu_set_irq(s->irq, s->irq_sta && !s->irq_mask);
+}
+
+static inline void raise_irq(XilinxAsuKvState *s)
+{
+    s->irq_sta = true;
+    trace_xilinx_asu_kv_raise_irq();
+    update_irq(s);
+}
+
+static inline void clear_irq(XilinxAsuKvState *s)
+{
+    s->irq_sta = false;
+    update_irq(s);
+}
+
 static void user_key_write(XilinxAsuKvState *s, hwaddr addr,
                            uint32_t value)
 {
@@ -352,6 +370,14 @@ static uint64_t xilinx_asu_kv_read(void *opaque, hwaddr addr,
         ret = FIELD_DP32(0, KEY_LOCK_0, VALUE, key_is_locked(s, idx));
         break;
 
+    case A_KV_INTERRUPT_STATUS:
+        ret = s->irq_sta;
+        break;
+
+    case A_KV_INTERRUPT_MASK:
+        ret = s->irq_mask;
+        break;
+
     case A_USER_KEY_0_0 ... A_USER_KEY_7_7:
     case A_AES_KEY_CLEAR:
     case A_KV_INTERRUPT_ENABLE:
@@ -413,6 +439,28 @@ static void xilinx_asu_kv_write(void *opaque, hwaddr addr, uint64_t value,
         user_key_write(s, addr, value);
         break;
 
+    case A_KV_INTERRUPT_STATUS:
+        if (FIELD_EX32(value, KV_INTERRUPT_STATUS, KT_DONE)) {
+            clear_irq(s);
+        }
+        break;
+
+    case A_KV_INTERRUPT_ENABLE:
+        s->irq_mask &= ~(value & R_KV_INTERRUPT_STATUS_KT_DONE_MASK);
+        update_irq(s);
+        break;
+
+    case A_KV_INTERRUPT_DISABLE:
+        s->irq_mask |= value & R_KV_INTERRUPT_STATUS_KT_DONE_MASK;
+        update_irq(s);
+        break;
+
+    case A_KV_INTERRUPT_TRIGGER:
+        if (FIELD_EX32(value, KV_INTERRUPT_STATUS, KT_DONE)) {
+            raise_irq(s);
+        }
+        break;
+
     case A_AES_USER_KEY_CRC_STATUS:
     case A_KEY_ZEROED_STATUS:
     case A_KV_INTERRUPT_MASK:
@@ -447,10 +495,15 @@ static void xilinx_asu_kv_reset_enter(Object *obj, ResetType type)
     memset(s->key, 0, sizeof(s->key));
     s->crc_key_sel = 0;
     s->crc_status = 0;
+    s->irq_mask = true;
+    s->irq_sta = false;
 }
 
 static void xilinx_asu_kv_reset_hold(Object *obj)
 {
+    XilinxAsuKvState *s = XILINX_ASU_KV(obj);
+
+    update_irq(s);
 }
 
 static void xilinx_asu_kv_realize(DeviceState *dev, Error **errp)
