@@ -63,11 +63,18 @@ struct XilinxAsuKvState {
 
     XilinxAsuKvKey key[XILINX_ASU_KV_NUM_KEYS];
 
+    uint32_t efuse_0_cfg;
+    uint32_t efuse_1_cfg;
+
     uint32_t crc_key_sel;
     uint32_t crc_status;
 
+    bool asu_pmc_key_xfer_ready;
+
     bool irq_mask;
     bool irq_sta;
+
+    PmxcKeyXferIf *pmxc_aes;
 
     MemoryRegion iomem;
     qemu_irq irq;

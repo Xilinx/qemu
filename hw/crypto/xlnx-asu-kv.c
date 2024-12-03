@@ -150,6 +150,12 @@ enum {
     ASU_KV_KEY_CRC_CHECKED = 1u << 2,
 };
 
+/* Valid values for EFUSE_KEY_x_BLACK_OR_RED registers */
+enum {
+    ASU_KV_KEY_BLACK = 1,
+    ASU_KV_KEY_RED = 2,
+};
+
 static const char *ASU_KV_KEY_STR[] = {
     [XILINX_ASU_KV_USER_0] = "user-0",
     [XILINX_ASU_KV_USER_1] = "user-1",
@@ -370,6 +376,18 @@ static uint64_t xilinx_asu_kv_read(void *opaque, hwaddr addr,
         ret = FIELD_DP32(0, KEY_LOCK_0, VALUE, key_is_locked(s, idx));
         break;
 
+    case A_ASU_PMC_KEY_TRANSFER_READY:
+        ret = s->asu_pmc_key_xfer_ready;
+        break;
+
+    case A_EFUSE_KEY_0_BLACK_OR_RED:
+        ret = s->efuse_0_cfg;
+        break;
+
+    case A_EFUSE_KEY_1_BLACK_OR_RED:
+        ret = s->efuse_1_cfg;
+        break;
+
     case A_KV_INTERRUPT_STATUS:
         ret = s->irq_sta;
         break;
@@ -439,6 +457,20 @@ static void xilinx_asu_kv_write(void *opaque, hwaddr addr, uint64_t value,
         user_key_write(s, addr, value);
         break;
 
+    case A_ASU_PMC_KEY_TRANSFER_READY:
+        s->asu_pmc_key_xfer_ready =
+            FIELD_EX32(value, ASU_PMC_KEY_TRANSFER_READY, VAL);
+        pmxc_kt_asu_ready(s->pmxc_aes, s->asu_pmc_key_xfer_ready);
+        break;
+
+    case A_EFUSE_KEY_0_BLACK_OR_RED:
+        s->efuse_0_cfg = FIELD_EX32(value, EFUSE_KEY_0_BLACK_OR_RED, VAL);
+        break;
+
+    case A_EFUSE_KEY_1_BLACK_OR_RED:
+        s->efuse_1_cfg = FIELD_EX32(value, EFUSE_KEY_1_BLACK_OR_RED, VAL);
+        break;
+
     case A_KV_INTERRUPT_STATUS:
         if (FIELD_EX32(value, KV_INTERRUPT_STATUS, KT_DONE)) {
             clear_irq(s);
@@ -478,6 +510,73 @@ static void xilinx_asu_kv_write(void *opaque, hwaddr addr, uint64_t value,
     }
 }
 
+static void pmxc_key_xfer_recv_key(PmxcKeyXferIf *kt, uint8_t n, uint8_t *key,
+                                   size_t len)
+{
+    XilinxAsuKvState *s = XILINX_ASU_KV(kt);
+    XilinxAsuKvKeyId dest;
+
+    g_assert(len <= sizeof(s->key[0].val));
+
+    switch (n) {
+    case 0:
+        dest = XILINX_ASU_KV_PUF;
+        break;
+
+    case 1:
+        switch (s->efuse_0_cfg) {
+        case ASU_KV_KEY_BLACK:
+            dest = XILINX_ASU_KV_EFUSE_BLACK_0;
+            break;
+
+        case ASU_KV_KEY_RED:
+            dest = XILINX_ASU_KV_EFUSE_0;
+            break;
+
+        default:
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          TYPE_XILINX_ASU_KV ": invalid "
+                          "EFUSE_KEY_0_BLACK_OR_RED register value "
+                          "0x%" PRIx32 "\n", s->efuse_0_cfg);
+            return;
+        }
+        break;
+
+    case 2:
+        switch (s->efuse_1_cfg) {
+        case ASU_KV_KEY_BLACK:
+            dest = XILINX_ASU_KV_EFUSE_BLACK_1;
+            break;
+
+        case ASU_KV_KEY_RED:
+            dest = XILINX_ASU_KV_EFUSE_1;
+            break;
+
+        default:
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          TYPE_XILINX_ASU_KV ": invalid "
+                          "EFUSE_KEY_1_BLACK_OR_RED register value "
+                          "0x%" PRIx32 "\n", s->efuse_1_cfg);
+            return;
+        }
+        break;
+
+    default:
+        g_assert_not_reached();
+    }
+
+    key_mark_set(s, dest);
+    memcpy(s->key[dest].val, key, len);
+    trace_xilinx_asu_kv_write_key(ASU_KV_KEY_STR[dest]);
+}
+
+static void pmxc_key_xfer_done(PmxcKeyXferIf *kt, bool done)
+{
+    XilinxAsuKvState *s = XILINX_ASU_KV(kt);
+
+    raise_irq(s);
+}
+
 static const MemoryRegionOps xilinx_asu_kv_ops = {
     .read = xilinx_asu_kv_read,
     .write = xilinx_asu_kv_write,
@@ -493,6 +592,8 @@ static void xilinx_asu_kv_reset_enter(Object *obj, ResetType type)
     XilinxAsuKvState *s = XILINX_ASU_KV(obj);
 
     memset(s->key, 0, sizeof(s->key));
+    s->efuse_0_cfg = 0;
+    s->efuse_1_cfg = 0;
     s->crc_key_sel = 0;
     s->crc_status = 0;
     s->irq_mask = true;
@@ -519,6 +620,9 @@ static void xilinx_asu_kv_realize(DeviceState *dev, Error **errp)
 }
 
 static Property xilinx_asu_kv_properties[] = {
+    DEFINE_PROP_LINK("pmxc-aes", XilinxAsuKvState,
+                    pmxc_aes, TYPE_PMXC_KEY_XFER_IF,
+                    PmxcKeyXferIf *),
     DEFINE_PROP_END_OF_LIST()
 };
 
@@ -526,10 +630,13 @@ static void xilinx_asu_kv_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     ResettableClass *rc = RESETTABLE_CLASS(klass);
+    PmxcKeyXferIfClass *pktc = PMXC_KEY_XFER_IF_CLASS(klass);
 
     dc->realize = xilinx_asu_kv_realize;
     rc->phases.enter = xilinx_asu_kv_reset_enter;
     rc->phases.hold = xilinx_asu_kv_reset_hold;
+    pktc->send_key = pmxc_key_xfer_recv_key;
+    pktc->done = pmxc_key_xfer_done;
     device_class_set_props(dc, xilinx_asu_kv_properties);
 }
 
@@ -540,6 +647,7 @@ static const TypeInfo xilinx_asu_kv_info = {
     .class_init = xilinx_asu_kv_class_init,
     .class_size = sizeof(XilinxAsuKvClass),
     .interfaces = (InterfaceInfo []) {
+        { TYPE_PMXC_KEY_XFER_IF },
         { }
     },
 };
