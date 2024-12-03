@@ -143,12 +143,93 @@ REG32(SLV_ERR_CTRL_ENABLE, 0x228)
 REG32(SLV_ERR_CTRL_DISABLE, 0x22c)
 REG32(SLV_ERR_CTRL_TRIGGER, 0x230)
 
+#define BLOCK_READ32_BSWAP(a, idx) \
+    bswap32(((uint32_t *)a)[(sizeof(a) / sizeof(uint32_t)) - (idx + 1)])
+
 static uint64_t xilinx_asu_aes_read(void *opaque, hwaddr addr,
                                     unsigned int size)
 {
+    XilinxAsuAesState *s = XILINX_ASU_AES(opaque);
     uint64_t ret;
+    size_t idx;
 
     switch (addr) {
+    case A_IV_IN_0 ... A_IV_IN_3:
+        idx = (addr - A_IV_IN_0) / sizeof(uint32_t);
+        ret = BLOCK_READ32_BSWAP(s->iv_in, idx);
+        break;
+
+    case A_IV_MASK_IN_0 ... A_IV_MASK_IN_3:
+        idx = (addr - A_IV_MASK_IN_0) / sizeof(uint32_t);
+        ret = BLOCK_READ32_BSWAP(s->iv_mask_in, idx);
+        break;
+
+    case A_IV_OUT_0 ... A_IV_OUT_3:
+        idx = (addr - A_IV_OUT_0) / sizeof(uint32_t);
+        ret = BLOCK_READ32_BSWAP(s->aes_ctx.iv, idx);
+        break;
+
+    case A_IV_MASK_OUT_0 ... A_IV_MASK_OUT_3:
+        ret = 0;
+        break;
+
+    case A_MAC_OUT_0 ... A_MAC_OUT_3:
+        idx = (addr - A_MAC_OUT_0) / sizeof(uint32_t);
+        ret = BLOCK_READ32_BSWAP(s->mac_out, idx);
+        break;
+
+    case A_MAC_MASK_OUT_0 ... A_MAC_MASK_OUT_3:
+        ret = 0;
+        break;
+
+    case A_INT_MAC_IN_0 ... A_INT_MAC_IN_3:
+        idx = (addr - A_INT_MAC_IN_0) / sizeof(uint32_t);
+        ret = BLOCK_READ32_BSWAP(s->int_mac_in, idx);
+        break;
+
+    case A_INT_MAC_MASK_IN_0 ... A_INT_MAC_MASK_IN_3:
+        idx = (addr - A_INT_MAC_MASK_IN_0) / sizeof(uint32_t);
+        ret = BLOCK_READ32_BSWAP(s->int_mac_mask_in, idx);
+        break;
+
+    case A_INT_MAC_OUT_0 ... A_INT_MAC_OUT_3:
+        idx = (addr - A_INT_MAC_OUT_0) / sizeof(uint32_t);
+        ret = BLOCK_READ32_BSWAP(s->aes_ctx.mac, idx);
+        break;
+
+    case A_INT_MAC_MASK_OUT_0 ... A_INT_MAC_MASK_OUT_3:
+        ret = 0;
+        break;
+
+    case A_S0_IN_0 ... A_S0_IN_3:
+        idx = (addr - A_S0_IN_0) / sizeof(uint32_t);
+        ret = BLOCK_READ32_BSWAP(s->s0_in, idx);
+        break;
+
+    case A_S0_MASK_IN_0 ... A_S0_MASK_IN_3:
+        idx = (addr - A_S0_MASK_IN_0) / sizeof(uint32_t);
+        ret = BLOCK_READ32_BSWAP(s->s0_mask_in, idx);
+        break;
+
+    case A_S0_OUT_0 ... A_S0_OUT_3:
+        idx = (addr - A_S0_OUT_0) / sizeof(uint32_t);
+        ret = BLOCK_READ32_BSWAP(s->aes_ctx.s0_gcmlen, idx);
+        break;
+
+    case A_S0_MASK_OUT_0 ... A_S0_MASK_OUT_3:
+        ret = 0;
+        break;
+
+    case A_GCMLEN_IN_0 ... A_GCMLEN_IN_3:
+        idx = (addr - A_GCMLEN_IN_0) / sizeof(uint32_t);
+        ret = BLOCK_READ32_BSWAP(s->gcmlen_in, idx);
+        break;
+
+    case A_GCMLEN_OUT_0 ... A_GCMLEN_OUT_3:
+        idx = (addr - A_GCMLEN_OUT_0) / sizeof(uint32_t);
+        ret = BLOCK_READ32_BSWAP(s->aes_ctx.s0_gcmlen, idx);
+        break;
+
     case A_CM:
     case A_OPERATION:
     case A_KEY_DEC_TRIG:
@@ -174,12 +255,55 @@ static uint64_t xilinx_asu_aes_read(void *opaque, hwaddr addr,
     return ret;
 }
 
+#undef BLOCK_READ32_BSWAP
+
+#define BLOCK_WRITE32_BSWAP(a, idx, val) \
+    ((uint32_t *)a)[(sizeof(a) / sizeof(uint32_t)) - ((idx) + 1)] = bswap32(val)
+
 static void xilinx_asu_aes_write(void *opaque, hwaddr addr, uint64_t value,
                                  unsigned int size)
 {
+    XilinxAsuAesState *s = XILINX_ASU_AES(opaque);
+    size_t idx;
+
     trace_xilinx_asu_aes_write(addr, value, size);
 
     switch (addr) {
+    case A_IV_IN_0 ... A_IV_IN_3:
+        idx = (addr - A_IV_IN_0) / sizeof(uint32_t);
+        BLOCK_WRITE32_BSWAP(s->iv_in, idx, value);
+        break;
+
+    case A_IV_MASK_IN_0 ... A_IV_MASK_IN_3:
+        idx = (addr - A_IV_MASK_IN_0) / sizeof(uint32_t);
+        BLOCK_WRITE32_BSWAP(s->iv_mask_in, idx, value);
+        break;
+
+    case A_INT_MAC_IN_0 ... A_INT_MAC_IN_3:
+        idx = (addr - A_INT_MAC_IN_0) / sizeof(uint32_t);
+        BLOCK_WRITE32_BSWAP(s->int_mac_in, idx, value);
+        break;
+
+    case A_INT_MAC_MASK_IN_0 ... A_INT_MAC_MASK_IN_3:
+        idx = (addr - A_INT_MAC_MASK_IN_0) / sizeof(uint32_t);
+        BLOCK_WRITE32_BSWAP(s->int_mac_mask_in, idx, value);
+        break;
+
+    case A_S0_IN_0 ... A_S0_IN_3:
+        idx = (addr - A_S0_IN_0) / sizeof(uint32_t);
+        BLOCK_WRITE32_BSWAP(s->s0_in, idx, value);
+        break;
+
+    case A_S0_MASK_IN_0 ... A_S0_MASK_IN_3:
+        idx = (addr - A_S0_MASK_IN_0) / sizeof(uint32_t);
+        BLOCK_WRITE32_BSWAP(s->s0_mask_in, idx, value);
+        break;
+
+    case A_GCMLEN_IN_0 ... A_GCMLEN_IN_3:
+        idx = (addr - A_GCMLEN_IN_0) / sizeof(uint32_t);
+        BLOCK_WRITE32_BSWAP(s->gcmlen_in, idx, value);
+        break;
+
     case A_STATUS:
     case A_IV_OUT_0 ... A_IV_OUT_3:
     case A_IV_MASK_OUT_0 ... A_IV_MASK_OUT_3:
@@ -205,6 +329,9 @@ static void xilinx_asu_aes_write(void *opaque, hwaddr addr, uint64_t value,
     }
 }
 
+#undef BLOCK_WRITE32_BSWAP
+
+
 static const MemoryRegionOps xilinx_asu_aes_ops = {
     .read = xilinx_asu_aes_read,
     .write = xilinx_asu_aes_write,
@@ -217,6 +344,16 @@ static const MemoryRegionOps xilinx_asu_aes_ops = {
 
 static void xilinx_asu_aes_reset_enter(Object *obj, ResetType type)
 {
+    XilinxAsuAesState *s = XILINX_ASU_AES(obj);
+
+    memset(s->iv_in, 0, sizeof(s->iv_in));
+    memset(s->iv_mask_in, 0, sizeof(s->iv_mask_in));
+    memset(s->mac_out, 0, sizeof(s->mac_out));
+    memset(s->int_mac_in, 0, sizeof(s->int_mac_in));
+    memset(s->int_mac_mask_in, 0, sizeof(s->int_mac_mask_in));
+    memset(s->s0_in, 0, sizeof(s->s0_in));
+    memset(s->s0_mask_in, 0, sizeof(s->s0_mask_in));
+    memset(s->gcmlen_in, 0, sizeof(s->gcmlen_in));
 }
 
 static void xilinx_asu_aes_reset_hold(Object *obj)

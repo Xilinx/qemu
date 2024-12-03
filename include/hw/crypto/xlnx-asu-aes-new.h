@@ -33,8 +33,28 @@ OBJECT_DECLARE_TYPE(XilinxAsuAesState, XilinxAsuAesClass, XILINX_ASU_AES)
 
 #define XILINX_ASU_AES_MMIO_LEN 0x238
 
+#define ASU_AES_BLOCK_SIZE 16
+typedef uint8_t QEMU_ALIGNED(16) AsuAesBlock[ASU_AES_BLOCK_SIZE];
+
 struct XilinxAsuAesState {
     SysBusDevice parent_obj;
+
+    /* == registers == */
+    uint32_t iv_in[4];
+    uint32_t iv_mask_in[4];
+    uint32_t mac_out[4];
+    uint32_t int_mac_in[4];
+    uint32_t int_mac_mask_in[4];
+    uint32_t s0_in[4];
+    uint32_t s0_mask_in[4];
+    uint32_t gcmlen_in[4];
+
+    /* == internal state == */
+    struct {
+        AsuAesBlock iv;
+        AsuAesBlock mac;
+        AsuAesBlock s0_gcmlen; /* used for CCM S0 and GCM "len(A) || len(C)" */
+    } aes_ctx;
 
     MemoryRegion iomem;
     qemu_irq irq;
