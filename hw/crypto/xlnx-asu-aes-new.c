@@ -200,6 +200,7 @@ static inline bool current_mode_is_streaming(XilinxAsuAesState *s)
     case ASU_AES_CBC:
     case ASU_AES_CFB:
     case ASU_AES_OFB:
+    case ASU_AES_CTR:
     case ASU_AES_ECB:
         return true;
 
@@ -292,6 +293,26 @@ static inline void block_xor(AsuAesBlock r,
     *r128 = int128_xor(*a128, *b128);
 }
 
+/* r = a + b */
+static inline void block_add_i(AsuAesBlock r, const AsuAesBlock a, int b)
+{
+    Int128 *r128 = (Int128 *)r;
+    Int128 *a128 = (Int128 *)a;
+
+#if !HOST_BIG_ENDIAN
+    *r128 = bswap128(*a128);
+    int128_addto(r128, int128_makes64(b));
+    *r128 = bswap128(*r128);
+#else
+    *r128 = int128_add(*a128, int128_makes(b));
+#endif
+}
+
+static inline void block_inc(AsuAesBlock a)
+{
+    block_add_i(a, a, 1);
+}
+
 static inline void asu_aes_do_encrypt(XilinxAsuAesState *s,
                                       uint8_t *out,
                                       const uint8_t *in)
@@ -329,6 +350,7 @@ static uint8_t *asu_aes_preprocess(XilinxAsuAesState *s, AsuAesBlock in,
 
     case ASU_AES_CFB:
     case ASU_AES_OFB:
+    case ASU_AES_CTR:
         return s->aes_ctx.iv;
 
     case ASU_AES_CBC:
@@ -357,6 +379,7 @@ static void asu_aes_process(XilinxAsuAesState *s, const AsuAesBlock in,
 
     case ASU_AES_CFB:
     case ASU_AES_OFB:
+    case ASU_AES_CTR:
         /* Those modes encrypt the IV, even when decrypting */
         do_encrypt = true;
         break;
@@ -398,6 +421,11 @@ static void asu_aes_postprocess(XilinxAsuAesState *s, AsuAesBlock in,
     case ASU_AES_OFB:
         block_copy(s->aes_ctx.iv, out);
         block_xor(out, out, in);
+        break;
+
+    case ASU_AES_CTR:
+        block_xor(out, out, in);
+        block_inc(s->aes_ctx.iv);
         break;
 
     default:
