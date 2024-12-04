@@ -252,17 +252,25 @@ static inline bool fifo_in_push(XilinxAsuAesState *s, const uint8_t *buf,
 }
 
 /*
- * Pad the fifo to obtain a 128 bits data.
+ * Pad the fifo to obtain a 128 bits data. Return true if the current mode is
+ * GHASH. In that case the controller generates the appropriate multiple of 128
+ * bits padding following this rule:
+ *      padded iv = iv || 0^s || 0^64 || len_64(iv)
+ *          with s = 128 * ceil(len(iv) / 128) - len(iv)
+ * Since this rule generates an extra 128 bits block, the
+ * fifo_in_pad_ghash_final_block must be called if this function returns true
+ * to obtain the final padding block.
  */
-static inline void fifo_in_pad(XilinxAsuAesState *s)
+static inline bool fifo_in_pad(XilinxAsuAesState *s)
 {
     AsuAesMode mode = get_current_mode(s);
     uint8_t *fifo = fifo_get_current(s);
+    bool ghash_padding = (mode == ASU_AES_GHASH);
 
     s->pad_amount = fifo_in_num_free(s);
 
     if (!s->pad_amount) {
-        return;
+        return ghash_padding;
     }
 
     if ((mode == ASU_AES_CMAC) && (fifo == s->fifo_in)) {
@@ -274,6 +282,23 @@ static inline void fifo_in_pad(XilinxAsuAesState *s)
 
     memset(fifo + s->fifo_in_num, 0, fifo_in_num_free(s));
     s->fifo_in_num = ARRAY_SIZE(s->fifo_in);
+
+    return ghash_padding;
+}
+
+/*
+ * Pad the fifo with the "0^64 || len_64(iv)" part of the GHASH padding.
+ */
+static inline void fifo_in_pad_ghash_final_block(XilinxAsuAesState *s)
+{
+    uint8_t *fifo = fifo_get_current(s);
+
+    g_assert(get_current_mode(s) == ASU_AES_GHASH);
+    g_assert(fifo_in_num_free(s) == ASU_AES_BLOCK_SIZE);
+
+    memcpy(fifo, s->aes_ctx.s0_gcmlen, ASU_AES_BLOCK_SIZE);
+
+    s->fifo_in_num = ASU_AES_BLOCK_SIZE;
 }
 
 static inline void fifo_in_clear(XilinxAsuAesState *s)
@@ -662,6 +687,8 @@ static void asu_aes_postprocess(XilinxAsuAesState *s, AsuAesBlock in,
 
     case ASU_AES_GHASH:
         ghash(s, mac, mac, in);
+        block_add_lo64_u(s->aes_ctx.s0_gcmlen,
+                         (ASU_AES_BLOCK_SIZE - s->pad_amount) * 8);
         break;
 
     default:
@@ -973,6 +1000,7 @@ static void mode_config_write(XilinxAsuAesState *s, uint32_t val)
 
     case ASU_AES_GHASH:
         memset(s->aes_ctx.mac, 0, sizeof(s->aes_ctx.mac));
+        memset(s->aes_ctx.s0_gcmlen, 0, sizeof(s->aes_ctx.mac));
         break;
 
     default:
@@ -1262,6 +1290,8 @@ static size_t asu_aes_recv(StreamSink *obj, uint8_t *data,
     g_assert(s->ready);
 
     while (len) {
+        bool ghash_padding = false;
+
         to_push = MIN(len, fifo_in_num_free(s));
         s->eop = false;
         s->pad_amount = 0;
@@ -1276,12 +1306,21 @@ static size_t asu_aes_recv(StreamSink *obj, uint8_t *data,
              */
             s->eop = eop;
             if (eop) {
-                fifo_in_pad(s);
+                ghash_padding = fifo_in_pad(s);
             }
         }
 
         if (fifo_in_is_full(s)) {
             flush_fifo_in(s);
+
+            if (ghash_padding) {
+                /*
+                 * Insert the extra padding block.
+                 */
+                fifo_in_pad_ghash_final_block(s);
+                g_assert(fifo_in_is_full(s));
+                flush_fifo_in(s);
+            }
         }
 
         len -= to_push;
