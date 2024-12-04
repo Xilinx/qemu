@@ -28,6 +28,7 @@
 #include "hw/irq.h"
 #include "hw/qdev-properties.h"
 #include "hw/crypto/xlnx-asu-kv.h"
+#include "hw/crypto/xlnx-asu-aes-new.h"
 #include "hw/nvram/xlnx-efuse.h"
 #include "trace.h"
 
@@ -427,6 +428,10 @@ static void do_key_clearing(XilinxAsuKvState *s, uint32_t value)
             key_clear(s, i);
         }
     }
+
+    if (FIELD_EX32(value, AES_KEY_CLEAR, AES_KEY_ZEROIZE)) {
+        xilinx_asu_aes_do_zeroize(s->aes_engine);
+    }
 }
 
 static uint32_t get_key_clear_status(XilinxAsuKvState *s)
@@ -455,6 +460,9 @@ static uint32_t get_key_clear_status(XilinxAsuKvState *s)
             ret |= KEY_MAPPING[i];
         }
     }
+
+    ret = FIELD_DP32(ret, KEY_ZEROED_STATUS, AES_KEY_ZEROED,
+                     xilinx_asu_aes_is_zeroized(s->aes_engine));
 
     return ret;
 }
@@ -882,6 +890,9 @@ static Property xilinx_asu_kv_properties[] = {
     DEFINE_PROP_LINK("pmxc-aes", XilinxAsuKvState,
                     pmxc_aes, TYPE_PMXC_KEY_XFER_IF,
                     PmxcKeyXferIf *),
+    DEFINE_PROP_LINK("aes-engine", XilinxAsuKvState,
+                    aes_engine, TYPE_XILINX_ASU_AES,
+                    XilinxAsuAesState *),
     DEFINE_PROP_END_OF_LIST()
 };
 

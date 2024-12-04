@@ -81,6 +81,7 @@ struct XilinxAsuKvState {
     bool irq_sta;
 
     PmxcKeyXferIf *pmxc_aes;
+    XilinxAsuAesState *aes_engine;
 
     MemoryRegion iomem;
     qemu_irq irq;
