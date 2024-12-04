@@ -33,6 +33,32 @@
 #include "hw/stream.h"
 #include "trace.h"
 
+typedef enum AsuAesMode {
+    ASU_AES_CBC = 0x0,
+    ASU_AES_CFB = 0x1,
+    ASU_AES_OFB = 0x2,
+    ASU_AES_CTR = 0x3,
+    ASU_AES_ECB = 0x4,
+    ASU_AES_CCM = 0x5,
+    ASU_AES_GCM = 0x6,
+    ASU_AES_CMAC = 0x8,
+    ASU_AES_GHASH = 0xe,
+
+    ASU_AES_INVALID_MODE = -1,
+} AsuAesMode;
+
+const char *ASU_AES_MODE_STR[] = {
+    [ASU_AES_CBC] = "aes-cbc",
+    [ASU_AES_CFB] = "aes-cfb",
+    [ASU_AES_OFB] = "aes-ofb",
+    [ASU_AES_CTR] = "aes-ctr",
+    [ASU_AES_ECB] = "aes-ecb",
+    [ASU_AES_CCM] = "aes-ccm",
+    [ASU_AES_GCM] = "aes-gcm",
+    [ASU_AES_CMAC] = "aes-cmac",
+    [ASU_AES_GHASH] = "aes-ghash",
+};
+
 REG32(STATUS, 0x0)
     FIELD(STATUS, BUSY, 0, 1)
     FIELD(STATUS, READY, 1, 1)
@@ -145,6 +171,29 @@ REG32(SLV_ERR_CTRL_ENABLE, 0x228)
 REG32(SLV_ERR_CTRL_DISABLE, 0x22c)
 REG32(SLV_ERR_CTRL_TRIGGER, 0x230)
 
+static inline AsuAesMode get_current_mode(XilinxAsuAesState *s)
+{
+    uint32_t v;
+
+    v = FIELD_EX32(s->mode_cfg, MODE_CONFIG, ENGINE_MODE);
+
+    switch (v) {
+    case ASU_AES_CBC:
+    case ASU_AES_CFB:
+    case ASU_AES_OFB:
+    case ASU_AES_CTR:
+    case ASU_AES_ECB:
+    case ASU_AES_CCM:
+    case ASU_AES_GCM:
+    case ASU_AES_CMAC:
+    case ASU_AES_GHASH:
+        return v;
+
+    default:
+        return ASU_AES_INVALID_MODE;
+    }
+}
+
 static inline bool key_split_enabled(XilinxAsuAesState *s)
 {
     return s->cm_enabled && FIELD_EX32(s->split_cfg, SPLIT_CFG, KEY_SPLIT);
@@ -212,12 +261,123 @@ static inline void raise_done_irq(XilinxAsuAesState *s)
     update_irq(s);
 }
 
+static inline void asu_aes_do_encrypt(XilinxAsuAesState *s,
+                                      uint8_t *out,
+                                      const uint8_t *in)
+{
+    AES_KEY key;
+    int ret;
+
+    ret = AES_set_encrypt_key(s->aes_ctx.key, s->aes_ctx.key_size * 8,
+                              &key);
+    g_assert(ret == 0);
+
+    AES_encrypt(in, out, &key);
+}
+
+static inline void asu_aes_do_decrypt(XilinxAsuAesState *s,
+                                      uint8_t *out,
+                                      const uint8_t *in)
+{
+    AES_KEY key;
+    int ret;
+
+    ret = AES_set_decrypt_key(s->aes_ctx.key, s->aes_ctx.key_size * 8,
+                              &key);
+    g_assert(ret == 0);
+
+    AES_decrypt(in, out, &key);
+}
+
+static uint8_t *asu_aes_preprocess(XilinxAsuAesState *s, AsuAesBlock in,
+                                   AsuAesMode mode, bool enc)
+{
+    switch (mode) {
+    case ASU_AES_ECB:
+        return in;
+
+    default:
+        g_assert_not_reached();
+    }
+}
+
+static void asu_aes_process(XilinxAsuAesState *s, const AsuAesBlock in,
+                            AsuAesMode mode, bool enc)
+{
+    bool do_encrypt;
+
+    switch (mode) {
+    case ASU_AES_ECB:
+        do_encrypt = enc;
+        break;
+
+    default:
+        g_assert_not_reached();
+    }
+
+    if (do_encrypt) {
+        asu_aes_do_encrypt(s, s->aes_ctx.out, in);
+    } else {
+        asu_aes_do_decrypt(s, s->aes_ctx.out, in);
+    }
+}
+
+static void asu_aes_postprocess(XilinxAsuAesState *s, AsuAesBlock in,
+                                AsuAesMode mode, bool enc)
+{
+    switch (mode) {
+    case ASU_AES_ECB:
+        break;
+
+    default:
+        g_assert_not_reached();
+    }
+}
+
+static void asu_aes_go(XilinxAsuAesState *s, AsuAesBlock in, size_t len)
+{
+    AsuAesMode mode;
+    bool enc;
+    const uint8_t *aes_in_buf;
+
+    g_assert(len == ASU_AES_BLOCK_SIZE);
+    g_assert(s->aes_ctx.key_size == 16
+             || s->aes_ctx.key_size == 24
+             || s->aes_ctx.key_size == 32);
+
+    enc = FIELD_EX32(s->mode_cfg, MODE_CONFIG, ENC_DEC_N);
+    mode = get_current_mode(s);
+
+    if (mode == ASU_AES_INVALID_MODE) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      TYPE_XILINX_ASU_AES ": invalid ENGINE_MODE %d\n",
+                      mode);
+        return;
+    }
+
+    aes_in_buf = asu_aes_preprocess(s, in, mode, enc);
+
+    if (aes_in_buf != NULL) {
+        asu_aes_process(s, aes_in_buf, mode, enc);
+    }
+
+    asu_aes_postprocess(s, in, mode, enc);
+
+    trace_xilinx_asu_aes_process_block(ASU_AES_MODE_STR[mode],
+                                       enc ? "encrypt" : "decrypt");
+}
+
 static void flush_fifo_in(XilinxAsuAesState *s)
 {
     g_assert(s->ready);
     g_assert(fifo_in_is_full(s));
 
-    /* TODO */
+    asu_aes_go(s, s->fifo_in, sizeof(s->fifo_in));
+    fifo_in_clear(s);
+
+    if (s->eop) {
+        raise_done_irq(s);
+    }
 }
 
 static inline void load_block_with_mask(XilinxAsuAesState *s, AsuAesBlock dst,

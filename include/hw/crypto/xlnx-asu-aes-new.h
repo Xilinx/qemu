@@ -69,6 +69,7 @@ struct XilinxAsuAesState {
     struct {
         uint8_t key[32];
         AsuAesBlock iv;
+        AsuAesBlock out;
         AsuAesBlock mac;
         AsuAesBlock s0_gcmlen; /* used for CCM S0 and GCM "len(A) || len(C)" */
         uint32_t key_size;
