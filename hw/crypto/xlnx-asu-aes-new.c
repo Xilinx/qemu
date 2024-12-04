@@ -171,6 +171,11 @@ REG32(SLV_ERR_CTRL_ENABLE, 0x228)
 REG32(SLV_ERR_CTRL_DISABLE, 0x22c)
 REG32(SLV_ERR_CTRL_TRIGGER, 0x230)
 
+static inline bool asu_aes_in_auth_phase(XilinxAsuAesState *s)
+{
+    return FIELD_EX32(s->mode_cfg, MODE_CONFIG, AUTH);
+}
+
 static inline AsuAesMode get_current_mode(XilinxAsuAesState *s)
 {
     uint32_t v;
@@ -203,6 +208,9 @@ static inline bool current_mode_is_streaming(XilinxAsuAesState *s)
     case ASU_AES_CTR:
     case ASU_AES_ECB:
         return true;
+
+    case ASU_AES_CCM:
+        return !asu_aes_in_auth_phase(s);
 
     default:
         return false;
@@ -313,6 +321,12 @@ static inline void block_inc(AsuAesBlock a)
     block_add_i(a, a, 1);
 }
 
+/* a = a & (1 << (bytes * 8) - 1) */
+static inline void block_mask_lsb(AsuAesBlock a, size_t bytes)
+{
+    memset(a + ASU_AES_BLOCK_SIZE - bytes, 0, bytes);
+}
+
 static inline void asu_aes_do_encrypt(XilinxAsuAesState *s,
                                       uint8_t *out,
                                       const uint8_t *in)
@@ -361,6 +375,17 @@ static uint8_t *asu_aes_preprocess(XilinxAsuAesState *s, AsuAesBlock in,
             return in;
         }
 
+    case ASU_AES_CCM:
+        /*
+         * CCM is a CTR + CBC-MAC.
+         * No encryption/decryption during the auth phase.
+         */
+        if (asu_aes_in_auth_phase(s)) {
+            return NULL;
+        } else {
+            return s->aes_ctx.iv;
+        }
+
     default:
         g_assert_not_reached();
     }
@@ -380,6 +405,7 @@ static void asu_aes_process(XilinxAsuAesState *s, const AsuAesBlock in,
     case ASU_AES_CFB:
     case ASU_AES_OFB:
     case ASU_AES_CTR:
+    case ASU_AES_CCM:
         /* Those modes encrypt the IV, even when decrypting */
         do_encrypt = true;
         break;
@@ -399,6 +425,7 @@ static void asu_aes_postprocess(XilinxAsuAesState *s, AsuAesBlock in,
                                 AsuAesMode mode, bool enc)
 {
     uint8_t *out = s->aes_ctx.out;
+    uint8_t *mac = s->aes_ctx.mac;
 
     switch (mode) {
     case ASU_AES_ECB:
@@ -426,6 +453,26 @@ static void asu_aes_postprocess(XilinxAsuAesState *s, AsuAesBlock in,
     case ASU_AES_CTR:
         block_xor(out, out, in);
         block_inc(s->aes_ctx.iv);
+        break;
+
+    case ASU_AES_CCM:
+        if (!asu_aes_in_auth_phase(s)) {
+            block_xor(out, out, in);
+            block_inc(s->aes_ctx.iv);
+            if (!enc && s->pad_amount) {
+                /*
+                 * The cipher was padded.
+                 * We must clear the corresponding bits
+                 */
+                block_mask_lsb(out, s->pad_amount);
+            }
+
+            block_xor(mac, mac, enc ? in : out);
+        } else {
+            block_xor(mac, mac, in);
+        }
+
+        asu_aes_do_encrypt(s, mac, mac);
         break;
 
     default:
@@ -464,6 +511,38 @@ static void asu_aes_go(XilinxAsuAesState *s, AsuAesBlock in, size_t len)
 
     trace_xilinx_asu_aes_process_block(ASU_AES_MODE_STR[mode],
                                        enc ? "encrypt" : "decrypt");
+}
+
+static void finalize_mac(XilinxAsuAesState *s)
+{
+    bool auth = asu_aes_in_auth_phase(s);
+    bool auth_no_data = FIELD_EX32(s->mode_cfg, MODE_CONFIG,
+                                   AUTH_WITH_NO_PAYLOAD);
+    AsuAesMode mode = get_current_mode(s);
+
+    if (!s->eop) {
+        return;
+    }
+
+    /*
+     * Finalize the MAC if we have eop, and we are not in auth phase
+     * (auth phase emits its own eop), or if we know we won't have any
+     * payload.
+     */
+    if (auth && !auth_no_data) {
+        return;
+    }
+
+    switch (mode) {
+    case ASU_AES_CCM:
+        /* Final CCM mac operation is a xor with S0 */
+        block_xor((uint8_t *)s->mac_out,
+                  s->aes_ctx.mac, s->aes_ctx.s0_gcmlen);
+        break;
+
+    default:
+        break;
+    }
 }
 
 static void send_aes_payload(XilinxAsuAesState *s);
@@ -516,6 +595,8 @@ static void flush_fifo_in(XilinxAsuAesState *s)
     if (current_mode_is_streaming(s)) {
         send_aes_payload(s);
     }
+
+    finalize_mac(s);
 }
 
 static inline void load_block_with_mask(XilinxAsuAesState *s, AsuAesBlock dst,
@@ -622,7 +703,27 @@ static void do_soft_rst(XilinxAsuAesState *s, bool rst)
 
 static void mode_config_write(XilinxAsuAesState *s, uint32_t val)
 {
+    bool auth_starting;
+
+    auth_starting = !FIELD_EX32(s->mode_cfg, MODE_CONFIG, AUTH)
+        && FIELD_EX32(val, MODE_CONFIG, AUTH);
+
     s->mode_cfg = val;
+
+    if (!auth_starting) {
+        return;
+    }
+
+    switch (get_current_mode(s)) {
+    case ASU_AES_CCM:
+        memset(s->aes_ctx.mac, 0, sizeof(s->aes_ctx.mac));
+        asu_aes_do_encrypt(s, s->aes_ctx.s0_gcmlen, s->aes_ctx.iv);
+        block_inc(s->aes_ctx.iv);
+        break;
+
+    default:
+        break;
+    }
 }
 
 #define BLOCK_READ32_BSWAP(a, idx) \
