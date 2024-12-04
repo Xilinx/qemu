@@ -223,6 +223,11 @@ static inline bool key_split_enabled(XilinxAsuAesState *s)
     return s->cm_enabled && FIELD_EX32(s->split_cfg, SPLIT_CFG, KEY_SPLIT);
 }
 
+static inline bool data_split_enabled(XilinxAsuAesState *s)
+{
+    return s->cm_enabled && FIELD_EX32(s->split_cfg, SPLIT_CFG, DATA_SPLIT);
+}
+
 static inline bool fifo_in_is_full(XilinxAsuAesState *s)
 {
     return s->fifo_in_num == ARRAY_SIZE(s->fifo_in);
@@ -235,7 +240,9 @@ static inline size_t fifo_in_num_free(XilinxAsuAesState *s)
 
 static inline uint8_t *fifo_get_current(XilinxAsuAesState *s)
 {
-    return s->fifo_in;
+    return (data_split_enabled(s) && !s->mask_received) ? s->fifo_mask_in
+                                                        : s->fifo_in;
+
 }
 
 static inline bool fifo_in_push(XilinxAsuAesState *s, const uint8_t *buf,
@@ -265,7 +272,7 @@ static inline bool fifo_in_pad(XilinxAsuAesState *s)
 {
     AsuAesMode mode = get_current_mode(s);
     uint8_t *fifo = fifo_get_current(s);
-    bool ghash_padding = (mode == ASU_AES_GHASH);
+    bool ghash_padding = (mode == ASU_AES_GHASH) && (fifo == s->fifo_in);
 
     s->pad_amount = fifo_in_num_free(s);
 
@@ -275,7 +282,8 @@ static inline bool fifo_in_pad(XilinxAsuAesState *s)
 
     if ((mode == ASU_AES_CMAC) && (fifo == s->fifo_in)) {
         /*
-         * in CMAC mode, the padding is done with 10....0.
+         * in CMAC mode, the padding is done with 10....0. The mask is padded
+         * with 0s only.
          */
         fifo[s->fifo_in_num++] = 0x80;
     }
@@ -296,7 +304,11 @@ static inline void fifo_in_pad_ghash_final_block(XilinxAsuAesState *s)
     g_assert(get_current_mode(s) == ASU_AES_GHASH);
     g_assert(fifo_in_num_free(s) == ASU_AES_BLOCK_SIZE);
 
-    memcpy(fifo, s->aes_ctx.s0_gcmlen, ASU_AES_BLOCK_SIZE);
+    if (fifo == s->fifo_in) {
+        memcpy(fifo, s->aes_ctx.s0_gcmlen, ASU_AES_BLOCK_SIZE);
+    } else {
+        memset(fifo, 0, ASU_AES_BLOCK_SIZE);
+    }
 
     s->fifo_in_num = ASU_AES_BLOCK_SIZE;
 }
@@ -304,6 +316,7 @@ static inline void fifo_in_pad_ghash_final_block(XilinxAsuAesState *s)
 static inline void fifo_in_clear(XilinxAsuAesState *s)
 {
     s->fifo_in_num = 0;
+    s->mask_received = false;
 }
 
 static void update_irq(XilinxAsuAesState *s)
@@ -830,8 +843,34 @@ static void sink_notify_cb(void *opaque)
     send_aes_payload(s);
 }
 
+static bool send_aes_data_mask(XilinxAsuAesState *s)
+{
+    uint8_t zeros[ASU_AES_BLOCK_SIZE];
+
+    if (s->mask_sent) {
+        return true;
+    }
+
+    if (!stream_can_push(s->sink, sink_notify_cb, s)) {
+        s->ready = false;
+        return false;
+    }
+
+    memset(zeros, 0, sizeof(zeros));
+
+    trace_xilinx_asu_aes_send_mask(ASU_AES_BLOCK_SIZE, false);
+    stream_push(s->sink, zeros, sizeof(zeros), false);
+
+    s->mask_sent = true;
+    return true;
+}
+
 static void send_aes_payload(XilinxAsuAesState *s)
 {
+    if (data_split_enabled(s) && !send_aes_data_mask(s)) {
+        return;
+    }
+
     if (!stream_can_push(s->sink, sink_notify_cb, s)) {
         s->ready = false;
         return;
@@ -856,6 +895,17 @@ static void flush_fifo_in(XilinxAsuAesState *s)
     g_assert(s->ready);
     g_assert(fifo_in_is_full(s));
 
+    if (data_split_enabled(s) && !s->mask_received) {
+        /* we have filled fifo_mask_in. Next, fill fifo_in */
+        s->mask_received = true;
+        s->fifo_in_num = 0;
+        return;
+    }
+
+    if (data_split_enabled(s)) {
+        block_xor(s->fifo_in, s->fifo_in, s->fifo_mask_in);
+    }
+
     asu_aes_go(s, s->fifo_in, sizeof(s->fifo_in));
     fifo_in_clear(s);
 
@@ -864,6 +914,7 @@ static void flush_fifo_in(XilinxAsuAesState *s)
     }
 
     if (current_mode_is_streaming(s)) {
+        s->mask_sent = false;
         send_aes_payload(s);
     }
 
@@ -960,6 +1011,8 @@ static void do_soft_rst(XilinxAsuAesState *s, bool rst)
     if (rst) {
         do_zeroize(s);
         fifo_in_clear(s);
+        s->mask_sent = false;
+        s->mask_received = false;
 
         if (s->src_notify_cb) {
             /*
@@ -1314,12 +1367,26 @@ static size_t asu_aes_recv(StreamSink *obj, uint8_t *data,
             flush_fifo_in(s);
 
             if (ghash_padding) {
+                size_t i;
+
                 /*
-                 * Insert the extra padding block.
+                 * this is an invariant of the state machine. If ghash_padding
+                 * is true, we expect to be in the mask receive state. So if
+                 * data split is enabled, we must first send a mask full of
+                 * zeros, and then the extra padding value.
                  */
-                fifo_in_pad_ghash_final_block(s);
-                g_assert(fifo_in_is_full(s));
-                flush_fifo_in(s);
+                g_assert(!s->mask_received);
+
+                /*
+                 * Insert the extra padding block. If data split is enabled,
+                 * two blocks must be inserted, one for the mask, and one for
+                 * the value (the mask is full of 0s).
+                 */
+                for (i = 0; i < (data_split_enabled(s) ? 2 : 1); i++) {
+                    fifo_in_pad_ghash_final_block(s);
+                    g_assert(fifo_in_is_full(s));
+                    flush_fifo_in(s);
+                }
             }
         }
 

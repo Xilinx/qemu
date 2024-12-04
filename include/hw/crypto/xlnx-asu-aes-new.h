@@ -61,10 +61,17 @@ struct XilinxAsuAesState {
     /* == internal state == */
     bool eop; /* copy of last received packet eop flag */
 
+    /* -- data split send/receive state machine -- */
+    /* the data mask has been sent (blocked on data sending) */
+    bool mask_sent;
+    /* the data mask has been received (currently receiving data) */
+    bool mask_received;
+
     /* last received packed was 128 bits padded by this amount */
     uint32_t pad_amount;
     uint32_t fifo_in_num;
     AsuAesBlock fifo_in;
+    AsuAesBlock fifo_mask_in;
 
     struct {
         uint8_t key[32];
