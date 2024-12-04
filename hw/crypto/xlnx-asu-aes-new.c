@@ -210,6 +210,7 @@ static inline bool current_mode_is_streaming(XilinxAsuAesState *s)
         return true;
 
     case ASU_AES_CCM:
+    case ASU_AES_GCM:
         return !asu_aes_in_auth_phase(s);
 
     default:
@@ -301,6 +302,20 @@ static inline void block_xor(AsuAesBlock r,
     *r128 = int128_xor(*a128, *b128);
 }
 
+/* a = a >> n */
+static inline void block_shr(AsuAesBlock a, int n)
+{
+    Int128 *a128 = (Int128 *)a;
+
+#if !HOST_BIG_ENDIAN
+    *a128 = bswap128(*a128);
+#endif
+    *a128 = int128_urshift(*a128, n);
+#if !HOST_BIG_ENDIAN
+    *a128 = bswap128(*a128);
+#endif
+}
+
 /* r = a + b */
 static inline void block_add_i(AsuAesBlock r, const AsuAesBlock a, int b)
 {
@@ -316,9 +331,42 @@ static inline void block_add_i(AsuAesBlock r, const AsuAesBlock a, int b)
 #endif
 }
 
+/* a[8..15] = a[8..15] + b */
+static inline void block_add_lo64_u(AsuAesBlock a, unsigned int b)
+{
+    uint64_t *a64 = (uint64_t *) &a[ASU_AES_BLOCK_SIZE / 2];
+
+    *a64 = be64_to_cpu(*a64);
+    *a64 += b;
+    *a64 = cpu_to_be64(*a64);
+}
+
+/* a[0..7] = a[0..7] + b */
+static inline void block_add_hi64_u(AsuAesBlock a, unsigned int b)
+{
+    uint64_t *a64 = (uint64_t *) a;
+
+    *a64 = be64_to_cpu(*a64);
+    *a64 += b;
+    *a64 = cpu_to_be64(*a64);
+}
+
+/* return a[8..15] as uint64_t in cpu order */
+static inline uint64_t block_extract_lo64(AsuAesBlock a)
+{
+    uint64_t *a64 = (uint64_t *) &a[ASU_AES_BLOCK_SIZE / 2];
+
+    return be64_to_cpu(*a64);
+}
+
 static inline void block_inc(AsuAesBlock a)
 {
     block_add_i(a, a, 1);
+}
+
+static inline bool block_lsb(const AsuAesBlock a)
+{
+    return a[ASU_AES_BLOCK_SIZE - 1] & 0x1;
 }
 
 /* a = a & (1 << (bytes * 8) - 1) */
@@ -355,6 +403,43 @@ static inline void asu_aes_do_decrypt(XilinxAsuAesState *s,
     AES_decrypt(in, out, &key);
 }
 
+/*
+ * out = ghash(a, b) = (a ^ b) . h
+ * with h = aes(0^128, k) and the "." operator the multiplication in GF(2^128)
+ * using the field polynomial 1 + x + x^2 + x^7 + x^128.
+ */
+static void ghash(XilinxAsuAesState *s, uint8_t *out,
+                  const AsuAesBlock a, const AsuAesBlock b)
+{
+    size_t i;
+    AsuAesBlock v;
+    uint8_t h[16];
+
+    block_xor(v, a, b);
+
+    memset(out, 0, ASU_AES_BLOCK_SIZE);
+    asu_aes_do_encrypt(s, h, out);
+
+    for (i = 0; i < ASU_AES_BLOCK_SIZE; i++) {
+        uint8_t bit;
+
+        for (bit = 0x80; bit; bit >>= 1) {
+            bool lsb;
+
+            if (h[i] & bit) {
+                block_xor(out, out, v);
+            }
+
+            lsb = block_lsb(v);
+            block_shr(v, 1);
+
+            if (lsb) {
+                v[0] ^= 0xe1;
+            }
+        }
+    }
+}
+
 static uint8_t *asu_aes_preprocess(XilinxAsuAesState *s, AsuAesBlock in,
                                    AsuAesMode mode, bool enc)
 {
@@ -376,8 +461,9 @@ static uint8_t *asu_aes_preprocess(XilinxAsuAesState *s, AsuAesBlock in,
         }
 
     case ASU_AES_CCM:
+    case ASU_AES_GCM:
         /*
-         * CCM is a CTR + CBC-MAC.
+         * CCM is a CTR + CBC-MAC and GCM a CTR + GMAC.
          * No encryption/decryption during the auth phase.
          */
         if (asu_aes_in_auth_phase(s)) {
@@ -406,6 +492,7 @@ static void asu_aes_process(XilinxAsuAesState *s, const AsuAesBlock in,
     case ASU_AES_OFB:
     case ASU_AES_CTR:
     case ASU_AES_CCM:
+    case ASU_AES_GCM:
         /* Those modes encrypt the IV, even when decrypting */
         do_encrypt = true;
         break;
@@ -475,6 +562,25 @@ static void asu_aes_postprocess(XilinxAsuAesState *s, AsuAesBlock in,
         asu_aes_do_encrypt(s, mac, mac);
         break;
 
+    case ASU_AES_GCM:
+        if (!asu_aes_in_auth_phase(s)) {
+            block_xor(out, out, in);
+            block_inc(s->aes_ctx.iv);
+
+            if (enc && s->pad_amount) {
+                block_mask_lsb(out, s->pad_amount);
+            }
+
+            ghash(s, mac, mac, enc ? out : in);
+            block_add_lo64_u(s->aes_ctx.s0_gcmlen,
+                             (ASU_AES_BLOCK_SIZE - s->pad_amount) * 8);
+        } else {
+            ghash(s, mac, mac, in);
+            block_add_hi64_u(s->aes_ctx.s0_gcmlen,
+                             (ASU_AES_BLOCK_SIZE - s->pad_amount) * 8);
+        }
+        break;
+
     default:
         g_assert_not_reached();
     }
@@ -538,6 +644,41 @@ static void finalize_mac(XilinxAsuAesState *s)
         /* Final CCM mac operation is a xor with S0 */
         block_xor((uint8_t *)s->mac_out,
                   s->aes_ctx.mac, s->aes_ctx.s0_gcmlen);
+        break;
+
+    case ASU_AES_GCM:
+        {
+            AsuAesBlock j0;
+            int len_c;
+
+            /*
+             * For GCM, the MAC finalization consists in:
+             *    mac = ghash(mac, len(A) || len(C))
+             *    mac = mac ^ E_k(J0)
+             * J0 is the initial counter value. This value is not stored by the
+             * controller. We must recover it from the current counter value and
+             * len(C).
+             */
+            ghash(s, s->aes_ctx.mac, s->aes_ctx.mac, s->aes_ctx.s0_gcmlen);
+            len_c = block_extract_lo64(s->aes_ctx.s0_gcmlen);
+
+            /*
+             * len_c is the size of the cipher in bits. Convert it to the
+             * number of AES-GCM iterations done for this computation. Round it
+             * up the nearest multiple of 128 as the last block might be
+             * partial.
+             */
+            if (len_c & 127) {
+                len_c = (len_c & ~127) + 128;
+            }
+
+            len_c /= 128;
+
+            /* len_c + 1 because J1 is the counter value for the first block */
+            block_add_i(j0, s->aes_ctx.iv, -(len_c + 1));
+            asu_aes_do_encrypt(s, j0, j0);
+            block_xor((uint8_t *)s->mac_out, s->aes_ctx.mac, j0);
+        }
         break;
 
     default:
@@ -718,6 +859,12 @@ static void mode_config_write(XilinxAsuAesState *s, uint32_t val)
     case ASU_AES_CCM:
         memset(s->aes_ctx.mac, 0, sizeof(s->aes_ctx.mac));
         asu_aes_do_encrypt(s, s->aes_ctx.s0_gcmlen, s->aes_ctx.iv);
+        block_inc(s->aes_ctx.iv);
+        break;
+
+    case ASU_AES_GCM:
+        memset(s->aes_ctx.mac, 0, sizeof(s->aes_ctx.mac));
+        memset(s->aes_ctx.s0_gcmlen, 0, sizeof(s->aes_ctx.mac));
         block_inc(s->aes_ctx.iv);
         break;
 
