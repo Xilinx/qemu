@@ -149,6 +149,23 @@ static inline bool key_split_enabled(XilinxAsuAesState *s)
     return s->cm_enabled && FIELD_EX32(s->split_cfg, SPLIT_CFG, KEY_SPLIT);
 }
 
+static inline void load_block_with_mask(XilinxAsuAesState *s, AsuAesBlock dst,
+                                        const uint32_t *src,
+                                        const uint32_t *mask)
+{
+    if (s->cm_enabled) {
+        size_t i;
+
+        for (i = 0; i < ASU_AES_BLOCK_SIZE / sizeof(uint32_t); i++) {
+            uint32_t *d = (uint32_t *)(dst + i * sizeof(uint32_t));
+
+            *d = src[i] ^ mask[i];
+        }
+    } else {
+        memcpy(dst, src, ASU_AES_BLOCK_SIZE);
+    }
+}
+
 static void do_operation(XilinxAsuAesState *s, uint32_t val)
 {
     if (FIELD_EX32(val, OPERATION, KEY_LOAD)) {
@@ -183,6 +200,22 @@ static void do_operation(XilinxAsuAesState *s, uint32_t val)
         }
 
         trace_xilinx_asu_aes_load_key(key_size);
+    }
+
+    if (FIELD_EX32(val, OPERATION, IV_LOAD)) {
+        load_block_with_mask(s, s->aes_ctx.iv, s->iv_in, s->iv_mask_in);
+        trace_xilinx_asu_aes_load_iv();
+    }
+
+    if (FIELD_EX32(val, OPERATION, INTMAC_LOAD)) {
+        load_block_with_mask(s, s->aes_ctx.mac,
+                             s->int_mac_in, s->int_mac_mask_in);
+        memcpy(s->aes_ctx.s0_gcmlen, s->gcmlen_in, sizeof(s->gcmlen_in));
+    }
+
+    if (FIELD_EX32(val, OPERATION, S0_LOAD)) {
+        load_block_with_mask(s, s->aes_ctx.s0_gcmlen,
+                             s->s0_in, s->s0_mask_in);
     }
 }
 
