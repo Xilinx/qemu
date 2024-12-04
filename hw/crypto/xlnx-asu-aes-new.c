@@ -30,6 +30,7 @@
 #include "hw/qdev-properties.h"
 #include "hw/crypto/xlnx-asu-aes-new.h"
 #include "hw/crypto/xlnx-asu-kv.h"
+#include "hw/stream.h"
 #include "trace.h"
 
 REG32(STATUS, 0x0)
@@ -149,6 +150,56 @@ static inline bool key_split_enabled(XilinxAsuAesState *s)
     return s->cm_enabled && FIELD_EX32(s->split_cfg, SPLIT_CFG, KEY_SPLIT);
 }
 
+static inline bool fifo_in_is_full(XilinxAsuAesState *s)
+{
+    return s->fifo_in_num == ARRAY_SIZE(s->fifo_in);
+}
+
+static inline size_t fifo_in_num_free(XilinxAsuAesState *s)
+{
+    return ARRAY_SIZE(s->fifo_in) - s->fifo_in_num;
+}
+
+static inline uint8_t *fifo_get_current(XilinxAsuAesState *s)
+{
+    return s->fifo_in;
+}
+
+static inline bool fifo_in_push(XilinxAsuAesState *s, const uint8_t *buf,
+                                size_t len)
+{
+    uint8_t *fifo = fifo_get_current(s);
+
+    g_assert(s->fifo_in_num + len <= ARRAY_SIZE(s->fifo_in));
+
+    memcpy(fifo + s->fifo_in_num, buf, len);
+    s->fifo_in_num += len;
+
+    return fifo_in_is_full(s);
+}
+
+/*
+ * Pad the fifo to obtain a 128 bits data.
+ */
+static inline void fifo_in_pad(XilinxAsuAesState *s)
+{
+    uint8_t *fifo = fifo_get_current(s);
+
+    s->pad_amount = fifo_in_num_free(s);
+
+    if (!s->pad_amount) {
+        return;
+    }
+
+    memset(fifo + s->fifo_in_num, 0, fifo_in_num_free(s));
+    s->fifo_in_num = ARRAY_SIZE(s->fifo_in);
+}
+
+static inline void fifo_in_clear(XilinxAsuAesState *s)
+{
+    s->fifo_in_num = 0;
+}
+
 static void update_irq(XilinxAsuAesState *s)
 {
     qemu_set_irq(s->irq, s->irq_sta && !s->irq_mask);
@@ -159,6 +210,14 @@ static inline void raise_done_irq(XilinxAsuAesState *s)
     trace_xilinx_asu_aes_raise_irq();
     s->irq_sta = true;
     update_irq(s);
+}
+
+static void flush_fifo_in(XilinxAsuAesState *s)
+{
+    g_assert(s->ready);
+    g_assert(fifo_in_is_full(s));
+
+    /* TODO */
 }
 
 static inline void load_block_with_mask(XilinxAsuAesState *s, AsuAesBlock dst,
@@ -250,6 +309,16 @@ static void do_soft_rst(XilinxAsuAesState *s, bool rst)
 
     if (rst) {
         do_zeroize(s);
+        fifo_in_clear(s);
+
+        if (s->src_notify_cb) {
+            /*
+             * Drain waiting packets and unblock the source stream. The packets
+             * will be dropped in asu_aes_recv.
+             */
+            s->src_notify_cb(s->src_notify_opaque);
+            s->src_notify_cb = NULL;
+        }
     }
 }
 
@@ -523,6 +592,68 @@ static const MemoryRegionOps xilinx_asu_aes_ops = {
     },
 };
 
+static size_t asu_aes_recv(StreamSink *obj, uint8_t *data,
+                           size_t len, bool eop)
+{
+    XilinxAsuAesState *s = XILINX_ASU_AES(obj);
+    size_t to_push, pushed = 0;
+
+    trace_xilinx_asu_aes_recv(len, eop);
+
+    if (s->reset) {
+        /* drop the packet */
+        trace_xilinx_asu_aes_drop(len, eop);
+        return len;
+    }
+
+    g_assert(s->ready);
+
+    while (len) {
+        to_push = MIN(len, fifo_in_num_free(s));
+        s->eop = false;
+        s->pad_amount = 0;
+
+        fifo_in_push(s, data, to_push);
+
+        if (len == to_push) {
+            /*
+             * Last piece of the received packet. Reflect the value of EOP in
+             * the packet we're going to send in our sink stream. If eop is
+             * actually set, pad the FIFO.
+             */
+            s->eop = eop;
+            if (eop) {
+                fifo_in_pad(s);
+            }
+        }
+
+        if (fifo_in_is_full(s)) {
+            flush_fifo_in(s);
+        }
+
+        len -= to_push;
+        data += to_push;
+        pushed += to_push;
+    }
+
+    return pushed;
+}
+
+static bool asu_aes_can_recv(StreamSink *obj,
+                             StreamCanPushNotifyFn notify,
+                             void *notify_opaque)
+{
+    XilinxAsuAesState *s = XILINX_ASU_AES(obj);
+
+    if (!s->reset && !s->ready) {
+        s->src_notify_cb = notify;
+        s->src_notify_opaque = notify_opaque;
+        return false;
+    }
+
+    return true;
+}
+
 static void xilinx_asu_aes_reset_enter(Object *obj, ResetType type)
 {
     XilinxAsuAesState *s = XILINX_ASU_AES(obj);
@@ -573,11 +704,14 @@ static void xilinx_asu_aes_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     ResettableClass *rc = RESETTABLE_CLASS(klass);
+    StreamSinkClass *ssc = STREAM_SINK_CLASS(klass);
     XilinxAsuAesClass *xaac = XILINX_ASU_AES_CLASS(klass);
 
     dc->realize = xilinx_asu_aes_realize;
     rc->phases.enter = xilinx_asu_aes_reset_enter;
     rc->phases.hold = xilinx_asu_aes_reset_hold;
+    ssc->push = asu_aes_recv;
+    ssc->can_push = asu_aes_can_recv;
     xaac->do_zeroize = do_zeroize;
     xaac->is_zeroized = is_zeroized;
     device_class_set_props(dc, xilinx_asu_aes_properties);
@@ -590,6 +724,7 @@ static const TypeInfo xilinx_asu_aes_info = {
     .class_init = xilinx_asu_aes_class_init,
     .class_size = sizeof(XilinxAsuAesClass),
     .interfaces = (InterfaceInfo[]) {
+        { TYPE_STREAM_SINK },
         { }
     },
 };

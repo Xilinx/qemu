@@ -59,6 +59,13 @@ struct XilinxAsuAesState {
     bool cm_enabled;
 
     /* == internal state == */
+    bool eop; /* copy of last received packet eop flag */
+
+    /* last received packed was 128 bits padded by this amount */
+    uint32_t pad_amount;
+    uint32_t fifo_in_num;
+    AsuAesBlock fifo_in;
+
     struct {
         uint8_t key[32];
         AsuAesBlock iv;
@@ -72,6 +79,9 @@ struct XilinxAsuAesState {
     qemu_irq irq;
 
     XilinxAsuKvState *kv;
+
+    StreamCanPushNotifyFn src_notify_cb;
+    void *src_notify_opaque;
 };
 
 struct XilinxAsuAesClass {
