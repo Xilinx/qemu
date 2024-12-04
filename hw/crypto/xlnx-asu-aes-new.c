@@ -149,6 +149,18 @@ static inline bool key_split_enabled(XilinxAsuAesState *s)
     return s->cm_enabled && FIELD_EX32(s->split_cfg, SPLIT_CFG, KEY_SPLIT);
 }
 
+static void update_irq(XilinxAsuAesState *s)
+{
+    qemu_set_irq(s->irq, s->irq_sta && !s->irq_mask);
+}
+
+static inline void raise_done_irq(XilinxAsuAesState *s)
+{
+    trace_xilinx_asu_aes_raise_irq();
+    s->irq_sta = true;
+    update_irq(s);
+}
+
 static inline void load_block_with_mask(XilinxAsuAesState *s, AsuAesBlock dst,
                                         const uint32_t *src,
                                         const uint32_t *mask)
@@ -350,6 +362,14 @@ static uint64_t xilinx_asu_aes_read(void *opaque, hwaddr addr,
         ret = s->reset;
         break;
 
+    case A_INTERRUPT_MASK:
+        ret = s->irq_mask;
+        break;
+
+    case A_INTERRUPT_STATUS:
+        ret = s->irq_sta;
+        break;
+
     case A_CM:
     case A_OPERATION:
     case A_KEY_DEC_TRIG:
@@ -440,6 +460,27 @@ static void xilinx_asu_aes_write(void *opaque, hwaddr addr, uint64_t value,
         do_soft_rst(s, value & 0x1);
         break;
 
+    case A_INTERRUPT_STATUS:
+        s->irq_sta &= ~(value & 0x1);
+        update_irq(s);
+        break;
+
+    case A_INTERRUPT_ENABLE:
+        s->irq_mask &= ~(value & 0x1);
+        update_irq(s);
+        break;
+
+    case A_INTERRUPT_DISABLE:
+        s->irq_mask |= value & 0x1;
+        update_irq(s);
+        break;
+
+    case A_INTERRUPT_TRIGGER:
+        if (value & 0x1) {
+            raise_done_irq(s);
+        }
+        break;
+
     case A_OPERATION:
         do_operation(s, value);
         break;
@@ -496,6 +537,8 @@ static void xilinx_asu_aes_reset_enter(Object *obj, ResetType type)
     memset(s->gcmlen_in, 0, sizeof(s->gcmlen_in));
     s->mode_cfg = 0;
     s->split_cfg = 0;
+    s->irq_mask = true;
+    s->irq_sta = false;
     s->cm_enabled = true;
 }
 
@@ -504,6 +547,7 @@ static void xilinx_asu_aes_reset_hold(Object *obj)
     XilinxAsuAesState *s = XILINX_ASU_AES(obj);
 
     do_soft_rst(s, true);
+    update_irq(s);
 }
 
 static void xilinx_asu_aes_realize(DeviceState *dev, Error **errp)
