@@ -336,6 +336,13 @@ static inline void block_copy(AsuAesBlock dst, const AsuAesBlock src)
     memcpy(dst, src, AES_BLOCK_SIZE);
 }
 
+static inline void block_bswap(AsuAesBlock a)
+{
+    Int128 *a128 = (Int128 *)a;
+
+    *a128 = bswap128(*a128);
+}
+
 /* r = a ^ b */
 static inline void block_xor(AsuAesBlock r,
                              const AsuAesBlock a,
@@ -878,7 +885,15 @@ static void send_aes_payload(XilinxAsuAesState *s)
 
     trace_xilinx_asu_aes_send(ASU_AES_BLOCK_SIZE, s->eop);
 
-    stream_push(s->sink, s->aes_ctx.out, ASU_AES_BLOCK_SIZE, s->eop);
+    if (s->data_swap) {
+        AsuAesBlock out;
+
+        block_copy(out, s->aes_ctx.out);
+        block_bswap(out);
+        stream_push(s->sink, out, ASU_AES_BLOCK_SIZE, s->eop);
+    } else {
+        stream_push(s->sink, s->aes_ctx.out, ASU_AES_BLOCK_SIZE, s->eop);
+    }
 
     s->ready = true;
 
@@ -894,6 +909,10 @@ static void flush_fifo_in(XilinxAsuAesState *s)
 {
     g_assert(s->ready);
     g_assert(fifo_in_is_full(s));
+
+    if (s->data_swap) {
+        block_bswap(fifo_get_current(s));
+    }
 
     if (data_split_enabled(s) && !s->mask_received) {
         /* we have filled fifo_mask_in. Next, fill fifo_in */
@@ -1185,6 +1204,10 @@ static uint64_t xilinx_asu_aes_read(void *opaque, hwaddr addr,
         ret = s->mode_cfg;
         break;
 
+    case A_DATA_SWAP:
+        ret = s->data_swap;
+        break;
+
     case A_SOFT_RST:
         ret = s->reset;
         break;
@@ -1281,6 +1304,17 @@ static void xilinx_asu_aes_write(void *opaque, hwaddr addr, uint64_t value,
 
     case A_MODE_CONFIG:
         mode_config_write(s, value & MODE_CONFIG_WRITE_MASK);
+        break;
+
+    case A_DATA_SWAP:
+        /*
+         * If the DISABLE bit is set, it means that we _have_ to swap the data.
+         * The reason this bit is disabled by default (meaning that the
+         * controller wrapper swaps the data by default) is because the wrapped
+         * AES IP expects reversed data. This is not the case of this model, so
+         * we actually invert the meaning of this flag.
+         */
+        s->data_swap = FIELD_EX32(value, DATA_SWAP, DISABLE);
         break;
 
     case A_SOFT_RST:
@@ -1457,6 +1491,7 @@ static void xilinx_asu_aes_reset_enter(Object *obj, ResetType type)
     memset(s->gcmlen_in, 0, sizeof(s->gcmlen_in));
     s->mode_cfg = 0;
     s->split_cfg = 0;
+    s->data_swap = false;
     s->irq_mask = true;
     s->irq_sta = false;
     s->cm_enabled = true;
