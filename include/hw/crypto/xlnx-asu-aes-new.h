@@ -62,6 +62,7 @@ struct XilinxAsuAesState {
         AsuAesBlock mac;
         AsuAesBlock s0_gcmlen; /* used for CCM S0 and GCM "len(A) || len(C)" */
         uint32_t key_size;
+        bool dirty; /* not zeroized */
     } aes_ctx;
 
     MemoryRegion iomem;
@@ -72,6 +73,23 @@ struct XilinxAsuAesState {
 
 struct XilinxAsuAesClass {
     SysBusDeviceClass parent;
+
+    void (*do_zeroize)(XilinxAsuAesState *s);
+    bool (*is_zeroized)(XilinxAsuAesState *s);
 };
+
+static inline void xilinx_asu_aes_do_zeroize(XilinxAsuAesState *s)
+{
+    XilinxAsuAesClass *c = XILINX_ASU_AES_GET_CLASS(s);
+
+    c->do_zeroize(s);
+}
+
+static inline bool xilinx_asu_aes_is_zeroized(XilinxAsuAesState *s)
+{
+    XilinxAsuAesClass *c = XILINX_ASU_AES_GET_CLASS(s);
+
+    return c->is_zeroized(s);
+}
 
 #endif

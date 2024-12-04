@@ -200,6 +200,7 @@ static void do_operation(XilinxAsuAesState *s, uint32_t val)
         }
 
         trace_xilinx_asu_aes_load_key(key_size);
+        s->aes_ctx.dirty = true;
     }
 
     if (FIELD_EX32(val, OPERATION, IV_LOAD)) {
@@ -217,6 +218,11 @@ static void do_operation(XilinxAsuAesState *s, uint32_t val)
         load_block_with_mask(s, s->aes_ctx.s0_gcmlen,
                              s->s0_in, s->s0_mask_in);
     }
+}
+
+static bool is_zeroized(XilinxAsuAesState *s)
+{
+    return !s->aes_ctx.dirty;
 }
 
 static void do_zeroize(XilinxAsuAesState *s)
@@ -509,10 +515,13 @@ static void xilinx_asu_aes_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     ResettableClass *rc = RESETTABLE_CLASS(klass);
+    XilinxAsuAesClass *xaac = XILINX_ASU_AES_CLASS(klass);
 
     dc->realize = xilinx_asu_aes_realize;
     rc->phases.enter = xilinx_asu_aes_reset_enter;
     rc->phases.hold = xilinx_asu_aes_reset_hold;
+    xaac->do_zeroize = do_zeroize;
+    xaac->is_zeroized = is_zeroized;
     device_class_set_props(dc, xilinx_asu_aes_properties);
 }
 
