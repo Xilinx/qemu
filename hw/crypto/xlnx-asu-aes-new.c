@@ -29,6 +29,7 @@
 #include "hw/irq.h"
 #include "hw/qdev-properties.h"
 #include "hw/crypto/xlnx-asu-aes-new.h"
+#include "hw/crypto/xlnx-asu-kv.h"
 #include "trace.h"
 
 REG32(STATUS, 0x0)
@@ -143,6 +144,48 @@ REG32(SLV_ERR_CTRL_ENABLE, 0x228)
 REG32(SLV_ERR_CTRL_DISABLE, 0x22c)
 REG32(SLV_ERR_CTRL_TRIGGER, 0x230)
 
+static inline bool key_split_enabled(XilinxAsuAesState *s)
+{
+    return s->cm_enabled && FIELD_EX32(s->split_cfg, SPLIT_CFG, KEY_SPLIT);
+}
+
+static void do_operation(XilinxAsuAesState *s, uint32_t val)
+{
+    if (FIELD_EX32(val, OPERATION, KEY_LOAD)) {
+        size_t key_size;
+
+        key_size = xilinx_asu_kv_get_selected_key(s->kv, s->aes_ctx.key,
+                                                  sizeof(s->aes_ctx.key));
+
+        if (!key_size) {
+            /*
+             * The vault is misconfigured. This is undefined behaviour.
+             * Keep a 128 bits key size with a null key in this case.
+             */
+            s->aes_ctx.key_size = 16;
+            memset(s->aes_ctx.key, 0, s->aes_ctx.key_size);
+        } else {
+            s->aes_ctx.key_size = key_size;
+        }
+
+        if (key_split_enabled(s)) {
+            uint8_t key_mask[32];
+            size_t key_mask_size, i;
+
+            key_mask_size = xilinx_asu_kv_get_key_mask(s->kv, key_mask,
+                                                       sizeof(key_mask));
+            g_assert(key_size == key_mask_size);
+
+            for (i = 0; i < key_mask_size; i++) {
+                s->aes_ctx.key[i] ^= key_mask[i];
+            }
+
+        }
+
+        trace_xilinx_asu_aes_load_key(key_size);
+    }
+}
+
 #define BLOCK_READ32_BSWAP(a, idx) \
     bswap32(((uint32_t *)a)[(sizeof(a) / sizeof(uint32_t)) - (idx + 1)])
 
@@ -230,6 +273,10 @@ static uint64_t xilinx_asu_aes_read(void *opaque, hwaddr addr,
         ret = BLOCK_READ32_BSWAP(s->aes_ctx.s0_gcmlen, idx);
         break;
 
+    case A_SPLIT_CFG:
+        ret = s->split_cfg;
+        break;
+
     case A_CM:
     case A_OPERATION:
     case A_KEY_DEC_TRIG:
@@ -304,6 +351,18 @@ static void xilinx_asu_aes_write(void *opaque, hwaddr addr, uint64_t value,
         BLOCK_WRITE32_BSWAP(s->gcmlen_in, idx, value);
         break;
 
+    case A_CM:
+        s->cm_enabled = (value == R_CM_ENABLE_MASK);
+        break;
+
+    case A_SPLIT_CFG:
+        s->split_cfg = value & SPLIT_CFG_WRITE_MASK;
+        break;
+
+    case A_OPERATION:
+        do_operation(s, value);
+        break;
+
     case A_STATUS:
     case A_IV_OUT_0 ... A_IV_OUT_3:
     case A_IV_MASK_OUT_0 ... A_IV_MASK_OUT_3:
@@ -354,6 +413,8 @@ static void xilinx_asu_aes_reset_enter(Object *obj, ResetType type)
     memset(s->s0_in, 0, sizeof(s->s0_in));
     memset(s->s0_mask_in, 0, sizeof(s->s0_mask_in));
     memset(s->gcmlen_in, 0, sizeof(s->gcmlen_in));
+    s->split_cfg = 0;
+    s->cm_enabled = true;
 }
 
 static void xilinx_asu_aes_reset_hold(Object *obj)
@@ -373,6 +434,9 @@ static void xilinx_asu_aes_realize(DeviceState *dev, Error **errp)
 }
 
 static Property xilinx_asu_aes_properties[] = {
+    DEFINE_PROP_LINK("keyvault",
+                     XilinxAsuAesState, kv,
+                     TYPE_XILINX_ASU_KV, XilinxAsuKvState *),
     DEFINE_PROP_END_OF_LIST()
 };
 

@@ -5,6 +5,7 @@ xilinx_asu_ecc_write(uint64_t addr, uint64_t data, unsigned int size) "addr 0x%"
 # xlnx-asu-aes.c
 xilinx_asu_aes_read(uint64_t addr, uint64_t value, unsigned int size) "addr: 0x%" PRIx64 " value: 0x%" PRIx64 " size: %u"
 xilinx_asu_aes_write(uint64_t addr, uint64_t value, unsigned int size) "addr: 0x%" PRIx64 " value: 0x%" PRIx64 " size: %u"
+xilinx_asu_aes_load_key(size_t len) "size: %zu"
 
 # xlnx-asu-kv.c
 xilinx_asu_kv_read(uint64_t addr, uint64_t value, unsigned int size) "addr: 0x%" PRIx64 " value: 0x%" PRIx64 " size: %u"

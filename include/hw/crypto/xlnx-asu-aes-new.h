@@ -36,6 +36,8 @@ OBJECT_DECLARE_TYPE(XilinxAsuAesState, XilinxAsuAesClass, XILINX_ASU_AES)
 #define ASU_AES_BLOCK_SIZE 16
 typedef uint8_t QEMU_ALIGNED(16) AsuAesBlock[ASU_AES_BLOCK_SIZE];
 
+typedef struct XilinxAsuKvState XilinxAsuKvState;
+
 struct XilinxAsuAesState {
     SysBusDevice parent_obj;
 
@@ -48,16 +50,22 @@ struct XilinxAsuAesState {
     uint32_t s0_in[4];
     uint32_t s0_mask_in[4];
     uint32_t gcmlen_in[4];
+    uint32_t split_cfg;
+    bool cm_enabled;
 
     /* == internal state == */
     struct {
+        uint8_t key[32];
         AsuAesBlock iv;
         AsuAesBlock mac;
         AsuAesBlock s0_gcmlen; /* used for CCM S0 and GCM "len(A) || len(C)" */
+        uint32_t key_size;
     } aes_ctx;
 
     MemoryRegion iomem;
     qemu_irq irq;
+
+    XilinxAsuKvState *kv;
 };
 
 struct XilinxAsuAesClass {
