@@ -241,6 +241,11 @@ static void do_soft_rst(XilinxAsuAesState *s, bool rst)
     }
 }
 
+static void mode_config_write(XilinxAsuAesState *s, uint32_t val)
+{
+    s->mode_cfg = val;
+}
+
 #define BLOCK_READ32_BSWAP(a, idx) \
     bswap32(((uint32_t *)a)[(sizeof(a) / sizeof(uint32_t)) - (idx + 1)])
 
@@ -337,6 +342,10 @@ static uint64_t xilinx_asu_aes_read(void *opaque, hwaddr addr,
         ret = s->split_cfg;
         break;
 
+    case A_MODE_CONFIG:
+        ret = s->mode_cfg;
+        break;
+
     case A_SOFT_RST:
         ret = s->reset;
         break;
@@ -423,6 +432,10 @@ static void xilinx_asu_aes_write(void *opaque, hwaddr addr, uint64_t value,
         s->split_cfg = value & SPLIT_CFG_WRITE_MASK;
         break;
 
+    case A_MODE_CONFIG:
+        mode_config_write(s, value & MODE_CONFIG_WRITE_MASK);
+        break;
+
     case A_SOFT_RST:
         do_soft_rst(s, value & 0x1);
         break;
@@ -481,6 +494,7 @@ static void xilinx_asu_aes_reset_enter(Object *obj, ResetType type)
     memset(s->s0_in, 0, sizeof(s->s0_in));
     memset(s->s0_mask_in, 0, sizeof(s->s0_mask_in));
     memset(s->gcmlen_in, 0, sizeof(s->gcmlen_in));
+    s->mode_cfg = 0;
     s->split_cfg = 0;
     s->cm_enabled = true;
 }

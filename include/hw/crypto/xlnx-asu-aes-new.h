@@ -50,6 +50,7 @@ struct XilinxAsuAesState {
     uint32_t s0_in[4];
     uint32_t s0_mask_in[4];
     uint32_t gcmlen_in[4];
+    uint32_t mode_cfg;
     uint32_t split_cfg;
     bool reset;
     bool ready;
