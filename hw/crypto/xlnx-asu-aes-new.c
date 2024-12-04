@@ -197,6 +197,7 @@ static inline AsuAesMode get_current_mode(XilinxAsuAesState *s)
 static inline bool current_mode_is_streaming(XilinxAsuAesState *s)
 {
     switch (get_current_mode(s)) {
+    case ASU_AES_CBC:
     case ASU_AES_ECB:
         return true;
 
@@ -272,6 +273,23 @@ static inline void raise_done_irq(XilinxAsuAesState *s)
     update_irq(s);
 }
 
+static inline void block_copy(AsuAesBlock dst, const AsuAesBlock src)
+{
+    memcpy(dst, src, AES_BLOCK_SIZE);
+}
+
+/* r = a ^ b */
+static inline void block_xor(AsuAesBlock r,
+                             const AsuAesBlock a,
+                             const AsuAesBlock b)
+{
+    const Int128 *a128 = (const Int128 *) a;
+    const Int128 *b128 = (const Int128 *) b;
+    Int128 *r128 = (Int128 *) r;
+
+    *r128 = int128_xor(*a128, *b128);
+}
+
 static inline void asu_aes_do_encrypt(XilinxAsuAesState *s,
                                       uint8_t *out,
                                       const uint8_t *in)
@@ -307,6 +325,14 @@ static uint8_t *asu_aes_preprocess(XilinxAsuAesState *s, AsuAesBlock in,
     case ASU_AES_ECB:
         return in;
 
+    case ASU_AES_CBC:
+        if (enc) {
+            block_xor(s->aes_ctx.out, in, s->aes_ctx.iv);
+            return s->aes_ctx.out;
+        } else {
+            return in;
+        }
+
     default:
         g_assert_not_reached();
     }
@@ -319,6 +345,7 @@ static void asu_aes_process(XilinxAsuAesState *s, const AsuAesBlock in,
 
     switch (mode) {
     case ASU_AES_ECB:
+    case ASU_AES_CBC:
         do_encrypt = enc;
         break;
 
@@ -336,8 +363,19 @@ static void asu_aes_process(XilinxAsuAesState *s, const AsuAesBlock in,
 static void asu_aes_postprocess(XilinxAsuAesState *s, AsuAesBlock in,
                                 AsuAesMode mode, bool enc)
 {
+    uint8_t *out = s->aes_ctx.out;
+
     switch (mode) {
     case ASU_AES_ECB:
+        break;
+
+    case ASU_AES_CBC:
+        if (enc) {
+            block_copy(s->aes_ctx.iv, out);
+        } else {
+            block_xor(out, out, s->aes_ctx.iv);
+            block_copy(s->aes_ctx.iv, in);
+        }
         break;
 
     default:
