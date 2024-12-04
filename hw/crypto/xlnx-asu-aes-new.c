@@ -199,6 +199,7 @@ static inline bool current_mode_is_streaming(XilinxAsuAesState *s)
     switch (get_current_mode(s)) {
     case ASU_AES_CBC:
     case ASU_AES_CFB:
+    case ASU_AES_OFB:
     case ASU_AES_ECB:
         return true;
 
@@ -327,6 +328,7 @@ static uint8_t *asu_aes_preprocess(XilinxAsuAesState *s, AsuAesBlock in,
         return in;
 
     case ASU_AES_CFB:
+    case ASU_AES_OFB:
         return s->aes_ctx.iv;
 
     case ASU_AES_CBC:
@@ -354,6 +356,7 @@ static void asu_aes_process(XilinxAsuAesState *s, const AsuAesBlock in,
         break;
 
     case ASU_AES_CFB:
+    case ASU_AES_OFB:
         /* Those modes encrypt the IV, even when decrypting */
         do_encrypt = true;
         break;
@@ -390,6 +393,11 @@ static void asu_aes_postprocess(XilinxAsuAesState *s, AsuAesBlock in,
             block_xor(out, out, s->aes_ctx.iv);
             block_copy(s->aes_ctx.iv, in);
         }
+        break;
+
+    case ASU_AES_OFB:
+        block_copy(s->aes_ctx.iv, out);
+        block_xor(out, out, in);
         break;
 
     default:
