@@ -992,6 +992,30 @@ static void do_operation(XilinxAsuAesState *s, uint32_t val)
     }
 }
 
+static void do_key_decryption(XilinxAsuAesState *s)
+{
+    AsuAesBlock black[2], red[2];
+    size_t black_len, i;
+
+    s->pad_amount = 0;
+    s->eop = false;
+
+    black_len = xilinx_asu_kv_get_to_be_dev_key(s->kv, (uint8_t *) black,
+                                                sizeof(black));
+    trace_xilinx_asu_aes_decrypt_key(black_len);
+
+    for (i = 0; i < black_len / ASU_AES_BLOCK_SIZE; i++) {
+        asu_aes_go(s, black[i], ASU_AES_BLOCK_SIZE);
+        memcpy(red[i], s->aes_ctx.out, ASU_AES_BLOCK_SIZE);
+    }
+
+    xilinx_asu_kv_set_decrypted_key(s->kv, (uint8_t *) red, black_len);
+
+    s->eop = true;
+    finalize_mac(s);
+    raise_done_irq(s);
+}
+
 static bool is_zeroized(XilinxAsuAesState *s)
 {
     return !s->aes_ctx.dirty;
@@ -1286,6 +1310,12 @@ static void xilinx_asu_aes_write(void *opaque, hwaddr addr, uint64_t value,
 
     case A_OPERATION:
         do_operation(s, value);
+        break;
+
+    case A_KEY_DEC_TRIG:
+        if (FIELD_EX32(value, KEY_DEC_TRIG, VALUE)) {
+            do_key_decryption(s);
+        }
         break;
 
     case A_STATUS:

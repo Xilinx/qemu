@@ -13,6 +13,7 @@ xilinx_asu_aes_drop(size_t len, bool eop) "size: %zu, eop: %d"
 xilinx_asu_aes_process_block(const char *mode, const char *op) "%s %s"
 xilinx_asu_aes_load_key(size_t len) "size: %zu"
 xilinx_asu_aes_load_iv(void) ""
+xilinx_asu_aes_decrypt_key(size_t len) "size: %zu"
 
 # xlnx-asu-kv.c
 xilinx_asu_kv_read(uint64_t addr, uint64_t value, unsigned int size) "addr: 0x%" PRIx64 " value: 0x%" PRIx64 " size: %u"
