@@ -256,12 +256,20 @@ static inline bool fifo_in_push(XilinxAsuAesState *s, const uint8_t *buf,
  */
 static inline void fifo_in_pad(XilinxAsuAesState *s)
 {
+    AsuAesMode mode = get_current_mode(s);
     uint8_t *fifo = fifo_get_current(s);
 
     s->pad_amount = fifo_in_num_free(s);
 
     if (!s->pad_amount) {
         return;
+    }
+
+    if ((mode == ASU_AES_CMAC) && (fifo == s->fifo_in)) {
+        /*
+         * in CMAC mode, the padding is done with 10....0.
+         */
+        fifo[s->fifo_in_num++] = 0x80;
     }
 
     memset(fifo + s->fifo_in_num, 0, fifo_in_num_free(s));
@@ -300,6 +308,25 @@ static inline void block_xor(AsuAesBlock r,
     Int128 *r128 = (Int128 *) r;
 
     *r128 = int128_xor(*a128, *b128);
+}
+
+static inline void block_xor_u8(AsuAesBlock a, uint8_t b)
+{
+    a[15] ^= b;
+}
+
+/* a = a << n */
+static inline void block_shl(AsuAesBlock a, int n)
+{
+    Int128 *a128 = (Int128 *)a;
+
+#if !HOST_BIG_ENDIAN
+    *a128 = bswap128(*a128);
+#endif
+    *a128 = int128_lshift(*a128, n);
+#if !HOST_BIG_ENDIAN
+    *a128 = bswap128(*a128);
+#endif
 }
 
 /* a = a >> n */
@@ -362,6 +389,11 @@ static inline uint64_t block_extract_lo64(AsuAesBlock a)
 static inline void block_inc(AsuAesBlock a)
 {
     block_add_i(a, a, 1);
+}
+
+static inline bool block_msb(const AsuAesBlock a)
+{
+    return a[0] >> 7;
 }
 
 static inline bool block_lsb(const AsuAesBlock a)
@@ -440,6 +472,35 @@ static void ghash(XilinxAsuAesState *s, uint8_t *out,
     }
 }
 
+static void cmac_derive_key(AsuAesBlock l)
+{
+    bool msb = block_msb(l);
+
+    block_shl(l, 1);
+
+    if (msb) {
+        block_xor_u8(l, 0x87);
+    }
+}
+
+static void cmac_preprocess_last_block(XilinxAsuAesState *s, AsuAesBlock in)
+{
+    AsuAesBlock l;
+
+    memset(l, 0, sizeof(l));
+    asu_aes_do_encrypt(s, l, l);
+
+    /* K1 */
+    cmac_derive_key(l);
+
+    if (s->pad_amount) {
+        /* K2 */
+        cmac_derive_key(l);
+    }
+
+    block_xor(s->aes_ctx.out, in, l);
+}
+
 static uint8_t *asu_aes_preprocess(XilinxAsuAesState *s, AsuAesBlock in,
                                    AsuAesMode mode, bool enc)
 {
@@ -459,6 +520,16 @@ static uint8_t *asu_aes_preprocess(XilinxAsuAesState *s, AsuAesBlock in,
         } else {
             return in;
         }
+
+    case ASU_AES_CMAC:
+        if (s->eop) {
+            cmac_preprocess_last_block(s, in);
+            block_xor(s->aes_ctx.out, s->aes_ctx.out, s->aes_ctx.iv);
+        } else {
+            block_xor(s->aes_ctx.out, in, s->aes_ctx.iv);
+        }
+
+        return s->aes_ctx.out;
 
     case ASU_AES_CCM:
     case ASU_AES_GCM:
@@ -491,6 +562,7 @@ static void asu_aes_process(XilinxAsuAesState *s, const AsuAesBlock in,
     case ASU_AES_CFB:
     case ASU_AES_OFB:
     case ASU_AES_CTR:
+    case ASU_AES_CMAC:
     case ASU_AES_CCM:
     case ASU_AES_GCM:
         /* Those modes encrypt the IV, even when decrypting */
@@ -540,6 +612,10 @@ static void asu_aes_postprocess(XilinxAsuAesState *s, AsuAesBlock in,
     case ASU_AES_CTR:
         block_xor(out, out, in);
         block_inc(s->aes_ctx.iv);
+        break;
+
+    case ASU_AES_CMAC:
+        block_copy(s->aes_ctx.iv, out);
         break;
 
     case ASU_AES_CCM:
@@ -627,6 +703,16 @@ static void finalize_mac(XilinxAsuAesState *s)
     AsuAesMode mode = get_current_mode(s);
 
     if (!s->eop) {
+        return;
+    }
+
+    if (mode == ASU_AES_CMAC) {
+        /*
+         * CMAC is handled as a streamed cipher operation, without sending the
+         * data into the sink. The result lies into out, simply copy it in
+         * mac_out.
+         */
+        block_copy((uint8_t *)s->mac_out, s->aes_ctx.out);
         return;
     }
 
