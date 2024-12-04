@@ -543,6 +543,9 @@ static uint8_t *asu_aes_preprocess(XilinxAsuAesState *s, AsuAesBlock in,
             return s->aes_ctx.iv;
         }
 
+    case ASU_AES_GHASH:
+        return NULL;
+
     default:
         g_assert_not_reached();
     }
@@ -657,6 +660,10 @@ static void asu_aes_postprocess(XilinxAsuAesState *s, AsuAesBlock in,
         }
         break;
 
+    case ASU_AES_GHASH:
+        ghash(s, mac, mac, in);
+        break;
+
     default:
         g_assert_not_reached();
     }
@@ -701,6 +708,16 @@ static void finalize_mac(XilinxAsuAesState *s)
     bool auth_no_data = FIELD_EX32(s->mode_cfg, MODE_CONFIG,
                                    AUTH_WITH_NO_PAYLOAD);
     AsuAesMode mode = get_current_mode(s);
+
+    if (mode == ASU_AES_GHASH) {
+        /*
+         * The GHASH operation result is available in mac_out, and is also
+         * copied in the IV.
+         */
+        block_copy(s->aes_ctx.iv, s->aes_ctx.mac);
+        block_copy((uint8_t *)s->mac_out, s->aes_ctx.mac);
+        return;
+    }
 
     if (!s->eop) {
         return;
@@ -952,6 +969,10 @@ static void mode_config_write(XilinxAsuAesState *s, uint32_t val)
         memset(s->aes_ctx.mac, 0, sizeof(s->aes_ctx.mac));
         memset(s->aes_ctx.s0_gcmlen, 0, sizeof(s->aes_ctx.mac));
         block_inc(s->aes_ctx.iv);
+        break;
+
+    case ASU_AES_GHASH:
+        memset(s->aes_ctx.mac, 0, sizeof(s->aes_ctx.mac));
         break;
 
     default:
