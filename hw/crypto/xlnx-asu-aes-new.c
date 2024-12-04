@@ -219,6 +219,22 @@ static void do_operation(XilinxAsuAesState *s, uint32_t val)
     }
 }
 
+static void do_zeroize(XilinxAsuAesState *s)
+{
+    memset(&s->aes_ctx, 0, sizeof(s->aes_ctx));
+    s->aes_ctx.key_size = 16; /* default to a 128 bits null key */
+}
+
+static void do_soft_rst(XilinxAsuAesState *s, bool rst)
+{
+    s->ready = !rst;
+    s->reset = rst;
+
+    if (rst) {
+        do_zeroize(s);
+    }
+}
+
 #define BLOCK_READ32_BSWAP(a, idx) \
     bswap32(((uint32_t *)a)[(sizeof(a) / sizeof(uint32_t)) - (idx + 1)])
 
@@ -306,8 +322,17 @@ static uint64_t xilinx_asu_aes_read(void *opaque, hwaddr addr,
         ret = BLOCK_READ32_BSWAP(s->aes_ctx.s0_gcmlen, idx);
         break;
 
+    case A_STATUS:
+        ret = FIELD_DP32(0, STATUS, BUSY, s->reset);
+        ret = FIELD_DP32(ret, STATUS, READY, s->ready);
+        break;
+
     case A_SPLIT_CFG:
         ret = s->split_cfg;
+        break;
+
+    case A_SOFT_RST:
+        ret = s->reset;
         break;
 
     case A_CM:
@@ -392,6 +417,10 @@ static void xilinx_asu_aes_write(void *opaque, hwaddr addr, uint64_t value,
         s->split_cfg = value & SPLIT_CFG_WRITE_MASK;
         break;
 
+    case A_SOFT_RST:
+        do_soft_rst(s, value & 0x1);
+        break;
+
     case A_OPERATION:
         do_operation(s, value);
         break;
@@ -452,6 +481,9 @@ static void xilinx_asu_aes_reset_enter(Object *obj, ResetType type)
 
 static void xilinx_asu_aes_reset_hold(Object *obj)
 {
+    XilinxAsuAesState *s = XILINX_ASU_AES(obj);
+
+    do_soft_rst(s, true);
 }
 
 static void xilinx_asu_aes_realize(DeviceState *dev, Error **errp)
