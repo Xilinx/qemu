@@ -194,6 +194,17 @@ static inline AsuAesMode get_current_mode(XilinxAsuAesState *s)
     }
 }
 
+static inline bool current_mode_is_streaming(XilinxAsuAesState *s)
+{
+    switch (get_current_mode(s)) {
+    case ASU_AES_ECB:
+        return true;
+
+    default:
+        return false;
+    }
+}
+
 static inline bool key_split_enabled(XilinxAsuAesState *s)
 {
     return s->cm_enabled && FIELD_EX32(s->split_cfg, SPLIT_CFG, KEY_SPLIT);
@@ -367,6 +378,41 @@ static void asu_aes_go(XilinxAsuAesState *s, AsuAesBlock in, size_t len)
                                        enc ? "encrypt" : "decrypt");
 }
 
+static void send_aes_payload(XilinxAsuAesState *s);
+
+static void sink_notify_cb(void *opaque)
+{
+    XilinxAsuAesState *s = XILINX_ASU_AES(opaque);
+
+    if (s->ready) {
+        /* spurious notify */
+        return;
+    }
+
+    send_aes_payload(s);
+}
+
+static void send_aes_payload(XilinxAsuAesState *s)
+{
+    if (!stream_can_push(s->sink, sink_notify_cb, s)) {
+        s->ready = false;
+        return;
+    }
+
+    trace_xilinx_asu_aes_send(ASU_AES_BLOCK_SIZE, s->eop);
+
+    stream_push(s->sink, s->aes_ctx.out, ASU_AES_BLOCK_SIZE, s->eop);
+
+    s->ready = true;
+
+    if (s->src_notify_cb) {
+        StreamCanPushNotifyFn cb = s->src_notify_cb;
+
+        s->src_notify_cb = NULL;
+        cb(s->src_notify_opaque);
+    }
+}
+
 static void flush_fifo_in(XilinxAsuAesState *s)
 {
     g_assert(s->ready);
@@ -377,6 +423,10 @@ static void flush_fifo_in(XilinxAsuAesState *s)
 
     if (s->eop) {
         raise_done_irq(s);
+    }
+
+    if (current_mode_is_streaming(s)) {
+        send_aes_payload(s);
     }
 }
 
@@ -854,6 +904,9 @@ static void xilinx_asu_aes_realize(DeviceState *dev, Error **errp)
 }
 
 static Property xilinx_asu_aes_properties[] = {
+    DEFINE_PROP_LINK("stream-connected-aes",
+                     XilinxAsuAesState, sink,
+                     TYPE_STREAM_SINK, StreamSink *),
     DEFINE_PROP_LINK("keyvault",
                      XilinxAsuAesState, kv,
                      TYPE_XILINX_ASU_KV, XilinxAsuKvState *),

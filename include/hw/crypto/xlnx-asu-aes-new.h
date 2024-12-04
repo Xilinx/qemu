@@ -79,6 +79,7 @@ struct XilinxAsuAesState {
     MemoryRegion iomem;
     qemu_irq irq;
 
+    StreamSink *sink;
     XilinxAsuKvState *kv;
 
     StreamCanPushNotifyFn src_notify_cb;
