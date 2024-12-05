@@ -28,7 +28,7 @@
 #include "hw/registerfields.h"
 #include "hw/irq.h"
 #include "hw/qdev-properties.h"
-#include "hw/crypto/xlnx-asu-aes-new.h"
+#include "hw/crypto/xlnx-asu-aes.h"
 #include "hw/crypto/xlnx-asu-kv.h"
 #include "hw/stream.h"
 #include "trace.h"
