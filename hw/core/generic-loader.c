@@ -56,6 +56,19 @@ static void generic_loader_reset(void *opaque)
             cc->set_pc(s->cpu, s->addr);
         }
     }
+    
+    for (int i = 0; i < 31; i++) {
+        if (s->has_register_defaults[i]) {
+            CPUClass *cc = CPU_GET_CLASS(s->cpu);
+            uint8_t buf[sizeof(uint64_t)];
+            memcpy(buf, &s->register_defaults[i], sizeof(uint64_t));
+            if (cc && cc->gdb_write_register) {
+                cc->gdb_write_register(s->cpu, buf, i);
+            }
+        }
+    }
+
+
 
     if (s->data_len) {
         MemTxAttrs attrs = { .unspecified = 0,
@@ -186,6 +199,18 @@ static void generic_loader_realize(DeviceState *dev, Error **errp)
         s->data = cpu_to_le64(s->data);
     }
 
+    /* Store the CPU register default if specified */
+    if (s->reg) {
+        int reg_num;
+        if (sscanf(s->reg, "r%d", &reg_num) == 1 && reg_num >= 0 && reg_num < 31) {
+            s->register_defaults[reg_num] = s->data;
+            s->has_register_defaults[reg_num] = true;
+        } else {
+            error_setg(errp, "Unsupported register: %s", s->reg);
+            return;
+        }
+    }
+
     /* Xilinx: If qdev_hotplug is set then the machine has already been
      * created. This means we are hot-plugging a device. We need to forefully
      * call the reset function to ensure the operation completes.
@@ -207,6 +232,7 @@ static Property generic_loader_props[] = {
     DEFINE_PROP_BOOL("data-be", GenericLoaderState, data_be, false),
     DEFINE_PROP_UINT32("cpu-num", GenericLoaderState, cpu_num, CPU_NONE),
     DEFINE_PROP_BOOL("force-raw", GenericLoaderState, force_raw, false),
+    DEFINE_PROP_STRING("reg",GenericLoaderState, reg),
     DEFINE_PROP_STRING("file", GenericLoaderState, file),
     DEFINE_PROP_UINT16("attrs-requester-id", GenericLoaderState,
                        attrs.requester_id, 0),

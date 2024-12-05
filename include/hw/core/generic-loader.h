@@ -35,7 +35,7 @@ struct GenericLoaderState {
     uint32_t cpu_num;
 
     char *file;
-
+    char *reg;
     bool force_raw;
     bool data_be;
     bool set_pc;
@@ -45,6 +45,10 @@ struct GenericLoaderState {
         bool debug;
         uint16_t requester_id;
     } attrs;
+
+     // Add an array for storing default register values
+    bool has_register_defaults[31];  // Track if a default value is provided
+    uint64_t register_defaults[31];  // Default values for registers r0-r30
 };
 
 #define TYPE_GENERIC_LOADER "loader"
