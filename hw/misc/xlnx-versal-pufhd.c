@@ -28,6 +28,7 @@
 #include "crypto/hash.h"
 #include "hw/qdev-properties.h"
 #include "hw/hw.h"
+#include "exec/memory.h"
 
 #include "hw/misc/xlnx-aes.h"
 #include "xlnx-versal-pufhd.h"
