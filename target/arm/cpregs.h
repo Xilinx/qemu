@@ -1077,6 +1077,8 @@ static inline void define_cortex_a72_a57_a53_cp_reginfo(ARMCPU *cpu) { }
 void define_cortex_a72_a57_a53_cp_reginfo(ARMCPU *cpu);
 #endif
 
+CPAccessResult access_tvm_trvm(CPUARMState *, const ARMCPRegInfo *, bool);
+
 /* XILINX: cache maintenance support */
 bool generate_cache_maintenance(const ARMCPRegInfo *ri);
 void cpu_clean_inv_one(CPUState *cpu, run_on_cpu_data d);

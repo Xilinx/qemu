@@ -1124,7 +1124,10 @@ struct ArchCPU {
     bool prop_lpa2;
 
     /* DCZ blocksize, in log_2(words), ie low 4 bits of DCZID_EL0 */
-    uint32_t dcz_blocksize;
+    uint8_t dcz_blocksize;
+    /* GM blocksize, in log_2(words), ie low 4 bits of GMID_EL0 */
+    uint8_t gm_blocksize;
+
     uint64_t rvbar_prop; /* Property/input signals.  */
     int pe;
 
