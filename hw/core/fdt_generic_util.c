@@ -1631,6 +1631,20 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
             }
         }
 
+        /* Setup SSI CS line index */
+        if (object_dynamic_cast(dev, TYPE_SSI_PERIPHERAL)) {
+            uint32_t cs_index =
+                qemu_fdt_getprop_sized_cell(fdti->fdt, node_path, "reg",
+                                            0, 1, &errp);
+            if (errp) {
+                error_free(errp);
+                errp = NULL;
+                cs_index = 0;
+                DB_PRINT_NP(0, "WARNING: no cs found for SSI Peripheral");
+            }
+            qdev_prop_set_uint8(DEVICE(dev), "cs", cs_index);
+        }
+
         /* We also need to externally connect drives. Let's try to do that
          * here.
          */
