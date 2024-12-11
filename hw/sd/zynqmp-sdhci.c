@@ -101,7 +101,6 @@ static void zynqmp_sdhci_realize(DeviceState *dev, Error **errp)
     carddev_sd = qdev_new(TYPE_SD_CARD);
     object_property_add_child(OBJECT(dev), "sd-card",
                               OBJECT(carddev_sd));
-    object_property_set_bool(OBJECT(carddev_sd), "spi", false, &error_fatal);
 
     /*
      * drive_index is used to attach a card in SD mode.
