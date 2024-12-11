@@ -106,6 +106,7 @@ system_ss.add(when: 'CONFIG_XLNX_VERSAL_PMC', if_true: files(
   'xlnx-versal-pmc-pzm.c',
   'xlnx-versal-pmc-tamper.c',
   'xlnx-versal-pmc-error-management.c',
+  'xlnx-versal-cfu-v1.c',
   'xlnx-versal-cfu.c',
   'xlnx-cfi-if.c',
   'xlnx-versal-cframe-reg.c',
@@ -265,6 +266,8 @@ specific_ss.add(when: 'CONFIG_XLNX_VERSAL_ARM', if_true: files('xlnx-versal-crl.
 system_ss.add(when: 'CONFIG_XLNX_VERSAL', if_true: files(
   'xlnx-versal-xramc.c',
   'xlnx-versal-pmc-iou-slcr.c',
+  'xlnx-versal-cfu-v1.c',
+  'xlnx-versal-cfu.c',
   'xlnx-cfi-if.c',
 ))
 system_ss.add(when: 'CONFIG_STM32F2XX_SYSCFG', if_true: files('stm32f2xx_syscfg.c'))
