@@ -26,7 +26,7 @@
 #define TYPE_XLNX_VERSAL_CFRAME_REG "xlnx,cframe-reg-x"
 OBJECT_DECLARE_SIMPLE_TYPE(XlnxVersalCFrameReg, XLNX_VERSAL_CFRAME_REG)
 
-#define TYPE_XLNX_VERSAL_CFRAME_BCAST_REG "xlnx.cframe-bcast-reg"
+#define TYPE_XLNX_VERSAL_CFRAME_BCAST_REG "xlnx.cframe-bcast-reg-x"
 OBJECT_DECLARE_SIMPLE_TYPE(XlnxVersalCFrameBcastReg,
                            XLNX_VERSAL_CFRAME_BCAST_REG)
 
