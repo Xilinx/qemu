@@ -27,7 +27,7 @@ typedef struct UfsBus {
     SCSIBus parent_bus;
 } UfsBus;
 
-#define TYPE_UFS_BUS "ufs-bus"
+#define TYPE_UFS_BUS "x-ufs-bus"
 DECLARE_OBJ_CHECKERS(UfsBus, UfsBusClass, UFS_BUS, TYPE_UFS_BUS)
 
 typedef enum UfsRequestState {
