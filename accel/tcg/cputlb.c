@@ -1362,23 +1362,6 @@ static inline void cpu_unaligned_access(CPUState *cpu, vaddr addr,
                                           mmu_idx, retaddr);
 }
 
-static inline void cpu_transaction_failed(CPUState *cpu, hwaddr physaddr,
-                                          vaddr addr, unsigned size,
-                                          MMUAccessType access_type,
-                                          int mmu_idx, MemTxAttrs attrs,
-                                          MemTxResult response,
-                                          uintptr_t retaddr)
-{
-    CPUClass *cc = CPU_GET_CLASS(cpu);
-
-    if (!cpu->ignore_memory_transaction_failures &&
-        cc->tcg_ops->do_transaction_failed) {
-        cc->tcg_ops->do_transaction_failed(cpu, physaddr, addr, size,
-                                           access_type, mmu_idx, attrs,
-                                           response, retaddr);
-    }
-}
-
 static MemoryRegionSection *
 io_prepare(hwaddr *out_offset, CPUArchState *env, hwaddr xlat,
            MemTxAttrs attrs, vaddr addr, uintptr_t retaddr)
@@ -1400,15 +1383,21 @@ io_prepare(hwaddr *out_offset, CPUArchState *env, hwaddr xlat,
 
 static void io_failed(CPUArchState *env, CPUTLBEntryFull *full, vaddr addr,
                       unsigned size, MMUAccessType access_type, int mmu_idx,
-                      MemTxResult response, uintptr_t retaddr,
-                      MemoryRegionSection *section, hwaddr mr_offset)
+                      MemTxResult response, uintptr_t retaddr)
 {
-    hwaddr physaddr = (mr_offset +
-                       section->offset_within_address_space -
-                       section->offset_within_region);
+    CPUState *cpu = env_cpu(env);
 
-    cpu_transaction_failed(env_cpu(env), physaddr, addr, size, access_type,
-                           mmu_idx, full->attrs, response, retaddr);
+    if (!cpu->ignore_memory_transaction_failures) {
+        CPUClass *cc = CPU_GET_CLASS(cpu);
+
+        if (cc->tcg_ops->do_transaction_failed) {
+            hwaddr physaddr = full->phys_addr | (addr & ~TARGET_PAGE_MASK);
+
+            cc->tcg_ops->do_transaction_failed(cpu, physaddr, addr, size,
+                                               access_type, mmu_idx,
+                                               full->attrs, response, retaddr);
+        }
+    }
 }
 
 static uint64_t io_readx(CPUArchState *env, CPUTLBEntryFull *full,
@@ -1454,7 +1443,7 @@ static uint64_t io_readx(CPUArchState *env, CPUTLBEntryFull *full,
 
     if (r != MEMTX_OK) {
         io_failed(env, full, addr, memop_size(op), access_type, mmu_idx,
-                  r, retaddr, section, mr_offset);
+                  r, retaddr);
     }
     return val;
 }
@@ -1495,7 +1484,7 @@ static void io_writex(CPUArchState *env, CPUTLBEntryFull *full,
 
     if (r != MEMTX_OK) {
         io_failed(env, full, addr, memop_size(op), MMU_DATA_STORE, mmu_idx,
-                  r, retaddr, section, mr_offset);
+                  r, retaddr);
     }
 }
 
@@ -1778,23 +1767,25 @@ bool tlb_plugin_lookup(CPUState *cpu, vaddr addr, int mmu_idx,
     uintptr_t index = tlb_index(env, mmu_idx, addr);
     MMUAccessType access_type = is_store ? MMU_DATA_STORE : MMU_DATA_LOAD;
     uint64_t tlb_addr = tlb_read_idx(tlbe, access_type);
+    CPUTLBEntryFull *full;
 
     if (unlikely(!tlb_hit(tlb_addr, addr))) {
         return false;
     }
 
+    full = &env_tlb(env)->d[mmu_idx].fulltlb[index];
+    data->phys_addr = full->phys_addr | (addr & ~TARGET_PAGE_MASK);
+
     /* We must have an iotlb entry for MMIO */
     if (tlb_addr & TLB_MMIO) {
-        CPUTLBEntryFull *full = &env_tlb(env)->d[mmu_idx].fulltlb[index];
-        hwaddr xlat = full->xlat_section;
-
+        MemoryRegionSection *section =
+            iotlb_to_section(cpu, full->xlat_section & ~TARGET_PAGE_MASK,
+                             full->attrs);
         data->is_io = true;
-        data->v.io.offset = (xlat & TARGET_PAGE_MASK) + addr;
-        data->v.io.section =
-            iotlb_to_section(cpu, xlat & ~TARGET_PAGE_MASK, full->attrs);
+        data->mr = section->mr;
     } else {
         data->is_io = false;
-        data->v.ram.hostaddr = (void *)((uintptr_t)addr + tlbe->addend);
+        data->mr = NULL;
     }
     return true;
 }
