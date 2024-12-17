@@ -7996,7 +7996,7 @@ static void psxc_lpx_slcr_realize(DeviceState *dev, Error **errp)
     sysbus_init_irq(sbd, &s->pwr_reset_irq);
 
     qdev_init_gpio_in_named(dev, apu_standby_handler, "apu-wfi", 8);
-    qdev_init_gpio_in_named(dev, rpu_standby_handler, "rpu-wfi", 8);
+    qdev_init_gpio_in_named(dev, rpu_standby_handler, "rpu-wfi", 10);
     qdev_init_gpio_in_named(dev, apu_cluster_pchan_poweroff_handler,
                             "apu-cluster-pchan-poweroff", 4);
     qdev_init_gpio_in_named(dev, apu_cluster_pchan_wakeup_handler,
@@ -8144,12 +8144,12 @@ static const FDTGenericGPIOSet psxc_lpx_slcr_gpios[] = {
 
             /* inputs */
             { .name = "apu-wfi", .fdt_index = 64, .range = 8 },
-            { .name = "rpu-wfi", .fdt_index = 72, .range = 8 },
-            { .name = "apu-cluster-pchan-poweroff", .fdt_index = 80,
+            { .name = "rpu-wfi", .fdt_index = 72, .range = 10 },
+            { .name = "apu-cluster-pchan-poweroff", .fdt_index = 82,
               .range = 4 },
-            { .name = "apu-cluster-pchan-wakeup", .fdt_index = 84, .range = 4 },
-            { .name = "apu-core-pchan-poweroff", .fdt_index = 88, .range = 8 },
-            { .name = "apu-core-pchan-wakeup", .fdt_index = 96, .range = 8 },
+            { .name = "apu-cluster-pchan-wakeup", .fdt_index = 86, .range = 4 },
+            { .name = "apu-core-pchan-poweroff", .fdt_index = 90, .range = 8 },
+            { .name = "apu-core-pchan-wakeup", .fdt_index = 98, .range = 8 },
             { },
         }
     },
