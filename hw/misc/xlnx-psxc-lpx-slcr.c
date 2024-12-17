@@ -7894,11 +7894,11 @@ static void psxc_lpx_slcr_reset_enter(Object *obj, ResetType type)
     s->wakeup0_irq.status = WAKEUP0_IRQ_STATUS_RESET_VAL;
     s->wakeup0_irq.mask = WAKEUP0_IRQ_MASK_RESET_VAL;
     s->wakeup1_irq.status = WAKEUP1_IRQ_STATUS_RESET_VAL;
-    s->wakeup1_irq.mask = WAKEUP0_IRQ_MASK_RESET_VAL;
+    s->wakeup1_irq.mask = WAKEUP1_IRQ_MASK_RESET_VAL;
     s->power_dwn_irq.status = POWER_DWN_IRQ_STATUS_RESET_VAL;
-    s->power_dwn_irq.mask = WAKEUP0_IRQ_MASK_RESET_VAL;
+    s->power_dwn_irq.mask = POWER_DWN_IRQ_MASK_RESET_VAL;
     s->pwr_rst_irq.status = PWR_RST_IRQ_STATUS_RESET_VAL;
-    s->pwr_rst_irq.mask = WAKEUP0_IRQ_MASK_RESET_VAL;
+    s->pwr_rst_irq.mask = PWR_RST_IRQ_MASK_RESET_VAL;
     s->req_pwrup0_irq.status = REQ_PWRUP0_STATUS_RESET_VAL;
     s->req_pwrup0_irq.mask = REQ_PWRUP0_INT_MASK_RESET_VAL;
     s->req_pwrup1_irq.status = REQ_PWRUP1_STATUS_RESET_VAL;
