@@ -202,9 +202,8 @@ typedef struct DwcI3CDevice {
     struct {
         I3CEvent curr_event;
         uint32_t tr_bytes;
-        DwcI3CCmdQueueData tx_cmd;
-        DwcI3CCmdQueueData tx_arg;
-   } target;
+        uint32_t tx_cmd;
+    } target;
 
     ptimer_state *ibi_ptimer;
     /* Temporary storage for IBI data. */
