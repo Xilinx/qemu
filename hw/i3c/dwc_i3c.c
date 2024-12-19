@@ -2089,6 +2089,10 @@ static void dwc_i3c_device_write(void *opaque, hwaddr offset,
     case R_SLV_INTR_REQ:
         dwc_i3c_device_slv_intr_req_w(s, val32);
         break;
+    case R_SLV_CHAR_CTRL:
+        s->regs[addr] &= ast2600_i3c_device_ro[addr];
+        s->regs[addr] |= val32;
+        break;
     default:
         s->regs[addr] = val32;
         break;
