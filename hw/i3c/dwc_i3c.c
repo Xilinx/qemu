@@ -93,7 +93,7 @@ REG32(COMMAND_QUEUE_PORT,           0x0c)
 REG32(RESPONSE_QUEUE_PORT,          0x10)
     FIELD(RESPONSE_QUEUE_PORT, DL, 0, 16)
     FIELD(RESPONSE_QUEUE_PORT, CCCT, 16, 8)
-    FIELD(RESPONSE_QUEUE_PORT, TID, 24, 4)
+    FIELD(RESPONSE_QUEUE_PORT, TID, 24, 3)
     FIELD(RESPONSE_QUEUE_PORT, RX_RSP, 27, 1)
     FIELD(RESPONSE_QUEUE_PORT, ERR_STATUS, 28, 4)
 REG32(RX_TX_DATA_PORT,              0x14)
@@ -325,6 +325,14 @@ REG32(DEVICE_ADDR_TABLE_LOC1, 0x0)
     FIELD(DEVICE_ADDR_TABLE_LOC1, DEV_NACK_RETRY_CNT, 29, 2)
     FIELD(DEVICE_ADDR_TABLE_LOC1, LEGACY_I2C_DEVICE, 31, 1)
 
+/*
+ * Target Transmit Desc
+ */
+REG32(TGT_TR_CMD, 0x0)
+    FIELD(TGT_TR_CMD, CMD_ATTR, 0, 3)
+    FIELD(TGT_TR_CMD, TID, 3, 3)
+    FIELD(TGT_TR_CMD, DATA_LEN, 16, 16)
+
 static void dwc_i3c_device_cmd_queue_execute(DwcI3CDevice *s);
 
 static const uint32_t ast2600_i3c_device_resets[DWC_I3C_NR_REGS] = {
@@ -444,34 +452,6 @@ static inline bool dwc_i3c_device_role_master(DwcI3CDevice *s)
 {
     return s->cfg.device_role <= DR_SECONDARY_MASTER &&
            s->cur_master;
-}
-
-static uint16_t dwc_i3c_device_cmd_num_tx_bytes(DwcI3CCmdQueueData arg)
-{
-    uint8_t bs;
-    uint16_t data_len = 0;
-    if (arg.transfer_cmd.cmd_attr == DWC_I3C_CMD_ATTR_SHORT_DATA_ARG) {
-        bs = arg.short_arg.byte_strb;
-        switch (bs) {
-        case 0x7:
-            data_len = 3;
-            break;
-        case 0x3:
-            data_len = 2;
-            break;
-        case 0x1:
-            data_len = 1;
-            break;
-        case 0:
-            break;
-        default:
-            qemu_log_mask(LOG_GUEST_ERROR, "Invalid byte strobe 0x%x\n", bs);
-            break;
-        };
-    } else {
-      data_len = arg.transfer_arg.data_len;
-    }
-    return data_len;
 }
 
 static void dwc_i3c_device_update_irq(DwcI3CDevice *s)
@@ -2119,11 +2099,10 @@ static int dwc_i3c_target_event(I3CTarget *i3c, enum I3CEvent event)
         s->target.curr_event = event;
         break;
     case I3C_START_RECV:
-        if (dwc_i3c_device_cmd_queue_invalid(s)) {
+        if (fifo32_is_empty(&s->cmd_queue)) {
             return -1;
         }
-        s->target.tx_arg.word = dwc_i3c_device_cmd_queue_pop(s);
-        s->target.tx_cmd.word = dwc_i3c_device_cmd_queue_pop(s);
+        s->target.tx_cmd = dwc_i3c_device_cmd_queue_pop(s);
         s->target.curr_event = event;
         break;
     case I3C_STOP:
@@ -2133,12 +2112,11 @@ static int dwc_i3c_target_event(I3CTarget *i3c, enum I3CEvent event)
             s->target.tr_bytes = 0;
         } else if (s->target.curr_event == I3C_START_RECV) {
             dwc_i3c_device_resp_queue_push(s, 0,
-                s->target.tx_cmd.transfer_cmd.tid, 0,
-                dwc_i3c_device_cmd_num_tx_bytes(s->target.tx_arg) -
+                FIELD_EX32(s->target.tx_cmd, TGT_TR_CMD, TID), 0,
+                FIELD_EX32(s->target.tx_cmd, TGT_TR_CMD, DATA_LEN) -
                 s->target.tr_bytes, false);
             s->target.tr_bytes = 0;
-            s->target.tx_cmd.word = 0;
-            s->target.tx_arg.word = 0;
+            s->target.tx_cmd = 0;
         }
         s->target.curr_event = event;
         break;
@@ -2158,35 +2136,26 @@ static uint32_t device_i3c_target_rx(I3CTarget *i3c, uint8_t *data,
     DwcI3CDevice *s = ss->dwc_i3c;
     uint16_t cmd_data_len = 0;
     uint32_t send;
-    int i, j;
-    bool sdap = s->target.tx_cmd.transfer_cmd.sdap;
+    int i;
     uint8_t thld = ARRAY_FIELD_EX32(s->regs, DATA_BUFFER_THLD_CTRL,
                                     TX_START_THLD);
     thld = 1 << (thld + 1);
     thld = thld == 2 ? 1 : thld;
 
-    cmd_data_len = dwc_i3c_device_cmd_num_tx_bytes(s->target.tx_arg);
+    cmd_data_len = FIELD_EX32(s->target.tx_cmd, TGT_TR_CMD, DATA_LEN);
 
     if (!cmd_data_len) {
         return 0;
     }
 
     send = MIN(num_to_read, cmd_data_len - s->target.tr_bytes);
-    if (sdap) {
-        for (j = 0, i = s->target.tr_bytes; i < send; i++, j++) {
-            data[j] = i == 0 ? s->target.tx_arg.short_arg.byte0 :
-                      i == 1 ? s->target.tx_arg.short_arg.byte1 :
-                      i == 2 ? s->target.tx_arg.short_arg.byte2 : 0;
-        }
-    } else {
-        for (i = 0; i < send; i++) {
-            if (!fifo8_is_empty(&s->tx_queue.fifo)) {
-                data[i] = fifo8_pop(&s->tx_queue.fifo);
-             } else {
-                send = i;
-                break;
-             }
-        }
+    for (i = 0; i < send; i++) {
+        if (!fifo8_is_empty(&s->tx_queue.fifo)) {
+            data[i] = fifo8_pop(&s->tx_queue.fifo);
+         } else {
+            send = i;
+            break;
+         }
     }
 
     if (fifo8_num_free(&s->tx_queue.fifo) >= thld) {
