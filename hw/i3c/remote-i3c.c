@@ -375,10 +375,18 @@ static void remote_i3c_do_ibi(RemoteI3C *i3c)
         }
     }
 
-    if (i3c_target_ibi_finish(&i3c->parent_obj, 0x00)) {
-        resp = REMOTE_I3C_IBI_NACK;
+    if (resp == REMOTE_I3C_IBI_NACK ||
+        resp == REMOTE_I3C_IBI_DATA_NACK) {
+        qemu_chr_fe_write_all(&i3c->chr, &resp, sizeof(resp));
     }
-    qemu_chr_fe_write_all(&i3c->chr, &resp, sizeof(resp));
+
+    /*
+     * If its already nacked, skip sending the resp again
+     */
+    if (!i3c_target_ibi_finish(&i3c->parent_obj, 0x00) &&
+                           resp == REMOTE_I3C_IBI_ACK) {
+        qemu_chr_fe_write_all(&i3c->chr, &resp, sizeof(resp));
+    }
     remote_i3c_ibi_rx_state_reset(i3c);
 }
 
