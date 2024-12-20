@@ -2139,6 +2139,8 @@ static uint32_t device_i3c_target_rx(I3CTarget *i3c, uint8_t *data,
     int i;
     uint8_t thld = ARRAY_FIELD_EX32(s->regs, DATA_BUFFER_THLD_CTRL,
                                     TX_START_THLD);
+    uint32_t pop_word;
+
     thld = 1 << (thld + 1);
     thld = thld == 2 ? 1 : thld;
 
@@ -2149,9 +2151,11 @@ static uint32_t device_i3c_target_rx(I3CTarget *i3c, uint8_t *data,
     }
 
     send = MIN(num_to_read, cmd_data_len - s->target.tr_bytes);
-    for (i = 0; i < send; i++) {
-        if (!fifo8_is_empty(&s->tx_queue.fifo)) {
-            data[i] = fifo8_pop(&s->tx_queue.fifo);
+    for (i = 0; i < send; i += 4) {
+        pop_word = 0;
+        if (!fifo32_is_empty(&s->tx_queue)) {
+            pop_word = fifo32_pop(&s->tx_queue);
+            memcpy(&data[i], &pop_word, sizeof(pop_word));
          } else {
             send = i;
             break;
