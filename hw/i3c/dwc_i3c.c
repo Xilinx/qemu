@@ -799,7 +799,7 @@ static int dwc_i3c_device_ibi_handle(I3CBus *bus, I3CTarget *target,
 static int dwc_i3c_device_ibi_recv(I3CBus *bus, uint8_t data)
 {
     DwcI3CDevice *s = DWC_I3C(bus->qbus.parent);
-    if (fifo8_is_full(&s->ibi_data.ibi_intermediate_queue) &&
+    if (fifo8_is_full(&s->ibi_data.ibi_intermediate_queue) ||
         !s->cfg.ibi_has_data) {
         return -1;
     }
