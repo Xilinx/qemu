@@ -69,6 +69,7 @@ static void i3c_soc_chr_receive(void *opaque, const uint8_t *buf, int size)
 {
     I3CSoc *s = I3C_SOC(opaque);
     uint32_t ret;
+    uint8_t resp;
     uint8_t ReadBuf[128] = { 0 };
 
     if (!s->in_event) {
@@ -89,16 +90,11 @@ static void i3c_soc_chr_receive(void *opaque, const uint8_t *buf, int size)
         break;
 
     case REMOTE_I3C_START_RECV:
-        if (i3c_bus_busy(s->bus)) {
-            /* repeated start */
-            i3c_start_recv(s->bus, s->slave_da);
-        }
+        resp = i3c_start_recv(s->bus, s->slave_da);
+        qemu_chr_fe_write_all(&s->chr, &resp, 1);
         s->in_event = 0;
         break;
     case REMOTE_I3C_RECV:
-       if (!i3c_bus_busy(s->bus)) {
-            i3c_start_recv(s->bus, s->slave_da);
-        }
         s->data_size = 4;
         s->in_event = I3C_SOC_RECV_STAGE2;
         break;
@@ -114,33 +110,23 @@ static void i3c_soc_chr_receive(void *opaque, const uint8_t *buf, int size)
         break;
 
     case REMOTE_I3C_START_CCC_READ:
-        if (i3c_bus_busy(s->bus)) {
-            /* repeated start */
-            i3c_start_recv(s->bus,
-                    CCC_IS_DIRECT(s->bus->ccc) ? s->slave_da : 0x7e);
-        }
+        resp = i3c_start_recv(s->bus,
+                CCC_IS_DIRECT(s->bus->ccc) ? s->slave_da : 0x7e);
+        qemu_chr_fe_write_all(&s->chr, &resp, 1);
         s->in_event = 0;
         break;
     case REMOTE_I3C_HANDLE_CCC_READ:
-       if (!i3c_bus_busy(s->bus)) {
-            i3c_start_recv(s->bus, 0x7e);
-        }
         s->data_size = 4;
         s->in_event = I3C_SOC_HANDLE_CCC_READ_STAGE2;
         break;
 
 
     case REMOTE_I3C_START_SEND:
-        if (i3c_bus_busy(s->bus)) {
-            /* repeated start */
-            i3c_start_send(s->bus, s->slave_da);
-        }
+        resp = i3c_start_send(s->bus, s->slave_da);
+        qemu_chr_fe_write_all(&s->chr, &resp, 1);
         s->in_event = 0;
         break;
     case REMOTE_I3C_SEND:
-       if (!i3c_bus_busy(s->bus)) {
-            i3c_start_send(s->bus, s->slave_da);
-        }
         s->data_size = 4;
         s->in_event = I3C_SOC_SEND_STAGE2;
         break;
@@ -154,18 +140,14 @@ static void i3c_soc_chr_receive(void *opaque, const uint8_t *buf, int size)
         break;
 
     case REMOTE_I3C_START_CCC_WRITE:
-        if (i3c_bus_busy(s->bus)) {
-            /* repeated start */
-            i3c_start_send(s->bus,
-                    CCC_IS_DIRECT(s->bus->ccc) ? s->slave_da : 0x7e);
+        if (!s->bus->in_entdaa) {
+            resp = i3c_start_send(s->bus,
+                   CCC_IS_DIRECT(s->bus->ccc) ? s->slave_da : 0x7e);
         }
+        qemu_chr_fe_write_all(&s->chr, &resp, 1);
         s->in_event = 0;
         break;
     case REMOTE_I3C_HANDLE_CCC_WRITE:
-       if (!i3c_bus_busy(s->bus) &&
-           !s->bus->in_entdaa) {
-            i3c_start_send(s->bus, 0x7e);
-        }
         s->data_size = 4;
         s->in_event = I3C_SOC_HANDLE_CCC_WRITE_STAGE2;
         break;
