@@ -525,6 +525,13 @@ int i3c_target_check_bus_busy(I3CTarget *t)
     return i3c_bus_busy(bus);
 }
 
+int i3c_target_check_bus_in_broadcast(I3CTarget *t)
+{
+    I3CBus *bus = I3C_BUS(t->qdev.parent_bus);
+
+    return bus->broadcast;
+}
+
 int i3c_target_send_ibi(I3CTarget *t, uint8_t addr, bool is_recv)
 {
     I3CBus *bus = I3C_BUS(t->qdev.parent_bus);

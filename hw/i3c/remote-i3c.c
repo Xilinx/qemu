@@ -192,13 +192,16 @@ static int remote_i3c_event(I3CTarget *t, enum I3CEvent event)
 {
     RemoteI3C *i3c = REMOTE_I3C(t);
     uint8_t type;
+    uint8_t resp;
     trace_remote_i3c_event(i3c->cfg.name, event);
     switch (event) {
     case I3C_START_RECV:
-        type = REMOTE_I3C_START_RECV;
+        type = !i3c_target_check_bus_in_broadcast(t) ? REMOTE_I3C_START_RECV :
+               REMOTE_I3C_START_CCC_READ;
         break;
     case I3C_START_SEND:
-        type = REMOTE_I3C_START_SEND;
+        type = !i3c_target_check_bus_in_broadcast(t) ? REMOTE_I3C_START_SEND :
+               REMOTE_I3C_START_CCC_WRITE;
         break;
     case I3C_STOP:
         type = REMOTE_I3C_STOP;
@@ -228,6 +231,17 @@ static int remote_i3c_event(I3CTarget *t, enum I3CEvent event)
     }
 
     qemu_chr_fe_write_all(&i3c->chr, &type, 1);
+    switch (type) {
+    case REMOTE_I3C_START_RECV:
+    case REMOTE_I3C_START_SEND:
+    case REMOTE_I3C_START_CCC_READ:
+    case REMOTE_I3C_START_CCC_WRITE:
+        qemu_chr_fe_read_all(&i3c->chr, &resp, 1);
+        return resp;
+    default:
+        break;
+    };
+
     return 0;
 }
 
