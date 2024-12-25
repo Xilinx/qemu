@@ -1400,67 +1400,6 @@ static void io_failed(CPUArchState *env, CPUTLBEntryFull *full, vaddr addr,
     }
 }
 
-static uint64_t io_readx(CPUArchState *env, CPUTLBEntryFull *full,
-                         int mmu_idx, vaddr addr, uintptr_t retaddr,
-                         MMUAccessType access_type, MemOp op)
-{
-    MemoryRegionSection *section;
-    hwaddr mr_offset;
-    MemoryRegion *mr;
-    MemTxResult r;
-    uint64_t val;
-
-    section = io_prepare(&mr_offset, env, full->xlat_section,
-                         full->attrs, addr, retaddr);
-    mr = section->mr;
-
-    {
-        CPUState *cpu = env_cpu(env);
-
-        QEMU_IOTHREAD_LOCK_GUARD();
-        /*
-         * Xilinx: Initialize to 0 because address_space_rw() does no
-         * initialization.
-         */
-        val = 0;
-
-        /*
-         * Xilinx: Make sure we first check if the MemoryRegion is an IOMMU region.
-         * This is required to make sure the XMPU works as expected.
-         */
-        if (memory_region_get_iommu(mr)) {
-            r = address_space_rw(cpu->as, mr_offset, full->attrs,
-                                 (void *) &val, memop_size(op), false);
-            switch(memop_size(op)) {
-            case 8:
-                val = bswap64(val);
-                break;
-            case 4:
-                val = bswap32(val);
-                break;
-            case 2:
-                val = bswap16(val);
-                break;
-            default:
-                break;
-            }
-        } else {
-            r = memory_region_dispatch_read(mr, mr_offset, &val, op, full->attrs);
-        }
-
-        if (qemu_etrace_mask(ETRACE_F_MEM)) {
-            etrace_mem_access(&qemu_etracer, 0, 0,
-                              addr, memop_size(op), MEM_READ, val);
-        }
-    }
-
-    if (r != MEMTX_OK) {
-        io_failed(env, full, addr, memop_size(op), access_type, mmu_idx,
-                  r, retaddr);
-    }
-    return val;
-}
-
 static void io_writex(CPUArchState *env, CPUTLBEntryFull *full,
                       int mmu_idx, uint64_t val, vaddr addr,
                       uintptr_t retaddr, MemOp op)
@@ -2125,40 +2064,77 @@ static uint64_t do_ld_mmio_beN(CPUArchState *env, CPUTLBEntryFull *full,
                                uint64_t ret_be, vaddr addr, int size,
                                int mmu_idx, MMUAccessType type, uintptr_t ra)
 {
-    uint64_t t;
+    MemoryRegionSection *section;
+    hwaddr mr_offset;
+    MemoryRegion *mr;
+    MemTxAttrs attrs;
 
     tcg_debug_assert(size > 0 && size <= 8);
+
+    attrs = full->attrs;
+    section = io_prepare(&mr_offset, env, full->xlat_section, attrs, addr, ra);
+    mr = section->mr;
+
     do {
+        MemOp this_mop;
+        unsigned this_size;
+        uint64_t val;
+        MemTxResult r;
+
         /* Read aligned pieces up to 8 bytes. */
-        switch (size & 7) {
-        case 1:
-        case 3:
-        case 5:
-        case 7:
-            t = io_readx(env, full, mmu_idx, addr, ra, type, MO_UB);
-            ret_be = (ret_be << 8) | t;
-            size -= 1;
-            addr += 1;
-            break;
-        case 2:
-        case 6:
-            t = io_readx(env, full, mmu_idx, addr, ra, type, MO_BEUW);
-            ret_be = (ret_be << 16) | t;
-            size -= 2;
-            addr += 2;
-            break;
-        case 4:
-            t = io_readx(env, full, mmu_idx, addr, ra, type, MO_BEUL);
-            ret_be = (ret_be << 32) | t;
-            size -= 4;
-            addr += 4;
-            break;
-        case 0:
-            return io_readx(env, full, mmu_idx, addr, ra, type, MO_BEUQ);
-        default:
-            qemu_build_not_reached();
+        this_mop = ctz32(size | 8);
+        this_size = 1 << this_mop;
+        this_mop |= MO_BE;
+
+        {
+            QEMU_IOTHREAD_LOCK_GUARD();
+            /*
+             * Xilinx: Initialize to 0 because address_space_rw() does no
+             * initialization.
+             */
+            val = 0;
+            /*
+             * Xilinx: Make sure we first check if the MemoryRegion is an IOMMU region.
+             * This is required to make sure the XMPU works as expected.
+             */
+            if (memory_region_get_iommu(mr)) {
+                CPUState *cpu = env_cpu(env);
+                r = address_space_rw(cpu->as, mr_offset, full->attrs,
+                                     (void *) &val, this_size, false);
+                switch(this_size) {
+                case 8:
+                    val = bswap64(val);
+                    break;
+                case 4:
+                    val = bswap32(val);
+                    break;
+                case 2:
+                    val = bswap16(val);
+                    break;
+                default:
+                    break;
+                }
+            } else {
+                r = memory_region_dispatch_read(mr, mr_offset, &val, this_mop, attrs);
+            }
+            if (qemu_etrace_mask(ETRACE_F_MEM)) {
+                etrace_mem_access(&qemu_etracer, 0, 0,
+                                  addr, this_size, MEM_READ, val);
+            }
         }
+        if (unlikely(r != MEMTX_OK)) {
+            io_failed(env, full, addr, this_size, type, mmu_idx, r, ra);
+        }
+        if (this_size == 8) {
+            return val;
+        }
+
+        ret_be = (ret_be << (this_size * 8)) | val;
+        addr += this_size;
+        mr_offset += this_size;
+        size -= this_size;
     } while (size);
+
     return ret_be;
 }
 
