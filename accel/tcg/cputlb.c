@@ -1400,46 +1400,6 @@ static void io_failed(CPUArchState *env, CPUTLBEntryFull *full, vaddr addr,
     }
 }
 
-static void io_writex(CPUArchState *env, CPUTLBEntryFull *full,
-                      int mmu_idx, uint64_t val, vaddr addr,
-                      uintptr_t retaddr, MemOp op)
-{
-    MemoryRegionSection *section;
-    hwaddr mr_offset;
-    MemoryRegion *mr;
-    MemTxResult r;
-
-    section = io_prepare(&mr_offset, env, full->xlat_section,
-                         full->attrs, addr, retaddr);
-    mr = section->mr;
-
-    {
-        CPUState *cpu = env_cpu(env);
-
-        QEMU_IOTHREAD_LOCK_GUARD();
-        /*
-         * Xilinx: Make sure we first check if iommu_ops is avaliable. This is
-         * required to make sure the XMPU works as expected.
-         */
-        if (memory_region_get_iommu(mr)) {
-            r = address_space_rw(cpu->as, mr_offset, full->attrs,
-                                 (void *) &val, memop_size(op), true);
-        } else {
-            r = memory_region_dispatch_write(mr, mr_offset, val, op, full->attrs);
-        }
-    
-        if (qemu_etrace_mask(ETRACE_F_MEM)) {
-            etrace_mem_access(&qemu_etracer, 0, 0,
-                              addr, memop_size(op), MEM_WRITE, val);
-        }
-    }
-
-    if (r != MEMTX_OK) {
-        io_failed(env, full, addr, memop_size(op), MMU_DATA_STORE, mmu_idx,
-                  r, retaddr);
-    }
-}
-
 /* Return true if ADDR is present in the victim tlb, and has been copied
    back to the main tlb.  */
 static bool victim_tlb_hit(CPUArchState *env, size_t mmu_idx, size_t index,
@@ -2743,39 +2703,59 @@ static uint64_t do_st_mmio_leN(CPUArchState *env, CPUTLBEntryFull *full,
                                uint64_t val_le, vaddr addr, int size,
                                int mmu_idx, uintptr_t ra)
 {
+    MemoryRegionSection *section;
+    hwaddr mr_offset;
+    MemoryRegion *mr;
+    MemTxAttrs attrs;
+
     tcg_debug_assert(size > 0 && size <= 8);
 
+    attrs = full->attrs;
+    section = io_prepare(&mr_offset, env, full->xlat_section, attrs, addr, ra);
+    mr = section->mr;
+
     do {
+        MemOp this_mop;
+        unsigned this_size;
+        MemTxResult r;
+
         /* Store aligned pieces up to 8 bytes. */
-        switch (size & 7) {
-        case 1:
-        case 3:
-        case 5:
-        case 7:
-            io_writex(env, full, mmu_idx, val_le, addr, ra, MO_UB);
-            val_le >>= 8;
-            size -= 1;
-            addr += 1;
-            break;
-        case 2:
-        case 6:
-            io_writex(env, full, mmu_idx, val_le, addr, ra, MO_LEUW);
-            val_le >>= 16;
-            size -= 2;
-            addr += 2;
-            break;
-        case 4:
-            io_writex(env, full, mmu_idx, val_le, addr, ra, MO_LEUL);
-            val_le >>= 32;
-            size -= 4;
-            addr += 4;
-            break;
-        case 0:
-            io_writex(env, full, mmu_idx, val_le, addr, ra, MO_LEUQ);
-            return 0;
-        default:
-            qemu_build_not_reached();
+        this_mop = ctz32(size | 8);
+        this_size = 1 << this_mop;
+        this_mop |= MO_LE;
+
+        {
+            CPUState *cpu = env_cpu(env);
+
+            QEMU_IOTHREAD_LOCK_GUARD();
+            /*
+             * Xilinx: Make sure we first check if iommu_ops is avaliable. This is
+             * required to make sure the XMPU works as expected.
+             */
+            if (memory_region_get_iommu(mr)) {
+                r = address_space_rw(cpu->as, mr_offset, full->attrs,
+                                     (void *) &val_le, this_size, true);
+            } else {
+                r = memory_region_dispatch_write(mr, mr_offset, val_le,
+                                                 this_mop, attrs);
+            }
+            if (qemu_etrace_mask(ETRACE_F_MEM)) {
+                etrace_mem_access(&qemu_etracer, 0, 0,
+                                  addr, this_size, MEM_WRITE, val_le);
+            }
         }
+        if (unlikely(r != MEMTX_OK)) {
+            io_failed(env, full, addr, this_size, MMU_DATA_STORE,
+                      mmu_idx, r, ra);
+        }
+        if (this_size == 8) {
+            return 0;
+        }
+
+        val_le >>= this_size * 8;
+        addr += this_size;
+        mr_offset += this_size;
+        size -= this_size;
     } while (size);
 
     return val_le;
