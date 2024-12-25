@@ -3108,12 +3108,10 @@ static int dump_map_entry(OutputFormat output_format, MapEntry *e,
     case OFORMAT_JSON:
         printf("{ \"start\": %"PRId64", \"length\": %"PRId64","
                " \"depth\": %"PRId64", \"present\": %s, \"zero\": %s,"
-               " \"data\": %s, \"compressed\": %s",
-               e->start, e->length, e->depth,
+               " \"data\": %s", e->start, e->length, e->depth,
                e->present ? "true" : "false",
                e->zero ? "true" : "false",
-               e->data ? "true" : "false",
-               e->compressed ? "true" : "false");
+               e->data ? "true" : "false");
         if (e->has_offset) {
             printf(", \"offset\": %"PRId64"", e->offset);
         }
@@ -3174,7 +3172,6 @@ static int get_block_status(BlockDriverState *bs, int64_t offset,
         .length = bytes,
         .data = !!(ret & BDRV_BLOCK_DATA),
         .zero = !!(ret & BDRV_BLOCK_ZERO),
-        .compressed = !!(ret & BDRV_BLOCK_COMPRESSED),
         .offset = map,
         .has_offset = has_offset,
         .depth = depth,
@@ -3192,7 +3189,6 @@ static inline bool entry_mergeable(const MapEntry *curr, const MapEntry *next)
     }
     if (curr->zero != next->zero ||
         curr->data != next->data ||
-        curr->compressed != next->compressed ||
         curr->depth != next->depth ||
         curr->present != next->present ||
         !curr->filename != !next->filename ||
