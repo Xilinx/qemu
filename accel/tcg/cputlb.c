@@ -2020,21 +2020,11 @@ static void *atomic_mmu_lookup(CPUArchState *env, vaddr addr, MemOpIdx oi,
  * Load @size bytes from @addr, which is memory-mapped i/o.
  * The bytes are concatenated in big-endian order with @ret_be.
  */
-static uint64_t do_ld_mmio_beN(CPUArchState *env, CPUTLBEntryFull *full,
-                               uint64_t ret_be, vaddr addr, int size,
-                               int mmu_idx, MMUAccessType type, uintptr_t ra)
+static uint64_t int_ld_mmio_beN(CPUArchState *env, CPUTLBEntryFull *full,
+                                uint64_t ret_be, vaddr addr, int size,
+                                int mmu_idx, MMUAccessType type, uintptr_t ra,
+                                MemoryRegion *mr, hwaddr mr_offset)
 {
-    MemoryRegionSection *section;
-    hwaddr mr_offset;
-    MemoryRegion *mr;
-    MemTxAttrs attrs;
-
-    tcg_debug_assert(size > 0 && size <= 8);
-
-    attrs = full->attrs;
-    section = io_prepare(&mr_offset, env, full->xlat_section, attrs, addr, ra);
-    mr = section->mr;
-
     do {
         MemOp this_mop;
         unsigned this_size;
@@ -2047,7 +2037,6 @@ static uint64_t do_ld_mmio_beN(CPUArchState *env, CPUTLBEntryFull *full,
         this_mop |= MO_BE;
 
         {
-            QEMU_IOTHREAD_LOCK_GUARD();
             /*
              * Xilinx: Initialize to 0 because address_space_rw() does no
              * initialization.
@@ -2075,7 +2064,8 @@ static uint64_t do_ld_mmio_beN(CPUArchState *env, CPUTLBEntryFull *full,
                     break;
                 }
             } else {
-                r = memory_region_dispatch_read(mr, mr_offset, &val, this_mop, attrs);
+                r = memory_region_dispatch_read(mr, mr_offset, &val,
+                                                this_mop, full->attrs);
             }
             if (qemu_etrace_mask(ETRACE_F_MEM)) {
                 etrace_mem_access(&qemu_etracer, 0, 0,
@@ -2096,6 +2086,56 @@ static uint64_t do_ld_mmio_beN(CPUArchState *env, CPUTLBEntryFull *full,
     } while (size);
 
     return ret_be;
+}
+
+static uint64_t do_ld_mmio_beN(CPUArchState *env, CPUTLBEntryFull *full,
+                               uint64_t ret_be, vaddr addr, int size,
+                               int mmu_idx, MMUAccessType type, uintptr_t ra)
+{
+    MemoryRegionSection *section;
+    MemoryRegion *mr;
+    hwaddr mr_offset;
+    MemTxAttrs attrs;
+    uint64_t ret;
+
+    tcg_debug_assert(size > 0 && size <= 8);
+
+    attrs = full->attrs;
+    section = io_prepare(&mr_offset, env, full->xlat_section, attrs, addr, ra);
+    mr = section->mr;
+
+    qemu_mutex_lock_iothread();
+    ret = int_ld_mmio_beN(env, full, ret_be, addr, size, mmu_idx,
+                          type, ra, mr, mr_offset);
+    qemu_mutex_unlock_iothread();
+
+    return ret;
+}
+
+static Int128 do_ld16_mmio_beN(CPUArchState *env, CPUTLBEntryFull *full,
+                               uint64_t ret_be, vaddr addr, int size,
+                               int mmu_idx, uintptr_t ra)
+{
+    MemoryRegionSection *section;
+    MemoryRegion *mr;
+    hwaddr mr_offset;
+    MemTxAttrs attrs;
+    uint64_t a, b;
+
+    tcg_debug_assert(size > 8 && size <= 16);
+
+    attrs = full->attrs;
+    section = io_prepare(&mr_offset, env, full->xlat_section, attrs, addr, ra);
+    mr = section->mr;
+
+    qemu_mutex_lock_iothread();
+    a = int_ld_mmio_beN(env, full, ret_be, addr, size - 8, mmu_idx,
+                        MMU_DATA_LOAD, ra, mr, mr_offset);
+    b = int_ld_mmio_beN(env, full, ret_be, addr + size - 8, 8, mmu_idx,
+                        MMU_DATA_LOAD, ra, mr, mr_offset + size - 8);
+    qemu_mutex_unlock_iothread();
+
+    return int128_make128(b, a);
 }
 
 /**
@@ -2240,7 +2280,6 @@ static uint64_t do_ld_beN(CPUArchState *env, MMULookupPageData *p,
     unsigned tmp, half_size;
 
     if (unlikely(p->flags & TLB_MMIO)) {
-        QEMU_IOTHREAD_LOCK_GUARD();
         return do_ld_mmio_beN(env, p->full, ret_be, p->addr, p->size,
                               mmu_idx, type, ra);
     }
@@ -2291,12 +2330,7 @@ static Int128 do_ld16_beN(CPUArchState *env, MMULookupPageData *p,
     MemOp atom;
 
     if (unlikely(p->flags & TLB_MMIO)) {
-        QEMU_IOTHREAD_LOCK_GUARD();
-        a = do_ld_mmio_beN(env, p->full, a, p->addr, size - 8,
-                           mmu_idx, MMU_DATA_LOAD, ra);
-        b = do_ld_mmio_beN(env, p->full, 0, p->addr + 8, 8,
-                           mmu_idx, MMU_DATA_LOAD, ra);
-        return int128_make128(b, a);
+        return do_ld16_mmio_beN(env, p->full, a, p->addr, size, mmu_idx, ra);
     }
 
     /*
@@ -2341,7 +2375,6 @@ static uint8_t do_ld_1(CPUArchState *env, MMULookupPageData *p, int mmu_idx,
                        MMUAccessType type, uintptr_t ra)
 {
     if (unlikely(p->flags & TLB_MMIO)) {
-        QEMU_IOTHREAD_LOCK_GUARD();
         return do_ld_mmio_beN(env, p->full, 0, p->addr, 1, mmu_idx, type, ra);
     } else {
         return *(uint8_t *)p->haddr;
@@ -2552,12 +2585,8 @@ static Int128 do_ld16_mmu(CPUArchState *env, vaddr addr,
     crosspage = mmu_lookup(env, addr, oi, ra, MMU_DATA_LOAD, &l);
     if (likely(!crosspage)) {
         if (unlikely(l.page[0].flags & TLB_MMIO)) {
-            QEMU_IOTHREAD_LOCK_GUARD();
-            a = do_ld_mmio_beN(env, l.page[0].full, 0, addr, 8,
-                               l.mmu_idx, MMU_DATA_LOAD, ra);
-            b = do_ld_mmio_beN(env, l.page[0].full, 0, addr + 8, 8,
-                               l.mmu_idx, MMU_DATA_LOAD, ra);
-            ret = int128_make128(b, a);
+            ret = do_ld16_mmio_beN(env, l.page[0].full, 0, addr, 16,
+                                   l.mmu_idx, ra);
             if ((l.memop & MO_BSWAP) == MO_LE) {
                 ret = bswap128(ret);
             }
