@@ -423,16 +423,6 @@ void dump_exec_info(GString *buf);
 /* accel/tcg/cpu-exec.c */
 int cpu_exec(CPUState *cpu);
 
-/**
- * cpu_set_cpustate_pointers(cpu)
- * @cpu: The cpu object
- *
- * Set the generic pointers in CPUState into the outer object.
- */
-static inline void cpu_set_cpustate_pointers(ArchCPU *cpu)
-{
-}
-
 /* Validate correct placement of CPUArchState. */
 QEMU_BUILD_BUG_ON(offsetof(ArchCPU, parent_obj) != 0);
 QEMU_BUILD_BUG_ON(offsetof(ArchCPU, env) != sizeof(CPUState));
@@ -460,17 +450,6 @@ static inline CPUState *env_cpu(CPUArchState *env)
 }
 
 /**
- * env_neg(env)
- * @env: The architecture environment
- *
- * Return the CPUNegativeOffsetState associated with the environment.
- */
-static inline CPUNegativeOffsetState *env_neg(CPUArchState *env)
-{
-    return &env_cpu(env)->neg;
-}
-
-/**
  * env_tlb(env)
  * @env: The architecture environment
  *
@@ -478,7 +457,7 @@ static inline CPUNegativeOffsetState *env_neg(CPUArchState *env)
  */
 static inline CPUTLB *env_tlb(CPUArchState *env)
 {
-    return &env_neg(env)->tlb;
+    return &env_cpu(env)->neg.tlb;
 }
 
 #endif /* CPU_ALL_H */
