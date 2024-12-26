@@ -121,7 +121,7 @@ static void mb_restore_state_to_opc(CPUState *cs,
 
 static bool mb_cpu_has_work(CPUState *cs)
 {
-    CPUMBState *env = cs->env_ptr;
+    CPUMBState *env = cpu_env(cs);
     bool r;
 
     r = (cs->interrupt_request & (CPU_INTERRUPT_HARD | CPU_INTERRUPT_NMI))

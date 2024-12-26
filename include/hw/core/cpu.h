@@ -435,7 +435,6 @@ struct qemu_work_item;
  * @num_ases: number of CPUAddressSpaces in @cpu_ases
  * @as: Pointer to the first AddressSpace, for the convenience of targets which
  *      only have a single AddressSpace
- * @env_ptr: Pointer to subclass-specific CPUArchState field.
  * @gdb_regs: Additional GDB registers.
  * @gdb_num_regs: Number of total registers accessible to GDB.
  * @gdb_num_g_regs: Number of registers in GDB 'g' packets.
@@ -508,8 +507,6 @@ struct CPUState {
     int num_ases;
     AddressSpace *as;
     MemoryRegion *memory;
-
-    CPUArchState *env_ptr;
 
     CPUJumpCache *tb_jmp_cache;
 
@@ -595,6 +592,12 @@ struct CPUState {
 /* Validate placement of CPUNegativeOffsetState. */
 QEMU_BUILD_BUG_ON(offsetof(CPUState, neg) !=
                   sizeof(CPUState) - sizeof(CPUNegativeOffsetState));
+
+static inline CPUArchState *cpu_env(CPUState *cpu)
+{
+    /* We validate that CPUArchState follows CPUState in cpu-all.h. */
+    return (CPUArchState *)(cpu + 1);
+}
 
 typedef QTAILQ_HEAD(CPUTailQ, CPUState) CPUTailQ;
 extern CPUTailQ cpus;
