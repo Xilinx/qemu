@@ -363,8 +363,10 @@ typedef struct {
 struct ArchCPU {
     /*< private >*/
     CPUState parent_obj;
-
     /*< public >*/
+
+    CPUMBState env;
+
     qemu_irq mb_sleep;
 
     bool ns_axi_dp;
@@ -372,8 +374,6 @@ struct ArchCPU {
     bool ns_axi_dc;
     bool ns_axi_ic;
 
-    CPUNegativeOffsetState neg;
-    CPUMBState env;
     DynamicMBGDBXMLInfo dyn_xml;
 
     MicroBlazeCPUConfig cfg;

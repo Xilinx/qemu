@@ -54,8 +54,8 @@ static TCGOp *gen_tb_start(DisasContextBase *db, uint32_t cflags)
     if ((cflags & CF_USE_ICOUNT) || !(cflags & CF_NOIRQ)) {
         count = tcg_temp_new_i32();
         tcg_gen_ld_i32(count, cpu_env,
-                       offsetof(ArchCPU, neg.icount_decr.u32) -
-                       offsetof(ArchCPU, env));
+                       offsetof(ArchCPU, parent_obj.neg.icount_decr.u32)
+                       - offsetof(ArchCPU, env));
     }
 
     if (cflags & CF_USE_ICOUNT) {
@@ -84,8 +84,8 @@ static TCGOp *gen_tb_start(DisasContextBase *db, uint32_t cflags)
 
     if (cflags & CF_USE_ICOUNT) {
         tcg_gen_st16_i32(count, cpu_env,
-                         offsetof(ArchCPU, neg.icount_decr.u16.low) -
-                         offsetof(ArchCPU, env));
+                         offsetof(ArchCPU, parent_obj.neg.icount_decr.u16.low)
+                         - offsetof(ArchCPU, env));
         /*
          * cpu->can_do_io is set automatically here at the beginning of
          * each translation block.  The cost is minimal and only paid for

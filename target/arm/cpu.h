@@ -901,7 +901,6 @@ struct ArchCPU {
     CPUState parent_obj;
     /*< public >*/
 
-    CPUNegativeOffsetState neg;
     CPUARMState env;
 
     bool is_in_wfi;

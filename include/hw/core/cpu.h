@@ -353,8 +353,8 @@ typedef union IcountDecr {
 } IcountDecr;
 
 /*
- * This structure must be placed in ArchCPU immediately
- * before CPUArchState, as a field named "neg".
+ * Elements of CPUState most efficiently accessed from CPUArchState,
+ * via small negative offsets.
  */
 typedef struct CPUNegativeOffsetState {
     CPUTLB tlb;
@@ -461,6 +461,9 @@ struct qemu_work_item;
  *    dirty ring structure.
  *
  * State of one CPU core or thread.
+ *
+ * Align, in order to match possible alignment required by CPUArchState,
+ * and eliminate a hole between CPUState and CPUArchState within ArchCPU.
  */
 struct CPUState {
     /*< private >*/
@@ -585,7 +588,17 @@ struct CPUState {
 
     /* track IOMMUs whose translations we've cached in the TCG TLB */
     GArray *iommu_notifiers;
+
+    /*
+     * MUST BE LAST in order to minimize the displacement to CPUArchState.
+     */
+    char neg_align[-sizeof(CPUNegativeOffsetState) % 16] QEMU_ALIGNED(16);
+    CPUNegativeOffsetState neg;
 };
+
+/* Validate placement of CPUNegativeOffsetState. */
+QEMU_BUILD_BUG_ON(offsetof(CPUState, neg) !=
+                  sizeof(CPUState) - sizeof(CPUNegativeOffsetState));
 
 typedef QTAILQ_HEAD(CPUTailQ, CPUState) CPUTailQ;
 extern CPUTailQ cpus;
