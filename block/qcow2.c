@@ -5283,7 +5283,7 @@ static ImageInfoSpecific *qcow2_get_specific_info(BlockDriverState *bs,
     return spec_info;
 }
 
-static int qcow2_has_zero_init(BlockDriverState *bs)
+static int coroutine_mixed_fn qcow2_has_zero_init(BlockDriverState *bs)
 {
     BDRVQcow2State *s = bs->opaque;
     bool preallocated;
