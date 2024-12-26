@@ -1049,8 +1049,8 @@ static void smmuv3_notify_iova(IOMMUMemoryRegion *mr,
     SMMUv3State *s = sdev->smmu;
 
     if (!tg) {
-        SMMUEventInfo event = {.inval_ste_allowed = true};
-        SMMUTransCfg *cfg = smmuv3_get_config(sdev, &event, 0);
+        SMMUEventInfo eventinfo = {.inval_ste_allowed = true};
+        SMMUTransCfg *cfg = smmuv3_get_config(sdev, &eventinfo, 0);
         SMMUTransTableInfo *tt;
 
         if (!cfg) {

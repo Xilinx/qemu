@@ -1119,8 +1119,6 @@ static void machine_initfn(Object *obj)
     object_property_set_description(obj, "linux",
                                     "Force a Linux style boot");
     if (mc->nvdimm_supported) {
-        Object *obj = OBJECT(ms);
-
         ms->nvdimms_state = g_new0(NVDIMMState, 1);
         object_property_add_bool(obj, "nvdimm",
                                  machine_get_nvdimm, machine_set_nvdimm);
