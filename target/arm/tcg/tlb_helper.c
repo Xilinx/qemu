@@ -371,8 +371,8 @@ bool arm_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
         /* Map cache attributes into memory attributes.  */
         map_cacheattrs(res.f.phys_addr, &res.f.attrs, &res.cacheattrs);
 
-        res.f.pte_attrs = res.cacheattrs.attrs;
-        res.f.shareability = res.cacheattrs.shareability;
+        res.f.extra.arm.pte_attrs = res.cacheattrs.attrs;
+        res.f.extra.arm.shareability = res.cacheattrs.shareability;
 
         tlb_set_page_full(cs, mmu_idx, address, &res.f);
         return true;
