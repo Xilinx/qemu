@@ -219,10 +219,10 @@ static void mb_cpu_reset_hold(Object *obj)
     mmu_init(&env->mmu);
 
     if (cpu->env.memattr_p) {
-        env_tlb(&cpu->env)->memattr[MEM_ATTR_NS].attrs = *cpu->env.memattr_p;
-        env_tlb(&cpu->env)->memattr[MEM_ATTR_NS].attrs.secure = false;
-        env_tlb(&cpu->env)->memattr[MEM_ATTR_SEC].attrs = *cpu->env.memattr_p;
-        env_tlb(&cpu->env)->memattr[MEM_ATTR_SEC].attrs.secure = true;
+        s->neg.tlb.memattr[MEM_ATTR_NS].attrs = *cpu->env.memattr_p;
+        s->neg.tlb.memattr[MEM_ATTR_NS].attrs.secure = false;
+        s->neg.tlb.memattr[MEM_ATTR_SEC].attrs = *cpu->env.memattr_p;
+        s->neg.tlb.memattr[MEM_ATTR_SEC].attrs.secure = true;
     }
 #endif
 }

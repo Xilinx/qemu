@@ -599,14 +599,14 @@ static void arm_cpu_reset_hold(Object *obj)
 
 #ifndef CONFIG_USER_ONLY
     if (cpu->env.memattr_ns) {
-        env_tlb(&cpu->env)->memattr[MEM_ATTR_NS].attrs = *cpu->env.memattr_ns;
+        s->neg.tlb.memattr[MEM_ATTR_NS].attrs = *cpu->env.memattr_ns;
     }
 
     if (cpu->env.memattr_s) {
-        env_tlb(&cpu->env)->memattr[MEM_ATTR_SEC].attrs = *cpu->env.memattr_s;
+        s->neg.tlb.memattr[MEM_ATTR_SEC].attrs = *cpu->env.memattr_s;
     } else if (arm_feature(env, ARM_FEATURE_EL3)) {
             /* Only set secure mode if the CPU support EL3 */
-            env_tlb(&cpu->env)->memattr[MEM_ATTR_SEC].attrs.secure = true;
+            s->neg.tlb.memattr[MEM_ATTR_SEC].attrs.secure = true;
     }
 
     for (i = 0; i < ARRAY_SIZE(cpu->env.irq_wires); i++) {
@@ -1412,11 +1412,11 @@ static void arm_cpu_set_memattr_secure(Object *obj, Visitor *v,
                                           const char *name, void *opaque,
                                           Error **errp)
 {
-    ARMCPU *cpu = ARM_CPU(obj);
+    CPUState *s = CPU(obj);
     bool secure;
     visit_type_bool(v, name, &secure,
                     errp);
-    env_tlb(&cpu->env)->memattr[MEM_ATTR_NS].attrs.secure = secure;
+    s->neg.tlb.memattr[MEM_ATTR_NS].attrs.secure = secure;
 }
 #endif
 
