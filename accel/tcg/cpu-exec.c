@@ -43,7 +43,7 @@
 #include "tb-jmp-cache.h"
 #include "tb-hash.h"
 #include "tb-context.h"
-#include "internal.h"
+#include "internal-target.h"
 
 /* -icount align implementation. */
 
