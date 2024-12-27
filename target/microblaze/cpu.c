@@ -440,9 +440,9 @@ static ObjectClass *mb_cpu_class_by_name(const char *cpu_model)
     return object_class_by_name(TYPE_MICROBLAZE_CPU);
 }
 
-static gchar *mb_gdb_arch_name(CPUState *cs)
+static const gchar *mb_gdb_arch_name(CPUState *cs)
 {
-    return g_strdup("microblaze");
+    return "microblaze";
 }
 
 #ifndef CONFIG_USER_ONLY

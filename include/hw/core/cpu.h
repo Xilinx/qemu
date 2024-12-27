@@ -167,7 +167,7 @@ struct CPUClass {
     void (*set_debug_context)(CPUState *cpu, unsigned int ctx);
     const char **debug_contexts;
     const char *gdb_core_xml_file;
-    gchar * (*gdb_arch_name)(CPUState *cpu);
+    const gchar * (*gdb_arch_name)(CPUState *cpu);
     const char * (*gdb_get_dynamic_xml)(CPUState *cpu, const char *xmlname);
 
     void (*disas_set_info)(CPUState *cpu, disassemble_info *info);
