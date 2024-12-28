@@ -87,9 +87,8 @@ class FuncDecl:
                 raise ValueError(f"Invalid no_co function name: {self.name}")
             if not self.create_only_co:
                 raise ValueError(f"no_co function can't be mixed: {self.name}")
-            if self.graph_rdlock and self.graph_wrlock:
-                raise ValueError("function can't be both rdlock and wrlock: "
-                                 f"{self.name}")
+            if self.graph_rdlock:
+                raise ValueError(f"no_co function can't be rdlock: {self.name}")
             self.target_name = f'{subsystem}_{subname}'
 
         self.ctx = self.gen_ctx()
@@ -257,10 +256,7 @@ def gen_no_co_wrapper(func: FuncDecl) -> str:
 
     graph_lock=''
     graph_unlock=''
-    if func.graph_rdlock:
-        graph_lock='    bdrv_graph_rdlock_main_loop();'
-        graph_unlock='    bdrv_graph_rdunlock_main_loop();'
-    elif func.graph_wrlock:
+    if func.graph_wrlock:
         graph_lock='    bdrv_graph_wrlock(NULL);'
         graph_unlock='    bdrv_graph_wrunlock();'
 
