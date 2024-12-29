@@ -29,6 +29,7 @@ pci_ss.add(when: 'CONFIG_XLNX_ZYNQMP', if_true: files('xlnx-nwl-pcie-main.c'))
 pci_ss.add(when: 'CONFIG_XLNX_ZYNQMP', if_true: files('xlnx-nwl-pcie-attrib.c'))
 
 # HPPA devices
+pci_ss.add(when: 'CONFIG_ASTRO', if_true: files('astro.c'))
 pci_ss.add(when: 'CONFIG_DINO', if_true: files('dino.c'))
 
 system_ss.add_all(when: 'CONFIG_PCI', if_true: pci_ss)
