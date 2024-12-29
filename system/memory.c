@@ -1859,7 +1859,12 @@ MemTxResult memory_region_dispatch_write(MemoryRegion *mr,
 
     adjust_endianness(mr, &data, op);
 
-    if ((!kvm_eventfds_enabled()) &&
+    /*
+     * FIXME: it's not clear why under KVM the write would be processed
+     * directly, instead of going through eventfd.  This probably should
+     * test "tcg_enabled() || qtest_enabled()", or should just go away.
+     */
+    if (!kvm_enabled() &&
         memory_region_dispatch_write_eventfds(mr, addr, data, size, attrs)) {
         return MEMTX_OK;
     }
@@ -2880,8 +2885,6 @@ void memory_region_clear_flush_coalesced(MemoryRegion *mr)
     }
 }
 
-static bool userspace_eventfd_warning;
-
 void memory_region_add_eventfd(MemoryRegion *mr,
                                hwaddr addr,
                                unsigned size,
@@ -2897,13 +2900,6 @@ void memory_region_add_eventfd(MemoryRegion *mr,
         .e = e,
     };
     unsigned i;
-
-    if (kvm_enabled() && (!(kvm_eventfds_enabled() ||
-                            userspace_eventfd_warning))) {
-        userspace_eventfd_warning = true;
-        error_report("Using eventfd without MMIO binding in KVM. "
-                     "Suboptimal performance expected");
-    }
 
     if (size) {
         adjust_endianness(mr, &mrfd.data, size_memop(size) | MO_TE);
