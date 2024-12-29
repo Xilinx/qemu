@@ -860,6 +860,10 @@ static Property xlnx_csu_dma_properties[] = {
      * which channel the device is connected to.
      */
     DEFINE_PROP_BOOL("is-dst", XlnxCSUDMA, is_dst, false),
+    DEFINE_PROP_LINK("stream-connected-dma", XlnxCSUDMA, tx_dev,
+                     TYPE_STREAM_SINK, StreamSink *),
+    DEFINE_PROP_LINK("dma", XlnxCSUDMA, dma_mr,
+                     TYPE_MEMORY_REGION, MemoryRegion *),
     /*
      * The DMA can either have a 4-bytes alignement constraint on the address
      * and size registers, or allows unaligned accesses. When byte-align is
@@ -895,20 +899,12 @@ static void xlnx_csu_dma_init(Object *obj)
     memory_region_init(&s->iomem, obj, TYPE_XLNX_CSU_DMA,
                        XLNX_CSU_DMA_R_MAX * 4);
 
-    object_property_add_link(obj, "stream-connected-dma", TYPE_STREAM_SINK,
-                             (Object **)&s->tx_dev,
-                             qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_STRONG);
     object_property_add_link(obj, "stream-connected-dma0", TYPE_STREAM_SINK,
                              (Object **)&s->tx_dev0,
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_STRONG);
     object_property_add_link(obj, "stream-connected-dma1", TYPE_STREAM_SINK,
                              (Object **)&s->tx_dev1,
-                             qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_STRONG);
-    object_property_add_link(obj, "dma", TYPE_MEMORY_REGION,
-                             (Object **)&s->dma_mr,
                              qdev_prop_allow_set_link_before_realize,
                              OBJ_PROP_LINK_STRONG);
     object_property_add_link(obj, "memattr", TYPE_MEMORY_TRANSACTION_ATTR,
