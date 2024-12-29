@@ -19,7 +19,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/defer-call.h"
 #include "qemu/error-report.h"
 #include "qemu/main-loop.h"
 #include "qemu/memalign.h"
@@ -510,7 +509,7 @@ static int xen_block_get_request(XenBlockDataPlane *dataplane,
 
 /*
  * Threshold of in-flight requests above which we will start using
- * defer_call_begin()/defer_call_end() to batch requests.
+ * blk_io_plug()/blk_io_unplug() to batch requests.
  */
 #define IO_PLUG_THRESHOLD 1
 
@@ -538,7 +537,7 @@ static bool xen_block_handle_requests(XenBlockDataPlane *dataplane)
      * is below us.
      */
     if (inflight_atstart > IO_PLUG_THRESHOLD) {
-        defer_call_begin();
+        blk_io_plug();
     }
     while (rc != rp) {
         /* pull request from ring */
@@ -578,12 +577,12 @@ static bool xen_block_handle_requests(XenBlockDataPlane *dataplane)
 
         if (inflight_atstart > IO_PLUG_THRESHOLD &&
             batched >= inflight_atstart) {
-            defer_call_end();
+            blk_io_unplug();
         }
         xen_block_do_aio(request);
         if (inflight_atstart > IO_PLUG_THRESHOLD) {
             if (batched >= inflight_atstart) {
-                defer_call_begin();
+                blk_io_plug();
                 batched = 0;
             } else {
                 batched++;
@@ -591,7 +590,7 @@ static bool xen_block_handle_requests(XenBlockDataPlane *dataplane)
         }
     }
     if (inflight_atstart > IO_PLUG_THRESHOLD) {
-        defer_call_end();
+        blk_io_unplug();
     }
 
     return done_something;
