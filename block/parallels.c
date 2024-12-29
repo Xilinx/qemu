@@ -1173,9 +1173,8 @@ static int parallels_open(BlockDriverState *bs, QDict *options, int flags,
     error_setg(&s->migration_blocker, "The Parallels format used by node '%s' "
                "does not support live migration",
                bdrv_get_device_or_node_name(bs));
-    ret = migrate_add_blocker(s->migration_blocker, errp);
+    ret = migrate_add_blocker(&s->migration_blocker, errp);
     if (ret < 0) {
-        error_setg(errp, "Migration blocker error");
         goto fail;
     }
     qemu_co_mutex_init(&s->lock);
@@ -1205,7 +1204,7 @@ static int parallels_open(BlockDriverState *bs, QDict *options, int flags,
         ret = bdrv_check(bs, &res, BDRV_FIX_ERRORS | BDRV_FIX_LEAKS);
         if (ret < 0) {
             error_setg_errno(errp, -ret, "Could not repair corrupted image");
-            migrate_del_blocker(s->migration_blocker);
+            migrate_del_blocker(&s->migration_blocker);
             goto fail;
         }
     }
@@ -1221,7 +1220,6 @@ fail:
      * "s" object was allocated by g_malloc0 so we can safely
      * try to free its fields even they were not allocated.
      */
-    error_free(s->migration_blocker);
     g_free(s->bat_dirty_bmap);
     qemu_vfree(s->header);
     return ret;
@@ -1244,8 +1242,7 @@ static void parallels_close(BlockDriverState *bs)
     g_free(s->bat_dirty_bmap);
     qemu_vfree(s->header);
 
-    migrate_del_blocker(s->migration_blocker);
-    error_free(s->migration_blocker);
+    migrate_del_blocker(&s->migration_blocker);
 }
 
 static BlockDriver bdrv_parallels = {
