@@ -37,6 +37,7 @@ qapi_all_modules = [
   'introspect',
   'injection',
   'job',
+  'machine-common',
   'machine',
   'machine-target',
   'migration',
