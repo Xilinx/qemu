@@ -27,6 +27,10 @@
 #include "qemu/interval-tree.h"
 #include "mmap-fixed.h"
 
+#ifdef TARGET_ARM
+#include "target/arm/cpu-features.h"
+#endif
+
 static pthread_mutex_t mmap_mutex = PTHREAD_MUTEX_INITIALIZER;
 static __thread int mmap_lock_count;
 

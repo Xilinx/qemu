@@ -27,6 +27,7 @@
 #include "sysemu/sysemu.h"
 #include "sysemu/qtest.h"
 #include "hw/arm/xlnx-zynqmp.h"
+#include "hw/arm/boot.h"
 
 #include <libfdt.h>
 #include "hw/fdt_generic_util.h"

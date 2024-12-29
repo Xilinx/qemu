@@ -24,6 +24,10 @@
 #include "accel/tcg/debuginfo.h"
 #include "mmap-fixed.h"
 
+#ifdef TARGET_ARM
+#include "target/arm/cpu-features.h"
+#endif
+
 #ifdef _ARCH_PPC64
 #undef ARCH_DLINFO
 #undef ELF_PLATFORM
