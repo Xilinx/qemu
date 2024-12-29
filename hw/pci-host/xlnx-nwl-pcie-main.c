@@ -712,6 +712,10 @@ static AddressSpace *axipcie_dma_as(PCIBus *bus, void *opaque, int devfn)
     return opaque;
 }
 
+static const PCIIOMMUOps axipcie_ops = {
+    .get_address_space = axipcie_dma_as,
+};
+
 static void axipcie_main_realize(DeviceState *dev, Error **errp)
 {
     AXIPCIE_MAIN *s = XILINX_AXIPCIE_MAIN(dev);
@@ -746,7 +750,7 @@ static void axipcie_main_realize(DeviceState *dev, Error **errp)
                              "axipcie-attr-iommu", UINT64_MAX);
     s->iommu_attr_as = address_space_init_shareable(MEMORY_REGION(&s->iommu_attr), NULL);
 
-    pci_setup_iommu(pci->bus, axipcie_dma_as, s->iommu_attr_as);
+    pci_setup_iommu(pci->bus, &axipcie_ops, s->iommu_attr_as);
 }
 
 static void axipcie_main_init(Object *obj)

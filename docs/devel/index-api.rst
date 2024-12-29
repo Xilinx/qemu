@@ -12,6 +12,7 @@ generated from in-code annotations to function prototypes.
    iomem-cache
    memory
    modules
+   pci
    qom-api
    qdev-api
    ui
