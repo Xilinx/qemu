@@ -42,18 +42,13 @@
 /* Maximum bounce buffer for copy-on-read and write zeroes, in bytes */
 #define MAX_BOUNCE_BUFFER (32768 << BDRV_SECTOR_BITS)
 
-static void coroutine_fn GRAPH_RDLOCK
-bdrv_parent_cb_resize(BlockDriverState *bs);
-
+static void bdrv_parent_cb_resize(BlockDriverState *bs);
 static int coroutine_fn bdrv_co_do_pwrite_zeroes(BlockDriverState *bs,
     int64_t offset, int64_t bytes, BdrvRequestFlags flags);
 
-static void GRAPH_RDLOCK
-bdrv_parent_drained_begin(BlockDriverState *bs, BdrvChild *ignore)
+static void bdrv_parent_drained_begin(BlockDriverState *bs, BdrvChild *ignore)
 {
     BdrvChild *c, *next;
-    IO_OR_GS_CODE();
-    assert_bdrv_graph_readable();
 
     QLIST_FOREACH_SAFE(c, &bs->parents, next_parent, next) {
         if (c == ignore) {
@@ -75,12 +70,9 @@ void bdrv_parent_drained_end_single(BdrvChild *c)
     }
 }
 
-static void GRAPH_RDLOCK
-bdrv_parent_drained_end(BlockDriverState *bs, BdrvChild *ignore)
+static void bdrv_parent_drained_end(BlockDriverState *bs, BdrvChild *ignore)
 {
     BdrvChild *c;
-    IO_OR_GS_CODE();
-    assert_bdrv_graph_readable();
 
     QLIST_FOREACH(c, &bs->parents, next_parent) {
         if (c == ignore) {
@@ -92,22 +84,17 @@ bdrv_parent_drained_end(BlockDriverState *bs, BdrvChild *ignore)
 
 bool bdrv_parent_drained_poll_single(BdrvChild *c)
 {
-    IO_OR_GS_CODE();
-
     if (c->klass->drained_poll) {
         return c->klass->drained_poll(c);
     }
     return false;
 }
 
-static bool GRAPH_RDLOCK
-bdrv_parent_drained_poll(BlockDriverState *bs, BdrvChild *ignore,
-                         bool ignore_bds_parents)
+static bool bdrv_parent_drained_poll(BlockDriverState *bs, BdrvChild *ignore,
+                                     bool ignore_bds_parents)
 {
     BdrvChild *c, *next;
     bool busy = false;
-    IO_OR_GS_CODE();
-    assert_bdrv_graph_readable();
 
     QLIST_FOREACH_SAFE(c, &bs->parents, next_parent, next) {
         if (c == ignore || (ignore_bds_parents && c->klass->parent_is_bds)) {
@@ -127,7 +114,6 @@ void bdrv_parent_drained_begin_single(BdrvChild *c)
     c->quiesced_parent = true;
 
     if (c->klass->drained_begin) {
-        /* called with rdlock taken, but it doesn't really need it. */
         c->klass->drained_begin(c);
     }
 }
@@ -277,9 +263,6 @@ bool bdrv_drain_poll(BlockDriverState *bs, BdrvChild *ignore_parent,
 static bool bdrv_drain_poll_top_level(BlockDriverState *bs,
                                       BdrvChild *ignore_parent)
 {
-    GLOBAL_STATE_CODE();
-    GRAPH_RDLOCK_GUARD_MAINLOOP();
-
     return bdrv_drain_poll(bs, ignore_parent, false);
 }
 
@@ -379,7 +362,6 @@ static void bdrv_do_drained_begin(BlockDriverState *bs, BdrvChild *parent,
 
     /* Stop things in parent-to-child order */
     if (qatomic_fetch_inc(&bs->quiesce_counter) == 0) {
-        GRAPH_RDLOCK_GUARD_MAINLOOP();
         bdrv_parent_drained_begin(bs, parent);
         if (bs->drv && bs->drv->bdrv_drain_begin) {
             bs->drv->bdrv_drain_begin(bs);
@@ -426,16 +408,12 @@ static void bdrv_do_drained_end(BlockDriverState *bs, BdrvChild *parent)
         bdrv_co_yield_to_drain(bs, false, parent, false);
         return;
     }
-
-    /* At this point, we should be always running in the main loop. */
-    GLOBAL_STATE_CODE();
     assert(bs->quiesce_counter > 0);
     GLOBAL_STATE_CODE();
 
     /* Re-enable things in child-to-parent order */
     old_quiesce_counter = qatomic_fetch_dec(&bs->quiesce_counter);
     if (old_quiesce_counter == 1) {
-        GRAPH_RDLOCK_GUARD_MAINLOOP();
         if (bs->drv && bs->drv->bdrv_drain_end) {
             bs->drv->bdrv_drain_end(bs);
         }
@@ -459,8 +437,6 @@ void bdrv_drain(BlockDriverState *bs)
 static void bdrv_drain_assert_idle(BlockDriverState *bs)
 {
     BdrvChild *child, *next;
-    GLOBAL_STATE_CODE();
-    GRAPH_RDLOCK_GUARD_MAINLOOP();
 
     assert(qatomic_read(&bs->in_flight) == 0);
     QLIST_FOREACH_SAFE(child, &bs->children, next, next) {
@@ -474,9 +450,7 @@ static bool bdrv_drain_all_poll(void)
 {
     BlockDriverState *bs = NULL;
     bool result = false;
-
     GLOBAL_STATE_CODE();
-    GRAPH_RDLOCK_GUARD_MAINLOOP();
 
     /* bdrv_drain_poll() can't make changes to the graph and we are holding the
      * main AioContext lock, so iterating bdrv_next_all_states() is safe. */
@@ -1249,8 +1223,8 @@ bdrv_co_do_copy_on_readv(BdrvChild *child, int64_t offset, int64_t bytes,
             ret = 1; /* "already allocated", so nothing will be copied */
             pnum = MIN(align_bytes, max_transfer);
         } else {
-            ret = bdrv_co_is_allocated(bs, align_offset,
-                                       MIN(align_bytes, max_transfer), &pnum);
+            ret = bdrv_is_allocated(bs, align_offset,
+                                    MIN(align_bytes, max_transfer), &pnum);
             if (ret < 0) {
                 /*
                  * Safe to treat errors in querying allocation as if
@@ -1397,7 +1371,7 @@ bdrv_aligned_preadv(BdrvChild *child, BdrvTrackedRequest *req,
         /* The flag BDRV_REQ_COPY_ON_READ has reached its addressee */
         flags &= ~BDRV_REQ_COPY_ON_READ;
 
-        ret = bdrv_co_is_allocated(bs, offset, bytes, &pnum);
+        ret = bdrv_is_allocated(bs, offset, bytes, &pnum);
         if (ret < 0) {
             goto out;
         }
@@ -2029,7 +2003,7 @@ bdrv_co_write_req_prepare(BdrvChild *child, int64_t offset, int64_t bytes,
     }
 }
 
-static inline void coroutine_fn GRAPH_RDLOCK
+static inline void coroutine_fn
 bdrv_co_write_req_finish(BdrvChild *child, int64_t offset, int64_t bytes,
                          BdrvTrackedRequest *req, int ret)
 {
@@ -2356,7 +2330,6 @@ int bdrv_flush_all(void)
     int result = 0;
 
     GLOBAL_STATE_CODE();
-    GRAPH_RDLOCK_GUARD_MAINLOOP();
 
     /*
      * bdrv queue is managed by record/replay,
@@ -2410,9 +2383,9 @@ int bdrv_flush_all(void)
  * set to the host mapping and BDS corresponding to the guest offset.
  */
 static int coroutine_fn GRAPH_RDLOCK
-bdrv_co_do_block_status(BlockDriverState *bs, bool want_zero,
-                        int64_t offset, int64_t bytes,
-                        int64_t *pnum, int64_t *map, BlockDriverState **file)
+bdrv_co_block_status(BlockDriverState *bs, bool want_zero,
+                     int64_t offset, int64_t bytes,
+                     int64_t *pnum, int64_t *map, BlockDriverState **file)
 {
     int64_t total_size;
     int64_t n; /* bytes */
@@ -2571,8 +2544,8 @@ bdrv_co_do_block_status(BlockDriverState *bs, bool want_zero,
 
     if (ret & BDRV_BLOCK_RAW) {
         assert(ret & BDRV_BLOCK_OFFSET_VALID && local_file);
-        ret = bdrv_co_do_block_status(local_file, want_zero, local_map,
-                                      *pnum, pnum, &local_map, &local_file);
+        ret = bdrv_co_block_status(local_file, want_zero, local_map,
+                                   *pnum, pnum, &local_map, &local_file);
         goto out;
     }
 
@@ -2599,8 +2572,8 @@ bdrv_co_do_block_status(BlockDriverState *bs, bool want_zero,
         int64_t file_pnum;
         int ret2;
 
-        ret2 = bdrv_co_do_block_status(local_file, want_zero, local_map,
-                                       *pnum, &file_pnum, NULL, NULL);
+        ret2 = bdrv_co_block_status(local_file, want_zero, local_map,
+                                    *pnum, &file_pnum, NULL, NULL);
         if (ret2 >= 0) {
             /* Ignore errors.  This is just providing extra information, it
              * is useful but not necessary.
@@ -2667,8 +2640,7 @@ bdrv_co_common_block_status_above(BlockDriverState *bs,
         return 0;
     }
 
-    ret = bdrv_co_do_block_status(bs, want_zero, offset, bytes, pnum,
-                                  map, file);
+    ret = bdrv_co_block_status(bs, want_zero, offset, bytes, pnum, map, file);
     ++*depth;
     if (ret < 0 || *pnum == 0 || ret & BDRV_BLOCK_ALLOCATED || bs == base) {
         return ret;
@@ -2684,8 +2656,8 @@ bdrv_co_common_block_status_above(BlockDriverState *bs,
     for (p = bdrv_filter_or_cow_bs(bs); include_base || p != base;
          p = bdrv_filter_or_cow_bs(p))
     {
-        ret = bdrv_co_do_block_status(p, want_zero, offset, bytes, pnum,
-                                      map, file);
+        ret = bdrv_co_block_status(p, want_zero, offset, bytes, pnum, map,
+                                   file);
         ++*depth;
         if (ret < 0) {
             return ret;
@@ -2751,13 +2723,21 @@ int coroutine_fn bdrv_co_block_status_above(BlockDriverState *bs,
                                              bytes, pnum, map, file, NULL);
 }
 
-int coroutine_fn bdrv_co_block_status(BlockDriverState *bs, int64_t offset,
-                                      int64_t bytes, int64_t *pnum,
-                                      int64_t *map, BlockDriverState **file)
+int bdrv_block_status_above(BlockDriverState *bs, BlockDriverState *base,
+                            int64_t offset, int64_t bytes, int64_t *pnum,
+                            int64_t *map, BlockDriverState **file)
 {
     IO_CODE();
-    return bdrv_co_block_status_above(bs, bdrv_filter_or_cow_bs(bs),
-                                      offset, bytes, pnum, map, file);
+    return bdrv_common_block_status_above(bs, base, false, true, offset, bytes,
+                                          pnum, map, file, NULL);
+}
+
+int bdrv_block_status(BlockDriverState *bs, int64_t offset, int64_t bytes,
+                      int64_t *pnum, int64_t *map, BlockDriverState **file)
+{
+    IO_CODE();
+    return bdrv_block_status_above(bs, bdrv_filter_or_cow_bs(bs),
+                                   offset, bytes, pnum, map, file);
 }
 
 /*
@@ -2804,6 +2784,45 @@ int coroutine_fn bdrv_co_is_allocated(BlockDriverState *bs, int64_t offset,
     return !!(ret & BDRV_BLOCK_ALLOCATED);
 }
 
+int bdrv_is_allocated(BlockDriverState *bs, int64_t offset, int64_t bytes,
+                      int64_t *pnum)
+{
+    int ret;
+    int64_t dummy;
+    IO_CODE();
+
+    ret = bdrv_common_block_status_above(bs, bs, true, false, offset,
+                                         bytes, pnum ? pnum : &dummy, NULL,
+                                         NULL, NULL);
+    if (ret < 0) {
+        return ret;
+    }
+    return !!(ret & BDRV_BLOCK_ALLOCATED);
+}
+
+/* See bdrv_is_allocated_above for documentation */
+int coroutine_fn bdrv_co_is_allocated_above(BlockDriverState *top,
+                                            BlockDriverState *base,
+                                            bool include_base, int64_t offset,
+                                            int64_t bytes, int64_t *pnum)
+{
+    int depth;
+    int ret;
+    IO_CODE();
+
+    ret = bdrv_co_common_block_status_above(top, base, include_base, false,
+                                            offset, bytes, pnum, NULL, NULL,
+                                            &depth);
+    if (ret < 0) {
+        return ret;
+    }
+
+    if (ret & BDRV_BLOCK_ALLOCATED) {
+        return depth;
+    }
+    return 0;
+}
+
 /*
  * Given an image chain: ... -> [BASE] -> [INTER1] -> [INTER2] -> [TOP]
  *
@@ -2821,18 +2840,18 @@ int coroutine_fn bdrv_co_is_allocated(BlockDriverState *bs, int64_t offset,
  * words, the result is not necessarily the maximum possible range);
  * but 'pnum' will only be 0 when end of file is reached.
  */
-int coroutine_fn bdrv_co_is_allocated_above(BlockDriverState *bs,
-                                            BlockDriverState *base,
-                                            bool include_base, int64_t offset,
-                                            int64_t bytes, int64_t *pnum)
+int bdrv_is_allocated_above(BlockDriverState *top,
+                            BlockDriverState *base,
+                            bool include_base, int64_t offset,
+                            int64_t bytes, int64_t *pnum)
 {
     int depth;
     int ret;
     IO_CODE();
 
-    ret = bdrv_co_common_block_status_above(bs, base, include_base, false,
-                                            offset, bytes, pnum, NULL, NULL,
-                                            &depth);
+    ret = bdrv_common_block_status_above(top, base, include_base, false,
+                                         offset, bytes, pnum, NULL, NULL,
+                                         &depth);
     if (ret < 0) {
         return ret;
     }
@@ -3532,13 +3551,9 @@ int coroutine_fn bdrv_co_copy_range(BdrvChild *src, int64_t src_offset,
                                    bytes, read_flags, write_flags);
 }
 
-static void coroutine_fn GRAPH_RDLOCK
-bdrv_parent_cb_resize(BlockDriverState *bs)
+static void bdrv_parent_cb_resize(BlockDriverState *bs)
 {
     BdrvChild *c;
-
-    assert_bdrv_graph_readable();
-
     QLIST_FOREACH(c, &bs->parents, next_parent) {
         if (c->klass->resize) {
             c->klass->resize(c);
