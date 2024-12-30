@@ -61,7 +61,7 @@ extern const PropertyInfo qdev_prop_size;
 extern const PropertyInfo qdev_prop_string;
 extern const PropertyInfo qdev_prop_on_off_auto;
 extern const PropertyInfo qdev_prop_size32;
-extern const PropertyInfo qdev_prop_array;
+extern const PropertyInfo qdev_prop_arraylen;
 extern const PropertyInfo qdev_prop_link;
 
 #define DEFINE_PROP(_name, _state, _field, _prop, _type, ...) {  \
@@ -115,6 +115,8 @@ extern const PropertyInfo qdev_prop_link;
                 .bitmask    = (_bitmask),                     \
                 .set_default = false)
 
+#define PROP_ARRAY_LEN_PREFIX "len-"
+
 /**
  * DEFINE_PROP_ARRAY:
  * @_name: name of the array
@@ -125,25 +127,28 @@ extern const PropertyInfo qdev_prop_link;
  * @_arrayprop: PropertyInfo defining what property the array elements have
  * @_arraytype: C type of the array elements
  *
- * Define device properties for a variable-length array _name.  The array is
- * represented as a list in the visitor interface.
+ * Define device properties for a variable-length array _name.  A
+ * static property "len-arrayname" is defined. When the device creator
+ * sets this property to the desired length of array, further dynamic
+ * properties "arrayname[0]", "arrayname[1]", ...  are defined so the
+ * device creator can set the array element values. Setting the
+ * "len-arrayname" property more than once is an error.
  *
- * @_arraytype is required to be movable with memcpy().
- *
- * When the array property is set, the @_field member of the device
+ * When the array length is set, the @_field member of the device
  * struct is set to the array length, and @_arrayfield is set to point
- * to the memory allocated for the array.
- *
+ * to (zero-initialised) memory allocated for the array.  For a zero
+ * length array, @_field will be set to 0 and @_arrayfield to NULL.
  * It is the responsibility of the device deinit code to free the
  * @_arrayfield memory.
  */
-#define DEFINE_PROP_ARRAY(_name, _state, _field,                        \
-                          _arrayfield, _arrayprop, _arraytype)          \
-    DEFINE_PROP(_name, _state, _field, qdev_prop_array, uint32_t,       \
-                .set_default = true,                                    \
-                .defval.u = 0,                                          \
-                .arrayinfo = &(_arrayprop),                             \
-                .arrayfieldsize = sizeof(_arraytype),                   \
+#define DEFINE_PROP_ARRAY(_name, _state, _field,               \
+                          _arrayfield, _arrayprop, _arraytype) \
+    DEFINE_PROP((PROP_ARRAY_LEN_PREFIX _name),                 \
+                _state, _field, qdev_prop_arraylen, uint32_t,  \
+                .set_default = true,                           \
+                .defval.u = 0,                                 \
+                .arrayinfo = &(_arrayprop),                    \
+                .arrayfieldsize = sizeof(_arraytype),          \
                 .arrayoffset = offsetof(_state, _arrayfield))
 
 #define DEFINE_PROP_LINK(_name, _state, _field, _type, _ptr_type)     \
