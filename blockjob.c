@@ -513,8 +513,7 @@ void *block_job_create(const char *job_id, const BlockJobDriver *driver,
     BlockJob *job;
     int ret;
     GLOBAL_STATE_CODE();
-
-    bdrv_graph_wrlock(bs);
+    GRAPH_RDLOCK_GUARD_MAINLOOP();
 
     if (job_id == NULL && !(flags & JOB_INTERNAL)) {
         job_id = bdrv_get_device_name(bs);
@@ -523,7 +522,6 @@ void *block_job_create(const char *job_id, const BlockJobDriver *driver,
     job = job_create(job_id, &driver->job_driver, txn, bdrv_get_aio_context(bs),
                      flags, cb, opaque, errp);
     if (job == NULL) {
-        bdrv_graph_wrunlock();
         return NULL;
     }
 
@@ -563,11 +561,9 @@ void *block_job_create(const char *job_id, const BlockJobDriver *driver,
         goto fail;
     }
 
-    bdrv_graph_wrunlock();
     return job;
 
 fail:
-    bdrv_graph_wrunlock();
     job_early_fail(&job->job);
     return NULL;
 }

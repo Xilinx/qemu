@@ -401,9 +401,8 @@ typedef struct BDRVVHDXState {
 
 void vhdx_guid_generate(MSGUID *guid);
 
-int GRAPH_RDLOCK
-vhdx_update_headers(BlockDriverState *bs, BDRVVHDXState *s, bool rw,
-                    MSGUID *log_guid);
+int vhdx_update_headers(BlockDriverState *bs, BDRVVHDXState *s, bool rw,
+                        MSGUID *log_guid);
 
 uint32_t vhdx_update_checksum(uint8_t *buf, size_t size, int crc_offset);
 uint32_t vhdx_checksum_calc(uint32_t crc, uint8_t *buf, size_t size,
@@ -449,8 +448,6 @@ void vhdx_metadata_header_le_import(VHDXMetadataTableHeader *hdr);
 void vhdx_metadata_header_le_export(VHDXMetadataTableHeader *hdr);
 void vhdx_metadata_entry_le_import(VHDXMetadataTableEntry *e);
 void vhdx_metadata_entry_le_export(VHDXMetadataTableEntry *e);
-
-int GRAPH_RDLOCK
-vhdx_user_visible_write(BlockDriverState *bs, BDRVVHDXState *s);
+int vhdx_user_visible_write(BlockDriverState *bs, BDRVVHDXState *s);
 
 #endif

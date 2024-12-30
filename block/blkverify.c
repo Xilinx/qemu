@@ -33,8 +33,8 @@ typedef struct BlkverifyRequest {
     uint64_t bytes;
     int flags;
 
-    int GRAPH_RDLOCK_PTR (*request_fn)(
-        BdrvChild *, int64_t, int64_t, QEMUIOVector *, BdrvRequestFlags);
+    int (*request_fn)(BdrvChild *, int64_t, int64_t, QEMUIOVector *,
+                      BdrvRequestFlags);
 
     int ret;                    /* test image result */
     int raw_ret;                /* raw image result */
@@ -170,11 +170,8 @@ static void coroutine_fn blkverify_do_test_req(void *opaque)
     BlkverifyRequest *r = opaque;
     BDRVBlkverifyState *s = r->bs->opaque;
 
-    bdrv_graph_co_rdlock();
     r->ret = r->request_fn(s->test_file, r->offset, r->bytes, r->qiov,
                            r->flags);
-    bdrv_graph_co_rdunlock();
-
     r->done++;
     qemu_coroutine_enter_if_inactive(r->co);
 }
@@ -183,16 +180,13 @@ static void coroutine_fn blkverify_do_raw_req(void *opaque)
 {
     BlkverifyRequest *r = opaque;
 
-    bdrv_graph_co_rdlock();
     r->raw_ret = r->request_fn(r->bs->file, r->offset, r->bytes, r->raw_qiov,
                                r->flags);
-    bdrv_graph_co_rdunlock();
-
     r->done++;
     qemu_coroutine_enter_if_inactive(r->co);
 }
 
-static int coroutine_fn GRAPH_RDLOCK
+static int coroutine_fn
 blkverify_co_prwv(BlockDriverState *bs, BlkverifyRequest *r, uint64_t offset,
                   uint64_t bytes, QEMUIOVector *qiov, QEMUIOVector *raw_qiov,
                   int flags, bool is_write)
@@ -228,7 +222,7 @@ blkverify_co_prwv(BlockDriverState *bs, BlkverifyRequest *r, uint64_t offset,
     return r->ret;
 }
 
-static int coroutine_fn GRAPH_RDLOCK
+static int coroutine_fn
 blkverify_co_preadv(BlockDriverState *bs, int64_t offset, int64_t bytes,
                     QEMUIOVector *qiov, BdrvRequestFlags flags)
 {
@@ -257,7 +251,7 @@ blkverify_co_preadv(BlockDriverState *bs, int64_t offset, int64_t bytes,
     return ret;
 }
 
-static int coroutine_fn GRAPH_RDLOCK
+static int coroutine_fn
 blkverify_co_pwritev(BlockDriverState *bs, int64_t offset, int64_t bytes,
                      QEMUIOVector *qiov, BdrvRequestFlags flags)
 {
@@ -288,7 +282,7 @@ blkverify_recurse_can_replace(BlockDriverState *bs,
            bdrv_recurse_can_replace(s->test_file->bs, to_replace);
 }
 
-static void GRAPH_RDLOCK blkverify_refresh_filename(BlockDriverState *bs)
+static void blkverify_refresh_filename(BlockDriverState *bs)
 {
     BDRVBlkverifyState *s = bs->opaque;
 

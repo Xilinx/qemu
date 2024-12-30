@@ -90,8 +90,7 @@ typedef struct BDRVParallelsState {
     Error *migration_blocker;
 } BDRVParallelsState;
 
-int GRAPH_RDLOCK
-parallels_read_format_extension(BlockDriverState *bs, int64_t ext_off,
-                                Error **errp);
+int parallels_read_format_extension(BlockDriverState *bs,
+                                    int64_t ext_off, Error **errp);
 
 #endif
