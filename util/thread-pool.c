@@ -15,7 +15,6 @@
  * GNU GPL, version 2 or (at your option) any later version.
  */
 #include "qemu/osdep.h"
-#include "qemu/defer-call.h"
 #include "qemu/queue.h"
 #include "qemu/thread.h"
 #include "qemu/coroutine.h"
@@ -176,8 +175,6 @@ static void thread_pool_completion_bh(void *opaque)
     ThreadPool *pool = opaque;
     ThreadPoolElement *elem, *next;
 
-    defer_call_begin(); /* cb() may use defer_call() to coalesce work */
-
 restart:
     QLIST_FOREACH_SAFE(elem, &pool->head, all, next) {
         if (elem->state != THREAD_DONE) {
@@ -211,8 +208,6 @@ restart:
             qemu_aio_unref(elem);
         }
     }
-
-    defer_call_end();
 }
 
 static void thread_pool_cancel(BlockAIOCB *acb)

@@ -105,13 +105,11 @@
 #
 # @finalize: see @job-finalize
 #
-# @change: see @block-job-change (since 8.2)
-#
 # Since: 2.12
 ##
 { 'enum': 'JobVerb',
   'data': ['cancel', 'pause', 'resume', 'set-speed', 'complete', 'dismiss',
-           'finalize', 'change' ] }
+           'finalize' ] }
 
 ##
 # @JOB_STATUS_CHANGE:

@@ -12,7 +12,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/defer-call.h"
 #include "qapi/error.h"
 #include "qemu/iov.h"
 #include "qemu/module.h"
@@ -1135,7 +1134,7 @@ void virtio_blk_handle_vq(VirtIOBlock *s, VirtQueue *vq)
     bool suppress_notifications = virtio_queue_get_notification(vq);
 
     aio_context_acquire(blk_get_aio_context(s->blk));
-    defer_call_begin();
+    blk_io_plug();
 
     do {
         if (suppress_notifications) {
@@ -1159,7 +1158,7 @@ void virtio_blk_handle_vq(VirtIOBlock *s, VirtQueue *vq)
         virtio_blk_submit_multireq(s, &mrb);
     }
 
-    defer_call_end();
+    blk_io_unplug();
     aio_context_release(blk_get_aio_context(s->blk));
 }
 
