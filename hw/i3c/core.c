@@ -170,11 +170,6 @@ static int i3c_target_event(I3CTarget *t, enum I3CEvent event)
     I3CTargetClass *tc = I3C_TARGET_GET_CLASS(t);
     trace_i3c_target_event(t->address, event);
 
-    if (event == I3C_STOP) {
-        t->curr_ccc = 0;
-        t->ccc_byte_offset = 0;
-        t->in_ccc = false;
-    }
     return tc->event(t, event);
 }
 
@@ -268,6 +263,10 @@ void i3c_end_transfer(I3CBus *bus)
             tc = I3C_TARGET_GET_CLASS(t);
             if (tc->event) {
                 i3c_target_event(t, I3C_STOP);
+                bus->ccc = 0;
+                t->curr_ccc = 0;
+                t->ccc_byte_offset = 0;
+                t->in_ccc = false;
             }
         }
     }
