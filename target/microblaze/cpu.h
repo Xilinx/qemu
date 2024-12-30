@@ -361,9 +361,7 @@ typedef struct {
  * A MicroBlaze CPU.
  */
 struct ArchCPU {
-    /*< private >*/
     CPUState parent_obj;
-    /*< public >*/
 
     CPUMBState env;
 
@@ -379,6 +377,19 @@ struct ArchCPU {
     MicroBlazeCPUConfig cfg;
 };
 
+/**
+ * MicroBlazeCPUClass:
+ * @parent_realize: The parent class' realize handler.
+ * @parent_phases: The parent class' reset phase handlers.
+ *
+ * A MicroBlaze CPU model.
+ */
+struct MicroBlazeCPUClass {
+    CPUClass parent_class;
+
+    DeviceRealize parent_realize;
+    ResettablePhases parent_phases;
+};
 
 #ifndef CONFIG_USER_ONLY
 void mb_cpu_do_interrupt(CPUState *cs);
