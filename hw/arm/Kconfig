@@ -450,7 +450,8 @@ config STM32F405_SOC
 
 config XLNX_ZYNQMP_ARM
     bool
-    default y if TCG && AARCH64
+    default y if PIXMAN
+    depends on TCG && AARCH64
     select AHCI
     select CADENCE
     select DDC
@@ -462,6 +463,7 @@ config XLNX_ZYNQMP_ARM
     select XILINX_AXI
     select XILINX_SPIPS
     select XLNX_CSU_DMA
+    select XLNX_DISPLAYPORT
     select XLNX_ZYNQMP
     select USB_DWC3
     select USB_XHCI_SYSBUS
