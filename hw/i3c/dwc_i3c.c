@@ -2106,11 +2106,11 @@ static int dwc_i3c_target_event(I3CTarget *i3c, enum I3CEvent event)
         s->target.curr_event = event;
         break;
     case I3C_STOP:
-        if (s->target.curr_event == I3C_START_SEND) {
+        if (s->target.curr_event == I3C_START_SEND && !i3c->in_ccc) {
             dwc_i3c_device_resp_queue_push(s, 0, 0, 0,
                              s->target.tr_bytes, true);
             s->target.tr_bytes = 0;
-        } else if (s->target.curr_event == I3C_START_RECV) {
+        } else if (s->target.curr_event == I3C_START_RECV && !i3c->in_ccc) {
             dwc_i3c_device_resp_queue_push(s, 0,
                 FIELD_EX32(s->target.tx_cmd, TGT_TR_CMD, TID), 0,
                 FIELD_EX32(s->target.tx_cmd, TGT_TR_CMD, DATA_LEN) -
