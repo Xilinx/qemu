@@ -462,7 +462,6 @@ warn_flags = [
   '-Wno-tautological-type-limit-compare',
   '-Wno-psabi',
   '-Wno-gnu-variable-sized-type-not-at-end',
-  '-Wshadow=local',
 ]
 
 if targetos != 'darwin'

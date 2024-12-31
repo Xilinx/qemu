@@ -13,7 +13,6 @@
 #include "block/block_int.h"
 #include "exec/memory.h"
 #include "exec/cpu-common.h" /* for qemu_ram_get_fd() */
-#include "qemu/defer-call.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "qapi/qmp/qdict.h"
@@ -313,10 +312,10 @@ static void blkio_detach_aio_context(BlockDriverState *bs)
 }
 
 /*
- * Called by defer_call_end() or immediately if not in a deferred section.
- * Called without blkio_lock.
+ * Called by blk_io_unplug() or immediately if not plugged. Called without
+ * blkio_lock.
  */
-static void blkio_deferred_fn(void *opaque)
+static void blkio_unplug_fn(void *opaque)
 {
     BDRVBlkioState *s = opaque;
 
@@ -333,7 +332,7 @@ static void blkio_submit_io(BlockDriverState *bs)
 {
     BDRVBlkioState *s = bs->opaque;
 
-    defer_call(blkio_deferred_fn, s);
+    blk_io_plug_call(blkio_unplug_fn, s);
 }
 
 static int coroutine_fn

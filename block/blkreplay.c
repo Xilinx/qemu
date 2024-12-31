@@ -130,13 +130,7 @@ static int coroutine_fn GRAPH_RDLOCK blkreplay_co_flush(BlockDriverState *bs)
 static int blkreplay_snapshot_goto(BlockDriverState *bs,
                                    const char *snapshot_id)
 {
-    BlockDriverState *file_bs;
-
-    bdrv_graph_rdlock_main_loop();
-    file_bs = bs->file->bs;
-    bdrv_graph_rdunlock_main_loop();
-
-    return bdrv_snapshot_goto(file_bs, snapshot_id, NULL);
+    return bdrv_snapshot_goto(bs->file->bs, snapshot_id, NULL);
 }
 
 static BlockDriver bdrv_blkreplay = {
