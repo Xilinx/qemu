@@ -283,7 +283,6 @@ static void vu_blk_drained_begin(void *opaque)
 {
     VuBlkExport *vexp = opaque;
 
-    vexp->vu_server.quiescing = true;
     vhost_user_server_detach_aio_context(&vexp->vu_server);
 }
 
@@ -292,23 +291,19 @@ static void vu_blk_drained_end(void *opaque)
 {
     VuBlkExport *vexp = opaque;
 
-    vexp->vu_server.quiescing = false;
     vhost_user_server_attach_aio_context(&vexp->vu_server, vexp->export.ctx);
 }
 
 /*
- * Ensures that bdrv_drained_begin() waits until in-flight requests complete
- * and the server->co_trip coroutine has terminated. It will be restarted in
- * vhost_user_server_attach_aio_context().
+ * Ensures that bdrv_drained_begin() waits until in-flight requests complete.
  *
  * Called with vexp->export.ctx acquired.
  */
 static bool vu_blk_drained_poll(void *opaque)
 {
     VuBlkExport *vexp = opaque;
-    VuServer *server = &vexp->vu_server;
 
-    return server->co_trip || vhost_user_server_has_in_flight(server);
+    return vhost_user_server_has_in_flight(&vexp->vu_server);
 }
 
 static const BlockDevOps vu_blk_dev_ops = {

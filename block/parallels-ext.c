@@ -59,10 +59,11 @@ typedef struct ParallelsDirtyBitmapFeature {
 } QEMU_PACKED ParallelsDirtyBitmapFeature;
 
 /* Given L1 table read bitmap data from the image and populate @bitmap */
-static int GRAPH_RDLOCK
-parallels_load_bitmap_data(BlockDriverState *bs, const uint64_t *l1_table,
-                           uint32_t l1_size, BdrvDirtyBitmap *bitmap,
-                           Error **errp)
+static int parallels_load_bitmap_data(BlockDriverState *bs,
+                                      const uint64_t *l1_table,
+                                      uint32_t l1_size,
+                                      BdrvDirtyBitmap *bitmap,
+                                      Error **errp)
 {
     BDRVParallelsState *s = bs->opaque;
     int ret = 0;
@@ -119,9 +120,10 @@ finish:
  * @data buffer (of @data_size size) is the Dirty bitmaps feature which
  * consists of ParallelsDirtyBitmapFeature followed by L1 table.
  */
-static BdrvDirtyBitmap * GRAPH_RDLOCK
-parallels_load_bitmap(BlockDriverState *bs, uint8_t *data, size_t data_size,
-                      Error **errp)
+static BdrvDirtyBitmap *parallels_load_bitmap(BlockDriverState *bs,
+                                              uint8_t *data,
+                                              size_t data_size,
+                                              Error **errp)
 {
     int ret;
     ParallelsDirtyBitmapFeature bf;
@@ -181,9 +183,8 @@ parallels_load_bitmap(BlockDriverState *bs, uint8_t *data, size_t data_size,
     return bitmap;
 }
 
-static int GRAPH_RDLOCK
-parallels_parse_format_extension(BlockDriverState *bs, uint8_t *ext_cluster,
-                                 Error **errp)
+static int parallels_parse_format_extension(BlockDriverState *bs,
+                                            uint8_t *ext_cluster, Error **errp)
 {
     BDRVParallelsState *s = bs->opaque;
     int ret;

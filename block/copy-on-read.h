@@ -27,7 +27,6 @@
 
 #include "block/block_int.h"
 
-void no_coroutine_fn GRAPH_UNLOCKED
-bdrv_cor_filter_drop(BlockDriverState *cor_filter_bs);
+void bdrv_cor_filter_drop(BlockDriverState *cor_filter_bs);
 
 #endif /* BLOCK_COPY_ON_READ_H */

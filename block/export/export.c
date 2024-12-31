@@ -83,8 +83,6 @@ BlockExport *blk_exp_add(BlockExportOptions *export, Error **errp)
     uint64_t perm;
     int ret;
 
-    GLOBAL_STATE_CODE();
-
     if (!id_wellformed(export->id)) {
         error_setg(errp, "Invalid block export id");
         return NULL;
@@ -147,9 +145,7 @@ BlockExport *blk_exp_add(BlockExportOptions *export, Error **errp)
      * access since the export could be available before migration handover.
      * ctx was acquired in the caller.
      */
-    bdrv_graph_rdlock_main_loop();
     bdrv_activate(bs, NULL);
-    bdrv_graph_rdunlock_main_loop();
 
     perm = BLK_PERM_CONSISTENT_READ;
     if (export->writable) {
