@@ -70,7 +70,7 @@ static void i3c_soc_chr_receive(void *opaque, const uint8_t *buf, int size)
     I3CSoc *s = I3C_SOC(opaque);
     uint32_t ret;
     uint8_t resp;
-    uint8_t ReadBuf[128] = { 0 };
+    uint8_t ReadBuf[256] = { 0 };
 
     if (!s->in_event) {
         s->in_event = buf[0];
