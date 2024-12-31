@@ -74,27 +74,11 @@ static StringOutputVisitor *to_sov(Visitor *v)
 
 static void string_output_set(StringOutputVisitor *sov, char *string)
 {
-    switch (sov->list_mode) {
-    case LM_STARTED:
-        sov->list_mode = LM_IN_PROGRESS;
-        /* fall through */
-    case LM_NONE:
-        if (sov->string) {
-            g_string_free(sov->string, true);
-        }
-        sov->string = g_string_new(string);
-        g_free(string);
-        break;
-
-    case LM_IN_PROGRESS:
-    case LM_END:
-        g_string_append(sov->string, ", ");
-        g_string_append(sov->string, string);
-        break;
-
-    default:
-        abort();
+    if (sov->string) {
+        g_string_free(sov->string, true);
     }
+    sov->string = g_string_new(string);
+    g_free(string);
 }
 
 static void string_output_append(StringOutputVisitor *sov, int64_t a)
