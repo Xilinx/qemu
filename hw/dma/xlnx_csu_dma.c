@@ -33,7 +33,7 @@
 
 /*
  * Ref: UG1087 (v1.7) February 8, 2019
- * https://www.xilinx.com/html_docs/registers/ug1087/ug1087-zynq-ultrascale-registers.html
+ * https://www.xilinx.com/html_docs/registers/ug1087/ug1087-zynq-ultrascale-registers
  * CSUDMA Module section
  */
 REG32(ADDR, 0x0)
@@ -41,7 +41,7 @@ REG32(ADDR, 0x0)
 REG32(ADDR_UNALIGNED, 0x0) /* when the DMA allows unaligned accesses */
     FIELD(ADDR_UNALIGNED, ADDR, 0, 32) /* wo */
 REG32(SIZE, 0x4)
-    FIELD(SIZE, SIZE, 2, 27) /* wo */
+    FIELD(SIZE, SIZE, 2, 27)
     FIELD(SIZE, LAST_WORD, 0, 1) /* rw, only exists in SRC */
 REG32(SIZE_UNALIGNED, 0x4) /* when the DMA allows unaligned accesses */
     FIELD(SIZE_UNALIGNED, SIZE, 0, 29) /* wo */
@@ -432,10 +432,14 @@ static uint64_t addr_pre_write(RegisterInfo *reg, uint64_t val)
 static uint64_t size_pre_write(RegisterInfo *reg, uint64_t val)
 {
     XlnxCSUDMA *s = XLNX_CSU_DMA(reg->opaque);
+    uint64_t size = val & R_SIZE_SIZE_MASK;
 
     if (s->regs[R_SIZE] != 0) {
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: Starting DMA while already running.\n", __func__);
+        if (size || s->is_dst) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "%s: Starting DMA while already running.\n",
+                          __func__);
+        }
     }
 
     if (!s->is_dst) {
@@ -445,8 +449,7 @@ static uint64_t size_pre_write(RegisterInfo *reg, uint64_t val)
     }
 
     /* Size is word aligned */
-    return val & (s->allow_unaligned ? R_SIZE_UNALIGNED_SIZE_MASK
-                                     : R_SIZE_SIZE_MASK);
+    return size;
 }
 
 static uint64_t size_post_read(RegisterInfo *reg, uint64_t val)
