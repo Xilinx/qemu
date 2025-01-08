@@ -455,8 +455,16 @@ static void xlnx_dp_aux_clear_rx_fifo(XlnxDPState *s)
 
 static void xlnx_dp_aux_push_rx_fifo(XlnxDPState *s, uint8_t *buf, size_t len)
 {
+    size_t to_push;
+
     DPRINTF("Push %u data in rx_fifo\n", (unsigned)len);
-    fifo8_push_all(&s->rx_fifo, buf, len);
+    to_push = MIN(len, fifo8_num_free(&s->rx_fifo));
+    if (to_push < len) {
+        qemu_log_mask(LOG_GUEST_ERROR, TYPE_XLNX_DP
+                      ": %s: dropping %zu bytes\n",
+                      __func__, len - to_push);
+    }
+    fifo8_push_all(&s->rx_fifo, buf, to_push);
 }
 
 static uint8_t xlnx_dp_aux_pop_rx_fifo(XlnxDPState *s)
