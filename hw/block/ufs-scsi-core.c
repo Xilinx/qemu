@@ -9,6 +9,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/log.h"
 #include "hw/qdev-properties.h"
 #include "qemu/error-report.h"
 #include "hw/block/ufs-scsi-if.h"
@@ -115,7 +116,8 @@ static void ufs_scsi_receive(ufs_scsi_if *ifs, void *pkt, uint32_t size,
     uint32_t len;
 
     if (!sDev) {
-        warn_report("ufs-scsi: lun %d scsi device not attached!", lun);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "ufs-scsi: lun %d scsi device not attached!", lun);
         scsi_build_sense(sense ,sense_code_LUN_NOT_SUPPORTED);
         ufs_scsi_if_handle_sense(s->ufs_scsi_ini, sense,
                                  SCSI_SENSE_LEN, 0, tag);
