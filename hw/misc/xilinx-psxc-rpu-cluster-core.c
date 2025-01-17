@@ -184,7 +184,27 @@ REG32(VERSAL_NET_IDS, 0x20c)
 
 static void update_gpios(XilinxPsxcRpuClusterCoreState *s)
 {
-    /* TODO */
+    bool halt, thumb;
+
+    halt = FIELD_EX32(s->cfg0, CFG0, CPUHALT);
+    thumb = FIELD_EX32(s->cfg1, CFG1, THUMBEXCEPTIONS);
+
+    qemu_set_irq(s->halt, s->cpu_rst || !s->slsplit || halt);
+    qemu_set_irq(s->thumb, thumb);
+}
+
+static void update_rvbar(XilinxPsxcRpuClusterCoreState *s)
+{
+    if (!s->core) {
+        return;
+    }
+
+    object_property_set_int(OBJECT(s->core), "rvbar", s->vectable,
+                            &error_abort);
+
+    if (s->cpu_rst) {
+        cpu_set_pc(CPU(s->core), s->vectable);
+    }
 }
 
 /*
@@ -240,6 +260,21 @@ static uint64_t xilinx_psxc_rpu_cluster_core_read(void *opaque,
     addr = fixup_addr(s, real_addr);
 
     switch (addr) {
+    case A_CFG0:
+        ret = s->cfg0;
+        break;
+
+    case A_CFG1:
+        ret = s->cfg1;
+        break;
+
+    case A_PWRDWN:
+        ret = s->pwrdwn;
+        break;
+
+    case A_VECTABLE:
+        ret = s->vectable;
+        break;
 
     default:
         qemu_log_mask(LOG_UNIMP,
@@ -266,6 +301,25 @@ static void xilinx_psxc_rpu_cluster_core_write(void *opaque, hwaddr real_addr,
     trace_xilinx_psxc_rpu_cluster_core_write(real_addr, value, size);
 
     switch (addr) {
+    case A_CFG0:
+        s->cfg0 = value & CFG0_WRITE_MASK;
+        update_gpios(s);
+        break;
+
+    case A_CFG1:
+        s->cfg1 = value & CFG1_WRITE_MASK;
+        update_gpios(s);
+        break;
+
+    case A_PWRDWN:
+        s->pwrdwn = value & 0x1;
+        break;
+
+    case A_VECTABLE:
+        s->vectable = value & VECTABLE_WRITE_MASK;
+        update_rvbar(s);
+        break;
+
     default:
         qemu_log_mask(LOG_UNIMP,
                       TYPE_XILINX_PSXC_RPU_CLUSTER_CORE
@@ -293,17 +347,74 @@ static void slsplit_handler(void *opaque, int irq, int level)
     update_gpios(s);
 }
 
+REG32(XTCMREGIONR, 0)
+    FIELD(XTCMREGIONR, ENABLE_EL1_EL0, 0, 1)
+    FIELD(XTCMREGIONR, ENABLE_EL2, 1, 1)
+    FIELD(XTCMREGIONR, SIZE, 2, 5)
+    FIELD(XTCMREGIONR, WAITSTATES, 8, 1)
+    FIELD(XTCMREGIONR, BASEADDRESS, 13, 19)
+
+static inline uint32_t format_imp_xtcmregionr_reg(uint32_t base,
+                                                  bool waitstates,
+                                                  size_t size,
+                                                  bool enable_el2,
+                                                  bool enable_el1_el0)
+{
+    uint32_t ret = 0;
+
+    if (size == 0) {
+        return ret;
+    }
+
+    g_assert(size >= 8 * KiB);
+    g_assert(size <= 1 * MiB);
+    g_assert(is_power_of_2(size));
+
+    ret = FIELD_DP32(ret, XTCMREGIONR, ENABLE_EL1_EL0, enable_el1_el0);
+    ret = FIELD_DP32(ret, XTCMREGIONR, ENABLE_EL2, enable_el2);
+    ret = FIELD_DP32(ret, XTCMREGIONR, SIZE, size >> 11);
+    ret = FIELD_DP32(ret, XTCMREGIONR, WAITSTATES, waitstates);
+    ret = FIELD_DP32(ret, XTCMREGIONR, BASEADDRESS, base >> 13);
+
+    return ret;
+}
+
+static void rpu_core_reset_tcm_regions(XilinxPsxcRpuClusterCoreState *s)
+{
+    ARMCPU *cpu;
+
+    if (!s->core) {
+        return;
+    }
+
+    cpu = ARM_CPU(s->core);
+
+    cpu->env.tcmregion.a = format_imp_xtcmregionr_reg(0x0, false,
+                                                      64 * KiB, true, true);
+    cpu->env.tcmregion.b = format_imp_xtcmregionr_reg(0x10000, false,
+                                                      32 * KiB, true, true);
+    cpu->env.tcmregion.c = format_imp_xtcmregionr_reg(0x20000, false,
+                                                      32 * KiB, true, true);
+}
+
 static void rpu_core_rst_handler(void *opaque, int irq, int level)
 {
     XilinxPsxcRpuClusterCoreState *s = XILINX_PSXC_RPU_CLUSTER_CORE(opaque);
 
     s->cpu_rst = level;
     update_gpios(s);
+    rpu_core_reset_tcm_regions(s);
 }
 
 static void xilinx_psxc_rpu_cluster_core_reset_enter(Object *obj,
                                                      ResetType type)
 {
+    XilinxPsxcRpuClusterCoreState *s = XILINX_PSXC_RPU_CLUSTER_CORE(obj);
+
+    s->cfg0 = CFG0_RESET_VAL;
+    s->cfg1 = CFG1_RESET_VAL;
+    s->vectable = 0;
+    s->pwrdwn = false;
 }
 
 static void xilinx_psxc_rpu_cluster_core_reset_hold(Object *obj)
@@ -311,6 +422,7 @@ static void xilinx_psxc_rpu_cluster_core_reset_hold(Object *obj)
     XilinxPsxcRpuClusterCoreState *s = XILINX_PSXC_RPU_CLUSTER_CORE(obj);
 
     update_gpios(s);
+    rpu_core_reset_tcm_regions(s);
 }
 
 static void xilinx_psxc_rpu_cluster_core_realize(DeviceState *dev,

@@ -47,6 +47,12 @@ enum {
 struct XilinxPsxcRpuClusterCoreState {
     SysBusDevice parent_obj;
 
+    /* registers */
+    uint32_t cfg0;
+    uint32_t cfg1;
+    uint32_t vectable;
+    bool pwrdwn;
+
     /* internal state (corresponding input GPIO latch) */
     bool cpu_rst;
     bool slsplit;
