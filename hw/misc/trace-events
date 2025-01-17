@@ -340,3 +340,7 @@ xlnx_psxc_lpx_slcr_rpu_read_current_pstate(size_t core, uint32_t pactive) "core 
 xlnx_versal_ecdsa_rsa_exec_opcode(const char *insn) "%s"
 xlnx_versal_ecdsa_rsa_exec_ucode(unsigned int word, int pc, const char *op, int len, unsigned int r, unsigned int a, unsigned int b) "%02x:%02x: %s_%d 0x%x <- 0x%x, 0x%x"
 xlnx_versal_ecdsa_rsa_exec_stop(unsigned int word, int pc) " %02x:%02x: stop"
+
+# xilinx-psxc-rpu-cluster-core.c
+xilinx_psxc_rpu_cluster_core_read(uint64_t addr, uint64_t value, unsigned int size) "addr: 0x%" PRIx64 " value: 0x%" PRIx64 " size: %u"
+xilinx_psxc_rpu_cluster_core_write(uint64_t addr, uint64_t value, unsigned int size) "addr: 0x%" PRIx64 " value: 0x%" PRIx64 " size: %u"
