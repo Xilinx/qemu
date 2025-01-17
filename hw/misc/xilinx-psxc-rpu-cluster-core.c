@@ -191,6 +191,10 @@ static void update_gpios(XilinxPsxcRpuClusterCoreState *s)
 
     qemu_set_irq(s->halt, s->cpu_rst || !s->slsplit || halt);
     qemu_set_irq(s->thumb, thumb);
+
+    if (s->tcm_mr) {
+        memory_region_set_enabled(s->tcm_mr, !s->cpu_rst);
+    }
 }
 
 static void update_rvbar(XilinxPsxcRpuClusterCoreState *s)
