@@ -515,9 +515,22 @@ static const TypeInfo xilinx_psxc_rpu_cluster_core_info = {
     },
 };
 
+/* For hw-dtb backward compatibility */
+static const TypeInfo xilinx_psx_rpu_cluster_core0_info = {
+    .name = "xlnx.psx_rpu_cluster_core0",
+    .parent = TYPE_XILINX_PSXC_RPU_CLUSTER_CORE,
+};
+
+static const TypeInfo xilinx_psx_rpu_cluster_core1_info = {
+    .name = "xlnx.psx_rpu_cluster_core1",
+    .parent = TYPE_XILINX_PSXC_RPU_CLUSTER_CORE,
+};
+
 static void xilinx_psxc_rpu_cluster_core_register_types(void)
 {
     type_register_static(&xilinx_psxc_rpu_cluster_core_info);
+    type_register_static(&xilinx_psx_rpu_cluster_core0_info);
+    type_register_static(&xilinx_psx_rpu_cluster_core1_info);
 }
 
 type_init(xilinx_psxc_rpu_cluster_core_register_types)
