@@ -1143,6 +1143,10 @@ static void update_core_pchannel(APU_PCIL *s, size_t preq_idx)
     }
 
     if (!FIELD_EX32(preq, CORE_0_PREQ, PREQ)) {
+        pactive = s->regs[PACTIVE_IDX];
+        pactive = FIELD_DP32(pactive, CORE_0_PACTIVE, PACCEPT, 0);
+        pactive = FIELD_DP32(pactive, CORE_0_PACTIVE, PDENY, 0);
+        s->regs[PACTIVE_IDX] = pactive;
         return;
     }
 
