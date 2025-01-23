@@ -10,6 +10,7 @@ static const TypeInfo fdt_qom_aliases [] = {
     {   .name = "arm.cortex-a9-gic",        .parent = "arm_gic"             },
     {   .name = "arm.gic",                  .parent = "arm_gic"             },
     {   .name = "arm.cortex-a9-scu",        .parent = "a9-scu"              },
+    {   .name = "nxp,pcf8563",              .parent = "i2c-dev-dummy"       },
 #ifdef TARGET_AARCH64
     {   .name = "xilinx.cxtsgen",           .parent = "arm.generic-timer"   },
 #endif
