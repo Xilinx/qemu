@@ -821,7 +821,14 @@ static uint64_t xlnx_trng1r2_regs_read(void *opaque, hwaddr addr, unsigned size)
 
     /* Read on write-only returns 0 */
     switch (addr) {
-    case A_CONF0 ... (A_TSTENT + 3):
+    case A_CONF0 ... A_CONF1:
+        /*
+         * Even though those registers are specified as WO, the real hardware
+         * allows reading them.
+         */
+        break;
+
+    case A_TSTENT:
         return 0;
     }
 
