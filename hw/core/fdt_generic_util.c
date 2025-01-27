@@ -2073,7 +2073,23 @@ exit_reg_parse:
                 }
                 named_idx = i - c->fdt_index;
                 gpio_name = c->name;
+            } else if (gpio_set->names ==
+                       &fdt_generic_gpio_name_set_interrupts) {
+                /*
+                 * When parsing an interrupts-extended property, the current
+                 * index `i' matters. It designates the output index we want to
+                 * connect. E.g.:
+                 *    foo@FOO {
+                 *        interrupts-extended = <&bar 4
+                 *                               &bar 7
+                 *                               &bar 9>;
+                 *    };
+                 *
+                 * `i' will vary from 0 (&bar 4) to 2 (&bar 9)
+                 */
+                named_idx = i;
             }
+
             if (!gpio_name) {
                 const char *names_propname = gpio_set->names->names_propname;
                 gpio_name = qemu_fdt_getprop_string(fdti->fdt, node_path,
