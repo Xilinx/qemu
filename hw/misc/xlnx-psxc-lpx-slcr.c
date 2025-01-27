@@ -7473,15 +7473,31 @@ static void pwr_reset_irq_write(XlnxPsxcLpxSlcr *s, XlnxPsxcLpxSlcrIrq *irq,
     }
 }
 
+static inline size_t rpu_pcil_pchannel_decode_offset(size_t *offset)
+{
+    const size_t cluster_stride = A_RPU_PCIL_B0_ISR - A_RPU_PCIL_A0_ISR;
+    const size_t core_stride = A_RPU_PCIL_A1_ISR - A_RPU_PCIL_A0_ISR;
+    size_t cl_idx, core_idx, idx;
+
+    cl_idx = *offset / cluster_stride;
+    *offset = *offset % cluster_stride;
+
+    core_idx = *offset / core_stride;
+    *offset = *offset % core_stride;
+
+    idx = cl_idx * 2 + core_idx;
+
+    return idx;
+}
+
 static uint32_t rpu_pcil_pchannel_read(XlnxPsxcLpxSlcr *s, size_t offset)
 {
-    const size_t stride = A_RPU_PCIL_A1_ISR - A_RPU_PCIL_A0_ISR;
     size_t idx, reg;
     XlnxPsxcLpxSlcrRpuPChannel *pchan;
     uint32_t ret;
 
-    idx = offset / stride;
-    reg = offset % stride;
+    reg = offset;
+    idx = rpu_pcil_pchannel_decode_offset(&reg);
 
     if (idx >= s->num_rpu) {
         qemu_log_mask(LOG_GUEST_ERROR,
@@ -7554,12 +7570,11 @@ static void update_rpu_pcil_pchannel(XlnxPsxcLpxSlcr *s, size_t idx)
 static void rpu_pcil_pchannel_write(XlnxPsxcLpxSlcr *s,
                                     size_t offset, uint32_t value)
 {
-    const size_t stride = A_RPU_PCIL_A1_ISR - A_RPU_PCIL_A0_ISR;
     size_t idx, reg;
     XlnxPsxcLpxSlcrRpuPChannel *pchan;
 
-    idx = offset / stride;
-    reg = offset % stride;
+    reg = offset;
+    idx = rpu_pcil_pchannel_decode_offset(&reg);
 
     if (idx >= s->num_rpu) {
         qemu_log_mask(LOG_GUEST_ERROR,
