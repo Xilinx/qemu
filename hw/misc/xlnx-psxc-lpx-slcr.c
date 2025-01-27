@@ -7564,6 +7564,11 @@ static void update_rpu_pcil_pchannel(XlnxPsxcLpxSlcr *s, size_t idx)
                                        PACTIVE1, 1);
 
         update_rpu_pcil_pchan_irq(s, idx);
+    } else {
+        pchan->pactive = FIELD_DP32(pchan->pactive, RPU_PCIL_A0_PA,
+                                    PACCEPT, 0);
+        pchan->pactive = FIELD_DP32(pchan->pactive, RPU_PCIL_A0_PA,
+                                    PDENY, 0);
     }
 }
 
