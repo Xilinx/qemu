@@ -956,9 +956,11 @@ static uint32_t cortex_r52_pchan_get_current_state(ARMPChannelIf *obj)
 static void cortex_r52_class_init(ObjectClass *oc, void *data)
 {
     ARMCPUClass *acc = ARM_CPU_CLASS(oc);
+    CPUClass *cc = CPU_CLASS(acc);
     ARMPChannelIfClass *apcic = ARM_PCHANNEL_IF_CLASS(oc);
 
     acc->info = data;
+    cc->gdb_core_xml_file = "arm-core.xml";
     apcic->request_state_change = cortex_r52_pchan_request_state_change;
     apcic->get_current_state = cortex_r52_pchan_get_current_state;
 }
