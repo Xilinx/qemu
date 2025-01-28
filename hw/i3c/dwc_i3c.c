@@ -2084,6 +2084,7 @@ static int dwc_i3c_target_event(I3CTarget *i3c, enum I3CEvent event)
     DwcI3CTarget *ss = DWC_I3C_TARGET(i3c);
     DwcI3CDevice *s = ss->dwc_i3c;
     uint8_t thld;
+    uint8_t pad;
 
     switch (event) {
     case I3C_START_SEND:
@@ -2109,6 +2110,17 @@ static int dwc_i3c_target_event(I3CTarget *i3c, enum I3CEvent event)
         if (s->target.curr_event == I3C_START_SEND && !i3c->in_ccc) {
             dwc_i3c_device_resp_queue_push(s, 0, 0, 0,
                              s->target.tr_bytes, true);
+            /*
+             * Incase data received is not aligned to 4bytes size (i.e
+             * fifo width), pad the remaining bytes
+             */
+            pad = fifo8_num_used(&s->rx_queue.fifo) % 4;
+            if (pad) {
+                pad = 4 - pad;
+                while (pad--) {
+                    fifo8_push(&s->rx_queue.fifo, 0);
+                }
+            }
             s->target.tr_bytes = 0;
         } else if (s->target.curr_event == I3C_START_RECV && !i3c->in_ccc) {
             dwc_i3c_device_resp_queue_push(s, 0,
@@ -2189,7 +2201,7 @@ static int device_i3c_target_tx(I3CTarget *i3c, const uint8_t *data,
     fifo8_push_all(&s->rx_queue.fifo, data, recv);
     s->target.tr_bytes += recv;
 
-    if (fifo8_num_used(&s->rx_queue.fifo) >= thld) {
+    if ((fifo32_num_used(&s->rx_queue) * 4) >= thld) {
         ARRAY_FIELD_DP32(s->regs, INTR_STATUS, RX_THLD, 1);
     }
 
