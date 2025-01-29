@@ -1129,6 +1129,9 @@ typedef struct PsxcLpxSlcrSecure {
     qemu_irq irq_rstmon1;
     qemu_irq irq_clkmon;
 
+    qemu_irq adma_secure[8];
+    qemu_irq sdma_secure[8];
+
     uint32_t regs[PSXC_LPX_SLCR_SECURE_R_MAX];
     RegisterInfo regs_info[PSXC_LPX_SLCR_SECURE_R_MAX];
 } PsxcLpxSlcrSecure;
@@ -1292,6 +1295,33 @@ static uint64_t clkmon_trigger_prew(RegisterInfo *reg, uint64_t val64)
     return 0;
 }
 
+static void tz_postw(RegisterInfo *reg, uint64_t val64)
+{
+    PsxcLpxSlcrSecure *s = XILINX_PSXC_LPX_SLCR_SECURE(reg->opaque);
+    size_t offset;
+    uint32_t val = (uint32_t) val64;
+    qemu_irq *gpio;
+
+    switch (reg->access->addr) {
+    case A_TZ_ADMA0 ... A_TZ_ADMA7:
+        offset = (reg->access->addr - A_TZ_ADMA0) / reg->data_size;
+        gpio = s->adma_secure;
+        break;
+
+    case A_TZ_SDMA0 ... A_TZ_SDMA7:
+        offset = (reg->access->addr - A_TZ_SDMA0) / reg->data_size;
+        gpio = s->sdma_secure;
+        break;
+
+    default:
+        g_assert_not_reached();
+    }
+
+    if (!resettable_is_in_reset(OBJECT(s))) {
+        qemu_set_irq(gpio[offset], !FIELD_EX32(val, TZ_ADMA0, TZ_CTRL_N));
+    }
+}
+
 static const RegisterAccessInfo psxc_lpx_slcr_secure_regs_info[] = {
     {   .name = "WPROT0",  .addr = A_WPROT0,
         .reset = 0x1,
@@ -1329,13 +1359,21 @@ static const RegisterAccessInfo psxc_lpx_slcr_secure_regs_info[] = {
     },{ .name = "TZ_ASU_GLOBAL",  .addr = A_TZ_ASU_GLOBAL,
         .reset = 0x1,
     },{ .name = "TZ_ADMA0",  .addr = A_TZ_ADMA0,
+        .post_write = tz_postw,
     },{ .name = "TZ_ADMA1",  .addr = A_TZ_ADMA1,
+        .post_write = tz_postw,
     },{ .name = "TZ_ADMA2",  .addr = A_TZ_ADMA2,
+        .post_write = tz_postw,
     },{ .name = "TZ_ADMA3",  .addr = A_TZ_ADMA3,
+        .post_write = tz_postw,
     },{ .name = "TZ_ADMA4",  .addr = A_TZ_ADMA4,
+        .post_write = tz_postw,
     },{ .name = "TZ_ADMA5",  .addr = A_TZ_ADMA5,
+        .post_write = tz_postw,
     },{ .name = "TZ_ADMA6",  .addr = A_TZ_ADMA6,
+        .post_write = tz_postw,
     },{ .name = "TZ_ADMA7",  .addr = A_TZ_ADMA7,
+        .post_write = tz_postw,
     },{ .name = "LPX_TZ_CNTRL_LOCK",  .addr = A_LPX_TZ_CNTRL_LOCK,
     },{ .name = "TZ_RPUA",  .addr = A_TZ_RPUA,
     },{ .name = "TZ_RPUB",  .addr = A_TZ_RPUB,
@@ -1363,13 +1401,21 @@ static const RegisterAccessInfo psxc_lpx_slcr_secure_regs_info[] = {
     },{ .name = "TZ_R52_AXI_E0",  .addr = A_TZ_R52_AXI_E0,
     },{ .name = "TZ_R52_AXI_E1",  .addr = A_TZ_R52_AXI_E1,
     },{ .name = "TZ_SDMA0",  .addr = A_TZ_SDMA0,
+        .post_write = tz_postw,
     },{ .name = "TZ_SDMA1",  .addr = A_TZ_SDMA1,
+        .post_write = tz_postw,
     },{ .name = "TZ_SDMA2",  .addr = A_TZ_SDMA2,
+        .post_write = tz_postw,
     },{ .name = "TZ_SDMA3",  .addr = A_TZ_SDMA3,
+        .post_write = tz_postw,
     },{ .name = "TZ_SDMA4",  .addr = A_TZ_SDMA4,
+        .post_write = tz_postw,
     },{ .name = "TZ_SDMA5",  .addr = A_TZ_SDMA5,
+        .post_write = tz_postw,
     },{ .name = "TZ_SDMA6",  .addr = A_TZ_SDMA6,
+        .post_write = tz_postw,
     },{ .name = "TZ_SDMA7",  .addr = A_TZ_SDMA7,
+        .post_write = tz_postw,
     },{ .name = "TZ_INT_LPX_ASILB",  .addr = A_TZ_INT_LPX_ASILB,
         .reset = 0x1,
     },{ .name = "TZ_INT_LPX_ASILD",  .addr = A_TZ_INT_LPX_ASILD,
@@ -1823,10 +1869,19 @@ static void psxc_lpx_slcr_secure_reset_enter(Object *obj, ResetType type)
 static void psxc_lpx_slcr_secure_reset_hold(Object *obj)
 {
     PsxcLpxSlcrSecure *s = XILINX_PSXC_LPX_SLCR_SECURE(obj);
+    size_t i;
 
     rstmon0_update_irq(s);
     rstmon1_update_irq(s);
     clkmon_update_irq(s);
+
+    for (i = 0; i < ARRAY_SIZE(s->adma_secure); i++) {
+        qemu_set_irq(s->adma_secure[i], 1);
+    }
+
+    for (i = 0; i < ARRAY_SIZE(s->sdma_secure); i++) {
+        qemu_set_irq(s->sdma_secure[i], 1);
+    }
 }
 
 static const MemoryRegionOps psxc_lpx_slcr_secure_ops = {
@@ -1858,6 +1913,11 @@ static void psxc_lpx_slcr_secure_init(Object *obj)
                                 0x0,
                                 &reg_array->mem);
 
+    qdev_init_gpio_out_named(DEVICE(obj), s->adma_secure,
+                             "adma-secure", ARRAY_SIZE(s->adma_secure));
+    qdev_init_gpio_out_named(DEVICE(obj), s->sdma_secure,
+                             "sdma-secure", ARRAY_SIZE(s->sdma_secure));
+
     sysbus_init_mmio(sbd, &s->iomem);
 }
 
@@ -1872,14 +1932,28 @@ static const VMStateDescription vmstate_psxc_lpx_slcr_secure = {
     }
 };
 
+static const FDTGenericGPIOSet psxc_lpx_slcr_secure_gpios[] = {
+    {
+      .names = &fdt_generic_gpio_name_set_gpio,
+      .gpios = (FDTGenericGPIOConnection[]) {
+        { .name = "adma-secure", .fdt_index = 0, .range = 8 },
+        { .name = "sdma-secure", .fdt_index = 8, .range = 8 },
+        { },
+      },
+    },
+    { },
+};
+
 static void psxc_lpx_slcr_secure_class_init(ObjectClass *klass, void *data)
 {
     ResettableClass *rc = RESETTABLE_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
+    FDTGenericGPIOClass *fggc = FDT_GENERIC_GPIO_CLASS(klass);
 
     dc->vmsd = &vmstate_psxc_lpx_slcr_secure;
     rc->phases.enter = psxc_lpx_slcr_secure_reset_enter;
     rc->phases.hold = psxc_lpx_slcr_secure_reset_hold;
+    fggc->controller_gpios = psxc_lpx_slcr_secure_gpios;
 }
 
 static const TypeInfo psxc_lpx_slcr_secure_info = {
@@ -1888,6 +1962,10 @@ static const TypeInfo psxc_lpx_slcr_secure_info = {
     .instance_size = sizeof(PsxcLpxSlcrSecure),
     .class_init    = psxc_lpx_slcr_secure_class_init,
     .instance_init = psxc_lpx_slcr_secure_init,
+    .interfaces = (InterfaceInfo[]) {
+        { TYPE_FDT_GENERIC_GPIO },
+        { }
+    },
 };
 
 static void psxc_lpx_slcr_secure_register_types(void)
