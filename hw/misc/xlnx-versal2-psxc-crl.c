@@ -211,10 +211,10 @@ REG32(DBG_TSTMP_CLK_CTRL, 0x18c)
     FIELD(DBG_TSTMP_CLK_CTRL, CLKACT, 25, 1)
     FIELD(DBG_TSTMP_CLK_CTRL, DIVISOR0, 8, 10)
     FIELD(DBG_TSTMP_CLK_CTRL, SRCSEL, 0, 3)
-REG32(CPM_TOPSW_CLK_CTRL, 0x190)
-    FIELD(CPM_TOPSW_CLK_CTRL, CLKACT, 25, 1)
-    FIELD(CPM_TOPSW_CLK_CTRL, DIVISOR0, 8, 10)
-    FIELD(CPM_TOPSW_CLK_CTRL, SRCSEL, 0, 3)
+REG32(MMI_TOPSW_CLK_CTRL, 0x190)
+    FIELD(MMI_TOPSW_CLK_CTRL, CLKACT, 25, 1)
+    FIELD(MMI_TOPSW_CLK_CTRL, DIVISOR0, 8, 10)
+    FIELD(MMI_TOPSW_CLK_CTRL, SRCSEL, 0, 3)
 REG32(WWDT_PLL_CLK_CTRL, 0x194)
     FIELD(WWDT_PLL_CLK_CTRL, DIVISOR0, 8, 10)
     FIELD(WWDT_PLL_CLK_CTRL, SRCSEL, 0, 3)
@@ -262,52 +262,54 @@ REG32(RST_ASU_GD, 0x32c)
     FIELD(RST_ASU_GD, TOP_RESET, 0, 1)
 REG32(RST_ADMA, 0x334)
     FIELD(RST_ADMA, RESET, 0, 1)
-REG32(RST_GEM0, 0x338)
+REG32(RST_SDMA, 0x338)
+    FIELD(RST_SDMA, RESET, 0, 1)
+REG32(RST_GEM0, 0x33c)
     FIELD(RST_GEM0, RESET, 0, 1)
-REG32(RST_GEM1, 0x33c)
+REG32(RST_GEM1, 0x340)
     FIELD(RST_GEM1, RESET, 0, 1)
-REG32(RST_USB0, 0x344)
+REG32(RST_USB0, 0x348)
     FIELD(RST_USB0, RESET, 0, 1)
-REG32(RST_USB1, 0x348)
+REG32(RST_USB1, 0x34c)
     FIELD(RST_USB1, RESET, 0, 1)
-REG32(RST_UART0, 0x34c)
+REG32(RST_UART0, 0x350)
     FIELD(RST_UART0, RESET, 0, 1)
-REG32(RST_UART1, 0x350)
+REG32(RST_UART1, 0x354)
     FIELD(RST_UART1, RESET, 0, 1)
-REG32(RST_SPI0, 0x354)
+REG32(RST_SPI0, 0x358)
     FIELD(RST_SPI0, RESET, 0, 1)
-REG32(RST_SPI1, 0x358)
+REG32(RST_SPI1, 0x35c)
     FIELD(RST_SPI1, RESET, 0, 1)
-REG32(RST_CAN0, 0x35c)
+REG32(RST_CAN0, 0x360)
     FIELD(RST_CAN0, RESET, 0, 1)
-REG32(RST_CAN1, 0x360)
+REG32(RST_CAN1, 0x364)
     FIELD(RST_CAN1, RESET, 0, 1)
-REG32(RST_CAN2, 0x364)
+REG32(RST_CAN2, 0x368)
     FIELD(RST_CAN2, RESET, 0, 1)
-REG32(RST_CAN3, 0x368)
+REG32(RST_CAN3, 0x36c)
     FIELD(RST_CAN3, RESET, 0, 1)
-REG32(RST_I3C0, 0x36c)
+REG32(RST_I3C0, 0x374)
     FIELD(RST_I3C0, RESET, 0, 1)
-REG32(RST_I3C1, 0x370)
+REG32(RST_I3C1, 0x378)
     FIELD(RST_I3C1, RESET, 0, 1)
-REG32(RST_I3C2, 0x374)
+REG32(RST_I3C2, 0x37c)
     FIELD(RST_I3C2, RESET, 0, 1)
-REG32(RST_I3C3, 0x378)
+REG32(RST_I3C3, 0x380)
     FIELD(RST_I3C3, RESET, 0, 1)
-REG32(RST_I3C4, 0x37c)
+REG32(RST_I3C4, 0x384)
     FIELD(RST_I3C4, RESET, 0, 1)
-REG32(RST_I3C5, 0x380)
+REG32(RST_I3C5, 0x388)
     FIELD(RST_I3C5, RESET, 0, 1)
-REG32(RST_I3C6, 0x384)
+REG32(RST_I3C6, 0x38c)
     FIELD(RST_I3C6, RESET, 0, 1)
-REG32(RST_I3C7, 0x388)
+REG32(RST_I3C7, 0x390)
     FIELD(RST_I3C7, RESET, 0, 1)
-REG32(RST_DBG_LPX, 0x38c)
+REG32(RST_DBG_LPX, 0x398)
     FIELD(RST_DBG_LPX, RESET_HSDP, 1, 1)
     FIELD(RST_DBG_LPX, RESET, 0, 1)
-REG32(RST_GPIO, 0x390)
+REG32(RST_GPIO, 0x39c)
     FIELD(RST_GPIO, RESET, 0, 1)
-REG32(RST_TTC, 0x394)
+REG32(RST_TTC, 0x3a0)
     FIELD(RST_TTC, TTC7_RESET, 7, 1)
     FIELD(RST_TTC, TTC6_RESET, 6, 1)
     FIELD(RST_TTC, TTC5_RESET, 5, 1)
@@ -316,33 +318,39 @@ REG32(RST_TTC, 0x394)
     FIELD(RST_TTC, TTC2_RESET, 2, 1)
     FIELD(RST_TTC, TTC1_RESET, 1, 1)
     FIELD(RST_TTC, TTC0_RESET, 0, 1)
-REG32(RST_TIMESTAMP, 0x398)
+REG32(RST_TIMESTAMP, 0x3a4)
     FIELD(RST_TIMESTAMP, RESET, 0, 1)
-REG32(RST_SWDT0, 0x39c)
+REG32(RST_SWDT0, 0x3a8)
     FIELD(RST_SWDT0, RESET, 0, 1)
-REG32(RST_SWDT1, 0x3a0)
+REG32(RST_SWDT1, 0x3ac)
     FIELD(RST_SWDT1, RESET, 0, 1)
-REG32(RST_FPX, 0x3a4)
+REG32(RST_SWDT2, 0x3b0)
+    FIELD(RST_SWDT2, RESET, 0, 1)
+REG32(RST_SWDT3, 0x3b4)
+    FIELD(RST_SWDT3, RESET, 0, 1)
+REG32(RST_SWDT4, 0x3b8)
+    FIELD(RST_SWDT4, RESET, 0, 1)
+REG32(RST_IPI, 0x3bc)
+    FIELD(RST_IPI, RESET, 0, 1)
+REG32(RST_SYSMON, 0x3c0)
+    FIELD(RST_SYSMON, CFG_RST, 0, 1)
+REG32(ASU_MB_RST_MODE, 0x3c4)
+    FIELD(ASU_MB_RST_MODE, WAKEUP, 2, 1)
+    FIELD(ASU_MB_RST_MODE, RST_MODE, 0, 2)
+REG32(FPX_TOPSW_MUX_CTRL, 0x3c8)
+    FIELD(FPX_TOPSW_MUX_CTRL, SELECT, 0, 1)
+REG32(RST_FPX, 0x3d0)
     FIELD(RST_FPX, SRST, 1, 1)
     FIELD(RST_FPX, POR, 0, 1)
-REG32(RST_MMI, 0x3a8)
+REG32(RST_MMI, 0x3d4)
     FIELD(RST_MMI, POR, 0, 1)
-REG32(RST_OCM, 0x3ac)
+REG32(RST_OCM, 0x3d8)
     FIELD(RST_OCM, RESET_OCM3, 3, 1)
     FIELD(RST_OCM, RESET_OCM2, 2, 1)
     FIELD(RST_OCM, RESET_OCM1, 1, 1)
     FIELD(RST_OCM, RESET_OCM0, 0, 1)
-REG32(RST_IPI, 0x3b0)
-    FIELD(RST_IPI, RESET, 0, 1)
-REG32(RST_SYSMON, 0x3b4)
-    FIELD(RST_SYSMON, CFG_RST, 0, 1)
-REG32(ASU_MB_RST_MODE, 0x3b8)
-    FIELD(ASU_MB_RST_MODE, WAKEUP, 2, 1)
-    FIELD(ASU_MB_RST_MODE, RST_MODE, 0, 2)
-REG32(FPX_TOPSW_MUX_CTRL, 0x3bc)
-    FIELD(FPX_TOPSW_MUX_CTRL, SELECT, 0, 1)
 
-#define PSXC_CRL_R_MAX (R_FPX_TOPSW_MUX_CTRL + 1)
+#define PSXC_CRL_R_MAX (R_RST_OCM + 1)
 
 typedef struct PSXC_CRL {
     SysBusDevice parent_obj;
@@ -483,15 +491,15 @@ static const RegisterAccessInfo psxc_crl_regs_info[] = {
         .reset = 0x7e5dcc6c,
         .rsvd = 0x1801210,
     },{ .name = "PLL_STATUS",  .addr = A_PLL_STATUS,
-        .reset = 0xc,
+        .reset = 0xf,
         .rsvd = 0xf0,
         .ro = 0xf,
     },{ .name = "RPLL_TO_XPD_CTRL",  .addr = A_RPLL_TO_XPD_CTRL,
         .reset = 0x2000100,
         .rsvd = 0xfdfc00ff,
     },{ .name = "LPX_TOP_SWITCH_CTRL",  .addr = A_LPX_TOP_SWITCH_CTRL,
-        .reset = 0x6000300,
-        .rsvd = 0xf9fc00f8,
+        .reset = 0xe000300,
+        .rsvd = 0xf1fc00f8,
     },{ .name = "LPX_LSBUS_CLK_CTRL",  .addr = A_LPX_LSBUS_CLK_CTRL,
         .reset = 0x2000800,
         .rsvd = 0xfdfc00f8,
@@ -575,12 +583,12 @@ static const RegisterAccessInfo psxc_crl_regs_info[] = {
         .rsvd = 0xfdfc00f8,
     },{ .name = "SAFETY_CHK",  .addr = A_SAFETY_CHK,
     },{ .name = "ASU_CLK_CTRL",  .addr = A_ASU_CLK_CTRL,
-        .reset = 0xf04,
-        .rsvd = 0xfffc00f8,
+        .reset = 0x2000f04,
+        .rsvd = 0xfdfc00f8,
     },{ .name = "DBG_TSTMP_CLK_CTRL",  .addr = A_DBG_TSTMP_CLK_CTRL,
         .reset = 0x300,
         .rsvd = 0xfdfc00f8,
-    },{ .name = "CPM_TOPSW_CLK_CTRL",  .addr = A_CPM_TOPSW_CLK_CTRL,
+    },{ .name = "MMI_TOPSW_CLK_CTRL",  .addr = A_MMI_TOPSW_CLK_CTRL,
         .reset = 0x2000300,
         .rsvd = 0xfdfc00f8,
     },{ .name = "WWDT_PLL_CLK_CTRL",  .addr = A_WWDT_PLL_CLK_CTRL,
@@ -620,6 +628,9 @@ static const RegisterAccessInfo psxc_crl_regs_info[] = {
     },{ .name = "RST_ADMA",  .addr = A_RST_ADMA,
         .reset = 0x1,
         .post_write = crl_rst_postw,
+    },{ .name = "RST_SDMA",  .addr = A_RST_SDMA,
+        .post_write = crl_rst_postw,
+        .reset = 0x1,
     },{ .name = "RST_GEM0",  .addr = A_RST_GEM0,
         .reset = 0x1,
         .post_write = crl_rst_postw,
@@ -699,13 +710,15 @@ static const RegisterAccessInfo psxc_crl_regs_info[] = {
     },{ .name = "RST_SWDT1",  .addr = A_RST_SWDT1,
         .reset = 0x1,
         .post_write = crl_rst_postw,
-    },{ .name = "RST_FPX",  .addr = A_RST_FPX,
-        .reset = 0x3,
+    },{ .name = "RST_SWDT2",  .addr = A_RST_SWDT2,
         .post_write = crl_rst_postw,
-    },{ .name = "RST_MMI",  .addr = A_RST_MMI,
         .reset = 0x1,
-    },{ .name = "RST_OCM",  .addr = A_RST_OCM,
+    },{ .name = "RST_SWDT3",  .addr = A_RST_SWDT3,
         .post_write = crl_rst_postw,
+        .reset = 0x1,
+    },{ .name = "RST_SWDT4",  .addr = A_RST_SWDT4,
+        .post_write = crl_rst_postw,
+        .reset = 0x1,
     },{ .name = "RST_IPI",  .addr = A_RST_IPI,
         .post_write = crl_rst_postw,
     },{ .name = "RST_SYSMON",  .addr = A_RST_SYSMON,
@@ -716,6 +729,14 @@ static const RegisterAccessInfo psxc_crl_regs_info[] = {
         .post_write = crl_rst_postw,
     },{ .name = "FPX_TOPSW_MUX_CTRL",  .addr = A_FPX_TOPSW_MUX_CTRL,
         .reset = 0x1,
+    },{ .name = "RST_FPX",  .addr = A_RST_FPX,
+        .post_write = crl_rst_postw,
+        .reset = 0x3,
+    },{ .name = "RST_MMI",  .addr = A_RST_MMI,
+        .post_write = crl_rst_postw,
+        .reset = 0x1,
+    },{ .name = "RST_OCM",  .addr = A_RST_OCM,
+        .post_write = crl_rst_postw,
     }
 };
 
