@@ -374,6 +374,8 @@ typedef struct PSXC_CRL {
     bool por_done;
     uint32_t regs[PSXC_CRL_R_MAX];
     RegisterInfo regs_info[PSXC_CRL_R_MAX];
+
+    bool in_reset_enter;
 } PSXC_CRL;
 
 #define PROPAGATE_GPIO(reg, f, irq) { \
@@ -384,6 +386,14 @@ typedef struct PSXC_CRL {
 static void crl_rst_update(PSXC_CRL *s)
 {
     bool val;
+
+    /*
+     * It is forbidden by the API to have effect on other devices while in reset
+     * enter.
+     */
+    if (s->in_reset_enter) {
+        return;
+    }
 
     PROPAGATE_GPIO(RST_RPU_A, CORE0_RESET, s->rpu_rst[0]);
     PROPAGATE_GPIO(RST_RPU_A, CORE1_RESET, s->rpu_rst[1]);
@@ -714,9 +724,20 @@ static void psxc_crl_reset_enter(Object *obj, ResetType type)
     PSXC_CRL *s = XILINX_PSXC_CRL(obj);
     unsigned int i;
 
+    s->in_reset_enter = true;
+
     for (i = 0; i < ARRAY_SIZE(s->regs_info); ++i) {
         register_reset(&s->regs_info[i]);
     }
+
+    s->in_reset_enter = false;
+}
+
+static void psxc_crl_reset_hold(Object *obj)
+{
+    PSXC_CRL *s = XILINX_PSXC_CRL(obj);
+
+    /* Now GPIO can be updated.  */
     crl_rst_update(s);
 }
 
@@ -845,6 +866,7 @@ static void psxc_crl_class_init(ObjectClass *klass, void *data)
     dc->realize = psxc_crl_realize;
     dc->vmsd = &vmstate_psxc_crl;
     rc->phases.enter = psxc_crl_reset_enter;
+    rc->phases.hold = psxc_crl_reset_hold;
     fggc->controller_gpios = crl_gpios;
 }
 
