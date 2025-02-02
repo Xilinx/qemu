@@ -635,6 +635,14 @@ static const RegisterAccessInfo asu_global_regs_info[] = {
     }
 };
 
+static void asu_global_key_transfer_done(void *obj, int n, int level)
+{
+    ASU_GLOBAL *s = XILINX_ASU_GLOBAL(obj);
+
+    ARRAY_FIELD_DP32(s->regs, ASU_INT_STATUS, KEY_TRANSFER_DONE, 1);
+    asu_int_update_irq(s);
+}
+
 static void asu_global_reset_enter(Object *obj, ResetType type)
 {
     ASU_GLOBAL *s = XILINX_ASU_GLOBAL(obj);
@@ -695,6 +703,9 @@ static void asu_global_init(Object *obj)
     sysbus_init_irq(sbd, &s->irq_asu_non_fatal_error);
     sysbus_init_irq(sbd, &s->irq_addr_error_int);
     sysbus_init_irq(sbd, &s->irq_gpi);
+
+    /* Input: driven by ASU-AES */
+    qdev_init_gpio_in(DEVICE(obj), asu_global_key_transfer_done, 1);
 }
 
 static const VMStateDescription vmstate_asu_global = {
