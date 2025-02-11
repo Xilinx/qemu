@@ -867,7 +867,7 @@ static bool xmpu_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
 }
 
 static Property xmpu_properties[] = {
-    DEFINE_PROP_UINT64("protected-base", XMPU, cfg.base, 0),
+    XMPU_COMMON_PROPS(),
     DEFINE_PROP_END_OF_LIST(),
 };
 

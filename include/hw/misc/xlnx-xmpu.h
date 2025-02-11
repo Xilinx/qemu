@@ -68,6 +68,15 @@ REG32(ECO, 0xFC)
 #define NR_XMPU_REGIONS 16
 #define MAX_NR_MASTERS  8
 
+#define XMPU_ENCLOSE_(...)  __VA_ARGS__  /* Suppress style-check error */
+
+#define XMPU_COMMON_PROPS()  XMPU_ENCLOSE_(                \
+    DEFINE_PROP_LINK("mr-0", XMPU, masters[0].parent_mr,   \
+                     TYPE_MEMORY_REGION, MemoryRegion *),  \
+    DEFINE_PROP_LINK("protected-mr", XMPU, protected_mr,   \
+                     TYPE_MEMORY_REGION, MemoryRegion *),  \
+    DEFINE_PROP_UINT64("protected-base", XMPU, cfg.base, 0))
+
 typedef struct XMPU XMPU;
 
 typedef struct XMPUMaster {
