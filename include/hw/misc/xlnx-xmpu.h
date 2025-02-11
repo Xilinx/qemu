@@ -159,6 +159,9 @@ struct XMPU {
 
     void (*decode_region)(XMPU *s, XMPURegion *xr, unsigned int region);
     bool (*match)(XMPU *s, XMPURegion *xr, uint16_t master_id, hwaddr addr);
+
+    hwaddr (*regadr_translate)(struct XMPU *, hwaddr);
+    char *regadr_variant;
 };
 
 void xmpu_update_enabled(XMPU *s);

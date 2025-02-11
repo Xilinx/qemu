@@ -333,8 +333,80 @@ REG32(R15_CONFIG, 0x27c)
     FIELD(R15_CONFIG, ENABLE, 0, 1)
 
 #define XMPU_R_MAX (R_R15_CONFIG + 1)
+#define XMPU_A_MAX (XMPU_R_MAX * 4)
 
 #define DEFAULT_ADDR_SHIFT 20
+
+/*
+ * DDRMC5* family is an extension, with different XMPU register offsets.
+ *
+ * Since this model does not implement additional XMPU features in DDRMC5*,
+ * variant adaptation is handled by simple translation of XMPU register
+ * offsets.
+ */
+REG32(V5_LOCK, 0x194)
+REG32(V5_ERR_STATUS, 0x19c)
+REG32(V5_ERR_ADD_LO, 0x1a0)
+REG32(V5_ERR_ADD_HI, 0x1a4)
+REG32(V5_ERR_AXI_ID, 0x1a8)
+
+REG32(V5_R00_START_LO, 0x4)
+REG32(V5_R15_CONFIG, 0x180)
+
+#define V5_R_MAX (0x1d4 / 4 + 1)
+
+QEMU_BUILD_BUG_ON((A_V5_R15_CONFIG - A_V5_R00_START_LO)   /* both ranges */
+                  != (A_R15_CONFIG -    A_R00_START_LO)); /* must match  */
+
+static hwaddr xmpu_from_v5regs(XMPU *s, hwaddr addr)
+{
+    if (A_V5_R00_START_LO <= addr && addr < (A_V5_R15_CONFIG + 4)) {
+        addr -= A_V5_R00_START_LO;
+        addr += A_R00_START_LO;
+        return addr;
+    }
+
+    switch (addr) {
+    case A_V5_LOCK:
+        return A_LOCK;
+    case A_V5_ERR_STATUS:
+        return A_ERR_STATUS;
+    case A_V5_ERR_ADD_LO:
+        return A_ERR_ADD_LO;
+    case A_V5_ERR_ADD_HI:
+        return A_ERR_ADD_HI;
+    default:
+        return XMPU_A_MAX; /* indicator for unmodelled V5 regs */
+    }
+}
+
+static size_t xmpu_bind_v5regs(XMPU *s)
+{
+    const char *tag = s->regadr_variant;
+
+    if (!tag || !g_str_has_prefix(tag, "ddrmc5")) {
+        return 0;
+    }
+
+    if (g_ascii_isdigit(tag[6])) {
+        return 0;
+    }
+
+    /* Ok, this instance belongs to the DDRMC5* family */
+    s->regadr_translate = xmpu_from_v5regs;
+    return V5_R_MAX;
+}
+
+/* No-op translation stub */
+static hwaddr xmpu_from_v1regs(XMPU *s, hwaddr addr)
+{
+    return addr;
+}
+
+static hwaddr xmpu_regs_addr(XMPU *s, hwaddr addr)
+{
+    return s->regadr_translate(s, addr);
+}
 
 static bool xmpu_match(XMPU *s, XMPURegion *xr, uint16_t master_id, hwaddr addr)
 {
@@ -715,6 +787,12 @@ static MemTxResult xmpu_read(void *opaque, hwaddr addr, uint64_t *value,
 {
     XMPU *s = xmpu_from_mr(opaque);
 
+    addr = xmpu_regs_addr(s, addr);
+    if (addr >= XMPU_A_MAX) { /* Unmodelled register in variant(s) */
+        *value = 0;
+        return MEMTX_OK;
+    }
+
     return xmpu_read_common(opaque, s, addr, value, size, attr);
 }
 
@@ -724,6 +802,11 @@ static MemTxResult xmpu_write(void *opaque, hwaddr addr, uint64_t value,
     XMPU *s = xmpu_from_mr(opaque);
     bool locked;
     MemTxResult res;
+
+    addr = xmpu_regs_addr(s, addr);
+    if (addr >= XMPU_A_MAX) { /* Unmodelled register in variant(s) */
+        return MEMTX_OK;
+    }
 
     locked = ARRAY_FIELD_EX32(s->regs, LOCK, REGWRDIS);
     if (locked && (addr >= A_ERR_STATUS) && (addr < A_LOCK)) {
@@ -846,13 +929,17 @@ static void xmpu_realize(DeviceState *dev, Error **errp)
     s->decode_region = xmpu_decode_region;
     s->match = xmpu_match;
     s->masters[0].parent = s;
-}
 
-static void xmpu_init(Object *obj)
-{
-    XMPU *s = XILINX_DDRMC_XMPU(obj);
-    s->regs_size = XMPU_R_MAX;
-    xmpu_init_common(s, obj, TYPE_XILINX_DDRMC_XMPU, &xmpu_ops,
+    /* Try to bind variant(s) */
+    s->regs_size = xmpu_bind_v5regs(s);
+
+    if (s->regs_size == 0) {
+        /* Default if not any varianet */
+        s->regs_size = XMPU_R_MAX;
+        s->regadr_translate = xmpu_from_v1regs;
+    }
+
+    xmpu_init_common(s, OBJECT(s), TYPE_XILINX_DDRMC_XMPU, &xmpu_ops,
                      ddrmc_xmpu_regs_info, ARRAY_SIZE(ddrmc_xmpu_regs_info));
 }
 
@@ -868,6 +955,7 @@ static bool xmpu_parse_reg(FDTGenericMMap *obj, FDTGenericRegPropInfo reg,
 
 static Property xmpu_properties[] = {
     XMPU_COMMON_PROPS(),
+    DEFINE_PROP_STRING("regs-variant", XMPU, regadr_variant),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -907,7 +995,6 @@ static const TypeInfo xmpu_info = {
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(XMPU),
     .class_init    = xmpu_class_init,
-    .instance_init = xmpu_init,
     .interfaces    = (InterfaceInfo[]) {
         { TYPE_FDT_GENERIC_MMAP },
         { },
