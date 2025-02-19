@@ -2178,7 +2178,7 @@ static int device_i3c_target_tx(I3CTarget *i3c, const uint8_t *data,
     DwcI3CDevice *s = ss->dwc_i3c;
     unsigned int recv = num_to_send;
     uint8_t thld = ARRAY_FIELD_EX32(s->regs, DATA_BUFFER_THLD_CTRL,
-                                    RX_START_THLD);
+                                    RX_BUF_THLD);
     thld = 1 << (thld + 1);
     thld = thld == 2 ? 1 : thld;
 
