@@ -167,6 +167,13 @@ uint32_t curr_cflags(CPUState *cpu)
         cflags |= CF_NO_GOTO_TB;
     }
 
+    if (qemu_etrace_mask(ETRACE_F_EXEC)) {
+        /*
+         * Fast TB lookup must be disabled in order to trace each TB execution.
+         */
+        cflags |= CF_NO_GOTO_PTR;
+    }
+
     return cflags;
 }
 
@@ -423,11 +430,6 @@ const void *HELPER(lookup_tb_ptr)(CPUArchState *env)
 
     tb = tb_lookup(cpu, pc, cs_base, flags, cflags);
     if (tb == NULL) {
-        return tcg_code_gen_epilogue;
-    }
-
-    /* Avoid fast lookups when etracing.  */
-    if (qemu_etrace_mask(ETRACE_F_EXEC)) {
         return tcg_code_gen_epilogue;
     }
 
