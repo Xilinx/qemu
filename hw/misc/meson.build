@@ -155,7 +155,8 @@ system_ss.add(when: 'CONFIG_XLNX_VERSAL', if_true: files(
   'xlnx-psxc-lpx-slcr.c',
   'xlnx-pmxc-err-management.c',
   'xlnx-pmxc-intpmc-config.c',
-  'xlnx-mmi-crx.c'
+  'xlnx-mmi-crx.c',
+  'xlnx-versal-psxc-aie2p-s-npi.c'
 ))
 
 system_ss.add(when: 'CONFIG_XLNX_VERSAL_PMC', if_true: files(
