@@ -375,18 +375,40 @@ static char *rp_sanitize_prefix(RemotePort *s)
     return sanitized_name;
 }
 
-static char *rp_autocreate_chardesc(RemotePort *s, bool server)
+/*
+ * Returns the chardev URI for remote port communication. To workaround AF_UNIX
+ * socket path limitation, this function chdir to the machine-path directory,
+ * and put a relative socket file name into the chardev URI. The caller should
+ * call rp_autocreate_chardesc_pop to restore the working directory to its
+ * initial value.
+ */
+static char *rp_autocreate_chardesc_push(RemotePort *s, bool server,
+                                         gchar **saved_cwd)
 {
     char *prefix;
     char *chardesc;
     int r;
 
     prefix = rp_sanitize_prefix(s);
-    r = asprintf(&chardesc, "unix:%s/qemu-rport-%s%s",
-                 machine_path, prefix, server ? ",wait,server" : "");
+
+    *saved_cwd = g_get_current_dir();
+    if (chdir(machine_path) == -1) {
+        error_report("cannot chdir to `%s': %s", machine_path,
+                     strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    r = asprintf(&chardesc, "unix:qemu-rport-%s%s",
+                 prefix, server ? ",wait,server" : "");
     assert(r > 0);
     free(prefix);
     return chardesc;
+}
+
+static void rp_autocreate_chardesc_pop(RemotePort *s, gchar *saved_cwd)
+{
+    g_assert(chdir(saved_cwd) == 0);
+    g_free(saved_cwd);
 }
 
 static Chardev *rp_autocreate_chardev(RemotePort *s, char *name)
@@ -394,22 +416,25 @@ static Chardev *rp_autocreate_chardev(RemotePort *s, char *name)
     Chardev *chr = NULL;
     char *chardesc;
     char *s_path;
+    char *saved_cwd;
     int r;
 
     r = asprintf(&s_path, "%s/qemu-rport-%s", machine_path,
                  rp_sanitize_prefix(s));
     assert(r > 0);
     if (g_file_test(s_path, G_FILE_TEST_EXISTS)) {
-        chardesc = rp_autocreate_chardesc(s, false);
+        chardesc = rp_autocreate_chardesc_push(s, false, &saved_cwd);
         chr = qemu_chr_new_noreplay(name, chardesc, false, NULL);
         free(chardesc);
+        rp_autocreate_chardesc_pop(s, saved_cwd);
     }
     free(s_path);
 
     if (!chr) {
-        chardesc = rp_autocreate_chardesc(s, true);
+        chardesc = rp_autocreate_chardesc_push(s, true, &saved_cwd);
         chr = qemu_chr_new_noreplay(name, chardesc, false, NULL);
         free(chardesc);
+        rp_autocreate_chardesc_pop(s, saved_cwd);
     }
     return chr;
 }
