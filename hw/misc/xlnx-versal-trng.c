@@ -135,7 +135,7 @@ REG32(SLV_ERR_CTRL, 0xf0)
 
 #define R_TRNG_MAX (R_CORE_OUTPUT + 1)
 #define R_PMC_TRNG_MAX (R_SLV_ERR_CTRL + 1)
-#define R_MAX (0x100 / 4)
+#define R_MAX (0x104 / 4)
 
 typedef struct TRNG {
     SysBusDevice parent_obj;
