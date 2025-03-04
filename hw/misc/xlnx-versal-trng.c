@@ -456,7 +456,9 @@ static const MemoryRegionOps pmc_trng_imp_ops = {
 
 static void trng_realize(DeviceState *dev, Error **errp)
 {
-    /* Delete this if not necessary */
+   TRNG *s = XILINX_TRNG(dev);
+
+   qdev_init_gpio_out(dev, &s->irq_int_imr, 1);
 }
 
 static void trng_init(Object *obj)
