@@ -121,11 +121,16 @@ void rp_restart_sync_timer(RemotePort *s)
     ptimer_transaction_commit(s->sync.ptimer);
 }
 
-static void rp_fatal_error(RemotePort *s, const char *reason)
+static void rp_exit(RemotePort *s, const char *reason, int code)
 {
     int64_t clk = rp_normalized_vmclk(s);
     error_report("%s: %s clk=%" PRIu64 " ns\n", s->prefix, reason, clk);
-    exit(EXIT_FAILURE);
+    exit(code);
+}
+
+static void rp_fatal_error(RemotePort *s, const char *reason)
+{
+    rp_exit(s, reason, EXIT_FAILURE);
 }
 
 static ssize_t rp_recv(RemotePort *s, void *buf, size_t count)
@@ -730,7 +735,7 @@ static void *rp_protocol_thread(void *arg)
     }
 
     if (!s->finalizing) {
-        rp_fatal_error(s, "Disconnected");
+        rp_exit(s, "Disconnected", 0);
     }
     return NULL;
 }
