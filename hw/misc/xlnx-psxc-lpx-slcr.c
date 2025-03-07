@@ -7649,6 +7649,18 @@ static void pmxc_lpd_eam_err_update(XlnxPsxcLpxSlcr *s)
     qemu_set_irq(s->eam_err[3], err_group);
 }
 
+static void eam_handler(void *opaque, int n, int lvl)
+{
+    XlnxPsxcLpxSlcr *s = XILINX_PSXC_LPX_SLCR(opaque);
+    size_t reg_idx = n / 32;
+    size_t err_idx = n % 32;
+
+    if (lvl) {
+        s->eam_regs[reg_idx] |= 1 << err_idx;
+        pmxc_lpd_eam_err_update(s);
+    }
+}
+
 static uint64_t psxc_lpx_slcr_read(void *opaque, hwaddr offset,
                                    unsigned int size)
 {
@@ -8025,6 +8037,7 @@ static void psxc_lpx_slcr_realize(DeviceState *dev, Error **errp)
                             "apu-core-pchan-poweroff", 8);
     qdev_init_gpio_in_named(dev, apu_core_pchan_wakeup_handler,
                             "apu-core-pchan-wakeup", 8);
+    qdev_init_gpio_in_named(dev, eam_handler, "eam-err-in", 128);
 
     for (i = 0; i < s->num_rpu; i++) {
         if (s->rpu_pcil_pchan[i].iface == NULL) {
@@ -8170,6 +8183,7 @@ static const FDTGenericGPIOSet psxc_lpx_slcr_gpios[] = {
             { .name = "apu-cluster-pchan-wakeup", .fdt_index = 86, .range = 4 },
             { .name = "apu-core-pchan-poweroff", .fdt_index = 90, .range = 8 },
             { .name = "apu-core-pchan-wakeup", .fdt_index = 98, .range = 8 },
+            { .name = "eam-err-in", .fdt_index = 106, .range = 128 },
             { },
         }
     },
