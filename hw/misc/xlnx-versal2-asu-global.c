@@ -32,6 +32,7 @@
 #include "qemu/log.h"
 #include "migration/vmstate.h"
 #include "hw/irq.h"
+#include "hw/fdt_generic_util.h"
 
 #ifndef XILINX_ASU_GLOBAL_ERR_DEBUG
 #define XILINX_ASU_GLOBAL_ERR_DEBUG 0
@@ -683,6 +684,7 @@ static void asu_global_init(Object *obj)
 {
     ASU_GLOBAL *s = XILINX_ASU_GLOBAL(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+    DeviceState *dev = DEVICE(obj);
     RegisterInfoArray *reg_array;
 
     memory_region_init(&s->iomem, obj, TYPE_XILINX_ASU_GLOBAL,
@@ -698,15 +700,29 @@ static void asu_global_init(Object *obj)
                                 0x0,
                                 &reg_array->mem);
     sysbus_init_mmio(sbd, &s->iomem);
-    sysbus_init_irq(sbd, &s->irq_asu_fatal_error);
     sysbus_init_irq(sbd, &s->irq_asu_int);
-    sysbus_init_irq(sbd, &s->irq_asu_non_fatal_error);
-    sysbus_init_irq(sbd, &s->irq_addr_error_int);
-    sysbus_init_irq(sbd, &s->irq_gpi);
+    qdev_init_gpio_out_named(dev, &s->irq_asu_fatal_error, "fatal-error", 1);
+    qdev_init_gpio_out_named(dev, &s->irq_asu_non_fatal_error, "non-fatal-error", 1);
+    qdev_init_gpio_out_named(dev, &s->irq_addr_error_int, "addr-error", 1);
+    qdev_init_gpio_out_named(dev, &s->irq_gpi, "gpi", 1);
 
     /* Input: driven by ASU-AES */
-    qdev_init_gpio_in(DEVICE(obj), asu_global_key_transfer_done, 1);
+    qdev_init_gpio_in_named(dev, asu_global_key_transfer_done, "key-xfer-done", 1);
 }
+
+static const FDTGenericGPIOSet asu_global_gpios[] = {
+    {
+        .names = &fdt_generic_gpio_name_set_gpio,
+        .gpios = (FDTGenericGPIOConnection []) {
+            { .name = "key-xfer-done", .fdt_index = 0, .range = 1 },
+            { .name = "fatal-error", .fdt_index = 1, .range = 1 },
+            { .name = "non-fatal-error", .fdt_index = 2, .range = 1 },
+            { .name = "addr-error", .fdt_index = 3, .range = 1 },
+            { },
+        },
+    },
+    { },
+};
 
 static const VMStateDescription vmstate_asu_global = {
     .name = TYPE_XILINX_ASU_GLOBAL,
@@ -722,11 +738,13 @@ static void asu_global_class_init(ObjectClass *klass, void *data)
 {
     ResettableClass *rc = RESETTABLE_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
+    FDTGenericGPIOClass *fggc = FDT_GENERIC_GPIO_CLASS(klass);
 
     dc->realize = asu_global_realize;
     dc->vmsd = &vmstate_asu_global;
     rc->phases.enter = asu_global_reset_enter;
     rc->phases.hold = asu_global_reset_hold;
+    fggc->client_gpios = asu_global_gpios;
 }
 
 static const TypeInfo asu_global_info = {
@@ -735,6 +753,10 @@ static const TypeInfo asu_global_info = {
     .instance_size = sizeof(ASU_GLOBAL),
     .class_init    = asu_global_class_init,
     .instance_init = asu_global_init,
+    .interfaces    = (InterfaceInfo []) {
+        { TYPE_FDT_GENERIC_GPIO },
+        { }
+    },
 };
 
 static void asu_global_register_types(void)
