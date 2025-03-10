@@ -354,7 +354,6 @@ static void asu_sha2_update_digest(ASU_SHA2 *s)
 {
     uint32_t digest[ASU_SHA2_MAX_DIGEST_LEN >> 2] = {0};
     size_t digest_len = asu_sha2_digest_size(s);
-    size_t i;
 
     if (ARRAY_FIELD_EX32(s->regs, SHA_AUTO_PADDING, ENABLE)) {
         switch (s->alg) {
@@ -392,10 +391,7 @@ static void asu_sha2_update_digest(ASU_SHA2 *s)
         }
     }
 
-    /* Stored in reverse order.  */
-    for (i = 0; i < digest_len / 4; i++) {
-        s->regs[R_SHA_DIGEST_15 - i] = digest[i];
-    }
+    memcpy(&s->regs[R_SHA_DIGEST_0], digest, digest_len);
 }
 
 /*
