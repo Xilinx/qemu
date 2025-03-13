@@ -503,6 +503,7 @@ static void ams_reset(DeviceState *dev)
         register_reset(&s->regs_info[i]);
     }
 
+    ARRAY_FIELD_DP32(s->regs, PS_SYSMON_CONTROL_STATUS, STARTUP_STATE, 8);
     imr_0_update_irq(s);
     imr_1_update_irq(s);
 }
