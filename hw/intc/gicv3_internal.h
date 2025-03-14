@@ -510,6 +510,9 @@ FIELD(VTE, RDBASE, 42, RDBASE_PROCNUM_LENGTH)
 #define INTID_NONSECURE 1021
 #define INTID_SPURIOUS 1023
 
+/* Part number in MIDR for cortex-r52 */
+#define GICV3_PARTNUM_CORTEX_R52  0xD13
+
 /* Functions internal to the emulated GICv3 */
 
 /**

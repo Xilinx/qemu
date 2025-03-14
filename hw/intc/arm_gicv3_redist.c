@@ -347,6 +347,10 @@ static MemTxResult gicr_readl(GICv3CPUState *cs, hwaddr offset,
         return MEMTX_OK;
     case GICR_TYPER + 4:
         *data = extract64(cs->gicr_typer, 32, 32);
+        if (cs->gic->partnum == GICV3_PARTNUM_CORTEX_R52) {
+            /* Cortex-R52 only uses GICR_TYPER AFF0 */
+            *data &= 0xFF;
+        }
         return MEMTX_OK;
     case GICR_STATUSR:
         /* RAZ/WI for us (this is an optional register and our implementation

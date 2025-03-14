@@ -254,6 +254,7 @@ struct GICv3State {
     uint32_t num_cpu;
     uint32_t num_irq;
     uint32_t revision;
+    uint32_t partnum;
     bool lpi_enable;
     bool security_extn;
     bool force_8bit_prio;
