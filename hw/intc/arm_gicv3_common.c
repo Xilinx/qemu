@@ -588,6 +588,17 @@ static void arm_gicv3_common_reset_hold(Object *obj)
     memset(s->edge_trigger, 0, sizeof(s->edge_trigger));
     memset(s->gicd_ipriority, 0, sizeof(s->gicd_ipriority));
     memset(s->gicd_irouter, 0, sizeof(s->gicd_irouter));
+    /*
+     * For the Cortex-R52 the AFF1 and AFF2 fields in GICD_IROUTER are read-only
+     * and return the Affinity values from MPIDR.
+     */
+    if (s->partnum == GICV3_PARTNUM_CORTEX_R52) {
+        uint32_t r = extract64(s->cpu->gicr_typer, 40, 16) << 8;
+        for (i = 0; i < GICV3_MAXIRQ; i++) {
+            s->gicd_irouter[i] = r;
+        }
+    }
+
     memset(s->gicd_nsacr, 0, sizeof(s->gicd_nsacr));
     /* GICD_IROUTER are UNKNOWN at reset so in theory the guest must
      * write these to get sane behaviour and we need not populate the

@@ -763,6 +763,13 @@ static bool gicd_writel(GICv3State *s, hwaddr offset,
 
         /* Write half of the 64-bit register */
         r = gicd_read_irouter(s, attrs, irq);
+        /*
+         * Preserve the Aff1 and Aff2 fields for the Cortex-R52 since they are
+         * read-only.
+         */
+        if (s->partnum == GICV3_PARTNUM_CORTEX_R52) {
+            value = (value & ~0xFFFF00) | r;
+        }
         r = deposit64(r, (offset & 7) ? 32 : 0, 32, value);
         gicd_write_irouter(s, attrs, irq, r);
         return true;
