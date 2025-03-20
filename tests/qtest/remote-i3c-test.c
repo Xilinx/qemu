@@ -20,6 +20,12 @@
 #include "hw/i3c/i3c.h"
 #include "hw/i3c/remote-i3c.h"
 #include "hw/i3c/aspeed_i3c.h"
+#include "qemu/bswap.h"
+
+#if defined(_WIN32) && defined(__MINGW32__)
+#include <winsock2.h>
+#define in_port_t u_short
+#endif
 
 /* Xilinx */
 #define AspeedI3CTransferCmd  DwcI3CTransferCmd
@@ -332,7 +338,7 @@ static void add_targets_to_bus(uint32_t base)
     remote_target_expected_data[0] = REMOTE_I3C_START_SEND;
     remote_target_expected_data[1] = REMOTE_I3C_HANDLE_CCC_WRITE;
     uint32_t *p32 = (uint32_t *)&remote_target_expected_data[2];
-    *p32 = htole32(1);
+    *p32 = cpu_to_le32(1);
     remote_target_expected_data[6] = I3C_CCC_SETAASA;
     remote_target_expected_data[7] = REMOTE_I3C_STOP;
     remote_i3c_read_and_verify(remote_target_expected_data, 8);
@@ -366,7 +372,7 @@ static void send_and_verify(uint32_t i3c_base, const uint32_t *data, size_t len)
     remote_target_expected_data[0] = REMOTE_I3C_START_SEND;
     remote_target_expected_data[1] = REMOTE_I3C_SEND;
     uint32_t *p32 = (uint32_t *)&remote_target_expected_data[2];
-    *p32 = htole32(data_size);
+    *p32 = cpu_to_le32(data_size);
     memcpy(&remote_target_expected_data[6], data, data_size);
     remote_target_expected_data[data_size + 6] = REMOTE_I3C_STOP;
 
@@ -438,7 +444,7 @@ static void *remote_target_thread(void *arg)
             /* Read in the number of bytes the controller wants. */
             g_assert(read(fd, &bytes_to_send_le, sizeof(bytes_to_send_le)) ==
                           sizeof(bytes_to_send_le));
-            bytes_to_send = le32toh(bytes_to_send_le);
+            bytes_to_send = le32_to_cpu(bytes_to_send_le);
 
             /*
              * Send the data. We first send the number of bytes we're sending as
@@ -507,7 +513,7 @@ static void remote_i3c_ibi(const uint32_t *data, uint32_t len)
     ibi_req[0] = REMOTE_I3C_IBI;
     ibi_req[1] = TARGET_ADDR;
     ibi_req[2] = 0; /* RnW = 0 to make this a target interrupt request. */
-    len_le = htole32(len);
+    len_le = cpu_to_le32(len);
     memcpy(&ibi_req[3], &len_le, sizeof(len_le));
     memcpy(&ibi_req[7], data, len);
 
