@@ -359,6 +359,7 @@ static GArray *xlnx_trng1r2_tstent_take(XlnxTRng1r2 *s)
 {
     GArray *te = s->entropy.test_input;
 
+    s->entropy.test_input = NULL; /* blocks _clr from freeing it */
     xlnx_trng1r2_tstent_clr(s);
     return te;
 }
