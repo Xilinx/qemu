@@ -846,9 +846,40 @@ static void xhci_er_reset(XHCIState *xhci, int v)
             v, intr->er_start, intr->er_size);
 }
 
+static void xhci_dwc3_er_reset(XHCIState *xhci, int v)
+{
+    if (!xhci->dwc3_quirks) {
+        return;
+    }
+
+    if (!xhci_running(xhci)) {
+        xhci->intr[v].start_pending = true;
+        return;
+    }
+
+    xhci_er_reset(xhci, v);
+}
+
+static void xhci_dwc3_run(XHCIState *xhci)
+{
+    int i;
+
+    if (!xhci->dwc3_quirks) {
+        return;
+    }
+
+    for (i = 0; i < xhci->numintrs; i++) {
+        if (xhci->intr[i].start_pending) {
+            xhci->intr[i].start_pending = false;
+            xhci_er_reset(xhci, i);
+        }
+    }
+}
+
 static void xhci_run(XHCIState *xhci)
 {
     trace_usb_xhci_run();
+    xhci_dwc3_run(xhci);
     xhci->usbsts &= ~USBSTS_HCH;
     xhci->mfindex_start = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
 }
@@ -2733,6 +2764,7 @@ static void xhci_reset(DeviceState *dev)
         xhci->intr[i].er_pcs = 1;
         xhci->intr[i].ev_buffer_put = 0;
         xhci->intr[i].ev_buffer_get = 0;
+        xhci->intr[i].start_pending = false;
     }
 
     xhci->mfindex_start = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
@@ -3100,10 +3132,13 @@ static void xhci_runtime_write(void *ptr, hwaddr reg,
         } else {
             intr->erstba_low = val & 0xffffffc0;
         }
+        xhci_dwc3_er_reset(xhci, v);
         break;
     case 0x14: /* ERSTBA high */
         intr->erstba_high = val;
-        xhci_er_reset(xhci, v);
+        if (!xhci->dwc3_quirks) {
+            xhci_er_reset(xhci, v);
+        }
         break;
     case 0x18: /* ERDP low */
         if (val & ERDP_EHB) {
