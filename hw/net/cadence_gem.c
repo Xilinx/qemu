@@ -709,6 +709,7 @@ static void gem_init_register_masks(CadenceGEMState *s)
     s->regs_ro[R_MODID]    = 0xFFFFFFFF;
 
     if (s->has_usxgmii) {
+        s->regs_ro[R_NWCTRL]  &= ~R_NWCTRL_ENABLE_HS_MAC_MASK;
         s->regs_ro[R_USX_CTRL] = 0x000600e8;
         s->regs_ro[R_USX_STATUS] = 0xFFFFFFFF;
         s->regs_ro[R_USX_DESIGNCFG] = 0xFFFFFFFF;
