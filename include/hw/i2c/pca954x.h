@@ -8,6 +8,7 @@ typedef struct pca954x_type {
     const char *name;
     uint8_t lanes;   /* Number of i2c out buses */
     bool mux;        /* mux or switch */
+    bool mst_sel;        /* master selector */
 } pca954x_type;
 
 typedef struct PCA954X_class {
@@ -27,6 +28,7 @@ typedef struct {
     uint8_t active_lanes;
 
     bool mux;
+    bool mst_sel;
     uint8_t lanes;
     uint8_t chip_addr;
     uint8_t chip_addr_lsb; /* Deprecated */

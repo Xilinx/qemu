@@ -34,9 +34,10 @@
     if (PCA954X_DEBUG) { \
         qemu_log("PCA954X: "fmt, ## args); \
     } \
-} while (0);
+} while (0)
 
 static pca954x_type known_devices[] = {
+    { .name = "pca9541", .lanes = 1, .mst_sel = true},
     /* I2C Muxes */
     { .name = "pca9542", .lanes = 2, .mux = true },
     { .name = "pca9544", .lanes = 4, .mux = true },
@@ -75,7 +76,17 @@ static uint8_t pca954x_recv(I2CSlave *i2c)
     int ret = 0;
 
     if (s->control_decoded) {
-        ret |= s->control_reg;
+        if (s->mst_sel) {
+            if (s->control_reg == 1) {
+                /*
+                 * Present master owns the bus &
+                 * bus is in ON state.
+                 */
+                ret = 0x14;
+            }
+        } else {
+            ret |= s->control_reg;
+        }
         DB_PRINT("returning control register: %x\n", ret);
     } else {
         for (i = 0; i < s->lanes; ++i) {
@@ -91,7 +102,12 @@ static uint8_t pca954x_recv(I2CSlave *i2c)
 
 static void pca954x_decode_lane(PCA954XState *s)
 {
-    if (s->mux) {
+    if (s->mst_sel) {
+        /*
+         * Single down stream master selector supported.
+         */
+        s->active_lanes = 1;
+    } else if (s->mux) {
         s->active_lanes = (1 << (s->control_reg & (s->lanes - 1)));
     } else {
         s->active_lanes = s->control_reg;
@@ -199,6 +215,7 @@ static void pca954x_init(Object *obj)
     if (sc->device) {
         s->mux = sc->device->mux;
         s->lanes = sc->device->lanes;
+        s->mst_sel = sc->device->mst_sel;
     } else {
         /* Emulate pca9548 device as default */
         s->mux = false;
