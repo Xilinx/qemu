@@ -341,6 +341,10 @@ xlnx_versal_ecdsa_rsa_exec_opcode(const char *insn) "%s"
 xlnx_versal_ecdsa_rsa_exec_ucode(unsigned int word, int pc, const char *op, int len, unsigned int r, unsigned int a, unsigned int b) "%02x:%02x: %s_%d 0x%x <- 0x%x, 0x%x"
 xlnx_versal_ecdsa_rsa_exec_stop(unsigned int word, int pc) " %02x:%02x: stop"
 
+# xlnx-versal-pmc-clk-rst.c and xlnx-versal-pmx-crp.c
+xlnx_versal_pmc_crp_power_on_reset(const char *subsys, bool val) "%s: %d"
+xlnx_versal_pmc_crp_soft_reset(const char *subsys, bool val) "%s: %d"
+
 # xilinx-psxc-rpu-cluster-core.c
 xilinx_psxc_rpu_cluster_core_read(uint64_t addr, uint64_t value, unsigned int size) "addr: 0x%" PRIx64 " value: 0x%" PRIx64 " size: %u"
 xilinx_psxc_rpu_cluster_core_write(uint64_t addr, uint64_t value, unsigned int size) "addr: 0x%" PRIx64 " value: 0x%" PRIx64 " size: %u"

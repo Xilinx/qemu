@@ -34,6 +34,7 @@
 #include "qemu/config-file.h"
 #include "qemu/option.h"
 #include "hw/fdt_generic_util.h"
+#include "trace.h"
 
 #ifndef XILINX_PMX_CRP_ERR_DEBUG
 #define XILINX_PMX_CRP_ERR_DEBUG 0
@@ -577,6 +578,40 @@ static uint64_t rst_ps_prew(RegisterInfo *reg, uint64_t val64)
 {
     PMX_CRP *s = XILINX_PMX_CRP(reg->opaque);
     uint32_t val = val64;
+    uint32_t flip = val ^ s->regs[R_RST_PS];
+
+    if (FIELD_EX32(flip, RST_PS, PMC_SRST)) {
+        trace_xlnx_versal_pmc_crp_soft_reset("pmc",
+                                             FIELD_EX32(val, RST_PS, PMC_SRST));
+    }
+
+    if (FIELD_EX32(flip, RST_PS, PS_SRST)) {
+        trace_xlnx_versal_pmc_crp_soft_reset("ps",
+                                             FIELD_EX32(val, RST_PS, PS_SRST));
+    }
+
+    if (FIELD_EX32(flip, RST_PS, PL_SRST)) {
+        trace_xlnx_versal_pmc_crp_soft_reset("pl",
+                                             FIELD_EX32(val, RST_PS, PL_SRST));
+    }
+
+    if (FIELD_EX32(flip, RST_PS, PMC_POR)) {
+        trace_xlnx_versal_pmc_crp_power_on_reset("pmc",
+                                                 FIELD_EX32(val, RST_PS,
+                                                            PMC_POR));
+    }
+
+    if (FIELD_EX32(flip, RST_PS, PS_POR)) {
+        trace_xlnx_versal_pmc_crp_power_on_reset("ps",
+                                                 FIELD_EX32(val, RST_PS,
+                                                            PS_POR));
+    }
+
+    if (FIELD_EX32(flip, RST_PS, PL_POR)) {
+        trace_xlnx_versal_pmc_crp_power_on_reset("pl",
+                                                 FIELD_EX32(val, RST_PS,
+                                                            PL_POR));
+    }
 
     ARRAY_FIELD_DP32(s->regs, RESET_REASON, SW_SYS,
                 ARRAY_FIELD_EX32(s->regs, RESET_REASON, SW_SYS) |
