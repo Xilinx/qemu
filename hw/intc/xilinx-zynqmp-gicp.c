@@ -56,11 +56,11 @@ REG32(GICP0_IRQ_MASK, 0x4)
 REG32(GICP0_IRQ_ENABLE, 0x8)
 REG32(GICP0_IRQ_DISABLE, 0xc)
 REG32(GICP0_IRQ_TRIGGER, 0x10)
-    #define R_GICP0_RSVD    0x000000ff
+    #define R_GICP0_RSVD    0x00000000
     #define R_GICP1_RSVD    0
     #define R_GICP2_RSVD    0
-    #define R_GICP3_RSVD    0x000000ff
-    #define R_GICP4_RSVD    0xf0000000
+    #define R_GICP3_RSVD    0x00000000
+    #define R_GICP4_RSVD    0x00000000
     #define R_GICP5_RSVD    0x00000000
     #define R_GICP6_RSVD    0x00000000
     #define R_GICP7_RSVD    0x00000000
