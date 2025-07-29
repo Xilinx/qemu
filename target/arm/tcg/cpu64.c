@@ -349,7 +349,7 @@ static void aarch64_a78_initfn(Object *obj)
     t = FIELD_DP64(t, ID_AA64ISAR0, SHA1, 1);
     t = FIELD_DP64(t, ID_AA64ISAR0, SHA2, 2); /* SHA512 */
     t = FIELD_DP64(t, ID_AA64ISAR0, CRC32, 1);
-    t = FIELD_DP64(t, ID_AA64ISAR0, ATOMIC, 0);
+    t = FIELD_DP64(t, ID_AA64ISAR0, ATOMIC, 2);
     t = FIELD_DP64(t, ID_AA64ISAR0, RDM, 1);
     t = FIELD_DP64(t, ID_AA64ISAR0, SHA3, 1);
     t = FIELD_DP64(t, ID_AA64ISAR0, SM3, 1);
